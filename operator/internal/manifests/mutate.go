@@ -3,8 +3,8 @@ package manifests
 import (
 	"reflect"
 
+	"dario.cat/mergo"
 	"github.com/ViaQ/logerr/v2/kverrors"
-	"github.com/imdario/mergo"
 	routev1 "github.com/openshift/api/route/v1"
 	cloudcredentialv1 "github.com/openshift/cloud-credential-operator/pkg/apis/cloudcredential/v1"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
@@ -35,6 +35,7 @@ import (
 //   - Route
 //   - PrometheusRule
 //   - PodDisruptionBudget
+//   - NetworkPolicy
 func MutateFuncFor(existing, desired client.Object, depAnnotations map[string]string) controllerutil.MutateFn {
 	return func() error {
 		existingAnnotations := existing.GetAnnotations()
@@ -137,6 +138,11 @@ func MutateFuncFor(existing, desired client.Object, depAnnotations map[string]st
 			pdb := existing.(*policyv1.PodDisruptionBudget)
 			wantPdb := desired.(*policyv1.PodDisruptionBudget)
 			mutatePodDisruptionBudget(pdb, wantPdb)
+
+		case *networkingv1.NetworkPolicy:
+			np := existing.(*networkingv1.NetworkPolicy)
+			wantNp := desired.(*networkingv1.NetworkPolicy)
+			mutateNetworkPolicy(np, wantNp)
 
 		default:
 			t := reflect.TypeOf(existing).String()
@@ -272,4 +278,10 @@ func mutatePodSpec(existing *corev1.PodSpec, desired *corev1.PodSpec) {
 	existing.Tolerations = desired.Tolerations
 	existing.TopologySpreadConstraints = desired.TopologySpreadConstraints
 	existing.Volumes = desired.Volumes
+}
+
+func mutateNetworkPolicy(existing, desired *networkingv1.NetworkPolicy) {
+	existing.Annotations = desired.Annotations
+	existing.Labels = desired.Labels
+	existing.Spec = desired.Spec
 }

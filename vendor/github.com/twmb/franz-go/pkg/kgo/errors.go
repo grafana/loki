@@ -256,16 +256,19 @@ func (e *errProducerIDLoadFail) Error() string {
 func (e *errProducerIDLoadFail) Unwrap() error { return e.err }
 
 const (
-	firstReadSASL uint8 = iota
+	firstReadDial uint8 = iota
 	firstReadTLS
+	firstReadSASL
 )
 
 func (e *ErrFirstReadEOF) Error() string {
 	switch e.kind {
+	case firstReadDial:
+		return "broker closed the connection immediately after a dial, which often happens if the client is using TLS when the broker is not expecting it: is TLS misconfigured on the client or the broker?"
 	case firstReadTLS:
-		return "broker closed the connection immediately after a dial, which happens if the client is using TLS when the broker is not expecting it: is TLS misconfigured on the client or the broker?"
+		return "broker closed the connection immediately during api versions negotiation, which often happens when the broker requires TLS but the client is using plaintext: is TLS missing?"
 	default: // firstReadSASL
-		return "broker closed the connection immediately after a request was issued, which happens when SASL is required but not provided: is SASL missing?"
+		return "broker closed the connection immediately after a request was issued, which often happens when SASL is required but not provided: is SASL missing?"
 	}
 }
 

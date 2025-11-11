@@ -40,25 +40,23 @@ const (
 // familiarity and consistency across products and features.
 //
 // For compatibility with Bigtable's existing untyped APIs, each `Type` includes
-// an `Encoding` which describes how to convert to/from the underlying data.
+// an `Encoding` which describes how to convert to or from the underlying data.
 //
-// Each encoding also defines the following properties:
+// Each encoding can operate in one of two modes:
 //
-//   - Order-preserving: Does the encoded value sort consistently with the
-//     original typed value? Note that Bigtable will always sort data based on
-//     the raw encoded value, *not* the decoded type.
-//   - Example: BYTES values sort in the same order as their raw encodings.
-//   - Counterexample: Encoding INT64 as a fixed-width decimal string does
-//     *not* preserve sort order when dealing with negative numbers.
-//     `INT64(1) > INT64(-1)`, but `STRING("-00001") > STRING("00001)`.
-//   - Self-delimiting: If we concatenate two encoded values, can we always tell
-//     where the first one ends and the second one begins?
-//   - Example: If we encode INT64s to fixed-width STRINGs, the first value
-//     will always contain exactly N digits, possibly preceded by a sign.
-//   - Counterexample: If we concatenate two UTF-8 encoded STRINGs, we have
-//     no way to tell where the first one ends.
-//   - Compatibility: Which other systems have matching encoding schemes? For
-//     example, does this encoding have a GoogleSQL equivalent? HBase? Java?
+//   - Sorted: In this mode, Bigtable guarantees that `Encode(X) <= Encode(Y)`
+//     if and only if `X <= Y`. This is useful anywhere sort order is important,
+//     for example when encoding keys.
+//   - Distinct: In this mode, Bigtable guarantees that if `X != Y` then
+//     `Encode(X) != Encode(Y)`. However, the converse is not guaranteed. For
+//     example, both `{'foo': '1', 'bar': '2'}` and `{'bar': '2', 'foo': '1'}`
+//     are valid encodings of the same JSON value.
+//
+// The API clearly documents which mode is used wherever an encoding can be
+// configured. Each encoding also documents which values are supported in which
+// modes. For example, when encoding INT64 as a numeric STRING, negative numbers
+// cannot be encoded in sorted mode. This is because `INT64(1) > INT64(-1)`, but
+// `STRING("-00001") > STRING("00001")`.
 type Type struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -80,6 +78,8 @@ type Type struct {
 	//	*Type_StructType
 	//	*Type_ArrayType
 	//	*Type_MapType
+	//	*Type_ProtoType
+	//	*Type_EnumType
 	Kind isType_Kind `protobuf_oneof:"kind"`
 }
 
@@ -204,6 +204,20 @@ func (x *Type) GetMapType() *Type_Map {
 	return nil
 }
 
+func (x *Type) GetProtoType() *Type_Proto {
+	if x, ok := x.GetKind().(*Type_ProtoType); ok {
+		return x.ProtoType
+	}
+	return nil
+}
+
+func (x *Type) GetEnumType() *Type_Enum {
+	if x, ok := x.GetKind().(*Type_EnumType); ok {
+		return x.EnumType
+	}
+	return nil
+}
+
 type isType_Kind interface {
 	isType_Kind()
 }
@@ -268,6 +282,16 @@ type Type_MapType struct {
 	MapType *Type_Map `protobuf:"bytes,4,opt,name=map_type,json=mapType,proto3,oneof"`
 }
 
+type Type_ProtoType struct {
+	// Proto
+	ProtoType *Type_Proto `protobuf:"bytes,13,opt,name=proto_type,json=protoType,proto3,oneof"`
+}
+
+type Type_EnumType struct {
+	// Enum
+	EnumType *Type_Enum `protobuf:"bytes,14,opt,name=enum_type,json=enumType,proto3,oneof"`
+}
+
 func (*Type_BytesType) isType_Kind() {}
 
 func (*Type_StringType) isType_Kind() {}
@@ -292,6 +316,10 @@ func (*Type_ArrayType) isType_Kind() {}
 
 func (*Type_MapType) isType_Kind() {}
 
+func (*Type_ProtoType) isType_Kind() {}
+
+func (*Type_EnumType) isType_Kind() {}
+
 // Bytes
 // Values of type `Bytes` are stored in `Value.bytes_value`.
 type Type_Bytes struct {
@@ -299,7 +327,7 @@ type Type_Bytes struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// The encoding to use when converting to/from lower level types.
+	// The encoding to use when converting to or from lower level types.
 	Encoding *Type_Bytes_Encoding `protobuf:"bytes,1,opt,name=encoding,proto3" json:"encoding,omitempty"`
 }
 
@@ -347,7 +375,7 @@ type Type_String struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// The encoding to use when converting to/from lower level types.
+	// The encoding to use when converting to or from lower level types.
 	Encoding *Type_String_Encoding `protobuf:"bytes,1,opt,name=encoding,proto3" json:"encoding,omitempty"`
 }
 
@@ -395,7 +423,7 @@ type Type_Int64 struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// The encoding to use when converting to/from lower level types.
+	// The encoding to use when converting to or from lower level types.
 	Encoding *Type_Int64_Encoding `protobuf:"bytes,1,opt,name=encoding,proto3" json:"encoding,omitempty"`
 }
 
@@ -556,6 +584,9 @@ type Type_Timestamp struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
+
+	// The encoding to use when converting to or from lower level types.
+	Encoding *Type_Timestamp_Encoding `protobuf:"bytes,1,opt,name=encoding,proto3" json:"encoding,omitempty"`
 }
 
 func (x *Type_Timestamp) Reset() {
@@ -586,6 +617,13 @@ func (x *Type_Timestamp) ProtoReflect() protoreflect.Message {
 // Deprecated: Use Type_Timestamp.ProtoReflect.Descriptor instead.
 func (*Type_Timestamp) Descriptor() ([]byte, []int) {
 	return file_google_bigtable_v2_types_proto_rawDescGZIP(), []int{0, 6}
+}
+
+func (x *Type_Timestamp) GetEncoding() *Type_Timestamp_Encoding {
+	if x != nil {
+		return x.Encoding
+	}
+	return nil
 }
 
 // Date
@@ -637,6 +675,8 @@ type Type_Struct struct {
 
 	// The names and types of the fields in this struct.
 	Fields []*Type_Struct_Field `protobuf:"bytes,1,rep,name=fields,proto3" json:"fields,omitempty"`
+	// The encoding to use when converting to or from lower level types.
+	Encoding *Type_Struct_Encoding `protobuf:"bytes,2,opt,name=encoding,proto3" json:"encoding,omitempty"`
 }
 
 func (x *Type_Struct) Reset() {
@@ -676,6 +716,129 @@ func (x *Type_Struct) GetFields() []*Type_Struct_Field {
 	return nil
 }
 
+func (x *Type_Struct) GetEncoding() *Type_Struct_Encoding {
+	if x != nil {
+		return x.Encoding
+	}
+	return nil
+}
+
+// A protobuf message type.
+// Values of type `Proto` are stored in `Value.bytes_value`.
+type Type_Proto struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	// The ID of the schema bundle that this proto is defined in.
+	SchemaBundleId string `protobuf:"bytes,1,opt,name=schema_bundle_id,json=schemaBundleId,proto3" json:"schema_bundle_id,omitempty"`
+	// The fully qualified name of the protobuf message, including package. In
+	// the format of "foo.bar.Message".
+	MessageName string `protobuf:"bytes,2,opt,name=message_name,json=messageName,proto3" json:"message_name,omitempty"`
+}
+
+func (x *Type_Proto) Reset() {
+	*x = Type_Proto{}
+	mi := &file_google_bigtable_v2_types_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Type_Proto) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Type_Proto) ProtoMessage() {}
+
+func (x *Type_Proto) ProtoReflect() protoreflect.Message {
+	mi := &file_google_bigtable_v2_types_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Type_Proto.ProtoReflect.Descriptor instead.
+func (*Type_Proto) Descriptor() ([]byte, []int) {
+	return file_google_bigtable_v2_types_proto_rawDescGZIP(), []int{0, 9}
+}
+
+func (x *Type_Proto) GetSchemaBundleId() string {
+	if x != nil {
+		return x.SchemaBundleId
+	}
+	return ""
+}
+
+func (x *Type_Proto) GetMessageName() string {
+	if x != nil {
+		return x.MessageName
+	}
+	return ""
+}
+
+// A protobuf enum type.
+// Values of type `Enum` are stored in `Value.int_value`.
+type Type_Enum struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	// The ID of the schema bundle that this enum is defined in.
+	SchemaBundleId string `protobuf:"bytes,1,opt,name=schema_bundle_id,json=schemaBundleId,proto3" json:"schema_bundle_id,omitempty"`
+	// The fully qualified name of the protobuf enum message, including package.
+	// In the format of "foo.bar.EnumMessage".
+	EnumName string `protobuf:"bytes,2,opt,name=enum_name,json=enumName,proto3" json:"enum_name,omitempty"`
+}
+
+func (x *Type_Enum) Reset() {
+	*x = Type_Enum{}
+	mi := &file_google_bigtable_v2_types_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Type_Enum) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Type_Enum) ProtoMessage() {}
+
+func (x *Type_Enum) ProtoReflect() protoreflect.Message {
+	mi := &file_google_bigtable_v2_types_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Type_Enum.ProtoReflect.Descriptor instead.
+func (*Type_Enum) Descriptor() ([]byte, []int) {
+	return file_google_bigtable_v2_types_proto_rawDescGZIP(), []int{0, 10}
+}
+
+func (x *Type_Enum) GetSchemaBundleId() string {
+	if x != nil {
+		return x.SchemaBundleId
+	}
+	return ""
+}
+
+func (x *Type_Enum) GetEnumName() string {
+	if x != nil {
+		return x.EnumName
+	}
+	return ""
+}
+
 // An ordered list of elements of a given type.
 // Values of type `Array` are stored in `Value.array_value`.
 type Type_Array struct {
@@ -689,7 +852,7 @@ type Type_Array struct {
 
 func (x *Type_Array) Reset() {
 	*x = Type_Array{}
-	mi := &file_google_bigtable_v2_types_proto_msgTypes[10]
+	mi := &file_google_bigtable_v2_types_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -701,7 +864,7 @@ func (x *Type_Array) String() string {
 func (*Type_Array) ProtoMessage() {}
 
 func (x *Type_Array) ProtoReflect() protoreflect.Message {
-	mi := &file_google_bigtable_v2_types_proto_msgTypes[10]
+	mi := &file_google_bigtable_v2_types_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -714,7 +877,7 @@ func (x *Type_Array) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Type_Array.ProtoReflect.Descriptor instead.
 func (*Type_Array) Descriptor() ([]byte, []int) {
-	return file_google_bigtable_v2_types_proto_rawDescGZIP(), []int{0, 9}
+	return file_google_bigtable_v2_types_proto_rawDescGZIP(), []int{0, 11}
 }
 
 func (x *Type_Array) GetElementType() *Type {
@@ -745,7 +908,7 @@ type Type_Map struct {
 
 func (x *Type_Map) Reset() {
 	*x = Type_Map{}
-	mi := &file_google_bigtable_v2_types_proto_msgTypes[11]
+	mi := &file_google_bigtable_v2_types_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -757,7 +920,7 @@ func (x *Type_Map) String() string {
 func (*Type_Map) ProtoMessage() {}
 
 func (x *Type_Map) ProtoReflect() protoreflect.Message {
-	mi := &file_google_bigtable_v2_types_proto_msgTypes[11]
+	mi := &file_google_bigtable_v2_types_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -770,7 +933,7 @@ func (x *Type_Map) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Type_Map.ProtoReflect.Descriptor instead.
 func (*Type_Map) Descriptor() ([]byte, []int) {
-	return file_google_bigtable_v2_types_proto_rawDescGZIP(), []int{0, 10}
+	return file_google_bigtable_v2_types_proto_rawDescGZIP(), []int{0, 12}
 }
 
 func (x *Type_Map) GetKeyType() *Type {
@@ -789,21 +952,20 @@ func (x *Type_Map) GetValueType() *Type {
 
 // A value that combines incremental updates into a summarized value.
 //
-// Data is never directly written or read using type `Aggregate`. Writes will
-// provide either the `input_type` or `state_type`, and reads will always
-// return the `state_type` .
+// Data is never directly written or read using type `Aggregate`. Writes
+// provide either the `input_type` or `state_type`, and reads always return
+// the `state_type` .
 type Type_Aggregate struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// Type of the inputs that are accumulated by this `Aggregate`, which must
-	// specify a full encoding.
+	// Type of the inputs that are accumulated by this `Aggregate`.
 	// Use `AddInput` mutations to accumulate new inputs.
 	InputType *Type `protobuf:"bytes,1,opt,name=input_type,json=inputType,proto3" json:"input_type,omitempty"`
 	// Output only. Type that holds the internal accumulator state for the
 	// `Aggregate`. This is a function of the `input_type` and `aggregator`
-	// chosen, and will always specify a full encoding.
+	// chosen.
 	StateType *Type `protobuf:"bytes,2,opt,name=state_type,json=stateType,proto3" json:"state_type,omitempty"`
 	// Which aggregator function to use. The configured types must match.
 	//
@@ -818,7 +980,7 @@ type Type_Aggregate struct {
 
 func (x *Type_Aggregate) Reset() {
 	*x = Type_Aggregate{}
-	mi := &file_google_bigtable_v2_types_proto_msgTypes[12]
+	mi := &file_google_bigtable_v2_types_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -830,7 +992,7 @@ func (x *Type_Aggregate) String() string {
 func (*Type_Aggregate) ProtoMessage() {}
 
 func (x *Type_Aggregate) ProtoReflect() protoreflect.Message {
-	mi := &file_google_bigtable_v2_types_proto_msgTypes[12]
+	mi := &file_google_bigtable_v2_types_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -843,7 +1005,7 @@ func (x *Type_Aggregate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Type_Aggregate.ProtoReflect.Descriptor instead.
 func (*Type_Aggregate) Descriptor() ([]byte, []int) {
-	return file_google_bigtable_v2_types_proto_rawDescGZIP(), []int{0, 11}
+	return file_google_bigtable_v2_types_proto_rawDescGZIP(), []int{0, 13}
 }
 
 func (x *Type_Aggregate) GetInputType() *Type {
@@ -927,7 +1089,7 @@ func (*Type_Aggregate_Max_) isType_Aggregate_Aggregator() {}
 
 func (*Type_Aggregate_Min_) isType_Aggregate_Aggregator() {}
 
-// Rules used to convert to/from lower level types.
+// Rules used to convert to or from lower level types.
 type Type_Bytes_Encoding struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -943,7 +1105,7 @@ type Type_Bytes_Encoding struct {
 
 func (x *Type_Bytes_Encoding) Reset() {
 	*x = Type_Bytes_Encoding{}
-	mi := &file_google_bigtable_v2_types_proto_msgTypes[13]
+	mi := &file_google_bigtable_v2_types_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -955,7 +1117,7 @@ func (x *Type_Bytes_Encoding) String() string {
 func (*Type_Bytes_Encoding) ProtoMessage() {}
 
 func (x *Type_Bytes_Encoding) ProtoReflect() protoreflect.Message {
-	mi := &file_google_bigtable_v2_types_proto_msgTypes[13]
+	mi := &file_google_bigtable_v2_types_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -996,19 +1158,26 @@ type Type_Bytes_Encoding_Raw_ struct {
 
 func (*Type_Bytes_Encoding_Raw_) isType_Bytes_Encoding_Encoding() {}
 
-// Leaves the value "as-is"
-// * Order-preserving? Yes
-// * Self-delimiting? No
-// * Compatibility? N/A
+// Leaves the value as-is.
+//
+// Sorted mode: all values are supported.
+//
+// Distinct mode: all values are supported.
 type Type_Bytes_Encoding_Raw struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
+
+	// If set, allows NULL values to be encoded as the empty string "".
+	//
+	// The actual empty string, or any value which only contains the
+	// null byte `0x00`, has one more null byte appended.
+	EscapeNulls bool `protobuf:"varint,1,opt,name=escape_nulls,json=escapeNulls,proto3" json:"escape_nulls,omitempty"`
 }
 
 func (x *Type_Bytes_Encoding_Raw) Reset() {
 	*x = Type_Bytes_Encoding_Raw{}
-	mi := &file_google_bigtable_v2_types_proto_msgTypes[14]
+	mi := &file_google_bigtable_v2_types_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1020,7 +1189,7 @@ func (x *Type_Bytes_Encoding_Raw) String() string {
 func (*Type_Bytes_Encoding_Raw) ProtoMessage() {}
 
 func (x *Type_Bytes_Encoding_Raw) ProtoReflect() protoreflect.Message {
-	mi := &file_google_bigtable_v2_types_proto_msgTypes[14]
+	mi := &file_google_bigtable_v2_types_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1036,7 +1205,14 @@ func (*Type_Bytes_Encoding_Raw) Descriptor() ([]byte, []int) {
 	return file_google_bigtable_v2_types_proto_rawDescGZIP(), []int{0, 0, 0, 0}
 }
 
-// Rules used to convert to/from lower level types.
+func (x *Type_Bytes_Encoding_Raw) GetEscapeNulls() bool {
+	if x != nil {
+		return x.EscapeNulls
+	}
+	return false
+}
+
+// Rules used to convert to or from lower level types.
 type Type_String_Encoding struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -1053,7 +1229,7 @@ type Type_String_Encoding struct {
 
 func (x *Type_String_Encoding) Reset() {
 	*x = Type_String_Encoding{}
-	mi := &file_google_bigtable_v2_types_proto_msgTypes[15]
+	mi := &file_google_bigtable_v2_types_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1065,7 +1241,7 @@ func (x *Type_String_Encoding) String() string {
 func (*Type_String_Encoding) ProtoMessage() {}
 
 func (x *Type_String_Encoding) ProtoReflect() protoreflect.Message {
-	mi := &file_google_bigtable_v2_types_proto_msgTypes[15]
+	mi := &file_google_bigtable_v2_types_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1134,7 +1310,7 @@ type Type_String_Encoding_Utf8Raw struct {
 
 func (x *Type_String_Encoding_Utf8Raw) Reset() {
 	*x = Type_String_Encoding_Utf8Raw{}
-	mi := &file_google_bigtable_v2_types_proto_msgTypes[16]
+	mi := &file_google_bigtable_v2_types_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1146,7 +1322,7 @@ func (x *Type_String_Encoding_Utf8Raw) String() string {
 func (*Type_String_Encoding_Utf8Raw) ProtoMessage() {}
 
 func (x *Type_String_Encoding_Utf8Raw) ProtoReflect() protoreflect.Message {
-	mi := &file_google_bigtable_v2_types_proto_msgTypes[16]
+	mi := &file_google_bigtable_v2_types_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1162,22 +1338,41 @@ func (*Type_String_Encoding_Utf8Raw) Descriptor() ([]byte, []int) {
 	return file_google_bigtable_v2_types_proto_rawDescGZIP(), []int{0, 1, 0, 0}
 }
 
-// UTF-8 encoding
-// * Order-preserving? Yes (code point order)
-// * Self-delimiting? No
-// * Compatibility?
-//   - BigQuery Federation `TEXT` encoding
+// UTF-8 encoding.
+//
+// Sorted mode:
+//   - All values are supported.
+//   - Code point order is preserved.
+//
+// Distinct mode: all values are supported.
+//
+// Compatible with:
+//
+//   - BigQuery `TEXT` encoding
 //   - HBase `Bytes.toBytes`
 //   - Java `String#getBytes(StandardCharsets.UTF_8)`
 type Type_String_Encoding_Utf8Bytes struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
+
+	// Single-character escape sequence used to support NULL values.
+	//
+	// If set, allows NULL values to be encoded as the empty string "".
+	//
+	// The actual empty string, or any value where every character equals
+	// `null_escape_char`, has one more `null_escape_char` appended.
+	//
+	// If `null_escape_char` is set and does not equal the ASCII null
+	// character `0x00`, then the encoding will not support sorted mode.
+	//
+	// .
+	NullEscapeChar string `protobuf:"bytes,1,opt,name=null_escape_char,json=nullEscapeChar,proto3" json:"null_escape_char,omitempty"`
 }
 
 func (x *Type_String_Encoding_Utf8Bytes) Reset() {
 	*x = Type_String_Encoding_Utf8Bytes{}
-	mi := &file_google_bigtable_v2_types_proto_msgTypes[17]
+	mi := &file_google_bigtable_v2_types_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1189,7 +1384,7 @@ func (x *Type_String_Encoding_Utf8Bytes) String() string {
 func (*Type_String_Encoding_Utf8Bytes) ProtoMessage() {}
 
 func (x *Type_String_Encoding_Utf8Bytes) ProtoReflect() protoreflect.Message {
-	mi := &file_google_bigtable_v2_types_proto_msgTypes[17]
+	mi := &file_google_bigtable_v2_types_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1205,7 +1400,14 @@ func (*Type_String_Encoding_Utf8Bytes) Descriptor() ([]byte, []int) {
 	return file_google_bigtable_v2_types_proto_rawDescGZIP(), []int{0, 1, 0, 1}
 }
 
-// Rules used to convert to/from lower level types.
+func (x *Type_String_Encoding_Utf8Bytes) GetNullEscapeChar() string {
+	if x != nil {
+		return x.NullEscapeChar
+	}
+	return ""
+}
+
+// Rules used to convert to or from lower level types.
 type Type_Int64_Encoding struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -1216,12 +1418,13 @@ type Type_Int64_Encoding struct {
 	// Types that are assignable to Encoding:
 	//
 	//	*Type_Int64_Encoding_BigEndianBytes_
+	//	*Type_Int64_Encoding_OrderedCodeBytes_
 	Encoding isType_Int64_Encoding_Encoding `protobuf_oneof:"encoding"`
 }
 
 func (x *Type_Int64_Encoding) Reset() {
 	*x = Type_Int64_Encoding{}
-	mi := &file_google_bigtable_v2_types_proto_msgTypes[18]
+	mi := &file_google_bigtable_v2_types_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1233,7 +1436,7 @@ func (x *Type_Int64_Encoding) String() string {
 func (*Type_Int64_Encoding) ProtoMessage() {}
 
 func (x *Type_Int64_Encoding) ProtoReflect() protoreflect.Message {
-	mi := &file_google_bigtable_v2_types_proto_msgTypes[18]
+	mi := &file_google_bigtable_v2_types_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1263,6 +1466,13 @@ func (x *Type_Int64_Encoding) GetBigEndianBytes() *Type_Int64_Encoding_BigEndian
 	return nil
 }
 
+func (x *Type_Int64_Encoding) GetOrderedCodeBytes() *Type_Int64_Encoding_OrderedCodeBytes {
+	if x, ok := x.GetEncoding().(*Type_Int64_Encoding_OrderedCodeBytes_); ok {
+		return x.OrderedCodeBytes
+	}
+	return nil
+}
+
 type isType_Int64_Encoding_Encoding interface {
 	isType_Int64_Encoding_Encoding()
 }
@@ -1272,14 +1482,24 @@ type Type_Int64_Encoding_BigEndianBytes_ struct {
 	BigEndianBytes *Type_Int64_Encoding_BigEndianBytes `protobuf:"bytes,1,opt,name=big_endian_bytes,json=bigEndianBytes,proto3,oneof"`
 }
 
+type Type_Int64_Encoding_OrderedCodeBytes_ struct {
+	// Use `OrderedCodeBytes` encoding.
+	OrderedCodeBytes *Type_Int64_Encoding_OrderedCodeBytes `protobuf:"bytes,2,opt,name=ordered_code_bytes,json=orderedCodeBytes,proto3,oneof"`
+}
+
 func (*Type_Int64_Encoding_BigEndianBytes_) isType_Int64_Encoding_Encoding() {}
 
-// Encodes the value as an 8-byte big endian twos complement `Bytes`
-// value.
-// * Order-preserving? No (positive values only)
-// * Self-delimiting? Yes
-// * Compatibility?
-//   - BigQuery Federation `BINARY` encoding
+func (*Type_Int64_Encoding_OrderedCodeBytes_) isType_Int64_Encoding_Encoding() {}
+
+// Encodes the value as an 8-byte big-endian two's complement value.
+//
+// Sorted mode: non-negative values are supported.
+//
+// Distinct mode: all values are supported.
+//
+// Compatible with:
+//
+//   - BigQuery `BINARY` encoding
 //   - HBase `Bytes.toBytes`
 //   - Java `ByteBuffer.putLong()` with `ByteOrder.BIG_ENDIAN`
 type Type_Int64_Encoding_BigEndianBytes struct {
@@ -1288,12 +1508,14 @@ type Type_Int64_Encoding_BigEndianBytes struct {
 	unknownFields protoimpl.UnknownFields
 
 	// Deprecated: ignored if set.
+	//
+	// Deprecated: Marked as deprecated in google/bigtable/v2/types.proto.
 	BytesType *Type_Bytes `protobuf:"bytes,1,opt,name=bytes_type,json=bytesType,proto3" json:"bytes_type,omitempty"`
 }
 
 func (x *Type_Int64_Encoding_BigEndianBytes) Reset() {
 	*x = Type_Int64_Encoding_BigEndianBytes{}
-	mi := &file_google_bigtable_v2_types_proto_msgTypes[19]
+	mi := &file_google_bigtable_v2_types_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1305,7 +1527,7 @@ func (x *Type_Int64_Encoding_BigEndianBytes) String() string {
 func (*Type_Int64_Encoding_BigEndianBytes) ProtoMessage() {}
 
 func (x *Type_Int64_Encoding_BigEndianBytes) ProtoReflect() protoreflect.Message {
-	mi := &file_google_bigtable_v2_types_proto_msgTypes[19]
+	mi := &file_google_bigtable_v2_types_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1321,12 +1543,129 @@ func (*Type_Int64_Encoding_BigEndianBytes) Descriptor() ([]byte, []int) {
 	return file_google_bigtable_v2_types_proto_rawDescGZIP(), []int{0, 2, 0, 0}
 }
 
+// Deprecated: Marked as deprecated in google/bigtable/v2/types.proto.
 func (x *Type_Int64_Encoding_BigEndianBytes) GetBytesType() *Type_Bytes {
 	if x != nil {
 		return x.BytesType
 	}
 	return nil
 }
+
+// Encodes the value in a variable length binary format of up to 10 bytes.
+// Values that are closer to zero use fewer bytes.
+//
+// Sorted mode: all values are supported.
+//
+// Distinct mode: all values are supported.
+type Type_Int64_Encoding_OrderedCodeBytes struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+}
+
+func (x *Type_Int64_Encoding_OrderedCodeBytes) Reset() {
+	*x = Type_Int64_Encoding_OrderedCodeBytes{}
+	mi := &file_google_bigtable_v2_types_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Type_Int64_Encoding_OrderedCodeBytes) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Type_Int64_Encoding_OrderedCodeBytes) ProtoMessage() {}
+
+func (x *Type_Int64_Encoding_OrderedCodeBytes) ProtoReflect() protoreflect.Message {
+	mi := &file_google_bigtable_v2_types_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Type_Int64_Encoding_OrderedCodeBytes.ProtoReflect.Descriptor instead.
+func (*Type_Int64_Encoding_OrderedCodeBytes) Descriptor() ([]byte, []int) {
+	return file_google_bigtable_v2_types_proto_rawDescGZIP(), []int{0, 2, 0, 1}
+}
+
+// Rules used to convert to or from lower level types.
+type Type_Timestamp_Encoding struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	// Which encoding to use.
+	//
+	// Types that are assignable to Encoding:
+	//
+	//	*Type_Timestamp_Encoding_UnixMicrosInt64
+	Encoding isType_Timestamp_Encoding_Encoding `protobuf_oneof:"encoding"`
+}
+
+func (x *Type_Timestamp_Encoding) Reset() {
+	*x = Type_Timestamp_Encoding{}
+	mi := &file_google_bigtable_v2_types_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Type_Timestamp_Encoding) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Type_Timestamp_Encoding) ProtoMessage() {}
+
+func (x *Type_Timestamp_Encoding) ProtoReflect() protoreflect.Message {
+	mi := &file_google_bigtable_v2_types_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Type_Timestamp_Encoding.ProtoReflect.Descriptor instead.
+func (*Type_Timestamp_Encoding) Descriptor() ([]byte, []int) {
+	return file_google_bigtable_v2_types_proto_rawDescGZIP(), []int{0, 6, 0}
+}
+
+func (m *Type_Timestamp_Encoding) GetEncoding() isType_Timestamp_Encoding_Encoding {
+	if m != nil {
+		return m.Encoding
+	}
+	return nil
+}
+
+func (x *Type_Timestamp_Encoding) GetUnixMicrosInt64() *Type_Int64_Encoding {
+	if x, ok := x.GetEncoding().(*Type_Timestamp_Encoding_UnixMicrosInt64); ok {
+		return x.UnixMicrosInt64
+	}
+	return nil
+}
+
+type isType_Timestamp_Encoding_Encoding interface {
+	isType_Timestamp_Encoding_Encoding()
+}
+
+type Type_Timestamp_Encoding_UnixMicrosInt64 struct {
+	// Encodes the number of microseconds since the Unix epoch using the
+	// given `Int64` encoding. Values must be microsecond-aligned.
+	//
+	// Compatible with:
+	//
+	//   - Java `Instant.truncatedTo()` with `ChronoUnit.MICROS`
+	UnixMicrosInt64 *Type_Int64_Encoding `protobuf:"bytes,1,opt,name=unix_micros_int64,json=unixMicrosInt64,proto3,oneof"`
+}
+
+func (*Type_Timestamp_Encoding_UnixMicrosInt64) isType_Timestamp_Encoding_Encoding() {}
 
 // A struct field and its type.
 type Type_Struct_Field struct {
@@ -1343,7 +1682,7 @@ type Type_Struct_Field struct {
 
 func (x *Type_Struct_Field) Reset() {
 	*x = Type_Struct_Field{}
-	mi := &file_google_bigtable_v2_types_proto_msgTypes[20]
+	mi := &file_google_bigtable_v2_types_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1355,7 +1694,7 @@ func (x *Type_Struct_Field) String() string {
 func (*Type_Struct_Field) ProtoMessage() {}
 
 func (x *Type_Struct_Field) ProtoReflect() protoreflect.Message {
-	mi := &file_google_bigtable_v2_types_proto_msgTypes[20]
+	mi := &file_google_bigtable_v2_types_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1385,6 +1724,285 @@ func (x *Type_Struct_Field) GetType() *Type {
 	return nil
 }
 
+// Rules used to convert to or from lower level types.
+type Type_Struct_Encoding struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	// Which encoding to use.
+	//
+	// Types that are assignable to Encoding:
+	//
+	//	*Type_Struct_Encoding_Singleton_
+	//	*Type_Struct_Encoding_DelimitedBytes_
+	//	*Type_Struct_Encoding_OrderedCodeBytes_
+	Encoding isType_Struct_Encoding_Encoding `protobuf_oneof:"encoding"`
+}
+
+func (x *Type_Struct_Encoding) Reset() {
+	*x = Type_Struct_Encoding{}
+	mi := &file_google_bigtable_v2_types_proto_msgTypes[25]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Type_Struct_Encoding) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Type_Struct_Encoding) ProtoMessage() {}
+
+func (x *Type_Struct_Encoding) ProtoReflect() protoreflect.Message {
+	mi := &file_google_bigtable_v2_types_proto_msgTypes[25]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Type_Struct_Encoding.ProtoReflect.Descriptor instead.
+func (*Type_Struct_Encoding) Descriptor() ([]byte, []int) {
+	return file_google_bigtable_v2_types_proto_rawDescGZIP(), []int{0, 8, 1}
+}
+
+func (m *Type_Struct_Encoding) GetEncoding() isType_Struct_Encoding_Encoding {
+	if m != nil {
+		return m.Encoding
+	}
+	return nil
+}
+
+func (x *Type_Struct_Encoding) GetSingleton() *Type_Struct_Encoding_Singleton {
+	if x, ok := x.GetEncoding().(*Type_Struct_Encoding_Singleton_); ok {
+		return x.Singleton
+	}
+	return nil
+}
+
+func (x *Type_Struct_Encoding) GetDelimitedBytes() *Type_Struct_Encoding_DelimitedBytes {
+	if x, ok := x.GetEncoding().(*Type_Struct_Encoding_DelimitedBytes_); ok {
+		return x.DelimitedBytes
+	}
+	return nil
+}
+
+func (x *Type_Struct_Encoding) GetOrderedCodeBytes() *Type_Struct_Encoding_OrderedCodeBytes {
+	if x, ok := x.GetEncoding().(*Type_Struct_Encoding_OrderedCodeBytes_); ok {
+		return x.OrderedCodeBytes
+	}
+	return nil
+}
+
+type isType_Struct_Encoding_Encoding interface {
+	isType_Struct_Encoding_Encoding()
+}
+
+type Type_Struct_Encoding_Singleton_ struct {
+	// Use `Singleton` encoding.
+	Singleton *Type_Struct_Encoding_Singleton `protobuf:"bytes,1,opt,name=singleton,proto3,oneof"`
+}
+
+type Type_Struct_Encoding_DelimitedBytes_ struct {
+	// Use `DelimitedBytes` encoding.
+	DelimitedBytes *Type_Struct_Encoding_DelimitedBytes `protobuf:"bytes,2,opt,name=delimited_bytes,json=delimitedBytes,proto3,oneof"`
+}
+
+type Type_Struct_Encoding_OrderedCodeBytes_ struct {
+	// User `OrderedCodeBytes` encoding.
+	OrderedCodeBytes *Type_Struct_Encoding_OrderedCodeBytes `protobuf:"bytes,3,opt,name=ordered_code_bytes,json=orderedCodeBytes,proto3,oneof"`
+}
+
+func (*Type_Struct_Encoding_Singleton_) isType_Struct_Encoding_Encoding() {}
+
+func (*Type_Struct_Encoding_DelimitedBytes_) isType_Struct_Encoding_Encoding() {}
+
+func (*Type_Struct_Encoding_OrderedCodeBytes_) isType_Struct_Encoding_Encoding() {}
+
+// Uses the encoding of `fields[0].type` as-is.
+// Only valid if `fields.size == 1`.
+type Type_Struct_Encoding_Singleton struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+}
+
+func (x *Type_Struct_Encoding_Singleton) Reset() {
+	*x = Type_Struct_Encoding_Singleton{}
+	mi := &file_google_bigtable_v2_types_proto_msgTypes[26]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Type_Struct_Encoding_Singleton) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Type_Struct_Encoding_Singleton) ProtoMessage() {}
+
+func (x *Type_Struct_Encoding_Singleton) ProtoReflect() protoreflect.Message {
+	mi := &file_google_bigtable_v2_types_proto_msgTypes[26]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Type_Struct_Encoding_Singleton.ProtoReflect.Descriptor instead.
+func (*Type_Struct_Encoding_Singleton) Descriptor() ([]byte, []int) {
+	return file_google_bigtable_v2_types_proto_rawDescGZIP(), []int{0, 8, 1, 0}
+}
+
+// Fields are encoded independently and concatenated with a configurable
+// `delimiter` in between.
+//
+// A struct with no fields defined is encoded as a single `delimiter`.
+//
+// Sorted mode:
+//
+//   - Fields are encoded in sorted mode.
+//   - Encoded field values must not contain any bytes <= `delimiter[0]`
+//   - Element-wise order is preserved: `A < B` if `A[0] < B[0]`, or if
+//     `A[0] == B[0] && A[1] < B[1]`, etc. Strict prefixes sort first.
+//
+// Distinct mode:
+//
+//   - Fields are encoded in distinct mode.
+//   - Encoded field values must not contain `delimiter[0]`.
+type Type_Struct_Encoding_DelimitedBytes struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	// Byte sequence used to delimit concatenated fields. The delimiter must
+	// contain at least 1 character and at most 50 characters.
+	Delimiter []byte `protobuf:"bytes,1,opt,name=delimiter,proto3" json:"delimiter,omitempty"`
+}
+
+func (x *Type_Struct_Encoding_DelimitedBytes) Reset() {
+	*x = Type_Struct_Encoding_DelimitedBytes{}
+	mi := &file_google_bigtable_v2_types_proto_msgTypes[27]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Type_Struct_Encoding_DelimitedBytes) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Type_Struct_Encoding_DelimitedBytes) ProtoMessage() {}
+
+func (x *Type_Struct_Encoding_DelimitedBytes) ProtoReflect() protoreflect.Message {
+	mi := &file_google_bigtable_v2_types_proto_msgTypes[27]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Type_Struct_Encoding_DelimitedBytes.ProtoReflect.Descriptor instead.
+func (*Type_Struct_Encoding_DelimitedBytes) Descriptor() ([]byte, []int) {
+	return file_google_bigtable_v2_types_proto_rawDescGZIP(), []int{0, 8, 1, 1}
+}
+
+func (x *Type_Struct_Encoding_DelimitedBytes) GetDelimiter() []byte {
+	if x != nil {
+		return x.Delimiter
+	}
+	return nil
+}
+
+// Fields are encoded independently and concatenated with the fixed byte
+// pair `{0x00, 0x01}` in between.
+//
+// Any null `(0x00)` byte in an encoded field is replaced by the fixed
+// byte pair `{0x00, 0xFF}`.
+//
+// Fields that encode to the empty string "" have special handling:
+//
+//   - If *every* field encodes to "", or if the STRUCT has no fields
+//     defined, then the STRUCT is encoded as the fixed byte pair
+//     `{0x00, 0x00}`.
+//   - Otherwise, the STRUCT only encodes until the last non-empty field,
+//     omitting any trailing empty fields. Any empty fields that aren't
+//     omitted are replaced with the fixed byte pair `{0x00, 0x00}`.
+//
+// Examples:
+//
+// ```
+//   - STRUCT()             -> "\00\00"
+//   - STRUCT("")           -> "\00\00"
+//   - STRUCT("", "")       -> "\00\00"
+//   - STRUCT("", "B")      -> "\00\00" + "\00\01" + "B"
+//   - STRUCT("A", "")      -> "A"
+//   - STRUCT("", "B", "")  -> "\00\00" + "\00\01" + "B"
+//   - STRUCT("A", "", "C") -> "A" + "\00\01" + "\00\00" + "\00\01" + "C"
+//
+// ```
+//
+// Since null bytes are always escaped, this encoding can cause size
+// blowup for encodings like `Int64.BigEndianBytes` that are likely to
+// produce many such bytes.
+//
+// Sorted mode:
+//
+//   - Fields are encoded in sorted mode.
+//   - All values supported by the field encodings are allowed
+//   - Element-wise order is preserved: `A < B` if `A[0] < B[0]`, or if
+//     `A[0] == B[0] && A[1] < B[1]`, etc. Strict prefixes sort first.
+//
+// Distinct mode:
+//
+//   - Fields are encoded in distinct mode.
+//   - All values supported by the field encodings are allowed.
+type Type_Struct_Encoding_OrderedCodeBytes struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+}
+
+func (x *Type_Struct_Encoding_OrderedCodeBytes) Reset() {
+	*x = Type_Struct_Encoding_OrderedCodeBytes{}
+	mi := &file_google_bigtable_v2_types_proto_msgTypes[28]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Type_Struct_Encoding_OrderedCodeBytes) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Type_Struct_Encoding_OrderedCodeBytes) ProtoMessage() {}
+
+func (x *Type_Struct_Encoding_OrderedCodeBytes) ProtoReflect() protoreflect.Message {
+	mi := &file_google_bigtable_v2_types_proto_msgTypes[28]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Type_Struct_Encoding_OrderedCodeBytes.ProtoReflect.Descriptor instead.
+func (*Type_Struct_Encoding_OrderedCodeBytes) Descriptor() ([]byte, []int) {
+	return file_google_bigtable_v2_types_proto_rawDescGZIP(), []int{0, 8, 1, 2}
+}
+
 // Computes the sum of the input values.
 // Allowed input: `Int64`
 // State: same as input
@@ -1396,7 +2014,7 @@ type Type_Aggregate_Sum struct {
 
 func (x *Type_Aggregate_Sum) Reset() {
 	*x = Type_Aggregate_Sum{}
-	mi := &file_google_bigtable_v2_types_proto_msgTypes[21]
+	mi := &file_google_bigtable_v2_types_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1408,7 +2026,7 @@ func (x *Type_Aggregate_Sum) String() string {
 func (*Type_Aggregate_Sum) ProtoMessage() {}
 
 func (x *Type_Aggregate_Sum) ProtoReflect() protoreflect.Message {
-	mi := &file_google_bigtable_v2_types_proto_msgTypes[21]
+	mi := &file_google_bigtable_v2_types_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1421,7 +2039,7 @@ func (x *Type_Aggregate_Sum) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Type_Aggregate_Sum.ProtoReflect.Descriptor instead.
 func (*Type_Aggregate_Sum) Descriptor() ([]byte, []int) {
-	return file_google_bigtable_v2_types_proto_rawDescGZIP(), []int{0, 11, 0}
+	return file_google_bigtable_v2_types_proto_rawDescGZIP(), []int{0, 13, 0}
 }
 
 // Computes the max of the input values.
@@ -1435,7 +2053,7 @@ type Type_Aggregate_Max struct {
 
 func (x *Type_Aggregate_Max) Reset() {
 	*x = Type_Aggregate_Max{}
-	mi := &file_google_bigtable_v2_types_proto_msgTypes[22]
+	mi := &file_google_bigtable_v2_types_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1447,7 +2065,7 @@ func (x *Type_Aggregate_Max) String() string {
 func (*Type_Aggregate_Max) ProtoMessage() {}
 
 func (x *Type_Aggregate_Max) ProtoReflect() protoreflect.Message {
-	mi := &file_google_bigtable_v2_types_proto_msgTypes[22]
+	mi := &file_google_bigtable_v2_types_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1460,7 +2078,7 @@ func (x *Type_Aggregate_Max) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Type_Aggregate_Max.ProtoReflect.Descriptor instead.
 func (*Type_Aggregate_Max) Descriptor() ([]byte, []int) {
-	return file_google_bigtable_v2_types_proto_rawDescGZIP(), []int{0, 11, 1}
+	return file_google_bigtable_v2_types_proto_rawDescGZIP(), []int{0, 13, 1}
 }
 
 // Computes the min of the input values.
@@ -1474,7 +2092,7 @@ type Type_Aggregate_Min struct {
 
 func (x *Type_Aggregate_Min) Reset() {
 	*x = Type_Aggregate_Min{}
-	mi := &file_google_bigtable_v2_types_proto_msgTypes[23]
+	mi := &file_google_bigtable_v2_types_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1486,7 +2104,7 @@ func (x *Type_Aggregate_Min) String() string {
 func (*Type_Aggregate_Min) ProtoMessage() {}
 
 func (x *Type_Aggregate_Min) ProtoReflect() protoreflect.Message {
-	mi := &file_google_bigtable_v2_types_proto_msgTypes[23]
+	mi := &file_google_bigtable_v2_types_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1499,7 +2117,7 @@ func (x *Type_Aggregate_Min) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Type_Aggregate_Min.ProtoReflect.Descriptor instead.
 func (*Type_Aggregate_Min) Descriptor() ([]byte, []int) {
-	return file_google_bigtable_v2_types_proto_rawDescGZIP(), []int{0, 11, 2}
+	return file_google_bigtable_v2_types_proto_rawDescGZIP(), []int{0, 13, 2}
 }
 
 // Computes an approximate unique count over the input values. When using
@@ -1517,7 +2135,7 @@ type Type_Aggregate_HyperLogLogPlusPlusUniqueCount struct {
 
 func (x *Type_Aggregate_HyperLogLogPlusPlusUniqueCount) Reset() {
 	*x = Type_Aggregate_HyperLogLogPlusPlusUniqueCount{}
-	mi := &file_google_bigtable_v2_types_proto_msgTypes[24]
+	mi := &file_google_bigtable_v2_types_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1529,7 +2147,7 @@ func (x *Type_Aggregate_HyperLogLogPlusPlusUniqueCount) String() string {
 func (*Type_Aggregate_HyperLogLogPlusPlusUniqueCount) ProtoMessage() {}
 
 func (x *Type_Aggregate_HyperLogLogPlusPlusUniqueCount) ProtoReflect() protoreflect.Message {
-	mi := &file_google_bigtable_v2_types_proto_msgTypes[24]
+	mi := &file_google_bigtable_v2_types_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1542,7 +2160,7 @@ func (x *Type_Aggregate_HyperLogLogPlusPlusUniqueCount) ProtoReflect() protorefl
 
 // Deprecated: Use Type_Aggregate_HyperLogLogPlusPlusUniqueCount.ProtoReflect.Descriptor instead.
 func (*Type_Aggregate_HyperLogLogPlusPlusUniqueCount) Descriptor() ([]byte, []int) {
-	return file_google_bigtable_v2_types_proto_rawDescGZIP(), []int{0, 11, 3}
+	return file_google_bigtable_v2_types_proto_rawDescGZIP(), []int{0, 13, 3}
 }
 
 var File_google_bigtable_v2_types_proto protoreflect.FileDescriptor
@@ -1553,7 +2171,7 @@ var file_google_bigtable_v2_types_proto_rawDesc = []byte{
 	0x12, 0x12, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x62, 0x69, 0x67, 0x74, 0x61, 0x62, 0x6c,
 	0x65, 0x2e, 0x76, 0x32, 0x1a, 0x1f, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2f, 0x61, 0x70, 0x69,
 	0x2f, 0x66, 0x69, 0x65, 0x6c, 0x64, 0x5f, 0x62, 0x65, 0x68, 0x61, 0x76, 0x69, 0x6f, 0x72, 0x2e,
-	0x70, 0x72, 0x6f, 0x74, 0x6f, 0x22, 0xb1, 0x13, 0x0a, 0x04, 0x54, 0x79, 0x70, 0x65, 0x12, 0x3f,
+	0x70, 0x72, 0x6f, 0x74, 0x6f, 0x22, 0xb1, 0x1c, 0x0a, 0x04, 0x54, 0x79, 0x70, 0x65, 0x12, 0x3f,
 	0x0a, 0x0a, 0x62, 0x79, 0x74, 0x65, 0x73, 0x5f, 0x74, 0x79, 0x70, 0x65, 0x18, 0x01, 0x20, 0x01,
 	0x28, 0x0b, 0x32, 0x1e, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x62, 0x69, 0x67, 0x74,
 	0x61, 0x62, 0x6c, 0x65, 0x2e, 0x76, 0x32, 0x2e, 0x54, 0x79, 0x70, 0x65, 0x2e, 0x42, 0x79, 0x74,
@@ -1604,68 +2222,140 @@ var file_google_bigtable_v2_types_proto_rawDesc = []byte{
 	0x08, 0x6d, 0x61, 0x70, 0x5f, 0x74, 0x79, 0x70, 0x65, 0x18, 0x04, 0x20, 0x01, 0x28, 0x0b, 0x32,
 	0x1c, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x62, 0x69, 0x67, 0x74, 0x61, 0x62, 0x6c,
 	0x65, 0x2e, 0x76, 0x32, 0x2e, 0x54, 0x79, 0x70, 0x65, 0x2e, 0x4d, 0x61, 0x70, 0x48, 0x00, 0x52,
-	0x07, 0x6d, 0x61, 0x70, 0x54, 0x79, 0x70, 0x65, 0x1a, 0xac, 0x01, 0x0a, 0x05, 0x42, 0x79, 0x74,
-	0x65, 0x73, 0x12, 0x43, 0x0a, 0x08, 0x65, 0x6e, 0x63, 0x6f, 0x64, 0x69, 0x6e, 0x67, 0x18, 0x01,
-	0x20, 0x01, 0x28, 0x0b, 0x32, 0x27, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x62, 0x69,
-	0x67, 0x74, 0x61, 0x62, 0x6c, 0x65, 0x2e, 0x76, 0x32, 0x2e, 0x54, 0x79, 0x70, 0x65, 0x2e, 0x42,
-	0x79, 0x74, 0x65, 0x73, 0x2e, 0x45, 0x6e, 0x63, 0x6f, 0x64, 0x69, 0x6e, 0x67, 0x52, 0x08, 0x65,
-	0x6e, 0x63, 0x6f, 0x64, 0x69, 0x6e, 0x67, 0x1a, 0x5e, 0x0a, 0x08, 0x45, 0x6e, 0x63, 0x6f, 0x64,
+	0x07, 0x6d, 0x61, 0x70, 0x54, 0x79, 0x70, 0x65, 0x12, 0x3f, 0x0a, 0x0a, 0x70, 0x72, 0x6f, 0x74,
+	0x6f, 0x5f, 0x74, 0x79, 0x70, 0x65, 0x18, 0x0d, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x1e, 0x2e, 0x67,
+	0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x62, 0x69, 0x67, 0x74, 0x61, 0x62, 0x6c, 0x65, 0x2e, 0x76,
+	0x32, 0x2e, 0x54, 0x79, 0x70, 0x65, 0x2e, 0x50, 0x72, 0x6f, 0x74, 0x6f, 0x48, 0x00, 0x52, 0x09,
+	0x70, 0x72, 0x6f, 0x74, 0x6f, 0x54, 0x79, 0x70, 0x65, 0x12, 0x3c, 0x0a, 0x09, 0x65, 0x6e, 0x75,
+	0x6d, 0x5f, 0x74, 0x79, 0x70, 0x65, 0x18, 0x0e, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x1d, 0x2e, 0x67,
+	0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x62, 0x69, 0x67, 0x74, 0x61, 0x62, 0x6c, 0x65, 0x2e, 0x76,
+	0x32, 0x2e, 0x54, 0x79, 0x70, 0x65, 0x2e, 0x45, 0x6e, 0x75, 0x6d, 0x48, 0x00, 0x52, 0x08, 0x65,
+	0x6e, 0x75, 0x6d, 0x54, 0x79, 0x70, 0x65, 0x1a, 0xd0, 0x01, 0x0a, 0x05, 0x42, 0x79, 0x74, 0x65,
+	0x73, 0x12, 0x43, 0x0a, 0x08, 0x65, 0x6e, 0x63, 0x6f, 0x64, 0x69, 0x6e, 0x67, 0x18, 0x01, 0x20,
+	0x01, 0x28, 0x0b, 0x32, 0x27, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x62, 0x69, 0x67,
+	0x74, 0x61, 0x62, 0x6c, 0x65, 0x2e, 0x76, 0x32, 0x2e, 0x54, 0x79, 0x70, 0x65, 0x2e, 0x42, 0x79,
+	0x74, 0x65, 0x73, 0x2e, 0x45, 0x6e, 0x63, 0x6f, 0x64, 0x69, 0x6e, 0x67, 0x52, 0x08, 0x65, 0x6e,
+	0x63, 0x6f, 0x64, 0x69, 0x6e, 0x67, 0x1a, 0x81, 0x01, 0x0a, 0x08, 0x45, 0x6e, 0x63, 0x6f, 0x64,
 	0x69, 0x6e, 0x67, 0x12, 0x3f, 0x0a, 0x03, 0x72, 0x61, 0x77, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b,
 	0x32, 0x2b, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x62, 0x69, 0x67, 0x74, 0x61, 0x62,
 	0x6c, 0x65, 0x2e, 0x76, 0x32, 0x2e, 0x54, 0x79, 0x70, 0x65, 0x2e, 0x42, 0x79, 0x74, 0x65, 0x73,
 	0x2e, 0x45, 0x6e, 0x63, 0x6f, 0x64, 0x69, 0x6e, 0x67, 0x2e, 0x52, 0x61, 0x77, 0x48, 0x00, 0x52,
-	0x03, 0x72, 0x61, 0x77, 0x1a, 0x05, 0x0a, 0x03, 0x52, 0x61, 0x77, 0x42, 0x0a, 0x0a, 0x08, 0x65,
-	0x6e, 0x63, 0x6f, 0x64, 0x69, 0x6e, 0x67, 0x1a, 0xab, 0x02, 0x0a, 0x06, 0x53, 0x74, 0x72, 0x69,
-	0x6e, 0x67, 0x12, 0x44, 0x0a, 0x08, 0x65, 0x6e, 0x63, 0x6f, 0x64, 0x69, 0x6e, 0x67, 0x18, 0x01,
-	0x20, 0x01, 0x28, 0x0b, 0x32, 0x28, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x62, 0x69,
-	0x67, 0x74, 0x61, 0x62, 0x6c, 0x65, 0x2e, 0x76, 0x32, 0x2e, 0x54, 0x79, 0x70, 0x65, 0x2e, 0x53,
-	0x74, 0x72, 0x69, 0x6e, 0x67, 0x2e, 0x45, 0x6e, 0x63, 0x6f, 0x64, 0x69, 0x6e, 0x67, 0x52, 0x08,
-	0x65, 0x6e, 0x63, 0x6f, 0x64, 0x69, 0x6e, 0x67, 0x1a, 0xda, 0x01, 0x0a, 0x08, 0x45, 0x6e, 0x63,
-	0x6f, 0x64, 0x69, 0x6e, 0x67, 0x12, 0x51, 0x0a, 0x08, 0x75, 0x74, 0x66, 0x38, 0x5f, 0x72, 0x61,
-	0x77, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x30, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65,
+	0x03, 0x72, 0x61, 0x77, 0x1a, 0x28, 0x0a, 0x03, 0x52, 0x61, 0x77, 0x12, 0x21, 0x0a, 0x0c, 0x65,
+	0x73, 0x63, 0x61, 0x70, 0x65, 0x5f, 0x6e, 0x75, 0x6c, 0x6c, 0x73, 0x18, 0x01, 0x20, 0x01, 0x28,
+	0x08, 0x52, 0x0b, 0x65, 0x73, 0x63, 0x61, 0x70, 0x65, 0x4e, 0x75, 0x6c, 0x6c, 0x73, 0x42, 0x0a,
+	0x0a, 0x08, 0x65, 0x6e, 0x63, 0x6f, 0x64, 0x69, 0x6e, 0x67, 0x1a, 0xd5, 0x02, 0x0a, 0x06, 0x53,
+	0x74, 0x72, 0x69, 0x6e, 0x67, 0x12, 0x44, 0x0a, 0x08, 0x65, 0x6e, 0x63, 0x6f, 0x64, 0x69, 0x6e,
+	0x67, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x28, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65,
 	0x2e, 0x62, 0x69, 0x67, 0x74, 0x61, 0x62, 0x6c, 0x65, 0x2e, 0x76, 0x32, 0x2e, 0x54, 0x79, 0x70,
 	0x65, 0x2e, 0x53, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x2e, 0x45, 0x6e, 0x63, 0x6f, 0x64, 0x69, 0x6e,
-	0x67, 0x2e, 0x55, 0x74, 0x66, 0x38, 0x52, 0x61, 0x77, 0x42, 0x02, 0x18, 0x01, 0x48, 0x00, 0x52,
-	0x07, 0x75, 0x74, 0x66, 0x38, 0x52, 0x61, 0x77, 0x12, 0x53, 0x0a, 0x0a, 0x75, 0x74, 0x66, 0x38,
-	0x5f, 0x62, 0x79, 0x74, 0x65, 0x73, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x32, 0x2e, 0x67,
-	0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x62, 0x69, 0x67, 0x74, 0x61, 0x62, 0x6c, 0x65, 0x2e, 0x76,
-	0x32, 0x2e, 0x54, 0x79, 0x70, 0x65, 0x2e, 0x53, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x2e, 0x45, 0x6e,
-	0x63, 0x6f, 0x64, 0x69, 0x6e, 0x67, 0x2e, 0x55, 0x74, 0x66, 0x38, 0x42, 0x79, 0x74, 0x65, 0x73,
-	0x48, 0x00, 0x52, 0x09, 0x75, 0x74, 0x66, 0x38, 0x42, 0x79, 0x74, 0x65, 0x73, 0x1a, 0x0d, 0x0a,
-	0x07, 0x55, 0x74, 0x66, 0x38, 0x52, 0x61, 0x77, 0x3a, 0x02, 0x18, 0x01, 0x1a, 0x0b, 0x0a, 0x09,
-	0x55, 0x74, 0x66, 0x38, 0x42, 0x79, 0x74, 0x65, 0x73, 0x42, 0x0a, 0x0a, 0x08, 0x65, 0x6e, 0x63,
-	0x6f, 0x64, 0x69, 0x6e, 0x67, 0x1a, 0x9a, 0x02, 0x0a, 0x05, 0x49, 0x6e, 0x74, 0x36, 0x34, 0x12,
-	0x43, 0x0a, 0x08, 0x65, 0x6e, 0x63, 0x6f, 0x64, 0x69, 0x6e, 0x67, 0x18, 0x01, 0x20, 0x01, 0x28,
-	0x0b, 0x32, 0x27, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x62, 0x69, 0x67, 0x74, 0x61,
-	0x62, 0x6c, 0x65, 0x2e, 0x76, 0x32, 0x2e, 0x54, 0x79, 0x70, 0x65, 0x2e, 0x49, 0x6e, 0x74, 0x36,
-	0x34, 0x2e, 0x45, 0x6e, 0x63, 0x6f, 0x64, 0x69, 0x6e, 0x67, 0x52, 0x08, 0x65, 0x6e, 0x63, 0x6f,
-	0x64, 0x69, 0x6e, 0x67, 0x1a, 0xcb, 0x01, 0x0a, 0x08, 0x45, 0x6e, 0x63, 0x6f, 0x64, 0x69, 0x6e,
-	0x67, 0x12, 0x62, 0x0a, 0x10, 0x62, 0x69, 0x67, 0x5f, 0x65, 0x6e, 0x64, 0x69, 0x61, 0x6e, 0x5f,
-	0x62, 0x79, 0x74, 0x65, 0x73, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x36, 0x2e, 0x67, 0x6f,
-	0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x62, 0x69, 0x67, 0x74, 0x61, 0x62, 0x6c, 0x65, 0x2e, 0x76, 0x32,
-	0x2e, 0x54, 0x79, 0x70, 0x65, 0x2e, 0x49, 0x6e, 0x74, 0x36, 0x34, 0x2e, 0x45, 0x6e, 0x63, 0x6f,
-	0x64, 0x69, 0x6e, 0x67, 0x2e, 0x42, 0x69, 0x67, 0x45, 0x6e, 0x64, 0x69, 0x61, 0x6e, 0x42, 0x79,
-	0x74, 0x65, 0x73, 0x48, 0x00, 0x52, 0x0e, 0x62, 0x69, 0x67, 0x45, 0x6e, 0x64, 0x69, 0x61, 0x6e,
-	0x42, 0x79, 0x74, 0x65, 0x73, 0x1a, 0x4f, 0x0a, 0x0e, 0x42, 0x69, 0x67, 0x45, 0x6e, 0x64, 0x69,
-	0x61, 0x6e, 0x42, 0x79, 0x74, 0x65, 0x73, 0x12, 0x3d, 0x0a, 0x0a, 0x62, 0x79, 0x74, 0x65, 0x73,
-	0x5f, 0x74, 0x79, 0x70, 0x65, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x1e, 0x2e, 0x67, 0x6f,
-	0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x62, 0x69, 0x67, 0x74, 0x61, 0x62, 0x6c, 0x65, 0x2e, 0x76, 0x32,
-	0x2e, 0x54, 0x79, 0x70, 0x65, 0x2e, 0x42, 0x79, 0x74, 0x65, 0x73, 0x52, 0x09, 0x62, 0x79, 0x74,
-	0x65, 0x73, 0x54, 0x79, 0x70, 0x65, 0x42, 0x0a, 0x0a, 0x08, 0x65, 0x6e, 0x63, 0x6f, 0x64, 0x69,
-	0x6e, 0x67, 0x1a, 0x06, 0x0a, 0x04, 0x42, 0x6f, 0x6f, 0x6c, 0x1a, 0x09, 0x0a, 0x07, 0x46, 0x6c,
-	0x6f, 0x61, 0x74, 0x33, 0x32, 0x1a, 0x09, 0x0a, 0x07, 0x46, 0x6c, 0x6f, 0x61, 0x74, 0x36, 0x34,
-	0x1a, 0x0b, 0x0a, 0x09, 0x54, 0x69, 0x6d, 0x65, 0x73, 0x74, 0x61, 0x6d, 0x70, 0x1a, 0x06, 0x0a,
-	0x04, 0x44, 0x61, 0x74, 0x65, 0x1a, 0x9d, 0x01, 0x0a, 0x06, 0x53, 0x74, 0x72, 0x75, 0x63, 0x74,
-	0x12, 0x3d, 0x0a, 0x06, 0x66, 0x69, 0x65, 0x6c, 0x64, 0x73, 0x18, 0x01, 0x20, 0x03, 0x28, 0x0b,
-	0x32, 0x25, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x62, 0x69, 0x67, 0x74, 0x61, 0x62,
-	0x6c, 0x65, 0x2e, 0x76, 0x32, 0x2e, 0x54, 0x79, 0x70, 0x65, 0x2e, 0x53, 0x74, 0x72, 0x75, 0x63,
-	0x74, 0x2e, 0x46, 0x69, 0x65, 0x6c, 0x64, 0x52, 0x06, 0x66, 0x69, 0x65, 0x6c, 0x64, 0x73, 0x1a,
-	0x54, 0x0a, 0x05, 0x46, 0x69, 0x65, 0x6c, 0x64, 0x12, 0x1d, 0x0a, 0x0a, 0x66, 0x69, 0x65, 0x6c,
-	0x64, 0x5f, 0x6e, 0x61, 0x6d, 0x65, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x09, 0x66, 0x69,
-	0x65, 0x6c, 0x64, 0x4e, 0x61, 0x6d, 0x65, 0x12, 0x2c, 0x0a, 0x04, 0x74, 0x79, 0x70, 0x65, 0x18,
-	0x02, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x18, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x62,
-	0x69, 0x67, 0x74, 0x61, 0x62, 0x6c, 0x65, 0x2e, 0x76, 0x32, 0x2e, 0x54, 0x79, 0x70, 0x65, 0x52,
-	0x04, 0x74, 0x79, 0x70, 0x65, 0x1a, 0x44, 0x0a, 0x05, 0x41, 0x72, 0x72, 0x61, 0x79, 0x12, 0x3b,
+	0x67, 0x52, 0x08, 0x65, 0x6e, 0x63, 0x6f, 0x64, 0x69, 0x6e, 0x67, 0x1a, 0x84, 0x02, 0x0a, 0x08,
+	0x45, 0x6e, 0x63, 0x6f, 0x64, 0x69, 0x6e, 0x67, 0x12, 0x51, 0x0a, 0x08, 0x75, 0x74, 0x66, 0x38,
+	0x5f, 0x72, 0x61, 0x77, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x30, 0x2e, 0x67, 0x6f, 0x6f,
+	0x67, 0x6c, 0x65, 0x2e, 0x62, 0x69, 0x67, 0x74, 0x61, 0x62, 0x6c, 0x65, 0x2e, 0x76, 0x32, 0x2e,
+	0x54, 0x79, 0x70, 0x65, 0x2e, 0x53, 0x74, 0x72, 0x69, 0x6e, 0x67, 0x2e, 0x45, 0x6e, 0x63, 0x6f,
+	0x64, 0x69, 0x6e, 0x67, 0x2e, 0x55, 0x74, 0x66, 0x38, 0x52, 0x61, 0x77, 0x42, 0x02, 0x18, 0x01,
+	0x48, 0x00, 0x52, 0x07, 0x75, 0x74, 0x66, 0x38, 0x52, 0x61, 0x77, 0x12, 0x53, 0x0a, 0x0a, 0x75,
+	0x74, 0x66, 0x38, 0x5f, 0x62, 0x79, 0x74, 0x65, 0x73, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0b, 0x32,
+	0x32, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x62, 0x69, 0x67, 0x74, 0x61, 0x62, 0x6c,
+	0x65, 0x2e, 0x76, 0x32, 0x2e, 0x54, 0x79, 0x70, 0x65, 0x2e, 0x53, 0x74, 0x72, 0x69, 0x6e, 0x67,
+	0x2e, 0x45, 0x6e, 0x63, 0x6f, 0x64, 0x69, 0x6e, 0x67, 0x2e, 0x55, 0x74, 0x66, 0x38, 0x42, 0x79,
+	0x74, 0x65, 0x73, 0x48, 0x00, 0x52, 0x09, 0x75, 0x74, 0x66, 0x38, 0x42, 0x79, 0x74, 0x65, 0x73,
+	0x1a, 0x0d, 0x0a, 0x07, 0x55, 0x74, 0x66, 0x38, 0x52, 0x61, 0x77, 0x3a, 0x02, 0x18, 0x01, 0x1a,
+	0x35, 0x0a, 0x09, 0x55, 0x74, 0x66, 0x38, 0x42, 0x79, 0x74, 0x65, 0x73, 0x12, 0x28, 0x0a, 0x10,
+	0x6e, 0x75, 0x6c, 0x6c, 0x5f, 0x65, 0x73, 0x63, 0x61, 0x70, 0x65, 0x5f, 0x63, 0x68, 0x61, 0x72,
+	0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x0e, 0x6e, 0x75, 0x6c, 0x6c, 0x45, 0x73, 0x63, 0x61,
+	0x70, 0x65, 0x43, 0x68, 0x61, 0x72, 0x42, 0x0a, 0x0a, 0x08, 0x65, 0x6e, 0x63, 0x6f, 0x64, 0x69,
+	0x6e, 0x67, 0x1a, 0x9c, 0x03, 0x0a, 0x05, 0x49, 0x6e, 0x74, 0x36, 0x34, 0x12, 0x43, 0x0a, 0x08,
+	0x65, 0x6e, 0x63, 0x6f, 0x64, 0x69, 0x6e, 0x67, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x27,
+	0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x62, 0x69, 0x67, 0x74, 0x61, 0x62, 0x6c, 0x65,
+	0x2e, 0x76, 0x32, 0x2e, 0x54, 0x79, 0x70, 0x65, 0x2e, 0x49, 0x6e, 0x74, 0x36, 0x34, 0x2e, 0x45,
+	0x6e, 0x63, 0x6f, 0x64, 0x69, 0x6e, 0x67, 0x52, 0x08, 0x65, 0x6e, 0x63, 0x6f, 0x64, 0x69, 0x6e,
+	0x67, 0x1a, 0xcd, 0x02, 0x0a, 0x08, 0x45, 0x6e, 0x63, 0x6f, 0x64, 0x69, 0x6e, 0x67, 0x12, 0x62,
+	0x0a, 0x10, 0x62, 0x69, 0x67, 0x5f, 0x65, 0x6e, 0x64, 0x69, 0x61, 0x6e, 0x5f, 0x62, 0x79, 0x74,
+	0x65, 0x73, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x36, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c,
+	0x65, 0x2e, 0x62, 0x69, 0x67, 0x74, 0x61, 0x62, 0x6c, 0x65, 0x2e, 0x76, 0x32, 0x2e, 0x54, 0x79,
+	0x70, 0x65, 0x2e, 0x49, 0x6e, 0x74, 0x36, 0x34, 0x2e, 0x45, 0x6e, 0x63, 0x6f, 0x64, 0x69, 0x6e,
+	0x67, 0x2e, 0x42, 0x69, 0x67, 0x45, 0x6e, 0x64, 0x69, 0x61, 0x6e, 0x42, 0x79, 0x74, 0x65, 0x73,
+	0x48, 0x00, 0x52, 0x0e, 0x62, 0x69, 0x67, 0x45, 0x6e, 0x64, 0x69, 0x61, 0x6e, 0x42, 0x79, 0x74,
+	0x65, 0x73, 0x12, 0x68, 0x0a, 0x12, 0x6f, 0x72, 0x64, 0x65, 0x72, 0x65, 0x64, 0x5f, 0x63, 0x6f,
+	0x64, 0x65, 0x5f, 0x62, 0x79, 0x74, 0x65, 0x73, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x38,
+	0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x62, 0x69, 0x67, 0x74, 0x61, 0x62, 0x6c, 0x65,
+	0x2e, 0x76, 0x32, 0x2e, 0x54, 0x79, 0x70, 0x65, 0x2e, 0x49, 0x6e, 0x74, 0x36, 0x34, 0x2e, 0x45,
+	0x6e, 0x63, 0x6f, 0x64, 0x69, 0x6e, 0x67, 0x2e, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x65, 0x64, 0x43,
+	0x6f, 0x64, 0x65, 0x42, 0x79, 0x74, 0x65, 0x73, 0x48, 0x00, 0x52, 0x10, 0x6f, 0x72, 0x64, 0x65,
+	0x72, 0x65, 0x64, 0x43, 0x6f, 0x64, 0x65, 0x42, 0x79, 0x74, 0x65, 0x73, 0x1a, 0x53, 0x0a, 0x0e,
+	0x42, 0x69, 0x67, 0x45, 0x6e, 0x64, 0x69, 0x61, 0x6e, 0x42, 0x79, 0x74, 0x65, 0x73, 0x12, 0x41,
+	0x0a, 0x0a, 0x62, 0x79, 0x74, 0x65, 0x73, 0x5f, 0x74, 0x79, 0x70, 0x65, 0x18, 0x01, 0x20, 0x01,
+	0x28, 0x0b, 0x32, 0x1e, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x62, 0x69, 0x67, 0x74,
+	0x61, 0x62, 0x6c, 0x65, 0x2e, 0x76, 0x32, 0x2e, 0x54, 0x79, 0x70, 0x65, 0x2e, 0x42, 0x79, 0x74,
+	0x65, 0x73, 0x42, 0x02, 0x18, 0x01, 0x52, 0x09, 0x62, 0x79, 0x74, 0x65, 0x73, 0x54, 0x79, 0x70,
+	0x65, 0x1a, 0x12, 0x0a, 0x10, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x65, 0x64, 0x43, 0x6f, 0x64, 0x65,
+	0x42, 0x79, 0x74, 0x65, 0x73, 0x42, 0x0a, 0x0a, 0x08, 0x65, 0x6e, 0x63, 0x6f, 0x64, 0x69, 0x6e,
+	0x67, 0x1a, 0x06, 0x0a, 0x04, 0x42, 0x6f, 0x6f, 0x6c, 0x1a, 0x09, 0x0a, 0x07, 0x46, 0x6c, 0x6f,
+	0x61, 0x74, 0x33, 0x32, 0x1a, 0x09, 0x0a, 0x07, 0x46, 0x6c, 0x6f, 0x61, 0x74, 0x36, 0x34, 0x1a,
+	0xc3, 0x01, 0x0a, 0x09, 0x54, 0x69, 0x6d, 0x65, 0x73, 0x74, 0x61, 0x6d, 0x70, 0x12, 0x47, 0x0a,
+	0x08, 0x65, 0x6e, 0x63, 0x6f, 0x64, 0x69, 0x6e, 0x67, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32,
+	0x2b, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x62, 0x69, 0x67, 0x74, 0x61, 0x62, 0x6c,
+	0x65, 0x2e, 0x76, 0x32, 0x2e, 0x54, 0x79, 0x70, 0x65, 0x2e, 0x54, 0x69, 0x6d, 0x65, 0x73, 0x74,
+	0x61, 0x6d, 0x70, 0x2e, 0x45, 0x6e, 0x63, 0x6f, 0x64, 0x69, 0x6e, 0x67, 0x52, 0x08, 0x65, 0x6e,
+	0x63, 0x6f, 0x64, 0x69, 0x6e, 0x67, 0x1a, 0x6d, 0x0a, 0x08, 0x45, 0x6e, 0x63, 0x6f, 0x64, 0x69,
+	0x6e, 0x67, 0x12, 0x55, 0x0a, 0x11, 0x75, 0x6e, 0x69, 0x78, 0x5f, 0x6d, 0x69, 0x63, 0x72, 0x6f,
+	0x73, 0x5f, 0x69, 0x6e, 0x74, 0x36, 0x34, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x27, 0x2e,
+	0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x62, 0x69, 0x67, 0x74, 0x61, 0x62, 0x6c, 0x65, 0x2e,
+	0x76, 0x32, 0x2e, 0x54, 0x79, 0x70, 0x65, 0x2e, 0x49, 0x6e, 0x74, 0x36, 0x34, 0x2e, 0x45, 0x6e,
+	0x63, 0x6f, 0x64, 0x69, 0x6e, 0x67, 0x48, 0x00, 0x52, 0x0f, 0x75, 0x6e, 0x69, 0x78, 0x4d, 0x69,
+	0x63, 0x72, 0x6f, 0x73, 0x49, 0x6e, 0x74, 0x36, 0x34, 0x42, 0x0a, 0x0a, 0x08, 0x65, 0x6e, 0x63,
+	0x6f, 0x64, 0x69, 0x6e, 0x67, 0x1a, 0x06, 0x0a, 0x04, 0x44, 0x61, 0x74, 0x65, 0x1a, 0xf0, 0x04,
+	0x0a, 0x06, 0x53, 0x74, 0x72, 0x75, 0x63, 0x74, 0x12, 0x3d, 0x0a, 0x06, 0x66, 0x69, 0x65, 0x6c,
+	0x64, 0x73, 0x18, 0x01, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x25, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c,
+	0x65, 0x2e, 0x62, 0x69, 0x67, 0x74, 0x61, 0x62, 0x6c, 0x65, 0x2e, 0x76, 0x32, 0x2e, 0x54, 0x79,
+	0x70, 0x65, 0x2e, 0x53, 0x74, 0x72, 0x75, 0x63, 0x74, 0x2e, 0x46, 0x69, 0x65, 0x6c, 0x64, 0x52,
+	0x06, 0x66, 0x69, 0x65, 0x6c, 0x64, 0x73, 0x12, 0x44, 0x0a, 0x08, 0x65, 0x6e, 0x63, 0x6f, 0x64,
+	0x69, 0x6e, 0x67, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x28, 0x2e, 0x67, 0x6f, 0x6f, 0x67,
+	0x6c, 0x65, 0x2e, 0x62, 0x69, 0x67, 0x74, 0x61, 0x62, 0x6c, 0x65, 0x2e, 0x76, 0x32, 0x2e, 0x54,
+	0x79, 0x70, 0x65, 0x2e, 0x53, 0x74, 0x72, 0x75, 0x63, 0x74, 0x2e, 0x45, 0x6e, 0x63, 0x6f, 0x64,
+	0x69, 0x6e, 0x67, 0x52, 0x08, 0x65, 0x6e, 0x63, 0x6f, 0x64, 0x69, 0x6e, 0x67, 0x1a, 0x54, 0x0a,
+	0x05, 0x46, 0x69, 0x65, 0x6c, 0x64, 0x12, 0x1d, 0x0a, 0x0a, 0x66, 0x69, 0x65, 0x6c, 0x64, 0x5f,
+	0x6e, 0x61, 0x6d, 0x65, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x09, 0x66, 0x69, 0x65, 0x6c,
+	0x64, 0x4e, 0x61, 0x6d, 0x65, 0x12, 0x2c, 0x0a, 0x04, 0x74, 0x79, 0x70, 0x65, 0x18, 0x02, 0x20,
+	0x01, 0x28, 0x0b, 0x32, 0x18, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x62, 0x69, 0x67,
+	0x74, 0x61, 0x62, 0x6c, 0x65, 0x2e, 0x76, 0x32, 0x2e, 0x54, 0x79, 0x70, 0x65, 0x52, 0x04, 0x74,
+	0x79, 0x70, 0x65, 0x1a, 0x8a, 0x03, 0x0a, 0x08, 0x45, 0x6e, 0x63, 0x6f, 0x64, 0x69, 0x6e, 0x67,
+	0x12, 0x52, 0x0a, 0x09, 0x73, 0x69, 0x6e, 0x67, 0x6c, 0x65, 0x74, 0x6f, 0x6e, 0x18, 0x01, 0x20,
+	0x01, 0x28, 0x0b, 0x32, 0x32, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x62, 0x69, 0x67,
+	0x74, 0x61, 0x62, 0x6c, 0x65, 0x2e, 0x76, 0x32, 0x2e, 0x54, 0x79, 0x70, 0x65, 0x2e, 0x53, 0x74,
+	0x72, 0x75, 0x63, 0x74, 0x2e, 0x45, 0x6e, 0x63, 0x6f, 0x64, 0x69, 0x6e, 0x67, 0x2e, 0x53, 0x69,
+	0x6e, 0x67, 0x6c, 0x65, 0x74, 0x6f, 0x6e, 0x48, 0x00, 0x52, 0x09, 0x73, 0x69, 0x6e, 0x67, 0x6c,
+	0x65, 0x74, 0x6f, 0x6e, 0x12, 0x62, 0x0a, 0x0f, 0x64, 0x65, 0x6c, 0x69, 0x6d, 0x69, 0x74, 0x65,
+	0x64, 0x5f, 0x62, 0x79, 0x74, 0x65, 0x73, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x37, 0x2e,
+	0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x62, 0x69, 0x67, 0x74, 0x61, 0x62, 0x6c, 0x65, 0x2e,
+	0x76, 0x32, 0x2e, 0x54, 0x79, 0x70, 0x65, 0x2e, 0x53, 0x74, 0x72, 0x75, 0x63, 0x74, 0x2e, 0x45,
+	0x6e, 0x63, 0x6f, 0x64, 0x69, 0x6e, 0x67, 0x2e, 0x44, 0x65, 0x6c, 0x69, 0x6d, 0x69, 0x74, 0x65,
+	0x64, 0x42, 0x79, 0x74, 0x65, 0x73, 0x48, 0x00, 0x52, 0x0e, 0x64, 0x65, 0x6c, 0x69, 0x6d, 0x69,
+	0x74, 0x65, 0x64, 0x42, 0x79, 0x74, 0x65, 0x73, 0x12, 0x69, 0x0a, 0x12, 0x6f, 0x72, 0x64, 0x65,
+	0x72, 0x65, 0x64, 0x5f, 0x63, 0x6f, 0x64, 0x65, 0x5f, 0x62, 0x79, 0x74, 0x65, 0x73, 0x18, 0x03,
+	0x20, 0x01, 0x28, 0x0b, 0x32, 0x39, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x62, 0x69,
+	0x67, 0x74, 0x61, 0x62, 0x6c, 0x65, 0x2e, 0x76, 0x32, 0x2e, 0x54, 0x79, 0x70, 0x65, 0x2e, 0x53,
+	0x74, 0x72, 0x75, 0x63, 0x74, 0x2e, 0x45, 0x6e, 0x63, 0x6f, 0x64, 0x69, 0x6e, 0x67, 0x2e, 0x4f,
+	0x72, 0x64, 0x65, 0x72, 0x65, 0x64, 0x43, 0x6f, 0x64, 0x65, 0x42, 0x79, 0x74, 0x65, 0x73, 0x48,
+	0x00, 0x52, 0x10, 0x6f, 0x72, 0x64, 0x65, 0x72, 0x65, 0x64, 0x43, 0x6f, 0x64, 0x65, 0x42, 0x79,
+	0x74, 0x65, 0x73, 0x1a, 0x0b, 0x0a, 0x09, 0x53, 0x69, 0x6e, 0x67, 0x6c, 0x65, 0x74, 0x6f, 0x6e,
+	0x1a, 0x2e, 0x0a, 0x0e, 0x44, 0x65, 0x6c, 0x69, 0x6d, 0x69, 0x74, 0x65, 0x64, 0x42, 0x79, 0x74,
+	0x65, 0x73, 0x12, 0x1c, 0x0a, 0x09, 0x64, 0x65, 0x6c, 0x69, 0x6d, 0x69, 0x74, 0x65, 0x72, 0x18,
+	0x01, 0x20, 0x01, 0x28, 0x0c, 0x52, 0x09, 0x64, 0x65, 0x6c, 0x69, 0x6d, 0x69, 0x74, 0x65, 0x72,
+	0x1a, 0x12, 0x0a, 0x10, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x65, 0x64, 0x43, 0x6f, 0x64, 0x65, 0x42,
+	0x79, 0x74, 0x65, 0x73, 0x42, 0x0a, 0x0a, 0x08, 0x65, 0x6e, 0x63, 0x6f, 0x64, 0x69, 0x6e, 0x67,
+	0x1a, 0x54, 0x0a, 0x05, 0x50, 0x72, 0x6f, 0x74, 0x6f, 0x12, 0x28, 0x0a, 0x10, 0x73, 0x63, 0x68,
+	0x65, 0x6d, 0x61, 0x5f, 0x62, 0x75, 0x6e, 0x64, 0x6c, 0x65, 0x5f, 0x69, 0x64, 0x18, 0x01, 0x20,
+	0x01, 0x28, 0x09, 0x52, 0x0e, 0x73, 0x63, 0x68, 0x65, 0x6d, 0x61, 0x42, 0x75, 0x6e, 0x64, 0x6c,
+	0x65, 0x49, 0x64, 0x12, 0x21, 0x0a, 0x0c, 0x6d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x5f, 0x6e,
+	0x61, 0x6d, 0x65, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x0b, 0x6d, 0x65, 0x73, 0x73, 0x61,
+	0x67, 0x65, 0x4e, 0x61, 0x6d, 0x65, 0x1a, 0x4d, 0x0a, 0x04, 0x45, 0x6e, 0x75, 0x6d, 0x12, 0x28,
+	0x0a, 0x10, 0x73, 0x63, 0x68, 0x65, 0x6d, 0x61, 0x5f, 0x62, 0x75, 0x6e, 0x64, 0x6c, 0x65, 0x5f,
+	0x69, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x0e, 0x73, 0x63, 0x68, 0x65, 0x6d, 0x61,
+	0x42, 0x75, 0x6e, 0x64, 0x6c, 0x65, 0x49, 0x64, 0x12, 0x1b, 0x0a, 0x09, 0x65, 0x6e, 0x75, 0x6d,
+	0x5f, 0x6e, 0x61, 0x6d, 0x65, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x08, 0x65, 0x6e, 0x75,
+	0x6d, 0x4e, 0x61, 0x6d, 0x65, 0x1a, 0x44, 0x0a, 0x05, 0x41, 0x72, 0x72, 0x61, 0x79, 0x12, 0x3b,
 	0x0a, 0x0c, 0x65, 0x6c, 0x65, 0x6d, 0x65, 0x6e, 0x74, 0x5f, 0x74, 0x79, 0x70, 0x65, 0x18, 0x01,
 	0x20, 0x01, 0x28, 0x0b, 0x32, 0x18, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x62, 0x69,
 	0x67, 0x74, 0x61, 0x62, 0x6c, 0x65, 0x2e, 0x76, 0x32, 0x2e, 0x54, 0x79, 0x70, 0x65, 0x52, 0x0b,
@@ -1735,7 +2425,7 @@ func file_google_bigtable_v2_types_proto_rawDescGZIP() []byte {
 	return file_google_bigtable_v2_types_proto_rawDescData
 }
 
-var file_google_bigtable_v2_types_proto_msgTypes = make([]protoimpl.MessageInfo, 25)
+var file_google_bigtable_v2_types_proto_msgTypes = make([]protoimpl.MessageInfo, 33)
 var file_google_bigtable_v2_types_proto_goTypes = []any{
 	(*Type)(nil),                                          // 0: google.bigtable.v2.Type
 	(*Type_Bytes)(nil),                                    // 1: google.bigtable.v2.Type.Bytes
@@ -1747,21 +2437,29 @@ var file_google_bigtable_v2_types_proto_goTypes = []any{
 	(*Type_Timestamp)(nil),                                // 7: google.bigtable.v2.Type.Timestamp
 	(*Type_Date)(nil),                                     // 8: google.bigtable.v2.Type.Date
 	(*Type_Struct)(nil),                                   // 9: google.bigtable.v2.Type.Struct
-	(*Type_Array)(nil),                                    // 10: google.bigtable.v2.Type.Array
-	(*Type_Map)(nil),                                      // 11: google.bigtable.v2.Type.Map
-	(*Type_Aggregate)(nil),                                // 12: google.bigtable.v2.Type.Aggregate
-	(*Type_Bytes_Encoding)(nil),                           // 13: google.bigtable.v2.Type.Bytes.Encoding
-	(*Type_Bytes_Encoding_Raw)(nil),                       // 14: google.bigtable.v2.Type.Bytes.Encoding.Raw
-	(*Type_String_Encoding)(nil),                          // 15: google.bigtable.v2.Type.String.Encoding
-	(*Type_String_Encoding_Utf8Raw)(nil),                  // 16: google.bigtable.v2.Type.String.Encoding.Utf8Raw
-	(*Type_String_Encoding_Utf8Bytes)(nil),                // 17: google.bigtable.v2.Type.String.Encoding.Utf8Bytes
-	(*Type_Int64_Encoding)(nil),                           // 18: google.bigtable.v2.Type.Int64.Encoding
-	(*Type_Int64_Encoding_BigEndianBytes)(nil),            // 19: google.bigtable.v2.Type.Int64.Encoding.BigEndianBytes
-	(*Type_Struct_Field)(nil),                             // 20: google.bigtable.v2.Type.Struct.Field
-	(*Type_Aggregate_Sum)(nil),                            // 21: google.bigtable.v2.Type.Aggregate.Sum
-	(*Type_Aggregate_Max)(nil),                            // 22: google.bigtable.v2.Type.Aggregate.Max
-	(*Type_Aggregate_Min)(nil),                            // 23: google.bigtable.v2.Type.Aggregate.Min
-	(*Type_Aggregate_HyperLogLogPlusPlusUniqueCount)(nil), // 24: google.bigtable.v2.Type.Aggregate.HyperLogLogPlusPlusUniqueCount
+	(*Type_Proto)(nil),                                    // 10: google.bigtable.v2.Type.Proto
+	(*Type_Enum)(nil),                                     // 11: google.bigtable.v2.Type.Enum
+	(*Type_Array)(nil),                                    // 12: google.bigtable.v2.Type.Array
+	(*Type_Map)(nil),                                      // 13: google.bigtable.v2.Type.Map
+	(*Type_Aggregate)(nil),                                // 14: google.bigtable.v2.Type.Aggregate
+	(*Type_Bytes_Encoding)(nil),                           // 15: google.bigtable.v2.Type.Bytes.Encoding
+	(*Type_Bytes_Encoding_Raw)(nil),                       // 16: google.bigtable.v2.Type.Bytes.Encoding.Raw
+	(*Type_String_Encoding)(nil),                          // 17: google.bigtable.v2.Type.String.Encoding
+	(*Type_String_Encoding_Utf8Raw)(nil),                  // 18: google.bigtable.v2.Type.String.Encoding.Utf8Raw
+	(*Type_String_Encoding_Utf8Bytes)(nil),                // 19: google.bigtable.v2.Type.String.Encoding.Utf8Bytes
+	(*Type_Int64_Encoding)(nil),                           // 20: google.bigtable.v2.Type.Int64.Encoding
+	(*Type_Int64_Encoding_BigEndianBytes)(nil),            // 21: google.bigtable.v2.Type.Int64.Encoding.BigEndianBytes
+	(*Type_Int64_Encoding_OrderedCodeBytes)(nil),          // 22: google.bigtable.v2.Type.Int64.Encoding.OrderedCodeBytes
+	(*Type_Timestamp_Encoding)(nil),                       // 23: google.bigtable.v2.Type.Timestamp.Encoding
+	(*Type_Struct_Field)(nil),                             // 24: google.bigtable.v2.Type.Struct.Field
+	(*Type_Struct_Encoding)(nil),                          // 25: google.bigtable.v2.Type.Struct.Encoding
+	(*Type_Struct_Encoding_Singleton)(nil),                // 26: google.bigtable.v2.Type.Struct.Encoding.Singleton
+	(*Type_Struct_Encoding_DelimitedBytes)(nil),           // 27: google.bigtable.v2.Type.Struct.Encoding.DelimitedBytes
+	(*Type_Struct_Encoding_OrderedCodeBytes)(nil),         // 28: google.bigtable.v2.Type.Struct.Encoding.OrderedCodeBytes
+	(*Type_Aggregate_Sum)(nil),                            // 29: google.bigtable.v2.Type.Aggregate.Sum
+	(*Type_Aggregate_Max)(nil),                            // 30: google.bigtable.v2.Type.Aggregate.Max
+	(*Type_Aggregate_Min)(nil),                            // 31: google.bigtable.v2.Type.Aggregate.Min
+	(*Type_Aggregate_HyperLogLogPlusPlusUniqueCount)(nil), // 32: google.bigtable.v2.Type.Aggregate.HyperLogLogPlusPlusUniqueCount
 }
 var file_google_bigtable_v2_types_proto_depIdxs = []int32{
 	1,  // 0: google.bigtable.v2.Type.bytes_type:type_name -> google.bigtable.v2.Type.Bytes
@@ -1772,34 +2470,43 @@ var file_google_bigtable_v2_types_proto_depIdxs = []int32{
 	4,  // 5: google.bigtable.v2.Type.bool_type:type_name -> google.bigtable.v2.Type.Bool
 	7,  // 6: google.bigtable.v2.Type.timestamp_type:type_name -> google.bigtable.v2.Type.Timestamp
 	8,  // 7: google.bigtable.v2.Type.date_type:type_name -> google.bigtable.v2.Type.Date
-	12, // 8: google.bigtable.v2.Type.aggregate_type:type_name -> google.bigtable.v2.Type.Aggregate
+	14, // 8: google.bigtable.v2.Type.aggregate_type:type_name -> google.bigtable.v2.Type.Aggregate
 	9,  // 9: google.bigtable.v2.Type.struct_type:type_name -> google.bigtable.v2.Type.Struct
-	10, // 10: google.bigtable.v2.Type.array_type:type_name -> google.bigtable.v2.Type.Array
-	11, // 11: google.bigtable.v2.Type.map_type:type_name -> google.bigtable.v2.Type.Map
-	13, // 12: google.bigtable.v2.Type.Bytes.encoding:type_name -> google.bigtable.v2.Type.Bytes.Encoding
-	15, // 13: google.bigtable.v2.Type.String.encoding:type_name -> google.bigtable.v2.Type.String.Encoding
-	18, // 14: google.bigtable.v2.Type.Int64.encoding:type_name -> google.bigtable.v2.Type.Int64.Encoding
-	20, // 15: google.bigtable.v2.Type.Struct.fields:type_name -> google.bigtable.v2.Type.Struct.Field
-	0,  // 16: google.bigtable.v2.Type.Array.element_type:type_name -> google.bigtable.v2.Type
-	0,  // 17: google.bigtable.v2.Type.Map.key_type:type_name -> google.bigtable.v2.Type
-	0,  // 18: google.bigtable.v2.Type.Map.value_type:type_name -> google.bigtable.v2.Type
-	0,  // 19: google.bigtable.v2.Type.Aggregate.input_type:type_name -> google.bigtable.v2.Type
-	0,  // 20: google.bigtable.v2.Type.Aggregate.state_type:type_name -> google.bigtable.v2.Type
-	21, // 21: google.bigtable.v2.Type.Aggregate.sum:type_name -> google.bigtable.v2.Type.Aggregate.Sum
-	24, // 22: google.bigtable.v2.Type.Aggregate.hllpp_unique_count:type_name -> google.bigtable.v2.Type.Aggregate.HyperLogLogPlusPlusUniqueCount
-	22, // 23: google.bigtable.v2.Type.Aggregate.max:type_name -> google.bigtable.v2.Type.Aggregate.Max
-	23, // 24: google.bigtable.v2.Type.Aggregate.min:type_name -> google.bigtable.v2.Type.Aggregate.Min
-	14, // 25: google.bigtable.v2.Type.Bytes.Encoding.raw:type_name -> google.bigtable.v2.Type.Bytes.Encoding.Raw
-	16, // 26: google.bigtable.v2.Type.String.Encoding.utf8_raw:type_name -> google.bigtable.v2.Type.String.Encoding.Utf8Raw
-	17, // 27: google.bigtable.v2.Type.String.Encoding.utf8_bytes:type_name -> google.bigtable.v2.Type.String.Encoding.Utf8Bytes
-	19, // 28: google.bigtable.v2.Type.Int64.Encoding.big_endian_bytes:type_name -> google.bigtable.v2.Type.Int64.Encoding.BigEndianBytes
-	1,  // 29: google.bigtable.v2.Type.Int64.Encoding.BigEndianBytes.bytes_type:type_name -> google.bigtable.v2.Type.Bytes
-	0,  // 30: google.bigtable.v2.Type.Struct.Field.type:type_name -> google.bigtable.v2.Type
-	31, // [31:31] is the sub-list for method output_type
-	31, // [31:31] is the sub-list for method input_type
-	31, // [31:31] is the sub-list for extension type_name
-	31, // [31:31] is the sub-list for extension extendee
-	0,  // [0:31] is the sub-list for field type_name
+	12, // 10: google.bigtable.v2.Type.array_type:type_name -> google.bigtable.v2.Type.Array
+	13, // 11: google.bigtable.v2.Type.map_type:type_name -> google.bigtable.v2.Type.Map
+	10, // 12: google.bigtable.v2.Type.proto_type:type_name -> google.bigtable.v2.Type.Proto
+	11, // 13: google.bigtable.v2.Type.enum_type:type_name -> google.bigtable.v2.Type.Enum
+	15, // 14: google.bigtable.v2.Type.Bytes.encoding:type_name -> google.bigtable.v2.Type.Bytes.Encoding
+	17, // 15: google.bigtable.v2.Type.String.encoding:type_name -> google.bigtable.v2.Type.String.Encoding
+	20, // 16: google.bigtable.v2.Type.Int64.encoding:type_name -> google.bigtable.v2.Type.Int64.Encoding
+	23, // 17: google.bigtable.v2.Type.Timestamp.encoding:type_name -> google.bigtable.v2.Type.Timestamp.Encoding
+	24, // 18: google.bigtable.v2.Type.Struct.fields:type_name -> google.bigtable.v2.Type.Struct.Field
+	25, // 19: google.bigtable.v2.Type.Struct.encoding:type_name -> google.bigtable.v2.Type.Struct.Encoding
+	0,  // 20: google.bigtable.v2.Type.Array.element_type:type_name -> google.bigtable.v2.Type
+	0,  // 21: google.bigtable.v2.Type.Map.key_type:type_name -> google.bigtable.v2.Type
+	0,  // 22: google.bigtable.v2.Type.Map.value_type:type_name -> google.bigtable.v2.Type
+	0,  // 23: google.bigtable.v2.Type.Aggregate.input_type:type_name -> google.bigtable.v2.Type
+	0,  // 24: google.bigtable.v2.Type.Aggregate.state_type:type_name -> google.bigtable.v2.Type
+	29, // 25: google.bigtable.v2.Type.Aggregate.sum:type_name -> google.bigtable.v2.Type.Aggregate.Sum
+	32, // 26: google.bigtable.v2.Type.Aggregate.hllpp_unique_count:type_name -> google.bigtable.v2.Type.Aggregate.HyperLogLogPlusPlusUniqueCount
+	30, // 27: google.bigtable.v2.Type.Aggregate.max:type_name -> google.bigtable.v2.Type.Aggregate.Max
+	31, // 28: google.bigtable.v2.Type.Aggregate.min:type_name -> google.bigtable.v2.Type.Aggregate.Min
+	16, // 29: google.bigtable.v2.Type.Bytes.Encoding.raw:type_name -> google.bigtable.v2.Type.Bytes.Encoding.Raw
+	18, // 30: google.bigtable.v2.Type.String.Encoding.utf8_raw:type_name -> google.bigtable.v2.Type.String.Encoding.Utf8Raw
+	19, // 31: google.bigtable.v2.Type.String.Encoding.utf8_bytes:type_name -> google.bigtable.v2.Type.String.Encoding.Utf8Bytes
+	21, // 32: google.bigtable.v2.Type.Int64.Encoding.big_endian_bytes:type_name -> google.bigtable.v2.Type.Int64.Encoding.BigEndianBytes
+	22, // 33: google.bigtable.v2.Type.Int64.Encoding.ordered_code_bytes:type_name -> google.bigtable.v2.Type.Int64.Encoding.OrderedCodeBytes
+	1,  // 34: google.bigtable.v2.Type.Int64.Encoding.BigEndianBytes.bytes_type:type_name -> google.bigtable.v2.Type.Bytes
+	20, // 35: google.bigtable.v2.Type.Timestamp.Encoding.unix_micros_int64:type_name -> google.bigtable.v2.Type.Int64.Encoding
+	0,  // 36: google.bigtable.v2.Type.Struct.Field.type:type_name -> google.bigtable.v2.Type
+	26, // 37: google.bigtable.v2.Type.Struct.Encoding.singleton:type_name -> google.bigtable.v2.Type.Struct.Encoding.Singleton
+	27, // 38: google.bigtable.v2.Type.Struct.Encoding.delimited_bytes:type_name -> google.bigtable.v2.Type.Struct.Encoding.DelimitedBytes
+	28, // 39: google.bigtable.v2.Type.Struct.Encoding.ordered_code_bytes:type_name -> google.bigtable.v2.Type.Struct.Encoding.OrderedCodeBytes
+	40, // [40:40] is the sub-list for method output_type
+	40, // [40:40] is the sub-list for method input_type
+	40, // [40:40] is the sub-list for extension type_name
+	40, // [40:40] is the sub-list for extension extendee
+	0,  // [0:40] is the sub-list for field type_name
 }
 
 func init() { file_google_bigtable_v2_types_proto_init() }
@@ -1820,22 +2527,33 @@ func file_google_bigtable_v2_types_proto_init() {
 		(*Type_StructType)(nil),
 		(*Type_ArrayType)(nil),
 		(*Type_MapType)(nil),
+		(*Type_ProtoType)(nil),
+		(*Type_EnumType)(nil),
 	}
-	file_google_bigtable_v2_types_proto_msgTypes[12].OneofWrappers = []any{
+	file_google_bigtable_v2_types_proto_msgTypes[14].OneofWrappers = []any{
 		(*Type_Aggregate_Sum_)(nil),
 		(*Type_Aggregate_HllppUniqueCount)(nil),
 		(*Type_Aggregate_Max_)(nil),
 		(*Type_Aggregate_Min_)(nil),
 	}
-	file_google_bigtable_v2_types_proto_msgTypes[13].OneofWrappers = []any{
+	file_google_bigtable_v2_types_proto_msgTypes[15].OneofWrappers = []any{
 		(*Type_Bytes_Encoding_Raw_)(nil),
 	}
-	file_google_bigtable_v2_types_proto_msgTypes[15].OneofWrappers = []any{
+	file_google_bigtable_v2_types_proto_msgTypes[17].OneofWrappers = []any{
 		(*Type_String_Encoding_Utf8Raw_)(nil),
 		(*Type_String_Encoding_Utf8Bytes_)(nil),
 	}
-	file_google_bigtable_v2_types_proto_msgTypes[18].OneofWrappers = []any{
+	file_google_bigtable_v2_types_proto_msgTypes[20].OneofWrappers = []any{
 		(*Type_Int64_Encoding_BigEndianBytes_)(nil),
+		(*Type_Int64_Encoding_OrderedCodeBytes_)(nil),
+	}
+	file_google_bigtable_v2_types_proto_msgTypes[23].OneofWrappers = []any{
+		(*Type_Timestamp_Encoding_UnixMicrosInt64)(nil),
+	}
+	file_google_bigtable_v2_types_proto_msgTypes[25].OneofWrappers = []any{
+		(*Type_Struct_Encoding_Singleton_)(nil),
+		(*Type_Struct_Encoding_DelimitedBytes_)(nil),
+		(*Type_Struct_Encoding_OrderedCodeBytes_)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -1843,7 +2561,7 @@ func file_google_bigtable_v2_types_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_google_bigtable_v2_types_proto_rawDesc,
 			NumEnums:      0,
-			NumMessages:   25,
+			NumMessages:   33,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

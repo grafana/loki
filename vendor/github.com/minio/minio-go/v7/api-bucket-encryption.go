@@ -28,6 +28,14 @@ import (
 )
 
 // SetBucketEncryption sets the default encryption configuration on an existing bucket.
+// The encryption configuration specifies the default encryption behavior for objects uploaded to the bucket.
+//
+// Parameters:
+//   - ctx: Context for request cancellation and timeout
+//   - bucketName: Name of the bucket
+//   - config: Server-side encryption configuration to apply
+//
+// Returns an error if the operation fails or if config is nil.
 func (c *Client) SetBucketEncryption(ctx context.Context, bucketName string, config *sse.Configuration) error {
 	// Input validation.
 	if err := s3utils.CheckValidBucketName(bucketName); err != nil {
@@ -69,7 +77,15 @@ func (c *Client) SetBucketEncryption(ctx context.Context, bucketName string, con
 	return nil
 }
 
-// RemoveBucketEncryption removes the default encryption configuration on a bucket with a context to control cancellations and timeouts.
+// RemoveBucketEncryption removes the default encryption configuration from a bucket.
+// After removal, the bucket will no longer apply default encryption to new objects.
+// It uses the provided context to control cancellations and timeouts.
+//
+// Parameters:
+//   - ctx: Context for request cancellation and timeout
+//   - bucketName: Name of the bucket
+//
+// Returns an error if the operation fails.
 func (c *Client) RemoveBucketEncryption(ctx context.Context, bucketName string) error {
 	// Input validation.
 	if err := s3utils.CheckValidBucketName(bucketName); err != nil {
@@ -97,8 +113,14 @@ func (c *Client) RemoveBucketEncryption(ctx context.Context, bucketName string) 
 	return nil
 }
 
-// GetBucketEncryption gets the default encryption configuration
-// on an existing bucket with a context to control cancellations and timeouts.
+// GetBucketEncryption retrieves the default encryption configuration from a bucket.
+// It uses the provided context to control cancellations and timeouts.
+//
+// Parameters:
+//   - ctx: Context for request cancellation and timeout
+//   - bucketName: Name of the bucket
+//
+// Returns the bucket's encryption configuration or an error if the operation fails.
 func (c *Client) GetBucketEncryption(ctx context.Context, bucketName string) (*sse.Configuration, error) {
 	// Input validation.
 	if err := s3utils.CheckValidBucketName(bucketName); err != nil {

@@ -40,8 +40,17 @@ type AdvancedObjectTaggingOptions struct {
 	ReplicationProxyRequest string
 }
 
-// PutObjectTagging replaces or creates object tag(s) and can target
-// a specific object version in a versioned bucket.
+// PutObjectTagging replaces or creates object tag(s) and can target a specific object version
+// in a versioned bucket.
+//
+// Parameters:
+//   - ctx: Context for request cancellation and timeout
+//   - bucketName: Name of the bucket
+//   - objectName: Name of the object
+//   - otags: Tags to apply to the object
+//   - opts: Options including VersionID to target a specific version
+//
+// Returns an error if the operation fails.
 func (c *Client) PutObjectTagging(ctx context.Context, bucketName, objectName string, otags *tags.Tags, opts PutObjectTaggingOptions) error {
 	// Input validation.
 	if err := s3utils.CheckValidBucketName(bucketName); err != nil {
@@ -96,8 +105,16 @@ type GetObjectTaggingOptions struct {
 	Internal  AdvancedObjectTaggingOptions
 }
 
-// GetObjectTagging fetches object tag(s) with options to target
-// a specific object version in a versioned bucket.
+// GetObjectTagging retrieves object tag(s) with options to target a specific object version
+// in a versioned bucket.
+//
+// Parameters:
+//   - ctx: Context for request cancellation and timeout
+//   - bucketName: Name of the bucket
+//   - objectName: Name of the object
+//   - opts: Options including VersionID to target a specific version
+//
+// Returns the object's tags or an error if the operation fails.
 func (c *Client) GetObjectTagging(ctx context.Context, bucketName, objectName string, opts GetObjectTaggingOptions) (*tags.Tags, error) {
 	// Get resources properly escaped and lined up before
 	// using them in http request.
@@ -139,8 +156,16 @@ type RemoveObjectTaggingOptions struct {
 	Internal  AdvancedObjectTaggingOptions
 }
 
-// RemoveObjectTagging removes object tag(s) with options to control a specific object
-// version in a versioned bucket
+// RemoveObjectTagging removes object tag(s) with options to target a specific object version
+// in a versioned bucket.
+//
+// Parameters:
+//   - ctx: Context for request cancellation and timeout
+//   - bucketName: Name of the bucket
+//   - objectName: Name of the object
+//   - opts: Options including VersionID to target a specific version
+//
+// Returns an error if the operation fails.
 func (c *Client) RemoveObjectTagging(ctx context.Context, bucketName, objectName string, opts RemoveObjectTaggingOptions) error {
 	// Get resources properly escaped and lined up before
 	// using them in http request.

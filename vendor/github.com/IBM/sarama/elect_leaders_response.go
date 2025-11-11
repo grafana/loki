@@ -8,36 +8,24 @@ type PartitionResult struct {
 }
 
 func (b *PartitionResult) encode(pe packetEncoder, version int16) error {
-	pe.putInt16(int16(b.ErrorCode))
-	if version < 2 {
-		if err := pe.putNullableString(b.ErrorMessage); err != nil {
-			return err
-		}
-	} else {
-		if err := pe.putNullableCompactString(b.ErrorMessage); err != nil {
-			return err
-		}
+	pe.putKError(b.ErrorCode)
+	if err := pe.putNullableString(b.ErrorMessage); err != nil {
+		return err
 	}
-	if version >= 2 {
-		pe.putEmptyTaggedFieldArray()
-	}
+	pe.putEmptyTaggedFieldArray()
 	return nil
 }
 
 func (b *PartitionResult) decode(pd packetDecoder, version int16) (err error) {
-	kerr, err := pd.getInt16()
+	b.ErrorCode, err = pd.getKError()
 	if err != nil {
 		return err
 	}
-	b.ErrorCode = KError(kerr)
-	if version < 2 {
-		b.ErrorMessage, err = pd.getNullableString()
-	} else {
-		b.ErrorMessage, err = pd.getCompactNullableString()
+	b.ErrorMessage, err = pd.getNullableString()
+	if err != nil {
+		return err
 	}
-	if version >= 2 {
-		_, err = pd.getEmptyTaggedFieldArray()
-	}
+	_, err = pd.getEmptyTaggedFieldArray()
 	return err
 }
 
@@ -56,21 +44,19 @@ func (r *ElectLeadersResponse) encode(pe packetEncoder) error {
 	pe.putInt32(r.ThrottleTimeMs)
 
 	if r.Version > 0 {
-		pe.putInt16(int16(r.ErrorCode))
+		pe.putKError(r.ErrorCode)
 	}
 
-	pe.putCompactArrayLength(len(r.ReplicaElectionResults))
+	if err := pe.putArrayLength(len(r.ReplicaElectionResults)); err != nil {
+		return err
+	}
 	for topic, partitions := range r.ReplicaElectionResults {
-		if r.Version < 2 {
-			if err := pe.putString(topic); err != nil {
-				return err
-			}
-		} else {
-			if err := pe.putCompactString(topic); err != nil {
-				return err
-			}
+		if err := pe.putString(topic); err != nil {
+			return err
 		}
-		pe.putCompactArrayLength(len(partitions))
+		if err := pe.putArrayLength(len(partitions)); err != nil {
+			return err
+		}
 		for partition, result := range partitions {
 			pe.putInt32(partition)
 			if err := result.encode(pe, r.Version); err != nil {
@@ -81,7 +67,6 @@ func (r *ElectLeadersResponse) encode(pe packetEncoder) error {
 	}
 
 	pe.putEmptyTaggedFieldArray()
-
 	return nil
 }
 
@@ -91,31 +76,25 @@ func (r *ElectLeadersResponse) decode(pd packetDecoder, version int16) (err erro
 		return err
 	}
 	if r.Version > 0 {
-		kerr, err := pd.getInt16()
+		r.ErrorCode, err = pd.getKError()
 		if err != nil {
 			return err
 		}
-		r.ErrorCode = KError(kerr)
 	}
 
-	numTopics, err := pd.getCompactArrayLength()
+	numTopics, err := pd.getArrayLength()
 	if err != nil {
 		return err
 	}
 
 	r.ReplicaElectionResults = make(map[string]map[int32]*PartitionResult, numTopics)
 	for i := 0; i < numTopics; i++ {
-		var topic string
-		if r.Version < 2 {
-			topic, err = pd.getString()
-		} else {
-			topic, err = pd.getCompactString()
-		}
+		topic, err := pd.getString()
 		if err != nil {
 			return err
 		}
 
-		numPartitions, err := pd.getCompactArrayLength()
+		numPartitions, err := pd.getArrayLength()
 		if err != nil {
 			return err
 		}
@@ -136,11 +115,8 @@ func (r *ElectLeadersResponse) decode(pd packetDecoder, version int16) (err erro
 		}
 	}
 
-	if _, err := pd.getEmptyTaggedFieldArray(); err != nil {
-		return err
-	}
-
-	return nil
+	_, err = pd.getEmptyTaggedFieldArray()
+	return err
 }
 
 func (r *ElectLeadersResponse) key() int16 {
@@ -157,6 +133,14 @@ func (r *ElectLeadersResponse) headerVersion() int16 {
 
 func (r *ElectLeadersResponse) isValidVersion() bool {
 	return r.Version >= 0 && r.Version <= 2
+}
+
+func (r *ElectLeadersResponse) isFlexible() bool {
+	return r.isFlexibleVersion(r.Version)
+}
+
+func (r *ElectLeadersResponse) isFlexibleVersion(version int16) bool {
+	return version >= 2
 }
 
 func (r *ElectLeadersResponse) requiredVersion() KafkaVersion {

@@ -104,6 +104,7 @@
   setupNode: $.step.new('setup node', 'actions/setup-node@v4')
              + $.step.with({
                'node-version': 20,
+               'package-manager-cache': false,
              }),
 
   makeTarget: function(target) 'make %s' % target,

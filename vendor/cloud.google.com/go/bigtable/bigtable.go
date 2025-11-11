@@ -36,8 +36,6 @@ import (
 	"cloud.google.com/go/internal/trace"
 	gax "github.com/googleapis/gax-go/v2"
 	"github.com/googleapis/gax-go/v2/apierror"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/metric"
 	"google.golang.org/api/option"
 	"google.golang.org/api/option/internaloption"
 	gtransport "google.golang.org/api/transport/grpc"
@@ -47,18 +45,17 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
-
-	// Install google-c2p resolver, which is required for direct path.
-	_ "google.golang.org/grpc/xds/googledirectpath"
-	// Install RLS load balancer policy, which is needed for gRPC RLS.
-	_ "google.golang.org/grpc/balancer/rls"
 )
 
-const prodAddr = "bigtable.googleapis.com:443"
-const mtlsProdAddr = "bigtable.mtls.googleapis.com:443"
-const featureFlagsHeaderKey = "bigtable-features"
-const queryExpiredViolationType = "PREPARED_QUERY_EXPIRED"
-const preparedQueryExpireEarlyDuration = time.Second
+const (
+	// UNIVERSE_DOMAIN placeholder is replaced by the UniverseDomain from DialSettings while creating GRPC connection/dial pool.
+	prodAddr                         = "bigtable.UNIVERSE_DOMAIN:443"
+	mtlsProdAddr                     = "bigtable.mtls.googleapis.com:443"
+	featureFlagsHeaderKey            = "bigtable-features"
+	queryExpiredViolationType        = "PREPARED_QUERY_EXPIRED"
+	preparedQueryExpireEarlyDuration = time.Second
+	methodNameReadRows               = "ReadRows"
+)
 
 var errNegativeRowLimit = errors.New("bigtable: row limit cannot be negative")
 
@@ -76,6 +73,7 @@ type Client struct {
 	disableRetryInfo        bool
 	retryOption             gax.CallOption
 	executeQueryRetryOption gax.CallOption
+	enableDirectAccess      bool
 }
 
 // ClientConfig has configurations for the client.
@@ -126,9 +124,16 @@ func NewClientWithConfig(ctx context.Context, project, instance string, config C
 	if err != nil {
 		return nil, err
 	}
+	// for otel metrics
+	if metricsTracerFactory.enabled {
+		if len(metricsTracerFactory.clientOpts) > 0 {
+			o = append(o, metricsTracerFactory.clientOpts...)
+		}
+	}
+
 	// Add gRPC client interceptors to supply Google client information. No external interceptors are passed.
 	o = append(o, btopt.ClientInterceptorOptions(nil, nil)...)
-
+	o = append(o, option.WithGRPCDialOption(grpc.WithStatsHandler(sharedLatencyStatsHandler)))
 	// Default to a small connection pool that can be overridden.
 	o = append(o,
 		option.WithGRPCConnectionPool(4),
@@ -136,24 +141,17 @@ func NewClientWithConfig(ctx context.Context, project, instance string, config C
 		option.WithGRPCDialOption(grpc.WithDefaultCallOptions(grpc.MaxCallSendMsgSize(1<<28), grpc.MaxCallRecvMsgSize(1<<28))),
 	)
 
+	enableDirectAccess, _ := strconv.ParseBool(os.Getenv("CBT_ENABLE_DIRECTPATH"))
+	if enableDirectAccess {
+		o = append(o, internaloption.EnableDirectPath(true), internaloption.EnableDirectPathXds())
+	}
+
 	// Allow non-default service account in DirectPath.
 	o = append(o, internaloption.AllowNonDefaultServiceAccount(true))
 	o = append(o, opts...)
 
 	// TODO(b/372244283): Remove after b/358175516 has been fixed
-	asyncRefreshMetricAttrs := metricsTracerFactory.clientAttributes
-	asyncRefreshMetricAttrs = append(asyncRefreshMetricAttrs,
-		attribute.String(metricLabelKeyTag, "async_refresh_dry_run"),
-		// Table, cluster and zone are unknown at this point
-		// Use default values
-		attribute.String(monitoredResLabelKeyTable, defaultTable),
-		attribute.String(monitoredResLabelKeyCluster, defaultCluster),
-		attribute.String(monitoredResLabelKeyZone, defaultZone),
-	)
-	o = append(o, internaloption.EnableAsyncRefreshDryRun(func() {
-		metricsTracerFactory.debugTags.Add(context.Background(), 1,
-			metric.WithAttributes(asyncRefreshMetricAttrs...))
-	}))
+	o = append(o, internaloption.EnableAsyncRefreshDryRun(metricsTracerFactory.newAsyncRefreshErrHandler()))
 
 	connPool, err := gtransport.DialPool(ctx, o...)
 	if err != nil {
@@ -181,6 +179,7 @@ func NewClientWithConfig(ctx context.Context, project, instance string, config C
 		disableRetryInfo:        disableRetryInfo,
 		retryOption:             retryOption,
 		executeQueryRetryOption: executeQueryRetryOption,
+		enableDirectAccess:      enableDirectAccess,
 	}, nil
 }
 
@@ -403,6 +402,8 @@ func (c *Client) newFeatureFlags() metadata.MD {
 		LastScannedRowResponses:  true,
 		ClientSideMetricsEnabled: c.metricsTracerFactory.enabled,
 		RetryInfo:                !c.disableRetryInfo,
+		TrafficDirectorEnabled:   c.enableDirectAccess,
+		DirectAccessRequested:    c.enableDirectAccess,
 	}
 
 	val := ""
@@ -529,11 +530,11 @@ func (c *Client) prepareStatementWithMetadata(ctx context.Context, query string,
 	defer func() { trace.EndSpan(ctx, err) }()
 
 	mt := c.newBuiltinMetricsTracer(ctx, "", false)
-	defer recordOperationCompletion(mt)
+	defer mt.recordOperationCompletion()
 
 	preparedStatement, err = c.prepareStatement(ctx, mt, query, paramTypes, opts...)
 	statusCode, statusErr := convertToGrpcStatusErr(err)
-	mt.currOp.setStatus(statusCode.String())
+	mt.setCurrOpStatus(statusCode.String())
 	return preparedStatement, statusErr
 }
 
@@ -708,11 +709,11 @@ func (bs *BoundStatement) Execute(ctx context.Context, f func(ResultRow) bool, o
 	defer func() { trace.EndSpan(ctx, err) }()
 
 	mt := bs.ps.c.newBuiltinMetricsTracer(ctx, "", true)
-	defer recordOperationCompletion(mt)
+	defer mt.recordOperationCompletion()
 
 	err = bs.execute(ctx, f, mt)
 	statusCode, statusErr := convertToGrpcStatusErr(err)
-	mt.currOp.setStatus(statusCode.String())
+	mt.setCurrOpStatus(statusCode.String())
 	return statusErr
 }
 
@@ -927,6 +928,40 @@ func handleExecuteStreamEnd(stream btpb.Bigtable_ExecuteQueryClient, trailerMD *
 	return nil
 }
 
+// PingAndWarm pings the server and warms up the connection.
+func (c *Client) PingAndWarm(ctx context.Context) (err error) {
+	md := metadata.Join(metadata.Pairs(
+		resourcePrefixHeader, c.fullInstanceName(),
+		requestParamsHeader, c.reqParamsHeaderValInstance(),
+	), c.newFeatureFlags())
+
+	ctx = mergeOutgoingMetadata(ctx, md)
+	ctx = trace.StartSpan(ctx, "cloud.google.com/go/bigtable/PingAndWarm")
+	defer func() { trace.EndSpan(ctx, err) }()
+	mt := c.newBuiltinMetricsTracer(ctx, "", false)
+	defer mt.recordOperationCompletion()
+
+	err = c.pingerWithMetadata(ctx, mt)
+	statusCode, statusErr := convertToGrpcStatusErr(err)
+	mt.currOp.setStatus(statusCode.String())
+	return statusErr
+}
+
+func (c *Client) pingerWithMetadata(ctx context.Context, mt *builtinMetricsTracer) (err error) {
+	req := &btpb.PingAndWarmRequest{
+		Name:         c.fullInstanceName(),
+		AppProfileId: c.appProfile,
+	}
+	err = gaxInvokeWithRecorder(ctx, mt, "PingAndWarm", func(ctx context.Context, headerMD, trailerMD *metadata.MD, _ gax.CallSettings) error {
+		var err error
+		_, err = c.client.PingAndWarm(ctx, req, grpc.Header(headerMD), grpc.Trailer(trailerMD))
+		return err
+	})
+
+	return err
+
+}
+
 func (ti *tableImpl) ReadRows(ctx context.Context, arg RowSet, f func(Row) bool, opts ...ReadOption) error {
 	return ti.Table.ReadRows(ctx, arg, f, opts...)
 }
@@ -966,11 +1001,11 @@ func (t *Table) ReadRows(ctx context.Context, arg RowSet, f func(Row) bool, opts
 	defer func() { trace.EndSpan(ctx, err) }()
 
 	mt := t.newBuiltinMetricsTracer(ctx, true)
-	defer recordOperationCompletion(mt)
+	defer mt.recordOperationCompletion()
 
 	err = t.readRows(ctx, arg, f, mt, opts...)
 	statusCode, statusErr := convertToGrpcStatusErr(err)
-	mt.currOp.setStatus(statusCode.String())
+	mt.setCurrOpStatus(statusCode.String())
 	return statusErr
 }
 
@@ -991,7 +1026,8 @@ func (t *Table) readRows(ctx context.Context, arg RowSet, f func(Row) bool, mt *
 		return errNegativeRowLimit
 	}
 
-	err = gaxInvokeWithRecorder(ctx, mt, "ReadRows", func(ctx context.Context, headerMD, trailerMD *metadata.MD, _ gax.CallSettings) error {
+	firstResponseRecorded := false
+	err = gaxInvokeWithRecorder(ctx, mt, methodNameReadRows, func(ctx context.Context, headerMD, trailerMD *metadata.MD, _ gax.CallSettings) error {
 		if rowLimitSet && numRowsRead >= intialRowLimit {
 			return nil
 		}
@@ -1043,6 +1079,10 @@ func (t *Table) readRows(ctx context.Context, arg RowSet, f func(Row) bool, mt *
 		for {
 			proto.Reset(res)
 			err := stream.RecvMsg(res)
+			if !firstResponseRecorded && (err == nil || err == io.EOF) {
+				firstResponseRecorded = true
+				mt.currOp.setFirstRespTime(time.Now())
+			}
 			if err == io.EOF {
 				*trailerMD = stream.Trailer()
 				break
@@ -1083,7 +1123,7 @@ func (t *Table) readRows(ctx context.Context, arg RowSet, f func(Row) bool, mt *
 				appBlockingLatencyStart := time.Now()
 				continueReading := f(row)
 				numRowsRead++
-				mt.currOp.incrementAppBlockingLatency(convertToMs(time.Since(appBlockingLatencyStart)))
+				mt.incrementAppBlockingLatency(convertToMs(time.Since(appBlockingLatencyStart)))
 
 				if !continueReading {
 					// Cancel and drain stream.
@@ -1641,11 +1681,11 @@ func (t *Table) Apply(ctx context.Context, row string, m *Mutation, opts ...Appl
 	ctx = trace.StartSpan(ctx, "cloud.google.com/go/bigtable/Apply")
 	defer func() { trace.EndSpan(ctx, err) }()
 	mt := t.newBuiltinMetricsTracer(ctx, false)
-	defer recordOperationCompletion(mt)
+	defer mt.recordOperationCompletion()
 
 	err = t.apply(ctx, mt, row, m, opts...)
 	statusCode, statusErr := convertToGrpcStatusErr(err)
-	mt.currOp.setStatus(statusCode.String())
+	mt.setCurrOpStatus(statusCode.String())
 	return statusErr
 }
 
@@ -1919,7 +1959,7 @@ func (t *Table) ApplyBulk(ctx context.Context, rowKeys []string, muts []*Mutatio
 func (t *Table) applyGroup(ctx context.Context, group []*entryErr, opts ...ApplyOption) (err error) {
 	attrMap := make(map[string]interface{})
 	mt := t.newBuiltinMetricsTracer(ctx, true)
-	defer recordOperationCompletion(mt)
+	defer mt.recordOperationCompletion()
 
 	err = gaxInvokeWithRecorder(ctx, mt, "MutateRows", func(ctx context.Context, headerMD, trailerMD *metadata.MD, _ gax.CallSettings) error {
 		attrMap["rowCount"] = len(group)
@@ -1940,7 +1980,7 @@ func (t *Table) applyGroup(ctx context.Context, group []*entryErr, opts ...Apply
 	}, t.c.retryOption)
 
 	statusCode, statusErr := convertToGrpcStatusErr(err)
-	mt.currOp.setStatus(statusCode.String())
+	mt.setCurrOpStatus(statusCode.String())
 	return statusErr
 }
 
@@ -2010,7 +2050,7 @@ func (t *Table) doApplyBulk(ctx context.Context, entryErrs []*entryErr, headerMD
 			if s.Code == int32(codes.OK) {
 				entryErrs[entry.Index].Err = nil
 			} else {
-				entryErrs[entry.Index].Err = status.Errorf(codes.Code(s.Code), s.Message)
+				entryErrs[entry.Index].Err = status.Error(codes.Code(s.Code), s.Message)
 			}
 		}
 		after(res)
@@ -2081,11 +2121,11 @@ func (t *Table) ApplyReadModifyWrite(ctx context.Context, row string, m *ReadMod
 	ctx = mergeOutgoingMetadata(ctx, t.md)
 
 	mt := t.newBuiltinMetricsTracer(ctx, false)
-	defer recordOperationCompletion(mt)
+	defer mt.recordOperationCompletion()
 
 	updatedRow, err := t.applyReadModifyWrite(ctx, mt, row, m)
 	statusCode, statusErr := convertToGrpcStatusErr(err)
-	mt.currOp.setStatus(statusCode.String())
+	mt.setCurrOpStatus(statusCode.String())
 	return updatedRow, statusErr
 }
 
@@ -2162,11 +2202,11 @@ func (t *Table) SampleRowKeys(ctx context.Context) ([]string, error) {
 	ctx = mergeOutgoingMetadata(ctx, t.md)
 
 	mt := t.newBuiltinMetricsTracer(ctx, true)
-	defer recordOperationCompletion(mt)
+	defer mt.recordOperationCompletion()
 
 	rowKeys, err := t.sampleRowKeys(ctx, mt)
 	statusCode, statusErr := convertToGrpcStatusErr(err)
-	mt.currOp.setStatus(statusCode.String())
+	mt.setCurrOpStatus(statusCode.String())
 	return rowKeys, statusErr
 }
 
@@ -2228,34 +2268,6 @@ func (c *Client) newBuiltinMetricsTracer(ctx context.Context, table string, isSt
 	return &mt
 }
 
-// recordOperationCompletion records as many operation specific metrics as it can
-// Ignores error seen while creating metric attributes since metric can still
-// be recorded with rest of the attributes
-func recordOperationCompletion(mt *builtinMetricsTracer) {
-	if !mt.builtInEnabled {
-		return
-	}
-
-	// Calculate elapsed time
-	elapsedTimeMs := convertToMs(time.Since(mt.currOp.startTime))
-
-	// Record operation_latencies
-	opLatAttrs, _ := mt.toOtelMetricAttrs(metricNameOperationLatencies)
-	mt.instrumentOperationLatencies.Record(mt.ctx, elapsedTimeMs, metric.WithAttributeSet(opLatAttrs))
-
-	// Record retry_count
-	retryCntAttrs, _ := mt.toOtelMetricAttrs(metricNameRetryCount)
-	if mt.currOp.attemptCount > 1 {
-		// Only record when retry count is greater than 0 so the retry
-		// graph will be less confusing
-		mt.instrumentRetryCount.Add(mt.ctx, mt.currOp.attemptCount-1, metric.WithAttributeSet(retryCntAttrs))
-	}
-
-	// Record application_latencies
-	appBlockingLatAttrs, _ := mt.toOtelMetricAttrs(metricNameAppBlockingLatencies)
-	mt.instrumentAppBlockingLatencies.Record(mt.ctx, mt.currOp.appBlockingLatency, metric.WithAttributeSet(appBlockingLatAttrs))
-}
-
 // gaxInvokeWithRecorder:
 // - wraps 'f' in a new function 'callWrapper' that:
 //   - updates tracer state and records built in attempt specific metrics
@@ -2268,82 +2280,16 @@ func gaxInvokeWithRecorder(ctx context.Context, mt *builtinMetricsTracer, method
 	attempTrailerMD := metadata.New(nil)
 	mt.setMethod(method)
 
-	var callWrapper func(context.Context, gax.CallSettings) error
-	if !mt.builtInEnabled {
-		callWrapper = func(ctx context.Context, callSettings gax.CallSettings) error {
-			// f makes calls to CBT service
-			return f(ctx, &attemptHeaderMD, &attempTrailerMD, callSettings)
-		}
-	} else {
-		callWrapper = func(ctx context.Context, callSettings gax.CallSettings) error {
-			// Increment number of attempts
-			mt.currOp.incrementAttemptCount()
+	callWrapper := func(ctx context.Context, callSettings gax.CallSettings) error {
+		mt.recordAttemptStart()
 
-			mt.currOp.currAttempt = attemptTracer{}
+		// f makes calls to CBT service
+		err := f(ctx, &attemptHeaderMD, &attempTrailerMD, callSettings)
 
-			// record start time
-			mt.currOp.currAttempt.setStartTime(time.Now())
-
-			// f makes calls to CBT service
-			err := f(ctx, &attemptHeaderMD, &attempTrailerMD, callSettings)
-
-			// Set attempt status
-			statusCode, _ := convertToGrpcStatusErr(err)
-			mt.currOp.currAttempt.setStatus(statusCode.String())
-
-			// Get location attributes from metadata and set it in tracer
-			// Ignore get location error since the metric can still be recorded with rest of the attributes
-			clusterID, zoneID, _ := extractLocation(attemptHeaderMD, attempTrailerMD)
-			mt.currOp.currAttempt.setClusterID(clusterID)
-			mt.currOp.currAttempt.setZoneID(zoneID)
-
-			// Set server latency in tracer
-			serverLatency, serverLatencyErr := extractServerLatency(attemptHeaderMD, attempTrailerMD)
-			mt.currOp.currAttempt.setServerLatencyErr(serverLatencyErr)
-			mt.currOp.currAttempt.setServerLatency(serverLatency)
-
-			// Record attempt specific metrics
-			recordAttemptCompletion(mt)
-			return err
-		}
+		// Record attempt specific metrics
+		mt.recordAttemptCompletion(attemptHeaderMD, attempTrailerMD, err)
+		return err
 	}
+
 	return gax.Invoke(ctx, callWrapper, opts...)
-}
-
-// recordAttemptCompletion records as many attempt specific metrics as it can
-// Ignore errors seen while creating metric attributes since metric can still
-// be recorded with rest of the attributes
-func recordAttemptCompletion(mt *builtinMetricsTracer) {
-	if !mt.builtInEnabled {
-		return
-	}
-
-	// Calculate elapsed time
-	elapsedTime := convertToMs(time.Since(mt.currOp.currAttempt.startTime))
-
-	// Record attempt_latencies
-	attemptLatAttrs, _ := mt.toOtelMetricAttrs(metricNameAttemptLatencies)
-	mt.instrumentAttemptLatencies.Record(mt.ctx, elapsedTime, metric.WithAttributeSet(attemptLatAttrs))
-
-	// Record server_latencies
-	serverLatAttrs, _ := mt.toOtelMetricAttrs(metricNameServerLatencies)
-	if mt.currOp.currAttempt.serverLatencyErr == nil {
-		mt.instrumentServerLatencies.Record(mt.ctx, mt.currOp.currAttempt.serverLatency, metric.WithAttributeSet(serverLatAttrs))
-	}
-
-	// Record connectivity_error_count
-	connErrCountAttrs, _ := mt.toOtelMetricAttrs(metricNameConnErrCount)
-	// Determine if connection error should be incremented.
-	// A true connectivity error occurs only when we receive NO server-side signals.
-	// 1. Server latency (from server-timing header) is a signal, but absent in DirectPath.
-	// 2. Location (from x-goog-ext header) is a signal present in both paths.
-	// Therefore, we only count an error if BOTH signals are missing.
-	isServerLatencyEffectivelyEmpty := mt.currOp.currAttempt.serverLatencyErr != nil || mt.currOp.currAttempt.serverLatency == 0
-	isLocationEmpty := mt.currOp.currAttempt.clusterID == defaultCluster
-	if isServerLatencyEffectivelyEmpty && isLocationEmpty {
-		// This is a connectivity error: the request likely never reached Google's network.
-		mt.instrumentConnErrCount.Add(mt.ctx, 1, metric.WithAttributeSet(connErrCountAttrs))
-	} else {
-		mt.instrumentConnErrCount.Add(mt.ctx, 0, metric.WithAttributeSet(connErrCountAttrs))
-	}
 }

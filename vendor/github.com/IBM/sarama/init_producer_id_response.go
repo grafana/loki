@@ -15,31 +15,24 @@ func (i *InitProducerIDResponse) setVersion(v int16) {
 }
 
 func (i *InitProducerIDResponse) encode(pe packetEncoder) error {
-	pe.putInt32(int32(i.ThrottleTime / time.Millisecond))
-	pe.putInt16(int16(i.Err))
+	pe.putDurationMs(i.ThrottleTime)
+	pe.putKError(i.Err)
 	pe.putInt64(i.ProducerID)
 	pe.putInt16(i.ProducerEpoch)
-
-	if i.Version >= 2 {
-		pe.putEmptyTaggedFieldArray()
-	}
-
+	pe.putEmptyTaggedFieldArray()
 	return nil
 }
 
 func (i *InitProducerIDResponse) decode(pd packetDecoder, version int16) (err error) {
 	i.Version = version
-	throttleTime, err := pd.getInt32()
-	if err != nil {
+	if i.ThrottleTime, err = pd.getDurationMs(); err != nil {
 		return err
 	}
-	i.ThrottleTime = time.Duration(throttleTime) * time.Millisecond
 
-	kerr, err := pd.getInt16()
+	i.Err, err = pd.getKError()
 	if err != nil {
 		return err
 	}
-	i.Err = KError(kerr)
 
 	if i.ProducerID, err = pd.getInt64(); err != nil {
 		return err
@@ -49,13 +42,8 @@ func (i *InitProducerIDResponse) decode(pd packetDecoder, version int16) (err er
 		return err
 	}
 
-	if i.Version >= 2 {
-		if _, err := pd.getEmptyTaggedFieldArray(); err != nil {
-			return err
-		}
-	}
-
-	return nil
+	_, err = pd.getEmptyTaggedFieldArray()
+	return err
 }
 
 func (i *InitProducerIDResponse) key() int16 {
@@ -75,6 +63,14 @@ func (i *InitProducerIDResponse) headerVersion() int16 {
 
 func (i *InitProducerIDResponse) isValidVersion() bool {
 	return i.Version >= 0 && i.Version <= 4
+}
+
+func (i *InitProducerIDResponse) isFlexible() bool {
+	return i.isFlexibleVersion(i.Version)
+}
+
+func (i *InitProducerIDResponse) isFlexibleVersion(version int16) bool {
+	return version >= 2
 }
 
 func (i *InitProducerIDResponse) requiredVersion() KafkaVersion {

@@ -4,7 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws/request"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/aws/retry"
 	"github.com/grafana/dskit/backoff"
 	attribute "go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -12,38 +13,29 @@ import (
 
 // Map Cortex Backoff into AWS Retryer interface
 type retryer struct {
+	aws.Retryer
 	*backoff.Backoff
 	maxRetries int
+	context.Context
 }
-
-var _ request.Retryer = &retryer{}
 
 func newRetryer(ctx context.Context, cfg backoff.Config) *retryer {
 	return &retryer{
-		Backoff:    backoff.New(ctx, cfg),
-		maxRetries: cfg.MaxRetries,
-	}
+		retry.AddWithMaxBackoffDelay(retry.AddWithMaxAttempts(retry.NewStandard(), cfg.MaxRetries), cfg.MaxBackoff),
+		backoff.New(ctx, cfg),
+		cfg.MaxRetries, ctx}
 }
 
-func (r *retryer) withRetries(req *request.Request) {
-	req.Retryer = r
+// MaxAttempts is the number of times a request may be retried before
+// failing.
+func (r *retryer) MaxAttempts() int {
+	return r.maxRetries
 }
 
 // RetryRules return the retry delay that should be used by the SDK before
 // making another request attempt for the failed request.
-func (r *retryer) RetryRules(req *request.Request) time.Duration {
+func (r *retryer) RetryDelay(_ int, _ error) (time.Duration, error) {
 	duration := r.NextDelay()
-	trace.SpanFromContext(req.Context()).SetAttributes(attribute.Int("retry", r.NumRetries()))
-	return duration
-}
-
-// ShouldRetry returns if the failed request is retryable.
-func (r *retryer) ShouldRetry(req *request.Request) bool {
-	return r.Ongoing() && (req.IsErrorRetryable() || req.IsErrorThrottle())
-}
-
-// MaxRetries is the number of times a request may be retried before
-// failing.
-func (r *retryer) MaxRetries() int {
-	return r.maxRetries
+	trace.SpanFromContext(r.Context).SetAttributes(attribute.Int("retry", r.NumRetries()))
+	return duration, nil
 }

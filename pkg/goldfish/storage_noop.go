@@ -28,6 +28,16 @@ func (n *NoopStorage) GetSampledQueries(_ context.Context, _, _ int, _ QueryFilt
 	return nil, errors.New("goldfish feature is disabled")
 }
 
+// GetQueryByCorrelationID returns an error as goldfish is disabled
+func (n *NoopStorage) GetQueryByCorrelationID(_ context.Context, _ string) (*QuerySample, error) {
+	return nil, errors.New("goldfish feature is disabled")
+}
+
+// GetStatistics returns an error as goldfish is disabled
+func (n *NoopStorage) GetStatistics(_ context.Context, _ StatsFilter) (*Statistics, error) {
+	return nil, errors.New("goldfish feature is disabled")
+}
+
 // Close is a no-op
 func (n *NoopStorage) Close() error {
 	return nil

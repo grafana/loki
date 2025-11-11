@@ -2,7 +2,7 @@
   description = "Grafana Loki";
 
   inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs/nixpkgs-unstable";
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-25.05";
     flake-utils.url = "github:numtide/flake-utils";
   };
 
@@ -16,12 +16,12 @@
           };
       in
       rec {
-        defaultPackage = pkgs.loki;
-
         packages = import ./nix {
           inherit self pkgs;
           inherit (pkgs) lib;
         };
+
+        defaultPackage = packages.loki;
 
         apps = {
           lint = {
@@ -44,7 +44,7 @@
 
             chart-testing
             gcc
-            go
+            go_1_25
             golangci-lint
             gotools
             helm-docs
@@ -52,7 +52,7 @@
             nixpkgs-fmt
             statix
             yamllint
-          ] // packages;
+          ] ++ (builtins.attrValues packages);
         };
       });
 }

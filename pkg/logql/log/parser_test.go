@@ -57,7 +57,8 @@ func Test_jsonParser_Parse(t *testing.T) {
 			},
 			NoParserHints(),
 		},
-		{"numeric",
+		{
+			"numeric",
 			[]byte(`{"counter":1, "price": {"_net_":5.56909}}`),
 			labels.EmptyLabels(),
 			labels.FromStrings("counter", "1",
@@ -306,7 +307,7 @@ func TestLabelShortCircuit(t *testing.T) {
 			name, category, ok := lbs.GetWithCategory("name")
 			require.True(t, ok)
 			require.Equal(t, ParsedLabel, category)
-			require.Contains(t, string(name), "text1")
+			require.Contains(t, name, "text1")
 		})
 	}
 }
@@ -662,6 +663,18 @@ func TestJSONExpressionParser(t *testing.T) {
 			labels.FromStrings("foo", "bar"),
 			labels.FromStrings("foo", "bar",
 				"app", `{"name":"great \"loki\""}`,
+			),
+			NoParserHints(),
+		},
+		{
+			"duplicate field name takes first value",
+			[]byte(`{"app":"foo","app":"duplicate"}`),
+			[]LabelExtractionExpr{
+				NewLabelExtractionExpr("app", `app`),
+			},
+			labels.FromStrings("foo", "bar"),
+			labels.FromStrings("foo", "bar",
+				"app", "foo",
 			),
 			NoParserHints(),
 		},
@@ -1375,7 +1388,7 @@ func TestLogfmtConsistentPrecedence(t *testing.T) {
 		var (
 			metadataStream = NewBaseLabelsBuilder().
 					ForLabels(labels.FromStrings("foo", "bar"), 0).
-					Set(StructuredMetadataLabel, []byte("app"), []byte("loki"))
+					Set(StructuredMetadataLabel, "app", "loki")
 
 			basicStream = NewBaseLabelsBuilder().
 					ForLabels(labels.FromStrings("foo", "baz"), 0)
@@ -1390,12 +1403,12 @@ func TestLogfmtConsistentPrecedence(t *testing.T) {
 		require.True(t, ok)
 
 		res, cat, ok := metadataStream.GetWithCategory("app")
-		require.Equal(t, "lowkey", string(res))
+		require.Equal(t, "lowkey", res)
 		require.Equal(t, ParsedLabel, cat)
 		require.True(t, ok)
 
 		res, cat, ok = basicStream.GetWithCategory("app")
-		require.Equal(t, "lowkey", string(res))
+		require.Equal(t, "lowkey", res)
 		require.Equal(t, ParsedLabel, cat)
 		require.True(t, ok)
 	})
@@ -1404,7 +1417,7 @@ func TestLogfmtConsistentPrecedence(t *testing.T) {
 		var (
 			metadataStream = NewBaseLabelsBuilder().
 					ForLabels(labels.FromStrings("foo", "bar"), 0).
-					Set(StructuredMetadataLabel, []byte("app"), []byte("loki"))
+					Set(StructuredMetadataLabel, "app", "loki")
 
 			basicStream = NewBaseLabelsBuilder().
 					ForLabels(labels.FromStrings("foo", "baz"), 0)
@@ -1419,16 +1432,15 @@ func TestLogfmtConsistentPrecedence(t *testing.T) {
 		require.True(t, ok)
 
 		res, cat, ok := metadataStream.GetWithCategory("app")
-		require.Equal(t, "lowkey", string(res))
+		require.Equal(t, "lowkey", res)
 		require.Equal(t, ParsedLabel, cat)
 		require.True(t, ok)
 
 		res, cat, ok = basicStream.GetWithCategory("app")
-		require.Equal(t, "lowkey", string(res))
+		require.Equal(t, "lowkey", res)
 		require.Equal(t, ParsedLabel, cat)
 		require.True(t, ok)
 	})
-
 }
 
 func TestLogfmtExpressionParser(t *testing.T) {
