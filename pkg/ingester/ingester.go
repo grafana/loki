@@ -88,6 +88,35 @@ var (
 	activeTenantsStats = analytics.NewInt("ingester_active_tenants")
 )
 
+// unregisteringRegisterer is a prometheus.Registerer wrapper that automatically
+// unregisters any previously registered collector with the same description before
+// registering a new one. This allows metrics to be "re-registered" when recreating
+// the partition lifecycler.
+type unregisteringRegisterer struct {
+	prometheus.Registerer
+}
+
+func (r *unregisteringRegisterer) Register(c prometheus.Collector) error {
+	err := r.Registerer.Register(c)
+	if are, ok := err.(prometheus.AlreadyRegisteredError); ok {
+		// Unregister the existing collector and register the new one
+		if reg, ok := r.Registerer.(prometheus.Registerer); ok {
+			reg.Unregister(are.ExistingCollector)
+			// Try registering again after unregistering the old one
+			return r.Registerer.Register(c)
+		}
+	}
+	return err
+}
+
+func (r *unregisteringRegisterer) MustRegister(cs ...prometheus.Collector) {
+	for _, c := range cs {
+		if err := r.Register(c); err != nil {
+			panic(err)
+		}
+	}
+}
+
 // Config for an ingester.
 type Config struct {
 	LifecyclerConfig ring.LifecyclerConfig `yaml:"lifecycler,omitempty" doc:"description=Configures how the lifecycle of the ingester will operate and where it will register for discovery."`
@@ -301,7 +330,10 @@ type Ingester struct {
 
 	ingestPartitionID       int32
 	partitionRingLifecycler *ring.PartitionInstanceLifecycler
+	partitionRingKVStore    kv.Client // KV store for partition ring, used to delete and recreate partitions
 	partitionReader         *partition.ReaderService
+
+	registerer prometheus.Registerer // Stored to recreate lifecycler when needed
 }
 
 // New makes a new Ingester.
@@ -336,6 +368,7 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 		writeLogManager:       writefailures.NewManager(logger, registerer, writeFailuresCfg, configs, "ingester"),
 		customStreamsTracker:  customStreamsTracker,
 		readRing:              readRing,
+		registerer:            registerer,
 	}
 	i.replayController = newReplayController(metrics, cfg.WAL, &replayFlusher{i})
 
@@ -377,6 +410,9 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 				return nil, fmt.Errorf("creating KV store for ingester partition ring: %w", err)
 			}
 		}
+		// Store the KV client so we can use it to delete and recreate partitions
+		i.partitionRingKVStore = partitionRingKV
+
 		i.partitionRingLifecycler = ring.NewPartitionInstanceLifecycler(
 			i.cfg.KafkaIngestion.PartitionRingConfig.ToLifecyclerConfig(i.ingestPartitionID, cfg.LifecyclerConfig.ID),
 			PartitionRingName,
@@ -630,6 +666,7 @@ func (i *Ingester) starting(ctx context.Context) (err error) {
 	i.loopDone.Add(1)
 	go i.loop()
 
+	level.Info(i.logger).Log("msg", "starting partition ring lifecycler -  test log 3")
 	// When kafka ingestion is enabled, start the partition ring lifecycler first so the partition
 	// enters PENDING state. The partition reader will catch up asynchronously in the background,
 	// and the partition will automatically transition to ACTIVE once catch-up completes.
@@ -637,6 +674,31 @@ func (i *Ingester) starting(ctx context.Context) (err error) {
 	if i.partitionRingLifecycler != nil {
 		if err := services.StartAndAwaitRunning(ctx, i.partitionRingLifecycler); err != nil {
 			return fmt.Errorf("failed to start partition ring lifecycler: %w", err)
+		}
+
+		// Check the current partition state. If it's ACTIVE from a previous deployment, we need to
+		// delete and recreate it to ensure async catch-up works correctly.
+		currentState, _, err := i.partitionRingLifecycler.GetPartitionState(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to get partition state: %w", err)
+		}
+
+		if currentState == ring.PartitionActive {
+			// Partition is ACTIVE from a previous deployment. We must delete and recreate it to ensure
+			// query consistency during catch-up. Since ACTIVE → PENDING transitions are not allowed,
+			// we delete the partition entirely and let the lifecycler recreate it in PENDING state.
+			level.Info(log.With(i.logger, "partition", i.ingestPartitionID)).Log("msg", "partition is ACTIVE from previous deployment, deleting and recreating as PENDING")
+
+			if err := i.deleteAndRecreatePartition(ctx); err != nil {
+				return fmt.Errorf("failed to delete and recreate partition: %w", err)
+			}
+		} else if currentState != ring.PartitionPending {
+			// Partition is not ACTIVE or PENDING (likely INACTIVE), explicitly set it to PENDING
+			// to ensure it doesn't serve queries until catch-up completes.
+			if err := i.partitionRingLifecycler.ChangePartitionState(ctx, ring.PartitionPending); err != nil {
+				return fmt.Errorf("failed to change partition state to PENDING: %w", err)
+			}
+			level.Info(log.With(i.logger, "partition", i.ingestPartitionID)).Log("msg", "partition set to PENDING, will activate after catch-up completes")
 		}
 	}
 
@@ -678,6 +740,74 @@ func (i *Ingester) starting(ctx context.Context) (err error) {
 		go i.autoActivatePartitionAfterCatchup()
 	}
 
+	return nil
+}
+
+// deleteAndRecreatePartition deletes the partition from the ring and recreates it in PENDING state.
+// This is necessary when a partition is ACTIVE from a previous deployment, since ACTIVE → PENDING
+// transitions are not allowed by dskit.
+func (i *Ingester) deleteAndRecreatePartition(ctx context.Context) error {
+	logger := log.With(i.logger, "partition", i.ingestPartitionID)
+
+	// Step 1: Stop the existing lifecycler
+	level.Info(logger).Log("msg", "stopping partition ring lifecycler")
+	if err := services.StopAndAwaitTerminated(ctx, i.partitionRingLifecycler); err != nil {
+		return fmt.Errorf("stopping partition ring lifecycler: %w", err)
+	}
+
+	// Step 2: Delete the partition and its owner from the ring by directly updating the KV store
+	level.Info(logger).Log("msg", "deleting partition and owner from ring")
+	// The owner ID is the instance ID (MultiPartitionOwnership is not enabled for ingesters)
+	ownerID := i.cfg.LifecyclerConfig.ID
+	err := i.partitionRingKVStore.CAS(ctx, PartitionRingKey, func(in interface{}) (out interface{}, retry bool, err error) {
+		ringDesc := ring.GetOrCreatePartitionRingDesc(in)
+
+		// Remove the partition
+		if _, exists := ringDesc.Partitions[i.ingestPartitionID]; !exists {
+			// Partition doesn't exist, nothing to delete
+			return nil, false, nil
+		}
+
+		// Remove the owner first to ensure no stale owner metadata remains.
+		// This is critical because RemovePartition() only removes the partition descriptor,
+		// not the associated owner metadata. If we don't remove the owner explicitly,
+		// the old owner with an old timestamp will remain in the ring and cause dskit
+		// to think the partition has been registered for a long time.
+		ringDesc.RemoveOwner(ownerID)
+		// Then remove the partition descriptor
+		ringDesc.RemovePartition(i.ingestPartitionID)
+		return ringDesc, true, nil
+	})
+	if err != nil {
+		return fmt.Errorf("deleting partition from ring: %w", err)
+	}
+
+	// Step 3: Create a new lifecycler instance (we can't restart a terminated service)
+	level.Info(logger).Log("msg", "creating new partition ring lifecycler to recreate partition as PENDING")
+	// Wrap the registerer to automatically unregister old metrics before registering new ones.
+	// The first lifecycler registered metrics before being stopped, and those registrations
+	// remain in the registry. The recreated lifecycler needs to register new collectors for
+	// the same metrics, so we use a wrapper that unregisters the old collectors first.
+	// This ensures the new lifecycler's metrics are actually collected.
+	unregisteringReg := &unregisteringRegisterer{
+		Registerer: prometheus.WrapRegistererWithPrefix("loki_", i.registerer),
+	}
+	i.partitionRingLifecycler = ring.NewPartitionInstanceLifecycler(
+		i.cfg.KafkaIngestion.PartitionRingConfig.ToLifecyclerConfig(i.ingestPartitionID, i.cfg.LifecyclerConfig.ID),
+		PartitionRingName,
+		PartitionRingKey,
+		i.partitionRingKVStore,
+		i.logger,
+		unregisteringReg,
+	)
+
+	// Step 4: Start the new lifecycler, which will recreate the partition in PENDING state
+	level.Info(logger).Log("msg", "starting new partition ring lifecycler")
+	if err := services.StartAndAwaitRunning(ctx, i.partitionRingLifecycler); err != nil {
+		return fmt.Errorf("starting new partition ring lifecycler: %w", err)
+	}
+
+	level.Info(logger).Log("msg", "partition recreated in PENDING state")
 	return nil
 }
 

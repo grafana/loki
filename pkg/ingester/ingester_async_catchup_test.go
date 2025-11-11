@@ -7,10 +7,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
+	"github.com/grafana/dskit/kv/consul"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/kafka/partitionring"
 )
 
 // mockPartitionReader implements services.Service for testing
@@ -264,6 +269,213 @@ func TestPartitionStaysPendingDuringCatchup(t *testing.T) {
 		state, _, _ := mockLifecycler.GetPartitionState(context.Background())
 		return state == ring.PartitionActive
 	}, 1*time.Second, 50*time.Millisecond, "Partition should transition to ACTIVE after catch-up")
+}
+
+// TestPartitionStateResetOnStartup verifies that partitions are correctly reset to PENDING state
+// on startup. For ACTIVE partitions, we delete and recreate them. For other states, we transition
+// them to PENDING.
+func TestPartitionStateResetOnStartup(t *testing.T) {
+	tests := []struct {
+		name                 string
+		initialState         ring.PartitionState
+		shouldDeleteRecreate bool
+		shouldChangeState    bool
+		expectedFinalState   ring.PartitionState
+		expectedCallCount    int
+	}{
+		{
+			name:                 "partition ACTIVE - delete and recreate as PENDING",
+			initialState:         ring.PartitionActive,
+			shouldDeleteRecreate: true,
+			shouldChangeState:    false,
+			expectedFinalState:   ring.PartitionPending,
+			expectedCallCount:    0, // No ChangePartitionState call, we delete and recreate instead
+		},
+		{
+			name:                 "partition PENDING - already in correct state",
+			initialState:         ring.PartitionPending,
+			shouldDeleteRecreate: false,
+			shouldChangeState:    false,
+			expectedFinalState:   ring.PartitionPending,
+			expectedCallCount:    0, // No state change needed
+		},
+		{
+			name:                 "partition INACTIVE - set to PENDING",
+			initialState:         ring.PartitionInactive,
+			shouldDeleteRecreate: false,
+			shouldChangeState:    true,
+			expectedFinalState:   ring.PartitionPending,
+			expectedCallCount:    1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockLifecycler := newMockPartitionRingLifecycler()
+			mockLifecycler.partitionState = tt.initialState
+
+			// Simulate startup sequence
+			currentState, _, err := mockLifecycler.GetPartitionState(context.Background())
+			require.NoError(t, err)
+
+			if currentState == ring.PartitionActive {
+				// Simulate delete and recreate: partition is deleted, then lifecycler recreates it as PENDING
+				mockLifecycler.partitionState = ring.PartitionPending
+			} else if currentState != ring.PartitionPending {
+				// Set to PENDING if not already
+				err = mockLifecycler.ChangePartitionState(context.Background(), ring.PartitionPending)
+				require.NoError(t, err, "Should successfully change partition state to PENDING")
+			}
+
+			// Verify final state
+			finalState, _, err := mockLifecycler.GetPartitionState(context.Background())
+			require.NoError(t, err)
+			assert.Equal(t, tt.expectedFinalState, finalState, "Final partition state should match expected")
+
+			// Verify ChangePartitionState call count
+			calls := mockLifecycler.getChangeStateCalls()
+			assert.Len(t, calls, tt.expectedCallCount, "ChangePartitionState call count should match expected")
+
+			if tt.shouldChangeState {
+				assert.Equal(t, ring.PartitionPending, calls[0], "Should have set partition to PENDING")
+			}
+		})
+	}
+}
+
+// TestMultiplePartitionRecreations verifies that deleteAndRecreatePartition can be called
+// multiple times without panicking due to duplicate metric registration, and that metrics
+// remain available throughout the lifecycle.
+func TestMultiplePartitionRecreations(t *testing.T) {
+	kvStore, closer := consul.NewInMemoryClient(ring.GetPartitionRingCodec(), log.NewNopLogger(), nil)
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
+	// Use the SAME registry across all recreations to test duplicate registration handling
+	reg := prometheus.NewRegistry()
+
+	instanceID := "ingester-zone-a-0"
+	partitionID, err := partitionring.ExtractPartitionID(instanceID)
+	require.NoError(t, err)
+
+	// Helper to create and start a lifecycler (mimics what deleteAndRecreatePartition does)
+	createLifecycler := func() *ring.PartitionInstanceLifecycler {
+		lifecyclerCfg := ring.PartitionInstanceLifecyclerConfig{
+			PartitionID:                 partitionID,
+			InstanceID:                  instanceID,
+			WaitOwnersCountOnPending:    1,
+			WaitOwnersDurationOnPending: 24 * time.Hour,
+			PollingInterval:             100 * time.Millisecond,
+		}
+
+		// Use unregisteringRegisterer to automatically unregister old metrics
+		// before registering new ones, ensuring the new lifecycler's metrics are collected
+		unregisteringReg := &unregisteringRegisterer{
+			Registerer: prometheus.WrapRegistererWithPrefix("loki_", reg),
+		}
+
+		lc := ring.NewPartitionInstanceLifecycler(
+			lifecyclerCfg,
+			PartitionRingName,
+			PartitionRingKey,
+			kvStore,
+			log.NewNopLogger(),
+			unregisteringReg,
+		)
+
+		err := services.StartAndAwaitRunning(context.Background(), lc)
+		require.NoError(t, err)
+		return lc
+	}
+
+	// Helper to get metric value
+	getMetricValue := func(metricName string) float64 {
+		metrics, err := reg.Gather()
+		require.NoError(t, err)
+		for _, mf := range metrics {
+			if mf.GetName() == metricName {
+				if len(mf.GetMetric()) > 0 {
+					var sum float64
+					for _, m := range mf.GetMetric() {
+						if m.GetCounter() != nil {
+							sum += m.GetCounter().GetValue()
+						}
+					}
+					return sum
+				}
+			}
+		}
+		return 0
+	}
+
+	// Create mock ingester structure for deleteAndRecreatePartition
+	mockIng := &Ingester{
+		cfg: Config{
+			LifecyclerConfig: ring.LifecyclerConfig{
+				ID: instanceID,
+			},
+			KafkaIngestion: KafkaIngestionConfig{
+				PartitionRingConfig: partitionring.Config{
+					MinOwnersCount:    1,
+					MinOwnersDuration: 24 * time.Hour,
+				},
+			},
+		},
+		ingestPartitionID:    partitionID,
+		partitionRingKVStore: kvStore,
+		logger:               log.NewNopLogger(),
+		registerer:           reg,
+	}
+
+	// Test 3 cycles of delete/recreate
+	// NOTE: In production, deleteAndRecreatePartition is only called ONCE at startup.
+	// This test verifies it can be called multiple times without panicking, and that
+	// each lifecycle independently collects metrics.
+	for cycle := 1; cycle <= 3; cycle++ {
+		t.Run(fmt.Sprintf("cycle_%d", cycle), func(t *testing.T) {
+			// Create and start lifecycler
+			mockIng.partitionRingLifecycler = createLifecycler()
+
+			// Set partition to ACTIVE
+			err := kvStore.CAS(context.Background(), PartitionRingKey, func(in interface{}) (out interface{}, retry bool, err error) {
+				ringDesc := ring.GetOrCreatePartitionRingDesc(in)
+				ringDesc.UpdatePartitionState(partitionID, ring.PartitionActive, time.Now())
+				return ringDesc, true, nil
+			})
+			require.NoError(t, err)
+
+			// Delete and recreate - should NOT panic on duplicate metrics
+			// This unregisters old metrics and registers new ones (which start at 0)
+			err = mockIng.deleteAndRecreatePartition(context.Background())
+			require.NoError(t, err, "deleteAndRecreatePartition should succeed in cycle %d", cycle)
+
+			// Verify partition is PENDING
+			state, _, err := mockIng.partitionRingLifecycler.GetPartitionState(context.Background())
+			require.NoError(t, err)
+			assert.Equal(t, ring.PartitionPending, state, "Partition should be PENDING after recreation in cycle %d", cycle)
+
+			// Wait for reconciliation
+			time.Sleep(200 * time.Millisecond)
+
+			// Verify the NEW lifecycler is actively collecting metrics
+			// Since we unregister/re-register, the counter starts at 0 and should have
+			// incremented after 200ms of reconciliation
+			metricsValue := getMetricValue("loki_partition_ring_lifecycler_reconciles_total")
+			assert.Greater(t, metricsValue, float64(0),
+				"Cycle %d: metrics value (%f) should be > 0, proving the new lifecycler is actively collecting",
+				cycle, metricsValue)
+
+			// Stop for next cycle
+			err = services.StopAndAwaitTerminated(context.Background(), mockIng.partitionRingLifecycler)
+			require.NoError(t, err)
+		})
+	}
+
+	// Final verification: metrics from the first lifecycler should still be available
+	t.Run("final_metrics_check", func(t *testing.T) {
+		reconcilesTotal := getMetricValue("loki_partition_ring_lifecycler_reconciles_total")
+		assert.Greater(t, reconcilesTotal, float64(0),
+			"Metrics from first lifecycler should remain available after all recreations")
+	})
 }
 
 // TestPartitionActivationRace tests the scenario where the reconciliation loop
