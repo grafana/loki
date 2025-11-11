@@ -105,7 +105,7 @@ func guessLokiType(ref types.ColumnRef) (types.DataType, error) {
 
 // Read computes the topk as the next record. Read blocks until all input
 // pipelines have been fully read and the top K rows have been computed.
-func (p *topkPipeline) Read(ctx context.Context) (arrow.Record, error) {
+func (p *topkPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	if !p.computed {
 		rec, err := p.compute(ctx)
 		p.computed = true
@@ -114,7 +114,7 @@ func (p *topkPipeline) Read(ctx context.Context) (arrow.Record, error) {
 	return nil, EOF
 }
 
-func (p *topkPipeline) compute(ctx context.Context) (arrow.Record, error) {
+func (p *topkPipeline) compute(ctx context.Context) (arrow.RecordBatch, error) {
 NextInput:
 	for _, in := range p.inputs {
 		for {

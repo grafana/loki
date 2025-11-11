@@ -12,20 +12,47 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-/*
-Package swag contains a bunch of helper functions for go-openapi and go-swagger projects.
-
-You may also use it standalone for your projects.
-
-  - convert between value and pointers for builtin types
-  - convert from string to builtin types (wraps strconv)
-  - fast json concatenation
-  - search in path
-  - load from file or http
-  - name mangling
-
-This repo has only few dependencies outside of the standard library:
-
-  - YAML utilities depend on gopkg.in/yaml.v2
-*/
+// Package swag contains a bunch of helper functions for go-openapi and go-swagger projects.
+//
+// You may also use it standalone for your projects.
+//
+// NOTE: all features that used to be exposed as package-level members (constants, variables,
+// functions and types) are now deprecated and are superseded by equivalent features in
+// more specialized sub-packages.
+// Moving forward, no additional feature will be added to the [swag] API directly at the root package level,
+// which remains there for backward-compatibility purposes.
+//
+// Child modules will continue to evolve or some new ones may be added in the future.
+//
+// # Modules
+//
+//   - [cmdutils]      utilities to work with CLIs
+//
+//   - [conv]          type conversion utilities
+//
+//   - [fileutils]     file utilities
+//
+//   - [jsonname]      JSON utilities
+//
+//   - [jsonutils]     JSON utilities
+//
+//   - [loading]       file loading
+//
+//   - [mangling]      safe name generation
+//
+//   - [netutils]      networking utilities
+//
+//   - [stringutils]   `string` utilities
+//
+//   - [typeutils]     `go` types utilities
+//
+//   - [yamlutils]     YAML utilities
+//
+// # Dependencies
+//
+// This repo has a few dependencies outside of the standard library:
+//
+//   - YAML utilities depend on [go.yaml.in/yaml/v3]
 package swag
+
+//go:generate mockery

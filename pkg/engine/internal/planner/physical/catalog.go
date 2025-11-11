@@ -49,14 +49,18 @@ func (t *TimeRange) Overlaps(secondRange TimeRange) bool {
 	return !t.Start.After(secondRange.End) && !secondRange.Start.After(t.End)
 }
 
+func (t *TimeRange) IsZero() bool {
+	return t.Start.IsZero() && t.End.IsZero()
+}
+
 func (t *TimeRange) Merge(secondRange TimeRange) TimeRange {
 	var out TimeRange
-	if t.Start.Before(secondRange.Start) {
+	if secondRange.Start.IsZero() || !t.Start.IsZero() && t.Start.Before(secondRange.Start) {
 		out.Start = t.Start
 	} else {
 		out.Start = secondRange.Start
 	}
-	if t.End.After(secondRange.End) {
+	if secondRange.End.IsZero() || !t.End.IsZero() && t.End.After(secondRange.End) {
 		out.End = t.End
 	} else {
 		out.End = secondRange.End

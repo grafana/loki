@@ -25,6 +25,7 @@ import (
 	"github.com/baidubce/bce-sdk-go/bce"
 	"github.com/baidubce/bce-sdk-go/http"
 	"github.com/baidubce/bce-sdk-go/util"
+	"github.com/baidubce/bce-sdk-go/util/log"
 )
 
 // InitiateMultipartUpload - initiate a multipart upload to get a upload ID
@@ -163,6 +164,7 @@ func UploadPart(cli bce.Client, bucket, object, uploadId string, partNumber int,
 			http.BCE_CONTENT_CRC32:       args.ContentCrc32,
 			http.BCE_CONTENT_CRC32C:      args.ContentCrc32c,
 			http.BCE_CONTENT_CRC32C_FLAG: strconv.FormatBool(args.ContentCrc32cFlag),
+			http.BCE_CONTENT_CRC64ECMA:   args.ContentCrc64ECMA,
 		})
 		//set traffic-limit
 		if args.TrafficLimit > 0 {
@@ -260,6 +262,7 @@ func UploadPartFromBytes(cli bce.Client, bucket, object, uploadId string, partNu
 			http.BCE_CONTENT_CRC32:       args.ContentCrc32,
 			http.BCE_CONTENT_CRC32C:      args.ContentCrc32c,
 			http.BCE_CONTENT_CRC32C_FLAG: strconv.FormatBool(args.ContentCrc32cFlag),
+			http.BCE_CONTENT_CRC64ECMA:   args.ContentCrc64ECMA,
 		})
 		//set traffic-limit
 		if args.TrafficLimit > 0 {
@@ -332,6 +335,7 @@ func UploadPartCopy(cli bce.Client, bucket, object, source, uploadId string, par
 			http.BCE_COPY_SOURCE_IF_UNMODIFIED_SINCE: args.IfUnmodifiedSince,
 			http.BCE_CONTENT_CRC32C:                  args.ContentCrc32c,
 			http.BCE_CONTENT_CRC32C_FLAG:             strconv.FormatBool(args.ContentCrc32cFlag),
+			http.BCE_CONTENT_CRC64ECMA:               args.ContentCrc64ECMA,
 		})
 		//set traffic-limit
 		if args.TrafficLimit > 0 {
@@ -356,6 +360,9 @@ func UploadPartCopy(cli bce.Client, bucket, object, source, uploadId string, par
 	result := &CopyObjectResult{}
 	if err := resp.ParseJsonBody(result); err != nil {
 		return nil, err
+	}
+	if resp.Header(http.BCE_REQUEST_ID) != "" {
+		result.RequestId = resp.Header(http.BCE_REQUEST_ID)
 	}
 	return result, nil
 }
@@ -395,18 +402,13 @@ func CompleteMultipartUpload(cli bce.Client, bucket, object, uploadId string, bo
 				return nil, err
 			}
 		}
-		if len(args.Process) != 0 {
-			req.SetHeader(http.BCE_PROCESS, args.Process)
-		}
-		if len(args.ContentCrc32) != 0 {
-			req.SetHeader(http.BCE_CONTENT_CRC32, args.ContentCrc32)
-		}
-		if len(args.ContentCrc32c) != 0 {
-			req.SetHeader(http.BCE_CONTENT_CRC32C, args.ContentCrc32c)
-		}
-		if args.ContentCrc32cFlag {
-			req.SetHeader(http.BCE_CONTENT_CRC32C_FLAG, strconv.FormatBool(args.ContentCrc32cFlag))
-		}
+		setOptionalNullHeaders(req, map[string]string{
+			http.BCE_PROCESS:             args.Process,
+			http.BCE_CONTENT_CRC32:       args.ContentCrc32,
+			http.BCE_CONTENT_CRC32C:      args.ContentCrc32c,
+			http.BCE_CONTENT_CRC32C_FLAG: strconv.FormatBool(args.ContentCrc32cFlag),
+			http.BCE_CONTENT_CRC64ECMA:   args.ContentCrc64ECMA,
+		})
 		if args.ObjectExpires > 0 {
 			req.SetHeader(http.BCE_OBJECT_EXPIRES, fmt.Sprintf("%d", args.ObjectExpires))
 		}
@@ -431,9 +433,10 @@ func CompleteMultipartUpload(cli bce.Client, bucket, object, uploadId string, bo
 		getHeader(http.BCE_CONTENT_CRC32, &result.ContentCrc32),
 		getHeader(http.BCE_CONTENT_CRC32C, &result.ContentCrc32c),
 		getHeader(http.BCE_VERSION_ID, &result.VersionId),
+		getHeader(http.BCE_CONTENT_CRC64ECMA, &result.ContentCrc64ECMA),
 	}
 	if err := handleGetOptions(resp, getOptions); err != nil {
-		return nil, bce.NewBceClientError(fmt.Sprintf("Handle get options error: %s", err))
+		log.Warnf("Handle get options error: %s", err)
 	}
 	if args != nil && args.ContentCrc32c != "" && args.ContentCrc32c != result.ContentCrc32c {
 		errMsg := fmt.Sprintf(BOS_CRC32C_CHECK_ERROR_MSG, args.ContentCrc32c, result.ContentCrc32c)

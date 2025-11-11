@@ -19,7 +19,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/go-openapi/swag"
+	"github.com/go-openapi/swag/jsonutils"
 )
 
 // Paths holds the relative paths to the individual endpoints.
@@ -30,18 +30,19 @@ import (
 // For more information: http://goo.gl/8us55a#pathsObject
 type Paths struct {
 	VendorExtensible
+
 	Paths map[string]PathItem `json:"-"` // custom serializer to flatten this, each entry must start with "/"
 }
 
 // JSONLookup look up a value by the json property name
-func (p Paths) JSONLookup(token string) (interface{}, error) {
+func (p Paths) JSONLookup(token string) (any, error) {
 	if pi, ok := p.Paths[token]; ok {
 		return &pi, nil
 	}
 	if ex, ok := p.Extensions[token]; ok {
 		return &ex, nil
 	}
-	return nil, fmt.Errorf("object has no field %q", token)
+	return nil, fmt.Errorf("object has no field %q: %w", token, ErrSpec)
 }
 
 // UnmarshalJSON hydrates this items instance with the data from JSON
@@ -53,9 +54,9 @@ func (p *Paths) UnmarshalJSON(data []byte) error {
 	for k, v := range res {
 		if strings.HasPrefix(strings.ToLower(k), "x-") {
 			if p.Extensions == nil {
-				p.Extensions = make(map[string]interface{})
+				p.Extensions = make(map[string]any)
 			}
-			var d interface{}
+			var d any
 			if err := json.Unmarshal(v, &d); err != nil {
 				return err
 			}
@@ -92,6 +93,6 @@ func (p Paths) MarshalJSON() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	concated := swag.ConcatJSON(b1, b2)
+	concated := jsonutils.ConcatJSON(b1, b2)
 	return concated, nil
 }

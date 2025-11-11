@@ -9,7 +9,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 )
 
-// Records allows for aggregating a set of [arrow.Record]s together into a
+// Records allows for aggregating a set of [arrow.RecordBatch]s together into a
 // single, combined record with a combined schema.
 //
 // The returned record will have a schema composed of the union of all fields
@@ -20,7 +20,7 @@ type Records struct {
 	mem memory.Allocator
 
 	fields  []arrow.Field
-	records []arrow.Record
+	records []arrow.RecordBatch
 	rows    int64
 
 	hash        maphash.Hash
@@ -50,7 +50,7 @@ func NewRecords(mem memory.Allocator) *Records {
 //
 // Append panics if encountering an unlikely hash collision between two
 // different schemas.
-func (r *Records) Append(rec arrow.Record) {
+func (r *Records) Append(rec arrow.RecordBatch) {
 	r.processSchema(rec.Schema())
 
 	r.records = append(r.records, rec)
@@ -101,7 +101,7 @@ func (r *Records) hashField(field arrow.Field) uint64 {
 
 // AppendSlice behaves like [Records.Append] but instead appends a slice of the
 // input record from i to j.
-func (r *Records) AppendSlice(rec arrow.Record, i, j int64) {
+func (r *Records) AppendSlice(rec arrow.RecordBatch, i, j int64) {
 	slice := rec.NewSlice(i, j)
 	r.Append(slice)
 }
@@ -118,7 +118,7 @@ func (r *Records) AppendSlice(rec arrow.Record, i, j int64) {
 //
 // After calling Aggregate, r is reset and can be reused to append more arrays.
 // This reset is done even if Aggregate returns an error.
-func (r *Records) Aggregate() (arrow.Record, error) {
+func (r *Records) Aggregate() (arrow.RecordBatch, error) {
 	if len(r.records) == 0 {
 		return nil, fmt.Errorf("no records to flush")
 	}
@@ -149,7 +149,7 @@ func (r *Records) Aggregate() (arrow.Record, error) {
 	}
 
 	combinedSchema := arrow.NewSchema(r.fields, nil)
-	return array.NewRecord(combinedSchema, columns, r.rows), nil
+	return array.NewRecordBatch(combinedSchema, columns, r.rows), nil
 }
 
 // Reset releases all resources held by r and clears its state, allowing it to

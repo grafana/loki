@@ -76,6 +76,7 @@ func (p *planner) processNode(node physical.Node, splitOnBreaker bool) (*Task, e
 		stack     = make(stack[physical.Node], 0, p.physical.Len())
 		visited   = make(map[physical.Node]struct{}, p.physical.Len())
 		nodeTasks = make(map[physical.Node][]*Task, p.physical.Len())
+		timeRange physical.TimeRange
 	)
 
 	stack.Push(node)
@@ -116,6 +117,9 @@ func (p *planner) processNode(node physical.Node, splitOnBreaker bool) (*Task, e
 						return nil, err
 					}
 					sources[next] = append(sources[next], stream)
+
+					// Merge in time ranges of each child
+					timeRange = timeRange.Merge(task.MaxTimeRange)
 				}
 
 			case child.Type() == physical.NodeTypeParallelize:
@@ -139,6 +143,9 @@ func (p *planner) processNode(node physical.Node, splitOnBreaker bool) (*Task, e
 						return nil, err
 					}
 					sources[next] = append(sources[next], stream)
+
+					// Merge in time ranges of each child
+					timeRange = timeRange.Merge(task.MaxTimeRange)
 				}
 
 			default:
@@ -155,12 +162,18 @@ func (p *planner) processNode(node physical.Node, splitOnBreaker bool) (*Task, e
 		}
 	}
 
+	fragment := physical.FromGraph(taskPlan)
+	planTimeRange := fragment.CalculateMaxTimeRange()
+	if !planTimeRange.IsZero() {
+		timeRange = planTimeRange
+	}
 	task := &Task{
-		ULID:     ulid.Make(),
-		TenantID: p.tenantID,
-		Fragment: physical.FromGraph(taskPlan),
-		Sources:  sources,
-		Sinks:    make(map[physical.Node][]*Stream),
+		ULID:         ulid.Make(),
+		TenantID:     p.tenantID,
+		Fragment:     fragment,
+		Sources:      sources,
+		Sinks:        make(map[physical.Node][]*Stream),
+		MaxTimeRange: timeRange,
 	}
 	p.graph.Add(task)
 
@@ -324,13 +337,16 @@ func (p *planner) processParallelizeNode(node *physical.Parallelize) ([]*Task, e
 			shardSources[node] = shardStreams
 		}
 
+		fragment := physical.FromGraph(*shardedPlan)
 		partition := &Task{
 			ULID:     ulid.Make(),
 			TenantID: p.tenantID,
 
-			Fragment: physical.FromGraph(*shardedPlan),
+			Fragment: fragment,
 			Sources:  shardSources,
 			Sinks:    make(map[physical.Node][]*Stream),
+			// Recalculate MaxTimeRange because the new injected `shard` node can cover another time range.
+			MaxTimeRange: fragment.CalculateMaxTimeRange(),
 		}
 		p.graph.Add(partition)
 

@@ -17,7 +17,6 @@ import (
 	"go.uber.org/atomic"
 	"gopkg.in/yaml.v2"
 
-	"github.com/grafana/loki/v3/pkg/engine"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
@@ -150,7 +149,7 @@ func Test_seriesLimiter(t *testing.T) {
 	cfg.CacheIndexStatsResults = false
 	// split in 7 with 2 in // max.
 	l := WithSplitByLimits(fakeLimits{maxSeries: 1, maxQueryParallelism: 2}, time.Hour)
-	tpw, stopper, err := NewMiddleware(cfg, testEngineOpts, engine.Config{}, nil, util_log.Logger, l, config.SchemaConfig{
+	tpw, stopper, err := NewMiddleware(cfg, testEngineOpts, RouterConfig{}, nil, util_log.Logger, l, config.SchemaConfig{
 		Configs: testSchemas,
 	}, nil, false, nil, constants.Loki)
 	if stopper != nil {
@@ -652,7 +651,7 @@ func Test_MaxQueryParallelismDisable(t *testing.T) {
 }
 
 func Test_MaxQueryLookBack(t *testing.T) {
-	tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, engine.Config{}, nil, util_log.Logger, fakeLimits{
+	tpw, stopper, err := NewMiddleware(testConfig, testEngineOpts, RouterConfig{}, nil, util_log.Logger, fakeLimits{
 		maxQueryLookback:    1 * time.Hour,
 		maxQueryParallelism: 1,
 	}, config.SchemaConfig{

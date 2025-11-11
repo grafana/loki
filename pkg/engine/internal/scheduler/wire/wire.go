@@ -26,6 +26,15 @@ type Listener interface {
 	Addr() net.Addr
 }
 
+// A Dialer establishes connections to scheduler peers.
+type Dialer interface {
+	// Dial connects to the scheduler peer at the provided "to" address. The
+	// "from" address is used to establish the address that can be used to
+	// connect back to the caller. Dial returns an error if the context is
+	// canceled or if the connection cannot be established.
+	Dial(ctx context.Context, from, to net.Addr) (Conn, error)
+}
+
 // Conn is a communication stream between two peers.
 type Conn interface {
 	// Send sends the provided Frame to the peer. Send blocks until the Frame

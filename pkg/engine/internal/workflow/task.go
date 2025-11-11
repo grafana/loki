@@ -25,6 +25,13 @@ type Task struct {
 	// Sinks defines which Streams physical nodes write to. Sinks are only
 	// defined for nodes in the Fragment which write data across task boundaries.
 	Sinks map[physical.Node][]*Stream
+
+	// The maximum boundary of timestamps that the task can possibly emit.
+	// Does not account for predicates.
+	// MaxTimeRange is not read when executing a task fragment. It can be used
+	// as metadata to control execution (such as cancelling ongoing tasks based
+	// on their maximum time range).
+	MaxTimeRange physical.TimeRange
 }
 
 // ID returns the Task's ULID.

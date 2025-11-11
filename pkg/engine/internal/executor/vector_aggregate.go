@@ -68,14 +68,14 @@ func newVectorAggregationPipeline(inputs []Pipeline, groupBy []physical.ColumnEx
 }
 
 // Read reads the next value into its state.
-func (v *vectorAggregationPipeline) Read(ctx context.Context) (arrow.Record, error) {
+func (v *vectorAggregationPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	if v.inputsExhausted {
 		return nil, EOF
 	}
 	return v.read(ctx)
 }
 
-func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.Record, error) {
+func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch, error) {
 	var (
 		labelValues = make([]string, len(v.groupBy))
 	)

@@ -16,8 +16,8 @@ func (d *DescribeAclsResponse) setVersion(v int16) {
 }
 
 func (d *DescribeAclsResponse) encode(pe packetEncoder) error {
-	pe.putInt32(int32(d.ThrottleTime / time.Millisecond))
-	pe.putInt16(int16(d.Err))
+	pe.putDurationMs(d.ThrottleTime)
+	pe.putKError(d.Err)
 
 	if err := pe.putNullableString(d.ErrMsg); err != nil {
 		return err
@@ -37,17 +37,14 @@ func (d *DescribeAclsResponse) encode(pe packetEncoder) error {
 }
 
 func (d *DescribeAclsResponse) decode(pd packetDecoder, version int16) (err error) {
-	throttleTime, err := pd.getInt32()
-	if err != nil {
+	if d.ThrottleTime, err = pd.getDurationMs(); err != nil {
 		return err
 	}
-	d.ThrottleTime = time.Duration(throttleTime) * time.Millisecond
 
-	kerr, err := pd.getInt16()
+	d.Err, err = pd.getKError()
 	if err != nil {
 		return err
 	}
-	d.Err = KError(kerr)
 
 	errmsg, err := pd.getString()
 	if err != nil {

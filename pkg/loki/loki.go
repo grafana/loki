@@ -764,9 +764,9 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(IngesterGRPCInterceptors, t.initIngesterGRPCInterceptors, modules.UserInvisibleModule)
 	mm.RegisterModule(QueryFrontendTripperware, t.initQueryFrontendMiddleware, modules.UserInvisibleModule)
 	mm.RegisterModule(QueryFrontend, t.initQueryFrontend)
-	mm.RegisterModule(QueryEngine, t.initV2QueryEngine, modules.UserInvisibleModule)
-	mm.RegisterModule(QueryEngineScheduler, t.initV2QueryEngineScheduler, modules.UserInvisibleModule)
-	mm.RegisterModule(QueryEngineWorker, t.initV2QueryEngineWorker, modules.UserInvisibleModule)
+	mm.RegisterModule(QueryEngine, t.initV2QueryEngine)
+	mm.RegisterModule(QueryEngineScheduler, t.initV2QueryEngineScheduler)
+	mm.RegisterModule(QueryEngineWorker, t.initV2QueryEngineWorker)
 	mm.RegisterModule(RulerStorage, t.initRulerStorage, modules.UserInvisibleModule)
 	mm.RegisterModule(Ruler, t.initRuler)
 	mm.RegisterModule(RuleEvaluator, t.initRuleEvaluator, modules.UserInvisibleModule)
@@ -823,8 +823,8 @@ func (t *Loki) setupModuleManager() error {
 		QueryFrontend:                {QueryFrontendTripperware, Analytics, CacheGenerationLoader, QuerySchedulerRing, UIRing},
 		QueryScheduler:               {Server, Overrides, MemberlistKV, Analytics, QuerySchedulerRing, UIRing},
 		QueryEngine:                  {QueryEngineScheduler},
+		QueryEngineWorker:            {Server, Overrides, TenantConfigs, Analytics},
 		QueryEngineScheduler:         {Server, Overrides, TenantConfigs, Analytics},
-		QueryEngineWorker:            {QueryEngineScheduler},
 		Ruler:                        {Ring, Server, RulerStorage, RuleEvaluator, Overrides, TenantConfigs, Analytics, UIRing},
 		RuleEvaluator:                {Ring, Server, Store, IngesterQuerier, Overrides, TenantConfigs, Analytics},
 		TableManager:                 {Server, Analytics, UIRing},

@@ -154,7 +154,7 @@ func (r *Reader) Schema() *arrow.Schema { return r.schema }
 //
 // When a record is returned, it will match the schema specified by
 // [Reader.Schema]. These records must always be released after use.
-func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.Record, error) {
+func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.RecordBatch, error) {
 	if !r.ready {
 		err := r.init(ctx)
 		if err != nil {
@@ -212,7 +212,7 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.Record, error) 
 
 	// We only return readErr after processing n so that we properly handle n>0
 	// while also getting an error such as io.EOF.
-	return builder.NewRecord(), readErr
+	return builder.NewRecordBatch(), readErr
 }
 
 func (r *Reader) init(ctx context.Context) error {

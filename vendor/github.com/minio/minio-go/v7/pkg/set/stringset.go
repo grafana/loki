@@ -18,10 +18,9 @@
 package set
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
-
-	"github.com/minio/minio-go/v7/internal/json"
 )
 
 // StringSet - uses map as set of strings.

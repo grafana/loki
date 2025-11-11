@@ -32,7 +32,10 @@ var (
 )
 
 func buildJSONColumns(input *array.String, requestedKeys []string) ([]string, []arrow.Array) {
-	return buildColumns(input, requestedKeys, parseJSONLine, types.JSONParserErrorType)
+	parseFunc := func(line string) (map[string]string, error) {
+		return parseJSONLine(line, requestedKeys)
+	}
+	return buildColumns(input, requestedKeys, parseFunc, types.JSONParserErrorType)
 }
 
 // parseJSONLine parses a single JSON line and extracts key-value pairs
@@ -140,14 +143,14 @@ func (j *jsonParser) parseLabelValue(key, value []byte, dataType jsonparser.Valu
 
 	// Convert the value to string based on its type
 	parsedValue := parseValue(value, dataType)
-	if parsedValue != "" {
-		// First-wins semantics for duplicates
-		_, exists := result[keyString]
-		if exists {
-			return nil
-		}
-		result[keyString] = parsedValue
+
+	// Empty keys are always kept for json
+	// First-wins semantics for duplicates
+	_, exists := result[keyString]
+	if exists {
+		return nil
 	}
+	result[keyString] = parsedValue
 
 	return nil
 }

@@ -18,30 +18,31 @@ import (
 )
 
 type Config struct {
-	WorkingDirectory               string                `yaml:"working_directory"`
-	CompactionInterval             time.Duration         `yaml:"compaction_interval"`
-	ApplyRetentionInterval         time.Duration         `yaml:"apply_retention_interval"`
-	RetentionEnabled               bool                  `yaml:"retention_enabled"`
-	RetentionDeleteDelay           time.Duration         `yaml:"retention_delete_delay"`
-	RetentionDeleteWorkCount       int                   `yaml:"retention_delete_worker_count"`
-	RetentionTableTimeout          time.Duration         `yaml:"retention_table_timeout"`
-	RetentionBackoffConfig         backoff.Config        `yaml:"retention_backoff_config"`
-	DeleteRequestStore             string                `yaml:"delete_request_store"`
-	DeleteRequestStoreKeyPrefix    string                `yaml:"delete_request_store_key_prefix"`
-	DeleteRequestStoreDBType       string                `yaml:"delete_request_store_db_type"`
-	BackupDeleteRequestStoreDBType string                `yaml:"backup_delete_request_store_db_type"`
-	DeleteBatchSize                int                   `yaml:"delete_batch_size"`
-	DeleteRequestCancelPeriod      time.Duration         `yaml:"delete_request_cancel_period"`
-	DeleteMaxInterval              time.Duration         `yaml:"delete_max_interval"`
-	MaxCompactionParallelism       int                   `yaml:"max_compaction_parallelism"`
-	UploadParallelism              int                   `yaml:"upload_parallelism"`
-	CompactorRing                  lokiring.RingConfig   `yaml:"compactor_ring,omitempty" doc:"description=The hash ring configuration used by compactors to elect a single instance for running compactions. The CLI flags prefix for this block config is: compactor.ring"`
-	RunOnce                        bool                  `yaml:"_" doc:"hidden"`
-	TablesToCompact                int                   `yaml:"tables_to_compact"`
-	SkipLatestNTables              int                   `yaml:"skip_latest_n_tables"`
-	HorizontalScalingMode          string                `yaml:"horizontal_scaling_mode"`
-	WorkerConfig                   jobqueue.WorkerConfig `yaml:"worker_config"`
-	JobsConfig                     JobsConfig            `yaml:"jobs_config"`
+	WorkingDirectory                string                `yaml:"working_directory"`
+	CompactionInterval              time.Duration         `yaml:"compaction_interval"`
+	ApplyRetentionInterval          time.Duration         `yaml:"apply_retention_interval"`
+	RetentionEnabled                bool                  `yaml:"retention_enabled"`
+	RetentionDeleteDelay            time.Duration         `yaml:"retention_delete_delay"`
+	RetentionDeleteWorkCount        int                   `yaml:"retention_delete_worker_count"`
+	RetentionTableTimeout           time.Duration         `yaml:"retention_table_timeout"`
+	RetentionBackoffConfig          backoff.Config        `yaml:"retention_backoff_config"`
+	DeleteRequestStore              string                `yaml:"delete_request_store"`
+	DeleteRequestStoreKeyPrefix     string                `yaml:"delete_request_store_key_prefix"`
+	DeleteRequestStoreDBType        string                `yaml:"delete_request_store_db_type"`
+	BackupDeleteRequestStoreDBType  string                `yaml:"backup_delete_request_store_db_type"`
+	DeleteBatchSize                 int                   `yaml:"delete_batch_size"`
+	DeleteRequestCancelPeriod       time.Duration         `yaml:"delete_request_cancel_period"`
+	DeleteMaxInterval               time.Duration         `yaml:"delete_max_interval"`
+	MaxCompactionParallelism        int                   `yaml:"max_compaction_parallelism"`
+	UploadParallelism               int                   `yaml:"upload_parallelism"`
+	CompactorRing                   lokiring.RingConfig   `yaml:"compactor_ring,omitempty" doc:"description=The hash ring configuration used by compactors to elect a single instance for running compactions. The CLI flags prefix for this block config is: compactor.ring"`
+	RunOnce                         bool                  `yaml:"_" doc:"hidden"`
+	TablesToCompact                 int                   `yaml:"tables_to_compact"`
+	SkipLatestNTables               int                   `yaml:"skip_latest_n_tables"`
+	HorizontalScalingMode           string                `yaml:"horizontal_scaling_mode"`
+	WorkerConfig                    jobqueue.WorkerConfig `yaml:"worker_config"`
+	JobsConfig                      JobsConfig            `yaml:"jobs_config"`
+	DeletionMarkerObjectStorePrefix string                `yaml:"deletion_marker_object_store_prefix"`
 }
 
 // RegisterFlags registers flags.
@@ -83,6 +84,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 			HorizontalScalingModeDisabled, HorizontalScalingModeMain, HorizontalScalingModeWorker))
 	cfg.WorkerConfig.RegisterFlagsWithPrefix("compactor.worker.", f)
 	cfg.JobsConfig.RegisterFlagsWithPrefix("compactor.jobs.", f)
+	f.StringVar(&cfg.DeletionMarkerObjectStorePrefix, "compactor.deletion-marker-object-store-prefix", "", "Object storage path prefix for storing deletion markers. The prefix must end with a forward slash(/). Leave empty to continue to store deletion markers on the local disk.")
 }
 
 // Validate verifies the config does not contain inappropriate values
@@ -119,6 +121,14 @@ func (cfg *Config) Validate() error {
 		if err := config.ValidatePathPrefix(cfg.DeleteRequestStoreKeyPrefix); err != nil {
 			return fmt.Errorf("validate delete store path prefix: %w", err)
 		}
+
+		if cfg.DeletionMarkerObjectStorePrefix != "" && !strings.HasSuffix(cfg.DeletionMarkerObjectStorePrefix, "/") {
+			return fmt.Errorf("deletion marker object store prefix must end with /")
+		}
+	}
+
+	if err := cfg.JobsConfig.Validate(); err != nil {
+		return err
 	}
 
 	return cfg.WorkerConfig.Validate()
@@ -134,6 +144,10 @@ func (c *JobsConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 
 func (c *JobsConfig) RegisterFlags(f *flag.FlagSet) {
 	c.Deletion.RegisterFlagsWithPrefix("deletion.", f)
+}
+
+func (c *JobsConfig) Validate() error {
+	return c.Deletion.Validate()
 }
 
 type DeletionJobsConfig struct {
@@ -152,4 +166,12 @@ func (c *DeletionJobsConfig) RegisterFlagsWithPrefix(prefix string, f *flag.Flag
 
 func (c *DeletionJobsConfig) RegisterFlags(f *flag.FlagSet) {
 	c.RegisterFlagsWithPrefix("", f)
+}
+
+func (c *DeletionJobsConfig) Validate() error {
+	if !strings.HasSuffix(c.DeletionManifestStorePrefix, "/") {
+		return fmt.Errorf("deletion manifest store prefix must end with /")
+	}
+
+	return nil
 }

@@ -270,7 +270,7 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 				Shard: logical.NewShard(0, 1),
 			},
 		).Parse(
-			types.VariadicOpParseLogfmt,
+			types.VariadicOpParseLogfmt, false, false,
 		).Select(
 			&logical.BinOp{
 				Left:  logical.NewColumnRef("level", types.ColumnTypeAmbiguous),
@@ -317,7 +317,7 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 		require.Equal(t, types.VariadicOpParseLogfmt, expr.Op)
 
 		funcArgs := expr.Expressions
-		require.Len(t, funcArgs, 1)
+		require.Len(t, funcArgs, 4)
 
 		sourcCol, ok := funcArgs[0].(*ColumnExpr)
 		require.True(t, ok)
@@ -329,7 +329,7 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 		require.NoError(t, err)
 
 		funcArgs = expr.Expressions
-		require.Len(t, funcArgs, 1)
+		require.Len(t, funcArgs, 4)
 
 		sourcCol, ok = funcArgs[0].(*ColumnExpr)
 		require.True(t, ok)
@@ -353,7 +353,7 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 				Shard: logical.NewShard(0, 1),
 			},
 		).Parse(
-			types.VariadicOpParseLogfmt,
+			types.VariadicOpParseLogfmt, false, false,
 		).Select(
 			&logical.BinOp{
 				Left:  logical.NewColumnRef("level", types.ColumnTypeAmbiguous),
@@ -413,7 +413,7 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 		require.Equal(t, types.VariadicOpParseLogfmt, expr.Op)
 
 		funcArgs := expr.Expressions
-		require.Len(t, funcArgs, 1)
+		require.Len(t, funcArgs, 4)
 
 		sourcCol, ok := funcArgs[0].(*ColumnExpr)
 		require.True(t, ok)
@@ -425,7 +425,7 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 		require.NoError(t, err)
 
 		funcArgs = expr.Expressions
-		require.Len(t, funcArgs, 2)
+		require.Len(t, funcArgs, 4)
 
 		sourcCol, ok = funcArgs[0].(*ColumnExpr)
 		require.True(t, ok)
@@ -770,7 +770,7 @@ func TestPlanner_MakeTable_Ordering(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("ascending", func(t *testing.T) {
-		planner := NewPlanner(NewContext(time.Now(), time.Now()).WithDirection(ASC), catalog)
+		planner := NewPlanner(NewContext(now, now.Add(time.Minute)).WithDirection(ASC), catalog)
 		plan, err := planner.Build(logicalPlan)
 		require.NoError(t, err)
 
@@ -781,10 +781,18 @@ func TestPlanner_MakeTable_Ordering(t *testing.T) {
 			// Targets should be added in the order of the scan timestamps
 			// ASC => oldest to newest
 			Targets: []*ScanTarget{
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{Location: "obj3", Section: 3, StreamIDs: []int64{5, 1}}},
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{Location: "obj3", Section: 2, StreamIDs: []int64{5, 1}}},
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{Location: "obj2", Section: 1, StreamIDs: []int64{3, 4}}},
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{Location: "obj1", Section: 3, StreamIDs: []int64{1, 2}}},
+				{Type: ScanTypeDataObject, DataObject: &DataObjScan{
+					Location: "obj3", Section: 3, StreamIDs: []int64{5, 1}, MaxTimeRange: TimeRange{Start: now.Add(-2 * time.Minute), End: now.Add(-45 * time.Second)},
+				}},
+				{Type: ScanTypeDataObject, DataObject: &DataObjScan{
+					Location: "obj3", Section: 2, StreamIDs: []int64{5, 1}, MaxTimeRange: TimeRange{Start: now.Add(-time.Minute), End: now.Add(-30 * time.Second)},
+				}},
+				{Type: ScanTypeDataObject, DataObject: &DataObjScan{
+					Location: "obj2", Section: 1, StreamIDs: []int64{3, 4}, MaxTimeRange: TimeRange{Start: now, End: now.Add(time.Second * 10)},
+				}},
+				{Type: ScanTypeDataObject, DataObject: &DataObjScan{
+					Location: "obj1", Section: 3, StreamIDs: []int64{1, 2}, MaxTimeRange: TimeRange{Start: now, End: now.Add(time.Second * 10)},
+				}},
 			},
 		})
 
@@ -802,7 +810,7 @@ func TestPlanner_MakeTable_Ordering(t *testing.T) {
 	})
 
 	t.Run("descending", func(t *testing.T) {
-		planner := NewPlanner(NewContext(time.Now(), time.Now()).WithDirection(DESC), catalog)
+		planner := NewPlanner(NewContext(now, now.Add(time.Minute)).WithDirection(DESC), catalog)
 		plan, err := planner.Build(logicalPlan)
 		require.NoError(t, err)
 
@@ -812,10 +820,18 @@ func TestPlanner_MakeTable_Ordering(t *testing.T) {
 		scanSet := expectedPlan.graph.Add(&ScanSet{
 			// Targets should be added in the order of the scan timestamps
 			Targets: []*ScanTarget{
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{Location: "obj1", Section: 3, StreamIDs: []int64{1, 2}}},
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{Location: "obj2", Section: 1, StreamIDs: []int64{3, 4}}},
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{Location: "obj3", Section: 2, StreamIDs: []int64{5, 1}}},
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{Location: "obj3", Section: 3, StreamIDs: []int64{5, 1}}},
+				{Type: ScanTypeDataObject, DataObject: &DataObjScan{
+					Location: "obj1", Section: 3, StreamIDs: []int64{1, 2}, MaxTimeRange: TimeRange{Start: now, End: now.Add(time.Second * 10)},
+				}},
+				{Type: ScanTypeDataObject, DataObject: &DataObjScan{
+					Location: "obj2", Section: 1, StreamIDs: []int64{3, 4}, MaxTimeRange: TimeRange{Start: now, End: now.Add(time.Second * 10)},
+				}},
+				{Type: ScanTypeDataObject, DataObject: &DataObjScan{
+					Location: "obj3", Section: 2, StreamIDs: []int64{5, 1}, MaxTimeRange: TimeRange{Start: now.Add(-time.Minute), End: now.Add(-30 * time.Second)},
+				}},
+				{Type: ScanTypeDataObject, DataObject: &DataObjScan{
+					Location: "obj3", Section: 3, StreamIDs: []int64{5, 1}, MaxTimeRange: TimeRange{Start: now.Add(-2 * time.Minute), End: now.Add(-45 * time.Second)},
+				}},
 			},
 		})
 

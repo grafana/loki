@@ -134,6 +134,19 @@ message DataObjScan {
   // Predicates are used to filter rows to reduce the amount of rows that are
   // returned.
   repeated loki.expression.Expression predicates = 5;
+
+  TimeRange max_time_range = 6;
+}
+
+message TimeRange {
+  google.protobuf.Timestamp start = 1 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+  google.protobuf.Timestamp end = 2 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
 }
 
 // Filter represents an operation to filter rows based on a condition.

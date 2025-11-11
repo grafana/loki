@@ -13,7 +13,14 @@ Completed YES
 Tested YES
 
 ## References
-http://tools.ietf.org/html/draft-ietf-appsawg-json-pointer-07
+
+<https://tools.ietf.org/html/draft-ietf-appsawg-json-pointer-07>
+
+also known as [RFC6901](https://www.rfc-editor.org/rfc/rfc6901)
 
 ### Note
+
 The 4.Evaluation part of the previous reference, starting with 'If the currently referenced value is a JSON array, the reference token MUST contain either...' is not implemented.
+
+That is because our implementation of the JSON pointer only supports explicit references to array elements: the provision in the spec
+to resolve non-existent members as "the last element in the array", using the special trailing character "-".

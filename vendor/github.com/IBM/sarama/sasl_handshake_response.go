@@ -11,17 +11,15 @@ func (r *SaslHandshakeResponse) setVersion(v int16) {
 }
 
 func (r *SaslHandshakeResponse) encode(pe packetEncoder) error {
-	pe.putInt16(int16(r.Err))
+	pe.putKError(r.Err)
 	return pe.putStringArray(r.EnabledMechanisms)
 }
 
-func (r *SaslHandshakeResponse) decode(pd packetDecoder, version int16) error {
-	kerr, err := pd.getInt16()
+func (r *SaslHandshakeResponse) decode(pd packetDecoder, version int16) (err error) {
+	r.Err, err = pd.getKError()
 	if err != nil {
 		return err
 	}
-
-	r.Err = KError(kerr)
 
 	if r.EnabledMechanisms, err = pd.getStringArray(); err != nil {
 		return err

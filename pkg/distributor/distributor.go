@@ -616,7 +616,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 
 			if !d.validator.IsInternalStream(lbs) {
 				if missing, lbsMissing := d.missingEnforcedLabels(lbs, tenantID, policy); missing {
-					err := fmt.Errorf(validation.MissingEnforcedLabelsErrorMsg, strings.Join(lbsMissing, ","), tenantID, stream.Labels)
+					err := fmt.Errorf(validation.MissingEnforcedLabelsErrorMsg, strings.Join(lbsMissing, ","), tenantID, stream.Labels, policy)
 					d.writeFailuresManager.Log(tenantID, err)
 					validationErrors.Add(err)
 					discardedBytes := util.EntriesTotalSize(stream.Entries)

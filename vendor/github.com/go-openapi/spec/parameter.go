@@ -19,7 +19,7 @@ import (
 	"strings"
 
 	"github.com/go-openapi/jsonpointer"
-	"github.com/go-openapi/swag"
+	"github.com/go-openapi/swag/jsonutils"
 )
 
 // QueryParam creates a query parameter
@@ -210,14 +210,14 @@ func (p *Parameter) AsRequired() *Parameter {
 }
 
 // WithMaxLength sets a max length value
-func (p *Parameter) WithMaxLength(max int64) *Parameter {
-	p.MaxLength = &max
+func (p *Parameter) WithMaxLength(maximum int64) *Parameter {
+	p.MaxLength = &maximum
 	return p
 }
 
 // WithMinLength sets a min length value
-func (p *Parameter) WithMinLength(min int64) *Parameter {
-	p.MinLength = &min
+func (p *Parameter) WithMinLength(minimum int64) *Parameter {
+	p.MinLength = &minimum
 	return p
 }
 
@@ -234,15 +234,15 @@ func (p *Parameter) WithMultipleOf(number float64) *Parameter {
 }
 
 // WithMaximum sets a maximum number value
-func (p *Parameter) WithMaximum(max float64, exclusive bool) *Parameter {
-	p.Maximum = &max
+func (p *Parameter) WithMaximum(maximum float64, exclusive bool) *Parameter {
+	p.Maximum = &maximum
 	p.ExclusiveMaximum = exclusive
 	return p
 }
 
 // WithMinimum sets a minimum number value
-func (p *Parameter) WithMinimum(min float64, exclusive bool) *Parameter {
-	p.Minimum = &min
+func (p *Parameter) WithMinimum(minimum float64, exclusive bool) *Parameter {
+	p.Minimum = &minimum
 	p.ExclusiveMinimum = exclusive
 	return p
 }
@@ -322,5 +322,5 @@ func (p Parameter) MarshalJSON() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return swag.ConcatJSON(b3, b1, b2, b4, b5), nil
+	return jsonutils.ConcatJSON(b3, b1, b2, b4, b5), nil
 }

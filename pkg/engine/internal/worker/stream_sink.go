@@ -81,7 +81,7 @@ func (sink *streamSink) lazyInit() {
 // connection is lost.
 //
 // Send can be aborted by cancelling the provided context.
-func (sink *streamSink) Send(ctx context.Context, rec arrow.Record) error {
+func (sink *streamSink) Send(ctx context.Context, rec arrow.RecordBatch) error {
 	sink.lazyInit()
 
 	bo := backoff.New(ctx, backoff.Config{
@@ -105,7 +105,7 @@ func (sink *streamSink) Send(ctx context.Context, rec arrow.Record) error {
 	return bo.Err()
 }
 
-func (sink *streamSink) send(ctx context.Context, rec arrow.Record) error {
+func (sink *streamSink) send(ctx context.Context, rec arrow.RecordBatch) error {
 	peer, err := sink.getPeer(ctx)
 	if err != nil {
 		return fmt.Errorf("connecting to peer: %w", err)

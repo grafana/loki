@@ -3,7 +3,7 @@
 // license that can be found in the LICENSE file.
 
 // Package clientcredentials implements the OAuth2.0 "client credentials" token flow,
-// also known as the "two-legged OAuth 2.0".
+// also known as "two-legged OAuth 2.0".
 //
 // This should be used when the client is acting on its own behalf or when the client
 // is the resource owner. It may also be used when requesting access to protected

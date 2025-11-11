@@ -20,7 +20,6 @@ import (
 	"github.com/thanos-io/objstore"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 )
@@ -33,9 +32,16 @@ type Config struct {
 	// Bucket to read stored data from.
 	Bucket objstore.Bucket
 
-	// Local scheduler to connect to. If LocalScheduler is nil, the worker can
-	// still connect to remote schedulers.
-	LocalScheduler *scheduler.Scheduler
+	// Dialer to establish connections to scheduler and remote workers.
+	Dialer wire.Dialer
+
+	// Listener for accepting connections from workers.
+	Listener wire.Listener
+
+	// SchedulerAddress is the address of the remote scheduler to connect to.
+	// SchedulerAddress is used when there is exactly one scheduler. Use
+	// SchedulerLookupAddress to discover multiple schedulers by DNS SRV lookup.
+	SchedulerAddress net.Addr
 
 	// SchedulerLookupAddress is the address of the remote scheduler to look up.
 	// Scheduler addresses are resolved using DNS SRV records at this address.
@@ -55,6 +61,10 @@ type Config struct {
 	//
 	// If NumThreads is set to 0, NumThreads defaults to [runtime.GOMAXPROCS].
 	NumThreads int
+
+	// Absolute path of the endpoint where the frame handler is registered.
+	// Used for connecting to scheduler and other workers.
+	Endpoint string
 }
 
 // readyRequest is a message sent from a thread to notify the worker that it's
@@ -89,9 +99,8 @@ type Worker struct {
 	initOnce sync.Once
 	svc      services.Service
 
-	// local is the local listener used for communication between worker
-	// threads within the same process.
-	local *wire.Local
+	dialer   wire.Dialer
+	listener wire.Listener
 
 	resourcesMut sync.RWMutex
 	sources      map[ulid.ULID]*streamSource
@@ -109,18 +118,22 @@ func New(config Config) (*Worker, error) {
 	if config.Logger == nil {
 		config.Logger = log.NewNopLogger()
 	}
-
-	// TODO(rfratto): support connecting to a remote scheduler, so that a local
-	// scheduler isn't always required.
-	if config.LocalScheduler == nil {
-		return nil, errors.New("local scheduler is required")
+	if config.Listener == nil {
+		return nil, errors.New("worker listener is required")
+	}
+	if config.Dialer == nil {
+		return nil, errors.New("dialer is required")
+	}
+	if config.SchedulerAddress == nil && config.SchedulerLookupAddress == "" {
+		return nil, errors.New("at least one of scheduler address or lookup address is required")
 	}
 
 	return &Worker{
 		config: config,
 		logger: config.Logger,
 
-		local: &wire.Local{Address: wire.LocalWorker},
+		dialer:   config.Dialer,
+		listener: config.Listener,
 
 		sources: make(map[ulid.ULID]*streamSource),
 		sinks:   make(map[ulid.ULID]*streamSink),
@@ -175,9 +188,9 @@ func (w *Worker) run(ctx context.Context) error {
 		})
 	}
 
-	if w.config.LocalScheduler != nil {
-		level.Info(w.logger).Log("msg", "connecting to local scheduler")
-		g.Go(func() error { return w.schedulerLoop(ctx, wire.LocalScheduler) })
+	if w.config.SchedulerAddress != nil {
+		level.Info(w.logger).Log("msg", "directly connecting to scheduler", "scheduler_addr", w.config.SchedulerAddress)
+		g.Go(func() error { return w.schedulerLoop(ctx, w.config.SchedulerAddress) })
 	}
 
 	return g.Wait()
@@ -188,7 +201,7 @@ func (w *Worker) run(ctx context.Context) error {
 // threads within this worker.
 func (w *Worker) runAcceptLoop(ctx context.Context) error {
 	for {
-		conn, err := w.local.Accept(ctx)
+		conn, err := w.listener.Accept(ctx)
 		if err != nil && ctx.Err() != nil {
 			return nil
 		} else if err != nil {
@@ -265,15 +278,7 @@ func (w *Worker) schedulerLoop(ctx context.Context, addr net.Addr) error {
 
 // dial opens a connection to the given address.
 func (w *Worker) dial(ctx context.Context, addr net.Addr) (wire.Conn, error) {
-	switch addr {
-	case wire.LocalScheduler:
-		return w.config.LocalScheduler.DialFrom(ctx, w.local.Address)
-	case wire.LocalWorker:
-		return w.local.DialFrom(ctx, w.local.Address)
-	default:
-		// TODO(rfratto): Support for network transports
-		return nil, fmt.Errorf("unsupported address %s", addr)
-	}
+	return w.dialer.Dial(ctx, w.listener.Addr(), addr)
 }
 
 // handleSchedulerConn handles a single connection to a scheduler.

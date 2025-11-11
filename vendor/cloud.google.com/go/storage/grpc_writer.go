@@ -1169,8 +1169,8 @@ func (s *gRPCAppendBidiWriteBufferSender) handleStream(stream storagepb.Storage_
 
 type gRPCAppendTakeoverBidiWriteBufferSender struct {
 	gRPCAppendBidiWriteBufferSender
-	takeoverReported  bool
-	setTakeoverOffset func(int64)
+	takeoverReported         bool
+	handleTakeoverCompletion func(gRPCBidiWriteCompletion)
 }
 
 func writeObjectSpecAsAppendObjectSpec(s *storagepb.WriteObjectSpec, gen int64) *storagepb.AppendObjectSpec {
@@ -1197,8 +1197,11 @@ func (w *gRPCWriter) newGRPCAppendTakeoverWriteBufferSender() *gRPCAppendTakeove
 			objectChecksums: toProtoChecksums(w.sendCRC32C, w.attrs),
 			finalizeOnClose: w.finalizeOnClose,
 		},
-		takeoverReported:  false,
-		setTakeoverOffset: w.setTakeoverOffset,
+		takeoverReported: false,
+		handleTakeoverCompletion: func(c gRPCBidiWriteCompletion) {
+			w.handleCompletion(c)
+			w.setTakeoverOffset(c.flushOffset)
+		},
 	}
 }
 
@@ -1238,9 +1241,9 @@ func (s *gRPCAppendTakeoverBidiWriteBufferSender) connect(ctx context.Context, c
 			return
 		}
 
-		s.setTakeoverOffset(c.flushOffset)
+		s.maybeUpdateFirstMessage(resp)
 		s.takeoverReported = true
-		cs.completions <- *c
+		s.handleTakeoverCompletion(*c)
 	}
 
 	go s.handleStream(stream, cs, firstSend)

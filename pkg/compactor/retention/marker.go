@@ -1,10 +1,11 @@
 package retention
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"fmt"
-	"io/fs"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -14,8 +15,9 @@ import (
 
 	"github.com/go-kit/log/level"
 	"go.etcd.io/bbolt"
+	"go.uber.org/atomic"
 
-	chunk_util "github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	shipper_util "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/util"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
@@ -36,32 +38,27 @@ type markerStorageWriter struct {
 	tx     *bbolt.Tx
 	bucket *bbolt.Bucket
 
-	count            int64
-	currentFileCount int64
-	curFileName      string
-	workDir          string
+	count               int64
+	currentFileCount    int64
+	curFileName         string
+	workDir             string
+	markerStorageClient client.ObjectClient
 
 	buf []byte
 }
 
-func NewMarkerStorageWriter(workingDir string) (MarkerStorageWriter, error) {
-	dir := filepath.Join(workingDir, MarkersFolder)
-	err := chunk_util.EnsureDirectory(dir)
-	if err != nil {
-		return nil, err
-	}
-
+func NewMarkerWriter(markerStorageClient client.ObjectClient) (MarkerStorageWriter, error) {
 	msw := &markerStorageWriter{
-		workDir:          dir,
-		currentFileCount: 0,
-		buf:              make([]byte, 8),
+		markerStorageClient: markerStorageClient,
+		currentFileCount:    0,
+		buf:                 make([]byte, 8),
 	}
 
 	return msw, msw.createFile()
 }
 
 func (m *markerStorageWriter) createFile() error {
-	fileName := filepath.Join(m.workDir, fmt.Sprint(time.Now().UnixNano()))
+	fileName := filepath.Join(os.TempDir(), fmt.Sprint(time.Now().UnixNano()))
 	db, err := shipper_util.SafeOpenBoltdbFile(fileName)
 	if err != nil {
 		return err
@@ -96,7 +93,19 @@ func (m *markerStorageWriter) closeFile() error {
 	if m.currentFileCount == 0 {
 		return os.Remove(m.curFileName)
 	}
-	return nil
+
+	defer func() {
+		if err := os.Remove(m.curFileName); err != nil {
+			level.Error(util_log.Logger).Log("msg", "error removing current marker file", "file", m.curFileName)
+		}
+	}()
+
+	f, err := os.ReadFile(m.curFileName)
+	if err != nil {
+		return err
+	}
+
+	return m.markerStorageClient.PutObject(context.Background(), filepath.Base(m.curFileName), bytes.NewReader(f))
 }
 
 func (m *markerStorageWriter) Put(chunkID []byte) error {
@@ -145,9 +154,9 @@ type MarkerProcessor interface {
 }
 
 type markerProcessor struct {
-	folder         string // folder where to find markers file.
-	maxParallelism int
-	minAgeFile     time.Duration
+	markerStorageClient client.ObjectClient
+	maxParallelism      int
+	minAgeFile          time.Duration
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -156,20 +165,15 @@ type markerProcessor struct {
 	sweeperMetrics *sweeperMetrics
 }
 
-func newMarkerStorageReader(workingDir string, maxParallelism int, minAgeFile time.Duration, sweeperMetrics *sweeperMetrics) (*markerProcessor, error) {
-	folder := filepath.Join(workingDir, MarkersFolder)
-	err := chunk_util.EnsureDirectory(folder)
-	if err != nil {
-		return nil, err
-	}
+func newMarkerReader(markerStorageClient client.ObjectClient, maxParallelism int, minAgeFile time.Duration, sweeperMetrics *sweeperMetrics) (*markerProcessor, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &markerProcessor{
-		folder:         folder,
-		ctx:            ctx,
-		cancel:         cancel,
-		maxParallelism: maxParallelism,
-		minAgeFile:     minAgeFile,
-		sweeperMetrics: sweeperMetrics,
+		markerStorageClient: markerStorageClient,
+		ctx:                 ctx,
+		cancel:              cancel,
+		maxParallelism:      maxParallelism,
+		minAgeFile:          minAgeFile,
+		sweeperMetrics:      sweeperMetrics,
 	}, nil
 }
 
@@ -193,29 +197,32 @@ func (r *markerProcessor) Start(deleteFunc func(ctx context.Context, chunkId []b
 				// cancelled
 				return
 			}
-			paths, times, err := r.availablePath()
+			names, times, err := r.availableFiles()
 			if err != nil {
-				level.Error(util_log.Logger).Log("msg", "failed to list marks path", "path", r.folder, "err", err)
+				level.Error(util_log.Logger).Log("msg", "failed to list marks files", "err", err)
 				continue
 			}
-			if len(paths) == 0 {
+			if len(names) == 0 {
 				level.Info(util_log.Logger).Log("msg", "no marks file found")
 				r.sweeperMetrics.markerFileCurrentTime.Set(0)
 				continue
 			}
-			for i, path := range paths {
-				level.Debug(util_log.Logger).Log("msg", "processing mark file", "path", path)
+			for i, name := range names {
+				level.Debug(util_log.Logger).Log("msg", "processing mark file", "name", name)
 				if r.ctx.Err() != nil {
 					return
 				}
 				r.sweeperMetrics.markerFileCurrentTime.Set(float64(times[i].UnixNano()) / 1e9)
-				if err := r.processPath(path, deleteFunc); err != nil {
-					level.Warn(util_log.Logger).Log("msg", "failed to process marks", "path", path, "err", err)
+				allChunksDeleted, err := r.processFile(name, deleteFunc)
+				if err != nil {
+					level.Warn(util_log.Logger).Log("msg", "failed to process marks", "name", name, "err", err)
 					continue
 				}
-				// delete if empty.
-				if err := r.deleteEmptyMarks(path); err != nil {
-					level.Warn(util_log.Logger).Log("msg", "failed to delete marks", "path", path, "err", err)
+				if allChunksDeleted {
+					// delete marks file if all chunks were deleted successfully.
+					if err := r.deleteMarksFile(name); err != nil {
+						level.Warn(util_log.Logger).Log("msg", "failed to delete marks", "name", name, "err", err)
+					}
 				}
 			}
 
@@ -236,40 +243,48 @@ func (r *markerProcessor) Start(deleteFunc func(ctx context.Context, chunkId []b
 			if r.ctx.Err() != nil {
 				return
 			}
-			paths, _, err := r.availablePath()
+			names, _, err := r.availableFiles()
 			if err != nil {
-				level.Error(util_log.Logger).Log("msg", "failed to list marks path", "path", r.folder, "err", err)
+				level.Error(util_log.Logger).Log("msg", "failed to list marks path", "err", err)
 				continue
 			}
-			r.sweeperMetrics.markerFilesCurrent.Set(float64(len(paths)))
+			r.sweeperMetrics.markerFilesCurrent.Set(float64(len(names)))
 		}
 	}()
 }
 
-func (r *markerProcessor) processPath(path string, deleteFunc func(ctx context.Context, chunkId []byte) error) error {
+func (r *markerProcessor) processFile(name string, deleteFunc func(ctx context.Context, chunkId []byte) error) (bool, error) {
 	var (
-		wg    sync.WaitGroup
-		queue = make(chan *keyPair)
+		wg               sync.WaitGroup
+		queue            = make(chan *keyPair)
+		allChunksDeleted = atomic.NewBool(true)
 	)
-	// we use a copy to view the file so that we can read and update at the same time.
-	viewFile, err := os.CreateTemp("", "marker-view-")
+
+	tempFile, err := os.CreateTemp("", name)
 	if err != nil {
-		return err
+		return false, err
 	}
-	if err := viewFile.Close(); err != nil {
-		return fmt.Errorf("failed to close view file: %w", err)
-	}
+
 	defer func() {
-		if err := os.Remove(viewFile.Name()); err != nil {
-			level.Warn(util_log.Logger).Log("msg", "failed to delete view file", "file", viewFile.Name(), "err", err)
+		if err := os.Remove(tempFile.Name()); err != nil {
+			level.Warn(util_log.Logger).Log("msg", "failed to temp file", "file", tempFile.Name(), "err", err)
 		}
 	}()
-	if _, err := copyFile(path, viewFile.Name()); err != nil {
-		return fmt.Errorf("failed to copy view file: %w", err)
-	}
-	dbView, err := shipper_util.SafeOpenBoltdbFile(viewFile.Name())
+
+	reader, _, err := r.markerStorageClient.GetObject(r.ctx, name)
 	if err != nil {
-		return err
+		return false, err
+	}
+	defer reader.Close()
+
+	_, err = io.Copy(tempFile, reader)
+	if err != nil {
+		return false, err
+	}
+
+	dbView, err := shipper_util.SafeOpenBoltdbFile(tempFile.Name())
+	if err != nil {
+		return false, err
 	}
 	// we don't need to force sync to file, we just view the file.
 	dbView.NoSync = true
@@ -278,31 +293,27 @@ func (r *markerProcessor) processPath(path string, deleteFunc func(ctx context.C
 			level.Warn(util_log.Logger).Log("msg", "failed to close db view", "err", err)
 		}
 	}()
-	dbUpdate, err := shipper_util.SafeOpenBoltdbFile(path)
-	if err != nil {
-		return err
-	}
-	dbUpdate.MaxBatchDelay = 5 * time.Millisecond
-	defer func() {
-		close(queue)
-		wg.Wait()
-		if err := dbUpdate.Close(); err != nil {
-			level.Warn(util_log.Logger).Log("msg", "failed to close db", "err", err)
-		}
-	}()
+
 	for i := 0; i < r.maxParallelism; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for key := range queue {
-				if err := processKey(r.ctx, key, dbUpdate, deleteFunc); err != nil {
+				if err := deleteFunc(r.ctx, key.value.Bytes()); err != nil {
+					allChunksDeleted.Store(false)
 					level.Warn(util_log.Logger).Log("msg", "failed to delete key", "key", key.key.String(), "value", key.value.String(), "err", err)
 				}
 				putKeyBuffer(key)
 			}
 		}()
 	}
-	return dbView.View(func(tx *bbolt.Tx) error {
+
+	err = dbView.View(func(tx *bbolt.Tx) error {
+		defer func() {
+			close(queue)
+			wg.Wait()
+		}()
+
 		b := tx.Bucket(chunkBucket)
 		if b == nil {
 			return nil
@@ -323,91 +334,48 @@ func (r *markerProcessor) processPath(path string, deleteFunc func(ctx context.C
 		}
 		return nil
 	})
-}
-
-func processKey(ctx context.Context, key *keyPair, db *bbolt.DB, deleteFunc func(ctx context.Context, chunkId []byte) error) error {
-	chunkID := key.value.Bytes()
-	if err := deleteFunc(ctx, chunkID); err != nil {
-		return err
-	}
-	return db.Batch(func(tx *bbolt.Tx) error {
-		b := tx.Bucket(chunkBucket)
-		if b == nil {
-			return nil
-		}
-		return b.Delete(key.key.Bytes())
-	})
-}
-
-func (r *markerProcessor) deleteEmptyMarks(path string) error {
-	db, err := shipper_util.SafeOpenBoltdbFile(path)
 	if err != nil {
-		return err
+		return false, err
 	}
-	var empty bool
-	err = db.View(func(tx *bbolt.Tx) error {
-		b := tx.Bucket(chunkBucket)
-		if b == nil {
-			empty = true
-			return nil
-		}
-		if k, _ := b.Cursor().First(); k == nil {
-			empty = true
-			return nil
-		}
 
-		return nil
-	})
-	db.Close()
-	if err != nil {
-		return err
-	}
-	if empty {
-		r.sweeperMetrics.markerFilesDeletedTotal.Inc()
-		return os.Remove(path)
-	}
-	return nil
+	return allChunksDeleted.Load(), nil
 }
 
-// availablePath returns markers path in chronological order, skipping file that are not old enough.
-func (r *markerProcessor) availablePath() ([]string, []time.Time, error) {
-	found := []int64{}
-	if err := filepath.WalkDir(r.folder, func(path string, d fs.DirEntry, err error) error {
-		if d == nil || err != nil {
-			return err
-		}
+func (r *markerProcessor) deleteMarksFile(name string) error {
+	r.sweeperMetrics.markerFilesDeletedTotal.Inc()
+	return r.markerStorageClient.DeleteObject(r.ctx, name)
+}
 
-		if d.IsDir() && d.Name() != MarkersFolder {
-			return filepath.SkipDir
-		}
-		if d.IsDir() {
-			return nil
-		}
-		base := filepath.Base(path)
-		i, err := strconv.ParseInt(base, 10, 64)
+// availableFiles returns markers file names in chronological order, skipping files that are not old enough.
+func (r *markerProcessor) availableFiles() ([]string, []time.Time, error) {
+	var found []string
+	var creationTime []time.Time
+	objects, _, err := r.markerStorageClient.List(r.ctx, "", "/")
+	if err != nil {
+		return nil, nil, err
+	}
+
+	sort.Slice(objects, func(i, j int) bool {
+		return objects[i].Key < objects[j].Key
+	})
+
+	for _, object := range objects {
+		i, err := strconv.ParseInt(object.Key, 10, 64)
 		if err != nil {
-			level.Warn(util_log.Logger).Log("msg", "wrong file name", "path", path, "base", base, "err", err)
-			return nil
+			level.Warn(util_log.Logger).Log("msg", "wrong file name", "path", object.Key, "err", err)
+			continue
 		}
 
 		if time.Since(time.Unix(0, i)) > r.minAgeFile {
-			found = append(found, i)
+			found = append(found, object.Key)
+			creationTime = append(creationTime, time.Unix(0, i))
 		}
-		return nil
-	}); err != nil {
-		return nil, nil, err
 	}
 	if len(found) == 0 {
 		return nil, nil, nil
 	}
-	sort.Slice(found, func(i, j int) bool { return found[i] < found[j] })
-	res := make([]string, len(found))
-	resTime := make([]time.Time, len(found))
-	for i, f := range found {
-		res[i] = filepath.Join(r.folder, fmt.Sprintf("%d", f))
-		resTime[i] = time.Unix(0, f)
-	}
-	return res, resTime, nil
+
+	return found, creationTime, nil
 }
 
 func (r *markerProcessor) Stop() {

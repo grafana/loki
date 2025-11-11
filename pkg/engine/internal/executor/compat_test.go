@@ -476,7 +476,7 @@ func TestNewColumnCompatibilityPipeline(t *testing.T) {
 				input = NewArrowtestPipeline(tt.schema, tt.inputRows[0])
 			} else {
 				// Multiple batches
-				var records []arrow.Record
+				var records []arrow.RecordBatch
 				for _, rows := range tt.inputRows {
 					record := rows.Record(memory.DefaultAllocator, tt.schema)
 					records = append(records, record)

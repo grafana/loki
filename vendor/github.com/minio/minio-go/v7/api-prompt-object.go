@@ -20,10 +20,10 @@ package minio
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 
-	"github.com/minio/minio-go/v7/internal/json"
 	"github.com/minio/minio-go/v7/pkg/s3utils"
 )
 

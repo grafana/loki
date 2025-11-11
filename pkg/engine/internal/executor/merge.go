@@ -79,12 +79,12 @@ func (m *Merge) startPrefetchingInputAtIndex(ctx context.Context, i int) {
 
 // Read reads the next batch from the pipeline.
 // It returns an error if reading fails or when the pipeline is exhausted.
-func (m *Merge) Read(ctx context.Context) (arrow.Record, error) {
+func (m *Merge) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	m.init(ctx)
 	return m.read(ctx)
 }
 
-func (m *Merge) read(ctx context.Context) (arrow.Record, error) {
+func (m *Merge) read(ctx context.Context) (arrow.RecordBatch, error) {
 	// All inputs have been consumed and are exhausted
 	if m.currInput >= len(m.inputs) {
 		return nil, EOF

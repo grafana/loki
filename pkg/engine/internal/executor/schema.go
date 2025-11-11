@@ -16,7 +16,7 @@ import (
 //
 // changeSchema returns an error if the new schema is not compatible with the
 // old schema.
-func changeSchema(input arrow.Record, newSchema *arrow.Schema) (arrow.Record, error) {
+func changeSchema(input arrow.RecordBatch, newSchema *arrow.Schema) (arrow.RecordBatch, error) {
 	if err := validateSchemaCompatibility(input.Schema(), newSchema); err != nil {
 		return nil, fmt.Errorf("incompatible schema: %w", err)
 	}
@@ -31,7 +31,7 @@ func changeSchema(input arrow.Record, newSchema *arrow.Schema) (arrow.Record, er
 		cols[i] = input.Column(int(i))
 	}
 
-	return array.NewRecord(newSchema, cols, numRows), nil
+	return array.NewRecordBatch(newSchema, cols, numRows), nil
 }
 
 // validateSchemaCompatibility checks if two schemas are compatible:

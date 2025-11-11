@@ -40,7 +40,7 @@ func (b *Builder) Limit(skip uint32, fetch uint32) *Builder {
 }
 
 // Parse applies a [Parse] operation to the Builder.
-func (b *Builder) Parse(op types.VariadicOp) *Builder {
+func (b *Builder) Parse(op types.VariadicOp, strict bool, keepEmpty bool) *Builder {
 	val := &FunctionOp{
 		Op: op,
 		Values: []Value{
@@ -48,6 +48,10 @@ func (b *Builder) Parse(op types.VariadicOp) *Builder {
 			&ColumnRef{
 				Ref: semconv.ColumnIdentMessage.ColumnRef(),
 			},
+			// nil for requested keys (to be filled in by projection pushdown optimizer)
+			NewLiteral([]string{}),
+			NewLiteral(strict),
+			NewLiteral(keepEmpty),
 		},
 	}
 	return b.ProjectExpand(val)
@@ -76,6 +80,20 @@ func (b *Builder) Sort(column ColumnRef, ascending, nullsFirst bool) *Builder {
 			Column:     column,
 			Ascending:  ascending,
 			NullsFirst: nullsFirst,
+		},
+	}
+}
+
+// TopK applies a [TopK] operation to the Builder.
+func (b *Builder) TopK(sortBy *ColumnRef, K int, ascending, nullsFirst bool) *Builder {
+	return &Builder{
+		val: &TopK{
+			Table: b.val,
+
+			SortBy:     sortBy,
+			Ascending:  ascending,
+			NullsFirst: nullsFirst,
+			K:          K,
 		},
 	}
 }

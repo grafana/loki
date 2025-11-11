@@ -12,7 +12,7 @@ import (
 )
 
 func NewFilterPipeline(filter *physical.Filter, input Pipeline, evaluator expressionEvaluator) *GenericPipeline {
-	return newGenericPipeline(func(ctx context.Context, inputs []Pipeline) (arrow.Record, error) {
+	return newGenericPipeline(func(ctx context.Context, inputs []Pipeline) (arrow.RecordBatch, error) {
 		// Pull the next item from the input pipeline
 		input := inputs[0]
 		batch, err := input.Read(ctx)
@@ -55,7 +55,7 @@ func NewFilterPipeline(filter *physical.Filter, input Pipeline, evaluator expres
 // pushdown optimizations.
 //
 // We should re-think this approach.
-func filterBatch(batch arrow.Record, include func(int) bool) arrow.Record {
+func filterBatch(batch arrow.RecordBatch, include func(int) bool) arrow.RecordBatch {
 	fields := batch.Schema().Fields()
 
 	builders := make([]array.Builder, len(fields))
@@ -133,5 +133,5 @@ func filterBatch(batch arrow.Record, include func(int) bool) arrow.Record {
 		arrays[i] = builder.NewArray()
 	}
 
-	return array.NewRecord(schema, arrays, ct)
+	return array.NewRecordBatch(schema, arrays, ct)
 }

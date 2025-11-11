@@ -13,6 +13,7 @@ type Storage interface {
 	// Read operations (used by UI)
 	GetSampledQueries(ctx context.Context, page, pageSize int, filter QueryFilter) (*APIResponse, error)
 	GetQueryByCorrelationID(ctx context.Context, correlationID string) (*QuerySample, error)
+	GetStatistics(ctx context.Context, filter StatsFilter) (*Statistics, error)
 
 	// Lifecycle
 	Close() error

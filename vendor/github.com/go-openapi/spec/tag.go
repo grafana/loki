@@ -18,7 +18,7 @@ import (
 	"encoding/json"
 
 	"github.com/go-openapi/jsonpointer"
-	"github.com/go-openapi/swag"
+	"github.com/go-openapi/swag/jsonutils"
 )
 
 // TagProps describe a tag entry in the top level tags section of a swagger spec
@@ -26,11 +26,6 @@ type TagProps struct {
 	Description  string                 `json:"description,omitempty"`
 	Name         string                 `json:"name,omitempty"`
 	ExternalDocs *ExternalDocumentation `json:"externalDocs,omitempty"`
-}
-
-// NewTag creates a new tag
-func NewTag(name, description string, externalDocs *ExternalDocumentation) Tag {
-	return Tag{TagProps: TagProps{Description: description, Name: name, ExternalDocs: externalDocs}}
 }
 
 // Tag allows adding meta data to a single tag that is used by the
@@ -41,6 +36,11 @@ func NewTag(name, description string, externalDocs *ExternalDocumentation) Tag {
 type Tag struct {
 	VendorExtensible
 	TagProps
+}
+
+// NewTag creates a new tag
+func NewTag(name, description string, externalDocs *ExternalDocumentation) Tag {
+	return Tag{TagProps: TagProps{Description: description, Name: name, ExternalDocs: externalDocs}}
 }
 
 // JSONLookup implements an interface to customize json pointer lookup
@@ -63,7 +63,7 @@ func (t Tag) MarshalJSON() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return swag.ConcatJSON(b1, b2), nil
+	return jsonutils.ConcatJSON(b1, b2), nil
 }
 
 // UnmarshalJSON marshal this from JSON

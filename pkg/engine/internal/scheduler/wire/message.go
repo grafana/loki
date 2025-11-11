@@ -126,8 +126,8 @@ type (
 	// StreamDataMessage is sent by a worker to a stream receiver to provide
 	// payload data for a stream.
 	StreamDataMessage struct {
-		StreamID ulid.ULID    // ID of the stream.
-		Data     arrow.Record // Payload data for the stream.
+		StreamID ulid.ULID         // ID of the stream.
+		Data     arrow.RecordBatch // Payload data for the stream.
 	}
 
 	// StreamStatusMessage communicates the status of the sending side of a

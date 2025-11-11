@@ -85,6 +85,8 @@ const (
 
 	awsRequestChecksumCalculation = "AWS_REQUEST_CHECKSUM_CALCULATION"
 	awsResponseChecksumValidation = "AWS_RESPONSE_CHECKSUM_VALIDATION"
+
+	awsAuthSchemePreferenceEnv = "AWS_AUTH_SCHEME_PREFERENCE"
 )
 
 var (
@@ -304,6 +306,9 @@ type EnvConfig struct {
 
 	// Indicates whether response checksum should be validated
 	ResponseChecksumValidation aws.ResponseChecksumValidation
+
+	// Priority list of preferred auth scheme names (e.g. sigv4a).
+	AuthSchemePreference []string
 }
 
 // loadEnvConfig reads configuration values from the OS's environment variables.
@@ -414,6 +419,8 @@ func NewEnvConfig() (EnvConfig, error) {
 	if err := setResponseChecksumValidationFromEnvVal(&cfg.ResponseChecksumValidation, []string{awsResponseChecksumValidation}); err != nil {
 		return cfg, err
 	}
+
+	cfg.AuthSchemePreference = toAuthSchemePreferenceList(os.Getenv(awsAuthSchemePreferenceEnv))
 
 	return cfg, nil
 }
@@ -915,4 +922,11 @@ func (c EnvConfig) GetS3DisableExpressAuth() (value, ok bool) {
 	}
 
 	return *c.S3DisableExpressAuth, true
+}
+
+func (c EnvConfig) getAuthSchemePreference() ([]string, bool) {
+	if len(c.AuthSchemePreference) > 0 {
+		return c.AuthSchemePreference, true
+	}
+	return nil, false
 }

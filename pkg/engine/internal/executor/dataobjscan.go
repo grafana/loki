@@ -46,7 +46,7 @@ type dataobjScan struct {
 var _ Pipeline = (*dataobjScan)(nil)
 
 // newDataobjScanPipeline creates a new Pipeline which emits a single
-// [arrow.Record] composed of the requested log section in a data object. Rows
+// [arrow.RecordBatch] composed of the requested log section in a data object. Rows
 // in the returned record are ordered by timestamp in the direction specified
 // by opts.Direction.
 func newDataobjScanPipeline(opts dataobjScanOptions, logger log.Logger) *dataobjScan {
@@ -56,7 +56,7 @@ func newDataobjScanPipeline(opts dataobjScanOptions, logger log.Logger) *dataobj
 	}
 }
 
-func (s *dataobjScan) Read(ctx context.Context) (arrow.Record, error) {
+func (s *dataobjScan) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	if err := s.init(); err != nil {
 		return nil, err
 	}
@@ -343,10 +343,10 @@ NextProjection:
 	return found
 }
 
-// read reads the entire section into memory and generates an [arrow.Record]
+// read reads the entire section into memory and generates an [arrow.RecordBatch]
 // from the data. It returns an error if reading a section resulted in an
 // error.
-func (s *dataobjScan) read(ctx context.Context) (arrow.Record, error) {
+func (s *dataobjScan) read(ctx context.Context) (arrow.RecordBatch, error) {
 	rec, err := s.reader.Read(ctx, int(s.opts.BatchSize))
 	if err != nil && !errors.Is(err, io.EOF) {
 		return nil, err

@@ -71,12 +71,12 @@ func NotFound(message string, args ...interface{}) Error {
 	if message == "" {
 		message = "Not found"
 	}
-	return New(http.StatusNotFound, fmt.Sprintf(message, args...))
+	return New(http.StatusNotFound, message, args...)
 }
 
 // NotImplemented creates a new not implemented error
 func NotImplemented(message string) Error {
-	return New(http.StatusNotImplemented, message)
+	return New(http.StatusNotImplemented, "%s", message)
 }
 
 // MethodNotAllowedError represents an error for when the path matches but the method doesn't
@@ -179,13 +179,13 @@ func ServeError(rw http.ResponseWriter, r *http.Request, err error) {
 	default:
 		rw.WriteHeader(http.StatusInternalServerError)
 		if r == nil || r.Method != http.MethodHead {
-			_, _ = rw.Write(errorAsJSON(New(http.StatusInternalServerError, err.Error())))
+			_, _ = rw.Write(errorAsJSON(New(http.StatusInternalServerError, "%v", err)))
 		}
 	}
 }
 
 func asHTTPCode(input int) int {
-	if input >= 600 {
+	if input >= maximumValidHTTPCode {
 		return DefaultHTTPCode
 	}
 	return input

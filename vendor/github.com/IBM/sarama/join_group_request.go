@@ -13,6 +13,10 @@ func (p *GroupProtocol) decode(pd packetDecoder) (err error) {
 		return err
 	}
 	p.Metadata, err = pd.getBytes()
+	if err != nil {
+		return err
+	}
+	_, err = pd.getEmptyTaggedFieldArray()
 	return err
 }
 
@@ -23,6 +27,7 @@ func (p *GroupProtocol) encode(pe packetEncoder) (err error) {
 	if err := pe.putBytes(p.Metadata); err != nil {
 		return err
 	}
+	pe.putEmptyTaggedFieldArray()
 	return nil
 }
 
@@ -80,7 +85,7 @@ func (r *JoinGroupRequest) encode(pe packetEncoder) error {
 
 	if len(r.GroupProtocols) > 0 {
 		if len(r.OrderedGroupProtocols) > 0 {
-			return PacketDecodingError{"cannot specify both GroupProtocols and OrderedGroupProtocols on JoinGroupRequest"}
+			return PacketEncodingError{"cannot specify both GroupProtocols and OrderedGroupProtocols on JoinGroupRequest"}
 		}
 
 		if err := pe.putArrayLength(len(r.GroupProtocols)); err != nil {
@@ -93,6 +98,7 @@ func (r *JoinGroupRequest) encode(pe packetEncoder) error {
 			if err := pe.putBytes(metadata); err != nil {
 				return err
 			}
+			pe.putEmptyTaggedFieldArray()
 		}
 	} else {
 		if err := pe.putArrayLength(len(r.OrderedGroupProtocols)); err != nil {
@@ -105,6 +111,7 @@ func (r *JoinGroupRequest) encode(pe packetEncoder) error {
 		}
 	}
 
+	pe.putEmptyTaggedFieldArray()
 	return nil
 }
 
@@ -157,7 +164,8 @@ func (r *JoinGroupRequest) decode(pd packetDecoder, version int16) (err error) {
 		r.OrderedGroupProtocols = append(r.OrderedGroupProtocols, protocol)
 	}
 
-	return nil
+	_, err = pd.getEmptyTaggedFieldArray()
+	return err
 }
 
 func (r *JoinGroupRequest) key() int16 {
@@ -169,15 +177,28 @@ func (r *JoinGroupRequest) version() int16 {
 }
 
 func (r *JoinGroupRequest) headerVersion() int16 {
+	if r.Version >= 6 {
+		return 2
+	}
 	return 1
 }
 
 func (r *JoinGroupRequest) isValidVersion() bool {
-	return r.Version >= 0 && r.Version <= 5
+	return r.Version >= 0 && r.Version <= 6
+}
+
+func (r *JoinGroupRequest) isFlexible() bool {
+	return r.isFlexibleVersion(r.Version)
+}
+
+func (r *JoinGroupRequest) isFlexibleVersion(version int16) bool {
+	return version >= 6
 }
 
 func (r *JoinGroupRequest) requiredVersion() KafkaVersion {
 	switch r.Version {
+	case 6:
+		return V2_4_0_0
 	case 5:
 		return V2_3_0_0
 	case 4:

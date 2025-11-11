@@ -313,8 +313,7 @@ func (s *stickyBalanceStrategy) balance(currentAssignment map[string][]topicPart
 
 	// create a deep copy of the current assignment so we can revert to it if we do not get a more balanced assignment later
 	preBalanceAssignment := deepCopyAssignment(currentAssignment)
-	preBalancePartitionConsumers := make(map[topicPartitionAssignment]string, len(currentPartitionConsumer))
-	maps.Copy(preBalancePartitionConsumers, currentPartitionConsumer)
+	preBalancePartitionConsumers := maps.Clone(currentPartitionConsumer)
 
 	reassignmentPerformed := s.performReassignments(sortedPartitions, currentAssignment, prevAssignment, sortedCurrentSubscriptions, consumer2AllPotentialPartitions, partition2AllPotentialConsumers, currentPartitionConsumer)
 
@@ -322,7 +321,7 @@ func (s *stickyBalanceStrategy) balance(currentAssignment map[string][]topicPart
 	// make sure we are getting a more balanced assignment; otherwise, revert to previous assignment
 	if !initializing && reassignmentPerformed && getBalanceScore(currentAssignment) >= getBalanceScore(preBalanceAssignment) {
 		currentAssignment = deepCopyAssignment(preBalanceAssignment)
-		currentPartitionConsumer = make(map[topicPartitionAssignment]string, len(preBalancePartitionConsumers))
+		clear(currentPartitionConsumer)
 		maps.Copy(currentPartitionConsumer, preBalancePartitionConsumers)
 	}
 

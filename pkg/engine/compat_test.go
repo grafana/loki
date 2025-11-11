@@ -352,6 +352,7 @@ func TestStreamsResultBuilder(t *testing.T) {
 			require.NotNil(t, builder.rowBuilders[i].lbsBuilder, "lbsBuilder should be initialized")
 			require.NotNil(t, builder.rowBuilders[i].metadataBuilder, "metadataBuilder should be initialized")
 			require.NotNil(t, builder.rowBuilders[i].parsedBuilder, "parsedBuilder should be initialized")
+			require.Equal(t, 0, len(builder.rowBuilders[i].parsedEmptyKeys), "parsedEmptyKeys should be empty")
 		}
 	})
 
@@ -419,6 +420,58 @@ func TestStreamsResultBuilder(t *testing.T) {
 			totalEntries += len(stream.Entries)
 		}
 		require.Equal(t, 5, totalEntries, "should have 5 total entries across both streams")
+	})
+
+	t.Run("parsed empty values are added to the parsed labels", func(t *testing.T) {
+		colTs := semconv.ColumnIdentTimestamp
+		colMsg := semconv.ColumnIdentMessage
+		colEnv := semconv.NewIdentifier("env", types.ColumnTypeLabel, types.Loki.String)
+		colMetadata := semconv.NewIdentifier("metadata", types.ColumnTypeMetadata, types.Loki.String)
+		colParsedA := semconv.NewIdentifier("Aparsed", types.ColumnTypeParsed, types.Loki.String)
+		colParsedZ := semconv.NewIdentifier("Zparsed", types.ColumnTypeParsed, types.Loki.String)
+
+		schema := arrow.NewSchema(
+			[]arrow.Field{
+				semconv.FieldFromIdent(colTs, false),
+				semconv.FieldFromIdent(colMsg, false),
+				semconv.FieldFromIdent(colEnv, false),
+				semconv.FieldFromIdent(colMetadata, false),
+				semconv.FieldFromIdent(colParsedA, false),
+				semconv.FieldFromIdent(colParsedZ, false),
+			},
+			nil,
+		)
+		rows := arrowtest.Rows{
+			{colTs.FQN(): time.Unix(0, 1620000000000000000).UTC(), colMsg.FQN(): "log line", colEnv.FQN(): "prod", colMetadata.FQN(): "md value", colParsedA.FQN(): "A", colParsedZ.FQN(): "Z"},
+			{colTs.FQN(): time.Unix(0, 1620000000000000000).UTC(), colMsg.FQN(): "log line", colEnv.FQN(): "prod", colMetadata.FQN(): "", colParsedA.FQN(): "", colParsedZ.FQN(): ""},
+		}
+
+		record := rows.Record(memory.DefaultAllocator, schema)
+		builder := newStreamsResultBuilder(logproto.BACKWARD)
+		builder.CollectRecord(record)
+		record.Release()
+		require.Equal(t, 2, builder.Len())
+
+		md, _ := metadata.NewContext(t.Context())
+		result := builder.Build(stats.Result{}, md)
+		streams := result.Data.(logqlmodel.Streams)
+		require.Equal(t, 2, len(streams), "should have 2 unique streams")
+
+		expected := logqlmodel.Streams{
+			push.Stream{
+				Labels: labels.FromStrings("Aparsed", "", "env", "prod", "Zparsed", "").String(),
+				Entries: []logproto.Entry{
+					{Line: "log line", Timestamp: time.Unix(0, 1620000000000000000), StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.Labels{}), Parsed: logproto.FromLabelsToLabelAdapters(labels.FromStrings("Aparsed", "", "Zparsed", ""))},
+				},
+			},
+			push.Stream{
+				Labels: labels.FromStrings("Aparsed", "A", "env", "prod", "metadata", "md value", "Zparsed", "Z").String(),
+				Entries: []logproto.Entry{
+					{Line: "log line", Timestamp: time.Unix(0, 1620000000000000000), StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("metadata", "md value")), Parsed: logproto.FromLabelsToLabelAdapters(labels.FromStrings("Aparsed", "A", "Zparsed", "Z"))},
+				},
+			},
+		}
+		require.Equal(t, expected, streams)
 	})
 }
 

@@ -14,10 +14,10 @@ func NewLimitPipeline(input Pipeline, skip, fetch uint32) *GenericPipeline {
 		limitRemaining  = int64(fetch)
 	)
 
-	return newGenericPipeline(func(ctx context.Context, inputs []Pipeline) (arrow.Record, error) {
+	return newGenericPipeline(func(ctx context.Context, inputs []Pipeline) (arrow.RecordBatch, error) {
 		var length int64
 		var start, end int64
-		var batch arrow.Record
+		var batch arrow.RecordBatch
 		var err error
 
 		// We skip yielding zero-length batches while offsetRemainig > 0

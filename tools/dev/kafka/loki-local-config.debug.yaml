@@ -58,6 +58,8 @@ ingest_limits_frontend:
 ingester:
   kafka_ingestion:
     enabled: true
+  lifecycler:
+    id: "loki.local"
 
 distributor:
   kafka_writes_enabled: true

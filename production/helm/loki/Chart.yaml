@@ -18,13 +18,13 @@ dependencies:
     condition: minio.enabled
   - name: grafana-agent-operator
     alias: grafana-agent-operator
-    version: 0.5.1
+    version: 0.5.2
     repository: https://grafana.github.io/helm-charts
     condition: monitoring.selfMonitoring.grafanaAgent.installOperator
   - name: rollout-operator
     alias: rollout_operator
     repository: https://grafana.github.io/helm-charts
-    version: 0.33.2
+    version: 0.37.1
     condition: rollout_operator.enabled
 maintainers:
   - name: trevorwhitney

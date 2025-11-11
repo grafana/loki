@@ -16,7 +16,7 @@ import (
 func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipeline) Pipeline {
 	const extracted = "_extracted"
 
-	return newGenericPipeline(func(ctx context.Context, inputs []Pipeline) (arrow.Record, error) {
+	return newGenericPipeline(func(ctx context.Context, inputs []Pipeline) (arrow.RecordBatch, error) {
 		input := inputs[0]
 		batch, err := input.Read(ctx)
 		if err != nil {
@@ -143,7 +143,7 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 			}
 		}
 
-		return array.NewRecord(newSchema, newSchemaColumns, batch.NumRows()), nil
+		return array.NewRecordBatch(newSchema, newSchemaColumns, batch.NumRows()), nil
 	}, input)
 }
 

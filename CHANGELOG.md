@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.5.8](https://github.com/grafana/loki/compare/v3.5.7...v3.5.8) (2025-11-05)
+
+
+### Bug Fixes
+
+* bump go version ([#19702](https://github.com/grafana/loki/issues/19702)) ([cf33543](https://github.com/grafana/loki/commit/cf335437062aa68f3ba657c89012ab499dedb738))
+
 ## [3.5.7](https://github.com/grafana/loki/compare/v3.5.6...v3.5.7) (2025-10-13)
 
 

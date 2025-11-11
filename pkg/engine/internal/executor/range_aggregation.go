@@ -107,7 +107,7 @@ func (r *rangeAggregationPipeline) init() {
 // Read reads the next value into its state.
 // It returns an error if reading fails or when the pipeline is exhausted. In this case, the function returns EOF.
 // The implementation must retain the returned error in its state and return it with subsequent Value() calls.
-func (r *rangeAggregationPipeline) Read(ctx context.Context) (arrow.Record, error) {
+func (r *rangeAggregationPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	if r.inputsExhausted {
 		return nil, EOF
 	}
@@ -119,7 +119,7 @@ func (r *rangeAggregationPipeline) Read(ctx context.Context) (arrow.Record, erro
 // - Support implicit partitioning by all labels when partitionBy is empty
 // - Use columnar access pattern. Current approach is row-based which does not benefit from the storage format.
 // - Add toggle to return partial results on Read() call instead of returning only after exhausting all inputs.
-func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, error) {
+func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch, error) {
 	var (
 		tsColumnExpr = &physical.ColumnExpr{
 			Ref: types.ColumnRef{
