@@ -1713,7 +1713,7 @@ github.com/prometheus/client_golang/prometheus/testutil/promlint/validations
 # github.com/prometheus/client_model v0.6.2
 ## explicit; go 1.22.0
 github.com/prometheus/client_model/go
-# github.com/prometheus/common v0.67.1
+# github.com/prometheus/common v0.67.2
 ## explicit; go 1.24.0
 github.com/prometheus/common/config
 github.com/prometheus/common/expfmt

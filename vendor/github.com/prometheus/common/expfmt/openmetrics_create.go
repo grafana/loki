@@ -160,38 +160,38 @@ func MetricFamilyToOpenMetrics(out io.Writer, in *dto.MetricFamily, options ...E
 		n, err = w.WriteString("# HELP ")
 		written += n
 		if err != nil {
-			return
+			return written, err
 		}
 		n, err = writeName(w, compliantName)
 		written += n
 		if err != nil {
-			return
+			return written, err
 		}
 		err = w.WriteByte(' ')
 		written++
 		if err != nil {
-			return
+			return written, err
 		}
 		n, err = writeEscapedString(w, *in.Help, true)
 		written += n
 		if err != nil {
-			return
+			return written, err
 		}
 		err = w.WriteByte('\n')
 		written++
 		if err != nil {
-			return
+			return written, err
 		}
 	}
 	n, err = w.WriteString("# TYPE ")
 	written += n
 	if err != nil {
-		return
+		return written, err
 	}
 	n, err = writeName(w, compliantName)
 	written += n
 	if err != nil {
-		return
+		return written, err
 	}
 	switch metricType {
 	case dto.MetricType_COUNTER:
@@ -215,34 +215,34 @@ func MetricFamilyToOpenMetrics(out io.Writer, in *dto.MetricFamily, options ...E
 	}
 	written += n
 	if err != nil {
-		return
+		return written, err
 	}
 	if toOM.withUnit && in.Unit != nil {
 		n, err = w.WriteString("# UNIT ")
 		written += n
 		if err != nil {
-			return
+			return written, err
 		}
 		n, err = writeName(w, compliantName)
 		written += n
 		if err != nil {
-			return
+			return written, err
 		}
 
 		err = w.WriteByte(' ')
 		written++
 		if err != nil {
-			return
+			return written, err
 		}
 		n, err = writeEscapedString(w, *in.Unit, true)
 		written += n
 		if err != nil {
-			return
+			return written, err
 		}
 		err = w.WriteByte('\n')
 		written++
 		if err != nil {
-			return
+			return written, err
 		}
 	}
 
@@ -306,7 +306,7 @@ func MetricFamilyToOpenMetrics(out io.Writer, in *dto.MetricFamily, options ...E
 				)
 				written += n
 				if err != nil {
-					return
+					return written, err
 				}
 			}
 			n, err = writeOpenMetricsSample(
@@ -316,7 +316,7 @@ func MetricFamilyToOpenMetrics(out io.Writer, in *dto.MetricFamily, options ...E
 			)
 			written += n
 			if err != nil {
-				return
+				return written, err
 			}
 			n, err = writeOpenMetricsSample(
 				w, compliantName, "_count", metric, "", 0,
@@ -349,7 +349,7 @@ func MetricFamilyToOpenMetrics(out io.Writer, in *dto.MetricFamily, options ...E
 				)
 				written += n
 				if err != nil {
-					return
+					return written, err
 				}
 				if math.IsInf(b.GetUpperBound(), +1) {
 					infSeen = true
@@ -367,7 +367,7 @@ func MetricFamilyToOpenMetrics(out io.Writer, in *dto.MetricFamily, options ...E
 				// out if needed).
 				written += n
 				if err != nil {
-					return
+					return written, err
 				}
 			}
 			n, err = writeOpenMetricsSample(
@@ -377,7 +377,7 @@ func MetricFamilyToOpenMetrics(out io.Writer, in *dto.MetricFamily, options ...E
 			)
 			written += n
 			if err != nil {
-				return
+				return written, err
 			}
 			if metric.Histogram.GetSampleCountFloat() > 0 {
 				return written, fmt.Errorf(
@@ -401,10 +401,10 @@ func MetricFamilyToOpenMetrics(out io.Writer, in *dto.MetricFamily, options ...E
 		}
 		written += n
 		if err != nil {
-			return
+			return written, err
 		}
 	}
-	return
+	return written, err
 }
 
 // FinalizeOpenMetrics writes the final `# EOF\n` line required by OpenMetrics.
