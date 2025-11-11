@@ -6,7 +6,6 @@ import (
 
 	"github.com/coder/quartz"
 	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
@@ -77,12 +76,12 @@ func (c *limitsChecker) ExceedsLimits(ctx context.Context, req *proto.ExceedsLim
 		return nil, err
 	}
 
-	for _, stream := range accepted {
-		err := c.producer.Produce(context.WithoutCancel(ctx), req.Tenant, stream)
-		if err != nil {
-			level.Error(c.logger).Log("msg", "failed to send streams", "error", err)
-		}
-	}
+	// for _, stream := range accepted {
+	// 	err := c.producer.Produce(context.WithoutCancel(ctx), req.Tenant, stream)
+	// 	if err != nil {
+	// 		level.Error(c.logger).Log("msg", "failed to send streams", "error", err)
+	// 	}
+	// }
 
 	var ingestedBytes uint64
 	for _, stream := range accepted {
