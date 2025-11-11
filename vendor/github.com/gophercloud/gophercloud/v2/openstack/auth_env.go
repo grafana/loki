@@ -24,8 +24,8 @@ OS_PROJECT_NAME and the latter are expected against a v3 auth api.
 If OS_PROJECT_ID and OS_PROJECT_NAME are set, they will still be referred
 as "tenant" in Gophercloud.
 
-If OS_PROJECT_NAME is set, it requires OS_PROJECT_ID to be set as well to
-handle projects not on the default domain.
+If OS_PROJECT_NAME is set, it requires OS_DOMAIN_ID or OS_DOMAIN_NAME to be
+set as well to handle projects not on the default domain.
 
 To use this function, first set the OS_* environment variables (for example,
 by sourcing an `openrc` file), then:

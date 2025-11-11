@@ -6,11 +6,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/coder/quartz"
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
@@ -283,11 +285,26 @@ func Test_engineRouter_Do(t *testing.T) {
 		return buildReponse(r, "new"), nil
 	})
 
-	now := time.Now().Truncate(time.Second)
+	clock := quartz.NewMock(t)
+	now := clock.Now().Truncate(time.Second)
+
+	routerConfig := RouterConfig{
+		Start:    now.Add(-24 * time.Hour),
+		Lag:      time.Hour,
+		Validate: func(_ logql.Params) bool { return true },
+		Handler:  v2EngineHandler,
+	}
+
 	router := newEngineRouterMiddleware(
-		now.Add(-24*time.Hour), now.Add(-time.Hour), v2EngineHandler,
-		[]queryrangebase.Middleware{newEntrySuffixTestMiddleware(" [v1-chain-processed]")}, DefaultCodec, false, log.NewNopLogger(),
+		routerConfig,
+		[]queryrangebase.Middleware{newEntrySuffixTestMiddleware(" [v1-chain-processed]")},
+		DefaultCodec,
+		false,
+		log.NewNopLogger(),
 	).Wrap(next)
+
+	routerImpl := router.(*engineRouter)
+	routerImpl.clock = clock
 
 	tests := []struct {
 		name string

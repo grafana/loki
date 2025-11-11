@@ -1162,10 +1162,36 @@ func (i ingesterQueryOptions) QueryIngestersWithin() time.Duration {
 func (t *Loki) initQueryFrontendMiddleware() (_ services.Service, err error) {
 	level.Debug(util_log.Logger).Log("msg", "initializing query frontend tripperware")
 
+	var v2Router queryrange.RouterConfig
+
+	if t.Cfg.QueryRange.EnableV2EngineRouter {
+		start, end := t.Cfg.Querier.EngineV2.Executor.ValidQueryRange()
+
+		level.Debug(util_log.Logger).Log(
+			"msg", "initializing v2 engine router",
+			"start_time", start,
+			"end_time", end,
+			"destination", t.Cfg.QueryRange.V2EngineAddress,
+		)
+
+		handler, err := frontend.NewDownstreamRoundTripper(t.Cfg.QueryRange.V2EngineAddress, http.DefaultTransport, queryrange.DefaultCodec)
+		if err != nil {
+			return nil, fmt.Errorf("creating downstream round tripper for v2 engine: %w", err)
+		}
+
+		v2Router = queryrange.RouterConfig{
+			Start: start,
+			Lag:   t.Cfg.Querier.DataobjStorageLag,
+
+			Validate: engine_v2.IsQuerySupported,
+			Handler:  handler,
+		}
+	}
+
 	middleware, stopper, err := queryrange.NewMiddleware(
 		t.Cfg.QueryRange,
 		t.Cfg.Querier.Engine,
-		t.Cfg.Querier.EngineV2,
+		v2Router,
 		ingesterQueryOptions{t.Cfg.Querier},
 		util_log.Logger,
 		t.Overrides,
@@ -1392,8 +1418,9 @@ func (t *Loki) initV2QueryEngine() (services.Service, error) {
 		return nil, err
 	}
 
+	logger := log.With(util_log.Logger, "component", "query-engine")
 	engine, err := engine_v2.New(engine_v2.Params{
-		Logger:     log.With(util_log.Logger, "component", "query-engine"),
+		Logger:     logger,
 		Registerer: prometheus.DefaultRegisterer,
 
 		Config:          t.Cfg.Querier.EngineV2.Executor,
@@ -1405,6 +1432,26 @@ func (t *Loki) initV2QueryEngine() (services.Service, error) {
 	})
 	if err != nil {
 		return nil, err
+	}
+
+	// TODO(rfratto): Validate that no other module which responds to these
+	// paths is enabled.
+	if t.Cfg.Querier.EngineV2.Distributed {
+		toMerge := []middleware.Interface{
+			httpreq.ExtractQueryMetricsMiddleware(),
+			httpreq.ExtractQueryTagsMiddleware(),
+			httpreq.PropagateHeadersMiddleware(httpreq.LokiEncodingFlagsHeader, httpreq.LokiDisablePipelineWrappersHeader),
+			serverutil.RecoveryHTTPMiddleware,
+			t.HTTPAuthMiddleware,
+			serverutil.NewPrepopulateMiddleware(),
+			serverutil.ResponseJSONMiddleware(),
+		}
+
+		httpMiddleware := middleware.Merge(toMerge...)
+		handler := httpMiddleware.Wrap(engine_v2.Handler(t.Cfg.Querier.EngineV2.Executor, logger, engine, t.Overrides))
+
+		t.Server.HTTP.Path("/loki/api/v1/query_range").Methods("GET", "POST").Handler(handler)
+		t.Server.HTTP.Path("/loki/api/v1/query").Methods("GET", "POST").Handler(handler)
 	}
 
 	t.queryEngineV2 = engine

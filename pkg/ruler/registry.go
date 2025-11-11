@@ -370,6 +370,11 @@ func (r *walRegistry) createRelabelConfigs(tenant string) ([]*relabel.Config, er
 			return nil, err
 		}
 
+		// Validate the relabel config to catch invalid configurations
+		if err := rc.Validate(model.UTF8Validation); err != nil {
+			return nil, err
+		}
+
 		relabelConfigs[i] = &rc
 	}
 

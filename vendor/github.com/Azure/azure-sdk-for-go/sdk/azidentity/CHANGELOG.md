@@ -1,5 +1,35 @@
 # Release History
 
+## 1.12.0 (2025-09-16)
+
+### Features Added
+- Added `DefaultAzureCredentialOptions.RequireAzureTokenCredentials`. `NewDefaultAzureCredential` returns an
+  error when this option is true and the environment variable `AZURE_TOKEN_CREDENTIALS` has no value.
+
+### Other Changes
+- `AzureDeveloperCLICredential` no longer hangs when AZD_DEBUG is set
+- `GetToken` methods of `AzureCLICredential` and `AzureDeveloperCLICredential` return an error when
+  `TokenRequestOptions.Claims` has a value because these credentials can't acquire a token in that
+  case. The error messages describe the action required to get a token.
+
+## 1.11.0 (2025-08-05)
+
+### Other Changes
+- `DefaultAzureCredential` tries its next credential when a dev tool credential such as
+  `AzureCLICredential` returns an error
+
+## 1.11.0-beta.1 (2025-07-15)
+
+### Features Added
+- `DefaultAzureCredential` allows selecting one of its credential types by name via environment variable
+  `AZURE_TOKEN_CREDENTIALS`. It will use only the selected type at runtime. For example, set
+  `AZURE_TOKEN_CREDENTIALS=WorkloadIdentityCredential` to have `DefaultAzureCredential` use only
+  `WorkloadIdentityCredential`.
+
+### Other Changes
+- By default, `ManagedIdentityCredential` retries IMDS requests for a maximum of ~70 seconds as recommended
+  in IMDS documentation. In previous versions, it would stop retrying after ~54 seconds by default.
+
 ## 1.10.1 (2025-06-10)
 
 ### Bugs Fixed
