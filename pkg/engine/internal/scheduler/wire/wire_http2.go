@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -112,6 +113,20 @@ func (l *HTTP2Listener) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid remote addr", http.StatusBadRequest)
 		return
 	}
+
+	rc := http.NewResponseController(w)
+	err = rc.SetWriteDeadline(time.Time{})
+	if err != nil {
+		http.Error(w, "failed to set write deadline", http.StatusInternalServerError)
+		return
+	}
+
+	err = rc.SetReadDeadline(time.Time{})
+	if err != nil {
+		http.Error(w, "failed to set read deadline", http.StatusInternalServerError)
+		return
+	}
+
 	conn := newHTTP2Conn(l.Addr(), remoteAddr, r.Body, w, flusher, l.codec)
 	defer conn.Close()
 
