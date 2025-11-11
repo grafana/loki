@@ -240,7 +240,7 @@ func (r *Hypervisor) UnmarshalJSON(b []byte) error {
 // HypervisorPage represents a single page of all Hypervisors from a List
 // request.
 type HypervisorPage struct {
-	pagination.SinglePageBase
+	pagination.LinkedPageBase
 }
 
 // IsEmpty determines whether or not a HypervisorPage is empty.
@@ -251,6 +251,19 @@ func (page HypervisorPage) IsEmpty() (bool, error) {
 
 	va, err := ExtractHypervisors(page)
 	return len(va) == 0, err
+}
+
+// NextPageURL uses the response's embedded link reference to navigate to the
+// next page of results.
+func (page HypervisorPage) NextPageURL() (string, error) {
+	var s struct {
+		Links []gophercloud.Link `json:"hypervisors_links"`
+	}
+	err := page.ExtractInto(&s)
+	if err != nil {
+		return "", err
+	}
+	return gophercloud.ExtractNextURL(s.Links)
 }
 
 // ExtractHypervisors interprets a page of results as a slice of Hypervisors.
