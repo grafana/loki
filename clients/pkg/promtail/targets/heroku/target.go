@@ -128,7 +128,26 @@ func (h *Target) drain(w http.ResponseWriter, r *http.Request) {
 			lb.Set(lokiClient.ReservedLabelTenantID, tenantIDHeaderValue)
 		}
 
-		processed, _ := relabel.Process(lb.Labels(), h.relabelConfigs...)
+		var processed labels.Labels
+		if len(h.relabelConfigs) > 0 {
+			// Validate relabel configs to set the validation scheme properly
+			valid := true
+			for _, rc := range h.relabelConfigs {
+				if err := rc.Validate(model.UTF8Validation); err != nil {
+					// If validation fails, skip relabeling and use original labels
+					valid = false
+					break
+				}
+			}
+			// Only process if all configs were validated successfully
+			if valid {
+				processed, _ = relabel.Process(lb.Labels(), h.relabelConfigs...)
+			} else {
+				processed = lb.Labels()
+			}
+		} else {
+			processed = lb.Labels()
+		}
 
 		// Start with the set of labels fixed in the configuration
 		filtered := h.Labels().Clone()

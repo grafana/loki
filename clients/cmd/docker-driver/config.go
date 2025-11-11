@@ -366,6 +366,12 @@ func relabelConfig(config string, lbs model.LabelSet) (model.LabelSet, error) {
 	if err := yaml.UnmarshalStrict([]byte(config), &relabelConfig); err != nil {
 		return nil, err
 	}
+	// Validate relabel configs to set the validation scheme properly
+	for _, rc := range relabelConfig {
+		if err := rc.Validate(model.UTF8Validation); err != nil {
+			return nil, err
+		}
+	}
 	relabed, _ := relabel.Process(labels.FromMap(util.ModelLabelSetToMap(lbs)), relabelConfig...)
 	return model.LabelSet(util.LabelsToMetric(relabed)), nil
 }
