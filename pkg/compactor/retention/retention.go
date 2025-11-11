@@ -561,7 +561,8 @@ func (c *chunkRewriter) rewriteChunk(ctx context.Context, userID []byte, ce Chun
 }
 
 // CopyMarkers checks for markers in the src dir and copies them to the dst.
-func CopyMarkers(src string, dst client.ObjectClient) error {
+// dstName must be a human-readable name for what dst is.
+func CopyMarkers(src string, dst client.ObjectClient, dstName string) error {
 	info, err := os.Stat(src)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -585,7 +586,7 @@ func CopyMarkers(src string, dst client.ObjectClient) error {
 		return nil
 	}
 
-	level.Info(util_log.Logger).Log("msg", fmt.Sprintf("found markers in retention dir %s, moving them to period specific dir: %s", src, dst))
+	level.Info(util_log.Logger).Log("msg", fmt.Sprintf("found markers in retention dir %s, moving them to period specific destination: %s", src, dstName))
 	for _, marker := range markers {
 		if marker.IsDir() {
 			continue

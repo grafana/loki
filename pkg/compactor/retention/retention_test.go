@@ -1144,7 +1144,7 @@ func TestMigrateMarkers(t *testing.T) {
 		markerStorageClient, err := local.NewFSObjectClient(local.FSConfig{Directory: dst})
 		require.NoError(t, err)
 
-		require.NoError(t, CopyMarkers(workDir, markerStorageClient))
+		require.NoError(t, CopyMarkers(workDir, markerStorageClient, ""))
 	})
 
 	t.Run("migrate markers dir", func(t *testing.T) {
@@ -1160,7 +1160,7 @@ func TestMigrateMarkers(t *testing.T) {
 		markerStorageClient, err := local.NewFSObjectClient(local.FSConfig{Directory: dst})
 		require.NoError(t, err)
 
-		require.NoError(t, CopyMarkers(workDir, markerStorageClient))
+		require.NoError(t, CopyMarkers(workDir, markerStorageClient, ""))
 		require.DirExists(t, dst)
 		for _, marker := range markers {
 			require.FileExists(t, path.Join(dst, marker))

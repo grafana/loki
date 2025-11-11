@@ -255,11 +255,11 @@ func (c *Compactor) init(
 			// given that compaction can now run on multiple periods, marker files are stored under /retention/{objectStoreType}_{periodFrom}/markers/
 			// if any markers are found in the common markers dir (/retention/markers/) or store specific markers dir (/retention/{objectStoreType}/markers/), copy them to the period specific dirs
 			// chunk would be removed by the sweeper if it belongs to a given period or no-op if it doesn't exist.
-			if err := retention.CopyMarkers(filepath.Join(c.cfg.WorkingDirectory, "retention", MarkersFolder), markerStorageClient); err != nil {
+			if err := retention.CopyMarkers(filepath.Join(c.cfg.WorkingDirectory, "retention", MarkersFolder), markerStorageClient, retentionWorkDir); err != nil {
 				return fmt.Errorf("failed to move common markers to period specific dir: %w", err)
 			}
 
-			if err := retention.CopyMarkers(filepath.Join(c.cfg.WorkingDirectory, "retention", period.ObjectType, MarkersFolder), markerStorageClient); err != nil {
+			if err := retention.CopyMarkers(filepath.Join(c.cfg.WorkingDirectory, "retention", period.ObjectType, MarkersFolder), markerStorageClient, retentionWorkDir); err != nil {
 				return fmt.Errorf("failed to move store markers to period specific dir: %w", err)
 			}
 			// remove markers from the store dir after copying them to period specific dirs.
@@ -278,7 +278,7 @@ func (c *Compactor) init(
 			if c.cfg.DeletionMarkerObjectStorePrefix != "" {
 				markerStorageClient = client.NewPrefixedObjectClient(raw, c.cfg.DeletionMarkerObjectStorePrefix)
 				// Copy all the existing markers to the relevant object storage.
-				if err := retention.CopyMarkers(retentionWorkDir, markerStorageClient); err != nil {
+				if err := retention.CopyMarkers(retentionWorkDir, markerStorageClient, name); err != nil {
 					return fmt.Errorf("failed to move markers to period specific object storage: %w", err)
 				}
 
