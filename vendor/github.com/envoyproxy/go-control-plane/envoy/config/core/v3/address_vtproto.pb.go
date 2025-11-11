@@ -155,6 +155,13 @@ func (m *SocketAddress) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if len(m.NetworkNamespaceFilepath) > 0 {
+		i -= len(m.NetworkNamespaceFilepath)
+		copy(dAtA[i:], m.NetworkNamespaceFilepath)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.NetworkNamespaceFilepath)))
+		i--
+		dAtA[i] = 0x3a
+	}
 	if m.Ipv4Compat {
 		i--
 		if m.Ipv4Compat {
@@ -681,6 +688,10 @@ func (m *SocketAddress) SizeVT() (n int) {
 	}
 	if m.Ipv4Compat {
 		n += 2
+	}
+	l = len(m.NetworkNamespaceFilepath)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
 	return n
