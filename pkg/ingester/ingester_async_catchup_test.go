@@ -39,7 +39,7 @@ func (m *mockPartitionReader) State() services.State {
 	return m.state
 }
 
-func (m *mockPartitionReader) StartAsync(ctx context.Context) error {
+func (m *mockPartitionReader) StartAsync(_ context.Context) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.startAsyncCalled = true
@@ -47,7 +47,7 @@ func (m *mockPartitionReader) StartAsync(ctx context.Context) error {
 	return nil
 }
 
-func (m *mockPartitionReader) AwaitRunning(ctx context.Context) error {
+func (m *mockPartitionReader) AwaitRunning(_ context.Context) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -91,13 +91,13 @@ func newMockPartitionRingLifecycler() *mockPartitionRingLifecycler {
 	}
 }
 
-func (m *mockPartitionRingLifecycler) GetPartitionState(ctx context.Context) (ring.PartitionState, time.Time, error) {
+func (m *mockPartitionRingLifecycler) GetPartitionState(_ context.Context) (ring.PartitionState, time.Time, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.partitionState, time.Now(), m.getPartitionStateError
 }
 
-func (m *mockPartitionRingLifecycler) ChangePartitionState(ctx context.Context, state ring.PartitionState) error {
+func (m *mockPartitionRingLifecycler) ChangePartitionState(_ context.Context, state ring.PartitionState) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
