@@ -5,6 +5,8 @@ import (
 	"hash/fnv"
 	"math/rand"
 
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/prometheus/client_golang/prometheus"
@@ -34,10 +36,11 @@ type SegmentationPartitionResolver struct {
 	ringReader   ring.PartitionRingReader
 	limitsClient *ingestLimits
 	fallback     *prometheus.CounterVec
+	logger       log.Logger
 }
 
 // NewSegmentationPartitionResolver returns a new SegmentationPartitionResolver.
-func NewSegmentationPartitionResolver(cfg *DataObjTeeConfig, limits Limits, ringReader ring.PartitionRingReader, limitsClient *ingestLimits, reg prometheus.Registerer) *SegmentationPartitionResolver {
+func NewSegmentationPartitionResolver(cfg *DataObjTeeConfig, limits Limits, ringReader ring.PartitionRingReader, limitsClient *ingestLimits, reg prometheus.Registerer, logger log.Logger) *SegmentationPartitionResolver {
 	return &SegmentationPartitionResolver{
 		cfg:          cfg,
 		limits:       limits,
@@ -47,6 +50,7 @@ func NewSegmentationPartitionResolver(cfg *DataObjTeeConfig, limits Limits, ring
 			Name: "loki_distributor_dataobj_tee_fallback_total",
 			Help: "Total number of streams that could not be duplicated.",
 		}, []string{"tenant", "segmentation_key", "reason"}),
+		logger: logger,
 	}
 }
 
@@ -70,6 +74,7 @@ func (r *SegmentationPartitionResolver) Resolve(ctx context.Context, tenant stri
 	if err != nil || len(results) == 0 {
 		if err != nil {
 			r.fallback.WithLabelValues(tenant, string(key), "err").Inc()
+			level.Debug(r.logger).Log("msg", "failed to update rates", "err", err)
 		} else {
 			r.fallback.WithLabelValues(tenant, string(key), "no_results").Inc()
 		}
