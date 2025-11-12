@@ -129,19 +129,19 @@ ui:
       [type: <string> | default = ""]
 
       # CloudSQL host for Goldfish database.
-      # CLI flag: -ui.goldfish.cloudsql.host
+      # CLI flag: -ui.goldfish.storage.cloudsql.host
       [cloudsql_host: <string> | default = "127.0.0.1"]
 
       # CloudSQL port for Goldfish database.
-      # CLI flag: -ui.goldfish.cloudsql.port
+      # CLI flag: -ui.goldfish.storage.cloudsql.port
       [cloudsql_port: <int> | default = 3306]
 
       # CloudSQL database name for Goldfish.
-      # CLI flag: -ui.goldfish.cloudsql.database
+      # CLI flag: -ui.goldfish.storage.cloudsql.database
       [cloudsql_database: <string> | default = "goldfish"]
 
       # CloudSQL username for Goldfish database.
-      # CLI flag: -ui.goldfish.cloudsql.user
+      # CLI flag: -ui.goldfish.storage.cloudsql.user
       [cloudsql_user: <string> | default = ""]
 
       # RDS endpoint (host:port)
@@ -2880,6 +2880,12 @@ jobs_config:
     # Maximum number of times to retry a failed or timed out job.
     # CLI flag: -compactor.jobs.deletion.max-retries
     [max_retries: <int> | default = 3]
+
+# Object storage path prefix for storing deletion markers. The prefix must end
+# with a forward slash(/). Leave empty to continue to store deletion markers on
+# the local disk.
+# CLI flag: -compactor.deletion-marker-object-store-prefix
+[deletion_marker_object_store_prefix: <string> | default = ""]
 ```
 
 ### consul

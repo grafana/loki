@@ -20,7 +20,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/v3/pkg/util/validation"
+	querytest "github.com/grafana/loki/v3/pkg/querier/testutil"
 )
 
 type mockEngine struct {
@@ -34,114 +34,10 @@ func (m *mockEngine) Execute(ctx context.Context, params logql.Params) (logqlmod
 	return logqlmodel.Result{}, nil
 }
 
-type mockLimits struct {
-	maxEntriesLimitPerQuery int
-}
-
-func (m *mockLimits) MaxEntriesLimitPerQuery(_ context.Context, _ string) int {
-	return m.maxEntriesLimitPerQuery
-}
-
-func (m *mockLimits) MaxQueryLength(context.Context, string) time.Duration {
-	return 0
-}
-
-func (m *mockLimits) MaxQueryLookback(context.Context, string) time.Duration {
-	return 0
-}
-
-func (m *mockLimits) MaxQueryRange(context.Context, string) time.Duration {
-	return 0
-}
-
-func (m *mockLimits) QueryTimeout(context.Context, string) time.Duration {
-	return 0
-}
-
-func (m *mockLimits) MaxStreamsMatchersPerQuery(context.Context, string) int {
-	return 0
-}
-
-func (m *mockLimits) MaxConcurrentTailRequests(context.Context, string) int {
-	return 0
-}
-
-func (m *mockLimits) MinShardingLookback(context.Context, string) time.Duration {
-	return 0
-}
-
-func (m *mockLimits) TSDBMaxQueryParallelism(context.Context, string) int {
-	return 0
-}
-
-func (m *mockLimits) MaxQueryBytesRead(context.Context, string) int {
-	return 0
-}
-
-func (m *mockLimits) MaxQuerierBytesRead(context.Context, string) int {
-	return 0
-}
-
-func (m *mockLimits) MaxStatsCacheFreshness(context.Context, string) time.Duration {
-	return 0
-}
-
-func (m *mockLimits) MaxMetadataCacheFreshness(context.Context, string) time.Duration {
-	return 0
-}
-
-func (m *mockLimits) EvaluationDelay(context.Context, string) time.Duration {
-	return 0
-}
-
-func (m *mockLimits) BlockedQueries(context.Context, string) []*validation.BlockedQuery {
-	return nil
-}
-
-func (m *mockLimits) RequiredLabels(context.Context, string) []string {
-	return nil
-}
-
-func (m *mockLimits) RequiredNumberLabels(context.Context, string) int {
-	return 0
-}
-
-func (m *mockLimits) EnableMultiVariantQueries(string) bool {
-	return false
-}
-
-func (m *mockLimits) MaxQuerySeries(context.Context, string) int {
-	return 0
-}
-
-func (m *mockLimits) MaxScanTaskParallelism(string) int {
-	return 0
-}
-
-func (m *mockLimits) MetricAggregationEnabled(string) bool {
-	return false
-}
-
-func (m *mockLimits) PatternPersistenceEnabled(string) bool {
-	return false
-}
-
-func (m *mockLimits) PersistenceGranularity(string) time.Duration {
-	return 0
-}
-
-func (m *mockLimits) PatternRateThreshold(string) float64 {
-	return 0
-}
-
-func (m *mockLimits) PatternIngesterTokenizableJSONFields(string) []string {
-	return nil
-}
-
-func newTestHandler(cfg ExecutorConfig, engine engine, limits querier_limits.Limits) queryrangebase.Handler {
+func newTestHandler(cfg ExecutorConfig, exec queryExecutor, limits querier_limits.Limits) queryrangebase.Handler {
 	return &queryHandler{
 		cfg:    cfg,
-		engine: engine,
+		exec:   exec,
 		logger: log.NewNopLogger(),
 		limits: limits,
 	}
@@ -154,9 +50,9 @@ func TestHandler(t *testing.T) {
 	}
 	logger := log.NewNopLogger()
 	eng := &mockEngine{}
-	limits := &mockLimits{}
+	limits := &querytest.MockLimits{}
 
-	handler := Handler(cfg, logger, eng, limits)
+	handler := executorHandler(cfg, logger, eng, limits)
 	require.NotNil(t, handler)
 }
 
@@ -177,7 +73,7 @@ func TestQueryHandler_Do_LokiRequest(t *testing.T) {
 				}, nil
 			},
 		}
-		limits := &mockLimits{maxEntriesLimitPerQuery: 1000}
+		limits := &querytest.MockLimits{MaxEntriesLimitPerQueryVal: 1000}
 
 		handler := newTestHandler(cfg, eng, limits)
 
@@ -202,7 +98,7 @@ func TestQueryHandler_Do_LokiRequest(t *testing.T) {
 
 	t.Run("exceeds max entries limit", func(t *testing.T) {
 		eng := &mockEngine{}
-		limits := &mockLimits{maxEntriesLimitPerQuery: 50}
+		limits := &querytest.MockLimits{MaxEntriesLimitPerQueryVal: 50}
 
 		handler := newTestHandler(cfg, eng, limits)
 
@@ -238,7 +134,7 @@ func TestQueryHandler_Do_LokiRequest(t *testing.T) {
 				}, nil
 			},
 		}
-		limits := &mockLimits{maxEntriesLimitPerQuery: 50}
+		limits := &querytest.MockLimits{MaxEntriesLimitPerQueryVal: 50}
 
 		handler := newTestHandler(cfg, eng, limits)
 
@@ -263,7 +159,7 @@ func TestQueryHandler_Do_LokiRequest(t *testing.T) {
 
 	t.Run("unsupported query type", func(t *testing.T) {
 		eng := &mockEngine{}
-		limits := &mockLimits{}
+		limits := &querytest.MockLimits{}
 
 		handler := newTestHandler(cfg, eng, limits)
 
@@ -282,7 +178,7 @@ func TestQueryHandler_Do_LokiRequest(t *testing.T) {
 				return logqlmodel.Result{}, ErrNotSupported
 			},
 		}
-		limits := &mockLimits{maxEntriesLimitPerQuery: 1000}
+		limits := &querytest.MockLimits{MaxEntriesLimitPerQueryVal: 1000}
 
 		handler := newTestHandler(cfg, eng, limits)
 
@@ -317,7 +213,7 @@ func TestQueryHandler_Do_LokiRequest(t *testing.T) {
 				return logqlmodel.Result{}, expectedErr
 			},
 		}
-		limits := &mockLimits{maxEntriesLimitPerQuery: 1000}
+		limits := &querytest.MockLimits{MaxEntriesLimitPerQueryVal: 1000}
 
 		handler := newTestHandler(cfg, eng, limits)
 
@@ -358,7 +254,7 @@ func TestQueryHandler_Do_LokiInstantRequest(t *testing.T) {
 				}, nil
 			},
 		}
-		limits := &mockLimits{maxEntriesLimitPerQuery: 1000}
+		limits := &querytest.MockLimits{MaxEntriesLimitPerQueryVal: 1000}
 
 		handler := newTestHandler(cfg, eng, limits)
 
@@ -382,7 +278,7 @@ func TestQueryHandler_Do_LokiInstantRequest(t *testing.T) {
 
 	t.Run("log query not allowed for instant query", func(t *testing.T) {
 		eng := &mockEngine{}
-		limits := &mockLimits{maxEntriesLimitPerQuery: 1000}
+		limits := &querytest.MockLimits{MaxEntriesLimitPerQueryVal: 1000}
 
 		handler := newTestHandler(cfg, eng, limits)
 
@@ -413,7 +309,7 @@ func TestQueryHandler_Do_LokiInstantRequest(t *testing.T) {
 				}, nil
 			},
 		}
-		limits := &mockLimits{maxEntriesLimitPerQuery: 50}
+		limits := &querytest.MockLimits{MaxEntriesLimitPerQueryVal: 50}
 
 		handler := newTestHandler(cfg, eng, limits)
 
@@ -487,7 +383,7 @@ func TestQueryHandler_ValidTimeRange(t *testing.T) {
 					}, nil
 				},
 			}
-			limits := &mockLimits{maxEntriesLimitPerQuery: 1000}
+			limits := &querytest.MockLimits{MaxEntriesLimitPerQueryVal: 1000}
 
 			handler := newTestHandler(tt.cfg, eng, limits)
 
@@ -538,7 +434,7 @@ func TestQueryHandler_ValidateMaxEntriesLimits(t *testing.T) {
 				}, nil
 			},
 		}
-		limits := &mockLimits{maxEntriesLimitPerQuery: 0}
+		limits := &querytest.MockLimits{}
 
 		handler := newTestHandler(cfg, eng, limits)
 
@@ -569,7 +465,7 @@ func TestQueryHandler_ValidateMaxEntriesLimits(t *testing.T) {
 				}, nil
 			},
 		}
-		limits := &mockLimits{maxEntriesLimitPerQuery: 100}
+		limits := &querytest.MockLimits{MaxEntriesLimitPerQueryVal: 100}
 
 		handler := newTestHandler(cfg, eng, limits)
 
@@ -594,7 +490,7 @@ func TestQueryHandler_ValidateMaxEntriesLimits(t *testing.T) {
 
 	t.Run("missing tenant ID returns error", func(t *testing.T) {
 		eng := &mockEngine{}
-		limits := &mockLimits{maxEntriesLimitPerQuery: 100}
+		limits := &querytest.MockLimits{MaxEntriesLimitPerQueryVal: 100}
 
 		handler := newTestHandler(cfg, eng, limits)
 

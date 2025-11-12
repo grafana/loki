@@ -18,7 +18,6 @@ This troubleshooting guide covers failure investigation techniques, common error
 - [Troubleshoot EnvironmentCredential authentication issues](#troubleshoot-environmentcredential-authentication-issues)
 - [Troubleshoot ManagedIdentityCredential authentication issues](#troubleshoot-managedidentitycredential-authentication-issues)
   - [Azure App Service and Azure Functions managed identity](#azure-app-service-and-azure-functions-managed-identity)
-  - [Azure Kubernetes Service managed identity](#azure-kubernetes-service-managed-identity)
   - [Azure Virtual Machine managed identity](#azure-virtual-machine-managed-identity)
 - [Troubleshoot WorkloadIdentityCredential authentication issues](#troubleshoot-workloadidentitycredential-authentication-issues)
 - [Get additional help](#get-additional-help)
@@ -86,6 +85,7 @@ azlog.SetEvents(azidentity.EventAuthentication)
 |"DefaultAzureCredential failed to acquire a token"|No credential in the `DefaultAzureCredential` chain provided a token|<ul><li>[Enable logging](#enable-and-configure-logging) to get further diagnostic information.</li><li>Consult the troubleshooting guide for underlying credential types for more information.</li><ul><li>[EnvironmentCredential](#troubleshoot-environmentcredential-authentication-issues)</li><li>[ManagedIdentityCredential](#troubleshoot-managedidentitycredential-authentication-issues)</li><li>[AzureCLICredential](#troubleshoot-azureclicredential-authentication-issues)</li></ul>|
 |Error from the client with a status code of 401 or 403|Authentication succeeded but the authorizing Azure service responded with a 401 (Unauthorized), or 403 (Forbidden) status code|<ul><li>[Enable logging](#enable-and-configure-logging) to determine which credential in the chain returned the authenticating token.</li><li>If an unexpected credential is returning a token, check application configuration such as environment variables.</li><li>Ensure the correct role is assigned to the authenticated identity. For example, a service specific role rather than the subscription Owner role.</li></ul>|
 |"managed identity timed out"|`DefaultAzureCredential` sets a short timeout on its first managed identity authentication attempt to prevent very long timeouts during local development when no managed identity is available. That timeout causes this error in production when an application requests a token before the hosting environment is ready to provide one.|Use [ManagedIdentityCredential](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/azidentity#ManagedIdentityCredential) directly, at least in production. It doesn't set a timeout on its authentication attempts.|
+|invalid AZURE_TOKEN_CREDENTIALS value "..."|AZURE_TOKEN_CREDENTIALS has an unexpected value|Specify a valid value as described in [DefaultAzureCredential documentation](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/azidentity#DefaultAzureCredential)
 
 ## Troubleshoot EnvironmentCredential authentication issues
 
@@ -119,7 +119,6 @@ azlog.SetEvents(azidentity.EventAuthentication)
 |---|---|---|
 |Azure Virtual Machines and Scale Sets|[Configuration](https://learn.microsoft.com/entra/identity/managed-identities-azure-resources/qs-configure-portal-windows-vm)|[Troubleshooting](#azure-virtual-machine-managed-identity)|
 |Azure App Service and Azure Functions|[Configuration](https://learn.microsoft.com/azure/app-service/overview-managed-identity)|[Troubleshooting](#azure-app-service-and-azure-functions-managed-identity)|
-|Azure Kubernetes Service|[Configuration](https://azure.github.io/aad-pod-identity/docs/)|[Troubleshooting](#azure-kubernetes-service-managed-identity)|
 |Azure Arc|[Configuration](https://learn.microsoft.com/azure/azure-arc/servers/managed-identity-authentication)||
 |Azure Service Fabric|[Configuration](https://learn.microsoft.com/azure/service-fabric/concepts-managed-identity)||
 
@@ -157,14 +156,6 @@ curl "$IDENTITY_ENDPOINT?resource=https://management.core.windows.net&api-versio
 ```
 
 > This command's output will contain an access token and SHOULD NOT BE SHARED, to avoid compromising account security.
-
-### Azure Kubernetes Service managed identity
-
-#### Pod Identity
-
-| Error Message |Description| Mitigation |
-|---|---|---|
-|"no azure identity found for request clientID"|The application attempted to authenticate before an identity was assigned to its pod|Verify the pod is labeled correctly. This also occurs when a correctly labeled pod authenticates before the identity is ready. To prevent initialization races, configure NMI to set the Retry-After header in its responses as described in [Pod Identity documentation](https://azure.github.io/aad-pod-identity/docs/configure/feature_flags/#set-retry-after-header-in-nmi-response).
 
 <a id="azure-cli"></a>
 ## Troubleshoot AzureCLICredential authentication issues

@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -90,12 +91,6 @@ func (l *HTTP2Listener) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		http.Error(w, "streaming not supported", http.StatusInternalServerError)
-		return
-	}
-
 	if r.ProtoMajor != 2 {
 		http.Error(w, "codec not supported", http.StatusHTTPVersionNotSupported)
 		return
@@ -112,7 +107,21 @@ func (l *HTTP2Listener) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid remote addr", http.StatusBadRequest)
 		return
 	}
-	conn := newHTTP2Conn(l.Addr(), remoteAddr, r.Body, w, flusher, l.codec)
+
+	rc := http.NewResponseController(w)
+	err = rc.SetWriteDeadline(time.Time{})
+	if err != nil {
+		http.Error(w, "failed to set write deadline", http.StatusInternalServerError)
+		return
+	}
+
+	err = rc.SetReadDeadline(time.Time{})
+	if err != nil {
+		http.Error(w, "failed to set read deadline", http.StatusInternalServerError)
+		return
+	}
+
+	conn := newHTTP2Conn(l.Addr(), remoteAddr, r.Body, w, rc, l.codec)
 	defer conn.Close()
 
 	incomingConn := &incomingHTTP2Conn{conn: conn, w: w}
@@ -143,7 +152,10 @@ func (l *HTTP2Listener) Accept(ctx context.Context) (Conn, error) {
 		return nil, net.ErrClosed
 	case incomingConn := <-l.connCh:
 		incomingConn.w.WriteHeader(http.StatusOK)
-		incomingConn.conn.flusher.Flush()
+		err := incomingConn.conn.responseController.Flush()
+		if err != nil {
+			return nil, fmt.Errorf("flush response: %w", err)
+		}
 		return incomingConn.conn, nil
 	}
 }
@@ -166,11 +178,11 @@ type http2Conn struct {
 	localAddr  net.Addr
 	remoteAddr net.Addr
 
-	codec   *protobufCodec
-	reader  io.ReadCloser
-	writer  io.Writer
-	flusher http.Flusher
-	cleanup func() // Optional cleanup function
+	codec              *protobufCodec
+	reader             io.ReadCloser
+	writer             io.Writer
+	responseController *http.ResponseController
+	cleanup            func() // Optional cleanup function
 
 	writeMu   sync.Mutex
 	closeOnce sync.Once
@@ -192,18 +204,18 @@ func newHTTP2Conn(
 	remoteAddr net.Addr,
 	reader io.ReadCloser,
 	writer io.Writer,
-	flusher http.Flusher,
+	responseController *http.ResponseController,
 	codec *protobufCodec,
 ) *http2Conn {
 	c := &http2Conn{
-		localAddr:  localAddr,
-		remoteAddr: remoteAddr,
-		codec:      codec,
-		reader:     reader,
-		writer:     writer,
-		flusher:    flusher,
-		closed:     make(chan struct{}),
-		incomingCh: make(chan incomingFrame),
+		localAddr:          localAddr,
+		remoteAddr:         remoteAddr,
+		codec:              codec,
+		reader:             reader,
+		writer:             writer,
+		responseController: responseController,
+		closed:             make(chan struct{}),
+		incomingCh:         make(chan incomingFrame),
 	}
 	return c
 }
@@ -240,8 +252,11 @@ func (c *http2Conn) Send(ctx context.Context, frame Frame) error {
 	}
 
 	// Flush after each frame to ensure immediate delivery
-	if c.flusher != nil {
-		c.flusher.Flush()
+	if c.responseController != nil {
+		err := c.responseController.Flush()
+		if err != nil {
+			return fmt.Errorf("flush response: %w", err)
+		}
 	}
 
 	return nil
@@ -341,7 +356,7 @@ func (d *HTTP2Dialer) Dial(ctx context.Context, from, to net.Addr) (Conn, error)
 		to,
 		resp.Body,
 		pw,
-		nil, // client doesn't need flusher, it's handled by the pipe writer
+		nil, // client doesn't need responseController, it's handled by the pipe writer
 		d.codec,
 	)
 

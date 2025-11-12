@@ -41,7 +41,7 @@ func typedDecodeHook(h mapstructure.DecodeHookFunc) mapstructure.DecodeHookFunc 
 func cachedDecodeHook(raw mapstructure.DecodeHookFunc) func(reflect.Value, reflect.Value) (any, error) {
 	switch f := typedDecodeHook(raw).(type) {
 	case mapstructure.DecodeHookFuncType:
-		return func(from reflect.Value, to reflect.Value) (any, error) {
+		return func(from, to reflect.Value) (any, error) {
 			// CHANGE FROM UPSTREAM: check if from is valid and return nil if not
 			if !from.IsValid() {
 				return nil, nil
@@ -49,7 +49,7 @@ func cachedDecodeHook(raw mapstructure.DecodeHookFunc) func(reflect.Value, refle
 			return f(from.Type(), to.Type(), from.Interface())
 		}
 	case mapstructure.DecodeHookFuncKind:
-		return func(from reflect.Value, to reflect.Value) (any, error) {
+		return func(from, to reflect.Value) (any, error) {
 			// CHANGE FROM UPSTREAM: check if from is valid and return nil if not
 			if !from.IsValid() {
 				return nil, nil
@@ -57,7 +57,7 @@ func cachedDecodeHook(raw mapstructure.DecodeHookFunc) func(reflect.Value, refle
 			return f(from.Kind(), to.Kind(), from.Interface())
 		}
 	case mapstructure.DecodeHookFuncValue:
-		return func(from reflect.Value, to reflect.Value) (any, error) {
+		return func(from, to reflect.Value) (any, error) {
 			return f(from, to)
 		}
 	default:
@@ -80,7 +80,7 @@ func ComposeDecodeHookFunc(fs ...mapstructure.DecodeHookFunc) mapstructure.Decod
 	for _, f := range fs {
 		cached = append(cached, cachedDecodeHook(f))
 	}
-	return func(f reflect.Value, t reflect.Value) (any, error) {
+	return func(f, t reflect.Value) (any, error) {
 		var err error
 
 		// CHANGE FROM UPSTREAM: check if f is valid before calling f.Interface()
