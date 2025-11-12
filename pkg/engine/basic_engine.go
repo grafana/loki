@@ -18,7 +18,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
-	"github.com/grafana/loki/v3/pkg/xcap"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/logical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/logql"
@@ -29,6 +28,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/rangeio"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 var tracer = otel.Tracer("pkg/engine")

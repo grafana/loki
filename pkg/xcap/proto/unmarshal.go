@@ -7,8 +7,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
-// ToCapture converts a protobuf Capture to its Go representation.
-func ToCapture(proto *Capture) (*xcap.Capture, error) {
+// FromPbCapture converts a protobuf Capture to its Go representation.
+func FromPbCapture(proto *Capture) (*xcap.Capture, error) {
 	if proto == nil {
 		return nil, nil
 	}

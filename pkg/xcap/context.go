@@ -24,4 +24,3 @@ func FromContext(ctx context.Context) *Capture {
 func WithCapture(ctx context.Context, capture *Capture) context.Context {
 	return context.WithValue(ctx, xcapKey, capture)
 }
-

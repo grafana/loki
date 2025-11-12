@@ -83,14 +83,14 @@ func NewScope(name string, startTime, endTime time.Time, observations map[Statis
 // within an overall capture.
 //
 // It adds the scope to the Capture found in the context. If no Capture
-// is found, it returns a nil value.
+// is found, it returns the original context and a nil scope.
 //
 // It also creates a corresponding OpenTelemetry span for the scope linking it to
-// the span in the context.
-func StartScope(ctx context.Context, name string, opts ...ScopeOption) *Scope {
+// the span in the context. The returned context contains the newly created span.
+func StartScope(ctx context.Context, name string, opts ...ScopeOption) (context.Context, *Scope) {
 	capture := FromContext(ctx)
 	if capture == nil {
-		return nil
+		return ctx, nil
 	}
 
 	// Apply options
@@ -113,7 +113,7 @@ func StartScope(ctx context.Context, name string, opts ...ScopeOption) *Scope {
 
 	// Add scope to capture.
 	capture.AddScope(scope)
-	return scope
+	return ctx, scope
 }
 
 // Record records the statistic Observation o into the scope. Calling

@@ -65,8 +65,7 @@ func toPbScope(scope *xcap.Scope, statKeyToIndex map[xcap.StatisticKey]uint32) (
 		key := observation.Statistic.Key()
 		statIndex, exists := statKeyToIndex[key]
 		if !exists {
-			// this shouldn't happen
-			continue
+			return nil, fmt.Errorf("statistic not found in index: %v", key)
 		}
 
 		protoValue, err := marshalObservationValue(observation.Value)
@@ -147,4 +146,3 @@ func marshalAggregationType(agg xcap.AggregationType) AggregationType {
 		return AGGREGATION_TYPE_INVALID
 	}
 }
-

@@ -30,13 +30,12 @@ var (
 	statSecondaryRowBytes      = xcap.NewStatisticInt64("secondary_row_bytes_read", xcap.AggregationTypeSum)
 
 	// Dataset reader statistics - download and caching.
-	statPagesScanned               = xcap.NewStatisticInt64("pages_scanned", xcap.AggregationTypeSum)
-	statPagesFoundInCache          = xcap.NewStatisticInt64("pages_found_in_cache", xcap.AggregationTypeSum)
-	statBatchDownloadRequests      = xcap.NewStatisticInt64("batch_download_requests", xcap.AggregationTypeSum)
-	statPageDownloadTime           = xcap.NewStatisticInt64("page_download_time_nanos", xcap.AggregationTypeSum)
-	statPrimaryColumnBytes         = xcap.NewStatisticInt64("primary_column_bytes", xcap.AggregationTypeSum)
-	statSecondaryColumnBytes       = xcap.NewStatisticInt64("secondary_column_bytes", xcap.AggregationTypeSum)
+	statPagesScanned                     = xcap.NewStatisticInt64("pages_scanned", xcap.AggregationTypeSum)
+	statPagesFoundInCache                = xcap.NewStatisticInt64("pages_found_in_cache", xcap.AggregationTypeSum)
+	statBatchDownloadRequests            = xcap.NewStatisticInt64("batch_download_requests", xcap.AggregationTypeSum)
+	statPageDownloadTime                 = xcap.NewStatisticInt64("page_download_time_nanos", xcap.AggregationTypeSum)
+	statPrimaryColumnBytes               = xcap.NewStatisticInt64("primary_column_bytes", xcap.AggregationTypeSum)
+	statSecondaryColumnBytes             = xcap.NewStatisticInt64("secondary_column_bytes", xcap.AggregationTypeSum)
 	statPrimaryColumnUncompressedBytes   = xcap.NewStatisticInt64("primary_column_uncompressed_bytes", xcap.AggregationTypeSum)
 	statSecondaryColumnUncompressedBytes = xcap.NewStatisticInt64("secondary_column_uncompressed_bytes", xcap.AggregationTypeSum)
 )
-

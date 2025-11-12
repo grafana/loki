@@ -15,8 +15,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
-	"github.com/grafana/loki/v3/pkg/xcap"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 var tracer = otel.Tracer("pkg/engine/internal/executor")
@@ -88,7 +88,8 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 		// which wraps the pipeline with a topk/limit without reintroducing
 		// planning cost for thousands of scan nodes.
 
-		scope := xcap.StartScope(ctx, scopeName(n), xcap.WithScopeAttributes(
+		var scope *xcap.Scope
+		ctx, scope = xcap.StartScope(ctx, scopeName(n), xcap.WithScopeAttributes(
 			attribute.String("location", string(n.Location)),
 			attribute.Int("section", n.Section),
 			attribute.Int("num_stream_ids", len(n.StreamIDs)),
@@ -103,7 +104,8 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 		}
 
 	case *physical.TopK:
-		scope := xcap.StartScope(ctx, scopeName(n), xcap.WithScopeAttributes(
+		var scope *xcap.Scope
+		ctx, scope = xcap.StartScope(ctx, scopeName(n), xcap.WithScopeAttributes(
 			attribute.Int("k", n.K),
 			attribute.Bool("ascending", n.Ascending),
 			attribute.Bool("nulls_first", n.NullsFirst),
@@ -113,7 +115,8 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 			return newObservedPipeline(c.executeTopK(ctx, n, inputs, scope))
 		}
 	case *physical.Limit:
-		scope := xcap.StartScope(ctx, scopeName(n), xcap.WithScopeAttributes(
+		var scope *xcap.Scope
+		ctx, scope = xcap.StartScope(ctx, scopeName(n), xcap.WithScopeAttributes(
 			attribute.Int("skip", int(n.Skip)),
 			attribute.Int("fetch", int(n.Fetch)),
 		))
@@ -122,7 +125,8 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 			return newObservedPipeline(c.executeLimit(ctx, n, inputs, scope))
 		}
 	case *physical.Filter:
-		scope := xcap.StartScope(ctx, scopeName(n), xcap.WithScopeAttributes(
+		var scope *xcap.Scope
+		ctx, scope = xcap.StartScope(ctx, scopeName(n), xcap.WithScopeAttributes(
 			attribute.Int("num_predicates", len(n.Predicates)),
 		))
 
@@ -130,7 +134,8 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 			return newObservedPipeline(c.executeFilter(ctx, n, inputs, scope))
 		}
 	case *physical.Projection:
-		scope := xcap.StartScope(ctx, scopeName(n), xcap.WithScopeAttributes(
+		var scope *xcap.Scope
+		ctx, scope = xcap.StartScope(ctx, scopeName(n), xcap.WithScopeAttributes(
 			attribute.Int("num_expressions", len(n.Expressions)),
 			attribute.Bool("all", n.All),
 			attribute.Bool("drop", n.Drop),
@@ -141,8 +146,9 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 			return newObservedPipeline(c.executeProjection(ctx, n, inputs, scope))
 		}
 	case *physical.RangeAggregation:
-		scope := xcap.StartScope(ctx, scopeName(n), xcap.WithScopeAttributes(
-			attribute.String("operation", string(n.Operation)),
+		var scope *xcap.Scope
+		ctx, scope = xcap.StartScope(ctx, scopeName(n), xcap.WithScopeAttributes(
+			attribute.String("operation", string(rune(n.Operation))),
 			attribute.Int64("start_ts", n.Start.UnixNano()),
 			attribute.Int64("end_ts", n.End.UnixNano()),
 			attribute.Int64("range_interval", int64(n.Range)),
@@ -154,8 +160,9 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 			return newObservedPipeline(c.executeRangeAggregation(ctx, n, inputs, scope))
 		}
 	case *physical.VectorAggregation:
-		scope := xcap.StartScope(ctx, scopeName(n), xcap.WithScopeAttributes(
-			attribute.String("operation", string(n.Operation)),
+		var scope *xcap.Scope
+		ctx, scope = xcap.StartScope(ctx, scopeName(n), xcap.WithScopeAttributes(
+			attribute.String("operation", string(rune(n.Operation))),
 			attribute.Int("num_group_by", len(n.GroupBy)),
 		))
 
@@ -163,7 +170,8 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 			return newObservedPipeline(c.executeVectorAggregation(ctx, n, inputs, scope))
 		}
 	case *physical.ColumnCompat:
-		scope := xcap.StartScope(ctx, scopeName(n), xcap.WithScopeAttributes(
+		var scope *xcap.Scope
+		ctx, scope = xcap.StartScope(ctx, scopeName(n), xcap.WithScopeAttributes(
 			attribute.String("src", n.Source.String()),
 			attribute.String("dst", n.Destination.String()),
 			attribute.String("collision", n.Collision.String()),
@@ -177,7 +185,8 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 			return newObservedPipeline(c.executeParallelize(ctx, n, inputs))
 		}
 	case *physical.ScanSet:
-		scope := xcap.StartScope(ctx, scopeName(n), xcap.WithScopeAttributes(
+		var scope *xcap.Scope
+		ctx, scope = xcap.StartScope(ctx, scopeName(n), xcap.WithScopeAttributes(
 			attribute.Int("num_targets", len(n.Targets)),
 			attribute.Int("num_predicates", len(n.Predicates)),
 			attribute.Int("num_projections", len(n.Projections)),
@@ -502,7 +511,7 @@ func (c *Context) executeScanSet(ctx context.Context, set *physical.ScanSet, sco
 			partition.Projections = set.Projections
 
 			targets = append(targets, newLazyPipeline(func(ctx context.Context, _ []Pipeline) Pipeline {
-				dataObjScope := xcap.StartScope(ctx, scopeName(partition), xcap.WithScopeAttributes(
+				ctx, dataObjScope := xcap.StartScope(ctx, scopeName(partition), xcap.WithScopeAttributes(
 					attribute.String("location", string(partition.Location)),
 					attribute.Int("section", partition.Section),
 					attribute.Int("num_stream_ids", len(partition.StreamIDs)),

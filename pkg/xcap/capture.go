@@ -151,4 +151,3 @@ var NoopCapture = &Capture{
 	scopes:     nil,
 	ended:      true, // Already ended so no scopes can be added
 }
-

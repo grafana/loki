@@ -332,7 +332,7 @@ func (p *observedPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) 
 
 	if p.scope != nil {
 		if rec != nil {
-			p.scope.Record(statRowsOut.Observe(int64(rec.NumRows())))
+			p.scope.Record(statRowsOut.Observe(rec.NumRows()))
 		}
 
 		p.scope.Record(statExecDuration.Observe(duration.Nanoseconds()))

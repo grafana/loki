@@ -8,10 +8,10 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 
-	"github.com/grafana/loki/v3/pkg/xcap"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 func NewProjectPipeline(input Pipeline, proj *physical.Projection, evaluator *expressionEvaluator, scope *xcap.Scope) (Pipeline, error) {

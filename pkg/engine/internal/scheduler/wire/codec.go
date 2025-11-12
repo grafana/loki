@@ -17,8 +17,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/proto/physicalpb"
 	protoUlid "github.com/grafana/loki/v3/pkg/engine/internal/proto/ulid"
 	"github.com/grafana/loki/v3/pkg/engine/internal/proto/wirepb"
-	xcapProto "github.com/grafana/loki/v3/pkg/xcap/proto"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
+	xcapProto "github.com/grafana/loki/v3/pkg/xcap/proto"
 )
 
 var defaultFrameCodec = &protobufCodec{
@@ -291,13 +291,13 @@ func (c *protobufCodec) taskStatusFromPbTaskStatus(ts *wirepb.TaskStatus) (workf
 		status.Error = errors.New(pbErr.Description)
 	}
 
-	if capture := ts.GetCapture(); capture != nil {
-		cap, err := xcapProto.ToCapture(capture)
+	if pbCapture := ts.GetCapture(); pbCapture != nil {
+		capture, err := xcapProto.FromPbCapture(pbCapture)
 		if err != nil {
 			return workflow.TaskStatus{}, fmt.Errorf("failed to unmarshal capture: %w", err)
 		}
 
-		status.Capture = cap
+		status.Capture = capture
 	}
 
 	return status, nil

@@ -12,9 +12,9 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/xcap"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 // CSVToArrow converts a CSV string to an Arrow record based on the provided schema.

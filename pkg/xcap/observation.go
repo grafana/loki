@@ -23,4 +23,3 @@ func (o *observation) statistic() Statistic {
 func (o *observation) value() any {
 	return o.val
 }
-

@@ -63,4 +63,3 @@ func (a *AggregatedObservation) Record(obs Observation) {
 
 	a.Count++
 }
-

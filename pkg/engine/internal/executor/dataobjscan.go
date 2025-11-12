@@ -16,10 +16,10 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
-	"github.com/grafana/loki/v3/pkg/xcap"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 type dataobjScanOptions struct {
@@ -35,7 +35,7 @@ type dataobjScanOptions struct {
 type dataobjScan struct {
 	opts   dataobjScanOptions
 	logger log.Logger
-	scope *xcap.Scope
+	scope  *xcap.Scope
 
 	initialized     bool
 	initializedAt   time.Time

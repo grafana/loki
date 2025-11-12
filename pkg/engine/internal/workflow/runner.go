@@ -5,8 +5,8 @@ import (
 	"fmt"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
-	"github.com/grafana/loki/v3/pkg/xcap"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 // A Runner can asynchronously execute a workflow.
