@@ -10,7 +10,6 @@
 //	defer scope.End()
 //
 //	scope.Record(bytesRead.Observe(1024))
-
 package xcap
 
 import (
