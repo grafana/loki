@@ -28,38 +28,38 @@ func ToPbCapture(c *xcap.Capture) (*Capture, error) {
 		}
 	}
 
-	// Convert regions to proto regions
-	regions := c.Regions()
-	protoRegions := make([]*Region, 0, len(regions))
-	for _, region := range regions {
-		protoRegion, err := toPbRegion(region, statIndex)
+	// Convert scopes to proto scopes
+	scopes := c.Scopes()
+	protoScopes := make([]*Scope, 0, len(scopes))
+	for _, scope := range scopes {
+		protoScope, err := toPbScope(scope, statIndex)
 		if err != nil {
-			return nil, fmt.Errorf("failed to marshal region: %w", err)
+			return nil, fmt.Errorf("failed to marshal scope: %w", err)
 		}
 
-		if protoRegion != nil {
-			protoRegions = append(protoRegions, protoRegion)
+		if protoScope != nil {
+			protoScopes = append(protoScopes, protoScope)
 		}
 	}
 
 	return &Capture{
-		Regions:    protoRegions,
+		Scopes:     protoScopes,
 		Statistics: protoStats,
 	}, nil
 }
 
-// toPbRegion converts a Region to its protobuf representation.
-func toPbRegion(region *xcap.Region, statNameToIndex map[string]uint32) (*Region, error) {
-	if region == nil {
+// toPbScope converts a Scope to its protobuf representation.
+func toPbScope(scope *xcap.Scope, statNameToIndex map[string]uint32) (*Scope, error) {
+	if scope == nil {
 		return nil, nil
 	}
 
-	startTime := region.StartTime()
-	endTime := region.EndTime()
-	name := region.Name()
+	startTime := scope.StartTime()
+	endTime := scope.EndTime()
+	name := scope.Name()
 
 	// Marshal observations
-	observations := region.GetObservations()
+	observations := scope.GetObservations()
 	protoObservations := make([]*Observation, 0, len(observations))
 	for _, observation := range observations {
 		statIndex, exists := statNameToIndex[observation.Statistic.UniqueIdentifier()]
@@ -80,15 +80,15 @@ func toPbRegion(region *xcap.Region, statNameToIndex map[string]uint32) (*Region
 		})
 	}
 
-	// Build proto region
-	protoRegion := &Region{
+	// Build proto scope
+	protoScope := &Scope{
 		Name:         name,
 		StartTime:    startTime,
 		EndTime:      endTime,
 		Observations: protoObservations,
 	}
 
-	return protoRegion, nil
+	return protoScope, nil
 }
 
 // marshalObservationValue converts an observation value to proto ObservationValue.

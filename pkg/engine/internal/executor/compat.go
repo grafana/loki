@@ -16,10 +16,10 @@ import (
 
 var statCollisionFound = xcap.NewStatisticFlag("collision_found")
 
-func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipeline, region *xcap.Region) Pipeline {
+func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipeline, scope *xcap.Scope) Pipeline {
 	const extracted = "_extracted"
 
-	return newGenericPipelineWithRegion(func(ctx context.Context, inputs []Pipeline) (arrow.RecordBatch, error) {
+	return newGenericPipelineWithScope(func(ctx context.Context, inputs []Pipeline) (arrow.RecordBatch, error) {
 		input := inputs[0]
 		batch, err := input.Read(ctx)
 		if err != nil {
@@ -64,7 +64,7 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 			return batch, nil
 		}
 
-		region.Record(statCollisionFound.Observe(true))
+		scope.Record(statCollisionFound.Observe(true))
 
 		// Next, update the schema with the new columns that have the _extracted suffix.
 		newSchema := batch.Schema()
@@ -149,7 +149,7 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 		}
 
 		return array.NewRecordBatch(newSchema, newSchemaColumns, batch.NumRows()), nil
-	}, region, input)
+	}, scope, input)
 }
 
 // duplicate holds indexes to a duplicate values in two slices

@@ -10,33 +10,33 @@ option go_package = "github.com/grafana/loki/v3/pkg/xcap/proto";
 
 // Capture captures the lifetime of a query.
 message Capture {
-  // A list of Regions recorded in the Capture.
-  repeated Region regions = 1;
+  // A list of Scopes recorded in the Capture.
+  repeated Scope scopes = 1;
 
   // A list of statistic definitions used in the Capture across all
-  // Regions. The index into this list is used as the statistic_id field
+  // Scopes. The index into this list is used as the statistic_id field
   // in Observation.
   repeated Statistic statistics = 2;
 }
 
-// Region captures the lifetime of a specific operation within a capture.
-message Region {
-  // Name is the name of the region.
+// Scope captures the lifetime of a specific operation within a capture.
+message Scope {
+  // Name is the name of the scope.
   string name = 1;
 
-  // StartTime is when the region was created.
+  // StartTime is when the scope was created.
   google.protobuf.Timestamp start_time = 3 [
     (gogoproto.nullable) = false,
     (gogoproto.stdtime) = true
   ];
 
-  // EndTime is when the region ended. Zero if not ended.
+  // EndTime is when the scope ended. Zero if not ended.
   google.protobuf.Timestamp end_time = 4 [
     (gogoproto.nullable) = false,
     (gogoproto.stdtime) = true
   ];
 
-  // Observations are all observations recorded in this region.
+  // Observations are all observations recorded in this scope.
   repeated Observation observations = 6;
 }
 

@@ -35,7 +35,7 @@ type dataobjScanOptions struct {
 type dataobjScan struct {
 	opts   dataobjScanOptions
 	logger log.Logger
-	region *xcap.Region
+	scope *xcap.Scope
 
 	initialized     bool
 	initializedAt   time.Time
@@ -51,11 +51,11 @@ var _ Pipeline = (*dataobjScan)(nil)
 // [arrow.RecordBatch] composed of the requested log section in a data object. Rows
 // in the returned record are ordered by timestamp in the direction specified
 // by opts.Direction.
-func newDataobjScanPipeline(opts dataobjScanOptions, logger log.Logger, region *xcap.Region) *dataobjScan {
+func newDataobjScanPipeline(opts dataobjScanOptions, logger log.Logger, scope *xcap.Scope) *dataobjScan {
 	return &dataobjScan{
 		opts:   opts,
 		logger: logger,
-		region: region,
+		scope:  scope,
 	}
 }
 
@@ -373,9 +373,9 @@ func (s *dataobjScan) read(ctx context.Context) (arrow.RecordBatch, error) {
 
 // Close closes s and releases all resources.
 func (s *dataobjScan) Close() {
-	if s.region != nil && s.reader != nil {
+	if s.scope != nil && s.reader != nil {
 		s.recordReaderStats()
-		s.region.End()
+		s.scope.End()
 	}
 	if s.streams != nil {
 		s.streams.Close()
@@ -388,12 +388,12 @@ func (s *dataobjScan) Close() {
 	s.streams = nil
 	s.streamsInjector = nil
 	s.reader = nil
-	s.region = nil
+	s.scope = nil
 }
 
-// recordReaderStats records statistics from the [logs.Reader] to the xcap region.
+// recordReaderStats records statistics from the [logs.Reader] to the xcap scope.
 func (s *dataobjScan) recordReaderStats() {
-	if s.region == nil || s.reader == nil {
+	if s.scope == nil || s.reader == nil {
 		return
 	}
 
@@ -425,30 +425,30 @@ func (s *dataobjScan) recordReaderStats() {
 	statSecondaryColumnUncompressedBytes := xcap.NewStatisticInt64("secondary_column_uncompressed_bytes", xcap.AggregationTypeSum)
 
 	// Record basic stats
-	s.region.Record(statPrimaryColumns.Observe(int64(stats.PrimaryColumns)))
-	s.region.Record(statSecondaryColumns.Observe(int64(stats.SecondaryColumns)))
-	s.region.Record(statPrimaryColumnPages.Observe(int64(stats.PrimaryColumnPages)))
-	s.region.Record(statSecondaryColumnPages.Observe(int64(stats.SecondaryColumnPages)))
-	s.region.Record(statMaxRows.Observe(int64(stats.MaxRows)))
-	s.region.Record(statRowsToReadAfterPruning.Observe(int64(stats.RowsToReadAfterPruning)))
-	s.region.Record(statPrimaryRowsRead.Observe(int64(stats.PrimaryRowsRead)))
-	s.region.Record(statSecondaryRowsRead.Observe(int64(stats.SecondaryRowsRead)))
-	s.region.Record(statPrimaryRowBytes.Observe(int64(stats.PrimaryRowBytes)))
-	s.region.Record(statSecondaryRowBytes.Observe(int64(stats.SecondaryRowBytes)))
+	s.scope.Record(statPrimaryColumns.Observe(int64(stats.PrimaryColumns)))
+	s.scope.Record(statSecondaryColumns.Observe(int64(stats.SecondaryColumns)))
+	s.scope.Record(statPrimaryColumnPages.Observe(int64(stats.PrimaryColumnPages)))
+	s.scope.Record(statSecondaryColumnPages.Observe(int64(stats.SecondaryColumnPages)))
+	s.scope.Record(statMaxRows.Observe(int64(stats.MaxRows)))
+	s.scope.Record(statRowsToReadAfterPruning.Observe(int64(stats.RowsToReadAfterPruning)))
+	s.scope.Record(statPrimaryRowsRead.Observe(int64(stats.PrimaryRowsRead)))
+	s.scope.Record(statSecondaryRowsRead.Observe(int64(stats.SecondaryRowsRead)))
+	s.scope.Record(statPrimaryRowBytes.Observe(int64(stats.PrimaryRowBytes)))
+	s.scope.Record(statSecondaryRowBytes.Observe(int64(stats.SecondaryRowBytes)))
 
 	// Record download stats
 	downloadStats := stats.DownloadStats
-	s.region.Record(statPagesScanned.Observe(int64(downloadStats.PagesScanned)))
-	s.region.Record(statPagesFoundInCache.Observe(int64(downloadStats.PagesFoundInCache)))
-	s.region.Record(statBatchDownloadRequests.Observe(int64(downloadStats.BatchDownloadRequests)))
-	s.region.Record(statPageDownloadTime.Observe(downloadStats.PageDownloadTime.Nanoseconds()))
-	s.region.Record(statPrimaryColumnBytes.Observe(int64(downloadStats.PrimaryColumnBytes)))
-	s.region.Record(statSecondaryColumnBytes.Observe(int64(downloadStats.SecondaryColumnBytes)))
-	s.region.Record(statPrimaryColumnUncompressedBytes.Observe(int64(downloadStats.PrimaryColumnUncompressedBytes)))
-	s.region.Record(statSecondaryColumnUncompressedBytes.Observe(int64(downloadStats.SecondaryColumnUncompressedBytes)))
+	s.scope.Record(statPagesScanned.Observe(int64(downloadStats.PagesScanned)))
+	s.scope.Record(statPagesFoundInCache.Observe(int64(downloadStats.PagesFoundInCache)))
+	s.scope.Record(statBatchDownloadRequests.Observe(int64(downloadStats.BatchDownloadRequests)))
+	s.scope.Record(statPageDownloadTime.Observe(downloadStats.PageDownloadTime.Nanoseconds()))
+	s.scope.Record(statPrimaryColumnBytes.Observe(int64(downloadStats.PrimaryColumnBytes)))
+	s.scope.Record(statSecondaryColumnBytes.Observe(int64(downloadStats.SecondaryColumnBytes)))
+	s.scope.Record(statPrimaryColumnUncompressedBytes.Observe(int64(downloadStats.PrimaryColumnUncompressedBytes)))
+	s.scope.Record(statSecondaryColumnUncompressedBytes.Observe(int64(downloadStats.SecondaryColumnUncompressedBytes)))
 }
 
-// Region implements Pipeline.
-func (s *dataobjScan) Region() *xcap.Region {
-	return s.region
+// Scope implements Pipeline.
+func (s *dataobjScan) Scope() *xcap.Scope {
+	return s.scope
 }

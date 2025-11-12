@@ -68,15 +68,15 @@ type rangeAggregationPipeline struct {
 	windowsForTimestamp timestampMatchingWindowsFunc // function to find matching time windows for a given timestamp
 	evaluator           expressionEvaluator          // used to evaluate column expressions
 	opts                rangeAggregationOptions
-	region              *xcap.Region
+	scope               *xcap.Scope
 }
 
-func newRangeAggregationPipeline(inputs []Pipeline, evaluator expressionEvaluator, opts rangeAggregationOptions, region *xcap.Region) (*rangeAggregationPipeline, error) {
+func newRangeAggregationPipeline(inputs []Pipeline, evaluator expressionEvaluator, opts rangeAggregationOptions, scope *xcap.Scope) (*rangeAggregationPipeline, error) {
 	r := &rangeAggregationPipeline{
 		inputs:    inputs,
 		evaluator: evaluator,
 		opts:      opts,
-		region:    region,
+		scope:     scope,
 	}
 	r.init()
 	return r, nil
@@ -222,17 +222,17 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 // Close closes the resources of the pipeline.
 // The implementation must close all the of the pipeline's inputs.
 func (r *rangeAggregationPipeline) Close() {
-	if r.region != nil {
-		r.region.End()
+	if r.scope != nil {
+		r.scope.End()
 	}
 	for _, input := range r.inputs {
 		input.Close()
 	}
 }
 
-// Region implements Pipeline.
-func (r *rangeAggregationPipeline) Region() *xcap.Region {
-	return r.region
+// Scope implements Pipeline.
+func (r *rangeAggregationPipeline) Scope() *xcap.Scope {
+	return r.scope
 }
 
 func newMatcherFactoryFromOpts(opts rangeAggregationOptions) *matcherFactory {

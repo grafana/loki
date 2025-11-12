@@ -1,6 +1,6 @@
 package xcap
 
-// AggregatedObservation holds an aggregated value for a statistic within a region.
+// AggregatedObservation holds an aggregated value for a statistic within a scope.
 type AggregatedObservation struct {
 	Statistic Statistic
 	Value     any

@@ -6,10 +6,10 @@
 //	ctx, capture := xcap.NewCapture(context.Background(), nil)
 //	defer capture.End()
 //
-//	ctx, region := xcap.StartRegion(ctx, "work")
-//	defer region.End()
+//	ctx, scope := xcap.StartScope(ctx, "work")
+//	defer scope.End()
 //
-//	region.Record(bytesRead.Observe(1024))
+//	scope.Record(bytesRead.Observe(1024))
 
 package xcap
 
@@ -27,8 +27,8 @@ type Capture struct {
 	// attributes are the attributes associated with this capture.
 	attributes []attribute.KeyValue
 
-	// regions are all regions created within this capture.
-	regions []*Region
+	// scopes are all scopes created within this capture.
+	scopes []*Scope
 
 	// ended indicates whether End() has been called.
 	ended bool
@@ -38,7 +38,7 @@ type Capture struct {
 func NewCapture(ctx context.Context, attributes []attribute.KeyValue) (context.Context, *Capture) {
 	capture := &Capture{
 		attributes: attributes,
-		regions:    make([]*Region, 0),
+		scopes:     make([]*Scope, 0),
 	}
 
 	ctx = WithCapture(ctx, capture)
@@ -46,7 +46,7 @@ func NewCapture(ctx context.Context, attributes []attribute.KeyValue) (context.C
 }
 
 // End marks the end of the capture. After End is called, no new
-// Regions can be created from this Capture.
+// Scopes can be created from this Capture.
 func (c *Capture) End() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -68,23 +68,23 @@ func (c *Capture) Attributes() []attribute.KeyValue {
 	return attrs
 }
 
-// GetRegion returns the region with the given name, or nil if no such region exists.
-func (c *Capture) GetRegion(name string) *Region {
+// GetScope returns the scope with the given name, or nil if no such scope exists.
+func (c *Capture) GetScope(name string) *Scope {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	for _, region := range c.regions {
-		if region.name == name {
-			return region
+	for _, scope := range c.scopes {
+		if scope.name == name {
+			return scope
 		}
 	}
 
 	return nil
 }
 
-// AddRegion adds a region to this capture. This is called by Region
+// AddScope adds a scope to this capture. This is called by Scope
 // when it is created.
-func (c *Capture) AddRegion(r *Region) {
+func (c *Capture) AddScope(s *Scope) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -92,35 +92,35 @@ func (c *Capture) AddRegion(r *Region) {
 		return
 	}
 
-	c.regions = append(c.regions, r)
+	c.scopes = append(c.scopes, s)
 }
 
-// Regions returns all regions in this capture.
-func (c *Capture) Regions() []*Region {
+// Scopes returns all scopes in this capture.
+func (c *Capture) Scopes() []*Scope {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	regions := make([]*Region, len(c.regions))
-	copy(regions, c.regions)
-	return regions
+	scopes := make([]*Scope, len(c.scopes))
+	copy(scopes, c.scopes)
+	return scopes
 }
 
-// GetAllStatistics returns statistics used across all regions
+// GetAllStatistics returns statistics used across all scopes
 // in this capture.
 func (c *Capture) GetAllStatistics() []Statistic {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
 	statistics := make(map[string]Statistic)
-	for _, region := range c.regions {
-		region.mu.RLock()
-		for id, obs := range region.observations {
+	for _, scope := range c.scopes {
+		scope.mu.RLock()
+		for id, obs := range scope.observations {
 			// Statistics with the same definition will have the same identifier.
 			if _, exists := statistics[id]; !exists {
 				statistics[id] = obs.Statistic
 			}
 		}
-		region.mu.RUnlock()
+		scope.mu.RUnlock()
 	}
 
 	result := make([]Statistic, 0, len(statistics))
@@ -131,7 +131,7 @@ func (c *Capture) GetAllStatistics() []Statistic {
 	return result
 }
 
-// Merge appends all regions from other into this capture.
+// Merge appends all scopes from other into this capture.
 func (c *Capture) Merge(other *Capture) {
 	if other == nil {
 		return
@@ -142,13 +142,13 @@ func (c *Capture) Merge(other *Capture) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.regions = append(c.regions, other.Regions()...)
+	c.scopes = append(c.scopes, other.Scopes()...)
 }
 
 // NoopCapture is a noop capture that can be used in tests.
 var NoopCapture = &Capture{
 	attributes: nil,
-	regions:    nil,
-	ended:      true, // Already ended so no regions can be added
+	scopes:     nil,
+	ended:      true, // Already ended so no scopes can be added
 }
 

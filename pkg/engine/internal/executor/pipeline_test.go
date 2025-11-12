@@ -119,10 +119,10 @@ func (i *instrumentedPipeline) Read(ctx context.Context) (arrow.RecordBatch, err
 	return i.inner.Read(ctx)
 }
 
-// Region implements PipelineWithRegion.
-func (i *instrumentedPipeline) Region() *xcap.Region {
-	if withRegion, ok := i.inner.(PipelineWithRegion); ok {
-		return withRegion.Region()
+// Scope implements PipelineWithScope.
+func (i *instrumentedPipeline) Scope() *xcap.Scope {
+	if withScope, ok := i.inner.(PipelineWithScope); ok {
+		return withScope.Scope()
 	}
 	return nil
 }

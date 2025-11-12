@@ -25,23 +25,23 @@ func ToCapture(proto *Capture) (*xcap.Capture, error) {
 
 	_, capture := xcap.NewCapture(context.Background(), nil)
 
-	// Unmarshal regions
-	for _, protoRegion := range proto.Regions {
-		region, err := toRegion(protoRegion, statIndexToStat, capture)
+	// Unmarshal scopes
+	for _, protoScope := range proto.Scopes {
+		scope, err := toScope(protoScope, statIndexToStat, capture)
 		if err != nil {
-			return nil, fmt.Errorf("failed to unmarshal region: %w", err)
+			return nil, fmt.Errorf("failed to unmarshal scope: %w", err)
 		}
 
-		if region != nil {
-			capture.AddRegion(region)
+		if scope != nil {
+			capture.AddScope(scope)
 		}
 	}
 
 	return capture, nil
 }
 
-// toRegion converts a protobuf Region to its Go representation.
-func toRegion(proto *Region, statIndexToStat map[uint32]xcap.Statistic, capture *xcap.Capture) (*xcap.Region, error) {
+// toScope converts a protobuf Scope to its Go representation.
+func toScope(proto *Scope, statIndexToStat map[uint32]xcap.Statistic, capture *xcap.Capture) (*xcap.Scope, error) {
 	if proto == nil {
 		return nil, nil
 	}
@@ -69,8 +69,8 @@ func toRegion(proto *Region, statIndexToStat map[uint32]xcap.Statistic, capture 
 		}
 	}
 
-	// Use constructor to create region
-	region := xcap.NewRegion(
+	// Use constructor to create scope
+	scope := xcap.NewScope(
 		proto.Name,
 		proto.StartTime,
 		proto.EndTime,
@@ -79,7 +79,7 @@ func toRegion(proto *Region, statIndexToStat map[uint32]xcap.Statistic, capture 
 		capture,
 	)
 
-	return region, nil
+	return scope, nil
 }
 
 // unmarshalObservationValue converts a protobuf ObservationValue to a Go value.

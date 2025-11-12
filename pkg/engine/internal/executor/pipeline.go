@@ -24,13 +24,13 @@ type Pipeline interface {
 	Close()
 }
 
-// PipelineWithRegion is an optional interface that pipelines can implement
-// to expose their associated xcap region for statistics collection.
-type PipelineWithRegion interface {
+// PipelineWithScope is an optional interface that pipelines can implement
+// to expose their associated xcap scope for statistics collection.
+type PipelineWithScope interface {
 	Pipeline
-	// Region returns the xcap region associated with this pipeline node, if any.
-	// Returns nil if no region is associated with this pipeline.
-	Region() *xcap.Region
+	// Scope returns the xcap scope associated with this pipeline node, if any.
+	// Returns nil if no scope is associated with this pipeline.
+	Scope() *xcap.Scope
 }
 
 var (
@@ -48,7 +48,7 @@ type readFunc func(context.Context, []Pipeline) (arrow.RecordBatch, error)
 type GenericPipeline struct {
 	inputs []Pipeline
 	read   readFunc
-	region *xcap.Region
+	scope  *xcap.Scope
 }
 
 func newGenericPipeline(read readFunc, inputs ...Pipeline) *GenericPipeline {
@@ -58,11 +58,11 @@ func newGenericPipeline(read readFunc, inputs ...Pipeline) *GenericPipeline {
 	}
 }
 
-func newGenericPipelineWithRegion(read readFunc, region *xcap.Region, inputs ...Pipeline) *GenericPipeline {
+func newGenericPipelineWithScope(read readFunc, scope *xcap.Scope, inputs ...Pipeline) *GenericPipeline {
 	return &GenericPipeline{
 		read:   read,
 		inputs: inputs,
-		region: region,
+		scope:  scope,
 	}
 }
 
@@ -78,17 +78,17 @@ func (p *GenericPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
 
 // Close implements Pipeline.
 func (p *GenericPipeline) Close() {
-	if p.region != nil {
-		p.region.End()
+	if p.scope != nil {
+		p.scope.End()
 	}
 	for _, inp := range p.inputs {
 		inp.Close()
 	}
 }
 
-// Region implements Pipeline.
-func (p *GenericPipeline) Region() *xcap.Region {
-	return p.region
+// Scope implements Pipeline.
+func (p *GenericPipeline) Scope() *xcap.Scope {
+	return p.scope
 }
 
 func errorPipeline(ctx context.Context, err error) Pipeline {
@@ -208,10 +208,10 @@ func (p *prefetchWrapper) Close() {
 	p.Pipeline.Close()
 }
 
-// Region implements PipelineWithRegion.
-func (p *prefetchWrapper) Region() *xcap.Region {
-	if withRegion, ok := p.Pipeline.(PipelineWithRegion); ok {
-		return withRegion.Region()
+// Scope implements PipelineWithScope.
+func (p *prefetchWrapper) Scope() *xcap.Scope {
+	if withScope, ok := p.Pipeline.(PipelineWithScope); ok {
+		return withScope.Scope()
 	}
 	return nil
 }
@@ -286,11 +286,11 @@ func (lp *lazyPipeline) Close() {
 	lp.built = nil
 }
 
-// Region implements PipelineWithRegion.
-func (lp *lazyPipeline) Region() *xcap.Region {
+// Scope implements PipelineWithScope.
+func (lp *lazyPipeline) Scope() *xcap.Scope {
 	if lp.built != nil {
-		if withRegion, ok := lp.built.(PipelineWithRegion); ok {
-			return withRegion.Region()
+		if withScope, ok := lp.built.(PipelineWithScope); ok {
+			return withScope.Scope()
 		}
 	}
 	return nil
@@ -304,23 +304,23 @@ var (
 )
 
 // observedPipeline wraps a Pipeline to automatically collect common statistics
-// and record them to the pipeline's region.
+// and record them to the pipeline's scope.
 type observedPipeline struct {
-	inner  Pipeline
-	region *xcap.Region
+	inner Pipeline
+	scope *xcap.Scope
 }
 
 var _ Pipeline = (*observedPipeline)(nil)
 
 // newObservedPipeline wraps a pipeline to automatically collect common statistics.
-// If the pipeline has a region, statistics will be recorded to it.
+// If the pipeline has a scope, statistics will be recorded to it.
 func newObservedPipeline(inner Pipeline) *observedPipeline {
 	p := &observedPipeline{
 		inner: inner,
 	}
 
-	if withRegion, ok := inner.(PipelineWithRegion); ok {
-		p.region = withRegion.Region()
+	if withScope, ok := inner.(PipelineWithScope); ok {
+		p.scope = withScope.Scope()
 	}
 
 	return p
@@ -330,19 +330,19 @@ func newObservedPipeline(inner Pipeline) *observedPipeline {
 func (p *observedPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	start := time.Now()
 
-	if p.region != nil {
-		p.region.Record(statReadCalls.Observe(1))
+	if p.scope != nil {
+		p.scope.Record(statReadCalls.Observe(1))
 	}
 
 	rec, err := p.inner.Read(ctx)
 	duration := time.Since(start)
 
-	if p.region != nil {
+	if p.scope != nil {
 		if rec != nil {
-			p.region.Record(statRowsOut.Observe(int64(rec.NumRows())))
+			p.scope.Record(statRowsOut.Observe(int64(rec.NumRows())))
 		}
 
-		p.region.Record(statExecDuration.Observe(duration.Nanoseconds()))
+		p.scope.Record(statExecDuration.Observe(duration.Nanoseconds()))
 	}
 
 	return rec, err

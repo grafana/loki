@@ -131,9 +131,9 @@ func toTreeNode(n Node, capture *xcap.Capture) *tree.Node {
 
 	// include metrics if capture is provided
 	if capture != nil {
-		regionName := fmt.Sprintf("%s-%s", n.Type().String(), n.ID().String())
-		if region := capture.GetRegion(regionName); region != nil {
-			observations := region.GetObservations()
+		scopeName := fmt.Sprintf("%s-%s", n.Type().String(), n.ID().String())
+		if scope := capture.GetScope(scopeName); scope != nil {
+			observations := scope.GetObservations()
 			props := make([]tree.Property, 0, len(observations))
 			for _, observation := range observations {
 				props = append(props, tree.NewProperty(observation.Statistic.Name(), false, observation.Value))
