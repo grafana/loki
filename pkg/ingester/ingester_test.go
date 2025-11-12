@@ -1854,7 +1854,7 @@ func TestClassicIngesterLifecyclerStartup(t *testing.T) {
 	// Create classic ingester (no partition reader)
 	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock, nil)
 	require.NoError(t, err)
-	defer services.StopAndAwaitTerminated(context.Background(), i)
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
 	// Verify partition reader is not set (classic ingester)
 	require.Nil(t, i.partitionReader)
@@ -1890,7 +1890,7 @@ func TestPartitionIngesterCheckReadyDuringCatchup(t *testing.T) {
 	// Create ingester
 	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock, nil)
 	require.NoError(t, err)
-	defer services.StopAndAwaitTerminated(context.Background(), i)
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
 	// This test validates that CheckReady can handle the lifecycler being in New state
 	// which happens for partition ingesters during catch-up
@@ -1901,6 +1901,7 @@ func TestPartitionIngesterCheckReadyDuringCatchup(t *testing.T) {
 	// CheckReady should handle this gracefully (based on our implementation)
 	// It should not require lifecycler to be running
 	err = i.CheckReady(context.Background())
+	require.NoError(t, err)
 	// We expect this to pass if ingester service is Running, or return error if not yet started
 	// The key is it shouldn't panic or have unexpected behavior
 
