@@ -1838,3 +1838,4 @@ func sortLabels(series []logproto.SeriesIdentifier) {
 		})
 	}
 }
+

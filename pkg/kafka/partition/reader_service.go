@@ -167,7 +167,7 @@ func (s *ReaderService) starting(ctx context.Context) error {
 		return fmt.Errorf("failed to process consumer lag at startup: %w", err)
 	}
 
-	level.Info(s.logger).Log("msg", "simulating a lot of lag 4")
+	level.Info(s.logger).Log("msg", "simulating a lot of lag 9")
 
 	time.Sleep(10 * time.Minute)
 	level.Info(s.logger).Log("msg", "simulating a lot of lag finished")
