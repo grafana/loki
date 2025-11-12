@@ -24,10 +24,9 @@ type Pipeline interface {
 	Close()
 }
 
-// PipelineWithScope is an optional interface that pipelines can implement
+// ScopeProvider is an optional interface that pipelines can implement
 // to expose their associated xcap scope for statistics collection.
-type PipelineWithScope interface {
-	Pipeline
+type ScopeProvider interface {
 	// Scope returns the xcap scope associated with this pipeline node, if any.
 	// Returns nil if no scope is associated with this pipeline.
 	Scope() *xcap.Scope
@@ -67,6 +66,7 @@ func newGenericPipelineWithScope(read readFunc, scope *xcap.Scope, inputs ...Pip
 }
 
 var _ Pipeline = (*GenericPipeline)(nil)
+var _ ScopeProvider = (*GenericPipeline)(nil)
 
 // Read implements Pipeline.
 func (p *GenericPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
@@ -86,7 +86,7 @@ func (p *GenericPipeline) Close() {
 	}
 }
 
-// Scope implements Pipeline.
+// Scope implements ScopeProvider.
 func (p *GenericPipeline) Scope() *xcap.Scope {
 	return p.scope
 }
@@ -208,10 +208,10 @@ func (p *prefetchWrapper) Close() {
 	p.Pipeline.Close()
 }
 
-// Scope implements PipelineWithScope.
+// Scope implements ScopeProvider.
 func (p *prefetchWrapper) Scope() *xcap.Scope {
-	if withScope, ok := p.Pipeline.(PipelineWithScope); ok {
-		return withScope.Scope()
+	if provider, ok := p.Pipeline.(ScopeProvider); ok {
+		return provider.Scope()
 	}
 	return nil
 }
@@ -286,11 +286,11 @@ func (lp *lazyPipeline) Close() {
 	lp.built = nil
 }
 
-// Scope implements PipelineWithScope.
+// Scope implements ScopeProvider.
 func (lp *lazyPipeline) Scope() *xcap.Scope {
 	if lp.built != nil {
-		if withScope, ok := lp.built.(PipelineWithScope); ok {
-			return withScope.Scope()
+		if provider, ok := lp.built.(ScopeProvider); ok {
+			return provider.Scope()
 		}
 	}
 	return nil
@@ -312,8 +312,8 @@ func newObservedPipeline(inner Pipeline) *observedPipeline {
 		inner: inner,
 	}
 
-	if withScope, ok := inner.(PipelineWithScope); ok {
-		p.scope = withScope.Scope()
+	if provider, ok := inner.(ScopeProvider); ok {
+		p.scope = provider.Scope()
 	}
 
 	return p
@@ -328,14 +328,13 @@ func (p *observedPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) 
 	}
 
 	rec, err := p.inner.Read(ctx)
-	duration := time.Since(start)
 
 	if p.scope != nil {
 		if rec != nil {
 			p.scope.Record(statRowsOut.Observe(rec.NumRows()))
 		}
 
-		p.scope.Record(statExecDuration.Observe(duration.Nanoseconds()))
+		p.scope.Record(statExecDuration.Observe(time.Since(start).Nanoseconds()))
 	}
 
 	return rec, err

@@ -14,20 +14,20 @@ func FromPbCapture(proto *Capture) (*xcap.Capture, error) {
 	}
 
 	// Build statistics map from proto statistics
-	statIndexToStat := make(map[uint32]xcap.Statistic, len(proto.Statistics))
+	statsIndex := make(map[uint32]xcap.Statistic, len(proto.Statistics))
 	for i, protoStat := range proto.Statistics {
 		stat, err := unmarshalStatistic(protoStat)
 		if err != nil {
 			return nil, fmt.Errorf("failed to unmarshal statistic: %w", err)
 		}
-		statIndexToStat[uint32(i)] = stat
+		statsIndex[uint32(i)] = stat
 	}
 
 	_, capture := xcap.NewCapture(context.Background(), nil)
 
 	// Unmarshal scopes
 	for _, protoScope := range proto.Scopes {
-		scope, err := toScope(protoScope, statIndexToStat, capture)
+		scope, err := toScope(protoScope, statsIndex, capture)
 		if err != nil {
 			return nil, fmt.Errorf("failed to unmarshal scope: %w", err)
 		}
@@ -42,13 +42,7 @@ func FromPbCapture(proto *Capture) (*xcap.Capture, error) {
 
 // toScope converts a protobuf Scope to its Go representation.
 func toScope(proto *Scope, statIndexToStat map[uint32]xcap.Statistic, capture *xcap.Capture) (*xcap.Scope, error) {
-	if proto == nil {
-		return nil, nil
-	}
-
 	// Unmarshal observations
-	// We need to convert from proto observations (keyed by statistic_id)
-	// to map[StatisticKey]AggregatedObservation (keyed by statistic key)
 	observations := make(map[xcap.StatisticKey]xcap.AggregatedObservation, len(proto.Observations))
 	for _, protoObs := range proto.Observations {
 		stat, exists := statIndexToStat[protoObs.StatisticId]
@@ -69,7 +63,6 @@ func toScope(proto *Scope, statIndexToStat map[uint32]xcap.Statistic, capture *x
 		}
 	}
 
-	// Use constructor to create scope
 	scope := xcap.NewScope(
 		proto.Name,
 		proto.StartTime,
@@ -83,7 +76,7 @@ func toScope(proto *Scope, statIndexToStat map[uint32]xcap.Statistic, capture *x
 }
 
 // unmarshalObservationValue converts a protobuf ObservationValue to a Go value.
-func unmarshalObservationValue(proto *ObservationValue) (interface{}, error) {
+func unmarshalObservationValue(proto *ObservationValue) (any, error) {
 	if proto == nil || proto.Kind == nil {
 		return nil, fmt.Errorf("invalid observation value")
 	}

@@ -1,7 +1,5 @@
 package xcap
 
-import "fmt"
-
 // DataType specifies the data type of a statistic's values.
 type DataType int
 
@@ -49,7 +47,6 @@ type Statistic interface {
 	Name() string
 	DataType() DataType
 	Aggregation() AggregationType
-	UniqueIdentifier() string
 	Key() StatisticKey
 }
 
@@ -73,13 +70,6 @@ func (s *statistic) DataType() DataType {
 // Aggregation returns the aggregation type for this statistic.
 func (s *statistic) Aggregation() AggregationType {
 	return s.aggregation
-}
-
-// UniqueIdentifier returns a unique string identifier for this statistic
-// based on its definition (name, data type, and aggregation).
-// Statistics with the same definition will have the same identifier.
-func (s *statistic) UniqueIdentifier() string {
-	return fmt.Sprintf("%s:%d:%d", s.name, s.dataType, s.aggregation)
 }
 
 // Key returns a StatisticKey that uniquely identifies this statistic.

@@ -243,7 +243,7 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 	}
 	capture.End()
 
-	level.Info(logger).Log("execution capture", physical.PrintAsTreeWithMetrics(physicalPlan, capture))
+	level.Info(logger).Log("msg", "execution capture", "plan", physical.PrintAsTreeWithMetrics(physicalPlan, capture))
 
 	durFull := time.Since(startTime)
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)

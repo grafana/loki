@@ -23,7 +23,6 @@ func Fprint(w io.Writer, wf *Workflow) error {
 	visited := make(map[*Task]struct{}, wf.graph.Len())
 
 	roots := wf.graph.Roots()
-	capture := wf.Capture()
 	for _, root := range roots {
 		err := wf.graph.Walk(root, func(n *Task) error {
 			if _, seen := visited[n]; seen {
@@ -39,7 +38,7 @@ func Fprint(w io.Writer, wf *Workflow) error {
 			for _, root := range n.Fragment.Roots() {
 				printer := tree.NewPrinter(&sb)
 
-				planTree := physical.BuildTreeWithMetrics(n.Fragment, root, capture)
+				planTree := physical.BuildTree(n.Fragment, root)
 
 				for node, streams := range n.Sources {
 					treeNode := findTreeNode(planTree, func(n *tree.Node) bool { return n.Context == node })

@@ -403,27 +403,27 @@ func (s *dataobjScan) recordReaderStats() {
 	}
 
 	// Record basic stats
-	s.scope.Record(statPrimaryColumns.Observe(int64(stats.PrimaryColumns)))
-	s.scope.Record(statSecondaryColumns.Observe(int64(stats.SecondaryColumns)))
-	s.scope.Record(statPrimaryColumnPages.Observe(int64(stats.PrimaryColumnPages)))
-	s.scope.Record(statSecondaryColumnPages.Observe(int64(stats.SecondaryColumnPages)))
-	s.scope.Record(statMaxRows.Observe(int64(stats.MaxRows)))
-	s.scope.Record(statRowsToReadAfterPruning.Observe(int64(stats.RowsToReadAfterPruning)))
-	s.scope.Record(statPrimaryRowsRead.Observe(int64(stats.PrimaryRowsRead)))
-	s.scope.Record(statSecondaryRowsRead.Observe(int64(stats.SecondaryRowsRead)))
-	s.scope.Record(statPrimaryRowBytes.Observe(int64(stats.PrimaryRowBytes)))
-	s.scope.Record(statSecondaryRowBytes.Observe(int64(stats.SecondaryRowBytes)))
+	s.scope.Record(statDatasetPrimaryColumns.Observe(int64(stats.PrimaryColumns)))
+	s.scope.Record(statDatasetSecondaryColumns.Observe(int64(stats.SecondaryColumns)))
+	s.scope.Record(statDatasetPrimaryColumnPages.Observe(int64(stats.PrimaryColumnPages)))
+	s.scope.Record(statDatasetSecondaryColumnPages.Observe(int64(stats.SecondaryColumnPages)))
+	s.scope.Record(statDatasetMaxRows.Observe(int64(stats.MaxRows)))
+	s.scope.Record(statDatasetRowsAfterPruning.Observe(int64(stats.RowsToReadAfterPruning)))
+	s.scope.Record(statDatasetPrimaryRowsRead.Observe(int64(stats.PrimaryRowsRead)))
+	s.scope.Record(statDatasetSecondaryRowsRead.Observe(int64(stats.SecondaryRowsRead)))
+	s.scope.Record(statDatasetPrimaryRowBytes.Observe(int64(stats.PrimaryRowBytes)))
+	s.scope.Record(statDatasetSecondaryRowBytes.Observe(int64(stats.SecondaryRowBytes)))
 
 	// Record download stats
 	downloadStats := stats.DownloadStats
-	s.scope.Record(statPagesScanned.Observe(int64(downloadStats.PagesScanned)))
-	s.scope.Record(statPagesFoundInCache.Observe(int64(downloadStats.PagesFoundInCache)))
-	s.scope.Record(statBatchDownloadRequests.Observe(int64(downloadStats.BatchDownloadRequests)))
-	s.scope.Record(statPageDownloadTime.Observe(downloadStats.PageDownloadTime.Nanoseconds()))
-	s.scope.Record(statPrimaryColumnBytes.Observe(int64(downloadStats.PrimaryColumnBytes)))
-	s.scope.Record(statSecondaryColumnBytes.Observe(int64(downloadStats.SecondaryColumnBytes)))
-	s.scope.Record(statPrimaryColumnUncompressedBytes.Observe(int64(downloadStats.PrimaryColumnUncompressedBytes)))
-	s.scope.Record(statSecondaryColumnUncompressedBytes.Observe(int64(downloadStats.SecondaryColumnUncompressedBytes)))
+	s.scope.Record(statDatasetPagesScanned.Observe(int64(downloadStats.PagesScanned)))
+	s.scope.Record(statDatasetPagesFoundInCache.Observe(int64(downloadStats.PagesFoundInCache)))
+	s.scope.Record(statDatasetBatchDownloadRequests.Observe(int64(downloadStats.BatchDownloadRequests)))
+	s.scope.Record(statDatasetPageDownloadTime.Observe(downloadStats.PageDownloadTime.Nanoseconds()))
+	s.scope.Record(statDatasetPrimaryColumnBytes.Observe(int64(downloadStats.PrimaryColumnBytes)))
+	s.scope.Record(statDatasetSecondaryColumnBytes.Observe(int64(downloadStats.SecondaryColumnBytes)))
+	s.scope.Record(statDatasetPrimaryColumnUncompressedBytes.Observe(int64(downloadStats.PrimaryColumnUncompressedBytes)))
+	s.scope.Record(statDatasetSecondaryColumnUncompressedBytes.Observe(int64(downloadStats.SecondaryColumnUncompressedBytes)))
 }
 
 // Scope implements Pipeline.

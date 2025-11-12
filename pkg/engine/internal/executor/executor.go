@@ -104,12 +104,17 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 		}
 
 	case *physical.TopK:
-		var scope *xcap.Scope
-		ctx, scope = xcap.StartScope(ctx, scopeName(n), xcap.WithScopeAttributes(
+		attributes := []attribute.KeyValue{
 			attribute.Int("k", n.K),
 			attribute.Bool("ascending", n.Ascending),
 			attribute.Bool("nulls_first", n.NullsFirst),
-		))
+		}
+		if n.SortBy != nil {
+			attributes = append(attributes, attribute.Stringer("sort_by", n.SortBy))
+		}
+
+		var scope *xcap.Scope
+		ctx, scope = xcap.StartScope(ctx, scopeName(n), xcap.WithScopeAttributes(attributes...))
 
 		executeNodeFn = func() Pipeline {
 			return newObservedPipeline(c.executeTopK(ctx, n, inputs, scope))

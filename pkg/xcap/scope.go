@@ -146,7 +146,6 @@ func (s *Scope) Record(o Observation) {
 	// Aggregate with existing observations.
 	agg := s.observations[key]
 	agg.Record(o)
-	s.observations[key] = agg
 }
 
 // End completes the Scope. Updates to the Scope are ignored after calling End.

@@ -62,7 +62,7 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 			return batch, nil
 		}
 
-		scope.Record(statCollisionFound.Observe(true))
+		scope.Record(statCompatCollisionFound.Observe(true))
 
 		// Next, update the schema with the new columns that have the _extracted suffix.
 		newSchema := batch.Schema()

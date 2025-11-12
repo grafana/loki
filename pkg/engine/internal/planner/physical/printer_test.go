@@ -110,8 +110,6 @@ func TestPrinter(t *testing.T) {
 		repr := PrintAsTreeWithMetrics(p, capture)
 		t.Log("\n" + repr)
 
-		// Build expected output - note that node IDs are not in the output, only types
-		// With two targets, we should see two DataObjScan nodes
 		expected := `
 Limit offset=0 limit=0
 │   └── @metrics bytes_read=1024 rows_processed=100

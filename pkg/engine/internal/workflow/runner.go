@@ -103,6 +103,7 @@ type TaskStatus struct {
 	// set when State is [TaskStateFailed].
 	Error error
 
+	// Capture contains observations about the execution of the task.
 	Capture *xcap.Capture
 
 	// Statistics report analytics about the lifetime of a task. Only set

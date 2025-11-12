@@ -12,27 +12,24 @@ func ToPbCapture(c *xcap.Capture) (*Capture, error) {
 		return nil, nil
 	}
 
-	allStats := c.GetAllStatistics()
-	statIndex := make(map[xcap.StatisticKey]uint32)
-	protoStats := make([]*Statistic, 0, len(allStats))
+	statistics := c.GetAllStatistics()
+	statsIndex := make(map[xcap.StatisticKey]uint32)
+	protoStats := make([]*Statistic, 0, len(statistics))
 
-	for _, stat := range allStats {
-		key := stat.Key()
-		if _, exists := statIndex[key]; !exists {
-			statIndex[key] = uint32(len(protoStats))
-			protoStats = append(protoStats, &Statistic{
-				Name:            stat.Name(),
-				DataType:        marshalDataType(stat.DataType()),
-				AggregationType: marshalAggregationType(stat.Aggregation()),
-			})
-		}
+	for _, stat := range statistics {
+		statsIndex[stat.Key()] = uint32(len(protoStats))
+		protoStats = append(protoStats, &Statistic{
+			Name:            stat.Name(),
+			DataType:        marshalDataType(stat.DataType()),
+			AggregationType: marshalAggregationType(stat.Aggregation()),
+		})
 	}
 
 	// Convert scopes to proto scopes
 	scopes := c.Scopes()
 	protoScopes := make([]*Scope, 0, len(scopes))
 	for _, scope := range scopes {
-		protoScope, err := toPbScope(scope, statIndex)
+		protoScope, err := toPbScope(scope, statsIndex)
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal scope: %w", err)
 		}
@@ -49,28 +46,20 @@ func ToPbCapture(c *xcap.Capture) (*Capture, error) {
 }
 
 // toPbScope converts a Scope to its protobuf representation.
-func toPbScope(scope *xcap.Scope, statKeyToIndex map[xcap.StatisticKey]uint32) (*Scope, error) {
-	if scope == nil {
-		return nil, nil
-	}
-
-	startTime := scope.StartTime()
-	endTime := scope.EndTime()
-	name := scope.Name()
-
+func toPbScope(scope *xcap.Scope, statsIndex map[xcap.StatisticKey]uint32) (*Scope, error) {
 	// Marshal observations
 	observations := scope.GetObservations()
 	protoObservations := make([]*Observation, 0, len(observations))
 	for _, observation := range observations {
 		key := observation.Statistic.Key()
-		statIndex, exists := statKeyToIndex[key]
+		statIndex, exists := statsIndex[key]
 		if !exists {
 			return nil, fmt.Errorf("statistic not found in index: %v", key)
 		}
 
 		protoValue, err := marshalObservationValue(observation.Value)
 		if err != nil {
-			return nil, fmt.Errorf("failed to marshal observation value for statistic %s: %w", observation.Statistic.UniqueIdentifier(), err)
+			return nil, fmt.Errorf("failed to marshal observation: %w", err)
 		}
 
 		protoObservations = append(protoObservations, &Observation{
@@ -82,9 +71,9 @@ func toPbScope(scope *xcap.Scope, statKeyToIndex map[xcap.StatisticKey]uint32) (
 
 	// Build proto scope
 	protoScope := &Scope{
-		Name:         name,
-		StartTime:    startTime,
-		EndTime:      endTime,
+		Name:         scope.Name(),
+		StartTime:    scope.StartTime(),
+		EndTime:      scope.EndTime(),
 		Observations: protoObservations,
 	}
 
@@ -92,7 +81,7 @@ func toPbScope(scope *xcap.Scope, statKeyToIndex map[xcap.StatisticKey]uint32) (
 }
 
 // marshalObservationValue converts an observation value to proto ObservationValue.
-func marshalObservationValue(value interface{}) (*ObservationValue, error) {
+func marshalObservationValue(value any) (*ObservationValue, error) {
 	switch v := value.(type) {
 	case int64:
 		return &ObservationValue{

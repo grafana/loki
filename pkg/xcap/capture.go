@@ -143,10 +143,3 @@ func (c *Capture) Merge(other *Capture) {
 
 	c.scopes = append(c.scopes, other.Scopes()...)
 }
-
-// NoopCapture is a noop capture that can be used in tests.
-var NoopCapture = &Capture{
-	attributes: nil,
-	scopes:     nil,
-	ended:      true, // Already ended so no scopes can be added
-}

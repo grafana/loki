@@ -209,9 +209,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 			}
 		}
 	}
-
 	capture.End()
-	// level.Info(logger).Log("execution capture", physical.PrintAsTreeWithMetrics(job.Task.Fragment, capture))
 
 	// Finally, close all sinks.
 	for _, sink := range job.Sinks {

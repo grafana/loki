@@ -119,10 +119,10 @@ func (i *instrumentedPipeline) Read(ctx context.Context) (arrow.RecordBatch, err
 	return i.inner.Read(ctx)
 }
 
-// Scope implements PipelineWithScope.
+// Scope implements ScopeProvider.
 func (i *instrumentedPipeline) Scope() *xcap.Scope {
-	if withScope, ok := i.inner.(PipelineWithScope); ok {
-		return withScope.Scope()
+	if provider, ok := i.inner.(ScopeProvider); ok {
+		return provider.Scope()
 	}
 	return nil
 }
