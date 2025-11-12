@@ -14,8 +14,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 )
 
-var statCollisionFound = xcap.NewStatisticFlag("collision_found")
-
 func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipeline, scope *xcap.Scope) Pipeline {
 	const extracted = "_extracted"
 

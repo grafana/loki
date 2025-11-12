@@ -111,13 +111,13 @@ func (c *Capture) GetAllStatistics() []Statistic {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	statistics := make(map[string]Statistic)
+	statistics := make(map[StatisticKey]Statistic)
 	for _, scope := range c.scopes {
 		scope.mu.RLock()
-		for id, obs := range scope.observations {
-			// Statistics with the same definition will have the same identifier.
-			if _, exists := statistics[id]; !exists {
-				statistics[id] = obs.Statistic
+		for key, obs := range scope.observations {
+			// Statistics with the same definition will have the same key.
+			if _, exists := statistics[key]; !exists {
+				statistics[key] = obs.Statistic
 			}
 		}
 		scope.mu.RUnlock()

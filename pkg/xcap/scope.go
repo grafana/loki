@@ -55,8 +55,8 @@ type Scope struct {
 	endTime time.Time
 
 	// observations are all observations recorded in this scope.
-	// Map from statistic unique identifier to aggregated observation value.
-	observations map[string]AggregatedObservation
+	// Map from statistic key to aggregated observation value.
+	observations map[StatisticKey]AggregatedObservation
 
 	// ended indicates whether End() has been called.
 	ended bool
@@ -67,7 +67,7 @@ type Scope struct {
 
 // NewScope creates a new Scope with the given data.
 // This function is mainly used for unmarshaling from protobuf.
-func NewScope(name string, startTime, endTime time.Time, observations map[string]AggregatedObservation, ended bool, capture *Capture) *Scope {
+func NewScope(name string, startTime, endTime time.Time, observations map[StatisticKey]AggregatedObservation, ended bool, capture *Capture) *Scope {
 	return &Scope{
 		capture:      capture,
 		name:         name,
@@ -108,7 +108,7 @@ func StartScope(ctx context.Context, name string, opts ...ScopeOption) *Scope {
 		attributes:   cfg.attributes,
 		span:         span,
 		startTime:    time.Now(),
-		observations: make(map[string]AggregatedObservation),
+		observations: make(map[StatisticKey]AggregatedObservation),
 	}
 
 	// Add scope to capture.
@@ -131,7 +131,7 @@ func (s *Scope) Record(o Observation) {
 		return
 	}
 
-	key := o.statistic().UniqueIdentifier()
+	key := o.statistic().Key()
 	if _, ok := s.observations[key]; !ok {
 		// First observation for this statistic.
 		s.observations[key] = AggregatedObservation{
@@ -275,4 +275,3 @@ func (s *Scope) observationsToAttributes() []attribute.KeyValue {
 func (s *Scope) isZero() bool {
 	return s == nil || s.capture == nil
 }
-

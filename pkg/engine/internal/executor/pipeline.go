@@ -296,13 +296,6 @@ func (lp *lazyPipeline) Scope() *xcap.Scope {
 	return nil
 }
 
-// Common statistics that are tracked for all pipeline nodes.
-var (
-	statRowsOut      = xcap.NewStatisticInt64("rows_out", xcap.AggregationTypeSum)
-	statReadCalls    = xcap.NewStatisticInt64("read_calls", xcap.AggregationTypeSum)
-	statExecDuration = xcap.NewStatisticInt64("exec_duration_ns", xcap.AggregationTypeSum)
-)
-
 // observedPipeline wraps a Pipeline to automatically collect common statistics
 // and record them to the pipeline's scope.
 type observedPipeline struct {

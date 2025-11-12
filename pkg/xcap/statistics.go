@@ -36,12 +36,21 @@ const (
 	AggregationTypeFirst
 )
 
+// StatisticKey is a comparable struct that uniquely identifies a statistic
+// by its definition (name, data type, and aggregation type).
+type StatisticKey struct {
+	Name        string
+	DataType    DataType
+	Aggregation AggregationType
+}
+
 // Statistic is the interface that all statistic types implement.
 type Statistic interface {
 	Name() string
 	DataType() DataType
 	Aggregation() AggregationType
 	UniqueIdentifier() string
+	Key() StatisticKey
 }
 
 // statistic holds the common definition of a statistic.
@@ -71,6 +80,16 @@ func (s *statistic) Aggregation() AggregationType {
 // Statistics with the same definition will have the same identifier.
 func (s *statistic) UniqueIdentifier() string {
 	return fmt.Sprintf("%s:%d:%d", s.name, s.dataType, s.aggregation)
+}
+
+// Key returns a StatisticKey that uniquely identifies this statistic.
+// Statistics with the same definition will have the same key.
+func (s *statistic) Key() StatisticKey {
+	return StatisticKey{
+		Name:        s.name,
+		DataType:    s.dataType,
+		Aggregation: s.aggregation,
+	}
 }
 
 // StatisticInt64 is a statistic for int64 values.

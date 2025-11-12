@@ -13,13 +13,13 @@ func ToPbCapture(c *xcap.Capture) (*Capture, error) {
 	}
 
 	allStats := c.GetAllStatistics()
-	statIndex := make(map[string]uint32)
+	statIndex := make(map[xcap.StatisticKey]uint32)
 	protoStats := make([]*Statistic, 0, len(allStats))
 
 	for _, stat := range allStats {
-		statID := stat.UniqueIdentifier()
-		if _, exists := statIndex[statID]; !exists {
-			statIndex[statID] = uint32(len(protoStats))
+		key := stat.Key()
+		if _, exists := statIndex[key]; !exists {
+			statIndex[key] = uint32(len(protoStats))
 			protoStats = append(protoStats, &Statistic{
 				Name:            stat.Name(),
 				DataType:        marshalDataType(stat.DataType()),
@@ -49,7 +49,7 @@ func ToPbCapture(c *xcap.Capture) (*Capture, error) {
 }
 
 // toPbScope converts a Scope to its protobuf representation.
-func toPbScope(scope *xcap.Scope, statNameToIndex map[string]uint32) (*Scope, error) {
+func toPbScope(scope *xcap.Scope, statKeyToIndex map[xcap.StatisticKey]uint32) (*Scope, error) {
 	if scope == nil {
 		return nil, nil
 	}
@@ -62,7 +62,8 @@ func toPbScope(scope *xcap.Scope, statNameToIndex map[string]uint32) (*Scope, er
 	observations := scope.GetObservations()
 	protoObservations := make([]*Observation, 0, len(observations))
 	for _, observation := range observations {
-		statIndex, exists := statNameToIndex[observation.Statistic.UniqueIdentifier()]
+		key := observation.Statistic.Key()
+		statIndex, exists := statKeyToIndex[key]
 		if !exists {
 			// this shouldn't happen
 			continue

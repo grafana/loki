@@ -48,8 +48,8 @@ func toScope(proto *Scope, statIndexToStat map[uint32]xcap.Statistic, capture *x
 
 	// Unmarshal observations
 	// We need to convert from proto observations (keyed by statistic_id)
-	// to map[string]AggregatedObservation (keyed by unique identifier)
-	observations := make(map[string]xcap.AggregatedObservation, len(proto.Observations))
+	// to map[StatisticKey]AggregatedObservation (keyed by statistic key)
+	observations := make(map[xcap.StatisticKey]xcap.AggregatedObservation, len(proto.Observations))
 	for _, protoObs := range proto.Observations {
 		stat, exists := statIndexToStat[protoObs.StatisticId]
 		if !exists {
@@ -61,7 +61,7 @@ func toScope(proto *Scope, statIndexToStat map[uint32]xcap.Statistic, capture *x
 			return nil, fmt.Errorf("failed to unmarshal observation value: %w", err)
 		}
 
-		key := stat.UniqueIdentifier()
+		key := stat.Key()
 		observations[key] = xcap.AggregatedObservation{
 			Statistic: stat,
 			Value:     value,
