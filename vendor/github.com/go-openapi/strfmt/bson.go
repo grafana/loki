@@ -39,10 +39,10 @@ func IsBSONObjectID(str string) bool {
 // ObjectId represents a BSON object ID (alias to go.mongodb.org/mongo-driver/bson/primitive.ObjectID)
 //
 // swagger:strfmt bsonobjectid
-type ObjectId bsonprim.ObjectID //nolint:revive,stylecheck
+type ObjectId bsonprim.ObjectID //nolint:revive
 
 // NewObjectId creates a ObjectId from a Hex String
-func NewObjectId(hex string) ObjectId { //nolint:revive,stylecheck
+func NewObjectId(hex string) ObjectId { //nolint:revive
 	oid, err := bsonprim.ObjectIDFromHex(hex)
 	if err != nil {
 		panic(err)
@@ -83,7 +83,7 @@ func (id *ObjectId) Scan(raw interface{}) error {
 	case string:
 		data = []byte(v)
 	default:
-		return fmt.Errorf("cannot sql.Scan() strfmt.URI from: %#v", v)
+		return fmt.Errorf("cannot sql.Scan() strfmt.URI from: %#v: %w", v, ErrFormat)
 	}
 
 	return id.UnmarshalText(data)

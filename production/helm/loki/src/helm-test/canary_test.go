@@ -129,7 +129,7 @@ func testResultCanary(t *testing.T, ctx context.Context, metric string, test fun
 	body, err := io.ReadAll(rsp.Body)
 	require.NoError(t, err, "Failed to read response body")
 
-	p, err := textparse.New(body, rsp.Header.Get("Content-Type"), true, false, nil)
+	p, err := textparse.New(body, rsp.Header.Get("Content-Type"), "", true, false, true, labels.NewSymbolTable())
 	require.NoError(t, err, "Failed to create Prometheus parser")
 
 	for {
@@ -142,8 +142,8 @@ func testResultCanary(t *testing.T, ctx context.Context, metric string, test fun
 			continue
 		}
 
-		l := labels.Labels{}
-		p.Metric(&l)
+		var l labels.Labels
+		p.Labels(&l)
 
 		// Currently we aren't validating any labels, just the metric name, however this could be extended to do so.
 		name := l.Get(model.MetricNameLabel)

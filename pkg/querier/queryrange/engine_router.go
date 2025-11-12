@@ -3,17 +3,33 @@ package queryrange
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"slices"
 	"time"
 
+	"github.com/coder/quartz"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 
-	"github.com/grafana/loki/v3/pkg/engine"
+	"github.com/grafana/dskit/httpgrpc"
+
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 )
+
+// RouterConfig configures sending queries to a separate engine.
+type RouterConfig struct {
+	Start time.Time     // Start time of the v2 engine
+	Lag   time.Duration // Lag after which v2 engine has data
+
+	// Validate function to check if the query is supported by the engine.
+	Validate func(params logql.Params) bool
+
+	// Handler to execute queries against the engine.
+	Handler queryrangebase.Handler
+}
 
 // engineReqResp represents a request with its result channel
 type engineReqResp struct {
@@ -23,48 +39,57 @@ type engineReqResp struct {
 
 // engineRouter handles splitting queries between V1 and V2 engines
 type engineRouter struct {
-	v2Start, v2End time.Time // v2 engine time range
+	v2Start time.Time
+	v2Lag   time.Duration
+
 	forMetricQuery bool
 
 	v1Next queryrangebase.Handler
 	v2Next queryrangebase.Handler
 
+	checkV2 func(params logql.Params) bool
+
 	merger queryrangebase.Merger
 
 	logger log.Logger
+
+	// Used for tests.
+	clock quartz.Clock
 }
 
 // newEngineRouterMiddleware creates a middleware that splits and routes part of the query
 // to v2 engine if the query is supported by it.
 func newEngineRouterMiddleware(
-	v2Start, v2End time.Time,
-	v2EngineHandler queryrangebase.Handler,
+	v2Config RouterConfig,
 	v1Chain []queryrangebase.Middleware,
 	merger queryrangebase.Merger,
 	metricQuery bool,
 	logger log.Logger,
 ) queryrangebase.Middleware {
-	if v2EngineHandler == nil {
-		panic("v2EngineHandler cannot be nil")
+	if v2Config.Handler == nil {
+		panic("v2 engine handler cannot be nil")
 	}
 
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 		return &engineRouter{
-			v2Start:        v2Start,
-			v2End:          v2End,
+			v2Start:        v2Config.Start,
+			v2Lag:          v2Config.Lag,
 			v1Next:         queryrangebase.MergeMiddlewares(v1Chain...).Wrap(next),
-			v2Next:         v2EngineHandler,
+			v2Next:         v2Config.Handler,
+			checkV2:        v2Config.Validate,
 			merger:         merger,
 			logger:         logger,
 			forMetricQuery: metricQuery,
+			clock:          quartz.NewReal(),
 		}
 	})
 }
 
 func (e *engineRouter) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+	start, end := e.v2Start, e.getEnd()
 	// if query is entirely before or after v2 engine range, process using next handler.
 	// ignore any boundary overlap, splitting requests that fall on bounary would result in tiny requests.
-	if !r.GetEnd().After(e.v2Start) || !r.GetStart().Before(e.v2End) {
+	if !e.isOverlappingV2range(r, start, end) {
 		return e.v1Next.Do(ctx, r)
 	}
 
@@ -74,11 +99,11 @@ func (e *engineRouter) Do(ctx context.Context, r queryrangebase.Request) (queryr
 	}
 
 	// Unsupported queries should be entirely executed by chunks.
-	if !engine.IsQuerySupported(params) {
+	if !e.checkV2(params) {
 		return e.v1Next.Do(ctx, r)
 	}
 
-	inputs := e.splitOverlapping(r, e.v2Start, e.v2End)
+	inputs := e.splitOverlapping(r, start, end)
 
 	// for log queries, order the splits to return early on hitting limits.
 	var limit uint32
@@ -109,6 +134,19 @@ func (e *engineRouter) Do(ctx context.Context, r queryrangebase.Request) (queryr
 
 	// Merge responses
 	return e.merger.MergeResponse(responses...)
+}
+
+// whether the time range of the request overlaps with the time range of the v2 engine
+func (e engineRouter) isOverlappingV2range(r queryrangebase.Request, start, end time.Time) bool {
+	if !r.GetEnd().After(start) || !r.GetStart().Before(end) {
+		return false
+	}
+	return true
+}
+
+// the end time of the v2 engine based on current timestamp and v2 engine lag
+func (e engineRouter) getEnd() time.Time {
+	return e.clock.Now().UTC().Add(-e.v2Lag)
 }
 
 // splitOverlapping breaks down the request into multiple ranges based on the V2 engine time range.
@@ -181,6 +219,11 @@ func (e *engineRouter) handleReq(ctx context.Context, r *engineReqResp) {
 	var resp packedResp
 	if r.isV2Engine {
 		resp.resp, resp.err = e.v2Next.Do(ctx, r.req)
+		if isUnsupportedError(resp.err) {
+			// Our router validates queries beforehand, but we fall back here for safety.
+			level.Warn(e.logger).Log("msg", "falling back to v1 engine", "err", resp.err)
+			resp.resp, resp.err = e.v1Next.Do(ctx, r.req)
+		}
 	} else {
 		resp.resp, resp.err = e.v1Next.Do(ctx, r.req)
 	}
@@ -190,6 +233,17 @@ func (e *engineRouter) handleReq(ctx context.Context, r *engineReqResp) {
 		return
 	case r.ch <- &resp:
 	}
+}
+
+// isUnsupportedError checks whether the provided error corresponds to a
+// [http.StatusNotImplemented] provided via [httpgrpc].
+func isUnsupportedError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	resp, ok := httpgrpc.HTTPResponseFromError(err)
+	return ok && resp.Code == http.StatusNotImplemented
 }
 
 // process executes the inputs in parallel and collects the responses.
