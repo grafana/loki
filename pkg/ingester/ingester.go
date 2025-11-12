@@ -301,7 +301,6 @@ type Ingester struct {
 
 	ingestPartitionID       int32
 	partitionRingLifecycler *ring.PartitionInstanceLifecycler
-	partitionRingKVStore    kv.Client // KV store for partition ring, used to delete and recreate partitions
 	partitionReader         *partition.ReaderService
 }
 
@@ -378,9 +377,6 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 				return nil, fmt.Errorf("creating KV store for ingester partition ring: %w", err)
 			}
 		}
-		// Store the KV client so we can use it to delete and recreate partitions
-		i.partitionRingKVStore = partitionRingKV
-
 		i.partitionRingLifecycler = ring.NewPartitionInstanceLifecycler(
 			i.cfg.KafkaIngestion.PartitionRingConfig.ToLifecyclerConfig(i.ingestPartitionID, cfg.LifecyclerConfig.ID),
 			PartitionRingName,

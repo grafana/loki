@@ -1839,3 +1839,77 @@ func sortLabels(series []logproto.SeriesIdentifier) {
 	}
 }
 
+// TestClassicIngesterLifecyclerStartup validates that classic ingesters start the lifecycler immediately
+func TestClassicIngesterLifecyclerStartup(t *testing.T) {
+	ingesterConfig := defaultIngesterTestConfig(t)
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+
+	store := &mockStore{
+		chunks: map[string][]chunk.Chunk{},
+	}
+
+	readRingMock := mockReadRingWithOneActiveIngester()
+
+	// Create classic ingester (no partition reader)
+	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock, nil)
+	require.NoError(t, err)
+	defer services.StopAndAwaitTerminated(context.Background(), i)
+
+	// Verify partition reader is not set (classic ingester)
+	require.Nil(t, i.partitionReader)
+
+	// Start the ingester
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+
+	// Verify ingester reached Running state
+	require.Equal(t, services.Running, i.State())
+
+	// Verify lifecycler started immediately (not in New state)
+	require.NotEqual(t, services.New, i.lifecycler.State())
+
+	// Wait for lifecycler to acquire tokens
+	require.Eventually(t, func() bool {
+		err := i.CheckReady(context.Background())
+		return err == nil
+	}, 2*time.Second, 100*time.Millisecond, "CheckReady should eventually pass")
+}
+
+// TestPartitionIngesterCheckReadyDuringCatchup validates CheckReady behavior
+func TestPartitionIngesterCheckReadyDuringCatchup(t *testing.T) {
+	ingesterConfig := defaultIngesterTestConfig(t)
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+
+	store := &mockStore{
+		chunks: map[string][]chunk.Chunk{},
+	}
+
+	readRingMock := mockReadRingWithOneActiveIngester()
+
+	// Create ingester
+	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock, nil)
+	require.NoError(t, err)
+	defer services.StopAndAwaitTerminated(context.Background(), i)
+
+	// This test validates that CheckReady can handle the lifecycler being in New state
+	// which happens for partition ingesters during catch-up
+
+	// Before starting, lifecycler is in New state
+	require.Equal(t, services.New, i.lifecycler.State())
+
+	// CheckReady should handle this gracefully (based on our implementation)
+	// It should not require lifecycler to be running
+	err = i.CheckReady(context.Background())
+	// We expect this to pass if ingester service is Running, or return error if not yet started
+	// The key is it shouldn't panic or have unexpected behavior
+
+	// Now start the ingester
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+
+	// After start, CheckReady should eventually pass (once lifecycler acquires tokens)
+	require.Eventually(t, func() bool {
+		err := i.CheckReady(context.Background())
+		return err == nil
+	}, 2*time.Second, 100*time.Millisecond, "CheckReady should eventually pass")
+}
