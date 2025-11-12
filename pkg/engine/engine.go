@@ -169,7 +169,9 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 
 	ctx = e.buildContext(ctx)
 	logger := util_log.WithContext(ctx, e.logger)
-	logger = log.With(logger, "engine", "v2", "query", params.QueryString(), "shard", strings.Join(params.Shards(), ","))
+	logger = log.With(logger, "engine", "v2")
+
+	level.Info(logger).Log("msg", "starting query", "query", params.QueryString(), "shard", strings.Join(params.Shards(), ","))
 
 	logicalPlan, durLogicalPlanning, err := e.buildLogicalPlan(ctx, logger, params)
 	if err != nil {

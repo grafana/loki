@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
 	"sync"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/services"
 	"github.com/oklog/ulid/v2"
+	"go.opentelemetry.io/otel/propagation"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
@@ -372,7 +374,12 @@ func (s *Scheduler) assignTask(ctx context.Context, task *task, worker *wire.Pee
 	msg := wire.TaskAssignMessage{
 		Task:         task.inner,
 		StreamStates: make(map[ulid.ULID]workflow.StreamState),
+		Metadata:     make(http.Header),
 	}
+
+	// Inject trace context from the query context.
+	var tc propagation.TraceContext
+	tc.Inject(ctx, propagation.HeaderCarrier(msg.Metadata))
 
 	// Populate stream states based on our view of streams that the task reads
 	// from.

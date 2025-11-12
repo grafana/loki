@@ -6,11 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/ipc"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/gogo/protobuf/proto"
+	"github.com/grafana/dskit/httpgrpc"
 	"github.com/oklog/ulid/v2"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
@@ -183,9 +185,16 @@ func (c *protobufCodec) messageFromPbMessage(mf *wirepb.MessageFrame) (Message, 
 			streamStates[id] = state
 		}
 
+		var metadata http.Header
+		if len(k.TaskAssign.Metadata) > 0 {
+			metadata = make(http.Header)
+			httpgrpc.ToHeader(k.TaskAssign.Metadata, metadata)
+		}
+
 		return TaskAssignMessage{
 			Task:         task,
 			StreamStates: streamStates,
+			Metadata:     metadata,
 		}, nil
 
 	case *wirepb.MessageFrame_TaskCancel:
@@ -435,6 +444,7 @@ func (c *protobufCodec) messageToPbMessage(from Message) (*wirepb.MessageFrame, 
 			TaskAssign: &wirepb.TaskAssignMessage{
 				Task:         task,
 				StreamStates: streamStates,
+				Metadata:     httpgrpc.FromHeader(v.Metadata),
 			},
 		}
 

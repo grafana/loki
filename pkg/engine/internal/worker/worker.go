@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/oklog/ulid/v2"
 	"github.com/thanos-io/objstore"
+	"go.opentelemetry.io/otel/propagation"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
@@ -476,6 +477,10 @@ func (w *Worker) newJob(ctx context.Context, scheduler *wire.Peer, logger log.Lo
 			sinks[taskSink.ULID] = sink
 		}
 	}
+
+	// Extract tracing context and bind it to the job's context.
+	var tc propagation.TraceContext
+	ctx = tc.Extract(ctx, propagation.HeaderCarrier(msg.Metadata))
 
 	ctx, cancel := context.WithCancel(ctx)
 

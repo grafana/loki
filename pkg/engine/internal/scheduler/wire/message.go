@@ -3,6 +3,7 @@ package wire
 import (
 	"fmt"
 	"net"
+	"net/http"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/oklog/ulid/v2"
@@ -88,6 +89,9 @@ type (
 		// StreamStates does not have any entries for streams that the task
 		// writes to.
 		StreamStates map[ulid.ULID]workflow.StreamState
+
+		// Metadata holds additional metadata about the task.
+		Metadata http.Header
 	}
 
 	// TaskCancelMessage is sent by the scheduler to a worker when a task is no
