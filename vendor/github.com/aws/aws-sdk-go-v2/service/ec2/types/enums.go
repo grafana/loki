@@ -4578,6 +4578,48 @@ const (
 	InstanceTypeR8gn48xlarge       InstanceType = "r8gn.48xlarge"
 	InstanceTypeR8gnMetal24xl      InstanceType = "r8gn.metal-24xl"
 	InstanceTypeR8gnMetal48xl      InstanceType = "r8gn.metal-48xl"
+	InstanceTypeC8iLarge           InstanceType = "c8i.large"
+	InstanceTypeC8iXlarge          InstanceType = "c8i.xlarge"
+	InstanceTypeC8i2xlarge         InstanceType = "c8i.2xlarge"
+	InstanceTypeC8i4xlarge         InstanceType = "c8i.4xlarge"
+	InstanceTypeC8i8xlarge         InstanceType = "c8i.8xlarge"
+	InstanceTypeC8i12xlarge        InstanceType = "c8i.12xlarge"
+	InstanceTypeC8i16xlarge        InstanceType = "c8i.16xlarge"
+	InstanceTypeC8i24xlarge        InstanceType = "c8i.24xlarge"
+	InstanceTypeC8i32xlarge        InstanceType = "c8i.32xlarge"
+	InstanceTypeC8i48xlarge        InstanceType = "c8i.48xlarge"
+	InstanceTypeC8i96xlarge        InstanceType = "c8i.96xlarge"
+	InstanceTypeC8iMetal48xl       InstanceType = "c8i.metal-48xl"
+	InstanceTypeC8iMetal96xl       InstanceType = "c8i.metal-96xl"
+	InstanceTypeC8iFlexLarge       InstanceType = "c8i-flex.large"
+	InstanceTypeC8iFlexXlarge      InstanceType = "c8i-flex.xlarge"
+	InstanceTypeC8iFlex2xlarge     InstanceType = "c8i-flex.2xlarge"
+	InstanceTypeC8iFlex4xlarge     InstanceType = "c8i-flex.4xlarge"
+	InstanceTypeC8iFlex8xlarge     InstanceType = "c8i-flex.8xlarge"
+	InstanceTypeC8iFlex12xlarge    InstanceType = "c8i-flex.12xlarge"
+	InstanceTypeC8iFlex16xlarge    InstanceType = "c8i-flex.16xlarge"
+	InstanceTypeR8gbMedium         InstanceType = "r8gb.medium"
+	InstanceTypeR8gbLarge          InstanceType = "r8gb.large"
+	InstanceTypeR8gbXlarge         InstanceType = "r8gb.xlarge"
+	InstanceTypeR8gb2xlarge        InstanceType = "r8gb.2xlarge"
+	InstanceTypeR8gb4xlarge        InstanceType = "r8gb.4xlarge"
+	InstanceTypeR8gb8xlarge        InstanceType = "r8gb.8xlarge"
+	InstanceTypeR8gb12xlarge       InstanceType = "r8gb.12xlarge"
+	InstanceTypeR8gb16xlarge       InstanceType = "r8gb.16xlarge"
+	InstanceTypeR8gb24xlarge       InstanceType = "r8gb.24xlarge"
+	InstanceTypeR8gbMetal24xl      InstanceType = "r8gb.metal-24xl"
+	InstanceTypeM8aMedium          InstanceType = "m8a.medium"
+	InstanceTypeM8aLarge           InstanceType = "m8a.large"
+	InstanceTypeM8aXlarge          InstanceType = "m8a.xlarge"
+	InstanceTypeM8a2xlarge         InstanceType = "m8a.2xlarge"
+	InstanceTypeM8a4xlarge         InstanceType = "m8a.4xlarge"
+	InstanceTypeM8a8xlarge         InstanceType = "m8a.8xlarge"
+	InstanceTypeM8a12xlarge        InstanceType = "m8a.12xlarge"
+	InstanceTypeM8a16xlarge        InstanceType = "m8a.16xlarge"
+	InstanceTypeM8a24xlarge        InstanceType = "m8a.24xlarge"
+	InstanceTypeM8a48xlarge        InstanceType = "m8a.48xlarge"
+	InstanceTypeM8aMetal24xl       InstanceType = "m8a.metal-24xl"
+	InstanceTypeM8aMetal48xl       InstanceType = "m8a.metal-48xl"
 )
 
 // Values returns all known values for InstanceType. Note that this can be
@@ -5616,6 +5658,48 @@ func (InstanceType) Values() []InstanceType {
 		"r8gn.48xlarge",
 		"r8gn.metal-24xl",
 		"r8gn.metal-48xl",
+		"c8i.large",
+		"c8i.xlarge",
+		"c8i.2xlarge",
+		"c8i.4xlarge",
+		"c8i.8xlarge",
+		"c8i.12xlarge",
+		"c8i.16xlarge",
+		"c8i.24xlarge",
+		"c8i.32xlarge",
+		"c8i.48xlarge",
+		"c8i.96xlarge",
+		"c8i.metal-48xl",
+		"c8i.metal-96xl",
+		"c8i-flex.large",
+		"c8i-flex.xlarge",
+		"c8i-flex.2xlarge",
+		"c8i-flex.4xlarge",
+		"c8i-flex.8xlarge",
+		"c8i-flex.12xlarge",
+		"c8i-flex.16xlarge",
+		"r8gb.medium",
+		"r8gb.large",
+		"r8gb.xlarge",
+		"r8gb.2xlarge",
+		"r8gb.4xlarge",
+		"r8gb.8xlarge",
+		"r8gb.12xlarge",
+		"r8gb.16xlarge",
+		"r8gb.24xlarge",
+		"r8gb.metal-24xl",
+		"m8a.medium",
+		"m8a.large",
+		"m8a.xlarge",
+		"m8a.2xlarge",
+		"m8a.4xlarge",
+		"m8a.8xlarge",
+		"m8a.12xlarge",
+		"m8a.16xlarge",
+		"m8a.24xlarge",
+		"m8a.48xlarge",
+		"m8a.metal-24xl",
+		"m8a.metal-48xl",
 	}
 }
 
