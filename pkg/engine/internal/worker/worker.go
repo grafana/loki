@@ -18,7 +18,6 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/oklog/ulid/v2"
 	"github.com/thanos-io/objstore"
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 	"golang.org/x/sync/errgroup"
 
@@ -479,12 +478,11 @@ func (w *Worker) newJob(ctx context.Context, scheduler *wire.Peer, logger log.Lo
 		}
 	}
 
-	ctx, cancel := context.WithCancel(ctx)
 	// Extract tracing context and bind it to the job's context.
-	ctx = otel.GetTextMapPropagator().Extract(
-		ctx,
-		propagation.MapCarrier(msg.TraceContextCarrier),
-	)
+	var tc propagation.TraceContext
+	ctx = tc.Extract(ctx, propagation.HeaderCarrier(msg.Metadata))
+
+	ctx, cancel := context.WithCancel(ctx)
 
 	job = &threadJob{
 		Context: ctx,

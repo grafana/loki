@@ -3,6 +3,7 @@ package wire
 import (
 	"fmt"
 	"net"
+	"net/http"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/oklog/ulid/v2"
@@ -89,8 +90,8 @@ type (
 		// writes to.
 		StreamStates map[ulid.ULID]workflow.StreamState
 
-		// TraceContextCarrier holds OpenTelemetry trace context propagation headers.
-		TraceContextCarrier map[string]string
+		// Metadata holds additional metadata about the task.
+		Metadata http.Header
 	}
 
 	// TaskCancelMessage is sent by the scheduler to a worker when a task is no
