@@ -151,3 +151,4 @@ var NoopCapture = &Capture{
 	regions:    nil,
 	ended:      true, // Already ended so no regions can be added
 }
+

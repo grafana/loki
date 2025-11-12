@@ -10,7 +10,7 @@ import "google/protobuf/timestamp.proto";
 import "pkg/engine/internal/proto/expressionpb/expressionpb.proto";
 import "pkg/engine/internal/proto/physicalpb/physicalpb.proto";
 import "pkg/engine/internal/proto/ulid/ulid.proto";
-import "pkg/engine/internal/proto/xcap/xcap.proto";
+import "pkg/xcap/proto/xcap.proto";
 
 option go_package = "github.com/grafana/loki/v3/pkg/engine/internal/proto/wirepb";
 

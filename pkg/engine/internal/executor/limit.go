@@ -5,7 +5,7 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/executor/xcap"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 func NewLimitPipeline(input Pipeline, skip, fetch uint32, region *xcap.Region) *GenericPipeline {

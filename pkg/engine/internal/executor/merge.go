@@ -7,7 +7,7 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/executor/xcap"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 // Merge is a pipeline that takes N inputs and sequentially consumes each one of them.

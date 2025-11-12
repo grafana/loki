@@ -6,8 +6,10 @@ import "fmt"
 type DataType int
 
 const (
+	// DataTypeInvalid represents an invalid/unspecified data type.
+	DataTypeInvalid DataType = iota
 	// DataTypeInt64 represents a signed 64-bit integer statistic.
-	DataTypeInt64 DataType = iota
+	DataTypeInt64
 	// DataTypeFloat64 represents a double precision floating point statistic.
 	DataTypeFloat64
 	// DataTypeBool represents a boolean statistic (flag).
@@ -19,9 +21,11 @@ const (
 type AggregationType int
 
 const (
+	// AggregationTypeInvalid represents an invalid/unspecified aggregation type.
+	AggregationTypeInvalid AggregationType = iota
 	// AggregationTypeSum sums all observations together into a
 	// final value.
-	AggregationTypeSum AggregationType = iota
+	AggregationTypeSum
 	// AggregationTypeMin uses the smallest value of all observations.
 	AggregationTypeMin
 	// AggregationTypeMax uses the largest value of all observations.

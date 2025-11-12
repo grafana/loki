@@ -1,10 +1,10 @@
-package xcap
+package proto
 
 import (
 	"context"
 	"fmt"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/executor/xcap"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 // ToCapture converts a protobuf Capture to its Go representation.
@@ -106,8 +106,15 @@ func unmarshalStatistic(proto *Statistic) (xcap.Statistic, error) {
 		return nil, fmt.Errorf("invalid statistic")
 	}
 
-	dataType := unmarshalDataType(proto.DataType)
-	aggType := unmarshalAggregationType(proto.AggregationType)
+	dataType, err := unmarshalDataType(proto.DataType)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal data type: %w", err)
+	}
+
+	aggType, err := unmarshalAggregationType(proto.AggregationType)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal aggregation type: %w", err)
+	}
 
 	switch dataType {
 	case xcap.DataTypeInt64:
@@ -122,33 +129,37 @@ func unmarshalStatistic(proto *Statistic) (xcap.Statistic, error) {
 }
 
 // unmarshalDataType converts a proto DataType to Go DataType.
-func unmarshalDataType(proto DataType) xcap.DataType {
+func unmarshalDataType(proto DataType) (xcap.DataType, error) {
 	switch proto {
+	case DATA_TYPE_INVALID:
+		return xcap.DataTypeInvalid, nil
 	case DATA_TYPE_INT64:
-		return xcap.DataTypeInt64
+		return xcap.DataTypeInt64, nil
 	case DATA_TYPE_FLOAT64:
-		return xcap.DataTypeFloat64
+		return xcap.DataTypeFloat64, nil
 	case DATA_TYPE_BOOL:
-		return xcap.DataTypeBool
+		return xcap.DataTypeBool, nil
 	default:
-		return xcap.DataTypeInt64 // Default fallback
+		return xcap.DataTypeInvalid, fmt.Errorf("unknown data type: %v", proto)
 	}
 }
 
 // unmarshalAggregationType converts a proto AggregationType to Go AggregationType.
-func unmarshalAggregationType(proto AggregationType) xcap.AggregationType {
+func unmarshalAggregationType(proto AggregationType) (xcap.AggregationType, error) {
 	switch proto {
+	case AGGREGATION_TYPE_INVALID:
+		return xcap.AggregationTypeInvalid, nil
 	case AGGREGATION_TYPE_SUM:
-		return xcap.AggregationTypeSum
+		return xcap.AggregationTypeSum, nil
 	case AGGREGATION_TYPE_MIN:
-		return xcap.AggregationTypeMin
+		return xcap.AggregationTypeMin, nil
 	case AGGREGATION_TYPE_MAX:
-		return xcap.AggregationTypeMax
+		return xcap.AggregationTypeMax, nil
 	case AGGREGATION_TYPE_LAST:
-		return xcap.AggregationTypeLast
+		return xcap.AggregationTypeLast, nil
 	case AGGREGATION_TYPE_FIRST:
-		return xcap.AggregationTypeFirst
+		return xcap.AggregationTypeFirst, nil
 	default:
-		return xcap.AggregationTypeSum // Default fallback
+		return xcap.AggregationTypeInvalid, fmt.Errorf("unknown aggregation type: %v", proto)
 	}
 }

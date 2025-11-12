@@ -11,7 +11,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-var xcapTracer = otel.Tracer("pkg/engine/internal/executor/xcap")
+var xcapTracer = otel.Tracer("pkg/xcap")
 
 // RegionOption applies options to a Region.
 type RegionOption interface {
@@ -275,3 +275,4 @@ func (r *Region) observationsToAttributes() []attribute.KeyValue {
 func (r *Region) isZero() bool {
 	return r == nil || r.capture == nil
 }
+

@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/executor/xcap"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/tree"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 // BuildTree converts a physical plan node and its children into a tree structure

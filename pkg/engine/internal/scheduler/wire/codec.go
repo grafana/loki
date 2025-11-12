@@ -17,7 +17,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/proto/physicalpb"
 	protoUlid "github.com/grafana/loki/v3/pkg/engine/internal/proto/ulid"
 	"github.com/grafana/loki/v3/pkg/engine/internal/proto/wirepb"
-	"github.com/grafana/loki/v3/pkg/engine/internal/proto/xcap"
+	xcapProto "github.com/grafana/loki/v3/pkg/xcap/proto"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 )
 
@@ -292,7 +292,7 @@ func (c *protobufCodec) taskStatusFromPbTaskStatus(ts *wirepb.TaskStatus) (workf
 	}
 
 	if capture := ts.GetCapture(); capture != nil {
-		cap, err := xcap.ToCapture(capture)
+		cap, err := xcapProto.ToCapture(capture)
 		if err != nil {
 			return workflow.TaskStatus{}, fmt.Errorf("failed to unmarshal capture: %w", err)
 		}
@@ -552,7 +552,7 @@ func (c *protobufCodec) taskStatusToPbTaskStatus(from workflow.TaskStatus) (*wir
 	}
 
 	if from.Capture != nil {
-		capture, err := xcap.ToPbCapture(from.Capture)
+		capture, err := xcapProto.ToPbCapture(from.Capture)
 		if err != nil {
 			return nil, err
 		}

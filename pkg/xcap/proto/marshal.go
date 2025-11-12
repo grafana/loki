@@ -1,9 +1,9 @@
-package xcap
+package proto
 
 import (
 	"fmt"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/executor/xcap"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 // ToPbCapture converts a Capture to its protobuf representation.
@@ -114,6 +114,8 @@ func marshalObservationValue(value interface{}) (*ObservationValue, error) {
 // marshalDataType converts a DataType to proto DataType.
 func marshalDataType(dt xcap.DataType) DataType {
 	switch dt {
+	case xcap.DataTypeInvalid:
+		return DATA_TYPE_INVALID
 	case xcap.DataTypeInt64:
 		return DATA_TYPE_INT64
 	case xcap.DataTypeFloat64:
@@ -128,6 +130,8 @@ func marshalDataType(dt xcap.DataType) DataType {
 // marshalAggregationType converts an AggregationType to proto AggregationType.
 func marshalAggregationType(agg xcap.AggregationType) AggregationType {
 	switch agg {
+	case xcap.AggregationTypeInvalid:
+		return AGGREGATION_TYPE_INVALID
 	case xcap.AggregationTypeSum:
 		return AGGREGATION_TYPE_SUM
 	case xcap.AggregationTypeMin:
@@ -142,3 +146,4 @@ func marshalAggregationType(agg xcap.AggregationType) AggregationType {
 		return AGGREGATION_TYPE_INVALID
 	}
 }
+
