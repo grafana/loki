@@ -185,8 +185,11 @@ func (c *protobufCodec) messageFromPbMessage(mf *wirepb.MessageFrame) (Message, 
 			streamStates[id] = state
 		}
 
-		metadata := make(http.Header)
-		httpgrpc.ToHeader(k.TaskAssign.Metadata, metadata)
+		var metadata http.Header
+		if len(k.TaskAssign.Metadata) > 0 {
+			metadata = make(http.Header)
+			httpgrpc.ToHeader(k.TaskAssign.Metadata, metadata)
+		}
 
 		return TaskAssignMessage{
 			Task:         task,
