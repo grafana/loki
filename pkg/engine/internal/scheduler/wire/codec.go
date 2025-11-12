@@ -184,8 +184,9 @@ func (c *protobufCodec) messageFromPbMessage(mf *wirepb.MessageFrame) (Message, 
 		}
 
 		return TaskAssignMessage{
-			Task:         task,
-			StreamStates: streamStates,
+			Task:                task,
+			StreamStates:        streamStates,
+			TraceContextCarrier: k.TaskAssign.TraceContextCarrier,
 		}, nil
 
 	case *wirepb.MessageFrame_TaskCancel:
@@ -433,8 +434,9 @@ func (c *protobufCodec) messageToPbMessage(from Message) (*wirepb.MessageFrame, 
 
 		mf.Kind = &wirepb.MessageFrame_TaskAssign{
 			TaskAssign: &wirepb.TaskAssignMessage{
-				Task:         task,
-				StreamStates: streamStates,
+				Task:                task,
+				StreamStates:        streamStates,
+				TraceContextCarrier: v.TraceContextCarrier,
 			},
 		}
 

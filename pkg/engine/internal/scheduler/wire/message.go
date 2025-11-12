@@ -88,6 +88,9 @@ type (
 		// StreamStates does not have any entries for streams that the task
 		// writes to.
 		StreamStates map[ulid.ULID]workflow.StreamState
+
+		// TraceContextCarrier holds OpenTelemetry trace context propagation headers.
+		TraceContextCarrier map[string]string
 	}
 
 	// TaskCancelMessage is sent by the scheduler to a worker when a task is no

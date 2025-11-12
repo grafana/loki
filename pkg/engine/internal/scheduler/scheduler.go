@@ -14,6 +14,8 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/services"
 	"github.com/oklog/ulid/v2"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
@@ -373,6 +375,12 @@ func (s *Scheduler) assignTask(ctx context.Context, task *task, worker *wire.Pee
 		Task:         task.inner,
 		StreamStates: make(map[ulid.ULID]workflow.StreamState),
 	}
+
+	// Inject trace context from the query context.
+	otel.GetTextMapPropagator().Inject(
+		ctx,
+		propagation.MapCarrier(msg.TraceContextCarrier),
+	)
 
 	// Populate stream states based on our view of streams that the task reads
 	// from.

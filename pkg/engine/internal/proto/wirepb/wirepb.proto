@@ -62,6 +62,9 @@ message TaskAssignMessage {
   // StreamStates holds the most recent state of each stream that the task
   // reads from. The key is the stream ULID.
   map<string, StreamState> stream_states = 2;
+
+  // TraceContextCarrier holds OpenTelemetry trace context.
+  map<string, string> trace_context_carrier = 3;
 }
 
 // TaskCancelMessage is sent by the scheduler to a worker when a task is no
