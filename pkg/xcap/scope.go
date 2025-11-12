@@ -3,6 +3,7 @@ package xcap
 import (
 	"context"
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 
@@ -243,6 +244,12 @@ func (s *Scope) GetObservations() []AggregatedObservation {
 	for _, obs := range s.observations {
 		result = append(result, obs)
 	}
+
+	// order observations by statistic name
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Statistic.Name() < result[j].Statistic.Name()
+	})
+
 	return result
 }
 

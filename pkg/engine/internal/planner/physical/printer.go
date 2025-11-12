@@ -131,8 +131,7 @@ func toTreeNode(n Node, capture *xcap.Capture) *tree.Node {
 
 	// include metrics if capture is provided
 	if capture != nil {
-		scopeName := fmt.Sprintf("%s-%s", n.Type().String(), n.ID().String())
-		if scope := capture.GetScope(scopeName); scope != nil {
+		if scope := capture.GetScope(scopeName(n)); scope != nil {
 			observations := scope.GetObservations()
 			props := make([]tree.Property, 0, len(observations))
 			for _, observation := range observations {
@@ -184,4 +183,8 @@ func WriteMermaidFormat(w io.Writer, p *Plan) {
 
 		fmt.Fprint(w, "\n\n")
 	}
+}
+
+func scopeName(n Node) string {
+	return fmt.Sprintf("%s-%s", n.Type().String(), n.ID().String())
 }
