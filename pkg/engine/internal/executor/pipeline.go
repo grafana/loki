@@ -334,7 +334,7 @@ func (p *observedPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) 
 			p.scope.Record(statRowsOut.Observe(rec.NumRows()))
 		}
 
-		p.scope.Record(statExecDuration.Observe(time.Since(start).Nanoseconds()))
+		p.scope.Record(statReadDuration.Observe(time.Since(start).Nanoseconds()))
 	}
 
 	return rec, err
