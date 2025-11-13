@@ -38,7 +38,7 @@ func (l Literal) String() string {
 }
 
 // Value returns lit's value as untyped interface{}.
-func (l Literal) Value() any {
+func (l Literal) Value() types.LiteralType {
 	return l.Any()
 }
 
