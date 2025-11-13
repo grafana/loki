@@ -118,15 +118,22 @@ func toTreeNode(n Node, capture *xcap.Capture) *tree.Node {
 			treeNode.Properties = append(treeNode.Properties, tree.NewProperty(fmt.Sprintf("predicate[%d]", i), false, node.Predicates[i].String()))
 		}
 
+		// Add target details as comments
 		for _, target := range node.Targets {
+			properties := []tree.Property{
+				tree.NewProperty("type", false, target.Type.String()),
+			}
+
 			switch target.Type {
 			case ScanTypeDataObject:
 				// Create a child node to extract the properties of the target.
 				childNode := toTreeNode(target.DataObject, capture)
-				treeNode.Children = append(treeNode.Children, childNode)
+				properties = append(properties, childNode.Properties...)
+
+				commentNode := treeNode.AddComment("@target", "", properties)
+				commentNode.Comments = append(commentNode.Comments, childNode.Comments...)
 			}
 		}
-
 	}
 
 	// include metrics if capture is provided

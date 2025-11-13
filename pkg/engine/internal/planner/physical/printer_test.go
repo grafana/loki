@@ -116,12 +116,12 @@ Limit offset=0 limit=0
 └── Filter
     │   └── @metrics bytes_read=2048 rows_processed=50
     └── ScanSet num_targets=2
-        ├── DataObjScan location= streams=0 section_id=0 projections=()
-        │       ├── @max_time_range start=0001-01-01T00:00:00Z end=0001-01-01T00:00:00Z
-        │       └── @metrics bytes_read=4096 rows_processed=200
-        └── DataObjScan location= streams=0 section_id=0 projections=()
-                ├── @max_time_range start=0001-01-01T00:00:00Z end=0001-01-01T00:00:00Z
-                └── @metrics bytes_read=8192 rows_processed=400
+            ├── @target type=ScanTypeDataObject location= streams=0 section_id=0 projections=()
+            │       ├── @max_time_range start=0001-01-01T00:00:00Z end=0001-01-01T00:00:00Z
+            │       └── @metrics bytes_read=4096 rows_processed=200
+            └── @target type=ScanTypeDataObject location= streams=0 section_id=0 projections=()
+                    ├── @max_time_range start=0001-01-01T00:00:00Z end=0001-01-01T00:00:00Z
+                    └── @metrics bytes_read=8192 rows_processed=400
 `
 
 		require.Equal(t, strings.TrimSpace(expected), strings.TrimSpace(repr))
