@@ -191,7 +191,7 @@ func newServerService(ctx context.Context, name string, logger log.Logger) (*ser
 	done := make(chan error, 1)
 	svc := services.NewBasicService(
 		nil,
-		func(serviceContext context.Context) error {
+		func(ctx context.Context) error {
 			level.Info(logger).Log("msg", "server starting up")
 			go func() {
 				defer close(done)
@@ -204,7 +204,7 @@ func newServerService(ctx context.Context, name string, logger log.Logger) (*ser
 				return err
 			}
 		},
-		func(failureCase error) error {
+		func(err error) error {
 			level.Info(logger).Log("msg", "server shutting down", "err", err)
 			serv.Shutdown()
 			<-done
