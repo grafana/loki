@@ -7,32 +7,25 @@ import (
 	"time"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/tree"
-	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 // BuildTree converts a physical plan node and its children into a tree structure
 // that can be used for visualization and debugging purposes.
 func BuildTree(p *Plan, n Node) *tree.Node {
-	return BuildTreeWithMetrics(p, n, nil)
+	return toTree(p, n)
 }
 
-// BuildTreeWithMetrics converts a physical plan node and its children into a tree structure,
-// optionally including execution metrics from the provided execution capture.
-func BuildTreeWithMetrics(p *Plan, n Node, capture *xcap.Capture) *tree.Node {
-	return toTree(p, n, capture)
-}
-
-func toTree(p *Plan, n Node, capture *xcap.Capture) *tree.Node {
-	root := toTreeNode(n, capture)
+func toTree(p *Plan, n Node) *tree.Node {
+	root := toTreeNode(n)
 	for _, child := range p.Children(n) {
-		if ch := toTree(p, child, capture); ch != nil {
+		if ch := toTree(p, child); ch != nil {
 			root.Children = append(root.Children, ch)
 		}
 	}
 	return root
 }
 
-func toTreeNode(n Node, capture *xcap.Capture) *tree.Node {
+func toTreeNode(n Node) *tree.Node {
 	treeNode := tree.NewNode(n.Type().String(), "")
 	treeNode.Context = n
 
@@ -118,7 +111,6 @@ func toTreeNode(n Node, capture *xcap.Capture) *tree.Node {
 			treeNode.Properties = append(treeNode.Properties, tree.NewProperty(fmt.Sprintf("predicate[%d]", i), false, node.Predicates[i].String()))
 		}
 
-		// Add target details as comments
 		for _, target := range node.Targets {
 			properties := []tree.Property{
 				tree.NewProperty("type", false, target.Type.String()),
@@ -127,27 +119,13 @@ func toTreeNode(n Node, capture *xcap.Capture) *tree.Node {
 			switch target.Type {
 			case ScanTypeDataObject:
 				// Create a child node to extract the properties of the target.
-				childNode := toTreeNode(target.DataObject, capture)
+				childNode := toTreeNode(target.DataObject)
 				properties = append(properties, childNode.Properties...)
-
-				commentNode := treeNode.AddComment("@target", "", properties)
-				commentNode.Comments = append(commentNode.Comments, childNode.Comments...)
 			}
+
+			treeNode.AddComment("@target", "", properties)
 		}
 	}
-
-	// include metrics if capture is provided
-	if capture != nil {
-		if scope := capture.GetScope(scopeName(n)); scope != nil {
-			observations := scope.GetObservations()
-			props := make([]tree.Property, 0, len(observations))
-			for _, observation := range observations {
-				props = append(props, tree.NewProperty(observation.Statistic.Name(), false, observation.Value))
-			}
-			treeNode.AddComment("@metrics", "", props)
-		}
-	}
-
 	return treeNode
 }
 
@@ -163,18 +141,12 @@ func toAnySlice[T any](s []T) []any {
 // It processes each root node in the plan graph, and returns the combined
 // string output of all trees joined by newlines.
 func PrintAsTree(p *Plan) string {
-	return PrintAsTreeWithMetrics(p, nil)
-}
-
-// PrintAsTreeWithMetrics converts a physical [Plan] into a human-readable tree representation,
-// optionally including metrics from the provided execution capture.
-func PrintAsTreeWithMetrics(p *Plan, capture *xcap.Capture) string {
 	results := make([]string, 0, len(p.Roots()))
 
 	for _, root := range p.Roots() {
 		sb := &strings.Builder{}
 		printer := tree.NewPrinter(sb)
-		node := BuildTreeWithMetrics(p, root, capture)
+		node := BuildTree(p, root)
 		printer.Print(node)
 		results = append(results, sb.String())
 	}
@@ -190,8 +162,4 @@ func WriteMermaidFormat(w io.Writer, p *Plan) {
 
 		fmt.Fprint(w, "\n\n")
 	}
-}
-
-func scopeName(n Node) string {
-	return fmt.Sprintf("%s-%s", n.Type().String(), n.ID().String())
 }

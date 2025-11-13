@@ -67,20 +67,6 @@ func (c *Capture) Attributes() []attribute.KeyValue {
 	return attrs
 }
 
-// GetScope returns the scope with the given name, or nil if no such scope exists.
-func (c *Capture) GetScope(name string) *Scope {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	for _, scope := range c.scopes {
-		if scope.name == name {
-			return scope
-		}
-	}
-
-	return nil
-}
-
 // AddScope adds a scope to this capture. This is called by Scope
 // when it is created.
 func (c *Capture) AddScope(s *Scope) {

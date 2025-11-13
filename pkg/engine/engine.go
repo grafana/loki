@@ -155,7 +155,7 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	// This pain point will eventually go away as remaining usages of
 	// [logql.Engine] disappear.
 
-	ctx, capture := xcap.NewCapture(ctx, nil)
+	ctx, _ = xcap.NewCapture(ctx, nil)
 	startTime := time.Now()
 
 	ctx, scope := xcap.StartScope(ctx, "Engine.Execute", xcap.WithScopeAttributes(
@@ -220,8 +220,6 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 		"duration_execution", durExecution,
 		"duration_full", durFull,
 	)
-
-	level.Info(logger).Log("msg", "execution capture", "plan", physical.PrintAsTreeWithMetrics(physicalPlan, capture))
 
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
 	statsCtx := stats.FromContext(ctx)
