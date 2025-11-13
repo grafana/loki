@@ -169,7 +169,7 @@ func (r *Region) End() {
 	if r.Span != nil {
 		attrs := r.observationsToAttributes()
 		if len(attrs) > 0 {
-			r.Span.SetAttributes(attrs...)
+			r.SetAttributes(attrs...)
 		}
 		r.Span.End()
 	}
@@ -282,4 +282,3 @@ func (r *Region) observationsToAttributes() []attribute.KeyValue {
 func (r *Region) isZero() bool {
 	return r == nil || r.capture == nil
 }
-

@@ -396,16 +396,16 @@ func (c *Context) executeParallelize(ctx context.Context, _ *physical.Paralleliz
 	return inputs[0]
 }
 
-func (c *Context) executeScanSet(ctx context.Context, set *physical.ScanSet, region *xcap.Region) Pipeline {
+func (c *Context) executeScanSet(ctx context.Context, set *physical.ScanSet, _ *xcap.Region) Pipeline {
 	// ScanSet typically gets partitioned by the scheduler into multiple scan
 	// nodes.
 	//
 	// However, for locally testing unpartitioned pipelines, we still supprt
 	// running a ScanSet. In this case, we treat internally execute it as a
 	// Merge on top of multiple sequential scans.
+	ctx, mergeRegion := xcap.StartRegion(ctx, physical.NodeTypeMerge.String())
 
 	var targets []Pipeline
-
 	for _, target := range set.Targets {
 		switch target.Type {
 		case physical.ScanTypeDataObject:
@@ -417,7 +417,7 @@ func (c *Context) executeScanSet(ctx context.Context, set *physical.ScanSet, reg
 
 			nodeCtx, partitionRegion := startRegionForNode(ctx, partition)
 
-			targets = append(targets, newLazyPipeline(func(ctx context.Context, _ []Pipeline) Pipeline {
+			targets = append(targets, newLazyPipeline(func(_ context.Context, _ []Pipeline) Pipeline {
 				return newObservedPipeline(c.executeDataObjScan(nodeCtx, partition, partitionRegion))
 			}, nil))
 		default:
@@ -428,8 +428,7 @@ func (c *Context) executeScanSet(ctx context.Context, set *physical.ScanSet, reg
 		return emptyPipeline()
 	}
 
-	ctx, region = xcap.StartRegion(ctx, physical.NodeTypeMerge.String())
-	pipeline, err := newMergePipeline(targets, c.mergePrefetchCount, region)
+	pipeline, err := newMergePipeline(targets, c.mergePrefetchCount, mergeRegion)
 	if err != nil {
 		return errorPipeline(ctx, err)
 	}

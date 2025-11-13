@@ -53,8 +53,7 @@ type Workflow struct {
 	statsMut sync.Mutex
 	stats    stats.Result
 
-	captureMut sync.Mutex
-	capture    *xcap.Capture
+	capture *xcap.Capture
 
 	tasksMut   sync.RWMutex
 	taskStates map[*Task]TaskState
@@ -352,12 +351,9 @@ func (wf *Workflow) mergeResults(results stats.Result) {
 }
 
 func (wf *Workflow) mergeCapture(capture *xcap.Capture) {
-	if capture == nil {
+	if capture == nil || wf.capture == nil {
 		return
 	}
-
-	wf.captureMut.Lock()
-	defer wf.captureMut.Unlock()
 
 	wf.capture.Merge(capture)
 }

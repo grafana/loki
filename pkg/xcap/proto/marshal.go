@@ -40,8 +40,8 @@ func ToPbCapture(c *xcap.Capture) (*Capture, error) {
 	}
 
 	return &Capture{
-		Regions:     protoRegions,
-		Statistics:  protoStats,
+		Regions:    protoRegions,
+		Statistics: protoStats,
 	}, nil
 }
 

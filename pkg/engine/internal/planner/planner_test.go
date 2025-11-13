@@ -158,9 +158,7 @@ TopK sort_by=builtin.timestamp ascending=false nulls_first=false k=1000
         └── Compat src=metadata dst=metadata collision=label
             └── ScanSet num_targets=2 predicate[0]=GTE(builtin.timestamp, 2025-01-01T00:00:00Z) predicate[1]=LT(builtin.timestamp, 2025-01-01T01:00:00Z)
                     ├── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=1 projections=()
-                    │       └── @max_time_range start=2025-01-01T00:30:00Z end=2025-01-01T01:00:00Z
                     └── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=0 projections=()
-                            └── @max_time_range start=2025-01-01T00:00:00Z end=2025-01-01T00:30:00Z
 `,
 		},
 		{
@@ -174,9 +172,7 @@ TopK sort_by=builtin.timestamp ascending=false nulls_first=false k=1000
             └── Compat src=metadata dst=metadata collision=label
                 └── ScanSet num_targets=2 predicate[0]=GTE(builtin.timestamp, 2025-01-01T00:00:00Z) predicate[1]=LT(builtin.timestamp, 2025-01-01T01:00:00Z) predicate[2]=MATCH_STR(builtin.message, "baz")
                         ├── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=1 projections=()
-                        │       └── @max_time_range start=2025-01-01T00:30:00Z end=2025-01-01T01:00:00Z
                         └── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=0 projections=()
-                                └── @max_time_range start=2025-01-01T00:00:00Z end=2025-01-01T00:30:00Z
 `,
 		},
 		{
@@ -192,9 +188,7 @@ TopK sort_by=builtin.timestamp ascending=false nulls_first=false k=1000
                     └── Compat src=metadata dst=metadata collision=label
                         └── ScanSet num_targets=2 predicate[0]=GTE(builtin.timestamp, 2025-01-01T00:00:00Z) predicate[1]=LT(builtin.timestamp, 2025-01-01T01:00:00Z) predicate[2]=MATCH_STR(builtin.message, "bar")
                                 ├── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=1 projections=()
-                                │       └── @max_time_range start=2025-01-01T00:30:00Z end=2025-01-01T01:00:00Z
                                 └── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=0 projections=()
-                                        └── @max_time_range start=2025-01-01T00:00:00Z end=2025-01-01T00:30:00Z
 `,
 		},
 		{
@@ -210,9 +204,7 @@ TopK sort_by=builtin.timestamp ascending=false nulls_first=false k=1000
                     └── Compat src=metadata dst=metadata collision=label
                         └── ScanSet num_targets=2 predicate[0]=GTE(builtin.timestamp, 2025-01-01T00:00:00Z) predicate[1]=LT(builtin.timestamp, 2025-01-01T01:00:00Z)
                                 ├── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=1 projections=()
-                                │       └── @max_time_range start=2025-01-01T00:30:00Z end=2025-01-01T01:00:00Z
                                 └── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=0 projections=()
-                                        └── @max_time_range start=2025-01-01T00:00:00Z end=2025-01-01T00:30:00Z
 `,
 		},
 		{
@@ -233,9 +225,7 @@ VectorAggregation operation=sum group_by=(ambiguous.bar)
                         └── Compat src=metadata dst=metadata collision=label
                             └── ScanSet num_targets=2 projections=(ambiguous.bar, builtin.message, ambiguous.request_duration, builtin.timestamp) predicate[0]=GTE(builtin.timestamp, 2024-12-31T23:59:00Z) predicate[1]=LT(builtin.timestamp, 2025-01-01T01:00:00Z)
                                     ├── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=1 projections=()
-                                    │       └── @max_time_range start=2025-01-01T00:30:00Z end=2025-01-01T01:00:00Z
                                     └── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=0 projections=()
-                                            └── @max_time_range start=2025-01-01T00:00:00Z end=2025-01-01T00:30:00Z
 `,
 		},
 		{
@@ -254,9 +244,7 @@ VectorAggregation operation=sum
                                 └── Compat src=metadata dst=metadata collision=label
                                     └── ScanSet num_targets=2 projections=(ambiguous.detected_level, builtin.message, builtin.timestamp) predicate[0]=GTE(builtin.timestamp, 2024-12-31T23:59:00Z) predicate[1]=LT(builtin.timestamp, 2025-01-01T01:00:00Z)
                                             ├── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=1 projections=()
-                                            │       └── @max_time_range start=2025-01-01T00:30:00Z end=2025-01-01T01:00:00Z
                                             └── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=0 projections=()
-                                                    └── @max_time_range start=2025-01-01T00:00:00Z end=2025-01-01T00:30:00Z
 
 `,
 		},
@@ -271,9 +259,7 @@ VectorAggregation operation=sum group_by=(ambiguous.bar)
             └── Compat src=metadata dst=metadata collision=label
                 └── ScanSet num_targets=2 projections=(ambiguous.bar, builtin.timestamp) predicate[0]=GTE(builtin.timestamp, 2024-12-31T23:59:00Z) predicate[1]=LT(builtin.timestamp, 2025-01-01T01:00:00Z)
                         ├── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=1 projections=()
-                        │       └── @max_time_range start=2025-01-01T00:30:00Z end=2025-01-01T01:00:00Z
                         └── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=0 projections=()
-                                └── @max_time_range start=2025-01-01T00:00:00Z end=2025-01-01T00:30:00Z
 `,
 		},
 		{
@@ -288,9 +274,7 @@ TopK sort_by=builtin.timestamp ascending=false nulls_first=false k=1000
                 └── Compat src=metadata dst=metadata collision=label
                     └── ScanSet num_targets=2 predicate[0]=GTE(builtin.timestamp, 2025-01-01T00:00:00Z) predicate[1]=LT(builtin.timestamp, 2025-01-01T01:00:00Z)
                             ├── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=1 projections=()
-                            │       └── @max_time_range start=2025-01-01T00:30:00Z end=2025-01-01T01:00:00Z
                             └── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=0 projections=()
-                                    └── @max_time_range start=2025-01-01T00:00:00Z end=2025-01-01T00:30:00Z
 `,
 		},
 		{
@@ -305,9 +289,7 @@ VectorAggregation operation=sum group_by=(ambiguous.bar)
                 └── Compat src=metadata dst=metadata collision=label
                     └── ScanSet num_targets=2 projections=(ambiguous.bar, builtin.message, builtin.timestamp) predicate[0]=GTE(builtin.timestamp, 2024-12-31T23:59:00Z) predicate[1]=LT(builtin.timestamp, 2025-01-01T01:00:00Z)
                             ├── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=1 projections=()
-                            │       └── @max_time_range start=2025-01-01T00:30:00Z end=2025-01-01T01:00:00Z
                             └── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=0 projections=()
-                                    └── @max_time_range start=2025-01-01T00:00:00Z end=2025-01-01T00:30:00Z
 `,
 		},
 	}
