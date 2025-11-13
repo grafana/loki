@@ -39,7 +39,7 @@ func (c *SigV4Config) Validate() error {
 	return nil
 }
 
-func (c *SigV4Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (c *SigV4Config) UnmarshalYAML(unmarshal func(any) error) error {
 	type plain SigV4Config
 	*c = SigV4Config{}
 	if err := unmarshal((*plain)(c)); err != nil {

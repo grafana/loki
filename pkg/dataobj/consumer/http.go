@@ -11,7 +11,7 @@ import (
 )
 
 // Copied from pkg/ingester/downscale.go.
-func (s *Service) PreparePartitionDownscaleHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Service) PrepareDelayedDownscaleHandler(w http.ResponseWriter, r *http.Request) {
 	// Don't allow callers to change the shutdown configuration while we're in the middle
 	// of starting or shutting down.
 	if s.State() != services.Running {

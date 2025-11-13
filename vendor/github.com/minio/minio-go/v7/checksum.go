@@ -24,13 +24,13 @@ import (
 	"encoding/binary"
 	"errors"
 	"hash"
-	"hash/crc32"
 	"io"
 	"math/bits"
 	"net/http"
 	"sort"
 	"strings"
 
+	"github.com/klauspost/crc32"
 	"github.com/minio/crc64nvme"
 )
 

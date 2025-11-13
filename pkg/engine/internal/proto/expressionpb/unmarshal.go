@@ -146,7 +146,7 @@ func (e *LiteralExpression) UnmarshalPhysical(from physical.Expression) error {
 		return fmt.Errorf("unsupported physical expression type: %T", from)
 	}
 
-	switch literal.Literal.(type) {
+	switch ty := literal.Literal.(type) {
 	case types.NullLiteral:
 		e.Kind = &LiteralExpression_NullLiteral{}
 	case types.BoolLiteral:
@@ -165,6 +165,8 @@ func (e *LiteralExpression) UnmarshalPhysical(from physical.Expression) error {
 		e.Kind = &LiteralExpression_BytesLiteral{}
 	case types.StringListLiteral:
 		e.Kind = &LiteralExpression_StringListLiteral{}
+	default:
+		return fmt.Errorf("invalid literal type for %v: %T (%T)", ty, ty, from)
 	}
 
 	u, ok := e.Kind.(literalUnmarshaler)

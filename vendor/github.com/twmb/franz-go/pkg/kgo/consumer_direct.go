@@ -1,5 +1,7 @@
 package kgo
 
+import "maps"
+
 type directConsumer struct {
 	cfg    *cfg
 	tps    *topicsPartitions           // data for topics that the user assigned
@@ -31,9 +33,7 @@ func (c *consumer) initDirect() {
 			d.m.add(topic, partition)
 		}
 		p := make(map[int32]Offset, len(partitions))
-		for partition, offset := range partitions {
-			p[partition] = offset
-		}
+		maps.Copy(p, partitions)
 		d.ps[topic] = p
 	}
 	for topic := range d.cfg.topics {

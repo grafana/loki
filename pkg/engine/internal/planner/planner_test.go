@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/logical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/proto/physicalpb"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -96,8 +97,7 @@ func (t *TestMetastore) Labels(_ context.Context, _ time.Time, _ time.Time, _ ..
 }
 
 // Sections implements metastore.Metastore.
-func (t *TestMetastore) Sections(_ context.Context, start time.Time, end time.Time, _ []*labels.Matcher, _ []*labels.Matcher) ([]*metastore.DataobjSectionDescriptor, error) {
-	dur := end.Sub(start)
+func (t *TestMetastore) Sections(_ context.Context, _ time.Time, _ time.Time, _ []*labels.Matcher, _ []*labels.Matcher) ([]*metastore.DataobjSectionDescriptor, error) {
 	return []*metastore.DataobjSectionDescriptor{
 		{
 			SectionKey: metastore.SectionKey{
@@ -107,8 +107,8 @@ func (t *TestMetastore) Sections(_ context.Context, start time.Time, end time.Ti
 			StreamIDs: []int64{1, 3, 5, 7, 9},
 			RowCount:  1000,
 			Size:      1 << 10,
-			Start:     start,
-			End:       end.Add(dur / -2),
+			Start:     time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC),
+			End:       time.Date(2025, time.January, 1, 0, 30, 0, 0, time.UTC),
 		},
 		{
 			SectionKey: metastore.SectionKey{
@@ -118,8 +118,8 @@ func (t *TestMetastore) Sections(_ context.Context, start time.Time, end time.Ti
 			StreamIDs: []int64{1, 3, 5, 7, 9},
 			RowCount:  1000,
 			Size:      1 << 10,
-			Start:     end.Add(dur / -2),
-			End:       end,
+			Start:     time.Date(2025, time.January, 1, 0, 30, 0, 0, time.UTC),
+			End:       time.Date(2025, time.January, 1, 1, 0, 0, 0, time.UTC),
 		},
 	}, nil
 }
@@ -295,7 +295,7 @@ VectorAggregation operation=sum group_by=(ambiguous.bar)
 	}
 
 	for _, tc := range testCases {
-		t.Run(tc.query, func(t *testing.T) {
+		t.Run(tc.comment, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 			t.Cleanup(cancel)
 
@@ -321,6 +321,16 @@ VectorAggregation operation=sum group_by=(ambiguous.bar)
 
 			actual := physical.PrintAsTree(plan)
 			require.Equal(t, strings.TrimSpace(tc.expected), strings.TrimSpace(actual))
+
+			requireCanSerialize(t, plan)
 		})
 	}
+}
+
+func requireCanSerialize(t *testing.T, plan *physical.Plan) {
+	t.Helper()
+
+	planPb := new(physicalpb.Plan)
+	err := planPb.UnmarshalPhysical(plan)
+	require.NoError(t, err, "failed to convert physical plan to protobuf")
 }

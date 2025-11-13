@@ -247,7 +247,7 @@ func collectBooleanArray(arr *array.Boolean) []bool {
 
 var words = []string{"one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"}
 
-func batch(n int, now time.Time) arrow.Record {
+func batch(n int, now time.Time) arrow.RecordBatch {
 	// Define the schema
 	schema := arrow.NewSchema(
 		[]arrow.Field{
@@ -280,7 +280,7 @@ func batch(n int, now time.Time) arrow.Record {
 
 	// Create the record
 	columns := []arrow.Array{logArray, tsArray}
-	record := array.NewRecord(schema, columns, int64(n))
+	record := array.NewRecordBatch(schema, columns, int64(n))
 
 	return record
 }
@@ -604,7 +604,7 @@ func structToRows(structArr *array.Struct) (arrowtest.Rows, error) {
 	}
 
 	// Create and return the record
-	record := array.NewRecord(schema, columns, int64(structArr.Len()))
+	record := array.NewRecordBatch(schema, columns, int64(structArr.Len()))
 	defer record.Release()
 	return arrowtest.RecordRows(record)
 }
@@ -1518,6 +1518,23 @@ func TestEvaluateParseExpression_JSON(t *testing.T) {
 					"utf8.parsed.response_time":    nil,
 					"utf8.parsed.user_id":          "123",
 					"utf8.parsed.user_profile_age": "25",
+				},
+			},
+		},
+		{
+			name: "keys with empty values as empty strings",
+			schema: arrow.NewSchema([]arrow.Field{
+				semconv.FieldFromFQN("utf8.builtin.message", true),
+			}, nil),
+			input: arrowtest.Rows{
+				{colMsg: `{"level": "error", "namespace": ""}`},
+			},
+			requestedKeys:  nil,
+			expectedFields: 2, // 2 columns: level, namespace
+			expectedOutput: arrowtest.Rows{
+				{
+					"utf8.parsed.level":     "error",
+					"utf8.parsed.namespace": "",
 				},
 			},
 		},
