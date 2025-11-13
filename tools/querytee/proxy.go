@@ -196,8 +196,10 @@ func NewProxy(cfg ProxyConfig, logger log.Logger, readRoutes, writeRoutes []Rout
 
 		var resultStore goldfish.ResultStore
 		if cfg.Goldfish.ResultsStorage.Enabled {
+      level.Debug(logger).Log("msg", "Goldfish results storage enabled, initializing result store")
 			resultStore, err = goldfish.NewResultStore(context.Background(), cfg.Goldfish.ResultsStorage, logger)
 			if err != nil {
+        level.Error(logger).Log("msg", "failed to setup goldfish result store", "err", err)
 				storage.Close()
 				return nil, errors.Wrap(err, "failed to create goldfish result store")
 			}
