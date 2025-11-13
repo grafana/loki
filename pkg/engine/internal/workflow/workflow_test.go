@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"sync"
 	"testing"
 	"time"
@@ -13,7 +14,6 @@ import (
 	"github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
 )
@@ -48,6 +48,14 @@ func Test(t *testing.T) {
 	require.NotNil(t, wf.resultsStream, "workflow should have created results stream")
 
 	defer func() {
+		wf.Close()
+
+		// Closing the workflow should remove all remaining streams and tasks.
+		require.Len(t, fr.streams, 0, "all streams should be removed after closing the workflow")
+		require.Len(t, fr.tasks, 0, "all tasks should be removed after closing the workflow")
+	}()
+
+	defer func() {
 		if !t.Failed() {
 			return
 		}
@@ -59,18 +67,11 @@ func Test(t *testing.T) {
 	// Run returns an error if any of the methods in our fake runner failed.
 	p, err := wf.Run(t.Context())
 	require.NoError(t, err, "Workflow should start properly")
+	defer p.Close()
 
 	require.Eventually(t, func() bool {
 		return len(fr.tasks) == 2
 	}, 100*time.Millisecond, 10*time.Millisecond)
-
-	defer func() {
-		p.Close()
-
-		// Closing the pipeline should remove all remaining streams and tasks.
-		require.Len(t, fr.streams, 0, "all streams should be removed after closing the pipeline")
-		require.Len(t, fr.tasks, 0, "all streams should be removed after closing the pipeline")
-	}()
 
 	rs, ok := fr.streams[wf.resultsStream.ULID]
 	require.True(t, ok, "results stream should be registered in runner")
@@ -216,7 +217,7 @@ func TestAdmissionControl(t *testing.T) {
 		wf.onTaskChange(ctx, task, TaskStatus{State: TaskStateCompleted})
 	}
 
-	// Eventually all tasks have been enqeued
+	// Eventually all tasks have been enqueued
 	require.Eventually(t, func() bool {
 		return numScanTasks+1 == len(fr.tasks) // 100 scan tasks + 1 other task
 	}, time.Second, 10*time.Millisecond)
@@ -235,66 +236,39 @@ func newFakeRunner() *fakeRunner {
 	}
 }
 
-func (f *fakeRunner) AddStreams(_ context.Context, handler StreamEventHandler, streams ...*Stream) error {
-	for _, stream := range streams {
+func (f *fakeRunner) RegisterManifest(_ context.Context, manifest *Manifest) error {
+	f.tasksMtx.Lock()
+	defer f.tasksMtx.Unlock()
+
+	var (
+		manifestStreams = make(map[ulid.ULID]*runnerStream, len(manifest.Streams))
+		manifestTasks   = make(map[ulid.ULID]*runnerTask, len(manifest.Tasks))
+	)
+
+	for _, stream := range manifest.Streams {
 		if _, exist := f.streams[stream.ULID]; exist {
 			return fmt.Errorf("stream %s already added", stream.ULID)
+		} else if _, exist := manifestStreams[stream.ULID]; exist {
+			return fmt.Errorf("stream %s already added in manifest", stream.ULID)
 		}
 
-		f.streams[stream.ULID] = &runnerStream{
+		manifestStreams[stream.ULID] = &runnerStream{
 			Stream:  stream,
-			Handler: handler,
+			Handler: manifest.StreamEventHandler,
 		}
 	}
-
-	return nil
-}
-
-func (f *fakeRunner) RemoveStreams(_ context.Context, streams ...*Stream) error {
-	var errs []error
-
-	for _, stream := range streams {
-		if _, exist := f.streams[stream.ULID]; !exist {
-			errs = append(errs, fmt.Errorf("stream %s not found", stream.ULID))
-		}
-		delete(f.streams, stream.ULID)
-	}
-
-	return errors.Join(errs...)
-}
-
-func (f *fakeRunner) Listen(_ context.Context, stream *Stream) (executor.Pipeline, error) {
-	rs, exist := f.streams[stream.ULID]
-	if !exist {
-		return nil, fmt.Errorf("stream %s not found", stream.ULID)
-	} else if rs.Listener != nil || rs.TaskReceiver != ulid.Zero {
-		return nil, fmt.Errorf("stream %s already bound", stream.ULID)
-	}
-
-	rs.Listener = noopPipeline{}
-	return rs.Listener, nil
-}
-
-func (f *fakeRunner) Start(ctx context.Context, handler TaskEventHandler, tasks ...*Task) error {
-	for _, task := range tasks {
-
-		f.tasksMtx.Lock()
+	for _, task := range manifest.Tasks {
 		if _, exist := f.tasks[task.ULID]; exist {
-			f.tasksMtx.Unlock()
 			return fmt.Errorf("task %s already added", task.ULID)
+		} else if _, exist := manifestTasks[task.ULID]; exist {
+			return fmt.Errorf("task %s already added in manifest", task.ULID)
 		}
-
-		f.tasks[task.ULID] = &runnerTask{
-			task:    task,
-			handler: handler,
-		}
-		f.tasksMtx.Unlock()
 
 		for _, streams := range task.Sinks {
 			for _, stream := range streams {
-				rs, exist := f.streams[stream.ULID]
+				rs, exist := manifestStreams[stream.ULID]
 				if !exist {
-					return fmt.Errorf("sink stream %s not found", stream.ULID)
+					return fmt.Errorf("sink stream %s not found in manifest", stream.ULID)
 				} else if rs.Sender != ulid.Zero {
 					return fmt.Errorf("stream %s already bound to sender %s", stream.ULID, rs.Sender)
 				}
@@ -304,9 +278,9 @@ func (f *fakeRunner) Start(ctx context.Context, handler TaskEventHandler, tasks 
 		}
 		for _, streams := range task.Sources {
 			for _, stream := range streams {
-				rs, exist := f.streams[stream.ULID]
+				rs, exist := manifestStreams[stream.ULID]
 				if !exist {
-					return fmt.Errorf("source stream %s not found", stream.ULID)
+					return fmt.Errorf("source stream %s not found in manifest", stream.ULID)
 				} else if rs.TaskReceiver != ulid.Zero {
 					return fmt.Errorf("source stream %s already bound to %s", stream.ULID, rs.TaskReceiver)
 				} else if rs.Listener != nil {
@@ -317,11 +291,80 @@ func (f *fakeRunner) Start(ctx context.Context, handler TaskEventHandler, tasks 
 			}
 		}
 
-		// Inform handler of task state change.
-		handler(ctx, task, TaskStatus{State: TaskStatePending})
+		manifestTasks[task.ULID] = &runnerTask{
+			task:    task,
+			handler: manifest.TaskEventHandler,
+		}
+	}
+
+	// If we got to this point, the manifest is valid and we can copy everything
+	// over into the map.
+	maps.Copy(f.streams, manifestStreams)
+	maps.Copy(f.tasks, manifestTasks)
+	return nil
+}
+
+func (f *fakeRunner) UnregisterManifest(_ context.Context, manifest *Manifest) error {
+	f.tasksMtx.Lock()
+	defer f.tasksMtx.Unlock()
+
+	// Validate that everything in the manifest was registered.
+	for _, stream := range manifest.Streams {
+		if _, exist := f.streams[stream.ULID]; !exist {
+			return fmt.Errorf("stream %s not found", stream.ULID)
+		}
+	}
+	for _, task := range manifest.Tasks {
+		if _, exist := f.tasks[task.ULID]; !exist {
+			return fmt.Errorf("task %s not found", task.ULID)
+		}
+	}
+
+	for _, stream := range manifest.Streams {
+		delete(f.streams, stream.ULID)
+	}
+	for _, task := range manifest.Tasks {
+		delete(f.tasks, task.ULID)
 	}
 
 	return nil
+}
+
+func (f *fakeRunner) Listen(_ context.Context, writer RecordWriter, stream *Stream) error {
+	f.tasksMtx.Lock()
+	defer f.tasksMtx.Unlock()
+
+	rs, exist := f.streams[stream.ULID]
+	if !exist {
+		return fmt.Errorf("stream %s not found", stream.ULID)
+	} else if rs.Listener != nil || rs.TaskReceiver != ulid.Zero {
+		return fmt.Errorf("stream %s already bound", stream.ULID)
+	}
+
+	rs.Listener = writer
+	return nil
+}
+
+func (f *fakeRunner) Start(ctx context.Context, tasks ...*Task) error {
+	var errs []error
+
+	for _, task := range tasks {
+		f.tasksMtx.Lock()
+		var (
+			rt, exist = f.tasks[task.ULID]
+		)
+		f.tasksMtx.Unlock()
+
+		if !exist {
+			errs = append(errs, fmt.Errorf("task %s not registered", task.ULID))
+			continue
+		}
+
+		// Inform handler of task state change.
+		rt.handler(ctx, task, TaskStatus{State: TaskStatePending})
+	}
+
+	return errors.Join(errs...)
 }
 
 func (f *fakeRunner) Cancel(ctx context.Context, tasks ...*Task) error {
@@ -329,17 +372,18 @@ func (f *fakeRunner) Cancel(ctx context.Context, tasks ...*Task) error {
 
 	for _, task := range tasks {
 		f.tasksMtx.RLock()
-		rt, exist := f.tasks[task.ULID]
+		var (
+			rt, exist = f.tasks[task.ULID]
+		)
 		f.tasksMtx.RUnlock()
+
 		if !exist {
 			errs = append(errs, fmt.Errorf("task %s not found", task.ULID))
 			continue
 		}
 
+		// Inform handler of task state change.
 		rt.handler(ctx, task, TaskStatus{State: TaskStateCancelled})
-		f.tasksMtx.Lock()
-		delete(f.tasks, task.ULID)
-		f.tasksMtx.Unlock()
 	}
 
 	return errors.Join(errs...)
@@ -352,8 +396,8 @@ type runnerStream struct {
 	Stream  *Stream
 	Handler StreamEventHandler
 
-	TaskReceiver ulid.ULID         // Task listening for messages on stream.
-	Listener     executor.Pipeline // Pipeline listening for messages on stream.
+	TaskReceiver ulid.ULID    // Task listening for messages on stream.
+	Listener     RecordWriter // Pipeline listening for messages on stream.
 
 	Sender ulid.ULID
 }
