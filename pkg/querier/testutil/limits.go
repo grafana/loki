@@ -91,3 +91,11 @@ func (m *MockLimits) PersistenceGranularity(_ string) time.Duration {
 func (m *MockLimits) MaxScanTaskParallelism(_ string) int {
 	return 0
 }
+
+func (m *MockLimits) DebugEngineStreams(_ string) bool {
+	return false
+}
+
+func (m *MockLimits) DebugEngineTasks(_ string) bool {
+	return false
+}
