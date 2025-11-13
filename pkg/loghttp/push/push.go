@@ -266,34 +266,6 @@ func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.
 	if userAgent != "" {
 		logValues = append(logValues, "userAgent", strings.TrimSpace(userAgent))
 	}
-
-	// For specific tenant, emit user agent and all labels from streams
-	if userID == "153106" {
-		if userAgent != "" {
-			logValues = append(logValues, "client", strings.TrimSpace(userAgent))
-		}
-		// Collect all unique label values per label name across all streams
-		labelValues := make(map[string]map[string]struct{})
-		for _, s := range req.Streams {
-			if lbs, err := syntax.ParseLabels(s.Labels); err == nil {
-				lbs.Range(func(lbl labels.Label) {
-					if labelValues[lbl.Name] == nil {
-						labelValues[lbl.Name] = make(map[string]struct{})
-					}
-					labelValues[lbl.Name][lbl.Value] = struct{}{}
-				})
-			}
-		}
-		// Log unique values for each label name found
-		for labelName, values := range labelValues {
-			valueList := make([]string, 0, len(values))
-			for value := range values {
-				valueList = append(valueList, value)
-			}
-			logValues = append(logValues, "label_"+labelName, strings.Join(valueList, ","))
-		}
-	}
-
 	// Since we're using a counter (so we can do things w/rate, irate, deriv, etc.) on the lag metrics,
 	// dispatch a warning if we ever get a negative value.  This could occur if we start getting logs
 	// whose timestamps are in the future (e.g. agents sending logs w/missing or invalid NTP configs).

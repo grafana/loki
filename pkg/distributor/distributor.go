@@ -23,6 +23,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/kv"
@@ -518,11 +519,64 @@ func (d *Distributor) waitSimulatedLatency(ctx context.Context, tenantID string,
 	}
 }
 
+// extractUserAgentFromGRPC extracts the User-Agent from GRPC metadata (same method as HTTP)
+func extractUserAgentFromGRPC(ctx context.Context) string {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return ""
+	}
+
+	// GRPC uses lowercase header names in metadata
+	userAgents := md.Get("user-agent")
+	if len(userAgents) > 0 {
+		return strings.TrimSpace(userAgents[0])
+	}
+	return ""
+}
+
 func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*logproto.PushResponse, error) {
 	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
+
+	// Extract User-Agent for logging client information (same method as push.go)
+	userAgent := extractUserAgentFromGRPC(ctx)
+
+	// Log the push request with tenant and client information
+	if d.tenantConfigs.LogPushRequest(tenantID) {
+		logValues := []interface{}{
+			"msg", "grpc push request received",
+		}
+		// For specific tenant, emit user agent and aggregated label information
+		if tenantID == "153106" {
+			if userAgent != "" {
+				logValues = append(logValues, "client", userAgent)
+			}
+			// Collect all unique label values per label name across all streams
+			labelValues := make(map[string]map[string]struct{})
+			for _, s := range req.Streams {
+				if lbs, err := syntax.ParseLabels(s.Labels); err == nil {
+					lbs.Range(func(lbl labels.Label) {
+						if labelValues[lbl.Name] == nil {
+							labelValues[lbl.Name] = make(map[string]struct{})
+						}
+						labelValues[lbl.Name][lbl.Value] = struct{}{}
+					})
+				}
+			}
+			// Log unique values for each label name found
+			for labelName, values := range labelValues {
+				valueList := make([]string, 0, len(values))
+				for value := range values {
+					valueList = append(valueList, value)
+				}
+				logValues = append(logValues, "label_"+labelName, strings.Join(valueList, ","))
+			}
+		}
+		level.Debug(d.logger).Log(logValues...)
+	}
+
 	return d.PushWithResolver(ctx, req, newRequestScopedStreamResolver(tenantID, d.validator.Limits, d.logger), constants.Loki)
 }
 

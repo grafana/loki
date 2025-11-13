@@ -11,6 +11,7 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/util/constants"
@@ -40,6 +41,12 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 		level.Error(logger).Log("msg", "error getting tenant id", "err", err)
 		errorWriter(w, err.Error(), http.StatusBadRequest, logger)
 		return
+	}
+
+	// Extract User-Agent for logging client information (same method as push.go)
+	userAgent := r.Header.Get("User-Agent")
+	if userAgent != "" {
+		userAgent = strings.TrimSpace(userAgent)
 	}
 
 	if d.RequestParserWrapper != nil {
@@ -151,9 +158,36 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 	_, err = d.PushWithResolver(r.Context(), req, streamResolver, format)
 	if err == nil {
 		if d.tenantConfigs.LogPushRequest(tenantID) {
-			level.Debug(logger).Log(
+			logValues := []interface{}{
 				"msg", "push request successful",
-			)
+			}
+			// For specific tenant, emit user agent and aggregated label information
+			if tenantID == "153106" {
+				if userAgent != "" {
+					logValues = append(logValues, "client", userAgent)
+				}
+				// Collect all unique label values per label name across all streams
+				labelValues := make(map[string]map[string]struct{})
+				for _, s := range req.Streams {
+					if lbs, err := syntax.ParseLabels(s.Labels); err == nil {
+						lbs.Range(func(lbl labels.Label) {
+							if labelValues[lbl.Name] == nil {
+								labelValues[lbl.Name] = make(map[string]struct{})
+							}
+							labelValues[lbl.Name][lbl.Value] = struct{}{}
+						})
+					}
+				}
+				// Log unique values for each label name found
+				for labelName, values := range labelValues {
+					valueList := make([]string, 0, len(values))
+					for value := range values {
+						valueList = append(valueList, value)
+					}
+					logValues = append(logValues, "label_"+labelName, strings.Join(valueList, ","))
+				}
+			}
+			level.Debug(logger).Log(logValues...)
 		}
 		w.WriteHeader(http.StatusNoContent)
 		return
