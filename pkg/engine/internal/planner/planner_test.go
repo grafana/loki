@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/logical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/proto/physicalpb"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -338,6 +339,16 @@ VectorAggregation operation=sum group_by=(ambiguous.bar)
 
 			actual := physical.PrintAsTree(plan)
 			require.Equal(t, strings.TrimSpace(tc.expected), strings.TrimSpace(actual))
+
+			requireCanSerialize(t, plan)
 		})
 	}
+}
+
+func requireCanSerialize(t *testing.T, plan *physical.Plan) {
+	t.Helper()
+
+	planPb := new(physicalpb.Plan)
+	err := planPb.UnmarshalPhysical(plan)
+	require.NoError(t, err, "failed to convert physical plan to protobuf")
 }

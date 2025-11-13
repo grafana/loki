@@ -19,9 +19,26 @@ import (
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
+// Options configures a [Workflow].
 type Options struct {
-	MaxRunningScanTasks  int
+	// MaxRunningScanTasks specifies the maximum number of scan tasks that may
+	// run concurrently within a single workflow. 0 means no limit.
+	MaxRunningScanTasks int
+
+	// MaxRunningOtherTasks specifies the maximum number of non-scan tasks that
+	// may run concurrently within a single workflow. 0 means no limit.
 	MaxRunningOtherTasks int
+
+	// DebugTasks toggles debug messages for a task. This is very verbose and
+	// should only be enabled for debugging purposes.
+	//
+	// Regardless of the value of DebugTasks, workers still log when
+	// they start and finish assigned tasks.
+	DebugTasks bool
+
+	// DebugStreams toggles debug messages for data streams. This is very
+	// verbose and should only be enabled for debugging purposes.
+	DebugStreams bool
 }
 
 // Workflow represents a physical plan that has been partitioned into
@@ -259,7 +276,9 @@ func (wf *Workflow) onStreamChange(_ context.Context, stream *Stream, newState S
 }
 
 func (wf *Workflow) onTaskChange(ctx context.Context, task *Task, newStatus TaskStatus) {
-	level.Debug(wf.logger).Log("msg", "task state change", "task_id", task.ULID, "new_state", newStatus.State)
+	if wf.opts.DebugTasks {
+		level.Debug(wf.logger).Log("msg", "task state change", "task_id", task.ULID, "new_state", newStatus.State)
+	}
 
 	wf.tasksMut.Lock()
 	oldState := wf.taskStates[task]

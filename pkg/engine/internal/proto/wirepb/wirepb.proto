@@ -4,10 +4,8 @@ syntax = "proto3";
 
 package loki.wire;
 
+import "github.com/grafana/dskit/httpgrpc/httpgrpc.proto";
 import "gogoproto/gogo.proto";
-import "google/protobuf/duration.proto";
-import "google/protobuf/timestamp.proto";
-import "pkg/engine/internal/proto/expressionpb/expressionpb.proto";
 import "pkg/engine/internal/proto/physicalpb/physicalpb.proto";
 import "pkg/engine/internal/proto/ulid/ulid.proto";
 import "pkg/xcap/proto/xcap.proto";
@@ -63,6 +61,10 @@ message TaskAssignMessage {
   // StreamStates holds the most recent state of each stream that the task
   // reads from. The key is the stream ULID.
   map<string, StreamState> stream_states = 2;
+
+  // Metadata holds additional metadata to propagate with the task, such as
+  // trace context.
+  repeated httpgrpc.Header metadata = 3;
 }
 
 // TaskCancelMessage is sent by the scheduler to a worker when a task is no

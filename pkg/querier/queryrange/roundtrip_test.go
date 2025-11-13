@@ -1541,6 +1541,14 @@ func (f fakeLimits) MaxScanTaskParallelism(_ string) int {
 	return 0
 }
 
+func (f fakeLimits) DebugEngineTasks(_ string) bool {
+	return false
+}
+
+func (f fakeLimits) DebugEngineStreams(_ string) bool {
+	return false
+}
+
 type ingesterQueryOpts struct {
 	queryStoreOnly       bool
 	queryIngestersWithin time.Duration
