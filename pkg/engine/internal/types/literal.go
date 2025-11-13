@@ -25,7 +25,7 @@ func (n NullLiteral) Type() DataType {
 }
 
 // Any implements Literal.
-func (n NullLiteral) Any() any {
+func (n NullLiteral) Any() LiteralType {
 	return nil
 }
 
@@ -46,7 +46,7 @@ func (b BoolLiteral) Type() DataType {
 }
 
 // Any implements Literal.
-func (b BoolLiteral) Any() any {
+func (b BoolLiteral) Any() LiteralType {
 	return b.Value()
 }
 
@@ -67,7 +67,7 @@ func (s StringLiteral) Type() DataType {
 }
 
 // Any implements Literal.
-func (s StringLiteral) Any() any {
+func (s StringLiteral) Any() LiteralType {
 	return s.Value()
 }
 
@@ -88,7 +88,7 @@ func (i IntegerLiteral) Type() DataType {
 }
 
 // Any implements Literal.
-func (i IntegerLiteral) Any() any {
+func (i IntegerLiteral) Any() LiteralType {
 	return i.Value()
 }
 
@@ -109,7 +109,7 @@ func (f FloatLiteral) Type() DataType {
 }
 
 // Any implements Literal.
-func (f FloatLiteral) Any() any {
+func (f FloatLiteral) Any() LiteralType {
 	return f.Value()
 }
 
@@ -130,7 +130,7 @@ func (t TimestampLiteral) Type() DataType {
 }
 
 // Any implements Literal.
-func (t TimestampLiteral) Any() any {
+func (t TimestampLiteral) Any() LiteralType {
 	return t.Value()
 }
 
@@ -151,7 +151,7 @@ func (d DurationLiteral) Type() DataType {
 }
 
 // Any implements Literal.
-func (d DurationLiteral) Any() any {
+func (d DurationLiteral) Any() LiteralType {
 	return d.Value()
 }
 
@@ -172,7 +172,7 @@ func (b BytesLiteral) Type() DataType {
 }
 
 // Any implements Literal.
-func (b BytesLiteral) Any() any {
+func (b BytesLiteral) Any() LiteralType {
 	return b.Value()
 }
 
@@ -196,7 +196,7 @@ func (l StringListLiteral) Type() DataType {
 }
 
 // Any implements Literal.
-func (l StringListLiteral) Any() any {
+func (l StringListLiteral) Any() LiteralType {
 	return l.Value()
 }
 
@@ -207,7 +207,7 @@ func (l StringListLiteral) Value() []string {
 // Literal is holds a value of [any] typed as [DataType].
 type Literal interface {
 	fmt.Stringer
-	Any() any
+	Any() LiteralType
 	Type() DataType
 }
 
