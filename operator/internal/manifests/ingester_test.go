@@ -1,7 +1,6 @@
 package manifests
 
 import (
-	"math/rand"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -12,7 +11,6 @@ import (
 
 	v1 "github.com/grafana/loki/operator/api/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
-	"github.com/grafana/loki/operator/internal/manifests/internal"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
 )
 
@@ -108,18 +106,35 @@ func TestNewIngesterStatefulSet_SelectorMatchesLabels(t *testing.T) {
 func TestBuildIngester_PodDisruptionBudget(t *testing.T) {
 	for _, tc := range []struct {
 		Name                 string
+		Size                 lokiv1.LokiStackSizeType
 		PDBMinAvailable      int
 		ExpectedMinAvailable int
+		Replicas             int
+		RF                   int
 	}{
 		{
-			Name:                 "Small stack",
+			Name:                 "Demo stack",
+			Size:                 lokiv1.SizeOneXDemo,
 			PDBMinAvailable:      1,
 			ExpectedMinAvailable: 1,
+			Replicas:             1,
+			RF:                   1,
+		},
+		{
+			Name:                 "Small stack",
+			Size:                 lokiv1.SizeOneXSmall,
+			PDBMinAvailable:      1,
+			ExpectedMinAvailable: 1,
+			Replicas:             2,
+			RF:                   2,
 		},
 		{
 			Name:                 "Medium stack",
+			Size:                 lokiv1.SizeOneXMedium,
 			PDBMinAvailable:      2,
 			ExpectedMinAvailable: 2,
+			Replicas:             3,
+			RF:                   2,
 		},
 	} {
 		t.Run(tc.Name, func(t *testing.T) {
@@ -127,19 +142,18 @@ func TestBuildIngester_PodDisruptionBudget(t *testing.T) {
 				Name:      "abcd",
 				Namespace: "efgh",
 				Gates:     v1.FeatureGates{},
-				ResourceRequirements: internal.ComponentResources{
-					Ingester: internal.ResourceRequirements{
-						PDBMinAvailable: tc.PDBMinAvailable,
-					},
-				},
 				Stack: lokiv1.LokiStackSpec{
+					Size: tc.Size,
 					Template: &lokiv1.LokiTemplateSpec{
 						Ingester: &lokiv1.LokiComponentSpec{
-							Replicas: rand.Int31(),
+							Replicas: int32(tc.Replicas),
 						},
 					},
 					Tenants: &lokiv1.TenantsSpec{
 						Mode: lokiv1.OpenshiftLogging,
+					},
+					Replication: &lokiv1.ReplicationSpec{
+						Factor: int32(tc.RF),
 					},
 				},
 			}
@@ -158,6 +172,52 @@ func TestBuildIngester_PodDisruptionBudget(t *testing.T) {
 	}
 }
 
+func TestBuildIngester_PodDisruptionBudgetWithReplicationFactor(t *testing.T) {
+	ingesterReplicas := 3
+	for _, tc := range []struct {
+		Name                    string
+		CustomReplicationFactor int32
+		PDBMinAvailable         int
+		ExpectedMinAvailable    int
+	}{
+		{
+			Name:                    "ingester replicas > replication factor",
+			CustomReplicationFactor: 2,
+			PDBMinAvailable:         1,
+			ExpectedMinAvailable:    2,
+		},
+	} {
+		t.Run(tc.Name, func(t *testing.T) {
+			opts := Options{
+				Name:      "abcd",
+				Namespace: "efgh",
+				Gates:     v1.FeatureGates{},
+				Stack: lokiv1.LokiStackSpec{
+					Template: &lokiv1.LokiTemplateSpec{
+						Ingester: &lokiv1.LokiComponentSpec{
+							Replicas: int32(ingesterReplicas),
+						},
+					},
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.OpenshiftLogging,
+					},
+					Size: lokiv1.SizeOneXPico,
+					Replication: &lokiv1.ReplicationSpec{
+						Factor: tc.CustomReplicationFactor,
+					},
+				},
+			}
+			objs, err := BuildIngester(opts)
+
+			require.NoError(t, err)
+			pdb := objs[3].(*policyv1.PodDisruptionBudget)
+			require.NotNil(t, pdb)
+			require.NotNil(t, pdb.Spec.MinAvailable.IntVal)
+			require.Equal(t, int32(tc.ExpectedMinAvailable), pdb.Spec.MinAvailable.IntVal)
+		})
+	}
+}
+
 func TestNewIngesterStatefulSet_TopologySpreadConstraints(t *testing.T) {
 	obj, _ := BuildIngester(Options{
 		Name:      "abcd",
@@ -165,7 +225,7 @@ func TestNewIngesterStatefulSet_TopologySpreadConstraints(t *testing.T) {
 		Stack: lokiv1.LokiStackSpec{
 			Template: &lokiv1.LokiTemplateSpec{
 				Ingester: &lokiv1.LokiComponentSpec{
-					Replicas: 1,
+					Replicas: 3,
 				},
 			},
 			Replication: &lokiv1.ReplicationSpec{
@@ -179,7 +239,7 @@ func TestNewIngesterStatefulSet_TopologySpreadConstraints(t *testing.T) {
 						MaxSkew:     1,
 					},
 				},
-				Factor: 1,
+				Factor: 2,
 			},
 		},
 	})

@@ -1317,6 +1317,8 @@ const (
 	ReasonZoneAwareEmptyLabel LokiStackConditionReason = "ReasonZoneAwareEmptyLabel"
 	// ReasonStorageNeedsSchemaUpdate when the object storage schema version is older than V13
 	ReasonStorageNeedsSchemaUpdate LokiStackConditionReason = "StorageNeedsSchemaUpdate"
+	// ReasonInvalidReplicationFactor when the replication factor is equal to or more than the ingester replicas
+	ReasonInvalidReplicationFactor LokiStackConditionReason = "ReasonInvalidReplicationFactor"
 )
 
 // PodStatus is a short description of the status a Pod can be in.
