@@ -29,7 +29,7 @@ func (n NullLiteral) Any() LiteralType {
 	return nil
 }
 
-func (n NullLiteral) Value() any {
+func (n NullLiteral) Value() Null {
 	return nil
 }
 
@@ -212,7 +212,7 @@ type Literal interface {
 }
 
 type LiteralType interface {
-	any | bool | string | int64 | float64 | Timestamp | Duration | Bytes
+	Null | bool | string | int64 | float64 | Timestamp | Duration | Bytes | []string
 }
 
 type TypedLiteral[T LiteralType] interface {
@@ -222,7 +222,7 @@ type TypedLiteral[T LiteralType] interface {
 
 var (
 	_ Literal                 = (*NullLiteral)(nil)
-	_ TypedLiteral[any]       = (*NullLiteral)(nil)
+	_ TypedLiteral[Null]      = (*NullLiteral)(nil)
 	_ Literal                 = (*BoolLiteral)(nil)
 	_ TypedLiteral[bool]      = (*BoolLiteral)(nil)
 	_ Literal                 = (*StringLiteral)(nil)
@@ -241,12 +241,18 @@ var (
 	_ TypedLiteral[[]string]  = (*StringListLiteral)(nil)
 )
 
-func NewLiteral[T LiteralType](value T) Literal {
-	switch val := any(value).(type) {
+func NewLiteral(value any) Literal {
+	if value == nil {
+		return NewNullLiteral()
+	}
+
+	switch val := value.(type) {
 	case bool:
 		return BoolLiteral(val)
 	case string:
 		return StringLiteral(val)
+	case int:
+		return IntegerLiteral(val)
 	case int64:
 		return IntegerLiteral(val)
 	case float64:
@@ -259,8 +265,9 @@ func NewLiteral[T LiteralType](value T) Literal {
 		return BytesLiteral(val)
 	case []string:
 		return StringListLiteral(val)
+	default:
+		panic(fmt.Sprintf("invalid literal value type %T", value))
 	}
-	panic(fmt.Sprintf("invalid literal value type %T", value))
 }
 
 func NewNullLiteral() NullLiteral {

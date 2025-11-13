@@ -14,7 +14,7 @@ type Literal struct {
 
 var _ Value = (*Literal)(nil)
 
-func NewLiteral(value types.LiteralType) *Literal {
+func NewLiteral(value any) *Literal {
 	if value == nil {
 		return &Literal{inner: types.NewNullLiteral()}
 	}
