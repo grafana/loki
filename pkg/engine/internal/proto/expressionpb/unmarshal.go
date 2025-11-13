@@ -166,7 +166,7 @@ func (e *LiteralExpression) UnmarshalPhysical(from physical.Expression) error {
 	case types.StringListLiteral:
 		e.Kind = &LiteralExpression_StringListLiteral{}
 	default:
-		return fmt.Errorf("invalid literal type for %v (%v): %T", from, ty, ty)
+		return fmt.Errorf("invalid literal type for %v: %T (%T)", ty, ty, from)
 	}
 
 	u, ok := e.Kind.(literalUnmarshaler)
