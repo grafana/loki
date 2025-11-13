@@ -7,6 +7,7 @@ import (
 	"maps"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
@@ -28,62 +29,63 @@ import (
 // Some of these assertions are handled by [fakeRunner], which returns an error
 // when used improperly.
 func Test(t *testing.T) {
-	var physicalGraph dag.Graph[physical.Node]
+	synctest.Test(t, func(t *testing.T) {
+		var physicalGraph dag.Graph[physical.Node]
 
-	var (
-		scan      = physicalGraph.Add(&physical.DataObjScan{})
-		rangeAgg  = physicalGraph.Add(&physical.RangeAggregation{})
-		vectorAgg = physicalGraph.Add(&physical.VectorAggregation{})
-	)
+		var (
+			scan      = physicalGraph.Add(&physical.DataObjScan{})
+			rangeAgg  = physicalGraph.Add(&physical.RangeAggregation{})
+			vectorAgg = physicalGraph.Add(&physical.VectorAggregation{})
+		)
 
-	_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: rangeAgg, Child: scan})
-	_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: vectorAgg, Child: rangeAgg})
+		_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: rangeAgg, Child: scan})
+		_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: vectorAgg, Child: rangeAgg})
 
-	physicalPlan := physical.FromGraph(physicalGraph)
+		physicalPlan := physical.FromGraph(physicalGraph)
 
-	fr := newFakeRunner()
+		fr := newFakeRunner()
 
-	wf, err := New(Options{}, log.NewNopLogger(), "", fr, physicalPlan)
-	require.NoError(t, err, "workflow should construct properly")
-	require.NotNil(t, wf.resultsStream, "workflow should have created results stream")
+		wf, err := New(Options{}, log.NewNopLogger(), "", fr, physicalPlan)
+		require.NoError(t, err, "workflow should construct properly")
+		require.NotNil(t, wf.resultsStream, "workflow should have created results stream")
 
-	defer func() {
-		wf.Close()
+		defer func() {
+			wf.Close()
 
-		// Closing the workflow should remove all remaining streams and tasks.
-		require.Len(t, fr.streams, 0, "all streams should be removed after closing the workflow")
-		require.Len(t, fr.tasks, 0, "all tasks should be removed after closing the workflow")
-	}()
+			// Closing the workflow should remove all remaining streams and tasks.
+			require.Len(t, fr.streams, 0, "all streams should be removed after closing the workflow")
+			require.Len(t, fr.tasks, 0, "all tasks should be removed after closing the workflow")
+		}()
 
-	defer func() {
-		if !t.Failed() {
-			return
+		defer func() {
+			if !t.Failed() {
+				return
+			}
+
+			t.Log("Failing workflow:")
+			t.Log(Sprint(wf))
+		}()
+
+		// Run returns an error if any of the methods in our fake runner failed.
+		p, err := wf.Run(t.Context())
+		require.NoError(t, err, "Workflow should start properly")
+		defer p.Close()
+
+		synctest.Wait()
+		require.Equal(t, len(wf.taskStates), 2, "workflow should have enqueued two tasks")
+
+		rs, ok := fr.streams[wf.resultsStream.ULID]
+		require.True(t, ok, "results stream should be registered in runner")
+		require.NotEqual(t, ulid.Zero, rs.Sender, "results stream should have a sender")
+		require.Equal(t, ulid.Zero, rs.TaskReceiver, "results stream should not have a task receiver")
+		require.NotNil(t, rs.Listener, "results stream should have a listener")
+
+		// Check to make sure all known tasks have been given to the runner.
+		for _, task := range wf.allTasks() {
+			_, exist := fr.tasks[task.ULID]
+			require.True(t, exist, "workflow should give all tasks to runner (task %s is missing)", task.ULID)
 		}
-
-		t.Log("Failing workflow:")
-		t.Log(Sprint(wf))
-	}()
-
-	// Run returns an error if any of the methods in our fake runner failed.
-	p, err := wf.Run(t.Context())
-	require.NoError(t, err, "Workflow should start properly")
-	defer p.Close()
-
-	require.Eventually(t, func() bool {
-		return len(fr.tasks) == 2
-	}, 100*time.Millisecond, 10*time.Millisecond)
-
-	rs, ok := fr.streams[wf.resultsStream.ULID]
-	require.True(t, ok, "results stream should be registered in runner")
-	require.NotEqual(t, ulid.Zero, rs.Sender, "results stream should have a sender")
-	require.Equal(t, ulid.Zero, rs.TaskReceiver, "results stream should not have a task receiver")
-	require.NotNil(t, rs.Listener, "results stream should have a listener")
-
-	// Check to make sure all known tasks have been given to the runner.
-	for _, task := range wf.allTasks() {
-		_, exist := fr.tasks[task.ULID]
-		require.True(t, exist, "workflow should give all tasks to runner (task %s is missing)", task.ULID)
-	}
+	})
 }
 
 // TestCancellation tasks that a task entering a terminal state cancels all
@@ -105,122 +107,123 @@ func TestCancellation(t *testing.T) {
 	terminalStates := []TaskState{TaskStateCancelled, TaskStateCancelled, TaskStateFailed}
 	for _, state := range terminalStates {
 		t.Run(state.String(), func(t *testing.T) {
-			fr := newFakeRunner()
-			wf, err := New(Options{}, log.NewNopLogger(), "", fr, physicalPlan)
-			require.NoError(t, err, "workflow should construct properly")
-			require.NotNil(t, wf.resultsStream, "workflow should have created results stream")
+			synctest.Test(t, func(t *testing.T) {
+				fr := newFakeRunner()
+				wf, err := New(Options{}, log.NewNopLogger(), "", fr, physicalPlan)
+				require.NoError(t, err, "workflow should construct properly")
+				require.NotNil(t, wf.resultsStream, "workflow should have created results stream")
 
-			defer func() {
-				if !t.Failed() {
-					return
-				}
+				defer func() {
+					if !t.Failed() {
+						return
+					}
 
-				t.Log("Failing workflow:")
-				t.Log(Sprint(wf))
-			}()
+					t.Log("Failing workflow:")
+					t.Log(Sprint(wf))
+				}()
 
-			// Run returns an error if any of the methods in our fake runner failed.
-			p, err := wf.Run(t.Context())
-			require.NoError(t, err, "Workflow should start properly")
-			defer p.Close()
+				// Run returns an error if any of the methods in our fake runner failed.
+				p, err := wf.Run(t.Context())
+				require.NoError(t, err, "Workflow should start properly")
+				defer p.Close()
 
-			require.Eventually(t, func() bool {
-				return len(fr.tasks) == 2
-			}, 100*time.Millisecond, 10*time.Millisecond)
+				// Wait for the workflow to register all tasks with the runner.
+				synctest.Wait()
 
-			rootTask, err := wf.graph.Root()
-			require.NoError(t, err, "should be able to retrieve singular root task")
+				rootTask, err := wf.graph.Root()
+				require.NoError(t, err, "should be able to retrieve singular root task")
 
-			rt, ok := fr.tasks[rootTask.ULID]
-			require.True(t, ok, "root task should be registered with runner")
+				rt, ok := fr.tasks[rootTask.ULID]
+				require.True(t, ok, "root task should be registered with runner")
 
-			// Notify the workflow that the root task has entered a terminal
-			// state.
-			rt.handler(t.Context(), rootTask, TaskStatus{State: state})
+				// Notify the workflow that the root task has entered a terminal
+				// state.
+				rt.handler(t.Context(), rootTask, TaskStatus{State: state})
 
-			_ = wf.graph.Walk(rootTask, func(n *Task) error {
-				if n == rootTask {
+				_ = wf.graph.Walk(rootTask, func(n *Task) error {
+					if n == rootTask {
+						return nil
+					}
+
+					require.Equal(t, TaskStateCancelled, wf.taskStates[n], "downstream task %s should be canceled", n.ULID)
 					return nil
-				}
-
-				require.Equal(t, TaskStateCancelled, wf.taskStates[n], "downstream task %s should be canceled", n.ULID)
-				return nil
-			}, dag.PreOrderWalk)
+				}, dag.PreOrderWalk)
+			})
 		})
 	}
 }
 
 func TestAdmissionControl(t *testing.T) {
-	numScanTasks := 100 // more tasks than the capacity of the token bucket
-	var physicalGraph dag.Graph[physical.Node]
+	synctest.Test(t, func(t *testing.T) {
+		numScanTasks := 100 // more tasks than the capacity of the token bucket
+		var physicalGraph dag.Graph[physical.Node]
 
-	scanSet := &physical.ScanSet{}
-	for i := range numScanTasks {
-		scanSet.Targets = append(scanSet.Targets, &physical.ScanTarget{
-			Type: physical.ScanTypeDataObject,
-			DataObject: &physical.DataObjScan{
-				Section: i,
-			},
-		})
-	}
-
-	var (
-		rangeAgg = physicalGraph.Add(&physical.RangeAggregation{})
-		parallel = physicalGraph.Add(&physical.Parallelize{})
-		_        = physicalGraph.Add(scanSet)
-	)
-
-	_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: rangeAgg, Child: parallel})
-	_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: parallel, Child: scanSet})
-
-	physicalPlan := physical.FromGraph(physicalGraph)
-
-	fr := newFakeRunner()
-
-	opts := Options{
-		MaxRunningScanTasks:  32, // less than numScanTasks
-		MaxRunningOtherTasks: 0,  // unlimited
-	}
-	wf, err := New(opts, log.NewNopLogger(), "tenant", fr, physicalPlan)
-	require.NoError(t, err, "workflow should construct properly")
-	require.NotNil(t, wf.resultsStream, "workflow should have created results stream")
-
-	defer func() {
-		if !t.Failed() {
-			return
+		scanSet := &physical.ScanSet{}
+		for i := range numScanTasks {
+			scanSet.Targets = append(scanSet.Targets, &physical.ScanTarget{
+				Type: physical.ScanTypeDataObject,
+				DataObject: &physical.DataObjScan{
+					Section: i,
+				},
+			})
 		}
 
-		t.Log("Failing workflow:")
-		t.Log(Sprint(wf))
-	}()
+		var (
+			rangeAgg = physicalGraph.Add(&physical.RangeAggregation{})
+			parallel = physicalGraph.Add(&physical.Parallelize{})
+			_        = physicalGraph.Add(scanSet)
+		)
 
-	// Run returns an error if any of the methods in our fake runner failed.
-	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
-	t.Cleanup(cancel)
+		_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: rangeAgg, Child: parallel})
+		_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: parallel, Child: scanSet})
 
-	// Run() dispatches task in background goroutine, so it does not block
-	p, err := wf.Run(ctx)
-	require.NoError(t, err, "Workflow should start properly")
-	defer p.Close()
+		physicalPlan := physical.FromGraph(physicalGraph)
 
-	// Eventually first "batch" of scan tasks has been enqueued
-	require.Eventually(t, func() bool {
-		return opts.MaxRunningScanTasks+1 == len(wf.taskStates) // 32 scan tasks + 1 other task
-	}, time.Second, 10*time.Millisecond)
+		fr := newFakeRunner()
 
-	// Simulate scan tasks being completed
-	for _, task := range wf.allTasks() {
-		if !isScanTask(task) {
-			continue
+		opts := Options{
+			MaxRunningScanTasks:  32, // less than numScanTasks
+			MaxRunningOtherTasks: 0,  // unlimited
 		}
-		time.Sleep(10 * time.Millisecond) // need to make sure that we don't "finish" tasks before they are dispatched
-		wf.onTaskChange(ctx, task, TaskStatus{State: TaskStateCompleted})
-	}
+		wf, err := New(opts, log.NewNopLogger(), "tenant", fr, physicalPlan)
+		require.NoError(t, err, "workflow should construct properly")
+		require.NotNil(t, wf.resultsStream, "workflow should have created results stream")
 
-	// Eventually all tasks have been enqueued
-	require.Eventually(t, func() bool {
-		return numScanTasks+1 == len(fr.tasks) // 100 scan tasks + 1 other task
-	}, time.Second, 10*time.Millisecond)
+		defer func() {
+			if !t.Failed() {
+				return
+			}
+
+			t.Log("Failing workflow:")
+			t.Log(Sprint(wf))
+		}()
+
+		// Run returns an error if any of the methods in our fake runner failed.
+		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+		t.Cleanup(cancel)
+
+		// Run() dispatches task in background goroutine, so it does not block
+		p, err := wf.Run(ctx)
+		require.NoError(t, err, "Workflow should start properly")
+		defer p.Close()
+
+		// Wait for first "batch" of scan tests to be enqueued.
+		synctest.Wait()
+		require.Equal(t, opts.MaxRunningScanTasks+1, len(wf.taskStates), "expected all tasks up to batch to be enqueued") // 32 scan tasks + 1 other task
+
+		// Simulate scan tasks being completed
+		for _, task := range wf.allTasks() {
+			if !isScanTask(task) {
+				continue
+			}
+			time.Sleep(10 * time.Millisecond) // need to make sure that we don't "finish" tasks before they are dispatched
+			wf.onTaskChange(ctx, task, TaskStatus{State: TaskStateCompleted})
+		}
+
+		// Wait for all other tasks to be enqueued.
+		synctest.Wait()
+		require.Equal(t, numScanTasks+1, len(wf.taskStates), "expected all tasks up to batch to be enqueued") // 100 scan tasks + 1 other task
+	})
 }
 
 type fakeRunner struct {
