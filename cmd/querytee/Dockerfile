@@ -1,5 +1,5 @@
 ARG GO_VERSION=1.25
-FROM golang:${GO_VERSION} as build
+FROM golang:${GO_VERSION} AS build
 ARG IMAGE_TAG
 
 COPY . /src/loki
