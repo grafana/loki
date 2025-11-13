@@ -392,6 +392,7 @@ func (s *dataobjScan) Close() {
 }
 
 // recordReaderStats records statistics from the [logs.Reader] to the xcap scope.
+// TODO: [dataset.ReaderStats] should be replaced by xcap statistics.
 func (s *dataobjScan) recordReaderStats() {
 	if s.scope == nil || s.reader == nil {
 		return
