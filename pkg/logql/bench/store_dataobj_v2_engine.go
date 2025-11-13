@@ -92,7 +92,7 @@ func dataobjV2StoreWithOpts(dataDir string, tenantID string, cfg engine.Executor
 	)
 
 	if *remoteTransport {
-		schedSrv, schedSvc, err = newServerService(ctx, "scheduler", logger)
+		schedSrv, schedSvc, err = newServerService("scheduler", logger)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create scheduler server: %w", err)
 		} else if err := services.StartAndAwaitRunning(ctx, schedSvc); err != nil {
@@ -113,7 +113,7 @@ func dataobjV2StoreWithOpts(dataDir string, tenantID string, cfg engine.Executor
 	}
 
 	if *remoteTransport {
-		workerSrv, workerSvc, err = newServerService(ctx, "worker", logger)
+		workerSrv, workerSvc, err = newServerService("worker", logger)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create worker server: %w", err)
 		} else if err := services.StartAndAwaitRunning(ctx, workerSvc); err != nil {
@@ -176,7 +176,7 @@ func dataobjV2StoreWithOpts(dataDir string, tenantID string, cfg engine.Executor
 	}, nil
 }
 
-func newServerService(ctx context.Context, name string, logger log.Logger) (*server.Server, services.Service, error) {
+func newServerService(name string, logger log.Logger) (*server.Server, services.Service, error) {
 	logger = log.With(logger, "component", "server", "server", name)
 	serv, err := server.New(server.Config{
 		Log:               logger,
