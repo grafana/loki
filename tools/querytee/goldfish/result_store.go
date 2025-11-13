@@ -57,7 +57,6 @@ type bucketResultStore struct {
 func NewResultStore(ctx context.Context, cfg ResultsStorageConfig, logger log.Logger) (ResultStore, error) {
 	bucketClient, err := bucketclient.NewClient(ctx, cfg.Backend, cfg.Bucket, "goldfish-results", logger)
 	if err != nil {
-    level.Error(logger).Log("msg", "failed to create bucket client", "err", err)
 		return nil, fmt.Errorf("create bucket client: %w", err)
 	}
 
@@ -68,7 +67,6 @@ func NewResultStore(ctx context.Context, cfg ResultsStorageConfig, logger log.Lo
 	case "gcs":
 		bucketName = cfg.Bucket.GCS.BucketName
 	default:
-    level.Error(logger).Log("msg", "unsupported backend", "err", err)
 		return nil, fmt.Errorf("unsupported backend: %s", cfg.Backend)
 	}
 

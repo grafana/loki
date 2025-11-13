@@ -2,7 +2,6 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"os"
 	"time"
 
@@ -34,7 +33,6 @@ func main() {
 	cfg.Tracing.RegisterFlags(flag.CommandLine)
 	flag.Parse()
 
-	fmt.Printf("Initializing querytee with %s level logging\n", cfg.LogLevel.String())
 	util_log.InitLogger(&server.Config{
 		LogLevel: cfg.LogLevel,
 	}, prometheus.DefaultRegisterer, false)
@@ -44,8 +42,7 @@ func main() {
 		trace, err := tracing.NewOTelOrJaegerFromEnv("loki-querytee", util_log.Logger)
 		if err != nil {
 			level.Error(util_log.Logger).Log("msg", "error in initializing tracing. tracing will not be enabled", "err", err)
-      fmt.Println("error in initializing tracing. tracing will not be enabled", "err", err)
-			os.Exit(1)
+			exit(1)
 		}
 
 		defer func() {
@@ -64,25 +61,27 @@ func main() {
 	i := querytee.NewInstrumentationServer(cfg.ServerMetricsPort, registry, util_log.Logger)
 	if err := i.Start(); err != nil {
 		level.Error(util_log.Logger).Log("msg", "Unable to start instrumentation server", "err", err.Error())
-    fmt.Println("Unable to start instrumentation server", "err", err.Error())
-		os.Exit(1)
+		exit(1)
 	}
 
 	// Run the proxy.
 	proxy, err := querytee.NewProxy(cfg.ProxyConfig, util_log.Logger, lokiReadRoutes(cfg), lokiWriteRoutes(), registry)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "Unable to initialize the proxy", "err", err.Error())
-    fmt.Println("Unable to initialize the proxy", "err", err.Error())
-		os.Exit(1)
+		exit(1)
 	}
 
 	if err := proxy.Start(); err != nil {
 		level.Error(util_log.Logger).Log("msg", "Unable to start the proxy", "err", err.Error())
-    fmt.Println("Unable to start the proxy", "err", err.Error())
-		os.Exit(1)
+		exit(1)
 	}
 
 	proxy.Await()
+}
+
+func exit(code int) {
+	util_log.Flush()
+	os.Exit(code)
 }
 
 func lokiReadRoutes(cfg Config) []querytee.Route {
