@@ -117,6 +117,8 @@ func (wf *Workflow) Run(ctx context.Context) (pipeline executor.Pipeline, err er
 		}
 	}()
 
+	wf.capture = xcap.FromContext(ctx)
+
 	pipeline, err = wf.runner.Listen(ctx, wf.resultsStream)
 	if err != nil {
 		return nil, err
@@ -157,13 +159,6 @@ func (wf *Workflow) Run(ctx context.Context) (pipeline executor.Pipeline, err er
 	}()
 
 	return wrapped, nil
-}
-
-func (wf *Workflow) Capture() *xcap.Capture {
-	wf.captureMut.Lock()
-	defer wf.captureMut.Unlock()
-
-	return wf.capture
 }
 
 // dispatchTasks groups the slice of tasks by their associated "admission lane" (token bucket)
@@ -345,13 +340,6 @@ func (wf *Workflow) mergeCapture(capture *xcap.Capture) {
 	wf.captureMut.Lock()
 	defer wf.captureMut.Unlock()
 
-	if wf.capture == nil {
-		// First capture, just store it
-		wf.capture = capture
-		return
-	}
-
-	// Merge the new capture into the existing one
 	wf.capture.Merge(capture)
 }
 

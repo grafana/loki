@@ -38,7 +38,8 @@ func WithScopeAttributes(attrs ...attribute.KeyValue) ScopeOption {
 
 // Scope captures the lifetime of a specific operation within a capture.
 type Scope struct {
-	mu sync.RWMutex
+	// span is the OpenTelemetry span backing this scope.
+	trace.Span
 
 	// capture is the capture this scope belongs to.
 	capture *Capture
@@ -52,6 +53,9 @@ type Scope struct {
 	// startTime is when the scope was created.
 	startTime time.Time
 
+	// mu protects the fields below.
+	mu sync.RWMutex
+
 	// endTime is when the scope ended. Zero if not ended.
 	endTime time.Time
 
@@ -61,9 +65,6 @@ type Scope struct {
 
 	// ended indicates whether End() has been called.
 	ended bool
-
-	// span is the OpenTelemetry span backing this scope.
-	span trace.Span
 }
 
 // NewScope creates a new Scope with the given data.
@@ -104,10 +105,10 @@ func StartScope(ctx context.Context, name string, opts ...ScopeOption) (context.
 	ctx, span := xcapTracer.Start(ctx, name, trace.WithAttributes(cfg.attributes...))
 
 	scope := &Scope{
+		Span:         span,
 		capture:      capture,
 		name:         name,
 		attributes:   cfg.attributes,
-		span:         span,
 		startTime:    time.Now(),
 		observations: make(map[StatisticKey]AggregatedObservation),
 	}
@@ -165,12 +166,12 @@ func (s *Scope) End() {
 	s.ended = true
 
 	// Add observations as span attributes before ending
-	if s.span != nil {
+	if s.Span != nil {
 		attrs := s.observationsToAttributes()
 		if len(attrs) > 0 {
-			s.span.SetAttributes(attrs...)
+			s.Span.SetAttributes(attrs...)
 		}
-		s.span.End()
+		s.Span.End()
 	}
 }
 
