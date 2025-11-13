@@ -44,6 +44,7 @@ func main() {
 		trace, err := tracing.NewOTelOrJaegerFromEnv("loki-querytee", util_log.Logger)
 		if err != nil {
 			level.Error(util_log.Logger).Log("msg", "error in initializing tracing. tracing will not be enabled", "err", err)
+      fmt.Println("error in initializing tracing. tracing will not be enabled", "err", err)
 			os.Exit(1)
 		}
 
@@ -63,6 +64,7 @@ func main() {
 	i := querytee.NewInstrumentationServer(cfg.ServerMetricsPort, registry, util_log.Logger)
 	if err := i.Start(); err != nil {
 		level.Error(util_log.Logger).Log("msg", "Unable to start instrumentation server", "err", err.Error())
+    fmt.Println("Unable to start instrumentation server", "err", err.Error())
 		os.Exit(1)
 	}
 
@@ -70,11 +72,13 @@ func main() {
 	proxy, err := querytee.NewProxy(cfg.ProxyConfig, util_log.Logger, lokiReadRoutes(cfg), lokiWriteRoutes(), registry)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "Unable to initialize the proxy", "err", err.Error())
+    fmt.Println("Unable to initialize the proxy", "err", err.Error())
 		os.Exit(1)
 	}
 
 	if err := proxy.Start(); err != nil {
 		level.Error(util_log.Logger).Log("msg", "Unable to start the proxy", "err", err.Error())
+    fmt.Println("Unable to start the proxy", "err", err.Error())
 		os.Exit(1)
 	}
 
