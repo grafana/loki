@@ -543,6 +543,23 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	// Extract User-Agent for logging client information (same method as push.go)
 	userAgent := extractUserAgentFromGRPC(ctx)
 
+	// Debug logging for tenant 153106
+	if tenantID == "153106" {
+		if userAgent == "" {
+			// Check all GRPC metadata
+			if md, ok := metadata.FromIncomingContext(ctx); ok {
+				level.Debug(d.logger).Log("msg", "User-Agent is empty from GRPC, checking metadata", "tenant", tenantID,
+					"user-agent", md.Get("user-agent"),
+					"User-Agent", md.Get("User-Agent"),
+					"all_metadata", fmt.Sprintf("%v", md))
+			} else {
+				level.Debug(d.logger).Log("msg", "No GRPC metadata found", "tenant", tenantID)
+			}
+		} else {
+			level.Debug(d.logger).Log("msg", "User-Agent extracted from GRPC", "tenant", tenantID, "userAgent", userAgent)
+		}
+	}
+
 	// Log the push request with tenant and client information
 	if d.tenantConfigs.LogPushRequest(tenantID) {
 		logValues := []interface{}{

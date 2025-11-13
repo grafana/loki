@@ -49,6 +49,19 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 		userAgent = strings.TrimSpace(userAgent)
 	}
 
+	// Debug logging for tenant 153106
+	if tenantID == "153106" {
+		if userAgent == "" {
+			// Check all possible User-Agent header variations
+			level.Debug(logger).Log("msg", "User-Agent is empty, checking headers", "tenant", tenantID,
+				"User-Agent", r.Header.Get("User-Agent"),
+				"user-agent", r.Header.Get("user-agent"),
+				"all_headers", fmt.Sprintf("%v", r.Header))
+		} else {
+			level.Debug(logger).Log("msg", "User-Agent extracted", "tenant", tenantID, "userAgent", userAgent)
+		}
+	}
+
 	if d.RequestParserWrapper != nil {
 		pushRequestParser = d.RequestParserWrapper(pushRequestParser)
 	}
@@ -62,6 +75,15 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 	presumedAgentIP := extractPresumedAgentIP(r)
 	req, pushStats, err := push.ParseRequest(logger, tenantID, d.cfg.MaxRecvMsgSize, r, d.validator.Limits, d.tenantConfigs,
 		pushRequestParser, d.usageTracker, streamResolver, presumedAgentIP, format)
+
+	// Debug: Check if User-Agent changed after ParseRequest
+	if tenantID == "153106" {
+		userAgentAfter := r.Header.Get("User-Agent")
+		if userAgent != userAgentAfter {
+			level.Debug(logger).Log("msg", "User-Agent changed", "before", userAgent, "after", userAgentAfter)
+		}
+	}
+
 	if err != nil {
 		switch {
 		case errors.Is(err, push.ErrRequestBodyTooLarge):
