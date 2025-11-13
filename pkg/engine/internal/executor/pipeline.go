@@ -24,12 +24,12 @@ type Pipeline interface {
 	Close()
 }
 
-// ScopeProvider is an optional interface that pipelines can implement
-// to expose their associated xcap scope for statistics collection.
-type ScopeProvider interface {
-	// Scope returns the xcap scope associated with this pipeline node, if any.
-	// Returns nil if no scope is associated with this pipeline.
-	Scope() *xcap.Scope
+// RegionProvider is an optional interface that pipelines can implement
+// to expose their associated xcap region for statistics collection.
+type RegionProvider interface {
+	// Region returns the xcap region associated with this pipeline node, if any.
+	// Returns nil if no region is associated with this pipeline.
+	Region() *xcap.Region
 }
 
 var (
@@ -47,7 +47,7 @@ type readFunc func(context.Context, []Pipeline) (arrow.RecordBatch, error)
 type GenericPipeline struct {
 	inputs []Pipeline
 	read   readFunc
-	scope  *xcap.Scope
+	region *xcap.Region
 }
 
 func newGenericPipeline(read readFunc, inputs ...Pipeline) *GenericPipeline {
@@ -57,16 +57,16 @@ func newGenericPipeline(read readFunc, inputs ...Pipeline) *GenericPipeline {
 	}
 }
 
-func newGenericPipelineWithScope(read readFunc, scope *xcap.Scope, inputs ...Pipeline) *GenericPipeline {
+func newGenericPipelineWithRegion(read readFunc, region *xcap.Region, inputs ...Pipeline) *GenericPipeline {
 	return &GenericPipeline{
 		read:   read,
 		inputs: inputs,
-		scope:  scope,
+		region: region,
 	}
 }
 
 var _ Pipeline = (*GenericPipeline)(nil)
-var _ ScopeProvider = (*GenericPipeline)(nil)
+var _ RegionProvider = (*GenericPipeline)(nil)
 
 // Read implements Pipeline.
 func (p *GenericPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
@@ -78,17 +78,17 @@ func (p *GenericPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
 
 // Close implements Pipeline.
 func (p *GenericPipeline) Close() {
-	if p.scope != nil {
-		p.scope.End()
+	if p.region != nil {
+		p.region.End()
 	}
 	for _, inp := range p.inputs {
 		inp.Close()
 	}
 }
 
-// Scope implements ScopeProvider.
-func (p *GenericPipeline) Scope() *xcap.Scope {
-	return p.scope
+// Region implements RegionProvider.
+func (p *GenericPipeline) Region() *xcap.Region {
+	return p.region
 }
 
 func errorPipeline(ctx context.Context, err error) Pipeline {
@@ -208,10 +208,10 @@ func (p *prefetchWrapper) Close() {
 	p.Pipeline.Close()
 }
 
-// Scope implements ScopeProvider.
-func (p *prefetchWrapper) Scope() *xcap.Scope {
-	if provider, ok := p.Pipeline.(ScopeProvider); ok {
-		return provider.Scope()
+// Region implements RegionProvider.
+func (p *prefetchWrapper) Region() *xcap.Region {
+	if provider, ok := p.Pipeline.(RegionProvider); ok {
+		return provider.Region()
 	}
 	return nil
 }
@@ -286,34 +286,34 @@ func (lp *lazyPipeline) Close() {
 	lp.built = nil
 }
 
-// Scope implements ScopeProvider.
-func (lp *lazyPipeline) Scope() *xcap.Scope {
+// Region implements RegionProvider.
+func (lp *lazyPipeline) Region() *xcap.Region {
 	if lp.built != nil {
-		if provider, ok := lp.built.(ScopeProvider); ok {
-			return provider.Scope()
+		if provider, ok := lp.built.(RegionProvider); ok {
+			return provider.Region()
 		}
 	}
 	return nil
 }
 
 // observedPipeline wraps a Pipeline to automatically collect common statistics
-// and record them to the pipeline's scope.
+// and record them to the pipeline's region.
 type observedPipeline struct {
-	inner Pipeline
-	scope *xcap.Scope
+	inner  Pipeline
+	region *xcap.Region
 }
 
 var _ Pipeline = (*observedPipeline)(nil)
 
 // newObservedPipeline wraps a pipeline to automatically collect common statistics.
-// If the pipeline has a scope, statistics will be recorded to it.
+// If the pipeline has a region, statistics will be recorded to it.
 func newObservedPipeline(inner Pipeline) *observedPipeline {
 	p := &observedPipeline{
 		inner: inner,
 	}
 
-	if provider, ok := inner.(ScopeProvider); ok {
-		p.scope = provider.Scope()
+	if provider, ok := inner.(RegionProvider); ok {
+		p.region = provider.Region()
 	}
 
 	return p
@@ -323,18 +323,18 @@ func newObservedPipeline(inner Pipeline) *observedPipeline {
 func (p *observedPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	start := time.Now()
 
-	if p.scope != nil {
-		p.scope.Record(statReadCalls.Observe(1))
+	if p.region != nil {
+		p.region.Record(statReadCalls.Observe(1))
 	}
 
 	rec, err := p.inner.Read(ctx)
 
-	if p.scope != nil {
+	if p.region != nil {
 		if rec != nil {
-			p.scope.Record(statRowsOut.Observe(rec.NumRows()))
+			p.region.Record(statRowsOut.Observe(rec.NumRows()))
 		}
 
-		p.scope.Record(statReadDuration.Observe(time.Since(start).Nanoseconds()))
+		p.region.Record(statReadDuration.Observe(time.Since(start).Nanoseconds()))
 	}
 
 	return rec, err

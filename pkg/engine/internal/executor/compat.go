@@ -14,10 +14,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
-func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipeline, scope *xcap.Scope) Pipeline {
+func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipeline, region *xcap.Region) Pipeline {
 	const extracted = "_extracted"
 
-	return newGenericPipelineWithScope(func(ctx context.Context, inputs []Pipeline) (arrow.RecordBatch, error) {
+	return newGenericPipelineWithRegion(func(ctx context.Context, inputs []Pipeline) (arrow.RecordBatch, error) {
 		input := inputs[0]
 		batch, err := input.Read(ctx)
 		if err != nil {
@@ -62,7 +62,7 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 			return batch, nil
 		}
 
-		scope.Record(statCompatCollisionFound.Observe(true))
+		region.Record(statCompatCollisionFound.Observe(true))
 
 		// Next, update the schema with the new columns that have the _extracted suffix.
 		newSchema := batch.Schema()
@@ -147,7 +147,7 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 		}
 
 		return array.NewRecordBatch(newSchema, newSchemaColumns, batch.NumRows()), nil
-	}, scope, input)
+	}, region, input)
 }
 
 // duplicate holds indexes to a duplicate values in two slices

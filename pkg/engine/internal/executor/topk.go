@@ -31,8 +31,8 @@ type topkOptions struct {
 	// compacted into a new record only containing the current used rows.
 	MaxUnused int
 
-	// Scope is the xcap scope for this node.
-	Scope *xcap.Scope
+	// Region is the xcap region for this node.
+	Region *xcap.Region
 }
 
 // topkPipeline performs a topk (SORT + LIMIT) operation across several input
@@ -40,7 +40,7 @@ type topkOptions struct {
 type topkPipeline struct {
 	inputs []Pipeline
 	batch  *topkBatch
-	scope  *xcap.Scope
+	region *xcap.Region
 
 	computed bool
 }
@@ -63,7 +63,7 @@ func newTopkPipeline(opts topkOptions) (*topkPipeline, error) {
 			K:          opts.K,
 			MaxUnused:  opts.MaxUnused,
 		},
-		scope: opts.Scope,
+		region: opts.Region,
 	}, nil
 }
 
@@ -144,8 +144,8 @@ NextInput:
 
 // Close closes the resources of the pipeline.
 func (p *topkPipeline) Close() {
-	if p.scope != nil {
-		p.scope.End()
+	if p.region != nil {
+		p.region.End()
 	}
 	p.batch.Reset()
 	for _, in := range p.inputs {
@@ -153,7 +153,7 @@ func (p *topkPipeline) Close() {
 	}
 }
 
-// Scope implements Pipeline.
-func (p *topkPipeline) Scope() *xcap.Scope {
-	return p.scope
+// Region implements RegionProvider.
+func (p *topkPipeline) Region() *xcap.Region {
+	return p.region
 }

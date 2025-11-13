@@ -25,30 +25,30 @@ func ToPbCapture(c *xcap.Capture) (*Capture, error) {
 		})
 	}
 
-	// Convert scopes to proto scopes
-	scopes := c.Scopes()
-	protoScopes := make([]*Scope, 0, len(scopes))
-	for _, scope := range scopes {
-		protoScope, err := toPbScope(scope, statsIndex)
+	// Convert regions to proto regions
+	regions := c.Regions()
+	protoRegions := make([]*Region, 0, len(regions))
+	for _, region := range regions {
+		protoRegion, err := toPbRegion(region, statsIndex)
 		if err != nil {
-			return nil, fmt.Errorf("failed to marshal scope: %w", err)
+			return nil, fmt.Errorf("failed to marshal region: %w", err)
 		}
 
-		if protoScope != nil {
-			protoScopes = append(protoScopes, protoScope)
+		if protoRegion != nil {
+			protoRegions = append(protoRegions, protoRegion)
 		}
 	}
 
 	return &Capture{
-		Scopes:     protoScopes,
-		Statistics: protoStats,
+		Regions:     protoRegions,
+		Statistics:  protoStats,
 	}, nil
 }
 
-// toPbScope converts a Scope to its protobuf representation.
-func toPbScope(scope *xcap.Scope, statsIndex map[xcap.StatisticKey]uint32) (*Scope, error) {
+// toPbRegion converts a Region to its protobuf representation.
+func toPbRegion(region *xcap.Region, statsIndex map[xcap.StatisticKey]uint32) (*Region, error) {
 	// Marshal observations
-	observations := scope.GetObservations()
+	observations := region.GetObservations()
 	protoObservations := make([]*Observation, 0, len(observations))
 	for _, observation := range observations {
 		key := observation.Statistic.Key()
@@ -69,15 +69,15 @@ func toPbScope(scope *xcap.Scope, statsIndex map[xcap.StatisticKey]uint32) (*Sco
 		})
 	}
 
-	// Build proto scope
-	protoScope := &Scope{
-		Name:         scope.Name(),
-		StartTime:    scope.StartTime(),
-		EndTime:      scope.EndTime(),
+	// Build proto region
+	protoRegion := &Region{
+		Name:         region.Name(),
+		StartTime:    region.StartTime(),
+		EndTime:      region.EndTime(),
 		Observations: protoObservations,
 	}
 
-	return protoScope, nil
+	return protoRegion, nil
 }
 
 // marshalObservationValue converts an observation value to proto ObservationValue.

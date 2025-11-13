@@ -17,7 +17,7 @@ type Merge struct {
 	maxPrefetch int
 	initialized bool
 	currInput   int // index of the currently processed input
-	scope       *xcap.Scope
+	region      *xcap.Region
 }
 
 var _ Pipeline = (*Merge)(nil)
@@ -28,7 +28,7 @@ var _ Pipeline = (*Merge)(nil)
 // Set maxPrefetch to 0 to disable prefetching of the next input.
 // Set maxPrefetch to 1 to prefetch only the next input, and so on.
 // Set maxPrefetch to -1 to pretetch all inputs at once.
-func newMergePipeline(inputs []Pipeline, maxPrefetch int, scope *xcap.Scope) (*Merge, error) {
+func newMergePipeline(inputs []Pipeline, maxPrefetch int, region *xcap.Region) (*Merge, error) {
 	if len(inputs) == 0 {
 		return nil, fmt.Errorf("merge pipeline: no inputs provided")
 	}
@@ -48,7 +48,7 @@ func newMergePipeline(inputs []Pipeline, maxPrefetch int, scope *xcap.Scope) (*M
 	return &Merge{
 		inputs:      inputs,
 		maxPrefetch: maxPrefetch,
-		scope:       scope,
+		region:      region,
 	}, nil
 }
 
@@ -117,8 +117,8 @@ func (m *Merge) read(ctx context.Context) (arrow.RecordBatch, error) {
 
 // Close implements Pipeline.
 func (m *Merge) Close() {
-	if m.scope != nil {
-		m.scope.End()
+	if m.region != nil {
+		m.region.End()
 	}
 	// exhausted inputs are already closed
 	for _, input := range m.inputs[m.currInput:] {
@@ -126,7 +126,7 @@ func (m *Merge) Close() {
 	}
 }
 
-// Scope implements Pipeline.
-func (m *Merge) Scope() *xcap.Scope {
-	return m.scope
+// Region implements RegionProvider.
+func (m *Merge) Region() *xcap.Region {
+	return m.region
 }

@@ -6,10 +6,10 @@
 //	ctx, capture := xcap.NewCapture(context.Background(), nil)
 //	defer capture.End()
 //
-//	ctx, scope := xcap.StartScope(ctx, "work")
-//	defer scope.End()
+//	ctx, region := xcap.StartRegion(ctx, "work")
+//	defer region.End()
 //
-//	scope.Record(bytesRead.Observe(1024))
+//	region.Record(bytesRead.Observe(1024))
 package xcap
 
 import (
@@ -26,8 +26,8 @@ type Capture struct {
 	// attributes are the attributes associated with this capture.
 	attributes []attribute.KeyValue
 
-	// scopes are all scopes created within this capture.
-	scopes []*Scope
+	// regions are all regions created within this capture.
+	regions []*Region
 
 	// ended indicates whether End() has been called.
 	ended bool
@@ -37,7 +37,7 @@ type Capture struct {
 func NewCapture(ctx context.Context, attributes []attribute.KeyValue) (context.Context, *Capture) {
 	capture := &Capture{
 		attributes: attributes,
-		scopes:     make([]*Scope, 0),
+		regions:    make([]*Region, 0),
 	}
 
 	ctx = WithCapture(ctx, capture)
@@ -45,7 +45,7 @@ func NewCapture(ctx context.Context, attributes []attribute.KeyValue) (context.C
 }
 
 // End marks the end of the capture. After End is called, no new
-// Scopes can be created from this Capture.
+// Regions can be created from this Capture.
 func (c *Capture) End() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -67,9 +67,9 @@ func (c *Capture) Attributes() []attribute.KeyValue {
 	return attrs
 }
 
-// AddScope adds a scope to this capture. This is called by Scope
+// AddRegion adds a region to this capture. This is called by Region
 // when it is created.
-func (c *Capture) AddScope(s *Scope) {
+func (c *Capture) AddRegion(r *Region) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -77,35 +77,35 @@ func (c *Capture) AddScope(s *Scope) {
 		return
 	}
 
-	c.scopes = append(c.scopes, s)
+	c.regions = append(c.regions, r)
 }
 
-// Scopes returns all scopes in this capture.
-func (c *Capture) Scopes() []*Scope {
+// Regions returns all regions in this capture.
+func (c *Capture) Regions() []*Region {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	scopes := make([]*Scope, len(c.scopes))
-	copy(scopes, c.scopes)
-	return scopes
+	regions := make([]*Region, len(c.regions))
+	copy(regions, c.regions)
+	return regions
 }
 
-// GetAllStatistics returns statistics used across all scopes
+// GetAllStatistics returns statistics used across all regions
 // in this capture.
 func (c *Capture) GetAllStatistics() []Statistic {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
 	statistics := make(map[StatisticKey]Statistic)
-	for _, scope := range c.scopes {
-		scope.mu.RLock()
-		for key, obs := range scope.observations {
+	for _, region := range c.regions {
+		region.mu.RLock()
+		for key, obs := range region.observations {
 			// Statistics with the same definition will have the same key.
 			if _, exists := statistics[key]; !exists {
 				statistics[key] = obs.Statistic
 			}
 		}
-		scope.mu.RUnlock()
+		region.mu.RUnlock()
 	}
 
 	result := make([]Statistic, 0, len(statistics))
@@ -116,7 +116,7 @@ func (c *Capture) GetAllStatistics() []Statistic {
 	return result
 }
 
-// Merge appends all scopes from other into this capture.
+// Merge appends all regions from other into this capture.
 func (c *Capture) Merge(other *Capture) {
 	if other == nil {
 		return
@@ -127,5 +127,5 @@ func (c *Capture) Merge(other *Capture) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.scopes = append(c.scopes, other.Scopes()...)
+	c.regions = append(c.regions, other.Regions()...)
 }

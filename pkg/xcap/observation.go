@@ -1,8 +1,8 @@
 package xcap
 
 // Observation holds a value for a particular statistic. Observations
-// are created from statistics and then recorded into a Scope using
-// [Scope.Record].
+// are created from statistics and then recorded into a Region using
+// [Region.Record].
 type Observation interface {
 	// statistic returns the statistic this observation is for.
 	statistic() Statistic

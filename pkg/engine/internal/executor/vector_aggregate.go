@@ -24,7 +24,7 @@ type vectorAggregationPipeline struct {
 	aggregator *aggregator
 	evaluator  expressionEvaluator
 	groupBy    []physical.ColumnExpression
-	scope      *xcap.Scope
+	region     *xcap.Region
 
 	tsEval    evalFunc // used to evaluate the timestamp column
 	valueEval evalFunc // used to evaluate the value column
@@ -39,7 +39,7 @@ var (
 	}
 )
 
-func newVectorAggregationPipeline(inputs []Pipeline, groupBy []physical.ColumnExpression, evaluator expressionEvaluator, operation types.VectorAggregationType, scope *xcap.Scope) (*vectorAggregationPipeline, error) {
+func newVectorAggregationPipeline(inputs []Pipeline, groupBy []physical.ColumnExpression, evaluator expressionEvaluator, operation types.VectorAggregationType, region *xcap.Region) (*vectorAggregationPipeline, error) {
 	if len(inputs) == 0 {
 		return nil, fmt.Errorf("vector aggregation expects at least one input")
 	}
@@ -54,7 +54,7 @@ func newVectorAggregationPipeline(inputs []Pipeline, groupBy []physical.ColumnEx
 		evaluator:  evaluator,
 		groupBy:    groupBy,
 		aggregator: newAggregator(groupBy, 0, op),
-		scope:      scope,
+		region:     region,
 		tsEval: evaluator.newFunc(&physical.ColumnExpr{
 			Ref: types.ColumnRef{
 				Column: types.ColumnNameBuiltinTimestamp,
@@ -149,15 +149,15 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch
 
 // Close closes the resources of the pipeline.
 func (v *vectorAggregationPipeline) Close() {
-	if v.scope != nil {
-		v.scope.End()
+	if v.region != nil {
+		v.region.End()
 	}
 	for _, input := range v.inputs {
 		input.Close()
 	}
 }
 
-// Scope implements Pipeline.
-func (v *vectorAggregationPipeline) Scope() *xcap.Scope {
-	return v.scope
+// Region implements RegionProvider.
+func (v *vectorAggregationPipeline) Region() *xcap.Region {
+	return v.region
 }

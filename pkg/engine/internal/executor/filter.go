@@ -12,8 +12,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
-func NewFilterPipeline(filter *physical.Filter, input Pipeline, evaluator expressionEvaluator, scope *xcap.Scope) *GenericPipeline {
-	return newGenericPipelineWithScope(func(ctx context.Context, inputs []Pipeline) (arrow.RecordBatch, error) {
+func NewFilterPipeline(filter *physical.Filter, input Pipeline, evaluator expressionEvaluator, region *xcap.Region) *GenericPipeline {
+	return newGenericPipelineWithRegion(func(ctx context.Context, inputs []Pipeline) (arrow.RecordBatch, error) {
 		// Pull the next item from the input pipeline
 		input := inputs[0]
 		batch, err := input.Read(ctx)
@@ -44,7 +44,7 @@ func NewFilterPipeline(filter *physical.Filter, input Pipeline, evaluator expres
 			}
 			return true
 		}), nil
-	}, scope, input)
+	}, region, input)
 }
 
 // This is a very inefficient approach which creates a new filtered batch from a
