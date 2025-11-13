@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"os"
 	"time"
 
@@ -33,6 +34,7 @@ func main() {
 	cfg.Tracing.RegisterFlags(flag.CommandLine)
 	flag.Parse()
 
+	fmt.Printf("Initializing querytee with %s level logging\n", cfg.LogLevel.String())
 	util_log.InitLogger(&server.Config{
 		LogLevel: cfg.LogLevel,
 	}, prometheus.DefaultRegisterer, false)
