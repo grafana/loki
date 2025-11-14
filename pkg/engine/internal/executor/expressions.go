@@ -20,7 +20,7 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.RecordBa
 	switch expr := expr.(type) {
 
 	case *physical.LiteralExpr:
-		return NewScalar(expr.Literal, int(input.NumRows())), nil
+		return NewScalar(expr.Literal(), int(input.NumRows())), nil
 
 	case *physical.ColumnExpr:
 		colIdent := semconv.NewIdentifier(expr.Ref.Column, expr.Ref.Type, types.Loki.String)
