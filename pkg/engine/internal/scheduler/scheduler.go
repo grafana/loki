@@ -125,6 +125,10 @@ func (s *Scheduler) handleConn(ctx context.Context, conn wire.Conn) {
 			switch msg := msg.(type) {
 			case wire.StreamDataMessage:
 				return s.handleStreamData(ctx, msg)
+			case wire.WorkerHelloMessage:
+				// TODO(rfratto): Mark worker as a data plane connection and
+				// record the number of worker threads it has.
+				return nil
 			case wire.WorkerReadyMessage:
 				return s.markWorkerReady(ctx, peer)
 			case wire.TaskStatusMessage:
