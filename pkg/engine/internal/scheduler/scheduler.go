@@ -548,7 +548,7 @@ NextTask:
 		}
 	}
 
-	if len(errs) != 0 {
+	if len(errs) > 0 {
 		return errors.Join(errs...)
 	}
 
@@ -733,10 +733,10 @@ func (s *Scheduler) enqueueTasks(tasks []*task) error {
 		nudgeSemaphore(s.assignSema)
 	}
 
-	if len(errs) == 0 {
-		return nil
+	if len(errs) > 0 {
+		return errors.Join(errs...)
 	}
-	return errors.Join(errs...)
+	return nil
 }
 
 func (s *Scheduler) markPending(ctx context.Context, tasks []*task) {
@@ -811,8 +811,8 @@ func (s *Scheduler) Cancel(ctx context.Context, tasks ...*workflow.Task) error {
 		}
 	}
 
-	if len(errs) == 0 {
-		return nil
+	if len(errs) > 0 {
+		return errors.Join(errs...)
 	}
-	return errors.Join(errs...)
+	return nil
 }

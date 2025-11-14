@@ -367,7 +367,10 @@ func (f *fakeRunner) Start(ctx context.Context, tasks ...*Task) error {
 		rt.handler(ctx, task, TaskStatus{State: TaskStatePending})
 	}
 
-	return errors.Join(errs...)
+	if len(errs) > 0 {
+		return errors.Join(errs...)
+	}
+	return nil
 }
 
 func (f *fakeRunner) Cancel(ctx context.Context, tasks ...*Task) error {
@@ -389,7 +392,10 @@ func (f *fakeRunner) Cancel(ctx context.Context, tasks ...*Task) error {
 		rt.handler(ctx, task, TaskStatus{State: TaskStateCancelled})
 	}
 
-	return errors.Join(errs...)
+	if len(errs) > 0 {
+		return errors.Join(errs...)
+	}
+	return nil
 }
 
 // runnerStream wraps a stream with the edges of the connection. A stream sender
