@@ -217,7 +217,10 @@ s3:
   s3forcepathstyle: true
   insecure: true
 {{- else if (eq (include "loki.isUsingObjectStorage" . ) "true")  -}}
-{{- $bucketName := required "Please define loki.storage.bucketNames.chunks" (dig "storage" "bucketNames" "chunks" "" .Values.loki) }}
+{{- $bucketName := "" }}
+{{- if not (or (dig "aws" "s3" "" .Values.loki.storage_config) (dig "aws" "bucketnames" "" .Values.loki.storage_config)) -}}
+{{- $bucketName = required "Please define loki.storage.bucketNames.chunks" (dig "storage" "bucketNames" "chunks" "" .Values.loki) }}
+{{- end -}}
 {{- include "loki.lokiStorageConfig" (dict "ctx" . "bucketName" $bucketName) | nindent 0 }}
 {{- else if .Values.loki.storage.filesystem }}
 filesystem:
