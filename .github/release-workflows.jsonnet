@@ -197,7 +197,7 @@ local weeklyImageJobs = {
       for name in std.objectFields(weeklyImageJobs)
     } + {
       'trigger-cd': job.new()
-                    + job.withNeeds(['loki-manifest', 'loki-canary-manifest'])
+                    + job.withNeeds(['loki-image', 'loki-manifest', 'loki-canary-manifest'])
                     + job.withIf("github.ref == 'refs/heads/main'")
                     + job.withPermissions({
                       contents: 'read',

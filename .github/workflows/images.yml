@@ -508,6 +508,7 @@
       "IMAGE_TAG": "${{ needs.loki-image.outputs.image_tag }}"
     "if": "github.ref == 'refs/heads/main'"
     "needs":
+    - "loki-image"
     - "loki-manifest"
     - "loki-canary-manifest"
     "permissions":
