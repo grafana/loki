@@ -3480,6 +3480,8 @@ memcached:
   # -- Enable the built in memcached server provided by the chart
   enabled: true
   image:
+    # -- Memcached Docker image registry
+    registry: ""
     # -- Memcached Docker image repository
     repository: memcached
     # -- Memcached Docker image tag
