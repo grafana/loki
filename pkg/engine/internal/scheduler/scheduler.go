@@ -42,13 +42,12 @@ type Scheduler struct {
 	listener wire.Listener
 
 	resourcesMut sync.RWMutex
-	streams      map[ulid.ULID]*stream             // All known streams (regardless of state)
-	tasks        map[ulid.ULID]*task               // All known tasks (regardless of state)
-	workerTasks  map[*wire.Peer]map[*task]struct{} // A map of assigned tasks to peers.
+	streams      map[ulid.ULID]*stream // All known streams (regardless of state)
+	tasks        map[ulid.ULID]*task   // All known tasks (regardless of state)
 
 	assignMut    sync.RWMutex
 	taskQueue    []*task
-	readyWorkers []*wire.Peer
+	readyWorkers []*workerConn
 
 	assignSema chan struct{} // assignSema signals that task assignment is ready.
 }
@@ -70,9 +69,8 @@ func New(config Config) (*Scheduler, error) {
 		logger:   config.Logger,
 		listener: config.Listener,
 
-		streams:     make(map[ulid.ULID]*stream),
-		tasks:       make(map[ulid.ULID]*task),
-		workerTasks: make(map[*wire.Peer]map[*task]struct{}),
+		streams: make(map[ulid.ULID]*stream),
+		tasks:   make(map[ulid.ULID]*task),
 
 		assignSema: make(chan struct{}, 1),
 	}, nil
@@ -114,6 +112,8 @@ func (s *Scheduler) handleConn(ctx context.Context, conn wire.Conn) {
 	logger := log.With(s.logger, "remote_addr", conn.RemoteAddr())
 	level.Info(logger).Log("msg", "handling connection")
 
+	wc := new(workerConn)
+
 	peer := &wire.Peer{
 		Logger: logger,
 		Conn:   conn,
@@ -121,7 +121,7 @@ func (s *Scheduler) handleConn(ctx context.Context, conn wire.Conn) {
 		// Allow for a backlog of 128 frames before backpressure is applied.
 		Buffer: 128,
 
-		Handler: func(ctx context.Context, peer *wire.Peer, msg wire.Message) error {
+		Handler: func(ctx context.Context, _ *wire.Peer, msg wire.Message) error {
 			switch msg := msg.(type) {
 			case wire.StreamDataMessage:
 				return s.handleStreamData(ctx, msg)
@@ -130,7 +130,7 @@ func (s *Scheduler) handleConn(ctx context.Context, conn wire.Conn) {
 				// record the number of worker threads it has.
 				return nil
 			case wire.WorkerReadyMessage:
-				return s.markWorkerReady(ctx, peer)
+				return s.markWorkerReady(ctx, wc)
 			case wire.TaskStatusMessage:
 				return s.handleTaskStatus(ctx, msg)
 			case wire.StreamStatusMessage:
@@ -141,6 +141,8 @@ func (s *Scheduler) handleConn(ctx context.Context, conn wire.Conn) {
 			}
 		},
 	}
+
+	wc.Peer = peer
 
 	// Handle communication with the peer until the context is canceled or some
 	// error occurs.
@@ -153,7 +155,7 @@ func (s *Scheduler) handleConn(ctx context.Context, conn wire.Conn) {
 
 	// If our peer exited, we need to make sure we clean up any tasks still
 	// assigned to it by aborting them.
-	s.abortWorkerTasks(ctx, peer, err)
+	s.abortWorkerTasks(ctx, wc, err)
 }
 
 func (s *Scheduler) handleStreamData(ctx context.Context, msg wire.StreamDataMessage) error {
@@ -169,7 +171,7 @@ func (s *Scheduler) handleStreamData(ctx context.Context, msg wire.StreamDataMes
 	return registered.localReceiver.Write(ctx, msg.Data)
 }
 
-func (s *Scheduler) markWorkerReady(_ context.Context, worker *wire.Peer) error {
+func (s *Scheduler) markWorkerReady(_ context.Context, worker *workerConn) error {
 	s.assignMut.Lock()
 	defer s.assignMut.Unlock()
 
@@ -268,7 +270,7 @@ func (s *Scheduler) changeStreamState(ctx context.Context, n *notifier, target *
 //
 // If the reason argument is nil, the tasks are cancelled. Otherwise, they are
 // marked as failed with the provided reason.
-func (s *Scheduler) abortWorkerTasks(ctx context.Context, worker *wire.Peer, reason error) {
+func (s *Scheduler) abortWorkerTasks(ctx context.Context, worker *workerConn, reason error) {
 	var n notifier
 	defer n.Notify(ctx)
 
@@ -283,7 +285,7 @@ func (s *Scheduler) abortWorkerTasks(ctx context.Context, worker *wire.Peer, rea
 		}
 	}
 
-	for task := range s.workerTasks[worker] {
+	for task := range worker.tasks {
 		if changed, _ := task.setState(newStatus); !changed {
 			continue
 		}
@@ -296,8 +298,6 @@ func (s *Scheduler) abortWorkerTasks(ctx context.Context, worker *wire.Peer, rea
 			NewStatus: newStatus,
 		})
 	}
-
-	delete(s.workerTasks, worker)
 }
 
 func (s *Scheduler) runAssignLoop(ctx context.Context) error {
@@ -360,7 +360,7 @@ func (s *Scheduler) assignTasks(ctx context.Context) {
 	}
 }
 
-func (s *Scheduler) assignTask(ctx context.Context, task *task, worker *wire.Peer) error {
+func (s *Scheduler) assignTask(ctx context.Context, task *task, worker *workerConn) error {
 	// TODO(rfratto): allow assignment timeout to be configurable.
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -424,15 +424,13 @@ func (s *Scheduler) assignTask(ctx context.Context, task *task, worker *wire.Pee
 	return nil
 }
 
-func (s *Scheduler) trackAssignment(assigned *task, owner *wire.Peer) {
+func (s *Scheduler) trackAssignment(assigned *task, owner *workerConn) {
 	assigned.owner = owner
 
-	tasks := s.workerTasks[owner]
-	if tasks == nil {
-		tasks = make(map[*task]struct{})
-		s.workerTasks[owner] = tasks
+	if owner.tasks == nil {
+		owner.tasks = make(map[*task]struct{})
 	}
-	tasks[assigned] = struct{}{}
+	owner.tasks[assigned] = struct{}{}
 }
 
 // tryBind attempts to bind the receiver's address of check to the sender.
@@ -643,10 +641,7 @@ func (s *Scheduler) deleteTask(t *task) {
 	delete(s.tasks, t.inner.ULID)
 
 	if owner := t.owner; owner != nil {
-		knownTasks := s.workerTasks[owner]
-		if knownTasks != nil {
-			delete(knownTasks, t)
-		}
+		delete(owner.tasks, t)
 	}
 }
 

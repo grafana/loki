@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 )
 
@@ -13,7 +12,7 @@ type task struct {
 	inner   *workflow.Task
 	handler workflow.TaskEventHandler
 
-	owner  *wire.Peer
+	owner  *workerConn
 	status workflow.TaskStatus
 }
 
