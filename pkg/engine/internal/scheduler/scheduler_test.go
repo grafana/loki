@@ -417,6 +417,64 @@ func TestScheduler_Cancel(t *testing.T) {
 }
 
 func TestScheduler_worker(t *testing.T) {
+	t.Run("Worker must send WorkerHello before WorkerReady", func(t *testing.T) {
+		sched := newTestScheduler(t)
+
+		ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+		defer cancel()
+
+		conn, err := sched.DialFrom(ctx, wire.LocalWorker)
+		require.NoError(t, err)
+		defer conn.Close()
+
+		messages := make(chan wire.Message, 10)
+
+		peer := wire.Peer{
+			Logger: log.NewNopLogger(),
+			Conn:   conn,
+			Handler: func(ctx context.Context, _ *wire.Peer, message wire.Message) error {
+				select {
+				case <-ctx.Done():
+				case messages <- message:
+				}
+				return nil
+			},
+		}
+		go func() { _ = peer.Serve(ctx) }()
+
+		// Send a ready message so we get a task as soon as we create one.
+		require.Error(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}), "Scheduler should not accept ready message without hello")
+	})
+
+	t.Run("Worker must send WorkerHello with at least one thread", func(t *testing.T) {
+		sched := newTestScheduler(t)
+
+		ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+		defer cancel()
+
+		conn, err := sched.DialFrom(ctx, wire.LocalWorker)
+		require.NoError(t, err)
+		defer conn.Close()
+
+		messages := make(chan wire.Message, 10)
+
+		peer := wire.Peer{
+			Logger: log.NewNopLogger(),
+			Conn:   conn,
+			Handler: func(ctx context.Context, _ *wire.Peer, message wire.Message) error {
+				select {
+				case <-ctx.Done():
+				case messages <- message:
+				}
+				return nil
+			},
+		}
+		go func() { _ = peer.Serve(ctx) }()
+
+		// Send a ready message so we get a task as soon as we create one.
+		require.Error(t, peer.SendMessage(ctx, wire.WorkerHelloMessage{Threads: 0}), "Scheduler should reject WorkerHello with <= 0 threads")
+	})
+
 	t.Run("Tasks are assigned to ready worker", func(t *testing.T) {
 		sched := newTestScheduler(t)
 
@@ -443,6 +501,7 @@ func TestScheduler_worker(t *testing.T) {
 		go func() { _ = peer.Serve(ctx) }()
 
 		// Send a ready message so we get a task as soon as we create one.
+		require.NoError(t, peer.SendMessage(ctx, wire.WorkerHelloMessage{Threads: 1}), "Scheduler should accept hello message")
 		require.NoError(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}), "Scheduler should accept ready message")
 
 		var (
@@ -495,6 +554,7 @@ func TestScheduler_worker(t *testing.T) {
 		go func() { _ = peer.Serve(ctx) }()
 
 		// Send a ready message so we get a task as soon as we create one.
+		require.NoError(t, peer.SendMessage(ctx, wire.WorkerHelloMessage{Threads: 1}), "Scheduler should accept hello message")
 		require.NoError(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}), "Scheduler should accept ready message")
 
 		var (
@@ -567,6 +627,7 @@ func TestScheduler_worker(t *testing.T) {
 		go func() { _ = peer.Serve(ctx) }()
 
 		// Send a ready message so we get a task as soon as we create one.
+		require.NoError(t, peer.SendMessage(ctx, wire.WorkerHelloMessage{Threads: 1}), "Scheduler should accept hello message")
 		require.NoError(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}), "Scheduler should accept ready message")
 
 		var (
@@ -661,6 +722,7 @@ func TestScheduler_worker(t *testing.T) {
 			go func() { _ = peer.Serve(ctx) }()
 
 			// Send a ready message so we get the task.
+			require.NoError(t, peer.SendMessage(ctx, wire.WorkerHelloMessage{Threads: 1}), "Scheduler should accept hello message")
 			require.NoError(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}), "Scheduler should accept ready message")
 
 			for {
@@ -727,6 +789,7 @@ func TestScheduler_worker(t *testing.T) {
 			go func() { _ = peer.Serve(ctx) }()
 
 			// Send a ready message so we get the task.
+			require.NoError(t, peer.SendMessage(ctx, wire.WorkerHelloMessage{Threads: 1}), "Scheduler should accept hello message")
 			require.NoError(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}), "Scheduler should accept ready message")
 
 			// Wait for assignment.
@@ -810,6 +873,7 @@ func TestScheduler_worker(t *testing.T) {
 			go func() { _ = peer.Serve(ctx) }()
 
 			// Send two ready messages (so we can accept two tasks).
+			require.NoError(t, peer.SendMessage(ctx, wire.WorkerHelloMessage{Threads: 2}), "Scheduler should accept hello message")
 			require.NoError(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}), "Scheduler should accept ready message")
 			require.NoError(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}), "Scheduler should accept ready message")
 
@@ -884,6 +948,7 @@ func TestScheduler_worker(t *testing.T) {
 			go func() { _ = peer.Serve(ctx) }()
 
 			// Send two ready messages (so we can accept two tasks).
+			require.NoError(t, peer.SendMessage(ctx, wire.WorkerHelloMessage{Threads: 2}), "Scheduler should accept hello message")
 			require.NoError(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}), "Scheduler should accept ready message")
 			require.NoError(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}), "Scheduler should accept ready message")
 
@@ -954,6 +1019,7 @@ func TestScheduler_worker(t *testing.T) {
 		go func() { _ = peer.Serve(ctx) }()
 
 		// Send a ready message so we get the task.
+		require.NoError(t, peer.SendMessage(ctx, wire.WorkerHelloMessage{Threads: 1}), "Scheduler should accept hello message")
 		require.NoError(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}), "Scheduler should accept ready message")
 
 		// Wait for assignment.
@@ -1031,6 +1097,7 @@ func TestScheduler_worker(t *testing.T) {
 		go func() { _ = peer.Serve(ctx) }()
 
 		// Send a ready message so we get the task.
+		require.NoError(t, peer.SendMessage(ctx, wire.WorkerHelloMessage{Threads: 1}), "Scheduler should accept hello message")
 		require.NoError(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}), "Scheduler should accept ready message")
 
 		// Wait for assignment.
@@ -1105,6 +1172,7 @@ func TestScheduler_worker(t *testing.T) {
 		go func() { _ = peer.Serve(ctx) }()
 
 		// Send two ready messages so we get the tasks.
+		require.NoError(t, peer.SendMessage(ctx, wire.WorkerHelloMessage{Threads: 2}), "Scheduler should accept hello message")
 		require.NoError(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}), "Scheduler should accept ready message")
 		require.NoError(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}), "Scheduler should accept ready message")
 
@@ -1196,6 +1264,7 @@ func TestScheduler_worker(t *testing.T) {
 		go func() { _ = peer.Serve(ctx) }()
 
 		// Send two ready messages so we get the tasks.
+		require.NoError(t, peer.SendMessage(ctx, wire.WorkerHelloMessage{Threads: 2}), "Scheduler should accept hello message")
 		require.NoError(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}), "Scheduler should accept ready message")
 
 		// Wait for task assignment.

@@ -124,17 +124,15 @@ func (s *Scheduler) handleConn(ctx context.Context, conn wire.Conn) {
 		Handler: func(ctx context.Context, _ *wire.Peer, msg wire.Message) error {
 			switch msg := msg.(type) {
 			case wire.StreamDataMessage:
-				return s.handleStreamData(ctx, msg)
+				return s.handleStreamData(ctx, wc, msg)
 			case wire.WorkerHelloMessage:
-				// TODO(rfratto): Mark worker as a data plane connection and
-				// record the number of worker threads it has.
-				return nil
+				return s.handleWorkerHello(ctx, wc, msg)
 			case wire.WorkerReadyMessage:
 				return s.markWorkerReady(ctx, wc)
 			case wire.TaskStatusMessage:
-				return s.handleTaskStatus(ctx, msg)
+				return s.handleTaskStatus(ctx, wc, msg)
 			case wire.StreamStatusMessage:
-				return s.handleStreamStatus(ctx, msg)
+				return s.handleStreamStatus(ctx, wc, msg)
 
 			default:
 				return fmt.Errorf("unsupported message kind %q", msg.Kind())
@@ -158,7 +156,15 @@ func (s *Scheduler) handleConn(ctx context.Context, conn wire.Conn) {
 	s.abortWorkerTasks(ctx, wc, err)
 }
 
-func (s *Scheduler) handleStreamData(ctx context.Context, msg wire.StreamDataMessage) error {
+func (s *Scheduler) handleStreamData(ctx context.Context, worker *workerConn, msg wire.StreamDataMessage) error {
+	switch worker.ty {
+	case connectionTypeInitial:
+		// Flag the connection as a data plane connection.
+		worker.ty = connectionTypeDataPlane
+	case connectionTypeControlPlane:
+		return fmt.Errorf("workers in state %s can not send stream data messages", worker.ty)
+	}
+
 	s.resourcesMut.RLock()
 	defer s.resourcesMut.RUnlock()
 
@@ -171,7 +177,23 @@ func (s *Scheduler) handleStreamData(ctx context.Context, msg wire.StreamDataMes
 	return registered.localReceiver.Write(ctx, msg.Data)
 }
 
+func (s *Scheduler) handleWorkerHello(_ context.Context, worker *workerConn, msg wire.WorkerHelloMessage) error {
+	if got, want := worker.ty, connectionTypeInitial; got != want {
+		return fmt.Errorf("worker connection must be in state %q, got %q", want, got)
+	} else if msg.Threads <= 0 {
+		return errors.New("worker must advertise at least one thread")
+	}
+
+	worker.ty = connectionTypeControlPlane
+	worker.maxThreads = msg.Threads
+	return nil
+}
+
 func (s *Scheduler) markWorkerReady(_ context.Context, worker *workerConn) error {
+	if got, want := worker.ty, connectionTypeControlPlane; got != want {
+		return fmt.Errorf("worker connection must be in state %q, got %q", want, got)
+	}
+
 	s.assignMut.Lock()
 	defer s.assignMut.Unlock()
 
@@ -196,7 +218,11 @@ func nudgeSemaphore(sema chan struct{}) {
 	}
 }
 
-func (s *Scheduler) handleTaskStatus(ctx context.Context, msg wire.TaskStatusMessage) error {
+func (s *Scheduler) handleTaskStatus(ctx context.Context, worker *workerConn, msg wire.TaskStatusMessage) error {
+	if got, want := worker.ty, connectionTypeControlPlane; got != want {
+		return fmt.Errorf("worker connection must be in state %q, got %q", want, got)
+	}
+
 	var n notifier
 	defer n.Notify(ctx)
 
@@ -222,7 +248,11 @@ func (s *Scheduler) handleTaskStatus(ctx context.Context, msg wire.TaskStatusMes
 	return nil
 }
 
-func (s *Scheduler) handleStreamStatus(ctx context.Context, msg wire.StreamStatusMessage) error {
+func (s *Scheduler) handleStreamStatus(ctx context.Context, worker *workerConn, msg wire.StreamStatusMessage) error {
+	if got, want := worker.ty, connectionTypeControlPlane; got != want {
+		return fmt.Errorf("worker connection must be in state %q, got %q", want, got)
+	}
+
 	var n notifier
 	defer n.Notify(ctx)
 
