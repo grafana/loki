@@ -1,0 +1,27 @@
+---
+apiVersion: helm-chart-toolbox.grafana.com/v1
+kind: TestPlan
+name: route
+subject:
+  releaseName: loki
+  namespace: loki
+  path: ../../..
+  valuesFile: route-values.yaml
+  extraArgs:
+    - --dependency-update
+    - --set
+    - "chunksCache.allocatedMemory=1024"
+
+cluster:
+  type: kind
+
+dependencies:
+  - url: https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.4.0/standard-install.yaml
+
+tests:
+  - type: kubernetes-objects-test
+    values:
+      checks:
+        - kind: HTTPRoute
+          name: loki-gateway
+          namespace: loki

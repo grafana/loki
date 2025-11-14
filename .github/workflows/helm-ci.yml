@@ -81,6 +81,15 @@ jobs:
           kubectl --namespace prometheus get pods -l "release=prometheus"
           kubectl --namespace prometheus get services -l "release=prometheus"
 
+      - name: Install Gateway API CRDs
+        if: steps.list-changed.outputs.changed == 'true'
+        run: |
+          echo "Installing Gateway API CRDs..."
+          kubectl apply --filename https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.4.0/standard-install.yaml
+          echo "Waiting for Gateway API CRDs to be established..."
+          kubectl wait --for condition=established --timeout=60s crd/gateways.gateway.networking.k8s.io
+          kubectl wait --for condition=established --timeout=60s crd/httproutes.gateway.networking.k8s.io
+
       - name: Run chart-testing (install)
         run: |
           changed=$(ct list-changed --config "${CT_CONFIGFILE}")
