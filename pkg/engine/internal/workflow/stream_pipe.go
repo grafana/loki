@@ -1,4 +1,4 @@
-package scheduler
+package workflow
 
 import (
 	"context"
@@ -18,6 +18,10 @@ import (
 type streamPipe struct {
 	closeOnce sync.Once
 
+	err      error
+	errCond  chan struct{}
+	failOnce sync.Once
+
 	closed  chan struct{}
 	results chan arrow.RecordBatch
 }
@@ -29,6 +33,7 @@ func newStreamPipe() *streamPipe {
 	return &streamPipe{
 		closed:  make(chan struct{}),
 		results: make(chan arrow.RecordBatch),
+		errCond: make(chan struct{}),
 	}
 }
 
@@ -38,10 +43,25 @@ func (pipe *streamPipe) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
+	case <-pipe.errCond:
+		return nil, pipe.err
 	case <-pipe.closed:
-		return nil, executor.EOF
+		// Check to see if the pipeline has a more specific error before falling
+		// back to EOF.
+		return nil, pipe.checkError(executor.EOF)
 	case rec := <-pipe.results:
 		return rec, nil
+	}
+}
+
+// checkError checks to see if the pipeline has its own error before falling
+// back to the provided error.
+func (pipe *streamPipe) checkError(err error) error {
+	select {
+	case <-pipe.errCond:
+		return pipe.err
+	default:
+		return err
 	}
 }
 
@@ -56,6 +76,19 @@ func (pipe *streamPipe) Write(ctx context.Context, rec arrow.RecordBatch) error 
 	case pipe.results <- rec:
 		return nil
 	}
+}
+
+// SetError sets the error for the pipeline. Calls to SetError with a non-nil
+// error after the first are ignored.
+func (pipe *streamPipe) SetError(err error) {
+	if err == nil {
+		return
+	}
+
+	pipe.failOnce.Do(func() {
+		pipe.err = err
+		close(pipe.errCond)
+	})
 }
 
 func (pipe *streamPipe) Close() {

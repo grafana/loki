@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net"
 	"net/http"
 	"sync"
@@ -18,7 +19,6 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 )
@@ -213,13 +213,6 @@ func (s *Scheduler) handleTaskStatus(ctx context.Context, msg wire.TaskStatusMes
 			NewStatus: msg.Status,
 		})
 	}
-
-	// If the task's current state is terminal, we can untrack it now. For
-	// simplicity, we lazily check this even if the state hasn't changed.
-	if task.status.State.Terminal() {
-		s.deleteTask(ctx, &n, task)
-	}
-
 	return nil
 }
 
@@ -291,8 +284,6 @@ func (s *Scheduler) abortWorkerTasks(ctx context.Context, worker *wire.Peer, rea
 			continue
 		}
 
-		s.deleteTask(ctx, &n, task)
-
 		// We only need to inform the handler about the change. There's nothing
 		// to send to the owner of the task since worker has disconnected.
 		n.AddTaskEvent(taskNotification{
@@ -343,7 +334,6 @@ func (s *Scheduler) assignTasks(ctx context.Context) {
 		// We may have a canceled task in our queue; we take this opportunity to
 		// clean them up.
 		if state := task.status.State; state.Terminal() {
-			s.deleteTask(ctx, &n, task)
 			s.taskQueue = s.taskQueue[1:]
 			continue
 		}
@@ -484,46 +474,93 @@ func (s *Scheduler) DialFrom(ctx context.Context, from net.Addr) (wire.Conn, err
 	return local.DialFrom(ctx, from)
 }
 
-// AddStreams registers a list of Streams that can be used by Tasks.
-// AddStreams returns an error if any of the streams (by ID) are already
-// registered.
-//
-// The provided handler will be called whenever any of the provided streams
-// change state.
-func (s *Scheduler) AddStreams(_ context.Context, handler workflow.StreamEventHandler, streams ...*workflow.Stream) error {
+// RegisterManifest registers a manifest to use with the scheduler, recording
+// all streams and task inside of it for use.
+func (s *Scheduler) RegisterManifest(_ context.Context, manifest *workflow.Manifest) error {
 	s.resourcesMut.Lock()
 	defer s.resourcesMut.Unlock()
 
 	var errs []error
 
-	for _, streamToAdd := range streams {
+	var (
+		manifestStreams = make(map[ulid.ULID]*stream, len(manifest.Streams))
+		manifestTasks   = make(map[ulid.ULID]*task, len(manifest.Tasks))
+	)
+
+	for _, streamToAdd := range manifest.Streams {
 		if _, exist := s.streams[streamToAdd.ULID]; exist {
-			errs = append(errs, fmt.Errorf("stream %s already registered", streamToAdd.ULID))
+			errs = append(errs, fmt.Errorf("stream %s already registered by other manifest", streamToAdd.ULID))
+			continue
+		} else if _, exist := manifestStreams[streamToAdd.ULID]; exist {
+			errs = append(errs, fmt.Errorf("duplicate stream ID %s in manifest", streamToAdd.ULID))
 			continue
 		} else if streamToAdd.ULID == ulid.Zero {
 			errs = append(errs, fmt.Errorf("stream %p has zero-value ULID", streamToAdd))
 			continue
 		}
 
-		s.streams[streamToAdd.ULID] = &stream{
+		manifestStreams[streamToAdd.ULID] = &stream{
 			inner:   streamToAdd,
-			handler: handler,
+			handler: manifest.StreamEventHandler,
 
 			state: workflow.StreamStateIdle,
 		}
 	}
 
-	if len(errs) == 0 {
-		return nil
+NextTask:
+	for _, taskToAdd := range manifest.Tasks {
+		if _, exist := s.tasks[taskToAdd.ULID]; exist {
+			errs = append(errs, fmt.Errorf("task %s already registered by other manifest", taskToAdd.ULID))
+			continue
+		} else if _, exist := manifestTasks[taskToAdd.ULID]; exist {
+			errs = append(errs, fmt.Errorf("duplicate task ID %s in manifest", taskToAdd.ULID))
+			continue
+		}
+
+		for _, neededStreams := range taskToAdd.Sources {
+			for _, neededStream := range neededStreams {
+				sourceStream, inManifest := manifestStreams[neededStream.ULID]
+				if !inManifest {
+					errs = append(errs, fmt.Errorf("source stream %s not found in manifest", neededStream))
+					continue NextTask
+				} else if err := sourceStream.setTaskReceiver(taskToAdd.ULID); err != nil {
+					errs = append(errs, err)
+					continue NextTask
+				}
+			}
+		}
+		for _, neededStreams := range taskToAdd.Sinks {
+			for _, neededStream := range neededStreams {
+				sinkStream, inManifest := manifestStreams[neededStream.ULID]
+				if !inManifest {
+					errs = append(errs, fmt.Errorf("sink stream %s not found in manifest", neededStream))
+					continue NextTask
+				} else if err := sinkStream.setTaskSender(taskToAdd.ULID); err != nil {
+					errs = append(errs, err)
+					continue NextTask
+				}
+			}
+		}
+
+		manifestTasks[taskToAdd.ULID] = &task{
+			inner:   taskToAdd,
+			handler: manifest.TaskEventHandler,
+		}
 	}
-	return errors.Join(errs...)
+
+	if len(errs) > 0 {
+		return errors.Join(errs...)
+	}
+
+	// Once we hit this point, the manifest has been validated and we can
+	// atomically update our internal state.
+	maps.Copy(s.streams, manifestStreams)
+	maps.Copy(s.tasks, manifestTasks)
+	return nil
 }
 
-// RemoveStreams removes a list of Streams that can be used by Tasks. The
-// associated handler will no longer be called for removed streams.
-//
-// RemoveStreams returns an error if there are active tasks using the streams.
-func (s *Scheduler) RemoveStreams(ctx context.Context, streams ...*workflow.Stream) error {
+// UnregisterManifest removes a manifest from the scheduler.
+func (s *Scheduler) UnregisterManifest(ctx context.Context, manifest *workflow.Manifest) error {
 	var n notifier
 	defer n.Notify(ctx)
 
@@ -532,22 +569,56 @@ func (s *Scheduler) RemoveStreams(ctx context.Context, streams ...*workflow.Stre
 
 	var errs []error
 
-	for _, streamToRemove := range streams {
-		registered, exist := s.streams[streamToRemove.ULID]
-		if !exist {
-			errs = append(errs, fmt.Errorf("stream %s not registered", streamToRemove.ULID))
+	// First, validate the manifest and ensure that all streams and tasks are recognized.
+	for _, stream := range manifest.Streams {
+		if _, exist := s.streams[stream.ULID]; !exist {
+			errs = append(errs, fmt.Errorf("manifest contains unregistered stream %s", stream.ULID))
+		}
+	}
+	for _, task := range manifest.Tasks {
+		if _, exist := s.tasks[task.ULID]; !exist {
+			errs = append(errs, fmt.Errorf("manifest contains unregistered task %s", task.ULID))
+		}
+	}
+
+	if len(errs) > 0 {
+		return errors.Join(errs...)
+	}
+
+	// Remove tasks first. If any of them are currently running, we'll cancel them.
+	for _, taskToRemove := range manifest.Tasks {
+		registered := s.tasks[taskToRemove.ULID] // Validated to exist above
+
+		// Immediately clean up our own resources.
+		s.deleteTask(registered)
+
+		if changed, _ := registered.setState(workflow.TaskStatus{State: workflow.TaskStateCancelled}); !changed {
+			// Ignore if the task couldn't move into the canceled state, which
+			// indicates it's already in a terminal state.
 			continue
 		}
 
-		// Check whether the stream has non-terminal tasks associated with it.
-		// In this case, we don't care if there's a local receiver listening.
-		if receiver, ok := s.tasks[registered.taskReceiver]; ok && !receiver.status.State.Terminal() {
-			errs = append(errs, fmt.Errorf("stream %s has active tasks", streamToRemove.ULID))
-			continue
-		} else if sender, ok := s.tasks[registered.taskSender]; ok && !sender.status.State.Terminal() {
-			errs = append(errs, fmt.Errorf("stream %s has active tasks", streamToRemove.ULID))
-			continue
+		// If the task has an owner, we'll inform it that the task has been
+		// canceled and it can stop processing it.
+		//
+		// This is a best-effort message, so we don't wait for acknowledgement.
+		if owner := registered.owner; owner != nil {
+			_ = owner.SendMessageAsync(ctx, wire.TaskCancelMessage{ID: registered.inner.ULID})
 		}
+
+		// Inform the owner about the change.
+		n.AddTaskEvent(taskNotification{
+			Handler:   registered.handler,
+			Task:      taskToRemove,
+			NewStatus: registered.status,
+		})
+	}
+
+	// Then, close and remove all remaining streams. All of the tasks associated
+	// with the streams have been canceled, so we can safely immediately force
+	// the streams to the closed state.
+	for _, streamToRemove := range manifest.Streams {
+		registered := s.streams[streamToRemove.ULID] // Validated to exist above
 
 		changed, _ := registered.setState(workflow.StreamStateClosed)
 		if changed {
@@ -561,37 +632,31 @@ func (s *Scheduler) RemoveStreams(ctx context.Context, streams ...*workflow.Stre
 		delete(s.streams, streamToRemove.ULID)
 	}
 
-	if len(errs) == 0 {
-		return nil
+	return nil
+}
+
+func (s *Scheduler) deleteTask(t *task) {
+	delete(s.tasks, t.inner.ULID)
+
+	if owner := t.owner; owner != nil {
+		knownTasks := s.workerTasks[owner]
+		if knownTasks != nil {
+			delete(knownTasks, t)
+		}
 	}
-	return errors.Join(errs...)
 }
 
 // Listen binds the caller as the receiver of the specified stream. Listening on
 // a stream prevents tasks from reading from it.
-func (s *Scheduler) Listen(ctx context.Context, stream *workflow.Stream) (executor.Pipeline, error) {
+func (s *Scheduler) Listen(ctx context.Context, writer workflow.RecordWriter, stream *workflow.Stream) error {
 	s.resourcesMut.Lock()
 	defer s.resourcesMut.Unlock()
 
 	registered, found := s.streams[stream.ULID]
 	if !found {
-		return nil, fmt.Errorf("stream %s not registered", stream.ULID)
-	}
-
-	// Create a pipe for the caller to receive results.
-	pipe := newStreamPipe()
-	if err := registered.setLocalListener(pipe); err != nil {
-		return nil, err
-	}
-
-	if registered.state == workflow.StreamStateClosed {
-		// If we tried listening to a closed stream, we can immediately close
-		// the pipe so that the first call to Read returns EOF.
-		//
-		// This seems preferable to considering listening to a closed stream as
-		// an error and avoiding potential race conditions where sometimes
-		// Listen fails.
-		pipe.Close()
+		return fmt.Errorf("stream %s not registered", stream.ULID)
+	} else if err := registered.setLocalListener(writer); err != nil {
+		return err
 	}
 
 	// Usually, address binding is handled upon task assignment in
@@ -599,107 +664,102 @@ func (s *Scheduler) Listen(ctx context.Context, stream *workflow.Stream) (execut
 	// sending task is already assigned. In this case, we'll attempt to bind
 	// now.
 	s.tryBind(ctx, registered)
-	return pipe, nil
+	return nil
 }
 
 // Start begins executing the provided tasks in the background. Start returns an
-// error if any of the Tasks references an unregistered Stream, or if any of the
-// tasks are a reader of a stream that's already bound.
+// error if any of the Tasks are unrecognized.
 //
 // The provided handler will be called whenever any of the provided tasks change
 // state.
 //
 // Canceling the provided context does not cancel started tasks. Use
 // [Scheduler.Cancel] to cancel started tasks.
-func (s *Scheduler) Start(ctx context.Context, handler workflow.TaskEventHandler, tasks ...*workflow.Task) error {
-	createdTasks, err := s.registerTasks(ctx, handler, tasks...)
-	if len(createdTasks) > 0 {
-		// Even if registerTasks returned an error, we may have still created
-		// some tasks successfully, and we'll want to enqueue those.
-		s.enqueueTasks(createdTasks)
+func (s *Scheduler) Start(ctx context.Context, tasks ...*workflow.Task) error {
+	trackedTasks, err := s.findTasks(tasks)
+	if err != nil {
+		return err
 	}
+
+	// We set markPending *after* enqueueTasks to give tasks an opportunity to
+	// immediately transition into running (lowering state transition noise).
+	err = s.enqueueTasks(trackedTasks)
+	s.markPending(ctx, trackedTasks)
 	return err
 }
 
-// registerTasks registers the provided tasks with the scheduler without
-// enqueuing them.
-func (s *Scheduler) registerTasks(ctx context.Context, handler workflow.TaskEventHandler, tasks ...*workflow.Task) ([]*task, error) {
+// findTasks gets a list of [task] from workflow tasks. Returns an error if any
+// of the tasks weren't recognized.
+func (s *Scheduler) findTasks(tasks []*workflow.Task) ([]*task, error) {
+	s.resourcesMut.RLock()
+	defer s.resourcesMut.RUnlock()
+
+	res := make([]*task, 0, len(tasks))
+
+	var errs []error
+
+	for _, task := range tasks {
+		if t, ok := s.tasks[task.ULID]; ok {
+			res = append(res, t)
+		} else {
+			errs = append(errs, fmt.Errorf("task %s not found", task.ULID))
+		}
+	}
+
+	if len(errs) > 0 {
+		return nil, errors.Join(errs...)
+	}
+	return res, nil
+}
+
+func (s *Scheduler) enqueueTasks(tasks []*task) error {
+	s.assignMut.Lock()
+	defer s.assignMut.Unlock()
+
+	var errs []error
+
+	for _, task := range tasks {
+		// Only allow to enqueue tasks in the initial state (created). This
+		// prevents tasks from accidentally being run multiple times.
+		if got, want := task.status.State, workflow.TaskStateCreated; got != want {
+			errs = append(errs, fmt.Errorf("task %s is in state %s, not %s", task.inner.ULID, got, want))
+			continue
+		}
+
+		s.taskQueue = append(s.taskQueue, task)
+	}
+
+	if len(s.readyWorkers) > 0 && len(s.taskQueue) > 0 {
+		nudgeSemaphore(s.assignSema)
+	}
+
+	if len(errs) > 0 {
+		return errors.Join(errs...)
+	}
+	return nil
+}
+
+func (s *Scheduler) markPending(ctx context.Context, tasks []*task) {
 	var n notifier
 	defer n.Notify(ctx)
-
-	newTasks := make([]*task, 0, len(tasks))
 
 	s.resourcesMut.Lock()
 	defer s.resourcesMut.Unlock()
 
-	var errs []error
-
-NextTask:
-	for _, taskToStart := range tasks {
-		if _, exist := s.tasks[taskToStart.ULID]; exist {
-			errs = append(errs, fmt.Errorf("task %s already exists", taskToStart.ULID))
+	for _, task := range tasks {
+		if changed, _ := task.setState(workflow.TaskStatus{State: workflow.TaskStatePending}); !changed {
+			// If the state change failed, the task either got canceled or
+			// picked up by a worker in between enqueueing it and calling this
+			// method.
 			continue
 		}
 
-		for _, neededStreams := range taskToStart.Sources {
-			for _, neededStream := range neededStreams {
-				sourceStream, exist := s.streams[neededStream.ULID]
-				if !exist {
-					errs = append(errs, fmt.Errorf("source stream %s not found", neededStream))
-					continue NextTask
-				} else if err := sourceStream.setTaskReceiver(taskToStart.ULID); err != nil {
-					errs = append(errs, err)
-					continue NextTask
-				}
-			}
-		}
-		for _, neededStreams := range taskToStart.Sinks {
-			for _, neededStream := range neededStreams {
-				sinkStream, exist := s.streams[neededStream.ULID]
-				if !exist {
-					errs = append(errs, fmt.Errorf("sink stream %s not found", neededStream))
-					continue NextTask
-				} else if err := sinkStream.setTaskSender(taskToStart.ULID); err != nil {
-					errs = append(errs, err)
-					continue NextTask
-				}
-			}
-		}
-
-		newTask := &task{
-			inner:   taskToStart,
-			handler: handler,
-
-			// We initialize the status as Pending, which is an implicit
-			// transition from the default Created state.
-			status: workflow.TaskStatus{State: workflow.TaskStatePending},
-		}
-		s.tasks[taskToStart.ULID] = newTask
-
-		newTasks = append(newTasks, newTask)
-
 		// Inform the owner about the state change from Created to Pending.
 		n.AddTaskEvent(taskNotification{
-			Handler:   handler,
-			Task:      taskToStart,
-			NewStatus: newTask.status,
+			Handler:   task.handler,
+			Task:      task.inner,
+			NewStatus: task.status,
 		})
-	}
-
-	if len(errs) == 0 {
-		return newTasks, nil
-	}
-	return newTasks, errors.Join(errs...)
-}
-
-func (s *Scheduler) enqueueTasks(tasks []*task) {
-	s.assignMut.Lock()
-	defer s.assignMut.Unlock()
-
-	s.taskQueue = append(s.taskQueue, tasks...)
-
-	if len(s.readyWorkers) > 0 && len(s.taskQueue) > 0 {
-		nudgeSemaphore(s.assignSema)
 	}
 }
 
@@ -721,59 +781,38 @@ func (s *Scheduler) Cancel(ctx context.Context, tasks ...*workflow.Task) error {
 			continue
 		}
 
-		// Immediately clean up our own resources.
-		s.deleteTask(ctx, &n, registered)
-
-		if changed, _ := registered.setState(workflow.TaskStatus{State: workflow.TaskStateCancelled}); !changed {
-			// Ignore if the task couldn't move into the canceled state, which
-			// indicates it's already in a terminal state.
-			continue
-		}
-
-		// If the task has an owner, we'll inform it that the task has been
-		// canceled and it can stop processing it.
-		//
-		// This is a best-effort message, so we don't wait for acknowledgement.
-		if owner := registered.owner; owner != nil {
-			_ = owner.SendMessageAsync(ctx, wire.TaskCancelMessage{ID: registered.inner.ULID})
-		}
-
-		// Inform the owner about the change.
-		n.AddTaskEvent(taskNotification{
-			Handler:   registered.handler,
-			Task:      taskToCancel,
-			NewStatus: registered.status,
-		})
-	}
-
-	if len(errs) == 0 {
-		return nil
-	}
-	return errors.Join(errs...)
-}
-
-func (s *Scheduler) deleteTask(ctx context.Context, n *notifier, t *task) {
-	delete(s.tasks, t.inner.ULID)
-
-	if owner := t.owner; owner != nil {
-		knownTasks := s.workerTasks[owner]
-		if knownTasks != nil {
-			delete(knownTasks, t)
-		}
-	}
-
-	// Close all associated sink streams.
-	for _, sinks := range t.inner.Sinks {
-		for _, rawSink := range sinks {
-			sink, ok := s.streams[rawSink.ULID]
-			if !ok {
-				continue
+		if changed, _ := registered.setState(workflow.TaskStatus{State: workflow.TaskStateCancelled}); changed {
+			// If the task has an owner, we'll inform it that the task has been
+			// canceled and it can stop processing it.
+			//
+			// This is a best-effort message, so we don't wait for acknowledgement.
+			if owner := registered.owner; owner != nil {
+				_ = owner.SendMessageAsync(ctx, wire.TaskCancelMessage{ID: registered.inner.ULID})
 			}
 
-			// changeStreamState only returns an error for an invalid state
-			// change, which isn't possible here (it's never invalid to move
-			// to Closed, only a no-op if it's already Closed).
-			_ = s.changeStreamState(ctx, n, sink, workflow.StreamStateClosed)
+			// Inform the owner about the change.
+			n.AddTaskEvent(taskNotification{
+				Handler:   registered.handler,
+				Task:      taskToCancel,
+				NewStatus: registered.status,
+			})
+		}
+
+		// Close all associated sink streams (if they are not already closed).
+		for _, sinks := range registered.inner.Sinks {
+			for _, rawSink := range sinks {
+				sink, ok := s.streams[rawSink.ULID]
+				if !ok {
+					continue
+				}
+
+				_ = s.changeStreamState(ctx, &n, sink, workflow.StreamStateClosed)
+			}
 		}
 	}
+
+	if len(errs) > 0 {
+		return errors.Join(errs...)
+	}
+	return nil
 }
