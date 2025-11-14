@@ -1766,20 +1766,8 @@ read:
   resources: {}
   # -- liveness probe settings for read pods. If empty, applies no livenessProbe
   livenessProbe: {}
-    # -- statup probe for the read pods. Default is set to this because of this issue: https://github.com/grafana/loki/issues/15191
-  startupProbe:
-    httpGet:
-      path: /loki/api/v1/labels?since=1h
-      port: http-metrics
-      scheme: HTTP
-      httpHeaders:
-      - name: X-Scope-OrgID
-        value: "fake"
-    initialDelaySeconds: 60
-    timeoutSeconds: 1
-    periodSeconds: 30
-    successThreshold: 1
-    failureThreshold: 3
+    # -- statup probe for the read pods. If empty, applies no startupProbe
+  startupProbe: {}
   # -- Grace period to allow the read to shutdown before it is killed
   terminationGracePeriodSeconds: 30
   # -- Use the host's user namespace in the read pods.
