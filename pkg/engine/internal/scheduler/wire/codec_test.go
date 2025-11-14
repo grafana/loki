@@ -63,6 +63,9 @@ func TestProtobufCodec_Messages(t *testing.T) {
 	tests := map[string]struct {
 		message Message
 	}{
+		"WorkerHelloMessage": {
+			message: WorkerHelloMessage{Threads: 4},
+		},
 		"WorkerReadyMessage": {
 			message: WorkerReadyMessage{},
 		},

@@ -482,7 +482,7 @@ endif
 
 protos: clean-protos $(PROTO_GOS)
 
-%.pb.go:
+%.pb.go: ALWAYS_BUILD
 ifeq ($(BUILD_IN_CONTAINER),true)
 	$(run_in_container)
 else
@@ -694,6 +694,11 @@ documentation-helm-reference-check:
 ########
 # Misc #
 ########
+
+# Targets can depend on ALWAYS_BUILD to run regardless of whether the target is
+# up-to-date or not because PHONY targets are always rebuilt.
+.PHONY: ALWAYS_BUILD
+ALWAYS_BUILD:
 
 benchmark-store:
 	go run ./pkg/storage/hack/main.go
