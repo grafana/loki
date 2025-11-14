@@ -696,7 +696,7 @@ documentation-helm-reference-check:
 ########
 
 # Targets can depend on ALWAYS_BUILD to run regardless of whether the target is
-# up-to-date or not.
+# up-to-date or not because PHONY targets are always rebuilt.
 .PHONY: ALWAYS_BUILD
 ALWAYS_BUILD:
 
