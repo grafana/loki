@@ -23,6 +23,9 @@ import (
 // these temporary security credentials to sign calls to Amazon Web Services
 // services.
 //
+// AssumeRoleWithSAML will not work on IAM Identity Center managed roles. These
+// roles' names start with AWSReservedSSO_ .
+//
 // # Session Duration
 //
 // By default, the temporary security credentials created by AssumeRoleWithSAML
