@@ -28,6 +28,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/rangeio"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 var tracer = otel.Tracer("pkg/engine")
@@ -190,6 +191,7 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 		return logqlmodel.Result{}, err
 	}
 
+	ctx, capture := xcap.NewCapture(ctx, nil)
 	builder, err := func() (ResultBuilder, error) {
 		ctx, span := tracer.Start(ctx, "QueryEngine.Execute.Process")
 		defer span.End()
@@ -203,6 +205,7 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 			MergePrefetchCount: e.cfg.MergePrefetchCount,
 			Bucket:             e.bucket,
 		}
+
 		pipeline := executor.Run(ctx, cfg, physicalPlan, logger)
 		defer pipeline.Close()
 
@@ -238,6 +241,7 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 		span.SetStatus(codes.Error, "failed to build results")
 		return logqlmodel.Result{}, err
 	}
+	capture.End()
 
 	durFull := time.Since(startTime)
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)

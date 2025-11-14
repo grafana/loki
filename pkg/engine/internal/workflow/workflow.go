@@ -16,6 +16,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 // Options configures a [Workflow].
@@ -51,6 +52,8 @@ type Workflow struct {
 
 	statsMut sync.Mutex
 	stats    stats.Result
+
+	capture *xcap.Capture
 
 	tasksMut   sync.RWMutex
 	taskStates map[*Task]TaskState
@@ -129,6 +132,8 @@ func (wf *Workflow) Run(ctx context.Context) (pipeline executor.Pipeline, err er
 			_ = wf.runner.RemoveStreams(context.Background(), streams...)
 		}
 	}()
+
+	wf.capture = xcap.FromContext(ctx)
 
 	pipeline, err = wf.runner.Listen(ctx, wf.resultsStream)
 	if err != nil {
@@ -294,6 +299,10 @@ func (wf *Workflow) onTaskChange(ctx context.Context, task *Task, newStatus Task
 		defer wf.admissionControl.laneFor(task).Release(1)
 	}
 
+	if newStatus.Capture != nil {
+		wf.mergeCapture(newStatus.Capture)
+	}
+
 	if newStatus.Statistics != nil {
 		wf.mergeResults(*newStatus.Statistics)
 	}
@@ -339,6 +348,14 @@ func (wf *Workflow) mergeResults(results stats.Result) {
 	defer wf.statsMut.Unlock()
 
 	wf.stats.Merge(results)
+}
+
+func (wf *Workflow) mergeCapture(capture *xcap.Capture) {
+	if capture == nil || wf.capture == nil {
+		return
+	}
+
+	wf.capture.Merge(capture)
 }
 
 type wrappedPipeline struct {

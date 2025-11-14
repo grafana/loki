@@ -6,6 +6,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 // A Runner can asynchronously execute a workflow.
@@ -101,6 +102,9 @@ type TaskStatus struct {
 	// Error holds the error that occurred during task execution, if any. Only
 	// set when State is [TaskStateFailed].
 	Error error
+
+	// Capture contains observations about the execution of the task.
+	Capture *xcap.Capture
 
 	// Statistics report analytics about the lifetime of a task. Only set
 	// for terminal task states (see [TaskState.Terminal]).
