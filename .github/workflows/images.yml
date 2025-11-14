@@ -503,6 +503,25 @@
           ${OUTPUTS_IMAGE_NAME}@${IMAGE_DIGEST_AMD64} \
           ${OUTPUTS_IMAGE_NAME}@${IMAGE_DIGEST_ARM}
         docker buildx imagetools inspect $IMAGE
+  "trigger-cd":
+    "env":
+      "IMAGE_TAG": "${{ needs.loki-image.outputs.image_tag }}"
+    "if": "github.ref == 'refs/heads/main'"
+    "needs":
+    - "loki-manifest"
+    - "loki-canary-manifest"
+    "permissions":
+      "contents": "read"
+      "id-token": "write"
+    "runs-on": "ubuntu-latest"
+    "steps":
+    - "name": "Trigger CD workflow"
+      "uses": "grafana/shared-workflows/actions/trigger-argo-workflow@8b88213bca76e86f9f59b43038cc5d7545452436"
+      "with":
+        "instance": "ops"
+        "namespace": "loki-cd"
+        "parameters": "imageTag=${{ env.IMAGE_TAG }}"
+        "workflow_template": "loki-continuous-deployment"
 "name": "Publish images"
 "on":
   "push":
