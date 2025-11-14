@@ -3,10 +3,10 @@ package bench
 import (
 	"bytes"
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -14,9 +14,13 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/server"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore/providers/filesystem"
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine"
@@ -25,10 +29,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/rangeio"
 )
 
-var errStoreUnimplemented = errors.New("store does not implement this operation")
-
 var (
-	engineLogs = flag.Bool("engine-logs", false, "include engine logs in verbose output")
+	engineLogs      = flag.Bool("engine-logs", false, "include engine logs in verbose output")
+	remoteTransport = flag.Bool("remote-transport", false, "run engine with remote transport over loopback interface")
 )
 
 // DataObjV2EngineStore uses the new engine for querying. It assumes the engine
@@ -53,6 +56,7 @@ func NewDataObjV2EngineStore(dir string, tenantID string) (*DataObjV2EngineStore
 }
 
 func dataobjV2StoreWithOpts(dataDir string, tenantID string, cfg engine.ExecutorConfig, metastoreCfg metastore.Config) (*DataObjV2EngineStore, error) {
+	ctx := context.Background()
 	logger := log.NewNopLogger()
 
 	if testing.Verbose() && *engineLogs {
@@ -74,22 +78,59 @@ func dataobjV2StoreWithOpts(dataDir string, tenantID string, cfg engine.Executor
 		return nil, fmt.Errorf("failed to create filesystem bucket for DataObjV2EngineStore: %w", err)
 	}
 
+	var (
+		schedSrv  *server.Server
+		workerSrv *server.Server
+
+		schedSvc  services.Service
+		workerSvc services.Service
+
+		schedAdvertiseAddr  net.Addr
+		workerAdvertiseAddr net.Addr
+
+		schedLookupAddr string
+	)
+
+	if *remoteTransport {
+		schedSrv, schedSvc, err = newServerService("scheduler", logger)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create scheduler server: %w", err)
+		} else if err := services.StartAndAwaitRunning(ctx, schedSvc); err != nil {
+			return nil, fmt.Errorf("starting scheduler service: %w", err)
+		}
+		schedAdvertiseAddr = schedSrv.HTTPListenAddr()
+	}
+
 	sched, err := engine.NewScheduler(engine.SchedulerParams{
-		Logger:        logger,
-		AdvertiseAddr: nil, // set explicitly to nil so local transport is used
+		Logger:        log.With(logger, "component", "scheduler"),
+		AdvertiseAddr: schedAdvertiseAddr,
 	})
+
 	if err != nil {
 		return nil, fmt.Errorf("creating scheduler: %w", err)
-	} else if err := services.StartAndAwaitRunning(context.Background(), sched.Service()); err != nil {
+	} else if err := services.StartAndAwaitRunning(ctx, sched.Service()); err != nil {
 		return nil, fmt.Errorf("starting scheduler service: %w", err)
 	}
 
+	if *remoteTransport {
+		workerSrv, workerSvc, err = newServerService("worker", logger)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create worker server: %w", err)
+		} else if err := services.StartAndAwaitRunning(ctx, workerSvc); err != nil {
+			return nil, fmt.Errorf("starting worker service: %w", err)
+		}
+		workerAdvertiseAddr = workerSrv.HTTPListenAddr()
+		schedLookupAddr = schedAdvertiseAddr.String()
+	}
+
 	worker, err := engine.NewWorker(engine.WorkerParams{
-		Logger:         logger,
-		AdvertiseAddr:  nil, // set explicitly to nil so local transport is used
+		Logger:         log.With(logger, "component", "worker"),
+		AdvertiseAddr:  workerAdvertiseAddr,
 		Bucket:         bucketClient,
 		LocalScheduler: sched,
 		Config: engine.WorkerConfig{
+			SchedulerLookupAddress:  schedLookupAddr,
+			SchedulerLookupInterval: 60,
 			// Try to create one thread per host CPU core. However, we always
 			// create at least 8 threads. This prevents situations where
 			// no task can make progress because a parent task hasn't been
@@ -103,10 +144,16 @@ func dataobjV2StoreWithOpts(dataDir string, tenantID string, cfg engine.Executor
 		},
 		Executor: cfg,
 	})
+
 	if err != nil {
 		return nil, fmt.Errorf("creating worker: %w", err)
-	} else if err := services.StartAndAwaitRunning(context.Background(), worker.Service()); err != nil {
+	} else if err := services.StartAndAwaitRunning(ctx, worker.Service()); err != nil {
 		return nil, fmt.Errorf("starting worker service: %w", err)
+	}
+
+	if *remoteTransport {
+		sched.RegisterSchedulerServer(schedSrv.HTTP)
+		worker.RegisterWorkerServer(workerSrv.HTTP)
 	}
 
 	newEngine, err := engine.New(engine.Params{
@@ -127,6 +174,48 @@ func dataobjV2StoreWithOpts(dataDir string, tenantID string, cfg engine.Executor
 		tenantID: tenantID, // Store for context or if querier needs it
 		dataDir:  dataDir,
 	}, nil
+}
+
+func newServerService(name string, logger log.Logger) (*server.Server, services.Service, error) {
+	logger = log.With(logger, "component", "server", "server", name)
+	serv, err := server.New(server.Config{
+		Log:               logger,
+		Registerer:        prometheus.NewRegistry(),
+		HTTPListenNetwork: "tcp",
+		HTTPListenAddress: "localhost",
+		HTTPListenPort:    0,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	done := make(chan error, 1)
+	svc := services.NewBasicService(
+		nil,
+		func(ctx context.Context) error {
+			level.Info(logger).Log("msg", "server starting up")
+			go func() {
+				defer close(done)
+				done <- serv.Run()
+			}()
+			select {
+			case <-ctx.Done():
+				return nil
+			case err := <-done:
+				return err
+			}
+		},
+		func(err error) error {
+			level.Info(logger).Log("msg", "server shutting down", "err", err)
+			serv.Shutdown()
+			<-done
+			return nil
+		},
+	)
+
+	// Enable HTTP/2
+	serv.HTTPServer.Handler = h2c.NewHandler(serv.HTTPServer.Handler, &http2.Server{})
+
+	return serv, svc, nil
 }
 
 type engineAdapter engine.Engine
