@@ -197,13 +197,17 @@ func (s *Scheduler) markWorkerReady(_ context.Context, worker *workerConn) error
 	s.assignMut.Lock()
 	defer s.assignMut.Unlock()
 
+	if !worker.hasCapacity() {
+		return fmt.Errorf("maximum capacity %d reached, wait for task assignment or complete existing assigned tasks", worker.maxThreads)
+	}
+	worker.readyThreads++
+
 	s.readyWorkers = append(s.readyWorkers, worker)
 
 	// Wake [Scheduler.runAssignLoop] if we have both peers and tasks available.
 	if len(s.readyWorkers) > 0 && len(s.tasks) > 0 {
 		nudgeSemaphore(s.assignSema)
 	}
-
 	return nil
 }
 
@@ -238,7 +242,11 @@ func (s *Scheduler) handleTaskStatus(ctx context.Context, worker *workerConn, ms
 	if err != nil {
 		return err
 	} else if changed {
-		// Notify the owner about the change.
+		if owner := task.owner; owner != nil && task.status.State.Terminal() {
+			owner.untrackAssignment(task)
+		}
+
+		// Notify the handler about the change.
 		n.AddTaskEvent(taskNotification{
 			Handler:   task.handler,
 			Task:      task.inner,
@@ -316,6 +324,8 @@ func (s *Scheduler) abortWorkerTasks(ctx context.Context, worker *workerConn, re
 	}
 
 	for task := range worker.tasks {
+		worker.untrackAssignment(task)
+
 		if changed, _ := task.setState(newStatus); !changed {
 			continue
 		}
@@ -426,7 +436,7 @@ func (s *Scheduler) assignTask(ctx context.Context, task *task, worker *workerCo
 	}
 
 	// The worker accepted the message, so we can assign the task to it now.
-	s.trackAssignment(task, worker)
+	worker.trackAssignment(task)
 
 	// Now that the task has been accepted, we can attempt address bindings. We
 	// do this on task assignment to simplify the implementation, though it
@@ -452,15 +462,6 @@ func (s *Scheduler) assignTask(ctx context.Context, task *task, worker *workerCo
 	}
 
 	return nil
-}
-
-func (s *Scheduler) trackAssignment(assigned *task, owner *workerConn) {
-	assigned.owner = owner
-
-	if owner.tasks == nil {
-		owner.tasks = make(map[*task]struct{})
-	}
-	owner.tasks[assigned] = struct{}{}
 }
 
 // tryBind attempts to bind the receiver's address of check to the sender.
@@ -671,7 +672,7 @@ func (s *Scheduler) deleteTask(t *task) {
 	delete(s.tasks, t.inner.ULID)
 
 	if owner := t.owner; owner != nil {
-		delete(owner.tasks, t)
+		owner.untrackAssignment(t)
 	}
 }
 
@@ -816,6 +817,7 @@ func (s *Scheduler) Cancel(ctx context.Context, tasks ...*workflow.Task) error {
 			//
 			// This is a best-effort message, so we don't wait for acknowledgement.
 			if owner := registered.owner; owner != nil {
+				owner.untrackAssignment(registered)
 				_ = owner.SendMessageAsync(ctx, wire.TaskCancelMessage{ID: registered.inner.ULID})
 			}
 

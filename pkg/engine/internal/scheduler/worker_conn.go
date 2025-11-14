@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 )
@@ -58,8 +59,42 @@ type workerConn struct {
 
 	// maxThreads represents the maximum number of threads that can be used by
 	// the worker. Only set for control plane connections.
+	//
+	// len(tasks) + readyThreads must not exceed maxThreads.
 	maxThreads int
 
-	// tasks hold the collection of tasks currently assigned to the worker.
-	tasks map[*task]struct{}
+	mut          sync.RWMutex
+	readyThreads int                // readyThreads represents the number of threads that are ready to be assigned a task.
+	tasks        map[*task]struct{} // tasks hold the collection of tasks currently assigned to the worker.
+}
+
+func (wc *workerConn) trackAssignment(assigned *task) {
+	wc.mut.Lock()
+	defer wc.mut.Unlock()
+
+	assigned.owner = wc
+
+	if wc.tasks == nil {
+		wc.tasks = make(map[*task]struct{})
+	}
+	wc.tasks[assigned] = struct{}{}
+
+	// Assigning a task removes a ready thread, since len(wc.tasks) increased by
+	// 1.
+	wc.readyThreads--
+}
+
+func (wc *workerConn) untrackAssignment(assigned *task) {
+	wc.mut.Lock()
+	defer wc.mut.Unlock()
+
+	delete(wc.tasks, assigned)
+}
+
+// hasCapacity returns true if the worker has capacity to accept more tasks.
+func (wc *workerConn) hasCapacity() bool {
+	wc.mut.RLock()
+	defer wc.mut.RUnlock()
+
+	return wc.maxThreads > len(wc.tasks)+wc.readyThreads
 }
