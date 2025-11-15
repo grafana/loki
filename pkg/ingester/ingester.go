@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"runtime/pprof"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-kit/log"
@@ -19,6 +20,7 @@ import (
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/kv"
+	"github.com/grafana/dskit/kv/codec"
 	"github.com/grafana/dskit/modules"
 	"github.com/grafana/dskit/multierror"
 	"github.com/grafana/dskit/ring"
@@ -73,8 +75,9 @@ const (
 	shutdownMarkerFilename = "shutdown-requested.txt"
 
 	// PartitionRingKey is the key under which we store the partitions ring used by the "ingest storage".
-	PartitionRingKey  = "ingester-partitions-key"
-	PartitionRingName = "ingester-partitions"
+	PartitionRingKey               = "ingester-partitions-key"
+	PartitionRingName              = "ingester-partitions"
+	PartitionManualInactiveKeyBase = "ingester-partition-manual-inactive-"
 )
 
 // ErrReadOnly is returned when the ingester is shutting down and a push was
@@ -302,6 +305,11 @@ type Ingester struct {
 	ingestPartitionID       int32
 	partitionRingLifecycler *ring.PartitionInstanceLifecycler
 	partitionReader         *partition.ReaderService
+	partitionFlagKV         kv.Client // KV client for checking manual inactive flag (without codec)
+
+	// manualPartitionInactive tracks if the partition was manually set to INACTIVE via UI,
+	// preventing automatic reactivation by the rollout operator
+	manualPartitionInactive atomic.Bool
 }
 
 // New makes a new Ingester.
@@ -376,6 +384,11 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 			if err != nil {
 				return nil, fmt.Errorf("creating KV store for ingester partition ring: %w", err)
 			}
+		}
+		// Create KV client with string codec for checking manual inactive flag
+		i.partitionFlagKV, err = kv.NewClient(cfg.KafkaIngestion.PartitionRingConfig.KVStore, codec.String{}, kv.RegistererWithKVName(registerer, PartitionRingName+"-flags"), logger)
+		if err != nil {
+			return nil, fmt.Errorf("creating KV store for partition flags: %w", err)
 		}
 		i.partitionRingLifecycler = ring.NewPartitionInstanceLifecycler(
 			i.cfg.KafkaIngestion.PartitionRingConfig.ToLifecyclerConfig(i.ingestPartitionID, cfg.LifecyclerConfig.ID),
@@ -854,6 +867,17 @@ func (i *Ingester) PrepareShutdown(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
+// SetManualPartitionInactive marks this partition as manually deactivated via UI,
+// preventing automatic reactivation by external systems (e.g., rollout operators).
+func (i *Ingester) SetManualPartitionInactive(manual bool) {
+	i.manualPartitionInactive.Store(manual)
+	if manual {
+		level.Info(i.logger).Log("msg", "partition marked as manually deactivated", "partition", i.ingestPartitionID)
+	} else {
+		level.Info(i.logger).Log("msg", "partition manual deactivation flag cleared", "partition", i.ingestPartitionID)
 	}
 }
 

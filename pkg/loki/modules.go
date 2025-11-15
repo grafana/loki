@@ -2201,7 +2201,10 @@ func (t *Loki) initAnalytics() (services.Service, error) {
 
 // The Ingest Partition Ring is responsible for watching the available ingesters and assigning partitions to incoming requests.
 func (t *Loki) initPartitionRing() (services.Service, error) {
+	level.Info(util_log.Logger).Log("msg", "INITIALIZING PARTITION RING MODULE - WITH MIDDLEWARE FIX")
+
 	if !t.Cfg.Ingester.KafkaIngestion.Enabled && !t.Cfg.Querier.QueryPartitionIngesters {
+		level.Info(util_log.Logger).Log("msg", "partition ring disabled, skipping initialization")
 		return nil, nil
 	}
 
@@ -2210,11 +2213,62 @@ func (t *Loki) initPartitionRing() (services.Service, error) {
 		return nil, fmt.Errorf("creating KV store for partitions ring watcher: %w", err)
 	}
 
+	// Create a separate KV client with string codec for storing simple string flags
+	flagKVClient, err := kv.NewClient(t.Cfg.Ingester.KafkaIngestion.PartitionRingConfig.KVStore, codec.String{}, kv.RegistererWithKVName(prometheus.DefaultRegisterer, ingester.PartitionRingName+"-flags"), util_log.Logger)
+	if err != nil {
+		return nil, fmt.Errorf("creating KV store for partition flags: %w", err)
+	}
+
 	t.PartitionRingWatcher = ring.NewPartitionRingWatcher(ingester.PartitionRingName, ingester.PartitionRingKey, kvClient, util_log.Logger, prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer))
 	t.partitionRing = ring.NewPartitionInstanceRing(t.PartitionRingWatcher, t.ring, t.Cfg.Ingester.LifecyclerConfig.RingConfig.HeartbeatTimeout)
 
 	// Expose a web page to view the partitions ring state.
-	t.Server.HTTP.Path("/partition-ring").Methods("GET", "POST").Handler(ring.NewPartitionRingPageHandler(t.PartitionRingWatcher, ring.NewPartitionRingEditor(ingester.PartitionRingKey, kvClient)))
+	partitionRingHandler := ring.NewPartitionRingPageHandler(t.PartitionRingWatcher, ring.NewPartitionRingEditor(ingester.PartitionRingKey, kvClient))
+
+	// Wrap with middleware that writes manual flag to KV
+	finalHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		level.Info(util_log.Logger).Log("msg", "PARTITION RING HANDLER CALLED", "method", r.Method, "path", r.URL.Path, "remote", r.RemoteAddr)
+
+		// On POST, check if it's a state change to INACTIVE and write to KV
+		if r.Method == http.MethodPost {
+			if err := r.ParseForm(); err == nil {
+				action := r.FormValue("action")
+				partitionID := r.FormValue("partition_id")
+				partitionState := r.FormValue("partition_state")
+
+				level.Info(util_log.Logger).Log("msg", "POST to partition-ring", "action", action, "partition_id", partitionID, "state", partitionState)
+
+				if action == "change_state" && partitionID != "" {
+					kvKey := ingester.PartitionManualInactiveKeyBase + partitionID
+					if partitionState == "PartitionInactive" {
+						level.Info(util_log.Logger).Log("msg", "WRITING MANUAL INACTIVE FLAG TO KV", "key", kvKey)
+						err := flagKVClient.CAS(r.Context(), kvKey, func(in interface{}) (out interface{}, retry bool, err error) {
+							return "true", true, nil
+						})
+						if err != nil {
+							level.Error(util_log.Logger).Log("msg", "failed to write KV flag", "err", err)
+						} else {
+							level.Info(util_log.Logger).Log("msg", "KV FLAG WRITTEN", "key", kvKey)
+						}
+					} else if partitionState == "PartitionActive" {
+						level.Info(util_log.Logger).Log("msg", "DELETING MANUAL INACTIVE FLAG FROM KV", "key", kvKey)
+						flagKVClient.Delete(r.Context(), kvKey)
+					}
+				}
+			}
+		}
+
+		partitionRingHandler.ServeHTTP(w, r)
+	})
+
+	level.Info(util_log.Logger).Log("msg", "REGISTERING /partition-ring HANDLER")
+	t.Server.HTTP.Path("/partition-ring").Methods("GET", "POST").Handler(finalHandler)
+
+	// ALSO register on InternalServer if enabled (user might be accessing through internal server)
+	if t.Cfg.InternalServer.Enable {
+		level.Info(util_log.Logger).Log("msg", "REGISTERING /partition-ring HANDLER ON INTERNAL SERVER")
+		t.InternalServer.HTTP.Path("/partition-ring").Methods("GET", "POST").Handler(finalHandler)
+	}
 
 	return t.PartitionRingWatcher, nil
 }

@@ -1,6 +1,7 @@
 package ingester
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/go-kit/log"
@@ -59,6 +60,23 @@ func (i *Ingester) PreparePartitionDownscaleHandler(w http.ResponseWriter, r *ht
 			return
 		}
 
+		// Clear the manual flag since this is an API-initiated downscale (intentional) by deleting from KV
+		if i.partitionFlagKV != nil {
+			kvKey := PartitionManualInactiveKeyBase + fmt.Sprint(i.ingestPartitionID)
+			if err := i.partitionFlagKV.Delete(r.Context(), kvKey); err != nil {
+				level.Warn(logger).Log("msg", "failed to clear manual inactive flag on POST", "err", err, "key", kvKey)
+			}
+		}
+
+		level.Info(logger).Log(
+			"msg", "partition downscale requested via POST",
+			"instance_id", i.cfg.LifecyclerConfig.ID,
+			"current_state", state.CleanName(),
+			"changing_to", "INACTIVE",
+			"remote_addr", r.RemoteAddr,
+			"user_agent", r.UserAgent(),
+		)
+
 		if err := i.partitionRingLifecycler.ChangePartitionState(r.Context(), ring.PartitionInactive); err != nil {
 			level.Error(logger).Log("msg", "failed to change partition state to inactive", "err", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -73,18 +91,89 @@ func (i *Ingester) PreparePartitionDownscaleHandler(w http.ResponseWriter, r *ht
 			return
 		}
 
+		level.Debug(logger).Log(
+			"msg", "DELETE request received",
+			"partition_state", state.CleanName(),
+			"manual_inactive_flag", i.manualPartitionInactive.Load(),
+			"remote_addr", r.RemoteAddr,
+			"user_agent", r.UserAgent(),
+		)
+
 		// If partition is inactive, make it active. We ignore other states Active and especially Pending.
 		if state == ring.PartitionInactive {
+			// Check if this partition was manually set to INACTIVE via the UI by checking KV store
+			kvKey := PartitionManualInactiveKeyBase + fmt.Sprint(i.ingestPartitionID)
+			manualFlag := false
+			if i.partitionFlagKV != nil {
+				val, err := i.partitionFlagKV.Get(r.Context(), kvKey)
+				if err != nil {
+					// Key doesn't exist or error reading - treat as not manually inactive
+					level.Debug(logger).Log("msg", "manual inactive flag not found in KV (expected if not set)", "err", err, "key", kvKey)
+				} else if val != nil {
+					// Key exists, partition was manually deactivated
+					manualFlag = true
+				}
+			}
+
+			level.Info(logger).Log(
+				"msg", "checking manual inactive flag from KV",
+				"kv_key", kvKey,
+				"manual_inactive_flag", manualFlag,
+				"will_skip_reactivation", manualFlag,
+			)
+
+			if manualFlag {
+				level.Info(logger).Log(
+					"msg", "skipping automatic partition reactivation because partition was manually deactivated via UI",
+					"instance_id", i.cfg.LifecyclerConfig.ID,
+					"current_state", state.CleanName(),
+					"remote_addr", r.RemoteAddr,
+					"user_agent", r.UserAgent(),
+				)
+				// Return success but don't change state
+				state, stateTimestamp, err := i.partitionRingLifecycler.GetPartitionState(r.Context())
+				if err != nil {
+					level.Error(logger).Log("msg", "failed to check partition state in the ring", "err", err)
+					w.WriteHeader(http.StatusInternalServerError)
+					return
+				}
+				if state == ring.PartitionInactive {
+					util.WriteJSONResponse(w, map[string]any{"timestamp": stateTimestamp.Unix()})
+				} else {
+					util.WriteJSONResponse(w, map[string]any{"timestamp": 0})
+				}
+				return
+			}
+
 			// We don't switch it back to PENDING state if there are not enough owners because we want to guarantee consistency
 			// in the read path. If the partition is within the lookback period we need to guarantee that partition will be queried.
 			// Moving back to PENDING will cause us loosing consistency, because PENDING partitions are not queried by design.
 			// We could move back to PENDING if there are not enough owners and the partition moved to INACTIVE more than
 			// "lookback period" ago, but since we delete inactive partitions with no owners that moved to inactive since longer
 			// than "lookback period" ago, it looks to be an edge case not worth to address.
+			level.Info(logger).Log(
+				"msg", "partition reactivation requested via DELETE",
+				"instance_id", i.cfg.LifecyclerConfig.ID,
+				"current_state", state.CleanName(),
+				"changing_to", "ACTIVE",
+				"remote_addr", r.RemoteAddr,
+				"user_agent", r.UserAgent(),
+			)
+
 			if err := i.partitionRingLifecycler.ChangePartitionState(r.Context(), ring.PartitionActive); err != nil {
 				level.Error(logger).Log("msg", "failed to change partition state to active", "err", err)
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
+			}
+
+			// Clear the flag after successful reactivation by deleting from KV
+			if i.partitionFlagKV != nil {
+				kvKey := PartitionManualInactiveKeyBase + fmt.Sprint(i.ingestPartitionID)
+				if err := i.partitionFlagKV.Delete(r.Context(), kvKey); err != nil {
+					level.Warn(logger).Log("msg", "failed to delete manual inactive flag after reactivation", "err", err, "key", kvKey)
+				} else {
+					level.Info(logger).Log("msg", "cleared manual inactive flag after reactivation", "key", kvKey)
+				}
 			}
 		}
 	}

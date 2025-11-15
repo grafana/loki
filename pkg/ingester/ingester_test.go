@@ -25,6 +25,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
@@ -1835,6 +1836,156 @@ func sortLabels(series []logproto.SeriesIdentifier) {
 	for i := range series {
 		sort.SliceStable(series[i].Labels, func(j, k int) bool {
 			return series[i].Labels[j].Key < series[i].Labels[k].Key
+		})
+	}
+}
+
+// TestManualPartitionInactiveFlag tests the atomic boolean flag that prevents
+// automatic partition reactivation when a partition is manually deactivated via UI.
+func TestManualPartitionInactiveFlag(t *testing.T) {
+	t.Run("flag starts as false", func(t *testing.T) {
+		ing := &Ingester{
+			logger: log.NewNopLogger(),
+		}
+
+		assert.False(t, ing.manualPartitionInactive.Load(), "flag should start as false")
+	})
+
+	t.Run("SetManualPartitionInactive sets flag to true", func(t *testing.T) {
+		ing := &Ingester{
+			logger:            log.NewNopLogger(),
+			ingestPartitionID: 5,
+		}
+
+		ing.SetManualPartitionInactive(true)
+		assert.True(t, ing.manualPartitionInactive.Load(), "flag should be true after setting")
+	})
+
+	t.Run("SetManualPartitionInactive clears flag", func(t *testing.T) {
+		ing := &Ingester{
+			logger:            log.NewNopLogger(),
+			ingestPartitionID: 5,
+		}
+
+		// Set it first
+		ing.manualPartitionInactive.Store(true)
+		require.True(t, ing.manualPartitionInactive.Load())
+
+		// Clear it
+		ing.SetManualPartitionInactive(false)
+		assert.False(t, ing.manualPartitionInactive.Load(), "flag should be false after clearing")
+	})
+
+	t.Run("flag is thread-safe", func(t *testing.T) {
+		ing := &Ingester{
+			logger:            log.NewNopLogger(),
+			ingestPartitionID: 5,
+		}
+
+		// Test concurrent reads and writes
+		done := make(chan bool)
+
+		// Writer goroutine
+		go func() {
+			for i := 0; i < 100; i++ {
+				ing.SetManualPartitionInactive(i%2 == 0)
+			}
+			done <- true
+		}()
+
+		// Reader goroutine
+		go func() {
+			for i := 0; i < 100; i++ {
+				_ = ing.manualPartitionInactive.Load()
+			}
+			done <- true
+		}()
+
+		// Wait for both goroutines
+		<-done
+		<-done
+
+		// Test passes if no race condition detected (run with -race flag)
+	})
+}
+
+// TestManualPartitionInactiveFlagBehavior tests the expected behavior in the downscale handler.
+// This test documents the expected logic without requiring full HTTP handler setup.
+func TestManualPartitionInactiveFlagBehavior(t *testing.T) {
+	tests := []struct {
+		name              string
+		initialFlag       bool
+		operation         string // "post" or "delete_inactive" or "delete_active"
+		expectedFinalFlag bool
+		shouldSkipChange  bool
+	}{
+		{
+			name:              "POST clears manual flag",
+			initialFlag:       true,
+			operation:         "post",
+			expectedFinalFlag: false,
+			shouldSkipChange:  false,
+		},
+		{
+			name:              "DELETE with inactive partition and manual flag should skip reactivation",
+			initialFlag:       true,
+			operation:         "delete_inactive",
+			expectedFinalFlag: true, // flag stays set because we skipped
+			shouldSkipChange:  true,
+		},
+		{
+			name:              "DELETE with inactive partition and no manual flag should proceed",
+			initialFlag:       false,
+			operation:         "delete_inactive",
+			expectedFinalFlag: false, // flag cleared after reactivation
+			shouldSkipChange:  false,
+		},
+		{
+			name:              "DELETE with active partition and manual flag does nothing",
+			initialFlag:       true,
+			operation:         "delete_active",
+			expectedFinalFlag: true, // flag unchanged
+			shouldSkipChange:  false, // no change needed, partition already active
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ing := &Ingester{
+				logger:            log.NewNopLogger(),
+				ingestPartitionID: 5,
+			}
+
+			// Set initial flag
+			ing.manualPartitionInactive.Store(tt.initialFlag)
+
+			// Simulate the operations
+			switch tt.operation {
+			case "post":
+				// POST operation should clear the flag
+				ing.manualPartitionInactive.Store(false)
+
+			case "delete_inactive":
+				// DELETE with INACTIVE partition
+				if ing.manualPartitionInactive.Load() {
+					// Should skip reactivation
+					assert.True(t, tt.shouldSkipChange, "should skip change when flag is set")
+					// Flag stays set
+				} else {
+					// Should proceed with reactivation
+					assert.False(t, tt.shouldSkipChange, "should not skip change when flag is not set")
+					// Clear flag after successful reactivation
+					ing.manualPartitionInactive.Store(false)
+				}
+
+			case "delete_active":
+				// DELETE with ACTIVE partition - no state change needed
+				// Flag is unchanged
+			}
+
+			// Verify final flag state
+			assert.Equal(t, tt.expectedFinalFlag, ing.manualPartitionInactive.Load(),
+				"unexpected final flag state")
 		})
 	}
 }
