@@ -67011,9 +67011,13 @@ type OrganizationSecurityPoliciesAddAssociationCall struct {
 // Cloud
 // Armor Enterprise if not already enrolled.
 //
-// Use of this API to modify firewall policies is deprecated.
-// Use
-// firewallPolicies.addAssociation instead if possible.
+// Use this API to modify Cloud Armor policies. Previously, alpha and
+// beta
+// versions of this API were used to modify firewall policies. This usage
+// is
+// now disabled for most organizations. Use
+// firewallPolicies.addAssociation
+// instead.
 //
 // - securityPolicy: Name of the security policy to update.
 func (r *OrganizationSecurityPoliciesService) AddAssociation(securityPolicy string, securitypolicyassociation *SecurityPolicyAssociation) *OrganizationSecurityPoliciesAddAssociationCall {
@@ -67151,6 +67155,12 @@ type OrganizationSecurityPoliciesAddRuleCall struct {
 
 // AddRule: Inserts a rule into a security policy.
 //
+// Use this API to modify Cloud Armor policies. Previously, alpha and
+// beta
+// versions of this API were used to modify firewall policies. This usage
+// is
+// now disabled for most organizations. Use firewallPolicies.addRule instead.
+//
 // - securityPolicy: Name of the security policy to update.
 func (r *OrganizationSecurityPoliciesService) AddRule(securityPolicy string, securitypolicyrule *SecurityPolicyRule) *OrganizationSecurityPoliciesAddRuleCall {
 	c := &OrganizationSecurityPoliciesAddRuleCall{s: r.s, urlParams_: make(gensupport.URLParams)}
@@ -67275,9 +67285,13 @@ type OrganizationSecurityPoliciesCopyRulesCall struct {
 
 // CopyRules: Copies rules to the specified security policy.
 //
-// Use of this API to modify firewall policies is deprecated.
-// Use
-// firewallPolicies.copyRules instead.
+// Use this API to modify Cloud Armor policies. Previously, alpha and
+// beta
+// versions of this API were used to modify firewall policies. This usage
+// is
+// now disabled for most organizations. Use
+// firewallPolicies.cloneRules
+// instead.
 //
 // - securityPolicy: Name of the security policy to update.
 func (r *OrganizationSecurityPoliciesService) CopyRules(securityPolicy string) *OrganizationSecurityPoliciesCopyRulesCall {
@@ -67405,9 +67419,11 @@ type OrganizationSecurityPoliciesDeleteCall struct {
 
 // Delete: Deletes the specified policy.
 //
-// Use of this API to remove firewall policies is deprecated.
-// Use
-// firewallPolicies.delete instead.
+// Use this API to remove Cloud Armor policies. Previously, alpha and
+// beta
+// versions of this API were used to remove firewall policies. This usage
+// is
+// now disabled for most organizations. Use firewallPolicies.delete instead.
 //
 // - securityPolicy: Name of the security policy to delete.
 func (r *OrganizationSecurityPoliciesService) Delete(securityPolicy string) *OrganizationSecurityPoliciesDeleteCall {
@@ -67530,9 +67546,11 @@ type OrganizationSecurityPoliciesGetCall struct {
 // Get: List all of the ordered rules present in a single specified
 // policy.
 //
-// Use of this API to read firewall policies is deprecated.
-// Use
-// firewallPolicies.get instead.
+// Use this API to read Cloud Armor policies. Previously, alpha and
+// beta
+// versions of this API were used to read firewall policies. This usage is
+// now
+// disabled for most organizations. Use firewallPolicies.get instead.
 //
 // - securityPolicy: Name of the security policy to get.
 func (r *OrganizationSecurityPoliciesService) Get(securityPolicy string) *OrganizationSecurityPoliciesGetCall {
@@ -67643,9 +67661,12 @@ type OrganizationSecurityPoliciesGetAssociationCall struct {
 
 // GetAssociation: Gets an association with the specified name.
 //
-// Use of this API to read firewall policies is deprecated.
-// Use
-// firewallPolicies.getAssociation instead if possible.
+// Use this API to read Cloud Armor policies. Previously, alpha and
+// beta
+// versions of this API were used to read firewall policies. This usage is
+// now disabled for most organizations. Use
+// firewallPolicies.getAssociation
+// instead.
 //
 //   - securityPolicy: Name of the security policy to which the queried rule
 //     belongs.
@@ -67765,9 +67786,11 @@ type OrganizationSecurityPoliciesGetRuleCall struct {
 
 // GetRule: Gets a rule at the specified priority.
 //
-// Use of this API to read firewall policies is deprecated.
-// Use
-// firewallPolicies.getRule instead.
+// Use this API to read Cloud Armor policies. Previously, alpha and
+// beta
+// versions of this API were used to read firewall policies. This usage is
+// now
+// disabled for most organizations. Use firewallPolicies.getRule instead.
 //
 //   - securityPolicy: Name of the security policy to which the queried rule
 //     belongs.
@@ -67888,9 +67911,11 @@ type OrganizationSecurityPoliciesInsertCall struct {
 // included
 // in the request.
 //
-// Use of this API to insert firewall policies is deprecated.
-// Use
-// firewallPolicies.insert instead.
+// Use this API to add Cloud Armor policies. Previously, alpha and
+// beta
+// versions of this API were used to add firewall policies. This usage is
+// now
+// disabled for most organizations. Use firewallPolicies.insert instead.
 func (r *OrganizationSecurityPoliciesService) Insert(securitypolicy *SecurityPolicy) *OrganizationSecurityPoliciesInsertCall {
 	c := &OrganizationSecurityPoliciesInsertCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.securitypolicy = securitypolicy
@@ -68021,9 +68046,11 @@ type OrganizationSecurityPoliciesListCall struct {
 // specified
 // organization.
 //
-// Use of this API to read firewall policies is deprecated.
-// Use
-// firewallPolicies.list instead.
+// Use this API to read Cloud Armor policies. Previously, alpha and
+// beta
+// versions of this API were used to read firewall policies. This usage is
+// now
+// disabled for most organizations. Use firewallPolicies.list instead.
 func (r *OrganizationSecurityPoliciesService) List() *OrganizationSecurityPoliciesListCall {
 	c := &OrganizationSecurityPoliciesListCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	return c
@@ -68284,9 +68311,12 @@ type OrganizationSecurityPoliciesListAssociationsCall struct {
 // ListAssociations: Lists associations of a specified target, i.e.,
 // organization or folder.
 //
-// Use of this API to read firewall policies is deprecated.
-// Use
-// firewallPolicies.listAssociations instead if possible.
+// Use this API to read Cloud Armor policies. Previously, alpha and
+// beta
+// versions of this API were used to read firewall policies. This usage is
+// now disabled for most organizations. Use
+// firewallPolicies.listAssociations
+// instead.
 func (r *OrganizationSecurityPoliciesService) ListAssociations() *OrganizationSecurityPoliciesListAssociationsCall {
 	c := &OrganizationSecurityPoliciesListAssociationsCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	return c
@@ -68638,9 +68668,11 @@ type OrganizationSecurityPoliciesMoveCall struct {
 
 // Move: Moves the specified security policy.
 //
-// Use of this API to modify firewall policies is deprecated.
-// Use
-// firewallPolicies.move instead.
+// Use this API to modify Cloud Armor policies. Previously, alpha and
+// beta
+// versions of this API were used to modify firewall policies. This usage
+// is
+// now disabled for most organizations. Use firewallPolicies.move instead.
 //
 // - securityPolicy: Name of the security policy to update.
 func (r *OrganizationSecurityPoliciesService) Move(securityPolicy string) *OrganizationSecurityPoliciesMoveCall {
@@ -68770,9 +68802,11 @@ type OrganizationSecurityPoliciesPatchCall struct {
 // Patch: Patches the specified policy with the data included in the
 // request.
 //
-// Use of this API to modify firewall policies is deprecated.
-// Use
-// firewallPolicies.patch instead.
+// Use this API to modify Cloud Armor policies. Previously, alpha and
+// beta
+// versions of this API were used to modify firewall policies. This usage
+// is
+// now disabled for most organizations. Use firewallPolicies.patch instead.
 //
 // - securityPolicy: Name of the security policy to update.
 func (r *OrganizationSecurityPoliciesService) Patch(securityPolicy string, securitypolicy *SecurityPolicy) *OrganizationSecurityPoliciesPatchCall {
@@ -68899,9 +68933,12 @@ type OrganizationSecurityPoliciesPatchRuleCall struct {
 
 // PatchRule: Patches a rule at the specified priority.
 //
-// Use of this API to modify firewall policies is deprecated.
-// Use
-// firewallPolicies.patchRule instead.
+// Use this API to modify Cloud Armor policies. Previously, alpha and
+// beta
+// versions of this API were used to modify firewall policies. This usage
+// is
+// now disabled for most organizations. Use firewallPolicies.patchRule
+// instead.
 //
 // - securityPolicy: Name of the security policy to update.
 func (r *OrganizationSecurityPoliciesService) PatchRule(securityPolicy string, securitypolicyrule *SecurityPolicyRule) *OrganizationSecurityPoliciesPatchRuleCall {
@@ -69035,9 +69072,13 @@ type OrganizationSecurityPoliciesRemoveAssociationCall struct {
 // RemoveAssociation: Removes an association for the specified security
 // policy.
 //
-// Use of this API to modify firewall policies is deprecated.
-// Use
-// firewallPolicies.removeAssociation instead if possible.
+// Use this API to modify Cloud Armor policies. Previously, alpha and
+// beta
+// versions of this API were used to modify firewall policies. This usage
+// is
+// now disabled for most organizations. Use
+// firewallPolicies.removeAssociation
+// instead.
 //
 // - securityPolicy: Name of the security policy to update.
 func (r *OrganizationSecurityPoliciesService) RemoveAssociation(securityPolicy string) *OrganizationSecurityPoliciesRemoveAssociationCall {
@@ -69164,6 +69205,14 @@ type OrganizationSecurityPoliciesRemoveRuleCall struct {
 }
 
 // RemoveRule: Deletes a rule at the specified priority.
+//
+// Use this API to modify Cloud Armor policies. Previously, alpha and
+// beta
+// versions of this API were used to modify firewall policies. This usage
+// is
+// now disabled for most organizations. Use
+// firewallPolicies.removeRule
+// instead.
 //
 // - securityPolicy: Name of the security policy to update.
 func (r *OrganizationSecurityPoliciesService) RemoveRule(securityPolicy string) *OrganizationSecurityPoliciesRemoveRuleCall {
