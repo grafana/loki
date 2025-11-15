@@ -45,3 +45,18 @@ gateway priority class name
 priorityClassName: {{ $pcn }}
 {{- end }}
 {{- end }}
+
+{{/*
+gateway kube-rbac-proxy config fullname
+*/}}
+{{- define "loki.gatewayKubeRBACProxyConfigFullname" -}}
+{{ include "loki.fullname" . }}-rbac-config
+{{- end }}
+
+{{/*
+gateway kube-rbac-proxy Docker image
+*/}}
+{{- define "loki.gatewayKubeRBACProxyImage" -}}
+{{- $dict := dict "service" .Values.gateway.kubeRBACProxy.image "global" .Values.global.image -}}
+{{- include "loki.baseImage" $dict -}}
+{{- end }}
