@@ -9797,6 +9797,7 @@ type Commitment struct {
 	//   "GENERAL_PURPOSE_N2"
 	//   "GENERAL_PURPOSE_N2D"
 	//   "GENERAL_PURPOSE_N4"
+	//   "GENERAL_PURPOSE_N4D"
 	//   "GENERAL_PURPOSE_T2D"
 	//   "GRAPHICS_OPTIMIZED"
 	//   "MEMORY_OPTIMIZED"
@@ -20028,7 +20029,7 @@ type HttpHeaderMatch struct {
 	// rangeMatch must be set.
 	//
 	// Regular expressions can only be used when the loadBalancingScheme is
-	// set to INTERNAL_SELF_MANAGED.
+	// set to INTERNAL_SELF_MANAGED, EXTERNAL_MANAGED orINTERNAL_MANAGED.
 	RegexMatch string `json:"regexMatch,omitempty"`
 	// SuffixMatch: The value of the header must end with the contents
 	// ofsuffixMatch.
@@ -20382,7 +20383,7 @@ type HttpQueryParameterMatch struct {
 	// Only one of presentMatch, exactMatch, orregexMatch must be set.
 	//
 	// Regular expressions can only be used when the loadBalancingScheme is
-	// set to INTERNAL_SELF_MANAGED.
+	// set to INTERNAL_SELF_MANAGED, EXTERNAL_MANAGED orINTERNAL_MANAGED.
 	RegexMatch string `json:"regexMatch,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "ExactMatch") to
 	// unconditionally include in API requests. By default, fields with empty or
@@ -20850,7 +20851,8 @@ type HttpRouteRuleMatch struct {
 	//
 	// fullPathMatch must be from 1 to 1024 characters.
 	//
-	// Only one of prefixMatch, fullPathMatch or regexMatch must be
+	// Only one of prefixMatch, fullPathMatch,regexMatch or path_template_match
+	// must be
 	// specified.
 	FullPathMatch string `json:"fullPathMatch,omitempty"`
 	// HeaderMatches: Specifies a list of header match criteria, all of which must
@@ -20914,7 +20916,9 @@ type HttpRouteRuleMatch struct {
 	//
 	// The value must be from 1 to 1024 characters.
 	//
-	// Only one of prefixMatch, fullPathMatch or regexMatch must be
+	// Only one of prefixMatch, fullPathMatch,regexMatch or path_template_match
+	// must be
+	// specified.
 	// specified.
 	PrefixMatch string `json:"prefixMatch,omitempty"`
 	// QueryParameterMatches: Specifies a list of query parameter match criteria,
@@ -20929,12 +20933,12 @@ type HttpRouteRuleMatch struct {
 	// supplied with the original URL. For
 	// more information about regular expression syntax, see Syntax.
 	//
-	// Only one of prefixMatch, fullPathMatch orregexMatch must
-	// be
+	// Only one of prefixMatch, fullPathMatch,regexMatch or path_template_match
+	// must be
 	// specified.
 	//
 	// Regular expressions can only be used when the loadBalancingScheme is
-	// set to INTERNAL_SELF_MANAGED.
+	// set to INTERNAL_SELF_MANAGED, EXTERNAL_MANAGED orINTERNAL_MANAGED.
 	RegexMatch string `json:"regexMatch,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "FullPathMatch") to
 	// unconditionally include in API requests. By default, fields with empty or
@@ -56544,7 +56548,9 @@ type SecurityPolicy struct {
 	// be a dash, lowercase letter, or digit, except the last character,
 	// which
 	// cannot be a dash.
-	Name                   string                                `json:"name,omitempty"`
+	Name string `json:"name,omitempty"`
+	// Parent: [Output Only] The parent of the security policy.
+	Parent                 string                                `json:"parent,omitempty"`
 	RecaptchaOptionsConfig *SecurityPolicyRecaptchaOptionsConfig `json:"recaptchaOptionsConfig,omitempty"`
 	// Region: [Output Only] URL of the region where the regional security
 	// policy
