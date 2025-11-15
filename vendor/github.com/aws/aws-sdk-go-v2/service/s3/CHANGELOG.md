@@ -1,3 +1,7 @@
+# v1.90.0 (2025-11-05)
+
+* **Feature**: Launch IPv6 dual-stack support for S3 Express
+
 # v1.89.2 (2025-11-04)
 
 * **Dependency Update**: Updated to the latest SDK module versions

@@ -18,13 +18,13 @@ import (
 
 // CSVToArrow converts a CSV string to an Arrow record based on the provided schema.
 // It uses the Arrow CSV reader for parsing.
-func CSVToArrow(fields []arrow.Field, csvData string) (arrow.Record, error) {
+func CSVToArrow(fields []arrow.Field, csvData string) (arrow.RecordBatch, error) {
 	return CSVToArrowWithAllocator(memory.NewGoAllocator(), fields, csvData)
 }
 
 // CSVToArrowWithAllocator converts a CSV string to an Arrow record based on the provided schema
 // using the specified memory allocator. It reads all rows from the CSV into a single record.
-func CSVToArrowWithAllocator(allocator memory.Allocator, fields []arrow.Field, csvData string) (arrow.Record, error) {
+func CSVToArrowWithAllocator(allocator memory.Allocator, fields []arrow.Field, csvData string) (arrow.RecordBatch, error) {
 	// first, trim the csvData to remove any preceding and trailing whitespace/line breaks
 	csvData = strings.TrimSpace(csvData)
 
@@ -46,7 +46,7 @@ func CSVToArrowWithAllocator(allocator memory.Allocator, fields []arrow.Field, c
 		return nil, errors.New("failed to read CSV data")
 	}
 
-	return reader.Record(), nil
+	return reader.RecordBatch(), nil
 }
 
 func TestCSVPipeline(t *testing.T) {
@@ -113,7 +113,7 @@ func (i *instrumentedPipeline) Close() {
 }
 
 // Read implements Pipeline.
-func (i *instrumentedPipeline) Read(ctx context.Context) (arrow.Record, error) {
+func (i *instrumentedPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	i.callCount["Read"]++
 	return i.inner.Read(ctx)
 }
@@ -133,7 +133,7 @@ func Test_prefetchWrapper_Read(t *testing.T) {
 		{"message": "log line 5"},
 	}
 
-	records := []arrow.Record{
+	records := []arrow.RecordBatch{
 		batch1.Record(memory.DefaultAllocator, batch1.Schema()),
 		batch2.Record(memory.DefaultAllocator, batch2.Schema()),
 		batch3.Record(memory.DefaultAllocator, batch3.Schema()),

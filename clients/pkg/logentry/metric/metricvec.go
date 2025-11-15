@@ -65,7 +65,7 @@ func cleanLabels(set model.LabelSet) model.LabelSet {
 	for k, v := range set {
 		// Performing the same label validity check the prometheus go client library does.
 		// https://github.com/prometheus/client_golang/blob/618194de6ad3db637313666104533639011b470d/prometheus/labels.go#L85
-		if !k.IsValid() || strings.HasPrefix(string(k), "__") {
+		if !model.UTF8Validation.IsValidLabelName(string(k)) || strings.HasPrefix(string(k), "__") {
 			continue
 		}
 		out[k] = v

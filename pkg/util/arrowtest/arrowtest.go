@@ -97,11 +97,11 @@ func determineDatatype(value any) arrow.DataType {
 	}
 }
 
-// Record converts rows into an [arrow.Record] with the provided schema. A
+// Record converts rows into an [arrow.RecordBatch] with the provided schema. A
 // schema can be inferred from rows by using [Rows.Schema].
 //
 // Record panics if schema references a column not found in one of the rows.
-func (rows Rows) Record(alloc memory.Allocator, schema *arrow.Schema) arrow.Record {
+func (rows Rows) Record(alloc memory.Allocator, schema *arrow.Schema) arrow.RecordBatch {
 	builder := array.NewRecordBuilder(alloc, schema)
 
 	for i := range schema.NumFields() {
@@ -136,16 +136,16 @@ func (rows Rows) Record(alloc memory.Allocator, schema *arrow.Schema) arrow.Reco
 		}
 	}
 
-	return builder.NewRecord()
+	return builder.NewRecordBatch()
 }
 
-// RecordRows converts an [arrow.Record] into [Rows] for comparison in tests.
+// RecordRows converts an [arrow.RecordBatch] into [Rows] for comparison in tests.
 // RecordRows requires all columns in the record to have a unique name.
 //
 // All values are converted to their direct Go equivalents.
 //
 // Callers building expected [Rows] must use the same functions.
-func RecordRows(rec arrow.Record) (Rows, error) {
+func RecordRows(rec arrow.RecordBatch) (Rows, error) {
 	rows := make(Rows, rec.NumRows())
 
 	for i := range int(rec.NumRows()) {
@@ -179,7 +179,7 @@ func getArrayValue(arr arrow.Array, index int) any {
 }
 
 // TableRows concatenates all chunks of the [arrow.Table] into a single
-// [arrow.Record], and then returns it as [Rows]. TableRows requires all
+// [arrow.RecordBactch], and then returns it as [Rows]. TableRows requires all
 // columns in the table to have a unique name.
 //
 // See [RecordRows] for specifies on how values are converted into Go values
@@ -194,8 +194,8 @@ func TableRows(alloc memory.Allocator, table arrow.Table) (Rows, error) {
 }
 
 // mergeTable merges all chunks in an [arrow.Table] into a single
-// [arrow.Record].
-func mergeTable(alloc memory.Allocator, table arrow.Table) (arrow.Record, error) {
+// [arrow.RecordBatch].
+func mergeTable(alloc memory.Allocator, table arrow.Table) (arrow.RecordBatch, error) {
 	recordColumns := make([]arrow.Array, table.NumCols())
 
 	for i := range int(table.NumCols()) {
@@ -206,5 +206,5 @@ func mergeTable(alloc memory.Allocator, table arrow.Table) (arrow.Record, error)
 		recordColumns[i] = column
 	}
 
-	return array.NewRecord(table.Schema(), recordColumns, table.NumRows()), nil
+	return array.NewRecordBatch(table.Schema(), recordColumns, table.NumRows()), nil
 }

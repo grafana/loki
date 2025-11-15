@@ -16,11 +16,11 @@ func newExpressionEvaluator() expressionEvaluator {
 	return expressionEvaluator{}
 }
 
-func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) (arrow.Array, error) {
+func (e expressionEvaluator) eval(expr physical.Expression, input arrow.RecordBatch) (arrow.Array, error) {
 	switch expr := expr.(type) {
 
 	case *physical.LiteralExpr:
-		return NewScalar(expr.Literal, int(input.NumRows())), nil
+		return NewScalar(expr.Literal(), int(input.NumRows())), nil
 
 	case *physical.ColumnExpr:
 		colIdent := semconv.NewIdentifier(expr.Ref.Column, expr.Ref.Type, types.Loki.String)
@@ -146,12 +146,12 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 
 // newFunc returns a new function that can evaluate an input against a binded expression.
 func (e expressionEvaluator) newFunc(expr physical.Expression) evalFunc {
-	return func(input arrow.Record) (arrow.Array, error) {
+	return func(input arrow.RecordBatch) (arrow.Array, error) {
 		return e.eval(expr, input)
 	}
 }
 
-type evalFunc func(input arrow.Record) (arrow.Array, error)
+type evalFunc func(input arrow.RecordBatch) (arrow.Array, error)
 
 type columnWithType struct {
 	col arrow.Array

@@ -46,7 +46,7 @@ func Refresh(ctx context.Context, k k8s.Client, req ctrl.Request, now time.Time,
 		stack.Status.Components = *cs
 		stack.Status.Conditions = mergeConditions(stack.Status.Conditions, activeConditions, metaTime)
 		stack.Status.Storage.CredentialMode = statusInfo.Storage
-		stack.Status.NetworkPolicies = statusInfo.NetworkPolicies
+		stack.Status.NetworkPolicyRuleSet = statusInfo.NetworkPolicies
 	}
 
 	statusUpdater(&stack)

@@ -335,7 +335,7 @@ func (w *WALCheckpointWriter) Advance() (bool, error) {
 	// we can start from that particular WAL segment.
 	checkpointDir := filepath.Join(w.segmentWAL.Dir(), fmt.Sprintf(checkpointPrefix+"%06d", lastSegment))
 	level.Info(util_log.Logger).Log("msg", "attempting checkpoint for", "dir", checkpointDir)
-	checkpointDirTemp := checkpointDir + ".tmp"
+	checkpointDirTemp := checkpointDir + checkpointTmpSuffix
 
 	// cleanup any old partial checkpoints (not just the current one)
 	cleanupStaleTmpCheckpoints(w.segmentWAL.Dir(), util_log.Logger)
@@ -396,8 +396,9 @@ func (w *WALCheckpointWriter) flush() error {
 }
 
 const checkpointPrefix = "checkpoint."
+const checkpointTmpSuffix = ".tmp"
 
-var checkpointRe = regexp.MustCompile("^" + regexp.QuoteMeta(checkpointPrefix) + "(\\d+)(\\.tmp)?$")
+var checkpointRe = regexp.MustCompile("^" + regexp.QuoteMeta(checkpointPrefix) + "(\\d+)(" + regexp.QuoteMeta(checkpointTmpSuffix) + ")?$")
 
 // checkpointIndex returns the index of a given checkpoint file. It handles
 // both regular and temporary checkpoints according to the includeTmp flag. If
@@ -565,7 +566,7 @@ func cleanupStaleTmpCheckpoints(dir string, logger log.Logger) {
 		// Check if this is a .tmp checkpoint directory
 		if _, tmpErr := checkpointIndex(fi.Name(), true); tmpErr == nil && fi.IsDir() {
 			// Only delete if it actually has the .tmp suffix
-			if filepath.Ext(fi.Name()) == ".tmp" {
+			if filepath.Ext(fi.Name()) == checkpointTmpSuffix {
 				tmpPath := filepath.Join(dir, fi.Name())
 				if err := os.RemoveAll(tmpPath); err != nil {
 					level.Error(logger).Log("msg", "unable to cleanup stale tmp checkpoint, this is not expected and could lead to disk space exhaustion and may indicate disk I/O problems or corruption and should be investigated manually", "dir", tmpPath, "err", err)

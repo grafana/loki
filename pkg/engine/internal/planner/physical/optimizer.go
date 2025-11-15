@@ -383,7 +383,7 @@ func (r *projectionPushdown) handleParse(expr *VariadicExpr, projections []Colum
 	requestedKeys := make(map[string]bool)
 
 	// Handle both null and string list literals for requested keys
-	switch keys := exprs.requestedKeysExpr.Literal.(type) {
+	switch keys := exprs.requestedKeysExpr.Literal().(type) {
 	case types.StringListLiteral:
 		for _, k := range keys {
 			requestedKeys[k] = true
@@ -413,7 +413,7 @@ func (r *projectionPushdown) handleParse(expr *VariadicExpr, projections []Colum
 		// Convert back to sorted slice
 		newKeys := slices.Collect(maps.Keys(requestedKeys))
 		sort.Strings(newKeys)
-		exprs.requestedKeysExpr.Literal = types.NewLiteral(newKeys)
+		exprs.requestedKeysExpr = NewLiteral(newKeys)
 	}
 
 	expr.Expressions = exprs.Pack(expr.Expressions)

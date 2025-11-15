@@ -214,6 +214,12 @@ func GetConsumer(ctx context.Context, client *gophercloud.ServiceClient, id stri
 	return
 }
 
+// UpdateConsumerOptsBuilder allows extensions to add additional parameters to the
+// UpdateConsumer request.
+type UpdateConsumerOptsBuilder interface {
+	ToOAuth1UpdateConsumerMap() (map[string]any, error)
+}
+
 // UpdateConsumerOpts provides options used to update a consumer.
 type UpdateConsumerOpts struct {
 	// Description is the consumer description.
@@ -227,7 +233,7 @@ func (opts UpdateConsumerOpts) ToOAuth1UpdateConsumerMap() (map[string]any, erro
 }
 
 // UpdateConsumer updates an existing Consumer.
-func UpdateConsumer(ctx context.Context, client *gophercloud.ServiceClient, id string, opts UpdateConsumerOpts) (r UpdateConsumerResult) {
+func UpdateConsumer(ctx context.Context, client *gophercloud.ServiceClient, id string, opts UpdateConsumerOptsBuilder) (r UpdateConsumerResult) {
 	b, err := opts.ToOAuth1UpdateConsumerMap()
 	if err != nil {
 		r.Err = err

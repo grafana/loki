@@ -9,8 +9,7 @@ import (
 	"github.com/grafana/dskit/backoff"
 	"github.com/pkg/errors"
 
-	//nolint:staticcheck // ignore SA1019 - promtail is deprecated
-	"cloud.google.com/go/pubsub"
+	"cloud.google.com/go/pubsub/v2"
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"

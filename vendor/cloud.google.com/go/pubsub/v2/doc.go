@@ -18,8 +18,7 @@ messages, hiding the details of the underlying server RPCs.
 Pub/Sub is a many-to-many, asynchronous messaging system that decouples senders
 and receivers.
 
-If you are migrating from the v1 library, follow the migration guide
-for a faster way of using this version
+If you are migrating from the v1 library, please read over the migration guide:
 https://github.com/googleapis/google-cloud-go/blob/main/pubsub/MIGRATING.md
 
 More information about Pub/Sub is available at
@@ -96,10 +95,10 @@ Once client code has processed the [Message], it must call Message.Ack or
 Message.Nack. If Ack is not called, the Message will eventually be redelivered. Ack/Nack
 MUST be called within the [Subscriber.Receive] handler function, and not from a goroutine.
 Otherwise, flow control (e.g. ReceiveSettings.MaxOutstandingMessages) will
-not be respected, and messages can get orphaned when cancelling Receive, and
-redelivered slowly.
+not be respected. Additionally, messages can get orphaned when Receive is canceled,
+resulting in slow redelivery.
 
-If the client cannot or doesn't want to process the message, it can call Message.Nack
+If the client cannot or does not want to process the message, it can call Message.Nack
 to speed redelivery. For more information and configuration options, see
 Ack Deadlines below.
 
@@ -108,32 +107,31 @@ been called unless exactly once delivery is enabled. Applications should be awar
 of these deliveries.
 
 Note: This uses pubsub's streaming pull feature. This feature has properties that
-may be surprising. Please take a look at https://cloud.google.com/pubsub/docs/pull#streamingpull
-for more details on how streaming pull behaves compared to the synchronous
-pull method.
+may be surprising. Please refer to https://cloud.google.com/pubsub/docs/pull#streamingpull
+for more details on how streaming pull behaves.
 
-# Streams Management
+# Emulator
 
-The number of StreamingPull connections can be configured by setting NumGoroutines in [ReceiveSettings].
-The default value of 1 means the client library will maintain 1 StreamingPull connection.
-This is more than sufficient for most use cases, as StreamingPull connections can handle up to
-10 MB/s https://cloud.google.com/pubsub/quotas#resource_limits. In some cases, using too many streams
-can lead to client library behaving poorly as the application becomes I/O bound.
+To use an emulator with this library, you can set the PUBSUB_EMULATOR_HOST
+environment variable to the address at which your emulator is running. This will
+send requests to that address instead of to Pub/Sub. You can then create
+and use a client as usual:
 
-By default, the number of connections in the gRPC conn pool is min(4,GOMAXPROCS). Each connection supports
-up to 100 streams. Thus, if you have 4 or more CPU cores, the default setting allows a maximum of 400 streams
-which is already excessive for most use cases.
-If you want to change the limits on the number of streams, you can change the number of connections
-in the gRPC connection pool as shown below:
-
-	opts := []option.ClientOption{
-		option.WithGRPCConnectionPool(2),
+	// Set PUBSUB_EMULATOR_HOST environment variable.
+	err := os.Setenv("PUBSUB_EMULATOR_HOST", "localhost:8085")
+	if err != nil {
+		// TODO: Handle error.
 	}
-	client, err := pubsub.NewClient(ctx, projID, opts...)
+	// Create client as usual.
+	client, err := pubsub.NewClient(ctx, "my-project-id")
+	if err != nil {
+		// TODO: Handle error.
+	}
+	defer client.Close()
 
 # Ack Deadlines
 
-The default pubsub deadlines are suitable for most use cases, but may be
+The default ack deadlines are suitable for most use cases, but may be
 overridden. This section describes the tradeoffs that should be considered
 when overriding the defaults.
 
@@ -164,32 +162,105 @@ minutes, every 3 minutes. Suppose the application crashes 5 seconds after the
 library sends such an extension: the Pub/Sub server would wait the remaining
 2m55s before re-sending the messages out to other subscribers.
 
-Please note that by default, the client library does not use the subscription's
+Please note that the client library does not use the subscription's
 AckDeadline for the MaxExtension value.
 
-# Slow Message Processing
+# Fine Tuning PubSub Receive Performance
 
-Since long-lived streams are periodically killed by firewalls, we recommend
-avoiding message processing that takes longer than 30 minutes. Otherwise,
-you are more likely to experience message redeliveries.
+As the PubSub client receives messages from the PubSub server, it puts them into
+the callback function passed to Receive. The user must Ack or Nack a message
+in this function. Each invocation by the client of the passed-in callback occurs
+in a goroutine; that is, messages are processed concurrently.
 
-# Emulator
+The buffer holds a maximum of MaxOutstandingMessages messages or MaxOutstandingBytes
+bytes, and the client stops requesting more messages from the server whenever the buffer
+is full. Messages in the buffer have an ack deadline; that is, the server keeps a
+deadline for each outstanding message. When that deadline expires, the server considers
+the message lost and redelivers the message. Each message in the buffer automatically has
+its deadline periodically extended. If a message is held beyond its deadline,
+for example if your program hangs, the message will be redelivered.
 
-To use an emulator with this library, you can set the PUBSUB_EMULATOR_HOST
-environment variable to the address at which your emulator is running. This will
-send requests to that address instead of to Pub/Sub. You can then create
-and use a client as usual:
+This medium post describes tuning Pub/Sub performance in more detail
+https://medium.com/google-cloud/pub-sub-flow-control-batching-9ba9a75bce3b
 
-	// Set PUBSUB_EMULATOR_HOST environment variable.
-	err := os.Setenv("PUBSUB_EMULATOR_HOST", "localhost:9000")
-	if err != nil {
-		// TODO: Handle error.
-	}
-	// Create client as usual.
-	client, err := pubsub.NewClient(ctx, "my-project-id")
-	if err != nil {
-		// TODO: Handle error.
-	}
-	defer client.Close()
+- Subscription.ReceiveSettings.MaxExtension
+
+This is the maximum amount of time that the client will extend a message's deadline.
+This value should be set to the maximum expected processing time, plus some
+buffer. It is fairly safe to set it quite high; the only downside is that it will take
+longer to recover from hanging programs. The higher the extension allowed, the longer
+it takes before the server considers messages lost and re-sends them to some
+other, healthy instance of your application.
+
+- Subscription.ReceiveSettings.MaxDurationPerAckExtension
+
+This is the maximum amount of time to extend each message's deadline per
+ModifyAckDeadline RPC. Normally, the deadline is determined by the 99th percentile
+of previous message processing times. However, if normal processing time takes 10 minutes
+but an error occurs while processing a message within 1 minute, a message will be
+stuck and held by the client for the remaining 9 minutes. By setting the maximum amount
+of time to extend a message's deadline on a per-RPC basis, you can decrease the amount
+of time before message redelivery when errors occur. However, the downside is that more
+ModifyAckDeadline RPCs will be sent.
+
+- Subscription.ReceiveSettings.MinDurationPerAckExtension
+
+This is the minimum amount of time to extend each message's deadline per
+ModifyAckDeadline RPC. This is the complement setting of MaxDurationPerAckExtension and
+represents the lower bound of modack deadlines to send. If processing time is very
+low, it may be better to issue fewer ModifyAckDeadline RPCs rather than every
+10 seconds. Setting both Min/MaxDurationPerAckExtension to the same value
+effectively removes the automatic derivation of deadlines and fixes it to the value
+you wish to extend your messages' deadlines by each time.
+
+- Subscription.ReceiveSettings.MaxOutstandingMessages
+
+This is the maximum number of messages that are to be processed by the callback
+function at a time. Once this limit is reached, the client waits for messages
+to be acked or nacked by the callback before requesting more messages from the server.
+
+This value is set by default to a fairly conservatively low number. We strongly
+encourage setting this number as high as memory allows, since a low setting will
+artificially rate limit reception. Setting this value to -1 causes it to be unbounded.
+
+- Subscription.ReceiveSettings.MaxOutstandingBytes
+
+This is the maximum amount of bytes (message size) that are to be processed by
+the callback function at a time. Once this limit is reached, the client waits
+for messages to be acked or nacked by the callback before requesting more
+messages from the server.
+
+Note that there sometimes can be more bytes pulled and being processed than
+MaxOutstandingBytes allows. This is due to the fact that the server
+does not consider byte size when tracking server-side flow control.
+For example, if the client sets MaxOutstandingBytes to 50 KiB, but receives
+a batch of messages totaling 100 KiB, there will be a temporary overflow of
+message byte size until messages are acked.
+
+Similar to MaxOutstandingMessages, we recommend setting this higher to maximize
+processing throughput. Setting this value to -1 causes it to be unbounded.
+
+- Subscription.ReceiveSettings.NumGoroutines
+
+This is the number of goroutines spawned to receive messages from the Pubsub server,
+where each goroutine opens a StreamingPull stream. This setting affects the rate of
+message intake from server to local buffer.
+
+Setting this value to 1 is sufficient for many workloads. Each stream can handle about
+10 MB/s of messages, so if your throughput is under this, set NumGoroutines=1.
+Reducing the number of streams can improve the performance by decreasing overhead.
+Currently, there is an issue where setting NumGoroutines greater than 1 results in poor
+behavior interacting with flow control. Since each StreamingPull stream has its own flow
+control, the server-side flow control will not match what is available locally.
+
+Going above 100 streams can lead to increasingly poor behavior, such as acks/modacks not
+succeeding in a reasonable amount of time, leading to message expiration. In these cases,
+we recommend horizontally scaling by increasing the number of subscriber client applications.
+
+# General tips
+
+Each application should use a single PubSub client instead of creating many.
+In addition, when publishing to a single topic, a publisher should be instantiated
+once and reused to take advantage of flow control and batching capabilities.
 */
 package pubsub // import "cloud.google.com/go/pubsub/v2"

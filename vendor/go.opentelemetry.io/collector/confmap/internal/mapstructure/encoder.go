@@ -11,7 +11,7 @@ import (
 	"strings"
 
 	"github.com/go-viper/mapstructure/v2"
-	yaml "sigs.k8s.io/yaml/goyaml.v3"
+	yaml "go.yaml.in/yaml/v3"
 )
 
 const (
@@ -225,7 +225,7 @@ func getTagInfo(field reflect.StructField) *tagInfo {
 // for the encoding.TextMarshaler interface and calls the MarshalText
 // function if found.
 func TextMarshalerHookFunc() mapstructure.DecodeHookFuncValue {
-	return func(from reflect.Value, _ reflect.Value) (any, error) {
+	return func(from, _ reflect.Value) (any, error) {
 		marshaler, ok := from.Interface().(encoding.TextMarshaler)
 		if !ok {
 			return from.Interface(), nil
@@ -243,7 +243,7 @@ func TextMarshalerHookFunc() mapstructure.DecodeHookFuncValue {
 // to map[string]any using the yaml package, which respects the yaml tags. Ultimately,
 // this allows mapstructure to later marshal the map[string]any in a generic way.
 func YamlMarshalerHookFunc() mapstructure.DecodeHookFuncValue {
-	return func(from reflect.Value, _ reflect.Value) (any, error) {
+	return func(from, _ reflect.Value) (any, error) {
 		if from.Kind() == reflect.Struct {
 			for i := 0; i < from.NumField(); i++ {
 				if _, ok := from.Type().Field(i).Tag.Lookup("mapstructure"); ok {
