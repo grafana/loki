@@ -15,8 +15,8 @@ Helm chart for Grafana Loki and Grafana Enterprise Logs supporting monolithic, s
 | Repository | Name | Version |
 |------------|------|---------|
 | https://charts.min.io/ | minio(minio) | 5.4.0 |
-| https://grafana.github.io/helm-charts | grafana-agent-operator(grafana-agent-operator) | 0.5.1 |
-| https://grafana.github.io/helm-charts | rollout_operator(rollout-operator) | 0.33.2 |
+| https://grafana.github.io/helm-charts | grafana-agent-operator(grafana-agent-operator) | 0.5.2 |
+| https://grafana.github.io/helm-charts | rollout_operator(rollout-operator) | 0.37.1 |
 
 Find more information in the Loki Helm Chart [documentation](https://grafana.com/docs/loki/latest/setup/install/helm/).
 

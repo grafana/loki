@@ -13,6 +13,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+- [BUGFIX] Add startupProbe to read pod to go around the issue mentioned [here](https://github.com/grafana/loki/issues/15191)
 
 ## 6.46.0
 
