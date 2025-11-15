@@ -12,7 +12,7 @@ Entries should be ordered as follows:
 Entries should include a reference to the pull request that introduced the change.
 
 ## Unreleased
-
+- [ENHANCEMENT] Add support for configuring `volumeAttributesClassName` for `volumeClaimTemplates`. [#15071](https://github.com/grafana/loki/issues/15071)
 
 ## 6.46.0
 

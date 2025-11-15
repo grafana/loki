@@ -203,6 +203,9 @@ spec:
         {{- with .Values.indexGateway.persistence.storageClass }}
         storageClassName: {{ if (eq "-" .) }}""{{ else }}{{ . }}{{ end }}
         {{- end }}
+        {{- with .Values.indexGateway.persistence.volumeAttributesClassName }}
+        volumeAttributesClassName: {{ . }}
+        {{- end }}
         resources:
           requests:
             storage: {{ .Values.indexGateway.persistence.size | quote }}

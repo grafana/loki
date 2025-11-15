@@ -204,6 +204,9 @@ spec:
         {{- with .Values.write.persistence.storageClass }}
         storageClassName: {{ if (eq "-" .) }}""{{ else }}{{ . }}{{ end }}
         {{- end }}
+        {{- with .Values.write.persistence.volumeAttributesClassName }}
+        volumeAttributesClassName: {{ . }}
+        {{- end }}
         resources:
           requests:
             storage: {{ .Values.write.persistence.size | quote }}
