@@ -2,17 +2,11 @@ package xcap
 
 import (
 	"context"
-	"fmt"
-	"sort"
 	"sync"
 	"time"
 
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 )
-
-var xcapTracer = otel.Tracer("pkg/xcap")
 
 // RegionOption applies options to a Region.
 type RegionOption interface {
@@ -38,14 +32,14 @@ func WithRegionAttributes(attrs ...attribute.KeyValue) RegionOption {
 
 // Region captures the lifetime of a specific operation within a capture.
 type Region struct {
-	// span is the OpenTelemetry span backing this region.
-	trace.Span
-
-	// capture is the capture this region belongs to.
-	capture *Capture
-
 	// name is the name of the region.
 	name string
+
+	// identifier of the region.
+	id identifier
+
+	// parentID is the ID of the parent region. Set to zero value if root region.
+	parentID identifier
 
 	// attributes are the attributes associated with this region.
 	attributes []attribute.KeyValue
@@ -67,31 +61,17 @@ type Region struct {
 	ended bool
 }
 
-// NewRegion creates a new Region with the given data.
-// This function is mainly used for unmarshaling from protobuf.
-func NewRegion(name string, startTime, endTime time.Time, observations map[StatisticKey]AggregatedObservation, ended bool, capture *Capture) *Region {
-	return &Region{
-		capture:      capture,
-		name:         name,
-		attributes:   nil, // Attributes not available during unmarshaling
-		startTime:    startTime,
-		endTime:      endTime,
-		observations: observations,
-		ended:        ended,
-	}
-}
-
-// StartRegion starts recording the lifetime of a specific operation
-// within an overall capture.
+// StartRegion creates a new Region to record observations for a specific operation.
+// It returns the new Region and a context containing the Region.
 //
 // It adds the region to the Capture found in the context. If no Capture
 // is found, it returns the original context and a nil region.
 //
-// It also creates a corresponding OpenTelemetry span for the region linking it to
-// the span in the context. The returned context contains the newly created span.
+// If the passed ctx contains a Region, the new Region will be a child of that Region.
 func StartRegion(ctx context.Context, name string, opts ...RegionOption) (context.Context, *Region) {
-	capture := FromContext(ctx)
+	capture := CaptureFromContext(ctx)
 	if capture == nil {
+		// TODO: return noop Region instead of nil?
 		return ctx, nil
 	}
 
@@ -101,28 +81,31 @@ func StartRegion(ctx context.Context, name string, opts ...RegionOption) (contex
 		opt.apply(cfg)
 	}
 
-	// Create OpenTelemetry span for this region.
-	ctx, span := xcapTracer.Start(ctx, name, trace.WithAttributes(cfg.attributes...))
-
-	region := &Region{
-		Span:         span,
-		capture:      capture,
+	r := &Region{
+		id:           NewID(),
 		name:         name,
 		attributes:   cfg.attributes,
 		startTime:    time.Now(),
 		observations: make(map[StatisticKey]AggregatedObservation),
 	}
 
+	// extract parentID from context
+	if pr := regionFromContext(ctx); pr != nil {
+		r.parentID = pr.id
+	}
+
 	// Add region to capture.
-	capture.AddRegion(region)
-	return ctx, region
+	capture.addRegion(r)
+
+	// Update context with the new region.
+	return contextWithRegion(ctx, r), r
 }
 
 // Record records the statistic Observation o into the region. Calling
 // Record multiple times for the same Statistic aggregates values based
 // on the aggregation type of the Statistic.
 func (r *Region) Record(o Observation) {
-	if r.isZero() {
+	if r == nil {
 		return
 	}
 
@@ -151,7 +134,7 @@ func (r *Region) Record(o Observation) {
 
 // End completes the Region. Updates to the Region are ignored after calling End.
 func (r *Region) End() {
-	if r.isZero() {
+	if r == nil {
 		return
 	}
 
@@ -164,121 +147,4 @@ func (r *Region) End() {
 
 	r.endTime = time.Now()
 	r.ended = true
-
-	// Add observations as span attributes before ending
-	if r.Span != nil {
-		attrs := r.observationsToAttributes()
-		if len(attrs) > 0 {
-			r.SetAttributes(attrs...)
-		}
-		r.Span.End()
-	}
-}
-
-// Attributes returns the attributes associated with this region.
-func (r *Region) Attributes() []attribute.KeyValue {
-	if r.isZero() {
-		return nil
-	}
-
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	attrs := make([]attribute.KeyValue, len(r.attributes))
-	copy(attrs, r.attributes)
-	return attrs
-}
-
-// Name returns the name of the region.
-func (r *Region) Name() string {
-	if r.isZero() {
-		return ""
-	}
-
-	return r.name
-}
-
-// StartTime returns when the region was created.
-func (r *Region) StartTime() time.Time {
-	if r.isZero() {
-		return time.Time{}
-	}
-
-	return r.startTime
-}
-
-// EndTime returns when the region ended, or zero if not ended.
-func (r *Region) EndTime() time.Time {
-	if r.isZero() {
-		return time.Time{}
-	}
-
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	return r.endTime
-}
-
-// IsEnded returns whether End() has been called on this region.
-func (r *Region) IsEnded() bool {
-	if r.isZero() {
-		return false
-	}
-
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	return r.ended
-}
-
-// GetObservations returns all observations recorded in this region.
-func (r *Region) GetObservations() []AggregatedObservation {
-	if r.isZero() {
-		return nil
-	}
-
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	result := make([]AggregatedObservation, 0, len(r.observations))
-	for _, obs := range r.observations {
-		result = append(result, obs)
-	}
-
-	// order observations by statistic name
-	sort.Slice(result, func(i, j int) bool {
-		return result[i].Statistic.Name() < result[j].Statistic.Name()
-	})
-
-	return result
-}
-
-// observationsToAttributes converts observations to OpenTelemetry span attributes.
-func (r *Region) observationsToAttributes() []attribute.KeyValue {
-	if len(r.observations) == 0 {
-		return nil
-	}
-
-	attrs := make([]attribute.KeyValue, 0, len(r.observations))
-	for _, obs := range r.observations {
-		attrName := obs.Statistic.Name()
-		switch v := obs.Value.(type) {
-		case int64:
-			attrs = append(attrs, attribute.Int64(attrName, v))
-		case float64:
-			attrs = append(attrs, attribute.Float64(attrName, v))
-		case bool:
-			attrs = append(attrs, attribute.Bool(attrName, v))
-		case string:
-			attrs = append(attrs, attribute.String(attrName, v))
-		default:
-			// Fallback to string representation
-			attrs = append(attrs, attribute.String(attrName, fmt.Sprintf("%v", v)))
-		}
-	}
-	return attrs
-}
-
-func (r *Region) isZero() bool {
-	return r == nil || r.capture == nil
 }
