@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 
@@ -149,7 +150,13 @@ func CreateOrUpdateLokiStack(
 	}
 
 	objects, err := manifests.BuildAll(opts)
-	if err != nil {
+	if errors.Is(err, lokiv1.ErrReplicationFactorTooHigh) {
+		return nil, &status.DegradedError{
+			Message: "Invalid configuration: replication factor should be less than ingester replicas",
+			Reason:  lokiv1.ReasonInvalidReplicationFactor,
+			Requeue: true,
+		}
+	} else if err != nil {
 		ll.Error(err, "failed to build manifests")
 		return nil, err
 	}
