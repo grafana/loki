@@ -47,7 +47,7 @@ spec:
       hostUsers: {{ .hostUsers }}
       {{- end }}
       securityContext:
-        {{- toYaml $.Values.loki.podSecurityContext | nindent 8 }}
+        {{- include "loki.podSecurityContext" $ | nindent 8 }}
       containers:
         - name: loki-canary
           image: {{ include "loki-canary.image" $ }}
