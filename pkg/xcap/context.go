@@ -7,20 +7,36 @@ import (
 type ctxKeyType string
 
 const (
-	xcapKey ctxKeyType = "xcap"
+	captureKey ctxKeyType = "capture"
+	regionKey  ctxKeyType = "region"
 )
 
-// FromContext returns the Capture from the context, or nil if no Capture
+// CaptureFromContext returns the Capture from the context, or nil if no Capture
 // is present.
-func FromContext(ctx context.Context) *Capture {
-	v, ok := ctx.Value(xcapKey).(*Capture)
+func CaptureFromContext(ctx context.Context) *Capture {
+	v, ok := ctx.Value(captureKey).(*Capture)
 	if !ok {
 		return nil
 	}
 	return v
 }
 
-// WithCapture returns a new context with the given Capture.
-func WithCapture(ctx context.Context, capture *Capture) context.Context {
-	return context.WithValue(ctx, xcapKey, capture)
+// contextWithCapture returns a new context with the given Capture.
+func contextWithCapture(ctx context.Context, capture *Capture) context.Context {
+	return context.WithValue(ctx, captureKey, capture)
+}
+
+// regionFromContext returns the current Region from the context, or nil if no Region
+// is present.
+func regionFromContext(ctx context.Context) *Region {
+	v, ok := ctx.Value(regionKey).(*Region)
+	if !ok {
+		return nil
+	}
+	return v
+}
+
+// contextWithRegion returns a new context with the given Region.
+func contextWithRegion(ctx context.Context, region *Region) context.Context {
+	return context.WithValue(ctx, regionKey, region)
 }

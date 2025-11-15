@@ -40,7 +40,7 @@ func NewCapture(ctx context.Context, attributes []attribute.KeyValue) (context.C
 		regions:    make([]*Region, 0),
 	}
 
-	ctx = WithCapture(ctx, capture)
+	ctx = contextWithCapture(ctx, capture)
 	return ctx, capture
 }
 
@@ -57,19 +57,9 @@ func (c *Capture) End() {
 	c.ended = true
 }
 
-// Attributes returns the attributes associated with this capture.
-func (c *Capture) Attributes() []attribute.KeyValue {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	attrs := make([]attribute.KeyValue, len(c.attributes))
-	copy(attrs, c.attributes)
-	return attrs
-}
-
-// AddRegion adds a region to this capture. This is called by Region
+// addRegion adds a region to this capture. This is called by Region
 // when it is created.
-func (c *Capture) AddRegion(r *Region) {
+func (c *Capture) addRegion(r *Region) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -80,19 +70,9 @@ func (c *Capture) AddRegion(r *Region) {
 	c.regions = append(c.regions, r)
 }
 
-// Regions returns all regions in this capture.
-func (c *Capture) Regions() []*Region {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	regions := make([]*Region, len(c.regions))
-	copy(regions, c.regions)
-	return regions
-}
-
 // GetAllStatistics returns statistics used across all regions
 // in this capture.
-func (c *Capture) GetAllStatistics() []Statistic {
+func (c *Capture) getAllStatistics() []Statistic {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
@@ -116,7 +96,11 @@ func (c *Capture) GetAllStatistics() []Statistic {
 	return result
 }
 
-// Merge appends all regions from other into this capture.
+// Merge appends all regions from other into this capture and establishes
+// parent-child relationships. Leaf regions (regions with no children) in other
+// are linked to root regions (regions with no parent) in this capture via parentID.
+// This is used to link regions from different tasks in a workflow DAG.
+// If the parent capture has multiple root regions, the first one (by order) is used.
 func (c *Capture) Merge(other *Capture) {
 	if other == nil {
 		return
@@ -127,5 +111,66 @@ func (c *Capture) Merge(other *Capture) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.regions = append(c.regions, other.Regions()...)
+	other.mu.RLock()
+	otherRegions := make([]*Region, len(other.regions))
+	copy(otherRegions, other.regions)
+	other.mu.RUnlock()
+
+	if len(otherRegions) == 0 {
+		return
+	}
+
+	// Find root regions (regions with no parent) in this capture.
+	rootRegions := make([]*Region, 0)
+	for _, r := range c.regions {
+		r.mu.RLock()
+		isRoot := r.parentID.IsZero()
+		r.mu.RUnlock()
+		if isRoot {
+			rootRegions = append(rootRegions, r)
+		}
+	}
+
+	// Find leaf regions (regions with no children) in other capture.
+	// A region is a leaf if no other region has it as a parent.
+	parentIDs := make(map[ID]bool)
+	for _, r := range otherRegions {
+		r.mu.RLock()
+		parentID := r.parentID
+		r.mu.RUnlock()
+		if !parentID.IsZero() {
+			parentIDs[parentID] = true
+		}
+	}
+
+	leafRegions := make([]*Region, 0)
+	for _, r := range otherRegions {
+		r.mu.RLock()
+		regionID := r.id
+		r.mu.RUnlock()
+		if !parentIDs[regionID] {
+			leafRegions = append(leafRegions, r)
+		}
+	}
+
+	// Link leaf regions from other to root regions in this capture via parentID.
+	// If there are multiple root regions, use the first one (deterministic choice).
+	var parentRootID ID
+	if len(rootRegions) > 0 {
+		rootRegions[0].mu.RLock()
+		parentRootID = rootRegions[0].id
+		rootRegions[0].mu.RUnlock()
+	}
+
+	// Update parentID of leaf regions to point to the parent root region.
+	for _, leaf := range leafRegions {
+		if !parentRootID.IsZero() {
+			leaf.mu.Lock()
+			leaf.parentID = parentRootID
+			leaf.mu.Unlock()
+		}
+	}
+
+	// Append all regions from other capture.
+	c.regions = append(c.regions, otherRegions...)
 }
