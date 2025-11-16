@@ -229,7 +229,9 @@ filesystem:
 Storage config for ruler
 */}}
 {{- define "loki.rulerStorageConfig" -}}
-{{- if .Values.minio.enabled -}}
+{{- if eq .Values.loki.rulerConfig.storage.type "local" -}}
+type: "local"
+{{- else if .Values.minio.enabled -}}
 type: "s3"
 s3:
   bucketnames: ruler
