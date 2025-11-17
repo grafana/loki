@@ -5,6 +5,11 @@ loki:
   storage:
     type: 'filesystem'
   useTestSchema: true
+  rulerConfig:
+    storage:
+      type: local
+      local:
+        directory: /rules
 deploymentMode: SingleBinary
 singleBinary:
   replicas: 1
