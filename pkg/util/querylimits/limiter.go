@@ -2,6 +2,7 @@ package querylimits
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -118,7 +119,13 @@ func (l *Limiter) RequiredNumberLabels(ctx context.Context, userID string) int {
 func (l *Limiter) MaxQueryBytesRead(ctx context.Context, userID string) int {
 	original := l.CombinedLimits.MaxQueryBytesRead(ctx, userID)
 	requestLimits := ExtractQueryLimitsContext(ctx)
+	level.Debug(logutil.WithContext(ctx, l.logger)).Log("msg", "MaxQueryBytesRead", "requestLimits", fmt.Sprintf("%+v", requestLimits))
 	if requestLimits == nil || requestLimits.MaxQueryBytesRead.Val() == 0 || requestLimits.MaxQueryBytesRead.Val() > original {
+		if requestLimits != nil {
+			level.Debug(logutil.WithContext(ctx, l.logger)).Log("msg", "using request limit", "limit", "MaxQueryBytesRead", "tenant", userID, "query-limit", requestLimits.MaxQueryBytesRead.Val(), "original-limit", original)
+		} else {
+			level.Debug(logutil.WithContext(ctx, l.logger)).Log("msg", "using original limit", "limit", "MaxQueryBytesRead", "tenant", userID, "original-limit", original)
+		}
 		return original
 	}
 	level.Debug(logutil.WithContext(ctx, l.logger)).Log("msg", "using request limit", "limit", "MaxQueryBytesRead", "tenant", userID, "query-limit", requestLimits.MaxQueryBytesRead.Val(), "original-limit", original)
