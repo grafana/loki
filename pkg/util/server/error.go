@@ -71,9 +71,6 @@ func ClientHTTPStatusAndError(err error) (int, error) {
 	if ok && me.IsDeadlineExceeded() {
 		return http.StatusGatewayTimeout, errors.New(ErrDeadlineExceeded)
 	}
-	if ok && me.Is(logqlmodel.ErrParse) {
-
-	}
 
 	// Return 400 if any of the errors in the MultiError are client errors (4xx)
 	if ok {
