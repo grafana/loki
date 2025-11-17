@@ -71,6 +71,27 @@ func ClientHTTPStatusAndError(err error) (int, error) {
 	if ok && me.IsDeadlineExceeded() {
 		return http.StatusGatewayTimeout, errors.New(ErrDeadlineExceeded)
 	}
+	if ok && me.Is(logqlmodel.ErrParse) {
+
+	}
+
+	// Return 400 if any of the errors in the MultiError are client errors (4xx)
+	if ok {
+		for _, e := range me {
+			if errors.As(e, &queryErr) ||
+				errors.Is(e, logqlmodel.ErrLimit) ||
+				errors.Is(e, logqlmodel.ErrParse) ||
+				errors.Is(e, logqlmodel.ErrPipeline) ||
+				errors.Is(e, logqlmodel.ErrBlocked) ||
+				errors.Is(e, logqlmodel.ErrParseMatchers) ||
+				errors.Is(e, logqlmodel.ErrUnsupportedSyntaxForInstantQuery) ||
+				errors.Is(e, user.ErrNoOrgID) ||
+				errors.As(e, &userErr) ||
+				errors.Is(e, logqlmodel.ErrVariantsDisabled) {
+				return http.StatusBadRequest, err
+			}
+		}
+	}
 
 	if s, isRPC := status.FromError(err); isRPC {
 		if s.Code() == codes.DeadlineExceeded {
