@@ -129,7 +129,7 @@ func (e *LiteralExpression) MarshalPhysical() (physical.Expression, error) {
 		return nil, err
 	}
 
-	return &physical.LiteralExpr{Literal: literal}, nil
+	return physical.NewLiteral(literal.Any()), nil
 }
 
 // MarshalPhysical converts a protobuf expression into a physical plan

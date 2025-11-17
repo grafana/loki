@@ -37,8 +37,8 @@ func buildLogsPredicate(expr physical.Expression, columns []*logs.Column) (logs.
 		return buildLogsBinaryPredicate(expr, columns)
 
 	case *physical.LiteralExpr:
-		if expr.Literal.Type() == types.Loki.Bool {
-			val := expr.Literal.(types.TypedLiteral[bool]).Value()
+		if expr.ValueType() == types.Loki.Bool {
+			val := expr.Value().(bool)
 			if val {
 				return logs.TruePredicate{}, nil
 			}
@@ -165,7 +165,7 @@ func buildLogsComparison(expr *physical.BinaryExpr, columns []*logs.Column) (log
 		return nil, fmt.Errorf("finding column %s: %w", columnRef.Ref, err)
 	}
 
-	s, err := buildDataobjScalar(literalExpr.Literal)
+	s, err := buildDataobjScalar(literalExpr)
 	if err != nil {
 		return nil, err
 	}
@@ -265,7 +265,7 @@ func findColumn(ref types.ColumnRef, columns []*logs.Column) (*logs.Column, erro
 
 // buildDataobjScalar builds a dataobj-compatible [scalar.Scalar] from a
 // [types.Literal].
-func buildDataobjScalar(lit types.Literal) (scalar.Scalar, error) {
+func buildDataobjScalar(expr *physical.LiteralExpr) (scalar.Scalar, error) {
 	// [logs.ReaderOptions.Validate] specifies that all scalars must be one of
 	// the given types:
 	//
@@ -277,7 +277,7 @@ func buildDataobjScalar(lit types.Literal) (scalar.Scalar, error) {
 	//
 	// All of our mappings below evaluate to one of the above types.
 
-	switch lit := lit.(type) {
+	switch lit := expr.Literal().(type) {
 	case types.NullLiteral:
 		return scalar.ScalarNull, nil
 	case types.IntegerLiteral:
@@ -294,7 +294,7 @@ func buildDataobjScalar(lit types.Literal) (scalar.Scalar, error) {
 		return scalar.NewBinaryScalar(buf, arrow.BinaryTypes.Binary), nil
 	}
 
-	return nil, fmt.Errorf("unsupported literal type %T", lit)
+	return nil, fmt.Errorf("unsupported literal type %T", expr)
 }
 
 func buildLogsMatch(col *logs.Column, op types.BinaryOp, value scalar.Scalar) (logs.Predicate, error) {
