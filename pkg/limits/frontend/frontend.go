@@ -137,6 +137,13 @@ func (f *Frontend) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRe
 	return &proto.ExceedsLimitsResponse{Results: results}, nil
 }
 
+func (f *Frontend) UpdateRates(
+	ctx context.Context,
+	req *proto.UpdateRatesRequest,
+) (*proto.UpdateRatesResponse, error) {
+	return &proto.UpdateRatesResponse{}, nil
+}
+
 func (f *Frontend) CheckReady(ctx context.Context) error {
 	if f.State() != services.Running {
 		return fmt.Errorf("service is not running: %v", f.State())
