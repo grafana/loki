@@ -13,6 +13,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+- [FEATURE] Add kube-rbac-proxy support
 
 ## 6.46.0
 
