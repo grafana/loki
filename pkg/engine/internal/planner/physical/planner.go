@@ -600,7 +600,7 @@ func (p *Planner) collapseMathExpressions(lp logical.Value, rootNode bool, ctx *
 
 		return expr, input, inputRef, nil
 	case *logical.Literal:
-		return &LiteralExpr{Literal: v.Literal}, nil, nil, nil
+		return NewLiteral(v.Value()), nil, nil, nil
 	default:
 		// If it is neigher a literal nor an expression, then we continue `p.process` on this node and represent in
 		// as a column ref `value` in the final math expression.

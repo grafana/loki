@@ -63,8 +63,7 @@ func NewMySQLStorage(config StorageConfig, logger log.Logger) (*MySQLStorage, er
 
 	// Run migrations
 	if err := runMigrations(db); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("failed to run migrations: %w", err)
+		level.Error(logger).Log("msg", "failed to run goldfish migrations", "err", err)
 	}
 
 	return &MySQLStorage{

@@ -849,7 +849,7 @@ func TestProjectionPushdown_PushesRequestedKeysToParseOperations(t *testing.T) {
 			if len(tt.expectedParseKeysRequested) == 0 {
 				// When no keys are requested, we expect either nil or a NullLiteral or an empty list
 				if requestedKeys != nil {
-					switch lit := requestedKeys.Literal.(type) {
+					switch lit := requestedKeys.Literal().(type) {
 					case types.NullLiteral:
 						// OK - null literal
 					case types.StringListLiteral:
@@ -860,7 +860,7 @@ func TestProjectionPushdown_PushesRequestedKeysToParseOperations(t *testing.T) {
 				}
 			} else {
 				require.NotNil(t, requestedKeys, "Projection should have requested keys")
-				actual := requestedKeys.Literal.(types.StringListLiteral)
+				actual := requestedKeys.Literal().(types.StringListLiteral)
 				require.Equal(t, tt.expectedParseKeysRequested, actual.Value())
 			}
 

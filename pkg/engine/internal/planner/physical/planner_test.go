@@ -438,7 +438,7 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 		reqKeys, ok := funcArgs[1].(*LiteralExpr)
 		require.True(t, ok)
 
-		keys, ok := reqKeys.Literal.(types.StringListLiteral)
+		keys, ok := reqKeys.Literal().(types.StringListLiteral)
 		require.True(t, ok)
 		require.Equal(t, []string{"level"}, keys.Value())
 	})
