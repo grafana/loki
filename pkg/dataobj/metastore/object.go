@@ -221,8 +221,7 @@ func (m *ObjectMetastore) Sections(ctx context.Context, start, end time.Time, ma
 	if len(tablePaths) == 0 {
 		m.metrics.indexObjectsTotal.Observe(0)
 		m.metrics.resolvedSectionsTotal.Observe(0)
-		duration := sectionsTimer.ObserveDuration()
-		level.Debug(utillog.WithContext(ctx, m.logger)).Log("msg", "resolved sections", "duration", duration, "sections", 0)
+		level.Debug(utillog.WithContext(ctx, m.logger)).Log("msg", "no sections resolved", "reason", "no toc paths")
 		return nil, nil
 	}
 
@@ -232,14 +231,12 @@ func (m *ObjectMetastore) Sections(ctx context.Context, start, end time.Time, ma
 		return nil, err
 	}
 
-	level.Debug(m.logger).Log("msg", "resolved index files", "count", len(indexPaths), "paths", strings.Join(indexPaths, ","))
 	m.metrics.indexObjectsTotal.Observe(float64(len(indexPaths)))
 
 	// Return early if no index files are found
 	if len(indexPaths) == 0 {
 		m.metrics.resolvedSectionsTotal.Observe(0)
-		duration := sectionsTimer.ObserveDuration()
-		level.Debug(utillog.WithContext(ctx, m.logger)).Log("msg", "resolved sections", "duration", duration, "sections", 0)
+		level.Debug(utillog.WithContext(ctx, m.logger)).Log("msg", "no sections resolved", "reason", "no index paths")
 		return nil, nil
 	}
 
@@ -283,6 +280,7 @@ func (m *ObjectMetastore) Sections(ctx context.Context, start, end time.Time, ma
 
 			streamSectionPointers = intersectSections(streamSectionPointers, sectionMembershipEstimates)
 			if len(streamSectionPointers) == 0 {
+				level.Debug(utillog.WithContext(ctx, m.logger)).Log("msg", "no sections resolved", "reason", "no matching predicates")
 				// Short circuit here if no sections match the predicates
 				return streamSectionPointers, nil
 			}
@@ -292,7 +290,18 @@ func (m *ObjectMetastore) Sections(ctx context.Context, start, end time.Time, ma
 	duration := sectionsTimer.ObserveDuration()
 	m.metrics.resolvedSectionsTotal.Observe(float64(len(streamSectionPointers)))
 	m.metrics.resolvedSectionsRatio.Observe(float64(len(streamSectionPointers)) / float64(initialSectionPointersCount))
-	level.Debug(utillog.WithContext(ctx, m.logger)).Log("msg", "resolved sections", "duration", duration, "sections", len(streamSectionPointers), "ratio", float64(len(streamSectionPointers))/float64(initialSectionPointersCount))
+
+	level.Debug(utillog.WithContext(ctx, m.logger)).Log(
+		"msg", "resolved sections",
+		"duration", duration,
+		"tables", len(tablePaths),
+		"indexes", len(indexPaths),
+		"sections", len(streamSectionPointers),
+		"ratio", float64(len(streamSectionPointers))/float64(initialSectionPointersCount),
+		"matchers", matchersToString(matchers),
+		"start", start,
+		"end", end,
+	)
 
 	return streamSectionPointers, nil
 }
