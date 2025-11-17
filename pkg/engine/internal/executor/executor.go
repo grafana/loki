@@ -92,27 +92,27 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 		// which wraps the pipeline with a topk/limit without reintroducing
 		// planning cost for thousands of scan nodes.
 		return newLazyPipeline(func(ctx context.Context, _ []Pipeline) Pipeline {
-			return tracePipeline("physical.DataObjScan", c.executeDataObjScan(ctx, n, nodeRegion))
+			return newObservedPipeline(c.executeDataObjScan(ctx, n, nodeRegion))
 		}, inputs)
 
 	case *physical.TopK:
-		return tracePipeline("physical.TopK", c.executeTopK(ctx, n, inputs, nodeRegion))
+		return newObservedPipeline(c.executeTopK(ctx, n, inputs, nodeRegion))
 	case *physical.Limit:
-		return tracePipeline("physical.Limit", c.executeLimit(ctx, n, inputs, nodeRegion))
+		return newObservedPipeline(c.executeLimit(ctx, n, inputs, nodeRegion))
 	case *physical.Filter:
-		return tracePipeline("physical.Filter", c.executeFilter(ctx, n, inputs, nodeRegion))
+		return newObservedPipeline(c.executeFilter(ctx, n, inputs, nodeRegion))
 	case *physical.Projection:
-		return tracePipeline("physical.Projection", c.executeProjection(ctx, n, inputs, nodeRegion))
+		return newObservedPipeline(c.executeProjection(ctx, n, inputs, nodeRegion))
 	case *physical.RangeAggregation:
-		return tracePipeline("physical.RangeAggregation", c.executeRangeAggregation(ctx, n, inputs, nodeRegion))
+		return newObservedPipeline(c.executeRangeAggregation(ctx, n, inputs, nodeRegion))
 	case *physical.VectorAggregation:
-		return tracePipeline("physical.VectorAggregation", c.executeVectorAggregation(ctx, n, inputs, nodeRegion))
+		return newObservedPipeline(c.executeVectorAggregation(ctx, n, inputs, nodeRegion))
 	case *physical.ColumnCompat:
-		return tracePipeline("physical.ColumnCompat", c.executeColumnCompat(ctx, n, inputs, nodeRegion))
+		return newObservedPipeline(c.executeColumnCompat(ctx, n, inputs, nodeRegion))
 	case *physical.Parallelize:
-		return tracePipeline("physical.Parallelize", c.executeParallelize(ctx, n, inputs))
+		return c.executeParallelize(ctx, n, inputs)
 	case *physical.ScanSet:
-		return tracePipeline("physical.ScanSet", c.executeScanSet(ctx, n, nodeRegion))
+		return c.executeScanSet(ctx, n, nodeRegion)
 	default:
 		return errorPipeline(ctx, fmt.Errorf("invalid node type: %T", node))
 	}
