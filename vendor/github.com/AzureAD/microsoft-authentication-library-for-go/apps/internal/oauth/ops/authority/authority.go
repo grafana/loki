@@ -46,9 +46,11 @@ type jsonCaller interface {
 	JSONCall(ctx context.Context, endpoint string, headers http.Header, qv url.Values, body, resp interface{}) error
 }
 
+// For backward compatibility, accept both old and new China endpoints for a transition period.
 var aadTrustedHostList = map[string]bool{
 	"login.windows.net":                true, // Microsoft Azure Worldwide - Used in validation scenarios where host is not this list
-	"login.partner.microsoftonline.cn": true, // Microsoft Azure China
+	"login.partner.microsoftonline.cn": true, // Microsoft Azure China (new)
+	"login.chinacloudapi.cn":           true, // Microsoft Azure China (legacy, backward compatibility)
 	"login.microsoftonline.de":         true, // Microsoft Azure Blackforest
 	"login-us.microsoftonline.com":     true, // Microsoft Azure US Government - Legacy
 	"login.microsoftonline.us":         true, // Microsoft Azure US Government
@@ -96,6 +98,41 @@ func (r *TenantDiscoveryResponse) Validate() error {
 		return errors.New("TenantDiscoveryResponse: issuer was not found in the openid configuration")
 	}
 	return nil
+}
+
+// ValidateIssuerMatchesAuthority validates that the issuer in the TenantDiscoveryResponse matches the authority.
+// This is used to identity security or configuration issues in authorities and the OIDC endpoint
+func (r *TenantDiscoveryResponse) ValidateIssuerMatchesAuthority(authorityURI string, aliases map[string]bool) error {
+
+	if authorityURI == "" {
+		return errors.New("TenantDiscoveryResponse: empty authorityURI provided for validation")
+	}
+
+	// Parse the issuer URL
+	issuerURL, err := url.Parse(r.Issuer)
+	if err != nil {
+		return fmt.Errorf("TenantDiscoveryResponse: failed to parse issuer URL: %w", err)
+	}
+
+	// Even if it doesn't match the authority, issuers from known and trusted hosts are valid
+	if aliases != nil && aliases[issuerURL.Host] {
+		return nil
+	}
+
+	// Parse the authority URL for comparison
+	authorityURL, err := url.Parse(authorityURI)
+	if err != nil {
+		return fmt.Errorf("TenantDiscoveryResponse: failed to parse authority URL: %w", err)
+	}
+
+	// Check if the scheme and host match (paths can be ignored when validating the issuer)
+	if issuerURL.Scheme == authorityURL.Scheme && issuerURL.Host == authorityURL.Host {
+		return nil
+	}
+
+	// If we get here, validation failed
+	return fmt.Errorf("TenantDiscoveryResponse: issuer from OIDC discovery '%s' does not match authority '%s' or a known pattern",
+		r.Issuer, authorityURI)
 }
 
 type InstanceDiscoveryMetadata struct {
@@ -354,6 +391,8 @@ type Info struct {
 	Tenant                    string
 	Region                    string
 	InstanceDiscoveryDisabled bool
+	// InstanceDiscoveryMetadata stores the metadata from AAD instance discovery
+	InstanceDiscoveryMetadata []InstanceDiscoveryMetadata
 }
 
 // NewInfoFromAuthorityURI creates an AuthorityInfo instance from the authority URL provided.

@@ -2,8 +2,8 @@
 title: "Network Policies"
 description: "Configure network policies for LokiStack deployments to enhance security through network segmentation"
 lead: ""
-date: 2025-01-05T15:00:00+00:00
-lastmod: 2025-01-05T15:00:00+00:00
+date: 2025-11-03T15:00:00+00:00
+lastmod: 2025-11-03T15:00:00+00:00
 draft: false
 images: []
 menu:
@@ -57,16 +57,16 @@ spec:
   tenants:
     mode: openshift-logging
   networkPolicies:
-    disabled: false  # Enable network policies
+    ruleSet: RestrictIngressEgress # Enable network policies
 ```
 
 #### Configuration Options
 
-| Configuration | Description | Behavior |
-|---------------|-------------|----------|
-| `networkPolicies: null` (omitted) | **Default** - inherits platform defaults | Enabled on OpenShift 4.20+, disabled elsewhere |
-| `networkPolicies.disabled: true`  | **Disabled** - no network policies created | Full network access allowed |
-| `networkPolicies.disabled: false` | **Enabled** - network policies enforced | Restricted network access with explicit allow rules |
+| Configuration                                    | Description                                          | Behavior                                            |
+|--------------------------------------------------|------------------------------------------------------|-----------------------------------------------------|
+| `networkPolicies: null` (omitted)                | **Default** - inherit platform and operator defaults | Currently allows full network access everywhere     |
+| `networkPolicies.ruleSet: None`                  | **Disabled** - no network policies created           | Full network access allowed                         |
+| `networkPolicies.ruleSet: RestrictIngressEgress` | **Enabled** - network policies enforced              | Restricted network access with explicit allow rules |
 
 ## Generated Network Policies
 

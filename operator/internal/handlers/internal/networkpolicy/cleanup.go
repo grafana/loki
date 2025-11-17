@@ -18,7 +18,7 @@ import (
 // Cleanup deletes operator-managed NetworkPolicies for a LokiStack
 func Cleanup(ctx context.Context, log logr.Logger, c k8s.Client, req ctrl.Request, stack *lokiv1.LokiStack) error {
 	ll := log.WithValues("lokistack", req.NamespacedName, "event", "cleanupNetworkPolicies")
-	if stack.Spec.NetworkPolicies != nil && !stack.Spec.NetworkPolicies.Disabled {
+	if stack.Spec.NetworkPolicies != nil && stack.Spec.NetworkPolicies.RuleSet == lokiv1.NetworkPolicyRuleSetRestrictIngressEgress {
 		// Nothing to do - NetworkPolicies are enabled
 		return nil
 	}

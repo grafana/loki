@@ -26,7 +26,7 @@ type groupConsumer struct {
 	cancel     func()
 	manageDone chan struct{} // closed once when the manage goroutine quits
 
-	cooperative atomicBool // true if the group balancer chosen during Join is cooperative
+	cooperative atomic.Bool // true if the group balancer chosen during Join is cooperative
 
 	// The data for topics that the user assigned. Metadata updates the
 	// atomic.Value in each pointer atomically.
@@ -93,7 +93,7 @@ type groupConsumer struct {
 	//  - set to false at the beginning of a join group session
 	//  - set to true if join group response indicates we are leader
 	//  - read on metadata updates in findNewAssignments
-	leader atomicBool
+	leader atomic.Bool
 
 	// Set to true when ending a transaction committing transaction
 	// offsets, and then set to false immediately after before calling
@@ -1382,7 +1382,7 @@ func (s strptr) String() string {
 // the rejoin status.
 type groupExternal struct {
 	tps    atomic.Value // map[string]int32
-	rejoin atomicBool
+	rejoin atomic.Bool
 }
 
 func (g *groupConsumer) loadExternal() *groupExternal {

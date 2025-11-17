@@ -97,7 +97,9 @@ func (b *BearerTokenPolicy) authenticateAndAuthorize(req *policy.Request) func(p
 		as := acquiringResourceState{p: b, req: req, tro: tro}
 		tk, err := b.mainResource.Get(as)
 		if err != nil {
-			return err
+			// consider this error non-retriable because if it could be resolved by
+			// retrying authentication, the credential would have done so already
+			return errorinfo.NonRetriableError(err)
 		}
 		req.Raw().Header.Set(shared.HeaderAuthorization, shared.BearerTokenPrefix+tk.Token)
 		return nil
