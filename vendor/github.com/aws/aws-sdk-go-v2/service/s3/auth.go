@@ -21,7 +21,7 @@ func bindAuthParamsRegion(_ interface{}, params *AuthResolverParameters, _ inter
 }
 
 func bindAuthEndpointParams(ctx context.Context, params *AuthResolverParameters, input interface{}, options Options) {
-	params.endpointParams = bindEndpointParams(ctx, input, options)
+	params.endpointParams, _ = bindEndpointParams(ctx, input, options)
 }
 
 type setLegacyContextSigningOptionsMiddleware struct {
