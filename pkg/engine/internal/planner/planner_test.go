@@ -86,11 +86,6 @@ var _ logql.Params = (*TestQuery)(nil)
 
 type TestMetastore struct{}
 
-// DataObjects implements metastore.Metastore.
-func (t *TestMetastore) DataObjects(_ context.Context, _ time.Time, _ time.Time, _ ...*labels.Matcher) ([]string, error) {
-	panic("unimplemented")
-}
-
 // Labels implements metastore.Metastore.
 func (t *TestMetastore) Labels(_ context.Context, _ time.Time, _ time.Time, _ ...*labels.Matcher) ([]string, error) {
 	panic("unimplemented")
@@ -122,11 +117,6 @@ func (t *TestMetastore) Sections(_ context.Context, _ time.Time, _ time.Time, _ 
 			End:       time.Date(2025, time.January, 1, 1, 0, 0, 0, time.UTC),
 		},
 	}, nil
-}
-
-// StreamIDs implements metastore.Metastore.
-func (t *TestMetastore) StreamIDs(_ context.Context, _ time.Time, _ time.Time, _ ...*labels.Matcher) ([]string, [][]int64, []int, error) {
-	panic("unimplemented")
 }
 
 // Streams implements metastore.Metastore.
