@@ -454,7 +454,7 @@ github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream/eventstreamapi
 # github.com/aws/aws-sdk-go-v2/config v1.31.18
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/config
-# github.com/aws/aws-sdk-go-v2/credentials v1.18.22
+# github.com/aws/aws-sdk-go-v2/credentials v1.18.24
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/credentials
 github.com/aws/aws-sdk-go-v2/credentials/ec2rolecreds
@@ -481,7 +481,7 @@ github.com/aws/aws-sdk-go-v2/internal/ini
 github.com/aws/aws-sdk-go-v2/internal/v4a
 github.com/aws/aws-sdk-go-v2/internal/v4a/internal/crypto
 github.com/aws/aws-sdk-go-v2/internal/v4a/internal/v4
-# github.com/aws/aws-sdk-go-v2/service/dynamodb v1.52.4
+# github.com/aws/aws-sdk-go-v2/service/dynamodb v1.52.6
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/service/dynamodb
 github.com/aws/aws-sdk-go-v2/service/dynamodb/internal/customizations
@@ -521,17 +521,17 @@ github.com/aws/aws-sdk-go-v2/service/s3/internal/arn
 github.com/aws/aws-sdk-go-v2/service/s3/internal/customizations
 github.com/aws/aws-sdk-go-v2/service/s3/internal/endpoints
 github.com/aws/aws-sdk-go-v2/service/s3/types
-# github.com/aws/aws-sdk-go-v2/service/sso v1.30.1
+# github.com/aws/aws-sdk-go-v2/service/sso v1.30.3
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/service/sso
 github.com/aws/aws-sdk-go-v2/service/sso/internal/endpoints
 github.com/aws/aws-sdk-go-v2/service/sso/types
-# github.com/aws/aws-sdk-go-v2/service/ssooidc v1.35.5
+# github.com/aws/aws-sdk-go-v2/service/ssooidc v1.35.7
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/service/ssooidc
 github.com/aws/aws-sdk-go-v2/service/ssooidc/internal/endpoints
 github.com/aws/aws-sdk-go-v2/service/ssooidc/types
-# github.com/aws/aws-sdk-go-v2/service/sts v1.40.0
+# github.com/aws/aws-sdk-go-v2/service/sts v1.40.2
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/service/sts
 github.com/aws/aws-sdk-go-v2/service/sts/internal/endpoints
@@ -1122,7 +1122,7 @@ github.com/google/s2a-go/stream
 # github.com/google/uuid v1.6.0
 ## explicit
 github.com/google/uuid
-# github.com/googleapis/enterprise-certificate-proxy v0.3.6
+# github.com/googleapis/enterprise-certificate-proxy v0.3.7
 ## explicit; go 1.23.0
 github.com/googleapis/enterprise-certificate-proxy/client
 github.com/googleapis/enterprise-certificate-proxy/client/util
@@ -2345,7 +2345,7 @@ go.yaml.in/yaml/v3
 # go4.org/netipx v0.0.0-20230125063823-8449b0a6169f
 ## explicit; go 1.18
 go4.org/netipx
-# golang.org/x/crypto v0.43.0
+# golang.org/x/crypto v0.44.0
 ## explicit; go 1.24.0
 golang.org/x/crypto/argon2
 golang.org/x/crypto/bcrypt
@@ -2429,7 +2429,7 @@ golang.org/x/telemetry/counter
 golang.org/x/telemetry/internal/counter
 golang.org/x/telemetry/internal/mmap
 golang.org/x/telemetry/internal/telemetry
-# golang.org/x/term v0.36.0
+# golang.org/x/term v0.37.0
 ## explicit; go 1.24.0
 golang.org/x/term
 # golang.org/x/text v0.31.0
@@ -2490,7 +2490,7 @@ golang.org/x/tools/internal/versions
 ## explicit; go 1.18
 golang.org/x/xerrors
 golang.org/x/xerrors/internal
-# google.golang.org/api v0.255.0
+# google.golang.org/api v0.256.0
 ## explicit; go 1.24.0
 google.golang.org/api/cloudresourcemanager/v1
 google.golang.org/api/compute/v1
@@ -2527,7 +2527,7 @@ google.golang.org/genproto/googleapis/api/httpbody
 google.golang.org/genproto/googleapis/api/label
 google.golang.org/genproto/googleapis/api/metric
 google.golang.org/genproto/googleapis/api/monitoredres
-# google.golang.org/genproto/googleapis/rpc v0.0.0-20251029180050-ab9386a59fda
+# google.golang.org/genproto/googleapis/rpc v0.0.0-20251103181224-f26f9409b101
 ## explicit; go 1.24.0
 google.golang.org/genproto/googleapis/rpc/code
 google.golang.org/genproto/googleapis/rpc/errdetails
