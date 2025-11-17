@@ -30,6 +30,13 @@ var (
 		types.VectorAggregationTypeSort:     AGGREGATE_VECTOR_OP_SORT,
 		types.VectorAggregationTypeSortDesc: AGGREGATE_VECTOR_OP_SORT_DESC,
 	}
+
+	protoGroupingModeLookup = map[types.GroupingMode]GroupingMode{
+		types.GroupingModeByEmptySet:      GROUPING_MODE_GROUPING_BY_EMPTY_SET,
+		types.GroupingModeByLabelSet:      GROUPING_MODE_GROUPING_BY_LABEL_SET,
+		types.GroupingModeWithoutEmptySet: GROUPING_MODE_GROUPING_WITHOUT_EMPTY_SET,
+		types.GroupingModeWithoutLabelSet: GROUPING_MODE_GROUPING_WITHOUT_LABEL_SET,
+	}
 )
 
 func (op *AggregateRangeOp) unmarshalType(from types.RangeAggregationType) error {
@@ -46,4 +53,12 @@ func (op *AggregateVectorOp) unmarshalType(from types.VectorAggregationType) err
 		return nil
 	}
 	return fmt.Errorf("unknown VectorAggregationType: %v", from)
+}
+
+func (m *GroupingMode) unmarshalType(from types.GroupingMode) error {
+	if result, ok := protoGroupingModeLookup[from]; ok {
+		*m = result
+		return nil
+	}
+	return fmt.Errorf("unknown GroupingMode: %v", from)
 }

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/tree"
 )
 
@@ -63,7 +64,7 @@ func toTreeNode(n Node) *tree.Node {
 			tree.NewProperty("limit", false, node.Fetch),
 		}
 	case *RangeAggregation:
-		properties := []tree.Property{
+		treeNode.Properties = []tree.Property{
 			tree.NewProperty("operation", false, node.Operation),
 			tree.NewProperty("start", false, node.Start.Format(time.RFC3339Nano)),
 			tree.NewProperty("end", false, node.End.Format(time.RFC3339Nano)),
@@ -71,19 +72,25 @@ func toTreeNode(n Node) *tree.Node {
 			tree.NewProperty("range", false, node.Range),
 		}
 
-		if len(node.PartitionBy) > 0 {
-			properties = append(properties, tree.NewProperty("partition_by", true, toAnySlice(node.PartitionBy)...))
+		switch node.Grouping.Mode {
+		case types.GroupingModeByLabelSet, types.GroupingModeByEmptySet:
+			treeNode.Properties = append(treeNode.Properties, tree.NewProperty("group_by", true, toAnySlice(node.Grouping.Columns)...))
+		case types.GroupingModeWithoutLabelSet:
+			treeNode.Properties = append(treeNode.Properties, tree.NewProperty("group_without", true, toAnySlice(node.Grouping.Columns)...))
 		}
-
-		treeNode.Properties = properties
 	case *VectorAggregation:
-		treeNode.Properties = []tree.Property{
+		properties := []tree.Property{
 			tree.NewProperty("operation", false, node.Operation),
 		}
 
-		if len(node.GroupBy) > 0 {
-			treeNode.Properties = append(treeNode.Properties, tree.NewProperty("group_by", true, toAnySlice(node.GroupBy)...))
+		switch node.Grouping.Mode {
+		case types.GroupingModeByLabelSet, types.GroupingModeByEmptySet:
+			properties = append(properties, tree.NewProperty("group_by", true, toAnySlice(node.Grouping.Columns)...))
+		case types.GroupingModeWithoutLabelSet:
+			properties = append(properties, tree.NewProperty("group_without", true, toAnySlice(node.Grouping.Columns)...))
 		}
+
+		treeNode.Properties = properties
 	case *ColumnCompat:
 		treeNode.Properties = []tree.Property{
 			tree.NewProperty("src", false, node.Source),

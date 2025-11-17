@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/tree"
 )
@@ -170,17 +171,21 @@ func (t *treeFormatter) convertRangeAggregation(r *RangeAggregation) *tree.Node 
 		tree.NewProperty("range", false, r.RangeInterval),
 	}
 
-	if len(r.PartitionBy) > 0 {
-		partitionBy := make([]any, len(r.PartitionBy))
-		for i := range r.PartitionBy {
-			partitionBy[i] = r.PartitionBy[i].Name()
+	grouping := make([]any, len(r.Grouping.Columns))
+	if len(r.Grouping.Columns) > 0 {
+		for i := range r.Grouping.Columns {
+			grouping[i] = r.Grouping.Columns[i].Name()
 		}
-
-		properties = append(properties, tree.NewProperty("partition_by", true, partitionBy...))
+	}
+	switch r.Grouping.Mode {
+	case types.GroupingModeByLabelSet, types.GroupingModeByEmptySet:
+		properties = append(properties, tree.NewProperty("group_by", true, grouping...))
+	case types.GroupingModeWithoutLabelSet, types.GroupingModeWithoutEmptySet:
+		properties = append(properties, tree.NewProperty("group_without", true, grouping...))
 	}
 
 	node := tree.NewNode("RangeAggregation", r.Name(), properties...)
-	for _, columnRef := range r.PartitionBy {
+	for _, columnRef := range r.Grouping.Columns {
 		node.Comments = append(node.Comments, t.convert(&columnRef))
 	}
 	node.Children = append(node.Children, t.convert(r.Table))
@@ -194,17 +199,21 @@ func (t *treeFormatter) convertVectorAggregation(v *VectorAggregation) *tree.Nod
 		tree.NewProperty("operation", false, v.Operation),
 	}
 
-	if len(v.GroupBy) > 0 {
-		groupBy := make([]any, len(v.GroupBy))
-		for i := range v.GroupBy {
-			groupBy[i] = v.GroupBy[i].Name()
+	grouping := make([]any, len(v.Grouping.Columns))
+	if len(v.Grouping.Columns) > 0 {
+		for i := range v.Grouping.Columns {
+			grouping[i] = v.Grouping.Columns[i].Name()
 		}
-
-		properties = append(properties, tree.NewProperty("group_by", true, groupBy...))
+	}
+	switch v.Grouping.Mode {
+	case types.GroupingModeByLabelSet, types.GroupingModeByEmptySet:
+		properties = append(properties, tree.NewProperty("group_by", true, grouping...))
+	case types.GroupingModeWithoutLabelSet, types.GroupingModeWithoutEmptySet:
+		properties = append(properties, tree.NewProperty("group_without", true, grouping...))
 	}
 
 	node := tree.NewNode("VectorAggregation", v.Name(), properties...)
-	for _, columnRef := range v.GroupBy {
+	for _, columnRef := range v.Grouping.Columns {
 		node.Comments = append(node.Comments, t.convert(&columnRef))
 	}
 	node.Children = append(node.Children, t.convert(v.Table))

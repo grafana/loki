@@ -215,7 +215,7 @@ TopK sort_by=builtin.timestamp ascending=false nulls_first=false k=1000
 			query:   `sum by (bar) (sum_over_time({app="foo"} | logfmt | request_duration != "" | unwrap duration(request_duration)[1m]))`,
 			expected: `
 VectorAggregation operation=sum group_by=(ambiguous.bar)
-└── RangeAggregation operation=sum start=2025-01-01T00:00:00Z end=2025-01-01T01:00:00Z step=0s range=1m0s partition_by=(ambiguous.bar)
+└── RangeAggregation operation=sum start=2025-01-01T00:00:00Z end=2025-01-01T01:00:00Z step=0s range=1m0s group_by=(ambiguous.bar)
     └── Parallelize
         └── Projection all=true expand=(CAST_DURATION(ambiguous.request_duration))
             └── Filter predicate[0]=NEQ(ambiguous.request_duration, "")
@@ -231,7 +231,7 @@ VectorAggregation operation=sum group_by=(ambiguous.bar)
 			comment: `metric: multiple parse stages`,
 			query:   `sum(count_over_time({app="foo"} | detected_level="error" | json | logfmt | drop __error__,__error_details__[1m]))`,
 			expected: `
-VectorAggregation operation=sum
+VectorAggregation operation=sum group_by=()
 └── RangeAggregation operation=count start=2025-01-01T00:00:00Z end=2025-01-01T01:00:00Z step=0s range=1m0s
     └── Parallelize
         └── Projection all=true drop=(ambiguous.__error__, ambiguous.__error_details__)
@@ -241,7 +241,7 @@ VectorAggregation operation=sum
                         └── Projection all=true expand=(PARSE_LOGFMT(builtin.message, [], false, false))
                             └── Filter predicate[0]=EQ(ambiguous.detected_level, "error")
                                 └── Compat src=metadata dst=metadata collision=label
-                                    └── ScanSet num_targets=2 projections=(ambiguous.detected_level, builtin.message, builtin.timestamp) predicate[0]=GTE(builtin.timestamp, 2024-12-31T23:59:00Z) predicate[1]=LT(builtin.timestamp, 2025-01-01T01:00:00Z)
+                                    └── ScanSet num_targets=2 predicate[0]=GTE(builtin.timestamp, 2024-12-31T23:59:00Z) predicate[1]=LT(builtin.timestamp, 2025-01-01T01:00:00Z)
                                             ├── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=1 projections=()
                                             └── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=0 projections=()
 
@@ -253,7 +253,7 @@ VectorAggregation operation=sum
 			expected: `
 VectorAggregation operation=sum group_by=(ambiguous.bar)
 └── Projection all=true expand=(DIV(generated.value, 300))
-    └── RangeAggregation operation=count start=2025-01-01T00:00:00Z end=2025-01-01T01:00:00Z step=0s range=1m0s partition_by=(ambiguous.bar)
+    └── RangeAggregation operation=count start=2025-01-01T00:00:00Z end=2025-01-01T01:00:00Z step=0s range=1m0s group_by=(ambiguous.bar)
         └── Parallelize
             └── Compat src=metadata dst=metadata collision=label
                 └── ScanSet num_targets=2 projections=(ambiguous.bar, builtin.timestamp) predicate[0]=GTE(builtin.timestamp, 2024-12-31T23:59:00Z) predicate[1]=LT(builtin.timestamp, 2025-01-01T01:00:00Z)
@@ -281,7 +281,7 @@ TopK sort_by=builtin.timestamp ascending=false nulls_first=false k=1000
 			query:   `sum by (bar) (count_over_time({app="foo"} | logfmt[1m]))`,
 			expected: `
 VectorAggregation operation=sum group_by=(ambiguous.bar)
-└── RangeAggregation operation=count start=2025-01-01T00:00:00Z end=2025-01-01T01:00:00Z step=0s range=1m0s partition_by=(ambiguous.bar)
+└── RangeAggregation operation=count start=2025-01-01T00:00:00Z end=2025-01-01T01:00:00Z step=0s range=1m0s group_by=(ambiguous.bar)
     └── Parallelize
         └── Compat src=parsed dst=parsed collision=label
             └── Projection all=true expand=(PARSE_LOGFMT(builtin.message, [bar], false, false))

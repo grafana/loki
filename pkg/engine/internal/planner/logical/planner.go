@@ -257,11 +257,13 @@ func walkRangeAggregation(e *syntax.RangeAggregationExpr, params logql.Params) (
 		rangeAggType = types.RangeAggregationTypeCount
 	case syntax.OpRangeTypeSum:
 		rangeAggType = types.RangeAggregationTypeSum
-	// case syntax.OpRangeTypeMax:
-	//	rangeAggType = types.RangeAggregationTypeMax
-	// case syntax.OpRangeTypeMin:
-	//	rangeAggType = types.RangeAggregationTypeMin
-	// case syntax.OpRangeTypeBytesRate:
+	case syntax.OpRangeTypeMax:
+		rangeAggType = types.RangeAggregationTypeMax
+	case syntax.OpRangeTypeMin:
+		rangeAggType = types.RangeAggregationTypeMin
+	case syntax.OpRangeTypeAvg:
+		rangeAggType = types.RangeAggregationTypeAvg
+	//case syntax.OpRangeTypeBytesRate:
 	//	rangeAggType = types.RangeAggregationTypeBytes // bytes_rate is implemented as bytes_over_time/$interval
 	case syntax.OpRangeTypeRate:
 		if e.Left.Unwrap != nil {
@@ -274,7 +276,7 @@ func walkRangeAggregation(e *syntax.RangeAggregationExpr, params logql.Params) (
 	}
 
 	builder = builder.RangeAggregation(
-		nil, rangeAggType, params.Start(), params.End(), params.Step(), rangeInterval,
+		convertGrouping(e.Grouping), rangeAggType, params.Start(), params.End(), params.Step(), rangeInterval,
 	)
 
 	switch e.Operation {
@@ -294,11 +296,6 @@ func walkRangeAggregation(e *syntax.RangeAggregationExpr, params logql.Params) (
 }
 
 func walkVectorAggregation(e *syntax.VectorAggregationExpr, params logql.Params) (Value, error) {
-	// `without()` grouping is not supported.
-	if e.Grouping != nil && e.Grouping.Without {
-		return nil, errUnimplemented
-	}
-
 	left, err := walk(e.Left, params)
 	if err != nil {
 		return nil, err
@@ -309,14 +306,9 @@ func walkVectorAggregation(e *syntax.VectorAggregationExpr, params logql.Params)
 		return nil, errUnimplemented
 	}
 
-	groupBy := make([]ColumnRef, 0, len(e.Grouping.Groups))
-	for _, group := range e.Grouping.Groups {
-		groupBy = append(groupBy, *NewColumnRef(group, types.ColumnTypeAmbiguous))
-	}
-
 	return &VectorAggregation{
 		Table:     left,
-		GroupBy:   groupBy,
+		Grouping:  convertGrouping(e.Grouping),
 		Operation: vecAggType,
 	}, nil
 }
@@ -437,12 +429,14 @@ func convertVectorAggregationType(op string) types.VectorAggregationType {
 	switch op {
 	case syntax.OpTypeSum:
 		return types.VectorAggregationTypeSum
-	// case syntax.OpTypeCount:
-	//	return types.VectorAggregationTypeCount
-	// case syntax.OpTypeMax:
-	//	return types.VectorAggregationTypeMax
-	// case syntax.OpTypeMin:
-	//	return types.VectorAggregationTypeMin
+	case syntax.OpTypeCount:
+		return types.VectorAggregationTypeCount
+	case syntax.OpTypeMax:
+		return types.VectorAggregationTypeMax
+	case syntax.OpTypeMin:
+		return types.VectorAggregationTypeMin
+	case syntax.OpTypeAvg:
+		return types.VectorAggregationTypeAvg
 	default:
 		return types.VectorAggregationTypeInvalid
 	}
@@ -600,6 +594,47 @@ func convertQueryRangeToPredicates(start, end time.Time) []*BinOp {
 			Right: NewLiteral(types.Timestamp(end.UTC().UnixNano())),
 			Op:    types.BinaryOpLt,
 		},
+	}
+}
+
+// convertGrouping converts [syntax.Grouping] structure into a list of columns and
+// an explicit grouping mode. The way [syntax.Grouping] represents empty and non-empty
+// label sets is fragile and does not survive protobuf encoding (nil vs empty slices),
+// so an explicit [types.GroupingMode] is helpful.
+func convertGrouping(g *syntax.Grouping) Grouping {
+	var grouping []ColumnRef
+	groupingMode := types.GroupingModeWithoutEmptySet
+
+	if g == nil {
+		return Grouping{
+			Columns: grouping,
+			Mode:    groupingMode,
+		}
+	}
+
+	if g.Groups != nil {
+		grouping = make([]ColumnRef, len(g.Groups))
+		for i, group := range g.Groups {
+			grouping[i] = *NewColumnRef(group, types.ColumnTypeAmbiguous)
+		}
+	}
+	if g.Without {
+		if g.Groups != nil {
+			groupingMode = types.GroupingModeWithoutLabelSet
+		} else {
+			groupingMode = types.GroupingModeWithoutEmptySet
+		}
+	} else {
+		if g.Groups != nil {
+			groupingMode = types.GroupingModeByLabelSet
+		} else {
+			groupingMode = types.GroupingModeByEmptySet
+		}
+	}
+
+	return Grouping{
+		Columns: grouping,
+		Mode:    groupingMode,
 	}
 }
 

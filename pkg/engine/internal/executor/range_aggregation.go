@@ -10,13 +10,14 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
 type rangeAggregationOptions struct {
-	partitionBy []physical.ColumnExpression
+	grouping physical.Grouping
 
 	// start and end timestamps are equal for instant queries.
 	startTs       time.Time     // start timestamp of the query
@@ -30,9 +31,11 @@ var (
 	// rangeAggregationOperations holds the mapping of range aggregation types to operations for an aggregator.
 	rangeAggregationOperations = map[types.RangeAggregationType]aggregationOperation{
 		types.RangeAggregationTypeSum:   aggregationOperationSum,
-		types.RangeAggregationTypeCount: aggregationOperationCount,
 		types.RangeAggregationTypeMax:   aggregationOperationMax,
 		types.RangeAggregationTypeMin:   aggregationOperationMin,
+		types.RangeAggregationTypeAvg:   aggregationOperationMin,
+		types.RangeAggregationTypeCount: aggregationOperationCount,
+		types.RangeAggregationTypeBytes: aggregationOperationBytes,
 	}
 )
 
@@ -55,8 +58,8 @@ type timestampMatchingWindowsFunc func(time.Time) []window
 // rangeAggregationPipeline is a pipeline that performs aggregations over a time window.
 //
 // 1. It reads from the input pipelines
-// 2. Partitions the data by the specified columns
-// 3. Applies the aggregation function on each partition
+// 2. Groups the data by the specified columns
+// 3. Applies the aggregation function on each group
 //
 // Current version only supports counting for instant queries.
 type rangeAggregationPipeline struct {
@@ -101,7 +104,7 @@ func (r *rangeAggregationPipeline) init() {
 		panic(fmt.Sprintf("unknown range aggregation operation: %v", r.opts.operation))
 	}
 
-	r.aggregator = newAggregator(r.opts.partitionBy, len(windows), op)
+	r.aggregator = newAggregator(len(windows), op)
 }
 
 // Read reads the next value into its state.
@@ -116,7 +119,6 @@ func (r *rangeAggregationPipeline) Read(ctx context.Context) (arrow.RecordBatch,
 }
 
 // TODOs:
-// - Support implicit partitioning by all labels when partitionBy is empty
 // - Use columnar access pattern. Current approach is row-based which does not benefit from the storage format.
 // - Add toggle to return partial results on Read() call instead of returning only after exhausting all inputs.
 func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch, error) {
@@ -134,9 +136,6 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 				Type:   types.ColumnTypeGenerated,
 			},
 		} // value column expression
-
-		// reused on each row read
-		labelValues = make([]string, len(r.opts.partitionBy))
 	)
 
 	r.aggregator.Reset() // reset before reading new inputs
@@ -155,20 +154,72 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 
 			inputsExhausted = false
 
-			// extract all the columns that are used for partitioning
-			arrays := make([]*array.String, 0, len(r.opts.partitionBy))
-			for _, columnExpr := range r.opts.partitionBy {
-				vec, err := r.evaluator.eval(columnExpr, record)
-				if err != nil {
-					return nil, err
-				}
+			// extract all the columns that are used for grouping
+			var arrays []*array.String
+			var fields []arrow.Field
+			switch r.opts.grouping.Mode {
+			case types.GroupingModeByLabelSet:
+				// Gouping by a label set. Take only labels from that set.
+				arrays = make([]*array.String, 0, len(r.opts.grouping.Columns))
+				for _, columnExpr := range r.opts.grouping.Columns {
+					vec, err := r.evaluator.eval(columnExpr, record)
+					if err != nil {
+						return nil, err
+					}
 
-				if vec.DataType().ID() != types.Arrow.String.ID() {
-					return nil, fmt.Errorf("unsupported datatype for partitioning %s", vec.DataType())
-				}
+					if vec.DataType().ID() != types.Arrow.String.ID() {
+						return nil, fmt.Errorf("unsupported datatype for grouping %s", vec.DataType())
+					}
 
-				arr := vec.(*array.String)
-				arrays = append(arrays, arr)
+					arr := vec.(*array.String)
+					arrays = append(arrays, arr)
+
+					colExpr, ok := columnExpr.(*physical.ColumnExpr)
+					if !ok {
+						return nil, fmt.Errorf("invalid column expression type %T", columnExpr)
+					}
+					ident := semconv.NewIdentifier(colExpr.Ref.Column, colExpr.Ref.Type, types.Loki.String)
+					fields = append(fields, semconv.FieldFromIdent(ident, true))
+				}
+			case types.GroupingModeByEmptySet:
+				// Gouping by an empty set. Group all into one.
+				arrays = make([]*array.String, 0)
+				fields = make([]arrow.Field, 0)
+			case types.GroupingModeWithoutLabelSet:
+				// Grouping without a lable set. Exclude lables from that set.
+				schema := record.Schema()
+				for i, field := range schema.Fields() {
+					found := false
+					for _, g := range r.opts.grouping.Columns {
+						colExpr, ok := g.(*physical.ColumnExpr)
+						if !ok {
+							return nil, fmt.Errorf("unknown column expression %v", g)
+						}
+						if colExpr.Ref.Column == field.Name {
+							found = true
+							break
+						}
+					}
+					if !found {
+						arrays = append(arrays, record.Column(i).(*array.String))
+						fields = append(fields, field)
+					}
+				}
+			case types.GroupingModeWithoutEmptySet:
+				// No grouping. Take all string columns from the record as-is.
+				schema := record.Schema()
+				for i, field := range schema.Fields() {
+					ident, err := semconv.ParseFQN(field.Name)
+					if err != nil {
+						return nil, err
+					}
+					if ident.ColumnType() == types.ColumnTypeLabel ||
+						ident.ColumnType() == types.ColumnTypeMetadata ||
+						ident.ColumnType() == types.ColumnTypeParsed {
+						arrays = append(arrays, record.Column(i).(*array.String))
+						fields = append(fields, field)
+					}
+				}
 			}
 
 			// extract timestamp column to check if the entry is in range
@@ -194,10 +245,14 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 					continue // out of range, skip this row
 				}
 
-				// reset label values and hash for each row
-				clear(labelValues)
-				for col, arr := range arrays {
-					labelValues[col] = arr.Value(row)
+				labelValues := make([]string, 0, len(arrays))
+				labels := make([]arrow.Field, 0, len(arrays))
+				for i, arr := range arrays {
+					val := arr.Value(row)
+					if val != "" {
+						labelValues = append(labelValues, val)
+						labels = append(labels, fields[i])
+					}
 				}
 
 				var value float64
@@ -206,7 +261,7 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 				}
 
 				for _, w := range windows {
-					r.aggregator.Add(w.end, value, labelValues)
+					r.aggregator.Add(w.end, value, labels, labelValues)
 				}
 			}
 		}

@@ -53,8 +53,8 @@ message Node {
 
 // AggregateRange aggregates samples into windowed ranges.
 message AggregateRange {
-  // Columns to partition the data by.
-  repeated loki.expression.ColumnExpression partition_by = 1;
+  // Grouping for the data.
+  Grouping grouping = 1;
 
   AggregateRangeOp operation = 2;
 
@@ -76,6 +76,23 @@ message AggregateRange {
   ];
 }
 
+// Grouping represents the grouping by/without label(s) for vector aggregators
+// and range vector aggregators.
+message Grouping {
+  repeated loki.expression.ColumnExpression columns = 1;
+  GroupingMode mode = 2;
+}
+
+// GroupingMode represents the way on interpretation of the list of columns for grouping.
+enum GroupingMode {
+  GROUPING_MODE_INVALID = 0;
+
+  GROUPING_MODE_GROUPING_BY_EMPTY_SET = 1;
+  GROUPING_MODE_GROUPING_BY_LABEL_SET = 2;
+  GROUPING_MODE_GROUPING_WITHOUT_EMPTY_SET = 3;
+  GROUPING_MODE_GROUPING_WITHOUT_LABEL_SET = 4;
+}
+
 // AggregateRangeOp represents the operation to perform on the aggregated
 // data.
 enum AggregateRangeOp {
@@ -91,11 +108,11 @@ enum AggregateRangeOp {
 // AggregateVector represents an operation to aggregate a range vector into an
 // instant vector, with optional grouping on specified dimensions.
 message AggregateVector {
-  // Columns to group the data by. If empty, all rows are aggregated into a single result.
-  repeated loki.expression.ColumnExpression group_by = 1;
+  // Grouping for the data.
+  Grouping grouping = 1;
 
   // Aggregation operation to perform over the underlying range vector.
-  AggregateVectorOp operation = 2;
+  AggregateVectorOp operation = 3;
 }
 
 // AggregateVectorOp represents the different aggregation operations that can

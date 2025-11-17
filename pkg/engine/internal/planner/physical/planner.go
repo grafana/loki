@@ -402,20 +402,23 @@ func (p *Planner) processLimit(lp *logical.Limit, ctx *Context) (Node, error) {
 }
 
 func (p *Planner) processRangeAggregation(r *logical.RangeAggregation, ctx *Context) (Node, error) {
-	partitionBy := make([]ColumnExpression, len(r.PartitionBy))
-	for i, col := range r.PartitionBy {
-		partitionBy[i] = &ColumnExpr{Ref: col.Ref}
+	grouping := make([]ColumnExpression, len(r.Grouping.Columns))
+	for i, col := range r.Grouping.Columns {
+		grouping[i] = &ColumnExpr{Ref: col.Ref}
 	}
 
 	node := &RangeAggregation{
 		NodeID: ulid.Make(),
 
-		PartitionBy: partitionBy,
-		Operation:   r.Operation,
-		Start:       r.Start,
-		End:         r.End,
-		Range:       r.RangeInterval,
-		Step:        r.Step,
+		Grouping: Grouping{
+			Columns: grouping,
+			Mode:    r.Grouping.Mode,
+		},
+		Operation: r.Operation,
+		Start:     r.Start,
+		End:       r.End,
+		Range:     r.RangeInterval,
+		Step:      r.Step,
 	}
 	p.plan.graph.Add(node)
 
@@ -432,15 +435,18 @@ func (p *Planner) processRangeAggregation(r *logical.RangeAggregation, ctx *Cont
 
 // Convert [logical.VectorAggregation] into one [VectorAggregation] node.
 func (p *Planner) processVectorAggregation(lp *logical.VectorAggregation, ctx *Context) (Node, error) {
-	groupBy := make([]ColumnExpression, len(lp.GroupBy))
-	for i, col := range lp.GroupBy {
-		groupBy[i] = &ColumnExpr{Ref: col.Ref}
+	grouping := make([]ColumnExpression, len(lp.Grouping.Columns))
+	for i, col := range lp.Grouping.Columns {
+		grouping[i] = &ColumnExpr{Ref: col.Ref}
 	}
 
 	node := &VectorAggregation{
 		NodeID: ulid.Make(),
 
-		GroupBy:   groupBy,
+		Grouping: Grouping{
+			Columns: grouping,
+			Mode:    lp.Grouping.Mode,
+		},
 		Operation: lp.Operation,
 	}
 	p.plan.graph.Add(node)
