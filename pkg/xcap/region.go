@@ -95,7 +95,7 @@ func StartRegion(ctx context.Context, name string, opts ...RegionOption) (contex
 	}
 
 	// Add region to capture.
-	capture.addRegion(r)
+	capture.AddRegion(r)
 
 	// Update context with the new region.
 	return contextWithRegion(ctx, r), r
@@ -147,4 +147,17 @@ func (r *Region) End() {
 
 	r.endTime = time.Now()
 	r.ended = true
+}
+
+func (r *Region) getAttribute(key string) attribute.KeyValue {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for _, kv := range r.attributes {
+		if string(kv.Key) == key {
+			return kv
+		}
+	}
+
+	return attribute.KeyValue{}
 }

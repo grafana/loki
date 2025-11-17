@@ -57,9 +57,9 @@ func (c *Capture) End() {
 	c.ended = true
 }
 
-// addRegion adds a region to this capture. This is called by Region
+// AddRegion adds a region to this capture. This is called by Region
 // when it is created.
-func (c *Capture) addRegion(r *Region) {
+func (c *Capture) AddRegion(r *Region) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -68,6 +68,13 @@ func (c *Capture) addRegion(r *Region) {
 	}
 
 	c.regions = append(c.regions, r)
+}
+
+func (c *Capture) Regions() []*Region {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	return c.regions
 }
 
 // GetAllStatistics returns statistics used across all regions
@@ -96,81 +103,57 @@ func (c *Capture) getAllStatistics() []Statistic {
 	return result
 }
 
-// Merge appends all regions from other into this capture and establishes
-// parent-child relationships. Leaf regions (regions with no children) in other
-// are linked to root regions (regions with no parent) in this capture via parentID.
-// This is used to link regions from different tasks in a workflow DAG.
-// If the parent capture has multiple root regions, the first one (by order) is used.
-func (c *Capture) Merge(other *Capture) {
-	if other == nil {
+// MergeCaptures returns a new [Capture] by merging all regions from the input captures.
+//
+// If linkByAttribute is non-empty, MergeCaptures will establish parent-child relationships
+// between regions that don't already have a parent. For each region without a parent:
+//   - It extracts the value of the linkByAttribute (must be a string attribute)
+//   - It calls resolveParent() with that value to determine the parent's attribute value
+//   - It finds the region with the matching attribute value and sets it as the parent
+//
+// Use a linkByAttribute that is unique for each region.
+func (c *Capture) LinkRegions(linkByAttribute string, resolveParent func(string) (string, bool)) {
+	if linkByAttribute == "" {
 		return
 	}
 
-	// TODO: This does not merge attributes, handle it if required.
+	getAttributeValue := func(r *Region) (string, bool) {
+		if attr := r.getAttribute(linkByAttribute); attr.Valid() && attr.Value.Type() == attribute.STRING {
+			return attr.Value.AsString(), true
+		}
 
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	other.mu.RLock()
-	otherRegions := make([]*Region, len(other.regions))
-	copy(otherRegions, other.regions)
-	other.mu.RUnlock()
-
-	if len(otherRegions) == 0 {
-		return
+		return "", false
 	}
 
-	// Find root regions (regions with no parent) in this capture.
-	rootRegions := make([]*Region, 0)
+	attrToRegion := make(map[string]*Region, len(c.regions))
 	for _, r := range c.regions {
-		r.mu.RLock()
-		isRoot := r.parentID.IsZero()
-		r.mu.RUnlock()
-		if isRoot {
-			rootRegions = append(rootRegions, r)
+		// regions without the link attribute are not added to the map.
+		if val, ok := getAttributeValue(r); ok {
+			attrToRegion[val] = r
 		}
 	}
 
-	// Find leaf regions (regions with no children) in other capture.
-	// A region is a leaf if no other region has it as a parent.
-	parentIDs := make(map[ID]bool)
-	for _, r := range otherRegions {
-		r.mu.RLock()
-		parentID := r.parentID
-		r.mu.RUnlock()
-		if !parentID.IsZero() {
-			parentIDs[parentID] = true
+	for _, r := range c.regions {
+		if !r.parentID.IsZero() {
+			// region already has a parent. No linking required.
+			continue
 		}
-	}
 
-	leafRegions := make([]*Region, 0)
-	for _, r := range otherRegions {
-		r.mu.RLock()
-		regionID := r.id
-		r.mu.RUnlock()
-		if !parentIDs[regionID] {
-			leafRegions = append(leafRegions, r)
+		attrVal, ok := getAttributeValue(r)
+		if !ok {
+			continue
 		}
-	}
 
-	// Link leaf regions from other to root regions in this capture via parentID.
-	// If there are multiple root regions, use the first one (deterministic choice).
-	var parentRootID ID
-	if len(rootRegions) > 0 {
-		rootRegions[0].mu.RLock()
-		parentRootID = rootRegions[0].id
-		rootRegions[0].mu.RUnlock()
-	}
-
-	// Update parentID of leaf regions to point to the parent root region.
-	for _, leaf := range leafRegions {
-		if !parentRootID.IsZero() {
-			leaf.mu.Lock()
-			leaf.parentID = parentRootID
-			leaf.mu.Unlock()
+		parentAttrVal, ok := resolveParent(attrVal)
+		if !ok {
+			continue
 		}
-	}
 
-	// Append all regions from other capture.
-	c.regions = append(c.regions, otherRegions...)
+		parentRegion, ok := attrToRegion[parentAttrVal]
+		if !ok {
+			continue
+		}
+
+		r.parentID = parentRegion.id
+	}
 }

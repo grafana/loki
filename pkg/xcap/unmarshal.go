@@ -31,7 +31,7 @@ func FromProtoCapture(proto *ProtoCapture) (*Capture, error) {
 		}
 
 		if region != nil {
-			capture.addRegion(region)
+			capture.AddRegion(region)
 		}
 	}
 

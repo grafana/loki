@@ -55,7 +55,8 @@ type Workflow struct {
 	statsMut sync.Mutex
 	stats    stats.Result
 
-	capture *xcap.Capture
+	captureMut sync.Mutex
+	capture    *xcap.Capture
 
 	tasksMut   sync.RWMutex
 	taskStates map[*Task]TaskState
@@ -149,7 +150,7 @@ func (wf *Workflow) Close() {
 // The returned pipeline must be closed when the workflow is complete to release
 // resources.
 func (wf *Workflow) Run(ctx context.Context) (pipeline executor.Pipeline, err error) {
-	wf.capture = xcap.FromContext(ctx)
+	wf.capture = xcap.CaptureFromContext(ctx)
 
 	wrapped := &wrappedPipeline{
 		inner: wf.resultsPipeline,
@@ -349,19 +350,21 @@ func (wf *Workflow) onTaskChange(ctx context.Context, task *Task, newStatus Task
 	}
 }
 
+func (wf *Workflow) mergeCapture(capture *xcap.Capture) {
+	wf.captureMut.Lock()
+	defer wf.captureMut.Unlock()
+
+	// Merge all regions from the task's capture into the workflow's capture.
+	for _, region := range capture.Regions() {
+		wf.capture.AddRegion(region)
+	}
+}
+
 func (wf *Workflow) mergeResults(results stats.Result) {
 	wf.statsMut.Lock()
 	defer wf.statsMut.Unlock()
 
 	wf.stats.Merge(results)
-}
-
-func (wf *Workflow) mergeCapture(capture *xcap.Capture) {
-	if capture == nil || wf.capture == nil {
-		return
-	}
-
-	wf.capture.Merge(capture)
 }
 
 type wrappedPipeline struct {
