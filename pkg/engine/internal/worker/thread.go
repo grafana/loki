@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	utillog "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 // threadJob is an individual task to run.
@@ -103,6 +104,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	defer job.Close()
 
 	logger := log.With(t.Logger, "task_id", job.Task.ULID)
+	logger = utillog.WithContext(ctx, logger) // Extract trace ID
 
 	startTime := time.Now()
 	level.Info(logger).Log("msg", "starting task")
@@ -220,7 +222,10 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	result := statsCtx.Result(time.Since(startTime), 0, totalRows)
 	level.Info(logger).Log("msg", "task completed", "duration", time.Since(startTime))
 
-	err = job.Scheduler.SendMessageAsync(ctx, wire.TaskStatusMessage{
+	// Wait for the scheduler to confirm the task has completed before
+	// requesting a new one. This allows the scheduler to update its bookkeeping
+	// for how many threads have capacity for requesting tasks.
+	err = job.Scheduler.SendMessage(ctx, wire.TaskStatusMessage{
 		ID:     job.Task.ULID,
 		Status: workflow.TaskStatus{State: workflow.TaskStateCompleted, Statistics: &result},
 	})

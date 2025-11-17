@@ -1148,15 +1148,9 @@ func TestLogfmtParser(t *testing.T) {
 					&physical.ColumnExpr{
 						Ref: semconv.ColumnIdentMessage.ColumnRef(),
 					},
-					&physical.LiteralExpr{
-						Literal: types.NewLiteral(tt.requestedKeys),
-					},
-					&physical.LiteralExpr{
-						Literal: types.NewLiteral(tt.strict),
-					},
-					&physical.LiteralExpr{
-						Literal: types.NewLiteral(tt.keepEmpty),
-					},
+					physical.NewLiteral(tt.requestedKeys),
+					physical.NewLiteral(tt.strict),
+					physical.NewLiteral(tt.keepEmpty),
 				},
 			}
 			e := newExpressionEvaluator()
@@ -1548,15 +1542,9 @@ func TestEvaluateParseExpression_JSON(t *testing.T) {
 					&physical.ColumnExpr{
 						Ref: semconv.ColumnIdentMessage.ColumnRef(),
 					},
-					&physical.LiteralExpr{
-						Literal: types.NewLiteral(tt.requestedKeys),
-					},
-					&physical.LiteralExpr{
-						Literal: types.NewLiteral(false),
-					},
-					&physical.LiteralExpr{
-						Literal: types.NewLiteral(false),
-					},
+					physical.NewLiteral(tt.requestedKeys),
+					physical.NewLiteral(false),
+					physical.NewLiteral(false),
 				},
 			}
 			e := newExpressionEvaluator()

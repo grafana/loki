@@ -1,3 +1,7 @@
+# v1.255.0 (2025-10-13)
+
+* **Feature**: Release Amazon EC2 c8i, c8i-flex, m8a, and r8gb
+
 # v1.254.1 (2025-09-26)
 
 * **Documentation**: This release includes documentation updates for Amazon EBS General Purpose SSD (gp3) volumes with larger size and higher IOPS and throughput.
