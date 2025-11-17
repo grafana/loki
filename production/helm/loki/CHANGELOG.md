@@ -46,6 +46,9 @@ Entries should include a reference to the pull request that introduced the chang
 - [CHANGE] Changed version of Grafana Loki to 3.5.7.
 - [FEATURE] Allow auto-resizing the volume by recreating the StatefulSet. [#19217](https://github.com/grafana/loki/pull/19217).
 - [BUGFIX] Add single-binary component to the podSelector. [#19229](https://github.com/grafana/loki/pull/19229).
+## 6.44.0
+
+- [CHANGE] Changed version of Grafana Loki to 3.6.0
 
 ## 6.43.0
 
