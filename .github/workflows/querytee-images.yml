@@ -75,7 +75,7 @@ jobs:
             IMAGE_TAG=${{ steps.pr-version.outputs.image_version }}
             GO_VERSION=${{ env.GO_VERSION }}
           context: .
-          file: ./cmd/querytee/Dockerfile.cross
+          file: ./cmd/querytee/Dockerfile
           outputs: push-by-digest=true,type=image,name=${{ steps.pr-version.outputs.image_name }},push=true
           platforms: ${{ matrix.arch }}
           provenance: true

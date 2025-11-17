@@ -20,8 +20,8 @@ type LokiStackStatusInfo struct {
 	// Storage contains the credential mode used for object storage access
 	Storage lokiv1.CredentialMode
 
-	// NetworkPolicies indicates whether network policies are enabled or disabled
-	NetworkPolicies lokiv1.NetworkPoliciesStatus
+	// NetworkPolicies indicates which set of network policies has been deployed, if any
+	NetworkPolicies lokiv1.NetworkPolicyRuleSet
 }
 
 const (

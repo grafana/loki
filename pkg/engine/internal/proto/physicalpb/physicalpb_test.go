@@ -70,7 +70,7 @@ func Test_Node(t *testing.T) {
 				Section:     42,
 				StreamIDs:   []int64{1, 2, 3, 4, 5},
 				Projections: []physical.ColumnExpression{&physical.ColumnExpr{Ref: types.ColumnRef{Column: "test_col", Type: types.ColumnTypeLabel}}},
-				Predicates:  []physical.Expression{&physical.LiteralExpr{Literal: types.StringLiteral("test_value")}},
+				Predicates:  []physical.Expression{physical.NewLiteral("test_value")},
 			},
 		},
 		{
@@ -79,8 +79,8 @@ func Test_Node(t *testing.T) {
 				NodeID: ulid.Make(),
 
 				Predicates: []physical.Expression{
-					&physical.LiteralExpr{Literal: types.BoolLiteral(true)},
-					&physical.LiteralExpr{Literal: types.IntegerLiteral(123)},
+					physical.NewLiteral(true),
+					physical.NewLiteral(123),
 				},
 			},
 		},
@@ -100,7 +100,7 @@ func Test_Node(t *testing.T) {
 
 				Expressions: []physical.Expression{
 					&physical.ColumnExpr{Ref: types.ColumnRef{Column: "col1", Type: types.ColumnTypeLabel}},
-					&physical.LiteralExpr{Literal: types.FloatLiteral(3.14)},
+					physical.NewLiteral(3.14),
 				},
 				All:    true,
 				Expand: true,
@@ -180,7 +180,7 @@ func Test_Node(t *testing.T) {
 					&physical.ColumnExpr{Ref: types.ColumnRef{Column: "scan_col", Type: types.ColumnTypeBuiltin}},
 				},
 				Predicates: []physical.Expression{
-					&physical.LiteralExpr{Literal: types.DurationLiteral(time.Second * 30)},
+					physical.NewLiteral(types.Duration(time.Second * 30)),
 				},
 			},
 		},
@@ -215,39 +215,39 @@ func Test_Expression(t *testing.T) {
 	}{
 		{
 			name: "LiteralExpr (Null)",
-			expr: &physical.LiteralExpr{Literal: types.NullLiteral{}},
+			expr: physical.NewLiteral(nil),
 		},
 		{
 			name: "LiteralExpr (Bool)",
-			expr: &physical.LiteralExpr{Literal: types.BoolLiteral(true)},
+			expr: physical.NewLiteral(true),
 		},
 		{
 			name: "LiteralExpr (String)",
-			expr: &physical.LiteralExpr{Literal: types.StringLiteral("test_string")},
+			expr: physical.NewLiteral("test_string"),
 		},
 		{
 			name: "LiteralExpr (Integer)",
-			expr: &physical.LiteralExpr{Literal: types.IntegerLiteral(42)},
+			expr: physical.NewLiteral(42),
 		},
 		{
 			name: "LiteralExpr (Float)",
-			expr: &physical.LiteralExpr{Literal: types.FloatLiteral(3.14159)},
+			expr: physical.NewLiteral(3.14159),
 		},
 		{
 			name: "LiteralExpr (Timestamp)",
-			expr: &physical.LiteralExpr{Literal: types.TimestampLiteral(1_000_000)},
+			expr: physical.NewLiteral(types.Timestamp(1_000_000)),
 		},
 		{
 			name: "LiteralExpr (Duration)",
-			expr: &physical.LiteralExpr{Literal: types.DurationLiteral(100_000)},
+			expr: physical.NewLiteral(types.Duration(100_000)),
 		},
 		{
 			name: "LiteralExpr (Bytes)",
-			expr: &physical.LiteralExpr{Literal: types.BytesLiteral(1024)},
+			expr: physical.NewLiteral(types.Bytes(1024)),
 		},
 		{
 			name: "LiteralExpr (StringList)",
-			expr: &physical.LiteralExpr{Literal: types.StringListLiteral([]string{"item1", "item2", "item3"})},
+			expr: physical.NewLiteral([]string{"item1", "item2", "item3"}),
 		},
 		{
 			name: "ColumnExpr",
@@ -259,7 +259,7 @@ func Test_Expression(t *testing.T) {
 			name: "UnaryExpr",
 			expr: &physical.UnaryExpr{
 				Op:   types.UnaryOpNot,
-				Left: &physical.LiteralExpr{Literal: types.BoolLiteral(false)},
+				Left: physical.NewLiteral(false),
 			},
 		},
 		{
@@ -269,9 +269,7 @@ func Test_Expression(t *testing.T) {
 				Left: &physical.ColumnExpr{
 					Ref: types.ColumnRef{Column: "left_col", Type: types.ColumnTypeLabel},
 				},
-				Right: &physical.LiteralExpr{
-					Literal: types.StringLiteral("comparison_value"),
-				},
+				Right: physical.NewLiteral("comparison_value"),
 			},
 		},
 		{
@@ -282,8 +280,8 @@ func Test_Expression(t *testing.T) {
 					&physical.ColumnExpr{
 						Ref: types.ColumnRef{Column: "json_column", Type: types.ColumnTypeBuiltin},
 					},
-					&physical.LiteralExpr{Literal: types.StringLiteral("key1")},
-					&physical.LiteralExpr{Literal: types.StringLiteral("key2")},
+					physical.NewLiteral("key1"),
+					physical.NewLiteral("key2"),
 				},
 			},
 		},

@@ -285,7 +285,10 @@ type Limits struct {
 	S3SSEKMSEncryptionContext string `yaml:"s3_sse_kms_encryption_context" json:"s3_sse_kms_encryption_context" doc:"nocli|description=S3 server-side encryption KMS encryption context. If unset and the key ID override is set, the encryption context will not be provided to S3. Ignored if the SSE type override is not set."`
 
 	// Per tenant limits for the v2 execution engine
-	MaxScanTaskParallelism int `yaml:"max_scan_task_parallelism" json:"max_scan_task_parallelism"`
+
+	MaxScanTaskParallelism int  `yaml:"max_scan_task_parallelism" json:"max_scan_task_parallelism"`
+	DebugEngineTasks       bool `yaml:"debug_engine_tasks" json:"debug_engine_tasks"`
+	DebugEngineStreams     bool `yaml:"debug_engine_streams" json:"debug_engine_streams"`
 }
 
 type FieldDetectorConfig struct {
@@ -528,6 +531,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	)
 
 	f.IntVar(&l.MaxScanTaskParallelism, "limits.max-scan-task-parallelism", 0, "Experimental: Controls the amount of scan tasks that can be running in parallel in the new query engine. The default of 0 means unlimited parallelism and all tasks will be scheduled at once.")
+	f.BoolVar(&l.DebugEngineTasks, "limits.debug-engine-tasks", false, "Experimental: Toggles verbose debug logging of tasks in the new query engine.")
+	f.BoolVar(&l.DebugEngineStreams, "limits.debug-engine-streams", false, "Experimental: Toggles verbose debug logging of data streams in the new query engine.")
 }
 
 // SetGlobalOTLPConfig set GlobalOTLPConfig which is used while unmarshaling per-tenant otlp config to use the default list of resource attributes picked as index labels.
@@ -1366,6 +1371,14 @@ func (o *Overrides) S3SSEKMSEncryptionContext(user string) string {
 
 func (o *Overrides) MaxScanTaskParallelism(userID string) int {
 	return o.getOverridesForUser(userID).MaxScanTaskParallelism
+}
+
+func (o *Overrides) DebugEngineTasks(userID string) bool {
+	return o.getOverridesForUser(userID).DebugEngineTasks
+}
+
+func (o *Overrides) DebugEngineStreams(userID string) bool {
+	return o.getOverridesForUser(userID).DebugEngineStreams
 }
 
 func (o *Overrides) getOverridesForUser(userID string) *Limits {

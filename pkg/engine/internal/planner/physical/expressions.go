@@ -147,7 +147,7 @@ func (*BinaryExpr) Type() ExpressionType {
 
 // LiteralExpr is an expression that implements the [LiteralExpression] interface.
 type LiteralExpr struct {
-	types.Literal
+	inner types.Literal
 }
 
 func (*LiteralExpr) isExpr()        {}
@@ -156,12 +156,12 @@ func (*LiteralExpr) isLiteralExpr() {}
 // Clone returns a copy of the [LiteralExpr].
 func (e *LiteralExpr) Clone() Expression {
 	// No need to clone literals.
-	return &LiteralExpr{Literal: e.Literal}
+	return &LiteralExpr{inner: e.inner}
 }
 
 // String returns the string representation of the literal value.
 func (e *LiteralExpr) String() string {
-	return e.Literal.String()
+	return e.inner.String()
 }
 
 // Type returns the type of the [LiteralExpr].
@@ -171,14 +171,21 @@ func (*LiteralExpr) Type() ExpressionType {
 
 // ValueType returns the kind of value represented by the literal.
 func (e *LiteralExpr) ValueType() types.DataType {
-	return e.Literal.Type()
+	return e.inner.Type()
 }
 
-func NewLiteral(value types.LiteralType) *LiteralExpr {
-	if value == nil {
-		return &LiteralExpr{Literal: types.NewNullLiteral()}
-	}
-	return &LiteralExpr{Literal: types.NewLiteral(value)}
+// Value returns the value represented by the literal.
+func (e *LiteralExpr) Value() any {
+	return e.inner.Any()
+}
+
+// Literal returns the underlying literal.
+func (e *LiteralExpr) Literal() types.Literal {
+	return e.inner
+}
+
+func NewLiteral(value any) *LiteralExpr {
+	return &LiteralExpr{inner: types.NewLiteral(value)}
 }
 
 // ColumnExpr is an expression that implements the [ColumnExpr] interface.
