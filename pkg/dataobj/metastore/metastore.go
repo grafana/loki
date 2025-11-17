@@ -8,9 +8,6 @@ import (
 )
 
 type Metastore interface {
-	// Streams returns all streams corresponding to the given matchers between [start,end]
-	Streams(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]*labels.Labels, error)
-
 	// Sections returns a list of SectionDescriptors, including metadata (stream IDs, start & end times, bytes), for the given matchers & predicates between [start,end]
 	Sections(ctx context.Context, start, end time.Time, matchers []*labels.Matcher, predicates []*labels.Matcher) ([]*DataobjSectionDescriptor, error)
 

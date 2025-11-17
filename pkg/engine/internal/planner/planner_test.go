@@ -91,6 +91,11 @@ func (t *TestMetastore) Labels(_ context.Context, _ time.Time, _ time.Time, _ ..
 	panic("unimplemented")
 }
 
+// Values implements metastore.Metastore.
+func (t *TestMetastore) Values(_ context.Context, _ time.Time, _ time.Time, _ ...*labels.Matcher) ([]string, error) {
+	panic("unimplemented")
+}
+
 // Sections implements metastore.Metastore.
 func (t *TestMetastore) Sections(_ context.Context, _ time.Time, _ time.Time, _ []*labels.Matcher, _ []*labels.Matcher) ([]*metastore.DataobjSectionDescriptor, error) {
 	return []*metastore.DataobjSectionDescriptor{
@@ -117,16 +122,6 @@ func (t *TestMetastore) Sections(_ context.Context, _ time.Time, _ time.Time, _ 
 			End:       time.Date(2025, time.January, 1, 1, 0, 0, 0, time.UTC),
 		},
 	}, nil
-}
-
-// Streams implements metastore.Metastore.
-func (t *TestMetastore) Streams(_ context.Context, _ time.Time, _ time.Time, _ ...*labels.Matcher) ([]*labels.Labels, error) {
-	panic("unimplemented")
-}
-
-// Values implements metastore.Metastore.
-func (t *TestMetastore) Values(_ context.Context, _ time.Time, _ time.Time, _ ...*labels.Matcher) ([]string, error) {
-	panic("unimplemented")
 }
 
 var _ metastore.Metastore = (*TestMetastore)(nil)
