@@ -4115,6 +4115,10 @@ monitoring:
         enabled: true
         for: 5m
         severity: warning
+      LokiCompactorHasNotSuccessfullyRunCompaction:
+        enabled: true
+        for: 1h
+        severity: critical
       LokiCanaryLatency:
         enabled: true
         for: 15m
