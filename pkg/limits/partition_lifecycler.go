@@ -3,6 +3,7 @@ package limits
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/coder/quartz"
@@ -51,19 +52,25 @@ func (l *partitionLifecycler) Assign(ctx context.Context, _ *kgo.Client, topics 
 	// We expect just one topic, and panic if topics contains more than one
 	// topic. The range over topics just makes it easier to access the first
 	// value in a map containing a single key.
+	wg := sync.WaitGroup{}
 	for _, partitions := range topics {
 		l.partitionManager.Assign(partitions)
 		for _, partition := range partitions {
-			if err := l.determineStateFromOffsets(ctx, partition); err != nil {
-				level.Error(l.logger).Log(
-					"msg", "failed to check offsets, partition is ready",
-					"partition", partition,
-					"err", err,
-				)
-				l.partitionManager.SetReady(partition)
-			}
+			wg.Add(1)
+			go func(partition int32) {
+				defer wg.Done()
+				if err := l.determineStateFromOffsets(ctx, partition); err != nil {
+					level.Error(l.logger).Log(
+						"msg", "failed to check offsets, partition is ready",
+						"partition", partition,
+						"err", err,
+					)
+					l.partitionManager.SetReady(partition)
+				}
+			}(partition)
 		}
 	}
+	wg.Wait()
 }
 
 // Revoke implements kgo.OnPartitionsRevoked.
