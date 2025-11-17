@@ -45,8 +45,12 @@ func newPartitionLifecycler(
 
 // Assign implements kgo.OnPartitionsAssigned.
 func (l *partitionLifecycler) Assign(ctx context.Context, _ *kgo.Client, topics map[string][]int32) {
-	// We expect the client to just consume one topic.
-	// TODO(grobinson): Figure out what to do if this is not the case.
+	if len(topics) > 1 {
+		panic(fmt.Sprintf("expected one topic, received %d topics", len(topics)))
+	}
+	// We expect just one topic, and panic if topics contains more than one
+	// topic. The range over topics just makes it easier to access the first
+	// value in a map containing a single key.
 	for _, partitions := range topics {
 		l.partitionManager.Assign(partitions)
 		for _, partition := range partitions {
@@ -59,18 +63,20 @@ func (l *partitionLifecycler) Assign(ctx context.Context, _ *kgo.Client, topics 
 				l.partitionManager.SetReady(partition)
 			}
 		}
-		return
 	}
 }
 
 // Revoke implements kgo.OnPartitionsRevoked.
 func (l *partitionLifecycler) Revoke(_ context.Context, _ *kgo.Client, topics map[string][]int32) {
-	// We expect the client to just consume one topic.
-	// TODO(grobinson): Figure out what to do if this is not the case.
+	if len(topics) > 1 {
+		panic(fmt.Sprintf("expected one topic, received %d topics", len(topics)))
+	}
+	// We expect just one topic, and panic if topics contains more than one
+	// topic. The range over topics just makes it easier to access the first
+	// value in a map containing a single key.
 	for _, partitions := range topics {
 		l.partitionManager.Revoke(partitions)
 		l.usage.EvictPartitions(partitions)
-		return
 	}
 }
 
