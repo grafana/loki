@@ -180,7 +180,7 @@ func (s *Service) GetAssignedPartitions(
 	return &resp, nil
 }
 
-// ExceedsLimits implements the proto.IngestLimitsServer interface.
+// ExceedsLimits implements the [proto.IngestLimitsServer] interface.
 func (s *Service) ExceedsLimits(
 	ctx context.Context,
 	req *proto.ExceedsLimitsRequest,
@@ -188,9 +188,10 @@ func (s *Service) ExceedsLimits(
 	return s.limitsChecker.ExceedsLimits(ctx, req)
 }
 
+// UpdateRates implements the [proto.IngestLimitsServer] interface.
 func (s *Service) UpdateRates(
-	ctx context.Context,
-	req *proto.UpdateRatesRequest,
+	_ context.Context,
+	_ *proto.UpdateRatesRequest,
 ) (*proto.UpdateRatesResponse, error) {
 	return &proto.UpdateRatesResponse{}, nil
 }
