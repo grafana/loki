@@ -663,6 +663,112 @@ Params:
 {{- end -}}
 
 {{/*
+Return the appropriate apiVersion for HTTPRoute (Gateway API).
+*/}}
+{{- define "loki.httproute.apiVersion" -}}
+{{- print "gateway.networking.k8s.io/v1" -}}
+{{- end -}}
+
+{{/*
+HTTPRoute labels for gateway component
+*/}}
+{{- define "loki.httproute.gatewayLabels" -}}
+{{ include "loki.gatewayLabels" . }}
+{{- end -}}
+
+{{/*
+HTTPRoute labels for main ingress
+*/}}
+{{- define "loki.httproute.labels" -}}
+{{ include "loki.labels" . }}
+{{- end -}}
+
+{{/*
+Generate HTTPRoute rules for distributed deployment
+Params:
+  ctx = . context
+  serviceName = fully qualified k8s service name
+  servicePort = service port number
+  paths = list of url paths to route
+*/}}
+{{- define "loki.httproute.backendRefs" -}}
+{{- range .paths }}
+- matches:
+  - path:
+      type: PathPrefix
+      value: {{ . }}
+  backendRefs:
+  - name: {{ $.serviceName }}
+    port: {{ $.servicePort }}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Generate HTTPRoute rules based on deployment type
+*/}}
+{{- define "loki.httproute.serviceRules" -}}
+{{- if (eq (include "loki.deployment.isSingleBinary" .) "true") -}}
+{{- include "loki.httproute.singleBinaryServiceRules" . }}
+{{- else if (eq (include "loki.deployment.isDistributed" .) "true") -}}
+{{- include "loki.httproute.distributedServiceRules" . }}
+{{- else if and (eq (include "loki.deployment.isScalable" .) "true") (not .Values.read.legacyReadTarget ) -}}
+{{- include "loki.httproute.scalableServiceRules" . }}
+{{- else -}}
+{{- include "loki.httproute.legacyScalableServiceRules" . }}
+{{- end -}}
+{{- end -}}
+
+{{/*
+HTTPRoute rules for distributed deployment
+*/}}
+{{- define "loki.httproute.distributedServiceRules" -}}
+{{- $distributorServiceName := include "loki.distributorFullname" . }}
+{{- include "loki.httproute.backendRefs" (dict "ctx" . "serviceName" $distributorServiceName "servicePort" .Values.loki.server.http_listen_port "paths" .Values.ingress.paths.distributor )}}
+{{- $queryFrontendServiceName := include "loki.queryFrontendFullname" . }}
+{{- include "loki.httproute.backendRefs" (dict "ctx" . "serviceName" $queryFrontendServiceName "servicePort" .Values.loki.server.http_listen_port "paths" .Values.ingress.paths.queryFrontend )}}
+{{- $rulerServiceName := include "loki.rulerFullname" . }}
+{{- include "loki.httproute.backendRefs" (dict "ctx" . "serviceName" $rulerServiceName "servicePort" .Values.loki.server.http_listen_port "paths" .Values.ingress.paths.ruler)}}
+{{- $compactorServiceName := include "loki.compactorFullname" . }}
+{{- include "loki.httproute.backendRefs" (dict "ctx" . "serviceName" $compactorServiceName "servicePort" .Values.loki.server.http_listen_port "paths" .Values.ingress.paths.compactor)}}
+{{- end -}}
+
+{{/*
+HTTPRoute rules for simple scalable deployment
+*/}}
+{{- define "loki.httproute.scalableServiceRules" -}}
+{{- $readServiceName := include "loki.readFullname" . }}
+{{- include "loki.httproute.backendRefs" (dict "ctx" . "serviceName" $readServiceName "servicePort" .Values.loki.server.http_listen_port "paths" .Values.ingress.paths.queryFrontend )}}
+{{- $writeServiceName := include "loki.writeFullname" . }}
+{{- include "loki.httproute.backendRefs" (dict "ctx" . "serviceName" $writeServiceName "servicePort" .Values.loki.server.http_listen_port "paths" .Values.ingress.paths.distributor )}}
+{{- $backendServiceName := include "loki.backendFullname" . }}
+{{- include "loki.httproute.backendRefs" (dict "ctx" . "serviceName" $backendServiceName "servicePort" .Values.loki.server.http_listen_port "paths" .Values.ingress.paths.ruler )}}
+{{- include "loki.httproute.backendRefs" (dict "ctx" . "serviceName" $backendServiceName "servicePort" .Values.loki.server.http_listen_port "paths" .Values.ingress.paths.compactor )}}
+{{- end -}}
+
+{{/*
+HTTPRoute rules for legacy simple scalable deployment
+*/}}
+{{- define "loki.httproute.legacyScalableServiceRules" -}}
+{{- $readServiceName := include "loki.readFullname" . }}
+{{- include "loki.httproute.backendRefs" (dict "ctx" . "serviceName" $readServiceName "servicePort" .Values.loki.server.http_listen_port "paths" .Values.ingress.paths.queryFrontend )}}
+{{- include "loki.httproute.backendRefs" (dict "ctx" . "serviceName" $readServiceName "servicePort" .Values.loki.server.http_listen_port "paths" .Values.ingress.paths.ruler )}}
+{{- include "loki.httproute.backendRefs" (dict "ctx" . "serviceName" $readServiceName "servicePort" .Values.loki.server.http_listen_port "paths" .Values.ingress.paths.compactor )}}
+{{- $writeServiceName := include "loki.writeFullname" . }}
+{{- include "loki.httproute.backendRefs" (dict "ctx" . "serviceName" $writeServiceName "servicePort" .Values.loki.server.http_listen_port "paths" .Values.ingress.paths.distributor )}}
+{{- end -}}
+
+{{/*
+HTTPRoute rules for single binary deployment
+*/}}
+{{- define "loki.httproute.singleBinaryServiceRules" -}}
+{{- $serviceName := include "loki.singleBinaryFullname" . }}
+{{- include "loki.httproute.backendRefs" (dict "ctx" . "serviceName" $serviceName "servicePort" .Values.loki.server.http_listen_port "paths" .Values.ingress.paths.distributor )}}
+{{- include "loki.httproute.backendRefs" (dict "ctx" . "serviceName" $serviceName "servicePort" .Values.loki.server.http_listen_port "paths" .Values.ingress.paths.queryFrontend )}}
+{{- include "loki.httproute.backendRefs" (dict "ctx" . "serviceName" $serviceName "servicePort" .Values.loki.server.http_listen_port "paths" .Values.ingress.paths.ruler )}}
+{{- include "loki.httproute.backendRefs" (dict "ctx" . "serviceName" $serviceName "servicePort" .Values.loki.server.http_listen_port "paths" .Values.ingress.paths.compactor )}}
+{{- end -}}
+
+{{/*
 Create the service endpoint including port for MinIO.
 */}}
 {{- define "loki.minio" -}}
