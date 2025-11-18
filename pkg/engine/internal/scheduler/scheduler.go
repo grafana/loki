@@ -157,12 +157,8 @@ func (s *Scheduler) handleConn(ctx context.Context, conn wire.Conn) {
 }
 
 func (s *Scheduler) handleStreamData(ctx context.Context, worker *workerConn, msg wire.StreamDataMessage) error {
-	switch worker.ty {
-	case connectionTypeInitial:
-		// Flag the connection as a data plane connection.
-		worker.ty = connectionTypeDataPlane
-	case connectionTypeControlPlane:
-		return fmt.Errorf("workers in state %s can not send stream data messages", worker.ty)
+	if err := worker.MarkDataPlane(); err != nil {
+		return err
 	}
 
 	s.resourcesMut.RLock()
@@ -178,29 +174,16 @@ func (s *Scheduler) handleStreamData(ctx context.Context, worker *workerConn, ms
 }
 
 func (s *Scheduler) handleWorkerHello(_ context.Context, worker *workerConn, msg wire.WorkerHelloMessage) error {
-	if got, want := worker.ty, connectionTypeInitial; got != want {
-		return fmt.Errorf("worker connection must be in state %q, got %q", want, got)
-	} else if msg.Threads <= 0 {
-		return errors.New("worker must advertise at least one thread")
-	}
-
-	worker.ty = connectionTypeControlPlane
-	worker.maxThreads = msg.Threads
-	return nil
+	return worker.HandleHello(msg)
 }
 
 func (s *Scheduler) markWorkerReady(_ context.Context, worker *workerConn) error {
-	if got, want := worker.ty, connectionTypeControlPlane; got != want {
-		return fmt.Errorf("worker connection must be in state %q, got %q", want, got)
+	if err := worker.MarkReady(); err != nil {
+		return err
 	}
 
 	s.assignMut.Lock()
 	defer s.assignMut.Unlock()
-
-	if !worker.hasCapacity() {
-		return fmt.Errorf("maximum capacity %d reached, wait for task assignment or complete existing assigned tasks", worker.maxThreads)
-	}
-	worker.readyThreads++
 
 	s.readyWorkers = append(s.readyWorkers, worker)
 
@@ -223,7 +206,7 @@ func nudgeSemaphore(sema chan struct{}) {
 }
 
 func (s *Scheduler) handleTaskStatus(ctx context.Context, worker *workerConn, msg wire.TaskStatusMessage) error {
-	if got, want := worker.ty, connectionTypeControlPlane; got != want {
+	if got, want := worker.Type(), connectionTypeControlPlane; got != want {
 		return fmt.Errorf("worker connection must be in state %q, got %q", want, got)
 	}
 
@@ -243,7 +226,7 @@ func (s *Scheduler) handleTaskStatus(ctx context.Context, worker *workerConn, ms
 		return err
 	} else if changed {
 		if owner := task.owner; owner != nil && task.status.State.Terminal() {
-			owner.untrackAssignment(task)
+			owner.Unassign(task)
 		}
 
 		// Notify the handler about the change.
@@ -257,7 +240,7 @@ func (s *Scheduler) handleTaskStatus(ctx context.Context, worker *workerConn, ms
 }
 
 func (s *Scheduler) handleStreamStatus(ctx context.Context, worker *workerConn, msg wire.StreamStatusMessage) error {
-	if got, want := worker.ty, connectionTypeControlPlane; got != want {
+	if got, want := worker.Type(), connectionTypeControlPlane; got != want {
 		return fmt.Errorf("worker connection must be in state %q, got %q", want, got)
 	}
 
@@ -323,8 +306,8 @@ func (s *Scheduler) abortWorkerTasks(ctx context.Context, worker *workerConn, re
 		}
 	}
 
-	for task := range worker.tasks {
-		worker.untrackAssignment(task)
+	for _, task := range worker.Assigned() {
+		worker.Unassign(task)
 
 		if changed, _ := task.setState(newStatus); !changed {
 			continue
@@ -436,7 +419,7 @@ func (s *Scheduler) assignTask(ctx context.Context, task *task, worker *workerCo
 	}
 
 	// The worker accepted the message, so we can assign the task to it now.
-	worker.trackAssignment(task)
+	worker.Assign(task)
 
 	// Now that the task has been accepted, we can attempt address bindings. We
 	// do this on task assignment to simplify the implementation, though it
@@ -672,7 +655,7 @@ func (s *Scheduler) deleteTask(t *task) {
 	delete(s.tasks, t.inner.ULID)
 
 	if owner := t.owner; owner != nil {
-		owner.untrackAssignment(t)
+		owner.Unassign(t)
 	}
 }
 
@@ -817,7 +800,7 @@ func (s *Scheduler) Cancel(ctx context.Context, tasks ...*workflow.Task) error {
 			//
 			// This is a best-effort message, so we don't wait for acknowledgement.
 			if owner := registered.owner; owner != nil {
-				owner.untrackAssignment(registered)
+				owner.Unassign(registered)
 				_ = owner.SendMessageAsync(ctx, wire.TaskCancelMessage{ID: registered.inner.ULID})
 			}
 
