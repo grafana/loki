@@ -2576,10 +2576,10 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 			d.cfg.IngestLimitsDryRunEnabled = test.ingestLimitsDryRunEnabled
 
 			mockClient := mockIngestLimitsFrontendClient{
-				t:               t,
-				expectedRequest: test.expectedLimitsRequest,
-				response:        test.limitsResponse,
-				responseErr:     test.limitsResponseErr,
+				t:                            t,
+				expectedExceedsLimitsRequest: test.expectedLimitsRequest,
+				exceedsLimitsResponse:        test.limitsResponse,
+				exceedsLimitsResponseErr:     test.limitsResponseErr,
 			}
 			l := newIngestLimits(&mockClient, prometheus.NewRegistry())
 			d.ingestLimits = l
