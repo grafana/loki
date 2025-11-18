@@ -23,8 +23,8 @@ const (
 	phaseRunning  = "running"
 )
 
-// PartitionStateProvider provides access to partition ring state.
-type PartitionStateProvider interface {
+// StateProvider provides access to partition ring state.
+type StateProvider interface {
 	GetPartitionState(ctx context.Context) (ring.PartitionState, time.Time, error)
 }
 
@@ -65,7 +65,7 @@ type ReaderService struct {
 	metrics         *serviceMetrics
 	committer       *partitionCommitter
 	partitionID     int32
-	stateProvider   PartitionStateProvider
+	stateProvider   StateProvider
 
 	lastProcessedOffset int64
 }
@@ -84,7 +84,7 @@ func NewReaderService(
 	consumerFactory ConsumerFactory,
 	logger log.Logger,
 	reg prometheus.Registerer,
-	stateProvider PartitionStateProvider,
+	stateProvider StateProvider,
 	readerOpts ...ReaderOption,
 ) (*ReaderService, error) {
 	readerMetrics := NewReaderMetrics(reg)
@@ -126,7 +126,7 @@ func newReaderService(
 	consumerFactory ConsumerFactory,
 	logger log.Logger,
 	reg prometheus.Registerer,
-	stateProvider PartitionStateProvider,
+	stateProvider StateProvider,
 ) *ReaderService {
 	s := &ReaderService{
 		cfg:                 cfg,
