@@ -90,6 +90,7 @@ func ClientHTTPStatusAndError(err error) (int, error) {
 	case errors.As(err, &queryErr):
 		return http.StatusBadRequest, err
 	case errors.Is(err, logqlmodel.ErrLimit) ||
+		errors.Is(err, logqlmodel.ErrIntervalLimit) ||
 		errors.Is(err, logqlmodel.ErrParse) ||
 		errors.Is(err, logqlmodel.ErrPipeline) ||
 		errors.Is(err, logqlmodel.ErrBlocked) ||
