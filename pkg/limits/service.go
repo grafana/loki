@@ -191,9 +191,33 @@ func (s *Service) ExceedsLimits(
 // UpdateRates implements the [proto.IngestLimitsServer] interface.
 func (s *Service) UpdateRates(
 	_ context.Context,
-	_ *proto.UpdateRatesRequest,
+	req *proto.UpdateRatesRequest,
 ) (*proto.UpdateRatesResponse, error) {
-	return &proto.UpdateRatesResponse{}, nil
+	// We do not replicate data to Kafka here as we really need to figure out
+	// how to reduce the volume during replay (the reason we added
+	// LastProducedAt for streams).
+	updated, err := s.usage.UpdateRates(req.Tenant, req.Streams, s.clock.Now())
+	if err != nil {
+		return nil, err
+	}
+	resp := proto.UpdateRatesResponse{
+		Results: make([]*proto.UpdateRatesResult, len(updated)),
+	}
+	for i, stream := range updated {
+		var totalSize uint64
+		for _, bucket := range stream.rateBuckets {
+			totalSize += bucket.size
+		}
+		// The average rate is calculated over the total number of
+		// populated buckets. This allows us to calculate accurate rates
+		// without empty buckets pulling down the average.
+		averageRate := totalSize / (uint64(s.cfg.BucketSize.Seconds()) * uint64(len(stream.rateBuckets)))
+		resp.Results[i] = &proto.UpdateRatesResult{
+			StreamHash: stream.hash,
+			Rate:       averageRate,
+		}
+	}
+	return &resp, nil
 }
 
 func (s *Service) CheckReady(ctx context.Context) error {
