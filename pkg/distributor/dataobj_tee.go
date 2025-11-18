@@ -72,7 +72,7 @@ func NewDataObjTee(
 }
 
 // Duplicate implements the [Tee] interface.
-func (t *DataObjTee) Duplicate(tenant string, streams []KeyedStream) {
+func (t *DataObjTee) Duplicate(_ context.Context, tenant string, streams []KeyedStream) {
 	for _, s := range streams {
 		go t.duplicate(tenant, s)
 	}
