@@ -34,7 +34,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v4
         with:
-          go-version: "1.24.9"
+          go-version: "1.25.4"
 
       # The metastore generates invalid filenames for Windows (with colons),
       # which get rejected by upload-artifact. We zip these files to avoid this
@@ -51,7 +51,7 @@ jobs:
           retention-days: 7
 
   tests:
-    name: Run correctness tests for ${{ matrix.store }}
+    name: Run ${{ matrix.store }}/${{ matrix.range_type }}/${{ matrix.remote_transport == true && 'remote' || 'local' }}
     runs-on: github-hosted-ubuntu-arm64-large
     needs: generate-testdata
     timeout-minutes: 60
@@ -59,6 +59,7 @@ jobs:
       matrix:
         store: [dataobj-engine]
         range_type: [instant, range]
+        remote_transport: [true, false]
       fail-fast: false # Continue testing other stores if one fails
     steps:
       - name: Checkout code
@@ -80,7 +81,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v4
         with:
-          go-version: "1.24.9"
+          go-version: "1.25.4"
 
       - name: Create results directory
         run: mkdir -p ./pkg/logql/bench/results
@@ -89,7 +90,7 @@ jobs:
         shell: bash # Use bash shell to propagate pipe failures
         run: |
           go test \
-            -v -slow-tests -timeout=60m \
+            -v -slow-tests -remote-transport=${{ matrix.remote_transport }} -timeout=60m \
             -run=TestStorageEquality/query=.+/kind=.+/store=${{ matrix.store }}$ \
             ${{ matrix.range_type == 'instant' && '-range-type=instant' || '' }} \
             ${{ inputs.failfast == true && '-failfast' || '' }} \
@@ -100,6 +101,6 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always() # Upload results even if one of the test tests fails
         with:
-          name: logql-bench-results-${{ matrix.store }}-${{ matrix.range_type }}-${{ steps.checkout.outputs.commit }}
+          name: logql-bench-results-${{ matrix.store }}-${{ matrix.range_type }}-${{ matrix.remote_transport == true && 'remote' || 'local' }}-${{ steps.checkout.outputs.commit }}
           path: ./pkg/logql/bench/results
           retention-days: 7

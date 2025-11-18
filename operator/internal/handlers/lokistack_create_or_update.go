@@ -20,7 +20,6 @@ import (
 	"github.com/grafana/loki/operator/internal/external/k8s"
 	"github.com/grafana/loki/operator/internal/handlers/internal/gateway"
 	"github.com/grafana/loki/operator/internal/handlers/internal/networkpolicy"
-	"github.com/grafana/loki/operator/internal/handlers/internal/openshift"
 	"github.com/grafana/loki/operator/internal/handlers/internal/rules"
 	"github.com/grafana/loki/operator/internal/handlers/internal/serviceaccounts"
 	"github.com/grafana/loki/operator/internal/handlers/internal/storage"
@@ -127,23 +126,9 @@ func CreateOrUpdateLokiStack(
 		}
 	}
 
-	if fg.OpenShift.Enabled {
-		openShiftVersion, optErr := openshift.FetchVersion(ctx, k)
-		if optErr != nil {
-			return nil, optErr
-		}
-
-		// Default to enabled NetworkPolicies when on OCP 4.20 and no configuration is present
-		if openShiftVersion != nil && openShiftVersion.IsAtLeast(4, 20) && stack.Spec.NetworkPolicies == nil {
-			stack.Spec.NetworkPolicies = &lokiv1.NetworkPoliciesSpec{
-				Disabled: false,
-			}
-		}
-	}
-
-	networkPolicyStatus := lokiv1.NetworkPoliciesStatusDisabled
-	if stack.Spec.NetworkPolicies != nil && !stack.Spec.NetworkPolicies.Disabled {
-		networkPolicyStatus = lokiv1.NetworkPoliciesStatusEnabled
+	networkPolicyRuleSet := lokiv1.NetworkPolicyRuleSetNone
+	if stack.Spec.NetworkPolicies != nil {
+		networkPolicyRuleSet = stack.Spec.NetworkPolicies.RuleSet
 	}
 
 	tlsProfileType := configv1.TLSProfileType(fg.TLSProfile)
@@ -234,7 +219,7 @@ func CreateOrUpdateLokiStack(
 
 	return &status.LokiStackStatusInfo{
 		Storage:         objStore.CredentialMode,
-		NetworkPolicies: networkPolicyStatus,
+		NetworkPolicies: networkPolicyRuleSet,
 	}, nil
 }
 

@@ -195,6 +195,7 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 		region.SetStatus(codes.Error, "failed to create execution plan")
 		return logqlmodel.Result{}, ErrPlanningFailed
 	}
+	defer wf.Close()
 
 	pipeline, err := wf.Run(ctx)
 	if err != nil {

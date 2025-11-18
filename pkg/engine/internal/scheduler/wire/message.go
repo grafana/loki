@@ -18,6 +18,7 @@ const (
 	// MessageKindInvalid represents an invalid message.
 	MessageKindInvalid MessageKind = iota
 
+	MessageKindWorkerHello  // MessageKindWorkerHello represents [WorkerHelloMessage].
 	MessageKindWorkerReady  // MessageKindWorkerReady represents [WorkerReadyMessage].
 	MessageKindTaskAssign   // MessageKindTaskAssign represents [TaskAssignMessage].
 	MessageKindTaskCancel   // MessageKindTaskCancel represents [TaskCancelMessage].
@@ -30,6 +31,7 @@ const (
 
 var kindNames = [...]string{
 	MessageKindInvalid:      "Invalid",
+	MessageKindWorkerHello:  "WorkerHello",
 	MessageKindWorkerReady:  "WorkerReady",
 	MessageKindTaskAssign:   "TaskAssign",
 	MessageKindTaskCancel:   "TaskCancel",
@@ -63,6 +65,18 @@ type Message interface {
 
 // Messages about workers.
 type (
+	// WorkerHelloMessage is sent by a peer to the scheduler to establish
+	// itself as a control plane connection that can run tasks.
+	//
+	// WorkerHelloMessage must be sent before [WorkerReadyMessage].
+	WorkerHelloMessage struct {
+		// Threads is the number of threads the worker has available.
+		//
+		// The scheduler uses Threads to determine the maximum number of tasks
+		// that can be assigned concurrently to a worker.
+		Threads int
+	}
+
 	// WorkerReadyMessage is sent by a worker to the scheduler to request a new
 	// task to run. Ready workers are eventually assigned a task via
 	// [TaskAssignMessage].
@@ -70,6 +84,10 @@ type (
 	// Workers may send multiple WorkerReadyMessage messages to request more
 	// tasks. Workers are automatically unmarked as ready once each
 	// [WorkerReadyMessage] has been responded to with a [TaskAssignMessage].
+	//
+	// The scheduler can reject a WorkerReadyMessage if the worker sends more
+	// WorkerReadyMessages than the number of threads it declared in its
+	// [WorkerHelloMessage].
 	WorkerReadyMessage struct {
 		// No fields.
 	}
@@ -153,6 +171,7 @@ type (
 
 // Marker implementations
 
+func (WorkerHelloMessage) isMessage()  {}
 func (WorkerReadyMessage) isMessage()  {}
 func (TaskAssignMessage) isMessage()   {}
 func (TaskCancelMessage) isMessage()   {}
@@ -163,6 +182,9 @@ func (StreamDataMessage) isMessage()   {}
 func (StreamStatusMessage) isMessage() {}
 
 // Kinds
+
+// Kind returns [MessageKindWorkerHello].
+func (WorkerHelloMessage) Kind() MessageKind { return MessageKindWorkerHello }
 
 // Kind returns [MessageKindWorkerReady].
 func (WorkerReadyMessage) Kind() MessageKind { return MessageKindWorkerReady }

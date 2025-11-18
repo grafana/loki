@@ -225,7 +225,10 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	result := statsCtx.Result(time.Since(startTime), 0, totalRows)
 	level.Info(logger).Log("msg", "task completed", "duration", time.Since(startTime))
 
-	err = job.Scheduler.SendMessageAsync(ctx, wire.TaskStatusMessage{
+	// Wait for the scheduler to confirm the task has completed before
+	// requesting a new one. This allows the scheduler to update its bookkeeping
+	// for how many threads have capacity for requesting tasks.
+	err = job.Scheduler.SendMessage(ctx, wire.TaskStatusMessage{
 		ID:     job.Task.ULID,
 		Status: workflow.TaskStatus{State: workflow.TaskStateCompleted, Statistics: &result, Capture: capture},
 	})
