@@ -94,8 +94,9 @@ type readyResponse struct {
 // executes them. Task results are forwarded along streams, which are received
 // by other [Worker] instances or the scheduler.
 type Worker struct {
-	config Config
-	logger log.Logger
+	config     Config
+	logger     log.Logger
+	numThreads int
 
 	initOnce sync.Once
 	svc      services.Service
@@ -129,9 +130,15 @@ func New(config Config) (*Worker, error) {
 		return nil, errors.New("at least one of scheduler address or lookup address is required")
 	}
 
+	numThreads := config.NumThreads
+	if numThreads == 0 {
+		numThreads = runtime.GOMAXPROCS(0)
+	}
+
 	return &Worker{
-		config: config,
-		logger: config.Logger,
+		config:     config,
+		logger:     config.Logger,
+		numThreads: numThreads,
 
 		dialer:   config.Dialer,
 		listener: config.Listener,
@@ -155,15 +162,10 @@ func (w *Worker) Service() services.Service {
 
 // run starts the worker, running until the provided context is canceled.
 func (w *Worker) run(ctx context.Context) error {
-	numThreads := w.config.NumThreads
-	if numThreads == 0 {
-		numThreads = runtime.GOMAXPROCS(0)
-	}
-
 	g, ctx := errgroup.WithContext(ctx)
 
 	// Spin up worker threads.
-	for i := range numThreads {
+	for i := range w.numThreads {
 		t := &thread{
 			BatchSize: w.config.BatchSize,
 			Logger:    log.With(w.logger, "thread", i),
@@ -379,8 +381,15 @@ func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, con
 	}
 
 	g, ctx := errgroup.WithContext(ctx)
-
 	g.Go(func() error { return peer.Serve(ctx) })
+
+	// Perform a handshake with the scheduler. This must be done before
+	// launching the goroutine to request task assignment, as WorkerReady
+	// messages are rejected until a WorkerHello is acknowledged.
+	if err := peer.SendMessage(ctx, wire.WorkerHelloMessage{Threads: w.numThreads}); err != nil {
+		level.Error(logger).Log("msg", "failed to perform handshake with scheduler", "err", err)
+		return err
+	}
 
 	g.Go(func() error {
 		for {

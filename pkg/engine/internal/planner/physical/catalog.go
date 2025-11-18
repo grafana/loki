@@ -229,7 +229,7 @@ func convertLiteralToString(expr Expression) (string, error) {
 	if l.ValueType() != types.Loki.String {
 		return "", fmt.Errorf("literal type is not a string, got %v", l.ValueType())
 	}
-	return l.Any().(string), nil
+	return l.Value().(string), nil
 }
 
 func convertColumnRef(expr Expression, allowAmbiguousColumnRefs bool) (string, error) {

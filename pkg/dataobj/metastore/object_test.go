@@ -88,37 +88,6 @@ func (b *testDataBuilder) addStreamAndFlush(tenant string, stream logproto.Strea
 	require.NoError(b.t, b.meta.WriteEntry(context.Background(), path, timeRanges))
 }
 
-func TestStreamIDs(t *testing.T) {
-	t.Run("not matching streams", func(t *testing.T) {
-		queryMetastore(t, tenantID, func(ctx context.Context, start, end time.Time, mstore Metastore) {
-			matchers := []*labels.Matcher{
-				labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"),
-			}
-			paths, streamIDs, sections, err := mstore.StreamIDs(ctx, start, end, matchers...)
-			require.NoError(t, err)
-			require.Len(t, paths, 0)
-			require.Len(t, streamIDs, 0)
-			require.Len(t, sections, 0)
-		})
-	})
-
-	t.Run("matching streams", func(t *testing.T) {
-		queryMetastore(t, tenantID, func(ctx context.Context, start, end time.Time, mstore Metastore) {
-			matchers := []*labels.Matcher{
-				labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),
-				labels.MustNewMatcher(labels.MatchEqual, "env", "prod"),
-			}
-			paths, streamIDs, sections, err := mstore.StreamIDs(ctx, start, end, matchers...)
-			require.NoError(t, err)
-			require.Len(t, paths, 1)
-			require.Len(t, streamIDs, 1)
-			require.Len(t, sections, 1)
-			require.Equal(t, []int64{1}, streamIDs[0])
-			require.Equal(t, 1, sections[0])
-		})
-	})
-}
-
 func TestLabels(t *testing.T) {
 	matchers := []*labels.Matcher{
 		labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),

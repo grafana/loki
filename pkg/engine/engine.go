@@ -193,6 +193,7 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 		span.SetStatus(codes.Error, "failed to create execution plan")
 		return logqlmodel.Result{}, ErrPlanningFailed
 	}
+	defer wf.Close()
 
 	pipeline, err := wf.Run(ctx)
 	if err != nil {
@@ -328,6 +329,9 @@ func (e *Engine) buildWorkflow(ctx context.Context, logger log.Logger, physicalP
 	opts := workflow.Options{
 		MaxRunningScanTasks:  e.limits.MaxScanTaskParallelism(tenantID),
 		MaxRunningOtherTasks: 0,
+
+		DebugTasks:   e.limits.DebugEngineTasks(tenantID),
+		DebugStreams: e.limits.DebugEngineStreams(tenantID),
 	}
 	wf, err := workflow.New(opts, logger, tenantID, e.scheduler.inner, physicalPlan)
 	if err != nil {

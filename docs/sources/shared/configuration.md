@@ -4736,6 +4736,15 @@ otlp_config:
 # and all tasks will be scheduled at once.
 # CLI flag: -limits.max-scan-task-parallelism
 [max_scan_task_parallelism: <int> | default = 0]
+
+# Experimental: Toggles verbose debug logging of tasks in the new query engine.
+# CLI flag: -limits.debug-engine-tasks
+[debug_engine_tasks: <boolean> | default = false]
+
+# Experimental: Toggles verbose debug logging of data streams in the new query
+# engine.
+# CLI flag: -limits.debug-engine-streams
+[debug_engine_streams: <boolean> | default = false]
 ```
 
 ### local_storage_config
