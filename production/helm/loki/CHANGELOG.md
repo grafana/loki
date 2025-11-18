@@ -13,7 +13,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
-- [FEATURE] Add compaction not run alert rules. 
+- [FEATURE] Add compaction not run alert rules. [#19901](https://github.com/grafana/loki/pull/19901)
 - [ENHANCEMENT] Use fsGroupChangePolicy=OnRootMismatch on loki to speed up pod starts [#13942](https://github.com/grafana/loki/pull/13942)
 
 ## 6.46.0
