@@ -246,11 +246,21 @@ type cursorOffsetPreferred struct {
 	recheck          bool
 }
 
-// Moves a cursor from one source to another. This is done while handling
-// a fetch response, which means within the context of a live session.
+// Moves a cursor from one source to another. This is done while handling a
+// fetch response or creating a fetch request, which means within the context
+// of a live session.
+//
+// NOTE: We cannot add the cursor to the new source until AFTER we are done
+// modifying everything on the cursor. FURTHER, we cannot add the cursor to the
+// new source until we are done accessing *any* field on the cursor.  As soon
+// as we add the cursor to the new source, it is eligible for use in a new
+// fetch request -- and, pathologically, the cursor could move again and the
+// source can be changed again (and at that point, all bets are off and there
+// can be some weird access patterns and modifying of fields that leads to
+// races or crashes). Point is: remove, modify, add. Do not modify after add.
+// See #1167.
 func (p *cursorOffsetPreferred) move() {
 	c := p.from
-	defer c.allowUsable()
 
 	// Before we migrate the cursor, we check if the destination source
 	// exists. If not, we do not migrate and instead force a metadata.
@@ -264,13 +274,11 @@ func (p *cursorOffsetPreferred) move() {
 		return
 	}
 
-	// This remove clears the source's session and buffered fetch, although
-	// we will not have a buffered fetch since moving replicas is called
-	// before buffering a fetch.
 	c.source.removeCursor(c)
 	c.source = sns.source
-	c.source.addCursor(c)
 	c.moveAt = time.Now().UnixNano()
+	c.useState.Swap(true)
+	c.source.addCursor(c)
 }
 
 type cursorPreferreds []cursorOffsetPreferred
@@ -871,6 +879,11 @@ func (s *source) fetch(consumerSession *consumerSession, doneFetch chan<- struct
 
 	select {
 	case <-requested:
+		// As `select` is pseudo-random when both cases are ready,
+		// check for context error in this branch to avoid retrying immediately with a failed context.
+		if isContextErr(err) && ctx.Err() != nil {
+			return fetched
+		}
 		fetched = true
 	case <-ctx.Done():
 		return fetched
@@ -928,8 +941,12 @@ func (s *source) fetch(consumerSession *consumerSession, doneFetch chan<- struct
 	}
 
 	// Before updating the source, we move all cursors that have new
-	// preferred replicas and remove them from being tracked in our req
-	// offsets. We also remove the reload offsets from our req offsets.
+	// preferred replicas and remove them (and any reload offsets) from
+	// being tracked in our req offsets.
+	//
+	// Polling uses usedOffsets to update cursors; we need to remove moved
+	// or reloading cursors from being modified when the records that were
+	// fetched are finally polled.
 	if len(preferreds) > 0 {
 		s.cl.cfg.logger.Log(LogLevelInfo, "fetch partitions returned preferred replicas",
 			"from_broker", s.nodeID,
