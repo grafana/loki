@@ -23,6 +23,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"strconv"
 	"sync"
 
 	"cloud.google.com/go/iam/apiv1/iampb"
@@ -101,8 +102,10 @@ func defaultGRPCOptions() []option.ClientOption {
 		defaults = append(defaults,
 			internaloption.AllowNonDefaultServiceAccount(true),
 			internaloption.EnableDirectPath(true),
-			internaloption.EnableDirectPathXds(),
-			internaloption.AllowHardBoundTokens("ALTS"))
+			internaloption.EnableDirectPathXds())
+		if disableBoundToken, _ := strconv.ParseBool(os.Getenv("STORAGE_DISABLE_DIRECTPATH_BOUND_TOKEN")); !disableBoundToken {
+			defaults = append(defaults, internaloption.AllowHardBoundTokens("ALTS"))
+		}
 	}
 
 	return defaults

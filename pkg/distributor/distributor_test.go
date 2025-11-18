@@ -484,7 +484,7 @@ func Test_PushWithEnforcedLabels(t *testing.T) {
 	// enforced labels configured, but all labels are missing.
 	_, err := distributors[0].Push(ctx, req)
 	require.Error(t, err)
-	expectedErr := httpgrpc.Errorf(http.StatusBadRequest, validation.MissingEnforcedLabelsErrorMsg, "app,env", "test", "{foo=\"bar\"}")
+	expectedErr := httpgrpc.Errorf(http.StatusBadRequest, validation.MissingEnforcedLabelsErrorMsg, "app,env", "test", "{foo=\"bar\"}", "")
 	require.EqualError(t, err, expectedErr.Error())
 
 	// Verify metrics for discarded samples due to missing enforced labels
@@ -1771,7 +1771,7 @@ func TestDistributor_PushIngestionBlockedByPolicy(t *testing.T) {
 			policy:           "test-policy",
 			labels:           `{foo="bar"}`,
 			expectError:      true,
-			expectedErrorMsg: fmt.Sprintf(validation.BlockedIngestionPolicyErrorMsg, "test", now.Add(1*time.Hour).Format(time.RFC3339), defaultErrCode),
+			expectedErrorMsg: fmt.Sprintf(validation.BlockedIngestionPolicyErrorMsg, "test", "test-policy", now.Add(1*time.Hour).Format(time.RFC3339), defaultErrCode),
 			yes:              true,
 		},
 		{
@@ -1791,7 +1791,7 @@ func TestDistributor_PushIngestionBlockedByPolicy(t *testing.T) {
 			policy:           "test-policy",
 			labels:           `{foo="bar"}`,
 			expectError:      true,
-			expectedErrorMsg: fmt.Sprintf(validation.BlockedIngestionPolicyErrorMsg, "test", now.Add(1*time.Hour).Format(time.RFC3339), defaultErrCode),
+			expectedErrorMsg: fmt.Sprintf(validation.BlockedIngestionPolicyErrorMsg, "test", "test-policy", now.Add(1*time.Hour).Format(time.RFC3339), defaultErrCode),
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -2138,7 +2138,7 @@ type mockTee struct {
 	tenant     string
 }
 
-func (mt *mockTee) Duplicate(tenant string, streams []KeyedStream) {
+func (mt *mockTee) Duplicate(_ context.Context, tenant string, streams []KeyedStream) {
 	mt.mu.Lock()
 	defer mt.mu.Unlock()
 	mt.duplicated = append(mt.duplicated, streams)

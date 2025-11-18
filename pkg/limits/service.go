@@ -125,12 +125,12 @@ func New(cfg Config, limits Limits, logger log.Logger, reg prometheus.Registerer
 		kgo.OnPartitionsRevoked(s.partitionLifecycler.Revoke),
 		kgo.OnPartitionsLost(s.partitionLifecycler.Lost),
 		// For now these are hardcoded, but we might choose to make them
-		// configurable in the future. We allow up to 100MB to be buffered
-		// in total, and up to 1.5MB per partition. If an instance consumes
+		// configurable in the future. We allow up to 10MB to be buffered
+		// per broker, and up to 1.5MB per partition. If an instance consumes
 		// all partitions, then it can buffer 1.5MB * 64 partitions = 96MB.
 		// This allows us to run with less than 512MB of allocated heap using
 		// a GOMEMLIMIT of 512MiB.
-		kgo.FetchMaxBytes(100_000_000),        // 100MB
+		kgo.FetchMaxBytes(10_000_000),         // 10MB
 		kgo.FetchMaxPartitionBytes(1_500_000), // 1.5MB
 	)
 	if err != nil {
@@ -180,12 +180,20 @@ func (s *Service) GetAssignedPartitions(
 	return &resp, nil
 }
 
-// ExceedsLimits implements the proto.IngestLimitsServer interface.
+// ExceedsLimits implements the [proto.IngestLimitsServer] interface.
 func (s *Service) ExceedsLimits(
 	ctx context.Context,
 	req *proto.ExceedsLimitsRequest,
 ) (*proto.ExceedsLimitsResponse, error) {
 	return s.limitsChecker.ExceedsLimits(ctx, req)
+}
+
+// UpdateRates implements the [proto.IngestLimitsServer] interface.
+func (s *Service) UpdateRates(
+	_ context.Context,
+	_ *proto.UpdateRatesRequest,
+) (*proto.UpdateRatesResponse, error) {
+	return &proto.UpdateRatesResponse{}, nil
 }
 
 func (s *Service) CheckReady(ctx context.Context) error {
