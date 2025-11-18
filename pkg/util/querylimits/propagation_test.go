@@ -74,7 +74,7 @@ func TestSerializingQueryLimits(t *testing.T) {
 func TestInjectAndExtractQueryLimitsContext(t *testing.T) {
 	ctx := context.Background()
 	baseTime := time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
-	limitsCtx := QueryLimitsContext{
+	limitsCtx := Context{
 		Expr: `{job="app"}`,
 		From: baseTime,
 		To:   baseTime.Add(1 * time.Hour),
@@ -111,7 +111,7 @@ func TestSerializingQueryLimitsContext(t *testing.T) {
 	endTime := baseTime.Add(1 * time.Hour)
 
 	// full struct
-	limitsCtx := QueryLimitsContext{
+	limitsCtx := Context{
 		Expr: `{job="app"}`,
 		From: baseTime,
 		To:   endTime,
@@ -123,7 +123,7 @@ func TestSerializingQueryLimitsContext(t *testing.T) {
 	require.JSONEq(t, expected, string(actual))
 
 	// some fields are empty
-	limitsCtx = QueryLimitsContext{
+	limitsCtx = Context{
 		Expr: `rate({job="app"}[5m])`,
 	}
 

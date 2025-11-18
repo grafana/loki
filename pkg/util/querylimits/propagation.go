@@ -92,29 +92,29 @@ func InjectQueryLimitsIntoContext(ctx context.Context, limits QueryLimits) conte
 	return context.WithValue(ctx, interface{}(queryLimitsCtxKey), &limits)
 }
 
-type QueryLimitsContext struct {
+type Context struct {
 	Expr string    `json:"expr"`
 	From time.Time `json:"from"`
 	To   time.Time `json:"to"`
 }
 
-func UnmarshalQueryLimitsContext(data []byte) (*QueryLimitsContext, error) {
-	limitsCtx := &QueryLimitsContext{}
+func UnmarshalQueryLimitsContext(data []byte) (*Context, error) {
+	limitsCtx := &Context{}
 	err := json.Unmarshal(data, limitsCtx)
 	return limitsCtx, err
 }
 
-func MarshalQueryLimitsContext(limits *QueryLimitsContext) ([]byte, error) {
+func MarshalQueryLimitsContext(limits *Context) ([]byte, error) {
 	return json.Marshal(limits)
 }
 
 // InjectQueryLimitsContextHTTP adds the query limits context to the request headers.
-func InjectQueryLimitsContextHTTP(r *http.Request, limitsCtx *QueryLimitsContext) error {
+func InjectQueryLimitsContextHTTP(r *http.Request, limitsCtx *Context) error {
 	return InjectQueryLimitsContextHeader(&r.Header, limitsCtx)
 }
 
 // InjectQueryLimitsContextHeader adds the query limits context to the headers.
-func InjectQueryLimitsContextHeader(h *http.Header, limitsCtx *QueryLimitsContext) error {
+func InjectQueryLimitsContextHeader(h *http.Header, limitsCtx *Context) error {
 	// Ensure any existing policy sets are erased
 	h.Del(HTTPHeaderQueryLimitsContextKey)
 
@@ -127,7 +127,7 @@ func InjectQueryLimitsContextHeader(h *http.Header, limitsCtx *QueryLimitsContex
 }
 
 // ExtractQueryLimitsContextHTTP retrieves the query limits context from the HTTP header and returns it.
-func ExtractQueryLimitsContextHTTP(r *http.Request) (*QueryLimitsContext, error) {
+func ExtractQueryLimitsContextHTTP(r *http.Request) (*Context, error) {
 	headerValues := r.Header.Values(HTTPHeaderQueryLimitsContextKey)
 
 	// Iterate through each set header value
@@ -140,8 +140,8 @@ func ExtractQueryLimitsContextHTTP(r *http.Request) (*QueryLimitsContext, error)
 }
 
 // ExtractQueryLimitsContextFromContext gets the embedded query limits context from the context
-func ExtractQueryLimitsContextFromContext(ctx context.Context) *QueryLimitsContext {
-	source, ok := ctx.Value(queryLimitsContextCtxKey).(*QueryLimitsContext)
+func ExtractQueryLimitsContextFromContext(ctx context.Context) *Context {
+	source, ok := ctx.Value(queryLimitsContextCtxKey).(*Context)
 
 	if !ok {
 		return nil
@@ -151,6 +151,6 @@ func ExtractQueryLimitsContextFromContext(ctx context.Context) *QueryLimitsConte
 }
 
 // InjectQueryLimitsContextIntoContext returns a derived context containing the provided query limits context
-func InjectQueryLimitsContextIntoContext(ctx context.Context, limitsCtx QueryLimitsContext) context.Context {
+func InjectQueryLimitsContextIntoContext(ctx context.Context, limitsCtx Context) context.Context {
 	return context.WithValue(ctx, any(queryLimitsContextCtxKey), &limitsCtx)
 }

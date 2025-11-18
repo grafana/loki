@@ -1165,7 +1165,7 @@ func Test_MaxQuerySize_WithQueryLimitsContext(t *testing.T) {
 			ctx := user.InjectOrgID(context.Background(), "foo")
 
 			if !tc.contextStart.IsZero() && !tc.contextEnd.IsZero() {
-				ctx = querylimits.InjectQueryLimitsContextIntoContext(ctx, querylimits.QueryLimitsContext{
+				ctx = querylimits.InjectQueryLimitsContextIntoContext(ctx, querylimits.Context{
 					Expr: ctxSentinal, // a hack to make mocking the stats handler easier, irl this should be the same query as in the request
 					From: tc.contextStart,
 					To:   tc.contextEnd,

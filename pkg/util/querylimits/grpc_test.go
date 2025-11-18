@@ -32,7 +32,7 @@ func TestGRPCQueryLimits(t *testing.T) {
 
 func TestGRPCQueryLimitsContext(t *testing.T) {
 	var err error
-	limitsCtx := QueryLimitsContext{
+	limitsCtx := Context{
 		Expr: "{app=\"test\"}",
 		From: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 		To:   time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC),
@@ -44,7 +44,7 @@ func TestGRPCQueryLimitsContext(t *testing.T) {
 
 	c2, err := extractFromGRPCRequest(c1)
 	require.NoError(t, err)
-	require.Equal(t, limitsCtx, *(c2.Value(queryLimitsContextCtxKey).(*QueryLimitsContext)))
+	require.Equal(t, limitsCtx, *(c2.Value(queryLimitsContextCtxKey).(*Context)))
 
 	c3, err := extractFromGRPCRequest(context.Background())
 	require.NoError(t, err)

@@ -107,7 +107,7 @@ func Test_MiddlewareWithBrokenContextHeader(t *testing.T) {
 }
 
 func Test_MiddlewareWithContextHeader(t *testing.T) {
-	limitsCtx := QueryLimitsContext{
+	limitsCtx := Context{
 		Expr: "{app=\"test\"}",
 		From: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 		To:   time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC),
