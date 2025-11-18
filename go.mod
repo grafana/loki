@@ -7,7 +7,7 @@ toolchain go1.25.4
 require (
 	cloud.google.com/go/bigtable v1.40.1
 	cloud.google.com/go/pubsub/v2 v2.3.0
-	cloud.google.com/go/storage v1.57.1
+	cloud.google.com/go/storage v1.57.2
 	dario.cat/mergo v1.0.2
 	github.com/Azure/azure-pipeline-go v0.2.3
 	github.com/Azure/azure-storage-blob-go v0.15.0
@@ -22,7 +22,7 @@ require (
 	github.com/aliyun/aliyun-oss-go-sdk v3.0.2+incompatible
 	github.com/apache/cassandra-gocql-driver/v2 v2.0.0
 	github.com/aws/aws-sdk-go-v2 v1.39.6
-	github.com/aws/aws-sdk-go-v2/config v1.31.18
+	github.com/aws/aws-sdk-go-v2/config v1.31.20
 	github.com/aws/aws-sdk-go-v2/credentials v1.18.24
 	github.com/baidubce/bce-sdk-go v0.9.251
 	github.com/bmatcuk/doublestar/v4 v4.9.1
@@ -119,7 +119,7 @@ require (
 	github.com/IBM/ibm-cos-sdk-go v1.12.3
 	github.com/apache/arrow-go/v18 v18.4.1
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.52.6
-	github.com/aws/aws-sdk-go-v2/service/s3 v1.90.0
+	github.com/aws/aws-sdk-go-v2/service/s3 v1.90.2
 	github.com/axiomhq/hyperloglog v0.2.5
 	github.com/bits-and-blooms/bloom/v3 v3.7.1
 	github.com/buger/jsonparser v1.1.1
@@ -151,7 +151,7 @@ require (
 	github.com/shirou/gopsutil/v4 v4.25.10
 	github.com/thanos-io/objstore v0.0.0-20250115091151-a54d0f04b42a
 	github.com/tjhop/slog-gokit v0.1.5
-	github.com/twmb/franz-go v1.20.3
+	github.com/twmb/franz-go v1.20.4
 	github.com/twmb/franz-go/pkg/kadm v1.17.1
 	github.com/twmb/franz-go/pkg/kfake v0.0.0-20250603004440-37eecbb8927f
 	github.com/twmb/franz-go/pkg/kmsg v1.12.0
@@ -330,7 +330,7 @@ require (
 	cloud.google.com/go v0.121.6 // indirect
 	cloud.google.com/go/compute/metadata v0.9.0 // indirect
 	cloud.google.com/go/iam v1.5.2 // indirect
-	cloud.google.com/go/longrunning v0.6.7 // indirect
+	cloud.google.com/go/longrunning v0.7.0 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.19.1 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.13.0 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/internal v1.11.2 // indirect
