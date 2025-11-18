@@ -158,56 +158,6 @@ func (m *ObjectMetastore) streams(ctx context.Context, start, end time.Time, mat
 	return m.listStreamsFromObjects(ctx, paths, predicate)
 }
 
-func (m *ObjectMetastore) StreamIDs(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]string, [][]int64, []int, error) {
-	tenantID, err := tenant.TenantID(ctx)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-
-	logger := utillog.WithContext(ctx, m.logger)
-	level.Debug(logger).Log("msg", "ObjectMetastore.StreamIDs", "tenant", tenantID, "start", start, "end", end, "matchers", matchersToString(matchers))
-
-	// Get all metastore paths for the time range
-	var tablePaths []string
-	for path := range iterTableOfContentsPaths(start, end) {
-		tablePaths = append(tablePaths, path)
-	}
-	level.Debug(logger).Log("msg", "got metastore object paths", "tenant", tenantID, "paths", strings.Join(tablePaths, ","))
-
-	// List objects from all stores concurrently
-	objectPaths, err := m.listObjectsFromTables(ctx, tablePaths, start, end)
-	level.Debug(logger).Log("msg", "got data object paths", "tenant", tenantID, "paths", strings.Join(objectPaths, ","), "err", err)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-
-	// Search the stream sections of the matching objects to find matching streams
-	predicate := streamPredicateFromMatchers(start, end, matchers...)
-	streamIDs, sections, err := m.listStreamIDsFromLogObjects(ctx, objectPaths, predicate)
-	level.Debug(logger).Log("msg", "got streams and sections", "tenant", tenantID, "streams", len(streamIDs), "sections", len(sections), "err", err)
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to list stream IDs and sections from objects: %w", err)
-	}
-
-	if len(streamIDs) == 0 {
-		return []string{}, [][]int64{}, []int{}, nil
-	}
-
-	// Remove objects that do not contain any matching streams
-	level.Debug(logger).Log("msg", "remove objects that do not contain any matching streams", "paths", len(objectPaths), "streams", len(streamIDs), "sections", len(sections))
-	for i := 0; i < len(objectPaths); i++ {
-		if len(streamIDs[i]) == 0 {
-			level.Debug(logger).Log("msg", "remove object", "path", objectPaths[i])
-			objectPaths = slices.Delete(objectPaths, i, i+1)
-			streamIDs = slices.Delete(streamIDs, i, i+1)
-			sections = slices.Delete(sections, i, i+1)
-			i--
-		}
-	}
-
-	return objectPaths, streamIDs, sections, nil
-}
-
 func (m *ObjectMetastore) Sections(ctx context.Context, start, end time.Time, matchers []*labels.Matcher, predicates []*labels.Matcher) ([]*DataobjSectionDescriptor, error) {
 	sectionsTimer := prometheus.NewTimer(m.metrics.resolvedSectionsTotalDuration)
 
@@ -221,8 +171,7 @@ func (m *ObjectMetastore) Sections(ctx context.Context, start, end time.Time, ma
 	if len(tablePaths) == 0 {
 		m.metrics.indexObjectsTotal.Observe(0)
 		m.metrics.resolvedSectionsTotal.Observe(0)
-		duration := sectionsTimer.ObserveDuration()
-		level.Debug(utillog.WithContext(ctx, m.logger)).Log("msg", "resolved sections", "duration", duration, "sections", 0)
+		level.Debug(utillog.WithContext(ctx, m.logger)).Log("msg", "no sections resolved", "reason", "no toc paths")
 		return nil, nil
 	}
 
@@ -232,14 +181,12 @@ func (m *ObjectMetastore) Sections(ctx context.Context, start, end time.Time, ma
 		return nil, err
 	}
 
-	level.Debug(m.logger).Log("msg", "resolved index files", "count", len(indexPaths), "paths", strings.Join(indexPaths, ","))
 	m.metrics.indexObjectsTotal.Observe(float64(len(indexPaths)))
 
 	// Return early if no index files are found
 	if len(indexPaths) == 0 {
 		m.metrics.resolvedSectionsTotal.Observe(0)
-		duration := sectionsTimer.ObserveDuration()
-		level.Debug(utillog.WithContext(ctx, m.logger)).Log("msg", "resolved sections", "duration", duration, "sections", 0)
+		level.Debug(utillog.WithContext(ctx, m.logger)).Log("msg", "no sections resolved", "reason", "no index paths")
 		return nil, nil
 	}
 
@@ -283,6 +230,7 @@ func (m *ObjectMetastore) Sections(ctx context.Context, start, end time.Time, ma
 
 			streamSectionPointers = intersectSections(streamSectionPointers, sectionMembershipEstimates)
 			if len(streamSectionPointers) == 0 {
+				level.Debug(utillog.WithContext(ctx, m.logger)).Log("msg", "no sections resolved", "reason", "no matching predicates")
 				// Short circuit here if no sections match the predicates
 				return streamSectionPointers, nil
 			}
@@ -292,7 +240,18 @@ func (m *ObjectMetastore) Sections(ctx context.Context, start, end time.Time, ma
 	duration := sectionsTimer.ObserveDuration()
 	m.metrics.resolvedSectionsTotal.Observe(float64(len(streamSectionPointers)))
 	m.metrics.resolvedSectionsRatio.Observe(float64(len(streamSectionPointers)) / float64(initialSectionPointersCount))
-	level.Debug(utillog.WithContext(ctx, m.logger)).Log("msg", "resolved sections", "duration", duration, "sections", len(streamSectionPointers), "ratio", float64(len(streamSectionPointers))/float64(initialSectionPointersCount))
+
+	level.Debug(utillog.WithContext(ctx, m.logger)).Log(
+		"msg", "resolved sections",
+		"duration", duration,
+		"tables", len(tablePaths),
+		"indexes", len(indexPaths),
+		"sections", len(streamSectionPointers),
+		"ratio", float64(len(streamSectionPointers))/float64(initialSectionPointersCount),
+		"matchers", matchersToString(matchers),
+		"start", start,
+		"end", end,
+	)
 
 	return streamSectionPointers, nil
 }
