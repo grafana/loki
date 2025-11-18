@@ -2,6 +2,8 @@ package xcap
 
 import (
 	"fmt"
+
+	"go.opentelemetry.io/otel/attribute"
 )
 
 // ToProtoCapture converts a Capture to its protobuf representation.
@@ -63,6 +65,16 @@ func toProtoRegion(region *Region, statsIndex map[StatisticKey]uint32) (*ProtoRe
 		})
 	}
 
+	// Convert attributes to proto attributes
+	protoAttributes := make([]*ProtoAttribute, 0, len(region.attributes))
+	for _, attr := range region.attributes {
+		protoAttr, err := marshalAttribute(attr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal attribute %s: %w", attr.Key, err)
+		}
+		protoAttributes = append(protoAttributes, protoAttr)
+	}
+
 	return &ProtoRegion{
 		Name:         region.name,
 		StartTime:    region.startTime,
@@ -70,6 +82,7 @@ func toProtoRegion(region *Region, statsIndex map[StatisticKey]uint32) (*ProtoRe
 		Observations: protoObservations,
 		Id:           region.id[:],
 		ParentId:     region.parentID[:],
+		Attributes:   protoAttributes,
 	}, nil
 }
 
@@ -127,4 +140,31 @@ func marshalAggregationType(agg AggregationType) ProtoAggregationType {
 	default:
 		return PROTO_AGGREGATION_TYPE_INVALID
 	}
+}
+
+// marshalAttribute converts an OpenTelemetry attribute to its protobuf representation.
+func marshalAttribute(attr attribute.KeyValue) (*ProtoAttribute, error) {
+	if !attr.Valid() {
+		return nil, fmt.Errorf("invalid attribute")
+	}
+
+	protoValue := &ProtoAttributeValue{}
+	switch attr.Value.Type() {
+	case attribute.STRING:
+		protoValue.Kind = &ProtoAttributeValue_StringValue{StringValue: attr.Value.AsString()}
+	case attribute.INT64:
+		protoValue.Kind = &ProtoAttributeValue_IntValue{IntValue: attr.Value.AsInt64()}
+	case attribute.FLOAT64:
+		protoValue.Kind = &ProtoAttributeValue_FloatValue{FloatValue: attr.Value.AsFloat64()}
+	case attribute.BOOL:
+		protoValue.Kind = &ProtoAttributeValue_BoolValue{BoolValue: attr.Value.AsBool()}
+	default:
+		// For unsupported types (like slices), convert to string
+		protoValue.Kind = &ProtoAttributeValue_StringValue{StringValue: attr.Value.Emit()}
+	}
+
+	return &ProtoAttribute{
+		Key:   string(attr.Key),
+		Value: protoValue,
+	}, nil
 }

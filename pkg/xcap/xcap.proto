@@ -44,6 +44,28 @@ message ProtoRegion {
 
   // ParentId is the ID of the parent region, or empty if this is a root region (8 bytes).
   bytes parent_id = 6;
+
+  // Attributes are the attributes associated with this region.
+  repeated ProtoAttribute attributes = 7;
+}
+
+// ProtoAttribute represents a single attribute key-value pair.
+message ProtoAttribute {
+  // Key is the attribute key.
+  string key = 1;
+
+  // Value is the attribute value.
+  ProtoAttributeValue value = 2;
+}
+
+// ProtoAttributeValue represents an attribute value.
+message ProtoAttributeValue {
+  oneof kind {
+    string string_value = 1;
+    int64 int_value = 2;
+    double float_value = 3;
+    bool bool_value = 4;
+  }
 }
 
 // ProtoStatistic represents a statistic definition.

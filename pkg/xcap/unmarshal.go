@@ -3,6 +3,8 @@ package xcap
 import (
 	"context"
 	"fmt"
+
+	"go.opentelemetry.io/otel/attribute"
 )
 
 // FromProtoCapture converts a protobuf Capture to its Go representation.
@@ -41,7 +43,7 @@ func FromProtoCapture(proto *ProtoCapture) (*Capture, error) {
 // fromProtoRegion converts a protobuf Region to its Go representation.
 func fromProtoRegion(proto *ProtoRegion, statIndexToStat map[uint32]Statistic) (*Region, error) {
 	// Unmarshal observations
-	observations := make(map[StatisticKey]AggregatedObservation, len(proto.Observations))
+	observations := make(map[StatisticKey]*AggregatedObservation, len(proto.Observations))
 	for _, protoObs := range proto.Observations {
 		stat, exists := statIndexToStat[protoObs.StatisticId]
 		if !exists {
@@ -54,7 +56,7 @@ func fromProtoRegion(proto *ProtoRegion, statIndexToStat map[uint32]Statistic) (
 		}
 
 		key := stat.Key()
-		observations[key] = AggregatedObservation{
+		observations[key] = &AggregatedObservation{
 			Statistic: stat,
 			Value:     value,
 			Count:     int(protoObs.Count),
@@ -69,6 +71,19 @@ func fromProtoRegion(proto *ProtoRegion, statIndexToStat map[uint32]Statistic) (
 	var parentID identifier
 	copy(parentID[:], proto.ParentId)
 
+	// Unmarshal attributes from proto
+	attributes := make([]attribute.KeyValue, 0)
+	if proto.Attributes != nil {
+		attributes = make([]attribute.KeyValue, 0, len(proto.Attributes))
+		for _, protoAttr := range proto.Attributes {
+			attr, err := unmarshalAttribute(protoAttr)
+			if err != nil {
+				return nil, fmt.Errorf("failed to unmarshal attribute %s: %w", protoAttr.Key, err)
+			}
+			attributes = append(attributes, attr)
+		}
+	}
+
 	region := &Region{
 		id:           regionID,
 		parentID:     parentID,
@@ -76,6 +91,7 @@ func fromProtoRegion(proto *ProtoRegion, statIndexToStat map[uint32]Statistic) (
 		startTime:    proto.StartTime,
 		endTime:      proto.EndTime,
 		observations: observations,
+		attributes:   attributes,
 		ended:        true, // Regions from proto are always ended
 	}
 
@@ -157,5 +173,26 @@ func unmarshalAggregationType(proto ProtoAggregationType) (AggregationType, erro
 		return AggregationTypeFirst, nil
 	default:
 		return AggregationTypeInvalid, fmt.Errorf("unknown aggregation type: %v", proto)
+	}
+}
+
+// unmarshalAttribute converts a protobuf attribute to an OpenTelemetry attribute.
+func unmarshalAttribute(proto *ProtoAttribute) (attribute.KeyValue, error) {
+	if proto == nil || proto.Value == nil {
+		return attribute.KeyValue{}, fmt.Errorf("invalid attribute")
+	}
+
+	key := attribute.Key(proto.Key)
+	switch v := proto.Value.Kind.(type) {
+	case *ProtoAttributeValue_StringValue:
+		return key.String(v.StringValue), nil
+	case *ProtoAttributeValue_IntValue:
+		return key.Int64(v.IntValue), nil
+	case *ProtoAttributeValue_FloatValue:
+		return key.Float64(v.FloatValue), nil
+	case *ProtoAttributeValue_BoolValue:
+		return key.Bool(v.BoolValue), nil
+	default:
+		return attribute.KeyValue{}, fmt.Errorf("unsupported attribute value type: %T", proto.Value.Kind)
 	}
 }

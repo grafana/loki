@@ -58,17 +58,10 @@ func createSpans(ctx context.Context, region *Region, parentToChildren map[ident
 		opts = append(opts, trace.WithAttributes(observationToAttribute(key, obs)))
 	}
 
-	if region.parentID.IsZero() {
-		// Creates a new trace for the root region.
-		opts = append(opts, trace.WithNewRoot())
-	}
-
 	// Create the span
 	ctx, span := tracer.Start(ctx, region.name, opts...)
 
-	// Get children directly from the map (O(1) lookup)
 	children := parentToChildren[region.id]
-
 	// Recursively create spans for children
 	for _, child := range children {
 		if err := createSpans(ctx, child, parentToChildren); err != nil {
@@ -83,7 +76,7 @@ func createSpans(ctx context.Context, region *Region, parentToChildren map[ident
 
 // observationToAttribute converts an observation to an OpenTelemetry attribute.
 // The attribute key is the statistic name, and the value depends on the data type.
-func observationToAttribute(key StatisticKey, obs AggregatedObservation) attribute.KeyValue {
+func observationToAttribute(key StatisticKey, obs *AggregatedObservation) attribute.KeyValue {
 	attrKey := attribute.Key(key.Name)
 
 	switch key.DataType {

@@ -55,7 +55,7 @@ type Region struct {
 
 	// observations are all observations recorded in this region.
 	// Map from statistic key to aggregated observation value.
-	observations map[StatisticKey]AggregatedObservation
+	observations map[StatisticKey]*AggregatedObservation
 
 	// ended indicates whether End() has been called.
 	ended bool
@@ -86,7 +86,7 @@ func StartRegion(ctx context.Context, name string, opts ...RegionOption) (contex
 		name:         name,
 		attributes:   cfg.attributes,
 		startTime:    time.Now(),
-		observations: make(map[StatisticKey]AggregatedObservation),
+		observations: make(map[StatisticKey]*AggregatedObservation),
 	}
 
 	// extract parentID from context
@@ -119,7 +119,7 @@ func (r *Region) Record(o Observation) {
 	key := o.statistic().Key()
 	if _, ok := r.observations[key]; !ok {
 		// First observation for this statistic.
-		r.observations[key] = AggregatedObservation{
+		r.observations[key] = &AggregatedObservation{
 			Statistic: o.statistic(),
 			Value:     o.value(),
 			Count:     1,

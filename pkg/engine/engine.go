@@ -435,6 +435,17 @@ func linkCaptureUsingPlan(capture *xcap.Capture, plan *physical.Plan) {
 			if len(parents) > 0 {
 				// TODO: This is assuming a single parent which is not always true.
 				// Fix this when we have plans with multiple parents.
+
+				if parents[0].Type() == physical.NodeTypeParallelize {
+					// Skip Parallelize nodes as they are just not actual work.
+					pp := plan.Graph().Parents(parents[0])
+					if len(pp) > 0 {
+						parents = pp
+					} else {
+						return nil
+					}
+				}
+
 				idToParentID[n.ID().String()] = parents[0].ID().String()
 			}
 			return nil
