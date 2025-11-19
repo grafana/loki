@@ -56,7 +56,7 @@ func ApplyGatewayDefaultOptions(opts *Options) error {
 
 		o.WithTenantsForMode(opts.Stack.Tenants.Mode, opts.GatewayBaseDomain, tenantData)
 
-		o.BuildOpts.ExternalAccessEnabled = ExternalAccessEnabled(opts.Stack)
+		o.BuildOpts.ExternalAccessEnabled = opts.Stack.Tenants == nil || !opts.Stack.Tenants.DisableIngress
 	}
 
 	if err := mergo.Merge(&opts.OpenShiftOptions, o, mergo.WithOverride); err != nil {

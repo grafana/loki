@@ -15,12 +15,11 @@ import (
 
 	v1 "github.com/grafana/loki/operator/api/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
-	"github.com/grafana/loki/operator/internal/manifests"
 )
 
 // Cleanup removes external access resources (Routes/Ingress) when external access is disabled.
 func Cleanup(ctx context.Context, log logr.Logger, k k8s.Client, stack *v1.LokiStack) error {
-	if manifests.ExternalAccessEnabled(stack.Spec) {
+	if stack.Spec.Tenants == nil || !stack.Spec.Tenants.DisableIngress {
 		return nil
 	}
 
