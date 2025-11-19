@@ -17,14 +17,14 @@ func TestExecuteLimit(t *testing.T) {
 
 	t.Run("with no inputs", func(t *testing.T) {
 		ctx := t.Context()
-		pipeline := c.executeLimit(ctx, &physical.Limit{}, nil)
+		pipeline := c.executeLimit(ctx, &physical.Limit{}, nil, nil)
 		_, err := pipeline.Read(ctx)
 		require.Equal(t, EOF, err)
 	})
 
 	t.Run("with multiple inputs", func(t *testing.T) {
 		ctx := t.Context()
-		pipeline := c.executeLimit(ctx, &physical.Limit{}, []Pipeline{emptyPipeline(), emptyPipeline()})
+		pipeline := c.executeLimit(ctx, &physical.Limit{}, []Pipeline{emptyPipeline(), emptyPipeline()}, nil)
 		_, err := pipeline.Read(ctx)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "limit expects exactly one input, got 2")
@@ -39,14 +39,12 @@ func TestExecuteLimit(t *testing.T) {
 		csvData := "Alice\nBob\nCharlie"
 		record, err := CSVToArrow(fields, csvData)
 		require.NoError(t, err)
-		defer record.Release()
 
-		record.Retain()
 		source := NewBufferedPipeline(record)
 
 		// Execute limit with skip=1 and fetch=1
 		limit := &physical.Limit{Skip: 1, Fetch: 1}
-		pipeline := c.executeLimit(ctx, limit, []Pipeline{source})
+		pipeline := c.executeLimit(ctx, limit, []Pipeline{source}, nil)
 		defer pipeline.Close()
 
 		// Read from the pipeline
@@ -77,23 +75,19 @@ func TestExecuteLimit(t *testing.T) {
 		batch1Data := "A\nB\nC"
 		batch1, err := CSVToArrow(fields, batch1Data)
 		require.NoError(t, err)
-		defer batch1.Release()
 
 		// Create second batch with letters D-F
 		batch2Data := "D\nE\nF"
 		batch2, err := CSVToArrow(fields, batch2Data)
 		require.NoError(t, err)
-		defer batch2.Release()
 
 		// Create source pipeline with both batches
-		batch1.Retain()
-		batch2.Retain()
 		source := NewBufferedPipeline(batch1, batch2)
 
 		// Create limit pipeline that skips 2 and fetches 3
 		// Should return C from batch1, and D,E from batch2
 		limit := &physical.Limit{Skip: 2, Fetch: 3}
-		pipeline := c.executeLimit(ctx, limit, []Pipeline{source})
+		pipeline := c.executeLimit(ctx, limit, []Pipeline{source}, nil)
 		defer pipeline.Close()
 
 		// First read should give us C from batch1
@@ -104,7 +98,6 @@ func TestExecuteLimit(t *testing.T) {
 		expectedData := "C\nD\nE"
 		expectedRecord, err := CSVToArrow(expectedFields, expectedData)
 		require.NoError(t, err)
-		defer expectedRecord.Release()
 
 		expectedPipeline := NewBufferedPipeline(expectedRecord)
 		defer expectedPipeline.Close()
@@ -127,13 +120,11 @@ func TestLimitPipeline_Skip_Fetch(t *testing.T) {
 
 	record, err := CSVToArrow(fields, data)
 	require.NoError(t, err)
-	defer record.Release()
 
-	record.Retain()
 	source := NewBufferedPipeline(record)
 
 	// Test with skip=3, fetch=4 (should return 4,5,6,7)
-	limit := NewLimitPipeline(source, 3, 4)
+	limit := NewLimitPipeline(source, 3, 4, nil)
 	defer limit.Close()
 
 	ctx := t.Context()
@@ -166,20 +157,16 @@ func TestLimitPipeline_MultipleBatches(t *testing.T) {
 	data1 := "1\n2\n3\n4\n5\n"
 	record1, err := CSVToArrow(fields, data1)
 	require.NoError(t, err)
-	defer record1.Release()
 
 	// Second batch: 6-10
 	data2 := "6\n7\n8\n9\n10\n"
 	record2, err := CSVToArrow(fields, data2)
 	require.NoError(t, err)
-	defer record2.Release()
 
-	record1.Retain()
-	record2.Retain()
 	source := NewBufferedPipeline(record1, record2)
 
 	// Test with skip=3, fetch=5 (should return 4,5,6,7,8)
-	limit := NewLimitPipeline(source, 3, 5)
+	limit := NewLimitPipeline(source, 3, 5, nil)
 	defer limit.Close()
 
 	expectedFields := []arrow.Field{
@@ -189,7 +176,6 @@ func TestLimitPipeline_MultipleBatches(t *testing.T) {
 	expectedData := "4\n5\n6\n7\n8\n"
 	expectedRecord, err := CSVToArrow(expectedFields, expectedData)
 	require.NoError(t, err)
-	defer expectedRecord.Release()
 
 	expectedPipeline := NewBufferedPipeline(expectedRecord)
 	defer expectedPipeline.Close()
@@ -243,7 +229,7 @@ func TestLimit(t *testing.T) {
 				incrementingIntPipeline.Pipeline(tt.batchSize, 1000),
 			}
 
-			pipeline := c.executeLimit(context.Background(), limit, inputs)
+			pipeline := c.executeLimit(context.Background(), limit, inputs, nil)
 			batches, rows := collect(t, pipeline)
 
 			require.Equal(t, tt.expectedBatches, batches)

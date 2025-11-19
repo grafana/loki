@@ -18,7 +18,7 @@ import (
 	"encoding/json"
 
 	"github.com/go-openapi/jsonpointer"
-	"github.com/go-openapi/swag"
+	"github.com/go-openapi/swag/jsonutils"
 )
 
 // ResponseProps properties specific to a response
@@ -36,6 +36,18 @@ type Response struct {
 	Refable
 	ResponseProps
 	VendorExtensible
+}
+
+// NewResponse creates a new response instance
+func NewResponse() *Response {
+	return new(Response)
+}
+
+// ResponseRef creates a response as a json reference
+func ResponseRef(url string) *Response {
+	resp := NewResponse()
+	resp.Ref = MustCreateRef(url)
+	return resp
 }
 
 // JSONLookup look up a value by the json property name
@@ -79,9 +91,9 @@ func (r Response) MarshalJSON() ([]byte, error) {
 			Headers     map[string]Header      `json:"headers,omitempty"`
 			Examples    map[string]interface{} `json:"examples,omitempty"`
 		}{
-			Description: r.ResponseProps.Description,
-			Schema:      r.ResponseProps.Schema,
-			Examples:    r.ResponseProps.Examples,
+			Description: r.Description,
+			Schema:      r.Schema,
+			Examples:    r.Examples,
 		})
 	}
 	if err != nil {
@@ -96,19 +108,7 @@ func (r Response) MarshalJSON() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return swag.ConcatJSON(b1, b2, b3), nil
-}
-
-// NewResponse creates a new response instance
-func NewResponse() *Response {
-	return new(Response)
-}
-
-// ResponseRef creates a response as a json reference
-func ResponseRef(url string) *Response {
-	resp := NewResponse()
-	resp.Ref = MustCreateRef(url)
-	return resp
+	return jsonutils.ConcatJSON(b1, b2, b3), nil
 }
 
 // WithDescription sets the description on this response, allows for chaining

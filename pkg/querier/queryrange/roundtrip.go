@@ -16,7 +16,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/v3/pkg/engine"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	logqllog "github.com/grafana/loki/v3/pkg/logql/log"
@@ -60,6 +59,7 @@ type Config struct {
 	CacheLabelResults            bool                     `yaml:"cache_label_results"`
 	LabelsCacheConfig            LabelsCacheConfig        `yaml:"label_results_cache" doc:"description=If label_results_cache is not configured and cache_label_results is true, the config for the results cache is used."`
 	EnableV2EngineRouter         bool                     `yaml:"enable_v2_engine_router" category:"experimental" doc:"description=Enable routing of queries to the v2 engine when they fall within the configured time range."`
+	V2EngineAddress              string                   `yaml:"v2_engine_address" category:"experimental" doc:"description=Address for executing V2 engine queries."`
 }
 
 // RegisterFlags adds the flags required to configure this flag set.
@@ -77,6 +77,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.CacheLabelResults, "querier.cache-label-results", true, "Cache label query results.")
 	cfg.LabelsCacheConfig.RegisterFlags(f)
 	f.BoolVar(&cfg.EnableV2EngineRouter, "querier.enable-v2-engine-router", false, "Enable routing of queries to the v2 engine when they fall within the configured time range.")
+	f.StringVar(&cfg.V2EngineAddress, "querier.v2-engine-address", "", "Address to send V2 engine queries to.")
 }
 
 // Validate validates the config.
@@ -130,7 +131,7 @@ func newResultsCacheFromConfig(cfg base.ResultsCacheConfig, registerer prometheu
 func NewMiddleware(
 	cfg Config,
 	v1EngineOpts logql.EngineOpts,
-	v2EngineOpts engine.Config,
+	v2RouterConfig RouterConfig,
 	iqo util.IngesterQueryOptions,
 	log log.Logger,
 	limits Limits,
@@ -202,20 +203,20 @@ func NewMiddleware(
 		return nil, nil, err
 	}
 
-	metricsTripperware, err := NewMetricTripperware(cfg, v1EngineOpts, v2EngineOpts, log, limits, schema, codec, iqo, resultsCache,
+	metricsTripperware, err := NewMetricTripperware(cfg, v1EngineOpts, v2RouterConfig, log, limits, schema, codec, iqo, resultsCache,
 		cacheGenNumLoader, retentionEnabled, PrometheusExtractor{}, metrics, indexStatsTripperware, metricsNamespace, false)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	limitedTripperware, err := NewLimitedTripperware(cfg, v1EngineOpts, v2EngineOpts, log, limits, schema, metrics, codec, iqo, indexStatsTripperware, metricsNamespace)
+	limitedTripperware, err := NewLimitedTripperware(cfg, v1EngineOpts, v2RouterConfig, log, limits, schema, metrics, codec, iqo, indexStatsTripperware, metricsNamespace)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	// NOTE: When we would start caching response from non-metric queries we would have to consider cache gen headers as well in
 	// MergeResponse implementation for Loki codecs same as it is done in Cortex at https://github.com/cortexproject/cortex/blob/21bad57b346c730d684d6d0205efef133422ab28/pkg/querier/queryrange/query_range.go#L170
-	logFilterTripperware, err := NewLogFilterTripperware(cfg, v1EngineOpts, v2EngineOpts, log, limits, schema, codec, iqo, resultsCache, metrics, indexStatsTripperware, metricsNamespace)
+	logFilterTripperware, err := NewLogFilterTripperware(cfg, v1EngineOpts, v2RouterConfig, log, limits, schema, codec, iqo, resultsCache, metrics, indexStatsTripperware, metricsNamespace)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -285,7 +286,7 @@ func NewMiddleware(
 		CacheLabelResults:            cfg.CacheLabelResults,
 		LabelsCacheConfig:            cfg.LabelsCacheConfig,
 	}
-	patternTripperware, err := NewMetricTripperware(patternConfig, v1EngineOpts, v2EngineOpts, log, limits, schema, codec, iqo, resultsCache,
+	patternTripperware, err := NewMetricTripperware(patternConfig, v1EngineOpts, v2RouterConfig, log, limits, schema, codec, iqo, resultsCache,
 		cacheGenNumLoader, retentionEnabled, PrometheusExtractor{}, metrics, indexStatsTripperware, metricsNamespace, true)
 	if err != nil {
 		return nil, nil, err
@@ -529,6 +530,14 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 			"length", op.Through.Sub(op.From),
 		)
 		return r.indexStats.Do(ctx, req)
+	case *logproto.ShardsRequest:
+		logQueryExecution(ctx, logger,
+			"type", "shards",
+			"query", op.Query,
+			"length", op.Through.Sub(op.From),
+			"target_bytes_per_shard", op.TargetBytesPerShard,
+		)
+		return r.indexStats.Do(ctx, req)
 	case *logproto.VolumeRequest:
 		logQueryExecution(ctx, logger,
 			"type", "volume_range",
@@ -653,7 +662,7 @@ func getOperation(path string) string {
 }
 
 // NewLogFilterTripperware creates a new frontend tripperware responsible for handling log requests.
-func NewLogFilterTripperware(cfg Config, engineOpts logql.EngineOpts, v2EngineCfg engine.Config, log log.Logger, limits Limits, schema config.SchemaConfig, merger base.Merger, iqo util.IngesterQueryOptions, c cache.Cache, metrics *Metrics, indexStatsTripperware base.Middleware, metricsNamespace string) (base.Middleware, error) {
+func NewLogFilterTripperware(cfg Config, engineOpts logql.EngineOpts, routerConfig RouterConfig, log log.Logger, limits Limits, schema config.SchemaConfig, merger base.Merger, iqo util.IngesterQueryOptions, c cache.Cache, metrics *Metrics, indexStatsTripperware base.Middleware, metricsNamespace string) (base.Middleware, error) {
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
 		statsHandler := indexStatsTripperware.Wrap(next)
 		retryNextHandler := next
@@ -727,9 +736,7 @@ func NewLogFilterTripperware(cfg Config, engineOpts logql.EngineOpts, v2EngineCf
 
 		// route query range supported by v2 engine to the new engine handler.
 		if cfg.EnableV2EngineRouter {
-			v2Start, v2End := v2EngineCfg.ValidQueryRange()
-			// TODO: add v2 engine handler.
-			engineRouterMiddleware := newEngineRouterMiddleware(v2Start, v2End, nil, chunksEngineMWs, merger, true, log)
+			engineRouterMiddleware := newEngineRouterMiddleware(routerConfig, chunksEngineMWs, merger, true, log)
 			queryRangeMiddleware = append(
 				queryRangeMiddleware,
 				base.InstrumentMiddleware("v2_engine_router", metrics.InstrumentMiddlewareMetrics),
@@ -744,7 +751,7 @@ func NewLogFilterTripperware(cfg Config, engineOpts logql.EngineOpts, v2EngineCf
 }
 
 // NewLimitedTripperware creates a new frontend tripperware responsible for handling log requests which are label matcher only, no filter expression.
-func NewLimitedTripperware(cfg Config, engineOpts logql.EngineOpts, v2EngineCfg engine.Config, log log.Logger, limits Limits, schema config.SchemaConfig, metrics *Metrics, merger base.Merger, iqo util.IngesterQueryOptions, indexStatsTripperware base.Middleware, metricsNamespace string) (base.Middleware, error) {
+func NewLimitedTripperware(cfg Config, engineOpts logql.EngineOpts, routerConfig RouterConfig, log log.Logger, limits Limits, schema config.SchemaConfig, metrics *Metrics, merger base.Merger, iqo util.IngesterQueryOptions, indexStatsTripperware base.Middleware, metricsNamespace string) (base.Middleware, error) {
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
 		statsHandler := indexStatsTripperware.Wrap(next)
 		retryNextHandler := next
@@ -794,9 +801,7 @@ func NewLimitedTripperware(cfg Config, engineOpts logql.EngineOpts, v2EngineCfg 
 
 		// route query range supported by v2 engine to the new engine handler.
 		if cfg.EnableV2EngineRouter {
-			v2Start, v2End := v2EngineCfg.ValidQueryRange()
-			// TODO: add v2 engine handler.
-			engineRouterMiddleware := newEngineRouterMiddleware(v2Start, v2End, nil, chunksEngineMWs, merger, false, log)
+			engineRouterMiddleware := newEngineRouterMiddleware(routerConfig, chunksEngineMWs, merger, false, log)
 			queryRangeMiddleware = append(
 				queryRangeMiddleware,
 				base.InstrumentMiddleware("v2_engine_router", metrics.InstrumentMiddlewareMetrics),
@@ -972,7 +977,7 @@ func NewLabelsTripperware(
 }
 
 // NewMetricTripperware creates a new frontend tripperware responsible for handling metric queries
-func NewMetricTripperware(cfg Config, engineOpts logql.EngineOpts, v2EngineCfg engine.Config, log log.Logger, limits Limits, schema config.SchemaConfig, merger base.Merger, iqo util.IngesterQueryOptions, c cache.Cache, cacheGenNumLoader base.CacheGenNumberLoader, retentionEnabled bool, extractor base.Extractor, metrics *Metrics, indexStatsTripperware base.Middleware, metricsNamespace string, disableEngineRouter bool) (base.Middleware, error) {
+func NewMetricTripperware(cfg Config, engineOpts logql.EngineOpts, routerConfig RouterConfig, log log.Logger, limits Limits, schema config.SchemaConfig, merger base.Merger, iqo util.IngesterQueryOptions, c cache.Cache, cacheGenNumLoader base.CacheGenNumberLoader, retentionEnabled bool, extractor base.Extractor, metrics *Metrics, indexStatsTripperware base.Middleware, metricsNamespace string, disableEngineRouter bool) (base.Middleware, error) {
 	cacheKey := cacheKeyLimits{limits, cfg.Transformer, iqo}
 	var queryCacheMiddleware base.Middleware
 	if cfg.CacheResults {
@@ -1083,9 +1088,7 @@ func NewMetricTripperware(cfg Config, engineOpts logql.EngineOpts, v2EngineCfg e
 
 		// route query range supported by v2 engine to the new engine handler.
 		if cfg.EnableV2EngineRouter && !disableEngineRouter {
-			v2Start, v2End := v2EngineCfg.ValidQueryRange()
-			// TODO: add v2 engine handler.
-			engineRouterMiddleware := newEngineRouterMiddleware(v2Start, v2End, nil, chunksEngineMWs, merger, true, log)
+			engineRouterMiddleware := newEngineRouterMiddleware(routerConfig, chunksEngineMWs, merger, true, log)
 			queryRangeMiddleware = append(
 				queryRangeMiddleware,
 				base.InstrumentMiddleware("v2_engine_router", metrics.InstrumentMiddlewareMetrics),

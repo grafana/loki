@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
@@ -29,8 +30,9 @@ func Fprint(w io.Writer, wf *Workflow) error {
 			}
 			visited[n] = struct{}{}
 
-			fmt.Fprintf(w, "Task %s\n", n.ID())
-			fmt.Fprintln(w, "-------------------------------")
+			fmt.Fprintf(w, "┌ Task %s\n", n.ID())
+			fmt.Fprintf(w, "│ @max_time_range start=%s end=%s\n", n.MaxTimeRange.Start.Format(time.RFC3339Nano), n.MaxTimeRange.End.Format(time.RFC3339Nano))
+			fmt.Fprintln(w, "│")
 
 			var sb strings.Builder
 			for _, root := range n.Fragment.Roots() {
@@ -63,11 +65,10 @@ func Fprint(w io.Writer, wf *Workflow) error {
 				printer.Print(planTree)
 			}
 
-			if _, err := io.Copy(w, strings.NewReader(sb.String())); err != nil {
-				return err
-			} else if _, err := fmt.Fprintln(w); err != nil {
-				return err
+			for line := range strings.Lines(sb.String()) {
+				fmt.Fprintf(w, "│ %s", line)
 			}
+			fmt.Fprintln(w, "└")
 			return nil
 		}, dag.PreOrderWalk)
 		if err != nil {

@@ -244,6 +244,9 @@ func (g *TestCaseGenerator) Generate() []TestCase {
 		}
 	}
 
+	addMetricQuery(fmt.Sprintf(`sum by (level) (sum_over_time({service_name="database"} | json | unwrap rows_affected [%s]))`, rangeInterval), start, end, step)
+	addMetricQuery(fmt.Sprintf(`sum by (level) (sum_over_time({service_name="loki"} | logfmt | duration != "" | unwrap duration_seconds(duration) [%s]))`, rangeInterval), start, end, step)
+
 	// Dense period queries
 	for _, interval := range g.logGenCfg.DenseIntervals {
 		combo := labelCombos[g.logGenCfg.NewRand().Intn(len(labelCombos))]

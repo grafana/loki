@@ -170,9 +170,6 @@ func sortDuplicatesByValue(duplicates []duplicate) {
 }
 
 func TestNewColumnCompatibilityPipeline(t *testing.T) {
-	alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
-	defer alloc.AssertSize(t, 0)
-
 	tests := []struct {
 		name           string
 		compat         *physical.ColumnCompat
@@ -476,24 +473,19 @@ func TestNewColumnCompatibilityPipeline(t *testing.T) {
 			if len(tt.inputRows) == 0 {
 				input = emptyPipeline()
 			} else if len(tt.inputRows) == 1 {
-				input = NewArrowtestPipeline(alloc, tt.schema, tt.inputRows[0])
+				input = NewArrowtestPipeline(tt.schema, tt.inputRows[0])
 			} else {
 				// Multiple batches
-				var records []arrow.Record
+				var records []arrow.RecordBatch
 				for _, rows := range tt.inputRows {
-					record := rows.Record(alloc, tt.schema)
+					record := rows.Record(memory.DefaultAllocator, tt.schema)
 					records = append(records, record)
 				}
 				input = NewBufferedPipeline(records...)
-				defer func() {
-					for _, record := range records {
-						record.Release()
-					}
-				}()
 			}
 
 			// Create compatibility pipeline
-			pipeline := newColumnCompatibilityPipeline(tt.compat, input)
+			pipeline := newColumnCompatibilityPipeline(tt.compat, input, nil)
 			defer pipeline.Close()
 
 			if tt.expectError {
@@ -516,7 +508,6 @@ func TestNewColumnCompatibilityPipeline(t *testing.T) {
 					break
 				}
 				require.NoError(t, err)
-				defer record.Release()
 
 				// Verify schema matches expected (only check first batch)
 				if batchCount == 0 && tt.expectedSchema != nil {
@@ -544,8 +535,6 @@ func TestNewColumnCompatibilityPipeline(t *testing.T) {
 }
 
 func TestNewColumnCompatibilityPipeline_ErrorCases(t *testing.T) {
-	alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
-
 	t.Run("invalid field name in schema", func(t *testing.T) {
 		compat := &physical.ColumnCompat{
 			Collision:   types.ColumnTypeLabel,
@@ -558,11 +547,11 @@ func TestNewColumnCompatibilityPipeline_ErrorCases(t *testing.T) {
 			{Name: "invalid-field-name", Type: types.Arrow.String, Nullable: true},
 		}, nil)
 
-		input := NewArrowtestPipeline(alloc, schema, arrowtest.Rows{
+		input := NewArrowtestPipeline(schema, arrowtest.Rows{
 			{"invalid-field-name": "test"},
 		})
 
-		pipeline := newColumnCompatibilityPipeline(compat, input)
+		pipeline := newColumnCompatibilityPipeline(compat, input, nil)
 		defer pipeline.Close()
 
 		_, err := pipeline.Read(t.Context())
@@ -581,7 +570,7 @@ func TestNewColumnCompatibilityPipeline_ErrorCases(t *testing.T) {
 		expectedErr := errors.New("test error")
 		input := errorPipeline(t.Context(), expectedErr)
 
-		pipeline := newColumnCompatibilityPipeline(compat, input)
+		pipeline := newColumnCompatibilityPipeline(compat, input, nil)
 		defer pipeline.Close()
 
 		_, err := pipeline.Read(t.Context())
@@ -602,11 +591,11 @@ func TestNewColumnCompatibilityPipeline_ErrorCases(t *testing.T) {
 			semconv.FieldFromFQN("int64.metadata.status", true), // source column - not string
 		}, nil)
 
-		input := NewArrowtestPipeline(alloc, schema, arrowtest.Rows{
+		input := NewArrowtestPipeline(schema, arrowtest.Rows{
 			{"utf8.label.status": "200", "int64.metadata.status": int64(200)},
 		})
 
-		pipeline := newColumnCompatibilityPipeline(compat, input)
+		pipeline := newColumnCompatibilityPipeline(compat, input, nil)
 		defer pipeline.Close()
 
 		// This should panic with "invalid column type: only string columns can be checked for collisions"

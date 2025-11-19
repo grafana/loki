@@ -21,9 +21,8 @@ var (
 			semconv.FieldFromFQN("int64.builtin.id", false),
 		}, nil),
 
-		func(offset, maxRows, batchSize int64, schema *arrow.Schema) arrow.Record {
+		func(offset, maxRows, batchSize int64, schema *arrow.Schema) arrow.RecordBatch {
 			builder := array.NewInt64Builder(memory.DefaultAllocator)
-			defer builder.Release()
 
 			rows := int64(0)
 			for ; rows < batchSize && offset+rows < maxRows; rows++ {
@@ -31,10 +30,9 @@ var (
 			}
 
 			data := builder.NewArray()
-			defer data.Release()
 
 			columns := []arrow.Array{data}
-			return array.NewRecord(schema, columns, rows)
+			return array.NewRecordBatch(schema, columns, rows)
 		},
 	)
 )
@@ -59,12 +57,9 @@ func timestampPipeline(start time.Time, order time.Duration) *recordGenerator {
 			semconv.FieldFromFQN("timestamp_ns.builtin.timestamp", false),
 		}, nil),
 
-		func(offset, maxRows, batchSize int64, schema *arrow.Schema) arrow.Record {
+		func(offset, maxRows, batchSize int64, schema *arrow.Schema) arrow.RecordBatch {
 			idColBuilder := array.NewInt64Builder(memory.DefaultAllocator)
-			defer idColBuilder.Release()
-
 			tsColBuilder := array.NewTimestampBuilder(memory.DefaultAllocator, arrow.FixedWidthTypes.Timestamp_ns.(*arrow.TimestampType))
-			defer tsColBuilder.Release()
 
 			rows := int64(0)
 			for ; rows < batchSize && offset+rows < maxRows; rows++ {
@@ -73,18 +68,15 @@ func timestampPipeline(start time.Time, order time.Duration) *recordGenerator {
 			}
 
 			idData := idColBuilder.NewArray()
-			defer idData.Release()
-
 			tsData := tsColBuilder.NewArray()
-			defer tsData.Release()
 
 			columns := []arrow.Array{idData, tsData}
-			return array.NewRecord(schema, columns, rows)
+			return array.NewRecordBatch(schema, columns, rows)
 		},
 	)
 }
 
-type batchFunc func(offset, maxRows, batchSize int64, schema *arrow.Schema) arrow.Record
+type batchFunc func(offset, maxRows, batchSize int64, schema *arrow.Schema) arrow.RecordBatch
 
 type recordGenerator struct {
 	schema *arrow.Schema
@@ -101,7 +93,7 @@ func newRecordGenerator(schema *arrow.Schema, batch batchFunc) *recordGenerator 
 func (p *recordGenerator) Pipeline(batchSize int64, rows int64) Pipeline {
 	var pos int64
 	return newGenericPipeline(
-		func(_ context.Context, _ []Pipeline) (arrow.Record, error) {
+		func(_ context.Context, _ []Pipeline) (arrow.RecordBatch, error) {
 			if pos >= rows {
 				return nil, EOF
 			}
@@ -134,7 +126,6 @@ func collect(t *testing.T, pipeline Pipeline) (batches int64, rows int64) {
 // ArrowtestPipeline creates a [Pipeline] that emits test data from a sequence
 // of [arrowtest.Rows].
 type ArrowtestPipeline struct {
-	alloc  memory.Allocator
 	schema *arrow.Schema
 	rows   []arrowtest.Rows
 
@@ -148,22 +139,17 @@ var _ Pipeline = (*ArrowtestPipeline)(nil)
 //
 // If schema is defined, all rows will be emitted using that schema. If schema
 // is nil, the schema is derived from each element in rows as it is emitted.
-func NewArrowtestPipeline(alloc memory.Allocator, schema *arrow.Schema, rows ...arrowtest.Rows) *ArrowtestPipeline {
-	if alloc == nil {
-		alloc = memory.DefaultAllocator
-	}
-
+func NewArrowtestPipeline(schema *arrow.Schema, rows ...arrowtest.Rows) *ArrowtestPipeline {
 	return &ArrowtestPipeline{
-		alloc:  alloc,
 		schema: schema,
 		rows:   rows,
 	}
 }
 
 // Read implements [Pipeline], converting the next [arrowtest.Rows] into a
-// [arrow.Record] and storing it in the pipeline's state. The state can then be
+// [arrow.RecordBatch] and storing it in the pipeline's state. The state can then be
 // accessed via [ArrowtestPipeline.Value].
-func (p *ArrowtestPipeline) Read(_ context.Context) (arrow.Record, error) {
+func (p *ArrowtestPipeline) Read(_ context.Context) (arrow.RecordBatch, error) {
 	if p.cur >= len(p.rows) {
 		return nil, EOF
 	}
@@ -176,7 +162,7 @@ func (p *ArrowtestPipeline) Read(_ context.Context) (arrow.Record, error) {
 	}
 
 	p.cur++
-	return rows.Record(p.alloc, schema), nil
+	return rows.Record(memory.DefaultAllocator, schema), nil
 }
 
 // Close implements [Pipeline], immediately exhausting the pipeline.

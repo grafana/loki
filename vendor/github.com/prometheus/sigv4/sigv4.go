@@ -119,7 +119,7 @@ func NewSigV4RoundTripper(cfg *SigV4Config, next http.RoundTripper) (http.RoundT
 	return rt, nil
 }
 
-func (rt *sigV4RoundTripper) newBuf() interface{} {
+func (rt *sigV4RoundTripper) newBuf() any {
 	return bytes.NewBuffer(make([]byte, 0, 1024))
 }
 

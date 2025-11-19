@@ -196,6 +196,13 @@ func (p *StickyConnPool) IdleLen() int {
 	return len(p.ch)
 }
 
+// Size returns the maximum pool size, which is always 1 for StickyConnPool.
+func (p *StickyConnPool) Size() int { return 1 }
+
 func (p *StickyConnPool) Stats() *Stats {
 	return &Stats{}
 }
+
+func (p *StickyConnPool) AddPoolHook(hook PoolHook) {}
+
+func (p *StickyConnPool) RemovePoolHook(hook PoolHook) {}

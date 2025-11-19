@@ -14,7 +14,7 @@ import (
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
-// This operation is not supported by directory buckets.
+// This operation is not supported for directory buckets.
 //
 // Returns the replication configuration of a bucket.
 //
@@ -39,6 +39,10 @@ import (
 // [PutBucketReplication]
 //
 // [DeleteBucketReplication]
+//
+// You must URL encode any signed header values that contain spaces. For example,
+// if your header value is my file.txt , containing two spaces after my , you must
+// URL encode this value to my%20%20file.txt .
 //
 // [PutBucketReplication]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketReplication.html
 // [Using Bucket Policies and User Policies]: https://docs.aws.amazon.com/AmazonS3/latest/dev/using-iam-policies.html
@@ -136,6 +140,9 @@ func (c *Client) addOperationGetBucketReplicationMiddlewares(stack *middleware.S
 	if err = addRecordResponseTiming(stack); err != nil {
 		return err
 	}
+	if err = addSpanRetryLoop(stack, options); err != nil {
+		return err
+	}
 	if err = addClientUserAgent(stack, options); err != nil {
 		return err
 	}
@@ -158,6 +165,9 @@ func (c *Client) addOperationGetBucketReplicationMiddlewares(stack *middleware.S
 		return err
 	}
 	if err = addIsExpressUserAgent(stack); err != nil {
+		return err
+	}
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpGetBucketReplicationValidationMiddleware(stack); err != nil {
@@ -191,6 +201,15 @@ func (c *Client) addOperationGetBucketReplicationMiddlewares(stack *middleware.S
 		return err
 	}
 	if err = addSerializeImmutableHostnameBucketMiddleware(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeRetryLoop(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAttempt(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptors(stack, options); err != nil {
 		return err
 	}
 	return nil

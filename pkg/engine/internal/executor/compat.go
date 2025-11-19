@@ -11,22 +11,21 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
-func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipeline) Pipeline {
+func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipeline, region *xcap.Region) Pipeline {
 	const extracted = "_extracted"
 
-	return newGenericPipeline(func(ctx context.Context, inputs []Pipeline) (arrow.Record, error) {
+	return newGenericPipelineWithRegion(func(ctx context.Context, inputs []Pipeline) (arrow.RecordBatch, error) {
 		input := inputs[0]
 		batch, err := input.Read(ctx)
 		if err != nil {
 			return nil, err
 		}
-		defer batch.Release()
 
 		// Return early if the batch has zero rows, even if column names would collide.
 		if batch.NumRows() == 0 {
-			batch.Retain() // retain to account for deferred release after reading the batch from the input
 			return batch, nil
 		}
 
@@ -60,9 +59,10 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 
 		// Return early if there are no colliding column names.
 		if len(duplicates) == 0 {
-			batch.Retain() // retain to account for deferred release after reading the batch from the input
 			return batch, nil
 		}
+
+		region.Record(statCompatCollisionFound.Observe(true))
 
 		// Next, update the schema with the new columns that have the _extracted suffix.
 		newSchema := batch.Schema()
@@ -97,7 +97,6 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 		// otherwise the full column from the input record is copied into the new record.
 		builder := array.NewRecordBuilder(memory.DefaultAllocator, newSchema)
 		builder.Reserve(int(batch.NumRows()))
-		defer builder.Release()
 
 		newSchemaColumns := make([]arrow.Array, newSchema.NumFields())
 
@@ -138,19 +137,17 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 				}
 
 				sourceCol := sourceFieldBuilder.NewArray()
-				defer sourceCol.Release()
 				newSchemaColumns[duplicate.sourceIdx] = sourceCol
 
 				destinationCol := destinationFieldBuilder.NewArray()
-				defer destinationCol.Release()
 				newSchemaColumns[duplicate.destinationIdx] = destinationCol
 			default:
 				panic("invalid source column type: only string columns can be checked for collisions")
 			}
 		}
 
-		return array.NewRecord(newSchema, newSchemaColumns, batch.NumRows()), nil
-	}, input)
+		return array.NewRecordBatch(newSchema, newSchemaColumns, batch.NumRows()), nil
+	}, region, input)
 }
 
 // duplicate holds indexes to a duplicate values in two slices

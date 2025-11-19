@@ -6,11 +6,11 @@ import (
 	"fmt"
 
 	"github.com/apache/arrow-go/v18/arrow"
-	"github.com/apache/arrow-go/v18/arrow/memory"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 type topkOptions struct {
@@ -30,6 +30,9 @@ type topkOptions struct {
 	// After the number of unused rows exceeds this value, retained records are
 	// compacted into a new record only containing the current used rows.
 	MaxUnused int
+
+	// Region is the xcap region for this node.
+	Region *xcap.Region
 }
 
 // topkPipeline performs a topk (SORT + LIMIT) operation across several input
@@ -37,6 +40,7 @@ type topkOptions struct {
 type topkPipeline struct {
 	inputs []Pipeline
 	batch  *topkBatch
+	region *xcap.Region
 
 	computed bool
 }
@@ -59,6 +63,7 @@ func newTopkPipeline(opts topkOptions) (*topkPipeline, error) {
 			K:          opts.K,
 			MaxUnused:  opts.MaxUnused,
 		},
+		region: opts.Region,
 	}, nil
 }
 
@@ -106,7 +111,7 @@ func guessLokiType(ref types.ColumnRef) (types.DataType, error) {
 
 // Read computes the topk as the next record. Read blocks until all input
 // pipelines have been fully read and the top K rows have been computed.
-func (p *topkPipeline) Read(ctx context.Context) (arrow.Record, error) {
+func (p *topkPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	if !p.computed {
 		rec, err := p.compute(ctx)
 		p.computed = true
@@ -115,7 +120,7 @@ func (p *topkPipeline) Read(ctx context.Context) (arrow.Record, error) {
 	return nil, EOF
 }
 
-func (p *topkPipeline) compute(ctx context.Context) (arrow.Record, error) {
+func (p *topkPipeline) compute(ctx context.Context) (arrow.RecordBatch, error) {
 NextInput:
 	for _, in := range p.inputs {
 		for {
@@ -126,14 +131,11 @@ NextInput:
 				return nil, err
 			}
 
-			p.batch.Put(memory.DefaultAllocator, rec)
-
-			// Release the record; p.batch.Put will add an extra retain if necessary.
-			rec.Release()
+			p.batch.Put(rec)
 		}
 	}
 
-	compacted := p.batch.Compact(memory.DefaultAllocator)
+	compacted := p.batch.Compact()
 	if compacted == nil {
 		return nil, EOF
 	}
@@ -142,8 +144,16 @@ NextInput:
 
 // Close closes the resources of the pipeline.
 func (p *topkPipeline) Close() {
+	if p.region != nil {
+		p.region.End()
+	}
 	p.batch.Reset()
 	for _, in := range p.inputs {
 		in.Close()
 	}
+}
+
+// Region implements RegionProvider.
+func (p *topkPipeline) Region() *xcap.Region {
+	return p.region
 }

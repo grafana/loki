@@ -586,14 +586,12 @@ spec:
           Loki components and related services.
         displayName: Network Policies
         path: networkPolicies
-      - description: |-
-          Disabled allows explicitly disabling NetworkPolicies.
-          When false, NetworkPolicies are enabled.
-          When true, NetworkPolicies are disabled.
-        displayName: Disabled
-        path: networkPolicies.disabled
+      - description: RuleSet determines which of the pre-defined sets of NetworkPolicy
+          rules is used for this LokiStack.
+        displayName: Network Policy Rule-Set
+        path: networkPolicies.ruleSet
         x-descriptors:
-        - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
+        - urn:alm:descriptor:com.tectonic.ui:text
       - description: Proxy defines the spec for the object proxy to configure cluster
           proxy information.
         displayName: Cluster Proxy

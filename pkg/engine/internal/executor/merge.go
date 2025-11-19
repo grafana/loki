@@ -6,6 +6,8 @@ import (
 	"fmt"
 
 	"github.com/apache/arrow-go/v18/arrow"
+
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 // Merge is a pipeline that takes N inputs and sequentially consumes each one of them.
@@ -15,6 +17,7 @@ type Merge struct {
 	maxPrefetch int
 	initialized bool
 	currInput   int // index of the currently processed input
+	region      *xcap.Region
 }
 
 var _ Pipeline = (*Merge)(nil)
@@ -25,7 +28,7 @@ var _ Pipeline = (*Merge)(nil)
 // Set maxPrefetch to 0 to disable prefetching of the next input.
 // Set maxPrefetch to 1 to prefetch only the next input, and so on.
 // Set maxPrefetch to -1 to pretetch all inputs at once.
-func newMergePipeline(inputs []Pipeline, maxPrefetch int) (*Merge, error) {
+func newMergePipeline(inputs []Pipeline, maxPrefetch int, region *xcap.Region) (*Merge, error) {
 	if len(inputs) == 0 {
 		return nil, fmt.Errorf("merge pipeline: no inputs provided")
 	}
@@ -45,6 +48,7 @@ func newMergePipeline(inputs []Pipeline, maxPrefetch int) (*Merge, error) {
 	return &Merge{
 		inputs:      inputs,
 		maxPrefetch: maxPrefetch,
+		region:      region,
 	}, nil
 }
 
@@ -79,12 +83,12 @@ func (m *Merge) startPrefetchingInputAtIndex(ctx context.Context, i int) {
 
 // Read reads the next batch from the pipeline.
 // It returns an error if reading fails or when the pipeline is exhausted.
-func (m *Merge) Read(ctx context.Context) (arrow.Record, error) {
+func (m *Merge) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	m.init(ctx)
 	return m.read(ctx)
 }
 
-func (m *Merge) read(ctx context.Context) (arrow.Record, error) {
+func (m *Merge) read(ctx context.Context) (arrow.RecordBatch, error) {
 	// All inputs have been consumed and are exhausted
 	if m.currInput >= len(m.inputs) {
 		return nil, EOF
@@ -113,8 +117,16 @@ func (m *Merge) read(ctx context.Context) (arrow.Record, error) {
 
 // Close implements Pipeline.
 func (m *Merge) Close() {
+	if m.region != nil {
+		m.region.End()
+	}
 	// exhausted inputs are already closed
 	for _, input := range m.inputs[m.currInput:] {
 		input.Close()
 	}
+}
+
+// Region implements RegionProvider.
+func (m *Merge) Region() *xcap.Region {
+	return m.region
 }

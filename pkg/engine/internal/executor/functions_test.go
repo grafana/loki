@@ -13,9 +13,8 @@ import (
 )
 
 // Helper function to create a boolean array
-func createBoolArray(mem memory.Allocator, values []bool, nulls []bool) *Array {
-	builder := array.NewBooleanBuilder(mem)
-	defer builder.Release()
+func createBoolArray(values []bool, nulls []bool) arrow.Array {
+	builder := array.NewBooleanBuilder(memory.DefaultAllocator)
 
 	for i, val := range values {
 		if nulls != nil && i < len(nulls) && nulls[i] {
@@ -25,18 +24,12 @@ func createBoolArray(mem memory.Allocator, values []bool, nulls []bool) *Array {
 		}
 	}
 
-	return &Array{
-		array: builder.NewArray(),
-		dt:    types.Loki.Bool,
-		ct:    types.ColumnTypeBuiltin,
-		rows:  int64(len(values)),
-	}
+	return builder.NewArray()
 }
 
 // Helper function to create a string array
-func createStringArray(mem memory.Allocator, values []string, nulls []bool) *Array {
-	builder := array.NewStringBuilder(mem)
-	defer builder.Release()
+func createStringArray(values []string, nulls []bool) arrow.Array {
+	builder := array.NewStringBuilder(memory.DefaultAllocator)
 
 	for i, val := range values {
 		if nulls != nil && i < len(nulls) && nulls[i] {
@@ -46,18 +39,12 @@ func createStringArray(mem memory.Allocator, values []string, nulls []bool) *Arr
 		}
 	}
 
-	return &Array{
-		array: builder.NewArray(),
-		dt:    types.Loki.String,
-		ct:    types.ColumnTypeBuiltin,
-		rows:  int64(len(values)),
-	}
+	return builder.NewArray()
 }
 
 // Helper function to create an int64 array
-func createInt64Array(mem memory.Allocator, values []int64, nulls []bool) *Array {
-	builder := array.NewInt64Builder(mem)
-	defer builder.Release()
+func createInt64Array(values []int64, nulls []bool) arrow.Array {
+	builder := array.NewInt64Builder(memory.DefaultAllocator)
 
 	for i, val := range values {
 		if nulls != nil && i < len(nulls) && nulls[i] {
@@ -67,18 +54,12 @@ func createInt64Array(mem memory.Allocator, values []int64, nulls []bool) *Array
 		}
 	}
 
-	return &Array{
-		array: builder.NewArray(),
-		dt:    types.Loki.Integer,
-		ct:    types.ColumnTypeBuiltin,
-		rows:  int64(len(values)),
-	}
+	return builder.NewArray()
 }
 
 // Helper function to create a arrow.Timestamp array
-func createTimestampArray(mem memory.Allocator, values []arrow.Timestamp, nulls []bool) *Array {
-	builder := array.NewTimestampBuilder(mem, &arrow.TimestampType{Unit: arrow.Nanosecond, TimeZone: "UTC"})
-	defer builder.Release()
+func createTimestampArray(values []arrow.Timestamp, nulls []bool) arrow.Array {
+	builder := array.NewTimestampBuilder(memory.DefaultAllocator, &arrow.TimestampType{Unit: arrow.Nanosecond, TimeZone: "UTC"})
 
 	for i, val := range values {
 		if nulls != nil && i < len(nulls) && nulls[i] {
@@ -88,18 +69,12 @@ func createTimestampArray(mem memory.Allocator, values []arrow.Timestamp, nulls 
 		}
 	}
 
-	return &Array{
-		array: builder.NewArray(),
-		dt:    types.Loki.Timestamp,
-		ct:    types.ColumnTypeBuiltin,
-		rows:  int64(len(values)),
-	}
+	return builder.NewArray()
 }
 
 // Helper function to create a float64 array
-func createFloat64Array(mem memory.Allocator, values []float64, nulls []bool) *Array {
-	builder := array.NewFloat64Builder(mem)
-	defer builder.Release()
+func createFloat64Array(values []float64, nulls []bool) arrow.Array {
+	builder := array.NewFloat64Builder(memory.DefaultAllocator)
 
 	for i, val := range values {
 		if nulls != nil && i < len(nulls) && nulls[i] {
@@ -109,28 +84,23 @@ func createFloat64Array(mem memory.Allocator, values []float64, nulls []bool) *A
 		}
 	}
 
-	return &Array{
-		array: builder.NewArray(),
-		dt:    types.Loki.Float,
-		ct:    types.ColumnTypeBuiltin,
-		rows:  int64(len(values)),
-	}
+	return builder.NewArray()
 }
 
 // Helper function to extract boolean values from result
-func extractBoolValues(result ColumnVector) []bool {
-	arr := result.ToArray().(*array.Boolean)
-	defer arr.Release()
+func extractBoolValues(result arrow.Array) ([]bool, []bool) {
+	arr := result.(*array.Boolean)
 
 	values := make([]bool, arr.Len())
+	nulls := make([]bool, arr.Len())
 	for i := 0; i < arr.Len(); i++ {
 		if arr.IsNull(i) {
-			values[i] = false
+			nulls[i] = true
 		} else {
 			values[i] = arr.Value(i)
 		}
 	}
-	return values
+	return values, nulls
 }
 
 func TestBinaryFunctionRegistry_GetForSignature(t *testing.T) {
@@ -183,10 +153,28 @@ func TestBinaryFunctionRegistry_GetForSignature(t *testing.T) {
 			expectError: false,
 		},
 		{
-			name:        "invalid operation",
-			op:          types.BinaryOpAdd, // Not registered
-			dataType:    arrow.PrimitiveTypes.Int64,
-			expectError: true,
+			name:        "valid div operation",
+			op:          types.BinaryOpDiv,
+			dataType:    arrow.PrimitiveTypes.Float64,
+			expectError: false,
+		},
+		{
+			name:        "valid add operation",
+			op:          types.BinaryOpAdd,
+			dataType:    arrow.PrimitiveTypes.Float64,
+			expectError: false,
+		},
+		{
+			name:        "valid Mul operation",
+			op:          types.BinaryOpMul,
+			dataType:    arrow.PrimitiveTypes.Float64,
+			expectError: false,
+		},
+		{
+			name:        "valid sub operation",
+			op:          types.BinaryOpSub,
+			dataType:    arrow.PrimitiveTypes.Float64,
+			expectError: false,
 		},
 		{
 			name:        "invalid data type for operation",
@@ -212,9 +200,6 @@ func TestBinaryFunctionRegistry_GetForSignature(t *testing.T) {
 }
 
 func TestBooleanComparisonFunctions(t *testing.T) {
-	mem := memory.NewCheckedAllocator(memory.DefaultAllocator)
-	defer mem.AssertSize(t, 0)
-
 	tests := []struct {
 		name     string
 		op       types.BinaryOp
@@ -268,27 +253,70 @@ func TestBooleanComparisonFunctions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			lhsArray := createBoolArray(mem, tt.lhs, nil)
-			rhsArray := createBoolArray(mem, tt.rhs, nil)
-			defer lhsArray.array.Release()
-			defer rhsArray.array.Release()
+			lhsArray := createBoolArray(tt.lhs, nil)
+			rhsArray := createBoolArray(tt.rhs, nil)
 
 			fn, err := binaryFunctions.GetForSignature(tt.op, arrow.FixedWidthTypes.Boolean)
 			require.NoError(t, err)
 
-			result, err := fn.Evaluate(lhsArray, rhsArray)
+			result, err := fn.Evaluate(lhsArray, rhsArray, false, false)
 			require.NoError(t, err)
 
-			actual := extractBoolValues(result)
+			actual, _ := extractBoolValues(result)
+			assert.Equal(t, tt.expected, actual)
+		})
+	}
+}
+
+func TestBooleanLogicalOperations(t *testing.T) {
+	tests := []struct {
+		name     string
+		op       types.BinaryOp
+		lhs      []bool
+		rhs      []bool
+		expected []bool
+	}{
+		{
+			name:     "logical AND",
+			op:       types.BinaryOpAnd,
+			lhs:      []bool{true, true, false, false},
+			rhs:      []bool{true, false, true, false},
+			expected: []bool{true, false, false, false},
+		},
+		{
+			name:     "logical OR",
+			op:       types.BinaryOpOr,
+			lhs:      []bool{true, true, false, false},
+			rhs:      []bool{true, false, true, false},
+			expected: []bool{true, true, true, false},
+		},
+		{
+			name:     "logical XOR",
+			op:       types.BinaryOpXor,
+			lhs:      []bool{true, true, false, false},
+			rhs:      []bool{true, false, true, false},
+			expected: []bool{false, true, true, false},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			lhsArray := createBoolArray(tt.lhs, nil)
+			rhsArray := createBoolArray(tt.rhs, nil)
+
+			fn, err := binaryFunctions.GetForSignature(tt.op, arrow.FixedWidthTypes.Boolean)
+			require.NoError(t, err)
+
+			result, err := fn.Evaluate(lhsArray, rhsArray, false, false)
+			require.NoError(t, err)
+
+			actual, _ := extractBoolValues(result)
 			assert.Equal(t, tt.expected, actual)
 		})
 	}
 }
 
 func TestStringComparisonFunctions(t *testing.T) {
-	mem := memory.NewCheckedAllocator(memory.DefaultAllocator)
-	defer mem.AssertSize(t, 0)
-
 	tests := []struct {
 		name     string
 		op       types.BinaryOp
@@ -342,27 +370,22 @@ func TestStringComparisonFunctions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			lhsArray := createStringArray(mem, tt.lhs, nil)
-			rhsArray := createStringArray(mem, tt.rhs, nil)
-			defer lhsArray.array.Release()
-			defer rhsArray.array.Release()
+			lhsArray := createStringArray(tt.lhs, nil)
+			rhsArray := createStringArray(tt.rhs, nil)
 
 			fn, err := binaryFunctions.GetForSignature(tt.op, arrow.BinaryTypes.String)
 			require.NoError(t, err)
 
-			result, err := fn.Evaluate(lhsArray, rhsArray)
+			result, err := fn.Evaluate(lhsArray, rhsArray, false, false)
 			require.NoError(t, err)
 
-			actual := extractBoolValues(result)
+			actual, _ := extractBoolValues(result)
 			assert.Equal(t, tt.expected, actual)
 		})
 	}
 }
 
 func TestIntegerComparisonFunctions(t *testing.T) {
-	mem := memory.NewCheckedAllocator(memory.DefaultAllocator)
-	defer mem.AssertSize(t, 0)
-
 	tests := []struct {
 		name     string
 		op       types.BinaryOp
@@ -416,27 +439,22 @@ func TestIntegerComparisonFunctions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			lhsArray := createInt64Array(mem, tt.lhs, nil)
-			rhsArray := createInt64Array(mem, tt.rhs, nil)
-			defer lhsArray.array.Release()
-			defer rhsArray.array.Release()
+			lhsArray := createInt64Array(tt.lhs, nil)
+			rhsArray := createInt64Array(tt.rhs, nil)
 
 			fn, err := binaryFunctions.GetForSignature(tt.op, arrow.PrimitiveTypes.Int64)
 			require.NoError(t, err)
 
-			result, err := fn.Evaluate(lhsArray, rhsArray)
+			result, err := fn.Evaluate(lhsArray, rhsArray, false, false)
 			require.NoError(t, err)
 
-			actual := extractBoolValues(result)
+			actual, _ := extractBoolValues(result)
 			assert.Equal(t, tt.expected, actual)
 		})
 	}
 }
 
 func TestTimestampComparisonFunctions(t *testing.T) {
-	mem := memory.NewCheckedAllocator(memory.DefaultAllocator)
-	defer mem.AssertSize(t, 0)
-
 	tests := []struct {
 		name     string
 		op       types.BinaryOp
@@ -490,27 +508,22 @@ func TestTimestampComparisonFunctions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			lhsArray := createTimestampArray(mem, tt.lhs, nil)
-			rhsArray := createTimestampArray(mem, tt.rhs, nil)
-			defer lhsArray.array.Release()
-			defer rhsArray.array.Release()
+			lhsArray := createTimestampArray(tt.lhs, nil)
+			rhsArray := createTimestampArray(tt.rhs, nil)
 
 			fn, err := binaryFunctions.GetForSignature(tt.op, arrow.FixedWidthTypes.Timestamp_ns)
 			require.NoError(t, err)
 
-			result, err := fn.Evaluate(lhsArray, rhsArray)
+			result, err := fn.Evaluate(lhsArray, rhsArray, false, false)
 			require.NoError(t, err)
 
-			actual := extractBoolValues(result)
+			actual, _ := extractBoolValues(result)
 			assert.Equal(t, tt.expected, actual)
 		})
 	}
 }
 
 func TestFloat64ComparisonFunctions(t *testing.T) {
-	mem := memory.NewCheckedAllocator(memory.DefaultAllocator)
-	defer mem.AssertSize(t, 0)
-
 	tests := []struct {
 		name     string
 		op       types.BinaryOp
@@ -564,27 +577,22 @@ func TestFloat64ComparisonFunctions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			lhsArray := createFloat64Array(mem, tt.lhs, nil)
-			rhsArray := createFloat64Array(mem, tt.rhs, nil)
-			defer lhsArray.array.Release()
-			defer rhsArray.array.Release()
+			lhsArray := createFloat64Array(tt.lhs, nil)
+			rhsArray := createFloat64Array(tt.rhs, nil)
 
 			fn, err := binaryFunctions.GetForSignature(tt.op, arrow.PrimitiveTypes.Float64)
 			require.NoError(t, err)
 
-			result, err := fn.Evaluate(lhsArray, rhsArray)
+			result, err := fn.Evaluate(lhsArray, rhsArray, false, false)
 			require.NoError(t, err)
 
-			actual := extractBoolValues(result)
+			actual, _ := extractBoolValues(result)
 			assert.Equal(t, tt.expected, actual)
 		})
 	}
 }
 
 func TestStringMatchingFunctions(t *testing.T) {
-	mem := memory.NewCheckedAllocator(memory.DefaultAllocator)
-	defer mem.AssertSize(t, 0)
-
 	tests := []struct {
 		name     string
 		op       types.BinaryOp
@@ -638,41 +646,78 @@ func TestStringMatchingFunctions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			lhsArray := createStringArray(mem, tt.lhs, nil)
-			rhsArray := createStringArray(mem, tt.rhs, nil)
-			defer lhsArray.array.Release()
-			defer rhsArray.array.Release()
+			lhsArray := createStringArray(tt.lhs, nil)
+			rhsArray := createStringArray(tt.rhs, nil)
 
 			fn, err := binaryFunctions.GetForSignature(tt.op, arrow.BinaryTypes.String)
 			require.NoError(t, err)
 
-			result, err := fn.Evaluate(lhsArray, rhsArray)
+			result, err := fn.Evaluate(lhsArray, rhsArray, false, false)
 			require.NoError(t, err)
 
-			actual := extractBoolValues(result)
+			actual, _ := extractBoolValues(result)
 			assert.Equal(t, tt.expected, actual)
 		})
 	}
 }
 
-func TestNullValueHandling(t *testing.T) {
-	mem := memory.NewCheckedAllocator(memory.DefaultAllocator)
-	defer mem.AssertSize(t, 0)
+func TestCompileRegexMatchFunctions(t *testing.T) {
+	tests := []struct {
+		name     string
+		op       types.BinaryOp
+		lhs      []string
+		rhs      []string
+		expected []bool
+	}{
+		{
+			name:     "regex match", // |~ "^\w+\d+$"
+			op:       types.BinaryOpMatchRe,
+			lhs:      []string{"foo123", "foo", "bar456", "bar"},
+			rhs:      []string{"^\\w+\\d+$", "^\\w+\\d+$", "^\\w+\\d+$", "^\\w+\\d+$"},
+			expected: []bool{true, false, true, false},
+		},
+		{
+			name:     "regex not match", // !~ "^\w+\d+$"
+			op:       types.BinaryOpNotMatchRe,
+			lhs:      []string{"foo123", "foo", "bar456", "bar"},
+			rhs:      []string{"^\\w+\\d+$", "^\\w+\\d+$", "^\\w+\\d+$", "^\\w+\\d+$"},
+			expected: []bool{false, true, false, true},
+		},
+	}
 
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			lhsArray := createStringArray(tt.lhs, nil)
+			rhsArray := createStringArray(tt.rhs, nil)
+
+			fn, err := binaryFunctions.GetForSignature(tt.op, arrow.BinaryTypes.String)
+			require.NoError(t, err)
+
+			result, err := fn.Evaluate(lhsArray, rhsArray, false, true)
+			require.NoError(t, err)
+
+			actual, _ := extractBoolValues(result)
+			assert.Equal(t, tt.expected, actual)
+		})
+	}
+
+}
+
+func TestNullValueHandling(t *testing.T) {
 	tests := []struct {
 		name     string
 		op       types.BinaryOp
 		dataType arrow.DataType
-		setup    func() (*Array, *Array)
+		setup    func() (arrow.Array, arrow.Array)
 		expected []bool
 	}{
 		{
 			name:     "boolean with nulls",
 			op:       types.BinaryOpEq,
 			dataType: arrow.FixedWidthTypes.Boolean,
-			setup: func() (*Array, *Array) {
-				lhs := createBoolArray(mem, []bool{true, false, true}, []bool{false, true, false})
-				rhs := createBoolArray(mem, []bool{true, false, false}, []bool{true, false, false})
+			setup: func() (arrow.Array, arrow.Array) {
+				lhs := createBoolArray([]bool{true, false, true}, []bool{false, true, false})
+				rhs := createBoolArray([]bool{true, false, false}, []bool{true, false, false})
 				return lhs, rhs
 			},
 			expected: []bool{false, false, false}, // nulls should result in false
@@ -681,9 +726,9 @@ func TestNullValueHandling(t *testing.T) {
 			name:     "string with nulls",
 			op:       types.BinaryOpEq,
 			dataType: arrow.BinaryTypes.String,
-			setup: func() (*Array, *Array) {
-				lhs := createStringArray(mem, []string{"hello", "world", "test"}, []bool{false, true, false})
-				rhs := createStringArray(mem, []string{"hello", "world", "different"}, []bool{true, false, false})
+			setup: func() (arrow.Array, arrow.Array) {
+				lhs := createStringArray([]string{"hello", "world", "test"}, []bool{false, true, false})
+				rhs := createStringArray([]string{"hello", "world", "different"}, []bool{true, false, false})
 				return lhs, rhs
 			},
 			expected: []bool{false, false, false}, // nulls should result in false
@@ -692,9 +737,9 @@ func TestNullValueHandling(t *testing.T) {
 			name:     "int64 with nulls",
 			op:       types.BinaryOpGt,
 			dataType: arrow.PrimitiveTypes.Int64,
-			setup: func() (*Array, *Array) {
-				lhs := createInt64Array(mem, []int64{5, 10, 15}, []bool{false, true, false})
-				rhs := createInt64Array(mem, []int64{3, 8, 20}, []bool{true, false, false})
+			setup: func() (arrow.Array, arrow.Array) {
+				lhs := createInt64Array([]int64{5, 10, 15}, []bool{false, true, false})
+				rhs := createInt64Array([]int64{3, 8, 20}, []bool{true, false, false})
 				return lhs, rhs
 			},
 			expected: []bool{false, false, false}, // nulls should result in false
@@ -704,38 +749,33 @@ func TestNullValueHandling(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			lhs, rhs := tt.setup()
-			defer lhs.array.Release()
-			defer rhs.array.Release()
 
 			fn, err := binaryFunctions.GetForSignature(tt.op, tt.dataType)
 			require.NoError(t, err)
 
-			result, err := fn.Evaluate(lhs, rhs)
+			result, err := fn.Evaluate(lhs, rhs, false, false)
 			require.NoError(t, err)
 
-			actual := extractBoolValues(result)
+			actual, _ := extractBoolValues(result)
 			assert.Equal(t, tt.expected, actual)
 		})
 	}
 }
 
 func TestArrayLengthMismatch(t *testing.T) {
-	mem := memory.NewCheckedAllocator(memory.DefaultAllocator)
-	defer mem.AssertSize(t, 0)
-
 	tests := []struct {
 		name     string
 		op       types.BinaryOp
 		dataType arrow.DataType
-		setup    func() (*Array, *Array)
+		setup    func() (arrow.Array, arrow.Array)
 	}{
 		{
 			name:     "boolean length mismatch",
 			op:       types.BinaryOpEq,
 			dataType: arrow.FixedWidthTypes.Boolean,
-			setup: func() (*Array, *Array) {
-				lhs := createBoolArray(mem, []bool{true, false}, nil)
-				rhs := createBoolArray(mem, []bool{true, false, true}, nil)
+			setup: func() (arrow.Array, arrow.Array) {
+				lhs := createBoolArray([]bool{true, false}, nil)
+				rhs := createBoolArray([]bool{true, false, true}, nil)
 				return lhs, rhs
 			},
 		},
@@ -743,9 +783,9 @@ func TestArrayLengthMismatch(t *testing.T) {
 			name:     "string length mismatch",
 			op:       types.BinaryOpEq,
 			dataType: arrow.BinaryTypes.String,
-			setup: func() (*Array, *Array) {
-				lhs := createStringArray(mem, []string{"hello"}, nil)
-				rhs := createStringArray(mem, []string{"hello", "world"}, nil)
+			setup: func() (arrow.Array, arrow.Array) {
+				lhs := createStringArray([]string{"hello"}, nil)
+				rhs := createStringArray([]string{"hello", "world"}, nil)
 				return lhs, rhs
 			},
 		},
@@ -753,9 +793,9 @@ func TestArrayLengthMismatch(t *testing.T) {
 			name:     "int64 length mismatch",
 			op:       types.BinaryOpGt,
 			dataType: arrow.PrimitiveTypes.Int64,
-			setup: func() (*Array, *Array) {
-				lhs := createInt64Array(mem, []int64{1, 2, 3}, nil)
-				rhs := createInt64Array(mem, []int64{1, 2}, nil)
+			setup: func() (arrow.Array, arrow.Array) {
+				lhs := createInt64Array([]int64{1, 2, 3}, nil)
+				rhs := createInt64Array([]int64{1, 2}, nil)
 				return lhs, rhs
 			},
 		},
@@ -764,13 +804,11 @@ func TestArrayLengthMismatch(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			lhs, rhs := tt.setup()
-			defer lhs.array.Release()
-			defer rhs.array.Release()
 
 			fn, err := binaryFunctions.GetForSignature(tt.op, tt.dataType)
 			require.NoError(t, err)
 
-			result, err := fn.Evaluate(lhs, rhs)
+			result, err := fn.Evaluate(lhs, rhs, false, false)
 			assert.Error(t, err)
 			assert.Nil(t, result)
 		})
@@ -778,19 +816,14 @@ func TestArrayLengthMismatch(t *testing.T) {
 }
 
 func TestRegexCompileError(t *testing.T) {
-	mem := memory.NewCheckedAllocator(memory.DefaultAllocator)
-	defer mem.AssertSize(t, 0)
-
 	// Test with invalid regex patterns
-	lhs := createStringArray(mem, []string{"hello", "world"}, nil)
-	rhs := createStringArray(mem, []string{"[", "("}, nil) // Invalid regex patterns
-	defer lhs.array.Release()
-	defer rhs.array.Release()
+	lhs := createStringArray([]string{"hello", "world"}, nil)
+	rhs := createStringArray([]string{"[", "("}, nil) // Invalid regex patterns
 
 	fn, err := binaryFunctions.GetForSignature(types.BinaryOpMatchRe, arrow.BinaryTypes.String)
 	require.NoError(t, err)
 
-	_, err = fn.Evaluate(lhs, rhs)
+	_, err = fn.Evaluate(lhs, rhs, false, false)
 	require.Error(t, err)
 }
 
@@ -821,20 +854,55 @@ func TestBoolToIntConversion(t *testing.T) {
 }
 
 func TestEmptyArrays(t *testing.T) {
-	mem := memory.NewCheckedAllocator(memory.DefaultAllocator)
-	defer mem.AssertSize(t, 0)
-
 	// Test with empty arrays
-	lhs := createStringArray(mem, []string{}, nil)
-	rhs := createStringArray(mem, []string{}, nil)
-	defer lhs.array.Release()
-	defer rhs.array.Release()
+	lhs := createStringArray([]string{}, nil)
+	rhs := createStringArray([]string{}, nil)
 
 	fn, err := binaryFunctions.GetForSignature(types.BinaryOpEq, arrow.BinaryTypes.String)
 	require.NoError(t, err)
 
-	result, err := fn.Evaluate(lhs, rhs)
+	result, err := fn.Evaluate(lhs, rhs, false, false)
 	require.NoError(t, err)
 
-	assert.Equal(t, int64(0), result.Len())
+	assert.Equal(t, int(0), result.Len())
+}
+
+func TestUnaryNot(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    []bool
+		nulls    []bool
+		expected []bool
+	}{
+		{
+			name:     "NOT operation",
+			input:    []bool{true, false, true, false},
+			nulls:    nil,
+			expected: []bool{false, true, false, true},
+		},
+		{
+			name:     "NOT with nulls",
+			input:    []bool{true, false, true},
+			nulls:    []bool{false, true, false},
+			expected: []bool{false, false, false}, // nulls result in false in extractBoolValues
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			inputArray := createBoolArray(tt.input, tt.nulls)
+
+			fn, err := unaryFunctions.GetForSignature(types.UnaryOpNot, arrow.FixedWidthTypes.Boolean)
+			require.NoError(t, err)
+
+			result, err := fn.Evaluate(inputArray)
+			require.NoError(t, err)
+
+			actual, nulls := extractBoolValues(result)
+			assert.Equal(t, tt.expected, actual)
+			if tt.nulls != nil {
+				assert.Equal(t, tt.nulls, nulls)
+			}
+		})
+	}
 }

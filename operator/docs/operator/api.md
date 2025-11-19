@@ -2189,16 +2189,16 @@ to the storage configuration.</p>
 </tr>
 <tr>
 <td>
-<code>networkPolicies</code><br/>
+<code>networkPolicyRuleSet</code><br/>
 <em>
-<a href="#loki-grafana-com-v1-NetworkPoliciesStatus">
-NetworkPoliciesStatus
+<a href="#loki-grafana-com-v1-NetworkPolicyRuleSet">
+NetworkPolicyRuleSet
 </a>
 </em>
 </td>
 <td>
 <em>(Optional)</em>
-<p>NetworkPolicies indicates whether NetworkPolicies are enabled or disabled for this LokiStack.</p>
+<p>NetworkPolicyRuleSet indicates which NetworkPolicies ruleset was applied by the operator for this LokiStack.</p>
 </td>
 </tr>
 <tr>
@@ -2566,28 +2566,27 @@ using an in-process OpenPolicyAgent Rego authorizer.</p>
 <tbody>
 <tr>
 <td>
-<code>disabled</code><br/>
+<code>ruleSet</code><br/>
 <em>
-bool
+<a href="#loki-grafana-com-v1-NetworkPolicyRuleSet">
+NetworkPolicyRuleSet
+</a>
 </em>
 </td>
 <td>
-<em>(Optional)</em>
-<p>Disabled allows explicitly disabling NetworkPolicies.
-When false, NetworkPolicies are enabled.
-When true, NetworkPolicies are disabled.</p>
+<p>RuleSet determines which of the pre-defined sets of NetworkPolicy rules is used for this LokiStack.</p>
 </td>
 </tr>
 </tbody>
 </table>
 
-## NetworkPoliciesStatus { #loki-grafana-com-v1-NetworkPoliciesStatus }
+## NetworkPolicyRuleSet { #loki-grafana-com-v1-NetworkPolicyRuleSet }
 (<code>string</code> alias)
 <p>
-(<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiStackStatus">LokiStackStatus</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiStackStatus">LokiStackStatus</a>, <a href="#loki-grafana-com-v1-NetworkPoliciesSpec">NetworkPoliciesSpec</a>)
 </p>
 <div>
-<p>NetworkPoliciesStatus defines the observed state of NetworkPolicies deployment.</p>
+<p>NetworkPolicyRuleSet is the type of network policy rule set to use</p>
 </div>
 <table>
 <thead>
@@ -2596,11 +2595,16 @@ When true, NetworkPolicies are disabled.</p>
 <th>Description</th>
 </tr>
 </thead>
-<tbody><tr><td><p>&#34;Disabled&#34;</p></td>
-<td><p>NetworkPoliciesStatusDisabled when NetworkPolicies are not deployed.</p>
+<tbody><tr><td><p>&#34;None&#34;</p></td>
+<td><p>The NetworkPolicyRuleSetNone rule-set contains no network policies, effectively removing all network policies created by the operator.</p>
 </td>
-</tr><tr><td><p>&#34;Enabled&#34;</p></td>
-<td><p>NetworkPoliciesStatusEnabled when NetworkPolicies are deployed.</p>
+</tr><tr><td><p>&#34;RestrictIngressEgress&#34;</p></td>
+<td><p>The NetworkPolicyRuleSetRestrictIngressEgress rule-set creates NetworkPolicies allowing the following:</p>
+<ul>
+<li>queries and log ingestion through the gateway</li>
+<li>access to object storage for Loki components requiring this</li>
+<li>communication between LokiStack components</li>
+</ul>
 </td>
 </tr></tbody>
 </table>

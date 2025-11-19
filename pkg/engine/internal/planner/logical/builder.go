@@ -3,6 +3,7 @@ package logical
 import (
 	"time"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
@@ -39,35 +40,35 @@ func (b *Builder) Limit(skip uint32, fetch uint32) *Builder {
 }
 
 // Parse applies a [Parse] operation to the Builder.
-func (b *Builder) Parse(kind ParserKind) *Builder {
-	return &Builder{
-		val: &Parse{
-			Table: b.val,
-			Kind:  kind,
+func (b *Builder) Parse(op types.VariadicOp, strict bool, keepEmpty bool) *Builder {
+	val := &FunctionOp{
+		Op: op,
+		Values: []Value{
+			// source column
+			&ColumnRef{
+				Ref: semconv.ColumnIdentMessage.ColumnRef(),
+			},
+			// nil for requested keys (to be filled in by projection pushdown optimizer)
+			NewLiteral([]string{}),
+			NewLiteral(strict),
+			NewLiteral(keepEmpty),
 		},
 	}
+	return b.ProjectExpand(val)
 }
 
 // Cast applies an [Projection] operation, with an [UnaryOp] cast operation, to the Builder.
-func (b *Builder) Cast(identifier string, operation types.UnaryOp) *Builder {
-	return &Builder{
-		val: &Projection{
-			Relation: b.val,
-			Expressions: []Value{
-				&UnaryOp{
-					Op: operation,
-					Value: &ColumnRef{
-						Ref: types.ColumnRef{
-							Column: identifier,
-							Type:   types.ColumnTypeAmbiguous,
-						},
-					},
-				},
+func (b *Builder) Cast(identifier string, op types.UnaryOp) *Builder {
+	val := &UnaryOp{
+		Op: op,
+		Value: &ColumnRef{
+			Ref: types.ColumnRef{
+				Column: identifier,
+				Type:   types.ColumnTypeAmbiguous,
 			},
-			All:    true,
-			Expand: true,
 		},
 	}
+	return b.ProjectExpand(val)
 }
 
 // Sort applies a [Sort] operation to the Builder.
@@ -79,6 +80,42 @@ func (b *Builder) Sort(column ColumnRef, ascending, nullsFirst bool) *Builder {
 			Column:     column,
 			Ascending:  ascending,
 			NullsFirst: nullsFirst,
+		},
+	}
+}
+
+// TopK applies a [TopK] operation to the Builder.
+func (b *Builder) TopK(sortBy *ColumnRef, K int, ascending, nullsFirst bool) *Builder {
+	return &Builder{
+		val: &TopK{
+			Table: b.val,
+
+			SortBy:     sortBy,
+			Ascending:  ascending,
+			NullsFirst: nullsFirst,
+			K:          K,
+		},
+	}
+}
+
+// BinOpRight adds a binary arithmetic operation with a given right value
+func (b *Builder) BinOpRight(op types.BinaryOp, right Value) *Builder {
+	return &Builder{
+		val: &BinOp{
+			Left:  b.val,
+			Right: right,
+			Op:    op,
+		},
+	}
+}
+
+// BinOpLeft adds a binary arithmetic operation with a given left value
+func (b *Builder) BinOpLeft(op types.BinaryOp, left Value) *Builder {
+	return &Builder{
+		val: &BinOp{
+			Left:  left,
+			Right: b.val,
+			Op:    op,
 		},
 	}
 }

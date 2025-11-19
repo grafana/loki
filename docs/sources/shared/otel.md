@@ -187,6 +187,6 @@ limits_config:
 ```
 
 {{< admonition type="note" >}}
-If you are a Grafana Cloud customer, open a support escalation listing the Attributes you want to promote to indexed labels, and any additional context.
+If you are a Grafana Cloud customer, you can use the [config self-serve API](https://grafana.com/docs/grafana-cloud/send-data/logs/config-self-serve/#otlp-label-mappings) to configure your OTLP config.
 {{< /admonition >}}
   

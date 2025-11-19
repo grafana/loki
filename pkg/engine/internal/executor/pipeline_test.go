@@ -14,17 +14,18 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 // CSVToArrow converts a CSV string to an Arrow record based on the provided schema.
 // It uses the Arrow CSV reader for parsing.
-func CSVToArrow(fields []arrow.Field, csvData string) (arrow.Record, error) {
+func CSVToArrow(fields []arrow.Field, csvData string) (arrow.RecordBatch, error) {
 	return CSVToArrowWithAllocator(memory.NewGoAllocator(), fields, csvData)
 }
 
 // CSVToArrowWithAllocator converts a CSV string to an Arrow record based on the provided schema
 // using the specified memory allocator. It reads all rows from the CSV into a single record.
-func CSVToArrowWithAllocator(allocator memory.Allocator, fields []arrow.Field, csvData string) (arrow.Record, error) {
+func CSVToArrowWithAllocator(allocator memory.Allocator, fields []arrow.Field, csvData string) (arrow.RecordBatch, error) {
 	// first, trim the csvData to remove any preceding and trailing whitespace/line breaks
 	csvData = strings.TrimSpace(csvData)
 
@@ -46,7 +47,7 @@ func CSVToArrowWithAllocator(allocator memory.Allocator, fields []arrow.Field, c
 		return nil, errors.New("failed to read CSV data")
 	}
 
-	return reader.Record(), nil
+	return reader.RecordBatch(), nil
 }
 
 func TestCSVPipeline(t *testing.T) {
@@ -64,11 +65,9 @@ func TestCSVPipeline(t *testing.T) {
 	// Convert to Arrow records
 	record1, err := CSVToArrow(fields, csvData1)
 	require.NoError(t, err)
-	defer record1.Release()
 
 	record2, err := CSVToArrow(fields, csvData2)
 	require.NoError(t, err)
-	defer record2.Release()
 
 	// Create a CSVPipeline with the test records
 	pipeline := NewBufferedPipeline(record1, record2)
@@ -115,17 +114,22 @@ func (i *instrumentedPipeline) Close() {
 }
 
 // Read implements Pipeline.
-func (i *instrumentedPipeline) Read(ctx context.Context) (arrow.Record, error) {
+func (i *instrumentedPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	i.callCount["Read"]++
 	return i.inner.Read(ctx)
+}
+
+// Region implements RegionProvider.
+func (i *instrumentedPipeline) Region() *xcap.Region {
+	if provider, ok := i.inner.(RegionProvider); ok {
+		return provider.Region()
+	}
+	return nil
 }
 
 var _ Pipeline = (*instrumentedPipeline)(nil)
 
 func Test_prefetchWrapper_Read(t *testing.T) {
-	alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
-	defer alloc.AssertSize(t, 0)
-
 	batch1 := arrowtest.Rows{
 		{"message": "log line 1"},
 		{"message": "log line 2"},
@@ -138,13 +142,10 @@ func Test_prefetchWrapper_Read(t *testing.T) {
 		{"message": "log line 5"},
 	}
 
-	records := []arrow.Record{
-		batch1.Record(alloc, batch1.Schema()),
-		batch2.Record(alloc, batch2.Schema()),
-		batch3.Record(alloc, batch3.Schema()),
-	}
-	for _, rec := range records {
-		defer rec.Release()
+	records := []arrow.RecordBatch{
+		batch1.Record(memory.DefaultAllocator, batch1.Schema()),
+		batch2.Record(memory.DefaultAllocator, batch2.Schema()),
+		batch3.Record(memory.DefaultAllocator, batch3.Schema()),
 	}
 
 	pipeline := NewBufferedPipeline(records...)
@@ -159,7 +160,6 @@ func Test_prefetchWrapper_Read(t *testing.T) {
 	// Read first batch
 	v, err := prefetchingPipeline.Read(ctx)
 	require.NoError(t, err)
-	v.Release()
 	require.Equal(t, int64(2), v.NumRows())
 
 	time.Sleep(10 * time.Millisecond)                           // ensure that next batch has been prefetched
@@ -168,7 +168,6 @@ func Test_prefetchWrapper_Read(t *testing.T) {
 	// Read second batch
 	v, err = prefetchingPipeline.Read(ctx)
 	require.NoError(t, err)
-	v.Release()
 	require.Equal(t, int64(2), v.NumRows())
 
 	time.Sleep(10 * time.Millisecond)                           // ensure that next batch has been prefetched
@@ -177,7 +176,6 @@ func Test_prefetchWrapper_Read(t *testing.T) {
 	// Read third/last batch
 	v, err = prefetchingPipeline.Read(ctx)
 	require.NoError(t, err)
-	v.Release()
 	require.Equal(t, int64(1), v.NumRows())
 
 	time.Sleep(10 * time.Millisecond)                           // ensure that next batch has been prefetched

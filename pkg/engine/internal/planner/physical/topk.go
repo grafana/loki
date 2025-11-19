@@ -1,14 +1,12 @@
 package physical
 
-import (
-	"fmt"
-)
+import "github.com/oklog/ulid/v2"
 
 // TopK represents a physical plan node that performs topK operation.
-// It sorts rows based on sort expressions and limits the result to the top K rows.
-// This is equivalent to a SORT followed by a LIMIT operation.
+// It ranks rows based on sort expressions and limits the result to the top K rows.
+// Implementations may not guarantee the topK rows to be in sorted order.
 type TopK struct {
-	id string
+	NodeID ulid.ULID
 
 	// SortBy is the column to sort by.
 	SortBy     ColumnExpression
@@ -18,17 +16,14 @@ type TopK struct {
 }
 
 // ID implements the [Node] interface.
-// Returns a string that uniquely identifies the node in the plan.
-func (t *TopK) ID() string {
-	if t.id == "" {
-		return fmt.Sprintf("%p", t)
-	}
-	return t.id
-}
+// Returns the ULID that uniquely identifies the node in the plan.
+func (t *TopK) ID() ulid.ULID { return t.NodeID }
 
-// Clone returns a deep copy of the node (minus its ID).
+// Clone returns a deep copy of the node with a new unique ID.
 func (t *TopK) Clone() Node {
 	return &TopK{
+		NodeID: ulid.Make(),
+
 		SortBy:     t.SortBy.Clone().(ColumnExpression),
 		Ascending:  t.Ascending,
 		NullsFirst: t.NullsFirst,
@@ -40,10 +35,4 @@ func (t *TopK) Clone() Node {
 // Returns the type of the node.
 func (*TopK) Type() NodeType {
 	return NodeTypeTopK
-}
-
-// Accept implements the [Node] interface.
-// Dispatches itself to the provided [Visitor] v
-func (t *TopK) Accept(visitor Visitor) error {
-	return visitor.VisitTopK(t)
 }

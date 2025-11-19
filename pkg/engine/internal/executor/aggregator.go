@@ -132,7 +132,7 @@ func (a *aggregator) Add(ts time.Time, value float64, labelValues []string) {
 	}
 }
 
-func (a *aggregator) BuildRecord() (arrow.Record, error) {
+func (a *aggregator) BuildRecord() (arrow.RecordBatch, error) {
 	fields := make([]arrow.Field, 0, len(a.groupBy)+2)
 	fields = append(fields,
 		semconv.FieldFromIdent(semconv.ColumnIdentTimestamp, false),
@@ -150,7 +150,6 @@ func (a *aggregator) BuildRecord() (arrow.Record, error) {
 
 	schema := arrow.NewSchema(fields, nil)
 	rb := array.NewRecordBuilder(memory.NewGoAllocator(), schema)
-	defer rb.Release()
 
 	// emit aggregated results in sorted order of timestamp
 	for _, ts := range a.getSortedTimestamps() {
@@ -172,7 +171,7 @@ func (a *aggregator) BuildRecord() (arrow.Record, error) {
 		}
 	}
 
-	return rb.NewRecord(), nil
+	return rb.NewRecordBatch(), nil
 }
 
 func (a *aggregator) Reset() {
