@@ -616,7 +616,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 
 			if !d.validator.IsInternalStream(lbs) {
 				if missing, lbsMissing := d.missingEnforcedLabels(lbs, tenantID, policy); missing {
-					err := fmt.Errorf(validation.MissingEnforcedLabelsErrorMsg, strings.Join(lbsMissing, ","), tenantID, stream.Labels)
+					err := fmt.Errorf(validation.MissingEnforcedLabelsErrorMsg, strings.Join(lbsMissing, ","), tenantID, stream.Labels, policy)
 					d.writeFailuresManager.Log(tenantID, err)
 					validationErrors.Add(err)
 					discardedBytes := util.EntriesTotalSize(stream.Entries)
@@ -773,7 +773,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	// Nil check for performance reasons, to avoid dynamic lookup and/or no-op
 	// function calls that cannot be inlined.
 	if d.tee != nil {
-		d.tee.Duplicate(tenantID, streams)
+		d.tee.Duplicate(context.WithoutCancel(ctx), tenantID, streams)
 	}
 
 	const maxExpectedReplicationSet = 5 // typical replication factor 3 plus one for inactive plus one for luck

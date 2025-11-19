@@ -1,7 +1,10 @@
 package physical
 
 import (
+	"fmt"
 	"iter"
+
+	"github.com/oklog/ulid/v2"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
 )
@@ -67,8 +70,8 @@ func (t NodeType) String() string {
 // Nodes can be connected to form a directed acyclic graph (DAG) representing
 // the complete execution plan.
 type Node interface {
-	// ID returns a string that uniquely identifies a node in the plan
-	ID() string
+	// ID returns the ULID that uniquely identifies a node in the plan.
+	ID() ulid.ULID
 	// Type returns the node type
 	Type() NodeType
 	// Clone creates a deep copy of the Node. Cloned nodes do not retain the
@@ -98,7 +101,6 @@ var _ Node = (*Limit)(nil)
 var _ Node = (*Filter)(nil)
 var _ Node = (*RangeAggregation)(nil)
 var _ Node = (*VectorAggregation)(nil)
-var _ Node = (*ParseNode)(nil)
 var _ Node = (*ColumnCompat)(nil)
 var _ Node = (*TopK)(nil)
 var _ Node = (*Parallelize)(nil)
@@ -111,7 +113,6 @@ func (*Limit) isNode()             {}
 func (*Filter) isNode()            {}
 func (*RangeAggregation) isNode()  {}
 func (*VectorAggregation) isNode() {}
-func (*ParseNode) isNode()         {}
 func (*ColumnCompat) isNode()      {}
 func (*TopK) isNode()              {}
 func (*Parallelize) isNode()       {}
@@ -163,4 +164,33 @@ func (p *Plan) Leaves() []Node { return p.graph.Leaves() }
 // ([dag.PreOrderWalk]) or after their children ([dag.PostOrderWalk]).
 func (p *Plan) DFSWalk(n Node, f dag.WalkFunc[Node], order dag.WalkOrder) error {
 	return p.graph.Walk(n, f, order)
+}
+
+// CalculateMaxTimeRange calculates max time boundaries for the plan. Boundaries are defined
+// by either the topmost RangeAggregation or by data scans.
+func (p *Plan) CalculateMaxTimeRange() TimeRange {
+	timeRange := TimeRange{}
+
+	for _, root := range p.Roots() {
+		_ = p.DFSWalk(root, func(n Node) error {
+			switch s := n.(type) {
+			case *RangeAggregation:
+				timeRange.Start = s.Start
+				timeRange.End = s.End
+				// Return here. Topmost RangeAggregation node is what defines max time boundaries for that plan, because
+				// DataObjScan below it can cover different ranges overall.
+				return fmt.Errorf("stop after RangeAggregation")
+			case *ScanSet:
+				for _, t := range s.Targets {
+					timeRange = timeRange.Merge(t.DataObject.MaxTimeRange)
+				}
+			case *DataObjScan:
+				timeRange = timeRange.Merge(s.MaxTimeRange)
+			}
+
+			return nil
+		}, dag.PreOrderWalk)
+	}
+
+	return timeRange
 }

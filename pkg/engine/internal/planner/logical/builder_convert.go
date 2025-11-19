@@ -41,14 +41,14 @@ func (b *ssaBuilder) process(value Value) (Value, error) {
 		return b.processLimitPlan(value)
 	case *Sort:
 		return b.processSortPlan(value)
+	case *TopK:
+		return b.processTopKPlan(value)
 	case *Projection:
 		return b.processProjection(value)
 	case *RangeAggregation:
 		return b.processRangeAggregate(value)
 	case *VectorAggregation:
 		return b.processVectorAggregation(value)
-	case *Parse:
-		return b.processParsePlan(value)
 	case *UnaryOp:
 		return b.processUnaryOp(value)
 	case *BinOp:
@@ -152,7 +152,7 @@ func (b *ssaBuilder) processSortPlan(plan *Sort) (Value, error) {
 	return plan, nil
 }
 
-func (b *ssaBuilder) processParsePlan(plan *Parse) (Value, error) {
+func (b *ssaBuilder) processTopKPlan(plan *TopK) (Value, error) {
 	if _, err := b.process(plan.Table); err != nil {
 		return nil, err
 	}

@@ -6,17 +6,20 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/memory"
-	"github.com/apache/arrow-go/v18/arrow/scalar"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/arrowagg"
 	"github.com/grafana/loki/v3/pkg/util/topk"
 )
 
-// topkBatch calculates the top K rows from a stream of [arrow.Record]s, where
-// rows are sorted by the specified Fields.
+// topkBatch calculates the top K rows from a stream of [arrow.RecordBatch]s, where
+// rows are ranked by the specified Fields.
 //
-// Rows with equal values for all sort fields are sorted by the order in which
+// Rows with equal values for all the fields are ranked by the order in which
 // they were appended.
+//
+// topkBatch only identifies which rows belong in the top K, but does not
+// guarantee any specific ordering of those rows in the compacted output. Callers
+// should sort the result if a specific order is required.
 type topkBatch struct {
 	// Fields holds the list of fields to sort by, in order of precedence. If an
 	// incoming record is missing one of these fields, the value for that field
@@ -47,7 +50,7 @@ type topkBatch struct {
 	nextID      int
 	mapper      *arrowagg.Mapper
 	heap        *topk.Heap[*topkReference]
-	usedCount   map[arrow.Record]int
+	usedCount   map[arrow.RecordBatch]int
 	usedSchemas map[*arrow.Schema]int
 }
 
@@ -58,7 +61,7 @@ type topkReference struct {
 	// are otherwise equal in the sort order.
 	ID int
 
-	Record arrow.Record // Record contributing to the top K.
+	Record arrow.RecordBatch // Record contributing to the top K.
 	Row    int
 }
 
@@ -70,7 +73,7 @@ type topkReference struct {
 // contribute towards the total unused rows in b. Once the number of unused
 // rows exceeds MaxUnused, Put calls [topkBatch.Compact] to clean up record
 // references.
-func (b *topkBatch) Put(rec arrow.Record) {
+func (b *topkBatch) Put(rec arrow.RecordBatch) {
 	b.put(rec)
 
 	// Compact if adding this record pushed us over the limit of unused rows.
@@ -81,7 +84,7 @@ func (b *topkBatch) Put(rec arrow.Record) {
 }
 
 // put adds rows from rec into b without checking the number of unused rows.
-func (b *topkBatch) put(rec arrow.Record) {
+func (b *topkBatch) put(rec arrow.RecordBatch) {
 	if !b.ready {
 		b.init()
 	}
@@ -134,7 +137,7 @@ func (b *topkBatch) init() {
 		},
 	}
 	b.mapper = arrowagg.NewMapper(b.Fields)
-	b.usedCount = make(map[arrow.Record]int)
+	b.usedCount = make(map[arrow.RecordBatch]int)
 	b.usedSchemas = make(map[*arrow.Schema]int)
 	b.ready = true
 }
@@ -144,25 +147,17 @@ func (b *topkBatch) less(left, right *topkReference) bool {
 		leftArray := b.findRecordArray(left.Record, b.mapper, fieldIndex)
 		rightArray := b.findRecordArray(right.Record, b.mapper, fieldIndex)
 
-		var leftScalar, rightScalar scalar.Scalar
-
-		if leftArray != nil {
-			leftScalar, _ = scalar.GetScalar(leftArray, left.Row)
-		}
-		if rightArray != nil {
-			rightScalar, _ = scalar.GetScalar(rightArray, right.Row)
-		}
-
-		res, err := compareScalars(leftScalar, rightScalar, b.NullsFirst)
+		// Compare directly from arrays without creating scalars to avoid allocations
+		res, err := compareArrays(leftArray, rightArray, left.Row, right.Row, b.NullsFirst)
 		if err != nil {
-			// Treat failure to compare scalars as equal, so that the sort order is
+			// Treat failure to compare as equal, so that the sort order is
 			// consistent. This should only happen when given invalid values to
-			// compare, as we know leftScalar and rightScalar are of the same type.
+			// compare, as we know leftArray and rightArray are of the same type.
 			continue
 		}
 		switch res {
 		case 0: // left == right
-			// Continue to the next field if two scalars are equal.
+			// Continue to the next field if two values are equal.
 			continue
 		case -1: // left < right
 			return true
@@ -184,7 +179,7 @@ func (b *topkBatch) less(left, right *topkReference) bool {
 // findRecordArray finds the array for the given [b.Fields] field index from
 // the mapper cache. findRecordArray returns nil if the field is not present in
 // rec.
-func (b *topkBatch) findRecordArray(rec arrow.Record, mapper *arrowagg.Mapper, fieldIndex int) arrow.Array {
+func (b *topkBatch) findRecordArray(rec arrow.RecordBatch, mapper *arrowagg.Mapper, fieldIndex int) arrow.Array {
 	columnIndex := mapper.FieldIndex(rec.Schema(), fieldIndex)
 	if columnIndex < 0 || columnIndex >= int(rec.NumCols()) {
 		return nil // No such field in the record.
@@ -215,12 +210,12 @@ func (b *topkBatch) Size() (rows int, unused int) {
 // the current top K rows.
 //
 // The returned record will have a combined schema from all of the input
-// records. The sort order of fields in the returned record is not guaranteed.
-// Rows that did not have one of the combined fields will be filled with null
-// values for those fields.
+// records. Neither the order of fields nor the order of rows in the returned
+// record is guaranteed. Rows that did not have one of the
+// combined fields will be filled with null values for those fields.
 //
 // Compact returns nil if no rows are in the top K.
-func (b *topkBatch) Compact() arrow.Record {
+func (b *topkBatch) Compact() arrow.RecordBatch {
 	if len(b.usedCount) == 0 {
 		return nil
 	}
@@ -228,13 +223,23 @@ func (b *topkBatch) Compact() arrow.Record {
 
 	// Get all row references to compact.
 	rowRefs := b.heap.PopAll()
-	slices.Reverse(rowRefs)
 
-	compactor := arrowagg.NewRecords(memory.DefaultAllocator)
+	recordRows := make(map[arrow.RecordBatch][]int, len(b.usedCount))
 	for _, ref := range rowRefs {
-		compactor.AppendSlice(ref.Record, int64(ref.Row), int64(ref.Row)+1)
+		recordRows[ref.Record] = append(recordRows[ref.Record], ref.Row)
 	}
 
+	compactor := arrowagg.NewRecords(memory.DefaultAllocator)
+	for rec, rows := range recordRows {
+		slices.Sort(rows)
+		iterContiguousRanges(rows, func(start, end int) bool {
+			compactor.AppendSlice(rec, int64(start), int64(end))
+			return true
+		})
+	}
+
+	// Rows are grouped by their source record and appended
+	// in contiguous ranges for efficiency.
 	compacted, err := compactor.Aggregate()
 	if err != nil {
 		// Aggregate should only fail if we didn't aggregate anything, which we
@@ -256,4 +261,31 @@ func (b *topkBatch) Reset() {
 
 	clear(b.usedCount)
 	clear(b.usedSchemas)
+}
+
+// iterContiguousRanges iterates over contiguous ranges of row indices from a sorted
+// slice. Rows must be sorted in ascending order.
+//
+// For example, if rows is [1, 2, 3, 5, 6, 7], it will yield two ranges:
+// [1, 4) and [5, 8), representing the contiguous sequences.
+//
+// The function calls yield for each contiguous range found. If yield returns false,
+// iteration stops.
+func iterContiguousRanges(rows []int, yield func(start, end int) bool) {
+	if len(rows) == 0 {
+		return
+	}
+
+	startRow := rows[0]
+	for i := 1; i < len(rows); i++ {
+		// If current row is not contiguous with previous, yield the previous range
+		if rows[i] != rows[i-1]+1 {
+			if !yield(startRow, rows[i-1]+1) {
+				return
+			}
+			startRow = rows[i]
+		}
+	}
+	// Yield the final contiguous range
+	yield(startRow, rows[len(rows)-1]+1)
 }

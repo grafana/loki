@@ -40,4 +40,7 @@ spec:
       protocol: TCP
   selector:
     {{- include "loki.gatewaySelectorLabels" . | nindent 4 }}
+{{- with .Values.gateway.service.trafficDistribution | default .Values.loki.service.trafficDistribution }}
+  trafficDistribution: {{ . }}
+{{- end }}
 {{- end }}

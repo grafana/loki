@@ -43,9 +43,18 @@ func (m *mockStorage) GetSampledQueries(_ context.Context, page, pageSize int, _
 	}, nil
 }
 
+func (m *mockStorage) GetStatistics(_ context.Context, _ goldfish.StatsFilter) (*goldfish.Statistics, error) {
+	return nil, nil
+}
+
 func (m *mockStorage) Close() error {
 	m.closed = true
 	return nil
+}
+
+func (m *mockStorage) GetQueryByCorrelationID(_ context.Context, _ string) (*goldfish.QuerySample, error) {
+	// This is only used for UI, not needed in manager tests
+	return nil, nil
 }
 
 func TestManager_ShouldSample(t *testing.T) {

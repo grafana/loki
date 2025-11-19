@@ -18,9 +18,9 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/oklog/ulid/v2"
 	"github.com/thanos-io/objstore"
+	"go.opentelemetry.io/otel/propagation"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 )
@@ -33,9 +33,24 @@ type Config struct {
 	// Bucket to read stored data from.
 	Bucket objstore.Bucket
 
-	// Local scheduler to connect to. If LocalScheduler is nil, the worker can
-	// still connect to remote schedulers.
-	LocalScheduler *scheduler.Scheduler
+	// Dialer to establish connections to scheduler and remote workers.
+	Dialer wire.Dialer
+
+	// Listener for accepting connections from workers.
+	Listener wire.Listener
+
+	// SchedulerAddress is the address of the remote scheduler to connect to.
+	// SchedulerAddress is used when there is exactly one scheduler. Use
+	// SchedulerLookupAddress to discover multiple schedulers by DNS SRV lookup.
+	SchedulerAddress net.Addr
+
+	// SchedulerLookupAddress is the address of the remote scheduler to look up.
+	// Scheduler addresses are resolved using DNS SRV records at this address.
+	SchedulerLookupAddress string
+
+	// SchedulerLookupInterval is the frequency at which the worker will attempt
+	// to find new remote schedulers.
+	SchedulerLookupInterval time.Duration
 
 	// BatchSize specifies the maximum number of rows to retrieve in a single
 	// read call of a task pipeline.
@@ -47,6 +62,10 @@ type Config struct {
 	//
 	// If NumThreads is set to 0, NumThreads defaults to [runtime.GOMAXPROCS].
 	NumThreads int
+
+	// Absolute path of the endpoint where the frame handler is registered.
+	// Used for connecting to scheduler and other workers.
+	Endpoint string
 }
 
 // readyRequest is a message sent from a thread to notify the worker that it's
@@ -75,15 +94,15 @@ type readyResponse struct {
 // executes them. Task results are forwarded along streams, which are received
 // by other [Worker] instances or the scheduler.
 type Worker struct {
-	config Config
-	logger log.Logger
+	config     Config
+	logger     log.Logger
+	numThreads int
 
 	initOnce sync.Once
 	svc      services.Service
 
-	// local is the local listener used for communication between worker
-	// threads within the same process.
-	local *wire.Local
+	dialer   wire.Dialer
+	listener wire.Listener
 
 	resourcesMut sync.RWMutex
 	sources      map[ulid.ULID]*streamSource
@@ -101,18 +120,28 @@ func New(config Config) (*Worker, error) {
 	if config.Logger == nil {
 		config.Logger = log.NewNopLogger()
 	}
+	if config.Listener == nil {
+		return nil, errors.New("worker listener is required")
+	}
+	if config.Dialer == nil {
+		return nil, errors.New("dialer is required")
+	}
+	if config.SchedulerAddress == nil && config.SchedulerLookupAddress == "" {
+		return nil, errors.New("at least one of scheduler address or lookup address is required")
+	}
 
-	// TODO(rfratto): support connecting to a remote scheduler, so that a local
-	// scheduler isn't always required.
-	if config.LocalScheduler == nil {
-		return nil, errors.New("local scheduler is required")
+	numThreads := config.NumThreads
+	if numThreads == 0 {
+		numThreads = runtime.GOMAXPROCS(0)
 	}
 
 	return &Worker{
-		config: config,
-		logger: config.Logger,
+		config:     config,
+		logger:     config.Logger,
+		numThreads: numThreads,
 
-		local: &wire.Local{Address: wire.LocalWorker},
+		dialer:   config.Dialer,
+		listener: config.Listener,
 
 		sources: make(map[ulid.ULID]*streamSource),
 		sinks:   make(map[ulid.ULID]*streamSink),
@@ -133,15 +162,10 @@ func (w *Worker) Service() services.Service {
 
 // run starts the worker, running until the provided context is canceled.
 func (w *Worker) run(ctx context.Context) error {
-	numThreads := w.config.NumThreads
-	if numThreads == 0 {
-		numThreads = runtime.GOMAXPROCS(0)
-	}
-
 	g, ctx := errgroup.WithContext(ctx)
 
 	// Spin up worker threads.
-	for i := range numThreads {
+	for i := range w.numThreads {
 		t := &thread{
 			BatchSize: w.config.BatchSize,
 			Logger:    log.With(w.logger, "thread", i),
@@ -154,7 +178,23 @@ func (w *Worker) run(ctx context.Context) error {
 	}
 
 	g.Go(func() error { return w.runAcceptLoop(ctx) })
-	g.Go(func() error { return w.runSchedulersLoop(ctx) })
+
+	if w.config.SchedulerLookupAddress != "" {
+		disc, err := newSchedulerLookup(w.logger, w.config.SchedulerLookupAddress, w.config.SchedulerLookupInterval)
+		if err != nil {
+			return fmt.Errorf("creating scheduler lookup: %w", err)
+		}
+		g.Go(func() error {
+			return disc.Run(ctx, func(ctx context.Context, addr net.Addr) {
+				_ = w.schedulerLoop(ctx, addr)
+			})
+		})
+	}
+
+	if w.config.SchedulerAddress != nil {
+		level.Info(w.logger).Log("msg", "directly connecting to scheduler", "scheduler_addr", w.config.SchedulerAddress)
+		g.Go(func() error { return w.schedulerLoop(ctx, w.config.SchedulerAddress) })
+	}
 
 	return g.Wait()
 }
@@ -164,7 +204,7 @@ func (w *Worker) run(ctx context.Context) error {
 // threads within this worker.
 func (w *Worker) runAcceptLoop(ctx context.Context) error {
 	for {
-		conn, err := w.local.Accept(ctx)
+		conn, err := w.listener.Accept(ctx)
 		if err != nil && ctx.Err() != nil {
 			return nil
 		} else if err != nil {
@@ -207,24 +247,6 @@ func (w *Worker) handleConn(ctx context.Context, conn wire.Conn) {
 	}
 }
 
-// runSchedulersLoop periodically discovers schedulers and maintains connections
-// to them.
-func (w *Worker) runSchedulersLoop(ctx context.Context) error {
-	g, ctx := errgroup.WithContext(ctx)
-
-	// TODO(rfratto): If connecting to remote schedulers, discover them here
-	// (DNS lookup to get all the pods?) and maintain connections to them.
-	//
-	// TODO(rfratto): Once we support multiple schedulers, we'll want
-	// per-scheduler contexts to be able to cancel individual connections (for
-	// when a scheduler disappears from discovery).
-
-	if w.config.LocalScheduler != nil {
-		g.Go(func() error { return w.schedulerLoop(ctx, wire.LocalScheduler) })
-	}
-	return nil
-}
-
 // schedulerLoop manages the lifecycle of a connection to a specific scheduler.
 func (w *Worker) schedulerLoop(ctx context.Context, addr net.Addr) error {
 	logger := log.With(w.logger, "remote_addr", addr)
@@ -259,15 +281,7 @@ func (w *Worker) schedulerLoop(ctx context.Context, addr net.Addr) error {
 
 // dial opens a connection to the given address.
 func (w *Worker) dial(ctx context.Context, addr net.Addr) (wire.Conn, error) {
-	switch addr {
-	case wire.LocalScheduler:
-		return w.config.LocalScheduler.DialFrom(ctx, w.local.Address)
-	case wire.LocalWorker:
-		return w.local.DialFrom(ctx, w.local.Address)
-	default:
-		// TODO(rfratto): Support for network transports
-		return nil, fmt.Errorf("unsupported address %s", addr)
-	}
+	return w.dialer.Dial(ctx, w.listener.Addr(), addr)
 }
 
 // handleSchedulerConn handles a single connection to a scheduler.
@@ -290,10 +304,9 @@ func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, con
 
 	handleAssignment := func(peer *wire.Peer, msg wire.TaskAssignMessage) error {
 		reqsMut.Lock()
-		defer reqsMut.Unlock()
-
 		req := readyReqs[0]
 		readyReqs = readyReqs[1:]
+		reqsMut.Unlock()
 
 		job, err := w.newJob(req.Context, peer, logger, msg)
 		if err != nil {
@@ -306,22 +319,37 @@ func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, con
 		return nil
 	}
 
-	requestAssignment := func(ctx context.Context, peer *wire.Peer, req readyRequest) {
+	failAssignment := func(err error) {
 		reqsMut.Lock()
 		defer reqsMut.Unlock()
 
-		// Keep the lock held while we send the request to the scheduler. Once
-		// we get the acknowledgement back we can move req to the readyReqs
-		// stack.
-		err := peer.SendMessage(ctx, wire.WorkerReadyMessage{})
-		if err != nil {
-			// Response is guaranteed to be buffered so we don't need to worry about
-			// blocking here.
-			req.Response <- readyResponse{Error: err}
+		if len(readyReqs) == 0 {
+			// If this hits, the scheduler responded with an assignment after we
+			// marked the SendMessage call as failing. We'll just ignore it
+			// here.
 			return
 		}
 
+		req := readyReqs[0]
+		readyReqs = readyReqs[1:]
+
+		// Response is guaranteed to be buffered so we don't need to worry about
+		// blocking here.
+		req.Response <- readyResponse{Error: err}
+	}
+
+	requestAssignment := func(ctx context.Context, peer *wire.Peer, req readyRequest) {
+		reqsMut.Lock()
 		readyReqs = append(readyReqs, req)
+		reqsMut.Unlock()
+
+		err := peer.SendMessage(ctx, wire.WorkerReadyMessage{})
+		if err != nil {
+			// Fail one of the requests. It really doesn't matter which one, as
+			// long as one of them is told about the error.
+			failAssignment(err)
+			return
+		}
 	}
 
 	peer := &wire.Peer{
@@ -353,8 +381,15 @@ func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, con
 	}
 
 	g, ctx := errgroup.WithContext(ctx)
-
 	g.Go(func() error { return peer.Serve(ctx) })
+
+	// Perform a handshake with the scheduler. This must be done before
+	// launching the goroutine to request task assignment, as WorkerReady
+	// messages are rejected until a WorkerHello is acknowledged.
+	if err := peer.SendMessage(ctx, wire.WorkerHelloMessage{Threads: w.numThreads}); err != nil {
+		level.Error(logger).Log("msg", "failed to perform handshake with scheduler", "err", err)
+		return err
+	}
 
 	g.Go(func() error {
 		for {
@@ -451,6 +486,10 @@ func (w *Worker) newJob(ctx context.Context, scheduler *wire.Peer, logger log.Lo
 			sinks[taskSink.ULID] = sink
 		}
 	}
+
+	// Extract tracing context and bind it to the job's context.
+	var tc propagation.TraceContext
+	ctx = tc.Extract(ctx, propagation.HeaderCarrier(msg.Metadata))
 
 	ctx, cancel := context.WithCancel(ctx)
 

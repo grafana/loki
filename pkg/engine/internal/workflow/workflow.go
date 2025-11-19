@@ -4,6 +4,7 @@ package workflow
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"github.com/apache/arrow-go/v18/arrow"
@@ -15,24 +16,54 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
+
+// Options configures a [Workflow].
+type Options struct {
+	// MaxRunningScanTasks specifies the maximum number of scan tasks that may
+	// run concurrently within a single workflow. 0 means no limit.
+	MaxRunningScanTasks int
+
+	// MaxRunningOtherTasks specifies the maximum number of non-scan tasks that
+	// may run concurrently within a single workflow. 0 means no limit.
+	MaxRunningOtherTasks int
+
+	// DebugTasks toggles debug messages for a task. This is very verbose and
+	// should only be enabled for debugging purposes.
+	//
+	// Regardless of the value of DebugTasks, workers still log when
+	// they start and finish assigned tasks.
+	DebugTasks bool
+
+	// DebugStreams toggles debug messages for data streams. This is very
+	// verbose and should only be enabled for debugging purposes.
+	DebugStreams bool
+}
 
 // Workflow represents a physical plan that has been partitioned into
 // parallelizable tasks.
 type Workflow struct {
-	logger        log.Logger
-	runner        Runner
-	graph         dag.Graph[*Task]
-	resultsStream *Stream
+	opts            Options
+	logger          log.Logger
+	runner          Runner
+	graph           dag.Graph[*Task]
+	resultsStream   *Stream
+	resultsPipeline *streamPipe
+	manifest        *Manifest
 
 	statsMut sync.Mutex
 	stats    stats.Result
+
+	capture *xcap.Capture
 
 	tasksMut   sync.RWMutex
 	taskStates map[*Task]TaskState
 
 	streamsMut   sync.RWMutex
 	streamStates map[*Stream]StreamState
+
+	admissionControl *admissionControl
 }
 
 // New creates a new Workflow from a physical plan. New returns an error if the
@@ -40,7 +71,7 @@ type Workflow struct {
 // cannot be partitioned into a Workflow.
 //
 // The provided Runner will be used for Workflow execution.
-func New(logger log.Logger, tenantID string, runner Runner, plan *physical.Plan) (*Workflow, error) {
+func New(opts Options, logger log.Logger, tenantID string, runner Runner, plan *physical.Plan) (*Workflow, error) {
 	graph, err := planWorkflow(tenantID, plan)
 	if err != nil {
 		return nil, err
@@ -52,15 +83,22 @@ func New(logger log.Logger, tenantID string, runner Runner, plan *physical.Plan)
 		return nil, err
 	}
 
-	return &Workflow{
-		logger:        logger,
-		runner:        runner,
-		graph:         graph,
-		resultsStream: results,
+	wf := &Workflow{
+		opts:            opts,
+		logger:          logger,
+		runner:          runner,
+		graph:           graph,
+		resultsStream:   results,
+		resultsPipeline: newStreamPipe(),
 
 		taskStates:   make(map[*Task]TaskState),
 		streamStates: make(map[*Stream]StreamState),
-	}, nil
+	}
+	if err := wf.init(context.Background()); err != nil {
+		wf.Close()
+		return nil, err
+	}
+	return wf, nil
 }
 
 // injectResultsStream injects a new stream into the sinks of the root task for
@@ -83,41 +121,39 @@ func injectResultsStream(tenantID string, graph *dag.Graph[*Task]) (*Stream, err
 	return results, nil
 }
 
+// init initializes the workflow.
+func (wf *Workflow) init(ctx context.Context) error {
+	wf.manifest = &Manifest{
+		Streams: wf.allStreams(),
+		Tasks:   wf.allTasks(),
+
+		StreamEventHandler: wf.onStreamChange,
+		TaskEventHandler:   wf.onTaskChange,
+	}
+	if err := wf.runner.RegisterManifest(ctx, wf.manifest); err != nil {
+		return err
+	}
+	return wf.runner.Listen(ctx, wf.resultsPipeline, wf.resultsStream)
+}
+
+// Close releases resources associated with the workflow.
+func (wf *Workflow) Close() {
+	if err := wf.runner.UnregisterManifest(context.Background(), wf.manifest); err != nil {
+		level.Warn(wf.logger).Log("msg", "failed to unregister workflow manifest", "err", err)
+	}
+}
+
 // Run executes the workflow, returning a pipeline to read results from. The
 // provided context is used for the lifetime of the workflow execution.
 //
 // The returned pipeline must be closed when the workflow is complete to release
 // resources.
 func (wf *Workflow) Run(ctx context.Context) (pipeline executor.Pipeline, err error) {
-	var (
-		streams = wf.allStreams()
-		tasks   = wf.allTasks()
-	)
-
-	if err := wf.runner.AddStreams(ctx, wf.onStreamChange, streams...); err != nil {
-		return nil, err
-	}
-	defer func() {
-		if err != nil {
-			_ = wf.runner.RemoveStreams(context.Background(), streams...)
-		}
-	}()
-
-	pipeline, err = wf.runner.Listen(ctx, wf.resultsStream)
-	if err != nil {
-		return nil, err
-	}
+	wf.capture = xcap.FromContext(ctx)
 
 	wrapped := &wrappedPipeline{
-		inner: pipeline,
+		inner: wf.resultsPipeline,
 		onClose: func() {
-			// Cancel will return an error for any tasks that were already
-			// canceled, but for convenience we give all the known tasks anyway.
-			//
-			// The same thing applies to RemoveStreams.
-			_ = wf.runner.Cancel(context.Background(), tasks...)
-			_ = wf.runner.RemoveStreams(context.Background(), streams...)
-
 			// Merge final stats results back into the caller.
 			wf.statsMut.Lock()
 			defer wf.statsMut.Unlock()
@@ -125,25 +161,52 @@ func (wf *Workflow) Run(ctx context.Context) (pipeline executor.Pipeline, err er
 		},
 	}
 
-	wrappedHandler := func(ctx context.Context, task *Task, newStatus TaskStatus) {
-		wf.onTaskChange(ctx, task, newStatus)
+	// Start dispatching in background goroutine
+	go func() {
+		err := wf.dispatchTasks(ctx, wf.manifest.Tasks)
+		if err != nil {
+			wf.resultsPipeline.SetError(err)
+			wrapped.Close()
+		}
+	}()
 
-		if newStatus.State == TaskStateFailed {
-			wrapped.SetError(newStatus.Error)
+	return wrapped, nil
+}
+
+// dispatchTasks groups the slice of tasks by their associated "admission lane" (token bucket)
+// and dispatches them to the runner.
+// Tasks from different admission lanes are dispatched concurrently.
+// The caller needs to wait on the returned error group.
+func (wf *Workflow) dispatchTasks(ctx context.Context, tasks []*Task) error {
+	wf.admissionControl = newAdmissionControl(
+		int64(wf.opts.MaxRunningScanTasks),
+		int64(wf.opts.MaxRunningOtherTasks),
+	)
+
+	groups := wf.admissionControl.groupByType(tasks)
+	for _, taskType := range []taskType{
+		taskTypeOther,
+		taskTypeScan,
+	} {
+		lane := wf.admissionControl.get(taskType)
+		tasks := groups[taskType]
+
+		var offset int64
+		total := int64(len(tasks))
+		maxBatchSize := min(total, lane.capacity)
+
+		for ; offset < total; offset += maxBatchSize {
+			batchSize := min(maxBatchSize, total-offset)
+			if err := lane.Acquire(ctx, batchSize); err != nil {
+				return fmt.Errorf("failed to acquire tokens from admission lane %s: %w", taskType, err)
+			}
+			if err := wf.runner.Start(ctx, tasks[offset:offset+batchSize]...); err != nil {
+				return fmt.Errorf("failed to start tasks: %w", err)
+			}
 		}
 	}
 
-	// TODO(rfratto): For logs queries, we want a system to limit how many scan
-	// tasks get sent to the runner at once.
-	//
-	// This will limit unnecessary resource consumption of workflows when
-	// there's a lot of compute capacity.
-	if err := wf.runner.Start(ctx, wrappedHandler, tasks...); err != nil {
-		pipeline.Close()
-		return nil, err
-	}
-
-	return wrapped, nil
+	return nil
 }
 
 func (wf *Workflow) allStreams() []*Stream {
@@ -196,26 +259,54 @@ func (wf *Workflow) allTasks() []*Task {
 }
 
 func (wf *Workflow) onStreamChange(_ context.Context, stream *Stream, newState StreamState) {
-	level.Debug(wf.logger).Log("msg", "stream state change", "stream_id", stream.ULID, "new_state", newState)
+	if wf.opts.DebugStreams {
+		level.Debug(wf.logger).Log("msg", "stream state change", "stream_id", stream.ULID, "new_state", newState)
+	}
 
 	wf.streamsMut.Lock()
 	defer wf.streamsMut.Unlock()
 
 	wf.streamStates[stream] = newState
 
-	// TODO(rfratto): Do we need to do anything if a stream changes? Figuring
-	// out what to do here will need to wait until the scheduler is available.
+	if newState == StreamStateClosed && stream.ULID == wf.resultsStream.ULID {
+		// Close the results pipeline once the results stream has closed.
+		wf.resultsPipeline.Close()
+	}
 }
 
 func (wf *Workflow) onTaskChange(ctx context.Context, task *Task, newStatus TaskStatus) {
-	level.Debug(wf.logger).Log("msg", "task state change", "task_id", task.ULID, "new_state", newStatus.State)
+	if wf.opts.DebugTasks {
+		level.Debug(wf.logger).Log("msg", "task state change", "task_id", task.ULID, "new_state", newStatus.State)
+	}
 
 	wf.tasksMut.Lock()
+	oldState := wf.taskStates[task]
 	wf.taskStates[task] = newStatus.State
 	wf.tasksMut.Unlock()
 
+	if newStatus.State == TaskStateFailed {
+		// Use the first failure from a task as the failure for the entire
+		// workflow.
+		wf.resultsPipeline.SetError(newStatus.Error)
+	}
+
+	if oldState == newStatus.State {
+		return
+	}
+
 	if !newStatus.State.Terminal() {
 		return
+	}
+
+	if wf.admissionControl == nil {
+		level.Warn(wf.logger).Log("msg", "admission control was not initialized")
+	} else if oldState == TaskStatePending || oldState == TaskStateRunning {
+		// Release tokens only if the task was already enqueued and therefore either pending or running.
+		defer wf.admissionControl.laneFor(task).Release(1)
+	}
+
+	if newStatus.Capture != nil {
+		wf.mergeCapture(newStatus.Capture)
 	}
 
 	if newStatus.Statistics != nil {
@@ -223,14 +314,20 @@ func (wf *Workflow) onTaskChange(ctx context.Context, task *Task, newStatus Task
 	}
 
 	// task reached a terminal state. We need to detect if task's immediate
-	// children should be canceled. We only look at immediate children, since
-	// canceling them will trigger onTaskChange to process indirect children.
+	// children should be canceled. We only look at immediate unterminated
+	// children, since canceling them will trigger onTaskChange to process
+	// indirect children.
 	var tasksToCancel []*Task
 
 	wf.tasksMut.RLock()
 	{
 	NextChild:
 		for _, child := range wf.graph.Children(task) {
+			// Ignore children in terminal states.
+			if childState := wf.taskStates[child]; childState.Terminal() {
+				continue
+			}
+
 			// Cancel the child if and only if all of the child's parents (which
 			// includes the task that just updated) are in a terminal state.
 			for _, parent := range wf.graph.Parents(child) {
@@ -259,57 +356,27 @@ func (wf *Workflow) mergeResults(results stats.Result) {
 	wf.stats.Merge(results)
 }
 
+func (wf *Workflow) mergeCapture(capture *xcap.Capture) {
+	if capture == nil || wf.capture == nil {
+		return
+	}
+
+	wf.capture.Merge(capture)
+}
+
 type wrappedPipeline struct {
 	initOnce sync.Once
-
-	err      error
-	errCond  chan struct{}
-	failOnce sync.Once
 
 	inner   executor.Pipeline
 	onClose func()
 }
 
-func (p *wrappedPipeline) Read(ctx context.Context) (arrow.Record, error) {
-	p.lazyInit()
-
-	rec, err := p.inner.Read(ctx)
-
-	// Before returning the actual record and error, check to see if an internal
-	// error was set.
-	//
-	// This needs to be checked _after_ doing the inner read, since it's
-	// unlikely that our error condition will be set before that call.
-	select {
-	case <-p.errCond:
-		return rec, p.err
-	default:
-		return rec, err
-	}
-}
-
-func (p *wrappedPipeline) lazyInit() {
-	p.initOnce.Do(func() {
-		p.errCond = make(chan struct{})
-	})
+func (p *wrappedPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
+	return p.inner.Read(ctx)
 }
 
 // Close closes the resources of the pipeline.
 func (p *wrappedPipeline) Close() {
 	p.inner.Close()
 	p.onClose()
-}
-
-// SetError sets the error for the pipeline. Calls to SetError with a non-nil
-// error after the first are ignored.
-func (p *wrappedPipeline) SetError(err error) {
-	if err == nil {
-		return
-	}
-
-	p.lazyInit()
-	p.failOnce.Do(func() {
-		p.err = err
-		close(p.errCond)
-	})
 }

@@ -108,10 +108,9 @@ func TestConvertAST_Success(t *testing.T) {
 %16 = SELECT %14 [predicate=%15]
 %17 = SELECT %16 [predicate=%6]
 %18 = SELECT %17 [predicate=%11]
-%19 = SORT %18 [column=builtin.timestamp, asc=false, nulls_first=false]
-%20 = LIMIT %19 [skip=0, fetch=1000]
-%21 = LOGQL_COMPAT %20
-RETURN %21
+%19 = TOPK %18 [sort_by=builtin.timestamp, k=1000, asc=false, nulls_first=false]
+%20 = LOGQL_COMPAT %19
+RETURN %20
 `
 
 	require.Equal(t, expected, logicalPlan.String())
@@ -323,8 +322,8 @@ func TestCanExecuteQuery(t *testing.T) {
 			expected:  true,
 		},
 		{
-			// max is not supported
 			statement: `max by (level) (count_over_time({env="prod"}[1m]))`,
+			expected:  true,
 		},
 		{
 			// offset is not supported
@@ -343,15 +342,15 @@ func TestCanExecuteQuery(t *testing.T) {
 			expected:  true,
 		},
 		{
-			// max is not supported
 			statement: `max by (level) (sum_over_time({env="prod"} | unwrap size [1m]))`,
+			expected:  true,
 		},
 		{
 			// offset is not supported
 			statement: `sum by (level) (sum_over_time({env="prod"} | unwrap size [1m] offset 5m))`,
 		},
 		{
-			// max_over_time is not supported
+			// both vector and range aggregation are required
 			statement: `max_over_time({env="prod"} | unwrap size [1m])`,
 		},
 		{
@@ -415,8 +414,8 @@ RETURN %10
 	})
 }
 
-func TestPlannerCreatesParse(t *testing.T) {
-	t.Run("creates Parse instruction for metric query with logfmt", func(t *testing.T) {
+func TestPlannerCreatesProjectionWithParseOperation(t *testing.T) {
+	t.Run("creates projection instruction with logfmt parse operation for metric query", func(t *testing.T) {
 		// Query with logfmt parser followed by label filter in an instant metric query
 		q := &query{
 			statement: `sum by (level) (count_over_time({app="test"} | logfmt | level="error" [5m]))`,
@@ -437,7 +436,7 @@ func TestPlannerCreatesParse(t *testing.T) {
 %4 = SELECT %2 [predicate=%3]
 %5 = LT builtin.timestamp 1970-01-01T02:00:00Z
 %6 = SELECT %4 [predicate=%5]
-%7 = PARSE %6 [kind=logfmt]
+%7 = PROJECT %6 [mode=*E, expr=PARSE_LOGFMT(builtin.message, [], false, false)]
 %8 = EQ ambiguous.level "error"
 %9 = SELECT %7 [predicate=%8]
 %10 = RANGE_AGGREGATION %9 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
@@ -448,7 +447,7 @@ RETURN %12
 		require.Equal(t, expected, plan.String())
 	})
 
-	t.Run("creates Parse instruction for log query with logfmt", func(t *testing.T) {
+	t.Run("creates projection instruction with logfmt parse operation for log query", func(t *testing.T) {
 		q := &query{
 			statement: `{app="test"} | logfmt | level="error"`,
 			start:     3600,
@@ -468,18 +467,17 @@ RETURN %12
 %4 = SELECT %2 [predicate=%3]
 %5 = LT builtin.timestamp 1970-01-01T02:00:00Z
 %6 = SELECT %4 [predicate=%5]
-%7 = PARSE %6 [kind=logfmt]
+%7 = PROJECT %6 [mode=*E, expr=PARSE_LOGFMT(builtin.message, [], false, false)]
 %8 = EQ ambiguous.level "error"
 %9 = SELECT %7 [predicate=%8]
-%10 = SORT %9 [column=builtin.timestamp, asc=false, nulls_first=false]
-%11 = LIMIT %10 [skip=0, fetch=1000]
-%12 = LOGQL_COMPAT %11
-RETURN %12
+%10 = TOPK %9 [sort_by=builtin.timestamp, k=1000, asc=false, nulls_first=false]
+%11 = LOGQL_COMPAT %10
+RETURN %11
 `
 		require.Equal(t, expected, plan.String())
 	})
 
-	t.Run("creates Parse instruction for metric query with json", func(t *testing.T) {
+	t.Run("creates projection instruction with json parse operation for metric query", func(t *testing.T) {
 		// Query with logfmt parser followed by label filter in an instant metric query
 		q := &query{
 			statement: `sum by (level) (count_over_time({app="test"} | json | level="error" [5m]))`,
@@ -499,7 +497,7 @@ RETURN %12
 %4 = SELECT %2 [predicate=%3]
 %5 = LT builtin.timestamp 1970-01-01T02:00:00Z
 %6 = SELECT %4 [predicate=%5]
-%7 = PARSE %6 [kind=json]
+%7 = PROJECT %6 [mode=*E, expr=PARSE_JSON(builtin.message, [], false, false)]
 %8 = EQ ambiguous.level "error"
 %9 = SELECT %7 [predicate=%8]
 %10 = RANGE_AGGREGATION %9 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
@@ -510,7 +508,7 @@ RETURN %12
 		require.Equal(t, expected, plan.String())
 	})
 
-	t.Run("creates Parse instruction for log query with json", func(t *testing.T) {
+	t.Run("creates projection instruction with json parse operation for log query", func(t *testing.T) {
 		q := &query{
 			statement: `{app="test"} | json | level="error"`,
 			start:     3600,
@@ -529,18 +527,17 @@ RETURN %12
 %4 = SELECT %2 [predicate=%3]
 %5 = LT builtin.timestamp 1970-01-01T02:00:00Z
 %6 = SELECT %4 [predicate=%5]
-%7 = PARSE %6 [kind=json]
+%7 = PROJECT %6 [mode=*E, expr=PARSE_JSON(builtin.message, [], false, false)]
 %8 = EQ ambiguous.level "error"
 %9 = SELECT %7 [predicate=%8]
-%10 = SORT %9 [column=builtin.timestamp, asc=false, nulls_first=false]
-%11 = LIMIT %10 [skip=0, fetch=1000]
-%12 = LOGQL_COMPAT %11
-RETURN %12
+%10 = TOPK %9 [sort_by=builtin.timestamp, k=1000, asc=false, nulls_first=false]
+%11 = LOGQL_COMPAT %10
+RETURN %11
 `
 		require.Equal(t, expected, plan.String())
 	})
 
-	t.Run("preserves operation order with filters before and after parse", func(t *testing.T) {
+	t.Run("preserves operation order with filters before and after projection with parse operation", func(t *testing.T) {
 		// Test that filters before logfmt parse are applied before parsing,
 		// and filters after logfmt parse are applied after parsing.
 		// This is important for performance - we don't want to parse lines
@@ -568,19 +565,18 @@ RETURN %12
 %8 = SELECT %6 [predicate=%7]
 %9 = SELECT %8 [predicate=%2]
 %10 = SELECT %9 [predicate=%3]
-%11 = PARSE %10 [kind=logfmt]
+%11 = PROJECT %10 [mode=*E, expr=PARSE_LOGFMT(builtin.message, [], false, false)]
 %12 = EQ ambiguous.level "debug"
 %13 = SELECT %11 [predicate=%12]
-%14 = SORT %13 [column=builtin.timestamp, asc=false, nulls_first=false]
-%15 = LIMIT %14 [skip=0, fetch=1000]
-%16 = LOGQL_COMPAT %15
-RETURN %16
+%14 = TOPK %13 [sort_by=builtin.timestamp, k=1000, asc=false, nulls_first=false]
+%15 = LOGQL_COMPAT %14
+RETURN %15
 `
 
 		require.Equal(t, expected, plan.String(), "Operations should be in the correct order: LineFilter before Parse, LabelFilter after Parse")
 	})
 
-	t.Run("preserves operation order in metric query with filters before and after parse", func(t *testing.T) {
+	t.Run("preserves operation order in metric query with filters before and after projection with parse operation", func(t *testing.T) {
 		// Test that filters before logfmt parse are applied before parsing in metric queries too
 		q := &query{
 			statement: `sum by (level) (count_over_time({job="app"} |= "error" | label="value" | logfmt | level="debug" [5m]))`,
@@ -605,7 +601,7 @@ RETURN %16
 %8 = SELECT %6 [predicate=%7]
 %9 = SELECT %8 [predicate=%2]
 %10 = SELECT %9 [predicate=%3]
-%11 = PARSE %10 [kind=logfmt]
+%11 = PROJECT %10 [mode=*E, expr=PARSE_LOGFMT(builtin.message, [], false, false)]
 %12 = EQ ambiguous.level "debug"
 %13 = SELECT %11 [predicate=%12]
 %14 = RANGE_AGGREGATION %13 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
@@ -642,10 +638,9 @@ func TestPlannerCreatesProjection(t *testing.T) {
 %5 = LT builtin.timestamp 1970-01-01T01:00:00Z
 %6 = SELECT %4 [predicate=%5]
 %7 = PROJECT %6 [mode=*D, expr=ambiguous.level, expr=ambiguous.detected_level]
-%8 = SORT %7 [column=builtin.timestamp, asc=false, nulls_first=false]
-%9 = LIMIT %8 [skip=0, fetch=0]
-%10 = LOGQL_COMPAT %9
-RETURN %10
+%8 = TOPK %7 [sort_by=builtin.timestamp, k=0, asc=false, nulls_first=false]
+%9 = LOGQL_COMPAT %8
+RETURN %9
 `
 		require.Equal(t, expected, plan.String())
 	})

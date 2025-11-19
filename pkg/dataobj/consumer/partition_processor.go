@@ -35,6 +35,7 @@ type builder interface {
 	Flush() (*dataobj.Object, io.Closer, error)
 	TimeRanges() []multitenancy.TimeRange
 	UnregisterMetrics(prometheus.Registerer)
+	CopyAndSort(obj *dataobj.Object) (*dataobj.Object, io.Closer, error)
 }
 
 // committer allows mocking of certain [kgo.Client] methods in tests.
@@ -123,6 +124,8 @@ func newPartitionProcessor(
 	}
 
 	return &partitionProcessor{
+		topic:                   topic,
+		partition:               partition,
 		committer:               committer,
 		logger:                  logger,
 		decoder:                 decoder,
@@ -334,13 +337,7 @@ func (p *partitionProcessor) sort(obj *dataobj.Object, closer io.Closer) (*datao
 		level.Debug(p.logger).Log("msg", "partition processor sorted logs object-wide", "duration", time.Since(start))
 	}()
 
-	// Create a new object builder but do not register metrics!
-	builder, err := logsobj.NewBuilder(p.builderCfg, p.scratchStore)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return builder.CopyAndSort(obj)
+	return p.builder.CopyAndSort(obj)
 }
 
 // commits the offset of the last record processed. It should be called after

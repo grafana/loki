@@ -15,8 +15,9 @@ import (
 )
 
 var (
-	unaryFunctions  UnaryFunctionRegistry  = &unaryFuncReg{}
-	binaryFunctions BinaryFunctionRegistry = &binaryFuncReg{}
+	unaryFunctions    UnaryFunctionRegistry    = &unaryFuncReg{}
+	binaryFunctions   BinaryFunctionRegistry   = &binaryFuncReg{}
+	variadicFunctions VariadicFunctionRegistry = &variadicFuncReg{}
 )
 
 func init() {
@@ -75,6 +76,12 @@ func init() {
 	binaryFunctions.register(types.BinaryOpLte, arrow.PrimitiveTypes.Int64, &genericBoolFunction[*array.Int64, int64]{eval: func(a, b int64) (bool, error) { return a <= b, nil }})
 	binaryFunctions.register(types.BinaryOpLte, arrow.FixedWidthTypes.Timestamp_ns, &genericBoolFunction[*array.Timestamp, arrow.Timestamp]{eval: func(a, b arrow.Timestamp) (bool, error) { return a <= b, nil }})
 	binaryFunctions.register(types.BinaryOpLte, arrow.PrimitiveTypes.Float64, &genericBoolFunction[*array.Float64, float64]{eval: func(a, b float64) (bool, error) { return a <= b, nil }})
+	// Functions for [types.BinaryOpAnd]
+	binaryFunctions.register(types.BinaryOpAnd, arrow.FixedWidthTypes.Boolean, &genericBoolFunction[*array.Boolean, bool]{eval: func(a, b bool) (bool, error) { return a && b, nil }})
+	// Functions for [types.BinaryOpOr]
+	binaryFunctions.register(types.BinaryOpOr, arrow.FixedWidthTypes.Boolean, &genericBoolFunction[*array.Boolean, bool]{eval: func(a, b bool) (bool, error) { return a || b, nil }})
+	// Functions for [types.BinaryOpXor]
+	binaryFunctions.register(types.BinaryOpXor, arrow.FixedWidthTypes.Boolean, &genericBoolFunction[*array.Boolean, bool]{eval: func(a, b bool) (bool, error) { return a != b, nil }})
 	// Functions for [types.BinaryOpMatchSubstr]
 	binaryFunctions.register(types.BinaryOpMatchSubstr, arrow.BinaryTypes.String, &genericBoolFunction[*array.String, string]{eval: func(a, b string) (bool, error) { return strings.Contains(a, b), nil }})
 	// Functions for [types.BinaryOpNotMatchSubstr]
@@ -104,10 +111,33 @@ func init() {
 		return !reg.Match([]byte(a)), nil
 	}})
 
+	// Functions for [types.UnaryOpNot]
+	unaryFunctions.register(types.UnaryOpNot, arrow.FixedWidthTypes.Boolean, UnaryFunc(func(input arrow.Array) (arrow.Array, error) {
+		arr, ok := input.(*array.Boolean)
+		if !ok {
+			return nil, fmt.Errorf("invalid array type: expected *array.Boolean, got %T", input)
+		}
+
+		builder := array.NewBooleanBuilder(memory.DefaultAllocator)
+		for i := range arr.Len() {
+			if arr.IsNull(i) {
+				builder.AppendNull()
+				continue
+			}
+			builder.Append(!arr.Value(i))
+		}
+
+		return builder.NewArray(), nil
+	}))
+
 	// Cast functions
 	unaryFunctions.register(types.UnaryOpCastFloat, arrow.BinaryTypes.String, castFn(types.UnaryOpCastFloat))
 	unaryFunctions.register(types.UnaryOpCastBytes, arrow.BinaryTypes.String, castFn(types.UnaryOpCastBytes))
 	unaryFunctions.register(types.UnaryOpCastDuration, arrow.BinaryTypes.String, castFn(types.UnaryOpCastDuration))
+
+	// Parse functions
+	variadicFunctions.register(types.VariadicOpParseLogfmt, parseFn(types.VariadicOpParseLogfmt))
+	variadicFunctions.register(types.VariadicOpParseJSON, parseFn(types.VariadicOpParseJSON))
 }
 
 type UnaryFunctionRegistry interface {
@@ -341,4 +371,47 @@ func boolToInt(b bool) int {
 		i = 0
 	}
 	return i
+}
+
+type VariadicFunctionRegistry interface {
+	register(types.VariadicOp, VariadicFunction)
+	GetForSignature(types.VariadicOp) (VariadicFunction, error)
+}
+
+type VariadicFunction interface {
+	Evaluate(args ...arrow.Array) (arrow.Array, error)
+}
+
+type VariadicFunctionFunc func(args ...arrow.Array) (arrow.Array, error)
+
+func (f VariadicFunctionFunc) Evaluate(args ...arrow.Array) (arrow.Array, error) {
+	return f(args...)
+}
+
+type variadicFuncReg struct {
+	reg map[types.VariadicOp]VariadicFunction
+}
+
+// register implements VariadicFunctionRegistry.
+func (u *variadicFuncReg) register(op types.VariadicOp, f VariadicFunction) {
+	if u.reg == nil {
+		u.reg = make(map[types.VariadicOp]VariadicFunction)
+	}
+
+	_, exists := u.reg[op]
+	if exists {
+		panic(fmt.Sprintf("duplicate variadic function registration for %s", op))
+	}
+
+	u.reg[op] = f
+}
+
+// GetForSignature implements VariadicFunctionRegistry.
+func (u *variadicFuncReg) GetForSignature(op types.VariadicOp) (VariadicFunction, error) {
+	// Get registered function for the specific operation
+	fn, ok := u.reg[op]
+	if !ok {
+		return nil, errors.ErrNotImplemented
+	}
+	return fn, nil
 }

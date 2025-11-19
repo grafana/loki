@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"runtime/pprof"
 	"slices"
 	"strings"
 	"testing"
@@ -86,7 +87,6 @@ func setupBenchmarkWithStore(tb testing.TB, storeType string) logql.Engine {
 // TestStorageEquality ensures that for each test case, all known storages
 // return the same query result.
 func TestStorageEquality(t *testing.T) {
-	ctx := user.InjectOrgID(t.Context(), testTenant)
 
 	if !*slowTests {
 		t.Skip("test skipped because -slow-tests flag is not set")
@@ -143,65 +143,70 @@ func TestStorageEquality(t *testing.T) {
 			}
 
 			t.Run(fmt.Sprintf("query=%s/kind=%s/store=%s", baseCase.Name(), baseCase.Kind(), store.Name), func(t *testing.T) {
-				defer func() {
-					if t.Failed() {
-						t.Logf("Re-run just this test with -test.run='%s'", testNameRegex(t.Name()))
+				ctx := user.InjectOrgID(t.Context(), testTenant)
+
+				labels := pprof.Labels("query", baseCase.Name(), "kind", baseCase.Kind(), "store", store.Name)
+				pprof.Do(ctx, labels, func(ctx context.Context) {
+					defer func() {
+						if t.Failed() {
+							t.Logf("Re-run just this test with -test.run='%s'", testNameRegex(t.Name()))
+						}
+					}()
+
+					t.Logf("Query information:\n%s", baseCase.Description())
+					params, err := logql.NewLiteralParams(
+						baseCase.Query,
+						baseCase.Start,
+						baseCase.End,
+						baseCase.Step,
+						0,
+						baseCase.Direction,
+						1000,
+						nil,
+						nil,
+					)
+					require.NoError(t, err)
+
+					// Find matching test case in other stores and then compare results.
+					idx := slices.IndexFunc(store.Cases, func(tc TestCase) bool {
+						return tc == baseCase
+					})
+					if idx == -1 {
+						t.Logf("Store %s missing test case %s", store.Name, baseCase.Name())
+						return
 					}
-				}()
 
-				t.Logf("Query information:\n%s", baseCase.Description())
-				params, err := logql.NewLiteralParams(
-					baseCase.Query,
-					baseCase.Start,
-					baseCase.End,
-					baseCase.Step,
-					0,
-					baseCase.Direction,
-					1000,
-					nil,
-					nil,
-				)
-				require.NoError(t, err)
+					actual, err := store.Engine.Query(params).Exec(ctx)
+					if err != nil && errors.Is(err, engine.ErrNotSupported) {
+						t.Skipf("Store %s does not support features used in test case %s", store.Name, baseCase.Name())
+					}
+					require.NoError(t, err)
+					t.Logf(`Summary stats: store=%s lines_processed=%d, entries_returned=%d, bytes_processed=%s, execution_time_in_secs=%d, bytes_processed_per_sec=%s`,
+						store.Name,
+						actual.Statistics.Summary.TotalLinesProcessed,
+						actual.Statistics.Summary.TotalEntriesReturned,
+						humanize.Bytes(uint64(actual.Statistics.Summary.TotalBytesProcessed)),
+						uint64(actual.Statistics.Summary.ExecTime),
+						humanize.Bytes(uint64(actual.Statistics.Summary.BytesProcessedPerSecond)),
+					)
 
-				// Find matching test case in other stores and then compare results.
-				idx := slices.IndexFunc(store.Cases, func(tc TestCase) bool {
-					return tc == baseCase
+					dataobjStats, _ := json.Marshal(&actual.Statistics.Querier.Store.Dataobj)
+					t.Log("Dataobj stats:", string(dataobjStats))
+
+					expected, err := baseStore.Engine.Query(params).Exec(ctx)
+					require.NoError(t, err)
+					t.Logf(`Summary stats: store=%s lines_processed=%d, entries_returned=%d, bytes_processed=%s, execution_time_in_secs=%d, bytes_processed_per_sec=%s`,
+						baseStore.Name,
+						expected.Statistics.Summary.TotalLinesProcessed,
+						expected.Statistics.Summary.TotalEntriesReturned,
+						humanize.Bytes(uint64(expected.Statistics.Summary.TotalBytesProcessed)),
+						uint64(expected.Statistics.Summary.ExecTime),
+						humanize.Bytes(uint64(expected.Statistics.Summary.BytesProcessedPerSecond)),
+					)
+
+					// Use tolerance-based comparison for floating point precision issues
+					assertDataEqualWithTolerance(t, expected.Data, actual.Data, 1e-5)
 				})
-				if idx == -1 {
-					t.Logf("Store %s missing test case %s", store.Name, baseCase.Name())
-					return
-				}
-
-				actual, err := store.Engine.Query(params).Exec(ctx)
-				if err != nil && errors.Is(err, engine.ErrNotSupported) {
-					t.Skipf("Store %s does not support features used in test case %s", store.Name, baseCase.Name())
-				}
-				require.NoError(t, err)
-				t.Logf(`Summary stats: store=%s lines_processed=%d, entries_returned=%d, bytes_processed=%s, execution_time_in_secs=%d, bytes_processed_per_sec=%s`,
-					store.Name,
-					actual.Statistics.Summary.TotalLinesProcessed,
-					actual.Statistics.Summary.TotalEntriesReturned,
-					humanize.Bytes(uint64(actual.Statistics.Summary.TotalBytesProcessed)),
-					uint64(actual.Statistics.Summary.ExecTime),
-					humanize.Bytes(uint64(actual.Statistics.Summary.BytesProcessedPerSecond)),
-				)
-
-				dataobjStats, _ := json.Marshal(&actual.Statistics.Querier.Store.Dataobj)
-				t.Log("Dataobj stats:", string(dataobjStats))
-
-				expected, err := baseStore.Engine.Query(params).Exec(ctx)
-				require.NoError(t, err)
-				t.Logf(`Summary stats: store=%s lines_processed=%d, entries_returned=%d, bytes_processed=%s, execution_time_in_secs=%d, bytes_processed_per_sec=%s`,
-					baseStore.Name,
-					expected.Statistics.Summary.TotalLinesProcessed,
-					expected.Statistics.Summary.TotalEntriesReturned,
-					humanize.Bytes(uint64(expected.Statistics.Summary.TotalBytesProcessed)),
-					uint64(expected.Statistics.Summary.ExecTime),
-					humanize.Bytes(uint64(expected.Statistics.Summary.BytesProcessedPerSecond)),
-				)
-
-				// Use tolerance-based comparison for floating point precision issues
-				assertDataEqualWithTolerance(t, expected.Data, actual.Data, 1e-5)
 			})
 		}
 	}
@@ -320,34 +325,40 @@ func BenchmarkLogQL(b *testing.B) {
 
 		for _, c := range cases {
 			b.Run(fmt.Sprintf("query=%s/kind=%s/store=%s", c.Name(), c.Kind(), storeType), func(b *testing.B) {
-				ctx := user.InjectOrgID(context.Background(), testTenant)
-				params, err := logql.NewLiteralParams(
-					c.Query,
-					c.Start,
-					c.End,
-					c.Step,
-					0,
-					c.Direction,
-					1000,
-					nil,
-					nil,
-				)
-				require.NoError(b, err)
+				ctx := user.InjectOrgID(b.Context(), testTenant)
 
-				q := engine.Query(params)
+				labels := pprof.Labels("query", c.Name(), "kind", c.Kind(), "store", storeType)
 
-				b.ReportAllocs()
-				b.ResetTimer()
-
-				for i := 0; i < b.N; i++ {
-					ctx, cancel := context.WithTimeout(ctx, time.Minute)
-					defer cancel()
-					r, err := q.Exec(ctx)
+				pprof.Do(ctx, labels, func(ctx context.Context) {
+					params, err := logql.NewLiteralParams(
+						c.Query,
+						c.Start,
+						c.End,
+						c.Step,
+						0,
+						c.Direction,
+						1000,
+						nil,
+						nil,
+					)
 					require.NoError(b, err)
-					b.ReportMetric(float64(r.Statistics.Summary.TotalLinesProcessed), "linesProcessed")
-					b.ReportMetric(float64(r.Statistics.Summary.TotalPostFilterLines), "postFilterLines")
-					b.ReportMetric(float64(r.Statistics.Summary.TotalBytesProcessed)/1024, "kilobytesProcessed")
-				}
+
+					q := engine.Query(params)
+
+					b.ReportAllocs()
+
+					for b.Loop() {
+						ctx, cancel := context.WithTimeout(ctx, time.Minute)
+						defer cancel()
+
+						r, err := q.Exec(ctx)
+						require.NoError(b, err)
+
+						b.ReportMetric(float64(r.Statistics.Summary.TotalLinesProcessed), "linesProcessed")
+						b.ReportMetric(float64(r.Statistics.Summary.TotalPostFilterLines), "postFilterLines")
+						b.ReportMetric(float64(r.Statistics.Summary.TotalBytesProcessed)/1024, "kilobytesProcessed")
+					}
+				})
 			})
 		}
 	}

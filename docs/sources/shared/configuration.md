@@ -123,29 +123,46 @@ ui:
     # CLI flag: -ui.goldfish.enable
     [enable: <boolean> | default = false]
 
-    # CloudSQL username for Goldfish database.
-    # CLI flag: -ui.goldfish.cloudsql-user
-    [cloudsql_user: <string> | default = ""]
+    storage:
+      # Storage backend type (cloudsql, rds, or empty for no storage)
+      # CLI flag: -ui.goldfish.storage.type
+      [type: <string> | default = ""]
 
-    # CloudSQL host for Goldfish database.
-    # CLI flag: -ui.goldfish.cloudsql-host
-    [cloudsql_host: <string> | default = "127.0.0.1"]
+      # CloudSQL host for Goldfish database.
+      # CLI flag: -ui.goldfish.storage.cloudsql.host
+      [cloudsql_host: <string> | default = "127.0.0.1"]
 
-    # CloudSQL port for Goldfish database.
-    # CLI flag: -ui.goldfish.cloudsql-port
-    [cloudsql_port: <int> | default = 3306]
+      # CloudSQL port for Goldfish database.
+      # CLI flag: -ui.goldfish.storage.cloudsql.port
+      [cloudsql_port: <int> | default = 3306]
 
-    # CloudSQL database name for Goldfish.
-    # CLI flag: -ui.goldfish.cloudsql-database
-    [cloudsql_database: <string> | default = "goldfish"]
+      # CloudSQL database name for Goldfish.
+      # CLI flag: -ui.goldfish.storage.cloudsql.database
+      [cloudsql_database: <string> | default = "goldfish"]
 
-    # Maximum number of database connections for Goldfish.
-    # CLI flag: -ui.goldfish.max-connections
-    [max_connections: <int> | default = 10]
+      # CloudSQL username for Goldfish database.
+      # CLI flag: -ui.goldfish.storage.cloudsql.user
+      [cloudsql_user: <string> | default = ""]
 
-    # Maximum idle time for database connections in seconds.
-    # CLI flag: -ui.goldfish.max-idle-time
-    [max_idle_time: <int> | default = 300]
+      # RDS endpoint (host:port)
+      # CLI flag: -ui.goldfish.storage.rds.endpoint
+      [rds_endpoint: <string> | default = ""]
+
+      # RDS database name
+      # CLI flag: -ui.goldfish.storage.rds.database
+      [rds_database: <string> | default = ""]
+
+      # RDS database user
+      # CLI flag: -ui.goldfish.storage.rds.user
+      [rds_user: <string> | default = ""]
+
+      # Maximum number of database connections for Goldfish.
+      # CLI flag: -ui.goldfish.max-connections
+      [max_connections: <int> | default = 10]
+
+      # Maximum idle time for database connections in seconds.
+      # CLI flag: -ui.goldfish.max-idle-time
+      [max_idle_time_seconds: <int> | default = 300]
 
     # Base URL of Grafana instance for explore links.
     # CLI flag: -ui.goldfish.grafana-url
@@ -166,6 +183,18 @@ ui:
     # Namespace for Cell B logs.
     # CLI flag: -ui.goldfish.cell-b-namespace
     [cell_b_namespace: <string> | default = ""]
+
+    # Results storage backend (gcs, s3) for fetching stored query results.
+    # CLI flag: -ui.goldfish.results-backend
+    [results_backend: <string> | default = ""]
+
+    # The thanos_object_store_config block configures the connection to object
+    # storage backend using thanos-io/objstore clients. This will become the
+    # default way of configuring object store clients in future releases.
+    # Currently this is opt-in and takes effect only when `-use-thanos-objstore`
+    # is set to true.
+    # The CLI flags prefix for this block configuration is: ui.goldfish.results
+    [results_bucket: <thanos_object_store_config>]
 
   ring:
     kvstore:
@@ -547,6 +576,24 @@ pattern_ingester:
 
         [client_secret_ref: <string> | default = ""]
 
+        [client_certificate_key_id: <string> | default = ""]
+
+        [client_certificate_key: <string> | default = ""]
+
+        [client_certificate_key_file: <string> | default = ""]
+
+        [client_certificate_key_ref: <string> | default = ""]
+
+        [grant_type: <string> | default = ""]
+
+        [signature_algorithm: <string> | default = ""]
+
+        [iss: <string> | default = ""]
+
+        [audience: <string> | default = ""]
+
+        [claims: <map of string to >]
+
         [scopes: <list of strings>]
 
         [token_url: <string> | default = ""]
@@ -710,6 +757,24 @@ pattern_ingester:
         [client_secret_file: <string> | default = ""]
 
         [client_secret_ref: <string> | default = ""]
+
+        [client_certificate_key_id: <string> | default = ""]
+
+        [client_certificate_key: <string> | default = ""]
+
+        [client_certificate_key_file: <string> | default = ""]
+
+        [client_certificate_key_ref: <string> | default = ""]
+
+        [grant_type: <string> | default = ""]
+
+        [signature_algorithm: <string> | default = ""]
+
+        [iss: <string> | default = ""]
+
+        [audience: <string> | default = ""]
+
+        [claims: <map of string to >]
 
         [scopes: <list of strings>]
 
@@ -2851,6 +2916,12 @@ jobs_config:
     # Maximum number of times to retry a failed or timed out job.
     # CLI flag: -compactor.jobs.deletion.max-retries
     [max_retries: <int> | default = 3]
+
+# Object storage path prefix for storing deletion markers. The prefix must end
+# with a forward slash(/). Leave empty to continue to store deletion markers on
+# the local disk.
+# CLI flag: -compactor.deletion-marker-object-store-prefix
+[deletion_marker_object_store_prefix: <string> | default = ""]
 ```
 
 ### consul
@@ -4695,6 +4766,21 @@ otlp_config:
 # override is set, the encryption context will not be provided to S3. Ignored if
 # the SSE type override is not set.
 [s3_sse_kms_encryption_context: <string> | default = ""]
+
+# Experimental: Controls the amount of scan tasks that can be running in
+# parallel in the new query engine. The default of 0 means unlimited parallelism
+# and all tasks will be scheduled at once.
+# CLI flag: -limits.max-scan-task-parallelism
+[max_scan_task_parallelism: <int> | default = 0]
+
+# Experimental: Toggles verbose debug logging of tasks in the new query engine.
+# CLI flag: -limits.debug-engine-tasks
+[debug_engine_tasks: <boolean> | default = false]
+
+# Experimental: Toggles verbose debug logging of data streams in the new query
+# engine.
+# CLI flag: -limits.debug-engine-streams
+[debug_engine_streams: <boolean> | default = false]
 ```
 
 ### local_storage_config
@@ -5078,6 +5164,16 @@ engine_v2:
   # CLI flag: -querier.engine-v2.enable
   [enable: <boolean> | default = false]
 
+  # Experimental: Enable distributed query execution.
+  # CLI flag: -querier.engine-v2.distributed
+  [distributed: <boolean> | default = false]
+
+  # Experimental: Name of network interface to read an advertise address from
+  # for accepting incoming traffic from query-engine-worker instances when
+  # distributed execution is enabled.
+  # CLI flag: -querier.engine-v2.instance-interface-names
+  [instance_interface_names: <list of strings> | default = [<private network interfaces>]]
+
   # Amount of time until data objects are available.
   # CLI flag: -querier.engine-v2.dataobj-storage-lag
   [dataobj_storage_lag: <duration> | default = 1h]
@@ -5117,6 +5213,19 @@ engine_v2:
     # Experimental: minimum size of a byte range
     # CLI flag: -querier.engine-v2.range-reads.min-range-size
     [min_range_size: <int> | default = 1048576]
+
+  # Experimental: Number of worker threads to spawn. Each worker thread runs one
+  # task at a time. 0 means to use GOMAXPROCS value.
+  # CLI flag: -querier.engine-v2.worker-threads
+  [worker_threads: <int> | default = 0]
+
+  # Experimental: Address holding DNS SRV records of schedulers to connect to.
+  # CLI flag: -querier.engine-v2.scheduler-lookup-address
+  [scheduler_lookup_address: <string> | default = ""]
+
+  # Experimental: Interval at which to lookup new schedulers by DNS SRV records.
+  # CLI flag: -querier.engine-v2.scheduler-lookup-interval
+  [scheduler_lookup_interval: <duration> | default = 10s]
 
 # The maximum number of queries that can be simultaneously processed by the
 # querier.
@@ -5295,6 +5404,10 @@ label_results_cache:
 # configured time range.
 # CLI flag: -querier.enable-v2-engine-router
 [enable_v2_engine_router: <boolean> | default = false]
+
+# Address for executing V2 engine queries.
+# CLI flag: -querier.v2-engine-address
+[v2_engine_address: <string> | default = ""]
 ```
 
 ### query_scheduler
@@ -7158,6 +7271,7 @@ Currently this is opt-in and takes effect only when `-use-thanos-objstore` is se
 - `common.storage.object-store`
 - `object-store`
 - `ruler-storage`
+- `ui.goldfish.results`
 
 &nbsp;
 
@@ -7214,7 +7328,7 @@ s3:
   # The S3 storage class to use, not set by default. Details can be found at
   # https://aws.amazon.com/s3/storage-classes/. Supported values are: STANDARD,
   # REDUCED_REDUNDANCY, GLACIER, STANDARD_IA, ONEZONE_IA, INTELLIGENT_TIERING,
-  # DEEP_ARCHIVE, OUTPOSTS, GLACIER_IR, SNOW, EXPRESS_ONEZONE
+  # DEEP_ARCHIVE, OUTPOSTS, GLACIER_IR, SNOW, EXPRESS_ONEZONE, FSX_OPENZFS
   # CLI flag: -<prefix>.s3.storage-class
   [storage_class: <string> | default = ""]
 

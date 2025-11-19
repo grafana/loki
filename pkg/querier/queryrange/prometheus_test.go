@@ -63,6 +63,7 @@ var emptyStats = `"stats": {
 		"totalReached": 0
 	},
 	"querier": {
+		"querierExecTime": 0,
 		"store": {
 			"chunksDownloadTime": 0,
 			"congestionControlLatency": 0,

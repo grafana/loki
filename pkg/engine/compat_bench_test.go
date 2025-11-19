@@ -10,6 +10,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
 
@@ -68,7 +69,7 @@ func BenchmarkStreamsResultBuilder(b *testing.B) {
 			b.ReportAllocs()
 
 			for i := 0; i < b.N; i++ {
-				rb := newStreamsResultBuilder()
+				rb := newStreamsResultBuilder(logproto.BACKWARD)
 				// Collect records twice on purpose to see how efficient CollectRecord is when the builder already has
 				// some data
 				rb.CollectRecord(record1)

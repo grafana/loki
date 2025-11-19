@@ -337,6 +337,8 @@ func (m *SocketAddress) validate(all bool) error {
 
 	// no validation rules for Ipv4Compat
 
+	// no validation rules for NetworkNamespaceFilepath
+
 	oneofPortSpecifierPresent := false
 	switch v := m.PortSpecifier.(type) {
 	case *SocketAddress_PortValue:

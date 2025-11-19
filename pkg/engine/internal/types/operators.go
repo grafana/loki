@@ -55,7 +55,6 @@ const (
 	BinaryOpAnd // Logical AND operation (&&).
 	BinaryOpOr  // Logical OR operation (||).
 	BinaryOpXor // Logical XOR operation (^).
-	BinaryOpNot // Logical NOT operation (!).
 
 	BinaryOpAdd // Addition operation (+).
 	BinaryOpSub // Subtraction operation (-).
@@ -93,8 +92,6 @@ func (t BinaryOp) String() string {
 		return "OR"
 	case BinaryOpXor:
 		return "XOR"
-	case BinaryOpNot:
-		return "NOT"
 	case BinaryOpAdd:
 		return "ADD"
 	case BinaryOpSub:
@@ -121,5 +118,29 @@ func (t BinaryOp) String() string {
 		return "NOT_MATCH_PAT" // convenience for NOT(MATCH_PAT(...))
 	default:
 		panic(fmt.Sprintf("unknown binary operator %d", t))
+	}
+}
+
+// VariadicOp denotes the kind of [VariadicOp] operation to perform.
+type VariadicOp uint32
+
+// Recognized values of [VariadicOp].
+const (
+	// VariadicOpKindInvalid indicates an invalid unary operation.
+	VariadicOpInvalid VariadicOp = iota
+
+	VariadicOpParseLogfmt // Parse logfmt line to set of columns operation (logfmt).
+	VariadicOpParseJSON   // Parse JSON line to set of columns operation (json).
+)
+
+// String returns the string representation of the UnaryOp.
+func (t VariadicOp) String() string {
+	switch t {
+	case VariadicOpParseLogfmt:
+		return "PARSE_LOGFMT"
+	case VariadicOpParseJSON:
+		return "PARSE_JSON"
+	default:
+		panic(fmt.Sprintf("unknown variadic operator %d", t))
 	}
 }
