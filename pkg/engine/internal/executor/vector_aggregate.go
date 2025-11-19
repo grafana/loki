@@ -141,44 +141,50 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch
 				// Gouping by an empty set. Group all into one.
 				arrays = make([]*array.String, 0)
 				fields = make([]arrow.Field, 0)
-			case types.GroupingModeWithoutLabelSet:
+			case types.GroupingModeWithoutLabelSet, types.GroupingModeWithoutEmptySet:
 				// Grouping without a lable set. Exclude lables from that set.
-				schema := record.Schema()
-				for i, field := range schema.Fields() {
-					found := false
-					for _, g := range v.grouping.Columns {
-						colExpr, ok := g.(*physical.ColumnExpr)
-						if !ok {
-							return nil, fmt.Errorf("unknown column expression %v", g)
-						}
-						if colExpr.Ref.Column == field.Name {
-							found = true
-							break
-						}
-					}
-					if !found {
-						arrays = append(arrays, record.Column(i).(*array.String))
-						fields = append(fields, field)
-					}
-				}
-			case types.GroupingModeWithoutEmptySet:
-				// No grouping. Take all string columns from the record as-is.
 				schema := record.Schema()
 				for i, field := range schema.Fields() {
 					ident, err := semconv.ParseFQN(field.Name)
 					if err != nil {
 						return nil, err
 					}
+
 					if ident.ColumnType() == types.ColumnTypeLabel ||
 						ident.ColumnType() == types.ColumnTypeMetadata ||
 						ident.ColumnType() == types.ColumnTypeParsed {
-						arrays = append(arrays, record.Column(i).(*array.String))
-						fields = append(fields, field)
+						found := false
+						for _, g := range v.grouping.Columns {
+							colExpr, ok := g.(*physical.ColumnExpr)
+							if !ok {
+								return nil, fmt.Errorf("unknown column expression %v", g)
+							}
+
+							// Match ambiguous columns only by name
+							if colExpr.Ref.Type == types.ColumnTypeAmbiguous && colExpr.Ref.Column == ident.ShortName() {
+								found = true
+								break
+							}
+
+							// Match all other columns by name and type
+							if colExpr.Ref.Column == ident.ShortName() && colExpr.Ref.Type == ident.ColumnType() {
+								found = true
+								break
+							}
+						}
+						if !found {
+							arrays = append(arrays, record.Column(i).(*array.String))
+							fields = append(fields, field)
+						}
 					}
 				}
 			}
 
 			for row := range int(record.NumRows()) {
+				if valueArr.IsNull(row) {
+					continue
+				}
+
 				labelValues := make([]string, 0, len(arrays))
 				labels := make([]arrow.Field, 0, len(arrays))
 				for i, arr := range arrays {

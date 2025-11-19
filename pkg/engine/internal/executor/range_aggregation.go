@@ -185,39 +185,41 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 				// Gouping by an empty set. Group all into one.
 				arrays = make([]*array.String, 0)
 				fields = make([]arrow.Field, 0)
-			case types.GroupingModeWithoutLabelSet:
+			case types.GroupingModeWithoutLabelSet, types.GroupingModeWithoutEmptySet:
 				// Grouping without a lable set. Exclude lables from that set.
-				schema := record.Schema()
-				for i, field := range schema.Fields() {
-					found := false
-					for _, g := range r.opts.grouping.Columns {
-						colExpr, ok := g.(*physical.ColumnExpr)
-						if !ok {
-							return nil, fmt.Errorf("unknown column expression %v", g)
-						}
-						if colExpr.Ref.Column == field.Name {
-							found = true
-							break
-						}
-					}
-					if !found {
-						arrays = append(arrays, record.Column(i).(*array.String))
-						fields = append(fields, field)
-					}
-				}
-			case types.GroupingModeWithoutEmptySet:
-				// No grouping. Take all string columns from the record as-is.
 				schema := record.Schema()
 				for i, field := range schema.Fields() {
 					ident, err := semconv.ParseFQN(field.Name)
 					if err != nil {
 						return nil, err
 					}
+
 					if ident.ColumnType() == types.ColumnTypeLabel ||
 						ident.ColumnType() == types.ColumnTypeMetadata ||
 						ident.ColumnType() == types.ColumnTypeParsed {
-						arrays = append(arrays, record.Column(i).(*array.String))
-						fields = append(fields, field)
+						found := false
+						for _, g := range r.opts.grouping.Columns {
+							colExpr, ok := g.(*physical.ColumnExpr)
+							if !ok {
+								return nil, fmt.Errorf("unknown column expression %v", g)
+							}
+
+							// Match ambiguous columns only by name
+							if colExpr.Ref.Type == types.ColumnTypeAmbiguous && colExpr.Ref.Column == ident.ShortName() {
+								found = true
+								break
+							}
+
+							// Match all other columns by name and type
+							if colExpr.Ref.Column == ident.ShortName() && colExpr.Ref.Type == ident.ColumnType() {
+								found = true
+								break
+							}
+						}
+						if !found {
+							arrays = append(arrays, record.Column(i).(*array.String))
+							fields = append(fields, field)
+						}
 					}
 				}
 			}
@@ -240,6 +242,15 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 			}
 
 			for row := range int(record.NumRows()) {
+				var value float64
+				if r.opts.operation != types.RangeAggregationTypeCount {
+					if valArr.IsNull(row) {
+						continue
+					}
+
+					value = valArr.Value(row)
+				}
+
 				windows := r.windowsForTimestamp(tsCol.Value(row).ToTime(arrow.Nanosecond))
 				if len(windows) == 0 {
 					continue // out of range, skip this row
@@ -253,11 +264,6 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 						labelValues = append(labelValues, val)
 						labels = append(labels, fields[i])
 					}
-				}
-
-				var value float64
-				if r.opts.operation != types.RangeAggregationTypeCount {
-					value = valArr.Value(row)
 				}
 
 				for _, w := range windows {

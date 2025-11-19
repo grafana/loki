@@ -88,9 +88,9 @@ func setupBenchmarkWithStore(tb testing.TB, storeType string) logql.Engine {
 // return the same query result.
 func TestStorageEquality(t *testing.T) {
 
-	//if !*slowTests {
-	//	t.Skip("test skipped because -slow-tests flag is not set")
-	//}
+	if !*slowTests {
+		t.Skip("test skipped because -slow-tests flag is not set")
+	}
 
 	type store struct {
 		Name   string
@@ -106,21 +106,10 @@ func TestStorageEquality(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		//cases := NewTestCaseGenerator(
-		//	TestCaseGeneratorConfig{RangeType: *rangeType, RangeInterval: *rangeInterval},
-		//	config,
-		//).Generate()
-		cases := []TestCase{
-			{
-				Query: `sum by (cluster, namespace) (min_over_time({region="ap-southeast-1", env="dev"} |= "rows_affected" | json | unwrap rows_affected [1m0s]))`,
-				//Query:     `{region="ap-southeast-1", env="dev"} |= "level" |= "rows_affected"`,
-				Start:     config.StartTime,
-				End:       config.StartTime.Add(config.TimeSpread),
-				Step:      *rangeInterval,
-				Direction: logproto.BACKWARD,
-			},
-		}
-
+		cases := NewTestCaseGenerator(
+			TestCaseGeneratorConfig{RangeType: *rangeType, RangeInterval: *rangeInterval},
+			config,
+		).Generate()
 		return &store{
 			Name:   name,
 			Cases:  cases,

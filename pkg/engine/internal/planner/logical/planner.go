@@ -186,7 +186,8 @@ func buildPlanForLogQuery(
 	// for example, the query `{app="foo"} | json | line_format "{{.nested_json}}" | json ` is valid, and will need
 	// multiple parse stages. We will handle this in a future PR.
 	if hasLogfmtParser {
-		builder = builder.Parse(types.VariadicOpParseLogfmt, logfmtStrict, logfmtKeepEmpty)
+		builder = builder.Parse(types.VariadicOpParseLogfmt, logfmtStrict, logfmtKeepEmpty).ProjectDrop(
+			NewColumnRef(types.ColumnNameError, types.ColumnTypeGenerated), NewColumnRef(types.ColumnNameErrorDetails, types.ColumnTypeGenerated))
 	}
 	if hasJSONParser {
 		// JSON has no parameters
@@ -248,7 +249,13 @@ func walkRangeAggregation(e *syntax.RangeAggregationExpr, params logql.Params) (
 			return nil, errUnimplemented
 		}
 
-		builder = builder.Cast(unwrapIdentifier, unwrapOperation)
+		builder = builder.
+			Cast(unwrapIdentifier, unwrapOperation).ProjectDrop(&ColumnRef{
+			Ref: types.ColumnRef{
+				Column: unwrapIdentifier,
+				Type:   types.ColumnTypeAmbiguous,
+			},
+		})
 	}
 
 	var rangeAggType types.RangeAggregationType
@@ -274,6 +281,22 @@ func walkRangeAggregation(e *syntax.RangeAggregationExpr, params logql.Params) (
 	default:
 		return nil, errUnimplemented
 	}
+
+	builder = builder.Select(
+		&BinOp{
+			Left: &BinOp{
+				Left:  NewColumnRef(types.ColumnNameError, types.ColumnTypeGenerated),
+				Right: NewLiteral(""),
+				Op:    types.BinaryOpEq,
+			},
+			Right: &BinOp{
+				Left:  NewColumnRef(types.ColumnNameErrorDetails, types.ColumnTypeGenerated),
+				Right: NewLiteral(""),
+				Op:    types.BinaryOpEq,
+			},
+			Op: types.BinaryOpAnd,
+		},
+	)
 
 	builder = builder.RangeAggregation(
 		convertGrouping(e.Grouping), rangeAggType, params.Start(), params.End(), params.Step(), rangeInterval,

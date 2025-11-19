@@ -267,7 +267,7 @@ func (r *projectionPushdown) propagateProjections(node Node, projections []Colum
 	var changed bool
 	switch node := node.(type) {
 	case *RangeAggregation:
-		if node.Grouping.Mode == types.GroupingModeWithoutEmptySet {
+		if node.Grouping.Mode == types.GroupingModeWithoutEmptySet || node.Grouping.Mode == types.GroupingModeWithoutLabelSet {
 			return changed
 		}
 		// [Source] RangeAggregation requires partitionBy columns & timestamp.
