@@ -13,9 +13,10 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
-- [BUGFIX] Don't fail for missing bucket name, if minio is enabled. [#19745](https://github.com/grafana/loki/pull/19745)
-- [BUGFIX] Add startupProbe to read pod to go around the issue mentioned [here](https://github.com/grafana/loki/issues/15191)
 - [ENHANCEMENT] Use fsGroupChangePolicy=OnRootMismatch on loki to speed up pod starts [#13942](https://github.com/grafana/loki/pull/13942)
+- [ENHANCEMENT] Add support for configuring `volumeAttributesClassName` for `volumeClaimTemplates`. [#19719](https://github.com/grafana/loki/pull/19719)
+- [BUGFIX] Don't fail for missing bucket name, if minio is enabled. [#19745](https://github.com/grafana/loki/pull/19745)
+- [BUGFIX] Add startupProbe to read pod [#19708](https://github.com/grafana/loki/pull/19708)
 
 ## 6.46.0
 
