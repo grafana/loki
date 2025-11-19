@@ -152,7 +152,7 @@ func (w *Writer) Close() error {
 	return nil
 }
 
-func (w *Writer) Write(rec arrow.Record) (err error) {
+func (w *Writer) Write(rec arrow.RecordBatch) (err error) {
 	defer func() {
 		if pErr := recover(); pErr != nil {
 			err = utils.FormatRecoveredError("arrow/ipc: unknown error while writing", pErr)
@@ -204,7 +204,7 @@ func (w *Writer) Write(rec arrow.Record) (err error) {
 	return w.pw.WritePayload(data)
 }
 
-func writeDictionaryPayloads(mem memory.Allocator, batch arrow.Record, isFileFormat bool, emitDictDeltas bool, mapper *dictutils.Mapper, lastWrittenDicts map[int64]arrow.Array, pw PayloadWriter, encoder *recordEncoder) error {
+func writeDictionaryPayloads(mem memory.Allocator, batch arrow.RecordBatch, isFileFormat bool, emitDictDeltas bool, mapper *dictutils.Mapper, lastWrittenDicts map[int64]arrow.Array, pw PayloadWriter, encoder *recordEncoder) error {
 	dictionaries, err := dictutils.CollectDictionaries(batch, mapper)
 	if err != nil {
 		return err
@@ -467,7 +467,7 @@ func (w *recordEncoder) compressBodyBuffers(p *Payload) error {
 	return <-errch
 }
 
-func (w *recordEncoder) encode(p *Payload, rec arrow.Record) error {
+func (w *recordEncoder) encode(p *Payload, rec arrow.RecordBatch) error {
 	// perform depth-first traversal of the row-batch
 	for i, col := range rec.Columns() {
 		err := w.visit(p, col)
@@ -1033,7 +1033,7 @@ func (w *recordEncoder) rebaseDenseUnionValueOffsets(arr *array.DenseUnion, offs
 	return shiftedOffsetsBuf
 }
 
-func (w *recordEncoder) Encode(p *Payload, rec arrow.Record) error {
+func (w *recordEncoder) Encode(p *Payload, rec arrow.RecordBatch) error {
 	if err := w.encode(p, rec); err != nil {
 		return err
 	}
@@ -1087,7 +1087,7 @@ func needTruncate(offset int64, buf *memory.Buffer, minLength int64) bool {
 // GetRecordBatchPayload produces the ipc payload for a given record batch.
 // The resulting payload itself must be released by the caller via the Release
 // method after it is no longer needed.
-func GetRecordBatchPayload(batch arrow.Record, opts ...Option) (Payload, error) {
+func GetRecordBatchPayload(batch arrow.RecordBatch, opts ...Option) (Payload, error) {
 	cfg := newConfig(opts...)
 	var (
 		data = Payload{msg: MessageRecordBatch}

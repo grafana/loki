@@ -247,7 +247,7 @@ func collectBooleanArray(arr *array.Boolean) []bool {
 
 var words = []string{"one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"}
 
-func batch(n int, now time.Time) arrow.Record {
+func batch(n int, now time.Time) arrow.RecordBatch {
 	// Define the schema
 	schema := arrow.NewSchema(
 		[]arrow.Field{
@@ -280,7 +280,7 @@ func batch(n int, now time.Time) arrow.Record {
 
 	// Create the record
 	columns := []arrow.Array{logArray, tsArray}
-	record := array.NewRecord(schema, columns, int64(n))
+	record := array.NewRecordBatch(schema, columns, int64(n))
 
 	return record
 }
@@ -604,7 +604,7 @@ func structToRows(structArr *array.Struct) (arrowtest.Rows, error) {
 	}
 
 	// Create and return the record
-	record := array.NewRecord(schema, columns, int64(structArr.Len()))
+	record := array.NewRecordBatch(schema, columns, int64(structArr.Len()))
 	defer record.Release()
 	return arrowtest.RecordRows(record)
 }
@@ -1148,15 +1148,9 @@ func TestLogfmtParser(t *testing.T) {
 					&physical.ColumnExpr{
 						Ref: semconv.ColumnIdentMessage.ColumnRef(),
 					},
-					&physical.LiteralExpr{
-						Literal: types.NewLiteral(tt.requestedKeys),
-					},
-					&physical.LiteralExpr{
-						Literal: types.NewLiteral(tt.strict),
-					},
-					&physical.LiteralExpr{
-						Literal: types.NewLiteral(tt.keepEmpty),
-					},
+					physical.NewLiteral(tt.requestedKeys),
+					physical.NewLiteral(tt.strict),
+					physical.NewLiteral(tt.keepEmpty),
 				},
 			}
 			e := newExpressionEvaluator()
@@ -1548,15 +1542,9 @@ func TestEvaluateParseExpression_JSON(t *testing.T) {
 					&physical.ColumnExpr{
 						Ref: semconv.ColumnIdentMessage.ColumnRef(),
 					},
-					&physical.LiteralExpr{
-						Literal: types.NewLiteral(tt.requestedKeys),
-					},
-					&physical.LiteralExpr{
-						Literal: types.NewLiteral(false),
-					},
-					&physical.LiteralExpr{
-						Literal: types.NewLiteral(false),
-					},
+					physical.NewLiteral(tt.requestedKeys),
+					physical.NewLiteral(false),
+					physical.NewLiteral(false),
 				},
 			}
 			e := newExpressionEvaluator()

@@ -637,12 +637,15 @@ spec:
                   When enabled, the operator creates NetworkPolicies to control ingress/egress between
                   Loki components and related services.
                 properties:
-                  disabled:
-                    description: |-
-                      Disabled allows explicitly disabling NetworkPolicies.
-                      When false, NetworkPolicies are enabled.
-                      When true, NetworkPolicies are disabled.
-                    type: boolean
+                  ruleSet:
+                    description: RuleSet determines which of the pre-defined sets
+                      of NetworkPolicy rules is used for this LokiStack.
+                    enum:
+                    - None
+                    - RestrictIngressEgress
+                    type: string
+                required:
+                - ruleSet
                 type: object
               proxy:
                 description: Proxy defines the spec for the object proxy to configure
@@ -4058,12 +4061,12 @@ spec:
                   - type
                   type: object
                 type: array
-              networkPolicies:
-                description: NetworkPolicies indicates whether NetworkPolicies are
-                  enabled or disabled for this LokiStack.
+              networkPolicyRuleSet:
+                description: NetworkPolicyRuleSet indicates which NetworkPolicies
+                  ruleset was applied by the operator for this LokiStack.
                 enum:
-                - Enabled
-                - Disabled
+                - None
+                - RestrictIngressEgress
                 type: string
               storage:
                 description: |-

@@ -1,3 +1,43 @@
+# v1.90.2 (2025-11-12)
+
+* **Bug Fix**: Further reduce allocation overhead when the metrics system isn't in-use.
+* **Bug Fix**: Reduce allocation overhead when the client doesn't have any HTTP interceptors configured.
+* **Bug Fix**: Remove blank trace spans towards the beginning of the request that added no additional information. This conveys a slight reduction in overall allocations.
+
+# v1.90.1 (2025-11-11)
+
+* **Bug Fix**: Return validation error if input region is not a valid host label.
+
+# v1.90.0 (2025-11-05)
+
+* **Feature**: Launch IPv6 dual-stack support for S3 Express
+
+# v1.89.2 (2025-11-04)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+* **Dependency Update**: Upgrade to smithy-go v1.23.2 which should convey some passive reduction of overall allocations, especially when not using the metrics system.
+
+# v1.89.1 (2025-10-30)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.89.0 (2025-10-28)
+
+* **Feature**: Amazon Simple Storage Service / Features: Add conditional writes in CopyObject on destination key to prevent unintended object modifications.
+
+# v1.88.7 (2025-10-23)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.88.6 (2025-10-22)
+
+* No change notes available for this release.
+
+# v1.88.5 (2025-10-16)
+
+* **Dependency Update**: Bump minimum Go version to 1.23.
+* **Dependency Update**: Updated to the latest SDK module versions
+
 # v1.88.4 (2025-10-07)
 
 * **Dependency Update**: Updated to the latest SDK module versions

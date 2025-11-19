@@ -257,10 +257,10 @@ func walkRangeAggregation(e *syntax.RangeAggregationExpr, params logql.Params) (
 		rangeAggType = types.RangeAggregationTypeCount
 	case syntax.OpRangeTypeSum:
 		rangeAggType = types.RangeAggregationTypeSum
-	// case syntax.OpRangeTypeMax:
-	//	rangeAggType = types.RangeAggregationTypeMax
-	// case syntax.OpRangeTypeMin:
-	//	rangeAggType = types.RangeAggregationTypeMin
+	case syntax.OpRangeTypeMax:
+		rangeAggType = types.RangeAggregationTypeMax
+	case syntax.OpRangeTypeMin:
+		rangeAggType = types.RangeAggregationTypeMin
 	// case syntax.OpRangeTypeBytesRate:
 	//	rangeAggType = types.RangeAggregationTypeBytes // bytes_rate is implemented as bytes_over_time/$interval
 	case syntax.OpRangeTypeRate:
@@ -280,14 +280,10 @@ func walkRangeAggregation(e *syntax.RangeAggregationExpr, params logql.Params) (
 	switch e.Operation {
 	// case syntax.OpRangeTypeBytesRate:
 	//	// bytes_rate is implemented as bytes_over_time/$interval
-	//	builder = builder.BinOpRight(types.BinaryOpDiv, &Literal{
-	//		Literal: NewLiteral(rangeInterval.Seconds()),
-	//	})
+	//	builder = builder.BinOpRight(types.BinaryOpDiv, NewLiteral(rangeInterval.Seconds()))
 	case syntax.OpRangeTypeRate:
 		// rate is implemented as count_over_time/$interval
-		builder = builder.BinOpRight(types.BinaryOpDiv, &Literal{
-			Literal: NewLiteral(rangeInterval.Seconds()),
-		})
+		builder = builder.BinOpRight(types.BinaryOpDiv, NewLiteral(rangeInterval.Seconds()))
 	}
 
 	return builder.Value(), nil
@@ -366,9 +362,7 @@ func walkBinOp(e *syntax.BinOpExpr, params logql.Params) (Value, error) {
 }
 
 func walkLiteral(e *syntax.LiteralExpr, _ logql.Params) (Value, error) {
-	return &Literal{
-		NewLiteral(e.Val),
-	}, nil
+	return NewLiteral(e.Val), nil
 }
 
 func walk(e syntax.Expr, params logql.Params) (Value, error) {
@@ -439,10 +433,10 @@ func convertVectorAggregationType(op string) types.VectorAggregationType {
 		return types.VectorAggregationTypeSum
 	// case syntax.OpTypeCount:
 	//	return types.VectorAggregationTypeCount
-	// case syntax.OpTypeMax:
-	//	return types.VectorAggregationTypeMax
-	// case syntax.OpTypeMin:
-	//	return types.VectorAggregationTypeMin
+	case syntax.OpTypeMax:
+		return types.VectorAggregationTypeMax
+	case syntax.OpTypeMin:
+		return types.VectorAggregationTypeMin
 	default:
 		return types.VectorAggregationTypeInvalid
 	}

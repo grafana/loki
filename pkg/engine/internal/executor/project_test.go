@@ -38,7 +38,7 @@ func TestNewProjectPipeline(t *testing.T) {
 
 		// Create project pipeline
 		e := newExpressionEvaluator()
-		projectPipeline, err := NewProjectPipeline(inputPipeline, &physical.Projection{Expressions: columns}, &e)
+		projectPipeline, err := NewProjectPipeline(inputPipeline, &physical.Projection{Expressions: columns}, &e, nil)
 		require.NoError(t, err)
 
 		// Create expected output
@@ -76,7 +76,7 @@ func TestNewProjectPipeline(t *testing.T) {
 
 		// Create project pipeline
 		e := newExpressionEvaluator()
-		projectPipeline, err := NewProjectPipeline(inputPipeline, &physical.Projection{Expressions: columns}, &e)
+		projectPipeline, err := NewProjectPipeline(inputPipeline, &physical.Projection{Expressions: columns}, &e, nil)
 		require.NoError(t, err)
 
 		// Create expected output
@@ -120,7 +120,7 @@ func TestNewProjectPipeline(t *testing.T) {
 
 		// Create project pipeline
 		e := newExpressionEvaluator()
-		projectPipeline, err := NewProjectPipeline(inputPipeline, &physical.Projection{Expressions: columns}, &e)
+		projectPipeline, err := NewProjectPipeline(inputPipeline, &physical.Projection{Expressions: columns}, &e, nil)
 		require.NoError(t, err)
 
 		// Create expected output also split across multiple records
@@ -225,7 +225,7 @@ Dave,40
 					All:         true,
 					Drop:        true,
 				}
-				pipeline, err := NewProjectPipeline(input, proj, &expressionEvaluator{})
+				pipeline, err := NewProjectPipeline(input, proj, &expressionEvaluator{}, nil)
 				require.NoError(t, err)
 
 				ctx := t.Context()
@@ -491,7 +491,8 @@ func TestNewProjectPipeline_ProjectionFunction_ExpandWithCast(t *testing.T) {
 					Expand:      true,
 					All:         true,
 				},
-				&e)
+				&e,
+				nil)
 			require.NoError(t, err)
 			defer pipeline.Close()
 
@@ -554,7 +555,7 @@ func TestNewProjectPipeline_ProjectionFunction_ExpandWithBinOn(t *testing.T) {
 			Expand: true,
 		}
 
-		pipeline, err := NewProjectPipeline(input1, projection, &expressionEvaluator{})
+		pipeline, err := NewProjectPipeline(input1, projection, &expressionEvaluator{}, nil)
 		require.NoError(t, err)
 		defer pipeline.Close()
 
@@ -624,7 +625,7 @@ func TestNewProjectPipeline_ProjectionFunction_ExpandWithBinOn(t *testing.T) {
 			Expand: true,
 		}
 
-		pipeline, err := NewProjectPipeline(input1, projection, &expressionEvaluator{})
+		pipeline, err := NewProjectPipeline(input1, projection, &expressionEvaluator{}, nil)
 		require.NoError(t, err)
 		defer pipeline.Close()
 
@@ -694,7 +695,7 @@ func TestNewProjectPipeline_ProjectionFunction_ExpandWithBinOn(t *testing.T) {
 			Expand: true,
 		}
 
-		pipeline, err := NewProjectPipeline(input1, projection, &expressionEvaluator{})
+		pipeline, err := NewProjectPipeline(input1, projection, &expressionEvaluator{}, nil)
 		require.NoError(t, err)
 		defer pipeline.Close()
 

@@ -62,6 +62,9 @@ const (
 	// ringNumTokens sets our single token in the ring,
 	// we only need to insert 1 token to be used for leader election purposes.
 	ringNumTokens = 1
+
+	// MarkersFolder is used for storing chunk deletion markers on the local disk.
+	MarkersFolder = "markers"
 )
 
 const (
@@ -223,6 +226,7 @@ func (c *Compactor) init(
 
 	legacyMarkerDirs := make(map[string]struct{})
 	c.storeContainers = make(map[config.DayTime]storeContainer, len(objectStoreClients))
+	sweeperInitializedForStoreType := make(map[string]bool, len(objectStoreClients))
 	for from, objectClient := range objectStoreClients {
 		period, err := schemaConfig.SchemaForTime(from.Time)
 		if err != nil {
@@ -237,18 +241,25 @@ func (c *Compactor) init(
 				raw              client.ObjectClient
 				encoder          client.KeyEncoder
 				name             = fmt.Sprintf("%s_%s", period.ObjectType, period.From.String())
-				retentionWorkDir = filepath.Join(c.cfg.WorkingDirectory, "retention", name)
+				retentionWorkDir = filepath.Join(c.cfg.WorkingDirectory, "retention", name, MarkersFolder)
 				r                = prometheus.WrapRegistererWith(prometheus.Labels{"from": name}, r)
 			)
+
+			var markerStorageClient client.ObjectClient
+			var err error
+			markerStorageClient, err = local.NewFSObjectClient(local.FSConfig{Directory: retentionWorkDir})
+			if err != nil {
+				return err
+			}
 
 			// given that compaction can now run on multiple periods, marker files are stored under /retention/{objectStoreType}_{periodFrom}/markers/
 			// if any markers are found in the common markers dir (/retention/markers/) or store specific markers dir (/retention/{objectStoreType}/markers/), copy them to the period specific dirs
 			// chunk would be removed by the sweeper if it belongs to a given period or no-op if it doesn't exist.
-			if err := retention.CopyMarkers(filepath.Join(c.cfg.WorkingDirectory, "retention"), retentionWorkDir); err != nil {
+			if err := retention.CopyMarkers(filepath.Join(c.cfg.WorkingDirectory, "retention", MarkersFolder), markerStorageClient, retentionWorkDir); err != nil {
 				return fmt.Errorf("failed to move common markers to period specific dir: %w", err)
 			}
 
-			if err := retention.CopyMarkers(filepath.Join(c.cfg.WorkingDirectory, "retention", period.ObjectType), retentionWorkDir); err != nil {
+			if err := retention.CopyMarkers(filepath.Join(c.cfg.WorkingDirectory, "retention", period.ObjectType, MarkersFolder), markerStorageClient, retentionWorkDir); err != nil {
 				return fmt.Errorf("failed to move store markers to period specific dir: %w", err)
 			}
 			// remove markers from the store dir after copying them to period specific dirs.
@@ -264,12 +275,30 @@ func (c *Compactor) init(
 			}
 			chunkClient := client.NewClient(objectClient, encoder, schemaConfig)
 
-			sc.sweeper, err = retention.NewSweeper(retentionWorkDir, chunkClient, c.cfg.RetentionDeleteWorkCount, c.cfg.RetentionDeleteDelay, c.cfg.RetentionBackoffConfig, r)
-			if err != nil {
-				return fmt.Errorf("failed to init sweeper: %w", err)
+			if c.cfg.DeletionMarkerObjectStorePrefix != "" {
+				markerStorageClient = client.NewPrefixedObjectClient(raw, c.cfg.DeletionMarkerObjectStorePrefix)
+				// Copy all the existing markers to the relevant object storage.
+				if err := retention.CopyMarkers(retentionWorkDir, markerStorageClient, name); err != nil {
+					return fmt.Errorf("failed to move markers to period specific object storage: %w", err)
+				}
+
+				// remove all the local marker files
+				if err := os.RemoveAll(filepath.Dir(retentionWorkDir)); err != nil {
+					return fmt.Errorf("failed to remove markers on local disk: %w", err)
+				}
 			}
 
-			sc.tableMarker, err = retention.NewMarker(retentionWorkDir, c.expirationChecker, c.cfg.RetentionTableTimeout, chunkClient, r)
+			// When markers are stored in object storage, we want to initialize only one sweeper per object store type.
+			if c.cfg.DeletionMarkerObjectStorePrefix == "" || !sweeperInitializedForStoreType[period.ObjectType] {
+				sc.sweeper, err = retention.NewSweeper(markerStorageClient, chunkClient, c.cfg.RetentionDeleteWorkCount, c.cfg.RetentionDeleteDelay, c.cfg.RetentionBackoffConfig, r)
+				if err != nil {
+					return fmt.Errorf("failed to init sweeper: %w", err)
+				}
+
+				sweeperInitializedForStoreType[period.ObjectType] = true
+			}
+
+			sc.tableMarker, err = retention.NewMarker(markerStorageClient, c.expirationChecker, c.cfg.RetentionTableTimeout, chunkClient, r)
 			if err != nil {
 				return fmt.Errorf("failed to init table marker: %w", err)
 			}
@@ -281,12 +310,12 @@ func (c *Compactor) init(
 	if c.cfg.RetentionEnabled {
 		// remove legacy markers
 		for store := range legacyMarkerDirs {
-			if err := os.RemoveAll(filepath.Join(c.cfg.WorkingDirectory, "retention", store, retention.MarkersFolder)); err != nil {
+			if err := os.RemoveAll(filepath.Join(c.cfg.WorkingDirectory, "retention", store, MarkersFolder)); err != nil {
 				return fmt.Errorf("remove old markers from store dir: %w", err)
 			}
 		}
 
-		if err := os.RemoveAll(filepath.Join(c.cfg.WorkingDirectory, "retention", retention.MarkersFolder)); err != nil {
+		if err := os.RemoveAll(filepath.Join(c.cfg.WorkingDirectory, "retention", MarkersFolder)); err != nil {
 			return fmt.Errorf("remove old markers: %w", err)
 		}
 	}

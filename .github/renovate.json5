@@ -2,6 +2,9 @@
   $schema: 'https://docs.renovatebot.com/renovate-schema.json',
   extends: [
     'config:recommended',
+    'github>grafana/grafana-renovate-config//presets/base',
+    'github>grafana/grafana-renovate-config//presets/automerge',
+    'github>grafana/grafana-renovate-config//presets/labels',
   ],
   labels: [
     'dependencies',
@@ -190,7 +193,7 @@
     autoApprove: false,
   },
   osvVulnerabilityAlerts: true,
-  prConcurrentLimit: 40,
+  prConcurrentLimit: 25,
   rebaseWhen: 'auto',
   branchPrefix: 'deps-update/',
   postUpdateOptions: [

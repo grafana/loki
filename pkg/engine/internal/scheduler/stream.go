@@ -16,9 +16,9 @@ type stream struct {
 
 	state workflow.StreamState
 
-	localReceiver *streamPipe // Local receiver (for root task results)
-	taskReceiver  ulid.ULID   // ID of the receiving task.
-	taskSender    ulid.ULID   // ID of the sending task.
+	localReceiver workflow.RecordWriter // Local receiver (for root task results)
+	taskReceiver  ulid.ULID             // ID of the receiving task.
+	taskSender    ulid.ULID             // ID of the sending task.
 }
 
 var validStreamTransitions = map[workflow.StreamState][]workflow.StreamState{
@@ -33,7 +33,7 @@ var validStreamTransitions = map[workflow.StreamState][]workflow.StreamState{
 //
 // Returns true if the state was updated, false otherwise (such as if the task
 // is already in the desired state).
-func (s *stream) setState(newState workflow.StreamState) (bool, error) {
+func (s *stream) setState(m *metrics, newState workflow.StreamState) (bool, error) {
 	oldState := s.state
 
 	if newState == oldState {
@@ -45,25 +45,21 @@ func (s *stream) setState(newState workflow.StreamState) (bool, error) {
 		return false, fmt.Errorf("invalid state transition from %s to %s", oldState, newState)
 	}
 
-	// Close the local receiver if we've moved to a terminal state.
-	if newState == workflow.StreamStateClosed && s.localReceiver != nil {
-		s.localReceiver.Close()
-	}
-
 	s.state = newState
+	m.streamsTotal.WithLabelValues(newState.String()).Inc()
 	return true, nil
 }
 
 // setLocalListener sets the local listener for the stream. Fails if there is
 // already a bound listener (local or task).
-func (s *stream) setLocalListener(pipe *streamPipe) error {
+func (s *stream) setLocalListener(writer workflow.RecordWriter) error {
 	if s.localReceiver != nil {
 		return fmt.Errorf("stream already bound to scheduler for reads")
 	} else if s.taskReceiver != ulid.Zero {
 		return fmt.Errorf("stream already bound to task for reads")
 	}
 
-	s.localReceiver = pipe
+	s.localReceiver = writer
 	return nil
 }
 

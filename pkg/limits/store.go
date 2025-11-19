@@ -269,6 +269,40 @@ func (s *usageStore) UpdateCond(tenant string, metadata []*proto.StreamMetadata,
 	return toProduce, accepted, rejected, nil
 }
 
+func (s *usageStore) UpdateRates(tenant string, metadata []*proto.StreamMetadata, seenAt time.Time) ([]streamUsage, error) {
+	if !s.withinActiveWindow(seenAt.UnixNano()) {
+		return nil, errOutsideActiveWindow
+	}
+	var (
+		updated = make([]streamUsage, 0, len(metadata))
+		cutoff  = seenAt.Add(-s.activeWindow).UnixNano()
+	)
+	s.withLock(tenant, func(i int) {
+		for _, m := range metadata {
+			partition := s.getPartitionForHash(m.StreamHash)
+			s.checkInitMap(i, tenant, partition, noPolicy)
+			streams := s.stripes[i][tenant][partition][noPolicy]
+			stream, ok := streams[m.StreamHash]
+
+			// If the stream does not exist, or exists but has expired,
+			// we need to check if accepting it would exceed the maximum
+			// stream limit.
+			if !ok || stream.lastSeenAt < cutoff {
+				if ok {
+					// The stream has expired, delete it so it doesn't count
+					// towards the active streams.
+					delete(streams, m.StreamHash)
+				}
+			}
+			s.updateWithBuckets(i, tenant, partition, noPolicy, m, seenAt)
+			got, _ := s.get(i, tenant, partition, m.StreamHash)
+			got.rateBuckets = getActiveRateBuckets(got.rateBuckets, s.withinRateWindow)
+			updated = append(updated, got)
+		}
+	})
+	return updated, nil
+}
+
 // Evict evicts all streams that have not been seen within the window.
 func (s *usageStore) Evict() map[string]int {
 	cutoff := s.clock.Now().Add(-s.activeWindow).UnixNano()
@@ -362,30 +396,50 @@ func (s *usageStore) update(i int, tenant string, partition int32, policyBucket 
 		stream.hash = streamHash
 		stream.totalSize = 0
 		stream.policy = policyBucket
-		// stream.rateBuckets = make([]rateBucket, s.numBuckets)
 	}
 	seenAtUnixNano := seenAt.UnixNano()
 	if stream.lastSeenAt <= seenAtUnixNano {
 		stream.lastSeenAt = seenAtUnixNano
 	}
-	// TODO(grobinson): As mentioned above, we will come back and implement
-	// rate limits at a later date in the future.
-	// stream.totalSize += totalSize
+	s.stripes[i][tenant][partition][policyBucket][streamHash] = stream
+}
+
+// Duplicate of update but also updates the rate buckets. This allows us to
+// isolate the changes needed to support UpdateRates RPC without affecting
+// the ExceedsLimits RPCs.
+func (s *usageStore) updateWithBuckets(i int, tenant string, partition int32, policyBucket string, metadata *proto.StreamMetadata, seenAt time.Time) {
+	s.checkInitMap(i, tenant, partition, policyBucket)
+	streamHash := metadata.StreamHash
+	// Get the stats for the stream.
+	stream, ok := s.stripes[i][tenant][partition][policyBucket][streamHash]
+	cutoff := seenAt.Add(-s.activeWindow).UnixNano()
+	// If the stream does not exist, or it has expired, reset it.
+	if !ok || stream.lastSeenAt < cutoff {
+		stream.hash = streamHash
+		stream.totalSize = 0
+		stream.policy = policyBucket
+		stream.rateBuckets = make([]rateBucket, s.numBuckets)
+	}
+	seenAtUnixNano := seenAt.UnixNano()
+	if stream.lastSeenAt <= seenAtUnixNano {
+		stream.lastSeenAt = seenAtUnixNano
+	}
+	stream.totalSize += metadata.TotalSize
 	// rate buckets are implemented as a circular list. To update a rate
 	// bucket we must first calculate the bucket index.
-	// bucketNum := seenAtUnixNano / int64(s.bucketSize)
-	// bucketIdx := int(bucketNum % int64(s.numBuckets))
-	// bucket := stream.rateBuckets[bucketIdx]
+	bucketNum := seenAtUnixNano / int64(s.bucketSize)
+	bucketIdx := int(bucketNum % int64(s.numBuckets))
+	bucket := stream.rateBuckets[bucketIdx]
 	// Once we have found the bucket, we then need to check if it is an old
 	// bucket outside the rate window. If it is, we must reset it before we
 	// can re-use it.
-	// bucketStart := seenAt.Truncate(s.bucketSize).UnixNano()
-	// if bucket.timestamp < bucketStart {
-	// bucket.timestamp = bucketStart
-	// bucket.size = 0
-	// }
-	// bucket.size += totalSize
-	// stream.rateBuckets[bucketIdx] = bucket
+	bucketStart := seenAt.Truncate(s.bucketSize).UnixNano()
+	if bucket.timestamp < bucketStart {
+		bucket.timestamp = bucketStart
+		bucket.size = 0
+	}
+	bucket.size += metadata.TotalSize
+	stream.rateBuckets[bucketIdx] = bucket
 	s.stripes[i][tenant][partition][policyBucket][streamHash] = stream
 }
 
@@ -502,4 +556,21 @@ func getActiveRateBuckets(buckets []rateBucket, withinRateWindow func(int64) boo
 		}
 	}
 	return result
+}
+
+func (s *usageStore) get(i int, tenant string, partition int32, streamHash uint64) (stream streamUsage, ok bool) {
+	partitions, ok := s.stripes[i][tenant]
+	if !ok {
+		return
+	}
+	policies, ok := partitions[partition]
+	if !ok {
+		return
+	}
+	streams, ok := policies[noPolicy]
+	if !ok {
+		return
+	}
+	stream, ok = streams[streamHash]
+	return
 }

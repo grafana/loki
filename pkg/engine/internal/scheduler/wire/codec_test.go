@@ -63,6 +63,9 @@ func TestProtobufCodec_Messages(t *testing.T) {
 	tests := map[string]struct {
 		message Message
 	}{
+		"WorkerHelloMessage": {
+			message: WorkerHelloMessage{Threads: 4},
+		},
 		"WorkerReadyMessage": {
 			message: WorkerReadyMessage{},
 		},
@@ -345,13 +348,13 @@ func TestProtobufCodec_ArrowRecordSerialization(t *testing.T) {
 	codec := &protobufCodec{memory.DefaultAllocator}
 
 	tests := map[string]struct {
-		createRecord func() arrow.Record
+		createRecord func() arrow.RecordBatch
 	}{
 		"simple int64 record": {
 			createRecord: createTestArrowRecord,
 		},
 		"empty record": {
-			createRecord: func() arrow.Record {
+			createRecord: func() arrow.RecordBatch {
 				schema := arrow.NewSchema([]arrow.Field{
 					{Name: "id", Type: arrow.PrimitiveTypes.Int64, Nullable: false},
 				}, nil)
@@ -359,11 +362,11 @@ func TestProtobufCodec_ArrowRecordSerialization(t *testing.T) {
 				builder := array.NewInt64Builder(memory.DefaultAllocator)
 				data := builder.NewArray()
 
-				return array.NewRecord(schema, []arrow.Array{data}, 0)
+				return array.NewRecordBatch(schema, []arrow.Array{data}, 0)
 			},
 		},
 		"multiple columns": {
-			createRecord: func() arrow.Record {
+			createRecord: func() arrow.RecordBatch {
 				schema := arrow.NewSchema([]arrow.Field{
 					{Name: "id", Type: arrow.PrimitiveTypes.Int64, Nullable: false},
 					{Name: "value", Type: arrow.PrimitiveTypes.Float64, Nullable: false},
@@ -381,7 +384,7 @@ func TestProtobufCodec_ArrowRecordSerialization(t *testing.T) {
 
 				valData := valBuilder.NewArray()
 
-				return array.NewRecord(schema, []arrow.Array{idData, valData}, 2)
+				return array.NewRecordBatch(schema, []arrow.Array{idData, valData}, 2)
 			},
 		},
 	}
@@ -405,7 +408,7 @@ func TestProtobufCodec_ArrowRecordSerialization(t *testing.T) {
 	}
 }
 
-func createTestArrowRecord() arrow.Record {
+func createTestArrowRecord() arrow.RecordBatch {
 	schema := arrow.NewSchema([]arrow.Field{
 		{Name: "id", Type: arrow.PrimitiveTypes.Int64, Nullable: false},
 	}, nil)
@@ -418,5 +421,5 @@ func createTestArrowRecord() arrow.Record {
 
 	data := builder.NewArray()
 
-	return array.NewRecord(schema, []arrow.Array{data}, 3)
+	return array.NewRecordBatch(schema, []arrow.Array{data}, 3)
 }

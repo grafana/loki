@@ -296,7 +296,7 @@ func (f *FileWriter) Close() error {
 	return nil
 }
 
-func (f *FileWriter) Write(rec arrow.Record) error {
+func (f *FileWriter) Write(rec arrow.RecordBatch) error {
 	schema := rec.Schema()
 	if schema == nil || !schema.Equal(f.schema) {
 		return errInconsistentSchema

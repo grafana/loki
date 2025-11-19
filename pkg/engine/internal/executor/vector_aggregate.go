@@ -10,6 +10,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 // vectorAggregationPipeline is a pipeline that performs vector aggregations.
@@ -23,6 +24,7 @@ type vectorAggregationPipeline struct {
 	aggregator *aggregator
 	evaluator  expressionEvaluator
 	groupBy    []physical.ColumnExpression
+	region     *xcap.Region
 
 	tsEval    evalFunc // used to evaluate the timestamp column
 	valueEval evalFunc // used to evaluate the value column
@@ -37,7 +39,7 @@ var (
 	}
 )
 
-func newVectorAggregationPipeline(inputs []Pipeline, groupBy []physical.ColumnExpression, evaluator expressionEvaluator, operation types.VectorAggregationType) (*vectorAggregationPipeline, error) {
+func newVectorAggregationPipeline(inputs []Pipeline, groupBy []physical.ColumnExpression, evaluator expressionEvaluator, operation types.VectorAggregationType, region *xcap.Region) (*vectorAggregationPipeline, error) {
 	if len(inputs) == 0 {
 		return nil, fmt.Errorf("vector aggregation expects at least one input")
 	}
@@ -52,6 +54,7 @@ func newVectorAggregationPipeline(inputs []Pipeline, groupBy []physical.ColumnEx
 		evaluator:  evaluator,
 		groupBy:    groupBy,
 		aggregator: newAggregator(groupBy, 0, op),
+		region:     region,
 		tsEval: evaluator.newFunc(&physical.ColumnExpr{
 			Ref: types.ColumnRef{
 				Column: types.ColumnNameBuiltinTimestamp,
@@ -68,14 +71,14 @@ func newVectorAggregationPipeline(inputs []Pipeline, groupBy []physical.ColumnEx
 }
 
 // Read reads the next value into its state.
-func (v *vectorAggregationPipeline) Read(ctx context.Context) (arrow.Record, error) {
+func (v *vectorAggregationPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	if v.inputsExhausted {
 		return nil, EOF
 	}
 	return v.read(ctx)
 }
 
-func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.Record, error) {
+func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch, error) {
 	var (
 		labelValues = make([]string, len(v.groupBy))
 	)
@@ -146,7 +149,15 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.Record, err
 
 // Close closes the resources of the pipeline.
 func (v *vectorAggregationPipeline) Close() {
+	if v.region != nil {
+		v.region.End()
+	}
 	for _, input := range v.inputs {
 		input.Close()
 	}
+}
+
+// Region implements RegionProvider.
+func (v *vectorAggregationPipeline) Region() *xcap.Region {
+	return v.region
 }

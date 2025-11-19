@@ -21,58 +21,32 @@ type DescribeLogDirsRequestTopic struct {
 }
 
 func (r *DescribeLogDirsRequest) encode(pe packetEncoder) error {
-	isFlexible := r.Version >= 2
-
 	length := len(r.DescribeTopics)
 	if length == 0 {
 		// In order to query all topics we must send null
 		length = -1
 	}
-	if isFlexible {
-		pe.putCompactArrayLength(length)
-	} else {
-		if err := pe.putArrayLength(length); err != nil {
-			return err
-		}
+	if err := pe.putArrayLength(length); err != nil {
+		return err
 	}
 
 	for _, d := range r.DescribeTopics {
-		if isFlexible {
-			if err := pe.putCompactString(d.Topic); err != nil {
-				return err
-			}
-
-			if err := pe.putCompactInt32Array(d.PartitionIDs); err != nil {
-				return err
-			}
-			pe.putEmptyTaggedFieldArray()
-		} else {
-			if err := pe.putString(d.Topic); err != nil {
-				return err
-			}
-
-			if err := pe.putInt32Array(d.PartitionIDs); err != nil {
-				return err
-			}
+		if err := pe.putString(d.Topic); err != nil {
+			return err
 		}
-	}
-	if isFlexible {
+
+		if err := pe.putInt32Array(d.PartitionIDs); err != nil {
+			return err
+		}
 		pe.putEmptyTaggedFieldArray()
 	}
 
+	pe.putEmptyTaggedFieldArray()
 	return nil
 }
 
 func (r *DescribeLogDirsRequest) decode(pd packetDecoder, version int16) error {
-	isFlexible := r.Version >= 2
-
-	var n int
-	var err error
-	if isFlexible {
-		n, err = pd.getCompactArrayLength()
-	} else {
-		n, err = pd.getArrayLength()
-	}
+	n, err := pd.getArrayLength()
 	if err != nil {
 		return err
 	}
@@ -85,44 +59,26 @@ func (r *DescribeLogDirsRequest) decode(pd packetDecoder, version int16) error {
 	for i := 0; i < n; i++ {
 		topics[i] = DescribeLogDirsRequestTopic{}
 
-		var topic string
-		if isFlexible {
-			topic, err = pd.getCompactString()
-		} else {
-			topic, err = pd.getString()
-		}
+		topic, err := pd.getString()
 		if err != nil {
 			return err
 		}
 		topics[i].Topic = topic
 
-		var pIDs []int32
-		if isFlexible {
-			pIDs, err = pd.getCompactInt32Array()
-		} else {
-			pIDs, err = pd.getInt32Array()
-		}
+		pIDs, err := pd.getInt32Array()
 		if err != nil {
 			return err
 		}
 		topics[i].PartitionIDs = pIDs
-		if isFlexible {
-			_, err = pd.getEmptyTaggedFieldArray()
-			if err != nil {
-				return err
-			}
-		}
-	}
-	r.DescribeTopics = topics
-
-	if isFlexible {
 		_, err = pd.getEmptyTaggedFieldArray()
 		if err != nil {
 			return err
 		}
 	}
+	r.DescribeTopics = topics
 
-	return nil
+	_, err = pd.getEmptyTaggedFieldArray()
+	return err
 }
 
 func (r *DescribeLogDirsRequest) key() int16 {
@@ -142,6 +98,14 @@ func (r *DescribeLogDirsRequest) headerVersion() int16 {
 
 func (r *DescribeLogDirsRequest) isValidVersion() bool {
 	return r.Version >= 0 && r.Version <= 4
+}
+
+func (r *DescribeLogDirsRequest) isFlexible() bool {
+	return r.isFlexibleVersion(r.Version)
+}
+
+func (r *DescribeLogDirsRequest) isFlexibleVersion(version int16) bool {
+	return version >= 2
 }
 
 func (r *DescribeLogDirsRequest) requiredVersion() KafkaVersion {

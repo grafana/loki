@@ -6,6 +6,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 )
 
+type Null any
 type Timestamp int64
 type Duration int64
 type Bytes int64
