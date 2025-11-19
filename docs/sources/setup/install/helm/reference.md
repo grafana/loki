@@ -414,6 +414,7 @@ This is the generated reference for the Loki Helm Chart values.
   "service": {
     "annotations": {},
     "labels": {},
+    "trafficDistribution": "",
     "type": "ClusterIP"
   },
   "targetModule": "backend",
@@ -776,6 +777,15 @@ null
 			<td>Additional labels for backend Service</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.service.trafficDistribution</td>
+			<td>string</td>
+			<td>trafficDistribution for backend Service</td>
+			<td><pre lang="json">
+""
 </pre>
 </td>
 		</tr>
@@ -5254,6 +5264,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>gateway.service.trafficDistribution</td>
+			<td>string</td>
+			<td>trafficDistribution for gateway service</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>gateway.service.type</td>
 			<td>string</td>
 			<td>Type of the gateway service</td>
@@ -5484,6 +5503,7 @@ null
   "terminationGracePeriodSeconds": 300,
   "tolerations": [],
   "topologySpreadConstraints": [],
+  "trafficDistribution": "",
   "updateStrategy": {
     "type": "RollingUpdate"
   }
@@ -5838,6 +5858,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>indexGateway.trafficDistribution</td>
+			<td>string</td>
+			<td>trafficDistribution for index-gateway service</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>indexGateway.updateStrategy</td>
 			<td>object</td>
 			<td>UpdateStrategy for the indexGateway StatefulSet.</td>
@@ -5960,6 +5989,7 @@ null
       "whenUnsatisfiable": "ScheduleAnyway"
     }
   ],
+  "trafficDistribution": "",
   "updateStrategy": {
     "type": "RollingUpdate"
   },
@@ -6362,7 +6392,7 @@ false
 		<tr>
 			<td>ingester.serviceAnnotations</td>
 			<td>object</td>
-			<td>Annotations for ingestor service</td>
+			<td>Annotations for ingester service</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -6371,7 +6401,7 @@ false
 		<tr>
 			<td>ingester.serviceLabels</td>
 			<td>object</td>
-			<td>Labels for ingestor service</td>
+			<td>Labels for ingester service</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -6380,7 +6410,7 @@ false
 		<tr>
 			<td>ingester.serviceType</td>
 			<td>string</td>
-			<td>Service type for ingestor service</td>
+			<td>Service type for ingester service</td>
 			<td><pre lang="json">
 "ClusterIP"
 </pre>
@@ -6410,6 +6440,15 @@ false
 			<td>topologySpread for ingester pods. The value will be passed through tpl.</td>
 			<td><pre lang="">
 Defaults to allow skew no more than 1 node
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.trafficDistribution</td>
+			<td>string</td>
+			<td>trafficDistribution for ingester service</td>
+			<td><pre lang="json">
+""
 </pre>
 </td>
 		</tr>
@@ -7173,6 +7212,15 @@ null
   "http_server_read_timeout": "600s",
   "http_server_write_timeout": "600s"
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.service.trafficDistribution</td>
+			<td>string</td>
+			<td>trafficDistribution for services Ref: https://kubernetes.io/docs/concepts/services-networking/service/#traffic-distribution</td>
+			<td><pre lang="json">
+""
 </pre>
 </td>
 		</tr>
@@ -9729,7 +9777,8 @@ null
       "topologyKey": "kubernetes.io/hostname",
       "whenUnsatisfiable": "ScheduleAnyway"
     }
-  ]
+  ],
+  "trafficDistribution": ""
 }
 </pre>
 </td>
@@ -10097,6 +10146,15 @@ Defaults to allow skew no more then 1 node
 </td>
 		</tr>
 		<tr>
+			<td>querier.trafficDistribution</td>
+			<td>string</td>
+			<td>trafficDistribution for querier service</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>queryFrontend</td>
 			<td>object</td>
 			<td>Configuration for the query-frontend</td>
@@ -10164,7 +10222,8 @@ Defaults to allow skew no more then 1 node
   "serviceType": "ClusterIP",
   "terminationGracePeriodSeconds": 30,
   "tolerations": [],
-  "topologySpreadConstraints": []
+  "topologySpreadConstraints": [],
+  "trafficDistribution": ""
 }
 </pre>
 </td>
@@ -10525,6 +10584,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>queryFrontend.trafficDistribution</td>
+			<td>string</td>
+			<td>trafficDistribution for query-frontend service</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>queryScheduler</td>
 			<td>object</td>
 			<td>Configuration for the query-scheduler</td>
@@ -10575,7 +10643,8 @@ null
   "serviceLabels": {},
   "terminationGracePeriodSeconds": 30,
   "tolerations": [],
-  "topologySpreadConstraints": []
+  "topologySpreadConstraints": [],
+  "trafficDistribution": ""
 }
 </pre>
 </td>
@@ -10826,6 +10895,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>queryScheduler.trafficDistribution</td>
+			<td>string</td>
+			<td>trafficDistribution for query-scheduler service</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>rbac.namespaced</td>
 			<td>bool</td>
 			<td>Whether to install RBAC in the namespace only or cluster-wide. Useful if you want to watch ConfigMap globally.</td>
@@ -10940,6 +11018,7 @@ false
   "service": {
     "annotations": {},
     "labels": {},
+    "trafficDistribution": "",
     "type": "ClusterIP"
   },
   "targetModule": "read",
@@ -11328,6 +11407,15 @@ null
 			<td>Additional labels for read Service</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>read.service.trafficDistribution</td>
+			<td>string</td>
+			<td>trafficDistribution for read service</td>
+			<td><pre lang="json">
+""
 </pre>
 </td>
 		</tr>
@@ -12823,6 +12911,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>singleBinary.service.trafficDistribution</td>
+			<td>string</td>
+			<td>trafficDistribution single binary Service</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>singleBinary.service.type</td>
 			<td>string</td>
 			<td>Service Type for single binary Service</td>
@@ -13701,6 +13798,15 @@ null
 			<td>Additional labels for write Service</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.service.trafficDistribution</td>
+			<td>string</td>
+			<td>trafficDistribution for write service</td>
+			<td><pre lang="json">
+""
 </pre>
 </td>
 		</tr>
