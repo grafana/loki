@@ -15,7 +15,7 @@ import (
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
-// This operation is not supported by directory buckets.
+// This operation is not supported for directory buckets.
 //
 // Sets the accelerate configuration of an existing bucket. Amazon S3 Transfer
 // Acceleration is a bucket-level feature that enables you to perform faster data
@@ -49,6 +49,10 @@ import (
 //
 // [CreateBucket]
 //
+// You must URL encode any signed header values that contain spaces. For example,
+// if your header value is my file.txt , containing two spaces after my , you must
+// URL encode this value to my%20%20file.txt .
+//
 // [Permissions Related to Bucket Subresource Operations]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-with-s3-actions.html#using-with-s3-actions-related-to-bucket-subresources
 // [Transfer Acceleration]: https://docs.aws.amazon.com/AmazonS3/latest/dev/transfer-acceleration.html
 // [GetBucketAccelerateConfiguration]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketAccelerateConfiguration.html
@@ -81,9 +85,9 @@ type PutBucketAccelerateConfigurationInput struct {
 	// This member is required.
 	Bucket *string
 
-	// Indicates the algorithm used to create the checksum for the object when you use
-	// the SDK. This header will not provide any additional functionality if you don't
-	// use the SDK. When you send this header, there must be a corresponding
+	// Indicates the algorithm used to create the checksum for the request when you
+	// use the SDK. This header will not provide any additional functionality if you
+	// don't use the SDK. When you send this header, there must be a corresponding
 	// x-amz-checksum or x-amz-trailer header sent. Otherwise, Amazon S3 fails the
 	// request with the HTTP status code 400 Bad Request . For more information, see [Checking object integrity]
 	// in the Amazon S3 User Guide.
@@ -158,6 +162,9 @@ func (c *Client) addOperationPutBucketAccelerateConfigurationMiddlewares(stack *
 	if err = addRecordResponseTiming(stack); err != nil {
 		return err
 	}
+	if err = addSpanRetryLoop(stack, options); err != nil {
+		return err
+	}
 	if err = addClientUserAgent(stack, options); err != nil {
 		return err
 	}
@@ -180,6 +187,12 @@ func (c *Client) addOperationPutBucketAccelerateConfigurationMiddlewares(stack *
 		return err
 	}
 	if err = addIsExpressUserAgent(stack); err != nil {
+		return err
+	}
+	if err = addRequestChecksumMetricsTracking(stack, options); err != nil {
+		return err
+	}
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpPutBucketAccelerateConfigurationValidationMiddleware(stack); err != nil {
@@ -218,6 +231,15 @@ func (c *Client) addOperationPutBucketAccelerateConfigurationMiddlewares(stack *
 	if err = addSerializeImmutableHostnameBucketMiddleware(stack, options); err != nil {
 		return err
 	}
+	if err = addInterceptBeforeRetryLoop(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAttempt(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptors(stack, options); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -247,9 +269,10 @@ func getPutBucketAccelerateConfigurationRequestAlgorithmMember(input interface{}
 }
 
 func addPutBucketAccelerateConfigurationInputChecksumMiddlewares(stack *middleware.Stack, options Options) error {
-	return internalChecksum.AddInputMiddleware(stack, internalChecksum.InputMiddlewareOptions{
+	return addInputChecksumMiddleware(stack, internalChecksum.InputMiddlewareOptions{
 		GetAlgorithm:                     getPutBucketAccelerateConfigurationRequestAlgorithmMember,
 		RequireChecksum:                  false,
+		RequestChecksumCalculation:       options.RequestChecksumCalculation,
 		EnableTrailingChecksum:           false,
 		EnableComputeSHA256PayloadHash:   true,
 		EnableDecodedContentLengthHeader: true,

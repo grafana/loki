@@ -19,6 +19,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 type dataobjScanOptions struct {
@@ -28,14 +29,13 @@ type dataobjScanOptions struct {
 	Predicates     []logs.Predicate            // Predicate to apply to the logs.
 	Projections    []physical.ColumnExpression // Columns to include. An empty slice means all columns.
 
-	Allocator memory.Allocator // Allocator to use for reading sections and building records.
-
 	BatchSize int64 // The buffer size for reading rows, derived from the engine batch size.
 }
 
 type dataobjScan struct {
 	opts   dataobjScanOptions
 	logger log.Logger
+	region *xcap.Region
 
 	initialized     bool
 	initializedAt   time.Time
@@ -48,21 +48,18 @@ type dataobjScan struct {
 var _ Pipeline = (*dataobjScan)(nil)
 
 // newDataobjScanPipeline creates a new Pipeline which emits a single
-// [arrow.Record] composed of the requested log section in a data object. Rows
+// [arrow.RecordBatch] composed of the requested log section in a data object. Rows
 // in the returned record are ordered by timestamp in the direction specified
 // by opts.Direction.
-func newDataobjScanPipeline(opts dataobjScanOptions, logger log.Logger) *dataobjScan {
-	if opts.Allocator == nil {
-		opts.Allocator = memory.DefaultAllocator
-	}
-
+func newDataobjScanPipeline(opts dataobjScanOptions, logger log.Logger, region *xcap.Region) *dataobjScan {
 	return &dataobjScan{
 		opts:   opts,
 		logger: logger,
+		region: region,
 	}
 }
 
-func (s *dataobjScan) Read(ctx context.Context) (arrow.Record, error) {
+func (s *dataobjScan) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	if err := s.init(); err != nil {
 		return nil, err
 	}
@@ -107,7 +104,7 @@ func (s *dataobjScan) initStreams() error {
 		BatchSize:    int(s.opts.BatchSize),
 	})
 
-	s.streamsInjector = newStreamInjector(s.opts.Allocator, s.streams)
+	s.streamsInjector = newStreamInjector(s.streams)
 	return nil
 }
 
@@ -210,7 +207,7 @@ func (s *dataobjScan) initLogs() error {
 		Columns: columnsToRead,
 
 		Predicates: predicates,
-		Allocator:  s.opts.Allocator,
+		Allocator:  memory.DefaultAllocator,
 	})
 
 	// Create the engine-compatible expected schema for the logs section.
@@ -349,30 +346,25 @@ NextProjection:
 	return found
 }
 
-// read reads the entire section into memory and generates an [arrow.Record]
+// read reads the entire section into memory and generates an [arrow.RecordBatch]
 // from the data. It returns an error if reading a section resulted in an
 // error.
-func (s *dataobjScan) read(ctx context.Context) (arrow.Record, error) {
+func (s *dataobjScan) read(ctx context.Context) (arrow.RecordBatch, error) {
 	rec, err := s.reader.Read(ctx, int(s.opts.BatchSize))
 	if err != nil && !errors.Is(err, io.EOF) {
 		return nil, err
 	} else if (rec == nil || rec.NumRows() == 0) && errors.Is(err, io.EOF) {
 		return nil, EOF
 	}
-	defer rec.Release()
 
 	// Update the schema of the record to match the schema the engine expects.
 	rec, err = changeSchema(rec, s.desiredSchema)
 	if err != nil {
 		return nil, fmt.Errorf("changing schema: %w", err)
 	}
-	defer rec.Release()
 
 	if s.streamsInjector == nil {
 		// No streams injector needed, so we return the record as-is.
-		// We add an extra retain to counteract the Release() call above (for ease
-		// of readability).
-		rec.Retain()
 		return rec, nil
 	}
 
@@ -381,11 +373,10 @@ func (s *dataobjScan) read(ctx context.Context) (arrow.Record, error) {
 
 // Close closes s and releases all resources.
 func (s *dataobjScan) Close() {
-	if s.reader != nil {
-		// TODO(ashwanth): remove this once we have stats collection via executor
-		s.reader.Stats().LogSummary(s.logger, time.Since(s.initializedAt))
+	if s.region != nil && s.reader != nil {
+		s.recordReaderStats()
+		s.region.End()
 	}
-
 	if s.streams != nil {
 		s.streams.Close()
 	}
@@ -397,4 +388,46 @@ func (s *dataobjScan) Close() {
 	s.streams = nil
 	s.streamsInjector = nil
 	s.reader = nil
+	s.region = nil
+}
+
+// recordReaderStats records statistics from the [logs.Reader] to the xcap region.
+// TODO: [dataset.ReaderStats] should be replaced by xcap statistics.
+func (s *dataobjScan) recordReaderStats() {
+	if s.region == nil || s.reader == nil {
+		return
+	}
+
+	stats := s.reader.Stats()
+	if stats == nil {
+		return
+	}
+
+	// Record basic stats
+	s.region.Record(statDatasetPrimaryColumns.Observe(int64(stats.PrimaryColumns)))
+	s.region.Record(statDatasetSecondaryColumns.Observe(int64(stats.SecondaryColumns)))
+	s.region.Record(statDatasetPrimaryColumnPages.Observe(int64(stats.PrimaryColumnPages)))
+	s.region.Record(statDatasetSecondaryColumnPages.Observe(int64(stats.SecondaryColumnPages)))
+	s.region.Record(statDatasetMaxRows.Observe(int64(stats.MaxRows)))
+	s.region.Record(statDatasetRowsAfterPruning.Observe(int64(stats.RowsToReadAfterPruning)))
+	s.region.Record(statDatasetPrimaryRowsRead.Observe(int64(stats.PrimaryRowsRead)))
+	s.region.Record(statDatasetSecondaryRowsRead.Observe(int64(stats.SecondaryRowsRead)))
+	s.region.Record(statDatasetPrimaryRowBytes.Observe(int64(stats.PrimaryRowBytes)))
+	s.region.Record(statDatasetSecondaryRowBytes.Observe(int64(stats.SecondaryRowBytes)))
+
+	// Record download stats
+	downloadStats := stats.DownloadStats
+	s.region.Record(statDatasetPagesScanned.Observe(int64(downloadStats.PagesScanned)))
+	s.region.Record(statDatasetPagesFoundInCache.Observe(int64(downloadStats.PagesFoundInCache)))
+	s.region.Record(statDatasetBatchDownloadRequests.Observe(int64(downloadStats.BatchDownloadRequests)))
+	s.region.Record(statDatasetPageDownloadTime.Observe(downloadStats.PageDownloadTime.Nanoseconds()))
+	s.region.Record(statDatasetPrimaryColumnBytes.Observe(int64(downloadStats.PrimaryColumnBytes)))
+	s.region.Record(statDatasetSecondaryColumnBytes.Observe(int64(downloadStats.SecondaryColumnBytes)))
+	s.region.Record(statDatasetPrimaryColumnUncompressedBytes.Observe(int64(downloadStats.PrimaryColumnUncompressedBytes)))
+	s.region.Record(statDatasetSecondaryColumnUncompressedBytes.Observe(int64(downloadStats.SecondaryColumnUncompressedBytes)))
+}
+
+// Region implements RegionProvider.
+func (s *dataobjScan) Region() *xcap.Region {
+	return s.region
 }

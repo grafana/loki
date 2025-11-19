@@ -1,7 +1,10 @@
 package physical
 
 import (
+	"fmt"
 	"iter"
+
+	"github.com/oklog/ulid/v2"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
 )
@@ -22,6 +25,7 @@ const (
 	NodeTypeTopK
 	NodeTypeParallelize
 	NodeTypeScanSet
+	NodeTypeJoin
 )
 
 func (t NodeType) String() string {
@@ -52,6 +56,8 @@ func (t NodeType) String() string {
 		return "Parallelize"
 	case NodeTypeScanSet:
 		return "ScanSet"
+	case NodeTypeJoin:
+		return "Join"
 	default:
 		return "Undefined"
 	}
@@ -64,17 +70,13 @@ func (t NodeType) String() string {
 // Nodes can be connected to form a directed acyclic graph (DAG) representing
 // the complete execution plan.
 type Node interface {
-	// ID returns a string that uniquely identifies a node in the plan
-	ID() string
+	// ID returns the ULID that uniquely identifies a node in the plan.
+	ID() ulid.ULID
 	// Type returns the node type
 	Type() NodeType
 	// Clone creates a deep copy of the Node. Cloned nodes do not retain the
 	// same ID.
 	Clone() Node
-	// Accept allows the object to be visited by a [Visitor] as part of the
-	// visitor pattern. It typically calls back to the appropriate Visit method
-	// on the Visitor for the concrete type being visited.
-	Accept(Visitor) error
 	// isNode is a marker interface to denote a node, and only allows it to be
 	// implemented within this package
 	isNode()
@@ -99,11 +101,11 @@ var _ Node = (*Limit)(nil)
 var _ Node = (*Filter)(nil)
 var _ Node = (*RangeAggregation)(nil)
 var _ Node = (*VectorAggregation)(nil)
-var _ Node = (*ParseNode)(nil)
 var _ Node = (*ColumnCompat)(nil)
 var _ Node = (*TopK)(nil)
 var _ Node = (*Parallelize)(nil)
 var _ Node = (*ScanSet)(nil)
+var _ Node = (*Join)(nil)
 
 func (*DataObjScan) isNode()       {}
 func (*Projection) isNode()        {}
@@ -111,24 +113,11 @@ func (*Limit) isNode()             {}
 func (*Filter) isNode()            {}
 func (*RangeAggregation) isNode()  {}
 func (*VectorAggregation) isNode() {}
-func (*ParseNode) isNode()         {}
 func (*ColumnCompat) isNode()      {}
 func (*TopK) isNode()              {}
 func (*Parallelize) isNode()       {}
 func (*ScanSet) isNode()           {}
-
-// WalkOrder defines the order for how a node and its children are visited.
-type WalkOrder uint8
-
-const (
-	// PreOrderWalk processes the current vertex before visiting any of its
-	// children.
-	PreOrderWalk WalkOrder = iota
-
-	// PostOrderWalk processes the current vertex after visiting all of its
-	// children.
-	PostOrderWalk
-)
+func (*Join) isNode()              {}
 
 // Plan represents a physical execution plan as a directed acyclic graph (DAG).
 // It maintains the relationships between nodes, tracking parent-child connections
@@ -172,7 +161,36 @@ func (p *Plan) Leaves() []Node { return p.graph.Leaves() }
 // DFSWalk performs a depth-first traversal of the plan starting from node n.
 // It applies the visitor v to each node according to the specified walk order.
 // The order parameter determines if nodes are visited before their children
-// ([PreOrderWalk]) or after their children ([PostOrderWalk]).
-func (p *Plan) DFSWalk(n Node, v Visitor, order WalkOrder) error {
-	return p.graph.Walk(n, func(n Node) error { return n.Accept(v) }, dag.WalkOrder(order))
+// ([dag.PreOrderWalk]) or after their children ([dag.PostOrderWalk]).
+func (p *Plan) DFSWalk(n Node, f dag.WalkFunc[Node], order dag.WalkOrder) error {
+	return p.graph.Walk(n, f, order)
+}
+
+// CalculateMaxTimeRange calculates max time boundaries for the plan. Boundaries are defined
+// by either the topmost RangeAggregation or by data scans.
+func (p *Plan) CalculateMaxTimeRange() TimeRange {
+	timeRange := TimeRange{}
+
+	for _, root := range p.Roots() {
+		_ = p.DFSWalk(root, func(n Node) error {
+			switch s := n.(type) {
+			case *RangeAggregation:
+				timeRange.Start = s.Start
+				timeRange.End = s.End
+				// Return here. Topmost RangeAggregation node is what defines max time boundaries for that plan, because
+				// DataObjScan below it can cover different ranges overall.
+				return fmt.Errorf("stop after RangeAggregation")
+			case *ScanSet:
+				for _, t := range s.Targets {
+					timeRange = timeRange.Merge(t.DataObject.MaxTimeRange)
+				}
+			case *DataObjScan:
+				timeRange = timeRange.Merge(s.MaxTimeRange)
+			}
+
+			return nil
+		}, dag.PreOrderWalk)
+	}
+
+	return timeRange
 }

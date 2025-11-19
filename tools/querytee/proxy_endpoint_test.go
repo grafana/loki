@@ -459,7 +459,7 @@ func Test_endToEnd_traceIDFlow(t *testing.T) {
 			DefaultRate: 1.0, // Always sample for testing
 		},
 	}
-	goldfishManager, err := querytee_goldfish.NewManager(goldfishConfig, storage, log.NewNopLogger(), prometheus.NewRegistry())
+	goldfishManager, err := querytee_goldfish.NewManager(goldfishConfig, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	endpoint := NewProxyEndpoint(backends, "test", NewProxyMetrics(nil), log.NewNopLogger(), nil, false).WithGoldfish(goldfishManager)
@@ -527,8 +527,16 @@ func (m *mockGoldfishStorage) GetSampledQueries(_ context.Context, page, pageSiz
 	}, nil
 }
 
+func (m *mockGoldfishStorage) GetStatistics(_ context.Context, _ goldfish.StatsFilter) (*goldfish.Statistics, error) {
+	return nil, nil
+}
+
 func (m *mockGoldfishStorage) Close() error {
 	return nil
+}
+
+func (m *mockGoldfishStorage) GetQueryByCorrelationID(_ context.Context, _ string) (*goldfish.QuerySample, error) {
+	return nil, nil
 }
 
 func Test_extractTenant(t *testing.T) {

@@ -1,8 +1,10 @@
 package kgo
 
 import (
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"maps"
 	"slices"
 	"sort"
 	"strings"
@@ -17,11 +19,13 @@ import (
 // HELPERS // -- ugly types to eliminate the toil of nil maps and lookups
 /////////////
 
+func strtid(tid [16]byte) string {
+	return base64.RawURLEncoding.EncodeToString(tid[:])
+}
+
 func dupmsi32(m map[string]int32) map[string]int32 {
 	d := make(map[string]int32, len(m))
-	for t, ps := range m {
-		d[t] = ps
-	}
+	maps.Copy(d, m)
 	return d
 }
 
@@ -98,7 +102,7 @@ func (m mtps) String() string {
 	sort.Strings(ts)
 	for _, t := range ts {
 		ps = append(ps[:0], m[t]...)
-		sort.Slice(ps, func(i, j int) bool { return ps[i] < ps[j] })
+		slices.Sort(ps)
 		topicsWritten++
 		fmt.Fprintf(&sb, "%s%v", t, ps)
 		if topicsWritten < len(m) {
@@ -327,9 +331,7 @@ func (t *topicsPartitions) storeTopics(topics []string)      { t.v.Store(t.ensur
 func (t *topicsPartitions) clone() topicsPartitionsData {
 	current := t.load()
 	clone := make(map[string]*topicPartitions, len(current))
-	for k, v := range current {
-		clone[k] = v
-	}
+	maps.Copy(clone, current)
 	return clone
 }
 
@@ -439,7 +441,7 @@ func (cl *Client) storePartitionsUpdate(topic string, l *topicPartitions, lv *to
 		})
 	} else {
 		for _, pr := range unknown.buffered {
-			cl.doPartitionRecord(l, lv, pr)
+			cl.doPartition(l, lv, pr)
 		}
 	}
 }
@@ -804,8 +806,8 @@ func (k *kip951move) doMove(cl *Client) {
 			}
 			dup := *l.load()
 			r := &dup
-			r.writablePartitions = append([]*topicPartition{}, r.writablePartitions...)
-			r.partitions = append([]*topicPartition{}, r.partitions...)
+			r.writablePartitions = slices.Clone(r.writablePartitions)
+			r.partitions = slices.Clone(r.partitions)
 			lr = oldNew{l, r}
 			topics[topic] = lr
 		}

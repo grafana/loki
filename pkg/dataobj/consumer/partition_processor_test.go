@@ -1,7 +1,6 @@
 package consumer
 
 import (
-	"context"
 	"strings"
 	"testing"
 	"time"
@@ -10,11 +9,11 @@ import (
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
-	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
+	"github.com/grafana/loki/v3/pkg/kafka/partition"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/scratch"
 
@@ -32,6 +31,7 @@ var testBuilderConfig = logsobj.BuilderConfig{
 
 func TestPartitionProcessor_Flush(t *testing.T) {
 	t.Run("reset happens after flush", func(t *testing.T) {
+		ctx := t.Context()
 		clock := quartz.NewMock(t)
 		p := newTestPartitionProcessor(t, clock)
 
@@ -50,9 +50,9 @@ func TestPartitionProcessor_Flush(t *testing.T) {
 		}
 		b, err := s.Marshal()
 		require.NoError(t, err)
-		p.processRecord(&kgo.Record{
-			Key:       []byte("test-tenant"),
-			Value:     b,
+		p.processRecord(ctx, partition.Record{
+			TenantID:  "test-tenant",
+			Content:   b,
 			Timestamp: now,
 		})
 
@@ -63,12 +63,13 @@ func TestPartitionProcessor_Flush(t *testing.T) {
 		require.Equal(t, now, p.lastModified)
 
 		// Flush the data object. The last modified time should also be reset.
-		require.NoError(t, p.flush())
+		require.NoError(t, p.flush(ctx))
 		require.Equal(t, now, p.lastFlushed)
 		require.True(t, p.lastModified.IsZero())
 	})
 
 	t.Run("has emitted metastore event", func(t *testing.T) {
+		ctx := t.Context()
 		clock := quartz.NewMock(t)
 		p := newTestPartitionProcessor(t, clock)
 
@@ -91,9 +92,9 @@ func TestPartitionProcessor_Flush(t *testing.T) {
 		}
 		b, err := s.Marshal()
 		require.NoError(t, err)
-		p.processRecord(&kgo.Record{
-			Key:       []byte("test-tenant"),
-			Value:     b,
+		p.processRecord(ctx, partition.Record{
+			TenantID:  "test-tenant",
+			Content:   b,
 			Timestamp: now,
 		})
 
@@ -101,7 +102,7 @@ func TestPartitionProcessor_Flush(t *testing.T) {
 		require.True(t, p.lastFlushed.IsZero())
 
 		// Flush the data object. The last modified time should also be reset.
-		require.NoError(t, p.flush())
+		require.NoError(t, p.flush(ctx))
 
 		// Check that the metastore event was emitted.
 		require.Len(t, client.produced, 1)
@@ -111,6 +112,7 @@ func TestPartitionProcessor_Flush(t *testing.T) {
 }
 
 func TestPartitionProcessor_IdleFlush(t *testing.T) {
+	ctx := t.Context()
 	clock := quartz.NewMock(t)
 	p := newTestPartitionProcessor(t, clock)
 	p.idleFlushTimeout = 60 * time.Minute
@@ -123,14 +125,14 @@ func TestPartitionProcessor_IdleFlush(t *testing.T) {
 	require.True(t, p.lastFlushed.IsZero())
 
 	// Should not flush when builder is un-initialized.
-	flushed, err := p.idleFlush()
+	flushed, err := p.idleFlush(ctx)
 	require.NoError(t, err)
 	require.False(t, flushed)
 	require.True(t, p.lastFlushed.IsZero())
 
 	// Should not flush if no records have been consumed.
 	require.NoError(t, p.initBuilder())
-	flushed, err = p.idleFlush()
+	flushed, err = p.idleFlush(ctx)
 	require.NoError(t, err)
 	require.False(t, flushed)
 	require.True(t, p.lastFlushed.IsZero())
@@ -145,22 +147,22 @@ func TestPartitionProcessor_IdleFlush(t *testing.T) {
 	}
 	b, err := s.Marshal()
 	require.NoError(t, err)
-	p.processRecord(&kgo.Record{
-		Key:       []byte("test-tenant"),
-		Value:     b,
+	p.processRecord(ctx, partition.Record{
+		TenantID:  "test-tenant",
+		Content:   b,
 		Timestamp: clock.Now(),
 	})
 	// A modification should have happened.
 	require.False(t, p.lastModified.IsZero())
 	// But the idle timeout should not have been reached.
-	flushed, err = p.idleFlush()
+	flushed, err = p.idleFlush(ctx)
 	require.NoError(t, err)
 	require.False(t, flushed)
 	require.True(t, p.lastFlushed.IsZero())
 
 	// Advance the clock. The idle timeout should have been reached.
 	clock.Advance((60 * time.Minute) + 1)
-	flushed, err = p.idleFlush()
+	flushed, err = p.idleFlush(ctx)
 	require.NoError(t, err)
 	require.True(t, flushed)
 	require.Equal(t, clock.Now(), p.lastFlushed)
@@ -168,6 +170,7 @@ func TestPartitionProcessor_IdleFlush(t *testing.T) {
 
 func TestPartitionProcessor_OffsetsCommitted(t *testing.T) {
 	t.Run("when builder is full", func(t *testing.T) {
+		ctx := t.Context()
 		clock := quartz.NewMock(t)
 		p := newTestPartitionProcessor(t, clock)
 		// Use our own builder instead of initBuilder.
@@ -190,16 +193,16 @@ func TestPartitionProcessor_OffsetsCommitted(t *testing.T) {
 		}
 		b, err := s.Marshal()
 		require.NoError(t, err)
-		p.processRecord(&kgo.Record{
-			Key:       []byte("test-tenant"),
-			Value:     b,
+		p.processRecord(ctx, partition.Record{
+			TenantID:  "test-tenant",
+			Content:   b,
 			Timestamp: now1,
 			Offset:    1,
 		})
 
 		// No flush should have occurred and no offsets should be committed.
 		require.True(t, p.lastFlushed.IsZero())
-		require.Nil(t, committer.records)
+		require.Nil(t, committer.offsets)
 
 		// Mark the builder as full.
 		wrappedBuilder.nextErr = logsobj.ErrBuilderFull
@@ -207,22 +210,23 @@ func TestPartitionProcessor_OffsetsCommitted(t *testing.T) {
 		// Append another record.
 		clock.Advance(time.Minute)
 		now2 := clock.Now()
-		p.processRecord(&kgo.Record{
-			Key:       []byte("test-tenant"),
-			Value:     b,
+		p.processRecord(ctx, partition.Record{
+			TenantID:  "test-tenant",
+			Content:   b,
 			Timestamp: now2,
 			Offset:    2,
 		})
 
 		// A flush should have occurred and offsets should be committed.
 		require.Equal(t, now2, p.lastFlushed)
-		require.Len(t, committer.records, 1)
+		require.Len(t, committer.offsets, 1)
 		// The offset committed should be the offset of the first record, as that
 		// was the record that was flushed.
-		require.Equal(t, int64(1), committer.records[0].Offset)
+		require.Equal(t, int64(1), committer.offsets[0])
 	})
 
 	t.Run("when idle timeout is exceeded", func(t *testing.T) {
+		ctx := t.Context()
 		clock := quartz.NewMock(t)
 		p := newTestPartitionProcessor(t, clock)
 		p.idleFlushTimeout = 60 * time.Minute
@@ -241,35 +245,36 @@ func TestPartitionProcessor_OffsetsCommitted(t *testing.T) {
 		}
 		b, err := s.Marshal()
 		require.NoError(t, err)
-		p.processRecord(&kgo.Record{
-			Key:       []byte("test-tenant"),
-			Value:     b,
+		p.processRecord(ctx, partition.Record{
+			TenantID:  "test-tenant",
+			Content:   b,
 			Timestamp: now1,
 			Offset:    1,
 		})
 
 		// No flush should have occurred and no offsets should be committed.
 		require.True(t, p.lastFlushed.IsZero())
-		require.Nil(t, committer.records)
+		require.Nil(t, committer.offsets)
 
 		// Advance the clock past the idle timeout.
 		clock.Advance(61 * time.Minute)
 		now2 := clock.Now()
-		flushed, err := p.idleFlush()
+		flushed, err := p.idleFlush(ctx)
 		require.NoError(t, err)
 		require.True(t, flushed)
 
 		// A flush should have occurred and offsets should be committed.
 		require.Equal(t, now2, p.lastFlushed)
-		require.Len(t, committer.records, 1)
+		require.Len(t, committer.offsets, 1)
 
 		// The offset committed should be the offset of the first record, as that
 		// was the record that was flushed.
-		require.Equal(t, int64(1), committer.records[0].Offset)
+		require.Equal(t, int64(1), committer.offsets[0])
 	})
 }
 
 func TestPartitionProcessor_ProcessRecord(t *testing.T) {
+	ctx := t.Context()
 	clock := quartz.NewMock(t)
 	p := newTestPartitionProcessor(t, clock)
 
@@ -287,9 +292,9 @@ func TestPartitionProcessor_ProcessRecord(t *testing.T) {
 	}
 	b, err := s.Marshal()
 	require.NoError(t, err)
-	p.processRecord(&kgo.Record{
-		Key:       []byte("test-tenant"),
-		Value:     b,
+	p.processRecord(ctx, partition.Record{
+		TenantID:  "test-tenant",
+		Content:   b,
 		Timestamp: clock.Now(),
 	})
 
@@ -301,8 +306,7 @@ func TestPartitionProcessor_ProcessRecord(t *testing.T) {
 func newTestPartitionProcessor(t *testing.T, clock quartz.Clock) *partitionProcessor {
 	t.Helper()
 	p := newPartitionProcessor(
-		context.Background(),
-		&kgo.Client{},
+		&mockCommitter{},
 		testBuilderConfig,
 		uploader.Config{},
 		metastore.Config{
@@ -310,14 +314,15 @@ func newTestPartitionProcessor(t *testing.T, clock quartz.Clock) *partitionProce
 		},
 		newMockBucket(),
 		nil,
-		"topic",
-		0,
 		log.NewNopLogger(),
 		prometheus.NewRegistry(),
 		60*time.Minute,
 		nil,
+		"test-topic",
+		1,
 	)
 	p.clock = clock
 	p.eventsProducerClient = &mockKafka{}
+	require.NotZero(t, p.partition)
 	return p
 }

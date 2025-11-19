@@ -275,7 +275,7 @@ For information on how to configure Loki, refer to the [OTel Collector topic](ht
 
 <!-- vale Google.Will = NO -->
 {{< admonition type="note" >}}
-When configuring the OpenTelemetry Collector, you must use `endpoint: http://<loki-addr>/otlp`, as the collector automatically completes the endpoint.  Entering the full endpoint will generate an error.
+When configuring the OpenTelemetry Collector, you must use `endpoint: http://<LOKI_ADDR>/otlp`, as the collector automatically completes the endpoint.  Entering the full endpoint will generate an error.
 {{< /admonition >}}
 <!-- vale Google.Will = YES -->
 
@@ -451,7 +451,7 @@ To query against your hosted log tenant in Grafana Cloud, use the **User** and *
 
 ```bash
 curl -u "User:$API_TOKEN" \
-  -G -s "<URL-PROVIDED-IN-LOKI-DATA-SOURCE-SETTINGS>/loki/api/v1/query" \
+  -G -s "<URL_PROVIDED_IN_LOKI_DATA_SOURCE_SETTINGS>/loki/api/v1/query" \
   --data-urlencode 'query=sum(rate({job="varlogs"}[10m])) by (level)' | jq
 ```
 
@@ -1440,8 +1440,8 @@ Example cURL command:
 
 ```bash
 curl -X GET \
-  <compactor_addr>/loki/api/v1/delete \
-  -H 'X-Scope-OrgID: <orgid>'
+  <COMPACTOR_ADDR>/loki/api/v1/delete \
+  -H 'X-Scope-OrgID: <ORG_ID>'
 ```
 
 The same example deletion request for Grafana Enterprise Logs uses Basic Authentication and specifies the tenant name as a user; `Tenant1` is the tenant name in this example. The password in this example is an access policy token that has been defined in the API_TOKEN environment variable. The token must be for an access policy with `logs:delete` scope for the tenant specified in the user field.
@@ -1449,7 +1449,7 @@ The same example deletion request for Grafana Enterprise Logs uses Basic Authent
 ```bash
 curl -u "Tenant1:$API_TOKEN" \
   -X GET \
-  <compactor_addr>/loki/api/v1/delete
+  <COMPACTOR_ADDR>/loki/api/v1/delete
 ```
 
 ### Request cancellation of a delete request
@@ -1487,8 +1487,8 @@ Example cURL command:
 
 ```bash
 curl -X DELETE \
-  '<compactor_addr>/loki/api/v1/delete?request_id=<request_id>' \
-  -H 'X-Scope-OrgID: <tenant-id>'
+  '<COMPACTOR_ADDR>/loki/api/v1/delete?request_id=<REQUEST_ID>' \
+  -H 'X-Scope-OrgID: <TENANT_ID>'
 ```
 
 The same example deletion cancellation request for Grafana Enterprise Logs uses Basic Authentication and specifies the tenant name as a user; `Tenant1` is the tenant name in this example. The password in this example is an access policy token that has been defined in the API_TOKEN environment variable. The token must be for an access policy with `logs:delete` scope for the tenant specified in the user field.
@@ -1496,7 +1496,7 @@ The same example deletion cancellation request for Grafana Enterprise Logs uses 
 ```bash
 curl -u "Tenant1:$API_TOKEN" \
   -X DELETE \
-  '<compactor_addr>/loki/api/v1/delete?request_id=<request_id>'
+  '<COMPACTOR_ADDR>/loki/api/v1/delete?request_id=<REQUEST_ID>'
 ```
 
 ## Format a LogQL query

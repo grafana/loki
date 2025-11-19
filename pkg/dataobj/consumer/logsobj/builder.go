@@ -415,6 +415,8 @@ func (b *Builder) CopyAndSort(obj *dataobj.Object) (*dataobj.Object, io.Closer, 
 	dur := prometheus.NewTimer(b.metrics.sortDurationSeconds)
 	defer dur.ObserveDuration()
 
+	defer b.Reset() // always reset builder when done
+
 	ctx := context.Background()
 	sort := parseSortOrder(b.cfg.DataobjSortOrder)
 

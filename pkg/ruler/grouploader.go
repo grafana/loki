@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/pkg/errors"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/rules"
@@ -25,7 +26,7 @@ func (GroupLoader) Parse(query string) (parser.Expr, error) {
 	return exprAdapter{expr}, nil
 }
 
-func (g GroupLoader) Load(identifier string, _ bool) (*rulefmt.RuleGroups, []error) {
+func (g GroupLoader) Load(identifier string, _ bool, _ model.ValidationScheme) (*rulefmt.RuleGroups, []error) {
 	b, err := os.ReadFile(identifier)
 	if err != nil {
 		return nil, []error{errors.Wrap(err, identifier)}
@@ -70,8 +71,8 @@ func NewCachingGroupLoader(l rules.GroupLoader) *CachingGroupLoader {
 	}
 }
 
-func (l *CachingGroupLoader) Load(identifier string, ignoreUnknownFields bool) (*rulefmt.RuleGroups, []error) {
-	groups, errs := l.loader.Load(identifier, ignoreUnknownFields)
+func (l *CachingGroupLoader) Load(identifier string, ignoreUnknownFields bool, validationScheme model.ValidationScheme) (*rulefmt.RuleGroups, []error) {
+	groups, errs := l.loader.Load(identifier, ignoreUnknownFields, validationScheme)
 	if errs != nil {
 		return nil, errs
 	}

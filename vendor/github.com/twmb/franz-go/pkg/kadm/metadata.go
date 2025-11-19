@@ -85,7 +85,7 @@ type TopicDetail struct {
 	IsInternal bool             // IsInternal is whether the topic is an internal topic.
 	Partitions PartitionDetails // Partitions contains details about the topic's partitions.
 
-	AuthorizedOperations []ACLOperation // AuthorizedOperations contains operations the requesting client is allowed to perform on this topic.
+	AuthorizedOperations []ACLOperation // AuthorizedOperations contains operations the requesting client is allowed to perform on this topic (requires [WithAuthorizedOps]).
 
 	Err error // Err is non-nil if the topic could not be loaded.
 }
@@ -93,7 +93,7 @@ type TopicDetail struct {
 // TopicDetails contains details for topics as returned by a metadata response.
 type TopicDetails map[string]TopicDetail
 
-// Topics returns a sorted list of all topic names.
+// Names returns a sorted list of all topic names.
 func (ds TopicDetails) Names() []string {
 	all := make([]string, 0, len(ds))
 	for t := range ds {
@@ -185,11 +185,11 @@ func (ds TopicDetails) TopicsList() TopicsList {
 
 // Metadata is the data from a metadata response.
 type Metadata struct {
-	Cluster              string         // Cluster is the cluster name, if any.
+	Cluster              string         // Cluster is the cluster ID, if any.
 	Controller           int32          // Controller is the node ID of the controller broker, if available, otherwise -1.
 	Brokers              BrokerDetails  // Brokers contains broker details, sorted by default.
 	Topics               TopicDetails   // Topics contains topic details.
-	AuthorizedOperations []ACLOperation // AuthorizedOperations contains operations the requesting client is allowed to perform, if the client has Describe permissions on the cluster.
+	AuthorizedOperations []ACLOperation // AuthorizedOperations contains operations the requesting client is allowed to perform, if the client has Describe permissions on the cluster (requires [WithAuthorizedOps]).
 }
 
 func int32s(is []int32) []int32 {
@@ -229,6 +229,7 @@ func (cl *Client) Metadata(
 
 func (cl *Client) metadata(ctx context.Context, noTopics bool, topics []string) (Metadata, error) {
 	req := kmsg.NewPtrMetadataRequest()
+
 	req.IncludeClusterAuthorizedOperations = true
 	req.IncludeTopicAuthorizedOperations = ctx.Value(&includeAuthOps) != nil
 	for _, t := range topics {
@@ -404,6 +405,55 @@ func (cl *Client) ListEndOffsets(ctx context.Context, topics ...string) (ListedO
 	return cl.listOffsets(ctx, 0, -1, topics)
 }
 
+// ListMaxTimestampOffsets returns the max offset AND timestamp for that offset
+// for each partition in each requested topic. This differs a little bit from
+// [ListEndOffsets] by:
+//
+//   - If the last offset is 30, the end offset is 31 (one past the end).
+//     ListEndOffsets returns 31, this returns 30.
+//   - ListEndOffsets does not return the timestamp of the offset; this does.
+//
+// If no topics are specified, all topics are listed. If a requested topic does
+// not exist, no offsets for it are listed and it is not present in the
+// response. This requires Kafka 3.0+.
+//
+// If any topics being listed do not exist, a special -1 partition is added
+// to the response with the expected error code kerr.UnknownTopicOrPartition.
+//
+// This may return *ShardErrors.
+func (cl *Client) ListMaxTimestampOffsets(ctx context.Context, topics ...string) (ListedOffsets, error) {
+	return cl.listOffsets(ctx, 0, -3, topics)
+}
+
+// ListLocalLogStartOffsets returns the start (oldest) offsets for each
+// partition in each requested topic on the broker's disk, rather than in the
+// cloud (i.e. if you are using tiered storage). If no topics are specified,
+// all topics are listed. If a requested topic does not exist, no offsets for
+// it are listed and it is not present in the response. This requires Kafka
+// 3.4+.
+//
+// If any topics being listed do not exist, a special -1 partition is added to
+// the response with the expected error code kerr.UnknownTopicOrPartition.
+//
+// This may return *ShardErrors.
+func (cl *Client) ListLocalLogStartOffsets(ctx context.Context, topics ...string) (ListedOffsets, error) {
+	return cl.listOffsets(ctx, 0, -4, topics)
+}
+
+// ListLatestRemoteOffsets returns the latest (newest) offsets for each
+// partition in each requested topic in the cloud, rather than the latest on
+// disk (i.e. if you are using tiered storage). If no topics are specified, all
+// topics are listed. If a requested topic does not exist, no offsets for it
+// are listed and it is not present in the response. This requires Kafka 3.9+.
+//
+// If any topics being listed do not exist, a special -1 partition is added to
+// the response with the expected error code kerr.UnknownTopicOrPartition.
+//
+// This may return *ShardErrors.
+func (cl *Client) ListLatestRemoteOffsets(ctx context.Context, topics ...string) (ListedOffsets, error) {
+	return cl.listOffsets(ctx, 0, -5, topics)
+}
+
 // ListCommittedOffsets returns newest committed offsets for each partition in
 // each requested topic. A committed offset may be slightly less than the
 // latest offset. In Kafka terms, committed means the last stable offset, and
@@ -488,6 +538,7 @@ func (cl *Client) listOffsets(ctx context.Context, isolation int8, timestamp int
 	}
 
 	req := kmsg.NewPtrListOffsetsRequest()
+	req.TimeoutMillis = cl.timeoutMillis
 	req.IsolationLevel = isolation
 	for t, td := range tds {
 		rt := kmsg.NewListOffsetsRequestTopic()

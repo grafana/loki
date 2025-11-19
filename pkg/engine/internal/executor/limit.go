@@ -4,9 +4,11 @@ import (
 	"context"
 
 	"github.com/apache/arrow-go/v18/arrow"
+
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
-func NewLimitPipeline(input Pipeline, skip, fetch uint32) *GenericPipeline {
+func NewLimitPipeline(input Pipeline, skip, fetch uint32, region *xcap.Region) *GenericPipeline {
 	// We gradually reduce offsetRemaining and limitRemaining as we process more records, as the
 	// offsetRemaining and limitRemaining may cross record boundaries.
 	var (
@@ -14,10 +16,10 @@ func NewLimitPipeline(input Pipeline, skip, fetch uint32) *GenericPipeline {
 		limitRemaining  = int64(fetch)
 	)
 
-	return newGenericPipeline(func(ctx context.Context, inputs []Pipeline) (arrow.Record, error) {
+	return newGenericPipelineWithRegion(func(ctx context.Context, inputs []Pipeline) (arrow.RecordBatch, error) {
 		var length int64
 		var start, end int64
-		var batch arrow.Record
+		var batch arrow.RecordBatch
 		var err error
 
 		// We skip yielding zero-length batches while offsetRemainig > 0
@@ -54,5 +56,5 @@ func NewLimitPipeline(input Pipeline, skip, fetch uint32) *GenericPipeline {
 		}
 
 		return batch.NewSlice(start, end), nil
-	}, input)
+	}, region, input)
 }

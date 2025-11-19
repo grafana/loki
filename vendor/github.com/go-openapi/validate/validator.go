@@ -769,7 +769,7 @@ func (s *basicSliceValidator) Validate(data interface{}) *Result {
 		return nil
 	}
 
-	for i := 0; i < int(size); i++ {
+	for i := range int(size) {
 		itemsValidator := newItemsValidator(s.Path, s.In, s.Items, s.Source, s.KnownFormats, s.Options)
 		ele := val.Index(i)
 		if err := itemsValidator.Validate(i, ele.Interface()); err != nil {

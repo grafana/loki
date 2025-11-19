@@ -7,16 +7,12 @@ import (
 	"testing"
 
 	"github.com/apache/arrow-go/v18/arrow"
-	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
 
 func TestMerge(t *testing.T) {
-	alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
-	defer alloc.AssertSize(t, 0)
-
 	schema := arrow.NewSchema([]arrow.Field{
 		{Name: "timestamp", Type: arrow.PrimitiveTypes.Int64, Nullable: true},
 		{Name: "message", Type: arrow.BinaryTypes.String, Nullable: true},
@@ -63,10 +59,10 @@ func TestMerge(t *testing.T) {
 			// Create fresh inputs using the pre-generated data
 			inputs := make([]Pipeline, n)
 			for i := range len(inputs) {
-				inputs[i] = NewArrowtestPipeline(alloc, schema, inputRows[i]...)
+				inputs[i] = NewArrowtestPipeline(schema, inputRows[i]...)
 			}
 
-			m, err := newMergePipeline(inputs, maxPrefetch)
+			m, err := newMergePipeline(inputs, maxPrefetch, nil)
 			require.NoError(t, err)
 			defer m.Close()
 
@@ -81,8 +77,6 @@ func TestMerge(t *testing.T) {
 					break
 				}
 				require.NoError(t, err, "Unexpected error during read")
-
-				defer rec.Release()
 
 				rows, err := arrowtest.RecordRows(rec)
 				require.NoError(t, err)
@@ -99,10 +93,10 @@ func TestMerge(t *testing.T) {
 			// Create fresh inputs using the pre-generated data
 			inputs := make([]Pipeline, n)
 			for i := range len(inputs) {
-				inputs[i] = NewArrowtestPipeline(alloc, schema, inputRows[i]...)
+				inputs[i] = NewArrowtestPipeline(schema, inputRows[i]...)
 			}
 
-			m, err := newMergePipeline(inputs, maxPrefetch)
+			m, err := newMergePipeline(inputs, maxPrefetch, nil)
 			require.NoError(t, err)
 			defer m.Close()
 
@@ -125,11 +119,7 @@ func TestMerge(t *testing.T) {
 				require.NoError(t, err, "Unexpected error during read")
 
 				gotRows += rec.NumRows()
-				rec.Release()
 			}
 		})
-
-		t.Log("current allocations", alloc.CurrentAlloc())
-		alloc.AssertSize(t, 0)
 	}
 }

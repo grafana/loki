@@ -40,6 +40,10 @@ func toTreeNode(n Node) *tree.Node {
 		for i := range node.Predicates {
 			treeNode.Properties = append(treeNode.Properties, tree.NewProperty(fmt.Sprintf("predicate[%d]", i), false, node.Predicates[i].String()))
 		}
+		treeNode.AddComment("@max_time_range", "", []tree.Property{
+			tree.NewProperty("start", false, node.MaxTimeRange.Start.Format(time.RFC3339Nano)),
+			tree.NewProperty("end", false, node.MaxTimeRange.End.Format(time.RFC3339Nano)),
+		})
 	case *Projection:
 		treeNode.Properties = []tree.Property{
 			tree.NewProperty("all", false, node.All),
@@ -72,12 +76,13 @@ func toTreeNode(n Node) *tree.Node {
 		}
 
 		treeNode.Properties = properties
-	case *ParseNode:
+	case *VectorAggregation:
 		treeNode.Properties = []tree.Property{
-			tree.NewProperty("kind", false, node.Kind.String()),
+			tree.NewProperty("operation", false, node.Operation),
 		}
-		if len(node.RequestedKeys) > 0 {
-			treeNode.Properties = append(treeNode.Properties, tree.NewProperty("requested_keys", true, toAnySlice(node.RequestedKeys)...))
+
+		if len(node.GroupBy) > 0 {
+			treeNode.Properties = append(treeNode.Properties, tree.NewProperty("group_by", true, toAnySlice(node.GroupBy)...))
 		}
 	case *ColumnCompat:
 		treeNode.Properties = []tree.Property{

@@ -3,6 +3,7 @@ package kgo
 import (
 	"context"
 	"errors"
+	"iter"
 	"reflect"
 	"time"
 	"unsafe"
@@ -464,6 +465,8 @@ func (fs Fetches) EachError(fn func(string, int32, error)) {
 // RecordIter returns an iterator over all records in a fetch.
 //
 // Note that errors should be inspected as well.
+//
+// Alternatively, use [RecordsAll] for a native Go iterator over records in the fetch.
 func (fs Fetches) RecordIter() *FetchesRecordIter {
 	iter := &FetchesRecordIter{fetches: fs}
 	iter.prepareNext()
@@ -518,6 +521,19 @@ beforePartition:
 		i.pi++
 		i.ri = 0
 		goto beforePartition
+	}
+}
+
+// RecordsAll returns a Go native iterator that yields the records in a fetch.
+//
+// Similarly to [RecordIter], the errors should be inspected separately.
+func (fs Fetches) RecordsAll() iter.Seq[*Record] {
+	return func(yield func(*Record) bool) {
+		for iter := fs.RecordIter(); !iter.Done(); {
+			if !yield(iter.Next()) {
+				return
+			}
+		}
 	}
 }
 

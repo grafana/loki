@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/twmb/franz-go/pkg/kbin"
@@ -159,34 +160,42 @@ type broker struct {
 	reapMu sync.Mutex // held when modifying a brokerCxn
 
 	// reqs manages incoming message requests.
-	reqs ringReq
+	reqs ring[promisedReq]
 	// dead is an atomic so a backed up reqs cannot block broker stoppage.
-	dead atomicBool
+	dead atomic.Bool
 }
 
 // brokerVersions is loaded once (and potentially a few times concurrently if
 // multiple connections are opening at once) and then forever stored for a
 // broker.
 type brokerVersions struct {
-	maxVers  [kmsg.MaxKey + 1]int16
-	minVers  [kmsg.MaxKey + 1]int16
+	maxVers  map[int16]int16
+	minVers  map[int16]int16
 	features map[string]int16
 }
 
-func newBrokerVersions() *brokerVersions {
+func (v *brokerVersions) maxVersion(key int16) int16 {
+	if version, ok := v.maxVers[key]; ok {
+		return version
+	}
+	return -1
+}
+
+func (v *brokerVersions) minVersion(key int16) int16 {
+	if version, ok := v.minVers[key]; ok {
+		return version
+	}
+	return -1
+}
+
+func newBrokerVersions(capacity int) *brokerVersions {
 	v := &brokerVersions{
+		maxVers:  make(map[int16]int16, capacity),
+		minVers:  make(map[int16]int16, capacity),
 		features: make(map[string]int16),
-	}
-	for i := range &v.maxVers {
-		v.maxVers[i] = -1
-	}
-	for i := range &v.minVers {
-		v.minVers[i] = -1
 	}
 	return v
 }
-
-func (*brokerVersions) len() int { return kmsg.MaxKey + 1 }
 
 func (b *broker) loadVersions() *brokerVersions {
 	loaded := b.versions.Load()
@@ -314,7 +323,7 @@ start:
 
 	v := b.loadVersions()
 
-	if int(req.Key()) > v.len() || b.cl.cfg.maxVersions != nil && !b.cl.cfg.maxVersions.HasKey(req.Key()) {
+	if b.cl.cfg.maxVersions != nil && !b.cl.cfg.maxVersions.HasKey(req.Key()) {
 		pr.promise(nil, errUnknownRequestKey)
 		return
 	}
@@ -322,7 +331,7 @@ start:
 	// If v.maxVers[0] is non-negative, then we loaded API
 	// versions. If the version for this request is negative, we
 	// know the broker cannot handle this request.
-	if v.maxVers[0] >= 0 && v.maxVers[req.Key()] < 0 {
+	if v.maxVersion(0) >= 0 && v.maxVersion(req.Key()) < 0 {
 		pr.promise(nil, errBrokerTooOld)
 		return
 	}
@@ -340,10 +349,10 @@ start:
 
 	// If we have no broker versions, we are pinned pre 0.10.0 and did not
 	// issue ApiVersions.
-	if brokerMax := v.maxVers[req.Key()]; brokerMax >= 0 && brokerMax < ourMax {
+	if brokerMax := v.maxVersion(req.Key()); brokerMax >= 0 && brokerMax < ourMax {
 		ourMax = brokerMax
 	}
-	if brokerMin := v.minVers[req.Key()]; brokerMin >= 0 && brokerMin > ourMin {
+	if brokerMin := v.minVersion(req.Key()); brokerMin >= 0 && brokerMin > ourMin {
 		ourMin = brokerMin
 	}
 
@@ -687,7 +696,7 @@ func (b *broker) connect(ctx context.Context) (net.Conn, error) {
 		if !errors.Is(err, ErrClientClosed) && !errors.Is(err, context.Canceled) && !strings.Contains(err.Error(), "operation was canceled") {
 			if errors.Is(err, io.EOF) {
 				b.cl.cfg.logger.Log(LogLevelWarn, "unable to open connection to broker due to an immediate EOF, which often means the client is using TLS when the broker is not expecting it (is TLS misconfigured?)", "addr", b.addr, "broker", logID(b.meta.NodeID), "err", err)
-				return nil, &ErrFirstReadEOF{kind: firstReadTLS, err: err}
+				return nil, &ErrFirstReadEOF{kind: firstReadDial, err: err}
 			}
 			b.cl.cfg.logger.Log(LogLevelWarn, "unable to open connection to broker", "addr", b.addr, "broker", logID(b.meta.NodeID), "err", err)
 		}
@@ -700,7 +709,7 @@ func (b *broker) connect(ctx context.Context) (net.Conn, error) {
 // brokerCxn manages an actual connection to a Kafka broker. This is separate
 // the broker struct to allow lazy connection (re)creation.
 type brokerCxn struct {
-	throttleUntil atomicI64 // atomic nanosec
+	throttleUntil atomic.Int64 // atomic nanosec
 
 	conn net.Conn
 
@@ -717,17 +726,17 @@ type brokerCxn struct {
 	// The following four fields are used for connection reaping.
 	// Write is only updated in one location; read is updated in three
 	// due to readConn, readConnAsync, and discard.
-	lastWrite atomicI64
-	lastRead  atomicI64
-	writing   atomicBool
-	reading   atomicBool
+	lastWrite atomic.Int64
+	lastRead  atomic.Int64
+	writing   atomic.Bool
+	reading   atomic.Bool
 
 	successes uint64
 
 	// resps manages reading kafka responses.
-	resps ringResp
+	resps ring[promisedResp]
 	// dead is an atomic so that a backed up resps cannot block cxn death.
-	dead atomicBool
+	dead atomic.Bool
 	// closed in cloneConn; allows throttle waiting to quit
 	deadCh chan struct{}
 }
@@ -744,8 +753,8 @@ func (cxn *brokerCxn) init(isProduceCxn bool, tries int) error {
 			}
 		} else {
 			// We have a max versions, and it indicates no support
-			// for ApiVersions. We just store a default -1 set.
-			cxn.b.storeVersions(newBrokerVersions())
+			// for ApiVersions. We just store a default empty map.
+			cxn.b.storeVersions(newBrokerVersions(0))
 		}
 	}
 
@@ -793,8 +802,12 @@ start:
 	// api versions does *not* use flexible response headers; see comment in promisedResp
 	rawResp, err := cxn.readResponse(nil, req.Key(), req.GetVersion(), corrID, false, rt, bytesWritten, writeWait, timeToWrite, readEnqueue)
 	if err != nil {
-		if strings.HasSuffix(err.Error(), "connection reset by peer") {
+		var errno syscall.Errno
+		if errors.As(err, &errno) && isConnReset(errno) {
 			return &errApiVersionsReset{err}
+		} else if errors.Is(err, io.EOF) {
+			cxn.b.cl.cfg.logger.Log(LogLevelWarn, "read from broker received EOF during api versions discovery, which often happens when the broker requires TLS and the client is not using it (is TLS misconfigured?)", "addr", cxn.b.addr, "broker", logID(cxn.b.meta.NodeID), "err", err)
+			err = &ErrFirstReadEOF{kind: firstReadTLS, err: err}
 		}
 		return err
 	}
@@ -841,11 +854,8 @@ start:
 		return errors.New("ApiVersions response invalidly contained no ApiKeys")
 	}
 
-	v := newBrokerVersions()
+	v := newBrokerVersions(len(resp.ApiKeys))
 	for _, key := range resp.ApiKeys {
-		if key.ApiKey > kmsg.MaxKey || key.ApiKey < 0 {
-			continue
-		}
 		v.maxVers[key.ApiKey] = key.MaxVersion
 		v.minVers[key.ApiKey] = key.MinVersion
 	}
@@ -1027,10 +1037,7 @@ func (cxn *brokerCxn) doSasl(authenticate bool) error {
 		// every second after, we add between 0.05s or 0.08s to our
 		// backoff. At 12hr, we reauth ~24 to 28min before the
 		// lifetime.
-		usePessimismMillis := maxPessimismMillis
-		if minPessimismMillis > maxPessimismMillis {
-			usePessimismMillis = minPessimismMillis
-		}
+		usePessimismMillis := max(minPessimismMillis, maxPessimismMillis)
 		useLifetimeMillis := lifetimeMillis - int64(usePessimismMillis)
 
 		// Subtracting our min pessimism may result in our connection
@@ -1083,7 +1090,7 @@ func (cxn *brokerCxn) writeRequest(ctx context.Context, enqueuedForWritingAt tim
 			if writeErr != nil {
 				after.Stop()
 				writeWait = time.Since(enqueuedForWritingAt)
-				return
+				return corrID, bytesWritten, writeWait, timeToWrite, readEnqueue, writeErr
 			}
 		}
 	}
@@ -1109,14 +1116,14 @@ func (cxn *brokerCxn) writeRequest(ctx context.Context, enqueuedForWritingAt tim
 	}
 
 	if writeErr != nil {
-		return
+		return corrID, bytesWritten, writeWait, timeToWrite, readEnqueue, writeErr
 	}
 	corrID = cxn.corrID
 	cxn.corrID++
 	if cxn.corrID < 0 {
 		cxn.corrID = 0
 	}
-	return
+	return corrID, bytesWritten, writeWait, timeToWrite, readEnqueue, writeErr
 }
 
 func (cxn *brokerCxn) writeConn(
@@ -1165,7 +1172,7 @@ func (cxn *brokerCxn) writeConn(
 			maybeUpdateCtxErr(cxn.cl.ctx, ctx, &writeErr)
 		}
 	}
-	return
+	return bytesWritten, writeWait, timeToWrite, readEnqueue, writeErr
 }
 
 func (cxn *brokerCxn) readConn(
@@ -1227,7 +1234,7 @@ func (cxn *brokerCxn) readConn(
 			maybeUpdateCtxErr(cxn.cl.ctx, ctx, &err)
 		}
 	}
-	return
+	return nread, buf, readWait, timeToRead, err
 }
 
 // Parses a length 4 slice and enforces the min / max read size based off the

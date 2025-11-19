@@ -1572,9 +1572,7 @@ type Bootstrap_StaticResources struct {
 	// If a network based configuration source is specified for :ref:`cds_config
 	// <envoy_v3_api_field_config.bootstrap.v3.Bootstrap.DynamicResources.cds_config>`, it's necessary
 	// to have some initial cluster definitions available to allow Envoy to know
-	// how to speak to the management server. These cluster definitions may not
-	// use :ref:`EDS <arch_overview_dynamic_config_eds>` (i.e. they should be static
-	// IP or DNS-based).
+	// how to speak to the management server.
 	Clusters []*v37.Cluster `protobuf:"bytes,2,rep,name=clusters,proto3" json:"clusters,omitempty"`
 	// These static secrets can be used by :ref:`SdsSecretConfig
 	// <envoy_v3_api_msg_extensions.transport_sockets.tls.v3.SdsSecretConfig>`

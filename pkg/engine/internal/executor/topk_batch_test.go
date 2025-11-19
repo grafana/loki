@@ -39,7 +39,7 @@ var (
 		{
 			// This record contains a nil sort key to test the behaviour of
 			// NullsFirst.
-			{"ts": nil, "table": "D", "line": "line A"},
+			{"table": "D", "line": "line A"},
 		},
 	}
 )
@@ -104,9 +104,6 @@ func Test_topkBatch(t *testing.T) {
 
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
-			defer alloc.AssertSize(t, 0)
-
 			b := topkBatch{
 				Fields:     []arrow.Field{{Name: "ts", Type: arrow.PrimitiveTypes.Int64, Nullable: true}},
 				K:          5,
@@ -117,17 +114,16 @@ func Test_topkBatch(t *testing.T) {
 			defer b.Reset()
 
 			for _, rows := range records {
-				rec := rows.Record(alloc, rows.Schema())
-				b.Put(alloc, rec)
-				rec.Release()
+				rec := rows.Record(memory.DefaultAllocator, rows.Schema())
+				b.Put(rec)
 			}
 
-			output := b.Compact(alloc)
-			defer output.Release()
+			output := b.Compact()
 
 			actual, err := arrowtest.RecordRows(output)
 			require.NoError(t, err)
-			require.Equal(t, tc.expect, actual)
+			require.Len(t, actual, len(tc.expect))
+			require.ElementsMatch(t, tc.expect, actual, "rows should match (order may differ)")
 		})
 	}
 }
@@ -135,9 +131,6 @@ func Test_topkBatch(t *testing.T) {
 // Test_topkBatch_MaxUnused ensures that compaction is automatically triggered
 // upon appending a record when the number of unused rows gets too high.
 func Test_topkBatch_MaxUnused(t *testing.T) {
-	alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
-	defer alloc.AssertSize(t, 0)
-
 	// TopK 2, descending order.
 	b := topkBatch{
 		Fields:    []arrow.Field{{Name: "ts", Type: arrow.PrimitiveTypes.Int64, Nullable: true}},
@@ -202,12 +195,65 @@ func Test_topkBatch_MaxUnused(t *testing.T) {
 	}
 
 	for i, tc := range seq {
-		rec := tc.rows.Record(alloc, tc.rows.Schema())
-		b.Put(alloc, rec)
-		rec.Release()
+		rec := tc.rows.Record(memory.DefaultAllocator, tc.rows.Schema())
+		b.Put(rec)
 
 		used, unused := b.Size()
 		assert.Equal(t, tc.expectUsed, used, "unexpected number of used rows after record %d", i)
 		assert.Equal(t, tc.expectUnused, unused, "unexpected number of unused rows after record %d", i)
+	}
+}
+
+func Test_iterContiguousRanges(t *testing.T) {
+	tt := []struct {
+		name   string
+		rows   []int
+		ranges []struct{ start, end int }
+	}{
+		{
+			name: "empty slice",
+			rows: []int{},
+		},
+		{
+			name:   "single row",
+			rows:   []int{5},
+			ranges: []struct{ start, end int }{{5, 6}},
+		},
+		{
+			name:   "single contiguous range",
+			rows:   []int{1, 2, 3},
+			ranges: []struct{ start, end int }{{1, 4}},
+		},
+		{
+			name:   "multiple contiguous ranges",
+			rows:   []int{1, 2, 3, 5, 6, 7},
+			ranges: []struct{ start, end int }{{1, 4}, {5, 8}},
+		},
+		{
+			name:   "non-contiguous single rows",
+			rows:   []int{1, 3, 5},
+			ranges: []struct{ start, end int }{{1, 2}, {3, 4}, {5, 6}},
+		},
+		{
+			name:   "all rows",
+			rows:   []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+			ranges: []struct{ start, end int }{{0, 10}},
+		},
+		{
+			name:   "first and last row",
+			rows:   []int{0, 9},
+			ranges: []struct{ start, end int }{{0, 1}, {9, 10}},
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			var got []struct{ start, end int }
+			iterContiguousRanges(tc.rows, func(start, end int) bool {
+				got = append(got, struct{ start, end int }{start, end})
+				return true
+			})
+			require.Equal(t, tc.ranges, got, "ranges should match")
+		})
 	}
 }

@@ -17,7 +17,7 @@ permissions:
 env:
   BUILD_TIMEOUT: 60
   IMAGE_PREFIX: grafana
-  GO_VERSION: "1.24.4"
+  GO_VERSION: "1.25.4"
 
 jobs:
   loki-query-tee-image:
@@ -75,7 +75,7 @@ jobs:
             IMAGE_TAG=${{ steps.pr-version.outputs.image_version }}
             GO_VERSION=${{ env.GO_VERSION }}
           context: .
-          file: ./cmd/querytee/Dockerfile.cross
+          file: ./cmd/querytee/Dockerfile
           outputs: push-by-digest=true,type=image,name=${{ steps.pr-version.outputs.image_name }},push=true
           platforms: ${{ matrix.arch }}
           provenance: true
@@ -130,4 +130,3 @@ jobs:
           echo "$IMAGE"
           echo "\`\`\`"
           echo ""
-
