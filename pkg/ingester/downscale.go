@@ -40,6 +40,16 @@ func (i *Ingester) PreparePartitionDownscaleHandler(w http.ResponseWriter, r *ht
 		return
 	}
 
+	// Log the incoming request
+	level.Info(logger).Log(
+		"msg", "handling partition ring request (PreparePartitionDownscaleHandler)",
+		"method", r.Method,
+		"path", r.URL.Path,
+		"remote_addr", r.RemoteAddr,
+		"user_agent", r.UserAgent(),
+		"query", r.URL.RawQuery,
+	)
+
 	switch r.Method {
 	case http.MethodPost:
 		// It's not allowed to prepare the downscale while in PENDING state. Why? Because if the downscale
@@ -73,8 +83,19 @@ func (i *Ingester) PreparePartitionDownscaleHandler(w http.ResponseWriter, r *ht
 			return
 		}
 
+		partitionMeta, err := i.partitionRingLifecycler.GetPartitionMetadata(r.Context())
+		if err != nil {
+			level.Warn(logger).Log("msg", "failed to get partition metadata; Assuming partition have no metadata attached to it")
+			partitionMeta = make(map[string]string)
+		}
+
+		partitionDisabledByOperator := false
+		if _, ok := partitionMeta["disabled_by_operator"]; ok {
+			partitionDisabledByOperator = true
+		}
+
 		// If partition is inactive, make it active. We ignore other states Active and especially Pending.
-		if state == ring.PartitionInactive {
+		if state == ring.PartitionInactive && !partitionDisabledByOperator {
 			// We don't switch it back to PENDING state if there are not enough owners because we want to guarantee consistency
 			// in the read path. If the partition is within the lookback period we need to guarantee that partition will be queried.
 			// Moving back to PENDING will cause us loosing consistency, because PENDING partitions are not queried by design.
