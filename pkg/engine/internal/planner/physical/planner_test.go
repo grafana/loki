@@ -518,8 +518,8 @@ func TestPlanner_Convert_RangeAggregations(t *testing.T) {
 		types.RangeAggregationTypeCount,
 		time.Date(2023, 10, 1, 0, 0, 0, 0, time.UTC), // Start Time
 		time.Date(2023, 10, 1, 1, 0, 0, 0, time.UTC), // End Time
-		0,                                            // Step
-		time.Minute*5,                                // Range
+		0,             // Step
+		time.Minute*5, // Range
 	).Compat(true)
 
 	logicalPlan, err := b.ToPlan()
@@ -572,8 +572,8 @@ func TestPlanner_Convert_Rate(t *testing.T) {
 		types.RangeAggregationTypeCount,
 		time.Date(2023, 10, 1, 0, 0, 0, 0, time.UTC), // Start Time
 		time.Date(2023, 10, 1, 1, 0, 0, 0, time.UTC), // End Time
-		0,                                            // Step
-		time.Minute*5,                                // Range
+		0,             // Step
+		time.Minute*5, // Range
 	).BinOpRight(
 		types.BinaryOpDiv, logical.NewLiteral(int64(300)),
 	)
@@ -628,8 +628,8 @@ func TestPlanner_BuildMathExpressions(t *testing.T) {
 		types.RangeAggregationTypeCount,
 		time.Date(2023, 10, 1, 0, 0, 0, 0, time.UTC), // Start Time
 		time.Date(2023, 10, 1, 1, 0, 0, 0, time.UTC), // End Time
-		0,                                            // Step
-		time.Minute*5,                                // Range
+		0,             // Step
+		time.Minute*5, // Range
 	).BinOpRight(
 		types.BinaryOpDiv, logical.NewLiteral(int64(300)),
 	).BinOpRight(
@@ -682,8 +682,8 @@ func TestPlanner_BuildMathExpressionsWithTwoInputs(t *testing.T) {
 		types.RangeAggregationTypeCount,
 		time.Date(2023, 10, 1, 0, 0, 0, 0, time.UTC), // Start Time
 		time.Date(2023, 10, 1, 1, 0, 0, 0, time.UTC), // End Time
-		0,                                            // Step
-		time.Minute*5,                                // Range
+		0,             // Step
+		time.Minute*5, // Range
 	).BinOpRight(
 		types.BinaryOpDiv, logical.NewLiteral(float64(300)),
 	)
@@ -715,8 +715,8 @@ func TestPlanner_BuildMathExpressionsWithTwoInputs(t *testing.T) {
 		types.RangeAggregationTypeCount,
 		time.Date(2023, 10, 1, 0, 0, 0, 0, time.UTC), // Start Time
 		time.Date(2023, 10, 1, 1, 0, 0, 0, time.UTC), // End Time
-		0,                                            // Step
-		time.Minute*5,                                // Range
+		0,             // Step
+		time.Minute*5, // Range
 	).BinOpRight(
 		types.BinaryOpDiv, logical.NewLiteral(float64(300)),
 	).BinOpRight(

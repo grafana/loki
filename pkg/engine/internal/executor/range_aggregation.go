@@ -10,6 +10,7 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
+
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
