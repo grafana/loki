@@ -99,6 +99,11 @@ func (s *ScanSet) Shards() iter.Seq[Node] {
 				node.Projections = cloneExpressions(s.Projections)
 				node.Predicates = cloneExpressions(s.Predicates)
 
+				// Preserve the original NodeID from the target's DataObjScan to
+				// maintain traceability. This allows sharded nodes to be traced
+				// back to their originating target.
+				node.NodeID = target.DataObject.NodeID
+
 				if !yield(node) {
 					return
 				}
