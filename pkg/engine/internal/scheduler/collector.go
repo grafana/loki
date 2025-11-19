@@ -2,7 +2,6 @@ package scheduler
 
 import (
 	"context"
-	"math"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -138,7 +137,8 @@ func computeSaturation(sched *Scheduler) float64 {
 	})
 
 	if compute == 0 {
-		return math.Inf(1)
+		// If we have no compute capacity, fall back to the load as our ratio.
+		return float64(load)
 	}
 	return float64(load) / float64(compute)
 }
