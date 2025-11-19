@@ -14,6 +14,16 @@ import (
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
+// End of support notice: As of October 1, 2025, Amazon S3 has discontinued
+// support for Email Grantee Access Control Lists (ACLs). If you attempt to use an
+// Email Grantee ACL in a request after October 1, 2025, the request will receive
+// an HTTP 405 (Method Not Allowed) error.
+//
+// This change affects the following Amazon Web Services Regions: US East (N.
+// Virginia), US West (N. California), US West (Oregon), Asia Pacific (Singapore),
+// Asia Pacific (Sydney), Asia Pacific (Tokyo), Europe (Ireland), and South America
+// (São Paulo).
+//
 // This operation is not supported for directory buckets.
 //
 // Uses the acl subresource to set the access control list (ACL) permissions for a
@@ -154,6 +164,10 @@ import (
 // [CopyObject]
 //
 // [GetObject]
+//
+// You must URL encode any signed header values that contain spaces. For example,
+// if your header value is my file.txt , containing two spaces after my , you must
+// URL encode this value to my%20%20file.txt .
 //
 // [Regions and Endpoints]: https://docs.aws.amazon.com/general/latest/gr/rande.html#s3_region
 // [Access Control List (ACL) Overview]: https://docs.aws.amazon.com/AmazonS3/latest/dev/acl-overview.html
@@ -439,40 +453,7 @@ func (c *Client) addOperationPutObjectAclMiddlewares(stack *middleware.Stack, op
 	if err = addInterceptAttempt(stack, options); err != nil {
 		return err
 	}
-	if err = addInterceptExecution(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptBeforeSerialization(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptAfterSerialization(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptBeforeSigning(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptAfterSigning(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptTransmit(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptBeforeDeserialization(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptAfterDeserialization(stack, options); err != nil {
-		return err
-	}
-	if err = addSpanInitializeStart(stack); err != nil {
-		return err
-	}
-	if err = addSpanInitializeEnd(stack); err != nil {
-		return err
-	}
-	if err = addSpanBuildRequestStart(stack); err != nil {
-		return err
-	}
-	if err = addSpanBuildRequestEnd(stack); err != nil {
+	if err = addInterceptors(stack, options); err != nil {
 		return err
 	}
 	return nil

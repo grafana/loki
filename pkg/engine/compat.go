@@ -20,7 +20,7 @@ import (
 )
 
 type ResultBuilder interface {
-	CollectRecord(arrow.Record)
+	CollectRecord(arrow.RecordBatch)
 	Build(stats.Result, *metadata.Context) logqlmodel.Result
 	Len() int
 }
@@ -60,7 +60,7 @@ type rowBuilder struct {
 	parsedEmptyKeys []string
 }
 
-func (b *streamsResultBuilder) CollectRecord(rec arrow.Record) {
+func (b *streamsResultBuilder) CollectRecord(rec arrow.RecordBatch) {
 	numRows := int(rec.NumRows())
 	if numRows == 0 {
 		return
@@ -294,7 +294,7 @@ func newVectorResultBuilder() *vectorResultBuilder {
 	}
 }
 
-func (b *vectorResultBuilder) CollectRecord(rec arrow.Record) {
+func (b *vectorResultBuilder) CollectRecord(rec arrow.RecordBatch) {
 	for row := range int(rec.NumRows()) {
 		sample, ok := b.collectRow(rec, row)
 		if !ok {
@@ -305,7 +305,7 @@ func (b *vectorResultBuilder) CollectRecord(rec arrow.Record) {
 	}
 }
 
-func (b *vectorResultBuilder) collectRow(rec arrow.Record, i int) (promql.Sample, bool) {
+func (b *vectorResultBuilder) collectRow(rec arrow.RecordBatch, i int) (promql.Sample, bool) {
 	return collectSamplesFromRow(b.lblsBuilder, rec, i)
 }
 
@@ -337,7 +337,7 @@ func newMatrixResultBuilder() *matrixResultBuilder {
 	}
 }
 
-func (b *matrixResultBuilder) CollectRecord(rec arrow.Record) {
+func (b *matrixResultBuilder) CollectRecord(rec arrow.RecordBatch) {
 	for row := range int(rec.NumRows()) {
 		sample, ok := b.collectRow(rec, row)
 		if !ok {
@@ -367,7 +367,7 @@ func (b *matrixResultBuilder) CollectRecord(rec arrow.Record) {
 	}
 }
 
-func (b *matrixResultBuilder) collectRow(rec arrow.Record, i int) (promql.Sample, bool) {
+func (b *matrixResultBuilder) collectRow(rec arrow.RecordBatch, i int) (promql.Sample, bool) {
 	return collectSamplesFromRow(b.lblsBuilder, rec, i)
 }
 
@@ -398,7 +398,7 @@ func (b *matrixResultBuilder) Len() int {
 	return total
 }
 
-func collectSamplesFromRow(builder *labels.Builder, rec arrow.Record, i int) (promql.Sample, bool) {
+func collectSamplesFromRow(builder *labels.Builder, rec arrow.RecordBatch, i int) (promql.Sample, bool) {
 	var sample promql.Sample
 	builder.Reset(labels.EmptyLabels())
 

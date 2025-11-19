@@ -93,7 +93,7 @@ func (a *Timestamp) ValueStr(i int) string {
 	}
 
 	toTime, _ := a.DataType().(*arrow.TimestampType).GetToTimeFunc()
-	return toTime(a.values[i]).Format("2006-01-02 15:04:05.999999999Z0700")
+	return toTime(a.values[i]).Format(time.RFC3339Nano)
 }
 
 func (a *Timestamp) GetOneForMarshal(i int) interface{} {

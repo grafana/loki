@@ -81,24 +81,28 @@ type KubernetesClusterCreateRequest struct {
 
 	NodePools []*KubernetesNodePoolCreateRequest `json:"node_pools,omitempty"`
 
-	MaintenancePolicy              *KubernetesMaintenancePolicy              `json:"maintenance_policy"`
-	AutoUpgrade                    bool                                      `json:"auto_upgrade"`
-	SurgeUpgrade                   bool                                      `json:"surge_upgrade"`
-	ControlPlaneFirewall           *KubernetesControlPlaneFirewall           `json:"control_plane_firewall,omitempty"`
-	ClusterAutoscalerConfiguration *KubernetesClusterAutoscalerConfiguration `json:"cluster_autoscaler_configuration,omitempty"`
-	RoutingAgent                   *KubernetesRoutingAgent                   `json:"routing_agent,omitempty"`
+	MaintenancePolicy                 *KubernetesMaintenancePolicy                 `json:"maintenance_policy"`
+	AutoUpgrade                       bool                                         `json:"auto_upgrade"`
+	SurgeUpgrade                      bool                                         `json:"surge_upgrade"`
+	ControlPlaneFirewall              *KubernetesControlPlaneFirewall              `json:"control_plane_firewall,omitempty"`
+	ClusterAutoscalerConfiguration    *KubernetesClusterAutoscalerConfiguration    `json:"cluster_autoscaler_configuration,omitempty"`
+	RoutingAgent                      *KubernetesRoutingAgent                      `json:"routing_agent,omitempty"`
+	AmdGpuDevicePlugin                *KubernetesAmdGpuDevicePlugin                `json:"amd_gpu_device_plugin,omitempty"`
+	AmdGpuDeviceMetricsExporterPlugin *KubernetesAmdGpuDeviceMetricsExporterPlugin `json:"amd_gpu_device_metrics_exporter_plugin,omitempty"`
 }
 
 // KubernetesClusterUpdateRequest represents a request to update a Kubernetes cluster.
 type KubernetesClusterUpdateRequest struct {
-	Name                           string                                    `json:"name,omitempty"`
-	Tags                           []string                                  `json:"tags,omitempty"`
-	MaintenancePolicy              *KubernetesMaintenancePolicy              `json:"maintenance_policy,omitempty"`
-	AutoUpgrade                    *bool                                     `json:"auto_upgrade,omitempty"`
-	SurgeUpgrade                   bool                                      `json:"surge_upgrade,omitempty"`
-	ControlPlaneFirewall           *KubernetesControlPlaneFirewall           `json:"control_plane_firewall,omitempty"`
-	ClusterAutoscalerConfiguration *KubernetesClusterAutoscalerConfiguration `json:"cluster_autoscaler_configuration,omitempty"`
-	RoutingAgent                   *KubernetesRoutingAgent                   `json:"routing_agent,omitempty"`
+	Name                              string                                       `json:"name,omitempty"`
+	Tags                              []string                                     `json:"tags,omitempty"`
+	MaintenancePolicy                 *KubernetesMaintenancePolicy                 `json:"maintenance_policy,omitempty"`
+	AutoUpgrade                       *bool                                        `json:"auto_upgrade,omitempty"`
+	SurgeUpgrade                      bool                                         `json:"surge_upgrade,omitempty"`
+	ControlPlaneFirewall              *KubernetesControlPlaneFirewall              `json:"control_plane_firewall,omitempty"`
+	ClusterAutoscalerConfiguration    *KubernetesClusterAutoscalerConfiguration    `json:"cluster_autoscaler_configuration,omitempty"`
+	RoutingAgent                      *KubernetesRoutingAgent                      `json:"routing_agent,omitempty"`
+	AmdGpuDevicePlugin                *KubernetesAmdGpuDevicePlugin                `json:"amd_gpu_device_plugin,omitempty"`
+	AmdGpuDeviceMetricsExporterPlugin *KubernetesAmdGpuDeviceMetricsExporterPlugin `json:"amd_gpu_device_metrics_exporter_plugin,omitempty"`
 
 	// Convert cluster to run highly available control plane
 	HA *bool `json:"ha,omitempty"`
@@ -225,13 +229,15 @@ type KubernetesCluster struct {
 
 	NodePools []*KubernetesNodePool `json:"node_pools,omitempty"`
 
-	MaintenancePolicy              *KubernetesMaintenancePolicy              `json:"maintenance_policy,omitempty"`
-	AutoUpgrade                    bool                                      `json:"auto_upgrade,omitempty"`
-	SurgeUpgrade                   bool                                      `json:"surge_upgrade,omitempty"`
-	RegistryEnabled                bool                                      `json:"registry_enabled,omitempty"`
-	ControlPlaneFirewall           *KubernetesControlPlaneFirewall           `json:"control_plane_firewall,omitempty"`
-	ClusterAutoscalerConfiguration *KubernetesClusterAutoscalerConfiguration `json:"cluster_autoscaler_configuration,omitempty"`
-	RoutingAgent                   *KubernetesRoutingAgent                   `json:"routing_agent,omitempty"`
+	MaintenancePolicy                 *KubernetesMaintenancePolicy                 `json:"maintenance_policy,omitempty"`
+	AutoUpgrade                       bool                                         `json:"auto_upgrade,omitempty"`
+	SurgeUpgrade                      bool                                         `json:"surge_upgrade,omitempty"`
+	RegistryEnabled                   bool                                         `json:"registry_enabled,omitempty"`
+	ControlPlaneFirewall              *KubernetesControlPlaneFirewall              `json:"control_plane_firewall,omitempty"`
+	ClusterAutoscalerConfiguration    *KubernetesClusterAutoscalerConfiguration    `json:"cluster_autoscaler_configuration,omitempty"`
+	RoutingAgent                      *KubernetesRoutingAgent                      `json:"routing_agent,omitempty"`
+	AmdGpuDevicePlugin                *KubernetesAmdGpuDevicePlugin                `json:"amd_gpu_device_plugin,omitempty"`
+	AmdGpuDeviceMetricsExporterPlugin *KubernetesAmdGpuDeviceMetricsExporterPlugin `json:"amd_gpu_device_metrics_exporter_plugin,omitempty"`
 
 	Status    *KubernetesClusterStatus `json:"status,omitempty"`
 	CreatedAt time.Time                `json:"created_at,omitempty"`
@@ -276,6 +282,17 @@ type KubernetesControlPlaneFirewall struct {
 
 // KubernetesRoutingAgent represents information about the routing-agent cluster plugin.
 type KubernetesRoutingAgent struct {
+	Enabled *bool `json:"enabled"`
+}
+
+// KubernetesAmdGpuDevicePlugin represents information about the AMD GPU Device Plugin cluster plugin.
+// If a cluster has a node pool with an AMD GPU it will be enabled by default.
+type KubernetesAmdGpuDevicePlugin struct {
+	Enabled *bool `json:"enabled"`
+}
+
+// KubernetesAmdGpuDeviceMetricsExporterPlugin represents information about the AMD GPU Device Metrics Exporter cluster plugin.
+type KubernetesAmdGpuDeviceMetricsExporterPlugin struct {
 	Enabled *bool `json:"enabled"`
 }
 

@@ -43,6 +43,8 @@ func (a *IncrementalAlterConfigsRequest) encode(pe packetEncoder) error {
 	}
 
 	pe.putBool(a.ValidateOnly)
+
+	pe.putEmptyTaggedFieldArray()
 	return nil
 }
 
@@ -69,7 +71,8 @@ func (a *IncrementalAlterConfigsRequest) decode(pd packetDecoder, version int16)
 
 	a.ValidateOnly = validateOnly
 
-	return nil
+	_, err = pd.getEmptyTaggedFieldArray()
+	return err
 }
 
 func (a *IncrementalAlterConfigsResource) encode(pe packetEncoder) error {
@@ -93,6 +96,7 @@ func (a *IncrementalAlterConfigsResource) encode(pe packetEncoder) error {
 		}
 	}
 
+	pe.putEmptyTaggedFieldArray()
 	return nil
 }
 
@@ -131,6 +135,7 @@ func (a *IncrementalAlterConfigsResource) decode(pd packetDecoder, version int16
 			a.ConfigEntries[name] = v
 		}
 	}
+	_, err = pd.getEmptyTaggedFieldArray()
 	return err
 }
 
@@ -141,6 +146,7 @@ func (a *IncrementalAlterConfigsEntry) encode(pe packetEncoder) error {
 		return err
 	}
 
+	pe.putEmptyTaggedFieldArray()
 	return nil
 }
 
@@ -158,7 +164,8 @@ func (a *IncrementalAlterConfigsEntry) decode(pd packetDecoder, version int16) e
 
 	a.Value = s
 
-	return nil
+	_, err = pd.getEmptyTaggedFieldArray()
+	return err
 }
 
 func (a *IncrementalAlterConfigsRequest) key() int16 {
@@ -170,13 +177,29 @@ func (a *IncrementalAlterConfigsRequest) version() int16 {
 }
 
 func (a *IncrementalAlterConfigsRequest) headerVersion() int16 {
+	if a.Version >= 1 {
+		return 2
+	}
 	return 1
 }
 
 func (a *IncrementalAlterConfigsRequest) isValidVersion() bool {
-	return a.Version == 0
+	return a.Version >= 0 && a.Version <= 1
+}
+
+func (a *IncrementalAlterConfigsRequest) isFlexible() bool {
+	return a.isFlexibleVersion(a.Version)
+}
+
+func (a *IncrementalAlterConfigsRequest) isFlexibleVersion(version int16) bool {
+	return version >= 1
 }
 
 func (a *IncrementalAlterConfigsRequest) requiredVersion() KafkaVersion {
-	return V2_3_0_0
+	switch a.Version {
+	case 1:
+		return V2_4_0_0
+	default:
+		return V2_3_0_0
+	}
 }

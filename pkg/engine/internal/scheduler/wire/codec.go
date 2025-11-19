@@ -6,11 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/ipc"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/gogo/protobuf/proto"
+	"github.com/grafana/dskit/httpgrpc"
 	"github.com/oklog/ulid/v2"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
@@ -18,6 +20,7 @@ import (
 	protoUlid "github.com/grafana/loki/v3/pkg/engine/internal/proto/ulid"
 	"github.com/grafana/loki/v3/pkg/engine/internal/proto/wirepb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
+	xcapProto "github.com/grafana/loki/v3/pkg/xcap/proto"
 )
 
 var defaultFrameCodec = &protobufCodec{
@@ -161,6 +164,9 @@ func (c *protobufCodec) messageFromPbMessage(mf *wirepb.MessageFrame) (Message, 
 	}
 
 	switch k := mf.Kind.(type) {
+	case *wirepb.MessageFrame_WorkerHello:
+		return WorkerHelloMessage{Threads: int(k.WorkerHello.Threads)}, nil
+
 	case *wirepb.MessageFrame_WorkerReady:
 		return WorkerReadyMessage{}, nil
 
@@ -183,9 +189,16 @@ func (c *protobufCodec) messageFromPbMessage(mf *wirepb.MessageFrame) (Message, 
 			streamStates[id] = state
 		}
 
+		var metadata http.Header
+		if len(k.TaskAssign.Metadata) > 0 {
+			metadata = make(http.Header)
+			httpgrpc.ToHeader(k.TaskAssign.Metadata, metadata)
+		}
+
 		return TaskAssignMessage{
 			Task:         task,
 			StreamStates: streamStates,
+			Metadata:     metadata,
 		}, nil
 
 	case *wirepb.MessageFrame_TaskCancel:
@@ -204,6 +217,7 @@ func (c *protobufCodec) messageFromPbMessage(mf *wirepb.MessageFrame) (Message, 
 		if err != nil {
 			return nil, err
 		}
+
 		return TaskStatusMessage{
 			ID:     ulid.ULID(k.TaskStatus.Id),
 			Status: status,
@@ -287,6 +301,15 @@ func (c *protobufCodec) taskStatusFromPbTaskStatus(ts *wirepb.TaskStatus) (workf
 	pbErr := ts.GetError()
 	if pbErr != nil {
 		status.Error = errors.New(pbErr.Description)
+	}
+
+	if pbCapture := ts.GetCapture(); pbCapture != nil {
+		capture, err := xcapProto.FromPbCapture(pbCapture)
+		if err != nil {
+			return workflow.TaskStatus{}, fmt.Errorf("failed to unmarshal capture: %w", err)
+		}
+
+		status.Capture = capture
 	}
 
 	return status, nil
@@ -415,6 +438,11 @@ func (c *protobufCodec) messageToPbMessage(from Message) (*wirepb.MessageFrame, 
 	mf := &wirepb.MessageFrame{}
 
 	switch v := from.(type) {
+	case WorkerHelloMessage:
+		mf.Kind = &wirepb.MessageFrame_WorkerHello{
+			WorkerHello: &wirepb.WorkerHelloMessage{Threads: uint64(v.Threads)},
+		}
+
 	case WorkerReadyMessage:
 		mf.Kind = &wirepb.MessageFrame_WorkerReady{
 			WorkerReady: &wirepb.WorkerReadyMessage{},
@@ -435,6 +463,7 @@ func (c *protobufCodec) messageToPbMessage(from Message) (*wirepb.MessageFrame, 
 			TaskAssign: &wirepb.TaskAssignMessage{
 				Task:         task,
 				StreamStates: streamStates,
+				Metadata:     httpgrpc.FromHeader(v.Metadata),
 			},
 		}
 
@@ -458,6 +487,7 @@ func (c *protobufCodec) messageToPbMessage(from Message) (*wirepb.MessageFrame, 
 		if err != nil {
 			return nil, err
 		}
+
 		mf.Kind = &wirepb.MessageFrame_TaskStatus{
 			TaskStatus: &wirepb.TaskStatusMessage{
 				Id:     protoUlid.ULID(v.ID),
@@ -539,6 +569,15 @@ func (c *protobufCodec) taskStatusToPbTaskStatus(from workflow.TaskStatus) (*wir
 		ts.Error = &wirepb.TaskError{Description: from.Error.Error()}
 	}
 
+	if from.Capture != nil {
+		capture, err := xcapProto.ToPbCapture(from.Capture)
+		if err != nil {
+			return nil, err
+		}
+
+		ts.Capture = capture
+	}
+
 	return ts, nil
 }
 
@@ -601,7 +640,7 @@ func (c *protobufCodec) nodeStreamMapToPbNodeStreamList(nodeMap map[physical.Nod
 }
 
 // serializeArrowRecord serializes an Arrow record to bytes using IPC format.
-func (c *protobufCodec) serializeArrowRecord(record arrow.Record) ([]byte, error) {
+func (c *protobufCodec) serializeArrowRecord(record arrow.RecordBatch) ([]byte, error) {
 	if record == nil {
 		return nil, errors.New("nil arrow record")
 	}
@@ -625,7 +664,7 @@ func (c *protobufCodec) serializeArrowRecord(record arrow.Record) ([]byte, error
 }
 
 // deserializeArrowRecord deserializes an Arrow record from bytes using IPC format.
-func (c *protobufCodec) deserializeArrowRecord(data []byte) (arrow.Record, error) {
+func (c *protobufCodec) deserializeArrowRecord(data []byte) (arrow.RecordBatch, error) {
 	if len(data) == 0 {
 		return nil, errors.New("empty arrow data")
 	}
@@ -645,6 +684,6 @@ func (c *protobufCodec) deserializeArrowRecord(data []byte) (arrow.Record, error
 		return nil, errors.New("no record in arrow data")
 	}
 
-	rec := reader.Record()
+	rec := reader.RecordBatch()
 	return rec, nil
 }

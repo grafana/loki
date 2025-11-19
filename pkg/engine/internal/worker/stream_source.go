@@ -26,7 +26,7 @@ type streamSource struct {
 // Write forwards a record to the bound [nodeSource]. Write blocks until a
 // nodeSource is bound and accepts the write, or the provided context is
 // canceled.
-func (src *streamSource) Write(ctx context.Context, rec arrow.Record) error {
+func (src *streamSource) Write(ctx context.Context, rec arrow.RecordBatch) error {
 	src.lazyInit()
 
 	select {

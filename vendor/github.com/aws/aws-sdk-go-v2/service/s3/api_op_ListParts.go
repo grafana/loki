@@ -14,10 +14,10 @@ import (
 	"time"
 )
 
-// End of support notice: Beginning October 1, 2025, Amazon S3 will stop returning
-// DisplayName . Update your applications to use canonical IDs (unique identifier
-// for Amazon Web Services accounts), Amazon Web Services account ID (12 digit
-// identifier) or IAM ARNs (full resource naming) as a direct replacement of
+// End of support notice: Beginning November 21, 2025, Amazon S3 will stop
+// returning DisplayName . Update your applications to use canonical IDs (unique
+// identifier for Amazon Web Services accounts), Amazon Web Services account ID (12
+// digit identifier) or IAM ARNs (full resource naming) as a direct replacement of
 // DisplayName .
 //
 // This change affects the following Amazon Web Services Regions: US East (N.
@@ -87,6 +87,10 @@ import (
 // [GetObjectAttributes]
 //
 // [ListMultipartUploads]
+//
+// You must URL encode any signed header values that contain spaces. For example,
+// if your header value is my file.txt , containing two spaces after my , you must
+// URL encode this value to my%20%20file.txt .
 //
 // [Uploading Objects Using Multipart Upload]: https://docs.aws.amazon.com/AmazonS3/latest/dev/uploadobjusingmpu.html
 // [Concepts for directory buckets in Local Zones]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-lzs-for-directory-buckets.html
@@ -440,40 +444,7 @@ func (c *Client) addOperationListPartsMiddlewares(stack *middleware.Stack, optio
 	if err = addInterceptAttempt(stack, options); err != nil {
 		return err
 	}
-	if err = addInterceptExecution(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptBeforeSerialization(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptAfterSerialization(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptBeforeSigning(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptAfterSigning(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptTransmit(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptBeforeDeserialization(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptAfterDeserialization(stack, options); err != nil {
-		return err
-	}
-	if err = addSpanInitializeStart(stack); err != nil {
-		return err
-	}
-	if err = addSpanInitializeEnd(stack); err != nil {
-		return err
-	}
-	if err = addSpanBuildRequestStart(stack); err != nil {
-		return err
-	}
-	if err = addSpanBuildRequestEnd(stack); err != nil {
+	if err = addInterceptors(stack, options); err != nil {
 		return err
 	}
 	return nil

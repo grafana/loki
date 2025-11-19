@@ -252,7 +252,7 @@ type BucketLoggingStatus struct {
 type Checksum struct {
 
 	// The Base64 encoded, 32-bit CRC32 checksum of the object. This checksum is only
-	// be present if the checksum was uploaded with the object. When you use an API
+	// present if the checksum was uploaded with the object. When you use an API
 	// operation on an object that was uploaded using multipart uploads, this value may
 	// not be a direct checksum value of the full object. Instead, it's a calculation
 	// based on the checksum values of each individual part. For more information about
@@ -282,8 +282,8 @@ type Checksum struct {
 	// [Checking object integrity]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html
 	ChecksumCRC64NVME *string
 
-	// The Base64 encoded, 160-bit SHA1 digest of the object. This will only be
-	// present if the object was uploaded with the object. When you use the API
+	// The Base64 encoded, 160-bit SHA1 digest of the object. This checksum is only
+	// present if the checksum was uploaded with the object. When you use the API
 	// operation on an object that was uploaded using multipart uploads, this value may
 	// not be a direct checksum value of the full object. Instead, it's a calculation
 	// based on the checksum values of each individual part. For more information about
@@ -293,8 +293,8 @@ type Checksum struct {
 	// [Checking object integrity]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html#large-object-checksums
 	ChecksumSHA1 *string
 
-	// The Base64 encoded, 256-bit SHA256 digest of the object. This will only be
-	// present if the object was uploaded with the object. When you use an API
+	// The Base64 encoded, 256-bit SHA256 digest of the object. This checksum is only
+	// present if the checksum was uploaded with the object. When you use an API
 	// operation on an object that was uploaded using multipart uploads, this value may
 	// not be a direct checksum value of the full object. Instead, it's a calculation
 	// based on the checksum values of each individual part. For more information about
@@ -441,8 +441,8 @@ type CopyObjectResult struct {
 	// [Checking object integrity]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html
 	ChecksumCRC32 *string
 
-	// The Base64 encoded, 32-bit CRC32C checksum of the object. This will only be
-	// present if the object was uploaded with the object. For more information, see [Checking object integrity]
+	// The Base64 encoded, 32-bit CRC32C checksum of the object. This checksum is only
+	// present if the checksum was uploaded with the object. For more information, see [Checking object integrity]
 	// in the Amazon S3 User Guide.
 	//
 	// [Checking object integrity]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html
@@ -457,15 +457,15 @@ type CopyObjectResult struct {
 	// [Checking object integrity]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html
 	ChecksumCRC64NVME *string
 
-	// The Base64 encoded, 160-bit SHA1 digest of the object. This will only be
-	// present if the object was uploaded with the object. For more information, see [Checking object integrity]
+	// The Base64 encoded, 160-bit SHA1 digest of the object. This checksum is only
+	// present if the checksum was uploaded with the object. For more information, see [Checking object integrity]
 	// in the Amazon S3 User Guide.
 	//
 	// [Checking object integrity]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html
 	ChecksumSHA1 *string
 
-	// The Base64 encoded, 256-bit SHA256 digest of the object. This will only be
-	// present if the object was uploaded with the object. For more information, see [Checking object integrity]
+	// The Base64 encoded, 256-bit SHA256 digest of the object. This checksum is only
+	// present if the checksum was uploaded with the object. For more information, see [Checking object integrity]
 	// in the Amazon S3 User Guide.
 	//
 	// [Checking object integrity]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html
@@ -628,8 +628,11 @@ type CreateBucketConfiguration struct {
 	// are key-value pairs of metadata used to categorize and organize your buckets,
 	// track costs, and control access.
 	//
-	// This parameter is only supported for S3 directory buckets. For more
-	// information, see [Using tags with directory buckets].
+	//   - This parameter is only supported for S3 directory buckets. For more
+	//   information, see [Using tags with directory buckets].
+	//
+	//   - You must have the s3express:TagResource permission to create a directory
+	//   bucket with tags.
 	//
 	// [Using tags with directory buckets]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/directory-buckets-tagging.html
 	Tags []Tag
@@ -2112,6 +2115,17 @@ type Grant struct {
 	noSmithyDocumentSerde
 }
 
+// End of support notice: Beginning November 21, 2025, Amazon S3 will stop
+// returning DisplayName . Update your applications to use canonical IDs (unique
+// identifier for Amazon Web Services accounts), Amazon Web Services account ID (12
+// digit identifier) or IAM ARNs (full resource naming) as a direct replacement of
+// DisplayName .
+//
+// This change affects the following Amazon Web Services Regions: US East (N.
+// Virginia) Region, US West (N. California) Region, US West (Oregon) Region, Asia
+// Pacific (Singapore) Region, Asia Pacific (Sydney) Region, Asia Pacific (Tokyo)
+// Region, Europe (Ireland) Region, and South America (São Paulo) Region.
+//
 // Container for the person being granted permissions.
 type Grantee struct {
 
@@ -2698,8 +2712,10 @@ type LifecycleRule struct {
 	// directory bucket lifecycle configurations.
 	NoncurrentVersionTransitions []NoncurrentVersionTransition
 
-	// Prefix identifying one or more objects to which the rule applies. This is no
-	// longer used; use Filter instead.
+	//  The general purpose bucket prefix that identifies one or more objects to which
+	// the rule applies. We recommend using Filter instead of Prefix for new PUTs.
+	// Previous configurations where a prefix is defined will continue to operate as
+	// before.
 	//
 	// Replacement must be made for object keys containing special characters (such as
 	// carriage returns) when using XML requests. For more information, see [XML related object key constraints].
@@ -3476,10 +3492,10 @@ type OutputSerialization struct {
 	noSmithyDocumentSerde
 }
 
-// End of support notice: Beginning October 1, 2025, Amazon S3 will stop returning
-// DisplayName . Update your applications to use canonical IDs (unique identifier
-// for Amazon Web Services accounts), Amazon Web Services account ID (12 digit
-// identifier) or IAM ARNs (full resource naming) as a direct replacement of
+// End of support notice: Beginning November 21, 2025, Amazon S3 will stop
+// returning DisplayName . Update your applications to use canonical IDs (unique
+// identifier for Amazon Web Services accounts), Amazon Web Services account ID (12
+// digit identifier) or IAM ARNs (full resource naming) as a direct replacement of
 // DisplayName .
 //
 // This change affects the following Amazon Web Services Regions: US East (N.
@@ -3785,7 +3801,7 @@ type RecordsEvent struct {
 	// guarantee that a record will be self-contained in one record frame. To ensure
 	// continuous streaming of data, S3 Select might split the same record across
 	// multiple record frames instead of aggregating the results in memory. Some S3
-	// clients (for example, the SDK for Java) handle this behavior by creating a
+	// clients (for example, the SDKforJava) handle this behavior by creating a
 	// ByteStream out of the response by default. Other clients might not handle this
 	// behavior by default. In those cases, you must aggregate the results on the
 	// client side and parse the response.

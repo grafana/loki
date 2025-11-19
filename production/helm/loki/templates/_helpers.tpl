@@ -1266,3 +1266,14 @@ azure:
 storage_prefix: {{ .storage_prefix }}
 {{- end }}
 {{- end }}
+
+{{/*
+Pod security context
+*/}}
+{{- define "loki.podSecurityContext" -}}
+{{- if semverCompare ">=1.23-0" $.Capabilities.KubeVersion.GitVersion }}
+{{- toYaml .Values.loki.podSecurityContext }}
+{{- else }}
+{{- toYaml (omit .Values.loki.podSecurityContext "fsGroupChangePolicy")  }}
+{{- end }}
+{{- end -}}

@@ -617,12 +617,11 @@ func (c *Client) removeObjects(ctx context.Context, bucketName string, objectsCh
 			customHeader:         headers,
 			expect200OKWithError: true,
 		})
-		if resp != nil {
-			if resp.StatusCode != http.StatusOK {
-				e := httpRespToErrorResponse(resp, bucketName, "")
-				resultCh <- RemoveObjectResult{ObjectName: "", Err: e}
-			}
+
+		if resp != nil && resp.StatusCode != http.StatusOK {
+			err = httpRespToErrorResponse(resp, bucketName, "")
 		}
+
 		if err != nil {
 			for _, b := range batch {
 				resultCh <- RemoveObjectResult{

@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/logical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/proto/physicalpb"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -85,13 +86,13 @@ var _ logql.Params = (*TestQuery)(nil)
 
 type TestMetastore struct{}
 
-// DataObjects implements metastore.Metastore.
-func (t *TestMetastore) DataObjects(_ context.Context, _ time.Time, _ time.Time, _ ...*labels.Matcher) ([]string, error) {
+// Labels implements metastore.Metastore.
+func (t *TestMetastore) Labels(_ context.Context, _ time.Time, _ time.Time, _ ...*labels.Matcher) ([]string, error) {
 	panic("unimplemented")
 }
 
-// Labels implements metastore.Metastore.
-func (t *TestMetastore) Labels(_ context.Context, _ time.Time, _ time.Time, _ ...*labels.Matcher) ([]string, error) {
+// Values implements metastore.Metastore.
+func (t *TestMetastore) Values(_ context.Context, _ time.Time, _ time.Time, _ ...*labels.Matcher) ([]string, error) {
 	panic("unimplemented")
 }
 
@@ -121,21 +122,6 @@ func (t *TestMetastore) Sections(_ context.Context, _ time.Time, _ time.Time, _ 
 			End:       time.Date(2025, time.January, 1, 1, 0, 0, 0, time.UTC),
 		},
 	}, nil
-}
-
-// StreamIDs implements metastore.Metastore.
-func (t *TestMetastore) StreamIDs(_ context.Context, _ time.Time, _ time.Time, _ ...*labels.Matcher) ([]string, [][]int64, []int, error) {
-	panic("unimplemented")
-}
-
-// Streams implements metastore.Metastore.
-func (t *TestMetastore) Streams(_ context.Context, _ time.Time, _ time.Time, _ ...*labels.Matcher) ([]*labels.Labels, error) {
-	panic("unimplemented")
-}
-
-// Values implements metastore.Metastore.
-func (t *TestMetastore) Values(_ context.Context, _ time.Time, _ time.Time, _ ...*labels.Matcher) ([]string, error) {
-	panic("unimplemented")
 }
 
 var _ metastore.Metastore = (*TestMetastore)(nil)
@@ -320,6 +306,16 @@ VectorAggregation operation=sum group_by=(ambiguous.bar)
 
 			actual := physical.PrintAsTree(plan)
 			require.Equal(t, strings.TrimSpace(tc.expected), strings.TrimSpace(actual))
+
+			requireCanSerialize(t, plan)
 		})
 	}
+}
+
+func requireCanSerialize(t *testing.T, plan *physical.Plan) {
+	t.Helper()
+
+	planPb := new(physicalpb.Plan)
+	err := planPb.UnmarshalPhysical(plan)
+	require.NoError(t, err, "failed to convert physical plan to protobuf")
 }

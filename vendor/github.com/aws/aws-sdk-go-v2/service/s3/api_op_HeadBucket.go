@@ -18,13 +18,17 @@ import (
 )
 
 // You can use this operation to determine if a bucket exists and if you have
-// permission to access it. The action returns a 200 OK if the bucket exists and
-// you have permission to access it.
+// permission to access it. The action returns a 200 OK HTTP status code if the
+// bucket exists and you have permission to access it. You can make a HeadBucket
+// call on any bucket name to any Region in the partition, and regardless of the
+// permissions on the bucket, you will receive a response header with the correct
+// bucket location so that you can then make a proper, signed request to the
+// appropriate Regional endpoint.
 //
-// If the bucket does not exist or you do not have permission to access it, the
-// HEAD request returns a generic 400 Bad Request , 403 Forbidden or 404 Not Found
-// code. A message body is not included, so you cannot determine the exception
-// beyond these HTTP response codes.
+// If the bucket doesn't exist or you don't have permission to access it, the HEAD
+// request returns a generic 400 Bad Request , 403 Forbidden , or 404 Not Found
+// HTTP status code. A message body isn't included, so you can't determine the
+// exception beyond these HTTP response codes.
 //
 // Authentication and authorization  General purpose buckets - Request to public
 // buckets that grant the s3:ListBucket permission publicly do not need to be
@@ -65,6 +69,10 @@ import (
 // requests are not supported. For more information about endpoints in Availability
 // Zones, see [Regional and Zonal endpoints for directory buckets in Availability Zones]in the Amazon S3 User Guide. For more information about endpoints in
 // Local Zones, see [Concepts for directory buckets in Local Zones]in the Amazon S3 User Guide.
+//
+// You must URL encode any signed header values that contain spaces. For example,
+// if your header value is my file.txt , containing two spaces after my , you must
+// URL encode this value to my%20%20file.txt .
 //
 // [Amazon Web Services Identity and Access Management (IAM) identity-based policies for S3 Express One Zone]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-express-security-iam-identity-policies.html
 // [Concepts for directory buckets in Local Zones]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-lzs-for-directory-buckets.html
@@ -299,40 +307,7 @@ func (c *Client) addOperationHeadBucketMiddlewares(stack *middleware.Stack, opti
 	if err = addInterceptAttempt(stack, options); err != nil {
 		return err
 	}
-	if err = addInterceptExecution(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptBeforeSerialization(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptAfterSerialization(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptBeforeSigning(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptAfterSigning(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptTransmit(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptBeforeDeserialization(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptAfterDeserialization(stack, options); err != nil {
-		return err
-	}
-	if err = addSpanInitializeStart(stack); err != nil {
-		return err
-	}
-	if err = addSpanInitializeEnd(stack); err != nil {
-		return err
-	}
-	if err = addSpanBuildRequestStart(stack); err != nil {
-		return err
-	}
-	if err = addSpanBuildRequestEnd(stack); err != nil {
+	if err = addInterceptors(stack, options); err != nil {
 		return err
 	}
 	return nil
