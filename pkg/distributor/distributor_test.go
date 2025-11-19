@@ -2138,7 +2138,7 @@ type mockTee struct {
 	tenant     string
 }
 
-func (mt *mockTee) Duplicate(tenant string, streams []KeyedStream) {
+func (mt *mockTee) Duplicate(_ context.Context, tenant string, streams []KeyedStream) {
 	mt.mu.Lock()
 	defer mt.mu.Unlock()
 	mt.duplicated = append(mt.duplicated, streams)
