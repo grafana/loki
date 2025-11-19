@@ -106,6 +106,7 @@ loki:
   # -- The SecurityContext for Loki pods
   podSecurityContext:
     fsGroup: 10001
+    fsGroupChangePolicy: OnRootMismatch
     runAsGroup: 10001
     runAsNonRoot: true
     runAsUser: 10001
@@ -402,6 +403,10 @@ loki:
     grpc_listen_port: 9095
     http_server_read_timeout: 600s
     http_server_write_timeout: 600s
+  service:
+    # -- trafficDistribution for services
+    # Ref: https://kubernetes.io/docs/concepts/services-networking/service/#traffic-distribution
+    trafficDistribution: ""
   # -- Limits config
   limits_config:
     reject_old_samples: true
@@ -1165,6 +1170,8 @@ gateway:
     annotations: {}
     # -- Labels for gateway service
     labels: {}
+    # -- trafficDistribution for gateway service
+    trafficDistribution: ""
   # Gateway ingress configuration
   ingress:
     # -- Specifies whether an ingress for the gateway should be created
@@ -1472,6 +1479,8 @@ singleBinary:
     labels: {}
     # -- Service Type for single binary Service
     type: "ClusterIP"
+    # -- trafficDistribution single binary Service
+    trafficDistribution: ""
   # -- Comma-separated list of Loki modules to load for the single binary
   targetModule: "all"
   # -- Labels for single binary service
@@ -1606,6 +1615,8 @@ write:
     labels: {}
     # -- Service Type for write Service
     type: "ClusterIP"
+    # -- trafficDistribution for write service
+    trafficDistribution: ""
   # -- Comma-separated list of Loki modules to load for the write
   targetModule: "write"
   # -- Additional CLI args for the write
@@ -1681,6 +1692,10 @@ write:
     # If empty or set to null, no storageClassName spec is
     # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
     storageClass: null
+    # -- Volume attributes class name to be used.
+    # If empty or set to null, no volumeAttributesClassName spec is set.
+    # Requires Kubernetes 1.31
+    volumeAttributesClassName: null
     # -- Selector for persistent disk
     selector: null
     # -- Annotations for volume claim
@@ -1740,6 +1755,8 @@ read:
     labels: {}
     # -- Service Type for read Service
     type: ClusterIP
+    # -- trafficDistribution for read service
+    trafficDistribution: ""
   # -- Comma-separated list of Loki modules to load for the read
   targetModule: "read"
   # -- Whether or not to use the 2 target type simple scalable mode (read, write) or the
@@ -1766,6 +1783,8 @@ read:
   resources: {}
   # -- liveness probe settings for read pods. If empty, applies no livenessProbe
   livenessProbe: {}
+    # -- statup probe for the read pods. If empty, applies no startupProbe
+  startupProbe: {}
   # -- Grace period to allow the read to shutdown before it is killed
   terminationGracePeriodSeconds: 30
   # -- Use the host's user namespace in the read pods.
@@ -1808,6 +1827,10 @@ read:
     # If empty or set to null, no storageClassName spec is
     # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
     storageClass: null
+    # -- Volume attributes class name to be used.
+    # If empty or set to null, no volumeAttributesClassName spec is set.
+    # Requires Kubernetes 1.31
+    volumeAttributesClassName: null
     # -- Selector for persistent disk
     selector: null
     # -- Annotations for volume claim
@@ -1867,6 +1890,8 @@ backend:
     labels: {}
     # -- Service type for backend Service
     type: ClusterIP
+    # -- trafficDistribution for backend Service
+    trafficDistribution: ""
   # -- Comma-separated list of Loki modules to load for the backend
   targetModule: "backend"
   # -- Additional CLI args for the backend
@@ -1933,6 +1958,10 @@ backend:
     # If empty or set to null, no storageClassName spec is
     # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
     storageClass: null
+    # -- Volume attributes class name to be used.
+    # If empty or set to null, no volumeAttributesClassName spec is set.
+    # Requires Kubernetes 1.31
+    volumeAttributesClassName: null
     # -- Selector for persistent disk
     selector: null
     # -- Annotations for volume claim
@@ -2004,11 +2033,11 @@ ingester:
   # -- Annotations for ingester pods
   podAnnotations: {}
   # -- The name of the PriorityClass for ingester pods
-  # -- Labels for ingestor service
+  # -- Labels for ingester service
   serviceLabels: {}
-  # -- Annotations for ingestor service
+  # -- Annotations for ingester service
   serviceAnnotations: {}
-  # -- Service type for ingestor service
+  # -- Service type for ingester service
   serviceType: "ClusterIP"
   # -- Additional CLI args for the ingester
   extraArgs: []
@@ -2092,6 +2121,10 @@ ingester:
         #   If empty or set to null, no storageClassName spec is
         #   set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
         storageClass: null
+        # -- Volume attributes class name to be used.
+        # If empty or set to null, no volumeAttributesClassName spec is set.
+        # Requires Kubernetes 1.31
+        volumeAttributesClassName: null
         # - name: wal
         #   size: 150Gi
     # -- Enable StatefulSetAutoDeletePVC feature
@@ -2102,6 +2135,8 @@ ingester:
   appProtocol:
     # -- Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"
     grpc: ""
+  # -- trafficDistribution for ingester service
+  trafficDistribution: ""
   # -- Enabling zone awareness on ingesters will create 3 statefulests where all writes will send a replica to each zone.
   # This is primarily intended to accelerate rollout operations by allowing for multiple ingesters within a single
   # zone to be shutdown and restart simultaneously (the remaining 2 zones will be guaranteed to have at least one copy
@@ -2380,6 +2415,8 @@ querier:
   appProtocol:
     # -- Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"
     grpc: ""
+  # -- trafficDistribution for querier service
+  trafficDistribution: ""
 # -- Configuration for the query-frontend
 queryFrontend:
   # -- Number of replicas for the query-frontend
@@ -2485,6 +2522,8 @@ queryFrontend:
   # -- Enable load balancer port for query-frontend
   loadBalancer:
     enabled: true
+  # -- trafficDistribution for query-frontend service
+  trafficDistribution: ""
 # -- Configuration for the query-scheduler
 queryScheduler:
   # -- Number of replicas for the query-scheduler.
@@ -2559,6 +2598,8 @@ queryScheduler:
   # -- Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"
   appProtocol:
     grpc: ""
+  # -- trafficDistribution for query-scheduler service
+  trafficDistribution: ""
 # -- Configuration for the index-gateway
 indexGateway:
   # -- Number of replicas for the index-gateway
@@ -2650,6 +2691,10 @@ indexGateway:
     # If empty or set to null, no storageClassName spec is
     # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
     storageClass: null
+    # -- Volume attributes class name to be used.
+    # If empty or set to null, no volumeAttributesClassName spec is set.
+    # Requires Kubernetes 1.31
+    volumeAttributesClassName: null
     # -- Annotations for index gateway PVCs
     annotations: {}
     # -- Labels for index gateway PVCs
@@ -2661,6 +2706,8 @@ indexGateway:
   # -- Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"
   appProtocol:
     grpc: ""
+  # -- trafficDistribution for index-gateway service
+  trafficDistribution: ""
   # -- UpdateStrategy for the indexGateway StatefulSet.
   updateStrategy:
     # -- One of  'OnDelete' or 'RollingUpdate'
@@ -2760,6 +2807,10 @@ compactor:
         #   If empty or set to null, no storageClassName spec is
         #   set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
         storageClass: null
+        # -- Volume attributes class name to be used.
+        # If empty or set to null, no volumeAttributesClassName spec is set.
+        # Requires Kubernetes 1.31
+        volumeAttributesClassName: null
         # -- Annotations for compactor PVCs
         annotations: {}
         # -- Labels for compactor PVCs
@@ -2879,6 +2930,10 @@ bloomGateway:
         #   If empty or set to null, no storageClassName spec is
         #   set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
         storageClass: null
+        # -- Volume attributes class name to be used.
+        # If empty or set to null, no volumeAttributesClassName spec is set.
+        # Requires Kubernetes 1.31
+        volumeAttributesClassName: null
     # -- Enable StatefulSetAutoDeletePVC feature
     enableStatefulSetAutoDeletePVC: false
     whenDeleted: Retain
@@ -2989,6 +3044,10 @@ bloomPlanner:
         #   If empty or set to null, no storageClassName spec is
         #   set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
         storageClass: null
+        # -- Volume attributes class name to be used.
+        # If empty or set to null, no volumeAttributesClassName spec is set.
+        # Requires Kubernetes 1.31
+        volumeAttributesClassName: null
         # -- Annotations for bloom-planner PVCs
         annotations: {}
         # -- Labels for bloom planner PVCs
@@ -3213,6 +3272,10 @@ patternIngester:
         #   If empty or set to null, no storageClassName spec is
         #   set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
         storageClass: null
+        # -- Volume attributes class name to be used.
+        # If empty or set to null, no volumeAttributesClassName spec is set.
+        # Requires Kubernetes 1.31
+        volumeAttributesClassName: null
         # -- Annotations for pattern ingester PVCs
         annotations: {}
         # -- Labels for pattern ingester PVCs
@@ -3324,6 +3387,10 @@ ruler:
     # If empty or set to null, no storageClassName spec is
     # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
     storageClass: null
+    # -- Volume attributes class name to be used.
+    # If empty or set to null, no volumeAttributesClassName spec is set.
+    # Requires Kubernetes 1.31
+    volumeAttributesClassName: null
     # -- Annotations for ruler PVCs
     annotations: {}
     # -- Labels for ruler PVCs
@@ -3667,6 +3734,10 @@ resultsCache:
     # If empty or set to null, no storageClassName spec is
     # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
     storageClass: null
+    # -- Volume attributes class name to be used.
+    # If empty or set to null, no volumeAttributesClassName spec is set.
+    # Requires Kubernetes 1.31
+    volumeAttributesClassName: null
     # -- Volume mount path
     mountPath: /data
     # -- PVC additional labels
@@ -3778,6 +3849,10 @@ chunksCache:
     # If empty or set to null, no storageClassName spec is
     # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
     storageClass: null
+    # -- Volume attributes class name to be used.
+    # If empty or set to null, no volumeAttributesClassName spec is set.
+    # Requires Kubernetes 1.31
+    volumeAttributesClassName: null
     # -- Volume mount path
     mountPath: /data
     labels: {}
@@ -3892,6 +3967,10 @@ chunksCache:
       # If empty or set to null, no storageClassName spec is
       # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
       storageClass: null
+      # -- Volume attributes class name to be used.
+      # If empty or set to null, no volumeAttributesClassName spec is set.
+      # Requires Kubernetes 1.31
+      volumeAttributesClassName: null
       # -- Volume mount path
       mountPath: /data
       labels: {}

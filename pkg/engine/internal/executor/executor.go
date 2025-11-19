@@ -16,6 +16,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 var tracer = otel.Tracer("pkg/engine/internal/executor")
@@ -49,6 +50,7 @@ func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger
 	if err != nil {
 		return errorPipeline(ctx, err)
 	}
+
 	return c.execute(ctx, node)
 }
 
@@ -67,6 +69,10 @@ type Context struct {
 }
 
 func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
+	// Start a new xcap.Region for this node.
+	// Region is created in preorder traversal to maintain the parent-child relationship.
+	ctx, nodeRegion := startRegionForNode(ctx, node)
+
 	children := c.plan.Children(node)
 	inputs := make([]Pipeline, 0, len(children))
 	for _, child := range children {
@@ -86,33 +92,33 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 		// which wraps the pipeline with a topk/limit without reintroducing
 		// planning cost for thousands of scan nodes.
 		return newLazyPipeline(func(ctx context.Context, _ []Pipeline) Pipeline {
-			return tracePipeline("physical.DataObjScan", c.executeDataObjScan(ctx, n))
+			return newObservedPipeline(c.executeDataObjScan(ctx, n, nodeRegion))
 		}, inputs)
 
 	case *physical.TopK:
-		return tracePipeline("physical.TopK", c.executeTopK(ctx, n, inputs))
+		return newObservedPipeline(c.executeTopK(ctx, n, inputs, nodeRegion))
 	case *physical.Limit:
-		return tracePipeline("physical.Limit", c.executeLimit(ctx, n, inputs))
+		return newObservedPipeline(c.executeLimit(ctx, n, inputs, nodeRegion))
 	case *physical.Filter:
-		return tracePipeline("physical.Filter", c.executeFilter(ctx, n, inputs))
+		return newObservedPipeline(c.executeFilter(ctx, n, inputs, nodeRegion))
 	case *physical.Projection:
-		return tracePipeline("physical.Projection", c.executeProjection(ctx, n, inputs))
+		return newObservedPipeline(c.executeProjection(ctx, n, inputs, nodeRegion))
 	case *physical.RangeAggregation:
-		return tracePipeline("physical.RangeAggregation", c.executeRangeAggregation(ctx, n, inputs))
+		return newObservedPipeline(c.executeRangeAggregation(ctx, n, inputs, nodeRegion))
 	case *physical.VectorAggregation:
-		return tracePipeline("physical.VectorAggregation", c.executeVectorAggregation(ctx, n, inputs))
+		return newObservedPipeline(c.executeVectorAggregation(ctx, n, inputs, nodeRegion))
 	case *physical.ColumnCompat:
-		return tracePipeline("physical.ColumnCompat", c.executeColumnCompat(ctx, n, inputs))
+		return newObservedPipeline(c.executeColumnCompat(ctx, n, inputs, nodeRegion))
 	case *physical.Parallelize:
-		return tracePipeline("physical.Parallelize", c.executeParallelize(ctx, n, inputs))
+		return c.executeParallelize(ctx, n, inputs)
 	case *physical.ScanSet:
-		return tracePipeline("physical.ScanSet", c.executeScanSet(ctx, n))
+		return c.executeScanSet(ctx, n, nodeRegion)
 	default:
 		return errorPipeline(ctx, fmt.Errorf("invalid node type: %T", node))
 	}
 }
 
-func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObjScan) Pipeline {
+func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObjScan, region *xcap.Region) Pipeline {
 	ctx, span := tracer.Start(ctx, "Context.executeDataObjScan", trace.WithAttributes(
 		attribute.String("location", string(node.Location)),
 		attribute.Int("section", node.Section),
@@ -206,7 +212,7 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 		Projections: node.Projections,
 
 		BatchSize: c.batchSize,
-	}, log.With(c.logger, "location", string(node.Location), "section", node.Section))
+	}, log.With(c.logger, "location", string(node.Location), "section", node.Section), region)
 
 	return pipeline
 }
@@ -222,7 +228,7 @@ func logsSortOrder(dir logs.SortDirection) physical.SortOrder {
 	return physical.UNSORTED
 }
 
-func (c *Context) executeTopK(ctx context.Context, topK *physical.TopK, inputs []Pipeline) Pipeline {
+func (c *Context) executeTopK(ctx context.Context, topK *physical.TopK, inputs []Pipeline, region *xcap.Region) Pipeline {
 	ctx, span := tracer.Start(ctx, "Context.executeTopK", trace.WithAttributes(
 		attribute.Int("k", topK.K),
 		attribute.Bool("ascending", topK.Ascending),
@@ -244,6 +250,7 @@ func (c *Context) executeTopK(ctx context.Context, topK *physical.TopK, inputs [
 		NullsFirst: topK.NullsFirst,
 		K:          topK.K,
 		MaxUnused:  int(c.batchSize) * 2,
+		Region:     region,
 	})
 	if err != nil {
 		return errorPipeline(ctx, err)
@@ -252,7 +259,7 @@ func (c *Context) executeTopK(ctx context.Context, topK *physical.TopK, inputs [
 	return pipeline
 }
 
-func (c *Context) executeLimit(ctx context.Context, limit *physical.Limit, inputs []Pipeline) Pipeline {
+func (c *Context) executeLimit(ctx context.Context, limit *physical.Limit, inputs []Pipeline, region *xcap.Region) Pipeline {
 	ctx, span := tracer.Start(ctx, "Context.executeLimit", trace.WithAttributes(
 		attribute.Int("skip", int(limit.Skip)),
 		attribute.Int("fetch", int(limit.Fetch)),
@@ -268,10 +275,10 @@ func (c *Context) executeLimit(ctx context.Context, limit *physical.Limit, input
 		return errorPipeline(ctx, fmt.Errorf("limit expects exactly one input, got %d", len(inputs)))
 	}
 
-	return NewLimitPipeline(inputs[0], limit.Skip, limit.Fetch)
+	return NewLimitPipeline(inputs[0], limit.Skip, limit.Fetch, region)
 }
 
-func (c *Context) executeFilter(ctx context.Context, filter *physical.Filter, inputs []Pipeline) Pipeline {
+func (c *Context) executeFilter(ctx context.Context, filter *physical.Filter, inputs []Pipeline, region *xcap.Region) Pipeline {
 	ctx, span := tracer.Start(ctx, "Context.executeFilter", trace.WithAttributes(
 		attribute.Int("num_inputs", len(inputs)),
 	))
@@ -285,10 +292,10 @@ func (c *Context) executeFilter(ctx context.Context, filter *physical.Filter, in
 		return errorPipeline(ctx, fmt.Errorf("filter expects exactly one input, got %d", len(inputs)))
 	}
 
-	return NewFilterPipeline(filter, inputs[0], c.evaluator)
+	return NewFilterPipeline(filter, inputs[0], c.evaluator, region)
 }
 
-func (c *Context) executeProjection(ctx context.Context, proj *physical.Projection, inputs []Pipeline) Pipeline {
+func (c *Context) executeProjection(ctx context.Context, proj *physical.Projection, inputs []Pipeline, region *xcap.Region) Pipeline {
 	ctx, span := tracer.Start(ctx, "Context.executeProjection", trace.WithAttributes(
 		attribute.Int("num_expressions", len(proj.Expressions)),
 		attribute.Int("num_inputs", len(inputs)),
@@ -308,14 +315,14 @@ func (c *Context) executeProjection(ctx context.Context, proj *physical.Projecti
 		return errorPipeline(ctx, fmt.Errorf("projection expects at least one expression, got 0"))
 	}
 
-	p, err := NewProjectPipeline(inputs[0], proj, &c.evaluator)
+	p, err := NewProjectPipeline(inputs[0], proj, &c.evaluator, region)
 	if err != nil {
 		return errorPipeline(ctx, err)
 	}
 	return p
 }
 
-func (c *Context) executeRangeAggregation(ctx context.Context, plan *physical.RangeAggregation, inputs []Pipeline) Pipeline {
+func (c *Context) executeRangeAggregation(ctx context.Context, plan *physical.RangeAggregation, inputs []Pipeline, region *xcap.Region) Pipeline {
 	ctx, span := tracer.Start(ctx, "Context.executeRangeAggregation", trace.WithAttributes(
 		attribute.Int("num_grouping", len(plan.Grouping.Columns)),
 		attribute.String("grouping_mode", plan.Grouping.Mode.String()),
@@ -338,7 +345,7 @@ func (c *Context) executeRangeAggregation(ctx context.Context, plan *physical.Ra
 		rangeInterval: plan.Range,
 		step:          plan.Step,
 		operation:     plan.Operation,
-	})
+	}, region)
 	if err != nil {
 		return errorPipeline(ctx, err)
 	}
@@ -346,7 +353,7 @@ func (c *Context) executeRangeAggregation(ctx context.Context, plan *physical.Ra
 	return pipeline
 }
 
-func (c *Context) executeVectorAggregation(ctx context.Context, plan *physical.VectorAggregation, inputs []Pipeline) Pipeline {
+func (c *Context) executeVectorAggregation(ctx context.Context, plan *physical.VectorAggregation, inputs []Pipeline, region *xcap.Region) Pipeline {
 	ctx, span := tracer.Start(ctx, "Context.executeVectorAggregation", trace.WithAttributes(
 		attribute.Int("num_grouping", len(plan.Grouping.Columns)),
 		attribute.String("grouping_mode", plan.Grouping.Mode.String()),
@@ -358,7 +365,7 @@ func (c *Context) executeVectorAggregation(ctx context.Context, plan *physical.V
 		return emptyPipeline()
 	}
 
-	pipeline, err := newVectorAggregationPipeline(inputs, plan.Grouping, c.evaluator, plan.Operation)
+	pipeline, err := newVectorAggregationPipeline(inputs, plan.Grouping, c.evaluator, plan.Operation, region)
 	if err != nil {
 		return errorPipeline(ctx, err)
 	}
@@ -366,7 +373,7 @@ func (c *Context) executeVectorAggregation(ctx context.Context, plan *physical.V
 	return pipeline
 }
 
-func (c *Context) executeColumnCompat(ctx context.Context, compat *physical.ColumnCompat, inputs []Pipeline) Pipeline {
+func (c *Context) executeColumnCompat(ctx context.Context, compat *physical.ColumnCompat, inputs []Pipeline, region *xcap.Region) Pipeline {
 	if len(inputs) == 0 {
 		return emptyPipeline()
 	}
@@ -375,7 +382,7 @@ func (c *Context) executeColumnCompat(ctx context.Context, compat *physical.Colu
 		return errorPipeline(ctx, fmt.Errorf("columncompat expects exactly one input, got %d", len(inputs)))
 	}
 
-	return newColumnCompatibilityPipeline(compat, inputs[0])
+	return newColumnCompatibilityPipeline(compat, inputs[0], region)
 }
 
 func (c *Context) executeParallelize(ctx context.Context, _ *physical.Parallelize, inputs []Pipeline) Pipeline {
@@ -391,16 +398,16 @@ func (c *Context) executeParallelize(ctx context.Context, _ *physical.Paralleliz
 	return inputs[0]
 }
 
-func (c *Context) executeScanSet(ctx context.Context, set *physical.ScanSet) Pipeline {
+func (c *Context) executeScanSet(ctx context.Context, set *physical.ScanSet, _ *xcap.Region) Pipeline {
 	// ScanSet typically gets partitioned by the scheduler into multiple scan
 	// nodes.
 	//
 	// However, for locally testing unpartitioned pipelines, we still supprt
 	// running a ScanSet. In this case, we treat internally execute it as a
 	// Merge on top of multiple sequential scans.
+	ctx, mergeRegion := xcap.StartRegion(ctx, physical.NodeTypeMerge.String())
 
 	var targets []Pipeline
-
 	for _, target := range set.Targets {
 		switch target.Type {
 		case physical.ScanTypeDataObject:
@@ -410,8 +417,10 @@ func (c *Context) executeScanSet(ctx context.Context, set *physical.ScanSet) Pip
 			partition.Predicates = set.Predicates
 			partition.Projections = set.Projections
 
-			targets = append(targets, newLazyPipeline(func(ctx context.Context, _ []Pipeline) Pipeline {
-				return tracePipeline("physical.DataObjScan", c.executeDataObjScan(ctx, partition))
+			nodeCtx, partitionRegion := startRegionForNode(ctx, partition)
+
+			targets = append(targets, newLazyPipeline(func(_ context.Context, _ []Pipeline) Pipeline {
+				return newObservedPipeline(c.executeDataObjScan(nodeCtx, partition, partitionRegion))
 			}, nil))
 		default:
 			return errorPipeline(ctx, fmt.Errorf("unrecognized ScanSet target %s", target.Type))
@@ -421,10 +430,95 @@ func (c *Context) executeScanSet(ctx context.Context, set *physical.ScanSet) Pip
 		return emptyPipeline()
 	}
 
-	pipeline, err := newMergePipeline(targets, c.mergePrefetchCount)
+	pipeline, err := newMergePipeline(targets, c.mergePrefetchCount, mergeRegion)
 	if err != nil {
 		return errorPipeline(ctx, err)
 	}
 
 	return pipeline
+}
+
+// startRegionForNode starts xcap.Region for the given physical plan node.
+// It internally calls xcap.StartRegion with attributes relevant to the node type.
+func startRegionForNode(ctx context.Context, n physical.Node) (context.Context, *xcap.Region) {
+	// Include node ID in the region attributes to retain a link to the physical plan node.
+	attributes := []attribute.KeyValue{
+		attribute.String("node_id", n.ID().String()),
+	}
+
+	switch n := n.(type) {
+	case *physical.DataObjScan:
+		attributes = append(attributes,
+			attribute.String("location", string(n.Location)),
+			attribute.Int("section", n.Section),
+			attribute.Int("num_stream_ids", len(n.StreamIDs)),
+			attribute.Int("num_predicates", len(n.Predicates)),
+			attribute.Int("num_projections", len(n.Projections)),
+		)
+
+	case *physical.TopK:
+		attributes = append(attributes,
+			attribute.Int("k", n.K),
+			attribute.Bool("ascending", n.Ascending),
+			attribute.Bool("nulls_first", n.NullsFirst),
+		)
+		if n.SortBy != nil {
+			attributes = append(attributes, attribute.Stringer("sort_by", n.SortBy))
+		}
+
+	case *physical.Limit:
+		attributes = append(attributes,
+			attribute.Int("skip", int(n.Skip)),
+			attribute.Int("fetch", int(n.Fetch)),
+		)
+
+	case *physical.Filter:
+		attributes = append(attributes,
+			attribute.Int("num_predicates", len(n.Predicates)),
+		)
+
+	case *physical.Projection:
+		attributes = append(attributes,
+			attribute.Int("num_expressions", len(n.Expressions)),
+			attribute.Bool("all", n.All),
+			attribute.Bool("drop", n.Drop),
+			attribute.Bool("expand", n.Expand),
+		)
+
+	case *physical.RangeAggregation:
+		attributes = append(attributes,
+			attribute.String("operation", string(rune(n.Operation))),
+			attribute.Int64("start_ts", n.Start.UnixNano()),
+			attribute.Int64("end_ts", n.End.UnixNano()),
+			attribute.Int64("range_interval", int64(n.Range)),
+			attribute.Int64("step", int64(n.Step)),
+			attribute.Int("num_grouping", len(n.Grouping.Columns)),
+			attribute.String("grouping_mode", n.Grouping.Mode.String()),
+		)
+
+	case *physical.VectorAggregation:
+		attributes = append(attributes,
+			attribute.String("operation", string(rune(n.Operation))),
+			attribute.Int("num_grouping", len(n.Grouping.Columns)),
+			attribute.String("grouping_mode", n.Grouping.Mode.String()),
+		)
+
+	case *physical.ColumnCompat:
+		attributes = append(attributes,
+			attribute.String("src", n.Source.String()),
+			attribute.String("dst", n.Destination.String()),
+			attribute.String("collision", n.Collision.String()),
+		)
+
+	case *physical.ScanSet:
+		attributes = append(attributes,
+			attribute.Int("num_targets", len(n.Targets)),
+			attribute.Int("num_predicates", len(n.Predicates)),
+			attribute.Int("num_projections", len(n.Projections)),
+		)
+	default:
+		// do nothing.
+	}
+
+	return xcap.StartRegion(ctx, n.Type().String(), xcap.WithRegionAttributes(attributes...))
 }

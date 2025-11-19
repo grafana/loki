@@ -62,7 +62,7 @@ spec:
       {{- end }}
       {{- include "loki.bloomPlannerPriorityClassName" . | nindent 6 }}
       securityContext:
-        {{- toYaml .Values.loki.podSecurityContext | nindent 8 }}
+        {{- include "loki.podSecurityContext" . | nindent 8 }}
       terminationGracePeriodSeconds: {{ .Values.bloomPlanner.terminationGracePeriodSeconds }}
       {{- with .Values.bloomPlanner.initContainers }}
       initContainers:
@@ -180,6 +180,9 @@ spec:
           {{- toYaml .accessModes | nindent 10 }}
         {{- with .storageClass }}
         storageClassName: {{ if (eq "-" .) }}""{{ else }}{{ . }}{{ end }}
+        {{- end }}
+        {{- with .volumeAttributesClassName }}
+        volumeAttributesClassName: {{ . }}
         {{- end }}
         resources:
           requests:

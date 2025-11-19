@@ -73,6 +73,7 @@ func readersFromKafkaCfg(
 		consumerFactory,
 		log.NewNopLogger(),
 		nil,
+		nil, // stateProvider is optional in tests
 	)
 	require.NoError(t, err)
 

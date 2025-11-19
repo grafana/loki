@@ -85,7 +85,7 @@ func TestVectorAggregationPipeline(t *testing.T) {
 		Mode: types.GroupingModeByLabelSet,
 	}
 
-	pipeline, err := newVectorAggregationPipeline([]Pipeline{input1, input2}, grouping, newExpressionEvaluator(), types.VectorAggregationTypeSum)
+	pipeline, err := newVectorAggregationPipeline([]Pipeline{input1, input2}, grouping, newExpressionEvaluator(), types.VectorAggregationTypeSum, nil)
 	require.NoError(t, err)
 	defer pipeline.Close()
 

@@ -270,8 +270,6 @@ func walkRangeAggregation(e *syntax.RangeAggregationExpr, params logql.Params) (
 		rangeAggType = types.RangeAggregationTypeMin
 	case syntax.OpRangeTypeAvg:
 		rangeAggType = types.RangeAggregationTypeAvg
-	//case syntax.OpRangeTypeBytesRate:
-	//	rangeAggType = types.RangeAggregationTypeBytes // bytes_rate is implemented as bytes_over_time/$interval
 	case syntax.OpRangeTypeRate:
 		if e.Left.Unwrap != nil {
 			rangeAggType = types.RangeAggregationTypeSum // rate of an unwrap is implemented as sum_over_time/$interval

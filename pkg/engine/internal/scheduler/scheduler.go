@@ -16,6 +16,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/services"
 	"github.com/oklog/ulid/v2"
+	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/otel/propagation"
 	"golang.org/x/sync/errgroup"
 
@@ -34,12 +35,17 @@ type Config struct {
 
 // Scheduler is a service that can schedule tasks to connected worker instances.
 type Scheduler struct {
-	logger log.Logger
+	logger    log.Logger
+	metrics   *metrics
+	collector *collector
 
 	initOnce sync.Once
 	svc      services.Service
 
 	listener wire.Listener
+
+	// Current set of connections, used for collecting metrics.
+	connections sync.Map // map[*workerConn]struct{}
 
 	resourcesMut sync.RWMutex
 	streams      map[ulid.ULID]*stream // All known streams (regardless of state)
@@ -65,15 +71,21 @@ func New(config Config) (*Scheduler, error) {
 		return nil, errors.New("listener must be provided")
 	}
 
-	return &Scheduler{
-		logger:   config.Logger,
+	s := &Scheduler{
+		logger: config.Logger,
+
 		listener: config.Listener,
 
 		streams: make(map[ulid.ULID]*stream),
 		tasks:   make(map[ulid.ULID]*task),
 
 		assignSema: make(chan struct{}, 1),
-	}, nil
+	}
+
+	s.metrics = newMetrics()
+	s.collector = newCollector(s)
+
+	return s, nil
 }
 
 // Service returns the service used to manage the lifecycle of the Scheduler.
@@ -88,6 +100,7 @@ func (s *Scheduler) Service() services.Service {
 func (s *Scheduler) run(ctx context.Context) error {
 	g, ctx := errgroup.WithContext(ctx)
 
+	g.Go(func() error { return s.collector.Process(ctx) })
 	g.Go(func() error { return s.runAcceptLoop(ctx) })
 	g.Go(func() error { return s.runAssignLoop(ctx) })
 
@@ -113,6 +126,11 @@ func (s *Scheduler) handleConn(ctx context.Context, conn wire.Conn) {
 	level.Info(logger).Log("msg", "handling connection")
 
 	wc := new(workerConn)
+
+	s.connections.Store(wc, struct{}{})
+	defer s.connections.Delete(wc)
+
+	s.metrics.connsTotal.Inc()
 
 	peer := &wire.Peer{
 		Logger: logger,
@@ -157,12 +175,8 @@ func (s *Scheduler) handleConn(ctx context.Context, conn wire.Conn) {
 }
 
 func (s *Scheduler) handleStreamData(ctx context.Context, worker *workerConn, msg wire.StreamDataMessage) error {
-	switch worker.ty {
-	case connectionTypeInitial:
-		// Flag the connection as a data plane connection.
-		worker.ty = connectionTypeDataPlane
-	case connectionTypeControlPlane:
-		return fmt.Errorf("workers in state %s can not send stream data messages", worker.ty)
+	if err := worker.MarkDataPlane(); err != nil {
+		return err
 	}
 
 	s.resourcesMut.RLock()
@@ -178,29 +192,16 @@ func (s *Scheduler) handleStreamData(ctx context.Context, worker *workerConn, ms
 }
 
 func (s *Scheduler) handleWorkerHello(_ context.Context, worker *workerConn, msg wire.WorkerHelloMessage) error {
-	if got, want := worker.ty, connectionTypeInitial; got != want {
-		return fmt.Errorf("worker connection must be in state %q, got %q", want, got)
-	} else if msg.Threads <= 0 {
-		return errors.New("worker must advertise at least one thread")
-	}
-
-	worker.ty = connectionTypeControlPlane
-	worker.maxThreads = msg.Threads
-	return nil
+	return worker.HandleHello(msg)
 }
 
 func (s *Scheduler) markWorkerReady(_ context.Context, worker *workerConn) error {
-	if got, want := worker.ty, connectionTypeControlPlane; got != want {
-		return fmt.Errorf("worker connection must be in state %q, got %q", want, got)
+	if err := worker.MarkReady(); err != nil {
+		return err
 	}
 
 	s.assignMut.Lock()
 	defer s.assignMut.Unlock()
-
-	if !worker.hasCapacity() {
-		return fmt.Errorf("maximum capacity %d reached, wait for task assignment or complete existing assigned tasks", worker.maxThreads)
-	}
-	worker.readyThreads++
 
 	s.readyWorkers = append(s.readyWorkers, worker)
 
@@ -223,7 +224,7 @@ func nudgeSemaphore(sema chan struct{}) {
 }
 
 func (s *Scheduler) handleTaskStatus(ctx context.Context, worker *workerConn, msg wire.TaskStatusMessage) error {
-	if got, want := worker.ty, connectionTypeControlPlane; got != want {
+	if got, want := worker.Type(), connectionTypeControlPlane; got != want {
 		return fmt.Errorf("worker connection must be in state %q, got %q", want, got)
 	}
 
@@ -238,12 +239,18 @@ func (s *Scheduler) handleTaskStatus(ctx context.Context, worker *workerConn, ms
 		return fmt.Errorf("task %s not found", msg.ID)
 	}
 
-	changed, err := task.setState(msg.Status)
+	changed, err := task.setState(s.metrics, msg.Status)
 	if err != nil {
 		return err
 	} else if changed {
 		if owner := task.owner; owner != nil && task.status.State.Terminal() {
-			owner.untrackAssignment(task)
+			owner.Unassign(task)
+		}
+
+		if task.status.State == workflow.TaskStateCompleted {
+			// The execution time of the task is the duration from when it was
+			// first assigned to when we received the completion status.
+			s.metrics.taskExecSeconds.Observe(time.Since(task.assignTime).Seconds())
 		}
 
 		// Notify the handler about the change.
@@ -257,7 +264,7 @@ func (s *Scheduler) handleTaskStatus(ctx context.Context, worker *workerConn, ms
 }
 
 func (s *Scheduler) handleStreamStatus(ctx context.Context, worker *workerConn, msg wire.StreamStatusMessage) error {
-	if got, want := worker.ty, connectionTypeControlPlane; got != want {
+	if got, want := worker.Type(), connectionTypeControlPlane; got != want {
 		return fmt.Errorf("worker connection must be in state %q, got %q", want, got)
 	}
 
@@ -277,7 +284,7 @@ func (s *Scheduler) handleStreamStatus(ctx context.Context, worker *workerConn, 
 // changeStreamState updates the state of the target stream. changeStreamState
 // must be called while the resourcesMut lock is held.
 func (s *Scheduler) changeStreamState(ctx context.Context, n *notifier, target *stream, newState workflow.StreamState) error {
-	changed, err := target.setState(newState)
+	changed, err := target.setState(s.metrics, newState)
 	if err != nil {
 		return err
 	} else if !changed {
@@ -323,10 +330,10 @@ func (s *Scheduler) abortWorkerTasks(ctx context.Context, worker *workerConn, re
 		}
 	}
 
-	for task := range worker.tasks {
-		worker.untrackAssignment(task)
+	for _, task := range worker.Assigned() {
+		worker.Unassign(task)
 
-		if changed, _ := task.setState(newStatus); !changed {
+		if changed, _ := task.setState(s.metrics, newStatus); !changed {
 			continue
 		}
 
@@ -436,7 +443,15 @@ func (s *Scheduler) assignTask(ctx context.Context, task *task, worker *workerCo
 	}
 
 	// The worker accepted the message, so we can assign the task to it now.
-	worker.trackAssignment(task)
+	worker.Assign(task)
+
+	// The queue time of a task is the duration from when it entered the queue
+	// to when a worker accepted the assignment.
+	//
+	// We track this moment as the "assign time" to be able to calculate
+	// execution time later.
+	task.assignTime = time.Now()
+	s.metrics.taskQueueSeconds.Observe(task.assignTime.Sub(task.queueTime).Seconds())
 
 	// Now that the task has been accepted, we can attempt address bindings. We
 	// do this on task assignment to simplify the implementation, though it
@@ -585,6 +600,21 @@ NextTask:
 		return errors.Join(errs...)
 	}
 
+	// Observe initial state for the streams and tasks.
+	{
+		var (
+			initialStreamState = workflow.StreamStateIdle.String()
+			initialTaskState   = workflow.TaskStateCreated.String()
+		)
+
+		for range manifestStreams {
+			s.metrics.streamsTotal.WithLabelValues(initialStreamState).Inc()
+		}
+		for range manifestTasks {
+			s.metrics.tasksTotal.WithLabelValues(initialTaskState).Inc()
+		}
+	}
+
 	// Once we hit this point, the manifest has been validated and we can
 	// atomically update our internal state.
 	maps.Copy(s.streams, manifestStreams)
@@ -625,7 +655,7 @@ func (s *Scheduler) UnregisterManifest(ctx context.Context, manifest *workflow.M
 		// Immediately clean up our own resources.
 		s.deleteTask(registered)
 
-		if changed, _ := registered.setState(workflow.TaskStatus{State: workflow.TaskStateCancelled}); !changed {
+		if changed, _ := registered.setState(s.metrics, workflow.TaskStatus{State: workflow.TaskStateCancelled}); !changed {
 			// Ignore if the task couldn't move into the canceled state, which
 			// indicates it's already in a terminal state.
 			continue
@@ -653,7 +683,7 @@ func (s *Scheduler) UnregisterManifest(ctx context.Context, manifest *workflow.M
 	for _, streamToRemove := range manifest.Streams {
 		registered := s.streams[streamToRemove.ULID] // Validated to exist above
 
-		changed, _ := registered.setState(workflow.StreamStateClosed)
+		changed, _ := registered.setState(s.metrics, workflow.StreamStateClosed)
 		if changed {
 			n.AddStreamEvent(streamNotification{
 				Handler:  registered.handler,
@@ -672,7 +702,7 @@ func (s *Scheduler) deleteTask(t *task) {
 	delete(s.tasks, t.inner.ULID)
 
 	if owner := t.owner; owner != nil {
-		owner.untrackAssignment(t)
+		owner.Unassign(t)
 	}
 }
 
@@ -756,6 +786,7 @@ func (s *Scheduler) enqueueTasks(tasks []*task) error {
 			continue
 		}
 
+		task.queueTime = time.Now()
 		s.taskQueue = append(s.taskQueue, task)
 	}
 
@@ -777,7 +808,7 @@ func (s *Scheduler) markPending(ctx context.Context, tasks []*task) {
 	defer s.resourcesMut.Unlock()
 
 	for _, task := range tasks {
-		if changed, _ := task.setState(workflow.TaskStatus{State: workflow.TaskStatePending}); !changed {
+		if changed, _ := task.setState(s.metrics, workflow.TaskStatus{State: workflow.TaskStatePending}); !changed {
 			// If the state change failed, the task either got canceled or
 			// picked up by a worker in between enqueueing it and calling this
 			// method.
@@ -811,13 +842,13 @@ func (s *Scheduler) Cancel(ctx context.Context, tasks ...*workflow.Task) error {
 			continue
 		}
 
-		if changed, _ := registered.setState(workflow.TaskStatus{State: workflow.TaskStateCancelled}); changed {
+		if changed, _ := registered.setState(s.metrics, workflow.TaskStatus{State: workflow.TaskStateCancelled}); changed {
 			// If the task has an owner, we'll inform it that the task has been
 			// canceled and it can stop processing it.
 			//
 			// This is a best-effort message, so we don't wait for acknowledgement.
 			if owner := registered.owner; owner != nil {
-				owner.untrackAssignment(registered)
+				owner.Unassign(registered)
 				_ = owner.SendMessageAsync(ctx, wire.TaskCancelMessage{ID: registered.inner.ULID})
 			}
 
@@ -846,4 +877,20 @@ func (s *Scheduler) Cancel(ctx context.Context, tasks ...*workflow.Task) error {
 		return errors.Join(errs...)
 	}
 	return nil
+}
+
+// RegisterMetrics registers metrics about s to report to reg.
+func (s *Scheduler) RegisterMetrics(reg prometheus.Registerer) error {
+	var errs []error
+
+	errs = append(errs, reg.Register(s.collector))
+	errs = append(errs, s.metrics.Register(reg))
+
+	return errors.Join(errs...)
+}
+
+// UnregisterMetrics unregisters metrics about s from reg.
+func (s *Scheduler) UnregisterMetrics(reg prometheus.Registerer) {
+	reg.Unregister(s.collector)
+	s.metrics.Unregister(reg)
 }

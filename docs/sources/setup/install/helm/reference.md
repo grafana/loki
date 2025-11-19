@@ -402,6 +402,7 @@ This is the generated reference for the Loki Helm Chart values.
     "selector": null,
     "size": "10Gi",
     "storageClass": null,
+    "volumeAttributesClassName": null,
     "volumeClaimsEnabled": true
   },
   "podAnnotations": {},
@@ -414,6 +415,7 @@ This is the generated reference for the Loki Helm Chart values.
   "service": {
     "annotations": {},
     "labels": {},
+    "trafficDistribution": "",
     "type": "ClusterIP"
   },
   "targetModule": "backend",
@@ -690,6 +692,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>backend.persistence.volumeAttributesClassName</td>
+			<td>string</td>
+			<td>Volume attributes class name to be used. If empty or set to null, no volumeAttributesClassName spec is set. Requires Kubernetes 1.31</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>backend.persistence.volumeClaimsEnabled</td>
 			<td>bool</td>
 			<td>Enable volume claims in pod spec</td>
@@ -776,6 +787,15 @@ null
 			<td>Additional labels for backend Service</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.service.trafficDistribution</td>
+			<td>string</td>
+			<td>trafficDistribution for backend Service</td>
+			<td><pre lang="json">
+""
 </pre>
 </td>
 		</tr>
@@ -1280,7 +1300,8 @@ null
         ],
         "name": "data",
         "size": "10Gi",
-        "storageClass": null
+        "storageClass": null,
+        "volumeAttributesClassName": null
       }
     ],
     "enableStatefulSetAutoDeletePVC": false,
@@ -1514,6 +1535,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>bloomGateway.persistence.claims[0].volumeAttributesClassName</td>
+			<td>string</td>
+			<td>Volume attributes class name to be used. If empty or set to null, no volumeAttributesClassName spec is set. Requires Kubernetes 1.31</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>bloomGateway.persistence.enableStatefulSetAutoDeletePVC</td>
 			<td>bool</td>
 			<td>Enable StatefulSetAutoDeletePVC feature</td>
@@ -1728,7 +1758,8 @@ null
         "labels": {},
         "name": "data",
         "size": "10Gi",
-        "storageClass": null
+        "storageClass": null,
+        "volumeAttributesClassName": null
       }
     ],
     "enableStatefulSetAutoDeletePVC": false,
@@ -1966,6 +1997,15 @@ null
 			<td>Size of persistent disk</td>
 			<td><pre lang="json">
 "10Gi"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.persistence.claims[0].volumeAttributesClassName</td>
+			<td>string</td>
+			<td>Volume attributes class name to be used. If empty or set to null, no volumeAttributesClassName spec is set. Requires Kubernetes 1.31</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>
@@ -2298,7 +2338,8 @@ true
     "labels": {},
     "mountPath": "/data",
     "storageClass": null,
-    "storageSize": "10G"
+    "storageSize": "10G",
+    "volumeAttributesClassName": null
   },
   "podAnnotations": {},
   "podLabels": {},
@@ -2525,7 +2566,8 @@ false
   "labels": {},
   "mountPath": "/data",
   "storageClass": null,
-  "storageSize": "10G"
+  "storageSize": "10G",
+  "volumeAttributesClassName": null
 }
 </pre>
 </td>
@@ -2563,6 +2605,15 @@ null
 			<td>Size of persistent disk, must be in G or Gi</td>
 			<td><pre lang="json">
 "10G"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.persistence.volumeAttributesClassName</td>
+			<td>string</td>
+			<td>Volume attributes class name to be used. If empty or set to null, no volumeAttributesClassName spec is set. Requires Kubernetes 1.31</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>
@@ -2770,7 +2821,8 @@ null
   "labels": {},
   "mountPath": "/data",
   "storageClass": null,
-  "storageSize": "10G"
+  "storageSize": "10G",
+  "volumeAttributesClassName": null
 }
 </pre>
 </td>
@@ -2808,6 +2860,15 @@ null
 			<td>Size of persistent disk, must be in G or Gi</td>
 			<td><pre lang="json">
 "10G"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.persistence.volumeAttributesClassName</td>
+			<td>string</td>
+			<td>Volume attributes class name to be used. If empty or set to null, no volumeAttributesClassName spec is set. Requires Kubernetes 1.31</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>
@@ -3031,7 +3092,8 @@ null
         "labels": {},
         "name": "data",
         "size": "10Gi",
-        "storageClass": null
+        "storageClass": null,
+        "volumeAttributesClassName": null
       }
     ],
     "enableStatefulSetAutoDeletePVC": false,
@@ -3260,6 +3322,15 @@ null
 			<td>Labels for compactor PVCs</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>compactor.persistence.claims[0].volumeAttributesClassName</td>
+			<td>string</td>
+			<td>Volume attributes class name to be used. If empty or set to null, no volumeAttributesClassName spec is set. Requires Kubernetes 1.31</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>
@@ -5254,6 +5325,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>gateway.service.trafficDistribution</td>
+			<td>string</td>
+			<td>trafficDistribution for gateway service</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>gateway.service.type</td>
 			<td>string</td>
 			<td>Type of the gateway service</td>
@@ -5470,6 +5550,7 @@ null
     "labels": {},
     "size": "10Gi",
     "storageClass": null,
+    "volumeAttributesClassName": null,
     "whenDeleted": "Retain",
     "whenScaled": "Retain"
   },
@@ -5484,6 +5565,7 @@ null
   "terminationGracePeriodSeconds": 300,
   "tolerations": [],
   "topologySpreadConstraints": [],
+  "trafficDistribution": "",
   "updateStrategy": {
     "type": "RollingUpdate"
   }
@@ -5739,6 +5821,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>indexGateway.persistence.volumeAttributesClassName</td>
+			<td>string</td>
+			<td>Volume attributes class name to be used. If empty or set to null, no volumeAttributesClassName spec is set. Requires Kubernetes 1.31</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>indexGateway.podAnnotations</td>
 			<td>object</td>
 			<td>Annotations for index-gateway pods</td>
@@ -5838,6 +5929,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>indexGateway.trafficDistribution</td>
+			<td>string</td>
+			<td>trafficDistribution for index-gateway service</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>indexGateway.updateStrategy</td>
 			<td>object</td>
 			<td>UpdateStrategy for the indexGateway StatefulSet.</td>
@@ -5925,7 +6025,8 @@ null
         ],
         "name": "data",
         "size": "10Gi",
-        "storageClass": null
+        "storageClass": null,
+        "volumeAttributesClassName": null
       }
     ],
     "enableStatefulSetAutoDeletePVC": false,
@@ -5960,6 +6061,7 @@ null
       "whenUnsatisfiable": "ScheduleAnyway"
     }
   ],
+  "trafficDistribution": "",
   "updateStrategy": {
     "type": "RollingUpdate"
   },
@@ -6288,6 +6390,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>ingester.persistence.claims[0].volumeAttributesClassName</td>
+			<td>string</td>
+			<td>Volume attributes class name to be used. If empty or set to null, no volumeAttributesClassName spec is set. Requires Kubernetes 1.31</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>ingester.persistence.enableStatefulSetAutoDeletePVC</td>
 			<td>bool</td>
 			<td>Enable StatefulSetAutoDeletePVC feature</td>
@@ -6362,7 +6473,7 @@ false
 		<tr>
 			<td>ingester.serviceAnnotations</td>
 			<td>object</td>
-			<td>Annotations for ingestor service</td>
+			<td>Annotations for ingester service</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -6371,7 +6482,7 @@ false
 		<tr>
 			<td>ingester.serviceLabels</td>
 			<td>object</td>
-			<td>Labels for ingestor service</td>
+			<td>Labels for ingester service</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -6380,7 +6491,7 @@ false
 		<tr>
 			<td>ingester.serviceType</td>
 			<td>string</td>
-			<td>Service type for ingestor service</td>
+			<td>Service type for ingester service</td>
 			<td><pre lang="json">
 "ClusterIP"
 </pre>
@@ -6410,6 +6521,15 @@ false
 			<td>topologySpread for ingester pods. The value will be passed through tpl.</td>
 			<td><pre lang="">
 Defaults to allow skew no more than 1 node
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.trafficDistribution</td>
+			<td>string</td>
+			<td>trafficDistribution for ingester service</td>
+			<td><pre lang="json">
+""
 </pre>
 </td>
 		</tr>
@@ -7087,6 +7207,7 @@ null
 			<td><pre lang="json">
 {
   "fsGroup": 10001,
+  "fsGroupChangePolicy": "OnRootMismatch",
   "runAsGroup": 10001,
   "runAsNonRoot": true,
   "runAsUser": 10001
@@ -7172,6 +7293,15 @@ null
   "http_server_read_timeout": "600s",
   "http_server_write_timeout": "600s"
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.service.trafficDistribution</td>
+			<td>string</td>
+			<td>trafficDistribution for services Ref: https://kubernetes.io/docs/concepts/services-networking/service/#traffic-distribution</td>
+			<td><pre lang="json">
+""
 </pre>
 </td>
 		</tr>
@@ -9234,7 +9364,8 @@ null
         "labels": {},
         "name": "data",
         "size": "10Gi",
-        "storageClass": null
+        "storageClass": null,
+        "volumeAttributesClassName": null
       }
     ],
     "enableStatefulSetAutoDeletePVC": false,
@@ -9474,6 +9605,15 @@ null
 			<td>Labels for pattern ingester PVCs</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.persistence.claims[0].volumeAttributesClassName</td>
+			<td>string</td>
+			<td>Volume attributes class name to be used. If empty or set to null, no volumeAttributesClassName spec is set. Requires Kubernetes 1.31</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>
@@ -9728,7 +9868,8 @@ null
       "topologyKey": "kubernetes.io/hostname",
       "whenUnsatisfiable": "ScheduleAnyway"
     }
-  ]
+  ],
+  "trafficDistribution": ""
 }
 </pre>
 </td>
@@ -10096,6 +10237,15 @@ Defaults to allow skew no more then 1 node
 </td>
 		</tr>
 		<tr>
+			<td>querier.trafficDistribution</td>
+			<td>string</td>
+			<td>trafficDistribution for querier service</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>queryFrontend</td>
 			<td>object</td>
 			<td>Configuration for the query-frontend</td>
@@ -10163,7 +10313,8 @@ Defaults to allow skew no more then 1 node
   "serviceType": "ClusterIP",
   "terminationGracePeriodSeconds": 30,
   "tolerations": [],
-  "topologySpreadConstraints": []
+  "topologySpreadConstraints": [],
+  "trafficDistribution": ""
 }
 </pre>
 </td>
@@ -10524,6 +10675,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>queryFrontend.trafficDistribution</td>
+			<td>string</td>
+			<td>trafficDistribution for query-frontend service</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>queryScheduler</td>
 			<td>object</td>
 			<td>Configuration for the query-scheduler</td>
@@ -10574,7 +10734,8 @@ null
   "serviceLabels": {},
   "terminationGracePeriodSeconds": 30,
   "tolerations": [],
-  "topologySpreadConstraints": []
+  "topologySpreadConstraints": [],
+  "trafficDistribution": ""
 }
 </pre>
 </td>
@@ -10825,6 +10986,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>queryScheduler.trafficDistribution</td>
+			<td>string</td>
+			<td>trafficDistribution for query-scheduler service</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>rbac.namespaced</td>
 			<td>bool</td>
 			<td>Whether to install RBAC in the namespace only or cluster-wide. Useful if you want to watch ConfigMap globally.</td>
@@ -10927,7 +11097,8 @@ false
     "labels": {},
     "selector": null,
     "size": "10Gi",
-    "storageClass": null
+    "storageClass": null,
+    "volumeAttributesClassName": null
   },
   "podAnnotations": {},
   "podLabels": {},
@@ -10939,8 +11110,10 @@ false
   "service": {
     "annotations": {},
     "labels": {},
+    "trafficDistribution": "",
     "type": "ClusterIP"
   },
+  "startupProbe": {},
   "targetModule": "read",
   "terminationGracePeriodSeconds": 30,
   "tolerations": [],
@@ -11179,7 +11352,8 @@ false
   "labels": {},
   "selector": null,
   "size": "10Gi",
-  "storageClass": null
+  "storageClass": null,
+  "volumeAttributesClassName": null
 }
 </pre>
 </td>
@@ -11244,6 +11418,15 @@ null
 			<td>read.persistence.storageClass</td>
 			<td>string</td>
 			<td>Storage class to be used. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>read.persistence.volumeAttributesClassName</td>
+			<td>string</td>
+			<td>Volume attributes class name to be used. If empty or set to null, no volumeAttributesClassName spec is set. Requires Kubernetes 1.31</td>
 			<td><pre lang="json">
 null
 </pre>
@@ -11331,11 +11514,29 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>read.service.trafficDistribution</td>
+			<td>string</td>
+			<td>trafficDistribution for read service</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>read.service.type</td>
 			<td>string</td>
 			<td>Service Type for read Service</td>
 			<td><pre lang="json">
 "ClusterIP"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>read.startupProbe</td>
+			<td>object</td>
+			<td>statup probe for the read pods. If empty, applies no startupProbe</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -11547,7 +11748,8 @@ true
   "labels": {},
   "mountPath": "/data",
   "storageClass": null,
-  "storageSize": "10G"
+  "storageSize": "10G",
+  "volumeAttributesClassName": null
 }
 </pre>
 </td>
@@ -11594,6 +11796,15 @@ null
 			<td>Size of persistent disk, must be in G or Gi</td>
 			<td><pre lang="json">
 "10G"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.persistence.volumeAttributesClassName</td>
+			<td>string</td>
+			<td>Volume attributes class name to be used. If empty or set to null, no volumeAttributesClassName spec is set. Requires Kubernetes 1.31</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>
@@ -11845,7 +12056,8 @@ null
     "enabled": false,
     "labels": {},
     "size": "10Gi",
-    "storageClass": null
+    "storageClass": null,
+    "volumeAttributesClassName": null
   },
   "podAnnotations": {},
   "podLabels": {},
@@ -12095,6 +12307,15 @@ false
 			<td>ruler.persistence.storageClass</td>
 			<td>string</td>
 			<td>Storage class to be used. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ruler.persistence.volumeAttributesClassName</td>
+			<td>string</td>
+			<td>Volume attributes class name to be used. If empty or set to null, no volumeAttributesClassName spec is set. Requires Kubernetes 1.31</td>
 			<td><pre lang="json">
 null
 </pre>
@@ -12818,6 +13039,15 @@ null
 			<td>Additional labels for single binary Service</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>singleBinary.service.trafficDistribution</td>
+			<td>string</td>
+			<td>trafficDistribution single binary Service</td>
+			<td><pre lang="json">
+""
 </pre>
 </td>
 		</tr>
@@ -13614,6 +13844,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>write.persistence.volumeAttributesClassName</td>
+			<td>string</td>
+			<td>Volume attributes class name to be used. If empty or set to null, no volumeAttributesClassName spec is set. Requires Kubernetes 1.31</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>write.persistence.volumeClaimsEnabled</td>
 			<td>bool</td>
 			<td>Enable volume claims in pod spec</td>
@@ -13700,6 +13939,15 @@ null
 			<td>Additional labels for write Service</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.service.trafficDistribution</td>
+			<td>string</td>
+			<td>trafficDistribution for write service</td>
+			<td><pre lang="json">
+""
 </pre>
 </td>
 		</tr>

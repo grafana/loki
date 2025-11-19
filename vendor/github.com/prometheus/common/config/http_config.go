@@ -27,16 +27,22 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
 
-	conntrack "github.com/mwitkow/go-conntrack"
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/mwitkow/go-conntrack"
 	"go.yaml.in/yaml/v2"
 	"golang.org/x/net/http/httpproxy"
 	"golang.org/x/net/http2"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/clientcredentials"
+)
+
+const (
+	grantTypeJWTBearer = "urn:ietf:params:oauth:grant-type:jwt-bearer"
 )
 
 var (
@@ -237,12 +243,38 @@ type OAuth2 struct {
 	ClientSecretFile string `yaml:"client_secret_file" json:"client_secret_file"`
 	// ClientSecretRef is the name of the secret within the secret manager to use as the client
 	// secret.
-	ClientSecretRef string            `yaml:"client_secret_ref" json:"client_secret_ref"`
-	Scopes          []string          `yaml:"scopes,omitempty" json:"scopes,omitempty"`
-	TokenURL        string            `yaml:"token_url" json:"token_url"`
-	EndpointParams  map[string]string `yaml:"endpoint_params,omitempty" json:"endpoint_params,omitempty"`
-	TLSConfig       TLSConfig         `yaml:"tls_config,omitempty"`
-	ProxyConfig     `yaml:",inline"`
+	ClientSecretRef          string `yaml:"client_secret_ref" json:"client_secret_ref"`
+	ClientCertificateKeyID   string `yaml:"client_certificate_key_id" json:"client_certificate_key_id"`
+	ClientCertificateKey     Secret `yaml:"client_certificate_key" json:"client_certificate_key"`
+	ClientCertificateKeyFile string `yaml:"client_certificate_key_file" json:"client_certificate_key_file"`
+	// ClientCertificateKeyRef is the name of the secret within the secret manager to use as the client
+	// secret.
+	ClientCertificateKeyRef string `yaml:"client_certificate_key_ref" json:"client_certificate_key_ref"`
+	// GrantType is the OAuth2 grant type to use. It can be one of
+	// "client_credentials" or "urn:ietf:params:oauth:grant-type:jwt-bearer" (RFC 7523).
+	// Default value is "client_credentials"
+	GrantType string `yaml:"grant_type" json:"grant_type"`
+	// SignatureAlgorithm is the RSA algorithm used to sign JWT token. Only used if
+	// GrantType is set to "urn:ietf:params:oauth:grant-type:jwt-bearer".
+	// Default value is RS256 and valid values RS256, RS384, RS512
+	SignatureAlgorithm string `yaml:"signature_algorithm,omitempty" json:"signature_algorithm,omitempty"`
+	// Iss is the OAuth client identifier used when communicating with
+	// the configured OAuth provider. Default value is client_id. Only used if
+	// GrantType is set to "urn:ietf:params:oauth:grant-type:jwt-bearer".
+	Iss string `yaml:"iss,omitempty" json:"iss,omitempty"`
+	// Audience optionally specifies the intended audience of the
+	// request.  If empty, the value of TokenURL is used as the
+	// intended audience. Only used if
+	// GrantType is set to "urn:ietf:params:oauth:grant-type:jwt-bearer".
+	Audience string `yaml:"audience,omitempty" json:"audience,omitempty"`
+	// Claims is a map of claims to be added to the JWT token. Only used if
+	// GrantType is set to "urn:ietf:params:oauth:grant-type:jwt-bearer".
+	Claims         map[string]interface{} `yaml:"claims,omitempty" json:"claims,omitempty"`
+	Scopes         []string               `yaml:"scopes,omitempty" json:"scopes,omitempty"`
+	TokenURL       string                 `yaml:"token_url" json:"token_url"`
+	EndpointParams map[string]string      `yaml:"endpoint_params,omitempty" json:"endpoint_params,omitempty"`
+	TLSConfig      TLSConfig              `yaml:"tls_config,omitempty"`
+	ProxyConfig    `yaml:",inline"`
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
@@ -408,8 +440,15 @@ func (c *HTTPClientConfig) Validate() error {
 		if len(c.OAuth2.TokenURL) == 0 {
 			return errors.New("oauth2 token_url must be configured")
 		}
-		if nonZeroCount(len(c.OAuth2.ClientSecret) > 0, len(c.OAuth2.ClientSecretFile) > 0, len(c.OAuth2.ClientSecretRef) > 0) > 1 {
-			return errors.New("at most one of oauth2 client_secret, client_secret_file & client_secret_ref must be configured")
+		if c.OAuth2.GrantType == grantTypeJWTBearer {
+			if nonZeroCount(len(c.OAuth2.ClientCertificateKey) > 0, len(c.OAuth2.ClientCertificateKeyFile) > 0, len(c.OAuth2.ClientCertificateKeyRef) > 0) > 1 {
+				return errors.New("at most one of oauth2 client_certificate_key, client_certificate_key_file & client_certificate_key_ref must be configured using grant-type=urn:ietf:params:oauth:grant-type:jwt-bearer")
+			}
+			if c.OAuth2.SignatureAlgorithm != "" && !slices.Contains(validSignatureAlgorithm, c.OAuth2.SignatureAlgorithm) {
+				return errors.New("valid signature algorithms are RS256, RS384 and RS512")
+			}
+		} else if nonZeroCount(len(c.OAuth2.ClientSecret) > 0, len(c.OAuth2.ClientSecretFile) > 0, len(c.OAuth2.ClientSecretRef) > 0) > 1 {
+			return errors.New("at most one of oauth2 client_secret, client_secret_file & client_secret_ref must be configured using grant-type=client_credentials")
 		}
 	}
 	if err := c.ProxyConfig.Validate(); err != nil {
@@ -623,12 +662,6 @@ func NewRoundTripperFromConfigWithContext(ctx context.Context, cfg HTTPClientCon
 			DialContext:           dialContext,
 		}
 		if opts.http2Enabled && cfg.EnableHTTP2 {
-			// HTTP/2 support is golang had many problematic cornercases where
-			// dead connections would be kept and used in connection pools.
-			// https://github.com/golang/go/issues/32388
-			// https://github.com/golang/go/issues/39337
-			// https://github.com/golang/go/issues/39750
-
 			http2t, err := http2.ConfigureTransports(rt.(*http.Transport))
 			if err != nil {
 				return nil, err
@@ -668,11 +701,23 @@ func NewRoundTripperFromConfigWithContext(ctx context.Context, cfg HTTPClientCon
 		}
 
 		if cfg.OAuth2 != nil {
-			clientSecret, err := toSecret(opts.secretManager, cfg.OAuth2.ClientSecret, cfg.OAuth2.ClientSecretFile, cfg.OAuth2.ClientSecretRef)
-			if err != nil {
-				return nil, fmt.Errorf("unable to use client secret: %w", err)
+			var (
+				oauthCredential SecretReader
+				err             error
+			)
+
+			if cfg.OAuth2.GrantType == grantTypeJWTBearer {
+				oauthCredential, err = toSecret(opts.secretManager, cfg.OAuth2.ClientCertificateKey, cfg.OAuth2.ClientCertificateKeyFile, cfg.OAuth2.ClientCertificateKeyRef)
+				if err != nil {
+					return nil, fmt.Errorf("unable to use client certificate: %w", err)
+				}
+			} else {
+				oauthCredential, err = toSecret(opts.secretManager, cfg.OAuth2.ClientSecret, cfg.OAuth2.ClientSecretFile, cfg.OAuth2.ClientSecretRef)
+				if err != nil {
+					return nil, fmt.Errorf("unable to use client secret: %w", err)
+				}
 			}
-			rt = NewOAuth2RoundTripper(clientSecret, cfg.OAuth2, rt, &opts)
+			rt = NewOAuth2RoundTripper(oauthCredential, cfg.OAuth2, rt, &opts)
 		}
 
 		if cfg.HTTPHeaders != nil {
@@ -891,27 +936,31 @@ type oauth2RoundTripper struct {
 	lastSecret string
 
 	// Required for interaction with Oauth2 server.
-	config       *OAuth2
-	clientSecret SecretReader
-	opts         *httpClientOptions
-	client       *http.Client
+	config          *OAuth2
+	oauthCredential SecretReader
+	opts            *httpClientOptions
+	client          *http.Client
 }
 
-func NewOAuth2RoundTripper(clientSecret SecretReader, config *OAuth2, next http.RoundTripper, opts *httpClientOptions) http.RoundTripper {
-	if clientSecret == nil {
-		clientSecret = NewInlineSecret("")
+func NewOAuth2RoundTripper(oauthCredential SecretReader, config *OAuth2, next http.RoundTripper, opts *httpClientOptions) http.RoundTripper {
+	if oauthCredential == nil {
+		oauthCredential = NewInlineSecret("")
 	}
 
 	return &oauth2RoundTripper{
 		config: config,
 		// A correct tokenSource will be added later on.
-		lastRT:       &oauth2.Transport{Base: next},
-		opts:         opts,
-		clientSecret: clientSecret,
+		lastRT:          &oauth2.Transport{Base: next},
+		opts:            opts,
+		oauthCredential: oauthCredential,
 	}
 }
 
-func (rt *oauth2RoundTripper) newOauth2TokenSource(req *http.Request, secret string) (client *http.Client, source oauth2.TokenSource, err error) {
+type oauth2TokenSourceConfig interface {
+	TokenSource(ctx context.Context) oauth2.TokenSource
+}
+
+func (rt *oauth2RoundTripper) newOauth2TokenSource(req *http.Request, clientCredential string) (client *http.Client, source oauth2.TokenSource, err error) {
 	tlsConfig, err := NewTLSConfig(&rt.config.TLSConfig, WithSecretManager(rt.opts.secretManager))
 	if err != nil {
 		return nil, nil, err
@@ -949,12 +998,49 @@ func (rt *oauth2RoundTripper) newOauth2TokenSource(req *http.Request, secret str
 		t = NewUserAgentRoundTripper(ua, t)
 	}
 
-	config := &clientcredentials.Config{
-		ClientID:       rt.config.ClientID,
-		ClientSecret:   secret,
-		Scopes:         rt.config.Scopes,
-		TokenURL:       rt.config.TokenURL,
-		EndpointParams: mapToValues(rt.config.EndpointParams),
+	var config oauth2TokenSourceConfig
+
+	if rt.config.GrantType == grantTypeJWTBearer {
+		// RFC 7523 3.1 - JWT authorization grants
+		// RFC 7523 3.2 - Client Authentication Processing is not implement upstream yet,
+		// see https://github.com/golang/oauth2/pull/745
+
+		var sig *jwt.SigningMethodRSA
+		switch rt.config.SignatureAlgorithm {
+		case jwt.SigningMethodRS256.Name:
+			sig = jwt.SigningMethodRS256
+		case jwt.SigningMethodRS384.Name:
+			sig = jwt.SigningMethodRS384
+		case jwt.SigningMethodRS512.Name:
+			sig = jwt.SigningMethodRS512
+		default:
+			sig = jwt.SigningMethodRS256
+		}
+
+		iss := rt.config.Iss
+		if iss == "" {
+			iss = rt.config.ClientID
+		}
+		config = &JwtGrantTypeConfig{
+			PrivateKey:       []byte(clientCredential),
+			PrivateKeyID:     rt.config.ClientCertificateKeyID,
+			Scopes:           rt.config.Scopes,
+			TokenURL:         rt.config.TokenURL,
+			SigningAlgorithm: sig,
+			Iss:              iss,
+			Subject:          rt.config.ClientID,
+			Audience:         rt.config.Audience,
+			PrivateClaims:    rt.config.Claims,
+			EndpointParams:   mapToValues(rt.config.EndpointParams),
+		}
+	} else {
+		config = &clientcredentials.Config{
+			ClientID:       rt.config.ClientID,
+			ClientSecret:   clientCredential,
+			Scopes:         rt.config.Scopes,
+			TokenURL:       rt.config.TokenURL,
+			EndpointParams: mapToValues(rt.config.EndpointParams),
+		}
 	}
 	client = &http.Client{Transport: t}
 	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, client)
@@ -973,8 +1059,8 @@ func (rt *oauth2RoundTripper) RoundTrip(req *http.Request) (*http.Response, erro
 	rt.mtx.RUnlock()
 
 	// Fetch the secret if it's our first run or always if the secret can change.
-	if !rt.clientSecret.Immutable() || needsInit {
-		newSecret, err := rt.clientSecret.Fetch(req.Context())
+	if !rt.oauthCredential.Immutable() || needsInit {
+		newSecret, err := rt.oauthCredential.Fetch(req.Context())
 		if err != nil {
 			return nil, fmt.Errorf("unable to read oauth2 client secret: %w", err)
 		}

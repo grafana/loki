@@ -208,7 +208,6 @@ Generated storage config for loki common config
 object_store:
   {{- include "loki.thanosStorageConfig" (dict "ctx" . "bucketName" $bucketName) | nindent 2 }}
 {{- else if .Values.minio.enabled -}}
-{{- $bucketName := required "Please define loki.storage.bucketNames.chunks" (dig "storage" "bucketNames" "chunks" "" .Values.loki) }}
 s3:
   endpoint: {{ include "loki.minio" $ }}
   bucketnames: chunks
@@ -1267,3 +1266,14 @@ azure:
 storage_prefix: {{ .storage_prefix }}
 {{- end }}
 {{- end }}
+
+{{/*
+Pod security context
+*/}}
+{{- define "loki.podSecurityContext" -}}
+{{- if semverCompare ">=1.23-0" $.Capabilities.KubeVersion.GitVersion }}
+{{- toYaml .Values.loki.podSecurityContext }}
+{{- else }}
+{{- toYaml (omit .Values.loki.podSecurityContext "fsGroupChangePolicy")  }}
+{{- end }}
+{{- end -}}
