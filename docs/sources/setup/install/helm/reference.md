@@ -11021,6 +11021,7 @@ false
     "trafficDistribution": "",
     "type": "ClusterIP"
   },
+  "startupProbe": {},
   "targetModule": "read",
   "terminationGracePeriodSeconds": 30,
   "tolerations": [],
@@ -11425,6 +11426,15 @@ null
 			<td>Service Type for read Service</td>
 			<td><pre lang="json">
 "ClusterIP"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>read.startupProbe</td>
+			<td>object</td>
+			<td>statup probe for the read pods. If empty, applies no startupProbe</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
