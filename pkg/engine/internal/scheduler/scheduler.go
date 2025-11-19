@@ -100,6 +100,7 @@ func (s *Scheduler) Service() services.Service {
 func (s *Scheduler) run(ctx context.Context) error {
 	g, ctx := errgroup.WithContext(ctx)
 
+	g.Go(func() error { return s.collector.Process(ctx) })
 	g.Go(func() error { return s.runAcceptLoop(ctx) })
 	g.Go(func() error { return s.runAssignLoop(ctx) })
 
