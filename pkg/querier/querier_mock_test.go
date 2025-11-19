@@ -354,6 +354,14 @@ func (s *storeMock) HasForSeries(_, _ model.Time) (sharding.ForSeries, bool) {
 	return nil, false
 }
 
+func (s *storeMock) HasChunkSizingInfo(_, _ model.Time) bool {
+	return false
+}
+
+func (s *storeMock) GetChunkRefsWithSizingInfo(_ context.Context, _ string, _, _ model.Time, _ chunk.Predicate) ([]logproto.ChunkRefWithSizingInfo, error) {
+	return nil, nil
+}
+
 func (s *storeMock) Volume(ctx context.Context, userID string, from, through model.Time, _ int32, targetLabels []string, _ string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	args := s.Called(ctx, userID, from, through, targetLabels, matchers)
 	return args.Get(0).(*logproto.VolumeResponse), args.Error(1)
@@ -727,6 +735,10 @@ func (q *querierMock) GetShards(_ context.Context, _ string, _, _ model.Time, _ 
 
 func (q *querierMock) HasForSeries(_, _ model.Time) (sharding.ForSeries, bool) {
 	return nil, false
+}
+
+func (q *querierMock) HasChunkSizingInfo(_, _ model.Time) bool {
+	return false
 }
 
 func (q *querierMock) IndexShards(_ context.Context, _ *loghttp.RangeQuery, _ uint64) (*logproto.ShardsResponse, error) {

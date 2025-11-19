@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/gocql/gocql"
+	gocql "github.com/apache/cassandra-gocql-driver/v2"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -87,7 +87,7 @@ func (c *tableClient) CreateTable(ctx context.Context, desc config.TableDesc) er
 
 func (c *tableClient) createTable(ctx context.Context, desc config.TableDesc) error {
 	query := c.getCreateTableQuery(&desc)
-	err := c.session.Query(query).WithContext(ctx).Exec()
+	err := c.session.Query(query).ExecContext(ctx)
 	return errors.WithStack(err)
 }
 
@@ -107,7 +107,7 @@ func (c *tableClient) DeleteTable(ctx context.Context, name string) error {
 
 func (c *tableClient) deleteTable(ctx context.Context, name string) error {
 	err := c.session.Query(fmt.Sprintf(`
-		DROP TABLE IF EXISTS %s;`, name)).WithContext(ctx).Exec()
+		DROP TABLE IF EXISTS %s;`, name)).ExecContext(ctx)
 	return errors.WithStack(err)
 }
 

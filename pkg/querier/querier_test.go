@@ -89,9 +89,6 @@ func TestQuerier_Label_QueryTimeoutConfigFlag(t *testing.T) {
 func mockQuerierConfig() Config {
 	return Config{
 		TailMaxDuration: 1 * time.Minute,
-		Engine: logql.EngineOpts{
-			BatchSize: 1,
-		},
 	}
 }
 

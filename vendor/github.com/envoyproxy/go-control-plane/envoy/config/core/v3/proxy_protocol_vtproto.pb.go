@@ -76,6 +76,51 @@ func (m *ProxyProtocolPassThroughTLVs) MarshalToSizedBufferVTStrict(dAtA []byte)
 	return len(dAtA) - i, nil
 }
 
+func (m *TlvEntry) MarshalVTStrict() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVTStrict(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *TlvEntry) MarshalToVTStrict(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVTStrict(dAtA[:size])
+}
+
+func (m *TlvEntry) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if len(m.Value) > 0 {
+		i -= len(m.Value)
+		copy(dAtA[i:], m.Value)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Value)))
+		i--
+		dAtA[i] = 0x12
+	}
+	if m.Type != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Type))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
 func (m *ProxyProtocolConfig) MarshalVTStrict() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -106,6 +151,18 @@ func (m *ProxyProtocolConfig) MarshalToSizedBufferVTStrict(dAtA []byte) (int, er
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if len(m.AddedTlvs) > 0 {
+		for iNdEx := len(m.AddedTlvs) - 1; iNdEx >= 0; iNdEx-- {
+			size, err := m.AddedTlvs[iNdEx].MarshalToSizedBufferVTStrict(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0x1a
+		}
+	}
 	if m.PassThroughTlvs != nil {
 		size, err := m.PassThroughTlvs.MarshalToSizedBufferVTStrict(dAtA[:i])
 		if err != nil {
@@ -120,6 +177,51 @@ func (m *ProxyProtocolConfig) MarshalToSizedBufferVTStrict(dAtA []byte) (int, er
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Version))
 		i--
 		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *PerHostConfig) MarshalVTStrict() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVTStrict(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *PerHostConfig) MarshalToVTStrict(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVTStrict(dAtA[:size])
+}
+
+func (m *PerHostConfig) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if len(m.AddedTlvs) > 0 {
+		for iNdEx := len(m.AddedTlvs) - 1; iNdEx >= 0; iNdEx-- {
+			size, err := m.AddedTlvs[iNdEx].MarshalToSizedBufferVTStrict(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+			i--
+			dAtA[i] = 0xa
+		}
 	}
 	return len(dAtA) - i, nil
 }
@@ -144,6 +246,23 @@ func (m *ProxyProtocolPassThroughTLVs) SizeVT() (n int) {
 	return n
 }
 
+func (m *TlvEntry) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Type != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.Type))
+	}
+	l = len(m.Value)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
 func (m *ProxyProtocolConfig) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -156,6 +275,28 @@ func (m *ProxyProtocolConfig) SizeVT() (n int) {
 	if m.PassThroughTlvs != nil {
 		l = m.PassThroughTlvs.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if len(m.AddedTlvs) > 0 {
+		for _, e := range m.AddedTlvs {
+			l = e.SizeVT()
+			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+		}
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
+func (m *PerHostConfig) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if len(m.AddedTlvs) > 0 {
+		for _, e := range m.AddedTlvs {
+			l = e.SizeVT()
+			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+		}
 	}
 	n += len(m.unknownFields)
 	return n

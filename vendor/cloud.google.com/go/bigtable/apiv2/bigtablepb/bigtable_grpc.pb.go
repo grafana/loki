@@ -79,15 +79,15 @@ type BigtableClient interface {
 	// timestamp is the greater of the existing timestamp or the current server
 	// time. The method returns the new contents of all modified cells.
 	ReadModifyWriteRow(ctx context.Context, in *ReadModifyWriteRowRequest, opts ...grpc.CallOption) (*ReadModifyWriteRowResponse, error)
-	// NOTE: This API is intended to be used by Apache Beam BigtableIO.
 	// Returns the current list of partitions that make up the table's
 	// change stream. The union of partitions will cover the entire keyspace.
 	// Partitions can be read with `ReadChangeStream`.
+	// NOTE: This API is only intended to be used by Apache Beam BigtableIO.
 	GenerateInitialChangeStreamPartitions(ctx context.Context, in *GenerateInitialChangeStreamPartitionsRequest, opts ...grpc.CallOption) (Bigtable_GenerateInitialChangeStreamPartitionsClient, error)
-	// NOTE: This API is intended to be used by Apache Beam BigtableIO.
 	// Reads changes from a table's change stream. Changes will
 	// reflect both user-initiated mutations and mutations that are caused by
 	// garbage collection.
+	// NOTE: This API is only intended to be used by Apache Beam BigtableIO.
 	ReadChangeStream(ctx context.Context, in *ReadChangeStreamRequest, opts ...grpc.CallOption) (Bigtable_ReadChangeStreamClient, error)
 	// Prepares a GoogleSQL query for execution on a particular Bigtable instance.
 	PrepareQuery(ctx context.Context, in *PrepareQueryRequest, opts ...grpc.CallOption) (*PrepareQueryResponse, error)
@@ -373,15 +373,15 @@ type BigtableServer interface {
 	// timestamp is the greater of the existing timestamp or the current server
 	// time. The method returns the new contents of all modified cells.
 	ReadModifyWriteRow(context.Context, *ReadModifyWriteRowRequest) (*ReadModifyWriteRowResponse, error)
-	// NOTE: This API is intended to be used by Apache Beam BigtableIO.
 	// Returns the current list of partitions that make up the table's
 	// change stream. The union of partitions will cover the entire keyspace.
 	// Partitions can be read with `ReadChangeStream`.
+	// NOTE: This API is only intended to be used by Apache Beam BigtableIO.
 	GenerateInitialChangeStreamPartitions(*GenerateInitialChangeStreamPartitionsRequest, Bigtable_GenerateInitialChangeStreamPartitionsServer) error
-	// NOTE: This API is intended to be used by Apache Beam BigtableIO.
 	// Reads changes from a table's change stream. Changes will
 	// reflect both user-initiated mutations and mutations that are caused by
 	// garbage collection.
+	// NOTE: This API is only intended to be used by Apache Beam BigtableIO.
 	ReadChangeStream(*ReadChangeStreamRequest, Bigtable_ReadChangeStreamServer) error
 	// Prepares a GoogleSQL query for execution on a particular Bigtable instance.
 	PrepareQuery(context.Context, *PrepareQueryRequest) (*PrepareQueryResponse, error)

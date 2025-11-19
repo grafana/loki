@@ -1,6 +1,6 @@
 ---
 title: Loki components
-menutitle: Components
+menuTitle: Components
 description: Describes the various components that make up Grafana Loki.
 weight: 500
 aliases:
@@ -12,7 +12,7 @@ aliases:
 
 Loki is a modular system that contains many components that can either be run together (in "single binary" mode with target `all`),
 in logical groups (in "simple scalable deployment" mode with targets `read`, `write`, `backend`), or individually (in "microservice" mode).
-For more information see [Deployment modes](../deployment-modes/).
+For more information see [Deployment modes](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/).
 
 | Component                                          | _individual_ | `all` | `read` | `write` | `backend` |
 |----------------------------------------------------|--------------| - | - | - | - |
@@ -24,12 +24,12 @@ For more information see [Deployment modes](../deployment-modes/).
 | [Index Gateway](#index-gateway)                    | x            |   |   |   | x |
 | [Compactor](#compactor)                            | x            | x |   |   | x |
 | [Ruler](#ruler)                                    | x            | x |   |   | x |
+| [Pattern ingester](#pattern-ingester)              | x            | x |   | x |   |
 | [Bloom Planner (Experimental)](#bloom-planner)     | x            |   |   |   | x |
 | [Bloom Builder (Experimental)](#bloom-builder)     | x            |   |   |   | x |
 | [Bloom Gateway (Experimental)](#bloom-gateway)     | x            |   |   |   | x |
 
 This page describes the responsibilities of each of these components.
-
 
 ## Distributor
 
@@ -118,7 +118,6 @@ quorum consistency on reads and writes. This means that the distributor will wai
 for a positive response of at least one half plus one of the ingesters to send
 the sample to before responding to the client that initiated the send.
 
-
 ## Ingester
 
 The **ingester** service is responsible for persisting data and shipping it to long-term
@@ -133,7 +132,7 @@ the hash ring. Each ingester has a state of either `PENDING`, `JOINING`,
    another ingester that is `LEAVING`. This only applies for legacy deployment modes.
 
    {{< admonition type="note" >}}
-   Handoff is a deprecated behavior mainly used in stateless deployments of ingesters, which is discouraged. Instead, it's recommended using a stateful deployment model together with the [write ahead log](../../operations/storage/wal/).
+   Handoff is a deprecated behavior mainly used in stateless deployments of ingesters, which is discouraged. Instead, it's recommended using a stateful deployment model together with the [write ahead log](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/wal/).
    {{< /admonition >}}
 
 1. `JOINING` is an Ingester's state when it is currently inserting its tokens
@@ -179,7 +178,7 @@ Loki is configured to [accept out-of-order writes](https://grafana.com/docs/loki
 
 When not configured to accept out-of-order writes, the ingester validates that ingested log lines are in order. When an
 ingester receives a log line that doesn't follow the expected order, the line
-is rejected and an error is returned to the user. 
+is rejected and an error is returned to the user.
 
 The ingester validates that log lines are received in
 timestamp-ascending order. Each log has a timestamp that occurs at a later
@@ -190,7 +189,7 @@ Logs from each unique set of labels are built up into "chunks" in memory and
 then flushed to the backing storage backend.
 
 If an ingester process crashes or exits abruptly, all the data that has not yet
-been flushed could be lost. Loki is usually configured with a [Write Ahead Log](../../operations/storage/wal/) which can be _replayed_ on restart as well as with a `replication_factor` (usually 3) of each log to mitigate this risk.
+been flushed could be lost. Loki is usually configured with a [Write Ahead Log](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/wal/) which can be _replayed_ on restart as well as with a `replication_factor` (usually 3) of each log to mitigate this risk.
 
 When not configured to accept out-of-order writes,
 all lines pushed to Loki for a given stream (unique combination of
@@ -209,7 +208,7 @@ nanosecond timestamps:
 ### Handoff
 
 {{< admonition type="warning" >}}
-Handoff is deprecated behavior mainly used in stateless deployments of ingesters, which is discouraged. Instead, it's recommended using a stateful deployment model together with the [write ahead log](../../operations/storage/wal/).
+Handoff is deprecated behavior mainly used in stateless deployments of ingesters, which is discouraged. Instead, it's recommended using a stateful deployment model together with the [write ahead log](https://grafana.com/docs/loki/latest<LOKI_VERSION>/operations/storage/wal/).
 {{< /admonition >}}
 
 By default, when an ingester is shutting down and tries to leave the hash ring,
@@ -231,7 +230,6 @@ While ingesters do support writing to the filesystem through BoltDB, this only
 works in single-process mode as [queriers](#querier) need access to the same
 back-end store and BoltDB only allows one process to have a lock on the DB at a
 given time.
-
 
 ## Query frontend
 
@@ -277,20 +275,18 @@ This cache is only applicable when using single store TSDB.
 The query frontend caches log volume query results similar to the [metric query](#metric-queries) results.
 This cache is only applicable when using single store TSDB.
 
-
 ## Query scheduler
 
-The **query scheduler** is an **optional service** providing more [advanced queuing functionality](../../operations/query-fairness/) than the [query frontend](#query-frontend).
+The **query scheduler** is an **optional service** providing more [advanced queuing functionality](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/query-fairness/) than the [query frontend](#query-frontend).
 When using this component in the Loki deployment, query frontend pushes split up queries to the query scheduler which enqueues them in an internal in-memory queue.
 There is a queue for each tenant to guarantee the query fairness across all tenants.
 The queriers that connect to the query scheduler act as workers that pull their jobs from the queue, execute them, and return them to the query frontend for aggregation. Queriers therefore need to be configured with the query scheduler address (via the `-querier.scheduler-address` CLI flag) in order to allow them to connect to the query scheduler.
 
 Query schedulers are **stateless**. However, due to the in-memory queue, it's recommended to run more than one replica to keep the benefit of high availability. Two replicas should suffice in most cases.
 
-
 ## Querier
 
-The **querier** service is responsible for executing [Log Query Language (LogQL)](../../query/) queries.
+The **querier** service is responsible for executing [Log Query Language (LogQL)](https://grafana.com/docs/loki/<LOKI_VERSION>/query/) queries.
 The querier can handle HTTP requests from the client directly (in "single binary" mode, or as part of the read path in "simple scalable deployment")
 or pull subqueries from the query frontend or query scheduler (in "microservice" mode).
 
@@ -301,12 +297,11 @@ factor, it is possible that the querier may receive duplicate data. To resolve
 this, the querier internally **deduplicates** data that has the same nanosecond
 timestamp, label set, and log message.
 
-
 ## Index Gateway
 
 The **index gateway** service is responsible for handling and serving metadata queries.
 Metadata queries are queries that look up data from the index. The index gateway is only used by "shipper stores",
-such as [single store TSDB](../../operations/storage/tsdb/) or [single store BoltDB](../../operations/storage/boltdb-shipper/).
+such as [single store TSDB](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/) or [single store BoltDB](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/boltdb-shipper/).
 
 The query frontend queries the index gateway for the log volume of queries so it can make a decision on how to shard the queries.
 The queriers query the index gateway for chunk references for a given query so they know which chunks to fetch and query.
@@ -314,17 +309,16 @@ The queriers query the index gateway for chunk references for a given query so t
 The index gateway can run in `simple` or `ring` mode. In `simple` mode, each index gateway instance serves all indexes from all tenants.
 In `ring` mode, index gateways use a consistent hash ring to distribute and shard the indexes per tenant amongst available instances.
 
-
 ## Compactor
 
-The **compactor** service is used by "shipper stores", such as [single store TSDB](../../operations/storage/tsdb/)
-or [single store BoltDB](../../operations/storage/boltdb-shipper/), to compact the multiple index files produced by the ingesters
+The **compactor** service is used by "shipper stores", such as [single store TSDB](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/)
+or [single store BoltDB](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/boltdb-shipper/), to compact the multiple index files produced by the ingesters
 and shipped to object storage into single index files per day and tenant. This makes index lookups more efficient.
 
 To do so, the compactor downloads the files from object storage in a regular interval, merges them into a single one,
 uploads the newly created index, and cleans up the old files.
 
-Additionally, the compactor is also responsible for [log retention](../../operations/storage/retention/) and [log deletion](../../operations/storage/logs-deletion/).
+Additionally, the compactor is also responsible for [log retention](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/retention/) and [log deletion](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/logs-deletion/).
 
 In a Loki deployment, the compactor service is usually run as a single instance.
 
@@ -340,7 +334,18 @@ from the query frontend.
 
 When running multiple rulers, they use a consistent hash ring to distribute rule groups amongst available ruler instances.
 
+## Pattern ingester
+
+The optional **pattern ingester** component receives log data from the ingesters and scans the logs to detect and aggregate patterns. This can be useful for understanding the structure of your logs at scale. The pattern ingester is used by the pattern feature in Logs Drilldown, which lets you detect similar log lines and add or exclude them from your search.
+
+The ingester uses a drain algorithm to identify related logs that share the same pattern, and maintain their counts over time. Patterns consist of a number, a string, and a Loki series identifier.
+
+The pattern ingester exposes a query API, so you can fetch detected patterns. This API is used by the Patterns tab in the Grafana Logs Drilldown plugin.
+
+This component is disabled by default and must be enabled in your [Loki config file](https://grafana.com/docs/loki/latest/configure/#supported-contents-and-default-values-of-lokiyaml).
+
 ## Bloom Planner
+
 {{< admonition type="warning" >}}
 This feature is an [experimental feature](/docs/release-life-cycle/). Engineering and on-call support is not available.
 No SLA is provided.
@@ -353,6 +358,7 @@ been built for a given day and tenant and what series need to be newly added.
 This service is also used to apply blooms retention.
 
 ## Bloom Builder
+
 {{< admonition type="warning" >}}
 This feature is an [experimental feature](/docs/release-life-cycle/). Engineering and on-call support is not available.
 No SLA is provided.
@@ -360,20 +366,21 @@ No SLA is provided.
 
 The Bloom Builder service is responsible for processing the tasks created by the Bloom Planner.
 The Bloom Builder creates bloom blocks from structured metadata of log entries.
-The resulting blooms are grouped in bloom blocks spanning multiple series and chunks from a given day. 
+The resulting blooms are grouped in bloom blocks spanning multiple series and chunks from a given day.
 This component also builds metadata files to track which blocks are available for each series and TSDB index file.
 
 The service is stateless and horizontally scalable.
 
 ## Bloom Gateway
+
 {{< admonition type="warning" >}}
 This feature is an [experimental feature](/docs/release-life-cycle/). Engineering and on-call support is not available.
 No SLA is provided.
 {{< /admonition >}}
 
-The Bloom Gateway service is responsible for handling and serving chunks filtering requests. 
+The Bloom Gateway service is responsible for handling and serving chunks filtering requests.
 The index gateway queries the Bloom Gateway when computing chunk references, or when computing shards for a given query.
-The gateway service takes a list of chunks and a filtering expression and matches them against the blooms, 
+The gateway service takes a list of chunks and a filtering expression and matches them against the blooms,
 filtering out any chunks that do not match the given label filter expression.
 
 The service is horizontally scalable. When running multiple instances, the client (Index Gateway) shards requests

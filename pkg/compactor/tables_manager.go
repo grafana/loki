@@ -130,6 +130,9 @@ func (c *tablesManager) start(ctx context.Context) {
 		}()
 
 		for _, container := range c.storeContainers {
+			if container.sweeper == nil {
+				continue
+			}
 			wg.Add(1)
 			go func(sc storeContainer) {
 				// starts the chunk sweeper

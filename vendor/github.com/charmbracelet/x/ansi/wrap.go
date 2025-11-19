@@ -10,7 +10,7 @@ import (
 	"github.com/rivo/uniseg"
 )
 
-// nbsp is a non-breaking space
+// nbsp is a non-breaking space.
 const nbsp = 0xA0
 
 // Hardwrap wraps a string or a block of text to a given line length, breaking
@@ -55,7 +55,7 @@ func hardwrap(m Method, s string, limit int, preserveSpace bool) string {
 	i := 0
 	for i < len(b) {
 		state, action := parser.Table.Transition(pstate, b[i])
-		if state == parser.Utf8State {
+		if state == parser.Utf8State { //nolint:nestif
 			var width int
 			cluster, _, width, _ = uniseg.FirstGraphemeCluster(b[i:], -1)
 			if m == WcWidth {
@@ -190,7 +190,7 @@ func wordwrap(m Method, s string, limit int, breakpoints string) string {
 	i := 0
 	for i < len(b) {
 		state, action := parser.Table.Transition(pstate, b[i])
-		if state == parser.Utf8State {
+		if state == parser.Utf8State { //nolint:nestif
 			var width int
 			cluster, _, width, _ = uniseg.FirstGraphemeCluster(b[i:], -1)
 			if m == WcWidth {
@@ -303,20 +303,22 @@ func wrap(m Method, s string, limit int, breakpoints string) string {
 	}
 
 	var (
-		cluster  []byte
-		buf      bytes.Buffer
-		word     bytes.Buffer
-		space    bytes.Buffer
-		curWidth int                  // written width of the line
-		wordLen  int                  // word buffer len without ANSI escape codes
-		pstate   = parser.GroundState // initial state
-		b        = []byte(s)
+		cluster    []byte
+		buf        bytes.Buffer
+		word       bytes.Buffer
+		space      bytes.Buffer
+		spaceWidth int                  // width of the space buffer
+		curWidth   int                  // written width of the line
+		wordLen    int                  // word buffer len without ANSI escape codes
+		pstate     = parser.GroundState // initial state
+		b          = []byte(s)
 	)
 
 	addSpace := func() {
-		curWidth += space.Len()
+		curWidth += spaceWidth
 		buf.Write(space.Bytes())
 		space.Reset()
+		spaceWidth = 0
 	}
 
 	addWord := func() {
@@ -335,12 +337,13 @@ func wrap(m Method, s string, limit int, breakpoints string) string {
 		buf.WriteByte('\n')
 		curWidth = 0
 		space.Reset()
+		spaceWidth = 0
 	}
 
 	i := 0
 	for i < len(b) {
 		state, action := parser.Table.Transition(pstate, b[i])
-		if state == parser.Utf8State {
+		if state == parser.Utf8State { //nolint:nestif
 			var width int
 			cluster, _, width, _ = uniseg.FirstGraphemeCluster(b[i:], -1)
 			if m == WcWidth {
@@ -353,6 +356,7 @@ func wrap(m Method, s string, limit int, breakpoints string) string {
 			case r != utf8.RuneError && unicode.IsSpace(r) && r != nbsp: // nbsp is a non-breaking space
 				addWord()
 				space.WriteRune(r)
+				spaceWidth += width
 			case bytes.ContainsAny(cluster, breakpoints):
 				addSpace()
 				if curWidth+wordLen+width > limit {
@@ -372,7 +376,7 @@ func wrap(m Method, s string, limit int, breakpoints string) string {
 				word.Write(cluster)
 				wordLen += width
 
-				if curWidth+wordLen+space.Len() > limit {
+				if curWidth+wordLen+spaceWidth > limit {
 					addNewline()
 				}
 			}
@@ -386,13 +390,14 @@ func wrap(m Method, s string, limit int, breakpoints string) string {
 			switch r := rune(b[i]); {
 			case r == '\n':
 				if wordLen == 0 {
-					if curWidth+space.Len() > limit {
+					if curWidth+spaceWidth > limit {
 						curWidth = 0
 					} else {
 						// preserve whitespaces
 						buf.Write(space.Bytes())
 					}
 					space.Reset()
+					spaceWidth = 0
 				}
 
 				addWord()
@@ -400,6 +405,7 @@ func wrap(m Method, s string, limit int, breakpoints string) string {
 			case unicode.IsSpace(r):
 				addWord()
 				space.WriteRune(r)
+				spaceWidth++
 			case r == '-':
 				fallthrough
 			case runeContainsAny(r, breakpoints):
@@ -426,7 +432,7 @@ func wrap(m Method, s string, limit int, breakpoints string) string {
 					addWord()
 				}
 
-				if curWidth+wordLen+space.Len() > limit {
+				if curWidth+wordLen+spaceWidth > limit {
 					addNewline()
 				}
 			}
@@ -443,13 +449,14 @@ func wrap(m Method, s string, limit int, breakpoints string) string {
 	}
 
 	if wordLen == 0 {
-		if curWidth+space.Len() > limit {
+		if curWidth+spaceWidth > limit {
 			curWidth = 0
 		} else {
 			// preserve whitespaces
 			buf.Write(space.Bytes())
 		}
 		space.Reset()
+		spaceWidth = 0
 	}
 
 	addWord()

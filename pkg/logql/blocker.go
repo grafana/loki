@@ -9,6 +9,7 @@ import (
 	"github.com/grafana/regexp"
 
 	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	logutil "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/validation"
 )
@@ -45,8 +46,9 @@ func (qb *queryBlocker) isBlocked(ctx context.Context, tenant string) bool {
 
 		if b.Hash > 0 {
 			if b.Hash == util.HashedQuery(query) {
-				level.Warn(logger).Log("msg", "query blocker matched with hash policy", "hash", b.Hash, "query", query)
-				return qb.block(b, typ, logger)
+				typesMatched, tagsMatched, blocked := qb.block(ctx, b, typ, logger)
+				level.Warn(logger).Log("msg", "query blocker matched with hash policy", "hash", b.Hash, "query", query, "typesMatched", typesMatched, "tagsMatched", tagsMatched, "blocked", blocked)
+				return blocked
 			}
 
 			return false
@@ -59,8 +61,9 @@ func (qb *queryBlocker) isBlocked(ctx context.Context, tenant string) bool {
 		}
 
 		if strings.TrimSpace(b.Pattern) == strings.TrimSpace(query) {
-			level.Warn(logger).Log("msg", "query blocker matched with exact match policy", "query", query)
-			return qb.block(b, typ, logger)
+			typesMatched, tagsMatched, blocked := qb.block(ctx, b, typ, logger)
+			level.Warn(logger).Log("msg", "query blocker matched with exact match policy", "query", query, "typesMatched", typesMatched, "tagsMatched", tagsMatched, "blocked", blocked)
+			return blocked
 		}
 
 		if b.Regex {
@@ -71,8 +74,9 @@ func (qb *queryBlocker) isBlocked(ctx context.Context, tenant string) bool {
 			}
 
 			if r.MatchString(query) {
-				level.Warn(logger).Log("msg", "query blocker matched with regex policy", "pattern", b.Pattern, "query", query)
-				return qb.block(b, typ, logger)
+				typesMatched, tagsMatched, blocked := qb.block(ctx, b, typ, logger)
+				level.Warn(logger).Log("msg", "query blocker matched with regex policy", "pattern", b.Pattern, "query", query, "typesMatched", typesMatched, "tagsMatched", tagsMatched, "blocked", blocked)
+				return blocked
 			}
 		}
 	}
@@ -80,10 +84,12 @@ func (qb *queryBlocker) isBlocked(ctx context.Context, tenant string) bool {
 	return false
 }
 
-func (qb *queryBlocker) block(q *validation.BlockedQuery, typ string, logger log.Logger) bool {
-	// no specific types to validate against, so query is blocked
+func (qb *queryBlocker) block(ctx context.Context, q *validation.BlockedQuery, typ string, logger log.Logger) (bool, bool, bool) {
+	// returns: (typesMatched, tagsMatched, blocked)
+	// no specific types to validate against, so only tags (if any) need to match
 	if len(q.Types) == 0 {
-		return true
+		tagsMatched := qb.tagsMatch(ctx, q, logger)
+		return true, tagsMatched, tagsMatched
 	}
 
 	matched := false
@@ -97,8 +103,55 @@ func (qb *queryBlocker) block(q *validation.BlockedQuery, typ string, logger log
 	// query would be blocked, but it didn't match specified types
 	if !matched {
 		level.Debug(logger).Log("msg", "query blocker matched pattern, but not specified types", "pattern", q.Pattern, "regex", q.Regex, "hash", q.Hash, "types", q.Types.String(), "queryType", typ)
-		return false
+		return false, false, false
 	}
 
-	return true
+	// Types matched; ensure tags (if any) also match
+	tagsMatched := qb.tagsMatch(ctx, q, logger)
+	return true, tagsMatched, tagsMatched
+}
+
+func (qb *queryBlocker) tagsMatch(ctx context.Context, q *validation.BlockedQuery, logger log.Logger) bool {
+	// if no tags are expected, we treat all queries as matching
+	if len(q.Tags) == 0 {
+		return true
+	}
+
+	raw := httpreq.ExtractQueryTagsFromContext(ctx)
+	// TagsToKeyValues is expected to always return an even set of key value pairs
+	kvs := httpreq.TagsToKeyValues(raw)
+
+	// Build a lowercased expected map once (size m) and scan kvs once (size n)
+	expected := make(map[string]string, len(q.Tags))
+	for k, v := range q.Tags {
+		expected[strings.ToLower(k)] = v
+	}
+
+	// iterate over the keys in the context and see if they match the expected tags
+	for i := 0; i+1 < len(kvs) && len(expected) > 0; i += 2 {
+		k, okK := kvs[i].(string)
+		v, okV := kvs[i+1].(string)
+		if !okK || !okV {
+			continue
+		}
+
+		keyLower := strings.ToLower(k)
+		if expVal, ok := expected[keyLower]; ok {
+			if strings.EqualFold(v, expVal) {
+				// this key and value match, remove this key from the expected map of tags
+				delete(expected, keyLower)
+			}
+		}
+	}
+
+	// if all expect tags matched, they would all have been removed from the map
+	// we only block the query if all expected tags matched
+	if len(expected) == 0 {
+		return true
+	}
+
+	for k := range expected {
+		level.Debug(logger).Log("msg", "query blocker tags mismatch: missing or mismatched key", "key", k, "tagsRaw", raw)
+	}
+	return false
 }

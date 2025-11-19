@@ -1,6 +1,5 @@
 ---
 title: Block unwanted queries
-menuTitle: Unwanted queries
 description: Describes how to configure Grafana Loki to block unwanted or expensive queries using per-tenant overrides.
 weight: 
 ---
@@ -34,6 +33,14 @@ overrides:
       # block any query that matches this query hash
       - hash: 2943214005          # hash of {stream="stdout",pod="loki-canary-9w49x"}
         types: filter,limited
+
+      # block queries originating from specific sources via X-Query-Tags
+      # Keys and values are matched case-insensitively.
+      - pattern: '.*'             # optional; if pattern and regex are omittied they will default to '.*' and true
+        regex: true
+        tags:
+          source: grafana
+          feature: beta
 ```
 {{< admonition type="note" >}}
 Changes to these configurations **do not require a restart**; they are defined in the [runtime configuration file](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#runtime-configuration-file).
@@ -61,6 +68,48 @@ The order of patterns is preserved, so the first matching pattern will be used.
 
 Blocked queries are logged, as well as counted in the `loki_blocked_queries` metric on a per-tenant basis.
 
+When a policy matches by pattern/hash/regex, Loki logs whether the query type and request tags matched that policy:
+
+```logfmt
+level=warn msg="query blocker matched with regex policy" user=29 type=metric pattern=".*rate\\(.*\\).*" query="sum(rate({app=\"foo\"}[5m]))" typesMatched=true tagsMatched=false blocked=false
+```
+
+If tag constraints fail to match, Loki emits a debug log showing the missing key and the raw header value that was received:
+
+```logfmt
+level=debug msg="query blocker tags mismatch: missing or mismatched key" key=feature tagsRaw="Source=grafana,Feature=alpha"
+```
+
 ## Scope
 
 Queries received via the API and executed as [alerting/recording rules](../../alert/) will be blocked.
+
+## Tag-based blocking
+
+You can scope a blocked query rule to requests that include specific key=value pairs in the `X-Query-Tags` header.
+
+- Header format: `key=value` pairs separated by commas, for example: `Source=grafana,Feature=beta`.
+- Allowed characters are alphanumeric plus space, comma, equals, '@', '.', and '-'. Any other characters are replaced with `_`.
+- Parsing keeps only canonical `key=value` tokens; malformed tokens are ignored.
+- Matching rules:
+  - Keys are matched case-insensitively (the server lowercases keys).
+  - Values are matched case-insensitively.
+  - All specified `tags:` pairs in the rule must be present in the request to apply the block.
+
+Examples:
+
+```yaml
+overrides:
+  tenant-a:
+    blocked_queries:
+      # Block only metric queries from a beta feature flag
+      - types: metric
+        tags:
+          feature: beta
+
+      # Combine with regex to narrow scope further
+      - pattern: '.*rate\\(.*\\).*'
+        regex: true
+        tags:
+          source: grafana
+```

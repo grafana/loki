@@ -27,6 +27,25 @@ type exampleValidator struct {
 	schemaOptions  *SchemaValidatorOptions
 }
 
+// Validate validates the example values declared in the swagger spec
+// Example values MUST conform to their schema.
+//
+// With Swagger 2.0, examples are supported in:
+//   - schemas
+//   - individual property
+//   - responses
+func (ex *exampleValidator) Validate() *Result {
+	errs := pools.poolOfResults.BorrowResult()
+
+	if ex == nil || ex.SpecValidator == nil {
+		return errs
+	}
+	ex.resetVisited()
+	errs.Merge(ex.validateExampleValueValidAgainstSchema()) // error -
+
+	return errs
+}
+
 // resetVisited resets the internal state of visited schemas
 func (ex *exampleValidator) resetVisited() {
 	if ex.visitedSchemas == nil {
@@ -49,25 +68,6 @@ func (ex *exampleValidator) beingVisited(path string) {
 // isVisited tells if a path has already been visited
 func (ex *exampleValidator) isVisited(path string) bool {
 	return isVisited(path, ex.visitedSchemas)
-}
-
-// Validate validates the example values declared in the swagger spec
-// Example values MUST conform to their schema.
-//
-// With Swagger 2.0, examples are supported in:
-//   - schemas
-//   - individual property
-//   - responses
-func (ex *exampleValidator) Validate() *Result {
-	errs := pools.poolOfResults.BorrowResult()
-
-	if ex == nil || ex.SpecValidator == nil {
-		return errs
-	}
-	ex.resetVisited()
-	errs.Merge(ex.validateExampleValueValidAgainstSchema()) // error -
-
-	return errs
 }
 
 func (ex *exampleValidator) validateExampleValueValidAgainstSchema() *Result {
@@ -278,7 +278,7 @@ func (ex *exampleValidator) validateExampleValueSchemaAgainstSchema(path, in str
 // TODO: Temporary duplicated code. Need to refactor with examples
 //
 
-func (ex *exampleValidator) validateExampleValueItemsAgainstSchema(path, in string, root interface{}, items *spec.Items) *Result {
+func (ex *exampleValidator) validateExampleValueItemsAgainstSchema(path, in string, root any, items *spec.Items) *Result {
 	res := pools.poolOfResults.BorrowResult()
 	s := ex.SpecValidator
 	if items != nil {

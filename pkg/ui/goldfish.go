@@ -76,6 +76,14 @@ type SampledQuery struct {
 	CellAStatusCode   *int    `json:"cellAStatusCode" db:"cell_a_status_code"`
 	CellBStatusCode   *int    `json:"cellBStatusCode" db:"cell_b_status_code"`
 
+	// Result storage metadata - nullable when persistence is disabled
+	CellAResultURI         *string `json:"cellAResultURI,omitempty" db:"cell_a_result_uri"`
+	CellBResultURI         *string `json:"cellBResultURI,omitempty" db:"cell_b_result_uri"`
+	CellAResultSizeBytes   *int64  `json:"cellAResultSizeBytes,omitempty" db:"cell_a_result_size_bytes"`
+	CellBResultSizeBytes   *int64  `json:"cellBResultSizeBytes,omitempty" db:"cell_b_result_size_bytes"`
+	CellAResultCompression *string `json:"cellAResultCompression,omitempty" db:"cell_a_result_compression"`
+	CellBResultCompression *string `json:"cellBResultCompression,omitempty" db:"cell_b_result_compression"`
+
 	// Trace IDs - nullable as not all requests have traces
 	CellATraceID *string `json:"cellATraceID" db:"cell_a_trace_id"`
 	CellBTraceID *string `json:"cellBTraceID" db:"cell_b_trace_id"`
@@ -128,29 +136,14 @@ func (s *Service) GetSampledQueriesWithContext(ctx context.Context, page, pageSi
 	// Extract trace ID for logging
 	traceID, _ := ctx.Value("trace-id").(string)
 
-	if !s.cfg.Goldfish.Enable {
-		return nil, ErrGoldfishDisabled
+	// Validate goldfish is enabled and configured
+	if err := s.validateGoldfishEnabled(); err != nil {
+		return nil, err
 	}
 
-	if s.goldfishStorage == nil {
-		return nil, ErrGoldfishNotConfigured
-	}
-
-	// Apply time range defaults and validation
-	// Check if only one time bound is specified (invalid state)
-	fromIsZero := filter.From.IsZero()
-	toIsZero := filter.To.IsZero()
-
-	if fromIsZero != toIsZero {
-		// One is set but not the other - this is an error
-		return nil, fmt.Errorf("both From and To must be specified, or neither")
-	}
-
-	// If both are zero, apply defaults (last hour)
-	if fromIsZero && toIsZero {
-		now := s.now()
-		filter.To = now
-		filter.From = now.Add(-time.Hour)
+	// Validate and apply time range defaults
+	if err := s.validateAndDefaultTimeRange(&filter.From, &filter.To); err != nil {
+		return nil, err
 	}
 
 	// Log the query with trace context
@@ -242,14 +235,27 @@ func (s *Service) GetSampledQueriesWithContext(ctx context.Context, page, pageSi
 			CellBUsedNewEngine: q.CellBUsedNewEngine,
 		}
 
-		// Determine comparison status based on response codes and hashes
-		if q.CellAStatusCode < 200 || q.CellAStatusCode >= 300 || q.CellBStatusCode < 200 || q.CellBStatusCode >= 300 {
-			uiQuery.ComparisonStatus = string(goldfish.ComparisonStatusError)
-		} else if q.CellAResponseHash == q.CellBResponseHash {
-			uiQuery.ComparisonStatus = string(goldfish.ComparisonStatusMatch)
-		} else {
-			uiQuery.ComparisonStatus = string(goldfish.ComparisonStatusMismatch)
+		if q.CellAResultURI != "" {
+			uiQuery.CellAResultURI = strPtr(q.CellAResultURI)
+			size := q.CellAResultSize
+			uiQuery.CellAResultSizeBytes = &size
+			if q.CellAResultCompression != "" {
+				comp := q.CellAResultCompression
+				uiQuery.CellAResultCompression = &comp
+			}
 		}
+		if q.CellBResultURI != "" {
+			uiQuery.CellBResultURI = strPtr(q.CellBResultURI)
+			size := q.CellBResultSize
+			uiQuery.CellBResultSizeBytes = &size
+			if q.CellBResultCompression != "" {
+				comp := q.CellBResultCompression
+				uiQuery.CellBResultCompression = &comp
+			}
+		}
+
+		// Use comparison status from database
+		uiQuery.ComparisonStatus = string(q.ComparisonStatus)
 
 		// Add trace ID explore links if explore is configured
 		if s.cfg.Goldfish.GrafanaURL != "" && s.cfg.Goldfish.TracesDatasourceUID != "" {
@@ -287,6 +293,51 @@ func (s *Service) GetSampledQueriesWithContext(ctx context.Context, page, pageSi
 	}, nil
 }
 
+// GetStatistics retrieves aggregated statistics from the database
+func (s *Service) GetStatistics(ctx context.Context, filter goldfish.StatsFilter) (*goldfish.Statistics, error) {
+	// Extract trace ID for logging
+	traceID, _ := ctx.Value("trace-id").(string)
+
+	// Validate goldfish is enabled and configured
+	if err := s.validateGoldfishEnabled(); err != nil {
+		return nil, err
+	}
+
+	// Validate and apply time range defaults
+	if err := s.validateAndDefaultTimeRange(&filter.From, &filter.To); err != nil {
+		return nil, err
+	}
+
+	// Log the query with trace context
+	if traceID != "" {
+		level.Debug(s.logger).Log(
+			"msg", "fetching statistics",
+			"trace_id", traceID,
+			"filter", fmt.Sprintf("%+v", filter),
+		)
+	}
+
+	// Call the storage layer with context and track metrics
+	queryStart := s.now()
+	stats, err := s.goldfishStorage.GetStatistics(ctx, filter)
+	queryDuration := time.Since(queryStart).Seconds()
+
+	if s.goldfishMetrics != nil {
+		if err != nil {
+			s.goldfishMetrics.IncrementErrors("db_query")
+		}
+	}
+
+	if err != nil {
+		if traceID != "" {
+			level.Error(s.logger).Log("msg", "failed to fetch statistics from storage", "err", err, "trace_id", traceID, "query_duration_s", queryDuration)
+		}
+		return nil, err
+	}
+
+	return stats, nil
+}
+
 // Helper functions for converting to nullable pointers
 func int64Ptr(v int64) *int64 {
 	return &v
@@ -301,6 +352,41 @@ func strPtr(s string) *string {
 		return nil
 	}
 	return &s
+}
+
+// validateGoldfishEnabled checks if goldfish is enabled and configured
+func (s *Service) validateGoldfishEnabled() error {
+	if !s.cfg.Goldfish.Enable {
+		return ErrGoldfishDisabled
+	}
+
+	if s.goldfishStorage == nil {
+		return ErrGoldfishNotConfigured
+	}
+
+	return nil
+}
+
+// validateAndDefaultTimeRange validates and sets default time range values
+// Both From and To must be specified, or neither. If neither is specified,
+// defaults to the last hour.
+func (s *Service) validateAndDefaultTimeRange(from, to *time.Time) error {
+	fromIsZero := from.IsZero()
+	toIsZero := to.IsZero()
+
+	if fromIsZero != toIsZero {
+		// One is set but not the other - this is an error
+		return fmt.Errorf("both From and To must be specified, or neither")
+	}
+
+	// If both are zero, apply defaults (last hour)
+	if fromIsZero && toIsZero {
+		now := s.now()
+		*to = now
+		*from = now.Add(-time.Hour)
+	}
+
+	return nil
 }
 
 // ErrGoldfishDisabled is returned when goldfish feature is disabled

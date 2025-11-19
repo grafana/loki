@@ -4,7 +4,7 @@
 
 **koanf** is a library for reading configuration from different sources in different formats in Go applications. It is a cleaner, lighter [alternative to spf13/viper](#alternative-to-viper) with better abstractions and extensibility and far fewer dependencies.
 
-koanf v2 has modules (Providers) for reading configuration from a variety of sources such as files, command line flags, environment variables, Vault, and S3 and for parsing (Parsers) formats such as JSON, YAML, TOML, Hashicorp HCL. It is easy to plug in custom parsers and providers.
+koanf v2 has modules (Providers) for reading configuration from a variety of sources such as files, command line flags, environment variables, Vault, and S3 and for parsing (Parsers) formats such as JSON, YAML, TOML, HUML, Hashicorp HCL. It is easy to plug in custom parsers and providers.
 
 All external dependencies in providers and parsers are detached from the core and can be installed separately as necessary.
 
@@ -17,7 +17,7 @@ All external dependencies in providers and parsers are detached from the core an
 go get -u github.com/knadh/koanf/v2
 
 # Install the necessary Provider(s).
-# Available: file, env, posflag, basicflag, confmap, rawbytes,
+# Available: file, env/v2, posflag, basicflag, confmap, rawbytes,
 #            structs, fs, s3, appconfig/v2, consul/v2, etcd/v2, vault/v2, parameterstore/v2
 # eg: go get -u github.com/knadh/koanf/providers/s3
 # eg: go get -u github.com/knadh/koanf/providers/consul/v2
@@ -26,7 +26,7 @@ go get -u github.com/knadh/koanf/providers/file
 
 
 # Install the necessary Parser(s).
-# Available: toml, toml/v2, json, yaml, dotenv, hcl, hjson, nestedtext
+# Available: toml, toml/v2, json, yaml, huml, dotenv, hcl, hjson, nestedtext
 # go get -u github.com/knadh/koanf/parsers/$parser
 
 go get -u github.com/knadh/koanf/parsers/toml
@@ -41,6 +41,7 @@ go get -u github.com/knadh/koanf/parsers/toml
 - [Watching file for changes](#watching-file-for-changes)
 - [Reading from command line](#reading-from-command-line)
 - [Reading environment variables](#reading-environment-variables)
+- [Reading from an S3 bucket](#reading-from-an-s3-bucket)
 - [Reading raw bytes](#reading-raw-bytes)
 - [Reading from maps and structs](#reading-from-nested-maps)
 - [Unmarshalling and marshalling](#unmarshalling-and-marshalling)
@@ -229,7 +230,7 @@ import (
 
 	"github.com/knadh/koanf/v2"
 	"github.com/knadh/koanf/parsers/json"
-	"github.com/knadh/koanf/providers/env"
+	"github.com/knadh/koanf/providers/env/v2"
 	"github.com/knadh/koanf/providers/file"
 )
 
@@ -242,44 +243,34 @@ func main() {
 		log.Fatalf("error loading config: %v", err)
 	}
 
-	// Load environment variables and merge into the loaded config.
-	// "MYVAR" is the prefix to filter the env vars by.
-	// "." is the delimiter used to represent the key hierarchy in env vars.
-	// The (optional, or can be nil) function can be used to transform
-	// the env var names, for instance, to lowercase them.
-	//
-	// For example, env vars: MYVAR_TYPE and MYVAR_PARENT1_CHILD1_NAME
-	// will be merged into the "type" and the nested "parent1.child1.name"
-	// keys in the config file here as we lowercase the key, 
-	// replace `_` with `.` and strip the MYVAR_ prefix so that 
-	// only "parent1.child1.name" remains.
-	k.Load(env.Provider("MYVAR_", ".", func(s string) string {
-		return strings.Replace(strings.ToLower(
-			strings.TrimPrefix(s, "MYVAR_")), "_", ".", -1)
+	// Load only environment variables with prefix "MYVAR_" and merge into config.
+	// Transform var names by:
+	// 1. Converting to lowercase
+	// 2. Removing "MYVAR_" prefix  
+	// 3. Replacing "_" with "." to representing nesting using the . delimiter.
+	// Example: MYVAR_PARENT1_CHILD1_NAME becomes "parent1.child1.name"
+	k.Load(env.Provider(".", env.Opt{
+		Prefix: "MYVAR_",
+		TransformFunc: func(k, v string) (string, any) {
+			// Transform the key.
+			k = strings.ReplaceAll(strings.ToLower(strings.TrimPrefix(k, "MYVAR_")), "_", ".")
+
+			// Transform the value into slices, if they contain spaces.
+			// Eg: MYVAR_TAGS="foo bar baz" -> tags: ["foo", "bar", "baz"]
+			// This is to demonstrate that string values can be transformed to any type
+			// where necessary.
+			if strings.Contains(v, " ") {
+				return k, strings.Split(v, " ")
+			}
+
+			return k, v
+		},
 	}), nil)
 
-	fmt.Println("name is = ", k.String("parent1.child1.name"))
+	fmt.Println("name is =", k.String("parent1.child1.name"))
+	fmt.Println("time is =", k.Time("time", time.DateOnly))
+	fmt.Println("ids are =", k.Strings("parent1.child1.grandchild1.ids"))
 }
-```
-
-You can also use the `env.ProviderWithValue` with a callback that supports mutating both the key and value
-to return types other than a string. For example, here, env values separated by spaces are
-returned as string slices or arrays. eg: `MYVAR_slice=a b c` becomes `slice: [a, b, c]`.
-
-```go
-	k.Load(env.ProviderWithValue("MYVAR_", ".", func(s string, v string) (string, interface{}) {
-		// Strip out the MYVAR_ prefix and lowercase and get the key while also replacing
-		// the _ character with . in the key (koanf delimiter).
-		key := strings.Replace(strings.ToLower(strings.TrimPrefix(s, "MYVAR_")), "_", ".", -1)
-
-		// If there is a space in the value, split the value into a slice by the space.
-		if strings.Contains(v, " ") {
-			return key, strings.Split(v, " ")
-		}
-
-		// Otherwise, return the plain string.
-		return key, v
-	}), nil)
 ```
 
 ### Reading from an S3 bucket
@@ -662,7 +653,7 @@ Install with `go get -u github.com/knadh/koanf/providers/$provider`
 | fs      | `fs.Provider(f fs.FS, filepath string)`                              | (**Experimental**) Reads a file from fs.FS and returns the raw bytes to be parsed. The provider requires `go v1.16` or higher.                                            |
 | basicflag | `basicflag.Provider(f *flag.FlagSet, delim string)`           | Takes a stdlib `flag.FlagSet`                                                                                                                                                        |
 | posflag   | `posflag.Provider(f *pflag.FlagSet, delim string)`            | Takes an `spf13/pflag.FlagSet` (advanced POSIX compatible flags with multiple types) and provides a nested config map based on delim.                                                 |
-| env       | `env.Provider(prefix, delim string, f func(s string) string)` | Takes an optional prefix to filter env variables by, an optional function that takes and returns a string to transform env variables, and returns a nested config map based on delim. |
+| env/v2       | `env.Provider(prefix, delim string, f func(s string) string)` | Takes an optional prefix to filter env variables by, an optional function that takes and returns a string to transform env variables, and returns a nested config map based on delim. |
 | confmap   | `confmap.Provider(mp map[string]interface{}, delim string)`   | Takes a premade `map[string]interface{}` conf map. If delim is provided, the keys are assumed to be flattened, thus unflattened using delim.                                          |
 | structs   | `structs.Provider(s interface{}, tag string)`                 | Takes a struct and struct tag.                                                                                                                                                        |
 | s3        | `s3.Provider(s3.S3Config{})`                                  | Takes a s3 config struct.                                                                                                                                                             |
@@ -674,6 +665,7 @@ Install with `go get -u github.com/knadh/koanf/providers/$provider`
 | parameterstore/v2 | `parameterstore.Provider(parameterstore.Config{})` | AWS Systems Manager Parameter Store provider |
 | cliflagv2  |  `cliflagv2.Provider(ctx *cli.Context, delimiter string)` |  Reads commands and flags from urfave/cli/v2 context including global flags and nested command flags and provides a nested config map based on delim. |
 | cliflagv3  |  `cliflagv3.Provider(ctx *cli.Context, delimiter string)` |  Reads commands and flags from urfave/cli/v3 and provides a nested config map based on delim. |
+| kiln   |  `kiln.Provider(configPath, keyPath, file string)` | Takes an optional prefix to filter environment variables keys by, an optional function that takes and returns a string to transform environment variables, and returns a nested config map. |
 
 
 ### Bundled Parsers
@@ -688,8 +680,9 @@ Install with `go get -u github.com/knadh/koanf/parsers/$parser`
 | toml/v2    | `toml.Parser()`                  | Parses TOML bytes into a nested map (using go-toml v2)                                                                                                    |
 | dotenv     | `dotenv.Parser()`              | Parses DotEnv bytes into a flat map                                                                                                                       |
 | hcl        | `hcl.Parser(flattenSlices bool)` | Parses Hashicorp HCL bytes into a nested map. `flattenSlices` is recommended to be set to true. [Read more](https://github.com/hashicorp/hcl/issues/162). |
+| hjson		 | `hjson.Parser()`					| Parses HJSON bytes into a nested map                                                                                                                     |
+| huml       | `huml.Parser()`                   | Parses HUML (Human-Oriented Markup Language) bytes into a nested map                                                                                     |
 | nestedtext | `nestedtext.Parser()`              | Parses NestedText bytes into a flat map                                                                                                                 |
-| hjson		 | `hjson.Parser()`					| Parses HJSON bytes into a nested map
 																							|
 
 

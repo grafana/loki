@@ -63,14 +63,19 @@ type QuerierAPI struct {
 
 // NewQuerierAPI returns an instance of the QuerierAPI.
 func NewQuerierAPI(cfg Config, mCfg metastore.Config, querier Querier, limits querier_limits.Limits, store objstore.Bucket, reg prometheus.Registerer, logger log.Logger) *QuerierAPI {
-	return &QuerierAPI{
+	q := &QuerierAPI{
 		cfg:      cfg,
 		limits:   limits,
 		querier:  querier,
 		engineV1: logql.NewEngine(cfg.Engine, querier, limits, logger),
-		engineV2: engine.New(cfg.Engine, mCfg, store, limits, reg, logger),
 		logger:   logger,
 	}
+
+	if cfg.EngineV2.Enable {
+		q.engineV2 = engine.NewBasic(cfg.EngineV2.Executor, mCfg, store, limits, reg, logger)
+	}
+
+	return q
 }
 
 // RangeQueryHandler is a http.HandlerFunc for range queries and legacy log queries
@@ -87,7 +92,7 @@ func (q *QuerierAPI) RangeQueryHandler(ctx context.Context, req *queryrange.Loki
 		return result, err
 	}
 
-	if q.cfg.Engine.EnableV2Engine && hasDataObjectsAvailable(params.Start(), params.End()) {
+	if q.cfg.EngineV2.Enable && hasDataObjectsAvailable(q.cfg, params.Start(), params.End()) {
 		query := q.engineV2.Query(params)
 		result, err = query.Exec(ctx)
 		if err == nil {
@@ -104,10 +109,12 @@ func (q *QuerierAPI) RangeQueryHandler(ctx context.Context, req *queryrange.Loki
 	return query.Exec(ctx)
 }
 
-func hasDataObjectsAvailable(_, end time.Time) bool {
+func hasDataObjectsAvailable(config Config, start, end time.Time) bool {
 	// Data objects in object storage lag behind 20-30 minutes.
-	// We are generous and only enable v2 engine queries that end earlier than 1 hour ago, to ensure data objects are available.
-	return end.Before(time.Now().Add(-1 * time.Hour))
+	// We are generous and only enable v2 engine queries that end earlier than 1DataObjStorageLag ago (default 1h),
+	// to ensure data objects are available.
+	v2Start, v2End := config.EngineV2.Executor.ValidQueryRange()
+	return end.Before(v2End) && start.After(v2Start)
 }
 
 // InstantQueryHandler is a http.HandlerFunc for instant queries.
@@ -126,7 +133,7 @@ func (q *QuerierAPI) InstantQueryHandler(ctx context.Context, req *queryrange.Lo
 		return logqlmodel.Result{}, err
 	}
 
-	if q.cfg.Engine.EnableV2Engine && hasDataObjectsAvailable(params.Start(), params.End()) {
+	if q.cfg.EngineV2.Enable && hasDataObjectsAvailable(q.cfg, params.Start(), params.End()) {
 		query := q.engineV2.Query(params)
 		result, err := query.Exec(ctx)
 		if err == nil {
@@ -464,15 +471,23 @@ func (q *QuerierAPI) PatternsHandler(ctx context.Context, req *logproto.QueryPat
 	}
 
 	// Query store for older data by converting to LogQL query
-	// Only query the store if pattern persistence is enabled for this tenant
+	// Only query the store if pattern persistence is enabled for at least one tenant
 	if storeQueryInterval != nil && !q.cfg.QueryIngesterOnly && q.engineV1 != nil {
-		tenantID, err := tenant.TenantID(ctx)
+		tenantIDs, err := tenant.TenantIDs(ctx)
 		if err != nil {
 			return nil, err
 		}
 
-		// Only query the store if pattern persistence is enabled for this tenant
-		if q.limits.PatternPersistenceEnabled(tenantID) {
+		// Only query the store if pattern persistence is enabled for at least one tenant
+		patternPersistenceEnabled := false
+		for _, tenantID := range tenantIDs {
+			if q.limits.PatternPersistenceEnabled(tenantID) {
+				patternPersistenceEnabled = true
+				break
+			}
+		}
+
+		if patternPersistenceEnabled {
 			g.Go(func() error {
 				storeReq := *req
 				storeReq.Start = storeQueryInterval.start

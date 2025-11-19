@@ -12,9 +12,8 @@ spec:
   selector:
     matchLabels:
       {{- include "loki-canary.selectorLabels" $ | nindent 6 }}
-
   {{- if eq .kind "Deployment" }}
-  replicas: 1
+  replicas: {{ .replicas }}
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -48,7 +47,7 @@ spec:
       hostUsers: {{ .hostUsers }}
       {{- end }}
       securityContext:
-        {{- toYaml $.Values.loki.podSecurityContext | nindent 8 }}
+        {{- include "loki.podSecurityContext" $ | nindent 8 }}
       containers:
         - name: loki-canary
           image: {{ include "loki-canary.image" $ }}
@@ -106,12 +105,10 @@ spec:
           envFrom:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+          {{- with .readinessProbe }}
           readinessProbe:
-            httpGet:
-              path: /metrics
-              port: http-metrics
-            initialDelaySeconds: 15
-            timeoutSeconds: 1
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           {{- with .resources}}
           resources:
             {{- toYaml . | nindent 12 }}

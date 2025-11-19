@@ -13,7 +13,7 @@ import (
 
 // MarshalKeyvals returns the logfmt encoding of keyvals, a variadic sequence
 // of alternating keys and values.
-func MarshalKeyvals(keyvals ...interface{}) ([]byte, error) {
+func MarshalKeyvals(keyvals ...any) ([]byte, error) {
 	buf := &bytes.Buffer{}
 	if err := NewEncoder(buf).EncodeKeyvals(keyvals...); err != nil {
 		return nil, err
@@ -45,7 +45,7 @@ var (
 // EncodeKeyval writes the logfmt encoding of key and value to the stream. A
 // single space is written before the second and subsequent keys in a record.
 // Nothing is written if a non-nil error is returned.
-func (enc *Encoder) EncodeKeyval(key, value interface{}) error {
+func (enc *Encoder) EncodeKeyval(key, value any) error {
 	enc.scratch.Reset()
 	if enc.needSep {
 		if _, err := enc.scratch.Write(space); err != nil {
@@ -72,7 +72,7 @@ func (enc *Encoder) EncodeKeyval(key, value interface{}) error {
 // unsupported type or that cause a MarshalerError are replaced by their error
 // but do not cause EncodeKeyvals to return an error. If a non-nil error is
 // returned some key/value pairs may not have be written.
-func (enc *Encoder) EncodeKeyvals(keyvals ...interface{}) error {
+func (enc *Encoder) EncodeKeyvals(keyvals ...any) error {
 	if len(keyvals) == 0 {
 		return nil
 	}
@@ -122,7 +122,7 @@ var ErrUnsupportedKeyType = errors.New("unsupported key type")
 // unsupported type.
 var ErrUnsupportedValueType = errors.New("unsupported value type")
 
-func writeKey(w io.Writer, key interface{}) error {
+func writeKey(w io.Writer, key any) error {
 	if key == nil {
 		return ErrNilKey
 	}
@@ -155,7 +155,7 @@ func writeKey(w io.Writer, key interface{}) error {
 		switch rkey.Kind() {
 		case reflect.Array, reflect.Chan, reflect.Func, reflect.Map, reflect.Slice, reflect.Struct:
 			return ErrUnsupportedKeyType
-		case reflect.Ptr:
+		case reflect.Pointer:
 			if rkey.IsNil() {
 				return ErrNilKey
 			}
@@ -170,7 +170,7 @@ func writeKey(w io.Writer, key interface{}) error {
 // functions it causes them to remove invalid key runes from strings or byte
 // slices respectively.
 func keyRuneFilter(r rune) rune {
-	if r <= ' ' || r == '=' || r == '"' || r == utf8.RuneError {
+	if r <= ' ' || r == '=' || r == '"' || r == 0x7f || r == utf8.RuneError {
 		return -1
 	}
 	return r
@@ -194,7 +194,7 @@ func writeBytesKey(w io.Writer, key []byte) error {
 	return err
 }
 
-func writeValue(w io.Writer, value interface{}) error {
+func writeValue(w io.Writer, value any) error {
 	switch v := value.(type) {
 	case nil:
 		return writeBytesValue(w, null)
@@ -222,7 +222,7 @@ func writeValue(w io.Writer, value interface{}) error {
 		switch rvalue.Kind() {
 		case reflect.Array, reflect.Chan, reflect.Func, reflect.Map, reflect.Slice, reflect.Struct:
 			return ErrUnsupportedValueType
-		case reflect.Ptr:
+		case reflect.Pointer:
 			if rvalue.IsNil() {
 				return writeBytesValue(w, null)
 			}
@@ -233,7 +233,7 @@ func writeValue(w io.Writer, value interface{}) error {
 }
 
 func needsQuotedValueRune(r rune) bool {
-	return r <= ' ' || r == '=' || r == '"' || r == utf8.RuneError
+	return r <= ' ' || r == '=' || r == '"' || r == 0x7f || r == utf8.RuneError
 }
 
 func writeStringValue(w io.Writer, value string, ok bool) error {
@@ -276,7 +276,7 @@ func (enc *Encoder) Reset() {
 func safeError(err error) (s string, ok bool) {
 	defer func() {
 		if panicVal := recover(); panicVal != nil {
-			if v := reflect.ValueOf(err); v.Kind() == reflect.Ptr && v.IsNil() {
+			if v := reflect.ValueOf(err); v.Kind() == reflect.Pointer && v.IsNil() {
 				s, ok = "null", false
 			} else {
 				s, ok = fmt.Sprintf("PANIC:%v", panicVal), false
@@ -290,7 +290,7 @@ func safeError(err error) (s string, ok bool) {
 func safeString(str fmt.Stringer) (s string, ok bool) {
 	defer func() {
 		if panicVal := recover(); panicVal != nil {
-			if v := reflect.ValueOf(str); v.Kind() == reflect.Ptr && v.IsNil() {
+			if v := reflect.ValueOf(str); v.Kind() == reflect.Pointer && v.IsNil() {
 				s, ok = "null", false
 			} else {
 				s, ok = fmt.Sprintf("PANIC:%v", panicVal), true
@@ -304,7 +304,7 @@ func safeString(str fmt.Stringer) (s string, ok bool) {
 func safeMarshal(tm encoding.TextMarshaler) (b []byte, err error) {
 	defer func() {
 		if panicVal := recover(); panicVal != nil {
-			if v := reflect.ValueOf(tm); v.Kind() == reflect.Ptr && v.IsNil() {
+			if v := reflect.ValueOf(tm); v.Kind() == reflect.Pointer && v.IsNil() {
 				b, err = nil, nil
 			} else {
 				b, err = nil, fmt.Errorf("panic when marshalling: %s", panicVal)

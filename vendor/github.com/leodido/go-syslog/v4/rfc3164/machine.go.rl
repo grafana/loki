@@ -13,6 +13,8 @@ var (
 	errPri            = "expecting a priority value within angle brackets [col %d]"
 	errTimestamp      = "expecting a Stamp timestamp [col %d]"
 	errRFC3339        = "expecting a Stamp or a RFC3339 timestamp [col %d]"
+	errMsgCount       = "expecting a message counter (from 1 to max 255 digits) [col %d]"
+	errSequence       = "expecting a sequence number (from 1 to max 255 digits) [col %d]"
 	errHostname       = "expecting an hostname (from 1 to max 255 US-ASCII characters) [col %d]"
 	errTag            = "expecting an alphanumeric tag (max 32 characters) [col %d]"
 	errContentStart   = "expecting a content part starting with a non-alphanumeric character [col %d]"
@@ -65,6 +67,16 @@ action set_rfc3339 {
 	}
 }
 
+action set_msgcount {
+	output.msgcount = uint32(common.UnsafeUTF8DecimalCodePointsToInt(m.text()))
+	output.msgcountSet = true
+}
+
+action set_sequence {
+	output.sequence = uint32(common.UnsafeUTF8DecimalCodePointsToInt(m.text()))
+	output.sequenceSet = true
+}
+
 action set_hostname {
 	output.hostname = string(m.text())
 }
@@ -105,6 +117,18 @@ action err_rfc3339 {
 	fgoto fail;
 }
 
+action err_msgcount {
+	m.err = fmt.Errorf(errMsgCount, m.p)
+	fhold;
+	fgoto fail;
+}
+
+action err_sequence {
+	m.err = fmt.Errorf(errSequence, m.p)
+	fhold;
+	fgoto fail;
+}
+
 action err_hostname {
 	m.err = fmt.Errorf(errHostname, m.p)
 	fhold;
@@ -131,13 +155,33 @@ action err_content {
 
 pri = ('<' prival >mark %from(set_prival) $err(err_prival) '>') @err(err_pri);
 
-timestamp = (datemmm sp datemday sp hhmmss) >mark %set_timestamp @err(err_timestamp);
+time = hhmmss (timesecfrac? when { m.secfrac });
+
+timestamp = (datemmm sp datemday sp time) >mark %set_timestamp @err(err_timestamp);
 
 rfc3339 = fulldate >mark 'T' hhmmss timeoffset %set_rfc3339 @err(err_rfc3339);
 
 # note > RFC 3164 says "The Domain Name MUST NOT be included in the HOSTNAME field"
 # note > this could mean that the we may need to create and to use a labelrange = graph{1,63} here if we want the parser to be stricter.
 hostname = (hostnamerange -- ':') >mark %set_hostname $err(err_hostname);
+
+# Cisco IOS devices sometimes include a "message counter" before the timestamp
+# "<189>237: *Jan  8 19:46:03.295..."
+msgcountval = (digit*) >mark %set_msgcount @err(err_msgcount);
+msgcount = (msgcountval ':' sp*) when { m.msgcount };
+# they can also include a "sequence number" after the message counter
+# "<189>237: 000104: *Jan  8 19:46:03.295..."
+sequenceval = (digit+) >mark %set_sequence @err(err_sequence);
+sequence = (sequenceval ':' sp*) when { m.sequence };
+# and optionally put a hostname before the timestamp
+ciscoHostname = (hostname ':' sp*)? when { m.ciscoHostname };
+# and then they prepend a '*' to the timestamp if there is no NTP sync
+ciscostar = ('*'?) when { m.msgcount || m.sequence || m.ciscoHostname };
+# and they append a colon after the timestamp:
+# ...19:46:03.295: ...
+ciscocolon = (':'?) when { m.msgcount || m.sequence || m.ciscoHostname };
+
+ciscoextras = msgcount? <: sequence? <: ciscoHostname?;
 
 # Section 4.1.3
 # note > alnum{1,32} is too restrictive (eg., no dashes)
@@ -161,23 +205,27 @@ fail := (any - [\n\r])* @err{ fgoto main; };
 
 # note > some BSD syslog implementations insert extra spaces between "PRI", "Timestamp", and "Hostname": although these strictly violate RFC3164, it is useful to be able to parse them
 # note > OpenBSD like many other hardware sends syslog messages without hostname
-main := pri sp* (timestamp | (rfc3339 when { m.rfc3339 })) sp+ (hostname sp+)? msg '\n'?;
+main := pri sp* ciscoextras ciscostar (timestamp | (rfc3339 when { m.rfc3339 })) ciscocolon sp+ (hostname sp+)? msg '\n'?;
 
 }%%
 
 %% write data noerror noprefix;
 
 type machine struct {
-	data         []byte
-	cs           int
-	p, pe, eof   int
-	pb           int
-	err          error
-	bestEffort   bool
-	yyyy         int
-	rfc3339      bool
-	loc          *time.Location
-	timezone     *time.Location
+	data          []byte
+	cs            int
+	p, pe, eof    int
+	pb            int
+	err           error
+	bestEffort    bool
+	yyyy          int
+	rfc3339       bool
+	secfrac       bool
+	msgcount      bool
+	sequence      bool
+	ciscoHostname bool
+	loc           *time.Location
+	timezone      *time.Location
 }
 
 // NewMachine creates a new FSM able to parse RFC3164 syslog messages.
@@ -229,6 +277,29 @@ func (m *machine) WithRFC3339() {
 	m.rfc3339 = true
 }
 
+// WithSecondFractions enables second fractions for timestamps.
+func (m *machine) WithSecondFractions() {
+	m.secfrac = true
+}
+
+// WithMessageCounter enables parsing of non-standard Cisco IOS logs that include a message counter
+func (m *machine) WithMessageCounter() {
+	m.msgcount = true
+}
+
+// WithSequenceNumber enables parsing of non-standard Cisco IOS logs that include a sequence number.
+func (m *machine) WithSequenceNumber() {
+	m.sequence = true
+}
+
+// WithCiscoHostname enables parsing of non-standard Cisco IOS logs that include a non-standard hostname.
+//
+// For example:
+// `<189>269614: hostname1: Apr 11 10:02:08: %LINEPROTO-5-UPDOWN: Line protocol on Interface GigabitEthernet7/0/34, changed state to up`
+func (m *machine) WithCiscoHostname() {
+    m.ciscoHostname = true
+}
+
 // Err returns the error that occurred on the last call to Parse.
 //
 // If the result is nil, then the line was parsed successfully.
@@ -263,4 +334,3 @@ func (m *machine) Parse(input []byte) (syslog.Message, error) {
 
 	return output.export(), nil
 }
-

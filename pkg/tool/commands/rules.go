@@ -143,17 +143,17 @@ func (r *RuleCommand) Register(app *kingpin.Application) {
 
 		c.Flag("tls-ca-path", "TLS CA certificate to verify Loki API as part of mTLS, alternatively set LOKI_TLS_CA_PATH.").
 			Default("").
-			Envar("LOKI_TLS_CA_CERT").
+			Envar("LOKI_TLS_CA_PATH").
 			StringVar(&r.ClientConfig.TLS.CAPath)
 
-		c.Flag("tls-cert-path", "TLS client certificate to authenticate with Loki API as part of mTLS, alternatively set Loki_TLS_CERT_PATH.").
+		c.Flag("tls-cert-path", "TLS client certificate to authenticate with Loki API as part of mTLS, alternatively set LOKI_TLS_CERT_PATH.").
 			Default("").
-			Envar("LOKI_TLS_CLIENT_CERT").
+			Envar("LOKI_TLS_CERT_PATH").
 			StringVar(&r.ClientConfig.TLS.CertPath)
 
 		c.Flag("tls-key-path", "TLS client certificate private key to authenticate with Loki API as part of mTLS, alternatively set LOKI_TLS_KEY_PATH.").
 			Default("").
-			Envar("LOKI_TLS_CLIENT_KEY").
+			Envar("LOKI_TLS_KEY_PATH").
 			StringVar(&r.ClientConfig.TLS.KeyPath)
 
 	}

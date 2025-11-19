@@ -44,7 +44,7 @@ Loki automatically tries to populate a default `service_name` label while ingest
 - Grafana Cloud Application Observability
 
 {{< admonition type="note" >}}
-If you are already applying a `service_name`, Loki will use that value.
+If you are already applying a `service_name`, Loki will use that value. For example, if you are using the Kubernetes monitoring Helm Chart, the Alloy configuration applies a `service_name` by default.
 {{< /admonition >}}
 
 Loki will attempt to create the `service_name` label by looking for the following labels in this order:

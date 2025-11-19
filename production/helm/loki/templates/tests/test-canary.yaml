@@ -25,7 +25,7 @@ spec:
       image: {{ include "loki.helmTestImage" $ }}
       env:
         - name: CANARY_SERVICE_ADDRESS
-          value: "{{ .canaryServiceAddress }}"
+          value: "{{ tpl .canaryServiceAddress $ }}"
         - name: CANARY_PROMETHEUS_ADDRESS
           value: "{{ .prometheusAddress }}"
         {{- with .timeout }}

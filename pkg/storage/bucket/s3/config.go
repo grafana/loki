@@ -7,7 +7,7 @@ import (
 	"slices"
 	"strings"
 
-	s3_service "github.com/aws/aws-sdk-go/service/s3"
+	s3_types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/grafana/dskit/flagext"
 	"github.com/minio/minio-go/v7/pkg/encrypt"
 	"github.com/pkg/errors"
@@ -29,11 +29,21 @@ const (
 
 var (
 	supportedSSETypes          = []string{SSEKMS, SSES3}
-	supportedStorageClasses    = s3_service.ObjectStorageClass_Values()
+	supportedStorageClasses    = s3_types.ObjectStorageClassStandard.Values()
 	supportedBucketLookupTypes = thanosS3BucketLookupTypesValues()
+)
 
+func supportedBucketLookupTypesToString(in []s3_types.ObjectStorageClass) []string {
+	var out []string
+	for _, o := range in {
+		out = append(out, string(o))
+	}
+	return out
+}
+
+var (
 	errUnsupportedSSEType      = errors.New("unsupported S3 SSE type")
-	errUnsupportedStorageClass = fmt.Errorf("unsupported S3 storage class (supported values: %s)", strings.Join(supportedStorageClasses, ", "))
+	errUnsupportedStorageClass = fmt.Errorf("unsupported S3 storage class (supported values: %s)", strings.Join(supportedBucketLookupTypesToString(supportedStorageClasses), ", "))
 	errInvalidSSEContext       = errors.New("invalid S3 SSE encryption context")
 	errInvalidEndpointPrefix   = errors.New("the endpoint must not prefixed with the bucket name")
 	errInvalidSTSEndpoint      = errors.New("sts-endpoint must be a valid url")
@@ -93,7 +103,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.Endpoint, prefix+"s3.endpoint", "", "The S3 bucket endpoint. It could be an AWS S3 endpoint listed at https://docs.aws.amazon.com/general/latest/gr/s3.html or the address of an S3-compatible service in hostname:port format.")
 	f.BoolVar(&cfg.Insecure, prefix+"s3.insecure", false, "If enabled, use http:// for the S3 endpoint instead of https://. This could be useful in local dev/test environments while using an S3-compatible backend storage, like Minio.")
 	f.StringVar(&cfg.ListObjectsVersion, prefix+"s3.list-objects-version", "", "Use a specific version of the S3 list object API. Supported values are v1 or v2. Default is unset.")
-	f.StringVar(&cfg.StorageClass, prefix+"s3.storage-class", "", "The S3 storage class to use, not set by default. Details can be found at https://aws.amazon.com/s3/storage-classes/. Supported values are: "+strings.Join(supportedStorageClasses, ", "))
+	f.StringVar(&cfg.StorageClass, prefix+"s3.storage-class", "", "The S3 storage class to use, not set by default. Details can be found at https://aws.amazon.com/s3/storage-classes/. Supported values are: "+strings.Join(supportedBucketLookupTypesToString(supportedStorageClasses), ", "))
 	f.BoolVar(&cfg.NativeAWSAuthEnabled, prefix+"s3.native-aws-auth-enabled", false, "If enabled, it will use the default authentication methods of the AWS SDK for go based on known environment variables and known AWS config files.")
 	f.Uint64Var(&cfg.PartSize, prefix+"s3.part-size", 0, "The minimum file size in bytes used for multipart uploads. If 0, the value is optimally computed for each object.")
 	f.BoolVar(&cfg.SendContentMd5, prefix+"s3.send-content-md5", false, "If enabled, a Content-MD5 header is sent with S3 Put Object requests. Consumes more resources to compute the MD5, but may improve compatibility with object storage services that do not support checksums.")
@@ -117,7 +127,7 @@ func (cfg *Config) Validate() error {
 	if cfg.STSEndpoint != "" && !util.IsValidURL(cfg.STSEndpoint) {
 		return errInvalidSTSEndpoint
 	}
-	if !slices.Contains(supportedStorageClasses, cfg.StorageClass) && cfg.StorageClass != "" {
+	if !slices.Contains(supportedBucketLookupTypesToString(supportedStorageClasses), cfg.StorageClass) && cfg.StorageClass != "" {
 		return errUnsupportedStorageClass
 	}
 

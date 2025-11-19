@@ -31,9 +31,9 @@ spec:
   egress:
   - toPorts:
     - ports:
-      - port: 53
+      - port: "53"
         protocol: UDP
-      - port: 53
+      - port: "53"
         protocol: TCP
     toEndpoints:
     - namespaceSelector: {}

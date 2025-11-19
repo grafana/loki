@@ -27,10 +27,11 @@ const (
 
 type Record struct {
 	// Context holds the tracing (and potentially other) info, that the record was enriched with on fetch from Kafka.
-	Ctx      context.Context
-	TenantID string
-	Content  []byte
-	Offset   int64
+	Ctx       context.Context
+	TenantID  string
+	Content   []byte
+	Offset    int64
+	Timestamp time.Time
 }
 
 type Reader interface {
@@ -92,13 +93,24 @@ func NewReaderMetrics(r prometheus.Registerer) *ReaderMetrics {
 
 // KafkaReader provides low-level access to Kafka partition reading operations
 type KafkaReader struct {
-	client        *kgo.Client
-	topic         string
-	partitionID   int32
-	consumerGroup string
-	metrics       *ReaderMetrics
-	phase         string
-	logger        log.Logger
+	client                   *kgo.Client
+	topic                    string
+	partitionID              int32
+	consumerGroup            string
+	metrics                  *ReaderMetrics
+	phase                    string
+	logger                   log.Logger
+	headerToContextExtractor func(context.Context, []kgo.RecordHeader) context.Context
+}
+
+// ReaderOption is a functional option for configuring a KafkaReader.
+type ReaderOption func(*KafkaReader)
+
+// WithHeaderToContextExtractor configures a function to extract context from record headers.
+func WithHeaderToContextExtractor(extractor func(context.Context, []kgo.RecordHeader) context.Context) ReaderOption {
+	return func(r *KafkaReader) {
+		r.headerToContextExtractor = extractor
+	}
 }
 
 func NewKafkaReader(
@@ -107,6 +119,7 @@ func NewKafkaReader(
 	logger log.Logger,
 	metrics *ReaderMetrics,
 	reg prometheus.Registerer,
+	opts ...ReaderOption,
 ) (*KafkaReader, error) {
 	// Create a new Kafka client for this reader
 	c, err := client.NewReaderClient("partition-reader", cfg, log.With(logger, "component", "kafka-client"), reg)
@@ -114,13 +127,20 @@ func NewKafkaReader(
 		return nil, fmt.Errorf("creating kafka client: %w", err)
 	}
 
-	return &KafkaReader{
+	reader := &KafkaReader{
 		client:      c,
 		topic:       cfg.Topic,
 		partitionID: partitionID,
 		metrics:     metrics,
 		logger:      logger,
-	}, nil
+	}
+
+	// Apply functional options
+	for _, opt := range opts {
+		opt(reader)
+	}
+
+	return reader, nil
 }
 
 // Topic returns the topic being read
@@ -174,13 +194,20 @@ func (r *KafkaReader) Poll(ctx context.Context, maxPollRecords int) ([]Record, e
 		if rec.Partition != r.partitionID {
 			return
 		}
+
+		recCtx := rec.Context
+		if r.headerToContextExtractor != nil {
+			recCtx = r.headerToContextExtractor(recCtx, rec.Headers)
+		}
+
 		records = append(records, Record{
 			// This context carries the tracing data for this individual record;
 			// kotel populates this data when it fetches the messages.
-			Ctx:      rec.Context,
-			TenantID: string(rec.Key),
-			Content:  rec.Value,
-			Offset:   rec.Offset,
+			Ctx:       recCtx,
+			TenantID:  string(rec.Key),
+			Content:   rec.Value,
+			Offset:    rec.Offset,
+			Timestamp: rec.Timestamp,
 		})
 	})
 

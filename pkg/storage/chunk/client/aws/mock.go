@@ -9,13 +9,10 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/aws/request"
-	"github.com/aws/aws-sdk-go/service/dynamodb"
-	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
-	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/aws/aws-sdk-go/service/s3/s3iface"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/go-kit/log/level"
 
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -24,7 +21,7 @@ import (
 const arnPrefix = "arn:"
 
 type mockDynamoDBClient struct {
-	dynamodbiface.DynamoDBAPI
+	dynamodb.Client
 
 	mtx            sync.RWMutex
 	unprocessed    int
@@ -36,10 +33,10 @@ type mockDynamoDBClient struct {
 type mockDynamoDBTable struct {
 	items       map[string][]mockDynamoDBItem
 	read, write int64
-	tags        []*dynamodb.Tag
+	tags        []types.Tag
 }
 
-type mockDynamoDBItem map[string]*dynamodb.AttributeValue
+type mockDynamoDBItem map[string]types.AttributeValue
 
 // nolint
 func newMockDynamoDB(unprocessed int, provisionedErr int) *mockDynamoDBClient {
@@ -66,31 +63,25 @@ func (m *mockDynamoDBClient) createTable(name string) {
 	}
 }
 
-func (m *mockDynamoDBClient) batchWriteItemRequest(_ context.Context, input *dynamodb.BatchWriteItemInput) dynamoDBRequest {
+func (m *mockDynamoDBClient) BatchWriteItem(_ context.Context, params *dynamodb.BatchWriteItemInput, _ ...func(*dynamodb.Options)) (*dynamodb.BatchWriteItemOutput, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
 	resp := &dynamodb.BatchWriteItemOutput{
-		UnprocessedItems: map[string][]*dynamodb.WriteRequest{},
+		UnprocessedItems: map[string][]types.WriteRequest{},
 	}
 
 	if m.errAfter > 0 {
 		m.errAfter--
 	} else if m.provisionedErr > 0 {
 		m.provisionedErr--
-		return &dynamoDBMockRequest{
-			result: resp,
-			err:    awserr.New(dynamodb.ErrCodeProvisionedThroughputExceededException, "", nil),
-		}
+		return resp, &types.ProvisionedThroughputExceededException{}
 	}
 
-	for tableName, writeRequests := range input.RequestItems {
+	for tableName, writeRequests := range params.RequestItems {
 		table, ok := m.tables[tableName]
 		if !ok {
-			return &dynamoDBMockRequest{
-				result: &dynamodb.BatchWriteItemOutput{},
-				err:    fmt.Errorf("table not found: %s", tableName),
-			}
+			return &dynamodb.BatchWriteItemOutput{}, fmt.Errorf("table not found: %s", tableName)
 		}
 
 		for _, writeRequest := range writeRequests {
@@ -100,61 +91,52 @@ func (m *mockDynamoDBClient) batchWriteItemRequest(_ context.Context, input *dyn
 				continue
 			}
 
-			hashValue := *writeRequest.PutRequest.Item[hashKey].S
-			rangeValue := writeRequest.PutRequest.Item[rangeKey].B
+			hashValue := writeRequest.PutRequest.Item[hashKey].(*types.AttributeValueMemberS).Value
+			rangeValue := writeRequest.PutRequest.Item[rangeKey].(*types.AttributeValueMemberB).Value
 
 			items := table.items[hashValue]
 
 			// insert in order
 			i := sort.Search(len(items), func(i int) bool {
-				return bytes.Compare(items[i][rangeKey].B, rangeValue) >= 0
+				return bytes.Compare(items[i][rangeKey].(*types.AttributeValueMemberB).Value, rangeValue) >= 0
 			})
-			if i >= len(items) || !bytes.Equal(items[i][rangeKey].B, rangeValue) {
+			if i >= len(items) || !bytes.Equal(items[i][rangeKey].(*types.AttributeValueMemberB).Value, rangeValue) {
 				items = append(items, nil)
 				copy(items[i+1:], items[i:])
 			} else {
-				return &dynamoDBMockRequest{
-					result: &dynamodb.BatchWriteItemOutput{},
-					err:    fmt.Errorf("duplicate entry"),
-				}
+				return &dynamodb.BatchWriteItemOutput{}, fmt.Errorf("duplicate entry")
 			}
 			items[i] = writeRequest.PutRequest.Item
 
 			table.items[hashValue] = items
 		}
 	}
-	return &dynamoDBMockRequest{result: resp}
+	return resp, nil
 }
 
-func (m *mockDynamoDBClient) batchGetItemRequest(_ context.Context, input *dynamodb.BatchGetItemInput) dynamoDBRequest {
+func (m *mockDynamoDBClient) BatchGetItem(_ context.Context, params *dynamodb.BatchGetItemInput, _ ...func(*dynamodb.Options)) (*dynamodb.BatchGetItemOutput, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
 	resp := &dynamodb.BatchGetItemOutput{
-		Responses:       map[string][]map[string]*dynamodb.AttributeValue{},
-		UnprocessedKeys: map[string]*dynamodb.KeysAndAttributes{},
+		Responses:       map[string][]map[string]types.AttributeValue{},
+		UnprocessedKeys: map[string]types.KeysAndAttributes{},
 	}
 
 	if m.errAfter > 0 {
 		m.errAfter--
 	} else if m.provisionedErr > 0 {
 		m.provisionedErr--
-		return &dynamoDBMockRequest{
-			result: resp,
-			err:    awserr.New(dynamodb.ErrCodeProvisionedThroughputExceededException, "", nil),
-		}
+		return resp, &types.ProvisionedThroughputExceededException{}
 	}
 
-	for tableName, readRequests := range input.RequestItems {
+	for tableName, readRequests := range params.RequestItems {
 		table, ok := m.tables[tableName]
 		if !ok {
-			return &dynamoDBMockRequest{
-				result: &dynamodb.BatchGetItemOutput{},
-				err:    fmt.Errorf("table not found"),
-			}
+			return &dynamodb.BatchGetItemOutput{}, fmt.Errorf("table not found")
 		}
 
-		unprocessed := &dynamodb.KeysAndAttributes{
+		unprocessed := &types.KeysAndAttributes{
 			AttributesToGet:          readRequests.AttributesToGet,
 			ConsistentRead:           readRequests.ConsistentRead,
 			ExpressionAttributeNames: readRequests.ExpressionAttributeNames,
@@ -163,87 +145,81 @@ func (m *mockDynamoDBClient) batchGetItemRequest(_ context.Context, input *dynam
 			if m.unprocessed > 0 {
 				m.unprocessed--
 				unprocessed.Keys = append(unprocessed.Keys, readRequest)
-				resp.UnprocessedKeys[tableName] = unprocessed
+				resp.UnprocessedKeys[tableName] = *unprocessed
 				continue
 			}
 
-			hashValue := *readRequest[hashKey].S
-			rangeValue := readRequest[rangeKey].B
+			hashValue := readRequest[hashKey].(*types.AttributeValueMemberS).Value
+			rangeValue := readRequest[rangeKey].(*types.AttributeValueMemberB).Value
 			items := table.items[hashValue]
 
 			// insert in order
 			i := sort.Search(len(items), func(i int) bool {
-				return bytes.Compare(items[i][rangeKey].B, rangeValue) >= 0
+				return bytes.Compare(items[i][rangeKey].(*types.AttributeValueMemberB).Value, rangeValue) >= 0
 			})
-			if i >= len(items) || !bytes.Equal(items[i][rangeKey].B, rangeValue) {
-				return &dynamoDBMockRequest{
-					result: &dynamodb.BatchGetItemOutput{},
-					err:    fmt.Errorf("couldn't find item"),
-				}
+			if i >= len(items) || !bytes.Equal(items[i][rangeKey].(*types.AttributeValueMemberB).Value, rangeValue) {
+				return &dynamodb.BatchGetItemOutput{}, fmt.Errorf("couldn't find item")
 			}
 
 			// Only return AttributesToGet!
-			item := map[string]*dynamodb.AttributeValue{}
+			item := map[string]types.AttributeValue{}
 			for _, key := range readRequests.AttributesToGet {
-				item[*key] = items[i][*key]
+				item[key] = items[i][key]
 			}
 			resp.Responses[tableName] = append(resp.Responses[tableName], item)
 		}
 	}
-	return &dynamoDBMockRequest{
-		result: resp,
-	}
+	return resp, nil
 }
 
-func (m *mockDynamoDBClient) QueryPagesWithContext(_ aws.Context, input *dynamodb.QueryInput, fn func(*dynamodb.QueryOutput, bool) bool, _ ...request.Option) error {
+func (m *mockDynamoDBClient) Query(_ context.Context, params *dynamodb.QueryInput, _ ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error) {
 	result := &dynamodb.QueryOutput{
-		Items: []map[string]*dynamodb.AttributeValue{},
+		Items: []map[string]types.AttributeValue{},
 	}
 
 	// Required filters
-	hashValue := *input.KeyConditions[hashKey].AttributeValueList[0].S
+	hashValue := params.KeyConditions[hashKey].AttributeValueList[0].(*types.AttributeValueMemberS).Value
 
 	// Optional filters
 	var (
 		rangeValueFilter     []byte
 		rangeValueFilterType string
 	)
-	if c, ok := input.KeyConditions[rangeKey]; ok {
-		rangeValueFilter = c.AttributeValueList[0].B
-		rangeValueFilterType = *c.ComparisonOperator
+	if c, ok := params.KeyConditions[rangeKey]; ok {
+		rangeValueFilter = c.AttributeValueList[0].(*types.AttributeValueMemberB).Value
+		rangeValueFilterType = string(c.ComparisonOperator)
 	}
 
 	// Filter by HashValue, RangeValue and Value if it exists
-	items := m.tables[*input.TableName].items[hashValue]
+	items := m.tables[*params.TableName].items[hashValue]
 	for _, item := range items {
-		rangeValue := item[rangeKey].B
-		if rangeValueFilterType == dynamodb.ComparisonOperatorGe && bytes.Compare(rangeValue, rangeValueFilter) < 0 {
+		rangeValue := (item[rangeKey]).(*types.AttributeValueMemberB).Value
+		if rangeValueFilterType == string(types.ComparisonOperatorGe) && bytes.Compare(rangeValue, rangeValueFilter) < 0 {
 			continue
 		}
-		if rangeValueFilterType == dynamodb.ComparisonOperatorBeginsWith && !bytes.HasPrefix(rangeValue, rangeValueFilter) {
+		if rangeValueFilterType == string(types.ComparisonOperatorBeginsWith) && !bytes.HasPrefix(rangeValue, rangeValueFilter) {
 			continue
 		}
 
 		if item[valueKey] != nil {
-			value := item[valueKey].B
+			value := (item[valueKey]).(*types.AttributeValueMemberB).Value
 
 			// Apply filterExpression if it exists (supporting only v = :v)
-			if input.FilterExpression != nil {
-				if *input.FilterExpression == fmt.Sprintf("%s = :v", valueKey) {
-					filterValue := input.ExpressionAttributeValues[":v"].B
+			if params.FilterExpression != nil {
+				if *params.FilterExpression == fmt.Sprintf("%s = :v", valueKey) {
+					filterValue := params.ExpressionAttributeValues[":v"].(*types.AttributeValueMemberB).Value
 					if !bytes.Equal(value, filterValue) {
 						continue
 					}
 				} else {
-					level.Warn(util_log.Logger).Log("msg", "unsupported FilterExpression", "expression", *input.FilterExpression)
+					level.Warn(util_log.Logger).Log("msg", "unsupported FilterExpression", "expression", *params.FilterExpression)
 				}
 			}
 		}
 
 		result.Items = append(result.Items, item)
 	}
-	fn(result, true)
-	return nil
+	return result, nil
 }
 
 type dynamoDBMockRequest struct {
@@ -267,25 +243,22 @@ func (m *dynamoDBMockRequest) Retryable() bool {
 	return false
 }
 
-func (m *mockDynamoDBClient) ListTablesPagesWithContext(_ aws.Context, _ *dynamodb.ListTablesInput, fn func(*dynamodb.ListTablesOutput, bool) bool, _ ...request.Option) error {
+func (m *mockDynamoDBClient) ListTables(_ context.Context, _ *dynamodb.ListTablesInput, _ ...func(*dynamodb.Options)) (*dynamodb.ListTablesOutput, error) {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 
-	var tableNames []*string
+	var tableNames []string
 	for tableName := range m.tables {
 		func(tableName string) {
-			tableNames = append(tableNames, &tableName)
+			tableNames = append(tableNames, tableName)
 		}(tableName)
 	}
-	fn(&dynamodb.ListTablesOutput{
-		TableNames: tableNames,
-	}, true)
 
-	return nil
+	return &dynamodb.ListTablesOutput{TableNames: tableNames}, nil
 }
 
 // CreateTable implements StorageClient.
-func (m *mockDynamoDBClient) CreateTableWithContext(_ aws.Context, input *dynamodb.CreateTableInput, _ ...request.Option) (*dynamodb.CreateTableOutput, error) {
+func (m *mockDynamoDBClient) CreateTable(_ context.Context, input *dynamodb.CreateTableInput, _ ...func(*dynamodb.Options)) (*dynamodb.CreateTableOutput, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
@@ -300,14 +273,14 @@ func (m *mockDynamoDBClient) CreateTableWithContext(_ aws.Context, input *dynamo
 	}
 
 	return &dynamodb.CreateTableOutput{
-		TableDescription: &dynamodb.TableDescription{
+		TableDescription: &types.TableDescription{
 			TableArn: aws.String(arnPrefix + *input.TableName),
 		},
 	}, nil
 }
 
 // DescribeTable implements StorageClient.
-func (m *mockDynamoDBClient) DescribeTableWithContext(_ aws.Context, input *dynamodb.DescribeTableInput, _ ...request.Option) (*dynamodb.DescribeTableOutput, error) {
+func (m *mockDynamoDBClient) DescribeTable(_ context.Context, input *dynamodb.DescribeTableInput, _ ...func(*dynamodb.Options)) (*dynamodb.DescribeTableOutput, error) {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 
@@ -317,10 +290,10 @@ func (m *mockDynamoDBClient) DescribeTableWithContext(_ aws.Context, input *dyna
 	}
 
 	return &dynamodb.DescribeTableOutput{
-		Table: &dynamodb.TableDescription{
+		Table: &types.TableDescription{
 			TableName:   input.TableName,
-			TableStatus: aws.String(dynamodb.TableStatusActive),
-			ProvisionedThroughput: &dynamodb.ProvisionedThroughputDescription{
+			TableStatus: types.TableStatusActive,
+			ProvisionedThroughput: &types.ProvisionedThroughputDescription{
 				ReadCapacityUnits:  aws.Int64(table.read),
 				WriteCapacityUnits: aws.Int64(table.write),
 			},
@@ -330,7 +303,7 @@ func (m *mockDynamoDBClient) DescribeTableWithContext(_ aws.Context, input *dyna
 }
 
 // UpdateTable implements StorageClient.
-func (m *mockDynamoDBClient) UpdateTableWithContext(_ aws.Context, input *dynamodb.UpdateTableInput, _ ...request.Option) (*dynamodb.UpdateTableOutput, error) {
+func (m *mockDynamoDBClient) UpdateTable(_ context.Context, input *dynamodb.UpdateTableInput, _ ...func(*dynamodb.Options)) (*dynamodb.UpdateTableOutput, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
@@ -343,13 +316,13 @@ func (m *mockDynamoDBClient) UpdateTableWithContext(_ aws.Context, input *dynamo
 	table.write = *input.ProvisionedThroughput.WriteCapacityUnits
 
 	return &dynamodb.UpdateTableOutput{
-		TableDescription: &dynamodb.TableDescription{
+		TableDescription: &types.TableDescription{
 			TableArn: aws.String(arnPrefix + *input.TableName),
 		},
 	}, nil
 }
 
-func (m *mockDynamoDBClient) TagResourceWithContext(_ aws.Context, input *dynamodb.TagResourceInput, _ ...request.Option) (*dynamodb.TagResourceOutput, error) {
+func (m *mockDynamoDBClient) TagResource(_ context.Context, input *dynamodb.TagResourceInput, _ ...func(*dynamodb.Options)) (*dynamodb.TagResourceOutput, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
@@ -370,7 +343,7 @@ func (m *mockDynamoDBClient) TagResourceWithContext(_ aws.Context, input *dynamo
 	return &dynamodb.TagResourceOutput{}, nil
 }
 
-func (m *mockDynamoDBClient) ListTagsOfResourceWithContext(_ aws.Context, input *dynamodb.ListTagsOfResourceInput, _ ...request.Option) (*dynamodb.ListTagsOfResourceOutput, error) {
+func (m *mockDynamoDBClient) ListTagsOfResource(_ context.Context, input *dynamodb.ListTagsOfResourceInput, _ ...func(*dynamodb.Options)) (*dynamodb.ListTagsOfResourceOutput, error) {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 
@@ -389,35 +362,35 @@ func (m *mockDynamoDBClient) ListTagsOfResourceWithContext(_ aws.Context, input 
 }
 
 type mockS3 struct {
-	s3iface.S3API
+	s3.Client
 	sync.RWMutex
 	objects map[string][]byte
 }
 
-func newMockS3() *mockS3 {
-	return &mockS3{
+func newMockS3() mockS3 {
+	return mockS3{
 		objects: map[string][]byte{},
 	}
 }
 
-func (m *mockS3) PutObjectWithContext(_ aws.Context, req *s3.PutObjectInput, _ ...request.Option) (*s3.PutObjectOutput, error) {
+func (m *mockS3) PutObject(_ context.Context, params *s3.PutObjectInput, _ ...func(*s3.Options)) (*s3.PutObjectOutput, error) {
 	m.Lock()
 	defer m.Unlock()
 
-	buf, err := io.ReadAll(req.Body)
+	buf, err := io.ReadAll(params.Body)
 	if err != nil {
 		return nil, err
 	}
 
-	m.objects[*req.Key] = buf
+	m.objects[*params.Key] = buf
 	return &s3.PutObjectOutput{}, nil
 }
 
-func (m *mockS3) GetObjectWithContext(_ aws.Context, req *s3.GetObjectInput, _ ...request.Option) (*s3.GetObjectOutput, error) {
+func (m *mockS3) GetObject(_ context.Context, params *s3.GetObjectInput, _ ...func(*s3.Options)) (*s3.GetObjectOutput, error) {
 	m.RLock()
 	defer m.RUnlock()
 
-	buf, ok := m.objects[*req.Key]
+	buf, ok := m.objects[*params.Key]
 	if !ok {
 		return nil, fmt.Errorf("not found")
 	}

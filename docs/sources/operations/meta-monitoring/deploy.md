@@ -70,7 +70,7 @@ The Kubernetes Monitoring Helm chart requires a Grafana Cloud account or a separ
    ```bash
    kubectl create secret generic metrics -n meta \
     --from-literal=username=<PROMETHEUS-USER> \
-    --from-literal=password=<CLOUD-TOKEn>
+    --from-literal=password=<CLOUD-TOKEN>
 
    kubectl create secret generic logs -n meta \
     --from-literal=username=<LOKI-USER> \

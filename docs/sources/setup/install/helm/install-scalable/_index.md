@@ -148,15 +148,15 @@ loki:
       # s3 URL can be used to specify the endpoint, access key, secret key, and bucket name this works well for S3 compatible storages or if you are hosting Loki on-premises and want to use S3 as the storage backend. Either use the s3 URL or the individual fields below (AWS endpoint, region, secret).
       s3: s3://access_key:secret_access_key@custom_endpoint/bucket_name
       # AWS endpoint URL
-      endpoint: <your-endpoint>
+      endpoint: <YOUR_ENDPOINT>
       # AWS region where the S3 bucket is located
-      region: <your-region>
+      region: <YOUR_REGION>
       # AWS secret access key
-      secretAccessKey: <your-secret-access-key>
+      secretAccessKey: <YOUR_SECRET_ACCESS_KEY>
       # AWS access key ID
-      accessKeyId: <your-access-key-id>
+      accessKeyId: <YOUR_ACCESS_KEY_ID>
       # AWS signature version (e.g., v2 or v4)
-      signatureVersion: <your-signature-version>
+      signatureVersion: <YOUR_SIGNATURE_VERSION>
       # Forces the path style for S3 (true/false)
       s3ForcePathStyle: false
       # Allows insecure (HTTP) connections (true/false)
@@ -205,21 +205,21 @@ loki:
     type: azure
     azure:
       # Name of the Azure Blob Storage account
-      accountName: <your-account-name>
+      accountName: <YOUR_ACCOUNT_NAME>
       # Key associated with the Azure Blob Storage account
-      accountKey: <your-account-key>
+      accountKey: <YOUR_ACCOUNT_KEY>
       # Comprehensive connection string for Azure Blob Storage account (Can be used to replace endpoint, accountName, and accountKey)
-      connectionString: <your-connection-string>
+      connectionString: <YOUR_CONNECTION_STRING>
       # Flag indicating whether to use Azure Managed Identity for authentication
       useManagedIdentity: false
       # Flag indicating whether to use a federated token for authentication
       useFederatedToken: false
       # Client ID of the user-assigned managed identity (if applicable)
-      userAssignedId: <your-user-assigned-id>
+      userAssignedId: <YOUR_USER_ASSIGNED_ID>
       # Timeout duration for requests made to the Azure Blob Storage account (in seconds)
-      requestTimeout: <your-request-timeout>
+      requestTimeout: <YOUR_REQUEST_TIMEOUT>
       # Domain suffix of the Azure Blob Storage service endpoint (e.g., core.windows.net)
-      endpointSuffix: <your-endpoint-suffix>
+      endpointSuffix: <YOUR_ENDPOINT_SUFFIX>
     bucketNames:
       chunks: "chunks"
       ruler: "ruler"

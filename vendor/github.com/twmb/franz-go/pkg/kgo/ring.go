@@ -1,9 +1,15 @@
 package kgo
 
-import "sync"
+import (
+	"sync"
+)
 
-// The ring types below are fixed sized blocking MPSC ringbuffers. These
-// replace channels in a few places in this client. The *main* advantage they
+// The ring type below in based on fixed sized blocking MPSC ringbuffer
+// if the number of elements is less than or equal to 8, and fallback to a slice if
+// the number of elements in greater than 8. The maximum number of elements
+// in the ring is unlimited.
+//
+// This ring replace channels in a few places in this client. The *main* advantage it
 // provide is to allow loops that terminate.
 //
 // With channels, we always have to have a goroutine draining the channel.  We
@@ -17,10 +23,9 @@ import "sync"
 // which would block the worker from grabbing the lock. Any other lock ordering
 // has TOCTOU problems as well.
 //
-// We could use a slice that we always push to and pop the front of. This is a
-// bit easier to reason about, but constantly reallocates and has no bounded
-// capacity. The second we think about adding bounded capacity, we get this
-// ringbuffer below.
+// We could exclusively use a slice that we always push to and pop the front of.
+// This is a bit easier to reason about, but constantly reallocates and has no bounded
+// capacity, so we use it only if the number of elements is greater than 8.
 //
 // The key insight is that we only pop the front *after* we are done with it.
 // If there are still more elements, the worker goroutine can continue working.
@@ -40,230 +45,86 @@ const (
 	eight = mask7 + 1
 )
 
-type ringReq struct {
+type ring[T any] struct {
 	mu sync.Mutex
-	c  *sync.Cond
 
-	elems [eight]promisedReq
+	elems [eight]T
 
 	head uint8
 	tail uint8
 	l    uint8
 	dead bool
+
+	overflow []T
 }
 
-func (r *ringReq) die() {
+func (r *ring[T]) die() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	r.dead = true
-	if r.c != nil {
-		r.c.Broadcast()
-	}
 }
 
-func (r *ringReq) push(pr promisedReq) (first, dead bool) {
+func (r *ring[T]) push(elem T) (first, dead bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-
-	for r.l == eight && !r.dead {
-		if r.c == nil {
-			r.c = sync.NewCond(&r.mu)
-		}
-		r.c.Wait()
-	}
 
 	if r.dead {
 		return false, true
 	}
-
-	r.elems[r.tail] = pr
-	r.tail = (r.tail + 1) & mask7
-	r.l++
-
-	return r.l == 1, false
-}
-
-func (r *ringReq) dropPeek() (next promisedReq, more, dead bool) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	r.elems[r.head] = promisedReq{}
-	r.head = (r.head + 1) & mask7
-	r.l--
-
-	// If the cond has been initialized, there could potentially be waiters
-	// and we must always signal.
-	if r.c != nil {
-		r.c.Signal()
-	}
-
-	return r.elems[r.head], r.l > 0, r.dead
-}
-
-// ringResp duplicates the code above, but for promisedResp
-type ringResp struct {
-	mu sync.Mutex
-	c  *sync.Cond
-
-	elems [eight]promisedResp
-
-	head uint8
-	tail uint8
-	l    uint8
-	dead bool
-}
-
-func (r *ringResp) die() {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	r.dead = true
-	if r.c != nil {
-		r.c.Broadcast()
-	}
-}
-
-func (r *ringResp) push(pr promisedResp) (first, dead bool) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	for r.l == eight && !r.dead {
-		if r.c == nil {
-			r.c = sync.NewCond(&r.mu)
-		}
-		r.c.Wait()
-	}
-
-	if r.dead {
-		return false, true
-	}
-
-	r.elems[r.tail] = pr
-	r.tail = (r.tail + 1) & mask7
-	r.l++
-
-	return r.l == 1, false
-}
-
-func (r *ringResp) dropPeek() (next promisedResp, more, dead bool) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	r.elems[r.head] = promisedResp{}
-	r.head = (r.head + 1) & mask7
-	r.l--
-
-	if r.c != nil {
-		r.c.Signal()
-	}
-
-	return r.elems[r.head], r.l > 0, r.dead
-}
-
-// ringSeqResp duplicates the code above, but for *seqResp. We leave off die
-// because we do not use it, but we keep `c` for testing lowering eight/mask7.
-type ringSeqResp struct {
-	mu sync.Mutex
-	c  *sync.Cond
-
-	elems [eight]*seqResp
-
-	head uint8
-	tail uint8
-	l    uint8
-}
-
-func (r *ringSeqResp) push(sr *seqResp) (first bool) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	for r.l == eight {
-		if r.c == nil {
-			r.c = sync.NewCond(&r.mu)
-		}
-		r.c.Wait()
-	}
-
-	r.elems[r.tail] = sr
-	r.tail = (r.tail + 1) & mask7
-	r.l++
-
-	return r.l == 1
-}
-
-func (r *ringSeqResp) dropPeek() (next *seqResp, more bool) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	r.elems[r.head] = nil
-	r.head = (r.head + 1) & mask7
-	r.l--
-
-	if r.c != nil {
-		r.c.Signal()
-	}
-
-	return r.elems[r.head], r.l > 0
-}
-
-// Also no die; this type is slightly different because we can have overflow.
-// If we have overflow, we add to overflow until overflow is drained -- we
-// always want strict odering.
-type ringBatchPromise struct {
-	mu sync.Mutex
-
-	elems [eight]batchPromise
-
-	head uint8
-	tail uint8
-	l    uint8
-
-	overflow []batchPromise
-}
-
-func (r *ringBatchPromise) push(b batchPromise) (first bool) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
 
 	// If the ring is full, we go into overflow; if overflow is non-empty,
 	// for ordering purposes, we add to the end of overflow. We only go
 	// back to using the ring once overflow is finally empty.
 	if r.l == eight || len(r.overflow) > 0 {
-		r.overflow = append(r.overflow, b)
-		return false
+		r.overflow = append(r.overflow, elem)
+		return false, false
 	}
 
-	r.elems[r.tail] = b
+	r.elems[r.tail] = elem
 	r.tail = (r.tail + 1) & mask7
 	r.l++
 
-	return r.l == 1
+	return r.l == 1, false
 }
 
-func (r *ringBatchPromise) dropPeek() (next batchPromise, more bool) {
+func (r *ring[T]) dropPeek() (next T, more, dead bool) {
+	var zero T
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	// We always drain the ring first. If the ring is ever empty, there
 	// must be overflow: we would not be here if the ring is not-empty.
 	if r.l > 1 {
-		r.elems[r.head] = batchPromise{}
+		r.elems[r.head] = zero
 		r.head = (r.head + 1) & mask7
 		r.l--
-		return r.elems[r.head], true
+		return r.elems[r.head], true, r.dead
 	} else if r.l == 1 {
-		r.elems[r.head] = batchPromise{}
+		r.elems[r.head] = zero
 		r.head = (r.head + 1) & mask7
 		r.l--
 		if len(r.overflow) == 0 {
-			return next, false
+			return next, false, r.dead
 		}
-		return r.overflow[0], true
+		return r.overflow[0], true, r.dead
 	}
+
+	r.overflow[0] = zero
+
+	// In case of continuous push and pulls to the overflow slice, the overflow
+	// slice's underlying memory array is not expected to grow indefinitely because
+	// append() will eventually re-allocate the memory and, when will do it, it will
+	// only copy the "live" elements (the part of the slide pointed by the slice header).
 	r.overflow = r.overflow[1:]
+
 	if len(r.overflow) > 0 {
-		return r.overflow[0], true
+		return r.overflow[0], true, r.dead
 	}
-	return next, false
+
+	// We have no more overflow elements. We reset the slice to nil to release memory.
+	r.overflow = nil
+
+	return next, false, r.dead
 }

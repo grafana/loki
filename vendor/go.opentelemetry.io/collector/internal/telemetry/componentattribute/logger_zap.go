@@ -4,19 +4,17 @@
 package componentattribute // import "go.opentelemetry.io/collector/internal/telemetry/componentattribute"
 
 import (
-	"reflect"
-	"time"
-
 	"go.opentelemetry.io/contrib/bridges/otelzap"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/log"
+	"go.uber.org/multierr"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
 
 // Interface for Zap cores that support setting and resetting a set of component attributes.
 //
-// There are three wrappers that implement this interface:
+// There are two wrappers that implement this interface:
 //
 //   - [NewConsoleCoreWithAttributes] injects component attributes as Zap fields.
 //
@@ -26,12 +24,6 @@ import (
 //     copied logs, component attributes are injected as instrumentation scope attributes.
 //
 //     This is used when service::telemetry::logs::processors is configured.
-//
-//   - [NewWrapperCoreWithAttributes] applies a wrapper function to a core, similar to
-//     [zap.WrapCore]. It allows setting component attributes on the inner core and reapplying the
-//     wrapper function when needed.
-//
-//     This is used when adding [zapcore.NewSamplerWithOptions] to our logger stack.
 type coreWithAttributes interface {
 	zapcore.Core
 	withAttributeSet(attribute.Set) zapcore.Core
@@ -50,7 +42,8 @@ func tryWithAttributeSet(c zapcore.Core, attrs attribute.Set) zapcore.Core {
 
 type consoleCoreWithAttributes struct {
 	zapcore.Core
-	from zapcore.Core
+	from        zapcore.Core
+	extraFields []zap.Field
 }
 
 var _ coreWithAttributes = (*consoleCoreWithAttributes)(nil)
@@ -58,110 +51,94 @@ var _ coreWithAttributes = (*consoleCoreWithAttributes)(nil)
 // NewConsoleCoreWithAttributes wraps a Zap core in order to inject component attributes as Zap fields.
 //
 // This is used for the Collector's console output.
-func NewConsoleCoreWithAttributes(c zapcore.Core, attrs attribute.Set) zapcore.Core {
-	var fields []zap.Field
-	for _, kv := range attrs.ToSlice() {
-		fields = append(fields, zap.String(string(kv.Key), kv.Value.AsString()))
-	}
+func NewConsoleCoreWithAttributes(c zapcore.Core, attrs attribute.Set, extraFields ...zap.Field) zapcore.Core {
 	return &consoleCoreWithAttributes{
-		Core: c.With(fields),
+		Core: c.With(ToZapFields(attrs)).With(extraFields),
 		from: c,
 	}
 }
 
+func (ccwa *consoleCoreWithAttributes) With(fields []zapcore.Field) zapcore.Core {
+	return &consoleCoreWithAttributes{
+		Core:        ccwa.Core.With(fields),
+		from:        ccwa.from,
+		extraFields: append(ccwa.extraFields, fields...),
+	}
+}
+
 func (ccwa *consoleCoreWithAttributes) withAttributeSet(attrs attribute.Set) zapcore.Core {
-	return NewConsoleCoreWithAttributes(ccwa.from, attrs)
+	return NewConsoleCoreWithAttributes(ccwa.from, attrs, ccwa.extraFields...)
 }
 
 type otelTeeCoreWithAttributes struct {
-	zapcore.Core
-	consoleCore zapcore.Core
-	lp          log.LoggerProvider
-	scopeName   string
-	level       zapcore.Level
+	sourceCore zapcore.Core
+	otelCore   zapcore.Core
+	lp         log.LoggerProvider
+	scopeName  string
 }
 
 var _ coreWithAttributes = (*otelTeeCoreWithAttributes)(nil)
 
-// NewOTelTeeCoreWithAttributes wraps a Zap core in order to copy logs to a [log.LoggerProvider] using [otelzap]. For the copied
-// logs, component attributes are injected as instrumentation scope attributes.
+// NewOTelTeeCoreWithAttributes wraps a Zap core in order to copy logs to a [log.LoggerProvider] using [otelzap].
+// For the copied logs, component attributes are injected as instrumentation scope attributes.
 //
-// This is used when service::telemetry::logs::processors is configured.
-func NewOTelTeeCoreWithAttributes(consoleCore zapcore.Core, lp log.LoggerProvider, scopeName string, level zapcore.Level, attrs attribute.Set) zapcore.Core {
-	otelCore, err := zapcore.NewIncreaseLevelCore(otelzap.NewCore(
+// Note that we intentionally do not use zapcore.NewTee here, because it will simply duplicate all log entries
+// to each core. The provided Zap core may have sampling or a minimum log level applied to it, so in order to
+// maintain consistency we need to ensure that only the logs accepted by the provided core are copied to the
+// log.LoggerProvider.
+func NewOTelTeeCoreWithAttributes(core zapcore.Core, lp log.LoggerProvider, scopeName string, attrs attribute.Set) zapcore.Core {
+	otelCore := otelzap.NewCore(
 		scopeName,
 		otelzap.WithLoggerProvider(lp),
 		otelzap.WithAttributes(attrs.ToSlice()...),
-	), zap.NewAtomicLevelAt(level))
-	if err != nil {
-		panic(err)
-	}
-
+	)
 	return &otelTeeCoreWithAttributes{
-		Core:        zapcore.NewTee(consoleCore, otelCore),
-		consoleCore: consoleCore,
-		lp:          lp,
-		scopeName:   scopeName,
-		level:       level,
+		sourceCore: core,
+		otelCore:   otelCore,
+		lp:         lp,
+		scopeName:  scopeName,
 	}
 }
 
 func (ocwa *otelTeeCoreWithAttributes) withAttributeSet(attrs attribute.Set) zapcore.Core {
-	return NewOTelTeeCoreWithAttributes(tryWithAttributeSet(ocwa.consoleCore, attrs), ocwa.lp, ocwa.scopeName, ocwa.level, attrs)
+	return NewOTelTeeCoreWithAttributes(
+		tryWithAttributeSet(ocwa.sourceCore, attrs),
+		ocwa.lp, ocwa.scopeName, attrs,
+	)
 }
 
-type samplerCoreWithAttributes struct {
-	zapcore.Core
-	from zapcore.Core
-}
-
-var _ coreWithAttributes = (*samplerCoreWithAttributes)(nil)
-
-func NewSamplerCoreWithAttributes(inner zapcore.Core, tick time.Duration, first int, thereafter int) zapcore.Core {
-	return &samplerCoreWithAttributes{
-		Core: zapcore.NewSamplerWithOptions(inner, tick, first, thereafter),
-		from: inner,
+func (ocwa *otelTeeCoreWithAttributes) With(fields []zapcore.Field) zapcore.Core {
+	sourceCoreWith := ocwa.sourceCore.With(fields)
+	otelCoreWith := ocwa.otelCore.With(fields)
+	return &otelTeeCoreWithAttributes{
+		sourceCore: sourceCoreWith,
+		otelCore:   otelCoreWith,
+		lp:         ocwa.lp,
+		scopeName:  ocwa.scopeName,
 	}
 }
 
-func checkSamplerType(ty reflect.Type) bool {
-	if ty.Kind() != reflect.Pointer {
-		return false
-	}
-	ty = ty.Elem()
-	if ty.Kind() != reflect.Struct {
-		return false
-	}
-	innerField, ok := ty.FieldByName("Core")
-	if !ok {
-		return false
-	}
-	return reflect.TypeFor[zapcore.Core]().AssignableTo(innerField.Type)
+func (ocwa *otelTeeCoreWithAttributes) Enabled(level zapcore.Level) bool {
+	return ocwa.sourceCore.Enabled(level)
 }
 
-func (ssc *samplerCoreWithAttributes) withAttributeSet(attrs attribute.Set) zapcore.Core {
-	newInner := tryWithAttributeSet(ssc.from, attrs)
-
-	// Relevant Zap code: https://github.com/uber-go/zap/blob/fcf8ee58669e358bbd6460bef5c2ee7a53c0803a/zapcore/sampler.go#L168
-	// We need to create a new Zap sampler core with the same settings but with a new inner core,
-	// while reusing the very RAM-intensive `counters` data structure.
-	// The `With` method does something similar, but it only replaces pre-set fields, not the Core.
-	// However, we can use `reflect` to accomplish this.
-	// This hack can be removed once Zap supports this use case.
-	// Tracking issue: https://github.com/uber-go/zap/issues/1498
-	val1 := reflect.ValueOf(ssc.Core)
-	if !checkSamplerType(val1.Type()) { // To avoid a more esoteric panic message below
-		panic("Unexpected Zap sampler type; see github.com/open-telemetry/opentelemetry-collector/issues/13014")
+func (ocwa *otelTeeCoreWithAttributes) Check(entry zapcore.Entry, ce *zapcore.CheckedEntry) *zapcore.CheckedEntry {
+	ce = ocwa.sourceCore.Check(entry, ce)
+	if ce != nil {
+		// Only log to the otelzap core if the input core accepted the log entry.
+		ce = ce.AddCore(entry, ocwa.otelCore)
 	}
-	val2 := reflect.New(val1.Type().Elem())                        // core2 := new(sampler)
-	val2.Elem().Set(val1.Elem())                                   // *core2 = *core1
-	val2.Elem().FieldByName("Core").Set(reflect.ValueOf(newInner)) // core2.Core = newInner
-	newSampler := val2.Interface().(zapcore.Core)
+	return ce
+}
 
-	return samplerCoreWithAttributes{
-		Core: newSampler,
-		from: newInner,
-	}
+func (ocwa *otelTeeCoreWithAttributes) Write(entry zapcore.Entry, fields []zapcore.Field) error {
+	err := ocwa.sourceCore.Write(entry, fields)
+	return multierr.Append(err, ocwa.otelCore.Write(entry, fields))
+}
+
+func (ocwa *otelTeeCoreWithAttributes) Sync() error {
+	err := ocwa.sourceCore.Sync()
+	return multierr.Append(err, ocwa.otelCore.Sync())
 }
 
 // ZapLoggerWithAttributes creates a Zap Logger with a new set of injected component attributes.

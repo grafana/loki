@@ -91,6 +91,7 @@ type Object struct {
 
 	metadata *filemd.Metadata
 	sections []*Section
+	tenants  []string
 }
 
 // FromBucket opens an Object from the given storage bucket and path.
@@ -130,22 +131,31 @@ func (o *Object) init(ctx context.Context) error {
 		return fmt.Errorf("reading metadata: %w", err)
 	}
 
-	readSections := make([]*Section, 0, len(metadata.Sections))
+	sections := make([]*Section, 0, len(metadata.Sections))
+	tenants := make(map[string]struct{})
+
 	for i, sec := range metadata.Sections {
 		typ, err := getSectionType(metadata, sec)
 		if err != nil {
 			return fmt.Errorf("getting section %d type: %w", i, err)
 		}
 
-		readSections = append(readSections, &Section{
+		tenant := metadata.Dictionary[sec.TenantRef]
+		sections = append(sections, &Section{
 			Type:   typ,
 			Reader: o.dec.SectionReader(metadata, sec, sec.ExtensionData),
-			Tenant: metadata.Dictionary[sec.TenantRef],
+			Tenant: tenant,
 		})
+		tenants[tenant] = struct{}{}
 	}
 
 	o.metadata = metadata
-	o.sections = readSections
+	o.sections = sections
+	o.tenants = make([]string, 0, len(tenants))
+	for tenant := range tenants {
+		o.tenants = append(o.tenants, tenant)
+	}
+
 	return nil
 }
 
@@ -155,6 +165,10 @@ func (o *Object) Size() int64 { return o.size }
 // Sections returns the list of sections available in the Object. The slice of
 // returned sections must not be mutated.
 func (o *Object) Sections() Sections { return o.sections }
+
+// Tenant returns the list of tenant that have sections in the Object. The slice of
+// returned tenants must not be mutated.
+func (o *Object) Tenants() []string { return o.tenants }
 
 // Reader returns a reader for the entire raw data object.
 func (o *Object) Reader(ctx context.Context) (io.ReadCloser, error) {

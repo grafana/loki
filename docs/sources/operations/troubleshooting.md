@@ -61,6 +61,10 @@ can have many possible causes.
 - Check your Loki deployment.
 If you have a reverse proxy in front of Loki, that is, between Loki and Grafana, then check any configured timeouts, such as an NGINX proxy read timeout.
 
+- Add a startup probe to your read pod
+This will ensure your Loki read pods setup the connection to other Loki components correctly after a deployment. This seems mostly a problem in OpenStack infrastructure using Cilium networking
+  - Also setting `socketLB.hostNamespaceOnly=true` might help with the issue.
+
 - Other causes.  To determine if the issue is related to Loki itself or another system such as Grafana or a client-side error,
 attempt to run a [LogCLI](../../query/logcli/) query in as direct a manner as you can. For example, if running on virtual machines, run the query on the local machine. If running in a Kubernetes cluster, then port forward the Loki HTTP port, and attempt to run the query there. If you do not get a timeout, then consider these causes:
 

@@ -604,6 +604,34 @@ func TestS3Extract(t *testing.T) {
 			wantError: "scheme of S3 endpoint URL is unsupported: invalid",
 		},
 		{
+			name: "non-aws endpoint with path",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"endpoint":          []byte("https://s3.region.example.com/bucket"),
+					"region":            []byte("region"),
+					"bucketnames":       []byte("this,that"),
+					"access_key_id":     []byte("id"),
+					"access_key_secret": []byte("secret"),
+				},
+			},
+			wantError: "endpoint for S3 must not include a path: /bucket",
+		},
+		{
+			name: "aws endpoint with path",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"endpoint":          []byte("https://s3.region.amazonaws.com/bucket"),
+					"region":            []byte("region"),
+					"bucketnames":       []byte("this,that"),
+					"access_key_id":     []byte("id"),
+					"access_key_secret": []byte("secret"),
+				},
+			},
+			wantError: "endpoint for S3 must not include a path: /bucket",
+		},
+		{
 			name: "s3 region used in endpoint URL is incorrect",
 			secret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},

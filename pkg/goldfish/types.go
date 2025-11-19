@@ -32,9 +32,20 @@ type QuerySample struct {
 	CellASpanID       string `json:"cellASpanID"`
 	CellBSpanID       string `json:"cellBSpanID"`
 
+	// Result storage metadata
+	CellAResultURI         string `json:"cellAResultURI"`
+	CellBResultURI         string `json:"cellBResultURI"`
+	CellAResultSize        int64  `json:"cellAResultSize"`
+	CellBResultSize        int64  `json:"cellBResultSize"`
+	CellAResultCompression string `json:"cellAResultCompression"`
+	CellBResultCompression string `json:"cellBResultCompression"`
+
 	// Query engine version tracking
 	CellAUsedNewEngine bool `json:"cellAUsedNewEngine"`
 	CellBUsedNewEngine bool `json:"cellBUsedNewEngine"`
+
+	// Comparison outcome
+	ComparisonStatus ComparisonStatus `json:"comparisonStatus"`
 
 	SampledAt time.Time `json:"sampledAt"`
 }
@@ -56,7 +67,7 @@ type QueryStats struct {
 type ComparisonResult struct {
 	CorrelationID      string
 	ComparisonStatus   ComparisonStatus
-	DifferenceDetails  map[string]interface{}
+	DifferenceDetails  map[string]any
 	PerformanceMetrics PerformanceMetrics
 	ComparedAt         time.Time
 }
@@ -71,6 +82,16 @@ const (
 	ComparisonStatusPartial  ComparisonStatus = "partial"
 )
 
+// IsValid checks if the ComparisonStatus value is valid
+func (cs ComparisonStatus) IsValid() bool {
+	switch cs {
+	case ComparisonStatusMatch, ComparisonStatusMismatch, ComparisonStatusError, ComparisonStatusPartial:
+		return true
+	default:
+		return false
+	}
+}
+
 // PerformanceMetrics contains performance comparison data
 type PerformanceMetrics struct {
 	CellAQueryTime  time.Duration
@@ -83,9 +104,25 @@ type PerformanceMetrics struct {
 
 // QueryFilter contains filters for querying sampled queries
 type QueryFilter struct {
-	Tenant          string
-	User            string
-	IsLogsDrilldown *bool // pointer to handle true/false/nil states
-	UsedNewEngine   *bool // pointer to handle true/false/nil states
-	From, To        time.Time
+	Tenant           string
+	User             string
+	IsLogsDrilldown  *bool // pointer to handle true/false/nil states
+	UsedNewEngine    *bool // pointer to handle true/false/nil states
+	ComparisonStatus ComparisonStatus
+	From, To         time.Time
+}
+
+// StatsFilter contains filters for statistics queries
+type StatsFilter struct {
+	From           time.Time
+	To             time.Time
+	UsesRecentData bool // When false, exclude queries that touch data within the last 3h
+}
+
+// Statistics contains aggregated statistics across sampled queries
+type Statistics struct {
+	QueriesExecuted       int64   `json:"queriesExecuted"`       // Count of queries executed with new engine
+	EngineCoverage        float64 `json:"engineCoverage"`        // Ratio of queries using new engine
+	MatchingQueries       float64 `json:"matchingQueries"`       // Ratio of queries with matching responses
+	PerformanceDifference float64 `json:"performanceDifference"` // Geometric mean of performance ratio
 }

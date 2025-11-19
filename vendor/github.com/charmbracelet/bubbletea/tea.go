@@ -24,7 +24,6 @@ import (
 
 	"github.com/charmbracelet/x/term"
 	"github.com/muesli/cancelreader"
-	"golang.org/x/sync/errgroup"
 )
 
 // ErrProgramPanic is returned by [Program.Run] when the program recovers from a panic.
@@ -73,7 +72,7 @@ const (
 	customInput
 )
 
-// String implements the stringer interface for [inputType]. It is inteded to
+// String implements the stringer interface for [inputType]. It is intended to
 // be used in testing.
 func (i inputType) String() string {
 	return [...]string{
@@ -220,7 +219,7 @@ func Suspend() Msg {
 // You can send this message with [Suspend()].
 type SuspendMsg struct{}
 
-// ResumeMsg can be listen to to do something once a program is resumed back
+// ResumeMsg can be listen to do something once a program is resumed back
 // from a suspend state.
 type ResumeMsg struct{}
 
@@ -472,42 +471,12 @@ func (p *Program) eventLoop(model Model, cmds chan Cmd) (Model, error) {
 				p.exec(msg.cmd, msg.fn)
 
 			case BatchMsg:
-				for _, cmd := range msg {
-					select {
-					case <-p.ctx.Done():
-						return model, nil
-					case cmds <- cmd:
-					}
-				}
+				go p.execBatchMsg(msg)
 				continue
 
 			case sequenceMsg:
-				go func() {
-					// Execute commands one at a time, in order.
-					for _, cmd := range msg {
-						if cmd == nil {
-							continue
-						}
-
-						msg := cmd()
-						if batchMsg, ok := msg.(BatchMsg); ok {
-							g, _ := errgroup.WithContext(p.ctx)
-							for _, cmd := range batchMsg {
-								cmd := cmd
-								g.Go(func() error {
-									p.Send(cmd())
-									return nil
-								})
-							}
-
-							//nolint:errcheck,gosec
-							g.Wait() // wait for all commands from batch msg to finish
-							continue
-						}
-
-						p.Send(msg)
-					}
-				}()
+				go p.execSequenceMsg(msg)
+				continue
 
 			case setWindowTitleMsg:
 				p.SetWindowTitle(string(msg))
@@ -533,6 +502,74 @@ func (p *Program) eventLoop(model Model, cmds chan Cmd) (Model, error) {
 			p.renderer.write(model.View()) // send view to renderer
 		}
 	}
+}
+
+func (p *Program) execSequenceMsg(msg sequenceMsg) {
+	if !p.startupOptions.has(withoutCatchPanics) {
+		defer func() {
+			if r := recover(); r != nil {
+				p.recoverFromGoPanic(r)
+			}
+		}()
+	}
+
+	// Execute commands one at a time, in order.
+	for _, cmd := range msg {
+		if cmd == nil {
+			continue
+		}
+		msg := cmd()
+		switch msg := msg.(type) {
+		case BatchMsg:
+			p.execBatchMsg(msg)
+		case sequenceMsg:
+			p.execSequenceMsg(msg)
+		default:
+			p.Send(msg)
+		}
+	}
+}
+
+func (p *Program) execBatchMsg(msg BatchMsg) {
+	if !p.startupOptions.has(withoutCatchPanics) {
+		defer func() {
+			if r := recover(); r != nil {
+				p.recoverFromGoPanic(r)
+			}
+		}()
+	}
+
+	// Execute commands one at a time.
+	var wg sync.WaitGroup
+	for _, cmd := range msg {
+		if cmd == nil {
+			continue
+		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			if !p.startupOptions.has(withoutCatchPanics) {
+				defer func() {
+					if r := recover(); r != nil {
+						p.recoverFromGoPanic(r)
+					}
+				}()
+			}
+
+			msg := cmd()
+			switch msg := msg.(type) {
+			case BatchMsg:
+				p.execBatchMsg(msg)
+			case sequenceMsg:
+				p.execSequenceMsg(msg)
+			default:
+				p.Send(msg)
+			}
+		}()
+	}
+
+	wg.Wait() // wait for all commands from batch msg to finish
 }
 
 // Run initializes the program and runs its event loops, blocking until it gets

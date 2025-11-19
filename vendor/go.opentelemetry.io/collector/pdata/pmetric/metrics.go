@@ -54,5 +54,5 @@ func (ms Metrics) DataPointCount() (dataPointCount int) {
 			}
 		}
 	}
-	return
+	return dataPointCount
 }

@@ -12,6 +12,9 @@ import (
 	"github.com/redis/go-redis/v9/internal/util"
 )
 
+// DefaultBufferSize is the default size for read/write buffers (32 KiB).
+const DefaultBufferSize = 32 * 1024
+
 // redis resp protocol data type.
 const (
 	RespStatus    = '+' // +<string>\r\n
@@ -58,7 +61,13 @@ type Reader struct {
 
 func NewReader(rd io.Reader) *Reader {
 	return &Reader{
-		rd: bufio.NewReader(rd),
+		rd: bufio.NewReaderSize(rd, DefaultBufferSize),
+	}
+}
+
+func NewReaderSize(rd io.Reader, size int) *Reader {
+	return &Reader{
+		rd: bufio.NewReaderSize(rd, size),
 	}
 }
 
@@ -88,6 +97,92 @@ func (r *Reader) PeekReplyType() (byte, error) {
 		return r.PeekReplyType()
 	}
 	return b[0], nil
+}
+
+func (r *Reader) PeekPushNotificationName() (string, error) {
+	// "prime" the buffer by peeking at the next byte
+	c, err := r.Peek(1)
+	if err != nil {
+		return "", err
+	}
+	if c[0] != RespPush {
+		return "", fmt.Errorf("redis: can't peek push notification name, next reply is not a push notification")
+	}
+
+	// peek 36 bytes at most, should be enough to read the push notification name
+	toPeek := 36
+	buffered := r.Buffered()
+	if buffered == 0 {
+		return "", fmt.Errorf("redis: can't peek push notification name, no data available")
+	}
+	if buffered < toPeek {
+		toPeek = buffered
+	}
+	buf, err := r.rd.Peek(toPeek)
+	if err != nil {
+		return "", err
+	}
+	if buf[0] != RespPush {
+		return "", fmt.Errorf("redis: can't parse push notification: %q", buf)
+	}
+
+	if len(buf) < 3 {
+		return "", fmt.Errorf("redis: can't parse push notification: %q", buf)
+	}
+
+	// remove push notification type
+	buf = buf[1:]
+	// remove first line - e.g. >2\r\n
+	for i := 0; i < len(buf)-1; i++ {
+		if buf[i] == '\r' && buf[i+1] == '\n' {
+			buf = buf[i+2:]
+			break
+		} else {
+			if buf[i] < '0' || buf[i] > '9' {
+				return "", fmt.Errorf("redis: can't parse push notification: %q", buf)
+			}
+		}
+	}
+	if len(buf) < 2 {
+		return "", fmt.Errorf("redis: can't parse push notification: %q", buf)
+	}
+	// next line should be $<length><string>\r\n or +<length><string>\r\n
+	// should have the type of the push notification name and it's length
+	if buf[0] != RespString && buf[0] != RespStatus {
+		return "", fmt.Errorf("redis: can't parse push notification name: %q", buf)
+	}
+	typeOfName := buf[0]
+	// remove the type of the push notification name
+	buf = buf[1:]
+	if typeOfName == RespString {
+		// remove the length of the string
+		if len(buf) < 2 {
+			return "", fmt.Errorf("redis: can't parse push notification name: %q", buf)
+		}
+		for i := 0; i < len(buf)-1; i++ {
+			if buf[i] == '\r' && buf[i+1] == '\n' {
+				buf = buf[i+2:]
+				break
+			} else {
+				if buf[i] < '0' || buf[i] > '9' {
+					return "", fmt.Errorf("redis: can't parse push notification name: %q", buf)
+				}
+			}
+		}
+	}
+
+	if len(buf) < 2 {
+		return "", fmt.Errorf("redis: can't parse push notification name: %q", buf)
+	}
+	// keep only the notification name
+	for i := 0; i < len(buf)-1; i++ {
+		if buf[i] == '\r' && buf[i+1] == '\n' {
+			buf = buf[:i]
+			break
+		}
+	}
+
+	return util.BytesToString(buf), nil
 }
 
 // ReadLine Return a valid reply, it will check the protocol or redis error,

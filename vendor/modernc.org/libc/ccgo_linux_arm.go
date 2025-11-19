@@ -25135,9 +25135,13 @@ func Xrewinddir(tls *TLS, dir uintptr) {
 	___unlock(tls, dir+20)
 }
 
-func Xscandir(tls *TLS, path uintptr, res uintptr, sel uintptr, cmp uintptr) (r int32) {
+type t__ccgo_fp__Xscandir_2 = func(*TLS, uintptr) int32
+
+type t__ccgo_fp__Xscandir_3 = func(*TLS, uintptr, uintptr) int32
+
+func Xscandir(tls *TLS, path uintptr, res uintptr, __ccgo_fp_sel uintptr, __ccgo_fp_cmp uintptr) (r int32) {
 	if __ccgo_strace {
-		trc("tls=%v path=%v res=%v sel=%v cmp=%v, (%v:)", tls, path, res, sel, cmp, origin(2))
+		trc("tls=%v path=%v res=%v __ccgo_fp_sel=%v __ccgo_fp_cmp=%v, (%v:)", tls, path, res, __ccgo_fp_sel, __ccgo_fp_cmp, origin(2))
 		defer func() { trc("-> %v", r) }()
 	}
 	var cnt, len1, v2, v3 Tsize_t
@@ -25159,7 +25163,7 @@ func Xscandir(tls *TLS, path uintptr, res uintptr, sel uintptr, cmp uintptr) (r 
 		if !(v1 != 0) {
 			break
 		}
-		if sel != 0 && !((*(*func(*TLS, uintptr) int32)(unsafe.Pointer(&struct{ uintptr }{sel})))(tls, de) != 0) {
+		if __ccgo_fp_sel != 0 && !((*(*func(*TLS, uintptr) int32)(unsafe.Pointer(&struct{ uintptr }{__ccgo_fp_sel})))(tls, de) != 0) {
 			continue
 		}
 		if cnt >= len1 {
@@ -25197,8 +25201,8 @@ func Xscandir(tls *TLS, path uintptr, res uintptr, sel uintptr, cmp uintptr) (r 
 		return -int32(1)
 	}
 	*(*int32)(unsafe.Pointer(X__errno_location(tls))) = old_errno
-	if cmp != 0 {
-		Xqsort(tls, names, cnt, uint32(4), cmp)
+	if __ccgo_fp_cmp != 0 {
+		Xqsort(tls, names, cnt, uint32(4), __ccgo_fp_cmp)
 	}
 	*(*uintptr)(unsafe.Pointer(res)) = names
 	return Int32FromUint32(cnt)
@@ -25938,9 +25942,11 @@ func X__funcs_on_quick_exit(tls *TLS) {
 	}
 }
 
-func Xat_quick_exit(tls *TLS, func1 uintptr) (r1 int32) {
+type t__ccgo_fp__Xat_quick_exit_0 = func(*TLS)
+
+func Xat_quick_exit(tls *TLS, __ccgo_fp_func uintptr) (r1 int32) {
 	if __ccgo_strace {
-		trc("tls=%v func1=%v, (%v:)", tls, func1, origin(2))
+		trc("tls=%v __ccgo_fp_func=%v, (%v:)", tls, __ccgo_fp_func, origin(2))
 		defer func() { trc("-> %v", r1) }()
 	}
 	var r, v1 int32
@@ -25952,7 +25958,7 @@ func Xat_quick_exit(tls *TLS, func1 uintptr) (r1 int32) {
 	} else {
 		v1 = _count
 		_count++
-		_funcs[v1] = func1
+		_funcs[v1] = __ccgo_fp_func
 	}
 	___unlock(tls, uintptr(unsafe.Pointer(&_lock)))
 	return r
@@ -28457,15 +28463,17 @@ type TFTW = struct {
 	Flevel int32
 }
 
-func Xftw(tls *TLS, path uintptr, fn uintptr, fd_limit int32) (r int32) {
+type t__ccgo_fp__Xftw_1 = func(*TLS, uintptr, uintptr, int32) int32
+
+func Xftw(tls *TLS, path uintptr, __ccgo_fp_fn uintptr, fd_limit int32) (r int32) {
 	if __ccgo_strace {
-		trc("tls=%v path=%v fn=%v fd_limit=%v, (%v:)", tls, path, fn, fd_limit, origin(2))
+		trc("tls=%v path=%v __ccgo_fp_fn=%v fd_limit=%v, (%v:)", tls, path, __ccgo_fp_fn, fd_limit, origin(2))
 		defer func() { trc("-> %v", r) }()
 	}
 	/* The following cast assumes that calling a function with one
 	 * argument more than it needs behaves as expected. This is
 	 * actually undefined, but works on all real-world machines. */
-	return Xnftw(tls, path, fn, fd_limit, int32(FTW_PHYS))
+	return Xnftw(tls, path, __ccgo_fp_fn, fd_limit, int32(FTW_PHYS))
 }
 
 const STATX_ALL = 4095
@@ -31527,16 +31535,6 @@ func Xfremovexattr(tls *TLS, fd int32, name uintptr) (r int32) {
 		defer func() { trc("-> %v", r) }()
 	}
 	return X__syscall_ret(tls, Uint32FromInt32(X__syscall2(tls, int32(SYS_fremovexattr), fd, int32(name))))
-}
-
-type Tucontext_t2 = struct {
-	F__ccgo_align [0]uint32
-	Fuc_flags     uint32
-	Fuc_link      uintptr
-	Fuc_stack     Tstack_t
-	Fuc_mcontext  Tmcontext_t
-	Fuc_sigmask   Tsigset_t
-	Fuc_regspace  [64]uint64
 }
 
 func _dummy4(tls *TLS, msg uintptr, lm uintptr) (r uintptr) {
@@ -114778,17 +114776,7 @@ func Xgethostid(tls *TLS) (r int32) {
 
 const optpos = 0
 
-type Tucontext_t3 = struct {
-	F__ccgo_align [0]uint32
-	Fuc_flags     uint32
-	Fuc_link      uintptr
-	Fuc_stack     Tstack_t
-	Fuc_mcontext  Tmcontext_t1
-	Fuc_sigmask   Tsigset_t
-	Fuc_regspace  [64]uint64
-}
-
-type t__ucontext1 = Tucontext_t3
+type t__ucontext1 = Tucontext_t1
 
 func X__getopt_msg(tls *TLS, a uintptr, b uintptr, c uintptr, l Tsize_t) {
 	if __ccgo_strace {
@@ -115943,7 +115931,7 @@ type Thistory = struct {
 	Fbase          int32
 }
 
-func _do_nftw(tls *TLS, path uintptr, fn uintptr, fd_limit int32, flags int32, h uintptr) (r1 int32) {
+func _do_nftw(tls *TLS, path uintptr, __ccgo_fp_fn uintptr, fd_limit int32, flags int32, h uintptr) (r1 int32) {
 	bp := tls.Alloc(192)
 	defer tls.Free(192)
 	var d, de, v10 uintptr
@@ -116049,7 +116037,7 @@ func _do_nftw(tls *TLS, path uintptr, fn uintptr, fd_limit int32, flags int32, h
 		}
 	}
 	if v8 = !(flags&Int32FromInt32(FTW_DEPTH) != 0); v8 {
-		v7 = (*(*func(*TLS, uintptr, uintptr, int32, uintptr) int32)(unsafe.Pointer(&struct{ uintptr }{fn})))(tls, path, bp, type1, bp+184)
+		v7 = (*(*func(*TLS, uintptr, uintptr, int32, uintptr) int32)(unsafe.Pointer(&struct{ uintptr }{__ccgo_fp_fn})))(tls, path, bp, type1, bp+184)
 		r = v7
 	}
 	if v8 && v7 != 0 {
@@ -116090,7 +116078,7 @@ func _do_nftw(tls *TLS, path uintptr, fn uintptr, fd_limit int32, flags int32, h
 				}
 				*(*uint8)(unsafe.Pointer(path + uintptr(j))) = uint8('/')
 				Xstrcpy(tls, path+uintptr(j)+uintptr(1), de+19)
-				v11 = _do_nftw(tls, path, fn, fd_limit-int32(1), flags, bp+152)
+				v11 = _do_nftw(tls, path, __ccgo_fp_fn, fd_limit-int32(1), flags, bp+152)
 				r = v11
 				if v11 != 0 {
 					Xclosedir(tls, d)
@@ -116105,7 +116093,7 @@ func _do_nftw(tls *TLS, path uintptr, fn uintptr, fd_limit int32, flags int32, h
 	}
 	*(*uint8)(unsafe.Pointer(path + uintptr(l))) = uint8(0)
 	if v13 = flags&int32(FTW_DEPTH) != 0; v13 {
-		v12 = (*(*func(*TLS, uintptr, uintptr, int32, uintptr) int32)(unsafe.Pointer(&struct{ uintptr }{fn})))(tls, path, bp, type1, bp+184)
+		v12 = (*(*func(*TLS, uintptr, uintptr, int32, uintptr) int32)(unsafe.Pointer(&struct{ uintptr }{__ccgo_fp_fn})))(tls, path, bp, type1, bp+184)
 		r = v12
 	}
 	if v13 && v12 != 0 {
@@ -116114,9 +116102,11 @@ func _do_nftw(tls *TLS, path uintptr, fn uintptr, fd_limit int32, flags int32, h
 	return 0
 }
 
-func Xnftw(tls *TLS, path uintptr, fn uintptr, fd_limit int32, flags int32) (r1 int32) {
+type t__ccgo_fp__Xnftw_1 = func(*TLS, uintptr, uintptr, int32, uintptr) int32
+
+func Xnftw(tls *TLS, path uintptr, __ccgo_fp_fn uintptr, fd_limit int32, flags int32) (r1 int32) {
 	if __ccgo_strace {
-		trc("tls=%v path=%v fn=%v fd_limit=%v flags=%v, (%v:)", tls, path, fn, fd_limit, flags, origin(2))
+		trc("tls=%v path=%v __ccgo_fp_fn=%v fd_limit=%v flags=%v, (%v:)", tls, path, __ccgo_fp_fn, fd_limit, flags, origin(2))
 		defer func() { trc("-> %v", r1) }()
 	}
 	bp := tls.Alloc(4112)
@@ -116136,7 +116126,7 @@ func Xnftw(tls *TLS, path uintptr, fn uintptr, fd_limit int32, flags int32) (r1 
 	}
 	_memcpy(tls, bp+4, path, l+uint32(1))
 	_pthread_setcancelstate(tls, int32(PTHREAD_CANCEL_DISABLE), bp)
-	r = _do_nftw(tls, bp+4, fn, fd_limit, flags, UintptrFromInt32(0))
+	r = _do_nftw(tls, bp+4, __ccgo_fp_fn, fd_limit, flags, UintptrFromInt32(0))
 	_pthread_setcancelstate(tls, *(*int32)(unsafe.Pointer(bp)), uintptr(0))
 	return r
 }
@@ -116913,8 +116903,6 @@ type Tsockaddr_storage = struct {
 	F__ss_align   uint32
 }
 
-type t__ucontext2 = Tucontext_t2
-
 var _lock2 [1]int32
 var _log_ident [32]uint8
 var _log_opt int32
@@ -117351,16 +117339,6 @@ func Xshm_unlink(tls *TLS, name uintptr) (r int32) {
 const SA = 194
 const SB = 244
 const bittab = 0
-
-type Tucontext_t4 = struct {
-	F__ccgo_align [0]uint32
-	Fuc_flags     uint32
-	Fuc_link      uintptr
-	Fuc_stack     Tstack_t
-	Fuc_mcontext  Tmcontext_t
-	Fuc_sigmask   Tsigset_t
-	Fuc_regspace  [64]uint64
-}
 
 func Xbtowc(tls *TLS, c int32) (r Twint_t) {
 	if __ccgo_strace {
@@ -119077,26 +119055,11 @@ const _ns_uop_delete = 0
 const _ns_uop_add = 1
 const _ns_uop_max = 2
 
-type Tns_tsig_key1 = struct {
-	Fname [1025]uint8
-	Falg  [1025]uint8
-	Fdata uintptr
-	Flen1 int32
-}
-
 type Tns_tsig_key = struct {
 	Fname [1025]uint8
 	Falg  [1025]uint8
 	Fdata uintptr
 	Flen1 int32
-}
-
-type Tns_tcp_tsig_state1 = struct {
-	Fcounter int32
-	Fkey     uintptr
-	Fctx     uintptr
-	Fsig     [512]uint8
-	Fsiglen  int32
 }
 
 type Tns_tcp_tsig_state = struct {
@@ -119748,9 +119711,11 @@ type Tresolvconf = struct {
 	Ftimeout  uint32
 }
 
-func X__dns_parse(tls *TLS, r uintptr, rlen int32, callback uintptr, ctx uintptr) (r1 int32) {
+type t__ccgo_fp__X__dns_parse_2 = func(*TLS, uintptr, int32, uintptr, int32, uintptr, int32) int32
+
+func X__dns_parse(tls *TLS, r uintptr, rlen int32, __ccgo_fp_callback uintptr, ctx uintptr) (r1 int32) {
 	if __ccgo_strace {
-		trc("tls=%v r=%v rlen=%v callback=%v ctx=%v, (%v:)", tls, r, rlen, callback, ctx, origin(2))
+		trc("tls=%v r=%v rlen=%v __ccgo_fp_callback=%v ctx=%v, (%v:)", tls, r, rlen, __ccgo_fp_callback, ctx, origin(2))
 		defer func() { trc("-> %v", r1) }()
 	}
 	var ancount, len1, qdcount, v1, v2 int32
@@ -119796,7 +119761,7 @@ func X__dns_parse(tls *TLS, r uintptr, rlen int32, callback uintptr, ctx uintptr
 		if len1+int32(10) > int32(r+uintptr(rlen))-int32(p) {
 			return -int32(1)
 		}
-		if (*(*func(*TLS, uintptr, int32, uintptr, int32, uintptr, int32) int32)(unsafe.Pointer(&struct{ uintptr }{callback})))(tls, ctx, Int32FromUint8(*(*uint8)(unsafe.Pointer(p + 1))), p+uintptr(10), len1, r, rlen) < 0 {
+		if (*(*func(*TLS, uintptr, int32, uintptr, int32, uintptr, int32) int32)(unsafe.Pointer(&struct{ uintptr }{__ccgo_fp_callback})))(tls, ctx, Int32FromUint8(*(*uint8)(unsafe.Pointer(p + 1))), p+uintptr(10), len1, r, rlen) < 0 {
 			return -int32(1)
 		}
 		p += uintptr(int32(10) + len1)
@@ -121896,20 +121861,6 @@ func Xherror(tls *TLS, msg uintptr) {
 	Xfprintf(tls, uintptr(unsafe.Pointer(&X__stderr_FILE)), __ccgo_ts+987, VaList(bp+8, v1, v2, Xhstrerror(tls, *(*int32)(unsafe.Pointer(X__h_errno_location(tls))))))
 }
 
-type Tcpu_set_t1 = struct {
-	F__bits [32]uint32
-}
-
-type Tucontext_t5 = struct {
-	F__ccgo_align [0]uint32
-	Fuc_flags     uint32
-	Fuc_link      uintptr
-	Fuc_stack     Tstack_t
-	Fuc_mcontext  Tmcontext_t1
-	Fuc_sigmask   Tsigset_t
-	Fuc_regspace  [64]uint64
-}
-
 var _msgs1 = [84]uint8{'H', 'o', 's', 't', ' ', 'n', 'o', 't', ' ', 'f', 'o', 'u', 'n', 'd', 0, 'T', 'r', 'y', ' ', 'a', 'g', 'a', 'i', 'n', 0, 'N', 'o', 'n', '-', 'r', 'e', 'c', 'o', 'v', 'e', 'r', 'a', 'b', 'l', 'e', ' ', 'e', 'r', 'r', 'o', 'r', 0, 'A', 'd', 'd', 'r', 'e', 's', 's', ' ', 'n', 'o', 't', ' ', 'a', 'v', 'a', 'i', 'l', 'a', 'b', 'l', 'e', 0, 0, 'U', 'n', 'k', 'n', 'o', 'w', 'n', ' ', 'e', 'r', 'r', 'o', 'r'}
 
 func Xhstrerror(tls *TLS, ecode int32) (r uintptr) {
@@ -123696,7 +123647,7 @@ func X__lookup_serv(tls *TLS, buf uintptr, name uintptr, proto int32, socktype i
 	return v22
 }
 
-func ___netlink_enumerate(tls *TLS, fd int32, seq uint32, type1 int32, af int32, cb uintptr, ctx uintptr) (r1 int32) {
+func ___netlink_enumerate(tls *TLS, fd int32, seq uint32, type1 int32, af int32, __ccgo_fp_cb uintptr, ctx uintptr) (r1 int32) {
 	bp := tls.Alloc(8192)
 	defer tls.Free(8192)
 	var h uintptr
@@ -123786,7 +123737,7 @@ func ___netlink_enumerate(tls *TLS, fd int32, seq uint32, type1 int32, af int32,
 			if Int32FromUint16((*Tnlmsghdr)(unsafe.Pointer(h)).Fnlmsg_type) == int32(NLMSG_ERROR) {
 				return -int32(1)
 			}
-			ret = (*(*func(*TLS, uintptr, uintptr) int32)(unsafe.Pointer(&struct{ uintptr }{cb})))(tls, ctx, h)
+			ret = (*(*func(*TLS, uintptr, uintptr) int32)(unsafe.Pointer(&struct{ uintptr }{__ccgo_fp_cb})))(tls, ctx, h)
 			if ret != 0 {
 				return ret
 			}
@@ -123799,9 +123750,11 @@ func ___netlink_enumerate(tls *TLS, fd int32, seq uint32, type1 int32, af int32,
 	return r1
 }
 
-func X__rtnetlink_enumerate(tls *TLS, link_af int32, addr_af int32, cb uintptr, ctx uintptr) (r1 int32) {
+type t__ccgo_fp__X__rtnetlink_enumerate_2 = func(*TLS, uintptr, uintptr) int32
+
+func X__rtnetlink_enumerate(tls *TLS, link_af int32, addr_af int32, __ccgo_fp_cb uintptr, ctx uintptr) (r1 int32) {
 	if __ccgo_strace {
-		trc("tls=%v link_af=%v addr_af=%v cb=%v ctx=%v, (%v:)", tls, link_af, addr_af, cb, ctx, origin(2))
+		trc("tls=%v link_af=%v addr_af=%v __ccgo_fp_cb=%v ctx=%v, (%v:)", tls, link_af, addr_af, __ccgo_fp_cb, ctx, origin(2))
 		defer func() { trc("-> %v", r1) }()
 	}
 	var fd, r int32
@@ -123810,9 +123763,9 @@ func X__rtnetlink_enumerate(tls *TLS, link_af int32, addr_af int32, cb uintptr, 
 	if fd < 0 {
 		return -int32(1)
 	}
-	r = ___netlink_enumerate(tls, fd, uint32(1), int32(RTM_GETLINK), link_af, cb, ctx)
+	r = ___netlink_enumerate(tls, fd, uint32(1), int32(RTM_GETLINK), link_af, __ccgo_fp_cb, ctx)
 	if !(r != 0) {
-		r = ___netlink_enumerate(tls, fd, uint32(2), int32(RTM_GETADDR), addr_af, cb, ctx)
+		r = ___netlink_enumerate(tls, fd, uint32(2), int32(RTM_GETADDR), addr_af, __ccgo_fp_cb, ctx)
 	}
 	X__syscall1(tls, int32(SYS_close), fd)
 	return r
@@ -128875,7 +128828,7 @@ func _append(tls *TLS, tail uintptr, name uintptr, len1 Tsize_t, mark int32) (r 
 	return 0
 }
 
-func _do_glob(tls *TLS, buf uintptr, pos Tsize_t, type1 int32, pat uintptr, flags int32, errfunc uintptr, tail uintptr) (r1 int32) {
+func _do_glob(tls *TLS, buf uintptr, pos Tsize_t, type1 int32, pat uintptr, flags int32, __ccgo_fp_errfunc uintptr, tail uintptr) (r1 int32) {
 	bp := tls.Alloc(160)
 	defer tls.Free(160)
 	var de, dir, p, p2, v11, v2, v7, v8 uintptr
@@ -128984,7 +128937,7 @@ func _do_glob(tls *TLS, buf uintptr, pos Tsize_t, type1 int32, pat uintptr, flag
 			}
 		}
 		if !(type1 != 0) && Xlstat(tls, buf, bp) != 0 {
-			if *(*int32)(unsafe.Pointer(X__errno_location(tls))) != int32(ENOENT) && ((*(*func(*TLS, uintptr, int32) int32)(unsafe.Pointer(&struct{ uintptr }{errfunc})))(tls, buf, *(*int32)(unsafe.Pointer(X__errno_location(tls)))) != 0 || flags&int32(GLOB_ERR) != 0) {
+			if *(*int32)(unsafe.Pointer(X__errno_location(tls))) != int32(ENOENT) && ((*(*func(*TLS, uintptr, int32) int32)(unsafe.Pointer(&struct{ uintptr }{__ccgo_fp_errfunc})))(tls, buf, *(*int32)(unsafe.Pointer(X__errno_location(tls)))) != 0 || flags&int32(GLOB_ERR) != 0) {
 				return int32(GLOB_ABORTED)
 			}
 			return 0
@@ -129021,7 +128974,7 @@ func _do_glob(tls *TLS, buf uintptr, pos Tsize_t, type1 int32, pat uintptr, flag
 	}
 	dir = Xopendir(tls, v7)
 	if !(dir != 0) {
-		if (*(*func(*TLS, uintptr, int32) int32)(unsafe.Pointer(&struct{ uintptr }{errfunc})))(tls, buf, *(*int32)(unsafe.Pointer(X__errno_location(tls)))) != 0 || flags&int32(GLOB_ERR) != 0 {
+		if (*(*func(*TLS, uintptr, int32) int32)(unsafe.Pointer(&struct{ uintptr }{__ccgo_fp_errfunc})))(tls, buf, *(*int32)(unsafe.Pointer(X__errno_location(tls)))) != 0 || flags&int32(GLOB_ERR) != 0 {
 			return int32(GLOB_ABORTED)
 		}
 		return 0
@@ -129073,7 +129026,7 @@ func _do_glob(tls *TLS, buf uintptr, pos Tsize_t, type1 int32, pat uintptr, flag
 		} else {
 			v11 = __ccgo_ts
 		}
-		r = _do_glob(tls, buf, pos+l, Int32FromUint8((*Tdirent)(unsafe.Pointer(de)).Fd_type), v11, flags, errfunc, tail)
+		r = _do_glob(tls, buf, pos+l, Int32FromUint8((*Tdirent)(unsafe.Pointer(de)).Fd_type), v11, flags, __ccgo_fp_errfunc, tail)
 		if r != 0 {
 			Xclosedir(tls, dir)
 			return r
@@ -129084,7 +129037,7 @@ func _do_glob(tls *TLS, buf uintptr, pos Tsize_t, type1 int32, pat uintptr, flag
 		*(*uint8)(unsafe.Pointer(p2)) = saved_sep
 	}
 	Xclosedir(tls, dir)
-	if readerr != 0 && ((*(*func(*TLS, uintptr, int32) int32)(unsafe.Pointer(&struct{ uintptr }{errfunc})))(tls, buf, *(*int32)(unsafe.Pointer(X__errno_location(tls)))) != 0 || flags&int32(GLOB_ERR) != 0) {
+	if readerr != 0 && ((*(*func(*TLS, uintptr, int32) int32)(unsafe.Pointer(&struct{ uintptr }{__ccgo_fp_errfunc})))(tls, buf, *(*int32)(unsafe.Pointer(X__errno_location(tls)))) != 0 || flags&int32(GLOB_ERR) != 0) {
 		return int32(GLOB_ABORTED)
 	}
 	*(*int32)(unsafe.Pointer(X__errno_location(tls))) = old_errno
@@ -129196,9 +129149,11 @@ func _expand_tilde(tls *TLS, pat uintptr, buf uintptr, pos uintptr) (r int32) {
 	return 0
 }
 
-func Xglob(tls *TLS, pat uintptr, flags int32, errfunc uintptr, g uintptr) (r int32) {
+type t__ccgo_fp__Xglob_2 = func(*TLS, uintptr, int32) int32
+
+func Xglob(tls *TLS, pat uintptr, flags int32, __ccgo_fp_errfunc uintptr, g uintptr) (r int32) {
 	if __ccgo_strace {
-		trc("tls=%v pat=%v flags=%v errfunc=%v g=%v, (%v:)", tls, pat, flags, errfunc, g, origin(2))
+		trc("tls=%v pat=%v flags=%v __ccgo_fp_errfunc=%v g=%v, (%v:)", tls, pat, flags, __ccgo_fp_errfunc, g, origin(2))
 		defer func() { trc("-> %v", r) }()
 	}
 	bp := tls.Alloc(4112)
@@ -129224,8 +129179,8 @@ func Xglob(tls *TLS, pat uintptr, flags int32, errfunc uintptr, g uintptr) (r in
 	}
 	offs = v1
 	error1 = 0
-	if !(errfunc != 0) {
-		errfunc = __ccgo_fp(_ignore_err)
+	if !(__ccgo_fp_errfunc != 0) {
+		__ccgo_fp_errfunc = __ccgo_fp(_ignore_err)
 	}
 	if !(flags&Int32FromInt32(GLOB_APPEND) != 0) {
 		(*Tglob_t)(unsafe.Pointer(g)).Fgl_offs = offs
@@ -129244,7 +129199,7 @@ func Xglob(tls *TLS, pat uintptr, flags int32, errfunc uintptr, g uintptr) (r in
 			error1 = _expand_tilde(tls, bp+4108, bp+8, bp+4104)
 		}
 		if !(error1 != 0) {
-			error1 = _do_glob(tls, bp+8, *(*Tsize_t)(unsafe.Pointer(bp + 4104)), 0, *(*uintptr)(unsafe.Pointer(bp + 4108)), flags, errfunc, bp+4)
+			error1 = _do_glob(tls, bp+8, *(*Tsize_t)(unsafe.Pointer(bp + 4104)), 0, *(*uintptr)(unsafe.Pointer(bp + 4108)), flags, __ccgo_fp_errfunc, bp+4)
 		}
 		Xfree(tls, p)
 	}
@@ -134469,9 +134424,11 @@ func Xremque(tls *TLS, element uintptr) {
 	}
 }
 
-func Xlsearch(tls *TLS, key uintptr, base uintptr, nelp uintptr, width Tsize_t, compar uintptr) (r uintptr) {
+type t__ccgo_fp__Xlsearch_4 = func(*TLS, uintptr, uintptr) int32
+
+func Xlsearch(tls *TLS, key uintptr, base uintptr, nelp uintptr, width Tsize_t, __ccgo_fp_compar uintptr) (r uintptr) {
 	if __ccgo_strace {
-		trc("tls=%v key=%v base=%v nelp=%v width=%v compar=%v, (%v:)", tls, key, base, nelp, width, compar, origin(2))
+		trc("tls=%v key=%v base=%v nelp=%v width=%v __ccgo_fp_compar=%v, (%v:)", tls, key, base, nelp, width, __ccgo_fp_compar, origin(2))
 		defer func() { trc("-> %v", r) }()
 	}
 	var i, n Tsize_t
@@ -134487,7 +134444,7 @@ func Xlsearch(tls *TLS, key uintptr, base uintptr, nelp uintptr, width Tsize_t, 
 		if !(i < n) {
 			break
 		}
-		if (*(*func(*TLS, uintptr, uintptr) int32)(unsafe.Pointer(&struct{ uintptr }{compar})))(tls, key, p+uintptr(i)*uintptr(v1)) == 0 {
+		if (*(*func(*TLS, uintptr, uintptr) int32)(unsafe.Pointer(&struct{ uintptr }{__ccgo_fp_compar})))(tls, key, p+uintptr(i)*uintptr(v1)) == 0 {
 			return p + uintptr(i)*uintptr(v1)
 		}
 		goto _2
@@ -134499,9 +134456,11 @@ func Xlsearch(tls *TLS, key uintptr, base uintptr, nelp uintptr, width Tsize_t, 
 	return _memcpy(tls, p+uintptr(n)*uintptr(v1), key, width)
 }
 
-func Xlfind(tls *TLS, key uintptr, base uintptr, nelp uintptr, width Tsize_t, compar uintptr) (r uintptr) {
+type t__ccgo_fp__Xlfind_4 = func(*TLS, uintptr, uintptr) int32
+
+func Xlfind(tls *TLS, key uintptr, base uintptr, nelp uintptr, width Tsize_t, __ccgo_fp_compar uintptr) (r uintptr) {
 	if __ccgo_strace {
-		trc("tls=%v key=%v base=%v nelp=%v width=%v compar=%v, (%v:)", tls, key, base, nelp, width, compar, origin(2))
+		trc("tls=%v key=%v base=%v nelp=%v width=%v __ccgo_fp_compar=%v, (%v:)", tls, key, base, nelp, width, __ccgo_fp_compar, origin(2))
 		defer func() { trc("-> %v", r) }()
 	}
 	var i, n Tsize_t
@@ -134517,7 +134476,7 @@ func Xlfind(tls *TLS, key uintptr, base uintptr, nelp uintptr, width Tsize_t, co
 		if !(i < n) {
 			break
 		}
-		if (*(*func(*TLS, uintptr, uintptr) int32)(unsafe.Pointer(&struct{ uintptr }{compar})))(tls, key, p+uintptr(i)*uintptr(v1)) == 0 {
+		if (*(*func(*TLS, uintptr, uintptr) int32)(unsafe.Pointer(&struct{ uintptr }{__ccgo_fp_compar})))(tls, key, p+uintptr(i)*uintptr(v1)) == 0 {
 			return p + uintptr(i)*uintptr(v1)
 		}
 		goto _2
@@ -134536,9 +134495,11 @@ type Tnode1 = struct {
 	Fh   int32
 }
 
-func Xtdelete(tls *TLS, key uintptr, rootp uintptr, cmp uintptr) (r uintptr) {
+type t__ccgo_fp__Xtdelete_2 = func(*TLS, uintptr, uintptr) int32
+
+func Xtdelete(tls *TLS, key uintptr, rootp uintptr, __ccgo_fp_cmp uintptr) (r uintptr) {
 	if __ccgo_strace {
-		trc("tls=%v key=%v rootp=%v cmp=%v, (%v:)", tls, key, rootp, cmp, origin(2))
+		trc("tls=%v key=%v rootp=%v __ccgo_fp_cmp=%v, (%v:)", tls, key, rootp, __ccgo_fp_cmp, origin(2))
 		defer func() { trc("-> %v", r) }()
 	}
 	var a [49]uintptr
@@ -134562,7 +134523,7 @@ func Xtdelete(tls *TLS, key uintptr, rootp uintptr, cmp uintptr) (r uintptr) {
 		if !(n != 0) {
 			return uintptr(0)
 		}
-		c = (*(*func(*TLS, uintptr, uintptr) int32)(unsafe.Pointer(&struct{ uintptr }{cmp})))(tls, key, (*Tnode1)(unsafe.Pointer(n)).Fkey)
+		c = (*(*func(*TLS, uintptr, uintptr) int32)(unsafe.Pointer(&struct{ uintptr }{__ccgo_fp_cmp})))(tls, key, (*Tnode1)(unsafe.Pointer(n)).Fkey)
 		if !(c != 0) {
 			break
 		}
@@ -134607,9 +134568,11 @@ func Xtdelete(tls *TLS, key uintptr, rootp uintptr, cmp uintptr) (r uintptr) {
 	return parent
 }
 
-func Xtdestroy(tls *TLS, root uintptr, freekey uintptr) {
+type t__ccgo_fp__Xtdestroy_1 = func(*TLS, uintptr)
+
+func Xtdestroy(tls *TLS, root uintptr, __ccgo_fp_freekey uintptr) {
 	if __ccgo_strace {
-		trc("tls=%v root=%v freekey=%v, (%v:)", tls, root, freekey, origin(2))
+		trc("tls=%v root=%v __ccgo_fp_freekey=%v, (%v:)", tls, root, __ccgo_fp_freekey, origin(2))
 	}
 	var r uintptr
 	_ = r
@@ -134617,17 +134580,19 @@ func Xtdestroy(tls *TLS, root uintptr, freekey uintptr) {
 	if r == uintptr(0) {
 		return
 	}
-	Xtdestroy(tls, *(*uintptr)(unsafe.Pointer(r + 4)), freekey)
-	Xtdestroy(tls, *(*uintptr)(unsafe.Pointer(r + 4 + 1*4)), freekey)
-	if freekey != 0 {
-		(*(*func(*TLS, uintptr))(unsafe.Pointer(&struct{ uintptr }{freekey})))(tls, (*Tnode1)(unsafe.Pointer(r)).Fkey)
+	Xtdestroy(tls, *(*uintptr)(unsafe.Pointer(r + 4)), __ccgo_fp_freekey)
+	Xtdestroy(tls, *(*uintptr)(unsafe.Pointer(r + 4 + 1*4)), __ccgo_fp_freekey)
+	if __ccgo_fp_freekey != 0 {
+		(*(*func(*TLS, uintptr))(unsafe.Pointer(&struct{ uintptr }{__ccgo_fp_freekey})))(tls, (*Tnode1)(unsafe.Pointer(r)).Fkey)
 	}
 	Xfree(tls, r)
 }
 
-func Xtfind(tls *TLS, key uintptr, rootp uintptr, cmp uintptr) (r uintptr) {
+type t__ccgo_fp__Xtfind_2 = func(*TLS, uintptr, uintptr) int32
+
+func Xtfind(tls *TLS, key uintptr, rootp uintptr, __ccgo_fp_cmp uintptr) (r uintptr) {
 	if __ccgo_strace {
-		trc("tls=%v key=%v rootp=%v cmp=%v, (%v:)", tls, key, rootp, cmp, origin(2))
+		trc("tls=%v key=%v rootp=%v __ccgo_fp_cmp=%v, (%v:)", tls, key, rootp, __ccgo_fp_cmp, origin(2))
 		defer func() { trc("-> %v", r) }()
 	}
 	var c int32
@@ -134641,7 +134606,7 @@ func Xtfind(tls *TLS, key uintptr, rootp uintptr, cmp uintptr) (r uintptr) {
 		if !(n != 0) {
 			break
 		}
-		c = (*(*func(*TLS, uintptr, uintptr) int32)(unsafe.Pointer(&struct{ uintptr }{cmp})))(tls, key, (*Tnode1)(unsafe.Pointer(n)).Fkey)
+		c = (*(*func(*TLS, uintptr, uintptr) int32)(unsafe.Pointer(&struct{ uintptr }{__ccgo_fp_cmp})))(tls, key, (*Tnode1)(unsafe.Pointer(n)).Fkey)
 		if !(c != 0) {
 			break
 		}
@@ -134729,9 +134694,11 @@ func X__tsearch_balance(tls *TLS, p uintptr) (r int32) {
 	return _rot(tls, p, n, BoolInt32(h0 < h1))
 }
 
-func Xtsearch(tls *TLS, key uintptr, rootp uintptr, cmp uintptr) (r1 uintptr) {
+type t__ccgo_fp__Xtsearch_2 = func(*TLS, uintptr, uintptr) int32
+
+func Xtsearch(tls *TLS, key uintptr, rootp uintptr, __ccgo_fp_cmp uintptr) (r1 uintptr) {
 	if __ccgo_strace {
-		trc("tls=%v key=%v rootp=%v cmp=%v, (%v:)", tls, key, rootp, cmp, origin(2))
+		trc("tls=%v key=%v rootp=%v __ccgo_fp_cmp=%v, (%v:)", tls, key, rootp, __ccgo_fp_cmp, origin(2))
 		defer func() { trc("-> %v", r1) }()
 	}
 	var a [48]uintptr
@@ -134751,7 +134718,7 @@ func Xtsearch(tls *TLS, key uintptr, rootp uintptr, cmp uintptr) (r1 uintptr) {
 		if !(n != 0) {
 			break
 		}
-		c = (*(*func(*TLS, uintptr, uintptr) int32)(unsafe.Pointer(&struct{ uintptr }{cmp})))(tls, key, (*Tnode1)(unsafe.Pointer(n)).Fkey)
+		c = (*(*func(*TLS, uintptr, uintptr) int32)(unsafe.Pointer(&struct{ uintptr }{__ccgo_fp_cmp})))(tls, key, (*Tnode1)(unsafe.Pointer(n)).Fkey)
 		if !(c != 0) {
 			return n
 		}
@@ -134787,26 +134754,28 @@ func Xtsearch(tls *TLS, key uintptr, rootp uintptr, cmp uintptr) (r1 uintptr) {
 	return r
 }
 
-func _walk(tls *TLS, r uintptr, action uintptr, d int32) {
+func _walk(tls *TLS, r uintptr, __ccgo_fp_action uintptr, d int32) {
 	if !(r != 0) {
 		return
 	}
 	if (*Tnode1)(unsafe.Pointer(r)).Fh == int32(1) {
-		(*(*func(*TLS, uintptr, TVISIT, int32))(unsafe.Pointer(&struct{ uintptr }{action})))(tls, r, int32(_leaf), d)
+		(*(*func(*TLS, uintptr, TVISIT, int32))(unsafe.Pointer(&struct{ uintptr }{__ccgo_fp_action})))(tls, r, int32(_leaf), d)
 	} else {
-		(*(*func(*TLS, uintptr, TVISIT, int32))(unsafe.Pointer(&struct{ uintptr }{action})))(tls, r, int32(_preorder), d)
-		_walk(tls, *(*uintptr)(unsafe.Pointer(r + 4)), action, d+int32(1))
-		(*(*func(*TLS, uintptr, TVISIT, int32))(unsafe.Pointer(&struct{ uintptr }{action})))(tls, r, int32(_postorder), d)
-		_walk(tls, *(*uintptr)(unsafe.Pointer(r + 4 + 1*4)), action, d+int32(1))
-		(*(*func(*TLS, uintptr, TVISIT, int32))(unsafe.Pointer(&struct{ uintptr }{action})))(tls, r, int32(_endorder), d)
+		(*(*func(*TLS, uintptr, TVISIT, int32))(unsafe.Pointer(&struct{ uintptr }{__ccgo_fp_action})))(tls, r, int32(_preorder), d)
+		_walk(tls, *(*uintptr)(unsafe.Pointer(r + 4)), __ccgo_fp_action, d+int32(1))
+		(*(*func(*TLS, uintptr, TVISIT, int32))(unsafe.Pointer(&struct{ uintptr }{__ccgo_fp_action})))(tls, r, int32(_postorder), d)
+		_walk(tls, *(*uintptr)(unsafe.Pointer(r + 4 + 1*4)), __ccgo_fp_action, d+int32(1))
+		(*(*func(*TLS, uintptr, TVISIT, int32))(unsafe.Pointer(&struct{ uintptr }{__ccgo_fp_action})))(tls, r, int32(_endorder), d)
 	}
 }
 
-func Xtwalk(tls *TLS, root uintptr, action uintptr) {
+type t__ccgo_fp__Xtwalk_1 = func(*TLS, uintptr, int32, int32)
+
+func Xtwalk(tls *TLS, root uintptr, __ccgo_fp_action uintptr) {
 	if __ccgo_strace {
-		trc("tls=%v root=%v action=%v, (%v:)", tls, root, action, origin(2))
+		trc("tls=%v root=%v __ccgo_fp_action=%v, (%v:)", tls, root, __ccgo_fp_action, origin(2))
 	}
-	_walk(tls, root, action, 0)
+	_walk(tls, root, __ccgo_fp_action, 0)
 }
 
 func Xpoll(tls *TLS, fds uintptr, n Tnfds_t, timeout int32) (r int32) {
@@ -134816,8 +134785,6 @@ func Xpoll(tls *TLS, fds uintptr, n Tnfds_t, timeout int32) (r int32) {
 	}
 	return X__syscall_ret(tls, Uint32FromInt32(___syscall_cp(tls, int32(SYS_poll), int32(fds), Int32FromUint32(n), timeout, 0, 0, 0)))
 }
-
-type t__ucontext3 = Tucontext_t5
 
 func Xppoll(tls *TLS, fds uintptr, n Tnfds_t, to uintptr, mask uintptr) (r1 int32) {
 	if __ccgo_strace {
@@ -134877,8 +134844,6 @@ func Xppoll(tls *TLS, fds uintptr, n Tnfds_t, to uintptr, mask uintptr) (r1 int3
 	}
 	return X__syscall_ret(tls, Uint32FromInt32(___syscall_cp(tls, int32(SYS_ppoll), int32(fds), Int32FromUint32(n), int32(v5), int32(mask), int32(Int32FromInt32(_NSIG)/Int32FromInt32(8)), 0)))
 }
-
-type t__ucontext4 = Tucontext_t4
 
 func Xpselect(tls *TLS, n int32, rfds uintptr, wfds uintptr, efds uintptr, ts uintptr, mask uintptr) (r1 int32) {
 	if __ccgo_strace {
@@ -134942,16 +134907,6 @@ func Xpselect(tls *TLS, n int32, rfds uintptr, wfds uintptr, efds uintptr, ts ui
 		v5 = uintptr(0)
 	}
 	return X__syscall_ret(tls, Uint32FromInt32(___syscall_cp(tls, int32(SYS_pselect6), n, int32(rfds), int32(wfds), int32(efds), int32(v5), int32(bp+24))))
-}
-
-type Tucontext_t6 = struct {
-	F__ccgo_align [0]uint32
-	Fuc_flags     uint32
-	Fuc_link      uintptr
-	Fuc_stack     Tstack_t
-	Fuc_mcontext  Tmcontext_t
-	Fuc_sigmask   Tsigset_t
-	Fuc_regspace  [64]uint64
 }
 
 func Xselect(tls *TLS, n int32, rfds uintptr, wfds uintptr, efds uintptr, tv uintptr) (r1 int32) {
@@ -135428,16 +135383,6 @@ func Xsigaltstack(tls *TLS, ss uintptr, old uintptr) (r int32) {
 }
 
 const SST_SIZE = 8
-
-type Tucontext_t7 = struct {
-	F__ccgo_align [0]uint32
-	Fuc_flags     uint32
-	Fuc_link      uintptr
-	Fuc_stack     Tstack_t
-	Fuc_mcontext  Tmcontext_t1
-	Fuc_sigmask   Tsigset_t
-	Fuc_regspace  [64]uint64
-}
 
 func Xsigandset(tls *TLS, dest uintptr, left uintptr, right uintptr) (r1 int32) {
 	if __ccgo_strace {
@@ -144607,9 +144552,11 @@ func Xatoll(tls *TLS, s uintptr) (r int64) {
 	return v5
 }
 
-func Xbsearch(tls *TLS, key uintptr, base uintptr, nel Tsize_t, width Tsize_t, cmp uintptr) (r uintptr) {
+type t__ccgo_fp__Xbsearch_4 = func(*TLS, uintptr, uintptr) int32
+
+func Xbsearch(tls *TLS, key uintptr, base uintptr, nel Tsize_t, width Tsize_t, __ccgo_fp_cmp uintptr) (r uintptr) {
 	if __ccgo_strace {
-		trc("tls=%v key=%v base=%v nel=%v width=%v cmp=%v, (%v:)", tls, key, base, nel, width, cmp, origin(2))
+		trc("tls=%v key=%v base=%v nel=%v width=%v __ccgo_fp_cmp=%v, (%v:)", tls, key, base, nel, width, __ccgo_fp_cmp, origin(2))
 		defer func() { trc("-> %v", r) }()
 	}
 	var sign int32
@@ -144617,7 +144564,7 @@ func Xbsearch(tls *TLS, key uintptr, base uintptr, nel Tsize_t, width Tsize_t, c
 	_, _ = sign, try
 	for nel > uint32(0) {
 		try = base + uintptr(width*(nel/uint32(2)))
-		sign = (*(*func(*TLS, uintptr, uintptr) int32)(unsafe.Pointer(&struct{ uintptr }{cmp})))(tls, key, try)
+		sign = (*(*func(*TLS, uintptr, uintptr) int32)(unsafe.Pointer(&struct{ uintptr }{__ccgo_fp_cmp})))(tls, key, try)
 		if sign < 0 {
 			nel /= uint32(2)
 		} else {
@@ -144896,7 +144843,7 @@ func _shr(tls *TLS, p uintptr, n int32) {
 	*(*Tsize_t)(unsafe.Pointer(p + 1*4)) >>= Uint32FromInt32(n)
 }
 
-func _sift(tls *TLS, head uintptr, width Tsize_t, cmp Tcmpfun, arg uintptr, pshift int32, lp uintptr) {
+func _sift(tls *TLS, head uintptr, width Tsize_t, __ccgo_fp_cmp Tcmpfun, arg uintptr, pshift int32, lp uintptr) {
 	bp := tls.Alloc(240)
 	defer tls.Free(240)
 	var i, v1, v2 int32
@@ -144908,10 +144855,10 @@ func _sift(tls *TLS, head uintptr, width Tsize_t, cmp Tcmpfun, arg uintptr, pshi
 	for pshift > int32(1) {
 		rt = head - uintptr(width)
 		lf = head - uintptr(width) - uintptr(*(*Tsize_t)(unsafe.Pointer(lp + uintptr(pshift-int32(2))*4)))
-		if (*(*func(*TLS, uintptr, uintptr, uintptr) int32)(unsafe.Pointer(&struct{ uintptr }{cmp})))(tls, (*(*[57]uintptr)(unsafe.Pointer(bp)))[0], lf, arg) >= 0 && (*(*func(*TLS, uintptr, uintptr, uintptr) int32)(unsafe.Pointer(&struct{ uintptr }{cmp})))(tls, (*(*[57]uintptr)(unsafe.Pointer(bp)))[0], rt, arg) >= 0 {
+		if (*(*func(*TLS, uintptr, uintptr, uintptr) int32)(unsafe.Pointer(&struct{ uintptr }{__ccgo_fp_cmp})))(tls, (*(*[57]uintptr)(unsafe.Pointer(bp)))[0], lf, arg) >= 0 && (*(*func(*TLS, uintptr, uintptr, uintptr) int32)(unsafe.Pointer(&struct{ uintptr }{__ccgo_fp_cmp})))(tls, (*(*[57]uintptr)(unsafe.Pointer(bp)))[0], rt, arg) >= 0 {
 			break
 		}
-		if (*(*func(*TLS, uintptr, uintptr, uintptr) int32)(unsafe.Pointer(&struct{ uintptr }{cmp})))(tls, lf, rt, arg) >= 0 {
+		if (*(*func(*TLS, uintptr, uintptr, uintptr) int32)(unsafe.Pointer(&struct{ uintptr }{__ccgo_fp_cmp})))(tls, lf, rt, arg) >= 0 {
 			v1 = i
 			i++
 			(*(*[57]uintptr)(unsafe.Pointer(bp)))[v1] = lf
@@ -144928,7 +144875,7 @@ func _sift(tls *TLS, head uintptr, width Tsize_t, cmp Tcmpfun, arg uintptr, pshi
 	_cycle(tls, width, bp, i)
 }
 
-func _trinkle(tls *TLS, head uintptr, width Tsize_t, cmp Tcmpfun, arg uintptr, pp uintptr, pshift int32, trusty int32, lp uintptr) {
+func _trinkle(tls *TLS, head uintptr, width Tsize_t, __ccgo_fp_cmp Tcmpfun, arg uintptr, pp uintptr, pshift int32, trusty int32, lp uintptr) {
 	bp := tls.Alloc(240)
 	defer tls.Free(240)
 	var i, trail, v1 int32
@@ -144942,13 +144889,13 @@ func _trinkle(tls *TLS, head uintptr, width Tsize_t, cmp Tcmpfun, arg uintptr, p
 	(*(*[57]uintptr)(unsafe.Pointer(bp + 8)))[0] = head
 	for (*(*[2]Tsize_t)(unsafe.Pointer(bp)))[0] != uint32(1) || (*(*[2]Tsize_t)(unsafe.Pointer(bp)))[int32(1)] != uint32(0) {
 		stepson = head - uintptr(*(*Tsize_t)(unsafe.Pointer(lp + uintptr(pshift)*4)))
-		if (*(*func(*TLS, uintptr, uintptr, uintptr) int32)(unsafe.Pointer(&struct{ uintptr }{cmp})))(tls, stepson, (*(*[57]uintptr)(unsafe.Pointer(bp + 8)))[0], arg) <= 0 {
+		if (*(*func(*TLS, uintptr, uintptr, uintptr) int32)(unsafe.Pointer(&struct{ uintptr }{__ccgo_fp_cmp})))(tls, stepson, (*(*[57]uintptr)(unsafe.Pointer(bp + 8)))[0], arg) <= 0 {
 			break
 		}
 		if !(trusty != 0) && pshift > int32(1) {
 			rt = head - uintptr(width)
 			lf = head - uintptr(width) - uintptr(*(*Tsize_t)(unsafe.Pointer(lp + uintptr(pshift-int32(2))*4)))
-			if (*(*func(*TLS, uintptr, uintptr, uintptr) int32)(unsafe.Pointer(&struct{ uintptr }{cmp})))(tls, rt, stepson, arg) >= 0 || (*(*func(*TLS, uintptr, uintptr, uintptr) int32)(unsafe.Pointer(&struct{ uintptr }{cmp})))(tls, lf, stepson, arg) >= 0 {
+			if (*(*func(*TLS, uintptr, uintptr, uintptr) int32)(unsafe.Pointer(&struct{ uintptr }{__ccgo_fp_cmp})))(tls, rt, stepson, arg) >= 0 || (*(*func(*TLS, uintptr, uintptr, uintptr) int32)(unsafe.Pointer(&struct{ uintptr }{__ccgo_fp_cmp})))(tls, lf, stepson, arg) >= 0 {
 				break
 			}
 		}
@@ -144963,13 +144910,15 @@ func _trinkle(tls *TLS, head uintptr, width Tsize_t, cmp Tcmpfun, arg uintptr, p
 	}
 	if !(trusty != 0) {
 		_cycle(tls, width, bp+8, i)
-		_sift(tls, head, width, cmp, arg, pshift, lp)
+		_sift(tls, head, width, __ccgo_fp_cmp, arg, pshift, lp)
 	}
 }
 
-func X__qsort_r(tls *TLS, base uintptr, nel Tsize_t, width Tsize_t, cmp Tcmpfun, arg uintptr) {
+type t__ccgo_fp__X__qsort_r_3 = func(*TLS, uintptr, uintptr, uintptr) int32
+
+func X__qsort_r(tls *TLS, base uintptr, nel Tsize_t, width Tsize_t, __ccgo_fp_cmp Tcmpfun, arg uintptr) {
 	if __ccgo_strace {
-		trc("tls=%v base=%v nel=%v width=%v cmp=%v arg=%v, (%v:)", tls, base, nel, width, cmp, arg, origin(2))
+		trc("tls=%v base=%v nel=%v width=%v __ccgo_fp_cmp=%v arg=%v, (%v:)", tls, base, nel, width, __ccgo_fp_cmp, arg, origin(2))
 	}
 	bp := tls.Alloc(208)
 	defer tls.Free(208)
@@ -145007,14 +144956,14 @@ func X__qsort_r(tls *TLS, base uintptr, nel Tsize_t, width Tsize_t, cmp Tcmpfun,
 	}
 	for head < high {
 		if (*(*[2]Tsize_t)(unsafe.Pointer(bp + 192)))[0]&uint32(3) == uint32(3) {
-			_sift(tls, head, width, cmp, arg, pshift, bp)
+			_sift(tls, head, width, __ccgo_fp_cmp, arg, pshift, bp)
 			_shr(tls, bp+192, int32(2))
 			pshift += int32(2)
 		} else {
 			if (*(*[48]Tsize_t)(unsafe.Pointer(bp)))[pshift-int32(1)] >= Uint32FromInt32(int32(high)-int32(head)) {
-				_trinkle(tls, head, width, cmp, arg, bp+192, pshift, 0, bp)
+				_trinkle(tls, head, width, __ccgo_fp_cmp, arg, bp+192, pshift, 0, bp)
 			} else {
-				_sift(tls, head, width, cmp, arg, pshift, bp)
+				_sift(tls, head, width, __ccgo_fp_cmp, arg, pshift, bp)
 			}
 			if pshift == int32(1) {
 				_shl(tls, bp+192, int32(1))
@@ -145027,7 +144976,7 @@ func X__qsort_r(tls *TLS, base uintptr, nel Tsize_t, width Tsize_t, cmp Tcmpfun,
 		*(*Tsize_t)(unsafe.Pointer(bp + 192)) |= uint32(1)
 		head += uintptr(width)
 	}
-	_trinkle(tls, head, width, cmp, arg, bp+192, pshift, 0, bp)
+	_trinkle(tls, head, width, __ccgo_fp_cmp, arg, bp+192, pshift, 0, bp)
 	for pshift != int32(1) || (*(*[2]Tsize_t)(unsafe.Pointer(bp + 192)))[0] != uint32(1) || (*(*[2]Tsize_t)(unsafe.Pointer(bp + 192)))[int32(1)] != uint32(0) {
 		if pshift <= int32(1) {
 			trail = _pntz(tls, bp+192)
@@ -145038,31 +144987,35 @@ func X__qsort_r(tls *TLS, base uintptr, nel Tsize_t, width Tsize_t, cmp Tcmpfun,
 			pshift -= int32(2)
 			*(*Tsize_t)(unsafe.Pointer(bp + 192)) ^= uint32(7)
 			_shr(tls, bp+192, int32(1))
-			_trinkle(tls, head-uintptr((*(*[48]Tsize_t)(unsafe.Pointer(bp)))[pshift])-uintptr(width), width, cmp, arg, bp+192, pshift+int32(1), int32(1), bp)
+			_trinkle(tls, head-uintptr((*(*[48]Tsize_t)(unsafe.Pointer(bp)))[pshift])-uintptr(width), width, __ccgo_fp_cmp, arg, bp+192, pshift+int32(1), int32(1), bp)
 			_shl(tls, bp+192, int32(1))
 			*(*Tsize_t)(unsafe.Pointer(bp + 192)) |= uint32(1)
-			_trinkle(tls, head-uintptr(width), width, cmp, arg, bp+192, pshift, int32(1), bp)
+			_trinkle(tls, head-uintptr(width), width, __ccgo_fp_cmp, arg, bp+192, pshift, int32(1), bp)
 		}
 		head -= uintptr(width)
 	}
 }
 
-func Xqsort_r(tls *TLS, base uintptr, nel Tsize_t, width Tsize_t, cmp Tcmpfun, arg uintptr) {
+type t__ccgo_fp__Xqsort_r_3 = func(*TLS, uintptr, uintptr, uintptr) int32
+
+func Xqsort_r(tls *TLS, base uintptr, nel Tsize_t, width Tsize_t, __ccgo_fp_cmp Tcmpfun, arg uintptr) {
 	if __ccgo_strace {
-		trc("tls=%v base=%v nel=%v width=%v cmp=%v arg=%v, (%v:)", tls, base, nel, width, cmp, arg, origin(2))
+		trc("tls=%v base=%v nel=%v width=%v __ccgo_fp_cmp=%v arg=%v, (%v:)", tls, base, nel, width, __ccgo_fp_cmp, arg, origin(2))
 	}
-	X__qsort_r(tls, base, nel, width, cmp, arg)
+	X__qsort_r(tls, base, nel, width, __ccgo_fp_cmp, arg)
 }
 
 func _wrapper_cmp(tls *TLS, v1 uintptr, v2 uintptr, cmp uintptr) (r int32) {
 	return (*(*func(*TLS, uintptr, uintptr) int32)(unsafe.Pointer(&struct{ uintptr }{cmp})))(tls, v1, v2)
 }
 
-func Xqsort(tls *TLS, base uintptr, nel Tsize_t, width Tsize_t, cmp Tcmpfun) {
+type t__ccgo_fp__Xqsort_3 = func(*TLS, uintptr, uintptr) int32
+
+func Xqsort(tls *TLS, base uintptr, nel Tsize_t, width Tsize_t, __ccgo_fp_cmp Tcmpfun) {
 	if __ccgo_strace {
-		trc("tls=%v base=%v nel=%v width=%v cmp=%v, (%v:)", tls, base, nel, width, cmp, origin(2))
+		trc("tls=%v base=%v nel=%v width=%v __ccgo_fp_cmp=%v, (%v:)", tls, base, nel, width, __ccgo_fp_cmp, origin(2))
 	}
-	X__qsort_r(tls, base, nel, width, __ccgo_fp(_wrapper_cmp), cmp)
+	X__qsort_r(tls, base, nel, width, __ccgo_fp(_wrapper_cmp), __ccgo_fp_cmp)
 }
 
 func _strtox(tls *TLS, s uintptr, p uintptr, prec int32) (r float64) {
@@ -153421,8 +153374,6 @@ func X__utimes_time32(tls *TLS, path uintptr, times32 uintptr) (r int32) {
 	}
 	return Xutimes(tls, path, v1)
 }
-
-type t__ucontext5 = Tucontext_t7
 
 func X__wait3_time32(tls *TLS, status uintptr, options int32, usage uintptr) (r1 Tpid_t) {
 	if __ccgo_strace {

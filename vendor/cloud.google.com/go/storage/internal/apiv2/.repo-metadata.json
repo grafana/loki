@@ -1,0 +1,10 @@
+{
+  "api_shortname": "storage",
+  "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/storage/latest/internal/apiv2",
+  "client_library_type": "generated",
+  "description": "Cloud Storage API",
+  "distribution_name": "cloud.google.com/go/storage/internal/apiv2",
+  "language": "go",
+  "library_type": "GAPIC_AUTO",
+  "release_level": "stable"
+}

@@ -17,8 +17,8 @@ package strfmt
 import (
 	"database/sql/driver"
 	"encoding/json"
-	"errors"
 	"fmt"
+	"math"
 	"regexp"
 	"strconv"
 	"strings"
@@ -32,6 +32,11 @@ func init() {
 	// register this format in the default registry
 	Default.Add("duration", &d, IsDuration)
 }
+
+const (
+	hoursInDay = 24
+	daysInWeek = 7
+)
 
 var (
 	timeUnits = [][]string{
@@ -52,11 +57,11 @@ var (
 		"s":  time.Second,
 		"m":  time.Minute,
 		"h":  time.Hour,
-		"d":  24 * time.Hour,
-		"w":  7 * 24 * time.Hour,
+		"d":  hoursInDay * time.Hour,
+		"w":  hoursInDay * daysInWeek * time.Hour,
 	}
 
-	durationMatcher = regexp.MustCompile(`((\d+)\s*([A-Za-zµ]+))`)
+	durationMatcher = regexp.MustCompile(`^(((?:-\s?)?\d+)(\.\d+)?\s*([A-Za-zµ]+))`)
 )
 
 // IsDuration returns true if the provided string is a valid duration
@@ -96,13 +101,35 @@ func ParseDuration(cand string) (time.Duration, error) {
 
 	var dur time.Duration
 	ok := false
+	const expectGroups = 4
 	for _, match := range durationMatcher.FindAllStringSubmatch(cand, -1) {
+		if len(match) < expectGroups {
+			continue
+		}
 
-		factor, err := strconv.Atoi(match[2]) // converts string to int
+		// remove possible leading - and spaces
+		value, negative := strings.CutPrefix(match[2], "-")
+
+		// if the duration contains a decimal separator determine a divising factor
+		const neutral = 1.0
+		divisor := neutral
+		decimal, hasDecimal := strings.CutPrefix(match[3], ".")
+		if hasDecimal {
+			divisor = math.Pow10(len(decimal))
+			value += decimal // consider the value as an integer: will change units later on
+		}
+
+		// if the string is a valid duration, parse it
+		factor, err := strconv.Atoi(strings.TrimSpace(value)) // converts string to int
 		if err != nil {
 			return 0, err
 		}
-		unit := strings.ToLower(strings.TrimSpace(match[3]))
+
+		if negative {
+			factor = -factor
+		}
+
+		unit := strings.ToLower(strings.TrimSpace(match[4]))
 
 		for _, variants := range timeUnits {
 			last := len(variants) - 1
@@ -111,6 +138,9 @@ func ParseDuration(cand string) (time.Duration, error) {
 			for i, variant := range variants {
 				if (last == i && strings.HasPrefix(unit, variant)) || strings.EqualFold(variant, unit) {
 					ok = true
+					if divisor != neutral {
+						multiplier = time.Duration(float64(multiplier) / divisor) // convert to duration only after having reduced the scale
+					}
 					dur += (time.Duration(factor) * multiplier)
 				}
 			}
@@ -120,7 +150,7 @@ func ParseDuration(cand string) (time.Duration, error) {
 	if ok {
 		return dur, nil
 	}
-	return 0, fmt.Errorf("unable to parse %s as duration", cand)
+	return 0, fmt.Errorf("unable to parse %s as duration: %w", cand, ErrFormat)
 }
 
 // Scan reads a Duration value from database driver type.
@@ -134,7 +164,7 @@ func (d *Duration) Scan(raw interface{}) error {
 	case nil:
 		*d = Duration(0)
 	default:
-		return fmt.Errorf("cannot sql.Scan() strfmt.Duration from: %#v", v)
+		return fmt.Errorf("cannot sql.Scan() strfmt.Duration from: %#v: %w", v, ErrFormat)
 	}
 
 	return nil
@@ -192,7 +222,7 @@ func (d *Duration) UnmarshalBSON(data []byte) error {
 		return nil
 	}
 
-	return errors.New("couldn't unmarshal bson bytes value as Date")
+	return fmt.Errorf("couldn't unmarshal bson bytes value as Date: %w", ErrFormat)
 }
 
 // DeepCopyInto copies the receiver and writes its value into out.

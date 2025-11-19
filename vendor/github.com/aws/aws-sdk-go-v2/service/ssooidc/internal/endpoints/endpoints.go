@@ -238,6 +238,9 @@ var defaultPartitions = endpoints.Partitions{
 				},
 			},
 			endpoints.EndpointKey{
+				Region: "ap-southeast-7",
+			}: endpoints.Endpoint{},
+			endpoints.EndpointKey{
 				Region: "ca-central-1",
 			}: endpoints.Endpoint{
 				Hostname: "oidc.ca-central-1.amazonaws.com",
@@ -341,6 +344,9 @@ var defaultPartitions = endpoints.Partitions{
 					Region: "me-south-1",
 				},
 			},
+			endpoints.EndpointKey{
+				Region: "mx-central-1",
+			}: endpoints.Endpoint{},
 			endpoints.EndpointKey{
 				Region: "sa-east-1",
 			}: endpoints.Endpoint{

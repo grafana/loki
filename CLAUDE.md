@@ -11,11 +11,9 @@ make test-integration         # run integration tests
 go test ./...                 # run all tests with Go directly
 go test -v ./pkg/logql/...    # run tests in specific package
 go test -run TestName ./pkg/path  # run a specific test
-BUILD_IN_CONTAINER=true NONINTERACTIVE=true make lint  # run all linters (use in CI-like environment)
+make lint  # run all linters (use in CI-like environment)
 make format                   # format code (gofmt and goimports)
 ```
-
-**Note:** Use `BUILD_IN_CONTAINER=true NONINTERACTIVE=true make lint` to run linting in a container environment that matches CI exactly. The `NONINTERACTIVE=true` flag prevents Docker from trying to allocate a TTY, which is necessary in non-interactive environments like claude-code. The Makefile automatically detects and handles git worktrees by using `git rev-parse --git-dir` and `git rev-parse --git-common-dir` to mount the appropriate git directories, ensuring git commands work correctly in the container regardless of worktree structure.
 
 ### Building the Frontend
 

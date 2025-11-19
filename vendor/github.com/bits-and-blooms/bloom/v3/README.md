@@ -151,3 +151,26 @@ In this implementation, the hashing functions used is [murmurhash](github.com/tw
 
 Given the particular hashing scheme, it's best to be empirical about this. Note
 that estimating the FP rate will clear the Bloom filter.
+
+
+
+
+### Goroutine safety
+
+In general, it not safe to access
+the same filter using different goroutines--they are
+unsynchronized for performance. Should you want to access
+a filter from more than one goroutine, you should
+provide synchronization. Typically this is done by using channels (in Go style; so there is only ever one owner),
+or by using `sync.Mutex` to serialize operations. Exceptionally, you may access the same filter from different
+goroutines if you never modify the content of the filter.
+
+## Stars
+
+
+[![Star History Chart](https://api.star-history.com/svg?repos=bits-and-blooms/bloom&type=Date)](https://www.star-history.com/#bits-and-blooms/bloom&Date)
+
+## Further reading
+
+<p>Mastering Programming: From Testing to Performance in Go</p>
+<div><a href="https://www.amazon.com/dp/B0FMPGSWR5"><img style="margin-left: auto; margin-right: auto;" src="https://m.media-amazon.com/images/I/61feneHS7kL._SL1499_.jpg" alt="" width="250px" /></a></div>

@@ -224,7 +224,7 @@ func (v Validator) ShouldBlockIngestion(ctx validationContext, now time.Time, po
 	}
 
 	if block, until, code := v.shouldBlockPolicy(ctx, policy, now); block {
-		err := fmt.Errorf(validation.BlockedIngestionPolicyErrorMsg, ctx.userID, until.Format(time.RFC3339), code)
+		err := fmt.Errorf(validation.BlockedIngestionPolicyErrorMsg, ctx.userID, policy, until.Format(time.RFC3339), code)
 		return true, code, validation.BlockedIngestionPolicy, err
 	}
 

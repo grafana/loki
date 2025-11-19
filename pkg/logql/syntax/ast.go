@@ -856,6 +856,27 @@ func (e *DropLabelsExpr) Stage() (log.Stage, error) {
 	return log.NewDropLabels(e.dropLabels), nil
 }
 
+func (e *DropLabelsExpr) HasNamedMatchers() bool {
+	for _, dropLabel := range e.dropLabels {
+		if dropLabel.Matcher != nil {
+			return true
+		}
+	}
+	return false
+}
+
+func (e *DropLabelsExpr) Names() []string {
+	names := []string{}
+	for _, dropLabel := range e.dropLabels {
+		if dropLabel.Name != "" {
+			names = append(names, dropLabel.Name)
+		} else if dropLabel.Matcher != nil {
+			names = append(names, dropLabel.Matcher.Name)
+		}
+	}
+	return names
+}
+
 func (e *DropLabelsExpr) String() string {
 	var sb strings.Builder
 

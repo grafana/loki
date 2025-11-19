@@ -124,17 +124,6 @@ func (rr metadataRangeReader) ReadRange(ctx context.Context, r rangeio.Range) (i
 	return io.ReadFull(rc, r.Data)
 }
 
-// readAndClose reads exactly size bytes from rc and then closes it.
-func readAndClose(rc io.ReadCloser, size uint64) ([]byte, error) {
-	defer rc.Close()
-
-	data := make([]byte, size)
-	if _, err := io.ReadFull(rc, data); err != nil {
-		return nil, fmt.Errorf("read column data: %w", err)
-	}
-	return data, nil
-}
-
 // ReadPages reads the provided set of pages, iterating over their data matching
 // the argument order. If an error is encountered while retrieving pages, an
 // error is emitted from the sequence and iteration stops.

@@ -1644,11 +1644,7 @@ func mergeOrderedNonOverlappingStreams(resps []*LokiResponse, limit uint32, dire
 	for key := range groups {
 		keys = append(keys, key)
 	}
-	if direction == logproto.BACKWARD {
-		sort.Sort(sort.Reverse(sort.StringSlice(keys)))
-	} else {
-		sort.Strings(keys)
-	}
+	sort.Strings(keys)
 
 	// escape hatch, can just return all the streams
 	if total <= int(limit) {

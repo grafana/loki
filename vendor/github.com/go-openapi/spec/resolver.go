@@ -3,7 +3,7 @@ package spec
 import (
 	"fmt"
 
-	"github.com/go-openapi/swag"
+	"github.com/go-openapi/swag/jsonutils"
 )
 
 func resolveAnyWithBase(root interface{}, ref *Ref, result interface{}, options *ExpandOptions) error {
@@ -45,7 +45,7 @@ func ResolveRef(root interface{}, ref *Ref) (*Schema, error) {
 		return sch, nil
 	case map[string]interface{}:
 		newSch := new(Schema)
-		if err = swag.DynamicJSONToStruct(sch, newSch); err != nil {
+		if err = jsonutils.FromDynamicJSON(sch, newSch); err != nil {
 			return nil, err
 		}
 		return newSch, nil

@@ -169,7 +169,7 @@ func (h *valueHelper) asInt64(val interface{}) int64 {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		return v.Int()
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		return int64(v.Uint())
+		return int64(v.Uint()) //nolint:gosec
 	case reflect.Float32, reflect.Float64:
 		return int64(v.Float())
 	default:
@@ -184,7 +184,7 @@ func (h *valueHelper) asUint64(val interface{}) uint64 {
 	v := reflect.ValueOf(val)
 	switch v.Kind() { //nolint:exhaustive
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		return uint64(v.Int())
+		return uint64(v.Int()) //nolint:gosec
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		return v.Uint()
 	case reflect.Float32, reflect.Float64:
@@ -273,7 +273,7 @@ func (h *paramHelper) checkExpandedParam(pr *spec.Parameter, path, in, operation
 	simpleZero := spec.SimpleSchema{}
 	// Try to explain why... best guess
 	switch {
-	case pr.In == swaggerBody && (pr.SimpleSchema != simpleZero && pr.SimpleSchema.Type != objectType):
+	case pr.In == swaggerBody && (pr.SimpleSchema != simpleZero && pr.Type != objectType):
 		if isRef {
 			// Most likely, a $ref with a sibling is an unwanted situation: in itself this is a warning...
 			// but we detect it because of the following error:

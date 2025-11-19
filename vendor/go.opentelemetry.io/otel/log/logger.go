@@ -30,7 +30,7 @@ type Logger interface {
 	// concurrently.
 	Emit(ctx context.Context, record Record)
 
-	// Enabled returns whether the Logger emits for the given context and
+	// Enabled reports whether the Logger emits for the given context and
 	// param.
 	//
 	// This is useful for users that want to know if a [Record]
@@ -136,5 +136,6 @@ func WithSchemaURL(schemaURL string) LoggerOption {
 
 // EnabledParameters represents payload for [Logger]'s Enabled method.
 type EnabledParameters struct {
-	Severity Severity
+	Severity  Severity
+	EventName string
 }

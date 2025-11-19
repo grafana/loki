@@ -93,6 +93,68 @@ func Test_Reader_ReadWithPageFiltering(t *testing.T) {
 	require.Equal(t, expected, convertToTestPersons(actualRows))
 }
 
+// Test_Reader_ReadWithPageFilteringOnEmptyPredicate tests that a Reader filters rows with empty predicate values.
+// Filtering for an explicitly empty value also includes Null values and these rows should not be excluded by page skipping.
+func Test_Reader_ReadWithPageFilteringOnEmptyPredicate(t *testing.T) {
+	// Create builders for each column
+	firstNameBuilder := buildStringColumn(t, "first_name")
+	lastNameBuilder := buildStringColumn(t, "middle_name")
+
+	// Row with both values.
+	firstNameBuilder.append(0, BinaryValue([]byte("John")))
+	lastNameBuilder.append(0, BinaryValue([]byte("Doe")))
+
+	// Row with null value.
+	firstNameBuilder.append(2, BinaryValue([]byte("Jim")))
+	lastNameBuilder.append(2, Value{})
+
+	firstName, err := firstNameBuilder.Flush()
+	require.NoError(t, err)
+	lastName, err := lastNameBuilder.Flush()
+	require.NoError(t, err)
+
+	dset := FromMemory([]*MemColumn{firstName, lastName})
+	cols, err := result.Collect(dset.ListColumns(context.Background()))
+	require.NoError(t, err)
+
+	r := NewReader(ReaderOptions{
+		Dataset: dset,
+		Columns: cols,
+
+		Predicates: []Predicate{
+			// Imitate predicate from logql: {last_name=""}
+			EqualPredicate{
+				Column: cols[1], // last_name column
+				Value:  BinaryValue([]byte("")),
+			},
+		},
+	})
+	defer r.Close()
+
+	actualRows, err := readDataset(r, 3)
+	require.NoError(t, err)
+
+	actualFirstNames := make([]string, 0, len(actualRows))
+	actualLastNames := make([]string, 0, len(actualRows))
+	for _, row := range actualRows {
+		if row.Values[0].IsNil() && row.Values[1].IsNil() {
+			continue
+		}
+		actualFirstNames = append(actualFirstNames, string(row.Values[0].Binary()))
+		if !row.Values[1].IsNil() {
+			actualLastNames = append(actualLastNames, string(row.Values[1].Binary()))
+		} else {
+			actualLastNames = append(actualLastNames, "[nil]")
+		}
+	}
+
+	// Filter expected data manually to verify
+	expectedFirstNames := []string{"Jim"}
+	expectedLastNames := []string{"[nil]"}
+	require.Equal(t, expectedFirstNames, actualFirstNames)
+	require.Equal(t, expectedLastNames, actualLastNames)
+}
+
 func Test_Reader_ReadWithPredicate_NoSecondary(t *testing.T) {
 	dset, columns := buildTestDataset(t)
 

@@ -447,11 +447,22 @@ func handleGetOptions(response *BosResponse, options []GetOption) error {
 				*vReal = val
 			}
 			if vReal, ok := v.(*bool); ok {
-				*vReal, _ = strconv.ParseBool(val)
+				vbool, err := strconv.ParseBool(val)
+				if err == nil {
+					*vReal = vbool
+				}
 			}
 			if vReal, ok := v.(*int); ok {
-				vint, _ := strconv.ParseInt(val, 10, 64)
-				*vReal = int(vint)
+				vint, err := strconv.ParseInt(val, 10, 64)
+				if err == nil {
+					*vReal = int(vint)
+				}
+			}
+			if vReal, ok := v.(*int64); ok {
+				vint64, err := strconv.ParseInt(val, 10, 64)
+				if err == nil {
+					*vReal = vint64
+				}
 			}
 			if vReal, ok := v.(*[]string); ok {
 				*vReal = strings.Split(val, ",")

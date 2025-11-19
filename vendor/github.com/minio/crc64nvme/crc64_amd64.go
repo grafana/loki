@@ -11,5 +11,7 @@ import (
 )
 
 var hasAsm = cpuid.CPU.Supports(cpuid.SSE2, cpuid.CLMUL, cpuid.SSE4)
+var hasAsm512 = cpuid.CPU.Supports(cpuid.AVX512F, cpuid.VPCLMULQDQ, cpuid.AVX512VL, cpuid.CLMUL)
 
 func updateAsm(crc uint64, p []byte) (checksum uint64)
+func updateAsm512(crc uint64, p []byte) (checksum uint64)

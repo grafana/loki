@@ -147,7 +147,7 @@ type AssumeRoleInput struct {
 	//
 	// The regex used to validate this parameter is a string of characters consisting
 	// of upper- and lower-case alphanumeric characters with no spaces. You can also
-	// include underscores or any of the following characters: =,.@-
+	// include underscores or any of the following characters: +=,.@-
 	//
 	// [CloudTrail logs]: https://docs.aws.amazon.com/IAM/latest/UserGuide/cloudtrail-integration.html#cloudtrail-integration_signin-tempcreds
 	// [sts:RoleSessionName]: https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_iam-condition-keys.html#ck_rolesessionname
@@ -196,7 +196,7 @@ type AssumeRoleInput struct {
 	//
 	// The regex used to validate this parameter is a string of characters consisting
 	// of upper- and lower-case alphanumeric characters with no spaces. You can also
-	// include underscores or any of the following characters: =,.@:/-
+	// include underscores or any of the following characters: +=,.@:\/-
 	//
 	// [How to Use an External ID When Granting Access to Your Amazon Web Services Resources to a Third Party]: https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_create_for-user_externalid.html
 	ExternalId *string
@@ -279,7 +279,7 @@ type AssumeRoleInput struct {
 	//
 	// The regex used to validate this parameter is a string of characters consisting
 	// of upper- and lower-case alphanumeric characters with no spaces. You can also
-	// include underscores or any of the following characters: =,.@-
+	// include underscores or any of the following characters: +=/:,.@-
 	SerialNumber *string
 
 	// The source identity specified by the principal that is calling the AssumeRole
@@ -502,16 +502,13 @@ func (c *Client) addOperationAssumeRoleMiddlewares(stack *middleware.Stack, opti
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = addSpanInitializeStart(stack); err != nil {
+	if err = addInterceptBeforeRetryLoop(stack, options); err != nil {
 		return err
 	}
-	if err = addSpanInitializeEnd(stack); err != nil {
+	if err = addInterceptAttempt(stack, options); err != nil {
 		return err
 	}
-	if err = addSpanBuildRequestStart(stack); err != nil {
-		return err
-	}
-	if err = addSpanBuildRequestEnd(stack); err != nil {
+	if err = addInterceptors(stack, options); err != nil {
 		return err
 	}
 	return nil

@@ -42,13 +42,18 @@ type StatsReader interface {
 	// If the underlying index supports it, this will return the ForSeries interface
 	// which is used in bloom-filter accelerated sharding calculation optimization.
 	HasForSeries(from, through model.Time) (sharding.ForSeries, bool)
+
+	// HasChunkSizingInfo tells whether the index type for the given period supports listing chunks with their sizing info
+	HasChunkSizingInfo(from, through model.Time) bool
+	// GetChunkRefsWithSizingInfo should only be called after if HasChunkSizingInfo acknowledges that underlying index supports listing chunks with sizing info
+	GetChunkRefsWithSizingInfo(ctx context.Context, userID string, from, through model.Time, predicate chunk.Predicate) ([]logproto.ChunkRefWithSizingInfo, error)
 }
 
 type Reader interface {
 	BaseReader
 	StatsReader
-	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, predicate chunk.Predicate) ([]logproto.ChunkRef, error)
 	Filterable
+	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, predicate chunk.Predicate) ([]logproto.ChunkRef, error)
 }
 
 type Writer interface {
@@ -78,6 +83,20 @@ func (m MonitoredReaderWriter) GetChunkRefs(ctx context.Context, userID string, 
 	if err := loki_instrument.TimeRequest(ctx, "chunk_refs", instrument.NewHistogramCollector(m.metrics.indexQueryLatency), instrument.ErrorCode, func(ctx context.Context) error {
 		var err error
 		chunks, err = m.rw.GetChunkRefs(ctx, userID, from, through, predicate)
+		return err
+	}); err != nil {
+		return nil, err
+	}
+
+	return chunks, nil
+}
+
+func (m MonitoredReaderWriter) GetChunkRefsWithSizingInfo(ctx context.Context, userID string, from, through model.Time, predicate chunk.Predicate) ([]logproto.ChunkRefWithSizingInfo, error) {
+	var chunks []logproto.ChunkRefWithSizingInfo
+
+	if err := loki_instrument.TimeRequest(ctx, "chunk_refs_with_sizing_info", instrument.NewHistogramCollector(m.metrics.indexQueryLatency), instrument.ErrorCode, func(ctx context.Context) error {
+		var err error
+		chunks, err = m.rw.GetChunkRefsWithSizingInfo(ctx, userID, from, through, predicate)
 		return err
 	}); err != nil {
 		return nil, err
@@ -214,4 +233,8 @@ func (m MonitoredReaderWriter) HasForSeries(from, through model.Time) (sharding.
 		return wrapped, true
 	}
 	return nil, false
+}
+
+func (m MonitoredReaderWriter) HasChunkSizingInfo(from, through model.Time) bool {
+	return m.rw.HasChunkSizingInfo(from, through)
 }

@@ -45,6 +45,23 @@ type Ref struct {
 	jsonreference.Ref
 }
 
+// NewRef creates a new instance of a ref object
+// returns an error when the reference uri is an invalid uri
+func NewRef(refURI string) (Ref, error) {
+	ref, err := jsonreference.New(refURI)
+	if err != nil {
+		return Ref{}, err
+	}
+
+	return Ref{Ref: ref}, nil
+}
+
+// MustCreateRef creates a ref object but panics when refURI is invalid.
+// Use the NewRef method for a version that returns an error.
+func MustCreateRef(refURI string) Ref {
+	return Ref{Ref: jsonreference.MustCreateRef(refURI)}
+}
+
 // RemoteURI gets the remote uri part of the ref
 func (r *Ref) RemoteURI() string {
 	if r.String() == "" {
@@ -75,10 +92,11 @@ func (r *Ref) IsValidURI(basepaths ...string) bool {
 		}
 		defer rr.Body.Close()
 
-		return rr.StatusCode/100 == 2
+		// true if the response is >= 200 and < 300
+		return rr.StatusCode/100 == 2 //nolint:mnd
 	}
 
-	if !(r.HasFileScheme || r.HasFullFilePath || r.HasURLPathOnly) {
+	if !r.HasFileScheme && !r.HasFullFilePath && !r.HasURLPathOnly {
 		return false
 	}
 
@@ -114,22 +132,6 @@ func (r *Ref) Inherits(child Ref) (*Ref, error) {
 	return &Ref{Ref: *ref}, nil
 }
 
-// NewRef creates a new instance of a ref object
-// returns an error when the reference uri is an invalid uri
-func NewRef(refURI string) (Ref, error) {
-	ref, err := jsonreference.New(refURI)
-	if err != nil {
-		return Ref{}, err
-	}
-	return Ref{Ref: ref}, nil
-}
-
-// MustCreateRef creates a ref object but panics when refURI is invalid.
-// Use the NewRef method for a version that returns an error.
-func MustCreateRef(refURI string) Ref {
-	return Ref{Ref: jsonreference.MustCreateRef(refURI)}
-}
-
 // MarshalJSON marshals this ref into a JSON object
 func (r Ref) MarshalJSON() ([]byte, error) {
 	str := r.String()
@@ -139,13 +141,13 @@ func (r Ref) MarshalJSON() ([]byte, error) {
 		}
 		return []byte("{}"), nil
 	}
-	v := map[string]interface{}{"$ref": str}
+	v := map[string]any{"$ref": str}
 	return json.Marshal(v)
 }
 
 // UnmarshalJSON unmarshals this ref from a JSON object
 func (r *Ref) UnmarshalJSON(d []byte) error {
-	var v map[string]interface{}
+	var v map[string]any
 	if err := json.Unmarshal(d, &v); err != nil {
 		return err
 	}
@@ -174,7 +176,7 @@ func (r *Ref) GobDecode(b []byte) error {
 	return json.Unmarshal(raw, r)
 }
 
-func (r *Ref) fromMap(v map[string]interface{}) error {
+func (r *Ref) fromMap(v map[string]any) error {
 	if v == nil {
 		return nil
 	}

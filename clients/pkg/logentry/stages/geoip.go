@@ -3,13 +3,14 @@ package stages
 import (
 	"fmt"
 	"net"
+	"net/netip"
 	"reflect"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/mitchellh/mapstructure"
-	"github.com/oschwald/geoip2-golang"
+	"github.com/oschwald/geoip2-golang/v2"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 )
@@ -146,17 +147,33 @@ func (g *geoIPStage) process(labels model.LabelSet, extracted map[string]interfa
 			return
 		}
 		ip = net.ParseIP(value)
+		if ip == nil {
+			if Debug {
+				level.Debug(g.logger).Log("msg", "failed to parse IP address", "source", *g.cfgs.Source, "value", value)
+			}
+			return
+		}
 	}
+
+	// Convert net.IP to netip.Addr for geoip2 v2 API
+	addr, ok := netip.AddrFromSlice(ip)
+	if !ok {
+		if Debug {
+			level.Debug(g.logger).Log("msg", "failed to convert IP to netip.Addr", "ip", ip)
+		}
+		return
+	}
+
 	switch g.cfgs.DBType {
 	case "city":
-		record, err := g.db.City(ip)
+		record, err := g.db.City(addr)
 		if err != nil {
 			level.Error(g.logger).Log("msg", "unable to get City record for the ip", "err", err, "ip", ip)
 			return
 		}
 		g.populateLabelsWithCityData(labels, record)
 	case "asn":
-		record, err := g.db.ASN(ip)
+		record, err := g.db.ASN(addr)
 		if err != nil {
 			level.Error(g.logger).Log("msg", "unable to get ASN record for the ip", "err", err, "ip", ip)
 			return
@@ -177,17 +194,17 @@ func (g *geoIPStage) populateLabelsWithCityData(labels model.LabelSet, record *g
 	for field, label := range fields {
 		switch field {
 		case CITYNAME:
-			cityName := record.City.Names["en"]
+			cityName := record.City.Names.English
 			if cityName != "" {
 				labels[model.LabelName(label)] = model.LabelValue(cityName)
 			}
 		case COUNTRYNAME:
-			contryName := record.Country.Names["en"]
+			contryName := record.Country.Names.English
 			if contryName != "" {
 				labels[model.LabelName(label)] = model.LabelValue(contryName)
 			}
 		case CONTINENTNAME:
-			continentName := record.Continent.Names["en"]
+			continentName := record.Continent.Names.English
 			if continentName != "" {
 				labels[model.LabelName(label)] = model.LabelValue(continentName)
 			}
@@ -209,21 +226,21 @@ func (g *geoIPStage) populateLabelsWithCityData(labels model.LabelSet, record *g
 		case LOCATION:
 			latitude := record.Location.Latitude
 			longitude := record.Location.Longitude
-			if latitude != 0 || longitude != 0 {
-				labels[model.LabelName(fmt.Sprintf("%s_latitude", label))] = model.LabelValue(fmt.Sprint(latitude))
-				labels[model.LabelName(fmt.Sprintf("%s_longitude", label))] = model.LabelValue(fmt.Sprint(longitude))
+			if latitude != nil && longitude != nil {
+				labels[model.LabelName(fmt.Sprintf("%s_latitude", label))] = model.LabelValue(fmt.Sprint(*latitude))
+				labels[model.LabelName(fmt.Sprintf("%s_longitude", label))] = model.LabelValue(fmt.Sprint(*longitude))
 			}
 		case SUBDIVISIONNAME:
 			if len(record.Subdivisions) > 0 {
 				// we get most specific subdivision https://dev.maxmind.com/release-note/most-specific-subdivision-attribute-added/
-				subdivisionName := record.Subdivisions[len(record.Subdivisions)-1].Names["en"]
+				subdivisionName := record.Subdivisions[len(record.Subdivisions)-1].Names.English
 				if subdivisionName != "" {
 					labels[model.LabelName(label)] = model.LabelValue(subdivisionName)
 				}
 			}
 		case SUBDIVISIONCODE:
 			if len(record.Subdivisions) > 0 {
-				subdivisionCode := record.Subdivisions[len(record.Subdivisions)-1].IsoCode
+				subdivisionCode := record.Subdivisions[len(record.Subdivisions)-1].ISOCode
 				if subdivisionCode != "" {
 					labels[model.LabelName(label)] = model.LabelValue(subdivisionCode)
 				}

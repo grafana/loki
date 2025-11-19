@@ -583,7 +583,7 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 			stats := NewPushStats()
 			tracker := NewMockTracker()
 			streamResolver := newMockStreamResolver("fake", &fakeLimits{})
-			streamResolver.policyForOverride = func(lbs labels.Labels) string {
+			streamResolver.policyForOverride = func(_ context.Context, lbs labels.Labels) string {
 				if lbs.Get("service_name") == "service-1" {
 					return "service-1-policy"
 				}
@@ -926,7 +926,7 @@ func TestOTLPLogAttributesAsIndexLabels(t *testing.T) {
 	streamResolver := newMockStreamResolver("fake", &fakeLimits{})
 
 	// All logs will use the same policy for simplicity
-	streamResolver.policyForOverride = func(_ labels.Labels) string {
+	streamResolver.policyForOverride = func(_ context.Context, _ labels.Labels) string {
 		return "test-policy"
 	}
 
@@ -1029,7 +1029,7 @@ func TestOTLPStructuredMetadataCalculation(t *testing.T) {
 	tracker := NewMockTracker()
 	streamResolver := newMockStreamResolver("fake", &fakeLimits{})
 
-	streamResolver.policyForOverride = func(_ labels.Labels) string {
+	streamResolver.policyForOverride = func(_ context.Context, _ labels.Labels) string {
 		return "test-policy"
 	}
 
@@ -1215,7 +1215,7 @@ func TestOTLPSeverityTextAsLabel(t *testing.T) {
 	streamResolver := newMockStreamResolver("fake", &fakeLimits{})
 
 	// All logs will use the same policy for simplicity
-	streamResolver.policyForOverride = func(_ labels.Labels) string {
+	streamResolver.policyForOverride = func(_ context.Context, _ labels.Labels) string {
 		return "test-policy"
 	}
 

@@ -11,11 +11,13 @@ import (
 )
 
 type LogCluster struct {
-	id         int
-	Size       int
-	Tokens     []string
-	TokenState interface{}
-	Stringer   func([]string, interface{}) string
+	id          int
+	Size        int
+	Tokens      []string
+	TokenState  interface{}
+	Stringer    func([]string, interface{}) string
+	Volume      int64
+	SampleCount int64
 
 	Chunks Chunks
 }

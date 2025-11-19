@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/alecthomas/kingpin/v2"
+	dskit_log "github.com/grafana/dskit/log"
+	dskit_server "github.com/grafana/dskit/server"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/version"
 
@@ -26,6 +28,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logcli/volume"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	_ "github.com/grafana/loki/v3/pkg/util/build"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 var (
@@ -35,6 +38,7 @@ var (
 		Default("false").
 		Short('q').
 		Bool()
+	logLevel   = app.Flag("log.level", "Log level").Default("error").Enum("error", "warning", "info", "debug")
 	statistics = app.Flag("stats", "Show query statistics").Default("false").Bool()
 	outputMode = app.Flag("output", "Specify output mode [default, raw, jsonl]. raw suppresses log labels and timestamp.").
 			Default("default").
@@ -356,6 +360,10 @@ func main() {
 	log.SetOutput(os.Stderr)
 
 	cmd := kingpin.MustParse(app.Parse(os.Args[1:]))
+
+	var dLevel dskit_log.Level
+	_ = dLevel.Set(*logLevel)
+	util_log.InitLogger(&dskit_server.Config{LogLevel: dLevel}, nil, true)
 
 	if cpuProfile != nil && *cpuProfile != "" {
 		cpuFile, err := os.Create(*cpuProfile)

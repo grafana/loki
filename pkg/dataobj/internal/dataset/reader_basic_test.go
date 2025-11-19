@@ -114,7 +114,7 @@ func Test_basicReader_ReadColumns(t *testing.T) {
 			if testPerson.middleName != "" {
 				require.Equal(t, testPerson.middleName, string(row.Values[1].Binary()), "middle_name mismatch")
 			} else {
-				require.True(t, row.Values[1].IsNil(), "middle_name should be nil")
+				require.True(t, row.Values[1].IsZero(), "middle_name should be nil")
 			}
 			require.Equal(t, testPerson.birthYear, row.Values[3].Int64(), "birth_year mismatch")
 
@@ -212,7 +212,6 @@ func Test_partitionRows(t *testing.T) {
 			require.Equal(t, tc.expect, actual)
 		})
 	}
-
 }
 
 func Test_basicReader_Reset(t *testing.T) {

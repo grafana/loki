@@ -139,7 +139,7 @@ func (s *schemaPropsValidator) Validate(data interface{}) *Result {
 		s.validateNot(data, mainResult)
 	}
 
-	if s.Dependencies != nil && len(s.Dependencies) > 0 && reflect.TypeOf(data).Kind() == reflect.Map {
+	if len(s.Dependencies) > 0 && reflect.TypeOf(data).Kind() == reflect.Map {
 		s.validateDependencies(data, mainResult)
 	}
 

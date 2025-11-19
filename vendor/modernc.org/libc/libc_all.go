@@ -6,6 +6,7 @@
 package libc // import "modernc.org/libc"
 
 import (
+	"math"
 	"sync/atomic"
 	"unsafe"
 
@@ -50,4 +51,29 @@ func GoString(s uintptr) string {
 // GoBytes returns a byte slice from a C char* having length len bytes.
 func GoBytes(s uintptr, len int) []byte {
 	return unsafe.Slice((*byte)(unsafe.Pointer(s)), len)
+}
+
+func X__isfinitef(tls *TLS, f float32) int32 {
+	d := float64(f)
+	if !math.IsInf(d, 0) && !math.IsNaN(d) {
+		return 1
+	}
+
+	return 0
+}
+
+func X__isfinite(tls *TLS, d float64) int32 {
+	if !math.IsInf(d, 0) && !math.IsNaN(d) {
+		return 1
+	}
+
+	return 0
+}
+
+func X__isfinitel(tls *TLS, d float64) int32 {
+	if !math.IsInf(d, 0) && !math.IsNaN(d) {
+		return 1
+	}
+
+	return 0
 }

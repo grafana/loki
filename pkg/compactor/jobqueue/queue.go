@@ -28,6 +28,13 @@ type Builder interface {
 
 	// OnJobResponse reports back the response of the job execution.
 	OnJobResponse(response *grpc.JobResult) error
+
+	// JobsLeft reports the estimated number of jobs left to process.
+	// It should be updated when jobs are successfully processed or new work is picked up for execution.
+	// It should include in-flight and upcoming jobs even if they are created on-demand.
+	// It could just estimate jobs left to be processed for concluding ongoing unit of work.
+	// The implementation must be concurrency safe.
+	JobsLeft() int
 }
 
 // Queue implements the job queue service
@@ -81,11 +88,14 @@ func newQueue(checkTimedOutJobsInterval time.Duration, r prometheus.Registerer) 
 }
 
 // RegisterBuilder registers a builder for a specific job type
-func (q *Queue) RegisterBuilder(jobType grpc.JobType, b Builder, jobTimeout time.Duration, maxRetries int) error {
+func (q *Queue) RegisterBuilder(jobType grpc.JobType, b Builder, jobTimeout time.Duration, maxRetries int, r prometheus.Registerer) error {
 	if _, exists := q.builders[jobType]; exists {
 		return ErrJobTypeAlreadyRegistered
 	}
 
+	registerJobsLeftTrackerMetric(jobType.Humanize(), func() float64 {
+		return float64(b.JobsLeft())
+	}, r)
 	q.builders[jobType] = builder{
 		Builder:    b,
 		jobTimeout: jobTimeout,

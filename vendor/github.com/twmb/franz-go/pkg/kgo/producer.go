@@ -44,21 +44,21 @@ type producer struct {
 	unknownTopics   map[string]*unknownTopicProduces
 
 	id           atomic.Value
-	producingTxn atomicBool
+	producingTxn atomic.Bool
 
 	// We must have a producer field for flushing; we cannot just have a
 	// field on recBufs that is toggled on flush. If we did, then a new
 	// recBuf could be created and records sent to while we are flushing.
-	flushing     atomicI32 // >0 if flushing, can Flush many times concurrently
-	blocked      atomicI32 // >0 if over max recs or bytes
+	flushing     atomic.Int32 // >0 if flushing, can Flush many times concurrently
+	blocked      atomic.Int32 // >0 if over max recs or bytes
 	blockedBytes int64
 
-	aborting atomicI32 // >0 if aborting, can abort many times concurrently
+	aborting atomic.Int32 // >0 if aborting, can abort many times concurrently
 
 	idMu      sync.Mutex
 	idVersion int16
 
-	batchPromises ringBatchPromise
+	batchPromises ring[batchPromise] // we never call die() on it
 
 	txnMu   sync.Mutex
 	inTxn   bool
@@ -252,6 +252,11 @@ func (p *producer) purgeTopics(topics []string) {
 			// after they will no longer belong in the batch, but
 			// they may have been produced. This is the duplicate
 			// risk a user runs when purging.
+			//
+			// We do not need to lock for `r.sink` access because
+			// this is ran in a blocking metadata fn, meaning the
+			// sink cannot change. We do not WANT to lock because
+			// r.mu => r.sink.recBufsMu would cause lock inversion.
 			r.sink.removeRecBuf(r)
 
 			// Once abandonded, we now need to fail anything that
@@ -303,11 +308,11 @@ func (rs ProduceResults) First() (*Record, error) {
 	return rs[0].Record, rs[0].Err
 }
 
-// ProduceSync is a synchronous produce. See the Produce documentation for an
+// ProduceSync is a synchronous produce. See the [Produce] documentation for an
 // in depth description of how producing works.
 //
-// This function produces all records in one range loop and waits for them all
-// to be produced before returning.
+// This function simply produces all records in one range loop and waits for
+// them all to be produced before returning.
 func (cl *Client) ProduceSync(ctx context.Context, rs ...*Record) ProduceResults {
 	var (
 		wg      sync.WaitGroup
@@ -339,7 +344,7 @@ func (cl *Client) ProduceSync(ctx context.Context, rs ...*Record) ProduceResults
 // This is similar to using ProduceResult's FirstErr function.
 type FirstErrPromise struct {
 	wg   sync.WaitGroup
-	once atomicBool
+	once atomic.Bool
 	err  error
 	cl   *Client
 }
@@ -580,7 +585,7 @@ func (cl *Client) produce(
 	p.bufferedBytes = nextBufBytes
 	p.mu.Unlock()
 
-	cl.partitionRecord(promisedRec{ctx, promise, r})
+	cl.loadPartsAndPartition(promisedRec{ctx, promise, r})
 }
 
 type batchPromise struct {
@@ -595,7 +600,7 @@ type batchPromise struct {
 }
 
 func (p *producer) promiseBatch(b batchPromise) {
-	if first := p.batchPromises.push(b); first {
+	if first, _ := p.batchPromises.push(b); first {
 		go p.finishPromises(b)
 	}
 }
@@ -639,7 +644,7 @@ start:
 		cl.prsPool.put(b.recs)
 	}
 
-	b, more = p.batchPromises.dropPeek()
+	b, more, _ = p.batchPromises.dropPeek()
 	if more {
 		goto start
 	}
@@ -665,7 +670,7 @@ func (cl *Client) finishRecordPromise(pr promisedRec, err error, beforeBuffering
 	// If this record was never buffered, it's size was never accounted
 	// for on any p field: return early.
 	if beforeBuffering {
-		return
+		return broadcast
 	}
 
 	// Keep the lock as tight as possible: the broadcast can come after.
@@ -678,20 +683,18 @@ func (cl *Client) finishRecordPromise(pr promisedRec, err error, beforeBuffering
 	return broadcast
 }
 
-// partitionRecord loads the partitions for a topic and produce to them. If
-// the topic does not currently exist, the record is buffered in unknownTopics
-// for a metadata update to deal with.
-func (cl *Client) partitionRecord(pr promisedRec) {
+// loadPartsAndPartition loads the partitions for a topic and produce to them.
+// If the topic does not currently exist, the record is buffered in
+// unknownTopics for a metadata update to deal with.
+func (cl *Client) loadPartsAndPartition(pr promisedRec) {
 	parts, partsData := cl.partitionsForTopicProduce(pr)
 	if parts == nil { // saved in unknownTopics
 		return
 	}
-	cl.doPartitionRecord(parts, partsData, pr)
+	cl.doPartition(parts, partsData, pr)
 }
 
-// doPartitionRecord is separate so that metadata updates that load unknown
-// partitions can call this directly.
-func (cl *Client) doPartitionRecord(parts *topicPartitions, partsData *topicPartitionsData, pr promisedRec) {
+func (cl *Client) doPartition(parts *topicPartitions, partsData *topicPartitionsData, pr promisedRec) {
 	if partsData.loadErr != nil && !kerr.IsRetriable(partsData.loadErr) {
 		cl.producer.promiseRecord(pr, partsData.loadErr)
 		return

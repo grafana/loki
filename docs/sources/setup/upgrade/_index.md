@@ -57,9 +57,51 @@ If you are using zone-aware ingesters (`ingester.zoneAwareReplication.enabled: t
 
 Key points:
 - Only affects deployments with `ingester.zoneAwareReplication.enabled: true`
-- Requires manual StatefulSet deletion with `--cascade=orphan` 
+- Requires manual StatefulSet deletion with `--cascade=orphan`
 - **No data loss** - PersistentVolumeClaims and data are preserved
 - New StatefulSets will be created with correct service references
+
+## 3.5.0
+
+### Loki 3.5.8
+
+#### Removal of BusyBox Shell from Docker Images
+
+Starting in Loki version **3.5.8**, the `busybox` utility was removed from the official Loki Docker images. This means that **shell utilities like `/bin/sh` are no longer available** inside the container by default.
+
+#### Impact
+
+- **You cannot `exec` into the Loki container to use a shell as before**. Commands like `kubectl exec -it podname -- sh` or `docker exec -it containername sh` will fail because `/bin/sh` does not exist in the image.
+- Common utilities provided by BusyBox (e.g., `ls`, `cat`, `ps`) are also not available inside the container.
+
+#### Why was BusyBox removed?
+
+Removing BusyBox addresses the following CVEs:
+
+- CVE-2023-42364
+- CVE-2023-42365
+- CVE-2023-42363
+- CVE-2023-42366
+- CVE-2025-46394
+- CVE-2024-58251
+
+#### How do I troubleshoot or inspect a running Loki container now?
+
+If you need to debug or inspect a Loki container:
+1. **Use ephemeral containers:** Kubernetes allows you to attach an ephemeral container _with a shell_ to a running Pod for debugging (if your cluster supports it).
+   - Example:
+     ```
+     kubectl debug -it <pod-name> --image=busybox --target=<container-name>
+     ```
+2. **Copy files out/in instead of shelling in:** Use `kubectl cp` or `docker cp` to move logs or config files for inspection.
+3. **Include shell utilities in your own derived image:** If your operational process requires a shell, you can build a custom Docker image based on Loki and add BusyBox or another shell to it (not recommended for production).
+   - Example Dockerfile snippet:
+     ```
+     FROM grafana/loki:3.5.8
+     USER root
+     RUN apk add --no-cache busybox
+     USER 10001
+     ```
 
 ## 3.4.0
 

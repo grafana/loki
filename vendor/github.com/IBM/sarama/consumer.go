@@ -392,7 +392,7 @@ type PartitionConsumer interface {
 }
 
 type partitionConsumer struct {
-	highWaterMarkOffset int64 // must be at the top of the struct because https://golang.org/pkg/sync/atomic/#pkg-note-BUG
+	highWaterMarkOffset atomic.Int64 // must be at the top of the struct because https://golang.org/pkg/sync/atomic/#pkg-note-BUG
 
 	consumer *consumer
 	conf     *Config
@@ -411,9 +411,9 @@ type partitionConsumer struct {
 	responseResult error
 	fetchSize      int32
 	offset         int64
-	retries        int32
+	retries        atomic.Int32
 
-	paused int32
+	paused atomic.Bool // accessed atomically, 0 = not paused, 1 = paused
 }
 
 var errTimedOut = errors.New("timed out feeding messages to the user") // not user-facing
@@ -434,7 +434,7 @@ func (child *partitionConsumer) sendError(err error) {
 
 func (child *partitionConsumer) computeBackoff() time.Duration {
 	if child.conf.Consumer.Retry.BackoffFunc != nil {
-		retries := atomic.AddInt32(&child.retries, 1)
+		retries := child.retries.Add(1)
 		return child.conf.Consumer.Retry.BackoffFunc(int(retries))
 	}
 	return child.conf.Consumer.Retry.Backoff
@@ -508,7 +508,7 @@ func (child *partitionConsumer) chooseStartingOffset(offset int64) error {
 		return err
 	}
 
-	child.highWaterMarkOffset = newestOffset
+	child.highWaterMarkOffset.Store(newestOffset)
 
 	oldestOffset, err := child.consumer.client.GetOffset(child.topic, child.partition, OffsetOldest)
 	if err != nil {
@@ -562,7 +562,7 @@ func (child *partitionConsumer) Close() error {
 }
 
 func (child *partitionConsumer) HighWaterMarkOffset() int64 {
-	return atomic.LoadInt64(&child.highWaterMarkOffset)
+	return child.highWaterMarkOffset.Load()
 }
 
 func (child *partitionConsumer) responseFeeder() {
@@ -575,7 +575,7 @@ feederLoop:
 		msgs, child.responseResult = child.parseResponse(response)
 
 		if child.responseResult == nil {
-			atomic.StoreInt32(&child.retries, 0)
+			child.retries.Store(0)
 		}
 
 		for i, msg := range msgs {
@@ -751,7 +751,7 @@ func (child *partitionConsumer) parseResponse(response *FetchResponse) ([]*Consu
 
 	// we got messages, reset our fetch size in case it was increased for a previous request
 	child.fetchSize = child.conf.Consumer.Fetch.Default
-	atomic.StoreInt64(&child.highWaterMarkOffset, block.HighWaterMarkOffset)
+	child.highWaterMarkOffset.Store(block.HighWaterMarkOffset)
 
 	// abortedProducerIDs contains producerID which message should be ignored as uncommitted
 	// - producerID are added when the partitionConsumer iterate over the offset at which an aborted transaction begins (abortedTransaction.FirstOffset)
@@ -837,17 +837,17 @@ func (child *partitionConsumer) interceptors(msg *ConsumerMessage) {
 
 // Pause implements PartitionConsumer.
 func (child *partitionConsumer) Pause() {
-	atomic.StoreInt32(&child.paused, 1)
+	child.paused.Store(true)
 }
 
 // Resume implements PartitionConsumer.
 func (child *partitionConsumer) Resume() {
-	atomic.StoreInt32(&child.paused, 0)
+	child.paused.Store(false)
 }
 
 // IsPaused implements PartitionConsumer.
 func (child *partitionConsumer) IsPaused() bool {
-	return atomic.LoadInt32(&child.paused) == 1
+	return child.paused.Load()
 }
 
 type brokerConsumer struct {

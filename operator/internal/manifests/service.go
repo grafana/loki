@@ -1,8 +1,8 @@
 package manifests
 
 import (
+	"dario.cat/mergo"
 	"github.com/ViaQ/logerr/v2/kverrors"
-	"github.com/imdario/mergo"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 )

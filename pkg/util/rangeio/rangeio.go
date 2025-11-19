@@ -3,6 +3,7 @@
 package rangeio
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"errors"
@@ -11,6 +12,7 @@ import (
 	"runtime"
 	"slices"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/dustin/go-humanize"
@@ -106,6 +108,11 @@ func (cfg *Config) RegisterFlags(prefix string, fs *flag.FlagSet) {
 	fs.IntVar(&cfg.MinRangeSize, prefix+"min-range-size", DefaultConfig.MinRangeSize, "Experimental: minimum size of a byte range")
 }
 
+func (cfg *Config) IsZero() bool {
+	var zero Config
+	return cfg == nil || *cfg == zero
+}
+
 // effectiveParallelism returns the effective parallelism limit.
 func (cfg *Config) effectiveParallelism() int {
 	if cfg.MaxParallelism <= 0 {
@@ -135,6 +142,12 @@ var DefaultConfig = Config{
 	MinRangeSize: 1 << 20, // 1 MiB
 }
 
+var bytesBufferPool = &sync.Pool{
+	New: func() any {
+		return &bytes.Buffer{}
+	},
+}
+
 // ReadRanges reads the set of ranges from the provided Reader, populating Data
 // for each element in ranges.
 //
@@ -161,7 +174,9 @@ func ReadRanges(ctx context.Context, r Reader, ranges []Range) error {
 		cfg = &DefaultConfig
 		span.SetAttributes(attribute.Bool("config.default", true))
 	}
-	optimized := optimizeRanges(cfg, ranges)
+	optimized, releaseBuffers := optimizeRanges(cfg, ranges)
+	defer releaseBuffers()
+
 	span.AddEvent("optimized ranges")
 
 	// Once we optimized the ranges we can set up the rest of our attributes.
@@ -259,7 +274,7 @@ func ReadRanges(ctx context.Context, r Reader, ranges []Range) error {
 // reach at least cfg.MaxParallelism ranges.
 //
 // If cfg is nil, [DefaultConfig] is used.
-func optimizeRanges(cfg *Config, in []Range) []Range {
+func optimizeRanges(cfg *Config, in []Range) ([]Range, func()) {
 	if cfg == nil {
 		cfg = &DefaultConfig
 	}
@@ -374,15 +389,25 @@ func optimizeRanges(cfg *Config, in []Range) []Range {
 
 	// Convert our chunks into target ranges.
 	out := make([]Range, len(coalescedChunks))
+	usedBuffers := make([]*bytes.Buffer, 0, len(out))
 	for i := range coalescedChunks {
-		// TODO(rfratto): Should the slices here be pooled? The allocated memory
-		// here becomes unreferenced after returning from [ReadRanges].
+		size := coalescedChunks[i].Length
+
+		buf := bytesBufferPool.Get().(*bytes.Buffer)
+		buf.Reset()
+		buf.Grow(size)
+		usedBuffers = append(usedBuffers, buf)
+
 		out[i] = Range{
-			Data:   make([]byte, coalescedChunks[i].Length),
+			Data:   buf.Bytes()[:size],
 			Offset: coalescedChunks[i].Offset,
 		}
 	}
-	return out
+	return out, func() {
+		for _, buf := range usedBuffers {
+			bytesBufferPool.Put(buf)
+		}
+	}
 }
 
 func rangesSize(ranges []Range) uint64 {

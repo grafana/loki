@@ -304,16 +304,16 @@ The [Cortex rules action](https://github.com/grafana/cortex-rules-action) introd
   uses: grafana/cortex-rules-action@master
   env:
     ACTION: check
-    RULES_DIR: <source_dir_of_rules> # Example: logs/recording_rules/,logs/alerts/
+    RULES_DIR: <SOURCE_DIR_OF_RULES> # Example: logs/recording_rules/,logs/alerts/
     BACKEND: loki
 
 - name: Deploy rules to Loki staging
   uses: grafana/cortex-rules-action@master
   env:
-    CORTEX_ADDRESS: <loki_ingress_addr>
+    CORTEX_ADDRESS: <LOKI_INGRESS_ADDR>
     CORTEX_TENANT_ID: fake
     ACTION: sync
-    RULES_DIR: <source_dir_of_rules> # Example: logs/recording_rules/,logs/alerts/
+    RULES_DIR: <SOURCE_DIR_OF_RULES> # Example: logs/recording_rules/,logs/alerts/
     BACKEND: loki
 ```
 
@@ -327,7 +327,7 @@ A full sharding-enabled Ruler example is:
 
 ```yaml
 ruler:
-  alertmanager_url: <alertmanager_endpoint>
+  alertmanager_url: <ALERTMANAGER_ENDPOINT>
   enable_alertmanager_v2: true # true by default since Loki 3.2.0
   enable_api: true
   enable_sharding: true
@@ -339,7 +339,7 @@ ruler:
   rule_path: /tmp/rules
   storage:
     gcs:
-      bucket_name: <loki-rules-bucket>
+      bucket_name: <LOKI_RULES_BUCKET>
 ```
 
 ## Ruler storage

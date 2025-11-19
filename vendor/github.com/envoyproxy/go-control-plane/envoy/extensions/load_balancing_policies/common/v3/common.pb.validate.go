@@ -462,6 +462,40 @@ func (m *ConsistentHashingLbConfig) validate(all bool) error {
 
 	}
 
+	for idx, item := range m.GetHashPolicy() {
+		_, _ = idx, item
+
+		if all {
+			switch v := interface{}(item).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, ConsistentHashingLbConfigValidationError{
+						field:  fmt.Sprintf("HashPolicy[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, ConsistentHashingLbConfigValidationError{
+						field:  fmt.Sprintf("HashPolicy[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
+			if err := v.Validate(); err != nil {
+				return ConsistentHashingLbConfigValidationError{
+					field:  fmt.Sprintf("HashPolicy[%v]", idx),
+					reason: "embedded message failed validation",
+					cause:  err,
+				}
+			}
+		}
+
+	}
+
 	if len(errors) > 0 {
 		return ConsistentHashingLbConfigMultiError(errors)
 	}
@@ -624,6 +658,37 @@ func (m *LocalityLbConfig_ZoneAwareLbConfig) validate(all bool) error {
 	}
 
 	// no validation rules for FailTrafficOnPanic
+
+	// no validation rules for ForceLocalityDirectRouting
+
+	if all {
+		switch v := interface{}(m.GetForceLocalZone()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, LocalityLbConfig_ZoneAwareLbConfigValidationError{
+					field:  "ForceLocalZone",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, LocalityLbConfig_ZoneAwareLbConfigValidationError{
+					field:  "ForceLocalZone",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetForceLocalZone()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return LocalityLbConfig_ZoneAwareLbConfigValidationError{
+				field:  "ForceLocalZone",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
 
 	if len(errors) > 0 {
 		return LocalityLbConfig_ZoneAwareLbConfigMultiError(errors)
@@ -812,3 +877,145 @@ var _ interface {
 	Cause() error
 	ErrorName() string
 } = LocalityLbConfig_LocalityWeightedLbConfigValidationError{}
+
+// Validate checks the field values on
+// LocalityLbConfig_ZoneAwareLbConfig_ForceLocalZone with the rules defined in
+// the proto definition for this message. If any rules are violated, the first
+// error encountered is returned, or nil if there are no violations.
+func (m *LocalityLbConfig_ZoneAwareLbConfig_ForceLocalZone) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on
+// LocalityLbConfig_ZoneAwareLbConfig_ForceLocalZone with the rules defined in
+// the proto definition for this message. If any rules are violated, the
+// result is a list of violation errors wrapped in
+// LocalityLbConfig_ZoneAwareLbConfig_ForceLocalZoneMultiError, or nil if none found.
+func (m *LocalityLbConfig_ZoneAwareLbConfig_ForceLocalZone) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *LocalityLbConfig_ZoneAwareLbConfig_ForceLocalZone) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	if all {
+		switch v := interface{}(m.GetMinSize()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, LocalityLbConfig_ZoneAwareLbConfig_ForceLocalZoneValidationError{
+					field:  "MinSize",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, LocalityLbConfig_ZoneAwareLbConfig_ForceLocalZoneValidationError{
+					field:  "MinSize",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetMinSize()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return LocalityLbConfig_ZoneAwareLbConfig_ForceLocalZoneValidationError{
+				field:  "MinSize",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	if len(errors) > 0 {
+		return LocalityLbConfig_ZoneAwareLbConfig_ForceLocalZoneMultiError(errors)
+	}
+
+	return nil
+}
+
+// LocalityLbConfig_ZoneAwareLbConfig_ForceLocalZoneMultiError is an error
+// wrapping multiple validation errors returned by
+// LocalityLbConfig_ZoneAwareLbConfig_ForceLocalZone.ValidateAll() if the
+// designated constraints aren't met.
+type LocalityLbConfig_ZoneAwareLbConfig_ForceLocalZoneMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m LocalityLbConfig_ZoneAwareLbConfig_ForceLocalZoneMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m LocalityLbConfig_ZoneAwareLbConfig_ForceLocalZoneMultiError) AllErrors() []error { return m }
+
+// LocalityLbConfig_ZoneAwareLbConfig_ForceLocalZoneValidationError is the
+// validation error returned by
+// LocalityLbConfig_ZoneAwareLbConfig_ForceLocalZone.Validate if the
+// designated constraints aren't met.
+type LocalityLbConfig_ZoneAwareLbConfig_ForceLocalZoneValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e LocalityLbConfig_ZoneAwareLbConfig_ForceLocalZoneValidationError) Field() string {
+	return e.field
+}
+
+// Reason function returns reason value.
+func (e LocalityLbConfig_ZoneAwareLbConfig_ForceLocalZoneValidationError) Reason() string {
+	return e.reason
+}
+
+// Cause function returns cause value.
+func (e LocalityLbConfig_ZoneAwareLbConfig_ForceLocalZoneValidationError) Cause() error {
+	return e.cause
+}
+
+// Key function returns key value.
+func (e LocalityLbConfig_ZoneAwareLbConfig_ForceLocalZoneValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e LocalityLbConfig_ZoneAwareLbConfig_ForceLocalZoneValidationError) ErrorName() string {
+	return "LocalityLbConfig_ZoneAwareLbConfig_ForceLocalZoneValidationError"
+}
+
+// Error satisfies the builtin error interface
+func (e LocalityLbConfig_ZoneAwareLbConfig_ForceLocalZoneValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sLocalityLbConfig_ZoneAwareLbConfig_ForceLocalZone.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = LocalityLbConfig_ZoneAwareLbConfig_ForceLocalZoneValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = LocalityLbConfig_ZoneAwareLbConfig_ForceLocalZoneValidationError{}

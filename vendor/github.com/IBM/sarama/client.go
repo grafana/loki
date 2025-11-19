@@ -6,6 +6,7 @@ import (
 	"math"
 	"math/rand"
 	"net"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -97,13 +98,13 @@ type Client interface {
 	// in local cache. This function only works on Kafka 0.8.2 and higher.
 	RefreshCoordinator(consumerGroup string) error
 
-	// Coordinator returns the coordinating broker for a transaction id. It will
+	// TransactionCoordinator returns the coordinating broker for a transaction id. It will
 	// return a locally cached value if it's available. You can call
 	// RefreshCoordinator to update the cached value. This function only works on
 	// Kafka 0.11.0.0 and higher.
 	TransactionCoordinator(transactionID string) (*Broker, error)
 
-	// RefreshCoordinator retrieves the coordinator for a transaction id and stores it
+	// RefreshTransactionCoordinator retrieves the coordinator for a transaction id and stores it
 	// in local cache. This function only works on Kafka 0.11.0.0 and higher.
 	RefreshTransactionCoordinator(transactionID string) error
 
@@ -113,7 +114,7 @@ type Client interface {
 	// LeastLoadedBroker retrieves broker that has the least responses pending
 	LeastLoadedBroker() *Broker
 
-	// check if partition is readable
+	// PartitionNotReadable checks if partition is not readable
 	PartitionNotReadable(topic string, partition int32) bool
 
 	// Close shuts down all broker connections managed by this client. It is required
@@ -143,7 +144,7 @@ type client struct {
 	// updateMetadataMs stores the time at which metadata was lasted updated.
 	// Note: this accessed atomically so must be the first word in the struct
 	// as per golang/go#41970
-	updateMetadataMs int64
+	updateMetadataMs atomic.Int64
 
 	conf           *Config
 	closer, closed chan none // for shutting down background metadata updater
@@ -517,10 +518,8 @@ func (client *client) RefreshMetadata(topics ...string) error {
 	// Prior to 0.8.2, Kafka will throw exceptions on an empty topic and not return a proper
 	// error. This handles the case by returning an error instead of sending it
 	// off to Kafka. See: https://github.com/IBM/sarama/pull/38#issuecomment-26362310
-	for _, topic := range topics {
-		if topic == "" {
-			return ErrInvalidTopic // this is the error that 0.8.2 and later correctly return
-		}
+	if slices.Contains(topics, "") {
+		return ErrInvalidTopic // this is the error that 0.8.2 and later correctly return
 	}
 	return client.metadataRefresh(topics)
 }
@@ -867,22 +866,7 @@ func (client *client) getOffset(topic string, partitionID int32, timestamp int64
 		return -1, err
 	}
 
-	request := &OffsetRequest{}
-	if client.conf.Version.IsAtLeast(V2_1_0_0) {
-		// Version 4 adds the current leader epoch, which is used for fencing.
-		request.Version = 4
-	} else if client.conf.Version.IsAtLeast(V2_0_0_0) {
-		// Version 3 is the same as version 2.
-		request.Version = 3
-	} else if client.conf.Version.IsAtLeast(V0_11_0_0) {
-		// Version 2 adds the isolation level, which is used for transactional reads.
-		request.Version = 2
-	} else if client.conf.Version.IsAtLeast(V0_10_1_0) {
-		// Version 1 removes MaxNumOffsets.  From this version forward, only a single
-		// offset can be returned.
-		request.Version = 1
-	}
-
+	request := NewOffsetRequest(client.conf.Version)
 	request.AddBlock(topic, partitionID, timestamp, 1)
 
 	response, err := broker.GetAvailableOffsets(request)
@@ -969,7 +953,7 @@ func (client *client) tryRefreshMetadata(topics []string, attemptsRemaining int,
 				time.Sleep(backoff)
 			}
 
-			t := atomic.LoadInt64(&client.updateMetadataMs)
+			t := client.updateMetadataMs.Load()
 			if time.Since(time.UnixMilli(t)) < backoff {
 				return err
 			}
@@ -994,7 +978,7 @@ func (client *client) tryRefreshMetadata(topics []string, attemptsRemaining int,
 
 		req := NewMetadataRequest(client.conf.Version, topics)
 		req.AllowAutoTopicCreation = allowAutoTopicCreation
-		atomic.StoreInt64(&client.updateMetadataMs, time.Now().UnixMilli())
+		client.updateMetadataMs.Store(time.Now().UnixMilli())
 
 		response, err := broker.GetMetadata(req)
 		var kerror KError

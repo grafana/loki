@@ -125,14 +125,19 @@ func update(crc uint64, p []byte) uint64 {
 			p = p[align:]
 		}
 		runs := len(p) / 128
-		crc = updateAsm(crc, p[:128*runs])
+		if hasAsm512 && runs >= 8 {
+			// Use 512-bit wide instructions for >= 1KB.
+			crc = updateAsm512(crc, p[:128*runs])
+		} else {
+			crc = updateAsm(crc, p[:128*runs])
+		}
 		return update(crc, p[128*runs:])
 	}
 
 	buildSlicing8TablesOnce()
 	crc = ^crc
 	// table comparison is somewhat expensive, so avoid it for small sizes
-	for len(p) >= 64 {
+	if len(p) >= 64 {
 		var helperTable = slicing8TableNVME
 		// Update using slicing-by-8
 		for len(p) > 8 {

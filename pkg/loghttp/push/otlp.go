@@ -154,7 +154,7 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 			pushedLabels = make(model.LabelSet, 30)
 		}
 
-		shouldDiscoverServiceName := len(discoverServiceName) > 0 && !stats.IsInternalStream
+		shouldDiscoverServiceName := len(discoverServiceName) > 0
 		hasServiceName := false
 		if v, ok := resAttrs.Get(attrServiceName); ok && v.AsString() != "" {
 			hasServiceName = true
@@ -242,7 +242,7 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 		// Calculate resource attributes metadata size for stats
 		resourceAttributesAsStructuredMetadataSize := loki_util.StructuredMetadataSize(resourceAttributesAsStructuredMetadata)
 		retentionPeriodForUser := streamResolver.RetentionPeriodFor(lbs)
-		policy := streamResolver.PolicyFor(lbs)
+		policy := streamResolver.PolicyFor(ctx, lbs)
 
 		// Check if the stream has the exporter=OTLP label; set flag instead of incrementing per stream
 		if value, ok := streamLabels[model.LabelName("exporter")]; ok && value == "OTLP" {
@@ -386,7 +386,7 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 				pushRequestsByStream[entryLabelsStr] = stream
 
 				entryRetentionPeriod := streamResolver.RetentionPeriodFor(entryLbs)
-				entryPolicy := streamResolver.PolicyFor(entryLbs)
+				entryPolicy := streamResolver.PolicyFor(ctx, entryLbs)
 
 				if _, ok := stats.StructuredMetadataBytes[entryPolicy]; !ok {
 					stats.StructuredMetadataBytes[entryPolicy] = make(map[time.Duration]int64)

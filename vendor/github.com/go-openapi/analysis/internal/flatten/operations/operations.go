@@ -2,12 +2,13 @@ package operations
 
 import (
 	"path"
+	"slices"
 	"sort"
 	"strings"
 
 	"github.com/go-openapi/jsonpointer"
 	"github.com/go-openapi/spec"
-	"github.com/go-openapi/swag"
+	"github.com/go-openapi/swag/mangling"
 )
 
 // AllOpRefsByRef returns an index of sortable operations
@@ -50,12 +51,13 @@ type Provider interface {
 // GatherOperations builds a map of sorted operations from a spec
 func GatherOperations(specDoc Provider, operationIDs []string) map[string]OpRef {
 	var oprefs OpRefs
+	mangler := mangling.NewNameMangler()
 
 	for method, pathItem := range specDoc.Operations() {
 		for pth, operation := range pathItem {
 			vv := *operation
 			oprefs = append(oprefs, OpRef{
-				Key:    swag.ToGoName(strings.ToLower(method) + " " + pth),
+				Key:    mangler.ToGoName(strings.ToLower(method) + " " + pth),
 				Method: method,
 				Path:   pth,
 				ID:     vv.ID,
@@ -79,7 +81,7 @@ func GatherOperations(specDoc Provider, operationIDs []string) map[string]OpRef 
 			nm = opr.Key
 		}
 
-		if len(operationIDs) == 0 || swag.ContainsStrings(operationIDs, opr.ID) || swag.ContainsStrings(operationIDs, nm) {
+		if len(operationIDs) == 0 || slices.Contains(operationIDs, opr.ID) || slices.Contains(operationIDs, nm) {
 			opr.ID = nm
 			opr.Op.ID = nm
 			operations[nm] = opr

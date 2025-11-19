@@ -81,7 +81,6 @@ info:
     {
       "username": "string",
       "password": "string",
-      "email": "string",
       "serveraddress": "string"
     }
     ```
@@ -637,6 +636,9 @@ definitions:
           by the default (runc) runtime.
 
           This field is omitted when empty.
+
+          **Deprecated**: This field is deprecated as kernel 6.12 has deprecated `memory.kmem.tcp.limit_in_bytes` field
+          for cgroups v1. This field will be removed in a future release.
         type: "integer"
         format: "int64"
       MemoryReservation:
@@ -1531,37 +1533,6 @@ definitions:
         items:
           type: "string"
         example: ["/bin/sh", "-c"]
-    # FIXME(thaJeztah): temporarily using a full example to remove some "omitempty" fields. Remove once the fields are removed.
-    example:
-      "User": "web:web"
-      "ExposedPorts": {
-        "80/tcp": {},
-        "443/tcp": {}
-      }
-      "Env": ["PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"]
-      "Cmd": ["/bin/sh"]
-      "Healthcheck": {
-        "Test": ["string"],
-        "Interval": 0,
-        "Timeout": 0,
-        "Retries": 0,
-        "StartPeriod": 0,
-        "StartInterval": 0
-      }
-      "ArgsEscaped": true
-      "Volumes": {
-        "/app/data": {},
-        "/app/config": {}
-      }
-      "WorkingDir": "/public/"
-      "Entrypoint": []
-      "OnBuild": []
-      "Labels": {
-        "com.example.some-label": "some-value",
-        "com.example.some-other-label": "some-other-value"
-      }
-      "StopSignal": "SIGTERM"
-      "Shell": ["/bin/sh", "-c"]
 
   NetworkingConfig:
     description: |
@@ -1608,6 +1579,8 @@ definitions:
       Bridge:
         description: |
           Name of the default bridge interface when dockerd's --bridge flag is set.
+
+          Deprecated: This field is only set when the daemon is started with the --bridge flag specified.
         type: "string"
         example: "docker0"
       SandboxID:
@@ -1965,6 +1938,11 @@ definitions:
           Depending on how the image was created, this field may be empty and
           is only set for images that were built/created locally. This field
           is empty if the image was pulled from an image registry.
+
+          > **Deprecated**: This field is only set when using the deprecated
+          > legacy builder. It is included in API responses for informational
+          > purposes, but should not be depended on as it will be omitted
+          > once the legacy builder is removed.
         type: "string"
         x-nullable: false
         example: ""
@@ -1990,6 +1968,11 @@ definitions:
           The version of Docker that was used to build the image.
 
           Depending on how the image was created, this field may be empty.
+
+          > **Deprecated**: This field is only set when using the deprecated
+          > legacy builder. It is included in API responses for informational
+          > purposes, but should not be depended on as it will be omitted
+          > once the legacy builder is removed.
         type: "string"
         x-nullable: false
         example: "27.0.1"
@@ -2033,14 +2016,6 @@ definitions:
         type: "integer"
         format: "int64"
         x-nullable: false
-        example: 1239828
-      VirtualSize:
-        description: |
-          Total size of the image including all layers it is composed of.
-
-          Deprecated: this field is omitted in API v1.44, but kept for backward compatibility. Use Size instead.
-        type: "integer"
-        format: "int64"
         example: 1239828
       GraphDriver:
         $ref: "#/definitions/DriverData"
@@ -2174,14 +2149,6 @@ definitions:
         format: "int64"
         x-nullable: false
         example: 1239828
-      VirtualSize:
-        description: |-
-          Total size of the image including all layers it is composed of.
-
-          Deprecated: this field is omitted in API v1.44, but kept for backward compatibility. Use Size instead.
-        type: "integer"
-        format: "int64"
-        example: 172064416
       Labels:
         description: "User-defined key/value metadata."
         type: "object"
@@ -2234,6 +2201,10 @@ definitions:
       password:
         type: "string"
       email:
+        description: |
+          Email is an optional value associated with the username.
+
+          > **Deprecated**: This field is deprecated since docker 1.11 (API v1.23) and will be removed in a future release.
         type: "string"
       serveraddress:
         type: "string"
@@ -2682,14 +2653,6 @@ definitions:
         description: |
           Unique ID of the build cache record.
         example: "ndlpt0hhvkqcdfkputsk4cq9c"
-      Parent:
-        description: |
-          ID of the parent build cache record.
-
-          > **Deprecated**: This field is deprecated, and omitted if empty.
-        type: "string"
-        x-nullable: true
-        example: ""
       Parents:
         description: |
           List of parent build cache record IDs.
@@ -3171,10 +3134,15 @@ definitions:
           - Args
         properties:
           DockerVersion:
-            description: "Docker Version used to create the plugin"
+            description: |-
+              Docker Version used to create the plugin.
+
+              Depending on how the plugin was created, this field may be empty or omitted.
+
+              Deprecated: this field is no longer set, and will be removed in the next API version.
             type: "string"
             x-nullable: false
-            example: "17.06.0-ce"
+            x-omitempty: true
           Description:
             type: "string"
             x-nullable: false
@@ -4392,6 +4360,7 @@ definitions:
           A counter that triggers an update even if no relevant parameters have
           been changed.
         type: "integer"
+        format: "uint64"
       Runtime:
         description: |
           Runtime is the type of runtime specified for the task executor.
@@ -6375,6 +6344,8 @@ definitions:
 
           Kernel memory TCP limits are not supported when using cgroups v2, which
           does not support the corresponding `memory.kmem.tcp.limit_in_bytes` cgroup.
+
+          **Deprecated**: This field is deprecated as kernel 6.12 has deprecated kernel memory TCP accounting.
         type: "boolean"
         example: true
       CpuCfsPeriod:
@@ -6412,29 +6383,6 @@ definitions:
         description: "Indicates IPv4 forwarding is enabled."
         type: "boolean"
         example: true
-      BridgeNfIptables:
-        description: |
-          Indicates if `bridge-nf-call-iptables` is available on the host when
-          the daemon was started.
-
-          <p><br /></p>
-
-          > **Deprecated**: netfilter module is now loaded on-demand and no longer
-          > during daemon startup, making this field obsolete. This field is always
-          > `false` and will be removed in a API v1.49.
-        type: "boolean"
-        example: false
-      BridgeNfIp6tables:
-        description: |
-          Indicates if `bridge-nf-call-ip6tables` is available on the host.
-
-          <p><br /></p>
-
-          > **Deprecated**: netfilter module is now loaded on-demand, and no longer
-          > during daemon startup, making this field obsolete. This field is always
-          > `false` and will be removed in a API v1.49.
-        type: "boolean"
-        example: false
       Debug:
         description: |
           Indicates if the daemon is running in debug-mode / with debug-level

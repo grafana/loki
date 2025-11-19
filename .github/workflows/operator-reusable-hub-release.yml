@@ -1,4 +1,4 @@
-name: Reusable - Create operator hub pull request
+name: Create operator hub pull request
 
 on:
   workflow_call:

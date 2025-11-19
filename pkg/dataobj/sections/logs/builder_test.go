@@ -39,6 +39,7 @@ func Test(t *testing.T) {
 		PageSizeHint:     1024,
 		BufferSize:       256,
 		StripeMergeLimit: 2,
+		SortOrder:        logs.SortStreamASC,
 	}
 
 	tracker := logs.NewBuilder(nil, opts)
@@ -54,16 +55,16 @@ func Test(t *testing.T) {
 	// metadata should be sorted by key then value.
 	expect := []logs.Record{
 		{
-			StreamID:  2,
-			Timestamp: time.Unix(100, 0),
-			Metadata:  labels.New(labels.Label{Name: "app", Value: "bar"}, labels.Label{Name: "cluster", Value: "test"}),
-			Line:      []byte("goodbye world"),
-		},
-		{
 			StreamID:  1,
 			Timestamp: time.Unix(10, 0),
 			Metadata:  labels.EmptyLabels(),
 			Line:      []byte("hello world"),
+		},
+		{
+			StreamID:  2,
+			Timestamp: time.Unix(100, 0),
+			Metadata:  labels.New(labels.Label{Name: "app", Value: "bar"}, labels.Label{Name: "cluster", Value: "test"}),
+			Line:      []byte("goodbye world"),
 		},
 		{
 			StreamID:  2,

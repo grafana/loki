@@ -176,6 +176,7 @@ func NewIndexBuilder(
 		kgo.InstanceID(instanceID),
 		kgo.SessionTimeout(3*time.Minute),
 		kgo.ConsumerGroup(indexConsumerGroup),
+		kgo.Balancers(kgo.RoundRobinBalancer()),
 		kgo.RebalanceTimeout(5*time.Minute),
 		kgo.DisableAutoCommit(),
 		kgo.OnPartitionsRevoked(s.handlePartitionsRevoked),

@@ -72,7 +72,7 @@ func FixEmptyDescs(rs *spec.Responses) {
 // Response object if it doesn't already have one and isn't a
 // ref. No-op on nil input.
 func FixEmptyDesc(rs *spec.Response) {
-	if rs == nil || rs.Description != "" || rs.Ref.Ref.GetURL() != nil {
+	if rs == nil || rs.Description != "" || rs.Ref.GetURL() != nil {
 		return
 	}
 	rs.Description = "(empty)"
