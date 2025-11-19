@@ -27,20 +27,20 @@ func newMetrics() *metrics {
 		reg: reg,
 
 		tasksTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Name: "loki_scheduler_tasks_total",
+			Name: "loki_engine_scheduler_tasks_total",
 			Help: "Total number of tasks by state, counting transitions into state",
 		}, []string{"state"}),
 		streamsTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Name: "loki_scheduler_streams_total",
+			Name: "loki_engine_scheduler_streams_total",
 			Help: "Total number of streams by state, counting transitions into state",
 		}, []string{"state"}),
 		connsTotal: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Name: "loki_scheduler_connections_total",
+			Name: "loki_engine_scheduler_connections_total",
 			Help: "Total number of connections to the scheduler for any purpose (control or data plane)",
 		}),
 
 		taskQueueSeconds: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
-			Name: "loki_scheduler_task_queue_seconds",
+			Name: "loki_engine_scheduler_task_queue_seconds",
 			Help: "Number of seconds a task sat in a queue before being assigned to a worker thread",
 
 			NativeHistogramBucketFactor:     1.1,
@@ -49,7 +49,7 @@ func newMetrics() *metrics {
 		}),
 
 		taskExecSeconds: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
-			Name: "loki_scheduler_task_exec_seconds",
+			Name: "loki_engine_scheduler_task_exec_seconds",
 			Help: "Number of seconds a task took to complete successfully",
 
 			NativeHistogramBucketFactor:     1.1,

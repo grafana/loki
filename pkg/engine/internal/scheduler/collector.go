@@ -26,32 +26,32 @@ func newCollector(sched *Scheduler) *collector {
 		sched: sched,
 
 		tasksInflight: prometheus.NewDesc(
-			"loki_scheduler_tasks_inflight",
+			"loki_engine_scheduler_tasks_inflight",
 			"Number of in-flight tasks by state",
 			[]string{"state"},
 			nil,
 		),
 		streamsInflight: prometheus.NewDesc(
-			"loki_scheduler_streams_inflight",
+			"loki_engine_scheduler_streams_inflight",
 			"Number of in-flight streams by state",
 			[]string{"state"},
 			nil,
 		),
 
 		connections: prometheus.NewDesc(
-			"loki_scheduler_connections_active",
+			"loki_engine_scheduler_connections_active",
 			"Current number active connections to the scheduler",
 			nil,
 			nil,
 		),
 		workers: prometheus.NewDesc(
-			"loki_scheduler_workers",
+			"loki_engine_scheduler_workers",
 			"Current number of workers connected to the scheduler by state",
 			[]string{"state"},
 			nil,
 		),
 		threads: prometheus.NewDesc(
-			"loki_scheduler_threads",
+			"loki_engine_scheduler_threads",
 			"Current number of worker threads connected to the scheduler by state",
 			[]string{"state"},
 			nil,
