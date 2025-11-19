@@ -114,6 +114,8 @@ spec:
   selector:
     matchLabels:
       app: traefik
+  strategy:
+    type: Recreate
   template:
     metadata:
       labels:
