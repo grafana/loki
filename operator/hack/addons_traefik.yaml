@@ -122,7 +122,7 @@ spec:
       serviceAccountName: traefik
       containers:
         - name: traefik
-          image: traefik:v2.7.0
+          image: traefik:v2.11.31
           args:
             - --api.insecure
             - --api.dashboard
