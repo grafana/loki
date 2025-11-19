@@ -7,6 +7,7 @@ import (
 	"encoding"
 	"errors"
 	"fmt"
+	"maps"
 	"reflect"
 	"slices"
 	"strings"
@@ -167,7 +168,7 @@ func mapKeyStringToMapKeyTextUnmarshalerHookFunc() mapstructure.DecodeHookFuncTy
 		}
 
 		// Create a map with key value of to's key to bool.
-		fieldNameSet := reflect.MakeMap(reflect.MapOf(to.Key(), reflect.TypeOf(true)))
+		fieldNameSet := reflect.MakeMap(reflect.MapOf(to.Key(), reflect.TypeFor[bool]()))
 		for k := range data.(map[string]any) {
 			// Create a new value of the to's key type.
 			tKey := reflect.New(to.Key())
@@ -218,9 +219,7 @@ func unmarshalerEmbeddedStructsHookFunc() mapstructure.DecodeHookFuncValue {
 					if fromAsMap == nil && len(resultMap) > 0 {
 						fromAsMap = make(map[string]any, len(resultMap))
 					}
-					for k, v := range resultMap {
-						fromAsMap[k] = v
-					}
+					maps.Copy(fromAsMap, resultMap)
 				}
 			}
 		}
