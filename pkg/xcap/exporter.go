@@ -79,6 +79,8 @@ func createSpans(ctx context.Context, region *Region, parentToChildren map[ident
 func observationToAttribute(key StatisticKey, obs *AggregatedObservation) attribute.KeyValue {
 	attrKey := attribute.Key(key.Name)
 
+	// TODO: export _ns as duration string for readability.
+
 	switch key.DataType {
 	case DataTypeInt64:
 		if val, ok := obs.Value.(int64); ok {

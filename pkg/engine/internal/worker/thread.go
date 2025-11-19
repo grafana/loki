@@ -162,7 +162,6 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 
 	ctx, capture := xcap.NewCapture(ctx, nil)
 	pipeline := executor.Run(ctx, cfg, job.Task.Fragment, logger)
-	defer pipeline.Close()
 
 	err := job.Scheduler.SendMessageAsync(ctx, wire.TaskStatusMessage{
 		ID:     job.Task.ULID,
@@ -175,42 +174,23 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	}
 
 	var totalRows int
+	totalRows, err = t.drainPipeline(ctx, pipeline, job, logger)
+	if err != nil {
+		level.Warn(logger).Log("msg", "task failed", "err", err)
+		_ = job.Scheduler.SendMessageAsync(ctx, wire.TaskStatusMessage{
+			ID: job.Task.ULID,
+			Status: workflow.TaskStatus{
+				State: workflow.TaskStateFailed,
+				Error: err,
+			},
+		})
 
-	for {
-		rec, err := pipeline.Read(ctx)
-		if err != nil && errors.Is(err, executor.EOF) {
-			break
-		} else if err != nil {
-			level.Warn(logger).Log("msg", "task failed", "err", err)
-			_ = job.Scheduler.SendMessageAsync(ctx, wire.TaskStatusMessage{
-				ID: job.Task.ULID,
-				Status: workflow.TaskStatus{
-					State: workflow.TaskStateFailed,
-					Error: err,
-				},
-			})
-			return
-		}
-
-		totalRows += int(rec.NumRows())
-
-		// Don't bother writing empty records to our peers.
-		if rec.NumRows() == 0 {
-			continue
-		}
-
-		for _, sink := range job.Sinks {
-			err := sink.Send(ctx, rec)
-			if err != nil {
-				// If a sink doesn't accept the result, we'll continue
-				// best-effort processing our task. It's possible that one of
-				// the receiving sinks got canceled, and other sinks may still
-				// need data.
-				level.Warn(logger).Log("msg", "failed to send result", "err", err)
-				continue
-			}
-		}
+		pipeline.Close()
+		return
 	}
+
+	// Close before ending capture to ensure all observations are recorded.
+	pipeline.Close()
 	capture.End()
 
 	// Finally, close all sinks.
@@ -235,4 +215,37 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	if err != nil {
 		level.Warn(logger).Log("msg", "failed to inform scheduler of task status", "err", err)
 	}
+}
+
+func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, job *threadJob, logger log.Logger) (int, error) {
+	var totalRows int
+	for {
+		rec, err := pipeline.Read(ctx)
+		if err != nil && errors.Is(err, executor.EOF) {
+			break
+		} else if err != nil {
+			return totalRows, err
+		}
+
+		totalRows += int(rec.NumRows())
+
+		// Don't bother writing empty records to our peers.
+		if rec.NumRows() == 0 {
+			continue
+		}
+
+		for _, sink := range job.Sinks {
+			err := sink.Send(ctx, rec)
+			if err != nil {
+				// If a sink doesn't accept the result, we'll continue
+				// best-effort processing our task. It's possible that one of
+				// the receiving sinks got canceled, and other sinks may still
+				// need data.
+				level.Warn(logger).Log("msg", "failed to send result", "err", err)
+				continue
+			}
+		}
+	}
+
+	return totalRows, nil
 }

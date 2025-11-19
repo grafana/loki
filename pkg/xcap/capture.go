@@ -103,12 +103,9 @@ func (c *Capture) getAllStatistics() []Statistic {
 	return result
 }
 
-// MergeCaptures returns a new [Capture] by merging all regions from the input captures.
-//
-// If linkByAttribute is non-empty, MergeCaptures will establish parent-child relationships
-// between regions that don't already have a parent. For each region without a parent:
+// LinkRegions links root regions based on the provided link attribute and resolveParent function.
 //   - It extracts the value of the linkByAttribute (must be a string attribute)
-//   - It calls resolveParent() with that value to determine the parent's attribute value
+//   - Calls resolveParent() with that value to determine the parent's attribute value
 //   - It finds the region with the matching attribute value and sets it as the parent
 //
 // Use a linkByAttribute that is unique for each region.
