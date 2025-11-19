@@ -112,9 +112,9 @@ help)
 
 *)
     setup
+    certificates
     deps
     operator
-    certificates
     lokistack
     logger
     ;;
