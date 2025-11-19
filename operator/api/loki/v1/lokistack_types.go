@@ -1040,6 +1040,32 @@ type LimitsSpec struct {
 	Tenants map[string]PerTenantLimitsTemplateSpec `json:"tenants,omitempty"`
 }
 
+// NetworkPolicyRuleSet is the type of network policy rule set to use
+//
+// +kubebuilder:validation:Enum:=None;RestrictIngressEgress
+type NetworkPolicyRuleSet string
+
+const (
+	// The NetworkPolicyRuleSetNone rule-set contains no network policies, effectively removing all network policies created by the operator.
+	NetworkPolicyRuleSetNone NetworkPolicyRuleSet = "None"
+
+	// The NetworkPolicyRuleSetRestrictIngressEgress rule-set creates NetworkPolicies allowing the following:
+	//
+	//  - queries and log ingestion through the gateway
+	//  - access to object storage for Loki components requiring this
+	//  - communication between LokiStack components
+	NetworkPolicyRuleSetRestrictIngressEgress NetworkPolicyRuleSet = "RestrictIngressEgress"
+)
+
+// NetworkPoliciesSpec defines the configuration for NetworkPolicies.
+type NetworkPoliciesSpec struct {
+	// RuleSet determines which of the pre-defined sets of NetworkPolicy rules is used for this LokiStack.
+	//
+	// +kubebuilder:validation:Required
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Network Policy Rule-Set",xDescriptors={"urn:alm:descriptor:com.tectonic.ui:text"}
+	RuleSet NetworkPolicyRuleSet `json:"ruleSet"`
+}
+
 // RulesSpec defines the spec for the ruler component.
 type RulesSpec struct {
 	// Enabled defines a flag to enable/disable the ruler component
@@ -1155,6 +1181,15 @@ type LokiStackSpec struct {
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Tenants Configuration"
 	Tenants *TenantsSpec `json:"tenants,omitempty"`
+
+	// NetworkPolicies defines the NetworkPolicies configuration for LokiStack components.
+	// When enabled, the operator creates NetworkPolicies to control ingress/egress between
+	// Loki components and related services.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Network Policies"
+	NetworkPolicies *NetworkPoliciesSpec `json:"networkPolicies,omitempty"`
 }
 
 type ReplicationSpec struct {
@@ -1412,6 +1447,12 @@ type LokiStackStatus struct {
 	// +optional
 	// +kubebuilder:validation:Optional
 	Storage LokiStackStorageStatus `json:"storage,omitempty"`
+
+	// NetworkPolicyRuleSet indicates which NetworkPolicies ruleset was applied by the operator for this LokiStack.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	NetworkPolicyRuleSet NetworkPolicyRuleSet `json:"networkPolicyRuleSet,omitempty"`
 
 	// Conditions of the Loki deployment health.
 	//

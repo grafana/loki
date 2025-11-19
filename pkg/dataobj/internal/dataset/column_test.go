@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"math/rand/v2"
 	"strings"
 	"testing"
 
@@ -26,12 +27,22 @@ func TestColumnBuilder_ReadWrite(t *testing.T) {
 		[]byte("goodbye"),
 	}
 
+	// Randomize max number of rows per page
+	pageMaxRows := rand.IntN(len(in)/2) + 1
+	expectedPages := len(in) / pageMaxRows
+	if len(in)%pageMaxRows != 0 {
+		expectedPages++
+	}
+
+	t.Log("Max rows per page:", pageMaxRows)
+	t.Log("Expected pages:", expectedPages)
+
 	opts := BuilderOptions{
-		// Set the size to 0 so each column has exactly one value.
-		PageSizeHint: 0,
-		Type:         ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"},
-		Compression:  datasetmd.COMPRESSION_TYPE_ZSTD,
-		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
+		PageSizeHint:    0, // Set the size to 0 so each column has exactly one value.
+		PageMaxRowCount: pageMaxRows,
+		Type:            ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"},
+		Compression:     datasetmd.COMPRESSION_TYPE_ZSTD,
+		Encoding:        datasetmd.ENCODING_TYPE_PLAIN,
 	}
 	b, err := NewColumnBuilder("", opts)
 	require.NoError(t, err)
@@ -44,12 +55,12 @@ func TestColumnBuilder_ReadWrite(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"}, col.Desc.Type)
 	require.Equal(t, len(in), col.Desc.RowsCount)
-	require.Equal(t, len(in)-2, col.Desc.ValuesCount) // -2 for the empty strings
-	require.Greater(t, len(col.Pages), 1)
+	require.Equal(t, len(in), col.Desc.ValuesCount)
+	require.GreaterOrEqual(t, len(col.Pages), len(in)/pageMaxRows)
 
-	t.Log("Uncompressed size: ", col.Desc.UncompressedSize)
-	t.Log("Compressed size: ", col.Desc.CompressedSize)
-	t.Log("Pages: ", len(col.Pages))
+	t.Log("Uncompressed size:", col.Desc.UncompressedSize)
+	t.Log("Compressed size:", col.Desc.CompressedSize)
+	t.Log("Pages:", len(col.Pages))
 
 	var actual [][]byte
 
@@ -79,10 +90,6 @@ func TestColumnBuilder_ReadWrite(t *testing.T) {
 
 func TestColumnBuilder_MinMax(t *testing.T) {
 	var (
-		// We include the null string in the test to ensure that it's never
-		// considered in min/max ranges.
-		nullString = ""
-
 		aString = strings.Repeat("a", 100)
 		bString = strings.Repeat("b", 100)
 		cString = strings.Repeat("c", 100)
@@ -93,8 +100,6 @@ func TestColumnBuilder_MinMax(t *testing.T) {
 	)
 
 	in := []string{
-		nullString,
-
 		// We append strings out-of-order below to ensure that the min/max
 		// comparisons are working properly.
 		//

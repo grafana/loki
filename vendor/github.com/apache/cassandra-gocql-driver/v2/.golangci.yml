@@ -1,0 +1,34 @@
+version: "2"
+
+issues:
+  max-same-issues: 50
+
+formatters:
+  enable:
+    - goimports
+
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/gocql/gocql
+        - github.com/apache/cassandra-gocql-driver
+        - github.com/apache/cassandra-gocql-driver/v2
+    golines:
+      max-len: 120
+
+linters:
+  default: none
+  enable:
+    - nolintlint
+    - govet
+  settings:
+    govet:
+      enable-all: true
+      disable:
+        - shadow
+        - fieldalignment
+
+    nolintlint:
+      allow-no-explanation: [ golines ]
+      require-explanation: true
+      require-specific: true

@@ -169,6 +169,7 @@ func RecordRangeAndInstantQueryMetrics(
 		"total_entries", stats.Summary.TotalEntriesReturned,
 		"store_chunks_download_time", stats.ChunksDownloadTime(),
 		"queue_time", logql_stats.ConvertSecondsToNanoseconds(stats.Summary.QueueTime),
+		"querier_exec_time", logql_stats.ConvertSecondsToNanoseconds(stats.Querier.QuerierExecTime),
 		"splits", stats.Summary.Splits,
 		"shards", stats.Summary.Shards,
 		"query_referenced_structured_metadata", stats.QueryReferencedStructuredMetadata(),
@@ -202,6 +203,8 @@ func RecordRangeAndInstantQueryMetrics(
 		"ingester_chunk_matches", stats.Ingester.GetTotalChunksMatched(),
 		// Total ingester reached for this query.
 		"ingester_requests", stats.Ingester.GetTotalReached(),
+		// Total time querier spent waiting on ingester gRPC Recv().
+		"ingester_recv_wait_time", logql_stats.ConvertSecondsToNanoseconds(stats.Ingester.RecvWaitTime),
 		// Total bytes processed but was already in memory (found in the headchunk). Includes structured metadata bytes.
 		"ingester_chunk_head_bytes", util.HumanizeBytes(uint64(stats.Ingester.Store.Chunk.GetHeadChunkBytes())),
 		// Total bytes of compressed chunks (blocks) processed.
@@ -454,6 +457,7 @@ func RecordShardsQueryMetrics(
 		"target_bytes_per_shard", datasize.ByteSize(targetBytesPerShard).HumanReadable(),
 		"shards", shards,
 		"index_total_chunks", stats.Index.TotalChunks,
+		"index_total_streams", stats.Index.TotalStreams,
 		"index_post_bloom_filter_chunks", stats.Index.PostFilterChunks,
 		"index_bloom_filter_ratio", fmt.Sprintf("%.2f", bloomRatio),
 	)

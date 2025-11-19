@@ -62,7 +62,7 @@ func (cmd *dumpCommand) dumpStreamsSection(ctx context.Context, offset int, sec 
 	}
 	bold := color.New(color.Bold)
 	bold.Println("Streams section:")
-	bold.Printf("\toffset: %d, tenant: %s\n", offset, streamsSec.Tenant())
+	bold.Printf("\toffset: %d, tenant: %s\n", offset, sec.Tenant)
 
 	tmp := make([]streams.Stream, 512)
 	r := streams.NewRowReader(streamsSec)
@@ -90,7 +90,7 @@ func (cmd *dumpCommand) dumpLogsSection(ctx context.Context, offset int, sec *da
 	}
 	bold := color.New(color.Bold)
 	bold.Println("Logs section:")
-	bold.Printf("\toffset: %d, tenant: %s\n", offset, logsSec.Tenant())
+	bold.Printf("\toffset: %d, tenant: %s\n", offset, sec.Tenant)
 	tmp := make([]logs.Record, 512)
 	r := logs.NewRowReader(logsSec)
 	for {

@@ -19,7 +19,7 @@ import (
 	"strings"
 
 	"github.com/go-openapi/jsonpointer"
-	"github.com/go-openapi/swag"
+	"github.com/go-openapi/swag/jsonutils"
 )
 
 const (
@@ -74,14 +74,14 @@ func (h *Header) WithDefault(defaultValue interface{}) *Header {
 }
 
 // WithMaxLength sets a max length value
-func (h *Header) WithMaxLength(max int64) *Header {
-	h.MaxLength = &max
+func (h *Header) WithMaxLength(maximum int64) *Header {
+	h.MaxLength = &maximum
 	return h
 }
 
 // WithMinLength sets a min length value
-func (h *Header) WithMinLength(min int64) *Header {
-	h.MinLength = &min
+func (h *Header) WithMinLength(minimum int64) *Header {
+	h.MinLength = &minimum
 	return h
 }
 
@@ -98,15 +98,15 @@ func (h *Header) WithMultipleOf(number float64) *Header {
 }
 
 // WithMaximum sets a maximum number value
-func (h *Header) WithMaximum(max float64, exclusive bool) *Header {
-	h.Maximum = &max
+func (h *Header) WithMaximum(maximum float64, exclusive bool) *Header {
+	h.Maximum = &maximum
 	h.ExclusiveMaximum = exclusive
 	return h
 }
 
 // WithMinimum sets a minimum number value
-func (h *Header) WithMinimum(min float64, exclusive bool) *Header {
-	h.Minimum = &min
+func (h *Header) WithMinimum(minimum float64, exclusive bool) *Header {
+	h.Minimum = &minimum
 	h.ExclusiveMinimum = exclusive
 	return h
 }
@@ -161,7 +161,7 @@ func (h Header) MarshalJSON() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return swag.ConcatJSON(b1, b2, b3), nil
+	return jsonutils.ConcatJSON(b1, b2, b3), nil
 }
 
 // UnmarshalJSON unmarshals this header from JSON

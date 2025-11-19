@@ -112,7 +112,7 @@ func TestSampledQueryJSONMarshaling(t *testing.T) {
 	require.NoError(t, err)
 
 	// Parse the JSON to verify structure
-	var result map[string]interface{}
+	var result map[string]any
 	err = json.Unmarshal(jsonData, &result)
 	require.NoError(t, err)
 

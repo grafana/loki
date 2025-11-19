@@ -133,7 +133,7 @@ func compareEntries(t *testing.T, expected, actual []api.Entry) {
 	t.Helper()
 	require.Equal(t, len(expected), len(actual))
 	for i := range expected {
-		require.Equal(t, expected[i].Entry.Line, actual[i].Entry.Line)
+		require.Equal(t, expected[i].Line, actual[i].Line)
 		require.Equal(t, expected[i].Labels, actual[i].Labels)
 	}
 }

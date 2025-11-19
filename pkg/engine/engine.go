@@ -2,88 +2,163 @@ package engine
 
 import (
 	"context"
+	"errors"
+	"flag"
 	"fmt"
+	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/pkg/errors"
+	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
-	"github.com/grafana/loki/v3/pkg/engine/executor"
-	"github.com/grafana/loki/v3/pkg/engine/planner/logical"
-	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/logical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
-	utillog "github.com/grafana/loki/v3/pkg/util/log"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/rangeio"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
-var tracer = otel.Tracer("pkg/engine")
+var (
+	// ErrPlanningFailed is returned when query planning fails unexpectedly.
+	// ErrPlanningFailed is not used for unimplemented features, which returns
+	// [ErrNotSupported] instead.
+	ErrPlanningFailed = errors.New("query planning failed unexpectedly")
 
-var ErrNotSupported = errors.New("feature not supported in new query engine")
+	// ErrSchedulingFailed is returned when communication with the scheduler fails.
+	ErrSchedulingFailed = errors.New("failed to schedule query")
+)
 
-// New creates a new instance of the query engine that implements the [logql.Engine] interface.
-func New(opts logql.EngineOpts, cfg metastore.Config, bucket objstore.Bucket, limits logql.Limits, reg prometheus.Registerer, logger log.Logger) *QueryEngine {
-	var ms metastore.Metastore
-	if bucket != nil {
-		indexBucket := bucket
-		if cfg.IndexStoragePrefix != "" {
-			indexBucket = objstore.NewPrefixedBucket(bucket, cfg.IndexStoragePrefix)
-		}
-		ms = metastore.NewObjectMetastore(indexBucket, logger, reg)
-	}
+// ExecutorConfig configures engine execution.
+type ExecutorConfig struct {
+	DataobjStorageLag   time.Duration `yaml:"dataobj_storage_lag" category:"experimental"`
+	DataobjStorageStart flagext.Time  `yaml:"dataobj_storage_start" category:"experimental"`
 
-	if opts.BatchSize <= 0 {
-		panic(fmt.Sprintf("invalid batch size for query engine. must be greater than 0, got %d", opts.BatchSize))
-	}
+	// Batch size of the v2 execution engine.
+	BatchSize int `yaml:"batch_size" category:"experimental"`
 
-	return &QueryEngine{
-		logger:    logger,
-		metrics:   newMetrics(reg),
-		limits:    limits,
-		metastore: ms,
-		bucket:    bucket,
-		opts:      opts,
-	}
+	// MergePrefetchCount controls the number of inputs that are prefetched simultaneously by any Merge node.
+	MergePrefetchCount int `yaml:"merge_prefetch_count" category:"experimental"`
+
+	// RangeConfig determines how to optimize range reads in the V2 engine.
+	RangeConfig rangeio.Config `yaml:"range_reads" category:"experimental" doc:"description=Configures how to read byte ranges from object storage when using the V2 engine."`
 }
 
-// QueryEngine combines logical planning, physical planning, and execution to evaluate LogQL queries.
-type QueryEngine struct {
-	logger    log.Logger
-	metrics   *metrics
-	limits    logql.Limits
+func (cfg *ExecutorConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	f.IntVar(&cfg.BatchSize, prefix+"batch-size", 100, "Experimental: Batch size of the next generation query engine.")
+	f.IntVar(&cfg.MergePrefetchCount, prefix+"merge-prefetch-count", 0, "Experimental: The number of inputs that are prefetched simultaneously by any Merge node. A value of 0 means that only the currently processed input is prefetched, 1 means that only the next input is prefetched, and so on. A negative value means that all inputs are be prefetched in parallel.")
+	cfg.RangeConfig.RegisterFlags(prefix+"range-reads.", f)
+
+	f.DurationVar(&cfg.DataobjStorageLag, prefix+"dataobj-storage-lag", 1*time.Hour, "Amount of time until data objects are available.")
+	f.Var(&cfg.DataobjStorageStart, prefix+"dataobj-storage-start", "Initial date when data objects became available. Format YYYY-MM-DD. If not set, assume data objects are always available no matter how far back.")
+}
+
+func (cfg *ExecutorConfig) ValidQueryRange() (time.Time, time.Time) {
+	return time.Time(cfg.DataobjStorageStart).UTC(), time.Now().UTC().Add(-cfg.DataobjStorageLag)
+}
+
+// Params holds parameters for constructing a new [Engine].
+type Params struct {
+	Logger     log.Logger            // Logger for optional log messages.
+	Registerer prometheus.Registerer // Registerer for optional metrics.
+
+	Config          ExecutorConfig   // Config for the Engine.
+	MetastoreConfig metastore.Config // Config for the Metastore.
+
+	Scheduler *Scheduler      // Scheduler to manage the execution of tasks.
+	Bucket    objstore.Bucket // Bucket to read stored data from.
+	Limits    logql.Limits    // Limits to apply to engine queries.
+}
+
+// validate validates p and applies defaults.
+func (p *Params) validate() error {
+	if p.Logger == nil {
+		p.Logger = log.NewNopLogger()
+	}
+	if p.Registerer == nil {
+		p.Registerer = prometheus.NewRegistry()
+	}
+	if p.Scheduler == nil {
+		return errors.New("scheduler is required")
+	}
+	if p.Config.BatchSize <= 0 {
+		return fmt.Errorf("invalid batch size for query engine. must be greater than 0, got %d", p.Config.BatchSize)
+	}
+	return nil
+}
+
+// Engine defines parameters for executing queries.
+type Engine struct {
+	logger      log.Logger
+	metrics     *metrics
+	rangeConfig rangeio.Config
+
+	scheduler *Scheduler      // Scheduler to manage the execution of tasks.
+	bucket    objstore.Bucket // Bucket to read stored data from.
+	limits    logql.Limits    // Limits to apply to engine queries.
+
 	metastore metastore.Metastore
-	bucket    objstore.Bucket
-	opts      logql.EngineOpts
 }
 
-// Query implements [logql.Engine].
-func (e *QueryEngine) Query(params logql.Params) logql.Query {
-	return &queryAdapter{
-		engine: e,
-		params: params,
+// New creates a new Engine.
+func New(params Params) (*Engine, error) {
+	if err := params.validate(); err != nil {
+		return nil, err
 	}
+
+	e := &Engine{
+		logger:      params.Logger,
+		metrics:     newMetrics(params.Registerer),
+		rangeConfig: params.Config.RangeConfig,
+
+		scheduler: params.Scheduler,
+		bucket:    params.Bucket,
+		limits:    params.Limits,
+	}
+
+	if e.bucket != nil {
+		indexBucket := e.bucket
+		if params.MetastoreConfig.IndexStoragePrefix != "" {
+			indexBucket = objstore.NewPrefixedBucket(e.bucket, params.MetastoreConfig.IndexStoragePrefix)
+		}
+		e.metastore = metastore.NewObjectMetastore(indexBucket, e.logger, params.Registerer)
+	}
+
+	return e, nil
 }
 
-// Execute executes a LogQL query and returns its results or alternatively an error.
-// The execution is done in three steps:
-//  1. Create a logical plan from the provided query parameters.
-//  2. Create a physical plan from the logical plan using information from the catalog.
-//  3. Evaluate the physical plan with the executor.
-func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmodel.Result, error) {
-	ctx, span := tracer.Start(ctx, "QueryEngine.Execute", trace.WithAttributes(
+// Execute executes the given query. Execute returns [ErrNotSupported] if params
+// denotes a query that is not yet implemented in the new engine.
+func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.Result, error) {
+	// NOTE(rfratto): To simplify the API, Engine does not directly implement
+	// [logql.Engine], whose interface definition is not useful to the V2
+	// engine. As such, callers must define adapters to use Engine work as a
+	// [logql.Engine].
+	//
+	// This pain point will eventually go away as remaining usages of
+	// [logql.Engine] disappear.
+
+	ctx, _ = xcap.NewCapture(ctx, nil)
+	startTime := time.Now()
+
+	ctx, region := xcap.StartRegion(ctx, "Engine.Execute", xcap.WithRegionAttributes(
 		attribute.String("type", string(logql.GetRangeType(params))),
 		attribute.String("query", params.QueryString()),
 		attribute.Stringer("start", params.Start()),
@@ -92,196 +167,246 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 		attribute.Stringer("length", params.End().Sub(params.Start())),
 		attribute.StringSlice("shards", params.Shards()),
 	))
-	defer span.End()
+	defer region.End()
 
-	var (
-		startTime = time.Now()
+	ctx = e.buildContext(ctx)
+	logger := util_log.WithContext(ctx, e.logger)
+	logger = log.With(logger, "engine", "v2")
 
-		durLogicalPlanning  time.Duration
-		durPhysicalPlanning time.Duration
-		durExecution        time.Duration
-	)
+	level.Info(logger).Log("msg", "starting query", "query", params.QueryString(), "shard", strings.Join(params.Shards(), ","))
 
-	statsCtx, ctx := stats.NewContext(ctx)
-	metadataCtx, ctx := metadata.NewContext(ctx)
-
-	statsCtx.SetQueryUsedV2Engine()
-
-	logger := utillog.WithContext(ctx, e.logger)
-	logger = log.With(logger, "query", params.QueryString(), "shard", strings.Join(params.Shards(), ","), "engine", "v2")
-
-	// Inject the range config into the context for any calls to
-	// [rangeio.ReadRanges] to make use of.
-	ctx = rangeio.WithConfig(ctx, &e.opts.RangeConfig)
-
-	logicalPlan, err := func() (*logical.Plan, error) {
-		_, span := tracer.Start(ctx, "QueryEngine.Execute.logicalPlan")
-		defer span.End()
-
-		timer := prometheus.NewTimer(e.metrics.logicalPlanning)
-		logicalPlan, err := logical.BuildPlan(params)
-		if err != nil {
-			level.Warn(logger).Log("msg", "failed to create logical plan", "err", err)
-			e.metrics.subqueries.WithLabelValues(statusNotImplemented).Inc()
-			span.RecordError(err)
-			span.SetStatus(codes.Error, "failed to create logical plan")
-			return nil, ErrNotSupported
-		}
-
-		durLogicalPlanning = timer.ObserveDuration()
-		level.Info(logger).Log(
-			"msg", "finished logical planning",
-			"plan", logicalPlan.String(),
-			"duration", durLogicalPlanning.Seconds(),
-		)
-		span.SetStatus(codes.Ok, "")
-		return logicalPlan, nil
-	}()
+	logicalPlan, durLogicalPlanning, err := e.buildLogicalPlan(ctx, logger, params)
 	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, "failed to create logical plan")
-		return logqlmodel.Result{}, err
+		e.metrics.subqueries.WithLabelValues(statusNotImplemented).Inc()
+		region.SetStatus(codes.Error, "failed to create logical plan")
+		return logqlmodel.Result{}, ErrNotSupported
 	}
 
-	physicalPlan, err := func() (*physical.Plan, error) {
-		ctx, span := tracer.Start(ctx, "QueryEngine.Execute.physicalPlan")
-		defer span.End()
-
-		timer := prometheus.NewTimer(e.metrics.physicalPlanning)
-
-		catalog := physical.NewMetastoreCatalog(ctx, e.metastore)
-		planner := physical.NewPlanner(physical.NewContext(params.Start(), params.End()), catalog)
-		plan, err := planner.Build(logicalPlan)
-		if err != nil {
-			level.Warn(logger).Log("msg", "failed to create physical plan", "err", err)
-			e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
-			span.RecordError(err)
-			span.SetStatus(codes.Error, "failed to create physical plan")
-			return nil, ErrNotSupported
-		}
-
-		plan, err = planner.Optimize(plan)
-		if err != nil {
-			level.Warn(logger).Log("msg", "failed to optimize physical plan", "err", err)
-			e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
-			span.RecordError(err)
-			span.SetStatus(codes.Error, "failed to optimize physical plan")
-			return nil, ErrNotSupported
-		}
-
-		durPhysicalPlanning = timer.ObserveDuration()
-		level.Info(logger).Log(
-			"msg", "finished physical planning",
-			"plan", physical.PrintAsTree(plan),
-			"duration", durPhysicalPlanning.Seconds(),
-		)
-		span.SetStatus(codes.Ok, "")
-		return plan, nil
-	}()
+	physicalPlan, durPhysicalPlanning, err := e.buildPhysicalPlan(ctx, logger, params, logicalPlan)
 	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, "failed to create physical plan")
-		return logqlmodel.Result{}, err
+		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
+		region.SetStatus(codes.Error, "failed to create physical plan")
+		return logqlmodel.Result{}, ErrPlanningFailed
 	}
 
-	builder, err := func() (ResultBuilder, error) {
-		ctx, span := tracer.Start(ctx, "QueryEngine.Execute.Process")
-		defer span.End()
-
-		level.Info(logger).Log("msg", "start executing query with new engine")
-
-		timer := prometheus.NewTimer(e.metrics.execution)
-
-		cfg := executor.Config{
-			BatchSize:                int64(e.opts.BatchSize),
-			MergePrefetchCount:       e.opts.MergePrefetchCount,
-			Bucket:                   e.bucket,
-			DataobjScanPageCacheSize: int64(e.opts.DataobjScanPageCacheSize),
-		}
-		pipeline := executor.Run(ctx, cfg, physicalPlan, logger)
-		defer pipeline.Close()
-
-		var builder ResultBuilder
-		switch params.GetExpression().(type) {
-		case syntax.LogSelectorExpr:
-			builder = newStreamsResultBuilder()
-		case syntax.SampleExpr:
-			if params.Step() > 0 {
-				builder = newMatrixResultBuilder()
-			} else {
-				builder = newVectorResultBuilder()
-			}
-		default:
-			// should never happen as we already check the expression type in the logical planner
-			panic(fmt.Sprintf("failed to execute. Invalid exprression type (%T)", params.GetExpression()))
-		}
-
-		if err := collectResult(ctx, pipeline, builder); err != nil {
-			e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
-			span.RecordError(err)
-			span.SetStatus(codes.Error, "failed to build results")
-			return nil, err
-		}
-
-		durExecution = timer.ObserveDuration()
-		e.metrics.subqueries.WithLabelValues(statusSuccess).Inc()
-		span.SetStatus(codes.Ok, "")
-		return builder, nil
-	}()
+	wf, durWorkflowPlanning, err := e.buildWorkflow(ctx, logger, physicalPlan)
 	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, "failed to build results")
+		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
+		region.SetStatus(codes.Error, "failed to create execution plan")
+		return logqlmodel.Result{}, ErrPlanningFailed
+	}
+	defer wf.Close()
+
+	pipeline, err := wf.Run(ctx)
+	if err != nil {
+		level.Error(logger).Log("msg", "failed to execute query", "err", err)
+
+		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
+		region.SetStatus(codes.Error, "failed to execute query")
+		return logqlmodel.Result{}, ErrSchedulingFailed
+	}
+	defer pipeline.Close()
+
+	builder, durExecution, err := e.collectResult(ctx, logger, params, pipeline)
+	if err != nil {
+		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
+		region.SetStatus(codes.Error, "error during query execution")
 		return logqlmodel.Result{}, err
 	}
 
 	durFull := time.Since(startTime)
-	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
-	stats := statsCtx.Result(durFull, queueTime, builder.Len())
-
-	level.Debug(logger).Log(
-		"msg", "finished executing with new engine",
+	level.Info(logger).Log(
+		"msg", "finished executing",
 		"duration_logical_planning", durLogicalPlanning,
 		"duration_physical_planning", durPhysicalPlanning,
+		"duration_workflow_planning", durWorkflowPlanning,
 		"duration_execution", durExecution,
 		"duration_full", durFull,
 	)
 
-	metadataCtx.AddWarning("Query was executed using the new experimental query engine and dataobj storage.")
-	span.SetStatus(codes.Ok, "")
-	return builder.Build(stats, metadataCtx), nil
+	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
+	statsCtx := stats.FromContext(ctx)
+	statsCtx.AddQuerierExecTime(durFull)
+	stats := statsCtx.Result(durFull, queueTime, builder.Len())
+	md := metadata.FromContext(ctx)
+
+	region.SetStatus(codes.Ok, "")
+	result := builder.Build(stats, md)
+
+	logql.RecordRangeAndInstantQueryMetrics(ctx, logger, params, strconv.Itoa(http.StatusOK), stats, result.Data)
+	return result, nil
 }
 
-func collectResult(ctx context.Context, pipeline executor.Pipeline, builder ResultBuilder) error {
+// buildContext initializes a request-scoped context prior to execution.
+func (e *Engine) buildContext(ctx context.Context) context.Context {
+	statsContext, ctx := stats.NewContext(ctx)
+	metadataContext, ctx := metadata.NewContext(ctx)
+
+	// Inject the range config into the context for any calls to
+	// [rangeio.ReadRanges] to make use of.
+	ctx = rangeio.WithConfig(ctx, &e.rangeConfig)
+
+	statsContext.SetQueryUsedV2Engine()
+	metadataContext.AddWarning("Query was executed using the new experimental query engine and dataobj storage.")
+	return ctx
+}
+
+// buildLogicalPlan builds a logical plan from the given params.
+func (e *Engine) buildLogicalPlan(ctx context.Context, logger log.Logger, params logql.Params) (*logical.Plan, time.Duration, error) {
+	span := trace.SpanFromContext(ctx)
+	timer := prometheus.NewTimer(e.metrics.logicalPlanning)
+
+	logicalPlan, err := logical.BuildPlan(params)
+	if err != nil {
+		level.Warn(logger).Log("msg", "failed to create logical plan", "err", err)
+		span.RecordError(err)
+		return nil, 0, ErrNotSupported
+	}
+
+	duration := timer.ObserveDuration()
+	level.Info(logger).Log(
+		"msg", "finished logical planning",
+		"plan", logicalPlan.String(),
+		"duration", duration.String(),
+	)
+
+	span.AddEvent("finished logical planning", trace.WithAttributes(
+		attribute.Stringer("plan", logicalPlan),
+		attribute.Stringer("duration", duration),
+	))
+	return logicalPlan, duration, nil
+}
+
+// buildPhysicalPlan builds a physical plan from the given logical plan.
+func (e *Engine) buildPhysicalPlan(ctx context.Context, logger log.Logger, params logql.Params, logicalPlan *logical.Plan) (*physical.Plan, time.Duration, error) {
+	span := trace.SpanFromContext(ctx)
+	timer := prometheus.NewTimer(e.metrics.physicalPlanning)
+
+	// TODO(rfratto): To improve the performance of the physical planner, we
+	// may want to parallelize metastore lookups across scheduled tasks as well.
+	catalog := physical.NewMetastoreCatalog(ctx, e.metastore)
+
+	// TODO(rfratto): It feels strange that we need to past the start/end time
+	// to the physical planner. Isn't it already represented by the logical
+	// plan?
+	planner := physical.NewPlanner(physical.NewContext(params.Start(), params.End()), catalog)
+	physicalPlan, err := planner.Build(logicalPlan)
+	if err != nil {
+		level.Warn(logger).Log("msg", "failed to create physical plan", "err", err)
+		span.RecordError(err)
+		return nil, 0, ErrNotSupported
+	}
+
+	physicalPlan, err = planner.Optimize(physicalPlan)
+	if err != nil {
+		level.Warn(logger).Log("msg", "failed to optimize physical plan", "err", err)
+		span.RecordError(err)
+		return nil, 0, ErrNotSupported
+	}
+
+	duration := timer.ObserveDuration()
+	level.Info(logger).Log(
+		"msg", "finished physical planning",
+		"plan", physical.PrintAsTree(physicalPlan),
+		"duration", duration.String(),
+	)
+
+	span.AddEvent("finished physical planning", trace.WithAttributes(
+		attribute.String("plan", physical.PrintAsTree(physicalPlan)),
+		attribute.Stringer("duration", duration),
+	))
+	return physicalPlan, duration, nil
+}
+
+// buildWorkflow builds a workflow from the given physical plan.
+func (e *Engine) buildWorkflow(ctx context.Context, logger log.Logger, physicalPlan *physical.Plan) (*workflow.Workflow, time.Duration, error) {
+	tenantID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, 0, fmt.Errorf("extracting tenant ID: %w", err)
+	}
+
+	span := trace.SpanFromContext(ctx)
+	timer := prometheus.NewTimer(e.metrics.workflowPlanning)
+
+	opts := workflow.Options{
+		MaxRunningScanTasks:  e.limits.MaxScanTaskParallelism(tenantID),
+		MaxRunningOtherTasks: 0,
+
+		DebugTasks:   e.limits.DebugEngineTasks(tenantID),
+		DebugStreams: e.limits.DebugEngineStreams(tenantID),
+	}
+	wf, err := workflow.New(opts, logger, tenantID, e.scheduler.inner, physicalPlan)
+	if err != nil {
+		level.Warn(logger).Log("msg", "failed to create workflow", "err", err)
+		span.RecordError(err)
+		return nil, 0, ErrNotSupported
+	}
+
+	duration := timer.ObserveDuration()
+
+	// The execution plan can be way more verbose than the physical plan, so we
+	// only log it at debug level.
+	level.Debug(logger).Log(
+		"msg", "generated execution plan",
+		"plan", workflow.Sprint(wf),
+	)
+	level.Info(logger).Log(
+		"msg", "finished execution planning",
+		"duration", duration.String(),
+	)
+
+	span.AddEvent("finished execution planning", trace.WithAttributes(
+		attribute.String("plan", workflow.Sprint(wf)),
+		attribute.Stringer("duration", duration),
+	))
+	return wf, duration, nil
+}
+
+// collectResult processes the results of the execution plan.
+func (e *Engine) collectResult(ctx context.Context, logger log.Logger, params logql.Params, pipeline executor.Pipeline) (ResultBuilder, time.Duration, error) {
+	span := trace.SpanFromContext(ctx)
+	timer := prometheus.NewTimer(e.metrics.execution)
+
+	var builder ResultBuilder
+	switch params.GetExpression().(type) {
+	case syntax.LogSelectorExpr:
+		builder = newStreamsResultBuilder(params.Direction())
+	case syntax.SampleExpr:
+		if params.Step() > 0 {
+			builder = newMatrixResultBuilder()
+		} else {
+			builder = newVectorResultBuilder()
+		}
+	default:
+		// This should never trigger since we already checked the expression
+		// type in the logical planner.
+		panic(fmt.Sprintf("invalid expression type %T", params.GetExpression()))
+	}
+
 	for {
-		if err := pipeline.Read(ctx); err != nil {
+		rec, err := pipeline.Read(ctx)
+		if err != nil {
 			if errors.Is(err, executor.EOF) {
 				break
 			}
-			return err
-		}
 
-		rec, err := pipeline.Value()
-		if err != nil {
-			return err
+			level.Warn(logger).Log(
+				"msg", "error during execution",
+				"err", err,
+			)
+			return builder, time.Duration(0), err
 		}
 
 		builder.CollectRecord(rec)
 		rec.Release()
 	}
-	return nil
+
+	duration := timer.ObserveDuration()
+
+	// We don't log an event here because a final event will be logged by the
+	// caller noting that execution completed.
+	span.AddEvent("finished execution", trace.WithAttributes(
+		attribute.Stringer("duration", duration),
+	))
+	return builder, duration, nil
 }
-
-var _ logql.Engine = (*QueryEngine)(nil)
-
-// queryAdapter dispatches query execution to the wrapped engine.
-type queryAdapter struct {
-	params logql.Params
-	engine *QueryEngine
-}
-
-// Exec implements [logql.Query].
-func (q *queryAdapter) Exec(ctx context.Context) (logqlmodel.Result, error) {
-	return q.engine.Execute(ctx, q.params)
-}
-
-var _ logql.Query = (*queryAdapter)(nil)

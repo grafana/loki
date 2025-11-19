@@ -11,7 +11,6 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/objstore/providers/filesystem"
 
@@ -20,10 +19,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/index"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
-	"github.com/grafana/loki/v3/pkg/dataobj/querier"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logql"
 )
 
 // DataObjStore implements Store using the dataobj format
@@ -45,11 +42,10 @@ type DataObjStore struct {
 }
 
 // NewDataObjStore creates a new DataObjStore
-func NewDataObjStore(path, tenant string) (*DataObjStore, error) {
-	// NOTE(rfratto): DataObjStore should use a dataobj subdirectory to imitate
-	// production setup: a dataobj subdirectory in the location used for chunks.
-	basePath := filepath.Join(path, "dataobj")
+func NewDataObjStore(dir, tenant string) (*DataObjStore, error) {
+	storageDir := filepath.Join(dir, storageDir)
 
+	basePath := filepath.Join(storageDir, "dataobj")
 	objectsPath := filepath.Join(basePath, "objects")
 	if err := os.MkdirAll(objectsPath, 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create object path: %w", err)
@@ -78,7 +74,8 @@ func NewDataObjStore(path, tenant string) (*DataObjStore, error) {
 	}
 
 	builder, err := logsobj.NewBuilder(logsobj.BuilderConfig{
-		TargetPageSize:    2 * 1024 * 1024,   // 2MB
+		TargetPageSize:    2 * 1024 * 1024, // 2MB
+		MaxPageRows:       1000,
 		TargetObjectSize:  128 * 1024 * 1024, // 128MB
 		TargetSectionSize: 16 * 1024 * 1024,  // 16MB
 		BufferSize:        16 * 1024 * 1024,  // 16MB
@@ -127,10 +124,6 @@ func (s *DataObjStore) Write(_ context.Context, streams []logproto.Stream) error
 		}
 	}
 	return nil
-}
-
-func (s *DataObjStore) Querier() (logql.Querier, error) {
-	return querier.NewStore(s.bucket, s.logger, metastore.NewObjectMetastore(s.bucket, s.logger, prometheus.DefaultRegisterer)), nil
 }
 
 func (s *DataObjStore) flush() error {

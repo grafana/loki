@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bits-and-blooms/bloom/v3"
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
@@ -16,7 +17,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -86,37 +86,6 @@ func (b *testDataBuilder) addStreamAndFlush(tenant string, stream logproto.Strea
 	require.NoError(b.t, err)
 
 	require.NoError(b.t, b.meta.WriteEntry(context.Background(), path, timeRanges))
-}
-
-func TestStreamIDs(t *testing.T) {
-	t.Run("not matching streams", func(t *testing.T) {
-		queryMetastore(t, tenantID, func(ctx context.Context, start, end time.Time, mstore Metastore) {
-			matchers := []*labels.Matcher{
-				labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"),
-			}
-			paths, streamIDs, sections, err := mstore.StreamIDs(ctx, start, end, matchers...)
-			require.NoError(t, err)
-			require.Len(t, paths, 0)
-			require.Len(t, streamIDs, 0)
-			require.Len(t, sections, 0)
-		})
-	})
-
-	t.Run("matching streams", func(t *testing.T) {
-		queryMetastore(t, tenantID, func(ctx context.Context, start, end time.Time, mstore Metastore) {
-			matchers := []*labels.Matcher{
-				labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),
-				labels.MustNewMatcher(labels.MatchEqual, "env", "prod"),
-			}
-			paths, streamIDs, sections, err := mstore.StreamIDs(ctx, start, end, matchers...)
-			require.NoError(t, err)
-			require.Len(t, paths, 1)
-			require.Len(t, streamIDs, 1)
-			require.Len(t, sections, 1)
-			require.Equal(t, []int64{1}, streamIDs[0])
-			require.Equal(t, 1, sections[0])
-		})
-	})
 }
 
 func TestLabels(t *testing.T) {
@@ -268,10 +237,164 @@ func TestSectionsForStreamMatchers(t *testing.T) {
 			UncompressedSize: 0,
 		})
 		require.NoError(t, err)
-		err = builder.ObserveLogLine(tenantID, "test-path", 0, newIdx, int64(i), ts.Entries[0].Timestamp, int64(len(ts.Entries[0].Line)))
+		err = builder.ObserveLogLine(tenantID, "test-path", 1, newIdx, int64(i), ts.Entries[0].Timestamp, int64(len(ts.Entries[0].Line)))
 		require.NoError(t, err)
 	}
 
+	// Add one more stream for a different tenant to ensure it is not resolved.
+	altTenant := "tenant-alt"
+	altTenantSection := int64(99) // Emulate a different section from a log object that doesn't collide with the main tenant's section
+	newIdx, err := builder.AppendStream(altTenant, streams.Stream{
+		ID:               1,
+		Labels:           labels.New(labels.Label{Name: "app", Value: "foo"}, labels.Label{Name: "tenant", Value: altTenant}),
+		MinTimestamp:     now.Add(-3 * time.Hour),
+		MaxTimestamp:     now.Add(-2 * time.Hour),
+		UncompressedSize: 5,
+	})
+	require.NoError(t, err)
+	err = builder.ObserveLogLine(altTenant, "test-path", altTenantSection, newIdx, 1, now.Add(-2*time.Hour), 5)
+	require.NoError(t, err)
+
+	// Build and store the object
+	timeRanges := builder.TimeRanges()
+	require.Len(t, timeRanges, 2)
+
+	obj, closer, err := builder.Flush()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = closer.Close() })
+
+	bucket := objstore.NewInMemBucket()
+
+	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, log.NewNopLogger())
+	require.NoError(t, uploader.RegisterMetrics(prometheus.NewPedanticRegistry()))
+
+	path, err := uploader.Upload(context.Background(), obj)
+	require.NoError(t, err)
+
+	metastoreTocWriter := NewTableOfContentsWriter(bucket, log.NewNopLogger())
+	err = metastoreTocWriter.WriteEntry(context.Background(), path, timeRanges)
+	require.NoError(t, err)
+
+	mstore := NewObjectMetastore(bucket, log.NewNopLogger(), prometheus.NewPedanticRegistry())
+
+	tests := []struct {
+		name       string
+		matchers   []*labels.Matcher
+		predicates []*labels.Matcher
+		start, end time.Time
+		wantCount  int
+	}{
+		{
+			name:       "no matchers returns no sections",
+			matchers:   nil,
+			predicates: nil,
+			start:      now.Add(-time.Hour),
+			end:        now.Add(time.Hour),
+			wantCount:  0,
+		},
+		{
+			name: "single matcher returns matching sections",
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			predicates: nil,
+			start:      now.Add(-time.Hour),
+			end:        now.Add(time.Hour),
+			wantCount:  1,
+		},
+		{
+			name: "non-existent matcher",
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, "app", "doesnotexist"),
+			},
+			predicates: nil,
+			start:      now.Add(-time.Hour),
+			end:        now.Add(time.Hour),
+			wantCount:  0,
+		},
+		{
+			name: "matching selector with unsupported predicate type",
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			predicates: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchRegexp, "bar", "something"),
+			},
+			start:     now.Add(-time.Hour),
+			end:       now.Add(time.Hour),
+			wantCount: 1,
+		},
+		{
+			name: "stream matcher with not matching predicate returns no matching sections",
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			predicates: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, "bar", "something"),
+			},
+			start:     now.Add(-time.Hour),
+			end:       now.Add(time.Hour),
+			wantCount: 0,
+		},
+		{
+			name: "matcher returns no matching sections if time range is out of bounds",
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			predicates: nil,
+			start:      now.Add(-3 * time.Hour),
+			end:        now.Add(-2 * time.Hour),
+			wantCount:  0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sections, err := mstore.Sections(ctx, tt.start, tt.end, tt.matchers, tt.predicates)
+			require.NoError(t, err)
+			require.Len(t, sections, tt.wantCount)
+			for _, section := range sections {
+				require.NotEqual(t, section.SectionIdx, altTenantSection)
+			}
+		})
+	}
+}
+
+func TestSectionsForPredicateMatchers(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), tenantID)
+
+	builder, err := indexobj.NewBuilder(indexobj.BuilderConfig{
+		TargetPageSize:          1024 * 1024,
+		TargetObjectSize:        10 * 1024 * 1024,
+		TargetSectionSize:       128,
+		BufferSize:              1024 * 1024,
+		SectionStripeMergeLimit: 2,
+	}, nil)
+	require.NoError(t, err)
+
+	_, err = builder.AppendStream(tenantID, streams.Stream{
+		ID:               1,
+		Labels:           labels.New(labels.Label{Name: "app", Value: "foo"}),
+		MinTimestamp:     now.Add(-3 * time.Hour),
+		MaxTimestamp:     now.Add(-2 * time.Hour),
+		UncompressedSize: 5,
+	})
+	require.NoError(t, err)
+	err = builder.ObserveLogLine(tenantID, "test-path", 0, 1, 1, now.Add(-3*time.Hour), 5)
+	require.NoError(t, err)
+	err = builder.ObserveLogLine(tenantID, "test-path", 0, 1, 1, now.Add(-2*time.Hour), 0)
+	require.NoError(t, err)
+
+	traceIDBloom := bloom.NewWithEstimates(10, 0.01)
+	traceIDBloom.AddString("abcd")
+	traceIDBloom.AddString("1234")
+	traceIDBloomBytes, err := traceIDBloom.MarshalBinary()
+	require.NoError(t, err)
+
+	err = builder.AppendColumnIndex(tenantID, "test-path", 0, "traceID", 0, traceIDBloomBytes)
+	require.NoError(t, err)
+
+	// Build and store the object
 	timeRanges := builder.TimeRanges()
 	require.Len(t, timeRanges, 1)
 
@@ -288,61 +411,67 @@ func TestSectionsForStreamMatchers(t *testing.T) {
 	require.NoError(t, err)
 
 	metastoreTocWriter := NewTableOfContentsWriter(bucket, log.NewNopLogger())
-
-	err = metastoreTocWriter.WriteEntry(context.Background(), path, []multitenancy.TimeRange{
-		{
-			Tenant:  tenantID,
-			MinTime: timeRanges[0].MinTime,
-			MaxTime: timeRanges[0].MaxTime,
-		},
-	})
+	err = metastoreTocWriter.WriteEntry(context.Background(), path, timeRanges)
 	require.NoError(t, err)
 
 	mstore := NewObjectMetastore(bucket, log.NewNopLogger(), prometheus.NewPedanticRegistry())
 
 	tests := []struct {
 		name       string
-		matchers   []*labels.Matcher
 		predicates []*labels.Matcher
 		wantCount  int
 	}{
 		{
-			name:       "no matchers returns no sections",
-			matchers:   nil,
-			predicates: nil,
-			wantCount:  0,
-		},
-		{
-			name: "single matcher returns matching sections",
-			matchers: []*labels.Matcher{
-				labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),
-			},
+			name:       "no predicates returns all sections",
 			predicates: nil,
 			wantCount:  1,
 		},
 		{
-			name: "non-existent matcher",
-			matchers: []*labels.Matcher{
-				labels.MustNewMatcher(labels.MatchEqual, "app", "doesnotexist"),
-			},
-			predicates: nil,
-			wantCount:  0,
-		},
-		{
-			name: "matching selector with unsupported predicate type",
-			matchers: []*labels.Matcher{
-				labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),
-			},
+			name: "single predicate returns matching sections",
 			predicates: []*labels.Matcher{
-				labels.MustNewMatcher(labels.MatchRegexp, "bar", "something"),
+				labels.MustNewMatcher(labels.MatchEqual, "traceID", "abcd"),
 			},
 			wantCount: 1,
 		},
+		{
+			name: "multiple valid predicates returns matching sections",
+			predicates: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, "traceID", "abcd"),
+				labels.MustNewMatcher(labels.MatchEqual, "traceID", "1234"),
+			},
+			wantCount: 1,
+		},
+		{
+			name: "missing predicates returns no sections",
+			predicates: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, "traceID", "cdef"),
+			},
+			wantCount: 0,
+		},
+		{
+			name: "partial missing predicates returns no sections",
+			predicates: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, "traceID", "abcd"),
+				labels.MustNewMatcher(labels.MatchEqual, "traceID", "cdef"),
+			},
+			wantCount: 0,
+		},
+		{
+			name: "multiple missing predicates returns no sections",
+			predicates: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, "traceID", "5678"),
+				labels.MustNewMatcher(labels.MatchEqual, "traceID", "cdef"),
+			},
+			wantCount: 0,
+		},
 	}
 
+	matchers := []*labels.Matcher{
+		labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),
+	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			sections, err := mstore.Sections(ctx, now.Add(-time.Hour), now.Add(time.Hour), tt.matchers, tt.predicates)
+			sections, err := mstore.Sections(ctx, now.Add(-3*time.Hour), now.Add(time.Hour), matchers, tt.predicates)
 			require.NoError(t, err)
 			require.Len(t, sections, tt.wantCount)
 		})

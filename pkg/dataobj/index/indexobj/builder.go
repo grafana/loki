@@ -35,6 +35,11 @@ type BuilderConfig struct {
 	// object. TargetPageSize accounts for encoding, but not for compression.
 	TargetPageSize flagext.Bytes `yaml:"target_page_size"`
 
+	// MaxPageRows configures a maximum row count for encoded pages within the data
+	// object. If set to 0 or negative number, the page size will not be limited by a
+	// row count.
+	MaxPageRows int `yaml:"max_page_rows"`
+
 	// TODO(rfratto): We need an additional parameter for TargetMetadataSize, as
 	// metadata payloads can't be split and must be downloaded in a single
 	// request.
@@ -69,8 +74,9 @@ func (cfg *BuilderConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet
 	_ = cfg.BufferSize.Set("2MB")
 	_ = cfg.TargetSectionSize.Set("16MB")
 
-	f.Var(&cfg.TargetPageSize, prefix+"target-page-size", "The size of the target page to use for the data object builder.")
-	f.Var(&cfg.TargetObjectSize, prefix+"target-object-size", "The size of the target object to use for the data object builder.")
+	f.Var(&cfg.TargetPageSize, prefix+"target-page-size", "The size of the target page to use for the index object builder.")
+	f.IntVar(&cfg.MaxPageRows, prefix+"max-page-rows", 0, "The maximum row count for pages to use for the index builder. A value of 0 means no limit.")
+	f.Var(&cfg.TargetObjectSize, prefix+"target-object-size", "The size of the target object to use for the index object builder.")
 	f.Var(&cfg.TargetSectionSize, prefix+"target-section-size", "Configures a maximum size for sections, for sections that support it.")
 	f.Var(&cfg.BufferSize, prefix+"buffer-size", "The size of the buffer to use for sorting logs.")
 	f.IntVar(&cfg.SectionStripeMergeLimit, prefix+"section-stripe-merge-limit", 2, "The maximum number of stripes to merge into a section at once. Must be greater than 1.")
@@ -184,7 +190,7 @@ func (b *Builder) AppendIndexPointer(tenantID string, path string, startTs time.
 
 	tenantIndexPointers, ok := b.indexPointers[tenantID]
 	if !ok {
-		tenantIndexPointers = indexpointers.NewBuilder(b.metrics.indexPointers, int(b.cfg.TargetPageSize))
+		tenantIndexPointers = indexpointers.NewBuilder(b.metrics.indexPointers, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows)
 		tenantIndexPointers.SetTenant(tenantID)
 		b.indexPointers[tenantID] = tenantIndexPointers
 	}
@@ -218,7 +224,7 @@ func (b *Builder) AppendStream(tenantID string, stream streams.Stream) (int64, e
 
 	tenantStreams, ok := b.streams[tenantID]
 	if !ok {
-		tenantStreams = streams.NewBuilder(b.metrics.streams, int(b.cfg.TargetPageSize))
+		tenantStreams = streams.NewBuilder(b.metrics.streams, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows)
 		tenantStreams.SetTenant(tenantID)
 		b.streams[tenantID] = tenantStreams
 	}
@@ -226,15 +232,6 @@ func (b *Builder) AppendStream(tenantID string, stream streams.Stream) (int64, e
 	// Once to capture the min timestamp and uncompressed size, again to record the max timestamp.
 	streamID := tenantStreams.Record(stream.Labels, stream.MinTimestamp, stream.UncompressedSize)
 	_ = tenantStreams.Record(stream.Labels, stream.MaxTimestamp, 0)
-
-	// If our logs section has gotten big enough, we want to flush it to the
-	// encoder and start a new section.
-	if tenantStreams.EstimatedSize() > int(b.cfg.TargetSectionSize) {
-		if err := b.builder.Append(tenantStreams); err != nil {
-			b.metrics.appendFailures.Inc()
-			return 0, err
-		}
-	}
 
 	b.currentSizeEstimate = b.estimatedSize()
 	b.state = builderStateDirty
@@ -284,19 +281,11 @@ func (b *Builder) ObserveLogLine(tenantID string, path string, section int64, st
 
 	tenantPointers, ok := b.pointers[tenantID]
 	if !ok {
-		tenantPointers = pointers.NewBuilder(b.metrics.pointers, int(b.cfg.TargetPageSize))
+		tenantPointers = pointers.NewBuilder(b.metrics.pointers, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows)
 		tenantPointers.SetTenant(tenantID)
 		b.pointers[tenantID] = tenantPointers
 	}
 	tenantPointers.ObserveStream(path, section, streamIDInObject, streamIDInIndex, ts, uncompressedSize)
-
-	// If our logs section has gotten big enough, we want to flush it to the
-	// encoder and start a new section.
-	if tenantPointers.EstimatedSize() > int(b.cfg.TargetSectionSize) {
-		if err := b.builder.Append(tenantPointers); err != nil {
-			return err
-		}
-	}
 
 	b.currentSizeEstimate = b.estimatedSize()
 	b.state = builderStateDirty
@@ -328,7 +317,7 @@ func (b *Builder) AppendColumnIndex(tenantID string, path string, section int64,
 
 	tenantPointers, ok := b.pointers[tenantID]
 	if !ok {
-		tenantPointers = pointers.NewBuilder(b.metrics.pointers, int(b.cfg.TargetPageSize))
+		tenantPointers = pointers.NewBuilder(b.metrics.pointers, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows)
 		tenantPointers.SetTenant(tenantID)
 		b.pointers[tenantID] = tenantPointers
 	}
@@ -394,13 +383,19 @@ func (b *Builder) Flush() (*dataobj.Object, io.Closer, error) {
 	var flushErrors []error
 
 	for _, tenantStreams := range b.streams {
-		flushErrors = append(flushErrors, b.builder.Append(tenantStreams))
+		if tenantStreams.EstimatedSize() > 0 {
+			flushErrors = append(flushErrors, b.builder.Append(tenantStreams))
+		}
 	}
 	for _, tenantPointers := range b.pointers {
-		flushErrors = append(flushErrors, b.builder.Append(tenantPointers))
+		if tenantPointers.EstimatedSize() > 0 {
+			flushErrors = append(flushErrors, b.builder.Append(tenantPointers))
+		}
 	}
 	for _, tenantIndexPointers := range b.indexPointers {
-		flushErrors = append(flushErrors, b.builder.Append(tenantIndexPointers))
+		if tenantIndexPointers.EstimatedSize() > 0 {
+			flushErrors = append(flushErrors, b.builder.Append(tenantIndexPointers))
+		}
 	}
 
 	if err := errors.Join(flushErrors...); err != nil {

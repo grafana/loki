@@ -1,18 +1,18 @@
 "jobs":
   "check":
-    "uses": "grafana/loki-release/.github/workflows/check.yml@1dd22f1dbfa671ac40e4a92f1a56bd9821871d44"
+    "uses": "grafana/loki-release/.github/workflows/check.yml@dfe753760ce6ec2f4549fc11d2df24a2aa584e3f"
     "with":
-      "build_image": "grafana/loki-build-image:0.34.6"
-      "golang_ci_lint_version": "v1.64.5"
-      "release_lib_ref": "1dd22f1dbfa671ac40e4a92f1a56bd9821871d44"
+      "build_image": "grafana/loki-build-image:0.34.8"
+      "golang_ci_lint_version": "v2.5.0"
+      "release_lib_ref": "dfe753760ce6ec2f4549fc11d2df24a2aa584e3f"
       "skip_validation": false
       "use_github_app_token": true
   "loki-canary-boringcrypto-image":
     "env":
       "BUILD_TIMEOUT": 60
-      "GO_VERSION": "1.24.6"
+      "GO_VERSION": "1.25.4"
       "IMAGE_PREFIX": "grafana"
-      "RELEASE_LIB_REF": "1dd22f1dbfa671ac40e4a92f1a56bd9821871d44"
+      "RELEASE_LIB_REF": "dfe753760ce6ec2f4549fc11d2df24a2aa584e3f"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
@@ -44,6 +44,7 @@
       "uses": "actions/setup-node@v4"
       "with":
         "node-version": 20
+        "package-manager-cache": false
     - "name": "Set up Docker buildx"
       "uses": "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
     - "name": "Login to DockerHub (from Vault)"
@@ -133,9 +134,9 @@
   "loki-canary-image":
     "env":
       "BUILD_TIMEOUT": 60
-      "GO_VERSION": "1.24.6"
+      "GO_VERSION": "1.25.4"
       "IMAGE_PREFIX": "grafana"
-      "RELEASE_LIB_REF": "1dd22f1dbfa671ac40e4a92f1a56bd9821871d44"
+      "RELEASE_LIB_REF": "dfe753760ce6ec2f4549fc11d2df24a2aa584e3f"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
@@ -167,6 +168,7 @@
       "uses": "actions/setup-node@v4"
       "with":
         "node-version": 20
+        "package-manager-cache": false
     - "name": "Set up Docker buildx"
       "uses": "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
     - "name": "Login to DockerHub (from Vault)"
@@ -256,9 +258,9 @@
   "loki-image":
     "env":
       "BUILD_TIMEOUT": 60
-      "GO_VERSION": "1.24.6"
+      "GO_VERSION": "1.25.4"
       "IMAGE_PREFIX": "grafana"
-      "RELEASE_LIB_REF": "1dd22f1dbfa671ac40e4a92f1a56bd9821871d44"
+      "RELEASE_LIB_REF": "dfe753760ce6ec2f4549fc11d2df24a2aa584e3f"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
@@ -290,6 +292,7 @@
       "uses": "actions/setup-node@v4"
       "with":
         "node-version": 20
+        "package-manager-cache": false
     - "name": "Set up Docker buildx"
       "uses": "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
     - "name": "Login to DockerHub (from Vault)"
@@ -379,9 +382,9 @@
   "promtail-image":
     "env":
       "BUILD_TIMEOUT": 60
-      "GO_VERSION": "1.24.6"
+      "GO_VERSION": "1.25.4"
       "IMAGE_PREFIX": "grafana"
-      "RELEASE_LIB_REF": "1dd22f1dbfa671ac40e4a92f1a56bd9821871d44"
+      "RELEASE_LIB_REF": "dfe753760ce6ec2f4549fc11d2df24a2aa584e3f"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
@@ -413,6 +416,7 @@
       "uses": "actions/setup-node@v4"
       "with":
         "node-version": 20
+        "package-manager-cache": false
     - "name": "Set up Docker buildx"
       "uses": "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
     - "name": "Login to DockerHub (from Vault)"
@@ -499,6 +503,26 @@
           ${OUTPUTS_IMAGE_NAME}@${IMAGE_DIGEST_AMD64} \
           ${OUTPUTS_IMAGE_NAME}@${IMAGE_DIGEST_ARM}
         docker buildx imagetools inspect $IMAGE
+  "trigger-cd":
+    "env":
+      "IMAGE_TAG": "${{ needs.loki-image.outputs.image_tag }}"
+    "if": "github.ref == 'refs/heads/main'"
+    "needs":
+    - "loki-image"
+    - "loki-manifest"
+    - "loki-canary-manifest"
+    "permissions":
+      "contents": "read"
+      "id-token": "write"
+    "runs-on": "ubuntu-latest"
+    "steps":
+    - "name": "Trigger CD workflow"
+      "uses": "grafana/shared-workflows/actions/trigger-argo-workflow@8b88213bca76e86f9f59b43038cc5d7545452436"
+      "with":
+        "instance": "ops"
+        "namespace": "loki-cd"
+        "parameters": "imageTag=${{ env.IMAGE_TAG }}"
+        "workflow_template": "loki-continuous-deployment"
 "name": "Publish images"
 "on":
   "push":

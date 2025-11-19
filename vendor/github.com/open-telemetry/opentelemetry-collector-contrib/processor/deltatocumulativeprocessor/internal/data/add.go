@@ -31,7 +31,7 @@ type Adder struct{}
 
 var maxBuckets = 160
 
-func (add Adder) Numbers(state, dp pmetric.NumberDataPoint) error {
+func (Adder) Numbers(state, dp pmetric.NumberDataPoint) error {
 	switch dp.ValueType() {
 	case pmetric.NumberDataPointValueTypeDouble:
 		v := state.DoubleValue() + dp.DoubleValue()
@@ -43,7 +43,7 @@ func (add Adder) Numbers(state, dp pmetric.NumberDataPoint) error {
 	return nil
 }
 
-func (add Adder) Histograms(state, dp pmetric.HistogramDataPoint) error {
+func (Adder) Histograms(state, dp pmetric.HistogramDataPoint) error {
 	// bounds different: no way to merge, so reset observation to new boundaries
 	if !pslice.Equal(state.ExplicitBounds(), dp.ExplicitBounds()) {
 		dp.CopyTo(state)
@@ -82,7 +82,7 @@ func (add Adder) Histograms(state, dp pmetric.HistogramDataPoint) error {
 	return nil
 }
 
-func (add Adder) Exponential(state, dp pmetric.ExponentialHistogramDataPoint) error {
+func (Adder) Exponential(state, dp pmetric.ExponentialHistogramDataPoint) error {
 	type H = pmetric.ExponentialHistogramDataPoint
 
 	if state.Scale() != dp.Scale() {
