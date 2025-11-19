@@ -48,6 +48,11 @@ lokistack(){
     echo "- Deploy Loki Stack...                    -"
     echo "-------------------------------------------"
     kubectl apply -f ./hack/lokistack_gateway_dev.yaml
+
+    echo "-------------------------------------------"
+    echo "- Wait for LokiStack (~ 90s)...           -"
+    echo "-------------------------------------------"
+    kubectl wait --for=condition=Ready --timeout=5m lokistack/lokistack-dev
 }
 
 logger() {
