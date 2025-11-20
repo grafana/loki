@@ -5,29 +5,46 @@ consumers like Grafana Alloy.
 
 ## Design Goals
 
-- **Minimal dependencies**: No OpenTelemetry Collector or Prometheus server dependencies
+- **Code reuse**: Re-exports from the main `loki/v3` module to avoid duplication
+- **Minimal API surface**: Only the types and utilities needed by external clients
 - **Stable API**: Semantic versioning with clear compatibility guarantees
-- **Focused scope**: Only the types and utilities needed by external clients
+
+## Code Reuse Strategy
+
+This module uses Go's `replace` directive to import from the parent `loki/v3` module,
+ensuring code is maintained in one place without duplication. The client module
+re-exports specific packages and functions while maintaining the same implementation.
+
+**Important**: This module will have some dependencies (notably Prometheus `model/labels`
+and `tsdb/encoding`) because the underlying v3 packages use them. However, these are
+lightweight packages, not the full Prometheus server.
 
 ## Packages
 
 - `types`: Documentation and type information for Loki push API
 - `logql`: LogQL syntax parsing and pattern matching
-  - `syntax`: Label parsing and basic LogQL types
-  - `pattern`: Pattern matching for log lines
-- `util`: Utility functions
+  - `syntax`: Label parsing and LogQL expression parsing (re-exports from v3)
+  - `pattern`: Pattern matching for log lines (copied, zero dependencies)
+- `util`: Utility functions (re-exports from v3)
   - `constants`: Loki constants (log levels, metric namespaces, etc.)
   - `encoding`: Binary encoding/decoding utilities
   - `log`: Minimal logging interface
 
 ## Dependencies
 
-This module intentionally has minimal dependencies to avoid version conflicts
-in downstream projects. It should have zero OpenTelemetry Collector or 
-Prometheus server dependencies.
+This module imports from `github.com/grafana/loki/v3` to reuse code. As a result,
+it will have some transitive dependencies including:
 
-Current dependencies:
-- `github.com/stretchr/testify` (test only)
+- `github.com/prometheus/prometheus/model/labels` - Lightweight labels package
+- `github.com/prometheus/prometheus/tsdb/encoding` - Lightweight TSDB encoding package
+- Various other dependencies from the v3 module
+
+**However**, this module does NOT require:
+- OpenTelemetry Collector (v1.35.0-v1.43.0)
+- Full Prometheus server with all its dependencies
+- OTel Contrib packages
+
+The dependencies are significantly reduced compared to importing the full v3 module.
 
 ## Push API Types
 
@@ -66,7 +83,6 @@ if err != nil {
 }
 
 fmt.Println(labels.Get("job")) // "test"
-fmt.Println(labels.String())   // {instance="localhost", job="test"}
 ```
 
 ### Pattern Matching
@@ -96,23 +112,6 @@ fmt.Println(util.LogLevelInfo)             // "info"
 fmt.Println(util.AggregatedMetricLabel)    // "__aggregated_metric__"
 ```
 
-### Logging Interface
-
-```go
-import "github.com/grafana/loki/client/util"
-
-// Implement your own logger
-type MyLogger struct{}
-
-func (l MyLogger) Debug(msg string, kv ...interface{}) { /* ... */ }
-func (l MyLogger) Info(msg string, kv ...interface{})  { /* ... */ }
-func (l MyLogger) Warn(msg string, kv ...interface{})   { /* ... */ }
-func (l MyLogger) Error(msg string, kv ...interface{}) { /* ... */ }
-
-// Set as default
-util.DefaultLogger = MyLogger{}
-```
-
 ## Versioning
 
 This module follows semantic versioning independently of the main Loki module.
@@ -122,16 +121,15 @@ Breaking changes will only be introduced in major version bumps.
 
 See [MIGRATION.md](./MIGRATION.md) for detailed migration instructions.
 
-## Limitations
+## Development
 
-- **LogQL Syntax**: This module provides a simplified label parser. For full LogQL
-  query parsing (including filters, aggregations, etc.), you may need to import
-  the full `github.com/grafana/loki/v3/pkg/logql/syntax` package, which has more
-  dependencies.
+When developing locally, this module uses `replace` to point to the parent v3 module:
 
-- **WAL Utilities**: WAL reading utilities are not included in this module to
-  avoid Prometheus TSDB dependencies. If needed, import from the main Loki module
-  or implement your own WAL reader.
+```go
+replace github.com/grafana/loki/v3 => ../
+```
+
+This ensures code changes in v3 are immediately available in the client module.
 
 ## Contributing
 
