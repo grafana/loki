@@ -133,9 +133,9 @@ func (b *streamsResultBuilder) CollectRecord(rec arrow.RecordBatch) {
 			// TODO: keep errors if --strict is set
 			// These are reserved column names used to track parsing errors. We are dropping them until
 			// we add support for --strict parsing.
-			//if shortName == types.ColumnNameError || shortName == types.ColumnNameErrorDetails {
-			//	continue
-			//}
+			if shortName == types.ColumnNameError || shortName == types.ColumnNameErrorDetails {
+				continue
+			}
 
 			forEachNotNullRowColValue(numRows, parsedCol, func(rowIdx int) {
 				parsedVal := parsedCol.Value(rowIdx)

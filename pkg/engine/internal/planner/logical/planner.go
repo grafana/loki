@@ -248,13 +248,7 @@ func walkRangeAggregation(e *syntax.RangeAggregationExpr, params logql.Params) (
 			return nil, errUnimplemented
 		}
 
-		builder = builder.
-			Cast(unwrapIdentifier, unwrapOperation).ProjectDrop(&ColumnRef{
-			Ref: types.ColumnRef{
-				Column: unwrapIdentifier,
-				Type:   types.ColumnTypeAmbiguous,
-			},
-		})
+		builder = builder.Cast(unwrapIdentifier, unwrapOperation)
 	}
 
 	var rangeAggType types.RangeAggregationType
