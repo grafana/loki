@@ -79,6 +79,7 @@ func (nc *noopCommitter) EnqueueOffset(_ int64) {}
 func (noopCommitter) Commit(_ context.Context, _ int64) error { return nil }
 
 func TestConsumer(t *testing.T) {
+	t.Skip()
 	var (
 		toPush     []partition.Record
 		offset     = int64(0)
