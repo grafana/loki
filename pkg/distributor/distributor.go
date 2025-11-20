@@ -283,6 +283,8 @@ func New(
 		return nil, fmt.Errorf("partition ring is required for kafka writes")
 	}
 
+	ingestLimits := newIngestLimits(limitsFrontendClient, registerer)
+
 	var kafkaWriter KafkaProducer
 	if cfg.KafkaEnabled {
 		kafkaClient, err := kafka_client.NewWriterClient("distributor", cfg.KafkaConfig, 20, logger, registerer)
@@ -295,10 +297,17 @@ func New(
 		)
 
 		if cfg.DataObjTeeConfig.Enabled {
+			resolver := NewSegmentationPartitionResolver(
+				uint64(cfg.DataObjTeeConfig.PerPartitionRateBytes),
+				dataObjConsumerPartitionRing,
+				registerer,
+				logger,
+			)
 			dataObjTee, err := NewDataObjTee(
 				&cfg.DataObjTeeConfig,
+				resolver,
+				ingestLimits,
 				kafkaClient,
-				dataObjConsumerPartitionRing,
 				logger,
 				registerer,
 			)
@@ -379,7 +388,7 @@ func New(
 		writeFailuresManager:  writefailures.NewManager(logger, registerer, cfg.WriteFailuresLogging, configs, "distributor"),
 		kafkaWriter:           kafkaWriter,
 		partitionRing:         partitionRing,
-		ingestLimits:          newIngestLimits(limitsFrontendClient, registerer),
+		ingestLimits:          ingestLimits,
 		numMetadataPartitions: numMetadataPartitions,
 	}
 
