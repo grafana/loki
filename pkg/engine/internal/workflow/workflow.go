@@ -354,6 +354,10 @@ func (wf *Workflow) mergeCapture(capture *xcap.Capture) {
 	wf.captureMut.Lock()
 	defer wf.captureMut.Unlock()
 
+	if wf.capture == nil || capture == nil {
+		return
+	}
+
 	// Merge all regions from the task's capture into the workflow's capture.
 	for _, region := range capture.Regions() {
 		wf.capture.AddRegion(region)
