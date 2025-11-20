@@ -20,6 +20,7 @@ import (
 	protoUlid "github.com/grafana/loki/v3/pkg/engine/internal/proto/ulid"
 	"github.com/grafana/loki/v3/pkg/engine/internal/proto/wirepb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
+	xcapProto "github.com/grafana/loki/v3/pkg/xcap/proto"
 )
 
 var defaultFrameCodec = &protobufCodec{
@@ -163,6 +164,9 @@ func (c *protobufCodec) messageFromPbMessage(mf *wirepb.MessageFrame) (Message, 
 	}
 
 	switch k := mf.Kind.(type) {
+	case *wirepb.MessageFrame_WorkerHello:
+		return WorkerHelloMessage{Threads: int(k.WorkerHello.Threads)}, nil
+
 	case *wirepb.MessageFrame_WorkerReady:
 		return WorkerReadyMessage{}, nil
 
@@ -213,6 +217,7 @@ func (c *protobufCodec) messageFromPbMessage(mf *wirepb.MessageFrame) (Message, 
 		if err != nil {
 			return nil, err
 		}
+
 		return TaskStatusMessage{
 			ID:     ulid.ULID(k.TaskStatus.Id),
 			Status: status,
@@ -296,6 +301,15 @@ func (c *protobufCodec) taskStatusFromPbTaskStatus(ts *wirepb.TaskStatus) (workf
 	pbErr := ts.GetError()
 	if pbErr != nil {
 		status.Error = errors.New(pbErr.Description)
+	}
+
+	if pbCapture := ts.GetCapture(); pbCapture != nil {
+		capture, err := xcapProto.FromPbCapture(pbCapture)
+		if err != nil {
+			return workflow.TaskStatus{}, fmt.Errorf("failed to unmarshal capture: %w", err)
+		}
+
+		status.Capture = capture
 	}
 
 	return status, nil
@@ -424,6 +438,11 @@ func (c *protobufCodec) messageToPbMessage(from Message) (*wirepb.MessageFrame, 
 	mf := &wirepb.MessageFrame{}
 
 	switch v := from.(type) {
+	case WorkerHelloMessage:
+		mf.Kind = &wirepb.MessageFrame_WorkerHello{
+			WorkerHello: &wirepb.WorkerHelloMessage{Threads: uint64(v.Threads)},
+		}
+
 	case WorkerReadyMessage:
 		mf.Kind = &wirepb.MessageFrame_WorkerReady{
 			WorkerReady: &wirepb.WorkerReadyMessage{},
@@ -468,6 +487,7 @@ func (c *protobufCodec) messageToPbMessage(from Message) (*wirepb.MessageFrame, 
 		if err != nil {
 			return nil, err
 		}
+
 		mf.Kind = &wirepb.MessageFrame_TaskStatus{
 			TaskStatus: &wirepb.TaskStatusMessage{
 				Id:     protoUlid.ULID(v.ID),
@@ -547,6 +567,15 @@ func (c *protobufCodec) taskStatusToPbTaskStatus(from workflow.TaskStatus) (*wir
 
 	if from.Error != nil {
 		ts.Error = &wirepb.TaskError{Description: from.Error.Error()}
+	}
+
+	if from.Capture != nil {
+		capture, err := xcapProto.ToPbCapture(from.Capture)
+		if err != nil {
+			return nil, err
+		}
+
+		ts.Capture = capture
 	}
 
 	return ts, nil

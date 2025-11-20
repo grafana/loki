@@ -341,6 +341,10 @@ func (r *walRegistry) getTenantRemoteWriteConfig(tenant string, base RemoteWrite
 			}
 		}
 
+		if err := clt.Validate(model.UTF8Validation); err != nil {
+			return nil, fmt.Errorf("invalid remote write config for tenant %q: %w", clt.Name, err)
+		}
+
 		overrides.Clients[id] = clt
 	}
 

@@ -16,16 +16,37 @@ func TestGRPCQueryLimits(t *testing.T) {
 		MaxQueryLookback:        model.Duration(14 * 24 * time.Hour),
 		MaxEntriesLimitPerQuery: 100,
 	}
-	c1 := InjectQueryLimitsContext(context.Background(), limits)
+	c1 := InjectQueryLimitsIntoContext(context.Background(), limits)
 
 	c1, err = injectIntoGRPCRequest(c1)
 	require.NoError(t, err)
 
 	c2, err := extractFromGRPCRequest(c1)
 	require.NoError(t, err)
-	require.Equal(t, limits, *(c2.Value(queryLimitsContextKey).(*QueryLimits)))
+	require.Equal(t, limits, *(c2.Value(queryLimitsCtxKey).(*QueryLimits)))
 
 	c3, err := extractFromGRPCRequest(context.Background())
 	require.NoError(t, err)
-	require.Nil(t, c3.Value(queryLimitsContextKey))
+	require.Nil(t, c3.Value(queryLimitsCtxKey))
+}
+
+func TestGRPCQueryLimitsContext(t *testing.T) {
+	var err error
+	limitsCtx := Context{
+		Expr: "{app=\"test\"}",
+		From: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+		To:   time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC),
+	}
+	c1 := InjectQueryLimitsContextIntoContext(context.Background(), limitsCtx)
+
+	c1, err = injectIntoGRPCRequest(c1)
+	require.NoError(t, err)
+
+	c2, err := extractFromGRPCRequest(c1)
+	require.NoError(t, err)
+	require.Equal(t, limitsCtx, *(c2.Value(queryLimitsContextCtxKey).(*Context)))
+
+	c3, err := extractFromGRPCRequest(context.Background())
+	require.NoError(t, err)
+	require.Nil(t, c3.Value(queryLimitsContextCtxKey))
 }

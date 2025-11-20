@@ -16,6 +16,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/services"
 	"github.com/oklog/ulid/v2"
+	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/otel/propagation"
 	"golang.org/x/sync/errgroup"
 
@@ -34,21 +35,25 @@ type Config struct {
 
 // Scheduler is a service that can schedule tasks to connected worker instances.
 type Scheduler struct {
-	logger log.Logger
+	logger    log.Logger
+	metrics   *metrics
+	collector *collector
 
 	initOnce sync.Once
 	svc      services.Service
 
 	listener wire.Listener
 
+	// Current set of connections, used for collecting metrics.
+	connections sync.Map // map[*workerConn]struct{}
+
 	resourcesMut sync.RWMutex
-	streams      map[ulid.ULID]*stream             // All known streams (regardless of state)
-	tasks        map[ulid.ULID]*task               // All known tasks (regardless of state)
-	workerTasks  map[*wire.Peer]map[*task]struct{} // A map of assigned tasks to peers.
+	streams      map[ulid.ULID]*stream // All known streams (regardless of state)
+	tasks        map[ulid.ULID]*task   // All known tasks (regardless of state)
 
 	assignMut    sync.RWMutex
 	taskQueue    []*task
-	readyWorkers []*wire.Peer
+	readyWorkers []*workerConn
 
 	assignSema chan struct{} // assignSema signals that task assignment is ready.
 }
@@ -66,16 +71,21 @@ func New(config Config) (*Scheduler, error) {
 		return nil, errors.New("listener must be provided")
 	}
 
-	return &Scheduler{
-		logger:   config.Logger,
+	s := &Scheduler{
+		logger: config.Logger,
+
 		listener: config.Listener,
 
-		streams:     make(map[ulid.ULID]*stream),
-		tasks:       make(map[ulid.ULID]*task),
-		workerTasks: make(map[*wire.Peer]map[*task]struct{}),
+		streams: make(map[ulid.ULID]*stream),
+		tasks:   make(map[ulid.ULID]*task),
 
 		assignSema: make(chan struct{}, 1),
-	}, nil
+	}
+
+	s.metrics = newMetrics()
+	s.collector = newCollector(s)
+
+	return s, nil
 }
 
 // Service returns the service used to manage the lifecycle of the Scheduler.
@@ -90,6 +100,7 @@ func (s *Scheduler) Service() services.Service {
 func (s *Scheduler) run(ctx context.Context) error {
 	g, ctx := errgroup.WithContext(ctx)
 
+	g.Go(func() error { return s.collector.Process(ctx) })
 	g.Go(func() error { return s.runAcceptLoop(ctx) })
 	g.Go(func() error { return s.runAssignLoop(ctx) })
 
@@ -114,6 +125,13 @@ func (s *Scheduler) handleConn(ctx context.Context, conn wire.Conn) {
 	logger := log.With(s.logger, "remote_addr", conn.RemoteAddr())
 	level.Info(logger).Log("msg", "handling connection")
 
+	wc := new(workerConn)
+
+	s.connections.Store(wc, struct{}{})
+	defer s.connections.Delete(wc)
+
+	s.metrics.connsTotal.Inc()
+
 	peer := &wire.Peer{
 		Logger: logger,
 		Conn:   conn,
@@ -121,22 +139,26 @@ func (s *Scheduler) handleConn(ctx context.Context, conn wire.Conn) {
 		// Allow for a backlog of 128 frames before backpressure is applied.
 		Buffer: 128,
 
-		Handler: func(ctx context.Context, peer *wire.Peer, msg wire.Message) error {
+		Handler: func(ctx context.Context, _ *wire.Peer, msg wire.Message) error {
 			switch msg := msg.(type) {
 			case wire.StreamDataMessage:
-				return s.handleStreamData(ctx, msg)
+				return s.handleStreamData(ctx, wc, msg)
+			case wire.WorkerHelloMessage:
+				return s.handleWorkerHello(ctx, wc, msg)
 			case wire.WorkerReadyMessage:
-				return s.markWorkerReady(ctx, peer)
+				return s.markWorkerReady(ctx, wc)
 			case wire.TaskStatusMessage:
-				return s.handleTaskStatus(ctx, msg)
+				return s.handleTaskStatus(ctx, wc, msg)
 			case wire.StreamStatusMessage:
-				return s.handleStreamStatus(ctx, msg)
+				return s.handleStreamStatus(ctx, wc, msg)
 
 			default:
 				return fmt.Errorf("unsupported message kind %q", msg.Kind())
 			}
 		},
 	}
+
+	wc.Peer = peer
 
 	// Handle communication with the peer until the context is canceled or some
 	// error occurs.
@@ -149,10 +171,14 @@ func (s *Scheduler) handleConn(ctx context.Context, conn wire.Conn) {
 
 	// If our peer exited, we need to make sure we clean up any tasks still
 	// assigned to it by aborting them.
-	s.abortWorkerTasks(ctx, peer, err)
+	s.abortWorkerTasks(ctx, wc, err)
 }
 
-func (s *Scheduler) handleStreamData(ctx context.Context, msg wire.StreamDataMessage) error {
+func (s *Scheduler) handleStreamData(ctx context.Context, worker *workerConn, msg wire.StreamDataMessage) error {
+	if err := worker.MarkDataPlane(); err != nil {
+		return err
+	}
+
 	s.resourcesMut.RLock()
 	defer s.resourcesMut.RUnlock()
 
@@ -165,7 +191,15 @@ func (s *Scheduler) handleStreamData(ctx context.Context, msg wire.StreamDataMes
 	return registered.localReceiver.Write(ctx, msg.Data)
 }
 
-func (s *Scheduler) markWorkerReady(_ context.Context, worker *wire.Peer) error {
+func (s *Scheduler) handleWorkerHello(_ context.Context, worker *workerConn, msg wire.WorkerHelloMessage) error {
+	return worker.HandleHello(msg)
+}
+
+func (s *Scheduler) markWorkerReady(_ context.Context, worker *workerConn) error {
+	if err := worker.MarkReady(); err != nil {
+		return err
+	}
+
 	s.assignMut.Lock()
 	defer s.assignMut.Unlock()
 
@@ -175,7 +209,6 @@ func (s *Scheduler) markWorkerReady(_ context.Context, worker *wire.Peer) error 
 	if len(s.readyWorkers) > 0 && len(s.tasks) > 0 {
 		nudgeSemaphore(s.assignSema)
 	}
-
 	return nil
 }
 
@@ -190,7 +223,11 @@ func nudgeSemaphore(sema chan struct{}) {
 	}
 }
 
-func (s *Scheduler) handleTaskStatus(ctx context.Context, msg wire.TaskStatusMessage) error {
+func (s *Scheduler) handleTaskStatus(ctx context.Context, worker *workerConn, msg wire.TaskStatusMessage) error {
+	if got, want := worker.Type(), connectionTypeControlPlane; got != want {
+		return fmt.Errorf("worker connection must be in state %q, got %q", want, got)
+	}
+
 	var n notifier
 	defer n.Notify(ctx)
 
@@ -202,11 +239,21 @@ func (s *Scheduler) handleTaskStatus(ctx context.Context, msg wire.TaskStatusMes
 		return fmt.Errorf("task %s not found", msg.ID)
 	}
 
-	changed, err := task.setState(msg.Status)
+	changed, err := task.setState(s.metrics, msg.Status)
 	if err != nil {
 		return err
 	} else if changed {
-		// Notify the owner about the change.
+		if owner := task.owner; owner != nil && task.status.State.Terminal() {
+			owner.Unassign(task)
+		}
+
+		if task.status.State == workflow.TaskStateCompleted {
+			// The execution time of the task is the duration from when it was
+			// first assigned to when we received the completion status.
+			s.metrics.taskExecSeconds.Observe(time.Since(task.assignTime).Seconds())
+		}
+
+		// Notify the handler about the change.
 		n.AddTaskEvent(taskNotification{
 			Handler:   task.handler,
 			Task:      task.inner,
@@ -216,7 +263,11 @@ func (s *Scheduler) handleTaskStatus(ctx context.Context, msg wire.TaskStatusMes
 	return nil
 }
 
-func (s *Scheduler) handleStreamStatus(ctx context.Context, msg wire.StreamStatusMessage) error {
+func (s *Scheduler) handleStreamStatus(ctx context.Context, worker *workerConn, msg wire.StreamStatusMessage) error {
+	if got, want := worker.Type(), connectionTypeControlPlane; got != want {
+		return fmt.Errorf("worker connection must be in state %q, got %q", want, got)
+	}
+
 	var n notifier
 	defer n.Notify(ctx)
 
@@ -233,7 +284,7 @@ func (s *Scheduler) handleStreamStatus(ctx context.Context, msg wire.StreamStatu
 // changeStreamState updates the state of the target stream. changeStreamState
 // must be called while the resourcesMut lock is held.
 func (s *Scheduler) changeStreamState(ctx context.Context, n *notifier, target *stream, newState workflow.StreamState) error {
-	changed, err := target.setState(newState)
+	changed, err := target.setState(s.metrics, newState)
 	if err != nil {
 		return err
 	} else if !changed {
@@ -264,7 +315,7 @@ func (s *Scheduler) changeStreamState(ctx context.Context, n *notifier, target *
 //
 // If the reason argument is nil, the tasks are cancelled. Otherwise, they are
 // marked as failed with the provided reason.
-func (s *Scheduler) abortWorkerTasks(ctx context.Context, worker *wire.Peer, reason error) {
+func (s *Scheduler) abortWorkerTasks(ctx context.Context, worker *workerConn, reason error) {
 	var n notifier
 	defer n.Notify(ctx)
 
@@ -279,8 +330,10 @@ func (s *Scheduler) abortWorkerTasks(ctx context.Context, worker *wire.Peer, rea
 		}
 	}
 
-	for task := range s.workerTasks[worker] {
-		if changed, _ := task.setState(newStatus); !changed {
+	for _, task := range worker.Assigned() {
+		worker.Unassign(task)
+
+		if changed, _ := task.setState(s.metrics, newStatus); !changed {
 			continue
 		}
 
@@ -292,8 +345,6 @@ func (s *Scheduler) abortWorkerTasks(ctx context.Context, worker *wire.Peer, rea
 			NewStatus: newStatus,
 		})
 	}
-
-	delete(s.workerTasks, worker)
 }
 
 func (s *Scheduler) runAssignLoop(ctx context.Context) error {
@@ -356,7 +407,7 @@ func (s *Scheduler) assignTasks(ctx context.Context) {
 	}
 }
 
-func (s *Scheduler) assignTask(ctx context.Context, task *task, worker *wire.Peer) error {
+func (s *Scheduler) assignTask(ctx context.Context, task *task, worker *workerConn) error {
 	// TODO(rfratto): allow assignment timeout to be configurable.
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -392,7 +443,15 @@ func (s *Scheduler) assignTask(ctx context.Context, task *task, worker *wire.Pee
 	}
 
 	// The worker accepted the message, so we can assign the task to it now.
-	s.trackAssignment(task, worker)
+	worker.Assign(task)
+
+	// The queue time of a task is the duration from when it entered the queue
+	// to when a worker accepted the assignment.
+	//
+	// We track this moment as the "assign time" to be able to calculate
+	// execution time later.
+	task.assignTime = time.Now()
+	s.metrics.taskQueueSeconds.Observe(task.assignTime.Sub(task.queueTime).Seconds())
 
 	// Now that the task has been accepted, we can attempt address bindings. We
 	// do this on task assignment to simplify the implementation, though it
@@ -418,17 +477,6 @@ func (s *Scheduler) assignTask(ctx context.Context, task *task, worker *wire.Pee
 	}
 
 	return nil
-}
-
-func (s *Scheduler) trackAssignment(assigned *task, owner *wire.Peer) {
-	assigned.owner = owner
-
-	tasks := s.workerTasks[owner]
-	if tasks == nil {
-		tasks = make(map[*task]struct{})
-		s.workerTasks[owner] = tasks
-	}
-	tasks[assigned] = struct{}{}
 }
 
 // tryBind attempts to bind the receiver's address of check to the sender.
@@ -552,6 +600,21 @@ NextTask:
 		return errors.Join(errs...)
 	}
 
+	// Observe initial state for the streams and tasks.
+	{
+		var (
+			initialStreamState = workflow.StreamStateIdle.String()
+			initialTaskState   = workflow.TaskStateCreated.String()
+		)
+
+		for range manifestStreams {
+			s.metrics.streamsTotal.WithLabelValues(initialStreamState).Inc()
+		}
+		for range manifestTasks {
+			s.metrics.tasksTotal.WithLabelValues(initialTaskState).Inc()
+		}
+	}
+
 	// Once we hit this point, the manifest has been validated and we can
 	// atomically update our internal state.
 	maps.Copy(s.streams, manifestStreams)
@@ -592,7 +655,7 @@ func (s *Scheduler) UnregisterManifest(ctx context.Context, manifest *workflow.M
 		// Immediately clean up our own resources.
 		s.deleteTask(registered)
 
-		if changed, _ := registered.setState(workflow.TaskStatus{State: workflow.TaskStateCancelled}); !changed {
+		if changed, _ := registered.setState(s.metrics, workflow.TaskStatus{State: workflow.TaskStateCancelled}); !changed {
 			// Ignore if the task couldn't move into the canceled state, which
 			// indicates it's already in a terminal state.
 			continue
@@ -620,7 +683,7 @@ func (s *Scheduler) UnregisterManifest(ctx context.Context, manifest *workflow.M
 	for _, streamToRemove := range manifest.Streams {
 		registered := s.streams[streamToRemove.ULID] // Validated to exist above
 
-		changed, _ := registered.setState(workflow.StreamStateClosed)
+		changed, _ := registered.setState(s.metrics, workflow.StreamStateClosed)
 		if changed {
 			n.AddStreamEvent(streamNotification{
 				Handler:  registered.handler,
@@ -639,10 +702,7 @@ func (s *Scheduler) deleteTask(t *task) {
 	delete(s.tasks, t.inner.ULID)
 
 	if owner := t.owner; owner != nil {
-		knownTasks := s.workerTasks[owner]
-		if knownTasks != nil {
-			delete(knownTasks, t)
-		}
+		owner.Unassign(t)
 	}
 }
 
@@ -726,6 +786,7 @@ func (s *Scheduler) enqueueTasks(tasks []*task) error {
 			continue
 		}
 
+		task.queueTime = time.Now()
 		s.taskQueue = append(s.taskQueue, task)
 	}
 
@@ -747,7 +808,7 @@ func (s *Scheduler) markPending(ctx context.Context, tasks []*task) {
 	defer s.resourcesMut.Unlock()
 
 	for _, task := range tasks {
-		if changed, _ := task.setState(workflow.TaskStatus{State: workflow.TaskStatePending}); !changed {
+		if changed, _ := task.setState(s.metrics, workflow.TaskStatus{State: workflow.TaskStatePending}); !changed {
 			// If the state change failed, the task either got canceled or
 			// picked up by a worker in between enqueueing it and calling this
 			// method.
@@ -781,12 +842,13 @@ func (s *Scheduler) Cancel(ctx context.Context, tasks ...*workflow.Task) error {
 			continue
 		}
 
-		if changed, _ := registered.setState(workflow.TaskStatus{State: workflow.TaskStateCancelled}); changed {
+		if changed, _ := registered.setState(s.metrics, workflow.TaskStatus{State: workflow.TaskStateCancelled}); changed {
 			// If the task has an owner, we'll inform it that the task has been
 			// canceled and it can stop processing it.
 			//
 			// This is a best-effort message, so we don't wait for acknowledgement.
 			if owner := registered.owner; owner != nil {
+				owner.Unassign(registered)
 				_ = owner.SendMessageAsync(ctx, wire.TaskCancelMessage{ID: registered.inner.ULID})
 			}
 
@@ -815,4 +877,20 @@ func (s *Scheduler) Cancel(ctx context.Context, tasks ...*workflow.Task) error {
 		return errors.Join(errs...)
 	}
 	return nil
+}
+
+// RegisterMetrics registers metrics about s to report to reg.
+func (s *Scheduler) RegisterMetrics(reg prometheus.Registerer) error {
+	var errs []error
+
+	errs = append(errs, reg.Register(s.collector))
+	errs = append(errs, s.metrics.Register(reg))
+
+	return errors.Join(errs...)
+}
+
+// UnregisterMetrics unregisters metrics about s from reg.
+func (s *Scheduler) UnregisterMetrics(reg prometheus.Registerer) {
+	reg.Unregister(s.collector)
+	s.metrics.Unregister(reg)
 }

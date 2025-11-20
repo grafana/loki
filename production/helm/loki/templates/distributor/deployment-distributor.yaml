@@ -65,7 +65,7 @@ spec:
       {{- end }}
       {{- include "loki.distributorPriorityClassName" . | nindent 6 }}
       securityContext:
-        {{- toYaml .Values.loki.podSecurityContext | nindent 8 }}
+        {{- include "loki.podSecurityContext" . | nindent 8 }}
       terminationGracePeriodSeconds: {{ .Values.distributor.terminationGracePeriodSeconds }}
       {{- with .Values.distributor.initContainers }}
       initContainers:
