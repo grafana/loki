@@ -7,7 +7,6 @@ import (
 	"sync"
 
 	"github.com/prometheus/prometheus/model/labels"
-	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
 	clientsyntax "github.com/grafana/loki/client/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"

@@ -17,7 +17,11 @@ func EncWith(b []byte) (res Encbuf) {
 	return res
 }
 
+// EncWrap wraps a Prometheus encoding.Encbuf into our Encbuf
 func EncWrap(inner encoding.Encbuf) Encbuf { return Encbuf{Encbuf: inner} }
+
+// EncWrapEncbuf wraps an Encbuf (useful when re-exporting from other modules)
+func EncWrapEncbuf(inner Encbuf) Encbuf { return inner }
 
 func (e *Encbuf) PutString(s string) { e.B = append(e.B, s...) }
 
@@ -35,7 +39,11 @@ func DecWith(b []byte) (res Decbuf) {
 	return res
 }
 
+// DecWrap wraps a Prometheus encoding.Decbuf into our Decbuf
 func DecWrap(inner encoding.Decbuf) Decbuf { return Decbuf{Decbuf: inner} }
+
+// DecWrapDecbuf wraps a Decbuf (useful when re-exporting from other modules)
+func DecWrapDecbuf(inner Decbuf) Decbuf { return inner }
 
 func (d *Decbuf) Bytes(n int) []byte {
 	if d.E != nil {
