@@ -228,7 +228,9 @@ spec:
           volumeMounts:
             - name: sc-rules-volume
               mountPath: {{ .Values.sidecar.rules.folder | quote }}
-        {{- end}}
+            - name: sc-rules-tmp
+              mountPath: /tmp
+        {{- end }}
         {{- with .Values.singleBinary.extraContainers }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -272,7 +274,9 @@ spec:
             sizeLimit: {{ .Values.sidecar.rules.sizeLimit }}
         {{- else }}
           emptyDir: {}
-        {{- end -}}
+        {{- end }}
+        - name: sc-rules-tmp
+          emptyDir: {}
         {{- end -}}
         {{- with .Values.singleBinary.extraVolumes }}
         {{- toYaml . | nindent 8 }}
