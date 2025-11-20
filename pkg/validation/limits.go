@@ -125,27 +125,29 @@ type Limits struct {
 	PerStreamRateLimitBurst flagext.ByteSize `yaml:"per_stream_rate_limit_burst" json:"per_stream_rate_limit_burst"`
 
 	// Querier enforced limits.
-	MaxChunksPerQuery          int              `yaml:"max_chunks_per_query" json:"max_chunks_per_query"`
-	MaxQuerySeries             int              `yaml:"max_query_series" json:"max_query_series"`
-	MaxQueryLookback           model.Duration   `yaml:"max_query_lookback" json:"max_query_lookback"`
-	MaxQueryLength             model.Duration   `yaml:"max_query_length" json:"max_query_length"`
-	MaxQueryRange              model.Duration   `yaml:"max_query_range" json:"max_query_range"`
-	MaxQueryParallelism        int              `yaml:"max_query_parallelism" json:"max_query_parallelism"`
-	TSDBMaxQueryParallelism    int              `yaml:"tsdb_max_query_parallelism" json:"tsdb_max_query_parallelism"`
-	TSDBMaxBytesPerShard       flagext.ByteSize `yaml:"tsdb_max_bytes_per_shard" json:"tsdb_max_bytes_per_shard"`
-	TSDBShardingStrategy       string           `yaml:"tsdb_sharding_strategy" json:"tsdb_sharding_strategy"`
-	TSDBPrecomputeChunks       bool             `yaml:"tsdb_precompute_chunks" json:"tsdb_precompute_chunks"`
-	CardinalityLimit           int              `yaml:"cardinality_limit" json:"cardinality_limit"`
-	MaxStreamsMatchersPerQuery int              `yaml:"max_streams_matchers_per_query" json:"max_streams_matchers_per_query"`
-	MaxConcurrentTailRequests  int              `yaml:"max_concurrent_tail_requests" json:"max_concurrent_tail_requests"`
-	MaxEntriesLimitPerQuery    int              `yaml:"max_entries_limit_per_query" json:"max_entries_limit_per_query"`
-	MaxCacheFreshness          model.Duration   `yaml:"max_cache_freshness_per_query" json:"max_cache_freshness_per_query"`
-	MaxMetadataCacheFreshness  model.Duration   `yaml:"max_metadata_cache_freshness" json:"max_metadata_cache_freshness"`
-	MaxStatsCacheFreshness     model.Duration   `yaml:"max_stats_cache_freshness" json:"max_stats_cache_freshness"`
-	MaxQueriersPerTenant       uint             `yaml:"max_queriers_per_tenant" json:"max_queriers_per_tenant"`
-	MaxQueryCapacity           float64          `yaml:"max_query_capacity" json:"max_query_capacity"`
-	QueryReadyIndexNumDays     int              `yaml:"query_ready_index_num_days" json:"query_ready_index_num_days"`
-	QueryTimeout               model.Duration   `yaml:"query_timeout" json:"query_timeout"`
+	MaxChunksPerQuery                  int              `yaml:"max_chunks_per_query" json:"max_chunks_per_query"`
+	MaxQuerySeries                     int              `yaml:"max_query_series" json:"max_query_series"`
+	MaxQueryLookback                   model.Duration   `yaml:"max_query_lookback" json:"max_query_lookback"`
+	MaxQueryLength                     model.Duration   `yaml:"max_query_length" json:"max_query_length"`
+	MaxQueryRange                      model.Duration   `yaml:"max_query_range" json:"max_query_range"`
+	MaxQueryParallelism                int              `yaml:"max_query_parallelism" json:"max_query_parallelism"`
+	TSDBMaxQueryParallelism            int              `yaml:"tsdb_max_query_parallelism" json:"tsdb_max_query_parallelism"`
+	TSDBMaxBytesPerShard               flagext.ByteSize `yaml:"tsdb_max_bytes_per_shard" json:"tsdb_max_bytes_per_shard"`
+	TSDBShardingStrategy               string           `yaml:"tsdb_sharding_strategy" json:"tsdb_sharding_strategy"`
+	TSDBPrecomputeChunks               bool             `yaml:"tsdb_precompute_chunks" json:"tsdb_precompute_chunks"`
+	CardinalityLimit                   int              `yaml:"cardinality_limit" json:"cardinality_limit"`
+	MaxStreamsMatchersPerQuery         int              `yaml:"max_streams_matchers_per_query" json:"max_streams_matchers_per_query"`
+	MaxConcurrentTailRequests          int              `yaml:"max_concurrent_tail_requests" json:"max_concurrent_tail_requests"`
+	MaxEntriesLimitPerQuery            int              `yaml:"max_entries_limit_per_query" json:"max_entries_limit_per_query"`
+	MaxCacheFreshness                  model.Duration   `yaml:"max_cache_freshness_per_query" json:"max_cache_freshness_per_query"`
+	MaxMetadataCacheFreshness          model.Duration   `yaml:"max_metadata_cache_freshness" json:"max_metadata_cache_freshness"`
+	MaxStatsCacheFreshness             model.Duration   `yaml:"max_stats_cache_freshness" json:"max_stats_cache_freshness"`
+	MaxQueriersPerTenant               uint             `yaml:"max_queriers_per_tenant" json:"max_queriers_per_tenant"`
+	MaxQueryCapacity                   float64          `yaml:"max_query_capacity" json:"max_query_capacity"`
+	QueryReadyIndexNumDays             int              `yaml:"query_ready_index_num_days" json:"query_ready_index_num_days"`
+	QueryTimeout                       model.Duration   `yaml:"query_timeout" json:"query_timeout"`
+	QueryBucketGetObjectRateLimit      flagext.ByteSize `yaml:"query_bucket_get_object_rate_limit" json:"query_bucket_get_object_rate_limit"`
+	QueryBucketGetObjectRateLimitBurst flagext.ByteSize `yaml:"query_bucket_get_object_rate_limit_burst" json:"query_bucket_get_object_rate_limit_burst"`
 
 	// Query frontend enforced limits. The default is actually parameterized by the queryrange config.
 	QuerySplitDuration               model.Duration   `yaml:"split_queries_by_interval" json:"split_queries_by_interval"`
@@ -365,6 +367,11 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&l.PerStreamRateLimitBurst, "ingester.per-stream-rate-limit-burst", "Maximum burst bytes per stream, also expressible in human readable forms (1MB, 256KB, etc). This is how far above the rate limit a stream can 'burst' before the stream is limited.")
 
 	f.IntVar(&l.MaxChunksPerQuery, "store.query-chunk-limit", 2e6, "Maximum number of chunks that can be fetched in a single query.")
+
+	_ = l.QueryBucketGetObjectRateLimit.Set("0")
+	f.Var(&l.QueryBucketGetObjectRateLimit, "querier.query-bucket-get-object-rate-limit", "Maximum bytes per second for bucket GetObject operations during a query. 0 means unlimited. Also expressible in human readable forms (1MB, 256KB, etc).")
+	_ = l.QueryBucketGetObjectRateLimitBurst.Set("0")
+	f.Var(&l.QueryBucketGetObjectRateLimitBurst, "querier.query-bucket-get-object-rate-limit-burst", "Maximum burst bytes for bucket GetObject operations during a query. 0 means unlimited. Also expressible in human readable forms (1MB, 256KB, etc).")
 
 	_ = l.MaxQueryLength.Set("721h")
 	f.Var(&l.MaxQueryLength, "store.max-query-length", "The limit to length of chunk store queries. 0 to disable.")
@@ -939,6 +946,18 @@ func (o *Overrides) MaxLineSizeTruncateIdentifier(userID string) string {
 // MaxEntriesLimitPerQuery returns the limit to number of entries the querier should return per query.
 func (o *Overrides) MaxEntriesLimitPerQuery(_ context.Context, userID string) int {
 	return o.getOverridesForUser(userID).MaxEntriesLimitPerQuery
+}
+
+// QueryBucketGetObjectRateLimit returns the maximum bytes per second for bucket GetObject operations during a query.
+// Returns 0 if unlimited.
+func (o *Overrides) QueryBucketGetObjectRateLimit(_ context.Context, userID string) int64 {
+	return int64(o.getOverridesForUser(userID).QueryBucketGetObjectRateLimit.Val())
+}
+
+// QueryBucketGetObjectRateLimitBurst returns the maximum burst bytes for bucket GetObject operations during a query.
+// Returns 0 if unlimited.
+func (o *Overrides) QueryBucketGetObjectRateLimitBurst(_ context.Context, userID string) int64 {
+	return int64(o.getOverridesForUser(userID).QueryBucketGetObjectRateLimitBurst.Val())
 }
 
 func (o *Overrides) QueryTimeout(_ context.Context, userID string) time.Duration {

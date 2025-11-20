@@ -128,11 +128,34 @@ func (o *ObjectClientAdapter) GetObject(ctx context.Context, objectKey string) (
 		level.Warn(o.logger).Log("msg", "failed to get size of object", "err", err)
 	}
 
+	// Wrap with rate-limited reader if query has a bandwidth limit
+	if limiter := getQueryRateLimiter(ctx); limiter != nil {
+		reader = &rateLimitedReader{
+			ReadCloser: reader,
+			limiter:    limiter,
+			ctx:        ctx,
+		}
+	}
+
 	return reader, size, err
 }
 
 func (o *ObjectClientAdapter) GetObjectRange(ctx context.Context, objectKey string, offset, length int64) (io.ReadCloser, error) {
-	return o.hedgedBucket.GetRange(ctx, objectKey, offset, length)
+	reader, err := o.hedgedBucket.GetRange(ctx, objectKey, offset, length)
+	if err != nil {
+		return nil, err
+	}
+
+	// Wrap with rate-limited reader if query has a bandwidth limit
+	if limiter := getQueryRateLimiter(ctx); limiter != nil {
+		reader = &rateLimitedReader{
+			ReadCloser: reader,
+			limiter:    limiter,
+			ctx:        ctx,
+		}
+	}
+
+	return reader, nil
 }
 
 // List objects with given prefix.
