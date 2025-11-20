@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"context"
+
 	gokitlog "github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/kv"
@@ -19,7 +21,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/net/context"
 
 	"github.com/grafana/dskit/tenant"
 

@@ -7,6 +7,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/gorilla/mux"
 	"github.com/grafana/dskit/services"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
@@ -93,4 +94,14 @@ func (s *Scheduler) RegisterSchedulerServer(router *mux.Router) {
 // Service returns the service used to manage the lifecycle of the Scheduler.
 func (s *Scheduler) Service() services.Service {
 	return s.inner.Service()
+}
+
+// RegisterMetrics registers metrics about s to report to reg.
+func (s *Scheduler) RegisterMetrics(reg prometheus.Registerer) error {
+	return s.inner.RegisterMetrics(reg)
+}
+
+// UnregisterMetrics unregisters metrics about s from reg.
+func (s *Scheduler) UnregisterMetrics(reg prometheus.Registerer) {
+	s.inner.UnregisterMetrics(reg)
 }
