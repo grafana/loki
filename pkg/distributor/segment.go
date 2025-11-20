@@ -18,20 +18,12 @@ import (
 // distribute load while preserving stream locality for tenants.
 type SegmentationKey string
 
-<<<<<<< HEAD
 // Sum64 returns a 64 bit, non-cryptographic hash of the key.
-=======
-// Sum64 returns a 64 bit, non-crytogrpahic hash of the key.
->>>>>>> 5ef092522a (feat: add segmentation keys and resolver)
 func (key SegmentationKey) Sum64() uint64 {
 	h := fnv.New64a()
 	// Use a reserved word here to avoid any possible hash conflicts with
 	// streams.
-<<<<<<< HEAD
 	h.Write([]byte("__loki_segmentation_key__"))
-=======
-	h.Write([]byte("__loki__segmentation_key__"))
->>>>>>> 5ef092522a (feat: add segmentation keys and resolver)
 	h.Write([]byte(key))
 	return h.Sum64()
 }
@@ -52,19 +44,12 @@ func GetSegmentationKey(stream KeyedStream) (SegmentationKey, error) {
 type SegmentationPartitionResolver struct {
 	perPartitionRateBytes uint64
 	ringReader            ring.PartitionRingReader
-<<<<<<< HEAD
 	logger                log.Logger
 
 	// Metrics.
 	failed          prometheus.Counter
 	randomlySharded prometheus.Counter
 	total           prometheus.Counter
-=======
-	fallback              prometheus.Counter
-	failed                prometheus.Counter
-	total                 prometheus.Counter
-	logger                log.Logger
->>>>>>> 5ef092522a (feat: add segmentation keys and resolver)
 }
 
 // NewSegmentationPartitionResolver returns a new SegmentationPartitionResolver.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"strconv"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -19,6 +20,7 @@ type DataObjTeeConfig struct {
 	Topic                 string `yaml:"topic"`
 	MaxBufferedBytes      int    `yaml:"max_buffered_bytes"`
 	PerPartitionRateBytes int    `yaml:"per_partition_rate_bytes"`
+	DebugMetricsEnabled   bool   `yaml:"debug_metrics_enabled"`
 }
 
 func (c *DataObjTeeConfig) RegisterFlags(f *flag.FlagSet) {
@@ -26,6 +28,7 @@ func (c *DataObjTeeConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&c.Topic, "distributor.dataobj-tee.topic", "", "Topic for data object tee.")
 	f.IntVar(&c.MaxBufferedBytes, "distributor.dataobj-tee.max-buffered-bytes", 100<<20, "Maximum number of bytes to buffer.")
 	f.IntVar(&c.PerPartitionRateBytes, "distributor.dataobj-tee.per-partition-rate-bytes", 1024*1024, "The per-tenant partition rate (bytes/sec).")
+	f.BoolVar(&c.DebugMetricsEnabled, "distributor.dataobj-tee.debug-metrics-enabled", false, "Enables optional debug metrics.")
 }
 
 func (c *DataObjTeeConfig) Validate() error {
@@ -56,6 +59,10 @@ type DataObjTee struct {
 	// Metrics.
 	failures prometheus.Counter
 	total    prometheus.Counter
+
+	// High cardinality metrics which are only emitted when debug metrics
+	// are enabled.
+	produced *prometheus.CounterVec
 }
 
 // NewDataObjTee returns a new DataObjTee.
@@ -81,6 +88,10 @@ func NewDataObjTee(
 			Name: "loki_distributor_dataobj_tee_duplicate_streams_total",
 			Help: "Total number of streams duplicated.",
 		}),
+		produced: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_distributor_dataobj_tee_produced_bytes_total",
+			Help: "Total number of bytes produced to each partition.",
+		}, []string{"tenant", "partition", "segmentation_key"}),
 	}, nil
 }
 
@@ -138,5 +149,12 @@ func (t *DataObjTee) duplicate(ctx context.Context, tenant string, stream Segmen
 	if err := results.FirstErr(); err != nil {
 		level.Error(t.logger).Log("msg", "failed to produce records", "err", err)
 		t.failures.Inc()
+	}
+	if t.cfg.DebugMetricsEnabled {
+		t.produced.WithLabelValues(
+			tenant,
+			strconv.FormatInt(int64(partition), 10),
+			string(stream.SegmentationKey),
+		).Add(float64(stream.Stream.Size()))
 	}
 }
