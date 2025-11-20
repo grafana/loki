@@ -1,6 +1,17 @@
 # Changes
 
 
+## [1.57.2](https://github.com/googleapis/google-cloud-go/releases/tag/storage%2Fv1.57.2) (2025-11-14)
+
+### Bug Fixes
+
+* Handle redirect on takeover. (#13354) ([b0f1362](https://github.com/googleapis/google-cloud-go/commit/b0f136268be1e4c629e288353bc277549ac5c663))
+* add env var to allow disabling bound token (#13236) ([cdaf6a6](https://github.com/googleapis/google-cloud-go/commit/cdaf6a6da006a19db932a74885ea3722b4e42311))
+
+### Documentation
+
+* updates to docs and docs formatting ([93ca68d](https://github.com/googleapis/google-cloud-go/commit/93ca68d54b6d213f22e0d67ae01d135cf26d37c6))
+
 ## [1.57.1](https://github.com/googleapis/google-cloud-go/compare/storage/v1.57.0...storage/v1.57.1) (2025-10-28)
 
 

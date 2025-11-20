@@ -1481,6 +1481,15 @@ func (t *Loki) initV2QueryEngineScheduler() (services.Service, error) {
 		return nil, err
 	}
 
+	if err := sched.RegisterMetrics(prometheus.DefaultRegisterer); err != nil {
+		return nil, err
+	}
+	sched.Service().AddListener(services.NewListener(
+		nil, nil, nil,
+		func(_ services.State) { sched.UnregisterMetrics(prometheus.DefaultRegisterer) },
+		func(_ services.State, _ error) { sched.UnregisterMetrics(prometheus.DefaultRegisterer) },
+	))
+
 	// Only register HTTP handler when running distributed query execution
 	if t.Cfg.Querier.EngineV2.Distributed {
 		sched.RegisterSchedulerServer(t.Server.HTTP)

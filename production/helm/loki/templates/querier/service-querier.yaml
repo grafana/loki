@@ -33,4 +33,7 @@ spec:
       {{- end }}
   selector:
     {{- include "loki.querierSelectorLabels" . | nindent 4 }}
+{{- with .Values.querier.trafficDistribution | default .Values.loki.service.trafficDistribution }}
+  trafficDistribution: {{ . }}
+{{- end }}
 {{- end -}}

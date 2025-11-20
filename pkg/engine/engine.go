@@ -33,6 +33,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/rangeio"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 var (
@@ -154,9 +155,10 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	// This pain point will eventually go away as remaining usages of
 	// [logql.Engine] disappear.
 
+	ctx, _ = xcap.NewCapture(ctx, nil)
 	startTime := time.Now()
 
-	ctx, span := tracer.Start(ctx, "Engine.Execute", trace.WithAttributes(
+	ctx, region := xcap.StartRegion(ctx, "Engine.Execute", xcap.WithRegionAttributes(
 		attribute.String("type", string(logql.GetRangeType(params))),
 		attribute.String("query", params.QueryString()),
 		attribute.Stringer("start", params.Start()),
@@ -165,7 +167,7 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 		attribute.Stringer("length", params.End().Sub(params.Start())),
 		attribute.StringSlice("shards", params.Shards()),
 	))
-	defer span.End()
+	defer region.End()
 
 	ctx = e.buildContext(ctx)
 	logger := util_log.WithContext(ctx, e.logger)
@@ -176,30 +178,31 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	logicalPlan, durLogicalPlanning, err := e.buildLogicalPlan(ctx, logger, params)
 	if err != nil {
 		e.metrics.subqueries.WithLabelValues(statusNotImplemented).Inc()
-		span.SetStatus(codes.Error, "failed to create logical plan")
+		region.SetStatus(codes.Error, "failed to create logical plan")
 		return logqlmodel.Result{}, ErrNotSupported
 	}
 
 	physicalPlan, durPhysicalPlanning, err := e.buildPhysicalPlan(ctx, logger, params, logicalPlan)
 	if err != nil {
 		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
-		span.SetStatus(codes.Error, "failed to create physical plan")
+		region.SetStatus(codes.Error, "failed to create physical plan")
 		return logqlmodel.Result{}, ErrPlanningFailed
 	}
 
 	wf, durWorkflowPlanning, err := e.buildWorkflow(ctx, logger, physicalPlan)
 	if err != nil {
 		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
-		span.SetStatus(codes.Error, "failed to create execution plan")
+		region.SetStatus(codes.Error, "failed to create execution plan")
 		return logqlmodel.Result{}, ErrPlanningFailed
 	}
+	defer wf.Close()
 
 	pipeline, err := wf.Run(ctx)
 	if err != nil {
 		level.Error(logger).Log("msg", "failed to execute query", "err", err)
 
 		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
-		span.SetStatus(codes.Error, "failed to execute query")
+		region.SetStatus(codes.Error, "failed to execute query")
 		return logqlmodel.Result{}, ErrSchedulingFailed
 	}
 	defer pipeline.Close()
@@ -207,7 +210,7 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	builder, durExecution, err := e.collectResult(ctx, logger, params, pipeline)
 	if err != nil {
 		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
-		span.SetStatus(codes.Error, "error during query execution")
+		region.SetStatus(codes.Error, "error during query execution")
 		return logqlmodel.Result{}, err
 	}
 
@@ -227,7 +230,7 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	stats := statsCtx.Result(durFull, queueTime, builder.Len())
 	md := metadata.FromContext(ctx)
 
-	span.SetStatus(codes.Ok, "")
+	region.SetStatus(codes.Ok, "")
 	result := builder.Build(stats, md)
 
 	logql.RecordRangeAndInstantQueryMetrics(ctx, logger, params, strconv.Itoa(http.StatusOK), stats, result.Data)

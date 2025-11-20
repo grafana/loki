@@ -169,25 +169,33 @@ type broker struct {
 // multiple connections are opening at once) and then forever stored for a
 // broker.
 type brokerVersions struct {
-	maxVers  [kmsg.MaxKey + 1]int16
-	minVers  [kmsg.MaxKey + 1]int16
+	maxVers  map[int16]int16
+	minVers  map[int16]int16
 	features map[string]int16
 }
 
-func newBrokerVersions() *brokerVersions {
+func (v *brokerVersions) maxVersion(key int16) int16 {
+	if version, ok := v.maxVers[key]; ok {
+		return version
+	}
+	return -1
+}
+
+func (v *brokerVersions) minVersion(key int16) int16 {
+	if version, ok := v.minVers[key]; ok {
+		return version
+	}
+	return -1
+}
+
+func newBrokerVersions(capacity int) *brokerVersions {
 	v := &brokerVersions{
+		maxVers:  make(map[int16]int16, capacity),
+		minVers:  make(map[int16]int16, capacity),
 		features: make(map[string]int16),
-	}
-	for i := range &v.maxVers {
-		v.maxVers[i] = -1
-	}
-	for i := range &v.minVers {
-		v.minVers[i] = -1
 	}
 	return v
 }
-
-func (*brokerVersions) len() int { return kmsg.MaxKey + 1 }
 
 func (b *broker) loadVersions() *brokerVersions {
 	loaded := b.versions.Load()
@@ -315,7 +323,7 @@ start:
 
 	v := b.loadVersions()
 
-	if int(req.Key()) > v.len() || b.cl.cfg.maxVersions != nil && !b.cl.cfg.maxVersions.HasKey(req.Key()) {
+	if b.cl.cfg.maxVersions != nil && !b.cl.cfg.maxVersions.HasKey(req.Key()) {
 		pr.promise(nil, errUnknownRequestKey)
 		return
 	}
@@ -323,7 +331,7 @@ start:
 	// If v.maxVers[0] is non-negative, then we loaded API
 	// versions. If the version for this request is negative, we
 	// know the broker cannot handle this request.
-	if v.maxVers[0] >= 0 && v.maxVers[req.Key()] < 0 {
+	if v.maxVersion(0) >= 0 && v.maxVersion(req.Key()) < 0 {
 		pr.promise(nil, errBrokerTooOld)
 		return
 	}
@@ -341,10 +349,10 @@ start:
 
 	// If we have no broker versions, we are pinned pre 0.10.0 and did not
 	// issue ApiVersions.
-	if brokerMax := v.maxVers[req.Key()]; brokerMax >= 0 && brokerMax < ourMax {
+	if brokerMax := v.maxVersion(req.Key()); brokerMax >= 0 && brokerMax < ourMax {
 		ourMax = brokerMax
 	}
-	if brokerMin := v.minVers[req.Key()]; brokerMin >= 0 && brokerMin > ourMin {
+	if brokerMin := v.minVersion(req.Key()); brokerMin >= 0 && brokerMin > ourMin {
 		ourMin = brokerMin
 	}
 
@@ -745,8 +753,8 @@ func (cxn *brokerCxn) init(isProduceCxn bool, tries int) error {
 			}
 		} else {
 			// We have a max versions, and it indicates no support
-			// for ApiVersions. We just store a default -1 set.
-			cxn.b.storeVersions(newBrokerVersions())
+			// for ApiVersions. We just store a default empty map.
+			cxn.b.storeVersions(newBrokerVersions(0))
 		}
 	}
 
@@ -846,11 +854,8 @@ start:
 		return errors.New("ApiVersions response invalidly contained no ApiKeys")
 	}
 
-	v := newBrokerVersions()
+	v := newBrokerVersions(len(resp.ApiKeys))
 	for _, key := range resp.ApiKeys {
-		if key.ApiKey > kmsg.MaxKey || key.ApiKey < 0 {
-			continue
-		}
 		v.maxVers[key.ApiKey] = key.MaxVersion
 		v.minVers[key.ApiKey] = key.MinVersion
 	}
