@@ -34,13 +34,8 @@ type vectorAggregationPipeline struct {
 
 var (
 	vectorAggregationOperations = map[types.VectorAggregationType]aggregationOperation{
-		types.VectorAggregationTypeSum:    aggregationOperationSum,
-		types.VectorAggregationTypeCount:  aggregationOperationCount,
-		types.VectorAggregationTypeMax:    aggregationOperationMax,
-		types.VectorAggregationTypeMin:    aggregationOperationMin,
-		types.VectorAggregationTypeAvg:    aggregationOperationAvg,
-		types.VectorAggregationTypeStddev: aggregationOperationStddev,
-		types.VectorAggregationTypeStdvar: aggregationOperationStdvar,
+		types.VectorAggregationTypeSum:   aggregationOperationSum,
+		types.VectorAggregationTypeCount: aggregationOperationCount,
 	}
 )
 

@@ -33,11 +33,7 @@ var (
 	// rangeAggregationOperations holds the mapping of range aggregation types to operations for an aggregator.
 	rangeAggregationOperations = map[types.RangeAggregationType]aggregationOperation{
 		types.RangeAggregationTypeSum:   aggregationOperationSum,
-		types.RangeAggregationTypeMax:   aggregationOperationMax,
-		types.RangeAggregationTypeMin:   aggregationOperationMin,
-		types.RangeAggregationTypeAvg:   aggregationOperationMin,
 		types.RangeAggregationTypeCount: aggregationOperationCount,
-		types.RangeAggregationTypeBytes: aggregationOperationBytes,
 	}
 )
 
