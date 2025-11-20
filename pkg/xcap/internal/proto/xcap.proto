@@ -119,4 +119,3 @@ enum ProtoAggregationType {
   PROTO_AGGREGATION_TYPE_LAST = 4; // Use the last recorded value.
   PROTO_AGGREGATION_TYPE_FIRST = 5; // Use the first recorded value.
 }
-
