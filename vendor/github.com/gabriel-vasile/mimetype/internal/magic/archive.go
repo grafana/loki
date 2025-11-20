@@ -5,43 +5,80 @@ import (
 	"encoding/binary"
 )
 
-var (
-	// SevenZ matches a 7z archive.
-	SevenZ = prefix([]byte{0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C})
-	// Gzip matches gzip files based on http://www.zlib.org/rfc-gzip.html#header-trailer.
-	Gzip = prefix([]byte{0x1f, 0x8b})
-	// Fits matches an Flexible Image Transport System file.
-	Fits = prefix([]byte{
+// SevenZ matches a 7z archive.
+func SevenZ(raw []byte, _ uint32) bool {
+	return bytes.HasPrefix(raw, []byte{0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C})
+}
+
+// Gzip matches gzip files based on http://www.zlib.org/rfc-gzip.html#header-trailer.
+func Gzip(raw []byte, _ uint32) bool {
+	return bytes.HasPrefix(raw, []byte{0x1f, 0x8b})
+}
+
+// Fits matches an Flexible Image Transport System file.
+func Fits(raw []byte, _ uint32) bool {
+	return bytes.HasPrefix(raw, []byte{
 		0x53, 0x49, 0x4D, 0x50, 0x4C, 0x45, 0x20, 0x20, 0x3D, 0x20,
 		0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20,
 		0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x54,
 	})
-	// Xar matches an eXtensible ARchive format file.
-	Xar = prefix([]byte{0x78, 0x61, 0x72, 0x21})
-	// Bz2 matches a bzip2 file.
-	Bz2 = prefix([]byte{0x42, 0x5A, 0x68})
-	// Ar matches an ar (Unix) archive file.
-	Ar = prefix([]byte{0x21, 0x3C, 0x61, 0x72, 0x63, 0x68, 0x3E})
-	// Deb matches a Debian package file.
-	Deb = offset([]byte{
+}
+
+// Xar matches an eXtensible ARchive format file.
+func Xar(raw []byte, _ uint32) bool {
+	return bytes.HasPrefix(raw, []byte{0x78, 0x61, 0x72, 0x21})
+}
+
+// Bz2 matches a bzip2 file.
+func Bz2(raw []byte, _ uint32) bool {
+	return bytes.HasPrefix(raw, []byte{0x42, 0x5A, 0x68})
+}
+
+// Ar matches an ar (Unix) archive file.
+func Ar(raw []byte, _ uint32) bool {
+	return bytes.HasPrefix(raw, []byte{0x21, 0x3C, 0x61, 0x72, 0x63, 0x68, 0x3E})
+}
+
+// Deb matches a Debian package file.
+func Deb(raw []byte, _ uint32) bool {
+	return offset(raw, []byte{
 		0x64, 0x65, 0x62, 0x69, 0x61, 0x6E, 0x2D,
 		0x62, 0x69, 0x6E, 0x61, 0x72, 0x79,
 	}, 8)
-	// Warc matches a Web ARChive file.
-	Warc = prefix([]byte("WARC/1.0"), []byte("WARC/1.1"))
-	// Cab matches a Microsoft Cabinet archive file.
-	Cab = prefix([]byte("MSCF\x00\x00\x00\x00"))
-	// Xz matches an xz compressed stream based on https://tukaani.org/xz/xz-file-format.txt.
-	Xz = prefix([]byte{0xFD, 0x37, 0x7A, 0x58, 0x5A, 0x00})
-	// Lzip matches an Lzip compressed file.
-	Lzip = prefix([]byte{0x4c, 0x5a, 0x49, 0x50})
-	// RPM matches an RPM or Delta RPM package file.
-	RPM = prefix([]byte{0xed, 0xab, 0xee, 0xdb}, []byte("drpm"))
-	// Cpio matches a cpio archive file.
-	Cpio = prefix([]byte("070707"), []byte("070701"), []byte("070702"))
-	// RAR matches a RAR archive file.
-	RAR = prefix([]byte("Rar!\x1A\x07\x00"), []byte("Rar!\x1A\x07\x01\x00"))
-)
+}
+
+// Warc matches a Web ARChive file.
+func Warc(raw []byte, _ uint32) bool {
+	return bytes.HasPrefix(raw, []byte("WARC/1.0")) ||
+		bytes.HasPrefix(raw, []byte("WARC/1.1"))
+}
+
+// Cab matches a Microsoft Cabinet archive file.
+func Cab(raw []byte, _ uint32) bool {
+	return bytes.HasPrefix(raw, []byte("MSCF\x00\x00\x00\x00"))
+}
+
+// Xz matches an xz compressed stream based on https://tukaani.org/xz/xz-file-format.txt.
+func Xz(raw []byte, _ uint32) bool {
+	return bytes.HasPrefix(raw, []byte{0xFD, 0x37, 0x7A, 0x58, 0x5A, 0x00})
+}
+
+// Lzip matches an Lzip compressed file.
+func Lzip(raw []byte, _ uint32) bool {
+	return bytes.HasPrefix(raw, []byte{0x4c, 0x5a, 0x49, 0x50})
+}
+
+// RPM matches an RPM or Delta RPM package file.
+func RPM(raw []byte, _ uint32) bool {
+	return bytes.HasPrefix(raw, []byte{0xed, 0xab, 0xee, 0xdb}) ||
+		bytes.HasPrefix(raw, []byte("drpm"))
+}
+
+// RAR matches a RAR archive file.
+func RAR(raw []byte, _ uint32) bool {
+	return bytes.HasPrefix(raw, []byte("Rar!\x1A\x07\x00")) ||
+		bytes.HasPrefix(raw, []byte("Rar!\x1A\x07\x01\x00"))
+}
 
 // InstallShieldCab matches an InstallShield Cabinet archive file.
 func InstallShieldCab(raw []byte, _ uint32) bool {
@@ -76,6 +113,17 @@ func CRX(raw []byte, limit uint32) bool {
 		return false
 	}
 	return Zip(raw[zipOffset:], limit)
+}
+
+// Cpio matches a cpio archive file.
+func Cpio(raw []byte, _ uint32) bool {
+	if len(raw) < 6 {
+		return false
+	}
+	return binary.LittleEndian.Uint16(raw) == 070707 || // binary cpio
+		bytes.HasPrefix(raw, []byte("070707")) || // portable ASCII cpios
+		bytes.HasPrefix(raw, []byte("070701")) ||
+		bytes.HasPrefix(raw, []byte("070702"))
 }
 
 // Tar matches a (t)ape (ar)chive file.
@@ -137,7 +185,7 @@ func tarParseOctal(b []byte) int64 {
 		if b == 0 {
 			break
 		}
-		if !(b >= '0' && b <= '7') {
+		if b < '0' || b > '7' {
 			return -1
 		}
 		ret = (ret << 3) | int64(b-'0')

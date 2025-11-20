@@ -11,11 +11,12 @@ import (
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
-// Create a verification token. A verification token is an Amazon Web
-// Services-generated random value that you can use to prove ownership of an
-// external resource. For example, you can use a verification token to validate
-// that you control a public IP address range when you bring an IP address range to
-// Amazon Web Services (BYOIP).
+// Create a verification token.
+//
+// A verification token is an Amazon Web Services-generated random value that you
+// can use to prove ownership of an external resource. For example, you can use a
+// verification token to validate that you control a public IP address range when
+// you bring an IP address range to Amazon Web Services (BYOIP).
 func (c *Client) CreateIpamExternalResourceVerificationToken(ctx context.Context, params *CreateIpamExternalResourceVerificationTokenInput, optFns ...func(*Options)) (*CreateIpamExternalResourceVerificationTokenOutput, error) {
 	if params == nil {
 		params = &CreateIpamExternalResourceVerificationTokenInput{}

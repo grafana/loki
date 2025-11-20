@@ -6,32 +6,28 @@
 
 package internal
 
-type Int32Slice struct {
+type Int32SliceWrapper struct {
 	orig  *[]int32
 	state *State
 }
 
-func GetOrigInt32Slice(ms Int32Slice) *[]int32 {
+func GetInt32SliceOrig(ms Int32SliceWrapper) *[]int32 {
 	return ms.orig
 }
 
-func GetInt32SliceState(ms Int32Slice) *State {
+func GetInt32SliceState(ms Int32SliceWrapper) *State {
 	return ms.state
 }
 
-func NewInt32Slice(orig *[]int32, state *State) Int32Slice {
-	return Int32Slice{orig: orig, state: state}
+func NewInt32SliceWrapper(orig *[]int32, state *State) Int32SliceWrapper {
+	return Int32SliceWrapper{orig: orig, state: state}
 }
 
-func GenerateTestInt32Slice() Int32Slice {
-	orig := GenerateOrigTestInt32Slice()
-	return NewInt32Slice(&orig, NewState())
+func GenTestInt32SliceWrapper() Int32SliceWrapper {
+	orig := []int32{1, 2, 3}
+	return NewInt32SliceWrapper(&orig, NewState())
 }
 
-func CopyOrigInt32Slice(dst, src []int32) []int32 {
-	return append(dst[:0], src...)
-}
-
-func GenerateOrigTestInt32Slice() []int32 {
+func GenTestInt32Slice() []int32 {
 	return []int32{1, 2, 3}
 }
