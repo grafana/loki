@@ -48,7 +48,7 @@ local validationJob = _validationJob(false);
                      + step.withId('gather-tests')
                      + step.withRun(|||
                        echo "packages=$(find . -path '*_test.go' -printf '%h\n' \
-                         | grep -e "pkg/push" -e "integration" -e "operator" -e "helm" -v \
+                         | grep -e "pkg/push" -e "integration" -e "operator" -e "helm" -e "client" -v \
                          | cut  -d / -f 2,3 \
                          | uniq \
                          | sort \
@@ -112,6 +112,28 @@ local validationJob = _validationJob(false);
                        gotestsum -- -covermode=atomic -coverprofile=coverage.txt -p=4 ./...
                      |||),
                    ]),
+
+  testClientPackage: validationJob
+                     + job.withSteps([
+                       common.fetchReleaseRepo,
+                       common.fixDubiousOwnership,
+                       common.fetchReleaseLib,
+                       step.new('install dependencies')
+                       + step.withIf("${{ !fromJSON(env.SKIP_VALIDATION) && startsWith(inputs.build_image, 'golang') }}")
+                       + step.withRun('lib/workflows/install_workflow_dependencies.sh loki-release'),
+                       step.new('go mod tidy')
+                       + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
+                       + step.withWorkingDirectory('release/client')
+                       + step.withRun(|||
+                         go mod tidy
+                       |||),
+                       step.new('test client package')
+                       + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
+                       + step.withWorkingDirectory('release/client')
+                       + step.withRun(|||
+                         gotestsum -- -tags=assert -covermode=atomic -coverprofile=coverage.txt -p=4 ./...
+                       |||),
+                     ]),
 
   // Check / lint jobs
   checkFiles: setupValidationDeps(
@@ -206,6 +228,7 @@ local validationJob = _validationJob(false);
                'integration',
                'testPackages',
                'testPushPackage',
+               'testClientPackage',
              ])
              + job.withEnv({
                SKIP_VALIDATION: '${{ inputs.skip_validation }}',
@@ -228,6 +251,7 @@ local validationJob = _validationJob(false);
            'integration',
            'testPackages',
            'testPushPackage',
+           'testClientPackage',
          ])
          + job.withEnv({
            SKIP_VALIDATION: '${{ inputs.skip_validation }}',
