@@ -162,9 +162,6 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	ctx, capture := xcap.NewCapture(ctx, nil)
 	startTime := time.Now()
 
-	ctx, region := xcap.StartRegion(ctx, "Engine.Execute")
-	defer region.End()
-
 	ctx, span := tracer.Start(ctx, "Engine.Engine", trace.WithAttributes(
 		attribute.String("type", string(logql.GetRangeType(params))),
 		attribute.String("query", params.QueryString()),
@@ -231,8 +228,7 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 		"duration_full", durFull,
 	)
 
-	linkCaptureUsingPlan(capture, physicalPlan)
-	if err := xcap.ExportAsTrace(ctx, capture, logger); err != nil {
+	if err := exportCapture(ctx, capture, physicalPlan, logger); err != nil {
 		level.Error(logger).Log("msg", "failed to export capture as trace", "err", err)
 	}
 
@@ -423,11 +419,12 @@ func (e *Engine) collectResult(ctx context.Context, logger log.Logger, params lo
 	return builder, duration, nil
 }
 
-func linkCaptureUsingPlan(capture *xcap.Capture, plan *physical.Plan) {
+func exportCapture(ctx context.Context, capture *xcap.Capture, plan *physical.Plan, logger log.Logger) error {
 	if capture == nil {
-		return
+		return nil
 	}
 
+	// nodeID to parentNodeID mapping.
 	idToParentID := make(map[string]string, plan.Len())
 	for _, root := range plan.Roots() {
 		plan.DFSWalk(root, func(n physical.Node) error {
@@ -437,7 +434,7 @@ func linkCaptureUsingPlan(capture *xcap.Capture, plan *physical.Plan) {
 				// Fix this when we have plans with multiple parents.
 
 				if parents[0].Type() == physical.NodeTypeParallelize {
-					// Skip Parallelize nodes as they are just not actual work.
+					// Skip Parallelize nodes as they are not execution nodes.
 					pp := plan.Graph().Parents(parents[0])
 					if len(pp) > 0 {
 						parents = pp
@@ -452,9 +449,11 @@ func linkCaptureUsingPlan(capture *xcap.Capture, plan *physical.Plan) {
 		}, dag.PreOrderWalk)
 	}
 
-	// Merge captures by using node_id for linking regions.
+	// Link region by using node_id for finding parent regions.
 	capture.LinkRegions("node_id", func(nodeID string) (string, bool) {
 		parentID, ok := idToParentID[nodeID]
 		return parentID, ok
 	})
+
+	return xcap.ExportTrace(ctx, capture, logger)
 }

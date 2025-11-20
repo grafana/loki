@@ -6,11 +6,9 @@ import (
 	"math/rand/v2"
 )
 
-// identifier is a unique identifier for captures and regions.
+// identifier is an 8-byte unique identifier for captures and regions.
+// It is compatible with otel SpanID, sharing the same [8]byte format.
 type identifier [8]byte
-
-// ID is an exported alias for identifier for use in other packages.
-type ID = identifier
 
 var (
 	zeroID identifier
@@ -45,6 +43,6 @@ func newID() identifier {
 
 // NewID returns a new random ID. The ID is guaranteed to be non-zero.
 // This is the exported version of newID for use in other packages.
-func NewID() ID {
+func NewID() identifier {
 	return newID()
 }

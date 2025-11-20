@@ -13,13 +13,15 @@ import (
 
 var tracer = otel.Tracer("xcap")
 
-// ExportAsTrace exports a Capture as OpenTelemetry traces.
+// ExportTrace exports a Capture as OpenTelemetry traces.
 //
 // Each region in the capture becomes a span. Spans are linked using
 // the parent-child relationships defined by the regions.
-func ExportAsTrace(ctx context.Context, capture *Capture, logger log.Logger) error {
+//
+// Observations within a region are added as attributes to the corresponding span.
+func ExportTrace(ctx context.Context, capture *Capture, logger log.Logger) error {
 	if capture == nil {
-		return fmt.Errorf("capture cannot be nil")
+		return nil
 	}
 
 	regions := capture.regions

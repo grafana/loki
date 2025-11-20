@@ -72,6 +72,7 @@ func (c *Capture) AddRegion(r *Region) {
 	c.regions = append(c.regions, r)
 }
 
+// Regions returns all regions in this capture.
 func (c *Capture) Regions() []*Region {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -115,6 +116,9 @@ func (c *Capture) LinkRegions(linkByAttribute string, resolveParent func(string)
 	if linkByAttribute == "" {
 		return
 	}
+
+	// Call End() to finalise the capture. This is a no-op if already ended.
+	c.End()
 
 	getAttributeValue := func(r *Region) (string, bool) {
 		if attr := r.getAttribute(linkByAttribute); attr.Valid() && attr.Value.Type() == attribute.STRING {

@@ -161,6 +161,8 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	ctx = user.InjectOrgID(ctx, job.Task.TenantID)
 
 	ctx, capture := xcap.NewCapture(ctx, nil)
+	defer capture.End()
+
 	pipeline := executor.Run(ctx, cfg, job.Task.Fragment, logger)
 
 	err := job.Scheduler.SendMessageAsync(ctx, wire.TaskStatusMessage{
@@ -189,10 +191,6 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 		return
 	}
 
-	// Close before ending capture to ensure all observations are recorded.
-	pipeline.Close()
-	capture.End()
-
 	// Finally, close all sinks.
 	for _, sink := range job.Sinks {
 		err := sink.Close(ctx)
@@ -200,6 +198,12 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 			level.Warn(logger).Log("msg", "failed to close sink", "err", err)
 		}
 	}
+
+	// Close before ending capture to ensure all observations are recorded.
+	pipeline.Close()
+	// Explicitly call End() here (even though we have a defer statement)
+	// to finalize the capture before it's included in the TaskStatusMessage.
+	capture.End()
 
 	// TODO(rfratto): We should find a way to expose queue time here.
 	result := statsCtx.Result(time.Since(startTime), 0, totalRows)
