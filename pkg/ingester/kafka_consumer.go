@@ -4,13 +4,13 @@ import (
 	"context"
 	"errors"
 	"math"
+	strings "strings"
 	"sync"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
-	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
@@ -147,28 +147,11 @@ func (kc *kafkaConsumer) consume(ctx context.Context, records []partition.Record
 					continue
 				}
 
-				recordCtx := user.InjectOrgID(recordWithIndex.record.Ctx, recordWithIndex.record.TenantID)
-				req := &logproto.PushRequest{
-					Streams: []logproto.Stream{stream},
-				}
-
-				level.Debug(kc.logger).Log("msg", "pushing record", "offset", recordWithIndex.record.Offset, "length", len(recordWithIndex.record.Content))
-
-				if err := retryWithBackoff(ctx, func(attempts int) error {
-					pushTime := time.Now()
-					_, err := kc.pusher.Push(recordCtx, req)
-
-					kc.metrics.pushLatency.Observe(time.Since(pushTime).Seconds())
-
-					if err != nil {
-						level.Warn(kc.logger).Log("msg", "failed to push records", "err", err, "offset", recordWithIndex.record.Offset, "attempts", attempts)
-						return err
-					}
-
-					return nil
-				}); err != nil {
-					level.Error(kc.logger).Log("msg", "exhausted all retry attempts, failed to push records", "err", err, "offset", recordWithIndex.record.Offset)
-					continue
+				if strings.Contains(stream.Labels, "job=\"cloudcost-exporter/cloudcost-exporter\"") &&
+					strings.Contains(stream.Labels, "cluster=\"dev-us-central-0\"") &&
+					strings.Contains(stream.Labels, "stream=\"stdout\"") &&
+					strings.Contains(stream.Labels, "pod=\"cloudcost-exporter-86f4fccf95-7x24g\"") {
+					level.Info(kc.logger).Log("msg", "Found matching stream", "stream", stream.Labels, "record_offset", recordWithIndex.record.Offset, "record_timestamp", recordWithIndex.record.Timestamp)
 				}
 
 				offset := recordWithIndex.record.Offset
