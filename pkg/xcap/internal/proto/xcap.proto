@@ -6,7 +6,7 @@ package loki.xcap;
 import "gogoproto/gogo.proto";
 import "google/protobuf/timestamp.proto";
 
-option go_package = "github.com/grafana/loki/v3/pkg/xcap";
+option go_package = "github.com/grafana/loki/v3/pkg/xcap/internal/proto";
 
 // ProtoCapture is protobuf representation of a Capture.
 message ProtoCapture {

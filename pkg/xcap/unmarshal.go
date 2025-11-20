@@ -1,16 +1,15 @@
 package xcap
 
 import (
-	"context"
 	"fmt"
 
 	"go.opentelemetry.io/otel/attribute"
 )
 
 // FromProtoCapture converts a protobuf Capture to its Go representation.
-func FromProtoCapture(proto *ProtoCapture) (*Capture, error) {
+func FromProtoCapture(proto *ProtoCapture, capture *Capture) error {
 	if proto == nil {
-		return nil, nil
+		return nil
 	}
 
 	// Build statistics map from proto statistics
@@ -18,18 +17,16 @@ func FromProtoCapture(proto *ProtoCapture) (*Capture, error) {
 	for i, protoStat := range proto.Statistics {
 		stat, err := unmarshalStatistic(protoStat)
 		if err != nil {
-			return nil, fmt.Errorf("failed to unmarshal statistic: %w", err)
+			return fmt.Errorf("failed to unmarshal statistic: %w", err)
 		}
 		statsIndex[uint32(i)] = stat
 	}
-
-	_, capture := NewCapture(context.Background(), nil)
 
 	// Unmarshal regions
 	for _, protoRegion := range proto.Regions {
 		region, err := fromProtoRegion(protoRegion, statsIndex)
 		if err != nil {
-			return nil, fmt.Errorf("failed to unmarshal region: %w", err)
+			return fmt.Errorf("failed to unmarshal region: %w", err)
 		}
 
 		if region != nil {
@@ -37,7 +34,7 @@ func FromProtoCapture(proto *ProtoCapture) (*Capture, error) {
 		}
 	}
 
-	return capture, nil
+	return nil
 }
 
 // fromProtoRegion converts a protobuf Region to its Go representation.

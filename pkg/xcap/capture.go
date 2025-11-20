@@ -14,8 +14,10 @@ package xcap
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
+	"github.com/gogo/protobuf/proto"
 	"go.opentelemetry.io/otel/attribute"
 )
 
@@ -153,4 +155,48 @@ func (c *Capture) LinkRegions(linkByAttribute string, resolveParent func(string)
 
 		r.parentID = parentRegion.id
 	}
+}
+
+// MarshalBinary implements encoding.BinaryMarshaler for Capture.
+// It serializes the Capture to its protobuf representation and returns the binary data.
+func (c *Capture) MarshalBinary() ([]byte, error) {
+	if c == nil {
+		return nil, nil
+	}
+
+	protoCapture, err := ToProtoCapture(c)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert capture to proto: %w", err)
+	}
+
+	if protoCapture == nil {
+		return nil, nil
+	}
+
+	data, err := proto.Marshal(protoCapture)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal proto capture: %w", err)
+	}
+
+	return data, nil
+}
+
+// UnmarshalBinary implements encoding.BinaryUnmarshaler for Capture.
+// It deserializes binary data into a Capture from its protobuf representation.
+func (c *Capture) UnmarshalBinary(data []byte) error {
+	if len(data) == 0 {
+		return nil
+	}
+
+	protoCapture := &ProtoCapture{}
+	if err := proto.Unmarshal(data, protoCapture); err != nil {
+		return fmt.Errorf("failed to unmarshal proto capture: %w", err)
+	}
+
+	err := FromProtoCapture(protoCapture, c)
+	if err != nil {
+		return fmt.Errorf("failed to convert proto to capture: %w", err)
+	}
+
+	return nil
 }
