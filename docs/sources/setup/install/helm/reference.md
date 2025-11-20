@@ -8171,6 +8171,11 @@ false
         "severity": "warning",
         "threshold": 5
       },
+      "LokiCompactorHasNotSuccessfullyRunCompaction": {
+        "enabled": true,
+        "for": "1h",
+        "severity": "critical"
+      },
       "LokiRequestErrors": {
         "enabled": true,
         "for": "15m",
@@ -8308,6 +8313,11 @@ null
       "lookbackPeriod": "5m",
       "severity": "warning",
       "threshold": 5
+    },
+    "LokiCompactorHasNotSuccessfullyRunCompaction": {
+      "enabled": true,
+      "for": "1h",
+      "severity": "critical"
     },
     "LokiRequestErrors": {
       "enabled": true,

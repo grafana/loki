@@ -87,6 +87,50 @@ groups:
       {{- end }}
 {{- end }}
 
+{{- if and (not .disabled.LokiCompactorHasNotSuccessfullyRunCompaction) .configs.LokiCompactorHasNotSuccessfullyRunCompaction.enabled }}
+      {{- with .configs.LokiCompactorHasNotSuccessfullyRunCompaction }}
+      - alert: "LokiCompactorHasNotSuccessfullyRunCompaction"
+        annotations:
+          message: |
+            {{`{{`}} $labels.cluster {{`}}`}} {{`{{`}} $labels.namespace {{`}}`}} has not run compaction in the last 3 hours since the last compaction. This may indicate a problem with the compactor.
+          {{- with $additionalAnnotations }}
+          {{- toYaml . | nindent 10 }}
+          {{- end }}
+        expr: |
+          min (
+            time() - (loki_boltdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds{} > 0)
+          )
+          by (cluster, namespace)
+          > 60 * 60 * 3
+        for: {{ .for }}
+        labels:
+          severity: {{ .severity }}
+          {{- with $additionalLabels }}
+          {{ toYaml . | nindent 10 }}
+          {{- end }}
+      - alert: "LokiCompactorHasNotSuccessfullyRunCompaction"
+        annotations:
+          message: |
+            {{`{{`}} $labels.cluster {{`}}`}} {{`{{`}} $labels.namespace {{`}}`}} has not run compaction in the last 3h since startup. This may indicate a problem with the compactor.
+          {{- with $additionalAnnotations }}
+          {{- toYaml . | nindent 10 }}
+          {{- end }}
+        expr: |
+          max(
+            max_over_time(
+              loki_boltdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds{}[3h]
+            )
+          ) by (cluster, namespace)
+          == 0
+        for: {{ .for }}
+        labels:
+          severity: {{ .severity }}
+          {{- with $additionalLabels }}
+          {{ toYaml . | nindent 10 }}
+          {{- end }}
+      {{- end }}
+{{- end }}
+
 {{- if and (not .disabled.LokiCanaryLatency) .configs.LokiCanaryLatency.enabled }}
   {{- with .configs.LokiCanaryLatency }}
   - name: "loki_canaries_alerts"

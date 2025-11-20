@@ -13,6 +13,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+- [FEATURE] Add compaction not run alert rules. [#19901](https://github.com/grafana/loki/pull/19901)
 - [ENHANCEMENT] Use fsGroupChangePolicy=OnRootMismatch on loki to speed up pod starts [#13942](https://github.com/grafana/loki/pull/13942)
 - [ENHANCEMENT] Add support for configuring `volumeAttributesClassName` for `volumeClaimTemplates`. [#19719](https://github.com/grafana/loki/pull/19719)
 - [BUGFIX] Don't fail for missing bucket name, if minio is enabled. [#19745](https://github.com/grafana/loki/pull/19745)
