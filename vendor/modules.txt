@@ -1221,6 +1221,11 @@ github.com/grafana/gomemcache/memcache
 # github.com/grafana/jsonparser v0.0.0-20241004153430-023329977675
 ## explicit; go 1.13
 github.com/grafana/jsonparser
+# github.com/grafana/loki/client v0.0.0-00010101000000-000000000000 => ./client
+## explicit; go 1.25.3
+github.com/grafana/loki/client
+github.com/grafana/loki/client/logql/syntax
+github.com/grafana/loki/client/util
 # github.com/grafana/loki/pkg/push v0.0.0-20250630054201-94c0ba7b0952 => ./pkg/push
 ## explicit; go 1.24.0
 github.com/grafana/loki/pkg/push
@@ -3120,3 +3125,4 @@ zombiezen.com/go/sqlite/sqlitex
 # github.com/grafana/loki/pkg/push => ./pkg/push
 # github.com/influxdata/go-syslog/v3 => github.com/leodido/go-syslog/v4 v4.3.0
 # github.com/thanos-io/objstore => github.com/grafana/objstore v0.0.0-20250728171719-b5d3b766d1b0
+# github.com/grafana/loki/client => ./client
