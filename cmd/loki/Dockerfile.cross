@@ -28,6 +28,7 @@ COPY --from=filesystem /etc/passwd /etc/passwd
 COPY --from=filesystem /etc/group /etc/group
 
 USER 10001
+WORKDIR /
 EXPOSE 3100
 ENTRYPOINT [ "/usr/bin/loki" ]
 CMD ["-config.file=/etc/loki/local-config.yaml"]
