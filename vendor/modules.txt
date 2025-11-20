@@ -1093,7 +1093,7 @@ github.com/google/go-querystring/query
 # github.com/google/pprof v0.0.0-20250923004556-9e5a51aed1e8
 ## explicit; go 1.24.0
 github.com/google/pprof/profile
-# github.com/google/renameio/v2 v2.0.0
+# github.com/google/renameio/v2 v2.0.1
 ## explicit; go 1.13
 github.com/google/renameio/v2
 # github.com/google/s2a-go v0.1.9
