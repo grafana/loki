@@ -113,7 +113,7 @@ func (a *aggregator) Add(ts time.Time, value float64, labels []arrow.Field, labe
 			state.value += value
 		}
 
-		state.count += 1
+		state.count++
 	} else {
 		count := int64(1)
 
