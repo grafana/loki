@@ -11,8 +11,19 @@ import (
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
-// Shuts down the specified instances. This operation is [idempotent]; if you terminate an
-// instance more than once, each call succeeds.
+// Terminates (deletes) the specified instances. This operation is [idempotent]; if you
+// terminate an instance more than once, each call succeeds.
+//
+// Terminating an instance is permanent and irreversible.
+//
+// After you terminate an instance, you can no longer connect to it, and it can't
+// be recovered. All attached Amazon EBS volumes that are configured to be deleted
+// on termination are also permanently deleted and can't be recovered. All data
+// stored on instance store volumes is permanently lost. For more information, see [How instance termination works]
+// .
+//
+// Before you terminate an instance, ensure that you have backed up all data that
+// you need to retain after the termination to persistent storage.
 //
 // If you specify multiple instances and the request fails (for example, because
 // of a single incorrect instance ID), none of the instances are terminated.
@@ -73,6 +84,7 @@ import (
 // instances, see [Terminate Amazon EC2 instances]and [Troubleshooting terminating your instance] in the Amazon EC2 User Guide.
 //
 // [idempotent]: https://docs.aws.amazon.com/ec2/latest/devguide/ec2-api-idempotency.html
+// [How instance termination works]: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/how-ec2-instance-termination-works.html
 // [Troubleshooting terminating your instance]: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/TroubleshootingInstancesShuttingDown.html
 // [Amazon EC2 instance state changes]: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-instance-lifecycle.html
 // [Terminate Amazon EC2 instances]: https://docs.aws.amazon.com/
