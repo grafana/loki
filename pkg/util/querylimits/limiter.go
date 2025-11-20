@@ -27,7 +27,7 @@ func NewLimiter(log log.Logger, original limiter.CombinedLimits) *Limiter {
 // MaxQueryLength returns the limit of the length (in time) of a query.
 func (l *Limiter) MaxQueryLength(ctx context.Context, userID string) time.Duration {
 	original := l.CombinedLimits.MaxQueryLength(ctx, userID)
-	requestLimits := ExtractQueryLimitsContext(ctx)
+	requestLimits := ExtractQueryLimitsFromContext(ctx)
 	if requestLimits == nil || requestLimits.MaxQueryLength == 0 ||
 		(time.Duration(requestLimits.MaxQueryLength) > original && original != 0) {
 		return original
@@ -39,7 +39,7 @@ func (l *Limiter) MaxQueryLength(ctx context.Context, userID string) time.Durati
 // MaxQueryLookback returns the max lookback period of queries.
 func (l *Limiter) MaxQueryLookback(ctx context.Context, userID string) time.Duration {
 	original := l.CombinedLimits.MaxQueryLookback(ctx, userID)
-	requestLimits := ExtractQueryLimitsContext(ctx)
+	requestLimits := ExtractQueryLimitsFromContext(ctx)
 	if requestLimits == nil || requestLimits.MaxQueryLookback == 0 ||
 		(time.Duration(requestLimits.MaxQueryLookback) > original && original != 0) {
 		return original
@@ -51,7 +51,7 @@ func (l *Limiter) MaxQueryLookback(ctx context.Context, userID string) time.Dura
 // MaxQueryRange retruns the max query range/interval of a query.
 func (l *Limiter) MaxQueryRange(ctx context.Context, userID string) time.Duration {
 	original := l.CombinedLimits.MaxQueryRange(ctx, userID)
-	requestLimits := ExtractQueryLimitsContext(ctx)
+	requestLimits := ExtractQueryLimitsFromContext(ctx)
 	if requestLimits == nil || requestLimits.MaxQueryRange == 0 ||
 		(time.Duration(requestLimits.MaxQueryRange) > original && original != 0) {
 		return original
@@ -63,7 +63,7 @@ func (l *Limiter) MaxQueryRange(ctx context.Context, userID string) time.Duratio
 // MaxEntriesLimitPerQuery returns the limit to number of entries the querier should return per query.
 func (l *Limiter) MaxEntriesLimitPerQuery(ctx context.Context, userID string) int {
 	original := l.CombinedLimits.MaxEntriesLimitPerQuery(ctx, userID)
-	requestLimits := ExtractQueryLimitsContext(ctx)
+	requestLimits := ExtractQueryLimitsFromContext(ctx)
 	if requestLimits == nil || requestLimits.MaxEntriesLimitPerQuery == 0 ||
 		(requestLimits.MaxEntriesLimitPerQuery > original && original != 0) {
 		return original
@@ -75,7 +75,7 @@ func (l *Limiter) MaxEntriesLimitPerQuery(ctx context.Context, userID string) in
 func (l *Limiter) QueryTimeout(ctx context.Context, userID string) time.Duration {
 	original := l.CombinedLimits.QueryTimeout(ctx, userID)
 	// in theory this error should never happen
-	requestLimits := ExtractQueryLimitsContext(ctx)
+	requestLimits := ExtractQueryLimitsFromContext(ctx)
 	if requestLimits == nil || requestLimits.QueryTimeout == 0 ||
 		(time.Duration(requestLimits.QueryTimeout) > original && original != 0) {
 		return original
@@ -86,7 +86,7 @@ func (l *Limiter) QueryTimeout(ctx context.Context, userID string) time.Duration
 
 func (l *Limiter) RequiredLabels(ctx context.Context, userID string) []string {
 	original := l.CombinedLimits.RequiredLabels(ctx, userID)
-	requestLimits := ExtractQueryLimitsContext(ctx)
+	requestLimits := ExtractQueryLimitsFromContext(ctx)
 
 	if requestLimits == nil {
 		return original
@@ -112,7 +112,7 @@ func (l *Limiter) RequiredLabels(ctx context.Context, userID string) []string {
 
 func (l *Limiter) RequiredNumberLabels(ctx context.Context, userID string) int {
 	original := l.CombinedLimits.RequiredNumberLabels(ctx, userID)
-	requestLimits := ExtractQueryLimitsContext(ctx)
+	requestLimits := ExtractQueryLimitsFromContext(ctx)
 	if requestLimits == nil || requestLimits.RequiredNumberLabels == 0 || requestLimits.RequiredNumberLabels < original {
 		return original
 	}
@@ -122,7 +122,7 @@ func (l *Limiter) RequiredNumberLabels(ctx context.Context, userID string) int {
 
 func (l *Limiter) MaxQueryBytesRead(ctx context.Context, userID string) int {
 	original := l.CombinedLimits.MaxQueryBytesRead(ctx, userID)
-	requestLimits := ExtractQueryLimitsContext(ctx)
+	requestLimits := ExtractQueryLimitsFromContext(ctx)
 	if requestLimits == nil || requestLimits.MaxQueryBytesRead.Val() == 0 ||
 		(requestLimits.MaxQueryBytesRead.Val() > original && original != 0) {
 		return original
