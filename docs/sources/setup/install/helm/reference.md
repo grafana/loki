@@ -7982,7 +7982,7 @@ true
 			<td>string</td>
 			<td></td>
 			<td><pre lang="json">
-"v0.15.3"
+"v0.15.4"
 </pre>
 </td>
 		</tr>
@@ -12515,7 +12515,7 @@ false
 			<td>string</td>
 			<td>Docker image tag</td>
 			<td><pre lang="json">
-"1.30.10"
+"1.32.2"
 </pre>
 </td>
 		</tr>
