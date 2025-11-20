@@ -8,7 +8,6 @@ import "github.com/grafana/dskit/httpgrpc/httpgrpc.proto";
 import "gogoproto/gogo.proto";
 import "pkg/engine/internal/proto/physicalpb/physicalpb.proto";
 import "pkg/engine/internal/proto/ulid/ulid.proto";
-import "pkg/xcap/proto/xcap.proto";
 
 option go_package = "github.com/grafana/loki/v3/pkg/engine/internal/proto/wirepb";
 
@@ -204,7 +203,8 @@ message TaskStatus {
   TaskError error = 2;
 
   // Capture is the capture data for this task, if available.
-  loki.xcap.Capture capture = 3;
+  // This is an opaque binary representation of the capture payload.
+  bytes capture = 3;
 }
 
 message TaskError {

@@ -11,7 +11,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
@@ -30,8 +29,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/rangeio"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
-
-var tracer = otel.Tracer("pkg/engine")
 
 var ErrNotSupported = errors.New("feature not supported in new query engine")
 
