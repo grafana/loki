@@ -16,7 +16,10 @@ import (
 
 // minReadSize is the minimum chunk size for reading data.
 // This ensures we read in reasonable-sized batches rather than very small ones.
-const minReadSize = 512
+// For typical 1-2MB objects (most of our chunks), 64KB provides a good balance between efficiency
+// and rate limiting responsiveness.
+// E.g. for 2MB object, 64KB read size is 32 reads, which is reasonable.
+const minReadSize = 64 * 1024 // 64KB
 
 type rateLimiterKey struct{}
 

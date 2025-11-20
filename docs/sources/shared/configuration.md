@@ -4316,6 +4316,16 @@ discover_generic_fields:
 # CLI flag: -querier.query-timeout
 [query_timeout: <duration> | default = 1m]
 
+# Maximum bytes per second for bucket GetObject operations during a query. 0
+# means unlimited. Also expressible in human readable forms (1MB, 256KB, etc).
+# CLI flag: -querier.query-bucket-get-object-rate-limit
+[query_bucket_get_object_rate_limit: <int> | default = 0B]
+
+# Maximum burst bytes for bucket GetObject operations during a query. 0 means
+# unlimited. Also expressible in human readable forms (1MB, 256KB, etc).
+# CLI flag: -querier.query-bucket-get-object-rate-limit-burst
+[query_bucket_get_object_rate_limit_burst: <int> | default = 0B]
+
 # Split queries by a time interval and execute in parallel. The value 0 disables
 # splitting by time. This also determines how cache keys are chosen when result
 # caching is enabled.
