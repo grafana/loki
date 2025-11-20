@@ -261,8 +261,8 @@ func walkRangeAggregation(e *syntax.RangeAggregationExpr, params logql.Params) (
 		rangeAggType = types.RangeAggregationTypeMax
 	case syntax.OpRangeTypeMin:
 		rangeAggType = types.RangeAggregationTypeMin
-	case syntax.OpRangeTypeAvg:
-		rangeAggType = types.RangeAggregationTypeAvg
+	// case syntax.OpRangeTypeBytesRate:
+	//	rangeAggType = types.RangeAggregationTypeBytes // bytes_rate is implemented as bytes_over_time/$interval
 	case syntax.OpRangeTypeRate:
 		if e.Left.Unwrap != nil {
 			rangeAggType = types.RangeAggregationTypeSum // rate of an unwrap is implemented as sum_over_time/$interval
@@ -421,14 +421,12 @@ func convertVectorAggregationType(op string) types.VectorAggregationType {
 	switch op {
 	case syntax.OpTypeSum:
 		return types.VectorAggregationTypeSum
-	case syntax.OpTypeCount:
-		return types.VectorAggregationTypeCount
+	//case syntax.OpTypeCount:
+	//	return types.VectorAggregationTypeCount
 	case syntax.OpTypeMax:
 		return types.VectorAggregationTypeMax
 	case syntax.OpTypeMin:
 		return types.VectorAggregationTypeMin
-	case syntax.OpTypeAvg:
-		return types.VectorAggregationTypeAvg
 	default:
 		return types.VectorAggregationTypeInvalid
 	}

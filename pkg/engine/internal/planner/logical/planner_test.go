@@ -158,41 +158,6 @@ RETURN %13
 		t.Logf("\n%s\n", sb.String())
 	})
 
-	t.Run("avg metric query", func(t *testing.T) {
-		q := &query{
-			statement: `sum by (level) (avg_over_time({cluster="prod", namespace=~"loki-.*"} | unwrap size [5m]))`,
-			start:     3600,
-			end:       7200,
-			interval:  5 * time.Minute,
-		}
-
-		logicalPlan, err := BuildPlan(q)
-		require.NoError(t, err)
-		t.Logf("\n%s\n", logicalPlan.String())
-
-		expected := `%1 = EQ label.cluster "prod"
-%2 = MATCH_RE label.namespace "loki-.*"
-%3 = AND %1 %2
-%4 = MAKETABLE [selector=%3, predicates=[], shard=0_of_1]
-%5 = GTE builtin.timestamp 1970-01-01T00:55:00Z
-%6 = SELECT %4 [predicate=%5]
-%7 = LT builtin.timestamp 1970-01-01T02:00:00Z
-%8 = SELECT %6 [predicate=%7]
-%9 = PROJECT %8 [mode=*E, expr=CAST_FLOAT(ambiguous.size)]
-%10 = RANGE_AGGREGATION %9 [operation=avg, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
-%11 = VECTOR_AGGREGATION %10 [operation=sum, group_by=(ambiguous.level)]
-%12 = LOGQL_COMPAT %11
-RETURN %12
-`
-
-		require.Equal(t, expected, logicalPlan.String())
-
-		var sb strings.Builder
-		PrintTree(&sb, logicalPlan.Value())
-
-		t.Logf("\n%s\n", sb.String())
-	})
-
 	t.Run(`metric query with one binary math operation`, func(t *testing.T) {
 		q := &query{
 			statement: `sum by (level) (count_over_time({cluster="prod", namespace=~"loki-.*"}[5m]) / 300)`,
@@ -355,7 +320,6 @@ func TestCanExecuteQuery(t *testing.T) {
 		},
 		{
 			statement: `max(avg_over_time({env="prod"} | unwrap size [1m]))`,
-			expected:  true,
 		},
 		{
 			statement: `sum by (level) (rate({env="prod"}[1m]))`,
@@ -363,7 +327,6 @@ func TestCanExecuteQuery(t *testing.T) {
 		},
 		{
 			statement: `avg by (level) (rate({env="prod"}[1m]))`,
-			expected:  true,
 		},
 		{
 			statement: `max by (level) (count_over_time({env="prod"}[1m]))`,
