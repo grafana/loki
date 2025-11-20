@@ -1,6 +1,8 @@
 module github.com/grafana/loki
 
-go 1.23.12
+go 1.24.0
+
+toolchain go1.24.10
 
 require (
 	cloud.google.com/go/bigtable v1.18.1
@@ -99,10 +101,10 @@ require (
 	go.etcd.io/bbolt v1.3.10
 	go.uber.org/atomic v1.11.0
 	go.uber.org/goleak v1.2.1
-	golang.org/x/crypto v0.40.0
-	golang.org/x/net v0.42.0
-	golang.org/x/sync v0.16.0
-	golang.org/x/sys v0.34.0
+	golang.org/x/crypto v0.45.0
+	golang.org/x/net v0.47.0
+	golang.org/x/sync v0.18.0
+	golang.org/x/sys v0.38.0
 	golang.org/x/time v0.12.0
 	google.golang.org/api v0.149.0
 	google.golang.org/grpc v1.59.0
@@ -129,7 +131,7 @@ require (
 	go4.org/netipx v0.0.0-20230125063823-8449b0a6169f
 	golang.org/x/exp v0.0.0-20230321023759-10a507213a29
 	golang.org/x/oauth2 v0.30.0
-	golang.org/x/text v0.27.0
+	golang.org/x/text v0.31.0
 	google.golang.org/protobuf v1.35.2
 )
 
@@ -305,9 +307,10 @@ require (
 	go.opentelemetry.io/otel/trace v1.21.0 // indirect
 	go.uber.org/multierr v1.8.0 // indirect
 	go.uber.org/zap v1.21.0 // indirect
-	golang.org/x/mod v0.26.0 // indirect
-	golang.org/x/term v0.33.0 // indirect
-	golang.org/x/tools v0.34.0 // indirect
+	golang.org/x/mod v0.29.0 // indirect
+	golang.org/x/term v0.37.0 // indirect
+	golang.org/x/tools v0.38.0 // indirect
+	golang.org/x/tools/godoc v0.1.0-deprecated // indirect
 	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2 // indirect
 	google.golang.org/genproto v0.0.0-20231211222908-989df2bf70f3 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20231120223509-83a465c0220f // indirect
