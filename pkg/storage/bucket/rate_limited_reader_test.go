@@ -73,11 +73,7 @@ func TestRateLimitedReader(t *testing.T) {
 			// Create rate-limited reader if limiter exists
 			var rlReader io.ReadCloser = reader
 			if limiter := getQueryRateLimiter(ctx); limiter != nil {
-				rlReader = &rateLimitedReader{
-					ReadCloser: reader,
-					limiter:    limiter,
-					ctx:        ctx,
-				}
+				rlReader = newRateLimitedReader(ctx, reader, nil)
 			}
 
 			// Read data and measure time
@@ -120,11 +116,7 @@ func TestRateLimitedReader_MultipleReadersShareLimiter(t *testing.T) {
 	readers := make([]io.ReadCloser, numReaders)
 	for i := 0; i < numReaders; i++ {
 		reader := io.NopCloser(bytes.NewReader(data))
-		readers[i] = &rateLimitedReader{
-			ReadCloser: reader,
-			limiter:    limiter,
-			ctx:        ctx,
-		}
+		readers[i] = newRateLimitedReader(ctx, reader, nil)
 	}
 
 	// Read from all readers concurrently

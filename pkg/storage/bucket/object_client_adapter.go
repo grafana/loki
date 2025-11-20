@@ -130,11 +130,7 @@ func (o *ObjectClientAdapter) GetObject(ctx context.Context, objectKey string) (
 
 	// Wrap with rate-limited reader if query has a bandwidth limit
 	if limiter := getQueryRateLimiter(ctx); limiter != nil {
-		reader = &rateLimitedReader{
-			ReadCloser: reader,
-			limiter:    limiter,
-			ctx:        ctx,
-		}
+		reader = newRateLimitedReader(ctx, reader, o.logger)
 	}
 
 	return reader, size, err
@@ -148,11 +144,7 @@ func (o *ObjectClientAdapter) GetObjectRange(ctx context.Context, objectKey stri
 
 	// Wrap with rate-limited reader if query has a bandwidth limit
 	if limiter := getQueryRateLimiter(ctx); limiter != nil {
-		reader = &rateLimitedReader{
-			ReadCloser: reader,
-			limiter:    limiter,
-			ctx:        ctx,
-		}
+		reader = newRateLimitedReader(ctx, reader, o.logger)
 	}
 
 	return reader, nil

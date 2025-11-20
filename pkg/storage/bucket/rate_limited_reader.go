@@ -2,9 +2,16 @@ package bucket
 
 import (
 	"context"
+	"fmt"
 	"io"
+	"time"
 
+	"github.com/dustin/go-humanize"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"golang.org/x/time/rate"
+
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 // minReadSize is the minimum chunk size for reading data.
@@ -57,6 +64,16 @@ type rateLimitedReader struct {
 	io.ReadCloser
 	limiter *rate.Limiter
 	ctx     context.Context
+	logger  log.Logger
+}
+
+func newRateLimitedReader(ctx context.Context, readCloser io.ReadCloser, logger log.Logger) *rateLimitedReader {
+	return &rateLimitedReader{
+		ReadCloser: readCloser,
+		limiter:    getQueryRateLimiter(ctx),
+		ctx:        ctx,
+		logger:     logger,
+	}
 }
 
 // Read reads data from the underlying reader while respecting the rate limit.
@@ -74,26 +91,68 @@ func (r *rateLimitedReader) Read(p []byte) (n int, err error) {
 		return r.ReadCloser.Read(p)
 	}
 
-	// Read in batches, waiting for rate limiter approval before each batch
+	// Cap the read size to the minimum read size and the burst
+	minReadSize := min(minReadSize, burst)
 	totalRead := 0
+
+	// Other logging stats
+	var (
+		rateLimitedCount int
+		totalWaitTime    time.Duration
+		maxWaitTime      time.Duration
+	)
+
+	// Defer logging to ensure it happens on all exit paths
+	defer func() {
+		if rateLimitedCount > 0 && r.logger != nil {
+			logger := util_log.WithContext(r.ctx, r.logger)
+			level.Debug(logger).Log(
+				"msg", "query rate limited during bucket read operation",
+				"rateLimitedCount", rateLimitedCount,
+				"totalWaitTime", totalWaitTime.String(),
+				"maxWaitTime", maxWaitTime.String(),
+				"readBufferSize", humanize.Bytes(uint64(len(p))),
+				"readBytes", humanize.Bytes(uint64(totalRead)),
+				"remainingBytes", humanize.Bytes(uint64(len(p)-totalRead)),
+				"err", err,
+			)
+		}
+	}()
+
 	for totalRead < len(p) {
 		remaining := len(p) - totalRead
-		// Use minReadSize as the read size, but don't exceed burst or remaining buffer
-		readSize := minReadSize
-		if readSize > remaining {
-			readSize = remaining
-		}
-		if readSize > burst {
-			readSize = burst
-		}
+		// Use minReadSize but cap to the remaining
+		readSize := min(minReadSize, remaining)
 
-		// Wait for rate limiter approval before reading this batch
-		if err := r.limiter.WaitN(r.ctx, readSize); err != nil {
+		// Reserve rate limiter tokens for this batch read
+		reservation := r.limiter.ReserveN(time.Now(), readSize)
+		if !reservation.OK() {
+			// Reservation failed (e.g., readSize > burst), return error
+			// This should not happen in practice since we cap readSize to burst
 			if totalRead > 0 {
-				// Return what we've read so far
 				return totalRead, nil
 			}
-			return 0, err
+			return 0, fmt.Errorf("rate limited reader: reservation failed. readSize (%d) > burst: (%d)?", readSize, burst)
+		}
+
+		// If we need to wait, record the logging stats and wait for the delay
+		if delay := reservation.Delay(); delay > 0 {
+			rateLimitedCount++
+			totalWaitTime += delay
+			maxWaitTime = max(maxWaitTime, delay)
+
+			timer := time.NewTimer(delay)
+			select {
+			case <-timer.C:
+				// Delay completed, proceed
+			case <-r.ctx.Done():
+				timer.Stop()
+				reservation.Cancel()
+				if totalRead > 0 {
+					return totalRead, nil
+				}
+				return 0, r.ctx.Err()
+			}
 		}
 
 		// Read from underlying reader (up to the approved read size)
