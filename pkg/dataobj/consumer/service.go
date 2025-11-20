@@ -127,6 +127,7 @@ func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, bucket objsto
 		processorFactory.New,
 		logger,
 		prometheus.WrapRegistererWithPrefix("loki_dataobj_consumer_", reg),
+		partitionInstanceLifecycler,
 	)
 	if err != nil {
 		return nil, err

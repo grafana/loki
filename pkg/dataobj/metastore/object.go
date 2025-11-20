@@ -772,7 +772,7 @@ func forEachObjPointer(ctx context.Context, object *dataobj.Object, predicate po
 	var reader pointers.RowReader
 	defer reader.Close()
 
-	buf := make([]pointers.SectionPointer, 1024)
+	buf := make([]pointers.SectionPointer, 128)
 
 	for _, section := range object.Sections().Filter(pointers.CheckSection) {
 		if section.Tenant != targetTenant {

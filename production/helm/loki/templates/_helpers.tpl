@@ -208,7 +208,6 @@ Generated storage config for loki common config
 object_store:
   {{- include "loki.thanosStorageConfig" (dict "ctx" . "bucketName" $bucketName) | nindent 2 }}
 {{- else if .Values.minio.enabled -}}
-{{- $bucketName := required "Please define loki.storage.bucketNames.chunks" (dig "storage" "bucketNames" "chunks" "" .Values.loki) }}
 s3:
   endpoint: {{ include "loki.minio" $ }}
   bucketnames: chunks
