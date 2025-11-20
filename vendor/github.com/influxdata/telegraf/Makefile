@@ -270,8 +270,8 @@ plugins/parsers/influx/machine.go: plugins/parsers/influx/machine.go.rl
 
 .PHONY: ci
 ci:
-	docker build -t quay.io/influxdb/telegraf-ci:1.25.3 - < scripts/ci.docker
-	docker push quay.io/influxdb/telegraf-ci:1.25.3
+	docker build -t quay.io/influxdb/telegraf-ci:1.25.4 - < scripts/ci.docker
+	docker push quay.io/influxdb/telegraf-ci:1.25.4
 
 .PHONY: install
 install: $(buildbin)
@@ -394,6 +394,7 @@ $(include_packages):
 			--rpm-posttrans scripts/rpm/post-install.sh \
 			--rpm-os ${GOOS} \
 			--rpm-tag "Requires(pre): /usr/sbin/useradd" \
+			--rpm-tag "Recommends: influxdata-archive-keyring" \
 			--name telegraf \
 			--version $(version) \
 			--iteration $(rpm_iteration) \
@@ -416,6 +417,7 @@ $(include_packages):
 			--after-remove scripts/deb/post-remove.sh \
 			--before-remove scripts/deb/pre-remove.sh \
 			--description "Plugin-driven server agent for reporting metrics into InfluxDB." \
+			--deb-recommends "influxdata-archive-keyring" \
 			--name telegraf \
 			--version $(version) \
 			--iteration $(deb_iteration) \

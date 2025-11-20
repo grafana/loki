@@ -217,6 +217,7 @@ func appendNext(parent *ResourceID, parts []string, id string) (*ResourceID, err
 func splitStringAndOmitEmpty(v, sep string) []string {
 	r := make([]string, 0)
 	for _, s := range strings.Split(v, sep) {
+		s = strings.TrimSpace(s)
 		if len(s) == 0 {
 			continue
 		}

@@ -57,7 +57,7 @@ type DisassociateTrunkInterfaceOutput struct {
 	// [Ensuring idempotency]: https://docs.aws.amazon.com/ec2/latest/devguide/ec2-api-idempotency.html
 	ClientToken *string
 
-	// Returns true if the request succeeds; otherwise, it returns an error.
+	// Is true if the request succeeds and an error otherwise.
 	Return *bool
 
 	// Metadata pertaining to the operation's result.
