@@ -120,6 +120,8 @@ func decodeRow(columns []*Column, row dataset.Row, pointer *SectionPointer, sym 
 				pointer.PointerKind = PointerKindStreamIndex
 			case int64(PointerKindColumnIndex):
 				pointer.PointerKind = PointerKindColumnIndex
+			case int64(PointerKindSectionIndex):
+				pointer.PointerKind = PointerKindSectionIndex
 			default:
 				return fmt.Errorf("invalid pointer kind %d", columnValue.Int64())
 			}
@@ -181,6 +183,20 @@ func decodeRow(columns []*Column, row dataset.Row, pointer *SectionPointer, sym 
 			pointer.ValuesBloomFilter = pointer.ValuesBloomFilter[:len(filterBytes)]
 			copy(pointer.ValuesBloomFilter, filterBytes)
 
+		case ColumnTypeNgramIdx:
+			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_INT64 {
+				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
+			}
+			pointer.NgramIdx = int(columnValue.Int64())
+
+		case ColumnTypeTrigramBloomFilter:
+			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_BINARY {
+				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
+			}
+			filterBytes := columnValue.Binary()
+			pointer.SectionTrigramBloomFilter = slicegrow.GrowToCap(pointer.SectionTrigramBloomFilter, len(filterBytes))
+			pointer.SectionTrigramBloomFilter = pointer.SectionTrigramBloomFilter[:len(filterBytes)]
+			copy(pointer.SectionTrigramBloomFilter, filterBytes)
 		default:
 			// TODO(rfratto): We probably don't want to return an error on unexpected
 			// columns because it breaks forward compatibility. Should we log

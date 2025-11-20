@@ -207,6 +207,10 @@ func translatePointersPredicate(p RowPredicate, dsetColumns []dataset.Column, ac
 		return nil
 	}
 
+	kindColumn := findDatasetColumn(dsetColumns, actualColumns, func(desc *Column) bool {
+		return desc.Type == ColumnTypePointerKind
+	})
+
 	nameColumn := findDatasetColumn(dsetColumns, actualColumns, func(desc *Column) bool {
 		return desc.Type == ColumnTypeColumnName
 	})
@@ -223,6 +227,10 @@ func translatePointersPredicate(p RowPredicate, dsetColumns []dataset.Column, ac
 		return desc.Type == ColumnTypeMaxTimestamp
 	})
 
+	trigramColumn := findDatasetColumn(dsetColumns, actualColumns, func(desc *Column) bool {
+		return desc.Type == ColumnTypeTrigramBloomFilter
+	})
+
 	switch p := p.(type) {
 	case AndRowPredicate:
 		return dataset.AndPredicate{
@@ -233,8 +241,29 @@ func translatePointersPredicate(p RowPredicate, dsetColumns []dataset.Column, ac
 		return convertBloomExistenceRowPredicate(p, nameColumn, bloomColumn)
 	case TimeRangeRowPredicate:
 		return convertTimeRangeRowPredicate(p, startColumn, endColumn)
+	case TextSearchRowPredicate:
+		return convertTextSearchRowPredicate(p, trigramColumn, kindColumn)
+	case NameExistsPredicate:
+		return dataset.FuncPredicate{
+			Column: nameColumn,
+			Keep: func(column dataset.Column, value dataset.Value) bool {
+				return !value.IsNil()
+			},
+		}
 	default:
 		panic(fmt.Sprintf("unsupported predicate type %T", p))
+	}
+}
+
+func convertTextSearchRowPredicate(p TextSearchRowPredicate, trigramColumn dataset.Column, kindColumn dataset.Column) dataset.Predicate {
+	if trigramColumn == nil {
+		// Not supported yet
+		return dataset.TruePredicate{}
+	}
+
+	return dataset.EqualPredicate{
+		Column: kindColumn,
+		Value:  dataset.Int64Value(int64(PointerKindSectionIndex)),
 	}
 }
 

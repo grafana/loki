@@ -14,16 +14,20 @@ import (
 	"sync"
 	"time"
 
+	"github.com/RoaringBitmap/roaring/v2"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/tenant"
 	"github.com/grafana/dskit/user"
+	"github.com/mhr3/streamvbyte"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/thanos-io/objstore"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/index/ngrams"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
@@ -154,8 +158,8 @@ func (m *ObjectMetastore) streams(ctx context.Context, start, end time.Time, mat
 	}
 
 	// Search the stream sections of the matching objects to find matching streams
-	predicate := streamPredicateFromMatchers(start, end, matchers...)
-	return m.listStreamsFromObjects(ctx, paths, predicate)
+	// predicate := streamPredicateFromMatchers(start, end, matchers...)
+	return m.listStreamsFromObjects(ctx, paths, nil)
 }
 
 func (m *ObjectMetastore) Sections(ctx context.Context, start, end time.Time, matchers []*labels.Matcher, predicates []*labels.Matcher) ([]*DataobjSectionDescriptor, error) {
@@ -236,7 +240,18 @@ func (m *ObjectMetastore) Sections(ctx context.Context, start, end time.Time, ma
 			}
 		}
 	}
+	/*
+		text := "profile accepted"
+		textSectionEstimate, err := m.estimateSectionsForTextSearch(ctx, indexObjects, text)
+		if err != nil {
+			return nil, err
+		}
+		fmt.Printf("streamSectionPointers: %d\n", len(streamSectionPointers))
+		fmt.Printf("textSectionEstimate for pattern %q: %d\n", text, len(textSectionEstimate))
 
+		streamSectionPointers = intersectSections(streamSectionPointers, textSectionEstimate)
+		fmt.Printf("textIntersect for pattern %q: %d\n", text, len(streamSectionPointers))
+	*/
 	duration := sectionsTimer.ObserveDuration()
 	m.metrics.resolvedSectionsTotal.Observe(float64(len(streamSectionPointers)))
 	m.metrics.resolvedSectionsRatio.Observe(float64(len(streamSectionPointers)) / float64(initialSectionPointersCount))
@@ -519,6 +534,10 @@ func (m *ObjectMetastore) getSectionsForStreams(ctx context.Context, indexObject
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(m.parallelism)
 
+	mapMutex := sync.Mutex{}
+	streamColumns := make(map[string]struct{})
+	smdColumns := make(map[string]struct{})
+
 	for _, indexObject := range indexObjects {
 		g.Go(func() error {
 			var key SectionKey
@@ -527,6 +546,12 @@ func (m *ObjectMetastore) getSectionsForStreams(ctx context.Context, indexObject
 			streamReadTimer := prometheus.NewTimer(m.metrics.streamFilterStreamsReadDuration)
 			err := forEachStream(ctx, indexObject, streamPredicate, func(stream streams.Stream) {
 				matchingStreamIDs = append(matchingStreamIDs, stream.ID)
+				fmt.Printf("matching stream: %s\n", stream.Labels.String())
+				stream.Labels.Range(func(label labels.Label) {
+					mapMutex.Lock()
+					defer mapMutex.Unlock()
+					streamColumns[label.Name] = struct{}{}
+				})
 			})
 			if err != nil {
 				return fmt.Errorf("reading streams from index: %w", err)
@@ -536,6 +561,15 @@ func (m *ObjectMetastore) getSectionsForStreams(ctx context.Context, indexObject
 			if len(matchingStreamIDs) == 0 {
 				// No streams match, so skip reading the section pointers or we'll match all of them.
 				return nil
+			}
+
+			err = forEachColumnName(ctx, indexObject, timeRangePredicate, func(columnName string) {
+				mapMutex.Lock()
+				defer mapMutex.Unlock()
+				smdColumns[columnName] = struct{}{}
+			})
+			if err != nil {
+				return fmt.Errorf("reading column names from index: %w", err)
 			}
 
 			objectSectionDescriptors := make(map[SectionKey]*DataobjSectionDescriptor)
@@ -570,6 +604,19 @@ func (m *ObjectMetastore) getSectionsForStreams(ctx context.Context, indexObject
 	if err := g.Wait(); err != nil {
 		return nil, err
 	}
+
+	uniqSmdColumns := make([]string, 0, len(smdColumns))
+	for columnName := range smdColumns {
+		uniqSmdColumns = append(uniqSmdColumns, columnName)
+	}
+	sort.Strings(uniqSmdColumns)
+
+	uniqStreamColumns := make([]string, 0, len(streamColumns))
+	for columnName := range streamColumns {
+		uniqStreamColumns = append(uniqStreamColumns, columnName)
+	}
+	sort.Strings(uniqStreamColumns)
+	level.Debug(m.logger).Log("msg", "column names", "streams_count", len(uniqStreamColumns), "smd_count", len(uniqSmdColumns), "stream_names", strings.Join(uniqStreamColumns, ","), "smd_names", strings.Join(uniqSmdColumns, ","))
 
 	m.metrics.streamFilterSections.Observe(float64(len(sectionDescriptors)))
 	return sectionDescriptors, nil
@@ -623,6 +670,130 @@ func (m *ObjectMetastore) estimateSectionsForPredicates(ctx context.Context, ind
 
 	m.metrics.estimateSectionsSections.Observe(float64(len(sectionDescriptors)))
 	return sectionDescriptors, nil
+}
+
+// estimateSectionsForPredicates checks the predicates against the section AMQs to determine approximate section membership.
+// This is an inexact lookup and only returns probable sections: there may be false positives, but no true negatives. There is no additional metadata returned beyond the section info.
+func (m *ObjectMetastore) estimateSectionsForTextSearch(ctx context.Context, indexObjects []*dataobj.Object, value string) ([]*DataobjSectionDescriptor, error) {
+	timer := prometheus.NewTimer(m.metrics.estimateSectionsTotalDuration)
+	defer timer.ObserveDuration()
+
+	const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789_-.() {}"
+	sizeOfAlphabet := len(alphabet)
+	trigrams := make([]string, 0, sizeOfAlphabet*sizeOfAlphabet*sizeOfAlphabet)
+	for _, run := range alphabet {
+		for _, run2 := range alphabet {
+			for _, run3 := range alphabet {
+				trigrams = append(trigrams, fmt.Sprintf("%c%c%c", run, run2, run3))
+			}
+		}
+	}
+	slices.Sort(trigrams)
+
+	textPredicate := pointers.TextSearchRowPredicate{
+		Value: value,
+	}
+
+	g, ctx := errgroup.WithContext(ctx)
+	g.SetLimit(m.parallelism)
+
+	var sectionDescriptors []*DataobjSectionDescriptor
+	var sectionDescriptorsMutex sync.Mutex
+	for _, indexObject := range indexObjects {
+		g.Go(func() error {
+			pointerReadTimer := prometheus.NewTimer(m.metrics.estimateSectionsPointerReadDuration)
+			var objectSectionDescriptors []*DataobjSectionDescriptor
+
+			pointersBySection := make(map[SectionKey][]pointers.SectionPointer)
+			err := forEachObjPointer(ctx, indexObject, textPredicate, nil, func(pointer pointers.SectionPointer) {
+				pointersBySection[SectionKey{
+					ObjectPath: pointer.Path,
+					SectionIdx: pointer.Section,
+				}] = append(pointersBySection[SectionKey{
+					ObjectPath: pointer.Path,
+					SectionIdx: pointer.Section,
+				}], pointer)
+			})
+			if err != nil {
+				return fmt.Errorf("reading object from bucket: %w", err)
+			}
+
+			for sectionKey, pointers := range pointersBySection {
+				postings := make(map[int]*roaring.Bitmap)
+
+				for _, pointer := range pointers {
+					reader := bytes.NewReader(pointer.SectionTrigramBloomFilter)
+					count, err := streamio.ReadUvarint(reader)
+					if err != nil {
+						return fmt.Errorf("reading varint: %w", err)
+					}
+					unread := reader.Len()
+					start := len(pointer.SectionTrigramBloomFilter) - unread
+					ints := streamvbyte.DeltaDecodeUint32(pointer.SectionTrigramBloomFilter[start:], int(count), nil)
+					bitmap := roaring.New()
+					for _, i := range ints {
+						bitmap.Add(i)
+					}
+					postings[pointer.NgramIdx] = bitmap
+				}
+
+				present := checkPostings(trigrams, postings, value)
+				if present {
+					objectSectionDescriptors = append(objectSectionDescriptors, &DataobjSectionDescriptor{
+						SectionKey: sectionKey,
+					})
+				}
+			}
+
+			pointerReadTimer.ObserveDuration()
+
+			if len(objectSectionDescriptors) == 0 {
+				// TODO(benclive): Find a way to differentiate between unknown columns and columns missing the target value.
+				// For now, log a warning to track how often this happens.
+				level.Warn(m.logger).Log("msg", "no section descriptors found for column")
+			}
+
+			sectionDescriptorsMutex.Lock()
+			sectionDescriptors = append(sectionDescriptors, objectSectionDescriptors...)
+			sectionDescriptorsMutex.Unlock()
+
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+
+	m.metrics.estimateSectionsSections.Observe(float64(len(sectionDescriptors)))
+	return sectionDescriptors, nil
+}
+
+func checkPostings(trigrams []string, postings map[int]*roaring.Bitmap, term string) bool {
+	var accumulator *roaring.Bitmap
+	for gram := range ngrams.BigramOf(ngrams.Sanitize(term)) {
+		idx := ngrams.NgramIndex(gram)
+		posting, ok := postings[idx]
+		if !ok {
+			return false
+		}
+		if accumulator == nil {
+			accumulator = posting
+		} else {
+			accumulator.And(posting)
+			if accumulator.IsEmpty() {
+				fmt.Printf("Failed to find match for term %q at ngram %q\n", term, gram)
+				return false
+			}
+		}
+	}
+	it := accumulator.Iterator()
+	rows := []int64{}
+	for it.HasNext() {
+		rows = append(rows, int64(it.Next()))
+	}
+	fmt.Printf("Found match! %d rows: %v\n", len(rows), rows)
+	return true
 }
 
 func addLabels(mtx *sync.Mutex, streams map[uint64][]*labels.Labels, newLabels *labels.Labels) {
@@ -758,6 +929,45 @@ func forEachStream(ctx context.Context, object *dataobj.Object, predicate stream
 			}
 			for _, stream := range buf[:num] {
 				f(stream)
+			}
+		}
+	}
+	return nil
+}
+
+func forEachColumnName(ctx context.Context, object *dataobj.Object, predicate pointers.RowPredicate, f func(string)) error {
+	targetTenant, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return fmt.Errorf("extracting org ID: %w", err)
+	}
+
+	buf := make([]pointers.SectionPointer, 1024)
+	for _, section := range object.Sections().Filter(pointers.CheckSection) {
+		if section.Tenant != targetTenant {
+			continue
+		}
+
+		sec, err := pointers.Open(ctx, section)
+		if err != nil {
+			return fmt.Errorf("opening section: %w", err)
+		}
+
+		predicate = pointers.NameExistsPredicate{
+			Name: "whatever",
+		}
+
+		reader := pointers.NewRowReader(sec)
+		reader.SetPredicate(predicate)
+		for {
+			num, err := reader.Read(ctx, buf)
+			if err != nil && !errors.Is(err, io.EOF) {
+				return err
+			}
+			if num == 0 && errors.Is(err, io.EOF) {
+				break
+			}
+			for _, pointer := range buf[:num] {
+				f(pointer.ColumnName)
 			}
 		}
 	}

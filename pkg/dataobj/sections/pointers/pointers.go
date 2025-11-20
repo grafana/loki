@@ -111,6 +111,9 @@ const (
 	ColumnTypeColumnName        // ColumnTypeColumnName is a column containing the name of the column in the referenced object.
 	ColumnTypeColumnIndex       // ColumnTypeColumnIndex is a column containing the index of the column in the referenced object.
 	ColumnTypeValuesBloomFilter // ColumnTypeValuesBloomFilter is a column containing a bloom filter of the values in the column in the referenced object.
+
+	ColumnTypeNgramIdx           // ColumnTypeNgramIdx is a column containing the index of the ngram in the referenced object.
+	ColumnTypeTrigramBloomFilter // ColumnTypeTrigramBloomFilter is a column containing a bloom filter of the trigrams of the values in the column in the referenced object.
 )
 
 // ParseColumnType parses a [ColumnType] from a string. The expected string
@@ -145,6 +148,10 @@ func ParseColumnType(text string) (ColumnType, error) {
 		return ColumnTypeColumnIndex, nil
 	case "values_bloom_filter":
 		return ColumnTypeValuesBloomFilter, nil
+	case "trigram_bloom_filter":
+		return ColumnTypeTrigramBloomFilter, nil
+	case "ngram_idx":
+		return ColumnTypeNgramIdx, nil
 	}
 
 	return ColumnTypeInvalid, fmt.Errorf("invalid column type %q", text)
@@ -166,6 +173,9 @@ var columnTypeNames = map[ColumnType]string{
 	ColumnTypeColumnName:        "column_name",
 	ColumnTypeColumnIndex:       "column_index",
 	ColumnTypeValuesBloomFilter: "values_bloom_filter",
+
+	ColumnTypeNgramIdx:           "ngram_idx",
+	ColumnTypeTrigramBloomFilter: "trigram_bloom_filter",
 }
 
 // String returns the human-readable name of ct.

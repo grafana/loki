@@ -63,7 +63,7 @@ type downloadedObject struct {
 }
 
 const (
-	indexConsumerGroup = "index-builder"
+	indexConsumerGroup = "index-builder-testing"
 )
 
 // An interface for the methods needed from a calculator. Useful for testing.

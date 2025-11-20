@@ -336,6 +336,50 @@ func (b *Builder) AppendColumnIndex(tenantID string, path string, section int64,
 	return nil
 }
 
+// Append buffers a stream to be written to a data object. Append returns an
+// error if the stream labels cannot be parsed or [ErrBuilderFull] if the
+// builder is full.
+//
+// Once a Builder is full, call [Builder.Flush] to flush the buffered data,
+// then call Append again with the same entry.
+func (b *Builder) AppendSectionIndex(tenantID string, path string, section int64, ngramIdx int, sectionTrigramBloomFilter []byte) error {
+	// Check whether the buffer is full before a stream can be appended; this is
+	// tends to overestimate, but we may still go over our target size.
+	//
+	// Since this check only happens after the first call to Append,
+	// b.currentSizeEstimate will always be updated to reflect the size following
+	// the previous append.
+
+	newEntrySize := len(sectionTrigramBloomFilter) + 1 + 1
+
+	if b.state != builderStateEmpty && b.currentSizeEstimate+newEntrySize > int(b.cfg.TargetObjectSize) {
+		return ErrBuilderFull
+	}
+
+	timer := prometheus.NewTimer(b.metrics.appendTime)
+	defer timer.ObserveDuration()
+
+	tenantPointers, ok := b.pointers[tenantID]
+	if !ok {
+		tenantPointers = pointers.NewBuilder(b.metrics.pointers, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows)
+		tenantPointers.SetTenant(tenantID)
+		b.pointers[tenantID] = tenantPointers
+	}
+	tenantPointers.RecordSectionIndex(path, section, ngramIdx, sectionTrigramBloomFilter)
+
+	// If our pointers section has gotten big enough, we want to flush it to the
+	// encoder and start a new section.
+	if tenantPointers.EstimatedSize() > int(b.cfg.TargetSectionSize) {
+		if err := b.builder.Append(tenantPointers); err != nil {
+			return err
+		}
+	}
+
+	b.currentSizeEstimate = b.estimatedSize()
+	b.state = builderStateDirty
+	return nil
+}
+
 func (b *Builder) estimatedSize() int {
 	var size int
 	for _, tenantStreams := range b.streams {

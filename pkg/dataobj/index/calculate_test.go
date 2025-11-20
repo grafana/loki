@@ -5,12 +5,15 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"testing"
 	"time"
 
+	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
 
+	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/objstore/providers/filesystem"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
@@ -20,6 +23,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/storage/bucket/gcs"
 
 	"github.com/grafana/loki/pkg/push"
 )
@@ -243,4 +247,36 @@ func requireValidPointers(t *testing.T, obj *dataobj.Object) {
 	for _, count := range pointersByTenant {
 		require.Equal(t, 2, count)
 	}
+}
+
+func TestCalculator_CalculatePostings(t *testing.T) {
+	indexBuilder, err := indexobj.NewBuilder(indexobj.BuilderConfig{
+		TargetPageSize:          128 * 1024,
+		TargetObjectSize:        512 * 1024 * 1024,
+		TargetSectionSize:       64 * 1024 * 1024,
+		BufferSize:              64 * 1024 * 1024,
+		SectionStripeMergeLimit: 2,
+	}, nil)
+	require.NoError(t, err)
+
+	calculator := NewCalculator(indexBuilder)
+
+	bkt, err := gcs.NewBucketClient(context.Background(), gcs.Config{
+		BucketName: "dev-us-central-0-loki-dev-005-data",
+	}, "testing", log.NewNopLogger(), nil)
+	require.NoError(t, err)
+
+	objBucket := objstore.NewPrefixedBucket(bkt, "dataobj")
+
+	obj, err := dataobj.FromBucket(context.Background(), objBucket, "objects/c4/2f1c92dc2bcb394328f692a5fc47128f70c810a36665fdb62f9440")
+	require.NoError(t, err)
+
+	err = calculator.Calculate(context.Background(), log.NewLogfmtLogger(os.Stderr), obj, "test/path")
+	require.NoError(t, err)
+
+	resultObj, closer, err := calculator.Flush()
+	require.NoError(t, err)
+	defer closer.Close()
+
+	fmt.Printf("object size: %s\n", humanize.Bytes(uint64(resultObj.Size())))
 }

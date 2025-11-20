@@ -20,8 +20,18 @@ type (
 	// A TimeRangeRowPredicate is a RowPredicate which requires the timestamp of
 	// the entry to be within the range of StartTime and EndTime.
 	TimeRangeRowPredicate struct{ Start, End time.Time }
+
+	TextSearchRowPredicate struct {
+		Value string
+	}
+
+	NameExistsPredicate struct {
+		Name string
+	}
 )
 
 func (AndRowPredicate) isRowPredicate()            {}
 func (BloomExistenceRowPredicate) isRowPredicate() {}
 func (TimeRangeRowPredicate) isRowPredicate()      {}
+func (TextSearchRowPredicate) isRowPredicate()     {}
+func (NameExistsPredicate) isRowPredicate()        {}

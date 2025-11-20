@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"golang.org/x/sync/errgroup"
 )
@@ -115,6 +116,8 @@ func checkLogStreams(results []loghttp.Streams) error {
 			if err != nil {
 				return fmt.Errorf("failed to parse labels: %w", err)
 			}
+			fmt.Println(lbls.String(), model.Fingerprint(lbls.Hash()))
+
 			lblsMap := lbls.Map()
 			newLbls := labels.FromMap(lblsMap)
 			if i == 0 {
@@ -166,12 +169,15 @@ func checkLogStreams(results []loghttp.Streams) error {
 			continue
 		}
 		for i, entry := range entries {
-			if entry.Line != dataobjEntries[i].Line {
+			if i < len(dataobjEntries) && entry.Line != dataobjEntries[i].Line {
 				if !printed {
 					level.Warn(logger).Log("msg", "line mismatch found in stream", "stream", lbls)
 					printed = true
 				}
 				level.Debug(logger).Log("msg", "mismatched line", "line", entry.Line)
+				continue
+			} else if i >= len(dataobjEntries) {
+				level.Warn(logger).Log("msg", "entry missing from second response", "stream", lbls, "index", i, "line", entry.Line)
 				continue
 			}
 		}
@@ -181,16 +187,27 @@ func checkLogStreams(results []loghttp.Streams) error {
 }
 
 func checkLogMatrix(results []loghttp.Matrix) error {
+	if len(results) != 2 {
+		return fmt.Errorf("expected 2 results for matrix comparison, got %d", len(results))
+	}
 	for i, sampleA := range results[0] {
+		if i >= len(results[1]) {
+			level.Warn(logger).Log("msg", "sample missing from second response", "stream", sampleA.Metric.String(), "index", i)
+			continue
+		}
 		sampleB := results[1][i]
 
 		for j, valueA := range sampleA.Values {
+			if j >= len(sampleB.Values) {
+				level.Warn(logger).Log("msg", "sample missing from second response", "stream", sampleA.Metric.String(), "index", j)
+				continue
+			}
 			valueB := sampleB.Values[j]
 			if valueA.Timestamp != valueB.Timestamp {
 				level.Warn(logger).Log("msg", "timestamp mismatch", "expected", valueA.Timestamp, "actual", valueB.Timestamp)
 			}
 			if !valueA.Value.Equal(valueB.Value) {
-				level.Warn(logger).Log("msg", "value mismatch", "expected", valueA.Value, "actual", valueB.Value)
+				level.Warn(logger).Log("msg", "value mismatch", "ts", valueA.Timestamp, "expected", valueA.Value, "actual", valueB.Value)
 			}
 		}
 	}
@@ -217,6 +234,7 @@ func doRemoteQuery(host string, query string, start time.Time, end time.Time, li
 		return loghttp.QueryResponseData{}, err
 	}
 	req.Header.Add("X-Scope-OrgID", orgID)
+	// req.Header.Add(httpreq.LokiEncodingFlagsHeader, string(httpreq.FlagCategorizeLabels))
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {

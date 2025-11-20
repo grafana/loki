@@ -6,8 +6,11 @@ import (
 	"fmt"
 	"io"
 	"runtime"
+	"sort"
+	"strings"
 	"sync"
 	"time"
+	"unsafe"
 
 	"github.com/bits-and-blooms/bloom/v3"
 	"github.com/go-kit/log"
@@ -20,7 +23,14 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
+	"github.com/grafana/loki/v3/pkg/logql/log/logfmt"
 )
+
+type LogsCalculationStep interface {
+	Prepare(ctx context.Context, section *dataobj.Section) error
+	ProcessBatch(ctx context.Context, builder *indexobj.Builder, batch []logs.Record) error
+	Finish(ctx context.Context, tenantID string, path string, section int64, mtx *sync.Mutex, builder *indexobj.Builder) error
+}
 
 // Calculator is used to calculate the indexes for a logs object and write them to the builder.
 // It reads data from the logs object in order to build bloom filters and per-section stream metadata.
@@ -160,6 +170,15 @@ func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.L
 		return fmt.Errorf("failed to read log section stats: %w", err)
 	}
 
+	// Make a new set of calculations
+	calculations := []LogsCalculationStep{&postingsCalculation{}}
+
+	for _, calculation := range calculations {
+		if err := calculation.Prepare(ctx, section); err != nil {
+			return fmt.Errorf("failed to prepare calculation: %w", err)
+		}
+	}
+
 	columnBloomBuilders := make(map[string]*bloom.BloomFilter)
 	columnIndexes := make(map[string]int64)
 	for _, column := range stats.Columns {
@@ -170,6 +189,9 @@ func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.L
 		columnBloomBuilders[column.Name] = bloom.NewWithEstimates(uint(column.Cardinality), 1.0/128.0)
 		columnIndexes[column.Name] = column.ColumnIndex
 	}
+
+	logfmtDecoder := logfmt.NewDecoder([]byte{})
+	sectionParsedKeys := map[string]struct{}{}
 
 	// Read the whole logs section to extract all the column values.
 	cnt := 0
@@ -189,13 +211,32 @@ func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.L
 		for i, log := range logsBuf[:n] {
 			cnt++
 			log.Metadata.Range(func(md labels.Label) {
-				columnBloomBuilders[md.Name].Add([]byte(md.Value))
+				columnBloomBuilders[md.Name].Add(unsafeBytes(md.Value))
 			})
 			logsInfo[i].objectPath = objectPath
 			logsInfo[i].sectionIdx = sectionIdx
 			logsInfo[i].streamID = log.StreamID
 			logsInfo[i].timestamp = log.Timestamp
 			logsInfo[i].length = int64(len(log.Line))
+
+			logfmtDecoder.Reset(log.Line)
+			for logfmtDecoder.ScanKeyval() {
+				if logfmtDecoder.Value() == nil || len(logfmtDecoder.Value()) == 0 {
+					continue
+				}
+				key := logfmtDecoder.Key()
+				keyString := sanitizeLabelKey(string(key), false)
+				if _, ok := sectionParsedKeys[keyString]; ok {
+					continue
+				}
+				sectionParsedKeys[keyString] = struct{}{}
+			}
+		}
+
+		for _, calculation := range calculations {
+			if err := calculation.ProcessBatch(ctx, c.indexobjBuilder, logsBuf[:n]); err != nil {
+				return fmt.Errorf("failed to prepare calculation: %w", err)
+			}
 		}
 
 		// Lock the mutex once per read for perf reasons.
@@ -210,7 +251,13 @@ func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.L
 		c.builderMtx.Unlock()
 	}
 
-	// Write the indexes (bloom filters) to the new index object.
+	keys := make([]string, 0, len(sectionParsedKeys))
+	for key := range sectionParsedKeys {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	fmt.Printf("Parsed keys (%d): %s\n", len(keys), strings.Join(keys, ", "))
+
 	for columnName, bloom := range columnBloomBuilders {
 		bloomBytes, err := bloom.MarshalBinary()
 		if err != nil {
@@ -224,6 +271,40 @@ func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.L
 		}
 	}
 
+	for _, calculation := range calculations {
+		if err := calculation.Finish(ctx, tenantID, objectPath, sectionIdx, &c.builderMtx, c.indexobjBuilder); err != nil {
+			return fmt.Errorf("failed to finish calculation: %w", err)
+		}
+	}
+
 	level.Info(sectionLogger).Log("msg", "finished processing logs section", "rowsProcessed", cnt)
 	return nil
+}
+
+// sanitizeLabelKey sanitizes a key to be a valid label name
+func sanitizeLabelKey(key string, isPrefix bool) string {
+	if len(key) == 0 {
+		return key
+	}
+	key = strings.TrimSpace(key)
+	if len(key) == 0 {
+		return key
+	}
+	if isPrefix && key[0] >= '0' && key[0] <= '9' {
+		key = "_" + key
+	}
+	return strings.Map(func(r rune) rune {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || r == '_' || (r >= '0' && r <= '9') || r == '-' || r == '.' || r == '(' || r == ')' || r == ' ' {
+			return r
+		}
+		return '_'
+	}, key)
+}
+
+func unsafeBytes(s string) []byte {
+	return unsafe.Slice(unsafe.StringData(s), len(s))
+}
+
+func unsafeString(b []byte) string {
+	return unsafe.String(unsafe.SliceData(b), len(b))
 }

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/alecthomas/kingpin/v2"
+	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/user"
@@ -61,8 +62,16 @@ func queryMetastore(params logql.LiteralParams) error {
 		return err
 	}
 	level.Info(logger).Log("msg", "metastore sections found", "count", len(sections))
-	for _, section := range sections {
-		level.Info(logger).Log("msg", "metastore section", "section", fmt.Sprintf("%+v", section))
+	if len(sections) > 0 {
+		totalBytes := int64(0)
+		totalLines := int64(0)
+		for _, section := range sections {
+			level.Info(logger).Log("msg", "metastore section", "section", fmt.Sprintf("%+v", section))
+			totalBytes += section.Size
+			totalLines += int64(section.RowCount)
+		}
+		level.Info(logger).Log("msg", "total bytes", "totalBytes", humanize.Bytes(uint64(totalBytes)), "average bytes", humanize.Bytes(uint64(totalBytes/int64(len(sections)))))
+		level.Info(logger).Log("msg", "total lines", "totalLines", humanize.Comma(totalLines), "average lines", humanize.Comma(totalLines/int64(len(sections))))
 	}
 	return nil
 }
@@ -77,4 +86,16 @@ func getSections(start, end time.Time, streamMatchers []*labels.Matcher) ([]*met
 		return nil, err
 	}
 	return sections, nil
+}
+
+// getSections queries the metastore for dataobject sections matching the query selector
+// Currently, it does not pass structured metadata predicates
+func queryMetastoreStreams(params logql.LiteralParams) ([]*labels.Labels, error) {
+	ctx := user.InjectOrgID(context.Background(), orgID)
+	metastore := metastore.NewObjectMetastore(MustIndexBucket(), log.NewLogfmtLogger(os.Stderr), nil)
+	streams, err := metastore.Streams(ctx, params.Start(), params.End(), &labels.Matcher{})
+	if err != nil {
+		return nil, err
+	}
+	return streams, nil
 }

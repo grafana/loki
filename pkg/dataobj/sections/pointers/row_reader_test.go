@@ -28,6 +28,39 @@ func TestRowReader(t *testing.T) {
 	require.Equal(t, pointerTestData, actual)
 }
 
+func TestRowReaderExists(t *testing.T) {
+	var streamTestData []SectionPointer
+	for _, d := range pointerTestData {
+		if d.PointerKind == PointerKindStreamIndex {
+			streamTestData = append(streamTestData, d)
+		}
+	}
+
+	tests := []struct {
+		name      string
+		predicate NameExistsPredicate
+		want      []SectionPointer
+	}{
+		{
+			name:      "no match",
+			predicate: NameExistsPredicate{Name: "whatever"},
+			want:      []SectionPointer{pointerTestData[3], pointerTestData[4]},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dec := buildPointersDecoder(t, 0, 2)
+			r := NewRowReader(dec)
+			err := r.SetPredicate(tt.predicate)
+			require.NoError(t, err)
+			actual, err := readAllPointers(context.Background(), r)
+			require.NoError(t, err)
+			require.Equal(t, tt.want, actual)
+		})
+	}
+}
+
 func TestRowReaderTimeRange(t *testing.T) {
 	var streamTestData []SectionPointer
 	for _, d := range pointerTestData {

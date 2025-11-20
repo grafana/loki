@@ -117,9 +117,9 @@ func checkResult(result logqlmodel.Result) error {
 func doLocalQueryWithV2Engine(params logql.LiteralParams) (logqlmodel.Result, error) {
 	ctx := user.InjectOrgID(context.Background(), orgID)
 	qe := engine.NewBasic(engine.ExecutorConfig{
-		BatchSize: 512,
+		BatchSize: 8192,
 	}, metastore.Config{
-		IndexStoragePrefix: "index/v0",
+		IndexStoragePrefix: "index/benclive-v0",
 	}, MustDataobjBucket(), logql.NoLimits, prometheus.DefaultRegisterer, glog.NewLogfmtLogger(os.Stderr))
 	query := qe.Query(params)
 	return query.Exec(ctx)

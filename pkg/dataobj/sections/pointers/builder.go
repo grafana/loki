@@ -6,6 +6,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/klauspost/compress/zstd"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
@@ -42,6 +43,10 @@ type SectionPointer struct {
 	ColumnIndex       int64
 	ColumnName        string
 	ValuesBloomFilter []byte
+
+	// Section indexing metadata
+	NgramIdx                  int
+	SectionTrigramBloomFilter []byte
 }
 
 func (p *SectionPointer) Reset() {
@@ -59,14 +64,17 @@ func (p *SectionPointer) Reset() {
 	p.ColumnIndex = 0
 	p.ColumnName = ""
 	p.ValuesBloomFilter = p.ValuesBloomFilter[:0]
+	p.NgramIdx = 0
+	p.SectionTrigramBloomFilter = p.SectionTrigramBloomFilter[:0]
 }
 
 type PointerKind int
 
 const (
-	PointerKindInvalid     PointerKind = iota // PointerKindInvalid is an invalid pointer kind.
-	PointerKindStreamIndex                    // PointerKindStreamIndex is a pointer for a stream index.
-	PointerKindColumnIndex                    // PointerKindColumnIndex is a pointer for a column index.
+	PointerKindInvalid      PointerKind = iota // PointerKindInvalid is an invalid pointer kind.
+	PointerKindStreamIndex                     // PointerKindStreamIndex is a pointer for a stream index.
+	PointerKindColumnIndex                     // PointerKindColumnIndex is a pointer for a column index.
+	PointerKindSectionIndex                    // PointerKindSectionIndex is a pointer for a section index.
 )
 
 type streamKey struct {
@@ -158,6 +166,17 @@ func (b *Builder) RecordColumnIndex(path string, section int64, columnName strin
 		ColumnName:        columnName,
 		ColumnIndex:       columnIndex,
 		ValuesBloomFilter: valuesBloomFilter,
+	}
+	b.pointers = append(b.pointers, newPointer)
+}
+
+func (b *Builder) RecordSectionIndex(path string, section int64, ngramIdx int, sectionTrigramBloomFilter []byte) {
+	newPointer := &SectionPointer{
+		Path:                      path,
+		Section:                   section,
+		PointerKind:               PointerKindSectionIndex,
+		NgramIdx:                  ngramIdx,
+		SectionTrigramBloomFilter: sectionTrigramBloomFilter,
 	}
 	b.pointers = append(b.pointers, newPointer)
 }
@@ -333,6 +352,30 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 		return fmt.Errorf("creating values bloom filter column: %w", err)
 	}
 
+	ngramIdxBuilder, err := numberColumnBuilder(ColumnTypeNgramIdx, b.pageSize, b.pageRowCount)
+	if err != nil {
+		return fmt.Errorf("creating ngram index column: %w", err)
+	}
+
+	sectionTrigramBloomFilterBuilder, err := dataset.NewColumnBuilder("section_trigram_bloom_filter", dataset.BuilderOptions{
+		PageSizeHint:    b.pageSize,
+		PageMaxRowCount: b.pageRowCount,
+		Type: dataset.ColumnType{
+			Physical: datasetmd.PHYSICAL_TYPE_BINARY,
+			Logical:  ColumnTypeTrigramBloomFilter.String(),
+		},
+		Encoding:    datasetmd.ENCODING_TYPE_PLAIN,
+		Compression: datasetmd.COMPRESSION_TYPE_ZSTD,
+		CompressionOptions: dataset.CompressionOptions{
+			Zstd: []zstd.EOption{
+				zstd.WithEncoderLevel(zstd.SpeedBestCompression),
+			},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("creating values bloom filter column: %w", err)
+	}
+
 	// Populate our column builders.
 	for i, pointer := range b.pointers {
 		_ = pathBuilder.Append(i, dataset.BinaryValue([]byte(pointer.Path)))
@@ -354,13 +397,18 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 			_ = columnIndexBuilder.Append(i, dataset.Int64Value(pointer.ColumnIndex))
 			_ = valuesBloomFilterBuilder.Append(i, dataset.BinaryValue(pointer.ValuesBloomFilter))
 		}
+
+		if pointer.PointerKind == PointerKindSectionIndex {
+			_ = sectionTrigramBloomFilterBuilder.Append(i, dataset.BinaryValue(pointer.SectionTrigramBloomFilter))
+			_ = ngramIdxBuilder.Append(i, dataset.Int64Value(int64(pointer.NgramIdx)))
+		}
 	}
 
 	// Encode our builders to sections. We ignore errors after enc.OpenStreams
 	// (which may fail due to a caller) since we guarantee correct usage of the
 	// encoding API.
 	{
-		errs := make([]error, 0, 12) // 12 possible errors for 12 columns. Better check if encodeColumn(enc, ...) returns not nil?
+		errs := make([]error, 0, 14) // 13 possible errors for 13 columns. Better check if encodeColumn(enc, ...) returns not nil?
 		errs = append(errs, encodeColumn(enc, ColumnTypePath, pathBuilder))
 		errs = append(errs, encodeColumn(enc, ColumnTypeSection, sectionBuilder))
 		errs = append(errs, encodeColumn(enc, ColumnTypePointerKind, pointerKindBuilder))
@@ -373,6 +421,8 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 		errs = append(errs, encodeColumn(enc, ColumnTypeColumnName, columnNameBuilder))
 		errs = append(errs, encodeColumn(enc, ColumnTypeColumnIndex, columnIndexBuilder))
 		errs = append(errs, encodeColumn(enc, ColumnTypeValuesBloomFilter, valuesBloomFilterBuilder))
+		errs = append(errs, encodeColumn(enc, ColumnTypeNgramIdx, ngramIdxBuilder))
+		errs = append(errs, encodeColumn(enc, ColumnTypeTrigramBloomFilter, sectionTrigramBloomFilterBuilder))
 
 		if err := errors.Join(errs...); err != nil {
 			return fmt.Errorf("encoding columns: %w", err)
