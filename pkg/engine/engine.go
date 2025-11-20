@@ -427,7 +427,7 @@ func exportCapture(ctx context.Context, capture *xcap.Capture, plan *physical.Pl
 	// nodeID to parentNodeID mapping.
 	idToParentID := make(map[string]string, plan.Len())
 	for _, root := range plan.Roots() {
-		plan.DFSWalk(root, func(n physical.Node) error {
+		if err := plan.DFSWalk(root, func(n physical.Node) error {
 			parents := plan.Graph().Parents(n)
 			if len(parents) > 0 {
 				// TODO: This is assuming a single parent which is not always true.
@@ -446,7 +446,9 @@ func exportCapture(ctx context.Context, capture *xcap.Capture, plan *physical.Pl
 				idToParentID[n.ID().String()] = parents[0].ID().String()
 			}
 			return nil
-		}, dag.PreOrderWalk)
+		}, dag.PreOrderWalk); err != nil {
+			return err
+		}
 	}
 
 	// Link region by using node_id for finding parent regions.

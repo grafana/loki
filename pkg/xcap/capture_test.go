@@ -138,7 +138,7 @@ func TestCapture_GetAllStatistics(t *testing.T) {
 			setup: func() *Capture {
 				ctx, capture := NewCapture(context.Background(), nil)
 				bytesRead := NewStatisticInt64("bytes.read", AggregationTypeSum)
-				ctx, region := StartRegion(ctx, "read")
+				_, region := StartRegion(ctx, "read")
 				region.Record(bytesRead.Observe(1024))
 				region.End()
 				return capture
@@ -154,7 +154,7 @@ func TestCapture_GetAllStatistics(t *testing.T) {
 				bytesRead := NewStatisticInt64("bytes.read", AggregationTypeSum)
 				latency := NewStatisticFloat64("latency.ms", AggregationTypeMin)
 				success := NewStatisticFlag("success")
-				ctx, region := StartRegion(ctx, "read")
+				_, region := StartRegion(ctx, "read")
 				region.Record(bytesRead.Observe(1024))
 				region.Record(latency.Observe(10.5))
 				region.Record(success.Observe(true))
@@ -177,7 +177,7 @@ func TestCapture_GetAllStatistics(t *testing.T) {
 				region1.Record(bytesRead.Observe(1024))
 				region1.End()
 
-				ctx, region2 := StartRegion(ctx, "read2")
+				_, region2 := StartRegion(ctx, "read2")
 				region2.Record(bytesRead.Observe(2048))
 				region2.End()
 
@@ -198,7 +198,7 @@ func TestCapture_GetAllStatistics(t *testing.T) {
 				region1.Record(bytesRead.Observe(1024))
 				region1.End()
 
-				ctx, region2 := StartRegion(ctx, "read2")
+				_, region2 := StartRegion(ctx, "read2")
 				region2.Record(latency.Observe(10.5))
 				region2.End()
 
@@ -225,7 +225,7 @@ func TestCapture_GetAllStatistics(t *testing.T) {
 				region2.Record(statMin.Observe(20))
 				region2.End()
 
-				ctx, region3 := StartRegion(ctx, "region3")
+				_, region3 := StartRegion(ctx, "region3")
 				region3.Record(statMax.Observe(30))
 				region3.End()
 

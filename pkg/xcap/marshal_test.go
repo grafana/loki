@@ -40,7 +40,7 @@ func TestMarshalUnmarshal(t *testing.T) {
 	childRegion.End()
 
 	// Another sibling region
-	ctx, siblingRegion := StartRegion(ctx, "sibling", WithRegionAttributes(
+	_, siblingRegion := StartRegion(ctx, "sibling", WithRegionAttributes(
 		attribute.String("region.id", "sibling-1"),
 		attribute.Float64("weight", 0.5),
 	))
