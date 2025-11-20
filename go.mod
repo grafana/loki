@@ -515,3 +515,8 @@ replace github.com/grafana/loki/pkg/push => ./pkg/push
 replace github.com/influxdata/go-syslog/v3 => github.com/leodido/go-syslog/v4 v4.3.0
 
 replace github.com/thanos-io/objstore => github.com/grafana/objstore v0.0.0-20250728171719-b5d3b766d1b0
+
+// Import client module for shared lightweight code
+replace github.com/grafana/loki/client => ./client
+
+require github.com/grafana/loki/client v0.0.0-00010101000000-000000000000

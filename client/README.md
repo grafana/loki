@@ -5,46 +5,60 @@ consumers like Grafana Alloy.
 
 ## Design Goals
 
-- **Code reuse**: Re-exports from the main `loki/v3` module to avoid duplication
-- **Minimal API surface**: Only the types and utilities needed by external clients
+- **Canonical implementation**: This module contains the source code for lightweight utilities
+- **Minimal dependencies**: Only essential dependencies (Prometheus labels/encoding, not full server)
+- **Code reuse**: The main `loki/v3` module imports from this module to avoid duplication
 - **Stable API**: Semantic versioning with clear compatibility guarantees
 
-## Code Reuse Strategy
+## Architecture
 
-This module uses Go's `replace` directive to import from the parent `loki/v3` module,
-ensuring code is maintained in one place without duplication. The client module
-re-exports specific packages and functions while maintaining the same implementation.
+This module follows the **dependency inversion principle**:
 
-**Important**: This module will have some dependencies (notably Prometheus `model/labels`
-and `tsdb/encoding`) because the underlying v3 packages use them. However, these are
-lightweight packages, not the full Prometheus server.
+```
+┌─────────────────┐
+│   loki/v3       │  (Heavy module with OTel, Prometheus server, etc.)
+│                 │
+│  imports from   │
+│       ↓         │
+┌─────────────────┐
+│  loki/client    │  (Lightweight base module)
+│                 │
+│  - constants    │  (Zero dependencies)
+│  - encoding     │  (Prometheus TSDB encoding only)
+│  - syntax       │  (Prometheus labels only)
+│  - pattern      │  (Zero dependencies)
+└─────────────────┘
+```
+
+**Key Points**:
+- ✅ Client module = **source of truth** for lightweight code
+- ✅ v3 module = imports from client, adds heavy dependencies
+- ✅ No duplication - code lives in one place
+- ✅ External consumers (like Alloy) import client directly
 
 ## Packages
 
 - `types`: Documentation and type information for Loki push API
 - `logql`: LogQL syntax parsing and pattern matching
-  - `syntax`: Label parsing and LogQL expression parsing (re-exports from v3)
-  - `pattern`: Pattern matching for log lines (copied, zero dependencies)
-- `util`: Utility functions (re-exports from v3)
-  - `constants`: Loki constants (log levels, metric namespaces, etc.)
-  - `encoding`: Binary encoding/decoding utilities
+  - `syntax`: Label parsing and LogQL expression parsing
+  - `pattern`: Pattern matching for log lines (zero dependencies)
+- `util`: Utility functions
+  - `constants`: Loki constants (log levels, metric namespaces, etc.) - **zero dependencies**
+  - `encoding`: Binary encoding/decoding utilities (depends on Prometheus TSDB encoding)
   - `log`: Minimal logging interface
 
 ## Dependencies
 
-This module imports from `github.com/grafana/loki/v3` to reuse code. As a result,
-it will have some transitive dependencies including:
+This module has **minimal dependencies**:
 
 - `github.com/prometheus/prometheus/model/labels` - Lightweight labels package
 - `github.com/prometheus/prometheus/tsdb/encoding` - Lightweight TSDB encoding package
-- Various other dependencies from the v3 module
 
-**However**, this module does NOT require:
-- OpenTelemetry Collector (v1.35.0-v1.43.0)
-- Full Prometheus server with all its dependencies
-- OTel Contrib packages
-
-The dependencies are significantly reduced compared to importing the full v3 module.
+**What this module does NOT include**:
+- ❌ OpenTelemetry Collector (v1.35.0-v1.43.0)
+- ❌ Full Prometheus server with all dependencies
+- ❌ OTel Contrib packages
+- ❌ Heavy infrastructure dependencies
 
 ## Push API Types
 
@@ -123,13 +137,13 @@ See [MIGRATION.md](./MIGRATION.md) for detailed migration instructions.
 
 ## Development
 
-When developing locally, this module uses `replace` to point to the parent v3 module:
+When developing locally, the v3 module uses `replace` to point to this client module:
 
 ```go
-replace github.com/grafana/loki/v3 => ../
+replace github.com/grafana/loki/client => ./client
 ```
 
-This ensures code changes in v3 are immediately available in the client module.
+This ensures code changes in the client module are immediately available in v3.
 
 ## Contributing
 

@@ -1,17 +1,11 @@
 package syntax
 
-// Re-export LogQL syntax functionality from the main v3 module.
-// NOTE: This package depends on github.com/prometheus/prometheus/model/labels
-// which is a lightweight labels package (not the full Prometheus server).
-// This maintains code reuse while accepting a minimal Prometheus dependency.
-
 import (
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/prometheus/prometheus/model/labels"
+	promql_parser "github.com/prometheus/prometheus/promql/parser"
 )
 
 // Labels is an alias for Prometheus labels.Labels.
-// This maintains compatibility with the v3 module.
 type Labels = labels.Labels
 
 // EmptyLabels returns an empty Labels slice.
@@ -19,27 +13,22 @@ func EmptyLabels() Labels {
 	return labels.EmptyLabels()
 }
 
-// ParseLabels parses a LogQL label selector string and returns Labels.
-// This is a re-export from the v3 module to maintain code reuse.
+// ParseLabels parses labels from a string using logql parser.
+// This is the canonical implementation that v3 will import from this module.
 func ParseLabels(lbs string) (Labels, error) {
-	return syntax.ParseLabels(lbs)
-}
+	ls, err := promql_parser.ParseMetric(lbs)
+	if err != nil {
+		return labels.EmptyLabels(), err
+	}
 
-// ParseExpr parses a full LogQL expression.
-// This is a re-export from the v3 module.
-func ParseExpr(input string) (syntax.Expr, error) {
-	return syntax.ParseExpr(input)
+	// Use the label builder to trim empty label values.
+	// Empty label values are equivalent to absent labels
+	// in Prometheus, but they unfortunately alter the
+	// Hash values created. This can cause problems in Loki
+	// if we can't rely on a set of labels to have a deterministic
+	// hash value.
+	// Therefore we must normalize early in the write path.
+	// See https://github.com/grafana/loki/pull/7355
+	// for more information
+	return labels.NewBuilder(ls).Labels(), nil
 }
-
-// ParseExprWithoutValidation parses a LogQL expression without validation.
-// This is a re-export from the v3 module.
-func ParseExprWithoutValidation(input string) (syntax.Expr, error) {
-	return syntax.ParseExprWithoutValidation(input)
-}
-
-// Re-export the Expr interface and related types for convenience
-type (
-	Expr            = syntax.Expr
-	LogSelectorExpr = syntax.LogSelectorExpr
-	SampleExpr      = syntax.SampleExpr
-)

@@ -1,42 +1,48 @@
 package util
 
-// Re-export constants from the main v3 module.
-// Constants have zero dependencies, so this is safe and maintains code reuse.
+// Constants package - zero dependencies, pure constants
 
-import constants "github.com/grafana/loki/v3/pkg/util/constants"
-
-// Log level constants
 const (
-	LevelLabel       = constants.LevelLabel
-	LogLevelUnknown  = constants.LogLevelUnknown
-	LogLevelDebug    = constants.LogLevelDebug
-	LogLevelInfo     = constants.LogLevelInfo
-	LogLevelWarn     = constants.LogLevelWarn
-	LogLevelError    = constants.LogLevelError
-	LogLevelFatal    = constants.LogLevelFatal
-	LogLevelCritical = constants.LogLevelCritical
-	LogLevelTrace    = constants.LogLevelTrace
+	LevelLabel       = "detected_level"
+	LogLevelUnknown  = "unknown"
+	LogLevelDebug    = "debug"
+	LogLevelInfo     = "info"
+	LogLevelWarn     = "warn"
+	LogLevelError    = "error"
+	LogLevelFatal    = "fatal"
+	LogLevelCritical = "critical"
+	LogLevelTrace    = "trace"
 )
 
 // LogLevels is a list of all supported log levels
-var LogLevels = constants.LogLevels
+var LogLevels = []string{
+	LogLevelUnknown,
+	LogLevelDebug,
+	LogLevelInfo,
+	LogLevelWarn,
+	LogLevelError,
+	LogLevelFatal,
+	LogLevelCritical,
+	LogLevelTrace,
+}
 
 // Metrics namespace constants
 const (
-	Loki   = constants.Loki
-	Cortex = constants.Cortex
-	OTLP   = constants.OTLP
+	Loki   = "loki"
+	Cortex = "cortex"
+	OTLP   = "otlp"
 )
 
 // VariantLabel is the name of the label used to identify which variant a series belongs to
-const VariantLabel = constants.VariantLabel
+// in multi-variant queries.
+const VariantLabel = "__variant__"
 
 // Internal stream constants
 const (
 	// AggregatedMetricLabel is the label added to streams containing aggregated metrics
-	AggregatedMetricLabel = constants.AggregatedMetricLabel
+	AggregatedMetricLabel = "__aggregated_metric__"
 	// PatternLabel is the label added to streams containing detected patterns
-	PatternLabel = constants.PatternLabel
+	PatternLabel = "__pattern__"
 	// LogsDrilldownAppName is the app name used to identify requests from Logs Drilldown
-	LogsDrilldownAppName = constants.LogsDrilldownAppName
+	LogsDrilldownAppName = "grafana-lokiexplore-app"
 )

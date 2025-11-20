@@ -1,33 +1,71 @@
 package util
 
-// Re-export encoding utilities from the main v3 module.
-// NOTE: This package depends on github.com/prometheus/prometheus/tsdb/encoding
-// which is a lightweight TSDB package (not the full Prometheus server).
-// This maintains code reuse while accepting a minimal Prometheus dependency.
-
 import (
-	"github.com/grafana/loki/v3/pkg/util/encoding"
+	"encoding/binary"
+	"hash/crc32"
+
+	"github.com/prometheus/prometheus/tsdb/encoding"
 )
 
 // Encbuf extends encoding.Encbuf with support for multi byte encoding
-// This is a type alias to the v3 module's Encbuf to maintain code reuse.
-type Encbuf = encoding.Encbuf
+type Encbuf struct {
+	encoding.Encbuf
+}
 
-// EncWith creates a new Encbuf with the given byte slice
-func EncWith(b []byte) Encbuf {
-	return encoding.EncWith(b)
+func EncWith(b []byte) (res Encbuf) {
+	res.B = b
+	return res
+}
+
+func EncWrap(inner encoding.Encbuf) Encbuf { return Encbuf{Encbuf: inner} }
+
+func (e *Encbuf) PutString(s string) { e.B = append(e.B, s...) }
+
+func (e *Encbuf) Skip(i int) {
+	e.B = e.B[:len(e.B)+i]
 }
 
 // Decbuf extends encoding.Decbuf with support for multi byte decoding
-// This is a type alias to the v3 module's Decbuf to maintain code reuse.
-type Decbuf = encoding.Decbuf
-
-// DecWith creates a new Decbuf with the given byte slice
-func DecWith(b []byte) Decbuf {
-	return encoding.DecWith(b)
+type Decbuf struct {
+	encoding.Decbuf
 }
 
-// Note: EncWrap and DecWrap are not re-exported because they have type
-// compatibility issues when re-exporting. If you need these functions,
-// import them directly from the v3 module:
-//   import "github.com/grafana/loki/v3/pkg/util/encoding"
+func DecWith(b []byte) (res Decbuf) {
+	res.B = b
+	return res
+}
+
+func DecWrap(inner encoding.Decbuf) Decbuf { return Decbuf{Decbuf: inner} }
+
+func (d *Decbuf) Bytes(n int) []byte {
+	if d.E != nil {
+		return nil
+	}
+	if len(d.B) < n {
+		d.E = encoding.ErrInvalidSize
+		return nil
+	}
+	x := d.B[:n]
+	d.B = d.B[n:]
+	return x
+}
+
+func (d *Decbuf) CheckCrc(castagnoliTable *crc32.Table) error {
+	if d.E != nil {
+		return d.E
+	}
+	if len(d.B) < 4 {
+		d.E = encoding.ErrInvalidSize
+		return d.E
+	}
+
+	offset := len(d.B) - 4
+	expCRC := binary.BigEndian.Uint32(d.B[offset:])
+	d.B = d.B[:offset]
+
+	if d.Crc32(castagnoliTable) != expCRC {
+		d.E = encoding.ErrInvalidChecksum
+		return d.E
+	}
+	return nil
+}

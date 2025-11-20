@@ -1,10 +1,13 @@
 package constants
 
+// Re-export from client module to maintain code reuse
+import "github.com/grafana/loki/client/util"
+
 const (
 	// AggregatedMetricLabel is the label added to streams containing aggregated metrics
-	AggregatedMetricLabel = "__aggregated_metric__"
+	AggregatedMetricLabel = util.AggregatedMetricLabel
 	// PatternLabel is the label added to streams containing detected patterns
-	PatternLabel = "__pattern__"
+	PatternLabel = util.PatternLabel
 	// LogsDrilldownAppName is the app name used to identify requests from Logs Drilldown
-	LogsDrilldownAppName = "grafana-lokiexplore-app"
+	LogsDrilldownAppName = util.LogsDrilldownAppName
 )

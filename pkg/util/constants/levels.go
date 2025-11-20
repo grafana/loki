@@ -1,24 +1,18 @@
 package constants
 
+// Re-export from client module to maintain code reuse
+import "github.com/grafana/loki/client/util"
+
 const (
-	LevelLabel       = "detected_level"
-	LogLevelUnknown  = "unknown"
-	LogLevelDebug    = "debug"
-	LogLevelInfo     = "info"
-	LogLevelWarn     = "warn"
-	LogLevelError    = "error"
-	LogLevelFatal    = "fatal"
-	LogLevelCritical = "critical"
-	LogLevelTrace    = "trace"
+	LevelLabel       = util.LevelLabel
+	LogLevelUnknown  = util.LogLevelUnknown
+	LogLevelDebug    = util.LogLevelDebug
+	LogLevelInfo     = util.LogLevelInfo
+	LogLevelWarn     = util.LogLevelWarn
+	LogLevelError    = util.LogLevelError
+	LogLevelFatal    = util.LogLevelFatal
+	LogLevelCritical = util.LogLevelCritical
+	LogLevelTrace    = util.LogLevelTrace
 )
 
-var LogLevels = []string{
-	LogLevelUnknown,
-	LogLevelDebug,
-	LogLevelInfo,
-	LogLevelWarn,
-	LogLevelError,
-	LogLevelFatal,
-	LogLevelCritical,
-	LogLevelTrace,
-}
+var LogLevels = util.LogLevels
