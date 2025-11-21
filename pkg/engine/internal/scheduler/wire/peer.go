@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
 	"reflect"
 	"sync"
 
@@ -186,7 +187,7 @@ func (p *Peer) notifyError(frame Frame, err error) {
 // processMessage handles a message received from the peer.
 func (p *Peer) processMessage(ctx context.Context, id uint64, message Message) {
 	if p.Handler == nil {
-		_ = p.enqueueFrame(ctx, NackFrame{ID: id, Error: errors.New("not implemented")})
+		_ = p.enqueueFrame(ctx, NackFrame{ID: id, Error: Errorf(http.StatusNotImplemented, "not implemented")})
 		return
 	}
 
@@ -196,7 +197,19 @@ func (p *Peer) processMessage(ctx context.Context, id uint64, message Message) {
 		_ = p.enqueueFrame(ctx, AckFrame{ID: id})
 	default:
 		// TODO(rfratto): What should we do if this fails? Logs? Metrics?
-		_ = p.enqueueFrame(ctx, NackFrame{ID: id, Error: err})
+		_ = p.enqueueFrame(ctx, NackFrame{ID: id, Error: convertError(err)})
+	}
+}
+
+func convertError(err error) *Error {
+	var wireError *Error
+	if errors.As(err, &wireError) {
+		return wireError
+	}
+
+	return &Error{
+		Code:    http.StatusInternalServerError,
+		Message: err.Error(),
 	}
 }
 
