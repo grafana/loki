@@ -68,7 +68,7 @@ spec:
       {{- end }}
       {{- include "loki.indexGatewayPriorityClassName" . | nindent 6 }}
       securityContext:
-        {{- toYaml .Values.loki.podSecurityContext | nindent 8 }}
+        {{- include "loki.podSecurityContext" . | nindent 8 }}
       terminationGracePeriodSeconds: {{ .Values.indexGateway.terminationGracePeriodSeconds }}
       {{- with .Values.indexGateway.initContainers }}
       initContainers:
@@ -202,6 +202,9 @@ spec:
           {{- toYaml .Values.indexGateway.persistence.accessModes | nindent 10 }}
         {{- with .Values.indexGateway.persistence.storageClass }}
         storageClassName: {{ if (eq "-" .) }}""{{ else }}{{ . }}{{ end }}
+        {{- end }}
+        {{- with .Values.indexGateway.persistence.volumeAttributesClassName }}
+        volumeAttributesClassName: {{ . }}
         {{- end }}
         resources:
           requests:

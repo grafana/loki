@@ -11,7 +11,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
@@ -28,9 +27,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/rangeio"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
-
-var tracer = otel.Tracer("pkg/engine")
 
 var ErrNotSupported = errors.New("feature not supported in new query engine")
 
@@ -190,6 +188,7 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 		return logqlmodel.Result{}, err
 	}
 
+	ctx, capture := xcap.NewCapture(ctx, nil)
 	builder, err := func() (ResultBuilder, error) {
 		ctx, span := tracer.Start(ctx, "QueryEngine.Execute.Process")
 		defer span.End()
@@ -203,6 +202,7 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 			MergePrefetchCount: e.cfg.MergePrefetchCount,
 			Bucket:             e.bucket,
 		}
+
 		pipeline := executor.Run(ctx, cfg, physicalPlan, logger)
 		defer pipeline.Close()
 
@@ -238,6 +238,7 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 		span.SetStatus(codes.Error, "failed to build results")
 		return logqlmodel.Result{}, err
 	}
+	capture.End()
 
 	durFull := time.Since(startTime)
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)

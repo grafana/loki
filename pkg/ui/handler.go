@@ -17,6 +17,7 @@ import (
 
 	"github.com/go-kit/log/level"
 	"github.com/gorilla/mux"
+	"github.com/grafana/dskit/tenant"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/goldfish"
@@ -32,6 +33,7 @@ const (
 	featuresPath      = prefixPath + "/api/v1/features"
 	goldfishPath      = prefixPath + "/api/v1/goldfish/queries"
 	goldfishStatsPath = prefixPath + "/api/v1/goldfish/stats"
+	analyzeLabelsPath = prefixPath + "/api/v1/tenants/{tenantID}/analyze-labels"
 	notFoundPath      = prefixPath + "/api/v1/404"
 	contentTypeJSON   = "application/json"
 
@@ -84,6 +86,8 @@ func (s *Service) RegisterHandler() {
 	s.router.Path(featuresPath).Handler(s.featuresHandler())
 	s.router.Path(goldfishPath).Handler(s.goldfishQueriesHandler())
 	s.router.Path(goldfishStatsPath).Handler(s.goldfishStatsHandler())
+	s.router.Path(analyzeLabelsPath).Handler(s.analyzeLabelsHandler())
+
 	s.router.Path(goldfishResultPath(cellA)).Handler(s.goldfishResultHandler(cellA))
 	s.router.Path(goldfishResultPath(cellB)).Handler(s.goldfishResultHandler(cellB))
 
@@ -213,6 +217,47 @@ func (s *Service) notFoundHandler() http.Handler {
 		node := r.URL.Query().Get("node")
 		s.writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %s not found", node))
 	})
+}
+
+// analyzeLabelsHandler returns a handler that proxies series requests to the local node's series endpoint with correct tenant.
+func (s *Service) analyzeLabelsHandler() http.Handler {
+	proxy := &httputil.ReverseProxy{
+		Transport: s.client.Transport,
+		Director: func(r *http.Request) {
+			// Extract tenantID from URL path
+			vars := mux.Vars(r)
+			tenantID := vars["tenantID"]
+
+			// Validate tenant ID using existing validation
+			if err := tenant.ValidTenantID(tenantID); err != nil {
+				level.Error(s.logger).Log("msg", "invalid tenant ID", "tenant", tenantID, "err", err)
+				// Return error - will be caught by ErrorHandler
+				return
+			}
+
+			// Proxy to series endpoint on same host
+			r.URL.Scheme = proxyScheme
+			r.URL.Host = s.localAddr
+			r.URL.Path = "/loki/api/v1/series"
+			r.RequestURI = "" // Must be cleared according to Go docs
+
+			// Override tenant header with the one from URL
+			r.Header.Set("X-Scope-OrgID", tenantID)
+
+			// Query params (match[], start, end, etc.) are preserved automatically in r.URL.RawQuery
+
+			level.Debug(s.logger).Log(
+				"msg", "proxying analyze-labels to series endpoint",
+				"tenant", tenantID,
+				"target", r.URL.String(),
+			)
+		},
+		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+			level.Error(s.logger).Log("msg", "analyze-labels proxy error", "err", err, "path", r.URL.Path)
+			s.writeJSONError(w, http.StatusBadGateway, err.Error())
+		},
+	}
+	return proxy
 }
 
 // redirectToNotFound updates the request URL to redirect to the not found handler

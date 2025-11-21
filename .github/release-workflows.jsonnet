@@ -195,6 +195,26 @@ local weeklyImageJobs = {
           ||| % { name: '%s-image' % name }),
         ])
       for name in std.objectFields(weeklyImageJobs)
+    } + {
+      'trigger-cd': job.new()
+                    + job.withNeeds(['loki-image', 'loki-manifest', 'loki-canary-manifest'])
+                    + job.withIf("github.ref == 'refs/heads/main'")
+                    + job.withPermissions({
+                      contents: 'read',
+                      'id-token': 'write',
+                    })
+                    + job.withEnv({
+                      IMAGE_TAG: '${{ needs.loki-image.outputs.image_tag }}',
+                    })
+                    + job.withSteps([
+                      step.new('Trigger CD workflow', 'grafana/shared-workflows/actions/trigger-argo-workflow@8b88213bca76e86f9f59b43038cc5d7545452436')  // main
+                      + step.with({
+                        instance: 'ops',
+                        namespace: 'loki-cd',
+                        workflow_template: 'loki-continuous-deployment',
+                        parameters: 'imageTag=${{ env.IMAGE_TAG }}',
+                      }),
+                    ]),
     },
   }),
 }

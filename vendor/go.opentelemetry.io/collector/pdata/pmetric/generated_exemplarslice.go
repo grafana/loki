@@ -10,7 +10,6 @@ import (
 	"iter"
 
 	"go.opentelemetry.io/collector/pdata/internal"
-	otlpmetrics "go.opentelemetry.io/collector/pdata/internal/data/protogen/metrics/v1"
 )
 
 // ExemplarSlice logically represents a slice of Exemplar.
@@ -21,18 +20,18 @@ import (
 // Must use NewExemplarSlice function to create new instances.
 // Important: zero-initialized instance is not valid for use.
 type ExemplarSlice struct {
-	orig  *[]otlpmetrics.Exemplar
+	orig  *[]internal.Exemplar
 	state *internal.State
 }
 
-func newExemplarSlice(orig *[]otlpmetrics.Exemplar, state *internal.State) ExemplarSlice {
+func newExemplarSlice(orig *[]internal.Exemplar, state *internal.State) ExemplarSlice {
 	return ExemplarSlice{orig: orig, state: state}
 }
 
-// NewExemplarSlice creates a ExemplarSlice with 0 elements.
+// NewExemplarSlice creates a ExemplarSliceWrapper with 0 elements.
 // Can use "EnsureCapacity" to initialize with a given capacity.
 func NewExemplarSlice() ExemplarSlice {
-	orig := []otlpmetrics.Exemplar(nil)
+	orig := []internal.Exemplar(nil)
 	return newExemplarSlice(&orig, internal.NewState())
 }
 
@@ -89,7 +88,7 @@ func (es ExemplarSlice) EnsureCapacity(newCap int) {
 		return
 	}
 
-	newOrig := make([]otlpmetrics.Exemplar, len(*es.orig), newCap)
+	newOrig := make([]internal.Exemplar, len(*es.orig), newCap)
 	copy(newOrig, *es.orig)
 	*es.orig = newOrig
 }
@@ -98,7 +97,7 @@ func (es ExemplarSlice) EnsureCapacity(newCap int) {
 // It returns the newly added Exemplar.
 func (es ExemplarSlice) AppendEmpty() Exemplar {
 	es.state.AssertMutable()
-	*es.orig = append(*es.orig, otlpmetrics.Exemplar{})
+	*es.orig = append(*es.orig, internal.Exemplar{})
 	return es.At(es.Len() - 1)
 }
 
@@ -127,7 +126,7 @@ func (es ExemplarSlice) RemoveIf(f func(Exemplar) bool) {
 	newLen := 0
 	for i := 0; i < len(*es.orig); i++ {
 		if f(es.At(i)) {
-			internal.DeleteOrigExemplar(&(*es.orig)[i], false)
+			internal.DeleteExemplar(&(*es.orig)[i], false)
 			continue
 		}
 		if newLen == i {
@@ -148,5 +147,5 @@ func (es ExemplarSlice) CopyTo(dest ExemplarSlice) {
 	if es.orig == dest.orig {
 		return
 	}
-	*dest.orig = internal.CopyOrigExemplarSlice(*dest.orig, *es.orig)
+	*dest.orig = internal.CopyExemplarSlice(*dest.orig, *es.orig)
 }

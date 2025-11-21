@@ -1229,7 +1229,8 @@ func (s *gRPCAppendTakeoverBidiWriteBufferSender) connect(ctx context.Context, c
 
 		resp, err := stream.Recv()
 		if err != nil {
-			s.streamErr = err
+			// A Recv() error may be a redirect.
+			s.streamErr = s.maybeHandleRedirectionError(err)
 			close(cs.completions)
 			return
 		}

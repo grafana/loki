@@ -16,6 +16,7 @@ import (
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
@@ -24,6 +25,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/logical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -33,6 +35,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/rangeio"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 var (
@@ -44,6 +47,8 @@ var (
 	// ErrSchedulingFailed is returned when communication with the scheduler fails.
 	ErrSchedulingFailed = errors.New("failed to schedule query")
 )
+
+var tracer = otel.Tracer("pkg/engine")
 
 // ExecutorConfig configures engine execution.
 type ExecutorConfig struct {
@@ -154,9 +159,10 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	// This pain point will eventually go away as remaining usages of
 	// [logql.Engine] disappear.
 
+	ctx, capture := xcap.NewCapture(ctx, nil)
 	startTime := time.Now()
 
-	ctx, span := tracer.Start(ctx, "Engine.Execute", trace.WithAttributes(
+	ctx, span := tracer.Start(ctx, "Engine.Engine", trace.WithAttributes(
 		attribute.String("type", string(logql.GetRangeType(params))),
 		attribute.String("query", params.QueryString()),
 		attribute.Stringer("start", params.Start()),
@@ -193,6 +199,7 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 		span.SetStatus(codes.Error, "failed to create execution plan")
 		return logqlmodel.Result{}, ErrPlanningFailed
 	}
+	defer wf.Close()
 
 	pipeline, err := wf.Run(ctx)
 	if err != nil {
@@ -220,6 +227,10 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 		"duration_execution", durExecution,
 		"duration_full", durFull,
 	)
+
+	if err := exportCapture(ctx, capture, physicalPlan, logger); err != nil {
+		level.Error(logger).Log("msg", "failed to export capture as trace", "err", err)
+	}
 
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
 	statsCtx := stats.FromContext(ctx)
@@ -406,4 +417,45 @@ func (e *Engine) collectResult(ctx context.Context, logger log.Logger, params lo
 		attribute.Stringer("duration", duration),
 	))
 	return builder, duration, nil
+}
+
+func exportCapture(ctx context.Context, capture *xcap.Capture, plan *physical.Plan, logger log.Logger) error {
+	if capture == nil {
+		return nil
+	}
+
+	// nodeID to parentNodeID mapping.
+	idToParentID := make(map[string]string, plan.Len())
+	for _, root := range plan.Roots() {
+		if err := plan.DFSWalk(root, func(n physical.Node) error {
+			parents := plan.Graph().Parents(n)
+			if len(parents) > 0 {
+				// TODO: This is assuming a single parent which is not always true.
+				// Fix this when we have plans with multiple parents.
+
+				if parents[0].Type() == physical.NodeTypeParallelize {
+					// Skip Parallelize nodes as they are not execution nodes.
+					pp := plan.Graph().Parents(parents[0])
+					if len(pp) > 0 {
+						parents = pp
+					} else {
+						return nil
+					}
+				}
+
+				idToParentID[n.ID().String()] = parents[0].ID().String()
+			}
+			return nil
+		}, dag.PreOrderWalk); err != nil {
+			return err
+		}
+	}
+
+	// Link region by using node_id for finding parent regions.
+	capture.LinkRegions("node_id", func(nodeID string) (string, bool) {
+		parentID, ok := idToParentID[nodeID]
+		return parentID, ok
+	})
+
+	return xcap.ExportTrace(ctx, capture, logger)
 }

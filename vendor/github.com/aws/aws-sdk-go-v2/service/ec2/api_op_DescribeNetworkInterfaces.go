@@ -99,6 +99,9 @@ type DescribeNetworkInterfacesInput struct {
 	//
 	//   - availability-zone - The Availability Zone of the network interface.
 	//
+	//   - availability-zone-id - The ID of the Availability Zone of the network
+	//   interface.
+	//
 	//   - description - The description of the network interface.
 	//
 	//   - group-id - The ID of a security group associated with the network interface.
