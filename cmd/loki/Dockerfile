@@ -20,8 +20,8 @@ RUN mkdir -p /etc/loki /loki/rules /loki/rules-temp && \
 FROM gcr.io/distroless/static:nonroot
 
 COPY --from=build /src/loki/cmd/loki/loki /usr/bin/loki
-COPY --from=filesystem /etc/loki /etc/loki
-COPY --from=filesystem /loki /loki
+COPY --from=filesystem --chown=10001:10001 /etc/loki /etc/loki
+COPY --from=filesystem --chown=10001:10001 /loki /loki
 COPY --from=filesystem /etc/passwd /etc/passwd
 COPY --from=filesystem /etc/group /etc/group
 
