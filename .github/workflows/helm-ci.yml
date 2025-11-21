@@ -8,7 +8,7 @@ on:
 
 env:
   CT_CONFIGFILE: production/helm/ct.yaml
-  INTEGRATION_TESTS_DIR: production/helm/loki/test/integration
+  INTEGRARION_TESTS_DIR: production/helm/loki/test/integration
 
 jobs:
 # Temporarily disabled linting because this step doesn't easily support passing GO tags yet.
@@ -103,7 +103,7 @@ jobs:
 
       - name: List tests
         id: list_tests
-        working-directory: "${{ env.INTEGRATION_TESTS_DIR }}"
+        working-directory: "${{ env.INTEGRARION_TESTS_DIR }}"
         env:
           LABELS: ${{ toJson(github.event.pull_request.labels.*.name) }}
         run: |
@@ -155,5 +155,5 @@ jobs:
       - name: Run test
         run: helm-chart-toolbox/tools/helm-test/helm-test "${TEST_DIRECTORY}"
         env:
-          TEST_DIRECTORY: "source/${{ env.INTEGRATION_TESTS_DIR }}/${{ matrix.test }}"
+          TEST_DIRECTORY: "source/${{ env.INTEGRARION_TESTS_DIR }}/${{ matrix.test }}"
           DELETE_CLUSTER: true
