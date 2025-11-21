@@ -63,7 +63,7 @@ type downloadedObject struct {
 }
 
 const (
-	indexConsumerGroup = "index-builder-testing"
+	defaultIndexConsumerGroup = "index-builder"
 )
 
 // An interface for the methods needed from a calculator. Useful for testing.
@@ -166,6 +166,11 @@ func NewIndexBuilder(
 		indexerConfig{QueueSize: 64},
 	)
 
+	consumerGroup := defaultIndexConsumerGroup
+	if kafkaCfg.ConsumerGroup == "" {
+		consumerGroup = defaultIndexConsumerGroup
+	}
+
 	kafkaCfg.AutoCreateTopicEnabled = true
 	eventConsumerClient, err := client.NewReaderClient(
 		"index_builder",
@@ -175,7 +180,7 @@ func NewIndexBuilder(
 		kgo.ConsumeTopics(kafkaCfg.Topic),
 		kgo.InstanceID(instanceID),
 		kgo.SessionTimeout(3*time.Minute),
-		kgo.ConsumerGroup(indexConsumerGroup),
+		kgo.ConsumerGroup(consumerGroup),
 		kgo.Balancers(kgo.RoundRobinBalancer()),
 		kgo.RebalanceTimeout(5*time.Minute),
 		kgo.DisableAutoCommit(),
