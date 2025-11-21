@@ -47,12 +47,16 @@ func BuildGateway(opts Options) ([]client.Object, error) {
 	svc := NewGatewayHTTPService(opts)
 	pdb := NewGatewayPodDisruptionBudget(opts)
 
-	ing, err := NewGatewayIngress(opts)
-	if err != nil {
-		return nil, err
-	}
+	var objs []client.Object
+	objs = append(objs, cm, tenantSecret, dpl, sa, saToken, svc, pdb)
 
-	objs := []client.Object{cm, tenantSecret, dpl, sa, saToken, svc, ing, pdb}
+	if opts.Stack.Tenants == nil || !opts.Stack.Tenants.DisableIngress {
+		ing, err := NewGatewayIngress(opts)
+		if err != nil {
+			return nil, err
+		}
+		objs = append(objs, ing)
+	}
 
 	minTLSVersion := opts.TLSProfile.MinTLSVersion
 	ciphersList := opts.TLSProfile.Ciphers
