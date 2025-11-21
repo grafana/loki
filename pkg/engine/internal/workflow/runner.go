@@ -7,6 +7,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 // A Manifest is a collection of related Tasks and Streams. A manifest is given
@@ -121,6 +122,9 @@ type TaskStatus struct {
 	// Error holds the error that occurred during task execution, if any. Only
 	// set when State is [TaskStateFailed].
 	Error error
+
+	// Capture contains observations about the execution of the task.
+	Capture *xcap.Capture
 
 	// Statistics report analytics about the lifetime of a task. Only set
 	// for terminal task states (see [TaskState.Terminal]).

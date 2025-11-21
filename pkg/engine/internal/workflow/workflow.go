@@ -16,6 +16,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 // Options configures a [Workflow].
@@ -53,6 +54,9 @@ type Workflow struct {
 
 	statsMut sync.Mutex
 	stats    stats.Result
+
+	captureMut sync.Mutex
+	capture    *xcap.Capture
 
 	tasksMut   sync.RWMutex
 	taskStates map[*Task]TaskState
@@ -146,6 +150,8 @@ func (wf *Workflow) Close() {
 // The returned pipeline must be closed when the workflow is complete to release
 // resources.
 func (wf *Workflow) Run(ctx context.Context) (pipeline executor.Pipeline, err error) {
+	wf.capture = xcap.CaptureFromContext(ctx)
+
 	wrapped := &wrappedPipeline{
 		inner: wf.resultsPipeline,
 		onClose: func() {
@@ -300,6 +306,10 @@ func (wf *Workflow) onTaskChange(ctx context.Context, task *Task, newStatus Task
 		defer wf.admissionControl.laneFor(task).Release(1)
 	}
 
+	if newStatus.Capture != nil {
+		wf.mergeCapture(newStatus.Capture)
+	}
+
 	if newStatus.Statistics != nil {
 		wf.mergeResults(*newStatus.Statistics)
 	}
@@ -337,6 +347,20 @@ func (wf *Workflow) onTaskChange(ctx context.Context, task *Task, newStatus Task
 	// when calling this.
 	if err := wf.runner.Cancel(ctx, tasksToCancel...); err != nil {
 		level.Warn(wf.logger).Log("msg", "failed to cancel tasks", "err", err)
+	}
+}
+
+func (wf *Workflow) mergeCapture(capture *xcap.Capture) {
+	wf.captureMut.Lock()
+	defer wf.captureMut.Unlock()
+
+	if wf.capture == nil || capture == nil {
+		return
+	}
+
+	// Merge all regions from the task's capture into the workflow's capture.
+	for _, region := range capture.Regions() {
+		wf.capture.AddRegion(region)
 	}
 }
 

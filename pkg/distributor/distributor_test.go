@@ -2138,7 +2138,7 @@ type mockTee struct {
 	tenant     string
 }
 
-func (mt *mockTee) Duplicate(tenant string, streams []KeyedStream) {
+func (mt *mockTee) Duplicate(_ context.Context, tenant string, streams []KeyedStream) {
 	mt.mu.Lock()
 	defer mt.mu.Unlock()
 	mt.duplicated = append(mt.duplicated, streams)
@@ -2576,10 +2576,10 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 			d.cfg.IngestLimitsDryRunEnabled = test.ingestLimitsDryRunEnabled
 
 			mockClient := mockIngestLimitsFrontendClient{
-				t:               t,
-				expectedRequest: test.expectedLimitsRequest,
-				response:        test.limitsResponse,
-				responseErr:     test.limitsResponseErr,
+				t:                            t,
+				expectedExceedsLimitsRequest: test.expectedLimitsRequest,
+				exceedsLimitsResponse:        test.limitsResponse,
+				exceedsLimitsResponseErr:     test.limitsResponseErr,
 			}
 			l := newIngestLimits(&mockClient, prometheus.NewRegistry())
 			d.ingestLimits = l

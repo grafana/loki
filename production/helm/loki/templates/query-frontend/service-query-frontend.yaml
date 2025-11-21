@@ -43,4 +43,7 @@ spec:
     {{- end }}
   selector:
     {{- include "loki.queryFrontendSelectorLabels" . | nindent 4 }}
+{{- with .Values.queryFrontend.trafficDistribution | default .Values.loki.service.trafficDistribution }}
+  trafficDistribution: {{ . }}
+{{- end }}
 {{- end -}}
