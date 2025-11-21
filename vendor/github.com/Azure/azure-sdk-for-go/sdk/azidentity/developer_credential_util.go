@@ -12,7 +12,6 @@ import (
 	"errors"
 	"os"
 	"os/exec"
-	"runtime"
 	"strings"
 	"time"
 )
@@ -30,17 +29,9 @@ var shellExec = func(ctx context.Context, credName, command string) ([]byte, err
 		ctx, cancel = context.WithTimeout(ctx, cliTimeout)
 		defer cancel()
 	}
-	var cmd *exec.Cmd
-	if runtime.GOOS == "windows" {
-		dir := os.Getenv("SYSTEMROOT")
-		if dir == "" {
-			return nil, newCredentialUnavailableError(credName, `environment variable "SYSTEMROOT" has no value`)
-		}
-		cmd = exec.CommandContext(ctx, "cmd.exe", "/c", command)
-		cmd.Dir = dir
-	} else {
-		cmd = exec.CommandContext(ctx, "/bin/sh", "-c", command)
-		cmd.Dir = "/bin"
+	cmd, err := buildCmd(ctx, credName, command)
+	if err != nil {
+		return nil, err
 	}
 	cmd.Env = os.Environ()
 	stderr := bytes.Buffer{}
