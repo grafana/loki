@@ -3188,6 +3188,14 @@ dataobj_tee:
   # Maximum number of bytes to buffer.
   # CLI flag: -distributor.dataobj-tee.max-buffered-bytes
   [max_buffered_bytes: <int> | default = 104857600]
+
+  # The per-tenant partition rate (bytes/sec).
+  # CLI flag: -distributor.dataobj-tee.per-partition-rate-bytes
+  [per_partition_rate_bytes: <int> | default = 1048576]
+
+  # Enables optional debug metrics.
+  # CLI flag: -distributor.dataobj-tee.debug-metrics-enabled
+  [debug_metrics_enabled: <boolean> | default = false]
 ```
 
 ### etcd

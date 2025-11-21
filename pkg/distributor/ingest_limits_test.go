@@ -302,7 +302,7 @@ func TestIngestLimits_UpdateRates(t *testing.T) {
 	tests := []struct {
 		name            string
 		tenant          string
-		streams         []KeyedStream
+		streams         []SegmentedStream
 		expectedRequest *proto.UpdateRatesRequest
 		response        *proto.UpdateRatesResponse
 		responseErr     error
@@ -311,37 +311,31 @@ func TestIngestLimits_UpdateRates(t *testing.T) {
 	}{{
 		name:   "error should be returned if rates cannot be updated",
 		tenant: "test",
-		streams: []KeyedStream{{
-			HashKeyNoShard: 1,
+		streams: []SegmentedStream{{
+			SegmentationKey: "test",
 		}},
-		expectedRequest: &proto.UpdateRatesRequest{
-			Tenant: "test",
-			Streams: []*proto.StreamMetadata{{
-				StreamHash: 1,
-			}},
-		},
 		responseErr: errors.New("failed to update rates"),
 		expectedErr: "failed to update rates",
 	}, {
 		name:   "updates rates",
 		tenant: "test",
-		streams: []KeyedStream{{
-			HashKeyNoShard: 1,
+		streams: []SegmentedStream{{
+			SegmentationKey: "test",
 		}},
 		expectedRequest: &proto.UpdateRatesRequest{
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
-				StreamHash: 1,
+				StreamHash: 0xb5fb79e24c92922f,
 			}},
 		},
 		response: &proto.UpdateRatesResponse{
 			Results: []*proto.UpdateRatesResult{{
-				StreamHash: 1,
+				StreamHash: 0xb5fb79e24c92922f,
 				Rate:       1024,
 			}},
 		},
 		expectedResult: []*proto.UpdateRatesResult{{
-			StreamHash: 1,
+			StreamHash: 0xb5fb79e24c92922f,
 			Rate:       1024,
 		}},
 	}}
