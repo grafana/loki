@@ -8,8 +8,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/xcap/internal/proto"
 )
 
-// ToProtoCapture converts a Capture to its protobuf representation.
-func ToProtoCapture(c *Capture) (*proto.Capture, error) {
+// toProtoCapture converts a Capture to its protobuf representation.
+func toProtoCapture(c *Capture) (*proto.Capture, error) {
 	if c == nil {
 		return nil, nil
 	}

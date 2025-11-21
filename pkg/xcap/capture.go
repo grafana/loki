@@ -170,7 +170,7 @@ func (c *Capture) MarshalBinary() ([]byte, error) {
 		return nil, nil
 	}
 
-	protoCapture, err := ToProtoCapture(c)
+	protoCapture, err := toProtoCapture(c)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert capture to proto: %w", err)
 	}
@@ -199,7 +199,7 @@ func (c *Capture) UnmarshalBinary(data []byte) error {
 		return fmt.Errorf("failed to unmarshal proto capture: %w", err)
 	}
 
-	err := FromProtoCapture(protoCapture, c)
+	err := fromProtoCapture(protoCapture, c)
 	if err != nil {
 		return fmt.Errorf("failed to convert proto to capture: %w", err)
 	}

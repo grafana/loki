@@ -8,8 +8,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/xcap/internal/proto"
 )
 
-// FromProtoCapture converts a protobuf Capture to its Go representation.
-func FromProtoCapture(protoCapture *proto.Capture, capture *Capture) error {
+// fromProtoCapture converts a protobuf Capture to its Go representation.
+func fromProtoCapture(protoCapture *proto.Capture, capture *Capture) error {
 	if protoCapture == nil {
 		return nil
 	}
