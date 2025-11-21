@@ -218,7 +218,7 @@ func newUpdateRatesRequest(tenant string, streams []SegmentedStream) (*proto.Upd
 	for _, stream := range streams {
 		entriesSize, structuredMetadataSize := calculateStreamSizes(stream.Stream)
 		streamMetadata = append(streamMetadata, &proto.StreamMetadata{
-			StreamHash:      stream.SegmentationKey.Sum64(),
+			StreamHash:      stream.SegmentationKeyHash,
 			TotalSize:       entriesSize + structuredMetadataSize,
 			IngestionPolicy: stream.Policy,
 		})

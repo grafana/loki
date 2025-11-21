@@ -54,9 +54,9 @@ func TestGetSegmentationKey(t *testing.T) {
 
 func TestSegmentationKey_Sum64(t *testing.T) {
 	k1 := SegmentationKey("")
-	require.Equal(t, uint64(0x552129d0d55dcd1b), k1.Sum64())
+	require.Equal(t, uint64(6134230144364956955), k1.Sum64())
 	k2 := SegmentationKey("abc")
-	require.Equal(t, uint64(0x4a3a160be83aefc5), k2.Sum64())
+	require.Equal(t, uint64(5348611747852513221), k2.Sum64())
 	// The same key always produces the same 64 bit sum.
 	k3 := SegmentationKey("abc")
 	require.Equal(t, k2.Sum64(), k3.Sum64())

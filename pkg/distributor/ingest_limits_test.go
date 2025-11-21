@@ -320,22 +320,23 @@ func TestIngestLimits_UpdateRates(t *testing.T) {
 		name:   "updates rates",
 		tenant: "test",
 		streams: []SegmentedStream{{
-			SegmentationKey: "test",
+			SegmentationKey:     "test",
+			SegmentationKeyHash: 13113208752873574959,
 		}},
 		expectedRequest: &proto.UpdateRatesRequest{
 			Tenant: "test",
 			Streams: []*proto.StreamMetadata{{
-				StreamHash: 0xb5fb79e24c92922f,
+				StreamHash: 13113208752873574959,
 			}},
 		},
 		response: &proto.UpdateRatesResponse{
 			Results: []*proto.UpdateRatesResult{{
-				StreamHash: 0xb5fb79e24c92922f,
+				StreamHash: 13113208752873574959,
 				Rate:       1024,
 			}},
 		},
 		expectedResult: []*proto.UpdateRatesResult{{
-			StreamHash: 0xb5fb79e24c92922f,
+			StreamHash: 13113208752873574959,
 			Rate:       1024,
 		}},
 	}}
