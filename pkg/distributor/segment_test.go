@@ -62,7 +62,7 @@ func TestSegmentationKey_Sum64(t *testing.T) {
 	require.Equal(t, k2.Sum64(), k3.Sum64())
 }
 
-func TestSegmentationPartitionresolver_keys(t *testing.T) {
+func TestSegmentationPartitionResolve_Resolve(t *testing.T) {
 	// Set up a fake empty ring.
 	emptyRing := mockPartitionRingReader{}
 	emptyRing.ring = ring.NewPartitionRing(ring.PartitionRingDesc{})
