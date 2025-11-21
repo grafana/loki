@@ -12515,7 +12515,7 @@ false
 			<td>string</td>
 			<td>Docker image tag</td>
 			<td><pre lang="json">
-"2.1.2"
+"1.30.11"
 </pre>
 </td>
 		</tr>
