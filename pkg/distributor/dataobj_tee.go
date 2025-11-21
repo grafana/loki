@@ -98,7 +98,8 @@ func NewDataObjTee(
 // A SegmentedStream is a KeyedStream with a segmentation key.
 type SegmentedStream struct {
 	KeyedStream
-	SegmentationKey SegmentationKey
+	SegmentationKey     SegmentationKey
+	SegmentationKeyHash uint64
 }
 
 // Duplicate implements the [Tee] interface.
@@ -112,8 +113,9 @@ func (t *DataObjTee) Duplicate(ctx context.Context, tenant string, streams []Key
 			return
 		}
 		segmentationKeyStreams = append(segmentationKeyStreams, SegmentedStream{
-			KeyedStream:     stream,
-			SegmentationKey: segmentationKey,
+			KeyedStream:         stream,
+			SegmentationKey:     segmentationKey,
+			SegmentationKeyHash: segmentationKey.Sum64(),
 		})
 	}
 	rates, err := t.limitsClient.UpdateRates(ctx, tenant, segmentationKeyStreams)
@@ -127,7 +129,7 @@ func (t *DataObjTee) Duplicate(ctx context.Context, tenant string, streams []Key
 		fastRates[rate.StreamHash] = rate.Rate
 	}
 	for _, s := range segmentationKeyStreams {
-		go t.duplicate(ctx, tenant, s, fastRates[s.SegmentationKey.Sum64()])
+		go t.duplicate(ctx, tenant, s, fastRates[s.SegmentationKeyHash])
 	}
 }
 
