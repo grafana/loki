@@ -19,7 +19,10 @@ RUN make clean && make BUILD_IN_CONTAINER=false IMAGE_TAG=${IMAGE_TAG} loki
 FROM gcr.io/distroless/static:debug
 
 COPY --from=build /src/loki/cmd/loki/loki /usr/bin/loki
-COPY cmd/loki/loki-docker-config.yaml /etc/loki/local-config.yaml
+COPY --from=filesystem --chown=10001:10001 /etc/loki /etc/loki
+COPY --from=filesystem --chown=10001:10001 /loki /loki
+COPY --from=filesystem /etc/passwd /etc/passwd
+COPY --from=filesystem /etc/group /etc/group
 
 SHELL [ "/busybox/sh", "-c" ]
 
