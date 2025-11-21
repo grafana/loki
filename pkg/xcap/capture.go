@@ -19,6 +19,8 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 	"go.opentelemetry.io/otel/attribute"
+
+	internal "github.com/grafana/loki/v3/pkg/xcap/internal/proto"
 )
 
 // Capture captures statistical information about the lifetime of a query.
@@ -192,7 +194,7 @@ func (c *Capture) UnmarshalBinary(data []byte) error {
 		return nil
 	}
 
-	protoCapture := &ProtoCapture{}
+	protoCapture := &internal.Capture{}
 	if err := proto.Unmarshal(data, protoCapture); err != nil {
 		return fmt.Errorf("failed to unmarshal proto capture: %w", err)
 	}
