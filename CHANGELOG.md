@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.6.1](https://github.com/grafana/loki/compare/v3.6.0...v3.6.1) (2025-11-21)
+
+
+### Bug Fixes
+
+* **docker:** missing permissions  to start docker (backport release-3.6.x) ([#19948](https://github.com/grafana/loki/issues/19948)) ([48b507f](https://github.com/grafana/loki/commit/48b507f62f4d5a92cbf2fcb5025a1f1cdc199411))
+* **docker:** set WORKDIR to root in loki Dockerfiles ([#19952](https://github.com/grafana/loki/issues/19952)) ([6040a09](https://github.com/grafana/loki/commit/6040a09db017fa4b66e0805b0e08092b66a93a51))
+
 ## [3.6.0](https://github.com/grafana/loki/compare/v3.5.7...v3.6.0) (2025-11-17)
 
 
