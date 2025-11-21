@@ -18,7 +18,7 @@ import (
 // distribute load while preserving stream locality for tenants.
 type SegmentationKey string
 
-// Sum64 returns a 64 bit, non-crytogrpahic hash of the key.
+// Sum64 returns a 64 bit, non-cryptographic hash of the key.
 func (key SegmentationKey) Sum64() uint64 {
 	h := fnv.New64a()
 	// Use a reserved word here to avoid any possible hash conflicts with
@@ -104,7 +104,7 @@ func (r *SegmentationPartitionResolver) Resolve(_ context.Context, key Segmentat
 	// Must be at least 1 partition.
 	partitions = max(partitions, 1)
 	// Must not exceed the number of active partitions.
-	partitions = min(partitions, uint64(len(ring.ActivePartitionIDs())))
+	partitions = min(partitions, uint64(ring.ActivePartitionsCount()))
 	// Shuffle shard.
 	subring, err := ring.ShuffleShard(string(key), int(partitions))
 	if err != nil {
