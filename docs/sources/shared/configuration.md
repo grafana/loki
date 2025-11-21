@@ -4739,6 +4739,20 @@ otlp_config:
 # List of LogQL vector and range aggregations that should be sharded.
 [shard_aggregations: <list of strings>]
 
+# Default list of JSON fields to tokenize for pattern detection. It is recommend
+# to append to or delete from the defaults rather than replacing them.
+# CLI flag: -limits.pattern-ingester-tokenizable-json-fields
+[pattern_ingester_tokenizable_json_fields_default: <string> | default = "log,message,msg,msg_,_msg,content"]
+
+# List of additional JSON fields to tokenize for pattern detection.
+# CLI flag: -limits.pattern-ingester-tokenizable-json-fields-append
+[pattern_ingester_tokenizable_json_fields_append: <string> | default = ""]
+
+# List of JSON fields to excluded from the defaults to tokenize for pattern
+# detection.
+# CLI flag: -limits.pattern-ingester-tokenizable-json-fields-delete
+[pattern_ingester_tokenizable_json_fields_delete: <string> | default = ""]
+
 # Enable metric aggregation. When enabled, pushed streams will be sampled for
 # bytes and line counts. These metrics will be written back into Loki as a
 # special __aggregated_metric__ stream.
