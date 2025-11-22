@@ -27,20 +27,10 @@ package xdsresource
 import (
 	"fmt"
 
-	xdsinternal "google.golang.org/grpc/internal/xds"
 	"google.golang.org/grpc/internal/xds/bootstrap"
 	"google.golang.org/grpc/internal/xds/clients/xdsclient"
-	"google.golang.org/grpc/internal/xds/xdsclient/xdsresource/version"
 	"google.golang.org/protobuf/types/known/anypb"
 )
-
-func init() {
-	xdsinternal.ResourceTypeMapForTesting = make(map[string]any)
-	xdsinternal.ResourceTypeMapForTesting[version.V3ListenerURL] = listenerType
-	xdsinternal.ResourceTypeMapForTesting[version.V3RouteConfigURL] = routeConfigType
-	xdsinternal.ResourceTypeMapForTesting[version.V3ClusterURL] = clusterType
-	xdsinternal.ResourceTypeMapForTesting[version.V3EndpointsURL] = endpointsType
-}
 
 // Producer contains a single method to discover resource configuration from a
 // remote management server using xDS APIs.
@@ -53,6 +43,15 @@ type Producer interface {
 	// xDS management server. Upon receipt of a response from the management
 	// server, an appropriate callback on the watcher is invoked.
 	WatchResource(rType Type, resourceName string, watcher ResourceWatcher) (cancel func())
+}
+
+// ProducerV2 is like Producer, but uses the external xdsclient API.
+//
+// Once all resource type implementations have been migrated to use the external
+// xdsclient API, this interface will be renamed to Producer and the existing
+// Producer interface will be deleted.
+type ProducerV2 interface {
+	WatchResourceV2(typeURL, resourceName string, watcher xdsclient.ResourceWatcher) (cancel func())
 }
 
 // ResourceWatcher is notified of the resource updates and errors that are
@@ -184,17 +183,13 @@ type GenericResourceTypeDecoder struct {
 
 // Decode deserialize and validate resource bytes of an xDS resource received
 // from the xDS management server.
-func (gd *GenericResourceTypeDecoder) Decode(resource xdsclient.AnyProto, gOpts xdsclient.DecodeOptions) (*xdsclient.DecodeResult, error) {
-	rProto := &anypb.Any{
-		TypeUrl: resource.TypeURL,
-		Value:   resource.Value,
-	}
+func (gd *GenericResourceTypeDecoder) Decode(resource *xdsclient.AnyProto, gOpts xdsclient.DecodeOptions) (*xdsclient.DecodeResult, error) {
 	opts := &DecodeOptions{BootstrapConfig: gd.BootstrapConfig}
 	if gOpts.ServerConfig != nil {
 		opts.ServerConfig = gd.ServerConfigMap[*gOpts.ServerConfig]
 	}
 
-	result, err := gd.ResourceType.Decode(opts, rProto)
+	result, err := gd.ResourceType.Decode(opts, resource.ToAny())
 	if result == nil {
 		return nil, err
 	}
