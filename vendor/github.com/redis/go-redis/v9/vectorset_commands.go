@@ -26,6 +26,7 @@ type VectorSetCmdable interface {
 	VSimWithScores(ctx context.Context, key string, val Vector) *VectorScoreSliceCmd
 	VSimWithArgs(ctx context.Context, key string, val Vector, args *VSimArgs) *StringSliceCmd
 	VSimWithArgsWithScores(ctx context.Context, key string, val Vector, args *VSimArgs) *VectorScoreSliceCmd
+	VRange(ctx context.Context, key, start, end string, count int64) *StringSliceCmd
 }
 
 type Vector interface {
@@ -342,6 +343,16 @@ func (c cmdable) VSimWithArgsWithScores(ctx context.Context, key string, val Vec
 	args = append(args, "withscores")
 	args = simArgs.appendArgs(args)
 	cmd := NewVectorInfoSliceCmd(ctx, args...)
+	_ = c(ctx, cmd)
+	return cmd
+}
+
+// `VRANGE key start end count`
+// a negative count means to return all the elements in the vector set.
+// note: the API is experimental and may be subject to change.
+func (c cmdable) VRange(ctx context.Context, key, start, end string, count int64) *StringSliceCmd {
+	args := []any{"vrange", key, start, end, count}
+	cmd := NewStringSliceCmd(ctx, args...)
 	_ = c(ctx, cmd)
 	return cmd
 }
