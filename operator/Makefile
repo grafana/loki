@@ -224,13 +224,8 @@ ifndef ignore-not-found
 endif
 
 .PHONY: quickstart
-ifeq ($(or $(findstring openshift-logging,$(IMG)),$(findstring openshift-logging,$(BUNDLE_IMG))),openshift-logging)
 quickstart: $(KIND) ## Quickstart full dev environment on local kind cluster
 	@./quickstart.sh $(filter-out $@,$(MAKECMDGOALS))
-else
-quickstart: oci-build oci-push $(KIND)
-	@./quickstart.sh $(filter-out $@,$(MAKECMDGOALS))
-endif
 
 .PHONY: quickstart-cleanup
 quickstart-cleanup: $(KIND) ## Cleanup for quickstart set up

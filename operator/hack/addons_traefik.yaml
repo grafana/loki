@@ -114,6 +114,8 @@ spec:
   selector:
     matchLabels:
       app: traefik
+  strategy:
+    type: Recreate
   template:
     metadata:
       labels:
@@ -122,7 +124,7 @@ spec:
       serviceAccountName: traefik
       containers:
         - name: traefik
-          image: traefik:v2.7.0
+          image: traefik:v2.11.31
           args:
             - --api.insecure
             - --api.dashboard
@@ -136,13 +138,13 @@ spec:
           ports:
           - name: http
             containerPort: 80
-            hostPort: 80
+            hostPort: 8080
           - name: https
             containerPort: 443
-            hostPort: 443
+            hostPort: 8443
           - name: admin
             containerPort: 8080
-            hostPort: 8080
+            hostPort: 8081
           securityContext:
             capabilities:
               drop:
