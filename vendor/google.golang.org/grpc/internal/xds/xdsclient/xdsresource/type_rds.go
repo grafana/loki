@@ -146,7 +146,7 @@ type Route struct {
 
 	// Only one of the following fields (WeightedClusters or
 	// ClusterSpecifierPlugin) will be set for a route.
-	WeightedClusters map[string]WeightedCluster
+	WeightedClusters []WeightedCluster
 	// ClusterSpecifierPlugin is the name of the Cluster Specifier Plugin that
 	// this Route is linked to, if specified by xDS.
 	ClusterSpecifierPlugin string
@@ -154,6 +154,8 @@ type Route struct {
 
 // WeightedCluster contains settings for an xds ActionType.WeightedCluster.
 type WeightedCluster struct {
+	// Name is the name of the cluster.
+	Name string
 	// Weight is the relative weight of the cluster.  It will never be zero.
 	Weight uint32
 	// HTTPFilterConfigOverride contains any HTTP filter config overrides for

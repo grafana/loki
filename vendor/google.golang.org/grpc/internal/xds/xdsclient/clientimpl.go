@@ -181,7 +181,7 @@ func buildXDSClientConfig(config *bootstrap.Config, metricsRecorder estats.Metri
 				return xdsclient.Config{}, err
 			}
 			gsc := xdsclient.ServerConfig{
-				ServerIdentifier:       clients.ServerIdentifier{ServerURI: sc.ServerURI(), Extensions: grpctransport.ServerIdentifierExtension{ConfigName: sc.SelectedCreds().Type}},
+				ServerIdentifier:       clients.ServerIdentifier{ServerURI: sc.ServerURI(), Extensions: grpctransport.ServerIdentifierExtension{ConfigName: sc.SelectedChannelCreds().Type}},
 				IgnoreResourceDeletion: sc.ServerFeaturesIgnoreResourceDeletion()}
 			gServerCfg = append(gServerCfg, gsc)
 			gServerCfgMap[gsc] = sc
@@ -195,7 +195,7 @@ func buildXDSClientConfig(config *bootstrap.Config, metricsRecorder estats.Metri
 			return xdsclient.Config{}, err
 		}
 		gsc := xdsclient.ServerConfig{
-			ServerIdentifier:       clients.ServerIdentifier{ServerURI: sc.ServerURI(), Extensions: grpctransport.ServerIdentifierExtension{ConfigName: sc.SelectedCreds().Type}},
+			ServerIdentifier:       clients.ServerIdentifier{ServerURI: sc.ServerURI(), Extensions: grpctransport.ServerIdentifierExtension{ConfigName: sc.SelectedChannelCreds().Type}},
 			IgnoreResourceDeletion: sc.ServerFeaturesIgnoreResourceDeletion()}
 		gServerCfgs = append(gServerCfgs, gsc)
 		gServerCfgMap[gsc] = sc
@@ -233,7 +233,7 @@ func buildXDSClientConfig(config *bootstrap.Config, metricsRecorder estats.Metri
 // and populates the grpctransport.Config map.
 func populateGRPCTransportConfigsFromServerConfig(sc *bootstrap.ServerConfig, grpcTransportConfigs map[string]grpctransport.Config) error {
 	for _, cc := range sc.ChannelCreds() {
-		c := xdsbootstrap.GetCredentials(cc.Type)
+		c := xdsbootstrap.GetChannelCredentials(cc.Type)
 		if c == nil {
 			continue
 		}

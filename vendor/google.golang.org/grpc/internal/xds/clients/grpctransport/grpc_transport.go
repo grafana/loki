@@ -111,7 +111,7 @@ func (b *Builder) Build(si clients.ServerIdentifier) (clients.Transport, error) 
 
 	if cc, ok := b.connections[si]; ok {
 		if logger.V(2) {
-			logger.Info("Reusing existing connection to the server for ServerIdentifier: %v", si)
+			logger.Infof("Reusing existing connection to the server for ServerIdentifier: %v", si)
 		}
 		b.refs[si]++
 		tr := &grpcTransport{cc: cc}
@@ -148,7 +148,7 @@ func (b *Builder) Build(si clients.ServerIdentifier) (clients.Transport, error) 
 	b.refs[si] = 1
 
 	if logger.V(2) {
-		logger.Info("Created a new transport to the server for ServerIdentifier: %v", si)
+		logger.Infof("Created a new transport to the server for ServerIdentifier: %v", si)
 	}
 	return tr, nil
 }

@@ -18,6 +18,7 @@
 package xdsclient
 
 import (
+	"google.golang.org/grpc/internal/xds/clients/xdsclient"
 	"google.golang.org/grpc/internal/xds/xdsclient/xdsresource"
 )
 
@@ -28,4 +29,8 @@ import (
 // appropriate callback on the watcher is invoked.
 func (c *clientImpl) WatchResource(rType xdsresource.Type, resourceName string, watcher xdsresource.ResourceWatcher) (cancel func()) {
 	return c.XDSClient.WatchResource(rType.TypeURL(), resourceName, xdsresource.GenericResourceWatcher(watcher))
+}
+
+func (c *clientImpl) WatchResourceV2(typeURL, resourceName string, watcher xdsclient.ResourceWatcher) (cancel func()) {
+	return c.XDSClient.WatchResource(typeURL, resourceName, watcher)
 }

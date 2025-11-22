@@ -300,7 +300,6 @@ func routesProtoToSlice(routes []*v3routepb.Route, csps map[string]clusterspecif
 
 		switch r.GetAction().(type) {
 		case *v3routepb.Route_Route:
-			route.WeightedClusters = make(map[string]WeightedCluster)
 			action := r.GetRoute()
 
 			// Hash Policies are only applicable for a Ring Hash LB.
@@ -312,7 +311,7 @@ func routesProtoToSlice(routes []*v3routepb.Route, csps map[string]clusterspecif
 
 			switch a := action.GetClusterSpecifier().(type) {
 			case *v3routepb.RouteAction_Cluster:
-				route.WeightedClusters[a.Cluster] = WeightedCluster{Weight: 1}
+				route.WeightedClusters = append(route.WeightedClusters, WeightedCluster{Name: a.Cluster, Weight: 1})
 			case *v3routepb.RouteAction_WeightedClusters:
 				wcs := a.WeightedClusters
 				var totalWeight uint64
@@ -325,13 +324,13 @@ func routesProtoToSlice(routes []*v3routepb.Route, csps map[string]clusterspecif
 					if totalWeight > math.MaxUint32 {
 						return nil, nil, fmt.Errorf("xds: total weight of clusters exceeds MaxUint32")
 					}
-					wc := WeightedCluster{Weight: w}
+					wc := WeightedCluster{Name: c.GetName(), Weight: w}
 					cfgs, err := processHTTPFilterOverrides(c.GetTypedPerFilterConfig())
 					if err != nil {
 						return nil, nil, fmt.Errorf("route %+v, action %+v: %v", r, a, err)
 					}
 					wc.HTTPFilterConfigOverride = cfgs
-					route.WeightedClusters[c.GetName()] = wc
+					route.WeightedClusters = append(route.WeightedClusters, wc)
 				}
 				if totalWeight == 0 {
 					return nil, nil, fmt.Errorf("route %+v, action %+v, has no valid cluster in WeightedCluster action", r, a)
