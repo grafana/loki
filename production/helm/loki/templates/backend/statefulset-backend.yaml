@@ -218,6 +218,8 @@ spec:
           volumeMounts:
             - name: sc-rules-volume
               mountPath: {{ .Values.sidecar.rules.folder | quote }}
+            - name: sc-tmp
+              mountPath: /tmp
         {{- end}}
         {{- with .Values.backend.extraContainers }}
         {{- toYaml . | nindent 8}}
@@ -245,10 +247,14 @@ spec:
       volumes:
         - name: tmp
           emptyDir: {}
+        {{- if .Values.sidecar.rules.enabled }}
+        - name: sc-tmp
+          emptyDir: {}
+        {{- end }}
         {{- if not .Values.backend.persistence.volumeClaimsEnabled }}
         - name: data
         {{- toYaml .Values.backend.persistence.dataVolumeParameters | nindent 10 }}
-        {{- end}}
+        {{- end }}
         - name: config
           {{- include "loki.configVolume" . | nindent 10 }}
         - name: runtime-config
