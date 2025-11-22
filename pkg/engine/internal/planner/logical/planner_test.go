@@ -308,6 +308,7 @@ func TestCanExecuteQuery(t *testing.T) {
 		},
 		{
 			statement: `sum without (level) (count_over_time({env="prod"}[1m]))`,
+			expected:  true,
 		},
 		{
 			// both vector and range aggregation are required
@@ -318,8 +319,14 @@ func TestCanExecuteQuery(t *testing.T) {
 			expected:  true,
 		},
 		{
+			statement: `max(avg_over_time({env="prod"} | unwrap size [1m]))`,
+		},
+		{
 			statement: `sum by (level) (rate({env="prod"}[1m]))`,
 			expected:  true,
+		},
+		{
+			statement: `avg by (level) (rate({env="prod"}[1m]))`,
 		},
 		{
 			statement: `max by (level) (count_over_time({env="prod"}[1m]))`,

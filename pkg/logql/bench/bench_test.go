@@ -110,7 +110,6 @@ func TestStorageEquality(t *testing.T) {
 			TestCaseGeneratorConfig{RangeType: *rangeType, RangeInterval: *rangeInterval},
 			config,
 		).Generate()
-
 		return &store{
 			Name:   name,
 			Cases:  cases,
@@ -451,7 +450,7 @@ func assertVectorEqualWithTolerance(t *testing.T, expected, actual promql.Vector
 
 // assertMatrixEqualWithTolerance compares two Matrix instances with floating point tolerance
 func assertMatrixEqualWithTolerance(t *testing.T, expected, actual promql.Matrix, tolerance float64) {
-	require.Len(t, actual, len(expected))
+	require.Equal(t, len(expected), len(actual), "number of entries differs")
 
 	for i := range expected {
 		e := expected[i]

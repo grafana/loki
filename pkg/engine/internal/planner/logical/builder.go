@@ -122,7 +122,7 @@ func (b *Builder) BinOpLeft(op types.BinaryOp, left Value) *Builder {
 
 // RangeAggregation applies a [RangeAggregation] operation to the Builder.
 func (b *Builder) RangeAggregation(
-	partitionBy []ColumnRef,
+	grouping Grouping,
 	operation types.RangeAggregationType,
 	startTS, endTS time.Time,
 	step time.Duration,
@@ -133,7 +133,7 @@ func (b *Builder) RangeAggregation(
 			Table: b.val,
 
 			Operation:     operation,
-			PartitionBy:   partitionBy,
+			Grouping:      grouping,
 			Start:         startTS,
 			End:           endTS,
 			Step:          step,
@@ -144,13 +144,13 @@ func (b *Builder) RangeAggregation(
 
 // VectorAggregation applies a [VectorAggregation] operation to the Builder.
 func (b *Builder) VectorAggregation(
-	groupBy []ColumnRef,
+	grouping Grouping,
 	operation types.VectorAggregationType,
 ) *Builder {
 	return &Builder{
 		val: &VectorAggregation{
 			Table:     b.val,
-			GroupBy:   groupBy,
+			Grouping:  grouping,
 			Operation: operation,
 		},
 	}

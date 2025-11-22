@@ -324,7 +324,8 @@ func (c *Context) executeProjection(ctx context.Context, proj *physical.Projecti
 
 func (c *Context) executeRangeAggregation(ctx context.Context, plan *physical.RangeAggregation, inputs []Pipeline, region *xcap.Region) Pipeline {
 	ctx, span := tracer.Start(ctx, "Context.executeRangeAggregation", trace.WithAttributes(
-		attribute.Int("num_partition_by", len(plan.PartitionBy)),
+		attribute.Int("num_grouping", len(plan.Grouping.Columns)),
+		attribute.String("grouping_mode", plan.Grouping.Mode.String()),
 		attribute.Int64("start_ts", plan.Start.UnixNano()),
 		attribute.Int64("end_ts", plan.End.UnixNano()),
 		attribute.Int64("range_interval", int64(plan.Range)),
@@ -338,7 +339,7 @@ func (c *Context) executeRangeAggregation(ctx context.Context, plan *physical.Ra
 	}
 
 	pipeline, err := newRangeAggregationPipeline(inputs, c.evaluator, rangeAggregationOptions{
-		partitionBy:   plan.PartitionBy,
+		grouping:      plan.Grouping,
 		startTs:       plan.Start,
 		endTs:         plan.End,
 		rangeInterval: plan.Range,
@@ -354,7 +355,8 @@ func (c *Context) executeRangeAggregation(ctx context.Context, plan *physical.Ra
 
 func (c *Context) executeVectorAggregation(ctx context.Context, plan *physical.VectorAggregation, inputs []Pipeline, region *xcap.Region) Pipeline {
 	ctx, span := tracer.Start(ctx, "Context.executeVectorAggregation", trace.WithAttributes(
-		attribute.Int("num_group_by", len(plan.GroupBy)),
+		attribute.Int("num_grouping", len(plan.Grouping.Columns)),
+		attribute.String("grouping_mode", plan.Grouping.Mode.String()),
 		attribute.Int("num_inputs", len(inputs)),
 	))
 	defer span.End()
@@ -363,7 +365,7 @@ func (c *Context) executeVectorAggregation(ctx context.Context, plan *physical.V
 		return emptyPipeline()
 	}
 
-	pipeline, err := newVectorAggregationPipeline(inputs, plan.GroupBy, c.evaluator, plan.Operation, region)
+	pipeline, err := newVectorAggregationPipeline(inputs, plan.Grouping, c.evaluator, plan.Operation, region)
 	if err != nil {
 		return errorPipeline(ctx, err)
 	}
@@ -490,13 +492,15 @@ func startRegionForNode(ctx context.Context, n physical.Node) (context.Context, 
 			attribute.Int64("end_ts", n.End.UnixNano()),
 			attribute.Int64("range_interval", int64(n.Range)),
 			attribute.Int64("step", int64(n.Step)),
-			attribute.Int("num_partition_by", len(n.PartitionBy)),
+			attribute.Int("num_grouping", len(n.Grouping.Columns)),
+			attribute.String("grouping_mode", n.Grouping.Mode.String()),
 		)
 
 	case *physical.VectorAggregation:
 		attributes = append(attributes,
 			attribute.String("operation", string(rune(n.Operation))),
-			attribute.Int("num_group_by", len(n.GroupBy)),
+			attribute.Int("num_grouping", len(n.Grouping.Columns)),
+			attribute.String("grouping_mode", n.Grouping.Mode.String()),
 		)
 
 	case *physical.ColumnCompat:
