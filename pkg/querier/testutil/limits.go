@@ -99,3 +99,11 @@ func (m *MockLimits) DebugEngineStreams(_ string) bool {
 func (m *MockLimits) DebugEngineTasks(_ string) bool {
 	return false
 }
+
+func (m *MockLimits) QueryBucketGetObjectRateLimit(_ context.Context, _ string) int64 {
+	return 0 // 0 means unlimited
+}
+
+func (m *MockLimits) QueryBucketGetObjectRateLimitBurst(_ context.Context, _ string) int64 {
+	return 0 // 0 means unlimited
+}

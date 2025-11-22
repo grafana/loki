@@ -36,6 +36,7 @@ import (
 	querier_limits "github.com/grafana/loki/v3/pkg/querier/limits"
 	"github.com/grafana/loki/v3/pkg/querier/pattern"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
+	"github.com/grafana/loki/v3/pkg/storage/bucket"
 	index_stats "github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/v3/pkg/tracing"
 	"github.com/grafana/loki/v3/pkg/util/constants"
@@ -92,6 +93,16 @@ func (q *QuerierAPI) RangeQueryHandler(ctx context.Context, req *queryrange.Loki
 		return result, err
 	}
 
+	// Add bandwidth limit to context for this query if configured
+	tenantID, err := tenant.TenantID(ctx)
+	if err == nil {
+		rateLimit := q.limits.QueryBucketGetObjectRateLimit(ctx, tenantID)
+		if rateLimit > 0 {
+			burstLimit := q.limits.QueryBucketGetObjectRateLimitBurst(ctx, tenantID)
+			ctx = bucket.WithQueryBandwidthLimit(ctx, rateLimit, burstLimit)
+		}
+	}
+
 	if q.cfg.EngineV2.Enable && hasDataObjectsAvailable(q.cfg, params.Start(), params.End()) {
 		query := q.engineV2.Query(params)
 		result, err = query.Exec(ctx)
@@ -131,6 +142,16 @@ func (q *QuerierAPI) InstantQueryHandler(ctx context.Context, req *queryrange.Lo
 	params, err := queryrange.ParamsFromRequest(req)
 	if err != nil {
 		return logqlmodel.Result{}, err
+	}
+
+	// Add bandwidth limit to context for this query if configured
+	tenantID, err := tenant.TenantID(ctx)
+	if err == nil {
+		rateLimit := q.limits.QueryBucketGetObjectRateLimit(ctx, tenantID)
+		if rateLimit > 0 {
+			burstLimit := q.limits.QueryBucketGetObjectRateLimitBurst(ctx, tenantID)
+			ctx = bucket.WithQueryBandwidthLimit(ctx, rateLimit, burstLimit)
+		}
 	}
 
 	if q.cfg.EngineV2.Enable && hasDataObjectsAvailable(q.cfg, params.Start(), params.End()) {
