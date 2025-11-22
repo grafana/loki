@@ -95,7 +95,7 @@ func NewBosClientConfig(ak, sk, endpoint string) *BosClientConfiguration {
 		DisableKeepAlives:   false,
 		NoVerifySSL:         false,
 		ExclusiveHTTPClient: true,
-		retryPolicy:         bce.DEFAULT_RETRY_POLICY,
+		retryPolicy:         api.DEFAULT_BOS_RETRY_POLICY,
 	}
 }
 
@@ -252,7 +252,7 @@ func NewClientWithConfig(config *BosClientConfiguration) (*Client, error) {
 		endpoint = DEFAULT_SERVICE_DOMAIN
 	}
 	if config.retryPolicy == nil {
-		config.retryPolicy = bce.DEFAULT_RETRY_POLICY
+		config.retryPolicy = api.DEFAULT_BOS_RETRY_POLICY
 	}
 	defaultSignOptions := &auth.SignOptions{
 		HeadersToSign: auth.DEFAULT_HEADERS_TO_SIGN,
