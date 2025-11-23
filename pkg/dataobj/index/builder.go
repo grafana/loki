@@ -72,6 +72,7 @@ type calculator interface {
 	Flush() (*dataobj.Object, io.Closer, error)
 	TimeRanges() []multitenancy.TimeRange
 	Reset()
+	IsFull() bool
 }
 
 // An interface for the methods needed from a kafka client. Useful for testing.
