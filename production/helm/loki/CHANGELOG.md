@@ -12,6 +12,7 @@ Entries should be ordered as follows:
 Entries should include a reference to the pull request that introduced the change.
 
 ## Unreleased
+- [BUGFIX] Set `FOLDER_ANNOTATION` in Distributed and SingleBinary deployments. [#19593](https://github.com/grafana/loki/pull/19593)
 
 - [BUGFIX] Don't mark loki.storage.bucketNames.chunks as required, if an s3 url is provided. [#19873](https://github.com/grafana/loki/pull/19873)
 - [BUGFIX] Do not mark loki.storage.bucketNames.chunks as required, if minio is used. [#19871](https://github.com/grafana/loki/pull/19871)
