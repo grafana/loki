@@ -13,6 +13,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+- [BUGFIX] add temporary storage volume and mount for sidecar rule [#19973](https://github.com/grafana/loki/pull/19973)
 - [BUGFIX] Don't mark loki.storage.bucketNames.chunks as required, if an s3 url is provided. [#19873](https://github.com/grafana/loki/pull/19873)
 - [BUGFIX] Do not mark loki.storage.bucketNames.chunks as required, if minio is used. [#19871](https://github.com/grafana/loki/pull/19871)
 - [ENHANCEMENT] Use fsGroupChangePolicy=OnRootMismatch on loki to speed up pod starts [#13942](https://github.com/grafana/loki/pull/13942)
