@@ -1,3 +1,11 @@
+# v1.91.1 (2025-11-19.2)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.91.0 (2025-11-19)
+
+* **Feature**: Adds support for blocking SSE-C writes to general purpose buckets.
+
 # v1.90.2 (2025-11-12)
 
 * **Bug Fix**: Further reduce allocation overhead when the metrics system isn't in-use.

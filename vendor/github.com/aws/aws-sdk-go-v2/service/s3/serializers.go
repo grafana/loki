@@ -10442,6 +10442,24 @@ func awsRestxml_serializeDocumentAnalyticsS3BucketDestination(v *types.Analytics
 	return nil
 }
 
+func awsRestxml_serializeDocumentBlockedEncryptionTypes(v *types.BlockedEncryptionTypes, value smithyxml.Value) error {
+	defer value.Close()
+	if v.EncryptionType != nil {
+		rootAttr := []smithyxml.Attr{}
+		root := smithyxml.StartElement{
+			Name: smithyxml.Name{
+				Local: "EncryptionType",
+			},
+			Attr: rootAttr,
+		}
+		el := value.FlattenedElement(root)
+		if err := awsRestxml_serializeDocumentEncryptionTypeList(v.EncryptionType, el); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func awsRestxml_serializeDocumentBucketInfo(v *types.BucketInfo, value smithyxml.Value) error {
 	defer value.Close()
 	if len(v.DataRedundancy) > 0 {
@@ -11179,6 +11197,26 @@ func awsRestxml_serializeDocumentEncryptionConfiguration(v *types.EncryptionConf
 		}
 		el := value.MemberElement(root)
 		el.String(*v.ReplicaKmsKeyID)
+	}
+	return nil
+}
+
+func awsRestxml_serializeDocumentEncryptionTypeList(v []types.EncryptionType, value smithyxml.Value) error {
+	var array *smithyxml.Array
+	if !value.IsFlattened() {
+		defer value.Close()
+	}
+	customMemberNameAttr := []smithyxml.Attr{}
+	customMemberName := smithyxml.StartElement{
+		Name: smithyxml.Name{
+			Local: "EncryptionType",
+		},
+		Attr: customMemberNameAttr,
+	}
+	array = value.ArrayWithCustomName(customMemberName)
+	for i := range v {
+		am := array.Member()
+		am.String(string(v[i]))
 	}
 	return nil
 }
@@ -14131,6 +14169,19 @@ func awsRestxml_serializeDocumentServerSideEncryptionRule(v *types.ServerSideEnc
 		}
 		el := value.MemberElement(root)
 		if err := awsRestxml_serializeDocumentServerSideEncryptionByDefault(v.ApplyServerSideEncryptionByDefault, el); err != nil {
+			return err
+		}
+	}
+	if v.BlockedEncryptionTypes != nil {
+		rootAttr := []smithyxml.Attr{}
+		root := smithyxml.StartElement{
+			Name: smithyxml.Name{
+				Local: "BlockedEncryptionTypes",
+			},
+			Attr: rootAttr,
+		}
+		el := value.MemberElement(root)
+		if err := awsRestxml_serializeDocumentBlockedEncryptionTypes(v.BlockedEncryptionTypes, el); err != nil {
 			return err
 		}
 	}

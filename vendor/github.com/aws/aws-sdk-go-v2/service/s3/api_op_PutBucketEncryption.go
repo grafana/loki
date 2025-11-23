@@ -16,7 +16,7 @@ import (
 )
 
 // This operation configures default encryption and Amazon S3 Bucket Keys for an
-// existing bucket.
+// existing bucket. You can also block encryption types using this operation.
 //
 // Directory buckets - For directory buckets, you must make requests for this API
 // operation to the Regional endpoint. These endpoints support path-style requests

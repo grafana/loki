@@ -16,7 +16,8 @@ import (
 
 // Returns the default encryption configuration for an Amazon S3 bucket. By
 // default, all buckets have a default encryption configuration that uses
-// server-side encryption with Amazon S3 managed keys (SSE-S3).
+// server-side encryption with Amazon S3 managed keys (SSE-S3). This operation also
+// returns the BucketKeyEnabled and BlockedEncryptionTypes statuses.
 //
 //   - General purpose buckets - For information about the bucket default
 //     encryption feature, see [Amazon S3 Bucket Default Encryption]in the Amazon S3 User Guide.
@@ -55,7 +56,7 @@ import (
 // [DeleteBucketEncryption]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucketEncryption.html
 // [PutBucketEncryption]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketEncryption.html
 // [Setting default server-side encryption behavior for directory buckets]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-express-bucket-encryption.html
-// [Amazon S3 Bucket Default Encryption]: https://docs.aws.amazon.com/AmazonS3/latest/dev/bucket-encryption.html
+// [Amazon S3 Bucket Default Encryption]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/bucket-encryption.html
 // [Managing Access Permissions to Your Amazon S3 Resources]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-access-control.html
 // [Permissions Related to Bucket Operations]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-with-s3-actions.html#using-with-s3-actions-related-to-bucket-subresources
 // [Amazon Web Services Identity and Access Management (IAM) for S3 Express One Zone]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-express-security-iam.html

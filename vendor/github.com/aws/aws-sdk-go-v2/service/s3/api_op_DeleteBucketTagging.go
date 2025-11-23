@@ -15,7 +15,7 @@ import (
 
 // This operation is not supported for directory buckets.
 //
-// Deletes the tags from the bucket.
+// Deletes tags from the bucket.
 //
 // To use this operation, you must have permission to perform the
 // s3:PutBucketTagging action. By default, the bucket owner has this permission and

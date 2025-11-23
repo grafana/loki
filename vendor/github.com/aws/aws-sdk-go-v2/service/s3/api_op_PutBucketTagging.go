@@ -17,7 +17,7 @@ import (
 
 // This operation is not supported for directory buckets.
 //
-// Sets the tags for a bucket.
+// Sets the tags for a general purpose bucket.
 //
 // Use tags to organize your Amazon Web Services bill to reflect your own cost
 // structure. To do this, sign up to get your Amazon Web Services account bill with
