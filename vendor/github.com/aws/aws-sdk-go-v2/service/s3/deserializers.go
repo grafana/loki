@@ -15235,6 +15235,48 @@ func awsRestxml_deserializeDocumentAnalyticsS3BucketDestination(v **types.Analyt
 	return nil
 }
 
+func awsRestxml_deserializeDocumentBlockedEncryptionTypes(v **types.BlockedEncryptionTypes, decoder smithyxml.NodeDecoder) error {
+	if v == nil {
+		return fmt.Errorf("unexpected nil of type %T", v)
+	}
+	var sv *types.BlockedEncryptionTypes
+	if *v == nil {
+		sv = &types.BlockedEncryptionTypes{}
+	} else {
+		sv = *v
+	}
+
+	for {
+		t, done, err := decoder.Token()
+		if err != nil {
+			return err
+		}
+		if done {
+			break
+		}
+		originalDecoder := decoder
+		decoder = smithyxml.WrapNodeDecoder(originalDecoder.Decoder, t)
+		switch {
+		case strings.EqualFold("EncryptionType", t.Name.Local):
+			nodeDecoder := smithyxml.WrapNodeDecoder(decoder.Decoder, t)
+			if err := awsRestxml_deserializeDocumentEncryptionTypeListUnwrapped(&sv.EncryptionType, nodeDecoder); err != nil {
+				return err
+			}
+
+		default:
+			// Do nothing and ignore the unexpected tag element
+			err = decoder.Decoder.Skip()
+			if err != nil {
+				return err
+			}
+
+		}
+		decoder = originalDecoder
+	}
+	*v = sv
+	return nil
+}
+
 func awsRestxml_deserializeDocumentBucket(v **types.Bucket, decoder smithyxml.NodeDecoder) error {
 	if v == nil {
 		return fmt.Errorf("unexpected nil of type %T", v)
@@ -16956,6 +16998,86 @@ func awsRestxml_deserializeDocumentEncryptionConfiguration(v **types.EncryptionC
 	return nil
 }
 
+func awsRestxml_deserializeDocumentEncryptionTypeList(v *[]types.EncryptionType, decoder smithyxml.NodeDecoder) error {
+	if v == nil {
+		return fmt.Errorf("unexpected nil of type %T", v)
+	}
+	var sv []types.EncryptionType
+	if *v == nil {
+		sv = make([]types.EncryptionType, 0)
+	} else {
+		sv = *v
+	}
+
+	originalDecoder := decoder
+	for {
+		t, done, err := decoder.Token()
+		if err != nil {
+			return err
+		}
+		if done {
+			break
+		}
+		memberDecoder := smithyxml.WrapNodeDecoder(decoder.Decoder, t)
+		decoder = memberDecoder
+		switch {
+		case strings.EqualFold("EncryptionType", t.Name.Local):
+			var col types.EncryptionType
+			val, err := decoder.Value()
+			if err != nil {
+				return err
+			}
+			if val == nil {
+				break
+			}
+			{
+				xtv := string(val)
+				col = types.EncryptionType(xtv)
+			}
+			sv = append(sv, col)
+
+		default:
+			err = decoder.Decoder.Skip()
+			if err != nil {
+				return err
+			}
+
+		}
+		decoder = originalDecoder
+	}
+	*v = sv
+	return nil
+}
+
+func awsRestxml_deserializeDocumentEncryptionTypeListUnwrapped(v *[]types.EncryptionType, decoder smithyxml.NodeDecoder) error {
+	var sv []types.EncryptionType
+	if *v == nil {
+		sv = make([]types.EncryptionType, 0)
+	} else {
+		sv = *v
+	}
+
+	switch {
+	default:
+		var mv types.EncryptionType
+		t := decoder.StartEl
+		_ = t
+		val, err := decoder.Value()
+		if err != nil {
+			return err
+		}
+		if val == nil {
+			break
+		}
+		{
+			xtv := string(val)
+			mv = types.EncryptionType(xtv)
+		}
+		sv = append(sv, mv)
+	}
+	*v = sv
+	return nil
+}
 func awsRestxml_deserializeDocumentEncryptionTypeMismatch(v **types.EncryptionTypeMismatch, decoder smithyxml.NodeDecoder) error {
 	if v == nil {
 		return fmt.Errorf("unexpected nil of type %T", v)
@@ -23952,6 +24074,12 @@ func awsRestxml_deserializeDocumentServerSideEncryptionRule(v **types.ServerSide
 		case strings.EqualFold("ApplyServerSideEncryptionByDefault", t.Name.Local):
 			nodeDecoder := smithyxml.WrapNodeDecoder(decoder.Decoder, t)
 			if err := awsRestxml_deserializeDocumentServerSideEncryptionByDefault(&sv.ApplyServerSideEncryptionByDefault, nodeDecoder); err != nil {
+				return err
+			}
+
+		case strings.EqualFold("BlockedEncryptionTypes", t.Name.Local):
+			nodeDecoder := smithyxml.WrapNodeDecoder(decoder.Decoder, t)
+			if err := awsRestxml_deserializeDocumentBlockedEncryptionTypes(&sv.BlockedEncryptionTypes, nodeDecoder); err != nil {
 				return err
 			}
 

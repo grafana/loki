@@ -16,7 +16,7 @@ import (
 
 // This operation is not supported for directory buckets.
 //
-// Returns the tag set associated with the bucket.
+// Returns the tag set associated with the general purpose bucket.
 //
 // To use this operation, you must have permission to perform the
 // s3:GetBucketTagging action. By default, the bucket owner has this permission and
