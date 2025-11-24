@@ -1,4 +1,4 @@
-package querytee
+package responsecomparator
 
 import (
 	"encoding/json"
@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
+
 	jsoniter "github.com/json-iterator/go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
@@ -15,6 +16,15 @@ import (
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
+
+type ResponsesComparator interface {
+	Compare(expected, actual []byte, queryEvaluationTime time.Time) (*ComparisonSummary, error)
+}
+
+type ComparisonSummary struct {
+	Skipped        bool
+	MissingMetrics int
+}
 
 // SamplesComparatorFunc helps with comparing different types of samples coming from /api/v1/query and /api/v1/query_range routes.
 type SamplesComparatorFunc func(expected, actual json.RawMessage, evaluationTime time.Time, opts SampleComparisonOptions) (*ComparisonSummary, error)
@@ -122,7 +132,7 @@ func compareMatrix(expectedRaw, actualRaw json.RawMessage, evaluationTime time.T
 
 	// If both matrices are empty after filtering, we can skip comparison
 	if len(expected) == 0 && len(actual) == 0 {
-		return &ComparisonSummary{skipped: true}, nil
+		return &ComparisonSummary{Skipped: true}, nil
 	}
 
 	if len(expected) != len(actual) {
@@ -233,7 +243,7 @@ func compareVector(expectedRaw, actualRaw json.RawMessage, evaluationTime time.T
 	}
 
 	if len(expected) == 0 && len(actual) == 0 {
-		return &ComparisonSummary{skipped: true}, nil
+		return &ComparisonSummary{Skipped: true}, nil
 	}
 
 	if len(expected) != len(actual) {
@@ -279,7 +289,7 @@ func compareVector(expectedRaw, actualRaw json.RawMessage, evaluationTime time.T
 		err = fmt.Errorf("expected metric(s) [%s] missing from actual response", b.String())
 	}
 
-	return &ComparisonSummary{missingMetrics: len(missingMetrics)}, err
+	return &ComparisonSummary{MissingMetrics: len(missingMetrics)}, err
 }
 
 func compareScalar(expectedRaw, actualRaw json.RawMessage, evaluationTime time.Time, opts SampleComparisonOptions) (*ComparisonSummary, error) {
@@ -295,7 +305,7 @@ func compareScalar(expectedRaw, actualRaw json.RawMessage, evaluationTime time.T
 	}
 
 	if opts.SkipSample(expected.Timestamp.Time(), evaluationTime) && opts.SkipSample(actual.Timestamp.Time(), evaluationTime) {
-		return &ComparisonSummary{skipped: true}, nil
+		return &ComparisonSummary{Skipped: true}, nil
 	}
 
 	return nil, compareSamplePair(model.SamplePair{
@@ -359,7 +369,7 @@ func compareStreams(expectedRaw, actualRaw json.RawMessage, evaluationTime time.
 
 	// If both streams are empty after filtering, we can skip comparison
 	if len(expected) == 0 && len(actual) == 0 {
-		return &ComparisonSummary{skipped: true}, nil
+		return &ComparisonSummary{Skipped: true}, nil
 	}
 
 	if len(expected) != len(actual) {

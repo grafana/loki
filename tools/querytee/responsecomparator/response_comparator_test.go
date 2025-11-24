@@ -1,4 +1,4 @@
-package querytee
+package responsecomparator
 
 import (
 	"encoding/json"
@@ -693,7 +693,7 @@ func TestCompareStreams_SamplesOutsideComparableWindow(t *testing.T) {
 			if tc.err == nil {
 				require.NoError(t, err)
 				if summary != nil {
-					require.True(t, summary.skipped)
+					require.True(t, summary.Skipped)
 				}
 				return
 			}
