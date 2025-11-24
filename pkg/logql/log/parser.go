@@ -174,9 +174,12 @@ func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.Valu
 	prefixLen := len(j.prefixBuffer)
 	j.prefixBuffer = append(j.prefixBuffer, key)
 
-	keyString := string(j.buildSanitizedPrefixFromBuffer())
+	sanitized := j.buildSanitizedPrefixFromBuffer()
+	keyString, _ := j.keys.Get(sanitized, func() (string, bool) {
+		return string(sanitized), true
+	})
+
 	if j.lbs.BaseHas(keyString) {
-		// Rebuild the prefix with _extracted suffix
 		j.prefixBuffer[prefixLen] = make([]byte, 0, len(key)+len(duplicateSuffix))
 		j.prefixBuffer[prefixLen] = append(j.prefixBuffer[prefixLen], key...)
 		j.prefixBuffer[prefixLen] = append(j.prefixBuffer[prefixLen], duplicateSuffix...)
@@ -341,7 +344,7 @@ func (r *RegexpParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 			}
 
 			if !parserHints.ShouldExtract(key) || parserHints.Extracted(key) {
-				return line, false
+				continue
 			}
 
 			lbs.Set(ParsedLabel, key, string(value))
@@ -625,6 +628,7 @@ func (l *LogfmtExpressionParser) RequiredLabelNames() []string { return []string
 type JSONExpressionParser struct {
 	ids   []string
 	paths [][]string
+	keys  internedStringSet
 }
 
 func NewJSONExpressionParser(expressions []LabelExtractionExpr) (*JSONExpressionParser, error) {
@@ -647,6 +651,7 @@ func NewJSONExpressionParser(expressions []LabelExtractionExpr) (*JSONExpression
 	return &JSONExpressionParser{
 		ids:   ids,
 		paths: paths,
+		keys:  internedStringSet{},
 	}, nil
 }
 
@@ -683,7 +688,11 @@ func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder)
 			return
 		}
 
-		key := j.ids[idx]
+		identifier := j.ids[idx]
+		key, _ := j.keys.Get(unsafeGetBytes(identifier), func() (string, bool) {
+			return string(identifier), true
+		})
+
 		if lbs.BaseHas(key) {
 			key = key + duplicateSuffix
 		}
@@ -725,6 +734,7 @@ func (j *JSONExpressionParser) RequiredLabelNames() []string { return []string{}
 
 type UnpackParser struct {
 	lbsBuffer []string
+	keys      internedStringSet
 }
 
 // NewUnpackParser creates a new unpack stage.
@@ -734,6 +744,7 @@ type UnpackParser struct {
 func NewUnpackParser() *UnpackParser {
 	return &UnpackParser{
 		lbsBuffer: make([]string, 0, 16),
+		keys:      internedStringSet{},
 	}
 }
 
@@ -780,8 +791,7 @@ func (u *UnpackParser) unpack(entry []byte, lbs *LabelsBuilder) ([]byte, error) 
 	err := jsonparser.ObjectEach(entry, func(key, value []byte, typ jsonparser.ValueType, _ int) error {
 		switch typ {
 		case jsonparser.String:
-			key := unsafeGetString(key)
-			if key == logqlmodel.PackedEntryKey {
+			if unsafeGetString(key) == logqlmodel.PackedEntryKey {
 				// Inlined bytes escape to save allocs
 				var stackbuf [unescapeStackBufSize]byte // stack-allocated array for allocation-free unescaping of small strings
 				bU, err := jsonparser.Unescape(value, stackbuf[:])
@@ -793,6 +803,10 @@ func (u *UnpackParser) unpack(entry []byte, lbs *LabelsBuilder) ([]byte, error) 
 				isPacked = true
 				return nil
 			}
+
+			key, _ := u.keys.Get(key, func() (string, bool) {
+				return string(key), true
+			})
 
 			if lbs.BaseHas(key) {
 				key = key + duplicateSuffix
