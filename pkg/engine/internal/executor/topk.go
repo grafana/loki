@@ -162,13 +162,13 @@ NextInput:
 					// bottom k
 					if currentHeapMin.IsZero() || heapMin.Before(currentHeapMin) {
 						currentHeapMin = heapMin
-						p.notifyCallbacks(currentHeapMin, true)
+						p.notifyAll(currentHeapMin, true)
 					}
 				} else {
 					// top k
 					if currentHeapMin.IsZero() || heapMin.After(currentHeapMin) {
 						currentHeapMin = heapMin
-						p.notifyCallbacks(currentHeapMin, false)
+						p.notifyAll(currentHeapMin, false)
 					}
 				}
 			}
@@ -203,7 +203,7 @@ func (p *topkPipeline) Subscribe(callback func(ts time.Time, lessThan bool)) {
 	p.callbacks = append(p.callbacks, callback)
 }
 
-func (p *topkPipeline) notifyCallbacks(ts time.Time, lessThan bool) {
+func (p *topkPipeline) notifyAll(ts time.Time, lessThan bool) {
 	for _, callback := range p.callbacks {
 		callback(ts, lessThan)
 	}

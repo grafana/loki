@@ -5,8 +5,6 @@ import (
 	"errors"
 
 	"github.com/apache/arrow-go/v18/arrow"
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
-
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 )
 
@@ -19,7 +17,3 @@ func (ep errorPipeline) Read(_ context.Context) (arrow.RecordBatch, error) {
 }
 
 func (ep errorPipeline) Close() {}
-
-func (ep errorPipeline) MaxTimeRange() physical.TimeRange {
-	return physical.TimeRange{}
-}
