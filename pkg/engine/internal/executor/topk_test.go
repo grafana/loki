@@ -60,6 +60,17 @@ func Test_topk(t *testing.T) {
 	require.NoError(t, err, "should be able to create a topk pipeline")
 	defer topkPipeline.Close()
 
+	events := []struct {
+		ts       time.Time
+		lessThan bool
+	}{}
+	topkPipeline.Subscribe(func(ts time.Time, lessThan bool) {
+		events = append(events, struct {
+			ts       time.Time
+			lessThan bool
+		}{ts: ts, lessThan: lessThan})
+	})
+
 	rec, err := topkPipeline.Read(t.Context())
 	require.NoError(t, err, "should be able to read the sorted batch")
 
@@ -73,6 +84,8 @@ func Test_topk(t *testing.T) {
 	require.NoError(t, err, "should be able to convert record back to rows")
 
 	require.ElementsMatch(t, expect, rows, "should return the top 3 rows")
+
+	require.Len(t, events, 3)
 }
 
 func Test_topk_emptyPipelines(t *testing.T) {

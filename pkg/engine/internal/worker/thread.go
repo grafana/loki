@@ -126,7 +126,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 			// number of source streams (unbounded).
 			//
 			// Binding the [streamSource] to the input in the loop below
-			// increases the reference count. As sources as closed, the
+			// increases the reference count. As sources are closed, the
 			// reference count decreases. Once the reference count reaches 0,
 			// the nodeSource is closed, and reads return EOF.
 			input := new(nodeSource)
@@ -164,6 +164,29 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	defer capture.End()
 
 	pipeline := executor.Run(ctx, cfg, job.Task.Fragment, logger)
+
+	// If the root pipeline can be interested in some specific contributing time range
+	// then subscribe to changes.
+	// TODO(spiridonov): find a way to subscribe on non-root pipelines.
+	notifier, ok := pipeline.(executor.ContributingTimeRangeChangedNotifier)
+	if ok {
+		notifier.Subscribe(func(ts time.Time, lessThan bool) {
+			// Send a Running task status update with the current time range
+			err := job.Scheduler.SendMessage(ctx, wire.TaskStatusMessage{
+				ID: job.Task.ULID,
+				Status: workflow.TaskStatus{
+					State: workflow.TaskStateRunning,
+					ContributingTimeRange: workflow.ContributingTimeRange{
+						Timestamp: ts,
+						LessThan:  lessThan,
+					},
+				},
+			})
+			if err != nil {
+				level.Warn(logger).Log("msg", "failed to inform scheduler of task status", "err", err)
+			}
+		})
+	}
 
 	err := job.Scheduler.SendMessageAsync(ctx, wire.TaskStatusMessage{
 		ID:     job.Task.ULID,

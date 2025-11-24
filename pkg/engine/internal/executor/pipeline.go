@@ -32,6 +32,14 @@ type RegionProvider interface {
 	Region() *xcap.Region
 }
 
+// ContributingTimeRangeChangedNotifier is an optional interface that pipelines can implement
+// to notify others that they are interested only in inputs from some specific time range.
+type ContributingTimeRangeChangedNotifier interface {
+	// Subscribe adds a callback function to a list of listeners. Contributing time range would be
+	// anything less than `ts` if `lessThan` is true, or greater than `ts` otherwise.
+	Subscribe(callback func(ts time.Time, lessThan bool))
+}
+
 var (
 	errNotImplemented = errors.New("pipeline not implemented")
 	EOF               = errors.New("pipeline exhausted") //nolint:revive,staticcheck
