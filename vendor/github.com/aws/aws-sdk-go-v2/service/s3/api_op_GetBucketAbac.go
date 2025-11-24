@@ -10,83 +10,54 @@ import (
 	s3cust "github.com/aws/aws-sdk-go-v2/service/s3/internal/customizations"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/smithy-go/middleware"
-	"github.com/aws/smithy-go/ptr"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
-// This operation is not supported for directory buckets.
+// Returns the attribute-based access control (ABAC) property of the general
+// purpose bucket. If the bucket ABAC is enabled, you can use tags for bucket
+// access control. For more information, see [Enabling ABAC in general purpose buckets]. Whether ABAC is enabled or
+// disabled, you can use tags for cost tracking. For more information, see [Using tags with S3 general purpose buckets].
 //
-// Returns the tag set associated with the general purpose bucket.
-//
-// if ABAC is not enabled for the bucket. When you [enable ABAC for a general purpose bucket], you can no longer use this
-// operation for that bucket and must use [ListTagsForResource]instead.
-//
-// To use this operation, you must have permission to perform the
-// s3:GetBucketTagging action. By default, the bucket owner has this permission and
-// can grant this permission to others.
-//
-// GetBucketTagging has the following special error:
-//
-//   - Error code: NoSuchTagSet
-//
-//   - Description: There is no tag set associated with the bucket.
-//
-// The following operations are related to GetBucketTagging :
-//
-// [PutBucketTagging]
-//
-// [DeleteBucketTagging]
-//
-// You must URL encode any signed header values that contain spaces. For example,
-// if your header value is my file.txt , containing two spaces after my , you must
-// URL encode this value to my%20%20file.txt .
-//
-// [PutBucketTagging]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketTagging.html
-// [enable ABAC for a general purpose bucket]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/buckets-tagging-enable-abac.html
-// [DeleteBucketTagging]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucketTagging.html
-// [ListTagsForResource]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_control_ListTagsForResource.html
-func (c *Client) GetBucketTagging(ctx context.Context, params *GetBucketTaggingInput, optFns ...func(*Options)) (*GetBucketTaggingOutput, error) {
+// [Enabling ABAC in general purpose buckets]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/buckets-tagging-enable-abac.html
+// [Using tags with S3 general purpose buckets]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/buckets-tagging.html
+func (c *Client) GetBucketAbac(ctx context.Context, params *GetBucketAbacInput, optFns ...func(*Options)) (*GetBucketAbacOutput, error) {
 	if params == nil {
-		params = &GetBucketTaggingInput{}
+		params = &GetBucketAbacInput{}
 	}
 
-	result, metadata, err := c.invokeOperation(ctx, "GetBucketTagging", params, optFns, c.addOperationGetBucketTaggingMiddlewares)
+	result, metadata, err := c.invokeOperation(ctx, "GetBucketAbac", params, optFns, c.addOperationGetBucketAbacMiddlewares)
 	if err != nil {
 		return nil, err
 	}
 
-	out := result.(*GetBucketTaggingOutput)
+	out := result.(*GetBucketAbacOutput)
 	out.ResultMetadata = metadata
 	return out, nil
 }
 
-type GetBucketTaggingInput struct {
+type GetBucketAbacInput struct {
 
-	// The name of the bucket for which to get the tagging information.
+	// The name of the general purpose bucket.
 	//
 	// This member is required.
 	Bucket *string
 
-	// The account ID of the expected bucket owner. If the account ID that you provide
-	// does not match the actual owner of the bucket, the request fails with the HTTP
-	// status code 403 Forbidden (access denied).
+	// The Amazon Web Services account ID of the general purpose bucket's owner.
 	ExpectedBucketOwner *string
 
 	noSmithyDocumentSerde
 }
 
-func (in *GetBucketTaggingInput) bindEndpointParams(p *EndpointParameters) {
+func (in *GetBucketAbacInput) bindEndpointParams(p *EndpointParameters) {
 
 	p.Bucket = in.Bucket
-	p.UseS3ExpressControlEndpoint = ptr.Bool(true)
+
 }
 
-type GetBucketTaggingOutput struct {
+type GetBucketAbacOutput struct {
 
-	// Contains the tag set.
-	//
-	// This member is required.
-	TagSet []types.Tag
+	// The ABAC status of the general purpose bucket.
+	AbacStatus *types.AbacStatus
 
 	// Metadata pertaining to the operation's result.
 	ResultMetadata middleware.Metadata
@@ -94,19 +65,19 @@ type GetBucketTaggingOutput struct {
 	noSmithyDocumentSerde
 }
 
-func (c *Client) addOperationGetBucketTaggingMiddlewares(stack *middleware.Stack, options Options) (err error) {
+func (c *Client) addOperationGetBucketAbacMiddlewares(stack *middleware.Stack, options Options) (err error) {
 	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Serialize.Add(&awsRestxml_serializeOpGetBucketTagging{}, middleware.After)
+	err = stack.Serialize.Add(&awsRestxml_serializeOpGetBucketAbac{}, middleware.After)
 	if err != nil {
 		return err
 	}
-	err = stack.Deserialize.Add(&awsRestxml_deserializeOpGetBucketTagging{}, middleware.After)
+	err = stack.Deserialize.Add(&awsRestxml_deserializeOpGetBucketAbac{}, middleware.After)
 	if err != nil {
 		return err
 	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "GetBucketTagging"); err != nil {
+	if err := addProtocolFinalizerMiddlewares(stack, options, "GetBucketAbac"); err != nil {
 		return fmt.Errorf("add protocol finalizers: %v", err)
 	}
 
@@ -167,10 +138,10 @@ func (c *Client) addOperationGetBucketTaggingMiddlewares(stack *middleware.Stack
 	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
-	if err = addOpGetBucketTaggingValidationMiddleware(stack); err != nil {
+	if err = addOpGetBucketAbacValidationMiddleware(stack); err != nil {
 		return err
 	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opGetBucketTagging(options.Region), middleware.Before); err != nil {
+	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opGetBucketAbac(options.Region), middleware.Before); err != nil {
 		return err
 	}
 	if err = addMetadataRetrieverMiddleware(stack); err != nil {
@@ -179,7 +150,7 @@ func (c *Client) addOperationGetBucketTaggingMiddlewares(stack *middleware.Stack
 	if err = addRecursionDetection(stack); err != nil {
 		return err
 	}
-	if err = addGetBucketTaggingUpdateEndpoint(stack, options); err != nil {
+	if err = addGetBucketAbacUpdateEndpoint(stack, options); err != nil {
 		return err
 	}
 	if err = addResponseErrorMiddleware(stack); err != nil {
@@ -212,35 +183,35 @@ func (c *Client) addOperationGetBucketTaggingMiddlewares(stack *middleware.Stack
 	return nil
 }
 
-func (v *GetBucketTaggingInput) bucket() (string, bool) {
+func (v *GetBucketAbacInput) bucket() (string, bool) {
 	if v.Bucket == nil {
 		return "", false
 	}
 	return *v.Bucket, true
 }
 
-func newServiceMetadataMiddleware_opGetBucketTagging(region string) *awsmiddleware.RegisterServiceMetadata {
+func newServiceMetadataMiddleware_opGetBucketAbac(region string) *awsmiddleware.RegisterServiceMetadata {
 	return &awsmiddleware.RegisterServiceMetadata{
 		Region:        region,
 		ServiceID:     ServiceID,
-		OperationName: "GetBucketTagging",
+		OperationName: "GetBucketAbac",
 	}
 }
 
-// getGetBucketTaggingBucketMember returns a pointer to string denoting a provided
+// getGetBucketAbacBucketMember returns a pointer to string denoting a provided
 // bucket member valueand a boolean indicating if the input has a modeled bucket
 // name,
-func getGetBucketTaggingBucketMember(input interface{}) (*string, bool) {
-	in := input.(*GetBucketTaggingInput)
+func getGetBucketAbacBucketMember(input interface{}) (*string, bool) {
+	in := input.(*GetBucketAbacInput)
 	if in.Bucket == nil {
 		return nil, false
 	}
 	return in.Bucket, true
 }
-func addGetBucketTaggingUpdateEndpoint(stack *middleware.Stack, options Options) error {
+func addGetBucketAbacUpdateEndpoint(stack *middleware.Stack, options Options) error {
 	return s3cust.UpdateEndpoint(stack, s3cust.UpdateEndpointOptions{
 		Accessor: s3cust.UpdateEndpointParameterAccessor{
-			GetBucketFromInput: getGetBucketTaggingBucketMember,
+			GetBucketFromInput: getGetBucketAbacBucketMember,
 		},
 		UsePathStyle:                   options.UsePathStyle,
 		UseAccelerate:                  options.UseAccelerate,
