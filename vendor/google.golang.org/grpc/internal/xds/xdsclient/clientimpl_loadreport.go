@@ -35,7 +35,7 @@ func (c *clientImpl) ReportLoad(server *bootstrap.ServerConfig) (*lrsclient.Load
 	load, err := c.lrsClient.ReportLoad(clients.ServerIdentifier{
 		ServerURI: server.ServerURI(),
 		Extensions: grpctransport.ServerIdentifierExtension{
-			ConfigName: server.SelectedCreds().Type,
+			ConfigName: server.SelectedChannelCreds().Type,
 		},
 	})
 	if err != nil {
