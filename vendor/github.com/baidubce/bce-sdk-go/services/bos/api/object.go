@@ -136,6 +136,11 @@ func PutObject(cli bce.Client, bucket, object string, body *bce.Body, args *PutO
 				NeedReturnCallback = true
 			}
 		}
+		if len(args.CannedAcl) != 0 {
+			if validCannedAcl(args.CannedAcl) {
+				req.SetHeader(http.BCE_ACL, args.CannedAcl)
+			}
+		}
 		if len(args.ObjectTagging) != 0 {
 			if ok, encodeTagging := validObjectTagging(args.ObjectTagging); ok {
 				req.SetHeader(http.BCE_OBJECT_TAGGING, encodeTagging)
@@ -434,6 +439,11 @@ func CopyObject(cli bce.Client, bucket, object, source string, args *CopyObjectA
 			}
 			req.SetHeader(http.BCE_TRAFFIC_LIMIT, fmt.Sprintf("%d", args.TrafficLimit))
 		}
+
+		if validCannedAcl(args.CannedAcl) {
+			req.SetHeader(http.BCE_ACL, args.CannedAcl)
+		}
+
 		if err := setUserMetadata(req, args.UserMeta); err != nil {
 			return nil, err
 		}

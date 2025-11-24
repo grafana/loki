@@ -596,6 +596,11 @@ func (cca Client) AcquireTokenSilent(ctx context.Context, scopes []string, opts 
 		return AuthResult{}, errors.New("call another AcquireToken method to request a new token having these claims")
 	}
 
+	// For service principal scenarios, require WithSilentAccount for public API
+	if o.account.IsZero() {
+		return AuthResult{}, errors.New("WithSilentAccount option is required")
+	}
+
 	silentParameters := base.AcquireTokenSilentParameters{
 		Scopes:      scopes,
 		Account:     o.account,
@@ -604,7 +609,14 @@ func (cca Client) AcquireTokenSilent(ctx context.Context, scopes []string, opts 
 		IsAppCache:  o.account.IsZero(),
 		TenantID:    o.tenantID,
 		AuthnScheme: o.authnScheme,
+		Claims:      o.claims,
 	}
+
+	return cca.acquireTokenSilentInternal(ctx, silentParameters)
+}
+
+// acquireTokenSilentInternal is the internal implementation shared by AcquireTokenSilent and AcquireTokenByCredential
+func (cca Client) acquireTokenSilentInternal(ctx context.Context, silentParameters base.AcquireTokenSilentParameters) (AuthResult, error) {
 
 	return cca.base.AcquireTokenSilent(ctx, silentParameters)
 }
@@ -708,8 +720,10 @@ func (cca Client) AcquireTokenByAuthCode(ctx context.Context, code string, redir
 
 // acquireTokenByCredentialOptions contains optional configuration for AcquireTokenByCredential
 type acquireTokenByCredentialOptions struct {
-	claims, tenantID string
-	authnScheme      AuthenticationScheme
+	claims, tenantID    string
+	authnScheme         AuthenticationScheme
+	extraBodyParameters map[string]string
+	cacheKeyComponents  map[string]string
 }
 
 // AcquireByCredentialOption is implemented by options for AcquireTokenByCredential
@@ -719,7 +733,7 @@ type AcquireByCredentialOption interface {
 
 // AcquireTokenByCredential acquires a security token from the authority, using the client credentials grant.
 //
-// Options: [WithClaims], [WithTenantID]
+// Options: [WithClaims], [WithTenantID], [WithFMIPath], [WithAttribute]
 func (cca Client) AcquireTokenByCredential(ctx context.Context, scopes []string, opts ...AcquireByCredentialOption) (AuthResult, error) {
 	o := acquireTokenByCredentialOptions{}
 	err := options.ApplyOptions(&o, opts)
@@ -736,6 +750,29 @@ func (cca Client) AcquireTokenByCredential(ctx context.Context, scopes []string,
 	if o.authnScheme != nil {
 		authParams.AuthnScheme = o.authnScheme
 	}
+	authParams.ExtraBodyParameters = o.extraBodyParameters
+	authParams.CacheKeyComponents = o.cacheKeyComponents
+	if o.claims == "" {
+		silentParameters := base.AcquireTokenSilentParameters{
+			Scopes:              scopes,
+			Account:             Account{}, // empty account for app token
+			RequestType:         accesstokens.ATConfidential,
+			Credential:          cca.cred,
+			IsAppCache:          true,
+			TenantID:            o.tenantID,
+			AuthnScheme:         o.authnScheme,
+			Claims:              o.claims,
+			ExtraBodyParameters: o.extraBodyParameters,
+			CacheKeyComponents:  o.cacheKeyComponents,
+		}
+
+		// Use internal method with empty account (service principal scenario)
+		cache, err := cca.acquireTokenSilentInternal(ctx, silentParameters)
+		if err == nil {
+			return cache, nil
+		}
+	}
+
 	token, err := cca.base.Token.Credential(ctx, authParams, cca.cred)
 	if err != nil {
 		return AuthResult{}, err
@@ -780,4 +817,64 @@ func (cca Client) Account(ctx context.Context, accountID string) (Account, error
 // RemoveAccount signs the account out and forgets account from token cache.
 func (cca Client) RemoveAccount(ctx context.Context, account Account) error {
 	return cca.base.RemoveAccount(ctx, account)
+}
+
+// WithFMIPath specifies the path to a federated managed identity.
+// The path should point to a valid FMI configuration file that contains the necessary
+// identity information for authentication.
+func WithFMIPath(path string) interface {
+	AcquireByCredentialOption
+	options.CallOption
+} {
+	return struct {
+		AcquireByCredentialOption
+		options.CallOption
+	}{
+		CallOption: options.NewCallOption(
+			func(a any) error {
+				switch t := a.(type) {
+				case *acquireTokenByCredentialOptions:
+					if t.extraBodyParameters == nil {
+						t.extraBodyParameters = make(map[string]string)
+					}
+					if t.cacheKeyComponents == nil {
+						t.cacheKeyComponents = make(map[string]string)
+					}
+					t.cacheKeyComponents["fmi_path"] = path
+					t.extraBodyParameters["fmi_path"] = path
+				default:
+					return fmt.Errorf("unexpected options type %T", a)
+				}
+				return nil
+			},
+		),
+	}
+}
+
+// WithAttribute specifies an identity attribute to include in the token request.
+// The attribute is sent as "attributes" in the request body and returned as "xmc_attr"
+// in the access token claims. This is sometimes used withFMIPath
+func WithAttribute(attrValue string) interface {
+	AcquireByCredentialOption
+	options.CallOption
+} {
+	return struct {
+		AcquireByCredentialOption
+		options.CallOption
+	}{
+		CallOption: options.NewCallOption(
+			func(a any) error {
+				switch t := a.(type) {
+				case *acquireTokenByCredentialOptions:
+					if t.extraBodyParameters == nil {
+						t.extraBodyParameters = make(map[string]string)
+					}
+					t.extraBodyParameters["attributes"] = attrValue
+				default:
+					return fmt.Errorf("unexpected options type %T", a)
+				}
+				return nil
+			},
+		),
+	}
 }

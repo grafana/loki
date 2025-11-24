@@ -194,7 +194,7 @@ func newExceedsLimitsRequest(tenant string, streams []KeyedStream) (*proto.Excee
 // UpdateRates updates the rates for the streams and returns a slice of the
 // updated rates for all streams. Any streams that could not have rates updated
 // have a rate of zero.
-func (l *ingestLimits) UpdateRates(ctx context.Context, tenant string, streams []KeyedStream) ([]*proto.UpdateRatesResult, error) {
+func (l *ingestLimits) UpdateRates(ctx context.Context, tenant string, streams []SegmentedStream) ([]*proto.UpdateRatesResult, error) {
 	l.requests.WithLabelValues("UpdateRates").Inc()
 	req, err := newUpdateRatesRequest(tenant, streams)
 	if err != nil {
@@ -209,7 +209,7 @@ func (l *ingestLimits) UpdateRates(ctx context.Context, tenant string, streams [
 	return resp.Results, nil
 }
 
-func newUpdateRatesRequest(tenant string, streams []KeyedStream) (*proto.UpdateRatesRequest, error) {
+func newUpdateRatesRequest(tenant string, streams []SegmentedStream) (*proto.UpdateRatesRequest, error) {
 	// The distributor sends the hashes of all streams in the request to the
 	// limits-frontend. The limits-frontend is responsible for deciding if
 	// the request would exceed the tenants limits, and if so, which streams
@@ -218,7 +218,7 @@ func newUpdateRatesRequest(tenant string, streams []KeyedStream) (*proto.UpdateR
 	for _, stream := range streams {
 		entriesSize, structuredMetadataSize := calculateStreamSizes(stream.Stream)
 		streamMetadata = append(streamMetadata, &proto.StreamMetadata{
-			StreamHash:      stream.HashKeyNoShard,
+			StreamHash:      stream.SegmentationKeyHash,
 			TotalSize:       entriesSize + structuredMetadataSize,
 			IngestionPolicy: stream.Policy,
 		})
