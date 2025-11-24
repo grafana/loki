@@ -625,7 +625,6 @@ func (l *LogfmtExpressionParser) RequiredLabelNames() []string { return []string
 type JSONExpressionParser struct {
 	ids   []string
 	paths [][]string
-	keys  internedStringSet
 }
 
 func NewJSONExpressionParser(expressions []LabelExtractionExpr) (*JSONExpressionParser, error) {
@@ -648,7 +647,6 @@ func NewJSONExpressionParser(expressions []LabelExtractionExpr) (*JSONExpression
 	return &JSONExpressionParser{
 		ids:   ids,
 		paths: paths,
-		keys:  internedStringSet{},
 	}, nil
 }
 
@@ -685,13 +683,7 @@ func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder)
 			return
 		}
 
-		identifier := j.ids[idx]
-		// Cache only the sanitized key name, not the conflict resolution
-		key, _ := j.keys.Get(unsafeGetBytes(identifier), func() (string, bool) {
-			return identifier, true
-		})
-
-		// Always check for conflicts, even if we've seen this key before
+		key := j.ids[idx]
 		if lbs.BaseHas(key) {
 			key = key + duplicateSuffix
 		}
@@ -733,8 +725,6 @@ func (j *JSONExpressionParser) RequiredLabelNames() []string { return []string{}
 
 type UnpackParser struct {
 	lbsBuffer []string
-
-	keys internedStringSet
 }
 
 // NewUnpackParser creates a new unpack stage.
@@ -744,7 +734,6 @@ type UnpackParser struct {
 func NewUnpackParser() *UnpackParser {
 	return &UnpackParser{
 		lbsBuffer: make([]string, 0, 16),
-		keys:      internedStringSet{},
 	}
 }
 
@@ -791,7 +780,8 @@ func (u *UnpackParser) unpack(entry []byte, lbs *LabelsBuilder) ([]byte, error) 
 	err := jsonparser.ObjectEach(entry, func(key, value []byte, typ jsonparser.ValueType, _ int) error {
 		switch typ {
 		case jsonparser.String:
-			if unsafeGetString(key) == logqlmodel.PackedEntryKey {
+			key := unsafeGetString(key)
+			if key == logqlmodel.PackedEntryKey {
 				// Inlined bytes escape to save allocs
 				var stackbuf [unescapeStackBufSize]byte // stack-allocated array for allocation-free unescaping of small strings
 				bU, err := jsonparser.Unescape(value, stackbuf[:])
@@ -803,27 +793,17 @@ func (u *UnpackParser) unpack(entry []byte, lbs *LabelsBuilder) ([]byte, error) 
 				isPacked = true
 				return nil
 			}
-			// Cache only the sanitized key name, not the conflict resolution
-			fieldName, ok := u.keys.Get(key, func() (string, bool) {
-				field := string(key)
-				return field, true
-			})
-			if !ok {
-				return nil
+
+			if lbs.BaseHas(key) {
+				key = key + duplicateSuffix
 			}
 
-			// Always check for conflicts, even if we've seen this key before
-			keyToUse := fieldName
-			if lbs.BaseHas(keyToUse) {
-				keyToUse = keyToUse + duplicateSuffix
-			}
-
-			if !lbs.ParserLabelHints().ShouldExtract(keyToUse) || lbs.ParserLabelHints().Extracted(keyToUse) {
+			if !lbs.ParserLabelHints().ShouldExtract(key) || lbs.ParserLabelHints().Extracted(key) {
 				return nil
 			}
 
 			// append to the buffer of labels
-			u.lbsBuffer = append(u.lbsBuffer, sanitizeLabelKey(keyToUse, true), unescapeJSONString(value))
+			u.lbsBuffer = append(u.lbsBuffer, sanitizeLabelKey(key, true), unescapeJSONString(value))
 		default:
 			return nil
 		}
