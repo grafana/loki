@@ -40,8 +40,6 @@ func (c *columnValuesCalculation) ProcessBatch(ctx context.Context, _ *logsCalcu
 }
 
 func (c *columnValuesCalculation) Flush(ctx context.Context, context *logsCalculationContext) error {
-	context.builderMtx.Lock()
-	defer context.builderMtx.Unlock()
 	for columnName, bloom := range c.columnBloomBuilders {
 		bloomBytes, err := bloom.MarshalBinary()
 		if err != nil {

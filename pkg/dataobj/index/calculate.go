@@ -20,8 +20,11 @@ import (
 )
 
 type logsIndexCalculation interface {
+	// Prepare is called before the first batch of logs is processed in order to initialize any state.
 	Prepare(ctx context.Context, section *dataobj.Section, stats logs.Stats) error
+	// ProcessBatch is called for each batch of logs records. This function is guaranteed to be exclusively writing to the builder.
 	ProcessBatch(ctx context.Context, context *logsCalculationContext, batch []logs.Record) error
+	// Flush is called after all logs in a section have been processed. This function is guaranteed to be exclusively writing to the builder.
 	Flush(ctx context.Context, context *logsCalculationContext) error
 }
 
@@ -30,7 +33,6 @@ type logsCalculationContext struct {
 	objectPath     string
 	sectionIdx     int64
 	streamIDLookup map[int64]int64
-	builderMtx     *sync.Mutex
 	builder        *indexobj.Builder
 }
 
@@ -46,11 +48,11 @@ func getLogsCalculationSteps() []logsIndexCalculation {
 // It reads data from the logs object in order to build bloom filters and per-section stream metadata.
 type Calculator struct {
 	indexobjBuilder *indexobj.Builder
-	builderMtx      *sync.Mutex
+	builderMtx      sync.Mutex
 }
 
 func NewCalculator(indexobjBuilder *indexobj.Builder) *Calculator {
-	return &Calculator{indexobjBuilder: indexobjBuilder, builderMtx: &sync.Mutex{}}
+	return &Calculator{indexobjBuilder: indexobjBuilder}
 }
 
 func (c *Calculator) Reset() {
@@ -177,7 +179,6 @@ func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.L
 		objectPath:     objectPath,
 		sectionIdx:     sectionIdx,
 		streamIDLookup: streamIDLookup,
-		builderMtx:     c.builderMtx,
 		builder:        c.indexobjBuilder,
 	}
 
@@ -202,18 +203,24 @@ func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.L
 		}
 
 		cnt += n
+		c.builderMtx.Lock()
 		for _, calculation := range calculationSteps {
 			if err := calculation.ProcessBatch(ctx, calculationContext, logsBuf[:n]); err != nil {
+				c.builderMtx.Unlock()
 				return fmt.Errorf("failed to process batch: %w", err)
 			}
 		}
+		c.builderMtx.Unlock()
 	}
 
+	c.builderMtx.Lock()
 	for _, calculation := range calculationSteps {
 		if err := calculation.Flush(ctx, calculationContext); err != nil {
+			c.builderMtx.Unlock()
 			return fmt.Errorf("failed to flush calculation results: %w", err)
 		}
 	}
+	c.builderMtx.Unlock()
 
 	level.Info(sectionLogger).Log("msg", "finished processing logs section", "rowsProcessed", cnt)
 	return nil

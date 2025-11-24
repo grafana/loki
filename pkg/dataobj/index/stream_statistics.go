@@ -15,8 +15,6 @@ func (c *streamStatisticsCalculation) Prepare(ctx context.Context, section *data
 }
 
 func (c *streamStatisticsCalculation) ProcessBatch(ctx context.Context, context *logsCalculationContext, batch []logs.Record) error {
-	context.builderMtx.Lock()
-	defer context.builderMtx.Unlock()
 	for _, log := range batch {
 		err := context.builder.ObserveLogLine(context.tenantID, context.objectPath, context.sectionIdx, log.StreamID, context.streamIDLookup[log.StreamID], log.Timestamp, int64(len(log.Line)))
 		if err != nil {
