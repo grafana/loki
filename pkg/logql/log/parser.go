@@ -690,7 +690,7 @@ func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder)
 
 		identifier := j.ids[idx]
 		key, _ := j.keys.Get(unsafeGetBytes(identifier), func() (string, bool) {
-			return string(identifier), true
+			return identifier, true
 		})
 
 		if lbs.BaseHas(key) {
