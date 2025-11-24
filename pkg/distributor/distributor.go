@@ -307,6 +307,7 @@ func New(
 				&cfg.DataObjTeeConfig,
 				resolver,
 				ingestLimits,
+				overrides,
 				kafkaClient,
 				logger,
 				registerer,
