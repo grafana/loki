@@ -13,6 +13,9 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+- [BUGFIX] Respect global registry in sidecar image [#19347](https://github.com/grafana/loki/pull/19347).
+- [BUGFIX] Uniform naming for image digest also in the sidecar image [#19347](https://github.com/grafana/loki/pull/19347).
+- [BUGFIX] Pass full global values to image helper to respect new image standardization. [#19715](https://github.com/grafana/loki/pull/19715)
 - [BUGFIX] Don't mark loki.storage.bucketNames.chunks as required, if an s3 url is provided. [#19873](https://github.com/grafana/loki/pull/19873)
 - [BUGFIX] Do not mark loki.storage.bucketNames.chunks as required, if minio is used. [#19871](https://github.com/grafana/loki/pull/19871)
 - [ENHANCEMENT] Use fsGroupChangePolicy=OnRootMismatch on loki to speed up pod starts [#13942](https://github.com/grafana/loki/pull/13942)
