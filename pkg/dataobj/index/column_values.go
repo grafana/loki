@@ -5,9 +5,10 @@ import (
 	"fmt"
 
 	"github.com/bits-and-blooms/bloom/v3"
+	"github.com/prometheus/prometheus/model/labels"
+
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
-	"github.com/prometheus/prometheus/model/labels"
 )
 
 type columnValuesCalculation struct {
