@@ -211,9 +211,13 @@ type Cmdable interface {
 	ShutdownNoSave(ctx context.Context) *StatusCmd
 	SlaveOf(ctx context.Context, host, port string) *StatusCmd
 	SlowLogGet(ctx context.Context, num int64) *SlowLogCmd
+	SlowLogLen(ctx context.Context) *IntCmd
+	SlowLogReset(ctx context.Context) *StatusCmd
 	Time(ctx context.Context) *TimeCmd
 	DebugObject(ctx context.Context, key string) *StringCmd
 	MemoryUsage(ctx context.Context, key string, samples ...int) *IntCmd
+	Latency(ctx context.Context) *LatencyCmd
+	LatencyReset(ctx context.Context, events ...interface{}) *StatusCmd
 
 	ModuleLoadex(ctx context.Context, conf *ModuleLoadexConfig) *StringCmd
 
@@ -673,6 +677,34 @@ func (c cmdable) SlowLogGet(ctx context.Context, num int64) *SlowLogCmd {
 	return cmd
 }
 
+func (c cmdable) SlowLogLen(ctx context.Context) *IntCmd {
+	cmd := NewIntCmd(ctx, "slowlog", "len")
+	_ = c(ctx, cmd)
+	return cmd
+}
+
+func (c cmdable) SlowLogReset(ctx context.Context) *StatusCmd {
+	cmd := NewStatusCmd(ctx, "slowlog", "reset")
+	_ = c(ctx, cmd)
+	return cmd
+}
+
+func (c cmdable) Latency(ctx context.Context) *LatencyCmd {
+	cmd := NewLatencyCmd(ctx, "latency", "latest")
+	_ = c(ctx, cmd)
+	return cmd
+}
+
+func (c cmdable) LatencyReset(ctx context.Context, events ...interface{}) *StatusCmd {
+	args := make([]interface{}, 2+len(events))
+	args[0] = "latency"
+	args[1] = "reset"
+	copy(args[2:], events)
+	cmd := NewStatusCmd(ctx, args...)
+	_ = c(ctx, cmd)
+	return cmd
+}
+
 func (c cmdable) Sync(_ context.Context) {
 	panic("not implemented")
 }
@@ -693,7 +725,9 @@ func (c cmdable) MemoryUsage(ctx context.Context, key string, samples ...int) *I
 	args := []interface{}{"memory", "usage", key}
 	if len(samples) > 0 {
 		if len(samples) != 1 {
-			panic("MemoryUsage expects single sample count")
+			cmd := NewIntCmd(ctx)
+			cmd.SetErr(errors.New("MemoryUsage expects single sample count"))
+			return cmd
 		}
 		args = append(args, "SAMPLES", samples[0])
 	}
