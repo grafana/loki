@@ -1206,6 +1206,17 @@ func TestLogfmtParser_parse(t *testing.T) {
 			labels.EmptyLabels(),
 			NoParserHints(),
 		},
+		// string interning should not cache conflicts across streams
+		{
+			"no duplicate property",
+			[]byte(`foo="foo bar" foobar=10ms`),
+			labels.EmptyLabels(),
+			labels.FromStrings("foo", "foo bar",
+				"foobar", "10ms",
+			),
+			labels.EmptyLabels(),
+			NoParserHints(),
+		},
 		{
 			"invalid key names",
 			[]byte(`foo="foo bar" foo.bar=10ms test-dash=foo`),
