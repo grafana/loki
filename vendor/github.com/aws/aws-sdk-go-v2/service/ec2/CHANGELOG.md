@@ -1,3 +1,65 @@
+# v1.265.0 (2025-11-10)
+
+* **Feature**: Amazon EC2 Fleet customers can now filter instance types based on encryption-in-transit support using Attribute-Based Instance Type Selection (ABIS), eliminating the manual effort of identifying and selecting compatible instance types for security-sensitive workloads.
+
+# v1.264.0 (2025-11-07)
+
+* **Feature**: Adds PrivateDnsPreference and PrivateDnsSpecifiedDomains to control private DNS resolution for resource and service network VPC endpoints and IpamScopeExternalAuthorityConfiguration to integrate Amazon VPC IPAM with a third-party IPAM service
+
+# v1.263.0 (2025-11-06)
+
+* **Feature**: Add Amazon EC2 R8a instance types
+
+# v1.262.0 (2025-11-05)
+
+* **Feature**: This release adds AvailabilityZoneId support for DescribeFastSnapshotRestores, DisableFastSnapshotRestores, and EnableFastSnapshotRestores APIs.
+
+# v1.261.1 (2025-11-04)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+* **Dependency Update**: Upgrade to smithy-go v1.23.2 which should convey some passive reduction of overall allocations, especially when not using the metrics system.
+
+# v1.261.0 (2025-11-03)
+
+* **Feature**: Add Amazon EC2 trn2.3xlarge instance type.
+
+# v1.260.0 (2025-10-31)
+
+* **Feature**: Amazon VPC IP Address Manager (IPAM) now supports automated prefix list management, allowing you to create rules that automatically populate customer-managed prefix lists with CIDRs from your IPAM pools or AWS resources based on tags, Regions, or other criteria.
+
+# v1.259.1 (2025-10-30)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.259.0 (2025-10-28)
+
+* **Feature**: This released the DescribeCapacityReservationTopology API.
+
+# v1.258.1 (2025-10-23)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.258.0 (2025-10-22)
+
+* **Feature**: This release adds AvailabilityZoneId support for CreateNetworkInterface and DescribeNetworkInterfaces APIs.
+
+# v1.257.2 (2025-10-17)
+
+* **Documentation**: Documentation updates for Amazon EC2.
+
+# v1.257.1 (2025-10-16)
+
+* **Dependency Update**: Bump minimum Go version to 1.23.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.257.0 (2025-10-15)
+
+* **Feature**: Introducing EC2 Capacity Manager for monitoring and analyzing capacity usage across On-Demand Instances, Spot Instances, and Capacity Reservations.
+
+# v1.256.0 (2025-10-14)
+
+* **Feature**: This release adds support for creating instant, point-in-time copies of EBS volumes within the same Availability Zone
+
 # v1.255.0 (2025-10-13)
 
 * **Feature**: Release Amazon EC2 c8i, c8i-flex, m8a, and r8gb

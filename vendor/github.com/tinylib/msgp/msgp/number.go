@@ -2,6 +2,7 @@ package msgp
 
 import (
 	"math"
+	"math/bits"
 	"strconv"
 )
 
@@ -77,7 +78,7 @@ func (n *Number) Uint() (uint64, bool) {
 }
 
 // Float casts the number to a float64, and
-// returns whether or not that was the underlying
+// returns whether that was the underlying
 // type (either a float64 or a float32).
 func (n *Number) Float() (float64, bool) {
 	switch n.typ {
@@ -205,6 +206,129 @@ func (n *Number) EncodeMsg(w *Writer) error {
 		return w.WriteFloat32(math.Float32frombits(uint32(n.bits)))
 	default:
 		return w.WriteInt64(0)
+	}
+}
+
+// CoerceInt attempts to coerce the value of
+// the number into a signed integer and returns
+// whether it was successful.
+// "Success" implies that no precision in the value of
+// the number was lost, which means that the number was an integer or
+// a floating point that mapped exactly to an integer without rounding.
+func (n *Number) CoerceInt() (int64, bool) {
+	switch n.typ {
+	case InvalidType, IntType:
+		// InvalidType just means un-initialized.
+		return int64(n.bits), true
+	case UintType:
+		return int64(n.bits), n.bits <= math.MaxInt64
+	case Float32Type:
+		f := math.Float32frombits(uint32(n.bits))
+		if n.isExactInt() && f <= math.MaxInt64 && f >= math.MinInt64 {
+			return int64(f), true
+		}
+		if n.bits == 0 || n.bits == 1<<31 {
+			return 0, true
+		}
+	case Float64Type:
+		f := math.Float64frombits(n.bits)
+		if n.isExactInt() && f <= math.MaxInt64 && f >= math.MinInt64 {
+			return int64(f), true
+		}
+		return 0, n.bits == 0 || n.bits == 1<<63
+	}
+	return 0, false
+}
+
+// CoerceUInt attempts to coerce the value of
+// the number into an unsigned integer and returns
+// whether it was successful.
+// "Success" implies that no precision in the value of
+// the number was lost, which means that the number was an integer or
+// a floating point that mapped exactly to an integer without rounding.
+func (n *Number) CoerceUInt() (uint64, bool) {
+	switch n.typ {
+	case InvalidType, IntType:
+		// InvalidType just means un-initialized.
+		if int64(n.bits) >= 0 {
+			return n.bits, true
+		}
+	case UintType:
+		return n.bits, true
+	case Float32Type:
+		f := math.Float32frombits(uint32(n.bits))
+		if f >= 0 && f <= math.MaxUint64 && n.isExactInt() {
+			return uint64(f), true
+		}
+		if n.bits == 0 || n.bits == 1<<31 {
+			return 0, true
+		}
+	case Float64Type:
+		f := math.Float64frombits(n.bits)
+		if f >= 0 && f <= math.MaxUint64 && n.isExactInt() {
+			return uint64(f), true
+		}
+		return 0, n.bits == 0 || n.bits == 1<<63
+	}
+	return 0, false
+}
+
+// isExactInt will return true if the number represents an integer value.
+// NaN, Inf returns false.
+func (n *Number) isExactInt() bool {
+	var eBits int // Exponent bits
+	var mBits int // Mantissa bits
+
+	switch n.typ {
+	case InvalidType, IntType, UintType:
+		return true
+	case Float32Type:
+		eBits = 8
+		mBits = 23
+	case Float64Type:
+		eBits = 11
+		mBits = 52
+	default:
+		return false
+	}
+	// Calculate float parts
+	exp := int(n.bits>>mBits) & ((1 << eBits) - 1)
+	mant := n.bits & ((1 << mBits) - 1)
+	if exp == 0 && mant == 0 {
+		// Handle zero value.
+		return true
+	}
+
+	exp -= (1 << (eBits - 1)) - 1
+	if exp < 0 || exp == 1<<(eBits-1) {
+		// Negative exponent is never integer (except zero handled above)
+		// Handles NaN (exp all 1s)
+		return false
+	}
+
+	if exp >= mBits {
+		// If we have more exponent than mantissa bits it is always an integer.
+		return true
+	}
+	// Check if all bits below the exponent are zero.
+	return bits.TrailingZeros64(mant) >= mBits-exp
+}
+
+// CoerceFloat returns the number as a float64.
+// If the number is an integer, it will be
+// converted to a float64 with the closest representation.
+func (n *Number) CoerceFloat() float64 {
+	switch n.typ {
+	case IntType:
+		return float64(int64(n.bits))
+	case UintType:
+		return float64(n.bits)
+	case Float32Type:
+		return float64(math.Float32frombits(uint32(n.bits)))
+	case Float64Type:
+		return math.Float64frombits(n.bits)
+	default:
+		return 0.0
 	}
 }
 

@@ -291,6 +291,9 @@ spec:
         {{- with .Values.backend.persistence.storageClass }}
         storageClassName: {{ if (eq "-" .) }}""{{ else }}{{ . }}{{ end }}
         {{- end }}
+        {{- with .Values.backend.persistence.volumeAttributesClassName }}
+        volumeAttributesClassName: {{ . }}
+        {{- end }}
         resources:
           requests:
             storage: {{ .Values.backend.persistence.size | quote }}

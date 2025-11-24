@@ -33,7 +33,7 @@ var validStreamTransitions = map[workflow.StreamState][]workflow.StreamState{
 //
 // Returns true if the state was updated, false otherwise (such as if the task
 // is already in the desired state).
-func (s *stream) setState(newState workflow.StreamState) (bool, error) {
+func (s *stream) setState(m *metrics, newState workflow.StreamState) (bool, error) {
 	oldState := s.state
 
 	if newState == oldState {
@@ -46,6 +46,7 @@ func (s *stream) setState(newState workflow.StreamState) (bool, error) {
 	}
 
 	s.state = newState
+	m.streamsTotal.WithLabelValues(newState.String()).Inc()
 	return true, nil
 }
 

@@ -265,6 +265,9 @@ spec:
         {{- with .Values.ruler.persistence.storageClass }}
         storageClassName: {{ if (eq "-" .) }}""{{ else }}{{ . }}{{ end }}
         {{- end }}
+        {{- with .Values.ruler.persistence.volumeAttributesClassName }}
+        volumeAttributesClassName: {{ . }}
+        {{- end }}
         resources:
           requests:
             storage: {{ .Values.ruler.persistence.size | quote }}

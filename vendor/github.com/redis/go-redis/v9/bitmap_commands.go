@@ -141,7 +141,9 @@ func (c cmdable) BitPos(ctx context.Context, key string, bit int64, pos ...int64
 		args[3] = pos[0]
 		args[4] = pos[1]
 	default:
-		panic("too many arguments")
+		cmd := NewIntCmd(ctx)
+		cmd.SetErr(errors.New("too many arguments"))
+		return cmd
 	}
 	cmd := NewIntCmd(ctx, args...)
 	_ = c(ctx, cmd)
@@ -182,7 +184,9 @@ func (c cmdable) BitFieldRO(ctx context.Context, key string, values ...interface
 	args[0] = "BITFIELD_RO"
 	args[1] = key
 	if len(values)%2 != 0 {
-		panic("BitFieldRO: invalid number of arguments, must be even")
+		c := NewIntSliceCmd(ctx)
+		c.SetErr(errors.New("BitFieldRO: invalid number of arguments, must be even"))
+		return c
 	}
 	for i := 0; i < len(values); i += 2 {
 		args = append(args, "GET", values[i], values[i+1])
