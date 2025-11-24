@@ -1978,16 +1978,17 @@ func Test_PatternParser(t *testing.T) {
 			`<ip> <userid> <user> [<_>] "<method> <path> <_>" <status> <size>`,
 			[]byte(`127.0.0.1 user-identifier frank [10/Oct/2000:13:55:36 -0700] "GET /apache_pb.gif HTTP/1.0" 200 2326`),
 			labels.EmptyLabels(),
-			labels.FromStrings("ip", "loki",
-				"ip_extracted", "127.0.0.1",
+			labels.FromStrings(
+				"ip", "127.0.0.1",
 				"userid", "user-identifier",
-				"user", "frank",
+				"user", "not_frank",
+				"user_extracted", "frank",
 				"method", "GET",
 				"path", "/apache_pb.gif",
 				"status", "200",
 				"size", "2326",
 			),
-			map[string]string{"ip": "loki"},
+			map[string]string{"user": "not_frank"},
 		},
 	}
 
