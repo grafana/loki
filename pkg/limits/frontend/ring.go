@@ -73,10 +73,7 @@ func newRingLimitsClient(
 }
 
 // ExceedsLimits implements the [exceedsLimitsGatherer] interface.
-func (r *ringLimitsClient) ExceedsLimits(
-	ctx context.Context,
-	req *proto.ExceedsLimitsRequest,
-) ([]*proto.ExceedsLimitsResponse, error) {
+func (r *ringLimitsClient) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRequest) ([]*proto.ExceedsLimitsResponse, error) {
 	if len(req.Streams) == 0 {
 		return nil, nil
 	}
@@ -101,10 +98,7 @@ func (r *ringLimitsClient) ExceedsLimits(
 }
 
 // UpdateRates implements the [exceedsLimitsGatherer] interface.
-func (r *ringLimitsClient) UpdateRates(
-	ctx context.Context,
-	req *proto.UpdateRatesRequest,
-) ([]*proto.UpdateRatesResponse, error) {
+func (r *ringLimitsClient) UpdateRates(ctx context.Context, req *proto.UpdateRatesRequest) ([]*proto.UpdateRatesResponse, error) {
 	if len(req.Streams) == 0 {
 		return nil, nil
 	}
@@ -238,12 +232,7 @@ type doRPCsFunc func(
 
 // exhaustAllZones queries all zones, one at a time, until either all streams
 // have been answered or all zones have been exhausted.
-func (r *ringLimitsClient) exhaustAllZones(
-	ctx context.Context,
-	tenant string,
-	streams []*proto.StreamMetadata,
-	doRPCs doRPCsFunc,
-) ([]*proto.StreamMetadata, error) {
+func (r *ringLimitsClient) exhaustAllZones(ctx context.Context, tenant string, streams []*proto.StreamMetadata, doRPCs doRPCsFunc) ([]*proto.StreamMetadata, error) {
 	zonesIter, err := r.allZones(ctx)
 	if err != nil {
 		return nil, err
