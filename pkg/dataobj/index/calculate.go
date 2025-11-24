@@ -22,9 +22,11 @@ import (
 type logsIndexCalculation interface {
 	// Prepare is called before the first batch of logs is processed in order to initialize any state.
 	Prepare(ctx context.Context, section *dataobj.Section, stats logs.Stats) error
-	// ProcessBatch is called for each batch of logs records. This function is guaranteed to be exclusively writing to the builder.
+	// ProcessBatch is called for each batch of logs records.
+	// Implementations can assume to have exclusive access to the builder via the calculation context. They must not retain references to it after the call returns.
 	ProcessBatch(ctx context.Context, context *logsCalculationContext, batch []logs.Record) error
-	// Flush is called after all logs in a section have been processed. This function is guaranteed to be exclusively writing to the builder.
+	// Flush is called after all logs in a section have been processed.
+	// Implementations can assume to have exclusive access to the builder via the calculation context. They must not retain references to it after the call returns.
 	Flush(ctx context.Context, context *logsCalculationContext) error
 }
 
