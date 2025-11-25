@@ -2,6 +2,7 @@ package redis
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 
@@ -313,7 +314,9 @@ func (c cmdable) ZPopMax(ctx context.Context, key string, count ...int64) *ZSlic
 	case 1:
 		args = append(args, count[0])
 	default:
-		panic("too many arguments")
+		cmd := NewZSliceCmd(ctx)
+		cmd.SetErr(errors.New("too many arguments"))
+		return cmd
 	}
 
 	cmd := NewZSliceCmd(ctx, args...)
@@ -333,7 +336,9 @@ func (c cmdable) ZPopMin(ctx context.Context, key string, count ...int64) *ZSlic
 	case 1:
 		args = append(args, count[0])
 	default:
-		panic("too many arguments")
+		cmd := NewZSliceCmd(ctx)
+		cmd.SetErr(errors.New("too many arguments"))
+		return cmd
 	}
 
 	cmd := NewZSliceCmd(ctx, args...)

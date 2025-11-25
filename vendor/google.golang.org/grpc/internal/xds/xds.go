@@ -93,9 +93,6 @@ func SetLocalityIDInEndpoint(endpoint resolver.Endpoint, l clients.Locality) res
 	return endpoint
 }
 
-// ResourceTypeMapForTesting maps TypeUrl to corresponding ResourceType.
-var ResourceTypeMapForTesting map[string]any
-
 // UnknownCSMLabels are TelemetryLabels emitted from CDS if CSM Telemetry Label
 // data is not present in the CDS Resource.
 var UnknownCSMLabels = map[string]string{

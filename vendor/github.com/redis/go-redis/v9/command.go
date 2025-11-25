@@ -698,6 +698,68 @@ func (cmd *IntCmd) readReply(rd *proto.Reader) (err error) {
 
 //------------------------------------------------------------------------------
 
+// DigestCmd is a command that returns a uint64 xxh3 hash digest.
+//
+// This command is specifically designed for the Redis DIGEST command,
+// which returns the xxh3 hash of a key's value as a hex string.
+// The hex string is automatically parsed to a uint64 value.
+//
+// The digest can be used for optimistic locking with SetIFDEQ, SetIFDNE,
+// and DelExArgs commands.
+//
+// For examples of client-side digest generation and usage patterns, see:
+// example/digest-optimistic-locking/
+//
+// Redis 8.4+. See https://redis.io/commands/digest/
+type DigestCmd struct {
+	baseCmd
+
+	val uint64
+}
+
+var _ Cmder = (*DigestCmd)(nil)
+
+func NewDigestCmd(ctx context.Context, args ...interface{}) *DigestCmd {
+	return &DigestCmd{
+		baseCmd: baseCmd{
+			ctx:  ctx,
+			args: args,
+		},
+	}
+}
+
+func (cmd *DigestCmd) SetVal(val uint64) {
+	cmd.val = val
+}
+
+func (cmd *DigestCmd) Val() uint64 {
+	return cmd.val
+}
+
+func (cmd *DigestCmd) Result() (uint64, error) {
+	return cmd.val, cmd.err
+}
+
+func (cmd *DigestCmd) String() string {
+	return cmdString(cmd, cmd.val)
+}
+
+func (cmd *DigestCmd) readReply(rd *proto.Reader) (err error) {
+	// Redis DIGEST command returns a hex string (e.g., "a1b2c3d4e5f67890")
+	// We parse it as a uint64 xxh3 hash value
+	var hexStr string
+	hexStr, err = rd.ReadString()
+	if err != nil {
+		return err
+	}
+
+	// Parse hex string to uint64
+	cmd.val, err = strconv.ParseUint(hexStr, 16, 64)
+	return err
+}
+
+//------------------------------------------------------------------------------
+
 type IntSliceCmd struct {
 	baseCmd
 
@@ -1585,6 +1647,12 @@ func (cmd *StringStructMapCmd) readReply(rd *proto.Reader) error {
 type XMessage struct {
 	ID     string
 	Values map[string]interface{}
+	// MillisElapsedFromDelivery is the number of milliseconds since the entry was last delivered.
+	// Only populated when using XREADGROUP with CLAIM argument for claimed entries.
+	MillisElapsedFromDelivery int64
+	// DeliveredCount is the number of times the entry was delivered.
+	// Only populated when using XREADGROUP with CLAIM argument for claimed entries.
+	DeliveredCount int64
 }
 
 type XMessageSliceCmd struct {
@@ -1641,8 +1709,14 @@ func readXMessageSlice(rd *proto.Reader) ([]XMessage, error) {
 }
 
 func readXMessage(rd *proto.Reader) (XMessage, error) {
-	if err := rd.ReadFixedArrayLen(2); err != nil {
+	// Read array length can be 2 or 4 (with CLAIM metadata)
+	n, err := rd.ReadArrayLen()
+	if err != nil {
 		return XMessage{}, err
+	}
+
+	if n != 2 && n != 4 {
+		return XMessage{}, fmt.Errorf("redis: got %d elements in the XMessage array, expected 2 or 4", n)
 	}
 
 	id, err := rd.ReadString()
@@ -1657,10 +1731,24 @@ func readXMessage(rd *proto.Reader) (XMessage, error) {
 		}
 	}
 
-	return XMessage{
+	msg := XMessage{
 		ID:     id,
 		Values: v,
-	}, nil
+	}
+
+	if n == 4 {
+		msg.MillisElapsedFromDelivery, err = rd.ReadInt()
+		if err != nil {
+			return XMessage{}, err
+		}
+
+		msg.DeliveredCount, err = rd.ReadInt()
+		if err != nil {
+			return XMessage{}, err
+		}
+	}
+
+	return msg, nil
 }
 
 func stringInterfaceMapParser(rd *proto.Reader) (map[string]interface{}, error) {
@@ -3763,6 +3851,83 @@ func (cmd *SlowLogCmd) readReply(rd *proto.Reader) error {
 		}
 	}
 
+	return nil
+}
+
+//-----------------------------------------------------------------------
+
+type Latency struct {
+	Name   string
+	Time   time.Time
+	Latest time.Duration
+	Max    time.Duration
+}
+
+type LatencyCmd struct {
+	baseCmd
+	val []Latency
+}
+
+var _ Cmder = (*LatencyCmd)(nil)
+
+func NewLatencyCmd(ctx context.Context, args ...interface{}) *LatencyCmd {
+	return &LatencyCmd{
+		baseCmd: baseCmd{
+			ctx:  ctx,
+			args: args,
+		},
+	}
+}
+
+func (cmd *LatencyCmd) SetVal(val []Latency) {
+	cmd.val = val
+}
+
+func (cmd *LatencyCmd) Val() []Latency {
+	return cmd.val
+}
+
+func (cmd *LatencyCmd) Result() ([]Latency, error) {
+	return cmd.val, cmd.err
+}
+
+func (cmd *LatencyCmd) String() string {
+	return cmdString(cmd, cmd.val)
+}
+
+func (cmd *LatencyCmd) readReply(rd *proto.Reader) error {
+	n, err := rd.ReadArrayLen()
+	if err != nil {
+		return err
+	}
+	cmd.val = make([]Latency, n)
+	for i := 0; i < len(cmd.val); i++ {
+		nn, err := rd.ReadArrayLen()
+		if err != nil {
+			return err
+		}
+		if nn < 3 {
+			return fmt.Errorf("redis: got %d elements in latency get, expected at least 3", nn)
+		}
+		if cmd.val[i].Name, err = rd.ReadString(); err != nil {
+			return err
+		}
+		createdAt, err := rd.ReadInt()
+		if err != nil {
+			return err
+		}
+		cmd.val[i].Time = time.Unix(createdAt, 0)
+		latest, err := rd.ReadInt()
+		if err != nil {
+			return err
+		}
+		cmd.val[i].Latest = time.Duration(latest) * time.Millisecond
+		maximum, err := rd.ReadInt()
+		if err != nil {
+			return err
+		}
+		cmd.val[i].Max = time.Duration(maximum) * time.Millisecond
+	}
 	return nil
 }
 

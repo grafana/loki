@@ -38,6 +38,25 @@ func (ArchiveStatus) Values() []ArchiveStatus {
 	}
 }
 
+type BucketAbacStatus string
+
+// Enum values for BucketAbacStatus
+const (
+	BucketAbacStatusEnabled  BucketAbacStatus = "Enabled"
+	BucketAbacStatusDisabled BucketAbacStatus = "Disabled"
+)
+
+// Values returns all known values for BucketAbacStatus. Note that this can be
+// expanded in the future, and so it is only as up to date as the client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (BucketAbacStatus) Values() []BucketAbacStatus {
+	return []BucketAbacStatus{
+		"Enabled",
+		"Disabled",
+	}
+}
+
 type BucketAccelerateStatus string
 
 // Enum values for BucketAccelerateStatus
@@ -353,6 +372,25 @@ const (
 func (EncodingType) Values() []EncodingType {
 	return []EncodingType{
 		"url",
+	}
+}
+
+type EncryptionType string
+
+// Enum values for EncryptionType
+const (
+	EncryptionTypeNone EncryptionType = "NONE"
+	EncryptionTypeSseC EncryptionType = "SSE-C"
+)
+
+// Values returns all known values for EncryptionType. Note that this can be
+// expanded in the future, and so it is only as up to date as the client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (EncryptionType) Values() []EncryptionType {
+	return []EncryptionType{
+		"NONE",
+		"SSE-C",
 	}
 }
 
