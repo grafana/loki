@@ -89,12 +89,12 @@ By default, the following resource attributes will be stored as labels, with per
 - service.name
 - service.namespace
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 Because Loki has a default limit of 15 index labels, we recommend storing only select resource attributes as labels. Although the default config selects more than 15 Resource Attributes, some are mutually exclusive.
-{{% /admonition %}}
+{{< /admonition >}}
 
 {{< admonition type="tip" >}}
-For Grafana Cloud Logs, see the [current OpenTelemetry guidance](https://grafana.com/docs/grafana-cloud/send-data/otlp/otlp-format-considerations/#logs).
+For Grafana Cloud Logs, see the [current OpenTelemetry guidance](https://grafana.com/docs/grafana-cloud/send-data/otlp/otlp-format-considerations/#logs). The Faro specific attributes `app_id`, `kind`, and `app_key` are promoted to labels for Grafana Cloud Logs but not Loki.
 {{< /admonition >}}
 
 The default list of resource attributes to store as labels can be configured using `default_resource_attributes_as_index_labels` under the [distributor's otlp_config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#distributor). You can set global limits using [limits_config.otlp_config](/docs/loki/<LOKI_VERSION>/configure/#limits_config). If you are using Grafana Cloud, contact support to configure this setting.
