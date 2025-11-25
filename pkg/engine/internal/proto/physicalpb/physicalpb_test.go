@@ -140,7 +140,7 @@ func Test_Node(t *testing.T) {
 
 				Source:      types.ColumnTypeMetadata,
 				Destination: types.ColumnTypeMetadata,
-				Collision:   types.ColumnTypeLabel,
+				Collisions:  []types.ColumnType{types.ColumnTypeLabel},
 			},
 		},
 		{
