@@ -562,7 +562,7 @@ func TestManagerResultPersistenceModes(t *testing.T) {
 			req.Header.Set("X-Scope-OrgID", "tenant1")
 
 			cellA := &ResponseData{
-				Body:        []byte(`{"status":"success","data":{"resultType":"matrix","result":[]}}`),
+				Body:        []byte(`{"status":"success","data":{"resultType":"scalar","result":[1: "1"]}}`),
 				StatusCode:  200,
 				Duration:    90 * time.Millisecond,
 				Stats:       goldfish.QueryStats{ExecTimeMs: 90},
@@ -572,7 +572,7 @@ func TestManagerResultPersistenceModes(t *testing.T) {
 			}
 
 			cellB := &ResponseData{
-				Body:        []byte(`{"status":"success","data":{"resultType":"matrix","result":[]}}`),
+				Body:        []byte(`{"status":"success","data":{"resultType":"scalar","result":[1: "2"]}}`),
 				StatusCode:  200,
 				Duration:    110 * time.Millisecond,
 				Stats:       goldfish.QueryStats{ExecTimeMs: 110},
