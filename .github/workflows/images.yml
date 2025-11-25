@@ -10,7 +10,7 @@
   "loki-canary-boringcrypto-image":
     "env":
       "BUILD_TIMEOUT": 60
-      "GO_VERSION": "1.24.8"
+      "GO_VERSION": "1.24"
       "IMAGE_PREFIX": "grafana"
       "RELEASE_LIB_REF": "dfe753760ce6ec2f4549fc11d2df24a2aa584e3f"
       "RELEASE_REPO": "grafana/loki"
@@ -134,7 +134,7 @@
   "loki-canary-image":
     "env":
       "BUILD_TIMEOUT": 60
-      "GO_VERSION": "1.24.8"
+      "GO_VERSION": "1.24"
       "IMAGE_PREFIX": "grafana"
       "RELEASE_LIB_REF": "dfe753760ce6ec2f4549fc11d2df24a2aa584e3f"
       "RELEASE_REPO": "grafana/loki"
@@ -258,7 +258,7 @@
   "loki-image":
     "env":
       "BUILD_TIMEOUT": 60
-      "GO_VERSION": "1.24.8"
+      "GO_VERSION": "1.24"
       "IMAGE_PREFIX": "grafana"
       "RELEASE_LIB_REF": "dfe753760ce6ec2f4549fc11d2df24a2aa584e3f"
       "RELEASE_REPO": "grafana/loki"
@@ -382,7 +382,7 @@
   "promtail-image":
     "env":
       "BUILD_TIMEOUT": 60
-      "GO_VERSION": "1.24.8"
+      "GO_VERSION": "1.24"
       "IMAGE_PREFIX": "grafana"
       "RELEASE_LIB_REF": "dfe753760ce6ec2f4549fc11d2df24a2aa584e3f"
       "RELEASE_REPO": "grafana/loki"
