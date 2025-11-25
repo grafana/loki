@@ -7,6 +7,21 @@ import (
 	"time"
 )
 
+// The ABAC status of the general purpose bucket. When ABAC is enabled for the
+// general purpose bucket, you can use tags to manage access to the general purpose
+// buckets as well as for cost tracking purposes. When ABAC is disabled for the
+// general purpose buckets, you can only use tags for cost tracking purposes. For
+// more information, see [Using tags with S3 general purpose buckets].
+//
+// [Using tags with S3 general purpose buckets]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/buckets-tagging.html
+type AbacStatus struct {
+
+	// The ABAC status of the general purpose bucket.
+	Status BucketAbacStatus
+
+	noSmithyDocumentSerde
+}
+
 // Specifies the days since the initiation of an incomplete multipart upload that
 // Amazon S3 will wait before permanently removing all parts of the upload. For
 // more information, see [Aborting Incomplete Multipart Uploads Using a Bucket Lifecycle Configuration]in the Amazon S3 User Guide.
@@ -172,6 +187,47 @@ type AnalyticsS3BucketDestination struct {
 
 	// The prefix to use when exporting data. The prefix is prepended to all results.
 	Prefix *string
+
+	noSmithyDocumentSerde
+}
+
+// A bucket-level setting for Amazon S3 general purpose buckets used to prevent
+// the upload of new objects encrypted with the specified server-side encryption
+// type. For example, blocking an encryption type will block PutObject , CopyObject
+// , PostObject , multipart upload, and replication requests to the bucket for
+// objects with the specified encryption type. However, you can continue to read
+// and list any pre-existing objects already encrypted with the specified
+// encryption type. For more information, see [Blocking an encryption type for a general purpose bucket].
+//
+// This data type is used with the following actions:
+//
+// [PutBucketEncryption]
+//
+// [GetBucketEncryption]
+//
+// [DeleteBucketEncryption]
+//
+// Permissions You must have the s3:PutEncryptionConfiguration permission to block
+// or unblock an encryption type for a bucket.
+//
+// You must have the s3:GetEncryptionConfiguration permission to view a bucket's
+// encryption type.
+//
+// [Blocking an encryption type for a general purpose bucket]: https://docs.aws.amazon.com/AmazonS3/userguide/block-encryption-type.html
+// [GetBucketEncryption]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketEncryption.html
+// [DeleteBucketEncryption]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucketEncryption.html
+// [PutBucketEncryption]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketEncryption.html
+type BlockedEncryptionTypes struct {
+
+	// The object encryption type that you want to block or unblock for an Amazon S3
+	// general purpose bucket.
+	//
+	// Currently, this parameter only supports blocking or unblocking server side
+	// encryption with customer-provided keys (SSE-C). For more information about
+	// SSE-C, see [Using server-side encryption with customer-provided keys (SSE-C)].
+	//
+	// [Using server-side encryption with customer-provided keys (SSE-C)]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/ServerSideEncryptionCustomerKeys.html
+	EncryptionType []EncryptionType
 
 	noSmithyDocumentSerde
 }
@@ -628,11 +684,11 @@ type CreateBucketConfiguration struct {
 	// are key-value pairs of metadata used to categorize and organize your buckets,
 	// track costs, and control access.
 	//
-	//   - This parameter is only supported for S3 directory buckets. For more
-	//   information, see [Using tags with directory buckets].
+	// This parameter is only supported for S3 directory buckets. For more
+	// information, see [Using tags with directory buckets].
 	//
-	//   - You must have the s3express:TagResource permission to create a directory
-	//   bucket with tags.
+	// You must have the s3express:TagResource permission to create a directory bucket
+	// with tags.
 	//
 	// [Using tags with directory buckets]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/directory-buckets-tagging.html
 	Tags []Tag
@@ -3801,7 +3857,7 @@ type RecordsEvent struct {
 	// guarantee that a record will be self-contained in one record frame. To ensure
 	// continuous streaming of data, S3 Select might split the same record across
 	// multiple record frames instead of aggregating the results in memory. Some S3
-	// clients (for example, the SDKforJava) handle this behavior by creating a
+	// clients (for example, the SDK for Java) handle this behavior by creating a
 	// ByteStream out of the response by default. Other clients might not handle this
 	// behavior by default. In those cases, you must aggregate the results on the
 	// client side and parse the response.
@@ -4544,6 +4600,22 @@ type ServerSideEncryptionRule struct {
 	// bucket. If a PUT Object request doesn't specify any server-side encryption, this
 	// default encryption will be applied.
 	ApplyServerSideEncryptionByDefault *ServerSideEncryptionByDefault
+
+	// A bucket-level setting for Amazon S3 general purpose buckets used to prevent
+	// the upload of new objects encrypted with the specified server-side encryption
+	// type. For example, blocking an encryption type will block PutObject , CopyObject
+	// , PostObject , multipart upload, and replication requests to the bucket for
+	// objects with the specified encryption type. However, you can continue to read
+	// and list any pre-existing objects already encrypted with the specified
+	// encryption type. For more information, see [Blocking an encryption type for a general purpose bucket].
+	//
+	// Currently, this parameter only supports blocking or unblocking Server Side
+	// Encryption with Customer Provided Keys (SSE-C). For more information about
+	// SSE-C, see [Using server-side encryption with customer-provided keys (SSE-C)].
+	//
+	// [Blocking an encryption type for a general purpose bucket]: https://docs.aws.amazon.com/AmazonS3/userguide/block-encryption-type.html
+	// [Using server-side encryption with customer-provided keys (SSE-C)]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/ServerSideEncryptionCustomerKeys.html
+	BlockedEncryptionTypes *BlockedEncryptionTypes
 
 	// Specifies whether Amazon S3 should use an S3 Bucket Key with server-side
 	// encryption using KMS (SSE-KMS) for new objects in the bucket. Existing objects

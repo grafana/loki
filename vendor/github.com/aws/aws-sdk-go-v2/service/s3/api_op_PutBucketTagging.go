@@ -17,7 +17,12 @@ import (
 
 // This operation is not supported for directory buckets.
 //
-// Sets the tags for a bucket.
+// Sets the tags for a general purpose bucket if attribute based access control
+// (ABAC) is not enabled for the bucket. When you [enable ABAC for a general purpose bucket], you can no longer use this
+// operation for that bucket and must use the [TagResource]or [UntagResource] operations instead.
+//
+// if ABAC is not enabled for the bucket. When you [enable ABAC for a general purpose bucket], you can no longer use this
+// operation for that bucket and must use [TagResource]instead.
 //
 // Use tags to organize your Amazon Web Services bill to reflect your own cost
 // structure. To do this, sign up to get your Amazon Web Services account bill with
@@ -63,8 +68,11 @@ import (
 // [Error Responses]: https://docs.aws.amazon.com/AmazonS3/latest/API/ErrorResponses.html
 // [GetBucketTagging]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketTagging.html
 // [Cost Allocation and Tagging]: https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2/cost-alloc-tags.html
+// [enable ABAC for a general purpose bucket]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/buckets-tagging-enable-abac.html
 // [Permissions Related to Bucket Subresource Operations]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-with-s3-actions.html#using-with-s3-actions-related-to-bucket-subresources
 // [DeleteBucketTagging]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucketTagging.html
+// [TagResource]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_control_TagResource.html
+// [UntagResource]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_control_UntagResource.html
 // [Using Cost Allocation in Amazon S3 Bucket Tags]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/CostAllocTagging.html
 // [Managing Access Permissions to Your Amazon S3 Resources]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-access-control.html
 func (c *Client) PutBucketTagging(ctx context.Context, params *PutBucketTaggingInput, optFns ...func(*Options)) (*PutBucketTaggingOutput, error) {

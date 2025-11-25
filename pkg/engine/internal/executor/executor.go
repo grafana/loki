@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/user"
@@ -500,10 +501,14 @@ func startRegionForNode(ctx context.Context, n physical.Node) (context.Context, 
 		)
 
 	case *physical.ColumnCompat:
+		collisionStrs := make([]string, len(n.Collisions))
+		for i, ct := range n.Collisions {
+			collisionStrs[i] = ct.String()
+		}
 		attributes = append(attributes,
 			attribute.String("src", n.Source.String()),
 			attribute.String("dst", n.Destination.String()),
-			attribute.String("collision", n.Collision.String()),
+			attribute.String("collisions", fmt.Sprintf("[%s]", strings.Join(collisionStrs, ", "))),
 		)
 
 	case *physical.ScanSet:
