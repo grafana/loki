@@ -1,6 +1,8 @@
 package physical
 
 import (
+	"slices"
+
 	"github.com/oklog/ulid/v2"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
@@ -23,14 +25,12 @@ func (m *ColumnCompat) ID() ulid.ULID { return m.NodeID }
 
 // Clone returns a deep copy of the node with a new unique ID.
 func (m *ColumnCompat) Clone() Node {
-	collisions := make([]types.ColumnType, len(m.Collisions))
-	copy(collisions, m.Collisions)
 	return &ColumnCompat{
 		NodeID: ulid.Make(),
 
 		Source:      m.Source,
 		Destination: m.Destination,
-		Collisions:  collisions,
+		Collisions:  slices.Clone(m.Collisions),
 	}
 }
 

@@ -125,15 +125,15 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 			// If the currently processed column is the source field for a colliding column,
 			// then write non-null values from source column into destination column.
 			// Also, "clear" the original column value by writing a NULL instead of the original value.
-			duplicates := duplicates[duplicateIdx]
-			collisionCols := make([]arrow.Array, len(duplicates.collisionIdxs))
-			for i, collIdx := range duplicates.collisionIdxs {
+			duplicate := duplicates[duplicateIdx]
+			collisionCols := make([]arrow.Array, len(duplicate.collisionIdxs))
+			for i, collIdx := range duplicate.collisionIdxs {
 				collisionCols[i] = batch.Column(collIdx)
 			}
 
 			switch sourceFieldBuilder := builder.Field(idx).(type) {
 			case *array.StringBuilder:
-				destinationFieldBuilder := builder.Field(duplicates.destinationIdx).(*array.StringBuilder)
+				destinationFieldBuilder := builder.Field(duplicate.destinationIdx).(*array.StringBuilder)
 				for i := range int(batch.NumRows()) {
 					if col.IsNull(i) || !col.IsValid(i) {
 						sourceFieldBuilder.AppendNull()      // append NULL to original column
@@ -151,10 +151,10 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 				}
 
 				sourceCol := sourceFieldBuilder.NewArray()
-				newSchemaColumns[duplicates.sourceIdx] = sourceCol
+				newSchemaColumns[duplicate.sourceIdx] = sourceCol
 
 				destinationCol := destinationFieldBuilder.NewArray()
-				newSchemaColumns[duplicates.destinationIdx] = destinationCol
+				newSchemaColumns[duplicate.destinationIdx] = destinationCol
 			default:
 				panic("invalid source column type: only string columns can be checked for collisions")
 			}
