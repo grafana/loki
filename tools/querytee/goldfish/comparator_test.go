@@ -98,7 +98,7 @@ func TestComparator_CompareResponses(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := CompareResponses(tt.sample, testTolerance)
+			result := CompareResponses(tt.sample, nil, nil, testTolerance, nil)
 			assert.Equal(t, tt.expectedStatus, result.ComparisonStatus)
 
 			for _, expectedDiff := range tt.expectedDiffs {
@@ -207,7 +207,7 @@ func TestCompareResponses_StatusCodes(t *testing.T) {
 			}
 
 			testTolerance := 0.1 // 10% tolerance for tests
-			result := CompareResponses(sample, testTolerance)
+			result := CompareResponses(sample, nil, nil, testTolerance, nil)
 
 			if tt.cellAStatus == 200 && tt.cellBStatus == 200 {
 				// For 200 status codes, result depends on hash comparison
@@ -282,7 +282,7 @@ func TestCompareResponses_ConfigurableTolerance(t *testing.T) {
 				},
 			}
 
-			result := CompareResponses(sample, tt.tolerance)
+			result := CompareResponses(sample, nil, nil, tt.tolerance, nil)
 
 			// The comparison should always be a match (same hash)
 			assert.Equal(t, goldfish.ComparisonStatusMatch, result.ComparisonStatus)

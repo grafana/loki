@@ -1,7 +1,9 @@
 package goldfish
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -32,7 +34,7 @@ func TestGoldfishEndToEnd(t *testing.T) {
 	storage := &mockStorage{}
 
 	// Create manager
-	manager, err := NewManager(config, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
+	manager, err := NewManager(config, 0.000001, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 	defer manager.Close()
 
@@ -177,7 +179,7 @@ func TestGoldfishMismatchDetection(t *testing.T) {
 	}
 
 	storage := &mockStorage{}
-	manager, err := NewManager(config, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
+	manager, err := NewManager(config, 0.000001, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 	defer manager.Close()
 
@@ -278,6 +280,134 @@ func TestGoldfishMismatchDetection(t *testing.T) {
 	assert.Contains(t, result.DifferenceDetails, "content_hash")
 }
 
+func TestGoldfishFloatingPointMismatchDetection(t *testing.T) {
+
+	// Sample values that exhibit floating point precision issues
+	values := []float64{
+		1e9, 1e-7, 1e-7, 1e-7, 1e-7, 1e-7,
+	}
+
+	var forwardSum float64
+	for _, v := range values {
+		forwardSum += v
+	}
+
+	var backwardSum float64
+	for i := len(values) - 1; i >= 0; i-- {
+		backwardSum += values[i]
+	}
+
+	// The order of addition for floating point numbers can impact precision.
+	// With the chosen values we expect a different result when adding
+	// from left-to-right vs right-to-left.
+	assert.NotEqual(t, forwardSum, backwardSum, "floating point addition should not be commutative for these inputs")
+
+	config := Config{
+		Enabled: true,
+		SamplingConfig: SamplingConfig{
+			DefaultRate: 1.0,
+		},
+	}
+
+	storage := &mockStorage{}
+	manager, err := NewManager(config, 0.000001, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
+	require.NoError(t, err)
+	defer manager.Close()
+
+	req := httptest.NewRequest("GET", "/loki/api/v1/query_range?query={job=\"test\"}", nil)
+	req.Header.Set("X-Scope-OrgID", "tenant1")
+
+	// Different log lines between cells - this will produce different hashes
+	responseBodyA := []byte(`{
+		"status": "success",
+		"data": {
+			"resultType": "scalar",
+			"result": [1, "SAMPLE_A"],
+			"stats": {
+				"summary": {
+					"execTime": 0.05,
+					"queueTime": 0.01,
+					"totalBytesProcessed": 500,
+					"totalLinesProcessed": 1,
+					"bytesProcessedPerSecond": 10000,
+					"linesProcessedPerSecond": 20,
+					"totalEntriesReturned": 1,
+					"splits": 1,
+					"shards": 1
+				}
+			}
+		}
+	}`)
+
+	responseBodyB := []byte(`{
+		"status": "success",
+		"data": {
+			"resultType": "scalar",
+			"result": [1, "SAMPLE_B"],
+			"stats": {
+				"summary": {
+					"execTime": 0.05,
+					"queueTime": 0.01,
+					"totalBytesProcessed": 500,
+					"totalLinesProcessed": 1,
+					"bytesProcessedPerSecond": 10000,
+					"linesProcessedPerSecond": 20,
+					"totalEntriesReturned": 1,
+					"splits": 1,
+					"shards": 1
+				}
+			}
+		}
+	}`)
+
+	responseBodyA = bytes.Replace(responseBodyA, []byte("SAMPLE_A"), []byte(fmt.Sprintf("%f", forwardSum)), 1)
+	responseBodyB = bytes.Replace(responseBodyB, []byte("SAMPLE_B"), []byte(fmt.Sprintf("%f", backwardSum)), 1)
+
+	// Extract stats for both responses
+	extractor := NewStatsExtractor()
+
+	statsA, hashA, sizeA, usedNewEngineA, err := extractor.ExtractResponseData(responseBodyA, 50)
+	require.NoError(t, err)
+
+	statsB, hashB, sizeB, usedNewEngineB, err := extractor.ExtractResponseData(responseBodyB, 50)
+	require.NoError(t, err)
+
+	cellAResp := &ResponseData{
+		Body:          responseBodyA,
+		StatusCode:    200,
+		Duration:      50 * time.Millisecond,
+		Stats:         statsA,
+		Hash:          hashA,
+		Size:          sizeA,
+		UsedNewEngine: usedNewEngineA,
+	}
+
+	cellBResp := &ResponseData{
+		Body:          responseBodyB,
+		StatusCode:    200,
+		Duration:      50 * time.Millisecond,
+		Stats:         statsB,
+		Hash:          hashB,
+		Size:          sizeB,
+		UsedNewEngine: usedNewEngineB,
+	}
+
+	ctx := context.Background()
+	manager.ProcessQueryPair(ctx, req, cellAResp, cellBResp)
+
+	time.Sleep(100 * time.Millisecond)
+
+	assert.Len(t, storage.results, 1)
+	result := storage.results[0]
+
+	// Verify that different content produces different hashes
+	assert.NotEqual(t, hashA, hashB, "Different content should produce different hashes")
+
+	// Verify that floating-point difference within tolerance is considered a match
+	assert.Equal(t, goldfish.ComparisonStatusMatch, result.ComparisonStatus, "Floating-point difference within tolerance should be a match")
+	assert.Equal(t, result.DifferenceDetails["tolerance_match"], true, "A flag indicating this was a tolerance based match should be present")
+}
+
 func TestGoldfishNewEngineDetection(t *testing.T) {
 	config := Config{
 		Enabled: true,
@@ -287,7 +417,7 @@ func TestGoldfishNewEngineDetection(t *testing.T) {
 	}
 
 	storage := &mockStorage{}
-	manager, err := NewManager(config, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
+	manager, err := NewManager(config, 0.000001, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 	defer manager.Close()
 

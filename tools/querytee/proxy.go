@@ -205,7 +205,7 @@ func NewProxy(cfg ProxyConfig, logger log.Logger, readRoutes, writeRoutes []Rout
 		}
 
 		// Create Goldfish manager
-		goldfishManager, err := goldfish.NewManager(cfg.Goldfish, storage, resultStore, logger, registerer)
+		goldfishManager, err := goldfish.NewManager(cfg.Goldfish, cfg.ValueComparisonTolerance, storage, resultStore, logger, registerer)
 		if err != nil {
 			if resultStore != nil {
 				_ = resultStore.Close(context.Background())

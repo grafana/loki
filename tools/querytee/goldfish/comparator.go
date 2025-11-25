@@ -5,10 +5,11 @@ import (
 	"time"
 
 	"github.com/grafana/loki/v3/pkg/goldfish"
+	"github.com/grafana/loki/v3/tools/querytee/responsecomparator"
 )
 
 // CompareResponses compares performance statistics and hashes from QuerySample
-func CompareResponses(sample *goldfish.QuerySample, performanceTolerance float64) goldfish.ComparisonResult {
+func CompareResponses(sample *goldfish.QuerySample, cellAResp, cellBResp *ResponseData, performanceTolerance float64, comparator responsecomparator.ResponsesComparator) goldfish.ComparisonResult {
 	result := goldfish.ComparisonResult{
 		CorrelationID:     sample.CorrelationID,
 		DifferenceDetails: make(map[string]any),
@@ -48,11 +49,30 @@ func CompareResponses(sample *goldfish.QuerySample, performanceTolerance float64
 
 	case sample.CellAResponseHash != sample.CellBResponseHash:
 		// Both returned 200 but with different content
-		result.ComparisonStatus = goldfish.ComparisonStatusMismatch
+
+		// If the content values are floating-point numbers, we might consider them a match
+		// within a certain tolerance
+
 		result.DifferenceDetails["content_hash"] = map[string]any{
 			"cell_a": sample.CellAResponseHash,
 			"cell_b": sample.CellBResponseHash,
 		}
+
+		if cellAResp != nil && cellBResp != nil && comparator != nil {
+			// we don't know the structure of the data, or the datatype.
+			// there is a chance the data is floating point numbers that differ within tolerance
+			// it is also possible we match some other unexpected cases
+			// where the hashes differ but the data is equivalent within tolerance (empty matrix?)
+
+			_, err := comparator.Compare(cellAResp.Body, cellBResp.Body, time.Time{})
+			if err == nil {
+				result.ComparisonStatus = goldfish.ComparisonStatusMatch
+				result.DifferenceDetails["tolerance_match"] = true
+				return result
+			}
+		}
+
+		result.ComparisonStatus = goldfish.ComparisonStatusMismatch
 		return result
 
 	default:

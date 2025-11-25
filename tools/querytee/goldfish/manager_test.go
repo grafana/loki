@@ -113,7 +113,7 @@ func TestManager_ShouldSample(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			storage := &mockStorage{}
-			manager, err := NewManager(tt.config, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
+			manager, err := NewManager(tt.config, 0.000001, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
 			require.NoError(t, err)
 
 			got := manager.ShouldSample(tt.tenantID)
@@ -131,7 +131,7 @@ func TestManager_ProcessQueryPair(t *testing.T) {
 	}
 
 	storage := &mockStorage{}
-	manager, err := NewManager(config, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
+	manager, err := NewManager(config, 0.000001, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	req, _ := http.NewRequest("GET", "/loki/api/v1/query_range?query=count_over_time({job=\"test\"}[5m])&start=1700000000&end=1700001000&step=60s", nil)
@@ -233,7 +233,7 @@ func Test_ProcessQueryPair_populatesTraceIDs(t *testing.T) {
 	}
 
 	storage := &mockStorage{}
-	manager, err := NewManager(config, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
+	manager, err := NewManager(config, 0.000001, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	req, _ := http.NewRequest("GET", "/loki/api/v1/query_range?query=count_over_time({job=\"test\"}[5m])&start=1700000000&end=1700001000&step=60s", nil)
@@ -276,7 +276,7 @@ func Test_ProcessQueryPair_populatesTraceIDs(t *testing.T) {
 
 func TestManager_Close(t *testing.T) {
 	storage := &mockStorage{}
-	manager, err := NewManager(Config{Enabled: true}, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
+	manager, err := NewManager(Config{Enabled: true}, 0.000001, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	err = manager.Close()
@@ -317,7 +317,7 @@ func TestProcessQueryPairCapturesUser(t *testing.T) {
 			}
 
 			storage := &mockStorage{}
-			manager, err := NewManager(config, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
+			manager, err := NewManager(config, 0.000001, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
 			require.NoError(t, err)
 
 			req, _ := http.NewRequest("GET", "/loki/api/v1/query_range?query=count_over_time({job=\"test\"}[5m])&start=1700000000&end=1700001000&step=60s", nil)
@@ -455,7 +455,7 @@ func TestProcessQueryPair_CapturesLogsDrilldown(t *testing.T) {
 			}
 
 			storage := &mockStorage{}
-			manager, err := NewManager(config, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
+			manager, err := NewManager(config, 0.000001, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
 			require.NoError(t, err)
 
 			req, _ := http.NewRequest("GET", "/loki/api/v1/query_range?query=count_over_time({job=\"test\"}[5m])&start=1700000000&end=1700001000&step=60s", nil)
@@ -555,7 +555,7 @@ func TestManagerResultPersistenceModes(t *testing.T) {
 
 			storage := &mockStorage{}
 			results := &mockResultStore{}
-			manager, err := NewManager(config, storage, results, log.NewNopLogger(), prometheus.NewRegistry())
+			manager, err := NewManager(config, 0.000001, storage, results, log.NewNopLogger(), prometheus.NewRegistry())
 			require.NoError(t, err)
 
 			req, _ := http.NewRequest("GET", "/loki/api/v1/query_range?query=sum(rate({job=\"app\"}[1m]))", nil)
