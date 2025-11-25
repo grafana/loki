@@ -491,7 +491,7 @@ func TestHTTP2MessageFrameSerialization(t *testing.T) {
 
 	expectedPlan := &physical.Plan{}
 	parallelize := expectedPlan.Graph().Add(&physical.Parallelize{NodeID: ulid.Make()})
-	compat := expectedPlan.Graph().Add(&physical.ColumnCompat{NodeID: ulid.Make(), Source: types.ColumnTypeMetadata, Destination: types.ColumnTypeMetadata, Collision: types.ColumnTypeLabel})
+	compat := expectedPlan.Graph().Add(&physical.ColumnCompat{NodeID: ulid.Make(), Source: types.ColumnTypeMetadata, Destination: types.ColumnTypeMetadata, Collisions: []types.ColumnType{types.ColumnTypeLabel}})
 	scanSet := expectedPlan.Graph().Add(&physical.ScanSet{
 		NodeID: ulid.Make(),
 		Targets: []*physical.ScanTarget{
