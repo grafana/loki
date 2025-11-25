@@ -10,6 +10,13 @@ import (
 	"github.com/grafana/loki/v3/pkg/util"
 )
 
+// PrepareDownscaleHandler is a special handler called by the rollout operator
+// immediately before the pod is downscaled. It can stop a downscale by
+// responding with a non 2xx status code.
+func (s *Service) PrepareDownscaleHandler(_ http.ResponseWriter, _ *http.Request) {
+	s.partitionInstanceLifecycler.SetRemoveOwnerOnShutdown(true)
+}
+
 // PrepareDelayedDownscaleHandler is a special handler called by the rollout
 // operator to prepare for a delayed downscale. This allows the service to
 // perform any number of actions in preparation of being scaled down at the
