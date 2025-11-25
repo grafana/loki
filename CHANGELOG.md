@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.6.2](https://github.com/grafana/loki/compare/v3.6.1...v3.6.2) (2025-11-25)
+
+
+### Bug Fixes
+
+* **deps:** Loki 3.6.1 CVE updates ([#20014](https://github.com/grafana/loki/issues/20014)) ([2f85998](https://github.com/grafana/loki/commit/2f85998f1adfce540137da4c9cf9b0997a1c42cd))
+
 ## [3.6.1](https://github.com/grafana/loki/compare/v3.6.0...v3.6.1) (2025-11-21)
 
 
