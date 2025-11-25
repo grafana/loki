@@ -12,9 +12,9 @@ type ColumnCompat struct {
 	NodeID ulid.ULID
 
 	// TODO(chaudum): These fields are poorly named. Come up with more descriptive names.
-	Source      types.ColumnType // column type of the column that may colide with columns of the same name but with collision type
-	Destination types.ColumnType // column type of the generated _extracted column (should be same as source)
-	Collision   types.ColumnType // column type of the column that a source type column may collide with
+	Source      types.ColumnType   // column type of the column that may colide with columns of the same name but with collision type
+	Destination types.ColumnType   // column type of the generated _extracted column (should be same as source)
+	Collisions  []types.ColumnType // column types of the columns that a source type column may collide with
 }
 
 // ID implements the [Node] interface.
@@ -23,12 +23,14 @@ func (m *ColumnCompat) ID() ulid.ULID { return m.NodeID }
 
 // Clone returns a deep copy of the node with a new unique ID.
 func (m *ColumnCompat) Clone() Node {
+	collisions := make([]types.ColumnType, len(m.Collisions))
+	copy(collisions, m.Collisions)
 	return &ColumnCompat{
 		NodeID: ulid.Make(),
 
 		Source:      m.Source,
 		Destination: m.Destination,
-		Collision:   m.Collision,
+		Collisions:  collisions,
 	}
 }
 
