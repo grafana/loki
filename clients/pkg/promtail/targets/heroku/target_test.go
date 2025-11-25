@@ -19,6 +19,8 @@ import (
 	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/testutils"
+
 	lokiClient "github.com/grafana/loki/v3/clients/pkg/promtail/client"
 	"github.com/grafana/loki/v3/clients/pkg/promtail/client/fake"
 	"github.com/grafana/loki/v3/clients/pkg/promtail/scrapeconfig"
@@ -281,7 +283,7 @@ func TestHerokuDrainTarget(t *testing.T) {
 
 			prometheus.DefaultRegisterer = prometheus.NewRegistry()
 			metrics := NewMetrics(prometheus.DefaultRegisterer)
-			pt, err := NewTarget(metrics, logger, eh, "test_job", config, tc.args.RelabelConfigs)
+			pt, err := NewTarget(metrics, logger, eh, "test_job", config, testutils.ValidateRelabelConfig(t, tc.args.RelabelConfigs))
 			require.NoError(t, err)
 			defer func() {
 				_ = pt.Stop()
@@ -411,7 +413,7 @@ func TestHerokuDrainTarget_UseTenantIDHeaderIfPresent(t *testing.T) {
 
 	prometheus.DefaultRegisterer = prometheus.NewRegistry()
 	metrics := NewMetrics(prometheus.DefaultRegisterer)
-	tenantIDRelabelConfig := []*relabel.Config{
+	tenantIDRelabelConfig := testutils.ValidateRelabelConfig(t, []*relabel.Config{
 		{
 			SourceLabels: model.LabelNames{"__tenant_id__"},
 			TargetLabel:  "tenant_id",
@@ -419,7 +421,7 @@ func TestHerokuDrainTarget_UseTenantIDHeaderIfPresent(t *testing.T) {
 			Action:       relabel.Replace,
 			Regex:        relabel.MustNewRegexp("(.*)"),
 		},
-	}
+	})
 	pt, err := NewTarget(metrics, logger, eh, "test_job", config, tenantIDRelabelConfig)
 	require.NoError(t, err)
 	defer func() {

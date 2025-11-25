@@ -237,7 +237,7 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) (Node, e
 
 			Source:      types.ColumnTypeMetadata,
 			Destination: types.ColumnTypeMetadata,
-			Collision:   types.ColumnTypeLabel,
+			Collisions:  []types.ColumnType{types.ColumnTypeLabel},
 		}
 		base, err = p.wrapNodeWith(base, compat)
 		if err != nil {
@@ -370,7 +370,8 @@ func (p *Planner) processProjection(lp *logical.Projection, ctx *Context) (Node,
 
 			Source:      types.ColumnTypeParsed,
 			Destination: types.ColumnTypeParsed,
-			Collision:   types.ColumnTypeLabel,
+			// Check for collisions against both label and metadata columns.
+			Collisions: []types.ColumnType{types.ColumnTypeLabel, types.ColumnTypeMetadata},
 		}
 		var err error
 		node, err = p.wrapNodeWith(node, compat)

@@ -192,7 +192,7 @@ message ColumnCompat {
 
   loki.expression.ColumnType source = 1; // column type of the column that may colide with columns of the same name but with collision type
   loki.expression.ColumnType destination = 2; // column type of the generated _extracted column (should be same as source)
-  loki.expression.ColumnType collision = 3; // column type of the column that a source type column may collide with}
+  repeated loki.expression.ColumnType collisions = 3; // column types of the columns that a source type column may collide with}
 }
 
 // TopK represents a physical plan node that performs topK operation.
