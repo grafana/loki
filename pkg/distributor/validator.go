@@ -100,7 +100,7 @@ func (v Validator) ValidateEntry(ctx context.Context, vCtx validationContext, la
 	ts := entry.Timestamp.UnixNano()
 	validation.LineLengthHist.Observe(float64(len(entry.Line)))
 	structuredMetadataCount := len(entry.StructuredMetadata)
-	structuredMetadataSizeBytes := util.StructuredMetadataSize(entry.StructuredMetadata)
+	structuredMetadataSizeBytes := util.StructuredMetadataSize(entry.StructuredMetadata, nil)
 	entrySize := float64(len(entry.Line) + structuredMetadataSizeBytes)
 
 	if vCtx.rejectOldSample && ts < vCtx.rejectOldSampleMaxAge {
@@ -178,7 +178,7 @@ func (v Validator) ValidateLabels(vCtx validationContext, ls labels.Labels, stre
 		numLabelNames--
 	}
 
-	entriesSize := util.EntriesTotalSize(stream.Entries)
+	entriesSize := util.EntriesTotalSize(stream.Entries, nil)
 
 	if numLabelNames > vCtx.maxLabelNamesPerSeries {
 		v.reportDiscardedData(validation.MaxLabelNamesPerSeries, vCtx, retentionHours, policy, entriesSize, len(stream.Entries), format)
