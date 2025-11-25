@@ -45,7 +45,7 @@ type topkPipeline struct {
 	// TopK can be sorted by any set of columns, but sorting by timestamp only is a special case
 	// due to possibility of short circuting.
 	sortByTime bool
-	callbacks  []func(ts time.Time, lessThan bool)
+	callbacks  []ContributingTimeRangeChangedHandler
 
 	batch  *topkBatch
 	region *xcap.Region
@@ -199,7 +199,7 @@ func (p *topkPipeline) Region() *xcap.Region {
 }
 
 // Subscribe implements ContributingTimeRangeChangedNotifier
-func (p *topkPipeline) Subscribe(callback func(ts time.Time, lessThan bool)) {
+func (p *topkPipeline) Subscribe(callback ContributingTimeRangeChangedHandler) {
 	p.callbacks = append(p.callbacks, callback)
 }
 

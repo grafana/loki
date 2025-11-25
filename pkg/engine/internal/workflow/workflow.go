@@ -364,7 +364,6 @@ func (wf *Workflow) handleNonTerminalStateChange(ctx context.Context, task *Task
 
 		wf.tasksMut.RLock()
 		{
-		NextChild:
 			for _, child := range wf.graph.Children(task) {
 				// Ignore children in terminal states.
 				if childState := wf.taskStates[child]; childState.Terminal() {
@@ -377,14 +376,9 @@ func (wf *Workflow) handleNonTerminalStateChange(ctx context.Context, task *Task
 					continue
 				}
 
-				// Cancel the child if and only if all of the child's parents (which
-				// includes the task that just updated) are in a terminal state.
-				for _, parent := range wf.graph.Parents(child) {
-					parentState := wf.taskStates[parent]
-					if !parentState.Terminal() {
-						continue NextChild
-					}
-				}
+				// TODO(spiridonov): We do not check parents here right now, there is only 1 parent now,
+				// but in general a task can be canceled only if all its parents are in terminal states OR
+				// have non-inersecting contributing time range.
 
 				tasksToCancel = append(tasksToCancel, child)
 			}
