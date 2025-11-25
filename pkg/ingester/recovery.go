@@ -7,12 +7,13 @@ import (
 	"runtime"
 	"sync"
 
+	"context"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/prometheus/prometheus/tsdb/wlog"
-	"golang.org/x/net/context"
 
 	"github.com/grafana/loki/v3/pkg/ingester/wal"
 	"github.com/grafana/loki/v3/pkg/logproto"
