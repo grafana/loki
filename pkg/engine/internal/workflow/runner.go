@@ -3,6 +3,7 @@ package workflow
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
 
@@ -129,6 +130,19 @@ type TaskStatus struct {
 	// Statistics report analytics about the lifetime of a task. Only set
 	// for terminal task states (see [TaskState.Terminal]).
 	Statistics *stats.Result
+
+	// ContributingTimeRange of a running task. Only set for non-terminal states.
+	ContributingTimeRange ContributingTimeRange
+}
+
+// ContributingTimeRange represents a time range of input data that can change the
+// current state of a running task. Anything outside of this range can not meaningfully
+// contribute to the task state.
+type ContributingTimeRange struct {
+	// End of the range
+	Timestamp time.Time
+	// Less than Timestamp
+	LessThan bool
 }
 
 // TaskState represents the state of a Task. It is sent as an event by a
