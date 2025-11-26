@@ -51,6 +51,9 @@ type SegmentationPartitionResolver struct {
 	failed          prometheus.Counter
 	randomlySharded prometheus.Counter
 	total           prometheus.Counter
+
+	// High cardinality metrics.
+	partitionsByTenantSegmentationKey *prometheus.GaugeVec
 }
 
 // NewSegmentationPartitionResolver returns a new SegmentationPartitionResolver.
@@ -70,6 +73,10 @@ func NewSegmentationPartitionResolver(perPartitionRateBytes uint64, ringReader r
 			Name: "loki_distributor_segmentation_partition_resolver_keys_total",
 			Help: "Total number of segmentation keys passed to the resolver.",
 		}),
+		partitionsByTenantSegmentationKey: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
+			Name: "loki_distributor_segmentation_partition_resolver_partitions_by_tenant_segmentation_key",
+			Help: "Number of partitions in the ring.",
+		}, []string{"tenant", "segmentation_key"}),
 		logger: logger,
 	}
 }
@@ -112,6 +119,9 @@ func (r *SegmentationPartitionResolver) Resolve(ctx context.Context, tenant stri
 		r.failed.Inc()
 		return 0, fmt.Errorf("failed to get segmentation key subring: %w", err)
 	}
+	r.partitionsByTenantSegmentationKey.
+		WithLabelValues(tenant, string(key)).
+		Set(float64(subring.ActivePartitionsCount()))
 	// Get a random partition from the subring.
 	activePartitionIDs := subring.ActivePartitionIDs()
 	idx := rand.Intn(len(activePartitionIDs))
