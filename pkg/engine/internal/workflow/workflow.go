@@ -348,7 +348,7 @@ func (wf *Workflow) handleTerminalStateChange(ctx context.Context, task *Task, o
 	}
 	wf.tasksMut.RUnlock()
 
-	wf.calcenTasks(ctx, tasksToCancel)
+	wf.cancelTasks(ctx, tasksToCancel)
 }
 
 func (wf *Workflow) handleNonTerminalStateChange(ctx context.Context, task *Task, newStatus TaskStatus) {
@@ -385,11 +385,11 @@ func (wf *Workflow) handleNonTerminalStateChange(ctx context.Context, task *Task
 		}
 		wf.tasksMut.RUnlock()
 
-		wf.calcenTasks(ctx, tasksToCancel)
+		wf.cancelTasks(ctx, tasksToCancel)
 	}
 }
 
-func (wf *Workflow) calcenTasks(ctx context.Context, tasks []*Task) {
+func (wf *Workflow) cancelTasks(ctx context.Context, tasks []*Task) {
 	// Runners may re-invoke onTaskChange, so we don't want to hold the mutex
 	// when calling this.
 	if err := wf.runner.Cancel(ctx, tasks...); err != nil {
