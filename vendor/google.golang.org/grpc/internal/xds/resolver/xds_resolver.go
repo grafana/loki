@@ -237,7 +237,7 @@ type xdsResolver struct {
 	ldsResourceName     string
 	listenerWatcher     *listenerWatcher
 	listenerUpdateRecvd bool
-	currentListener     xdsresource.ListenerUpdate
+	currentListener     *xdsresource.ListenerUpdate
 
 	rdsResourceName        string
 	routeConfigWatcher     *routeConfigWatcher
@@ -330,8 +330,13 @@ func (r *xdsResolver) sendNewServiceConfig(cs stoppableConfigSelector) bool {
 // Only executed in the context of a serializer callback.
 func (r *xdsResolver) newConfigSelector() *configSelector {
 	cs := &configSelector{
-		r:         r,
+		channelID: r.channelID,
 		xdsNodeID: r.xdsClient.BootstrapConfig().Node().GetId(),
+		sendNewServiceConfig: func() {
+			r.serializer.TrySchedule(func(context.Context) {
+				r.sendNewServiceConfig(r.curConfigSelector)
+			})
+		},
 		virtualHost: virtualHost{
 			httpFilterConfigOverride: r.currentVirtualHost.HTTPFilterConfigOverride,
 			retryConfig:              r.currentVirtualHost.RetryConfig,
@@ -352,14 +357,14 @@ func (r *xdsResolver) newConfigSelector() *configSelector {
 			ci.cfg = xdsChildConfig{ChildPolicy: balancerConfig(r.currentRouteConfig.ClusterSpecifierPlugins[rt.ClusterSpecifierPlugin])}
 			cs.clusters[clusterName] = ci
 		} else {
-			for cluster, wc := range rt.WeightedClusters {
-				clusterName := clusterPrefix + cluster
+			for _, wc := range rt.WeightedClusters {
+				clusterName := clusterPrefix + wc.Name
 				clusters.Add(&routeCluster{
 					name:                     clusterName,
 					httpFilterConfigOverride: wc.HTTPFilterConfigOverride,
 				}, int64(wc.Weight))
 				ci := r.addOrGetActiveClusterInfo(clusterName)
-				ci.cfg = xdsChildConfig{ChildPolicy: newBalancerConfig(cdsName, cdsBalancerConfig{Cluster: cluster})}
+				ci.cfg = xdsChildConfig{ChildPolicy: newBalancerConfig(cdsName, cdsBalancerConfig{Cluster: wc.Name})}
 				cs.clusters[clusterName] = ci
 			}
 		}
@@ -505,7 +510,7 @@ func (r *xdsResolver) onResourceError(err error) {
 }
 
 // Only executed in the context of a serializer callback.
-func (r *xdsResolver) onListenerResourceUpdate(update xdsresource.ListenerUpdate) {
+func (r *xdsResolver) onListenerResourceUpdate(update *xdsresource.ListenerUpdate) {
 	if r.logger.V(2) {
 		r.logger.Infof("Received update for Listener resource %q: %v", r.ldsResourceName, pretty.ToJSON(update))
 	}
@@ -606,9 +611,4 @@ func (r *xdsResolver) onRouteConfigResourceError(name string, err error) {
 		return
 	}
 	r.onResourceError(err)
-}
-
-// Only executed in the context of a serializer callback.
-func (r *xdsResolver) onClusterRefDownToZero() {
-	r.sendNewServiceConfig(r.curConfigSelector)
 }

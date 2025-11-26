@@ -301,6 +301,7 @@ type PutObjectArgs struct {
 	ContentCrc32       string
 	StorageClass       string
 	Process            string
+	CannedAcl          string
 	ObjectTagging      string
 	TrafficLimit       int64
 	ContentCrc32c      string
@@ -344,6 +345,7 @@ type CopyObjectArgs struct {
 	IfModifiedSince   string
 	IfUnmodifiedSince string
 	TrafficLimit      int64
+	CannedAcl         string
 	TaggingDirective  string
 	ObjectTagging     string
 	ContentCrc32c     string

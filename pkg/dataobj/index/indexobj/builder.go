@@ -124,6 +124,7 @@ type Builder struct {
 	labelCache *lru.Cache[string, labels.Labels]
 
 	currentSizeEstimate int
+	builderFull         bool
 
 	builder       *dataobj.Builder                  // Inner builder for accumulating sections.
 	streams       map[string]*streams.Builder       // The key is the TenantID.
@@ -177,12 +178,16 @@ func (b *Builder) GetEstimatedSize() int {
 	return b.currentSizeEstimate
 }
 
+func (b *Builder) IsFull() bool {
+	return b.builderFull
+}
+
 func (b *Builder) AppendIndexPointer(tenantID string, path string, startTs time.Time, endTs time.Time) error {
 	b.metrics.appendsTotal.Inc()
 	newEntrySize := len(path) + 1 + 1 // path, startTs, endTs
 
 	if b.state != builderStateEmpty && b.currentSizeEstimate+newEntrySize > int(b.cfg.TargetObjectSize) {
-		return ErrBuilderFull
+		b.builderFull = true
 	}
 
 	timer := prometheus.NewTimer(b.metrics.appendTime)
@@ -216,7 +221,7 @@ func (b *Builder) AppendStream(tenantID string, stream streams.Stream) (int64, e
 	newEntrySize := labelsEstimate(stream.Labels) + 2
 
 	if b.state != builderStateEmpty && b.currentSizeEstimate+newEntrySize > int(b.cfg.TargetObjectSize) {
-		return 0, ErrBuilderFull
+		b.builderFull = true
 	}
 
 	timer := prometheus.NewTimer(b.metrics.appendTime)
@@ -273,7 +278,7 @@ func (b *Builder) ObserveLogLine(tenantID string, path string, section int64, st
 	newEntrySize := 4 // ints and times compress well so we just need to make an estimate.
 
 	if b.state != builderStateEmpty && b.currentSizeEstimate+newEntrySize > int(b.cfg.TargetObjectSize) {
-		return ErrBuilderFull
+		b.builderFull = true
 	}
 
 	timer := prometheus.NewTimer(b.metrics.appendTime)
@@ -309,7 +314,7 @@ func (b *Builder) AppendColumnIndex(tenantID string, path string, section int64,
 	newEntrySize := len(columnName) + 1 + 1 + len(valuesBloom) + 1
 
 	if b.state != builderStateEmpty && b.currentSizeEstimate+newEntrySize > int(b.cfg.TargetObjectSize) {
-		return ErrBuilderFull
+		b.builderFull = true
 	}
 
 	timer := prometheus.NewTimer(b.metrics.appendTime)
@@ -460,6 +465,7 @@ func (b *Builder) Reset() {
 
 	b.metrics.sizeEstimate.Set(0)
 	b.currentSizeEstimate = 0
+	b.builderFull = false
 	b.state = builderStateEmpty
 }
 

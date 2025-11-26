@@ -81,27 +81,3 @@ func (c *ClusterRequestsCounter) StartRequest(max uint32) error {
 func (c *ClusterRequestsCounter) EndRequest() {
 	atomic.AddUint32(&c.numRequests, ^uint32(0))
 }
-
-// ClearCounterForTesting clears the counter for the service. Should be only
-// used in tests.
-func ClearCounterForTesting(clusterName, edsServiceName string) {
-	src.mu.Lock()
-	defer src.mu.Unlock()
-	k := clusterNameAndServiceName{
-		clusterName:    clusterName,
-		edsServiceName: edsServiceName,
-	}
-	c, ok := src.clusters[k]
-	if !ok {
-		return
-	}
-	c.numRequests = 0
-}
-
-// ClearAllCountersForTesting clears all the counters. Should be only used in
-// tests.
-func ClearAllCountersForTesting() {
-	src.mu.Lock()
-	defer src.mu.Unlock()
-	src.clusters = make(map[clusterNameAndServiceName]*ClusterRequestsCounter)
-}

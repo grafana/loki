@@ -2,7 +2,6 @@ package indexobj
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -146,7 +145,7 @@ func TestBuilder_Append(t *testing.T) {
 			MinTimestamp: time.Unix(10, 0).UTC(),
 			MaxTimestamp: time.Unix(20, 0).UTC(),
 		})
-		if errors.Is(err, ErrBuilderFull) {
+		if builder.IsFull() {
 			break
 		}
 		require.NoError(t, err)
@@ -166,7 +165,7 @@ func TestBuilder_AppendIndexPointer(t *testing.T) {
 		require.NoError(t, ctx.Err())
 
 		err := builder.AppendIndexPointer(testTenant, fmt.Sprintf("test/path-%d", i), time.Unix(10, 0).Add(time.Duration(i)*time.Second).UTC(), time.Unix(20, 0).Add(time.Duration(i)*time.Second).UTC())
-		if errors.Is(err, ErrBuilderFull) {
+		if builder.IsFull() {
 			break
 		}
 		require.NoError(t, err)

@@ -28,7 +28,6 @@ import (
 	"sync"
 	"time"
 
-	"google.golang.org/grpc/grpclog"
 	igrpclog "google.golang.org/grpc/internal/grpclog"
 	"google.golang.org/grpc/internal/xds/clients"
 	clientsinternal "google.golang.org/grpc/internal/xds/clients/internal"
@@ -114,10 +113,6 @@ func (c *LRSClient) getOrCreateLRSStream(serverIdentifier clients.ServerIdentifi
 		c.logger.Infof("Creating a new lrs stream for server identifier %q", serverIdentifier)
 	}
 
-	l := grpclog.Component("xds")
-	logPrefix := clientPrefix(c)
-	c.logger = igrpclog.NewPrefixLogger(l, logPrefix)
-
 	// Create a new transport and create a new lrs stream, and add it to the
 	// map of lrs streams.
 	tr, err := c.transportBuilder.Build(serverIdentifier)
@@ -131,7 +126,7 @@ func (c *LRSClient) getOrCreateLRSStream(serverIdentifier clients.ServerIdentifi
 		transport: tr,
 		backoff:   c.backoff,
 		nodeProto: nodeProto,
-		logPrefix: logPrefix,
+		logPrefix: clientPrefix(c),
 	})
 
 	// Register a stop function that decrements the reference count, stops

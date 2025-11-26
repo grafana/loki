@@ -270,9 +270,9 @@ type Limits struct {
 
 	ShardAggregations []string `yaml:"shard_aggregations,omitempty" json:"shard_aggregations,omitempty" doc:"description=List of LogQL vector and range aggregations that should be sharded."`
 
-	PatternIngesterTokenizableJSONFieldsDefault dskit_flagext.StringSliceCSV `yaml:"pattern_ingester_tokenizable_json_fields_default" json:"pattern_ingester_tokenizable_json_fields_default" doc:"hidden"`
-	PatternIngesterTokenizableJSONFieldsAppend  dskit_flagext.StringSliceCSV `yaml:"pattern_ingester_tokenizable_json_fields_append"  json:"pattern_ingester_tokenizable_json_fields_append"  doc:"hidden"`
-	PatternIngesterTokenizableJSONFieldsDelete  dskit_flagext.StringSliceCSV `yaml:"pattern_ingester_tokenizable_json_fields_delete"  json:"pattern_ingester_tokenizable_json_fields_delete"  doc:"hidden"`
+	PatternIngesterTokenizableJSONFieldsDefault dskit_flagext.StringSliceCSV `yaml:"pattern_ingester_tokenizable_json_fields_default" json:"pattern_ingester_tokenizable_json_fields_default" doc:"description=Default list of JSON fields to tokenize for pattern detection. It is recommend to append to or delete from the defaults rather than replacing them."`
+	PatternIngesterTokenizableJSONFieldsAppend  dskit_flagext.StringSliceCSV `yaml:"pattern_ingester_tokenizable_json_fields_append"  json:"pattern_ingester_tokenizable_json_fields_append"  doc:"description=List of additional JSON fields to tokenize for pattern detection."`
+	PatternIngesterTokenizableJSONFieldsDelete  dskit_flagext.StringSliceCSV `yaml:"pattern_ingester_tokenizable_json_fields_delete"  json:"pattern_ingester_tokenizable_json_fields_delete"  doc:"description=List of JSON fields to excluded from the defaults to tokenize for pattern detection."`
 	MetricAggregationEnabled                    bool                         `yaml:"metric_aggregation_enabled"                       json:"metric_aggregation_enabled"`
 	PatternPersistenceEnabled                   bool                         `yaml:"pattern_persistence_enabled"                      json:"pattern_persistence_enabled"`
 	PatternPersistenceGranularity               model.Duration               `yaml:"pattern_persistence_granularity"                  json:"pattern_persistence_granularity"`
