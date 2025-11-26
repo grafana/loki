@@ -41,7 +41,7 @@ func (s *Service) PrepareDelayedDownscaleHandler(w http.ResponseWriter, r *http.
 }
 
 func (s *Service) prepareDelayedDownscale(w http.ResponseWriter, r *http.Request) {
-	// We do accept prepare downscale requests while in PENDING state because
+	// We don't accept prepare downscale requests while in PENDING state because
 	// if the downscale is canceled we don't know what the original state was.
 	// Given a partition is expected to stay in PENDING state for a short period
 	// of time we choose to reject this case.
