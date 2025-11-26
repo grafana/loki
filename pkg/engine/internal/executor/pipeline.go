@@ -32,14 +32,15 @@ type RegionProvider interface {
 	Region() *xcap.Region
 }
 
+// Contributing time range would be anything less than `ts` if `lessThan` is true, or greater
+// than `ts` otherwise.
 type ContributingTimeRangeChangedHandler = func(ts time.Time, lessThan bool)
 
 // ContributingTimeRangeChangedNotifier is an optional interface that pipelines can implement
 // to notify others that they are interested only in inputs from some specific time range.
 type ContributingTimeRangeChangedNotifier interface {
-	// Subscribe adds a callback function to a list of listeners. Contributing time range would be
-	// anything less than `ts` if `lessThan` is true, or greater than `ts` otherwise.
-	Subscribe(callback ContributingTimeRangeChangedHandler)
+	// SubscribeToTimeRangeChanges adds a callback function to a list of listeners.
+	SubscribeToTimeRangeChanges(callback ContributingTimeRangeChangedHandler)
 }
 
 var (

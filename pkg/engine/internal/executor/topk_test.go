@@ -66,7 +66,7 @@ func Test_topk(t *testing.T) {
 	defer topkPipeline.Close()
 
 	events := []contributingTimeRangeChangedEvent{}
-	topkPipeline.Subscribe(func(ts time.Time, lessThan bool) {
+	topkPipeline.SubscribeToTimeRangeChanges(func(ts time.Time, lessThan bool) {
 		events = append(events, contributingTimeRangeChangedEvent{ts: ts, lessThan: lessThan})
 	})
 

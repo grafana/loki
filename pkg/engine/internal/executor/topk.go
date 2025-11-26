@@ -198,8 +198,8 @@ func (p *topkPipeline) Region() *xcap.Region {
 	return p.region
 }
 
-// Subscribe implements ContributingTimeRangeChangedNotifier
-func (p *topkPipeline) Subscribe(callback ContributingTimeRangeChangedHandler) {
+// SubscribeToTimeRangeChanges implements ContributingTimeRangeChangedNotifier
+func (p *topkPipeline) SubscribeToTimeRangeChanges(callback ContributingTimeRangeChangedHandler) {
 	p.callbacks = append(p.callbacks, callback)
 }
 

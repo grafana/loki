@@ -170,7 +170,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	// TODO(spiridonov): find a way to subscribe on non-root pipelines.
 	notifier, ok := pipeline.(executor.ContributingTimeRangeChangedNotifier)
 	if ok {
-		notifier.Subscribe(func(ts time.Time, lessThan bool) {
+		notifier.SubscribeToTimeRangeChanges(func(ts time.Time, lessThan bool) {
 			// Send a Running task status update with the current time range
 			err := job.Scheduler.SendMessage(ctx, wire.TaskStatusMessage{
 				ID: job.Task.ULID,
