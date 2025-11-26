@@ -2,6 +2,7 @@ package querytee
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -14,10 +15,12 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/loki/v3/pkg/goldfish"
+	"github.com/grafana/loki/v3/pkg/loghttp"
 	querytee_goldfish "github.com/grafana/loki/v3/tools/querytee/goldfish"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	prom_testutil "github.com/prometheus/client_golang/prometheus/testutil"
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
@@ -537,6 +540,174 @@ func (m *mockGoldfishStorage) Close() error {
 
 func (m *mockGoldfishStorage) GetQueryByCorrelationID(_ context.Context, _ string) (*goldfish.QuerySample, error) {
 	return nil, nil
+}
+
+func (m *mockGoldfishStorage) Reset() {
+	m.samples = []goldfish.QuerySample{}
+	m.results = []goldfish.ComparisonResult{}
+}
+
+// TestProxyEndpoint_QuerySplitting tests the query splitting functionality for goldfish comparison
+func TestProxyEndpoint_QuerySplitting(t *testing.T) {
+	now := time.Now()
+	minAge := 3 * time.Hour
+	threshold := now.Add(-minAge)
+
+	oldResponseBody := `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"__name__":"test_metric","job":"test"},"values":[[1000,"1.0"],[2000,"2.0"]]}]}}`
+	recentResponseBody := `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"__name__":"test_metric","job":"test"},"values":[[3000,"3.0"],[4000,"4.0"]]}]}}`
+
+	var mu sync.Mutex
+	receivedQueries := []string{}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		receivedQueries = append(receivedQueries, r.URL.RawQuery)
+		mu.Unlock()
+
+		rangeQuery, err := loghttp.ParseRangeQuery(r)
+		require.NoError(t, err)
+		endTime := rangeQuery.End
+
+		// If end time is before threshold, return old response
+		// Otherwise return recent response
+		w.WriteHeader(200)
+		if endTime.Before(threshold) {
+			_, _ = w.Write([]byte(oldResponseBody))
+		} else {
+			_, _ = w.Write([]byte(recentResponseBody))
+		}
+	}))
+	defer server.Close()
+
+	u, err := url.Parse(server.URL)
+	require.NoError(t, err)
+
+	backends := []*ProxyBackend{
+		NewProxyBackend("backend-1", u, time.Second, true),  // preferred
+		NewProxyBackend("backend-2", u, time.Second, false), // non-preferred
+	}
+
+	storage := &mockGoldfishStorage{}
+	goldfishConfig := querytee_goldfish.Config{
+		Enabled: true,
+		SamplingConfig: querytee_goldfish.SamplingConfig{
+			DefaultRate: 1.0, // Always sample
+		},
+		ComparisonMinAge: minAge,
+	}
+	goldfishManager, err := querytee_goldfish.NewManager(goldfishConfig, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
+	require.NoError(t, err)
+
+	endpoint := NewProxyEndpoint(backends, "test", NewProxyMetrics(nil), log.NewNopLogger(), nil, false).WithGoldfish(goldfishManager)
+
+	t.Run("query entirely recent (skips goldfish)", func(t *testing.T) {
+		receivedQueries = []string{}
+		storage.Reset()
+
+		// Query from threshold+1h to threshold+2h (all recent)
+		start := threshold.Add(time.Hour)
+		end := threshold.Add(2 * time.Hour)
+		req := httptest.NewRequest("GET", "/loki/api/v1/query_range?query=rate({job=\"test\"}[5m])&start="+formatTime(start)+"&end="+formatTime(end)+"&step=60s", nil)
+		req.Header.Set("X-Scope-OrgID", "test-tenant")
+
+		w := httptest.NewRecorder()
+		endpoint.ServeHTTP(w, req)
+
+		assert.Equal(t, 200, w.Code)
+		assert.Equal(t, 2, len(receivedQueries), "expected 1 query per backend, got %d", len(receivedQueries))
+		assert.Equal(t, 0, len(storage.samples), "recent query should not be sent to goldfish cell or compared")
+	})
+
+	t.Run("query entirely old (normal goldfish flow)", func(t *testing.T) {
+		receivedQueries = []string{}
+		storage.Reset()
+
+		// Query from threshold-2h to threshold-1h (all old)
+		start := threshold.Add(-2 * time.Hour)
+		end := threshold.Add(-time.Hour)
+		req := httptest.NewRequest("GET", "/loki/api/v1/query_range?query=rate({job=\"test\"}[5m])&start="+formatTime(start)+"&end="+formatTime(end)+"&step=60s", nil)
+		req.Header.Set("X-Scope-OrgID", "test-tenant")
+
+		w := httptest.NewRecorder()
+		endpoint.ServeHTTP(w, req)
+
+		// Give goldfish time to process
+		time.Sleep(2 * time.Second)
+
+		assert.Equal(t, 200, w.Code)
+		assert.Equal(t, 2, len(receivedQueries), "expected 1 query per backend, got %d", len(receivedQueries))
+		assert.Equal(t, 1, len(storage.samples), "Goldfish should process entirely old queries normally")
+	})
+
+	t.Run("query spans threshold (split and merge)", func(t *testing.T) {
+		receivedQueries = []string{}
+		storage.Reset()
+
+		// Query from threshold-1h to threshold+1h (spans threshold)
+		start := threshold.Add(-time.Hour)
+		end := threshold.Add(time.Hour)
+		req := httptest.NewRequest("GET", "/loki/api/v1/query_range?query=rate({job=\"test\"}[5m])&start="+formatTime(start)+"&end="+formatTime(end)+"&step=60s", nil)
+		req.Header.Set("X-Scope-OrgID", "test-tenant")
+
+		w := httptest.NewRecorder()
+		endpoint.ServeHTTP(w, req)
+
+		// Give goldfish time to process
+		time.Sleep(500 * time.Millisecond)
+
+		assert.Equal(t, 200, w.Code)
+
+		assert.Equal(t, 3, len(receivedQueries), "expected 3 queries, 1 for the recent portion, and 1 to each backend for the old portion, got %d", len(receivedQueries))
+
+		// Verify that old queries go to both backends
+		oldQueries := 0
+		recentQueries := 0
+		for _, q := range receivedQueries {
+			if strings.Contains(q, "end=") {
+				endStr := extractQueryParam(q, "end")
+				endTime, _ := loghttp.ParseTimestamp(endStr, time.Time{})
+				if endTime.Before(threshold) || endTime.Equal(threshold) {
+					oldQueries++
+				} else {
+					recentQueries++
+				}
+			}
+		}
+		assert.Equal(t, 2, oldQueries, "Old portion should be sent to both backends")
+		assert.Equal(t, 1, recentQueries, "Recent portion should only be sent to preferred backend")
+
+		assert.Equal(t, 1, len(storage.samples), "goldfish compares the old portion of the query between the two backends")
+
+		// Parse the JSON response and verify concatenation
+		var response loghttp.QueryResponse
+		err = json.Unmarshal(w.Body.Bytes(), &response)
+		require.NoError(t, err)
+		
+		assert.Equal(t, "success", response.Status)
+		assert.Equal(t, string(loghttp.ResultTypeMatrix), string(response.Data.ResultType))
+		
+		// Verify we got a matrix response
+		matrix, ok := response.Data.Result.(loghttp.Matrix)
+		require.True(t, ok, "Response should be a matrix")
+		require.Len(t, matrix, 1, "Should have one metric")
+		
+		metric := matrix[0]
+		
+		assert.Equal(t, model.LabelValue("test_metric"), metric.Metric["__name__"])
+		assert.Equal(t, model.LabelValue("test"), metric.Metric["job"])
+		assert.Equal(t, len(metric.Values), 4, "Should have multiple data points from concatenation")
+	})
+}
+
+// Helper function to extract query parameters from a query string
+func extractQueryParam(queryString, param string) string {
+	parts := strings.Split(queryString, "&")
+	for _, part := range parts {
+		if strings.HasPrefix(part, param+"=") {
+			return strings.TrimPrefix(part, param+"=")
+		}
+	}
+	return ""
 }
 
 func Test_extractTenant(t *testing.T) {

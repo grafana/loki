@@ -69,7 +69,7 @@ func query(r *http.Request) string {
 }
 
 func ts(r *http.Request) (time.Time, error) {
-	return parseTimestamp(r.Form.Get("time"), time.Now())
+	return ParseTimestamp(r.Form.Get("time"), time.Now())
 }
 
 func direction(r *http.Request) (logproto.Direction, error) {
@@ -98,7 +98,7 @@ func determineBounds(now time.Time, startString, endString, sinceString string) 
 		since = time.Duration(d)
 	}
 
-	end, err := parseTimestamp(endString, now)
+	end, err := ParseTimestamp(endString, now)
 	if err != nil {
 		return time.Time{}, time.Time{}, errors.Wrap(err, "could not parse 'end' parameter")
 	}
@@ -111,7 +111,7 @@ func determineBounds(now time.Time, startString, endString, sinceString string) 
 		endOrNow = now
 	}
 
-	start, err := parseTimestamp(startString, endOrNow.Add(-since))
+	start, err := ParseTimestamp(startString, endOrNow.Add(-since))
 	if err != nil {
 		return time.Time{}, time.Time{}, errors.Wrap(err, "could not parse 'start' parameter")
 	}
@@ -158,9 +158,9 @@ func parseInt(value string, def int) (int, error) {
 	return strconv.Atoi(value)
 }
 
-// parseTimestamp parses a ns unix timestamp from a string
+// ParseTimestamp parses a ns unix timestamp from a string
 // if the value is empty it returns a default value passed as second parameter
-func parseTimestamp(value string, def time.Time) (time.Time, error) {
+func ParseTimestamp(value string, def time.Time) (time.Time, error) {
 	if value == "" {
 		return def, nil
 	}

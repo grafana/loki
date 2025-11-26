@@ -87,6 +87,11 @@ func NewManager(config Config, storage goldfish.Storage, resultStore ResultStore
 	return m, nil
 }
 
+// ComparsionMinAge returns the minimum age of data to send to goldfish for comparison.
+func (m *Manager) ComparisonMinAge() time.Duration {
+	return m.config.ComparisonMinAge
+}
+
 // ShouldSample determines if a query should be sampled based on tenant configuration.
 // Returns false if Goldfish is disabled or if the tenant should not be sampled.
 func (m *Manager) ShouldSample(tenantID string) bool {
