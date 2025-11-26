@@ -112,7 +112,7 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *Back
 			// Check if query needs splitting
 			needsSplit, splitPoint, step, err := shouldSplitQuery(r, minAge)
 			if err == nil && needsSplit {
-				level.Info(p.logger).Log(
+				level.Debug(p.logger).Log(
 					"msg", "splitting query for goldfish comparison",
 					"split_point", splitPoint,
 					"step", step,
@@ -123,6 +123,8 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *Back
 				// Execute split query logic
 				p.executeSplitQuery(r, resCh, splitPoint, step, goldfishSample)
 				return
+			} else {
+				level.Debug(p.logger).Log("msg", "query does not need splitting, skipping goldfish comparison")
 			}
 		}
 	}
@@ -204,7 +206,7 @@ func (p *ProxyEndpoint) executeSplitQuery(
 		return
 	}
 
-	level.Debug(p.logger).Log("msg", "executing split query",
+	level.Debug(p.logger).Log("msg", "executing split goldfish query",
 		"old_query", oldQuery.URL.RawQuery,
 		"recent_query", recentQuery.URL.RawQuery,
 		"split_point", splitPoint,
@@ -263,6 +265,7 @@ func (p *ProxyEndpoint) executeSplitQuery(
 		issuer:             issuer,
 		trackForComparison: true,
 	}, &wg)
+
 	wg.Wait()
 
 	recentRes := recentResponses[0]
@@ -281,16 +284,13 @@ func (p *ProxyEndpoint) executeSplitQuery(
 		return
 	}
 
-	lvl := level.Debug
-	if !recentRes.succeeded() {
-		lvl = level.Warn
-	}
-	lvl(p.logger).Log(
+	level.Debug(p.logger).Log(
 		"msg", "backend response (recent query)",
 		"backend", preferredBackend.name,
-		"status", recentRes.status,
+		"status", recentRes.statusCode(),
 		"elapsed", recentRes.duration,
 		"issuer", issuer,
+		"query", recentQuery.URL.RawQuery,
 	)
 	p.metrics.requestDuration.WithLabelValues(
 		recentRes.backend.name,
@@ -322,6 +322,7 @@ func (p *ProxyEndpoint) executeSplitQuery(
 			"msg", "Failed to concatenate preferred backend responses",
 			"err", err,
 			"backend", preferredBackend.name,
+			"query", recentQuery.URL.RawQuery,
 			"issuer", issuer,
 		)
 		resCh <- &BackendResponse{
@@ -336,11 +337,7 @@ func (p *ProxyEndpoint) executeSplitQuery(
 	resCh <- preferredConcatenatedResp
 
 	for i, resp := range oldResponses {
-		if i == preferredResponseIdx {
-			continue
-		}
-
-		if resp == nil {
+		if i == preferredResponseIdx || resp == nil {
 			continue
 		}
 
@@ -391,6 +388,7 @@ func (p *ProxyEndpoint) executeSplitQuery(
 	close(resCh)
 
 	if goldfishSample {
+		level.Debug(p.logger).Log("msg", "processing concatenated responses with Goldfish")
 		p.processResponsesWithGoldfish(oldQuery, oldResponses)
 	}
 }
