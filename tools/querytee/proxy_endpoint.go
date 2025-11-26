@@ -265,8 +265,23 @@ func (p *ProxyEndpoint) executeSplitQuery(
 	}, &wg)
 	wg.Wait()
 
-	lvl := level.Debug
 	recentRes := recentResponses[0]
+	if recentRes == nil || !recentRes.succeeded() {
+		level.Error(p.logger).Log(
+			"msg", "recent query was not executed or failed",
+			"backend", preferredBackend.name,
+			"path", recentQuery.URL.Path,
+			"issuer", issuer,
+		)
+		resCh <- &BackendResponse{
+			err:    fmt.Errorf("recent query to preferred backend was not executed or failed"),
+			status: 500,
+		}
+		close(resCh)
+		return
+	}
+
+	lvl := level.Debug
 	if !recentRes.succeeded() {
 		lvl = level.Warn
 	}
@@ -286,7 +301,7 @@ func (p *ProxyEndpoint) executeSplitQuery(
 	).Observe(recentRes.duration.Seconds())
 
 	preferredOldRes := oldResponses[preferredResponseIdx]
-	if preferredOldRes == nil || !preferredOldRes.succeeded() || !recentRes.succeeded() {
+	if preferredOldRes == nil || !preferredOldRes.succeeded() {
 		level.Warn(p.logger).Log(
 			"msg", "failed to get successful responses from preferred backend for both old and recent queries",
 			"issuer", issuer,
