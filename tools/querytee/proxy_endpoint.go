@@ -318,9 +318,18 @@ func (p *ProxyEndpoint) executeSplitQuery(
 
 	preferredConcatenatedResp, err := concatenateResponses(preferredOldRes, recentRes)
 	if err != nil {
-		level.Error(p.logger).Log("msg", "Failed to concatenate responses", "err", err)
-		// Fall back to old response
-		resCh <- preferredOldRes
+		level.Error(p.logger).Log(
+			"msg", "Failed to concatenate preferred backend responses",
+			"err", err,
+			"backend", preferredBackend.name,
+			"issuer", issuer,
+		)
+		resCh <- &BackendResponse{
+			backend:  preferredBackend,
+			status:   500,
+			err:      fmt.Errorf("failed to concatenate split query responses: %w", err),
+			duration: preferredOldRes.duration + recentRes.duration,
+		}
 		close(resCh)
 		return
 	}
@@ -331,9 +340,18 @@ func (p *ProxyEndpoint) executeSplitQuery(
 			continue
 		}
 
+		if resp == nil {
+			continue
+		}
+
 		concatenatedResp, err := concatenateResponses(resp, recentRes)
 		if err != nil {
-			level.Error(p.logger).Log("msg", "Failed to concatenate responses", "err", err)
+			level.Warn(p.logger).Log(
+				"msg", "Failed to concatenate non-preferred backend responses, skipping",
+				"err", err,
+				"backend", p.backends[i].name,
+				"issuer", issuer,
+			)
 			continue
 		}
 		resCh <- concatenatedResp
