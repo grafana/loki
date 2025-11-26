@@ -2,6 +2,7 @@ package querytee
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -13,8 +14,6 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/loki/v3/pkg/goldfish"
-	querytee_goldfish "github.com/grafana/loki/v3/tools/querytee/goldfish"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	prom_testutil "github.com/prometheus/client_golang/prometheus/testutil"
@@ -22,6 +21,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
 	"go.uber.org/atomic"
+
+	"github.com/grafana/loki/v3/pkg/goldfish"
+	querytee_goldfish "github.com/grafana/loki/v3/tools/querytee/goldfish"
 )
 
 func Test_ProxyEndpoint_waitBackendResponseForDownstream(t *testing.T) {
@@ -578,4 +580,32 @@ func Test_extractTenant(t *testing.T) {
 			assert.Equal(t, tt.expected, result)
 		})
 	}
+}
+
+func TestProxyEndpoint_ServeHTTP_ForwardsResponseHeaders(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Add("Content-Type", "application/json; charset=utf-8")
+		fmt.Fprint(w, "ok")
+	}))
+	defer srv.Close()
+
+	srvURL, err := url.Parse(srv.URL)
+	require.NoError(t, err)
+
+	backends := []*ProxyBackend{{
+		name:      "backend-1",
+		endpoint:  srvURL,
+		client:    srv.Client(),
+		timeout:   time.Minute,
+		preferred: true,
+	}}
+
+	recorder := httptest.NewRecorder()
+	fakeReq := httptest.NewRequestWithContext(t.Context(), "", "/", nil)
+
+	endpoint := NewProxyEndpoint(backends, "test", NewProxyMetrics(nil), log.NewNopLogger(), nil, false)
+	endpoint.ServeHTTP(recorder, fakeReq)
+
+	require.Equal(t, http.StatusOK, recorder.Result().StatusCode, "Status code from backend should be forwarded")
+	require.Equal(t, "application/json; charset=utf-8", recorder.Result().Header.Get("Content-Type"), "Response header from backend should be forwarded")
 }
