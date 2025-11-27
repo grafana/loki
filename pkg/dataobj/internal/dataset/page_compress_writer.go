@@ -7,6 +7,7 @@ import (
 	"io"
 
 	"github.com/golang/snappy"
+	"github.com/klauspost/compress/zstd"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
@@ -19,17 +20,26 @@ type compressWriter struct {
 	// which then flushes to w once it's full.
 
 	w   io.WriteCloser // Compressing writer.
-	buf io.Writer      // Buffered writer in front of w to be able to call WriteByte.
+	buf *bufio.Writer  // Buffered writer in front of w to be able to call WriteByte.
 
 	rawBytes int // Number of uncompressed bytes written.
 
 	compression datasetmd.CompressionType // Compression type being used.
-	opts        CompressionOptions        // Options to customize compression.
+	opts        *CompressionOptions       // Options to customize compression.
 }
 
-var _ streamio.Writer = (*compressWriter)(nil)
+var (
+	_ streamio.Writer = (*compressWriter)(nil)
 
-func newCompressWriter(w io.Writer, ty datasetmd.CompressionType, opts CompressionOptions) *compressWriter {
+	defaultCompressionOptions = new(CompressionOptions)
+)
+
+func newCompressWriter(w io.Writer, ty datasetmd.CompressionType, opts *CompressionOptions) *compressWriter {
+	if opts == nil {
+		opts = defaultCompressionOptions
+	}
+	opts.init()
+
 	c := compressWriter{compression: ty, opts: opts}
 	c.Reset(w)
 	return &c
@@ -54,29 +64,9 @@ func (c *compressWriter) WriteByte(b byte) error {
 
 // Flush compresses any pending uncompressed data in the buffer.
 func (c *compressWriter) Flush() error {
-	switch c.compression {
-	case datasetmd.COMPRESSION_TYPE_ZSTD:
-		zstdWriter := c.opts.zstdWriter()
-
-		tempBuf := bufpool.Get(c.rawBytes)
-		defer bufpool.Put(tempBuf)
-
-		buf, ok := c.buf.(*bytes.Buffer)
-		if !ok {
-			return fmt.Errorf("expected bytes.Buffer, got %T", c.buf)
-		}
-
-		compressed := zstdWriter.EncodeAll(buf.Bytes(), tempBuf.Bytes())
-		_, err := c.w.Write(compressed)
-		buf.Reset()
-		if err != nil {
-			return fmt.Errorf("writing compressed data: %w", err)
-		}
-	default:
-		// Flush our buffer first so c.w is up to date.
-		if err := c.buf.(*bufio.Writer).Flush(); err != nil {
-			return fmt.Errorf("flushing buffer: %w", err)
-		}
+	// Flush our buffer first so c.w is up to date.
+	if err := c.buf.Flush(); err != nil {
+		return fmt.Errorf("flushing buffer: %w", err)
 	}
 
 	// c.w may not support Flush (such as when using no compression), so we check
@@ -112,8 +102,11 @@ func (c *compressWriter) Reset(w io.Writer) {
 			if c.opts.zstdWriter == nil {
 				panic("Zstd compression requested but zstd writer is not initialized. Use NewZstdCompressionOptions to initialize it.")
 			}
-			// we will write raw compressed bytes directly to w
-			compressedWriter = nopCloseWriter{w}
+			compressedWriter = &deferredZstdCompressor{
+				inner:       w,
+				zstdEncoder: c.opts.zstdWriter(),
+				buf:         bytes.NewBuffer(nil),
+			}
 
 		default:
 			panic(fmt.Sprintf("compressWriter.Reset: unknown compression type %v", c.compression))
@@ -122,19 +115,10 @@ func (c *compressWriter) Reset(w io.Writer) {
 		c.w = compressedWriter
 	}
 
-	switch c.compression {
-	case datasetmd.COMPRESSION_TYPE_ZSTD:
-		if c.buf != nil {
-			c.buf.(*bytes.Buffer).Reset()
-		} else {
-			c.buf = bytes.NewBuffer(nil)
-		}
-	default:
-		if c.buf != nil {
-			c.buf.(*bufio.Writer).Reset(c.w)
-		} else {
-			c.buf = bufio.NewWriterSize(c.w, 256)
-		}
+	if c.buf != nil {
+		c.buf.Reset(c.w)
+	} else {
+		c.buf = bufio.NewWriterSize(c.w, 256)
 	}
 
 	c.rawBytes = 0
@@ -155,3 +139,32 @@ type nopCloseWriter struct{ w io.Writer }
 
 func (w nopCloseWriter) Write(p []byte) (n int, err error) { return w.w.Write(p) }
 func (w nopCloseWriter) Close() error                      { return nil }
+
+type deferredZstdCompressor struct {
+	inner       io.Writer     // Writer to send compressed data to
+	zstdEncoder *zstd.Encoder // Compressor
+	buf         *bytes.Buffer // Buffered uncompressed data
+}
+
+func (c *deferredZstdCompressor) Write(p []byte) (int, error) {
+	return c.buf.Write(p)
+}
+
+func (c *deferredZstdCompressor) Reset(w io.Writer) {
+	c.inner = w
+	c.buf.Reset()
+}
+
+func (c *deferredZstdCompressor) Flush() error {
+	tmpBuf := bufpool.Get(c.buf.Len())
+	defer bufpool.Put(tmpBuf)
+
+	compressed := c.zstdEncoder.EncodeAll(c.buf.Bytes(), tmpBuf.Bytes())
+	_, err := c.inner.Write(compressed)
+	c.buf.Reset()
+	return err
+}
+
+func (c *deferredZstdCompressor) Close() error {
+	return nil
+}

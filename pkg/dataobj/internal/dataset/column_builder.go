@@ -33,7 +33,7 @@ type BuilderOptions struct {
 	Compression datasetmd.CompressionType
 
 	// CompressionOptions holds optional configuration for compression.
-	CompressionOptions CompressionOptions
+	CompressionOptions *CompressionOptions
 
 	// StatisticsOptions holds optional configuration for statistics.
 	Statistics StatisticsOptions
@@ -68,16 +68,15 @@ type CompressionOptions struct {
 	zstdWriter func() *zstd.Encoder
 }
 
-func NewZstdCompressionOptions(opts ...zstd.EOption) CompressionOptions {
-	return CompressionOptions{
-		Zstd: opts,
-		zstdWriter: sync.OnceValue(func() *zstd.Encoder {
-			writer, err := zstd.NewWriter(nil, opts...)
+func (o *CompressionOptions) init() {
+	if o.zstdWriter == nil {
+		o.zstdWriter = sync.OnceValue(func() *zstd.Encoder {
+			writer, err := zstd.NewWriter(nil, append(o.Zstd, zstd.WithEncoderConcurrency(1))...)
 			if err != nil {
 				panic(fmt.Errorf("error initializing shared zstd writer: %w", err))
 			}
 			return writer
-		}),
+		})
 	}
 }
 
@@ -99,10 +98,6 @@ type ColumnBuilder struct {
 // provided options. NewColumnBuilder returns an error if the options are
 // invalid.
 func NewColumnBuilder(tag string, opts BuilderOptions) (*ColumnBuilder, error) {
-	if err := opts.Validate(); err != nil {
-		return nil, err
-	}
-
 	builder, err := newPageBuilder(opts)
 	if err != nil {
 		return nil, fmt.Errorf("creating page builder: %w", err)

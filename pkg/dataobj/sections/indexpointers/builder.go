@@ -151,9 +151,8 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 			Physical: datasetmd_v2.PHYSICAL_TYPE_BINARY,
 			Logical:  ColumnTypePath.String(),
 		},
-		Encoding:           datasetmd_v2.ENCODING_TYPE_PLAIN,
-		Compression:        datasetmd_v2.COMPRESSION_TYPE_ZSTD,
-		CompressionOptions: dataset.NewZstdCompressionOptions(),
+		Encoding:    datasetmd_v2.ENCODING_TYPE_PLAIN,
+		Compression: datasetmd_v2.COMPRESSION_TYPE_ZSTD,
 		Statistics: dataset.StatisticsOptions{
 			StoreRangeStats: true,
 		},

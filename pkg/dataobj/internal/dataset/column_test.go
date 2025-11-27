@@ -38,12 +38,11 @@ func TestColumnBuilder_ReadWrite(t *testing.T) {
 	t.Log("Expected pages:", expectedPages)
 
 	opts := BuilderOptions{
-		PageSizeHint:       0, // Set the size to 0 so each column has exactly one value.
-		PageMaxRowCount:    pageMaxRows,
-		Type:               ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"},
-		Compression:        datasetmd.COMPRESSION_TYPE_ZSTD,
-		CompressionOptions: NewZstdCompressionOptions(),
-		Encoding:           datasetmd.ENCODING_TYPE_PLAIN,
+		PageSizeHint:    0, // Set the size to 0 so each column has exactly one value.
+		PageMaxRowCount: pageMaxRows,
+		Type:            ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"},
+		Compression:     datasetmd.COMPRESSION_TYPE_ZSTD,
+		Encoding:        datasetmd.ENCODING_TYPE_PLAIN,
 	}
 	b, err := NewColumnBuilder("", opts)
 	require.NoError(t, err)
