@@ -50,9 +50,6 @@ func CompareResponses(sample *goldfish.QuerySample, cellAResp, cellBResp *Respon
 	case sample.CellAResponseHash != sample.CellBResponseHash:
 		// Both returned 200 but with different content
 
-		// If the content values are floating-point numbers, we might consider them a match
-		// within a certain tolerance
-
 		result.DifferenceDetails["content_hash"] = map[string]any{
 			"cell_a": sample.CellAResponseHash,
 			"cell_b": sample.CellBResponseHash,
@@ -61,6 +58,7 @@ func CompareResponses(sample *goldfish.QuerySample, cellAResp, cellBResp *Respon
 		if cellAResp != nil && cellBResp != nil && comparator != nil {
 			// we don't know the structure of the data, or the datatype.
 			// there is a chance the data is floating point numbers that differ within tolerance
+			// and so have different hashes but are "equivalent" within tolerance.
 			// it is also possible we match some other unexpected cases
 			// where the hashes differ but the data is equivalent within tolerance (empty matrix?)
 
