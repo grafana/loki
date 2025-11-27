@@ -1,7 +1,6 @@
 package dataset
 
 import (
-	"errors"
 	"fmt"
 	"sync"
 
@@ -39,13 +38,6 @@ type BuilderOptions struct {
 	Statistics StatisticsOptions
 }
 
-func (opts BuilderOptions) Validate() error {
-	if opts.Compression == datasetmd.COMPRESSION_TYPE_ZSTD && opts.CompressionOptions.zstdWriter == nil {
-		return errors.New("zstd compression requested but the zstd writer is not initialized. Use NewZstdCompressionOptions to initialize it.")
-	}
-	return nil
-}
-
 // StatisticsOptions customizes the collection of statistics for a column.
 type StatisticsOptions struct {
 	// StoreRangeStats indicates whether to store value range statistics for the
@@ -71,7 +63,7 @@ type CompressionOptions struct {
 func (o *CompressionOptions) init() {
 	if o.zstdWriter == nil {
 		o.zstdWriter = sync.OnceValue(func() *zstd.Encoder {
-			writer, err := zstd.NewWriter(nil, append(o.Zstd, zstd.WithEncoderConcurrency(1))...)
+			writer, err := zstd.NewWriter(nil, o.Zstd...)
 			if err != nil {
 				panic(fmt.Errorf("error initializing shared zstd writer: %w", err))
 			}

@@ -36,6 +36,7 @@ var (
 
 func newCompressWriter(w io.Writer, ty datasetmd.CompressionType, opts *CompressionOptions) *compressWriter {
 	if opts == nil {
+		// Use a default value in order to ensure that all compressWriters use the same shared zstd writer after init(), unless they explicitly pass different options.
 		opts = defaultCompressionOptions
 	}
 	opts.init()
