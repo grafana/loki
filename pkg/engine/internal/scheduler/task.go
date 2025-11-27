@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"fmt"
+	"net/http"
 	"slices"
 	"time"
 
@@ -15,6 +16,11 @@ type task struct {
 
 	inner   *workflow.Task
 	handler workflow.TaskEventHandler
+
+	// metadata holds additional metadata associated with the task.
+	// This can be used to stortracing and other information that
+	// should be propagated to workers.
+	metadata http.Header
 
 	owner  *workerConn
 	status workflow.TaskStatus

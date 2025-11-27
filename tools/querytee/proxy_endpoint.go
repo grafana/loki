@@ -82,6 +82,13 @@ func (p *ProxyEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if downstreamRes.err != nil {
 		http.Error(w, downstreamRes.err.Error(), http.StatusInternalServerError)
 	} else {
+		// Copy response headers.
+		for key, values := range downstreamRes.headers {
+			for _, value := range values {
+				w.Header().Add(key, value)
+			}
+		}
+
 		w.WriteHeader(downstreamRes.status)
 		if _, err := w.Write(downstreamRes.body); err != nil {
 			level.Warn(p.logger).Log("msg", "Unable to write response", "err", err)
@@ -298,6 +305,7 @@ type BackendResponse struct {
 	backend  *ProxyBackend
 	status   int
 	body     []byte
+	headers  http.Header
 	err      error
 	duration time.Duration
 	traceID  string

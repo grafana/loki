@@ -776,7 +776,7 @@ func TestPlanner_MakeTable_Ordering(t *testing.T) {
 
 		expectedPlan := &Plan{}
 		parallelize := expectedPlan.graph.Add(&Parallelize{})
-		compat := expectedPlan.graph.Add(&ColumnCompat{Source: types.ColumnTypeMetadata, Destination: types.ColumnTypeMetadata, Collision: types.ColumnTypeLabel})
+		compat := expectedPlan.graph.Add(&ColumnCompat{Source: types.ColumnTypeMetadata, Destination: types.ColumnTypeMetadata, Collisions: []types.ColumnType{types.ColumnTypeLabel}})
 		scanSet := expectedPlan.graph.Add(&ScanSet{
 			// Targets should be added in the order of the scan timestamps
 			// ASC => oldest to newest
@@ -816,7 +816,7 @@ func TestPlanner_MakeTable_Ordering(t *testing.T) {
 
 		expectedPlan := &Plan{}
 		parallelize := expectedPlan.graph.Add(&Parallelize{})
-		compat := expectedPlan.graph.Add(&ColumnCompat{Source: types.ColumnTypeMetadata, Destination: types.ColumnTypeMetadata, Collision: types.ColumnTypeLabel})
+		compat := expectedPlan.graph.Add(&ColumnCompat{Source: types.ColumnTypeMetadata, Destination: types.ColumnTypeMetadata, Collisions: []types.ColumnType{types.ColumnTypeLabel}})
 		scanSet := expectedPlan.graph.Add(&ScanSet{
 			// Targets should be added in the order of the scan timestamps
 			Targets: []*ScanTarget{
