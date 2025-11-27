@@ -115,7 +115,7 @@ func hasDataObjectsAvailable(config engine.Config, start, end time.Time) bool {
 	// Data objects in object storage lag behind 20-30 minutes.
 	// We are generous and only enable v2 engine queries that end earlier than 1DataObjStorageLag ago (default 1h),
 	// to ensure data objects are available.
-	v2Start, v2End := config.Executor.ValidQueryRange()
+	v2Start, v2End := config.ValidQueryRange()
 	return end.Before(v2End) && start.After(v2Start)
 }
 

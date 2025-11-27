@@ -308,15 +308,6 @@ query_engine:
   # CLI flag: -query-engine.instance-interface-names
   [instance_interface_names: <list of strings> | default = [<private network interfaces>]]
 
-  # Amount of time until data objects are available.
-  # CLI flag: -query-engine.dataobj-storage-lag
-  [dataobj_storage_lag: <duration> | default = 1h]
-
-  # Initial date when data objects became available. Format YYYY-MM-DD. If not
-  # set, assume data objects are always available no matter how far back.
-  # CLI flag: -query-engine.dataobj-storage-start
-  [dataobj_storage_start: <time> | default = 0]
-
   # Experimental: Batch size of the next generation query engine.
   # CLI flag: -query-engine.batch-size
   [batch_size: <int> | default = 100]
@@ -360,6 +351,15 @@ query_engine:
   # Experimental: Interval at which to lookup new schedulers by DNS SRV records.
   # CLI flag: -query-engine.scheduler-lookup-interval
   [scheduler_lookup_interval: <duration> | default = 10s]
+
+  # Amount of time until data objects are available.
+  # CLI flag: -query-engine.dataobj-storage-lag
+  [dataobj_storage_lag: <duration> | default = 1h]
+
+  # Initial date when data objects became available. Format YYYY-MM-DD. If not
+  # set, assume data objects are always available no matter how far back.
+  # CLI flag: -query-engine.dataobj-storage-start
+  [dataobj_storage_start: <time> | default = 0]
 
   # Enable routing of query splits in the query frontend to the next generation
   # engine when they fall within the configured time range.
@@ -5286,15 +5286,6 @@ engine:
 # of the normal ingesters.
 # CLI flag: -querier.query-partition-ingesters
 [query_partition_ingesters: <boolean> | default = false]
-
-# Amount of time until data objects are available.
-# CLI flag: -querier.dataobj-storage-lag
-[dataobj_storage_lag: <duration> | default = 1h]
-
-# Initial date when data objects became available. Format YYYY-MM-DD. If not
-# set, assume data objects are always available no matter how far back.
-# CLI flag: -querier.dataobj-storage-start
-[dataobj_storage_start: <string> | default = ""]
 ```
 
 ### query_range

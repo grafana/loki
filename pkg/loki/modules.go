@@ -1167,7 +1167,7 @@ func (t *Loki) initQueryFrontendMiddleware() (_ services.Service, err error) {
 	}
 
 	if t.Cfg.QueryEngine.EnableV2EngineRouter {
-		start, end := t.Cfg.QueryEngine.Executor.ValidQueryRange()
+		start, end := t.Cfg.QueryEngine.ValidQueryRange()
 
 		level.Debug(util_log.Logger).Log(
 			"msg", "initializing v2 engine router",
@@ -1185,7 +1185,7 @@ func (t *Loki) initQueryFrontendMiddleware() (_ services.Service, err error) {
 			Enabled: true,
 
 			Start: start,
-			Lag:   t.Cfg.Querier.DataobjStorageLag,
+			Lag:   t.Cfg.QueryEngine.DataobjStorageLag,
 
 			Validate: engine_v2.IsQuerySupported,
 			Handler:  handler,
@@ -1452,7 +1452,7 @@ func (t *Loki) initV2QueryEngine() (services.Service, error) {
 		}
 
 		httpMiddleware := middleware.Merge(toMerge...)
-		handler := httpMiddleware.Wrap(engine_v2.Handler(t.Cfg.QueryEngine.Executor, logger, engine, t.Overrides))
+		handler := httpMiddleware.Wrap(engine_v2.Handler(t.Cfg.QueryEngine, logger, engine, t.Overrides))
 
 		t.Server.HTTP.Path("/loki/api/v1/query_range").Methods("GET", "POST").Handler(handler)
 		t.Server.HTTP.Path("/loki/api/v1/query").Methods("GET", "POST").Handler(handler)
