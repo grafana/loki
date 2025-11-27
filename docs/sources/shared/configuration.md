@@ -7846,7 +7846,7 @@ Configuration for `tracing`.
 # GCS client from creating millions of spans in high-throughput production
 # environments.
 # CLI flag: -tracing.filter-gcs-spans
-[filter_gcs_spans: <boolean> | default = false]
+[filter_gcs_spans: <boolean> | default = true]
 ```
 
 <!-- vale Grafana.Spelling = YES -->
