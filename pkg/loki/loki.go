@@ -39,6 +39,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer"
 	dataobjindex "github.com/grafana/loki/v3/pkg/dataobj/index"
 	"github.com/grafana/loki/v3/pkg/distributor"
+	"github.com/grafana/loki/v3/pkg/engine"
 	engine_v2 "github.com/grafana/loki/v3/pkg/engine"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/ingester"
@@ -91,6 +92,7 @@ type Config struct {
 	UI                  ui.Config                  `yaml:"ui,omitempty"`
 	Distributor         distributor.Config         `yaml:"distributor,omitempty"`
 	Querier             querier.Config             `yaml:"querier,omitempty"`
+	QueryEngine         engine.Config              `yaml:"query_engine,omitempty" category:"experimental"`
 	QueryScheduler      scheduler.Config           `yaml:"query_scheduler"`
 	Frontend            lokifrontend.Config        `yaml:"frontend,omitempty"`
 	QueryRange          queryrange.Config          `yaml:"query_range,omitempty"`
@@ -201,6 +203,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Common.RegisterFlags(f)
 	c.Distributor.RegisterFlags(f)
 	c.Querier.RegisterFlags(f)
+	c.QueryEngine.RegisterFlags(f)
 	c.CompactorHTTPClient.RegisterFlags(f)
 	c.CompactorGRPCClient.RegisterFlags(f)
 	c.IngesterClient.RegisterFlags(f)
