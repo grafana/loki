@@ -21,4 +21,6 @@ type Limits interface {
 	MaxStreamsMatchersPerQuery(context.Context, string) int
 	MaxConcurrentTailRequests(context.Context, string) int
 	MaxEntriesLimitPerQuery(context.Context, string) int
+	QueryBucketGetObjectRateLimit(context.Context, string) int64
+	QueryBucketGetObjectRateLimitBurst(context.Context, string) int64
 }
