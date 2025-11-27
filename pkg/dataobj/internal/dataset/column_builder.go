@@ -91,6 +91,10 @@ type ColumnBuilder struct {
 // provided options. NewColumnBuilder returns an error if the options are
 // invalid.
 func NewColumnBuilder(tag string, opts BuilderOptions) (*ColumnBuilder, error) {
+	if opts.Compression == datasetmd.COMPRESSION_TYPE_ZSTD && opts.CompressionOptions.ZstdWriter == nil {
+		opts.CompressionOptions = NewZstdCompressionOptions(opts.CompressionOptions.Zstd...)
+	}
+
 	builder, err := newPageBuilder(opts)
 	if err != nil {
 		return nil, fmt.Errorf("creating page builder: %w", err)
