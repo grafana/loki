@@ -8,10 +8,16 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/loki/v3/pkg/goldfish"
+	"github.com/grafana/loki/v3/tools/querytee/comparator"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// add a helper function to create a SamplesComparator with default tolerance for tests
+func testComparator() comparator.SamplesComparator {
+	return *comparator.NewSamplesComparator(comparator.SampleComparisonOptions{Tolerance: 0.000001})
+}
 
 func TestGoldfishEndToEnd(t *testing.T) {
 	// This test demonstrates the full flow of Goldfish functionality
@@ -32,7 +38,7 @@ func TestGoldfishEndToEnd(t *testing.T) {
 	storage := &mockStorage{}
 
 	// Create manager
-	manager, err := NewManager(config, 0.000001, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
+	manager, err := NewManager(config, testComparator(), storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 	defer manager.Close()
 
@@ -177,7 +183,7 @@ func TestGoldfishMismatchDetection(t *testing.T) {
 	}
 
 	storage := &mockStorage{}
-	manager, err := NewManager(config, 0.000001, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
+	manager, err := NewManager(config, testComparator(), storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 	defer manager.Close()
 
@@ -287,7 +293,7 @@ func TestGoldfishFloatingPointMismatchDetection(t *testing.T) {
 	}
 
 	storage := &mockStorage{}
-	manager, err := NewManager(config, 0.000001, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
+	manager, err := NewManager(config, testComparator(), storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 	defer manager.Close()
 
@@ -391,7 +397,7 @@ func TestGoldfishNewEngineDetection(t *testing.T) {
 	}
 
 	storage := &mockStorage{}
-	manager, err := NewManager(config, 0.000001, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
+	manager, err := NewManager(config, testComparator(), storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 	defer manager.Close()
 
