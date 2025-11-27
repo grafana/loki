@@ -126,6 +126,8 @@ type Reader struct {
 	ready bool
 	inner *dataset.Reader
 	buf   []dataset.Row
+
+	builder *array.RecordBuilder
 }
 
 // NewReader creates a new Reader from the provided options. Options are not
@@ -173,14 +175,13 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.RecordBatch, er
 	r.buf = slicegrow.GrowToCap(r.buf, batchSize)
 	r.buf = r.buf[:batchSize]
 
-	builder := array.NewRecordBuilder(r.opts.Allocator, r.schema)
-
 	n, readErr := r.inner.Read(ctx, r.buf)
+	r.builder.Reserve(n)
 	for rowIndex := range n {
 		row := r.buf[rowIndex]
 
 		for columnIndex, val := range row.Values {
-			columnBuilder := builder.Field(columnIndex)
+			columnBuilder := r.builder.Field(columnIndex)
 
 			if val.IsNil() {
 				columnBuilder.AppendNull()
@@ -234,7 +235,7 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.RecordBatch, er
 
 	// We only return readErr after processing n so that we properly handle n>0
 	// while also getting an error such as io.EOF.
-	return builder.NewRecordBatch(), readErr
+	return r.builder.NewRecordBatch(), readErr
 }
 
 func (r *Reader) init() error {
@@ -280,6 +281,10 @@ func (r *Reader) init() error {
 		r.inner = dataset.NewReader(innerOptions)
 	} else {
 		r.inner.Reset(innerOptions)
+	}
+
+	if r.builder == nil {
+		r.builder = array.NewRecordBuilder(r.opts.Allocator, r.schema)
 	}
 
 	r.ready = true
@@ -433,6 +438,9 @@ func (r *Reader) Reset(opts ReaderOptions) {
 		// fully reset on the next call to [Reader.init].
 		_ = r.inner.Close()
 	}
+	if r.builder != nil {
+		r.builder = nil
+	}
 }
 
 // Close closes the Reader and releases any resources it holds. Closed Readers
@@ -440,6 +448,9 @@ func (r *Reader) Reset(opts ReaderOptions) {
 func (r *Reader) Close() error {
 	if r.inner != nil {
 		return r.inner.Close()
+	}
+	if r.builder != nil {
+		r.builder = nil
 	}
 	return nil
 }

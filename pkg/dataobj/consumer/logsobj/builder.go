@@ -127,10 +127,10 @@ type BuilderConfig struct {
 // RegisterFlagsWithPrefix registers flags with the given prefix.
 func (cfg *BuilderConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	// Set defaults for base builder configuration
-	_ = cfg.BuilderBaseConfig.TargetPageSize.Set("2MB")
-	_ = cfg.BuilderBaseConfig.TargetObjectSize.Set("1GB")
-	_ = cfg.BuilderBaseConfig.BufferSize.Set("16MB")
-	_ = cfg.BuilderBaseConfig.TargetSectionSize.Set("128MB")
+	_ = cfg.TargetPageSize.Set("2MB")
+	_ = cfg.TargetObjectSize.Set("1GB")
+	_ = cfg.BufferSize.Set("16MB")
+	_ = cfg.TargetSectionSize.Set("128MB")
 	cfg.BuilderBaseConfig.RegisterFlagsWithPrefix(prefix, f)
 
 	f.StringVar(&cfg.DataobjSortOrder, prefix+"dataobj-sort-order", sortStreamASC, "The desired sort order of the logs section. Can either be `stream-asc` (order by streamID ascending and timestamp descending) or `timestamp-desc` (order by timestamp descending and streamID ascending).")

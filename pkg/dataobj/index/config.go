@@ -21,10 +21,10 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	// Set defaults for base builder configuration
-	_ = cfg.BuilderBaseConfig.TargetPageSize.Set("128KB")
-	_ = cfg.BuilderBaseConfig.TargetObjectSize.Set("64MB")
-	_ = cfg.BuilderBaseConfig.BufferSize.Set("2MB")
-	_ = cfg.BuilderBaseConfig.TargetSectionSize.Set("16MB")
+	_ = cfg.TargetPageSize.Set("128KB")
+	_ = cfg.TargetObjectSize.Set("64MB")
+	_ = cfg.BufferSize.Set("2MB")
+	_ = cfg.TargetSectionSize.Set("16MB")
 	cfg.BuilderBaseConfig.RegisterFlagsWithPrefix(prefix, f)
 
 	f.IntVar(&cfg.EventsPerIndex, prefix+"events-per-index", 32, "Experimental: The number of events to batch before building an index")
