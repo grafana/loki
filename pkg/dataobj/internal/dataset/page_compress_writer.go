@@ -101,7 +101,7 @@ func (c *compressWriter) Reset(w io.Writer) {
 
 		case datasetmd.COMPRESSION_TYPE_ZSTD:
 			if c.opts.zstdWriter == nil {
-				panic("Zstd compression requested but zstd writer is not initialized. Use NewZstdCompressionOptions to initialize it.")
+				panic("Zstd compression requested but zstd writer is not initialized. Use CompressionOptions.init() to initialize it.")
 			}
 			compressedWriter = &deferredZstdCompressor{
 				inner:       w,
