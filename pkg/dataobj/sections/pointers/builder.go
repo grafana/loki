@@ -252,8 +252,9 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 			Physical: datasetmd.PHYSICAL_TYPE_BINARY,
 			Logical:  ColumnTypePath.String(),
 		},
-		Encoding:    datasetmd.ENCODING_TYPE_PLAIN,
-		Compression: datasetmd.COMPRESSION_TYPE_ZSTD,
+		Encoding:           datasetmd.ENCODING_TYPE_PLAIN,
+		Compression:        datasetmd.COMPRESSION_TYPE_ZSTD,
+		CompressionOptions: dataset.NewZstdCompressionOptions(),
 		Statistics: dataset.StatisticsOptions{
 			StoreRangeStats: true,
 		},
@@ -304,8 +305,9 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 			Physical: datasetmd.PHYSICAL_TYPE_BINARY,
 			Logical:  ColumnTypeColumnName.String(),
 		},
-		Encoding:    datasetmd.ENCODING_TYPE_PLAIN,
-		Compression: datasetmd.COMPRESSION_TYPE_ZSTD,
+		Encoding:           datasetmd.ENCODING_TYPE_PLAIN,
+		Compression:        datasetmd.COMPRESSION_TYPE_ZSTD,
+		CompressionOptions: dataset.NewZstdCompressionOptions(),
 		Statistics: dataset.StatisticsOptions{
 			StoreRangeStats: true,
 		},

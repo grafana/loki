@@ -92,7 +92,7 @@ type ColumnBuilder struct {
 // invalid.
 func NewColumnBuilder(tag string, opts BuilderOptions) (*ColumnBuilder, error) {
 	if opts.Compression == datasetmd.COMPRESSION_TYPE_ZSTD && opts.CompressionOptions.ZstdWriter == nil {
-		opts.CompressionOptions = NewZstdCompressionOptions(opts.CompressionOptions.Zstd...)
+		return nil, fmt.Errorf("zstd compression requested for %s but the zstd writer is not initialized. Use NewZstdCompressionOptions to initialize it.", tag)
 	}
 
 	builder, err := newPageBuilder(opts)
