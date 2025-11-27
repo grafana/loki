@@ -353,7 +353,7 @@ func TestQueryHandler_ValidTimeRange(t *testing.T) {
 		{
 			name: "valid time range within bounds",
 			cfg: Config{
-				DataobjStorageLag: 1 * time.Hour,
+				StorageLag: 1 * time.Hour,
 			},
 			startTime:   fourHoursAgo,
 			endTime:     twoHoursAgo,
@@ -362,7 +362,7 @@ func TestQueryHandler_ValidTimeRange(t *testing.T) {
 		{
 			name: "end time too recent",
 			cfg: Config{
-				DataobjStorageLag: 1 * time.Hour,
+				StorageLag: 1 * time.Hour,
 			},
 			startTime:   twoHoursAgo,
 			endTime:     now.Add(-30 * time.Minute),
@@ -371,8 +371,8 @@ func TestQueryHandler_ValidTimeRange(t *testing.T) {
 		{
 			name: "start time too early",
 			cfg: Config{
-				DataobjStorageLag:   1 * time.Hour,
-				DataobjStorageStart: flagext.Time(now.Add(-3 * time.Hour)),
+				StorageLag:       1 * time.Hour,
+				StorageStartDate: flagext.Time(now.Add(-3 * time.Hour)),
 			},
 			startTime:   fourHoursAgo,
 			endTime:     twoHoursAgo,

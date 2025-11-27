@@ -353,23 +353,23 @@ query_engine:
   [scheduler_lookup_interval: <duration> | default = 10s]
 
   # Amount of time until data objects are available.
-  # CLI flag: -query-engine.dataobj-storage-lag
-  [dataobj_storage_lag: <duration> | default = 1h]
+  # CLI flag: -query-engine.storage-lag
+  [storage_lag: <duration> | default = 1h]
 
   # Initial date when data objects became available. Format YYYY-MM-DD. If not
   # set, assume data objects are always available no matter how far back.
-  # CLI flag: -query-engine.dataobj-storage-start
-  [dataobj_storage_start: <time> | default = 0]
+  # CLI flag: -query-engine.storage-start-date
+  [storage_start_date: <time> | default = 0]
 
   # Enable routing of query splits in the query frontend to the next generation
   # engine when they fall within the configured time range.
-  # CLI flag: -query-engine.enable-v2-engine-router
-  [enable_v2_engine_router: <boolean> | default = false]
+  # CLI flag: -query-engine.enable-engine-router
+  [enable_engine_router: <boolean> | default = false]
 
   # Downstream address to send query splits to. This is the HTTP handler address
   # of the query engine scheduler.
-  # CLI flag: -query-engine.v2-engine-address
-  [v2_engine_address: <string> | default = ""]
+  # CLI flag: -query-engine.downstream-address
+  [downstream_address: <string> | default = ""]
 
 # The query_scheduler block configures the Loki query scheduler. When configured
 # it separates the tenant query queues from the query-frontend.

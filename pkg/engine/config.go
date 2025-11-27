@@ -28,11 +28,11 @@ type Config struct {
 	Executor ExecutorConfig `yaml:",inline"`
 	Worker   WorkerConfig   `yaml:",inline"`
 
-	DataobjStorageLag   time.Duration `yaml:"dataobj_storage_lag" category:"experimental"`
-	DataobjStorageStart flagext.Time  `yaml:"dataobj_storage_start" category:"experimental"`
+	StorageLag       time.Duration `yaml:"storage_lag" category:"experimental"`
+	StorageStartDate flagext.Time  `yaml:"storage_start_date" category:"experimental"`
 
-	EnableV2EngineRouter bool   `yaml:"enable_v2_engine_router" category:"experimental"`
-	V2EngineAddress      string `yaml:"v2_engine_address" category:"experimental"`
+	EnableEngineRouter bool   `yaml:"enable_engine_router" category:"experimental"`
+	DownstreamAddress  string `yaml:"downstream_address" category:"experimental"`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
@@ -49,15 +49,15 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.Executor.RegisterFlagsWithPrefix(prefix, f)
 	cfg.Worker.RegisterFlagsWithPrefix(prefix, f)
 
-	f.DurationVar(&cfg.DataobjStorageLag, prefix+"dataobj-storage-lag", 1*time.Hour, "Amount of time until data objects are available.")
-	f.Var(&cfg.DataobjStorageStart, prefix+"dataobj-storage-start", "Initial date when data objects became available. Format YYYY-MM-DD. If not set, assume data objects are always available no matter how far back.")
+	f.DurationVar(&cfg.StorageLag, prefix+"storage-lag", 1*time.Hour, "Amount of time until data objects are available.")
+	f.Var(&cfg.StorageStartDate, prefix+"storage-start-date", "Initial date when data objects became available. Format YYYY-MM-DD. If not set, assume data objects are always available no matter how far back.")
 
-	f.BoolVar(&cfg.EnableV2EngineRouter, prefix+"enable-v2-engine-router", false, "Enable routing of query splits in the query frontend to the next generation engine when they fall within the configured time range.")
-	f.StringVar(&cfg.V2EngineAddress, prefix+"v2-engine-address", "", "Downstream address to send query splits to. This is the HTTP handler address of the query engine scheduler.")
+	f.BoolVar(&cfg.EnableEngineRouter, prefix+"enable-engine-router", false, "Enable routing of query splits in the query frontend to the next generation engine when they fall within the configured time range.")
+	f.StringVar(&cfg.DownstreamAddress, prefix+"downstream-address", "", "Downstream address to send query splits to. This is the HTTP handler address of the query engine scheduler.")
 }
 
 func (cfg *Config) ValidQueryRange() (time.Time, time.Time) {
-	return time.Time(cfg.DataobjStorageStart).UTC(), time.Now().UTC().Add(-cfg.DataobjStorageLag)
+	return time.Time(cfg.StorageStartDate).UTC(), time.Now().UTC().Add(-cfg.StorageLag)
 }
 
 // AdvertiseAddress determines the TCP address to advertise for accepting

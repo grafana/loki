@@ -1163,20 +1163,20 @@ func (t *Loki) initQueryFrontendMiddleware() (_ services.Service, err error) {
 	level.Debug(util_log.Logger).Log("msg", "initializing query frontend tripperware")
 
 	v2Router := queryrange.RouterConfig{
-		Enabled: t.Cfg.QueryEngine.EnableV2EngineRouter,
+		Enabled: t.Cfg.QueryEngine.EnableEngineRouter,
 	}
 
-	if t.Cfg.QueryEngine.EnableV2EngineRouter {
+	if t.Cfg.QueryEngine.EnableEngineRouter {
 		start, end := t.Cfg.QueryEngine.ValidQueryRange()
 
 		level.Debug(util_log.Logger).Log(
 			"msg", "initializing v2 engine router",
 			"start_time", start,
 			"end_time", end,
-			"destination", t.Cfg.QueryEngine.V2EngineAddress,
+			"destination", t.Cfg.QueryEngine.DownstreamAddress,
 		)
 
-		handler, err := frontend.NewDownstreamRoundTripper(t.Cfg.QueryEngine.V2EngineAddress, http.DefaultTransport, queryrange.DefaultCodec)
+		handler, err := frontend.NewDownstreamRoundTripper(t.Cfg.QueryEngine.DownstreamAddress, http.DefaultTransport, queryrange.DefaultCodec)
 		if err != nil {
 			return nil, fmt.Errorf("creating downstream round tripper for v2 engine: %w", err)
 		}
@@ -1185,7 +1185,7 @@ func (t *Loki) initQueryFrontendMiddleware() (_ services.Service, err error) {
 			Enabled: true,
 
 			Start: start,
-			Lag:   t.Cfg.QueryEngine.DataobjStorageLag,
+			Lag:   t.Cfg.QueryEngine.StorageLag,
 
 			Validate: engine_v2.IsQuerySupported,
 			Handler:  handler,
