@@ -176,6 +176,7 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	ctx = e.buildContext(ctx)
 	logger := util_log.WithContext(ctx, e.logger)
 	logger = log.With(logger, "engine", "v2")
+	logger = injectQueryTags(ctx, logger)
 
 	level.Info(logger).Log("msg", "starting query", "query", params.QueryString(), "shard", strings.Join(params.Shards(), ","))
 
@@ -257,6 +258,17 @@ func (e *Engine) buildContext(ctx context.Context) context.Context {
 	statsContext.SetQueryUsedV2Engine()
 	metadataContext.AddWarning("Query was executed using the new experimental query engine and dataobj storage.")
 	return ctx
+}
+
+// injectQueryTags adds query tags as key-value pairs from the context into the
+// given logger, if they have been defined via [httpreq.InjectQueryTags].
+// Otherwise, the original logger is returned unmodified.
+func injectQueryTags(ctx context.Context, logger log.Logger) log.Logger {
+	tags := httpreq.ExtractQueryTagsFromContext(ctx)
+	if len(tags) == 0 {
+		return logger
+	}
+	return log.With(logger, httpreq.TagsToKeyValues(tags)...)
 }
 
 // buildLogicalPlan builds a logical plan from the given params.
