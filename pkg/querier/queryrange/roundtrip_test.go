@@ -1380,28 +1380,30 @@ func TestMetricsTripperware_SplitShardStats(t *testing.T) {
 }
 
 type fakeLimits struct {
-	maxQueryLength              time.Duration
-	maxQueryParallelism         int
-	tsdbMaxQueryParallelism     int
-	maxQueryLookback            time.Duration
-	maxEntriesLimitPerQuery     int
-	maxSeries                   int
-	splitDuration               map[string]time.Duration
-	metadataSplitDuration       map[string]time.Duration
-	recentMetadataSplitDuration map[string]time.Duration
-	recentMetadataQueryWindow   map[string]time.Duration
-	instantMetricSplitDuration  map[string]time.Duration
-	ingesterSplitDuration       map[string]time.Duration
-	minShardingLookback         time.Duration
-	queryTimeout                time.Duration
-	requiredLabels              []string
-	requiredNumberLabels        int
-	maxQueryBytesRead           int
-	maxQuerierBytesRead         int
-	maxStatsCacheFreshness      time.Duration
-	maxMetadataCacheFreshness   time.Duration
-	volumeEnabled               bool
-	enableMultiVariantQueries   bool
+	maxQueryLength                      time.Duration
+	maxQueryParallelism                 int
+	tsdbMaxQueryParallelism             int
+	maxQueryLookback                    time.Duration
+	maxEntriesLimitPerQuery             int
+	maxSeries                           int
+	splitDuration                       map[string]time.Duration
+	metadataSplitDuration               map[string]time.Duration
+	recentMetadataSplitDuration         map[string]time.Duration
+	recentMetadataQueryWindow           map[string]time.Duration
+	instantMetricSplitDuration          map[string]time.Duration
+	ingesterSplitDuration               map[string]time.Duration
+	minShardingLookback                 time.Duration
+	queryTimeout                        time.Duration
+	requiredLabels                      []string
+	requiredNumberLabels                int
+	maxQueryBytesRead                   int
+	maxQuerierBytesRead                 int
+	maxStatsCacheFreshness              time.Duration
+	maxMetadataCacheFreshness           time.Duration
+	logResultCacheMaxResponseSize       map[string]int
+	logResultCacheStoreNonEmptyResponse map[string]bool
+	volumeEnabled                       bool
+	enableMultiVariantQueries           bool
 }
 
 func (f fakeLimits) QuerySplitDuration(key string) time.Duration {
@@ -1515,6 +1517,20 @@ func (f fakeLimits) MaxStatsCacheFreshness(_ context.Context, _ string) time.Dur
 
 func (f fakeLimits) MaxMetadataCacheFreshness(_ context.Context, _ string) time.Duration {
 	return f.maxMetadataCacheFreshness
+}
+
+func (f fakeLimits) LogResultCacheMaxResponseSize(_ context.Context, key string) int {
+	if f.logResultCacheMaxResponseSize == nil {
+		return 0
+	}
+	return f.logResultCacheMaxResponseSize[key]
+}
+
+func (f fakeLimits) LogResultCacheStoreNonEmptyResponse(_ context.Context, key string) bool {
+	if f.logResultCacheStoreNonEmptyResponse == nil {
+		return false
+	}
+	return f.logResultCacheStoreNonEmptyResponse[key]
 }
 
 func (f fakeLimits) VolumeEnabled(_ string) bool {
