@@ -737,12 +737,17 @@ func (s *Scheduler) Start(ctx context.Context, tasks ...*workflow.Task) error {
 		return err
 	}
 
-	// Extract trace context from the query context and store it with each task.
+	// Extract trace context from the query context and add it to each task's metadata.
 	var tc propagation.TraceContext
 	metadata := make(http.Header)
 	tc.Inject(ctx, propagation.HeaderCarrier(metadata))
+
 	for _, t := range trackedTasks {
-		t.metadata = metadata
+		if t.metadata == nil {
+			t.metadata = make(http.Header)
+		}
+
+		maps.Copy(t.metadata, metadata)
 	}
 
 	// We set markPending *after* enqueueTasks to give tasks an opportunity to
