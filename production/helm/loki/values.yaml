@@ -224,7 +224,7 @@ loki:
     {{- with .Values.chunksCache }}
     chunk_store_config:
       {{- with .chunk_store_config }}
-      {{- toYaml . | nindent 6 }}
+      {{- toYaml . | nindent 2 }}
       {{- end }}
       chunk_cache_config:
         default_validity: {{ .defaultValidity }}
@@ -240,7 +240,6 @@ loki:
           consistent_hash: true
           timeout: {{ .timeout }}
           max_idle_conns: 72
-      {{- end }}
       {{- end }}
       {{- with .Values.chunksCache.l2 }}
       {{- if .enabled }}
