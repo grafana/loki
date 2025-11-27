@@ -228,6 +228,8 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *Back
 				"cellB_backend", cellBResp.backend.name,
 				"cellB_status", cellBResp.status)
 			go p.processWithGoldfish(r, cellAResp, cellBResp)
+		} else {
+			level.Warn(p.logger).Log("msg", "Unable to process query with Goldfish: missing backend responses")
 		}
 	}
 }
