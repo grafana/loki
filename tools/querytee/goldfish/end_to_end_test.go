@@ -1,9 +1,7 @@
 package goldfish
 
 import (
-	"bytes"
 	"context"
-	"fmt"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -281,27 +279,6 @@ func TestGoldfishMismatchDetection(t *testing.T) {
 }
 
 func TestGoldfishFloatingPointMismatchDetection(t *testing.T) {
-
-	// Sample values that exhibit floating point precision issues
-	values := []float64{
-		1e9, 1e-7, 1e-7, 1e-7, 1e-7, 1e-7,
-	}
-
-	var forwardSum float64
-	for _, v := range values {
-		forwardSum += v
-	}
-
-	var backwardSum float64
-	for i := len(values) - 1; i >= 0; i-- {
-		backwardSum += values[i]
-	}
-
-	// The order of addition for floating point numbers can impact precision.
-	// With the chosen values we expect a different result when adding
-	// from left-to-right vs right-to-left.
-	assert.NotEqual(t, forwardSum, backwardSum, "floating point addition should not be commutative for these inputs")
-
 	config := Config{
 		Enabled: true,
 		SamplingConfig: SamplingConfig{
@@ -322,7 +299,7 @@ func TestGoldfishFloatingPointMismatchDetection(t *testing.T) {
 		"status": "success",
 		"data": {
 			"resultType": "scalar",
-			"result": [1, "SAMPLE_A"],
+			"result": [1, "0.003333333333"],
 			"stats": {
 				"summary": {
 					"execTime": 0.05,
@@ -343,7 +320,7 @@ func TestGoldfishFloatingPointMismatchDetection(t *testing.T) {
 		"status": "success",
 		"data": {
 			"resultType": "scalar",
-			"result": [1, "SAMPLE_B"],
+			"result": [1, "0.0033333333335"],
 			"stats": {
 				"summary": {
 					"execTime": 0.05,
@@ -359,9 +336,6 @@ func TestGoldfishFloatingPointMismatchDetection(t *testing.T) {
 			}
 		}
 	}`)
-
-	responseBodyA = bytes.Replace(responseBodyA, []byte("SAMPLE_A"), []byte(fmt.Sprintf("%f", forwardSum)), 1)
-	responseBodyB = bytes.Replace(responseBodyB, []byte("SAMPLE_B"), []byte(fmt.Sprintf("%f", backwardSum)), 1)
 
 	// Extract stats for both responses
 	extractor := NewStatsExtractor()
