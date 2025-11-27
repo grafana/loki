@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"sync"
 
 	"github.com/golang/snappy"
 	"github.com/klauspost/compress/zstd"
@@ -65,10 +66,7 @@ func (c *compressWriter) Flush() error {
 // to tempBuf to writing directly to the encoder.
 func (c *compressWriter) writeToInner() error {
 	// Create the compression encoder
-	var (
-		cw  io.WriteCloser
-		err error
-	)
+	var cw io.WriteCloser
 
 	switch c.compression {
 	case datasetmd.COMPRESSION_TYPE_UNSPECIFIED, datasetmd.COMPRESSION_TYPE_NONE:
@@ -80,11 +78,12 @@ func (c *compressWriter) writeToInner() error {
 		defer cw.Close()
 
 	case datasetmd.COMPRESSION_TYPE_ZSTD:
-		cw, err = zstd.NewWriter(c.inner, c.opts.Zstd...)
+		zw, err := zstdPool.Get(c.inner, c.opts.Zstd)
 		if err != nil {
-			return fmt.Errorf("creating zstd writer: %w", err)
+			return err
 		}
-		defer cw.Close()
+		defer zstdPool.Put(zw, c.opts.Zstd)
+		cw = zw
 
 	default:
 		return fmt.Errorf("unknown compression type %v", c.compression)
@@ -98,8 +97,8 @@ func (c *compressWriter) writeToInner() error {
 	}
 
 	// cw may not support Flush (such as when using no compression), so we check first.
-	if f, ok := cw.(interface{ Flush() error }); ok {
-		if err := f.Flush(); err != nil {
+	if flusher, ok := cw.(interface{ Flush() error }); ok {
+		if err := flusher.Flush(); err != nil {
 			return fmt.Errorf("flushing compressing writer: %w", err)
 		}
 	}
@@ -135,3 +134,46 @@ type nopCloseWriter struct{ w io.Writer }
 
 func (w nopCloseWriter) Write(p []byte) (n int, err error) { return w.w.Write(p) }
 func (w nopCloseWriter) Close() error                      { return nil }
+
+var (
+	zstdPool = zstdWriterPool{pools: make(map[zstd.EncoderLevel]*sync.Pool)}
+)
+
+type zstdWriterPool struct {
+	pools map[zstd.EncoderLevel]*sync.Pool
+}
+
+func (p *zstdWriterPool) new(w io.Writer, l zstd.EncoderLevel) (*zstd.Encoder, error) {
+	writer, err := zstd.NewWriter(w, zstd.WithEncoderLevel(l))
+	if err != nil {
+		return nil, fmt.Errorf("creating zstd writer: %w", err)
+	}
+	return writer, nil
+}
+
+// Get gets or creates a new [zstd.Encoder] for encoding level l and reset it to write to w
+func (p *zstdWriterPool) Get(w io.Writer, l zstd.EncoderLevel) (*zstd.Encoder, error) {
+	l = max(l, zstd.SpeedDefault)
+	pool, ok := p.pools[l]
+	if !ok {
+		p.pools[l] = new(sync.Pool)
+		return p.new(w, l)
+	}
+
+	if zw := pool.Get(); zw != nil {
+		writer := zw.(*zstd.Encoder)
+		writer.Reset(w)
+		return writer, nil
+	}
+
+	return p.new(w, l)
+}
+
+// Put places the zstd encoder w back to the pool for level l
+// This call implicitly closes and resets the [zstd.Encoder].
+func (p *zstdWriterPool) Put(w *zstd.Encoder, l zstd.EncoderLevel) {
+	l = max(l, zstd.SpeedDefault)
+	w.Close()
+	w.Reset(nil)
+	p.pools[l].Put(w)
+}

@@ -50,9 +50,9 @@ type StatisticsOptions struct {
 
 // CompressionOptions customizes the compressor used when building pages.
 type CompressionOptions struct {
-	// Zstd holds encoding options for Zstd compression. Only used for
+	// Zstd holds compression level for Zstd compression. Only used for
 	// [datasetmd.COMPRESSION_TYPE_ZSTD].
-	Zstd []zstd.EOption
+	Zstd zstd.EncoderLevel
 }
 
 // A ColumnBuilder builds a sequence of [Value] entries of a common type into a
