@@ -1162,24 +1162,28 @@ func (i ingesterQueryOptions) QueryIngestersWithin() time.Duration {
 func (t *Loki) initQueryFrontendMiddleware() (_ services.Service, err error) {
 	level.Debug(util_log.Logger).Log("msg", "initializing query frontend tripperware")
 
-	var v2Router queryrange.RouterConfig
+	v2Router := queryrange.RouterConfig{
+		Enabled: t.Cfg.QueryEngine.EnableV2EngineRouter,
+	}
 
-	if t.Cfg.QueryRange.EnableV2EngineRouter {
+	if t.Cfg.QueryEngine.EnableV2EngineRouter {
 		start, end := t.Cfg.QueryEngine.Executor.ValidQueryRange()
 
 		level.Debug(util_log.Logger).Log(
 			"msg", "initializing v2 engine router",
 			"start_time", start,
 			"end_time", end,
-			"destination", t.Cfg.QueryRange.V2EngineAddress,
+			"destination", t.Cfg.QueryEngine.V2EngineAddress,
 		)
 
-		handler, err := frontend.NewDownstreamRoundTripper(t.Cfg.QueryRange.V2EngineAddress, http.DefaultTransport, queryrange.DefaultCodec)
+		handler, err := frontend.NewDownstreamRoundTripper(t.Cfg.QueryEngine.V2EngineAddress, http.DefaultTransport, queryrange.DefaultCodec)
 		if err != nil {
 			return nil, fmt.Errorf("creating downstream round tripper for v2 engine: %w", err)
 		}
 
 		v2Router = queryrange.RouterConfig{
+			Enabled: true,
+
 			Start: start,
 			Lag:   t.Cfg.Querier.DataobjStorageLag,
 

@@ -361,6 +361,16 @@ query_engine:
   # CLI flag: -query-engine.scheduler-lookup-interval
   [scheduler_lookup_interval: <duration> | default = 10s]
 
+  # Enable routing of query splits in the query frontend to the next generation
+  # engine when they fall within the configured time range.
+  # CLI flag: -query-engine.enable-v2-engine-router
+  [enable_v2_engine_router: <boolean> | default = false]
+
+  # Downstream address to send query splits to. This is the HTTP handler address
+  # of the query engine scheduler.
+  # CLI flag: -query-engine.v2-engine-address
+  [v2_engine_address: <string> | default = ""]
+
 # The query_scheduler block configures the Loki query scheduler. When configured
 # it separates the tenant query queues from the query-frontend.
 [query_scheduler: <query_scheduler>]
@@ -5421,15 +5431,6 @@ label_results_cache:
   # compression. Supported values are: 'snappy' and ''.
   # CLI flag: -frontend.label-results-cache.compression
   [compression: <string> | default = ""]
-
-# Enable routing of queries to the v2 engine when they fall within the
-# configured time range.
-# CLI flag: -querier.enable-v2-engine-router
-[enable_v2_engine_router: <boolean> | default = false]
-
-# Address for executing V2 engine queries.
-# CLI flag: -querier.v2-engine-address
-[v2_engine_address: <string> | default = ""]
 ```
 
 ### query_scheduler

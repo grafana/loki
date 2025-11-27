@@ -26,6 +26,9 @@ type Config struct {
 
 	Executor ExecutorConfig `yaml:",inline"`
 	Worker   WorkerConfig   `yaml:",inline"`
+
+	EnableV2EngineRouter bool   `yaml:"enable_v2_engine_router" category:"experimental"`
+	V2EngineAddress      string `yaml:"v2_engine_address" category:"experimental"`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
@@ -41,6 +44,9 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 
 	cfg.Executor.RegisterFlagsWithPrefix(prefix, f)
 	cfg.Worker.RegisterFlagsWithPrefix(prefix, f)
+
+	f.BoolVar(&cfg.EnableV2EngineRouter, prefix+"enable-v2-engine-router", false, "Enable routing of query splits in the query frontend to the next generation engine when they fall within the configured time range.")
+	f.StringVar(&cfg.V2EngineAddress, prefix+"v2-engine-address", "", "Downstream address to send query splits to. This is the HTTP handler address of the query engine scheduler.")
 }
 
 // AdvertiseAddress determines the TCP address to advertise for accepting
