@@ -13,15 +13,15 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/loki/v3/tools/querytee/comparator"
 	"github.com/grafana/loki/v3/tools/querytee/goldfish"
-	"github.com/grafana/loki/v3/tools/querytee/responsecomparator"
 )
 
 type ProxyEndpoint struct {
 	backends   []*ProxyBackend
 	metrics    *ProxyMetrics
 	logger     log.Logger
-	comparator responsecomparator.ResponsesComparator
+	comparator comparator.ResponsesComparator
 
 	instrumentCompares bool
 
@@ -35,7 +35,7 @@ type ProxyEndpoint struct {
 	goldfishManager *goldfish.Manager
 }
 
-func NewProxyEndpoint(backends []*ProxyBackend, routeName string, metrics *ProxyMetrics, logger log.Logger, comparator responsecomparator.ResponsesComparator, instrumentCompares bool) *ProxyEndpoint {
+func NewProxyEndpoint(backends []*ProxyBackend, routeName string, metrics *ProxyMetrics, logger log.Logger, comparator comparator.ResponsesComparator, instrumentCompares bool) *ProxyEndpoint {
 	hasPreferredBackend := false
 	for _, backend := range backends {
 		if backend.preferred {
@@ -267,9 +267,9 @@ func (p *ProxyEndpoint) waitBackendResponseForDownstream(resCh chan *BackendResp
 	return responses[0]
 }
 
-func (p *ProxyEndpoint) compareResponses(expectedResponse, actualResponse *BackendResponse, queryEvalTime time.Time) (*responsecomparator.ComparisonSummary, error) {
+func (p *ProxyEndpoint) compareResponses(expectedResponse, actualResponse *BackendResponse, queryEvalTime time.Time) (*comparator.ComparisonSummary, error) {
 	if expectedResponse.err != nil {
-		return &responsecomparator.ComparisonSummary{Skipped: true}, nil
+		return &comparator.ComparisonSummary{Skipped: true}, nil
 	}
 
 	if actualResponse.err != nil {
@@ -278,7 +278,7 @@ func (p *ProxyEndpoint) compareResponses(expectedResponse, actualResponse *Backe
 
 	// compare response body only if we get a 200
 	if expectedResponse.status != 200 {
-		return &responsecomparator.ComparisonSummary{Skipped: true}, nil
+		return &comparator.ComparisonSummary{Skipped: true}, nil
 	}
 
 	if actualResponse.status != 200 {

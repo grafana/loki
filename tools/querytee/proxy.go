@@ -19,7 +19,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/middleware"
-	"github.com/grafana/loki/v3/tools/querytee/responsecomparator"
+	"github.com/grafana/loki/v3/tools/querytee/comparator"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -72,7 +72,7 @@ type Route struct {
 	Path               string
 	RouteName          string
 	Methods            []string
-	ResponseComparator responsecomparator.ResponsesComparator
+	ResponseComparator comparator.ResponsesComparator
 }
 
 type Proxy struct {
@@ -241,7 +241,7 @@ func (p *Proxy) Start() error {
 
 	// register read routes
 	for _, route := range p.readRoutes {
-		var comparator responsecomparator.ResponsesComparator
+		var comparator comparator.ResponsesComparator
 		if p.cfg.CompareResponses {
 			comparator = route.ResponseComparator
 		}

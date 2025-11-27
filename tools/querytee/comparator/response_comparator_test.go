@@ -1,4 +1,4 @@
-package responsecomparator
+package comparator
 
 import (
 	"encoding/json"

@@ -13,7 +13,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/gorilla/mux"
-	"github.com/grafana/loki/v3/tools/querytee/responsecomparator"
+	"github.com/grafana/loki/v3/tools/querytee/comparator"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -26,7 +26,7 @@ var testWriteRoutes = []Route{}
 
 type testComparator struct{}
 
-func (testComparator) Compare(_, _ []byte, _ time.Time) (*responsecomparator.ComparisonSummary, error) {
+func (testComparator) Compare(_, _ []byte, _ time.Time) (*comparator.ComparisonSummary, error) {
 	return nil, nil
 }
 

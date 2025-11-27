@@ -5,11 +5,11 @@ import (
 	"time"
 
 	"github.com/grafana/loki/v3/pkg/goldfish"
-	"github.com/grafana/loki/v3/tools/querytee/responsecomparator"
+	"github.com/grafana/loki/v3/tools/querytee/comparator"
 )
 
 // CompareResponses compares performance statistics and hashes from QuerySample
-func CompareResponses(sample *goldfish.QuerySample, cellAResp, cellBResp *ResponseData, performanceTolerance float64, comparator responsecomparator.ResponsesComparator) goldfish.ComparisonResult {
+func CompareResponses(sample *goldfish.QuerySample, cellAResp, cellBResp *ResponseData, performanceTolerance float64, comparator comparator.ResponsesComparator) goldfish.ComparisonResult {
 	result := goldfish.ComparisonResult{
 		CorrelationID:     sample.CorrelationID,
 		DifferenceDetails: make(map[string]any),

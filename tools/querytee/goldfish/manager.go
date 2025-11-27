@@ -15,7 +15,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/google/uuid"
 	"github.com/grafana/loki/v3/pkg/goldfish"
-	"github.com/grafana/loki/v3/tools/querytee/responsecomparator"
+	"github.com/grafana/loki/v3/tools/querytee/comparator"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
@@ -37,7 +37,7 @@ type Manager struct {
 	resultStore ResultStore
 	logger      log.Logger
 	metrics     *metrics
-	comparator  *responsecomparator.SamplesComparator
+	comparator  *comparator.SamplesComparator
 }
 
 type metrics struct {
@@ -55,7 +55,7 @@ func NewManager(config Config, valueComparisonTolerance float64, storage goldfis
 		return nil, fmt.Errorf("invalid config: %w", err)
 	}
 
-	opts := responsecomparator.SampleComparisonOptions{
+	opts := comparator.SampleComparisonOptions{
 		Tolerance: valueComparisonTolerance,
 	}
 
@@ -88,7 +88,7 @@ func NewManager(config Config, valueComparisonTolerance float64, storage goldfis
 				Buckets: prometheus.DefBuckets,
 			}),
 		},
-		comparator: responsecomparator.NewSamplesComparator(opts),
+		comparator: comparator.NewSamplesComparator(opts),
 	}
 
 	return m, nil
