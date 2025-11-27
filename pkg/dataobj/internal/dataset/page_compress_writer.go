@@ -1,7 +1,7 @@
 package dataset
 
 import (
-	"bufio"
+	"bytes"
 	"fmt"
 	"io"
 
@@ -13,12 +13,13 @@ import (
 )
 
 // A compressWriter is a [streamio.Writer] that compresses data passed to it.
+// The compression encoder is created lazily on the first Flush() call.
 type compressWriter struct {
-	// To be able to implmeent [io.ByteWriter], we always write directly to buf,
-	// which then flushes to w once it's full.
+	// To be able to implement [io.ByteWriter], we always write directly to buf,
+	// which then writes to inner once the writer is flushed.
 
-	w   io.WriteCloser // Compressing writer.
-	buf *bufio.Writer  // Buffered writer in front of w to be able to call WriteByte.
+	inner io.Writer     // The underlying writer (before compression).
+	buf   *bytes.Buffer // buffer for uncompressed data before it is written to the compressed writer
 
 	rawBytes int // Number of uncompressed bytes written.
 
@@ -51,15 +52,53 @@ func (c *compressWriter) WriteByte(b byte) error {
 }
 
 // Flush compresses any pending uncompressed data in the buffer.
+// On the first call, this creates the compression encoder.
 func (c *compressWriter) Flush() error {
-	// Flush our buffer first so c.w is up to date.
-	if err := c.buf.Flush(); err != nil {
-		return fmt.Errorf("flushing buffer: %w", err)
+	if err := c.writeToInner(); err != nil {
+		return fmt.Errorf("flush to inner writer: %w", err)
 	}
 
-	// c.w may not support Flush (such as when using no compression), so we check
-	// first.
-	if f, ok := c.w.(interface{ Flush() error }); ok {
+	return nil
+}
+
+// writeToInner creates the compression encoder and transitions from buffering
+// to tempBuf to writing directly to the encoder.
+func (c *compressWriter) writeToInner() error {
+	// Create the compression encoder
+	var (
+		cw  io.WriteCloser
+		err error
+	)
+
+	switch c.compression {
+	case datasetmd.COMPRESSION_TYPE_UNSPECIFIED, datasetmd.COMPRESSION_TYPE_NONE:
+		cw = nopCloseWriter{c.inner}
+		defer cw.Close()
+
+	case datasetmd.COMPRESSION_TYPE_SNAPPY:
+		cw = snappy.NewBufferedWriter(c.inner)
+		defer cw.Close()
+
+	case datasetmd.COMPRESSION_TYPE_ZSTD:
+		cw, err = zstd.NewWriter(c.inner, c.opts.Zstd...)
+		if err != nil {
+			return fmt.Errorf("creating zstd writer: %w", err)
+		}
+		defer cw.Close()
+
+	default:
+		return fmt.Errorf("unknown compression type %v", c.compression)
+	}
+
+	// Write the buffered data from buf via cw to inner
+	if c.buf.Len() > 0 {
+		if _, err := c.buf.WriteTo(cw); err != nil {
+			return fmt.Errorf("writing buffered data to encoder: %w", err)
+		}
+	}
+
+	// cw may not support Flush (such as when using no compression), so we check first.
+	if f, ok := cw.(interface{ Flush() error }); ok {
 		if err := f.Flush(); err != nil {
 			return fmt.Errorf("flushing compressing writer: %w", err)
 		}
@@ -71,40 +110,16 @@ func (c *compressWriter) Flush() error {
 // Reset discards the writer's state and switches the compressor to write to w.
 // This permits reusing a compressWriter rather than allocating a new one.
 func (c *compressWriter) Reset(w io.Writer) {
-	resetter, ok := c.w.(interface{ Reset(io.Writer) })
-	switch ok {
-	case true:
-		resetter.Reset(w)
-	default:
-		// c.w is unset or doesn't support Reset; build a new writer.
-		var compressedWriter io.WriteCloser
+	// Store the underlying writer
+	c.inner = w
 
-		switch c.compression {
-		case datasetmd.COMPRESSION_TYPE_UNSPECIFIED, datasetmd.COMPRESSION_TYPE_NONE:
-			compressedWriter = nopCloseWriter{w}
-
-		case datasetmd.COMPRESSION_TYPE_SNAPPY:
-			compressedWriter = snappy.NewBufferedWriter(w)
-
-		case datasetmd.COMPRESSION_TYPE_ZSTD:
-			zw, err := zstd.NewWriter(w, c.opts.Zstd...)
-			if err != nil {
-				panic(fmt.Sprintf("compressWriter.Reset: creating zstd writer: %v", err))
-			}
-			compressedWriter = zw
-
-		default:
-			panic(fmt.Sprintf("compressWriter.Reset: unknown compression type %v", c.compression))
-		}
-
-		c.w = compressedWriter
-	}
-
+	// Initialize or reset temporary buffer
 	if c.buf != nil {
-		c.buf.Reset(c.w)
+		c.buf.Reset()
 	} else {
-		c.buf = bufio.NewWriter(c.w)
+		c.buf = bytes.NewBuffer(make([]byte, 0, 4096))
 	}
+
 	c.rawBytes = 0
 }
 
@@ -113,10 +128,7 @@ func (c *compressWriter) BytesWritten() int { return c.rawBytes }
 
 // Close flushes and then closes c.
 func (c *compressWriter) Close() error {
-	if err := c.Flush(); err != nil {
-		return err
-	}
-	return c.w.Close()
+	return c.Flush()
 }
 
 type nopCloseWriter struct{ w io.Writer }
