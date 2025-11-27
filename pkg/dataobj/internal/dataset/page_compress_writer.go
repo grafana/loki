@@ -19,9 +19,7 @@ type compressWriter struct {
 	// which then flushes to w once it's full.
 
 	w   io.WriteCloser // Compressing writer.
-	buf *bufio.Writer  // Buffered writer in front of w to be able to call WriteByte.
-
-	rawBytesBuf *bytes.Buffer // raw byte buffer, used for batched zstd encoding
+	buf io.Writer      // Buffered writer in front of w to be able to call WriteByte.
 
 	rawBytes int // Number of uncompressed bytes written.
 
@@ -39,25 +37,14 @@ func newCompressWriter(w io.Writer, ty datasetmd.CompressionType, opts Compressi
 
 // Write writes p to c.
 func (c *compressWriter) Write(p []byte) (n int, err error) {
-	switch c.compression {
-	case datasetmd.COMPRESSION_TYPE_ZSTD:
-		n, err = c.rawBytesBuf.Write(p)
-	default:
-		n, err = c.buf.Write(p)
-	}
+	n, err = c.buf.Write(p)
 	c.rawBytes += n
 	return
 }
 
 // WriteByte writes a single byte to c.
 func (c *compressWriter) WriteByte(b byte) error {
-	var err error
-	switch c.compression {
-	case datasetmd.COMPRESSION_TYPE_ZSTD:
-		err = c.rawBytesBuf.WriteByte(b)
-	default:
-		err = c.buf.WriteByte(b)
-	}
+	_, err := c.buf.Write([]byte{b})
 	if err != nil {
 		return err
 	}
@@ -69,20 +56,25 @@ func (c *compressWriter) WriteByte(b byte) error {
 func (c *compressWriter) Flush() error {
 	switch c.compression {
 	case datasetmd.COMPRESSION_TYPE_ZSTD:
-		zstdWriter := c.opts.ZstdWriter()
+		zstdWriter := c.opts.zstdWriter()
 
-		tempBuf := bufpool.Get(c.rawBytesBuf.Len())
+		tempBuf := bufpool.Get(c.rawBytes)
 		defer bufpool.Put(tempBuf)
 
-		compressed := zstdWriter.EncodeAll(c.rawBytesBuf.Bytes(), tempBuf.Bytes())
+		buf, ok := c.buf.(*bytes.Buffer)
+		if !ok {
+			return fmt.Errorf("expected bytes.Buffer, got %T", c.buf)
+		}
+
+		compressed := zstdWriter.EncodeAll(buf.Bytes(), tempBuf.Bytes())
 		_, err := c.w.Write(compressed)
-		c.rawBytesBuf.Reset()
+		buf.Reset()
 		if err != nil {
 			return fmt.Errorf("writing compressed data: %w", err)
 		}
 	default:
 		// Flush our buffer first so c.w is up to date.
-		if err := c.buf.Flush(); err != nil {
+		if err := c.buf.(*bufio.Writer).Flush(); err != nil {
 			return fmt.Errorf("flushing buffer: %w", err)
 		}
 	}
@@ -117,13 +109,8 @@ func (c *compressWriter) Reset(w io.Writer) {
 			compressedWriter = snappy.NewBufferedWriter(w)
 
 		case datasetmd.COMPRESSION_TYPE_ZSTD:
-			if c.opts.ZstdWriter == nil {
+			if c.opts.zstdWriter == nil {
 				panic("Zstd compression requested but zstd writer is not initialized. Use NewZstdCompressionOptions to initialize it.")
-			}
-			if c.rawBytesBuf != nil {
-				c.rawBytesBuf.Reset()
-			} else {
-				c.rawBytesBuf = bytes.NewBuffer(nil)
 			}
 			// we will write raw compressed bytes directly to w
 			compressedWriter = nopCloseWriter{w}
@@ -135,18 +122,22 @@ func (c *compressWriter) Reset(w io.Writer) {
 		c.w = compressedWriter
 	}
 
+	switch c.compression {
+	case datasetmd.COMPRESSION_TYPE_ZSTD:
+		if c.buf != nil {
+			c.buf.(*bytes.Buffer).Reset()
+		} else {
+			c.buf = bytes.NewBuffer(nil)
+		}
+	default:
+		if c.buf != nil {
+			c.buf.(*bufio.Writer).Reset(c.w)
+		} else {
+			c.buf = bufio.NewWriterSize(c.w, 256)
+		}
+	}
+
 	c.rawBytes = 0
-
-	if datasetmd.COMPRESSION_TYPE_ZSTD == c.compression {
-		// ZSTD doesn't use buf, so exit early to avoid allocating it.
-		return
-	}
-
-	if c.buf != nil {
-		c.buf.Reset(c.w)
-	} else {
-		c.buf = bufio.NewWriterSize(c.w, 256)
-	}
 }
 
 // BytesWritten returns the number of uncompressed bytes written to c.

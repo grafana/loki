@@ -1,6 +1,7 @@
 package dataset
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 
@@ -38,6 +39,13 @@ type BuilderOptions struct {
 	Statistics StatisticsOptions
 }
 
+func (opts BuilderOptions) Validate() error {
+	if opts.Compression == datasetmd.COMPRESSION_TYPE_ZSTD && opts.CompressionOptions.zstdWriter == nil {
+		return errors.New("zstd compression requested but the zstd writer is not initialized. Use NewZstdCompressionOptions to initialize it.")
+	}
+	return nil
+}
+
 // StatisticsOptions customizes the collection of statistics for a column.
 type StatisticsOptions struct {
 	// StoreRangeStats indicates whether to store value range statistics for the
@@ -57,13 +65,13 @@ type CompressionOptions struct {
 
 	// A helper to get a shared Zstd Writer for the given EOptions.
 	// The shared writer can only used for EncodeAll.
-	ZstdWriter func() *zstd.Encoder
+	zstdWriter func() *zstd.Encoder
 }
 
 func NewZstdCompressionOptions(opts ...zstd.EOption) CompressionOptions {
 	return CompressionOptions{
 		Zstd: opts,
-		ZstdWriter: sync.OnceValue(func() *zstd.Encoder {
+		zstdWriter: sync.OnceValue(func() *zstd.Encoder {
 			writer, err := zstd.NewWriter(nil, opts...)
 			if err != nil {
 				panic(fmt.Errorf("error initializing shared zstd writer: %w", err))
@@ -91,8 +99,8 @@ type ColumnBuilder struct {
 // provided options. NewColumnBuilder returns an error if the options are
 // invalid.
 func NewColumnBuilder(tag string, opts BuilderOptions) (*ColumnBuilder, error) {
-	if opts.Compression == datasetmd.COMPRESSION_TYPE_ZSTD && opts.CompressionOptions.ZstdWriter == nil {
-		return nil, fmt.Errorf("zstd compression requested for %s but the zstd writer is not initialized. Use NewZstdCompressionOptions to initialize it.", tag)
+	if err := opts.Validate(); err != nil {
+		return nil, err
 	}
 
 	builder, err := newPageBuilder(opts)
