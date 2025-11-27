@@ -90,13 +90,13 @@ func TestColumnBuilder_Append(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-
 			opts := dataset.BuilderOptions{
-				PageSizeHint:    tt.pageSizeHint,
-				PageMaxRowCount: tt.pageMaxRowCount,
-				Type:            dataset.ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"},
-				Compression:     datasetmd.COMPRESSION_TYPE_ZSTD,
-				Encoding:        datasetmd.ENCODING_TYPE_PLAIN,
+				PageSizeHint:       tt.pageSizeHint,
+				PageMaxRowCount:    tt.pageMaxRowCount,
+				Type:               dataset.ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"},
+				Compression:        datasetmd.COMPRESSION_TYPE_ZSTD,
+				CompressionOptions: dataset.NewZstdCompressionOptions(),
+				Encoding:           datasetmd.ENCODING_TYPE_PLAIN,
 			}
 
 			cb, err := dataset.NewColumnBuilder("test", opts)

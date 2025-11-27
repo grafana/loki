@@ -2,6 +2,7 @@ package dataset
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/klauspost/compress/zstd"
 
@@ -53,6 +54,23 @@ type CompressionOptions struct {
 	// Zstd holds encoding options for Zstd compression. Only used for
 	// [datasetmd.COMPRESSION_TYPE_ZSTD].
 	Zstd []zstd.EOption
+
+	// A helper to get a shared Zstd Writer for the given EOptions.
+	// The shared writer can only used for EncodeAll.
+	ZstdWriter func() *zstd.Encoder
+}
+
+func NewZstdCompressionOptions(opts ...zstd.EOption) CompressionOptions {
+	return CompressionOptions{
+		Zstd: opts,
+		ZstdWriter: sync.OnceValue(func() *zstd.Encoder {
+			writer, err := zstd.NewWriter(nil, opts...)
+			if err != nil {
+				panic(fmt.Errorf("error initializing shared zstd writer: %w", err))
+			}
+			return writer
+		}),
+	}
 }
 
 // A ColumnBuilder builds a sequence of [Value] entries of a common type into a
