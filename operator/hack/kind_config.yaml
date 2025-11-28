@@ -10,12 +10,9 @@ nodes:
       kubeletExtraArgs:
         node-labels: "ingress-ready=true"
   extraPortMappings:
-  # Ingress Controller Web Port
-  - containerPort: 8080
-    hostPort: 8080
-  # Ingress Controller Web Secure Port
-  - containerPort: 8443
-    hostPort: 8443
-  # Ingress Controller Admin Port
+  # Traefik Web Port
   - containerPort: 8081
     hostPort: 8081
+  # Traefik Admin Port
+  - containerPort: 8082
+    hostPort: 8082

@@ -130,21 +130,21 @@ spec:
             - --api.dashboard
             - --log.level=debug
             - --accesslog=true
-            - --entryPoints.web.address=:80
-            - --entryPoints.websecure.address=:443
+            - --entryPoints.admin.address=:8082
+            - --entryPoints.web.address=:8081
+            - --entryPoints.websecure.address=:8443
             - --providers.kubernetesIngress
             - --providers.file.filename=/config/config.yaml
             - --providers.file.watch=false
           ports:
           - name: http
-            containerPort: 80
-            hostPort: 8080
-          - name: https
-            containerPort: 443
-            hostPort: 8443
-          - name: admin
-            containerPort: 8080
+            containerPort: 8081
             hostPort: 8081
+          - name: https
+            containerPort: 8443
+          - name: admin
+            containerPort: 8082
+            hostPort: 8082
           securityContext:
             capabilities:
               drop:
