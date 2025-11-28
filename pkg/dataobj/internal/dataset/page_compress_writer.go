@@ -55,8 +55,7 @@ func (c *compressWriter) Write(p []byte) (n int, err error) {
 
 // WriteByte writes a single byte to c.
 func (c *compressWriter) WriteByte(b byte) error {
-	_, err := c.buf.Write([]byte{b})
-	if err != nil {
+	if err := c.buf.WriteByte(b); err != nil {
 		return err
 	}
 	c.rawBytes++

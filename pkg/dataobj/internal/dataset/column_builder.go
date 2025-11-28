@@ -50,6 +50,9 @@ type StatisticsOptions struct {
 }
 
 // CompressionOptions customizes the compressor used when building pages.
+// CompressionOptions cache byte compressors to reduce total allocations.
+// As an optimization, callers should reuse CompressionOptions pointers
+// wherever possible.
 type CompressionOptions struct {
 	// Zstd holds encoding options for Zstd compression. Only used for
 	// [datasetmd.COMPRESSION_TYPE_ZSTD].
