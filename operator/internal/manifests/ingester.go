@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path"
 
+	"github.com/ViaQ/logerr/v2/kverrors"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
@@ -292,8 +293,11 @@ func configureIngesterGRPCServicePKI(sts *appsv1.StatefulSet, opts Options) erro
 func newIngesterPodDisruptionBudget(opts Options) *policyv1.PodDisruptionBudget {
 	l := ComponentLabels(LabelIngesterComponent, opts.Name)
 	pdbMinAvailable := intstr.FromInt32(1)
-	if opts.Stack.Size == lokiv1.SizeOneXPico || opts.Stack.Size == lokiv1.SizeOneXMedium {
+	/* if opts.Stack.Size == lokiv1.SizeOneXPico || opts.Stack.Size == lokiv1.SizeOneXMedium {
 		pdbMinAvailable = intstr.FromInt32(opts.Stack.Replication.Factor)
+	} */
+	if opts.Stack.Size == lokiv1.SizeOneXPico || opts.Stack.Size == lokiv1.SizeOneXMedium {
+		pdbMinAvailable = intstr.FromInt(opts.ResourceRequirements.Ingester.PDBMinAvailable)
 	}
 	return &policyv1.PodDisruptionBudget{
 		TypeMeta: metav1.TypeMeta{
@@ -312,4 +316,16 @@ func newIngesterPodDisruptionBudget(opts Options) *policyv1.PodDisruptionBudget 
 			MinAvailable: &pdbMinAvailable,
 		},
 	}
+}
+
+func ValidateReplicationFactor(opts *Options) error {
+	if opts.Stack.Size != lokiv1.SizeOneXDemo {
+		if opts.Stack.Template.Ingester.Replicas != 2 || opts.Stack.Replication.Factor != 2 {
+			if opts.Stack.Template.Ingester.Replicas <= opts.Stack.Replication.Factor {
+				return kverrors.New("Invalid configuration: ingester replicas should be more than the replication factor")
+			}
+			opts.ResourceRequirements.Ingester.PDBMinAvailable = int(opts.Stack.Replication.Factor)
+		}
+	}
+	return nil
 }

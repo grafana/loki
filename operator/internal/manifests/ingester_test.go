@@ -157,6 +157,9 @@ func TestBuildIngester_PodDisruptionBudget(t *testing.T) {
 					},
 				},
 			}
+			err := ValidateReplicationFactor(&opts)
+			require.NoError(t, err)
+
 			objs, err := BuildIngester(opts)
 			require.NoError(t, err)
 			require.Len(t, objs, 4)
@@ -172,7 +175,7 @@ func TestBuildIngester_PodDisruptionBudget(t *testing.T) {
 	}
 }
 
-func TestBuildIngester_PodDisruptionBudgetWithReplicationFactor(t *testing.T) {
+func TestBuildIngester_PodDisruptionBudgetWithCustomReplicationFactor(t *testing.T) {
 	ingesterReplicas := 3
 	for _, tc := range []struct {
 		Name                    string
@@ -181,8 +184,8 @@ func TestBuildIngester_PodDisruptionBudgetWithReplicationFactor(t *testing.T) {
 		ExpectedMinAvailable    int
 	}{
 		{
-			Name:                    "ingester replicas > replication factor",
-			CustomReplicationFactor: 2,
+			Name:                    "ingester replicas < replication factor",
+			CustomReplicationFactor: 4,
 			PDBMinAvailable:         1,
 			ExpectedMinAvailable:    2,
 		},
@@ -207,13 +210,8 @@ func TestBuildIngester_PodDisruptionBudgetWithReplicationFactor(t *testing.T) {
 					},
 				},
 			}
-			objs, err := BuildIngester(opts)
-
-			require.NoError(t, err)
-			pdb := objs[3].(*policyv1.PodDisruptionBudget)
-			require.NotNil(t, pdb)
-			require.NotNil(t, pdb.Spec.MinAvailable.IntVal)
-			require.Equal(t, int32(tc.ExpectedMinAvailable), pdb.Spec.MinAvailable.IntVal)
+			err := ValidateReplicationFactor(&opts)
+			require.NotNil(t, err)
 		})
 	}
 }
