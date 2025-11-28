@@ -711,6 +711,355 @@ func TestExtractLokiResponse(t *testing.T) {
 	}
 }
 
+func Test_LogResultCacheResponseSize(t *testing.T) {
+	// Configure limits for tenant1 (enabled, max 1024) and tenant2 (disabled)
+	limits := fakeLimits{
+		splitDuration: map[string]time.Duration{
+			"tenant1": time.Minute,
+			"tenant2": time.Minute,
+		},
+		logResultCacheMaxResponseSize: map[string]int{
+			"tenant1": 1024,
+		},
+		logResultCacheStoreNonEmptyResponse: map[string]bool{
+			"tenant1": true,
+			"tenant2": false,
+		},
+	}
+
+	// Shared cache and handler setup
+	mockCache := cache.NewMockCache()
+	lrc := NewLogResultCache(
+		log.NewNopLogger(),
+		limits,
+		mockCache,
+		nil,
+		nil,
+		nil,
+	)
+
+	t.Run("response cache disabled", func(t *testing.T) {
+		reqTenant2 := &LokiRequest{
+			StartTs: time.Unix(0, time.Minute.Nanoseconds()),
+			EndTs:   time.Unix(0, 2*time.Minute.Nanoseconds()),
+			Limit:   entriesLimit,
+			Query:   lblFooBar,
+		}
+		respTenant2 := nonEmptyResponse(reqTenant2, time.Unix(61, 0), time.Unix(65, 0), lblFooBar)
+		ctx := user.InjectOrgID(context.Background(), "tenant2")
+
+		fakeFirstRequest := newFakeResponse([]mockResponse{
+			{
+				RequestResponse: queryrangebase.RequestResponse{
+					Request:  reqTenant2,
+					Response: respTenant2,
+				},
+			},
+		})
+		h := lrc.Wrap(fakeFirstRequest)
+
+		resp, err := h.Do(ctx, reqTenant2)
+		require.NoError(t, err)
+		require.Equal(t, respTenant2, resp)
+		fakeFirstRequest.AssertExpectations(t)
+
+		fakeSecondRequest := newFakeResponse([]mockResponse{
+			{
+				RequestResponse: queryrangebase.RequestResponse{
+					Request:  reqTenant2,
+					Response: respTenant2,
+				},
+			},
+		})
+		h = lrc.Wrap(fakeSecondRequest)
+
+		resp, err = h.Do(ctx, reqTenant2)
+		require.NoError(t, err)
+		require.Equal(t, respTenant2, resp)
+		fakeSecondRequest.AssertExpectations(t)
+	})
+	t.Run("response too big to cache", func(t *testing.T) {
+		// Tenant1 runs a request that returns a response bigger than the max size (1024)
+		reqTenant1Large := &LokiRequest{
+			StartTs: time.Unix(0, time.Minute.Nanoseconds()),
+			EndTs:   time.Unix(0, 2*time.Minute.Nanoseconds()),
+			Limit:   entriesLimit,
+			Query:   lblFooBar,
+		}
+		respTenant1Large := nonEmptyResponse(reqTenant1Large, time.Unix(61, 0), time.Unix(200, 0), lblFooBar)
+		ctx := user.InjectOrgID(context.Background(), "tenant1")
+
+		fakeFirstRequest := newFakeResponse([]mockResponse{
+			{
+				RequestResponse: queryrangebase.RequestResponse{
+					Request:  reqTenant1Large,
+					Response: respTenant1Large,
+				},
+			},
+		})
+		h := lrc.Wrap(fakeFirstRequest)
+
+		resp, err := h.Do(ctx, reqTenant1Large)
+		require.NoError(t, err)
+		require.Equal(t, respTenant1Large, resp)
+		fakeFirstRequest.AssertExpectations(t)
+
+		// Tenant1 runs the same request. Cache is not hit because the previous response was too big to cache.
+		fakeSecondRequest := newFakeResponse([]mockResponse{
+			{
+				RequestResponse: queryrangebase.RequestResponse{
+					Request:  reqTenant1Large,
+					Response: respTenant1Large,
+				},
+			},
+		})
+
+		h = lrc.Wrap(fakeSecondRequest)
+
+		resp, err = h.Do(ctx, reqTenant1Large)
+		require.NoError(t, err)
+		require.Equal(t, respTenant1Large, resp)
+		fakeSecondRequest.AssertExpectations(t)
+	})
+
+	t.Run("cached response", func(t *testing.T) {
+		reqTenant1Small := &LokiRequest{
+			StartTs: time.Unix(0, 2*time.Minute.Nanoseconds()), // 2 minutes (120 seconds) - same start as step 7 to test limit difference
+			EndTs:   time.Unix(0, 3*time.Minute.Nanoseconds()), // 3 minutes (180 seconds)
+			Limit:   entriesLimit,
+			Query:   lblFooBar,
+		}
+		respTenant1Small := nonEmptyResponse(reqTenant1Small, time.Unix(121, 0), time.Unix(125, 0), lblFooBar)
+
+		ctx := user.InjectOrgID(context.Background(), "tenant1")
+		fakeFirstRequest := newFakeResponse([]mockResponse{
+			{
+				RequestResponse: queryrangebase.RequestResponse{
+					Request:  reqTenant1Small,
+					Response: respTenant1Small,
+				},
+			},
+		})
+		h := lrc.Wrap(fakeFirstRequest)
+
+		resp, err := h.Do(ctx, reqTenant1Small)
+		require.NoError(t, err)
+		require.Equal(t, respTenant1Small, resp)
+		fakeFirstRequest.AssertExpectations(t)
+
+		// Tenant1 runs the same request. Cache is hit.
+		fakeSecondRequest := newFakeResponse([]mockResponse{})
+		h = lrc.Wrap(fakeSecondRequest)
+
+		resp, err = h.Do(ctx, reqTenant1Small)
+		require.NoError(t, err)
+		require.Equal(t, respTenant1Small, resp)
+		fakeSecondRequest.AssertExpectations(t)
+	})
+
+	t.Run("request with different limit than cached", func(t *testing.T) {
+		reqTenant1DifferentLimit := &LokiRequest{
+			StartTs: time.Unix(0, 2*time.Minute.Nanoseconds()), // 2 minutes (120 seconds) - same as reqTenant1Small
+			EndTs:   time.Unix(0, 3*time.Minute.Nanoseconds()), // 3 minutes (180 seconds) - same as reqTenant1Small
+			Limit:   500,                                       // Different limit than entriesLimit (1000)
+			Query:   lblFooBar,
+		}
+		respTenant1DifferentLimit := nonEmptyResponse(reqTenant1DifferentLimit, time.Unix(121, 0), time.Unix(125, 0), lblFooBar)
+
+		ctx := user.InjectOrgID(context.Background(), "tenant1")
+		fakeFirstRequest := newFakeResponse([]mockResponse{
+			{
+				RequestResponse: queryrangebase.RequestResponse{
+					Request:  reqTenant1DifferentLimit,
+					Response: respTenant1DifferentLimit,
+				},
+			},
+		})
+		h := lrc.Wrap(fakeFirstRequest)
+
+		resp, err := h.Do(ctx, reqTenant1DifferentLimit)
+		require.NoError(t, err)
+		require.Equal(t, respTenant1DifferentLimit, resp)
+		fakeFirstRequest.AssertExpectations(t)
+
+		// Tenant1 runs the same request. Now cache is hit.
+		fakeSecondRequest := newFakeResponse([]mockResponse{})
+		h = lrc.Wrap(fakeSecondRequest)
+
+		resp, err = h.Do(ctx, reqTenant1DifferentLimit)
+		require.NoError(t, err)
+		require.Equal(t, respTenant1DifferentLimit, resp)
+	})
+
+	t.Run("Overlapping request", func(t *testing.T) {
+		// Tenant1 requests a time range that overlaps and extends beyond the previous cached request (previous test case).
+		// reqTenant1DifferentLimit: 120-180 seconds (2-3 minutes), response has entries 121-125 seconds, limit 500
+		// reqTenant1Overlap: 120-360 seconds (2-6 minutes), same start as cached range, extends beyond it
+		// Since it has the same cache key (same aligned start), it will find the cached response and extend it.
+		reqTenant1Overlap := &LokiRequest{
+			StartTs: time.Unix(0, 2*time.Minute.Nanoseconds()), // 2 minutes (120 seconds) - same aligned start as cached request
+			EndTs:   time.Unix(0, 6*time.Minute.Nanoseconds()), // 6 minutes (360 seconds) - extends beyond cached range
+			Limit:   500,                                       // Same limit as reqTenant1DifferentLimit so we can reuse cached response
+			Query:   lblFooBar,
+		}
+
+		ctx := user.InjectOrgID(context.Background(), "tenant1")
+		// The request overlaps with cached reqTenant1DifferentLimit (request range 120-180s, entries 121-125s)
+		// Cache will:
+		// 1. Find the cached response (same cache key, same limit)
+		// 2. Extract overlapping part from cache: 120-180s range -> entries 121-125s
+		// 3. Fetch missing end part: 180-360s
+		// handleResponseHit should be called to fetch only the end part (180-360s)
+		// Create the expected end request that will be made by handleResponseHit
+		expectedEndRequest := reqTenant1Overlap.WithStartEnd(
+			time.Unix(0, 3*time.Minute.Nanoseconds()), // cachedRequest.GetEndTs() = 180s
+			time.Unix(0, 6*time.Minute.Nanoseconds()), // lokiReq.GetEndTs() = 360s
+		).(*LokiRequest)
+		expectedEndResponse := nonEmptyResponse(expectedEndRequest, time.Unix(180, 0), time.Unix(190, 0), lblFooBar)
+
+		fakeFirstRequest := newFakeResponse([]mockResponse{
+			{
+				RequestResponse: queryrangebase.RequestResponse{
+					Request:  expectedEndRequest,
+					Response: expectedEndResponse,
+				},
+			},
+		})
+		h := lrc.Wrap(fakeFirstRequest)
+
+		resp, err := h.Do(ctx, reqTenant1Overlap)
+		require.NoError(t, err)
+		expectedResp := mergeLokiResponse(
+			nonEmptyResponse(&LokiRequest{Limit: 500}, time.Unix(121, 0), time.Unix(125, 0), lblFooBar), // From previous test case (cached)
+			expectedEndResponse,
+		)
+		require.Equal(t, expectedResp, resp)
+		fakeFirstRequest.AssertExpectations(t)
+
+		// Now the cache should hit completely since the cached response/request covers the entire request range.
+		fakeSecondRequest := newFakeResponse([]mockResponse{})
+		h = lrc.Wrap(fakeSecondRequest)
+
+		resp, err = h.Do(ctx, reqTenant1Overlap)
+		require.NoError(t, err)
+		require.Equal(t, expectedResp, resp)
+		fakeSecondRequest.AssertExpectations(t)
+	})
+
+	t.Run("Overlapping empty request", func(t *testing.T) {
+		reqTenant1PartiallyEmpty := &LokiRequest{
+			StartTs: time.Unix(0, 10*time.Minute.Nanoseconds()), // 10 minutes (600 seconds)
+			EndTs:   time.Unix(0, 15*time.Minute.Nanoseconds()), // 15 minutes (900 seconds)
+			Limit:   entriesLimit,
+			Query:   lblFooBar,
+		}
+		// Contains some entries from minute 13 (780 seconds) to 14 (840 seconds)
+		respTenant1PartiallyEmpty := nonEmptyResponse(reqTenant1PartiallyEmpty, time.Unix(790, 0), time.Unix(810, 0), lblFooBar)
+
+		ctx := user.InjectOrgID(context.Background(), "tenant1")
+		fakeFirstRequest := newFakeResponse([]mockResponse{
+			{
+				RequestResponse: queryrangebase.RequestResponse{
+					Request:  reqTenant1PartiallyEmpty,
+					Response: respTenant1PartiallyEmpty,
+				},
+			},
+		})
+		h := lrc.Wrap(fakeFirstRequest)
+		resp, err := h.Do(ctx, reqTenant1PartiallyEmpty)
+		require.NoError(t, err)
+		require.Equal(t, respTenant1PartiallyEmpty, resp)
+		fakeFirstRequest.AssertExpectations(t)
+
+		// A request from 10 to 12 should hit the cache and return an empty response
+		reqTenant1Empty := &LokiRequest{
+			StartTs: time.Unix(0, 10*time.Minute.Nanoseconds()),
+			EndTs:   time.Unix(0, 12*time.Minute.Nanoseconds()),
+			Limit:   entriesLimit,
+			Query:   lblFooBar,
+		}
+		respTenant1Empty := emptyResponse(reqTenant1Empty)
+		fakeSecondRequest := newFakeResponse([]mockResponse{})
+
+		h = lrc.Wrap(fakeSecondRequest)
+		resp, err = h.Do(ctx, reqTenant1Empty)
+		require.NoError(t, err)
+		require.Equal(t, respTenant1Empty, resp)
+		fakeSecondRequest.AssertExpectations(t)
+
+		// But it should not update the cache again
+		fakeThirdRequest := newFakeResponse([]mockResponse{})
+		h = lrc.Wrap(fakeThirdRequest)
+		resp, err = h.Do(ctx, reqTenant1PartiallyEmpty)
+		require.NoError(t, err)
+		require.Equal(t, respTenant1PartiallyEmpty, resp)
+		fakeThirdRequest.AssertExpectations(t)
+	})
+
+	t.Run("Different direction should not hit cache", func(t *testing.T) {
+		// First request with FORWARD direction
+		reqTenant1Forward := &LokiRequest{
+			StartTs:   time.Unix(0, 20*time.Minute.Nanoseconds()), // 20 minutes (1200 seconds)
+			EndTs:     time.Unix(0, 21*time.Minute.Nanoseconds()), // 21 minutes (1260 seconds)
+			Limit:     entriesLimit,
+			Query:     lblFooBar,
+			Direction: logproto.FORWARD,
+		}
+		respTenant1Forward := nonEmptyResponse(reqTenant1Forward, time.Unix(1201, 0), time.Unix(1205, 0), lblFooBar)
+
+		ctx := user.InjectOrgID(context.Background(), "tenant1")
+		fakeFirstRequest := newFakeResponse([]mockResponse{
+			{
+				RequestResponse: queryrangebase.RequestResponse{
+					Request:  reqTenant1Forward,
+					Response: respTenant1Forward,
+				},
+			},
+		})
+		h := lrc.Wrap(fakeFirstRequest)
+
+		resp, err := h.Do(ctx, reqTenant1Forward)
+		require.NoError(t, err)
+		require.Equal(t, respTenant1Forward, resp)
+		fakeFirstRequest.AssertExpectations(t)
+
+		// Second request with BACKWARD direction (same time range, limit, query) should not hit cache
+		reqTenant1Backward := &LokiRequest{
+			StartTs:   time.Unix(0, 20*time.Minute.Nanoseconds()), // Same time range
+			EndTs:     time.Unix(0, 21*time.Minute.Nanoseconds()), // Same time range
+			Limit:     entriesLimit,                               // Same limit
+			Query:     lblFooBar,                                  // Same query
+			Direction: logproto.BACKWARD,                          // Different direction
+		}
+		respTenant1Backward := nonEmptyResponse(reqTenant1Backward, time.Unix(1201, 0), time.Unix(1205, 0), lblFooBar)
+
+		// Should call the handler (cache miss due to different direction)
+		fakeSecondRequest := newFakeResponse([]mockResponse{
+			{
+				RequestResponse: queryrangebase.RequestResponse{
+					Request:  reqTenant1Backward,
+					Response: respTenant1Backward,
+				},
+			},
+		})
+		h = lrc.Wrap(fakeSecondRequest)
+
+		resp, err = h.Do(ctx, reqTenant1Backward)
+		require.NoError(t, err)
+		require.Equal(t, respTenant1Backward, resp)
+		fakeSecondRequest.AssertExpectations(t)
+
+		// Third request with BACKWARD direction again should hit cache
+		fakeThirdRequest := newFakeResponse([]mockResponse{})
+		h = lrc.Wrap(fakeThirdRequest)
+
+		resp, err = h.Do(ctx, reqTenant1Backward)
+		require.NoError(t, err)
+		require.Equal(t, respTenant1Backward, resp)
+		fakeThirdRequest.AssertExpectations(t)
+	})
+}
+
 type fakeResponse struct {
 	*mock.Mock
 }
