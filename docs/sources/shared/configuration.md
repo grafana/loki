@@ -293,6 +293,84 @@ ui:
 # querier.
 [querier: <querier>]
 
+query_engine:
+  # Experimental: Enable next generation query engine for supported queries.
+  # CLI flag: -query-engine.enable
+  [enable: <boolean> | default = false]
+
+  # Experimental: Enable distributed query execution.
+  # CLI flag: -query-engine.distributed
+  [distributed: <boolean> | default = false]
+
+  # Experimental: Name of network interface to read an advertise address from
+  # for accepting incoming traffic from query-engine-worker instances when
+  # distributed execution is enabled.
+  # CLI flag: -query-engine.instance-interface-names
+  [instance_interface_names: <list of strings> | default = [<private network interfaces>]]
+
+  # Experimental: Batch size of the next generation query engine.
+  # CLI flag: -query-engine.batch-size
+  [batch_size: <int> | default = 100]
+
+  # Experimental: The number of inputs that are prefetched simultaneously by any
+  # Merge node. A value of 0 means that only the currently processed input is
+  # prefetched, 1 means that only the next input is prefetched, and so on. A
+  # negative value means that all inputs are be prefetched in parallel.
+  # CLI flag: -query-engine.merge-prefetch-count
+  [merge_prefetch_count: <int> | default = 0]
+
+  # Configures how to read byte ranges from object storage when using the V2
+  # engine.
+  range_reads:
+    # Experimental: maximum number of parallel reads
+    # CLI flag: -query-engine.range-reads.max-parallelism
+    [max_parallelism: <int> | default = 10]
+
+    # Experimental: maximum distance (in bytes) between ranges that causes them
+    # to be coalesced into a single range
+    # CLI flag: -query-engine.range-reads.coalesce-size
+    [coalesce_size: <int> | default = 1048576]
+
+    # Experimental: maximum size of a byte range
+    # CLI flag: -query-engine.range-reads.max-range-size
+    [max_range_size: <int> | default = 8388608]
+
+    # Experimental: minimum size of a byte range
+    # CLI flag: -query-engine.range-reads.min-range-size
+    [min_range_size: <int> | default = 1048576]
+
+  # Experimental: Number of worker threads to spawn. Each worker thread runs one
+  # task at a time. 0 means to use GOMAXPROCS value.
+  # CLI flag: -query-engine.worker-threads
+  [worker_threads: <int> | default = 0]
+
+  # Experimental: Address holding DNS SRV records of schedulers to connect to.
+  # CLI flag: -query-engine.scheduler-lookup-address
+  [scheduler_lookup_address: <string> | default = ""]
+
+  # Experimental: Interval at which to lookup new schedulers by DNS SRV records.
+  # CLI flag: -query-engine.scheduler-lookup-interval
+  [scheduler_lookup_interval: <duration> | default = 10s]
+
+  # Amount of time until data objects are available.
+  # CLI flag: -query-engine.storage-lag
+  [storage_lag: <duration> | default = 1h]
+
+  # Initial date when data objects became available. Format YYYY-MM-DD. If not
+  # set, assume data objects are always available no matter how far back.
+  # CLI flag: -query-engine.storage-start-date
+  [storage_start_date: <time> | default = 0]
+
+  # Enable routing of query splits in the query frontend to the next generation
+  # engine when they fall within the configured time range.
+  # CLI flag: -query-engine.enable-engine-router
+  [enable_engine_router: <boolean> | default = false]
+
+  # Downstream address to send query splits to. This is the HTTP handler address
+  # of the query engine scheduler.
+  # CLI flag: -query-engine.downstream-address
+  [downstream_address: <string> | default = ""]
+
 # The query_scheduler block configures the Loki query scheduler. When configured
 # it separates the tenant query queues from the query-frontend.
 [query_scheduler: <query_scheduler>]
@@ -5181,74 +5259,6 @@ engine:
   # CLI flag: -querier.engine.max-count-min-sketch-heap-size
   [max_count_min_sketch_heap_size: <int> | default = 10000]
 
-engine_v2:
-  # Experimental: Enable next generation query engine for supported queries.
-  # CLI flag: -querier.engine-v2.enable
-  [enable: <boolean> | default = false]
-
-  # Experimental: Enable distributed query execution.
-  # CLI flag: -querier.engine-v2.distributed
-  [distributed: <boolean> | default = false]
-
-  # Experimental: Name of network interface to read an advertise address from
-  # for accepting incoming traffic from query-engine-worker instances when
-  # distributed execution is enabled.
-  # CLI flag: -querier.engine-v2.instance-interface-names
-  [instance_interface_names: <list of strings> | default = [<private network interfaces>]]
-
-  # Amount of time until data objects are available.
-  # CLI flag: -querier.engine-v2.dataobj-storage-lag
-  [dataobj_storage_lag: <duration> | default = 1h]
-
-  # Initial date when data objects became available. Format YYYY-MM-DD. If not
-  # set, assume data objects are always available no matter how far back.
-  # CLI flag: -querier.engine-v2.dataobj-storage-start
-  [dataobj_storage_start: <time> | default = 0]
-
-  # Experimental: Batch size of the next generation query engine.
-  # CLI flag: -querier.engine-v2.batch-size
-  [batch_size: <int> | default = 100]
-
-  # Experimental: The number of inputs that are prefetched simultaneously by any
-  # Merge node. A value of 0 means that only the currently processed input is
-  # prefetched, 1 means that only the next input is prefetched, and so on. A
-  # negative value means that all inputs are be prefetched in parallel.
-  # CLI flag: -querier.engine-v2.merge-prefetch-count
-  [merge_prefetch_count: <int> | default = 0]
-
-  # Configures how to read byte ranges from object storage when using the V2
-  # engine.
-  range_reads:
-    # Experimental: maximum number of parallel reads
-    # CLI flag: -querier.engine-v2.range-reads.max-parallelism
-    [max_parallelism: <int> | default = 10]
-
-    # Experimental: maximum distance (in bytes) between ranges that causes them
-    # to be coalesced into a single range
-    # CLI flag: -querier.engine-v2.range-reads.coalesce-size
-    [coalesce_size: <int> | default = 1048576]
-
-    # Experimental: maximum size of a byte range
-    # CLI flag: -querier.engine-v2.range-reads.max-range-size
-    [max_range_size: <int> | default = 8388608]
-
-    # Experimental: minimum size of a byte range
-    # CLI flag: -querier.engine-v2.range-reads.min-range-size
-    [min_range_size: <int> | default = 1048576]
-
-  # Experimental: Number of worker threads to spawn. Each worker thread runs one
-  # task at a time. 0 means to use GOMAXPROCS value.
-  # CLI flag: -querier.engine-v2.worker-threads
-  [worker_threads: <int> | default = 0]
-
-  # Experimental: Address holding DNS SRV records of schedulers to connect to.
-  # CLI flag: -querier.engine-v2.scheduler-lookup-address
-  [scheduler_lookup_address: <string> | default = ""]
-
-  # Experimental: Interval at which to lookup new schedulers by DNS SRV records.
-  # CLI flag: -querier.engine-v2.scheduler-lookup-interval
-  [scheduler_lookup_interval: <duration> | default = 10s]
-
 # The maximum number of queries that can be simultaneously processed by the
 # querier.
 # CLI flag: -querier.max-concurrent
@@ -5276,15 +5286,6 @@ engine_v2:
 # of the normal ingesters.
 # CLI flag: -querier.query-partition-ingesters
 [query_partition_ingesters: <boolean> | default = false]
-
-# Amount of time until data objects are available.
-# CLI flag: -querier.dataobj-storage-lag
-[dataobj_storage_lag: <duration> | default = 1h]
-
-# Initial date when data objects became available. Format YYYY-MM-DD. If not
-# set, assume data objects are always available no matter how far back.
-# CLI flag: -querier.dataobj-storage-start
-[dataobj_storage_start: <string> | default = ""]
 ```
 
 ### query_range
@@ -5421,15 +5422,6 @@ label_results_cache:
   # compression. Supported values are: 'snappy' and ''.
   # CLI flag: -frontend.label-results-cache.compression
   [compression: <string> | default = ""]
-
-# Enable routing of queries to the v2 engine when they fall within the
-# configured time range.
-# CLI flag: -querier.enable-v2-engine-router
-[enable_v2_engine_router: <boolean> | default = false]
-
-# Address for executing V2 engine queries.
-# CLI flag: -querier.v2-engine-address
-[v2_engine_address: <string> | default = ""]
 ```
 
 ### query_scheduler
