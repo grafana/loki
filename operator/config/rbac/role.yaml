@@ -140,15 +140,6 @@ rules:
   - networking.k8s.io
   resources:
   - ingresses
-  verbs:
-  - create
-  - get
-  - list
-  - update
-  - watch
-- apiGroups:
-  - networking.k8s.io
-  resources:
   - networkpolicies
   verbs:
   - create
