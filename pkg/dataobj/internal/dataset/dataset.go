@@ -81,6 +81,31 @@ func (d memDataset) ReadPages(ctx context.Context, pages []Page) result.Seq[Page
 	})
 }
 
+type Col struct {
+	Index  int
+	Values []Value
+}
+
+func (c Col) Rows() int {
+	return len(c.Values)
+}
+
+func (c Col) Size() int64 {
+	var size int64
+	for _, v := range c.Values {
+		size += int64(v.Size())
+	}
+	return size
+}
+
+func (c Col) SizeOfRows(idxs []int) int64 {
+	var size int64
+	for _, idx := range idxs {
+		size += int64(c.Values[idx].Size())
+	}
+	return size
+}
+
 // A Row in a Dataset is a set of values across multiple columns with the same
 // row number.
 type Row struct {
