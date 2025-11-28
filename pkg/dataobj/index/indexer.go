@@ -520,7 +520,9 @@ func (si *serialIndexer) updateMetrics(buildTime time.Duration, earliestIndexedR
 	si.indexerMetrics.incBuilds()
 	si.indexerMetrics.setBuildTime(buildTime)
 	si.indexerMetrics.setQueueDepth(len(si.buildRequestChan))
-	si.indexerMetrics.setEndToEndProcessingTime(time.Since(earliestIndexedRecord))
+	if !earliestIndexedRecord.IsZero() {
+		si.indexerMetrics.setEndToEndProcessingTime(time.Since(earliestIndexedRecord))
+	}
 }
 
 // ObjectKey generates the object key for storing an index object in object storage.
