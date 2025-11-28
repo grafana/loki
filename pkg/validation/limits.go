@@ -960,6 +960,10 @@ func (o *Overrides) LogResultCacheMaxResponseSize(_ context.Context, userID stri
 	return o.getOverridesForUser(userID).LogResultCacheMaxResponseSize.Val()
 }
 
+func (o *Overrides) LogResultCacheStoreNonEmptyResponse(_ context.Context, userID string) bool {
+	return o.getOverridesForUser(userID).LogResultCacheStoreNonEmptyResponse
+}
+
 func (o *Overrides) MaxMetadataCacheFreshness(_ context.Context, userID string) time.Duration {
 	return time.Duration(o.getOverridesForUser(userID).MaxMetadataCacheFreshness)
 }
