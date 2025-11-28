@@ -325,7 +325,7 @@ func (si *serialIndexer) processBuildRequest(req buildRequest) buildResult {
 
 	// Update metrics
 	buildTime := time.Since(start)
-	si.updateMetrics(buildTime)
+	si.updateMetrics(buildTime, getEarliestIndexedRecord(si.logger, events[:processed]))
 
 	if err != nil {
 		level.Error(si.logger).Log("msg", "failed to build index",
@@ -348,6 +348,21 @@ func (si *serialIndexer) processBuildRequest(req buildRequest) buildResult {
 		records:   records,
 		err:       nil,
 	}
+}
+
+func getEarliestIndexedRecord(logger log.Logger, events []metastore.ObjectWrittenEvent) time.Time {
+	var earliestIndexedRecordTime time.Time
+	for _, ev := range events {
+		ts, err := time.Parse(time.RFC3339, ev.EarliestRecordTime)
+		if err != nil {
+			level.Error(logger).Log("msg", "failed to parse earliest record time", "err", err)
+			continue
+		}
+		if ts.Before(earliestIndexedRecordTime) || earliestIndexedRecordTime.IsZero() {
+			earliestIndexedRecordTime = ts
+		}
+	}
+	return earliestIndexedRecordTime
 }
 
 // buildIndex is writing all metastore events to a single index object. It
@@ -501,10 +516,11 @@ func (si *serialIndexer) flushIndex(ctx context.Context, partition int32) (strin
 }
 
 // updateMetrics updates internal build metrics
-func (si *serialIndexer) updateMetrics(buildTime time.Duration) {
+func (si *serialIndexer) updateMetrics(buildTime time.Duration, earliestIndexedRecord time.Time) {
 	si.indexerMetrics.incBuilds()
 	si.indexerMetrics.setBuildTime(buildTime)
 	si.indexerMetrics.setQueueDepth(len(si.buildRequestChan))
+	si.indexerMetrics.setEndToEndProcessingTime(time.Since(earliestIndexedRecord))
 }
 
 // ObjectKey generates the object key for storing an index object in object storage.
