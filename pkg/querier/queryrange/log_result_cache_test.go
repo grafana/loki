@@ -995,6 +995,69 @@ func Test_LogResultCacheResponseSize(t *testing.T) {
 		require.Equal(t, respTenant1PartiallyEmpty, resp)
 		fakeThirdRequest.AssertExpectations(t)
 	})
+
+	t.Run("Different direction should not hit cache", func(t *testing.T) {
+		// First request with FORWARD direction
+		reqTenant1Forward := &LokiRequest{
+			StartTs:   time.Unix(0, 20*time.Minute.Nanoseconds()), // 20 minutes (1200 seconds)
+			EndTs:     time.Unix(0, 21*time.Minute.Nanoseconds()), // 21 minutes (1260 seconds)
+			Limit:     entriesLimit,
+			Query:     lblFooBar,
+			Direction: logproto.FORWARD,
+		}
+		respTenant1Forward := nonEmptyResponse(reqTenant1Forward, time.Unix(1201, 0), time.Unix(1205, 0), lblFooBar)
+
+		ctx := user.InjectOrgID(context.Background(), "tenant1")
+		fakeFirstRequest := newFakeResponse([]mockResponse{
+			{
+				RequestResponse: queryrangebase.RequestResponse{
+					Request:  reqTenant1Forward,
+					Response: respTenant1Forward,
+				},
+			},
+		})
+		h := lrc.Wrap(fakeFirstRequest)
+
+		resp, err := h.Do(ctx, reqTenant1Forward)
+		require.NoError(t, err)
+		require.Equal(t, respTenant1Forward, resp)
+		fakeFirstRequest.AssertExpectations(t)
+
+		// Second request with BACKWARD direction (same time range, limit, query) should not hit cache
+		reqTenant1Backward := &LokiRequest{
+			StartTs:   time.Unix(0, 20*time.Minute.Nanoseconds()), // Same time range
+			EndTs:     time.Unix(0, 21*time.Minute.Nanoseconds()), // Same time range
+			Limit:     entriesLimit,                               // Same limit
+			Query:     lblFooBar,                                  // Same query
+			Direction: logproto.BACKWARD,                          // Different direction
+		}
+		respTenant1Backward := nonEmptyResponse(reqTenant1Backward, time.Unix(1201, 0), time.Unix(1205, 0), lblFooBar)
+
+		// Should call the handler (cache miss due to different direction)
+		fakeSecondRequest := newFakeResponse([]mockResponse{
+			{
+				RequestResponse: queryrangebase.RequestResponse{
+					Request:  reqTenant1Backward,
+					Response: respTenant1Backward,
+				},
+			},
+		})
+		h = lrc.Wrap(fakeSecondRequest)
+
+		resp, err = h.Do(ctx, reqTenant1Backward)
+		require.NoError(t, err)
+		require.Equal(t, respTenant1Backward, resp)
+		fakeSecondRequest.AssertExpectations(t)
+
+		// Third request with BACKWARD direction again should hit cache
+		fakeThirdRequest := newFakeResponse([]mockResponse{})
+		h = lrc.Wrap(fakeThirdRequest)
+
+		resp, err = h.Do(ctx, reqTenant1Backward)
+		require.NoError(t, err)
+		require.Equal(t, respTenant1Backward, resp)
+		fakeThirdRequest.AssertExpectations(t)
+	})
 }
 
 type fakeResponse struct {

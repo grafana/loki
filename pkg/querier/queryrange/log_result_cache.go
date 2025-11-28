@@ -134,9 +134,9 @@ func (l *logResultCache) Do(ctx context.Context, req queryrangebase.Request) (qu
 	storeNonEmptyEnabled := validation.AllTruePerTenant(tenantIDs, storeNonEmptyCapture)
 
 	// Use cache key for empty results (backward compatible) and :resp suffix for small non-empty responses
-	// Include limit in response cache key to ensure we only use cached responses with the same limit
-	responseCacheKey := fmt.Sprintf("%s:resp:%d", cacheKey, lokiReq.Limit)
-	// Marker cache key to indicate a non-empty response exists for ANY limit (without limit suffix)
+	// Include limit and direction in response cache key to ensure we only use cached responses with the same limit and direction
+	responseCacheKey := fmt.Sprintf("%s:resp:%d:%d", cacheKey, lokiReq.Limit, lokiReq.Direction)
+	// Marker cache key to indicate a non-empty response exists for ANY limit and ANY direction (without limit or direction suffix)
 	markerCacheKey := fmt.Sprintf("%s:resp", cacheKey)
 
 	// Determine which cache keys to check
@@ -270,7 +270,7 @@ func (l *logResultCache) handleMiss(ctx context.Context, cacheKey, responseCache
 				level.Warn(l.logger).Log("msg", "error marshalling response", "err", err)
 				return resp, nil
 			}
-			// Marker cache key to indicate a non-empty response exists for ANY limit
+			// Marker cache key to indicate a non-empty response exists for ANY limit and ANY direction
 			markerCacheKey := fmt.Sprintf("%s:resp", cacheKey)
 			// Marker value - just needs to exist, use minimal value
 			markerValue := []byte{1}
@@ -450,7 +450,7 @@ func (l *logResultCache) updateCacheWithNonEmptyResponse(ctx context.Context, ca
 		return
 	}
 
-	// Marker cache key to indicate a non-empty response exists for ANY limit
+	// Marker cache key to indicate a non-empty response exists for ANY limit and ANY direction
 	markerCacheKey := fmt.Sprintf("%s:resp", cacheKey)
 	// Marker value - just needs to exist, use minimal value
 	markerValue := []byte{1}
