@@ -638,77 +638,57 @@ func calculateResultSize(result promql_parser.Value) int {
 	case logqlmodel.Streams:
 		var size int
 		for _, stream := range v {
-			// Stream labels
-			size += len(stream.Labels)
-			// JSON overhead for stream object (~20 bytes: {"stream":{},"values":[]})
+			size += len(stream.Labels) // Stream labels
 			size += 20
 			for _, entry := range stream.Entries {
-				// Entry line content
-				size += len(entry.Line)
-				// Timestamp as string (~20 bytes for RFC3339Nano)
-				size += 20
-				// JSON overhead for entry array (~10 bytes: ["timestamp","line"])
-				size += 10
-				// Structured metadata
+				size += len(entry.Line) // Entry line content
+				size += 20              // Timestamp as string (~20 bytes for RFC3339Nano)
+				size += 10              // JSON overhead for entry array (~10 bytes: ["timestamp","line"])
 				for _, label := range entry.StructuredMetadata {
 					size += len(label.Name) + len(label.Value) + 10 // +10 for JSON overhead
 				}
-				// Parsed labels
 				for _, label := range entry.Parsed {
 					size += len(label.Name) + len(label.Value) + 10 // +10 for JSON overhead
 				}
 			}
 		}
-		// JSON array overhead
-		size += 2
+		size += 2 // Account for [] brackets
 		return size
 	case promql.Vector:
 		var size int
 		for _, sample := range v {
-			// Metric labels
-			size += estimateLabelsSize(sample.Metric)
-			// Value array: [timestamp, value] (~30 bytes)
-			size += 30
-			// JSON object overhead (~15 bytes)
-			size += 15
+			size += estimateLabelsSize(sample.Metric) // Metric labels
+			size += 30                                // Value array: [timestamp, value] (~30 bytes)
+			size += 15                                // JSON object overhead (~15 bytes)
 		}
-		// JSON array overhead
-		size += 2
+		size += 2 // Account for [] brackets
 		return size
 	case promql.Matrix:
 		var size int
 		for _, series := range v {
-			// Metric labels
-			size += estimateLabelsSize(series.Metric)
-			// Values array overhead
-			size += 10
-			// Each data point (~20 bytes: [timestamp, value])
-			size += len(series.Floats) * 20
-			// JSON object overhead (~15 bytes)
-			size += 15
+			size += estimateLabelsSize(series.Metric) // Metric labels
+			size += 10                                // Values array overhead
+			size += len(series.Floats) * 20           // Each data point (~20 bytes: [timestamp, value])
+			size += 15                                // JSON object overhead (~15 bytes)
 		}
-		// JSON array overhead
-		size += 2
+		size += 2 // Account for [] brackets
 		return size
 	case promql.Scalar:
-		// Scalar: [timestamp, value] (~30 bytes)
-		return 30
+		return 30 // Scalar: [timestamp, value] (~30 bytes)
 	case promql.String:
-		// String: [timestamp, value] (~20 bytes + string length)
-		return 20 + len(v.V)
+		return 20 + len(v.V) // String: [timestamp, value] (~20 bytes + string length)
 	default:
-		// For unknown types, return 0
-		return 0
+		return 0 // For unknown types, return 0
 	}
 }
 
 // estimateLabelsSize estimates the JSON size of labels
 func estimateLabelsSize(lbs labels.Labels) int {
 	if lbs.Len() == 0 {
-		return 2 // {}
+		return 2 // Account for {} brackets
 	}
 	var size int
-	size += 2 // {}
+	size += 2 // Account for {} brackets
 	lbs.Range(func(label labels.Label) {
 		size += len(label.Name) + len(label.Value) + 5 // "name":"value",
 	})
