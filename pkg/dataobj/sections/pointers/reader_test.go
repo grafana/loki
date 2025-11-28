@@ -337,30 +337,8 @@ func TestReaderWithTimestampPredicates(t *testing.T) {
 	r := pointers.NewReader(pointers.ReaderOptions{
 		Columns:   []*pointers.Column{pathCol, sectionCol, minTimestampCol, maxTimestampCol},
 		Allocator: memory.DefaultAllocator,
-		// find an overlap
 		Predicates: []pointers.Predicate{
-			pointers.AndPredicate{
-				Left: pointers.OrPredicate{
-					Left: pointers.EqualPredicate{
-						Column: maxTimestampCol,
-						Value:  t25s,
-					},
-					Right: pointers.GreaterThanPredicate{
-						Column: maxTimestampCol,
-						Value:  t25s,
-					},
-				},
-				Right: pointers.OrPredicate{
-					Left: pointers.EqualPredicate{
-						Column: minTimestampCol,
-						Value:  t55s,
-					},
-					Right: pointers.LessThanPredicate{
-						Column: minTimestampCol,
-						Value:  t55s,
-					},
-				},
-			},
+			pointers.WhereTimeRangeOverlapsWith(minTimestampCol, maxTimestampCol, t25s, t55s),
 		},
 	})
 

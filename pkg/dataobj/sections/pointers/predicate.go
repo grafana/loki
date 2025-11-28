@@ -116,3 +116,33 @@ func walkPredicate(p Predicate, fn func(Predicate) bool) {
 
 	fn(nil)
 }
+
+func WhereTimeRangeOverlapsWith(
+	colMinTimestamp *Column,
+	colMaxTimestamp *Column,
+	start scalar.Scalar,
+	end scalar.Scalar,
+) Predicate {
+	return AndPredicate{
+		Left: OrPredicate{
+			Left: EqualPredicate{
+				Column: colMaxTimestamp,
+				Value:  start,
+			},
+			Right: GreaterThanPredicate{
+				Column: colMaxTimestamp,
+				Value:  start,
+			},
+		},
+		Right: OrPredicate{
+			Left: EqualPredicate{
+				Column: colMinTimestamp,
+				Value:  end,
+			},
+			Right: LessThanPredicate{
+				Column: colMinTimestamp,
+				Value:  end,
+			},
+		},
+	}
+}

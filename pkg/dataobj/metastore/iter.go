@@ -99,7 +99,7 @@ func forEachStreamSectionPointer(
 		reader.Reset(pointers.ReaderOptions{
 			Columns: pointerCols,
 			Predicates: []pointers.Predicate{
-				buildPointersTimeRangePredicate(colMinTimestamp, colMaxTimestamp, sStart, sEnd),
+				pointers.WhereTimeRangeOverlapsWith(colMinTimestamp, colMaxTimestamp, sStart, sEnd),
 				pointers.InPredicate{
 					Column: colStreamID,
 					Values: sStreamIDs,
@@ -194,32 +194,4 @@ func forEachStreamSectionPointer(
 	}
 
 	return nil
-}
-
-func buildPointersTimeRangePredicate(
-	colMinTimestamp, colMaxTimestamp *pointers.Column,
-	sStart scalar.Scalar, sEnd scalar.Scalar,
-) pointers.Predicate {
-	return pointers.AndPredicate{
-		Left: pointers.OrPredicate{
-			Left: pointers.EqualPredicate{
-				Column: colMaxTimestamp,
-				Value:  sStart,
-			},
-			Right: pointers.GreaterThanPredicate{
-				Column: colMaxTimestamp,
-				Value:  sStart,
-			},
-		},
-		Right: pointers.OrPredicate{
-			Left: pointers.EqualPredicate{
-				Column: colMinTimestamp,
-				Value:  sEnd,
-			},
-			Right: pointers.LessThanPredicate{
-				Column: colMinTimestamp,
-				Value:  sEnd,
-			},
-		},
-	}
 }
