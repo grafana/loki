@@ -7,7 +7,6 @@ import (
 	"io"
 	"time"
 
-	"github.com/grafana/dskit/user"
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
@@ -21,13 +20,9 @@ import (
 // Iter iterates over records in the provided decoder. All logs sections are
 // iterated over in order.
 // Results objects returned to yield may be reused and must be copied for further use via DeepCopy().
-func Iter(ctx context.Context, obj *dataobj.Object) result.Seq[Record] {
+func Iter(ctx context.Context, obj *dataobj.Object, tenantFilter dataobj.TenantFilter) result.Seq[Record] {
 	return result.Iter(func(yield func(Record) bool) error {
-		tenantID, err := user.ExtractOrgID(ctx)
-		if err != nil {
-			return err
-		}
-		for i, section := range obj.Sections().Filter(dataobj.ForSingleTenant(tenantID), CheckSection) {
+		for i, section := range obj.Sections().Filter(tenantFilter, CheckSection) {
 			logsSection, err := Open(ctx, section)
 			if err != nil {
 				return fmt.Errorf("opening section %d: %w", i, err)

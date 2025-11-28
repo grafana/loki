@@ -78,7 +78,7 @@ func Test(t *testing.T) {
 	}
 
 	i := 0
-	for result := range logs.Iter(context.Background(), obj) {
+	for result := range logs.Iter(context.Background(), obj, dataobj.AllTenants()) {
 		record, err := result.Value()
 		require.NoError(t, err)
 		require.Equal(t, expect[i], record)

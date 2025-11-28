@@ -105,10 +105,10 @@ func createTestLogObject(t *testing.T, tenants int) *dataobj.Object {
 	require.NoError(t, err)
 	t.Cleanup(func() { closer.Close() })
 
-	streamSections := obj.Sections().Count(t.Context(), streams.CheckSection)
+	streamSections := obj.Sections().Count(dataobj.AllTenants(), streams.CheckSection)
 	require.Equal(t, tenants, streamSections)
 
-	logSections := obj.Sections().Count(t.Context(), logs.CheckSection)
+	logSections := obj.Sections().Count(dataobj.AllTenants(), logs.CheckSection)
 	require.Equal(t, tenants, logSections)
 
 	return obj
@@ -147,7 +147,7 @@ func TestCalculator_Calculate(t *testing.T) {
 		}
 
 		// Confirm we have multiple pointers sections, across all tenants
-		count := obj.Sections().Count(t.Context(), pointers.CheckSection)
+		count := obj.Sections().Count(dataobj.AllTenants(), pointers.CheckSection)
 		require.GreaterOrEqual(t, count, tenants)
 
 		requireValidPointers(t, obj)
@@ -193,7 +193,7 @@ func TestCalculator_Calculate(t *testing.T) {
 		}
 
 		// Confirm we have multiple pointers sections, across all tenants
-		count := obj.Sections().Count(t.Context(), pointers.CheckSection)
+		count := obj.Sections().Count(dataobj.AllTenants(), pointers.CheckSection)
 		require.GreaterOrEqual(t, count, tenants)
 
 		requireValidPointers(t, obj)
@@ -203,7 +203,7 @@ func TestCalculator_Calculate(t *testing.T) {
 func requireValidPointers(t *testing.T, obj *dataobj.Object) {
 	totalPointers := 0
 	pointersByTenant := make(map[string]int)
-	for _, section := range obj.Sections().Filter(t.Context(), pointers.CheckSection) {
+	for _, section := range obj.Sections().Filter(dataobj.AllTenants(), pointers.CheckSection) {
 		require.NotEmpty(t, section.Tenant)
 
 		sec, err := pointers.Open(context.Background(), section)

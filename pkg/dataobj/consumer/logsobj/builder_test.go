@@ -86,8 +86,8 @@ func TestBuilder(t *testing.T) {
 		require.NoError(t, err)
 		defer closer.Close()
 
-		require.Equal(t, 1, obj.Sections().Count(t.Context(), streams.CheckSection))
-		require.Equal(t, 1, obj.Sections().Count(t.Context(), logs.CheckSection))
+		require.Equal(t, 1, obj.Sections().Count(dataobj.AllTenants(), streams.CheckSection))
+		require.Equal(t, 1, obj.Sections().Count(dataobj.AllTenants(), logs.CheckSection))
 	})
 }
 
@@ -127,9 +127,9 @@ func TestBuilder_Append(t *testing.T) {
 	// to the section builder otherwise tenant will be absent from successive
 	// sections.
 	secs := obj.Sections()
-	require.Equal(t, 1, secs.Count(ctx, streams.CheckSection))
-	require.Greater(t, secs.Count(ctx, logs.CheckSection), 1)
-	for _, section := range secs.Filter(ctx, logs.CheckSection) {
+	require.Equal(t, 1, secs.Count(dataobj.AllTenants(), streams.CheckSection))
+	require.Greater(t, secs.Count(dataobj.AllTenants(), logs.CheckSection), 1)
+	for _, section := range secs.Filter(dataobj.AllTenants(), logs.CheckSection) {
 		require.Equal(t, tenant, section.Tenant)
 	}
 }
@@ -174,23 +174,21 @@ func TestBuilder_CopyAndSort(t *testing.T) {
 
 	require.Equal(
 		t,
-		obj1.Sections().Count(streams.CheckSection),
-		obj2.Sections().Count(streams.CheckSection),
+		obj1.Sections().Count(dataobj.AllTenants(), streams.CheckSection),
+		obj2.Sections().Count(dataobj.AllTenants(), streams.CheckSection),
 		"objects have different amount of streams sections",
 	)
 	require.Equal(
 		t,
-		obj1.Sections().Count(logs.CheckSection),
-		obj2.Sections().Count(logs.CheckSection),
+		obj1.Sections().Count(dataobj.AllTenants(), logs.CheckSection),
+		obj2.Sections().Count(dataobj.AllTenants(), logs.CheckSection),
 		"objects have different amount of logs sections",
 	)
 
 	// Assert DESC timestamp ordering across sections of a tenant
 	for _, tenant := range []string{"tenant-a", "tenant-b", "tenant-c"} {
 		prevTs := time.Unix(0, math.MaxInt64)
-		for _, sec := range obj2.Sections().Filter(func(s *dataobj.Section) bool {
-			return logs.CheckSection(s) && s.Tenant == tenant
-		}) {
+		for _, sec := range obj2.Sections().Filter(dataobj.ForSingleTenant(tenant), logs.CheckSection) {
 			for res := range iterLogsSection(t, sec) {
 				val, _ := res.Value()
 				require.LessOrEqual(t, val.Timestamp, prevTs)

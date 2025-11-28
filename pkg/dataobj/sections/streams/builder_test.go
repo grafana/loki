@@ -57,7 +57,7 @@ func Test(t *testing.T) {
 	}
 
 	var actual []streams.Stream
-	for result := range streams.Iter(context.Background(), obj) {
+	for result := range streams.Iter(context.Background(), obj, dataobj.AllTenants()) {
 		stream, err := result.Value()
 		require.NoError(t, err)
 		stream.Labels = copyLabels(stream.Labels)

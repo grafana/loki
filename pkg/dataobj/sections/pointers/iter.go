@@ -8,7 +8,6 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/grafana/dskit/user"
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
@@ -20,13 +19,9 @@ import (
 
 // Iter iterates over pointers in the provided decoder. All pointers sections are
 // iterated over in order.
-func Iter(ctx context.Context, obj *dataobj.Object) result.Seq[SectionPointer] {
+func Iter(ctx context.Context, obj *dataobj.Object, tenantFilter dataobj.TenantFilter) result.Seq[SectionPointer] {
 	return result.Iter(func(yield func(SectionPointer) bool) error {
-		tenantID, err := user.ExtractOrgID(ctx)
-		if err != nil {
-			return err
-		}
-		for i, section := range obj.Sections().Filter(dataobj.ForSingleTenant(tenantID), CheckSection) {
+		for i, section := range obj.Sections().Filter(tenantFilter, CheckSection) {
 			pointersSection, err := Open(ctx, section)
 			if err != nil {
 				return fmt.Errorf("opening section %d: %w", i, err)

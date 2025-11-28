@@ -458,7 +458,7 @@ func (b *Builder) CopyAndSort(obj *dataobj.Object) (*dataobj.Object, io.Closer, 
 	natsort.Sort(tenants)
 
 	for _, tenant := range tenants {
-		for _, sec := range obj.Sections().Filter(func(s *dataobj.Section) bool { return streams.CheckSection(s) && s.Tenant == tenant }) {
+		for _, sec := range obj.Sections().Filter(dataobj.ForSingleTenant(tenant), streams.CheckSection) {
 			sb.Reset()
 			sb.SetTenant(sec.Tenant)
 			// Copy section into new builder. This is *very* inefficient at the moment!
@@ -481,7 +481,7 @@ func (b *Builder) CopyAndSort(obj *dataobj.Object) (*dataobj.Object, io.Closer, 
 		}
 
 		var sections []*dataobj.Section
-		for _, sec := range obj.Sections().Filter(func(s *dataobj.Section) bool { return logs.CheckSection(s) && s.Tenant == tenant }) {
+		for _, sec := range obj.Sections().Filter(dataobj.ForSingleTenant(tenant), logs.CheckSection) {
 			sections = append(sections, sec)
 		}
 
