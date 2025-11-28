@@ -5,12 +5,14 @@ import (
 	"errors"
 	"flag"
 	"strconv"
+	"sync"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/ring"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/grafana/loki/v3/pkg/kafka"
 )
@@ -50,12 +52,18 @@ func (c *DataObjTeeConfig) Validate() error {
 // DataObjTee is a tee that duplicates streams to the data object topic.
 // It is a temporary solution while we work on segmentation keys.
 type DataObjTee struct {
-	cfg          *DataObjTeeConfig
-	limitsClient *ingestLimits
-	limits       Limits
-	kafkaClient  *kgo.Client
-	resolver     *SegmentationPartitionResolver
-	logger       log.Logger
+	cfg              *DataObjTeeConfig
+	rateStore        *segmentationKeyRateStore
+	distributorsRing *ring.Ring
+	limits           Limits
+	kafkaClient      KafkaProducer
+	resolver         *SegmentationPartitionResolver
+	logger           log.Logger
+
+	// A simple cache to avoid repeatedly calling GetHealthy on the ring.
+	numDistributors          uint64
+	numDistributorsUpdatedAt time.Time
+	numDistributorsMtx       sync.Mutex
 
 	// Metrics.
 	failures prometheus.Counter
@@ -64,25 +72,28 @@ type DataObjTee struct {
 	// High cardinality metrics which are only emitted when debug metrics
 	// are enabled.
 	produced *prometheus.CounterVec
+	rate     *prometheus.GaugeVec
 }
 
 // NewDataObjTee returns a new DataObjTee.
 func NewDataObjTee(
 	cfg *DataObjTeeConfig,
 	resolver *SegmentationPartitionResolver,
-	limitsClient *ingestLimits,
+	rateStore *segmentationKeyRateStore,
+	distributorsRing *ring.Ring,
 	limits Limits,
-	kafkaClient *kgo.Client,
+	kafkaClient KafkaProducer,
 	logger log.Logger,
 	reg prometheus.Registerer,
 ) (*DataObjTee, error) {
 	return &DataObjTee{
-		cfg:          cfg,
-		resolver:     resolver,
-		kafkaClient:  kafkaClient,
-		limitsClient: limitsClient,
-		limits:       limits,
-		logger:       logger,
+		cfg:              cfg,
+		resolver:         resolver,
+		rateStore:        rateStore,
+		distributorsRing: distributorsRing,
+		limits:           limits,
+		kafkaClient:      kafkaClient,
+		logger:           logger,
 		failures: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "loki_distributor_dataobj_tee_duplicate_stream_failures_total",
 			Help: "Total number of streams that could not be duplicated.",
@@ -95,6 +106,10 @@ func NewDataObjTee(
 			Name: "loki_distributor_dataobj_tee_produced_bytes_total",
 			Help: "Total number of bytes produced to each partition.",
 		}, []string{"tenant", "partition", "segmentation_key"}),
+		rate: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
+			Name: "loki_distributor_dataobj_tee_segmentation_key_rate_bytes",
+			Help: "Current estimate rate for the segemntation key in bytes.",
+		}, []string{"tenant", "segmentation_key"}),
 	}, nil
 }
 
@@ -107,6 +122,7 @@ type SegmentedStream struct {
 
 // Duplicate implements the [Tee] interface.
 func (t *DataObjTee) Duplicate(ctx context.Context, tenant string, streams []KeyedStream) {
+	now := time.Now()
 	segmentationKeyStreams := make([]SegmentedStream, 0, len(streams))
 	for _, stream := range streams {
 		segmentationKey, err := GetSegmentationKey(stream)
@@ -121,21 +137,24 @@ func (t *DataObjTee) Duplicate(ctx context.Context, tenant string, streams []Key
 			SegmentationKeyHash: segmentationKey.Sum64(),
 		})
 	}
-	rates, err := t.limitsClient.UpdateRates(ctx, tenant, segmentationKeyStreams)
-	if err != nil {
-		level.Error(t.logger).Log("msg", "failed to update rates", "err", err)
-	}
-	// fastRates is a temporary lookup table that lets us find the rate
-	// for a segmentation key in constant time.
-	fastRates := make(map[uint64]uint64, len(rates))
-	for _, rate := range rates {
-		fastRates[rate.StreamHash] = rate.Rate
-	}
 	// We use max to prevent negative values becoming large positive values
 	// when converting from float64 to uint64.
 	tenantRateBytesLimit := uint64(max(t.limits.IngestionRateBytes(tenant), 0))
+	// We need to multiply the local rate by the total number of distributors
+	// to get an estimate for the total rate.
+	numDistributors := t.fetchNumDistributors(now)
+
 	for _, s := range segmentationKeyStreams {
-		go t.duplicate(ctx, tenant, s, fastRates[s.SegmentationKeyHash], tenantRateBytesLimit)
+		totalSize := s.Stream.Size()
+		rateBytes := t.rateStore.Update(tenant, s.SegmentationKey, uint64(totalSize), now)
+		rateBytes *= numDistributors
+		if t.cfg.DebugMetricsEnabled {
+			t.rate.WithLabelValues(
+				tenant,
+				string(s.SegmentationKey),
+			).Set(float64(rateBytes))
+		}
+		go t.duplicate(ctx, tenant, s, rateBytes, tenantRateBytesLimit)
 	}
 }
 
@@ -153,7 +172,7 @@ func (t *DataObjTee) duplicate(ctx context.Context, tenant string, stream Segmen
 		t.failures.Inc()
 		return
 	}
-	results := t.kafkaClient.ProduceSync(ctx, records...)
+	results := t.kafkaClient.ProduceSync(ctx, records)
 	if err := results.FirstErr(); err != nil {
 		level.Error(t.logger).Log("msg", "failed to produce records", "err", err)
 		t.failures.Inc()
@@ -165,4 +184,18 @@ func (t *DataObjTee) duplicate(ctx context.Context, tenant string, stream Segmen
 			string(stream.SegmentationKey),
 		).Add(float64(stream.Stream.Size()))
 	}
+}
+
+func (t *DataObjTee) fetchNumDistributors(now time.Time) uint64 {
+	t.numDistributorsMtx.Lock()
+	defer t.numDistributorsMtx.Unlock()
+	if now.Add(-time.Minute).After(t.numDistributorsUpdatedAt) {
+		if r, err := t.distributorsRing.GetAllHealthy(ring.Read); err != nil {
+			level.Error(t.logger).Log("msg", "failed to get healthy distributors from ring", "err", err)
+		} else {
+			t.numDistributors = uint64(len(r.Instances))
+			t.numDistributorsUpdatedAt = now
+		}
+	}
+	return max(1, t.numDistributors)
 }

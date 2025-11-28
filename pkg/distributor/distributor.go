@@ -283,8 +283,6 @@ func New(
 		return nil, fmt.Errorf("partition ring is required for kafka writes")
 	}
 
-	ingestLimits := newIngestLimits(limitsFrontendClient, registerer)
-
 	var kafkaWriter KafkaProducer
 	if cfg.KafkaEnabled {
 		kafkaClient, err := kafka_client.NewWriterClient("distributor", cfg.KafkaConfig, 20, logger, registerer)
@@ -295,28 +293,6 @@ func New(
 			prometheus.WrapRegistererWithPrefix("loki_", registerer),
 			kafka_client.WithRecordsInterceptor(validation.IngestionPoliciesKafkaProducerInterceptor),
 		)
-
-		if cfg.DataObjTeeConfig.Enabled {
-			resolver := NewSegmentationPartitionResolver(
-				uint64(cfg.DataObjTeeConfig.PerPartitionRateBytes),
-				dataObjConsumerPartitionRing,
-				registerer,
-				logger,
-			)
-			dataObjTee, err := NewDataObjTee(
-				&cfg.DataObjTeeConfig,
-				resolver,
-				ingestLimits,
-				overrides,
-				kafkaClient,
-				logger,
-				registerer,
-			)
-			if err != nil {
-				return nil, fmt.Errorf("failed to create data object tee: %w", err)
-			}
-			tee = WrapTee(tee, dataObjTee)
-		}
 	}
 
 	d := &Distributor{
@@ -389,7 +365,7 @@ func New(
 		writeFailuresManager:  writefailures.NewManager(logger, registerer, cfg.WriteFailuresLogging, configs, "distributor"),
 		kafkaWriter:           kafkaWriter,
 		partitionRing:         partitionRing,
-		ingestLimits:          ingestLimits,
+		ingestLimits:          newIngestLimits(limitsFrontendClient, registerer),
 		numMetadataPartitions: numMetadataPartitions,
 	}
 
@@ -430,6 +406,30 @@ func New(
 		registerer,
 	)
 	d.rateStore = rs
+
+	if cfg.KafkaEnabled && cfg.DataObjTeeConfig.Enabled {
+		segmentationKeyStoreStore := newSegmentationKeyRateStore(5*time.Minute, time.Minute)
+		resolver := NewSegmentationPartitionResolver(
+			uint64(cfg.DataObjTeeConfig.PerPartitionRateBytes),
+			dataObjConsumerPartitionRing,
+			registerer,
+			logger,
+		)
+		dataObjTee, err := NewDataObjTee(
+			&cfg.DataObjTeeConfig,
+			resolver,
+			segmentationKeyStoreStore,
+			distributorsRing,
+			overrides,
+			kafkaWriter,
+			logger,
+			registerer,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create data object tee: %w", err)
+		}
+		d.tee = WrapTee(d.tee, dataObjTee)
+	}
 
 	servs = append(servs, d.ingesterClients, rs)
 	d.subservices, err = services.NewManager(servs...)
