@@ -17,7 +17,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/kafka"
@@ -25,7 +24,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
-var testBuilderConfig = indexobj.BuilderConfig{
+var testBuilderConfig = logsobj.BuilderBaseConfig{
 	TargetPageSize:    128 * 1024,
 	TargetObjectSize:  4 * 1024 * 1024,
 	TargetSectionSize: 2 * 1024 * 1024,
@@ -53,8 +52,8 @@ func TestIndexBuilder_PartitionRevocation(t *testing.T) {
 	// Create a builder with mocks for dependencies
 	builder, err := NewIndexBuilder(
 		Config{
-			BuilderConfig:  testBuilderConfig,
-			EventsPerIndex: 1,
+			BuilderBaseConfig: testBuilderConfig,
+			EventsPerIndex:    1,
 		},
 		metastore.Config{},
 		kafka.Config{},
@@ -121,8 +120,8 @@ func TestIndexBuilder(t *testing.T) {
 
 	p, err := NewIndexBuilder(
 		Config{
-			BuilderConfig:  testBuilderConfig,
-			EventsPerIndex: 3,
+			BuilderBaseConfig: testBuilderConfig,
+			EventsPerIndex:    3,
 		},
 		metastore.Config{},
 		kafka.Config{},
@@ -231,13 +230,13 @@ func (m *mockKafkaClient) Close() {}
 
 func buildLogObject(t *testing.T, app string, path string, bucket objstore.Bucket) {
 	candidate, err := logsobj.NewBuilder(logsobj.BuilderConfig{
-		TargetPageSize:    128 * 1024,
-		TargetObjectSize:  4 * 1024 * 1024,
-		TargetSectionSize: 2 * 1024 * 1024,
-
-		BufferSize:              4 * 1024 * 1024,
-		SectionStripeMergeLimit: 2,
-
+		BuilderBaseConfig: logsobj.BuilderBaseConfig{
+			TargetPageSize:          128 * 1024,
+			TargetObjectSize:        4 * 1024 * 1024,
+			TargetSectionSize:       2 * 1024 * 1024,
+			BufferSize:              4 * 1024 * 1024,
+			SectionStripeMergeLimit: 2,
+		},
 		DataobjSortOrder: "stream-asc",
 	}, nil)
 	require.NoError(t, err)

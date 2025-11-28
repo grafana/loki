@@ -1211,7 +1211,7 @@ dataobj:
       # CLI flag: -dataobj-consumer.buffer-size
       [buffer_size: <int> | default = 16MiB]
 
-      # The maximum number of log section stripes to merge into a section at
+      # The maximum number of dataobj section stripes to merge into a section at
       # once. Must be greater than 1.
       # CLI flag: -dataobj-consumer.section-stripe-merge-limit
       [section_stripe_merge_limit: <int> | default = 2]
@@ -1431,29 +1431,35 @@ dataobj:
     [topic: <string> | default = ""]
 
   index:
-    # The size of the target page to use for the index object builder.
+    # The target maximum amount of uncompressed data to hold in data pages (for
+    # columnar sections). Uncompressed size is used for consistent I/O and
+    # planning.
     # CLI flag: -dataobj-index-builder.target-page-size
     [target_page_size: <int> | default = 128KiB]
 
-    # The maximum row count for pages to use for the index builder. A value of 0
-    # means no limit.
+    # The maximum row count for pages to use for the data object builder. A
+    # value of 0 means no limit.
     # CLI flag: -dataobj-index-builder.max-page-rows
     [max_page_rows: <int> | default = 0]
 
-    # The size of the target object to use for the index object builder.
-    # CLI flag: -dataobj-index-builder.target-object-size
+    # The target maximum size of the encoded object and all of its encoded
+    # sections (after compression), to limit memory usage of a builder.
+    # CLI flag: -dataobj-index-builder.target-builder-memory-limit
     [target_object_size: <int> | default = 64MiB]
 
-    # Configures a maximum size for sections, for sections that support it.
+    # The target maximum amount of uncompressed data to hold in sections, for
+    # sections that support being limited by size. Uncompressed size is used for
+    # consistent I/O and planning.
     # CLI flag: -dataobj-index-builder.target-section-size
     [target_section_size: <int> | default = 16MiB]
 
-    # The size of the buffer to use for sorting logs.
+    # The size of logs to buffer in memory before adding into columnar builders,
+    # used to reduce CPU load of sorting.
     # CLI flag: -dataobj-index-builder.buffer-size
     [buffer_size: <int> | default = 2MiB]
 
-    # The maximum number of stripes to merge into a section at once. Must be
-    # greater than 1.
+    # The maximum number of dataobj section stripes to merge into a section at
+    # once. Must be greater than 1.
     # CLI flag: -dataobj-index-builder.section-stripe-merge-limit
     [section_stripe_merge_limit: <int> | default = 2]
 
