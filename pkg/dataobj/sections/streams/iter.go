@@ -19,9 +19,9 @@ import (
 
 // Iter iterates over streams in the provided decoder. All streams sections are
 // iterated over in order.
-func Iter(ctx context.Context, obj *dataobj.Object) result.Seq[Stream] {
+func Iter(ctx context.Context, obj *dataobj.Object, tenantFilter dataobj.TenantFilter) result.Seq[Stream] {
 	return result.Iter(func(yield func(Stream) bool) error {
-		for i, section := range obj.Sections().Filter(CheckSection) {
+		for i, section := range obj.Sections().Filter(tenantFilter, CheckSection) {
 			streamsSection, err := Open(ctx, section)
 			if err != nil {
 				return fmt.Errorf("opening section %d: %w", i, err)

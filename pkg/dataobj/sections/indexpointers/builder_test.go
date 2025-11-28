@@ -48,7 +48,7 @@ func TestBuilder(t *testing.T) {
 	}
 
 	var actual []IndexPointer
-	for result := range Iter(context.Background(), obj) {
+	for result := range Iter(context.Background(), obj, dataobj.AllTenants()) {
 		pointer, err := result.Value()
 		require.NoError(t, err)
 		actual = append(actual, pointer)
