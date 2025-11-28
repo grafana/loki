@@ -5,8 +5,6 @@ import (
 	"io"
 	"iter"
 	"strconv"
-
-	"github.com/grafana/dskit/user"
 )
 
 // A Sections is a slice of [Section].
@@ -54,15 +52,6 @@ func (s Sections) Count(tenantFilter TenantFilter, predicate func(*Section) bool
 		count++
 	}
 	return count
-}
-
-func (s Sections) extractTenant(ctx context.Context) (string, bool) {
-	found := true
-	targetTenant, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		found = false
-	}
-	return targetTenant, found
 }
 
 // A Section is a subset of an [Object] that holds a specific type of data. Use

@@ -145,12 +145,12 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 		logsSection    *logs.Section
 	)
 
-	tenantID, err := user.ExtractOrgID(ctx)
+	tenant, err := user.ExtractOrgID(ctx)
 	if err != nil {
-		return errorPipeline(ctx, fmt.Errorf("extracting org ID: %w", err))
+		return errorPipeline(ctx, fmt.Errorf("missing org ID: %w", err))
 	}
 
-	for _, sec := range obj.Sections().Filter(dataobj.ForSingleTenant(tenantID), streams.CheckSection) {
+	for _, sec := range obj.Sections().Filter(dataobj.ForSingleTenant(tenant), streams.CheckSection) {
 		if streamsSection != nil {
 			return errorPipeline(ctx, fmt.Errorf("multiple streams sections found in data object %q", node.Location))
 		}
@@ -166,7 +166,7 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 		return errorPipeline(ctx, fmt.Errorf("streams section not found in data object %q", node.Location))
 	}
 
-	for i, sec := range obj.Sections().Filter(dataobj.ForSingleTenant(tenantID), logs.CheckSection) {
+	for i, sec := range obj.Sections().Filter(dataobj.ForSingleTenant(tenant), logs.CheckSection) {
 		if i != node.Section {
 			continue
 		}
