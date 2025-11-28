@@ -51,9 +51,10 @@ rules:
   - apiGroups:
       - ""
     resources:
-      - services
       - endpoints
+      - nodes
       - secrets
+      - services
     verbs:
       - get
       - list
@@ -90,6 +91,14 @@ rules:
       - get
       - list
       - watch
+  - apiGroups:
+    - discovery.k8s.io
+    resources:
+    - endpointslices
+    verbs:
+    - get
+    - list
+    - watch
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -124,7 +133,7 @@ spec:
       serviceAccountName: traefik
       containers:
         - name: traefik
-          image: traefik:v2.11.31
+          image: traefik:v3.6.2
           args:
             - --api.insecure
             - --api.dashboard
