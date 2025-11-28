@@ -16,7 +16,7 @@ type columnValuesCalculation struct {
 	columnIndexes       map[string]int64
 }
 
-func (c *columnValuesCalculation) Prepare(ctx context.Context, _ *dataobj.Section, stats logs.Stats) error {
+func (c *columnValuesCalculation) Prepare(_ context.Context, _ *dataobj.Section, stats logs.Stats) error {
 	c.columnBloomBuilders = make(map[string]*bloom.BloomFilter)
 	c.columnIndexes = make(map[string]int64)
 
@@ -31,7 +31,7 @@ func (c *columnValuesCalculation) Prepare(ctx context.Context, _ *dataobj.Sectio
 	return nil
 }
 
-func (c *columnValuesCalculation) ProcessBatch(ctx context.Context, _ *logsCalculationContext, batch []logs.Record) error {
+func (c *columnValuesCalculation) ProcessBatch(_ context.Context, _ *logsCalculationContext, batch []logs.Record) error {
 	for _, log := range batch {
 		log.Metadata.Range(func(md labels.Label) {
 			c.columnBloomBuilders[md.Name].Add([]byte(md.Value))
@@ -40,7 +40,7 @@ func (c *columnValuesCalculation) ProcessBatch(ctx context.Context, _ *logsCalcu
 	return nil
 }
 
-func (c *columnValuesCalculation) Flush(ctx context.Context, context *logsCalculationContext) error {
+func (c *columnValuesCalculation) Flush(_ context.Context, context *logsCalculationContext) error {
 	for columnName, bloom := range c.columnBloomBuilders {
 		bloomBytes, err := bloom.MarshalBinary()
 		if err != nil {
