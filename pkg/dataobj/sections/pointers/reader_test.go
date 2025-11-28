@@ -309,10 +309,22 @@ func TestReaderWithLessThanPredicate(t *testing.T) {
 
 // TestReaderWithTimestampPredicates tests reading with timestamp predicates.
 func TestReaderWithTimestampPredicates(t *testing.T) {
+	var (
+		t10  = unixTime(10)
+		t20  = unixTime(20)
+		t25  = unixTime(25)
+		t25s = scalar.NewTimestampScalar(arrow.Timestamp(t25.UnixNano()), &arrow.TimestampType{Unit: arrow.Nanosecond})
+		t30  = unixTime(30)
+		t40  = unixTime(40)
+		t50  = unixTime(50)
+		t55  = unixTime(55)
+		t55s = scalar.NewTimestampScalar(arrow.Timestamp(t55.UnixNano()), &arrow.TimestampType{Unit: arrow.Nanosecond})
+		t60  = unixTime(60)
+	)
 	sec := buildSection(t, []pointers.SectionPointer{
-		{Path: "path1", Section: 1, PointerKind: pointers.PointerKindStreamIndex, StreamID: 10, StreamIDRef: 100, StartTs: unixTime(10), EndTs: unixTime(20), LineCount: 5, UncompressedSize: 1024},
-		{Path: "path2", Section: 2, PointerKind: pointers.PointerKindStreamIndex, StreamID: 20, StreamIDRef: 200, StartTs: unixTime(30), EndTs: unixTime(40), LineCount: 10, UncompressedSize: 2048},
-		{Path: "path3", Section: 3, PointerKind: pointers.PointerKindStreamIndex, StreamID: 30, StreamIDRef: 300, StartTs: unixTime(50), EndTs: unixTime(60), LineCount: 15, UncompressedSize: 3072},
+		{Path: "path1", Section: 1, PointerKind: pointers.PointerKindStreamIndex, StreamID: 10, StreamIDRef: 100, StartTs: t10, EndTs: t20, LineCount: 5, UncompressedSize: 1024},
+		{Path: "path2", Section: 2, PointerKind: pointers.PointerKindStreamIndex, StreamID: 20, StreamIDRef: 200, StartTs: t30, EndTs: t40, LineCount: 10, UncompressedSize: 2048},
+		{Path: "path3", Section: 3, PointerKind: pointers.PointerKindStreamIndex, StreamID: 30, StreamIDRef: 300, StartTs: t50, EndTs: t60, LineCount: 15, UncompressedSize: 3072},
 	})
 
 	var (
@@ -325,14 +337,29 @@ func TestReaderWithTimestampPredicates(t *testing.T) {
 	r := pointers.NewReader(pointers.ReaderOptions{
 		Columns:   []*pointers.Column{pathCol, sectionCol, minTimestampCol, maxTimestampCol},
 		Allocator: memory.DefaultAllocator,
+		// find an overlap
 		Predicates: []pointers.Predicate{
-			pointers.GreaterThanPredicate{
-				Column: minTimestampCol,
-				Value:  scalar.NewTimestampScalar(arrow.Timestamp(unixTime(25).UnixNano()), &arrow.TimestampType{Unit: arrow.Nanosecond}),
-			},
-			pointers.LessThanPredicate{
-				Column: maxTimestampCol,
-				Value:  scalar.NewTimestampScalar(arrow.Timestamp(unixTime(55).UnixNano()), &arrow.TimestampType{Unit: arrow.Nanosecond}),
+			pointers.AndPredicate{
+				Left: pointers.OrPredicate{
+					Left: pointers.EqualPredicate{
+						Column: maxTimestampCol,
+						Value:  t25s,
+					},
+					Right: pointers.GreaterThanPredicate{
+						Column: maxTimestampCol,
+						Value:  t25s,
+					},
+				},
+				Right: pointers.OrPredicate{
+					Left: pointers.EqualPredicate{
+						Column: minTimestampCol,
+						Value:  t55s,
+					},
+					Right: pointers.LessThanPredicate{
+						Column: minTimestampCol,
+						Value:  t55s,
+					},
+				},
 			},
 		},
 	})
@@ -347,8 +374,14 @@ func TestReaderWithTimestampPredicates(t *testing.T) {
 		{
 			"path.path.utf8":          "path2",
 			"section.int64":           int64(2),
-			"min_timestamp.timestamp": unixTime(30).UTC(),
-			"max_timestamp.timestamp": unixTime(40).UTC(),
+			"min_timestamp.timestamp": t30.UTC(),
+			"max_timestamp.timestamp": t40.UTC(),
+		},
+		{
+			"path.path.utf8":          "path3",
+			"section.int64":           int64(3),
+			"min_timestamp.timestamp": t50.UTC(),
+			"max_timestamp.timestamp": t60.UTC(),
 		},
 	}
 	require.Equal(t, expected, actual)
