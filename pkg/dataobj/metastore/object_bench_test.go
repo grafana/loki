@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bits-and-blooms/bloom/v3"
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
@@ -139,4 +140,114 @@ func benchmarkReadSections(b *testing.B, bm readSectionsBenchmarkParams) {
 		// Stop timer before cleanup
 		b.StopTimer()
 	})
+}
+
+func BenchmarkSectionsForPredicateMatchers(b *testing.B) {
+	cases := []struct {
+		name       string
+		predicates []*labels.Matcher
+		wantCount  int
+	}{
+		{
+			name: "single predicate hit",
+			predicates: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, "traceID", "abcd"),
+			},
+			wantCount: 1,
+		},
+		{
+			name: "multiple predicate hit",
+			predicates: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, "traceID", "abcd"),
+				labels.MustNewMatcher(labels.MatchEqual, "traceID", "1234"),
+			},
+			wantCount: 1,
+		},
+		{
+			name: "predicate miss",
+			predicates: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, "traceID", "cdef"),
+			},
+			wantCount: 0,
+		},
+	}
+
+	for _, tt := range cases {
+		b.Run(tt.name, func(b *testing.B) {
+			ctx := user.InjectOrgID(context.Background(), tenantID)
+
+			builder, err := indexobj.NewBuilder(logsobj.BuilderBaseConfig{
+				TargetPageSize:          1024 * 1024,
+				TargetObjectSize:        10 * 1024 * 1024,
+				TargetSectionSize:       128,
+				BufferSize:              1024 * 1024,
+				SectionStripeMergeLimit: 2,
+			}, nil)
+			require.NoError(b, err)
+
+			lbls := labels.New(labels.Label{Name: "app", Value: "foo"})
+
+			_, err = builder.AppendStream(tenantID, streams.Stream{
+				ID:               1,
+				Labels:           lbls,
+				MinTimestamp:     now.Add(-3 * time.Hour),
+				MaxTimestamp:     now.Add(-2 * time.Hour),
+				UncompressedSize: 5,
+			})
+			require.NoError(b, err)
+
+			err = builder.ObserveLogLine(tenantID, "test-path", 0, 1, 1, now.Add(-3*time.Hour), 5)
+			require.NoError(b, err)
+			err = builder.ObserveLogLine(tenantID, "test-path", 0, 1, 1, now.Add(-2*time.Hour), 0)
+			require.NoError(b, err)
+
+			traceIDBloom := bloom.NewWithEstimates(10, 0.01)
+			traceIDBloom.AddString("abcd")
+			traceIDBloom.AddString("1234")
+			traceIDBloomBytes, err := traceIDBloom.MarshalBinary()
+			require.NoError(b, err)
+
+			err = builder.AppendColumnIndex(tenantID, "test-path", 0, "traceID", 0, traceIDBloomBytes)
+			require.NoError(b, err)
+
+			timeRanges := builder.TimeRanges()
+			require.Len(b, timeRanges, 1)
+
+			obj, closer, err := builder.Flush()
+			require.NoError(b, err)
+			b.Cleanup(func() { _ = closer.Close() })
+
+			bucket := objstore.NewInMemBucket()
+
+			objUploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, log.NewNopLogger())
+			require.NoError(b, objUploader.RegisterMetrics(prometheus.NewPedanticRegistry()))
+
+			path, err := objUploader.Upload(context.Background(), obj)
+			require.NoError(b, err)
+
+			metastoreTocWriter := NewTableOfContentsWriter(bucket, log.NewNopLogger())
+			err = metastoreTocWriter.WriteEntry(context.Background(), path, timeRanges)
+			require.NoError(b, err)
+
+			mstore := NewObjectMetastore(bucket, log.NewNopLogger(), prometheus.NewPedanticRegistry())
+
+			matchers := []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),
+			}
+
+			start := now.Add(-3 * time.Hour)
+			end := now.Add(time.Hour)
+
+			b.ResetTimer()
+			b.ReportAllocs()
+
+			for range b.N {
+				sections, err := mstore.Sections(ctx, start, end, matchers, tt.predicates)
+				require.NoError(b, err)
+				require.Len(b, sections, tt.wantCount)
+			}
+
+			b.StopTimer()
+		})
+	}
 }
