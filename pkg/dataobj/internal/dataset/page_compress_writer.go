@@ -1,9 +1,10 @@
 package dataset
 
 import (
-	"bufio"
+	"bytes"
 	"fmt"
 	"io"
+	"sync"
 
 	"github.com/golang/snappy"
 	"github.com/klauspost/compress/zstd"
@@ -13,12 +14,13 @@ import (
 )
 
 // A compressWriter is a [streamio.Writer] that compresses data passed to it.
+// The compression encoder is created lazily on the first Flush() call.
 type compressWriter struct {
-	// To be able to implmeent [io.ByteWriter], we always write directly to buf,
-	// which then flushes to w once it's full.
+	// To be able to implement [io.ByteWriter], we always write directly to buf,
+	// which then writes to inner once the writer is flushed.
 
-	w   io.WriteCloser // Compressing writer.
-	buf *bufio.Writer  // Buffered writer in front of w to be able to call WriteByte.
+	inner io.Writer     // The underlying writer (before compression).
+	buf   *bytes.Buffer // buffer for uncompressed data before it is written to the compressed writer
 
 	rawBytes int // Number of uncompressed bytes written.
 
@@ -51,16 +53,52 @@ func (c *compressWriter) WriteByte(b byte) error {
 }
 
 // Flush compresses any pending uncompressed data in the buffer.
+// On the first call, this creates the compression encoder.
 func (c *compressWriter) Flush() error {
-	// Flush our buffer first so c.w is up to date.
-	if err := c.buf.Flush(); err != nil {
-		return fmt.Errorf("flushing buffer: %w", err)
+	if err := c.writeToInner(); err != nil {
+		return fmt.Errorf("flush to inner writer: %w", err)
 	}
 
-	// c.w may not support Flush (such as when using no compression), so we check
-	// first.
-	if f, ok := c.w.(interface{ Flush() error }); ok {
-		if err := f.Flush(); err != nil {
+	return nil
+}
+
+// writeToInner creates the compression encoder and transitions from buffering
+// to tempBuf to writing directly to the encoder.
+func (c *compressWriter) writeToInner() error {
+	// Create the compression encoder
+	var cw io.WriteCloser
+
+	switch c.compression {
+	case datasetmd.COMPRESSION_TYPE_UNSPECIFIED, datasetmd.COMPRESSION_TYPE_NONE:
+		cw = nopCloseWriter{c.inner}
+		defer cw.Close()
+
+	case datasetmd.COMPRESSION_TYPE_SNAPPY:
+		cw = snappy.NewBufferedWriter(c.inner)
+		defer cw.Close()
+
+	case datasetmd.COMPRESSION_TYPE_ZSTD:
+		zw, err := zstdPool.Get(c.inner, c.opts.Zstd)
+		if err != nil {
+			return err
+		}
+		defer zstdPool.Put(zw, c.opts.Zstd)
+		cw = zw
+
+	default:
+		return fmt.Errorf("unknown compression type %v", c.compression)
+	}
+
+	// Write the buffered data from buf via cw to inner
+	if c.buf.Len() > 0 {
+		if _, err := c.buf.WriteTo(cw); err != nil {
+			return fmt.Errorf("writing buffered data to encoder: %w", err)
+		}
+	}
+
+	// cw may not support Flush (such as when using no compression), so we check first.
+	if flusher, ok := cw.(interface{ Flush() error }); ok {
+		if err := flusher.Flush(); err != nil {
 			return fmt.Errorf("flushing compressing writer: %w", err)
 		}
 	}
@@ -71,40 +109,16 @@ func (c *compressWriter) Flush() error {
 // Reset discards the writer's state and switches the compressor to write to w.
 // This permits reusing a compressWriter rather than allocating a new one.
 func (c *compressWriter) Reset(w io.Writer) {
-	resetter, ok := c.w.(interface{ Reset(io.Writer) })
-	switch ok {
-	case true:
-		resetter.Reset(w)
-	default:
-		// c.w is unset or doesn't support Reset; build a new writer.
-		var compressedWriter io.WriteCloser
+	// Store the underlying writer
+	c.inner = w
 
-		switch c.compression {
-		case datasetmd.COMPRESSION_TYPE_UNSPECIFIED, datasetmd.COMPRESSION_TYPE_NONE:
-			compressedWriter = nopCloseWriter{w}
-
-		case datasetmd.COMPRESSION_TYPE_SNAPPY:
-			compressedWriter = snappy.NewBufferedWriter(w)
-
-		case datasetmd.COMPRESSION_TYPE_ZSTD:
-			zw, err := zstd.NewWriter(w, c.opts.Zstd...)
-			if err != nil {
-				panic(fmt.Sprintf("compressWriter.Reset: creating zstd writer: %v", err))
-			}
-			compressedWriter = zw
-
-		default:
-			panic(fmt.Sprintf("compressWriter.Reset: unknown compression type %v", c.compression))
-		}
-
-		c.w = compressedWriter
-	}
-
+	// Initialize or reset temporary buffer
 	if c.buf != nil {
-		c.buf.Reset(c.w)
+		c.buf.Reset()
 	} else {
-		c.buf = bufio.NewWriter(c.w)
+		c.buf = bytes.NewBuffer(make([]byte, 0, 4096))
 	}
+
 	c.rawBytes = 0
 }
 
@@ -113,13 +127,53 @@ func (c *compressWriter) BytesWritten() int { return c.rawBytes }
 
 // Close flushes and then closes c.
 func (c *compressWriter) Close() error {
-	if err := c.Flush(); err != nil {
-		return err
-	}
-	return c.w.Close()
+	return c.Flush()
 }
 
 type nopCloseWriter struct{ w io.Writer }
 
 func (w nopCloseWriter) Write(p []byte) (n int, err error) { return w.w.Write(p) }
 func (w nopCloseWriter) Close() error                      { return nil }
+
+var (
+	zstdPool = zstdWriterPool{pools: make(map[zstd.EncoderLevel]*sync.Pool)}
+)
+
+type zstdWriterPool struct {
+	pools map[zstd.EncoderLevel]*sync.Pool
+}
+
+func (p *zstdWriterPool) new(w io.Writer, l zstd.EncoderLevel) (*zstd.Encoder, error) {
+	writer, err := zstd.NewWriter(w, zstd.WithEncoderLevel(l))
+	if err != nil {
+		return nil, fmt.Errorf("creating zstd writer: %w", err)
+	}
+	return writer, nil
+}
+
+// Get gets or creates a new [zstd.Encoder] for encoding level l and reset it to write to w
+func (p *zstdWriterPool) Get(w io.Writer, l zstd.EncoderLevel) (*zstd.Encoder, error) {
+	l = max(l, zstd.SpeedDefault)
+	pool, ok := p.pools[l]
+	if !ok {
+		p.pools[l] = new(sync.Pool)
+		return p.new(w, l)
+	}
+
+	if zw := pool.Get(); zw != nil {
+		writer := zw.(*zstd.Encoder)
+		writer.Reset(w)
+		return writer, nil
+	}
+
+	return p.new(w, l)
+}
+
+// Put places the zstd encoder w back to the pool for level l
+// This call implicitly closes and resets the [zstd.Encoder].
+func (p *zstdWriterPool) Put(w *zstd.Encoder, l zstd.EncoderLevel) {
+	l = max(l, zstd.SpeedDefault)
+	w.Close()
+	w.Reset(nil)
+	p.pools[l].Put(w)
+}
