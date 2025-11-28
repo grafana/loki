@@ -166,7 +166,7 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 		return errorPipeline(ctx, fmt.Errorf("streams section not found in data object %q", node.Location))
 	}
 
-	for i, sec := range obj.Sections().Filter(dataobj.ForSingleTenant(tenant), logs.CheckSection) {
+	for i, sec := range obj.Sections().Filter(dataobj.AllTenants(), logs.CheckSection) {
 		if i != node.Section {
 			continue
 		}
