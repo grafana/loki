@@ -171,6 +171,16 @@ type Stats struct {
 	HasInternalStreams bool // True if any of the streams has aggregated metrics or is a pattern stream
 }
 
+func (s *Stats) GetResourceAndSourceMetadataLabels(policy string, retentionPeriod time.Duration) push.LabelsAdapter {
+	if p, ok := s.ResourceAndSourceMetadataLabels[policy]; ok {
+		if lbls, ok := p[retentionPeriod]; ok {
+			return lbls
+		}
+	}
+
+	return nil
+}
+
 func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, pushRequestParser RequestParser, tracker UsageTracker, streamResolver StreamResolver, presumedAgentIP, format string) (*logproto.PushRequest, *Stats, error) {
 	req, pushStats, err := pushRequestParser(userID, r, limits, tenantConfigs, maxRecvMsgSize, tracker, streamResolver, logger)
 	if err != nil && !errors.Is(err, ErrAllLogsFiltered) {
@@ -437,7 +447,7 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 			if streamResolver != nil {
 				retentionPeriod = streamResolver.RetentionPeriodFor(lbs)
 			}
-			var totalBytesReceived = int64(util.EntriesTotalSize(s.Entries))
+			var totalBytesReceived = int64(util.EntriesTotalSize(s.Entries, nil))
 			tracker.ReceivedBytesAdd(r.Context(), userID, retentionPeriod, lbs, float64(totalBytesReceived), "loki")
 		}
 
@@ -488,9 +498,9 @@ func CalculateStreamsStats(ctx context.Context, userID string, req *logproto.Pus
 		streamSizeBytes := int64(0)
 		for _, e := range s.Entries {
 			pushStats.PolicyNumLines[policy]++
-			entryLabelsSize := int64(util.StructuredMetadataSize(e.StructuredMetadata))
+			entryLabelsSize := int64(util.StructuredMetadataSize(e.StructuredMetadata, nil))
 			pushStats.LogLinesBytes[policy][retentionPeriod] += int64(len(e.Line))
-			streamSizeBytes += int64(util.EntryTotalSize(&e))
+			streamSizeBytes += int64(util.EntryTotalSize(&e, nil))
 			pushStats.StructuredMetadataBytes[policy][retentionPeriod] += entryLabelsSize
 
 			if e.Timestamp.After(pushStats.MostRecentEntryTimestamp) {

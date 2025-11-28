@@ -25,6 +25,7 @@ import (
 	"github.com/grafana/dskit/ring"
 	ring_client "github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/services"
+	"github.com/grafana/dskit/tenant"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -46,6 +47,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/runtime"
+	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	loki_flagext "github.com/grafana/loki/v3/pkg/util/flagext"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -1291,7 +1293,7 @@ func Benchmark_SortLabelsOnPush(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		stream := request.Streams[0]
 		stream.Labels = `{buzz="f", a="b"}`
-		_, _, _, _, _, err := d.parseStreamLabels(context.Background(), vCtx, stream.Labels, stream, streamResolver, constants.Loki)
+		_, _, _, _, _, err := d.parseStreamLabels(context.Background(), vCtx, stream.Labels, stream, streamResolver, constants.OTLP)
 		if err != nil {
 			panic("parseStreamLabels fail,err:" + err.Error())
 		}
@@ -1730,6 +1732,201 @@ func TestDistributor_PushIngestionBlocked(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 				require.Equal(t, success, response)
+			}
+		})
+	}
+}
+
+func TestDistributor_DiscardedLogVolume(t *testing.T) {
+	resourceAndScopeAttributes := push.LabelsAdapter{
+		{
+			Name:  "resource",
+			Value: "r1",
+		},
+		{
+			Name:  "scope",
+			Value: "s1",
+		},
+	}
+
+	resourceAndScopeAttributesSize := util.StructuredMetadataSize(resourceAndScopeAttributes, nil)
+
+	for _, tc := range []struct {
+		name                            string
+		lines                           int
+		lineSize                        int
+		maxLineSize                     uint64
+		ingestionRateMB                 float64
+		withResourceAndSourceAttributes bool
+		structuredMetadata              bool
+		enforceLabels                   bool
+		expectedDiscardedBytes          float64
+		expectedDiscardedSamples        float64
+		expectError                     bool
+	}{
+		{
+			name:                            "successful push without resource and scope attributes",
+			lines:                           10,
+			lineSize:                        100,
+			maxLineSize:                     1000,
+			ingestionRateMB:                 100,
+			withResourceAndSourceAttributes: false,
+			structuredMetadata:              false,
+			enforceLabels:                   false,
+			expectedDiscardedBytes:          0,
+			expectedDiscardedSamples:        0,
+			expectError:                     false,
+		},
+		{
+			name:                            "successful push with resource and scope attributes",
+			lines:                           10,
+			lineSize:                        100,
+			maxLineSize:                     1000,
+			ingestionRateMB:                 100,
+			withResourceAndSourceAttributes: true,
+			structuredMetadata:              false,
+			enforceLabels:                   false,
+			expectedDiscardedBytes:          0,
+			expectedDiscardedSamples:        0,
+			expectError:                     false,
+		},
+		{
+			name:                            "rate limited without resource and scope attributes",
+			lines:                           100,
+			lineSize:                        100,
+			maxLineSize:                     1000,
+			ingestionRateMB:                 datasize.ByteSize(500).MBytes(),
+			withResourceAndSourceAttributes: false,
+			structuredMetadata:              false,
+			enforceLabels:                   false,
+			expectedDiscardedBytes:          10000, // 100 lines * 100 bytes
+			expectedDiscardedSamples:        100,
+			expectError:                     true,
+		},
+		{
+			name:                            "rate limited with resource and scope attributes",
+			lines:                           100,
+			lineSize:                        100,
+			maxLineSize:                     1000,
+			ingestionRateMB:                 datasize.ByteSize(500).MBytes(),
+			withResourceAndSourceAttributes: true,
+			structuredMetadata:              false,
+			enforceLabels:                   false,
+			expectedDiscardedBytes:          10000 + float64(resourceAndScopeAttributesSize), // 100 lines * 100 bytes + one instance of resourceAndScopeAttributes
+			expectedDiscardedSamples:        100,
+			expectError:                     true,
+		},
+		{
+			name:                            "enforced labels missing without resource and scope attributes",
+			lines:                           50,
+			lineSize:                        100,
+			maxLineSize:                     1000,
+			ingestionRateMB:                 100,
+			withResourceAndSourceAttributes: false,
+			structuredMetadata:              false,
+			enforceLabels:                   true,
+			expectedDiscardedBytes:          5000, // 50 lines * 100 bytes
+			expectedDiscardedSamples:        50,
+			expectError:                     true,
+		},
+		{
+			name:                            "enforced labels missing with resource and scope attributes",
+			lines:                           50,
+			lineSize:                        100,
+			maxLineSize:                     1000,
+			ingestionRateMB:                 100,
+			withResourceAndSourceAttributes: true,
+			structuredMetadata:              false,
+			enforceLabels:                   true,
+			expectedDiscardedBytes:          5000, // 50 lines * 100 bytes
+			expectedDiscardedSamples:        50,
+			expectError:                     true,
+		},
+		{
+			name:                            "with structured metadata, resource and scope attributes - rate limited",
+			lines:                           75,
+			lineSize:                        100,
+			maxLineSize:                     1000,
+			ingestionRateMB:                 datasize.ByteSize(300).MBytes(),
+			withResourceAndSourceAttributes: true,
+			structuredMetadata:              true,
+			enforceLabels:                   false,
+			expectedDiscardedBytes:          9300 + float64(resourceAndScopeAttributesSize), // 75 lines * (100 bytes + 24 bytes structured metadata) + one instance of resourceAndScopeAttributes
+			expectedDiscardedSamples:        75,
+			expectError:                     true,
+		},
+		{
+			name:                            "with structured metadata without resource and scope attributes - rate limited",
+			lines:                           75,
+			lineSize:                        100,
+			maxLineSize:                     1000,
+			ingestionRateMB:                 datasize.ByteSize(300).MBytes(),
+			withResourceAndSourceAttributes: false,
+			structuredMetadata:              true,
+			enforceLabels:                   false,
+			expectedDiscardedBytes:          9300, // 75 lines * (100 bytes + 24 bytes structured metadata)
+			expectedDiscardedSamples:        75,
+			expectError:                     true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// Reset metrics
+			validation.DiscardedBytes.Reset()
+			validation.DiscardedSamples.Reset()
+
+			limits := &validation.Limits{}
+			flagext.DefaultValues(limits)
+			limits.IngestionRateMB = tc.ingestionRateMB
+			limits.IngestionBurstSizeMB = tc.ingestionRateMB
+			limits.MaxLineSize = loki_flagext.ByteSize(tc.maxLineSize)
+
+			// Add enforced labels if needed
+			if tc.enforceLabels {
+				limits.EnforcedLabels = []string{"app", "env"}
+			}
+
+			distributors, _ := prepare(t, 1, 5, limits, nil)
+
+			lbls := labels.FromStrings("foo", "bar")
+			tenantID, err := tenant.TenantID(ctx)
+			require.NoError(t, err)
+			streamResolver := newRequestScopedStreamResolver(tenantID, distributors[0].validator.Limits, distributors[0].logger)
+
+			request := makeWriteRequestWithLabels(tc.lines, tc.lineSize, []string{lbls.String()}, tc.structuredMetadata, false, false)
+			pushStats := loghttp_push.NewPushStats()
+			if tc.withResourceAndSourceAttributes {
+				for _, stream := range request.Streams {
+					for i := range stream.Entries {
+						stream.Entries[i].StructuredMetadata = append(stream.Entries[i].StructuredMetadata, resourceAndScopeAttributes...)
+					}
+				}
+				pushStats.ResourceAndSourceMetadataLabels = map[string]map[time.Duration]push.LabelsAdapter{
+					streamResolver.PolicyFor(ctx, lbls): {
+						streamResolver.RetentionPeriodFor(lbls): resourceAndScopeAttributes,
+					},
+				}
+			}
+
+			response, err := distributors[0].PushWithResolver(ctx, request, streamResolver, constants.Loki, *pushStats)
+
+			if tc.expectError {
+				require.Error(t, err)
+
+				// Verify discarded metrics when error is expected
+				actualDiscardedBytes := testutil.ToFloat64(validation.DiscardedBytes)
+				actualDiscardedSamples := testutil.ToFloat64(validation.DiscardedSamples)
+
+				assert.Equal(t, tc.expectedDiscardedBytes, actualDiscardedBytes,
+					"Expected discarded bytes to be %.0f but got %.0f", tc.expectedDiscardedBytes, actualDiscardedBytes)
+				assert.Equal(t, tc.expectedDiscardedSamples, actualDiscardedSamples,
+					"Expected discarded samples to be %.0f but got %.0f", tc.expectedDiscardedSamples, actualDiscardedSamples)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, success, response)
+
+				// When no error, verify no logs were discarded
+				assert.Equal(t, tc.expectedDiscardedBytes, 0.0, "Expected no discarded bytes for successful push")
+				assert.Equal(t, tc.expectedDiscardedSamples, 0.0, "Expected no discarded samples for successful push")
 			}
 		})
 	}

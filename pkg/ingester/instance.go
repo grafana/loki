@@ -375,7 +375,7 @@ func (i *instance) onStreamCreationError(ctx context.Context, pushReqStream logp
 	}
 
 	validation.DiscardedSamples.WithLabelValues(validation.StreamLimit, i.instanceID, retentionHours, policy, format).Add(float64(len(pushReqStream.Entries)))
-	bytes := util.EntriesTotalSize(pushReqStream.Entries)
+	bytes := util.EntriesTotalSize(pushReqStream.Entries, nil)
 	validation.DiscardedBytes.WithLabelValues(validation.StreamLimit, i.instanceID, retentionHours, policy, format).Add(float64(bytes))
 	if i.customStreamsTracker != nil {
 		i.customStreamsTracker.DiscardedBytesAdd(ctx, i.instanceID, validation.StreamLimit, labels, float64(bytes), format)
