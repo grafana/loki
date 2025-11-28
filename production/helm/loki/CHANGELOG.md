@@ -13,6 +13,8 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+## 6.47.0
+
 - [BUGFIX] do not mark loki.storage.bucketNames.ruler as required, if rulerConfig.storage.type is local. [#19882](https://github.com/grafana/loki/pull/19882)
 - [BUGFIX] Don't mark loki.storage.bucketNames.chunks as required, if an s3 url is provided. [#19873](https://github.com/grafana/loki/pull/19873)
 - [BUGFIX] Do not mark loki.storage.bucketNames.chunks as required, if minio is used. [#19871](https://github.com/grafana/loki/pull/19871)
