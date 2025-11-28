@@ -142,11 +142,13 @@ func (l *logResultCache) Do(ctx context.Context, req queryrangebase.Request) (qu
 	// Use cache key for empty results (backward compatible) and :resp suffix for small non-empty responses
 	// Include limit in response cache key to ensure we only use cached responses with the same limit
 	responseCacheKey := fmt.Sprintf("%s:resp:%d", cacheKey, lokiReq.Limit)
+	// Marker cache key to indicate a non-empty response exists for ANY limit (without limit suffix)
+	markerCacheKey := fmt.Sprintf("%s:resp", cacheKey)
 
 	// Determine which cache keys to check
 	cacheKeys := []string{cache.HashKey(cacheKey)}
 	if storeNonEmptyEnabled {
-		cacheKeys = append(cacheKeys, cache.HashKey(responseCacheKey))
+		cacheKeys = append(cacheKeys, cache.HashKey(markerCacheKey), cache.HashKey(responseCacheKey))
 	}
 
 	_, buffs, _, err := l.cache.Fetch(ctx, cacheKeys)
@@ -154,14 +156,15 @@ func (l *logResultCache) Do(ctx context.Context, req queryrangebase.Request) (qu
 		level.Warn(l.logger).Log("msg", "error fetching cache", "err", err, "cacheKey", cacheKey, "responseKey", responseCacheKey)
 		return l.next.Do(ctx, req)
 	}
-	// we expect one or two keys to be found or missing.
+	// we expect one, two, or three keys to be found or missing.
 	if len(buffs) > len(cacheKeys) {
 		level.Warn(l.logger).Log("msg", "unexpected length of cache return values", "buffs", len(buffs), "expected", len(cacheKeys))
 		return l.next.Do(ctx, req)
 	}
 
 	cacheKeyHit := len(buffs) > 0 && len(buffs[0]) > 0
-	responseHit := storeNonEmptyEnabled && len(buffs) > 1 && len(buffs[1]) > 0
+	markerHit := storeNonEmptyEnabled && len(buffs) > 1 && len(buffs[1]) > 0
+	responseHit := storeNonEmptyEnabled && len(buffs) > 2 && len(buffs[2]) > 0
 
 	if responseHit {
 		// Response key hit - we have a cached response (small non-empty result)
@@ -173,7 +176,7 @@ func (l *logResultCache) Do(ctx context.Context, req queryrangebase.Request) (qu
 		}
 
 		var cachedResponse LokiResponse
-		err = proto.Unmarshal(buffs[1], &cachedResponse)
+		err = proto.Unmarshal(buffs[2], &cachedResponse)
 		if err != nil {
 			level.Warn(l.logger).Log("msg", "error unmarshalling response from cache", "err", err)
 			return l.next.Do(ctx, req)
@@ -190,6 +193,14 @@ func (l *logResultCache) Do(ctx context.Context, req queryrangebase.Request) (qu
 	}
 
 	if cacheKeyHit {
+		// Check if marker exists - if it does, we have a non-empty response cached for a different limit
+		// In this case, we cannot treat it as an empty response and must fetch from next handler
+		if markerHit && !responseHit {
+			// Marker exists but response for this limit doesn't - non-empty response cached for different limit
+			// This is effectively a cache miss for this limit, so use handleMiss to fetch and cache it
+			return l.handleMiss(ctx, cacheKey, responseCacheKey, lokiReq)
+		}
+
 		// Cache key hit - empty result (backward compatible)
 		var cachedRequest LokiRequest
 		err = proto.Unmarshal(buffs[0], &cachedRequest)
@@ -249,13 +260,8 @@ func (l *logResultCache) handleMiss(ctx context.Context, cacheKey, responseCache
 		maxCacheSizeCapture := func(id string) int { return l.limits.LogResultCacheMaxResponseSize(ctx, id) }
 		maxCacheSize := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, maxCacheSizeCapture)
 
-		shouldCache := true
-		if maxCacheSize > 0 {
-			// Check size only if at least one tenant has a non-zero limit
-			responseSize := proto.Size(lokiRes)
-			shouldCache = responseSize <= maxCacheSize
-		}
-		// If no tenant has a limit (all are 0), cache regardless of size (unlimited)
+		// Cache if unlimited or response is small enough
+		shouldCache := maxCacheSize == 0 || proto.Size(lokiRes) <= maxCacheSize
 
 		if shouldCache {
 			// Cache both the request (for time range, using cache key) and the response (using :resp key)
@@ -269,8 +275,12 @@ func (l *logResultCache) handleMiss(ctx context.Context, cacheKey, responseCache
 				level.Warn(l.logger).Log("msg", "error marshalling response", "err", err)
 				return resp, nil
 			}
-			// Store both keys: cache key for request, :resp key for response
-			err = l.cache.Store(ctx, []string{cache.HashKey(cacheKey), cache.HashKey(responseCacheKey)}, [][]byte{requestData, responseData})
+			// Marker cache key to indicate a non-empty response exists for ANY limit
+			markerCacheKey := fmt.Sprintf("%s:resp", cacheKey)
+			// Marker value - just needs to exist, use minimal value
+			markerValue := []byte{1}
+			// Store three keys: cache key for request, marker key, :resp:limit key for response
+			err = l.cache.Store(ctx, []string{cache.HashKey(cacheKey), cache.HashKey(markerCacheKey), cache.HashKey(responseCacheKey)}, [][]byte{requestData, markerValue, responseData})
 			if err != nil {
 				level.Warn(l.logger).Log("msg", "error storing cache", "err", err)
 			}
@@ -396,6 +406,7 @@ func (l *logResultCache) handleEmptyResponseHit(ctx context.Context, cacheKey st
 			level.Warn(l.logger).Log("msg", "error storing cache", "err", err)
 		}
 	}
+
 	return result, nil
 }
 
@@ -413,137 +424,178 @@ func (l *logResultCache) handleResponseHit(ctx context.Context, cacheKey, respon
 
 	// The cached response doesn't fully cover the request, need to fetch missing parts
 	// Check if there's any overlap
+	updateCache := false
+	var newCachedRequest *LokiRequest
+	var newCachedResponse *LokiResponse
+	var result queryrangebase.Response
+
 	if !overlap(lokiReq.StartTs, lokiReq.EndTs, cachedRequest.StartTs, cachedRequest.EndTs) {
 		// No overlap - fetch the entire request
 		resp, err := l.next.Do(ctx, lokiReq)
 		if err != nil {
 			return nil, err
 		}
-		return resp, nil
-	}
-
-	// There's overlap - extract the overlapping part and fetch missing parts
-	var (
-		startRequest, endRequest *LokiRequest
-		startResp, endResp       *LokiResponse
-	)
-	g, ctx := errgroup.WithContext(ctx)
-
-	// If we're missing data at the start, fetch from the start to the cached start
-	if lokiReq.GetStartTs().Before(cachedRequest.GetStartTs()) {
-		g.Go(func() error {
-			startRequest = lokiReq.WithStartEnd(lokiReq.GetStartTs(), cachedRequest.GetStartTs()).(*LokiRequest)
-			resp, err := l.next.Do(ctx, startRequest)
-			if err != nil {
-				return err
-			}
-			var ok bool
-			startResp, ok = resp.(*LokiResponse)
-			if !ok {
-				return fmt.Errorf("unexpected response type %T", resp)
-			}
-			return nil
-		})
-	}
-
-	// If we're missing data at the end, fetch from the cached end to the end
-	if lokiReq.GetEndTs().After(cachedRequest.GetEndTs()) {
-		g.Go(func() error {
-			endRequest = lokiReq.WithStartEnd(cachedRequest.GetEndTs(), lokiReq.GetEndTs()).(*LokiRequest)
-			resp, err := l.next.Do(ctx, endRequest)
-			if err != nil {
-				return err
-			}
-			var ok bool
-			endResp, ok = resp.(*LokiResponse)
-			if !ok {
-				return fmt.Errorf("unexpected response type %T", resp)
-			}
-			return nil
-		})
-	}
-
-	if err := g.Wait(); err != nil {
-		return nil, err
-	}
-
-	// Extract the overlapping portion from the cached response
-	overlapStart := lokiReq.GetStartTs()
-	if cachedRequest.GetStartTs().After(overlapStart) {
-		overlapStart = cachedRequest.GetStartTs()
-	}
-	overlapEnd := lokiReq.GetEndTs()
-	if cachedRequest.GetEndTs().Before(overlapEnd) {
-		overlapEnd = cachedRequest.GetEndTs()
-	}
-	extractedCached := extractLokiResponse(overlapStart, overlapEnd, cachedResponse)
-
-	// Merge responses: start (if any) + cached overlap + end (if any)
-	var result *LokiResponse
-	if startResp != nil {
-		if startResp.Status != loghttp.QueryStatusSuccess {
-			return startResp, nil
+		lokiResp, ok := resp.(*LokiResponse)
+		if !ok {
+			return resp, nil
 		}
-		result = startResp
-		if extractedCached != nil {
-			result = mergeLokiResponse(result, extractedCached)
+
+		result = resp
+
+		// if the response is not empty and the timerange is bigger than what is cached, update the cache
+		if !isEmpty(lokiResp) && (lokiReq.EndTs.UnixNano()-lokiReq.StartTs.UnixNano() > cachedRequest.EndTs.UnixNano()-cachedRequest.StartTs.UnixNano()) {
+			tenantIDs, err := tenant.TenantIDs(ctx)
+			if err == nil {
+				maxCacheSizeCapture := func(id string) int { return l.limits.LogResultCacheMaxResponseSize(ctx, id) }
+				maxCacheSize := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, maxCacheSizeCapture)
+
+				// Cache if unlimited or response is small enough
+				// Note, if we are in this function, we already know  caching non-empty responses is enabled.
+				shouldCache := maxCacheSize == 0 || proto.Size(lokiResp) <= maxCacheSize
+				if shouldCache {
+					newCachedRequest = cachedRequest.WithStartEnd(lokiReq.GetStartTs(), lokiReq.GetEndTs()).(*LokiRequest)
+					newCachedResponse = lokiResp
+					updateCache = true
+				}
+			}
 		}
 	} else {
-		result = extractedCached
-	}
 
-	if endResp != nil {
-		if endResp.Status != loghttp.QueryStatusSuccess {
-			return endResp, nil
-		}
-		if result != nil {
-			result = mergeLokiResponse(result, endResp)
-		} else {
-			result = endResp
-		}
-	}
+		// There's overlap - extract the overlapping part and fetch missing parts
+		var (
+			startRequest, endRequest *LokiRequest
+			startResp, endResp       *LokiResponse
+		)
+		g, ctx := errgroup.WithContext(ctx)
 
-	if result == nil {
-		// Fallback to empty response if somehow we have nothing
-		result = emptyResponse(lokiReq)
-	}
-
-	// Try to update cache if the merged response is still cacheable and covers a larger range
-	// Note: We don't need to check if the feature is enabled here because we're only in this function
-	// if we already have a cached response, which means the feature was enabled when it was cached.
-	tenantIDs, err := tenant.TenantIDs(ctx)
-	if err == nil {
-		maxCacheSizeCapture := func(id string) int { return l.limits.LogResultCacheMaxResponseSize(ctx, id) }
-		maxCacheSize := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, maxCacheSizeCapture)
-
-		shouldCache := true
-		if maxCacheSize > 0 {
-			responseSize := proto.Size(result)
-			shouldCache = responseSize <= maxCacheSize
-		}
-
-		// Update cache if the merged response is cacheable and covers a larger range
-		if shouldCache {
-			newCachedStart := lokiReq.GetStartTs()
-			newCachedEnd := lokiReq.GetEndTs()
-
-			// Only update if we're extending the cached range
-			if newCachedStart.Before(cachedRequest.GetStartTs()) || newCachedEnd.After(cachedRequest.GetEndTs()) {
-				newCachedRequest := cachedRequest.WithStartEnd(newCachedStart, newCachedEnd).(*LokiRequest)
-				requestData, err := proto.Marshal(newCachedRequest)
+		// If we're missing data at the start, fetch from the start to the cached start
+		if lokiReq.GetStartTs().Before(cachedRequest.GetStartTs()) {
+			g.Go(func() error {
+				startRequest = lokiReq.WithStartEnd(lokiReq.GetStartTs(), cachedRequest.GetStartTs()).(*LokiRequest)
+				resp, err := l.next.Do(ctx, startRequest)
 				if err != nil {
-					level.Warn(l.logger).Log("msg", "error marshalling request for cache update", "err", err)
-				} else {
-					responseData, err := proto.Marshal(result)
-					if err != nil {
-						level.Warn(l.logger).Log("msg", "error marshalling response for cache update", "err", err)
-					} else {
-						err = l.cache.Store(ctx, []string{cache.HashKey(cacheKey), cache.HashKey(responseCacheKey)}, [][]byte{requestData, responseData})
-						if err != nil {
-							level.Warn(l.logger).Log("msg", "error updating cache", "err", err)
-						}
-					}
+					return err
 				}
+				var ok bool
+				startResp, ok = resp.(*LokiResponse)
+				if !ok {
+					return fmt.Errorf("unexpected response type %T", resp)
+				}
+				return nil
+			})
+		}
+
+		// If we're missing data at the end, fetch from the cached end to the end
+		if lokiReq.GetEndTs().After(cachedRequest.GetEndTs()) {
+			g.Go(func() error {
+				endRequest = lokiReq.WithStartEnd(cachedRequest.GetEndTs(), lokiReq.GetEndTs()).(*LokiRequest)
+				resp, err := l.next.Do(ctx, endRequest)
+				if err != nil {
+					return err
+				}
+				var ok bool
+				endResp, ok = resp.(*LokiResponse)
+				if !ok {
+					return fmt.Errorf("unexpected response type %T", resp)
+				}
+				return nil
+			})
+		}
+
+		if err := g.Wait(); err != nil {
+			return nil, err
+		}
+
+		// Extract the overlapping portion from the cached response
+		overlapStart := lokiReq.GetStartTs()
+		if cachedRequest.GetStartTs().After(overlapStart) {
+			overlapStart = cachedRequest.GetStartTs()
+		}
+		overlapEnd := lokiReq.GetEndTs()
+		if cachedRequest.GetEndTs().Before(overlapEnd) {
+			overlapEnd = cachedRequest.GetEndTs()
+		}
+		extractedCached := extractLokiResponse(overlapStart, overlapEnd, cachedResponse)
+
+		// Merge responses: start (if any) + cached overlap + end (if any)
+		var lokiResult *LokiResponse
+		if startResp != nil {
+			if startResp.Status != loghttp.QueryStatusSuccess {
+				return startResp, nil
+			}
+			lokiResult = startResp
+			if extractedCached != nil {
+				lokiResult = mergeLokiResponse(lokiResult, extractedCached)
+			}
+		} else {
+			lokiResult = extractedCached
+		}
+
+		if endResp != nil {
+			if endResp.Status != loghttp.QueryStatusSuccess {
+				return endResp, nil
+			}
+			if lokiResult != nil {
+				lokiResult = mergeLokiResponse(lokiResult, endResp)
+			} else {
+				lokiResult = endResp
+			}
+		}
+
+		if lokiResult == nil {
+			// Fallback to empty response if somehow we have nothing
+			lokiResult = emptyResponse(lokiReq)
+		}
+
+		result = lokiResult
+
+		// Try to update cache if the merged response is still cacheable and covers a larger range
+		// Note: We don't need to check if the feature is enabled here because we're only in this function
+		// if we already have a cached response, which means the feature was enabled when it was cached.
+		tenantIDs, err := tenant.TenantIDs(ctx)
+		if err == nil {
+			maxCacheSizeCapture := func(id string) int { return l.limits.LogResultCacheMaxResponseSize(ctx, id) }
+			maxCacheSize := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, maxCacheSizeCapture)
+
+			// Cache if unlimited or response is small enough
+			// Note, if we are in this function, we already know  caching non-empty responses is enabled.
+			shouldCache := maxCacheSize == 0 || proto.Size(lokiResult) <= maxCacheSize
+
+			// Update cache if the merged response is cacheable and covers a larger range
+			if shouldCache {
+				newCachedStart := lokiReq.GetStartTs()
+				newCachedEnd := lokiReq.GetEndTs()
+
+				// Only update if we're extending the cached range
+				if newCachedStart.Before(cachedRequest.GetStartTs()) || newCachedEnd.After(cachedRequest.GetEndTs()) {
+					newCachedRequest = cachedRequest.WithStartEnd(newCachedStart, newCachedEnd).(*LokiRequest)
+					newCachedResponse = lokiResult
+					updateCache = true
+				}
+			}
+		}
+	}
+
+	// Update cache if needed
+	if updateCache {
+		requestData, reqErr := proto.Marshal(newCachedRequest)
+		if reqErr != nil {
+			level.Error(l.logger).Log("msg", "error marshalling request for cache update", "err", reqErr)
+		}
+
+		responseData, respErr := proto.Marshal(newCachedResponse)
+		if respErr != nil {
+			level.Error(l.logger).Log("msg", "error marshalling response for cache update", "err", respErr)
+		}
+
+		if reqErr == nil && respErr == nil {
+			// Marker cache key to indicate a non-empty response exists for ANY limit
+			markerCacheKey := fmt.Sprintf("%s:resp", cacheKey)
+			// Marker value - just needs to exist, use minimal value
+			markerValue := []byte{1}
+			// Store three keys: cache key for request, marker key, :resp:limit key for response
+			if err := l.cache.Store(ctx, []string{cache.HashKey(cacheKey), cache.HashKey(markerCacheKey), cache.HashKey(responseCacheKey)}, [][]byte{requestData, markerValue, responseData}); err != nil {
+				level.Error(l.logger).Log("msg", "error updating cache", "err", err)
 			}
 		}
 	}

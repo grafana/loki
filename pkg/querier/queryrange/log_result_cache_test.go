@@ -712,183 +712,203 @@ func TestExtractLokiResponse(t *testing.T) {
 }
 
 func Test_LogResultCacheResponseSize(t *testing.T) {
-	for _, tc := range []struct {
-		name                  string
-		tenantID              string
-		maxCacheSize          int
-		responseSize          string // "small" or "large"
-		storeNonEmptyResponse bool
-		expectedCalls         int // number of times the handler should be called
-	}{
-		{
-			name:                  "small response should cache",
-			tenantID:              "foo",
-			maxCacheSize:          10 * 1024,
-			responseSize:          "small",
-			storeNonEmptyResponse: true,
-			expectedCalls:         1,
+	// Configure limits for tenant1 (enabled, max 1024) and tenant2 (disabled)
+	limits := fakeLimits{
+		splitDuration: map[string]time.Duration{
+			"tenant1": time.Minute,
+			"tenant2": time.Minute,
 		},
-		{
-			name:                  "large response should not cache",
-			tenantID:              "foo",
-			maxCacheSize:          1024,
-			responseSize:          "large",
-			storeNonEmptyResponse: true,
-			expectedCalls:         2,
+		logResultCacheMaxResponseSize: map[string]int{
+			"tenant1": 1024,
 		},
-		{
-			name:                  "feature disabled should not cache non-empty responses",
-			tenantID:              "foo",
-			maxCacheSize:          10 * 1024,
-			responseSize:          "small",
-			storeNonEmptyResponse: false,
-			expectedCalls:         2,
+		logResultCacheStoreNonEmptyResponse: map[string]bool{
+			"tenant1": true,
+			"tenant2": false,
 		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			limits := fakeLimits{
-				splitDuration:                       map[string]time.Duration{tc.tenantID: time.Minute},
-				logResultCacheMaxResponseSize:       map[string]int{tc.tenantID: tc.maxCacheSize},
-				logResultCacheStoreNonEmptyResponse: map[string]bool{tc.tenantID: tc.storeNonEmptyResponse},
-			}
-
-			lrc := NewLogResultCache(
-				log.NewNopLogger(),
-				limits,
-				cache.NewMockCache(),
-				nil,
-				nil,
-				nil,
-			)
-
-			req := &LokiRequest{
-				StartTs: time.Unix(0, time.Minute.Nanoseconds()),
-				EndTs:   time.Unix(0, 2*time.Minute.Nanoseconds()),
-				Limit:   entriesLimit,
-				Query:   lblFooBar,
-			}
-
-			var resp *LokiResponse
-			switch tc.responseSize {
-			case "small":
-				resp = nonEmptyResponse(req, time.Unix(61, 0), time.Unix(61, 0), lblFooBar)
-			case "large":
-				resp = nonEmptyResponse(req, time.Unix(61, 0), time.Unix(200, 0), lblFooBar)
-			}
-
-			ctx := user.InjectOrgID(context.Background(), tc.tenantID)
-
-			// Create mock responses based on expected calls
-			mockResponses := make([]mockResponse, tc.expectedCalls)
-			for i := range mockResponses {
-				mockResponses[i] = mockResponse{
-					RequestResponse: queryrangebase.RequestResponse{
-						Request:  req,
-						Response: resp,
-					},
-				}
-			}
-
-			fake := newFakeResponse(mockResponses)
-			h := lrc.Wrap(fake)
-
-			// First request
-			firstResp, err := h.Do(ctx, req)
-			require.NoError(t, err)
-			require.Equal(t, resp, firstResp)
-
-			// Second request
-			secondResp, err := h.Do(ctx, req)
-			require.NoError(t, err)
-			require.Equal(t, resp, secondResp)
-
-			// Verify expectations
-			fake.AssertExpectations(t)
-		})
 	}
 
-	// Test that different request limits use different cache keys
-	t.Run("different limits use different cache keys", func(t *testing.T) {
-		limits := fakeLimits{
-			splitDuration:                       map[string]time.Duration{"foo": time.Minute},
-			logResultCacheMaxResponseSize:       map[string]int{"foo": 10 * 1024},
-			logResultCacheStoreNonEmptyResponse: map[string]bool{"foo": true},
-		}
+	// Shared cache and handler setup
+	mockCache := cache.NewMockCache()
+	lrc := NewLogResultCache(
+		log.NewNopLogger(),
+		limits,
+		mockCache,
+		nil,
+		nil,
+		nil,
+	)
 
-		lrc := NewLogResultCache(
-			log.NewNopLogger(),
-			limits,
-			cache.NewMockCache(),
-			nil,
-			nil,
-			nil,
-		)
+	// Base request for tenant2 (steps 1-2)
+	reqTenant2 := &LokiRequest{
+		StartTs: time.Unix(0, time.Minute.Nanoseconds()),
+		EndTs:   time.Unix(0, 2*time.Minute.Nanoseconds()),
+		Limit:   entriesLimit,
+		Query:   lblFooBar,
+	}
+	respTenant2 := nonEmptyResponse(reqTenant2, time.Unix(61, 0), time.Unix(65, 0), lblFooBar)
 
-		ctx := user.InjectOrgID(context.Background(), "foo")
-
-		// First request with limit 100
-		req100 := &LokiRequest{
-			StartTs: time.Unix(0, time.Minute.Nanoseconds()),
-			EndTs:   time.Unix(0, 2*time.Minute.Nanoseconds()),
-			Limit:   100,
-			Query:   lblFooBar,
-		}
-		resp100 := nonEmptyResponse(req100, time.Unix(61, 0), time.Unix(61, 0), lblFooBar)
-
-		fake100 := newFakeResponse([]mockResponse{
+	// Step 1: Tenant2 runs a request that returns a response
+	t.Run("step1_tenant2_first_request", func(t *testing.T) {
+		ctx := user.InjectOrgID(context.Background(), "tenant2")
+		fake := newFakeResponse([]mockResponse{
 			{
 				RequestResponse: queryrangebase.RequestResponse{
-					Request:  req100,
-					Response: resp100,
+					Request:  reqTenant2,
+					Response: respTenant2,
 				},
 			},
 		})
+		h := lrc.Wrap(fake)
 
-		h100 := lrc.Wrap(fake100)
-
-		// First request with limit 100 - should cache
-		resp, err := h100.Do(ctx, req100)
+		resp, err := h.Do(ctx, reqTenant2)
 		require.NoError(t, err)
-		require.Equal(t, resp100, resp)
+		require.Equal(t, respTenant2, resp)
+		fake.AssertExpectations(t)
+	})
 
-		// Second request with limit 100 - should hit cache
-		resp, err = h100.Do(ctx, req100)
-		require.NoError(t, err)
-		require.Equal(t, resp100, resp)
-
-		fake100.AssertExpectations(t)
-
-		// Request with limit 1000 - should NOT hit cache from limit 100
-		req1000 := &LokiRequest{
-			StartTs: time.Unix(0, time.Minute.Nanoseconds()),
-			EndTs:   time.Unix(0, 2*time.Minute.Nanoseconds()),
-			Limit:   1000,
-			Query:   lblFooBar,
-		}
-		resp1000 := nonEmptyResponse(req1000, time.Unix(61, 0), time.Unix(61, 0), lblFooBar)
-
-		fake1000 := newFakeResponse([]mockResponse{
+	// Step 2: Tenant2 runs the same request. Cache is not hit because it is not enabled.
+	t.Run("step2_tenant2_second_request_cache_disabled", func(t *testing.T) {
+		ctx := user.InjectOrgID(context.Background(), "tenant2")
+		fake := newFakeResponse([]mockResponse{
 			{
 				RequestResponse: queryrangebase.RequestResponse{
-					Request:  req1000,
-					Response: resp1000,
+					Request:  reqTenant2,
+					Response: respTenant2,
 				},
 			},
 		})
+		h := lrc.Wrap(fake)
 
-		h1000 := lrc.Wrap(fake1000)
-
-		// First request with limit 1000 - should miss cache (different limit)
-		resp, err = h1000.Do(ctx, req1000)
+		resp, err := h.Do(ctx, reqTenant2)
 		require.NoError(t, err)
-		require.Equal(t, resp1000, resp)
+		require.Equal(t, respTenant2, resp)
+		fake.AssertExpectations(t)
+	})
 
-		// Second request with limit 1000 - should hit cache (same limit)
-		resp, err = h1000.Do(ctx, req1000)
+	// Step 3: Tenant1 runs a request that returns a response bigger than the max size (1024)
+	reqTenant1Large := &LokiRequest{
+		StartTs: time.Unix(0, time.Minute.Nanoseconds()),
+		EndTs:   time.Unix(0, 2*time.Minute.Nanoseconds()),
+		Limit:   entriesLimit,
+		Query:   lblFooBar,
+	}
+	respTenant1Large := nonEmptyResponse(reqTenant1Large, time.Unix(61, 0), time.Unix(200, 0), lblFooBar)
+
+	t.Run("step3_tenant1_large_response", func(t *testing.T) {
+		ctx := user.InjectOrgID(context.Background(), "tenant1")
+		fake := newFakeResponse([]mockResponse{
+			{
+				RequestResponse: queryrangebase.RequestResponse{
+					Request:  reqTenant1Large,
+					Response: respTenant1Large,
+				},
+			},
+		})
+		h := lrc.Wrap(fake)
+
+		resp, err := h.Do(ctx, reqTenant1Large)
 		require.NoError(t, err)
-		require.Equal(t, resp1000, resp)
+		require.Equal(t, respTenant1Large, resp)
+		fake.AssertExpectations(t)
+	})
 
-		fake1000.AssertExpectations(t)
+	// Step 4: Tenant1 runs the same request. Cache is not hit because the previous response was too big to cache.
+	t.Run("step4_tenant1_large_response_second_request", func(t *testing.T) {
+		ctx := user.InjectOrgID(context.Background(), "tenant1")
+		fake := newFakeResponse([]mockResponse{
+			{
+				RequestResponse: queryrangebase.RequestResponse{
+					Request:  reqTenant1Large,
+					Response: respTenant1Large,
+				},
+			},
+		})
+		h := lrc.Wrap(fake)
+
+		resp, err := h.Do(ctx, reqTenant1Large)
+		require.NoError(t, err)
+		require.Equal(t, respTenant1Large, resp)
+		fake.AssertExpectations(t)
+	})
+
+	// Step 5: Tenant1 runs a request that returns a response smaller than the max size
+	reqTenant1Small := &LokiRequest{
+		StartTs: time.Unix(0, 3*time.Minute.Nanoseconds()),
+		EndTs:   time.Unix(0, 4*time.Minute.Nanoseconds()),
+		Limit:   entriesLimit,
+		Query:   lblFooBar,
+	}
+	respTenant1Small := nonEmptyResponse(reqTenant1Small, time.Unix(181, 0), time.Unix(185, 0), lblFooBar)
+
+	t.Run("step5_tenant1_small_response", func(t *testing.T) {
+		ctx := user.InjectOrgID(context.Background(), "tenant1")
+		fake := newFakeResponse([]mockResponse{
+			{
+				RequestResponse: queryrangebase.RequestResponse{
+					Request:  reqTenant1Small,
+					Response: respTenant1Small,
+				},
+			},
+		})
+		h := lrc.Wrap(fake)
+
+		resp, err := h.Do(ctx, reqTenant1Small)
+		require.NoError(t, err)
+		require.Equal(t, respTenant1Small, resp)
+		fake.AssertExpectations(t)
+	})
+
+	// Step 6: Tenant1 runs the same request. Cache is hit.
+	t.Run("step6_tenant1_small_response_cache_hit", func(t *testing.T) {
+		ctx := user.InjectOrgID(context.Background(), "tenant1")
+		// No mock responses expected - cache hit
+		fake := newFakeResponse([]mockResponse{})
+		h := lrc.Wrap(fake)
+
+		resp, err := h.Do(ctx, reqTenant1Small)
+		require.NoError(t, err)
+		require.Equal(t, respTenant1Small, resp)
+		fake.AssertExpectations(t)
+	})
+
+	// Step 7: Tenant1 runs a request with a different line limit. Response is not from the cache (cache not hit) because the limit is different than the previous. But it fits in the cache so it will be cached.
+	reqTenant1DifferentLimit := &LokiRequest{
+		StartTs: time.Unix(0, 3*time.Minute.Nanoseconds()),
+		EndTs:   time.Unix(0, 4*time.Minute.Nanoseconds()),
+		Limit:   500, // Different limit than entriesLimit (1000)
+		Query:   lblFooBar,
+	}
+	respTenant1DifferentLimit := nonEmptyResponse(reqTenant1DifferentLimit, time.Unix(181, 0), time.Unix(185, 0), lblFooBar)
+
+	t.Run("step7_tenant1_different_limit", func(t *testing.T) {
+		ctx := user.InjectOrgID(context.Background(), "tenant1")
+		fake := newFakeResponse([]mockResponse{
+			{
+				RequestResponse: queryrangebase.RequestResponse{
+					Request:  reqTenant1DifferentLimit,
+					Response: respTenant1DifferentLimit,
+				},
+			},
+		})
+		h := lrc.Wrap(fake)
+
+		resp, err := h.Do(ctx, reqTenant1DifferentLimit)
+		require.NoError(t, err)
+		require.Equal(t, respTenant1DifferentLimit, resp)
+		fake.AssertExpectations(t)
+	})
+
+	// Step 8: Tenant1 runs the same request. Cache is now hit.
+	t.Run("step8_tenant1_different_limit_cache_hit", func(t *testing.T) {
+		ctx := user.InjectOrgID(context.Background(), "tenant1")
+		// No mock responses expected - cache hit
+		fake := newFakeResponse([]mockResponse{})
+		h := lrc.Wrap(fake)
+
+		resp, err := h.Do(ctx, reqTenant1DifferentLimit)
+		require.NoError(t, err)
+		require.Equal(t, respTenant1DifferentLimit, resp)
+		fake.AssertExpectations(t)
 	})
 }
 
