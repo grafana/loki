@@ -77,12 +77,14 @@ func TestIndexBuilder_PartitionRevocation(t *testing.T) {
 		"loki.metastore-events": {0, 1, 2},
 	})
 
+	revokedProcessed := make(chan struct{}, 1)
 	trigger := make(chan struct{})
 	go func() {
 		<-trigger
 		builder.handlePartitionsRevoked(ctx, nil, map[string][]int32{
 			"loki.metastore-events": {1},
 		})
+		revokedProcessed <- struct{}{}
 	}()
 
 	// Trigger the revocation of a partition, but only after we've processed a couple of records.
@@ -102,6 +104,7 @@ func TestIndexBuilder_PartitionRevocation(t *testing.T) {
 	}
 
 	// Verify that the partition was revoked.
+	<-revokedProcessed
 	require.Equal(t, 2, len(builder.partitionStates))
 	require.Nil(t, builder.partitionStates[1])
 }
