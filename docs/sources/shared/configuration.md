@@ -1211,7 +1211,7 @@ dataobj:
       # CLI flag: -dataobj-consumer.buffer-size
       [buffer_size: <int> | default = 16MiB]
 
-      # The maximum number of log section stripes to merge into a section at
+      # The maximum number of dataobj section stripes to merge into a section at
       # once. Must be greater than 1.
       # CLI flag: -dataobj-consumer.section-stripe-merge-limit
       [section_stripe_merge_limit: <int> | default = 2]
@@ -1458,8 +1458,8 @@ dataobj:
     # CLI flag: -dataobj-index-builder.buffer-size
     [buffer_size: <int> | default = 2MiB]
 
-    # The maximum number of log section stripes to merge into a section at once.
-    # Must be greater than 1.
+    # The maximum number of dataobj section stripes to merge into a section at
+    # once. Must be greater than 1.
     # CLI flag: -dataobj-index-builder.section-stripe-merge-limit
     [section_stripe_merge_limit: <int> | default = 2]
 
