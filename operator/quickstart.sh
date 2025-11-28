@@ -48,6 +48,11 @@ lokistack(){
     echo "- Deploy Loki Stack...                    -"
     echo "-------------------------------------------"
     kubectl apply -f ./hack/lokistack_gateway_dev.yaml
+
+    echo "-------------------------------------------"
+    echo "- Wait for LokiStack (~ 90s)...           -"
+    echo "-------------------------------------------"
+    kubectl wait --for=condition=Ready --timeout=5m lokistack/lokistack-dev
 }
 
 logger() {
@@ -74,7 +79,7 @@ certificates() {
 
 check() {
     # shellcheck disable=SC2154
-    ${LOGCLI} --addr "http://localhost/token-refresher/api/logs/v1/test-oidc" labels
+    ${LOGCLI} --addr "http://localhost:8081/token-refresher/api/logs/v1/test-oidc" labels
 }
 
 case ${1:-"*"} in
@@ -112,9 +117,9 @@ help)
 
 *)
     setup
+    certificates
     deps
     operator
-    certificates
     lokistack
     logger
     ;;
