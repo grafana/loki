@@ -130,7 +130,7 @@ spec:
             - --api.dashboard
             - --log.level=debug
             - --accesslog=true
-            - --entryPoints.admin.address=:8082
+            - --entryPoints.traefik.address=:8082
             - --entryPoints.web.address=:8081
             - --entryPoints.websecure.address=:8443
             - --providers.kubernetesIngress
