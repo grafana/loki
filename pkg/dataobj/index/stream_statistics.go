@@ -10,11 +10,11 @@ import (
 
 type streamStatisticsCalculation struct{}
 
-func (c *streamStatisticsCalculation) Prepare(ctx context.Context, section *dataobj.Section, stats logs.Stats) error {
+func (c *streamStatisticsCalculation) Prepare(_ context.Context, _ *dataobj.Section, _ logs.Stats) error {
 	return nil
 }
 
-func (c *streamStatisticsCalculation) ProcessBatch(ctx context.Context, context *logsCalculationContext, batch []logs.Record) error {
+func (c *streamStatisticsCalculation) ProcessBatch(_ context.Context, context *logsCalculationContext, batch []logs.Record) error {
 	for _, log := range batch {
 		err := context.builder.ObserveLogLine(context.tenantID, context.objectPath, context.sectionIdx, log.StreamID, context.streamIDLookup[log.StreamID], log.Timestamp, int64(len(log.Line)))
 		if err != nil {
@@ -24,6 +24,6 @@ func (c *streamStatisticsCalculation) ProcessBatch(ctx context.Context, context 
 	return nil
 }
 
-func (c *streamStatisticsCalculation) Flush(ctx context.Context, context *logsCalculationContext) error {
+func (c *streamStatisticsCalculation) Flush(_ context.Context, _ *logsCalculationContext) error {
 	return nil
 }
