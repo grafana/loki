@@ -833,12 +833,12 @@ func Test_LogResultCacheResponseSize(t *testing.T) {
 
 	// Step 5: Tenant1 runs a request that returns a response smaller than the max size
 	reqTenant1Small := &LokiRequest{
-		StartTs: time.Unix(0, 3*time.Minute.Nanoseconds()),
-		EndTs:   time.Unix(0, 4*time.Minute.Nanoseconds()),
+		StartTs: time.Unix(0, 2*time.Minute.Nanoseconds()), // 2 minutes (120 seconds) - same start as step 7 to test limit difference
+		EndTs:   time.Unix(0, 3*time.Minute.Nanoseconds()), // 3 minutes (180 seconds)
 		Limit:   entriesLimit,
 		Query:   lblFooBar,
 	}
-	respTenant1Small := nonEmptyResponse(reqTenant1Small, time.Unix(181, 0), time.Unix(185, 0), lblFooBar)
+	respTenant1Small := nonEmptyResponse(reqTenant1Small, time.Unix(121, 0), time.Unix(125, 0), lblFooBar)
 
 	t.Run("step5_tenant1_small_response", func(t *testing.T) {
 		ctx := user.InjectOrgID(context.Background(), "tenant1")
@@ -873,12 +873,12 @@ func Test_LogResultCacheResponseSize(t *testing.T) {
 
 	// Step 7: Tenant1 runs a request with a different line limit. Response is not from the cache (cache not hit) because the limit is different than the previous. But it fits in the cache so it will be cached.
 	reqTenant1DifferentLimit := &LokiRequest{
-		StartTs: time.Unix(0, 3*time.Minute.Nanoseconds()),
-		EndTs:   time.Unix(0, 4*time.Minute.Nanoseconds()),
-		Limit:   500, // Different limit than entriesLimit (1000)
+		StartTs: time.Unix(0, 2*time.Minute.Nanoseconds()), // 2 minutes (120 seconds) - same as reqTenant1Small
+		EndTs:   time.Unix(0, 3*time.Minute.Nanoseconds()), // 3 minutes (180 seconds) - same as reqTenant1Small
+		Limit:   500,                                       // Different limit than entriesLimit (1000)
 		Query:   lblFooBar,
 	}
-	respTenant1DifferentLimit := nonEmptyResponse(reqTenant1DifferentLimit, time.Unix(181, 0), time.Unix(185, 0), lblFooBar)
+	respTenant1DifferentLimit := nonEmptyResponse(reqTenant1DifferentLimit, time.Unix(121, 0), time.Unix(125, 0), lblFooBar)
 
 	t.Run("step7_tenant1_different_limit", func(t *testing.T) {
 		ctx := user.InjectOrgID(context.Background(), "tenant1")
@@ -908,6 +908,71 @@ func Test_LogResultCacheResponseSize(t *testing.T) {
 		resp, err := h.Do(ctx, reqTenant1DifferentLimit)
 		require.NoError(t, err)
 		require.Equal(t, respTenant1DifferentLimit, resp)
+		fake.AssertExpectations(t)
+	})
+
+	// Step 9: Tenant1 requests a time range that overlaps and extends beyond the previous cached request.
+	// reqTenant1DifferentLimit: 120-180 seconds (2-3 minutes), response has entries 121-125 seconds, limit 500
+	// reqTenant1Overlap: 120-360 seconds (2-6 minutes), same start as cached range, extends beyond it
+	// Since it has the same cache key (same aligned start), it will find the cached response and extend it.
+	reqTenant1Overlap := &LokiRequest{
+		StartTs: time.Unix(0, 2*time.Minute.Nanoseconds()), // 2 minutes (120 seconds) - same aligned start as cached request
+		EndTs:   time.Unix(0, 6*time.Minute.Nanoseconds()), // 6 minutes (360 seconds) - extends beyond cached range
+		Limit:   500,                                       // Same limit as reqTenant1DifferentLimit so we can reuse cached response
+		Query:   lblFooBar,
+	}
+
+	t.Run("step9_tenant1_overlapping_request", func(t *testing.T) {
+		ctx := user.InjectOrgID(context.Background(), "tenant1")
+		// The request overlaps with cached reqTenant1DifferentLimit (request range 120-180s, entries 121-125s)
+		// Cache will:
+		// 1. Find the cached response (same cache key, same limit)
+		// 2. Extract overlapping part from cache: 120-180s range -> entries 121-125s
+		// 3. Fetch missing end part: 180-360s
+		// handleResponseHit should be called to fetch only the end part (180-360s)
+		// Create the expected end request that will be made by handleResponseHit
+		expectedEndRequest := reqTenant1Overlap.WithStartEnd(
+			time.Unix(0, 3*time.Minute.Nanoseconds()), // cachedRequest.GetEndTs() = 180s
+			time.Unix(0, 6*time.Minute.Nanoseconds()), // lokiReq.GetEndTs() = 360s
+		).(*LokiRequest)
+
+		fake := newFakeResponse([]mockResponse{
+			{
+				RequestResponse: queryrangebase.RequestResponse{
+					Request:  expectedEndRequest,
+					Response: nonEmptyResponse(expectedEndRequest, time.Unix(180, 0), time.Unix(190, 0), lblFooBar),
+				},
+			},
+		})
+		h := lrc.Wrap(fake)
+
+		resp, err := h.Do(ctx, reqTenant1Overlap)
+		require.NoError(t, err)
+		// Response should be merged: cached overlap (121-125) + end (180-360)
+		// Note: there's a gap 125-180, but that's expected since the cached response only had 121-125
+		expectedResp := mergeLokiResponse(
+			nonEmptyResponse(&LokiRequest{Limit: 500}, time.Unix(121, 0), time.Unix(125, 0), lblFooBar),
+			nonEmptyResponse(&LokiRequest{Limit: 500}, time.Unix(180, 0), time.Unix(190, 0), lblFooBar),
+		)
+		require.Equal(t, expectedResp, resp)
+		fake.AssertExpectations(t)
+	})
+
+	// Step 10: Tenant1 does the same request. Now it should be fully cached.
+	t.Run("step10_tenant1_overlapping_request_cache_hit", func(t *testing.T) {
+		ctx := user.InjectOrgID(context.Background(), "tenant1")
+		fake := newFakeResponse([]mockResponse{})
+		h := lrc.Wrap(fake)
+
+		resp, err := h.Do(ctx, reqTenant1Overlap)
+		require.NoError(t, err)
+
+		// Response should match what we got in step 9
+		expectedResp := mergeLokiResponse(
+			nonEmptyResponse(&LokiRequest{Limit: 500}, time.Unix(121, 0), time.Unix(125, 0), lblFooBar),
+			nonEmptyResponse(&LokiRequest{Limit: 500}, time.Unix(180, 0), time.Unix(190, 0), lblFooBar),
+		)
+		require.Equal(t, expectedResp, resp)
 		fake.AssertExpectations(t)
 	})
 }

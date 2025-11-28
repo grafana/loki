@@ -130,14 +130,8 @@ func (l *logResultCache) Do(ctx context.Context, req queryrangebase.Request) (qu
 	}
 
 	// Check if caching of non-empty responses is enabled
-	// Use the most restrictive setting across tenants (all must be enabled)
-	storeNonEmptyEnabled := true
-	for _, tenantID := range tenantIDs {
-		if !l.limits.LogResultCacheStoreNonEmptyResponse(ctx, tenantID) {
-			storeNonEmptyEnabled = false
-			break
-		}
-	}
+	storeNonEmptyCapture := func(id string) bool { return l.limits.LogResultCacheStoreNonEmptyResponse(ctx, id) }
+	storeNonEmptyEnabled := validation.AllTruePerTenant(tenantIDs, storeNonEmptyCapture)
 
 	// Use cache key for empty results (backward compatible) and :resp suffix for small non-empty responses
 	// Include limit in response cache key to ensure we only use cached responses with the same limit
@@ -193,15 +187,7 @@ func (l *logResultCache) Do(ctx context.Context, req queryrangebase.Request) (qu
 	}
 
 	if cacheKeyHit {
-		// Check if marker exists - if it does, we have a non-empty response cached for a different limit
-		// In this case, we cannot treat it as an empty response and must fetch from next handler
-		if markerHit && !responseHit {
-			// Marker exists but response for this limit doesn't - non-empty response cached for different limit
-			// This is effectively a cache miss for this limit, so use handleMiss to fetch and cache it
-			return l.handleMiss(ctx, cacheKey, responseCacheKey, lokiReq)
-		}
-
-		// Cache key hit - empty result (backward compatible)
+		// Unmarshal cached request to check for overlap
 		var cachedRequest LokiRequest
 		err = proto.Unmarshal(buffs[0], &cachedRequest)
 		if err != nil {
@@ -209,7 +195,16 @@ func (l *logResultCache) Do(ctx context.Context, req queryrangebase.Request) (qu
 			return l.next.Do(ctx, req)
 		}
 
-		return l.handleEmptyResponseHit(ctx, cacheKey, &cachedRequest, lokiReq)
+		// Check if marker exists - if it does, we have a non-empty response cached for a different limit
+		// In this case, we cannot treat it as an empty response and must fetch from next handler
+		if markerHit && !responseHit {
+			// Marker exists but response for this limit doesn't - non-empty response cached for different limit
+			// We handle this as a miss so the cache is populated with a non-empty response for this limit.
+			return l.handleMiss(ctx, cacheKey, responseCacheKey, lokiReq)
+		}
+
+		// Cache key hit - empty result (backward compatible)
+		return l.handleEmptyResponseHit(ctx, cacheKey, responseCacheKey, &cachedRequest, lokiReq)
 	}
 
 	// cache miss
@@ -292,7 +287,7 @@ func (l *logResultCache) handleMiss(ctx context.Context, cacheKey, responseCache
 	return resp, nil
 }
 
-func (l *logResultCache) handleEmptyResponseHit(ctx context.Context, cacheKey string, cachedRequest *LokiRequest, lokiReq *LokiRequest) (queryrangebase.Response, error) {
+func (l *logResultCache) handleEmptyResponseHit(ctx context.Context, cacheKey, responseCacheKey string, cachedRequest *LokiRequest, lokiReq *LokiRequest) (queryrangebase.Response, error) {
 	l.metrics.CacheHit.Inc()
 	// we start with an empty response
 	result := emptyResponse(lokiReq)
@@ -393,6 +388,15 @@ func (l *logResultCache) handleEmptyResponseHit(ctx context.Context, cacheKey st
 		}
 	}
 
+	// If the merged result is non-empty (e.g., endResp had data), update cache with marker and response cache key
+	// This allows future requests to treat it as a non-empty cached response
+	// If a future request's end matches no log lines, extractLokiResponse will handle returning an empty response
+	if !isEmpty(result) {
+		newCachedRequest := lokiReq.WithStartEnd(lokiReq.GetStartTs(), lokiReq.GetEndTs()).(*LokiRequest)
+		l.updateCacheWithNonEmptyResponse(ctx, cacheKey, responseCacheKey, newCachedRequest, result)
+		return result, nil
+	}
+
 	// we need to update the cache since we fetched more either at the end or the start and it was empty.
 	if updateCache {
 		data, err := proto.Marshal(cachedRequest)
@@ -408,6 +412,52 @@ func (l *logResultCache) handleEmptyResponseHit(ctx context.Context, cacheKey st
 	}
 
 	return result, nil
+}
+
+// updateCacheWithNonEmptyResponse updates the cache with a non-empty response, storing the request,
+// marker key, and response cache key. This is used when a previously empty cached response becomes
+// non-empty after fetching missing parts.
+func (l *logResultCache) updateCacheWithNonEmptyResponse(ctx context.Context, cacheKey, responseCacheKey string, newCachedRequest *LokiRequest, newCachedResponse *LokiResponse) {
+	tenantIDs, err := tenant.TenantIDs(ctx)
+	if err != nil {
+		return
+	}
+
+	storeNonEmptyCapture := func(id string) bool { return l.limits.LogResultCacheStoreNonEmptyResponse(ctx, id) }
+	storeNonEmptyEnabled := validation.AllTruePerTenant(tenantIDs, storeNonEmptyCapture)
+	if !storeNonEmptyEnabled {
+		return
+	}
+
+	maxCacheSizeCapture := func(id string) int { return l.limits.LogResultCacheMaxResponseSize(ctx, id) }
+	maxCacheSize := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, maxCacheSizeCapture)
+
+	// Cache if unlimited or response is small enough
+	shouldCache := maxCacheSize == 0 || proto.Size(newCachedResponse) <= maxCacheSize
+	if !shouldCache {
+		return
+	}
+
+	requestData, reqErr := proto.Marshal(newCachedRequest)
+	if reqErr != nil {
+		level.Error(l.logger).Log("msg", "error marshalling request for cache update", "err", reqErr)
+		return
+	}
+
+	responseData, respErr := proto.Marshal(newCachedResponse)
+	if respErr != nil {
+		level.Error(l.logger).Log("msg", "error marshalling response for cache update", "err", respErr)
+		return
+	}
+
+	// Marker cache key to indicate a non-empty response exists for ANY limit
+	markerCacheKey := fmt.Sprintf("%s:resp", cacheKey)
+	// Marker value - just needs to exist, use minimal value
+	markerValue := []byte{1}
+	// Store three keys: cache key for request, marker key, :resp:limit key for response
+	if err := l.cache.Store(ctx, []string{cache.HashKey(cacheKey), cache.HashKey(markerCacheKey), cache.HashKey(responseCacheKey)}, [][]byte{requestData, markerValue, responseData}); err != nil {
+		level.Error(l.logger).Log("msg", "error updating cache", "err", err)
+	}
 }
 
 func (l *logResultCache) handleResponseHit(ctx context.Context, cacheKey, responseCacheKey string, cachedResponse *LokiResponse, cachedRequest *LokiRequest, lokiReq *LokiRequest) (queryrangebase.Response, error) {
@@ -552,8 +602,7 @@ func (l *logResultCache) handleResponseHit(ctx context.Context, cacheKey, respon
 		// Try to update cache if the merged response is still cacheable and covers a larger range
 		// Note: We don't need to check if the feature is enabled here because we're only in this function
 		// if we already have a cached response, which means the feature was enabled when it was cached.
-		tenantIDs, err := tenant.TenantIDs(ctx)
-		if err == nil {
+		if tenantIDs, err := tenant.TenantIDs(ctx); err == nil {
 			maxCacheSizeCapture := func(id string) int { return l.limits.LogResultCacheMaxResponseSize(ctx, id) }
 			maxCacheSize := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, maxCacheSizeCapture)
 
@@ -578,26 +627,7 @@ func (l *logResultCache) handleResponseHit(ctx context.Context, cacheKey, respon
 
 	// Update cache if needed
 	if updateCache {
-		requestData, reqErr := proto.Marshal(newCachedRequest)
-		if reqErr != nil {
-			level.Error(l.logger).Log("msg", "error marshalling request for cache update", "err", reqErr)
-		}
-
-		responseData, respErr := proto.Marshal(newCachedResponse)
-		if respErr != nil {
-			level.Error(l.logger).Log("msg", "error marshalling response for cache update", "err", respErr)
-		}
-
-		if reqErr == nil && respErr == nil {
-			// Marker cache key to indicate a non-empty response exists for ANY limit
-			markerCacheKey := fmt.Sprintf("%s:resp", cacheKey)
-			// Marker value - just needs to exist, use minimal value
-			markerValue := []byte{1}
-			// Store three keys: cache key for request, marker key, :resp:limit key for response
-			if err := l.cache.Store(ctx, []string{cache.HashKey(cacheKey), cache.HashKey(markerCacheKey), cache.HashKey(responseCacheKey)}, [][]byte{requestData, markerValue, responseData}); err != nil {
-				level.Error(l.logger).Log("msg", "error updating cache", "err", err)
-			}
-		}
+		l.updateCacheWithNonEmptyResponse(ctx, cacheKey, responseCacheKey, newCachedRequest, newCachedResponse)
 	}
 
 	return result, nil
