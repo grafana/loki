@@ -39,7 +39,7 @@ func forEachStreamSectionPointer(
 	}
 
 	const batchSize = 128
-	buf := make([]streamSectionPointerBuilder, batchSize)
+	buf := make([]pointers.SectionPointer, batchSize)
 
 	// iterate over the sections and fill buf column by column
 	// once the read operation is over invoke client's [f] on every read row (numRows not always the same as len(buf))
@@ -127,56 +127,56 @@ func forEachStreamSectionPointer(
 						if col.IsNull(rIdx) {
 							continue
 						}
-						buf[rIdx].path = col.(*array.String).Value(rIdx)
+						buf[rIdx].Path = col.(*array.String).Value(rIdx)
 					}
 				case pointers.ColumnTypeSection:
 					for rIdx := range numRows {
 						if col.IsNull(rIdx) {
 							continue
 						}
-						buf[rIdx].section = col.(*array.Int64).Value(rIdx)
+						buf[rIdx].Section = col.(*array.Int64).Value(rIdx)
 					}
 				case pointers.ColumnTypeStreamID:
 					for rIdx := range numRows {
 						if col.IsNull(rIdx) {
 							continue
 						}
-						buf[rIdx].streamID = col.(*array.Int64).Value(rIdx)
+						buf[rIdx].StreamID = col.(*array.Int64).Value(rIdx)
 					}
 				case pointers.ColumnTypeStreamIDRef:
 					for rIdx := range numRows {
 						if col.IsNull(rIdx) {
 							continue
 						}
-						buf[rIdx].streamIDRef = col.(*array.Int64).Value(rIdx)
+						buf[rIdx].StreamIDRef = col.(*array.Int64).Value(rIdx)
 					}
 				case pointers.ColumnTypeMinTimestamp:
 					for rIdx := range numRows {
 						if col.IsNull(rIdx) {
 							continue
 						}
-						buf[rIdx].start = time.Unix(0, int64(col.(*array.Timestamp).Value(rIdx)))
+						buf[rIdx].StartTs = time.Unix(0, int64(col.(*array.Timestamp).Value(rIdx)))
 					}
 				case pointers.ColumnTypeMaxTimestamp:
 					for rIdx := range numRows {
 						if col.IsNull(rIdx) {
 							continue
 						}
-						buf[rIdx].end = time.Unix(0, int64(col.(*array.Timestamp).Value(rIdx)))
+						buf[rIdx].EndTs = time.Unix(0, int64(col.(*array.Timestamp).Value(rIdx)))
 					}
 				case pointers.ColumnTypeRowCount:
 					for rIdx := range numRows {
 						if col.IsNull(rIdx) {
 							continue
 						}
-						buf[rIdx].lineCount = col.(*array.Int64).Value(rIdx)
+						buf[rIdx].LineCount = col.(*array.Int64).Value(rIdx)
 					}
 				case pointers.ColumnTypeUncompressedSize:
 					for rIdx := range numRows {
 						if col.IsNull(rIdx) {
 							continue
 						}
-						buf[rIdx].uncompressedSize = col.(*array.Int64).Value(rIdx)
+						buf[rIdx].UncompressedSize = col.(*array.Int64).Value(rIdx)
 					}
 				default:
 					continue
@@ -184,18 +184,7 @@ func forEachStreamSectionPointer(
 			}
 
 			for rowIdx := range numRows {
-				b := buf[rowIdx]
-				f(pointers.SectionPointer{
-					Path:             b.path,
-					Section:          b.section,
-					PointerKind:      pointers.PointerKindStreamIndex,
-					StreamID:         b.streamID,
-					StreamIDRef:      b.streamIDRef,
-					StartTs:          b.start,
-					EndTs:            b.end,
-					LineCount:        b.lineCount,
-					UncompressedSize: b.uncompressedSize,
-				})
+				f(buf[rowIdx])
 			}
 
 			if errors.Is(readErr, io.EOF) {
@@ -205,30 +194,6 @@ func forEachStreamSectionPointer(
 	}
 
 	return nil
-}
-
-type streamSectionPointerBuilder struct {
-	path             string
-	section          int64
-	streamID         int64
-	streamIDRef      int64
-	start            time.Time
-	end              time.Time
-	lineCount        int64
-	uncompressedSize int64
-}
-
-func (b streamSectionPointerBuilder) build() streamSectionPointerBuilder {
-	return streamSectionPointerBuilder{
-		path:             b.path,
-		section:          b.section,
-		streamID:         b.streamID,
-		streamIDRef:      b.streamIDRef,
-		start:            b.start,
-		end:              b.end,
-		lineCount:        b.lineCount,
-		uncompressedSize: b.uncompressedSize,
-	}
 }
 
 func buildPointersTimeRangePredicate(
