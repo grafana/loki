@@ -118,6 +118,11 @@ func (hb *unorderedHeadBlock) Append(ts int64, line string, structuredMetadata l
 		// structuredMetadata must be ignored for the previous head block formats
 		structuredMetadata = labels.EmptyLabels()
 	}
+	// Resolve symbols for the incoming structured metadata once for dedupe/append logic
+	symbols, err := hb.symbolizer.Add(structuredMetadata)
+	if err != nil {
+		return false, err
+	}
 	// This is an allocation hack. The rangetree lib does not
 	// support the ability to pass a "mutate" function during an insert
 	// and instead will displace any existing entry at the specified timestamp.
@@ -133,26 +138,23 @@ func (hb *unorderedHeadBlock) Append(ts int64, line string, structuredMetadata l
 	displaced := hb.rt.Add(e)
 	if displaced[0] != nil {
 		// While we support multiple entries at the same timestamp, we _do_ de-duplicate
-		// entries at the same time with the same content, iterate through any existing
-		// entries and ignore the line if we already have an entry with the same content
+		// entries at the same time with the same content and same structured metadata.
 		for _, et := range displaced[0].(*nsEntries).entries {
-			if et.line == line {
+			// For legacy formats, dedupe on line only. For metadata-aware format, require line and symbols to match.
+			if hb.format < UnorderedWithStructuredMetadataHeadBlockFmt {
+				if et.line == line {
+					e.entries = displaced[0].(*nsEntries).entries
+					return true, nil
+				}
+				continue
+			}
+			if et.line == line && symbolsEqual(et.structuredMetadataSymbols, symbols) {
 				e.entries = displaced[0].(*nsEntries).entries
 				return true, nil
 			}
 		}
-		symbols, err := hb.symbolizer.Add(structuredMetadata)
-		if err != nil {
-			return false, err
-		}
-
 		e.entries = append(displaced[0].(*nsEntries).entries, nsEntry{line, symbols})
 	} else {
-		symbols, err := hb.symbolizer.Add(structuredMetadata)
-		if err != nil {
-			return false, err
-		}
-
 		e.entries = []nsEntry{{line, symbols}}
 	}
 
@@ -170,6 +172,18 @@ func (hb *unorderedHeadBlock) Append(ts int64, line string, structuredMetadata l
 	hb.lines++
 
 	return false, nil
+}
+
+func symbolsEqual(a, b symbols) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].Name != b[i].Name || a[i].Value != b[i].Value {
+			return false
+		}
+	}
+	return true
 }
 
 func metaLabelsLen(metaLabels labels.Labels) int {
