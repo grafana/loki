@@ -514,7 +514,7 @@
             "steppedLine": false,
             "targets": [
                {
-                  "expr": "sum by (pod)(rate(container_network_receive_bytes_total{cluster=\"$cluster\", namespace=\"$namespace\"}[$__rate_interval]))",
+                  "expr": "sum by (pod)(rate(container_network_receive_bytes_total{cluster=\"$cluster\", namespace=\"$namespace\", container=~\"$container\"}[$__rate_interval]))",
                   "refId": "A"
                }
             ],
