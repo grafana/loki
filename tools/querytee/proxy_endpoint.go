@@ -13,6 +13,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+
 	"github.com/grafana/loki/v3/tools/querytee/goldfish"
 )
 
@@ -90,6 +91,13 @@ func (p *ProxyEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if downstreamRes.err != nil {
 		http.Error(w, downstreamRes.err.Error(), http.StatusInternalServerError)
 	} else {
+		// Copy response headers.
+		for key, values := range downstreamRes.headers {
+			for _, value := range values {
+				w.Header().Add(key, value)
+			}
+		}
+
 		w.WriteHeader(downstreamRes.status)
 		if _, err := w.Write(downstreamRes.body); err != nil {
 			level.Warn(p.logger).Log("msg", "Unable to write response", "err", err)
@@ -304,6 +312,7 @@ type BackendResponse struct {
 	backend  *ProxyBackend
 	status   int
 	body     []byte
+	headers  http.Header
 	err      error
 	duration time.Duration
 	traceID  string
@@ -359,6 +368,7 @@ func (p *ProxyEndpoint) processWithGoldfish(r *http.Request, cellAResp, cellBRes
 		level.Error(p.logger).Log("msg", "failed to capture cell A response", "err", err)
 		return
 	}
+	cellAData.BackendName = cellAResp.backend.name
 
 	cellBData, err := goldfish.CaptureResponse(&http.Response{
 		StatusCode: cellBResp.status,
@@ -368,6 +378,7 @@ func (p *ProxyEndpoint) processWithGoldfish(r *http.Request, cellAResp, cellBRes
 		level.Error(p.logger).Log("msg", "failed to capture cell B response", "err", err)
 		return
 	}
+	cellBData.BackendName = cellBResp.backend.name
 
 	p.goldfishManager.ProcessQueryPair(ctx, r, cellAData, cellBData)
 }

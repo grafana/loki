@@ -187,6 +187,10 @@ The example configurations defined above will result in the following retention 
   - Streams that have the namespace label `dev` will have a retention period of `24h` hours.
   - Streams except those with the namespace label `dev` will have the retention period of `744h`.
 
+{{< admonition type="note" >}}
+If you are a Grafana Cloud customer, you can use the [config self-serve API](https://grafana.com/docs/grafana-cloud/send-data/logs/config-self-serve/#configure-retention) to configure your tenant retention.
+{{< /admonition >}}
+
 ## Table Manager (deprecated)
 
 Retention through the [Table Manager](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/table-manager/) is

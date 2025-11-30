@@ -28,7 +28,7 @@ import (
 
 // Constants and default values for the package bce
 const (
-	SDK_VERSION                          = "0.9.245"
+	SDK_VERSION                          = "0.9.252"
 	URI_PREFIX                           = "/" // now support uri without prefix "v1" so just set root path
 	DEFAULT_DOMAIN                       = "baidubce.com"
 	DEFAULT_PROTOCOL                     = "http"
@@ -77,6 +77,8 @@ type BceClientConfiguration struct {
 	ResponseHeaderTimeout *time.Duration // http.Transport.ResponseHeaderTimeout
 	HTTPClientTimeout     *time.Duration // http.Client.Timeout
 	HTTPClient            *http.Client   // customized http client
+	UploadRatelimit       *int64         // the limit of upload rate, unit:KB/s
+	DownloadRatelimit     *int64         // the limit of download rate, unit:KB/s
 }
 
 func (c *BceClientConfiguration) String() string {

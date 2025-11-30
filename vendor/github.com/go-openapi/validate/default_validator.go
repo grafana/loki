@@ -29,6 +29,18 @@ type defaultValidator struct {
 	schemaOptions  *SchemaValidatorOptions
 }
 
+// Validate validates the default values declared in the swagger spec
+func (d *defaultValidator) Validate() *Result {
+	errs := pools.poolOfResults.BorrowResult() // will redeem when merged
+
+	if d == nil || d.SpecValidator == nil {
+		return errs
+	}
+	d.resetVisited()
+	errs.Merge(d.validateDefaultValueValidAgainstSchema()) // error -
+	return errs
+}
+
 // resetVisited resets the internal state of visited schemas
 func (d *defaultValidator) resetVisited() {
 	if d.visitedSchemas == nil {
@@ -54,7 +66,8 @@ func isVisited(path string, visitedSchemas map[string]struct{}) bool {
 		parent string
 		suffix string
 	)
-	for i := len(path) - 2; i >= 0; i-- {
+	const backtrackFromEnd = 2
+	for i := len(path) - backtrackFromEnd; i >= 0; i-- {
 		r := path[i]
 		if r != '.' {
 			continue
@@ -79,18 +92,6 @@ func (d *defaultValidator) beingVisited(path string) {
 // isVisited tells if a path has already been visited
 func (d *defaultValidator) isVisited(path string) bool {
 	return isVisited(path, d.visitedSchemas)
-}
-
-// Validate validates the default values declared in the swagger spec
-func (d *defaultValidator) Validate() *Result {
-	errs := pools.poolOfResults.BorrowResult() // will redeem when merged
-
-	if d == nil || d.SpecValidator == nil {
-		return errs
-	}
-	d.resetVisited()
-	errs.Merge(d.validateDefaultValueValidAgainstSchema()) // error -
-	return errs
 }
 
 func (d *defaultValidator) validateDefaultValueValidAgainstSchema() *Result {
@@ -284,7 +285,7 @@ func (d *defaultValidator) validateDefaultValueSchemaAgainstSchema(path, in stri
 
 // TODO: Temporary duplicated code. Need to refactor with examples
 
-func (d *defaultValidator) validateDefaultValueItemsAgainstSchema(path, in string, root interface{}, items *spec.Items) *Result {
+func (d *defaultValidator) validateDefaultValueItemsAgainstSchema(path, in string, root any, items *spec.Items) *Result {
 	res := pools.poolOfResults.BorrowResult()
 	s := d.SpecValidator
 	if items != nil {

@@ -6,7 +6,7 @@ package pcommon // import "go.opentelemetry.io/collector/pdata/pcommon"
 import (
 	"go.uber.org/multierr"
 
-	otlpcommon "go.opentelemetry.io/collector/pdata/internal/data/protogen/common/v1"
+	"go.opentelemetry.io/collector/pdata/internal"
 )
 
 // AsRaw return []any copy of the Slice.
@@ -26,7 +26,7 @@ func (es Slice) FromRaw(rawSlice []any) error {
 		return nil
 	}
 	var errs error
-	origs := make([]otlpcommon.AnyValue, len(rawSlice))
+	origs := make([]internal.AnyValue, len(rawSlice))
 	for ix, iv := range rawSlice {
 		errs = multierr.Append(errs, newValue(&origs[ix], es.getState()).FromRaw(iv))
 	}

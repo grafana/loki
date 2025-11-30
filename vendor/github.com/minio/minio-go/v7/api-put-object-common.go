@@ -31,7 +31,7 @@ const nullVersionID = "null"
 // Verify if reader is *minio.Object
 func isObject(reader io.Reader) (ok bool) {
 	_, ok = reader.(*Object)
-	return
+	return ok
 }
 
 // Verify if reader is a generic ReaderAt
@@ -56,7 +56,7 @@ func isReadAt(reader io.Reader) (ok bool) {
 	} else {
 		_, ok = reader.(io.ReaderAt)
 	}
-	return
+	return ok
 }
 
 // OptimalPartInfo - calculate the optimal part info for a given
@@ -79,31 +79,31 @@ func OptimalPartInfo(objectSize int64, configuredPartSize uint64) (totalPartsCou
 	// object size is larger than supported maximum.
 	if objectSize > maxMultipartPutObjectSize {
 		err = errEntityTooLarge(objectSize, maxMultipartPutObjectSize, "", "")
-		return
+		return totalPartsCount, partSize, lastPartSize, err
 	}
 
 	var partSizeFlt float64
 	if configuredPartSize > 0 {
 		if int64(configuredPartSize) > objectSize {
 			err = errEntityTooLarge(int64(configuredPartSize), objectSize, "", "")
-			return
+			return totalPartsCount, partSize, lastPartSize, err
 		}
 
 		if !unknownSize {
 			if objectSize > (int64(configuredPartSize) * maxPartsCount) {
 				err = errInvalidArgument("Part size * max_parts(10000) is lesser than input objectSize.")
-				return
+				return totalPartsCount, partSize, lastPartSize, err
 			}
 		}
 
 		if configuredPartSize < absMinPartSize {
 			err = errInvalidArgument("Input part size is smaller than allowed minimum of 5MiB.")
-			return
+			return totalPartsCount, partSize, lastPartSize, err
 		}
 
 		if configuredPartSize > maxPartSize {
 			err = errInvalidArgument("Input part size is bigger than allowed maximum of 5GiB.")
-			return
+			return totalPartsCount, partSize, lastPartSize, err
 		}
 
 		partSizeFlt = float64(configuredPartSize)

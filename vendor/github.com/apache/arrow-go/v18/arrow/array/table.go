@@ -175,7 +175,7 @@ func NewTableFromSlice(schema *arrow.Schema, data [][]arrow.Array) arrow.Table {
 // NewTableFromRecords returns a new basic, non-lazy in-memory table.
 //
 // NewTableFromRecords panics if the records and schema are inconsistent.
-func NewTableFromRecords(schema *arrow.Schema, recs []arrow.Record) arrow.Table {
+func NewTableFromRecords(schema *arrow.Schema, recs []arrow.RecordBatch) arrow.Table {
 	arrs := make([]arrow.Array, len(recs))
 	cols := make([]arrow.Column, schema.NumFields())
 
@@ -282,10 +282,10 @@ type TableReader struct {
 	refCount atomic.Int64
 
 	tbl   arrow.Table
-	cur   int64        // current row
-	max   int64        // total number of rows
-	rec   arrow.Record // current Record
-	chksz int64        // chunk size
+	cur   int64             // current row
+	max   int64             // total number of rows
+	rec   arrow.RecordBatch // current RecordBatch
+	chksz int64             // chunk size
 
 	chunks  []*arrow.Chunked
 	slots   []int   // chunk indices
@@ -320,8 +320,11 @@ func NewTableReader(tbl arrow.Table, chunkSize int64) *TableReader {
 	return tr
 }
 
-func (tr *TableReader) Schema() *arrow.Schema { return tr.tbl.Schema() }
-func (tr *TableReader) Record() arrow.Record  { return tr.rec }
+func (tr *TableReader) Schema() *arrow.Schema          { return tr.tbl.Schema() }
+func (tr *TableReader) RecordBatch() arrow.RecordBatch { return tr.rec }
+
+// Deprecated: Use [RecordBatch] instead.
+func (tr *TableReader) Record() arrow.Record { return tr.RecordBatch() }
 
 func (tr *TableReader) Next() bool {
 	if tr.cur >= tr.max {

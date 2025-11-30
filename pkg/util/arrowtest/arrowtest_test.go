@@ -72,11 +72,7 @@ func TestRows_Record(t *testing.T) {
 		{"name": "Eve", "age": int64(35), "location": "Eden"},
 	}
 
-	alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
-	defer alloc.AssertSize(t, 0)
-
-	record := expect.Record(alloc, expect.Schema())
-	defer record.Release()
+	record := expect.Record(memory.DefaultAllocator, expect.Schema())
 
 	actual, err := arrowtest.RecordRows(record)
 	require.NoError(t, err)
@@ -92,11 +88,7 @@ func TestRows_Record_Bytes(t *testing.T) {
 		{"name": []byte("Eve")},
 	}
 
-	alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
-	defer alloc.AssertSize(t, 0)
-
-	record := expect.Record(alloc, expect.Schema())
-	defer record.Release()
+	record := expect.Record(memory.DefaultAllocator, expect.Schema())
 
 	actual, err := arrowtest.RecordRows(record)
 	require.NoError(t, err)
@@ -112,11 +104,7 @@ func TestRows_Record_Time(t *testing.T) {
 		{"name": "Eve", "last_ping": time.Unix(35, 0)},
 	}
 
-	alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
-	defer alloc.AssertSize(t, 0)
-
-	record := expect.Record(alloc, expect.Schema())
-	defer record.Release()
+	record := expect.Record(memory.DefaultAllocator, expect.Schema())
 
 	actual, err := arrowtest.RecordRows(record)
 	require.NoError(t, err)

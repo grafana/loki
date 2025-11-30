@@ -19,6 +19,8 @@ import (
 	"fmt"
 )
 
+const smallPrealloc = 10
+
 // ExpandOptions provides options for the spec expander.
 //
 // RelativeBase is the path to the root document. This can be a remote URL or a path to a local file.
@@ -56,7 +58,7 @@ func ExpandSpec(spec *Swagger, options *ExpandOptions) error {
 
 	if !options.SkipSchemas {
 		for key, definition := range spec.Definitions {
-			parentRefs := make([]string, 0, 10)
+			parentRefs := make([]string, 0, smallPrealloc)
 			parentRefs = append(parentRefs, "#/definitions/"+key)
 
 			def, err := expandSchema(definition, parentRefs, resolver, specBasePath)
@@ -160,7 +162,7 @@ func ExpandSchemaWithBasePath(schema *Schema, cache ResolutionCache, opts *Expan
 
 	resolver := defaultSchemaLoader(nil, opts, cache, nil)
 
-	parentRefs := make([]string, 0, 10)
+	parentRefs := make([]string, 0, smallPrealloc)
 	s, err := expandSchema(*schema, parentRefs, resolver, opts.RelativeBase)
 	if err != nil {
 		return err
@@ -386,7 +388,7 @@ func expandPathItem(pathItem *PathItem, resolver *schemaLoader, basePath string)
 		return nil
 	}
 
-	parentRefs := make([]string, 0, 10)
+	parentRefs := make([]string, 0, smallPrealloc)
 	if err := resolver.deref(pathItem, parentRefs, basePath); resolver.shouldStopOnError(err) {
 		return err
 	}
@@ -546,7 +548,7 @@ func expandParameterOrResponse(input interface{}, resolver *schemaLoader, basePa
 		return nil
 	}
 
-	parentRefs := make([]string, 0, 10)
+	parentRefs := make([]string, 0, smallPrealloc)
 	if ref != nil {
 		// dereference this $ref
 		if err = resolver.deref(input, parentRefs, basePath); resolver.shouldStopOnError(err) {

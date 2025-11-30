@@ -1,4 +1,4 @@
-ARG GO_VERSION=1.24
+ARG GO_VERSION=1.25
 
 # Go build stage
 FROM golang:${GO_VERSION} AS build
@@ -20,4 +20,4 @@ RUN addgroup -g 10001 -S streamgenerator && \
 
 USER 10001
 EXPOSE 9090
-ENTRYPOINT [ "/usr/bin/stream-generator" ] 
+ENTRYPOINT [ "/usr/bin/stream-generator" ]

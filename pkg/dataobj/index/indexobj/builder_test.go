@@ -2,7 +2,6 @@ package indexobj
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -10,13 +9,14 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
-var testBuilderConfig = BuilderConfig{
+var testBuilderConfig = logsobj.BuilderBaseConfig{
 	TargetPageSize:    2048,
 	TargetObjectSize:  1 << 22, // 4 MiB
 	TargetSectionSize: 1 << 21, // 2 MiB
@@ -146,7 +146,7 @@ func TestBuilder_Append(t *testing.T) {
 			MinTimestamp: time.Unix(10, 0).UTC(),
 			MaxTimestamp: time.Unix(20, 0).UTC(),
 		})
-		if errors.Is(err, ErrBuilderFull) {
+		if builder.IsFull() {
 			break
 		}
 		require.NoError(t, err)
@@ -166,7 +166,7 @@ func TestBuilder_AppendIndexPointer(t *testing.T) {
 		require.NoError(t, ctx.Err())
 
 		err := builder.AppendIndexPointer(testTenant, fmt.Sprintf("test/path-%d", i), time.Unix(10, 0).Add(time.Duration(i)*time.Second).UTC(), time.Unix(20, 0).Add(time.Duration(i)*time.Second).UTC())
-		if errors.Is(err, ErrBuilderFull) {
+		if builder.IsFull() {
 			break
 		}
 		require.NoError(t, err)

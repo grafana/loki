@@ -137,6 +137,25 @@ func (f *Frontend) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRe
 	return &proto.ExceedsLimitsResponse{Results: results}, nil
 }
 
+func (f *Frontend) UpdateRates(ctx context.Context, req *proto.UpdateRatesRequest) (*proto.UpdateRatesResponse, error) {
+	results := make([]*proto.UpdateRatesResult, 0, len(req.Streams))
+	resps, err := f.limitsClient.UpdateRates(ctx, req)
+	if err != nil {
+		// If the entire call failed, then all streams failed.
+		for _, stream := range req.Streams {
+			results = append(results, &proto.UpdateRatesResult{
+				StreamHash: stream.StreamHash,
+				Rate:       0,
+			})
+		}
+	} else {
+		for _, resp := range resps {
+			results = append(results, resp.Results...)
+		}
+	}
+	return &proto.UpdateRatesResponse{Results: results}, nil
+}
+
 func (f *Frontend) CheckReady(ctx context.Context) error {
 	if f.State() != services.Running {
 		return fmt.Errorf("service is not running: %v", f.State())

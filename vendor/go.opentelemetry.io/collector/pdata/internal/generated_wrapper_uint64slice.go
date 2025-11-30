@@ -6,32 +6,28 @@
 
 package internal
 
-type UInt64Slice struct {
+type UInt64SliceWrapper struct {
 	orig  *[]uint64
 	state *State
 }
 
-func GetOrigUInt64Slice(ms UInt64Slice) *[]uint64 {
+func GetUInt64SliceOrig(ms UInt64SliceWrapper) *[]uint64 {
 	return ms.orig
 }
 
-func GetUInt64SliceState(ms UInt64Slice) *State {
+func GetUInt64SliceState(ms UInt64SliceWrapper) *State {
 	return ms.state
 }
 
-func NewUInt64Slice(orig *[]uint64, state *State) UInt64Slice {
-	return UInt64Slice{orig: orig, state: state}
+func NewUInt64SliceWrapper(orig *[]uint64, state *State) UInt64SliceWrapper {
+	return UInt64SliceWrapper{orig: orig, state: state}
 }
 
-func GenerateTestUInt64Slice() UInt64Slice {
-	orig := GenerateOrigTestUint64Slice()
-	return NewUInt64Slice(&orig, NewState())
+func GenTestUInt64SliceWrapper() UInt64SliceWrapper {
+	orig := []uint64{1, 2, 3}
+	return NewUInt64SliceWrapper(&orig, NewState())
 }
 
-func CopyOrigUint64Slice(dst, src []uint64) []uint64 {
-	return append(dst[:0], src...)
-}
-
-func GenerateOrigTestUint64Slice() []uint64 {
+func GenTestUint64Slice() []uint64 {
 	return []uint64{1, 2, 3}
 }

@@ -52,6 +52,8 @@ var (
 // recordQueryMetrics will be called from Query Frontend middleware chain for any type of query.
 func recordQueryMetrics(data *queryData) {
 	logger := log.With(util_log.Logger, "component", "frontend")
+	// Mark context as frontend so metrics logging can distinguish between frontend and querier
+	data.ctx = logql.WithComponentContext(data.ctx, "frontend")
 
 	switch data.queryType {
 	case queryTypeLog, queryTypeMetric:

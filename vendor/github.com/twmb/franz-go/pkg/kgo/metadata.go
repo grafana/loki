@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -252,10 +253,7 @@ loop:
 			// still fail we will fall into the slower update below
 			// which waits (default) 5s between tries.
 			if now && err == nil && nowTries < 8 {
-				wait := 250 * time.Millisecond
-				if cl.cfg.metadataMinAge < wait {
-					wait = cl.cfg.metadataMinAge
-				}
+				wait := min(cl.cfg.metadataMinAge, 250*time.Millisecond)
 				cl.cfg.logger.Log(LogLevelDebug, "immediate metadata update had inner errors, re-updating",
 					"errors", retryWhy.reason(""),
 					"update_after", wait,
@@ -570,6 +568,7 @@ func (mp metadataPartition) newPartition(cl *Client, isProduce bool) *topicParti
 		p.records = &recBuf{
 			cl:                  cl,
 			topic:               mp.topic,
+			topicID:             mp.topicID,
 			partition:           mp.partition,
 			maxRecordBatchBytes: cl.maxRecordBatchBytesForTopic(mp.topic),
 			recBufsIdx:          -1,
@@ -872,6 +871,7 @@ func (cl *Client) mergeTopicPartitions(
 					"topic", topic,
 					"partition", part,
 				)
+				*newTP = *oldTP
 				retryWhy.add(topic, int32(part), errMissingTopicID)
 				continue
 			}
@@ -1022,7 +1022,7 @@ func (m multiUpdateWhy) reason(reason string) string {
 				for p := range ps {
 					psSorted = append(psSorted, p)
 				}
-				sort.Slice(psSorted, func(i, j int) bool { return psSorted[i] < psSorted[j] })
+				slices.Sort(psSorted)
 				topicStrings = append(topicStrings, fmt.Sprintf("%s%v", t, psSorted))
 			}
 		}

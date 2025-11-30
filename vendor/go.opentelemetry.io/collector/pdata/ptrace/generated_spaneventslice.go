@@ -11,7 +11,6 @@ import (
 	"sort"
 
 	"go.opentelemetry.io/collector/pdata/internal"
-	otlptrace "go.opentelemetry.io/collector/pdata/internal/data/protogen/trace/v1"
 )
 
 // SpanEventSlice logically represents a slice of SpanEvent.
@@ -22,18 +21,18 @@ import (
 // Must use NewSpanEventSlice function to create new instances.
 // Important: zero-initialized instance is not valid for use.
 type SpanEventSlice struct {
-	orig  *[]*otlptrace.Span_Event
+	orig  *[]*internal.SpanEvent
 	state *internal.State
 }
 
-func newSpanEventSlice(orig *[]*otlptrace.Span_Event, state *internal.State) SpanEventSlice {
+func newSpanEventSlice(orig *[]*internal.SpanEvent, state *internal.State) SpanEventSlice {
 	return SpanEventSlice{orig: orig, state: state}
 }
 
-// NewSpanEventSlice creates a SpanEventSlice with 0 elements.
+// NewSpanEventSlice creates a SpanEventSliceWrapper with 0 elements.
 // Can use "EnsureCapacity" to initialize with a given capacity.
 func NewSpanEventSlice() SpanEventSlice {
-	orig := []*otlptrace.Span_Event(nil)
+	orig := []*internal.SpanEvent(nil)
 	return newSpanEventSlice(&orig, internal.NewState())
 }
 
@@ -90,7 +89,7 @@ func (es SpanEventSlice) EnsureCapacity(newCap int) {
 		return
 	}
 
-	newOrig := make([]*otlptrace.Span_Event, len(*es.orig), newCap)
+	newOrig := make([]*internal.SpanEvent, len(*es.orig), newCap)
 	copy(newOrig, *es.orig)
 	*es.orig = newOrig
 }
@@ -99,7 +98,7 @@ func (es SpanEventSlice) EnsureCapacity(newCap int) {
 // It returns the newly added SpanEvent.
 func (es SpanEventSlice) AppendEmpty() SpanEvent {
 	es.state.AssertMutable()
-	*es.orig = append(*es.orig, internal.NewOrigSpan_Event())
+	*es.orig = append(*es.orig, internal.NewSpanEvent())
 	return es.At(es.Len() - 1)
 }
 
@@ -128,7 +127,7 @@ func (es SpanEventSlice) RemoveIf(f func(SpanEvent) bool) {
 	newLen := 0
 	for i := 0; i < len(*es.orig); i++ {
 		if f(es.At(i)) {
-			internal.DeleteOrigSpan_Event((*es.orig)[i], true)
+			internal.DeleteSpanEvent((*es.orig)[i], true)
 			(*es.orig)[i] = nil
 
 			continue
@@ -152,7 +151,7 @@ func (es SpanEventSlice) CopyTo(dest SpanEventSlice) {
 	if es.orig == dest.orig {
 		return
 	}
-	*dest.orig = internal.CopyOrigSpan_EventSlice(*dest.orig, *es.orig)
+	*dest.orig = internal.CopySpanEventPtrSlice(*dest.orig, *es.orig)
 }
 
 // Sort sorts the SpanEvent elements within SpanEventSlice given the

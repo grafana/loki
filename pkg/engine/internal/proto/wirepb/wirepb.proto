@@ -1,0 +1,251 @@
+// wirepb.proto holds types for the wire protocol used for communication
+// between scheduler and workers in the query engine.
+syntax = "proto3";
+
+package loki.wire;
+
+import "github.com/grafana/dskit/httpgrpc/httpgrpc.proto";
+import "gogoproto/gogo.proto";
+import "google/protobuf/timestamp.proto";
+import "pkg/engine/internal/proto/physicalpb/physicalpb.proto";
+import "pkg/engine/internal/proto/ulid/ulid.proto";
+
+option go_package = "github.com/grafana/loki/v3/pkg/engine/internal/proto/wirepb";
+
+message Frame {
+  oneof kind {
+    AckFrame ack = 1;
+    NackFrame nack = 2;
+    DiscardFrame discard = 3;
+    MessageFrame message = 4;
+  }
+}
+
+message AckFrame {
+  uint64 id = 1;
+}
+
+message NackFrame {
+  uint64 id = 1;
+  string error = 2;
+}
+
+message DiscardFrame {
+  uint64 id = 1;
+}
+
+message MessageFrame {
+  uint64 id = 1;
+
+  oneof kind {
+    WorkerReadyMessage worker_ready = 2;
+    WorkerHelloMessage worker_hello = 10;
+
+    TaskAssignMessage task_assign = 3;
+    TaskCancelMessage task_cancel = 4;
+    TaskFlagMessage task_flag = 5;
+    TaskStatusMessage task_status = 6;
+
+    StreamBindMessage stream_bind = 7;
+    StreamDataMessage stream_data = 8;
+    StreamStatusMessage stream_status = 9;
+  }
+}
+
+// WorkerHelloMessage is sent by a peer to the scheduler to establish
+// itself as a control plane connection that can run tasks.
+//
+// WorkerHelloMessage must be sent before WorkerReadyMessage.
+message WorkerHelloMessage {
+  // Threads is the maximum number of threads the worker has available.
+  //
+  // The scheduler uses threads to determine the maximum number of tasks that
+  // can be assigned concurrently to a worker.
+  uint64 threads = 1;
+}
+
+// WorkerReadyMessage is sent by a worker to the scheduler to request a new
+// task to run. Ready workers are eventually assigned a task via
+// TaskAssignMessage.
+//
+// Workers may send multiple WorkerReadyMessage messages to request more
+// tasks. Workers are automatically unmarked as ready once each
+// WorkerReadyMessage has been responded to with a TaskAssignMessage.
+//
+// The scheduler can reject a WorkerReadyMessage if the worker sends more
+// WorkerReadyMessages than the number of threads it declared in its
+// WorkerHelloMessage.
+message WorkerReadyMessage {}
+
+// TaskAssignMessage is sent by the scheduler to a worker when there is a
+// task to run.
+message TaskAssignMessage {
+  Task task = 1;
+
+  // StreamStates holds the most recent state of each stream that the task
+  // reads from. The key is the stream ULID.
+  map<string, StreamState> stream_states = 2;
+
+  // Metadata holds additional metadata to propagate with the task, such as
+  // trace context.
+  repeated httpgrpc.Header metadata = 3;
+}
+
+// TaskCancelMessage is sent by the scheduler to a worker when a task is no
+// longer needed.
+message TaskCancelMessage {
+  ulid.loki.v1.ProtoULID id = 1 [
+    (gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/engine/internal/proto/ulid.ULID",
+    (gogoproto.nullable) = false
+  ];
+}
+
+// TaskFlagMessage is sent by the scheduler to update the runtime flags of a task.
+message TaskFlagMessage {
+  ulid.loki.v1.ProtoULID id = 1 [
+    (gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/engine/internal/proto/ulid.ULID",
+    (gogoproto.nullable) = false
+  ];
+
+  // Interruptible indicates that tasks blocked on writing or reading to a
+  // stream can be paused, and that worker can accept new tasks to run.
+  bool interruptible = 2;
+}
+
+// TaskStatusMessage is sent by the worker to the scheduler to inform the
+// scheduler of the current status of a task.
+message TaskStatusMessage {
+  ulid.loki.v1.ProtoULID id = 1 [
+    (gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/engine/internal/proto/ulid.ULID",
+    (gogoproto.nullable) = false
+  ];
+
+  TaskStatus status = 2 [(gogoproto.nullable) = false];
+}
+
+// StreamBindMessage is sent by the scheduler to a worker to inform the
+// worker about the location of a stream receiver.
+message StreamBindMessage {
+  ulid.loki.v1.ProtoULID stream_id = 1 [
+    (gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/engine/internal/proto/ulid.ULID",
+    (gogoproto.nullable) = false
+  ];
+
+  // Receiver is the network address of the stream receiver.
+  string receiver = 2;
+}
+
+// StreamDataMessage is sent by a peer to a stream receiver to provide
+// payload data for a stream.
+//
+// Sending StreamDataMessage establishes the connection as part of the data
+// plane. No other messages may be sent along data plane connections.
+message StreamDataMessage {
+  ulid.loki.v1.ProtoULID stream_id = 1 [
+    (gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/engine/internal/proto/ulid.ULID",
+    (gogoproto.nullable) = false
+  ];
+
+  // Data is the serialized Arrow record payload.
+  bytes data = 2;
+}
+
+// StreamStatusMessage communicates the status of the sending side of a stream.
+message StreamStatusMessage {
+  ulid.loki.v1.ProtoULID stream_id = 1 [
+    (gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/engine/internal/proto/ulid.ULID",
+    (gogoproto.nullable) = false
+  ];
+
+  StreamState state = 2;
+}
+
+// Task is a single unit of work within a workflow.
+message Task {
+  ulid.loki.v1.ProtoULID ulid = 1 [
+    (gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/engine/internal/proto/ulid.ULID",
+    (gogoproto.nullable) = false
+  ];
+
+  string tenant_id = 2;
+
+  // Fragment is the local physical plan that this task represents.
+  loki.physical.Plan fragment = 3;
+
+  // Sources defines which streams physical nodes read from.
+  // The key is the node ID string representation.
+  map<string, StreamList> sources = 4;
+
+  // Sinks defines which streams physical nodes write to.
+  // The key is the node ID string representation.
+  map<string, StreamList> sinks = 5;
+
+  // The maximum boundary of timestamps that the task can possibly emit.
+  // Does not account for predicates.
+  // MaxTimeRange is not read when executing a task fragment. It can be used
+  // as metadata to control execution (such as cancelling ongoing tasks based
+  // on their maximum time range).
+  loki.physical.TimeRange max_time_range = 6;
+}
+
+// StreamList is a list of streams, used in Task's sources and sinks maps.
+message StreamList {
+  repeated Stream streams = 1;
+}
+
+// Stream is an abstract representation of how data flows across task boundaries.
+message Stream {
+  ulid.loki.v1.ProtoULID ulid = 1 [
+    (gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/engine/internal/proto/ulid.ULID",
+    (gogoproto.nullable) = false
+  ];
+
+  string tenant_id = 2;
+}
+
+// TaskStatus represents the current status of a task.
+message TaskStatus {
+  TaskState state = 1;
+
+  // Error is set only when state is TASK_STATE_FAILED.
+  TaskError error = 2;
+
+  // Capture is the capture data for this task, if available.
+  // This is an opaque binary representation of the capture payload.
+  bytes capture = 3;
+
+  ContributingTimeRange contributing_time_range = 4;
+}
+
+message ContributingTimeRange {
+  google.protobuf.Timestamp timestamp = 1 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+
+  bool less_than = 2;
+}
+
+message TaskError {
+  string description = 1;
+}
+
+// TaskState represents the execution state of a task.
+enum TaskState {
+  TASK_STATE_INVALID = 0; // Invalid/unspecified state.
+  TASK_STATE_CREATED = 1; // Created but not given to Runner.
+  TASK_STATE_PENDING = 2; // Pending execution.
+  TASK_STATE_RUNNING = 3; // Currently being executed.
+  TASK_STATE_COMPLETED = 4; // Completed successfully.
+  TASK_STATE_CANCELLED = 5; // Cancelled.
+  TASK_STATE_FAILED = 6; // Failed during execution.
+}
+
+// StreamState represents the state of a stream.
+enum StreamState {
+  STREAM_STATE_INVALID = 0; // Invalid/unspecified state.
+  STREAM_STATE_IDLE = 1; // Stream waiting for sender and receiver.
+  STREAM_STATE_OPEN = 2; // Stream open and transmitting data.
+  STREAM_STATE_BLOCKED = 3; // Stream blocked by backpressure.
+  STREAM_STATE_CLOSED = 4; // Stream closed, no longer transmitting.
+}

@@ -1,16 +1,5 @@
-// Copyright 2015 go-swagger maintainers
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//    http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-FileCopyrightText: Copyright 2015-2025 go-swagger maintainers
+// SPDX-License-Identifier: Apache-2.0
 
 package strfmt
 
@@ -18,9 +7,6 @@ import (
 	"database/sql/driver"
 	"fmt"
 
-	"go.mongodb.org/mongo-driver/bson"
-
-	"go.mongodb.org/mongo-driver/bson/bsontype"
 	bsonprim "go.mongodb.org/mongo-driver/bson/primitive"
 )
 
@@ -39,10 +25,10 @@ func IsBSONObjectID(str string) bool {
 // ObjectId represents a BSON object ID (alias to go.mongodb.org/mongo-driver/bson/primitive.ObjectID)
 //
 // swagger:strfmt bsonobjectid
-type ObjectId bsonprim.ObjectID //nolint:revive,stylecheck
+type ObjectId bsonprim.ObjectID //nolint:revive
 
 // NewObjectId creates a ObjectId from a Hex String
-func NewObjectId(hex string) ObjectId { //nolint:revive,stylecheck
+func NewObjectId(hex string) ObjectId { //nolint:revive
 	oid, err := bsonprim.ObjectIDFromHex(hex)
 	if err != nil {
 		panic(err)
@@ -75,7 +61,7 @@ func (id *ObjectId) UnmarshalText(data []byte) error { // validation is performe
 }
 
 // Scan read a value from a database driver
-func (id *ObjectId) Scan(raw interface{}) error {
+func (id *ObjectId) Scan(raw any) error {
 	var data []byte
 	switch v := raw.(type) {
 	case []byte:
@@ -83,7 +69,7 @@ func (id *ObjectId) Scan(raw interface{}) error {
 	case string:
 		data = []byte(v)
 	default:
-		return fmt.Errorf("cannot sql.Scan() strfmt.URI from: %#v", v)
+		return fmt.Errorf("cannot sql.Scan() strfmt.URI from: %#v: %w", v, ErrFormat)
 	}
 
 	return id.UnmarshalText(data)
@@ -110,42 +96,6 @@ func (id *ObjectId) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	*id = ObjectId(obj)
-	return nil
-}
-
-// MarshalBSON renders the object id as a BSON document
-func (id ObjectId) MarshalBSON() ([]byte, error) {
-	return bson.Marshal(bson.M{"data": bsonprim.ObjectID(id)})
-}
-
-// UnmarshalBSON reads the objectId from a BSON document
-func (id *ObjectId) UnmarshalBSON(data []byte) error {
-	var obj struct {
-		Data bsonprim.ObjectID
-	}
-	if err := bson.Unmarshal(data, &obj); err != nil {
-		return err
-	}
-	*id = ObjectId(obj.Data)
-	return nil
-}
-
-// MarshalBSONValue is an interface implemented by types that can marshal themselves
-// into a BSON document represented as bytes. The bytes returned must be a valid
-// BSON document if the error is nil.
-func (id ObjectId) MarshalBSONValue() (bsontype.Type, []byte, error) {
-	oid := bsonprim.ObjectID(id)
-	return bson.TypeObjectID, oid[:], nil
-}
-
-// UnmarshalBSONValue is an interface implemented by types that can unmarshal a
-// BSON value representation of themselves. The BSON bytes and type can be
-// assumed to be valid. UnmarshalBSONValue must copy the BSON value bytes if it
-// wishes to retain the data after returning.
-func (id *ObjectId) UnmarshalBSONValue(_ bsontype.Type, data []byte) error {
-	var oid bsonprim.ObjectID
-	copy(oid[:], data)
-	*id = ObjectId(oid)
 	return nil
 }
 

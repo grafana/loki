@@ -7,7 +7,7 @@ status:
   distributions: [contrib, k8s]
   warnings: [Statefulness]
   codeowners:
-    active: [sh0rez, RichieSams]
+    active: [RichieSams, tombrk]
 
 telemetry:
   metrics:

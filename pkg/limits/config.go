@@ -107,26 +107,30 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 }
 
 func (cfg *Config) Validate() error {
+	if !cfg.Enabled {
+		// Do not validate configuration if disabled.
+		return nil
+	}
 	if cfg.ActiveWindow <= 0 {
-		return errors.New("active-window must be greater than 0")
+		return errors.New("active window must be greater than 0")
 	}
 	if cfg.RateWindow <= 0 {
-		return errors.New("rate-window must be greater than 0")
+		return errors.New("rate window must be greater than 0")
 	}
 	if cfg.BucketSize <= 0 {
-		return errors.New("bucket-size must be greater than 0")
+		return errors.New("bucket size must be greater than 0")
 	}
 	if cfg.RateWindow%cfg.BucketSize != 0 {
-		return errors.New("rate-window must be a multiple of bucket-size")
+		return errors.New("rate window must be a multiple of bucket-size")
 	}
 	if cfg.EvictionInterval <= 0 {
-		return errors.New("eviction-interval must be greater than 0")
+		return errors.New("eviction interval must be greater than 0")
 	}
 	if cfg.NumPartitions <= 0 {
-		return errors.New("num-partitions must be greater than 0")
+		return errors.New("num partitions must be greater than 0")
 	}
 	if cfg.ConsumerGroup == "" {
-		return errors.New("consumer-group must be set")
+		return errors.New("consumer group must be set")
 	}
 	if cfg.Topic == "" {
 		return errors.New("topic must be set")

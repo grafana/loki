@@ -222,7 +222,7 @@ func parseConfig(logCtx logger.Info) (*config, error) {
 			return nil, fmt.Errorf("%s: invalid external labels: %s", driverName, extlbs)
 		}
 		labelName := model.LabelName(lvparts[0])
-		if !labelName.IsValid() {
+		if !model.UTF8Validation.IsValidLabelName(string(labelName)) {
 			return nil, fmt.Errorf("%s: invalid external label name: %s", driverName, labelName)
 		}
 
@@ -268,7 +268,7 @@ func parseConfig(logCtx logger.Info) (*config, error) {
 
 	for key, value := range attrs {
 		labelName := model.LabelName(key)
-		if !labelName.IsValid() {
+		if !model.UTF8Validation.IsValidLabelName(string(labelName)) {
 			return nil, fmt.Errorf("%s: invalid label name from attribute: %s", driverName, key)
 		}
 		labelValue := model.LabelValue(value)
@@ -365,6 +365,12 @@ func relabelConfig(config string, lbs model.LabelSet) (model.LabelSet, error) {
 	relabelConfig := make([]*relabel.Config, 0)
 	if err := yaml.UnmarshalStrict([]byte(config), &relabelConfig); err != nil {
 		return nil, err
+	}
+	// Validate relabel configs to set the validation scheme properly
+	for _, rc := range relabelConfig {
+		if err := rc.Validate(model.UTF8Validation); err != nil {
+			return nil, err
+		}
 	}
 	relabed, _ := relabel.Process(labels.FromMap(util.ModelLabelSetToMap(lbs)), relabelConfig...)
 	return model.LabelSet(util.LabelsToMetric(relabed)), nil

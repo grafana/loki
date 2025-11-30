@@ -1412,6 +1412,15 @@ func Test_codec_MergeResponse(t *testing.T) {
 					ResultType: loghttp.ResultTypeStream,
 					Result: []logproto.Stream{
 						{
+							Labels: `{foo="bar", level="debug"}`,
+							Entries: []logproto.Entry{
+								{Timestamp: time.Unix(0, 16), Line: "16"},
+								{Timestamp: time.Unix(0, 15), Line: "15"},
+								{Timestamp: time.Unix(0, 6), Line: "6"},
+								{Timestamp: time.Unix(0, 5), Line: "5"},
+							},
+						},
+						{
 							Labels: `{foo="bar", level="error"}`,
 							Entries: []logproto.Entry{
 								{Timestamp: time.Unix(0, 10), Line: "10"},
@@ -1419,15 +1428,6 @@ func Test_codec_MergeResponse(t *testing.T) {
 								{Timestamp: time.Unix(0, 9), Line: "9"},
 								{Timestamp: time.Unix(0, 2), Line: "2"},
 								{Timestamp: time.Unix(0, 1), Line: "1"},
-							},
-						},
-						{
-							Labels: `{foo="bar", level="debug"}`,
-							Entries: []logproto.Entry{
-								{Timestamp: time.Unix(0, 16), Line: "16"},
-								{Timestamp: time.Unix(0, 15), Line: "15"},
-								{Timestamp: time.Unix(0, 6), Line: "6"},
-								{Timestamp: time.Unix(0, 5), Line: "5"},
 							},
 						},
 					},
@@ -1500,19 +1500,19 @@ func Test_codec_MergeResponse(t *testing.T) {
 					ResultType: loghttp.ResultTypeStream,
 					Result: []logproto.Stream{
 						{
-							Labels: `{foo="bar", level="error"}`,
-							Entries: []logproto.Entry{
-								{Timestamp: time.Unix(0, 10), Line: "10"},
-								{Timestamp: time.Unix(0, 9), Line: "9"},
-								{Timestamp: time.Unix(0, 9), Line: "9"},
-							},
-						},
-						{
 							Labels: `{foo="bar", level="debug"}`,
 							Entries: []logproto.Entry{
 								{Timestamp: time.Unix(0, 16), Line: "16"},
 								{Timestamp: time.Unix(0, 15), Line: "15"},
 								{Timestamp: time.Unix(0, 6), Line: "6"},
+							},
+						},
+						{
+							Labels: `{foo="bar", level="error"}`,
+							Entries: []logproto.Entry{
+								{Timestamp: time.Unix(0, 10), Line: "10"},
+								{Timestamp: time.Unix(0, 9), Line: "9"},
+								{Timestamp: time.Unix(0, 9), Line: "9"},
 							},
 						},
 					},
@@ -1955,6 +1955,7 @@ var (
 			"totalReached": 10
 		},
 		"querier": {
+			"querierExecTime": 0,
 			"store" : {
 				"chunk": {
 					"compressedBytes": 11,
@@ -1995,6 +1996,7 @@ var (
 		"index": {
 			"postFilterChunks": 0,
 			"totalChunks": 0,
+			"totalStreams": 0,
 			"shardsDuration": 0,
 			"usedBloomFilters": false
 		},
@@ -2677,7 +2679,7 @@ func Benchmark_CodecDecodeSeries(b *testing.B) {
 }
 
 func Benchmark_MergeResponses(b *testing.B) {
-	var responses = make([]queryrangebase.Response, 100)
+	responses := make([]queryrangebase.Response, 100)
 	for i := range responses {
 		responses[i] = &LokiSeriesResponse{
 			Status:     "200",

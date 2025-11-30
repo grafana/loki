@@ -3,4 +3,4 @@
 package s3
 
 // goModuleVersion is the tagged release for this module
-const goModuleVersion = "1.58.3"
+const goModuleVersion = "1.92.0"

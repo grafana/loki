@@ -28,11 +28,11 @@ type MetadataMatcher struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// The filter name to retrieve the Struct from the Metadata.
+	// The filter name to retrieve the “Struct“ from the “Metadata“.
 	Filter string `protobuf:"bytes,1,opt,name=filter,proto3" json:"filter,omitempty"`
-	// The path to retrieve the Value from the Struct.
+	// The path to retrieve the “Value“ from the “Struct“.
 	Path []*MetadataMatcher_PathSegment `protobuf:"bytes,2,rep,name=path,proto3" json:"path,omitempty"`
-	// The MetadataMatcher is matched if the value retrieved by path is matched to this value.
+	// The “MetadataMatcher“ is matched if the value retrieved by path is matched to this value.
 	Value *ValueMatcher `protobuf:"bytes,3,opt,name=value,proto3" json:"value,omitempty"`
 	// If true, the match result will be inverted.
 	Invert bool `protobuf:"varint,4,opt,name=invert,proto3" json:"invert,omitempty"`
@@ -98,9 +98,12 @@ func (x *MetadataMatcher) GetInvert() bool {
 	return false
 }
 
-// Specifies the segment in a path to retrieve value from Metadata.
-// Note: Currently it's not supported to retrieve a value from a list in Metadata. This means that
-// if the segment key refers to a list, it has to be the last segment in a path.
+// Specifies the segment in a path to retrieve value from “Metadata“.
+//
+// .. note::
+//
+//	Currently it's not supported to retrieve a value from a list in ``Metadata``. This means that
+//	if the segment key refers to a list, it has to be the last segment in a path.
 type MetadataMatcher_PathSegment struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -163,7 +166,7 @@ type isMetadataMatcher_PathSegment_Segment interface {
 }
 
 type MetadataMatcher_PathSegment_Key struct {
-	// If specified, use the key to retrieve the value in a Struct.
+	// If specified, use the key to retrieve the value in a “Struct“.
 	Key string `protobuf:"bytes,1,opt,name=key,proto3,oneof"`
 }
 

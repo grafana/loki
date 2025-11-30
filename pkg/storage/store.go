@@ -233,21 +233,10 @@ func (s *LokiStore) chunkClientForPeriod(p config.PeriodConfig) (client.Client, 
 		objectStoreType = p.IndexType
 	}
 
-	var cc congestion.Controller
-	ccCfg := s.cfg.CongestionControl
-
-	if ccCfg.Enabled {
-		cc = s.congestionControllerFactory(
-			ccCfg,
-			s.logger,
-			congestion.NewMetrics(fmt.Sprintf("%s-%s", objectStoreType, p.From.String()), ccCfg),
-		)
-	}
-
 	component := "chunk-store-" + p.From.String()
 	chunkClientReg := prometheus.WrapRegistererWith(
 		prometheus.Labels{"component": component}, s.registerer)
-	chunks, err := NewChunkClient(objectStoreType, component, s.cfg, s.schemaCfg, cc, chunkClientReg, s.clientMetrics, s.logger)
+	chunks, err := NewChunkClient(objectStoreType, component, s.cfg, s.schemaCfg, p, chunkClientReg, s.clientMetrics, s.logger)
 	if err != nil {
 		return nil, errors.Wrap(err, "error creating object client")
 	}

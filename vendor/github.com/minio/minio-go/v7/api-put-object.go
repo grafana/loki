@@ -150,7 +150,7 @@ func (opts PutObjectOptions) getNumThreads() (numThreads int) {
 	} else {
 		numThreads = totalWorkers
 	}
-	return
+	return numThreads
 }
 
 // Header - constructs the headers from metadata entered by user in
@@ -249,7 +249,7 @@ func (opts PutObjectOptions) Header() (header http.Header) {
 		header[k] = v
 	}
 
-	return
+	return header
 }
 
 // validate() checks if the UserMetadata map has standard headers or and raises an error if so.

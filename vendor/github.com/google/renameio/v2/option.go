@@ -77,3 +77,12 @@ func WithExistingPermissions() Option {
 		c.attemptPermCopy = true
 	})
 }
+
+// WithReplaceOnClose causes PendingFile.Close() to actually call
+// CloseAtomicallyReplace(). This means PendingFile implements io.Closer while
+// maintaining atomicity per default.
+func WithReplaceOnClose() Option {
+	return optionFunc(func(c *config) {
+		c.renameOnClose = true
+	})
+}

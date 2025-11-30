@@ -19,6 +19,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v2"
 
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/testutils"
+
 	"github.com/grafana/loki/v3/clients/pkg/promtail/client/fake"
 	"github.com/grafana/loki/v3/clients/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/syslog/syslogparser"
@@ -457,7 +459,7 @@ func relabelConfig(t *testing.T) []*relabel.Config {
 	err := yaml.Unmarshal([]byte(relabelCfg), &relabels)
 	require.NoError(t, err)
 
-	return relabels
+	return testutils.ValidateRelabelConfig(t, relabels)
 }
 
 func writeMessagesToStream(w io.Writer, messages []string, formatter formatFunc) error {

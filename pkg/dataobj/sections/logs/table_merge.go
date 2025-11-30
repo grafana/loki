@@ -20,7 +20,7 @@ import (
 // tables are open at a time.
 //
 // mergeTablesIncremental panics if maxMergeSize is less than 2.
-func mergeTablesIncremental(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts dataset.CompressionOptions, tables []*table, maxMergeSize int, sort SortOrder) (*table, error) {
+func mergeTablesIncremental(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *dataset.CompressionOptions, tables []*table, maxMergeSize int, sort SortOrder) (*table, error) {
 	if maxMergeSize < 2 {
 		panic("mergeTablesIncremental: merge size must be at least 2, got " + fmt.Sprint(maxMergeSize))
 	}
@@ -53,7 +53,7 @@ func mergeTablesIncremental(buf *tableBuffer, pageSize, pageRowCount int, compre
 
 // mergeTables merges the provided sorted tables into a new single sorted table
 // using k-way merge.
-func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts dataset.CompressionOptions, tables []*table, sort SortOrder) (*table, error) {
+func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *dataset.CompressionOptions, tables []*table, sort SortOrder) (*table, error) {
 	buf.Reset()
 
 	var (
@@ -242,28 +242,6 @@ func valuesForRows(a, b dataset.Row) (aStreamID int64, bStreamID int64, aTimesta
 	aTimestamp = a.Values[1].Int64()
 	bTimestamp = b.Values[1].Int64()
 	return
-}
-
-// CompareRows compares two rows by their first two columns. CompareRows panics
-// if a or b doesn't have at least two columns, if the first column isn't a
-// int64-encoded stream ID, or if the second column isn't an int64-encoded
-// timestamp.
-func CompareRows(a, b dataset.Row) int {
-	// The first two columns of each row are *always* stream ID and timestamp.
-	//
-	// TODO(rfratto): Can we find a safer way of doing this?
-	var (
-		aStreamID = a.Values[0].Int64()
-		bStreamID = b.Values[0].Int64()
-
-		aTimestamp = a.Values[1].Int64()
-		bTimestamp = b.Values[1].Int64()
-	)
-
-	if res := cmp.Compare(aStreamID, bStreamID); res != 0 {
-		return res
-	}
-	return cmp.Compare(bTimestamp, aTimestamp)
 }
 
 // equalRows compares two rows for equality, column by column.

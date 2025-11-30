@@ -8,7 +8,6 @@ package pmetric
 
 import (
 	"go.opentelemetry.io/collector/pdata/internal"
-	otlpmetrics "go.opentelemetry.io/collector/pdata/internal/data/protogen/metrics/v1"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
@@ -20,11 +19,11 @@ import (
 // Must use NewHistogramDataPoint function to create new instances.
 // Important: zero-initialized instance is not valid for use.
 type HistogramDataPoint struct {
-	orig  *otlpmetrics.HistogramDataPoint
+	orig  *internal.HistogramDataPoint
 	state *internal.State
 }
 
-func newHistogramDataPoint(orig *otlpmetrics.HistogramDataPoint, state *internal.State) HistogramDataPoint {
+func newHistogramDataPoint(orig *internal.HistogramDataPoint, state *internal.State) HistogramDataPoint {
 	return HistogramDataPoint{orig: orig, state: state}
 }
 
@@ -33,7 +32,7 @@ func newHistogramDataPoint(orig *otlpmetrics.HistogramDataPoint, state *internal
 // This must be used only in testing code. Users should use "AppendEmpty" when part of a Slice,
 // OR directly access the member if this is embedded in another struct.
 func NewHistogramDataPoint() HistogramDataPoint {
-	return newHistogramDataPoint(internal.NewOrigHistogramDataPoint(), internal.NewState())
+	return newHistogramDataPoint(internal.NewHistogramDataPoint(), internal.NewState())
 }
 
 // MoveTo moves all properties from the current struct overriding the destination and
@@ -45,13 +44,13 @@ func (ms HistogramDataPoint) MoveTo(dest HistogramDataPoint) {
 	if ms.orig == dest.orig {
 		return
 	}
-	internal.DeleteOrigHistogramDataPoint(dest.orig, false)
+	internal.DeleteHistogramDataPoint(dest.orig, false)
 	*dest.orig, *ms.orig = *ms.orig, *dest.orig
 }
 
 // Attributes returns the Attributes associated with this HistogramDataPoint.
 func (ms HistogramDataPoint) Attributes() pcommon.Map {
-	return pcommon.Map(internal.NewMap(&ms.orig.Attributes, ms.state))
+	return pcommon.Map(internal.NewMapWrapper(&ms.orig.Attributes, ms.state))
 }
 
 // StartTimestamp returns the starttimestamp associated with this HistogramDataPoint.
@@ -101,7 +100,7 @@ func (ms HistogramDataPoint) HasSum() bool {
 // SetSum replaces the sum associated with this HistogramDataPoint.
 func (ms HistogramDataPoint) SetSum(v float64) {
 	ms.state.AssertMutable()
-	ms.orig.Sum_ = &otlpmetrics.HistogramDataPoint_Sum{Sum: v}
+	ms.orig.Sum_ = &internal.HistogramDataPoint_Sum{Sum: v}
 }
 
 // RemoveSum removes the sum associated with this HistogramDataPoint.
@@ -112,12 +111,12 @@ func (ms HistogramDataPoint) RemoveSum() {
 
 // BucketCounts returns the BucketCounts associated with this HistogramDataPoint.
 func (ms HistogramDataPoint) BucketCounts() pcommon.UInt64Slice {
-	return pcommon.UInt64Slice(internal.NewUInt64Slice(&ms.orig.BucketCounts, ms.state))
+	return pcommon.UInt64Slice(internal.NewUInt64SliceWrapper(&ms.orig.BucketCounts, ms.state))
 }
 
 // ExplicitBounds returns the ExplicitBounds associated with this HistogramDataPoint.
 func (ms HistogramDataPoint) ExplicitBounds() pcommon.Float64Slice {
-	return pcommon.Float64Slice(internal.NewFloat64Slice(&ms.orig.ExplicitBounds, ms.state))
+	return pcommon.Float64Slice(internal.NewFloat64SliceWrapper(&ms.orig.ExplicitBounds, ms.state))
 }
 
 // Exemplars returns the Exemplars associated with this HistogramDataPoint.
@@ -150,7 +149,7 @@ func (ms HistogramDataPoint) HasMin() bool {
 // SetMin replaces the min associated with this HistogramDataPoint.
 func (ms HistogramDataPoint) SetMin(v float64) {
 	ms.state.AssertMutable()
-	ms.orig.Min_ = &otlpmetrics.HistogramDataPoint_Min{Min: v}
+	ms.orig.Min_ = &internal.HistogramDataPoint_Min{Min: v}
 }
 
 // RemoveMin removes the min associated with this HistogramDataPoint.
@@ -173,7 +172,7 @@ func (ms HistogramDataPoint) HasMax() bool {
 // SetMax replaces the max associated with this HistogramDataPoint.
 func (ms HistogramDataPoint) SetMax(v float64) {
 	ms.state.AssertMutable()
-	ms.orig.Max_ = &otlpmetrics.HistogramDataPoint_Max{Max: v}
+	ms.orig.Max_ = &internal.HistogramDataPoint_Max{Max: v}
 }
 
 // RemoveMax removes the max associated with this HistogramDataPoint.
@@ -185,5 +184,5 @@ func (ms HistogramDataPoint) RemoveMax() {
 // CopyTo copies all properties from the current struct overriding the destination.
 func (ms HistogramDataPoint) CopyTo(dest HistogramDataPoint) {
 	dest.state.AssertMutable()
-	internal.CopyOrigHistogramDataPoint(dest.orig, ms.orig)
+	internal.CopyHistogramDataPoint(dest.orig, ms.orig)
 }

@@ -18,6 +18,7 @@ type BYOIPPrefixesService interface {
 	Get(context.Context, string) (*BYOIPPrefix, *Response, error)
 	GetResources(context.Context, string, *ListOptions) ([]BYOIPPrefixResource, *Response, error)
 	Delete(context.Context, string) (*Response, error)
+	Update(context.Context, string, *BYOIPPrefixUpdateReq) (*BYOIPPrefix, *Response, error)
 }
 
 // BYOIPPrefixServiceOp handles communication with the BYOIP Prefix related methods of the
@@ -35,6 +36,9 @@ type BYOIPPrefix struct {
 	Region        string `json:"region"`
 	Validations   []any  `json:"validations"`
 	FailureReason string `json:"failure_reason"`
+	ProjectID     string `json:"project_id"`
+	Advertised    bool   `json:"advertised"`
+	Locked        bool   `json:"locked"`
 }
 
 // BYOIPPrefixCreateReq represents a request to create a BYOIP prefix.
@@ -78,6 +82,14 @@ type byoipResourcesRoot struct {
 	Resources []BYOIPPrefixResource `json:"ips"`
 	Links     *Links                `json:"links"`
 	Meta      *Meta                 `json:"meta"`
+}
+
+type BYOIPPrefixUpdateReq struct {
+	Advertise *bool `json:"advertise"`
+}
+
+type byoipPrefixUpdateRoot struct {
+	BYOIPPrefix *BYOIPPrefix `json:"byoip_prefix"`
 }
 
 func (r BYOIPPrefix) String() string {
@@ -197,4 +209,31 @@ func (r *BYOIPPrefixServiceOp) Delete(ctx context.Context, uuid string) (*Respon
 	}
 
 	return resp, nil
+}
+
+// Update a BYOIP prefix
+func (r *BYOIPPrefixServiceOp) Update(ctx context.Context, prefixUUID string, updateReq *BYOIPPrefixUpdateReq) (*BYOIPPrefix, *Response, error) {
+
+	if prefixUUID == "" {
+		return nil, nil, fmt.Errorf("prefix UUID is required")
+	}
+
+	if updateReq.Advertise == nil {
+		return nil, nil, fmt.Errorf("is_advertised is required")
+	}
+
+	path := fmt.Sprintf("%s/%s", byoipsBasePath, prefixUUID)
+
+	req, err := r.client.NewRequest(ctx, http.MethodPatch, path, updateReq)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	root := new(byoipPrefixUpdateRoot)
+	resp, err := r.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+
+	return root.BYOIPPrefix, resp, err
 }

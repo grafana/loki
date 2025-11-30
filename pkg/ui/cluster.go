@@ -9,9 +9,11 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/grafana/ckit/peer"
+	"github.com/go-kit/log/level"
 	"golang.org/x/sync/errgroup"
 	"gopkg.in/yaml.v3"
+
+	"github.com/grafana/dskit/ring"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
 )
@@ -24,8 +26,6 @@ type Cluster struct {
 // Member represents a node in the cluster with its current state and capabilities.
 type Member struct {
 	Addr     string         `json:"addr"`
-	State    string         `json:"state"`
-	IsSelf   bool           `json:"isSelf"`
 	Target   string         `json:"target"`
 	Services []ServiceState `json:"services"`
 	Build    BuildInfo      `json:"build"`
@@ -57,21 +57,28 @@ func (s *Service) fetchClusterMembers(ctx context.Context) (Cluster, error) {
 	var cluster Cluster
 	cluster.Members = make(map[string]Member)
 
+	// Discover all unique instances from rings
+	instances := s.discoverInstances()
+
+	if len(instances) == 0 {
+		return cluster, nil
+	}
+
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(16)
 
 	// Use a mutex to protect concurrent map access
 	var mu sync.Mutex
 
-	for _, p := range s.node.Peers() {
-		peer := p // Create new variable to avoid closure issues
+	for id, addr := range instances {
+		instanceID, instanceAddr := id, addr // Create new variables to avoid closure issues
 		g.Go(func() error {
-			member, err := s.fetchMemberState(ctx, peer)
+			member, err := s.fetchMemberState(ctx, instanceAddr)
 			if err != nil {
 				member.Error = err
 			}
 			mu.Lock()
-			cluster.Members[peer.Name] = member
+			cluster.Members[instanceID] = member
 			mu.Unlock()
 			return nil
 		})
@@ -83,34 +90,53 @@ func (s *Service) fetchClusterMembers(ctx context.Context) (Cluster, error) {
 	return cluster, nil
 }
 
-// fetchMemberState retrieves the complete state of a single cluster member.
-func (s *Service) fetchMemberState(ctx context.Context, peer peer.Peer) (Member, error) {
-	member := Member{
-		Addr:   peer.Addr,
-		IsSelf: peer.Self,
-		State:  peer.State.String(),
+// discoverInstances queries the ring and returns a map of instance ID to HTTP address.
+func (s *Service) discoverInstances() map[string]string {
+	instances := make(map[string]string)
+
+	// Query the ring for all healthy instances
+	replicationSet, err := s.ring.GetAllHealthy(ring.Read)
+	if err != nil {
+		level.Warn(s.logger).Log("msg", "failed to get instances from ring", "err", err)
+		return instances
 	}
 
-	config, err := s.fetchConfig(ctx, peer)
+	// Collect all instance addresses
+	for _, instance := range replicationSet.Instances {
+		// Use instance ID as the key, and Addr as the HTTP address
+		instances[instance.Id] = instance.Addr
+	}
+
+	return instances
+}
+
+// fetchMemberState retrieves the complete state of a single cluster member by instance ID and address.
+// The addr parameter should be the full HTTP address (host:port) from the ring.
+func (s *Service) fetchMemberState(ctx context.Context, addr string) (Member, error) {
+	member := Member{
+		Addr: addr,
+	}
+
+	config, err := s.fetchConfig(ctx, addr)
 	if err != nil {
 		return member, fmt.Errorf("fetching config: %w", err)
 	}
 	member.configBody = config
 	member.Target = parseTargetFromConfig(config)
 
-	services, err := s.fetchServices(ctx, peer)
+	services, err := s.fetchServices(ctx, addr)
 	if err != nil {
 		return member, fmt.Errorf("fetching services: %w", err)
 	}
 	member.Services = services
 
-	build, err := s.fetchBuild(ctx, peer)
+	build, err := s.fetchBuild(ctx, addr)
 	if err != nil {
 		return member, fmt.Errorf("fetching build info: %w", err)
 	}
 	member.Build = build
 
-	readyResp, err := s.checkNodeReadiness(ctx, peer.Name)
+	readyResp, err := s.checkNodeReadiness(ctx, addr)
 	if err != nil {
 		return member, fmt.Errorf("checking node readiness: %w", err)
 	}
@@ -119,10 +145,9 @@ func (s *Service) fetchMemberState(ctx context.Context, peer peer.Peer) (Member,
 	return member, nil
 }
 
-// buildProxyPath constructs the proxy URL path for a given peer and endpoint.
-func (s *Service) buildProxyPath(peer peer.Peer, endpoint string) string {
-	// todo support configured server prefix.
-	return fmt.Sprintf("http://%s/ui/api/v1/proxy/%s%s", s.localAddr, peer.Name, endpoint)
+func (s *Service) buildDownstreamPath(addr, endpoint string) string {
+	//TODO(twhitney): protocol should be configurable here, or fetched from the ring
+	return fmt.Sprintf("http://%s%s", addr, endpoint)
 }
 
 // readResponseError checks the HTTP response for errors and returns an appropriate error message.
@@ -155,18 +180,18 @@ type NodeDetails struct {
 	Metrics         map[string]interface{} `json:"metrics"`
 }
 
-func (s *Service) fetchSelfDetails(ctx context.Context) (NodeDetails, error) {
-	peer, ok := s.getSelfPeer()
-	if !ok {
-		return NodeDetails{}, fmt.Errorf("self peer not found")
+func (s *Service) fetchDetails(ctx context.Context, nodeName string) (NodeDetails, error) {
+	addr, err := s.findNodeAddressByName(nodeName)
+	if err != nil {
+		return NodeDetails{}, fmt.Errorf("fetching node address: %w", err)
 	}
 
-	report, err := s.fetchAnalytics(ctx, peer)
+	report, err := s.fetchAnalytics(ctx, addr)
 	if err != nil {
 		return NodeDetails{}, fmt.Errorf("fetching analytics: %w", err)
 	}
 
-	member, err := s.fetchMemberState(ctx, peer)
+	member, err := s.fetchMemberState(ctx, addr)
 	if err != nil {
 		return NodeDetails{}, fmt.Errorf("fetching member state: %w", err)
 	}
@@ -183,17 +208,8 @@ func (s *Service) fetchSelfDetails(ctx context.Context) (NodeDetails, error) {
 	}, nil
 }
 
-func (s *Service) getSelfPeer() (peer.Peer, bool) {
-	for _, peer := range s.node.Peers() {
-		if peer.Self {
-			return peer, true
-		}
-	}
-	return peer.Peer{}, false
-}
-
-func (s *Service) fetchAnalytics(ctx context.Context, peer peer.Peer) (analytics.Report, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.buildProxyPath(peer, "/ui/api/v1/analytics"), nil)
+func (s *Service) fetchAnalytics(ctx context.Context, addr string) (analytics.Report, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.buildDownstreamPath(addr, "/analytics"), nil)
 	if err != nil {
 		return analytics.Report{}, fmt.Errorf("creating request: %w", err)
 	}
@@ -203,7 +219,7 @@ func (s *Service) fetchAnalytics(ctx context.Context, peer peer.Peer) (analytics
 		return analytics.Report{}, fmt.Errorf("sending request: %w", err)
 	}
 
-	if err := readResponseError(resp, "fetch build info"); err != nil {
+	if err := readResponseError(resp, "fetch analytics"); err != nil {
 		return analytics.Report{}, err
 	}
 	defer resp.Body.Close()
@@ -215,9 +231,9 @@ func (s *Service) fetchAnalytics(ctx context.Context, peer peer.Peer) (analytics
 	return report, nil
 }
 
-// fetchConfig retrieves the configuration of a cluster member.
-func (s *Service) fetchConfig(ctx context.Context, peer peer.Peer) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.buildProxyPath(peer, "/config"), nil)
+// fetchConfig retrieves the configuration of a cluster member by address.
+func (s *Service) fetchConfig(ctx context.Context, addr string) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.buildDownstreamPath(addr, "/config"), nil)
 	if err != nil {
 		return "", fmt.Errorf("creating request: %w", err)
 	}
@@ -239,9 +255,9 @@ func (s *Service) fetchConfig(ctx context.Context, peer peer.Peer) (string, erro
 	return string(body), nil
 }
 
-// fetchServices retrieves the service states of a cluster member.
-func (s *Service) fetchServices(ctx context.Context, peer peer.Peer) ([]ServiceState, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.buildProxyPath(peer, "/services"), nil)
+// fetchServices retrieves the service states of a cluster member by address.
+func (s *Service) fetchServices(ctx context.Context, addr string) ([]ServiceState, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.buildDownstreamPath(addr, "/services"), nil)
 	if err != nil {
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
@@ -263,9 +279,9 @@ func (s *Service) fetchServices(ctx context.Context, peer peer.Peer) ([]ServiceS
 	return parseServices(string(body))
 }
 
-// fetchBuild retrieves the build information of a cluster member.
-func (s *Service) fetchBuild(ctx context.Context, peer peer.Peer) (BuildInfo, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.buildProxyPath(peer, "/loki/api/v1/status/buildinfo"), nil)
+// fetchBuild retrieves the build information of a cluster member by address.
+func (s *Service) fetchBuild(ctx context.Context, addr string) (BuildInfo, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.buildDownstreamPath(addr, "/loki/api/v1/status/buildinfo"), nil)
 	if err != nil {
 		return BuildInfo{}, fmt.Errorf("creating request: %w", err)
 	}
@@ -292,13 +308,8 @@ type ReadyResponse struct {
 	Message string `json:"message"`
 }
 
-func (s *Service) checkNodeReadiness(ctx context.Context, nodeName string) (ReadyResponse, error) {
-	peer, err := s.findPeerByName(nodeName)
-	if err != nil {
-		return ReadyResponse{}, err
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "GET", s.buildProxyPath(peer, "/ready"), nil)
+func (s *Service) checkNodeReadiness(ctx context.Context, addr string) (ReadyResponse, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", s.buildDownstreamPath(addr, "/ready"), nil)
 	if err != nil {
 		return ReadyResponse{}, err
 	}

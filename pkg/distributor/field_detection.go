@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/log/jsonexpr"
 	"github.com/grafana/loki/v3/pkg/logql/log/logfmt"
 	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 var (
@@ -36,29 +37,12 @@ var (
 	critical   = []byte("critical")
 	fatal      = []byte("fatal")
 
-	defaultAllowedLevelFields = []string{
-		"level",
-		"LEVEL",
-		"Level",
-		"log.level",
-		"severity",
-		"SEVERITY",
-		"Severity",
-		"SeverityText",
-		"lvl",
-		"LVL",
-		"Lvl",
-		"severity_text",
-		"Severity_Text",
-		"SEVERITY_TEXT",
-	}
-
 	errKeyFound = errors.New("key found")
 )
 
 func allowedLabelsForLevel(allowedFields []string) []string {
 	if len(allowedFields) == 0 {
-		return defaultAllowedLevelFields
+		return validation.DefaultAllowedLevelFields
 	}
 
 	return allowedFields
@@ -95,17 +79,25 @@ func (l *FieldDetector) shouldDiscoverGenericFields() bool {
 }
 
 func (l *FieldDetector) extractLogLevel(labels labels.Labels, structuredMetadata labels.Labels, entry logproto.Entry) (logproto.LabelAdapter, bool) {
-	// If the level is already set in the structured metadata, we don't need to do anything.
-	if structuredMetadata.Has(constants.LevelLabel) {
-		return logproto.LabelAdapter{}, false
+	// Check if detected_level is already present in entry.StructuredMetadata and normalize it
+	for i, sm := range entry.StructuredMetadata {
+		if sm.Name == constants.LevelLabel {
+			normalizedLevel := normalizeLogLevel(sm.Value)
+			if sm.Value != normalizedLevel {
+				// Update the value in-place with the normalized version
+				entry.StructuredMetadata[i].Value = normalizedLevel
+			}
+			// Level already exists and has been normalized if needed
+			return logproto.LabelAdapter{}, false
+		}
 	}
 
 	levelFromLabel, hasLevelLabel := labelsContainAny(labels, l.allowedLevelLabels)
 	var logLevel string
 	if hasLevelLabel {
-		logLevel = levelFromLabel
+		logLevel = normalizeLogLevel(levelFromLabel)
 	} else if levelFromMetadata, ok := labelsContainAny(structuredMetadata, l.allowedLevelLabels); ok {
-		logLevel = levelFromMetadata
+		logLevel = normalizeLogLevel(levelFromMetadata)
 	} else {
 		logLevel = l.detectLogLevelFromLogEntry(entry, structuredMetadata)
 	}
@@ -143,6 +135,30 @@ func labelsContainAny(labels labels.Labels, names []string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// normalizeLogLevel normalizes log level strings to lowercase standard values
+func normalizeLogLevel(level string) string {
+	levelBytes := unsafe.Slice(unsafe.StringData(level), len(level)) // #nosec G103 -- we know the string is not mutated -- nosemgrep: use-of-unsafe-block
+	switch {
+	case bytes.EqualFold(levelBytes, traceBytes), bytes.EqualFold(levelBytes, traceAbbrv):
+		return constants.LogLevelTrace
+	case bytes.EqualFold(levelBytes, debug), bytes.EqualFold(levelBytes, debugAbbrv):
+		return constants.LogLevelDebug
+	case bytes.EqualFold(levelBytes, info), bytes.EqualFold(levelBytes, infoAbbrv), bytes.EqualFold(levelBytes, infoFull):
+		return constants.LogLevelInfo
+	case bytes.EqualFold(levelBytes, warn), bytes.EqualFold(levelBytes, warnAbbrv), bytes.EqualFold(levelBytes, warning):
+		return constants.LogLevelWarn
+	case bytes.EqualFold(levelBytes, errorStr), bytes.EqualFold(levelBytes, errorAbbrv):
+		return constants.LogLevelError
+	case bytes.EqualFold(levelBytes, critical):
+		return constants.LogLevelCritical
+	case bytes.EqualFold(levelBytes, fatal):
+		return constants.LogLevelFatal
+	default:
+		// Return the original value if it doesn't match any known level
+		return level
+	}
 }
 
 func (l *FieldDetector) detectLogLevelFromLogEntry(entry logproto.Entry, structuredMetadata labels.Labels) string {

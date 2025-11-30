@@ -112,6 +112,11 @@ type Metric interface {
 	// HashID returns an unique identifier for the series.
 	HashID() uint64
 
+	// HashIDWithFieldsFiltered returns a unique identifier for the metric
+	// including the field keys while ignoring tags and fields with the
+	// specified keys.
+	HashIDWithFieldsFiltered(excludedTags, excludedFields []string) uint64
+
 	// Copy returns a deep copy of the Metric.
 	Copy() Metric
 

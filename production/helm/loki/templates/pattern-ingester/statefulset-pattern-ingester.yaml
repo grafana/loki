@@ -59,7 +59,7 @@ spec:
       {{- end }}
       {{- include "loki.patternIngesterPriorityClassName" . | nindent 6 }}
       securityContext:
-        {{- toYaml .Values.loki.podSecurityContext | nindent 8 }}
+        {{- include "loki.podSecurityContext" . | nindent 8 }}
       terminationGracePeriodSeconds: {{ .Values.patternIngester.terminationGracePeriodSeconds }}
       {{- with .Values.patternIngester.initContainers }}
       initContainers:
@@ -187,6 +187,9 @@ spec:
           {{- toYaml .accessModes | nindent 10 }}
         {{- with .storageClass }}
         storageClassName: {{ if (eq "-" .) }}""{{ else }}{{ . }}{{ end }}
+        {{- end }}
+        {{- with .volumeAttributesClassName }}
+        volumeAttributesClassName: {{ . }}
         {{- end }}
         resources:
           requests:

@@ -2,34 +2,39 @@ name: LogQL correctness tests
 on:
   schedule:
     - cron: "30 2 * * 1-5" # Mon-Fri at 2.30am UTC
+  pull_request:
+    paths:
+      - "pkg/engine/**"
+      - "pkg/dataobj/**"
   workflow_dispatch:
     inputs:
       ref:
-        description: 'Git ref to run correctness tests on'
+        description: "Git ref to run correctness tests on"
         required: false
-        default: 'main'
-        type: 'string'
+        default: "main"
+        type: "string"
       failfast:
-        description: 'Fail fast on first test failure'
+        description: "Fail fast on first test failure"
         required: false
         default: true
-        type: 'boolean'
+        type: "boolean"
 permissions: {}
 jobs:
   generate-testdata:
     name: Generate test data
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - name: Checkout code
         id: checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.ref || 'main' }}
+          ref: ${{ inputs.ref }}
 
       - name: Setup Go
         uses: actions/setup-go@v4
         with:
-          go-version: '1.24.3'
+          go-version: "1.25.4"
 
       # The metastore generates invalid filenames for Windows (with colons),
       # which get rejected by upload-artifact. We zip these files to avoid this
@@ -46,13 +51,15 @@ jobs:
           retention-days: 7
 
   tests:
-    name: Run correctness tests for ${{ matrix.store }}
+    name: Run ${{ matrix.store }}/${{ matrix.range_type }}/${{ matrix.remote_transport == true && 'remote' || 'local' }}
     runs-on: github-hosted-ubuntu-arm64-large
     needs: generate-testdata
+    timeout-minutes: 60
     strategy:
       matrix:
         store: [dataobj-engine]
         range_type: [instant, range]
+        remote_transport: [true, false]
       fail-fast: false # Continue testing other stores if one fails
     steps:
       - name: Checkout code
@@ -62,7 +69,7 @@ jobs:
           ref: ${{ inputs.ref }}
 
       - name: Download test data
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v4.1.3
         with:
           name: logql-bench-testdata-${{ steps.checkout.outputs.commit }}
           path: ./pkg/logql/bench
@@ -74,7 +81,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v4
         with:
-          go-version: '1.24.3'
+          go-version: "1.25.4"
 
       - name: Create results directory
         run: mkdir -p ./pkg/logql/bench/results
@@ -83,7 +90,7 @@ jobs:
         shell: bash # Use bash shell to propagate pipe failures
         run: |
           go test \
-            -v -slow-tests \
+            -v -slow-tests -remote-transport=${{ matrix.remote_transport }} -timeout=60m \
             -run=TestStorageEquality/query=.+/kind=.+/store=${{ matrix.store }}$ \
             ${{ matrix.range_type == 'instant' && '-range-type=instant' || '' }} \
             ${{ inputs.failfast == true && '-failfast' || '' }} \
@@ -94,6 +101,6 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always() # Upload results even if one of the test tests fails
         with:
-          name: logql-bench-results-${{ matrix.store }}-${{ matrix.range_type }}-${{ steps.checkout.outputs.commit }}
+          name: logql-bench-results-${{ matrix.store }}-${{ matrix.range_type }}-${{ matrix.remote_transport == true && 'remote' || 'local' }}-${{ steps.checkout.outputs.commit }}
           path: ./pkg/logql/bench/results
           retention-days: 7

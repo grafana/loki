@@ -8,7 +8,6 @@ package pmetric
 
 import (
 	"go.opentelemetry.io/collector/pdata/internal"
-	otlpmetrics "go.opentelemetry.io/collector/pdata/internal/data/protogen/metrics/v1"
 )
 
 // Gauge represents the type of a numeric metric that always exports the "current value" for every data point.
@@ -19,11 +18,11 @@ import (
 // Must use NewGauge function to create new instances.
 // Important: zero-initialized instance is not valid for use.
 type Gauge struct {
-	orig  *otlpmetrics.Gauge
+	orig  *internal.Gauge
 	state *internal.State
 }
 
-func newGauge(orig *otlpmetrics.Gauge, state *internal.State) Gauge {
+func newGauge(orig *internal.Gauge, state *internal.State) Gauge {
 	return Gauge{orig: orig, state: state}
 }
 
@@ -32,7 +31,7 @@ func newGauge(orig *otlpmetrics.Gauge, state *internal.State) Gauge {
 // This must be used only in testing code. Users should use "AppendEmpty" when part of a Slice,
 // OR directly access the member if this is embedded in another struct.
 func NewGauge() Gauge {
-	return newGauge(internal.NewOrigGauge(), internal.NewState())
+	return newGauge(internal.NewGauge(), internal.NewState())
 }
 
 // MoveTo moves all properties from the current struct overriding the destination and
@@ -44,7 +43,7 @@ func (ms Gauge) MoveTo(dest Gauge) {
 	if ms.orig == dest.orig {
 		return
 	}
-	internal.DeleteOrigGauge(dest.orig, false)
+	internal.DeleteGauge(dest.orig, false)
 	*dest.orig, *ms.orig = *ms.orig, *dest.orig
 }
 
@@ -56,5 +55,5 @@ func (ms Gauge) DataPoints() NumberDataPointSlice {
 // CopyTo copies all properties from the current struct overriding the destination.
 func (ms Gauge) CopyTo(dest Gauge) {
 	dest.state.AssertMutable()
-	internal.CopyOrigGauge(dest.orig, ms.orig)
+	internal.CopyGauge(dest.orig, ms.orig)
 }

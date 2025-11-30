@@ -22,8 +22,6 @@ import (
 	"sync"
 	"time"
 	"unicode/utf8"
-
-	"cloud.google.com/go/internal/trace"
 )
 
 // Interface internalWriter wraps low-level implementations which may vary
@@ -261,7 +259,7 @@ func (w *Writer) Close() error {
 	w.closed = true
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	trace.EndSpan(w.ctx, w.err)
+	endSpan(w.ctx, w.err)
 	return w.err
 }
 
@@ -274,6 +272,8 @@ func (w *Writer) openWriter() (err error) {
 	}
 
 	isIdempotent := w.o.conds != nil && (w.o.conds.GenerationMatch >= 0 || w.o.conds.DoesNotExist)
+	// Append operations that takeover a specific generation are idempotent.
+	isIdempotent = isIdempotent || w.Append && w.o.gen > 0
 	opts := makeStorageOpts(isIdempotent, w.o.retry, w.o.userProject)
 	params := &openWriterParams{
 		ctx:                  w.ctx,

@@ -361,7 +361,8 @@ type ScopeLogs struct {
 	// is recorded in. Notably, the last part of the URL path is the version number of the
 	// schema: http[s]://server[:port]/path/<version>. To learn more about Schema URL see
 	// https://opentelemetry.io/docs/specs/otel/schemas/#schema-url
-	// This schema_url applies to all logs in the "logs" field.
+	// This schema_url applies to the data in the "scope" field and all logs in the
+	// "log_records" field.
 	SchemaUrl string `protobuf:"bytes,3,opt,name=schema_url,json=schemaUrl,proto3" json:"schema_url,omitempty"`
 }
 
@@ -458,6 +459,7 @@ type LogRecord struct {
 	// Additional attributes that describe the specific event occurrence. [Optional].
 	// Attribute keys MUST be unique (it is not allowed to have more than one
 	// attribute with the same key).
+	// The behavior of software that receives duplicated keys can be unpredictable.
 	Attributes             []*v11.KeyValue `protobuf:"bytes,6,rep,name=attributes,proto3" json:"attributes,omitempty"`
 	DroppedAttributesCount uint32          `protobuf:"varint,7,opt,name=dropped_attributes_count,json=droppedAttributesCount,proto3" json:"dropped_attributes_count,omitempty"`
 	// Flags, a bit field. 8 least significant bits are the trace flags as

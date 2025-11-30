@@ -90,17 +90,18 @@ func (h *GoKitHandler) Handle(_ context.Context, record slog.Record) error {
 // WithAttrs formats the provided attributes and caches them in the handler to
 // attach to all future log calls. It implements slog.Handler.
 func (h *GoKitHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
-	pairs := make([]slog.Attr, 0, len(attrs)+len(h.preformatted))
+	// Make a defensive copy of preformatted attrs to avoid race conditions
+	// when multiple goroutines call WithAttrs concurrently on the same handler
+	pairs := make([]slog.Attr, len(h.preformatted), len(h.preformatted)+len(attrs))
+	copy(pairs, h.preformatted)
+
+	// Then append the new attrs
 	for _, attr := range attrs {
 		// preresolve the group to simplify attr tracking
 		if h.group != "" {
 			attr.Key = h.group + "." + attr.Key
 		}
 		pairs = append(pairs, attr)
-	}
-
-	if h.preformatted != nil {
-		pairs = append(h.preformatted, pairs...)
 	}
 
 	return &GoKitHandler{

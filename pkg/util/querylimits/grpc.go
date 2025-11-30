@@ -2,35 +2,43 @@ package querylimits
 
 import (
 	"context"
-	"fmt"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 )
 
 const (
-	lowerQueryLimitsHeaderName = "x-loki-query-limits"
+	lowerQueryLimitsHeaderName        = "x-loki-query-limits"
+	lowerQueryLimitsContextHeaderName = "x-loki-query-limits-context"
 )
 
 func injectIntoGRPCRequest(ctx context.Context) (context.Context, error) {
-	limits := ExtractQueryLimitsContext(ctx)
-	fmt.Printf("extract limits grpc: %v", limits)
-	if limits == nil {
-		return ctx, nil
-	}
 	// inject into GRPC metadata
 	md, ok := metadata.FromOutgoingContext(ctx)
 	if !ok {
 		md = metadata.New(map[string]string{})
 	}
 	md = md.Copy()
-	headerValue, err := MarshalQueryLimits(limits)
-	if err != nil {
-		return nil, err
-	}
-	md.Set(lowerQueryLimitsHeaderName, string(headerValue))
-	newCtx := metadata.NewOutgoingContext(ctx, md)
 
+	limits := ExtractQueryLimitsFromContext(ctx)
+	if limits != nil {
+		headerValue, err := MarshalQueryLimits(limits)
+		if err != nil {
+			return nil, err
+		}
+		md.Set(lowerQueryLimitsHeaderName, string(headerValue))
+	}
+
+	limitsCtx := ExtractQueryLimitsContextFromContext(ctx)
+	if limitsCtx != nil {
+		headerValue, err := MarshalQueryLimitsContext(limitsCtx)
+		if err != nil {
+			return nil, err
+		}
+		md.Set(lowerQueryLimitsContextHeaderName, string(headerValue))
+	}
+
+	newCtx := metadata.NewOutgoingContext(ctx, md)
 	return newCtx, nil
 }
 
@@ -60,21 +68,27 @@ func extractFromGRPCRequest(ctx context.Context) (context.Context, error) {
 	}
 
 	headerValues, ok := md[lowerQueryLimitsHeaderName]
-	if !ok {
-		// No QueryLimits header in metadata, just return context
-		return ctx, nil
+	if ok && len(headerValues) > 0 {
+		// Pick first header
+		limits, err := UnmarshalQueryLimits([]byte(headerValues[0]))
+		if err != nil {
+			return ctx, err
+		}
+		ctx = InjectQueryLimitsIntoContext(ctx, *limits)
 	}
 
-	if len(headerValues) == 0 {
-		return ctx, nil
+	// Extract QueryLimitsContext if present
+	headerContextValues, ok := md[lowerQueryLimitsContextHeaderName]
+	if ok && len(headerContextValues) > 0 {
+		// Pick first header
+		limitsCtx, err := UnmarshalQueryLimitsContext([]byte(headerContextValues[0]))
+		if err != nil {
+			return ctx, err
+		}
+		ctx = InjectQueryLimitsContextIntoContext(ctx, *limitsCtx)
 	}
 
-	// Pick first header
-	limits, err := UnmarshalQueryLimits([]byte(headerValues[0]))
-	if err != nil {
-		return ctx, err
-	}
-	return InjectQueryLimitsContext(ctx, *limits), nil
+	return ctx, nil
 }
 
 func ServerQueryLimitsInterceptor(ctx context.Context, req interface{}, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {

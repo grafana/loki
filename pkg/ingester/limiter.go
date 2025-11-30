@@ -32,7 +32,7 @@ type Limits interface {
 	MaxLocalStreamsPerUser(userID string) int
 	MaxGlobalStreamsPerUser(userID string) int
 	PolicyMaxLocalStreamsPerUser(userID, policy string) int
-	PolicyMaxGlobalStreamsPerUser(userID, policy string) int
+	PolicyMaxGlobalStreamsPerUser(userID, policy string) (int, bool)
 	PerStreamRateLimit(userID string) validation.RateLimit
 	ShardStreams(userID string) shardstreams.Config
 	IngestionPartitionsTenantShardSize(userID string) int
@@ -107,8 +107,7 @@ func (l *Limiter) GetStreamCountLimit(tenantID string, policy string) (calculate
 		if policyLocalLimit > 0 {
 			localLimit = policyLocalLimit
 		}
-		policyGlobalLimit := l.limits.PolicyMaxGlobalStreamsPerUser(tenantID, policy)
-		if policyGlobalLimit > 0 {
+		if policyGlobalLimit, exists := l.limits.PolicyMaxGlobalStreamsPerUser(tenantID, policy); exists {
 			globalLimit = policyGlobalLimit
 		}
 	}

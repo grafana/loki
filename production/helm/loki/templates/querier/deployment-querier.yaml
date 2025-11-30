@@ -61,7 +61,7 @@ spec:
       {{- end }}
       {{- include "loki.querierPriorityClassName" . | nindent 6 }}
       securityContext:
-        {{- toYaml .Values.loki.podSecurityContext | nindent 8 }}
+        {{- include "loki.podSecurityContext" . | nindent 8 }}
       terminationGracePeriodSeconds: {{ .Values.querier.terminationGracePeriodSeconds }}
       {{- with .Values.querier.initContainers }}
       initContainers:
@@ -73,7 +73,7 @@ spec:
           imagePullPolicy: {{ .Values.loki.image.pullPolicy }}
           args:
             - -config.file=/etc/loki/config/config.yaml
-            - -target=querier
+            - -target={{ include "loki.querierTarget" . }}
             {{- if .Values.ingester.zoneAwareReplication.enabled }}
             {{- if and (.Values.ingester.zoneAwareReplication.migration.enabled) (not .Values.ingester.zoneAwareReplication.migration.readPath) }}
             - -distributor.zone-awareness-enabled=false

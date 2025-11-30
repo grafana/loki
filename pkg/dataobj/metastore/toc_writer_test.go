@@ -14,6 +14,7 @@ import (
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 )
@@ -21,7 +22,7 @@ import (
 func TestTableOfContentsWriter(t *testing.T) {
 	t.Run("append new top-level object to new metastore", func(t *testing.T) {
 		tenantID := "test"
-		tocBuilder, err := indexobj.NewBuilder(indexobj.BuilderConfig{
+		tocBuilder, err := indexobj.NewBuilder(logsobj.BuilderBaseConfig{
 			TargetPageSize:          tocBuilderCfg.TargetPageSize,
 			TargetObjectSize:        tocBuilderCfg.TargetObjectSize,
 			TargetSectionSize:       tocBuilderCfg.TargetSectionSize,
@@ -53,7 +54,7 @@ func TestTableOfContentsWriter(t *testing.T) {
 
 	t.Run("append default to new top-level metastore v1", func(t *testing.T) {
 		tenantID := "test"
-		builder, err := indexobj.NewBuilder(indexobj.BuilderConfig{
+		builder, err := indexobj.NewBuilder(logsobj.BuilderBaseConfig{
 			TargetPageSize:          tocBuilderCfg.TargetPageSize,
 			TargetObjectSize:        tocBuilderCfg.TargetObjectSize,
 			TargetSectionSize:       tocBuilderCfg.TargetSectionSize,

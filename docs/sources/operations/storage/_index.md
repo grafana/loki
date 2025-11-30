@@ -42,7 +42,7 @@ For more information:
 
 ### ✅ Supported and recommended chunks stores
 
-- [Amazon Simple Storage Storage (S3)](https://aws.amazon.com/s3)
+- [Amazon Simple Storage Service (S3)](https://aws.amazon.com/s3)
 - [Google Cloud Storage (GCS)](https://cloud.google.com/storage/)
 - [Microsoft Azure Blob Storage](https://azure.microsoft.com/en-us/products/storage/blobs)
 - [IBM Cloud Object Storage (COS)](https://www.ibm.com/cloud/object-storage)

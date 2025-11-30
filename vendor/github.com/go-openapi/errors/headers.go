@@ -1,16 +1,5 @@
-// Copyright 2015 go-swagger maintainers
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//    http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-FileCopyrightText: Copyright 2015-2025 go-swagger maintainers
+// SPDX-License-Identifier: Apache-2.0
 
 package errors
 
@@ -21,13 +10,13 @@ import (
 )
 
 // Validation represents a failure of a precondition
-type Validation struct {
+type Validation struct { //nolint: errname
 	code    int32
 	Name    string
 	In      string
-	Value   interface{}
+	Value   any
 	message string
-	Values  []interface{}
+	Values  []any
 }
 
 func (e *Validation) Error() string {
@@ -41,7 +30,7 @@ func (e *Validation) Code() int32 {
 
 // MarshalJSON implements the JSON encoding interface
 func (e Validation) MarshalJSON() ([]byte, error) {
-	return json.Marshal(map[string]interface{}{
+	return json.Marshal(map[string]any{
 		"code":    e.code,
 		"message": e.message,
 		"in":      e.In,
@@ -72,7 +61,7 @@ const (
 
 // InvalidContentType error for an invalid content type
 func InvalidContentType(value string, allowed []string) *Validation {
-	values := make([]interface{}, 0, len(allowed))
+	values := make([]any, 0, len(allowed))
 	for _, v := range allowed {
 		values = append(values, v)
 	}
@@ -88,7 +77,7 @@ func InvalidContentType(value string, allowed []string) *Validation {
 
 // InvalidResponseFormat error for an unacceptable response format request
 func InvalidResponseFormat(value string, allowed []string) *Validation {
-	values := make([]interface{}, 0, len(allowed))
+	values := make([]any, 0, len(allowed))
 	for _, v := range allowed {
 		values = append(values, v)
 	}

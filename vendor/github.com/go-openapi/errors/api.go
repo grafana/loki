@@ -1,16 +1,5 @@
-// Copyright 2015 go-swagger maintainers
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//    http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-FileCopyrightText: Copyright 2015-2025 go-swagger maintainers
+// SPDX-License-Identifier: Apache-2.0
 
 package errors
 
@@ -46,14 +35,14 @@ func (a *apiError) Code() int32 {
 
 // MarshalJSON implements the JSON encoding interface
 func (a apiError) MarshalJSON() ([]byte, error) {
-	return json.Marshal(map[string]interface{}{
+	return json.Marshal(map[string]any{
 		"code":    a.code,
 		"message": a.message,
 	})
 }
 
 // New creates a new API error with a code and a message
-func New(code int32, message string, args ...interface{}) Error {
+func New(code int32, message string, args ...any) Error {
 	if len(args) > 0 {
 		return &apiError{
 			code:    code,
@@ -67,16 +56,16 @@ func New(code int32, message string, args ...interface{}) Error {
 }
 
 // NotFound creates a new not found error
-func NotFound(message string, args ...interface{}) Error {
+func NotFound(message string, args ...any) Error {
 	if message == "" {
 		message = "Not found"
 	}
-	return New(http.StatusNotFound, fmt.Sprintf(message, args...))
+	return New(http.StatusNotFound, message, args...)
 }
 
 // NotImplemented creates a new not implemented error
 func NotImplemented(message string) Error {
-	return New(http.StatusNotImplemented, message)
+	return New(http.StatusNotImplemented, "%s", message)
 }
 
 // MethodNotAllowedError represents an error for when the path matches but the method doesn't
@@ -97,7 +86,7 @@ func (m *MethodNotAllowedError) Code() int32 {
 
 // MarshalJSON implements the JSON encoding interface
 func (m MethodNotAllowedError) MarshalJSON() ([]byte, error) {
-	return json.Marshal(map[string]interface{}{
+	return json.Marshal(map[string]any{
 		"code":    m.code,
 		"message": m.message,
 		"allowed": m.Allowed,
@@ -179,13 +168,13 @@ func ServeError(rw http.ResponseWriter, r *http.Request, err error) {
 	default:
 		rw.WriteHeader(http.StatusInternalServerError)
 		if r == nil || r.Method != http.MethodHead {
-			_, _ = rw.Write(errorAsJSON(New(http.StatusInternalServerError, err.Error())))
+			_, _ = rw.Write(errorAsJSON(New(http.StatusInternalServerError, "%v", err)))
 		}
 	}
 }
 
 func asHTTPCode(input int) int {
-	if input >= 600 {
+	if input >= maximumValidHTTPCode {
 		return DefaultHTTPCode
 	}
 	return input

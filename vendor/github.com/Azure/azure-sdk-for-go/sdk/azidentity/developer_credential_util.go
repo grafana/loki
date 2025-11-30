@@ -7,22 +7,72 @@
 package azidentity
 
 import (
+	"bytes"
+	"context"
 	"errors"
+	"os"
+	"os/exec"
+	"strings"
 	"time"
 )
 
 // cliTimeout is the default timeout for authentication attempts via CLI tools
 const cliTimeout = 10 * time.Second
 
-// unavailableIfInChain returns err or, if the credential was invoked by DefaultAzureCredential, a
+// executor runs a command and returns its output or an error
+type executor func(ctx context.Context, credName, command string) ([]byte, error)
+
+var shellExec = func(ctx context.Context, credName, command string) ([]byte, error) {
+	// set a default timeout for this authentication iff the caller hasn't done so already
+	var cancel context.CancelFunc
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+		ctx, cancel = context.WithTimeout(ctx, cliTimeout)
+		defer cancel()
+	}
+	cmd, err := buildCmd(ctx, credName, command)
+	if err != nil {
+		return nil, err
+	}
+	cmd.Env = os.Environ()
+	stderr := bytes.Buffer{}
+	cmd.Stderr = &stderr
+	cmd.WaitDelay = 100 * time.Millisecond
+
+	stdout, err := cmd.Output()
+	if errors.Is(err, exec.ErrWaitDelay) && len(stdout) > 0 {
+		// The child process wrote to stdout and exited without closing it.
+		// Swallow this error and return stdout because it may contain a token.
+		return stdout, nil
+	}
+	if err != nil {
+		msg := stderr.String()
+		var exErr *exec.ExitError
+		if errors.As(err, &exErr) && exErr.ExitCode() == 127 || strings.Contains(msg, "' is not recognized") {
+			return nil, newCredentialUnavailableError(credName, "executable not found on path")
+		}
+		if credName == credNameAzurePowerShell {
+			if strings.Contains(msg, "Connect-AzAccount") {
+				msg = `Please run "Connect-AzAccount" to set up an account`
+			}
+			if strings.Contains(msg, noAzAccountModule) {
+				msg = noAzAccountModule
+			}
+		}
+		if msg == "" {
+			msg = err.Error()
+		}
+		return nil, newAuthenticationFailedError(credName, msg, nil)
+	}
+
+	return stdout, nil
+}
+
+// unavailableIfInDAC returns err or, if the credential was invoked by DefaultAzureCredential, a
 // credentialUnavailableError having the same message. This ensures DefaultAzureCredential will try
 // the next credential in its chain (another developer credential).
-func unavailableIfInChain(err error, inDefaultChain bool) error {
-	if err != nil && inDefaultChain {
-		var unavailableErr credentialUnavailable
-		if !errors.As(err, &unavailableErr) {
-			err = newCredentialUnavailableError(credNameAzureDeveloperCLI, err.Error())
-		}
+func unavailableIfInDAC(err error, inDefaultChain bool) error {
+	if err != nil && inDefaultChain && !errors.As(err, new(credentialUnavailable)) {
+		err = NewCredentialUnavailableError(err.Error())
 	}
 	return err
 }

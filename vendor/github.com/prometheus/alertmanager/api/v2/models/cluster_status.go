@@ -43,7 +43,7 @@ type ClusterStatus struct {
 
 	// status
 	// Required: true
-	// Enum: [ready settling disabled]
+	// Enum: ["ready","settling","disabled"]
 	Status *string `json:"status"`
 }
 

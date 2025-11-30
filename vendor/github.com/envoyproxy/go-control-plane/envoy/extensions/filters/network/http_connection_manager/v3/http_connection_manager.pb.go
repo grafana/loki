@@ -216,31 +216,39 @@ func (HttpConnectionManager_ForwardClientCertDetails) EnumDescriptor() ([]byte, 
 	return file_envoy_extensions_filters_network_http_connection_manager_v3_http_connection_manager_proto_rawDescGZIP(), []int{0, 2}
 }
 
-// Determines the action for request that contain %2F, %2f, %5C or %5c sequences in the URI path.
+// Determines the action for request that contain “%2F“, “%2f“, “%5C“ or “%5c“ sequences in the URI path.
 // This operation occurs before URL normalization and the merge slashes transformations if they were enabled.
 type HttpConnectionManager_PathWithEscapedSlashesAction int32
 
 const (
 	// Default behavior specific to implementation (i.e. Envoy) of this configuration option.
 	// Envoy, by default, takes the KEEP_UNCHANGED action.
-	// NOTE: the implementation may change the default behavior at-will.
+	//
+	// .. note::
+	//
+	//	The implementation may change the default behavior at-will.
 	HttpConnectionManager_IMPLEMENTATION_SPECIFIC_DEFAULT HttpConnectionManager_PathWithEscapedSlashesAction = 0
 	// Keep escaped slashes.
 	HttpConnectionManager_KEEP_UNCHANGED HttpConnectionManager_PathWithEscapedSlashesAction = 1
 	// Reject client request with the 400 status. gRPC requests will be rejected with the INTERNAL (13) error code.
-	// The "httpN.downstream_rq_failed_path_normalization" counter is incremented for each rejected request.
+	// The “httpN.downstream_rq_failed_path_normalization“ counter is incremented for each rejected request.
 	HttpConnectionManager_REJECT_REQUEST HttpConnectionManager_PathWithEscapedSlashesAction = 2
-	// Unescape %2F and %5C sequences and redirect request to the new path if these sequences were present.
+	// Unescape “%2F“ and “%5C“ sequences and redirect request to the new path if these sequences were present.
 	// Redirect occurs after path normalization and merge slashes transformations if they were configured.
-	// NOTE: gRPC requests will be rejected with the INTERNAL (13) error code.
-	// This option minimizes possibility of path confusion exploits by forcing request with unescaped slashes to
-	// traverse all parties: downstream client, intermediate proxies, Envoy and upstream server.
-	// The "httpN.downstream_rq_redirected_with_normalized_path" counter is incremented for each
-	// redirected request.
+	//
+	// .. note::
+	//
+	//	gRPC requests will be rejected with the INTERNAL (13) error code. This option minimizes possibility of path
+	//	confusion exploits by forcing request with unescaped slashes to traverse all parties: downstream client,
+	//	intermediate proxies, Envoy and upstream server. The ``httpN.downstream_rq_redirected_with_normalized_path``
+	//	counter is incremented for each redirected request.
 	HttpConnectionManager_UNESCAPE_AND_REDIRECT HttpConnectionManager_PathWithEscapedSlashesAction = 3
-	// Unescape %2F and %5C sequences.
-	// Note: this option should not be enabled if intermediaries perform path based access control as
-	// it may lead to path confusion vulnerabilities.
+	// Unescape “%2F“ and “%5C“ sequences.
+	//
+	// .. note::
+	//
+	//	This option should not be enabled if intermediaries perform path based access control as it may lead to path
+	//	confusion vulnerabilities.
 	HttpConnectionManager_UNESCAPE_AND_FORWARD HttpConnectionManager_PathWithEscapedSlashesAction = 4
 )
 
@@ -368,21 +376,21 @@ type HttpConnectionManager struct {
 	// <envoy_v3_api_msg_config.trace.v3.Tracing>`.
 	Tracing *HttpConnectionManager_Tracing `protobuf:"bytes,7,opt,name=tracing,proto3" json:"tracing,omitempty"`
 	// Additional settings for HTTP requests handled by the connection manager. These will be
-	// applicable to both HTTP1 and HTTP2 requests.
+	// applicable to both HTTP/1.1 and HTTP/2 requests.
 	CommonHttpProtocolOptions *v3.HttpProtocolOptions `protobuf:"bytes,35,opt,name=common_http_protocol_options,json=commonHttpProtocolOptions,proto3" json:"common_http_protocol_options,omitempty"`
-	// If set to true, Envoy will not start a drain timer for downstream HTTP1 connections after
-	// :ref:`common_http_protocol_options.max_connection_duration
-	// <envoy_v3_api_field_config.core.v3.HttpProtocolOptions.max_connection_duration>` passes.
-	// Instead, Envoy will wait for the next downstream request, add connection:close to the response
-	// headers, then close the connection after the stream ends.
+	// If set to “true“, Envoy will not initiate an immediate drain timer for downstream HTTP/1 connections
+	// once :ref:`common_http_protocol_options.max_connection_duration
+	// <envoy_v3_api_field_config.core.v3.HttpProtocolOptions.max_connection_duration>` is exceeded.
+	// Instead, Envoy will wait until the next downstream request arrives, add a “connection: close“ header
+	// to the response, and then gracefully close the connection once the stream has completed.
 	//
-	// This behavior is compliant with `RFC 9112 section 9.6 <https://www.rfc-editor.org/rfc/rfc9112#name-tear-down>`_
+	// This behavior adheres to `RFC 9112, Section 9.6 <https://www.rfc-editor.org/rfc/rfc9112#name-tear-down>`_.
 	//
-	// If set to false, “max_connection_duration“ will cause Envoy to enter the normal drain
-	// sequence for HTTP1 with Envoy eventually closing the connection (once there are no active
-	// streams).
+	// If set to “false“, exceeding “max_connection_duration“ triggers Envoy's default drain behavior for HTTP/1,
+	// where the connection is eventually closed after all active streams finish.
 	//
-	// Has no effect if “max_connection_duration“ is unset. Defaults to false.
+	// This option has no effect if “max_connection_duration“ is not configured.
+	// Defaults to “false“.
 	Http1SafeMaxConnectionDuration bool `protobuf:"varint,58,opt,name=http1_safe_max_connection_duration,json=http1SafeMaxConnectionDuration,proto3" json:"http1_safe_max_connection_duration,omitempty"`
 	// Additional HTTP/1 settings that are passed to the HTTP/1 codec.
 	// [#comment:TODO: The following fields are ignored when the
@@ -410,10 +418,12 @@ type HttpConnectionManager struct {
 	// The default value can be overridden by setting runtime key “envoy.reloadable_features.max_request_headers_size_kb“.
 	// Requests that exceed this limit will receive a 431 response.
 	//
-	// Note: currently some protocol codecs impose limits on the maximum size of a single header:
+	// .. note::
 	//
-	//	HTTP/2 (when using nghttp2) limits a single header to around 100kb.
-	//	HTTP/3 limits a single header to around 1024kb.
+	//	Currently some protocol codecs impose limits on the maximum size of a single header.
+	//
+	//	* HTTP/2 (when using nghttp2) limits a single header to around 100kb.
+	//	* HTTP/3 limits a single header to around 1024kb.
 	MaxRequestHeadersKb *wrapperspb.UInt32Value `protobuf:"bytes,29,opt,name=max_request_headers_kb,json=maxRequestHeadersKb,proto3" json:"max_request_headers_kb,omitempty"`
 	// The stream idle timeout for connections managed by the connection manager.
 	// If not specified, this defaults to 5 minutes. The default value was selected
@@ -480,31 +490,33 @@ type HttpConnectionManager struct {
 	// during which Envoy will wait for the peer to close (i.e., a TCP FIN/RST is received by Envoy
 	// from the downstream connection) prior to Envoy closing the socket associated with that
 	// connection.
-	// NOTE: This timeout is enforced even when the socket associated with the downstream connection
-	// is pending a flush of the write buffer. However, any progress made writing data to the socket
-	// will restart the timer associated with this timeout. This means that the total grace period for
-	// a socket in this state will be
-	// <total_time_waiting_for_write_buffer_flushes>+<delayed_close_timeout>.
+	//
+	// .. note::
+	//
+	//	This timeout is enforced even when the socket associated with the downstream connection is pending a flush of
+	//	the write buffer. However, any progress made writing data to the socket will restart the timer associated with
+	//	this timeout. This means that the total grace period for a socket in this state will be
+	//	<total_time_waiting_for_write_buffer_flushes>+<delayed_close_timeout>.
 	//
 	// Delaying Envoy's connection close and giving the peer the opportunity to initiate the close
 	// sequence mitigates a race condition that exists when downstream clients do not drain/process
 	// data in a connection's receive buffer after a remote close has been detected via a socket
-	// write(). This race leads to such clients failing to process the response code sent by Envoy,
+	// “write()“. This race leads to such clients failing to process the response code sent by Envoy,
 	// which could result in erroneous downstream processing.
 	//
 	// If the timeout triggers, Envoy will close the connection's socket.
 	//
 	// The default timeout is 1000 ms if this option is not specified.
 	//
-	// .. NOTE::
+	// .. note::
 	//
 	//	To be useful in avoiding the race condition described above, this timeout must be set
 	//	to *at least* <max round trip time expected between clients and Envoy>+<100ms to account for
 	//	a reasonable "worst" case processing time for a full iteration of Envoy's event loop>.
 	//
-	// .. WARNING::
+	// .. warning::
 	//
-	//	A value of 0 will completely disable delayed close processing. When disabled, the downstream
+	//	A value of ``0`` will completely disable delayed close processing. When disabled, the downstream
 	//	connection's socket will be closed immediately after the write flush is completed or will
 	//	never close if the write flush does not complete.
 	DelayedCloseTimeout *durationpb.Duration `protobuf:"bytes,26,opt,name=delayed_close_timeout,json=delayedCloseTimeout,proto3" json:"delayed_close_timeout,omitempty"`
@@ -554,21 +566,20 @@ type HttpConnectionManager struct {
 	// is not specified. See the documentation for
 	// :ref:`config_http_conn_man_headers_x-forwarded-for` for more information.
 	XffNumTrustedHops uint32 `protobuf:"varint,19,opt,name=xff_num_trusted_hops,json=xffNumTrustedHops,proto3" json:"xff_num_trusted_hops,omitempty"`
-	// The configuration for the original IP detection extensions.
+	// Configuration for original IP detection extensions.
 	//
-	// When configured the extensions will be called along with the request headers
-	// and information about the downstream connection, such as the directly connected address.
-	// Each extension will then use these parameters to decide the request's effective remote address.
-	// If an extension fails to detect the original IP address and isn't configured to reject
-	// the request, the HCM will try the remaining extensions until one succeeds or rejects
-	// the request. If the request isn't rejected nor any extension succeeds, the HCM will
-	// fallback to using the remote address.
+	// When these extensions are configured, Envoy will invoke them with the incoming request headers and
+	// details about the downstream connection, including the directly connected address. Each extension uses
+	// this information to determine the effective remote IP address for the request. If an extension cannot
+	// identify the original IP address and isn't set to reject the request, Envoy will sequentially attempt
+	// the remaining extensions until one successfully determines the IP or explicitly rejects the request.
+	// If all extensions fail without rejection, Envoy defaults to using the directly connected remote address.
 	//
-	// .. WARNING::
+	// .. warning::
 	//
-	//	Extensions cannot be used in conjunction with :ref:`use_remote_address
+	//	These extensions cannot be configured simultaneously with :ref:`use_remote_address
 	//	<envoy_v3_api_field_extensions.filters.network.http_connection_manager.v3.HttpConnectionManager.use_remote_address>`
-	//	nor :ref:`xff_num_trusted_hops
+	//	or :ref:`xff_num_trusted_hops
 	//	<envoy_v3_api_field_extensions.filters.network.http_connection_manager.v3.HttpConnectionManager.xff_num_trusted_hops>`.
 	//
 	// [#extension-category: envoy.http.original_ip_detection]
@@ -2310,14 +2321,12 @@ func (x *HttpConnectionManager_SetCurrentClientCertDetails) GetUri() bool {
 //
 // .. warning::
 //
-//	The current implementation of upgrade headers does not handle
-//	multi-valued upgrade headers. Support for multi-valued headers may be
-//	added in the future if needed.
+//	The current implementation of upgrade headers does not handle multi-valued upgrade headers. Support for
+//	multi-valued headers may be added in the future if needed.
 //
 // .. warning::
 //
-//	The current implementation of upgrade headers does not work with HTTP/2
-//	upstreams.
+//	The current implementation of upgrade headers does not work with HTTP/2 upstreams.
 type HttpConnectionManager_UpgradeConfig struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -2400,7 +2409,9 @@ func (x *HttpConnectionManager_UpgradeConfig) GetEnabled() *wrapperspb.BoolValue
 // <envoy_v3_api_field_config.route.v3.RouteAction.prefix_rewrite>`) will apply to the “:path“ header
 // destined for the upstream.
 //
-// Note: access logging and tracing will show the original “:path“ header.
+// .. note::
+//
+//	Access logging and tracing will show the original ``:path`` header.
 type HttpConnectionManager_PathNormalizationOptions struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache

@@ -1,5 +1,5 @@
 { pkgs, version, imageTag, lib }:
-pkgs.buildGo124Module {
+pkgs.buildGo125Module {
   inherit version;
 
   pname = "loki";

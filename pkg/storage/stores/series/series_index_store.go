@@ -198,6 +198,10 @@ func (c *IndexReaderWriter) GetChunkRefs(ctx context.Context, userID string, fro
 	return chunks, nil
 }
 
+func (c *IndexReaderWriter) GetChunkRefsWithSizingInfo(_ context.Context, _ string, _, _ model.Time, _ chunk.Predicate) ([]logproto.ChunkRefWithSizingInfo, error) {
+	panic("store does not support getting chunk refs with sizing info")
+}
+
 func (c *IndexReaderWriter) SetChunkFilterer(f chunk.RequestChunkFilterer) {
 	c.chunkFilterer = f
 }
@@ -795,4 +799,9 @@ func (c *IndexReaderWriter) GetShards(
 // old index stores do not implement tsdb.ForSeries -- skip
 func (c *IndexReaderWriter) HasForSeries(_, _ model.Time) (sharding.ForSeries, bool) {
 	return nil, false
+}
+
+// old index stores do not have chunk sizing info
+func (c *IndexReaderWriter) HasChunkSizingInfo(_, _ model.Time) bool {
+	return false
 }

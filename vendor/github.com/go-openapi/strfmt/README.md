@@ -35,7 +35,7 @@ It also provides convenient extensions to go-openapi users.
   - mac (e.g "01:02:03:04:05:06")
   - rgbcolor (e.g. "rgb(100,100,100)")
   - ssn
-  - uuid, uuid3, uuid4, uuid5
+  - uuid, uuid3, uuid4, uuid5, uuid7
   - cidr (e.g. "192.0.2.1/24", "2001:db8:a0b:12f0::1/32")
   - ulid (e.g. "00000PP9HGSBSSDZ1JTEXBJ0PW", [spec](https://github.com/ulid/spec))
 
@@ -81,7 +81,12 @@ List of defined types:
 - SSN
 - URI
 - UUID
-- UUID3
-- UUID4
-- UUID5
+- [UUID3](https://www.rfc-editor.org/rfc/rfc9562.html#name-uuid-version-3)
+- [UUID4](https://www.rfc-editor.org/rfc/rfc9562.html#name-uuid-version-4)
+- [UUID5](https://www.rfc-editor.org/rfc/rfc9562.html#name-uuid-version-5)
+- [UUID7](https://www.rfc-editor.org/rfc/rfc9562.html#name-uuid-version-7)
 - [ULID](https://github.com/ulid/spec)
+
+## Licensing
+
+This library ships under the [SPDX-License-Identifier: Apache-2.0](./LICENSE).

@@ -393,7 +393,12 @@ type LineFilterLabelFilter struct {
 func (s *LineFilterLabelFilter) String() string {
 	if unwrappedFilter, ok := s.Filter.(regexpFilter); ok {
 		rStr := unwrappedFilter.String()
-		str := fmt.Sprintf("%s%s`%s`", s.Name, s.Type, rStr)
+		if strings.Contains(rStr, "`") {
+			rStr = strconv.Quote(rStr)
+		} else {
+			rStr = fmt.Sprintf("`%s`", rStr)
+		}
+		str := fmt.Sprintf("%s%s%s", s.Name, s.Type, rStr)
 		return str
 	}
 	return s.Matcher.String()

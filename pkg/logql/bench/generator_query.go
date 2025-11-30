@@ -216,6 +216,12 @@ func (g *TestCaseGenerator) Generate() []TestCase {
 			fmt.Sprintf(`rate(%s | detected_level=~"error|warn" [%s])`, selector, rangeInterval),
 		}
 
+		// no grouping
+		for _, baseMetricQuery := range baseRangeAggregationQueries {
+			query := fmt.Sprintf(`sum(%s)`, baseMetricQuery)
+			addMetricQuery(query, start, end, step)
+		}
+
 		// Single dimension aggregations
 		dimensions := []string{"pod", "namespace", "env", "detected_level"}
 		for _, dim := range dimensions {
@@ -237,6 +243,9 @@ func (g *TestCaseGenerator) Generate() []TestCase {
 			}
 		}
 	}
+
+	addMetricQuery(fmt.Sprintf(`sum by (level) (sum_over_time({service_name="database"} | json | unwrap rows_affected [%s]))`, rangeInterval), start, end, step)
+	addMetricQuery(fmt.Sprintf(`sum by (level) (sum_over_time({service_name="loki"} | logfmt | duration != "" | unwrap duration_seconds(duration) [%s]))`, rangeInterval), start, end, step)
 
 	// Dense period queries
 	for _, interval := range g.logGenCfg.DenseIntervals {

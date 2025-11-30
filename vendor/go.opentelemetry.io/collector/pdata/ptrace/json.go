@@ -6,7 +6,6 @@ package ptrace // import "go.opentelemetry.io/collector/pdata/ptrace"
 import (
 	"slices"
 
-	"go.opentelemetry.io/collector/pdata/internal"
 	"go.opentelemetry.io/collector/pdata/internal/json"
 	"go.opentelemetry.io/collector/pdata/internal/otlp"
 )
@@ -18,7 +17,7 @@ type JSONMarshaler struct{}
 func (*JSONMarshaler) MarshalTraces(td Traces) ([]byte, error) {
 	dest := json.BorrowStream(nil)
 	defer json.ReturnStream(dest)
-	internal.MarshalJSONOrigExportTraceServiceRequest(td.getOrig(), dest)
+	td.getOrig().MarshalJSON(dest)
 	if dest.Error() != nil {
 		return nil, dest.Error()
 	}
@@ -33,7 +32,7 @@ func (*JSONUnmarshaler) UnmarshalTraces(buf []byte) (Traces, error) {
 	iter := json.BorrowIterator(buf)
 	defer json.ReturnIterator(iter)
 	td := NewTraces()
-	internal.UnmarshalJSONOrigExportTraceServiceRequest(td.getOrig(), iter)
+	td.getOrig().UnmarshalJSON(iter)
 	if iter.Error() != nil {
 		return Traces{}, iter.Error()
 	}

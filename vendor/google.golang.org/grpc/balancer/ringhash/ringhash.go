@@ -40,7 +40,7 @@ import (
 	"google.golang.org/grpc/balancer/base"
 	"google.golang.org/grpc/balancer/endpointsharding"
 	"google.golang.org/grpc/balancer/lazy"
-	"google.golang.org/grpc/balancer/pickfirst/pickfirstleaf"
+	"google.golang.org/grpc/balancer/pickfirst"
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/internal/balancer/weight"
 	"google.golang.org/grpc/internal/grpclog"
@@ -55,7 +55,7 @@ import (
 const Name = "ring_hash_experimental"
 
 func lazyPickFirstBuilder(cc balancer.ClientConn, opts balancer.BuildOptions) balancer.Balancer {
-	return lazy.NewBalancer(cc, opts, balancer.Get(pickfirstleaf.Name).Build)
+	return lazy.NewBalancer(cc, opts, balancer.Get(pickfirst.Name).Build)
 }
 
 func init() {
@@ -202,7 +202,7 @@ func (b *ringhashBalancer) UpdateClientConnState(ccs balancer.ClientConnState) e
 	if err := b.child.UpdateClientConnState(balancer.ClientConnState{
 		// Make pickfirst children use health listeners for outlier detection
 		// and health checking to work.
-		ResolverState: pickfirstleaf.EnableHealthListener(ccs.ResolverState),
+		ResolverState: pickfirst.EnableHealthListener(ccs.ResolverState),
 	}); err != nil {
 		return err
 	}

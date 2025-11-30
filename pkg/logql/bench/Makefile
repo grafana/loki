@@ -34,6 +34,7 @@ grafana:
 		-e GF_AUTH_ANONYMOUS_ORG_ROLE=Admin \
 		-e GF_AUTH_BASIC_ENABLED=false \
 		-e GF_USERS_DEFAULT_THEME=light \
+		-e GF_CACHING_ENABLED=false \
 		-v $(PWD)/grafana-datasource.yaml:/etc/grafana/provisioning/datasources/datasources.yml \
 		grafana/grafana:latest
 	@echo "Grafana available at http://localhost:3000"
@@ -72,5 +73,9 @@ server: grafana loki
 # so this task defines a teardown command to kill grafana once loki is stopped.
 .PHONY: server-debug
 server-debug: grafana loki-debug
-	# loki will block, so this won't run until we kill the process
+
+.PHONY: server-stop
+server-stop:
 	@make grafana-stop
+	@pkill dlv
+	@pkill loki

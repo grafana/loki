@@ -33,7 +33,6 @@ import (
 const (
 	METADATA_DIRECTIVE_COPY    = "copy"
 	METADATA_DIRECTIVE_REPLACE = "replace"
-	METADATA_DIRECTIVE_UPDATE  = "update"
 
 	STORAGE_CLASS_STANDARD        = "STANDARD"
 	STORAGE_CLASS_STANDARD_IA     = "STANDARD_IA"
@@ -148,8 +147,7 @@ func getCnameUri(uri string) string {
 
 func validMetadataDirective(val string) bool {
 	if val == METADATA_DIRECTIVE_COPY ||
-		val == METADATA_DIRECTIVE_REPLACE ||
-		val == METADATA_DIRECTIVE_UPDATE {
+		val == METADATA_DIRECTIVE_REPLACE {
 		return true
 	}
 	return false

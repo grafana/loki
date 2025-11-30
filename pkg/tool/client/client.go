@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	rulerAPIPath  = "/api/v1/rules"
+	rulerAPIPath  = "/loki/api/v1/rules"
 	legacyAPIPath = "/api/prom/rules"
 )
 

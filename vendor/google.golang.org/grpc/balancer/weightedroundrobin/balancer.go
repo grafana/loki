@@ -38,7 +38,7 @@ import (
 
 	"google.golang.org/grpc/balancer"
 	"google.golang.org/grpc/balancer/endpointsharding"
-	"google.golang.org/grpc/balancer/pickfirst/pickfirstleaf"
+	"google.golang.org/grpc/balancer/pickfirst"
 	"google.golang.org/grpc/balancer/weightedroundrobin/internal"
 	"google.golang.org/grpc/balancer/weightedtarget"
 	"google.golang.org/grpc/connectivity"
@@ -109,7 +109,7 @@ func (bb) Build(cc balancer.ClientConn, bOpts balancer.BuildOptions) balancer.Ba
 		scToWeight:       make(map[balancer.SubConn]*endpointWeight),
 	}
 
-	b.child = endpointsharding.NewBalancer(b, bOpts, balancer.Get(pickfirstleaf.Name).Build, endpointsharding.Options{})
+	b.child = endpointsharding.NewBalancer(b, bOpts, balancer.Get(pickfirst.Name).Build, endpointsharding.Options{})
 	b.logger = prefixLogger(b)
 	b.logger.Infof("Created")
 	return b
@@ -239,7 +239,7 @@ func (b *wrrBalancer) UpdateClientConnState(ccs balancer.ClientConnState) error 
 	return b.child.UpdateClientConnState(balancer.ClientConnState{
 		// Make pickfirst children use health listeners for outlier detection to
 		// work.
-		ResolverState: pickfirstleaf.EnableHealthListener(ccs.ResolverState),
+		ResolverState: pickfirst.EnableHealthListener(ccs.ResolverState),
 	})
 }
 

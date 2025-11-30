@@ -7,7 +7,7 @@ aliases:
 weight: 600
 keywords: 
 ---
-# Install on Istio 
+# Install on Istio
 
 When installing Loki on Istio service mesh you must complete some additional steps. Without these steps, the ingester, querier, etc. might start, but you will see logs like the following:
 
@@ -34,10 +34,10 @@ Make the following modifications to the file for the Loki Query Frontend service
 1. Change the name of `grpc` port to `grpclb`. This is used by the grpc load balancing strategy which relies on SRV records. Otherwise the `querier` will not be able to reach the `query-frontend`. See https://github.com/grafana/loki/blob/0116aa61c86fa983ddcbbd5e30a2141d2e89081a/production/ksonnet/loki/common.libsonnet#L19
 and
 https://grpc.github.io/grpc/core/md_doc_load-balancing.html
-3. Set the `appProtocol` of `grpclb` to `tcp`
-4. Set `publishNotReadyAddresses` to `true`
+1. Set the `appProtocol` of `grpclb` to `tcp`
+1. Set `publishNotReadyAddresses` to `true`
 
-```
+```yaml
 apiVersion: v1
 kind: Service
 metadata:
@@ -71,7 +71,7 @@ Make the following modifications to the file for the Loki Querier service.
 
 Set the `appProtocol` of the `grpc` service to `tcp`
 
-```
+```yaml
 apiVersion: v1
 kind: Service
 metadata:
@@ -105,9 +105,9 @@ spec:
 
 Make the following modifications to the file for the Loki Query Ingester and Ingester Headless service.
 
-Set the `appProtocol` of the `grpc` port to `tcp` 
+Set the `appProtocol` of the `grpc` port to `tcp`.
 
-```
+```yaml
 apiVersion: v1
 kind: Service
 metadata:
@@ -139,9 +139,9 @@ spec:
 
 Make the following modifications to the file for the Loki Distributor service.
 
-Set the `appProtocol` of the `grpc` port to `tcp` 
+Set the `appProtocol` of the `grpc` port to `tcp`.
 
-```
+```yaml
 apiVersion: v1
 kind: Service
 metadata:
@@ -173,9 +173,9 @@ spec:
 
 Make the following modifications to the file for the Memberlist service.
 
-Set the `appProtocol` of the `http` port to `tcp`
+Set the `appProtocol` of the `http` port to `tcp`.
 
-```
+```yaml
 apiVersion: v1
 kind: Service
 metadata:

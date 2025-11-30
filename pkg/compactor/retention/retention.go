@@ -21,17 +21,12 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
-	chunk_util "github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/filter"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 var chunkBucket = []byte("chunks")
-
-const (
-	MarkersFolder = "markers"
-)
 
 type Chunk struct {
 	ChunkID string
@@ -130,20 +125,20 @@ type TableMarker interface {
 }
 
 type Marker struct {
-	workingDirectory string
-	expiration       ExpirationChecker
-	markerMetrics    *markerMetrics
-	chunkClient      client.Client
-	markTimeout      time.Duration
+	markerStorageClient client.ObjectClient
+	expiration          ExpirationChecker
+	markerMetrics       *markerMetrics
+	chunkClient         client.Client
+	markTimeout         time.Duration
 }
 
-func NewMarker(workingDirectory string, expiration ExpirationChecker, markTimeout time.Duration, chunkClient client.Client, r prometheus.Registerer) (*Marker, error) {
+func NewMarker(markerStorageClient client.ObjectClient, expiration ExpirationChecker, markTimeout time.Duration, chunkClient client.Client, r prometheus.Registerer) (*Marker, error) {
 	return &Marker{
-		workingDirectory: workingDirectory,
-		expiration:       expiration,
-		markerMetrics:    newMarkerMetrics(r),
-		chunkClient:      chunkClient,
-		markTimeout:      markTimeout,
+		markerStorageClient: markerStorageClient,
+		expiration:          expiration,
+		markerMetrics:       newMarkerMetrics(r),
+		chunkClient:         chunkClient,
+		markTimeout:         markTimeout,
 	}, nil
 }
 
@@ -166,7 +161,7 @@ func (t *Marker) FindAndMarkChunksForDeletion(ctx context.Context, tableName, us
 }
 
 func (t *Marker) markTable(ctx context.Context, tableName, userID string, indexProcessor IndexProcessor, logger log.Logger) (bool, bool, error) {
-	markerWriter, err := NewMarkerStorageWriter(t.workingDirectory)
+	markerWriter, err := NewMarkerWriter(t.markerStorageClient)
 	if err != nil {
 		return false, false, fmt.Errorf("failed to create marker writer: %w", err)
 	}
@@ -201,7 +196,7 @@ func (t *Marker) markTable(ctx context.Context, tableName, userID string, indexP
 
 // MarkChunksForDeletion marks the given list of chunks for deletion
 func (t *Marker) MarkChunksForDeletion(tableName string, chunks []string) error {
-	markerWriter, err := NewMarkerStorageWriter(t.workingDirectory)
+	markerWriter, err := NewMarkerWriter(t.markerStorageClient)
 	if err != nil {
 		return fmt.Errorf("failed to create marker writer: %w", err)
 	}
@@ -396,7 +391,7 @@ type Sweeper struct {
 }
 
 func NewSweeper(
-	workingDir string,
+	markerStorageClient client.ObjectClient,
 	deleteClient ChunkClient,
 	deleteWorkerCount int,
 	minAgeDelete time.Duration,
@@ -405,7 +400,7 @@ func NewSweeper(
 ) (*Sweeper, error) {
 	m := newSweeperMetrics(r)
 
-	p, err := newMarkerStorageReader(workingDir, deleteWorkerCount, minAgeDelete, m)
+	p, err := newMarkerReader(markerStorageClient, deleteWorkerCount, minAgeDelete, m)
 	if err != nil {
 		return nil, err
 	}
@@ -566,9 +561,9 @@ func (c *chunkRewriter) rewriteChunk(ctx context.Context, userID []byte, ce Chun
 }
 
 // CopyMarkers checks for markers in the src dir and copies them to the dst.
-func CopyMarkers(src string, dst string) error {
-	markersDir := filepath.Join(src, MarkersFolder)
-	info, err := os.Stat(markersDir)
+// dstName must be a human-readable name for what dst is.
+func CopyMarkers(src string, dst client.ObjectClient, dstName string) error {
+	info, err := os.Stat(src)
 	if err != nil {
 		if os.IsNotExist(err) {
 			// nothing to migrate
@@ -582,28 +577,27 @@ func CopyMarkers(src string, dst string) error {
 		return nil
 	}
 
-	markers, err := os.ReadDir(markersDir)
+	markers, err := os.ReadDir(src)
 	if err != nil {
 		return fmt.Errorf("read markers dir: %w", err)
 	}
 
-	targetDir := filepath.Join(dst, MarkersFolder)
-	if err := chunk_util.EnsureDirectory(targetDir); err != nil {
-		return fmt.Errorf("ensure target markers dir: %w", err)
+	if len(markers) == 0 {
+		return nil
 	}
 
-	level.Info(util_log.Logger).Log("msg", fmt.Sprintf("found markers in retention dir %s, moving them to period specific dir: %s", markersDir, targetDir))
+	level.Info(util_log.Logger).Log("msg", fmt.Sprintf("found markers in retention dir %s, moving them to period specific destination: %s", src, dstName))
 	for _, marker := range markers {
 		if marker.IsDir() {
 			continue
 		}
 
-		data, err := os.ReadFile(filepath.Join(markersDir, marker.Name()))
+		data, err := os.ReadFile(filepath.Join(src, marker.Name()))
 		if err != nil {
 			return fmt.Errorf("read marker file: %w", err)
 		}
 
-		if err := os.WriteFile(filepath.Join(targetDir, marker.Name()), data, 0640); err != nil { // #nosec G306 -- this is fencing off the "other" permissions -- nosemgrep: incorrect-default-permissions
+		if err := dst.PutObject(context.Background(), marker.Name(), bytes.NewReader(data)); err != nil { // #nosec G306 -- this is fencing off the "other" permissions -- nosemgrep: incorrect-default-permissions
 			return fmt.Errorf("write marker file: %w", err)
 		}
 	}

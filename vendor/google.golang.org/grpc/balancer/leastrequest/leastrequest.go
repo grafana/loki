@@ -28,7 +28,7 @@ import (
 
 	"google.golang.org/grpc/balancer"
 	"google.golang.org/grpc/balancer/endpointsharding"
-	"google.golang.org/grpc/balancer/pickfirst/pickfirstleaf"
+	"google.golang.org/grpc/balancer/pickfirst"
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/grpclog"
 	internalgrpclog "google.golang.org/grpc/internal/grpclog"
@@ -90,7 +90,7 @@ func (bb) Build(cc balancer.ClientConn, bOpts balancer.BuildOptions) balancer.Ba
 		ClientConn:        cc,
 		endpointRPCCounts: resolver.NewEndpointMap[*atomic.Int32](),
 	}
-	b.child = endpointsharding.NewBalancer(b, bOpts, balancer.Get(pickfirstleaf.Name).Build, endpointsharding.Options{})
+	b.child = endpointsharding.NewBalancer(b, bOpts, balancer.Get(pickfirst.Name).Build, endpointsharding.Options{})
 	b.logger = internalgrpclog.NewPrefixLogger(logger, fmt.Sprintf("[%p] ", b))
 	b.logger.Infof("Created")
 	return b
@@ -141,7 +141,7 @@ func (lrb *leastRequestBalancer) UpdateClientConnState(ccs balancer.ClientConnSt
 	return lrb.child.UpdateClientConnState(balancer.ClientConnState{
 		// Enable the health listener in pickfirst children for client side health
 		// checks and outlier detection, if configured.
-		ResolverState: pickfirstleaf.EnableHealthListener(ccs.ResolverState),
+		ResolverState: pickfirst.EnableHealthListener(ccs.ResolverState),
 	})
 }
 

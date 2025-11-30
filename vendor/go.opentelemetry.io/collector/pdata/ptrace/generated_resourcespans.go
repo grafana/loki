@@ -8,7 +8,6 @@ package ptrace
 
 import (
 	"go.opentelemetry.io/collector/pdata/internal"
-	otlptrace "go.opentelemetry.io/collector/pdata/internal/data/protogen/trace/v1"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
@@ -20,11 +19,11 @@ import (
 // Must use NewResourceSpans function to create new instances.
 // Important: zero-initialized instance is not valid for use.
 type ResourceSpans struct {
-	orig  *otlptrace.ResourceSpans
+	orig  *internal.ResourceSpans
 	state *internal.State
 }
 
-func newResourceSpans(orig *otlptrace.ResourceSpans, state *internal.State) ResourceSpans {
+func newResourceSpans(orig *internal.ResourceSpans, state *internal.State) ResourceSpans {
 	return ResourceSpans{orig: orig, state: state}
 }
 
@@ -33,7 +32,7 @@ func newResourceSpans(orig *otlptrace.ResourceSpans, state *internal.State) Reso
 // This must be used only in testing code. Users should use "AppendEmpty" when part of a Slice,
 // OR directly access the member if this is embedded in another struct.
 func NewResourceSpans() ResourceSpans {
-	return newResourceSpans(internal.NewOrigResourceSpans(), internal.NewState())
+	return newResourceSpans(internal.NewResourceSpans(), internal.NewState())
 }
 
 // MoveTo moves all properties from the current struct overriding the destination and
@@ -45,13 +44,13 @@ func (ms ResourceSpans) MoveTo(dest ResourceSpans) {
 	if ms.orig == dest.orig {
 		return
 	}
-	internal.DeleteOrigResourceSpans(dest.orig, false)
+	internal.DeleteResourceSpans(dest.orig, false)
 	*dest.orig, *ms.orig = *ms.orig, *dest.orig
 }
 
 // Resource returns the resource associated with this ResourceSpans.
 func (ms ResourceSpans) Resource() pcommon.Resource {
-	return pcommon.Resource(internal.NewResource(&ms.orig.Resource, ms.state))
+	return pcommon.Resource(internal.NewResourceWrapper(&ms.orig.Resource, ms.state))
 }
 
 // ScopeSpans returns the ScopeSpans associated with this ResourceSpans.
@@ -73,5 +72,5 @@ func (ms ResourceSpans) SetSchemaUrl(v string) {
 // CopyTo copies all properties from the current struct overriding the destination.
 func (ms ResourceSpans) CopyTo(dest ResourceSpans) {
 	dest.state.AssertMutable()
-	internal.CopyOrigResourceSpans(dest.orig, ms.orig)
+	internal.CopyResourceSpans(dest.orig, ms.orig)
 }

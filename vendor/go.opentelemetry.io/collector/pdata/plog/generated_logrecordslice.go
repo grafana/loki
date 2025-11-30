@@ -11,7 +11,6 @@ import (
 	"sort"
 
 	"go.opentelemetry.io/collector/pdata/internal"
-	otlplogs "go.opentelemetry.io/collector/pdata/internal/data/protogen/logs/v1"
 )
 
 // LogRecordSlice logically represents a slice of LogRecord.
@@ -22,18 +21,18 @@ import (
 // Must use NewLogRecordSlice function to create new instances.
 // Important: zero-initialized instance is not valid for use.
 type LogRecordSlice struct {
-	orig  *[]*otlplogs.LogRecord
+	orig  *[]*internal.LogRecord
 	state *internal.State
 }
 
-func newLogRecordSlice(orig *[]*otlplogs.LogRecord, state *internal.State) LogRecordSlice {
+func newLogRecordSlice(orig *[]*internal.LogRecord, state *internal.State) LogRecordSlice {
 	return LogRecordSlice{orig: orig, state: state}
 }
 
-// NewLogRecordSlice creates a LogRecordSlice with 0 elements.
+// NewLogRecordSlice creates a LogRecordSliceWrapper with 0 elements.
 // Can use "EnsureCapacity" to initialize with a given capacity.
 func NewLogRecordSlice() LogRecordSlice {
-	orig := []*otlplogs.LogRecord(nil)
+	orig := []*internal.LogRecord(nil)
 	return newLogRecordSlice(&orig, internal.NewState())
 }
 
@@ -90,7 +89,7 @@ func (es LogRecordSlice) EnsureCapacity(newCap int) {
 		return
 	}
 
-	newOrig := make([]*otlplogs.LogRecord, len(*es.orig), newCap)
+	newOrig := make([]*internal.LogRecord, len(*es.orig), newCap)
 	copy(newOrig, *es.orig)
 	*es.orig = newOrig
 }
@@ -99,7 +98,7 @@ func (es LogRecordSlice) EnsureCapacity(newCap int) {
 // It returns the newly added LogRecord.
 func (es LogRecordSlice) AppendEmpty() LogRecord {
 	es.state.AssertMutable()
-	*es.orig = append(*es.orig, internal.NewOrigLogRecord())
+	*es.orig = append(*es.orig, internal.NewLogRecord())
 	return es.At(es.Len() - 1)
 }
 
@@ -128,7 +127,7 @@ func (es LogRecordSlice) RemoveIf(f func(LogRecord) bool) {
 	newLen := 0
 	for i := 0; i < len(*es.orig); i++ {
 		if f(es.At(i)) {
-			internal.DeleteOrigLogRecord((*es.orig)[i], true)
+			internal.DeleteLogRecord((*es.orig)[i], true)
 			(*es.orig)[i] = nil
 
 			continue
@@ -152,7 +151,7 @@ func (es LogRecordSlice) CopyTo(dest LogRecordSlice) {
 	if es.orig == dest.orig {
 		return
 	}
-	*dest.orig = internal.CopyOrigLogRecordSlice(*dest.orig, *es.orig)
+	*dest.orig = internal.CopyLogRecordPtrSlice(*dest.orig, *es.orig)
 }
 
 // Sort sorts the LogRecord elements within LogRecordSlice given the

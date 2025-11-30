@@ -18,12 +18,12 @@ package arrow
 
 import "github.com/apache/arrow-go/v18/internal/json"
 
-// Record is a collection of equal-length arrays matching a particular Schema.
-// Also known as a RecordBatch in the spec and in some implementations.
+// RecordBatch is a collection of equal-length arrays matching a particular Schema.
+// This corresponds to the RecordBatch concept in the Arrow specification.
 //
-// It is also possible to construct a Table from a collection of Records that
+// It is also possible to construct a Table from a collection of RecordBatches that
 // all have the same schema.
-type Record interface {
+type RecordBatch interface {
 	json.Marshaler
 
 	Release()
@@ -37,7 +37,7 @@ type Record interface {
 	Columns() []Array
 	Column(i int) Array
 	ColumnName(i int) string
-	SetColumn(i int, col Array) (Record, error)
+	SetColumn(i int, col Array) (RecordBatch, error)
 
 	// NewSlice constructs a zero-copy slice of the record with the indicated
 	// indices i and j, corresponding to array[i:j].
@@ -45,5 +45,12 @@ type Record interface {
 	//
 	// NewSlice panics if the slice is outside the valid range of the record array.
 	// NewSlice panics if j < i.
-	NewSlice(i, j int64) Record
+	NewSlice(i, j int64) RecordBatch
 }
+
+// Record as a term typically refers to a single row, but this type represents a batch of rows, known in Arrow parlance
+// as a RecordBatch. This alias is provided for backwards compatibility.
+//
+// Deprecated: This is deprecated to avoid the confusion of the terminology where Record refers to a single row,
+// use [RecordBatch] instead.
+type Record = RecordBatch

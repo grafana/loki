@@ -18,8 +18,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-
-	"cloud.google.com/go/internal/trace"
 )
 
 // CopierFrom creates a Copier that can copy src to dst.
@@ -82,8 +80,8 @@ type Copier struct {
 
 // Run performs the copy.
 func (c *Copier) Run(ctx context.Context) (attrs *ObjectAttrs, err error) {
-	ctx = trace.StartSpan(ctx, "cloud.google.com/go/storage.Copier.Run")
-	defer func() { trace.EndSpan(ctx, err) }()
+	ctx, _ = startSpan(ctx, "Copier.Run")
+	defer func() { endSpan(ctx, err) }()
 
 	if err := c.src.validate(); err != nil {
 		return nil, err
@@ -180,8 +178,8 @@ type Composer struct {
 
 // Run performs the compose operation.
 func (c *Composer) Run(ctx context.Context) (attrs *ObjectAttrs, err error) {
-	ctx = trace.StartSpan(ctx, "cloud.google.com/go/storage.Composer.Run")
-	defer func() { trace.EndSpan(ctx, err) }()
+	ctx, _ = startSpan(ctx, "Composer.Run")
+	defer func() { endSpan(ctx, err) }()
 
 	if err := c.dst.validate(); err != nil {
 		return nil, err

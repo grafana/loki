@@ -25,7 +25,8 @@ builds:
       - "-s -w -X main.version=v{{ .Version }}"
 
 archives:
-  - format: binary
+  - formats:
+      - binary
     name_template: >-
       {{ .ProjectName }}_{{- tolower .Os }}_{{- if eq .Arch "amd64" }}x86_64{{- else }}{{ .Arch }}{{ end }}
 checksum:

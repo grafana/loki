@@ -1,130 +1,204 @@
 {
-  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": [
-    "config:recommended"
+  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+  extends: [
+    'config:recommended',
+    'github>grafana/grafana-renovate-config//presets/base',
+    'github>grafana/grafana-renovate-config//presets/automerge',
+    'github>grafana/grafana-renovate-config//presets/labels',
   ],
-  "labels": [
-    "dependencies"
+  labels: [
+    'dependencies',
   ],
-  "ignorePaths": [
-    ".github/**",
-    "vendor/**"
+  ignorePaths: [
+    '.github/**',
+    'vendor/**',
   ],
-  "prHourlyLimit": 4,
-  "baseBranches": [
-    "main",
-    "release-3.5.x", // Update when a new release is out, 2 minors, 1 major.
-    "release-3.4.x", // Also ensure to update the 'packageRules' section to match
-    "release-2.9.x"
+  prHourlyLimit: 4,
+  baseBranchPatterns: [
+    'main',
+    'release-3.6.x', // Update when a new release is out, 2 minors, 1 major.
+    'release-3.5.x', // Also ensure to update the 'packageRules' section to match
+    //'release-2.9.x',
   ],
-  "packageRules": [
+  packageRules: [
     {
       // Disable updates for all branches - we only want security updates
-      "matchBaseBranches": ["release-3.5.x", "release-3.4.x", "release-2.9.x"],
-      "enabled": false
+      matchBaseBranches: [
+        'release-3.6.x',
+        'release-3.5.x',
+        'release-2.9.x',
+      ],
+      enabled: false,
     },
     {
+    // Disable ALL updates (including security) 
+    // for dependencies found in the 'operator/**' path, but ONLY on 
+    // the specified release branches. This explicitly overrides the 
+    // global 'vulnerabilityAlerts' for this scope.
+    matchBaseBranches: [
+      'release-2.9.x', 
+      //'release-3.4.x', 
+      'release-3.5.x'
+    ],
+    matchFileNames: ['operator/**'],
+    enabled: false
+  },
+    {
       // Disable Go version updates
-      "matchManagers": ["gomod"],
-      "matchPackageNames": ["go", "toolchain"],
-      "enabled": false
+      matchManagers: [
+        'gomod',
+      ],
+      matchPackageNames: [
+        'go',
+        'toolchain',
+      ],
+      enabled: false,
     },
     {
       // Disable Go and loki-build-image updates for Dockerfiles
-      "matchManagers": ["dockerfile"],
-      "matchPackageNames": ["golang", "grafana/loki-build-image"],
-      "enabled": false
+      matchManagers: [
+        'dockerfile',
+      ],
+      matchPackageNames: [
+        'golang',
+        'grafana/loki-build-image',
+      ],
+      enabled: false,
     },
     {
       // Disable updates driven by Kustomize, used by the operator
-      "matchManagers": ["kustomize"],
-      "enabled": false
+      matchManagers: [
+        'kustomize',
+      ],
+      enabled: false,
     },
     {
       // Disable certain npm updates for compatibility reasons
-      "matchManagers": ["npm"],
-      "matchPackageNames": ["tailwindcss"],
-      "enabled": false
+      matchManagers: [
+        'npm',
+      ],
+      matchPackageNames: [
+        'tailwindcss',
+      ],
+      enabled: false,
     },
     {
       // Auto-merge the rest of the npm updates
-      "matchManagers": ["npm"],
-      "matchPackageNames": ["!tailwindcss"],
-      "matchBaseBranches": ["main"],
-      "enabled": true,
-      "autoApprove": true,
-      "automerge": true
+      matchManagers: [
+        'npm',
+      ],
+      matchPackageNames: [
+        '!tailwindcss',
+      ],
+      matchBaseBranches: [
+        'main',
+      ],
+      enabled: true,
+      autoApprove: true,
+      automerge: true,
     },
     {
       // Don't automatically merge GitHub Actions updates
-      "matchManagers": ["github-actions"],
-      "enabled": true,
-      "matchUpdateTypes": ["major", "minor", "patch"],
-      "autoApprove": false,
-      "automerge": false
+      matchManagers: [
+        'github-actions',
+      ],
+      enabled: true,
+      matchUpdateTypes: [
+        'major',
+        'minor',
+        'patch',
+      ],
+      autoApprove: false,
+      automerge: false,
     },
     {
       // Separate out Helm updates from other dependencies
       // Don't automatically merge Helm updates
       // Updates to this require the docs to be updated
-      "matchManagers": ["helm-requirements", "helm-values", "helmv3"],
-      "groupName": "helm-{{packageName}}",
-      "matchUpdateTypes": ["major", "minor", "patch"],
-      "matchPackageNames": ["!grafana/loki"], // This is updated via a different job
-      "autoApprove": false,
-      "automerge": false
+      matchManagers: [
+        'helm-requirements',
+        'helm-values',
+        'helmv3',
+      ],
+      groupName: 'helm-{{packageName}}',
+      matchUpdateTypes: [
+        'major',
+        'minor',
+        'patch',
+      ],
+      matchPackageNames: [
+        '!grafana/loki',
+      ],
+      autoApprove: false,
+      automerge: false,
     },
     {
       // Disable operator updates
-      "matchFileNames": ["operator/go.mod", "operator/api/loki/go.mod"],
-      "enabled": false,
-      "autoApprove": false,
-      "automerge": false
+      matchFileNames: [
+        'operator/go.mod',
+        'operator/api/loki/go.mod',
+      ],
+      enabled: false,
+      autoApprove: false,
+      automerge: false,
     },
     {
       // Enable all other updates, and auto-merge minor and patch updates
-      "matchFileNames": ["!operator/go.mod", "!operator/api/loki/go.mod"],
-      "groupName": "{{packageName}}",
-      "enabled": true,
-      "matchUpdateTypes": ["minor", "patch"],
-      "automerge": true,
-      "autoApprove": true
+      matchFileNames: [
+        '!operator/go.mod',
+        '!operator/api/loki/go.mod',
+      ],
+      groupName: '{{packageName}}',
+      enabled: true,
+      matchUpdateTypes: [
+        'minor',
+        'patch',
+      ],
+      automerge: true,
+      autoApprove: true,
     },
     {
       // Enable all other updates, don't auto-merge major updates
-      "matchFileNames": ["!operator/go.mod", "!operator/api/loki/go.mod"],
-      "groupName": "{{packageName}}",
-      "enabled": true,
-      "matchUpdateTypes": ["major"],
-      "automerge": false,
-      "autoApprove": false
+      matchFileNames: [
+        '!operator/go.mod',
+        '!operator/api/loki/go.mod',
+      ],
+      groupName: '{{packageName}}',
+      enabled: true,
+      matchUpdateTypes: [
+        'major',
+      ],
+      automerge: false,
+      autoApprove: false,
     },
     {
       // Pin kprom to 1.2.x range, ignore 1.3.0+ updates due to a conflict with a metric introduced in this version.
       // Can be upgraded once adapative metrics and Mimir have upgraded.
-      "matchPackageNames": ["github.com/twmb/franz-go/plugin/kprom"],
-      "allowedVersions": "~1.2.0",
-      "enabled": true
-    }
+      matchPackageNames: [
+        'github.com/twmb/franz-go/plugin/kprom',
+      ],
+      allowedVersions: '~1.2.0',
+      enabled: true,
+    },
   ],
-  "digest": {
-    "enabled": false
+  digest: {
+    enabled: false,
   },
-  "vulnerabilityAlerts": {
-    "enabled": true,
-    "addLabels": [
-      "area/security"
+  vulnerabilityAlerts: {
+    enabled: true,
+    addLabels: [
+      'area/security',
     ],
-    "automerge": false, 
-    "autoApprove": false
+    automerge: false,
+    autoApprove: false,
   },
-  "osvVulnerabilityAlerts": true,
-  "prConcurrentLimit": 25,
-  "rebaseWhen": "auto",
-  "branchPrefix": "deps-update/",
-  "postUpdateOptions": [
-    "gomodTidy"
+  osvVulnerabilityAlerts: true,
+  prConcurrentLimit: 25,
+  rebaseWhen: 'auto',
+  branchPrefix: 'deps-update/',
+  postUpdateOptions: [
+    'gomodTidy',
   ],
-  "semanticCommitType": "fix",
-  "semanticCommitScope": "deps"
+  semanticCommitType: 'fix',
+  semanticCommitScope: 'deps',
 }

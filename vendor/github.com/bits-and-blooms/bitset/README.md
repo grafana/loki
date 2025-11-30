@@ -164,3 +164,13 @@ Before committing the code, please check if it passes tests, has adequate covera
 go test
 go test -cover
 ```
+
+## Stars
+
+
+[![Star History Chart](https://api.star-history.com/svg?repos=bits-and-blooms/bitset&type=Date)](https://www.star-history.com/#bits-and-blooms/bitset&Date)
+
+## Further reading
+
+<p>Mastering Programming: From Testing to Performance in Go</p>
+<div><a href="https://www.amazon.com/dp/B0FMPGSWR5"><img style="margin-left: auto; margin-right: auto;" src="https://m.media-amazon.com/images/I/61feneHS7kL._SL1499_.jpg" alt="" width="250px" /></a></div>

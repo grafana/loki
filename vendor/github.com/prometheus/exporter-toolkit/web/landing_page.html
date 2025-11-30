@@ -30,6 +30,7 @@
       </div>
       {{ end }}
       {{ .ExtraHTML }}
+      {{ if eq .Profiling "true" }}
       <div id="pprof">
       Download a detailed report of resource usage (pprof format, from the Go runtime):
       <ul>
@@ -38,6 +39,7 @@
       </ul>
       To visualize and share profiles you can upload to <a href="https://pprof.me" target="_blank" rel="noopener noreferrer">pprof.me</a>
       </div>
+      {{ end }}
     </main>
   </body>
 </html>

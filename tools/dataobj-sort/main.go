@@ -40,12 +40,14 @@ func main() {
 	}
 
 	cfg := logsobj.BuilderConfig{
-		TargetPageSize:          64 << 10,
-		MaxPageRows:             1000,
-		TargetObjectSize:        512 << 20,
-		TargetSectionSize:       512 << 20,
-		BufferSize:              16 << 20,
-		SectionStripeMergeLimit: 8,
+		BuilderBaseConfig: logsobj.BuilderBaseConfig{
+			TargetPageSize:          64 << 10,
+			MaxPageRows:             1000,
+			TargetObjectSize:        512 << 20,
+			TargetSectionSize:       512 << 20,
+			BufferSize:              16 << 20,
+			SectionStripeMergeLimit: 8,
+		},
 	}
 	scr, err := scratch.NewFilesystem(gokitlog.NewNopLogger(), os.TempDir())
 	if err != nil {

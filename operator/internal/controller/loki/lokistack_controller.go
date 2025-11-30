@@ -126,9 +126,10 @@ type LokiStackReconciler struct {
 // +kubebuilder:rbac:groups=coordination.k8s.io,resources=leases,verbs=get;create;update
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch;create;update
 // +kubebuilder:rbac:groups=policy,resources=poddisruptionbudgets,verbs=get;list;watch;create;update
-// +kubebuilder:rbac:groups=config.openshift.io,resources=dnses;apiservers;proxies,verbs=get;list;watch
+// +kubebuilder:rbac:groups=config.openshift.io,resources=dnses;apiservers;proxies;clusterversions,verbs=get;list;watch
 // +kubebuilder:rbac:groups=route.openshift.io,resources=routes,verbs=get;list;watch;create;update;delete
 // +kubebuilder:rbac:groups=cloudcredential.openshift.io,resources=credentialsrequests,verbs=get;list;watch;create;update;delete
+// +kubebuilder:rbac:groups=networking.k8s.io,resources=networkpolicies,verbs=get;list;watch;create;update;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -150,15 +151,19 @@ func (r *LokiStackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	var degraded *status.DegradedError
-	credentialMode, err := r.updateResources(ctx, req)
+	statusInfo, err := r.updateResources(ctx, req)
 	switch {
 	case errors.As(err, &degraded):
 		// degraded errors are handled by status.Refresh below
+		if statusInfo == nil {
+			statusInfo = &status.LokiStackStatusInfo{}
+		}
+		statusInfo.DegradedError = degraded
 	case err != nil:
 		return ctrl.Result{}, err
 	}
 
-	err = status.Refresh(ctx, r.Client, req, time.Now(), credentialMode, degraded)
+	err = status.Refresh(ctx, r.Client, req, time.Now(), statusInfo)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -172,25 +177,25 @@ func (r *LokiStackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	return ctrl.Result{}, nil
 }
 
-func (r *LokiStackReconciler) updateResources(ctx context.Context, req ctrl.Request) (lokiv1.CredentialMode, error) {
+func (r *LokiStackReconciler) updateResources(ctx context.Context, req ctrl.Request) (*status.LokiStackStatusInfo, error) {
 	if r.FeatureGates.BuiltInCertManagement.Enabled {
 		if err := handlers.CreateOrRotateCertificates(ctx, r.Log, req, r.Client, r.Scheme, r.FeatureGates); err != nil {
-			return "", err
+			return nil, err
 		}
 	}
 
 	if r.FeatureGates.OpenShift.TokenCCOAuthEnv {
 		if err := handlers.CreateUpdateDeleteCredentialsRequest(ctx, r.Log, r.Scheme, r.AuthConfig, r.Client, req); err != nil {
-			return "", err
+			return nil, err
 		}
 	}
 
-	credentialMode, err := handlers.CreateOrUpdateLokiStack(ctx, r.Log, req, r.Client, r.Scheme, r.FeatureGates)
+	statusInfo, err := handlers.CreateOrUpdateLokiStack(ctx, r.Log, req, r.Client, r.Scheme, r.FeatureGates)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	return credentialMode, nil
+	return statusInfo, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -212,6 +217,7 @@ func (r *LokiStackReconciler) buildController(bld k8s.Builder) error {
 		Owns(&rbacv1.ClusterRoleBinding{}, updateOrDeleteOnlyPred).
 		Owns(&rbacv1.Role{}, updateOrDeleteOnlyPred).
 		Owns(&rbacv1.RoleBinding{}, updateOrDeleteOnlyPred).
+		Owns(&networkingv1.NetworkPolicy{}, updateOrDeleteOnlyPred).
 		Watches(&corev1.Service{}, r.enqueueForAlertManagerServices(), createUpdateOrDeletePred).
 		Watches(&corev1.Secret{}, r.enqueueForStorageSecret(), createUpdateOrDeletePred).
 		Watches(&corev1.ConfigMap{}, r.enqueueForStorageCA(), createUpdateOrDeletePred)

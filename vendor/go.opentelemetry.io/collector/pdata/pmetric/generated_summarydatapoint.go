@@ -8,7 +8,6 @@ package pmetric
 
 import (
 	"go.opentelemetry.io/collector/pdata/internal"
-	otlpmetrics "go.opentelemetry.io/collector/pdata/internal/data/protogen/metrics/v1"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
@@ -20,11 +19,11 @@ import (
 // Must use NewSummaryDataPoint function to create new instances.
 // Important: zero-initialized instance is not valid for use.
 type SummaryDataPoint struct {
-	orig  *otlpmetrics.SummaryDataPoint
+	orig  *internal.SummaryDataPoint
 	state *internal.State
 }
 
-func newSummaryDataPoint(orig *otlpmetrics.SummaryDataPoint, state *internal.State) SummaryDataPoint {
+func newSummaryDataPoint(orig *internal.SummaryDataPoint, state *internal.State) SummaryDataPoint {
 	return SummaryDataPoint{orig: orig, state: state}
 }
 
@@ -33,7 +32,7 @@ func newSummaryDataPoint(orig *otlpmetrics.SummaryDataPoint, state *internal.Sta
 // This must be used only in testing code. Users should use "AppendEmpty" when part of a Slice,
 // OR directly access the member if this is embedded in another struct.
 func NewSummaryDataPoint() SummaryDataPoint {
-	return newSummaryDataPoint(internal.NewOrigSummaryDataPoint(), internal.NewState())
+	return newSummaryDataPoint(internal.NewSummaryDataPoint(), internal.NewState())
 }
 
 // MoveTo moves all properties from the current struct overriding the destination and
@@ -45,13 +44,13 @@ func (ms SummaryDataPoint) MoveTo(dest SummaryDataPoint) {
 	if ms.orig == dest.orig {
 		return
 	}
-	internal.DeleteOrigSummaryDataPoint(dest.orig, false)
+	internal.DeleteSummaryDataPoint(dest.orig, false)
 	*dest.orig, *ms.orig = *ms.orig, *dest.orig
 }
 
 // Attributes returns the Attributes associated with this SummaryDataPoint.
 func (ms SummaryDataPoint) Attributes() pcommon.Map {
-	return pcommon.Map(internal.NewMap(&ms.orig.Attributes, ms.state))
+	return pcommon.Map(internal.NewMapWrapper(&ms.orig.Attributes, ms.state))
 }
 
 // StartTimestamp returns the starttimestamp associated with this SummaryDataPoint.
@@ -117,5 +116,5 @@ func (ms SummaryDataPoint) SetFlags(v DataPointFlags) {
 // CopyTo copies all properties from the current struct overriding the destination.
 func (ms SummaryDataPoint) CopyTo(dest SummaryDataPoint) {
 	dest.state.AssertMutable()
-	internal.CopyOrigSummaryDataPoint(dest.orig, ms.orig)
+	internal.CopySummaryDataPoint(dest.orig, ms.orig)
 }

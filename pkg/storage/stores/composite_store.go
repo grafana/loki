@@ -296,6 +296,36 @@ func (c CompositeStore) HasForSeries(from, through model.Time) (sharding.ForSeri
 	return wrapped, true
 }
 
+func (c CompositeStore) HasChunkSizingInfo(from, through model.Time) bool {
+	allStoresHaveChunkSizingInfo := true
+	_ = c.forStores(context.Background(), from, through, func(_ context.Context, from, through model.Time, store Store) error {
+		if !store.HasChunkSizingInfo(from, through) {
+			allStoresHaveChunkSizingInfo = false
+		}
+		return nil
+	})
+
+	return allStoresHaveChunkSizingInfo
+}
+
+func (c CompositeStore) GetChunkRefsWithSizingInfo(ctx context.Context, userID string, from, through model.Time, predicate chunk.Predicate) ([]logproto.ChunkRefWithSizingInfo, error) {
+	var chunks []logproto.ChunkRefWithSizingInfo
+	err := c.forStores(ctx, from, through, func(innerCtx context.Context, innerFrom, innerThrough model.Time, store Store) error {
+		chks, err := store.GetChunkRefsWithSizingInfo(innerCtx, userID, innerFrom, innerThrough, predicate)
+		if err != nil {
+			return err
+		}
+
+		chunks = append(chunks, chks...)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return chunks, nil
+}
+
 func (c CompositeStore) GetChunkFetcher(tm model.Time) *fetcher.Fetcher {
 	// find the schema with the lowest start _after_ tm
 	j := sort.Search(len(c.stores), func(j int) bool {

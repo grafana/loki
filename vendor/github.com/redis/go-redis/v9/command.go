@@ -17,6 +17,55 @@ import (
 	"github.com/redis/go-redis/v9/internal/util"
 )
 
+// keylessCommands contains Redis commands that have empty key specifications (9th slot empty)
+// Only includes core Redis commands, excludes FT.*, ts.*, timeseries.*, search.* and subcommands
+var keylessCommands = map[string]struct{}{
+	"acl":          {},
+	"asking":       {},
+	"auth":         {},
+	"bgrewriteaof": {},
+	"bgsave":       {},
+	"client":       {},
+	"cluster":      {},
+	"config":       {},
+	"debug":        {},
+	"discard":      {},
+	"echo":         {},
+	"exec":         {},
+	"failover":     {},
+	"function":     {},
+	"hello":        {},
+	"latency":      {},
+	"lolwut":       {},
+	"module":       {},
+	"monitor":      {},
+	"multi":        {},
+	"pfselftest":   {},
+	"ping":         {},
+	"psubscribe":   {},
+	"psync":        {},
+	"publish":      {},
+	"pubsub":       {},
+	"punsubscribe": {},
+	"quit":         {},
+	"readonly":     {},
+	"readwrite":    {},
+	"replconf":     {},
+	"replicaof":    {},
+	"role":         {},
+	"save":         {},
+	"script":       {},
+	"select":       {},
+	"shutdown":     {},
+	"slaveof":      {},
+	"slowlog":      {},
+	"subscribe":    {},
+	"swapdb":       {},
+	"sync":         {},
+	"unsubscribe":  {},
+	"unwatch":      {},
+}
+
 type Cmder interface {
 	// command name.
 	// e.g. "set k v ex 10" -> "set", "cluster info" -> "cluster".
@@ -75,12 +124,22 @@ func writeCmd(wr *proto.Writer, cmd Cmder) error {
 	return wr.WriteArgs(cmd.Args())
 }
 
+// cmdFirstKeyPos returns the position of the first key in the command's arguments.
+// If the command does not have a key, it returns 0.
+// TODO: Use the data in CommandInfo to determine the first key position.
 func cmdFirstKeyPos(cmd Cmder) int {
 	if pos := cmd.firstKeyPos(); pos != 0 {
 		return int(pos)
 	}
 
-	switch cmd.Name() {
+	name := cmd.Name()
+
+	// first check if the command is keyless
+	if _, ok := keylessCommands[name]; ok {
+		return 0
+	}
+
+	switch name {
 	case "eval", "evalsha", "eval_ro", "evalsha_ro":
 		if cmd.stringArg(2) != "0" {
 			return 3
@@ -634,6 +693,68 @@ func (cmd *IntCmd) String() string {
 
 func (cmd *IntCmd) readReply(rd *proto.Reader) (err error) {
 	cmd.val, err = rd.ReadInt()
+	return err
+}
+
+//------------------------------------------------------------------------------
+
+// DigestCmd is a command that returns a uint64 xxh3 hash digest.
+//
+// This command is specifically designed for the Redis DIGEST command,
+// which returns the xxh3 hash of a key's value as a hex string.
+// The hex string is automatically parsed to a uint64 value.
+//
+// The digest can be used for optimistic locking with SetIFDEQ, SetIFDNE,
+// and DelExArgs commands.
+//
+// For examples of client-side digest generation and usage patterns, see:
+// example/digest-optimistic-locking/
+//
+// Redis 8.4+. See https://redis.io/commands/digest/
+type DigestCmd struct {
+	baseCmd
+
+	val uint64
+}
+
+var _ Cmder = (*DigestCmd)(nil)
+
+func NewDigestCmd(ctx context.Context, args ...interface{}) *DigestCmd {
+	return &DigestCmd{
+		baseCmd: baseCmd{
+			ctx:  ctx,
+			args: args,
+		},
+	}
+}
+
+func (cmd *DigestCmd) SetVal(val uint64) {
+	cmd.val = val
+}
+
+func (cmd *DigestCmd) Val() uint64 {
+	return cmd.val
+}
+
+func (cmd *DigestCmd) Result() (uint64, error) {
+	return cmd.val, cmd.err
+}
+
+func (cmd *DigestCmd) String() string {
+	return cmdString(cmd, cmd.val)
+}
+
+func (cmd *DigestCmd) readReply(rd *proto.Reader) (err error) {
+	// Redis DIGEST command returns a hex string (e.g., "a1b2c3d4e5f67890")
+	// We parse it as a uint64 xxh3 hash value
+	var hexStr string
+	hexStr, err = rd.ReadString()
+	if err != nil {
+		return err
+	}
+
+	// Parse hex string to uint64
+	cmd.val, err = strconv.ParseUint(hexStr, 16, 64)
 	return err
 }
 
@@ -1526,6 +1647,12 @@ func (cmd *StringStructMapCmd) readReply(rd *proto.Reader) error {
 type XMessage struct {
 	ID     string
 	Values map[string]interface{}
+	// MillisElapsedFromDelivery is the number of milliseconds since the entry was last delivered.
+	// Only populated when using XREADGROUP with CLAIM argument for claimed entries.
+	MillisElapsedFromDelivery int64
+	// DeliveredCount is the number of times the entry was delivered.
+	// Only populated when using XREADGROUP with CLAIM argument for claimed entries.
+	DeliveredCount int64
 }
 
 type XMessageSliceCmd struct {
@@ -1582,8 +1709,14 @@ func readXMessageSlice(rd *proto.Reader) ([]XMessage, error) {
 }
 
 func readXMessage(rd *proto.Reader) (XMessage, error) {
-	if err := rd.ReadFixedArrayLen(2); err != nil {
+	// Read array length can be 2 or 4 (with CLAIM metadata)
+	n, err := rd.ReadArrayLen()
+	if err != nil {
 		return XMessage{}, err
+	}
+
+	if n != 2 && n != 4 {
+		return XMessage{}, fmt.Errorf("redis: got %d elements in the XMessage array, expected 2 or 4", n)
 	}
 
 	id, err := rd.ReadString()
@@ -1598,10 +1731,24 @@ func readXMessage(rd *proto.Reader) (XMessage, error) {
 		}
 	}
 
-	return XMessage{
+	msg := XMessage{
 		ID:     id,
 		Values: v,
-	}, nil
+	}
+
+	if n == 4 {
+		msg.MillisElapsedFromDelivery, err = rd.ReadInt()
+		if err != nil {
+			return XMessage{}, err
+		}
+
+		msg.DeliveredCount, err = rd.ReadInt()
+		if err != nil {
+			return XMessage{}, err
+		}
+	}
+
+	return msg, nil
 }
 
 func stringInterfaceMapParser(rd *proto.Reader) (map[string]interface{}, error) {
@@ -3584,15 +3731,14 @@ func (c *cmdsInfoCache) Get(ctx context.Context) (map[string]*CommandInfo, error
 			return err
 		}
 
+		lowerCmds := make(map[string]*CommandInfo, len(cmds))
+
 		// Extensions have cmd names in upper case. Convert them to lower case.
 		for k, v := range cmds {
-			lower := internal.ToLower(k)
-			if lower != k {
-				cmds[lower] = v
-			}
+			lowerCmds[internal.ToLower(k)] = v
 		}
 
-		c.cmds = cmds
+		c.cmds = lowerCmds
 		return nil
 	})
 	return c.cmds, err
@@ -3705,6 +3851,83 @@ func (cmd *SlowLogCmd) readReply(rd *proto.Reader) error {
 		}
 	}
 
+	return nil
+}
+
+//-----------------------------------------------------------------------
+
+type Latency struct {
+	Name   string
+	Time   time.Time
+	Latest time.Duration
+	Max    time.Duration
+}
+
+type LatencyCmd struct {
+	baseCmd
+	val []Latency
+}
+
+var _ Cmder = (*LatencyCmd)(nil)
+
+func NewLatencyCmd(ctx context.Context, args ...interface{}) *LatencyCmd {
+	return &LatencyCmd{
+		baseCmd: baseCmd{
+			ctx:  ctx,
+			args: args,
+		},
+	}
+}
+
+func (cmd *LatencyCmd) SetVal(val []Latency) {
+	cmd.val = val
+}
+
+func (cmd *LatencyCmd) Val() []Latency {
+	return cmd.val
+}
+
+func (cmd *LatencyCmd) Result() ([]Latency, error) {
+	return cmd.val, cmd.err
+}
+
+func (cmd *LatencyCmd) String() string {
+	return cmdString(cmd, cmd.val)
+}
+
+func (cmd *LatencyCmd) readReply(rd *proto.Reader) error {
+	n, err := rd.ReadArrayLen()
+	if err != nil {
+		return err
+	}
+	cmd.val = make([]Latency, n)
+	for i := 0; i < len(cmd.val); i++ {
+		nn, err := rd.ReadArrayLen()
+		if err != nil {
+			return err
+		}
+		if nn < 3 {
+			return fmt.Errorf("redis: got %d elements in latency get, expected at least 3", nn)
+		}
+		if cmd.val[i].Name, err = rd.ReadString(); err != nil {
+			return err
+		}
+		createdAt, err := rd.ReadInt()
+		if err != nil {
+			return err
+		}
+		cmd.val[i].Time = time.Unix(createdAt, 0)
+		latest, err := rd.ReadInt()
+		if err != nil {
+			return err
+		}
+		cmd.val[i].Latest = time.Duration(latest) * time.Millisecond
+		maximum, err := rd.ReadInt()
+		if err != nil {
+			return err
+		}
+		cmd.val[i].Max = time.Duration(maximum) * time.Millisecond
+	}
 	return nil
 }
 
@@ -5139,6 +5362,9 @@ type ClientInfo struct {
 	OutputListLength   int           // oll, output list length (replies are queued in this list when the buffer is full)
 	OutputMemory       int           // omem, output buffer memory usage
 	TotalMemory        int           // tot-mem, total memory consumed by this client in its various buffers
+	TotalNetIn         int           // tot-net-in, total network input
+	TotalNetOut        int           // tot-net-out, total network output
+	TotalCmds          int           // tot-cmds, total number of commands processed
 	IoThread           int           // io-thread id
 	Events             string        // file descriptor events (see below)
 	LastCmd            string        // cmd, last command played
@@ -5304,6 +5530,12 @@ func parseClientInfo(txt string) (info *ClientInfo, err error) {
 			info.OutputMemory, err = strconv.Atoi(val)
 		case "tot-mem":
 			info.TotalMemory, err = strconv.Atoi(val)
+		case "tot-net-in":
+			info.TotalNetIn, err = strconv.Atoi(val)
+		case "tot-net-out":
+			info.TotalNetOut, err = strconv.Atoi(val)
+		case "tot-cmds":
+			info.TotalCmds, err = strconv.Atoi(val)
 		case "events":
 			info.Events = val
 		case "cmd":

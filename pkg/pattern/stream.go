@@ -2,6 +2,7 @@ package pattern
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -36,6 +37,7 @@ type stream struct {
 	persistenceGranularity time.Duration
 	sampleInterval         time.Duration
 	patternRateThreshold   float64
+	volumeThreshold        float64
 }
 
 func newStream(
@@ -49,6 +51,7 @@ func newStream(
 	limits Limits,
 	patternWriter aggregation.EntryWriter,
 	aggregationMetrics *aggregation.Metrics,
+	volumeThreshold float64,
 ) (*stream, error) {
 	linesSkipped, err := metrics.linesSkipped.CurryWith(prometheus.Labels{"tenant": instanceID})
 	if err != nil {
@@ -86,6 +89,7 @@ func newStream(
 		persistenceGranularity: persistenceGranularity,
 		sampleInterval:         drainCfg.SampleInterval,
 		patternRateThreshold:   limits.PatternRateThreshold(instanceID),
+		volumeThreshold:        volumeThreshold,
 	}, nil
 }
 
@@ -139,26 +143,58 @@ func (s *stream) Iterator(_ context.Context, from, through, step model.Time) (it
 	return iter.NewMerge(iters...), nil
 }
 
+// Collect all clusters with their metadata for filtering
+type clusterWithMeta struct {
+	cluster       *drain.LogCluster
+	level         string
+	drainInstance *drain.Drain
+	prunedSamples []*logproto.PatternSample
+}
+
 func (s *stream) prune(olderThan time.Duration) bool {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
+	var allClusters []clusterWithMeta
+
+	// First pass: collect all clusters and prune samples
 	totalClusters := 0
 	for lvl, pattern := range s.patterns {
 		clusters := pattern.Clusters()
 		for _, cluster := range clusters {
 			prunedSamples := cluster.Prune(olderThan)
-			// Write patterns for pruned chunks with bucketed aggregation
 			if len(prunedSamples) > 0 {
-				s.writePatternsBucketed(prunedSamples, s.labels, cluster.String(), lvl)
+				allClusters = append(allClusters, clusterWithMeta{
+					cluster:       cluster,
+					level:         lvl,
+					drainInstance: pattern,
+					prunedSamples: prunedSamples,
+				})
 			}
 			if cluster.Size == 0 {
 				pattern.Delete(cluster)
 			}
+			// Clear empty branches and track total clusters
+			pattern.Prune()
+			totalClusters += len(pattern.Clusters())
 		}
-		// Clear empty branches after deleting chunks & clusters
-		pattern.Prune()
-		totalClusters += len(pattern.Clusters())
+	}
+
+	// Filter clusters by volume if volumeThreshold is set (< 1.0)
+	var clustersToWrite []clusterWithMeta
+	if s.volumeThreshold > 0 && s.volumeThreshold < 1.0 && len(allClusters) > 0 {
+		// Sort clusters by volume, and keep only the top threshold of clusters by volume
+		// To optimize memory, filterClustersByVolume will mutate the input slice, the slice we get
+		// in rerturn uses the same underlying array as the input slice.
+		clustersToWrite = filterClustersByVolume(allClusters, s.volumeThreshold)
+	} else {
+		// No filtering, write all clusters
+		clustersToWrite = allClusters
+	}
+
+	// Write patterns for filtered clusters
+	for _, cm := range clustersToWrite {
+		s.writePatternsBucketed(cm.prunedSamples, s.labels, cm.cluster.String(), cm.level)
 	}
 
 	// Update active patterns gauge
@@ -173,18 +209,13 @@ func (s *stream) updatePatternsActiveGauge() {
 		return
 	}
 
-	service := s.labels.Get(push.LabelServiceName)
-	if service == "" {
-		service = push.ServiceUnknown
-	}
-
 	// Count total clusters across all levels
 	totalClusters := 0
 	for _, pattern := range s.patterns {
 		totalClusters += len(pattern.Clusters())
 	}
 
-	s.aggregationMetrics.PatternsActive.WithLabelValues(s.instanceID, service).Set(float64(totalClusters))
+	s.aggregationMetrics.PatternsActive.WithLabelValues(s.instanceID).Set(float64(totalClusters))
 }
 
 func (s *stream) flush() {
@@ -216,12 +247,11 @@ func (s *stream) writePattern(
 		// Record metrics
 		if s.aggregationMetrics != nil {
 			// Increment pattern writes counter
-			s.aggregationMetrics.PatternWritesTotal.WithLabelValues(s.instanceID, service).Inc()
+			s.aggregationMetrics.PatternWritesTotal.WithLabelValues(s.instanceID).Inc()
 
 			// Record pattern entry size
 			entrySize := len(patternEntry)
-			s.aggregationMetrics.PatternBytesWrittenTotal.WithLabelValues(s.instanceID, service).Add(float64(entrySize))
-			s.aggregationMetrics.PatternPayloadBytes.WithLabelValues(s.instanceID, service).Observe(float64(entrySize))
+			s.aggregationMetrics.PatternBytesWrittenTotal.WithLabelValues(s.instanceID).Add(float64(entrySize))
 		}
 
 		s.patternWriter.WriteEntry(
@@ -320,4 +350,53 @@ func (s *stream) calculatePatternRate(samples []*logproto.PatternSample) float64
 
 	// Return samples per second
 	return float64(totalCount) / timeSpanSeconds
+}
+
+// filterClustersByVolume sorts clusters in-place by volume and returns the number of clusters
+// to keep to represent the top X% of total volume. This mutates the input slice, and returns
+// a filtered slice that utilizes the same underlying array as the input slice.
+func filterClustersByVolume(clusters []clusterWithMeta, threshold float64) []clusterWithMeta {
+	if len(clusters) == 0 {
+		return []clusterWithMeta{}
+	}
+
+	// Handle threshold of 0 - keep no clusters
+	if threshold == 0 {
+		return []clusterWithMeta{}
+	}
+
+	var totalVolume int64
+	for _, cluster := range clusters {
+		totalVolume += cluster.cluster.Volume
+	}
+
+	// Sort clusters by volume in descending order (in-place)
+	slices.SortFunc(clusters, func(i, j clusterWithMeta) int {
+		if i.cluster.Volume > j.cluster.Volume {
+			return -1 // Higher volume first
+		}
+		if i.cluster.Volume < j.cluster.Volume {
+			return 1 // Lower volume last
+		}
+		return 0
+	})
+
+	if totalVolume == 0 {
+		return []clusterWithMeta{}
+	}
+
+	// Find how many clusters to keep for the threshold
+	targetVolume := int64(float64(totalVolume) * threshold)
+	var cumulativeVolume int64
+
+	var i int
+	for ; i < len(clusters); i++ {
+		cumulativeVolume += clusters[i].cluster.Volume
+		if cumulativeVolume >= targetVolume {
+			i++ // Include this cluster that pushed us over the threshold
+			break
+		}
+	}
+
+	return clusters[0:i]
 }

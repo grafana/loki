@@ -42,13 +42,15 @@ type CopyDestOptions struct {
 	// provided key. If it is nil, no encryption is performed.
 	Encryption encrypt.ServerSide
 
+	ChecksumType ChecksumType
+
 	// `userMeta` is the user-metadata key-value pairs to be set on the
 	// destination. The keys are automatically prefixed with `x-amz-meta-`
 	// if needed. If nil is passed, and if only a single source (of any
 	// size) is provided in the ComposeObject call, then metadata from the
 	// source is copied to the destination.
 	// if no user-metadata is provided, it is copied from source
-	// (when there is only once source object in the compose
+	// (when there is only one source object in the compose
 	// request)
 	UserMetadata map[string]string
 	// UserMetadata is only set to destination if ReplaceMetadata is true
@@ -139,6 +141,9 @@ func (opts CopyDestOptions) Marshal(header http.Header) {
 	}
 	if !opts.Expires.IsZero() {
 		header.Set("Expires", opts.Expires.UTC().Format(http.TimeFormat))
+	}
+	if opts.ChecksumType.IsSet() {
+		header.Set(amzChecksumAlgo, opts.ChecksumType.String())
 	}
 
 	if opts.ReplaceMetadata {
@@ -345,7 +350,7 @@ func (c *Client) copyObjectPartDo(ctx context.Context, srcBucket, srcObject, des
 	})
 	defer closeResponse(resp)
 	if err != nil {
-		return
+		return p, err
 	}
 
 	// Check if we got an error response.
@@ -580,7 +585,7 @@ func partsRequired(size int64) int64 {
 // it is not the last part.
 func calculateEvenSplits(size int64, src CopySrcOptions) (startIndex, endIndex []int64) {
 	if size == 0 {
-		return
+		return startIndex, endIndex
 	}
 
 	reqParts := partsRequired(size)
@@ -617,5 +622,5 @@ func calculateEvenSplits(size int64, src CopySrcOptions) (startIndex, endIndex [
 
 		startIndex[j], endIndex[j] = cStart, cEnd
 	}
-	return
+	return startIndex, endIndex
 }

@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"sort"
 	"strconv"
+	"sync"
 
 	"github.com/go-viper/mapstructure/v2"
 	"github.com/knadh/koanf/maps"
@@ -19,6 +20,7 @@ type Koanf struct {
 	confMapFlat map[string]interface{}
 	keyMap      KeyMap
 	conf        Conf
+	mu          sync.RWMutex
 }
 
 // Conf is the Koanf configuration.
@@ -123,10 +125,12 @@ func (ko *Koanf) Load(p Provider, pa Parser, opts ...Option) error {
 // Keys returns the slice of all flattened keys in the loaded configuration
 // sorted alphabetically.
 func (ko *Koanf) Keys() []string {
+	ko.mu.RLock()
 	out := make([]string, 0, len(ko.confMapFlat))
 	for k := range ko.confMapFlat {
 		out = append(out, k)
 	}
+	ko.mu.RUnlock()
 	sort.Strings(out)
 	return out
 }
@@ -134,11 +138,13 @@ func (ko *Koanf) Keys() []string {
 // KeyMap returns a map of flattened keys and the individual parts of the
 // key as slices. eg: "parent.child.key" => ["parent", "child", "key"].
 func (ko *Koanf) KeyMap() KeyMap {
+	ko.mu.RLock()
 	out := make(KeyMap, len(ko.keyMap))
 	for key, parts := range ko.keyMap {
 		out[key] = make([]string, len(parts))
 		copy(out[key], parts)
 	}
+	ko.mu.RUnlock()
 	return out
 }
 
@@ -146,6 +152,8 @@ func (ko *Koanf) KeyMap() KeyMap {
 // Note that it uses maps.Copy to create a copy that uses
 // json.Marshal which changes the numeric types to float64.
 func (ko *Koanf) All() map[string]interface{} {
+	ko.mu.RLock()
+	defer ko.mu.RUnlock()
 	return maps.Copy(ko.confMapFlat)
 }
 
@@ -153,6 +161,8 @@ func (ko *Koanf) All() map[string]interface{} {
 // Note that it uses maps.Copy to create a copy that uses
 // json.Marshal which changes the numeric types to float64.
 func (ko *Koanf) Raw() map[string]interface{} {
+	ko.mu.RLock()
+	defer ko.mu.RUnlock()
 	return maps.Copy(ko.confMap)
 }
 
@@ -160,9 +170,13 @@ func (ko *Koanf) Raw() map[string]interface{} {
 // of the config map with keys sorted alphabetically.
 func (ko *Koanf) Sprint() string {
 	b := bytes.Buffer{}
-	for _, k := range ko.Keys() {
-		b.WriteString(fmt.Sprintf("%s -> %v\n", k, ko.confMapFlat[k]))
+	keys := ko.Keys()
+	ko.mu.RLock()
+	for _, k := range keys {
+		v := ko.confMapFlat[k]
+		b.WriteString(fmt.Sprintf("%s -> %v\n", k, v))
 	}
+	ko.mu.RUnlock()
 	return b.String()
 }
 
@@ -287,6 +301,9 @@ func (ko *Koanf) UnmarshalWithConf(path string, o interface{}, c UnmarshalConf) 
 // Clears all keys/values if no path is specified.
 // Every empty, key on the path, is recursively deleted.
 func (ko *Koanf) Delete(path string) {
+	ko.mu.Lock()
+	defer ko.mu.Unlock()
+
 	// No path. Erase the entire map.
 	if path == "" {
 		ko.confMap = make(map[string]interface{})
@@ -316,11 +333,14 @@ func (ko *Koanf) Get(path string) interface{} {
 	}
 
 	// Does the path exist?
+	ko.mu.RLock()
 	p, ok := ko.keyMap[path]
 	if !ok {
+		ko.mu.RUnlock()
 		return nil
 	}
 	res := maps.Search(ko.confMap, p)
+	ko.mu.RUnlock()
 
 	// Non-reference types are okay to return directly.
 	// Other types are "copied" with maps.Copy or json.Marshal
@@ -370,7 +390,9 @@ func (ko *Koanf) Slices(path string) []*Koanf {
 
 // Exists returns true if the given key path exists in the conf map.
 func (ko *Koanf) Exists(path string) bool {
+	ko.mu.RLock()
 	_, ok := ko.keyMap[path]
+	ko.mu.RUnlock()
 	return ok
 }
 
@@ -404,6 +426,9 @@ func (ko *Koanf) Delim() string {
 }
 
 func (ko *Koanf) merge(c map[string]interface{}, opts *options) error {
+	ko.mu.Lock()
+	defer ko.mu.Unlock()
+
 	maps.IntfaceKeysToStrings(c)
 	if opts.merge != nil {
 		if err := opts.merge(c, ko.confMap); err != nil {

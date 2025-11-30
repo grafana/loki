@@ -22,7 +22,7 @@ import (
 	"strconv"
 
 	"github.com/go-openapi/jsonpointer"
-	"github.com/go-openapi/swag"
+	"github.com/go-openapi/swag/jsonutils"
 )
 
 // Swagger this is the root document object for the API specification.
@@ -54,7 +54,7 @@ func (s Swagger) MarshalJSON() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return swag.ConcatJSON(b1, b2), nil
+	return jsonutils.ConcatJSON(b1, b2), nil
 }
 
 // UnmarshalJSON unmarshals a swagger spec from json
@@ -379,7 +379,7 @@ func (s *StringOrArray) UnmarshalJSON(data []byte) error {
 		*s = StringOrArray([]string{v})
 		return nil
 	default:
-		return fmt.Errorf("only string or array is allowed, not %T", single)
+		return fmt.Errorf("only string or array is allowed, not %T: %w", single, ErrSpec)
 	}
 }
 

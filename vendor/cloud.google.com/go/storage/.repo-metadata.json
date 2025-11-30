@@ -1,0 +1,10 @@
+{
+  "api_shortname": "storage",
+  "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/storage/latest",
+  "client_library_type": "manual",
+  "description": "Cloud Storage (GCS)",
+  "distribution_name": "cloud.google.com/go/storage",
+  "language": "go",
+  "library_type": "GAPIC_MANUAL",
+  "release_level": "stable"
+}

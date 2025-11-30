@@ -16,17 +16,24 @@ To log events with Grafana Loki, download and install both Promtail and Loki.
 
 The configuration runs Loki as a single binary.
 
+{{< admonition type="note" >}}
+Grafana Loki does not come with any included authentication layer. You must run an authenticating reverse proxy in front of your services to prevent unauthorized access to Loki (for example, nginx). Refer to [Manage authentication](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/authentication/) for a list of open-source reverse proxies you can use.
+{{< /admonition >}}
+
 ## Install using APT or RPM package manager
 
 1. Add the Grafana [Advanced Package Tool (APT)](https://apt.grafana.com/) or [RPM Package Manager (RPM)](https://rpm.grafana.com/) package repository following the linked instructions.
 1. Install Loki and Promtail
    1. Using `dnf`
-      ```
+
+      ```bash
       dnf update
       dnf install loki promtail
       ```
+
    1. Using `apt-get`
-      ```
+
+      ```bash
       apt-get update
       apt-get install loki promtail
       ```
@@ -39,7 +46,7 @@ The configuration runs Loki as a single binary.
 
    Don't download LogCLI or Loki Canary at this time.
    LogCLI allows you to run Loki queries in a command line interface.
-   [Loki Canary](../../../operations/loki-canary/) is a tool to audit Loki performance.
+   [Loki Canary](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/loki-canary/) is a tool to audit Loki performance.
 
 1. Extract the package contents into the same directory. This is where the two programs will run.
 1. In the command line, change directory (`cd` on most systems) to the directory with Loki and Promtail.
@@ -49,7 +56,7 @@ The configuration runs Loki as a single binary.
    Use the Git references that match your downloaded Loki version to get the correct configuration file.
    For example, if you are using Loki version 3.4.1, you need to use the `https://raw.githubusercontent.com/grafana/loki/v3.4.1/cmd/loki/loki-local-config.yaml` URL to download the configuration file.
 
-   ```
+   ```bash
    wget https://raw.githubusercontent.com/grafana/loki/main/cmd/loki/loki-local-config.yaml
    wget https://raw.githubusercontent.com/grafana/loki/main/clients/cmd/promtail/promtail-local-config.yaml
    ```
@@ -58,20 +65,20 @@ The configuration runs Loki as a single binary.
 
    **Windows**
 
-   ```
+   ```bash
    .\loki-windows-amd64.exe --config.file=loki-local-config.yaml
    ```
 
    **Linux**
 
-   ```
+   ```bash
    ./loki-linux-amd64 -config.file=loki-local-config.yaml
    ```
 
 Loki runs and displays Loki logs in your command line and on http://localhost:3100/metrics.
 
 The next step is running an agent to send logs to Loki.
-To do so with Promtail, refer to the [Promtail configuration](../../../send-data/promtail/).
+To do so with Promtail, refer to the [Promtail configuration](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/promtail/configuration/).
 
 ## Release binaries - openSUSE Linux only
 
@@ -86,22 +93,24 @@ To install them:
 1. Add the repository `https://download.opensuse.org/repositories/security:/logging/` to your system.
    For example, if you are using Leap 15.1, run:
 
-   ```
+   ```bash
    sudo zypper ar https://download.opensuse.org/repositories/security:/logging/openSUSE_Leap_15.1/security:logging.repo
    sudo zypper ref
    ```
 
 1. Install the Loki package:
 
-   ```
+   ```bash
    zypper in loki
    ```
 
 1. Start and enable the Loki and Promtail services:
-   ```
+
+   ```bash
    systemd start loki
    systemd enable loki
    systemd start promtail
    systemd enable promtail
    ```
+
 1. Modify the `/etc/loki/promtail.yaml` and `/etc/loki/loki.yaml` configuration files as needed.

@@ -70,7 +70,7 @@ spec:
       {{- end }}
       {{- include "loki.writePriorityClassName" . | nindent 6 }}
       securityContext:
-        {{- toYaml .Values.loki.podSecurityContext | nindent 8 }}
+        {{- include "loki.podSecurityContext" . | nindent 8 }}
       terminationGracePeriodSeconds: {{ .Values.write.terminationGracePeriodSeconds }}
       {{- if and (semverCompare ">=1.33-0" (include "loki.kubeVersion" .)) (kindIs "bool" .Values.write.hostUsers) }}
       hostUsers: {{ .Values.write.hostUsers }}
@@ -203,6 +203,9 @@ spec:
           {{- toYaml .Values.write.persistence.accessModes | nindent 10 }}
         {{- with .Values.write.persistence.storageClass }}
         storageClassName: {{ if (eq "-" .) }}""{{ else }}{{ . }}{{ end }}
+        {{- end }}
+        {{- with .Values.write.persistence.volumeAttributesClassName }}
+        volumeAttributesClassName: {{ . }}
         {{- end }}
         resources:
           requests:

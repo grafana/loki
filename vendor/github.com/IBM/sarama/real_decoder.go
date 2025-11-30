@@ -3,6 +3,7 @@ package sarama
 import (
 	"encoding/binary"
 	"math"
+	"time"
 
 	"github.com/rcrowley/go-metrics"
 )
@@ -21,6 +22,10 @@ type realDecoder struct {
 	off      int
 	stack    []pushDecoder
 	registry metrics.Registry
+}
+
+type realFlexibleDecoder struct {
+	*realDecoder
 }
 
 // primitives
@@ -123,19 +128,6 @@ func (rd *realDecoder) getArrayLength() (int, error) {
 	return tmp, nil
 }
 
-func (rd *realDecoder) getCompactArrayLength() (int, error) {
-	n, err := rd.getUVarint()
-	if err != nil {
-		return 0, err
-	}
-
-	if n == 0 {
-		return 0, nil
-	}
-
-	return int(n) - 1, nil
-}
-
 func (rd *realDecoder) getBool() (bool, error) {
 	b, err := rd.getInt8()
 	if err != nil || b == 0 {
@@ -147,29 +139,24 @@ func (rd *realDecoder) getBool() (bool, error) {
 	return true, nil
 }
 
-func (rd *realDecoder) getEmptyTaggedFieldArray() (int, error) {
-	tagCount, err := rd.getUVarint()
+func (rd *realDecoder) getKError() (KError, error) {
+	i, err := rd.getInt16()
+	return KError(i), err
+}
+
+func (rd *realDecoder) getDurationMs() (time.Duration, error) {
+	t, err := rd.getInt32()
 	if err != nil {
-		return 0, err
+		return time.Duration(0), err
 	}
+	return time.Duration(t) * time.Millisecond, nil
+}
 
-	// skip over any tagged fields without deserializing them
-	// as we don't currently support doing anything with them
-	for i := uint64(0); i < tagCount; i++ {
-		// fetch and ignore tag identifier
-		_, err := rd.getUVarint()
-		if err != nil {
-			return 0, err
-		}
-		length, err := rd.getUVarint()
-		if err != nil {
-			return 0, err
-		}
-		if _, err := rd.getRawBytes(int(length)); err != nil {
-			return 0, err
-		}
-	}
+func (rd *realDecoder) getTaggedFieldArray(decoders taggedFieldDecoders) error {
+	return PacketDecodingError{"tagged fields used in non-flexible context"}
+}
 
+func (rd *realDecoder) getEmptyTaggedFieldArray() (int, error) {
 	return 0, nil
 }
 
@@ -197,16 +184,6 @@ func (rd *realDecoder) getVarintBytes() ([]byte, error) {
 	}
 
 	return rd.getRawBytes(int(tmp))
-}
-
-func (rd *realDecoder) getCompactBytes() ([]byte, error) {
-	n, err := rd.getUVarint()
-	if err != nil {
-		return nil, err
-	}
-
-	length := int(n - 1)
-	return rd.getRawBytes(length)
 }
 
 func (rd *realDecoder) getStringLength() (int, error) {
@@ -250,64 +227,7 @@ func (rd *realDecoder) getNullableString() (*string, error) {
 	return &tmpStr, err
 }
 
-func (rd *realDecoder) getCompactString() (string, error) {
-	n, err := rd.getUVarint()
-	if err != nil {
-		return "", err
-	}
-
-	length := int(n - 1)
-	if length < 0 {
-		return "", errInvalidByteSliceLength
-	}
-	tmpStr := string(rd.raw[rd.off : rd.off+length])
-	rd.off += length
-	return tmpStr, nil
-}
-
-func (rd *realDecoder) getCompactNullableString() (*string, error) {
-	n, err := rd.getUVarint()
-	if err != nil {
-		return nil, err
-	}
-
-	length := int(n - 1)
-
-	if length < 0 {
-		return nil, err
-	}
-
-	tmpStr := string(rd.raw[rd.off : rd.off+length])
-	rd.off += length
-	return &tmpStr, err
-}
-
-func (rd *realDecoder) getCompactInt32Array() ([]int32, error) {
-	n, err := rd.getUVarint()
-	if err != nil {
-		return nil, err
-	}
-
-	if n == 0 {
-		return nil, nil
-	}
-
-	arrayLength := int(n) - 1
-
-	ret := make([]int32, arrayLength)
-
-	for i := range ret {
-		ret[i] = int32(binary.BigEndian.Uint32(rd.raw[rd.off:]))
-		rd.off += 4
-	}
-	return ret, nil
-}
-
 func (rd *realDecoder) getInt32Array() ([]int32, error) {
-	if rd.remaining() < 4 {
-		rd.off = len(rd.raw)
-		return nil, ErrInsufficientData
-	}
 	n, err := rd.getArrayLength()
 	if err != nil {
 		return nil, err
@@ -330,10 +250,6 @@ func (rd *realDecoder) getInt32Array() ([]int32, error) {
 }
 
 func (rd *realDecoder) getInt64Array() ([]int64, error) {
-	if rd.remaining() < 4 {
-		rd.off = len(rd.raw)
-		return nil, ErrInsufficientData
-	}
 	n, err := rd.getArrayLength()
 	if err != nil {
 		return nil, err
@@ -356,11 +272,6 @@ func (rd *realDecoder) getInt64Array() ([]int64, error) {
 }
 
 func (rd *realDecoder) getStringArray() ([]string, error) {
-	if rd.remaining() < 4 {
-		rd.off = len(rd.raw)
-		return nil, ErrInsufficientData
-	}
-
 	n, err := rd.getArrayLength()
 	if err != nil {
 		return nil, err
@@ -459,4 +370,180 @@ func (rd *realDecoder) pop() error {
 
 func (rd *realDecoder) metricRegistry() metrics.Registry {
 	return rd.registry
+}
+
+func (rd *realFlexibleDecoder) getArrayLength() (int, error) {
+	n, err := rd.getUVarint()
+	if err != nil {
+		return 0, err
+	}
+
+	if n == 0 {
+		return 0, nil
+	}
+
+	return int(n) - 1, nil
+}
+
+func (rd *realFlexibleDecoder) getEmptyTaggedFieldArray() (int, error) {
+	tagCount, err := rd.getUVarint()
+	if err != nil {
+		return 0, err
+	}
+
+	// skip over any tagged fields without deserializing them
+	// as we don't currently support doing anything with them
+	for i := uint64(0); i < tagCount; i++ {
+		// fetch and ignore tag identifier
+		_, err := rd.getUVarint()
+		if err != nil {
+			return 0, err
+		}
+		length, err := rd.getUVarint()
+		if err != nil {
+			return 0, err
+		}
+		if _, err := rd.getRawBytes(int(length)); err != nil {
+			return 0, err
+		}
+	}
+
+	return 0, nil
+}
+
+func (rd *realFlexibleDecoder) getTaggedFieldArray(decoders taggedFieldDecoders) error {
+	// if we have no decoders just skip over the tagged fields
+	if decoders == nil {
+		_, err := rd.getEmptyTaggedFieldArray()
+		return err
+	}
+
+	tagCount, err := rd.getUVarint()
+	if err != nil {
+		return err
+	}
+
+	for i := uint64(0); i < tagCount; i++ {
+		// fetch and ignore tag identifier
+		id, err := rd.getUVarint()
+		if err != nil {
+			return err
+		}
+		length, err := rd.getUVarint()
+		if err != nil {
+			return err
+		}
+		bytes, err := rd.getRawBytes(int(length))
+		if err != nil {
+			return err
+		}
+		decoder, ok := decoders[id]
+		if !ok {
+			continue
+		}
+		if err := decoder(&realFlexibleDecoder{&realDecoder{raw: bytes}}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (rd *realFlexibleDecoder) getBytes() ([]byte, error) {
+	n, err := rd.getUVarint()
+	if err != nil {
+		return nil, err
+	}
+
+	length := int(n - 1)
+	return rd.getRawBytes(length)
+}
+
+func (rd *realFlexibleDecoder) getStringLength() (int, error) {
+	length, err := rd.getUVarint()
+	if err != nil {
+		return 0, err
+	}
+
+	n := int(length - 1)
+
+	switch {
+	case n < -1:
+		return 0, errInvalidStringLength
+	case n > rd.remaining():
+		rd.off = len(rd.raw)
+		return 0, ErrInsufficientData
+	}
+
+	return n, nil
+}
+
+func (rd *realFlexibleDecoder) getString() (string, error) {
+	length, err := rd.getStringLength()
+	if err != nil || length == -1 {
+		return "", err
+	}
+
+	if length < 0 {
+		return "", errInvalidStringLength
+	}
+	tmpStr := string(rd.raw[rd.off : rd.off+length])
+	rd.off += length
+	return tmpStr, nil
+}
+
+func (rd *realFlexibleDecoder) getNullableString() (*string, error) {
+	length, err := rd.getStringLength()
+	if err != nil {
+		return nil, err
+	}
+
+	if length < 0 {
+		return nil, err
+	}
+
+	tmpStr := string(rd.raw[rd.off : rd.off+length])
+	rd.off += length
+	return &tmpStr, err
+}
+
+func (rd *realFlexibleDecoder) getInt32Array() ([]int32, error) {
+	n, err := rd.getUVarint()
+	if err != nil {
+		return nil, err
+	}
+
+	if n == 0 {
+		return nil, nil
+	}
+
+	arrayLength := int(n) - 1
+
+	ret := make([]int32, arrayLength)
+
+	for i := range ret {
+		ret[i] = int32(binary.BigEndian.Uint32(rd.raw[rd.off:]))
+		rd.off += 4
+	}
+	return ret, nil
+}
+
+func (rd *realFlexibleDecoder) getStringArray() ([]string, error) {
+	n, err := rd.getArrayLength()
+	if err != nil {
+		return nil, err
+	}
+	if n <= 0 {
+		return nil, nil
+	}
+
+	ret := make([]string, n)
+	for i := range ret {
+		str, err := rd.getString()
+		if err != nil {
+			return nil, err
+		}
+
+		ret[i] = str
+	}
+	return ret, nil
 }

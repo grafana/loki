@@ -419,7 +419,7 @@ func (ts *TeeService) sendBatch(ctx context.Context, clientRequest clientRequest
 }
 
 // Duplicate Implements distributor.Tee which is used to tee distributor requests to pattern ingesters.
-func (ts *TeeService) Duplicate(tenant string, streams []distributor.KeyedStream) {
+func (ts *TeeService) Duplicate(_ context.Context, tenant string, streams []distributor.KeyedStream) {
 	if !ts.cfg.Enabled {
 		return
 	}
