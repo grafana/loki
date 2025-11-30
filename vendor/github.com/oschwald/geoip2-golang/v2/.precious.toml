@@ -1,0 +1,44 @@
+exclude = [
+  "test-data/**/*",
+  "vendor/**/*",
+  "GeoLite2-ASN.mmdb",
+  "GeoLite2-City.mmdb",
+  "*.prof",
+  "*.pprof",
+  "*.out",
+  "*.svg",
+  "*.tar.gz",
+  "*.test",
+]
+
+[commands.golangci-lint-fmt]
+type = "both"
+include = "**/*.go"
+invoke = "once"
+path-args = "none"
+cmd = ["golangci-lint", "fmt"]
+lint-flags = "--diff"
+ok-exit-codes = [0]
+lint-failure-exit-codes = [1]
+
+[commands.golangci-lint]
+type = "both"
+include = "**/*.go"
+invoke = "once"
+path-args = "none"
+cmd = ["golangci-lint", "run"]
+tidy-flags = "--fix"
+ok-exit-codes = [0]
+lint-failure-exit-codes = [1]
+
+[commands.prettier]
+type = "both"
+include = ["**/*.md", "**/*.yml", "**/*.yaml"]
+invoke = "once"
+path-args = "file"
+cmd = ["prettier"]
+lint-flags = "--check"
+tidy-flags = "--write"
+ok-exit-codes = [0]
+lint-failure-exit-codes = [1]
+expect-stderr = true
