@@ -221,7 +221,7 @@ func (m *TableOfContentsWriter) copyFromExistingToc(ctx context.Context, tocObje
 	// Read index pointers from existing metastore object and write them to the builder for the new object
 	pbuf := make([]indexpointers.IndexPointer, 256)
 
-	for _, section := range tocObject.Sections().Filter(indexpointers.CheckSection) {
+	for _, section := range tocObject.Sections().Filter(dataobj.AllTenants(), indexpointers.CheckSection) {
 		sec, err := indexpointers.Open(ctx, section)
 		if err != nil {
 			return errors.Wrap(err, "opening section")

@@ -474,6 +474,11 @@ func (m *ObjectMetastore) listStreamIDsFromLogObjects(ctx context.Context, objec
 	streamIDs := make([][]int64, len(objectPaths))
 	sections := make([]int, len(objectPaths))
 
+	tenantID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("extracting org ID: %w", err)
+	}
+
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(m.parallelism)
 
@@ -484,7 +489,7 @@ func (m *ObjectMetastore) listStreamIDsFromLogObjects(ctx context.Context, objec
 				return fmt.Errorf("getting object from bucket: %w", err)
 			}
 
-			sections[idx] = object.Sections().Count(logs.CheckSection)
+			sections[idx] = object.Sections().Count(dataobj.ForSingleTenant(tenantID), logs.CheckSection)
 			streamIDs[idx] = make([]int64, 0, 8)
 
 			return forEachStream(ctx, object, predicate, func(stream streams.Stream) {
@@ -681,19 +686,17 @@ func (m *ObjectMetastore) listObjects(ctx context.Context, path string, start, e
 }
 
 func forEachIndexPointer(ctx context.Context, object *dataobj.Object, predicate indexpointers.RowPredicate, f func(indexpointers.IndexPointer)) error {
-	targetTenant, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return fmt.Errorf("extracting org ID: %w", err)
-	}
 	var reader indexpointers.RowReader
 	defer reader.Close()
 
+	tenantID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return fmt.Errorf("extracting org ID: %w", err)
+	}
+
 	buf := make([]indexpointers.IndexPointer, 1024)
 
-	for _, section := range object.Sections().Filter(indexpointers.CheckSection) {
-		if section.Tenant != targetTenant {
-			continue
-		}
+	for _, section := range object.Sections().Filter(dataobj.ForSingleTenant(tenantID), indexpointers.CheckSection) {
 		sec, err := indexpointers.Open(ctx, section)
 		if err != nil {
 			return fmt.Errorf("opening section: %w", err)
@@ -725,20 +728,17 @@ func forEachIndexPointer(ctx context.Context, object *dataobj.Object, predicate 
 }
 
 func forEachStream(ctx context.Context, object *dataobj.Object, predicate streams.RowPredicate, f func(streams.Stream)) error {
-	targetTenant, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return fmt.Errorf("extracting org ID: %w", err)
-	}
 	var reader streams.RowReader
 	defer reader.Close()
 
+	tenantID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return fmt.Errorf("extracting org ID: %w", err)
+	}
+
 	buf := make([]streams.Stream, 1024)
 
-	for _, section := range object.Sections().Filter(streams.CheckSection) {
-		if section.Tenant != targetTenant {
-			continue
-		}
-
+	for _, section := range object.Sections().Filter(dataobj.ForSingleTenant(tenantID), streams.CheckSection) {
 		sec, err := streams.Open(ctx, section)
 		if err != nil {
 			return fmt.Errorf("opening section: %w", err)
@@ -768,20 +768,17 @@ func forEachStream(ctx context.Context, object *dataobj.Object, predicate stream
 }
 
 func forEachObjPointer(ctx context.Context, object *dataobj.Object, predicate pointers.RowPredicate, matchIDs []int64, f func(pointers.SectionPointer)) error {
-	targetTenant, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return fmt.Errorf("extracting org ID: %w", err)
-	}
 	var reader pointers.RowReader
 	defer reader.Close()
 
+	tenantID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return fmt.Errorf("extracting org ID: %w", err)
+	}
+
 	buf := make([]pointers.SectionPointer, 128)
 
-	for _, section := range object.Sections().Filter(pointers.CheckSection) {
-		if section.Tenant != targetTenant {
-			continue
-		}
-
+	for _, section := range object.Sections().Filter(dataobj.ForSingleTenant(tenantID), pointers.CheckSection) {
 		sec, err := pointers.Open(ctx, section)
 		if err != nil {
 			return fmt.Errorf("opening section: %w", err)

@@ -7,11 +7,12 @@ import (
 	"strings"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/dskit/user"
 	"github.com/thanos-io/objstore"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/grafana/dskit/user"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
@@ -149,11 +150,7 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 		return errorPipeline(ctx, fmt.Errorf("missing org ID: %w", err))
 	}
 
-	for _, sec := range obj.Sections().Filter(streams.CheckSection) {
-		if sec.Tenant != tenant {
-			continue
-		}
-
+	for _, sec := range obj.Sections().Filter(dataobj.ForSingleTenant(tenant), streams.CheckSection) {
 		if streamsSection != nil {
 			return errorPipeline(ctx, fmt.Errorf("multiple streams sections found in data object %q", node.Location))
 		}
@@ -169,7 +166,7 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 		return errorPipeline(ctx, fmt.Errorf("streams section not found in data object %q", node.Location))
 	}
 
-	for i, sec := range obj.Sections().Filter(logs.CheckSection) {
+	for i, sec := range obj.Sections().Filter(dataobj.AllTenants(), logs.CheckSection) {
 		if i != node.Section {
 			continue
 		}

@@ -9,6 +9,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
@@ -88,10 +89,10 @@ func TestBuilder(t *testing.T) {
 		require.NoError(t, err)
 		defer closer.Close()
 
-		require.Equal(t, 1, obj.Sections().Count(streams.CheckSection))
-		require.Equal(t, 1, obj.Sections().Count(pointers.CheckSection))
-		require.Equal(t, 0, obj.Sections().Count(logs.CheckSection))
-		require.Equal(t, 0, obj.Sections().Count(indexpointers.CheckSection))
+		require.Equal(t, 1, obj.Sections().Count(dataobj.ForSingleTenant(testTenant), streams.CheckSection))
+		require.Equal(t, 1, obj.Sections().Count(dataobj.ForSingleTenant(testTenant), pointers.CheckSection))
+		require.Equal(t, 0, obj.Sections().Count(dataobj.ForSingleTenant(testTenant), logs.CheckSection))
+		require.Equal(t, 0, obj.Sections().Count(dataobj.ForSingleTenant(testTenant), indexpointers.CheckSection))
 	})
 
 	t.Run("BuildMultiTenant", func(t *testing.T) {
@@ -115,10 +116,10 @@ func TestBuilder(t *testing.T) {
 		require.NoError(t, err)
 		defer closer.Close()
 
-		require.Equal(t, len(tenants), obj.Sections().Count(streams.CheckSection))
-		require.Equal(t, len(tenants), obj.Sections().Count(pointers.CheckSection))
-		require.Equal(t, 0, obj.Sections().Count(logs.CheckSection))
-		require.Equal(t, 0, obj.Sections().Count(indexpointers.CheckSection))
+		require.Equal(t, len(tenants), obj.Sections().Count(dataobj.AllTenants(), streams.CheckSection))
+		require.Equal(t, len(tenants), obj.Sections().Count(dataobj.AllTenants(), pointers.CheckSection))
+		require.Equal(t, 0, obj.Sections().Count(dataobj.AllTenants(), logs.CheckSection))
+		require.Equal(t, 0, obj.Sections().Count(dataobj.AllTenants(), indexpointers.CheckSection))
 	})
 }
 
