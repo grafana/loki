@@ -16,7 +16,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 )
 
 // ReaderOptions customizes the behavior of a [Reader].
@@ -117,7 +116,6 @@ type Reader struct {
 	ready bool
 	inner *dataset.Reader
 	buf   []dataset.Row
-	stats dataset.ReaderStats
 }
 
 // NewReader creates a new Reader from the provided options. Options are not
@@ -167,7 +165,7 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.RecordBatch, er
 
 	builder := array.NewRecordBuilder(r.opts.Allocator, r.schema)
 
-	n, readErr := r.inner.Read(dataset.WithStats(ctx, &r.stats), r.buf)
+	n, readErr := r.inner.Read(ctx, r.buf)
 	for rowIndex := range n {
 		row := r.buf[rowIndex]
 
@@ -254,9 +252,6 @@ func (r *Reader) init(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("mapping predicates: %w", err)
 	}
-
-	// TODO(ashwanth): remove when global stats are updated by the executor.
-	r.stats.LinkGlobalStats(stats.FromContext(ctx))
 
 	innerOptions := dataset.ReaderOptions{
 		Dataset:    dset,
@@ -413,7 +408,6 @@ func mustConvertType(dtype arrow.DataType) datasetmd.PhysicalType {
 func (r *Reader) Reset(opts ReaderOptions) {
 	r.opts = opts
 	r.schema = columnsSchema(opts.Columns)
-	r.stats.Reset()
 
 	r.ready = false
 
@@ -422,10 +416,6 @@ func (r *Reader) Reset(opts ReaderOptions) {
 		// fully reset on the next call to [Reader.init].
 		_ = r.inner.Close()
 	}
-}
-
-func (r *Reader) Stats() *dataset.ReaderStats {
-	return &r.stats
 }
 
 // Close closes the Reader and releases any resources it holds. Closed Readers
