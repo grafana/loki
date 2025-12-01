@@ -16,9 +16,10 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 // TestReader does a basic end-to-end test over a reader with a predicate applied.
@@ -161,7 +162,7 @@ func readTable(ctx context.Context, r *logs.Reader) (arrow.Table, error) {
 	return array.NewTableFromRecords(recs[0].Schema(), recs), nil
 }
 
-// TestReaderStats tests that the reader properly tracks statistics
+// TestReaderStats tests that the reader properly tracks statistics via xcap regions.
 func TestReaderStats(t *testing.T) {
 	sec := buildSection(t, []logs.Record{
 		{StreamID: 2, Timestamp: unixTime(40), Metadata: labels.FromStrings("trace_id", "789012"), Line: []byte("baz qux")},
@@ -202,35 +203,37 @@ func TestReaderStats(t *testing.T) {
 		},
 	})
 
-	// Create stats context
-	statsCtx, ctx := stats.NewContext(context.Background())
+	// Create xcap capture and region
+	ctx, _ := xcap.NewCapture(context.Background(), nil)
+	ctx, region := xcap.StartRegion(ctx, "test-reader")
 
 	// Read the data
 	_, err := readTable(ctx, r)
 	require.NoError(t, err)
 
-	// Get the reader stats
-	readerStats := r.Stats()
+	region.End()
+
+	// Get observations from the region
+	observations := region.Observations()
+	obsMap := make(map[string]int64)
+	for _, obs := range observations {
+		obsMap[obs.Statistic.Name()] = obs.Value.(int64)
+	}
 
 	// Verify the stats are properly populated
-	require.Equal(t, int64(2), readerStats.ReadCalls)
-	require.Equal(t, uint64(2), readerStats.PrimaryColumns) // from 2 predicates
-	require.Equal(t, uint64(1), readerStats.SecondaryColumns)
-	require.Equal(t, uint64(2), readerStats.PrimaryColumnPages)
-	require.Equal(t, uint64(1), readerStats.SecondaryColumnPages)
+	require.Equal(t, int64(2), obsMap[dataset.StatReadCalls.Name()])
+	require.Equal(t, int64(2), obsMap[dataset.StatPrimaryColumns.Name()])   // from 2 predicates
+	require.Equal(t, int64(1), obsMap[dataset.StatSecondaryColumns.Name()]) // 1 secondary column
+	require.Equal(t, int64(2), obsMap[dataset.StatPrimaryColumnPages.Name()])
+	require.Equal(t, int64(1), obsMap[dataset.StatSecondaryColumnPages.Name()])
 
-	require.Equal(t, uint64(4), readerStats.MaxRows)
-	require.Equal(t, uint64(4), readerStats.RowsToReadAfterPruning)
-	require.Equal(t, uint64(4), readerStats.PrimaryRowsRead)
-	require.Equal(t, uint64(2), readerStats.SecondaryRowsRead) // 2 rows pass the predicate
+	require.Equal(t, int64(4), obsMap[dataset.StatTotalRowsAvailable.Name()])
+	require.Equal(t, int64(4), obsMap[dataset.StatRowsAfterPruning.Name()])
+	require.Equal(t, int64(4), obsMap[dataset.StatPrimaryRowsRead.Name()])
+	require.Equal(t, int64(2), obsMap[dataset.StatSecondaryRowsRead.Name()]) // 2 rows pass the predicate
 
 	// Verify download stats - these should be populated by the downloader
-	require.Equal(t, uint64(3), readerStats.DownloadStats.PagesScanned) // one page per column
-	require.Equal(t, uint64(2), readerStats.DownloadStats.PrimaryColumnPages)
-	require.Equal(t, uint64(1), readerStats.DownloadStats.SecondaryColumnPages)
-
-	// Verify global stats are updated
-	result := statsCtx.Result(0, 0, 0)
-	require.Equal(t, int64(4), result.Querier.Store.Dataobj.PrePredicateDecompressedRows)
-	require.Equal(t, int64(2), result.Querier.Store.Dataobj.PostPredicateRows)
+	require.Equal(t, int64(3), obsMap[dataset.StatPagesScanned.Name()]) // one page per column
+	require.Equal(t, int64(2), obsMap[dataset.StatPrimaryColumnPagesDownloaded.Name()])
+	require.Equal(t, int64(1), obsMap[dataset.StatSecondaryColumnPagesDownloaded.Name()])
 }
