@@ -1326,6 +1326,9 @@ github.com/heroku/x/logplex/encoding
 # github.com/huandu/xstrings v1.5.0
 ## explicit; go 1.12
 github.com/huandu/xstrings
+# github.com/huaweicloud/huaweicloud-sdk-go-obs v3.25.9+incompatible
+## explicit
+github.com/huaweicloud/huaweicloud-sdk-go-obs/obs
 # github.com/influxdata/tdigest v0.0.2-0.20210216194612-fc98d27c9e8b
 ## explicit; go 1.13
 github.com/influxdata/tdigest
