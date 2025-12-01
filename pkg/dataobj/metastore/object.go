@@ -14,6 +14,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/scalar"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/tenant"
@@ -206,11 +208,7 @@ func (m *ObjectMetastore) Sections(ctx context.Context, start, end time.Time, ma
 
 	// Search the stream sections of the matching objects to find matching streams
 	streamMatchers := streamPredicateFromMatchers(start, end, matchers...)
-	pointerPredicate := pointers.TimeRangeRowPredicate{
-		Start: start,
-		End:   end,
-	}
-	streamSectionPointers, err := m.getSectionsForStreams(ctx, indexObjects, streamMatchers, pointerPredicate)
+	streamSectionPointers, err := m.getSectionsForStreams(ctx, indexObjects, streamMatchers, start, end)
 	if err != nil {
 		return nil, err
 	}
@@ -504,11 +502,14 @@ func (m *ObjectMetastore) listStreamIDsFromLogObjects(ctx context.Context, objec
 
 // getSectionsForStreams reads the section data from matching streams and aggregates them into section descriptors.
 // This is an exact lookup and includes metadata from the streams in each section: the stream IDs, the min-max timestamps, the number of bytes & number of lines.
-func (m *ObjectMetastore) getSectionsForStreams(ctx context.Context, indexObjects []*dataobj.Object, streamPredicate streams.RowPredicate, timeRangePredicate pointers.TimeRangeRowPredicate) ([]*DataobjSectionDescriptor, error) {
+func (m *ObjectMetastore) getSectionsForStreams(ctx context.Context, indexObjects []*dataobj.Object, streamPredicate streams.RowPredicate, start, end time.Time) ([]*DataobjSectionDescriptor, error) {
 	if streamPredicate == nil {
 		// At least one stream matcher is required, currently.
 		return nil, nil
 	}
+
+	sStart := scalar.NewTimestampScalar(arrow.Timestamp(start.UnixNano()), arrow.FixedWidthTypes.Timestamp_ns)
+	sEnd := scalar.NewTimestampScalar(arrow.Timestamp(end.UnixNano()), arrow.FixedWidthTypes.Timestamp_ns)
 
 	timer := prometheus.NewTimer(m.metrics.streamFilterTotalDuration)
 	defer timer.ObserveDuration()
@@ -540,7 +541,8 @@ func (m *ObjectMetastore) getSectionsForStreams(ctx context.Context, indexObject
 
 			objectSectionDescriptors := make(map[SectionKey]*DataobjSectionDescriptor)
 			sectionPointerReadTimer := prometheus.NewTimer(m.metrics.streamFilterPointersReadDuration)
-			err = forEachObjPointer(ctx, indexObject, timeRangePredicate, matchingStreamIDs, func(pointer pointers.SectionPointer) {
+
+			err = forEachStreamSectionPointer(ctx, indexObject, sStart, sEnd, matchingStreamIDs, func(pointer pointers.SectionPointer) {
 				key.ObjectPath = pointer.Path
 				key.SectionIdx = pointer.Section
 
@@ -551,6 +553,7 @@ func (m *ObjectMetastore) getSectionsForStreams(ctx context.Context, indexObject
 				}
 				sectionDescriptor.Merge(pointer)
 			})
+
 			if err != nil {
 				return fmt.Errorf("reading section pointers from index: %w", err)
 			}
@@ -826,4 +829,20 @@ func dedupeAndSort(objects [][]string) []string {
 	}
 	sort.Strings(paths)
 	return paths
+}
+
+func findPointersColumnsByTypes(allColumns []*pointers.Column, columnTypes ...pointers.ColumnType) ([]*pointers.Column, error) {
+	result := make([]*pointers.Column, 0, len(columnTypes))
+
+	for _, c := range allColumns {
+		for _, neededType := range columnTypes {
+			if neededType != c.Type {
+				continue
+			}
+
+			result = append(result, c)
+		}
+	}
+
+	return result, nil
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/mock"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/engine"
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
@@ -31,7 +32,7 @@ func TestInstantQueryHandler(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("log selector expression not allowed for instant queries", func(t *testing.T) {
-		api := NewQuerierAPI(mockQuerierConfig(), metastore.Config{}, nil, limits, nil, nil, log.NewNopLogger())
+		api := NewQuerierAPI(mockQuerierConfig(), engine.Config{}, metastore.Config{}, nil, limits, nil, nil, log.NewNopLogger())
 
 		ctx := user.InjectOrgID(context.Background(), "user")
 		req, err := http.NewRequestWithContext(ctx, "GET", `/api/v1/query`, nil)
@@ -419,7 +420,7 @@ func setupAPI(t *testing.T, querier *querierMock, enableMetricAggregation bool) 
 	limits, err := validation.NewOverrides(defaultLimits, nil)
 	require.NoError(t, err)
 
-	api := NewQuerierAPI(mockQuerierConfig(), metastore.Config{}, querier, limits, nil, nil, log.NewNopLogger())
+	api := NewQuerierAPI(mockQuerierConfig(), engine.Config{}, metastore.Config{}, querier, limits, nil, nil, log.NewNopLogger())
 	return api
 }
 
@@ -610,7 +611,7 @@ func TestPatternsHandler(t *testing.T) {
 			engineMock := newMockEngineWithPatterns(tc.patternsFromStore)
 
 			api := &QuerierAPI{
-				cfg:      conf,
+				cfgV1:    conf,
 				querier:  querier,
 				limits:   limits,
 				engineV1: engineMock,
@@ -719,7 +720,7 @@ func TestPatternsHandlerDisabled(t *testing.T) {
 			engineMock := newMockEngineWithPatterns(tc.patternsFromStore)
 
 			api := &QuerierAPI{
-				cfg:      conf,
+				cfgV1:    conf,
 				querier:  querier,
 				limits:   limitsDisabled, // Use the disabled limits
 				engineV1: engineMock,
