@@ -143,6 +143,7 @@ type Config struct {
 func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Server.MetricsNamespace = constants.Loki
 	c.Server.ExcludeRequestInLog = true
+	c.Server.MetricsNativeHistogramFactor = 1.1 // Allows native histograms for server metrics
 
 	// Set the default module list to 'all'
 	c.Target = []string{All}
