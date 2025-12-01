@@ -426,8 +426,3 @@ func (s *dataobjScan) recordReaderStats() {
 	s.region.Record(statDatasetPrimaryColumnUncompressedBytes.Observe(int64(downloadStats.PrimaryColumnUncompressedBytes)))
 	s.region.Record(statDatasetSecondaryColumnUncompressedBytes.Observe(int64(downloadStats.SecondaryColumnUncompressedBytes)))
 }
-
-// Region implements RegionProvider.
-func (s *dataobjScan) Region() *xcap.Region {
-	return s.region
-}
