@@ -42,6 +42,7 @@ type ProxyConfig struct {
 	RequestURLFilter               *regexp.Regexp
 	InstrumentCompares             bool
 	Goldfish                       goldfish.Config
+	BackendSelectionStrategy       BackendSelectionStrategy
 }
 
 func (cfg *ProxyConfig) RegisterFlags(f *flag.FlagSet) {
@@ -65,6 +66,10 @@ func (cfg *ProxyConfig) RegisterFlags(f *flag.FlagSet) {
 
 	// Register Goldfish configuration flags
 	cfg.Goldfish.RegisterFlags(f)
+
+	// The default pick mode is naive but if there's a preferred backend configured, we switch to preferred.
+	cfg.BackendSelectionStrategy = BackendSelectionStrategyNaive
+	f.Var(&cfg.BackendSelectionStrategy, "proxy.backend-selection-strategy", "Proxy backend selection strategy (preferred, fastest, naive). If naive (the default) is selected but there's a preferred backend configured, the 'preferred' strategy is used instead.")
 }
 
 type Route struct {
@@ -244,7 +249,8 @@ func (p *Proxy) Start() error {
 		if p.cfg.CompareResponses {
 			comparator = route.ResponseComparator
 		}
-		endpoint := NewProxyEndpoint(filterReadDisabledBackends(p.backends, p.cfg.DisableBackendReadProxy), route.RouteName, p.metrics, p.logger, comparator, p.cfg.InstrumentCompares)
+		// TODO: not necessarily this is a goldfish proxy.
+		endpoint := NewProxyEndpoint(filterReadDisabledBackends(p.backends, p.cfg.DisableBackendReadProxy), route.RouteName, p.metrics, p.logger, comparator, p.cfg.InstrumentCompares, p.cfg.BackendSelectionStrategy)
 		// Add Goldfish if configured
 		if p.goldfishManager != nil {
 			endpoint.WithGoldfish(p.goldfishManager)
@@ -254,7 +260,8 @@ func (p *Proxy) Start() error {
 	}
 
 	for _, route := range p.writeRoutes {
-		router.Path(route.Path).Methods(route.Methods...).Handler(NewProxyEndpoint(p.backends, route.RouteName, p.metrics, p.logger, nil, p.cfg.InstrumentCompares))
+		// TODO: not necessarily this is a goldfish proxy.
+		router.Path(route.Path).Methods(route.Methods...).Handler(NewProxyEndpoint(p.backends, route.RouteName, p.metrics, p.logger, nil, p.cfg.InstrumentCompares, p.cfg.BackendSelectionStrategy))
 	}
 
 	if p.cfg.PassThroughNonRegisteredRoutes {

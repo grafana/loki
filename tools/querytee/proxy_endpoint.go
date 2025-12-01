@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -26,6 +27,37 @@ type ComparisonSummary struct {
 	missingMetrics int
 }
 
+type BackendSelectionStrategy string
+
+func (m *BackendSelectionStrategy) Set(value string) error {
+	switch value {
+	case "preferred":
+		*m = BackendSelectionStrategyPreferred
+	case "fastest":
+		*m = BackendSelectionStrategyFastest
+	case "naive":
+		*m = BackendSelectionStrategyNaive
+	default:
+		return fmt.Errorf("invalid goldfish pick mode %s", value)
+	}
+	return nil
+}
+
+func (m *BackendSelectionStrategy) String() string {
+	return string(*m)
+}
+
+const (
+	// Preferred mode picks the preferred backend response as CellA and the first non-preferred response as CellB.
+	BackendSelectionStrategyPreferred BackendSelectionStrategy = "preferred"
+
+	// Fastest mode sorts the responses by duration and picks the first two. First one (quickest) is used as CellA and second one is used as CellB.
+	BackendSelectionStrategyFastest BackendSelectionStrategy = "fastest"
+
+	// Naive mode picks the first two responses from the list without any sorting. First one is used as CellA and second one is used as CellB.
+	BackendSelectionStrategyNaive BackendSelectionStrategy = "naive"
+)
+
 type ProxyEndpoint struct {
 	backends   []*ProxyBackend
 	metrics    *ProxyMetrics
@@ -34,8 +66,8 @@ type ProxyEndpoint struct {
 
 	instrumentCompares bool
 
-	// Whether for this endpoint there's a preferred backend configured.
-	hasPreferredBackend bool
+	// How goldfish will pick the cells for comparison and which will be used as the final response.
+	selectionStrategy BackendSelectionStrategy
 
 	// The route name used to track metrics.
 	routeName string
@@ -44,23 +76,24 @@ type ProxyEndpoint struct {
 	goldfishManager *goldfish.Manager
 }
 
-func NewProxyEndpoint(backends []*ProxyBackend, routeName string, metrics *ProxyMetrics, logger log.Logger, comparator ResponsesComparator, instrumentCompares bool) *ProxyEndpoint {
-	hasPreferredBackend := false
-	for _, backend := range backends {
-		if backend.preferred {
-			hasPreferredBackend = true
-			break
+func NewProxyEndpoint(backends []*ProxyBackend, routeName string, metrics *ProxyMetrics, logger log.Logger, comparator ResponsesComparator, instrumentCompares bool, backendSelectionStrategy BackendSelectionStrategy) *ProxyEndpoint {
+	if backendSelectionStrategy == BackendSelectionStrategyNaive {
+		for _, backend := range backends {
+			if backend.preferred {
+				backendSelectionStrategy = BackendSelectionStrategyPreferred
+				break
+			}
 		}
 	}
 
 	return &ProxyEndpoint{
-		backends:            backends,
-		routeName:           routeName,
-		metrics:             metrics,
-		logger:              logger,
-		comparator:          comparator,
-		hasPreferredBackend: hasPreferredBackend,
-		instrumentCompares:  instrumentCompares,
+		backends:           backends,
+		routeName:          routeName,
+		metrics:            metrics,
+		logger:             logger,
+		comparator:         comparator,
+		selectionStrategy:  backendSelectionStrategy,
+		instrumentCompares: instrumentCompares,
 	}
 }
 
@@ -216,25 +249,7 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *Back
 
 	// Process with Goldfish if enabled and sampled
 	if goldfishSample && p.goldfishManager != nil && len(responses) >= 2 {
-		// Use preferred backend as Cell A, first non-preferred as Cell B
-		var cellAResp, cellBResp *BackendResponse
-
-		// Find preferred backend response
-		for _, resp := range responses {
-			if resp != nil && resp.backend.preferred {
-				cellAResp = resp
-				break
-			}
-		}
-
-		// Find first non-preferred backend response
-		for _, resp := range responses {
-			if resp != nil && !resp.backend.preferred {
-				cellBResp = resp
-				break
-			}
-		}
-
+		cellAResp, cellBResp := p.pickBackendResponses(responses, p.selectionStrategy)
 		if cellAResp != nil && cellBResp != nil {
 			level.Info(p.logger).Log("msg", "Processing query with Goldfish",
 				"tenant", extractTenant(r),
@@ -248,6 +263,45 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *Back
 	}
 }
 
+// pickBackendResponses picks the backend responses used for comparison, where CellA returns will be used as the final response.
+func (p *ProxyEndpoint) pickBackendResponses(responses []*BackendResponse, selectionStrategy BackendSelectionStrategy) (*BackendResponse, *BackendResponse) {
+	if selectionStrategy == BackendSelectionStrategyFastest {
+		sort.Slice(responses, func(i, j int) bool {
+			return responses[i].duration < responses[j].duration
+		})
+
+		p.metrics.fastestBackendSelected.WithLabelValues(responses[0].backend.name, p.routeName).Inc()
+
+		return responses[0], responses[1]
+	}
+
+	if selectionStrategy == BackendSelectionStrategyNaive {
+		return responses[0], responses[1]
+	}
+
+	if selectionStrategy != BackendSelectionStrategyPreferred {
+		level.Error(p.logger).Log("msg", "invalid selection strategy for proxy", "selection_strategy", selectionStrategy)
+		return nil, nil
+	}
+
+	var cellAResp, cellBResp *BackendResponse
+	for _, resp := range responses {
+		if resp != nil && resp.backend.preferred {
+			cellAResp = resp
+			break
+		}
+	}
+
+	for _, resp := range responses {
+		if resp != nil && !resp.backend.preferred {
+			cellBResp = resp
+			break
+		}
+	}
+
+	return cellAResp, cellBResp
+}
+
 func (p *ProxyEndpoint) waitBackendResponseForDownstream(resCh chan *BackendResponse) *BackendResponse {
 	var (
 		responses                 = make([]*BackendResponse, 0, len(p.backends))
@@ -259,7 +313,7 @@ func (p *ProxyEndpoint) waitBackendResponseForDownstream(resCh chan *BackendResp
 		// - There's no preferred backend configured
 		// - Or this response is from the preferred backend
 		// - Or the preferred backend response has already been received and wasn't successful
-		if res.succeeded() && (!p.hasPreferredBackend || res.backend.preferred || preferredResponseReceived) {
+		if res.succeeded() && (!(p.selectionStrategy == BackendSelectionStrategyPreferred) || res.backend.preferred || preferredResponseReceived) {
 			return res
 		}
 
