@@ -18,7 +18,6 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
-	"go.opentelemetry.io/otel/trace"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
@@ -152,7 +151,7 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	ctx, capture := xcap.NewCapture(ctx, nil)
 	startTime := time.Now()
 
-	ctx, span := tracer.Start(ctx, "Engine.Engine", trace.WithAttributes(
+	ctx, region := xcap.StartRegion(ctx, "Engine.Execute", xcap.WithRegionAttributes(
 		attribute.String("type", string(logql.GetRangeType(params))),
 		attribute.String("query", params.QueryString()),
 		attribute.Stringer("start", params.Start()),
@@ -161,7 +160,7 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 		attribute.Stringer("length", params.End().Sub(params.Start())),
 		attribute.StringSlice("shards", params.Shards()),
 	))
-	defer span.End()
+	defer region.End()
 
 	ctx = e.buildContext(ctx)
 	logger := util_log.WithContext(ctx, e.logger)
@@ -173,21 +172,21 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	logicalPlan, durLogicalPlanning, err := e.buildLogicalPlan(ctx, logger, params)
 	if err != nil {
 		e.metrics.subqueries.WithLabelValues(statusNotImplemented).Inc()
-		span.SetStatus(codes.Error, "failed to create logical plan")
+		region.SetStatus(codes.Error, "failed to create logical plan")
 		return logqlmodel.Result{}, ErrNotSupported
 	}
 
 	physicalPlan, durPhysicalPlanning, err := e.buildPhysicalPlan(ctx, logger, params, logicalPlan)
 	if err != nil {
 		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
-		span.SetStatus(codes.Error, "failed to create physical plan")
+		region.SetStatus(codes.Error, "failed to create physical plan")
 		return logqlmodel.Result{}, ErrPlanningFailed
 	}
 
 	wf, durWorkflowPlanning, err := e.buildWorkflow(ctx, logger, physicalPlan)
 	if err != nil {
 		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
-		span.SetStatus(codes.Error, "failed to create execution plan")
+		region.SetStatus(codes.Error, "failed to create execution plan")
 		return logqlmodel.Result{}, ErrPlanningFailed
 	}
 	defer wf.Close()
@@ -197,7 +196,7 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 		level.Error(logger).Log("msg", "failed to execute query", "err", err)
 
 		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
-		span.SetStatus(codes.Error, "failed to execute query")
+		region.SetStatus(codes.Error, "failed to execute query")
 		return logqlmodel.Result{}, ErrSchedulingFailed
 	}
 	defer pipeline.Close()
@@ -205,7 +204,7 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	builder, durExecution, err := e.collectResult(ctx, logger, params, pipeline)
 	if err != nil {
 		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
-		span.SetStatus(codes.Error, "error during query execution")
+		region.SetStatus(codes.Error, "error during query execution")
 		return logqlmodel.Result{}, err
 	}
 
@@ -229,7 +228,7 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	stats := statsCtx.Result(durFull, queueTime, builder.Len())
 	md := metadata.FromContext(ctx)
 
-	span.SetStatus(codes.Ok, "")
+	region.SetStatus(codes.Ok, "")
 	result := builder.Build(stats, md)
 
 	logql.RecordRangeAndInstantQueryMetrics(ctx, logger, params, strconv.Itoa(http.StatusOK), stats, result.Data)
@@ -263,13 +262,13 @@ func injectQueryTags(ctx context.Context, logger log.Logger) log.Logger {
 
 // buildLogicalPlan builds a logical plan from the given params.
 func (e *Engine) buildLogicalPlan(ctx context.Context, logger log.Logger, params logql.Params) (*logical.Plan, time.Duration, error) {
-	span := trace.SpanFromContext(ctx)
+	region := xcap.RegionFromContext(ctx)
 	timer := prometheus.NewTimer(e.metrics.logicalPlanning)
 
 	logicalPlan, err := logical.BuildPlan(params)
 	if err != nil {
 		level.Warn(logger).Log("msg", "failed to create logical plan", "err", err)
-		span.RecordError(err)
+		region.RecordError(err)
 		return nil, 0, ErrNotSupported
 	}
 
@@ -280,16 +279,16 @@ func (e *Engine) buildLogicalPlan(ctx context.Context, logger log.Logger, params
 		"duration", duration.String(),
 	)
 
-	span.AddEvent("finished logical planning", trace.WithAttributes(
+	region.AddEvent("finished logical planning",
 		attribute.Stringer("plan", logicalPlan),
 		attribute.Stringer("duration", duration),
-	))
+	)
 	return logicalPlan, duration, nil
 }
 
 // buildPhysicalPlan builds a physical plan from the given logical plan.
 func (e *Engine) buildPhysicalPlan(ctx context.Context, logger log.Logger, params logql.Params, logicalPlan *logical.Plan) (*physical.Plan, time.Duration, error) {
-	span := trace.SpanFromContext(ctx)
+	region := xcap.RegionFromContext(ctx)
 	timer := prometheus.NewTimer(e.metrics.physicalPlanning)
 
 	// TODO(rfratto): To improve the performance of the physical planner, we
@@ -303,14 +302,14 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, logger log.Logger, param
 	physicalPlan, err := planner.Build(logicalPlan)
 	if err != nil {
 		level.Warn(logger).Log("msg", "failed to create physical plan", "err", err)
-		span.RecordError(err)
+		region.RecordError(err)
 		return nil, 0, ErrNotSupported
 	}
 
 	physicalPlan, err = planner.Optimize(physicalPlan)
 	if err != nil {
 		level.Warn(logger).Log("msg", "failed to optimize physical plan", "err", err)
-		span.RecordError(err)
+		region.RecordError(err)
 		return nil, 0, ErrNotSupported
 	}
 
@@ -321,10 +320,10 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, logger log.Logger, param
 		"duration", duration.String(),
 	)
 
-	span.AddEvent("finished physical planning", trace.WithAttributes(
+	region.AddEvent("finished physical planning",
 		attribute.String("plan", physical.PrintAsTree(physicalPlan)),
 		attribute.Stringer("duration", duration),
-	))
+	)
 	return physicalPlan, duration, nil
 }
 
@@ -335,7 +334,7 @@ func (e *Engine) buildWorkflow(ctx context.Context, logger log.Logger, physicalP
 		return nil, 0, fmt.Errorf("extracting tenant ID: %w", err)
 	}
 
-	span := trace.SpanFromContext(ctx)
+	region := xcap.RegionFromContext(ctx)
 	timer := prometheus.NewTimer(e.metrics.workflowPlanning)
 
 	opts := workflow.Options{
@@ -348,7 +347,7 @@ func (e *Engine) buildWorkflow(ctx context.Context, logger log.Logger, physicalP
 	wf, err := workflow.New(opts, logger, tenantID, e.scheduler.inner, physicalPlan)
 	if err != nil {
 		level.Warn(logger).Log("msg", "failed to create workflow", "err", err)
-		span.RecordError(err)
+		region.RecordError(err)
 		return nil, 0, ErrNotSupported
 	}
 
@@ -365,16 +364,16 @@ func (e *Engine) buildWorkflow(ctx context.Context, logger log.Logger, physicalP
 		"duration", duration.String(),
 	)
 
-	span.AddEvent("finished execution planning", trace.WithAttributes(
+	region.AddEvent("finished execution planning",
 		attribute.String("plan", workflow.Sprint(wf)),
 		attribute.Stringer("duration", duration),
-	))
+	)
 	return wf, duration, nil
 }
 
 // collectResult processes the results of the execution plan.
 func (e *Engine) collectResult(ctx context.Context, logger log.Logger, params logql.Params, pipeline executor.Pipeline) (ResultBuilder, time.Duration, error) {
-	span := trace.SpanFromContext(ctx)
+	region := xcap.RegionFromContext(ctx)
 	timer := prometheus.NewTimer(e.metrics.execution)
 
 	var builder ResultBuilder
@@ -415,9 +414,9 @@ func (e *Engine) collectResult(ctx context.Context, logger log.Logger, params lo
 
 	// We don't log an event here because a final event will be logged by the
 	// caller noting that execution completed.
-	span.AddEvent("finished execution", trace.WithAttributes(
+	region.AddEvent("finished execution",
 		attribute.Stringer("duration", duration),
-	))
+	)
 	return builder, duration, nil
 }
 
