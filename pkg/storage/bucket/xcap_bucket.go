@@ -11,12 +11,12 @@ import (
 
 // Bucket operation statistic names.
 const (
-	StatBucketGet        = "bucket_get"
-	StatBucketGetRange   = "bucket_get_range"
-	StatBucketIter       = "bucket_iter"
-	StatBucketExists     = "bucket_exists"
-	StatBucketUpload     = "bucket_upload"
-	StatBucketAttributes = "bucket_attributes"
+	StatBucketGet        = "bucket.get"
+	StatBucketGetRange   = "bucket.get.range"
+	StatBucketIter       = "bucket.iter"
+	StatBucketExists     = "bucket.exists"
+	StatBucketUpload     = "bucket.upload"
+	StatBucketAttributes = "bucket.attributes"
 )
 
 // Statistics for tracking bucket operation counts.
