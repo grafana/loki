@@ -2,7 +2,6 @@ package querytee
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -10,7 +9,10 @@ import (
 	"strconv"
 	"time"
 
+	jsoniter "github.com/json-iterator/go"
+
 	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/prometheus/common/model"
 )
 
@@ -133,20 +135,21 @@ func createSplitRequests(original *http.Request, splitPoint time.Time, step time
 
 // concatenateResponses concatenates two query_range responses.
 // Since the queries are split at step boundaries with no overlap, we can simply
-// concatenate the values arrays for each metric.
+// concatenate the values arrays for each metric or entries for each stream.
+// The direction parameter is used for stream concatenation to preserve correct entry order.
 // Returns a new BackendResponse with the concatenated body and combined metadata.
-func concatenateResponses(oldResponse, recentResponse *BackendResponse) (*BackendResponse, error) {
+func concatenateResponses(oldResponse, recentResponse *BackendResponse, direction logproto.Direction) (*BackendResponse, error) {
 	if oldResponse == nil || recentResponse == nil {
 		return nil, fmt.Errorf("cannot concatenate nil responses")
 	}
 
 	var oldResp, recentResp loghttp.QueryResponse
 
-	if err := json.Unmarshal(oldResponse.body, &oldResp); err != nil {
+	if err := oldResp.UnmarshalJSON(oldResponse.body); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal old response: %w", err)
 	}
 
-	if err := json.Unmarshal(recentResponse.body, &recentResp); err != nil {
+	if err := recentResp.UnmarshalJSON(recentResponse.body); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal recent response: %w", err)
 	}
 
@@ -158,27 +161,45 @@ func concatenateResponses(oldResponse, recentResponse *BackendResponse) (*Backen
 		return nil, fmt.Errorf("recent response has non-success status: %s", recentResp.Status)
 	}
 
-	// Verify both are matrix results
-	if oldResp.Data.ResultType != loghttp.ResultTypeMatrix {
-		return nil, fmt.Errorf("old response is not a matrix result: %s", oldResp.Data.ResultType)
-	}
-	if recentResp.Data.ResultType != loghttp.ResultTypeMatrix {
-		return nil, fmt.Errorf("recent response is not a matrix result: %s", recentResp.Data.ResultType)
+	if oldResp.Data.ResultType != recentResp.Data.ResultType {
+		return nil, fmt.Errorf("old and recent responses have different result types: %s vs %s (respectively)", oldResp.Data.ResultType, recentResp.Data.ResultType)
 	}
 
-	// Extract matrix data
-	oldMatrix, ok := oldResp.Data.Result.(loghttp.Matrix)
-	if !ok {
-		return nil, fmt.Errorf("failed to cast old result to Matrix")
-	}
+	var concatenated loghttp.ResultValue
+	var resultType loghttp.ResultType
 
-	recentMatrix, ok := recentResp.Data.Result.(loghttp.Matrix)
-	if !ok {
-		return nil, fmt.Errorf("failed to cast recent result to Matrix")
-	}
+	switch oldResp.Data.ResultType {
+	case loghttp.ResultTypeMatrix:
+		oldMatrix, ok := oldResp.Data.Result.(loghttp.Matrix)
+		if !ok {
+			return nil, fmt.Errorf("failed to cast old result to Matrix")
+		}
 
-	// Concatenate the matrices
-	concatenated := concatenateMatrices(oldMatrix, recentMatrix)
+		recentMatrix, ok := recentResp.Data.Result.(loghttp.Matrix)
+		if !ok {
+			return nil, fmt.Errorf("failed to cast recent result to Matrix")
+		}
+
+		concatenated = concatenateMatrices(oldMatrix, recentMatrix)
+		resultType = loghttp.ResultTypeMatrix
+
+	case loghttp.ResultTypeStream:
+		oldStreams, ok := oldResp.Data.Result.(loghttp.Streams)
+		if !ok {
+			return nil, fmt.Errorf("failed to cast old result to Streams")
+		}
+
+		recentStreams, ok := recentResp.Data.Result.(loghttp.Streams)
+		if !ok {
+			return nil, fmt.Errorf("failed to cast recent result to Streams")
+		}
+
+		concatenated = concatenateStreams(oldStreams, recentStreams, direction)
+		resultType = loghttp.ResultTypeStream
+
+	default:
+		return nil, fmt.Errorf("unsupported result type: %s", oldResp.Data.ResultType)
+	}
 
 	// Merge statistics
 	mergedStats := oldResp.Data.Statistics
@@ -203,14 +224,14 @@ func concatenateResponses(oldResponse, recentResponse *BackendResponse) (*Backen
 	result := loghttp.QueryResponse{
 		Status: "success",
 		Data: loghttp.QueryResponseData{
-			ResultType: loghttp.ResultTypeMatrix,
+			ResultType: resultType,
 			Result:     concatenated,
 			Statistics: mergedStats,
 		},
 		Warnings: warnings,
 	}
 
-	concatenatedBody, err := json.Marshal(result)
+	concatenatedBody, err := jsoniter.Marshal(result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal concatenated response: %w", err)
 	}
@@ -273,6 +294,55 @@ func concatenateMatrices(oldMatrix, recentMatrix loghttp.Matrix) loghttp.Matrix 
 	result := make(loghttp.Matrix, 0, len(metricMap))
 	for _, key := range keys {
 		result = append(result, *metricMap[key])
+	}
+
+	return result
+}
+
+// concatenateStreams concatenates two stream results by merging entries for each unique label set.
+// The direction parameter determines the order of entry concatenation:
+// - FORWARD: old entries + recent entries (oldest first)
+// - BACKWARD: recent entries + old entries (newest first)
+func concatenateStreams(oldStreams, recentStreams loghttp.Streams, direction logproto.Direction) loghttp.Streams {
+	streamMap := make(map[string]*loghttp.Stream)
+
+	for i := range oldStreams {
+		stream := oldStreams[i]
+		key := stream.Labels.String()
+		streamMap[key] = &loghttp.Stream{
+			Labels:  stream.Labels,
+			Entries: append([]loghttp.Entry{}, stream.Entries...),
+		}
+	}
+
+	for i := range recentStreams {
+		stream := recentStreams[i]
+		key := stream.Labels.String()
+
+		if existing, ok := streamMap[key]; ok {
+			if direction == logproto.FORWARD {
+				existing.Entries = append(existing.Entries, stream.Entries...)
+			} else {
+				existing.Entries = append(stream.Entries, existing.Entries...)
+			}
+		} else {
+			streamMap[key] = &loghttp.Stream{
+				Labels:  stream.Labels,
+				Entries: append([]loghttp.Entry{}, stream.Entries...),
+			}
+		}
+	}
+
+	// Convert map back to slice and sort by label string for consistent output
+	keys := make([]string, 0, len(streamMap))
+	for key := range streamMap {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	result := make(loghttp.Streams, 0, len(streamMap))
+	for _, key := range keys {
+		result = append(result, *streamMap[key])
 	}
 
 	return result

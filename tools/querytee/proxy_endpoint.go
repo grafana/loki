@@ -13,6 +13,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/tools/querytee/goldfish"
 )
 
@@ -198,6 +199,7 @@ func (p *ProxyEndpoint) executeSplitQuery(
 	step time.Duration,
 	goldfishSample bool) {
 	issuer := detectIssuer(r)
+
 	oldQuery, recentQuery, err := createSplitRequests(r, splitPoint, step)
 	if err != nil {
 		level.Error(p.logger).Log("msg", "Failed to create split requests", "err", err)
@@ -323,7 +325,8 @@ func (p *ProxyEndpoint) executeSplitQuery(
 		return
 	}
 
-	preferredConcatenatedResp, err := concatenateResponses(preferredOldRes, recentRes)
+	direction := extractDirection(r)
+	preferredConcatenatedResp, err := concatenateResponses(preferredOldRes, recentRes, direction)
 	if err != nil {
 		level.Error(p.logger).Log(
 			"msg", "Failed to concatenate preferred backend responses",
@@ -349,7 +352,7 @@ func (p *ProxyEndpoint) executeSplitQuery(
 			continue
 		}
 
-		concatenatedResp, err := concatenateResponses(resp, recentRes)
+		concatenatedResp, err := concatenateResponses(resp, recentRes, direction)
 		if err != nil {
 			level.Warn(p.logger).Log(
 				"msg", "Failed to concatenate non-preferred backend responses, skipping",
@@ -406,6 +409,24 @@ func (p *ProxyEndpoint) executeSplitQuery(
 		)
 		p.processResponsesWithGoldfish(oldQuery, oldResponses)
 	}
+}
+
+func extractDirection(r *http.Request) logproto.Direction {
+	if r == nil {
+		return logproto.FORWARD
+	}
+
+	// Parse the request to extract direction
+	if err := r.ParseForm(); err != nil {
+		return logproto.FORWARD
+	}
+
+	rangeQuery, err := loghttp.ParseRangeQuery(r)
+	if err != nil {
+		return logproto.FORWARD
+	}
+
+	return rangeQuery.Direction
 }
 
 func (p *ProxyEndpoint) waitBackendResponseForDownstream(resCh chan *BackendResponse) *BackendResponse {
