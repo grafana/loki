@@ -308,7 +308,7 @@ func TestGoldfishFloatingPointMismatchDetection(t *testing.T) {
 			"result": [1, "0.003333333333"],
 			"stats": {
 				"summary": {
-					"execTime": 0.05,
+					"execTime": 0.06,
 					"queueTime": 0.01,
 					"totalBytesProcessed": 500,
 					"totalLinesProcessed": 1,
@@ -386,6 +386,10 @@ func TestGoldfishFloatingPointMismatchDetection(t *testing.T) {
 	// Verify that floating-point difference within tolerance is considered a match
 	assert.Equal(t, goldfish.ComparisonStatusMatch, result.ComparisonStatus, "Floating-point difference within tolerance should be a match")
 	assert.Equal(t, result.DifferenceDetails["tolerance_match"], true, "A flag indicating this was a tolerance based match should be present")
+
+	// Verify that we recorded the compareQueryStats
+	assert.Contains(t, result.DifferenceDetails, "exec_time_variance")
+
 }
 
 func TestGoldfishNewEngineDetection(t *testing.T) {

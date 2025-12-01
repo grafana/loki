@@ -55,6 +55,8 @@ func CompareResponses(sample *goldfish.QuerySample, cellAResp, cellBResp *Respon
 			"cell_b": sample.CellBResponseHash,
 		}
 
+		result.ComparisonStatus = goldfish.ComparisonStatusMismatch
+
 		if cellAResp != nil && cellBResp != nil && comparator != nil {
 			// we don't know the structure of the data, or the datatype.
 			// there is a chance the data is floating point numbers that differ within tolerance
@@ -66,12 +68,19 @@ func CompareResponses(sample *goldfish.QuerySample, cellAResp, cellBResp *Respon
 			if err == nil {
 				result.ComparisonStatus = goldfish.ComparisonStatusMatch
 				result.DifferenceDetails["tolerance_match"] = true
-				return result
+			} else {
+				result.DifferenceDetails["tolerance_match"] = false
+				result.DifferenceDetails["tolerance_match_error"] = err.Error()
 			}
+		} else {
+			_ = level.Warn(logger).Log(
+				"msg", "unable to perform tolerance comparison due to missing response data or comparator",
+				"correlation_id", sample.CorrelationID,
+			)
 		}
-
-		result.ComparisonStatus = goldfish.ComparisonStatusMismatch
-		return result
+		if result.ComparisonStatus == goldfish.ComparisonStatusMismatch {
+			return result
+		}
 
 	default:
 		// Both returned 200 with identical content
