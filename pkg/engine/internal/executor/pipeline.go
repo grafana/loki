@@ -193,45 +193,6 @@ func (p *prefetchWrapper) Close() {
 	p.Pipeline.Close()
 }
 
-// Region implements RegionProvider.
-func (p *prefetchWrapper) Region() *xcap.Region {
-	if provider, ok := p.Pipeline.(RegionProvider); ok {
-		return provider.Region()
-	}
-	return nil
-}
-
-type tracedPipeline struct {
-	name  string
-	inner Pipeline
-}
-
-var _ Pipeline = (*tracedPipeline)(nil)
-
-// tracePipeline wraps a [Pipeline] to record each call to Read with a span.
-func tracePipeline(name string, pipeline Pipeline) *tracedPipeline {
-	return &tracedPipeline{
-		name:  name,
-		inner: pipeline,
-	}
-}
-
-func (p *tracedPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
-	ctx, span := tracer.Start(ctx, p.name+".Read")
-	defer span.End()
-
-	res, err := p.inner.Read(ctx)
-	if err != nil && !errors.Is(err, EOF) {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
-	} else {
-		span.SetStatus(codes.Ok, "")
-	}
-	return res, err
-}
-
-func (p *tracedPipeline) Close() { p.inner.Close() }
-
 type lazyPipeline struct {
 	ctor func(ctx context.Context, inputs []Pipeline) Pipeline
 
