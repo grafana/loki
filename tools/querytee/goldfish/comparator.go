@@ -4,12 +4,14 @@ import (
 	"net/http"
 	"time"
 
+	logger "github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/loki/v3/pkg/goldfish"
 	"github.com/grafana/loki/v3/tools/querytee/comparator"
 )
 
 // CompareResponses compares performance statistics and hashes from QuerySample
-func CompareResponses(sample *goldfish.QuerySample, cellAResp, cellBResp *ResponseData, performanceTolerance float64, comparator comparator.ResponsesComparator) goldfish.ComparisonResult {
+func CompareResponses(sample *goldfish.QuerySample, cellAResp, cellBResp *ResponseData, performanceTolerance float64, comparator comparator.ResponsesComparator, logger logger.Logger) goldfish.ComparisonResult {
 	result := goldfish.ComparisonResult{
 		CorrelationID:     sample.CorrelationID,
 		DifferenceDetails: make(map[string]any),

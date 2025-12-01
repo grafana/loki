@@ -162,7 +162,7 @@ func (m *Manager) ProcessQueryPair(ctx context.Context, req *http.Request, cellA
 	m.metrics.sampledQueries.Inc()
 
 	comparisonStart := time.Now()
-	result := CompareResponses(sample, cellAResp, cellBResp, m.config.PerformanceTolerance, &m.comparator)
+	result := CompareResponses(sample, cellAResp, cellBResp, m.config.PerformanceTolerance, &m.comparator, m.logger)
 	m.metrics.comparisonDuration.Observe(time.Since(comparisonStart).Seconds())
 	m.metrics.comparisonResults.WithLabelValues(string(result.ComparisonStatus)).Inc()
 
