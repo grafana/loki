@@ -406,7 +406,7 @@ func TestExtractUserFromQueryTags(t *testing.T) {
 			}
 
 			logger := log.NewNopLogger()
-			got := extractUserFromQueryTags(req, logger)
+			got := ExtractUserFromQueryTags(req, logger)
 			assert.Equal(t, tt.expectedUser, got)
 		})
 	}

@@ -137,7 +137,7 @@ func (m *Manager) ProcessQueryPair(ctx context.Context, req *http.Request, cellA
 	sample := &goldfish.QuerySample{
 		CorrelationID:      correlationID,
 		TenantID:           tenantID,
-		User:               extractUserFromQueryTags(req, m.logger),
+		User:               ExtractUserFromQueryTags(req, m.logger),
 		IsLogsDrilldown:    isLogsDrilldownRequest(req),
 		Query:              req.URL.Query().Get("query"),
 		QueryType:          queryType,
@@ -479,7 +479,7 @@ func parseDuration(s string) time.Duration {
 	return d
 }
 
-func extractUserFromQueryTags(req *http.Request, logger log.Logger) string {
+func ExtractUserFromQueryTags(req *http.Request, logger log.Logger) string {
 	tags := httpreq.ExtractQueryTagsFromHTTP(req)
 
 	// Debug logging for user extraction

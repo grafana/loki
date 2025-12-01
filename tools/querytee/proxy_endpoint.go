@@ -206,11 +206,14 @@ func (p *ProxyEndpoint) executeSplitQuery(
 		return
 	}
 
+	user := goldfish.ExtractUserFromQueryTags(r, p.logger)
 	level.Debug(p.logger).Log("msg", "executing split goldfish query",
 		"old_query", oldQuery.URL.RawQuery,
 		"recent_query", recentQuery.URL.RawQuery,
 		"split_point", splitPoint,
-		"step", step)
+		"step", step,
+		"user", user,
+	)
 
 	// Find preferred backend for recent query
 	var preferredBackend *ProxyBackend
@@ -227,6 +230,7 @@ func (p *ProxyEndpoint) executeSplitQuery(
 			"path", r.URL.Path,
 			"query", r.URL.RawQuery,
 			"issuer", issuer,
+			"user", user,
 		)
 		resCh <- &BackendResponse{
 			err:    fmt.Errorf("no preferred backend found for recent query. must have a preferred backend when splitting queries."),
@@ -275,6 +279,7 @@ func (p *ProxyEndpoint) executeSplitQuery(
 			"backend", preferredBackend.name,
 			"path", recentQuery.URL.Path,
 			"issuer", issuer,
+			"user", user,
 		)
 		resCh <- &BackendResponse{
 			err:    fmt.Errorf("recent query to preferred backend was not executed or failed"),
@@ -291,6 +296,7 @@ func (p *ProxyEndpoint) executeSplitQuery(
 		"elapsed", recentRes.duration,
 		"issuer", issuer,
 		"query", recentQuery.URL.RawQuery,
+		"user", user,
 	)
 	p.metrics.requestDuration.WithLabelValues(
 		recentRes.backend.name,
@@ -305,6 +311,7 @@ func (p *ProxyEndpoint) executeSplitQuery(
 		level.Warn(p.logger).Log(
 			"msg", "failed to get successful responses from preferred backend for both old and recent queries",
 			"issuer", issuer,
+			"user", user,
 		)
 		// Return whichever succeeded, or old if both failed
 		if preferredOldRes != nil {
@@ -324,6 +331,7 @@ func (p *ProxyEndpoint) executeSplitQuery(
 			"backend", preferredBackend.name,
 			"query", recentQuery.URL.RawQuery,
 			"issuer", issuer,
+			"user", user,
 		)
 		resCh <- &BackendResponse{
 			backend:  preferredBackend,
@@ -348,6 +356,7 @@ func (p *ProxyEndpoint) executeSplitQuery(
 				"err", err,
 				"backend", p.backends[i].name,
 				"issuer", issuer,
+				"user", user,
 			)
 			continue
 		}
@@ -362,6 +371,7 @@ func (p *ProxyEndpoint) executeSplitQuery(
 					"route-name", p.routeName,
 					"query", r.URL.RawQuery,
 					"issuer", issuer,
+					"user", user,
 					"err", err,
 				)
 				result = comparisonFailed
@@ -388,7 +398,12 @@ func (p *ProxyEndpoint) executeSplitQuery(
 	close(resCh)
 
 	if goldfishSample {
-		level.Debug(p.logger).Log("msg", "processing concatenated responses with Goldfish")
+		level.Debug(p.logger).Log(
+			"msg", "processing concatenated responses with Goldfish",
+			"user", user,
+			"issuer", issuer,
+			"query", oldQuery.URL.RawQuery,
+		)
 		p.processResponsesWithGoldfish(oldQuery, oldResponses)
 	}
 }
