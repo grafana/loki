@@ -1,5 +1,18 @@
 # Changelog
 
+## [3.5.9](https://github.com/grafana/loki/compare/v3.5.8...v3.5.9) (2025-11-26)
+
+
+### Features
+
+* Change how analytics proxy works (backport release-3.5.x) ([#19854](https://github.com/grafana/loki/issues/19854)) ([5a9d3fd](https://github.com/grafana/loki/commit/5a9d3fd8fe30b7179320de23c4f8e5e4bea20da6))
+
+
+### Bug Fixes
+
+* **deps:** Bump x/crypto module ([#20016](https://github.com/grafana/loki/issues/20016)) ([b21123b](https://github.com/grafana/loki/commit/b21123b27ee7f52164ff6a15d1422a21033685fa))
+* **logger:** correct log level verbosity in rule evaluation ([#19519](https://github.com/grafana/loki/issues/19519)) (backport release-3.5.x) ([#19857](https://github.com/grafana/loki/issues/19857)) ([562d87d](https://github.com/grafana/loki/commit/562d87d330c42fc4a7a5c6d69c1785442c4e9dc7))
+
 ## [3.5.8](https://github.com/grafana/loki/compare/v3.5.7...v3.5.8) (2025-11-05)
 
 
