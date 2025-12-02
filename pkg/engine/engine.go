@@ -150,6 +150,8 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	// [logql.Engine] disappear.
 
 	ctx, capture := xcap.NewCapture(ctx, nil)
+	defer capture.End()
+
 	startTime := time.Now()
 
 	ctx, region := xcap.StartRegion(ctx, "Engine.Execute", xcap.WithRegionAttributes(
@@ -219,6 +221,11 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 		"duration_full", durFull,
 	)
 
+	region.SetStatus(codes.Ok, "")
+
+	// explicitly end before exporting the trace.
+	region.End()
+	capture.End()
 	if err := exportCapture(ctx, capture, physicalPlan, logger); err != nil {
 		level.Error(logger).Log("msg", "failed to export capture as trace", "err", err)
 	}
@@ -229,7 +236,6 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	stats := statsCtx.Result(durFull, queueTime, builder.Len())
 	md := metadata.FromContext(ctx)
 
-	region.SetStatus(codes.Ok, "")
 	result := builder.Build(stats, md)
 
 	logql.RecordRangeAndInstantQueryMetrics(ctx, logger, params, strconv.Itoa(http.StatusOK), stats, result.Data)
