@@ -65,7 +65,6 @@ func (cfg *ExecutorConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSe
 	f.IntVar(&cfg.BatchSize, prefix+"batch-size", 100, "Experimental: Batch size of the next generation query engine.")
 	f.IntVar(&cfg.MergePrefetchCount, prefix+"merge-prefetch-count", 0, "Experimental: The number of inputs that are prefetched simultaneously by any Merge node. A value of 0 means that only the currently processed input is prefetched, 1 means that only the next input is prefetched, and so on. A negative value means that all inputs are be prefetched in parallel.")
 	cfg.RangeConfig.RegisterFlags(prefix+"range-reads.", f)
-
 }
 
 // Params holds parameters for constructing a new [Engine].
@@ -376,11 +375,12 @@ func (e *Engine) buildWorkflow(ctx context.Context, logger log.Logger, physicalP
 func (e *Engine) collectResult(ctx context.Context, logger log.Logger, params logql.Params, pipeline executor.Pipeline) (ResultBuilder, time.Duration, error) {
 	span := trace.SpanFromContext(ctx)
 	timer := prometheus.NewTimer(e.metrics.execution)
+	encodingFlags := httpreq.ExtractEncodingFlagsFromCtx(ctx)
 
 	var builder ResultBuilder
 	switch params.GetExpression().(type) {
 	case syntax.LogSelectorExpr:
-		builder = newStreamsResultBuilder(params.Direction())
+		builder = newStreamsResultBuilder(params.Direction(), encodingFlags.Has(httpreq.FlagCategorizeLabels))
 	case syntax.SampleExpr:
 		if params.Step() > 0 {
 			builder = newMatrixResultBuilder()
