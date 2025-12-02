@@ -339,9 +339,12 @@ func (b *tableBuffer) Flush() (*table, error) {
 		}
 
 		// Each metadata column may have a different number of rows compared to
-		// other columns. Since adding NULLs isn't free, we don't call Backfill
-		// here.
+		// other columns. Backfill them with NULLs to match the max rows in the buffer.
+		// It is safe to use streamID column row count since it is a required column in logs section.
+		metadataBuilder.Backfill(streamID.Desc.RowsCount)
+
 		metadata, _ := metadataBuilder.Flush()
+
 		metadatas = append(metadatas, &tableColumn{metadata, ColumnTypeMetadata})
 	}
 

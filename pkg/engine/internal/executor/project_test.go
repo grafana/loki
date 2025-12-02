@@ -2,9 +2,9 @@ package executor
 
 import (
 	"testing"
+	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
-	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
@@ -21,14 +21,10 @@ func TestNewProjectPipeline(t *testing.T) {
 	}
 
 	t.Run("project single column", func(t *testing.T) {
-		alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
-		defer alloc.AssertSize(t, 0)
-
 		// Create input data
 		inputCSV := "Alice,30,New York\nBob,25,Boston\nCharlie,35,Seattle"
-		inputRecord, err := CSVToArrowWithAllocator(alloc, fields, inputCSV)
+		inputRecord, err := CSVToArrow(fields, inputCSV)
 		require.NoError(t, err)
-		defer inputRecord.Release()
 
 		// Create input pipeline
 		inputPipeline := NewBufferedPipeline(inputRecord)
@@ -42,7 +38,7 @@ func TestNewProjectPipeline(t *testing.T) {
 
 		// Create project pipeline
 		e := newExpressionEvaluator()
-		projectPipeline, err := NewProjectPipeline(inputPipeline, &physical.Projection{Expressions: columns}, &e, alloc)
+		projectPipeline, err := NewProjectPipeline(inputPipeline, &physical.Projection{Expressions: columns}, &e, nil)
 		require.NoError(t, err)
 
 		// Create expected output
@@ -50,9 +46,8 @@ func TestNewProjectPipeline(t *testing.T) {
 		expectedFields := []arrow.Field{
 			semconv.FieldFromFQN("utf8.builtin.name", false),
 		}
-		expectedRecord, err := CSVToArrowWithAllocator(alloc, expectedFields, expectedCSV)
+		expectedRecord, err := CSVToArrow(expectedFields, expectedCSV)
 		require.NoError(t, err)
-		defer expectedRecord.Release()
 
 		expectedPipeline := NewBufferedPipeline(expectedRecord)
 
@@ -61,14 +56,10 @@ func TestNewProjectPipeline(t *testing.T) {
 	})
 
 	t.Run("project multiple columns", func(t *testing.T) {
-		alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
-		defer alloc.AssertSize(t, 0)
-
 		// Create input data
 		inputCSV := "Alice,30,New York\nBob,25,Boston\nCharlie,35,Seattle"
-		inputRecord, err := CSVToArrowWithAllocator(alloc, fields, inputCSV)
+		inputRecord, err := CSVToArrow(fields, inputCSV)
 		require.NoError(t, err)
-		defer inputRecord.Release()
 
 		// Create input pipeline
 		inputPipeline := NewBufferedPipeline(inputRecord)
@@ -85,7 +76,7 @@ func TestNewProjectPipeline(t *testing.T) {
 
 		// Create project pipeline
 		e := newExpressionEvaluator()
-		projectPipeline, err := NewProjectPipeline(inputPipeline, &physical.Projection{Expressions: columns}, &e, alloc)
+		projectPipeline, err := NewProjectPipeline(inputPipeline, &physical.Projection{Expressions: columns}, &e, nil)
 		require.NoError(t, err)
 
 		// Create expected output
@@ -94,9 +85,8 @@ func TestNewProjectPipeline(t *testing.T) {
 			semconv.FieldFromFQN("utf8.builtin.name", false),
 			semconv.FieldFromFQN("utf8.builtin.city", false),
 		}
-		expectedRecord, err := CSVToArrowWithAllocator(alloc, expectedFields, expectedCSV)
+		expectedRecord, err := CSVToArrow(expectedFields, expectedCSV)
 		require.NoError(t, err)
-		defer expectedRecord.Release()
 
 		expectedPipeline := NewBufferedPipeline(expectedRecord)
 
@@ -105,20 +95,15 @@ func TestNewProjectPipeline(t *testing.T) {
 	})
 
 	t.Run("project with multiple input batches", func(t *testing.T) {
-		alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
-		defer alloc.AssertSize(t, 0)
-
 		// Create input data split across multiple records
 		inputCSV1 := "Alice,30,New York\nBob,25,Boston"
 		inputCSV2 := "Charlie,35,Seattle\nDave,40,Portland"
 
-		inputRecord1, err := CSVToArrowWithAllocator(alloc, fields, inputCSV1)
+		inputRecord1, err := CSVToArrow(fields, inputCSV1)
 		require.NoError(t, err)
-		defer inputRecord1.Release()
 
-		inputRecord2, err := CSVToArrowWithAllocator(alloc, fields, inputCSV2)
+		inputRecord2, err := CSVToArrow(fields, inputCSV2)
 		require.NoError(t, err)
-		defer inputRecord2.Release()
 
 		// Create input pipeline with multiple batches
 		inputPipeline := NewBufferedPipeline(inputRecord1, inputRecord2)
@@ -135,7 +120,7 @@ func TestNewProjectPipeline(t *testing.T) {
 
 		// Create project pipeline
 		e := newExpressionEvaluator()
-		projectPipeline, err := NewProjectPipeline(inputPipeline, &physical.Projection{Expressions: columns}, &e, alloc)
+		projectPipeline, err := NewProjectPipeline(inputPipeline, &physical.Projection{Expressions: columns}, &e, nil)
 		require.NoError(t, err)
 
 		// Create expected output also split across multiple records
@@ -153,7 +138,6 @@ Dave,40
 
 		expectedRecord, err := CSVToArrow(expectedFields, expected)
 		require.NoError(t, err)
-		defer expectedRecord.Release()
 
 		expectedPipeline := NewBufferedPipeline(expectedRecord)
 
@@ -232,12 +216,8 @@ Dave,40
 			},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
-				// Create input pipeline
-				alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
-				defer alloc.AssertSize(t, 0) // Assert empty on test exit
-
 				// Create input data with message column containing logfmt
-				input := NewArrowtestPipeline(alloc, schema, rows)
+				input := NewArrowtestPipeline(schema, rows)
 
 				// Create project pipeline
 				proj := &physical.Projection{
@@ -245,13 +225,12 @@ Dave,40
 					All:         true,
 					Drop:        true,
 				}
-				pipeline, err := NewProjectPipeline(input, proj, &expressionEvaluator{}, alloc)
+				pipeline, err := NewProjectPipeline(input, proj, &expressionEvaluator{}, nil)
 				require.NoError(t, err)
 
 				ctx := t.Context()
 				record, err := pipeline.Read(ctx)
 				require.NoError(t, err)
-				defer record.Release()
 
 				// Verify the output has the expected number of fields
 				outputSchema := record.Schema()
@@ -498,12 +477,8 @@ func TestNewProjectPipeline_ProjectionFunction_ExpandWithCast(t *testing.T) {
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
-			defer alloc.AssertSize(t, 0) // Assert empty on test exit
-
 			// Create input data
 			input := NewArrowtestPipeline(
-				alloc,
 				tt.schema,
 				tt.input,
 			)
@@ -517,7 +492,7 @@ func TestNewProjectPipeline_ProjectionFunction_ExpandWithCast(t *testing.T) {
 					All:         true,
 				},
 				&e,
-				alloc)
+				nil)
 			require.NoError(t, err)
 			defer pipeline.Close()
 
@@ -525,7 +500,6 @@ func TestNewProjectPipeline_ProjectionFunction_ExpandWithCast(t *testing.T) {
 			ctx := t.Context()
 			record, err := pipeline.Read(ctx)
 			require.NoError(t, err)
-			defer record.Release()
 
 			// Verify the output has the expected number of fields
 			outputSchema := record.Schema()
@@ -537,6 +511,210 @@ func TestNewProjectPipeline_ProjectionFunction_ExpandWithCast(t *testing.T) {
 			require.Equal(t, tt.expectedOutput, actual)
 		})
 	}
+}
+
+func TestNewProjectPipeline_ProjectionFunction_ExpandWithBinOn(t *testing.T) {
+	t.Run("calculates a simple expression with 1 input", func(t *testing.T) {
+		colTs := "timestamp_ns.builtin.timestamp"
+		colVal := "float64.generated.value"
+		colEnv := "utf8.label.env"
+		colSvc := "utf8.label.service"
+
+		schema := arrow.NewSchema([]arrow.Field{
+			semconv.FieldFromFQN(colTs, false),
+			semconv.FieldFromFQN(colVal, false),
+			semconv.FieldFromFQN(colEnv, false),
+			semconv.FieldFromFQN(colSvc, false),
+		}, nil)
+
+		rowsPipeline1 := []arrowtest.Rows{
+			{
+				{colTs: time.Unix(20, 0).UTC(), colVal: float64(230), colEnv: "prod", colSvc: "distributor"},
+				{colTs: time.Unix(15, 0).UTC(), colVal: float64(120), colEnv: "prod", colSvc: "distributor"},
+				{colTs: time.Unix(10, 0).UTC(), colVal: float64(260), colEnv: "prod", colSvc: "distributor"},
+				{colTs: time.Unix(12, 0).UTC(), colVal: float64(250), colEnv: "dev", colSvc: "distributor"},
+			},
+		}
+		input1 := NewArrowtestPipeline(schema, rowsPipeline1...)
+
+		// value / 10
+		projection := &physical.Projection{
+			Expressions: []physical.Expression{
+				&physical.BinaryExpr{
+					Left: &physical.ColumnExpr{
+						Ref: types.ColumnRef{
+							Column: types.ColumnNameGeneratedValue,
+							Type:   types.ColumnTypeGenerated,
+						},
+					},
+					Right: physical.NewLiteral(float64(10)),
+					Op:    types.BinaryOpDiv,
+				},
+			},
+			All:    true,
+			Expand: true,
+		}
+
+		pipeline, err := NewProjectPipeline(input1, projection, &expressionEvaluator{}, nil)
+		require.NoError(t, err)
+		defer pipeline.Close()
+
+		// Read the pipeline output
+		record, err := pipeline.Read(t.Context())
+		require.NoError(t, err)
+
+		expect := arrowtest.Rows{
+			{colTs: time.Unix(20, 0).UTC(), colVal: float64(23), colEnv: "prod", colSvc: "distributor"},
+			{colTs: time.Unix(15, 0).UTC(), colVal: float64(12), colEnv: "prod", colSvc: "distributor"},
+			{colTs: time.Unix(10, 0).UTC(), colVal: float64(26), colEnv: "prod", colSvc: "distributor"},
+			{colTs: time.Unix(12, 0).UTC(), colVal: float64(25), colEnv: "dev", colSvc: "distributor"},
+		}
+
+		rows, err := arrowtest.RecordRows(record)
+		require.NoError(t, err, "should be able to convert record back to rows")
+		require.Equal(t, len(expect), len(rows), "number of rows should match")
+		require.ElementsMatch(t, expect, rows)
+	})
+
+	t.Run("calculates a complex expression with 1 input", func(t *testing.T) {
+		colTs := "timestamp_ns.builtin.timestamp"
+		colVal := "float64.generated.value"
+		colEnv := "utf8.label.env"
+		colSvc := "utf8.label.service"
+
+		schema := arrow.NewSchema([]arrow.Field{
+			semconv.FieldFromFQN(colTs, false),
+			semconv.FieldFromFQN(colVal, false),
+			semconv.FieldFromFQN(colEnv, false),
+			semconv.FieldFromFQN(colSvc, false),
+		}, nil)
+
+		rowsPipeline1 := []arrowtest.Rows{
+			{
+				{colTs: time.Unix(20, 0).UTC(), colVal: float64(230), colEnv: "prod", colSvc: "distributor"},
+				{colTs: time.Unix(15, 0).UTC(), colVal: float64(120), colEnv: "prod", colSvc: "distributor"},
+				{colTs: time.Unix(10, 0).UTC(), colVal: float64(260), colEnv: "prod", colSvc: "distributor"},
+				{colTs: time.Unix(12, 0).UTC(), colVal: float64(250), colEnv: "dev", colSvc: "distributor"},
+			},
+		}
+		input1 := NewArrowtestPipeline(schema, rowsPipeline1...)
+
+		// value * 10 + 100 / 10
+		projection := &physical.Projection{
+			Expressions: []physical.Expression{
+				&physical.BinaryExpr{
+					Left: &physical.BinaryExpr{
+						Left: &physical.ColumnExpr{
+							Ref: types.ColumnRef{
+								Column: types.ColumnNameGeneratedValue,
+								Type:   types.ColumnTypeGenerated,
+							},
+						},
+						Right: physical.NewLiteral(float64(10)),
+						Op:    types.BinaryOpMul,
+					},
+					Right: &physical.BinaryExpr{
+						Left:  physical.NewLiteral(float64(100)),
+						Right: physical.NewLiteral(float64(10)),
+						Op:    types.BinaryOpDiv,
+					},
+					Op: types.BinaryOpAdd,
+				},
+			},
+			All:    true,
+			Expand: true,
+		}
+
+		pipeline, err := NewProjectPipeline(input1, projection, &expressionEvaluator{}, nil)
+		require.NoError(t, err)
+		defer pipeline.Close()
+
+		// Read the pipeline output
+		record, err := pipeline.Read(t.Context())
+		require.NoError(t, err)
+
+		expect := arrowtest.Rows{
+			{colTs: time.Unix(20, 0).UTC(), colVal: float64(2310), colEnv: "prod", colSvc: "distributor"},
+			{colTs: time.Unix(15, 0).UTC(), colVal: float64(1210), colEnv: "prod", colSvc: "distributor"},
+			{colTs: time.Unix(10, 0).UTC(), colVal: float64(2610), colEnv: "prod", colSvc: "distributor"},
+			{colTs: time.Unix(12, 0).UTC(), colVal: float64(2510), colEnv: "dev", colSvc: "distributor"},
+		}
+
+		rows, err := arrowtest.RecordRows(record)
+		require.NoError(t, err, "should be able to convert record back to rows")
+		require.Equal(t, len(expect), len(rows), "number of rows should match")
+		require.ElementsMatch(t, expect, rows)
+	})
+
+	t.Run("calculates a complex ex", func(t *testing.T) {
+		colTs := "timestamp_ns.builtin.timestamp"
+		colVal := "float64.generated.value"
+		colValLeft := "float64.generated.value_left"
+		colValRight := "float64.generated.value_right"
+		colEnv := "utf8.label.env"
+		colSvc := "utf8.label.service"
+
+		schema := arrow.NewSchema([]arrow.Field{
+			semconv.FieldFromFQN(colTs, false),
+			semconv.FieldFromFQN(colValLeft, false),
+			semconv.FieldFromFQN(colValRight, false),
+			semconv.FieldFromFQN(colEnv, false),
+			semconv.FieldFromFQN(colSvc, false),
+		}, nil)
+
+		rowsPipeline1 := []arrowtest.Rows{
+			{
+				{colTs: time.Unix(20, 0).UTC(), colValLeft: float64(230), colValRight: float64(2), colEnv: "prod", colSvc: "distributor"},
+				{colTs: time.Unix(15, 0).UTC(), colValLeft: float64(120), colValRight: float64(10), colEnv: "prod", colSvc: "distributor"},
+				{colTs: time.Unix(10, 0).UTC(), colValLeft: float64(260), colValRight: float64(4), colEnv: "prod", colSvc: "distributor"},
+				{colTs: time.Unix(12, 0).UTC(), colValLeft: float64(250), colValRight: float64(20), colEnv: "dev", colSvc: "distributor"},
+			},
+		}
+		input1 := NewArrowtestPipeline(schema, rowsPipeline1...)
+
+		// value_left / value_right
+		projection := &physical.Projection{
+			Expressions: []physical.Expression{
+				&physical.BinaryExpr{
+					Left: &physical.ColumnExpr{
+						Ref: types.ColumnRef{
+							Column: "value_left",
+							Type:   types.ColumnTypeGenerated,
+						},
+					},
+					Right: &physical.ColumnExpr{
+						Ref: types.ColumnRef{
+							Column: "value_right",
+							Type:   types.ColumnTypeGenerated,
+						},
+					},
+					Op: types.BinaryOpDiv,
+				},
+			},
+			All:    true,
+			Expand: true,
+		}
+
+		pipeline, err := NewProjectPipeline(input1, projection, &expressionEvaluator{}, nil)
+		require.NoError(t, err)
+		defer pipeline.Close()
+
+		// Read the pipeline output
+		record, err := pipeline.Read(t.Context())
+		require.NoError(t, err)
+
+		expect := arrowtest.Rows{
+			{colTs: time.Unix(20, 0).UTC(), colValLeft: float64(230), colValRight: float64(2), colVal: float64(115), colEnv: "prod", colSvc: "distributor"},
+			{colTs: time.Unix(15, 0).UTC(), colValLeft: float64(120), colValRight: float64(10), colVal: float64(12), colEnv: "prod", colSvc: "distributor"},
+			{colTs: time.Unix(10, 0).UTC(), colValLeft: float64(260), colValRight: float64(4), colVal: float64(65), colEnv: "prod", colSvc: "distributor"},
+			{colTs: time.Unix(12, 0).UTC(), colValLeft: float64(250), colValRight: float64(20), colVal: float64(12.5), colEnv: "dev", colSvc: "distributor"},
+		}
+
+		rows, err := arrowtest.RecordRows(record)
+		require.NoError(t, err, "should be able to convert record back to rows")
+		require.Equal(t, len(expect), len(rows), "number of rows should match")
+		require.ElementsMatch(t, expect, rows)
+	})
 }
 
 // Helper to create a column reference

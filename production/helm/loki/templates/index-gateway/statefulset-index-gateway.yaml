@@ -68,7 +68,7 @@ spec:
       {{- end }}
       {{- include "loki.indexGatewayPriorityClassName" . | nindent 6 }}
       securityContext:
-        {{- toYaml .Values.loki.podSecurityContext | nindent 8 }}
+        {{- include "loki.podSecurityContext" . | nindent 8 }}
       terminationGracePeriodSeconds: {{ .Values.indexGateway.terminationGracePeriodSeconds }}
       {{- with .Values.indexGateway.initContainers }}
       initContainers:
@@ -130,6 +130,10 @@ spec:
             {{- end }}
           resources:
             {{- toYaml .Values.indexGateway.resources | nindent 12 }}
+          {{- with .Values.indexGateway.lifecycle }}
+          lifecycle:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
         {{- if .Values.indexGateway.extraContainers }}
         {{- toYaml .Values.indexGateway.extraContainers | nindent 8}}
         {{- end }}

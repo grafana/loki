@@ -72,7 +72,7 @@ func NewQuerierAPI(cfg Config, mCfg metastore.Config, querier Querier, limits qu
 	}
 
 	if cfg.EngineV2.Enable {
-		q.engineV2 = engine.New(cfg.EngineV2, mCfg, store, limits, reg, logger)
+		q.engineV2 = engine.NewBasic(cfg.EngineV2.Executor, mCfg, store, limits, reg, logger)
 	}
 
 	return q
@@ -113,7 +113,7 @@ func hasDataObjectsAvailable(config Config, start, end time.Time) bool {
 	// Data objects in object storage lag behind 20-30 minutes.
 	// We are generous and only enable v2 engine queries that end earlier than 1DataObjStorageLag ago (default 1h),
 	// to ensure data objects are available.
-	v2Start, v2End := config.EngineV2.ValidQueryRange()
+	v2Start, v2End := config.EngineV2.Executor.ValidQueryRange()
 	return end.Before(v2End) && start.After(v2Start)
 }
 
@@ -471,15 +471,23 @@ func (q *QuerierAPI) PatternsHandler(ctx context.Context, req *logproto.QueryPat
 	}
 
 	// Query store for older data by converting to LogQL query
-	// Only query the store if pattern persistence is enabled for this tenant
+	// Only query the store if pattern persistence is enabled for at least one tenant
 	if storeQueryInterval != nil && !q.cfg.QueryIngesterOnly && q.engineV1 != nil {
-		tenantID, err := tenant.TenantID(ctx)
+		tenantIDs, err := tenant.TenantIDs(ctx)
 		if err != nil {
 			return nil, err
 		}
 
-		// Only query the store if pattern persistence is enabled for this tenant
-		if q.limits.PatternPersistenceEnabled(tenantID) {
+		// Only query the store if pattern persistence is enabled for at least one tenant
+		patternPersistenceEnabled := false
+		for _, tenantID := range tenantIDs {
+			if q.limits.PatternPersistenceEnabled(tenantID) {
+				patternPersistenceEnabled = true
+				break
+			}
+		}
+
+		if patternPersistenceEnabled {
 			g.Go(func() error {
 				storeReq := *req
 				storeReq.Start = storeQueryInterval.start

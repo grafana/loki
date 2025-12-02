@@ -82,7 +82,7 @@ func Test_dataobjScan(t *testing.T) {
 			Projections:    nil,           // All columns
 
 			BatchSize: 512,
-		}, log.NewNopLogger())
+		}, log.NewNopLogger(), nil)
 
 		expectFields := []arrow.Field{
 			semconv.FieldFromFQN("utf8.label.env", true),
@@ -100,7 +100,6 @@ prod,notloki,NULL,notloki-pod-1,1970-01-01 00:00:02,hello world`
 
 		expectRecord, err := CSVToArrow(expectFields, expectCSV)
 		require.NoError(t, err)
-		defer expectRecord.Release()
 
 		AssertPipelinesEqual(t, pipeline, NewBufferedPipeline(expectRecord))
 	})
@@ -116,7 +115,7 @@ prod,notloki,NULL,notloki-pod-1,1970-01-01 00:00:02,hello world`
 			},
 
 			BatchSize: 512,
-		}, log.NewNopLogger())
+		}, log.NewNopLogger(), nil)
 
 		expectFields := []arrow.Field{
 			semconv.FieldFromFQN("utf8.label.env", true),
@@ -130,7 +129,6 @@ prod,1970-01-01 00:00:02`
 
 		expectRecord, err := CSVToArrow(expectFields, expectCSV)
 		require.NoError(t, err)
-		defer expectRecord.Release()
 
 		AssertPipelinesEqual(t, pipeline, NewBufferedPipeline(expectRecord))
 	})
@@ -143,7 +141,7 @@ prod,1970-01-01 00:00:02`
 			Projections:    nil,        // All columns
 
 			BatchSize: 512,
-		}, log.NewNopLogger())
+		}, log.NewNopLogger(), nil)
 
 		expectFields := []arrow.Field{
 			semconv.FieldFromFQN("utf8.label.env", true),
@@ -159,7 +157,6 @@ prod,notloki,NULL,notloki-pod-1,1970-01-01 00:00:02,hello world`
 
 		expectRecord, err := CSVToArrow(expectFields, expectCSV)
 		require.NoError(t, err)
-		defer expectRecord.Release()
 
 		AssertPipelinesEqual(t, pipeline, NewBufferedPipeline(expectRecord))
 	})
@@ -175,7 +172,7 @@ prod,notloki,NULL,notloki-pod-1,1970-01-01 00:00:02,hello world`
 				&physical.ColumnExpr{Ref: types.ColumnRef{Column: "env", Type: types.ColumnTypeAmbiguous}},
 			},
 			BatchSize: 512,
-		}, log.NewNopLogger())
+		}, log.NewNopLogger(), nil)
 
 		expectFields := []arrow.Field{
 			semconv.FieldFromFQN("utf8.label.env", true),
@@ -188,7 +185,6 @@ prod`
 
 		expectRecord, err := CSVToArrow(expectFields, expectCSV)
 		require.NoError(t, err)
-		defer expectRecord.Release()
 
 		AssertPipelinesEqual(t, pipeline, NewBufferedPipeline(expectRecord))
 	})
@@ -255,7 +251,7 @@ func Test_dataobjScan_DuplicateColumns(t *testing.T) {
 			StreamIDs:      []int64{1, 2, 3}, // All streams
 			Projections:    nil,              // All columns
 			BatchSize:      512,
-		}, log.NewNopLogger())
+		}, log.NewNopLogger(), nil)
 
 		expectFields := []arrow.Field{
 			semconv.FieldFromFQN("utf8.label.env", true),
@@ -276,7 +272,6 @@ prod,NULL,pod-1,loki,NULL,override,1970-01-01 00:00:01,message 1`
 
 		expectRecord, err := CSVToArrow(expectFields, expectCSV)
 		require.NoError(t, err)
-		defer expectRecord.Release()
 
 		AssertPipelinesEqual(t, pipeline, NewBufferedPipeline(expectRecord))
 	})
@@ -290,7 +285,7 @@ prod,NULL,pod-1,loki,NULL,override,1970-01-01 00:00:01,message 1`
 				&physical.ColumnExpr{Ref: types.ColumnRef{Column: "pod", Type: types.ColumnTypeAmbiguous}},
 			},
 			BatchSize: 512,
-		}, log.NewNopLogger())
+		}, log.NewNopLogger(), nil)
 
 		expectFields := []arrow.Field{
 			semconv.FieldFromFQN("utf8.label.pod", true),
@@ -303,7 +298,6 @@ pod-1,override`
 
 		expectRecord, err := CSVToArrow(expectFields, expectCSV)
 		require.NoError(t, err)
-		defer expectRecord.Release()
 
 		AssertPipelinesEqual(t, pipeline, NewBufferedPipeline(expectRecord))
 	})
@@ -317,7 +311,7 @@ pod-1,override`
 				&physical.ColumnExpr{Ref: types.ColumnRef{Column: "namespace", Type: types.ColumnTypeAmbiguous}},
 			},
 			BatchSize: 512,
-		}, log.NewNopLogger())
+		}, log.NewNopLogger(), nil)
 
 		expectFields := []arrow.Field{
 			semconv.FieldFromFQN("utf8.label.namespace", true),
@@ -330,7 +324,6 @@ NULL,NULL`
 
 		expectRecord, err := CSVToArrow(expectFields, expectCSV)
 		require.NoError(t, err)
-		defer expectRecord.Release()
 
 		AssertPipelinesEqual(t, pipeline, NewBufferedPipeline(expectRecord))
 	})

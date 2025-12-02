@@ -10,10 +10,10 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
-	"github.com/apache/arrow-go/v18/arrow/memory"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 type rangeAggregationOptions struct {
@@ -67,16 +67,16 @@ type rangeAggregationPipeline struct {
 	aggregator          *aggregator
 	windowsForTimestamp timestampMatchingWindowsFunc // function to find matching time windows for a given timestamp
 	evaluator           expressionEvaluator          // used to evaluate column expressions
-	allocator           memory.Allocator
 	opts                rangeAggregationOptions
+	region              *xcap.Region
 }
 
-func newRangeAggregationPipeline(inputs []Pipeline, evaluator expressionEvaluator, allocator memory.Allocator, opts rangeAggregationOptions) (*rangeAggregationPipeline, error) {
+func newRangeAggregationPipeline(inputs []Pipeline, evaluator expressionEvaluator, opts rangeAggregationOptions, region *xcap.Region) (*rangeAggregationPipeline, error) {
 	r := &rangeAggregationPipeline{
 		inputs:    inputs,
 		evaluator: evaluator,
-		allocator: allocator,
 		opts:      opts,
+		region:    region,
 	}
 	r.init()
 	return r, nil
@@ -110,7 +110,7 @@ func (r *rangeAggregationPipeline) init() {
 // Read reads the next value into its state.
 // It returns an error if reading fails or when the pipeline is exhausted. In this case, the function returns EOF.
 // The implementation must retain the returned error in its state and return it with subsequent Value() calls.
-func (r *rangeAggregationPipeline) Read(ctx context.Context) (arrow.Record, error) {
+func (r *rangeAggregationPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	if r.inputsExhausted {
 		return nil, EOF
 	}
@@ -122,7 +122,7 @@ func (r *rangeAggregationPipeline) Read(ctx context.Context) (arrow.Record, erro
 // - Support implicit partitioning by all labels when partitionBy is empty
 // - Use columnar access pattern. Current approach is row-based which does not benefit from the storage format.
 // - Add toggle to return partial results on Read() call instead of returning only after exhausting all inputs.
-func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, error) {
+func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch, error) {
 	var (
 		tsColumnExpr = &physical.ColumnExpr{
 			Ref: types.ColumnRef{
@@ -155,46 +155,40 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, erro
 				}
 				return nil, err
 			}
-			defer record.Release()
 
 			inputsExhausted = false
 
 			// extract all the columns that are used for partitioning
 			arrays := make([]*array.String, 0, len(r.opts.partitionBy))
 			for _, columnExpr := range r.opts.partitionBy {
-				vec, err := r.evaluator.eval(columnExpr, r.allocator, record)
+				vec, err := r.evaluator.eval(columnExpr, record)
 				if err != nil {
 					return nil, err
 				}
-				defer vec.Release()
 
-				if vec.Type() != types.Loki.String {
-					return nil, fmt.Errorf("unsupported datatype for partitioning %s", vec.Type())
+				if vec.DataType().ID() != types.Arrow.String.ID() {
+					return nil, fmt.Errorf("unsupported datatype for partitioning %s", vec.DataType())
 				}
 
-				arr := vec.ToArray().(*array.String)
-				defer arr.Release()
-
+				arr := vec.(*array.String)
 				arrays = append(arrays, arr)
 			}
 
 			// extract timestamp column to check if the entry is in range
-			tsVec, err := r.evaluator.eval(tsColumnExpr, r.allocator, record)
+			tsVec, err := r.evaluator.eval(tsColumnExpr, record)
 			if err != nil {
 				return nil, err
 			}
-			defer tsVec.Release()
-			tsCol := tsVec.ToArray().(*array.Timestamp)
-			defer tsCol.Release()
+			tsCol := tsVec.(*array.Timestamp)
 
 			// no need to extract value column for COUNT aggregation
-			var valVec ColumnVector
+			var valArr *array.Float64
 			if r.opts.operation != types.RangeAggregationTypeCount {
-				valVec, err = r.evaluator.eval(valColumnExpr, r.allocator, record)
+				valVec, err := r.evaluator.eval(valColumnExpr, record)
 				if err != nil {
 					return nil, err
 				}
-				defer valVec.Release()
+				valArr = valVec.(*array.Float64)
 			}
 
 			for row := range int(record.NumRows()) {
@@ -211,12 +205,7 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, erro
 
 				var value float64
 				if r.opts.operation != types.RangeAggregationTypeCount {
-					switch v := valVec.Value(row).(type) {
-					case float64:
-						value = v
-					case int64:
-						value = float64(v)
-					}
+					value = valArr.Value(row)
 				}
 
 				for _, w := range windows {
@@ -233,9 +222,17 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, erro
 // Close closes the resources of the pipeline.
 // The implementation must close all the of the pipeline's inputs.
 func (r *rangeAggregationPipeline) Close() {
+	if r.region != nil {
+		r.region.End()
+	}
 	for _, input := range r.inputs {
 		input.Close()
 	}
+}
+
+// Region implements RegionProvider.
+func (r *rangeAggregationPipeline) Region() *xcap.Region {
+	return r.region
 }
 
 func newMatcherFactoryFromOpts(opts rangeAggregationOptions) *matcherFactory {

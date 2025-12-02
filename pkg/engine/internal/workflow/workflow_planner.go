@@ -13,6 +13,7 @@ import (
 
 // planner is responsible for constructing the Task graph held by a [Workflow].
 type planner struct {
+	tenantID string
 	graph    dag.Graph[*Task]
 	physical *physical.Plan
 
@@ -23,13 +24,14 @@ type planner struct {
 //
 // planWorkflow returns an error if the provided physical plan does not
 // have exactly one root node, or if the physical plan cannot be partitioned.
-func planWorkflow(plan *physical.Plan) (dag.Graph[*Task], error) {
+func planWorkflow(tenantID string, plan *physical.Plan) (dag.Graph[*Task], error) {
 	root, err := plan.Root()
 	if err != nil {
 		return dag.Graph[*Task]{}, err
 	}
 
 	planner := &planner{
+		tenantID: tenantID,
 		physical: plan,
 
 		streamWriters: make(map[*Stream]*Task),
@@ -74,6 +76,7 @@ func (p *planner) processNode(node physical.Node, splitOnBreaker bool) (*Task, e
 		stack     = make(stack[physical.Node], 0, p.physical.Len())
 		visited   = make(map[physical.Node]struct{}, p.physical.Len())
 		nodeTasks = make(map[physical.Node][]*Task, p.physical.Len())
+		timeRange physical.TimeRange
 	)
 
 	stack.Push(node)
@@ -109,11 +112,14 @@ func (p *planner) processNode(node physical.Node, splitOnBreaker bool) (*Task, e
 				// Create one unique stream for each child task so we can
 				// receive output from them.
 				for _, task := range childTasks {
-					stream := &Stream{ULID: ulid.Make()}
+					stream := &Stream{ULID: ulid.Make(), TenantID: p.tenantID}
 					if err := p.addSink(task, stream); err != nil {
 						return nil, err
 					}
 					sources[next] = append(sources[next], stream)
+
+					// Merge in time ranges of each child
+					timeRange = timeRange.Merge(task.MaxTimeRange)
 				}
 
 			case child.Type() == physical.NodeTypeParallelize:
@@ -132,11 +138,14 @@ func (p *planner) processNode(node physical.Node, splitOnBreaker bool) (*Task, e
 				// Create one unique stream for each child task so we can
 				// receive output from them.
 				for _, task := range childTasks {
-					stream := &Stream{ULID: ulid.Make()}
+					stream := &Stream{ULID: ulid.Make(), TenantID: p.tenantID}
 					if err := p.addSink(task, stream); err != nil {
 						return nil, err
 					}
 					sources[next] = append(sources[next], stream)
+
+					// Merge in time ranges of each child
+					timeRange = timeRange.Merge(task.MaxTimeRange)
 				}
 
 			default:
@@ -153,11 +162,18 @@ func (p *planner) processNode(node physical.Node, splitOnBreaker bool) (*Task, e
 		}
 	}
 
+	fragment := physical.FromGraph(taskPlan)
+	planTimeRange := fragment.CalculateMaxTimeRange()
+	if !planTimeRange.IsZero() {
+		timeRange = planTimeRange
+	}
 	task := &Task{
-		ULID:     ulid.Make(),
-		Fragment: physical.FromGraph(taskPlan),
-		Sources:  sources,
-		Sinks:    make(map[physical.Node][]*Stream),
+		ULID:         ulid.Make(),
+		TenantID:     p.tenantID,
+		Fragment:     fragment,
+		Sources:      sources,
+		Sinks:        make(map[physical.Node][]*Stream),
+		MaxTimeRange: timeRange,
 	}
 	p.graph.Add(task)
 
@@ -321,12 +337,16 @@ func (p *planner) processParallelizeNode(node *physical.Parallelize) ([]*Task, e
 			shardSources[node] = shardStreams
 		}
 
+		fragment := physical.FromGraph(*shardedPlan)
 		partition := &Task{
-			ULID: ulid.Make(),
+			ULID:     ulid.Make(),
+			TenantID: p.tenantID,
 
-			Fragment: physical.FromGraph(*shardedPlan),
+			Fragment: fragment,
 			Sources:  shardSources,
 			Sinks:    make(map[physical.Node][]*Stream),
+			// Recalculate MaxTimeRange because the new injected `shard` node can cover another time range.
+			MaxTimeRange: fragment.CalculateMaxTimeRange(),
 		}
 		p.graph.Add(partition)
 

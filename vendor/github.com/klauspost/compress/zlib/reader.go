@@ -132,7 +132,7 @@ func (z *reader) Close() error {
 }
 
 func (z *reader) Reset(r io.Reader, dict []byte) error {
-	*z = reader{decompressor: z.decompressor}
+	*z = reader{decompressor: z.decompressor, digest: z.digest}
 	if fr, ok := r.(flate.Reader); ok {
 		z.r = fr
 	} else {

@@ -15,7 +15,7 @@ import (
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
-// This operation is not supported by directory buckets.
+// This operation is not supported for directory buckets.
 //
 // Sets the cors configuration for your bucket. If the configuration exists,
 // Amazon S3 replaces it.
@@ -59,6 +59,10 @@ import (
 //
 // [RESTOPTIONSobject]
 //
+// You must URL encode any signed header values that contain spaces. For example,
+// if your header value is my file.txt , containing two spaces after my , you must
+// URL encode this value to my%20%20file.txt .
+//
 // [GetBucketCors]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketCors.html
 // [Enabling Cross-Origin Resource Sharing]: https://docs.aws.amazon.com/AmazonS3/latest/dev/cors.html
 // [RESTOPTIONSobject]: https://docs.aws.amazon.com/AmazonS3/latest/API/RESTOPTIONSobject.html
@@ -93,9 +97,9 @@ type PutBucketCorsInput struct {
 	// This member is required.
 	CORSConfiguration *types.CORSConfiguration
 
-	// Indicates the algorithm used to create the checksum for the object when you use
-	// the SDK. This header will not provide any additional functionality if you don't
-	// use the SDK. When you send this header, there must be a corresponding
+	// Indicates the algorithm used to create the checksum for the request when you
+	// use the SDK. This header will not provide any additional functionality if you
+	// don't use the SDK. When you send this header, there must be a corresponding
 	// x-amz-checksum or x-amz-trailer header sent. Otherwise, Amazon S3 fails the
 	// request with the HTTP status code 400 Bad Request . For more information, see [Checking object integrity]
 	// in the Amazon S3 User Guide.
@@ -106,7 +110,7 @@ type PutBucketCorsInput struct {
 	// [Checking object integrity]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html
 	ChecksumAlgorithm types.ChecksumAlgorithm
 
-	// The base64-encoded 128-bit MD5 digest of the data. This header must be used as
+	// The Base64 encoded 128-bit MD5 digest of the data. This header must be used as
 	// a message integrity check to verify that the request body was not corrupted in
 	// transit. For more information, go to [RFC 1864.]
 	//
@@ -180,6 +184,9 @@ func (c *Client) addOperationPutBucketCorsMiddlewares(stack *middleware.Stack, o
 	if err = addRecordResponseTiming(stack); err != nil {
 		return err
 	}
+	if err = addSpanRetryLoop(stack, options); err != nil {
+		return err
+	}
 	if err = addClientUserAgent(stack, options); err != nil {
 		return err
 	}
@@ -202,6 +209,12 @@ func (c *Client) addOperationPutBucketCorsMiddlewares(stack *middleware.Stack, o
 		return err
 	}
 	if err = addIsExpressUserAgent(stack); err != nil {
+		return err
+	}
+	if err = addRequestChecksumMetricsTracking(stack, options); err != nil {
+		return err
+	}
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpPutBucketCorsValidationMiddleware(stack); err != nil {
@@ -243,6 +256,15 @@ func (c *Client) addOperationPutBucketCorsMiddlewares(stack *middleware.Stack, o
 	if err = s3cust.AddExpressDefaultChecksumMiddleware(stack); err != nil {
 		return err
 	}
+	if err = addInterceptBeforeRetryLoop(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAttempt(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptors(stack, options); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -272,9 +294,10 @@ func getPutBucketCorsRequestAlgorithmMember(input interface{}) (string, bool) {
 }
 
 func addPutBucketCorsInputChecksumMiddlewares(stack *middleware.Stack, options Options) error {
-	return internalChecksum.AddInputMiddleware(stack, internalChecksum.InputMiddlewareOptions{
+	return addInputChecksumMiddleware(stack, internalChecksum.InputMiddlewareOptions{
 		GetAlgorithm:                     getPutBucketCorsRequestAlgorithmMember,
 		RequireChecksum:                  true,
+		RequestChecksumCalculation:       options.RequestChecksumCalculation,
 		EnableTrailingChecksum:           false,
 		EnableComputeSHA256PayloadHash:   true,
 		EnableDecodedContentLengthHeader: true,

@@ -3,15 +3,16 @@ package types //nolint:revive
 import (
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
+	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/dustin/go-humanize"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/util"
 )
 
-type NullLiteral struct {
-}
+type NullLiteral struct{}
 
 // String implements Literal.
 func (n NullLiteral) String() string {
@@ -24,11 +25,11 @@ func (n NullLiteral) Type() DataType {
 }
 
 // Any implements Literal.
-func (n NullLiteral) Any() any {
+func (n NullLiteral) Any() LiteralType {
 	return nil
 }
 
-func (n NullLiteral) Value() any {
+func (n NullLiteral) Value() Null {
 	return nil
 }
 
@@ -45,7 +46,7 @@ func (b BoolLiteral) Type() DataType {
 }
 
 // Any implements Literal.
-func (b BoolLiteral) Any() any {
+func (b BoolLiteral) Any() LiteralType {
 	return b.Value()
 }
 
@@ -66,7 +67,7 @@ func (s StringLiteral) Type() DataType {
 }
 
 // Any implements Literal.
-func (s StringLiteral) Any() any {
+func (s StringLiteral) Any() LiteralType {
 	return s.Value()
 }
 
@@ -87,7 +88,7 @@ func (i IntegerLiteral) Type() DataType {
 }
 
 // Any implements Literal.
-func (i IntegerLiteral) Any() any {
+func (i IntegerLiteral) Any() LiteralType {
 	return i.Value()
 }
 
@@ -108,7 +109,7 @@ func (f FloatLiteral) Type() DataType {
 }
 
 // Any implements Literal.
-func (f FloatLiteral) Any() any {
+func (f FloatLiteral) Any() LiteralType {
 	return f.Value()
 }
 
@@ -129,7 +130,7 @@ func (t TimestampLiteral) Type() DataType {
 }
 
 // Any implements Literal.
-func (t TimestampLiteral) Any() any {
+func (t TimestampLiteral) Any() LiteralType {
 	return t.Value()
 }
 
@@ -150,7 +151,7 @@ func (d DurationLiteral) Type() DataType {
 }
 
 // Any implements Literal.
-func (d DurationLiteral) Any() any {
+func (d DurationLiteral) Any() LiteralType {
 	return d.Value()
 }
 
@@ -171,7 +172,7 @@ func (b BytesLiteral) Type() DataType {
 }
 
 // Any implements Literal.
-func (b BytesLiteral) Any() any {
+func (b BytesLiteral) Any() LiteralType {
 	return b.Value()
 }
 
@@ -179,15 +180,39 @@ func (b BytesLiteral) Value() Bytes {
 	return Bytes(b)
 }
 
+type StringListLiteral []string
+
+// String implements Literal.
+func (l StringListLiteral) String() string {
+	return "[" + strings.Join(l, ", ") + "]"
+}
+
+// Type implements Literal.
+func (l StringListLiteral) Type() DataType {
+	tList := tList{
+		arrowType: arrow.ListOf(arrow.BinaryTypes.String),
+	}
+	return tList
+}
+
+// Any implements Literal.
+func (l StringListLiteral) Any() LiteralType {
+	return l.Value()
+}
+
+func (l StringListLiteral) Value() []string {
+	return l
+}
+
 // Literal is holds a value of [any] typed as [DataType].
 type Literal interface {
 	fmt.Stringer
-	Any() any
+	Any() LiteralType
 	Type() DataType
 }
 
 type LiteralType interface {
-	any | bool | string | int64 | float64 | Timestamp | Duration | Bytes
+	Null | bool | string | int64 | float64 | Timestamp | Duration | Bytes | []string
 }
 
 type TypedLiteral[T LiteralType] interface {
@@ -197,7 +222,7 @@ type TypedLiteral[T LiteralType] interface {
 
 var (
 	_ Literal                 = (*NullLiteral)(nil)
-	_ TypedLiteral[any]       = (*NullLiteral)(nil)
+	_ TypedLiteral[Null]      = (*NullLiteral)(nil)
 	_ Literal                 = (*BoolLiteral)(nil)
 	_ TypedLiteral[bool]      = (*BoolLiteral)(nil)
 	_ Literal                 = (*StringLiteral)(nil)
@@ -212,14 +237,22 @@ var (
 	_ TypedLiteral[Duration]  = (*DurationLiteral)(nil)
 	_ Literal                 = (*BytesLiteral)(nil)
 	_ TypedLiteral[Bytes]     = (*BytesLiteral)(nil)
+	_ Literal                 = (*StringListLiteral)(nil)
+	_ TypedLiteral[[]string]  = (*StringListLiteral)(nil)
 )
 
-func NewLiteral[T LiteralType](value T) Literal {
-	switch val := any(value).(type) {
+func NewLiteral(value any) Literal {
+	if value == nil {
+		return NewNullLiteral()
+	}
+
+	switch val := value.(type) {
 	case bool:
 		return BoolLiteral(val)
 	case string:
 		return StringLiteral(val)
+	case int:
+		return IntegerLiteral(val)
 	case int64:
 		return IntegerLiteral(val)
 	case float64:
@@ -230,8 +263,11 @@ func NewLiteral[T LiteralType](value T) Literal {
 		return DurationLiteral(val)
 	case Bytes:
 		return BytesLiteral(val)
+	case []string:
+		return StringListLiteral(val)
+	default:
+		panic(fmt.Sprintf("invalid literal value type %T", value))
 	}
-	panic(fmt.Sprintf("invalid literal value type %T", value))
 }
 
 func NewNullLiteral() NullLiteral {
