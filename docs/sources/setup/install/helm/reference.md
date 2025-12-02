@@ -4409,6 +4409,7 @@ false
   "hostUsers": "nil",
   "initContainers": [],
   "labels": {},
+  "livenessProbe": {},
   "nodeSelector": {},
   "podSecurityContext": {
     "fsGroup": 10001,
@@ -4430,6 +4431,7 @@ false
     "labels": {},
     "type": "ClusterIP"
   },
+  "startupProbe": {},
   "strategy": {
     "type": "RollingUpdate"
   },
@@ -4550,6 +4552,15 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>enterpriseGateway.livenessProbe</td>
+			<td>object</td>
+			<td>Liveness probe</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>enterpriseGateway.nodeSelector</td>
 			<td>object</td>
 			<td>Node selector for gateway Pods</td>
@@ -4615,6 +4626,15 @@ false
   "labels": {},
   "type": "ClusterIP"
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterpriseGateway.startupProbe</td>
+			<td>object</td>
+			<td>Startup probe</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
