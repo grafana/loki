@@ -34,6 +34,9 @@ var (
 		"Counts the current status conditions of the LokiStack.",
 		append(metricsCommonLabels, "condition", "reason", "status"), nil,
 	)
+
+	// Main conditions should always be present to make things like alerts easier to write.
+	conditionInDefault = []lokiv1.LokiStackConditionType{lokiv1.ConditionFailed, lokiv1.ConditionReady, lokiv1.ConditionPending}
 )
 
 func RegisterLokiStackCollector(log logr.Logger, k8sClient client.Client, registry prometheus.Registerer) error {
@@ -74,12 +77,10 @@ func (l *lokiStackCollector) Collect(m chan<- prometheus.Metric) {
 
 		m <- prometheus.MustNewConstMetric(lokiStackInfoDesc, prometheus.GaugeValue, 1.0, labels...)
 
-		// Main condition should always be present to make things like alerts easier to write.
-		conditionInDefault := []lokiv1.LokiStackConditionType{lokiv1.ConditionFailed, lokiv1.ConditionReady, lokiv1.ConditionPending}
 		for _, c := range conditionInDefault {
 			if !slices.ContainsFunc(stack.Status.Conditions, func(cond metav1.Condition) bool { return cond.Type == string(c) }) {
-				m <- prometheus.MustNewConstMetric(lokiStackConditionsCountDesc, prometheus.GaugeValue, 0.0, append(labels, string(c), string(lokiv1.ReasonFailedComponents), "true")...)
-				m <- prometheus.MustNewConstMetric(lokiStackConditionsCountDesc, prometheus.GaugeValue, 1.0, append(labels, string(c), string(lokiv1.ReasonFailedComponents), "false")...)
+				m <- prometheus.MustNewConstMetric(lokiStackConditionsCountDesc, prometheus.GaugeValue, 0.0, append(labels, string(c), "", "true")...)
+				m <- prometheus.MustNewConstMetric(lokiStackConditionsCountDesc, prometheus.GaugeValue, 1.0, append(labels, string(c), "", "false")...)
 			}
 		}
 
