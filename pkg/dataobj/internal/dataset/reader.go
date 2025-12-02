@@ -49,6 +49,8 @@ type Reader struct {
 	row    int64             // The current row being read.
 	inner  *basicReader      // Underlying reader that reads from columns.
 	ranges rowRanges         // Valid ranges to read across the entire dataset.
+
+	region *xcap.Region // Region for recording statistics.
 }
 
 // NewReader creates a new Reader from the provided options.
@@ -62,9 +64,6 @@ func NewReader(opts ReaderOptions) *Reader {
 // returns the number of rows read and any error encountered. At the end of the
 // Dataset, Read returns 0, [io.EOF].
 func (r *Reader) Read(ctx context.Context, s []Row) (int, error) {
-	region := xcap.RegionFromContext(ctx)
-	region.Record(StatReadCalls.Observe(1))
-
 	if len(s) == 0 {
 		return 0, nil
 	}
@@ -75,6 +74,9 @@ func (r *Reader) Read(ctx context.Context, s []Row) (int, error) {
 			return 0, fmt.Errorf("initializing reader: %w", err)
 		}
 	}
+
+	r.region.Record(StatReadCalls.Observe(1))
+	ctx = xcap.ContextWithRegion(ctx, r.region)
 
 	// Our Read implementation works by:
 	//
@@ -147,8 +149,8 @@ func (r *Reader) Read(ctx context.Context, s []Row) (int, error) {
 			primaryColumnBytes += s[i].Size()
 		}
 
-		region.Record(StatPrimaryRowsRead.Observe(int64(rowsRead)))
-		region.Record(StatPrimaryRowBytes.Observe(primaryColumnBytes))
+		r.region.Record(StatPrimaryRowsRead.Observe(int64(rowsRead)))
+		r.region.Record(StatPrimaryRowBytes.Observe(primaryColumnBytes))
 	} else {
 		rowsRead, passCount, err = r.readAndFilterPrimaryColumns(ctx, readSize, s[:readSize])
 		if err != nil {
@@ -180,8 +182,8 @@ func (r *Reader) Read(ctx context.Context, s []Row) (int, error) {
 			totalBytesFilled += s[i].Size() - s[i].SizeOfColumns(r.primaryColumnIndexes)
 		}
 
-		region.Record(StatSecondaryRowsRead.Observe(int64(count)))
-		region.Record(StatSecondaryRowBytes.Observe(totalBytesFilled))
+		r.region.Record(StatSecondaryRowsRead.Observe(int64(count)))
+		r.region.Record(StatSecondaryRowBytes.Observe(totalBytesFilled))
 	}
 
 	// We only advance r.row after we successfully read and filled rows. This
@@ -266,10 +268,8 @@ func (r *Reader) readAndFilterPrimaryColumns(ctx context.Context, readSize int, 
 		readSize = passCount
 	}
 
-	if region := xcap.RegionFromContext(ctx); region != nil {
-		region.Record(StatPrimaryRowsRead.Observe(int64(rowsRead)))
-		region.Record(StatPrimaryRowBytes.Observe(primaryColumnBytes))
-	}
+	r.region.Record(StatPrimaryRowsRead.Observe(int64(rowsRead)))
+	r.region.Record(StatPrimaryRowBytes.Observe(primaryColumnBytes))
 
 	return rowsRead, passCount, nil
 }
@@ -398,9 +398,12 @@ func buildMask(full rowRange, s []Row) iter.Seq[rowRange] {
 // Close closes the Reader. Closed Readers can be reused by calling
 // [Reader.Reset].
 func (r *Reader) Close() error {
+	r.region.End()
+
 	if r.inner != nil {
 		return r.inner.Close()
 	}
+
 	return nil
 }
 
@@ -425,11 +428,14 @@ func (r *Reader) Reset(opts ReaderOptions) {
 	r.ranges = sliceclear.Clear(r.ranges)
 	r.primaryColumnIndexes = sliceclear.Clear(r.primaryColumnIndexes)
 	r.ready = false
+	r.region = nil
 }
 
 func (r *Reader) init(ctx context.Context) error {
 	// Reader.init is kept close to the defition of Reader.Reset to make it
 	// easier to follow the correctness of resetting + initializing.
+
+	_, r.region = xcap.StartRegion(ctx, "dataset.Reader")
 
 	// r.validatePredicate must be called before initializing anything else; for
 	// simplicity, other functions assume that the predicate is valid and can
@@ -543,18 +549,17 @@ func (r *Reader) initDownloader(ctx context.Context) error {
 	mask := bitmask.New(len(r.opts.Columns))
 	r.fillPrimaryMask(mask)
 
-	region := xcap.RegionFromContext(ctx)
 	for i, column := range r.opts.Columns {
 		primary := mask.Test(i)
 		r.dl.AddColumn(column, primary)
 
 		if primary {
 			r.primaryColumnIndexes = append(r.primaryColumnIndexes, i)
-			region.Record(StatPrimaryColumns.Observe(1))
-			region.Record(StatPrimaryColumnPages.Observe(int64(column.ColumnDesc().PagesCount)))
+			r.region.Record(StatPrimaryColumns.Observe(1))
+			r.region.Record(StatPrimaryColumnPages.Observe(int64(column.ColumnDesc().PagesCount)))
 		} else {
-			region.Record(StatSecondaryColumns.Observe(1))
-			region.Record(StatSecondaryColumnPages.Observe(int64(column.ColumnDesc().PagesCount)))
+			r.region.Record(StatSecondaryColumns.Observe(1))
+			r.region.Record(StatSecondaryColumnPages.Observe(int64(column.ColumnDesc().PagesCount)))
 		}
 	}
 
@@ -588,8 +593,8 @@ func (r *Reader) initDownloader(ctx context.Context) error {
 		rowsCount = max(rowsCount, uint64(column.ColumnDesc().RowsCount))
 	}
 
-	region.Record(StatMaxRows.Observe(int64(rowsCount)))
-	region.Record(StatRowsAfterPruning.Observe(int64(ranges.TotalRowCount())))
+	r.region.Record(StatMaxRows.Observe(int64(rowsCount)))
+	r.region.Record(StatRowsAfterPruning.Observe(int64(ranges.TotalRowCount())))
 
 	return nil
 }
