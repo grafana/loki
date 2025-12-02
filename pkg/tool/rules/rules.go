@@ -240,6 +240,16 @@ func (r RuleNamespace) Validate() []error {
 // ValidateRuleGroup validates a rulegroup
 func ValidateRuleGroup(g rwrulefmt.RuleGroup) []error {
 	var errs []error
+	for k, v := range g.Labels {
+		if !model.LabelName(k).IsValid() || k == model.MetricNameLabel {
+			errs = append(errs, fmt.Errorf("invalid label name: %s", k))
+		}
+
+		if !model.LabelValue(v).IsValid() {
+			errs = append(errs, fmt.Errorf("invalid label value: %s", v))
+		}
+	}
+
 	for i, r := range g.Rules {
 		ruleNode := rulefmt.RuleNode{
 			Record: yaml.Node{Value: r.Record},
