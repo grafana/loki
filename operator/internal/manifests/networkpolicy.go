@@ -325,8 +325,13 @@ func buildLokiAllowGatewayIngress(opts Options) *networkingv1.NetworkPolicy {
 // components that need to access object storage to object storage
 func buildLokiAllowBucketEgress(opts Options) *networkingv1.NetworkPolicy {
 	objstorePort := int32(443) // Default HTTPS port
-	if port := getEndpointPort(opts.ObjectStorage); port != 0 {
-		objstorePort = port
+	switch {
+	case len(opts.NetworkPolicyObjStorePorts) > 0:
+		objstorePort = opts.NetworkPolicyObjStorePorts[0]
+	default:
+		if port := getEndpointPort(opts.ObjectStorage); port != 0 {
+			objstorePort = port
+		}
 	}
 
 	return &networkingv1.NetworkPolicy{
@@ -631,13 +636,10 @@ func buildLokiAllowQueryFrontend(opts Options) *networkingv1.NetworkPolicy {
 
 func getEndpointPort(storageOpts storage.Options) int32 {
 	extractPort := func(endpoint string) int32 {
-		if strings.HasPrefix(endpoint, "http://") || strings.HasPrefix(endpoint, "https://") {
-			if u, err := url.Parse(endpoint); err == nil && u.Port() != "" {
-				if port, err := strconv.Atoi(u.Port()); err == nil {
-					return int32(port)
-				}
+		if u, err := url.Parse(endpoint); err == nil && u.Port() != "" {
+			if port, err := strconv.Atoi(u.Port()); err == nil {
+				return int32(port)
 			}
-			return 0
 		}
 
 		if strings.Contains(endpoint, ":") {
