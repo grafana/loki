@@ -4188,8 +4188,8 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 
 # Maximum line size on ingestion path. Example: 256kb. Any log line exceeding
 # this limit will be discarded unless `distributor.max-line-size-truncate` is
-# set, in which case it is truncated rather than discarded completely. There
-# is no limit when set to 0.
+# set, in which case it is truncated rather than discarded completely. There is
+# no limit when set to 0.
 # CLI flag: -distributor.max-line-size
 [max_line_size: <int> | default = 256KB]
 
