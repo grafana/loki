@@ -208,13 +208,23 @@ func (e *engineRouter) splitOverlapping(r queryrangebase.Request, v2Start, v2End
 		v2End = v2End.Add(-gap)
 	}
 
-	return append(reqs, &engineReqResp{
+	reqs = append(reqs, &engineReqResp{
 		lokiResult: lokiResult{
 			req: r.WithStartEnd(v2Start, v2End),
 			ch:  make(chan *packedResp),
 		},
 		isV2Engine: true,
 	})
+
+	slices.SortFunc(reqs, func(a, b *engineReqResp) int {
+		return a.req.GetStart().Compare(b.req.GetStart())
+	})
+
+	// Respect the original query's start and end times after applying the splits
+	reqs[0].lokiResult.req = reqs[0].lokiResult.req.WithStartEnd(r.GetStart(), reqs[0].lokiResult.req.GetEnd())
+	reqs[len(reqs)-1].lokiResult.req = reqs[len(reqs)-1].lokiResult.req.WithStartEnd(reqs[len(reqs)-1].lokiResult.req.GetStart(), r.GetEnd())
+
+	return reqs
 }
 
 func (e *engineRouter) handleReq(ctx context.Context, r *engineReqResp) {
