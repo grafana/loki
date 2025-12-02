@@ -20,6 +20,7 @@ Entries should include a reference to the pull request that introduced the chang
 - [ENHANCEMENT] Add support for configuring `volumeAttributesClassName` for `volumeClaimTemplates`. [#19719](https://github.com/grafana/loki/pull/19719)
 - [BUGFIX] Don't fail for missing bucket name, if minio is enabled. [#19745](https://github.com/grafana/loki/pull/19745)
 - [BUGFIX] Add startupProbe to read pod [#19708](https://github.com/grafana/loki/pull/19708)
+- [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` to query-frontend [#20082](https://github.com/grafana/loki/pull/20082)
 
 ## 6.46.0
 
