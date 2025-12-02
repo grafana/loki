@@ -1,9 +1,14 @@
 package distributor
 
 import (
+	"context"
 	"hash/fnv"
 	"sync"
 	"time"
+
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/services"
 )
 
 const (
@@ -14,6 +19,8 @@ const (
 // segmentKeyRateStore tracks the ingestion rate (bytes/sec) for each
 // segmentation key.
 type segmentationKeyRateStore struct {
+	services.Service
+
 	// stripes contains the rate buckets for segmentation keys. It is striped
 	// to allow concurrent reads/writes to non-overlapping stripes.
 	stripes []map[string]map[uint64][]segmentationKeyRateBucket
@@ -29,6 +36,8 @@ type segmentationKeyRateStore struct {
 
 	// numBuckets is calculated as the window divided by the bucketSize.
 	numBuckets int
+
+	logger log.Logger
 }
 
 type segmentationKeyRateBucket struct {
@@ -37,14 +46,22 @@ type segmentationKeyRateBucket struct {
 }
 
 // newSegmentationKeyRateStore returns a new rate store for segmentation keys.
-func newSegmentationKeyRateStore(window, bucketSize time.Duration) *segmentationKeyRateStore {
-	return &segmentationKeyRateStore{
+func newSegmentationKeyRateStore(window, bucketSize time.Duration, logger log.Logger) *segmentationKeyRateStore {
+	s := segmentationKeyRateStore{
 		stripes:    make([]map[string]map[uint64][]segmentationKeyRateBucket, segmentationKeyRateStoreNumStripes),
 		locks:      make([]sync.Mutex, segmentationKeyRateStoreNumStripes),
 		window:     window,
 		bucketSize: bucketSize,
 		numBuckets: int(window / bucketSize),
+		logger:     logger,
 	}
+	onTimerFunc := func(ctx context.Context) error {
+		evicted := s.EvictExpired(time.Now())
+		level.Info(s.logger).Log("msg", "evicted expired segmentation key rates", "count", evicted)
+		return nil
+	}
+	s.Service = services.NewTimerService(time.Minute, onTimerFunc, onTimerFunc, nil)
+	return &s
 }
 
 // Update updates the rate for the segmentation key. It returns the

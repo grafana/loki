@@ -5,13 +5,14 @@ import (
 	"time"
 
 	"github.com/coder/quartz"
+	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
 )
 
 func TestSegmentRateStore_UpdateRate(t *testing.T) {
 	t.Run("buckets of all zeros", func(t *testing.T) {
 		clock := quartz.NewMock(t)
-		s := newSegmentationKeyRateStore(5*time.Minute, time.Minute)
+		s := newSegmentationKeyRateStore(5*time.Minute, time.Minute, log.NewNopLogger())
 		for range 5 {
 			rate := s.Update("tenant", SegmentationKey("test"), 0, clock.Now())
 			require.Equal(t, uint64(0), rate)
@@ -34,7 +35,7 @@ func TestSegmentRateStore_UpdateRate(t *testing.T) {
 
 	t.Run("update each bucket with different rate", func(t *testing.T) {
 		clock := quartz.NewMock(t)
-		s := newSegmentationKeyRateStore(5*time.Minute, time.Minute)
+		s := newSegmentationKeyRateStore(5*time.Minute, time.Minute, log.NewNopLogger())
 		for i := range 5 {
 			_ = s.Update("tenant", SegmentationKey("test"), uint64(i), clock.Now())
 			// Update all buckets by advancing the clock one bucket size
@@ -59,7 +60,7 @@ func TestSegmentRateStore_UpdateRate(t *testing.T) {
 
 	t.Run("buckets wrap around at the end of the window", func(t *testing.T) {
 		clock := quartz.NewMock(t)
-		s := newSegmentationKeyRateStore(5*time.Minute, time.Minute)
+		s := newSegmentationKeyRateStore(5*time.Minute, time.Minute, log.NewNopLogger())
 		s.Update("tenant", SegmentationKey("test"), 1, clock.Now())
 		// Check the buckets matches expectations.
 		s.withBuckets("tenant", SegmentationKey("test"), func(buckets []segmentationKeyRateBucket) {
@@ -86,7 +87,7 @@ func TestSegmentRateStore_UpdateRate(t *testing.T) {
 
 	t.Run("buckets do not reset on wrap around", func(t *testing.T) {
 		clock := quartz.NewMock(t)
-		s := newSegmentationKeyRateStore(5*time.Minute, time.Minute)
+		s := newSegmentationKeyRateStore(5*time.Minute, time.Minute, log.NewNopLogger())
 		for i := range 5 {
 			s.Update("tenant", SegmentationKey("test"), uint64(i), clock.Now())
 			clock.Advance(time.Minute)
@@ -125,7 +126,7 @@ func TestSegmentRateStore_UpdateRate(t *testing.T) {
 
 	t.Run("buckets outside window are excluded from the average rate", func(t *testing.T) {
 		clock := quartz.NewMock(t)
-		s := newSegmentationKeyRateStore(5*time.Minute, time.Minute)
+		s := newSegmentationKeyRateStore(5*time.Minute, time.Minute, log.NewNopLogger())
 		actual := s.Update("tenant", SegmentationKey("test"), 100, clock.Now())
 		// We don't have a per second rate as a second hasn't passed.
 		require.Equal(t, uint64(0), actual)
@@ -156,7 +157,7 @@ func TestSegmentRateStore_UpdateRate(t *testing.T) {
 func TestSegmentRateStore_EvictExpired(t *testing.T) {
 	t.Run("segmentation key is evicted when all buckets outside window", func(t *testing.T) {
 		clock := quartz.NewMock(t)
-		s := newSegmentationKeyRateStore(5*time.Minute, time.Minute)
+		s := newSegmentationKeyRateStore(5*time.Minute, time.Minute, log.NewNopLogger())
 		// No segmentation keys should be evicted.
 		require.Equal(t, 0, s.EvictExpired(clock.Now()))
 		// Update the per second rate for the segmentation key. The segmentation
@@ -186,7 +187,7 @@ func TestSegmentRateStore_EvictExpired(t *testing.T) {
 
 	t.Run("tenant is not evicted unless all of their segmentation keys are evicted", func(t *testing.T) {
 		clock := quartz.NewMock(t)
-		s := newSegmentationKeyRateStore(5*time.Minute, time.Minute)
+		s := newSegmentationKeyRateStore(5*time.Minute, time.Minute, log.NewNopLogger())
 		// Add rates for two segmentation keys 4 minutes apart of each other.
 		s.Update("tenant", SegmentationKey("test1"), 100, clock.Now())
 		clock.Advance(4 * time.Minute)
