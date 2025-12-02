@@ -26,9 +26,11 @@ import (
 	"github.com/grafana/dskit/tracing"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/version"
+	tracesdk "go.opentelemetry.io/otel/sdk/trace"
 
 	"github.com/grafana/loki/v3/pkg/loki"
 	loki_runtime "github.com/grafana/loki/v3/pkg/runtime"
+	loki_tracing "github.com/grafana/loki/v3/pkg/tracing"
 	"github.com/grafana/loki/v3/pkg/util"
 	_ "github.com/grafana/loki/v3/pkg/util/build"
 	"github.com/grafana/loki/v3/pkg/util/cfg"
@@ -105,8 +107,21 @@ func main() {
 	}
 
 	if config.Tracing.Enabled {
-		// Setting the environment variable JAEGER_AGENT_HOST enables tracing
-		trace, err := tracing.NewOTelOrJaegerFromEnv(fmt.Sprintf("loki-%s", config.Target), util_log.Logger)
+		var opts []tracesdk.TracerProviderOption
+		if config.Tracing.FilterGCSSpans {
+			// We wrap the default sampler with a GCS span filter to drop spans from the GCS client,
+			// which creates one span per request with no built-in way to disable tracing.
+			opts = append(opts,
+				tracesdk.WithSampler(loki_tracing.NewGCSSpanFilter(tracesdk.ParentBased(tracesdk.AlwaysSample()))),
+			)
+		}
+
+		// Setting the environment variable JAEGER_AGENT_HOST enables tracing.
+		trace, err := tracing.NewOTelOrJaegerFromEnv(
+			fmt.Sprintf("loki-%s", config.Target),
+			util_log.Logger,
+			tracing.WithTracerProviderOptions(opts...),
+		)
 		if err != nil {
 			level.Error(util_log.Logger).Log("msg", "error in initializing tracing. tracing will not be enabled", "err", err)
 		}

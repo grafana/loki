@@ -34,7 +34,7 @@ func (m *mockEngine) Execute(ctx context.Context, params logql.Params) (logqlmod
 	return logqlmodel.Result{}, nil
 }
 
-func newTestHandler(cfg ExecutorConfig, exec queryExecutor, limits querier_limits.Limits) queryrangebase.Handler {
+func newTestHandler(cfg Config, exec queryExecutor, limits querier_limits.Limits) queryrangebase.Handler {
 	return &queryHandler{
 		cfg:    cfg,
 		exec:   exec,
@@ -44,9 +44,11 @@ func newTestHandler(cfg ExecutorConfig, exec queryExecutor, limits querier_limit
 }
 
 func TestHandler(t *testing.T) {
-	cfg := ExecutorConfig{
-		BatchSize:          100,
-		MergePrefetchCount: 0,
+	cfg := Config{
+		Executor: ExecutorConfig{
+			BatchSize:          100,
+			MergePrefetchCount: 0,
+		},
 	}
 	logger := log.NewNopLogger()
 	eng := &mockEngine{}
@@ -60,9 +62,11 @@ func TestQueryHandler_Do_LokiRequest(t *testing.T) {
 	now := time.Now()
 	startTime := now.Add(-1 * time.Hour)
 
-	cfg := ExecutorConfig{
-		BatchSize:          100,
-		MergePrefetchCount: 0,
+	cfg := Config{
+		Executor: ExecutorConfig{
+			BatchSize:          100,
+			MergePrefetchCount: 0,
+		},
 	}
 
 	t.Run("successful log query", func(t *testing.T) {
@@ -241,9 +245,11 @@ func TestQueryHandler_Do_LokiRequest(t *testing.T) {
 func TestQueryHandler_Do_LokiInstantRequest(t *testing.T) {
 	now := time.Now()
 
-	cfg := ExecutorConfig{
-		BatchSize:          100,
-		MergePrefetchCount: 0,
+	cfg := Config{
+		Executor: ExecutorConfig{
+			BatchSize:          100,
+			MergePrefetchCount: 0,
+		},
 	}
 
 	t.Run("successful metric instant query", func(t *testing.T) {
@@ -339,15 +345,15 @@ func TestQueryHandler_ValidTimeRange(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		cfg         ExecutorConfig
+		cfg         Config
 		startTime   time.Time
 		endTime     time.Time
 		expectValid bool
 	}{
 		{
 			name: "valid time range within bounds",
-			cfg: ExecutorConfig{
-				DataobjStorageLag: 1 * time.Hour,
+			cfg: Config{
+				StorageLag: 1 * time.Hour,
 			},
 			startTime:   fourHoursAgo,
 			endTime:     twoHoursAgo,
@@ -355,8 +361,8 @@ func TestQueryHandler_ValidTimeRange(t *testing.T) {
 		},
 		{
 			name: "end time too recent",
-			cfg: ExecutorConfig{
-				DataobjStorageLag: 1 * time.Hour,
+			cfg: Config{
+				StorageLag: 1 * time.Hour,
 			},
 			startTime:   twoHoursAgo,
 			endTime:     now.Add(-30 * time.Minute),
@@ -364,9 +370,9 @@ func TestQueryHandler_ValidTimeRange(t *testing.T) {
 		},
 		{
 			name: "start time too early",
-			cfg: ExecutorConfig{
-				DataobjStorageLag:   1 * time.Hour,
-				DataobjStorageStart: flagext.Time(now.Add(-3 * time.Hour)),
+			cfg: Config{
+				StorageLag:       1 * time.Hour,
+				StorageStartDate: flagext.Time(now.Add(-3 * time.Hour)),
 			},
 			startTime:   fourHoursAgo,
 			endTime:     twoHoursAgo,
@@ -421,9 +427,11 @@ func TestQueryHandler_ValidateMaxEntriesLimits(t *testing.T) {
 	now := time.Now()
 	startTime := now.Add(-1 * time.Hour)
 
-	cfg := ExecutorConfig{
-		BatchSize:          100,
-		MergePrefetchCount: 0,
+	cfg := Config{
+		Executor: ExecutorConfig{
+			BatchSize:          100,
+			MergePrefetchCount: 0,
+		},
 	}
 
 	t.Run("no limit enforced when maxEntriesLimitPerQuery is zero", func(t *testing.T) {

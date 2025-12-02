@@ -71,24 +71,8 @@ func parseGCPLogsEntry(data []byte, other model.LabelSet, otherInternal labels.L
 	}
 
 	var processed labels.Labels
-
-	// apply relabeling
 	if len(relabelConfig) > 0 {
-		// Validate relabel configs to set the validation scheme properly
-		valid := true
-		for _, rc := range relabelConfig {
-			if err := rc.Validate(model.UTF8Validation); err != nil {
-				// If validation fails, skip relabeling and use original labels
-				valid = false
-				break
-			}
-		}
-		// Only process if all configs were validated successfully
-		if valid {
-			processed, _ = relabel.Process(lbs.Labels(), relabelConfig...)
-		} else {
-			processed = lbs.Labels()
-		}
+		processed, _ = relabel.Process(lbs.Labels(), relabelConfig...)
 	} else {
 		processed = lbs.Labels()
 	}

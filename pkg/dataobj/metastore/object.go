@@ -14,6 +14,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/scalar"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/tenant"
@@ -206,11 +208,7 @@ func (m *ObjectMetastore) Sections(ctx context.Context, start, end time.Time, ma
 
 	// Search the stream sections of the matching objects to find matching streams
 	streamMatchers := streamPredicateFromMatchers(start, end, matchers...)
-	pointerPredicate := pointers.TimeRangeRowPredicate{
-		Start: start,
-		End:   end,
-	}
-	streamSectionPointers, err := m.getSectionsForStreams(ctx, indexObjects, streamMatchers, pointerPredicate)
+	streamSectionPointers, err := m.getSectionsForStreams(ctx, indexObjects, streamMatchers, start, end)
 	if err != nil {
 		return nil, err
 	}
@@ -222,13 +220,15 @@ func (m *ObjectMetastore) Sections(ctx context.Context, start, end time.Time, ma
 		//
 		// Only match one predicate at a time in order to obtain the intersection of all estimates, rather than the union.
 		for _, predicate := range predicates {
-			pointerMatchers := pointerPredicateFromMatcher(predicate)
-			sectionMembershipEstimates, err := m.estimateSectionsForPredicates(ctx, indexObjects, pointerMatchers)
+			if predicate.Type != labels.MatchEqual {
+				continue
+			}
+			matchedSections, err := m.estimateSectionsForMatcher(ctx, indexObjects, predicate)
 			if err != nil {
 				return nil, err
 			}
 
-			streamSectionPointers = intersectSections(streamSectionPointers, sectionMembershipEstimates)
+			streamSectionPointers = intersectSections(streamSectionPointers, matchedSections)
 			if len(streamSectionPointers) == 0 {
 				level.Debug(utillog.WithContext(ctx, m.logger)).Log("msg", "no sections resolved", "reason", "no matching predicates")
 				// Short circuit here if no sections match the predicates
@@ -256,13 +256,10 @@ func (m *ObjectMetastore) Sections(ctx context.Context, start, end time.Time, ma
 	return streamSectionPointers, nil
 }
 
-func intersectSections(sectionPointers []*DataobjSectionDescriptor, sectionMembershipEstimates []*DataobjSectionDescriptor) []*DataobjSectionDescriptor {
+func intersectSections(sectionPointers []*DataobjSectionDescriptor, sectionMembershipEstimates []SectionKey) []*DataobjSectionDescriptor {
 	existence := make(map[SectionKey]struct{}, len(sectionMembershipEstimates))
 	for _, section := range sectionMembershipEstimates {
-		existence[SectionKey{
-			ObjectPath: section.ObjectPath,
-			SectionIdx: section.SectionIdx,
-		}] = struct{}{}
+		existence[section] = struct{}{}
 	}
 
 	nextEmptyIdx := 0
@@ -399,22 +396,6 @@ func streamPredicateFromMatchers(start, end time.Time, matchers ...*labels.Match
 	return current
 }
 
-func pointerPredicateFromMatcher(matcher *labels.Matcher) pointers.RowPredicate {
-	if matcher == nil {
-		return nil
-	}
-	switch matcher.Type {
-	case labels.MatchEqual:
-		return pointers.BloomExistenceRowPredicate{
-			Name:  matcher.Name,
-			Value: matcher.Value,
-		}
-	default:
-		// unsupported matcher type
-		return nil
-	}
-}
-
 // listObjectsFromTables concurrently lists objects from multiple metastore files
 func (m *ObjectMetastore) listObjectsFromTables(ctx context.Context, tablePaths []string, start, end time.Time) ([]string, error) {
 	objects := make([][]string, len(tablePaths))
@@ -504,11 +485,14 @@ func (m *ObjectMetastore) listStreamIDsFromLogObjects(ctx context.Context, objec
 
 // getSectionsForStreams reads the section data from matching streams and aggregates them into section descriptors.
 // This is an exact lookup and includes metadata from the streams in each section: the stream IDs, the min-max timestamps, the number of bytes & number of lines.
-func (m *ObjectMetastore) getSectionsForStreams(ctx context.Context, indexObjects []*dataobj.Object, streamPredicate streams.RowPredicate, timeRangePredicate pointers.TimeRangeRowPredicate) ([]*DataobjSectionDescriptor, error) {
+func (m *ObjectMetastore) getSectionsForStreams(ctx context.Context, indexObjects []*dataobj.Object, streamPredicate streams.RowPredicate, start, end time.Time) ([]*DataobjSectionDescriptor, error) {
 	if streamPredicate == nil {
 		// At least one stream matcher is required, currently.
 		return nil, nil
 	}
+
+	sStart := scalar.NewTimestampScalar(arrow.Timestamp(start.UnixNano()), arrow.FixedWidthTypes.Timestamp_ns)
+	sEnd := scalar.NewTimestampScalar(arrow.Timestamp(end.UnixNano()), arrow.FixedWidthTypes.Timestamp_ns)
 
 	timer := prometheus.NewTimer(m.metrics.streamFilterTotalDuration)
 	defer timer.ObserveDuration()
@@ -540,7 +524,8 @@ func (m *ObjectMetastore) getSectionsForStreams(ctx context.Context, indexObject
 
 			objectSectionDescriptors := make(map[SectionKey]*DataobjSectionDescriptor)
 			sectionPointerReadTimer := prometheus.NewTimer(m.metrics.streamFilterPointersReadDuration)
-			err = forEachObjPointer(ctx, indexObject, timeRangePredicate, matchingStreamIDs, func(pointer pointers.SectionPointer) {
+
+			err = forEachStreamSectionPointer(ctx, indexObject, sStart, sEnd, matchingStreamIDs, func(pointer pointers.SectionPointer) {
 				key.ObjectPath = pointer.Path
 				key.SectionIdx = pointer.Section
 
@@ -551,6 +536,7 @@ func (m *ObjectMetastore) getSectionsForStreams(ctx context.Context, indexObject
 				}
 				sectionDescriptor.Merge(pointer)
 			})
+
 			if err != nil {
 				return fmt.Errorf("reading section pointers from index: %w", err)
 			}
@@ -575,43 +561,40 @@ func (m *ObjectMetastore) getSectionsForStreams(ctx context.Context, indexObject
 	return sectionDescriptors, nil
 }
 
-// estimateSectionsForPredicates checks the predicates against the section AMQs to determine approximate section membership.
+// estimateSectionsForMatcher checks the matcher against the section AMQs to determine approximate section membership.
 // This is an inexact lookup and only returns probable sections: there may be false positives, but no true negatives. There is no additional metadata returned beyond the section info.
-func (m *ObjectMetastore) estimateSectionsForPredicates(ctx context.Context, indexObjects []*dataobj.Object, predicate pointers.RowPredicate) ([]*DataobjSectionDescriptor, error) {
+func (m *ObjectMetastore) estimateSectionsForMatcher(ctx context.Context, indexObjects []*dataobj.Object, matcher *labels.Matcher) ([]SectionKey, error) {
 	timer := prometheus.NewTimer(m.metrics.estimateSectionsTotalDuration)
 	defer timer.ObserveDuration()
 
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(m.parallelism)
 
-	var sectionDescriptors []*DataobjSectionDescriptor
-	var sectionDescriptorsMutex sync.Mutex
+	sColumnName := scalar.NewStringScalar(matcher.Name)
+
+	var matchedSections []SectionKey
+	var matchedSectionsMu sync.Mutex
 	for _, indexObject := range indexObjects {
 		g.Go(func() error {
 			pointerReadTimer := prometheus.NewTimer(m.metrics.estimateSectionsPointerReadDuration)
-			var objectSectionDescriptors []*DataobjSectionDescriptor
-			err := forEachObjPointer(ctx, indexObject, predicate, nil, func(pointer pointers.SectionPointer) {
-				objectSectionDescriptors = append(objectSectionDescriptors, &DataobjSectionDescriptor{
-					SectionKey: SectionKey{
-						ObjectPath: pointer.Path,
-						SectionIdx: pointer.Section,
-					},
-				})
+			var objMatchedSections []SectionKey
+			err := forEachMatchedPointerSectionKey(ctx, indexObject, sColumnName, matcher.Value, func(sk SectionKey) {
+				objMatchedSections = append(objMatchedSections, sk)
 			})
 			if err != nil {
-				return fmt.Errorf("reading object from bucket: %w", err)
+				return fmt.Errorf("reading section keys: %w", err)
 			}
 			pointerReadTimer.ObserveDuration()
 
-			if len(objectSectionDescriptors) == 0 {
+			if len(objMatchedSections) == 0 {
 				// TODO(benclive): Find a way to differentiate between unknown columns and columns missing the target value.
 				// For now, log a warning to track how often this happens.
-				level.Warn(m.logger).Log("msg", "no section descriptors found for column")
+				level.Warn(m.logger).Log("msg", "no section keys found for column")
 			}
 
-			sectionDescriptorsMutex.Lock()
-			sectionDescriptors = append(sectionDescriptors, objectSectionDescriptors...)
-			sectionDescriptorsMutex.Unlock()
+			matchedSectionsMu.Lock()
+			matchedSections = append(matchedSections, objMatchedSections...)
+			matchedSectionsMu.Unlock()
 
 			return nil
 		})
@@ -621,8 +604,8 @@ func (m *ObjectMetastore) estimateSectionsForPredicates(ctx context.Context, ind
 		return nil, err
 	}
 
-	m.metrics.estimateSectionsSections.Observe(float64(len(sectionDescriptors)))
-	return sectionDescriptors, nil
+	m.metrics.estimateSectionsSections.Observe(float64(len(matchedSections)))
+	return matchedSections, nil
 }
 
 func addLabels(mtx *sync.Mutex, streams map[uint64][]*labels.Labels, newLabels *labels.Labels) {
@@ -758,53 +741,6 @@ func forEachStream(ctx context.Context, object *dataobj.Object, predicate stream
 			}
 			for _, stream := range buf[:num] {
 				f(stream)
-			}
-		}
-	}
-	return nil
-}
-
-func forEachObjPointer(ctx context.Context, object *dataobj.Object, predicate pointers.RowPredicate, matchIDs []int64, f func(pointers.SectionPointer)) error {
-	targetTenant, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return fmt.Errorf("extracting org ID: %w", err)
-	}
-	var reader pointers.RowReader
-	defer reader.Close()
-
-	buf := make([]pointers.SectionPointer, 128)
-
-	for _, section := range object.Sections().Filter(pointers.CheckSection) {
-		if section.Tenant != targetTenant {
-			continue
-		}
-
-		sec, err := pointers.Open(ctx, section)
-		if err != nil {
-			return fmt.Errorf("opening section: %w", err)
-		}
-
-		reader.Reset(sec)
-		err = reader.MatchStreams(slices.Values(matchIDs))
-		if err != nil {
-			return fmt.Errorf("matching streams: %w", err)
-		}
-		if predicate != nil {
-			err := reader.SetPredicate(predicate)
-			if err != nil {
-				return err
-			}
-		}
-		for {
-			num, err := reader.Read(ctx, buf)
-			if err != nil && !errors.Is(err, io.EOF) {
-				return err
-			}
-			if num == 0 && errors.Is(err, io.EOF) {
-				break
-			}
-			for _, pointer := range buf[:num] {
-				f(pointer)
 			}
 		}
 	}
