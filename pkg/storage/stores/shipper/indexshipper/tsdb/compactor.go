@@ -229,27 +229,30 @@ func setupBuilder(ctx context.Context, indexType int, userID string, sourceIndex
 			return nil, err
 		}
 
-		defer func() {
-			if err := os.Remove(path); err != nil {
-				level.Error(sourceIndexSet.GetLogger()).Log("msg", "error removing source index file", "err", err)
-			}
-		}()
-
 		indexFile, err := OpenShippableTSDB(path)
 		if err != nil {
+			// Clean up the downloaded file if we can't open it
+			if removeErr := os.Remove(path); removeErr != nil {
+				level.Error(sourceIndexSet.GetLogger()).Log("msg", "error removing source index file after open failure", "err", removeErr)
+			}
 			return nil, err
 		}
 
-		defer func() {
-			if err := indexFile.Close(); err != nil {
-				level.Error(sourceIndexSet.GetLogger()).Log("msg", "failed to close index file", "err", err)
-			}
-		}()
-
 		err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(ctx, "", nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []tsdbindex.ChunkMeta) (stop bool) {
-			builder.AddSeries(lbls.Copy(), fp, chks)
+			builder.AddSeries(withoutTenantLabel(lbls.Copy()), fp, chks)
 			return false
 		}, labels.MustNewMatcher(labels.MatchEqual, "", ""))
+
+		// Close the file immediately after use to avoid keeping file descriptors open
+		if closeErr := indexFile.Close(); closeErr != nil {
+			level.Error(sourceIndexSet.GetLogger()).Log("msg", "failed to close index file", "err", closeErr)
+		}
+
+		// Remove the downloaded file immediately after closing
+		if removeErr := os.Remove(path); removeErr != nil {
+			level.Error(sourceIndexSet.GetLogger()).Log("msg", "error removing source index file", "err", removeErr)
+		}
+
 		if err != nil {
 			return nil, err
 		}
