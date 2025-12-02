@@ -103,7 +103,9 @@ spec:
           {{- end }}
           securityContext:
             {{- toYaml .Values.loki.containerSecurityContext | nindent 12 }}
+          {{- include "loki.patternIngester.livenessProbe" . | nindent 10 }}
           {{- include "loki.patternIngester.readinessProbe" . | nindent 10 }}
+          {{- include "loki.patternIngester.startupProbe" . | nindent 10 }}
           volumeMounts:
             - name: temp
               mountPath: /tmp
