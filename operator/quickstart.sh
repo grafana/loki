@@ -78,8 +78,7 @@ certificates() {
 }
 
 check() {
-    # shellcheck disable=SC2154
-    ${LOGCLI} --addr "http://localhost:8081/token-refresher/api/logs/v1/test-oidc" labels
+    logcli --addr "http://localhost:8081/token-refresher/api/logs/v1/test-oidc" labels
 }
 
 case ${1:-"*"} in
