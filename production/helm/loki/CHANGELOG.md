@@ -21,6 +21,7 @@ Entries should include a reference to the pull request that introduced the chang
 - [BUGFIX] Don't fail for missing bucket name, if minio is enabled. [#19745](https://github.com/grafana/loki/pull/19745)
 - [BUGFIX] Add startupProbe to read pod [#19708](https://github.com/grafana/loki/pull/19708)
 - [ENHANCEMENT] Add guards to the `readinessProbe` of the `gateway` container in the `enterprise-gateway` pods, in case the value is empty [#20074](https://github.com/grafana/loki/pull/20074)
+- [ENHANCEMENT] Makes it possible to configure livenessProbe and startupProbe in the gateway container in the enterprise-gateway pods [#20074](https://github.com/grafana/loki/pull/20074)
 
 ## 6.46.0
 
