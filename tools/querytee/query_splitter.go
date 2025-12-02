@@ -2,6 +2,7 @@ package querytee
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -9,11 +10,11 @@ import (
 	"strconv"
 	"time"
 
-	jsoniter "github.com/json-iterator/go"
-
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/prometheus/common/model"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 )
 
 // isQueryEntirelyRecent checks if the entire query is for recent data (newer than the threshold).
@@ -138,102 +139,107 @@ func createSplitRequests(original *http.Request, splitPoint time.Time, step time
 // concatenate the values arrays for each metric or entries for each stream.
 // The direction parameter is used for stream concatenation to preserve correct entry order.
 // Returns a new BackendResponse with the concatenated body and combined metadata.
-func concatenateResponses(oldResponse, recentResponse *BackendResponse, direction logproto.Direction) (*BackendResponse, error) {
+func concatenateResponses(oldResponse, recentResponse *BackendResponse, r *http.Request) (*BackendResponse, error) {
 	if oldResponse == nil || recentResponse == nil {
 		return nil, fmt.Errorf("cannot concatenate nil responses")
 	}
 
-	var oldResp, recentResp loghttp.QueryResponse
+	direction := extractDirection(r)
+	var oldResp, recentResp queryrangebase.Response
+	codec := queryrange.DefaultCodec
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 
-	if err := oldResp.UnmarshalJSON(oldResponse.body); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal old response: %w", err)
-	}
-
-	if err := recentResp.UnmarshalJSON(recentResponse.body); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal recent response: %w", err)
+	req, err := codec.DecodeRequest(ctx, r, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode request: %w", err)
 	}
 
 	// Check if both responses are successful
-	if oldResp.Status != "success" {
-		return nil, fmt.Errorf("old response has non-success status: %s", oldResp.Status)
+	if !oldResponse.succeeded() {
+		return nil, fmt.Errorf("old response has non-success status: %d", oldResponse.status)
 	}
-	if recentResp.Status != "success" {
-		return nil, fmt.Errorf("recent response has non-success status: %s", recentResp.Status)
-	}
-
-	if oldResp.Data.ResultType != recentResp.Data.ResultType {
-		return nil, fmt.Errorf("old and recent responses have different result types: %s vs %s (respectively)", oldResp.Data.ResultType, recentResp.Data.ResultType)
+	if !recentResponse.succeeded() {
+		return nil, fmt.Errorf("recent response has non-success status: %d", recentResponse.status)
 	}
 
-	var concatenated loghttp.ResultValue
-	var resultType loghttp.ResultType
-
-	switch oldResp.Data.ResultType {
-	case loghttp.ResultTypeMatrix:
-		oldMatrix, ok := oldResp.Data.Result.(loghttp.Matrix)
-		if !ok {
-			return nil, fmt.Errorf("failed to cast old result to Matrix")
-		}
-
-		recentMatrix, ok := recentResp.Data.Result.(loghttp.Matrix)
-		if !ok {
-			return nil, fmt.Errorf("failed to cast recent result to Matrix")
-		}
-
-		concatenated = concatenateMatrices(oldMatrix, recentMatrix)
-		resultType = loghttp.ResultTypeMatrix
-
-	case loghttp.ResultTypeStream:
-		oldStreams, ok := oldResp.Data.Result.(loghttp.Streams)
-		if !ok {
-			return nil, fmt.Errorf("failed to cast old result to Streams")
-		}
-
-		recentStreams, ok := recentResp.Data.Result.(loghttp.Streams)
-		if !ok {
-			return nil, fmt.Errorf("failed to cast recent result to Streams")
-		}
-
-		concatenated = concatenateStreams(oldStreams, recentStreams, direction)
-		resultType = loghttp.ResultTypeStream
-
-	default:
-		return nil, fmt.Errorf("unsupported result type: %s", oldResp.Data.ResultType)
-	}
-
-	// Merge statistics
-	mergedStats := oldResp.Data.Statistics
-	mergedStats.MergeSplit(recentResp.Data.Statistics)
-
-	// Merge warnings (deduplicate)
-	warningsMap := make(map[string]struct{})
-	for _, w := range oldResp.Warnings {
-		warningsMap[w] = struct{}{}
-	}
-	for _, w := range recentResp.Warnings {
-		warningsMap[w] = struct{}{}
-	}
-
-	warnings := make([]string, 0, len(warningsMap))
-	for w := range warningsMap {
-		warnings = append(warnings, w)
-	}
-	sort.Strings(warnings)
-
-	// Build the concatenated response
-	result := loghttp.QueryResponse{
-		Status: "success",
-		Data: loghttp.QueryResponseData{
-			ResultType: resultType,
-			Result:     concatenated,
-			Statistics: mergedStats,
-		},
-		Warnings: warnings,
-	}
-
-	concatenatedBody, err := jsoniter.Marshal(result)
+	oldResp, err = queryrange.DecodeResponseJSONFrom(oldResponse.body, req, r.Header)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal concatenated response: %w", err)
+		return nil, fmt.Errorf("failed to decode old response: %w", err)
+	}
+	recentResp, err = queryrange.DecodeResponseJSONFrom(recentResponse.body, req, r.Header)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode recent response: %w", err)
+	}
+
+	var mergedStats stats.Result
+	var warnings []string
+
+	switch old := oldResp.(type) {
+	case *queryrange.LokiPromResponse:
+		mergedStats = old.Statistics
+		recentTyped, ok := recentResp.(*queryrange.LokiPromResponse)
+		if !ok {
+			return nil, fmt.Errorf("failed to cast recent response to LokiPromResponse")
+		}
+		mergedStats.MergeSplit(recentTyped.Statistics)
+
+	case *queryrange.LokiResponse:
+		mergedStats = old.Statistics
+		recentTyped, ok := recentResp.(*queryrange.LokiResponse)
+		if !ok {
+			return nil, fmt.Errorf("failed to cast recent response to LokiResponse")
+		}
+		mergedStats.MergeSplit(recentTyped.Statistics)
+
+		// Merge and deduplicate warnings
+		warningsMap := make(map[string]struct{})
+		for _, w := range old.Warnings {
+			warningsMap[w] = struct{}{}
+		}
+		for _, w := range recentTyped.Warnings {
+			warningsMap[w] = struct{}{}
+		}
+		warnings = make([]string, 0, len(warningsMap))
+		for w := range warningsMap {
+			warnings = append(warnings, w)
+		}
+		sort.Strings(warnings)
+	}
+
+	var result queryrangebase.Response
+
+	switch old := oldResp.(type) {
+	case *queryrange.LokiPromResponse:
+		oldMatrix := old.Response.Data.Result
+		new, ok := recentResp.(*queryrange.LokiPromResponse)
+		if !ok {
+			return nil, fmt.Errorf("failed to cast recent response to LokiPromResponse")
+		}
+		recentMatrix := new.Response.Data.Result
+		result = concatenateMatrices(oldMatrix, recentMatrix, mergedStats)
+
+	case *queryrange.LokiResponse:
+		oldStreams := old.Data.Result
+		new, ok := recentResp.(*queryrange.LokiResponse)
+		if !ok {
+			return nil, fmt.Errorf("failed to cast recent response to LokiResponse")
+		}
+		recentStreams := new.Data.Result
+		result = concatenateStreams(oldStreams, recentStreams, direction, mergedStats, warnings)
+	default:
+		return nil, fmt.Errorf("unsupported response type: %T", oldResp)
+	}
+
+	httpResp, err := codec.EncodeResponse(ctx, r, result)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode concatenated response: %w", err)
+	}
+	defer httpResp.Body.Close()
+
+	concatenatedBody, err := io.ReadAll(httpResp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read encoded response body: %w", err)
 	}
 
 	// Create a new BackendResponse with concatenated data
@@ -251,73 +257,82 @@ func concatenateResponses(oldResponse, recentResponse *BackendResponse, directio
 
 // concatenateMatrices concatenates two matrices by merging samples for each unique metric.
 // Since there's no overlap by design, we simply append the samples.
-func concatenateMatrices(oldMatrix, recentMatrix loghttp.Matrix) loghttp.Matrix {
+// Returns a LokiPromResponse containing the merged matrix data.
+func concatenateMatrices(oldMatrix, recentMatrix []queryrangebase.SampleStream, mergedStats stats.Result) queryrangebase.Response {
 	// Create a map of metrics by their string representation
-	metricMap := make(map[string]*model.SampleStream)
+	metricMap := make(map[string]*queryrangebase.SampleStream)
 
 	// Add all old matrix streams
 	for i := range oldMatrix {
 		stream := oldMatrix[i]
-		key := stream.Metric.String()
-		metricMap[key] = &model.SampleStream{
-			Metric: stream.Metric,
-			//TODO: can I simplify this instead of using an append?
-			Values: append([]model.SamplePair{}, stream.Values...),
+		key := logproto.FromLabelAdaptersToLabels(stream.Labels).String()
+		metricMap[key] = &queryrangebase.SampleStream{
+			Labels:  stream.Labels,
+			Samples: append([]logproto.LegacySample{}, stream.Samples...),
 		}
 	}
 
 	// Concatenate with recent matrix streams
 	for i := range recentMatrix {
 		stream := recentMatrix[i]
-		key := stream.Metric.String()
+		key := logproto.FromLabelAdaptersToLabels(stream.Labels).String()
 
 		if existing, ok := metricMap[key]; ok {
-			// Metric exists in both - concatenate values
-			existing.Values = append(existing.Values, stream.Values...)
+			// Metric exists in both - concatenate samples
+			existing.Samples = append(existing.Samples, stream.Samples...)
 		} else {
 			// Metric only in recent - add it
-			metricMap[key] = &model.SampleStream{
-				Metric: stream.Metric,
-				Values: append([]model.SamplePair{}, stream.Values...),
+			metricMap[key] = &queryrangebase.SampleStream{
+				Labels:  stream.Labels,
+				Samples: append([]logproto.LegacySample{}, stream.Samples...),
 			}
 		}
 	}
 
 	// Convert map back to slice and sort by metric labels for consistent output
-	//TODO: is there a more modern way to get the keys from a map?
 	keys := make([]string, 0, len(metricMap))
 	for key := range metricMap {
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
 
-	result := make(loghttp.Matrix, 0, len(metricMap))
+	result := make([]queryrangebase.SampleStream, 0, len(metricMap))
 	for _, key := range keys {
 		result = append(result, *metricMap[key])
 	}
 
-	return result
+	return &queryrange.LokiPromResponse{
+		Response: &queryrangebase.PrometheusResponse{
+			Status: "success",
+			Data: queryrangebase.PrometheusData{
+				ResultType: loghttp.ResultTypeMatrix,
+				Result:     result,
+			},
+		},
+		Statistics: mergedStats,
+	}
 }
 
 // concatenateStreams concatenates two stream results by merging entries for each unique label set.
 // The direction parameter determines the order of entry concatenation:
 // - FORWARD: old entries + recent entries (oldest first)
 // - BACKWARD: recent entries + old entries (newest first)
-func concatenateStreams(oldStreams, recentStreams loghttp.Streams, direction logproto.Direction) loghttp.Streams {
-	streamMap := make(map[string]*loghttp.Stream)
+// Returns a LokiResponse containing the merged stream data.
+func concatenateStreams(oldStreams, recentStreams []logproto.Stream, direction logproto.Direction, mergedStats stats.Result, warnings []string) queryrangebase.Response {
+	streamMap := make(map[string]*logproto.Stream)
 
 	for i := range oldStreams {
 		stream := oldStreams[i]
-		key := stream.Labels.String()
-		streamMap[key] = &loghttp.Stream{
+		key := stream.Labels
+		streamMap[key] = &logproto.Stream{
 			Labels:  stream.Labels,
-			Entries: append([]loghttp.Entry{}, stream.Entries...),
+			Entries: append([]logproto.Entry{}, stream.Entries...),
 		}
 	}
 
 	for i := range recentStreams {
 		stream := recentStreams[i]
-		key := stream.Labels.String()
+		key := stream.Labels
 
 		if existing, ok := streamMap[key]; ok {
 			if direction == logproto.FORWARD {
@@ -326,9 +341,9 @@ func concatenateStreams(oldStreams, recentStreams loghttp.Streams, direction log
 				existing.Entries = append(stream.Entries, existing.Entries...)
 			}
 		} else {
-			streamMap[key] = &loghttp.Stream{
+			streamMap[key] = &logproto.Stream{
 				Labels:  stream.Labels,
-				Entries: append([]loghttp.Entry{}, stream.Entries...),
+				Entries: append([]logproto.Entry{}, stream.Entries...),
 			}
 		}
 	}
@@ -340,12 +355,18 @@ func concatenateStreams(oldStreams, recentStreams loghttp.Streams, direction log
 	}
 	sort.Strings(keys)
 
-	result := make(loghttp.Streams, 0, len(streamMap))
+	result := make([]logproto.Stream, 0, len(streamMap))
 	for _, key := range keys {
 		result = append(result, *streamMap[key])
 	}
 
-	return result
+	return &queryrange.LokiResponse{
+		Status:     "success",
+		Data:       queryrange.LokiData{ResultType: loghttp.ResultTypeStream, Result: result},
+		Statistics: mergedStats,
+		Warnings:   warnings,
+		Direction:  direction,
+	}
 }
 
 // cloneRequest creates a deep copy of an HTTP request.

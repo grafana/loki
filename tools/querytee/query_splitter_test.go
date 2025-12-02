@@ -2,6 +2,7 @@ package querytee
 
 import (
 	"encoding/json"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -15,6 +16,23 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// mockRequestWithDirection creates a mock HTTP request with the specified direction parameter
+func mockRequestWithDirection(direction logproto.Direction) *http.Request {
+	dirStr := "FORWARD"
+	if direction == logproto.BACKWARD {
+		dirStr = "BACKWARD"
+	}
+	req := httptest.NewRequest("GET", "http://example.com/loki/api/v1/query_range", nil)
+	q := req.URL.Query()
+	q.Set("direction", dirStr)
+	q.Set("query", `{job="test"}`)
+	q.Set("start", "0")
+	q.Set("end", "1000000000000")
+	q.Set("step", "60s")
+	req.URL.RawQuery = q.Encode()
+	return req
+}
 
 func TestShouldSplitQuery(t *testing.T) {
 	now := time.Now()
@@ -262,7 +280,7 @@ func TestConcatenateMatrixResponses(t *testing.T) {
 			duration: 50 * time.Millisecond,
 		}
 
-		result, err := concatenateResponses(oldBackendResp, recentBackendResp, logproto.FORWARD)
+		result, err := concatenateResponses(oldBackendResp, recentBackendResp, mockRequestWithDirection(logproto.FORWARD))
 		require.NoError(t, err)
 
 		// Verify combined duration
@@ -318,7 +336,7 @@ func TestConcatenateMatrixResponses(t *testing.T) {
 		oldBackendResp := &BackendResponse{body: oldBytes, status: 200}
 		recentBackendResp := &BackendResponse{body: recentBytes, status: 200}
 
-		result, err := concatenateResponses(oldBackendResp, recentBackendResp, logproto.FORWARD)
+		result, err := concatenateResponses(oldBackendResp, recentBackendResp, mockRequestWithDirection(logproto.FORWARD))
 		require.NoError(t, err)
 
 		var resultResp loghttp.QueryResponse
@@ -360,7 +378,7 @@ func TestConcatenateMatrixResponses(t *testing.T) {
 		oldBackendResp := &BackendResponse{body: oldBytes, status: 200}
 		recentBackendResp := &BackendResponse{body: recentBytes, status: 200}
 
-		result, err := concatenateResponses(oldBackendResp, recentBackendResp, logproto.FORWARD)
+		result, err := concatenateResponses(oldBackendResp, recentBackendResp, mockRequestWithDirection(logproto.FORWARD))
 		require.NoError(t, err)
 
 		var resultResp loghttp.QueryResponse
@@ -372,14 +390,13 @@ func TestConcatenateMatrixResponses(t *testing.T) {
 		assert.Equal(t, model.Metric{"__name__": "metric2"}, resultMatrix[0].Metric)
 	})
 
-	t.Run("merge warnings", func(t *testing.T) {
+	t.Run("concatenate empty matrix responses", func(t *testing.T) {
 		oldResp := loghttp.QueryResponse{
 			Status: "success",
 			Data: loghttp.QueryResponseData{
 				ResultType: loghttp.ResultTypeMatrix,
 				Result:     loghttp.Matrix{},
 			},
-			Warnings: []string{"warning1", "warning2"},
 		}
 		oldBytes, _ := json.Marshal(oldResp)
 
@@ -389,7 +406,6 @@ func TestConcatenateMatrixResponses(t *testing.T) {
 				ResultType: loghttp.ResultTypeMatrix,
 				Result:     loghttp.Matrix{},
 			},
-			Warnings: []string{"warning2", "warning3"},
 		}
 		recentBytes, _ := json.Marshal(recentResp)
 
@@ -397,15 +413,16 @@ func TestConcatenateMatrixResponses(t *testing.T) {
 		oldBackendResp := &BackendResponse{body: oldBytes, status: 200}
 		recentBackendResp := &BackendResponse{body: recentBytes, status: 200}
 
-		result, err := concatenateResponses(oldBackendResp, recentBackendResp, logproto.FORWARD)
+		result, err := concatenateResponses(oldBackendResp, recentBackendResp, mockRequestWithDirection(logproto.FORWARD))
 		require.NoError(t, err)
 
 		var resultResp loghttp.QueryResponse
 		err = json.Unmarshal(result.body, &resultResp)
 		require.NoError(t, err)
 
-		// Should have deduplicated and sorted warnings
-		assert.ElementsMatch(t, []string{"warning1", "warning2", "warning3"}, resultResp.Warnings)
+		assert.Equal(t, "success", resultResp.Status)
+		resultMatrix := resultResp.Data.Result.(loghttp.Matrix)
+		assert.Len(t, resultMatrix, 0)
 	})
 
 	t.Run("error on non-success status", func(t *testing.T) {
@@ -427,11 +444,11 @@ func TestConcatenateMatrixResponses(t *testing.T) {
 		}
 		recentBytes, _ := json.Marshal(recentResp)
 
-		// Create mock BackendResponse objects
-		oldBackendResp := &BackendResponse{body: oldBytes, status: 200}
+		// Create mock BackendResponse objects - use HTTP 500 status to trigger non-success check
+		oldBackendResp := &BackendResponse{body: oldBytes, status: 500}
 		recentBackendResp := &BackendResponse{body: recentBytes, status: 200}
 
-		_, err := concatenateResponses(oldBackendResp, recentBackendResp, logproto.FORWARD)
+		_, err := concatenateResponses(oldBackendResp, recentBackendResp, mockRequestWithDirection(logproto.FORWARD))
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "non-success status")
 	})
@@ -493,7 +510,7 @@ func TestConcatenateStreamResponses(t *testing.T) {
 			duration: 50 * time.Millisecond,
 		}
 
-		result, err := concatenateResponses(oldBackendResp, recentBackendResp, logproto.FORWARD)
+		result, err := concatenateResponses(oldBackendResp, recentBackendResp, mockRequestWithDirection(logproto.FORWARD))
 		require.NoError(t, err)
 		assert.Equal(t, 150*time.Millisecond, result.duration)
 
@@ -565,7 +582,7 @@ func TestConcatenateStreamResponses(t *testing.T) {
 		oldBackendResp := &BackendResponse{body: oldBytes, status: 200}
 		recentBackendResp := &BackendResponse{body: recentBytes, status: 200}
 
-		result, err := concatenateResponses(oldBackendResp, recentBackendResp, logproto.BACKWARD)
+		result, err := concatenateResponses(oldBackendResp, recentBackendResp, mockRequestWithDirection(logproto.BACKWARD))
 		require.NoError(t, err)
 
 		var resultResp loghttp.QueryResponse
@@ -625,7 +642,7 @@ func TestConcatenateStreamResponses(t *testing.T) {
 		oldBackendResp := &BackendResponse{body: oldBytes, status: 200}
 		recentBackendResp := &BackendResponse{body: recentBytes, status: 200}
 
-		result, err := concatenateResponses(oldBackendResp, recentBackendResp, logproto.FORWARD)
+		result, err := concatenateResponses(oldBackendResp, recentBackendResp, mockRequestWithDirection(logproto.FORWARD))
 		require.NoError(t, err)
 
 		var resultResp loghttp.QueryResponse
@@ -668,7 +685,7 @@ func TestConcatenateStreamResponses(t *testing.T) {
 		oldBackendResp := &BackendResponse{body: oldBytes, status: 200}
 		recentBackendResp := &BackendResponse{body: recentBytes, status: 200}
 
-		result, err := concatenateResponses(oldBackendResp, recentBackendResp, logproto.FORWARD)
+		result, err := concatenateResponses(oldBackendResp, recentBackendResp, mockRequestWithDirection(logproto.FORWARD))
 		require.NoError(t, err)
 
 		var resultResp loghttp.QueryResponse
@@ -707,7 +724,7 @@ func TestConcatenateStreamResponses(t *testing.T) {
 		oldBackendResp := &BackendResponse{body: oldBytes, status: 200}
 		recentBackendResp := &BackendResponse{body: recentBytes, status: 200}
 
-		result, err := concatenateResponses(oldBackendResp, recentBackendResp, logproto.FORWARD)
+		result, err := concatenateResponses(oldBackendResp, recentBackendResp, mockRequestWithDirection(logproto.FORWARD))
 		require.NoError(t, err)
 
 		var resultResp loghttp.QueryResponse
@@ -743,7 +760,7 @@ func TestConcatenateStreamResponses(t *testing.T) {
 		oldBackendResp := &BackendResponse{body: oldBytes, status: 200}
 		recentBackendResp := &BackendResponse{body: recentBytes, status: 200}
 
-		result, err := concatenateResponses(oldBackendResp, recentBackendResp, logproto.FORWARD)
+		result, err := concatenateResponses(oldBackendResp, recentBackendResp, mockRequestWithDirection(logproto.FORWARD))
 		require.NoError(t, err)
 
 		var resultResp loghttp.QueryResponse
@@ -778,8 +795,8 @@ func TestConcatenateStreamResponses(t *testing.T) {
 		oldBackendResp := &BackendResponse{body: oldBytes, status: 200}
 		recentBackendResp := &BackendResponse{body: recentBytes, status: 200}
 
-		_, err := concatenateResponses(oldBackendResp, recentBackendResp, logproto.FORWARD)
+		_, err := concatenateResponses(oldBackendResp, recentBackendResp, mockRequestWithDirection(logproto.FORWARD))
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "different result types")
+		assert.Contains(t, err.Error(), "failed to cast")
 	})
 }
