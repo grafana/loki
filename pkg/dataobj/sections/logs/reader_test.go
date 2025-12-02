@@ -16,7 +16,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 	"github.com/grafana/loki/v3/pkg/xcap"
@@ -221,19 +220,19 @@ func TestReaderStats(t *testing.T) {
 	}
 
 	// Verify the stats are properly populated
-	require.Equal(t, int64(2), obsMap[dataset.StatReadCalls.Name()])
-	require.Equal(t, int64(2), obsMap[dataset.StatPrimaryColumns.Name()])   // from 2 predicates
-	require.Equal(t, int64(1), obsMap[dataset.StatSecondaryColumns.Name()]) // 1 secondary column
-	require.Equal(t, int64(2), obsMap[dataset.StatPrimaryColumnPages.Name()])
-	require.Equal(t, int64(1), obsMap[dataset.StatSecondaryColumnPages.Name()])
+	require.Equal(t, int64(2), obsMap[xcap.StatReadCalls.Name()])
+	require.Equal(t, int64(2), obsMap[xcap.StatPrimaryColumns.Name()])   // from 2 predicates
+	require.Equal(t, int64(1), obsMap[xcap.StatSecondaryColumns.Name()]) // 1 secondary column
+	require.Equal(t, int64(2), obsMap[xcap.StatPrimaryColumnPages.Name()])
+	require.Equal(t, int64(1), obsMap[xcap.StatSecondaryColumnPages.Name()])
 
-	require.Equal(t, int64(4), obsMap[dataset.StatTotalRowsAvailable.Name()])
-	require.Equal(t, int64(4), obsMap[dataset.StatRowsAfterPruning.Name()])
-	require.Equal(t, int64(4), obsMap[dataset.StatPrimaryRowsRead.Name()])
-	require.Equal(t, int64(2), obsMap[dataset.StatSecondaryRowsRead.Name()]) // 2 rows pass the predicate
+	require.Equal(t, int64(4), obsMap[xcap.StatMaxRows.Name()])
+	require.Equal(t, int64(4), obsMap[xcap.StatRowsAfterPruning.Name()])
+	require.Equal(t, int64(4), obsMap[xcap.StatPrimaryRowsRead.Name()])
+	require.Equal(t, int64(2), obsMap[xcap.StatSecondaryRowsRead.Name()]) // 2 rows pass the predicate
 
 	// Verify download stats - these should be populated by the downloader
-	require.Equal(t, int64(3), obsMap[dataset.StatPagesScanned.Name()]) // one page per column
-	require.Equal(t, int64(2), obsMap[dataset.StatPrimaryColumnPagesDownloaded.Name()])
-	require.Equal(t, int64(1), obsMap[dataset.StatSecondaryColumnPagesDownloaded.Name()])
+	require.Equal(t, int64(3), obsMap[xcap.StatPagesScanned.Name()]) // one page per column
+	require.Equal(t, int64(2), obsMap[xcap.StatPrimaryColumnPagesDownloaded.Name()])
+	require.Equal(t, int64(1), obsMap[xcap.StatSecondaryColumnPagesDownloaded.Name()])
 }

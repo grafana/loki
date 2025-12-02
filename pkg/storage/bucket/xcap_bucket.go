@@ -9,26 +9,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
-// Bucket operation statistic names.
-const (
-	StatBucketGet        = "bucket.get"
-	StatBucketGetRange   = "bucket.get.range"
-	StatBucketIter       = "bucket.iter"
-	StatBucketExists     = "bucket.exists"
-	StatBucketUpload     = "bucket.upload"
-	StatBucketAttributes = "bucket.attributes"
-)
-
-// Statistics for tracking bucket operation counts.
-var (
-	statBucketGet        = xcap.NewStatisticInt64(StatBucketGet, xcap.AggregationTypeSum)
-	statBucketGetRange   = xcap.NewStatisticInt64(StatBucketGetRange, xcap.AggregationTypeSum)
-	statBucketIter       = xcap.NewStatisticInt64(StatBucketIter, xcap.AggregationTypeSum)
-	statBucketExists     = xcap.NewStatisticInt64(StatBucketExists, xcap.AggregationTypeSum)
-	statBucketUpload     = xcap.NewStatisticInt64(StatBucketUpload, xcap.AggregationTypeSum)
-	statBucketAttributes = xcap.NewStatisticInt64(StatBucketAttributes, xcap.AggregationTypeSum)
-)
-
 // XcapBucket wraps an objstore.Bucket and records request counts to the xcap
 // Region found in the context. If no Region is present in the context, the
 // wrapper simply delegates to the underlying bucket without recording.
@@ -63,13 +43,13 @@ func (b *XcapBucket) Close() error {
 
 // Iter calls f for each entry in the given directory (not recursive.).
 func (b *XcapBucket) Iter(ctx context.Context, dir string, f func(string) error, options ...objstore.IterOption) error {
-	recordOp(ctx, statBucketIter)
+	recordOp(ctx, xcap.StatBucketIter)
 	return b.bkt.Iter(ctx, dir, f, options...)
 }
 
 // IterWithAttributes calls f for each entry in the given directory similar to Iter.
 func (b *XcapBucket) IterWithAttributes(ctx context.Context, dir string, f func(objstore.IterObjectAttributes) error, options ...objstore.IterOption) error {
-	recordOp(ctx, statBucketIter)
+	recordOp(ctx, xcap.StatBucketIter)
 	return b.bkt.IterWithAttributes(ctx, dir, f, options...)
 }
 
@@ -80,27 +60,27 @@ func (b *XcapBucket) SupportedIterOptions() []objstore.IterOptionType {
 
 // Get returns a reader for the given object name.
 func (b *XcapBucket) Get(ctx context.Context, name string) (io.ReadCloser, error) {
-	recordOp(ctx, statBucketGet)
+	recordOp(ctx, xcap.StatBucketGet)
 	return b.bkt.Get(ctx, name)
 }
 
 // GetRange returns a new range reader for the given object name and range.
 func (b *XcapBucket) GetRange(ctx context.Context, name string, off, length int64) (io.ReadCloser, error) {
-	recordOp(ctx, statBucketGetRange)
+	recordOp(ctx, xcap.StatBucketGetRange)
 	return b.bkt.GetRange(ctx, name, off, length)
 }
 
 // GetAndReplace an existing object with a new object.
 func (b *XcapBucket) GetAndReplace(ctx context.Context, name string, f func(io.ReadCloser) (io.ReadCloser, error)) error {
 	// GetAndReplace involves both a Get and an Upload internally
-	recordOp(ctx, statBucketGet)
-	recordOp(ctx, statBucketUpload)
+	recordOp(ctx, xcap.StatBucketGet)
+	recordOp(ctx, xcap.StatBucketUpload)
 	return b.bkt.GetAndReplace(ctx, name, f)
 }
 
 // Exists checks if the given object exists in the bucket.
 func (b *XcapBucket) Exists(ctx context.Context, name string) (bool, error) {
-	recordOp(ctx, statBucketExists)
+	recordOp(ctx, xcap.StatBucketExists)
 	return b.bkt.Exists(ctx, name)
 }
 
@@ -116,13 +96,13 @@ func (b *XcapBucket) IsAccessDeniedErr(err error) bool {
 
 // Attributes returns information about the specified object.
 func (b *XcapBucket) Attributes(ctx context.Context, name string) (objstore.ObjectAttributes, error) {
-	recordOp(ctx, statBucketAttributes)
+	recordOp(ctx, xcap.StatBucketAttributes)
 	return b.bkt.Attributes(ctx, name)
 }
 
 // Upload uploads the contents of the reader as an object into the bucket.
 func (b *XcapBucket) Upload(ctx context.Context, name string, r io.Reader) error {
-	recordOp(ctx, statBucketUpload)
+	recordOp(ctx, xcap.StatBucketUpload)
 	return b.bkt.Upload(ctx, name, r)
 }
 

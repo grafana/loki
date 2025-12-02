@@ -232,13 +232,13 @@ func (dl *readerDownloader) downloadBatch(ctx context.Context, requestor *reader
 	if region := xcap.RegionFromContext(ctx); region != nil {
 		for _, page := range batch {
 			if page.column.primary {
-				region.Record(StatPrimaryColumnPagesDownloaded.Observe(1))
-				region.Record(StatPrimaryColumnBytes.Observe(int64(page.inner.PageDesc().CompressedSize)))
-				region.Record(StatPrimaryColumnUncompressedBytes.Observe(int64(page.inner.PageDesc().UncompressedSize)))
+				region.Record(xcap.StatPrimaryColumnPagesDownloaded.Observe(1))
+				region.Record(xcap.StatPrimaryColumnBytes.Observe(int64(page.inner.PageDesc().CompressedSize)))
+				region.Record(xcap.StatPrimaryColumnUncompressedBytes.Observe(int64(page.inner.PageDesc().UncompressedSize)))
 			} else {
-				region.Record(StatSecondaryColumnPagesDownloaded.Observe(1))
-				region.Record(StatSecondaryColumnBytes.Observe(int64(page.inner.PageDesc().CompressedSize)))
-				region.Record(StatSecondaryColumnUncompressedBytes.Observe(int64(page.inner.PageDesc().UncompressedSize)))
+				region.Record(xcap.StatSecondaryColumnPagesDownloaded.Observe(1))
+				region.Record(xcap.StatSecondaryColumnBytes.Observe(int64(page.inner.PageDesc().CompressedSize)))
+				region.Record(xcap.StatSecondaryColumnUncompressedBytes.Observe(int64(page.inner.PageDesc().UncompressedSize)))
 			}
 		}
 	}
@@ -589,13 +589,13 @@ func (page *readerPage) PageDesc() *PageDesc {
 
 func (page *readerPage) ReadPage(ctx context.Context) (PageData, error) {
 	region := xcap.RegionFromContext(ctx)
-	region.Record(StatPagesScanned.Observe(1))
+	region.Record(xcap.StatPagesScanned.Observe(1))
 	if page.data != nil {
-		region.Record(StatPagesFoundInCache.Observe(1))
+		region.Record(xcap.StatPagesFoundInCache.Observe(1))
 		return page.data, nil
 	}
 
-	region.Record(StatBatchDownloadRequests.Observe(1))
+	region.Record(xcap.StatBatchDownloadRequests.Observe(1))
 	if err := page.column.dl.downloadBatch(ctx, page); err != nil {
 		return nil, err
 	}
