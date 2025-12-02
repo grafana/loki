@@ -12,7 +12,7 @@ import (
 
 // buildTable builds a table from the set of provided records. The records are
 // sorted with [sortRecords] prior to building the table.
-func buildTable(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts dataset.CompressionOptions, records []Record, sortOrder SortOrder) *table {
+func buildTable(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *dataset.CompressionOptions, records []Record, sortOrder SortOrder) *table {
 	sortRecords(records, sortOrder)
 
 	buf.Reset()
