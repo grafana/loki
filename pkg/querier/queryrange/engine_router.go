@@ -208,15 +208,13 @@ func (e *engineRouter) splitOverlapping(r queryrangebase.Request, v2Start, v2End
 		v2End = v2End.Add(-gap)
 	}
 
-	reqs = append(reqs, &engineReqResp{
+	return append(reqs, &engineReqResp{
 		lokiResult: lokiResult{
 			req: r.WithStartEnd(v2Start, v2End),
 			ch:  make(chan *packedResp),
 		},
 		isV2Engine: true,
 	})
-
-	return reqs
 }
 
 func (e *engineRouter) handleReq(ctx context.Context, r *engineReqResp) {
