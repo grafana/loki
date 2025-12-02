@@ -3,6 +3,7 @@ package queryrange
 import (
 	"context"
 	"fmt"
+	"sort"
 	"testing"
 	"time"
 
@@ -117,6 +118,11 @@ func TestEngineRouter_split(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			splitter := &engineRouter{forMetricQuery: tt.forMetricQuery}
 			splits := splitter.splitOverlapping(baseReq.WithStartEnd(tt.start, tt.end), v2Start, v2End)
+
+			// Sort the splits by start time to ensure the splits are in the correct order.
+			sort.Slice(splits, func(i, j int) bool {
+				return splits[i].req.GetStart().Before(splits[j].req.GetStart())
+			})
 
 			// Check the splits respect the original query's start and end times.
 			require.Equal(t, tt.start, splits[0].req.GetStart())
@@ -238,6 +244,10 @@ func TestEngineRouter_stepAlignment(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			splitter := &engineRouter{forMetricQuery: tt.forMetricQuery}
 			splits := splitter.splitOverlapping(tt.req, v2Start, v2End)
+
+			sort.Slice(splits, func(i, j int) bool {
+				return splits[i].req.GetStart().Before(splits[j].req.GetStart())
+			})
 
 			// Check the splits respect the original query's start and end times.
 			require.Equal(t, tt.req.GetStart(), splits[0].req.GetStart())
