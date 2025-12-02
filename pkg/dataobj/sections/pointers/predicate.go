@@ -1,6 +1,11 @@
 package pointers
 
-import "github.com/apache/arrow-go/v18/arrow/scalar"
+import (
+	"bytes"
+
+	"github.com/apache/arrow-go/v18/arrow/scalar"
+	"github.com/bits-and-blooms/bloom/v3"
+)
 
 // Predicate is an expression used to filter column values in a [Reader].
 type Predicate interface{ isPredicate() }
@@ -142,6 +147,41 @@ func WhereTimeRangeOverlapsWith(
 			Right: LessThanPredicate{
 				Column: colMinTimestamp,
 				Value:  end,
+			},
+		},
+	}
+}
+
+func WhereBloomFilterMatches(
+	colColumnName *Column,
+	colBloom *Column,
+	columnName scalar.Scalar,
+	columnValue string,
+) Predicate {
+	if colColumnName == nil && colBloom == nil {
+		// If there are no name or bloom columns present, it means this section doesn't have any relevant columns for this predicate.
+		// This can happen if a whole section only contains pointers of a different Kind.
+		return FalsePredicate{}
+	}
+
+	// TODO: Make this more efficient by not re-allocating the bloom filter each time
+	return AndPredicate{
+		Left: EqualPredicate{
+			Column: colColumnName,
+			Value:  columnName,
+		},
+		Right: FuncPredicate{
+			Column: colBloom,
+			Keep: func(_ *Column, value scalar.Scalar) bool {
+				binaryValue, ok := value.(scalar.BinaryScalar)
+				if !ok {
+					return false
+				}
+				bf := bloom.New(1, 1)
+				if _, err := bf.ReadFrom(bytes.NewReader(binaryValue.Data())); err != nil {
+					return true
+				}
+				return bf.TestString(columnValue)
 			},
 		},
 	}
