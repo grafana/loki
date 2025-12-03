@@ -16,11 +16,12 @@ import (
 	"time"
 
 	"github.com/dustin/go-humanize"
-	"github.com/grafana/loki/v3/pkg/xcap"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"
+
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 // xcap statistics for RangeIO operations.
