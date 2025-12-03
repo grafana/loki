@@ -1,3 +1,7 @@
+# v1.0.2 (2025-11-25)
+
+* **Bug Fix**: Add error check for endpoint param binding during auth scheme resolution to fix panic reported in #3234
+
 # v1.0.1 (2025-11-19.2)
 
 * **Dependency Update**: Updated to the latest SDK module versions
