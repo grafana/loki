@@ -467,5 +467,7 @@ func exportCapture(ctx context.Context, capture *xcap.Capture, plan *physical.Pl
 		return parentID, ok
 	})
 
+	xcap.ExportLog(capture, logger)
+
 	return xcap.ExportTrace(ctx, capture, logger)
 }
