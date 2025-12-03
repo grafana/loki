@@ -16,6 +16,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/tools/querytee/goldfish"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 type ResponsesComparator interface {
@@ -132,39 +133,54 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *Back
 	}
 
 	var (
-		body                []byte
-		expectedResponseIdx int
-		responses           = make([]*BackendResponse, len(p.backends))
-		query               = r.URL.RawQuery
-		issuer              = detectIssuer(r)
+		body      []byte
+		responses = make([]*BackendResponse, len(p.backends))
+		query     = r.URL.RawQuery
+		issuer    = detectIssuer(r)
 	)
 
-	level.Debug(p.logger).Log("msg", "Received request", "path", r.URL.Path, "query", query)
+	level.Debug(p.logger).Log(
+		"msg", "Received request", 
+		"path", r.URL.Path, 
+		"query", query,
+		"issuer", issuer,
+		"user", goldfish.ExtractUserFromQueryTags(r, p.logger),
+	)
 
 	body = p.readAndRestoreRequestBody(r)
+	_, preferredBackendIdx := p.preferredBackend()
 
 	var wg = sync.WaitGroup{}
-	p.executeBackendRequestsParallel(backendRequestConfig{
-		backends:             p.backends,
-		request:              r,
-		body:                 body,
-		responses:            responses,
-		preferredResponseIdx: &expectedResponseIdx,
-		resCh:                resCh,
-		issuer:               issuer,
-		trackForComparison:   p.comparator != nil || (p.goldfishManager != nil && goldfishSample),
-	}, &wg)
+	backendExecutor := backendRequestExecutor{
+		resCh:           resCh,
+		issuer:          issuer,
+		logger:          p.logger,
+		routeName:       p.routeName,
+		requestDuration: p.metrics.requestDuration,
+	}
+
+	preferredRespReady := make(chan *BackendResponse)
+	notifyOnComplete := map[int]chan *BackendResponse{
+		preferredBackendIdx: preferredRespReady,
+	}
+	backendExecutor.execInParallel(
+		p.backends,
+		responses,
+		r,
+		body,
+		notifyOnComplete,
+		&wg)
 	wg.Wait()
 	close(resCh)
 
 	// Compare responses.
 	if p.comparator != nil {
-		expectedResponse := responses[expectedResponseIdx]
+		expectedResponse := <-preferredRespReady
 		for i := range responses {
-			if i == expectedResponseIdx {
+			actualResponse := responses[i]
+			if actualResponse == nil || actualResponse.backend.preferred {
 				continue
 			}
-			actualResponse := responses[i]
 
 			result := comparisonSuccess
 			summary, err := p.compareResponses(expectedResponse, actualResponse, time.Now().UTC())
@@ -217,15 +233,7 @@ func (p *ProxyEndpoint) executeSplitQuery(
 		"step", step,
 		"user", user,
 	)
-
-	// Find preferred backend for recent query
-	var preferredBackend *ProxyBackend
-	for _, b := range p.backends {
-		if b.preferred {
-			preferredBackend = b
-			break
-		}
-	}
+	preferredBackend, preferredBackendIdx := p.preferredBackend()
 
 	if preferredBackend == nil {
 		level.Error(p.logger).Log(
@@ -245,163 +253,208 @@ func (p *ProxyEndpoint) executeSplitQuery(
 
 	// Execute old query to all backends (for comparison)
 	var (
-		oldResponses         = make([]*BackendResponse, len(p.backends))
-		preferredResponseIdx int
-		wg                   = sync.WaitGroup{}
+		oldResponses    = make([]*BackendResponse, len(p.backends))
+		allBackendsWg   = sync.WaitGroup{} // Tracks all backend requests
+		recentResponses = make([]*BackendResponse, 1)
+		recentWg        = sync.WaitGroup{}
 	)
 
+	backendExecutor := backendRequestExecutor{
+		issuer:          issuer,
+		logger:          p.logger,
+		requestDuration: p.metrics.requestDuration,
+		routeName:       p.routeName,
+	}
+	preferredOldRespReady := make(chan *BackendResponse)
 	body := p.readAndRestoreRequestBody(oldQuery)
-	p.executeBackendRequestsParallel(backendRequestConfig{
-		backends:             p.backends,
-		request:              oldQuery,
-		body:                 body,
-		responses:            oldResponses,
-		preferredResponseIdx: &preferredResponseIdx,
-		issuer:               issuer,
-		trackForComparison:   true,
-	}, &wg)
+	notifyOnComplete := map[int]chan *BackendResponse{
+		preferredBackendIdx: preferredOldRespReady,
+	}
+	backendExecutor.execInParallel(
+		p.backends,
+		oldResponses,
+		oldQuery,
+		body,
+		notifyOnComplete,
+		&allBackendsWg)
 
 	// Execute recent query to preferred backend only
-	recentResponses := make([]*BackendResponse, 1) // Only one backend (preferred)
+	recentReady := make(chan *BackendResponse)
 	recentBody := p.readAndRestoreRequestBody(recentQuery)
-	p.executeBackendRequestsParallel(backendRequestConfig{
-		backends:           []*ProxyBackend{preferredBackend},
-		request:            recentQuery,
-		body:               recentBody,
-		responses:          recentResponses,
-		issuer:             issuer,
-		trackForComparison: true,
-	}, &wg)
-
-	wg.Wait()
-
-	recentRes := recentResponses[0]
-	if recentRes == nil || !recentRes.succeeded() {
-		level.Error(p.logger).Log(
-			"msg", "recent query was not executed or failed",
-			"backend", preferredBackend.name,
-			"path", recentQuery.URL.Path,
-			"issuer", issuer,
-			"user", user,
-		)
-		resCh <- &BackendResponse{
-			err:    fmt.Errorf("recent query to preferred backend was not executed or failed"),
-			status: 500,
-		}
-		close(resCh)
-		return
+	notifyRecentOnComplete := map[int]chan *BackendResponse{
+		0: recentReady,
 	}
+	backendExecutor.execInParallel(
+		[]*ProxyBackend{preferredBackend},
+		recentResponses,
+		recentQuery,
+		recentBody,
+		notifyRecentOnComplete,
+		&recentWg)
 
-	level.Debug(p.logger).Log(
-		"msg", "backend response (recent query)",
-		"backend", preferredBackend.name,
-		"status", recentRes.statusCode(),
-		"elapsed", recentRes.duration,
-		"issuer", issuer,
-		"query", recentQuery.URL.RawQuery,
-		"user", user,
-	)
-	p.metrics.requestDuration.WithLabelValues(
-		recentRes.backend.name,
-		recentQuery.Method,
-		p.routeName,
-		strconv.Itoa(recentRes.statusCode()),
-		issuer,
-	).Observe(recentRes.duration.Seconds())
+	// Wait for preferred backend's old and recent responses, then return immediately
+	// This allows the client to get a response without waiting for other backends
+	go func() {
+		preferredOldRes := <-preferredOldRespReady
+		recentRes := <-recentReady
 
-	preferredOldRes := oldResponses[preferredResponseIdx]
-	if preferredOldRes == nil || !preferredOldRes.succeeded() {
-		level.Warn(p.logger).Log(
-			"msg", "failed to get successful responses from preferred backend for both old and recent queries",
-			"issuer", issuer,
-			"user", user,
-		)
-		// Return whichever succeeded, or old if both failed
-		if preferredOldRes != nil {
-			resCh <- preferredOldRes
-		} else {
-			resCh <- recentRes
-		}
-		close(resCh)
-		return
-	}
-
-	preferredConcatenatedResp, err := concatenateResponses(preferredOldRes, recentRes, r)
-	if err == nil {
-		resCh <- preferredConcatenatedResp
-	} else {
-		level.Error(p.logger).Log(
-			"msg", "Failed to concatenate preferred backend responses",
-			"err", err,
+		level.Debug(p.logger).Log(
+			"msg", "backend response (recent query)",
 			"backend", preferredBackend.name,
+			"status", recentRes.statusCode(),
+			"elapsed", recentRes.duration,
+			"issuer", issuer,
 			"query", recentQuery.URL.RawQuery,
-			"issuer", issuer,
 			"user", user,
 		)
-	}
+		p.metrics.requestDuration.WithLabelValues(
+			recentRes.backend.name,
+			recentQuery.Method,
+			p.routeName,
+			strconv.Itoa(recentRes.statusCode()),
+			issuer,
+		).Observe(recentRes.duration.Seconds())
 
-	for i, resp := range oldResponses {
-		if i == preferredResponseIdx || resp == nil {
-			continue
-		}
-
-		concatenatedResp, err := concatenateResponses(resp, recentRes, r)
-		if err != nil {
-			level.Warn(p.logger).Log(
-				"msg", "Failed to concatenate non-preferred backend responses, skipping",
-				"err", err,
-				"backend", p.backends[i].name,
+		// no recent split is an error
+		if recentRes == nil || !recentRes.succeeded() {
+			level.Error(p.logger).Log(
+				"msg", "recent query was not executed or failed",
+				"backend", preferredBackend.name,
+				"path", recentQuery.URL.Path,
 				"issuer", issuer,
 				"user", user,
 			)
-			continue
-		}
-		resCh <- concatenatedResp
 
-		if p.comparator != nil {
-			result := comparisonSuccess
-			summary, err := p.compareResponses(preferredConcatenatedResp, concatenatedResp, time.Now().UTC())
-			if err != nil {
-				level.Error(p.logger).Log("msg", "response comparison failed",
-					"backend-name", p.backends[i].name,
-					"route-name", p.routeName,
-					"query", r.URL.RawQuery,
-					"issuer", issuer,
+			resCh <- &BackendResponse{
+				err:    fmt.Errorf("recent query to preferred backend failed and no successful alternatives"),
+				status: 500,
+			}
+			close(resCh)
+			return
+		}
+
+		// no preferred old split is an error
+		// TODO(twhitney): this will no longer be an error when we allow racing
+		if preferredOldRes == nil || !preferredOldRes.succeeded() {
+			level.Warn(p.logger).Log(
+				"msg", "preferred backend old data split failed, but recent succeeded",
+				"issuer", issuer,
+				"user", user,
+			)
+
+			resCh <- &BackendResponse{
+				err:    fmt.Errorf("preferred backend old data split failed: %w", err),
+				status: 500,
+			}
+			close(resCh)
+			return
+		}
+
+		preferredConcatenatedResp, err := concatenateResponses(preferredOldRes, recentRes, r)
+		if err != nil {
+			level.Error(p.logger).Log(
+				"msg", "failed to concatenate preferred backend splits",
+				"err", err,
+				"backend", preferredBackend.name,
+				"query", recentQuery.URL.RawQuery,
+				"issuer", issuer,
+				"user", user,
+			)
+			resCh <- &BackendResponse{
+				err:    fmt.Errorf("failed to concatenate preferred backend splits: %w", err),
+				status: 500,
+			}
+			close(resCh)
+			return
+		}
+
+		// send preferred concatenated response immediately
+		// TODO(twhitney): this will change when we implement racing
+		resCh <- preferredConcatenatedResp
+		//TODO(twhitney): do I need to close this channel here? Was that happening in the old executeBackendRequests?
+		close(resCh)
+
+		// continue processing other backends in background for comparison and goldfish
+		go func() {
+			allBackendsWg.Wait()
+
+			// concatenate and compare responses from non-preferred backends
+			for i, resp := range oldResponses {
+				if resp == nil || resp.backend.preferred {
+					continue
+				}
+
+				concatenatedResp, err := concatenateResponses(resp, recentRes, r)
+				if err != nil {
+					level.Warn(p.logger).Log(
+						"msg", "failed to concatenate non-preferred backend responses, skipping comparison",
+						"err", err,
+						"backend", p.backends[i].name,
+						"issuer", issuer,
+						"user", user,
+					)
+					continue
+				}
+
+				if p.comparator != nil {
+					result := comparisonSuccess
+					summary, err := p.compareResponses(preferredConcatenatedResp, concatenatedResp, time.Now().UTC())
+					if err != nil {
+						level.Error(p.logger).Log("msg", "response comparison failed",
+							"backend-name", p.backends[i].name,
+							"route-name", p.routeName,
+							"query", r.URL.RawQuery,
+							"issuer", issuer,
+							"user", user,
+							"err", err,
+						)
+						result = comparisonFailed
+					} else if summary != nil && summary.skipped {
+						result = comparisonSkipped
+					}
+
+					if p.instrumentCompares && summary != nil {
+						p.metrics.missingMetrics.WithLabelValues(
+							p.backends[i].name,
+							p.routeName,
+							result,
+							issuer,
+						).Observe(float64(summary.missingMetrics))
+					}
+					p.metrics.responsesComparedTotal.WithLabelValues(
+						p.backends[i].name,
+						p.routeName,
+						result,
+						issuer,
+					).Inc()
+				}
+			}
+
+			if goldfishSample {
+				level.Debug(p.logger).Log(
+					"msg", "processing concatenated responses with Goldfish",
 					"user", user,
-					"err", err,
+					"issuer", issuer,
+					"query", oldQuery.URL.RawQuery,
 				)
-				result = comparisonFailed
-			} else if summary != nil && summary.skipped {
-				result = comparisonSkipped
+				p.processResponsesWithGoldfish(oldQuery, oldResponses)
 			}
+		}()
+	}()
+}
 
-			if p.instrumentCompares && summary != nil {
-				p.metrics.missingMetrics.WithLabelValues(
-					p.backends[i].name,
-					p.routeName,
-					result,
-					issuer,
-				).Observe(float64(summary.missingMetrics))
-			}
-			p.metrics.responsesComparedTotal.WithLabelValues(
-				p.backends[i].name,
-				p.routeName,
-				result,
-				issuer,
-			).Inc()
+func (p *ProxyEndpoint) preferredBackend() (*ProxyBackend, int) {
+	// Find preferred backend for recent query
+	var preferredBackend *ProxyBackend
+	preferredBackendIdx := -1
+	for i, b := range p.backends {
+		if b.preferred {
+			preferredBackend = b
+			preferredBackendIdx = i
+			break
 		}
 	}
-	close(resCh)
-
-	if goldfishSample {
-		level.Debug(p.logger).Log(
-			"msg", "processing concatenated responses with Goldfish",
-			"user", user,
-			"issuer", issuer,
-			"query", oldQuery.URL.RawQuery,
-		)
-		p.processResponsesWithGoldfish(oldQuery, oldResponses)
-	}
+	return preferredBackend, preferredBackendIdx
 }
 
 func extractDirection(r *http.Request) logproto.Direction {
@@ -622,67 +675,87 @@ func (p *ProxyEndpoint) readAndRestoreRequestBody(r *http.Request) []byte {
 	return body
 }
 
-// backendRequestConfig holds configuration for executing backend requests.
-type backendRequestConfig struct {
-	backends             []*ProxyBackend
-	request              *http.Request
-	body                 []byte
-	responses            []*BackendResponse
-	preferredResponseIdx *int
-	resCh                chan *BackendResponse
-	issuer               string
-	trackForComparison   bool
+// backendRequestExecutor is used for executing multiple backend requests in parallel and communicating back
+// responses in async friendly ways.
+type backendRequestExecutor struct {
+	resCh           chan *BackendResponse
+	issuer          string
+	logger          log.Logger
+	requestDuration *prometheus.HistogramVec
+	routeName       string
 }
 
-// executeBackendRequestsParallel executes a request to all backends in parallel.
-// It handles body cloning, filtering, metrics, and response collection.
-func (p *ProxyEndpoint) executeBackendRequestsParallel(cfg backendRequestConfig, wg *sync.WaitGroup) {
-	wg.Add(len(cfg.backends))
+// execInParallel executes a request to all backends in parallel.
+func (ex *backendRequestExecutor) execInParallel(
+	backends []*ProxyBackend,
+	responses []*BackendResponse,
+	request *http.Request,
+	body []byte,
+	notifyOnComplete map[int]chan *BackendResponse,
+	wg *sync.WaitGroup,
+) {
+	wg.Add(len(backends))
 
-	for i, b := range cfg.backends {
+	if len(responses) != len(backends) {
+		panic("responses and backends must have the same length")
+	}
+
+	for i, b := range backends {
 		go func(idx int, backend *ProxyBackend) {
 			defer wg.Done()
 
 			var bodyReader io.ReadCloser
-			if len(cfg.body) > 0 {
-				bodyReader = io.NopCloser(bytes.NewReader(cfg.body))
+			if len(body) > 0 {
+				bodyReader = io.NopCloser(bytes.NewReader(body))
 			}
 
-			if backend.filter != nil && !backend.filter.Match([]byte(cfg.request.URL.String())) {
-				level.Debug(p.logger).Log("msg", "Skipping non-preferred backend", "path", cfg.request.URL.Path, "backend", backend.name)
+			if backend.filter != nil && !backend.filter.Match([]byte(request.URL.String())) {
+				level.Debug(ex.logger).Log(
+					"msg", "Skipping non-preferred backend",
+					"path", request.URL.Path,
+					"backend", backend.name,
+					"issuer", ex.issuer,
+					"user", goldfish.ExtractUserFromQueryTags(request, ex.logger),
+				)
 				return
 			}
 
-			res := backend.ForwardRequest(cfg.request, bodyReader)
+			res := backend.ForwardRequest(request, bodyReader)
 
 			lvl := level.Debug
 			if !res.succeeded() {
 				lvl = level.Warn
 			}
 
-			lvl(p.logger).Log("msg", "backend response", "backend", backend.name, "status", res.status, "elapsed", res.duration)
+			lvl(ex.logger).Log(
+				"msg", "backend response",
+				"backend", backend.name,
+				"status", res.status,
+				"elapsed", res.duration,
+				"issuer", ex.issuer,
+				"user", goldfish.ExtractUserFromQueryTags(request, ex.logger),
+			)
 
-			p.metrics.requestDuration.WithLabelValues(
+			ex.requestDuration.WithLabelValues(
 				res.backend.name,
-				cfg.request.Method,
-				p.routeName,
+				request.Method,
+				ex.routeName,
 				strconv.Itoa(res.statusCode()),
-				cfg.issuer,
+				ex.issuer,
 			).Observe(res.duration.Seconds())
 
-			// Keep track of the response for comparison if required
-			if cfg.trackForComparison {
-				if backend.preferred && cfg.preferredResponseIdx != nil {
-					*cfg.preferredResponseIdx = idx
-				}
-				if cfg.responses != nil {
-					cfg.responses[idx] = res
+			// Notify if this backend has a notification channel
+			if notifyOnComplete != nil {
+				if notifyCh, exists := notifyOnComplete[idx]; exists {
+					notifyCh <- res
+					close(notifyCh) //only 1 response per backend
 				}
 			}
+			responses[idx] = res
 
 			// Send to channel if provided
-			if cfg.resCh != nil {
-				cfg.resCh <- res
+			if ex.resCh != nil {
+				ex.resCh <- res
 			}
 		}(i, b)
 	}
