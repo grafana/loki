@@ -26,12 +26,12 @@ import (
 
 // xcap statistics for RangeIO operations.
 var (
-	statInputRangesCount     = xcap.NewStatisticInt64("input_ranges_count", xcap.AggregationTypeSum)
-	statInputRangesSize      = xcap.NewStatisticInt64("input_ranges_size_bytes", xcap.AggregationTypeSum)
-	statOptimizedRangesCount = xcap.NewStatisticInt64("optimized_ranges_count", xcap.AggregationTypeSum)
-	statOptimizedRangesSize  = xcap.NewStatisticInt64("optimized_ranges_size_bytes", xcap.AggregationTypeSum)
+	statInputRangesCount     = xcap.NewStatisticInt64("input.ranges", xcap.AggregationTypeSum)
+	statInputRangesSize      = xcap.NewStatisticInt64("input.ranges.size.bytes", xcap.AggregationTypeSum)
+	statOptimizedRangesCount = xcap.NewStatisticInt64("optimized.ranges", xcap.AggregationTypeSum)
+	statOptimizedRangesSize  = xcap.NewStatisticInt64("optimized.ranges.size.bytes", xcap.AggregationTypeSum)
 	// pick the min value when aggregating to track the slowest read.
-	statOptimizedThroughput = xcap.NewStatisticFloat64("optimized_ranges_throughput", xcap.AggregationTypeMin)
+	statOptimizedThroughput = xcap.NewStatisticFloat64("optimized.ranges.throughput", xcap.AggregationTypeMin)
 )
 
 // Range represents a range of data to be read.

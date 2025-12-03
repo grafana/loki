@@ -40,8 +40,8 @@ const (
 )
 
 var (
-	statIndexObjects     = xcap.NewStatisticInt64("metastore_index_objects", xcap.AggregationTypeSum)
-	statResolvedSections = xcap.NewStatisticInt64("metastore_resolved_sections", xcap.AggregationTypeSum)
+	statIndexObjects     = xcap.NewStatisticInt64("metastore.index.objects", xcap.AggregationTypeSum)
+	statResolvedSections = xcap.NewStatisticInt64("metastore.resolved.sections", xcap.AggregationTypeSum)
 )
 
 type ObjectMetastore struct {
