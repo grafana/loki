@@ -223,6 +223,9 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 		level.Error(logger).Log("msg", "failed to export capture as trace", "err", err)
 	}
 
+	// Close the pipeline to calculate the stats.
+	pipeline.Close()
+
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
 	statsCtx := stats.FromContext(ctx)
 	statsCtx.AddQuerierExecTime(durFull)
