@@ -9,20 +9,12 @@ import (
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
-// Bucket operation statistic names.
-const (
-	StatBucketGet        = "bucket.get"
-	StatBucketGetRange   = "bucket.getrange"
-	StatBucketIter       = "bucket.iter"
-	StatBucketAttributes = "bucket.attributes"
-)
-
 // Statistics for tracking bucket operation counts.
 var (
-	statBucketGet        = xcap.NewStatisticInt64(StatBucketGet, xcap.AggregationTypeSum)
-	statBucketGetRange   = xcap.NewStatisticInt64(StatBucketGetRange, xcap.AggregationTypeSum)
-	statBucketIter       = xcap.NewStatisticInt64(StatBucketIter, xcap.AggregationTypeSum)
-	statBucketAttributes = xcap.NewStatisticInt64(StatBucketAttributes, xcap.AggregationTypeSum)
+	statBucketGet        = xcap.NewStatisticInt64("bucket.get", xcap.AggregationTypeSum)
+	statBucketGetRange   = xcap.NewStatisticInt64("bucket.getrange", xcap.AggregationTypeSum)
+	statBucketIter       = xcap.NewStatisticInt64("bucket.iter", xcap.AggregationTypeSum)
+	statBucketAttributes = xcap.NewStatisticInt64("bucket.attributes", xcap.AggregationTypeSum)
 )
 
 // XCapBucket wraps an objstore.Bucket and records request counts to the xcap
