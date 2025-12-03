@@ -9,6 +9,7 @@ import "gogoproto/gogo.proto";
 import "google/protobuf/timestamp.proto";
 import "pkg/engine/internal/proto/physicalpb/physicalpb.proto";
 import "pkg/engine/internal/proto/ulid/ulid.proto";
+import "pkg/logqlmodel/stats/stats.proto";
 
 option go_package = "github.com/grafana/loki/v3/pkg/engine/internal/proto/wirepb";
 
@@ -215,6 +216,8 @@ message TaskStatus {
   bytes capture = 3;
 
   ContributingTimeRange contributing_time_range = 4;
+
+  stats.Result statistics = 5;
 }
 
 message ContributingTimeRange {
