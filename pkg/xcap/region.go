@@ -110,7 +110,7 @@ func StartRegion(ctx context.Context, name string, opts ...RegionOption) (contex
 	}
 
 	// extract parentID from context
-	if pr := regionFromContext(ctx); pr != nil {
+	if pr := RegionFromContext(ctx); pr != nil {
 		r.parentID = pr.id
 	}
 
@@ -118,7 +118,7 @@ func StartRegion(ctx context.Context, name string, opts ...RegionOption) (contex
 	capture.AddRegion(r)
 
 	// Update context with the new region.
-	return contextWithRegion(ctx, r), r
+	return ContextWithRegion(ctx, r), r
 }
 
 // Record records the statistic Observation o into the region. Calling
