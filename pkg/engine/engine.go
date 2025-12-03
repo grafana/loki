@@ -124,7 +124,7 @@ func New(params Params) (*Engine, error) {
 		rangeConfig: params.Config.RangeConfig,
 
 		scheduler: params.Scheduler,
-		bucket:    bucket.NewXcapBucket(params.Bucket),
+		bucket:    bucket.NewXCapBucket(params.Bucket),
 		limits:    params.Limits,
 	}
 

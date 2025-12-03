@@ -32,9 +32,9 @@ type XCapBucket struct {
 	bkt objstore.Bucket
 }
 
-// NewXcapBucket creates a new XcapBucket that wraps the given bucket and records
+// NewXCapBucket creates a new XcapBucket that wraps the given bucket and records
 // request counts to xcap regions found in the context.
-func NewXcapBucket(bkt objstore.Bucket) *XCapBucket {
+func NewXCapBucket(bkt objstore.Bucket) *XCapBucket {
 	return &XCapBucket{bkt: bkt}
 }
 

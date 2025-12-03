@@ -113,7 +113,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 
 	cfg := executor.Config{
 		BatchSize: t.BatchSize,
-		Bucket:    bucket.NewXcapBucket(t.Bucket),
+		Bucket:    bucket.NewXCapBucket(t.Bucket),
 
 		GetExternalInputs: func(_ context.Context, node physical.Node) []executor.Pipeline {
 			streams := job.Task.Sources[node]
