@@ -14,6 +14,8 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/tools/querytee/goldfish"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -165,7 +167,7 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *Back
 		requestDuration: p.metrics.requestDuration,
 	}
 
-	preferredRespReady := make(chan *BackendResponse)
+	preferredRespReady := make(chan *BackendResponse, 1)
 	notifyOnComplete := map[int]chan *BackendResponse{
 		preferredBackendIdx: preferredRespReady,
 	}
@@ -271,7 +273,7 @@ func (p *ProxyEndpoint) executeSplitQuery(
 		requestDuration: p.metrics.requestDuration,
 		routeName:       p.routeName,
 	}
-	preferredOldRespReady := make(chan *BackendResponse)
+	preferredOldRespReady := make(chan *BackendResponse, 1)
 	body := p.readAndRestoreRequestBody(oldQuery)
 	notifyOnComplete := map[int]chan *BackendResponse{
 		preferredBackendIdx: preferredOldRespReady,
@@ -285,7 +287,7 @@ func (p *ProxyEndpoint) executeSplitQuery(
 		&allBackendsWg)
 
 	// Execute recent query to preferred backend only
-	recentReady := make(chan *BackendResponse)
+	recentReady := make(chan *BackendResponse, 1)
 	recentBody := p.readAndRestoreRequestBody(recentQuery)
 	notifyRecentOnComplete := map[int]chan *BackendResponse{
 		0: recentReady,

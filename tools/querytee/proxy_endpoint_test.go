@@ -2,6 +2,7 @@ package querytee
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -24,6 +25,7 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/goldfish"
+	"github.com/grafana/loki/v3/pkg/loghttp"
 	querytee_goldfish "github.com/grafana/loki/v3/tools/querytee/goldfish"
 )
 
