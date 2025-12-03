@@ -90,7 +90,7 @@ func StartRegion(ctx context.Context, name string, opts ...RegionOption) (contex
 	}
 
 	// extract parentID from context
-	if pr := regionFromContext(ctx); pr != nil {
+	if pr := RegionFromContext(ctx); pr != nil {
 		r.parentID = pr.id
 	}
 
