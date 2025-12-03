@@ -379,7 +379,6 @@ func (p *ProxyEndpoint) executeSplitQuery(
 		// send preferred concatenated response immediately
 		// TODO(twhitney): this will change when we implement racing
 		resCh <- preferredConcatenatedResp
-		//TODO(twhitney): do I need to close this channel here? Was that happening in the old executeBackendRequests?
 		close(resCh)
 
 		// continue processing other backends in background for comparison and goldfish
