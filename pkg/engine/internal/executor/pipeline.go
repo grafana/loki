@@ -20,7 +20,7 @@ type Pipeline interface {
 	// It returns an error if reading fails or when the pipeline is exhausted. In this case, the function returns EOF.
 	Read(context.Context) (arrow.RecordBatch, error)
 	// Close closes the resources of the pipeline.
-	// The implementation must close all the of the pipeline's inputs.
+	// The implementation must close all the of the pipeline's inputs and must be safe to call multiple times.
 	Close()
 }
 
@@ -76,8 +76,10 @@ func newGenericPipelineWithRegion(read readFunc, region *xcap.Region, inputs ...
 	}
 }
 
-var _ Pipeline = (*GenericPipeline)(nil)
-var _ RegionProvider = (*GenericPipeline)(nil)
+var (
+	_ Pipeline       = (*GenericPipeline)(nil)
+	_ RegionProvider = (*GenericPipeline)(nil)
+)
 
 // Read implements Pipeline.
 func (p *GenericPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {

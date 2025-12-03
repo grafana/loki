@@ -910,7 +910,7 @@ func (cl *Client) supportsKeyVersion(key, version int16) bool {
 		cl.loadSeeds(),
 	} {
 		for _, b := range brokers {
-			if v := b.loadVersions(); v != nil && v.maxVers[key] >= version {
+			if v := b.loadVersions(); v != nil && v.maxVersion(key) >= version {
 				return true
 			}
 		}

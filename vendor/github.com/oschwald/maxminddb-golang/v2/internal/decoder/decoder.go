@@ -352,9 +352,36 @@ func (d *Decoder) PeekKind() (Kind, error) {
 }
 
 // Offset returns the current offset position in the database.
-// This can be used by custom unmarshalers for caching purposes.
+// If the current position points to a pointer, this method resolves the
+// pointer chain and returns the offset of the actual data. This ensures
+// that multiple pointers to the same data return the same offset, which
+// is important for caching purposes.
 func (d *Decoder) Offset() uint {
-	return d.offset
+	// Follow pointer chain to get resolved data location
+	dataOffset := d.offset
+	for {
+		kindNum, size, ctrlEndOffset, err := d.d.decodeCtrlData(dataOffset)
+		if err != nil {
+			// Return original offset to avoid breaking the public API.
+			// Offset() returns uint (not (uint, error)), so we can't propagate errors.
+			// In practice, errors here are rare and the original offset is still valid.
+			return d.offset
+		}
+		if kindNum != KindPointer {
+			// dataOffset is now pointing at the actual data (not a pointer)
+			// Return this offset, which is where the data's control bytes start
+			break
+		}
+		// Follow the pointer to get the target offset
+		dataOffset, _, err = d.d.decodePointer(size, ctrlEndOffset)
+		if err != nil {
+			// Return original offset to avoid breaking the public API.
+			// The caller will encounter the same error when they try to read.
+			return d.offset
+		}
+		// dataOffset is now the pointer target; loop to check if it's also a pointer
+	}
+	return dataOffset
 }
 
 func (d *Decoder) reset(offset uint) {

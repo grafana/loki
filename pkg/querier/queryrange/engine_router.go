@@ -21,6 +21,8 @@ import (
 
 // RouterConfig configures sending queries to a separate engine.
 type RouterConfig struct {
+	Enabled bool
+
 	Start time.Time     // Start time of the v2 engine
 	Lag   time.Duration // Lag after which v2 engine has data
 
@@ -60,23 +62,23 @@ type engineRouter struct {
 // newEngineRouterMiddleware creates a middleware that splits and routes part of the query
 // to v2 engine if the query is supported by it.
 func newEngineRouterMiddleware(
-	v2Config RouterConfig,
+	v2RouterConfig RouterConfig,
 	v1Chain []queryrangebase.Middleware,
 	merger queryrangebase.Merger,
 	metricQuery bool,
 	logger log.Logger,
 ) queryrangebase.Middleware {
-	if v2Config.Handler == nil {
+	if v2RouterConfig.Handler == nil {
 		panic("v2 engine handler cannot be nil")
 	}
 
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 		return &engineRouter{
-			v2Start:        v2Config.Start,
-			v2Lag:          v2Config.Lag,
+			v2Start:        v2RouterConfig.Start,
+			v2Lag:          v2RouterConfig.Lag,
 			v1Next:         queryrangebase.MergeMiddlewares(v1Chain...).Wrap(next),
-			v2Next:         v2Config.Handler,
-			checkV2:        v2Config.Validate,
+			v2Next:         v2RouterConfig.Handler,
+			checkV2:        v2RouterConfig.Validate,
 			merger:         merger,
 			logger:         logger,
 			forMetricQuery: metricQuery,
@@ -168,7 +170,7 @@ func (e *engineRouter) splitOverlapping(r queryrangebase.Request, v2Start, v2End
 	}
 
 	// align the ranges by step before splitting.
-	start, end := alignStartEnd(stepNs, r.GetStart(), r.GetEnd())
+	start, end := r.GetStart(), r.GetEnd()
 	v2Start, v2End = alignStartEnd(stepNs, v2Start, v2End)
 
 	// chunk req before V2 engine range
