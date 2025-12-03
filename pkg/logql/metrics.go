@@ -162,10 +162,6 @@ func RecordRangeAndInstantQueryMetrics(
 		bloomRatio = float64(stats.Index.TotalChunks-stats.Index.PostFilterChunks) / float64(stats.Index.TotalChunks)
 	}
 
-	if r, ok := result.(CountMinSketchVector); ok {
-		cardinalityEstimate = r.F.HyperLogLog.Estimate()
-	}
-
 	logValues = append(logValues, []interface{}{
 		"latency", latencyType, // this can be used to filter log lines.
 		"query", query,
@@ -213,8 +209,6 @@ func RecordRangeAndInstantQueryMetrics(
 		"cache_result_hit", resultCache.EntriesFound,
 		"cache_result_download_time", resultCache.CacheDownloadTime(),
 		"cache_result_query_length_served", resultCache.CacheQueryLengthServed(),
-		// Cardinality estimate for some approximate query types
-		"cardinality_estimate", cardinalityEstimate,
 		// The total of chunk reference fetched from index.
 		"ingester_chunk_refs", stats.Ingester.Store.GetTotalChunksRef(),
 		// Total number of chunks fetched.
@@ -241,6 +235,11 @@ func RecordRangeAndInstantQueryMetrics(
 		"index_used_bloom_filters", stats.Index.UsedBloomFilters,
 		"index_shard_resolver_duration", time.Duration(stats.Index.ShardsDuration),
 	}...)
+
+	if r, ok := result.(CountMinSketchVector); ok {
+		cardinalityEstimate = r.F.HyperLogLog.Estimate()
+		logValues = append(logValues, "cardinality_estimate", cardinalityEstimate)
+	}
 
 	logValues = append(logValues, httpreq.TagsToKeyValues(queryTags)...)
 
