@@ -203,7 +203,7 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 		Projections: node.Projections,
 
 		BatchSize: c.batchSize,
-	}, log.With(c.logger, "location", string(node.Location), "section", node.Section))
+	}, log.With(c.logger, "location", string(node.Location), "section", node.Section), region)
 
 	return pipeline
 }
