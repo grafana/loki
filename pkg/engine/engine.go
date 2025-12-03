@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-kit/log"
@@ -200,7 +201,10 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 		span.SetStatus(codes.Error, "failed to execute query")
 		return logqlmodel.Result{}, ErrSchedulingFailed
 	}
-	defer pipeline.Close()
+	closePipeline := sync.OnceFunc(func() {
+		pipeline.Close()
+	})
+	defer closePipeline()
 
 	builder, durExecution, err := e.collectResult(ctx, logger, params, pipeline)
 	if err != nil {
@@ -223,6 +227,7 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 		level.Error(logger).Log("msg", "failed to export capture as trace", "err", err)
 	}
 
+	closePipeline()
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
 	statsCtx := stats.FromContext(ctx)
 	statsCtx.AddQuerierExecTime(durFull)
