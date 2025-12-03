@@ -1,4 +1,4 @@
-package indexpointers
+package indexpointers_test
 
 import (
 	"context"
@@ -10,9 +10,10 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 )
 
-var indexPointerTestData = []IndexPointer{
+var indexPointerTestData = []indexpointers.IndexPointer{
 	{Path: "/path/to/index/object/1", StartTs: unixTime(10), EndTs: unixTime(20)},
 	{Path: "/path/to/index/object/2", StartTs: unixTime(12), EndTs: unixTime(17)},
 	{Path: "/path/to/index/object/3", StartTs: unixTime(13), EndTs: unixTime(18)},
@@ -22,16 +23,16 @@ func unixTime(sec int64) time.Time { return time.Unix(sec, 0) }
 
 func TestRowReader(t *testing.T) {
 	dec := buildIndexPointersDecoder(t, 100, 0) // Many pages
-	r := NewRowReader(dec)
+	r := indexpointers.NewRowReader(dec)
 	actual, err := readAllIndexPointers(context.Background(), r)
 	require.NoError(t, err)
 	require.Equal(t, indexPointerTestData, actual)
 }
 
-func buildIndexPointersDecoder(t *testing.T, pageSize, pageRows int) *Section {
+func buildIndexPointersDecoder(t *testing.T, pageSize, pageRows int) *indexpointers.Section {
 	t.Helper()
 
-	s := NewBuilder(nil, pageSize, pageRows)
+	s := indexpointers.NewBuilder(nil, pageSize, pageRows)
 	for _, d := range indexPointerTestData {
 		s.Append(d.Path, d.StartTs, d.EndTs)
 	}
@@ -43,15 +44,15 @@ func buildIndexPointersDecoder(t *testing.T, pageSize, pageRows int) *Section {
 	require.NoError(t, err)
 	t.Cleanup(func() { closer.Close() })
 
-	sec, err := Open(t.Context(), obj.Sections()[0])
+	sec, err := indexpointers.Open(t.Context(), obj.Sections()[0])
 	require.NoError(t, err)
 	return sec
 }
 
-func readAllIndexPointers(ctx context.Context, r *RowReader) ([]IndexPointer, error) {
+func readAllIndexPointers(ctx context.Context, r *indexpointers.RowReader) ([]indexpointers.IndexPointer, error) {
 	var (
-		res []IndexPointer
-		buf = make([]IndexPointer, 128)
+		res []indexpointers.IndexPointer
+		buf = make([]indexpointers.IndexPointer, 128)
 	)
 
 	for {
