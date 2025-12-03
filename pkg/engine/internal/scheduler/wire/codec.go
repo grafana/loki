@@ -284,6 +284,10 @@ func (c *protobufCodec) taskFromPbTask(t *wirepb.Task) (*workflow.Task, error) {
 		Fragment: fragment,
 		Sources:  sources,
 		Sinks:    sinks,
+		MaxTimeRange: physical.TimeRange{
+			Start: t.MaxTimeRange.Start,
+			End:   t.MaxTimeRange.End,
+		},
 	}, nil
 }
 
@@ -557,6 +561,10 @@ func (c *protobufCodec) taskToPbTask(from *workflow.Task) (*wirepb.Task, error) 
 		Fragment: fragment,
 		Sources:  sources,
 		Sinks:    sinks,
+		MaxTimeRange: &physicalpb.TimeRange{
+			Start: from.MaxTimeRange.Start,
+			End:   from.MaxTimeRange.End,
+		},
 	}, nil
 }
 
