@@ -31,6 +31,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/storage/bucket"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/rangeio"
@@ -122,7 +123,7 @@ func New(params Params) (*Engine, error) {
 		rangeConfig: params.Config.RangeConfig,
 
 		scheduler: params.Scheduler,
-		bucket:    params.Bucket,
+		bucket:    bucket.NewXCapBucket(params.Bucket),
 		limits:    params.Limits,
 	}
 

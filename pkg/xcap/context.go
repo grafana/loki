@@ -26,9 +26,9 @@ func contextWithCapture(ctx context.Context, capture *Capture) context.Context {
 	return context.WithValue(ctx, captureKey, capture)
 }
 
-// regionFromContext returns the current Region from the context, or nil if no Region
+// RegionFromContext returns the current Region from the context, or nil if no Region
 // is present.
-func regionFromContext(ctx context.Context) *Region {
+func RegionFromContext(ctx context.Context) *Region {
 	v, ok := ctx.Value(regionKey).(*Region)
 	if !ok {
 		return nil

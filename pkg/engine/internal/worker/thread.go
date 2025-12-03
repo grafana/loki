@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/storage/bucket"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
@@ -112,7 +113,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 
 	cfg := executor.Config{
 		BatchSize: t.BatchSize,
-		Bucket:    t.Bucket,
+		Bucket:    bucket.NewXCapBucket(t.Bucket),
 
 		GetExternalInputs: func(_ context.Context, node physical.Node) []executor.Pipeline {
 			streams := job.Task.Sources[node]
