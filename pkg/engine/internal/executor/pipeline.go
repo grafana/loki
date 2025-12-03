@@ -24,14 +24,6 @@ type Pipeline interface {
 	Close()
 }
 
-// RegionProvider is an optional interface that pipelines can implement
-// to expose their associated xcap region for statistics collection.
-type RegionProvider interface {
-	// Region returns the xcap region associated with this pipeline node, if any.
-	// Returns nil if no region is associated with this pipeline.
-	Region() *xcap.Region
-}
-
 // Contributing time range would be anything less than `ts` if `lessThan` is true, or greater
 // than `ts` otherwise.
 type ContributingTimeRangeChangedHandler = func(ts time.Time, lessThan bool)
@@ -58,7 +50,6 @@ type readFunc func(context.Context, []Pipeline) (arrow.RecordBatch, error)
 type GenericPipeline struct {
 	inputs []Pipeline
 	read   readFunc
-	region *xcap.Region
 }
 
 func newGenericPipeline(read readFunc, inputs ...Pipeline) *GenericPipeline {
@@ -68,16 +59,7 @@ func newGenericPipeline(read readFunc, inputs ...Pipeline) *GenericPipeline {
 	}
 }
 
-func newGenericPipelineWithRegion(read readFunc, region *xcap.Region, inputs ...Pipeline) *GenericPipeline {
-	return &GenericPipeline{
-		read:   read,
-		inputs: inputs,
-		region: region,
-	}
-}
-
 var _ Pipeline = (*GenericPipeline)(nil)
-var _ RegionProvider = (*GenericPipeline)(nil)
 
 // Read implements Pipeline.
 func (p *GenericPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
@@ -89,17 +71,9 @@ func (p *GenericPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
 
 // Close implements Pipeline.
 func (p *GenericPipeline) Close() {
-	if p.region != nil {
-		p.region.End()
-	}
 	for _, inp := range p.inputs {
 		inp.Close()
 	}
-}
-
-// Region implements RegionProvider.
-func (p *GenericPipeline) Region() *xcap.Region {
-	return p.region
 }
 
 func errorPipeline(ctx context.Context, err error) Pipeline {
@@ -297,18 +271,11 @@ func (lp *lazyPipeline) Close() {
 	lp.built = nil
 }
 
-// Region implements RegionProvider.
-func (lp *lazyPipeline) Region() *xcap.Region {
-	if lp.built != nil {
-		if provider, ok := lp.built.(RegionProvider); ok {
-			return provider.Region()
-		}
-	}
-	return nil
-}
-
 // observedPipeline wraps a Pipeline to automatically collect common statistics
 // and record them to the pipeline's region.
+//
+// It also injects the region into the context so that downstream code can
+// access it via xcap.RegionFromContext.
 type observedPipeline struct {
 	inner  Pipeline
 	region *xcap.Region
@@ -316,42 +283,34 @@ type observedPipeline struct {
 
 var _ Pipeline = (*observedPipeline)(nil)
 
-// newObservedPipeline wraps a pipeline to automatically collect common statistics.
-// If the pipeline has a region, statistics will be recorded to it.
-func newObservedPipeline(inner Pipeline) *observedPipeline {
-	p := &observedPipeline{
-		inner: inner,
+// newObservedPipeline creates a new observedPipeline.
+func newObservedPipeline(inner Pipeline, region *xcap.Region) *observedPipeline {
+	return &observedPipeline{
+		inner:  inner,
+		region: region,
 	}
-
-	if provider, ok := inner.(RegionProvider); ok {
-		p.region = provider.Region()
-	}
-
-	return p
 }
 
 // Read implements Pipeline.
 func (p *observedPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
+	// inject the region into context.
+	ctx = xcap.ContextWithRegion(ctx, p.region)
+	p.region.Record(statReadCalls.Observe(1))
+
 	start := time.Now()
 
-	if p.region != nil {
-		p.region.Record(statReadCalls.Observe(1))
-	}
-
 	rec, err := p.inner.Read(ctx)
-
-	if p.region != nil {
-		if rec != nil {
-			p.region.Record(statRowsOut.Observe(rec.NumRows()))
-		}
-
-		p.region.Record(statReadDuration.Observe(time.Since(start).Nanoseconds()))
+	if rec != nil {
+		p.region.Record(statRowsOut.Observe(rec.NumRows()))
 	}
+
+	p.region.Record(statReadDuration.Observe(time.Since(start).Nanoseconds()))
 
 	return rec, err
 }
 
 // Close implements Pipeline.
 func (p *observedPipeline) Close() {
+	p.region.End()
 	p.inner.Close()
 }

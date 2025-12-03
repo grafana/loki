@@ -11,10 +11,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
-	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
-func NewProjectPipeline(input Pipeline, proj *physical.Projection, evaluator *expressionEvaluator, region *xcap.Region) (Pipeline, error) {
+func NewProjectPipeline(input Pipeline, proj *physical.Projection, evaluator *expressionEvaluator) (Pipeline, error) {
 	// Shortcut for ALL=true DROP=false EXPAND=false
 	if proj.All && !proj.Drop && !proj.Expand {
 		return input, nil
@@ -55,7 +54,7 @@ func NewProjectPipeline(input Pipeline, proj *physical.Projection, evaluator *ex
 				// Keep only if type matches
 				return ref.Column == ident.ShortName() && ref.Type == ident.ColumnType()
 			})
-		}, input, region)
+		}, input)
 	}
 
 	// Create DROP projection pipeline:
@@ -70,21 +69,21 @@ func NewProjectPipeline(input Pipeline, proj *physical.Projection, evaluator *ex
 				// Drop only if type matches
 				return ref.Column == ident.ShortName() && ref.Type == ident.ColumnType()
 			})
-		}, input, region)
+		}, input)
 	}
 
 	// Create EXPAND projection pipeline:
 	// Keep all columns and expand the ones referenced in proj.Expressions.
 	// TODO: as implemented, epanding and keeping/dropping cannot happen in the same projection. Is this desired?
 	if proj.All && proj.Expand && len(expandExprs) > 0 {
-		return newExpandPipeline(expandExprs[0], evaluator, input, region)
+		return newExpandPipeline(expandExprs[0], evaluator, input)
 	}
 
 	return nil, errNotImplemented
 }
 
-func newKeepPipeline(colRefs []types.ColumnRef, keepFunc func([]types.ColumnRef, *semconv.Identifier) bool, input Pipeline, region *xcap.Region) (*GenericPipeline, error) {
-	return newGenericPipelineWithRegion(func(ctx context.Context, inputs []Pipeline) (arrow.RecordBatch, error) {
+func newKeepPipeline(colRefs []types.ColumnRef, keepFunc func([]types.ColumnRef, *semconv.Identifier) bool, input Pipeline) (*GenericPipeline, error) {
+	return newGenericPipeline(func(ctx context.Context, inputs []Pipeline) (arrow.RecordBatch, error) {
 		if len(inputs) != 1 {
 			return nil, fmt.Errorf("expected 1 input, got %d", len(inputs))
 		}
@@ -111,11 +110,11 @@ func newKeepPipeline(colRefs []types.ColumnRef, keepFunc func([]types.ColumnRef,
 		metadata := batch.Schema().Metadata()
 		schema := arrow.NewSchema(fields, &metadata)
 		return array.NewRecordBatch(schema, columns, batch.NumRows()), nil
-	}, region, input), nil
+	}, input), nil
 }
 
-func newExpandPipeline(expr physical.Expression, evaluator *expressionEvaluator, input Pipeline, region *xcap.Region) (*GenericPipeline, error) {
-	return newGenericPipelineWithRegion(func(ctx context.Context, inputs []Pipeline) (arrow.RecordBatch, error) {
+func newExpandPipeline(expr physical.Expression, evaluator *expressionEvaluator, input Pipeline) (*GenericPipeline, error) {
+	return newGenericPipeline(func(ctx context.Context, inputs []Pipeline) (arrow.RecordBatch, error) {
 		if len(inputs) != 1 {
 			return nil, fmt.Errorf("expected 1 input, got %d", len(inputs))
 		}
@@ -170,5 +169,5 @@ func newExpandPipeline(expr physical.Expression, evaluator *expressionEvaluator,
 		metadata := schema.Metadata()
 		outputSchema := arrow.NewSchema(outputFields, &metadata)
 		return array.NewRecordBatch(outputSchema, outputCols, batch.NumRows()), nil
-	}, region, input), nil
+	}, input), nil
 }
