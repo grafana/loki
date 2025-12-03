@@ -148,7 +148,7 @@ require (
 	github.com/prometheus/sigv4 v0.3.0
 	github.com/richardartoul/molecule v1.0.0
 	github.com/schollz/progressbar/v3 v3.18.0
-	github.com/shirou/gopsutil/v4 v4.25.10
+	github.com/shirou/gopsutil/v4 v4.25.11
 	github.com/thanos-io/objstore v0.0.0-20250115091151-a54d0f04b42a
 	github.com/tjhop/slog-gokit v0.1.5
 	github.com/twmb/franz-go v1.20.4
@@ -206,7 +206,7 @@ require (
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
 	github.com/dlclark/regexp2 v1.11.5 // indirect
-	github.com/ebitengine/purego v0.9.0 // indirect
+	github.com/ebitengine/purego v0.9.1 // indirect
 	github.com/envoyproxy/go-control-plane/envoy v1.35.0 // indirect
 	github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f // indirect
 	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
@@ -276,8 +276,8 @@ require (
 	github.com/sethvargo/go-retry v0.3.0 // indirect
 	github.com/spiffe/go-spiffe/v2 v2.6.0 // indirect
 	github.com/tinylib/msgp v1.5.0 // indirect
-	github.com/tklauser/go-sysconf v0.3.15 // indirect
-	github.com/tklauser/numcpus v0.10.0 // indirect
+	github.com/tklauser/go-sysconf v0.3.16 // indirect
+	github.com/tklauser/numcpus v0.11.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/xhit/go-str2duration/v2 v2.1.0 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
