@@ -4,7 +4,7 @@ package xcap
 var (
 	StatPipelineRowsOut      = NewStatisticInt64("rows.out", AggregationTypeSum)
 	StatPipelineReadCalls    = NewStatisticInt64("read.calls", AggregationTypeSum)
-	StatPipelineReadDuration = NewStatisticInt64("read.duration.ns", AggregationTypeSum)
+	StatPipelineReadDuration = NewStatisticFloat64("read.duration", AggregationTypeSum)
 )
 
 // ColumnCompat statistics.
@@ -31,7 +31,7 @@ var (
 	StatDatasetPagesScanned         = NewStatisticInt64("pages.scanned", AggregationTypeSum)
 	StatDatasetPagesFoundInCache    = NewStatisticInt64("pages.cache.hit", AggregationTypeSum)
 	StatDatasetPageDownloadRequests = NewStatisticInt64("pages.download.requests", AggregationTypeSum)
-	StatDatasetPageDownloadTime     = NewStatisticInt64("pages.download.duration.ns", AggregationTypeSum)
+	StatDatasetPageDownloadTime     = NewStatisticFloat64("pages.download.duration", AggregationTypeSum)
 
 	// Dataset page download byte statistics.
 	StatDatasetPrimaryPagesDownloaded           = NewStatisticInt64("primary.pages.downloaded", AggregationTypeSum)

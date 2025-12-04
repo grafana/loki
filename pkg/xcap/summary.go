@@ -131,13 +131,15 @@ func (o *observations) toLogValues() []any {
 			}
 		}
 
-		// Format duration values (keys ending with "duration_ns")
-		if strings.HasSuffix(p.name, "duration_ns") {
+		// Format duration values (keys ending with "duration")
+		if strings.HasSuffix(p.name, "duration") {
 			switch val := value.(type) {
+			case float64:
+				value = time.Duration(val * 1000).String()
 			case int64:
-				value = time.Duration(val).String()
+				value = time.Duration(val * 1000).String()
 			case uint64:
-				value = time.Duration(val).String()
+				value = time.Duration(val * 1000).String()
 			}
 		}
 

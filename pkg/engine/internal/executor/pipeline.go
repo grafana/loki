@@ -347,7 +347,7 @@ func (p *observedPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) 
 			p.region.Record(xcap.StatPipelineRowsOut.Observe(rec.NumRows()))
 		}
 
-		p.region.Record(xcap.StatPipelineReadDuration.Observe(time.Since(start).Nanoseconds()))
+		p.region.Record(xcap.StatPipelineReadDuration.Observe(time.Since(start).Seconds()))
 	}
 
 	return rec, err
