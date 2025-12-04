@@ -115,13 +115,12 @@ func RecordRangeAndInstantQueryMetrics(
 	result promql_parser.Value,
 ) {
 	var (
-		logger              = fixLogger(ctx, log)
-		rangeType           = GetRangeType(p)
-		rt                  = string(rangeType)
-		latencyType         = latencyTypeFast
-		returnedLines       = 0
-		cardinalityEstimate = uint64(0)
-		queryTags, _        = ctx.Value(httpreq.QueryTagsHTTPHeader).(string) // it's ok to be empty.
+		logger        = fixLogger(ctx, log)
+		rangeType     = GetRangeType(p)
+		rt            = string(rangeType)
+		latencyType   = latencyTypeFast
+		returnedLines = 0
+		queryTags, _  = ctx.Value(httpreq.QueryTagsHTTPHeader).(string) // it's ok to be empty.
 	)
 
 	queryType, err := QueryType(p.GetExpression())
@@ -239,7 +238,7 @@ func RecordRangeAndInstantQueryMetrics(
 	}...)
 
 	if r, ok := result.(CountMinSketchVector); ok {
-		cardinalityEstimate = r.F.HyperLogLog.Estimate()
+		cardinalityEstimate := r.F.HyperLogLog.Estimate()
 		logValues = append(logValues, "cardinality_estimate", cardinalityEstimate)
 	}
 
