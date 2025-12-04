@@ -230,17 +230,30 @@ type Producer struct {
 	// The max buffered bytes allowed. Once this limit is reached, produce requests fail.
 	maxBufferedBytes int64
 
+	// Optional interceptor called before actually writing records to kafka.
+	recordsInterceptor func(context.Context, []*kgo.Record) error
+
 	// Custom metrics.
 	bufferedProduceBytesLimit prometheus.Gauge
 	produceRequestsTotal      prometheus.Counter
 	produceFailuresTotal      *prometheus.CounterVec
 }
 
+// ProducerOption is a functional option for configuring a Producer.
+type ProducerOption func(*Producer)
+
+// WithRecordsInterceptor configures an interceptor to be called before producing records.
+func WithRecordsInterceptor(interceptor func(context.Context, []*kgo.Record) error) ProducerOption {
+	return func(p *Producer) {
+		p.recordsInterceptor = interceptor
+	}
+}
+
 // NewProducer returns a new KafkaProducer.
 //
 // The input prometheus.Registerer must be wrapped with a prefix (the names of metrics
 // registered don't have a prefix).
-func NewProducer(component string, client *kgo.Client, maxBufferedBytes int64, reg prometheus.Registerer) *Producer {
+func NewProducer(component string, client *kgo.Client, maxBufferedBytes int64, reg prometheus.Registerer, opts ...ProducerOption) *Producer {
 	wrappedRegisterer := WrapPrometheusRegisterer(component, reg)
 
 	producer := &Producer{
@@ -269,6 +282,11 @@ func NewProducer(component string, client *kgo.Client, maxBufferedBytes int64, r
 
 	producer.bufferedProduceBytesLimit.Set(float64(maxBufferedBytes))
 
+	// Apply functional options
+	for _, opt := range opts {
+		opt(producer)
+	}
+
 	return producer
 }
 
@@ -282,6 +300,18 @@ func (c *Producer) Close() {
 // This function honors the configure max buffered bytes and refuse to produce a record, returnin kgo.ErrMaxBuffered,
 // if the configured limit is reached.
 func (c *Producer) ProduceSync(ctx context.Context, records []*kgo.Record) kgo.ProduceResults {
+	// Call interceptor with all records if configured
+	if c.recordsInterceptor != nil {
+		if err := c.recordsInterceptor(ctx, records); err != nil {
+			// If interceptor fails, return error for all records
+			results := make(kgo.ProduceResults, len(records))
+			for i, record := range records {
+				results[i] = kgo.ProduceResult{Record: record, Err: err}
+			}
+			return results
+		}
+	}
+
 	var (
 		remaining = atomic.NewInt64(int64(len(records)))
 		done      = make(chan struct{})

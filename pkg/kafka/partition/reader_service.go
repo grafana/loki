@@ -9,6 +9,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
+	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -21,6 +22,11 @@ const (
 	phaseStarting = "starting"
 	phaseRunning  = "running"
 )
+
+// StateProvider provides access to partition ring state.
+type StateProvider interface {
+	GetPartitionState(ctx context.Context) (ring.PartitionState, time.Time, error)
+}
 
 type ConsumerFactory func(committer Committer, logger log.Logger) (Consumer, error)
 
@@ -59,6 +65,7 @@ type ReaderService struct {
 	metrics         *serviceMetrics
 	committer       *partitionCommitter
 	partitionID     int32
+	stateProvider   StateProvider
 
 	lastProcessedOffset int64
 }
@@ -77,9 +84,11 @@ func NewReaderService(
 	consumerFactory ConsumerFactory,
 	logger log.Logger,
 	reg prometheus.Registerer,
+	stateProvider StateProvider,
+	readerOpts ...ReaderOption,
 ) (*ReaderService, error) {
 	readerMetrics := NewReaderMetrics(reg)
-	reader, err := NewKafkaReader(kafkaCfg, partitionID, logger, readerMetrics, reg)
+	reader, err := NewKafkaReader(kafkaCfg, partitionID, logger, readerMetrics, reg, readerOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("creating kafka reader: %w", err)
 	}
@@ -105,6 +114,7 @@ func NewReaderService(
 		consumerFactory,
 		logger,
 		reg,
+		stateProvider,
 	), nil
 }
 
@@ -116,6 +126,7 @@ func newReaderService(
 	consumerFactory ConsumerFactory,
 	logger log.Logger,
 	reg prometheus.Registerer,
+	stateProvider StateProvider,
 ) *ReaderService {
 	s := &ReaderService{
 		cfg:                 cfg,
@@ -126,6 +137,7 @@ func newReaderService(
 		logger:              log.With(logger, "partition", partitionID, "consumer_group", offsetManager.ConsumerGroup()),
 		metrics:             newServiceMetrics(reg),
 		lastProcessedOffset: int64(KafkaEndOffset),
+		stateProvider:       stateProvider,
 	}
 
 	// Create the committer
@@ -143,7 +155,7 @@ func (s *ReaderService) starting(ctx context.Context) error {
 	logger := log.With(s.logger, "phase", phaseStarting)
 	s.reader.SetPhase(phaseStarting)
 	// Fetch the last committed offset to determine where to start reading
-	lastCommittedOffset, err := s.offsetManager.FetchLastCommittedOffset(ctx, s.partitionID)
+	lastCommittedOffset, err := s.offsetManager.LastCommittedOffset(ctx, s.partitionID)
 	if err != nil {
 		return fmt.Errorf("fetching last committed offset: %w", err)
 	}
@@ -174,13 +186,20 @@ func (s *ReaderService) running(ctx context.Context) error {
 	s.metrics.reportRunning()
 	s.reader.SetPhase(phaseRunning)
 
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	// Set initial partition state synchronously before starting polling
+	if s.stateProvider != nil {
+		s.updatePartitionState(ctx)
+		// Start monitoring partition state changes in background
+		go s.monitorPartitionState(ctx)
+	}
+
 	consumer, err := s.consumerFactory(s.committer, log.With(s.logger, "phase", phaseRunning))
 	if err != nil {
 		return fmt.Errorf("creating consumer: %w", err)
 	}
-
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
 
 	recordsChan := s.startFetchLoop(ctx)
 	wait := consumer.Start(ctx, recordsChan)
@@ -235,14 +254,14 @@ func (s *ReaderService) fetchUntilLagSatisfied(
 
 	for b.Ongoing() {
 		// Send a direct request to the Kafka backend to fetch the partition start offset.
-		partitionStartOffset, err := s.offsetManager.FetchPartitionOffset(ctx, s.partitionID, KafkaStartOffset)
+		partitionStartOffset, err := s.offsetManager.PartitionOffset(ctx, s.partitionID, KafkaStartOffset)
 		if err != nil {
 			level.Warn(logger).Log("msg", "partition reader failed to fetch partition start offset", "err", err)
 			b.Wait()
 			continue
 		}
 
-		consumerGroupLastCommittedOffset, err := s.offsetManager.FetchLastCommittedOffset(ctx, s.partitionID)
+		consumerGroupLastCommittedOffset, err := s.offsetManager.LastCommittedOffset(ctx, s.partitionID)
 		if err != nil {
 			level.Warn(logger).Log("msg", "partition reader failed to fetch last committed offset", "err", err)
 			b.Wait()
@@ -253,7 +272,7 @@ func (s *ReaderService) fetchUntilLagSatisfied(
 		// We intentionally don't use WaitNextFetchLastProducedOffset() to not introduce further
 		// latency.
 		lastProducedOffsetRequestedAt := time.Now()
-		lastProducedOffset, err := s.offsetManager.FetchPartitionOffset(ctx, s.partitionID, KafkaEndOffset)
+		lastProducedOffset, err := s.offsetManager.PartitionOffset(ctx, s.partitionID, KafkaEndOffset)
 		if err != nil {
 			level.Warn(logger).Log("msg", "partition reader failed to fetch last produced offset", "err", err)
 			b.Wait()
@@ -371,4 +390,53 @@ func loggerWithCurrentLagIfSet(logger log.Logger, currentLag time.Duration) log.
 	}
 
 	return log.With(logger, "current_lag", currentLag)
+}
+
+func (s *ReaderService) monitorPartitionState(ctx context.Context) {
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			s.updatePartitionState(ctx)
+		}
+	}
+}
+
+func (s *ReaderService) updatePartitionState(ctx context.Context) {
+	state, _, err := s.stateProvider.GetPartitionState(ctx)
+	if err != nil {
+		level.Warn(s.logger).Log("msg", "failed to get partition state", "err", err)
+		s.reader.SetPartitionState("unknown")
+		return
+	}
+
+	var stateStr string
+	switch state {
+	case ring.PartitionActive:
+		stateStr = "active"
+	case ring.PartitionInactive:
+		stateStr = "inactive"
+	case ring.PartitionPending:
+		stateStr = "pending"
+	default:
+		stateStr = "unknown"
+	}
+
+	// Get current state to detect changes
+	currentReader, ok := s.reader.(*KafkaReader)
+	if ok {
+		currentReader.partitionStateMu.RLock()
+		oldState := currentReader.partitionState
+		currentReader.partitionStateMu.RUnlock()
+
+		if oldState != stateStr {
+			level.Info(s.logger).Log("msg", "partition state changed", "old_state", oldState, "new_state", stateStr)
+		}
+	}
+
+	s.reader.SetPartitionState(stateStr)
 }

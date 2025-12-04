@@ -4,28 +4,25 @@
 package plogotlp // import "go.opentelemetry.io/collector/pdata/plog/plogotlp"
 
 import (
+	"slices"
+
 	"go.opentelemetry.io/collector/pdata/internal"
-	otlpcollectorlog "go.opentelemetry.io/collector/pdata/internal/data/protogen/collector/logs/v1"
+	"go.opentelemetry.io/collector/pdata/internal/json"
 	"go.opentelemetry.io/collector/pdata/internal/otlp"
 	"go.opentelemetry.io/collector/pdata/plog"
-)
-
-var (
-	jsonMarshaler   = &plog.JSONMarshaler{}
-	jsonUnmarshaler = &plog.JSONUnmarshaler{}
 )
 
 // ExportRequest represents the request for gRPC/HTTP client/server.
 // It's a wrapper for plog.Logs data.
 type ExportRequest struct {
-	orig  *otlpcollectorlog.ExportLogsServiceRequest
+	orig  *internal.ExportLogsServiceRequest
 	state *internal.State
 }
 
 // NewExportRequest returns an empty ExportRequest.
 func NewExportRequest() ExportRequest {
 	return ExportRequest{
-		orig:  &otlpcollectorlog.ExportLogsServiceRequest{},
+		orig:  &internal.ExportLogsServiceRequest{},
 		state: internal.NewState(),
 	}
 }
@@ -35,28 +32,22 @@ func NewExportRequest() ExportRequest {
 // any changes to the provided Logs struct will be reflected in the ExportRequest and vice versa.
 func NewExportRequestFromLogs(ld plog.Logs) ExportRequest {
 	return ExportRequest{
-		orig:  internal.GetOrigLogs(internal.Logs(ld)),
-		state: internal.GetLogsState(internal.Logs(ld)),
+		orig:  internal.GetLogsOrig(internal.LogsWrapper(ld)),
+		state: internal.GetLogsState(internal.LogsWrapper(ld)),
 	}
 }
 
 // MarshalProto marshals ExportRequest into proto bytes.
 func (ms ExportRequest) MarshalProto() ([]byte, error) {
-	if !internal.UseCustomProtoEncoding.IsEnabled() {
-		return ms.orig.Marshal()
-	}
-	size := internal.SizeProtoOrigExportLogsServiceRequest(ms.orig)
+	size := ms.orig.SizeProto()
 	buf := make([]byte, size)
-	_ = internal.MarshalProtoOrigExportLogsServiceRequest(ms.orig, buf)
+	_ = ms.orig.MarshalProto(buf)
 	return buf, nil
 }
 
 // UnmarshalProto unmarshalls ExportRequest from proto bytes.
 func (ms ExportRequest) UnmarshalProto(data []byte) error {
-	if !internal.UseCustomProtoEncoding.IsEnabled() {
-		return ms.orig.Unmarshal(data)
-	}
-	err := internal.UnmarshalProtoOrigExportLogsServiceRequest(ms.orig, data)
+	err := ms.orig.UnmarshalProto(data)
 	if err != nil {
 		return err
 	}
@@ -66,19 +57,23 @@ func (ms ExportRequest) UnmarshalProto(data []byte) error {
 
 // MarshalJSON marshals ExportRequest into JSON bytes.
 func (ms ExportRequest) MarshalJSON() ([]byte, error) {
-	return jsonMarshaler.MarshalLogs(plog.Logs(internal.NewLogs(ms.orig, nil)))
+	dest := json.BorrowStream(nil)
+	defer json.ReturnStream(dest)
+	ms.orig.MarshalJSON(dest)
+	if dest.Error() != nil {
+		return nil, dest.Error()
+	}
+	return slices.Clone(dest.Buffer()), nil
 }
 
 // UnmarshalJSON unmarshalls ExportRequest from JSON bytes.
 func (ms ExportRequest) UnmarshalJSON(data []byte) error {
-	ld, err := jsonUnmarshaler.UnmarshalLogs(data)
-	if err != nil {
-		return err
-	}
-	*ms.orig = *internal.GetOrigLogs(internal.Logs(ld))
-	return nil
+	iter := json.BorrowIterator(data)
+	defer json.ReturnIterator(iter)
+	ms.orig.UnmarshalJSON(iter)
+	return iter.Error()
 }
 
 func (ms ExportRequest) Logs() plog.Logs {
-	return plog.Logs(internal.NewLogs(ms.orig, ms.state))
+	return plog.Logs(internal.NewLogsWrapper(ms.orig, ms.state))
 }

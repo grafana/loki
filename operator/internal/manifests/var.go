@@ -39,6 +39,7 @@ const (
 	gatewayContainerName    = "gateway"
 	gatewayHTTPPort         = 8080
 	gatewayInternalPort     = 8081
+	gatewayInternalOPAPort  = 8083
 	gatewayHTTPPortName     = "public"
 	gatewayInternalPortName = "metrics"
 

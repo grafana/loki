@@ -87,10 +87,8 @@ func FromScalar(s scalar.Scalar, toType datasetmd.PhysicalType) dataset.Value {
 	case datasetmd.PHYSICAL_TYPE_BINARY:
 		switch s := s.(type) {
 		case *scalar.String:
-			s.Retain()
 			return dataset.BinaryValue(s.Value.Bytes())
 		case *scalar.Binary:
-			s.Retain()
 			return dataset.BinaryValue(s.Value.Bytes())
 		default:
 			panic(fmt.Sprintf("arrowconv.FromScalar: invalid conversion to BYTE_ARRAY; got %T, want *scalar.Binary", s))

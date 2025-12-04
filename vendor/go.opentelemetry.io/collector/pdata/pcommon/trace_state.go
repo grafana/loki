@@ -11,18 +11,18 @@ import (
 //
 // Must use NewTraceState function to create new instances.
 // Important: zero-initialized instance is not valid for use.
-type TraceState internal.TraceState
+type TraceState internal.TraceStateWrapper
 
 func NewTraceState() TraceState {
-	return TraceState(internal.NewTraceState(new(string), internal.NewState()))
+	return TraceState(internal.NewTraceStateWrapper(new(string), internal.NewState()))
 }
 
 func (ms TraceState) getOrig() *string {
-	return internal.GetOrigTraceState(internal.TraceState(ms))
+	return internal.GetTraceStateOrig(internal.TraceStateWrapper(ms))
 }
 
 func (ms TraceState) getState() *internal.State {
-	return internal.GetTraceStateState(internal.TraceState(ms))
+	return internal.GetTraceStateState(internal.TraceStateWrapper(ms))
 }
 
 // AsRaw returns the string representation of the tracestate in w3c-trace-context format: https://www.w3.org/TR/trace-context/#tracestate-header

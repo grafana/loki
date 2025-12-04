@@ -26,9 +26,9 @@ DOCKER_INTERACTIVE_FLAGS := --tty --interactive
 endif
 
 # Ensure you run `make release-workflows` after changing this
-GO_VERSION         := 1.24.6
+GO_VERSION         := 1.25.4
 # Ensure you run `make IMAGE_TAG=<updated-tag> build-image-push` after changing this
-BUILD_IMAGE_TAG    := 0.34.6
+BUILD_IMAGE_TAG    := 0.34.8
 
 IMAGE_TAG          ?= $(shell ./tools/image-tag)
 GIT_REVISION       := $(shell git rev-parse --short HEAD)
@@ -223,8 +223,6 @@ cmd/loki/loki:
 cmd/loki/loki-debug:
 	CGO_ENABLED=0 go build $(DEBUG_GO_FLAGS) -o $@ ./$(@D)
 
-ui-assets:
-	make -C pkg/ui/frontend build
 ###############
 # Loki-Canary #
 ###############
@@ -388,17 +386,18 @@ publish: packages
 ########
 # Lint #
 ########
-
-# To run this efficiently on your workstation, run this from the root dir:
-# docker run --rm --tty -i -v $(pwd)/.cache:/go/cache -v $(pwd)/.pkg:/go/pkg -v $(pwd):/src/loki grafana/loki-build-image:0.24.1 lint
-lint: ## run linters
-ifeq ($(BUILD_IN_CONTAINER),true)
-	$(run_in_container)
+ifeq ($(UNAME_S),Linux)
+LINT_FLAGS=--timeout=15m --build-tags=linux,promtail_journal_enabled
+GOFLAGS=-tags=linux,promtail_journal_enabled
 else
+LINT_FLAGS=--timeout=15m
+GOFLAGS=""
+endif
+lint: ## run linters
 	go version
 	golangci-lint version
-	GO111MODULE=on golangci-lint run -v --timeout 15m --build-tags linux,promtail_journal_enabled
-	GOFLAGS="-tags=linux,promtail_journal_enabled" faillint -paths \
+	golangci-lint run -v $(LINT_FLAGS)
+	GOFLAGS=$(GOFLAGS) faillint -paths \
 		"sync/atomic=go.uber.org/atomic" \
 		./...
 
@@ -411,7 +410,6 @@ else
 	faillint -paths \
 		"github.com/opentracing/opentracing-go,github.com/opentracing/opentracing-go/log,github.com/uber/jaeger-client-go,github.com/opentracing-contrib/go-stdlib/nethttp" \
 		./...
-endif
 
 ########
 # Test #
@@ -482,7 +480,7 @@ endif
 
 protos: clean-protos $(PROTO_GOS)
 
-%.pb.go:
+%.pb.go: ALWAYS_BUILD
 ifeq ($(BUILD_IN_CONTAINER),true)
 	$(run_in_container)
 else
@@ -695,6 +693,11 @@ documentation-helm-reference-check:
 # Misc #
 ########
 
+# Targets can depend on ALWAYS_BUILD to run regardless of whether the target is
+# up-to-date or not because PHONY targets are always rebuilt.
+.PHONY: ALWAYS_BUILD
+ALWAYS_BUILD:
+
 benchmark-store:
 	go run ./pkg/storage/hack/main.go
 	$(GOTEST) ./pkg/storage/ -bench=.  -benchmem -memprofile memprofile.out -cpuprofile cpuprofile.out -trace trace.out
@@ -893,3 +896,13 @@ update-loki-release-sha:
 	mv .github/jsonnetfile.json.tmp .github/jsonnetfile.json
 	@echo "Updated successfully"
 	@$(MAKE) release-workflows
+
+.PHONY: flake-update
+flake-update:
+	@docker run -v $(CURDIR):/loki \
+		--workdir /loki \
+		nixos/nix \
+		nix \
+		--extra-experimental-features nix-command \
+		--extra-experimental-features flakes \
+		flake update

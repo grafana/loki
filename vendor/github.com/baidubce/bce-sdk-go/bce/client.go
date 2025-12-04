@@ -42,6 +42,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	net_http "net/http"
 	"time"
 
 	"github.com/baidubce/bce-sdk-go/auth"
@@ -60,8 +61,10 @@ type Client interface {
 
 // BceClient defines the general client to access the BCE services.
 type BceClient struct {
-	Config *BceClientConfiguration
-	Signer auth.Signer // the sign algorithm
+	Config       *BceClientConfiguration
+	Signer       auth.Signer // the sign algorithm
+	RateLimiters RateLimiters
+	HTTPClient   *net_http.Client
 }
 
 // BuildHttpRequest - the helper method for the client to build http request
@@ -97,6 +100,9 @@ func (c *BceClient) buildHttpRequest(request *BceRequest) {
 	// Generate the auth string if needed
 	if c.Config.Credentials != nil {
 		c.Signer.Sign(&request.Request, c.Config.Credentials, c.Config.SignOption)
+	}
+	if c.HTTPClient != nil {
+		request.SetHTTPClient(c.HTTPClient)
 	}
 }
 
@@ -157,7 +163,9 @@ func (c *BceClient) SendRequest(req *BceRequest, resp *BceResponse) error {
 		log.Infof("receive http response: status: %s, debugId: %s, requestId: %s, elapsed: %v",
 			resp.StatusText(), resp.DebugId(), resp.RequestId(), resp.ElapsedTime())
 
-		if resp.ElapsedTime().Milliseconds() > DEFAULT_WARN_LOG_TIMEOUT_IN_MILLS {
+		// not print this warn log with upload/download rate limit
+		if resp.ElapsedTime().Milliseconds() > DEFAULT_WARN_LOG_TIMEOUT_IN_MILLS &&
+			(c.Config.UploadRatelimit == nil && c.Config.DownloadRatelimit == nil) {
 			log.Warnf("request time more than 5 second, debugId: %s, requestId: %s, elapsed: %v",
 				resp.DebugId(), resp.RequestId(), resp.ElapsedTime())
 		}
@@ -250,6 +258,50 @@ func (c *BceClient) GetBceClientConfig() *BceClientConfiguration {
 	return c.Config
 }
 
+func NewBceClientWithExclusiveHTTPClient(conf *BceClientConfiguration, sign auth.Signer) *BceClient {
+	clientConfig := &http.ClientConfig{
+		RedirectDisabled:      conf.RedirectDisabled,
+		DisableKeepAlives:     conf.DisableKeepAlives,
+		NoVerifySSL:           conf.NoVerifySSL,
+		DialTimeout:           conf.DialTimeout,
+		KeepAlive:             conf.KeepAlive,
+		ReadTimeout:           conf.ReadTimeout,
+		WriteTimeout:          conf.WriteTimeOut,
+		TLSHandshakeTimeout:   conf.TLSHandshakeTimeout,
+		IdleConnectionTimeout: conf.IdleConnectionTimeout,
+		ResponseHeaderTimeout: conf.ResponseHeaderTimeout,
+		HTTPClientTimeout:     conf.HTTPClientTimeout,
+	}
+
+	bceClient := &BceClient{
+		Config: conf,
+		Signer: sign,
+	}
+	if conf.UploadRatelimit != nil {
+		value := *conf.UploadRatelimit * 1024
+		tb := newRateLimiter(value)
+		clientConfig.PostWrite = append(clientConfig.PostWrite, func(n int, _ error) {
+			tb.LimitBandwidth(n)
+		})
+		bceClient.RateLimiters[RateLimiterSlotTx] = tb
+	}
+	if conf.DownloadRatelimit != nil {
+		value := *conf.DownloadRatelimit * 1024
+		tb := newRateLimiter(value)
+		clientConfig.PostRead = append(clientConfig.PostRead, func(n int, _ error) {
+			tb.LimitBandwidth(n)
+		})
+		bceClient.RateLimiters[RateLimiterSlotRx] = tb
+	}
+
+	if conf.HTTPClient != nil {
+		bceClient.HTTPClient = conf.HTTPClient
+	} else {
+		bceClient.HTTPClient = http.InitExclusiveHTTPClient(clientConfig)
+	}
+	return bceClient
+}
+
 func NewBceClientWithTimeout(conf *BceClientConfiguration, sign auth.Signer) *BceClient {
 	clientConfig := &http.ClientConfig{
 		RedirectDisabled:      conf.RedirectDisabled,
@@ -263,11 +315,10 @@ func NewBceClientWithTimeout(conf *BceClientConfiguration, sign auth.Signer) *Bc
 		IdleConnectionTimeout: conf.IdleConnectionTimeout,
 		ResponseHeaderTimeout: conf.ResponseHeaderTimeout,
 		HTTPClientTimeout:     conf.HTTPClientTimeout,
-		HTTPClient:            conf.HTTPClient,
 	}
 
 	http.InitClientWithTimeout(clientConfig)
-	return &BceClient{conf, sign}
+	return &BceClient{Config: conf, Signer: sign}
 }
 
 func NewBceClient(conf *BceClientConfiguration, sign auth.Signer) *BceClient {
@@ -276,7 +327,7 @@ func NewBceClient(conf *BceClientConfiguration, sign auth.Signer) *BceClient {
 		DisableKeepAlives: conf.DisableKeepAlives,
 	}
 	http.InitClient(clientConfig)
-	return &BceClient{conf, sign}
+	return &BceClient{Config: conf, Signer: sign}
 }
 
 func NewBceClientWithAkSk(ak, sk, endPoint string) (*BceClient, error) {

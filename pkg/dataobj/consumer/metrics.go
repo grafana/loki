@@ -20,8 +20,7 @@ type partitionOffsetMetrics struct {
 	commitsTotal prometheus.Counter
 	appendsTotal prometheus.Counter
 
-	latestDelay     prometheus.Gauge     // Latest delta between record timestamp and current time
-	processingDelay prometheus.Histogram // Processing delay histogram
+	latestDelay prometheus.Gauge // Latest delta between record timestamp and current time
 
 	// Data volume metrics
 	bytesProcessed prometheus.Counter
@@ -49,14 +48,6 @@ func newPartitionOffsetMetrics() *partitionOffsetMetrics {
 			Name: "loki_dataobj_consumer_latest_processing_delay_seconds",
 			Help: "Latest time difference bweteen record timestamp and processing time in seconds",
 		}),
-		processingDelay: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Name:                            "loki_dataobj_consumer_processing_delay_seconds",
-			Help:                            "Time difference between record timestamp and processing time in seconds",
-			Buckets:                         prometheus.DefBuckets,
-			NativeHistogramBucketFactor:     1.1,
-			NativeHistogramMaxBucketNumber:  100,
-			NativeHistogramMinResetDuration: 0,
-		}),
 		bytesProcessed: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "loki_dataobj_consumer_bytes_processed_total",
 			Help: "Total number of bytes processed from this partition",
@@ -80,18 +71,12 @@ func (p *partitionOffsetMetrics) getCurrentOffset() float64 {
 
 func (p *partitionOffsetMetrics) register(reg prometheus.Registerer) error {
 	collectors := []prometheus.Collector{
-		p.currentOffset,
-
 		p.commitFailures,
 		p.appendFailures,
-
-		p.commitsTotal,
 		p.appendsTotal,
-
 		p.latestDelay,
-		p.processingDelay,
-
 		p.bytesProcessed,
+		p.currentOffset,
 	}
 
 	for _, collector := range collectors {
@@ -108,9 +93,10 @@ func (p *partitionOffsetMetrics) unregister(reg prometheus.Registerer) {
 	collectors := []prometheus.Collector{
 		p.commitFailures,
 		p.appendFailures,
-		p.currentOffset,
-		p.processingDelay,
+		p.appendsTotal,
+		p.latestDelay,
 		p.bytesProcessed,
+		p.currentOffset,
 	}
 
 	for _, collector := range collectors {
@@ -144,7 +130,6 @@ func (p *partitionOffsetMetrics) observeProcessingDelay(recordTimestamp time.Tim
 		delay := time.Since(recordTimestamp).Seconds()
 
 		p.latestDelay.Set(delay)
-		p.processingDelay.Observe(delay)
 	}
 }
 

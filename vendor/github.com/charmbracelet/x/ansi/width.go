@@ -19,7 +19,7 @@ func Strip(s string) string {
 
 	// This implements a subset of the Parser to only collect runes and
 	// printable characters.
-	for i := 0; i < len(s); i++ {
+	for i := range len(s) {
 		if pstate == parser.Utf8State {
 			// During this state, collect rw bytes to form a valid rune in the
 			// buffer. After getting all the rune bytes into the buffer,

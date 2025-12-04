@@ -4,8 +4,10 @@ package schutils
 
 import (
 	"github.com/go-openapi/spec"
-	"github.com/go-openapi/swag"
+	"github.com/go-openapi/swag/jsonutils"
 )
+
+const allocLargeMap = 150
 
 // Save registers a schema as an entry in spec #/definitions
 func Save(sp *spec.Swagger, name string, schema *spec.Schema) {
@@ -14,7 +16,7 @@ func Save(sp *spec.Swagger, name string, schema *spec.Schema) {
 	}
 
 	if sp.Definitions == nil {
-		sp.Definitions = make(map[string]spec.Schema, 150)
+		sp.Definitions = make(map[string]spec.Schema, allocLargeMap)
 	}
 
 	sp.Definitions[name] = *schema
@@ -23,7 +25,7 @@ func Save(sp *spec.Swagger, name string, schema *spec.Schema) {
 // Clone deep-clones a schema
 func Clone(schema *spec.Schema) *spec.Schema {
 	var sch spec.Schema
-	_ = swag.FromDynamicJSON(schema, &sch)
+	_ = jsonutils.FromDynamicJSON(schema, &sch)
 
 	return &sch
 }

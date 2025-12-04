@@ -4,17 +4,16 @@ package indexobj
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"time"
 
-	"github.com/grafana/dskit/flagext"
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
@@ -29,88 +28,6 @@ var (
 	ErrBuilderEmpty = errors.New("builder empty")
 )
 
-// BuilderConfig configures a [Builder].
-type BuilderConfig struct {
-	// TargetPageSize configures a target size for encoded pages within the data
-	// object. TargetPageSize accounts for encoding, but not for compression.
-	TargetPageSize flagext.Bytes `yaml:"target_page_size"`
-
-	// MaxPageRows configures a maximum row count for encoded pages within the data
-	// object. If set to 0 or negative number, the page size will not be limited by a
-	// row count.
-	MaxPageRows int `yaml:"max_page_rows"`
-
-	// TODO(rfratto): We need an additional parameter for TargetMetadataSize, as
-	// metadata payloads can't be split and must be downloaded in a single
-	// request.
-	//
-	// At the moment, we don't have a good mechanism for implementing a metadata
-	// size limit (we need to support some form of section splitting or column
-	// combinations), so the option is omitted for now.
-
-	// TargetObjectSize configures a target size for data objects.
-	TargetObjectSize flagext.Bytes `yaml:"target_object_size"`
-
-	// TargetSectionSize configures the maximum size of data in a section. Sections
-	// which support this parameter will place overflow data into new sections of
-	// the same type.
-	TargetSectionSize flagext.Bytes `yaml:"target_section_size"`
-
-	// BufferSize configures the size of the buffer used to accumulate
-	// uncompressed logs in memory prior to sorting.
-	BufferSize flagext.Bytes `yaml:"buffer_size"`
-
-	// SectionStripeMergeLimit configures the number of stripes to merge at once when
-	// flushing stripes into a section. MergeSize must be larger than 1. Lower
-	// values of MergeSize trade off lower memory overhead for higher time spent
-	// merging.
-	SectionStripeMergeLimit int `yaml:"section_stripe_merge_limit"`
-}
-
-// RegisterFlagsWithPrefix registers flags with the given prefix.
-func (cfg *BuilderConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	_ = cfg.TargetPageSize.Set("128KB")
-	_ = cfg.TargetObjectSize.Set("64MB")
-	_ = cfg.BufferSize.Set("2MB")
-	_ = cfg.TargetSectionSize.Set("16MB")
-
-	f.Var(&cfg.TargetPageSize, prefix+"target-page-size", "The size of the target page to use for the index object builder.")
-	f.IntVar(&cfg.MaxPageRows, prefix+"max-page-rows", 0, "The maximum row count for pages to use for the index builder. A value of 0 means no limit.")
-	f.Var(&cfg.TargetObjectSize, prefix+"target-object-size", "The size of the target object to use for the index object builder.")
-	f.Var(&cfg.TargetSectionSize, prefix+"target-section-size", "Configures a maximum size for sections, for sections that support it.")
-	f.Var(&cfg.BufferSize, prefix+"buffer-size", "The size of the buffer to use for sorting logs.")
-	f.IntVar(&cfg.SectionStripeMergeLimit, prefix+"section-stripe-merge-limit", 2, "The maximum number of stripes to merge into a section at once. Must be greater than 1.")
-}
-
-// Validate validates the BuilderConfig.
-func (cfg *BuilderConfig) Validate() error {
-	var errs []error
-
-	if cfg.TargetPageSize <= 0 {
-		errs = append(errs, errors.New("TargetPageSize must be greater than 0"))
-	} else if cfg.TargetPageSize >= cfg.TargetObjectSize {
-		errs = append(errs, errors.New("TargetPageSize must be less than TargetObjectSize"))
-	}
-
-	if cfg.TargetObjectSize <= 0 {
-		errs = append(errs, errors.New("TargetObjectSize must be greater than 0"))
-	}
-
-	if cfg.BufferSize <= 0 {
-		errs = append(errs, errors.New("BufferSize must be greater than 0"))
-	}
-
-	if cfg.TargetSectionSize <= 0 || cfg.TargetSectionSize > cfg.TargetObjectSize {
-		errs = append(errs, errors.New("SectionSize must be greater than 0 and less than or equal to TargetObjectSize"))
-	}
-
-	if cfg.SectionStripeMergeLimit < 2 {
-		errs = append(errs, errors.New("LogsMergeStripesMax must be greater than 1"))
-	}
-
-	return errors.Join(errs...)
-}
-
 // A Builder constructs a logs-oriented data object from a set of incoming
 // log data. Log data is appended by calling [LogBuilder.Append]. A complete
 // data object is constructed by by calling [LogBuilder.Flush].
@@ -118,12 +35,13 @@ func (cfg *BuilderConfig) Validate() error {
 // Methods on Builder are not goroutine-safe; callers are responsible for
 // synchronization.
 type Builder struct {
-	cfg     BuilderConfig
+	cfg     logsobj.BuilderBaseConfig
 	metrics *builderMetrics
 
 	labelCache *lru.Cache[string, labels.Labels]
 
 	currentSizeEstimate int
+	builderFull         bool
 
 	builder       *dataobj.Builder                  // Inner builder for accumulating sections.
 	streams       map[string]*streams.Builder       // The key is the TenantID.
@@ -146,7 +64,7 @@ const (
 // NewBuilder creates a new [Builder] which stores log-oriented data objects.
 //
 // NewBuilder returns an error if the provided config is invalid.
-func NewBuilder(cfg BuilderConfig, scratchStore scratch.Store) (*Builder, error) {
+func NewBuilder(cfg logsobj.BuilderBaseConfig, scratchStore scratch.Store) (*Builder, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
@@ -177,12 +95,16 @@ func (b *Builder) GetEstimatedSize() int {
 	return b.currentSizeEstimate
 }
 
+func (b *Builder) IsFull() bool {
+	return b.builderFull
+}
+
 func (b *Builder) AppendIndexPointer(tenantID string, path string, startTs time.Time, endTs time.Time) error {
 	b.metrics.appendsTotal.Inc()
 	newEntrySize := len(path) + 1 + 1 // path, startTs, endTs
 
 	if b.state != builderStateEmpty && b.currentSizeEstimate+newEntrySize > int(b.cfg.TargetObjectSize) {
-		return ErrBuilderFull
+		b.builderFull = true
 	}
 
 	timer := prometheus.NewTimer(b.metrics.appendTime)
@@ -216,7 +138,7 @@ func (b *Builder) AppendStream(tenantID string, stream streams.Stream) (int64, e
 	newEntrySize := labelsEstimate(stream.Labels) + 2
 
 	if b.state != builderStateEmpty && b.currentSizeEstimate+newEntrySize > int(b.cfg.TargetObjectSize) {
-		return 0, ErrBuilderFull
+		b.builderFull = true
 	}
 
 	timer := prometheus.NewTimer(b.metrics.appendTime)
@@ -273,7 +195,7 @@ func (b *Builder) ObserveLogLine(tenantID string, path string, section int64, st
 	newEntrySize := 4 // ints and times compress well so we just need to make an estimate.
 
 	if b.state != builderStateEmpty && b.currentSizeEstimate+newEntrySize > int(b.cfg.TargetObjectSize) {
-		return ErrBuilderFull
+		b.builderFull = true
 	}
 
 	timer := prometheus.NewTimer(b.metrics.appendTime)
@@ -309,7 +231,7 @@ func (b *Builder) AppendColumnIndex(tenantID string, path string, section int64,
 	newEntrySize := len(columnName) + 1 + 1 + len(valuesBloom) + 1
 
 	if b.state != builderStateEmpty && b.currentSizeEstimate+newEntrySize > int(b.cfg.TargetObjectSize) {
-		return ErrBuilderFull
+		b.builderFull = true
 	}
 
 	timer := prometheus.NewTimer(b.metrics.appendTime)
@@ -460,6 +382,7 @@ func (b *Builder) Reset() {
 
 	b.metrics.sizeEstimate.Set(0)
 	b.currentSizeEstimate = 0
+	b.builderFull = false
 	b.state = builderStateEmpty
 }
 

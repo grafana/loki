@@ -19,6 +19,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/middleware"
+	"github.com/grafana/loki/v3/tools/querytee/comparator"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -71,7 +72,7 @@ type Route struct {
 	Path               string
 	RouteName          string
 	Methods            []string
-	ResponseComparator ResponsesComparator
+	ResponseComparator comparator.ResponsesComparator
 }
 
 type Proxy struct {
@@ -194,9 +195,28 @@ func NewProxy(cfg ProxyConfig, logger log.Logger, readRoutes, writeRoutes []Rout
 			return nil, errors.Wrap(err, "failed to create goldfish storage")
 		}
 
+		var resultStore goldfish.ResultStore
+		if cfg.Goldfish.ResultsStorage.Enabled {
+			resultStore, err = goldfish.NewResultStore(context.Background(), cfg.Goldfish.ResultsStorage, logger)
+			if err != nil {
+				storage.Close()
+				return nil, errors.Wrap(err, "failed to create goldfish result store")
+			}
+		}
+
 		// Create Goldfish manager
-		goldfishManager, err := goldfish.NewManager(cfg.Goldfish, storage, logger, registerer)
+		samplesComparator := comparator.NewSamplesComparator(comparator.SampleComparisonOptions{
+			Tolerance: cfg.ValueComparisonTolerance,
+			UseRelativeError: cfg.UseRelativeError,
+			SkipRecentSamples: cfg.SkipRecentSamples,
+			SkipSamplesBefore: time.Time(cfg.SkipSamplesBefore),
+		})
+
+		goldfishManager, err := goldfish.NewManager(cfg.Goldfish, *samplesComparator, storage, resultStore, logger, registerer)
 		if err != nil {
+			if resultStore != nil {
+				_ = resultStore.Close(context.Background())
+			}
 			storage.Close()
 			return nil, errors.Wrap(err, "failed to create goldfish manager")
 		}
@@ -204,7 +224,9 @@ func NewProxy(cfg ProxyConfig, logger log.Logger, readRoutes, writeRoutes []Rout
 
 		level.Info(logger).Log("msg", "Goldfish enabled",
 			"storage_type", cfg.Goldfish.StorageConfig.Type,
-			"default_rate", cfg.Goldfish.SamplingConfig.DefaultRate)
+			"default_rate", cfg.Goldfish.SamplingConfig.DefaultRate,
+			"results_mode", string(cfg.Goldfish.ResultsStorage.Mode),
+			"results_backend", cfg.Goldfish.ResultsStorage.Backend)
 	}
 
 	return p, nil
@@ -226,7 +248,7 @@ func (p *Proxy) Start() error {
 
 	// register read routes
 	for _, route := range p.readRoutes {
-		var comparator ResponsesComparator
+		var comparator comparator.ResponsesComparator
 		if p.cfg.CompareResponses {
 			comparator = route.ResponseComparator
 		}

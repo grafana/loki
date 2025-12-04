@@ -91,11 +91,11 @@ type Router struct {
 	// :ref:`gRPC stats filter<config_http_filters_grpc_stats>` documentation
 	// for more details.
 	SuppressGrpcRequestFailureCodeStats bool `protobuf:"varint,7,opt,name=suppress_grpc_request_failure_code_stats,json=suppressGrpcRequestFailureCodeStats,proto3" json:"suppress_grpc_request_failure_code_stats,omitempty"`
+	// Optional HTTP filters for the upstream HTTP filter chain.
+	//
 	// .. note::
 	//
 	//	Upstream HTTP filters are currently in alpha.
-	//
-	// Optional HTTP filters for the upstream HTTP filter chain.
 	//
 	// These filters will be applied for all requests that pass through the router.
 	// They will also be applied to shadowed requests.

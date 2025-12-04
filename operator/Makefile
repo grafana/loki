@@ -189,8 +189,8 @@ lint-prometheus: $(PROMTOOL) ## Run promtool check against recording rules and a
 	@$(PROMTOOL) check rules ./internal/manifests/internal/alerts/prometheus-*.yaml
 
 .PHONY: fmt
-fmt: $(GOFUMPT) ## Run gofumpt on source code.
-	find . -type f -name '*.go' -not -path '**/fake_*.go' -exec $(GOFUMPT) -w {} \;
+fmt: $(GOLANGCI_LINT) ## Format the source code.
+	$(GOLANGCI_LINT) run --fix --timeout=5m ./...
 
 .PHONY: oci-build
 oci-build: ## Build the image
@@ -224,13 +224,8 @@ ifndef ignore-not-found
 endif
 
 .PHONY: quickstart
-ifeq ($(or $(findstring openshift-logging,$(IMG)),$(findstring openshift-logging,$(BUNDLE_IMG))),openshift-logging)
 quickstart: $(KIND) ## Quickstart full dev environment on local kind cluster
 	@./quickstart.sh $(filter-out $@,$(MAKECMDGOALS))
-else
-quickstart: oci-build oci-push $(KIND)
-	@./quickstart.sh $(filter-out $@,$(MAKECMDGOALS))
-endif
 
 .PHONY: quickstart-cleanup
 quickstart-cleanup: $(KIND) ## Cleanup for quickstart set up
@@ -335,7 +330,7 @@ docs/operator/feature-gates.md: $(FEATURE_GATES_TARGET) $(GEN_CRD_API_REFERENCE_
 web-pre: docs/operator/api.md docs/operator/feature-gates.md ## Build the markdown API files of the loki-operator.dev website
 	@echo ">> preprocessing docs for website"
 	@git submodule update --init --recursive
-	cd $(WEBSITE_DIR)/themes/doks/ && npm install && rm -rf content
+	cd $(WEBSITE_DIR)/themes/doks/ && npm ci && rm -rf content
 
 .PHONY: web
 web: $(HUGO) | web-pre ## Run production build of the loki-operator.dev website

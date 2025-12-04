@@ -154,7 +154,7 @@ func (r *Reader) Schema() *arrow.Schema { return r.schema }
 //
 // When a record is returned, it will match the schema specified by
 // [Reader.Schema]. These records must always be released after use.
-func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.Record, error) {
+func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.RecordBatch, error) {
 	if !r.ready {
 		err := r.init(ctx)
 		if err != nil {
@@ -166,7 +166,6 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.Record, error) 
 	r.buf = r.buf[:batchSize]
 
 	builder := array.NewRecordBuilder(r.opts.Allocator, r.schema)
-	defer builder.Release()
 
 	n, readErr := r.inner.Read(dataset.WithStats(ctx, &r.stats), r.buf)
 	for rowIndex := range n {
@@ -179,6 +178,7 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.Record, error) 
 			}
 
 			columnBuilder := builder.Field(columnIndex)
+			columnType := r.opts.Columns[columnIndex].Type
 
 			if val.IsNil() {
 				columnBuilder.AppendNull()
@@ -193,7 +193,6 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.Record, error) 
 			// Passing our byte slices to [array.StringBuilder.BinaryBuilder.Append] are safe; it
 			// will copy the contents of the value and we can reuse the buffer on the
 			// next call to [dataset.Reader.Read].
-			columnType := r.opts.Columns[columnIndex].Type
 			switch columnType {
 			case ColumnTypeInvalid:
 				columnBuilder.AppendNull() // Unsupported column
@@ -213,7 +212,7 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.Record, error) 
 
 	// We only return readErr after processing n so that we properly handle n>0
 	// while also getting an error such as io.EOF.
-	return builder.NewRecord(), readErr
+	return builder.NewRecordBatch(), readErr
 }
 
 func (r *Reader) init(ctx context.Context) error {

@@ -341,6 +341,10 @@ func (r *walRegistry) getTenantRemoteWriteConfig(tenant string, base RemoteWrite
 			}
 		}
 
+		if err := clt.Validate(model.UTF8Validation); err != nil {
+			return nil, fmt.Errorf("invalid remote write config for tenant %q: %w", clt.Name, err)
+		}
+
 		overrides.Clients[id] = clt
 	}
 
@@ -367,6 +371,11 @@ func (r *walRegistry) createRelabelConfigs(tenant string) ([]*relabel.Config, er
 
 		var rc relabel.Config
 		if err = yaml.Unmarshal(out, &rc); err != nil {
+			return nil, err
+		}
+
+		// Validate the relabel config to catch invalid configurations
+		if err := rc.Validate(model.UTF8Validation); err != nil {
 			return nil, err
 		}
 

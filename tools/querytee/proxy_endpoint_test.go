@@ -2,6 +2,7 @@ package querytee
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/loki/v3/pkg/goldfish"
+	"github.com/grafana/loki/v3/tools/querytee/comparator"
 	querytee_goldfish "github.com/grafana/loki/v3/tools/querytee/goldfish"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -425,8 +427,8 @@ func Test_BackendResponse_statusCode(t *testing.T) {
 
 type mockComparator struct{}
 
-func (c *mockComparator) Compare(_, _ []byte, _ time.Time) (*ComparisonSummary, error) {
-	return &ComparisonSummary{missingMetrics: 12}, nil
+func (c *mockComparator) Compare(_, _ []byte, _ time.Time) (*comparator.ComparisonSummary, error) {
+	return &comparator.ComparisonSummary{MissingMetrics: 12}, nil
 }
 
 func Test_endToEnd_traceIDFlow(t *testing.T) {
@@ -459,7 +461,9 @@ func Test_endToEnd_traceIDFlow(t *testing.T) {
 			DefaultRate: 1.0, // Always sample for testing
 		},
 	}
-	goldfishManager, err := querytee_goldfish.NewManager(goldfishConfig, storage, log.NewNopLogger(), prometheus.NewRegistry())
+	samplesComparator := comparator.NewSamplesComparator(comparator.SampleComparisonOptions{Tolerance: 0.000001})
+
+	goldfishManager, err := querytee_goldfish.NewManager(goldfishConfig, *samplesComparator, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	endpoint := NewProxyEndpoint(backends, "test", NewProxyMetrics(nil), log.NewNopLogger(), nil, false).WithGoldfish(goldfishManager)
@@ -527,8 +531,16 @@ func (m *mockGoldfishStorage) GetSampledQueries(_ context.Context, page, pageSiz
 	}, nil
 }
 
+func (m *mockGoldfishStorage) GetStatistics(_ context.Context, _ goldfish.StatsFilter) (*goldfish.Statistics, error) {
+	return nil, nil
+}
+
 func (m *mockGoldfishStorage) Close() error {
 	return nil
+}
+
+func (m *mockGoldfishStorage) GetQueryByCorrelationID(_ context.Context, _ string) (*goldfish.QuerySample, error) {
+	return nil, nil
 }
 
 func Test_extractTenant(t *testing.T) {
@@ -570,4 +582,32 @@ func Test_extractTenant(t *testing.T) {
 			assert.Equal(t, tt.expected, result)
 		})
 	}
+}
+
+func TestProxyEndpoint_ServeHTTP_ForwardsResponseHeaders(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Add("Content-Type", "application/json; charset=utf-8")
+		fmt.Fprint(w, "ok")
+	}))
+	defer srv.Close()
+
+	srvURL, err := url.Parse(srv.URL)
+	require.NoError(t, err)
+
+	backends := []*ProxyBackend{{
+		name:      "backend-1",
+		endpoint:  srvURL,
+		client:    srv.Client(),
+		timeout:   time.Minute,
+		preferred: true,
+	}}
+
+	recorder := httptest.NewRecorder()
+	fakeReq := httptest.NewRequestWithContext(t.Context(), "", "/", nil)
+
+	endpoint := NewProxyEndpoint(backends, "test", NewProxyMetrics(nil), log.NewNopLogger(), nil, false)
+	endpoint.ServeHTTP(recorder, fakeReq)
+
+	require.Equal(t, http.StatusOK, recorder.Result().StatusCode, "Status code from backend should be forwarded")
+	require.Equal(t, "application/json; charset=utf-8", recorder.Result().Header.Get("Content-Type"), "Response header from backend should be forwarded")
 }

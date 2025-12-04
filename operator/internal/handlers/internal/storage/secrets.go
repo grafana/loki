@@ -46,6 +46,7 @@ var (
 	errS3EndpointAWSNoRegion       = errors.New("endpoint for AWS S3 must include correct region")
 	errS3EndpointNoBucketName      = errors.New("bucket name must not be included in AWS S3 endpoint URL")
 	errS3EndpointAWSInvalid        = errors.New("endpoint for AWS S3 is invalid, must match either https://s3.region.amazonaws.com or https://vpce-id.s3.region.vpce.amazonaws.com")
+	errS3EndpointPathNotAllowed    = errors.New("endpoint for S3 must not include a path")
 	errS3ForcePathStyleInvalid     = errors.New(`forcepathstyle must be "true" or "false"`)
 
 	errGCPParseCredentialsFile      = errors.New("gcp storage secret cannot be parsed from JSON content")
@@ -517,7 +518,11 @@ func validateS3Endpoint(endpoint, region string) error {
 	}
 
 	// Non-AWS S3 compatible endpoints (e.g., MinIO) - no further validation needed
-	if strings.HasSuffix(endpoint, awsEndpointSuffix) {
+	if parsedURL.Path != "" && parsedURL.Path != "/" {
+		return fmt.Errorf("%w: %s", errS3EndpointPathNotAllowed, parsedURL.Path)
+	}
+
+	if strings.HasSuffix(parsedURL.Host, awsEndpointSuffix) {
 		// AWS endpoint validation
 		if len(region) == 0 {
 			return fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSRegion)

@@ -17,7 +17,9 @@ func NewDeleteTopicsRequest(version KafkaVersion, topics []string, timeout time.
 		Topics:  topics,
 		Timeout: timeout,
 	}
-	if version.IsAtLeast(V2_1_0_0) {
+	if version.IsAtLeast(V2_4_0_0) {
+		d.Version = 4
+	} else if version.IsAtLeast(V2_1_0_0) {
 		d.Version = 3
 	} else if version.IsAtLeast(V2_0_0_0) {
 		d.Version = 2
@@ -32,7 +34,7 @@ func (d *DeleteTopicsRequest) encode(pe packetEncoder) error {
 		return err
 	}
 	pe.putInt32(int32(d.Timeout / time.Millisecond))
-
+	pe.putEmptyTaggedFieldArray()
 	return nil
 }
 
@@ -46,7 +48,9 @@ func (d *DeleteTopicsRequest) decode(pd packetDecoder, version int16) (err error
 	}
 	d.Timeout = time.Duration(timeout) * time.Millisecond
 	d.Version = version
-	return nil
+
+	_, err = pd.getEmptyTaggedFieldArray()
+	return err
 }
 
 func (d *DeleteTopicsRequest) key() int16 {
@@ -58,15 +62,28 @@ func (d *DeleteTopicsRequest) version() int16 {
 }
 
 func (d *DeleteTopicsRequest) headerVersion() int16 {
+	if d.Version >= 4 {
+		return 2
+	}
 	return 1
 }
 
+func (d *DeleteTopicsRequest) isFlexible() bool {
+	return d.isFlexibleVersion(d.Version)
+}
+
+func (d *DeleteTopicsRequest) isFlexibleVersion(version int16) bool {
+	return version >= 4
+}
+
 func (d *DeleteTopicsRequest) isValidVersion() bool {
-	return d.Version >= 0 && d.Version <= 3
+	return d.Version >= 0 && d.Version <= 4
 }
 
 func (d *DeleteTopicsRequest) requiredVersion() KafkaVersion {
 	switch d.Version {
+	case 4:
+		return V2_4_0_0
 	case 3:
 		return V2_1_0_0
 	case 2:
