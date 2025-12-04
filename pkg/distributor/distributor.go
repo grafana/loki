@@ -37,6 +37,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.uber.org/atomic"
 
+	"github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/distributor/clientpool"
@@ -48,7 +49,7 @@ import (
 	kafka_client "github.com/grafana/loki/v3/pkg/kafka/client"
 	limits_frontend "github.com/grafana/loki/v3/pkg/limits/frontend"
 	limits_frontend_client "github.com/grafana/loki/v3/pkg/limits/frontend/client"
-	"github.com/grafana/loki/v3/pkg/loghttp/push"
+	loghttp_push "github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/runtime"
@@ -98,7 +99,7 @@ type Config struct {
 	// WriteFailuresLoggingCfg customizes write failures logging behavior.
 	WriteFailuresLogging writefailures.Cfg `yaml:"write_failures_logging" doc:"description=Customize the logging of write failures."`
 
-	OTLPConfig push.GlobalOTLPConfig `yaml:"otlp_config"`
+	OTLPConfig loghttp_push.GlobalOTLPConfig `yaml:"otlp_config"`
 
 	// DefaultPolicyStreamMappings contains the default policy stream mappings that are merged with per-tenant mappings.
 	DefaultPolicyStreamMappings validation.PolicyStreamMapping `yaml:"default_policy_stream_mappings" doc:"description=Default policy stream mappings that are merged with per-tenant mappings."`
@@ -183,7 +184,7 @@ type Distributor struct {
 	// Push failures rate limiter.
 	writeFailuresManager *writefailures.Manager
 
-	RequestParserWrapper push.RequestParserWrapper
+	RequestParserWrapper loghttp_push.RequestParserWrapper
 
 	// metrics
 	ingesterAppends                       *prometheus.CounterVec
@@ -192,7 +193,7 @@ type Distributor struct {
 	streamShardCount                      prometheus.Counter
 	tenantPushSanitizedStructuredMetadata *prometheus.CounterVec
 
-	usageTracker   push.UsageTracker
+	usageTracker   loghttp_push.UsageTracker
 	ingesterTasks  chan pushIngesterTask
 	ingesterTaskWg sync.WaitGroup
 
@@ -228,7 +229,7 @@ func New(
 	registerer prometheus.Registerer,
 	metricsNamespace string,
 	tee Tee,
-	usageTracker push.UsageTracker,
+	usageTracker loghttp_push.UsageTracker,
 	limitsFrontendCfg limits_frontend_client.Config,
 	limitsFrontendRing ring.ReadRing,
 	numMetadataPartitions int,
@@ -533,12 +534,12 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	if err != nil {
 		return nil, err
 	}
-	return d.PushWithResolver(ctx, req, newRequestScopedStreamResolver(tenantID, d.validator.Limits, d.logger), constants.Loki)
+	return d.PushWithResolver(ctx, req, newRequestScopedStreamResolver(tenantID, d.validator.Limits, d.logger), constants.Loki, *loghttp_push.NewPushStats())
 }
 
 // Push a set of streams.
 // The returned error is the last one seen.
-func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRequest, streamResolver *requestScopedStreamResolver, format string) (*logproto.PushResponse, error) {
+func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRequest, streamResolver *requestScopedStreamResolver, format string, pushStats loghttp_push.Stats) (*logproto.PushResponse, error) {
 	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -614,22 +615,28 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 			d.truncateLines(validationContext, &stream)
 
 			var lbs labels.Labels
-			var retentionHours, policy string
-			lbs, stream.Labels, stream.Hash, retentionHours, policy, err = d.parseStreamLabels(ctx, validationContext, stream.Labels, stream, streamResolver, format)
+			var policy string
+			var retentionPeriod time.Duration
+			lbs, stream.Labels, stream.Hash, retentionPeriod, policy, err = d.parseStreamLabels(ctx, validationContext, stream.Labels, stream, streamResolver, format)
 			if err != nil {
 				d.writeFailuresManager.Log(tenantID, err)
 				validationErrors.Add(err)
-				discardedBytes := util.EntriesTotalSize(stream.Entries)
-				d.validator.reportDiscardedDataWithTracker(ctx, validation.InvalidLabels, validationContext, lbs, retentionHours, policy, discardedBytes, len(stream.Entries), format)
+				resourceAndScopeAttributes := pushStats.GetResourceAndSourceMetadataLabels(policy, retentionPeriod)
+
+				discardedBytes := util.EntriesTotalSize(stream.Entries, resourceAndScopeAttributes)
+				d.validator.reportDiscardedDataWithTracker(ctx, validation.InvalidLabels, validationContext, lbs, util.RetentionHours(retentionPeriod), policy, discardedBytes, len(stream.Entries), format)
 				continue
 			}
+
+			retentionHours := util.RetentionHours(retentionPeriod)
+			resourceAndScopeAttributes := pushStats.GetResourceAndSourceMetadataLabels(policy, retentionPeriod)
 
 			if !d.validator.IsInternalStream(lbs) {
 				if missing, lbsMissing := d.missingEnforcedLabels(lbs, tenantID, policy); missing {
 					err := fmt.Errorf(validation.MissingEnforcedLabelsErrorMsg, strings.Join(lbsMissing, ","), tenantID, stream.Labels, policy)
 					d.writeFailuresManager.Log(tenantID, err)
 					validationErrors.Add(err)
-					discardedBytes := util.EntriesTotalSize(stream.Entries)
+					discardedBytes := util.EntriesTotalSize(stream.Entries, resourceAndScopeAttributes)
 					d.validator.reportDiscardedDataWithTracker(ctx, validation.MissingEnforcedLabels, validationContext, lbs, retentionHours, policy, discardedBytes, len(stream.Entries), format)
 					continue
 				}
@@ -637,7 +644,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 
 			if block, statusCode, reason, err := d.validator.ShouldBlockIngestion(validationContext, now, policy); block {
 				d.writeFailuresManager.Log(tenantID, err)
-				discardedBytes := util.EntriesTotalSize(stream.Entries)
+				discardedBytes := util.EntriesTotalSize(stream.Entries, resourceAndScopeAttributes)
 				d.validator.reportDiscardedDataWithTracker(ctx, reason, validationContext, lbs, retentionHours, policy, discardedBytes, len(stream.Entries), format)
 
 				// If the status code is 200, return no error.
@@ -727,8 +734,13 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 					}
 				}
 
+				// we count one replica of resource and scope attribute per stream in ingest volume so passing nil for them for the first entry
+				if n == 0 {
+					validationContext.validationMetrics.compute(entry, retentionHours, policy, nil)
+				} else {
+					validationContext.validationMetrics.compute(entry, retentionHours, policy, resourceAndScopeAttributes)
+				}
 				n++
-				validationContext.validationMetrics.compute(entry, retentionHours, policy)
 				pushSize += len(entry.Line)
 			}
 			stream.Entries = stream.Entries[:n]
@@ -759,7 +771,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	}
 
 	if !d.ingestionRateLimiter.AllowN(now, tenantID, validationContext.validationMetrics.aggregatedPushStats.lineSize) {
-		d.trackDiscardedData(ctx, req, validationContext, tenantID, validationContext.validationMetrics, validation.RateLimited, streamResolver, format)
+		d.trackDiscardedData(ctx, req, validationContext, tenantID, validationContext.validationMetrics, validation.RateLimited, streamResolver, format, pushStats)
 
 		err = fmt.Errorf(validation.RateLimitedErrorMsg, tenantID, int(d.ingestionRateLimiter.Limit(now, tenantID)), validationContext.validationMetrics.aggregatedPushStats.lineCount, validationContext.validationMetrics.aggregatedPushStats.lineSize)
 		d.writeFailuresManager.Log(tenantID, err)
@@ -917,24 +929,26 @@ func (d *Distributor) trackDiscardedData(
 	tenantID string,
 	validationMetrics validationMetrics,
 	reason string,
-	streamResolver push.StreamResolver,
+	streamResolver loghttp_push.StreamResolver,
 	format string,
+	pushStats loghttp_push.Stats,
 ) {
 	for policy, retentionToStats := range validationMetrics.policyPushStats {
 		for retentionHours, stats := range retentionToStats {
 			validation.DiscardedSamples.WithLabelValues(reason, tenantID, retentionHours, policy, format).Add(float64(stats.lineCount))
-			validation.DiscardedBytes.WithLabelValues(reason, tenantID, retentionHours, policy, format).Add(float64(stats.lineSize))
+			validation.DiscardedBytes.WithLabelValues(reason, tenantID, retentionHours, policy, format).Add(float64(stats.lineSizeWithoutResourceAndScopeAttributes))
 		}
 	}
 
 	if d.usageTracker != nil {
 		for _, stream := range req.Streams {
-			lbs, _, _, _, _, err := d.parseStreamLabels(ctx, validationContext, stream.Labels, stream, streamResolver, format)
+			lbs, _, _, retentionPeriod, policy, err := d.parseStreamLabels(ctx, validationContext, stream.Labels, stream, streamResolver, format)
 			if err != nil {
 				continue
 			}
 
-			discardedStreamBytes := util.EntriesTotalSize(stream.Entries)
+			resourceAndScopeAttributes := pushStats.GetResourceAndSourceMetadataLabels(policy, retentionPeriod)
+			discardedStreamBytes := util.EntriesTotalSize(stream.Entries, resourceAndScopeAttributes)
 
 			if d.usageTracker != nil {
 				d.usageTracker.DiscardedBytesAdd(ctx, tenantID, reason, lbs, float64(discardedStreamBytes), format)
@@ -1324,31 +1338,31 @@ type labelData struct {
 }
 
 // parseStreamLabels parses stream labels using a request-scoped policy resolver
-func (d *Distributor) parseStreamLabels(ctx context.Context, vContext validationContext, key string, stream logproto.Stream, streamResolver push.StreamResolver, format string) (labels.Labels, string, uint64, string, string, error) {
+func (d *Distributor) parseStreamLabels(ctx context.Context, vContext validationContext, key string, stream logproto.Stream, streamResolver loghttp_push.StreamResolver, format string) (labels.Labels, string, uint64, time.Duration, string, error) {
 	if val, ok := d.labelCache.Get(key); ok {
-		retentionHours := streamResolver.RetentionHoursFor(val.ls)
+		retentionPeriod := streamResolver.RetentionPeriodFor(val.ls)
 		policy := streamResolver.PolicyFor(ctx, val.ls)
-		return val.ls, val.ls.String(), val.hash, retentionHours, policy, nil
+		return val.ls, val.ls.String(), val.hash, retentionPeriod, policy, nil
 	}
 
 	ls, err := syntax.ParseLabels(key)
 	if err != nil {
-		retentionHours := d.tenantsRetention.RetentionHoursFor(vContext.userID, labels.EmptyLabels())
+		retentionPeriod := d.tenantsRetention.RetentionPeriodFor(vContext.userID, labels.EmptyLabels())
 		// TODO: check for global policy.
-		return labels.EmptyLabels(), "", 0, retentionHours, "", fmt.Errorf(validation.InvalidLabelsErrorMsg, key, err)
+		return labels.EmptyLabels(), "", 0, retentionPeriod, "", fmt.Errorf(validation.InvalidLabelsErrorMsg, key, err)
 	}
 
 	policy := streamResolver.PolicyFor(ctx, ls)
-	retentionHours := d.tenantsRetention.RetentionHoursFor(vContext.userID, ls)
+	retentionPeriod := d.tenantsRetention.RetentionPeriodFor(vContext.userID, ls)
 
-	if err := d.validator.ValidateLabels(vContext, ls, stream, retentionHours, policy, format); err != nil {
-		return labels.EmptyLabels(), "", 0, retentionHours, policy, err
+	if err := d.validator.ValidateLabels(vContext, ls, stream, util.RetentionHours(retentionPeriod), policy, format); err != nil {
+		return labels.EmptyLabels(), "", 0, retentionPeriod, policy, err
 	}
 
 	lsHash := labels.StableHash(ls)
 
 	d.labelCache.Add(key, labelData{ls, lsHash})
-	return ls, ls.String(), lsHash, retentionHours, policy, nil
+	return ls, ls.String(), lsHash, retentionPeriod, policy, nil
 }
 
 // shardCountFor returns the right number of shards to be used by the given stream.
@@ -1395,11 +1409,11 @@ func calculateShards(rate int64, pushSize, desiredRate int) int {
 	return int(math.Ceil(shards))
 }
 
-func calculateStreamSizes(stream logproto.Stream) (uint64, uint64) {
+func calculateStreamSizes(stream logproto.Stream, resourceAndScopeAttributes push.LabelsAdapter) (uint64, uint64) {
 	var entriesSize, structuredMetadataSize uint64
 	for _, entry := range stream.Entries {
 		entriesSize += uint64(len(entry.Line))
-		structuredMetadataSize += uint64(util.StructuredMetadataSize(entry.StructuredMetadata))
+		structuredMetadataSize += uint64(util.StructuredMetadataSize(entry.StructuredMetadata, resourceAndScopeAttributes))
 	}
 	return entriesSize, structuredMetadataSize
 }
