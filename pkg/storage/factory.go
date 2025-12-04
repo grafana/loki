@@ -27,6 +27,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/gcp"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/grpc"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/huaweicloud"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/ibmcloud"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/noop"
@@ -161,6 +162,18 @@ func (cfg *NamedCOSConfig) UnmarshalYAML(unmarshal func(interface{}) error) erro
 	return unmarshal((*ibmcloud.COSConfig)(cfg))
 }
 
+type NamedOBSConfig huaweicloud.ObsConfig
+
+// UnmarshalYAML implements the yaml.Unmarshaler interface.
+func (cfg *NamedOBSConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	flagext.DefaultValues((*huaweicloud.ObsConfig)(cfg))
+	return unmarshal((*huaweicloud.ObsConfig)(cfg))
+}
+
+func (cfg *NamedOBSConfig) Validate() error {
+	return (*huaweicloud.ObsConfig)(cfg).Validate()
+}
+
 // NamedStores helps configure additional object stores from a given storage provider
 type NamedStores struct {
 	AWS          map[string]NamedAWSStorageConfig  `yaml:"aws"`
@@ -171,6 +184,7 @@ type NamedStores struct {
 	AlibabaCloud map[string]NamedOssConfig         `yaml:"alibabacloud"`
 	Swift        map[string]NamedSwiftConfig       `yaml:"swift"`
 	COS          map[string]NamedCOSConfig         `yaml:"cos"`
+	OBS          map[string]NamedOBSConfig         `yaml:"obs"`
 
 	// contains mapping from named store reference name to store type
 	storeType map[string]string `yaml:"-"`
@@ -184,7 +198,7 @@ func (ns *NamedStores) populateStoreType() error {
 		case types.StorageTypeAWS, types.StorageTypeAWSDynamo, types.StorageTypeS3,
 			types.StorageTypeGCP, types.StorageTypeGCPColumnKey, types.StorageTypeBigTable, types.StorageTypeBigTableHashed, types.StorageTypeGCS,
 			types.StorageTypeAzure, types.StorageTypeBOS, types.StorageTypeSwift, types.StorageTypeCassandra,
-			types.StorageTypeFileSystem, types.StorageTypeInMemory, types.StorageTypeGrpc:
+			types.StorageTypeFileSystem, types.StorageTypeInMemory, types.StorageTypeGrpc, types.StorageTypeOBS:
 			return fmt.Errorf("named store %q should not match with the name of a predefined storage type", name)
 		}
 
@@ -242,6 +256,13 @@ func (ns *NamedStores) populateStoreType() error {
 		ns.storeType[name] = types.StorageTypeSwift
 	}
 
+	for name := range ns.OBS {
+		if err := checkForDuplicates(name); err != nil {
+			return err
+		}
+		ns.storeType[name] = types.StorageTypeOBS
+	}
+
 	return nil
 }
 
@@ -261,6 +282,12 @@ func (ns *NamedStores) Validate() error {
 	for name, swiftCfg := range ns.Swift {
 		if err := swiftCfg.Validate(); err != nil {
 			return errors.Wrap(err, fmt.Sprintf("invalid Swift Storage config with name %s", name))
+		}
+	}
+
+	for name, obsCfg := range ns.OBS {
+		if err := obsCfg.Validate(); err != nil {
+			return errors.Wrap(err, fmt.Sprintf("invalid OBS Storage config with name %s", name))
 		}
 	}
 
@@ -288,6 +315,7 @@ type Config struct {
 	Hedging                hedging.Config            `yaml:"hedging"`
 	NamedStores            NamedStores               `yaml:"named_stores"`
 	COSConfig              ibmcloud.COSConfig        `yaml:"cos"`
+	OBSStorageConfig       huaweicloud.ObsConfig     `yaml:"obs"`
 	IndexCacheValidity     time.Duration             `yaml:"index_cache_validity"`
 	CongestionControl      congestion.Config         `yaml:"congestion_control,omitempty"`
 	ObjectPrefix           string                    `yaml:"object_prefix" doc:"description=Experimental. Sets a constant prefix for all keys inserted into object storage. Example: loki/"`
@@ -372,6 +400,9 @@ func (cfg *Config) Validate() error {
 	}
 	if err := cfg.AlibabaStorageConfig.Validate(); err != nil {
 		return errors.Wrap(err, "invalid Alibaba Storage config")
+	}
+	if err := cfg.OBSStorageConfig.Validate(); err != nil {
+		return errors.Wrap(err, "invalid OBS Storage config")
 	}
 
 	return cfg.NamedStores.Validate()
@@ -536,7 +567,7 @@ func NewChunkClient(name, component string, cfg Config, schemaCfg config.SchemaC
 			}
 			return client.NewClientWithMaxParallel(c, client.FSEncoder, cfg.MaxParallelGetChunk, schemaCfg), nil
 
-		case types.StorageTypeAWS, types.StorageTypeS3, types.StorageTypeAzure, types.StorageTypeBOS, types.StorageTypeSwift, types.StorageTypeCOS, types.StorageTypeAlibabaCloud:
+		case types.StorageTypeAWS, types.StorageTypeS3, types.StorageTypeAzure, types.StorageTypeBOS, types.StorageTypeSwift, types.StorageTypeCOS, types.StorageTypeAlibabaCloud, types.StorageTypeOBS:
 			c, err := NewObjectClient(name, component, cfg, clientMetrics)
 			if err != nil {
 				return nil, err
@@ -793,7 +824,19 @@ func internalNewObjectClient(storeName string, cfg Config, clientMetrics ClientM
 		}
 		return ibmcloud.NewCOSObjectClient(cosCfg, cfg.Hedging)
 
+	case types.StorageTypeOBS:
+		obsCfg := cfg.OBSStorageConfig
+		if namedStore != "" {
+			nsCfg, ok := cfg.NamedStores.OBS[namedStore]
+			if !ok {
+				return nil, fmt.Errorf("Unrecognized named obs storage config %s", storeName)
+			}
+
+			obsCfg = (huaweicloud.ObsConfig)(nsCfg)
+		}
+		return huaweicloud.NewObsObjectClient(context.Background(), obsCfg)
+
 	default:
-		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v, %v, %v, %v, %v", storeName, types.StorageTypeAWS, types.StorageTypeS3, types.StorageTypeGCS, types.StorageTypeAzure, types.StorageTypeAlibabaCloud, types.StorageTypeSwift, types.StorageTypeBOS, types.StorageTypeCOS, types.StorageTypeFileSystem)
+		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v, %v, %v, %v, %v, %v", storeName, types.StorageTypeAWS, types.StorageTypeS3, types.StorageTypeGCS, types.StorageTypeAzure, types.StorageTypeAlibabaCloud, types.StorageTypeSwift, types.StorageTypeBOS, types.StorageTypeCOS, types.StorageTypeOBS, types.StorageTypeFileSystem)
 	}
 }

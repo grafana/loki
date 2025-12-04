@@ -27,6 +27,7 @@ var SupportedStorageTypes = []string{
 	StorageTypeBOS,
 	StorageTypeCOS,
 	StorageTypeGCS,
+	StorageTypeOBS,
 	StorageTypeS3,
 	StorageTypeSwift,
 	StorageTypeNoop,
@@ -63,6 +64,7 @@ const (
 	StorageTypeGCS            = "gcs"
 	StorageTypeGrpc           = "grpc-store"
 	StorageTypeLocal          = "local"
+	StorageTypeOBS            = "obs"
 	StorageTypeS3             = "s3"
 	StorageTypeSwift          = "swift"
 	StorageTypeCOS            = "cos"
