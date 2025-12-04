@@ -243,16 +243,23 @@ func (c *observationCollector) rollUpObservations(region *Region, excludedSet ma
 // Region name for data object scan operations.
 const regionNameDataObjScan = "DataObjScan"
 
-// ToStatsSummary computes a stats.Summary from observations in the capture.
-func (c *Capture) ToStatsSummary(execTime, queueTime time.Duration, totalEntriesReturned int) stats.Summary {
-	summary := stats.Summary{
-		ExecTime:             execTime.Seconds(),
-		QueueTime:            queueTime.Seconds(),
-		TotalEntriesReturned: int64(totalEntriesReturned),
+// ToStatsSummary computes a stats.Result from observations in the capture.
+func (c *Capture) ToStatsSummary(execTime, queueTime time.Duration, totalEntriesReturned int) stats.Result {
+	result := stats.Result{
+		Summary: stats.Summary{
+			ExecTime:             execTime.Seconds(),
+			QueueTime:            queueTime.Seconds(),
+			TotalEntriesReturned: int64(totalEntriesReturned),
+		},
+		Querier: stats.Querier{
+			Store: stats.Store{
+				QueryUsedV2Engine: true,
+			},
+		},
 	}
 
 	if c == nil {
-		return summary
+		return result
 	}
 
 	// Collect observations from DataObjScan as the summary stats mainly relate to log lines.
@@ -266,24 +273,26 @@ func (c *Capture) ToStatsSummary(execTime, queueTime time.Duration, totalEntries
 	)
 
 	// TotalBytesProcessed: sum of uncompressed bytes from primary and secondary columns
-	summary.TotalBytesProcessed = readInt64(observations, StatPrimaryColumnUncompressedBytes.Key()) +
+	result.Summary.TotalBytesProcessed = readInt64(observations, StatPrimaryColumnUncompressedBytes.Key()) +
 		readInt64(observations, StatSecondaryColumnUncompressedBytes.Key())
 
 	// TotalLinesProcessed: primary rows read
-	summary.TotalLinesProcessed = readInt64(observations, StatPrimaryRowsRead.Key())
+	result.Summary.TotalLinesProcessed = readInt64(observations, StatPrimaryRowsRead.Key())
 
 	// TotalPostFilterLines: rows output after filtering
 	// TODO: this will report the wrong value if the plan has a filter stage.
 	// pick the min of row_out from filter and scan nodes.
-	summary.TotalPostFilterLines = readInt64(observations, StatRowsOut.Key())
+	result.Summary.TotalPostFilterLines = readInt64(observations, StatRowsOut.Key())
+
+	// TODO: track and report TotalStructuredMetadataBytesProcessed
 
 	if execTime > 0 {
 		execSeconds := execTime.Seconds()
-		summary.BytesProcessedPerSecond = int64(float64(summary.TotalBytesProcessed) / execSeconds)
-		summary.LinesProcessedPerSecond = int64(float64(summary.TotalLinesProcessed) / execSeconds)
+		result.Summary.BytesProcessedPerSecond = int64(float64(result.Summary.TotalBytesProcessed) / execSeconds)
+		result.Summary.LinesProcessedPerSecond = int64(float64(result.Summary.TotalLinesProcessed) / execSeconds)
 	}
 
-	return summary
+	return result
 }
 
 // readInt64 reads an int64 observation for the given stat key.

@@ -29,7 +29,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/storage/bucket"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -219,6 +218,11 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 		"duration_full", durFull,
 	)
 
+	// Close the pipeline to calculate the stats.
+	pipeline.Close()
+
+	region.SetStatus(codes.Ok, "")
+
 	// explicitly call End() before exporting even though we have a defer above.
 	// It is safe to call End() multiple times.
 	region.End()
@@ -227,17 +231,9 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 		level.Error(logger).Log("msg", "failed to export capture as trace", "err", err)
 	}
 
-	// Close the pipeline to calculate the stats.
-	pipeline.Close()
-
-	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
-	statsCtx := stats.FromContext(ctx)
-	statsCtx.AddQuerierExecTime(durFull)
-	stats := statsCtx.Result(durFull, queueTime, builder.Len())
+	// TODO: capture and report queue time
 	md := metadata.FromContext(ctx)
-
-	region.SetStatus(codes.Ok, "")
-	stats.Summary = capture.ToStatsSummary(durFull, 0, builder.Len())
+	stats := capture.ToStatsSummary(durFull, 0, builder.Len())
 	result := builder.Build(stats, md)
 
 	logql.RecordRangeAndInstantQueryMetrics(ctx, logger, params, strconv.Itoa(http.StatusOK), stats, result.Data)
@@ -246,14 +242,12 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 
 // buildContext initializes a request-scoped context prior to execution.
 func (e *Engine) buildContext(ctx context.Context) context.Context {
-	statsContext, ctx := stats.NewContext(ctx)
 	metadataContext, ctx := metadata.NewContext(ctx)
 
 	// Inject the range config into the context for any calls to
 	// [rangeio.ReadRanges] to make use of.
 	ctx = rangeio.WithConfig(ctx, &e.rangeConfig)
 
-	statsContext.SetQueryUsedV2Engine()
 	metadataContext.AddWarning("Query was executed using the new experimental query engine and dataobj storage.")
 	return ctx
 }
