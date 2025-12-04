@@ -64,7 +64,7 @@ func (s *dataobjScan) Read(ctx context.Context) (arrow.RecordBatch, error) {
 		return nil, err
 	}
 
-	return s.read(ctx)
+	return s.read(xcap.ContextWithRegion(ctx, s.region))
 }
 
 func (s *dataobjScan) init() error {

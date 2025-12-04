@@ -1,5 +1,27 @@
 # Release Notes
 
+# 9.17.1 (2025-11-25)
+
+## 🐛 Bug Fixes
+
+- add wait to keyless commands list ([#3615](https://github.com/redis/go-redis/pull/3615)) by [@marcoferrer](https://github.com/marcoferrer)
+- fix(time): remove cached time optimization ([#3611](https://github.com/redis/go-redis/pull/3611)) by [@ndyakov](https://github.com/ndyakov)
+
+## 🧰 Maintenance
+
+- chore(deps): bump golangci/golangci-lint-action from 9.0.0 to 9.1.0 ([#3609](https://github.com/redis/go-redis/pull/3609))
+- chore(deps): bump actions/checkout from 5 to 6 ([#3610](https://github.com/redis/go-redis/pull/3610))
+- chore(script): fix help call in tag.sh ([#3606](https://github.com/redis/go-redis/pull/3606)) by [@ndyakov](https://github.com/ndyakov)
+
+## Contributors
+We'd like to thank all the contributors who worked on this release!
+
+[@marcoferrer](https://github.com/marcoferrer) and [@ndyakov](https://github.com/ndyakov)
+
+---
+
+**Full Changelog**: https://github.com/redis/go-redis/compare/v9.17.0...v9.17.1
+
 # 9.17.0 (2025-11-19)
 
 ## 🚀 Highlights

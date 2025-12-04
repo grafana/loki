@@ -31,17 +31,19 @@ var (
 	_ ResultBuilder = &matrixResultBuilder{}
 )
 
-func newStreamsResultBuilder(dir logproto.Direction) *streamsResultBuilder {
+func newStreamsResultBuilder(dir logproto.Direction, categorizeLabels bool) *streamsResultBuilder {
 	return &streamsResultBuilder{
-		direction:   dir,
-		data:        make(logqlmodel.Streams, 0),
-		streams:     make(map[string]int),
-		rowBuilders: nil,
+		direction:        dir,
+		categorizeLabels: categorizeLabels,
+		data:             make(logqlmodel.Streams, 0),
+		streams:          make(map[string]int),
+		rowBuilders:      nil,
 	}
 }
 
 type streamsResultBuilder struct {
-	direction logproto.Direction
+	direction        logproto.Direction
+	categorizeLabels bool
 
 	streams map[string]int
 	data    logqlmodel.Streams
@@ -122,7 +124,9 @@ func (b *streamsResultBuilder) CollectRecord(rec arrow.RecordBatch) {
 			forEachNotNullRowColValue(numRows, metadataCol, func(rowIdx int) {
 				val := metadataCol.Value(rowIdx)
 				b.rowBuilders[rowIdx].metadataBuilder.Set(shortName, val)
-				b.rowBuilders[rowIdx].lbsBuilder.Set(shortName, val)
+				if !b.categorizeLabels {
+					b.rowBuilders[rowIdx].lbsBuilder.Set(shortName, val)
+				}
 			})
 
 		// One of the parsed columns

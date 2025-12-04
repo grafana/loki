@@ -8,6 +8,7 @@ import (
 	"github.com/go-kit/log/level"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -63,8 +64,21 @@ func createSpans(ctx context.Context, region *Region, parentToChildren map[ident
 	// Create the span
 	ctx, span := tracer.Start(ctx, region.name, opts...)
 
-	children := parentToChildren[region.id]
+	// Add events to the span
+	for _, event := range region.events {
+		span.AddEvent(event.Name,
+			trace.WithTimestamp(event.Timestamp),
+			trace.WithAttributes(event.Attributes...),
+		)
+	}
+
+	// Set status if not unset
+	if region.status.Code != codes.Unset {
+		span.SetStatus(region.status.Code, region.status.Message)
+	}
+
 	// Recursively create spans for children
+	children := parentToChildren[region.id]
 	for _, child := range children {
 		if err := createSpans(ctx, child, parentToChildren); err != nil {
 			return err
