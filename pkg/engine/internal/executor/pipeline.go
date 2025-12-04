@@ -337,17 +337,17 @@ func (p *observedPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) 
 	start := time.Now()
 
 	if p.region != nil {
-		p.region.Record(statReadCalls.Observe(1))
+		p.region.Record(xcap.StatPipelineReadCalls.Observe(1))
 	}
 
 	rec, err := p.inner.Read(ctx)
 
 	if p.region != nil {
 		if rec != nil {
-			p.region.Record(statRowsOut.Observe(rec.NumRows()))
+			p.region.Record(xcap.StatPipelineRowsOut.Observe(rec.NumRows()))
 		}
 
-		p.region.Record(statReadDuration.Observe(time.Since(start).Nanoseconds()))
+		p.region.Record(xcap.StatPipelineReadDuration.Observe(time.Since(start).Seconds()))
 	}
 
 	return rec, err

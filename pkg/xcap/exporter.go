@@ -115,3 +115,77 @@ func observationToAttribute(key StatisticKey, obs *AggregatedObservation) attrib
 	// Fallback: convert to string
 	return attrKey.String(fmt.Sprintf("%v", obs.Value))
 }
+
+// ExportLog exports a Capture as a structured log line with aggregated statistics.
+func ExportLog(capture *Capture, logger log.Logger) {
+	if capture == nil || logger == nil {
+		return
+	}
+
+	summary := summarizeObservations(capture)
+	level.Info(logger).Log(summary.toLogValues()...)
+}
+
+// summarizeObservations collects and summarizes observations from the capture.
+func summarizeObservations(capture *Capture) *observations {
+	if capture == nil {
+		return nil
+	}
+
+	collect := newObservationCollector(capture)
+	result := newObservations()
+
+	// collect observations from all DataObjScan regions. observations from
+	// child regions are rolled-up to include dataset reader and bucket stats.
+	// streamView is excluded as it is handled separately below.
+	result.merge(
+		collect.fromRegions("DataObjScan", true, "streamsView.init").
+			filter(
+				// object store calls
+				StatBucketGet.Key(), StatBucketGetRange.Key(), StatBucketAttributes.Key(),
+				// dataset reader stats
+				StatDatasetMaxRows.Key(), StatDatasetRowsAfterPruning.Key(), StatDatasetReadCalls.Key(),
+				StatDatasetPrimaryPagesDownloaded.Key(), StatDatasetSecondaryPagesDownloaded.Key(),
+				StatDatasetPrimaryColumnBytes.Key(), StatDatasetSecondaryColumnBytes.Key(),
+				StatDatasetPrimaryRowsRead.Key(), StatDatasetSecondaryRowsRead.Key(),
+				StatDatasetPrimaryRowBytes.Key(), StatDatasetSecondaryRowBytes.Key(),
+				StatDatasetPagesScanned.Key(), StatDatasetPagesFoundInCache.Key(),
+				StatDatasetPageDownloadRequests.Key(), StatDatasetPageDownloadTime.Key(),
+			).
+			prefix("logs_dataset_").
+			normalizeKeys(),
+	)
+
+	// metastore index and resolved section stats
+	result.merge(
+		collect.fromRegions("ObjectMetastore.Sections", true).
+			filter(StatMetastoreIndexObjects.Key(), StatMetastoreResolvedSections.Key()).
+			normalizeKeys(),
+	)
+
+	// metastore bucket and dataset reader stats
+	result.merge(
+		collect.fromRegions("ObjectMetastore.Sections", true).
+			filter(
+				StatBucketGet.Key(), StatBucketGetRange.Key(), StatBucketAttributes.Key(),
+				StatDatasetPrimaryPagesDownloaded.Key(), StatDatasetSecondaryPagesDownloaded.Key(),
+				StatDatasetPrimaryColumnBytes.Key(), StatDatasetSecondaryColumnBytes.Key(),
+			).
+			prefix("metastore_").
+			normalizeKeys(),
+	)
+
+	// streamsView bucket and dataset reader stats
+	result.merge(
+		collect.fromRegions("streamsView.init", true).
+			filter(
+				StatBucketGet.Key(), StatBucketGetRange.Key(), StatBucketAttributes.Key(),
+				StatDatasetPrimaryPagesDownloaded.Key(), StatDatasetSecondaryPagesDownloaded.Key(),
+				StatDatasetPrimaryColumnBytes.Key(), StatDatasetSecondaryColumnBytes.Key(),
+			).
+			prefix("streams_").
+			normalizeKeys(),
+	)
+
+	return result
+}
