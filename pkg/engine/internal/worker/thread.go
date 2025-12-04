@@ -167,7 +167,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	// If the root pipeline can be interested in some specific contributing time range
 	// then subscribe to changes.
 	// TODO(spiridonov): find a way to subscribe on non-root pipelines.
-	notifier, ok := pipeline.(executor.ContributingTimeRangeChangedNotifier)
+	notifier, ok := executor.Unwrap(pipeline).(executor.ContributingTimeRangeChangedNotifier)
 	if ok {
 		notifier.SubscribeToTimeRangeChanges(func(ts time.Time, lessThan bool) {
 			// Send a Running task status update with the current time range
