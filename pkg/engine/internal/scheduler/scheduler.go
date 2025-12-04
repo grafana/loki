@@ -415,12 +415,8 @@ func (s *Scheduler) assignTask(ctx context.Context, task *task, worker *workerCo
 	msg := wire.TaskAssignMessage{
 		Task:         task.inner,
 		StreamStates: make(map[ulid.ULID]workflow.StreamState),
-		Metadata:     make(http.Header),
+		Metadata:     task.metadata,
 	}
-
-	// Inject trace context from the query context.
-	var tc propagation.TraceContext
-	tc.Inject(ctx, propagation.HeaderCarrier(msg.Metadata))
 
 	// Populate stream states based on our view of streams that the task reads
 	// from.
@@ -739,6 +735,19 @@ func (s *Scheduler) Start(ctx context.Context, tasks ...*workflow.Task) error {
 	trackedTasks, err := s.findTasks(tasks)
 	if err != nil {
 		return err
+	}
+
+	// Extract trace context from the query context and add it to each task's metadata.
+	var tc propagation.TraceContext
+	metadata := make(http.Header)
+	tc.Inject(ctx, propagation.HeaderCarrier(metadata))
+
+	for _, t := range trackedTasks {
+		if t.metadata == nil {
+			t.metadata = make(http.Header)
+		}
+
+		maps.Copy(t.metadata, metadata)
 	}
 
 	// We set markPending *after* enqueueTasks to give tasks an opportunity to

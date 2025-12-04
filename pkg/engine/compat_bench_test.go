@@ -53,7 +53,6 @@ func BenchmarkStreamsResultBuilder(b *testing.B) {
 
 	for _, bm := range benchmarks {
 		b.Run(bm.name, func(b *testing.B) {
-
 			schema, labelIdents, metaIdents, parsedIdents := prepareSchema(bm.numLabels, bm.numMeta, bm.numParsed)
 			baseTime := time.Unix(0, 1620000000000000000).UTC()
 
@@ -69,7 +68,7 @@ func BenchmarkStreamsResultBuilder(b *testing.B) {
 			b.ReportAllocs()
 
 			for i := 0; i < b.N; i++ {
-				rb := newStreamsResultBuilder(logproto.BACKWARD)
+				rb := newStreamsResultBuilder(logproto.BACKWARD, false)
 				// Collect records twice on purpose to see how efficient CollectRecord is when the builder already has
 				// some data
 				rb.CollectRecord(record1)

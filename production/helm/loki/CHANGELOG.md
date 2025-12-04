@@ -13,8 +13,13 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
-- [BUGFIX] Add startupProbe to read pod to go around the issue mentioned [here](https://github.com/grafana/loki/issues/15191)
+- [BUGFIX] do not mark loki.storage.bucketNames.ruler as required, if rulerConfig.storage.type is local. [#19882](https://github.com/grafana/loki/pull/19882)
+- [BUGFIX] Don't mark loki.storage.bucketNames.chunks as required, if an s3 url is provided. [#19873](https://github.com/grafana/loki/pull/19873)
+- [BUGFIX] Do not mark loki.storage.bucketNames.chunks as required, if minio is used. [#19871](https://github.com/grafana/loki/pull/19871)
 - [ENHANCEMENT] Use fsGroupChangePolicy=OnRootMismatch on loki to speed up pod starts [#13942](https://github.com/grafana/loki/pull/13942)
+- [ENHANCEMENT] Add support for configuring `volumeAttributesClassName` for `volumeClaimTemplates`. [#19719](https://github.com/grafana/loki/pull/19719)
+- [BUGFIX] Don't fail for missing bucket name, if minio is enabled. [#19745](https://github.com/grafana/loki/pull/19745)
+- [BUGFIX] Add startupProbe to read pod [#19708](https://github.com/grafana/loki/pull/19708)
 
 ## 6.46.0
 

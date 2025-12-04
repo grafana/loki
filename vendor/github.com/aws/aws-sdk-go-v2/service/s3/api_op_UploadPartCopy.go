@@ -101,15 +101,20 @@ import (
 // For example policies, see [Example bucket policies for S3 Express One Zone]and [Amazon Web Services Identity and Access Management (IAM) identity-based policies for S3 Express One Zone]in the Amazon S3 User Guide.
 //
 // Encryption
-//
 //   - General purpose buckets - For information about using server-side
 //     encryption with customer-provided encryption keys with the UploadPartCopy
 //     operation, see [CopyObject]and [UploadPart].
 //
-//   - Directory buckets - For directory buckets, there are only two supported
-//     options for server-side encryption: server-side encryption with Amazon S3
-//     managed keys (SSE-S3) ( AES256 ) and server-side encryption with KMS keys
-//     (SSE-KMS) ( aws:kms ). For more information, see [Protecting data with server-side encryption]in the Amazon S3 User Guide.
+// If you have server-side encryption with customer-provided keys (SSE-C) blocked
+//
+//	for your general purpose bucket, you will get an HTTP 403 Access Denied error
+//	when you specify the SSE-C request headers while writing new data to your
+//	bucket. For more information, see [Blocking or unblocking SSE-C for a general purpose bucket].
+//
+//	- Directory buckets - For directory buckets, there are only two supported
+//	options for server-side encryption: server-side encryption with Amazon S3
+//	managed keys (SSE-S3) ( AES256 ) and server-side encryption with KMS keys
+//	(SSE-KMS) ( aws:kms ). For more information, see [Protecting data with server-side encryption]in the Amazon S3 User Guide.
 //
 // For directory buckets, when you perform a CreateMultipartUpload operation and an
 //
@@ -177,11 +182,12 @@ import (
 // [REST Authentication]: https://docs.aws.amazon.com/AmazonS3/latest/dev/RESTAuthentication.html
 // [Example bucket policies for S3 Express One Zone]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-express-security-iam-example-bucket-policies.html
 // [Operations on Objects]: https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectOperations.html
-// [Protecting data with server-side encryption]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-express-serv-side-encryption.html
 // [ListMultipartUploads]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListMultipartUploads.html
 // [Regional and Zonal endpoints for directory buckets in Availability Zones]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/endpoint-directory-buckets-AZ.html
 //
+// [Blocking or unblocking SSE-C for a general purpose bucket]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/blocking-unblocking-s3-c-encryption-gpb.html
 // [UploadPartCopy]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_UploadPartCopy.html
+// [Protecting data with server-side encryption]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-express-serv-side-encryption.html
 func (c *Client) UploadPartCopy(ctx context.Context, params *UploadPartCopyInput, optFns ...func(*Options)) (*UploadPartCopyOutput, error) {
 	if params == nil {
 		params = &UploadPartCopyInput{}

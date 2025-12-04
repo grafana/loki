@@ -717,8 +717,16 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 	}
 
 	// Add limits
-	if limits := querylimits.ExtractQueryLimitsContext(ctx); limits != nil {
+	if limits := querylimits.ExtractQueryLimitsFromContext(ctx); limits != nil {
 		err := querylimits.InjectQueryLimitsHeader(&header, limits)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// Add limits context
+	if limitsCtx := querylimits.ExtractQueryLimitsContextFromContext(ctx); limitsCtx != nil {
+		err := querylimits.InjectQueryLimitsContextHeader(&header, limitsCtx)
 		if err != nil {
 			return nil, err
 		}

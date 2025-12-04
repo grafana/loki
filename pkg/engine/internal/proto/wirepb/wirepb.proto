@@ -6,9 +6,9 @@ package loki.wire;
 
 import "github.com/grafana/dskit/httpgrpc/httpgrpc.proto";
 import "gogoproto/gogo.proto";
+import "google/protobuf/timestamp.proto";
 import "pkg/engine/internal/proto/physicalpb/physicalpb.proto";
 import "pkg/engine/internal/proto/ulid/ulid.proto";
-import "pkg/xcap/proto/xcap.proto";
 
 option go_package = "github.com/grafana/loki/v3/pkg/engine/internal/proto/wirepb";
 
@@ -179,6 +179,13 @@ message Task {
   // Sinks defines which streams physical nodes write to.
   // The key is the node ID string representation.
   map<string, StreamList> sinks = 5;
+
+  // The maximum boundary of timestamps that the task can possibly emit.
+  // Does not account for predicates.
+  // MaxTimeRange is not read when executing a task fragment. It can be used
+  // as metadata to control execution (such as cancelling ongoing tasks based
+  // on their maximum time range).
+  loki.physical.TimeRange max_time_range = 6;
 }
 
 // StreamList is a list of streams, used in Task's sources and sinks maps.
@@ -204,7 +211,19 @@ message TaskStatus {
   TaskError error = 2;
 
   // Capture is the capture data for this task, if available.
-  loki.xcap.Capture capture = 3;
+  // This is an opaque binary representation of the capture payload.
+  bytes capture = 3;
+
+  ContributingTimeRange contributing_time_range = 4;
+}
+
+message ContributingTimeRange {
+  google.protobuf.Timestamp timestamp = 1 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+
+  bool less_than = 2;
 }
 
 message TaskError {

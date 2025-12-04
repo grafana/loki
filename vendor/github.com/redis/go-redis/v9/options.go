@@ -34,7 +34,6 @@ type Limiter interface {
 
 // Options keeps the settings to set up redis connection.
 type Options struct {
-
 	// Network type, either tcp or unix.
 	//
 	// default: is tcp.
@@ -176,6 +175,10 @@ type Options struct {
 	// default: 10 * runtime.GOMAXPROCS(0)
 	PoolSize int
 
+	// MaxConcurrentDials is the maximum number of concurrent connection creation goroutines.
+	// If <= 0, defaults to PoolSize. If > PoolSize, it will be capped at PoolSize.
+	MaxConcurrentDials int
+
 	// PoolTimeout is the amount of time client waits for connection if all connections
 	// are busy before returning an error.
 	//
@@ -295,6 +298,11 @@ func (opt *Options) init() {
 	if opt.PoolSize == 0 {
 		opt.PoolSize = 10 * runtime.GOMAXPROCS(0)
 	}
+	if opt.MaxConcurrentDials <= 0 {
+		opt.MaxConcurrentDials = opt.PoolSize
+	} else if opt.MaxConcurrentDials > opt.PoolSize {
+		opt.MaxConcurrentDials = opt.PoolSize
+	}
 	if opt.ReadBufferSize == 0 {
 		opt.ReadBufferSize = proto.DefaultBufferSize
 	}
@@ -345,6 +353,10 @@ func (opt *Options) init() {
 		opt.MaxRetryBackoff = 0
 	case 0:
 		opt.MaxRetryBackoff = 512 * time.Millisecond
+	}
+
+	if opt.FailingTimeoutSeconds == 0 {
+		opt.FailingTimeoutSeconds = 15
 	}
 
 	opt.MaintNotificationsConfig = opt.MaintNotificationsConfig.ApplyDefaultsWithPoolConfig(opt.PoolSize, opt.MaxActiveConns)
@@ -622,6 +634,7 @@ func setupConnParams(u *url.URL, o *Options) (*Options, error) {
 	o.MinIdleConns = q.int("min_idle_conns")
 	o.MaxIdleConns = q.int("max_idle_conns")
 	o.MaxActiveConns = q.int("max_active_conns")
+	o.MaxConcurrentDials = q.int("max_concurrent_dials")
 	if q.has("conn_max_idle_time") {
 		o.ConnMaxIdleTime = q.duration("conn_max_idle_time")
 	} else {
@@ -688,6 +701,7 @@ func newConnPool(
 		},
 		PoolFIFO:                 opt.PoolFIFO,
 		PoolSize:                 poolSize,
+		MaxConcurrentDials:       opt.MaxConcurrentDials,
 		PoolTimeout:              opt.PoolTimeout,
 		DialTimeout:              opt.DialTimeout,
 		DialerRetries:            opt.DialerRetries,
@@ -728,6 +742,7 @@ func newPubSubPool(opt *Options, dialer func(ctx context.Context, network, addr 
 	return pool.NewPubSubPool(&pool.Options{
 		PoolFIFO:                 opt.PoolFIFO,
 		PoolSize:                 poolSize,
+		MaxConcurrentDials:       opt.MaxConcurrentDials,
 		PoolTimeout:              opt.PoolTimeout,
 		DialTimeout:              opt.DialTimeout,
 		DialerRetries:            opt.DialerRetries,

@@ -18,12 +18,13 @@ import (
 var root = newMIME("application/octet-stream", "",
 	func([]byte, uint32) bool { return true },
 	xpm, sevenZ, zip, pdf, fdf, ole, ps, psd, p7s, ogg, png, jpg, jxl, jp2, jpx,
-	jpm, jxs, gif, webp, exe, elf, ar, tar, xar, bz2, fits, tiff, bmp, ico, mp3,
-	flac, midi, ape, musePack, amr, wav, aiff, au, mpeg, quickTime, mp4, webM,
+	jpm, jxs, gif, webp, exe, elf, ar, tar, xar, bz2, fits, tiff, bmp, lotus, ico,
+	mp3, flac, midi, ape, musePack, amr, wav, aiff, au, mpeg, quickTime, mp4, webM,
 	avi, flv, mkv, asf, aac, voc, m3u, rmvb, gzip, class, swf, crx, ttf, woff,
 	woff2, otf, ttc, eot, wasm, shx, dbf, dcm, rar, djvu, mobi, lit, bpg, cbor,
 	sqlite3, dwg, nes, lnk, macho, qcp, icns, hdr, mrc, mdb, accdb, zstd, cab,
 	rpm, xz, lzip, torrent, cpio, tzif, xcf, pat, gbr, glb, cabIS, jxr, parquet,
+	oneNote, chm, wpd, dxf,
 	// Keep text last because it is the slowest check.
 	text,
 )
@@ -48,24 +49,25 @@ var (
 	// This means APK should be a child of JAR detector, but in practice,
 	// the decisive signature for JAR might be located at the end of the file
 	// and not reachable because of library readLimit.
-	zip = newMIME("application/zip", ".zip", magic.Zip, xlsx, docx, pptx, epub, apk, jar, odt, ods, odp, odg, odf, odc, sxc).
+	zip = newMIME("application/zip", ".zip", magic.Zip, docx, pptx, xlsx, epub, apk, jar, odt, ods, odp, odg, odf, odc, sxc, kmz, visio).
 		alias("application/x-zip", "application/x-zip-compressed")
 	tar = newMIME("application/x-tar", ".tar", magic.Tar)
 	xar = newMIME("application/x-xar", ".xar", magic.Xar)
 	bz2 = newMIME("application/x-bzip2", ".bz2", magic.Bz2)
-	pdf = newMIME("application/pdf", ".pdf", magic.Pdf).
+	pdf = newMIME("application/pdf", ".pdf", magic.PDF).
 		alias("application/x-pdf")
-	fdf  = newMIME("application/vnd.fdf", ".fdf", magic.Fdf)
-	xlsx = newMIME("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ".xlsx", magic.Xlsx)
-	docx = newMIME("application/vnd.openxmlformats-officedocument.wordprocessingml.document", ".docx", magic.Docx)
-	pptx = newMIME("application/vnd.openxmlformats-officedocument.presentationml.presentation", ".pptx", magic.Pptx)
-	epub = newMIME("application/epub+zip", ".epub", magic.Epub)
-	jar  = newMIME("application/jar", ".jar", magic.Jar)
-	apk  = newMIME("application/vnd.android.package-archive", ".apk", magic.APK)
-	ole  = newMIME("application/x-ole-storage", "", magic.Ole, msi, aaf, msg, xls, pub, ppt, doc)
-	msi  = newMIME("application/x-ms-installer", ".msi", magic.Msi).
+	fdf   = newMIME("application/vnd.fdf", ".fdf", magic.Fdf)
+	xlsx  = newMIME("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ".xlsx", magic.Xlsx)
+	docx  = newMIME("application/vnd.openxmlformats-officedocument.wordprocessingml.document", ".docx", magic.Docx)
+	pptx  = newMIME("application/vnd.openxmlformats-officedocument.presentationml.presentation", ".pptx", magic.Pptx)
+	visio = newMIME("application/vnd.ms-visio.drawing.main+xml", ".vsdx", magic.Visio)
+	epub  = newMIME("application/epub+zip", ".epub", magic.Epub)
+	jar   = newMIME("application/java-archive", ".jar", magic.Jar).
+		alias("application/jar", "application/jar-archive", "application/x-java-archive")
+	apk = newMIME("application/vnd.android.package-archive", ".apk", magic.APK)
+	ole = newMIME("application/x-ole-storage", "", magic.Ole, msi, msg, xls, pub, ppt, doc)
+	msi = newMIME("application/x-ms-installer", ".msi", magic.Msi).
 		alias("application/x-windows-installer", "application/x-msi")
-	aaf = newMIME("application/octet-stream", ".aaf", magic.Aaf)
 	doc = newMIME("application/msword", ".doc", magic.Doc).
 		alias("application/vnd.ms-word")
 	ppt = newMIME("application/vnd.ms-powerpoint", ".ppt", magic.Ppt).
@@ -75,18 +77,19 @@ var (
 		alias("application/msexcel")
 	msg  = newMIME("application/vnd.ms-outlook", ".msg", magic.Msg)
 	ps   = newMIME("application/postscript", ".ps", magic.Ps)
-	fits = newMIME("application/fits", ".fits", magic.Fits)
+	fits = newMIME("application/fits", ".fits", magic.Fits).alias("image/fits")
 	ogg  = newMIME("application/ogg", ".ogg", magic.Ogg, oggAudio, oggVideo).
 		alias("application/x-ogg")
 	oggAudio = newMIME("audio/ogg", ".oga", magic.OggAudio)
 	oggVideo = newMIME("video/ogg", ".ogv", magic.OggVideo)
-	text     = newMIME("text/plain", ".txt", magic.Text, html, svg, xml, php, js, lua, perl, python, json, ndJSON, rtf, srt, tcl, csv, tsv, vCard, iCalendar, warc, vtt)
-	xml      = newMIME("text/xml", ".xml", magic.XML, rss, atom, x3d, kml, xliff, collada, gml, gpx, tcx, amf, threemf, xfdf, owl2).
+	text     = newMIME("text/plain", ".txt", magic.Text, svg, html, xml, php, js, lua, perl, python, ruby, json, ndJSON, rtf, srt, tcl, csv, tsv, vCard, iCalendar, warc, vtt, shell, netpbm, netpgm, netppm, netpam)
+	xml      = newMIME("text/xml", ".xml", magic.XML, rss, atom, x3d, kml, xliff, collada, gml, gpx, tcx, amf, threemf, xfdf, owl2, xhtml).
 			alias("application/xml")
-	json    = newMIME("application/json", ".json", magic.JSON, geoJSON, har)
+	xhtml   = newMIME("application/xhtml+xml", ".html", magic.XHTML)
+	json    = newMIME("application/json", ".json", magic.JSON, geoJSON, har, gltf)
 	har     = newMIME("application/json", ".har", magic.HAR)
-	csv     = newMIME("text/csv", ".csv", magic.Csv)
-	tsv     = newMIME("text/tab-separated-values", ".tsv", magic.Tsv)
+	csv     = newMIME("text/csv", ".csv", magic.CSV)
+	tsv     = newMIME("text/tab-separated-values", ".tsv", magic.TSV)
 	geoJSON = newMIME("application/geo+json", ".geojson", magic.GeoJSON)
 	ndJSON  = newMIME("application/x-ndjson", ".ndjson", magic.NdJSON)
 	html    = newMIME("text/html", ".html", magic.HTML)
@@ -101,6 +104,10 @@ var (
 	perl   = newMIME("text/x-perl", ".pl", magic.Perl)
 	python = newMIME("text/x-python", ".py", magic.Python).
 		alias("text/x-script.python", "application/x-python")
+	ruby = newMIME("text/x-ruby", ".rb", magic.Ruby).
+		alias("application/x-ruby")
+	shell = newMIME("text/x-shellscript", ".sh", magic.Shell).
+		alias("text/x-sh", "application/x-shellscript", "application/x-sh")
 	tcl = newMIME("text/x-tcl", ".tcl", magic.Tcl).
 		alias("application/x-tcl")
 	vCard     = newMIME("text/vcard", ".vcf", magic.VCard)
@@ -112,6 +119,7 @@ var (
 	atom    = newMIME("application/atom+xml", ".atom", magic.Atom)
 	x3d     = newMIME("model/x3d+xml", ".x3d", magic.X3d)
 	kml     = newMIME("application/vnd.google-earth.kml+xml", ".kml", magic.Kml)
+	kmz     = newMIME("application/vnd.google-earth.kmz", ".kmz", magic.KMZ)
 	xliff   = newMIME("application/x-xliff+xml", ".xlf", magic.Xliff)
 	collada = newMIME("model/vnd.collada+xml", ".dae", magic.Collada)
 	gml     = newMIME("application/gml+xml", ".gml", magic.Gml)
@@ -135,9 +143,12 @@ var (
 	tiff = newMIME("image/tiff", ".tiff", magic.Tiff)
 	bmp  = newMIME("image/bmp", ".bmp", magic.Bmp).
 		alias("image/x-bmp", "image/x-ms-bmp")
-	ico  = newMIME("image/x-icon", ".ico", magic.Ico)
-	icns = newMIME("image/x-icns", ".icns", magic.Icns)
-	psd  = newMIME("image/vnd.adobe.photoshop", ".psd", magic.Psd).
+	// lotus check must be done before ico because some ico detection is a bit
+	// relaxed and some lotus files are wrongfully identified as ico otherwise.
+	lotus = newMIME("application/vnd.lotus-1-2-3", ".123", magic.Lotus123)
+	ico   = newMIME("image/x-icon", ".ico", magic.Ico)
+	icns  = newMIME("image/x-icns", ".icns", magic.Icns)
+	psd   = newMIME("image/vnd.adobe.photoshop", ".psd", magic.Psd).
 		alias("image/x-psd", "application/photoshop")
 	heic    = newMIME("image/heic", ".heic", magic.Heic)
 	heicSeq = newMIME("image/heic-sequence", ".heic", magic.HeicSequence)
@@ -262,9 +273,18 @@ var (
 	pat     = newMIME("image/x-gimp-pat", ".pat", magic.Pat)
 	gbr     = newMIME("image/x-gimp-gbr", ".gbr", magic.Gbr)
 	xfdf    = newMIME("application/vnd.adobe.xfdf", ".xfdf", magic.Xfdf)
-	glb     = newMIME("model/gltf-binary", ".glb", magic.Glb)
+	glb     = newMIME("model/gltf-binary", ".glb", magic.GLB)
+	gltf    = newMIME("model/gltf+json", ".gltf", magic.GLTF)
 	jxr     = newMIME("image/jxr", ".jxr", magic.Jxr).alias("image/vnd.ms-photo")
 	parquet = newMIME("application/vnd.apache.parquet", ".parquet", magic.Par1).
 		alias("application/x-parquet")
-	cbor = newMIME("application/cbor", ".cbor", magic.CBOR)
+	netpbm  = newMIME("image/x-portable-bitmap", ".pbm", magic.NetPBM)
+	netpgm  = newMIME("image/x-portable-graymap", ".pgm", magic.NetPGM)
+	netppm  = newMIME("image/x-portable-pixmap", ".ppm", magic.NetPPM)
+	netpam  = newMIME("image/x-portable-arbitrarymap", ".pam", magic.NetPAM)
+	cbor    = newMIME("application/cbor", ".cbor", magic.CBOR)
+	oneNote = newMIME("application/onenote", ".one", magic.One)
+	chm     = newMIME("application/vnd.ms-htmlhelp", ".chm", magic.CHM)
+	wpd     = newMIME("application/vnd.wordperfect", ".wpd", magic.WPD)
+	dxf     = newMIME("image/vnd.dxf", ".dxf", magic.DXF)
 )

@@ -26,10 +26,10 @@ import (
 // not have fully propagated across all subsystems. For more information, see [Eventual consistency in the Amazon EC2 API]in
 // the Amazon EC2 Developer Guide.
 //
-// For more information, see [Amazon EC2 instance topology] in the Amazon EC2 User Guide.
+// For more information, see [Amazon EC2 topology] in the Amazon EC2 User Guide.
 //
 // [Prerequisites for Amazon EC2 instance topology]: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-instance-topology-prerequisites.html
-// [Amazon EC2 instance topology]: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-instance-topology.html
+// [Amazon EC2 topology]: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-instance-topology.html
 // [Eventual consistency in the Amazon EC2 API]: https://docs.aws.amazon.com/ec2/latest/devguide/eventual-consistency.html
 func (c *Client) DescribeInstanceTopology(ctx context.Context, params *DescribeInstanceTopologyInput, optFns ...func(*Options)) (*DescribeInstanceTopologyOutput, error) {
 	if params == nil {

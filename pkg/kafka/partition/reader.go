@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"sync"
 	"time"
 
 	"github.com/go-kit/log"
@@ -43,6 +44,9 @@ type Reader interface {
 	// SetPhase sets the phase for the reader. This is used to differentiate between different phases of the reader.
 	// For example, we can use this to differentiate between the startup phase and the running phase.
 	SetPhase(phase string)
+	// SetPartitionState sets the partition ring state for the reader. This is used to track the partition's
+	// state in the ring (pending, active, inactive) for metrics labeling purposes.
+	SetPartitionState(state string)
 }
 
 // ReaderMetrics contains metrics specific to Kafka reading operations
@@ -65,7 +69,7 @@ func NewReaderMetrics(r prometheus.Registerer) *ReaderMetrics {
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 1 * time.Hour,
 			Buckets:                         prometheus.ExponentialBuckets(0.125, 2, 18),
-		}, []string{"phase"}),
+		}, []string{"phase", "partition_state"}),
 		fetchWaitDuration: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
 			Namespace:                   client.MetricsPrefix,
 			Name:                        "partition_reader_fetch_wait_duration_seconds",
@@ -99,6 +103,8 @@ type KafkaReader struct {
 	consumerGroup            string
 	metrics                  *ReaderMetrics
 	phase                    string
+	partitionStateMu         sync.RWMutex
+	partitionState           string
 	logger                   log.Logger
 	headerToContextExtractor func(context.Context, []kgo.RecordHeader) context.Context
 }
@@ -128,11 +134,12 @@ func NewKafkaReader(
 	}
 
 	reader := &KafkaReader{
-		client:      c,
-		topic:       cfg.Topic,
-		partitionID: partitionID,
-		metrics:     metrics,
-		logger:      logger,
+		client:         c,
+		topic:          cfg.Topic,
+		partitionID:    partitionID,
+		metrics:        metrics,
+		logger:         logger,
+		partitionState: "unknown",
 	}
 
 	// Apply functional options
@@ -159,6 +166,13 @@ func (r *KafkaReader) SetPhase(phase string) {
 	r.phase = phase
 }
 
+// SetPartitionState sets the partition ring state for the reader.
+func (r *KafkaReader) SetPartitionState(state string) {
+	r.partitionStateMu.Lock()
+	defer r.partitionStateMu.Unlock()
+	r.partitionState = state
+}
+
 // Poll retrieves the next batch of records from Kafka
 // Number of records fetched can be limited by configuring maxPollRecords to a non-zero value.
 func (r *KafkaReader) Poll(ctx context.Context, maxPollRecords int) ([]Record, error) {
@@ -166,14 +180,25 @@ func (r *KafkaReader) Poll(ctx context.Context, maxPollRecords int) ([]Record, e
 	fetches := r.client.PollRecords(ctx, maxPollRecords)
 	r.metrics.fetchWaitDuration.Observe(time.Since(start).Seconds())
 
+	// Capture current partition state once for consistent metric labeling
+	r.partitionStateMu.RLock()
+	partitionState := r.partitionState
+	r.partitionStateMu.RUnlock()
+
 	// Record metrics
 	r.metrics.fetchesTotal.Add(float64(len(fetches)))
 	var numRecords int
 	fetches.EachRecord(func(record *kgo.Record) {
 		numRecords++
-		r.metrics.consumptionLag.WithLabelValues(r.phase).Observe(time.Since(record.Timestamp).Seconds())
+		r.metrics.consumptionLag.WithLabelValues(r.phase, partitionState).Observe(time.Since(record.Timestamp).Seconds())
 	})
 	r.metrics.recordsPerFetch.Observe(float64(numRecords))
+
+	// If no records were fetched, observe lag as 0 (caught up)
+	// This ensures inactive partitions continue reporting metrics
+	if numRecords == 0 {
+		r.metrics.consumptionLag.WithLabelValues(r.phase, partitionState).Observe(0)
+	}
 
 	// Handle errors
 	var errs multierror.MultiError

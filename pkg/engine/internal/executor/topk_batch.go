@@ -5,6 +5,7 @@ import (
 	"slices"
 
 	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/arrowagg"
@@ -81,6 +82,48 @@ func (b *topkBatch) Put(rec arrow.RecordBatch) {
 		compacted := b.Compact()
 		b.put(compacted)
 	}
+}
+
+func (b *topkBatch) IsFull() bool {
+	return b.ready && b.K > 0 && b.heap.Len() >= b.K
+}
+
+func (b *topkBatch) Peek() arrow.RecordBatch {
+	ref, ok := b.heap.Peek()
+
+	if !ok {
+		return nil
+	}
+
+	return b.refToRecordBatch(ref)
+}
+
+func (b *topkBatch) refToRecordBatch(ref *topkReference) arrow.RecordBatch {
+	schema := arrow.NewSchema(b.Fields, nil)
+	rb := array.NewRecordBuilder(memory.DefaultAllocator, schema)
+
+	for fieldIndex := range b.Fields {
+		switch arr := b.findRecordArray(ref.Record, b.mapper, fieldIndex).(type) {
+		case *array.Binary:
+			rb.Field(fieldIndex).(*array.BinaryBuilder).Append(arr.Value(ref.Row))
+		case *array.Duration:
+			rb.Field(fieldIndex).(*array.DurationBuilder).Append(arr.Value(ref.Row))
+		case *array.Float64:
+			rb.Field(fieldIndex).(*array.Float64Builder).Append(arr.Value(ref.Row))
+		case *array.Uint64:
+			rb.Field(fieldIndex).(*array.Uint64Builder).Append(arr.Value(ref.Row))
+		case *array.Int64:
+			rb.Field(fieldIndex).(*array.Int64Builder).Append(arr.Value(ref.Row))
+		case *array.String:
+			rb.Field(fieldIndex).(*array.StringBuilder).Append(arr.Value(ref.Row))
+		case *array.Timestamp:
+			rb.Field(fieldIndex).(*array.TimestampBuilder).Append(arr.Value(ref.Row))
+		default:
+			panic(fmt.Errorf("unknown array type: %T", ref.Record))
+		}
+	}
+
+	return rb.NewRecordBatch()
 }
 
 // put adds rows from rec into b without checking the number of unused rows.

@@ -1692,6 +1692,10 @@ write:
     # If empty or set to null, no storageClassName spec is
     # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
     storageClass: null
+    # -- Volume attributes class name to be used.
+    # If empty or set to null, no volumeAttributesClassName spec is set.
+    # Requires Kubernetes 1.31
+    volumeAttributesClassName: null
     # -- Selector for persistent disk
     selector: null
     # -- Annotations for volume claim
@@ -1823,6 +1827,10 @@ read:
     # If empty or set to null, no storageClassName spec is
     # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
     storageClass: null
+    # -- Volume attributes class name to be used.
+    # If empty or set to null, no volumeAttributesClassName spec is set.
+    # Requires Kubernetes 1.31
+    volumeAttributesClassName: null
     # -- Selector for persistent disk
     selector: null
     # -- Annotations for volume claim
@@ -1950,6 +1958,10 @@ backend:
     # If empty or set to null, no storageClassName spec is
     # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
     storageClass: null
+    # -- Volume attributes class name to be used.
+    # If empty or set to null, no volumeAttributesClassName spec is set.
+    # Requires Kubernetes 1.31
+    volumeAttributesClassName: null
     # -- Selector for persistent disk
     selector: null
     # -- Annotations for volume claim
@@ -2109,6 +2121,10 @@ ingester:
         #   If empty or set to null, no storageClassName spec is
         #   set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
         storageClass: null
+        # -- Volume attributes class name to be used.
+        # If empty or set to null, no volumeAttributesClassName spec is set.
+        # Requires Kubernetes 1.31
+        volumeAttributesClassName: null
         # - name: wal
         #   size: 150Gi
     # -- Enable StatefulSetAutoDeletePVC feature
@@ -2675,6 +2691,10 @@ indexGateway:
     # If empty or set to null, no storageClassName spec is
     # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
     storageClass: null
+    # -- Volume attributes class name to be used.
+    # If empty or set to null, no volumeAttributesClassName spec is set.
+    # Requires Kubernetes 1.31
+    volumeAttributesClassName: null
     # -- Annotations for index gateway PVCs
     annotations: {}
     # -- Labels for index gateway PVCs
@@ -2787,6 +2807,10 @@ compactor:
         #   If empty or set to null, no storageClassName spec is
         #   set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
         storageClass: null
+        # -- Volume attributes class name to be used.
+        # If empty or set to null, no volumeAttributesClassName spec is set.
+        # Requires Kubernetes 1.31
+        volumeAttributesClassName: null
         # -- Annotations for compactor PVCs
         annotations: {}
         # -- Labels for compactor PVCs
@@ -2906,6 +2930,10 @@ bloomGateway:
         #   If empty or set to null, no storageClassName spec is
         #   set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
         storageClass: null
+        # -- Volume attributes class name to be used.
+        # If empty or set to null, no volumeAttributesClassName spec is set.
+        # Requires Kubernetes 1.31
+        volumeAttributesClassName: null
     # -- Enable StatefulSetAutoDeletePVC feature
     enableStatefulSetAutoDeletePVC: false
     whenDeleted: Retain
@@ -3016,6 +3044,10 @@ bloomPlanner:
         #   If empty or set to null, no storageClassName spec is
         #   set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
         storageClass: null
+        # -- Volume attributes class name to be used.
+        # If empty or set to null, no volumeAttributesClassName spec is set.
+        # Requires Kubernetes 1.31
+        volumeAttributesClassName: null
         # -- Annotations for bloom-planner PVCs
         annotations: {}
         # -- Labels for bloom planner PVCs
@@ -3240,6 +3272,10 @@ patternIngester:
         #   If empty or set to null, no storageClassName spec is
         #   set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
         storageClass: null
+        # -- Volume attributes class name to be used.
+        # If empty or set to null, no volumeAttributesClassName spec is set.
+        # Requires Kubernetes 1.31
+        volumeAttributesClassName: null
         # -- Annotations for pattern ingester PVCs
         annotations: {}
         # -- Labels for pattern ingester PVCs
@@ -3351,6 +3387,10 @@ ruler:
     # If empty or set to null, no storageClassName spec is
     # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
     storageClass: null
+    # -- Volume attributes class name to be used.
+    # If empty or set to null, no volumeAttributesClassName spec is set.
+    # Requires Kubernetes 1.31
+    volumeAttributesClassName: null
     # -- Annotations for ruler PVCs
     annotations: {}
     # -- Labels for ruler PVCs
@@ -3694,6 +3734,10 @@ resultsCache:
     # If empty or set to null, no storageClassName spec is
     # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
     storageClass: null
+    # -- Volume attributes class name to be used.
+    # If empty or set to null, no volumeAttributesClassName spec is set.
+    # Requires Kubernetes 1.31
+    volumeAttributesClassName: null
     # -- Volume mount path
     mountPath: /data
     # -- PVC additional labels
@@ -3805,6 +3849,10 @@ chunksCache:
     # If empty or set to null, no storageClassName spec is
     # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
     storageClass: null
+    # -- Volume attributes class name to be used.
+    # If empty or set to null, no volumeAttributesClassName spec is set.
+    # Requires Kubernetes 1.31
+    volumeAttributesClassName: null
     # -- Volume mount path
     mountPath: /data
     labels: {}
@@ -3919,6 +3967,10 @@ chunksCache:
       # If empty or set to null, no storageClassName spec is
       # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
       storageClass: null
+      # -- Volume attributes class name to be used.
+      # If empty or set to null, no volumeAttributesClassName spec is set.
+      # Requires Kubernetes 1.31
+      volumeAttributesClassName: null
       # -- Volume mount path
       mountPath: /data
       labels: {}

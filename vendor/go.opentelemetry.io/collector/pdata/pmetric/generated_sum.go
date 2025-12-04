@@ -8,7 +8,6 @@ package pmetric
 
 import (
 	"go.opentelemetry.io/collector/pdata/internal"
-	otlpmetrics "go.opentelemetry.io/collector/pdata/internal/data/protogen/metrics/v1"
 )
 
 // Sum represents the type of a numeric metric that is calculated as a sum of all reported measurements over a time interval.
@@ -19,11 +18,11 @@ import (
 // Must use NewSum function to create new instances.
 // Important: zero-initialized instance is not valid for use.
 type Sum struct {
-	orig  *otlpmetrics.Sum
+	orig  *internal.Sum
 	state *internal.State
 }
 
-func newSum(orig *otlpmetrics.Sum, state *internal.State) Sum {
+func newSum(orig *internal.Sum, state *internal.State) Sum {
 	return Sum{orig: orig, state: state}
 }
 
@@ -32,7 +31,7 @@ func newSum(orig *otlpmetrics.Sum, state *internal.State) Sum {
 // This must be used only in testing code. Users should use "AppendEmpty" when part of a Slice,
 // OR directly access the member if this is embedded in another struct.
 func NewSum() Sum {
-	return newSum(internal.NewOrigSum(), internal.NewState())
+	return newSum(internal.NewSum(), internal.NewState())
 }
 
 // MoveTo moves all properties from the current struct overriding the destination and
@@ -44,7 +43,7 @@ func (ms Sum) MoveTo(dest Sum) {
 	if ms.orig == dest.orig {
 		return
 	}
-	internal.DeleteOrigSum(dest.orig, false)
+	internal.DeleteSum(dest.orig, false)
 	*dest.orig, *ms.orig = *ms.orig, *dest.orig
 }
 
@@ -61,7 +60,7 @@ func (ms Sum) AggregationTemporality() AggregationTemporality {
 // SetAggregationTemporality replaces the aggregationtemporality associated with this Sum.
 func (ms Sum) SetAggregationTemporality(v AggregationTemporality) {
 	ms.state.AssertMutable()
-	ms.orig.AggregationTemporality = otlpmetrics.AggregationTemporality(v)
+	ms.orig.AggregationTemporality = internal.AggregationTemporality(v)
 }
 
 // IsMonotonic returns the ismonotonic associated with this Sum.
@@ -78,5 +77,5 @@ func (ms Sum) SetIsMonotonic(v bool) {
 // CopyTo copies all properties from the current struct overriding the destination.
 func (ms Sum) CopyTo(dest Sum) {
 	dest.state.AssertMutable()
-	internal.CopyOrigSum(dest.orig, ms.orig)
+	internal.CopySum(dest.orig, ms.orig)
 }

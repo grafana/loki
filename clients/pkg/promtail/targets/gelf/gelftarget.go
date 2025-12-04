@@ -124,21 +124,7 @@ func (t *Target) handleMessage(msg *gelf.Message) {
 
 	var processed labels.Labels
 	if len(t.relabelConfig) > 0 {
-		// Validate relabel configs to set the validation scheme properly
-		valid := true
-		for _, rc := range t.relabelConfig {
-			if err := rc.Validate(model.UTF8Validation); err != nil {
-				// If validation fails, skip relabeling and use original labels
-				valid = false
-				break
-			}
-		}
-		// Only process if all configs were validated successfully
-		if valid {
-			processed, _ = relabel.Process(lb.Labels(), t.relabelConfig...)
-		} else {
-			processed = lb.Labels()
-		}
+		processed, _ = relabel.Process(lb.Labels(), t.relabelConfig...)
 	} else {
 		processed = lb.Labels()
 	}
