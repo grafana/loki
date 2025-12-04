@@ -207,6 +207,9 @@ func NewProxy(cfg ProxyConfig, logger log.Logger, readRoutes, writeRoutes []Rout
 		// Create Goldfish manager
 		samplesComparator := comparator.NewSamplesComparator(comparator.SampleComparisonOptions{
 			Tolerance: cfg.ValueComparisonTolerance,
+			UseRelativeError: cfg.UseRelativeError,
+			SkipRecentSamples: cfg.SkipRecentSamples,
+			SkipSamplesBefore: time.Time(cfg.SkipSamplesBefore),
 		})
 
 		goldfishManager, err := goldfish.NewManager(cfg.Goldfish, *samplesComparator, storage, resultStore, logger, registerer)
