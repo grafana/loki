@@ -322,6 +322,59 @@ func ResourceRequirementsForSize(size lokiv1.LokiStackSizeType, useRequestsAsLim
 	return resources
 }
 
+// ApplyResourceOverrides merges user-provided resource overrides from LokiComponentSpec
+// into the component resources. User-provided resources take precedence over size defaults.
+func ApplyResourceOverrides(resources *ComponentResources, template *lokiv1.LokiTemplateSpec) {
+	if template == nil {
+		return
+	}
+
+	if template.Ingester != nil && template.Ingester.Resources != nil {
+		applyResourceOverride(&resources.Ingester, template.Ingester.Resources)
+	}
+	if template.Querier != nil && template.Querier.Resources != nil {
+		applyResourceOverrideToCorev1(&resources.Querier, template.Querier.Resources)
+	}
+	if template.Distributor != nil && template.Distributor.Resources != nil {
+		applyResourceOverrideToCorev1(&resources.Distributor, template.Distributor.Resources)
+	}
+	if template.QueryFrontend != nil && template.QueryFrontend.Resources != nil {
+		applyResourceOverrideToCorev1(&resources.QueryFrontend, template.QueryFrontend.Resources)
+	}
+	if template.Gateway != nil && template.Gateway.Resources != nil {
+		applyResourceOverrideToCorev1(&resources.Gateway, template.Gateway.Resources)
+	}
+	if template.IndexGateway != nil && template.IndexGateway.Resources != nil {
+		applyResourceOverride(&resources.IndexGateway, template.IndexGateway.Resources)
+	}
+	if template.Compactor != nil && template.Compactor.Resources != nil {
+		applyResourceOverride(&resources.Compactor, template.Compactor.Resources)
+	}
+	if template.Ruler != nil && template.Ruler.Resources != nil {
+		applyResourceOverride(&resources.Ruler, template.Ruler.Resources)
+	}
+}
+
+// applyResourceOverride applies a ResourceRequirements override to a ResourceRequirements struct
+func applyResourceOverride(target *ResourceRequirements, override *corev1.ResourceRequirements) {
+	if override.Requests != nil {
+		target.Requests = override.Requests.DeepCopy()
+	}
+	if override.Limits != nil {
+		target.Limits = override.Limits.DeepCopy()
+	}
+}
+
+// applyResourceOverrideToCorev1 applies a ResourceRequirements override to a corev1.ResourceRequirements struct
+func applyResourceOverrideToCorev1(target *corev1.ResourceRequirements, override *corev1.ResourceRequirements) {
+	if override.Requests != nil {
+		target.Requests = override.Requests.DeepCopy()
+	}
+	if override.Limits != nil {
+		target.Limits = override.Limits.DeepCopy()
+	}
+}
+
 // StackSizeTable defines the default configurations for each size
 var StackSizeTable = map[lokiv1.LokiStackSizeType]lokiv1.LokiStackSpec{
 	lokiv1.SizeOneXDemo: {
