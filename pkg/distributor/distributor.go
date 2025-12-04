@@ -211,7 +211,7 @@ type Distributor struct {
 
 	// inflightBytes keeps track of the total number of bytes for all in-flight
 	// push requests.
-	inflightBytes      atomic.Uint64
+	inflightBytes      *atomic.Uint64
 	inflightBytesGauge prometheus.Gauge
 
 	// kafka metrics
@@ -396,7 +396,7 @@ func New(
 		partitionRing:         partitionRing,
 		ingestLimits:          ingestLimits,
 		numMetadataPartitions: numMetadataPartitions,
-		inflightBytes:         *atomic.NewUint64(0),
+		inflightBytes:         atomic.NewUint64(0),
 		inflightBytesGauge: promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
 			Namespace: constants.Loki,
 			Name:      "distributor_inflight_bytes",
