@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/loki/v3/pkg/storage/bucket"
 )
 
@@ -52,7 +53,14 @@ type Config struct {
 	// ComparisonMinAge is the minimum age of data to send to goldfish for comparison.
 	// Only data older than this threshold will be compared. Data newer than this threshold
 	// will only be fetched from the main cell. When set to 0 (default), all data is compared.
-	ComparisonMinAge time.Duration `yaml:"comparison_min_age"`
+	ComparisonMinAge time.Duration `yaml:"comparison_min_age" category:"experimental"`
+
+	// ComparisonStartDate is the start data of data we want to compare with goldfish.
+	// This is part of the query splitting feature. Queries will be split into up to three parts:
+	// 1. Data before ComparisonStartDate -> split goes to the preferred backend only
+	// 2. Data between ComparisonStartDate and (now - ComparisonMinAge) -> splits go to all backends and are compared with goldfish
+	// 3. Data after (now - ComparisonMinAge) -> split goes to the preferred backend only
+	ComparisonStartDate flagext.Time  `yaml:"storage_start_date" category:"experimental"`
 }
 
 // SamplingConfig defines how queries are sampled
@@ -140,6 +148,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	// Query splitting flags
 	f.DurationVar(&cfg.ComparisonMinAge, "goldfish.comparison-min-age", 0, "Minimum age of data to compare with goldfish. Only data older than this threshold is sent to goldfish for comparison. When 0 (default), query splitting is disabled and all data is compared.")
+	f.Var(&cfg.ComparisonStartDate, "goldfish.comparison-start-date", "Initial date when data objects became available. Format YYYY-MM-DD. If not set, assume data objects are always available and splits for this time range will go to all backends. If set, splits for data older than this date will go to the preferred backend only.")
 }
 
 // Validate validates the configuration

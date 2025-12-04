@@ -13,11 +13,12 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/tools/querytee/goldfish"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 type ResponsesComparator interface {
@@ -45,9 +46,23 @@ type ProxyEndpoint struct {
 
 	// Goldfish manager for query sampling and comparison
 	goldfishManager *goldfish.Manager
+
+	// Handler for processing requests using the middleware pattern.
+	// When set, ServeHTTP uses this instead of the legacy executeBackendRequests.
+	handler queryrangebase.Handler
+
+	// Codec for encoding/decoding requests and responses.
+	codec queryrangebase.Codec
 }
 
-func NewProxyEndpoint(backends []*ProxyBackend, routeName string, metrics *ProxyMetrics, logger log.Logger, comparator ResponsesComparator, instrumentCompares bool) *ProxyEndpoint {
+func NewProxyEndpoint(
+	backends []*ProxyBackend,
+	routeName string,
+	metrics *ProxyMetrics,
+	logger log.Logger,
+	comparator ResponsesComparator,
+	instrumentCompares bool,
+) *ProxyEndpoint {
 	hasPreferredBackend := false
 	for _, backend := range backends {
 		if backend.preferred {
@@ -73,7 +88,61 @@ func (p *ProxyEndpoint) WithGoldfish(manager *goldfish.Manager) *ProxyEndpoint {
 	return p
 }
 
+// WithHandler sets the middleware-based handler for the endpoint.
+// When set, ServeHTTP uses this handler instead of the legacy executeBackendRequests.
+func (p *ProxyEndpoint) WithHandler(handler queryrangebase.Handler, codec queryrangebase.Codec) *ProxyEndpoint {
+	p.handler = handler
+	p.codec = codec
+	return p
+}
+
 func (p *ProxyEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	// Decode the HTTP request into a queryrangebase.Request
+	req, err := p.codec.DecodeRequest(ctx, r, nil)
+	if err != nil {
+		level.Error(p.logger).Log("msg", "Failed to decode request", "err", err)
+		http.Error(w, fmt.Sprintf("failed to decode request: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	// Execute the handler
+	resp, err := p.handler.Do(ctx, req)
+	if err != nil {
+		level.Error(p.logger).Log("msg", "Handler failed", "err", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Encode the response back to HTTP
+	httpResp, err := p.codec.EncodeResponse(ctx, r, resp)
+	if err != nil {
+		level.Error(p.logger).Log("msg", "Failed to encode response", "err", err)
+		http.Error(w, fmt.Sprintf("failed to encode response: %v", err), http.StatusInternalServerError)
+		return
+	}
+	defer httpResp.Body.Close()
+
+	// Copy response headers
+	for key, values := range httpResp.Header {
+		for _, value := range values {
+			w.Header().Add(key, value)
+		}
+	}
+
+	// Write status code
+	w.WriteHeader(httpResp.StatusCode)
+
+	// Copy response body
+	if _, err := io.Copy(w, httpResp.Body); err != nil {
+		level.Warn(p.logger).Log("msg", "Unable to write response body", "err", err)
+	}
+}
+
+// TODO(twhitney): remove this function
+// serveLegacy uses the original executeBackendRequests path.
+func (p *ProxyEndpoint) serveLegacy(w http.ResponseWriter, r *http.Request) {
 	// Extract tenant for sampling decision
 	tenant := extractTenant(r)
 
@@ -148,8 +217,8 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *Back
 	)
 
 	level.Debug(p.logger).Log(
-		"msg", "Received request", 
-		"path", r.URL.Path, 
+		"msg", "Received request",
+		"path", r.URL.Path,
 		"query", query,
 		"issuer", issuer,
 		"user", goldfish.ExtractUserFromQueryTags(r, p.logger),
@@ -229,7 +298,7 @@ func (p *ProxyEndpoint) executeSplitQuery(
 	if err != nil {
 		level.Error(p.logger).Log("msg", "Failed to create split requests", "err", err)
 		// Fall back to normal execution without goldfish comparison
-		p.executeBackendRequests(r, resCh, false)
+		p.executeBackendRequests(r, resCh, false, false)
 		return
 	}
 

@@ -309,7 +309,7 @@ func Test_engineRouter_Do(t *testing.T) {
 		Handler:  v2EngineHandler,
 	}
 
-	router := newEngineRouterMiddleware(
+	router := NewEngineRouterMiddleware(
 		routerConfig,
 		[]queryrangebase.Middleware{newEntrySuffixTestMiddleware(" [v1-chain-processed]")},
 		DefaultCodec,

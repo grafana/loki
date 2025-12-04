@@ -92,6 +92,10 @@ func (m *Manager) ComparisonMinAge() time.Duration {
 	return m.config.ComparisonMinAge
 }
 
+func (m *Manager) ComparisonStartDate() time.Time {
+	return time.Time(m.config.ComparisonStartDate)
+}
+
 // ShouldSample determines if a query should be sampled based on tenant configuration.
 // Returns false if Goldfish is disabled or if the tenant should not be sampled.
 func (m *Manager) ShouldSample(tenantID string) bool {

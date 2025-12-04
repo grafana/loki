@@ -22,6 +22,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/tools/querytee/goldfish"
 )
 
@@ -91,9 +92,17 @@ type Proxy struct {
 
 	// Goldfish manager for query sampling and comparison
 	goldfishManager *goldfish.Manager
+
+	// Handler factory for creating middleware-based handlers
+	handlerFactory *HandlerFactory
 }
 
-func NewProxy(cfg ProxyConfig, logger log.Logger, readRoutes, writeRoutes []Route, registerer prometheus.Registerer) (*Proxy, error) {
+func NewProxy(
+	cfg ProxyConfig,
+	logger log.Logger,
+	readRoutes, writeRoutes []Route,
+	registerer prometheus.Registerer,
+) (*Proxy, error) {
 	if cfg.CompareResponses && cfg.PreferredBackend == "" {
 		return nil, fmt.Errorf("when enabling comparison of results -backend.preferred flag must be set to hostname of preferred backend")
 	}
@@ -221,6 +230,18 @@ func NewProxy(cfg ProxyConfig, logger log.Logger, readRoutes, writeRoutes []Rout
 			"results_backend", cfg.Goldfish.ResultsStorage.Backend)
 	}
 
+	p.handlerFactory = NewHandlerFactory(HandlerFactoryConfig{
+		Backends:        p.backends,
+		Codec:           queryrange.DefaultCodec,
+		GoldfishManager: p.goldfishManager,
+		Logger:          logger,
+		Metrics:         p.metrics,
+		Comparator:      nil, // Will be set per-route
+	})
+	level.Info(logger).Log(
+		"msg", "Middleware handler enabled",
+		"comparison_min_age", cfg.Goldfish.ComparisonMinAge)
+
 	return p, nil
 }
 
@@ -244,12 +265,45 @@ func (p *Proxy) Start() error {
 		if p.cfg.CompareResponses {
 			comparator = route.ResponseComparator
 		}
-		endpoint := NewProxyEndpoint(filterReadDisabledBackends(p.backends, p.cfg.DisableBackendReadProxy), route.RouteName, p.metrics, p.logger, comparator, p.cfg.InstrumentCompares)
+		filteredBackends := filterReadDisabledBackends(p.backends, p.cfg.DisableBackendReadProxy)
+		endpoint := NewProxyEndpoint(
+			filteredBackends,
+			route.RouteName,
+			p.metrics,
+			p.logger,
+			comparator,
+			p.cfg.InstrumentCompares,
+		)
+
 		// Add Goldfish if configured
 		if p.goldfishManager != nil {
 			endpoint.WithGoldfish(p.goldfishManager)
-			level.Info(p.logger).Log("msg", "Goldfish attached to route", "path", route.Path, "methods", strings.Join(route.Methods, ","))
+			level.Info(p.logger).Log(
+				"msg", "Goldfish attached to route",
+				"path", route.Path,
+				"methods", strings.Join(route.Methods, ","),
+				"comparison_min_age", p.goldfishManager.ComparisonMinAge(),
+			)
 		}
+
+		// Create a route-specific handler factory with the filtered backends
+		routeHandlerFactory := NewHandlerFactory(HandlerFactoryConfig{
+			Backends:        filteredBackends,
+			Codec:           queryrange.DefaultCodec,
+			GoldfishManager: p.goldfishManager,
+			Logger:          p.logger,
+			Metrics:         p.metrics,
+			Comparator:      comparator,
+		})
+		handler := routeHandlerFactory.CreateHandler(route.RouteName)
+		endpoint.WithHandler(handler, queryrange.DefaultCodec)
+		level.Info(p.logger).Log(
+			"msg", "Middleware handler attached to route",
+			"path", route.Path,
+			"methods", strings.Join(route.Methods, ","),
+			"comparison_min_age", p.goldfishManager.ComparisonMinAge(),
+		)
+
 		router.Path(route.Path).Methods(route.Methods...).Handler(endpoint)
 	}
 
