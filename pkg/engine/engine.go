@@ -237,6 +237,7 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	md := metadata.FromContext(ctx)
 
 	region.SetStatus(codes.Ok, "")
+	stats.Summary = capture.ToStatsSummary(durFull, 0, builder.Len())
 	result := builder.Build(stats, md)
 
 	logql.RecordRangeAndInstantQueryMetrics(ctx, logger, params, strconv.Itoa(http.StatusOK), stats, result.Data)

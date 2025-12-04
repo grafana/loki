@@ -68,3 +68,27 @@ func (a *AggregatedObservation) aggregate(aggType AggregationType, val any) {
 		}
 	}
 }
+
+func (a *AggregatedObservation) Int64() (int64, bool) {
+	if a.Statistic.DataType() != DataTypeInt64 {
+		return 0, false
+	}
+
+	return a.Value.(int64), true
+}
+
+func (a *AggregatedObservation) Float64() (float64, bool) {
+	if a.Statistic.DataType() != DataTypeFloat64 {
+		return 0, false
+	}
+
+	return a.Value.(float64), true
+}
+
+func (a *AggregatedObservation) Bool() bool {
+	if a.Statistic.DataType() != DataTypeBool {
+		return false
+	}
+
+	return a.Value.(bool)
+}

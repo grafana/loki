@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/dustin/go-humanize"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 )
 
 // observations holds aggregated observations that can be transformed and merged.
@@ -228,4 +229,65 @@ func (c *observationCollector) rollUpObservations(region *Region, excludedSet ma
 	}
 
 	return result
+}
+
+// Region name for data object scan operations.
+const regionNameDataObjScan = "DataObjScan"
+
+// ToStatsSummary computes a stats.Summary from observations in the capture.
+func (c *Capture) ToStatsSummary(execTime, queueTime time.Duration, totalEntriesReturned int) stats.Summary {
+	summary := stats.Summary{
+		ExecTime:             execTime.Seconds(),
+		QueueTime:            queueTime.Seconds(),
+		TotalEntriesReturned: int64(totalEntriesReturned),
+	}
+
+	if c == nil {
+		return summary
+	}
+
+	// Collect observations from DataObjScan as the summary stats mainly relate to log lines.
+	// In practice, new engine would process more bytes while scanning metastore objects and stream sections.
+	collector := newObservationCollector(c)
+	observations := collector.fromRegions(regionNameDataObjScan, true).filter(
+		StatRowsOut.Key(),
+		StatPrimaryRowsRead.Key(),
+		StatPrimaryColumnUncompressedBytes.Key(),
+		StatSecondaryColumnUncompressedBytes.Key(),
+	)
+
+	// TotalBytesProcessed: sum of uncompressed bytes from primary and secondary columns
+	summary.TotalBytesProcessed = readInt64(observations, StatPrimaryColumnUncompressedBytes.Key()) +
+		readInt64(observations, StatSecondaryColumnUncompressedBytes.Key())
+
+	// TotalLinesProcessed: primary rows read
+	summary.TotalLinesProcessed = readInt64(observations, StatPrimaryRowsRead.Key())
+
+	// TotalPostFilterLines: rows output after filtering
+	// TODO: this will report the wrong value if the plan has a filter stage.
+	// pick the min of row_out from filter and scan nodes.
+	summary.TotalPostFilterLines = readInt64(observations, StatRowsOut.Key())
+
+	if execTime > 0 {
+		execSeconds := execTime.Seconds()
+		summary.BytesProcessedPerSecond = int64(float64(summary.TotalBytesProcessed) / execSeconds)
+		summary.LinesProcessedPerSecond = int64(float64(summary.TotalLinesProcessed) / execSeconds)
+	}
+
+	return summary
+}
+
+// readInt64 reads an int64 observation for the given stat key.
+func readInt64(o *observations, key StatisticKey) int64 {
+	if o == nil {
+		return 0
+	}
+
+	if agg, ok := o.data[key]; ok {
+		if v, ok := agg.Int64(); ok {
+			return v
+		}
+	}
+
+	return 0
 }
