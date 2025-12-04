@@ -12,6 +12,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/middleware"
+	querier_stats "github.com/grafana/loki/v3/pkg/querier/stats"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -198,6 +199,16 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 				// Log and record metrics for the current query
 				responseStats.ComputeSummary(time.Since(start), 0, totalEntries)
 				logger.LogKV(responseStats.KVList()...)
+				// update querier_stats.Stats so that frontend component can log stats info passed through ctx
+				if querierStats := querier_stats.FromContext(ctx); querierStats != nil {
+					querierStats.AddWallTime(time.Since(start))
+					if responseStats.Summary.TotalLinesProcessed > 0 {
+						querierStats.AddFetchedSeries(uint64(responseStats.Summary.TotalLinesProcessed))
+					}
+					if responseStats.Summary.TotalBytesProcessed > 0 {
+						querierStats.AddFetchedChunkBytes(uint64(responseStats.Summary.TotalBytesProcessed))
+					}
+				}
 			}
 			ctxValue := ctx.Value(ctxKey)
 			if data, ok := ctxValue.(*queryData); ok {
