@@ -36,7 +36,7 @@ func RegionFromContext(ctx context.Context) *Region {
 	return v
 }
 
-// contextWithRegion returns a new context with the given Region.
-func contextWithRegion(ctx context.Context, region *Region) context.Context {
+// ContextWithRegion returns a new context with the given Region.
+func ContextWithRegion(ctx context.Context, region *Region) context.Context {
 	return context.WithValue(ctx, regionKey, region)
 }
