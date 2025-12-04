@@ -97,7 +97,11 @@ local weeklyImageJobs = {
       releaseBranchTemplate='release-\\${major}.\\${minor}.x',
       releaseRepo='grafana/loki',
       useGitHubAppToken=true,
-    ), false, false
+    ) + {
+      env+: {
+        GO_VERSION: goVersion,
+      },
+    }, false, false
   ),
   'check.yml': std.manifestYamlDoc({
     name: 'check',
