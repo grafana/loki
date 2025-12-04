@@ -8,12 +8,14 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"reflect"
 	"strings"
 	"time"
 
 	"github.com/IBM/ibm-cos-sdk-go/aws"
 	"github.com/IBM/ibm-cos-sdk-go/aws/request"
+	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/aws/smithy-go"
@@ -922,28 +924,63 @@ func dynamoOptionsFromURL(awsURL *url.URL) (dynamodb.Options, error) {
 	if len(path) > 0 {
 		level.Warn(log.Logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
 	}
-	config, err := DynamoConfigFromURL(awsURL)
+	config, err := dynamodbOptionsFromURL(awsURL)
 	if err != nil {
 		return dynamodb.Options{}, err
 	}
 	config.RetryMaxAttempts = 0 // We do our own retries, so we can monitor them
-	config.HTTPClient = &http.Client{Transport: defaultTransport}
 	return *config, nil
 }
 
-// Copy-pasted http.DefaultTransport
-var defaultTransport http.RoundTripper = &http.Transport{
-	Proxy: http.ProxyFromEnvironment,
-	DialContext: (&net.Dialer{
-		Timeout:   30 * time.Second,
-		KeepAlive: 30 * time.Second,
-	}).DialContext,
-	ForceAttemptHTTP2: true,
-	MaxIdleConns:      100,
-	// We will connect many times in parallel to the same DynamoDB server,
-	// see https://github.com/golang/go/issues/13801
-	MaxIdleConnsPerHost:   100,
-	IdleConnTimeout:       90 * time.Second,
-	TLSHandshakeTimeout:   10 * time.Second,
-	ExpectContinueTimeout: 1 * time.Second,
+// Deprecated: Has been copied from ConfigFromURL which was used for generating the configuration for both S3 and DynamoDB
+// when the Amazon AWS SKD v1 was still used.
+func dynamodbOptionsFromURL(awsURL *url.URL) (*dynamodb.Options, error) {
+	httpClient := &http.Client{
+		Transport: &http.Transport{
+			Proxy: http.ProxyFromEnvironment,
+			DialContext: (&net.Dialer{
+				Timeout:   30 * time.Second,
+				KeepAlive: 30 * time.Second,
+			}).DialContext,
+			ForceAttemptHTTP2: true,
+			MaxIdleConns:      100,
+			// We will connect many times in parallel to the same DynamoDB server,
+			// see https://github.com/golang/go/issues/13801
+			MaxIdleConnsPerHost:   100,
+			IdleConnTimeout:       90 * time.Second,
+			TLSHandshakeTimeout:   10 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
+		},
+	}
+	config := dynamodb.Options{HTTPClient: httpClient}
+
+	// Use a custom http.Client with the golang defaults but also specifying
+	// MaxIdleConnsPerHost because of a bug in golang https://github.com/golang/go/issues/13801
+	// where MaxIdleConnsPerHost does not work as expected.
+
+	if awsURL.User != nil {
+		key, secret := credentialsFromURL(awsURL)
+
+		// We request at least the username or password being set to enable the static credentials.
+		if key != "" || secret != "" {
+			config.Credentials = credentials.NewStaticCredentialsProvider(key, secret, "")
+		}
+	}
+
+	if strings.Contains(awsURL.Host, ".") {
+		region := os.Getenv("AWS_REGION")
+		if region == "" {
+			region = InvalidAWSRegion
+		}
+		config.Region = region
+		if awsURL.Scheme == "https" {
+			config.BaseEndpoint = aws.String(fmt.Sprintf("%s://%s", awsURL.Scheme, awsURL.Host))
+		} else {
+			config.BaseEndpoint = aws.String(fmt.Sprintf("http://%s", awsURL.Host))
+		}
+	} else {
+		config.Region = awsURL.Host
+	}
+	// Let AWS generate default endpoint based on region passed as a host in URL.
+	return &config, nil
 }
