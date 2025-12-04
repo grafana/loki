@@ -4,6 +4,8 @@ import (
 	"net/url"
 )
 
+const InvalidAWSRegion = "dummy"
+
 func credentialsFromURL(awsURL *url.URL) (key, secret string) {
 	if awsURL.User != nil {
 		username := awsURL.User.Username()

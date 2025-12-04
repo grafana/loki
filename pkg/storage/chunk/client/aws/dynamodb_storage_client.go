@@ -970,7 +970,7 @@ func dynamodbOptionsFromURL(awsURL *url.URL) (*dynamodb.Options, error) {
 	if strings.Contains(awsURL.Host, ".") {
 		region := os.Getenv("AWS_REGION")
 		if region == "" {
-			region = "dummy"
+			region = InvalidAWSRegion
 		}
 		config.Region = region
 		if awsURL.Scheme == "https" {
