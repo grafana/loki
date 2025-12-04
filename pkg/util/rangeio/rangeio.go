@@ -31,7 +31,7 @@ var (
 	statOptimizedRangesCount = xcap.NewStatisticInt64("optimized.ranges", xcap.AggregationTypeSum)
 	statOptimizedRangesSize  = xcap.NewStatisticInt64("optimized.ranges.size.bytes", xcap.AggregationTypeSum)
 	// pick the min value when aggregating to track the slowest read.
-	statOptimizedThroughput = xcap.NewStatisticFloat64("optimized.ranges.throughput", xcap.AggregationTypeMin)
+	statOptimizedThroughput = xcap.NewStatisticFloat64("optimized.ranges.min.throughput", xcap.AggregationTypeMin)
 )
 
 // Range represents a range of data to be read.
