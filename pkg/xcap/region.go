@@ -211,6 +211,19 @@ func (r *Region) RecordError(err error) {
 	r.status = Status{Code: codes.Error, Message: err.Error()}
 }
 
+// Observations returns all aggregated observations recorded in the region.
+func (r *Region) Observations() []AggregatedObservation {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	observations := make([]AggregatedObservation, 0, len(r.observations))
+	for _, agg := range r.observations {
+		observations = append(observations, *agg)
+	}
+
+	return observations
+}
+
 // End completes the Region. Updates to the Region are ignored after calling End.
 func (r *Region) End() {
 	if r == nil {

@@ -16,6 +16,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 func Test_Reader_ReadAll(t *testing.T) {
@@ -882,4 +883,48 @@ func Test_DatasetGenerator(t *testing.T) {
 
 	t.Logf("timestamp column size: %s", humanize.Bytes(uint64(cols[0].ColumnDesc().UncompressedSize)))
 	t.Logf("label column size: %s", humanize.Bytes(uint64(cols[1].ColumnDesc().UncompressedSize)))
+}
+
+// Test_Reader_Stats tests that the reader properly tracks statistics via xcap regions.
+func Test_Reader_Stats(t *testing.T) {
+	dset, columns := buildTestDataset(t)
+
+	r := NewReader(ReaderOptions{
+		Dataset: dset,
+		Columns: columns,
+		Predicates: []Predicate{
+			GreaterThanPredicate{
+				Column: columns[3], // birth_year
+				Value:  Int64Value(1985),
+			},
+			EqualPredicate{
+				Column: columns[0], // first_name
+				Value:  BinaryValue([]byte("Alice")),
+			},
+		},
+	})
+	defer r.Close()
+
+	ctx, _ := xcap.NewCapture(context.Background(), nil)
+	_, err := readDatasetWithContext(ctx, r, 3)
+	require.NoError(t, err)
+
+	require.NotNil(t, r.region, "region should be available after reading")
+
+	observations := r.region.Observations()
+	obsMap := make(map[string]int64)
+	for _, obs := range observations {
+		obsMap[obs.Statistic.Name()] = obs.Value.(int64)
+	}
+
+	require.Equal(t, int64(2), obsMap[StatReadCalls.Name()])
+	require.Equal(t, int64(2), obsMap[StatPrimaryColumns.Name()])
+	require.Equal(t, int64(2), obsMap[StatSecondaryColumns.Name()])
+	require.Equal(t, int64(5), obsMap[StatPrimaryColumnPages.Name()])
+	require.Equal(t, int64(8), obsMap[StatSecondaryColumnPages.Name()])
+
+	require.Equal(t, int64(len(basicReaderTestData)), obsMap[StatMaxRows.Name()])
+	require.Equal(t, int64(3), obsMap[StatRowsAfterPruning.Name()])
+	require.Equal(t, int64(3), obsMap[StatPrimaryRowsRead.Name()])
+	require.Equal(t, int64(1), obsMap[StatSecondaryRowsRead.Name()])
 }
