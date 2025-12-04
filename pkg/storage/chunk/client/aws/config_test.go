@@ -180,4 +180,16 @@ func TestS3ClientOptions(t *testing.T) {
 		require.Equal(t, "http://minio:9100", *opts.BaseEndpoint)
 	})
 
+	// This is different behaviour of v2 over v1 SDK :
+	// In v1, we set the Region to `dummy` if neither `s3` nor `region` fields where present.
+	// In v2, the client would error if the Region is set to `dummy`.
+	t.Run("region is not automatically set when url is not present", func(t *testing.T) {
+		cfg := S3Config{}
+		fn, _ := s3ClientConfigFunc(cfg, hedging.Config{}, false)
+		opts := s3.Options{}
+		fn(&opts)
+
+		require.Equal(t, "", opts.Region)
+	})
+
 }

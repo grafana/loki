@@ -316,9 +316,6 @@ func s3ClientConfigFunc(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (
 				// s3://<key>:<secret>@us-east-0/<bucketname>
 				opts.Region = awsURL.Host
 			}
-
-		} else {
-			opts.Region = "dummy"
 		}
 
 		opts.RetryMaxAttempts = 0                // We do our own retries, so we can monitor them
