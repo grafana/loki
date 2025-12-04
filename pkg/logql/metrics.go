@@ -234,6 +234,8 @@ func RecordRangeAndInstantQueryMetrics(
 		"index_bloom_filter_ratio", fmt.Sprintf("%.2f", bloomRatio),
 		"index_used_bloom_filters", stats.Index.UsedBloomFilters,
 		"index_shard_resolver_duration", time.Duration(stats.Index.ShardsDuration),
+		"index_bloom_filter_time", logql_stats.ConvertSecondsToNanoseconds(stats.Index.BloomFilterTime),
+		"index_chunk_refs_lookup_time", logql_stats.ConvertSecondsToNanoseconds(stats.Index.ChunkRefsLookupTime),
 	}...)
 
 	if r, ok := result.(CountMinSketchVector); ok {
