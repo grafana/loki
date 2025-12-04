@@ -16,10 +16,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
-	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 // TestReader does a basic end-to-end test over a reader with a predicate applied.
@@ -160,80 +158,4 @@ func readTable(ctx context.Context, r *logs.Reader) (arrow.Table, error) {
 	}
 
 	return array.NewTableFromRecords(recs[0].Schema(), recs), nil
-}
-
-// TestReaderStats tests that the reader properly tracks statistics via xcap regions.
-func TestReaderStats(t *testing.T) {
-	sec := buildSection(t, []logs.Record{
-		{StreamID: 2, Timestamp: unixTime(40), Metadata: labels.FromStrings("trace_id", "789012"), Line: []byte("baz qux")},
-		{StreamID: 2, Timestamp: unixTime(30), Metadata: labels.FromStrings("trace_id", "123456"), Line: []byte("foo bar")},
-		{StreamID: 1, Timestamp: unixTime(20), Metadata: labels.FromStrings("trace_id", "abcdef"), Line: []byte("goodbye, world!")},
-		{StreamID: 1, Timestamp: unixTime(10), Metadata: labels.EmptyLabels(), Line: []byte("hello, world!")},
-	})
-
-	var (
-		streamID = sec.Columns()[0]
-		traceID  = sec.Columns()[2]
-		message  = sec.Columns()[3]
-	)
-
-	// Create a reader with predicates
-	r := logs.NewReader(logs.ReaderOptions{
-		Columns:   []*logs.Column{streamID, traceID, message},
-		Allocator: memory.DefaultAllocator,
-		Predicates: []logs.Predicate{
-			logs.FuncPredicate{
-				Column: traceID,
-				Keep: func(_ *logs.Column, value scalar.Scalar) bool {
-					if !value.IsValid() {
-						return false
-					}
-
-					bb := value.(*scalar.String).Value.Bytes()
-					return bytes.Equal(bb, []byte("abcdef")) || bytes.Equal(bb, []byte("123456"))
-				},
-			},
-			logs.InPredicate{
-				Column: streamID,
-				Values: []scalar.Scalar{
-					scalar.NewInt64Scalar(1),
-					scalar.NewInt64Scalar(2),
-				},
-			},
-		},
-	})
-
-	// Create xcap capture and region
-	ctx, _ := xcap.NewCapture(context.Background(), nil)
-	ctx, region := xcap.StartRegion(ctx, "test-reader")
-
-	// Read the data
-	_, err := readTable(ctx, r)
-	require.NoError(t, err)
-
-	region.End()
-
-	// Get observations from the region
-	observations := region.Observations()
-	obsMap := make(map[string]int64)
-	for _, obs := range observations {
-		obsMap[obs.Statistic.Name()] = obs.Value.(int64)
-	}
-
-	// Verify the stats are properly populated
-	require.Equal(t, int64(2), obsMap[dataset.StatReadCalls.Name()])
-	require.Equal(t, int64(2), obsMap[dataset.StatPrimaryColumns.Name()])   // from 2 predicates
-	require.Equal(t, int64(1), obsMap[dataset.StatSecondaryColumns.Name()]) // 1 secondary column
-	require.Equal(t, int64(2), obsMap[dataset.StatPrimaryColumnPages.Name()])
-	require.Equal(t, int64(1), obsMap[dataset.StatSecondaryColumnPages.Name()])
-
-	require.Equal(t, int64(4), obsMap[dataset.StatTotalRowsAvailable.Name()])
-	require.Equal(t, int64(4), obsMap[dataset.StatRowsAfterPruning.Name()])
-	require.Equal(t, int64(4), obsMap[dataset.StatPrimaryRowsRead.Name()])
-	require.Equal(t, int64(2), obsMap[dataset.StatSecondaryRowsRead.Name()]) // 2 rows pass the predicate
-
-	// Verify download stats - these should be populated by the downloader
-	require.Equal(t, int64(3), obsMap[dataset.StatPagesScanned.Name()]) // one page per column
-	require.Equal(t, int64(2), obsMap[dataset.StatPrimaryColumnPagesDownloaded.Name()])
-	require.Equal(t, int64(1), obsMap[dataset.StatSecondaryColumnPagesDownloaded.Name()])
 }

@@ -213,7 +213,7 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.RecordBatch, er
 	return builder.NewRecordBatch(), readErr
 }
 
-func (r *Reader) init(ctx context.Context) error {
+func (r *Reader) init(_ context.Context) error {
 	if err := r.opts.Validate(); err != nil {
 		return fmt.Errorf("invalid options: %w", err)
 	} else if r.opts.Allocator == nil {
