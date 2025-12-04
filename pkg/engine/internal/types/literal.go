@@ -10,6 +10,7 @@ import (
 	"github.com/dustin/go-humanize"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/util"
+	"github.com/grafana/loki/v3/pkg/logql/log"
 )
 
 type NullLiteral struct{}
@@ -204,6 +205,33 @@ func (l StringListLiteral) Value() []string {
 	return l
 }
 
+type LabelFmtListLiteral []log.LabelFmt
+
+func (l LabelFmtListLiteral) String() string {
+	tmp := "["
+	for _, f := range l {
+		tmp = tmp + "{Name:\"" + f.Name + "\", Value:\"" + f.Value + "\", Rename:" + strconv.FormatBool(f.Rename) + "}"
+	}
+	tmp += "]"
+	return tmp
+}
+func (l LabelFmtListLiteral) Any() LiteralType {
+	return l.Value()
+}
+func (l LabelFmtListLiteral) Value() []log.LabelFmt {
+	return l
+}
+
+// Type implements Literal.
+func (l LabelFmtListLiteral) Type() DataType {
+	tList := tList{
+		arrowType: arrow.ListOf(arrow.StructOf([]arrow.Field{{Name: "Name", Type: arrow.BinaryTypes.String},
+			{Name: "Value", Type: arrow.BinaryTypes.String},
+			{Name: "Rename", Type: arrow.FixedWidthTypes.Boolean}}...)),
+	}
+	return tList
+}
+
 // Literal is holds a value of [any] typed as [DataType].
 type Literal interface {
 	fmt.Stringer
@@ -221,24 +249,26 @@ type TypedLiteral[T LiteralType] interface {
 }
 
 var (
-	_ Literal                 = (*NullLiteral)(nil)
-	_ TypedLiteral[Null]      = (*NullLiteral)(nil)
-	_ Literal                 = (*BoolLiteral)(nil)
-	_ TypedLiteral[bool]      = (*BoolLiteral)(nil)
-	_ Literal                 = (*StringLiteral)(nil)
-	_ TypedLiteral[string]    = (*StringLiteral)(nil)
-	_ Literal                 = (*IntegerLiteral)(nil)
-	_ TypedLiteral[int64]     = (*IntegerLiteral)(nil)
-	_ Literal                 = (*FloatLiteral)(nil)
-	_ TypedLiteral[float64]   = (*FloatLiteral)(nil)
-	_ Literal                 = (*TimestampLiteral)(nil)
-	_ TypedLiteral[Timestamp] = (*TimestampLiteral)(nil)
-	_ Literal                 = (*DurationLiteral)(nil)
-	_ TypedLiteral[Duration]  = (*DurationLiteral)(nil)
-	_ Literal                 = (*BytesLiteral)(nil)
-	_ TypedLiteral[Bytes]     = (*BytesLiteral)(nil)
-	_ Literal                 = (*StringListLiteral)(nil)
-	_ TypedLiteral[[]string]  = (*StringListLiteral)(nil)
+	_ Literal                      = (*NullLiteral)(nil)
+	_ TypedLiteral[Null]           = (*NullLiteral)(nil)
+	_ Literal                      = (*BoolLiteral)(nil)
+	_ TypedLiteral[bool]           = (*BoolLiteral)(nil)
+	_ Literal                      = (*StringLiteral)(nil)
+	_ TypedLiteral[string]         = (*StringLiteral)(nil)
+	_ Literal                      = (*IntegerLiteral)(nil)
+	_ TypedLiteral[int64]          = (*IntegerLiteral)(nil)
+	_ Literal                      = (*FloatLiteral)(nil)
+	_ TypedLiteral[float64]        = (*FloatLiteral)(nil)
+	_ Literal                      = (*TimestampLiteral)(nil)
+	_ TypedLiteral[Timestamp]      = (*TimestampLiteral)(nil)
+	_ Literal                      = (*DurationLiteral)(nil)
+	_ TypedLiteral[Duration]       = (*DurationLiteral)(nil)
+	_ Literal                      = (*BytesLiteral)(nil)
+	_ TypedLiteral[Bytes]          = (*BytesLiteral)(nil)
+	_ Literal                      = (*StringListLiteral)(nil)
+	_ TypedLiteral[[]string]       = (*StringListLiteral)(nil)
+	_ Literal                      = (*LabelFmtListLiteral)(nil)
+	_ TypedLiteral[[]log.LabelFmt] = (*LabelFmtListLiteral)(nil)
 )
 
 func NewLiteral(value any) Literal {
@@ -265,9 +295,10 @@ func NewLiteral(value any) Literal {
 		return BytesLiteral(val)
 	case []string:
 		return StringListLiteral(val)
-	default:
-		panic(fmt.Sprintf("invalid literal value type %T", value))
+	case []log.LabelFmt:
+		return LabelFmtListLiteral(val)
 	}
+	panic(fmt.Sprintf("invalid literal value type %T", value))
 }
 
 func NewNullLiteral() NullLiteral {

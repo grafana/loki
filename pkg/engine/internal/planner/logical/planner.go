@@ -71,6 +71,10 @@ func buildPlanForLogQuery(
 		logfmtStrict        bool
 		logfmtKeepEmpty     bool
 		hasJSONParser       bool
+		hasLinefmtParser    bool
+		hasLabelfmtParser   bool
+		linefmtTemplate     Value
+		labelfmtTemplates   Value
 	)
 
 	// TODO(chaudum): Implement a Walk function that can return an error
@@ -120,11 +124,19 @@ func buildPlanForLogQuery(
 			err = errUnimplemented
 			return false // do not traverse children
 		case *syntax.LineFmtExpr:
-			err = unimplementedFeature("line_format")
-			return false // do not traverse children
+			hasLinefmtParser = true
+			linefmtTemplate = NewLiteral(e.Value)
+			return true
+			// val := convertLineFormat(e.Value)
+			// predicates = append(predicates, val)
+			// err = unimplementedFeature("line_format")
+			// return false // do not traverse children
 		case *syntax.LabelFmtExpr:
-			err = unimplementedFeature("label_format")
-			return false // do not traverse children
+			hasLabelfmtParser = true
+			labelfmtTemplates = NewLiteral(e.Formats)
+			return true
+			// err = unimplementedFeature("label_format")
+			// return false // do not traverse children
 		case *syntax.KeepLabelsExpr:
 			err = unimplementedFeature("keep")
 			return false // do not traverse children
@@ -191,6 +203,12 @@ func buildPlanForLogQuery(
 	if hasJSONParser {
 		// JSON has no parameters
 		builder = builder.Parse(types.VariadicOpParseJSON, false, false)
+	}
+	if hasLinefmtParser {
+		builder = builder.Format(types.VariadicOpParseLinefmt, linefmtTemplate)
+	}
+	if hasLabelfmtParser {
+		builder = builder.Format(types.VariadicOpParseLabelfmt, labelfmtTemplates)
 	}
 	for _, value := range postParsePredicates {
 		builder = builder.Select(value)
@@ -477,6 +495,10 @@ func convertLineFilter(filter syntax.LineFilter) Value {
 		Right: NewLiteral(filter.Match),
 		Op:    convertLineMatchType(filter.Ty),
 	}
+}
+
+func convertLineFormat(value string) Value {
+	return &UnaryOp{Op: types.UnaryOpParseLinefmt, Value: NewLiteral(value)}
 }
 
 func convertBinaryArithmeticOp(op string) types.BinaryOp {

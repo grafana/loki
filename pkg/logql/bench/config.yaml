@@ -46,7 +46,7 @@ server:
 common:
   compactor_address: 127.0.0.1
   instance_addr: 127.0.0.1
-  path_prefix: ${PWD}/pkg/logql/bench/data/workingdir
+  path_prefix: /home/sophie/Github/loki/pkg/logql/bench/data/workingdir
   replication_factor: 1
   ring:
     kvstore:
@@ -76,10 +76,9 @@ storage_config:
   use_thanos_objstore: true
   object_store:
     filesystem:
-      dir: ${PWD}/pkg/logql/bench/data/storage
+      dir: /home/sophie/Github/loki/pkg/logql/bench/data/storage
 
-querier:
-  engine_v2:
+query_engine:
     enable: true
     batch_size: 8192
 

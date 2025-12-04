@@ -75,7 +75,7 @@ func NewProjectPipeline(input Pipeline, proj *physical.Projection, evaluator *ex
 
 	// Create EXPAND projection pipeline:
 	// Keep all columns and expand the ones referenced in proj.Expressions.
-	// TODO: as implemented, epanding and keeping/dropping cannot happen in the same projection. Is this desired?
+	// TODO: as implemented, expanding and keeping/dropping cannot happen in the same projection. Is this desired?
 	if proj.All && proj.Expand && len(expandExprs) > 0 {
 		return newExpandPipeline(expandExprs[0], evaluator, input, region)
 	}

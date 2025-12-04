@@ -138,6 +138,8 @@ func init() {
 	// Parse functions
 	variadicFunctions.register(types.VariadicOpParseLogfmt, parseFn(types.VariadicOpParseLogfmt))
 	variadicFunctions.register(types.VariadicOpParseJSON, parseFn(types.VariadicOpParseJSON))
+	variadicFunctions.register(types.VariadicOpParseLabelfmt, parseFn(types.VariadicOpParseLabelfmt))
+	variadicFunctions.register(types.VariadicOpParseLinefmt, parseFn(types.VariadicOpParseLinefmt))
 }
 
 type UnaryFunctionRegistry interface {
@@ -379,13 +381,13 @@ type VariadicFunctionRegistry interface {
 }
 
 type VariadicFunction interface {
-	Evaluate(args ...arrow.Array) (arrow.Array, error)
+	Evaluate(input arrow.RecordBatch, args ...arrow.Array) (arrow.Array, error)
 }
 
-type VariadicFunctionFunc func(args ...arrow.Array) (arrow.Array, error)
+type VariadicFunctionFunc func(input arrow.RecordBatch, args ...arrow.Array) (arrow.Array, error)
 
-func (f VariadicFunctionFunc) Evaluate(args ...arrow.Array) (arrow.Array, error) {
-	return f(args...)
+func (f VariadicFunctionFunc) Evaluate(input arrow.RecordBatch, args ...arrow.Array) (arrow.Array, error) {
+	return f(input, args...)
 }
 
 type variadicFuncReg struct {

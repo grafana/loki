@@ -57,6 +57,23 @@ func (b *Builder) Parse(op types.VariadicOp, strict bool, keepEmpty bool) *Build
 	return b.ProjectExpand(val)
 }
 
+// Format applies a [Projection] operation to the Builder for a line_format or label_format instruction.
+func (b *Builder) Format(op types.VariadicOp, Template Value) *Builder {
+	val := &FunctionOp{
+		Op: op,
+		Values: []Value{
+			// source column
+			&ColumnRef{
+				Ref: semconv.ColumnIdentMessage.ColumnRef(),
+			},
+			// nil for requested keys (to be filled in by projection pushdown optimizer)
+			NewLiteral([]string{}),
+			Template,
+		},
+	}
+	return b.ProjectExpand(val)
+}
+
 // Cast applies an [Projection] operation, with an [UnaryOp] cast operation, to the Builder.
 func (b *Builder) Cast(identifier string, op types.UnaryOp) *Builder {
 	val := &UnaryOp{
