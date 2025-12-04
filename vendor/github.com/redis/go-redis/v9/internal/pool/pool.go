@@ -568,8 +568,7 @@ func (p *ConnPool) queuedNewConn(ctx context.Context) (*Conn, error) {
 	var err error
 	defer func() {
 		if err != nil {
-			if cn := w.cancel(); cn != nil {
-				p.putIdleConn(ctx, cn)
+			if cn := w.cancel(); cn != nil && p.putIdleConn(ctx, cn) {
 				p.freeTurn()
 			}
 		}
@@ -593,14 +592,15 @@ func (p *ConnPool) queuedNewConn(ctx context.Context) (*Conn, error) {
 
 		dialCtx := w.getCtxForDial()
 		cn, cnErr := p.newConn(dialCtx, true)
-		delivered := w.tryDeliver(cn, cnErr)
-		if cnErr == nil && delivered {
-			return
-		} else if cnErr == nil && !delivered {
-			p.putIdleConn(dialCtx, cn)
+		if cnErr != nil {
+			w.tryDeliver(nil, cnErr) // deliver error to caller, notify connection creation failed
 			p.freeTurn()
 			freeTurnCalled = true
-		} else {
+			return
+		}
+
+		delivered := w.tryDeliver(cn, cnErr)
+		if !delivered && p.putIdleConn(dialCtx, cn) {
 			p.freeTurn()
 			freeTurnCalled = true
 		}
@@ -616,14 +616,20 @@ func (p *ConnPool) queuedNewConn(ctx context.Context) (*Conn, error) {
 	}
 }
 
-func (p *ConnPool) putIdleConn(ctx context.Context, cn *Conn) {
+// putIdleConn puts a connection back to the pool or passes it to the next waiting request.
+//
+// It returns true if the connection was put back to the pool,
+// which means the turn needs to be freed directly by the caller,
+// or false if the connection was passed to the next waiting request,
+// which means the turn will be freed by the waiting goroutine after it returns.
+func (p *ConnPool) putIdleConn(ctx context.Context, cn *Conn) bool {
 	for {
 		w, ok := p.dialsQueue.dequeue()
 		if !ok {
 			break
 		}
 		if w.tryDeliver(cn, nil) {
-			return
+			return false
 		}
 	}
 
@@ -632,12 +638,14 @@ func (p *ConnPool) putIdleConn(ctx context.Context, cn *Conn) {
 
 	if p.closed() {
 		_ = cn.Close()
-		return
+		return true
 	}
 
 	// poolSize is increased in newConn
 	p.idleConns = append(p.idleConns, cn)
 	p.idleConnsLen.Add(1)
+
+	return true
 }
 
 func (p *ConnPool) waitTurn(ctx context.Context) error {
