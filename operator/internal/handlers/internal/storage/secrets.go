@@ -77,7 +77,7 @@ var (
 	awsS3WithBucketRegex = regexp.MustCompile(`^https://([a-z0-9.-]+)\.s3\.([a-z0-9-]+)\.amazonaws\.com$`)
 
 	// VPC with bucket: https://bucket-name.vpce-id.s3.region.vpce.amazonaws.com
-	awsVPCWithBucketRegex = regexp.MustCompile(`^https://([a-z0-9.-]+)\.bucket.vpce-[a-z0-9-]+\.s3\.([a-z0-9-]+)\.vpce\.amazonaws\.com$`)
+	awsVPCWithBucketRegex = regexp.MustCompile(`^https://([a-z0-9.-]+)\.vpce-[a-z0-9-]+\.s3\.([a-z0-9-]+)\.vpce\.amazonaws\.com$`)
 )
 
 func getSecrets(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack, fg configv1.FeatureGates) (*corev1.Secret, *corev1.Secret, error) {

@@ -657,7 +657,7 @@ func TestS3Extract(t *testing.T) {
 					"access_key_secret": []byte("secret"),
 				},
 			},
-			wantError: "endpoint for AWS S3 is invalid, must match either https://s3.region.amazonaws.com or https://vpce-id.s3.region.vpce.amazonaws.com: https://bucket.vpce-1234567abc.s3.us-east-1.vpce.amazonaws.com",
+			wantError: "bucket name must not be included in AWS S3 endpoint URL",
 		},
 		{
 			name: "aws s3 vpc endpoint wrong region",
