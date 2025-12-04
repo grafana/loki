@@ -299,13 +299,18 @@ func s3ClientConfigFunc(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (
 			}
 
 			if strings.Contains(awsURL.Host, ".") {
-				if awsURL.Scheme == "https" {
+				endpoint := awsURL.Host
+				if awsURL.Scheme == "https" || awsURL.Scheme == "http" {
 					// https://<key>:<secret>@s3.us-east-0.amazonaws.com/<bucketname>
-					opts.BaseEndpoint = aws.String(fmt.Sprintf("https://%s", awsURL.Host))
-				} else {
+					// http://<key>:<secret>@s3.us-east-0.amazonaws.com/<bucketname>
+					endpoint = fmt.Sprintf("%s://%s", awsURL.Scheme, awsURL.Host)
+				} else if awsURL.Scheme == "s3" {
 					// s3://<key>:<secret>@s3.us-east-0.amazonaws.com/<bucketname>
-					opts.BaseEndpoint = aws.String(fmt.Sprintf("http://%s", awsURL.Host))
+					// In case of an s3:// URL, we want to be backwards compatible and always assume insecure http,
+					// even though it would probably more correct to check cfg.Insecure.
+					endpoint = fmt.Sprintf("http://%s", awsURL.Host)
 				}
+				opts.BaseEndpoint = aws.String(endpoint)
 			} else {
 				// s3://<key>:<secret>@us-east-0/<bucketname>
 				opts.Region = awsURL.Host
@@ -315,19 +320,27 @@ func s3ClientConfigFunc(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (
 			opts.Region = "dummy"
 		}
 
-		if cfg.DisableDualstack {
-			opts.EndpointOptions.UseDualStackEndpoint = aws.DualStackEndpointStateDisabled
-		}
-
 		opts.RetryMaxAttempts = 0                // We do our own retries, so we can monitor them
 		opts.UsePathStyle = cfg.S3ForcePathStyle // support for Path Style S3 url if has the flag
 
 		if cfg.Endpoint != "" {
-			opts.BaseEndpoint = &cfg.Endpoint
+			endpoint := cfg.Endpoint
+			if !strings.Contains(cfg.Endpoint, "://") {
+				if cfg.Insecure {
+					endpoint = fmt.Sprintf("http://%s", cfg.Endpoint)
+				} else {
+					endpoint = fmt.Sprintf("https://%s", cfg.Endpoint)
+				}
+			}
+			opts.BaseEndpoint = aws.String(endpoint)
 		}
 
 		if cfg.Insecure {
 			opts.EndpointOptions.DisableHTTPS = true
+		}
+
+		if cfg.DisableDualstack {
+			opts.EndpointOptions.UseDualStackEndpoint = aws.DualStackEndpointStateDisabled
 		}
 
 		if cfg.Region != "" {

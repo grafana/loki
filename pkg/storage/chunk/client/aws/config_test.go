@@ -153,7 +153,31 @@ func TestS3ClientOptions(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, "loki", cred.AccessKeyID)
 		require.Equal(t, "s3cr3t", cred.SecretAccessKey)
-		require.Equal(t, "s3.eu-south-0.amazonaws.com", *opts.BaseEndpoint)
+		require.Equal(t, "https://s3.eu-south-0.amazonaws.com", *opts.BaseEndpoint)
+	})
+
+	t.Run("insecure=false flag uses https for endpoint", func(t *testing.T) {
+		cfg := S3Config{
+			Endpoint: "minio:9100",
+			Insecure: false,
+		}
+		fn, _ := s3ClientConfigFunc(cfg, hedging.Config{}, false)
+		opts := s3.Options{}
+		fn(&opts)
+
+		require.Equal(t, "https://minio:9100", *opts.BaseEndpoint)
+	})
+
+	t.Run("insecure=true flag uses http for endpoint", func(t *testing.T) {
+		cfg := S3Config{
+			Endpoint: "minio:9100",
+			Insecure: true,
+		}
+		fn, _ := s3ClientConfigFunc(cfg, hedging.Config{}, false)
+		opts := s3.Options{}
+		fn(&opts)
+
+		require.Equal(t, "http://minio:9100", *opts.BaseEndpoint)
 	})
 
 }
