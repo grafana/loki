@@ -917,14 +917,14 @@ func Test_Reader_Stats(t *testing.T) {
 		obsMap[obs.Statistic.Name()] = obs.Value.(int64)
 	}
 
-	require.Equal(t, int64(2), obsMap[StatReadCalls.Name()])
-	require.Equal(t, int64(2), obsMap[StatPrimaryColumns.Name()])
-	require.Equal(t, int64(2), obsMap[StatSecondaryColumns.Name()])
-	require.Equal(t, int64(5), obsMap[StatPrimaryColumnPages.Name()])
-	require.Equal(t, int64(8), obsMap[StatSecondaryColumnPages.Name()])
+	require.Equal(t, int64(2), obsMap[xcap.StatDatasetReadCalls.Name()])
+	require.Equal(t, int64(2), obsMap[xcap.StatDatasetPrimaryColumns.Name()])
+	require.Equal(t, int64(2), obsMap[xcap.StatDatasetSecondaryColumns.Name()])
+	require.Equal(t, int64(5), obsMap[xcap.StatDatasetPrimaryColumnPages.Name()])
+	require.Equal(t, int64(8), obsMap[xcap.StatDatasetSecondaryColumnPages.Name()])
 
-	require.Equal(t, int64(len(basicReaderTestData)), obsMap[StatMaxRows.Name()])
-	require.Equal(t, int64(3), obsMap[StatRowsAfterPruning.Name()])
-	require.Equal(t, int64(3), obsMap[StatPrimaryRowsRead.Name()])
-	require.Equal(t, int64(1), obsMap[StatSecondaryRowsRead.Name()])
+	require.Equal(t, int64(len(basicReaderTestData)), obsMap[xcap.StatDatasetMaxRows.Name()])
+	require.Equal(t, int64(3), obsMap[xcap.StatDatasetRowsAfterPruning.Name()])
+	require.Equal(t, int64(3), obsMap[xcap.StatDatasetPrimaryRowsRead.Name()])
+	require.Equal(t, int64(1), obsMap[xcap.StatDatasetSecondaryRowsRead.Name()])
 }
