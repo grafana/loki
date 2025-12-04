@@ -9,14 +9,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
-// Statistics for tracking bucket operation counts.
-var (
-	statBucketGet        = xcap.NewStatisticInt64("bucket.get", xcap.AggregationTypeSum)
-	statBucketGetRange   = xcap.NewStatisticInt64("bucket.getrange", xcap.AggregationTypeSum)
-	statBucketIter       = xcap.NewStatisticInt64("bucket.iter", xcap.AggregationTypeSum)
-	statBucketAttributes = xcap.NewStatisticInt64("bucket.attributes", xcap.AggregationTypeSum)
-)
-
 // XCapBucket wraps an objstore.Bucket and records request counts to the xcap
 // Region found in the context. If no Region is present in the context, the
 // wrapper simply delegates to the underlying bucket without recording.
@@ -51,13 +43,13 @@ func (b *XCapBucket) Close() error {
 
 // Iter calls f for each entry in the given directory (not recursive.).
 func (b *XCapBucket) Iter(ctx context.Context, dir string, f func(string) error, options ...objstore.IterOption) error {
-	recordOp(ctx, statBucketIter)
+	recordOp(ctx, xcap.StatBucketIter)
 	return b.bkt.Iter(ctx, dir, f, options...)
 }
 
 // IterWithAttributes calls f for each entry in the given directory similar to Iter.
 func (b *XCapBucket) IterWithAttributes(ctx context.Context, dir string, f func(objstore.IterObjectAttributes) error, options ...objstore.IterOption) error {
-	recordOp(ctx, statBucketIter)
+	recordOp(ctx, xcap.StatBucketIter)
 	return b.bkt.IterWithAttributes(ctx, dir, f, options...)
 }
 
@@ -68,13 +60,13 @@ func (b *XCapBucket) SupportedIterOptions() []objstore.IterOptionType {
 
 // Get returns a reader for the given object name.
 func (b *XCapBucket) Get(ctx context.Context, name string) (io.ReadCloser, error) {
-	recordOp(ctx, statBucketGet)
+	recordOp(ctx, xcap.StatBucketGet)
 	return b.bkt.Get(ctx, name)
 }
 
 // GetRange returns a new range reader for the given object name and range.
 func (b *XCapBucket) GetRange(ctx context.Context, name string, off, length int64) (io.ReadCloser, error) {
-	recordOp(ctx, statBucketGetRange)
+	recordOp(ctx, xcap.StatBucketGetRange)
 	return b.bkt.GetRange(ctx, name, off, length)
 }
 
@@ -100,7 +92,7 @@ func (b *XCapBucket) IsAccessDeniedErr(err error) bool {
 
 // Attributes returns information about the specified object.
 func (b *XCapBucket) Attributes(ctx context.Context, name string) (objstore.ObjectAttributes, error) {
-	recordOp(ctx, statBucketAttributes)
+	recordOp(ctx, xcap.StatBucketAttributes)
 	return b.bkt.Attributes(ctx, name)
 }
 

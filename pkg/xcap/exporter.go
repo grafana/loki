@@ -142,15 +142,15 @@ func summarizeObservations(capture *Capture) *observations {
 		collect.fromRegions("DataObjScan", true, "streamsView.init").
 			filter(
 				// object store calls
-				"bucket.get", "bucket.getrange", "bucket.attributes",
+				StatBucketGet.Key(), StatBucketGetRange.Key(), StatBucketAttributes.Key(),
 				// dataset reader stats
-				"row.max", "rows.after.pruning", "read.calls",
-				"primary.pages.downloaded", "secondary.pages.downloaded",
-				"primary.pages.compressed.bytes", "secondary.pages.compressed.bytes",
-				"primary.rows.read", "secondary.rows.read",
-				"primary.row.read.bytes", "secondary.row.read.bytes",
-				"pages.scanned", "pages.cache.hit",
-				"pages.download.requests", "pages.download.duration.ns",
+				StatMaxRows.Key(), StatRowsAfterPruning.Key(), StatDatasetReadCalls.Key(),
+				StatPrimaryPagesDownloaded.Key(), StatSecondaryPagesDownloaded.Key(),
+				StatPrimaryColumnBytes.Key(), StatSecondaryColumnBytes.Key(),
+				StatPrimaryRowsRead.Key(), StatSecondaryRowsRead.Key(),
+				StatPrimaryRowBytes.Key(), StatSecondaryRowBytes.Key(),
+				StatPagesScanned.Key(), StatPagesFoundInCache.Key(),
+				StatPageDownloadRequests.Key(), StatPageDownloadTime.Key(),
 			).
 			prefix("logs_dataset_").
 			normalizeKeys(),
@@ -159,16 +159,18 @@ func summarizeObservations(capture *Capture) *observations {
 	// metastore index and resolved section stats
 	result.merge(
 		collect.fromRegions("ObjectMetastore.Sections", true).
-			filter("metastore.index.objects", "metastore.resolved.sections").
+			filter(StatIndexObjects.Key(), StatResolvedSections.Key()).
 			normalizeKeys(),
 	)
 
 	// metastore bucket and dataset reader stats
 	result.merge(
 		collect.fromRegions("ObjectMetastore.Sections", true).
-			filter("bucket.get", "bucket.getrange", "bucket.attributes",
-				"primary.pages.downloaded", "secondary.pages.downloaded",
-				"primary.pages.compressed.bytes", "secondary.pages.compressed.bytes").
+			filter(
+				StatBucketGet.Key(), StatBucketGetRange.Key(), StatBucketAttributes.Key(),
+				StatPrimaryPagesDownloaded.Key(), StatSecondaryPagesDownloaded.Key(),
+				StatPrimaryColumnBytes.Key(), StatSecondaryColumnBytes.Key(),
+			).
 			prefix("metastore_").
 			normalizeKeys(),
 	)
@@ -176,9 +178,11 @@ func summarizeObservations(capture *Capture) *observations {
 	// streamsView bucket and dataset reader stats
 	result.merge(
 		collect.fromRegions("streamsView.init", true).
-			filter("bucket.get", "bucket.getrange", "bucket.attributes",
-				"primary.pages.downloaded", "secondary.pages.downloaded",
-				"primary.pages.compressed.bytes", "secondary.pages.compressed.bytes").
+			filter(
+				StatBucketGet.Key(), StatBucketGetRange.Key(), StatBucketAttributes.Key(),
+				StatPrimaryPagesDownloaded.Key(), StatSecondaryPagesDownloaded.Key(),
+				StatPrimaryColumnBytes.Key(), StatSecondaryColumnBytes.Key(),
+			).
 			prefix("streams_").
 			normalizeKeys(),
 	)

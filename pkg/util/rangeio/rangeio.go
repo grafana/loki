@@ -24,16 +24,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
-// xcap statistics for RangeIO operations.
-var (
-	statInputRangesCount     = xcap.NewStatisticInt64("input.ranges", xcap.AggregationTypeSum)
-	statInputRangesSize      = xcap.NewStatisticInt64("input.ranges.size.bytes", xcap.AggregationTypeSum)
-	statOptimizedRangesCount = xcap.NewStatisticInt64("optimized.ranges", xcap.AggregationTypeSum)
-	statOptimizedRangesSize  = xcap.NewStatisticInt64("optimized.ranges.size.bytes", xcap.AggregationTypeSum)
-	// pick the min value when aggregating to track the slowest read.
-	statOptimizedThroughput = xcap.NewStatisticFloat64("optimized.ranges.min.throughput", xcap.AggregationTypeMin)
-)
-
 // Range represents a range of data to be read.
 type Range struct {
 	// Data to read into; exactly len(Data) bytes will be read, or an error will
@@ -439,16 +429,16 @@ func recordRangeStats(ranges, optimizedRanges []Range, region *xcap.Region) {
 	origSize := rangesSize(ranges)
 	optimizedSize := rangesSize(optimizedRanges)
 
-	region.Record(statInputRangesCount.Observe(int64(len(ranges))))
-	region.Record(statInputRangesSize.Observe(int64(origSize)))
-	region.Record(statOptimizedRangesCount.Observe(int64(len(optimizedRanges))))
-	region.Record(statOptimizedRangesSize.Observe(int64(optimizedSize)))
+	region.Record(xcap.StatInputRangesCount.Observe(int64(len(ranges))))
+	region.Record(xcap.StatInputRangesSize.Observe(int64(origSize)))
+	region.Record(xcap.StatOptimizedRangesCount.Observe(int64(len(optimizedRanges))))
+	region.Record(xcap.StatOptimizedRangesSize.Observe(int64(optimizedSize)))
 }
 
 func recordThroughputStat(region *xcap.Region, startTime time.Time, optimizedRanges []Range) {
 	size := rangesSize(optimizedRanges)
 	bytesPerSec := float64(size) / time.Since(startTime).Seconds()
-	region.Record(statOptimizedThroughput.Observe(bytesPerSec))
+	region.Record(xcap.StatOptimizedThroughput.Observe(bytesPerSec))
 }
 
 type bytesStringer uint64

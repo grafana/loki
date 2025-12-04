@@ -22,20 +22,20 @@ func newObservations() *observations {
 	return &observations{data: make(map[StatisticKey]*AggregatedObservation)}
 }
 
-// filter returns a new observations containing only entries with matching stat names.
-func (o *observations) filter(names ...string) *observations {
-	if len(names) == 0 || o == nil {
+// filter returns a new observations containing only entries with matching stat keys.
+func (o *observations) filter(keys ...StatisticKey) *observations {
+	if len(keys) == 0 || o == nil {
 		return o
 	}
 
-	nameSet := make(map[string]struct{}, len(names))
-	for _, n := range names {
-		nameSet[n] = struct{}{}
+	keySet := make(map[StatisticKey]struct{}, len(keys))
+	for _, k := range keys {
+		keySet[k] = struct{}{}
 	}
 
 	result := newObservations()
 	for k, obs := range o.data {
-		if _, ok := nameSet[k.Name]; ok {
+		if _, ok := keySet[k]; ok {
 			result.data[k] = obs
 		}
 	}
@@ -147,8 +147,9 @@ func (o *observations) toLogValues() []any {
 
 // observationCollector provides methods to collect observations from a Capture.
 type observationCollector struct {
-	capture     *Capture
-	childrenMap map[identifier][]*Region
+	capture       *Capture
+	childrenMap   map[identifier][]*Region
+	nameToRegions map[string][]*Region
 }
 
 // newObservationCollector creates a new collector for gathering observations from the given capture.
@@ -157,15 +158,20 @@ func newObservationCollector(capture *Capture) *observationCollector {
 		return nil
 	}
 
-	// Build parent -> children map
+	// Build
+	// - parent -> children
+	// - name -> matching regions
 	childrenMap := make(map[identifier][]*Region)
-	for _, r := range capture.Regions() {
+	nameToRegions := make(map[string][]*Region)
+	for _, r := range capture.regions {
 		childrenMap[r.parentID] = append(childrenMap[r.parentID], r)
+		nameToRegions[r.name] = append(nameToRegions[r.name], r)
 	}
 
 	return &observationCollector{
-		capture:     capture,
-		childrenMap: childrenMap,
+		capture:       capture,
+		childrenMap:   childrenMap,
+		nameToRegions: nameToRegions,
 	}
 }
 
@@ -173,8 +179,15 @@ func newObservationCollector(capture *Capture) *observationCollector {
 // If rollUp is true, each region's stats include all its descendant stats
 // aggregated according to each stat's aggregation type.
 func (c *observationCollector) fromRegions(name string, rollUp bool, excluded ...string) *observations {
+	result := newObservations()
+
 	if c == nil {
-		return newObservations()
+		return result
+	}
+
+	regions := c.nameToRegions[name]
+	if len(regions) == 0 {
+		return result
 	}
 
 	excludedSet := make(map[string]struct{}, len(excluded))
@@ -182,12 +195,7 @@ func (c *observationCollector) fromRegions(name string, rollUp bool, excluded ..
 		excludedSet[name] = struct{}{}
 	}
 
-	result := newObservations()
-	for _, region := range c.capture.Regions() {
-		if region.name != name {
-			continue
-		}
-
+	for _, region := range regions {
 		var obs *observations
 		if rollUp {
 			obs = c.rollUpObservations(region, excludedSet)
@@ -288,6 +296,5 @@ func readInt64(o *observations, key StatisticKey) int64 {
 			return v
 		}
 	}
-
 	return 0
 }
