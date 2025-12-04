@@ -188,7 +188,7 @@ func (m *ObjectMetastore) Sections(ctx context.Context, start, end time.Time, ma
 	}
 
 	m.metrics.indexObjectsTotal.Observe(float64(len(indexPaths)))
-	region.Record(xcap.StatIndexObjects.Observe(int64(len(indexPaths))))
+	region.Record(xcap.StatMetastoreIndexObjects.Observe(int64(len(indexPaths))))
 
 	// Return early if no index files are found
 	if len(indexPaths) == 0 {
@@ -245,7 +245,7 @@ func (m *ObjectMetastore) Sections(ctx context.Context, start, end time.Time, ma
 	duration := sectionsTimer.ObserveDuration()
 	m.metrics.resolvedSectionsTotal.Observe(float64(len(streamSectionPointers)))
 	m.metrics.resolvedSectionsRatio.Observe(float64(len(streamSectionPointers)) / float64(initialSectionPointersCount))
-	region.Record(xcap.StatResolvedSections.Observe(int64(len(streamSectionPointers))))
+	region.Record(xcap.StatMetastoreResolvedSections.Observe(int64(len(streamSectionPointers))))
 
 	level.Debug(utillog.WithContext(ctx, m.logger)).Log(
 		"msg", "resolved sections",

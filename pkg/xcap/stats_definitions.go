@@ -2,9 +2,9 @@ package xcap
 
 // Common pipeline statistics tracked across executor nodes.
 var (
-	StatRowsOut      = NewStatisticInt64("rows.out", AggregationTypeSum)
-	StatReadCalls    = NewStatisticInt64("read.calls", AggregationTypeSum)
-	StatReadDuration = NewStatisticInt64("read.duration.ns", AggregationTypeSum)
+	StatPipelineRowsOut      = NewStatisticInt64("rows.out", AggregationTypeSum)
+	StatPipelineReadCalls    = NewStatisticInt64("read.calls", AggregationTypeSum)
+	StatPipelineReadDuration = NewStatisticInt64("read.duration.ns", AggregationTypeSum)
 )
 
 // ColumnCompat statistics.
@@ -14,46 +14,44 @@ var (
 
 var (
 	// Dataset column statistics.
-	StatPrimaryColumns       = NewStatisticInt64("primary.columns", AggregationTypeSum)
-	StatSecondaryColumns     = NewStatisticInt64("secondary.columns", AggregationTypeSum)
-	StatPrimaryColumnPages   = NewStatisticInt64("primary.column.pages", AggregationTypeSum)
-	StatSecondaryColumnPages = NewStatisticInt64("secondary.column.pages", AggregationTypeSum)
+	StatDatasetPrimaryColumns       = NewStatisticInt64("primary.columns", AggregationTypeSum)
+	StatDatasetSecondaryColumns     = NewStatisticInt64("secondary.columns", AggregationTypeSum)
+	StatDatasetPrimaryColumnPages   = NewStatisticInt64("primary.column.pages", AggregationTypeSum)
+	StatDatasetSecondaryColumnPages = NewStatisticInt64("secondary.column.pages", AggregationTypeSum)
 
 	// Dataset row statistics.
-	StatMaxRows           = NewStatisticInt64("row.max", AggregationTypeSum)
-	StatRowsAfterPruning  = NewStatisticInt64("rows.after.pruning", AggregationTypeSum)
-	StatPrimaryRowsRead   = NewStatisticInt64("primary.rows.read", AggregationTypeSum)
-	StatSecondaryRowsRead = NewStatisticInt64("secondary.rows.read", AggregationTypeSum)
-	StatPrimaryRowBytes   = NewStatisticInt64("primary.row.read.bytes", AggregationTypeSum)
-	StatSecondaryRowBytes = NewStatisticInt64("secondary.row.read.bytes", AggregationTypeSum)
+	StatDatasetMaxRows           = NewStatisticInt64("rows.max", AggregationTypeSum)
+	StatDatasetRowsAfterPruning  = NewStatisticInt64("rows.after.pruning", AggregationTypeSum)
+	StatDatasetPrimaryRowsRead   = NewStatisticInt64("primary.rows.read", AggregationTypeSum)
+	StatDatasetSecondaryRowsRead = NewStatisticInt64("secondary.rows.read", AggregationTypeSum)
+	StatDatasetPrimaryRowBytes   = NewStatisticInt64("primary.row.read.bytes", AggregationTypeSum)
+	StatDatasetSecondaryRowBytes = NewStatisticInt64("secondary.row.read.bytes", AggregationTypeSum)
 
 	// Dataset page scan statistics.
-	StatPagesScanned         = NewStatisticInt64("pages.scanned", AggregationTypeSum)
-	StatPagesFoundInCache    = NewStatisticInt64("pages.cache.hit", AggregationTypeSum)
-	StatPageDownloadRequests = NewStatisticInt64("pages.download.requests", AggregationTypeSum)
-	StatPageDownloadTime     = NewStatisticInt64("pages.download.duration.ns", AggregationTypeSum)
+	StatDatasetPagesScanned         = NewStatisticInt64("pages.scanned", AggregationTypeSum)
+	StatDatasetPagesFoundInCache    = NewStatisticInt64("pages.cache.hit", AggregationTypeSum)
+	StatDatasetPageDownloadRequests = NewStatisticInt64("pages.download.requests", AggregationTypeSum)
+	StatDatasetPageDownloadTime     = NewStatisticInt64("pages.download.duration.ns", AggregationTypeSum)
 
 	// Dataset page download byte statistics.
-	StatPrimaryPagesDownloaded           = NewStatisticInt64("primary.pages.downloaded", AggregationTypeSum)
-	StatSecondaryPagesDownloaded         = NewStatisticInt64("secondary.pages.downloaded", AggregationTypeSum)
-	StatPrimaryColumnBytes               = NewStatisticInt64("primary.pages.compressed.bytes", AggregationTypeSum)
-	StatSecondaryColumnBytes             = NewStatisticInt64("secondary.pages.compressed.bytes", AggregationTypeSum)
-	StatPrimaryColumnUncompressedBytes   = NewStatisticInt64("primary.column.uncompressed.bytes", AggregationTypeSum)
-	StatSecondaryColumnUncompressedBytes = NewStatisticInt64("secondary.column.uncompressed.bytes", AggregationTypeSum)
-)
+	StatDatasetPrimaryPagesDownloaded           = NewStatisticInt64("primary.pages.downloaded", AggregationTypeSum)
+	StatDatasetSecondaryPagesDownloaded         = NewStatisticInt64("secondary.pages.downloaded", AggregationTypeSum)
+	StatDatasetPrimaryColumnBytes               = NewStatisticInt64("primary.pages.compressed.bytes", AggregationTypeSum)
+	StatDatasetSecondaryColumnBytes             = NewStatisticInt64("secondary.pages.compressed.bytes", AggregationTypeSum)
+	StatDatasetPrimaryColumnUncompressedBytes   = NewStatisticInt64("primary.column.uncompressed.bytes", AggregationTypeSum)
+	StatDatasetSecondaryColumnUncompressedBytes = NewStatisticInt64("secondary.column.uncompressed.bytes", AggregationTypeSum)
 
-// Dataset read operation statistics.
-var (
+	// Dataset read operation statistics.
 	StatDatasetReadCalls = NewStatisticInt64("dataset.read.calls", AggregationTypeSum)
 )
 
 // Range IO statistics.
 var (
-	StatInputRangesCount     = NewStatisticInt64("input.ranges", AggregationTypeSum)
-	StatInputRangesSize      = NewStatisticInt64("input.ranges.size.bytes", AggregationTypeSum)
-	StatOptimizedRangesCount = NewStatisticInt64("optimized.ranges", AggregationTypeSum)
-	StatOptimizedRangesSize  = NewStatisticInt64("optimized.ranges.size.bytes", AggregationTypeSum)
-	StatOptimizedThroughput  = NewStatisticFloat64("optimized.ranges.min.throughput", AggregationTypeMin)
+	StatRangeIOInputCount     = NewStatisticInt64("input.ranges", AggregationTypeSum)
+	StatRangeIOInputSize      = NewStatisticInt64("input.ranges.size.bytes", AggregationTypeSum)
+	StatRangeIOOptimizedCount = NewStatisticInt64("optimized.ranges", AggregationTypeSum)
+	StatRangeIOOptimizedSize  = NewStatisticInt64("optimized.ranges.size.bytes", AggregationTypeSum)
+	StatRangeIOThroughput     = NewStatisticFloat64("optimized.ranges.min.throughput", AggregationTypeMin)
 )
 
 // Bucket operation statistics.
@@ -66,6 +64,6 @@ var (
 
 // Metastore statistics.
 var (
-	StatIndexObjects     = NewStatisticInt64("metastore.index.objects", AggregationTypeSum)
-	StatResolvedSections = NewStatisticInt64("metastore.resolved.sections", AggregationTypeSum)
+	StatMetastoreIndexObjects     = NewStatisticInt64("metastore.index.objects", AggregationTypeSum)
+	StatMetastoreResolvedSections = NewStatisticInt64("metastore.resolved.sections", AggregationTypeSum)
 )

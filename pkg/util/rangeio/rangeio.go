@@ -429,16 +429,16 @@ func recordRangeStats(ranges, optimizedRanges []Range, region *xcap.Region) {
 	origSize := rangesSize(ranges)
 	optimizedSize := rangesSize(optimizedRanges)
 
-	region.Record(xcap.StatInputRangesCount.Observe(int64(len(ranges))))
-	region.Record(xcap.StatInputRangesSize.Observe(int64(origSize)))
-	region.Record(xcap.StatOptimizedRangesCount.Observe(int64(len(optimizedRanges))))
-	region.Record(xcap.StatOptimizedRangesSize.Observe(int64(optimizedSize)))
+	region.Record(xcap.StatRangeIOInputCount.Observe(int64(len(ranges))))
+	region.Record(xcap.StatRangeIOInputSize.Observe(int64(origSize)))
+	region.Record(xcap.StatRangeIOOptimizedCount.Observe(int64(len(optimizedRanges))))
+	region.Record(xcap.StatRangeIOOptimizedSize.Observe(int64(optimizedSize)))
 }
 
 func recordThroughputStat(region *xcap.Region, startTime time.Time, optimizedRanges []Range) {
 	size := rangesSize(optimizedRanges)
 	bytesPerSec := float64(size) / time.Since(startTime).Seconds()
-	region.Record(xcap.StatOptimizedThroughput.Observe(bytesPerSec))
+	region.Record(xcap.StatRangeIOThroughput.Observe(bytesPerSec))
 }
 
 type bytesStringer uint64

@@ -144,13 +144,13 @@ func summarizeObservations(capture *Capture) *observations {
 				// object store calls
 				StatBucketGet.Key(), StatBucketGetRange.Key(), StatBucketAttributes.Key(),
 				// dataset reader stats
-				StatMaxRows.Key(), StatRowsAfterPruning.Key(), StatDatasetReadCalls.Key(),
-				StatPrimaryPagesDownloaded.Key(), StatSecondaryPagesDownloaded.Key(),
-				StatPrimaryColumnBytes.Key(), StatSecondaryColumnBytes.Key(),
-				StatPrimaryRowsRead.Key(), StatSecondaryRowsRead.Key(),
-				StatPrimaryRowBytes.Key(), StatSecondaryRowBytes.Key(),
-				StatPagesScanned.Key(), StatPagesFoundInCache.Key(),
-				StatPageDownloadRequests.Key(), StatPageDownloadTime.Key(),
+				StatDatasetMaxRows.Key(), StatDatasetRowsAfterPruning.Key(), StatDatasetReadCalls.Key(),
+				StatDatasetPrimaryPagesDownloaded.Key(), StatDatasetSecondaryPagesDownloaded.Key(),
+				StatDatasetPrimaryColumnBytes.Key(), StatDatasetSecondaryColumnBytes.Key(),
+				StatDatasetPrimaryRowsRead.Key(), StatDatasetSecondaryRowsRead.Key(),
+				StatDatasetPrimaryRowBytes.Key(), StatDatasetSecondaryRowBytes.Key(),
+				StatDatasetPagesScanned.Key(), StatDatasetPagesFoundInCache.Key(),
+				StatDatasetPageDownloadRequests.Key(), StatDatasetPageDownloadTime.Key(),
 			).
 			prefix("logs_dataset_").
 			normalizeKeys(),
@@ -159,7 +159,7 @@ func summarizeObservations(capture *Capture) *observations {
 	// metastore index and resolved section stats
 	result.merge(
 		collect.fromRegions("ObjectMetastore.Sections", true).
-			filter(StatIndexObjects.Key(), StatResolvedSections.Key()).
+			filter(StatMetastoreIndexObjects.Key(), StatMetastoreResolvedSections.Key()).
 			normalizeKeys(),
 	)
 
@@ -168,8 +168,8 @@ func summarizeObservations(capture *Capture) *observations {
 		collect.fromRegions("ObjectMetastore.Sections", true).
 			filter(
 				StatBucketGet.Key(), StatBucketGetRange.Key(), StatBucketAttributes.Key(),
-				StatPrimaryPagesDownloaded.Key(), StatSecondaryPagesDownloaded.Key(),
-				StatPrimaryColumnBytes.Key(), StatSecondaryColumnBytes.Key(),
+				StatDatasetPrimaryPagesDownloaded.Key(), StatDatasetSecondaryPagesDownloaded.Key(),
+				StatDatasetPrimaryColumnBytes.Key(), StatDatasetSecondaryColumnBytes.Key(),
 			).
 			prefix("metastore_").
 			normalizeKeys(),
@@ -180,8 +180,8 @@ func summarizeObservations(capture *Capture) *observations {
 		collect.fromRegions("streamsView.init", true).
 			filter(
 				StatBucketGet.Key(), StatBucketGetRange.Key(), StatBucketAttributes.Key(),
-				StatPrimaryPagesDownloaded.Key(), StatSecondaryPagesDownloaded.Key(),
-				StatPrimaryColumnBytes.Key(), StatSecondaryColumnBytes.Key(),
+				StatDatasetPrimaryPagesDownloaded.Key(), StatDatasetSecondaryPagesDownloaded.Key(),
+				StatDatasetPrimaryColumnBytes.Key(), StatDatasetSecondaryColumnBytes.Key(),
 			).
 			prefix("streams_").
 			normalizeKeys(),

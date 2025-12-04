@@ -79,7 +79,7 @@ func (dec *Decoder) Pages(ctx context.Context, columns []*datasetmd.ColumnDesc) 
 		region := xcap.RegionFromContext(ctx)
 		startTime := time.Now()
 		defer func() {
-			region.Record(xcap.StatPageDownloadTime.Observe(time.Since(startTime).Nanoseconds()))
+			region.Record(xcap.StatDatasetPageDownloadTime.Observe(time.Since(startTime).Nanoseconds()))
 		}()
 
 		ranges := make([]rangeio.Range, 0, len(columns))
@@ -135,7 +135,7 @@ func (dec *Decoder) ReadPages(ctx context.Context, pages []*datasetmd.PageDesc) 
 		region := xcap.RegionFromContext(ctx)
 		startTime := time.Now()
 		defer func() {
-			region.Record(xcap.StatPageDownloadTime.Observe(time.Since(startTime).Nanoseconds()))
+			region.Record(xcap.StatDatasetPageDownloadTime.Observe(time.Since(startTime).Nanoseconds()))
 		}()
 
 		ranges := make([]rangeio.Range, 0, len(pages))

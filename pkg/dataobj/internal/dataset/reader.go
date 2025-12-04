@@ -149,8 +149,8 @@ func (r *Reader) Read(ctx context.Context, s []Row) (int, error) {
 			primaryColumnBytes += s[i].Size()
 		}
 
-		r.region.Record(xcap.StatPrimaryRowsRead.Observe(int64(rowsRead)))
-		r.region.Record(xcap.StatPrimaryRowBytes.Observe(primaryColumnBytes))
+		r.region.Record(xcap.StatDatasetPrimaryRowsRead.Observe(int64(rowsRead)))
+		r.region.Record(xcap.StatDatasetPrimaryRowBytes.Observe(primaryColumnBytes))
 	} else {
 		rowsRead, passCount, err = r.readAndFilterPrimaryColumns(ctx, readSize, s[:readSize])
 		if err != nil {
@@ -182,8 +182,8 @@ func (r *Reader) Read(ctx context.Context, s []Row) (int, error) {
 			totalBytesFilled += s[i].Size() - s[i].SizeOfColumns(r.primaryColumnIndexes)
 		}
 
-		r.region.Record(xcap.StatSecondaryRowsRead.Observe(int64(count)))
-		r.region.Record(xcap.StatSecondaryRowBytes.Observe(totalBytesFilled))
+		r.region.Record(xcap.StatDatasetSecondaryRowsRead.Observe(int64(count)))
+		r.region.Record(xcap.StatDatasetSecondaryRowBytes.Observe(totalBytesFilled))
 	}
 
 	// We only advance r.row after we successfully read and filled rows. This
@@ -268,8 +268,8 @@ func (r *Reader) readAndFilterPrimaryColumns(ctx context.Context, readSize int, 
 		readSize = passCount
 	}
 
-	r.region.Record(xcap.StatPrimaryRowsRead.Observe(int64(rowsRead)))
-	r.region.Record(xcap.StatPrimaryRowBytes.Observe(primaryColumnBytes))
+	r.region.Record(xcap.StatDatasetPrimaryRowsRead.Observe(int64(rowsRead)))
+	r.region.Record(xcap.StatDatasetPrimaryRowBytes.Observe(primaryColumnBytes))
 
 	return rowsRead, passCount, nil
 }
@@ -555,11 +555,11 @@ func (r *Reader) initDownloader(ctx context.Context) error {
 
 		if primary {
 			r.primaryColumnIndexes = append(r.primaryColumnIndexes, i)
-			r.region.Record(xcap.StatPrimaryColumns.Observe(1))
-			r.region.Record(xcap.StatPrimaryColumnPages.Observe(int64(column.ColumnDesc().PagesCount)))
+			r.region.Record(xcap.StatDatasetPrimaryColumns.Observe(1))
+			r.region.Record(xcap.StatDatasetPrimaryColumnPages.Observe(int64(column.ColumnDesc().PagesCount)))
 		} else {
-			r.region.Record(xcap.StatSecondaryColumns.Observe(1))
-			r.region.Record(xcap.StatSecondaryColumnPages.Observe(int64(column.ColumnDesc().PagesCount)))
+			r.region.Record(xcap.StatDatasetSecondaryColumns.Observe(1))
+			r.region.Record(xcap.StatDatasetSecondaryColumnPages.Observe(int64(column.ColumnDesc().PagesCount)))
 		}
 	}
 
@@ -593,8 +593,8 @@ func (r *Reader) initDownloader(ctx context.Context) error {
 		rowsCount = max(rowsCount, uint64(column.ColumnDesc().RowsCount))
 	}
 
-	r.region.Record(xcap.StatMaxRows.Observe(int64(rowsCount)))
-	r.region.Record(xcap.StatRowsAfterPruning.Observe(int64(ranges.TotalRowCount())))
+	r.region.Record(xcap.StatDatasetMaxRows.Observe(int64(rowsCount)))
+	r.region.Record(xcap.StatDatasetRowsAfterPruning.Observe(int64(ranges.TotalRowCount())))
 
 	return nil
 }

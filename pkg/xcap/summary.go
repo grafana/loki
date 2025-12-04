@@ -266,23 +266,23 @@ func (c *Capture) ToStatsSummary(execTime, queueTime time.Duration, totalEntries
 	// In practice, new engine would process more bytes while scanning metastore objects and stream sections.
 	collector := newObservationCollector(c)
 	observations := collector.fromRegions(regionNameDataObjScan, true).filter(
-		StatRowsOut.Key(),
-		StatPrimaryRowsRead.Key(),
-		StatPrimaryColumnUncompressedBytes.Key(),
-		StatSecondaryColumnUncompressedBytes.Key(),
+		StatPipelineRowsOut.Key(),
+		StatDatasetPrimaryRowsRead.Key(),
+		StatDatasetPrimaryColumnUncompressedBytes.Key(),
+		StatDatasetSecondaryColumnUncompressedBytes.Key(),
 	)
 
 	// TotalBytesProcessed: sum of uncompressed bytes from primary and secondary columns
-	result.Summary.TotalBytesProcessed = readInt64(observations, StatPrimaryColumnUncompressedBytes.Key()) +
-		readInt64(observations, StatSecondaryColumnUncompressedBytes.Key())
+	result.Summary.TotalBytesProcessed = readInt64(observations, StatDatasetPrimaryColumnUncompressedBytes.Key()) +
+		readInt64(observations, StatDatasetSecondaryColumnUncompressedBytes.Key())
 
 	// TotalLinesProcessed: primary rows read
-	result.Summary.TotalLinesProcessed = readInt64(observations, StatPrimaryRowsRead.Key())
+	result.Summary.TotalLinesProcessed = readInt64(observations, StatDatasetPrimaryRowsRead.Key())
 
 	// TotalPostFilterLines: rows output after filtering
 	// TODO: this will report the wrong value if the plan has a filter stage.
 	// pick the min of row_out from filter and scan nodes.
-	result.Summary.TotalPostFilterLines = readInt64(observations, StatRowsOut.Key())
+	result.Summary.TotalPostFilterLines = readInt64(observations, StatPipelineRowsOut.Key())
 
 	// TODO: track and report TotalStructuredMetadataBytesProcessed
 
