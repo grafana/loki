@@ -1,5 +1,25 @@
 # Release Notes
 
+# 9.17.2 (2025-12-01)
+
+## 🐛 Bug Fixes
+
+- **Connection Pool**: Fixed critical race condition in turn management that could cause connection leaks when dial goroutines complete after request timeout ([#3626](https://github.com/redis/go-redis/pull/3626)) by [@cyningsun](https://github.com/cyningsun)
+- **Context Timeout**: Improved context timeout calculation to use minimum of remaining time and DialTimeout, preventing goroutines from waiting longer than necessary ([#3626](https://github.com/redis/go-redis/pull/3626)) by [@cyningsun](https://github.com/cyningsun)
+
+## 🧰 Maintenance
+
+- chore(deps): bump rojopolis/spellcheck-github-actions from 0.54.0 to 0.55.0 ([#3627](https://github.com/redis/go-redis/pull/3627))
+
+## Contributors
+We'd like to thank all the contributors who worked on this release!
+
+[@cyningsun](https://github.com/cyningsun) and [@ndyakov](https://github.com/ndyakov)
+
+---
+
+**Full Changelog**: https://github.com/redis/go-redis/compare/v9.17.1...v9.17.2
+
 # 9.17.1 (2025-11-25)
 
 ## 🐛 Bug Fixes
