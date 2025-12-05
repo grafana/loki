@@ -24,6 +24,7 @@ import (
 	"sync"
 
 	"golang.org/x/crypto/bcrypt"
+	"golang.org/x/time/rate"
 )
 
 // extraHTTPHeaders is a map of HTTP headers that can be added to HTTP
@@ -80,6 +81,7 @@ type webHandler struct {
 	handler       http.Handler
 	logger        *slog.Logger
 	cache         *cache
+	limiter       *rate.Limiter
 	// bcryptMtx is there to ensure that bcrypt.CompareHashAndPassword is run
 	// only once in parallel as this is CPU intensive.
 	bcryptMtx sync.Mutex
@@ -90,6 +92,11 @@ func (u *webHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		u.logger.Error("Unable to parse configuration", "err", err.Error())
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	if u.limiter != nil && !u.limiter.Allow() {
+		http.Error(w, http.StatusText(http.StatusTooManyRequests), http.StatusTooManyRequests)
 		return
 	}
 
