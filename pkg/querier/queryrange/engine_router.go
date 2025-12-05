@@ -170,7 +170,7 @@ func (e *engineRouter) splitOverlapping(r queryrangebase.Request, v2Start, v2End
 	}
 
 	// align the ranges by step before splitting.
-	start, end := alignStartEnd(stepNs, r.GetStart(), r.GetEnd())
+	start, end := r.GetStart(), r.GetEnd()
 	v2Start, v2End = alignStartEnd(stepNs, v2Start, v2End)
 
 	// chunk req before V2 engine range

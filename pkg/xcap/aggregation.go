@@ -10,10 +10,21 @@ type AggregatedObservation struct {
 // Record aggregates a new observation into this aggregated observation.
 // It updates the value according to the statistic's aggregation type.
 func (a *AggregatedObservation) Record(obs Observation) {
-	stat := obs.statistic()
-	val := obs.value()
+	a.aggregate(obs.statistic().Aggregation(), obs.value())
+	a.Count++
+}
 
-	switch stat.Aggregation() {
+// Merge aggregates another AggregatedObservation into this one.
+func (a *AggregatedObservation) Merge(other *AggregatedObservation) {
+	if other == nil {
+		return
+	}
+	a.aggregate(a.Statistic.Aggregation(), other.Value)
+	a.Count += other.Count
+}
+
+func (a *AggregatedObservation) aggregate(aggType AggregationType, val any) {
+	switch aggType {
 	case AggregationTypeSum:
 		switch v := val.(type) {
 		case int64:
@@ -21,7 +32,6 @@ func (a *AggregatedObservation) Record(obs Observation) {
 		case float64:
 			a.Value = a.Value.(float64) + v
 		}
-
 	case AggregationTypeMin:
 		switch v := val.(type) {
 		case int64:
@@ -33,7 +43,6 @@ func (a *AggregatedObservation) Record(obs Observation) {
 				a.Value = v
 			}
 		}
-
 	case AggregationTypeMax:
 		switch v := val.(type) {
 		case int64:
@@ -50,16 +59,36 @@ func (a *AggregatedObservation) Record(obs Observation) {
 				a.Value = v
 			}
 		}
-
 	case AggregationTypeLast:
-		// Last value overwrites
 		a.Value = val
-
 	case AggregationTypeFirst:
+		// Keep the first value, don't update
 		if a.Value == nil {
 			a.Value = val
 		}
 	}
+}
 
-	a.Count++
+func (a *AggregatedObservation) Int64() (int64, bool) {
+	if a.Statistic.DataType() != DataTypeInt64 {
+		return 0, false
+	}
+
+	return a.Value.(int64), true
+}
+
+func (a *AggregatedObservation) Float64() (float64, bool) {
+	if a.Statistic.DataType() != DataTypeFloat64 {
+		return 0, false
+	}
+
+	return a.Value.(float64), true
+}
+
+func (a *AggregatedObservation) Bool() bool {
+	if a.Statistic.DataType() != DataTypeBool {
+		return false
+	}
+
+	return a.Value.(bool)
 }

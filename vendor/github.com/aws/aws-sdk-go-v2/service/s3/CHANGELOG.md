@@ -1,3 +1,8 @@
+# v1.92.1 (2025-11-25)
+
+* **Bug Fix**: Add error check for endpoint param binding during auth scheme resolution to fix panic reported in #3234
+* **Bug Fix**: Fix missing error message when service returns a specific type of error.
+
 # v1.92.0 (2025-11-20)
 
 * **Feature**: Enable / Disable ABAC on a general purpose bucket.
