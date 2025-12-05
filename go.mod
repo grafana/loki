@@ -55,7 +55,7 @@ require (
 	github.com/grafana/cloudflare-go v0.0.0-20230110200409-c627cf6792f2
 
 	// TODO: Change this once https://github.com/grafana/dskit/pull/799 is merged.
-	github.com/grafana/dskit v0.0.0-20251125162525-654854ee9251
+	github.com/grafana/dskit v0.0.0-20251205213248-ed2b5bed5d9c
 	github.com/grafana/go-gelf/v2 v2.0.1
 	github.com/grafana/gomemcache v0.0.0-20251008140118-65a671e12fdf
 	github.com/grafana/regexp v0.0.0-20250905093917-f7b3be9d1853
