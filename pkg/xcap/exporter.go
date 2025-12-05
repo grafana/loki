@@ -44,8 +44,6 @@ func ExportTrace(ctx context.Context, capture *Capture, logger log.Logger) {
 			continue
 		}
 	}
-
-	return
 }
 
 // createSpans creates a span for the given region and recursively creates spans for its children.
