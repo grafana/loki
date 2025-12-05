@@ -296,7 +296,7 @@ func (p *Proxy) Start() error {
 			Comparator:      comparator,
 		})
 		handler := routeHandlerFactory.CreateHandler(route.RouteName)
-		endpoint.WithHandler(handler, queryrange.DefaultCodec)
+		endpoint.WithQueryHandler(handler, queryrange.DefaultCodec)
 		level.Info(p.logger).Log(
 			"msg", "Middleware handler attached to route",
 			"path", route.Path,
@@ -307,8 +307,18 @@ func (p *Proxy) Start() error {
 		router.Path(route.Path).Methods(route.Methods...).Handler(endpoint)
 	}
 
+	// create a separate endpoint without a query handler for write requests
 	for _, route := range p.writeRoutes {
-		router.Path(route.Path).Methods(route.Methods...).Handler(NewProxyEndpoint(p.backends, route.RouteName, p.metrics, p.logger, nil, p.cfg.InstrumentCompares))
+		endpoint := NewProxyEndpoint(
+			p.backends,
+			route.RouteName,
+			p.metrics,
+			p.logger,
+			nil,
+			p.cfg.InstrumentCompares,
+		)
+
+		router.Path(route.Path).Methods(route.Methods...).Handler(endpoint)
 	}
 
 	if p.cfg.PassThroughNonRegisteredRoutes {

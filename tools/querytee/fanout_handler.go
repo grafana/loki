@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/go-kit/log"
@@ -73,6 +72,11 @@ func (h *FanOutHandler) Do(ctx context.Context, req queryrangebase.Request) (que
 		return nil, fmt.Errorf("failed to encode request: %w", err)
 	}
 
+	// Preserve original headers lost during codec decode/encode cycle
+	if origHeaders := extractOriginalHeaders(ctx); origHeaders != nil {
+		copyHeaders(origHeaders, httpReq.Header)
+	}
+
 	issuer := detectIssuer(httpReq)
 	user := goldfish.ExtractUserFromQueryTags(httpReq, h.logger)
 	level.Debug(h.logger).Log(
@@ -107,13 +111,8 @@ func (h *FanOutHandler) Do(ctx context.Context, req queryrangebase.Request) (que
 
 	results := make(chan *backendResult, len(h.backends))
 
-	// Fan out to all backends
-	var wg sync.WaitGroup
-	wg.Add(len(h.backends))
-
 	for i, backend := range h.backends {
 		go func(idx int, b *ProxyBackend) {
-			defer wg.Done()
 			result := h.executeBackendRequest(ctx, httpReq, body, b, req)
 			results <- result
 
@@ -141,15 +140,9 @@ func (h *FanOutHandler) Do(ctx context.Context, req queryrangebase.Request) (que
 
 			// spawn goroutine to capture remaining and do goldfish comparison
 			remaining := len(h.backends) - i - 1
-			go h.collectRemainingAndCompare(
-				ctx,
-				remaining,
-				httpReq,
-				results,
-				collected,
-				preferredResult,
-				shouldSample,
-				&wg)
+			go func() {
+				h.collectRemainingAndCompare(remaining, httpReq, results, collected, preferredResult, shouldSample)
+			}()
 
 			if preferredResult.err != nil {
 				return nil, preferredResult.err
@@ -168,16 +161,7 @@ func (h *FanOutHandler) Do(ctx context.Context, req queryrangebase.Request) (que
 
 // collectRemainingAndCompare collects remaining backend results, performs comparisons,
 // and processes goldfish sampling. Should be called asynchronously to not block preferred response from returning.
-func (h *FanOutHandler) collectRemainingAndCompare(
-	ctx context.Context,
-	remaining int,
-	httpReq *http.Request,
-	results <-chan *backendResult,
-	collected []*backendResult,
-	preferredResult *backendResult,
-	shouldSample bool,
-	wg *sync.WaitGroup,
-) {
+func (h *FanOutHandler) collectRemainingAndCompare(remaining int, httpReq *http.Request, results <-chan *backendResult, collected []*backendResult, preferredResult *backendResult, shouldSample bool) {
 	issuer := detectIssuer(httpReq)
 	for range remaining {
 		r := <-results
@@ -213,7 +197,6 @@ func (h *FanOutHandler) collectRemainingAndCompare(
 			).Inc()
 		}
 	}
-	wg.Wait()
 
 	if shouldSample {
 		h.processGoldfishComparison(httpReq, preferredResult, collected)
@@ -349,31 +332,25 @@ func (h *FanOutHandler) processGoldfishComparison(httpReq *http.Request, preferr
 
 // sendToGoldfish sends the responses to goldfish for comparison.
 func (h *FanOutHandler) sendToGoldfish(httpReq *http.Request, cellA, cellB *backendResult) {
-	// Use a detached context with timeout since this runs async
-	goldfishCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	cellAData, err := goldfish.CaptureResponse(&http.Response{
-		StatusCode: cellA.backendResp.status,
-		Body:       io.NopCloser(bytes.NewReader(cellA.backendResp.body)),
-	}, cellA.backendResp.duration, cellA.backendResp.traceID, cellA.backendResp.spanID)
-	if err != nil {
-		level.Error(h.logger).Log("msg", "failed to capture cell A response", "err", err)
-		return
+	cellAResp := &goldfish.BackendResponse{
+		BackendName: cellA.backend.name,
+		Status:      cellA.backendResp.status,
+		Body:        cellA.backendResp.body,
+		Duration:    cellA.backendResp.duration,
+		TraceID:     cellA.backendResp.traceID,
+		SpanID:      cellA.backendResp.spanID,
 	}
-	cellAData.BackendName = cellA.backend.name
 
-	cellBData, err := goldfish.CaptureResponse(&http.Response{
-		StatusCode: cellB.backendResp.status,
-		Body:       io.NopCloser(bytes.NewReader(cellB.backendResp.body)),
-	}, cellB.backendResp.duration, cellB.backendResp.traceID, cellB.backendResp.spanID)
-	if err != nil {
-		level.Error(h.logger).Log("msg", "failed to capture cell B response", "err", err)
-		return
+	cellBResp := &goldfish.BackendResponse{
+		BackendName: cellB.backend.name,
+		Status:      cellB.backendResp.status,
+		Body:        cellB.backendResp.body,
+		Duration:    cellB.backendResp.duration,
+		TraceID:     cellB.backendResp.traceID,
+		SpanID:      cellB.backendResp.spanID,
 	}
-	cellBData.BackendName = cellB.backend.name
 
-	h.goldfishManager.ProcessQueryPair(goldfishCtx, httpReq, cellAData, cellBData)
+	h.goldfishManager.SendToGoldfish(httpReq, cellAResp, cellBResp)
 }
 
 // WithMetrics sets metrics for the handler.
@@ -386,4 +363,19 @@ func (h *FanOutHandler) WithMetrics(metrics *ProxyMetrics) *FanOutHandler {
 func (h *FanOutHandler) WithComparator(comparator ResponsesComparator) *FanOutHandler {
 	h.comparator = comparator
 	return h
+}
+
+func extractOriginalHeaders(ctx context.Context) http.Header {
+	if headers, ok := ctx.Value(originalHTTPHeadersKey).(http.Header); ok {
+		return headers
+	}
+	return nil
+}
+
+func copyHeaders(from, to http.Header) {
+	for key, values := range from {
+		for _, value := range values {
+			to.Add(key, value)
+		}
+	}
 }

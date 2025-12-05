@@ -4,11 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -26,8 +26,77 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/goldfish"
 	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	querytee_goldfish "github.com/grafana/loki/v3/tools/querytee/goldfish"
 )
+
+// createTestEndpoint creates a ProxyEndpoint with properly initialized handler pipeline
+func createTestEndpoint(backends []*ProxyBackend, routeName string, comparator ResponsesComparator, instrumentCompares bool) *ProxyEndpoint {
+	metrics := NewProxyMetrics(nil)
+	logger := log.NewNopLogger()
+
+	endpoint := NewProxyEndpoint(backends, routeName, metrics, logger, comparator, instrumentCompares)
+
+	// Create and attach the fan-out handler
+	handler := NewFanOutHandler(FanOutHandlerConfig{
+		Backends:           backends,
+		Codec:              queryrange.DefaultCodec,
+		GoldfishManager:    nil,
+		Logger:             logger,
+		Metrics:            metrics,
+		RouteName:          routeName,
+		Comparator:         comparator,
+		InstrumentCompares: instrumentCompares,
+	})
+
+	endpoint.WithQueryHandler(handler, queryrange.DefaultCodec)
+	return endpoint
+}
+
+// createTestEndpointWithMetrics creates a ProxyEndpoint with custom metrics
+func createTestEndpointWithMetrics(backends []*ProxyBackend, routeName string, comparator ResponsesComparator, instrumentCompares bool, metrics *ProxyMetrics) *ProxyEndpoint {
+	logger := log.NewNopLogger()
+
+	endpoint := NewProxyEndpoint(backends, routeName, metrics, logger, comparator, instrumentCompares)
+
+	// Create and attach the fan-out handler
+	handler := NewFanOutHandler(FanOutHandlerConfig{
+		Backends:           backends,
+		Codec:              queryrange.DefaultCodec,
+		GoldfishManager:    nil,
+		Logger:             logger,
+		Metrics:            metrics,
+		RouteName:          routeName,
+		Comparator:         comparator,
+		InstrumentCompares: instrumentCompares,
+	})
+
+	endpoint.WithQueryHandler(handler, queryrange.DefaultCodec)
+	return endpoint
+}
+
+// createTestEndpointWithGoldfish creates a ProxyEndpoint with goldfish manager
+func createTestEndpointWithGoldfish(backends []*ProxyBackend, routeName string, goldfishManager *querytee_goldfish.Manager) *ProxyEndpoint {
+	metrics := NewProxyMetrics(nil)
+	logger := log.NewNopLogger()
+
+	endpoint := NewProxyEndpoint(backends, routeName, metrics, logger, nil, false)
+	endpoint.WithGoldfish(goldfishManager)
+
+	handler := NewFanOutHandler(FanOutHandlerConfig{
+		Backends:           backends,
+		Codec:              queryrange.DefaultCodec,
+		GoldfishManager:    goldfishManager,
+		Logger:             logger,
+		Metrics:            metrics,
+		RouteName:          routeName,
+		Comparator:         nil,
+		InstrumentCompares: false,
+	})
+
+	endpoint.WithQueryHandler(handler, queryrange.DefaultCodec)
+	return endpoint
+}
 
 func Test_ProxyEndpoint_waitBackendResponseForDownstream(t *testing.T) {
 	backendURL1, err := url.Parse("http://backend-1/")
@@ -123,7 +192,7 @@ func Test_ProxyEndpoint_waitBackendResponseForDownstream(t *testing.T) {
 	}
 }
 
-func Test_ProxyEndpoint_Requests(t *testing.T) {
+func Test_ProxyEndpoint_QueryRequests(t *testing.T) {
 	var (
 		requestCount atomic.Uint64
 		wg           sync.WaitGroup
@@ -147,9 +216,9 @@ func Test_ProxyEndpoint_Requests(t *testing.T) {
 
 	backends := []*ProxyBackend{
 		NewProxyBackend("backend-1", backendURL1, time.Second, true),
-		NewProxyBackend("backend-2", backendURL2, time.Second, false).WithFilter(regexp.MustCompile("/test/api")),
+		NewProxyBackend("backend-2", backendURL2, time.Second, false).WithFilter(regexp.MustCompile("/loki/api/v1/query_range")),
 	}
-	endpoint := NewProxyEndpoint(backends, "test", NewProxyMetrics(nil), log.NewNopLogger(), nil, false)
+	endpoint := createTestEndpoint(backends, "test", nil, false)
 
 	for _, tc := range []struct {
 		name    string
@@ -160,15 +229,16 @@ func Test_ProxyEndpoint_Requests(t *testing.T) {
 		{
 			name: "GET-request",
 			request: func(t *testing.T) *http.Request {
-				r, err := http.NewRequest("GET", "http://test/api/v1/test", nil)
+				r, err := http.NewRequest("GET", "http://test/loki/api/v1/query_range?query={job=\"test\"}&start=1&end=2", nil)
 				r.Header["test-X"] = []string{"test-X-value"}
+				r.Header.Set("X-Scope-OrgID", "test-tenant")
 				require.NoError(t, err)
 				return r
 			},
 			handler: func(t *testing.T) http.HandlerFunc {
 				return func(w http.ResponseWriter, r *http.Request) {
 					require.Equal(t, "test-X-value", r.Header.Get("test-X"))
-					_, _ = w.Write([]byte("ok"))
+					_, _ = w.Write([]byte(`{"status":"success","data":{"resultType":"matrix","result":[]}}`))
 				}
 			},
 			counts: 2,
@@ -176,15 +246,16 @@ func Test_ProxyEndpoint_Requests(t *testing.T) {
 		{
 			name: "GET-filter-accept-encoding",
 			request: func(t *testing.T) *http.Request {
-				r, err := http.NewRequest("GET", "http://test/api/v1/test", nil)
+				r, err := http.NewRequest("GET", "http://test/loki/api/v1/query_range?query={job=\"test\"}&start=1&end=2", nil)
 				r.Header.Set("Accept-Encoding", "gzip")
+				r.Header.Set("X-Scope-OrgID", "test-tenant")
 				require.NoError(t, err)
 				return r
 			},
 			handler: func(t *testing.T) http.HandlerFunc {
 				return func(w http.ResponseWriter, r *http.Request) {
 					require.Equal(t, 0, len(r.Header.Values("Accept-Encoding")))
-					_, _ = w.Write([]byte("ok"))
+					_, _ = w.Write([]byte(`{"status":"success","data":{"resultType":"matrix","result":[]}}`))
 				}
 			},
 			counts: 2,
@@ -192,37 +263,17 @@ func Test_ProxyEndpoint_Requests(t *testing.T) {
 		{
 			name: "GET-filtered",
 			request: func(t *testing.T) *http.Request {
-				r, err := http.NewRequest("GET", "http://will/not/pass/api/v1/test", nil)
+				r, err := http.NewRequest("GET", "http://test/loki/api/v1/query?query={job=\"test\"}", nil)
+				r.Header.Set("X-Scope-OrgID", "test-tenant")
 				require.NoError(t, err)
 				return r
 			},
 			handler: func(_ *testing.T) http.HandlerFunc {
 				return func(w http.ResponseWriter, _ *http.Request) {
-					_, _ = w.Write([]byte("ok"))
+					_, _ = w.Write([]byte(`{"status":"success","data":{"resultType":"matrix","result":[]}}`))
 				}
 			},
 			counts: 1,
-		},
-		{
-			name: "POST-request-with-body",
-			request: func(t *testing.T) *http.Request {
-				strings := strings.NewReader("this-is-some-payload")
-				r, err := http.NewRequest("POST", "http://test/api/v1/test", strings)
-				require.NoError(t, err)
-				r.Header["test-X"] = []string{"test-X-value"}
-				return r
-			},
-			handler: func(t *testing.T) http.HandlerFunc {
-				return func(w http.ResponseWriter, r *http.Request) {
-					body, err := io.ReadAll(r.Body)
-					require.Equal(t, "this-is-some-payload", string(body))
-					require.NoError(t, err)
-					require.Equal(t, "test-X-value", r.Header.Get("test-X"))
-
-					_, _ = w.Write([]byte("ok"))
-				}
-			},
-			counts: 2,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -232,7 +283,7 @@ func Test_ProxyEndpoint_Requests(t *testing.T) {
 
 			if tc.handler == nil {
 				testHandler = func(w http.ResponseWriter, _ *http.Request) {
-					_, _ = w.Write([]byte("ok"))
+					_, _ = w.Write([]byte(`{"status":"success","data":{"resultType":"matrix","result":[]}}`))
 				}
 
 			} else {
@@ -241,10 +292,144 @@ func Test_ProxyEndpoint_Requests(t *testing.T) {
 
 			w := httptest.NewRecorder()
 			endpoint.ServeHTTP(w, tc.request(t))
-			require.Equal(t, "ok", w.Body.String())
+			require.Contains(t, w.Body.String(), `"status":"success"`)
 			require.Equal(t, 200, w.Code)
 
-			wg.Wait()
+			done := make(chan struct{})
+			go func() {
+				wg.Wait()
+				close(done)
+			}()
+
+			select {
+			case <-done:
+			case <-time.After(10 * time.Second):
+				t.Fatal("timeout waiting for backend requests to complete")
+			}
+			require.Equal(t, uint64(tc.counts), requestCount.Load())
+		})
+	}
+}
+
+func Test_ProxyEndpoint_WriteRequests(t *testing.T) {
+	var (
+		requestCount atomic.Uint64
+		wg           sync.WaitGroup
+		testHandler  http.HandlerFunc
+	)
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer wg.Done()
+		defer requestCount.Add(1)
+		testHandler(w, r)
+	})
+	backend1 := httptest.NewServer(handler)
+	defer backend1.Close()
+	backendURL1, err := url.Parse(backend1.URL)
+	require.NoError(t, err)
+
+	backend2 := httptest.NewServer(handler)
+	defer backend2.Close()
+	backendURL2, err := url.Parse(backend2.URL)
+	require.NoError(t, err)
+
+	backends := []*ProxyBackend{
+		NewProxyBackend("backend-1", backendURL1, time.Second, true),
+		NewProxyBackend("backend-2", backendURL2, time.Second, false).WithFilter(regexp.MustCompile("/loki/api/v1/push")),
+	}
+	// endpoint := createTestEndpoint(backends, "test", nil, false)
+	metrics := NewProxyMetrics(nil)
+	logger := log.NewNopLogger()
+	endpoint := NewProxyEndpoint(backends, "test", metrics, logger, nil, false)
+
+	for _, tc := range []struct {
+		name    string
+		request func(*testing.T) *http.Request
+		handler func(*testing.T) http.HandlerFunc
+		counts  int
+	}{
+		{
+			name: "POST-request",
+			request: func(t *testing.T) *http.Request {
+				r, err := http.NewRequest("POST", "http://test/loki/api/v1/push", strings.NewReader(`{"streams":[{"stream":{"job":"test"},"values":[["1","test"]]}]}`))
+				r.Header.Set("test-X", "test-X-value")
+				r.Header["Content-Type"] = []string{"application/json"}
+				r.Header.Set("X-Scope-OrgID", "test-tenant")
+				require.NoError(t, err)
+				return r
+			},
+			handler: func(t *testing.T) http.HandlerFunc {
+				return func(w http.ResponseWriter, r *http.Request) {
+					require.Equal(t, "test-X-value", r.Header.Get("test-X"))
+					w.WriteHeader(204)
+				}
+			},
+			counts: 2,
+		},
+		{
+			name: "POST-filter-accept-encoding",
+			request: func(t *testing.T) *http.Request {
+				r, err := http.NewRequest("POST", "http://test/loki/api/v1/push", strings.NewReader(`{"streams":[{"stream":{"job":"test"},"values":[["1","test"]]}]}`))
+				r.Header["Content-Type"] = []string{"application/json"}
+				r.Header.Set("Accept-Encoding", "gzip")
+				r.Header.Set("X-Scope-OrgID", "test-tenant")
+				require.NoError(t, err)
+				return r
+			},
+			handler: func(t *testing.T) http.HandlerFunc {
+				return func(w http.ResponseWriter, r *http.Request) {
+					require.Equal(t, 0, len(r.Header.Values("Accept-Encoding")))
+					w.WriteHeader(204)
+				}
+			},
+			counts: 2,
+		},
+		{
+			name: "POST-filtered",
+			request: func(t *testing.T) *http.Request {
+				r, err := http.NewRequest("POST", "http://test/loki/api/prom/push", strings.NewReader(`{"streams":[{"stream":{"job":"test"},"values":[["1","test"]]}]}`))
+				r.Header["Content-Type"] = []string{"application/json"}
+				r.Header.Set("X-Scope-OrgID", "test-tenant")
+				require.NoError(t, err)
+				return r
+			},
+			handler: func(_ *testing.T) http.HandlerFunc {
+				return func(w http.ResponseWriter, _ *http.Request) {
+					w.WriteHeader(204)
+				}
+			},
+			counts: 1,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// reset request count
+			requestCount.Store(0)
+			wg.Add(tc.counts)
+
+			if tc.handler == nil {
+				testHandler = func(w http.ResponseWriter, _ *http.Request) {
+					w.WriteHeader(204)
+				}
+
+			} else {
+				testHandler = tc.handler(t)
+			}
+
+			w := httptest.NewRecorder()
+			endpoint.ServeHTTP(w, tc.request(t))
+			require.Equal(t, 204, w.Code)
+
+			done := make(chan struct{})
+			go func() {
+				wg.Wait()
+				close(done)
+			}()
+
+			select {
+			case <-done:
+			case <-time.After(10 * time.Second):
+				t.Fatal("timeout waiting for backend requests to complete")
+			}
 			require.Equal(t, uint64(tc.counts), requestCount.Load())
 		})
 	}
@@ -279,7 +464,7 @@ func Test_ProxyEndpoint_SummaryMetrics(t *testing.T) {
 
 	comparator := &mockComparator{}
 	proxyMetrics := NewProxyMetrics(prometheus.NewRegistry())
-	endpoint := NewProxyEndpoint(backends, "test", proxyMetrics, log.NewNopLogger(), comparator, true)
+	endpoint := createTestEndpointWithMetrics(backends, "test", comparator, true, proxyMetrics)
 
 	for _, tc := range []struct {
 		name            string
@@ -290,7 +475,8 @@ func Test_ProxyEndpoint_SummaryMetrics(t *testing.T) {
 		{
 			name: "missing-metrics-series",
 			request: func(t *testing.T) *http.Request {
-				r, err := http.NewRequest("GET", "http://test/api/v1/test", nil)
+				r, err := http.NewRequest("GET", "http://test/loki/api/v1/query_range?query={job=\"test\"}&start=1&end=2", nil)
+				r.Header.Set("X-Scope-OrgID", "test-tenant")
 				require.NoError(t, err)
 				return r
 			},
@@ -328,12 +514,12 @@ func Test_ProxyEndpoint_SummaryMetrics(t *testing.T) {
 			wg.Add(tc.counts)
 
 			testHandler = func(w http.ResponseWriter, _ *http.Request) {
-				_, _ = w.Write([]byte("ok"))
+				_, _ = w.Write([]byte(`{"status":"success","data":{"resultType":"matrix","result":[]}}`))
 			}
 
 			w := httptest.NewRecorder()
 			endpoint.ServeHTTP(w, tc.request(t))
-			require.Equal(t, "ok", w.Body.String())
+			require.Contains(t, w.Body.String(), `"status":"success"`)
 			require.Equal(t, 200, w.Code)
 
 			wg.Wait()
@@ -467,7 +653,7 @@ func Test_endToEnd_traceIDFlow(t *testing.T) {
 	goldfishManager, err := querytee_goldfish.NewManager(goldfishConfig, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 
-	endpoint := NewProxyEndpoint(backends, "test", NewProxyMetrics(nil), log.NewNopLogger(), nil, false).WithGoldfish(goldfishManager)
+	endpoint := createTestEndpointWithGoldfish(backends, "test", goldfishManager)
 
 	// Create request that triggers goldfish sampling
 	req := httptest.NewRequest("GET", "/loki/api/v1/query_range?query=count_over_time({job=\"test\"}[5m])&start=1700000000&end=1700001000", nil)
@@ -600,7 +786,7 @@ func TestProxyEndpoint_QuerySplitting(t *testing.T) {
 	goldfishManager, err := querytee_goldfish.NewManager(goldfishConfig, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 
-	endpoint := NewProxyEndpoint(backends, "test", NewProxyMetrics(nil), log.NewNopLogger(), nil, false).WithGoldfish(goldfishManager)
+	endpoint := createTestEndpointWithGoldfish(backends, "test", goldfishManager)
 
 	t.Run("query entirely recent (skips goldfish)", func(t *testing.T) {
 		receivedQueries = []string{}
@@ -684,17 +870,17 @@ func TestProxyEndpoint_QuerySplitting(t *testing.T) {
 		var response loghttp.QueryResponse
 		err = json.Unmarshal(w.Body.Bytes(), &response)
 		require.NoError(t, err)
-		
+
 		assert.Equal(t, "success", response.Status)
 		assert.Equal(t, string(loghttp.ResultTypeMatrix), string(response.Data.ResultType))
-		
+
 		// Verify we got a matrix response
 		matrix, ok := response.Data.Result.(loghttp.Matrix)
 		require.True(t, ok, "Response should be a matrix")
 		require.Len(t, matrix, 1, "Should have one metric")
-		
+
 		metric := matrix[0]
-		
+
 		assert.Equal(t, model.LabelValue("test_metric"), metric.Metric["__name__"])
 		assert.Equal(t, model.LabelValue("test"), metric.Metric["job"])
 		assert.Equal(t, len(metric.Values), 4, "Should have multiple data points from concatenation")
@@ -756,7 +942,7 @@ func Test_extractTenant(t *testing.T) {
 func TestProxyEndpoint_ServeHTTP_ForwardsResponseHeaders(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Add("Content-Type", "application/json; charset=utf-8")
-		fmt.Fprint(w, "ok")
+		fmt.Fprint(w, `{"status":"success","data":{"resultType":"matrix","result":[]}}`)
 	}))
 	defer srv.Close()
 
@@ -772,11 +958,16 @@ func TestProxyEndpoint_ServeHTTP_ForwardsResponseHeaders(t *testing.T) {
 	}}
 
 	recorder := httptest.NewRecorder()
-	fakeReq := httptest.NewRequestWithContext(t.Context(), "", "/", nil)
+	fakeReq := httptest.NewRequestWithContext(context.Background(), "GET", "/loki/api/v1/query_range?query={job=\"test\"}&start=1&end=2", nil)
+	fakeReq.Header.Set("X-Scope-OrgID", "test-tenant")
 
-	endpoint := NewProxyEndpoint(backends, "test", NewProxyMetrics(nil), log.NewNopLogger(), nil, false)
+	endpoint := createTestEndpoint(backends, "test", nil, false)
 	endpoint.ServeHTTP(recorder, fakeReq)
 
 	require.Equal(t, http.StatusOK, recorder.Result().StatusCode, "Status code from backend should be forwarded")
 	require.Equal(t, "application/json; charset=utf-8", recorder.Result().Header.Get("Content-Type"), "Response header from backend should be forwarded")
+}
+
+func formatTime(t time.Time) string {
+	return strconv.FormatInt(t.UnixNano(), 10)
 }

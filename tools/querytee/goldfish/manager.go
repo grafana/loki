@@ -109,12 +109,49 @@ func (m *Manager) ShouldSample(tenantID string) bool {
 	return sampled
 }
 
-// ProcessQueryPair processes a sampled query pair from both cells.
-// It extracts performance statistics, compares responses, persists raw payloads when configured, and stores metadata/results.
-func (m *Manager) ProcessQueryPair(ctx context.Context, req *http.Request, cellAResp, cellBResp *ResponseData) {
+type BackendResponse struct {
+	BackendName string
+	Status      int
+	Body        []byte
+	Duration    time.Duration
+	TraceID     string
+	SpanID      string
+}
+
+func (m *Manager) SendToGoldfish(httpReq *http.Request, cellAResp, cellBResp *BackendResponse) {
 	if !m.config.Enabled {
 		return
 	}
+
+	cellAData, err := CaptureResponse(&http.Response{
+		StatusCode: cellAResp.Status,
+		Body:       io.NopCloser(bytes.NewReader(cellAResp.Body)),
+	}, cellAResp.Duration, cellAResp.TraceID, cellAResp.SpanID)
+	if err != nil {
+		level.Error(m.logger).Log("msg", "failed to capture cell A response", "err", err)
+		return
+	}
+	cellAData.BackendName = cellAResp.BackendName
+
+	cellBData, err := CaptureResponse(&http.Response{
+		StatusCode: cellBResp.Status,
+		Body:       io.NopCloser(bytes.NewReader(cellBResp.Body)),
+	}, cellBResp.Duration, cellBResp.TraceID, cellBResp.SpanID)
+	if err != nil {
+		level.Error(m.logger).Log("msg", "failed to capture cell B response", "err", err)
+		return
+	}
+	cellBData.BackendName = cellBResp.BackendName
+
+	m.processQueryPair(httpReq, cellAData, cellBData)
+}
+
+// processQueryPair processes a sampled query pair from both cells.
+// It extracts performance statistics, compares responses, persists raw payloads when configured, and stores metadata/results.
+func (m *Manager) processQueryPair(req *http.Request, cellAResp, cellBResp *ResponseData) {
+	// Use a detached context with timeout since this runs async
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 
 	correlationID := uuid.New().String()
 	tenantID := extractTenant(req)
