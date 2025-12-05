@@ -5,12 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"runtime"
 	"time"
 
 	"github.com/alecthomas/kingpin/v2"
 	glog "github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -99,6 +101,16 @@ func doExecuteLocallyV2(params logql.LiteralParams) error {
 	return checkResult(result)
 }
 
+func doExecuteLocallyV2Scheduler(params logql.LiteralParams) error {
+	level.Info(logger).Log("msg", "executing local query with V2 advanced engine")
+	result, err := doLocalQueryWithV2EngineScheduler(params)
+	if err != nil {
+		level.Error(logger).Log("msg", "V2 advanced query execution failed", "error", err)
+		return fmt.Errorf("V2 query execution failed: %w", err)
+	}
+	return checkResult(result)
+}
+
 // checkResult processes and displays query results
 func checkResult(result logqlmodel.Result) error {
 	streams, ok := result.Data.(logqlmodel.Streams)
@@ -123,6 +135,62 @@ func doLocalQueryWithV2Engine(params logql.LiteralParams) (logqlmodel.Result, er
 	}, MustDataobjBucket(), logql.NoLimits, prometheus.DefaultRegisterer, glog.NewLogfmtLogger(os.Stderr))
 	query := qe.Query(params)
 	return query.Exec(ctx)
+}
+
+func doLocalQueryWithV2EngineScheduler(params logql.LiteralParams) (logqlmodel.Result, error) {
+	ctx := user.InjectOrgID(context.Background(), orgID)
+
+	sched, err := engine.NewScheduler(engine.SchedulerParams{
+		Logger:        glog.With(logger, "component", "scheduler"),
+		AdvertiseAddr: nil,
+	})
+	if err != nil {
+		return logqlmodel.Result{}, fmt.Errorf("creating scheduler: %w", err)
+	} else if err := services.StartAndAwaitRunning(ctx, sched.Service()); err != nil {
+		return logqlmodel.Result{}, fmt.Errorf("starting scheduler service: %w", err)
+	}
+
+	worker, err := engine.NewWorker(engine.WorkerParams{
+		Logger:         glog.With(logger, "component", "worker"),
+		AdvertiseAddr:  nil,
+		Bucket:         MustDataobjBucket(),
+		LocalScheduler: sched,
+		Config: engine.WorkerConfig{
+			SchedulerLookupAddress:  "",
+			SchedulerLookupInterval: 60,
+			WorkerThreads:           max(runtime.GOMAXPROCS(0), 8),
+		},
+		Executor: engine.ExecutorConfig{
+			BatchSize:          128,
+			MetaqueriesEnabled: true,
+		},
+	})
+	if err != nil {
+		return logqlmodel.Result{}, fmt.Errorf("creating worker: %w", err)
+	} else if err := services.StartAndAwaitRunning(ctx, worker.Service()); err != nil {
+		return logqlmodel.Result{}, fmt.Errorf("starting worker service: %w", err)
+	}
+
+	e, err := engine.New(engine.Params{
+		Logger:     glog.With(logger, "component", "engine"),
+		Registerer: prometheus.NewRegistry(),
+		Config: engine.ExecutorConfig{
+			BatchSize:          128,
+			MetaqueriesEnabled: true,
+		},
+		MetastoreConfig: metastore.Config{
+			IndexStoragePrefix: "index/v0",
+		},
+		Scheduler: sched,
+		Bucket:    MustDataobjBucket(),
+		Limits:    logql.NoLimits,
+	})
+	if err != nil {
+		level.Error(logger).Log("msg", "V2 query execution failed", "error", err)
+		return logqlmodel.Result{}, fmt.Errorf("V2 query execution failed: %w", err)
+	}
+
+	return e.Execute(ctx, params)
 }
 
 // doLocalQueryWithV1Engine executes a query using the V1 engine

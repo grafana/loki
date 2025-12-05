@@ -14,11 +14,12 @@ var (
 
 // NOTE: Metrics are subject to rapid change!
 type metrics struct {
-	subqueries       *prometheus.CounterVec
-	logicalPlanning  prometheus.Histogram
-	physicalPlanning prometheus.Histogram
-	workflowPlanning prometheus.Histogram
-	execution        prometheus.Histogram
+	subqueries        *prometheus.CounterVec
+	logicalPlanning   prometheus.Histogram
+	metaqueryPlanning prometheus.Histogram
+	physicalPlanning  prometheus.Histogram
+	workflowPlanning  prometheus.Histogram
+	execution         prometheus.Histogram
 }
 
 func newMetrics(r prometheus.Registerer) *metrics {
@@ -30,6 +31,10 @@ func newMetrics(r prometheus.Registerer) *metrics {
 		logicalPlanning: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
 			Name: "loki_engine_v2_logical_planning_duration_seconds",
 			Help: "Duration of logical query planning in seconds",
+		}),
+		metaqueryPlanning: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+			Name: "loki_engine_v2_metaquery_planning_duration_seconds",
+			Help: "Duration of metaquery planning prior to physical planning in seconds",
 		}),
 		physicalPlanning: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
 			Name: "loki_engine_v2_physical_planning_duration_seconds",
