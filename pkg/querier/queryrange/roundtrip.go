@@ -732,7 +732,7 @@ func NewLogFilterTripperware(cfg Config, engineOpts logql.EngineOpts, routerConf
 
 		// route query range supported by v2 engine to the new engine handler.
 		if routerConfig.Enabled {
-			engineRouterMiddleware := newEngineRouterMiddleware(routerConfig, chunksEngineMWs, merger, true, log)
+			engineRouterMiddleware := newEngineRouterMiddleware(routerConfig, chunksEngineMWs, merger, false, log)
 			queryRangeMiddleware = append(
 				queryRangeMiddleware,
 				base.InstrumentMiddleware("v2_engine_router", metrics.InstrumentMiddlewareMetrics),

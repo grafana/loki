@@ -8,12 +8,19 @@
 
 Package scram provides client and server implementations of the Salted
 Challenge Response Authentication Mechanism (SCRAM) described in
-[RFC-5802](https://tools.ietf.org/html/rfc5802) and
-[RFC-7677](https://tools.ietf.org/html/rfc7677).
+- [RFC-5802](https://tools.ietf.org/html/rfc5802)
+- [RFC-5929](https://tools.ietf.org/html/rfc5929)
+- [RFC-7677](https://tools.ietf.org/html/rfc7677)
+- [RFC-9266](https://tools.ietf.org/html/rfc9266)
 
 It includes both client and server side support.
 
-Channel binding and extensions are not (yet) supported.
+Channel binding is supported for SCRAM-PLUS variants, including:
+- `tls-unique` (RFC 5929) - insecure, but required
+- `tls-server-end-point` (RFC 5929) - works with all TLS versions
+- `tls-exporter` (RFC 9266) - recommended for TLS 1.3+
+
+SCRAM message extensions are not supported.
 
 ## Examples
 
@@ -62,6 +69,41 @@ Channel binding and extensions are not (yet) supported.
     func sendClientMsg(s string) string {
         // A real implementation would send this to a server and read a reply.
         return ""
+    }
+
+### Client side with channel binding (SCRAM-PLUS)
+
+    package main
+
+    import (
+        "crypto/tls"
+        "github.com/xdg-go/scram"
+    )
+
+    func main() {
+        // Establish TLS connection
+        tlsConn, err := tls.Dial("tcp", "server:port", &tls.Config{MinVersion: tls.VersionTLS13})
+        if err != nil {
+            panic(err)
+        }
+        defer tlsConn.Close()
+
+        // Get Client with username, password
+        client, err := scram.SHA256.NewClient("mulder", "trustno1", "")
+        if err != nil {
+            panic(err)
+        }
+
+        // Create channel binding from TLS connection (TLS 1.3 example)
+        // Use NewTLSExporterBinding for TLS 1.3+, NewTLSServerEndpointBinding for all TLS versions
+        channelBinding, err := scram.NewTLSExporterBinding(&tlsConn.ConnectionState())
+        if err != nil {
+            panic(err)
+        }
+
+        // Create conversation with channel binding for SCRAM-SHA-256-PLUS
+        conv := client.NewConversationWithChannelBinding(channelBinding)
+        // ... rest of authentication conversation
     }
 
 ## Copyright and License
