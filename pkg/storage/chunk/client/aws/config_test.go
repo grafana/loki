@@ -108,7 +108,7 @@ func TestS3ClientOptions(t *testing.T) {
 		opts := s3.Options{}
 		fn(&opts)
 
-		require.Equal(t, "", opts.Region)
+		require.Equal(t, InvalidAWSRegion, opts.Region) // it is still required to set region explicitly
 		require.Equal(t, "http://s3.us-east-0.amazonaws.com", *opts.BaseEndpoint)
 	})
 
@@ -120,7 +120,7 @@ func TestS3ClientOptions(t *testing.T) {
 		opts := s3.Options{}
 		fn(&opts)
 
-		require.Equal(t, "", opts.Region)
+		require.Equal(t, InvalidAWSRegion, opts.Region) // it is still required to set region explicitly
 		require.Equal(t, "https://s3.us-east-0.amazonaws.com", *opts.BaseEndpoint)
 	})
 

@@ -316,7 +316,9 @@ func s3ClientConfigFunc(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (
 				// s3://<key>:<secret>@us-east-0/<bucketname>
 				opts.Region = awsURL.Host
 			}
-		} else {
+		}
+		if opts.Region == "" {
+			// Not sure why this is needed, but test otherwise time out when run in CI
 			opts.Region = InvalidAWSRegion
 		}
 
