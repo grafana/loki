@@ -209,14 +209,17 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	}
 
 	durFull := time.Since(startTime)
-	level.Info(logger).Log(
+	logValues := []any{
 		"msg", "finished executing",
+		"query", params.QueryString(),
+		"length", params.End().Sub(params.Start()).String(),
+		"step", params.Step().String(),
 		"duration_logical_planning", durLogicalPlanning,
 		"duration_physical_planning", durPhysicalPlanning,
 		"duration_workflow_planning", durWorkflowPlanning,
 		"duration_execution", durExecution,
 		"duration_full", durFull,
-	)
+	}
 
 	// Close the pipeline to calculate the stats.
 	pipeline.Close()
@@ -227,9 +230,17 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	// It is safe to call End() multiple times.
 	region.End()
 	capture.End()
-	if err := exportCapture(ctx, capture, physicalPlan, logger); err != nil {
-		level.Error(logger).Log("msg", "failed to export capture as trace", "err", err)
+	if err := mergeCapture(capture, physicalPlan); err != nil {
+		level.Warn(logger).Log("msg", "failed to merge capture", "err", err)
+		// continue export even if merging fails. Spans from the tasks
+		// would still appear as siblings in the trace right below the Engine.Execute.
 	}
+
+	xcap.ExportTrace(ctx, capture, logger)
+	logValues = append(logValues, xcap.SummaryLogValues(capture)...)
+	level.Info(logger).Log(
+		logValues...,
+	)
 
 	// TODO: capture and report queue time
 	md := metadata.FromContext(ctx)
@@ -424,7 +435,7 @@ func (e *Engine) collectResult(ctx context.Context, logger log.Logger, params lo
 	return builder, duration, nil
 }
 
-func exportCapture(ctx context.Context, capture *xcap.Capture, plan *physical.Plan, logger log.Logger) error {
+func mergeCapture(capture *xcap.Capture, plan *physical.Plan) error {
 	if capture == nil {
 		return nil
 	}
@@ -462,7 +473,5 @@ func exportCapture(ctx context.Context, capture *xcap.Capture, plan *physical.Pl
 		return parentID, ok
 	})
 
-	xcap.ExportLog(capture, logger)
-
-	return xcap.ExportTrace(ctx, capture, logger)
+	return nil
 }
