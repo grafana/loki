@@ -284,6 +284,7 @@ type Limits struct {
 	S3SSEType                 string `yaml:"s3_sse_type" json:"s3_sse_type" doc:"nocli|description=S3 server-side encryption type. Required to enable server-side encryption overrides for a specific tenant. If not set, the default S3 client settings are used."`
 	S3SSEKMSKeyID             string `yaml:"s3_sse_kms_key_id" json:"s3_sse_kms_key_id" doc:"nocli|description=S3 server-side encryption KMS Key ID. Ignored if the SSE type override is not set."`
 	S3SSEKMSEncryptionContext string `yaml:"s3_sse_kms_encryption_context" json:"s3_sse_kms_encryption_context" doc:"nocli|description=S3 server-side encryption KMS encryption context. If unset and the key ID override is set, the encryption context will not be provided to S3. Ignored if the SSE type override is not set."`
+	S3SSECEncryptionKey       string `yaml:"s3_sse_c_encryption_key" json:"s3_sse_c_encryption_key" doc:"nocli|description=S3 server-side encryption customer-provided encryption key. Ignored if the SSE type override is not set."`
 
 	// Per tenant limits for the v2 execution engine
 
@@ -1373,6 +1374,11 @@ func (o *Overrides) S3SSEKMSKeyID(user string) string {
 // S3SSEKMSEncryptionContext returns the per-tenant S3 KMS-SSE encryption context.
 func (o *Overrides) S3SSEKMSEncryptionContext(user string) string {
 	return o.getOverridesForUser(user).S3SSEKMSEncryptionContext
+}
+
+// S3SSECEncryptionKey returns the per-tenant S3 SSE-C encryption key.
+func (o *Overrides) S3SSECEncryptionKey(user string) string {
+	return o.getOverridesForUser(user).S3SSECEncryptionKey
 }
 
 func (o *Overrides) MaxScanTaskParallelism(userID string) int {
