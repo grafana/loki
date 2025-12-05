@@ -1,10 +1,7 @@
 package generic
 
 import (
-	"fmt"
-
 	"github.com/apache/arrow-go/v18/arrow"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 )
 
 func makeIndex(fields []arrow.Field) map[string]int {
@@ -18,21 +15,24 @@ func makeIndex(fields []arrow.Field) map[string]int {
 // Schema defines the structure of entities in a generic section.
 // It contains a list of Arrow fields that define the columns.
 type Schema struct {
-	fields []arrow.Field
-	index  map[string]int
-
+	inner *arrow.Schema
 	// Optional sort information
 	sortIndex     []int // Indices of columns to sort by
 	sortDirection []int // 1 for ASC, -1 for DESC
 }
 
+func (s *Schema) AddField(field arrow.Field) error {
+	newSchema, err := s.inner.AddField(s.inner.NumFields(), field)
+	if err != nil {
+		return err
+	}
+	s.inner = newSchema
+	return nil
+}
+
 func (s *Schema) Copy() *Schema {
-	// Create a copy of the schema to avoid sharing field slices
-	fieldsCopy := make([]arrow.Field, len(s.fields))
-	copy(fieldsCopy, s.fields)
 	return &Schema{
-		fields:        fieldsCopy,
-		index:         makeIndex(fieldsCopy), // Initialize the index map
+		inner:         arrow.NewSchema(s.inner.Fields(), nil),
 		sortIndex:     s.sortIndex,
 		sortDirection: s.sortDirection,
 	}
@@ -41,8 +41,7 @@ func (s *Schema) Copy() *Schema {
 // NewSchema creates a new Schema with the given fields.
 func NewSchema(fields []arrow.Field) *Schema {
 	return &Schema{
-		fields: fields,
-		index:  makeIndex(fields),
+		inner: arrow.NewSchema(fields, nil),
 	}
 }
 
@@ -60,58 +59,22 @@ func NewSchemaWithSort(fields []arrow.Field, sortIndex []int, sortDirection []in
 }
 
 func (s *Schema) Field(name string) (arrow.Field, bool) {
-	idx, exists := s.index[name]
+	indices, exists := s.inner.FieldsByName(name)
 	if !exists {
 		// Should this panic instead?
 		return arrow.Field{}, false
 	}
-	return s.fields[idx], true
+	return indices[0], true
 }
 
 // Fields returns the list of fields in the schema.
 func (s *Schema) Fields() []arrow.Field {
-	return s.fields
+	return s.inner.Fields()
 }
 
 // NumFields returns the number of fields in the schema.
 func (s *Schema) NumFields() int {
-	return len(s.fields)
+	return s.inner.NumFields()
 }
 
-// Entity represents a single row of data in a generic section.
-// It contains values that correspond to the fields defined in its own Schema.
-type Entity struct {
-	schema *Schema
-	values []dataset.Value
-}
-
-// NewEntity creates a new Entity with the given schema and values.
-// The number of values must match the number of fields in the schema.
-func NewEntity(schema *Schema, values []dataset.Value) *Entity {
-	if len(values) != schema.NumFields() {
-		panic(fmt.Sprintf("entity values count (%d) does not match schema fields count (%d)", len(values), schema.NumFields()))
-	}
-	return &Entity{
-		schema: schema,
-		values: values,
-	}
-}
-
-// Schema returns the schema of the entity.
-func (e *Entity) Schema() *Schema {
-	return e.schema
-}
-
-func (e *Entity) Value(name string) (dataset.Value, bool) {
-	idx, exists := e.schema.index[name]
-	if !exists {
-		// Should this panic instead?
-		return dataset.Value{}, false
-	}
-	return e.values[idx], true
-}
-
-// Values returns the values in the entity.
-func (e *Entity) Values() []dataset.Value {
-	return e.values
-}
+type Entity arrow.RecordBatch

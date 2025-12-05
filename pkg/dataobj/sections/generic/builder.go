@@ -39,12 +39,13 @@ type Builder struct {
 	initialSchema *Schema
 	currentSchema *Schema
 
-	buffer   []*Entity
-	segments []arrow.RecordBatch
+	buffer   []Entity
+	segments []Entity
 
 	// Size tracking
-	entitiesSize int // Raw uncompressed size
-	segmentSize  int
+	bufferSize  int
+	segmentSize int
+	sectionSize int
 }
 
 // NewBuilder creates a new generic section builder with the provided options.
@@ -68,7 +69,7 @@ func NewBuilder(kind string, schema *Schema, metrics *Metrics, opts BuilderOptio
 		currentSchema: schema.Copy(),
 
 		sectionType: NewGenericSectionType(kind),
-		buffer:      make([]*Entity, 0, 1024),
+		buffer:      make([]Entity, 0, 1024),
 	}
 }
 
@@ -87,24 +88,19 @@ func (b *Builder) Type() dataobj.SectionType { return b.sectionType }
 // The entity's schema does not need to match the builder's schema exactly.
 // If the entity has fields not in the builder's schema, they will be added,
 // and previous entities will be backfilled with null values for those fields.
-func (b *Builder) Append(entity *Entity) error {
+func (b *Builder) Append(entity Entity) error {
 	// Extend builder schema if entity has new fields
-	if err := b.extendSchema(entity.schema); err != nil {
+	if err := b.extendSchema(entity.Schema()); err != nil {
 		return fmt.Errorf("extending schema: %w", err)
-	}
-
-	// Validate entity values against its own schema
-	if err := b.validateEntityValues(entity); err != nil {
-		return err
 	}
 
 	b.metrics.appendsTotal.Inc()
 	b.metrics.entitiesTotal.Inc()
 
 	b.buffer = append(b.buffer, entity)
-	b.entitiesSize += entitySize(entity)
+	b.bufferSize += entitySize(entity)
 
-	if b.entitiesSize >= b.opts.BufferSize {
+	if b.bufferSize >= b.opts.BufferSize {
 		if err := b.flushEntities(); err != nil {
 			return err
 		}
@@ -118,84 +114,35 @@ func (b *Builder) flushEntities() error {
 		return nil
 	}
 
-	nRows := int64(len(b.buffer))
+	columns := make([]arrow.Array, b.currentSchema.NumFields())
+	arrays := make([]arrow.Array, 0, len(b.buffer))
 
-	arrayBuilders := make([]array.Builder, b.currentSchema.NumFields())
+	var numRows int64
+	for _, field := range b.currentSchema.Fields() {
+		arrays = arrays[:0]
 
-	for i, field := range b.currentSchema.Fields() {
-
-		switch field.Type.ID() {
-		case arrow.INT64:
-			builder := array.NewInt64Builder(memory.DefaultAllocator)
-			arrayBuilders[i] = builder
-			for _, entity := range b.buffer {
-				v, ok := entity.Value(field.Name)
-				if !ok || v.IsNil() {
-					builder.AppendNull()
-				} else {
-					builder.Append(v.Int64())
-				}
+		for _, entity := range b.buffer {
+			idx := entity.Schema().FieldIndices(field.Name)
+			if len(idx) > 0 {
+				arrays = append(arrays, entity.Column(idx[0]))
+			} else {
+				arrays = append(arrays, array.NewNull(int(entity.NumRows())))
 			}
-		case arrow.UINT64:
-			builder := array.NewUint64Builder(memory.DefaultAllocator)
-			arrayBuilders[i] = builder
-			for _, entity := range b.buffer {
-				v, ok := entity.Value(field.Name)
-				if !ok || v.IsNil() {
-					builder.AppendNull()
-				} else {
-					builder.Append(v.Uint64())
-				}
-			}
-		case arrow.STRING:
-			builder := array.NewStringBuilder(memory.DefaultAllocator)
-			arrayBuilders[i] = builder
-			for _, entity := range b.buffer {
-				v, ok := entity.Value(field.Name)
-				if !ok || v.IsNil() {
-					builder.AppendNull()
-				} else {
-					builder.Append(string(v.Binary()))
-				}
-			}
-		case arrow.BINARY:
-			builder := array.NewBinaryBuilder(memory.DefaultAllocator, arrow.BinaryTypes.Binary)
-			arrayBuilders[i] = builder
-			for _, entity := range b.buffer {
-				v, ok := entity.Value(field.Name)
-				if !ok || v.IsNil() {
-					builder.AppendNull()
-				} else {
-					builder.Append(v.Binary())
-				}
-			}
-		case arrow.TIMESTAMP:
-			builder := array.NewTimestampBuilder(memory.DefaultAllocator, &arrow.TimestampType{Unit: arrow.Nanosecond, TimeZone: "UTC"})
-			arrayBuilders[i] = builder
-			for _, entity := range b.buffer {
-				v, ok := entity.Value(field.Name)
-				if !ok || v.IsNil() {
-					builder.AppendNull()
-				} else {
-					// Timestamps are stored as INT64 in dataset.Value
-					builder.Append(arrow.Timestamp(v.Int64()))
-				}
-			}
+			numRows += entity.NumRows()
 		}
-
+		merged, err := array.Concatenate(arrays, memory.DefaultAllocator)
+		if err != nil {
+			return err
+		}
+		columns = append(columns, merged)
+		b.segmentSize += int(merged.Data().SizeInBytes())
 	}
 
 	schema := arrow.NewSchema(b.currentSchema.Fields(), nil)
-	arrays := make([]arrow.Array, len(arrayBuilders))
-	for i, builder := range arrayBuilders {
-		arrays[i] = builder.NewArray()
-		b.segmentSize += int(arrays[i].Data().SizeInBytes())
-	}
-
-	segment := array.NewRecordBatch(schema, arrays, nRows)
+	segment := array.NewRecordBatch(schema, arrays, numRows)
 	b.segments = append(b.segments, segment)
 	b.buffer = sliceclear.Clear(b.buffer)
-	b.entitiesSize = 0
+	b.bufferSize = 0
 
 	return nil
 }
@@ -210,107 +157,61 @@ func (b *Builder) flushSection() (arrow.RecordBatch, error) {
 		return b.segments[0], nil
 	}
 
-	// Merge all segments into a single RecordBatch
-	// Get the schema from the first segment
-	schema := b.segments[0].Schema()
-	numColumns := int(b.segments[0].NumCols())
+	columns := make([]arrow.Array, b.currentSchema.NumFields())
+	arrays := make([]arrow.Array, 0, len(b.buffer))
 
-	// Calculate total number of rows
-	var totalRows int64
-	for _, segment := range b.segments {
-		totalRows += segment.NumRows()
-	}
+	var numRows int64
+	for _, field := range b.currentSchema.Fields() {
+		arrays = arrays[:0]
 
-	// Concatenate arrays for each column
-	mergedArrays := make([]arrow.Array, numColumns)
-	for colIdx := 0; colIdx < numColumns; colIdx++ {
-		// Collect arrays for this column from all segments
-		arrays := make([]arrow.Array, len(b.segments))
-		for segIdx, segment := range b.segments {
-			arrays[segIdx] = segment.Column(colIdx)
+		for _, entity := range b.segments {
+			idx := entity.Schema().FieldIndices(field.Name)
+			if len(idx) > 0 {
+				arrays = append(arrays, entity.Column(idx[0]))
+			} else {
+				arrays = append(arrays, array.NewNull(int(entity.NumRows())))
+			}
+			numRows += entity.NumRows()
 		}
-
-		// Concatenate arrays for this column
 		merged, err := array.Concatenate(arrays, memory.DefaultAllocator)
 		if err != nil {
-			// Clean up any previously allocated arrays
-			for i := 0; i < colIdx; i++ {
-				mergedArrays[i].Release()
-			}
-			return nil, fmt.Errorf("concatenating column %d: %w", colIdx, err)
+			return nil, err
 		}
-		mergedArrays[colIdx] = merged
+		columns = append(columns, merged)
+		b.sectionSize += int(merged.Data().SizeInBytes())
 	}
 
-	// Create the merged record batch
-	mergedBatch := array.NewRecordBatch(schema, mergedArrays, totalRows)
+	schema := arrow.NewSchema(b.currentSchema.Fields(), nil)
+	section := array.NewRecordBatch(schema, arrays, numRows)
+	b.segments = sliceclear.Clear(b.segments)
+	b.segmentSize = 0
 
-	// Release the original segments since we now have a merged batch
-	for _, segment := range b.segments {
-		segment.Release()
-	}
-	b.segments = nil
-
-	return mergedBatch, nil
+	return section, nil
 }
 
 // extendSchema adds fields from entitySchema that are not in the builder's schema.
-func (b *Builder) extendSchema(entitySchema *Schema) error {
-	var newFields []arrow.Field
-
-	for _, entityField := range entitySchema.fields {
+func (b *Builder) extendSchema(entitySchema *arrow.Schema) error {
+	for _, entityField := range entitySchema.Fields() {
 		builderField, found := b.currentSchema.Field(entityField.Name)
 		if found {
 			if !arrow.TypeEqual(builderField.Type, entityField.Type) {
 				return fmt.Errorf("field %s: type mismatch between entity (%s) and builder (%s)",
 					entityField.Name, entityField.Type, builderField.Type)
 			}
-		} else {
-			newFields = append(newFields, entityField)
-		}
-	}
-
-	// If we have new fields, create a new slice to avoid sharing underlying arrays
-	if len(newFields) > 0 {
-		oldFields := b.currentSchema.fields
-		b.currentSchema.fields = make([]arrow.Field, len(oldFields)+len(newFields))
-		copy(b.currentSchema.fields, oldFields)
-		copy(b.currentSchema.fields[len(oldFields):], newFields)
-		b.currentSchema.index = makeIndex(b.currentSchema.fields)
-	}
-
-	return nil
-}
-
-// validateEntityValues checks that each value in the entity matches the expected type from its schema.
-func (b *Builder) validateEntityValues(entity *Entity) error {
-	for i, field := range entity.schema.fields {
-		value := entity.values[i]
-
-		// Skip validation for nil values
-		if value.IsNil() {
 			continue
 		}
-
-		expectedType, _, err := b.mapArrowType(field.Type)
-		if err != nil {
-			return fmt.Errorf("field %d (%s): %w", i, field.Name, err)
-		}
-
-		actualType := value.Type()
-		if actualType != expectedType {
-			return fmt.Errorf("field %d (%s): expected type %s but got %s",
-				i, field.Name, expectedType, actualType)
+		if err := b.currentSchema.AddField(entityField); err != nil {
+			return err
 		}
 	}
 	return nil
 }
 
 // entitySize estimates the size of an entity in bytes.
-func entitySize(entity *Entity) int {
+func entitySize(entity Entity) int {
 	var size int
-	for i := range entity.values {
-		size += entity.values[i].Size()
+	for i := range entity.Columns() {
+		size += int(entity.Column(i).Data().SizeInBytes())
 	}
 	return size
 }
@@ -324,7 +225,7 @@ func entitySize(entity *Entity) int {
 func (b *Builder) EstimatedSize() int {
 	var size int
 
-	size += b.entitiesSize
+	size += b.bufferSize
 	size += b.segmentSize
 
 	return size
@@ -381,9 +282,10 @@ func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 
 func (b *Builder) encodeTo(enc *columnar.Encoder, recordBatch arrow.RecordBatch) error {
 	// Create column builders for each field in the schema
-	builders := make([]*dataset.ColumnBuilder, len(b.currentSchema.fields))
+	builders := make([]*dataset.ColumnBuilder, b.currentSchema.NumFields())
+	fields := b.currentSchema.Fields()
 
-	for i, field := range b.currentSchema.fields {
+	for i, field := range fields {
 		builder, err := b.createColumnBuilder(field)
 		if err != nil {
 			return fmt.Errorf("creating column builder for field %s: %w", field.Name, err)
@@ -397,7 +299,7 @@ func (b *Builder) encodeTo(enc *columnar.Encoder, recordBatch arrow.RecordBatch)
 
 	for rowIdx := 0; rowIdx < numRows; rowIdx++ {
 		// Map RecordBatch column values to builder columns
-		for colIdx, field := range b.currentSchema.fields {
+		for colIdx, field := range fields {
 			var value dataset.Value
 			var err error
 
@@ -420,23 +322,12 @@ func (b *Builder) encodeTo(enc *columnar.Encoder, recordBatch arrow.RecordBatch)
 	// Encode all columns
 	var errs []error
 	for i, builder := range builders {
-		if err := b.encodeColumn(enc, b.currentSchema.fields[i].Name, builder); err != nil {
-			errs = append(errs, fmt.Errorf("encoding column %s: %w", b.currentSchema.fields[i].Name, err))
+		if err := b.encodeColumn(enc, fields[i].Name, builder); err != nil {
+			errs = append(errs, fmt.Errorf("encoding column %s: %w", fields[i].Name, err))
 		}
 	}
 
 	return errors.Join(errs...)
-}
-
-// getEntityValue returns the value for a given field name from the entity.
-// If the entity doesn't have the field, it returns a nil value.
-func (b *Builder) getEntityValue(entity *Entity, fieldName string) dataset.Value {
-	if len(entity.values) != len(entity.schema.fields) {
-		panic(fmt.Sprintf("entity values length (%d) != schema fields length (%d)",
-			len(entity.values), len(entity.schema.fields)))
-	}
-	value, _ := entity.Value(fieldName)
-	return value
 }
 
 // getRecordBatchValue extracts a value from a RecordBatch at the specified column and row,
@@ -583,6 +474,6 @@ func (b *Builder) Reset() {
 	b.tenant = ""
 	b.buffer = sliceclear.Clear(b.buffer)
 	b.segments = sliceclear.Clear(b.segments)
-	b.entitiesSize = 0
+	b.bufferSize = 0
 	b.segmentSize = 0
 }
