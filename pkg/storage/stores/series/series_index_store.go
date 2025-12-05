@@ -114,7 +114,7 @@ func (c *IndexReaderWriter) calculateIndexEntries(ctx context.Context, from, thr
 	seenIndexEntries := map[string]struct{}{}
 	entries := []series_index.Entry{}
 
-	metricName := chunk.Metric.Get(labels.MetricName)
+	metricName := chunk.Metric.Get(model.MetricNameLabel)
 	if metricName == "" {
 		return nil, nil, fmt.Errorf("no MetricNameLabel for chunk")
 	}
