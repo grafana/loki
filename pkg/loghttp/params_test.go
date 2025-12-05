@@ -13,102 +13,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
-func TestParseTimestamp(t *testing.T) {
-	t.Parallel()
-
-	defaultTime := time.Unix(1234567890, 0)
-
-	tests := []struct {
-		name        string
-		value       string
-		def         time.Time
-		expected    time.Time
-		expectError bool
-	}{
-		{
-			name:     "empty string returns default",
-			value:    "",
-			def:      defaultTime,
-			expected: defaultTime,
-		},
-		{
-			name:     "nanosecond unix timestamp",
-			value:    "1609459200000000000", // 2021-01-01 00:00:00 UTC
-			def:      time.Time{},
-			expected: time.Unix(0, 1609459200000000000),
-		},
-		{
-			name:     "unix seconds (10 digits)",
-			value:    "1609459200",
-			def:      time.Time{},
-			expected: time.Unix(1609459200, 0),
-		},
-		{
-			name:     "unix seconds (9 digits)",
-			value:    "123456789",
-			def:      time.Time{},
-			expected: time.Unix(123456789, 0),
-		},
-		{
-			name:     "float seconds with fractional component",
-			value:    "1609459200.123",
-			def:      time.Time{},
-			expected: time.Unix(1609459200, 123000000), // 0.123 seconds = 123 milliseconds
-		},
-		{
-			name:     "float seconds with small fractional component",
-			value:    "1609459200.001",
-			def:      time.Time{},
-			expected: time.Unix(1609459200, 1000000), // 0.001 seconds = 1 millisecond
-		},
-		{
-			name:     "RFC3339Nano format",
-			value:    "2021-01-01T00:00:00Z",
-			def:      time.Time{},
-			expected: time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC),
-		},
-		{
-			name:     "RFC3339Nano with nanoseconds",
-			value:    "2021-01-01T00:00:00.123456789Z",
-			def:      time.Time{},
-			expected: time.Date(2021, 1, 1, 0, 0, 0, 123456789, time.UTC),
-		},
-		{
-			name:     "RFC3339Nano with timezone",
-			value:    "2021-01-01T00:00:00+05:00",
-			def:      time.Time{},
-			expected: time.Date(2021, 1, 1, 0, 0, 0, 0, time.FixedZone("", 5*3600)),
-		},
-		{
-			name:        "invalid format",
-			value:       "not-a-timestamp",
-			def:         time.Time{},
-			expectError: true,
-		},
-		{
-			name:        "invalid float",
-			value:       "123.456.789",
-			def:         time.Time{},
-			expectError: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result, err := ParseTimestamp(tt.value, tt.def)
-			
-			if tt.expectError {
-				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-				// Compare Unix timestamps (seconds and nanoseconds) for accuracy
-				assert.Equal(t, tt.expected.Unix(), result.Unix(), "Unix seconds mismatch")
-				assert.Equal(t, tt.expected.Nanosecond(), result.Nanosecond(), "Nanoseconds mismatch")
-			}
-		})
-	}
-}
-
 func TestHttp_defaultQueryRangeStep(t *testing.T) {
 	t.Parallel()
 
@@ -303,7 +207,7 @@ func Test_parseTimestamp(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := ParseTimestamp(tt.value, tt.def)
+			got, err := parseTimestamp(tt.value, tt.def)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("parseTimestamp() error = %v, wantErr %v", err, tt.wantErr)
 				return

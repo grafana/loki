@@ -853,7 +853,7 @@ func TestProxyEndpoint_QuerySplitting(t *testing.T) {
 		for _, q := range receivedQueries {
 			if strings.Contains(q, "end=") {
 				endStr := extractQueryParam(q, "end")
-				endTime, _ := loghttp.ParseTimestamp(endStr, time.Time{})
+				endTime, _ := parseTimestamp(endStr)
 				if endTime.Before(threshold) || endTime.Equal(threshold) {
 					oldQueries++
 				} else {
@@ -885,6 +885,17 @@ func TestProxyEndpoint_QuerySplitting(t *testing.T) {
 		assert.Equal(t, model.LabelValue("test"), metric.Metric["job"])
 		assert.Equal(t, len(metric.Values), 4, "Should have multiple data points from concatenation")
 	})
+}
+
+func parseTimestamp(value string) (time.Time, error) {
+	nanos, err := strconv.ParseInt(value, 10, 64)
+	if err != nil {
+		return time.Time{}, err
+	}
+	if len(value) <= 10 {
+		return time.Unix(nanos, 0), nil
+	}
+	return time.Unix(0, nanos), nil
 }
 
 // Helper function to extract query parameters from a query string
