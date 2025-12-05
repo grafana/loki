@@ -162,30 +162,40 @@ func (w *Worker) Service() services.Service {
 
 // run starts the worker, running until the provided context is canceled.
 func (w *Worker) run(ctx context.Context) error {
-	g, ctx := errgroup.WithContext(ctx)
+	threadsGroup := &sync.WaitGroup{}
+	threads := make([]*thread, w.numThreads)
 
 	// Spin up worker threads.
 	for i := range w.numThreads {
-		t := &thread{
+		threads[i] = &thread{
 			BatchSize: w.config.BatchSize,
 			Logger:    log.With(w.logger, "thread", i),
 			Bucket:    w.config.Bucket,
 
-			Ready: w.readyCh,
+			Ready:   w.readyCh,
+			stopped: make(chan struct{}),
 		}
 
-		g.Go(func() error { return t.Run(ctx) })
+		threadsGroup.Go(func() { threads[i].Run() })
 	}
 
-	g.Go(func() error { return w.runAcceptLoop(ctx) })
+	// Spin up the listener for peer connections
+	peerConnectionsCtx, peerConnectionsCancel := context.WithCancel(context.Background())
+	listenerCtx, listenerCancel := context.WithCancel(context.Background())
+	go func() {
+		w.runAcceptLoop(listenerCtx, peerConnectionsCtx)
+	}()
 
+	// Spin up the scheduler loop
+	schedulerCtx, schedulerCancel := context.WithCancel(context.Background())
+	schedulerGroup := errgroup.Group{}
 	if w.config.SchedulerLookupAddress != "" {
 		disc, err := newSchedulerLookup(w.logger, w.config.SchedulerLookupAddress, w.config.SchedulerLookupInterval)
 		if err != nil {
 			return fmt.Errorf("creating scheduler lookup: %w", err)
 		}
-		g.Go(func() error {
-			return disc.Run(ctx, func(ctx context.Context, addr net.Addr) {
+		schedulerGroup.Go(func() error {
+			return disc.Run(schedulerCtx, func(ctx context.Context, addr net.Addr) {
 				_ = w.schedulerLoop(ctx, addr)
 			})
 		})
@@ -193,26 +203,50 @@ func (w *Worker) run(ctx context.Context) error {
 
 	if w.config.SchedulerAddress != nil {
 		level.Info(w.logger).Log("msg", "directly connecting to scheduler", "scheduler_addr", w.config.SchedulerAddress)
-		g.Go(func() error { return w.schedulerLoop(ctx, w.config.SchedulerAddress) })
+		schedulerGroup.Go(func() error { return w.schedulerLoop(schedulerCtx, w.config.SchedulerAddress) })
 	}
 
-	return g.Wait()
+	select {
+	case <-ctx.Done():
+		// Stop accepting new connections from peers.
+		listenerCancel()
+
+		// Signal all worker threads to stop. This will make them not to ask for new tasks, but continue processing current jobs.
+		for _, t := range threads {
+			t.Stop()
+		}
+		// Wait for all worker threads to finish their current jobs.
+		threadsGroup.Wait()
+
+		// Stop scheduler loop
+		schedulerCancel()
+
+		// Wait for scheduler loop to finish
+		schedulerGroup.Wait()
+
+		// Close all peer connections
+		peerConnectionsCancel()
+
+		return nil
+	}
+
+	return nil
 }
 
 // runAcceptLoop handles incoming connections from peers. Incoming connections
 // are exclusively used to receive task results from other workers, or between
 // threads within this worker.
-func (w *Worker) runAcceptLoop(ctx context.Context) error {
+func (w *Worker) runAcceptLoop(listenerCtx, peerConnectionsCtx context.Context) {
 	for {
-		conn, err := w.listener.Accept(ctx)
-		if err != nil && ctx.Err() != nil {
-			return nil
+		conn, err := w.listener.Accept(listenerCtx)
+		if err != nil && listenerCtx.Err() != nil {
+			return
 		} else if err != nil {
 			level.Warn(w.logger).Log("msg", "failed to accept connection", "err", err)
 			continue
 		}
 
-		go w.handleConn(ctx, conn)
+		go w.handleConn(peerConnectionsCtx, conn)
 	}
 }
 
@@ -365,13 +399,13 @@ func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, con
 				return handleAssignment(peer, msg)
 
 			case wire.TaskCancelMessage:
-				return w.handleCancelMessage(ctx, msg)
+				return w.handleCancelMessage(msg)
 
 			case wire.StreamBindMessage:
 				return w.handleBindMessage(ctx, msg)
 
 			case wire.StreamStatusMessage:
-				return w.handleStreamStatusMessage(ctx, msg)
+				return w.handleStreamStatusMessage(msg)
 
 			default:
 				level.Warn(logger).Log("msg", "unsupported message type", "type", reflect.TypeOf(msg).String())
@@ -526,7 +560,7 @@ func (w *Worker) newJob(ctx context.Context, scheduler *wire.Peer, logger log.Lo
 	return job, nil
 }
 
-func (w *Worker) handleCancelMessage(_ context.Context, msg wire.TaskCancelMessage) error {
+func (w *Worker) handleCancelMessage(msg wire.TaskCancelMessage) error {
 	w.resourcesMut.RLock()
 	job, found := w.jobs[msg.ID]
 	w.resourcesMut.RUnlock()
@@ -550,7 +584,7 @@ func (w *Worker) handleBindMessage(ctx context.Context, msg wire.StreamBindMessa
 	return sink.Bind(ctx, msg.Receiver)
 }
 
-func (w *Worker) handleStreamStatusMessage(_ context.Context, msg wire.StreamStatusMessage) error {
+func (w *Worker) handleStreamStatusMessage(msg wire.StreamStatusMessage) error {
 	w.resourcesMut.RLock()
 	source, found := w.sources[msg.StreamID]
 	w.resourcesMut.RUnlock()
