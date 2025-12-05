@@ -163,10 +163,10 @@ func TestWorkerGracefulShutdown(t *testing.T) {
 		manifest := &workflow.Manifest{
 			Streams: []*workflow.Stream{inputStream, resultsStream},
 			Tasks:   []*workflow.Task{task},
-			TaskEventHandler: func(_ context.Context, t *workflow.Task, newStatus workflow.TaskStatus) {
+			TaskEventHandler: func(_ context.Context, _ *workflow.Task, _ workflow.TaskStatus) {
 				// Empty
 			},
-			StreamEventHandler: func(_ context.Context, s *workflow.Stream, newState workflow.StreamState) {
+			StreamEventHandler: func(_ context.Context, _ *workflow.Stream, _ workflow.StreamState) {
 				// Empty
 			},
 		}
@@ -211,7 +211,7 @@ func TestWorkerGracefulShutdown(t *testing.T) {
 		workerPeer := &wire.Peer{
 			Logger: logger,
 			Conn:   workerConn,
-			Handler: func(_ context.Context, _ *wire.Peer, msg wire.Message) error {
+			Handler: func(_ context.Context, _ *wire.Peer, _ wire.Message) error {
 				return nil
 			},
 		}
@@ -231,7 +231,7 @@ func TestWorkerGracefulShutdown(t *testing.T) {
 		schedulerPeer := &wire.Peer{
 			Logger: logger,
 			Conn:   schedulerConn,
-			Handler: func(ctx context.Context, _ *wire.Peer, msg wire.Message) error {
+			Handler: func(_ context.Context, _ *wire.Peer, _ wire.Message) error {
 				return nil
 			},
 		}
