@@ -7846,12 +7846,6 @@ Configuration for `tracing`.
 # Set to false to disable tracing.
 # CLI flag: -tracing.enabled
 [enabled: <boolean> | default = true]
-
-# Set to true to drops all spans from the GCS client library. This prevents the
-# GCS client from creating millions of spans in high-throughput production
-# environments.
-# CLI flag: -tracing.filter-gcs-spans
-[filter_gcs_spans: <boolean> | default = true]
 ```
 
 <!-- vale Grafana.Spelling = YES -->
