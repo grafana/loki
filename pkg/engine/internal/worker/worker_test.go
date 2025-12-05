@@ -333,6 +333,7 @@ func newTestWorker(t *testing.T, logger log.Logger, loc objtest.Location, net *t
 	return newTestWorkerWithContext(t, logger, loc, net, t.Context())
 }
 
+//nolint:revive
 func newTestWorkerWithContext(t *testing.T, logger log.Logger, loc objtest.Location, net *testNetwork, runCtx context.Context) *worker.Worker {
 	t.Helper()
 
