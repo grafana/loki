@@ -31,11 +31,11 @@ var (
 	}
 )
 
-func buildJSONColumns(input *array.String, requestedKeys []string) ([]string, []arrow.Array) {
-	parseFunc := func(line string) (map[string]string, error) {
+func buildJSONColumns(input arrow.RecordBatch, sourceCol *array.String, requestedKeys []string) ([]string, []arrow.Array) {
+	parseFunc := func(row arrow.RecordBatch, line string) (map[string]string, error) {
 		return parseJSONLine(line, requestedKeys)
 	}
-	return buildColumns(input, requestedKeys, parseFunc, types.JSONParserErrorType)
+	return buildColumns(input, sourceCol, requestedKeys, parseFunc, types.JSONParserErrorType)
 }
 
 // parseJSONLine parses a single JSON line and extracts key-value pairs

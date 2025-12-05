@@ -50,6 +50,7 @@ const (
 // Error types.
 const (
 	LogfmtParserErrorType     = "LogfmtParserErr"
+	LabelfmtParserErrorType   = "LabelfmtParserErr"
 	JSONParserErrorType       = "JSONParserErr"
 	SampleExtractionErrorType = "SampleExtractionErr"
 )
