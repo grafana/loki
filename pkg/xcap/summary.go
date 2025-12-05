@@ -274,17 +274,13 @@ func (c *Capture) ToStatsSummary(execTime, queueTime time.Duration, totalEntries
 		StatDatasetSecondaryColumnUncompressedBytes.Key(),
 	)
 
-	// TotalBytesProcessed: sum of uncompressed bytes from primary and secondary columns
-	result.Summary.TotalBytesProcessed = readInt64(observations, StatDatasetPrimaryColumnUncompressedBytes.Key()) +
-		readInt64(observations, StatDatasetSecondaryColumnUncompressedBytes.Key())
-
-	// TotalLinesProcessed: primary rows read
-	result.Summary.TotalLinesProcessed = readInt64(observations, StatDatasetPrimaryRowsRead.Key())
-
+	result.Querier.Store.Dataobj.PrePredicateDecompressedBytes = readInt64(observations, StatDatasetPrimaryColumnUncompressedBytes.Key())
+	result.Querier.Store.Dataobj.PostPredicateDecompressedBytes = readInt64(observations, StatDatasetSecondaryColumnUncompressedBytes.Key())
+	result.Querier.Store.Dataobj.PrePredicateDecompressedRows = readInt64(observations, StatDatasetPrimaryRowsRead.Key())
 	// TotalPostFilterLines: rows output after filtering
 	// TODO: this will report the wrong value if the plan has a filter stage.
 	// pick the min of row_out from filter and scan nodes.
-	result.Summary.TotalPostFilterLines = readInt64(observations, StatPipelineRowsOut.Key())
+	result.Querier.Store.Dataobj.PostFilterRows = readInt64(observations, StatPipelineRowsOut.Key())
 
 	// TODO: track and report TotalStructuredMetadataBytesProcessed
 
