@@ -450,7 +450,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	dskit_flagext.DeprecatedFlag(f, "compactor.allow-deletes", "Deprecated. Instead, see compactor.deletion-mode which is another per tenant configuration", util_log.Logger)
 
 	f.IntVar(&l.IndexGatewayShardSize, "index-gateway.shard-size", 0, "The shard size defines how many index gateways should be used by a tenant for querying. If the global shard factor is 0, the global shard factor is set to the deprecated -replication-factor for backwards compatibility reasons.")
-	f.Float64Var(&l.IndexGatewayMaxCapacity, "index-gateway.max-capacity", 1.0, "Experimental. Defines a fraction (between 0.0 and 1.0) of the total index gateways available for a each tenant. A value of 0.0 has the same effect as 1.0, meaning all available index gateways.")
+	f.Float64Var(&l.IndexGatewayMaxCapacity, "index-gateway.max-capacity", 1.0, "Experimental. Defines a fraction (between 0.0 and 1.0) of the total index gateways available for a each tenant. A value of 0.0 has the same effect as 1.0, meaning all available index gateways. This setting only applies to simple mode.")
 
 	f.BoolVar(&l.BloomGatewayEnabled, "bloom-gateway.enable-filtering", false, "Experimental. Whether to use the bloom gateway component in the read path to filter chunks.")
 
