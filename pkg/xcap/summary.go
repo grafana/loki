@@ -274,6 +274,7 @@ func (c *Capture) ToStatsSummary(execTime, queueTime time.Duration, totalEntries
 		StatDatasetSecondaryColumnUncompressedBytes.Key(),
 	)
 
+	// TODO: track and report TotalStructuredMetadataBytesProcessed
 	result.Querier.Store.Dataobj.PrePredicateDecompressedBytes = readInt64(observations, StatDatasetPrimaryColumnUncompressedBytes.Key())
 	result.Querier.Store.Dataobj.PostPredicateDecompressedBytes = readInt64(observations, StatDatasetSecondaryColumnUncompressedBytes.Key())
 	result.Querier.Store.Dataobj.PrePredicateDecompressedRows = readInt64(observations, StatDatasetPrimaryRowsRead.Key())
@@ -281,15 +282,6 @@ func (c *Capture) ToStatsSummary(execTime, queueTime time.Duration, totalEntries
 	// TODO: this will report the wrong value if the plan has a filter stage.
 	// pick the min of row_out from filter and scan nodes.
 	result.Querier.Store.Dataobj.PostFilterRows = readInt64(observations, StatPipelineRowsOut.Key())
-
-	// TODO: track and report TotalStructuredMetadataBytesProcessed
-
-	if execTime > 0 {
-		execSeconds := execTime.Seconds()
-		result.Summary.BytesProcessedPerSecond = int64(float64(result.Summary.TotalBytesProcessed) / execSeconds)
-		result.Summary.LinesProcessedPerSecond = int64(float64(result.Summary.TotalLinesProcessed) / execSeconds)
-	}
-
 	return result
 }
 
