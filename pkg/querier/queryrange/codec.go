@@ -665,7 +665,7 @@ func (Codec) DecodeHTTPGrpcResponse(r *httpgrpc.HTTPResponse, req queryrangebase
 	for _, header := range r.Headers {
 		headers[header.Key] = header.Values
 	}
-	return DecodeResponseJSONFrom(r.Body, req, headers)
+	return decodeResponseJSONFrom(r.Body, req, headers)
 }
 
 func (Codec) EncodeHTTPGrpcResponse(_ context.Context, req *httpgrpc.HTTPRequest, res queryrangebase.Response) (*httpgrpc.HTTPResponse, error) {
@@ -1070,10 +1070,10 @@ func decodeResponseJSON(r *http.Response, req queryrangebase.Request) (queryrang
 		}
 	}
 
-	return DecodeResponseJSONFrom(buf, req, r.Header)
+	return decodeResponseJSONFrom(buf, req, r.Header)
 }
 
-func DecodeResponseJSONFrom(buf []byte, req queryrangebase.Request, headers http.Header) (queryrangebase.Response, error) {
+func decodeResponseJSONFrom(buf []byte, req queryrangebase.Request, headers http.Header) (queryrangebase.Response, error) {
 	switch req := req.(type) {
 	case *LokiSeriesRequest:
 		var resp LokiSeriesResponse
