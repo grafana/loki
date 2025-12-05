@@ -20,9 +20,9 @@ var tracer = otel.Tracer("xcap")
 // the parent-child relationships defined by the regions.
 //
 // Observations within a region are added as attributes to the corresponding span.
-func ExportTrace(ctx context.Context, capture *Capture, logger log.Logger) error {
+func ExportTrace(ctx context.Context, capture *Capture, logger log.Logger) {
 	if capture == nil {
-		return nil
+		return
 	}
 
 	regions := capture.regions
@@ -45,7 +45,7 @@ func ExportTrace(ctx context.Context, capture *Capture, logger log.Logger) error
 		}
 	}
 
-	return nil
+	return
 }
 
 // createSpans creates a span for the given region and recursively creates spans for its children.
