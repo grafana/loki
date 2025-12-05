@@ -212,6 +212,8 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	logValues := []any{
 		"msg", "finished executing",
 		"query", params.QueryString(),
+		"length", params.End().Sub(params.Start()).String(),
+		"step", params.Step().String(),
 		"duration_logical_planning", durLogicalPlanning,
 		"duration_physical_planning", durPhysicalPlanning,
 		"duration_workflow_planning", durWorkflowPlanning,
