@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/netip"
 	"testing"
+	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
@@ -123,6 +124,18 @@ func TestProtobufCodec_Messages(t *testing.T) {
 				ID: taskULID,
 				Status: workflow.TaskStatus{
 					State: workflow.TaskStateRunning,
+				},
+			},
+		},
+		"TaskStatusMessage with Running state and ContributingTimeRange": {
+			message: TaskStatusMessage{
+				ID: taskULID,
+				Status: workflow.TaskStatus{
+					State: workflow.TaskStateRunning,
+					ContributingTimeRange: workflow.ContributingTimeRange{
+						Timestamp: time.Now().Add(-time.Minute),
+						LessThan:  true,
+					},
 				},
 			},
 		},

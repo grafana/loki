@@ -7,10 +7,16 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/loki/v3/pkg/goldfish"
+	"github.com/grafana/loki/v3/tools/querytee/comparator"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// add a helper function to create a SamplesComparator with default tolerance for tests
+func testComparator() comparator.SamplesComparator {
+	return *comparator.NewSamplesComparator(comparator.SampleComparisonOptions{Tolerance: 0.000001})
+}
 
 func TestGoldfishEndToEnd(t *testing.T) {
 	// This test demonstrates the full flow of Goldfish functionality
@@ -31,7 +37,7 @@ func TestGoldfishEndToEnd(t *testing.T) {
 	storage := &mockStorage{}
 
 	// Create manager
-	manager, err := NewManager(config, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
+	manager, err := NewManager(config, testComparator(), storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 	defer manager.Close()
 
@@ -164,7 +170,7 @@ func TestGoldfishMismatchDetection(t *testing.T) {
 	}
 
 	storage := &mockStorage{}
-	manager, err := NewManager(config, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
+	manager, err := NewManager(config, testComparator(), storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 	defer manager.Close()
 
@@ -250,6 +256,114 @@ func TestGoldfishMismatchDetection(t *testing.T) {
 	assert.Contains(t, result.DifferenceDetails, "content_hash")
 }
 
+func TestGoldfishFloatingPointMismatchDetection(t *testing.T) {
+	config := Config{
+		Enabled: true,
+		SamplingConfig: SamplingConfig{
+			DefaultRate: 1.0,
+		},
+	}
+
+	storage := &mockStorage{}
+	manager, err := NewManager(config, testComparator(), storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
+	require.NoError(t, err)
+	defer manager.Close()
+
+	req := httptest.NewRequest("GET", "/loki/api/v1/query_range?query={job=\"test\"}", nil)
+	req.Header.Set("X-Scope-OrgID", "tenant1")
+
+	// Different log lines between cells - this will produce different hashes
+	responseBodyA := []byte(`{
+		"status": "success",
+		"data": {
+			"resultType": "scalar",
+			"result": [1, "0.003333333333"],
+			"stats": {
+				"summary": {
+					"execTime": 0.06,
+					"queueTime": 0.01,
+					"totalBytesProcessed": 500,
+					"totalLinesProcessed": 1,
+					"bytesProcessedPerSecond": 10000,
+					"linesProcessedPerSecond": 20,
+					"totalEntriesReturned": 1,
+					"splits": 1,
+					"shards": 1
+				}
+			}
+		}
+	}`)
+
+	responseBodyB := []byte(`{
+		"status": "success",
+		"data": {
+			"resultType": "scalar",
+			"result": [1, "0.0033333333335"],
+			"stats": {
+				"summary": {
+					"execTime": 0.05,
+					"queueTime": 0.01,
+					"totalBytesProcessed": 500,
+					"totalLinesProcessed": 1,
+					"bytesProcessedPerSecond": 10000,
+					"linesProcessedPerSecond": 20,
+					"totalEntriesReturned": 1,
+					"splits": 1,
+					"shards": 1
+				}
+			}
+		}
+	}`)
+
+	// Extract stats for both responses
+	extractor := NewStatsExtractor()
+
+	statsA, hashA, sizeA, usedNewEngineA, err := extractor.ExtractResponseData(responseBodyA, 50)
+	require.NoError(t, err)
+
+	statsB, hashB, sizeB, usedNewEngineB, err := extractor.ExtractResponseData(responseBodyB, 50)
+	require.NoError(t, err)
+
+	cellAResp := &ResponseData{
+		Body:          responseBodyA,
+		StatusCode:    200,
+		Duration:      50 * time.Millisecond,
+		Stats:         statsA,
+		Hash:          hashA,
+		Size:          sizeA,
+		UsedNewEngine: usedNewEngineA,
+	}
+
+	cellBResp := &ResponseData{
+		Body:          responseBodyB,
+		StatusCode:    200,
+		Duration:      50 * time.Millisecond,
+		Stats:         statsB,
+		Hash:          hashB,
+		Size:          sizeB,
+		UsedNewEngine: usedNewEngineB,
+	}
+
+	ctx := context.Background()
+	manager.ProcessQueryPair(ctx, req, cellAResp, cellBResp)
+
+	time.Sleep(100 * time.Millisecond)
+
+	assert.Len(t, storage.results, 1)
+	result := storage.results[0]
+
+	// Verify that different content produces different hashes
+	assert.NotEqual(t, hashA, hashB, "Different content should produce different hashes")
+
+	// Verify that floating-point difference within tolerance is considered a match
+	assert.Equal(t, goldfish.ComparisonStatusMatch, result.ComparisonStatus, "Floating-point difference within tolerance should be a match")
+	assert.Equal(t, result.DifferenceDetails["tolerance_match"], true, "A flag indicating this was a tolerance based match should be present")
+
+	// Verify that we recorded the compareQueryStats
+	assert.Contains(t, result.DifferenceDetails, "exec_time_variance")
+
+}
+
 func TestGoldfishNewEngineDetection(t *testing.T) {
 	config := Config{
 		Enabled: true,
@@ -259,7 +373,7 @@ func TestGoldfishNewEngineDetection(t *testing.T) {
 	}
 
 	storage := &mockStorage{}
-	manager, err := NewManager(config, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
+	manager, err := NewManager(config, testComparator(), storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 	defer manager.Close()
 

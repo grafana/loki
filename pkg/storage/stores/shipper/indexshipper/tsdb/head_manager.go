@@ -253,7 +253,7 @@ func (m *HeadManager) Append(userID string, ls labels.Labels, fprint uint64, chk
 	// We must create a copy of the labels here to avoid mutating the existing
 	// labels when writing across index buckets.
 	b := labels.NewBuilder(ls)
-	b.Del(labels.MetricName)
+	b.Del(model.MetricNameLabel)
 	ls = b.Labels()
 
 	m.mtx.RLock()

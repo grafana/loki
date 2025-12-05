@@ -19,6 +19,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/middleware"
+	"github.com/grafana/loki/v3/tools/querytee/comparator"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -72,7 +73,7 @@ type Route struct {
 	Path               string
 	RouteName          string
 	Methods            []string
-	ResponseComparator ResponsesComparator
+	ResponseComparator comparator.ResponsesComparator
 }
 
 type Proxy struct {
@@ -213,7 +214,14 @@ func NewProxy(
 		}
 
 		// Create Goldfish manager
-		goldfishManager, err := goldfish.NewManager(cfg.Goldfish, storage, resultStore, logger, registerer)
+		samplesComparator := comparator.NewSamplesComparator(comparator.SampleComparisonOptions{
+			Tolerance: cfg.ValueComparisonTolerance,
+			UseRelativeError: cfg.UseRelativeError,
+			SkipRecentSamples: cfg.SkipRecentSamples,
+			SkipSamplesBefore: time.Time(cfg.SkipSamplesBefore),
+		})
+
+		goldfishManager, err := goldfish.NewManager(cfg.Goldfish, *samplesComparator, storage, resultStore, logger, registerer)
 		if err != nil {
 			if resultStore != nil {
 				_ = resultStore.Close(context.Background())
@@ -258,7 +266,7 @@ func (p *Proxy) Start() error {
 
 	// register read routes
 	for _, route := range p.readRoutes {
-		var comparator ResponsesComparator
+		var comparator comparator.ResponsesComparator
 		if p.cfg.CompareResponses {
 			comparator = route.ResponseComparator
 		}

@@ -16,7 +16,8 @@ import (
 
 	"github.com/grafana/dskit/tenant"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/v3/tools/querytee/goldfish"
+  "github.com/grafana/loki/v3/tools/querytee/comparator"
+  "github.com/grafana/loki/v3/tools/querytee/goldfish"
 )
 
 // contextKey is used for storing values in context
@@ -40,7 +41,7 @@ type ProxyEndpoint struct {
 	backends   []*ProxyBackend
 	metrics    *ProxyMetrics
 	logger     log.Logger
-	comparator ResponsesComparator
+	comparator comparator.ResponsesComparator
 
 	instrumentCompares bool
 
@@ -311,12 +312,12 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *Back
 					"route-name", p.routeName,
 					"query", r.URL.RawQuery, "err", err)
 				result = comparisonFailed
-			} else if summary != nil && summary.skipped {
+			} else if summary != nil && summary.Skipped {
 				result = comparisonSkipped
 			}
 
 			if p.instrumentCompares && summary != nil {
-				p.metrics.missingMetrics.WithLabelValues(p.backends[i].name, p.routeName, result, issuer).Observe(float64(summary.missingMetrics))
+				p.metrics.missingMetrics.WithLabelValues(p.backends[i].name, p.routeName, result, issuer).Observe(float64(summary.MissingMetrics))
 			}
 			p.metrics.responsesComparedTotal.WithLabelValues(p.backends[i].name, p.routeName, result, issuer).Inc()
 		}
@@ -353,6 +354,8 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *Back
 				"cellB_backend", cellBResp.backend.name,
 				"cellB_status", cellBResp.status)
 			go p.processWithGoldfish(r, cellAResp, cellBResp)
+		} else {
+			level.Warn(p.logger).Log("msg", "Unable to process query with Goldfish: missing backend responses")
 		}
 	}
 }
@@ -392,9 +395,9 @@ func (p *ProxyEndpoint) waitBackendResponseForDownstream(resCh chan *BackendResp
 	return responses[0]
 }
 
-func (p *ProxyEndpoint) compareResponses(expectedResponse, actualResponse *BackendResponse, queryEvalTime time.Time) (*ComparisonSummary, error) {
+func (p *ProxyEndpoint) compareResponses(expectedResponse, actualResponse *BackendResponse, queryEvalTime time.Time) (*comparator.ComparisonSummary, error) {
 	if expectedResponse.err != nil {
-		return &ComparisonSummary{skipped: true}, nil
+		return &comparator.ComparisonSummary{Skipped: true}, nil
 	}
 
 	if actualResponse.err != nil {
@@ -403,7 +406,7 @@ func (p *ProxyEndpoint) compareResponses(expectedResponse, actualResponse *Backe
 
 	// compare response body only if we get a 200
 	if expectedResponse.status != 200 {
-		return &ComparisonSummary{skipped: true}, nil
+		return &comparator.ComparisonSummary{Skipped: true}, nil
 	}
 
 	if actualResponse.status != 200 {

@@ -4667,6 +4667,13 @@ shard_streams:
 # CLI flag: -index-gateway.shard-size
 [index_gateway_shard_size: <int> | default = 0]
 
+# Experimental. Defines a fraction (between 0.0 and 1.0) of the total index
+# gateways available for a each tenant. A value of 0.0 has the same effect as
+# 1.0, meaning all available index gateways. This setting only applies to simple
+# mode.
+# CLI flag: -index-gateway.max-capacity
+[index_gateway_max_capacity: <float> | default = 1]
+
 # Experimental. Whether to use the bloom gateway component in the read path to
 # filter chunks.
 # CLI flag: -bloom-gateway.enable-filtering
@@ -7839,12 +7846,6 @@ Configuration for `tracing`.
 # Set to false to disable tracing.
 # CLI flag: -tracing.enabled
 [enabled: <boolean> | default = true]
-
-# Set to true to drops all spans from the GCS client library. This prevents the
-# GCS client from creating millions of spans in high-throughput production
-# environments.
-# CLI flag: -tracing.filter-gcs-spans
-[filter_gcs_spans: <boolean> | default = true]
 ```
 
 <!-- vale Grafana.Spelling = YES -->

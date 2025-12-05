@@ -15,6 +15,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/google/uuid"
 	"github.com/grafana/loki/v3/pkg/goldfish"
+	"github.com/grafana/loki/v3/tools/querytee/comparator"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
@@ -36,6 +37,7 @@ type Manager struct {
 	resultStore ResultStore
 	logger      log.Logger
 	metrics     *metrics
+	comparator  comparator.SamplesComparator
 }
 
 type metrics struct {
@@ -48,7 +50,7 @@ type metrics struct {
 
 // NewManager creates a new Goldfish manager with the provided configuration.
 // Returns an error if the configuration is invalid.
-func NewManager(config Config, storage goldfish.Storage, resultStore ResultStore, logger log.Logger, registerer prometheus.Registerer) (*Manager, error) {
+func NewManager(config Config, comparator comparator.SamplesComparator, storage goldfish.Storage, resultStore ResultStore, logger log.Logger, registerer prometheus.Registerer) (*Manager, error) {
 	if err := config.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid config: %w", err)
 	}
@@ -82,6 +84,7 @@ func NewManager(config Config, storage goldfish.Storage, resultStore ResultStore
 				Buckets: prometheus.DefBuckets,
 			}),
 		},
+		comparator: comparator,
 	}
 
 	return m, nil
@@ -205,7 +208,7 @@ func (m *Manager) processQueryPair(req *http.Request, cellAResp, cellBResp *Resp
 	m.metrics.sampledQueries.Inc()
 
 	comparisonStart := time.Now()
-	result := CompareResponses(sample, m.config.PerformanceTolerance)
+	result := CompareResponses(sample, cellAResp, cellBResp, m.config.PerformanceTolerance, &m.comparator, m.logger)
 	m.metrics.comparisonDuration.Observe(time.Since(comparisonStart).Seconds())
 	m.metrics.comparisonResults.WithLabelValues(string(result.ComparisonStatus)).Inc()
 

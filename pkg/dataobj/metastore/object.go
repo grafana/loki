@@ -32,6 +32,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 const (
@@ -161,6 +162,9 @@ func (m *ObjectMetastore) streams(ctx context.Context, start, end time.Time, mat
 }
 
 func (m *ObjectMetastore) Sections(ctx context.Context, start, end time.Time, matchers []*labels.Matcher, predicates []*labels.Matcher) ([]*DataobjSectionDescriptor, error) {
+	ctx, region := xcap.StartRegion(ctx, "ObjectMetastore.Sections")
+	defer region.End()
+
 	sectionsTimer := prometheus.NewTimer(m.metrics.resolvedSectionsTotalDuration)
 
 	// Get all metastore paths for the time range
@@ -184,6 +188,7 @@ func (m *ObjectMetastore) Sections(ctx context.Context, start, end time.Time, ma
 	}
 
 	m.metrics.indexObjectsTotal.Observe(float64(len(indexPaths)))
+	region.Record(xcap.StatMetastoreIndexObjects.Observe(int64(len(indexPaths))))
 
 	// Return early if no index files are found
 	if len(indexPaths) == 0 {
@@ -240,6 +245,7 @@ func (m *ObjectMetastore) Sections(ctx context.Context, start, end time.Time, ma
 	duration := sectionsTimer.ObserveDuration()
 	m.metrics.resolvedSectionsTotal.Observe(float64(len(streamSectionPointers)))
 	m.metrics.resolvedSectionsRatio.Observe(float64(len(streamSectionPointers)) / float64(initialSectionPointersCount))
+	region.Record(xcap.StatMetastoreResolvedSections.Observe(int64(len(streamSectionPointers))))
 
 	level.Debug(utillog.WithContext(ctx, m.logger)).Log(
 		"msg", "resolved sections",

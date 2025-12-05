@@ -15,6 +15,9 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/loki/v3/pkg/goldfish"
+	"github.com/grafana/loki/v3/tools/querytee/comparator"
+	querytee_goldfish "github.com/grafana/loki/v3/tools/querytee/goldfish"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	prom_testutil "github.com/prometheus/client_golang/prometheus/testutil"
@@ -606,8 +609,8 @@ func Test_BackendResponse_statusCode(t *testing.T) {
 
 type mockComparator struct{}
 
-func (c *mockComparator) Compare(_, _ []byte, _ time.Time) (*ComparisonSummary, error) {
-	return &ComparisonSummary{missingMetrics: 12}, nil
+func (c *mockComparator) Compare(_, _ []byte, _ time.Time) (*comparator.ComparisonSummary, error) {
+	return &comparator.ComparisonSummary{MissingMetrics: 12}, nil
 }
 
 func Test_endToEnd_traceIDFlow(t *testing.T) {
@@ -640,7 +643,9 @@ func Test_endToEnd_traceIDFlow(t *testing.T) {
 			DefaultRate: 1.0, // Always sample for testing
 		},
 	}
-	goldfishManager, err := querytee_goldfish.NewManager(goldfishConfig, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
+	samplesComparator := comparator.NewSamplesComparator(comparator.SampleComparisonOptions{Tolerance: 0.000001})
+
+	goldfishManager, err := querytee_goldfish.NewManager(goldfishConfig, *samplesComparator, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	endpoint := createTestEndpointWithGoldfish(backends, "test", goldfishManager)
