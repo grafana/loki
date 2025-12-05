@@ -47,7 +47,6 @@
                 <td>{{ .NumTokens }}</td>
                 <td>{{ .Ownership | humanFloat }}%</td>
                 <td>
-                <td>
                     <!-- Allow to force a state change -->
                     {{ if and (not .Corrupted) (ne (index $stateChanges .State) 0) }}
                         {{ $toState := index $stateChanges .State }}

@@ -206,20 +206,24 @@ func (m *PartitionRingDesc) AddPartition(id int32, state PartitionState, now tim
 
 // UpdatePartitionState changes the state of a partition. Returns true if the state was changed,
 // or false if the update was a no-op.
-func (m *PartitionRingDesc) UpdatePartitionState(id int32, state PartitionState, now time.Time) bool {
+func (m *PartitionRingDesc) UpdatePartitionState(id int32, state PartitionState, now time.Time) (bool, error) {
 	d, ok := m.Partitions[id]
 	if !ok {
-		return false
+		return false, nil
 	}
 
 	if d.State == state {
-		return false
+		return false, nil
+	}
+
+	if d.StateChangeLocked {
+		return false, ErrPartitionStateChangeLocked
 	}
 
 	d.State = state
 	d.StateTimestamp = now.Unix()
 	m.Partitions[id] = d
-	return true
+	return true, nil
 }
 
 // UpdatePartitionStateChangeLock changes the state change lock of a partition. Returns true if the lock was changed,
