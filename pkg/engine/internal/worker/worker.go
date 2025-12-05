@@ -181,13 +181,18 @@ func (w *Worker) run(ctx context.Context) error {
 
 	// Spin up the listener for peer connections
 	peerConnectionsCtx, peerConnectionsCancel := context.WithCancel(context.Background())
+	defer peerConnectionsCancel()
 	listenerCtx, listenerCancel := context.WithCancel(context.Background())
+	defer listenerCancel()
+
 	go func() {
 		w.runAcceptLoop(listenerCtx, peerConnectionsCtx)
 	}()
 
 	// Spin up the scheduler loop
 	schedulerCtx, schedulerCancel := context.WithCancel(context.Background())
+	defer schedulerCancel()
+
 	schedulerGroup := errgroup.Group{}
 	if w.config.SchedulerLookupAddress != "" {
 		disc, err := newSchedulerLookup(w.logger, w.config.SchedulerLookupAddress, w.config.SchedulerLookupInterval)
@@ -206,29 +211,30 @@ func (w *Worker) run(ctx context.Context) error {
 		schedulerGroup.Go(func() error { return w.schedulerLoop(schedulerCtx, w.config.SchedulerAddress) })
 	}
 
-	select {
-	case <-ctx.Done():
-		// Stop accepting new connections from peers.
-		listenerCancel()
+	// Wait for shutdown
+	<-ctx.Done()
 
-		// Signal all worker threads to stop. This will make them not to ask for new tasks, but continue processing current jobs.
-		for _, t := range threads {
-			t.Stop()
-		}
-		// Wait for all worker threads to finish their current jobs.
-		threadsGroup.Wait()
+	// Stop accepting new connections from peers.
+	listenerCancel()
 
-		// Stop scheduler loop
-		schedulerCancel()
-
-		// Wait for scheduler loop to finish
-		schedulerGroup.Wait()
-
-		// Close all peer connections
-		peerConnectionsCancel()
-
-		return nil
+	// Signal all worker threads to stop. This will make them not to ask for new tasks, but continue processing current jobs.
+	for _, t := range threads {
+		t.Stop()
 	}
+	// Wait for all worker threads to finish their current jobs.
+	threadsGroup.Wait()
+
+	// Stop scheduler loop
+	schedulerCancel()
+
+	// Wait for scheduler loop to finish
+	err := schedulerGroup.Wait()
+	if err != nil {
+		return err
+	}
+
+	// Close all peer connections
+	peerConnectionsCancel()
 
 	return nil
 }
