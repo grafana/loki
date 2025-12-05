@@ -222,6 +222,24 @@ func (m *PartitionRingDesc) UpdatePartitionState(id int32, state PartitionState,
 	return true
 }
 
+// UpdatePartitionStateChangeLock changes the state change lock of a partition. Returns true if the lock was changed,
+// or false if the update was a no-op.
+func (m *PartitionRingDesc) UpdatePartitionStateChangeLock(id int32, locked bool, now time.Time) bool {
+	d, ok := m.Partitions[id]
+	if !ok {
+		return false
+	}
+
+	if d.StateChangeLocked == locked {
+		return false
+	}
+
+	d.StateChangeLocked = locked
+	d.StateChangeLockedTimestamp = now.Unix()
+	m.Partitions[id] = d
+	return true
+}
+
 // RemovePartition removes a partition.
 func (m *PartitionRingDesc) RemovePartition(id int32) {
 	delete(m.Partitions, id)
@@ -343,6 +361,13 @@ func (m *PartitionRingDesc) mergeWithTime(mergeable memberlist.Mergeable, localC
 
 				thisPart.State = otherPart.State
 				thisPart.StateTimestamp = otherPart.StateTimestamp
+			}
+
+			if otherPart.StateChangeLockedTimestamp > thisPart.StateChangeLockedTimestamp {
+				changed = true
+
+				thisPart.StateChangeLocked = otherPart.StateChangeLocked
+				thisPart.StateChangeLockedTimestamp = otherPart.StateChangeLockedTimestamp
 			}
 		}
 

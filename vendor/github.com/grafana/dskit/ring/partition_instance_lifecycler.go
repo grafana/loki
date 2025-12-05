@@ -19,6 +19,7 @@ var (
 	ErrPartitionDoesNotExist          = errors.New("the partition does not exist")
 	ErrPartitionStateMismatch         = errors.New("the partition state does not match the expected one")
 	ErrPartitionStateChangeNotAllowed = errors.New("partition state change not allowed")
+	ErrPartitionStateChangeLocked     = errors.New("partition state change is locked")
 
 	allowedPartitionStateChanges = map[PartitionState][]PartitionState{
 		PartitionPending:  {PartitionActive, PartitionInactive},
