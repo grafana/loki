@@ -116,14 +116,13 @@ func observationToAttribute(key StatisticKey, obs *AggregatedObservation) attrib
 	return attrKey.String(fmt.Sprintf("%v", obs.Value))
 }
 
-// ExportLog exports a Capture as a structured log line with aggregated statistics.
-func ExportLog(capture *Capture, logger log.Logger) {
-	if capture == nil || logger == nil {
-		return
+// SummaryLogValues exports a Capture as a structured log line with aggregated statistics.
+func SummaryLogValues(capture *Capture) []any {
+	if capture == nil {
+		return nil
 	}
 
-	summary := summarizeObservations(capture)
-	level.Info(logger).Log(summary.toLogValues()...)
+	return summarizeObservations(capture).toLogValues()
 }
 
 // summarizeObservations collects and summarizes observations from the capture.
