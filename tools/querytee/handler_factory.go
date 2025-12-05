@@ -15,33 +15,33 @@ import (
 
 // HandlerFactory creates the appropriate handler based on configuration.
 type HandlerFactory struct {
-	backends        []*ProxyBackend
-	codec           queryrangebase.Codec
-	goldfishManager *goldfish.Manager
-	logger          log.Logger
-	metrics         *ProxyMetrics
-	comparator      ResponsesComparator
+	backends           []*ProxyBackend
+	codec              queryrangebase.Codec
+	goldfishManager    *goldfish.Manager
+	instrumentCompares bool
+	logger             log.Logger
+	metrics            *ProxyMetrics
 }
 
 // HandlerFactoryConfig holds configuration for creating a HandlerFactory.
 type HandlerFactoryConfig struct {
-	Backends        []*ProxyBackend
-	Codec           queryrangebase.Codec
-	GoldfishManager *goldfish.Manager
-	Logger          log.Logger
-	Metrics         *ProxyMetrics
-	Comparator      ResponsesComparator
+	Backends           []*ProxyBackend
+	Codec              queryrangebase.Codec
+	GoldfishManager    *goldfish.Manager
+	InstrumentCompares bool
+	Logger             log.Logger
+	Metrics            *ProxyMetrics
 }
 
 // NewHandlerFactory creates a new HandlerFactory.
 func NewHandlerFactory(cfg HandlerFactoryConfig) *HandlerFactory {
 	return &HandlerFactory{
-		backends:        cfg.Backends,
-		codec:           cfg.Codec,
-		goldfishManager: cfg.GoldfishManager,
-		logger:          cfg.Logger,
-		metrics:         cfg.Metrics,
-		comparator:      cfg.Comparator,
+		backends:           cfg.Backends,
+		codec:              cfg.Codec,
+		goldfishManager:    cfg.GoldfishManager,
+		instrumentCompares: cfg.InstrumentCompares,
+		logger:             cfg.Logger,
+		metrics:            cfg.Metrics,
 	}
 }
 
@@ -49,16 +49,17 @@ func NewHandlerFactory(cfg HandlerFactoryConfig) *HandlerFactory {
 // If ComparisonMinAge is 0 (legacy mode), it returns a FanOutHandler directly.
 // If ComparisonMinAge > 0 (splitting mode), it wraps the FanOutHandler with engineRouter
 // middleware to split queries based on data age.
-func (f *HandlerFactory) CreateHandler(routeName string) queryrangebase.Handler {
+func (f *HandlerFactory) CreateHandler(routeName string, comparator ResponsesComparator) queryrangebase.Handler {
 	// Create the fan-out handler that sends requests to all backends
 	fanOutHandler := NewFanOutHandler(FanOutHandlerConfig{
-		Backends:        f.backends,
-		Codec:           f.codec,
-		GoldfishManager: f.goldfishManager,
-		Logger:          f.logger,
-		Metrics:         f.metrics,
-		RouteName:       routeName,
-		Comparator:      f.comparator,
+		Backends:           f.backends,
+		Codec:              f.codec,
+		Comparator:         comparator,
+		GoldfishManager:    f.goldfishManager,
+		InstrumentCompares: f.instrumentCompares,
+		Logger:             f.logger,
+		Metrics:            f.metrics,
+		RouteName:          routeName,
 	})
 
 	if f.goldfishManager == nil || f.goldfishManager.ComparisonMinAge() == 0 {

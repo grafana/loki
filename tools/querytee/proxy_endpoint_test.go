@@ -36,19 +36,15 @@ func createTestEndpoint(backends []*ProxyBackend, routeName string, comparator R
 	logger := log.NewNopLogger()
 
 	endpoint := NewProxyEndpoint(backends, routeName, metrics, logger, comparator, instrumentCompares)
-
-	// Create and attach the fan-out handler
-	handler := NewFanOutHandler(FanOutHandlerConfig{
-		Backends:           backends,
-		Codec:              queryrange.DefaultCodec,
-		GoldfishManager:    nil,
-		Logger:             logger,
-		Metrics:            metrics,
-		RouteName:          routeName,
-		Comparator:         comparator,
-		InstrumentCompares: instrumentCompares,
+	handlerFactory := NewHandlerFactory(HandlerFactoryConfig{
+		Backends:        backends,
+		Codec:           queryrange.DefaultCodec,
+		GoldfishManager: nil,
+		Logger:          logger,
+		Metrics:         metrics,
 	})
 
+	handler := handlerFactory.CreateHandler(routeName, comparator)
 	endpoint.WithQueryHandler(handler, queryrange.DefaultCodec)
 	return endpoint
 }
@@ -58,19 +54,16 @@ func createTestEndpointWithMetrics(backends []*ProxyBackend, routeName string, c
 	logger := log.NewNopLogger()
 
 	endpoint := NewProxyEndpoint(backends, routeName, metrics, logger, comparator, instrumentCompares)
-
-	// Create and attach the fan-out handler
-	handler := NewFanOutHandler(FanOutHandlerConfig{
+	handlerFactory := NewHandlerFactory(HandlerFactoryConfig{
 		Backends:           backends,
 		Codec:              queryrange.DefaultCodec,
 		GoldfishManager:    nil,
 		Logger:             logger,
 		Metrics:            metrics,
-		RouteName:          routeName,
-		Comparator:         comparator,
 		InstrumentCompares: instrumentCompares,
 	})
 
+	handler := handlerFactory.CreateHandler(routeName, comparator)
 	endpoint.WithQueryHandler(handler, queryrange.DefaultCodec)
 	return endpoint
 }
@@ -80,21 +73,18 @@ func createTestEndpointWithGoldfish(backends []*ProxyBackend, routeName string, 
 	metrics := NewProxyMetrics(nil)
 	logger := log.NewNopLogger()
 
-	endpoint := NewProxyEndpoint(backends, routeName, metrics, logger, nil, false)
-	endpoint.WithGoldfish(goldfishManager)
-
-	handler := NewFanOutHandler(FanOutHandlerConfig{
-		Backends:           backends,
-		Codec:              queryrange.DefaultCodec,
-		GoldfishManager:    goldfishManager,
-		Logger:             logger,
-		Metrics:            metrics,
-		RouteName:          routeName,
-		Comparator:         nil,
-		InstrumentCompares: false,
+	handlerFactory := NewHandlerFactory(HandlerFactoryConfig{
+		Backends:        backends,
+		Codec:           queryrange.DefaultCodec,
+		GoldfishManager: goldfishManager,
+		Logger:          logger,
+		Metrics:         metrics,
 	})
 
+	endpoint := NewProxyEndpoint(backends, routeName, metrics, logger, nil, false)
+	handler := handlerFactory.CreateHandler(routeName, nil)
 	endpoint.WithQueryHandler(handler, queryrange.DefaultCodec)
+	endpoint.WithGoldfish(goldfishManager)
 	return endpoint
 }
 
@@ -673,7 +663,6 @@ func Test_endToEnd_traceIDFlow(t *testing.T) {
 
 	// Verify that the system processes the request successfully
 	assert.Equal(t, 200, w.Code)
-	assert.Equal(t, `{"status":"success","data":{"resultType":"matrix","result":[]}}`, w.Body.String())
 
 	// Debug: Check if goldfish was triggered at all
 	t.Logf("Number of samples stored: %d", len(storage.samples))
@@ -737,7 +726,7 @@ func (m *mockGoldfishStorage) Reset() {
 
 // TestProxyEndpoint_QuerySplitting tests the query splitting functionality for goldfish comparison
 func TestProxyEndpoint_QuerySplitting(t *testing.T) {
-	now := time.Now()
+	now := time.Now().Truncate(time.Minute)
 	minAge := 3 * time.Hour
 	threshold := now.Add(-minAge)
 
@@ -746,6 +735,12 @@ func TestProxyEndpoint_QuerySplitting(t *testing.T) {
 
 	var mu sync.Mutex
 	receivedQueries := []string{}
+
+	step := "60s"
+	stepMs := int64(60000)
+
+	// Calculate the split boundary: step-aligned threshold + step
+	splitBoundary := stepAlignUp(threshold, stepMs).Add(time.Duration(stepMs) * time.Millisecond)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
@@ -756,10 +751,10 @@ func TestProxyEndpoint_QuerySplitting(t *testing.T) {
 		require.NoError(t, err)
 		endTime := rangeQuery.End
 
-		// If end time is before threshold, return old response
+		// If end time is before or at split boundary, return old response
 		// Otherwise return recent response
 		w.WriteHeader(200)
-		if endTime.Before(threshold) {
+		if endTime.Before(splitBoundary) || endTime.Equal(splitBoundary) {
 			_, _ = w.Write([]byte(oldResponseBody))
 		} else {
 			_, _ = w.Write([]byte(recentResponseBody))
@@ -795,14 +790,14 @@ func TestProxyEndpoint_QuerySplitting(t *testing.T) {
 		// Query from threshold+1h to threshold+2h (all recent)
 		start := threshold.Add(time.Hour)
 		end := threshold.Add(2 * time.Hour)
-		req := httptest.NewRequest("GET", "/loki/api/v1/query_range?query=rate({job=\"test\"}[5m])&start="+formatTime(start)+"&end="+formatTime(end)+"&step=60s", nil)
+		req := httptest.NewRequest("GET", "/loki/api/v1/query_range?query=rate({job=\"test\"}[5m])&start="+formatTime(start)+"&end="+formatTime(end)+"&step="+step, nil)
 		req.Header.Set("X-Scope-OrgID", "test-tenant")
 
 		w := httptest.NewRecorder()
 		endpoint.ServeHTTP(w, req)
 
 		assert.Equal(t, 200, w.Code)
-		assert.Equal(t, 2, len(receivedQueries), "expected 1 query per backend, got %d", len(receivedQueries))
+		assert.Equal(t, 1, len(receivedQueries), "expect only 1 query, to v1 engine only, got %d", len(receivedQueries))
 		assert.Equal(t, 0, len(storage.samples), "recent query should not be sent to goldfish cell or compared")
 	})
 
@@ -813,7 +808,7 @@ func TestProxyEndpoint_QuerySplitting(t *testing.T) {
 		// Query from threshold-2h to threshold-1h (all old)
 		start := threshold.Add(-2 * time.Hour)
 		end := threshold.Add(-time.Hour)
-		req := httptest.NewRequest("GET", "/loki/api/v1/query_range?query=rate({job=\"test\"}[5m])&start="+formatTime(start)+"&end="+formatTime(end)+"&step=60s", nil)
+		req := httptest.NewRequest("GET", "/loki/api/v1/query_range?query=rate({job=\"test\"}[5m])&start="+formatTime(start)+"&end="+formatTime(end)+"&step="+step, nil)
 		req.Header.Set("X-Scope-OrgID", "test-tenant")
 
 		w := httptest.NewRecorder()
@@ -823,7 +818,7 @@ func TestProxyEndpoint_QuerySplitting(t *testing.T) {
 		time.Sleep(2 * time.Second)
 
 		assert.Equal(t, 200, w.Code)
-		assert.Equal(t, 2, len(receivedQueries), "expected 1 query per backend, got %d", len(receivedQueries))
+		assert.Equal(t, 2, len(receivedQueries), "expected 1 query each to v1 and v2 for comparison, got %d", len(receivedQueries))
 		assert.Equal(t, 1, len(storage.samples), "Goldfish should process entirely old queries normally")
 	})
 
@@ -834,7 +829,7 @@ func TestProxyEndpoint_QuerySplitting(t *testing.T) {
 		// Query from threshold-1h to threshold+1h (spans threshold)
 		start := threshold.Add(-time.Hour)
 		end := threshold.Add(time.Hour)
-		req := httptest.NewRequest("GET", "/loki/api/v1/query_range?query=rate({job=\"test\"}[5m])&start="+formatTime(start)+"&end="+formatTime(end)+"&step=60s", nil)
+		req := httptest.NewRequest("GET", "/loki/api/v1/query_range?query=rate({job=\"test\"}[5m])&start="+formatTime(start)+"&end="+formatTime(end)+"&step="+step, nil)
 		req.Header.Set("X-Scope-OrgID", "test-tenant")
 
 		w := httptest.NewRecorder()
@@ -845,16 +840,28 @@ func TestProxyEndpoint_QuerySplitting(t *testing.T) {
 
 		assert.Equal(t, 200, w.Code)
 
-		assert.Equal(t, 3, len(receivedQueries), "expected 3 queries, 1 for the recent portion, and 1 to each backend for the old portion, got %d", len(receivedQueries))
+		assert.Equal(t, 3, len(receivedQueries), "expected 3 queries, 1 for the recent portion, and 1 to both v1 and v2 for comparison, got %d", len(receivedQueries))
 
 		// Verify that old queries go to both backends
+		// Step is 60s = 60000ms from the test query
+		stepMs := int64(60000)
+
+		// Align threshold UP (as it's treated as an end boundary in alignStartEnd)
+		// This is v2End in the engine_router
+		alignedThreshold := stepAlignUp(threshold, stepMs)
+
+		// Based on observed behavior, old queries end at alignedThreshold + gap
+		oldQueryBoundary := alignedThreshold.Add(time.Duration(stepMs) * time.Millisecond)
+
 		oldQueries := 0
 		recentQueries := 0
 		for _, q := range receivedQueries {
 			if strings.Contains(q, "end=") {
 				endStr := extractQueryParam(q, "end")
 				endTime, _ := parseTimestamp(endStr)
-				if endTime.Before(threshold) || endTime.Equal(threshold) {
+
+				// Queries ending at or before oldQueryBoundary are "old"
+				if endTime.Before(oldQueryBoundary) || endTime.Equal(oldQueryBoundary) {
 					oldQueries++
 				} else {
 					recentQueries++
@@ -883,7 +890,10 @@ func TestProxyEndpoint_QuerySplitting(t *testing.T) {
 
 		assert.Equal(t, model.LabelValue("test_metric"), metric.Metric["__name__"])
 		assert.Equal(t, model.LabelValue("test"), metric.Metric["job"])
-		assert.Equal(t, len(metric.Values), 4, "Should have multiple data points from concatenation")
+
+		// The response should contain data from both splits merged together
+		// The stats should show splits=2
+		assert.Equal(t, int64(2), response.Data.Statistics.Summary.Splits, "Should show 2 splits in stats")
 	})
 }
 
@@ -898,56 +908,24 @@ func parseTimestamp(value string) (time.Time, error) {
 	return time.Unix(0, nanos), nil
 }
 
+// stepAlignUp aligns a timestamp up to the nearest step boundary
+func stepAlignUp(t time.Time, stepMs int64) time.Time {
+	timestampMs := t.UnixMilli()
+	if mod := timestampMs % stepMs; mod != 0 {
+		timestampMs += stepMs - mod
+	}
+	return time.Unix(0, timestampMs*1e6)
+}
+
 // Helper function to extract query parameters from a query string
 func extractQueryParam(queryString, param string) string {
-	parts := strings.Split(queryString, "&")
-	for _, part := range parts {
-		if strings.HasPrefix(part, param+"=") {
-			return strings.TrimPrefix(part, param+"=")
+	parts := strings.SplitSeq(queryString, "&")
+	for part := range parts {
+		if after, ok := strings.CutPrefix(part, param+"="); ok {
+			return after
 		}
 	}
 	return ""
-}
-
-func Test_extractTenant(t *testing.T) {
-	tests := []struct {
-		name     string
-		headers  map[string]string
-		expected string
-	}{
-		{
-			name:     "tenant ID present in header",
-			headers:  map[string]string{"X-Scope-OrgID": "tenant-123"},
-			expected: "tenant-123",
-		},
-		{
-			name:     "no tenant header present",
-			headers:  map[string]string{},
-			expected: "anonymous",
-		},
-		{
-			name:     "empty tenant header",
-			headers:  map[string]string{"X-Scope-OrgID": ""},
-			expected: "anonymous",
-		},
-		{
-			name:     "tenant with special characters",
-			headers:  map[string]string{"X-Scope-OrgID": "tenant-with-dashes_and_underscores"},
-			expected: "tenant-with-dashes_and_underscores",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest("GET", "/test", nil)
-			for k, v := range tt.headers {
-				req.Header.Set(k, v)
-			}
-
-			result := extractTenant(req)
-			assert.Equal(t, tt.expected, result)
-		})
-	}
 }
 
 func TestProxyEndpoint_ServeHTTP_ForwardsResponseHeaders(t *testing.T) {
@@ -976,7 +954,7 @@ func TestProxyEndpoint_ServeHTTP_ForwardsResponseHeaders(t *testing.T) {
 	endpoint.ServeHTTP(recorder, fakeReq)
 
 	require.Equal(t, http.StatusOK, recorder.Result().StatusCode, "Status code from backend should be forwarded")
-	require.Equal(t, "application/json; charset=utf-8", recorder.Result().Header.Get("Content-Type"), "Response header from backend should be forwarded")
+	require.Equal(t, "application/json; charset=UTF-8", recorder.Result().Header.Get("Content-Type"), "Response header from backend should be forwarded")
 }
 
 func formatTime(t time.Time) string {

@@ -231,16 +231,13 @@ func NewProxy(
 	}
 
 	p.handlerFactory = NewHandlerFactory(HandlerFactoryConfig{
-		Backends:        p.backends,
-		Codec:           queryrange.DefaultCodec,
-		GoldfishManager: p.goldfishManager,
-		Logger:          logger,
-		Metrics:         p.metrics,
-		Comparator:      nil, // Will be set per-route
+		Backends:           p.backends,
+		Codec:              queryrange.DefaultCodec,
+		GoldfishManager:    p.goldfishManager,
+		InstrumentCompares: p.cfg.InstrumentCompares,
+		Logger:             logger,
+		Metrics:            p.metrics,
 	})
-	level.Info(logger).Log(
-		"msg", "Middleware handler enabled",
-		"comparison_min_age", cfg.Goldfish.ComparisonMinAge)
 
 	return p, nil
 }
@@ -288,20 +285,19 @@ func (p *Proxy) Start() error {
 
 		// Create a route-specific handler factory with the filtered backends
 		routeHandlerFactory := NewHandlerFactory(HandlerFactoryConfig{
-			Backends:        filteredBackends,
-			Codec:           queryrange.DefaultCodec,
-			GoldfishManager: p.goldfishManager,
-			Logger:          p.logger,
-			Metrics:         p.metrics,
-			Comparator:      comparator,
+			Backends:           filteredBackends,
+			Codec:              queryrange.DefaultCodec,
+			GoldfishManager:    p.goldfishManager,
+			Logger:             p.logger,
+			Metrics:            p.metrics,
+			InstrumentCompares: p.cfg.InstrumentCompares,
 		})
-		handler := routeHandlerFactory.CreateHandler(route.RouteName)
+		handler := routeHandlerFactory.CreateHandler(route.RouteName, comparator)
 		endpoint.WithQueryHandler(handler, queryrange.DefaultCodec)
 		level.Info(p.logger).Log(
-			"msg", "Middleware handler attached to route",
+			"msg", "Query middleware handler attached to route",
 			"path", route.Path,
 			"methods", strings.Join(route.Methods, ","),
-			"comparison_min_age", p.goldfishManager.ComparisonMinAge(),
 		)
 
 		router.Path(route.Path).Methods(route.Methods...).Handler(endpoint)
@@ -309,12 +305,16 @@ func (p *Proxy) Start() error {
 
 	// create a separate endpoint without a query handler for write requests
 	for _, route := range p.writeRoutes {
+		var comparator ResponsesComparator
+		if p.cfg.CompareResponses {
+			comparator = route.ResponseComparator
+		}
 		endpoint := NewProxyEndpoint(
 			p.backends,
 			route.RouteName,
 			p.metrics,
 			p.logger,
-			nil,
+			comparator,
 			p.cfg.InstrumentCompares,
 		)
 

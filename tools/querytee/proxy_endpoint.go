@@ -14,7 +14,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 
-	"github.com/grafana/dskit/user"
+	"github.com/grafana/dskit/tenant"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/tools/querytee/goldfish"
 )
@@ -103,18 +103,20 @@ func (p *ProxyEndpoint) WithQueryHandler(handler queryrangebase.Handler, codec q
 }
 
 func (p *ProxyEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-
 	if p.queryHandler == nil {
 		p.serveWrites(w, r)
 		return
 	}
 
-	// Extract tenant from X-Scope-OrgID header and inject into context
-	// This is required for the codec to properly encode/decode requests
-	tenant := extractTenant(r)
-	if tenant != "anonymous" {
-		ctx = user.InjectOrgID(ctx, tenant)
+	_, ctx, err := tenant.ExtractTenantIDFromHTTPRequest(r)
+	if err != nil {
+		level.Error(p.logger).Log(
+			"msg", "failed to extract tenant ID",
+			"err", err,
+			"req", r.URL.String(),
+		)
+		http.Error(w, err.Error(), http.StatusUnauthorized)
+		return
 	}
 
 	// The codec decode/encode cycle loses custom headers, so we preserve them for downstream
@@ -132,8 +134,13 @@ func (p *ProxyEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Execute the handler
 	resp, err := p.queryHandler.Do(ctx, req)
 	if err != nil {
-		level.Error(p.logger).Log("msg", "Handler failed", "err", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		switch r := resp.(type) {
+		case *NonDecodableResponse:
+			http.Error(w, string(r.Body), r.StatusCode)
+		default:
+			level.Error(p.logger).Log("msg", "Handler failed", "err", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 		return
 	}
 
@@ -141,7 +148,7 @@ func (p *ProxyEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	httpResp, err := p.codec.EncodeResponse(ctx, r, resp)
 	if err != nil {
 		level.Error(p.logger).Log("msg", "Failed to encode response", "err", err)
-		http.Error(w, fmt.Sprintf("failed to encode response: %v", err), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("failed to encode response: %s", err), http.StatusInternalServerError)
 		return
 	}
 	defer httpResp.Body.Close()
@@ -164,15 +171,20 @@ func (p *ProxyEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // serveWrites serves writes without a queryrangebase.Handler, since write requests cannot be decoded into a queryrangebase.Request.
 func (p *ProxyEndpoint) serveWrites(w http.ResponseWriter, r *http.Request) {
-	tenant := extractTenant(r)
+	// tenant := extractTenant(r)
+	tenantID, _, err := tenant.ExtractTenantIDFromHTTPRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
 
 	// Determine if we should sample this query
 	shouldSample := false
 	if p.goldfishManager != nil {
-		shouldSample = p.goldfishManager.ShouldSample(tenant)
+		shouldSample = p.goldfishManager.ShouldSample(tenantID)
 		level.Debug(p.logger).Log(
 			"msg", "Goldfish sampling decision",
-			"tenant", tenant,
+			"tenant", tenantID,
 			"sampled", shouldSample,
 			"path", r.URL.Path)
 	}
@@ -262,7 +274,7 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *Back
 				res.backend.name,
 				r.Method,
 				p.routeName,
-				strconv.Itoa(res.statusCode()),
+				strconv.FormatInt(int64(res.statusCode()), 10),
 				issuer,
 			).Observe(res.duration.Seconds())
 
@@ -332,8 +344,9 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *Back
 		}
 
 		if cellAResp != nil && cellBResp != nil {
+			tenantID, _, _ := tenant.ExtractTenantIDFromHTTPRequest(r)
 			level.Info(p.logger).Log("msg", "Processing query with Goldfish",
-				"tenant", extractTenant(r),
+				"tenant", tenantID,
 				"query", r.URL.Query().Get("query"),
 				"cellA_backend", cellAResp.backend.name,
 				"cellA_status", cellAResp.status,
@@ -437,16 +450,6 @@ func detectIssuer(r *http.Request) string {
 		return canaryIssuer
 	}
 	return unknownIssuer
-}
-
-// extractTenant extracts the tenant ID from the X-Scope-OrgID header.
-// Returns "anonymous" if no tenant header is present.
-func extractTenant(r *http.Request) string {
-	tenant := r.Header.Get("X-Scope-OrgID")
-	if tenant == "" {
-		return "anonymous"
-	}
-	return tenant
 }
 
 // processWithGoldfish sends the query and responses to Goldfish for comparison

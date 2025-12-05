@@ -12,6 +12,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 
+	"github.com/grafana/dskit/tenant"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/tools/querytee/goldfish"
 )
@@ -98,15 +99,23 @@ func (h *FanOutHandler) Do(ctx context.Context, req queryrangebase.Request) (que
 	}
 
 	// Determine if we should sample this query
-	tenant := extractTenant(httpReq)
+	tenants, err := tenant.TenantIDs(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract tenant IDs: %w", err)
+	}
 	shouldSample := false
 	if h.goldfishManager != nil {
-		shouldSample = h.goldfishManager.ShouldSample(tenant)
-		level.Debug(h.logger).Log(
-			"msg", "Goldfish sampling decision",
-			"tenant", tenant,
-			"sampled", shouldSample,
-			"path", httpReq.URL.Path)
+		for _, tenant := range tenants {
+			if h.goldfishManager.ShouldSample(tenant) {
+				shouldSample = true
+				level.Debug(h.logger).Log(
+					"msg", "Goldfish sampling decision",
+					"tenant", tenant,
+					"sampled", shouldSample,
+					"path", httpReq.URL.Path)
+				break
+			}
+		}
 	}
 
 	results := make(chan *backendResult, len(h.backends))
@@ -144,17 +153,37 @@ func (h *FanOutHandler) Do(ctx context.Context, req queryrangebase.Request) (que
 				h.collectRemainingAndCompare(remaining, httpReq, results, collected, preferredResult, shouldSample)
 			}()
 
+			// when the preferred backend fails (5xx) we return any successful backend response
+			if !preferredResult.backendResp.succeeded() {
+				continue
+			}
+
+			// when the preferred backends succeeds, but with error, that indicates an invalid request
+			// return the error to the clientjk
 			if preferredResult.err != nil {
-				return nil, preferredResult.err
+				return &NonDecodableResponse{
+					StatusCode: preferredResult.backendResp.status,
+					Body:       preferredResult.backendResp.body,
+				}, preferredResult.err
 			}
 			return preferredResult.response, nil
 		}
 	}
 
-	// if we get here, no preferred backend was found, preferred failed, or all backends failed
-	// this is an error
+	// if we get here, no preferred backend was found or the preferred backend
+	// failed. in this case, return any successful response or an error if all failed
+	for _, result := range collected {
+		if result.err == nil && result.backendResp.succeeded() {
+			return result.response, nil
+		}
+	}
+
 	if len(collected) > 0 && collected[0].err != nil {
-		return nil, collected[0].err
+		result := collected[0]
+		return &NonDecodableResponse{
+			StatusCode: result.backendResp.status,
+			Body:       result.backendResp.body,
+		}, result.err
 	}
 	return nil, fmt.Errorf("all backends failed")
 }
@@ -173,7 +202,7 @@ func (h *FanOutHandler) collectRemainingAndCompare(remaining int, httpReq *http.
 			issuer,
 		).Inc()
 
-		if h.comparator != nil {
+		if h.comparator != nil && !r.backend.preferred {
 			result := comparisonSuccess
 			summary, err := h.compareResponses(preferredResult.backendResp, r.backendResp, time.Now().UTC())
 			if err != nil {
@@ -310,6 +339,7 @@ func (h *FanOutHandler) processGoldfishComparison(httpReq *http.Request, preferr
 	if h.goldfishManager == nil || len(results) < 2 || preferredResult == nil {
 		return
 	}
+	tenantID, _, _ := tenant.ExtractTenantIDFromHTTPRequest(httpReq)
 
 	// Find preferred and non-preferred responses
 	for _, r := range results {
@@ -317,7 +347,7 @@ func (h *FanOutHandler) processGoldfishComparison(httpReq *http.Request, preferr
 			continue
 		}
 		level.Info(h.logger).Log("msg", "processing responses with Goldfish",
-			"tenant", extractTenant(httpReq),
+			"tenant", tenantID,
 			"query", httpReq.URL.Query().Get("query"),
 			"cellA_backend", preferredResult.backend.name,
 			"cellA_status", preferredResult.backendResp.status,

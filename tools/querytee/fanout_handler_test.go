@@ -118,7 +118,10 @@ func TestFanOutHandler_Do_AllBackendsFail(t *testing.T) {
 
 	// Should return error when all backends fail
 	require.Error(t, err)
-	require.Nil(t, resp)
+
+	nonDecodableResp, ok := resp.(*NonDecodableResponse)
+	require.True(t, ok)
+	require.Equal(t, nonDecodableResp.StatusCode, 500)
 }
 
 func TestFanOutHandler_Do_WithFilter(t *testing.T) {
