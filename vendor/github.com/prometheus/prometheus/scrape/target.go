@@ -190,9 +190,9 @@ func (t *Target) LabelsRange(f func(l labels.Label)) {
 
 // DiscoveredLabels returns a copy of the target's labels before any processing.
 func (t *Target) DiscoveredLabels(lb *labels.Builder) labels.Labels {
-	t.mtx.Lock()
+	t.mtx.RLock()
 	cfg, tLabels, tgLabels := t.scrapeConfig, t.tLabels, t.tgLabels
-	t.mtx.Unlock()
+	t.mtx.RUnlock()
 	PopulateDiscoveredLabels(lb, cfg, tLabels, tgLabels)
 	return lb.Labels()
 }
@@ -208,9 +208,9 @@ func (t *Target) SetScrapeConfig(scrapeConfig *config.ScrapeConfig, tLabels, tgL
 
 // URL returns a copy of the target's URL.
 func (t *Target) URL() *url.URL {
-	t.mtx.Lock()
+	t.mtx.RLock()
 	configParams := t.scrapeConfig.Params
-	t.mtx.Unlock()
+	t.mtx.RUnlock()
 	params := url.Values{}
 
 	for k, v := range configParams {
@@ -341,6 +341,22 @@ func (app *limitAppender) Append(ref storage.SeriesRef, lset labels.Labels, t in
 		}
 	}
 	ref, err := app.Appender.Append(ref, lset, t, v)
+	if err != nil {
+		return 0, err
+	}
+	return ref, nil
+}
+
+func (app *limitAppender) AppendHistogram(ref storage.SeriesRef, lset labels.Labels, t int64, h *histogram.Histogram, fh *histogram.FloatHistogram) (storage.SeriesRef, error) {
+	// Bypass sample_limit checks only if we have a staleness marker for a known series (ref value is non-zero).
+	// This ensures that if a series is already in TSDB then we always write the marker.
+	if ref == 0 || (h != nil && !value.IsStaleNaN(h.Sum)) || (fh != nil && !value.IsStaleNaN(fh.Sum)) {
+		app.i++
+		if app.i > app.limit {
+			return 0, errSampleLimit
+		}
+	}
+	ref, err := app.Appender.AppendHistogram(ref, lset, t, h, fh)
 	if err != nil {
 		return 0, err
 	}
