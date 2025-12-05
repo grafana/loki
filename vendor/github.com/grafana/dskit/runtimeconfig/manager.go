@@ -196,14 +196,18 @@ func (om *Manager) loadConfig() error {
 	}
 
 	mergedConfig := map[string]interface{}{}
-	for _, f := range om.cfg.LoadPath {
+	for i, f := range om.cfg.LoadPath {
 		data := rawData[f]
 		yamlFile, err := om.unmarshalMaybeGzipped(f, data)
 		if err != nil {
 			om.configLoadSuccess.Set(0)
 			return errors.Wrapf(err, "unmarshal file %q", f)
 		}
-		mergedConfig = mergeConfigMaps(mergedConfig, yamlFile)
+		mergedConfig, err = mergeConfigMaps(mergedConfig, yamlFile, "")
+		if err != nil {
+			om.configLoadSuccess.Set(0)
+			return errors.Wrapf(err, "can't merge file %q on top of the previous %#v", f, om.cfg.LoadPath[:i])
+		}
 	}
 
 	buf, err := yaml.Marshal(mergedConfig)
@@ -258,23 +262,46 @@ func isGzip(data []byte) bool {
 	return len(data) > 2 && data[0] == 0x1f && data[1] == 0x8b
 }
 
-func mergeConfigMaps(a, b map[string]interface{}) map[string]interface{} {
+func mergeConfigMaps(a, b map[string]interface{}, path string) (_ map[string]interface{}, err error) {
 	out := make(map[string]interface{}, len(a))
 	for k, v := range a {
 		out[k] = v
 	}
 	for k, v := range b {
+		aVal, aHasKey := a[k]
+		bVal, bHasKey := b[k]
+
+		_, aIsMap := a[k].(map[string]interface{})
+		_, bIsMap := b[k].(map[string]interface{})
+
+		if aHasKey && aVal == nil && bIsMap {
+			aIsMap = true
+			out[k] = make(map[string]interface{})
+		}
+
+		if bHasKey && bVal == nil && aIsMap {
+			bIsMap = true
+			v = make(map[string]interface{})
+		}
+
+		if aHasKey && aIsMap != bIsMap {
+			return nil, errors.Errorf("conflicting types for %q: %T != %T", path+"."+k, a[k], b[k])
+		}
+
 		if v, ok := v.(map[string]interface{}); ok {
 			if bv, ok := out[k]; ok {
 				if bv, ok := bv.(map[string]interface{}); ok {
-					out[k] = mergeConfigMaps(bv, v)
+					out[k], err = mergeConfigMaps(bv, v, path+"."+k)
+					if err != nil {
+						return nil, err
+					}
 					continue
 				}
 			}
 		}
 		out[k] = v
 	}
-	return out
+	return out, nil
 }
 
 func (om *Manager) setConfig(config interface{}) {
