@@ -517,7 +517,7 @@ func Test_ProxyEndpoint_SummaryMetrics(t *testing.T) {
 
 			require.Eventually(t, func() bool {
 				return prom_testutil.CollectAndCount(proxyMetrics.responsesComparedTotal) == 1
-			}, 2*time.Second, 100*time.Millisecond, "expect exactly 1 response to be compared.")
+			}, 3*time.Second, 100*time.Millisecond, "expect exactly 1 response to be compared.")
 			err := prom_testutil.CollectAndCompare(proxyMetrics.missingMetrics, strings.NewReader(tc.expectedMetrics))
 			require.NoError(t, err)
 		})

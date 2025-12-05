@@ -175,7 +175,11 @@ func Test_Proxy_RequestsForwarding(t *testing.T) {
 			require.NoError(t, p.Start())
 
 			// Send a query request to the proxy.
-			res, err := http.Get(fmt.Sprintf("http://%s/loki/api/v1/query?query=rate({job=\"test\"}[5m])", p.Endpoint()))
+			req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/loki/api/v1/query?query=rate({job=\"test\"}[5m])", p.Endpoint()), nil)
+			require.NoError(t, err)
+			req.Header.Set("X-Scope-OrgID", "test-tenant")
+
+			res, err := http.DefaultClient.Do(req)
 			require.NoError(t, err)
 
 			defer res.Body.Close()
