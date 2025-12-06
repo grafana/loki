@@ -58,12 +58,16 @@ type ExecutorConfig struct {
 
 	// RangeConfig determines how to optimize range reads in the V2 engine.
 	RangeConfig rangeio.Config `yaml:"range_reads" category:"experimental" doc:"description=Configures how to read byte ranges from object storage when using the V2 engine."`
+
+	// MetaqueriesEnabled toggles the metaquery planning stage.
+	MetaqueriesEnabled bool `yaml:"metaqueries_enabled" category:"experimental"`
 }
 
 func (cfg *ExecutorConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.IntVar(&cfg.BatchSize, prefix+"batch-size", 100, "Experimental: Batch size of the next generation query engine.")
 	f.IntVar(&cfg.MergePrefetchCount, prefix+"merge-prefetch-count", 0, "Experimental: The number of inputs that are prefetched simultaneously by any Merge node. A value of 0 means that only the currently processed input is prefetched, 1 means that only the next input is prefetched, and so on. A negative value means that all inputs are be prefetched in parallel.")
 	cfg.RangeConfig.RegisterFlags(prefix+"range-reads.", f)
+	f.BoolVar(&cfg.MetaqueriesEnabled, prefix+"metaquery-enable", false, "Experimental: Enable the metaquery planning stage that precomputes catalog lookups.")
 }
 
 // Params holds parameters for constructing a new [Engine].
@@ -107,6 +111,13 @@ type Engine struct {
 	limits    logql.Limits    // Limits to apply to engine queries.
 
 	metastore metastore.Metastore
+	// metaqueriesEnabled gates the metaquery planning stage.
+	metaqueriesEnabled bool
+	metaqueryRunner    physical.MetaqueryRunner
+}
+
+func (e *Engine) metaqueriesActive() bool {
+	return e.metaqueriesEnabled && e.metaqueryRunner != nil
 }
 
 // New creates a new Engine.
@@ -120,9 +131,10 @@ func New(params Params) (*Engine, error) {
 		metrics:     newMetrics(params.Registerer),
 		rangeConfig: params.Config.RangeConfig,
 
-		scheduler: params.Scheduler,
-		bucket:    bucket.NewXCapBucket(params.Bucket),
-		limits:    params.Limits,
+		scheduler:          params.Scheduler,
+		bucket:             bucket.NewXCapBucket(params.Bucket),
+		limits:             params.Limits,
+		metaqueriesEnabled: params.Config.MetaqueriesEnabled,
 	}
 
 	if e.bucket != nil {
@@ -131,6 +143,12 @@ func New(params Params) (*Engine, error) {
 			indexBucket = objstore.NewPrefixedBucket(e.bucket, params.MetastoreConfig.IndexStoragePrefix)
 		}
 		e.metastore = metastore.NewObjectMetastore(indexBucket, e.logger, params.Registerer)
+	}
+
+	if e.metaqueriesEnabled && e.metastore != nil {
+		e.metaqueryRunner = &physical.LocalMetaqueryRunner{Metastore: e.metastore}
+	} else {
+		e.metaqueriesEnabled = false
 	}
 
 	return e, nil
@@ -305,9 +323,31 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, logger log.Logger, param
 	region := xcap.RegionFromContext(ctx)
 	timer := prometheus.NewTimer(e.metrics.physicalPlanning)
 
-	// TODO(rfratto): To improve the performance of the physical planner, we
-	// may want to parallelize metastore lookups across scheduled tasks as well.
-	catalog := physical.NewMetastoreCatalog(ctx, e.metastore)
+	var (
+		catalog      physical.Catalog
+		metaDuration time.Duration
+		metaRequests int
+	)
+	if e.metaqueriesActive() {
+		// run all the metastore lookups at this point and prepare a metastore catalog that already has all the answers
+		var err error
+		catalog, metaDuration, metaRequests, err = e.prepareCatalogWithMetaqueries(ctx, params, logicalPlan)
+		if err != nil {
+			level.Warn(logger).Log("msg", "failed to prepare metaqueries", "err", err)
+			region.RecordError(err)
+			return nil, 0, ErrPlanningFailed
+		}
+		e.metrics.metaqueryPlanning.Observe(metaDuration.Seconds())
+		level.Info(logger).Log("msg", "finished metaquery planning", "duration", metaDuration.String(), "requests", metaRequests)
+		region.AddEvent("finished metaquery planning",
+			attribute.Stringer("duration", metaDuration),
+			attribute.Int("requests", metaRequests),
+		)
+	} else {
+		// TODO(rfratto): To improve the performance of the physical planner, we
+		// may want to parallelize metastore lookups across scheduled tasks as well.
+		catalog = physical.NewMetastoreCatalog(ctx, e.metastore)
+	}
 
 	// TODO(rfratto): It feels strange that we need to past the start/end time
 	// to the physical planner. Isn't it already represented by the logical
@@ -339,6 +379,32 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, logger log.Logger, param
 		attribute.Stringer("duration", duration),
 	)
 	return physicalPlan, duration, nil
+}
+
+func (e *Engine) prepareCatalogWithMetaqueries(ctx context.Context, params logql.Params, logicalPlan *logical.Plan) (physical.Catalog, time.Duration, int, error) {
+	start := time.Now()
+
+	collector := physical.NewMetaqueryCollectorCatalog()
+	collectorPlanner := physical.NewPlanner(physical.NewContext(params.Start(), params.End()), collector)
+	if _, err := collectorPlanner.Build(logicalPlan); err != nil {
+		return nil, 0, 0, err
+	}
+
+	requests := collector.Requests()
+
+	prepared := physical.NewMetaqueryPreparedCatalog()
+	for _, req := range requests {
+		result, err := e.metaqueryRunner.Run(ctx, req)
+		if err != nil {
+			return nil, 0, 0, fmt.Errorf("executing metaquery: %w", err)
+		}
+		err = prepared.Store(req, result)
+		if err != nil {
+			return nil, 0, 0, fmt.Errorf("storing metaquery result: %w", err)
+		}
+	}
+
+	return prepared, time.Since(start), len(requests), nil
 }
 
 // buildWorkflow builds a workflow from the given physical plan.
