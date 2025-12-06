@@ -370,6 +370,16 @@ type LokiComponentSpec struct {
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:podAntiAffinity",displayName="PodAntiAffinity"
 	PodAntiAffinity *corev1.PodAntiAffinity `json:"podAntiAffinity,omitempty"`
+
+	// Resources defines the resource requirements for the component.
+	// These values override the default resources configured by the operator
+	// based on the selected size. Users can use this to customize CPU/memory
+	// requests and limits for each component.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Component Resources"
+	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
 }
 
 // LokiTemplateSpec defines the template of all requirements to configure

@@ -146,6 +146,10 @@ func ApplyDefaultSettings(opts *Options) error {
 		useRequestsAsLimits = opts.Stack.Template.UseRequestsAsLimits
 	}
 	opts.ResourceRequirements = internal.ResourceRequirementsForSize(opts.Stack.Size, useRequestsAsLimits)
+
+	// Apply user-provided resource overrides
+	internal.ApplyResourceOverrides(&opts.ResourceRequirements, opts.Stack.Template)
+
 	opts.Stack = *spec
 
 	return nil

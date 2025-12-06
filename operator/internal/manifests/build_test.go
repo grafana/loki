@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	configv1 "github.com/grafana/loki/operator/api/config/v1"
@@ -122,6 +123,49 @@ func TestApplyDefaultSettings_UseRequestsAsLimits(t *testing.T) {
 		require.Equal(t, opt.ResourceRequirements.QueryFrontend.Limits, opt.ResourceRequirements.QueryFrontend.Requests)
 		require.Equal(t, opt.ResourceRequirements.Gateway.Limits, opt.ResourceRequirements.Gateway.Requests)
 	}
+}
+
+func TestApplyDefaultSettings_ResourceOverrides(t *testing.T) {
+	customCPU := corev1.ResourceList{
+		corev1.ResourceCPU:    resource.MustParse("100m"),
+		corev1.ResourceMemory: resource.MustParse("256Mi"),
+	}
+
+	opt := Options{
+		Name:      "abcd",
+		Namespace: "efgh",
+		Stack: lokiv1.LokiStackSpec{
+			Size: lokiv1.SizeOneXPico,
+			Template: &lokiv1.LokiTemplateSpec{
+				Ingester: &lokiv1.LokiComponentSpec{
+					Resources: &corev1.ResourceRequirements{
+						Requests: customCPU,
+						Limits:   customCPU,
+					},
+				},
+				Distributor: &lokiv1.LokiComponentSpec{
+					Resources: &corev1.ResourceRequirements{
+						Requests: customCPU,
+					},
+				},
+			},
+		},
+		Timeouts: defaultTimeoutConfig,
+	}
+	err := ApplyDefaultSettings(&opt)
+
+	require.NoError(t, err)
+
+	// Check that ingester resources were overridden for both requests and limits
+	require.Equal(t, customCPU, opt.ResourceRequirements.Ingester.Requests)
+	require.Equal(t, customCPU, opt.ResourceRequirements.Ingester.Limits)
+
+	// Check that distributor requests were overridden but limits remain from size defaults
+	require.Equal(t, customCPU, opt.ResourceRequirements.Distributor.Requests)
+
+	// Check that other components still have their size defaults
+	require.NotEmpty(t, opt.ResourceRequirements.Querier.Requests)
+	require.NotEmpty(t, opt.ResourceRequirements.QueryFrontend.Requests)
 }
 
 func TestApplyTLSSettings_OverrideDefaults(t *testing.T) {
