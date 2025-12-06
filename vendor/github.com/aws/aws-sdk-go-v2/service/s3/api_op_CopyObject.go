@@ -27,7 +27,7 @@ import (
 // Asia Pacific (Sydney), Asia Pacific (Tokyo), Europe (Ireland), and South America
 // (São Paulo).
 //
-// You can store individual objects of up to 5 TB in Amazon S3. You create a copy
+// You can store individual objects of up to 50 TB in Amazon S3. You create a copy
 // of your object up to 5 GB in size in a single atomic action using this API.
 // However, to copy an object greater than 5 GB, you must use the multipart upload
 // Upload Part - Copy (UploadPartCopy) API. For more information, see [Copy Object Using the REST Multipart Upload API].
