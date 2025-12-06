@@ -118,7 +118,7 @@ require (
 	github.com/IBM/go-sdk-core/v5 v5.21.2
 	github.com/IBM/ibm-cos-sdk-go v1.12.3
 	github.com/apache/arrow-go/v18 v18.4.1
-	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.53.2
+	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.53.3
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.92.1
 	github.com/axiomhq/hyperloglog v0.2.5
 	github.com/bits-and-blooms/bloom/v3 v3.7.1
@@ -187,9 +187,9 @@ require (
 	github.com/aws/aws-sdk-go-v2/internal/v4a v1.4.14 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.265.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ecs v1.67.2 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.3 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.4 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.9.5 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery v1.11.14 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery v1.11.15 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.19.14 // indirect
 	github.com/aws/aws-sdk-go-v2/service/lightsail v1.50.4 // indirect
 	github.com/aws/aws-sdk-go-v2/service/signin v1.0.2 // indirect
@@ -354,8 +354,8 @@ require (
 	github.com/alecthomas/units v0.0.0-20240927000941-0f3dac36c52b // indirect
 	github.com/armon/go-metrics v0.4.1 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.14 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.14 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.14 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.15 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.15 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/ini v1.8.4 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.14 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sso v1.30.5 // indirect
