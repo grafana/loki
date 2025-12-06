@@ -19,6 +19,7 @@ func ToProto(user string, namespace string, rl rulefmt.RuleGroup) *RuleGroupDesc
 		Rules:     formattedRuleToProto(rl.Rules),
 		User:      user,
 		Limit:     int64(rl.Limit),
+		Labels:    logproto.FromLabelsToLabelAdapters(labels.FromMap(rl.Labels)),
 	}
 	return &rg
 }
@@ -46,6 +47,7 @@ func FromProto(rg *RuleGroupDesc) rulefmt.RuleGroup {
 		Interval: model.Duration(rg.Interval),
 		Rules:    make([]rulefmt.Rule, len(rg.GetRules())),
 		Limit:    int(rg.GetLimit()),
+		Labels:   logproto.FromLabelAdaptersToLabels(rg.Labels).Map(),
 	}
 
 	for i, rl := range rg.GetRules() {
