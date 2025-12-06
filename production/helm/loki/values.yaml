@@ -833,6 +833,8 @@ lokiCanary:
     digest: null
     # -- Docker image pull policy
     pullPolicy: IfNotPresent
+  # -- Liveness probe
+  livenessProbe:
   # -- Readiness probe
   readinessProbe:
     httpGet:
@@ -840,6 +842,8 @@ lokiCanary:
       port: http-metrics
     initialDelaySeconds: 15
     timeoutSeconds: 1
+  # -- Startup probe
+  startupProbe:
   # -- Update strategy for the `loki-canary` Daemonset pods
   updateStrategy:
     type: RollingUpdate
