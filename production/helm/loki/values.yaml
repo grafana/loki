@@ -223,6 +223,9 @@ loki:
     {{- if .Values.chunksCache.enabled }}
     {{- with .Values.chunksCache }}
     chunk_store_config:
+      {{- with .chunk_store_config }}
+      {{- toYaml . | nindent 2 }}
+      {{- end }}
       chunk_cache_config:
         default_validity: {{ .defaultValidity }}
         background:
