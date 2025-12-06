@@ -4,14 +4,6 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 )
 
-func makeIndex(fields []arrow.Field) map[string]int {
-	index := make(map[string]int, len(fields))
-	for i, f := range fields {
-		index[f.Name] = i
-	}
-	return index
-}
-
 // Schema defines the structure of entities in a generic section.
 // It contains a list of Arrow fields that define the columns.
 type Schema struct {
@@ -76,5 +68,3 @@ func (s *Schema) Fields() []arrow.Field {
 func (s *Schema) NumFields() int {
 	return s.inner.NumFields()
 }
-
-type Entity arrow.RecordBatch

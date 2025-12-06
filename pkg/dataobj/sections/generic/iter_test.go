@@ -3,12 +3,14 @@ package generic
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
+	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
 
 // TestIterWithMultipleSections tests reading data from multiple generic sections
@@ -40,22 +42,17 @@ func TestIterWithMultipleSections(t *testing.T) {
 	})
 	eventsBuilder.SetTenant("test-tenant")
 
-	eventsData := []*Entity{
-		NewEntity(eventsSchema, []dataset.Value{
-			dataset.Int64Value(1),
-			dataset.BinaryValue([]byte("login")),
-			dataset.Int64Value(1234567890000000000),
-		}),
-		NewEntity(eventsSchema, []dataset.Value{
-			dataset.Int64Value(2),
-			dataset.BinaryValue([]byte("logout")),
-			dataset.Int64Value(1234567891000000000),
-		}),
-		NewEntity(eventsSchema, []dataset.Value{
-			dataset.Int64Value(3),
-			dataset.BinaryValue([]byte("click")),
-			dataset.Int64Value(1234567892000000000),
-		}),
+	alloc := memory.DefaultAllocator
+	eventsData := []arrow.RecordBatch{
+		arrowtest.Rows{
+			{"event_id": int64(1), "event_type": "login", "timestamp": time.Unix(0, 1234567890000000000).UTC()},
+		}.Record(alloc, eventsSchema.inner),
+		arrowtest.Rows{
+			{"event_id": int64(2), "event_type": "logout", "timestamp": time.Unix(0, 1234567891000000000).UTC()},
+		}.Record(alloc, eventsSchema.inner),
+		arrowtest.Rows{
+			{"event_id": int64(3), "event_type": "click", "timestamp": time.Unix(0, 1234567892000000000).UTC()},
+		}.Record(alloc, eventsSchema.inner),
 	}
 
 	for _, entity := range eventsData {
@@ -70,17 +67,13 @@ func TestIterWithMultipleSections(t *testing.T) {
 	})
 	metricsBuilder.SetTenant("test-tenant")
 
-	metricsData := []*Entity{
-		NewEntity(metricsSchema, []dataset.Value{
-			dataset.Int64Value(100),
-			dataset.BinaryValue([]byte("cpu_usage")),
-			dataset.Int64Value(75),
-		}),
-		NewEntity(metricsSchema, []dataset.Value{
-			dataset.Int64Value(101),
-			dataset.BinaryValue([]byte("memory_usage")),
-			dataset.Int64Value(82),
-		}),
+	metricsData := []arrow.RecordBatch{
+		arrowtest.Rows{
+			{"metric_id": int64(100), "metric_name": "cpu_usage", "value": int64(75)},
+		}.Record(alloc, metricsSchema.inner),
+		arrowtest.Rows{
+			{"metric_id": int64(101), "metric_name": "memory_usage", "value": int64(82)},
+		}.Record(alloc, metricsSchema.inner),
 	}
 
 	for _, entity := range metricsData {
@@ -95,12 +88,10 @@ func TestIterWithMultipleSections(t *testing.T) {
 	})
 	eventsBuilder2.SetTenant("test-tenant")
 
-	eventsData2 := []*Entity{
-		NewEntity(eventsSchema, []dataset.Value{
-			dataset.Int64Value(4),
-			dataset.BinaryValue([]byte("error")),
-			dataset.Int64Value(1234567893000000000),
-		}),
+	eventsData2 := []arrow.RecordBatch{
+		arrowtest.Rows{
+			{"event_id": int64(4), "event_type": "error", "timestamp": time.Unix(0, 1234567893000000000).UTC()},
+		}.Record(alloc, eventsSchema.inner),
 	}
 
 	for _, entity := range eventsData2 {
@@ -232,23 +223,19 @@ func TestIterReadData(t *testing.T) {
 	})
 	builder.SetTenant("test-tenant")
 
+	alloc := memory.DefaultAllocator
+
 	// Add test entities
-	entities := []*Entity{
-		NewEntity(schema, []dataset.Value{
-			dataset.Int64Value(1),
-			dataset.BinaryValue([]byte("Alice")),
-			dataset.Int64Value(1000000000),
-		}),
-		NewEntity(schema, []dataset.Value{
-			dataset.Int64Value(2),
-			dataset.BinaryValue([]byte("Bob")),
-			dataset.Int64Value(2000000000),
-		}),
-		NewEntity(schema, []dataset.Value{
-			dataset.Int64Value(3),
-			dataset.BinaryValue([]byte("Charlie")),
-			dataset.Int64Value(3000000000),
-		}),
+	entities := []arrow.RecordBatch{
+		arrowtest.Rows{
+			{"id": int64(1), "name": "Alice", "timestamp": time.Unix(0, 1000000000).UTC()},
+		}.Record(alloc, schema.inner),
+		arrowtest.Rows{
+			{"id": int64(2), "name": "Bob", "timestamp": time.Unix(0, 2000000000).UTC()},
+		}.Record(alloc, schema.inner),
+		arrowtest.Rows{
+			{"id": int64(3), "name": "Charlie", "timestamp": time.Unix(0, 3000000000).UTC()},
+		}.Record(alloc, schema.inner),
 	}
 
 	for _, entity := range entities {

@@ -39,8 +39,8 @@ type Builder struct {
 	initialSchema *Schema
 	currentSchema *Schema
 
-	buffer   []Entity
-	segments []Entity
+	buffer   []arrow.RecordBatch
+	segments []arrow.RecordBatch
 
 	// Size tracking
 	bufferSize  int
@@ -69,7 +69,7 @@ func NewBuilder(kind string, schema *Schema, metrics *Metrics, opts BuilderOptio
 		currentSchema: schema.Copy(),
 
 		sectionType: NewGenericSectionType(kind),
-		buffer:      make([]Entity, 0, 1024),
+		buffer:      make([]arrow.RecordBatch, 0, 1024),
 	}
 }
 
@@ -88,7 +88,7 @@ func (b *Builder) Type() dataobj.SectionType { return b.sectionType }
 // The entity's schema does not need to match the builder's schema exactly.
 // If the entity has fields not in the builder's schema, they will be added,
 // and previous entities will be backfilled with null values for those fields.
-func (b *Builder) Append(entity Entity) error {
+func (b *Builder) Append(entity arrow.RecordBatch) error {
 	// Extend builder schema if entity has new fields
 	if err := b.extendSchema(entity.Schema()); err != nil {
 		return fmt.Errorf("extending schema: %w", err)
@@ -114,11 +114,11 @@ func (b *Builder) flushEntities() error {
 		return nil
 	}
 
-	columns := make([]arrow.Array, b.currentSchema.NumFields())
+	columns := make([]arrow.Array, 0, b.currentSchema.NumFields())
 	arrays := make([]arrow.Array, 0, len(b.buffer))
 
 	var numRows int64
-	for _, field := range b.currentSchema.Fields() {
+	for i, field := range b.currentSchema.Fields() {
 		arrays = arrays[:0]
 
 		for _, entity := range b.buffer {
@@ -126,9 +126,14 @@ func (b *Builder) flushEntities() error {
 			if len(idx) > 0 {
 				arrays = append(arrays, entity.Column(idx[0]))
 			} else {
-				arrays = append(arrays, array.NewNull(int(entity.NumRows())))
+				// Create a properly typed null array for missing fields
+				nullArray := b.createNullArray(field.Type, int(entity.NumRows()))
+				arrays = append(arrays, nullArray)
 			}
-			numRows += entity.NumRows()
+			// Only count rows on the first field iteration
+			if i == 0 {
+				numRows += entity.NumRows()
+			}
 		}
 		merged, err := array.Concatenate(arrays, memory.DefaultAllocator)
 		if err != nil {
@@ -139,7 +144,7 @@ func (b *Builder) flushEntities() error {
 	}
 
 	schema := arrow.NewSchema(b.currentSchema.Fields(), nil)
-	segment := array.NewRecordBatch(schema, arrays, numRows)
+	segment := array.NewRecordBatch(schema, columns, numRows)
 	b.segments = append(b.segments, segment)
 	b.buffer = sliceclear.Clear(b.buffer)
 	b.bufferSize = 0
@@ -157,11 +162,11 @@ func (b *Builder) flushSection() (arrow.RecordBatch, error) {
 		return b.segments[0], nil
 	}
 
-	columns := make([]arrow.Array, b.currentSchema.NumFields())
-	arrays := make([]arrow.Array, 0, len(b.buffer))
+	columns := make([]arrow.Array, 0, b.currentSchema.NumFields())
+	arrays := make([]arrow.Array, 0, len(b.segments))
 
 	var numRows int64
-	for _, field := range b.currentSchema.Fields() {
+	for i, field := range b.currentSchema.Fields() {
 		arrays = arrays[:0]
 
 		for _, entity := range b.segments {
@@ -169,9 +174,14 @@ func (b *Builder) flushSection() (arrow.RecordBatch, error) {
 			if len(idx) > 0 {
 				arrays = append(arrays, entity.Column(idx[0]))
 			} else {
-				arrays = append(arrays, array.NewNull(int(entity.NumRows())))
+				// Create a properly typed null array for missing fields
+				nullArray := b.createNullArray(field.Type, int(entity.NumRows()))
+				arrays = append(arrays, nullArray)
 			}
-			numRows += entity.NumRows()
+			// Only count rows on the first field iteration
+			if i == 0 {
+				numRows += entity.NumRows()
+			}
 		}
 		merged, err := array.Concatenate(arrays, memory.DefaultAllocator)
 		if err != nil {
@@ -182,7 +192,7 @@ func (b *Builder) flushSection() (arrow.RecordBatch, error) {
 	}
 
 	schema := arrow.NewSchema(b.currentSchema.Fields(), nil)
-	section := array.NewRecordBatch(schema, arrays, numRows)
+	section := array.NewRecordBatch(schema, columns, numRows)
 	b.segments = sliceclear.Clear(b.segments)
 	b.segmentSize = 0
 
@@ -208,7 +218,7 @@ func (b *Builder) extendSchema(entitySchema *arrow.Schema) error {
 }
 
 // entitySize estimates the size of an entity in bytes.
-func entitySize(entity Entity) int {
+func entitySize(entity arrow.RecordBatch) int {
 	var size int
 	for i := range entity.Columns() {
 		size += int(entity.Column(i).Data().SizeInBytes())
@@ -467,6 +477,57 @@ func (b *Builder) buildSortInfo() *datasetmd.SortInfo {
 	}
 
 	return sortInfo
+}
+
+// createNullArray creates a properly typed null array for the given type and size.
+func (b *Builder) createNullArray(dt arrow.DataType, size int) arrow.Array {
+	alloc := memory.DefaultAllocator
+
+	switch dt.ID() {
+	case arrow.INT64:
+		builder := array.NewInt64Builder(alloc)
+		defer builder.Release()
+		for i := 0; i < size; i++ {
+			builder.AppendNull()
+		}
+		return builder.NewArray()
+
+	case arrow.UINT64:
+		builder := array.NewUint64Builder(alloc)
+		defer builder.Release()
+		for i := 0; i < size; i++ {
+			builder.AppendNull()
+		}
+		return builder.NewArray()
+
+	case arrow.STRING:
+		builder := array.NewStringBuilder(alloc)
+		defer builder.Release()
+		for i := 0; i < size; i++ {
+			builder.AppendNull()
+		}
+		return builder.NewArray()
+
+	case arrow.BINARY:
+		builder := array.NewBinaryBuilder(alloc, &arrow.BinaryType{})
+		defer builder.Release()
+		for i := 0; i < size; i++ {
+			builder.AppendNull()
+		}
+		return builder.NewArray()
+
+	case arrow.TIMESTAMP:
+		builder := array.NewTimestampBuilder(alloc, dt.(*arrow.TimestampType))
+		defer builder.Release()
+		for i := 0; i < size; i++ {
+			builder.AppendNull()
+		}
+		return builder.NewArray()
+
+	default:
+		// Fallback to generic null array
+		return array.NewNull(size)
+	}
 }
 
 // Reset resets all state, allowing b to be reused.

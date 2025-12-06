@@ -3,12 +3,14 @@ package generic
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
+	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
 
 // testBuilderOptions provides common builder options for tests.
@@ -19,6 +21,8 @@ var testBuilderOptions = BuilderOptions{
 }
 
 func TestBuilder(t *testing.T) {
+	alloc := memory.DefaultAllocator
+
 	// Define a schema with multiple columns
 	schema := NewSchema([]arrow.Field{
 		{Name: "id", Type: arrow.PrimitiveTypes.Int64},
@@ -30,27 +34,16 @@ func TestBuilder(t *testing.T) {
 	builder := NewBuilder("test-data", schema, nil, testBuilderOptions)
 	builder.SetTenant("test-tenant")
 
-	// Append some entities
-	entities := []*Entity{
-		NewEntity(schema, []dataset.Value{
-			dataset.Int64Value(1),
-			dataset.BinaryValue([]byte("Alice")),
-			dataset.Int64Value(1234567890000000000),
-		}),
-		NewEntity(schema, []dataset.Value{
-			dataset.Int64Value(2),
-			dataset.BinaryValue([]byte("Bob")),
-			dataset.Int64Value(1234567891000000000),
-		}),
-		NewEntity(schema, []dataset.Value{
-			dataset.Int64Value(3),
-			dataset.BinaryValue([]byte("Charlie")),
-			dataset.Int64Value(1234567892000000000),
-		}),
+	// Append some entities using arrowtest.Rows
+	entities := []arrowtest.Rows{
+		{{"id": int64(1), "name": "Alice", "timestamp": time.Unix(0, 1234567890000000000).UTC()}},
+		{{"id": int64(2), "name": "Bob", "timestamp": time.Unix(0, 1234567891000000000).UTC()}},
+		{{"id": int64(3), "name": "Charlie", "timestamp": time.Unix(0, 1234567892000000000).UTC()}},
 	}
 
-	for _, entity := range entities {
-		err := builder.Append(entity)
+	for _, rows := range entities {
+		record := rows.Record(alloc, schema.inner)
+		err := builder.Append(record)
 		require.NoError(t, err)
 	}
 
@@ -76,6 +69,8 @@ func TestBuilder(t *testing.T) {
 }
 
 func TestBuilderWithSort(t *testing.T) {
+	alloc := memory.DefaultAllocator
+
 	// Define a schema with sort information
 	schema := NewSchemaWithSort(
 		[]arrow.Field{
@@ -94,27 +89,16 @@ func TestBuilderWithSort(t *testing.T) {
 		PageMaxRowCount: 10000,
 	})
 
-	// Append some entities
-	entities := []*Entity{
-		NewEntity(schema, []dataset.Value{
-			dataset.Int64Value(1),
-			dataset.Int64Value(1234567890000000000),
-			dataset.BinaryValue([]byte("Alice")),
-		}),
-		NewEntity(schema, []dataset.Value{
-			dataset.Int64Value(2),
-			dataset.Int64Value(1234567891000000000),
-			dataset.BinaryValue([]byte("Alice")),
-		}),
-		NewEntity(schema, []dataset.Value{
-			dataset.Int64Value(2),
-			dataset.Int64Value(1234567891000000000),
-			dataset.BinaryValue([]byte("Ben")),
-		}),
+	// Append some entities using arrowtest.Rows
+	entities := []arrowtest.Rows{
+		{{"id": int64(1), "timestamp": time.Unix(0, 1234567890000000000).UTC(), "name": "Alice"}},
+		{{"id": int64(2), "timestamp": time.Unix(0, 1234567891000000000).UTC(), "name": "Alice"}},
+		{{"id": int64(2), "timestamp": time.Unix(0, 1234567891000000000).UTC(), "name": "Ben"}},
 	}
 
-	for _, entity := range entities {
-		err := builder.Append(entity)
+	for _, rows := range entities {
+		record := rows.Record(alloc, schema.inner)
+		err := builder.Append(record)
 		require.NoError(t, err)
 	}
 
@@ -140,6 +124,8 @@ func TestBuilderWithSort(t *testing.T) {
 }
 
 func TestBuilderValidation(t *testing.T) {
+	alloc := memory.DefaultAllocator
+
 	// Define a schema
 	schema := NewSchema([]arrow.Field{
 		{Name: "id", Type: arrow.PrimitiveTypes.Int64},
@@ -154,14 +140,13 @@ func TestBuilderValidation(t *testing.T) {
 
 	t.Run("wrong type for field", func(t *testing.T) {
 		// Try to append an entity with wrong type for second field
-		wrongSchema := NewSchema([]arrow.Field{
+		rows := arrowtest.Rows{
+			{"id": int64(1), "name": int64(123)}, // name should be string, not int64
+		}
+		entity := rows.Record(alloc, arrow.NewSchema([]arrow.Field{
 			{Name: "id", Type: arrow.PrimitiveTypes.Int64},
-			{Name: "name", Type: arrow.PrimitiveTypes.Int64}, // Wrong type!
-		})
-		entity := NewEntity(wrongSchema, []dataset.Value{
-			dataset.Int64Value(1),
-			dataset.Int64Value(123), // Should be binary/string, not int64
-		})
+			{Name: "name", Type: arrow.PrimitiveTypes.Int64},
+		}, nil))
 
 		err := builder.Append(entity)
 		require.Error(t, err)
@@ -170,14 +155,13 @@ func TestBuilderValidation(t *testing.T) {
 
 	t.Run("wrong type for first field", func(t *testing.T) {
 		// Try to append an entity with wrong type for first field
-		wrongSchema := NewSchema([]arrow.Field{
-			{Name: "id", Type: arrow.BinaryTypes.String}, // Wrong type!
+		rows := arrowtest.Rows{
+			{"id": "not an int", "name": "Alice"}, // id should be int64, not string
+		}
+		entity := rows.Record(alloc, arrow.NewSchema([]arrow.Field{
+			{Name: "id", Type: arrow.BinaryTypes.String},
 			{Name: "name", Type: arrow.BinaryTypes.String},
-		})
-		entity := NewEntity(wrongSchema, []dataset.Value{
-			dataset.BinaryValue([]byte("not an int")), // Should be int64, not binary
-			dataset.BinaryValue([]byte("Alice")),
-		})
+		}, nil))
 
 		err := builder.Append(entity)
 		require.Error(t, err)
@@ -186,10 +170,10 @@ func TestBuilderValidation(t *testing.T) {
 
 	t.Run("valid entity", func(t *testing.T) {
 		// Append a valid entity
-		entity := NewEntity(schema, []dataset.Value{
-			dataset.Int64Value(1),
-			dataset.BinaryValue([]byte("Alice")),
-		})
+		rows := arrowtest.Rows{
+			{"id": int64(1), "name": "Alice"},
+		}
+		entity := rows.Record(alloc, schema.inner)
 
 		err := builder.Append(entity)
 		require.NoError(t, err)
@@ -197,10 +181,10 @@ func TestBuilderValidation(t *testing.T) {
 
 	t.Run("nil values are allowed", func(t *testing.T) {
 		// Append an entity with nil values
-		entity := NewEntity(schema, []dataset.Value{
-			dataset.Int64Value(2),
-			dataset.Value{}, // Nil value
-		})
+		rows := arrowtest.Rows{
+			{"id": int64(2), "name": nil},
+		}
+		entity := rows.Record(alloc, schema.inner)
 
 		err := builder.Append(entity)
 		require.NoError(t, err)
@@ -208,12 +192,13 @@ func TestBuilderValidation(t *testing.T) {
 
 	t.Run("entity with subset of fields", func(t *testing.T) {
 		// Append an entity with only one field (subset of builder schema)
-		partialSchema := NewSchema([]arrow.Field{
+		partialSchema := arrow.NewSchema([]arrow.Field{
 			{Name: "id", Type: arrow.PrimitiveTypes.Int64},
-		})
-		entity := NewEntity(partialSchema, []dataset.Value{
-			dataset.Int64Value(3),
-		})
+		}, nil)
+		rows := arrowtest.Rows{
+			{"id": int64(3)},
+		}
+		entity := rows.Record(alloc, partialSchema)
 
 		err := builder.Append(entity)
 		require.NoError(t, err)
@@ -221,16 +206,15 @@ func TestBuilderValidation(t *testing.T) {
 
 	t.Run("entity with additional fields", func(t *testing.T) {
 		// Append an entity with extra fields (extends builder schema)
-		extendedSchema := NewSchema([]arrow.Field{
+		extendedSchema := arrow.NewSchema([]arrow.Field{
+			{Name: "age", Type: arrow.PrimitiveTypes.Int64},
 			{Name: "id", Type: arrow.PrimitiveTypes.Int64},
 			{Name: "name", Type: arrow.BinaryTypes.String},
-			{Name: "age", Type: arrow.PrimitiveTypes.Int64}, // New field
-		})
-		entity := NewEntity(extendedSchema, []dataset.Value{
-			dataset.Int64Value(4),
-			dataset.BinaryValue([]byte("Bob")),
-			dataset.Int64Value(25),
-		})
+		}, nil)
+		rows := arrowtest.Rows{
+			{"id": int64(4), "name": "Bob", "age": int64(25)},
+		}
+		entity := rows.Record(alloc, extendedSchema)
 
 		err := builder.Append(entity)
 		require.NoError(t, err)
@@ -241,6 +225,8 @@ func TestBuilderValidation(t *testing.T) {
 }
 
 func TestBuilderReset(t *testing.T) {
+	alloc := memory.DefaultAllocator
+
 	// Define a schema
 	schema := NewSchema([]arrow.Field{
 		{Name: "id", Type: arrow.PrimitiveTypes.Int64},
@@ -254,9 +240,10 @@ func TestBuilderReset(t *testing.T) {
 	builder.SetTenant("test-tenant")
 
 	// Append an entity
-	entity := NewEntity(schema, []dataset.Value{
-		dataset.Int64Value(1),
-	})
+	rows := arrowtest.Rows{
+		{"id": int64(1)},
+	}
+	entity := rows.Record(alloc, schema.inner)
 	err := builder.Append(entity)
 	require.NoError(t, err)
 
@@ -269,6 +256,8 @@ func TestBuilderReset(t *testing.T) {
 }
 
 func TestBuilderRoundTrip(t *testing.T) {
+	alloc := memory.DefaultAllocator
+
 	// Define a schema
 	schema := NewSchema([]arrow.Field{
 		{Name: "id", Type: arrow.PrimitiveTypes.Int64},
@@ -284,22 +273,15 @@ func TestBuilderRoundTrip(t *testing.T) {
 	})
 	builder.SetTenant("test-tenant")
 
-	// Append entities
-	entities := []*Entity{
-		NewEntity(schema, []dataset.Value{
-			dataset.Int64Value(1),
-			dataset.BinaryValue([]byte("Alice")),
-			dataset.Int64Value(1234567890000000000),
-		}),
-		NewEntity(schema, []dataset.Value{
-			dataset.Int64Value(2),
-			dataset.BinaryValue([]byte("Bob")),
-			dataset.Int64Value(1234567891000000000),
-		}),
+	// Append entities using arrowtest.Rows
+	entities := []arrowtest.Rows{
+		{{"id": int64(1), "name": "Alice", "timestamp": time.Unix(0, 1234567890000000000).UTC()}},
+		{{"id": int64(2), "name": "Bob", "timestamp": time.Unix(0, 1234567891000000000).UTC()}},
 	}
 
-	for _, entity := range entities {
-		err := builder.Append(entity)
+	for _, rows := range entities {
+		record := rows.Record(alloc, schema.inner)
+		err := builder.Append(record)
 		require.NoError(t, err)
 	}
 
@@ -332,6 +314,8 @@ func TestBuilderRoundTrip(t *testing.T) {
 }
 
 func TestSchemaExtensionAndBackfilling(t *testing.T) {
+	alloc := memory.DefaultAllocator
+
 	// Start with a basic schema
 	schema := NewSchema([]arrow.Field{
 		{Name: "id", Type: arrow.PrimitiveTypes.Int64},
@@ -345,10 +329,9 @@ func TestSchemaExtensionAndBackfilling(t *testing.T) {
 	})
 
 	// Append first entity with initial schema
-	entity1 := NewEntity(schema, []dataset.Value{
-		dataset.Int64Value(1),
-		dataset.BinaryValue([]byte("Alice")),
-	})
+	entity1 := arrowtest.Rows{
+		{"id": int64(1), "name": "Alice"},
+	}.Record(alloc, schema.inner)
 	err := builder.Append(entity1)
 	require.NoError(t, err)
 	require.Equal(t, 2, builder.currentSchema.NumFields())
@@ -359,11 +342,9 @@ func TestSchemaExtensionAndBackfilling(t *testing.T) {
 		{Name: "name", Type: arrow.BinaryTypes.String},
 		{Name: "age", Type: arrow.PrimitiveTypes.Int64},
 	})
-	entity2 := NewEntity(extendedSchema, []dataset.Value{
-		dataset.Int64Value(2),
-		dataset.BinaryValue([]byte("Bob")),
-		dataset.Int64Value(30),
-	})
+	entity2 := arrowtest.Rows{
+		{"id": int64(2), "name": "Bob", "age": int64(30)},
+	}.Record(alloc, extendedSchema.inner)
 	err = builder.Append(entity2)
 	require.NoError(t, err)
 	// Builder schema should now have 3 fields
@@ -376,12 +357,9 @@ func TestSchemaExtensionAndBackfilling(t *testing.T) {
 		{Name: "city", Type: arrow.BinaryTypes.String},
 		{Name: "age", Type: arrow.PrimitiveTypes.Int64},
 	})
-	entity3 := NewEntity(furtherExtendedSchema, []dataset.Value{
-		dataset.BinaryValue([]byte("Charlie")),
-		dataset.Int64Value(3),
-		dataset.BinaryValue([]byte("NYC")),
-		dataset.Int64Value(25),
-	})
+	entity3 := arrowtest.Rows{
+		{"name": "Charlie", "id": int64(3), "city": "NYC", "age": int64(25)},
+	}.Record(alloc, furtherExtendedSchema.inner)
 	err = builder.Append(entity3)
 	require.NoError(t, err)
 	// Builder schema should now have 4 fields
@@ -392,10 +370,9 @@ func TestSchemaExtensionAndBackfilling(t *testing.T) {
 		{Name: "city", Type: arrow.BinaryTypes.String},
 		{Name: "id", Type: arrow.PrimitiveTypes.Int64},
 	})
-	entity4 := NewEntity(partialSchema, []dataset.Value{
-		dataset.BinaryValue([]byte("LA")),
-		dataset.Int64Value(4),
-	})
+	entity4 := arrowtest.Rows{
+		{"city": "LA", "id": int64(4)},
+	}.Record(alloc, partialSchema.inner)
 	err = builder.Append(entity4)
 	require.NoError(t, err)
 	// Builder schema should still have 4 fields
