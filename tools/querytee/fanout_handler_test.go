@@ -82,12 +82,12 @@ func TestFanOutHandler_Do_ReturnsPreferredResponse(t *testing.T) {
 
 func TestFanOutHandler_Do_AllBackendsFail(t *testing.T) {
 	// Create test backends - all fail
-	backend1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	backend1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer backend1.Close()
 
-	backend2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	backend2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer backend2.Close()
