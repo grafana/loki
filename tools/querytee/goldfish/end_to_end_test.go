@@ -14,8 +14,8 @@ import (
 )
 
 // add a helper function to create a SamplesComparator with default tolerance for tests
-func testComparator() comparator.SamplesComparator {
-	return *comparator.NewSamplesComparator(comparator.SampleComparisonOptions{Tolerance: 0.000001})
+func testComparator() comparator.ResponsesComparator {
+	return comparator.NewSamplesComparator(comparator.SampleComparisonOptions{Tolerance: 0.000001})
 }
 
 func TestGoldfishEndToEnd(t *testing.T) {
@@ -315,45 +315,30 @@ func TestGoldfishFloatingPointMismatchDetection(t *testing.T) {
 		}
 	}`)
 
-	// Extract stats for both responses
-	extractor := NewStatsExtractor()
-
-	statsA, hashA, sizeA, usedNewEngineA, err := extractor.ExtractResponseData(responseBodyA, 50)
-	require.NoError(t, err)
-
-	statsB, hashB, sizeB, usedNewEngineB, err := extractor.ExtractResponseData(responseBodyB, 50)
-	require.NoError(t, err)
-
-	cellAResp := &ResponseData{
-		Body:          responseBodyA,
-		StatusCode:    200,
-		Duration:      50 * time.Millisecond,
-		Stats:         statsA,
-		Hash:          hashA,
-		Size:          sizeA,
-		UsedNewEngine: usedNewEngineA,
+	cellAResp := &BackendResponse{
+		BackendName: "cell-a",
+		Status:      200,
+		Body:        responseBodyA,
+		Duration:    50 * time.Millisecond,
+		TraceID:     "",
+		SpanID:      "",
 	}
 
-	cellBResp := &ResponseData{
-		Body:          responseBodyB,
-		StatusCode:    200,
-		Duration:      50 * time.Millisecond,
-		Stats:         statsB,
-		Hash:          hashB,
-		Size:          sizeB,
-		UsedNewEngine: usedNewEngineB,
+	cellBResp := &BackendResponse{
+		BackendName: "cell-b",
+		Status:      200,
+		Body:        responseBodyB,
+		Duration:    50 * time.Millisecond,
+		TraceID:     "",
+		SpanID:      "",
 	}
 
-	ctx := context.Background()
-	manager.ProcessQueryPair(ctx, req, cellAResp, cellBResp)
+	manager.SendToGoldfish(req, cellAResp, cellBResp)
 
 	time.Sleep(100 * time.Millisecond)
 
 	assert.Len(t, storage.results, 1)
 	result := storage.results[0]
-
-	// Verify that different content produces different hashes
-	assert.NotEqual(t, hashA, hashB, "Different content should produce different hashes")
 
 	// Verify that floating-point difference within tolerance is considered a match
 	assert.Equal(t, goldfish.ComparisonStatusMatch, result.ComparisonStatus, "Floating-point difference within tolerance should be a match")
@@ -361,7 +346,6 @@ func TestGoldfishFloatingPointMismatchDetection(t *testing.T) {
 
 	// Verify that we recorded the compareQueryStats
 	assert.Contains(t, result.DifferenceDetails, "exec_time_variance")
-
 }
 
 func TestGoldfishNewEngineDetection(t *testing.T) {

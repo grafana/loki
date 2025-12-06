@@ -27,14 +27,12 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/v3/pkg/goldfish"
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
-	querytee_goldfish "github.com/grafana/loki/v3/tools/querytee/goldfish"
 )
 
 // createTestEndpoint creates a ProxyEndpoint with properly initialized handler pipeline
-func createTestEndpoint(backends []*ProxyBackend, routeName string, comparator ResponsesComparator, instrumentCompares bool) *ProxyEndpoint {
+func createTestEndpoint(backends []*ProxyBackend, routeName string, comparator comparator.ResponsesComparator, instrumentCompares bool) *ProxyEndpoint {
 	metrics := NewProxyMetrics(nil)
 	logger := log.NewNopLogger()
 
@@ -47,16 +45,17 @@ func createTestEndpoint(backends []*ProxyBackend, routeName string, comparator R
 		Metrics:         metrics,
 	})
 
-	handler := handlerFactory.CreateHandler(routeName, comparator)
-	endpoint.WithQueryHandler(handler, queryrange.DefaultCodec)
+	queryHandler := handlerFactory.CreateHandler(routeName, comparator, false)
+	metricHandler := handlerFactory.CreateHandler(routeName, comparator, true)
+	endpoint.WithQueryHandler(queryHandler, metricHandler, queryrange.DefaultCodec)
 	return endpoint
 }
 
 // createTestEndpointWithMetrics creates a ProxyEndpoint with custom metrics
-func createTestEndpointWithMetrics(backends []*ProxyBackend, routeName string, comparator ResponsesComparator, instrumentCompares bool, metrics *ProxyMetrics) *ProxyEndpoint {
+func createTestEndpointWithMetrics(backends []*ProxyBackend, routeName string, comp comparator.ResponsesComparator, instrumentCompares bool, metrics *ProxyMetrics) *ProxyEndpoint {
 	logger := log.NewNopLogger()
 
-	endpoint := NewProxyEndpoint(backends, routeName, metrics, logger, comparator, instrumentCompares)
+	endpoint := NewProxyEndpoint(backends, routeName, metrics, logger, comp, instrumentCompares)
 	handlerFactory := NewHandlerFactory(HandlerFactoryConfig{
 		Backends:           backends,
 		Codec:              queryrange.DefaultCodec,
@@ -66,8 +65,9 @@ func createTestEndpointWithMetrics(backends []*ProxyBackend, routeName string, c
 		InstrumentCompares: instrumentCompares,
 	})
 
-	handler := handlerFactory.CreateHandler(routeName, comparator)
-	endpoint.WithQueryHandler(handler, queryrange.DefaultCodec)
+	queryHandler := handlerFactory.CreateHandler(routeName, comp, false)
+	metricQueryHandler := handlerFactory.CreateHandler(routeName, comp, true)
+	endpoint.WithQueryHandler(queryHandler, metricQueryHandler, queryrange.DefaultCodec)
 	return endpoint
 }
 
@@ -85,8 +85,9 @@ func createTestEndpointWithGoldfish(backends []*ProxyBackend, routeName string, 
 	})
 
 	endpoint := NewProxyEndpoint(backends, routeName, metrics, logger, nil, false)
-	handler := handlerFactory.CreateHandler(routeName, nil)
-	endpoint.WithQueryHandler(handler, queryrange.DefaultCodec)
+	queryHandler := handlerFactory.CreateHandler(routeName, nil, false)
+	metricQueryHandler := handlerFactory.CreateHandler(routeName, nil, true)
+	endpoint.WithQueryHandler(queryHandler, metricQueryHandler, queryrange.DefaultCodec)
 	endpoint.WithGoldfish(goldfishManager)
 	return endpoint
 }
@@ -646,7 +647,7 @@ func Test_endToEnd_traceIDFlow(t *testing.T) {
 	}
 	samplesComparator := comparator.NewSamplesComparator(comparator.SampleComparisonOptions{Tolerance: 0.000001})
 
-	goldfishManager, err := querytee_goldfish.NewManager(goldfishConfig, *samplesComparator, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
+	goldfishManager, err := querytee_goldfish.NewManager(goldfishConfig, samplesComparator, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	endpoint := createTestEndpointWithGoldfish(backends, "test", goldfishManager)
@@ -784,7 +785,14 @@ func TestProxyEndpoint_QuerySplitting(t *testing.T) {
 		},
 		ComparisonMinAge: minAge,
 	}
-	goldfishManager, err := querytee_goldfish.NewManager(goldfishConfig, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
+	goldfishManager, err := querytee_goldfish.NewManager(
+		goldfishConfig,
+		&testComparator{},
+		storage,
+		nil,
+		log.NewNopLogger(),
+		prometheus.NewRegistry(),
+	)
 	require.NoError(t, err)
 
 	endpoint := createTestEndpointWithGoldfish(backends, "test", goldfishManager)
@@ -796,7 +804,7 @@ func TestProxyEndpoint_QuerySplitting(t *testing.T) {
 		// Query from threshold+1h to threshold+2h (all recent)
 		start := threshold.Add(time.Hour)
 		end := threshold.Add(2 * time.Hour)
-		req := httptest.NewRequest("GET", "/loki/api/v1/query_range?query=rate({job=\"test\"}[5m])&start="+formatTime(start)+"&end="+formatTime(end)+"&step="+step, nil)
+		req := httptest.NewRequest("GET", "/loki/api/v1/query_range?query={job=\"test\"}&start="+formatTime(start)+"&end="+formatTime(end)+"&step="+step, nil)
 		req.Header.Set("X-Scope-OrgID", "test-tenant")
 
 		w := httptest.NewRecorder()
@@ -814,7 +822,7 @@ func TestProxyEndpoint_QuerySplitting(t *testing.T) {
 		// Query from threshold-2h to threshold-1h (all old)
 		start := threshold.Add(-2 * time.Hour)
 		end := threshold.Add(-time.Hour)
-		req := httptest.NewRequest("GET", "/loki/api/v1/query_range?query=rate({job=\"test\"}[5m])&start="+formatTime(start)+"&end="+formatTime(end)+"&step="+step, nil)
+		req := httptest.NewRequest("GET", "/loki/api/v1/query_range?query={job=\"test\"}&start="+formatTime(start)+"&end="+formatTime(end)+"&step="+step, nil)
 		req.Header.Set("X-Scope-OrgID", "test-tenant")
 
 		w := httptest.NewRecorder()
@@ -835,7 +843,7 @@ func TestProxyEndpoint_QuerySplitting(t *testing.T) {
 		// Query from threshold-1h to threshold+1h (spans threshold)
 		start := threshold.Add(-time.Hour)
 		end := threshold.Add(time.Hour)
-		req := httptest.NewRequest("GET", "/loki/api/v1/query_range?query=rate({job=\"test\"}[5m])&start="+formatTime(start)+"&end="+formatTime(end)+"&step="+step, nil)
+		req := httptest.NewRequest("GET", "/loki/api/v1/query_range?query={job=\"test\"}&start="+formatTime(start)+"&end="+formatTime(end)+"&step="+step, nil)
 		req.Header.Set("X-Scope-OrgID", "test-tenant")
 
 		w := httptest.NewRecorder()
@@ -900,6 +908,74 @@ func TestProxyEndpoint_QuerySplitting(t *testing.T) {
 		// The response should contain data from both splits merged together
 		// The stats should show splits=2
 		assert.Equal(t, int64(2), response.Data.Statistics.Summary.Splits, "Should show 2 splits in stats")
+	})
+
+	t.Run("v2 compatible metric query with aggregation (split and merge)", func(t *testing.T) {
+		receivedQueries = []string{}
+		storage.Reset()
+
+		// Query from threshold-1h to threshold+1h (spans threshold)
+		// Using a v2 compatible metric query with aggregation
+		start := threshold.Add(-time.Hour)
+		end := threshold.Add(time.Hour)
+		metricQuery := url.QueryEscape(`sum by (job) (count_over_time({foo="bar"}[5m]))`)
+		req := httptest.NewRequest("GET", "/loki/api/v1/query_range?query="+metricQuery+"&start="+formatTime(start)+"&end="+formatTime(end)+"&step="+step, nil)
+		req.Header.Set("X-Scope-OrgID", "test-tenant")
+
+		w := httptest.NewRecorder()
+		endpoint.ServeHTTP(w, req)
+
+		// Give goldfish time to process
+		time.Sleep(500 * time.Millisecond)
+
+		assert.Equal(t, 200, w.Code)
+
+		// For v2 compatible metric queries, we expect:
+		// - 3 queries total: 1 for recent portion (v1 only), 2 for old portion (v1 and v2 for comparison)
+		assert.Equal(t, 3, len(receivedQueries), "expected 3 queries for v2 metric query, 1 for recent portion and 2 for old portion comparison, got %d", len(receivedQueries))
+
+		// Verify that old queries go to both backends
+		stepMs := int64(60000)
+		alignedThreshold := stepAlignUp(threshold, stepMs)
+		oldQueryBoundary := alignedThreshold.Add(time.Duration(stepMs) * time.Millisecond)
+
+		oldQueries := 0
+		recentQueries := 0
+		for _, q := range receivedQueries {
+			if strings.Contains(q, "end=") {
+				endStr := extractQueryParam(q, "end")
+				endTime, _ := parseTimestamp(endStr)
+
+				if endTime.Before(oldQueryBoundary) || endTime.Equal(oldQueryBoundary) {
+					oldQueries++
+				} else {
+					recentQueries++
+				}
+			}
+		}
+		assert.Equal(t, 2, oldQueries, "Old portion of v2 metric query should be sent to both backends for comparison")
+		assert.Equal(t, 1, recentQueries, "Recent portion of v2 metric query should only be sent to preferred backend")
+
+		assert.Equal(t, 1, len(storage.samples), "goldfish should compare the old portion of v2 metric query between the two backends")
+
+		// Parse the JSON response and verify concatenation
+		var response loghttp.QueryResponse
+		err = json.Unmarshal(w.Body.Bytes(), &response)
+		require.NoError(t, err)
+
+		assert.Equal(t, "success", response.Status)
+		assert.Equal(t, string(loghttp.ResultTypeMatrix), string(response.Data.ResultType))
+
+		// Verify we got a matrix response with aggregated results
+		matrix, ok := response.Data.Result.(loghttp.Matrix)
+		require.True(t, ok, "Response should be a matrix for metric query")
+		require.Len(t, matrix, 1, "Should have one aggregated metric")
+
+		metric := matrix[0]
+		assert.Equal(t, model.LabelValue("test"), metric.Metric["job"], "Aggregation should preserve 'job' label")
+
+		// The response should contain data from both splits merged together
+		assert.Equal(t, int64(2), response.Data.Statistics.Summary.Splits, "Should show 2 splits in stats for v2 metric query")
 	})
 }
 

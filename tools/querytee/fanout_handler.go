@@ -14,6 +14,7 @@ import (
 
 	"github.com/grafana/dskit/tenant"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/tools/querytee/comparator"
 	"github.com/grafana/loki/v3/tools/querytee/goldfish"
 )
 
@@ -27,7 +28,7 @@ type FanOutHandler struct {
 	logger             log.Logger
 	metrics            *ProxyMetrics
 	routeName          string
-	comparator         ResponsesComparator
+	comparator         comparator.ResponsesComparator
 	instrumentCompares bool
 }
 
@@ -39,7 +40,7 @@ type FanOutHandlerConfig struct {
 	Logger             log.Logger
 	Metrics            *ProxyMetrics
 	RouteName          string
-	Comparator         ResponsesComparator
+	Comparator         comparator.ResponsesComparator
 	InstrumentCompares bool
 }
 
@@ -212,14 +213,14 @@ func (h *FanOutHandler) collectRemainingAndCompare(remaining int, httpReq *http.
 					"query", httpReq.URL.RawQuery,
 					"err", err)
 				result = comparisonFailed
-			} else if summary != nil && summary.skipped {
+			} else if summary != nil && summary.Skipped {
 				result = comparisonSkipped
 			}
 
 			if h.instrumentCompares && summary != nil {
 				h.metrics.missingMetrics.WithLabelValues(
 					r.backend.name, h.routeName, result, issuer,
-				).Observe(float64(summary.missingMetrics))
+				).Observe(float64(summary.MissingMetrics))
 			}
 			h.metrics.responsesComparedTotal.WithLabelValues(
 				r.backend.name, h.routeName, result, issuer,
@@ -232,9 +233,9 @@ func (h *FanOutHandler) collectRemainingAndCompare(remaining int, httpReq *http.
 	}
 }
 
-func (h *FanOutHandler) compareResponses(expectedResponse, actualResponse *BackendResponse, queryEvalTime time.Time) (*ComparisonSummary, error) {
+func (h *FanOutHandler) compareResponses(expectedResponse, actualResponse *BackendResponse, queryEvalTime time.Time) (*comparator.ComparisonSummary, error) {
 	if expectedResponse.err != nil {
-		return &ComparisonSummary{skipped: true}, nil
+		return &comparator.ComparisonSummary{Skipped: true}, nil
 	}
 
 	if actualResponse.err != nil {
@@ -243,7 +244,7 @@ func (h *FanOutHandler) compareResponses(expectedResponse, actualResponse *Backe
 
 	// compare response body only if we get a 200
 	if expectedResponse.status != 200 {
-		return &ComparisonSummary{skipped: true}, nil
+		return &comparator.ComparisonSummary{Skipped: true}, nil
 	}
 
 	if actualResponse.status != 200 {
@@ -329,7 +330,7 @@ func (h *FanOutHandler) recordMetrics(result *backendResult, method, issuer stri
 		result.backend.name,
 		method,
 		h.routeName,
-		strconv.Itoa(result.backendResp.status),
+		strconv.FormatInt(int64(result.backendResp.status), 10),
 		issuer,
 	).Observe(result.backendResp.duration.Seconds())
 }
@@ -390,7 +391,7 @@ func (h *FanOutHandler) WithMetrics(metrics *ProxyMetrics) *FanOutHandler {
 }
 
 // WithComparator sets the response comparator.
-func (h *FanOutHandler) WithComparator(comparator ResponsesComparator) *FanOutHandler {
+func (h *FanOutHandler) WithComparator(comparator comparator.ResponsesComparator) *FanOutHandler {
 	h.comparator = comparator
 	return h
 }

@@ -15,9 +15,11 @@ import (
 	"github.com/go-kit/log/level"
 
 	"github.com/grafana/dskit/tenant"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
-  "github.com/grafana/loki/v3/tools/querytee/comparator"
-  "github.com/grafana/loki/v3/tools/querytee/goldfish"
+	"github.com/grafana/loki/v3/tools/querytee/comparator"
+	"github.com/grafana/loki/v3/tools/querytee/goldfish"
 )
 
 // contextKey is used for storing values in context
@@ -58,6 +60,10 @@ type ProxyEndpoint struct {
 	// When set, ServeHTTP uses this instead of the legacy executeBackendRequests.
 	queryHandler queryrangebase.Handler
 
+	// Handler for processing metric requests using the middleware pattern.
+	// When set, ServeHTTP uses this instead of the legacy executeBackendRequests.
+	metricQueryHandler queryrangebase.Handler
+
 	// Codec for encoding/decoding requests and responses.
 	codec queryrangebase.Codec
 }
@@ -67,7 +73,7 @@ func NewProxyEndpoint(
 	routeName string,
 	metrics *ProxyMetrics,
 	logger log.Logger,
-	comparator ResponsesComparator,
+	comparator comparator.ResponsesComparator,
 	instrumentCompares bool,
 ) *ProxyEndpoint {
 	hasPreferredBackend := false
@@ -97,8 +103,9 @@ func (p *ProxyEndpoint) WithGoldfish(manager *goldfish.Manager) *ProxyEndpoint {
 
 // WithQueryHandler sets the middleware-based query handler for the endpoint.
 // When set, ServeHTTP uses this handler instead of the legacy executeBackendRequests.
-func (p *ProxyEndpoint) WithQueryHandler(handler queryrangebase.Handler, codec queryrangebase.Codec) *ProxyEndpoint {
+func (p *ProxyEndpoint) WithQueryHandler(handler, metricHandler queryrangebase.Handler, codec queryrangebase.Codec) *ProxyEndpoint {
 	p.queryHandler = handler
+	p.metricQueryHandler = handler
 	p.codec = codec
 	return p
 }
@@ -133,7 +140,24 @@ func (p *ProxyEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Execute the handler
-	resp, err := p.queryHandler.Do(ctx, req)
+	var resp queryrangebase.Response
+	switch op := req.(type) {
+	case *queryrange.LokiRequest:
+		if op.Plan == nil {
+			http.Error(w, "query plan is empty", http.StatusBadRequest)
+			return
+		}
+
+		switch op.Plan.AST.(type) {
+		case syntax.VariantsExpr, syntax.SampleExpr:
+			resp, err = p.metricQueryHandler.Do(ctx, req)
+		default:
+			resp, err = p.queryHandler.Do(ctx, req)
+		}
+	default:
+		resp, err = p.queryHandler.Do(ctx, req)
+	}
+
 	if err != nil {
 		switch r := resp.(type) {
 		case *NonDecodableResponse:

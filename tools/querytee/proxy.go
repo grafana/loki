@@ -19,11 +19,11 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/middleware"
-	"github.com/grafana/loki/v3/tools/querytee/comparator"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
+	"github.com/grafana/loki/v3/tools/querytee/comparator"
 	"github.com/grafana/loki/v3/tools/querytee/goldfish"
 )
 
@@ -215,13 +215,13 @@ func NewProxy(
 
 		// Create Goldfish manager
 		samplesComparator := comparator.NewSamplesComparator(comparator.SampleComparisonOptions{
-			Tolerance: cfg.ValueComparisonTolerance,
-			UseRelativeError: cfg.UseRelativeError,
+			Tolerance:         cfg.ValueComparisonTolerance,
+			UseRelativeError:  cfg.UseRelativeError,
 			SkipRecentSamples: cfg.SkipRecentSamples,
 			SkipSamplesBefore: time.Time(cfg.SkipSamplesBefore),
 		})
 
-		goldfishManager, err := goldfish.NewManager(cfg.Goldfish, *samplesComparator, storage, resultStore, logger, registerer)
+		goldfishManager, err := goldfish.NewManager(cfg.Goldfish, samplesComparator, storage, resultStore, logger, registerer)
 		if err != nil {
 			if resultStore != nil {
 				_ = resultStore.Close(context.Background())
@@ -266,9 +266,9 @@ func (p *Proxy) Start() error {
 
 	// register read routes
 	for _, route := range p.readRoutes {
-		var comparator comparator.ResponsesComparator
+		var comp comparator.ResponsesComparator
 		if p.cfg.CompareResponses {
-			comparator = route.ResponseComparator
+			comp = route.ResponseComparator
 		}
 		filteredBackends := filterReadDisabledBackends(p.backends, p.cfg.DisableBackendReadProxy)
 		endpoint := NewProxyEndpoint(
@@ -276,7 +276,7 @@ func (p *Proxy) Start() error {
 			route.RouteName,
 			p.metrics,
 			p.logger,
-			comparator,
+			comp,
 			p.cfg.InstrumentCompares,
 		)
 
@@ -300,8 +300,9 @@ func (p *Proxy) Start() error {
 			Metrics:            p.metrics,
 			InstrumentCompares: p.cfg.InstrumentCompares,
 		})
-		handler := routeHandlerFactory.CreateHandler(route.RouteName, comparator)
-		endpoint.WithQueryHandler(handler, queryrange.DefaultCodec)
+		queryHandler := routeHandlerFactory.CreateHandler(route.RouteName, comp, false)
+		metricHandler := routeHandlerFactory.CreateHandler(route.RouteName, comp, true)
+		endpoint.WithQueryHandler(queryHandler, metricHandler, queryrange.DefaultCodec)
 		level.Info(p.logger).Log(
 			"msg", "Query middleware handler attached to route",
 			"path", route.Path,
@@ -313,16 +314,16 @@ func (p *Proxy) Start() error {
 
 	// create a separate endpoint without a query handler for write requests
 	for _, route := range p.writeRoutes {
-		var comparator ResponsesComparator
+		var comp comparator.ResponsesComparator
 		if p.cfg.CompareResponses {
-			comparator = route.ResponseComparator
+			comp = route.ResponseComparator
 		}
 		endpoint := NewProxyEndpoint(
 			p.backends,
 			route.RouteName,
 			p.metrics,
 			p.logger,
-			comparator,
+			comp,
 			p.cfg.InstrumentCompares,
 		)
 

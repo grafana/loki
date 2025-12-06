@@ -37,7 +37,7 @@ type Manager struct {
 	resultStore ResultStore
 	logger      log.Logger
 	metrics     *metrics
-	comparator  comparator.SamplesComparator
+	comparator  comparator.ResponsesComparator
 }
 
 type metrics struct {
@@ -50,7 +50,7 @@ type metrics struct {
 
 // NewManager creates a new Goldfish manager with the provided configuration.
 // Returns an error if the configuration is invalid.
-func NewManager(config Config, comparator comparator.SamplesComparator, storage goldfish.Storage, resultStore ResultStore, logger log.Logger, registerer prometheus.Registerer) (*Manager, error) {
+func NewManager(config Config, comparator comparator.ResponsesComparator, storage goldfish.Storage, resultStore ResultStore, logger log.Logger, registerer prometheus.Registerer) (*Manager, error) {
 	if err := config.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid config: %w", err)
 	}
@@ -208,7 +208,7 @@ func (m *Manager) processQueryPair(req *http.Request, cellAResp, cellBResp *Resp
 	m.metrics.sampledQueries.Inc()
 
 	comparisonStart := time.Now()
-	result := CompareResponses(sample, cellAResp, cellBResp, m.config.PerformanceTolerance, &m.comparator, m.logger)
+	result := CompareResponses(sample, cellAResp, cellBResp, m.config.PerformanceTolerance, m.comparator, m.logger)
 	m.metrics.comparisonDuration.Observe(time.Since(comparisonStart).Seconds())
 	m.metrics.comparisonResults.WithLabelValues(string(result.ComparisonStatus)).Inc()
 

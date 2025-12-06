@@ -6,10 +6,11 @@ import (
 
 	"github.com/go-kit/log"
 
-	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/engine"
 	"github.com/grafana/loki/v3/pkg/lokifrontend/frontend"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/tools/querytee/comparator"
 	"github.com/grafana/loki/v3/tools/querytee/goldfish"
 )
 
@@ -49,12 +50,12 @@ func NewHandlerFactory(cfg HandlerFactoryConfig) *HandlerFactory {
 // If ComparisonMinAge is 0 (legacy mode), it returns a FanOutHandler directly.
 // If ComparisonMinAge > 0 (splitting mode), it wraps the FanOutHandler with engineRouter
 // middleware to split queries based on data age.
-func (f *HandlerFactory) CreateHandler(routeName string, comparator ResponsesComparator) queryrangebase.Handler {
+func (f *HandlerFactory) CreateHandler(routeName string, comp comparator.ResponsesComparator, forMetricQuery bool) queryrangebase.Handler {
 	// Create the fan-out handler that sends requests to all backends
 	fanOutHandler := NewFanOutHandler(FanOutHandlerConfig{
 		Backends:           f.backends,
 		Codec:              f.codec,
-		Comparator:         comparator,
+		Comparator:         comp,
 		GoldfishManager:    f.goldfishManager,
 		InstrumentCompares: f.instrumentCompares,
 		Logger:             f.logger,
@@ -66,11 +67,11 @@ func (f *HandlerFactory) CreateHandler(routeName string, comparator ResponsesCom
 		return fanOutHandler
 	}
 
-	return f.createSplittingHandler(fanOutHandler)
+	return f.createSplittingHandler(fanOutHandler, forMetricQuery)
 }
 
 // createSplittingHandler creates a handler that splits queries based on data age.
-func (f *HandlerFactory) createSplittingHandler(fanOutHandler *FanOutHandler) queryrangebase.Handler {
+func (f *HandlerFactory) createSplittingHandler(fanOutHandler *FanOutHandler, forMetricQuery bool) queryrangebase.Handler {
 	var preferredBackend *ProxyBackend
 	for _, b := range f.backends {
 		if b.preferred {
@@ -100,32 +101,28 @@ func (f *HandlerFactory) createSplittingHandler(fanOutHandler *FanOutHandler) qu
 	}
 
 	routerConfig := queryrange.RouterConfig{
-		Enabled: true,
-		Start:   f.goldfishManager.ComparisonStartDate(),
-		Lag:     f.goldfishManager.ComparisonMinAge(),
-		Validate: func(_ logql.Params) bool {
-			// All queries can be split for goldfish comparison
-			// TODO: this needs to return false sometimes
-			// IRL, this does a logical plan to see if the query is supported
-			// copy and paste from modules.go
-			// engine.IsQuerySupported
-			return true
-		},
-		Handler: fanOutHandler, // v2Next: fan-out to all backends for goldfish
+		Enabled:  true,
+		Start:    f.goldfishManager.ComparisonStartDate(),
+		Lag:      f.goldfishManager.ComparisonMinAge(),
+		Validate: engine.IsQuerySupported,
+		Handler:  fanOutHandler, // v2Next: fan-out to all backends for goldfish
 	}
 
-	// Create the engine router middleware
-	// - v1Chain: nil (no additional middleware for v1 path)
-	// - merger: codec (which implements Merger)
-	// - forMetricQuery: false (we handle both log and metric queries)
-	middleware := queryrange.NewEngineRouterMiddleware(
+	middleware := []queryrangebase.Middleware{}
+	if forMetricQuery {
+		middleware = append(middleware, queryrangebase.StepAlignMiddleware)
+	}
+
+	// Create the engine router engineRouterMiddleware
+	engineRouterMiddleware := queryrange.NewEngineRouterMiddleware(
 		routerConfig,
 		nil, // no v1 chain middleware
 		f.codec,
-		false, // not metric-query specific
+		forMetricQuery,
 		f.logger,
 	)
+	middleware = append(middleware, engineRouterMiddleware)
 
 	// Wrap the preferred backend handler (v1Next) with the router middleware
-	return middleware.Wrap(preferredRT)
+	return queryrangebase.MergeMiddlewares(middleware...).Wrap(preferredRT)
 }
