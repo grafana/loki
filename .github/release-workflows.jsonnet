@@ -59,6 +59,9 @@ local weeklyImageJobs = {
       versioningStrategy='always-bump-patch',
     ) + {
       name: 'Prepare Patch Release PR',
+      env+: {
+        GO_VERSION: goVersion,
+      },
     }, false, false
   ),
   'minor-release-pr.yml': std.manifestYamlDoc(
@@ -79,6 +82,9 @@ local weeklyImageJobs = {
       versioningStrategy='always-bump-minor',
     ) + {
       name: 'Prepare Minor Release PR from Weekly',
+      env+: {
+        GO_VERSION: goVersion,
+      },
     }, false, false
   ),
   'release.yml': std.manifestYamlDoc(
@@ -91,7 +97,11 @@ local weeklyImageJobs = {
       releaseBranchTemplate='release-\\${major}.\\${minor}.x',
       releaseRepo='grafana/loki',
       useGitHubAppToken=true,
-    ), false, false
+    ) + {
+      env+: {
+        GO_VERSION: goVersion,
+      },
+    }, false, false
   ),
   'check.yml': std.manifestYamlDoc({
     name: 'check',
