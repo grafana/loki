@@ -59,9 +59,9 @@ type engineRouter struct {
 	clock quartz.Clock
 }
 
-// newEngineRouterMiddleware creates a middleware that splits and routes part of the query
+// NewEngineRouterMiddleware creates a middleware that splits and routes part of the query
 // to v2 engine if the query is supported by it.
-func newEngineRouterMiddleware(
+func NewEngineRouterMiddleware(
 	v2RouterConfig RouterConfig,
 	v1Chain []queryrangebase.Middleware,
 	merger queryrangebase.Merger,
