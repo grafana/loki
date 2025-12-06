@@ -53,8 +53,13 @@ spec:
     {{- toYaml . | nindent 4 }}
     {{- end }}
   namespaceSelector:
+    {{- if eq .apiVersion "monitoring.grafana.com/v1alpha2" }}
+    matchLabels:
+      kubernetes.io/metadata.name: {{ include "loki.namespace" $ }}
+    {{- else }}
     matchNames:
       - {{ include "loki.namespace" $ }}
+    {{- end }}
   selector:
     matchLabels:
       {{- include "loki.selectorLabels" $ | nindent 6 }}
