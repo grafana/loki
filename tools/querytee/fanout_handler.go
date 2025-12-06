@@ -160,7 +160,7 @@ func (h *FanOutHandler) Do(ctx context.Context, req queryrangebase.Request) (que
 			}
 
 			// when the preferred backends succeeds, but with error, that indicates an invalid request
-			// return the error to the clientjk
+			// return the error to the client
 			if preferredResult.err != nil {
 				return &NonDecodableResponse{
 					StatusCode: preferredResult.backendResp.status,
