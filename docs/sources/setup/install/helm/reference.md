@@ -9390,6 +9390,7 @@ null
   },
   "serviceAnnotations": {},
   "serviceLabels": {},
+  "startupProbe": {},
   "terminationGracePeriodSeconds": 30,
   "tolerations": [],
   "topologySpreadConstraints": []
@@ -9546,7 +9547,7 @@ null
 		<tr>
 			<td>patternIngester.livenessProbe</td>
 			<td>object</td>
-			<td>liveness probe settings for ingester pods. If empty use `loki.livenessProbe`</td>
+			<td>liveness probe settings for pattern ingester pods. If empty use `loki.livenessProbe`</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -9683,7 +9684,7 @@ null
 		<tr>
 			<td>patternIngester.readinessProbe</td>
 			<td>object</td>
-			<td>readiness probe settings for ingester pods. If empty, use `loki.readinessProbe`</td>
+			<td>readiness probe settings for pattern ingester pods. If empty, use `loki.readinessProbe`</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -9756,6 +9757,15 @@ null
 			<td>patternIngester.serviceLabels</td>
 			<td>object</td>
 			<td>Labels for pattern ingester service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.startupProbe</td>
+			<td>object</td>
+			<td>startup probe settings for pattern ingester pods. If empty use `loki.startupProbe`</td>
 			<td><pre lang="json">
 {}
 </pre>
