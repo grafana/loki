@@ -12,17 +12,14 @@ import (
 	"strconv"
 	"strings"
 	"time"
-)
 
-// lostProfileEvent is the function to which lost profiling
-// events are attributed.
-// (The name shows up in the pprof graphs.)
-func lostProfileEvent() { lostProfileEvent() }
+	"github.com/klauspost/compress/gzip"
+)
 
 type ProfileBuilderOptions struct {
 	// for go1.21+ if true - use runtime_FrameSymbolName - produces frames with generic types, for example [go.shape.int]
-	// for go1.21+ if false - use runtime.Frame->Function - produces frames with generic types ommited [...]
-	// pre 1.21 - always use runtime.Frame->Function - produces frames with generic types ommited [...]
+	// for go1.21+ if false - use runtime.Frame->Function - produces frames with generic types omitted [...]
+	// pre 1.21 - always use runtime.Frame->Function - produces frames with generic types omitted [...]
 	GenericsFrames bool
 	LazyMapping    bool
 	mem            []memMap
@@ -32,6 +29,7 @@ func (d *ProfileBuilderOptions) mapping() []memMap {
 	if d.mem == nil || !d.LazyMapping {
 		d.mem = readMapping()
 	}
+
 	return d.mem
 }
 
@@ -45,7 +43,7 @@ type profileBuilder struct {
 
 	// encoding state
 	w         io.Writer
-	zw        gzipWriter
+	zw        *gzip.Writer
 	pb        protobuf
 	strings   []string
 	stringMap map[string]int
@@ -152,13 +150,14 @@ func (b *profileBuilder) stringIndex(s string) int64 {
 		b.strings = append(b.strings, s)
 		b.stringMap[s] = id
 	}
+
 	return int64(id)
 }
 
 func (b *profileBuilder) flush() {
 	const dataFlush = 4096
 	if b.pb.nest == 0 && len(b.pb.data) > dataFlush {
-		b.zw.Write(b.pb.data)
+		_, _ = b.zw.Write(b.pb.data)
 		b.pb.data = b.pb.data[:0]
 	}
 }
@@ -249,6 +248,7 @@ func allFrames(addr uintptr) ([]runtime.Frame, symbolizeFlag) {
 		frame, more = frames.Next()
 		ret = append(ret, frame)
 	}
+
 	return ret, symbolizeResult
 }
 
@@ -271,8 +271,7 @@ type locInfo struct {
 // CPU profiling data obtained from the runtime can be added
 // by calling b.addCPUData, and then the eventual profile
 // can be obtained by calling b.finish.
-func NewProfileBuilder(w io.Writer, opt *ProfileBuilderOptions, stc ProfileConfig) ProfileBuilder {
-	zw := newGzipWriter(w)
+func NewProfileBuilder(w io.Writer, zw *gzip.Writer, opt *ProfileBuilderOptions, stc ProfileConfig) ProfileBuilder {
 	b := &profileBuilder{
 		w:         w,
 		zw:        zw,
@@ -293,6 +292,7 @@ func NewProfileBuilder(w io.Writer, opt *ProfileBuilderOptions, stc ProfileConfi
 	if stc.DefaultSampleType != "" {
 		b.pb.int64Opt(tagProfile_DefaultSampleType, b.stringIndex(stc.DefaultSampleType))
 	}
+
 	return b
 }
 
@@ -310,16 +310,16 @@ func (b *profileBuilder) Build() {
 	}
 
 	for i, m := range b.mem {
-		hasFunctions := m.funcs == lookupTried // lookupTried but not lookupFailed
-		b.pbMapping(tagProfile_Mapping, uint64(i+1), uint64(m.start), uint64(m.end), m.offset, m.file, m.buildID, hasFunctions)
+		hasFunctions := m.funcs == lookupTried                                                                                  //nolint:lll    // lookupTried but not lookupFailed
+		b.pbMapping(tagProfile_Mapping, uint64(i+1), uint64(m.start), uint64(m.end), m.offset, m.file, m.buildID, hasFunctions) //nolint:lll,gosec
 	}
 
 	// TODO: Anything for tagProfile_DropFrames?
 	// TODO: Anything for tagProfile_KeepFrames?
 
 	b.pb.strings(tagProfile_StringTable, b.strings)
-	b.zw.Write(b.pb.data)
-	b.zw.Close()
+	_, _ = b.zw.Write(b.pb.data)
+	_ = b.zw.Close()
 }
 
 // LocsForStack appends the location IDs for the given stack trace to the given
@@ -355,6 +355,7 @@ func (b *profileBuilder) LocsForStack(stk []uintptr) (newLocs []uint64) {
 			if len(b.deck.pcs) > 0 {
 				if added := b.deck.tryAdd(addr, l.firstPCFrames, l.firstPCSymbolizeResult); added {
 					stk = stk[1:]
+
 					continue
 				}
 			}
@@ -373,6 +374,7 @@ func (b *profileBuilder) LocsForStack(stk []uintptr) (newLocs []uint64) {
 			// limit, expandFinalInlineFrame above has already
 			// fixed the truncation, ensuring it is long enough.
 			stk = stk[len(l.pcs):]
+
 			continue
 		}
 
@@ -382,11 +384,13 @@ func (b *profileBuilder) LocsForStack(stk []uintptr) (newLocs []uint64) {
 				locs = append(locs, id)
 			}
 			stk = stk[1:]
+
 			continue
 		}
 
 		if added := b.deck.tryAdd(addr, frames, symbolizeResult); added {
 			stk = stk[1:]
+
 			continue
 		}
 		// add failed because this addr is not inlined with the
@@ -408,6 +412,7 @@ func (b *profileBuilder) LocsForStack(stk []uintptr) (newLocs []uint64) {
 	if id := b.emitLocation(); id > 0 { // emit remaining location.
 		locs = append(locs, id)
 	}
+
 	return locs
 }
 
@@ -447,8 +452,9 @@ func (b *profileBuilder) LocsForStack(stk []uintptr) (newLocs []uint64) {
 // have the following properties:
 //
 //	Frame's Func is nil (note: also true for non-Go functions), and
-//	Frame's Entry matches its entry function frame's Entry (note: could also be true for recursive calls and non-Go functions), and
-//	Frame's Name does not match its entry function frame's name (note: inlined functions cannot be directly recursive).
+//	Frame's Entry matches its entry function frame's Entry (note: could also be true for recursive calls and non-Go
+//	functions), and Frame's Name does not match its entry function frame's name (note: inlined functions cannot be
+//	directly recursive).
 //
 // As reading and processing the pcs in a stack trace one by one (from leaf to the root),
 // we use pcDeck to temporarily hold the observed pcs and their expanded frames
@@ -504,6 +510,7 @@ func (d *pcDeck) tryAdd(pc uintptr, frames []runtime.Frame, symbolizeResult symb
 		d.firstPCFrames = len(d.frames)
 		d.firstPCSymbolizeResult = symbolizeResult
 	}
+
 	return true
 }
 
@@ -541,13 +548,14 @@ func (b *profileBuilder) emitLocation() uint64 {
 	start := b.pb.startMessage()
 	b.pb.uint64Opt(tagLocation_ID, id)
 	b.pb.uint64Opt(tagLocation_Address, uint64(firstFrame.PC))
-	for _, frame := range b.deck.frames {
+	for k := range b.deck.frames {
+		frame := &b.deck.frames[k]
 		// Write out each line in frame expansion.
-		funcName := runtime_FrameSymbolName(&frame)
-		funcID := uint64(b.funcs[funcName])
+		funcName := runtime_FrameSymbolName(frame)
+		funcID := uint64(b.funcs[funcName]) //nolint:gosec
 		if funcID == 0 {
 			funcID = uint64(len(b.funcs)) + 1
-			b.funcs[funcName] = int(funcID)
+			b.funcs[funcName] = int(funcID) //nolint:gosec
 			var name string
 			if b.opt.GenericsFrames {
 				name = funcName
@@ -558,18 +566,19 @@ func (b *profileBuilder) emitLocation() uint64 {
 				id:        funcID,
 				name:      name,
 				file:      frame.File,
-				startLine: int64(runtime_FrameStartLine(&frame)),
+				startLine: int64(runtime_FrameStartLine(frame)),
 			})
 		}
 		b.pbLine(tagLocation_Line, funcID, int64(frame.Line))
 	}
 	for i := range b.mem {
 		if b.mem[i].start <= addr && addr < b.mem[i].end || b.mem[i].fake {
-			b.pb.uint64Opt(tagLocation_MappingID, uint64(i+1))
+			b.pb.uint64Opt(tagLocation_MappingID, uint64(i+1)) //nolint:gosec
 
 			m := b.mem[i]
 			m.funcs |= b.deck.symbolizeResult
 			b.mem[i] = m
+
 			break
 		}
 	}
@@ -587,6 +596,7 @@ func (b *profileBuilder) emitLocation() uint64 {
 	}
 
 	b.flush()
+
 	return id
 }
 
@@ -613,11 +623,12 @@ func readMapping() []memMap {
 			fake:    true,
 		}}
 	}
+
 	return mem
 }
 
-var space = []byte(" ")
-var newline = []byte("\n")
+var space = []byte(" ")    //nolint:gochecknoglobals
+var newline = []byte("\n") //nolint:gochecknoglobals
 
 func parseProcSelfMaps(data []byte, addMapping func(lo, hi, offset uint64, file, buildID string)) {
 	// $ cat /proc/self/maps
@@ -648,6 +659,7 @@ func parseProcSelfMaps(data []byte, addMapping func(lo, hi, offset uint64, file,
 		var f []byte
 		f, line, _ = bytesCut(line, space)
 		line = bytes.TrimLeft(line, " ")
+
 		return f
 	}
 
@@ -716,10 +728,13 @@ func parseProcSelfMaps(data []byte, addMapping func(lo, hi, offset uint64, file,
 // If sep does not appear in s, cut returns s, nil, false.
 //
 // Cut returns slices of the original slice s, not copies.
+//
+//nolint:unparam
 func bytesCut(s, sep []byte) (before, after []byte, found bool) {
 	if i := bytes.Index(s, sep); i >= 0 {
 		return s[:i], s[i+len(sep):], true
 	}
+
 	return s, nil, false
 }
 
@@ -731,5 +746,6 @@ func stringsCut(s, sep string) (before, after string, found bool) {
 	if i := strings.Index(s, sep); i >= 0 {
 		return s[:i], s[i+len(sep):], true
 	}
+
 	return s, "", false
 }

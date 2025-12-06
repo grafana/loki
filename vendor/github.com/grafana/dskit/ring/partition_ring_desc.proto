@@ -30,6 +30,13 @@ message PartitionDesc {
 
   // Unix timestamp (with seconds precision) of when has the state changed last time for this partition.
   int64 stateTimestamp = 3;
+
+  // Whether the state can be changed. Set this to true to prevent any change to the state,
+  // unless this field gets changed back to false first.
+  bool stateChangeLocked = 5;
+
+  // Unix timestamp (with seconds precision) of when has the state change lock been mutated last time for this partition.
+  int64 stateChangeLockedTimestamp = 6;
 }
 
 enum PartitionState {

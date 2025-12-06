@@ -196,9 +196,8 @@ type Config struct {
 	// Whether the shuffle-sharding subring cache is disabled. This option is set
 	// internally and never exposed to the user.
 	SubringCacheDisabled bool `yaml:"-"`
-	// HideTokensInStatusPage allows tokens to be hidden from management tools e.g. the status page, for use in contexts which do not utilize tokens.
-	// This option is set internally and never exposed to the user.
-	HideTokensInStatusPage bool `yaml:"-"`
+
+	StatusPageConfig StatusPageConfig `yaml:"-"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet with a specified prefix
@@ -210,10 +209,18 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.KVStore.RegisterFlagsWithPrefix(prefix, "collectors/", f)
 
-	f.DurationVar(&cfg.HeartbeatTimeout, prefix+"ring.heartbeat-timeout", time.Minute, "The heartbeat timeout after which ingesters are skipped for reads/writes. 0 = never (timeout disabled).")
+	f.DurationVar(&cfg.HeartbeatTimeout, prefix+"ring.heartbeat-timeout", time.Minute, "The heartbeat timeout after which ingesters are skipped for reads/writes.")
 	f.IntVar(&cfg.ReplicationFactor, prefix+"distributor.replication-factor", 3, "The number of ingesters to write to and read from.")
 	f.BoolVar(&cfg.ZoneAwarenessEnabled, prefix+"distributor.zone-awareness-enabled", false, "True to enable the zone-awareness and replicate ingested samples across different availability zones.")
 	f.Var(&cfg.ExcludedZones, prefix+"distributor.excluded-zones", "Comma-separated list of zones to exclude from the ring. Instances in excluded zones will be filtered out from the ring.")
+}
+
+// Validate checks the consistency of Config, and fails if this cannot be achieved.
+func (cfg *Config) Validate() error {
+	if cfg.HeartbeatTimeout == 0 {
+		return errors.New("heartbeat timeout must be greater than 0")
+	}
+	return nil
 }
 
 type instanceInfo struct {
@@ -1345,7 +1352,7 @@ func (r *Ring) getRing(_ context.Context) (*Desc, error) {
 }
 
 func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	newRingPageHandler(r, r.cfg.HeartbeatTimeout, r.cfg.HideTokensInStatusPage).handle(w, req)
+	newRingPageHandler(r, r.cfg.HeartbeatTimeout, r.cfg.StatusPageConfig).handle(w, req)
 }
 
 // InstancesCount returns the number of instances in the ring.
