@@ -35,6 +35,8 @@ type Limits interface {
 	MaxQuerierBytesRead(context.Context, string) int
 	MaxStatsCacheFreshness(context.Context, string) time.Duration
 	MaxMetadataCacheFreshness(context.Context, string) time.Duration
+	LogResultCacheMaxResponseSize(context.Context, string) int
+	LogResultCacheStoreNonEmptyResponse(context.Context, string) bool
 	VolumeEnabled(string) bool
 
 	ShardAggregations(string) []string
