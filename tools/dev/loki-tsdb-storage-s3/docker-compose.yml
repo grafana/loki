@@ -35,7 +35,7 @@ services:
     logging:
       <<: *logging
     #  Use 1.62 specifically since 1.63 removes the agent which we depend on for now.
-    image: jaegertracing/all-in-one:1.75.0@sha256:e493bff54e457ba5827f82418d744a322165cd5d46146607fb76489bfb2a8885
+    image: jaegertracing/all-in-one:1.76.0@sha256:ab6f1a1f0fb49ea08bcd19f6b84f6081d0d44b364b6de148e1798eb5816bacac
     ports:
       - 16686:16686
       - "14268"
