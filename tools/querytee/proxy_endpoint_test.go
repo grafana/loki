@@ -47,7 +47,7 @@ func createTestEndpoint(backends []*ProxyBackend, routeName string, comparator c
 
 	queryHandler := handlerFactory.CreateHandler(routeName, comparator, false)
 	metricHandler := handlerFactory.CreateHandler(routeName, comparator, true)
-	endpoint.WithQueryHandler(queryHandler, metricHandler, queryrange.DefaultCodec)
+	endpoint.WithQueryHandlers(queryHandler, metricHandler, queryrange.DefaultCodec)
 	return endpoint
 }
 
@@ -67,7 +67,7 @@ func createTestEndpointWithMetrics(backends []*ProxyBackend, routeName string, c
 
 	queryHandler := handlerFactory.CreateHandler(routeName, comp, false)
 	metricQueryHandler := handlerFactory.CreateHandler(routeName, comp, true)
-	endpoint.WithQueryHandler(queryHandler, metricQueryHandler, queryrange.DefaultCodec)
+	endpoint.WithQueryHandlers(queryHandler, metricQueryHandler, queryrange.DefaultCodec)
 	return endpoint
 }
 
@@ -87,7 +87,7 @@ func createTestEndpointWithGoldfish(backends []*ProxyBackend, routeName string, 
 	endpoint := NewProxyEndpoint(backends, routeName, metrics, logger, nil, false)
 	queryHandler := handlerFactory.CreateHandler(routeName, nil, false)
 	metricQueryHandler := handlerFactory.CreateHandler(routeName, nil, true)
-	endpoint.WithQueryHandler(queryHandler, metricQueryHandler, queryrange.DefaultCodec)
+	endpoint.WithQueryHandlers(queryHandler, metricQueryHandler, queryrange.DefaultCodec)
 	endpoint.WithGoldfish(goldfishManager)
 	return endpoint
 }

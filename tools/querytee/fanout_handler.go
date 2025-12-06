@@ -122,7 +122,7 @@ func (h *FanOutHandler) Do(ctx context.Context, req queryrangebase.Request) (que
 	results := make(chan *backendResult, len(h.backends))
 
 	for i, backend := range h.backends {
-		go func(idx int, b *ProxyBackend) {
+		go func(_ int, b *ProxyBackend) {
 			result := h.executeBackendRequest(ctx, httpReq, body, b, req)
 			results <- result
 

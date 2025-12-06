@@ -302,7 +302,7 @@ func (p *Proxy) Start() error {
 		})
 		queryHandler := routeHandlerFactory.CreateHandler(route.RouteName, comp, false)
 		metricHandler := routeHandlerFactory.CreateHandler(route.RouteName, comp, true)
-		endpoint.WithQueryHandler(queryHandler, metricHandler, queryrange.DefaultCodec)
+		endpoint.WithQueryHandlers(queryHandler, metricHandler, queryrange.DefaultCodec)
 		level.Info(p.logger).Log(
 			"msg", "Query middleware handler attached to route",
 			"path", route.Path,

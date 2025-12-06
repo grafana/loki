@@ -6,7 +6,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 )
 
-// NonDecoableResponse is a minimal response type used when returning errors.
+// NonDecodableResponse is a minimal response type used when returning errors.
 // It satisfies the queryrangebase.Response interface, and allows the querytee
 // to capture responses that would otherwise be lost.
 type NonDecodableResponse struct {
@@ -31,7 +31,7 @@ func (e *NonDecodableResponse) GetHeaders() []*queryrangebase.PrometheusResponse
 }
 
 // WithHeaders implements queryrangebase.Response
-func (e *NonDecodableResponse) WithHeaders(headers []queryrangebase.PrometheusResponseHeader) queryrangebase.Response {
+func (e *NonDecodableResponse) WithHeaders(_ []queryrangebase.PrometheusResponseHeader) queryrangebase.Response {
 	return &NonDecodableResponse{
 		StatusCode: e.StatusCode,
 		Body:       e.Body,
@@ -39,4 +39,4 @@ func (e *NonDecodableResponse) WithHeaders(headers []queryrangebase.PrometheusRe
 }
 
 // SetHeader implements queryrangebase.Response
-func (e *NonDecodableResponse) SetHeader(key, value string) {}
+func (e *NonDecodableResponse) SetHeader(_, _ string) {}

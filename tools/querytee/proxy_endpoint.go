@@ -101,11 +101,11 @@ func (p *ProxyEndpoint) WithGoldfish(manager *goldfish.Manager) *ProxyEndpoint {
 	return p
 }
 
-// WithQueryHandler sets the middleware-based query handler for the endpoint.
+// WithQueryHandlers sets the middleware-based query handlers (logs and metrics) for the endpoint.
 // When set, ServeHTTP uses this handler instead of the legacy executeBackendRequests.
-func (p *ProxyEndpoint) WithQueryHandler(handler, metricHandler queryrangebase.Handler, codec queryrangebase.Codec) *ProxyEndpoint {
+func (p *ProxyEndpoint) WithQueryHandlers(handler, metricHandler queryrangebase.Handler, codec queryrangebase.Codec) *ProxyEndpoint {
 	p.queryHandler = handler
-	p.metricQueryHandler = handler
+	p.metricQueryHandler = metricHandler
 	p.codec = codec
 	return p
 }
