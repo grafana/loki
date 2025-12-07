@@ -1,6 +1,7 @@
 package distributor
 
 import (
+	"github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/util"
 )
@@ -8,6 +9,8 @@ import (
 type pushStats struct {
 	lineSize  int
 	lineCount int
+
+	lineSizeWithoutResourceAndScopeAttributes int
 }
 
 type validationMetrics struct {
@@ -23,7 +26,7 @@ func newValidationMetrics(tenantRetentionHours string) validationMetrics {
 	}
 }
 
-func (v *validationMetrics) compute(entry logproto.Entry, retentionHours string, policy string) {
+func (v *validationMetrics) compute(entry logproto.Entry, retentionHours string, policy string, resourceAndScopeAttributes push.LabelsAdapter) {
 	if _, ok := v.policyPushStats[policy]; !ok {
 		v.policyPushStats[policy] = make(map[string]pushStats)
 	}
@@ -32,13 +35,19 @@ func (v *validationMetrics) compute(entry logproto.Entry, retentionHours string,
 		v.policyPushStats[policy][retentionHours] = pushStats{}
 	}
 
-	totalEntrySize := util.EntryTotalSize(&entry)
+	totalEntrySize := util.EntryTotalSize(&entry, nil)
+	totalEntrySizeWithoutResourceAndScopeAttributes := totalEntrySize
+	if len(resourceAndScopeAttributes) != 0 {
+		totalEntrySizeWithoutResourceAndScopeAttributes = util.EntryTotalSize(&entry, resourceAndScopeAttributes)
+	}
 
 	v.aggregatedPushStats.lineSize += totalEntrySize
+	v.aggregatedPushStats.lineSizeWithoutResourceAndScopeAttributes += totalEntrySizeWithoutResourceAndScopeAttributes
 	v.aggregatedPushStats.lineCount++
 
 	stats := v.policyPushStats[policy][retentionHours]
 	stats.lineCount++
 	stats.lineSize += totalEntrySize
+	stats.lineSizeWithoutResourceAndScopeAttributes += totalEntrySizeWithoutResourceAndScopeAttributes
 	v.policyPushStats[policy][retentionHours] = stats
 }

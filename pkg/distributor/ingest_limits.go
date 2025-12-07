@@ -182,7 +182,7 @@ func newExceedsLimitsRequest(tenant string, streams []KeyedStream) (*proto.Excee
 	// from the request caused it to exceed its limits.
 	streamMetadata := make([]*proto.StreamMetadata, 0, len(streams))
 	for _, stream := range streams {
-		entriesSize, structuredMetadataSize := calculateStreamSizes(stream.Stream)
+		entriesSize, structuredMetadataSize := calculateStreamSizes(stream.Stream, nil)
 		streamMetadata = append(streamMetadata, &proto.StreamMetadata{
 			StreamHash:      stream.HashKeyNoShard,
 			TotalSize:       entriesSize + structuredMetadataSize,
@@ -220,7 +220,7 @@ func newUpdateRatesRequest(tenant string, streams []SegmentedStream) (*proto.Upd
 	// from the request caused it to exceed its limits.
 	streamMetadata := make([]*proto.StreamMetadata, 0, len(streams))
 	for _, stream := range streams {
-		entriesSize, structuredMetadataSize := calculateStreamSizes(stream.Stream)
+		entriesSize, structuredMetadataSize := calculateStreamSizes(stream.Stream, nil)
 		streamMetadata = append(streamMetadata, &proto.StreamMetadata{
 			StreamHash:      stream.SegmentationKeyHash,
 			TotalSize:       entriesSize + structuredMetadataSize,

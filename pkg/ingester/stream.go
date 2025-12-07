@@ -358,7 +358,7 @@ func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, usa
 			if chunkenc.IsOutOfOrderErr(err) {
 				s.writeFailures.Log(s.tenant, err)
 				outOfOrderSamples++
-				outOfOrderBytes += util.EntryTotalSize(&entries[i])
+				outOfOrderBytes += util.EntryTotalSize(&entries[i], nil)
 			}
 			continue
 		}
@@ -421,7 +421,7 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 			continue
 		}
 
-		entryBytes := util.EntryTotalSize(&entries[i])
+		entryBytes := util.EntryTotalSize(&entries[i], nil)
 		totalBytes += entryBytes
 
 		now := time.Now()
@@ -468,10 +468,10 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 				&validation.ErrStreamRateLimit{
 					RateLimit: flagext.ByteSize(limit),
 					Labels:    s.labelsString,
-					Bytes:     flagext.ByteSize(util.EntryTotalSize(&toStore[i])),
+					Bytes:     flagext.ByteSize(util.EntryTotalSize(&toStore[i], nil)),
 				},
 			})
-			rateLimitedBytes += util.EntryTotalSize(&toStore[i])
+			rateLimitedBytes += util.EntryTotalSize(&toStore[i], nil)
 		}
 
 		// Log the only last error to the write failures manager.

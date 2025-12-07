@@ -240,7 +240,7 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 		}
 
 		// Calculate resource attributes metadata size for stats
-		resourceAttributesAsStructuredMetadataSize := loki_util.StructuredMetadataSize(resourceAttributesAsStructuredMetadata)
+		resourceAttributesAsStructuredMetadataSize := loki_util.StructuredMetadataSize(resourceAttributesAsStructuredMetadata, nil)
 		retentionPeriodForUser := streamResolver.RetentionPeriodFor(lbs)
 		policy := streamResolver.PolicyFor(ctx, lbs)
 
@@ -317,7 +317,7 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 				})
 			}
 
-			scopeAttributesAsStructuredMetadataSize := loki_util.StructuredMetadataSize(scopeAttributesAsStructuredMetadata)
+			scopeAttributesAsStructuredMetadataSize := loki_util.StructuredMetadataSize(scopeAttributesAsStructuredMetadata, nil)
 			stats.StructuredMetadataBytes[policy][retentionPeriodForUser] += int64(scopeAttributesAsStructuredMetadataSize)
 			totalBytesReceived += int64(scopeAttributesAsStructuredMetadataSize)
 
@@ -369,7 +369,7 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 
 				// Calculate the entry's own metadata size BEFORE adding resource and scope attributes
 				// This preserves the intent of tracking entry-specific metadata separately without requiring subtraction
-				entryOwnMetadataSize := int64(loki_util.StructuredMetadataSize(entry.StructuredMetadata))
+				entryOwnMetadataSize := int64(loki_util.StructuredMetadataSize(entry.StructuredMetadata, nil))
 
 				// if entry.StructuredMetadata doesn't have capacity to add resource and scope attributes, make a new slice with enough capacity
 				attributesAsStructuredMetadataLen := len(resourceAttributesAsStructuredMetadata) + len(scopeAttributesAsStructuredMetadata)
@@ -436,7 +436,7 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 			// It's difficult to calculate these values inline when we process the payload because promotion of resource attributes or log attributes to labels can change the stream with each entry.
 			// So for simplicity and because this logging is typically disabled, we iterate on the entries to calculate these values here.
 			for _, entry := range stream.Entries {
-				streamSizeBytes += int64(len(entry.Line)) + int64(loki_util.StructuredMetadataSize(entry.StructuredMetadata))
+				streamSizeBytes += int64(len(entry.Line)) + int64(loki_util.StructuredMetadataSize(entry.StructuredMetadata, nil))
 				if entry.Timestamp.After(mostRecentEntryTimestamp) {
 					mostRecentEntryTimestamp = entry.Timestamp
 				}
