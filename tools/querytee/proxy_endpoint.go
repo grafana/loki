@@ -499,5 +499,5 @@ func (p *ProxyEndpoint) processWithGoldfish(r *http.Request, cellAResp, cellBRes
 		SpanID:      cellBResp.spanID,
 	}
 
-	p.goldfishManager.SendToGoldfish(r, cellAGoldfishResp, cellBGoldfishResp, false)
+	p.goldfishManager.SendToGoldfish(r, cellAGoldfishResp, cellBGoldfishResp)
 }

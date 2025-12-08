@@ -124,7 +124,7 @@ func TestGoldfishEndToEnd(t *testing.T) {
 	}
 
 	// Send to Goldfish for processing
-	manager.SendToGoldfish(req, cellAResp, cellBResp, false)
+	manager.SendToGoldfish(req, cellAResp, cellBResp)
 
 	// Wait for async processing
 	time.Sleep(100 * time.Millisecond)
@@ -244,7 +244,7 @@ func TestGoldfishMismatchDetection(t *testing.T) {
 		SpanID:      "",
 	}
 
-	manager.SendToGoldfish(req, cellAResp, cellBResp, false)
+	manager.SendToGoldfish(req, cellAResp, cellBResp)
 
 	time.Sleep(100 * time.Millisecond)
 
@@ -333,7 +333,7 @@ func TestGoldfishFloatingPointMismatchDetection(t *testing.T) {
 		SpanID:      "",
 	}
 
-	manager.SendToGoldfish(req, cellAResp, cellBResp, false)
+	manager.SendToGoldfish(req, cellAResp, cellBResp)
 
 	time.Sleep(100 * time.Millisecond)
 
@@ -435,7 +435,7 @@ func TestGoldfishNewEngineDetection(t *testing.T) {
 		SpanID:      "",
 	}
 
-	manager.SendToGoldfish(req, cellAResp, cellBResp, false)
+	manager.SendToGoldfish(req, cellAResp, cellBResp)
 
 	time.Sleep(100 * time.Millisecond)
 

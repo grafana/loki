@@ -66,7 +66,6 @@ type backendResult struct {
 	backend     *ProxyBackend
 	backendResp *BackendResponse
 	response    queryrangebase.Response
-	returnedAt  time.Time
 	err         error
 }
 
@@ -318,7 +317,6 @@ func (h *FanOutHandler) executeBackendRequest(
 	result := &backendResult{
 		backend:     backend,
 		backendResp: backendResp,
-		returnedAt:  time.Now(),
 	}
 
 	if backendResp.err != nil {
@@ -386,15 +384,13 @@ func (h *FanOutHandler) processGoldfishComparison(httpReq *http.Request, preferr
 			"cellB_status", r.backendResp.status,
 		)
 
-		preferredCellWon := preferredResult.returnedAt.Before(r.returnedAt)
-
 		// Re-encode responses to capture body bytes for goldfish
-		h.sendToGoldfish(httpReq, preferredResult, r, preferredCellWon)
+		h.sendToGoldfish(httpReq, preferredResult, r)
 	}
 }
 
 // sendToGoldfish sends the responses to goldfish for comparison.
-func (h *FanOutHandler) sendToGoldfish(httpReq *http.Request, cellA, cellB *backendResult, cellAWon bool) {
+func (h *FanOutHandler) sendToGoldfish(httpReq *http.Request, cellA, cellB *backendResult) {
 	cellAResp := &goldfish.BackendResponse{
 		BackendName: cellA.backend.name,
 		Status:      cellA.backendResp.status,
@@ -413,7 +409,7 @@ func (h *FanOutHandler) sendToGoldfish(httpReq *http.Request, cellA, cellB *back
 		SpanID:      cellB.backendResp.spanID,
 	}
 
-	h.goldfishManager.SendToGoldfish(httpReq, cellAResp, cellBResp, cellAWon)
+	h.goldfishManager.SendToGoldfish(httpReq, cellAResp, cellBResp)
 }
 
 // WithMetrics sets metrics for the handler.
