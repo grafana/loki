@@ -30,6 +30,7 @@ type FanOutHandler struct {
 	routeName          string
 	comparator         comparator.ResponsesComparator
 	instrumentCompares bool
+	enableRace         bool
 }
 
 // FanOutHandlerConfig holds configuration for creating a FanOutHandler.
@@ -42,6 +43,7 @@ type FanOutHandlerConfig struct {
 	RouteName          string
 	Comparator         comparator.ResponsesComparator
 	InstrumentCompares bool
+	EnableRace         bool
 }
 
 // NewFanOutHandler creates a new FanOutHandler.
@@ -55,6 +57,7 @@ func NewFanOutHandler(cfg FanOutHandlerConfig) *FanOutHandler {
 		routeName:          cfg.RouteName,
 		comparator:         cfg.Comparator,
 		instrumentCompares: cfg.InstrumentCompares,
+		enableRace:         cfg.EnableRace,
 	}
 }
 
@@ -131,43 +134,57 @@ func (h *FanOutHandler) Do(ctx context.Context, req queryrangebase.Request) (que
 		}(i, backend)
 	}
 
-	var preferredResult *backendResult
 	collected := make([]*backendResult, 0, len(h.backends))
 
-	// Wait for preferred response or all responses
 	for i := 0; i < len(h.backends); i++ {
 		result := <-results
 		collected = append(collected, result)
 
-		if result.backend.preferred {
-			preferredResult = result
-			h.metrics.responsesTotal.WithLabelValues(
-				preferredResult.backend.name,
-				httpReq.Method,
-				h.routeName,
-				issuer,
-			).Inc()
+		// Race mode: return first successful response from ANY backend
+		// TODO: move race logic to a separate function, and catch the condition in Do and fan out to two different functions
+		// rather than have it all nested in one.
+		if h.enableRace {
+			// Check if this is the first successful result (race winner)
+			if result.err == nil && result.backendResp.succeeded() {
+				// Record race win metric
+				h.metrics.raceWins.WithLabelValues(
+					result.backend.name,
+					h.routeName,
+					issuer,
+				).Inc()
 
-			// spawn goroutine to capture remaining and do goldfish comparison
-			remaining := len(h.backends) - i - 1
-			go func() {
-				h.collectRemainingAndCompare(remaining, httpReq, results, collected, preferredResult, shouldSample)
-			}()
+				// Spawn goroutine to collect remaining responses
+				remaining := len(h.backends) - i - 1
+				go func() {
+					h.collectRemainingAndCompare(remaining, httpReq, results, collected, shouldSample)
+				}()
 
-			// when the preferred backend fails (5xx) we return any successful backend response
-			if !preferredResult.backendResp.succeeded() {
-				continue
+				return result.response, nil
 			}
+		} else {
+			// Non-race mode: existing logic (wait for preferred)
+			if result.backend.preferred {
+				// spawn goroutine to capture remaining and do goldfish comparison
+				remaining := len(h.backends) - i - 1
+				go func() {
+					h.collectRemainingAndCompare(remaining, httpReq, results, collected, shouldSample)
+				}()
 
-			// when the preferred backends succeeds, but with error, that indicates an invalid request
-			// return the error to the client
-			if preferredResult.err != nil {
-				return &NonDecodableResponse{
-					StatusCode: preferredResult.backendResp.status,
-					Body:       preferredResult.backendResp.body,
-				}, preferredResult.err
+				// when the preferred backend fails (5xx) we return any successful backend response
+				if !result.backendResp.succeeded() {
+					continue
+				}
+
+				// when the preferred backends succeeds, but with error, that indicates an invalid request
+				// return the error to the client
+				if result.err != nil {
+					return &NonDecodableResponse{
+						StatusCode: result.backendResp.status,
+						Body:       result.backendResp.body,
+					}, result.err
+				}
+				return result.response, nil
 			}
-			return preferredResult.response, nil
 		}
 	}
 
@@ -191,18 +208,22 @@ func (h *FanOutHandler) Do(ctx context.Context, req queryrangebase.Request) (que
 
 // collectRemainingAndCompare collects remaining backend results, performs comparisons,
 // and processes goldfish sampling. Should be called asynchronously to not block preferred response from returning.
-func (h *FanOutHandler) collectRemainingAndCompare(remaining int, httpReq *http.Request, results <-chan *backendResult, collected []*backendResult, preferredResult *backendResult, shouldSample bool) {
+func (h *FanOutHandler) collectRemainingAndCompare(remaining int, httpReq *http.Request, results <-chan *backendResult, collected []*backendResult, shouldSample bool) {
 	issuer := detectIssuer(httpReq)
 	for range remaining {
 		r := <-results
 		collected = append(collected, r)
-		h.metrics.responsesTotal.WithLabelValues(
-			r.backend.name,
-			httpReq.Method,
-			h.routeName,
-			issuer,
-		).Inc()
+	}
 
+	var preferredResult *backendResult
+	for _, r := range collected {
+		if r.backend.preferred {
+			preferredResult = r
+			break
+		}
+	}
+
+	for _, r := range collected {
 		if h.comparator != nil && !r.backend.preferred {
 			result := comparisonSuccess
 			summary, err := h.compareResponses(preferredResult.backendResp, r.backendResp, time.Now().UTC())
@@ -325,6 +346,13 @@ func (h *FanOutHandler) recordMetrics(result *backendResult, method, issuer stri
 	if h.metrics == nil {
 		return
 	}
+
+	h.metrics.responsesTotal.WithLabelValues(
+		result.backend.name,
+		method,
+		h.routeName,
+		issuer,
+	).Inc()
 
 	h.metrics.requestDuration.WithLabelValues(
 		result.backend.name,
