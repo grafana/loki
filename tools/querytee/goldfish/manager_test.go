@@ -113,7 +113,7 @@ func TestManager_ShouldSample(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			storage := &mockStorage{}
-			manager, err := NewManager(tt.config, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
+			manager, err := NewManager(tt.config, testComparator(), storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
 			require.NoError(t, err)
 
 			got := manager.ShouldSample(tt.tenantID)
@@ -131,7 +131,7 @@ func TestManager_ProcessQueryPair(t *testing.T) {
 	}
 
 	storage := &mockStorage{}
-	manager, err := NewManager(config, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
+	manager, err := NewManager(config, testComparator(), storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	req, _ := http.NewRequest("GET", "/loki/api/v1/query_range?query=count_over_time({job=\"test\"}[5m])&start=1700000000&end=1700001000&step=60s", nil)
@@ -157,8 +157,7 @@ func TestManager_ProcessQueryPair(t *testing.T) {
 		UsedNewEngine: true,
 	}
 
-	ctx := context.Background()
-	manager.ProcessQueryPair(ctx, req, cellAResp, cellBResp)
+	manager.processQueryPair(req, cellAResp, cellBResp)
 
 	// Give async processing time to complete
 	time.Sleep(100 * time.Millisecond)
@@ -233,7 +232,7 @@ func Test_ProcessQueryPair_populatesTraceIDs(t *testing.T) {
 	}
 
 	storage := &mockStorage{}
-	manager, err := NewManager(config, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
+	manager, err := NewManager(config, testComparator(), storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	req, _ := http.NewRequest("GET", "/loki/api/v1/query_range?query=count_over_time({job=\"test\"}[5m])&start=1700000000&end=1700001000&step=60s", nil)
@@ -261,8 +260,7 @@ func Test_ProcessQueryPair_populatesTraceIDs(t *testing.T) {
 		TraceID:       "trace-cell-b-456",
 	}
 
-	ctx := context.Background()
-	manager.ProcessQueryPair(ctx, req, cellAResp, cellBResp)
+	manager.processQueryPair(req, cellAResp, cellBResp)
 
 	// Give async processing time to complete
 	time.Sleep(100 * time.Millisecond)
@@ -276,7 +274,7 @@ func Test_ProcessQueryPair_populatesTraceIDs(t *testing.T) {
 
 func TestManager_Close(t *testing.T) {
 	storage := &mockStorage{}
-	manager, err := NewManager(Config{Enabled: true}, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
+	manager, err := NewManager(Config{Enabled: true}, testComparator(), storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	err = manager.Close()
@@ -317,7 +315,7 @@ func TestProcessQueryPairCapturesUser(t *testing.T) {
 			}
 
 			storage := &mockStorage{}
-			manager, err := NewManager(config, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
+			manager, err := NewManager(config, testComparator(), storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
 			require.NoError(t, err)
 
 			req, _ := http.NewRequest("GET", "/loki/api/v1/query_range?query=count_over_time({job=\"test\"}[5m])&start=1700000000&end=1700001000&step=60s", nil)
@@ -346,8 +344,7 @@ func TestProcessQueryPairCapturesUser(t *testing.T) {
 				UsedNewEngine: false,
 			}
 
-			ctx := context.Background()
-			manager.ProcessQueryPair(ctx, req, cellAResp, cellBResp)
+			manager.processQueryPair(req, cellAResp, cellBResp)
 
 			// Give async processing time to complete
 			time.Sleep(100 * time.Millisecond)
@@ -406,7 +403,7 @@ func TestExtractUserFromQueryTags(t *testing.T) {
 			}
 
 			logger := log.NewNopLogger()
-			got := extractUserFromQueryTags(req, logger)
+			got := ExtractUserFromQueryTags(req, logger)
 			assert.Equal(t, tt.expectedUser, got)
 		})
 	}
@@ -455,7 +452,7 @@ func TestProcessQueryPair_CapturesLogsDrilldown(t *testing.T) {
 			}
 
 			storage := &mockStorage{}
-			manager, err := NewManager(config, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
+			manager, err := NewManager(config, testComparator(), storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
 			require.NoError(t, err)
 
 			req, _ := http.NewRequest("GET", "/loki/api/v1/query_range?query=count_over_time({job=\"test\"}[5m])&start=1700000000&end=1700001000&step=60s", nil)
@@ -484,8 +481,7 @@ func TestProcessQueryPair_CapturesLogsDrilldown(t *testing.T) {
 				UsedNewEngine: false,
 			}
 
-			ctx := context.Background()
-			manager.ProcessQueryPair(ctx, req, cellAResp, cellBResp)
+			manager.processQueryPair(req, cellAResp, cellBResp)
 
 			// Give async processing time to complete
 			time.Sleep(100 * time.Millisecond)
@@ -555,14 +551,14 @@ func TestManagerResultPersistenceModes(t *testing.T) {
 
 			storage := &mockStorage{}
 			results := &mockResultStore{}
-			manager, err := NewManager(config, storage, results, log.NewNopLogger(), prometheus.NewRegistry())
+			manager, err := NewManager(config, testComparator(), storage, results, log.NewNopLogger(), prometheus.NewRegistry())
 			require.NoError(t, err)
 
 			req, _ := http.NewRequest("GET", "/loki/api/v1/query_range?query=sum(rate({job=\"app\"}[1m]))", nil)
 			req.Header.Set("X-Scope-OrgID", "tenant1")
 
 			cellA := &ResponseData{
-				Body:        []byte(`{"status":"success","data":{"resultType":"matrix","result":[]}}`),
+				Body:        []byte(`{"status":"success","data":{"resultType":"scalar","result":[1: "1"]}}`),
 				StatusCode:  200,
 				Duration:    90 * time.Millisecond,
 				Stats:       goldfish.QueryStats{ExecTimeMs: 90},
@@ -572,7 +568,7 @@ func TestManagerResultPersistenceModes(t *testing.T) {
 			}
 
 			cellB := &ResponseData{
-				Body:        []byte(`{"status":"success","data":{"resultType":"matrix","result":[]}}`),
+				Body:        []byte(`{"status":"success","data":{"resultType":"scalar","result":[1: "2"]}}`),
 				StatusCode:  200,
 				Duration:    110 * time.Millisecond,
 				Stats:       goldfish.QueryStats{ExecTimeMs: 110},
@@ -581,7 +577,7 @@ func TestManagerResultPersistenceModes(t *testing.T) {
 				BackendName: "cell-b",
 			}
 
-			manager.ProcessQueryPair(context.Background(), req, cellA, cellB)
+			manager.processQueryPair(req, cellA, cellB)
 
 			require.Equal(t, tt.expectStores, len(results.calls))
 

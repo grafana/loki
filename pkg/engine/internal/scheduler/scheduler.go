@@ -752,9 +752,9 @@ func (s *Scheduler) Start(ctx context.Context, tasks ...*workflow.Task) error {
 
 	// We set markPending *after* enqueueTasks to give tasks an opportunity to
 	// immediately transition into running (lowering state transition noise).
-	err = s.enqueueTasks(trackedTasks)
+	s.enqueueTasks(trackedTasks)
 	s.markPending(ctx, trackedTasks)
-	return err
+	return nil
 }
 
 // findTasks gets a list of [task] from workflow tasks. Returns an error if any
@@ -781,17 +781,15 @@ func (s *Scheduler) findTasks(tasks []*workflow.Task) ([]*task, error) {
 	return res, nil
 }
 
-func (s *Scheduler) enqueueTasks(tasks []*task) error {
+func (s *Scheduler) enqueueTasks(tasks []*task) {
 	s.assignMut.Lock()
 	defer s.assignMut.Unlock()
 
-	var errs []error
-
 	for _, task := range tasks {
-		// Only allow to enqueue tasks in the initial state (created). This
-		// prevents tasks from accidentally being run multiple times.
+		// Ignore tasks that aren't in the initial state (created). This
+		// prevents us from rejecting tasks which were preemptively canceled by
+		// callers.
 		if got, want := task.status.State, workflow.TaskStateCreated; got != want {
-			errs = append(errs, fmt.Errorf("task %s is in state %s, not %s", task.inner.ULID, got, want))
 			continue
 		}
 
@@ -802,11 +800,6 @@ func (s *Scheduler) enqueueTasks(tasks []*task) error {
 	if len(s.readyWorkers) > 0 && len(s.taskQueue) > 0 {
 		nudgeSemaphore(s.assignSema)
 	}
-
-	if len(errs) > 0 {
-		return errors.Join(errs...)
-	}
-	return nil
 }
 
 func (s *Scheduler) markPending(ctx context.Context, tasks []*task) {

@@ -328,7 +328,7 @@ start:
 		return
 	}
 
-	// If v.maxVers[0] is non-negative, then we loaded API
+	// If v.maxVersion(0) is non-negative, then we loaded API
 	// versions. If the version for this request is negative, we
 	// know the broker cannot handle this request.
 	if v.maxVersion(0) >= 0 && v.maxVersion(req.Key()) < 0 {
@@ -881,9 +881,9 @@ func (cxn *brokerCxn) sasl() error {
 	req := kmsg.NewPtrSASLHandshakeRequest()
 
 start:
-	if mechanism.Name() != "GSSAPI" && v.maxVers[req.Key()] >= 0 {
+	if mechanism.Name() != "GSSAPI" && v.maxVersion(req.Key()) >= 0 {
 		req.Mechanism = mechanism.Name()
-		req.Version = v.maxVers[req.Key()]
+		req.Version = v.maxVersion(req.Key())
 		cxn.cl.cfg.logger.Log(LogLevelDebug, "issuing SASLHandshakeRequest", "broker", logID(cxn.b.meta.NodeID))
 		corrID, bytesWritten, writeWait, timeToWrite, readEnqueue, writeErr := cxn.writeRequest(nil, time.Now(), req)
 		if writeErr != nil {
@@ -970,7 +970,7 @@ func (cxn *brokerCxn) doSasl(authenticate bool) error {
 		} else {
 			req := kmsg.NewPtrSASLAuthenticateRequest()
 			req.SASLAuthBytes = clientWrite
-			req.Version = cxn.b.loadVersions().maxVers[req.Key()]
+			req.Version = cxn.b.loadVersions().maxVersion(req.Key())
 			cxn.cl.cfg.logger.Log(LogLevelDebug, "issuing SASLAuthenticate", "broker", logID(cxn.b.meta.NodeID), "version", req.Version, "step", step)
 
 			// Lifetime: we take the timestamp before we write our

@@ -47,6 +47,36 @@ message Region {
 
   // Attributes are the attributes associated with this region.
   repeated Attribute attributes = 7;
+
+  // Events are timestamped events recorded in this region.
+  repeated Event events = 8;
+
+  // Status is the status of the region's operation.
+  Status status = 9;
+}
+
+// Event represents a timestamped event within a region.
+message Event {
+  // Name is the name of the event.
+  string name = 1;
+
+  // Timestamp is when the event occurred.
+  google.protobuf.Timestamp timestamp = 2 [
+    (gogoproto.nullable) = false,
+    (gogoproto.stdtime) = true
+  ];
+
+  // Attributes are the attributes associated with this event.
+  repeated Attribute attributes = 3;
+}
+
+// Status represents the status of a region's operation.
+message Status {
+  // Code is the status code (0=Unset, 1=Error, 2=Ok).
+  uint32 code = 1;
+
+  // Message is an optional status message.
+  string message = 2;
 }
 
 // Attribute represents a single attribute key-value pair.

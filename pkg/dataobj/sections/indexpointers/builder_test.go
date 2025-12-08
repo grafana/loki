@@ -1,4 +1,4 @@
-package indexpointers
+package indexpointers_test
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 )
 
 func TestBuilder(t *testing.T) {
@@ -22,7 +23,7 @@ func TestBuilder(t *testing.T) {
 		{path: "bar", start: unixTime(10), end: unixTime(20)},
 	}
 
-	ib := NewBuilder(nil, 1024, 0)
+	ib := indexpointers.NewBuilder(nil, 1024, 0)
 	for _, p := range pp {
 		ib.Append(p.path, p.start, p.end)
 	}
@@ -34,7 +35,7 @@ func TestBuilder(t *testing.T) {
 	require.NoError(t, err)
 	defer closer.Close()
 
-	expect := []IndexPointer{
+	expect := []indexpointers.IndexPointer{
 		{
 			Path:    "foo",
 			StartTs: unixTime(10),
@@ -47,8 +48,8 @@ func TestBuilder(t *testing.T) {
 		},
 	}
 
-	var actual []IndexPointer
-	for result := range Iter(context.Background(), obj) {
+	var actual []indexpointers.IndexPointer
+	for result := range indexpointers.Iter(context.Background(), obj) {
 		pointer, err := result.Value()
 		require.NoError(t, err)
 		actual = append(actual, pointer)
