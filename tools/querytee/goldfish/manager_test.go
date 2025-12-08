@@ -157,7 +157,7 @@ func TestManager_ProcessQueryPair(t *testing.T) {
 		UsedNewEngine: true,
 	}
 
-	manager.processQueryPair(req, cellAResp, cellBResp)
+	manager.processQueryPair(req, cellAResp, cellBResp, false)
 
 	// Give async processing time to complete
 	time.Sleep(100 * time.Millisecond)
@@ -260,7 +260,7 @@ func Test_ProcessQueryPair_populatesTraceIDs(t *testing.T) {
 		TraceID:       "trace-cell-b-456",
 	}
 
-	manager.processQueryPair(req, cellAResp, cellBResp)
+	manager.processQueryPair(req, cellAResp, cellBResp, false)
 
 	// Give async processing time to complete
 	time.Sleep(100 * time.Millisecond)
@@ -344,7 +344,7 @@ func TestProcessQueryPairCapturesUser(t *testing.T) {
 				UsedNewEngine: false,
 			}
 
-			manager.processQueryPair(req, cellAResp, cellBResp)
+			manager.processQueryPair(req, cellAResp, cellBResp, false)
 
 			// Give async processing time to complete
 			time.Sleep(100 * time.Millisecond)
@@ -481,7 +481,7 @@ func TestProcessQueryPair_CapturesLogsDrilldown(t *testing.T) {
 				UsedNewEngine: false,
 			}
 
-			manager.processQueryPair(req, cellAResp, cellBResp)
+			manager.processQueryPair(req, cellAResp, cellBResp, false)
 
 			// Give async processing time to complete
 			time.Sleep(100 * time.Millisecond)
@@ -577,7 +577,7 @@ func TestManagerResultPersistenceModes(t *testing.T) {
 				BackendName: "cell-b",
 			}
 
-			manager.processQueryPair(req, cellA, cellB)
+			manager.processQueryPair(req, cellA, cellB, false)
 
 			require.Equal(t, tt.expectStores, len(results.calls))
 

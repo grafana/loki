@@ -20,6 +20,7 @@ type HandlerFactory struct {
 	codec              queryrangebase.Codec
 	goldfishManager    *goldfish.Manager
 	instrumentCompares bool
+	enableRace         bool
 	logger             log.Logger
 	metrics            *ProxyMetrics
 }
@@ -30,6 +31,7 @@ type HandlerFactoryConfig struct {
 	Codec              queryrangebase.Codec
 	GoldfishManager    *goldfish.Manager
 	InstrumentCompares bool
+	EnableRace         bool
 	Logger             log.Logger
 	Metrics            *ProxyMetrics
 }
@@ -41,6 +43,7 @@ func NewHandlerFactory(cfg HandlerFactoryConfig) *HandlerFactory {
 		codec:              cfg.Codec,
 		goldfishManager:    cfg.GoldfishManager,
 		instrumentCompares: cfg.InstrumentCompares,
+		enableRace:         cfg.EnableRace,
 		logger:             cfg.Logger,
 		metrics:            cfg.Metrics,
 	}
@@ -58,6 +61,7 @@ func (f *HandlerFactory) CreateHandler(routeName string, comp comparator.Respons
 		Comparator:         comp,
 		GoldfishManager:    f.goldfishManager,
 		InstrumentCompares: f.instrumentCompares,
+		EnableRace:         f.enableRace,
 		Logger:             f.logger,
 		Metrics:            f.metrics,
 		RouteName:          routeName,

@@ -44,6 +44,10 @@ type QuerySample struct {
 	CellAUsedNewEngine bool `json:"cellAUsedNewEngine"`
 	CellBUsedNewEngine bool `json:"cellBUsedNewEngine"`
 
+	// Race tracking (only populated when racing is enabled)
+	CellAWon bool `json:"cellAWon,omitempty"`
+	CellBWon bool `json:"cellBWon,omitempty"`
+
 	// Comparison outcome
 	ComparisonStatus ComparisonStatus `json:"comparisonStatus"`
 

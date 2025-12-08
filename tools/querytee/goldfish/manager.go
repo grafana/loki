@@ -121,7 +121,7 @@ type BackendResponse struct {
 	SpanID      string
 }
 
-func (m *Manager) SendToGoldfish(httpReq *http.Request, cellAResp, cellBResp *BackendResponse) {
+func (m *Manager) SendToGoldfish(httpReq *http.Request, cellAResp, cellBResp *BackendResponse, preferredCellWon bool) {
 	if !m.config.Enabled {
 		return
 	}
@@ -146,12 +146,12 @@ func (m *Manager) SendToGoldfish(httpReq *http.Request, cellAResp, cellBResp *Ba
 	}
 	cellBData.BackendName = cellBResp.BackendName
 
-	m.processQueryPair(httpReq, cellAData, cellBData)
+	m.processQueryPair(httpReq, cellAData, cellBData, preferredCellWon)
 }
 
 // processQueryPair processes a sampled query pair from both cells.
 // It extracts performance statistics, compares responses, persists raw payloads when configured, and stores metadata/results.
-func (m *Manager) processQueryPair(req *http.Request, cellAResp, cellBResp *ResponseData) {
+func (m *Manager) processQueryPair(req *http.Request, cellAResp, cellBResp *ResponseData, preferredCellWon bool) {
 	// Use a detached context with timeout since this runs async
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -202,6 +202,8 @@ func (m *Manager) processQueryPair(req *http.Request, cellAResp, cellBResp *Resp
 		CellBSpanID:        cellBResp.SpanID,
 		CellAUsedNewEngine: cellAResp.UsedNewEngine,
 		CellBUsedNewEngine: cellBResp.UsedNewEngine,
+		CellAWon:           preferredCellWon,
+		CellBWon:           !preferredCellWon,
 		SampledAt:          sampledAt,
 	}
 
