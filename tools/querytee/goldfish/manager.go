@@ -37,7 +37,7 @@ type Manager struct {
 	resultStore ResultStore
 	logger      log.Logger
 	metrics     *metrics
-	comparator  comparator.SamplesComparator
+	comparator  comparator.ResponsesComparator
 }
 
 type metrics struct {
@@ -50,7 +50,7 @@ type metrics struct {
 
 // NewManager creates a new Goldfish manager with the provided configuration.
 // Returns an error if the configuration is invalid.
-func NewManager(config Config, comparator comparator.SamplesComparator, storage goldfish.Storage, resultStore ResultStore, logger log.Logger, registerer prometheus.Registerer) (*Manager, error) {
+func NewManager(config Config, comparator comparator.ResponsesComparator, storage goldfish.Storage, resultStore ResultStore, logger log.Logger, registerer prometheus.Registerer) (*Manager, error) {
 	if err := config.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid config: %w", err)
 	}
@@ -90,6 +90,15 @@ func NewManager(config Config, comparator comparator.SamplesComparator, storage 
 	return m, nil
 }
 
+// ComparsionMinAge returns the minimum age of data to send to goldfish for comparison.
+func (m *Manager) ComparisonMinAge() time.Duration {
+	return m.config.ComparisonMinAge
+}
+
+func (m *Manager) ComparisonStartDate() time.Time {
+	return time.Time(m.config.ComparisonStartDate)
+}
+
 // ShouldSample determines if a query should be sampled based on tenant configuration.
 // Returns false if Goldfish is disabled or if the tenant should not be sampled.
 func (m *Manager) ShouldSample(tenantID string) bool {
@@ -103,12 +112,49 @@ func (m *Manager) ShouldSample(tenantID string) bool {
 	return sampled
 }
 
-// ProcessQueryPair processes a sampled query pair from both cells.
-// It extracts performance statistics, compares responses, persists raw payloads when configured, and stores metadata/results.
-func (m *Manager) ProcessQueryPair(ctx context.Context, req *http.Request, cellAResp, cellBResp *ResponseData) {
+type BackendResponse struct {
+	BackendName string
+	Status      int
+	Body        []byte
+	Duration    time.Duration
+	TraceID     string
+	SpanID      string
+}
+
+func (m *Manager) SendToGoldfish(httpReq *http.Request, cellAResp, cellBResp *BackendResponse) {
 	if !m.config.Enabled {
 		return
 	}
+
+	cellAData, err := CaptureResponse(&http.Response{
+		StatusCode: cellAResp.Status,
+		Body:       io.NopCloser(bytes.NewReader(cellAResp.Body)),
+	}, cellAResp.Duration, cellAResp.TraceID, cellAResp.SpanID)
+	if err != nil {
+		level.Error(m.logger).Log("msg", "failed to capture cell A response", "err", err)
+		return
+	}
+	cellAData.BackendName = cellAResp.BackendName
+
+	cellBData, err := CaptureResponse(&http.Response{
+		StatusCode: cellBResp.Status,
+		Body:       io.NopCloser(bytes.NewReader(cellBResp.Body)),
+	}, cellBResp.Duration, cellBResp.TraceID, cellBResp.SpanID)
+	if err != nil {
+		level.Error(m.logger).Log("msg", "failed to capture cell B response", "err", err)
+		return
+	}
+	cellBData.BackendName = cellBResp.BackendName
+
+	m.processQueryPair(httpReq, cellAData, cellBData)
+}
+
+// processQueryPair processes a sampled query pair from both cells.
+// It extracts performance statistics, compares responses, persists raw payloads when configured, and stores metadata/results.
+func (m *Manager) processQueryPair(req *http.Request, cellAResp, cellBResp *ResponseData) {
+	// Use a detached context with timeout since this runs async
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 
 	correlationID := uuid.New().String()
 	tenantID := extractTenant(req)
@@ -135,7 +181,7 @@ func (m *Manager) ProcessQueryPair(ctx context.Context, req *http.Request, cellA
 	sample := &goldfish.QuerySample{
 		CorrelationID:      correlationID,
 		TenantID:           tenantID,
-		User:               extractUserFromQueryTags(req, m.logger),
+		User:               ExtractUserFromQueryTags(req, m.logger),
 		IsLogsDrilldown:    isLogsDrilldownRequest(req),
 		Query:              req.URL.Query().Get("query"),
 		QueryType:          queryType,
@@ -162,7 +208,7 @@ func (m *Manager) ProcessQueryPair(ctx context.Context, req *http.Request, cellA
 	m.metrics.sampledQueries.Inc()
 
 	comparisonStart := time.Now()
-	result := CompareResponses(sample, cellAResp, cellBResp, m.config.PerformanceTolerance, &m.comparator, m.logger)
+	result := CompareResponses(sample, cellAResp, cellBResp, m.config.PerformanceTolerance, m.comparator, m.logger)
 	m.metrics.comparisonDuration.Observe(time.Since(comparisonStart).Seconds())
 	m.metrics.comparisonResults.WithLabelValues(string(result.ComparisonStatus)).Inc()
 
@@ -477,7 +523,7 @@ func parseDuration(s string) time.Duration {
 	return d
 }
 
-func extractUserFromQueryTags(req *http.Request, logger log.Logger) string {
+func ExtractUserFromQueryTags(req *http.Request, logger log.Logger) string {
 	tags := httpreq.ExtractQueryTagsFromHTTP(req)
 
 	// Debug logging for user extraction

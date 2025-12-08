@@ -1,7 +1,6 @@
 package goldfish
 
 import (
-	"context"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -15,8 +14,8 @@ import (
 )
 
 // add a helper function to create a SamplesComparator with default tolerance for tests
-func testComparator() comparator.SamplesComparator {
-	return *comparator.NewSamplesComparator(comparator.SampleComparisonOptions{Tolerance: 0.000001})
+func testComparator() comparator.ResponsesComparator {
+	return comparator.NewSamplesComparator(comparator.SampleComparisonOptions{Tolerance: 0.000001})
 }
 
 func TestGoldfishEndToEnd(t *testing.T) {
@@ -106,38 +105,26 @@ func TestGoldfishEndToEnd(t *testing.T) {
 		}
 	}`)
 
-	// Extract stats for both responses
-	extractor := NewStatsExtractor()
-
-	statsA, hashA, sizeA, usedNewEngineA, err := extractor.ExtractResponseData(responseBodyA, 50)
-	require.NoError(t, err)
-
-	statsB, hashB, sizeB, usedNewEngineB, err := extractor.ExtractResponseData(responseBodyB, 55)
-	require.NoError(t, err)
-
-	cellAResp := &ResponseData{
-		Body:          responseBodyA,
-		StatusCode:    200,
-		Duration:      50 * time.Millisecond,
-		Stats:         statsA,
-		Hash:          hashA,
-		Size:          sizeA,
-		UsedNewEngine: usedNewEngineA,
+	cellAResp := &BackendResponse{
+		BackendName: "cell-a",
+		Status:      200,
+		Body:        responseBodyA,
+		Duration:    50 * time.Millisecond,
+		TraceID:     "",
+		SpanID:      "",
 	}
 
-	cellBResp := &ResponseData{
-		Body:          responseBodyB,
-		StatusCode:    200,
-		Duration:      55 * time.Millisecond,
-		Stats:         statsB,
-		Hash:          hashB,
-		Size:          sizeB,
-		UsedNewEngine: usedNewEngineB,
+	cellBResp := &BackendResponse{
+		BackendName: "cell-b",
+		Status:      200,
+		Body:        responseBodyB,
+		Duration:    55 * time.Millisecond,
+		TraceID:     "",
+		SpanID:      "",
 	}
 
-	// Process the query pair
-	ctx := context.Background()
-	manager.ProcessQueryPair(ctx, req, cellAResp, cellBResp)
+	// Send to Goldfish for processing
+	manager.SendToGoldfish(req, cellAResp, cellBResp)
 
 	// Wait for async processing
 	time.Sleep(100 * time.Millisecond)
@@ -157,13 +144,13 @@ func TestGoldfishEndToEnd(t *testing.T) {
 	assert.Equal(t, int64(55), sample.CellBStats.ExecTimeMs)
 	assert.Equal(t, int64(1000), sample.CellAStats.BytesProcessed)
 	assert.Equal(t, int64(1000), sample.CellBStats.BytesProcessed)
-	assert.Equal(t, hashA, sample.CellAResponseHash)
-	assert.Equal(t, hashB, sample.CellBResponseHash)
 	// Since the response content is identical, hashes should match
 	assert.Equal(t, sample.CellAResponseHash, sample.CellBResponseHash)
-	// Verify engine tracking
-	assert.Equal(t, usedNewEngineA, sample.CellAUsedNewEngine)
-	assert.Equal(t, usedNewEngineB, sample.CellBUsedNewEngine)
+	assert.NotEmpty(t, sample.CellAResponseHash)
+	assert.NotEmpty(t, sample.CellBResponseHash)
+	// Verify engine tracking fields are populated
+	assert.False(t, sample.CellAUsedNewEngine) // No new engine warning in response
+	assert.False(t, sample.CellBUsedNewEngine) // No new engine warning in response
 
 	// Check the comparison result
 	result := storage.results[0]
@@ -239,45 +226,30 @@ func TestGoldfishMismatchDetection(t *testing.T) {
 		}
 	}`)
 
-	// Extract stats for both responses
-	extractor := NewStatsExtractor()
-
-	statsA, hashA, sizeA, usedNewEngineA, err := extractor.ExtractResponseData(responseBodyA, 50)
-	require.NoError(t, err)
-
-	statsB, hashB, sizeB, usedNewEngineB, err := extractor.ExtractResponseData(responseBodyB, 50)
-	require.NoError(t, err)
-
-	cellAResp := &ResponseData{
-		Body:          responseBodyA,
-		StatusCode:    200,
-		Duration:      50 * time.Millisecond,
-		Stats:         statsA,
-		Hash:          hashA,
-		Size:          sizeA,
-		UsedNewEngine: usedNewEngineA,
+	cellAResp := &BackendResponse{
+		BackendName: "cell-a",
+		Status:      200,
+		Body:        responseBodyA,
+		Duration:    50 * time.Millisecond,
+		TraceID:     "",
+		SpanID:      "",
 	}
 
-	cellBResp := &ResponseData{
-		Body:          responseBodyB,
-		StatusCode:    200,
-		Duration:      50 * time.Millisecond,
-		Stats:         statsB,
-		Hash:          hashB,
-		Size:          sizeB,
-		UsedNewEngine: usedNewEngineB,
+	cellBResp := &BackendResponse{
+		BackendName: "cell-b",
+		Status:      200,
+		Body:        responseBodyB,
+		Duration:    50 * time.Millisecond,
+		TraceID:     "",
+		SpanID:      "",
 	}
 
-	ctx := context.Background()
-	manager.ProcessQueryPair(ctx, req, cellAResp, cellBResp)
+	manager.SendToGoldfish(req, cellAResp, cellBResp)
 
 	time.Sleep(100 * time.Millisecond)
 
 	assert.Len(t, storage.results, 1)
 	result := storage.results[0]
-
-	// Verify that different content produces different hashes
-	assert.NotEqual(t, hashA, hashB, "Different content should produce different hashes")
 
 	// Different hashes should result in mismatch
 	assert.Equal(t, goldfish.ComparisonStatusMismatch, result.ComparisonStatus)
@@ -343,45 +315,30 @@ func TestGoldfishFloatingPointMismatchDetection(t *testing.T) {
 		}
 	}`)
 
-	// Extract stats for both responses
-	extractor := NewStatsExtractor()
-
-	statsA, hashA, sizeA, usedNewEngineA, err := extractor.ExtractResponseData(responseBodyA, 50)
-	require.NoError(t, err)
-
-	statsB, hashB, sizeB, usedNewEngineB, err := extractor.ExtractResponseData(responseBodyB, 50)
-	require.NoError(t, err)
-
-	cellAResp := &ResponseData{
-		Body:          responseBodyA,
-		StatusCode:    200,
-		Duration:      50 * time.Millisecond,
-		Stats:         statsA,
-		Hash:          hashA,
-		Size:          sizeA,
-		UsedNewEngine: usedNewEngineA,
+	cellAResp := &BackendResponse{
+		BackendName: "cell-a",
+		Status:      200,
+		Body:        responseBodyA,
+		Duration:    50 * time.Millisecond,
+		TraceID:     "",
+		SpanID:      "",
 	}
 
-	cellBResp := &ResponseData{
-		Body:          responseBodyB,
-		StatusCode:    200,
-		Duration:      50 * time.Millisecond,
-		Stats:         statsB,
-		Hash:          hashB,
-		Size:          sizeB,
-		UsedNewEngine: usedNewEngineB,
+	cellBResp := &BackendResponse{
+		BackendName: "cell-b",
+		Status:      200,
+		Body:        responseBodyB,
+		Duration:    50 * time.Millisecond,
+		TraceID:     "",
+		SpanID:      "",
 	}
 
-	ctx := context.Background()
-	manager.ProcessQueryPair(ctx, req, cellAResp, cellBResp)
+	manager.SendToGoldfish(req, cellAResp, cellBResp)
 
 	time.Sleep(100 * time.Millisecond)
 
 	assert.Len(t, storage.results, 1)
 	result := storage.results[0]
-
-	// Verify that different content produces different hashes
-	assert.NotEqual(t, hashA, hashB, "Different content should produce different hashes")
 
 	// Verify that floating-point difference within tolerance is considered a match
 	assert.Equal(t, goldfish.ComparisonStatusMatch, result.ComparisonStatus, "Floating-point difference within tolerance should be a match")
@@ -389,7 +346,6 @@ func TestGoldfishFloatingPointMismatchDetection(t *testing.T) {
 
 	// Verify that we recorded the compareQueryStats
 	assert.Contains(t, result.DifferenceDetails, "exec_time_variance")
-
 }
 
 func TestGoldfishNewEngineDetection(t *testing.T) {
@@ -461,37 +417,25 @@ func TestGoldfishNewEngineDetection(t *testing.T) {
 		}
 	}`)
 
-	// Extract stats for both responses
-	extractor := NewStatsExtractor()
-
-	statsA, hashA, sizeA, usedNewEngineA, err := extractor.ExtractResponseData(responseBodyA, 50)
-	require.NoError(t, err)
-
-	statsB, hashB, sizeB, usedNewEngineB, err := extractor.ExtractResponseData(responseBodyB, 50)
-	require.NoError(t, err)
-
-	cellAResp := &ResponseData{
-		Body:          responseBodyA,
-		StatusCode:    200,
-		Duration:      50 * time.Millisecond,
-		Stats:         statsA,
-		Hash:          hashA,
-		Size:          sizeA,
-		UsedNewEngine: usedNewEngineA,
+	cellAResp := &BackendResponse{
+		BackendName: "cell-a",
+		Status:      200,
+		Body:        responseBodyA,
+		Duration:    50 * time.Millisecond,
+		TraceID:     "",
+		SpanID:      "",
 	}
 
-	cellBResp := &ResponseData{
-		Body:          responseBodyB,
-		StatusCode:    200,
-		Duration:      50 * time.Millisecond,
-		Stats:         statsB,
-		Hash:          hashB,
-		Size:          sizeB,
-		UsedNewEngine: usedNewEngineB,
+	cellBResp := &BackendResponse{
+		BackendName: "cell-b",
+		Status:      200,
+		Body:        responseBodyB,
+		Duration:    50 * time.Millisecond,
+		TraceID:     "",
+		SpanID:      "",
 	}
 
-	ctx := context.Background()
-	manager.ProcessQueryPair(ctx, req, cellAResp, cellBResp)
+	manager.SendToGoldfish(req, cellAResp, cellBResp)
 
 	time.Sleep(100 * time.Millisecond)
 
