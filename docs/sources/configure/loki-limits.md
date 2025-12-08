@@ -316,7 +316,7 @@ When limits are exceeded, Loki provides metrics and errors to help you understan
 - **`too_far_behind`**: Log outside the out-of-order window
 - **`greater_than_max_sample_age`**: Log older than `reject_old_samples_max_age`
 
-## Best practices
+## Best practices for limits
 
 To work effectively within Loki's limits:
 
