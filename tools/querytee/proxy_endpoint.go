@@ -13,11 +13,15 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/pkg/errors"
 
 	"github.com/grafana/dskit/tenant"
+	"github.com/grafana/dskit/tracing"
+
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/util/server"
 	"github.com/grafana/loki/v3/tools/querytee/comparator"
 	"github.com/grafana/loki/v3/tools/querytee/goldfish"
 )
@@ -116,7 +120,7 @@ func (p *ProxyEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, ctx, err := tenant.ExtractTenantIDFromHTTPRequest(r)
+	tenantID, ctx, err := tenant.ExtractTenantIDFromHTTPRequest(r)
 	if err != nil {
 		level.Error(p.logger).Log(
 			"msg", "failed to extract tenant ID",
@@ -127,6 +131,10 @@ func (p *ProxyEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	traceID, _, _ := tracing.ExtractTraceSpanID(ctx)
+	user := goldfish.ExtractUserFromQueryTags(r)
+	logger := log.With(p.logger, "traceID", traceID, "tenant", tenantID, "user", user)
+
 	// The codec decode/encode cycle loses custom headers, so we preserve them for downstream
 	headersCopy := r.Header.Clone()
 	ctx = context.WithValue(ctx, originalHTTPHeadersKey, headersCopy)
@@ -134,8 +142,14 @@ func (p *ProxyEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Decode the HTTP request into a queryrangebase.Request
 	req, err := p.codec.DecodeRequest(ctx, r, nil)
 	if err != nil {
-		level.Error(p.logger).Log("msg", "Failed to decode request", "err", err)
-		http.Error(w, fmt.Sprintf("failed to decode request: %v", err), http.StatusBadRequest)
+		query := r.Form.Get("query")
+		level.Warn(logger).Log(
+			"msg", "failed to decode request",
+			"query", query,
+			"req", r.URL.String(),
+			"err", err,
+		)
+		server.WriteError(err, w)
 		return
 	}
 
@@ -144,7 +158,10 @@ func (p *ProxyEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch op := req.(type) {
 	case *queryrange.LokiRequest:
 		if op.Plan == nil {
-			http.Error(w, "query plan is empty", http.StatusBadRequest)
+			err := errors.New("query plan is empty")
+			query := r.Form.Get("query")
+			level.Warn(logger).Log("msg", "query plan is empty", "query", query, "err", err)
+			server.WriteError(err, w)
 			return
 		}
 
@@ -163,8 +180,8 @@ func (p *ProxyEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		case *NonDecodableResponse:
 			http.Error(w, string(r.Body), r.StatusCode)
 		default:
-			level.Error(p.logger).Log("msg", "Handler failed", "err", err)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			level.Warn(logger).Log("msg", "handler failed", "err", err)
+			server.WriteError(err, w)
 		}
 		return
 	}
@@ -172,8 +189,8 @@ func (p *ProxyEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Encode the response back to HTTP
 	httpResp, err := p.codec.EncodeResponse(ctx, r, resp)
 	if err != nil {
-		level.Error(p.logger).Log("msg", "Failed to encode response", "err", err)
-		http.Error(w, fmt.Sprintf("failed to encode response: %s", err), http.StatusInternalServerError)
+		level.Warn(logger).Log("msg", "failed to encode response", "err", err)
+		server.WriteError(err, w)
 		return
 	}
 	defer httpResp.Body.Close()
@@ -190,7 +207,7 @@ func (p *ProxyEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Copy response body
 	if _, err := io.Copy(w, httpResp.Body); err != nil {
-		level.Warn(p.logger).Log("msg", "Unable to write response body", "err", err)
+		level.Warn(logger).Log("msg", "unable to write response body", "err", err)
 	}
 }
 
@@ -208,7 +225,7 @@ func (p *ProxyEndpoint) serveWrites(w http.ResponseWriter, r *http.Request) {
 	if p.goldfishManager != nil {
 		shouldSample = p.goldfishManager.ShouldSample(tenantID)
 		level.Debug(p.logger).Log(
-			"msg", "Goldfish sampling decision",
+			"msg", "goldfish sampling decision",
 			"tenant", tenantID,
 			"sampled", shouldSample,
 			"path", r.URL.Path)
@@ -222,7 +239,7 @@ func (p *ProxyEndpoint) serveWrites(w http.ResponseWriter, r *http.Request) {
 	downstreamRes := p.waitBackendResponseForDownstream(resCh)
 
 	if downstreamRes.err != nil {
-		http.Error(w, downstreamRes.err.Error(), http.StatusInternalServerError)
+		server.WriteError(downstreamRes.err, w)
 	} else {
 		// Copy response headers.
 		for key, values := range downstreamRes.headers {

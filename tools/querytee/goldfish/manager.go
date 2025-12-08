@@ -181,7 +181,7 @@ func (m *Manager) processQueryPair(req *http.Request, cellAResp, cellBResp *Resp
 	sample := &goldfish.QuerySample{
 		CorrelationID:      correlationID,
 		TenantID:           tenantID,
-		User:               ExtractUserFromQueryTags(req, m.logger),
+		User:               ExtractUserFromQueryTags(req),
 		IsLogsDrilldown:    isLogsDrilldownRequest(req),
 		Query:              req.URL.Query().Get("query"),
 		QueryType:          queryType,
@@ -523,23 +523,10 @@ func parseDuration(s string) time.Duration {
 	return d
 }
 
-func ExtractUserFromQueryTags(req *http.Request, logger log.Logger) string {
-	tags := httpreq.ExtractQueryTagsFromHTTP(req)
-
-	// Debug logging for user extraction
-	if tags != "" {
-		level.Debug(logger).Log("goldfish", "user-extraction", "query-tags", tags)
-	}
-
+func ExtractUserFromQueryTags(req *http.Request) string {
 	// Also check for X-Grafana-User header directly
+	tags := httpreq.ExtractQueryTagsFromHTTP(req)
 	grafanaUser := req.Header.Get("X-Grafana-User")
-	if grafanaUser != "" {
-		level.Debug(logger).Log("goldfish", "user-extraction", "x-grafana-user", grafanaUser)
-	}
-
-	// Log all headers for debugging
-	level.Debug(logger).Log("goldfish", "user-extraction", "all-headers", fmt.Sprintf("%v", req.Header))
-
 	kvs := httpreq.TagsToKeyValues(tags)
 
 	// Iterate through key-value pairs (keys at even indices, values at odd)
@@ -548,7 +535,6 @@ func ExtractUserFromQueryTags(req *http.Request, logger log.Logger) string {
 			key, keyOK := kvs[i].(string)
 			value, valueOK := kvs[i+1].(string)
 			if keyOK && valueOK && key == "user" {
-				level.Debug(logger).Log("goldfish", "user-extraction", "found-user-in-tags", value)
 				return value
 			}
 		}
@@ -556,11 +542,9 @@ func ExtractUserFromQueryTags(req *http.Request, logger log.Logger) string {
 
 	// Fallback to X-Grafana-User if not found in query tags
 	if grafanaUser != "" {
-		level.Debug(logger).Log("goldfish", "user-extraction", "using-x-grafana-user", grafanaUser)
 		return grafanaUser
 	}
 
-	level.Debug(logger).Log("goldfish", "user-extraction", "result", unknownUser)
 	return unknownUser
 }
 
