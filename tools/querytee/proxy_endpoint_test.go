@@ -36,7 +36,7 @@ func createTestEndpoint(backends []*ProxyBackend, routeName string, comparator c
 	metrics := NewProxyMetrics(nil)
 	logger := log.NewNopLogger()
 
-	endpoint := NewProxyEndpoint(backends, routeName, metrics, logger, comparator, instrumentCompares)
+	endpoint := NewProxyEndpoint(backends, routeName, metrics, logger, comparator, instrumentCompares, BackendSelectionStrategyNaive)
 	handlerFactory := NewHandlerFactory(HandlerFactoryConfig{
 		Backends:        backends,
 		Codec:           queryrange.DefaultCodec,
@@ -55,7 +55,7 @@ func createTestEndpoint(backends []*ProxyBackend, routeName string, comparator c
 func createTestEndpointWithMetrics(backends []*ProxyBackend, routeName string, comp comparator.ResponsesComparator, instrumentCompares bool, metrics *ProxyMetrics) *ProxyEndpoint {
 	logger := log.NewNopLogger()
 
-	endpoint := NewProxyEndpoint(backends, routeName, metrics, logger, comp, instrumentCompares)
+	endpoint := NewProxyEndpoint(backends, routeName, metrics, logger, comp, instrumentCompares, BackendSelectionStrategyNaive)
 	handlerFactory := NewHandlerFactory(HandlerFactoryConfig{
 		Backends:           backends,
 		Codec:              queryrange.DefaultCodec,
@@ -84,7 +84,7 @@ func createTestEndpointWithGoldfish(backends []*ProxyBackend, routeName string, 
 		Metrics:         metrics,
 	})
 
-	endpoint := NewProxyEndpoint(backends, routeName, metrics, logger, nil, false)
+	endpoint := NewProxyEndpoint(backends, routeName, metrics, logger, nil, false, BackendSelectionStrategyNaive)
 	queryHandler := handlerFactory.CreateHandler(routeName, nil, false)
 	metricQueryHandler := handlerFactory.CreateHandler(routeName, nil, true)
 	endpoint.WithQueryHandlers(queryHandler, metricQueryHandler, queryrange.DefaultCodec)
@@ -168,7 +168,7 @@ func Test_ProxyEndpoint_waitBackendResponseForDownstream(t *testing.T) {
 
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
-			endpoint := NewProxyEndpoint(testData.backends, "test", NewProxyMetrics(nil), log.NewNopLogger(), nil, false)
+			endpoint := NewProxyEndpoint(testData.backends, "test", NewProxyMetrics(nil), log.NewNopLogger(), nil, false, BackendSelectionStrategyNaive)
 
 			// Send the responses from a dedicated goroutine.
 			resCh := make(chan *BackendResponse)
@@ -334,7 +334,7 @@ func Test_ProxyEndpoint_WriteRequests(t *testing.T) {
 	// endpoint := createTestEndpoint(backends, "test", nil, false)
 	metrics := NewProxyMetrics(nil)
 	logger := log.NewNopLogger()
-	endpoint := NewProxyEndpoint(backends, "test", metrics, logger, nil, false)
+	endpoint := NewProxyEndpoint(backends, "test", metrics, logger, nil, false, BackendSelectionStrategyNaive)
 
 	for _, tc := range []struct {
 		name    string

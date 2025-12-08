@@ -44,6 +44,7 @@ type ProxyConfig struct {
 	RequestURLFilter               *regexp.Regexp
 	InstrumentCompares             bool
 	Goldfish                       goldfish.Config
+	BackendSelectionStrategy       BackendSelectionStrategy
 }
 
 func (cfg *ProxyConfig) RegisterFlags(f *flag.FlagSet) {
@@ -67,6 +68,10 @@ func (cfg *ProxyConfig) RegisterFlags(f *flag.FlagSet) {
 
 	// Register Goldfish configuration flags
 	cfg.Goldfish.RegisterFlags(f)
+
+	// The default pick mode is naive but if there's a preferred backend configured, we switch to preferred.
+	cfg.BackendSelectionStrategy = BackendSelectionStrategyNaive
+	f.Var(&cfg.BackendSelectionStrategy, "proxy.backend-selection-strategy", "Proxy backend selection strategy (preferred, fastest, naive). If naive (the default) is selected but there's a preferred backend configured, the 'preferred' strategy is used instead.")
 }
 
 type Route struct {
@@ -278,6 +283,7 @@ func (p *Proxy) Start() error {
 			p.logger,
 			comp,
 			p.cfg.InstrumentCompares,
+			p.cfg.BackendSelectionStrategy,
 		)
 
 		// Add Goldfish if configured
@@ -325,6 +331,7 @@ func (p *Proxy) Start() error {
 			p.logger,
 			comp,
 			p.cfg.InstrumentCompares,
+			p.cfg.BackendSelectionStrategy,
 		)
 
 		router.Path(route.Path).Methods(route.Methods...).Handler(endpoint)

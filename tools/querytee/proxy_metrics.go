@@ -23,6 +23,8 @@ type ProxyMetrics struct {
 	// Sampling metrics
 	queriesSampled    *prometheus.CounterVec
 	samplingDecisions *prometheus.CounterVec
+
+	fastestBackendSelected *prometheus.CounterVec
 }
 
 func NewProxyMetrics(registerer prometheus.Registerer) *ProxyMetrics {
@@ -61,6 +63,12 @@ func NewProxyMetrics(registerer prometheus.Registerer) *ProxyMetrics {
 			Name:      "sampling_decisions_total",
 			Help:      "Total number of sampling decisions made.",
 		}, []string{"tenant", "route", "decision"}),
+
+		fastestBackendSelected: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "loki_querytee",
+			Name:      "fastest_backend_selected_total",
+			Help:      "Total number of fastest backend selected.",
+		}, []string{"backend", "route"}),
 	}
 
 	return m
