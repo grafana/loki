@@ -43,6 +43,7 @@ type ProxyConfig struct {
 	SkipSamplesBefore              flagext.Time
 	RequestURLFilter               *regexp.Regexp
 	InstrumentCompares             bool
+	EnableRace                     bool
 	Goldfish                       goldfish.Config
 }
 
@@ -64,6 +65,7 @@ func (cfg *ProxyConfig) RegisterFlags(f *flag.FlagSet) {
 		return err
 	})
 	f.BoolVar(&cfg.InstrumentCompares, "proxy.compare-instrument", false, "Reports metrics on comparisons of responses between preferred and non-preferred endpoints for supported routes.")
+	f.BoolVar(&cfg.EnableRace, "proxy.enable-race", false, "When enabled, return the first successful response from any backend instead of waiting for the preferred backend.")
 
 	// Register Goldfish configuration flags
 	cfg.Goldfish.RegisterFlags(f)
@@ -243,6 +245,7 @@ func NewProxy(
 		Codec:              queryrange.DefaultCodec,
 		GoldfishManager:    p.goldfishManager,
 		InstrumentCompares: p.cfg.InstrumentCompares,
+		EnableRace:         p.cfg.EnableRace,
 		Logger:             logger,
 		Metrics:            p.metrics,
 	})

@@ -23,6 +23,9 @@ type ProxyMetrics struct {
 	// Sampling metrics
 	queriesSampled    *prometheus.CounterVec
 	samplingDecisions *prometheus.CounterVec
+
+	// Race metrics
+	raceWins *prometheus.CounterVec
 }
 
 func NewProxyMetrics(registerer prometheus.Registerer) *ProxyMetrics {
@@ -61,6 +64,12 @@ func NewProxyMetrics(registerer prometheus.Registerer) *ProxyMetrics {
 			Name:      "sampling_decisions_total",
 			Help:      "Total number of sampling decisions made.",
 		}, []string{"tenant", "route", "decision"}),
+
+		raceWins: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "cortex_querytee",
+			Name:      "race_wins_total",
+			Help:      "Total number of times each backend won the race (when racing is enabled).",
+		}, []string{"backend", "route", "issuer"}),
 	}
 
 	return m
