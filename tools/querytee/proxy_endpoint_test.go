@@ -102,7 +102,7 @@ func Test_ProxyEndpoint_waitBackendResponseForDownstream(t *testing.T) {
 
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
-			endpoint := NewProxyEndpoint(testData.backends, "test", NewProxyMetrics(nil), log.NewNopLogger(), nil, false)
+			endpoint := NewProxyEndpoint(testData.backends, "test", NewProxyMetrics(nil), log.NewNopLogger(), nil, false, BackendSelectionStrategyNaive)
 
 			// Send the responses from a dedicated goroutine.
 			resCh := make(chan *BackendResponse)
@@ -146,7 +146,7 @@ func Test_ProxyEndpoint_Requests(t *testing.T) {
 		NewProxyBackend("backend-1", backendURL1, time.Second, true),
 		NewProxyBackend("backend-2", backendURL2, time.Second, false).WithFilter(regexp.MustCompile("/test/api")),
 	}
-	endpoint := NewProxyEndpoint(backends, "test", NewProxyMetrics(nil), log.NewNopLogger(), nil, false)
+	endpoint := NewProxyEndpoint(backends, "test", NewProxyMetrics(nil), log.NewNopLogger(), nil, false, BackendSelectionStrategyNaive)
 
 	for _, tc := range []struct {
 		name    string
@@ -276,7 +276,7 @@ func Test_ProxyEndpoint_SummaryMetrics(t *testing.T) {
 
 	comparator := &mockComparator{}
 	proxyMetrics := NewProxyMetrics(prometheus.NewRegistry())
-	endpoint := NewProxyEndpoint(backends, "test", proxyMetrics, log.NewNopLogger(), comparator, true)
+	endpoint := NewProxyEndpoint(backends, "test", proxyMetrics, log.NewNopLogger(), comparator, true, BackendSelectionStrategyNaive)
 
 	for _, tc := range []struct {
 		name            string
@@ -464,7 +464,7 @@ func Test_endToEnd_traceIDFlow(t *testing.T) {
 	goldfishManager, err := querytee_goldfish.NewManager(goldfishConfig, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 
-	endpoint := NewProxyEndpoint(backends, "test", NewProxyMetrics(nil), log.NewNopLogger(), nil, false).WithGoldfish(goldfishManager)
+	endpoint := NewProxyEndpoint(backends, "test", NewProxyMetrics(nil), log.NewNopLogger(), nil, false, BackendSelectionStrategyNaive).WithGoldfish(goldfishManager)
 
 	// Create request that triggers goldfish sampling
 	req := httptest.NewRequest("GET", "/loki/api/v1/query_range?query=count_over_time({job=\"test\"}[5m])&start=1700000000&end=1700001000", nil)
@@ -603,7 +603,7 @@ func TestProxyEndpoint_ServeHTTP_ForwardsResponseHeaders(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	fakeReq := httptest.NewRequestWithContext(t.Context(), "", "/", nil)
 
-	endpoint := NewProxyEndpoint(backends, "test", NewProxyMetrics(nil), log.NewNopLogger(), nil, false)
+	endpoint := NewProxyEndpoint(backends, "test", NewProxyMetrics(nil), log.NewNopLogger(), nil, false, BackendSelectionStrategyNaive)
 	endpoint.ServeHTTP(recorder, fakeReq)
 
 	require.Equal(t, http.StatusOK, recorder.Result().StatusCode, "Status code from backend should be forwarded")

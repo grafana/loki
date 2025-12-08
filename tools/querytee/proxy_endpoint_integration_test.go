@@ -86,6 +86,7 @@ func TestProxyEndpoint_GoldfishQueriesContinueAfterNonGoldfishComplete(t *testin
 		log.NewNopLogger(),
 		nil,
 		false,
+		BackendSelectionStrategyNaive,
 	)
 
 	// Create a parent span to simulate incoming request with tracing

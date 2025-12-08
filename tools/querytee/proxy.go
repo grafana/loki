@@ -249,7 +249,6 @@ func (p *Proxy) Start() error {
 		if p.cfg.CompareResponses {
 			comparator = route.ResponseComparator
 		}
-		// TODO: not necessarily this is a goldfish proxy.
 		endpoint := NewProxyEndpoint(filterReadDisabledBackends(p.backends, p.cfg.DisableBackendReadProxy), route.RouteName, p.metrics, p.logger, comparator, p.cfg.InstrumentCompares, p.cfg.BackendSelectionStrategy)
 		// Add Goldfish if configured
 		if p.goldfishManager != nil {
@@ -260,7 +259,6 @@ func (p *Proxy) Start() error {
 	}
 
 	for _, route := range p.writeRoutes {
-		// TODO: not necessarily this is a goldfish proxy.
 		router.Path(route.Path).Methods(route.Methods...).Handler(NewProxyEndpoint(p.backends, route.RouteName, p.metrics, p.logger, nil, p.cfg.InstrumentCompares, p.cfg.BackendSelectionStrategy))
 	}
 
