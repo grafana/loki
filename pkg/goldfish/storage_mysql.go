@@ -114,9 +114,10 @@ func (s *MySQLStorage) StoreQuerySample(ctx context.Context, sample *QuerySample
 			cell_a_trace_id, cell_b_trace_id,
 			cell_a_span_id, cell_b_span_id,
 			cell_a_used_new_engine, cell_b_used_new_engine,
+			cell_a_won, cell_b_won,
 			sampled_at,
 			comparison_status
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	// Convert empty span IDs to NULL for database storage
@@ -196,6 +197,8 @@ func (s *MySQLStorage) StoreQuerySample(ctx context.Context, sample *QuerySample
 		cellBSpanID,
 		sample.CellAUsedNewEngine,
 		sample.CellBUsedNewEngine,
+		sample.CellAWon,
+		sample.CellBWon,
 		sample.SampledAt,
 		comparisonStatus,
 	)
@@ -269,6 +272,7 @@ func (s *MySQLStorage) GetSampledQueries(ctx context.Context, page, pageSize int
 			cell_a_trace_id, cell_b_trace_id,
 			cell_a_span_id, cell_b_span_id,
 			cell_a_used_new_engine, cell_b_used_new_engine,
+			cell_a_won, cell_b_won,
 			sampled_at, created_at,
 			comparison_status
 		FROM sampled_queries
@@ -316,6 +320,7 @@ func (s *MySQLStorage) GetSampledQueries(ctx context.Context, page, pageSize int
 			&q.CellATraceID, &q.CellBTraceID,
 			&cellASpanID, &cellBSpanID,
 			&q.CellAUsedNewEngine, &q.CellBUsedNewEngine,
+			&q.CellAWon, &q.CellBWon,
 			&q.SampledAt, &createdAt,
 			&q.ComparisonStatus,
 		)
@@ -392,6 +397,7 @@ func (s *MySQLStorage) GetQueryByCorrelationID(ctx context.Context, correlationI
 			cell_a_trace_id, cell_b_trace_id,
 			cell_a_span_id, cell_b_span_id,
 			cell_a_used_new_engine, cell_b_used_new_engine,
+			cell_a_won, cell_b_won,
 			sampled_at, created_at, comparison_status
 		FROM sampled_queries
 		WHERE correlation_id = ?
@@ -419,6 +425,7 @@ func (s *MySQLStorage) GetQueryByCorrelationID(ctx context.Context, correlationI
 		&q.CellATraceID, &q.CellBTraceID,
 		&cellASpanID, &cellBSpanID,
 		&q.CellAUsedNewEngine, &q.CellBUsedNewEngine,
+		&q.CellAWon, &q.CellBWon,
 		&q.SampledAt, &createdAt, &q.ComparisonStatus,
 	)
 
