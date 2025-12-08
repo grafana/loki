@@ -66,7 +66,7 @@ func NewProxyMetrics(registerer prometheus.Registerer) *ProxyMetrics {
 		}, []string{"tenant", "route", "decision"}),
 
 		raceWins: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "cortex_querytee",
+			Namespace: "loki_querytee",
 			Name:      "race_wins_total",
 			Help:      "Total number of times each backend won the race (when racing is enabled).",
 		}, []string{"backend", "route", "issuer"}),
