@@ -399,10 +399,30 @@ func (c *baseClient) initConn(ctx context.Context, cn *pool.Conn) error {
 
 			if finalState == pool.StateInitializing {
 				// Another goroutine is initializing - WAIT for it to complete
-				// Use AwaitAndTransition to wait for IDLE or IN_USE state
-				// use DialTimeout as the timeout for the wait
-				waitCtx, cancel := context.WithTimeout(ctx, c.opt.DialTimeout)
-				defer cancel()
+				// Use a context with timeout = min(remaining command timeout, DialTimeout)
+				// This prevents waiting too long while respecting the caller's deadline
+				var waitCtx context.Context
+				var cancel context.CancelFunc
+				dialTimeout := c.opt.DialTimeout
+
+				if cmdDeadline, hasCmdDeadline := ctx.Deadline(); hasCmdDeadline {
+					// Calculate remaining time until command deadline
+					remainingTime := time.Until(cmdDeadline)
+					// Use the minimum of remaining time and DialTimeout
+					if remainingTime < dialTimeout {
+						// Command deadline is sooner, use it
+						waitCtx = ctx
+					} else {
+						// DialTimeout is shorter, cap the wait at DialTimeout
+						waitCtx, cancel = context.WithTimeout(ctx, dialTimeout)
+					}
+				} else {
+					// No command deadline, use DialTimeout to prevent waiting indefinitely
+					waitCtx, cancel = context.WithTimeout(ctx, dialTimeout)
+				}
+				if cancel != nil {
+					defer cancel()
+				}
 
 				finalState, err := cn.GetStateMachine().AwaitAndTransition(
 					waitCtx,

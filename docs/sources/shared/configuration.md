@@ -4188,8 +4188,8 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 
 # Maximum line size on ingestion path. Example: 256kb. Any log line exceeding
 # this limit will be discarded unless `distributor.max-line-size-truncate` is
-# set which in case it is truncated instead of discarding it completely. There
-# is no limit when unset or set to 0.
+# set, in which case it is truncated rather than discarded completely. There is
+# no limit when set to 0.
 # CLI flag: -distributor.max-line-size
 [max_line_size: <int> | default = 256KB]
 
@@ -4666,6 +4666,13 @@ shard_streams:
 # the deprecated -replication-factor for backwards compatibility reasons.
 # CLI flag: -index-gateway.shard-size
 [index_gateway_shard_size: <int> | default = 0]
+
+# Experimental. Defines a fraction (between 0.0 and 1.0) of the total index
+# gateways available for a each tenant. A value of 0.0 has the same effect as
+# 1.0, meaning all available index gateways. This setting only applies to simple
+# mode.
+# CLI flag: -index-gateway.max-capacity
+[index_gateway_max_capacity: <float> | default = 1]
 
 # Experimental. Whether to use the bloom gateway component in the read path to
 # filter chunks.
@@ -7839,12 +7846,6 @@ Configuration for `tracing`.
 # Set to false to disable tracing.
 # CLI flag: -tracing.enabled
 [enabled: <boolean> | default = true]
-
-# Set to true to drops all spans from the GCS client library. This prevents the
-# GCS client from creating millions of spans in high-throughput production
-# environments.
-# CLI flag: -tracing.filter-gcs-spans
-[filter_gcs_spans: <boolean> | default = true]
 ```
 
 <!-- vale Grafana.Spelling = YES -->

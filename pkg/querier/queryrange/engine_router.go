@@ -59,9 +59,9 @@ type engineRouter struct {
 	clock quartz.Clock
 }
 
-// newEngineRouterMiddleware creates a middleware that splits and routes part of the query
+// NewEngineRouterMiddleware creates a middleware that splits and routes part of the query
 // to v2 engine if the query is supported by it.
-func newEngineRouterMiddleware(
+func NewEngineRouterMiddleware(
 	v2RouterConfig RouterConfig,
 	v1Chain []queryrangebase.Middleware,
 	merger queryrangebase.Merger,
@@ -170,7 +170,7 @@ func (e *engineRouter) splitOverlapping(r queryrangebase.Request, v2Start, v2End
 	}
 
 	// align the ranges by step before splitting.
-	start, end := alignStartEnd(stepNs, r.GetStart(), r.GetEnd())
+	start, end := r.GetStart(), r.GetEnd()
 	v2Start, v2End = alignStartEnd(stepNs, v2Start, v2End)
 
 	// chunk req before V2 engine range

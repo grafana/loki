@@ -11,6 +11,8 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/oklog/ulid/v2"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
@@ -18,6 +20,11 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
+
+var shortCircuitsTotal = promauto.NewCounter(prometheus.CounterOpts{
+	Name: "loki_engine_v2_task_short_circuits_total",
+	Help: "Total number of tasks preemptively canceled by short circuiting.",
+})
 
 // Options configures a [Workflow].
 type Options struct {
@@ -379,8 +386,8 @@ func (wf *Workflow) handleNonTerminalStateChange(ctx context.Context, task *Task
 				// TODO(spiridonov): We do not check parents here right now, there is only 1 parent now,
 				// but in general a task can be canceled only if all its parents are in terminal states OR
 				// have non-inersecting contributing time range.
-
 				tasksToCancel = append(tasksToCancel, child)
+				shortCircuitsTotal.Inc()
 			}
 		}
 		wf.tasksMut.RUnlock()
