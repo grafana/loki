@@ -181,7 +181,7 @@ func (m *Manager) processQueryPair(req *http.Request, cellAResp, cellBResp *Resp
 	sample := &goldfish.QuerySample{
 		CorrelationID:      correlationID,
 		TenantID:           tenantID,
-		User:               ExtractUserFromQueryTags(req, m.logger),
+		User:               ExtractUserFromQueryTags(req),
 		IsLogsDrilldown:    isLogsDrilldownRequest(req),
 		Query:              req.URL.Query().Get("query"),
 		QueryType:          queryType,
@@ -523,7 +523,7 @@ func parseDuration(s string) time.Duration {
 	return d
 }
 
-func ExtractUserFromQueryTags(req *http.Request, logger log.Logger) string {
+func ExtractUserFromQueryTags(req *http.Request) string {
 	// Also check for X-Grafana-User header directly
 	tags := httpreq.ExtractQueryTagsFromHTTP(req)
 	grafanaUser := req.Header.Get("X-Grafana-User")

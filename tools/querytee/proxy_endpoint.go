@@ -132,7 +132,7 @@ func (p *ProxyEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	traceID, _, _ := tracing.ExtractTraceSpanID(ctx)
-	user := goldfish.ExtractUserFromQueryTags(r, p.logger)
+	user := goldfish.ExtractUserFromQueryTags(r)
 	logger := log.With(p.logger, "traceID", traceID, "tenant", tenantID, "user", user)
 
 	// The codec decode/encode cycle loses custom headers, so we preserve them for downstream
