@@ -95,9 +95,6 @@ type Proxy struct {
 
 	// Goldfish manager for query sampling and comparison
 	goldfishManager *goldfish.Manager
-
-	// Handler factory for creating middleware-based handlers
-	handlerFactory *HandlerFactory
 }
 
 func NewProxy(
@@ -240,16 +237,6 @@ func NewProxy(
 			"results_backend", cfg.Goldfish.ResultsStorage.Backend)
 	}
 
-	p.handlerFactory = NewHandlerFactory(HandlerFactoryConfig{
-		Backends:           p.backends,
-		Codec:              queryrange.DefaultCodec,
-		GoldfishManager:    p.goldfishManager,
-		InstrumentCompares: p.cfg.InstrumentCompares,
-		EnableRace:         p.cfg.EnableRace,
-		Logger:             logger,
-		Metrics:            p.metrics,
-	})
-
 	return p, nil
 }
 
@@ -302,6 +289,7 @@ func (p *Proxy) Start() error {
 			Logger:             p.logger,
 			Metrics:            p.metrics,
 			InstrumentCompares: p.cfg.InstrumentCompares,
+			EnableRace:         p.cfg.EnableRace,
 		})
 		queryHandler := routeHandlerFactory.CreateHandler(route.RouteName, comp, false)
 		metricHandler := routeHandlerFactory.CreateHandler(route.RouteName, comp, true)

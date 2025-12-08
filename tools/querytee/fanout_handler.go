@@ -135,7 +135,6 @@ func (h *FanOutHandler) Do(ctx context.Context, req queryrangebase.Request) (que
 		}(i, backend)
 	}
 
-	gotSuccessfulResp := false
 	collected := make([]*backendResult, 0, len(h.backends))
 
 	for i := 0; i < len(h.backends); i++ {
@@ -147,9 +146,7 @@ func (h *FanOutHandler) Do(ctx context.Context, req queryrangebase.Request) (que
 		// rather than have it all nested in one.
 		if h.enableRace {
 			// Check if this is the first successful result (race winner)
-			if !gotSuccessfulResp && result.err == nil && result.backendResp.succeeded() {
-				gotSuccessfulResp = true
-
+			if result.err == nil && result.backendResp.succeeded() {
 				// Record race win metric
 				h.metrics.raceWins.WithLabelValues(
 					result.backend.name,
