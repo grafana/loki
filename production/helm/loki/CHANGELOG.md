@@ -68,6 +68,10 @@ Entries should include a reference to the pull request that introduced the chang
 - [BUGFIX] Don't mark loki.storage.bucketNames.chunks as required, if an s3 url is provided. [#19873](https://github.com/grafana/loki/pull/19873)
 - [BUGFIX] do not mark loki.storage.bucketNames.ruler as required, if rulerConfig.storage.type is local. [#19882](https://github.com/grafana/loki/pull/19882)
 
+## 6.46.1
+
+- [BUGFIX] Make the loki-sc-rules sidecar container compatible with the most recent versions of k8s-sidecar. [#20164](https://github.com/grafana/loki/pull/20164)
+
 ## 6.46.0
 
 - [CHANGE] `nameOverride` now passed through Helm template function. [#19590](https://github.com/grafana/loki/pull/19590)
