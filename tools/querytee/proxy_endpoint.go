@@ -17,6 +17,7 @@ import (
 
 	"github.com/grafana/dskit/tenant"
 	"github.com/grafana/dskit/tracing"
+
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
@@ -132,7 +133,7 @@ func (p *ProxyEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	traceID, _, _ := tracing.ExtractTraceSpanID(ctx)
 	user := goldfish.ExtractUserFromQueryTags(r, p.logger)
-	p.logger = log.With(p.logger, "traceID", traceID, "tenant", tenantID, "user", user)
+	logger := log.With(p.logger, "traceID", traceID, "tenant", tenantID, "user", user)
 
 	// The codec decode/encode cycle loses custom headers, so we preserve them for downstream
 	headersCopy := r.Header.Clone()
@@ -142,7 +143,7 @@ func (p *ProxyEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	req, err := p.codec.DecodeRequest(ctx, r, nil)
 	if err != nil {
 		query := r.Form.Get("query")
-		level.Error(p.logger).Log(
+		level.Warn(logger).Log(
 			"msg", "failed to decode request",
 			"query", query,
 			"req", r.URL.String(),
@@ -159,7 +160,7 @@ func (p *ProxyEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if op.Plan == nil {
 			err := errors.New("query plan is empty")
 			query := r.Form.Get("query")
-			level.Error(p.logger).Log("msg", "query plan is empty", "query", query, "err", err)
+			level.Warn(logger).Log("msg", "query plan is empty", "query", query, "err", err)
 			server.WriteError(err, w)
 			return
 		}
@@ -179,7 +180,7 @@ func (p *ProxyEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		case *NonDecodableResponse:
 			http.Error(w, string(r.Body), r.StatusCode)
 		default:
-			level.Error(p.logger).Log("msg", "handler failed", "err", err)
+			level.Warn(logger).Log("msg", "handler failed", "err", err)
 			server.WriteError(err, w)
 		}
 		return
@@ -188,7 +189,7 @@ func (p *ProxyEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Encode the response back to HTTP
 	httpResp, err := p.codec.EncodeResponse(ctx, r, resp)
 	if err != nil {
-		level.Error(p.logger).Log("msg", "failed to encode response", "err", err)
+		level.Warn(logger).Log("msg", "failed to encode response", "err", err)
 		server.WriteError(err, w)
 		return
 	}
@@ -206,7 +207,7 @@ func (p *ProxyEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Copy response body
 	if _, err := io.Copy(w, httpResp.Body); err != nil {
-		level.Warn(p.logger).Log("msg", "unable to write response body", "err", err)
+		level.Warn(logger).Log("msg", "unable to write response body", "err", err)
 	}
 }
 
