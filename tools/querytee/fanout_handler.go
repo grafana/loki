@@ -83,7 +83,7 @@ func (h *FanOutHandler) Do(ctx context.Context, req queryrangebase.Request) (que
 	}
 
 	issuer := detectIssuer(httpReq)
-	user := goldfish.ExtractUserFromQueryTags(httpReq, h.logger)
+	user := goldfish.ExtractUserFromQueryTags(httpReq)
 	level.Debug(h.logger).Log(
 		"msg", "Received request",
 		"path", httpReq.URL.Path,

@@ -402,8 +402,7 @@ func TestExtractUserFromQueryTags(t *testing.T) {
 				req.Header.Set("X-Query-Tags", tt.queryTags)
 			}
 
-			logger := log.NewNopLogger()
-			got := ExtractUserFromQueryTags(req, logger)
+			got := ExtractUserFromQueryTags(req)
 			assert.Equal(t, tt.expectedUser, got)
 		})
 	}
