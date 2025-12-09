@@ -234,49 +234,49 @@ loki:
       # HTTP configuration settings
       http_config: {}
 
-  deploymentMode: Distributed
+deploymentMode: Distributed
 
-  # Disable minio storage
-  minio:
-      enabled: false
+# Disable minio storage
+minio:
+    enabled: false
 
-  ingester:
-    replicas: 3
-    zoneAwareReplication:
-      enabled: false
-  querier:
-    replicas: 3
-    maxUnavailable: 2
-  queryFrontend:
-    replicas: 2
-    maxUnavailable: 1
-  queryScheduler:
-    replicas: 2
-  distributor:
-    replicas: 3
-    maxUnavailable: 2
-  compactor:
-    replicas: 1
-  indexGateway:
-    replicas: 2
-    maxUnavailable: 1
+ingester:
+  replicas: 3
+  zoneAwareReplication:
+    enabled: false
+querier:
+  replicas: 3
+  maxUnavailable: 2
+queryFrontend:
+  replicas: 2
+  maxUnavailable: 1
+queryScheduler:
+  replicas: 2
+distributor:
+  replicas: 3
+  maxUnavailable: 2
+compactor:
+  replicas: 1
+indexGateway:
+  replicas: 2
+  maxUnavailable: 1
 
-  bloomPlanner:
-    replicas: 0
-  bloomBuilder:
-    replicas: 0
-  bloomGateway:
-    replicas: 0
+bloomPlanner:
+  replicas: 0
+bloomBuilder:
+  replicas: 0
+bloomGateway:
+  replicas: 0
 
-  backend:
-    replicas: 0
-  read:
-    replicas: 0
-  write:
-    replicas: 0
+backend:
+  replicas: 0
+read:
+  replicas: 0
+write:
+  replicas: 0
 
-  singleBinary:
-    replicas: 0
+singleBinary:
+  replicas: 0
 
 ```
 {{< /collapse >}}

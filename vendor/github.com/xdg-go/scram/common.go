@@ -10,6 +10,7 @@ import (
 	"crypto/hmac"
 	"crypto/rand"
 	"encoding/base64"
+	"errors"
 	"strings"
 )
 
@@ -58,21 +59,56 @@ type StoredCredentials struct {
 // StoredCredentials.
 type CredentialLookup func(string) (StoredCredentials, error)
 
+// Server error values as defined in RFC-5802 and RFC-7677. These are returned
+// by the server in error responses as "e=<value>".
+const (
+	// ErrInvalidEncoding indicates the client message had invalid encoding
+	ErrInvalidEncoding = "e=invalid-encoding"
+
+	// ErrExtensionsNotSupported indicates unrecognized 'm' value
+	ErrExtensionsNotSupported = "e=extensions-not-supported"
+
+	// ErrInvalidProof indicates the authentication proof from the client was invalid
+	ErrInvalidProof = "e=invalid-proof"
+
+	// ErrChannelBindingsDontMatch indicates channel binding data didn't match expected value
+	ErrChannelBindingsDontMatch = "e=channel-bindings-dont-match"
+
+	// ErrServerDoesSupportChannelBinding indicates server does support channel
+	// binding. This is returned if a downgrade attack is detected or if the
+	// client does not support binding and channel binding is required.
+	ErrServerDoesSupportChannelBinding = "e=server-does-support-channel-binding"
+
+	// ErrChannelBindingNotSupported indicates channel binding is not supported
+	ErrChannelBindingNotSupported = "e=channel-binding-not-supported"
+
+	// ErrUnsupportedChannelBindingType indicates the requested channel binding type is not supported
+	ErrUnsupportedChannelBindingType = "e=unsupported-channel-binding-type"
+
+	// ErrUnknownUser indicates the specified user does not exist
+	ErrUnknownUser = "e=unknown-user"
+
+	// ErrInvalidUsernameEncoding indicates invalid username encoding (invalid UTF-8 or SASLprep failed)
+	ErrInvalidUsernameEncoding = "e=invalid-username-encoding"
+
+	// ErrNoResources indicates the server is out of resources
+	ErrNoResources = "e=no-resources"
+
+	// ErrOtherError is a catch-all for unspecified errors. The server may substitute
+	// the real reason with this error to prevent information disclosure.
+	ErrOtherError = "e=other-error"
+)
+
 func defaultNonceGenerator() string {
 	raw := make([]byte, 24)
 	nonce := make([]byte, base64.StdEncoding.EncodedLen(len(raw)))
-	rand.Read(raw)
+	_, _ = rand.Read(raw)
 	base64.StdEncoding.Encode(nonce, raw)
 	return string(nonce)
 }
 
 func encodeName(s string) string {
 	return strings.Replace(strings.Replace(s, "=", "=3D", -1), ",", "=2C", -1)
-}
-
-func decodeName(s string) (string, error) {
-	// TODO Check for = not followed by 2C or 3D
-	return strings.Replace(strings.Replace(s, "=2C", ",", -1), "=3D", "=", -1), nil
 }
 
 func computeHash(hg HashGeneratorFcn, b []byte) []byte {
@@ -87,11 +123,13 @@ func computeHMAC(hg HashGeneratorFcn, key, data []byte) []byte {
 	return mac.Sum(nil)
 }
 
-func xorBytes(a, b []byte) []byte {
-	// TODO check a & b are same length, or just xor to smallest
+func xorBytes(a, b []byte) ([]byte, error) {
+	if len(a) != len(b) {
+		return nil, errors.New("internal error: xorBytes arguments must have equal length")
+	}
 	xor := make([]byte, len(a))
 	for i := range a {
 		xor[i] = a[i] ^ b[i]
 	}
-	return xor
+	return xor, nil
 }

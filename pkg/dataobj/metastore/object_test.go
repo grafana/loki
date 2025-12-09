@@ -65,7 +65,7 @@ var (
 
 // Similar to store_test.go -- we need a populated dataobj/builder/metastore to test labels and values
 type testDataBuilder struct {
-	t      *testing.T
+	t      testing.TB
 	bucket objstore.Bucket
 
 	builder  *logsobj.Builder
@@ -216,7 +216,7 @@ func TestValuesEmptyMatcher(t *testing.T) {
 func TestSectionsForStreamMatchers(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), tenantID)
 
-	builder, err := indexobj.NewBuilder(indexobj.BuilderConfig{
+	builder, err := indexobj.NewBuilder(logsobj.BuilderBaseConfig{
 		TargetPageSize:          1024 * 1024,
 		TargetObjectSize:        10 * 1024 * 1024,
 		TargetSectionSize:       128,
@@ -363,7 +363,7 @@ func TestSectionsForStreamMatchers(t *testing.T) {
 func TestSectionsForPredicateMatchers(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), tenantID)
 
-	builder, err := indexobj.NewBuilder(indexobj.BuilderConfig{
+	builder, err := indexobj.NewBuilder(logsobj.BuilderBaseConfig{
 		TargetPageSize:          1024 * 1024,
 		TargetObjectSize:        10 * 1024 * 1024,
 		TargetSectionSize:       128,
@@ -499,15 +499,17 @@ func queryMetastore(t *testing.T, tenant string, mfunc func(context.Context, tim
 	mfunc(ctx, start, end, mstore)
 }
 
-func newTestDataBuilder(t *testing.T) *testDataBuilder {
+func newTestDataBuilder(t testing.TB) *testDataBuilder {
 	bucket := objstore.NewInMemBucket()
 
 	builder, err := logsobj.NewBuilder(logsobj.BuilderConfig{
-		TargetPageSize:          1024 * 1024,      // 1MB
-		TargetObjectSize:        10 * 1024 * 1024, // 10MB
-		TargetSectionSize:       1024 * 1024,      // 1MB
-		BufferSize:              1024 * 1024,      // 1MB
-		SectionStripeMergeLimit: 2,
+		BuilderBaseConfig: logsobj.BuilderBaseConfig{
+			TargetPageSize:          1024 * 1024,      // 1MB
+			TargetObjectSize:        10 * 1024 * 1024, // 10MB
+			TargetSectionSize:       1024 * 1024,      // 1MB
+			BufferSize:              1024 * 1024,      // 1MB
+			SectionStripeMergeLimit: 2,
+		},
 	}, nil)
 	require.NoError(t, err)
 

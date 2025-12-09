@@ -340,7 +340,7 @@ func (c *compactedIndex) IndexChunk(chunkRef logproto.ChunkRef, lbls labels.Labe
 
 	// TSDB doesnt need the __name__="log" convention the old chunk store index used.
 	b := labels.NewBuilder(lbls)
-	b.Del(labels.MetricName)
+	b.Del(model.MetricNameLabel)
 	ls := b.Labels().String()
 
 	c.indexChunks[ls] = append(c.indexChunks[ls], tsdbindex.ChunkMeta{

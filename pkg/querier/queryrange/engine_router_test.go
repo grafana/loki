@@ -3,6 +3,7 @@ package queryrange
 import (
 	"context"
 	"fmt"
+	"sort"
 	"testing"
 	"time"
 
@@ -118,9 +119,16 @@ func TestEngineRouter_split(t *testing.T) {
 			splitter := &engineRouter{forMetricQuery: tt.forMetricQuery}
 			splits := splitter.splitOverlapping(baseReq.WithStartEnd(tt.start, tt.end), v2Start, v2End)
 
-			var (
-				gotV1 []queryrangebase.Request
-			)
+			// Sort the splits by start time to ensure the splits are in the correct order.
+			sort.Slice(splits, func(i, j int) bool {
+				return splits[i].req.GetStart().Before(splits[j].req.GetStart())
+			})
+
+			// Check the splits respect the original query's start and end times.
+			require.Equal(t, tt.start, splits[0].req.GetStart())
+			require.Equal(t, tt.end, splits[len(splits)-1].req.GetEnd())
+
+			var gotV1 []queryrangebase.Request
 			for _, split := range splits {
 				if split.isV2Engine {
 					if tt.expectedV2Req != nil {
@@ -170,13 +178,13 @@ func TestEngineRouter_stepAlignment(t *testing.T) {
 			forMetricQuery: true,
 			expectedV1Reqs: []queryrangebase.Request{
 				buildReq(
-					now.Add(-3*24*time.Hour).Truncate(time.Second),                   // start of query is rounded down
+					now.Add(-3*24*time.Hour),
 					now.Add(-2*24*time.Hour).Truncate(time.Second).Add(-time.Second), // v2 start rounded down, minus step gap
 					1000,
 				),
 				buildReq(
 					now.Add(-2*time.Hour).Truncate(time.Second).Add(time.Second), // v2 end is rounded up
-					now.Add(-time.Hour).Truncate(time.Second).Add(time.Second),   // end is rounded up
+					now.Add(-time.Hour),
 					1000,
 				),
 			},
@@ -192,13 +200,13 @@ func TestEngineRouter_stepAlignment(t *testing.T) {
 			forMetricQuery: false, // no gaps between splits for log queries
 			expectedV1Reqs: []queryrangebase.Request{
 				buildReq(
-					now.Add(-3*24*time.Hour).Truncate(time.Second), // start of query is rounded down
+					now.Add(-3*24*time.Hour),
 					now.Add(-2*24*time.Hour).Truncate(time.Second), // v2 start rounded down, no step gap
 					1000,
 				),
 				buildReq(
 					now.Add(-2*time.Hour).Truncate(time.Second).Add(time.Second), // v2 end is rounded up
-					now.Add(-time.Hour).Truncate(time.Second).Add(time.Second),   // end is rounded up
+					now.Add(-time.Hour),
 					1000,
 				),
 			},
@@ -214,13 +222,13 @@ func TestEngineRouter_stepAlignment(t *testing.T) {
 			forMetricQuery: true,
 			expectedV1Reqs: []queryrangebase.Request{
 				buildReq(
-					now.Add(-3*24*time.Hour).Truncate(3*time.Second),
+					now.Add(-3*24*time.Hour),
 					now.Add(-2*24*time.Hour).Truncate(3*time.Second).Add(-3*time.Second), // rounded down, minus step gap
 					3000,
 				),
 				buildReq(
 					now.Add(-2*time.Hour).Truncate(3*time.Second).Add(3*time.Second),
-					now.Add(-time.Hour).Truncate(3*time.Second).Add(3*time.Second),
+					now.Add(-time.Hour),
 					3000,
 				),
 			},
@@ -237,9 +245,15 @@ func TestEngineRouter_stepAlignment(t *testing.T) {
 			splitter := &engineRouter{forMetricQuery: tt.forMetricQuery}
 			splits := splitter.splitOverlapping(tt.req, v2Start, v2End)
 
-			var (
-				gotV1 []queryrangebase.Request
-			)
+			sort.Slice(splits, func(i, j int) bool {
+				return splits[i].req.GetStart().Before(splits[j].req.GetStart())
+			})
+
+			// Check the splits respect the original query's start and end times.
+			require.Equal(t, tt.req.GetStart(), splits[0].req.GetStart())
+			require.Equal(t, tt.req.GetEnd(), splits[len(splits)-1].req.GetEnd())
+
+			var gotV1 []queryrangebase.Request
 			for _, split := range splits {
 				if split.isV2Engine {
 					if tt.expectedV2Req != nil {
@@ -295,7 +309,7 @@ func Test_engineRouter_Do(t *testing.T) {
 		Handler:  v2EngineHandler,
 	}
 
-	router := newEngineRouterMiddleware(
+	router := NewEngineRouterMiddleware(
 		routerConfig,
 		[]queryrangebase.Middleware{newEntrySuffixTestMiddleware(" [v1-chain-processed]")},
 		DefaultCodec,
