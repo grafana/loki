@@ -150,7 +150,6 @@ func (h *FanOutHandler) Do(ctx context.Context, req queryrangebase.Request) (que
 				h.metrics.raceWins.WithLabelValues(
 					result.backend.name,
 					h.routeName,
-					issuer,
 				).Inc()
 
 				// Spawn goroutine to collect remaining responses

@@ -75,7 +75,7 @@ func NewProxyMetrics(registerer prometheus.Registerer) *ProxyMetrics {
 			Namespace: "loki_querytee",
 			Name:      "race_wins_total",
 			Help:      "Total number of times each backend won the race (when racing is enabled).",
-		}, []string{"backend", "route", "issuer"}),
+		}, []string{"backend", "route"}),
 	}
 
 	return m
