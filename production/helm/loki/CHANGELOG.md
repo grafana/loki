@@ -21,6 +21,10 @@ Entries should include a reference to the pull request that introduced the chang
 - [BUGFIX] Don't fail for missing bucket name, if minio is enabled. [#19745](https://github.com/grafana/loki/pull/19745)
 - [BUGFIX] Add startupProbe to read pod [#19708](https://github.com/grafana/loki/pull/19708)
 
+## 6.46.1
+
+- [BUGFIX] Make the loki-sc-rules sidecar container compatible with the most recent versions of k8s-sidecar. [#20164](https://github.com/grafana/loki/pull/20164)
+
 ## 6.46.0
 
 - [CHANGE] `nameOverride` now passed through Helm template function. [#19590](https://github.com/grafana/loki/pull/19590)
