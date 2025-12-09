@@ -3,6 +3,7 @@ package executor
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"unsafe"
 
 	"github.com/apache/arrow-go/v18/arrow"
@@ -47,13 +48,13 @@ func parseFn(op types.VariadicOp) VariadicFunction {
 			if err != nil {
 				panic(err)
 			}
-			headers, parsedColumns = buildLinefmtColumns(input, sourceCol, requestedKeys, lineFmtTemplate)
+			headers, parsedColumns = buildLinefmtColumns(input, sourceCol, lineFmtTemplate)
 		case types.VariadicOpParseLabelfmt:
 			sourceCol, requestedKeys, labelFmts, err = extractLabelFmtParameters(args)
 			if err != nil {
 				panic(err)
 			}
-			headers, parsedColumns = buildLabelfmtColumns(input, sourceCol, requestedKeys, labelFmts)
+			headers, parsedColumns = buildLabelfmtColumns(input, sourceCol, labelFmts)
 		default:
 			return nil, fmt.Errorf("unsupported parser kind: %v", op)
 		}
@@ -62,8 +63,14 @@ func parseFn(op types.VariadicOp) VariadicFunction {
 		newFields := make([]arrow.Field, 0, len(headers))
 		for _, header := range headers {
 			ct := types.ColumnTypeParsed
+			if op == types.VariadicOpParseLabelfmt {
+				ct = types.ColumnTypeLabel
+			}
 			if header == semconv.ColumnIdentError.ShortName() || header == semconv.ColumnIdentErrorDetails.ShortName() {
 				ct = types.ColumnTypeGenerated
+			}
+			if header == semconv.ColumnIdentMessage.ShortName() {
+				ct = types.ColumnTypeBuiltin
 			}
 			ident := semconv.NewIdentifier(header, ct, types.Loki.String)
 			newFields = append(newFields, semconv.FieldFromIdent(ident, true))
@@ -81,9 +88,9 @@ func extractLineFmtParameters(args []arrow.Array) (*array.String, []string, stri
 	if len(args) != 3 {
 		return nil, nil, "", fmt.Errorf("parse function expected 3 arguments, got %d", len(args))
 	}
-	var sourceColArr, requestedKeysArr, templateArr arrow.Array
+	var sourceColArr, templateArr arrow.Array
 	sourceColArr = args[0]
-	requestedKeysArr = args[1]
+	// requestedKeysArr = args[1] not needed
 	templateArr = args[2]
 
 	if sourceColArr == nil {
@@ -95,22 +102,6 @@ func extractLineFmtParameters(args []arrow.Array) (*array.String, []string, stri
 		return nil, nil, "", fmt.Errorf("parse can only operate on string column types, got %T", sourceColArr)
 	}
 
-	var requestedKeys []string
-
-	// Requested keys will be the same for all rows, so we only need the first one
-	reqKeysIdx := 0
-	if requestedKeysArr != nil && !requestedKeysArr.IsNull(reqKeysIdx) {
-		reqKeysList, ok := requestedKeysArr.(*array.List)
-		if !ok {
-			return nil, nil, "", fmt.Errorf("requested keys must be a list of string arrays, got %T", requestedKeysArr)
-		}
-
-		firstRow, ok := util.ArrayListValue(reqKeysList, reqKeysIdx).([]string)
-		if !ok {
-			return nil, nil, "", fmt.Errorf("requested keys must be a list of string arrays, got a list of %T", firstRow)
-		}
-		requestedKeys = append(requestedKeys, firstRow...)
-	}
 	stringArr, ok := templateArr.(*array.String)
 	if !ok {
 		return nil, nil, "", fmt.Errorf("template must be a string, got %T", templateArr)
@@ -121,7 +112,7 @@ func extractLineFmtParameters(args []arrow.Array) (*array.String, []string, stri
 	if (stringArr != nil) && (stringArr.Len() > 0) {
 		template = stringArr.Value(templateIdx)
 	}
-	return sourceCol, requestedKeys, template, nil
+	return sourceCol, nil, template, nil
 
 }
 
@@ -129,9 +120,9 @@ func extractLabelFmtParameters(args []arrow.Array) (*array.String, []string, []l
 	if len(args) != 3 {
 		return nil, nil, nil, fmt.Errorf("parse function expected 3 arguments, got %d", len(args))
 	}
-	var sourceColArr, requestedKeysArr, labelFmtArray arrow.Array
+	var sourceColArr, labelFmtArray arrow.Array
 	sourceColArr = args[0]
-	requestedKeysArr = args[1]
+	// requestedKeysArr = args[1] not needed
 	labelFmtArray = args[2]
 
 	if sourceColArr == nil {
@@ -143,49 +134,32 @@ func extractLabelFmtParameters(args []arrow.Array) (*array.String, []string, []l
 		return nil, nil, nil, fmt.Errorf("parse can only operate on string column types, got %T", sourceColArr)
 	}
 
-	var requestedKeys []string
-
-	// Requested keys will be the same for all rows, so we only need the first one
-	reqKeysIdx := 0
-	if requestedKeysArr != nil && !requestedKeysArr.IsNull(reqKeysIdx) {
-		reqKeysList, ok := requestedKeysArr.(*array.List)
-		if !ok {
-			return nil, nil, nil, fmt.Errorf("requested keys must be a list of string arrays, got %T", requestedKeysArr)
-		}
-
-		firstRow, ok := util.ArrayListValue(reqKeysList, reqKeysIdx).([]string)
-		if !ok {
-			return nil, nil, nil, fmt.Errorf("requested keys must be a list of string arrays, got a list of %T", firstRow)
-		}
-		requestedKeys = append(requestedKeys, firstRow...)
-	}
-	structArr, ok := labelFmtArray.(*array.Struct)
+	listArr, ok := labelFmtArray.(*array.List)
 	if !ok {
 		return nil, nil, nil, fmt.Errorf("labelfmts array must be of type struct, got %T", labelFmtArray)
 	}
 	var labelFmts []log.LabelFmt
+	listValues := listArr.ListValues()
+	switch listValues := listValues.(type) {
+	case *array.Struct:
+		if sourceCol.Len() == 0 {
+			return sourceCol, nil, []log.LabelFmt{}, nil
+		}
+		// listValues will repeat one copy for each line of input; we want to only grab one copy
+		for i := 0; i < (listValues.Len() / sourceCol.Len()); i++ {
+			name := listValues.Field(0).ValueStr(i)
+			val := listValues.Field(1).ValueStr(i)
+			rename, err := strconv.ParseBool(listValues.Field(2).ValueStr(i))
+			if err != nil {
+				return nil, nil, nil, fmt.Errorf("wrong format for labelFmt value rename: error %v", err)
+			}
+			labelFmts = append(labelFmts, log.LabelFmt{Name: name, Value: val, Rename: rename})
+		}
+	default:
+		return nil, nil, nil, fmt.Errorf("unknown labelfmt type %T; expected *array.Struct", listValues)
+	}
 
-	nameArr, ok := structArr.Field(0).(*array.String)
-	if !ok {
-		return nil, nil, nil, fmt.Errorf("labelfmt name field must be of type string, got %T", nameArr)
-	}
-	valArr, ok := structArr.Field(1).(*array.String)
-	if !ok {
-		return nil, nil, nil, fmt.Errorf("labelfmt value field must be of type string, got %T", nameArr)
-	}
-	renameArr, ok := structArr.Field(2).(*array.Boolean)
-	if !ok {
-		return nil, nil, nil, fmt.Errorf("labelfmt value field must be of type string, got %T", nameArr)
-	}
-
-	for i := 0; i < nameArr.Len(); i++ {
-		name := nameArr.Value(i)
-		val := valArr.Value(i)
-		rename := renameArr.Value(i)
-		labelFmts = append(labelFmts, log.LabelFmt{Name: name, Value: val, Rename: rename})
-	}
-
-	return sourceCol, requestedKeys, labelFmts, nil
+	return sourceCol, nil, labelFmts, nil
 
 }
 

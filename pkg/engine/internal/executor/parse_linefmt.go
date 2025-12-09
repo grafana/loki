@@ -9,7 +9,6 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
-	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/logql/log"
@@ -18,27 +17,19 @@ import (
 // parseFunc will be called once for each line, so we need to know which line of `input` corresponds to `line`
 // also, sometimes input is a batch of 0 lines but we have a "line" string anyway?
 // TODO may need to get rid of requestedKeys; they're not doing anything right now
-func buildLinefmtColumns(input arrow.RecordBatch, sourceCol *array.String, requestedKeys []string, lineFmt string) ([]string, []arrow.Array) {
+func buildLinefmtColumns(input arrow.RecordBatch, sourceCol *array.String, lineFmt string) ([]string, []arrow.Array) {
 	parseFunc := func(row arrow.RecordBatch, line string) (map[string]string, error) {
-		return tokenizeLinefmt(row, line, requestedKeys, lineFmt)
+		return tokenizeLinefmt(row, line, lineFmt)
 	}
-	return buildColumns(input, sourceCol, requestedKeys, parseFunc, types.LabelfmtParserErrorType)
+	return buildColumns(input, sourceCol, nil, parseFunc, types.LabelfmtParserErrorType)
 }
 
 // tokenizeLinefmt parses linefmt input using the standard decoder
 // Returns a map of key-value pairs with first-wins semantics for duplicates
 // If requestedKeys is provided, the result will be filtered to only include those keys
-func tokenizeLinefmt(input arrow.RecordBatch, line string, _ []string, lineFmt string) (map[string]string, error) {
+func tokenizeLinefmt(input arrow.RecordBatch, line string, lineFmt string) (map[string]string, error) {
 	result := make(map[string]string)
 
-	// var requestedKeyLookup map[string]struct{}
-	// if len(requestedKeys) > 0 {
-	// 	requestedKeyLookup = make(map[string]struct{}, len(requestedKeys))
-	// 	for _, key := range requestedKeys {
-	// 		requestedKeyLookup[key] = struct{}{}
-	// 	}
-	// }
-	// fmt.Println("Requested keys: ", requestedKeys)
 	formatter, err := NewFormatter(lineFmt)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create line formatter with template %v", lineFmt)
@@ -115,12 +106,6 @@ func (lf *LineFormatter) Process(line string, input arrow.RecordBatch, result ma
 			return "", true
 		}
 		result[types.ColumnNameBuiltinMessage] = input.Column(simpleKeyIdx).ValueStr(0)
-		builder := array.NewBuilder(memory.DefaultAllocator, types.Arrow.String)
-		builder.AppendValueFromString(input.Column(simpleKeyIdx).ValueStr(0))
-		_, err := input.SetColumn(messageIdx, builder.NewArray())
-		if err != nil {
-			return "", false
-		}
 		return input.Column(simpleKeyIdx).ValueStr(0), true
 	}
 	var timestampIdx = -1
@@ -152,15 +137,5 @@ func (lf *LineFormatter) Process(line string, input arrow.RecordBatch, result ma
 	}
 	result[types.ColumnNameBuiltinMessage] = lf.buf.String()
 
-	builder := array.NewBuilder(memory.DefaultAllocator, types.Arrow.String)
-	builder.AppendValueFromString("AAAAAAA")
-	//builder.AppendValueFromString(result[types.ColumnNameBuiltinMessage])
-	input, err = input.SetColumn(messageIdx, builder.NewArray())
-	if err != nil {
-		return "", false
-	}
-
 	return lf.buf.String(), true
 }
-
-var errTemplateFormat = "TemplateFormatErr"

@@ -74,12 +74,13 @@ func NewScalar(value types.Literal, rows int) arrow.Array {
 					valueBuilder.Append(true)
 				}
 			}
-		}
-		valueBuilder := builder.ValueBuilder().(*array.StringBuilder)
-		for range rows {
-			builder.Append(true)
-			for _, val := range v {
-				valueBuilder.Append(val)
+		} else {
+			valueBuilder := builder.ValueBuilder().(*array.StringBuilder)
+			for range rows {
+				builder.Append(true)
+				for _, val := range v {
+					valueBuilder.Append(val)
+				}
 			}
 		}
 	}

@@ -127,16 +127,10 @@ func buildPlanForLogQuery(
 			hasLinefmtParser = true
 			linefmtTemplate = NewLiteral(e.Value)
 			return true
-			// val := convertLineFormat(e.Value)
-			// predicates = append(predicates, val)
-			// err = unimplementedFeature("line_format")
-			// return false // do not traverse children
 		case *syntax.LabelFmtExpr:
 			hasLabelfmtParser = true
 			labelfmtTemplates = NewLiteral(e.Formats)
 			return true
-			// err = unimplementedFeature("label_format")
-			// return false // do not traverse children
 		case *syntax.KeepLabelsExpr:
 			err = unimplementedFeature("keep")
 			return false // do not traverse children
@@ -209,6 +203,10 @@ func buildPlanForLogQuery(
 	}
 	if hasLabelfmtParser {
 		builder = builder.Format(types.VariadicOpParseLabelfmt, labelfmtTemplates)
+		replacedLabels := getReplacedLabels(labelfmtTemplates)
+		if len(replacedLabels) > 0 {
+			builder = builder.ProjectDrop(replacedLabels...)
+		}
 	}
 	for _, value := range postParsePredicates {
 		builder = builder.Select(value)
@@ -537,6 +535,21 @@ func convertLineMatchType(op log.LineMatchType) types.BinaryOp {
 	default:
 		panic("invalid match type")
 	}
+}
+
+func getReplacedLabels(labels Value) []Value {
+	var replacedLabels = []Value{}
+	if fmtLabels, ok := labels.(*Literal).inner.(types.LabelFmtListLiteral); ok {
+		for _, label := range fmtLabels {
+			if label.Rename {
+				labelVal := NewColumnRef(label.Value, types.ColumnTypeLabel)
+				replacedLabels = append(replacedLabels, labelVal)
+			}
+		}
+	} else {
+		panic("invalid data type for label_format arguments; expected log.LabelFmt")
+	}
+	return replacedLabels
 }
 
 func timestampColumnRef() *ColumnRef {

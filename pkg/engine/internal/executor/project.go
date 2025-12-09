@@ -157,6 +157,10 @@ func newExpandPipeline(expr physical.Expression, evaluator *expressionEvaluator,
 				return nil, fmt.Errorf("unexpected type returned from evaluation, expected *arrow.StructType, got %T", arrCasted.DataType())
 			}
 			for i := range arrCasted.NumField() {
+				// If a field is included in the newly returned set of values, overwrite it by removing from the list of existing fields
+				if idx := idxOf(outputFields, structSchema.Field(i)); idx >= 0 {
+					outputFields, outputCols = removeIdx(outputFields, outputCols, idx)
+				}
 				outputCols = append(outputCols, arrCasted.Field(i))
 				outputFields = append(outputFields, structSchema.Field(i))
 			}
@@ -171,4 +175,19 @@ func newExpandPipeline(expr physical.Expression, evaluator *expressionEvaluator,
 		outputSchema := arrow.NewSchema(outputFields, &metadata)
 		return array.NewRecordBatch(outputSchema, outputCols, batch.NumRows()), nil
 	}, region, input), nil
+}
+
+func idxOf(set []arrow.Field, entry arrow.Field) int {
+	for i := 0; i < len(set); i++ {
+		if set[i].Name == entry.Name && set[i].Type == entry.Type {
+			return i
+		}
+	}
+	return -1
+}
+
+func removeIdx(fields []arrow.Field, values []arrow.Array, idx int) ([]arrow.Field, []arrow.Array) {
+	outFields := append(fields[:idx], fields[idx+1:]...)
+	outValues := append(values[:idx], values[idx+1:]...)
+	return outFields, outValues
 }
