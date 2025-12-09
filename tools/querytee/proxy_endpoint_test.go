@@ -694,7 +694,7 @@ type mockGoldfishStorage struct {
 	results []goldfish.ComparisonResult
 }
 
-func (m *mockGoldfishStorage) StoreQuerySample(_ context.Context, sample *goldfish.QuerySample) error {
+func (m *mockGoldfishStorage) StoreQuerySample(_ context.Context, sample *goldfish.QuerySample, _ *goldfish.ComparisonResult) error {
 	m.samples = append(m.samples, *sample)
 	return nil
 }
