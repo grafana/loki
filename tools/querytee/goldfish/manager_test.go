@@ -628,7 +628,7 @@ type mockResponseComparator struct {
 	match bool
 }
 
-func (m *mockResponseComparator) Compare(expectedBody, actualBody []byte, timestamp time.Time) (*comparator.ComparisonSummary, error) {
+func (m *mockResponseComparator) Compare(_, _ []byte, _ time.Time) (*comparator.ComparisonSummary, error) {
 	if m.match {
 		return &comparator.ComparisonSummary{}, nil
 	}
