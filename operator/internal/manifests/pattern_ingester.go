@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"path"
 
-	"github.com/ViaQ/logerr/v2/log"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
@@ -19,8 +18,6 @@ import (
 
 func BuildPatternIngester(opts Options) ([]client.Object, error) {
 	deployment := NewPatternIngesterDeployment(opts)
-	logger := log.NewLogger("pattern-ingester")
-	logger.Info(deployment.Name, deployment.Namespace)
 	if opts.Gates.HTTPEncryption {
 		if err := configurePatternIngesterHTTPServicePKI(deployment, opts); err != nil {
 			return nil, err
