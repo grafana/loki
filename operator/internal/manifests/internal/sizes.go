@@ -15,24 +15,24 @@ type ComponentResources struct {
 	Ruler        ResourceRequirements
 	WALStorage   ResourceRequirements
 	// these two don't need a PVCSize
-	Querier       corev1.ResourceRequirements
-	Distributor   corev1.ResourceRequirements
-	QueryFrontend corev1.ResourceRequirements
-	Gateway       corev1.ResourceRequirements
+	Querier         corev1.ResourceRequirements
+	Distributor     corev1.ResourceRequirements
+	QueryFrontend   corev1.ResourceRequirements
+	Gateway         corev1.ResourceRequirements
 	PatternIngester corev1.ResourceRequirements
 }
 
 func (c ComponentResources) DeepCopy() ComponentResources {
 	return ComponentResources{
-		IndexGateway:  	 *c.IndexGateway.DeepCopy(),
-		Ingester:      	 *c.Ingester.DeepCopy(),
-		Compactor:     	 *c.Compactor.DeepCopy(),
-		Ruler:         	 *c.Ruler.DeepCopy(),
-		WALStorage:    	 *c.WALStorage.DeepCopy(),
-		Querier:      	 *c.Querier.DeepCopy(),
-		Distributor:   	 *c.Distributor.DeepCopy(),
-		QueryFrontend: 	 *c.QueryFrontend.DeepCopy(),
-		Gateway:      	 *c.Gateway.DeepCopy(),
+		IndexGateway:    *c.IndexGateway.DeepCopy(),
+		Ingester:        *c.Ingester.DeepCopy(),
+		Compactor:       *c.Compactor.DeepCopy(),
+		Ruler:           *c.Ruler.DeepCopy(),
+		WALStorage:      *c.WALStorage.DeepCopy(),
+		Querier:         *c.Querier.DeepCopy(),
+		Distributor:     *c.Distributor.DeepCopy(),
+		QueryFrontend:   *c.QueryFrontend.DeepCopy(),
+		Gateway:         *c.Gateway.DeepCopy(),
 		PatternIngester: *c.PatternIngester.DeepCopy(),
 	}
 }

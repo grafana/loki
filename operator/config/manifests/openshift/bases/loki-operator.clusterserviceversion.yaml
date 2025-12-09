@@ -591,14 +591,14 @@ spec:
         displayName: Network Policy Rule-Set
         path: networkPolicies.ruleSet
         x-descriptors:
-        - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
+        - urn:alm:descriptor:com.tectonic.ui:text
       - description: PatternIngester defines the pattern-ingester configuration.
         displayName: Pattern-Ingester
-        path: patternIngesterSpec
+        path: patternIngester
       - description: Enabled defines a flag to enable/disable the pattern-ingester
           component
         displayName: Enable
-        path: patternIngesterSpec.enabled
+        path: patternIngester.enabled
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
       - description: Proxy defines the spec for the object proxy to configure cluster
@@ -1054,6 +1054,12 @@ spec:
           statefulset
         displayName: IndexGateway
         path: components.indexGateway
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podStatuses
+      - description: PatternIngester is a map to the per pod status of the lokistack
+          pattern ingester deployment.
+        displayName: Pattern Ingester
+        path: components.patternIngester
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:podStatuses
       - description: Ruler is a map to the per pod status of the lokistack ruler statefulset.

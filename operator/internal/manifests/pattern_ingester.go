@@ -5,7 +5,6 @@ import (
 	"path"
 
 	"github.com/ViaQ/logerr/v2/log"
-	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
@@ -14,6 +13,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 )
 
 func BuildPatternIngester(opts Options) ([]client.Object, error) {
@@ -66,12 +67,11 @@ func BuildPatternIngester(opts Options) ([]client.Object, error) {
 }
 
 func NewPatternIngesterDeployment(opts Options) *appsv1.Deployment {
-	logger := log.NewLogger("pattern-ingester")
 	l := ComponentLabels(LabelPatternIngesterComponent, opts.Name)
 	a := commonAnnotations(opts)
 	podSpec := corev1.PodSpec{
 		ServiceAccountName: opts.Name,
-		Affinity: configureAffinity(LabelPatternIngesterComponent, opts.Name, opts.Gates.DefaultNodeAffinity, opts.Stack.Template.PatternIngester),
+		Affinity:           configureAffinity(LabelPatternIngesterComponent, opts.Name, opts.Gates.DefaultNodeAffinity, opts.Stack.Template.PatternIngester),
 		Volumes: []corev1.Volume{
 			{
 				Name: configVolumeName,
@@ -88,9 +88,9 @@ func NewPatternIngesterDeployment(opts Options) *appsv1.Deployment {
 		Containers: []corev1.Container{
 			{
 				Image: opts.Image,
-				Name: "loki-pattern-ingester",
+				Name:  "loki-pattern-ingester",
 				Resources: corev1.ResourceRequirements{
-					Limits: opts.ResourceRequirements.PatternIngester.Limits,
+					Limits:   opts.ResourceRequirements.PatternIngester.Limits,
 					Requests: opts.ResourceRequirements.PatternIngester.Requests,
 				},
 				Args: []string{
@@ -136,8 +136,6 @@ func NewPatternIngesterDeployment(opts Options) *appsv1.Deployment {
 		podSpec.Tolerations = opts.Stack.Template.PatternIngester.Tolerations
 		podSpec.NodeSelector = opts.Stack.Template.PatternIngester.NodeSelector
 	}
-
-	logger.Info("returning Pattern ingester deployment!!")
 
 	return &appsv1.Deployment{
 		TypeMeta: metav1.TypeMeta{
@@ -226,7 +224,7 @@ func NewPatternIngesterHTTPService(opts Options) *corev1.Service {
 }
 
 func configurePatternIngesterHTTPServicePKI(deployment *appsv1.Deployment, opts Options) error {
-	serviceName := serviceNameIngesterHTTP(opts.Name)
+	serviceName := serviceNamePatternIngesterHTTP(opts.Name)
 	return configureHTTPServicePKI(&deployment.Spec.Template.Spec, serviceName)
 }
 
@@ -234,7 +232,6 @@ func configurePatternIngesterGRPCServicePKI(deployment *appsv1.Deployment, opts 
 	serviceName := serviceNamePatternIngesterGRPC(opts.Name)
 	return configureGRPCServicePKI(&deployment.Spec.Template.Spec, serviceName)
 }
-
 
 // newPatternIngesterPodDisruptionBudget returns a PodDisruptionBudget for the LokiStack
 // PatternIngester pods.

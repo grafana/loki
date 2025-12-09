@@ -573,6 +573,15 @@ spec:
         path: networkPolicies.ruleSet
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:text
+      - description: PatternIngester defines the pattern-ingester configuration.
+        displayName: Pattern-Ingester
+        path: patternIngesterSpec
+      - description: Enabled defines a flag to enable/disable the pattern-ingester
+          component
+        displayName: Enable
+        path: patternIngesterSpec.enabled
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
       - description: Proxy defines the spec for the object proxy to configure cluster
           proxy information.
         displayName: Cluster Proxy
@@ -771,6 +780,21 @@ spec:
       - description: Replicas defines the number of replica pods of the component.
         displayName: Replicas
         path: template.ingester.replicas
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:hidden
+      - description: PatternIngester defines the pattern-ingester component spec.
+        displayName: Pattern-Ingester pods
+        path: template.patternIngester
+      - description: |-
+          PodAntiAffinity defines the pod anti affinity scheduling rules to schedule pods
+          of a component.
+        displayName: PodAntiAffinity
+        path: template.patternIngester.podAntiAffinity
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podAntiAffinity
+      - description: Replicas defines the number of replica pods of the component.
+        displayName: Replicas
+        path: template.patternIngester.replicas
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:hidden
       - description: Querier defines the querier component spec.

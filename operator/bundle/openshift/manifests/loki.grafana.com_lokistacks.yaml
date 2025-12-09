@@ -646,7 +646,7 @@ spec:
                 required:
                 - ruleSet
                 type: object
-              patternIngesterSpec:
+              patternIngester:
                 description: PatternIngester defines the pattern-ingester configuration.
                 properties:
                   enabled:
@@ -4333,6 +4333,14 @@ spec:
                       type: array
                     description: Ingester is a map to the per pod status of the ingester
                       statefulset
+                    type: object
+                  patternIngester:
+                    additionalProperties:
+                      items:
+                        type: string
+                      type: array
+                    description: PatternIngester is a map to the per pod status of
+                      the lokistack pattern ingester deployment.
                     type: object
                   querier:
                     additionalProperties:

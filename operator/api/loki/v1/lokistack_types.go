@@ -1099,7 +1099,7 @@ type RulesSpec struct {
 	NamespaceSelector *metav1.LabelSelector `json:"namespaceSelector,omitempty"`
 }
 
-type PatternIngesterSpec struct {
+type PatternIngester struct {
 	// Enabled defines a flag to enable/disable the pattern-ingester component
 	//
 	// +required
@@ -1107,6 +1107,7 @@ type PatternIngesterSpec struct {
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:booleanSwitch",displayName="Enable"
 	Enabled bool `json:"enabled"`
 }
+
 // LokiStackSpec defines the desired state of LokiStack
 type LokiStackSpec struct {
 	// ManagementState defines if the CR should be managed by the operator or not.
@@ -1211,7 +1212,7 @@ type LokiStackSpec struct {
 	// +optional
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Pattern-Ingester"
-	PatternIngesterSpec *PatternIngesterSpec `json:"patternIngesterSpec,omitempty"`
+	PatternIngester *PatternIngester `json:"patternIngester,omitempty"`
 }
 
 type ReplicationSpec struct {
@@ -1414,6 +1415,13 @@ type LokiStackComponentStatus struct {
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=status,xDescriptors="urn:alm:descriptor:com.tectonic.ui:podStatuses",displayName="Ruler",order=6
 	Ruler PodStatusMap `json:"ruler,omitempty"`
+
+	// PatternIngester is a map to the per pod status of the lokistack pattern ingester deployment.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=status,xDescriptors="urn:alm:descriptor:com.tectonic.ui:podStatuses",displayName="Pattern Ingester",order=6
+	PatternIngester PodStatusMap `json:"patternIngester,omitempty"`
 }
 
 // CredentialMode represents the type of authentication used for accessing the object storage.

@@ -25,6 +25,7 @@ type Options struct {
 	Querier               Address
 	IndexGateway          Address
 	Ruler                 Ruler
+	PatternIngester       Address
 	StorageDirectory      string
 	MaxConcurrent         MaxConcurrent
 	WriteAheadLog         WriteAheadLog
@@ -302,11 +303,12 @@ type TLSServerNames struct {
 }
 
 type GRPCServerNames struct {
-	Compactor     string
-	IndexGateway  string
-	Ingester      string
-	QueryFrontend string
-	Ruler         string
+	Compactor       string
+	IndexGateway    string
+	Ingester        string
+	QueryFrontend   string
+	Ruler           string
+	PatternIngester string
 }
 
 type HTTPServerNames struct {
