@@ -220,7 +220,7 @@ It's that easy; you just created a new entry starting on the 20th.
 
 Loki manages retention through the Compactor when using TSDB or the BoltDB Shipper. When retention is enabled, the Compactor identifies data that falls outside of the configured retention period, removes the corresponding index entries, and deletes the underlying chunk objects asynchronously.
 
-For object storage backends (S3, GCS, Azure Blob) Loki no longer relies solely on external TTL or bucket lifecycle rules; these may still be used as an additional safeguard, but Loki itself performs retention-driven deletion when configured.
+For object storage backends (S3, GCS, Azure Blob) Loki no longer relies solely on external time to live (TTL) or bucket lifecycle rules; these may still be used as an additional safeguard, but Loki itself performs retention-driven deletion when configured.
 
 When using the filesystem chunk store, Loki does not delete data based on disk usage or free-space conditions. Deletion is determined only by the retention settings, and disk-full scenarios must be handled operationally outside of Loki.
 
