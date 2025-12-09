@@ -195,6 +195,15 @@ func NewProxy(
 		}
 	}
 
+	// Pre-initialize raceWins metric for all backend/route combinations
+	if cfg.EnableRace {
+		for _, backend := range p.backends {
+			for _, route := range p.readRoutes {
+				p.metrics.raceWins.WithLabelValues(backend.name, route.RouteName)
+			}
+		}
+	}
+
 	// Initialize Goldfish if enabled
 	if cfg.Goldfish.Enabled {
 		// Create storage backend
