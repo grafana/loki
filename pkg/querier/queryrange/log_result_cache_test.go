@@ -345,24 +345,27 @@ func Test_LogResultCacheDifferentRangeNonEmptyAndEmpty(t *testing.T) {
 	)
 
 	req1 := &LokiRequest{
-		StartTs: time.Unix(0, time.Minute.Nanoseconds()+30*time.Second.Nanoseconds()),
-		EndTs:   time.Unix(0, 2*time.Minute.Nanoseconds()-30*time.Second.Nanoseconds()),
+		StartTs: time.Unix(0, time.Minute.Nanoseconds()+30*time.Second.Nanoseconds()),   // 90s
+		EndTs:   time.Unix(0, 2*time.Minute.Nanoseconds()-30*time.Second.Nanoseconds()), // 90s
 		Limit:   entriesLimit,
 	}
 
 	req2 := &LokiRequest{
-		StartTs: time.Unix(0, time.Minute.Nanoseconds()),
-		EndTs:   time.Unix(0, 2*time.Minute.Nanoseconds()),
+		StartTs: time.Unix(0, time.Minute.Nanoseconds()),   // 60s
+		EndTs:   time.Unix(0, 2*time.Minute.Nanoseconds()), // 120s
 		Limit:   entriesLimit,
 	}
 
 	fake := newFakeResponse([]mockResponse{
+		// first request is empty
 		{
 			RequestResponse: queryrangebase.RequestResponse{
 				Request:  req1,
 				Response: emptyResponse(req1),
 			},
 		},
+		// First req2 call triggers two queries:
+		// 1. query for 60s to 90s --> empty response --> cache it
 		{
 			RequestResponse: queryrangebase.RequestResponse{
 				Request: &LokiRequest{
@@ -377,6 +380,7 @@ func Test_LogResultCacheDifferentRangeNonEmptyAndEmpty(t *testing.T) {
 				}),
 			},
 		},
+		// 2. query for 90s to 120s --> non-empty response --> DO NOT cache it
 		{
 			RequestResponse: queryrangebase.RequestResponse{
 				Request: &LokiRequest{
@@ -391,7 +395,8 @@ func Test_LogResultCacheDifferentRangeNonEmptyAndEmpty(t *testing.T) {
 				}, time.Unix(61, 0), time.Unix(61, 0), lblFooBar),
 			},
 		},
-		// we call it twice
+		// Second req2 call triggers one query because 60s to 90s is already cached (empty response)
+		// So we expect a request for 90s to 120s --> non-empty response --> DO NOT cache it
 		{
 			RequestResponse: queryrangebase.RequestResponse{
 				Request: &LokiRequest{

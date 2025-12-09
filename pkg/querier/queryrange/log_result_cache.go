@@ -204,7 +204,7 @@ func (l *logResultCache) Do(ctx context.Context, req queryrangebase.Request) (qu
 		}
 
 		// Cache key hit - empty result (backward compatible)
-		return l.handleEmptyResponseHit(ctx, cacheKey, responseCacheKey, &cachedRequest, lokiReq)
+		return l.handleEmptyResponseHit(ctx, cacheKey, responseCacheKey, &cachedRequest, lokiReq, storeNonEmptyEnabled)
 	}
 
 	// cache miss
@@ -287,7 +287,7 @@ func (l *logResultCache) handleMiss(ctx context.Context, cacheKey, responseCache
 	return resp, nil
 }
 
-func (l *logResultCache) handleEmptyResponseHit(ctx context.Context, cacheKey, responseCacheKey string, cachedRequest *LokiRequest, lokiReq *LokiRequest) (queryrangebase.Response, error) {
+func (l *logResultCache) handleEmptyResponseHit(ctx context.Context, cacheKey, responseCacheKey string, cachedRequest *LokiRequest, lokiReq *LokiRequest, storeNonEmptyEnabled bool) (queryrangebase.Response, error) {
 	l.metrics.CacheHit.Inc()
 	// we start with an empty response
 	result := emptyResponse(lokiReq)
@@ -391,7 +391,7 @@ func (l *logResultCache) handleEmptyResponseHit(ctx context.Context, cacheKey, r
 	// If the merged result is non-empty (e.g., endResp had data), update cache with marker and response cache key
 	// This allows future requests to treat it as a non-empty cached response
 	// If a future request's end matches no log lines, extractLokiResponse will handle returning an empty response
-	if !isEmpty(result) {
+	if !isEmpty(result) && storeNonEmptyEnabled {
 		newCachedRequest := lokiReq.WithStartEnd(lokiReq.GetStartTs(), lokiReq.GetEndTs()).(*LokiRequest)
 		l.updateCacheWithNonEmptyResponse(ctx, cacheKey, responseCacheKey, newCachedRequest, result)
 		return result, nil
@@ -420,12 +420,6 @@ func (l *logResultCache) handleEmptyResponseHit(ctx context.Context, cacheKey, r
 func (l *logResultCache) updateCacheWithNonEmptyResponse(ctx context.Context, cacheKey, responseCacheKey string, newCachedRequest *LokiRequest, newCachedResponse *LokiResponse) {
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
-		return
-	}
-
-	storeNonEmptyCapture := func(id string) bool { return l.limits.LogResultCacheStoreNonEmptyResponse(ctx, id) }
-	storeNonEmptyEnabled := validation.AllTruePerTenant(tenantIDs, storeNonEmptyCapture)
-	if !storeNonEmptyEnabled {
 		return
 	}
 
