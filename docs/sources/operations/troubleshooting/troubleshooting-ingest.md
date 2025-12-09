@@ -33,9 +33,7 @@ Rate limits protect Loki from being overwhelmed by excessive log volume. When ra
 
 **Error message:**
 
-```text
-ingestion rate limit exceeded for user <tenant> (limit: <limit> bytes/sec) while attempting to ingest '<lines>' lines totaling '<bytes>' bytes, reduce log volume or contact your Loki administrator to see if the limit can be increased
-```
+`ingestion rate limit exceeded for user <tenant> (limit: <limit> bytes/sec) while attempting to ingest <lines> lines totaling <bytes> bytes, reduce log volume or contact your Loki administrator to see if the limit can be increased`
 
 **Cause:**
 
@@ -86,9 +84,7 @@ The tenant has exceeded their configured ingestion rate limit. This is a global 
 
 **Error message:**
 
-```text
-Per stream rate limit exceeded (limit: <limit>/sec) while attempting to ingest for stream '<stream_labels>' totaling <bytes>, consider splitting a stream via additional labels or contact your Loki administrator to see if the limit can be increased
-```
+`Per stream rate limit exceeded (limit: <limit>/sec) while attempting to ingest for stream <stream_labels> totaling <bytes>, consider splitting a stream via additional labels or contact your Loki administrator to see if the limit can be increased`
 
 **Cause:**
 
@@ -140,9 +136,7 @@ A single stream (unique combination of labels) is sending data faster than the p
 
 **Error message:**
 
-```text
-maximum active stream limit exceeded when trying to create stream <stream_labels>, reduce the number of active streams (reduce labels or reduce label values), or contact your Loki administrator to see if the limit can be increased, user: '<tenant>'
-```
+`maximum active stream limit exceeded when trying to create stream <stream_labels>, reduce the number of active streams (reduce labels or reduce label values), or contact your Loki administrator to see if the limit can be increased, user: <tenant>`
 
 **Cause:**
 
@@ -199,9 +193,7 @@ Validation errors occur when log data doesn't meet Loki's requirements. These re
 
 **Error message:**
 
-```text
-max entry size '<max_size>' bytes exceeded for stream '<stream_labels>' while adding an entry with length '<entry_size>' bytes
-```
+`max entry size <max_size> bytes exceeded for stream <stream_labels> while adding an entry with length <entry_size> bytes`
 
 **Cause:**
 
@@ -253,9 +245,7 @@ A log line exceeds the maximum allowed size.
 
 **Error message:**
 
-```text
-error parsing labels '<labels>' with error: <parse_error>
-```
+`error parsing labels <labels> with error: <parse_error>`
 
 **Cause:**
 
@@ -314,9 +304,7 @@ This validation is always enabled and cannot be disabled.
 
 **Error message:**
 
-```text
-error at least one label pair is required per stream
-```
+`error at least one label pair is required per stream`
 
 **Cause:**
 
@@ -432,9 +420,7 @@ Logs are being ingested with timestamps that violate Loki's ordering constraints
 
 **Error message:**
 
-```text
-entry for stream '<stream_labels>' has timestamp too old: <timestamp>, oldest acceptable timestamp is: <cutoff>
-```
+`entry for stream <stream_labels> has timestamp too old: <timestamp>, oldest acceptable timestamp is: <cutoff>`
 
 **Cause:**
 
@@ -478,9 +464,7 @@ The log entry's timestamp is older than the configured maximum sample age. This 
 
 **Error message:**
 
-```text
-entry for stream '<stream_labels>' has timestamp too new: <timestamp>
-```
+`entry for stream <stream_labels> has timestamp too new: <timestamp>`
 
 **Cause:**
 
@@ -516,9 +500,7 @@ The log entry's timestamp is further in the future than the configured grace per
 
 **Error message:**
 
-```text
-entry for stream '<stream_labels>' has <count> label names; limit <limit>
-```
+`entry for stream <stream_labels> has <count> label names; limit <limit>`
 
 **Cause:**
 
@@ -550,9 +532,7 @@ Do not increase `max_label_names_per_series` as high cardinality can lead to sig
 
 **Error message:**
 
-```text
-stream '<stream_labels>' has label name too long: '<label_name>'
-```
+`stream <stream_labels> has label name too long: <label_name>`
 
 **Cause:**
 
@@ -584,9 +564,7 @@ A label name exceeds the maximum allowed length.
 
 **Error message:**
 
-```text
-stream '<stream_labels>' has label value too long: '<label_value>'
-```
+`stream <stream_labels> has label value too long: <label_value>`
 
 **Cause:**
 
@@ -620,9 +598,7 @@ A label value exceeds the maximum allowed length.
 
 **Error message:**
 
-```text
-stream '<stream_labels>' has duplicate label name: '<label_name>'
-```
+`stream <stream_labels> has duplicate label name: <label_name>`
 
 **Cause:**
 
@@ -651,9 +627,7 @@ This validation is always enabled and cannot be disabled. Duplicate label names 
 
 **Error message:**
 
-```text
-request body too large: <size> bytes, limit: <limit> bytes
-```
+`Request body too large: <size> bytes, limit: <limit> bytes`
 
 **Cause:**
 
@@ -699,9 +673,7 @@ Storage errors occur when Loki cannot write data to its storage backend or the W
 
 **Error message:**
 
-```text
-no space left on device
-```
+`no space left on device`
 
 **Cause:**
 
@@ -730,9 +702,7 @@ Disk space is not limited by Loki configuration; it depends on your infrastructu
 
 **Error message:**
 
-```text
-failed to store chunks: storage unavailable
-```
+`failed to store chunks: storage unavailable`
 
 **Common causes and errors:**
 
@@ -795,9 +765,7 @@ failed to store chunks: storage unavailable
 
 **Error logged:**
 
-```text
-Error writing to WAL, disk full, no further messages will be logged for this error
-```
+`Error writing to WAL, disk full, no further messages will be logged for this error`
 
 **Metric:** `loki_ingester_wal_disk_full_failures_total`
 
@@ -847,9 +815,7 @@ The WAL sacrifices durability for availability - it won't reject writes when the
 
 **Error message:**
 
-```text
-encountered WAL read error, attempting repair
-```
+`encountered WAL read error, attempting repair`
 
 **Metric:** `loki_ingester_wal_corruptions_total`
 
@@ -908,9 +874,7 @@ These errors occur due to network issues or service unavailability.
 
 **Error message:**
 
-```text
-connection refused when connecting to loki:3100
-```
+`connection refused when connecting to loki:3100`
 
 **Cause:**
 
@@ -939,9 +903,7 @@ The Loki service is unavailable or not listening on the expected port.
 
 **Error message:**
 
-```text
-context deadline exceeded
-```
+`context deadline exceeded`
 
 **Cause:**
 
@@ -970,9 +932,7 @@ Requests are timing out due to slow response times or network issues.
 
 **Error message:**
 
-```text
-service unavailable (503)
-```
+`service unavailable (503)`
 
 **Cause:**
 
@@ -1005,9 +965,7 @@ These errors occur when using structured metadata incorrectly.
 
 **Error message:**
 
-```text
-stream '<stream_labels>' includes structured metadata, but this feature is disallowed. Please see `limits_config.allow_structured_metadata` or contact your Loki administrator to enable it
-```
+`stream <stream_labels> includes structured metadata, but this feature is disallowed. Please see limits_config.allow_structured_metadata or contact your Loki administrator to enable it`
 
 **Cause:**
 
@@ -1040,9 +998,7 @@ Structured metadata is disabled in the Loki configuration. This feature must be 
 
 **Error message:**
 
-```text
-stream '{job="app"}' has structured metadata too large: '70000' bytes, limit: '65536' bytes. Please see `limits_config.max_structured_metadata_size` or contact your Loki administrator to increase it
-```
+`stream '{job="app"}' has structured metadata too large: '70000' bytes, limit: '65536' bytes. Please see limits_config.max_structured_metadata_size or contact your Loki administrator to increase it`
 
 **Cause:**
 
@@ -1076,9 +1032,7 @@ The structured metadata size exceeds the configured limit.
 
 **Error message:**
 
-```text
-stream '{job="app"}' has too many structured metadata labels: '150', limit: '128'. Please see `limits_config.max_structured_metadata_entries_count` or contact your Loki administrator to increase it
-```
+`stream '{job="app"}' has too many structured metadata labels: '150', limit: '128'. Please see limits_config.max_structured_metadata_entries_count or contact your Loki administrator to increase it`
 
 **Cause:**
 
@@ -1116,15 +1070,11 @@ These errors occur when ingestion is administratively blocked.
 
 **Error message:**
 
-```text
-ingestion blocked for user '<tenant>' until '<time>' with status code '260'
-```
+`ingestion blocked for user <tenant> until <time> with status code 260`
 
 Or for policy-specific blocks:
 
-```text
-ingestion blocked for user '<tenant>' (policy: '<policy>') until '<time>' with status code '260'
-```
+`ingestion blocked for user <tenant> (policy: <policy>) until <time> with status code 260`
 
 **Cause:**
 
