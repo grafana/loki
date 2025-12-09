@@ -40,15 +40,11 @@ Parse errors occur when the LogQL query syntax is invalid. Loki returns HTTP sta
 
 **Error message:**
 
-```text
-failed to parse the log query
-```
+`failed to parse the log query`
 
 Or with position details:
 
-```text
-parse error at line <line>, col <col>: <message>
-```
+`parse error at line <line>, col <col>: <message>`
 
 **Cause:**
 
@@ -89,9 +85,7 @@ Start with a simple stream selector: `{job="app"}`, then add filters and operati
 
 **Error message:**
 
-```text
-parse error : queries require at least one regexp or equality matcher that does not have an empty-compatible value. For instance, app=~".*" does not meet this requirement, but app=~".+" will
-```
+`parse error : queries require at least one regexp or equality matcher that does not have an empty-compatible value. For instance, app=~".*" does not meet this requirement, but app=~".+" will`
 
 **Cause:**
 
@@ -131,9 +125,7 @@ The query uses only negative matchers (`!=`, `!~`) or matchers that match empty 
 
 **Error message:**
 
-```text
-only label matchers are supported
-```
+`only label matchers are supported`
 
 **Cause:**
 
@@ -162,9 +154,7 @@ The query was passed to an API that only accepts label matchers (like the series
 
 **Error message:**
 
-```text
-log queries are not supported as an instant query type, please change your query to a range query type
-```
+`log queries are not supported as an instant query type, please change your query to a range query type`
 
 **Cause:**
 
@@ -197,9 +187,7 @@ A [log query](https://grafana.com/docs/loki/<LOKI_VERSION>/query/log_queries/) (
 
 **Error message:**
 
-```text
-parse error : invalid aggregation sum_over_time without unwrap
-```
+`parse error : invalid aggregation sum_over_time without unwrap`
 
 **Cause:**
 
@@ -234,9 +222,7 @@ Aggregation functions like `sum_over_time`, `avg_over_time`, `min_over_time`, `m
 
 **Error message:**
 
-```text
-parse error : invalid aggregation count_over_time with unwrap
-```
+`parse error : invalid aggregation count_over_time with unwrap`
 
 **Cause:**
 
@@ -271,9 +257,7 @@ These errors occur when queries exceed configured resource limits. They return H
 
 **Error message:**
 
-```text
-maximum number of series (<limit>) reached for a single query; consider reducing query cardinality by adding more specific stream selectors, reducing the time range, or aggregating results with functions like sum(), count() or topk()
-```
+`maximum number of series (<limit>) reached for a single query; consider reducing query cardinality by adding more specific stream selectors, reducing the time range, or aggregating results with functions like sum(), count() or topk()`
 
 **Cause:**
 
@@ -323,9 +307,7 @@ The query matches more unique label combinations (series) than the configured li
 
 **Error message:**
 
-```text
-cardinality limit exceeded for {}; 100001 entries, more than limit of 100000
-```
+`cardinality limit exceeded for {}; 100001 entries, more than limit of 100000`
 
 **Cause:**
 
@@ -368,9 +350,7 @@ The query produces results with too many unique label combinations. This protect
 
 **Error message:**
 
-```text
-max entries limit per query exceeded, limit > max_entries_limit_per_query (<requested> > <limit>)
-```
+`max entries limit per query exceeded, limit > max_entries_limit_per_query (<requested> > <limit>)`
 
 **Cause:**
 
@@ -412,9 +392,7 @@ The query requests more log entries than the configured maximum. This applies to
 
 **Error message:**
 
-```text
-the query would read too many bytes (query: <size>, limit: <limit>); consider adding more specific stream selectors or reduce the time range of the query
-```
+`the query would read too many bytes (query: <size>, limit: <limit>); consider adding more specific stream selectors or reduce the time range of the query`
 
 **Cause:**
 
@@ -458,9 +436,7 @@ The estimated data volume for the query exceeds the configured limit. This is de
 
 **Error message:**
 
-```text
-the query hit the max number of chunks limit (limit: 2000000 chunks)
-```
+`the query hit the max number of chunks limit (limit: 2000000 chunks)`
 
 **Cause:**
 
@@ -507,9 +483,7 @@ The number of chunks that the query would read exceeds the configured limit. Thi
 
 **Error message:**
 
-```text
-max streams matchers per query exceeded, matchers-count > limit (1000 > 500)
-```
+`max streams matchers per query exceeded, matchers-count > limit (1000 > 500)`
 
 **Cause:**
 
@@ -551,15 +525,11 @@ The query contains too many stream matchers. This limit prevents queries with ex
 
 **Error message:**
 
-```text
-query too large to execute on a single querier: (query: <size>, limit: <limit>); consider adding more specific stream selectors, reduce the time range of the query, or adjust parallelization settings
-```
+`query too large to execute on a single querier: (query: <size>, limit: <limit>); consider adding more specific stream selectors, reduce the time range of the query, or adjust parallelization settings`
 
 Or for un-shardable queries:
 
-```text
-un-shardable query too large to execute on a single querier: (query: <size>, limit: <limit>); consider adding more specific stream selectors or reduce the time range of the query
-```
+`un-shardable query too large to execute on a single querier: (query: <size>, limit: <limit>); consider adding more specific stream selectors or reduce the time range of the query`
 
 **Cause:**
 
@@ -594,9 +564,7 @@ Even after query splitting and sharding, individual query shards exceed the per-
 
 **Error message:**
 
-```text
-limit reached while evaluating the query
-```
+`limit reached while evaluating the query`
 
 **Cause:**
 
@@ -619,9 +587,7 @@ An internal limit was reached during query evaluation. This is a catch-all for v
 
 **Error message:**
 
-```text
-[interval] value exceeds limit
-```
+`[interval] value exceeds limit`
 
 **Cause:**
 
@@ -653,9 +619,7 @@ These errors relate to the time range specified in queries.
 
 **Error message:**
 
-```text
-the query time range exceeds the limit (query length: <duration>, limit: <limit>)
-```
+`the query time range exceeds the limit (query length: <duration>, limit: <limit>)`
 
 **Cause:**
 
@@ -695,9 +659,7 @@ The difference between the query's start and end time exceeds the maximum allowe
 
 **Error message:**
 
-```text
-this data is no longer available, it is past now - max_query_lookback (<duration>)
-```
+`this data is no longer available, it is past now - max_query_lookback (<duration>)`
 
 **Cause:**
 
@@ -732,9 +694,7 @@ The entire query time range falls before the `max_query_lookback` limit. This ha
 
 **Error message:**
 
-```text
-invalid query, through < from (<end> < <start>)
-```
+`invalid query, through < from (<end> < <start>)`
 
 **Cause:**
 
@@ -760,9 +720,7 @@ These errors occur when queries don't meet configured label requirements.
 
 **Error message:**
 
-```text
-stream selector is missing required matchers [<required_labels>], labels present in the query were [<present_labels>]
-```
+`stream selector is missing required matchers [<required_labels>], labels present in the query were [<present_labels>]`
 
 **Cause:**
 
@@ -794,9 +752,7 @@ The tenant is configured to require certain label matchers in all queries, but t
 
 **Error message:**
 
-```text
-stream selector has less label matchers than required: (present: [<labels>], number_present: <count>, required_number_label_matchers: <required>)
-```
+`stream selector has less label matchers than required: (present: [<labels>], number_present: <count>, required_number_label_matchers: <required>)`
 
 **Cause:**
 
@@ -830,15 +786,11 @@ Timeout errors occur when queries take too long to execute.
 
 **Error message:**
 
-```text
-request timed out, decrease the duration of the request or add more label matchers (prefer exact match over regex match) to reduce the amount of data processed
-```
+`request timed out, decrease the duration of the request or add more label matchers (prefer exact match over regex match) to reduce the amount of data processed`
 
 Or:
 
-```text
-context deadline exceeded
-```
+`context deadline exceeded`
 
 **Cause:**
 
@@ -906,9 +858,7 @@ The query exceeded the configured timeout. This can happen due to:
 
 **Error message:**
 
-```text
-the request was cancelled by the client
-```
+`the request was cancelled by the client`
 
 **Cause:**
 
@@ -939,9 +889,7 @@ These errors occur when queries are administratively blocked.
 
 **Error message:**
 
-```text
-query blocked by policy
-```
+`query blocked by policy`
 
 **Cause:**
 
@@ -980,9 +928,7 @@ limits_config:
 
 **Error message:**
 
-```text
-querying is disabled, please contact your Loki operator
-```
+`querying is disabled, please contact your Loki operator`
 
 **Cause:**
 
@@ -1010,9 +956,7 @@ Multi variant queries are an experimental feature that enables support for runni
 
 **Error message:**
 
-```text
-multi variant queries are disabled for this instance
-```
+`multi variant queries are disabled for this instance`
 
 **Cause:**
 
@@ -1102,9 +1046,7 @@ These errors occur when connecting to Loki, often when using LogCLI.
 
 **Error message:**
 
-```text
-no org id
-```
+`no org id`
 
 **Cause:**
 
@@ -1132,15 +1074,11 @@ Multi-tenancy is enabled but no tenant ID was provided in the request.
 
 **Error message:**
 
-```text
-at most one of HTTP basic auth (username/password), bearer-token & bearer-token-file is allowed to be configured
-```
+`at most one of HTTP basic auth (username/password), bearer-token & bearer-token-file is allowed to be configured`
 
 Or:
 
-```text
-at most one of the options bearer-token & bearer-token-file is allowed to be configured
-```
+`at most one of the options bearer-token & bearer-token-file is allowed to be configured`
 
 **Cause:**
 
@@ -1172,9 +1110,7 @@ Multiple authentication methods are configured simultaneously in LogCLI.
 
 **Error message:**
 
-```text
-run out of attempts while querying the server
-```
+`run out of attempts while querying the server`
 
 **Cause:**
 
@@ -1206,9 +1142,7 @@ LogCLI exhausted all retry attempts when trying to reach Loki. This usually indi
 
 **Error message:**
 
-```text
-websocket: close 1006 (abnormal closure): unexpected EOF
-```
+`websocket: close 1006 (abnormal closure): unexpected EOF`
 
 **Cause:**
 
@@ -1239,9 +1173,7 @@ These errors occur when requested data is not available.
 
 **Error message:**
 
-```text
-no data found
-```
+`no data found`
 
 Or an empty result set with no error message.
 
@@ -1289,15 +1221,11 @@ The query time range contains no matching log data. This can happen if:
 
 **Error message:**
 
-```text
-index not ready
-```
+`index not ready`
 
 Or:
 
-```text
-index gateway not ready for time range
-```
+`index gateway not ready for time range`
 
 **Cause:**
 
@@ -1340,9 +1268,7 @@ The index for the requested time range is not yet available for querying. This c
 
 **Error message:**
 
-```text
-max concurrent tail requests limit exceeded, count > limit (10 > 5)
-```
+`max concurrent tail requests limit exceeded, count > limit (10 > 5)`
 
 **Cause:**
 
@@ -1385,9 +1311,7 @@ These errors occur when Loki cannot read data from storage.
 
 **Error message:**
 
-```text
-failed to load chunk '<chunk_key>'
-```
+`failed to load chunk '<chunk_key>'`
 
 **Cause:**
 
@@ -1416,9 +1340,7 @@ Loki couldn't retrieve a chunk from object storage. Possible causes:
 
 **Error message:**
 
-```text
-object not found in storage
-```
+`object not found in storage`
 
 **Cause:**
 
@@ -1445,9 +1367,7 @@ The requested chunk or object doesn't exist in storage. This might happen if:
 
 **Error message:**
 
-```text
-failed to decode chunk '<chunk_key>' for tenant '<tenant>': <error>
-```
+`failed to decode chunk '<chunk_key>' for tenant '<tenant>': <error>`
 
 **Cause:**
 
