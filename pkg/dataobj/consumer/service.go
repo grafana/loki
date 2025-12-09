@@ -135,6 +135,8 @@ func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, bucket objsto
 	}
 	s.partitionReader = partitionReader
 
+	// TODO: We have to pass prometheus.NewRegistry() to avoid duplicate
+	// metric registration with partition.NewReaderService.
 	offsetManager, err := partition.NewKafkaOffsetManager(kafkaCfg, cfg.LifecyclerConfig.ID, logger, prometheus.NewRegistry())
 	if err != nil {
 		return nil, err
