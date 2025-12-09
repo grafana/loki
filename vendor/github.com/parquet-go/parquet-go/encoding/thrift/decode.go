@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"maps"
 	"reflect"
 	"sync/atomic"
 )
@@ -62,9 +63,7 @@ func (d *Decoder) Decode(v any) error {
 
 		newCache := make(map[typeID]decodeFunc, len(cache)+1)
 		newCache[makeTypeID(t)] = decode
-		for k, v := range cache {
-			newCache[k] = v
-		}
+		maps.Copy(newCache, cache)
 
 		decoderCache.Store(newCache)
 	}
