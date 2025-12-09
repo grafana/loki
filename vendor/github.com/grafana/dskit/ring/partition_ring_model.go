@@ -233,6 +233,53 @@ func (m *PartitionRingDesc) HasPartition(id int32) bool {
 	return ok
 }
 
+// SetPartitionMetadata sets a metadata key-value pair for a partition.
+// Returns true if the metadata was changed, false if it was unchanged.
+// Returns an error if the partition doesn't exist.
+func (m *PartitionRingDesc) SetPartitionMetadata(partitionID int32, key, value string) (bool, error) {
+	partition, exists := m.Partitions[partitionID]
+	if !exists {
+		return false, ErrPartitionDoesNotExist
+	}
+
+	// Initialize metadata map if nil
+	if partition.Metadata == nil {
+		partition.Metadata = make(map[string]string)
+	}
+
+	// Check if the value is already set to the same value
+	if oldValue, ok := partition.Metadata[key]; ok && oldValue == value {
+		return false, nil
+	}
+
+	partition.Metadata[key] = value
+	m.Partitions[partitionID] = partition
+	return true, nil
+}
+
+// RemovePartitionMetadata removes a metadata key from a partition.
+// Returns true if the key was removed, false if it didn't exist.
+// Returns an error if the partition doesn't exist.
+func (m *PartitionRingDesc) RemovePartitionMetadata(partitionID int32, key string) (bool, error) {
+	partition, exists := m.Partitions[partitionID]
+	if !exists {
+		return false, ErrPartitionDoesNotExist
+	}
+
+	// If metadata is nil or key doesn't exist, nothing to remove
+	if partition.Metadata == nil {
+		return false, nil
+	}
+
+	if _, ok := partition.Metadata[key]; !ok {
+		return false, nil
+	}
+
+	delete(partition.Metadata, key)
+	m.Partitions[partitionID] = partition
+	return true, nil
+}
+
 // AddOrUpdateOwner adds or updates a partition owner in the ring. Returns true, if the
 // owner was added or updated, false if it was left unchanged.
 func (m *PartitionRingDesc) AddOrUpdateOwner(id string, state OwnerState, ownedPartition int32, now time.Time) bool {
@@ -343,6 +390,20 @@ func (m *PartitionRingDesc) mergeWithTime(mergeable memberlist.Mergeable, localC
 
 				thisPart.State = otherPart.State
 				thisPart.StateTimestamp = otherPart.StateTimestamp
+			}
+
+			// Merge metadata - simple last-write-wins per key
+			// We merge all keys from other partition's metadata
+			if len(otherPart.Metadata) > 0 {
+				if thisPart.Metadata == nil {
+					thisPart.Metadata = make(map[string]string)
+				}
+				for k, v := range otherPart.Metadata {
+					if existingValue, exists := thisPart.Metadata[k]; !exists || existingValue != v {
+						thisPart.Metadata[k] = v
+						changed = true
+					}
+				}
 			}
 		}
 

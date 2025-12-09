@@ -38,6 +38,20 @@ func (l *PartitionRingEditor) RemoveMultiPartitionOwner(ctx context.Context, ins
 	})
 }
 
+// SetPartitionMetadata sets a metadata key-value pair for a partition.
+func (l *PartitionRingEditor) SetPartitionMetadata(ctx context.Context, partitionID int32, key, value string) error {
+	return l.updateRing(ctx, func(ring *PartitionRingDesc) (bool, error) {
+		return ring.SetPartitionMetadata(partitionID, key, value)
+	})
+}
+
+// RemovePartitionMetadata removes a metadata key from a partition.
+func (l *PartitionRingEditor) RemovePartitionMetadata(ctx context.Context, partitionID int32, key string) error {
+	return l.updateRing(ctx, func(ring *PartitionRingDesc) (bool, error) {
+		return ring.RemovePartitionMetadata(partitionID, key)
+	})
+}
+
 func (l *PartitionRingEditor) updateRing(ctx context.Context, update func(ring *PartitionRingDesc) (bool, error)) error {
 	return l.store.CAS(ctx, l.ringKey, func(in interface{}) (out interface{}, retry bool, err error) {
 		ringDesc := GetOrCreatePartitionRingDesc(in)

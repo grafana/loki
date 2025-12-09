@@ -30,6 +30,9 @@ message PartitionDesc {
 
   // Unix timestamp (with seconds precision) of when has the state changed last time for this partition.
   int64 stateTimestamp = 3;
+
+  // Metadata is a map of key-value pairs for storing additional partition information.
+  map<string, string> metadata = 5;
 }
 
 enum PartitionState {

@@ -29,6 +29,8 @@ var partitionRingPageTemplate = template.Must(template.New("webpage").Funcs(temp
 
 type PartitionRingUpdater interface {
 	ChangePartitionState(ctx context.Context, partitionID int32, toState PartitionState) error
+	SetPartitionMetadata(ctx context.Context, partitionID int32, key, value string) error
+	RemovePartitionMetadata(ctx context.Context, partitionID int32, key string) error
 }
 
 type PartitionRingPageHandler struct {
@@ -146,6 +148,18 @@ func (h *PartitionRingPageHandler) handlePostRequest(w http.ResponseWriter, req 
 		if err := h.updater.ChangePartitionState(req.Context(), int32(partitionID), PartitionState(toState)); err != nil {
 			http.Error(w, fmt.Sprintf("failed to change partition state: %s", err.Error()), http.StatusBadRequest)
 			return
+		}
+
+		if PartitionState(toState) == PartitionInactive {
+			err := h.updater.SetPartitionMetadata(req.Context(), int32(partitionID), "partition_deactivated_via_debug_endpoint", "true")
+			if err != nil {
+				//We should not fail here maybe log something here?
+			}
+		} else {
+			err := h.updater.RemovePartitionMetadata(req.Context(), int32(partitionID), "partition_deactivated_via_debug_endpoint")
+			if err != nil {
+				//We should not fail here maybe log something here?
+			}
 		}
 	}
 
