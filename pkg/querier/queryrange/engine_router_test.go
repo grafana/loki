@@ -147,7 +147,7 @@ func TestEngineRouter_split(t *testing.T) {
 }
 
 func TestEngineRouter_stepAlignment(t *testing.T) {
-	now := time.Date(2025, 1, 15, 4, 30, 10, 500, time.UTC) // all ts would be off by 500ms when using 1s step.
+	now := time.Date(2025, 1, 15, 4, 30, 10, 500, time.UTC) // all ts would be off by 500ns when using 1s step.
 	v2Start, v2End := now.Add(-2*24*time.Hour), now.Add(-2*time.Hour)
 
 	buildReq := func(start, end time.Time, step int64) *LokiRequest {
@@ -172,25 +172,25 @@ func TestEngineRouter_stepAlignment(t *testing.T) {
 		expectedV2Req  queryrangebase.Request
 	}{
 		{
-			// 1s step causes the ms to be rounded up/down
+			// 1s step causes the ns to be rounded up/down
 			name:           "splits are aligned to step",
 			req:            buildReq(now.Add(-3*24*time.Hour), now.Add(-time.Hour), 1000),
 			forMetricQuery: true,
 			expectedV1Reqs: []queryrangebase.Request{
 				buildReq(
 					now.Add(-3*24*time.Hour),
-					now.Add(-2*24*time.Hour).Truncate(time.Second).Add(-time.Second), // v2 start rounded down, minus step gap
+					now.Add(-2*24*time.Hour).Truncate(time.Second), // v2 start rounded up, minus step gap
 					1000,
 				),
 				buildReq(
-					now.Add(-2*time.Hour).Truncate(time.Second).Add(time.Second), // v2 end is rounded up
+					now.Add(-2*time.Hour).Truncate(time.Second), // v2 end is rounded down
 					now.Add(-time.Hour),
 					1000,
 				),
 			},
 			expectedV2Req: buildReq(
-				now.Add(-2*24*time.Hour).Truncate(time.Second), // v2 start is rounded down
-				now.Add(-2*time.Hour).Truncate(time.Second),    // v2 end is rounded up, minus step gap
+				now.Add(-2*24*time.Hour).Truncate(time.Second).Add(time.Second), // v2 start is rounded up
+				now.Add(-2*time.Hour).Truncate(time.Second).Add(-time.Second),   // v2 end is rounded down, minus step gap
 				1000,
 			),
 		},
@@ -201,18 +201,18 @@ func TestEngineRouter_stepAlignment(t *testing.T) {
 			expectedV1Reqs: []queryrangebase.Request{
 				buildReq(
 					now.Add(-3*24*time.Hour),
-					now.Add(-2*24*time.Hour).Truncate(time.Second), // v2 start rounded down, no step gap
+					now.Add(-2*24*time.Hour).Truncate(time.Second).Add(time.Second), // v2 start rounded up, no step gap
 					1000,
 				),
 				buildReq(
-					now.Add(-2*time.Hour).Truncate(time.Second).Add(time.Second), // v2 end is rounded up
+					now.Add(-2*time.Hour).Truncate(time.Second), // v2 end is rounded down
 					now.Add(-time.Hour),
 					1000,
 				),
 			},
 			expectedV2Req: buildReq(
-				now.Add(-2*24*time.Hour).Truncate(time.Second),               // v2 start is rounded down
-				now.Add(-2*time.Hour).Truncate(time.Second).Add(time.Second), // v2 end is rounded up, no step gap
+				now.Add(-2*24*time.Hour).Truncate(time.Second).Add(time.Second), // v2 start is rounded up
+				now.Add(-2*time.Hour).Truncate(time.Second),                     // v2 end is rounded down, no step gap
 				1000,
 			),
 		},
@@ -223,18 +223,18 @@ func TestEngineRouter_stepAlignment(t *testing.T) {
 			expectedV1Reqs: []queryrangebase.Request{
 				buildReq(
 					now.Add(-3*24*time.Hour),
-					now.Add(-2*24*time.Hour).Truncate(3*time.Second).Add(-3*time.Second), // rounded down, minus step gap
+					now.Add(-2*24*time.Hour).Truncate(3*time.Second), // v2 start rounded up, minus step gap
 					3000,
 				),
 				buildReq(
-					now.Add(-2*time.Hour).Truncate(3*time.Second).Add(3*time.Second),
+					now.Add(-2*time.Hour).Truncate(3*time.Second), // v2 end is rounded down
 					now.Add(-time.Hour),
 					3000,
 				),
 			},
 			expectedV2Req: buildReq(
-				now.Add(-2*24*time.Hour).Truncate(3*time.Second),
-				now.Add(-2*time.Hour).Truncate(3*time.Second), // rounded up, minus step gap
+				now.Add(-2*24*time.Hour).Truncate(3*time.Second).Add(3*time.Second),
+				now.Add(-2*time.Hour).Truncate(3*time.Second).Add(-3*time.Second), // rounded down, minus step gap
 				3000,
 			),
 		},
