@@ -232,7 +232,7 @@ func (m *Manager) processQueryPair(req *http.Request, cellAResp, cellBResp *Resp
 	sampleStored := false
 
 	if m.storage != nil {
-		if err := m.storage.StoreQuerySample(ctx, sample, result); err != nil {
+		if err := m.storage.StoreQuerySample(ctx, sample, &result); err != nil {
 			level.Error(m.logger).Log("msg", "failed to store query sample", "correlation_id", correlationID, "err", err)
 			m.metrics.storageOperations.WithLabelValues("store_sample", "error").Inc()
 		} else {
