@@ -64,7 +64,7 @@ func (s *dataobjScan) Read(ctx context.Context) (arrow.RecordBatch, error) {
 		return nil, err
 	}
 
-	return s.read(ctx)
+	return s.read(xcap.ContextWithRegion(ctx, s.region))
 }
 
 func (s *dataobjScan) init() error {
@@ -373,8 +373,7 @@ func (s *dataobjScan) read(ctx context.Context) (arrow.RecordBatch, error) {
 
 // Close closes s and releases all resources.
 func (s *dataobjScan) Close() {
-	if s.region != nil && s.reader != nil {
-		s.recordReaderStats()
+	if s.region != nil {
 		s.region.End()
 	}
 	if s.streams != nil {
@@ -389,42 +388,6 @@ func (s *dataobjScan) Close() {
 	s.streamsInjector = nil
 	s.reader = nil
 	s.region = nil
-}
-
-// recordReaderStats records statistics from the [logs.Reader] to the xcap region.
-// TODO: [dataset.ReaderStats] should be replaced by xcap statistics.
-func (s *dataobjScan) recordReaderStats() {
-	if s.region == nil || s.reader == nil {
-		return
-	}
-
-	stats := s.reader.Stats()
-	if stats == nil {
-		return
-	}
-
-	// Record basic stats
-	s.region.Record(statDatasetPrimaryColumns.Observe(int64(stats.PrimaryColumns)))
-	s.region.Record(statDatasetSecondaryColumns.Observe(int64(stats.SecondaryColumns)))
-	s.region.Record(statDatasetPrimaryColumnPages.Observe(int64(stats.PrimaryColumnPages)))
-	s.region.Record(statDatasetSecondaryColumnPages.Observe(int64(stats.SecondaryColumnPages)))
-	s.region.Record(statDatasetMaxRows.Observe(int64(stats.MaxRows)))
-	s.region.Record(statDatasetRowsAfterPruning.Observe(int64(stats.RowsToReadAfterPruning)))
-	s.region.Record(statDatasetPrimaryRowsRead.Observe(int64(stats.PrimaryRowsRead)))
-	s.region.Record(statDatasetSecondaryRowsRead.Observe(int64(stats.SecondaryRowsRead)))
-	s.region.Record(statDatasetPrimaryRowBytes.Observe(int64(stats.PrimaryRowBytes)))
-	s.region.Record(statDatasetSecondaryRowBytes.Observe(int64(stats.SecondaryRowBytes)))
-
-	// Record download stats
-	downloadStats := stats.DownloadStats
-	s.region.Record(statDatasetPagesScanned.Observe(int64(downloadStats.PagesScanned)))
-	s.region.Record(statDatasetPagesFoundInCache.Observe(int64(downloadStats.PagesFoundInCache)))
-	s.region.Record(statDatasetBatchDownloadRequests.Observe(int64(downloadStats.BatchDownloadRequests)))
-	s.region.Record(statDatasetPageDownloadTime.Observe(downloadStats.PageDownloadTime.Nanoseconds()))
-	s.region.Record(statDatasetPrimaryColumnBytes.Observe(int64(downloadStats.PrimaryColumnBytes)))
-	s.region.Record(statDatasetSecondaryColumnBytes.Observe(int64(downloadStats.SecondaryColumnBytes)))
-	s.region.Record(statDatasetPrimaryColumnUncompressedBytes.Observe(int64(downloadStats.PrimaryColumnUncompressedBytes)))
-	s.region.Record(statDatasetSecondaryColumnUncompressedBytes.Observe(int64(downloadStats.SecondaryColumnUncompressedBytes)))
 }
 
 // Region implements RegionProvider.

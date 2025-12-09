@@ -139,7 +139,7 @@ func (s *ChunkStore) flushChunk(ctx context.Context, memChunk *chunkenc.MemChunk
 		return err
 	}
 	labelsBuilder := labels.NewBuilder(lbs)
-	labelsBuilder.Set(labels.MetricName, "logs")
+	labelsBuilder.Set(model.MetricNameLabel, "logs")
 	metric := labelsBuilder.Labels()
 	fp := client.Fingerprint(lbs)
 

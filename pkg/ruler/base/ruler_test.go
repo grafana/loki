@@ -1866,7 +1866,7 @@ func TestRecoverAlertsPostOutage(t *testing.T) {
 		fn: func(_ bool, _ *storage.SelectHints, _ ...*labels.Matcher) storage.SeriesSet {
 			return series.NewConcreteSeriesSet([]storage.Series{
 				series.NewConcreteSeries(
-					labels.FromStrings(labels.MetricName, "ALERTS_FOR_STATE", labels.AlertName, mockRules["user1"][0].GetRules()[0].Alert),
+					labels.FromStrings(model.MetricNameLabel, "ALERTS_FOR_STATE", labels.AlertName, mockRules["user1"][0].GetRules()[0].Alert),
 					[]model.SamplePair{{Timestamp: model.Time(downAtTimeMs), Value: model.SampleValue(downAtActiveSec)}},
 				),
 			})
@@ -2005,14 +2005,14 @@ func TestRuleGroupAlertsAndSeriesLimit(t *testing.T) {
 				fn: func(_ bool, _ *storage.SelectHints, _ ...*labels.Matcher) storage.SeriesSet {
 					return series.NewConcreteSeriesSet([]storage.Series{
 						series.NewConcreteSeries(
-							labels.FromStrings(labels.MetricName, "http_requests", "instance", "server1"),
+							labels.FromStrings(model.MetricNameLabel, "http_requests", "instance", "server1"),
 							[]model.SamplePair{
 								{Timestamp: model.Time(seriesStartTime.Add(sampleTimeDiff).UnixMilli()), Value: 100},
 								{Timestamp: model.Time(currentTime.UnixMilli()), Value: 100},
 							},
 						),
 						series.NewConcreteSeries(
-							labels.FromStrings(labels.MetricName, "http_requests", "instance", "server2"),
+							labels.FromStrings(model.MetricNameLabel, "http_requests", "instance", "server2"),
 							[]model.SamplePair{
 								{Timestamp: model.Time(seriesStartTime.Add(sampleTimeDiff).UnixMilli()), Value: 100},
 								{Timestamp: model.Time(currentTime.UnixMilli()), Value: 100},

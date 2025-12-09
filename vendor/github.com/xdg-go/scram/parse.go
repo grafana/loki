@@ -15,11 +15,13 @@ import (
 )
 
 type c1Msg struct {
-	gs2Header string
-	authzID   string
-	username  string
-	nonce     string
-	c1b       string
+	gs2Header      string
+	gs2BindFlag    string // "n", "y", or "p"
+	channelBinding string // channel binding type name if gs2BindFlag is "p"
+	authzID        string
+	username       string
+	nonce          string
+	c1b            string
 }
 
 type c2Msg struct {
@@ -48,16 +50,25 @@ func parseField(s, k string) (string, error) {
 	return t, nil
 }
 
-func parseGS2Flag(s string) (string, error) {
-	if s[0] == 'p' {
-		return "", fmt.Errorf("channel binding requested but not supported")
-	}
-
+// parseGS2Flag returns flag, channel binding type, and error.
+func parseGS2Flag(s string) (string, string, error) {
 	if s == "n" || s == "y" {
-		return s, nil
+		return s, "", nil
 	}
 
-	return "", fmt.Errorf("error parsing '%s' for gs2 flag", s)
+	// If not "n" or "y", must be "p=..." or error.
+	cbType, err := parseField(s, "p")
+	if err != nil {
+		return "", "", fmt.Errorf("error parsing '%s' for gs2 flag", s)
+	}
+
+	switch ChannelBindingType(cbType) {
+	case ChannelBindingTLSUnique, ChannelBindingTLSServerEndpoint, ChannelBindingTLSExporter:
+		// valid channel binding type
+	default:
+		return "", "", fmt.Errorf("invalid channel binding type: %s", cbType)
+	}
+	return "p", cbType, nil
 }
 
 func parseFieldBase64(s, k string) ([]byte, error) {
@@ -68,7 +79,7 @@ func parseFieldBase64(s, k string) ([]byte, error) {
 
 	dec, err := base64.StdEncoding.DecodeString(raw)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed decoding field '%s': %v", k, err)
 	}
 
 	return dec, nil
@@ -89,28 +100,24 @@ func parseFieldInt(s, k string) (int, error) {
 }
 
 func parseClientFirst(c1 string) (msg c1Msg, err error) {
-
 	fields := strings.Split(c1, ",")
 	if len(fields) < 4 {
 		err = errors.New("not enough fields in first server message")
 		return
 	}
 
-	gs2flag, err := parseGS2Flag(fields[0])
+	msg.gs2BindFlag, msg.channelBinding, err = parseGS2Flag(fields[0])
 	if err != nil {
 		return
 	}
 
-	// 'a' field is optional
+	// authzID content is optional, but the field must be present.
 	if len(fields[1]) > 0 {
 		msg.authzID, err = parseField(fields[1], "a")
 		if err != nil {
 			return
 		}
 	}
-
-	// Recombine and save the gs2 header
-	msg.gs2Header = gs2flag + "," + msg.authzID + ","
 
 	// Check for unsupported extensions field "m".
 	if strings.HasPrefix(fields[2], "m=") {
@@ -128,6 +135,10 @@ func parseClientFirst(c1 string) (msg c1Msg, err error) {
 		return
 	}
 
+	// Recombine the gs2Header: gs2-cbind-flag "," [ authzid ] ","
+	msg.gs2Header = fields[0] + "," + fields[1] + ","
+
+	// Recombine the client-first-message-bare: username "," nonce
 	msg.c1b = strings.Join(fields[2:], ",")
 
 	return
