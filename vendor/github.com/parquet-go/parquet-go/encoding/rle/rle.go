@@ -13,11 +13,11 @@ import (
 
 	"golang.org/x/sys/cpu"
 
+	"github.com/parquet-go/bitpack"
+	"github.com/parquet-go/bitpack/unsafecast"
 	"github.com/parquet-go/parquet-go/encoding"
 	"github.com/parquet-go/parquet-go/format"
-	"github.com/parquet-go/parquet-go/internal/bitpack"
 	"github.com/parquet-go/parquet-go/internal/bytealg"
-	"github.com/parquet-go/parquet-go/internal/unsafecast"
 )
 
 const (
@@ -386,7 +386,7 @@ func decodeInt32(dst, src []byte, bitWidth uint) ([]byte, error) {
 			}
 
 			out := unsafecast.Slice[int32](dst[offset:])
-			bitpack.UnpackInt32(out, in, bitWidth)
+			bitpack.Unpack(out, in, bitWidth)
 			i += length
 		} else {
 			j := i + bitpack.ByteCount(bitWidth)
@@ -517,7 +517,7 @@ func grow(buf []byte, size int) []byte {
 
 func encodeInt32BitpackDefault(dst []byte, src [][8]int32, bitWidth uint) int {
 	bits := unsafecast.Slice[int32](src)
-	bitpack.PackInt32(dst, bits, bitWidth)
+	bitpack.Pack(dst, bits, bitWidth)
 	return bitpack.ByteCount(uint(len(src)*8) * bitWidth)
 }
 
