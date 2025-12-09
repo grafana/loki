@@ -215,22 +215,22 @@ func processSourceIndex(ctx context.Context, sourceIndex storage.IndexFile, sour
 		return err
 	}
 
+	// Ensure the downloaded file is removed when this function returns
+	defer func() {
+		if removeErr := os.Remove(path); removeErr != nil {
+			level.Error(sourceIndexSet.GetLogger()).Log("msg", "error removing source index file", "err", removeErr)
+		}
+	}()
+
 	indexFile, err := OpenShippableTSDB(path)
 	if err != nil {
-		// Clean up the downloaded file if we can't open it
-		if removeErr := os.Remove(path); removeErr != nil {
-			level.Error(sourceIndexSet.GetLogger()).Log("msg", "error removing source index file after open failure", "err", removeErr)
-		}
 		return err
 	}
 
-	// Ensure file is closed and removed when this function returns
+	// Ensure file is closed when this function returns
 	defer func() {
 		if closeErr := indexFile.Close(); closeErr != nil {
 			level.Error(sourceIndexSet.GetLogger()).Log("msg", "failed to close index file", "err", closeErr)
-		}
-		if removeErr := os.Remove(path); removeErr != nil {
-			level.Error(sourceIndexSet.GetLogger()).Log("msg", "error removing source index file", "err", removeErr)
 		}
 	}()
 
