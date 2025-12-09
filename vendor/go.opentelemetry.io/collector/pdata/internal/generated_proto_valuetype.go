@@ -14,11 +14,10 @@ import (
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
-// ValueType describes the type and units of a value, with an optional aggregation temporality.
+// ValueType describes the type and units of a value.
 type ValueType struct {
-	TypeStrindex           int32
-	UnitStrindex           int32
-	AggregationTemporality AggregationTemporality
+	TypeStrindex int32
+	UnitStrindex int32
 }
 
 var (
@@ -68,8 +67,6 @@ func CopyValueType(dest, src *ValueType) *ValueType {
 	dest.TypeStrindex = src.TypeStrindex
 
 	dest.UnitStrindex = src.UnitStrindex
-
-	dest.AggregationTemporality = src.AggregationTemporality
 
 	return dest
 }
@@ -137,11 +134,6 @@ func (orig *ValueType) MarshalJSON(dest *json.Stream) {
 		dest.WriteObjectField("unitStrindex")
 		dest.WriteInt32(orig.UnitStrindex)
 	}
-
-	if int32(orig.AggregationTemporality) != 0 {
-		dest.WriteObjectField("aggregationTemporality")
-		dest.WriteInt32(int32(orig.AggregationTemporality))
-	}
 	dest.WriteObjectEnd()
 }
 
@@ -153,8 +145,6 @@ func (orig *ValueType) UnmarshalJSON(iter *json.Iterator) {
 			orig.TypeStrindex = iter.ReadInt32()
 		case "unitStrindex", "unit_strindex":
 			orig.UnitStrindex = iter.ReadInt32()
-		case "aggregationTemporality", "aggregation_temporality":
-			orig.AggregationTemporality = AggregationTemporality(iter.ReadEnumValue(AggregationTemporality_value))
 		default:
 			iter.Skip()
 		}
@@ -170,9 +160,6 @@ func (orig *ValueType) SizeProto() int {
 	}
 	if orig.UnitStrindex != 0 {
 		n += 1 + proto.Sov(uint64(orig.UnitStrindex))
-	}
-	if orig.AggregationTemporality != 0 {
-		n += 1 + proto.Sov(uint64(orig.AggregationTemporality))
 	}
 	return n
 }
@@ -190,11 +177,6 @@ func (orig *ValueType) MarshalProto(buf []byte) int {
 		pos = proto.EncodeVarint(buf, pos, uint64(orig.UnitStrindex))
 		pos--
 		buf[pos] = 0x10
-	}
-	if orig.AggregationTemporality != 0 {
-		pos = proto.EncodeVarint(buf, pos, uint64(orig.AggregationTemporality))
-		pos--
-		buf[pos] = 0x18
 	}
 	return len(buf) - pos
 }
@@ -237,18 +219,6 @@ func (orig *ValueType) UnmarshalProto(buf []byte) error {
 			}
 
 			orig.UnitStrindex = int32(num)
-
-		case 3:
-			if wireType != proto.WireTypeVarint {
-				return fmt.Errorf("proto: wrong wireType = %d for field AggregationTemporality", wireType)
-			}
-			var num uint64
-			num, pos, err = proto.ConsumeVarint(buf, pos)
-			if err != nil {
-				return err
-			}
-
-			orig.AggregationTemporality = AggregationTemporality(num)
 		default:
 			pos, err = proto.ConsumeUnknown(buf, pos, wireType)
 			if err != nil {
@@ -263,7 +233,6 @@ func GenTestValueType() *ValueType {
 	orig := NewValueType()
 	orig.TypeStrindex = int32(13)
 	orig.UnitStrindex = int32(13)
-	orig.AggregationTemporality = AggregationTemporality(13)
 	return orig
 }
 

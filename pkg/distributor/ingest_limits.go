@@ -2,6 +2,7 @@ package distributor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand/v2"
 
@@ -63,6 +64,9 @@ func (c *ingestLimitsFrontendRingClient) withRandomShuffle(ctx context.Context, 
 	rs, err := c.ring.GetAllHealthy(limits_frontend_client.LimitsRead)
 	if err != nil {
 		return fmt.Errorf("failed to get limits-frontend instances from ring: %w", err)
+	}
+	if len(rs.Instances) == 0 {
+		return errors.New("no healthy instances found")
 	}
 	// Randomly shuffle instances to evenly distribute requests.
 	rand.Shuffle(len(rs.Instances), func(i, j int) {

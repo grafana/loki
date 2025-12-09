@@ -64,6 +64,7 @@ var keylessCommands = map[string]struct{}{
 	"sync":         {},
 	"unsubscribe":  {},
 	"unwatch":      {},
+	"wait":         {},
 }
 
 type Cmder interface {

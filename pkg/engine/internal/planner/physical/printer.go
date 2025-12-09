@@ -88,7 +88,7 @@ func toTreeNode(n Node) *tree.Node {
 		treeNode.Properties = []tree.Property{
 			tree.NewProperty("src", false, node.Source),
 			tree.NewProperty("dst", false, node.Destination),
-			tree.NewProperty("collision", false, node.Collision),
+			tree.NewProperty("collisions", true, toAnySlice(node.Collisions)...),
 		}
 	case *TopK:
 		treeNode.Properties = []tree.Property{

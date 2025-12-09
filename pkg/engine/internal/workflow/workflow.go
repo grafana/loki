@@ -11,6 +11,8 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/oklog/ulid/v2"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
@@ -18,6 +20,11 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
+
+var shortCircuitsTotal = promauto.NewCounter(prometheus.CounterOpts{
+	Name: "loki_engine_v2_task_short_circuits_total",
+	Help: "Total number of tasks preemptively canceled by short circuiting.",
+})
 
 // Options configures a [Workflow].
 type Options struct {
@@ -285,18 +292,23 @@ func (wf *Workflow) onTaskChange(ctx context.Context, task *Task, newStatus Task
 	wf.taskStates[task] = newStatus.State
 	wf.tasksMut.Unlock()
 
-	if newStatus.State == TaskStateFailed {
-		// Use the first failure from a task as the failure for the entire
-		// workflow.
-		wf.resultsPipeline.SetError(newStatus.Error)
+	if newStatus.State.Terminal() {
+		wf.handleTerminalStateChange(ctx, task, oldState, newStatus)
+	} else {
+		wf.handleNonTerminalStateChange(ctx, task, newStatus)
 	}
+}
 
+func (wf *Workflow) handleTerminalStateChange(ctx context.Context, task *Task, oldState TaskState, newStatus TaskStatus) {
+	// State has not changed
 	if oldState == newStatus.State {
 		return
 	}
 
-	if !newStatus.State.Terminal() {
-		return
+	if newStatus.State == TaskStateFailed {
+		// Use the first failure from a task as the failure for the entire
+		// workflow.
+		wf.resultsPipeline.SetError(newStatus.Error)
 	}
 
 	if wf.admissionControl == nil {
@@ -343,9 +355,51 @@ func (wf *Workflow) onTaskChange(ctx context.Context, task *Task, newStatus Task
 	}
 	wf.tasksMut.RUnlock()
 
+	wf.cancelTasks(ctx, tasksToCancel)
+}
+
+func (wf *Workflow) handleNonTerminalStateChange(ctx context.Context, task *Task, newStatus TaskStatus) {
+	// If the task is running, but its contributing time range has been changed
+	if newStatus.State == TaskStateRunning && !newStatus.ContributingTimeRange.Timestamp.IsZero() {
+		// We need to detect if task's immediate children should be canceled because they can no longer contribute
+		// to the state of the running task. We only look at immediate unterminated
+		// children, since canceling them will trigger onTaskChange to process indirect children.
+		var tasksToCancel []*Task
+
+		ts := newStatus.ContributingTimeRange.Timestamp
+		lessThan := newStatus.ContributingTimeRange.LessThan
+
+		wf.tasksMut.RLock()
+		{
+			for _, child := range wf.graph.Children(task) {
+				// Ignore children in terminal states.
+				if childState := wf.taskStates[child]; childState.Terminal() {
+					continue
+				}
+
+				// Ignore if time ranges intersect, so they can contribute
+				if lessThan && child.MaxTimeRange.Start.Before(ts) ||
+					!lessThan && child.MaxTimeRange.End.After(ts) {
+					continue
+				}
+
+				// TODO(spiridonov): We do not check parents here right now, there is only 1 parent now,
+				// but in general a task can be canceled only if all its parents are in terminal states OR
+				// have non-inersecting contributing time range.
+				tasksToCancel = append(tasksToCancel, child)
+				shortCircuitsTotal.Inc()
+			}
+		}
+		wf.tasksMut.RUnlock()
+
+		wf.cancelTasks(ctx, tasksToCancel)
+	}
+}
+
+func (wf *Workflow) cancelTasks(ctx context.Context, tasks []*Task) {
 	// Runners may re-invoke onTaskChange, so we don't want to hold the mutex
 	// when calling this.
-	if err := wf.runner.Cancel(ctx, tasksToCancel...); err != nil {
+	if err := wf.runner.Cancel(ctx, tasks...); err != nil {
 		level.Warn(wf.logger).Log("msg", "failed to cancel tasks", "err", err)
 	}
 }

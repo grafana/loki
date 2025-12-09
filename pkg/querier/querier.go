@@ -25,7 +25,6 @@ import (
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/grafana/loki/v3/pkg/engine"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/loghttp"
@@ -56,7 +55,6 @@ type Config struct {
 	ExtraQueryDelay           time.Duration    `yaml:"extra_query_delay,omitempty"`
 	QueryIngestersWithin      time.Duration    `yaml:"query_ingesters_within,omitempty"`
 	Engine                    logql.EngineOpts `yaml:"engine,omitempty"`
-	EngineV2                  engine.Config    `yaml:"engine_v2,omitempty" category:"experimental"`
 	MaxConcurrent             int              `yaml:"max_concurrent"`
 	QueryStoreOnly            bool             `yaml:"query_store_only"`
 	QueryIngesterOnly         bool             `yaml:"query_ingester_only"`
@@ -66,8 +64,6 @@ type Config struct {
 
 	IngesterQueryStoreMaxLookback time.Duration `yaml:"-"`
 	QueryPatternIngestersWithin   time.Duration `yaml:"-"`
-	DataobjStorageLag             time.Duration `yaml:"dataobj_storage_lag" category:"experimental"`
-	DataobjStorageStart           string        `yaml:"dataobj_storage_start" category:"experimental"`
 }
 
 // RegisterFlags register flags.
@@ -79,28 +75,19 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&cfg.TailMaxDuration, prefix+"tail-max-duration", 1*time.Hour, "Maximum duration for which the live tailing requests are served.")
 	f.DurationVar(&cfg.ExtraQueryDelay, prefix+"extra-query-delay", 0, "Time to wait before sending more than the minimum successful query requests.")
 	f.DurationVar(&cfg.QueryIngestersWithin, prefix+"query-ingesters-within", 3*time.Hour, "Maximum lookback beyond which queries are not sent to ingester. 0 means all queries are sent to ingester.")
-	f.DurationVar(&cfg.DataobjStorageLag, prefix+"dataobj-storage-lag", 1*time.Hour, "Amount of time until data objects are available.")
 	cfg.Engine.RegisterFlagsWithPrefix(prefix+"engine.", f)
-	cfg.EngineV2.RegisterFlagsWithPrefix(prefix+"engine-v2.", f)
 	f.IntVar(&cfg.MaxConcurrent, prefix+"max-concurrent", 4, "The maximum number of queries that can be simultaneously processed by the querier.")
 	f.BoolVar(&cfg.QueryStoreOnly, prefix+"query-store-only", false, "Only query the store, and not attempt any ingesters. This is useful for running a standalone querier pool operating only against stored data.")
 	f.BoolVar(&cfg.QueryIngesterOnly, prefix+"query-ingester-only", false, "When true, queriers only query the ingesters, and not stored data. This is useful when the object store is unavailable.")
 	f.BoolVar(&cfg.MultiTenantQueriesEnabled, prefix+"multi-tenant-queries-enabled", false, "When true, allow queries to span multiple tenants.")
 	f.BoolVar(&cfg.PerRequestLimitsEnabled, prefix+"per-request-limits-enabled", false, "When true, querier limits sent via a header are enforced.")
 	f.BoolVar(&cfg.QueryPartitionIngesters, prefix+"query-partition-ingesters", false, "When true, querier directs ingester queries to the partition-ingesters instead of the normal ingesters.")
-	f.StringVar(&cfg.DataobjStorageStart, prefix+"dataobj-storage-start", "", "Initial date when data objects became available. Format YYYY-MM-DD. If not set, assume data objects are always available no matter how far back.")
 }
 
 // Validate validates the config.
 func (cfg *Config) Validate() error {
 	if cfg.QueryStoreOnly && cfg.QueryIngesterOnly {
 		return errors.New("querier.query_store_only and querier.query_ingester_only cannot both be true")
-	}
-	if cfg.DataobjStorageStart != "" {
-		_, err := time.Parse("2006-01-02", cfg.DataobjStorageStart)
-		if err != nil {
-			return errors.Wrap(err, "data_obj_storage_start must be a valid date")
-		}
 	}
 	return nil
 }

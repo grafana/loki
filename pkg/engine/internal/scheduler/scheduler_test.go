@@ -367,7 +367,7 @@ func TestScheduler_Start(t *testing.T) {
 		require.Equal(t, workflow.TaskStatePending, taskStatus.State, "Started tasks should move to pending state")
 	})
 
-	t.Run("Fails with existing task", func(t *testing.T) {
+	t.Run("Ignores already started tasks", func(t *testing.T) {
 		sched := newTestScheduler(t)
 
 		var (
@@ -380,8 +380,7 @@ func TestScheduler_Start(t *testing.T) {
 		)
 		require.NoError(t, sched.RegisterManifest(t.Context(), manifest), "Scheduler should accept valid manifest")
 		require.NoError(t, sched.Start(t.Context(), exampleTask), "Scheduler should start registered task")
-
-		require.Error(t, sched.Start(t.Context(), exampleTask), "Scheduler should reject already started tasks")
+		require.NoError(t, sched.Start(t.Context(), exampleTask), "Scheduler should ignore already started tasks")
 	})
 }
 

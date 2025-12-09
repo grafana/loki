@@ -22,7 +22,7 @@ import (
 
 // Handler returns an [http.Handler] for serving queries. Unsupported queries
 // will result in an error.
-func Handler(cfg ExecutorConfig, logger log.Logger, engine *Engine, limits querier_limits.Limits) http.Handler {
+func Handler(cfg Config, logger log.Logger, engine *Engine, limits querier_limits.Limits) http.Handler {
 	return executorHandler(cfg, logger, engine, limits)
 }
 
@@ -31,7 +31,7 @@ type queryExecutor interface {
 	Execute(ctx context.Context, params logql.Params) (logqlmodel.Result, error)
 }
 
-func executorHandler(cfg ExecutorConfig, logger log.Logger, exec queryExecutor, limits querier_limits.Limits) http.Handler {
+func executorHandler(cfg Config, logger log.Logger, exec queryExecutor, limits querier_limits.Limits) http.Handler {
 	h := &queryHandler{
 		cfg:    cfg,
 		logger: logger,
@@ -42,7 +42,7 @@ func executorHandler(cfg ExecutorConfig, logger log.Logger, exec queryExecutor, 
 }
 
 type queryHandler struct {
-	cfg    ExecutorConfig
+	cfg    Config
 	logger log.Logger
 	exec   queryExecutor
 	limits querier_limits.Limits
@@ -139,7 +139,7 @@ func (h *queryHandler) validTimeRange(params logql.Params) bool {
 	reqStart, reqEnd := params.Start(), params.End()
 	validStart, validEnd := h.cfg.ValidQueryRange()
 
-	return reqEnd.Before(validEnd) && reqStart.After(validStart)
+	return !reqEnd.After(validEnd) && !reqStart.Before(validStart)
 }
 
 func (h *queryHandler) doInstantRequest(ctx context.Context, req *queryrange.LokiInstantRequest) (logqlmodel.Result, error) {
