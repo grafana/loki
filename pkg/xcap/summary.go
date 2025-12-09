@@ -135,11 +135,11 @@ func (o *observations) toLogValues() []any {
 		if strings.HasSuffix(p.name, "duration") {
 			switch val := value.(type) {
 			case float64:
-				value = time.Duration(val * 1000).String()
+				value = time.Duration(val * float64(time.Second)).String()
 			case int64:
-				value = time.Duration(val * 1000).String()
+				value = time.Duration(val * int64(time.Second)).String()
 			case uint64:
-				value = time.Duration(val * 1000).String()
+				value = time.Duration(val * uint64(time.Second)).String()
 			}
 		}
 
