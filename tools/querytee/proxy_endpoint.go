@@ -115,6 +115,8 @@ func (p *ProxyEndpoint) WithQueryHandlers(handler, metricHandler queryrangebase.
 }
 
 func (p *ProxyEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	p.metrics.requestsTotal.WithLabelValues(r.Method, p.routeName).Inc()
+
 	if p.queryHandler == nil {
 		p.serveWrites(w, r)
 		return

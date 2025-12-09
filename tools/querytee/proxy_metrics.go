@@ -15,6 +15,7 @@ const (
 )
 
 type ProxyMetrics struct {
+	requestsTotal          *prometheus.CounterVec
 	requestDuration        *prometheus.HistogramVec
 	responsesTotal         *prometheus.CounterVec
 	responsesComparedTotal *prometheus.CounterVec
@@ -30,6 +31,11 @@ type ProxyMetrics struct {
 
 func NewProxyMetrics(registerer prometheus.Registerer) *ProxyMetrics {
 	m := &ProxyMetrics{
+		requestsTotal: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "cortex_querytee",
+			Name:      "requests_total",
+			Help:      "Total number of HTTP requests received by query-tee.",
+		}, []string{"method", "route"}),
 		requestDuration: promauto.With(registerer).NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: "cortex_querytee",
 			Name:      "request_duration_seconds",
@@ -69,7 +75,7 @@ func NewProxyMetrics(registerer prometheus.Registerer) *ProxyMetrics {
 			Namespace: "loki_querytee",
 			Name:      "race_wins_total",
 			Help:      "Total number of times each backend won the race (when racing is enabled).",
-		}, []string{"backend", "route", "issuer"}),
+		}, []string{"backend", "route"}),
 	}
 
 	return m
