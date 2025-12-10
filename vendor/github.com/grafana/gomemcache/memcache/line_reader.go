@@ -18,7 +18,7 @@ type allocatingLineReader struct {
 
 func (s allocatingLineReader) ReadLine(from io.Reader, lineLength int) ([]byte, error) {
 	// Note that lineLength MUST account for the trailing \r\n.
-	if lineLength <= len(crlf) {
+	if lineLength < len(crlf) {
 		return nil, errors.New("line length too small: must include CRLF")
 	}
 

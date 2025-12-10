@@ -10,6 +10,7 @@ import (
 	"math/rand"
 	"net/http"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -32,6 +33,8 @@ const (
 	// GetBufferSize is the suggested size of buffers passed to Ring.Get(). It's based on
 	// a typical replication factor 3, plus extra room for a JOINING + LEAVING instance.
 	GetBufferSize = 5
+
+	maxZonesForMetrics = 32
 )
 
 // Options are the result of Option instances that can be used to modify Ring.GetWithOptions behavior.
@@ -265,6 +268,10 @@ type Ring struct {
 	// to be sorted alphabetically.
 	ringZones []string
 
+	// Map containing all ring zones ever discovered, even if they have no instances,
+	// capped at 32 zones to limit cardinality.
+	trackedRingZones map[string]struct{}
+
 	// Number of registered instances with tokens.
 	instancesWithTokensCount int
 
@@ -286,6 +293,7 @@ type Ring struct {
 	shuffledSubringWithLookbackCache map[subringCacheKey]cachedSubringWithLookback[*Ring]
 
 	numMembersGaugeVec      *prometheus.GaugeVec
+	numZoneMembersGaugeVec  *prometheus.GaugeVec
 	totalTokensGauge        prometheus.Gauge
 	oldestTimestampGaugeVec *prometheus.GaugeVec
 
@@ -332,6 +340,7 @@ func NewWithStoreClientAndStrategy(cfg Config, name, key string, store kv.Client
 		KVClient:                         store,
 		strategy:                         strategy,
 		ringDesc:                         &Desc{},
+		trackedRingZones:                 map[string]struct{}{},
 		shuffledSubringCache:             map[subringCacheKey]*Ring{},
 		shuffledSubringWithLookbackCache: map[subringCacheKey]cachedSubringWithLookback[*Ring]{},
 		numMembersGaugeVec: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
@@ -340,6 +349,11 @@ func NewWithStoreClientAndStrategy(cfg Config, name, key string, store kv.Client
 			ConstLabels: map[string]string{"name": name},
 		},
 			[]string{"state"}),
+		numZoneMembersGaugeVec: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
+			Name:        "ring_zone_members",
+			Help:        "Number of ring members for each zone/state pair",
+			ConstLabels: map[string]string{"name": name},
+		}, []string{"zone", "state"}),
 		totalTokensGauge: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 			Name:        "ring_tokens_total",
 			Help:        "Number of tokens in the ring",
@@ -448,7 +462,7 @@ func (r *Ring) setRingStateFromDesc(ringDesc *Desc, updateMetrics, updateRegiste
 	r.ringTokens = ringTokens
 	r.ringTokensByZone = ringTokensByZone
 	r.ringInstanceByToken = ringInstanceByToken
-	r.ringZones = ringZones
+	r.updateRingZones(ringZones)
 	r.instancesWithTokensCount = instancesWithTokensCount
 	r.instancesCountPerZone = instancesCountPerZone
 	r.instancesWithTokensCountPerZone = instancesWithTokensCountPerZone
@@ -785,15 +799,49 @@ func (r *Desc) CountTokens() map[string]int64 {
 	return owned
 }
 
+func (r *Ring) updateRingZones(zones []string) {
+	r.ringZones = zones
+	var notAdded []string
+	for _, zone := range zones {
+		if _, ok := r.trackedRingZones[zone]; !ok {
+			if len(r.trackedRingZones) >= maxZonesForMetrics {
+				notAdded = append(notAdded, zone)
+			} else {
+				r.trackedRingZones[zone] = struct{}{}
+			}
+		}
+	}
+	if len(notAdded) > 0 {
+		level.Warn(r.logger).Log(
+			"msg", "not tracking metrics for zone(s) due to high cardinality",
+			"zones", strings.Join(notAdded, ","),
+		)
+	}
+}
+
 // updateRingMetrics updates ring metrics. Caller must be holding the Write lock!
 func (r *Ring) updateRingMetrics() {
 	numByState := map[string]int{}
 	oldestTimestampByState := map[string]int64{}
 
+	// Will emit nothing if no zones were discovered.
+	var numByZoneAndState map[string]map[string]int
+	if r.cfg.ZoneAwarenessEnabled {
+		numByZoneAndState = map[string]map[string]int{}
+		for zone := range r.trackedRingZones {
+			numByZoneAndState[zone] = map[string]int{}
+		}
+	}
+
 	// Initialized to zero so we emit zero-metrics (instead of not emitting anything)
 	for _, s := range []string{unhealthy, ACTIVE.String(), LEAVING.String(), PENDING.String(), JOINING.String()} {
 		numByState[s] = 0
 		oldestTimestampByState[s] = 0
+		if r.cfg.ZoneAwarenessEnabled {
+			for zone := range numByZoneAndState {
+				numByZoneAndState[zone][s] = 0
+			}
+		}
 	}
 
 	for _, instance := range r.ringDesc.Ingesters {
@@ -805,6 +853,11 @@ func (r *Ring) updateRingMetrics() {
 		if oldestTimestampByState[s] == 0 || instance.Timestamp < oldestTimestampByState[s] {
 			oldestTimestampByState[s] = instance.Timestamp
 		}
+		if r.cfg.ZoneAwarenessEnabled {
+			if byState, ok := numByZoneAndState[instance.Zone]; ok {
+				byState[s]++
+			}
+		}
 	}
 
 	for state, count := range numByState {
@@ -812,6 +865,13 @@ func (r *Ring) updateRingMetrics() {
 	}
 	for state, timestamp := range oldestTimestampByState {
 		r.oldestTimestampGaugeVec.WithLabelValues(state).Set(float64(timestamp))
+	}
+	if r.cfg.ZoneAwarenessEnabled {
+		for zone, byState := range numByZoneAndState {
+			for state, count := range byState {
+				r.numZoneMembersGaugeVec.WithLabelValues(zone, state).Set(float64(count))
+			}
+		}
 	}
 
 	r.totalTokensGauge.Set(float64(len(r.ringTokens)))
@@ -1065,14 +1125,17 @@ func (r *Ring) buildRingForTheShard(shard map[string]InstanceDesc) *Ring {
 	shardDesc := &Desc{Ingesters: shard}
 	shardTokensByZone := shardDesc.getTokensByZone()
 	shardTokens := mergeTokenGroups(shardTokensByZone)
+	zones := getZones(shardTokensByZone)
 
-	return &Ring{
+	ring := &Ring{
 		cfg:                                     r.cfg,
 		strategy:                                r.strategy,
+		logger:                                  r.logger,
 		ringDesc:                                shardDesc,
 		ringTokens:                              shardTokens,
 		ringTokensByZone:                        shardTokensByZone,
-		ringZones:                               getZones(shardTokensByZone),
+		ringZones:                               zones,
+		trackedRingZones:                        map[string]struct{}{},
 		instancesWithTokensCount:                shardDesc.instancesWithTokensCount(),
 		instancesCountPerZone:                   shardDesc.instancesCountPerZone(),
 		instancesWithTokensCountPerZone:         shardDesc.instancesWithTokensCountPerZone(),
@@ -1089,6 +1152,9 @@ func (r *Ring) buildRingForTheShard(shard map[string]InstanceDesc) *Ring {
 		// For caching to work, remember these values.
 		lastTopologyChange: r.lastTopologyChange,
 	}
+
+	ring.updateRingZones(zones)
+	return ring
 }
 
 // mergeTokenGroups returns a sorted list of all tokens in each entry in groupsByName.

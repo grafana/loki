@@ -64,7 +64,7 @@
                             <input type="hidden" name="csrf_token" value="$__CSRF_TOKEN_PLACEHOLDER__">
                             <input type="hidden" name="partition_id" value="{{ .ID }}">
                             <input type="hidden" name="locked" value="{{ if .StateChangeLocked }}false{{ else }}true{{ end }}">
-                            <button name="action" value="lock_state_change" type="submit">{{ if .StateChangeLocked }}Unlock State Change{{ else }}Lock State Change{{ end }}</button>
+                            <button name="action" value="state_change_lock" type="submit">{{ if .StateChangeLocked }}Unlock State Change{{ else }}Lock State Change{{ end }}</button>
                         </form>
                     {{ end }}
                 </td>

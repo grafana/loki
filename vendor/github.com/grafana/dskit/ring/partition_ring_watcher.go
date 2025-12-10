@@ -28,9 +28,7 @@ type PartitionRingWatcher struct {
 	ring   *PartitionRing
 
 	// Metrics.
-	numPartitionsGaugeVec          *prometheus.GaugeVec
-	partitionLockStateGaugeVec     *prometheus.GaugeVec
-	partitionLockTimestampGaugeVec *prometheus.GaugeVec
+	numPartitionsGaugeVec *prometheus.GaugeVec
 }
 
 type PartitionRingWatcherDelegate interface {
@@ -49,16 +47,6 @@ func NewPartitionRingWatcher(name, key string, kv kv.Client, logger log.Logger, 
 			Help:        "Number of partitions by state in the partitions ring.",
 			ConstLabels: map[string]string{"name": name},
 		}, []string{"state"}),
-		partitionLockStateGaugeVec: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
-			Name:        "partition_ring_partition_state_change_locked",
-			Help:        "Whether the partition state change is locked. 1 if locked, 0 if unlocked.",
-			ConstLabels: map[string]string{"name": name},
-		}, []string{"partition_id", "state"}),
-		partitionLockTimestampGaugeVec: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
-			Name:        "partition_ring_partition_state_change_locked_timestamp_seconds",
-			Help:        "Unix timestamp (seconds) of when the partition state change lock was last modified. 0 if unlocked.",
-			ConstLabels: map[string]string{"name": name},
-		}, []string{"partition_id", "state"}),
 	}
 
 	r.Service = services.NewBasicService(r.starting, r.loop, nil).WithName("partitions-ring-watcher")
@@ -120,24 +108,13 @@ func (w *PartitionRingWatcher) updatePartitionRing(desc *PartitionRingDesc) {
 		w.numPartitionsGaugeVec.WithLabelValues(state.CleanName()).Set(float64(count))
 	}
 
-	// Update partition lock metrics.
+	// Check partitions whose state change is locked and log them.
 	for partitionID, partition := range desc.Partitions {
 		state := partition.GetState().CleanName()
 		partitionIDStr := strconv.Itoa(int(partitionID))
-
-		// Lock state indicator (0 or 1)
-		lockState := 0.0
 		if partition.StateChangeLocked {
-			lockState = 1.0
+			level.Warn(w.logger).Log("msg", "partition state change is locked", "partition_id", partitionIDStr, "partition_state", state)
 		}
-		w.partitionLockStateGaugeVec.WithLabelValues(partitionIDStr, state).Set(lockState)
-
-		// Lock timestamp (0 if unlocked)
-		lockTimestamp := 0.0
-		if partition.StateChangeLocked {
-			lockTimestamp = float64(partition.StateChangeLockedTimestamp)
-		}
-		w.partitionLockTimestampGaugeVec.WithLabelValues(partitionIDStr, state).Set(lockTimestamp)
 	}
 }
 

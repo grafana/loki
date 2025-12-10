@@ -38,9 +38,9 @@ func (l *PartitionRingEditor) RemoveMultiPartitionOwner(ctx context.Context, ins
 	})
 }
 
-func (l *PartitionRingEditor) LockPartitionStateChange(ctx context.Context, partitionID int32, locked bool) error {
+func (l *PartitionRingEditor) SetPartitionStateChangeLock(ctx context.Context, partitionID int32, locked bool) error {
 	return l.updateRing(ctx, func(ring *PartitionRingDesc) (bool, error) {
-		return lockPartitionStateChange(ring, partitionID, locked)
+		return SetPartitionStateChangeLock(ring, partitionID, locked)
 	})
 }
 
@@ -75,7 +75,7 @@ func changePartitionState(ring *PartitionRingDesc, partitionID int32, toState Pa
 	return ring.UpdatePartitionState(partitionID, toState, time.Now())
 }
 
-func lockPartitionStateChange(ring *PartitionRingDesc, partitionID int32, locked bool) (changed bool, _ error) {
+func SetPartitionStateChangeLock(ring *PartitionRingDesc, partitionID int32, locked bool) (changed bool, _ error) {
 	partition, exists := ring.Partitions[partitionID]
 	if !exists {
 		return false, ErrPartitionDoesNotExist

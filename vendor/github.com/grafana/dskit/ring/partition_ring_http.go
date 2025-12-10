@@ -29,7 +29,7 @@ var partitionRingPageTemplate = template.Must(template.New("webpage").Funcs(temp
 
 type PartitionRingUpdater interface {
 	ChangePartitionState(ctx context.Context, partitionID int32, toState PartitionState) error
-	LockPartitionStateChange(ctx context.Context, partitionID int32, locked bool) error
+	SetPartitionStateChangeLock(ctx context.Context, partitionID int32, locked bool) error
 }
 
 type PartitionRingPageHandler struct {
@@ -151,7 +151,7 @@ func (h *PartitionRingPageHandler) handlePostRequest(w http.ResponseWriter, req 
 		}
 	} else if req.FormValue("action") == "change_state_and_lock" {
 		// NOTE: To avoid playing Whac-a-Mole with rollout-operator (or other actors) reverting the state to active BEFORE the operator
-		// is able to lock the partition state change, we offer this method which attempts to change the state and lock immediatly.
+		// is able to lock the partition state change, we offer this method which attempts to change the state and lock immediately.
 		// This currently contains a race. But since usually this endpoint is served by many replicas, fixing the race would require
 		// some work. We believe it's not worth it to add the additional complexity and we rely on the user using this to ensure
 		// that the state change is locked in the desired state.
@@ -172,11 +172,11 @@ func (h *PartitionRingPageHandler) handlePostRequest(w http.ResponseWriter, req 
 			return
 		}
 
-		if err := h.updater.LockPartitionStateChange(req.Context(), int32(partitionID), true); err != nil {
+		if err := h.updater.SetPartitionStateChangeLock(req.Context(), int32(partitionID), true); err != nil {
 			http.Error(w, fmt.Sprintf("failed to lock partition state change: %s", err.Error()), http.StatusBadRequest)
 			return
 		}
-	} else if req.FormValue("action") == "lock_state_change" {
+	} else if req.FormValue("action") == "state_change_lock" {
 		partitionID, err := strconv.Atoi(req.FormValue("partition_id"))
 		if err != nil {
 			http.Error(w, fmt.Sprintf("invalid partition ID: %s", err.Error()), http.StatusBadRequest)
@@ -189,7 +189,7 @@ func (h *PartitionRingPageHandler) handlePostRequest(w http.ResponseWriter, req 
 			return
 		}
 
-		if err := h.updater.LockPartitionStateChange(req.Context(), int32(partitionID), locked); err != nil {
+		if err := h.updater.SetPartitionStateChangeLock(req.Context(), int32(partitionID), locked); err != nil {
 			http.Error(w, fmt.Sprintf("failed to lock partition state change: %s", err.Error()), http.StatusBadRequest)
 			return
 		}
