@@ -570,7 +570,7 @@ github.com/cncf/xds/go/xds/type/v3
 # github.com/coder/quartz v0.1.3
 ## explicit; go 1.21.8
 github.com/coder/quartz
-# github.com/containerd/containerd/v2 v2.0.5
+# github.com/containerd/containerd/v2 v2.0.7
 ## explicit; go 1.23.0
 github.com/containerd/containerd/v2/pkg/tracing
 # github.com/containerd/fifo v1.1.0
@@ -2050,8 +2050,8 @@ golang.org/x/crypto/pkcs12
 golang.org/x/crypto/pkcs12/internal/rc2
 golang.org/x/crypto/scrypt
 golang.org/x/crypto/sha3
-# golang.org/x/exp v0.0.0-20250106191152-7588d65b2ba8
-## explicit; go 1.22.0
+# golang.org/x/exp v0.0.0-20250711185948-6ae5c78190dc
+## explicit; go 1.23.0
 golang.org/x/exp/constraints
 golang.org/x/exp/slices
 # golang.org/x/mod v0.29.0
@@ -2081,7 +2081,7 @@ golang.org/x/net/netutil
 golang.org/x/net/proxy
 golang.org/x/net/publicsuffix
 golang.org/x/net/trace
-# golang.org/x/oauth2 v0.28.0
+# golang.org/x/oauth2 v0.30.0
 ## explicit; go 1.23.0
 golang.org/x/oauth2
 golang.org/x/oauth2/authhandler
@@ -2134,7 +2134,7 @@ golang.org/x/text/secure/bidirule
 golang.org/x/text/transform
 golang.org/x/text/unicode/bidi
 golang.org/x/text/unicode/norm
-# golang.org/x/time v0.11.0
+# golang.org/x/time v0.12.0
 ## explicit; go 1.23.0
 golang.org/x/time/rate
 # golang.org/x/tools v0.38.0
@@ -2766,7 +2766,7 @@ zombiezen.com/go/sqlite
 zombiezen.com/go/sqlite/sqlitex
 # github.com/Azure/azure-sdk-for-go => github.com/Azure/azure-sdk-for-go v68.0.0+incompatible
 # github.com/Azure/azure-storage-blob-go => github.com/MasslessParticle/azure-storage-blob-go v0.14.1-0.20240322194317-344980fda573
-# github.com/hashicorp/consul => github.com/hashicorp/consul v1.20.5
+# github.com/hashicorp/consul => github.com/hashicorp/consul v1.22.0
 # github.com/gocql/gocql => github.com/grafana/gocql v0.0.0-20200605141915-ba5dc39ece85
 # github.com/hashicorp/memberlist => github.com/grafana/memberlist v0.3.1-0.20220714140823-09ffed8adbbe
 # github.com/grafana/regexp => github.com/grafana/regexp v0.0.0-20240518133315-a468a5bfb3bc
