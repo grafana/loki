@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"strings"
@@ -68,7 +69,7 @@ type Config struct {
 
 	// PrivateClaims optionally specifies custom private claims in the JWT.
 	// See http://tools.ietf.org/html/draft-jones-json-web-token-10#section-4.3
-	PrivateClaims map[string]any
+	PrivateClaims map[string]interface{}
 
 	// UseIDToken optionally specifies whether ID token should be used instead
 	// of access token when the server returns both.
@@ -135,7 +136,7 @@ func (js jwtSource) Token() (*oauth2.Token, error) {
 		return nil, fmt.Errorf("oauth2: cannot fetch token: %v", err)
 	}
 	defer resp.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	body, err := ioutil.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
 		return nil, fmt.Errorf("oauth2: cannot fetch token: %v", err)
 	}
@@ -147,8 +148,10 @@ func (js jwtSource) Token() (*oauth2.Token, error) {
 	}
 	// tokenRes is the JSON response body.
 	var tokenRes struct {
-		oauth2.Token
-		IDToken string `json:"id_token"`
+		AccessToken string `json:"access_token"`
+		TokenType   string `json:"token_type"`
+		IDToken     string `json:"id_token"`
+		ExpiresIn   int64  `json:"expires_in"` // relative seconds from now
 	}
 	if err := json.Unmarshal(body, &tokenRes); err != nil {
 		return nil, fmt.Errorf("oauth2: cannot fetch token: %v", err)
@@ -157,7 +160,7 @@ func (js jwtSource) Token() (*oauth2.Token, error) {
 		AccessToken: tokenRes.AccessToken,
 		TokenType:   tokenRes.TokenType,
 	}
-	raw := make(map[string]any)
+	raw := make(map[string]interface{})
 	json.Unmarshal(body, &raw) // no error checks for optional fields
 	token = token.WithExtra(raw)
 

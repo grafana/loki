@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 )
 
@@ -28,14 +29,14 @@ func (cs fileCredentialSource) subjectToken() (string, error) {
 		return "", fmt.Errorf("oauth2/google/externalaccount: failed to open credential file %q", cs.File)
 	}
 	defer tokenFile.Close()
-	tokenBytes, err := io.ReadAll(io.LimitReader(tokenFile, 1<<20))
+	tokenBytes, err := ioutil.ReadAll(io.LimitReader(tokenFile, 1<<20))
 	if err != nil {
 		return "", fmt.Errorf("oauth2/google/externalaccount: failed to read credential file: %v", err)
 	}
 	tokenBytes = bytes.TrimSpace(tokenBytes)
 	switch cs.Format.Type {
 	case "json":
-		jsonData := make(map[string]any)
+		jsonData := make(map[string]interface{})
 		err = json.Unmarshal(tokenBytes, &jsonData)
 		if err != nil {
 			return "", fmt.Errorf("oauth2/google/externalaccount: failed to unmarshal subject token file: %v", err)

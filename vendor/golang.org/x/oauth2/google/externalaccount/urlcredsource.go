@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
 
 	"golang.org/x/oauth2"
@@ -43,7 +44,7 @@ func (cs urlCredentialSource) subjectToken() (string, error) {
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	respBody, err := ioutil.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
 		return "", fmt.Errorf("oauth2/google/externalaccount: invalid body in subject token URL query: %v", err)
 	}
@@ -53,7 +54,7 @@ func (cs urlCredentialSource) subjectToken() (string, error) {
 
 	switch cs.Format.Type {
 	case "json":
-		jsonData := make(map[string]any)
+		jsonData := make(map[string]interface{})
 		err = json.Unmarshal(respBody, &jsonData)
 		if err != nil {
 			return "", fmt.Errorf("oauth2/google/externalaccount: failed to unmarshal subject token file: %v", err)

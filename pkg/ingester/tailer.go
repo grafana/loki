@@ -6,11 +6,10 @@ import (
 	"sync"
 	"time"
 
-	"context"
-
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/prometheus/model/labels"
 	"go.uber.org/atomic"
+	"golang.org/x/net/context"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/log"

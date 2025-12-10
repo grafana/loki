@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"math"
 	"mime"
 	"net/http"
@@ -25,9 +26,9 @@ import (
 // the requests to access protected resources on the OAuth 2.0
 // provider's backend.
 //
-// This type is a mirror of [golang.org/x/oauth2.Token] and exists to break
+// This type is a mirror of oauth2.Token and exists to break
 // an otherwise-circular dependency. Other internal packages
-// should convert this Token into an [golang.org/x/oauth2.Token] before use.
+// should convert this Token into an oauth2.Token before use.
 type Token struct {
 	// AccessToken is the token that authorizes and authenticates
 	// the requests.
@@ -49,16 +50,9 @@ type Token struct {
 	// mechanisms for that TokenSource will not be used.
 	Expiry time.Time
 
-	// ExpiresIn is the OAuth2 wire format "expires_in" field,
-	// which specifies how many seconds later the token expires,
-	// relative to an unknown time base approximately around "now".
-	// It is the application's responsibility to populate
-	// `Expiry` from `ExpiresIn` when required.
-	ExpiresIn int64 `json:"expires_in,omitempty"`
-
 	// Raw optionally contains extra metadata from the server
 	// when updating a token.
-	Raw any
+	Raw interface{}
 }
 
 // tokenJSON is the struct representing the HTTP response from OAuth2
@@ -105,6 +99,14 @@ func (e *expirationTime) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+// RegisterBrokenAuthHeaderProvider previously did something. It is now a no-op.
+//
+// Deprecated: this function no longer does anything. Caller code that
+// wants to avoid potential extra HTTP requests made during
+// auto-probing of the provider's auth style should set
+// Endpoint.AuthStyle.
+func RegisterBrokenAuthHeaderProvider(tokenURL string) {}
+
 // AuthStyle is a copy of the golang.org/x/oauth2 package's AuthStyle type.
 type AuthStyle int
 
@@ -141,11 +143,6 @@ func (lc *LazyAuthStyleCache) Get() *AuthStyleCache {
 	return c
 }
 
-type authStyleCacheKey struct {
-	url      string
-	clientID string
-}
-
 // AuthStyleCache is the set of tokenURLs we've successfully used via
 // RetrieveToken and which style auth we ended up using.
 // It's called a cache, but it doesn't (yet?) shrink. It's expected that
@@ -153,26 +150,26 @@ type authStyleCacheKey struct {
 // small.
 type AuthStyleCache struct {
 	mu sync.Mutex
-	m  map[authStyleCacheKey]AuthStyle
+	m  map[string]AuthStyle // keyed by tokenURL
 }
 
 // lookupAuthStyle reports which auth style we last used with tokenURL
 // when calling RetrieveToken and whether we have ever done so.
-func (c *AuthStyleCache) lookupAuthStyle(tokenURL, clientID string) (style AuthStyle, ok bool) {
+func (c *AuthStyleCache) lookupAuthStyle(tokenURL string) (style AuthStyle, ok bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	style, ok = c.m[authStyleCacheKey{tokenURL, clientID}]
+	style, ok = c.m[tokenURL]
 	return
 }
 
 // setAuthStyle adds an entry to authStyleCache, documented above.
-func (c *AuthStyleCache) setAuthStyle(tokenURL, clientID string, v AuthStyle) {
+func (c *AuthStyleCache) setAuthStyle(tokenURL string, v AuthStyle) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.m == nil {
-		c.m = make(map[authStyleCacheKey]AuthStyle)
+		c.m = make(map[string]AuthStyle)
 	}
-	c.m[authStyleCacheKey{tokenURL, clientID}] = v
+	c.m[tokenURL] = v
 }
 
 // newTokenRequest returns a new *http.Request to retrieve a new token
@@ -213,9 +210,9 @@ func cloneURLValues(v url.Values) url.Values {
 }
 
 func RetrieveToken(ctx context.Context, clientID, clientSecret, tokenURL string, v url.Values, authStyle AuthStyle, styleCache *AuthStyleCache) (*Token, error) {
-	needsAuthStyleProbe := authStyle == AuthStyleUnknown
+	needsAuthStyleProbe := authStyle == 0
 	if needsAuthStyleProbe {
-		if style, ok := styleCache.lookupAuthStyle(tokenURL, clientID); ok {
+		if style, ok := styleCache.lookupAuthStyle(tokenURL); ok {
 			authStyle = style
 			needsAuthStyleProbe = false
 		} else {
@@ -245,7 +242,7 @@ func RetrieveToken(ctx context.Context, clientID, clientSecret, tokenURL string,
 		token, err = doTokenRoundTrip(ctx, req)
 	}
 	if needsAuthStyleProbe && err == nil {
-		styleCache.setAuthStyle(tokenURL, clientID, authStyle)
+		styleCache.setAuthStyle(tokenURL, authStyle)
 	}
 	// Don't overwrite `RefreshToken` with an empty value
 	// if this was a token refreshing request.
@@ -260,7 +257,7 @@ func doTokenRoundTrip(ctx context.Context, req *http.Request) (*Token, error) {
 	if err != nil {
 		return nil, err
 	}
-	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+	body, err := ioutil.ReadAll(io.LimitReader(r.Body, 1<<20))
 	r.Body.Close()
 	if err != nil {
 		return nil, fmt.Errorf("oauth2: cannot fetch token: %v", err)
@@ -315,8 +312,7 @@ func doTokenRoundTrip(ctx context.Context, req *http.Request) (*Token, error) {
 			TokenType:    tj.TokenType,
 			RefreshToken: tj.RefreshToken,
 			Expiry:       tj.expiry(),
-			ExpiresIn:    int64(tj.ExpiresIn),
-			Raw:          make(map[string]any),
+			Raw:          make(map[string]interface{}),
 		}
 		json.Unmarshal(body, &token.Raw) // no error checks for optional fields
 	}
