@@ -219,6 +219,16 @@ func (l *logResultCache) Do(ctx context.Context, req queryrangebase.Request) (qu
 func (l *logResultCache) handleMiss(ctx context.Context, cacheKey, responseCacheKey string, req *LokiRequest) (queryrangebase.Response, error) {
 	l.metrics.CacheMiss.Inc()
 	level.Debug(l.logger).Log("msg", "cache miss", "cacheKey", cacheKey, "responseKey", responseCacheKey)
+
+	level.Debug(l.logger).Log(
+		"msg", "cache miss",
+		"experiment", "positive-results-cache",
+		"cacheKey", cacheKey,
+		"responseKey", responseCacheKey,
+		"reqFrom", req.StartTs.Format(time.RFC3339Nano),
+		"reqTo", req.EndTs.Format(time.RFC3339Nano),
+	)
+
 	resp, err := l.next.Do(ctx, req)
 	if err != nil {
 		return nil, err
@@ -240,6 +250,15 @@ func (l *logResultCache) handleMiss(ctx context.Context, cacheKey, responseCache
 			level.Warn(l.logger).Log("msg", "error marshalling request", "err", err)
 			return resp, nil
 		}
+
+		level.Debug(l.logger).Log(
+			"msg", "cache empty response stored",
+			"experiment", "positive-results-cache",
+			"cacheKey", cacheKey,
+			"requestFrom", req.StartTs.Format(time.RFC3339Nano),
+			"requestTo", req.EndTs.Format(time.RFC3339Nano),
+		)
+
 		// cache the request (empty result) using cache key
 		err = l.cache.Store(ctx, []string{cache.HashKey(cacheKey)}, [][]byte{data})
 		if err != nil {
@@ -284,6 +303,17 @@ func (l *logResultCache) handleMiss(ctx context.Context, cacheKey, responseCache
 			if err != nil {
 				level.Warn(l.logger).Log("msg", "error storing cache", "err", err)
 			}
+
+			level.Debug(l.logger).Log(
+				"msg", "cache non-empty response stored",
+				"experiment", "positive-results-cache",
+				"cacheKey", cacheKey,
+				"markerKey", markerCacheKey,
+				"responseKey", responseCacheKey,
+				"requestFrom", req.StartTs.Format(time.RFC3339Nano),
+				"requestTo", req.EndTs.Format(time.RFC3339Nano),
+			)
+
 			return resp, nil
 		}
 	}
@@ -294,6 +324,17 @@ func (l *logResultCache) handleMiss(ctx context.Context, cacheKey, responseCache
 
 func (l *logResultCache) handleEmptyResponseHit(ctx context.Context, cacheKey, responseCacheKey string, cachedRequest *LokiRequest, lokiReq *LokiRequest, storeNonEmptyEnabled bool) (queryrangebase.Response, error) {
 	l.metrics.CacheHit.WithLabelValues(hitKindEmpty).Inc()
+	level.Debug(l.logger).Log(
+		"msg", "empty response cache hit",
+		"experiment", "positive-results-cache",
+		"storeNonEmptyEnabled", storeNonEmptyEnabled,
+		"cacheKey", cacheKey,
+		"responseKey", responseCacheKey,
+		"cachedReqFrom", cachedRequest.StartTs.Format(time.RFC3339Nano),
+		"cachedReqTo", cachedRequest.EndTs.Format(time.RFC3339Nano),
+		"lokiReqFrom", lokiReq.StartTs.Format(time.RFC3339Nano),
+		"lokiReqTo", lokiReq.EndTs.Format(time.RFC3339Nano),
+	)
 	// we start with an empty response
 	result := emptyResponse(lokiReq)
 	// if the request is the same and cover the whole time range,
@@ -434,6 +475,15 @@ func (l *logResultCache) updateCacheWithNonEmptyResponse(ctx context.Context, ca
 	// Cache if unlimited or response is small enough
 	shouldCache := maxCacheSize == 0 || proto.Size(newCachedResponse) <= maxCacheSize
 	if !shouldCache {
+		level.Debug(l.logger).Log(
+			"msg", "cache non-empty response NOT stored because response is too large - updateCacheWithNonEmptyResponse",
+			"experiment", "positive-results-cache",
+			"cacheKey", cacheKey,
+			"responseSize", proto.Size(newCachedResponse),
+			"maxCacheSize", maxCacheSize,
+			"requestFrom", newCachedRequest.StartTs.Format(time.RFC3339Nano),
+			"requestTo", newCachedRequest.EndTs.Format(time.RFC3339Nano),
+		)
 		return
 	}
 
@@ -453,6 +503,17 @@ func (l *logResultCache) updateCacheWithNonEmptyResponse(ctx context.Context, ca
 	markerCacheKey := fmt.Sprintf("%s:resp", cacheKey)
 	// Marker value - just needs to exist, use minimal value
 	markerValue := []byte{1}
+
+	level.Debug(l.logger).Log(
+		"msg", "cache non-empty response stored - updateCacheWithNonEmptyResponse",
+		"experiment", "positive-results-cache",
+		"cacheKey", cacheKey,
+		"markerKey", markerCacheKey,
+		"responseKey", responseCacheKey,
+		"requestFrom", newCachedRequest.StartTs.Format(time.RFC3339Nano),
+		"requestTo", newCachedRequest.EndTs.Format(time.RFC3339Nano),
+	)
+
 	// Store three keys: cache key for request, marker key, :resp:limit key for response
 	if err := l.cache.Store(ctx, []string{cache.HashKey(cacheKey), cache.HashKey(markerCacheKey), cache.HashKey(responseCacheKey)}, [][]byte{requestData, markerValue, responseData}); err != nil {
 		level.Error(l.logger).Log("msg", "error updating cache", "err", err)
@@ -461,6 +522,18 @@ func (l *logResultCache) updateCacheWithNonEmptyResponse(ctx context.Context, ca
 
 func (l *logResultCache) handleResponseHit(ctx context.Context, cacheKey, responseCacheKey string, cachedResponse *LokiResponse, cachedRequest *LokiRequest, lokiReq *LokiRequest) (queryrangebase.Response, error) {
 	l.metrics.CacheHit.WithLabelValues(hitKindNonEmpty).Inc()
+
+	level.Debug(l.logger).Log(
+		"msg", "response cache hit",
+		"experiment", "positive-results-cache",
+		"cacheKey", cacheKey,
+		"responseKey", responseCacheKey,
+		"cachedReqFrom", cachedRequest.StartTs.Format(time.RFC3339Nano),
+		"cachedReqTo", cachedRequest.EndTs.Format(time.RFC3339Nano),
+		"lokiReqFrom", lokiReq.StartTs.Format(time.RFC3339Nano),
+		"lokiReqTo", lokiReq.EndTs.Format(time.RFC3339Nano),
+	)
+
 	// Check if the cached response covers the entire requested time range
 	if cachedRequest.StartTs.UnixNano() <= lokiReq.StartTs.UnixNano() && cachedRequest.EndTs.UnixNano() >= lokiReq.EndTs.UnixNano() {
 		// Extract the relevant portion if needed
