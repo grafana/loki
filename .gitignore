@@ -55,6 +55,9 @@ _shared-workflows-dockerhub-login
 .vscode
 !.vscode/launch.json
 
+# zed
+.zed
+
 # nix
 nix/result
 /result
