@@ -60,7 +60,7 @@ type Config struct {
 	// 1. Data before ComparisonStartDate -> split goes to the preferred backend only
 	// 2. Data between ComparisonStartDate and (now - ComparisonMinAge) -> splits go to all backends and are compared with goldfish
 	// 3. Data after (now - ComparisonMinAge) -> split goes to the preferred backend only
-	ComparisonStartDate flagext.Time  `yaml:"storage_start_date" category:"experimental"`
+	ComparisonStartDate flagext.Time `yaml:"storage_start_date" category:"experimental"`
 }
 
 // SamplingConfig defines how queries are sampled

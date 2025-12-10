@@ -17,14 +17,9 @@ type catalog struct {
 	sectionDescriptors []*metastore.DataobjSectionDescriptor
 }
 
-// ResolveShardDescriptors implements Catalog.
-func (c *catalog) ResolveShardDescriptors(e Expression, from, through time.Time) ([]FilteredShardDescriptor, error) {
-	return c.ResolveShardDescriptorsWithShard(e, nil, noShard, from, through)
-}
-
 // ResolveDataObjForShard implements Catalog.
 func (c *catalog) ResolveShardDescriptorsWithShard(_ Expression, _ []Expression, shard ShardInfo, _, _ time.Time) ([]FilteredShardDescriptor, error) {
-	return filterDescriptorsForShard(shard, c.sectionDescriptors)
+	return FilterDescriptorsForShard(shard, c.sectionDescriptors)
 }
 
 var _ Catalog = (*catalog)(nil)

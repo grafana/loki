@@ -339,6 +339,10 @@ query_engine:
     # CLI flag: -query-engine.range-reads.min-range-size
     [min_range_size: <int> | default = 1048576]
 
+  # Experimental: Enable ahead of time catalog lookups.
+  # CLI flag: -query-engine.ahead-of-time-catalog-lookups-enabled
+  [ahead_of_time_catalog_lookups_enabled: <boolean> | default = false]
+
   # Experimental: Number of worker threads to spawn. Each worker thread runs one
   # task at a time. 0 means to use GOMAXPROCS value.
   # CLI flag: -query-engine.worker-threads

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/prometheus/prometheus/model/labels"
+
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
@@ -252,4 +254,91 @@ func (e *VariadicExpr) String() string {
 // Type returns the type of the [VariadicExpr].
 func (*VariadicExpr) Type() ExpressionType {
 	return ExprTypeVariadic
+}
+
+// ExpressionToMatchers converts a selector expression to a list of matchers.
+// The selector expression is required to be a (tree of) [BinaryExpression]
+// with a [ColumnExpression] on the left and a [LiteralExpression] on the right.
+// It optionally supports ambiguous column references. Non-ambiguous column references are label matchers.
+func ExpressionToMatchers(selector Expression, allowAmbiguousColumnRefs bool) ([]*labels.Matcher, error) {
+	if selector == nil {
+		return nil, nil
+	}
+
+	switch expr := selector.(type) {
+	case *BinaryExpr:
+		switch expr.Op {
+		case types.BinaryOpAnd:
+			lhs, err := ExpressionToMatchers(expr.Left, allowAmbiguousColumnRefs)
+			if err != nil {
+				return nil, err
+			}
+			rhs, err := ExpressionToMatchers(expr.Right, allowAmbiguousColumnRefs)
+			if err != nil {
+				return nil, err
+			}
+			return append(lhs, rhs...), nil
+		case types.BinaryOpEq, types.BinaryOpNeq, types.BinaryOpMatchRe, types.BinaryOpNotMatchRe:
+			op, err := convertBinaryOp(expr.Op)
+			if err != nil {
+				return nil, err
+			}
+			name, err := convertColumnRef(expr.Left, allowAmbiguousColumnRefs)
+			if err != nil {
+				return nil, err
+			}
+			value, err := convertLiteralToString(expr.Right)
+			if err != nil {
+				return nil, err
+			}
+			lhs, err := labels.NewMatcher(op, name, value)
+			if err != nil {
+				return nil, err
+			}
+			return []*labels.Matcher{lhs}, nil
+		default:
+			return nil, fmt.Errorf("invalid binary expression in stream selector expression: %v", expr.Op.String())
+		}
+	default:
+		return nil, fmt.Errorf("invalid expression type in stream selector expression: %T", expr)
+	}
+}
+
+func convertLiteralToString(expr Expression) (string, error) {
+	l, ok := expr.(*LiteralExpr)
+	if !ok {
+		return "", fmt.Errorf("expected literal expression, got %T", expr)
+	}
+	if l.ValueType() != types.Loki.String {
+		return "", fmt.Errorf("literal type is not a string, got %v", l.ValueType())
+	}
+	return l.Value().(string), nil
+}
+
+func convertColumnRef(expr Expression, allowAmbiguousColumnRefs bool) (string, error) {
+	ref, ok := expr.(*ColumnExpr)
+	if !ok {
+		return "", fmt.Errorf("expected column expression, got %T", expr)
+	}
+	if !allowAmbiguousColumnRefs && ref.Ref.Type != types.ColumnTypeLabel {
+		return "", fmt.Errorf("column type is not a label, got %v", ref.Ref.Type)
+	}
+	return ref.Ref.Column, nil
+}
+
+var (
+	binOpToMatchTypeMapping = map[types.BinaryOp]labels.MatchType{
+		types.BinaryOpEq:         labels.MatchEqual,
+		types.BinaryOpNeq:        labels.MatchNotEqual,
+		types.BinaryOpMatchRe:    labels.MatchRegexp,
+		types.BinaryOpNotMatchRe: labels.MatchNotRegexp,
+	}
+)
+
+func convertBinaryOp(t types.BinaryOp) (labels.MatchType, error) {
+	ty, ok := binOpToMatchTypeMapping[t]
+	if !ok {
+		return -1, fmt.Errorf("invalid binary operator for matcher: %v", t)
+	}
+	return ty, nil
 }
