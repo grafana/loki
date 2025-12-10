@@ -279,7 +279,7 @@ func TestBuildAll_WithFeatureGates_ServiceMonitors(t *testing.T) {
 		},
 		{
 			desc:         "service monitor per component created",
-			MonitorCount: 8,
+			MonitorCount: 9,
 			BuildOptions: Options{
 				Name:      "test",
 				Namespace: "test",
@@ -474,7 +474,7 @@ func TestBuildAll_WithFeatureGates_ServiceMonitorTLSEndpoints(t *testing.T) {
 	require.NoError(t, err)
 	objects, buildErr := BuildAll(opts)
 	require.NoError(t, buildErr)
-	require.Equal(t, 8, serviceMonitorCount(objects))
+	require.Equal(t, 9, serviceMonitorCount(objects))
 
 	for _, obj := range objects {
 		var (
@@ -567,6 +567,9 @@ func TestBuildAll_WithFeatureGates_GRPCEncryption(t *testing.T) {
 						Ruler: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
 						},
+						PatternIngester: &lokiv1.LokiComponentSpec{
+							Replicas: 1,
+						},
 					},
 				},
 				Gates: configv1.FeatureGates{
@@ -610,6 +613,9 @@ func TestBuildAll_WithFeatureGates_GRPCEncryption(t *testing.T) {
 						Ruler: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
 						},
+						PatternIngester: &lokiv1.LokiComponentSpec{
+							Replicas: 1,
+						},
 					},
 				},
 				Gates: configv1.FeatureGates{
@@ -622,9 +628,10 @@ func TestBuildAll_WithFeatureGates_GRPCEncryption(t *testing.T) {
 
 	secretsMap := map[string]string{
 		// deployments
-		"test-distributor":    "test-distributor-grpc",
-		"test-querier":        "test-querier-grpc",
-		"test-query-frontend": "test-query-frontend-grpc",
+		"test-distributor":      "test-distributor-grpc",
+		"test-querier":          "test-querier-grpc",
+		"test-query-frontend":   "test-query-frontend-grpc",
+		"test-pattern-ingester": "test-pattern-ingester-grpc",
 		// statefulsets
 		"test-ingester":      "test-ingester-grpc",
 		"test-compactor":     "test-compactor-grpc",
@@ -734,6 +741,9 @@ func TestBuildAll_WithFeatureGates_RestrictedPodSecurityStandard(t *testing.T) {
 						Ruler: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
 						},
+						PatternIngester: &lokiv1.LokiComponentSpec{
+							Replicas: 1,
+						},
 					},
 				},
 				Gates: configv1.FeatureGates{
@@ -775,6 +785,9 @@ func TestBuildAll_WithFeatureGates_RestrictedPodSecurityStandard(t *testing.T) {
 							Replicas: 1,
 						},
 						Ruler: &lokiv1.LokiComponentSpec{
+							Replicas: 1,
+						},
+						PatternIngester: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
 						},
 					},
