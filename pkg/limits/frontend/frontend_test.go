@@ -164,6 +164,8 @@ func TestFrontend_ExceedsLimits(t *testing.T) {
 							Store: "inmemory",
 						},
 					},
+					HeartbeatPeriod:  time.Millisecond,
+					HeartbeatTimeout: time.Millisecond,
 				},
 			}, "test", readRing, log.NewNopLogger(), prometheus.NewRegistry())
 			require.NoError(t, err)
