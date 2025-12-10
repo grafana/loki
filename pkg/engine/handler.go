@@ -139,7 +139,7 @@ func (h *queryHandler) validTimeRange(params logql.Params) bool {
 	reqStart, reqEnd := params.Start(), params.End()
 	validStart, validEnd := h.cfg.ValidQueryRange()
 
-	return reqEnd.Before(validEnd) && reqStart.After(validStart)
+	return !reqEnd.After(validEnd) && !reqStart.Before(validStart)
 }
 
 func (h *queryHandler) doInstantRequest(ctx context.Context, req *queryrange.LokiInstantRequest) (logqlmodel.Result, error) {

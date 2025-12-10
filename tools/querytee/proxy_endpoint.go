@@ -2,7 +2,6 @@ package querytee
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -15,9 +14,8 @@ import (
 	"github.com/go-kit/log/level"
 
 	"github.com/grafana/dskit/tenant"
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/querier/queryrange"
-	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+
+	"github.com/grafana/loki/v3/pkg/util/server"
 	"github.com/grafana/loki/v3/tools/querytee/comparator"
 	"github.com/grafana/loki/v3/tools/querytee/goldfish"
 )
@@ -58,14 +56,7 @@ type ProxyEndpoint struct {
 
 	// Handler for processing requests using the middleware pattern.
 	// When set, ServeHTTP uses this instead of the legacy executeBackendRequests.
-	queryHandler queryrangebase.Handler
-
-	// Handler for processing metric requests using the middleware pattern.
-	// When set, ServeHTTP uses this instead of the legacy executeBackendRequests.
-	metricQueryHandler queryrangebase.Handler
-
-	// Codec for encoding/decoding requests and responses.
-	codec queryrangebase.Codec
+	queryHandler http.Handler
 }
 
 func NewProxyEndpoint(
@@ -101,97 +92,22 @@ func (p *ProxyEndpoint) WithGoldfish(manager *goldfish.Manager) *ProxyEndpoint {
 	return p
 }
 
-// WithQueryHandlers sets the middleware-based query handlers (logs and metrics) for the endpoint.
+// WithQueryHandler sets the middleware-based query handlers (logs and metrics) for the endpoint.
 // When set, ServeHTTP uses this handler instead of the legacy executeBackendRequests.
-func (p *ProxyEndpoint) WithQueryHandlers(handler, metricHandler queryrangebase.Handler, codec queryrangebase.Codec) *ProxyEndpoint {
+func (p *ProxyEndpoint) WithQueryHandler(handler http.Handler) *ProxyEndpoint {
 	p.queryHandler = handler
-	p.metricQueryHandler = metricHandler
-	p.codec = codec
 	return p
 }
 
 func (p *ProxyEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	p.metrics.requestsTotal.WithLabelValues(r.Method, p.routeName).Inc()
+
 	if p.queryHandler == nil {
 		p.serveWrites(w, r)
 		return
 	}
 
-	_, ctx, err := tenant.ExtractTenantIDFromHTTPRequest(r)
-	if err != nil {
-		level.Error(p.logger).Log(
-			"msg", "failed to extract tenant ID",
-			"err", err,
-			"req", r.URL.String(),
-		)
-		http.Error(w, err.Error(), http.StatusUnauthorized)
-		return
-	}
-
-	// The codec decode/encode cycle loses custom headers, so we preserve them for downstream
-	headersCopy := r.Header.Clone()
-	ctx = context.WithValue(ctx, originalHTTPHeadersKey, headersCopy)
-
-	// Decode the HTTP request into a queryrangebase.Request
-	req, err := p.codec.DecodeRequest(ctx, r, nil)
-	if err != nil {
-		level.Error(p.logger).Log("msg", "Failed to decode request", "err", err)
-		http.Error(w, fmt.Sprintf("failed to decode request: %v", err), http.StatusBadRequest)
-		return
-	}
-
-	// Execute the handler
-	var resp queryrangebase.Response
-	switch op := req.(type) {
-	case *queryrange.LokiRequest:
-		if op.Plan == nil {
-			http.Error(w, "query plan is empty", http.StatusBadRequest)
-			return
-		}
-
-		switch op.Plan.AST.(type) {
-		case syntax.VariantsExpr, syntax.SampleExpr:
-			resp, err = p.metricQueryHandler.Do(ctx, req)
-		default:
-			resp, err = p.queryHandler.Do(ctx, req)
-		}
-	default:
-		resp, err = p.queryHandler.Do(ctx, req)
-	}
-
-	if err != nil {
-		switch r := resp.(type) {
-		case *NonDecodableResponse:
-			http.Error(w, string(r.Body), r.StatusCode)
-		default:
-			level.Error(p.logger).Log("msg", "Handler failed", "err", err)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
-		return
-	}
-
-	// Encode the response back to HTTP
-	httpResp, err := p.codec.EncodeResponse(ctx, r, resp)
-	if err != nil {
-		level.Error(p.logger).Log("msg", "Failed to encode response", "err", err)
-		http.Error(w, fmt.Sprintf("failed to encode response: %s", err), http.StatusInternalServerError)
-		return
-	}
-	defer httpResp.Body.Close()
-
-	// Copy response headers
-	for key, values := range httpResp.Header {
-		for _, value := range values {
-			w.Header().Add(key, value)
-		}
-	}
-
-	// Write status code
-	w.WriteHeader(httpResp.StatusCode)
-
-	// Copy response body
-	if _, err := io.Copy(w, httpResp.Body); err != nil {
-		level.Warn(p.logger).Log("msg", "Unable to write response body", "err", err)
-	}
+	p.queryHandler.ServeHTTP(w, r)
 }
 
 // serveWrites serves writes without a queryrangebase.Handler, since write requests cannot be decoded into a queryrangebase.Request.
@@ -208,7 +124,7 @@ func (p *ProxyEndpoint) serveWrites(w http.ResponseWriter, r *http.Request) {
 	if p.goldfishManager != nil {
 		shouldSample = p.goldfishManager.ShouldSample(tenantID)
 		level.Debug(p.logger).Log(
-			"msg", "Goldfish sampling decision",
+			"msg", "goldfish sampling decision",
 			"tenant", tenantID,
 			"sampled", shouldSample,
 			"path", r.URL.Path)
@@ -222,7 +138,7 @@ func (p *ProxyEndpoint) serveWrites(w http.ResponseWriter, r *http.Request) {
 	downstreamRes := p.waitBackendResponseForDownstream(resCh)
 
 	if downstreamRes.err != nil {
-		http.Error(w, downstreamRes.err.Error(), http.StatusInternalServerError)
+		server.WriteError(downstreamRes.err, w)
 	} else {
 		// Copy response headers.
 		for key, values := range downstreamRes.headers {

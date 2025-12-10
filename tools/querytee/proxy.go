@@ -43,6 +43,7 @@ type ProxyConfig struct {
 	SkipSamplesBefore              flagext.Time
 	RequestURLFilter               *regexp.Regexp
 	InstrumentCompares             bool
+	EnableRace                     bool
 	Goldfish                       goldfish.Config
 }
 
@@ -64,6 +65,7 @@ func (cfg *ProxyConfig) RegisterFlags(f *flag.FlagSet) {
 		return err
 	})
 	f.BoolVar(&cfg.InstrumentCompares, "proxy.compare-instrument", false, "Reports metrics on comparisons of responses between preferred and non-preferred endpoints for supported routes.")
+	f.BoolVar(&cfg.EnableRace, "proxy.enable-race", false, "When enabled, return the first successful response from any backend instead of waiting for the preferred backend.")
 
 	// Register Goldfish configuration flags
 	cfg.Goldfish.RegisterFlags(f)
@@ -93,9 +95,6 @@ type Proxy struct {
 
 	// Goldfish manager for query sampling and comparison
 	goldfishManager *goldfish.Manager
-
-	// Handler factory for creating middleware-based handlers
-	handlerFactory *HandlerFactory
 }
 
 func NewProxy(
@@ -196,6 +195,15 @@ func NewProxy(
 		}
 	}
 
+	// Pre-initialize raceWins metric for all backend/route combinations
+	if cfg.EnableRace {
+		for _, backend := range p.backends {
+			for _, route := range p.readRoutes {
+				p.metrics.raceWins.WithLabelValues(backend.name, route.RouteName)
+			}
+		}
+	}
+
 	// Initialize Goldfish if enabled
 	if cfg.Goldfish.Enabled {
 		// Create storage backend
@@ -237,15 +245,6 @@ func NewProxy(
 			"results_mode", string(cfg.Goldfish.ResultsStorage.Mode),
 			"results_backend", cfg.Goldfish.ResultsStorage.Backend)
 	}
-
-	p.handlerFactory = NewHandlerFactory(HandlerFactoryConfig{
-		Backends:           p.backends,
-		Codec:              queryrange.DefaultCodec,
-		GoldfishManager:    p.goldfishManager,
-		InstrumentCompares: p.cfg.InstrumentCompares,
-		Logger:             logger,
-		Metrics:            p.metrics,
-	})
 
 	return p, nil
 }
@@ -299,10 +298,10 @@ func (p *Proxy) Start() error {
 			Logger:             p.logger,
 			Metrics:            p.metrics,
 			InstrumentCompares: p.cfg.InstrumentCompares,
+			EnableRace:         p.cfg.EnableRace,
 		})
-		queryHandler := routeHandlerFactory.CreateHandler(route.RouteName, comp, false)
-		metricHandler := routeHandlerFactory.CreateHandler(route.RouteName, comp, true)
-		endpoint.WithQueryHandlers(queryHandler, metricHandler, queryrange.DefaultCodec)
+		queryHandler := routeHandlerFactory.CreateHandler(route.RouteName, comp)
+		endpoint.WithQueryHandler(queryHandler)
 		level.Info(p.logger).Log(
 			"msg", "Query middleware handler attached to route",
 			"path", route.Path,
