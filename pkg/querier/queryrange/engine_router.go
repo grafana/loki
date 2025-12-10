@@ -291,10 +291,10 @@ func alignStartEnd(stepNs int64, start, end time.Time) (time.Time, time.Time) {
 	startNs := start.UnixNano()
 	endNs := end.UnixNano()
 
-	if mod := startNs % stepNs; mod != 0 {
-		startNs += stepNs - mod // round up
+	startNs -= startNs % stepNs // round down
+	if mod := endNs % stepNs; mod != 0 {
+		endNs += stepNs - mod // round up
 	}
 
-	endNs -= endNs % stepNs // round down
 	return time.Unix(0, startNs), time.Unix(0, endNs)
 }
