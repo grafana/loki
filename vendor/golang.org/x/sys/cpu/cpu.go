@@ -92,6 +92,9 @@ var ARM64 struct {
 	HasSHA2     bool // SHA2 hardware implementation
 	HasCRC32    bool // CRC32 hardware implementation
 	HasATOMICS  bool // Atomic memory operation instruction set
+	HasHPDS     bool // Hierarchical permission disables in translations tables
+	HasLOR      bool // Limited ordering regions
+	HasPAN      bool // Privileged access never
 	HasFPHP     bool // Half precision floating-point instruction set
 	HasASIMDHP  bool // Advanced SIMD half precision instruction set
 	HasCPUID    bool // CPUID identification scheme registers
@@ -147,6 +150,18 @@ var ARM struct {
 	HasSHA2     bool // SHA2 hardware implementation
 	HasCRC32    bool // CRC32 hardware implementation
 	_           CacheLinePad
+}
+
+// The booleans in Loong64 contain the correspondingly named cpu feature bit.
+// The struct is padded to avoid false sharing.
+var Loong64 struct {
+	_         CacheLinePad
+	HasLSX    bool // support 128-bit vector extension
+	HasLASX   bool // support 256-bit vector extension
+	HasCRC32  bool // support CRC instruction
+	HasLAM_BH bool // support AM{SWAP/ADD}[_DB].{B/H} instruction
+	HasLAMCAS bool // support AMCAS[_DB].{B/H/W/D} instruction
+	_         CacheLinePad
 }
 
 // MIPS64X contains the supported CPU features of the current mips64/mips64le
@@ -220,6 +235,17 @@ var RISCV64 struct {
 	HasZba            bool // Address generation instructions extension
 	HasZbb            bool // Basic bit-manipulation extension
 	HasZbs            bool // Single-bit instructions extension
+	HasZvbb           bool // Vector Basic Bit-manipulation
+	HasZvbc           bool // Vector Carryless Multiplication
+	HasZvkb           bool // Vector Cryptography Bit-manipulation
+	HasZvkt           bool // Vector Data-Independent Execution Latency
+	HasZvkg           bool // Vector GCM/GMAC
+	HasZvkn           bool // NIST Algorithm Suite (AES/SHA256/SHA512)
+	HasZvknc          bool // NIST Algorithm Suite with carryless multiply
+	HasZvkng          bool // NIST Algorithm Suite with GCM
+	HasZvks           bool // ShangMi Algorithm Suite
+	HasZvksc          bool // ShangMi Algorithm Suite with carryless multiplication
+	HasZvksg          bool // ShangMi Algorithm Suite with GCM
 	_                 CacheLinePad
 }
 
