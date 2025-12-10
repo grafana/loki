@@ -16,7 +16,6 @@ import (
 
 // parseFunc will be called once for each line, so we need to know which line of `input` corresponds to `line`
 // also, sometimes input is a batch of 0 lines but we have a "line" string anyway?
-// TODO may need to get rid of requestedKeys; they're not doing anything right now
 func buildLinefmtColumns(input arrow.RecordBatch, sourceCol *array.String, lineFmt string) ([]string, []arrow.Array) {
 	parseFunc := func(row arrow.RecordBatch, line string) (map[string]string, error) {
 		return tokenizeLinefmt(row, line, lineFmt)
@@ -26,7 +25,6 @@ func buildLinefmtColumns(input arrow.RecordBatch, sourceCol *array.String, lineF
 
 // tokenizeLinefmt parses linefmt input using the standard decoder
 // Returns a map of key-value pairs with first-wins semantics for duplicates
-// If requestedKeys is provided, the result will be filtered to only include those keys
 func tokenizeLinefmt(input arrow.RecordBatch, line string, lineFmt string) (map[string]string, error) {
 	result := make(map[string]string)
 

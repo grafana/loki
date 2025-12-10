@@ -58,7 +58,7 @@ loki-debug:
 		-- -config.file=./pkg/logql/bench/config.yaml -config.expand-env=true)
 
 loki:
-	@echo "Starting Loki on port 3100"
+	@echo "Starting Loki on port 3100 with debug port 18001..."
 	@(cd ../../../ && \
 		make loki && \
 		cmd/loki/loki --config.file=./pkg/logql/bench/config.yaml -config.expand-env=true)
