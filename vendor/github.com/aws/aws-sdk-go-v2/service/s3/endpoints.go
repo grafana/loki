@@ -233,7 +233,7 @@ func bindRegion(region string) (*string, error) {
 	if region == "" {
 		return nil, nil
 	}
-	if !smithyhttp.ValidHostLabel(region) {
+	if !rulesfn.IsValidHostLabel(region, true) {
 		return nil, fmt.Errorf("invalid input region %s", region)
 	}
 

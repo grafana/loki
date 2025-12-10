@@ -280,7 +280,7 @@ func (c *consumer) waitAndAddRebalance() {
 	for c.pollWaitState&math.MaxUint32 != 0 {
 		if !blockedCalled {
 			if c.cl.cfg.onBlocked != nil {
-				c.cl.cfg.onBlocked(c.cl.ctx, c.cl)
+				go c.cl.cfg.onBlocked(c.cl.ctx, c.cl)
 			}
 			blockedCalled = true
 		}

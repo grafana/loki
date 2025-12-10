@@ -32,6 +32,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 const (
@@ -161,6 +162,9 @@ func (m *ObjectMetastore) streams(ctx context.Context, start, end time.Time, mat
 }
 
 func (m *ObjectMetastore) Sections(ctx context.Context, start, end time.Time, matchers []*labels.Matcher, predicates []*labels.Matcher) ([]*DataobjSectionDescriptor, error) {
+	ctx, region := xcap.StartRegion(ctx, "ObjectMetastore.Sections")
+	defer region.End()
+
 	sectionsTimer := prometheus.NewTimer(m.metrics.resolvedSectionsTotalDuration)
 
 	// Get all metastore paths for the time range
@@ -184,6 +188,7 @@ func (m *ObjectMetastore) Sections(ctx context.Context, start, end time.Time, ma
 	}
 
 	m.metrics.indexObjectsTotal.Observe(float64(len(indexPaths)))
+	region.Record(xcap.StatMetastoreIndexObjects.Observe(int64(len(indexPaths))))
 
 	// Return early if no index files are found
 	if len(indexPaths) == 0 {
@@ -240,6 +245,7 @@ func (m *ObjectMetastore) Sections(ctx context.Context, start, end time.Time, ma
 	duration := sectionsTimer.ObserveDuration()
 	m.metrics.resolvedSectionsTotal.Observe(float64(len(streamSectionPointers)))
 	m.metrics.resolvedSectionsRatio.Observe(float64(len(streamSectionPointers)) / float64(initialSectionPointersCount))
+	region.Record(xcap.StatMetastoreResolvedSections.Observe(int64(len(streamSectionPointers))))
 
 	level.Debug(utillog.WithContext(ctx, m.logger)).Log(
 		"msg", "resolved sections",
@@ -401,10 +407,13 @@ func (m *ObjectMetastore) listObjectsFromTables(ctx context.Context, tablePaths 
 	objects := make([][]string, len(tablePaths))
 	g, ctx := errgroup.WithContext(ctx)
 
+	sStart := scalar.NewTimestampScalar(arrow.Timestamp(start.UnixNano()), arrow.FixedWidthTypes.Timestamp_ns)
+	sEnd := scalar.NewTimestampScalar(arrow.Timestamp(end.UnixNano()), arrow.FixedWidthTypes.Timestamp_ns)
+
 	for i, path := range tablePaths {
 		g.Go(func() error {
 			var err error
-			objects[i], err = m.listObjects(ctx, path, start, end)
+			objects[i], err = m.listObjects(ctx, path, sStart, sEnd)
 			// If the metastore object is not found, it means it's outside of any existing window
 			// and we can safely ignore it.
 			if err != nil && !m.bucket.IsObjNotFoundErr(err) {
@@ -627,7 +636,7 @@ func addLabels(mtx *sync.Mutex, streams map[uint64][]*labels.Labels, newLabels *
 	streams[key] = append(streams[key], newLabels)
 }
 
-func (m *ObjectMetastore) listObjects(ctx context.Context, path string, start, end time.Time) ([]string, error) {
+func (m *ObjectMetastore) listObjects(ctx context.Context, path string, sStart, sEnd *scalar.Timestamp) ([]string, error) {
 	var buf bytes.Buffer
 	objectReader, err := m.bucket.Get(ctx, path)
 	if err != nil {
@@ -645,12 +654,7 @@ func (m *ObjectMetastore) listObjects(ctx context.Context, path string, start, e
 	}
 	var objectPaths []string
 
-	// Read all relevant entries from the table of contents
-	predicate := indexpointers.TimeRangeRowPredicate{
-		Start: start.UTC(),
-		End:   end.UTC(),
-	}
-	err = forEachIndexPointer(ctx, object, predicate, func(indexPointer indexpointers.IndexPointer) {
+	err = forEachIndexPointer(ctx, object, sStart, sEnd, func(indexPointer indexpointers.IndexPointer) {
 		objectPaths = append(objectPaths, indexPointer.Path)
 	})
 	if err != nil {
@@ -658,50 +662,6 @@ func (m *ObjectMetastore) listObjects(ctx context.Context, path string, start, e
 	}
 
 	return objectPaths, nil
-}
-
-func forEachIndexPointer(ctx context.Context, object *dataobj.Object, predicate indexpointers.RowPredicate, f func(indexpointers.IndexPointer)) error {
-	targetTenant, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return fmt.Errorf("extracting org ID: %w", err)
-	}
-	var reader indexpointers.RowReader
-	defer reader.Close()
-
-	buf := make([]indexpointers.IndexPointer, 1024)
-
-	for _, section := range object.Sections().Filter(indexpointers.CheckSection) {
-		if section.Tenant != targetTenant {
-			continue
-		}
-		sec, err := indexpointers.Open(ctx, section)
-		if err != nil {
-			return fmt.Errorf("opening section: %w", err)
-		}
-
-		reader.Reset(sec)
-		if predicate != nil {
-			err := reader.SetPredicate(predicate)
-			if err != nil {
-				return err
-			}
-		}
-
-		for {
-			num, err := reader.Read(ctx, buf)
-			if err != nil && !errors.Is(err, io.EOF) {
-				return err
-			}
-			if num == 0 && errors.Is(err, io.EOF) {
-				break
-			}
-			for _, indexPointer := range buf[:num] {
-				f(indexPointer)
-			}
-		}
-	}
-
-	return nil
 }
 
 func forEachStream(ctx context.Context, object *dataobj.Object, predicate streams.RowPredicate, f func(streams.Stream)) error {

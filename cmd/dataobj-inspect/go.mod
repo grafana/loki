@@ -6,8 +6,8 @@ require (
 	github.com/alecthomas/kingpin/v2 v2.4.0
 	github.com/dustin/go-humanize v1.0.1
 	github.com/fatih/color v1.18.0
-	github.com/grafana/loki/v3 v3.6.1
-	github.com/prometheus/prometheus v0.307.3
+	github.com/grafana/loki/v3 v3.6.2
+	github.com/prometheus/prometheus v0.308.0
 )
 
 require (
@@ -38,7 +38,7 @@ require (
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/prometheus/client_golang v1.23.2 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
-	github.com/prometheus/common v0.67.3 // indirect
+	github.com/prometheus/common v0.67.4 // indirect
 	github.com/prometheus/procfs v0.19.2 // indirect
 	github.com/thanos-io/objstore v0.0.0-20250813080715-4e5fd4289b50 // indirect
 	github.com/xhit/go-str2duration/v2 v2.1.0 // indirect

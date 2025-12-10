@@ -79,8 +79,8 @@ storage_config:
       dir: ${PWD}/pkg/logql/bench/data/storage
 
 query_engine:
-    enable: true
-    batch_size: 8192
+  enable: true
+  batch_size: 8192
 
 query_range:
   cache_results: false
