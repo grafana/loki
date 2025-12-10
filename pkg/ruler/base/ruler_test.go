@@ -545,6 +545,8 @@ func TestGetRules(t *testing.T) {
 						KVStore: kv.Config{
 							Mock: kvStore,
 						},
+						HeartbeatPeriod:  time.Second,
+						HeartbeatTimeout: time.Minute,
 					}
 					m := loki_storage.NewClientMetrics()
 					defer m.Unregister()
