@@ -55,8 +55,6 @@ require (
 	github.com/gorilla/mux v1.8.1
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
 	github.com/grafana/cloudflare-go v0.0.0-20230110200409-c627cf6792f2
-
-	// TODO: Change this once https://github.com/grafana/dskit/pull/799 is merged.
 	github.com/grafana/dskit v0.0.0-20251210115601-41c7cf07196b
 	github.com/grafana/go-gelf/v2 v2.0.1
 	github.com/grafana/gomemcache v0.0.0-20251127154401-74f93547077b
