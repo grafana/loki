@@ -88,6 +88,8 @@ type partitionProcessor struct {
 	eventsProducerClient    producer
 	metastorePartitionRatio int32
 
+	offsetWatcher *OffsetWatcher
+
 	// Used for tests.
 	clock quartz.Clock
 }
@@ -103,6 +105,7 @@ func newPartitionProcessor(
 	reg prometheus.Registerer,
 	idleFlushTimeout time.Duration,
 	eventsProducerClient *kgo.Client,
+	offsetWatcher *OffsetWatcher,
 	topic string,
 	partition int32,
 ) *partitionProcessor {
@@ -142,6 +145,7 @@ func newPartitionProcessor(
 		eventsProducerClient:    eventsProducerClient,
 		clock:                   quartz.NewReal(),
 		metastorePartitionRatio: int32(metastoreCfg.PartitionRatio),
+		offsetWatcher:           offsetWatcher,
 	}
 }
 
@@ -241,17 +245,14 @@ func (p *partitionProcessor) emitObjectWrittenEvent(ctx context.Context, objectP
 }
 
 func (p *partitionProcessor) processRecord(ctx context.Context, record partition.Record) {
+	p.metrics.observeConsumptionLag(p.offsetWatcher.LastProducedOffset(), record.Offset)
+	p.metrics.observeConsumptionLagSeconds(record.Timestamp)
+	p.metrics.currentOffset.Set(float64(record.Offset))
 	p.metrics.processedRecords.Inc()
-
-	// Update offset metric at the end of processing
-	defer p.metrics.updateOffset(record.Offset)
 
 	if record.Timestamp.Before(p.earliestRecordTime) || p.earliestRecordTime.IsZero() {
 		p.earliestRecordTime = record.Timestamp
 	}
-
-	// Observe processing delay
-	p.metrics.observeProcessingDelay(record.Timestamp)
 
 	// Initialize builder if this is the first record
 	if err := p.initBuilder(); err != nil {

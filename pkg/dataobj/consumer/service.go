@@ -37,6 +37,7 @@ type Service struct {
 	partitionReader             *partition.ReaderService
 	downscalePermitted          downscalePermittedFunc
 	watcher                     *services.FailureWatcher
+	offsetWatcher               *OffsetWatcher
 	logger                      log.Logger
 	reg                         prometheus.Registerer
 }
@@ -109,20 +110,34 @@ func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, bucket objsto
 		prometheus.WrapRegistererWithPrefix("loki_", reg))
 	s.partitionInstanceLifecycler = partitionInstanceLifecycler
 
+	dataobjsCfg := kafkaCfg
+	dataobjsCfg.Topic = cfg.Topic
+
+	// TODO: We have to pass prometheus.NewRegistry() to avoid duplicate
+	// metric registration with partition.NewReaderService.
+	offsetManager, err := partition.NewKafkaOffsetManager(dataobjsCfg, cfg.LifecyclerConfig.ID, logger, prometheus.NewRegistry())
+	if err != nil {
+		return nil, err
+	}
+	s.downscalePermitted = newOffsetCommittedDownscaleFunc(offsetManager, partitionID, logger)
+
+	offsetWatcher := NewOffsetWatcher(offsetManager, partitionID)
+	s.offsetWatcher = offsetWatcher
+
 	processorFactory := newPartitionProcessorFactory(
 		cfg,
 		mCfg,
 		metastoreEvents,
 		bucket,
 		scratchStore,
+		offsetWatcher,
 		logger,
 		reg,
 		cfg.Topic,
 		partitionID,
 	)
-	kafkaCfg.Topic = cfg.Topic
 	partitionReader, err := partition.NewReaderService(
-		kafkaCfg,
+		dataobjsCfg,
 		partitionID,
 		cfg.LifecyclerConfig.ID,
 		processorFactory.New,
@@ -135,17 +150,10 @@ func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, bucket objsto
 	}
 	s.partitionReader = partitionReader
 
-	// TODO: We have to pass prometheus.NewRegistry() to avoid duplicate
-	// metric registration with partition.NewReaderService.
-	offsetManager, err := partition.NewKafkaOffsetManager(kafkaCfg, cfg.LifecyclerConfig.ID, logger, prometheus.NewRegistry())
-	if err != nil {
-		return nil, err
-	}
-	s.downscalePermitted = newOffsetCommittedDownscaleFunc(offsetManager, partitionID, logger)
-
 	watcher := services.NewFailureWatcher()
 	watcher.WatchService(lifecycler)
 	watcher.WatchService(partitionInstanceLifecycler)
+	watcher.WatchService(offsetWatcher)
 	s.watcher = watcher
 
 	s.Service = services.NewBasicService(s.starting, s.running, s.stopping)
@@ -163,6 +171,9 @@ func (s *Service) starting(ctx context.Context) error {
 	}
 	if err := services.StartAndAwaitRunning(ctx, s.partitionReader); err != nil {
 		return fmt.Errorf("failed to start partition reader: %w", err)
+	}
+	if err := services.StartAndAwaitRunning(ctx, s.offsetWatcher); err != nil {
+		return fmt.Errorf("failed to start lag watcher: %w", err)
 	}
 	return nil
 }
@@ -185,6 +196,9 @@ func (s *Service) stopping(failureCase error) error {
 	}
 	if err := services.StopAndAwaitTerminated(ctx, s.lifecycler); err != nil {
 		level.Warn(s.logger).Log("msg", "failed to stop lifecycler", "err", err)
+	}
+	if err := services.StopAndAwaitTerminated(ctx, s.offsetWatcher); err != nil {
+		level.Warn(s.logger).Log("msg", "failed to stop lag watcher", "err", err)
 	}
 	s.metastoreEvents.Close()
 	level.Info(s.logger).Log("msg", "stopped")

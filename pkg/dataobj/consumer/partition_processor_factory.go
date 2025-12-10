@@ -20,6 +20,7 @@ type partitionProcessorFactory struct {
 	metastoreEvents *kgo.Client
 	bucket          objstore.Bucket
 	scratchStore    scratch.Store
+	offsetWatcher   *OffsetWatcher
 	logger          log.Logger
 	reg             prometheus.Registerer
 	topic           string
@@ -33,6 +34,7 @@ func newPartitionProcessorFactory(
 	metastoreEvents *kgo.Client,
 	bucket objstore.Bucket,
 	scratchStore scratch.Store,
+	offsetWatcher *OffsetWatcher,
 	logger log.Logger,
 	reg prometheus.Registerer,
 	topic string,
@@ -44,6 +46,7 @@ func newPartitionProcessorFactory(
 		metastoreEvents: metastoreEvents,
 		bucket:          bucket,
 		scratchStore:    scratchStore,
+		offsetWatcher:   offsetWatcher,
 		logger:          logger,
 		reg:             reg,
 		topic:           topic,
@@ -64,6 +67,7 @@ func (f *partitionProcessorFactory) New(committer partition.Committer, logger lo
 		f.reg,
 		f.cfg.IdleFlushTimeout,
 		f.metastoreEvents,
+		f.offsetWatcher,
 		f.topic,
 		f.partition,
 	), nil

@@ -1,16 +1,16 @@
 package consumer
 
 import (
+	"math"
 	"time"
-
-	"go.uber.org/atomic"
 
 	"github.com/prometheus/client_golang/prometheus"
 )
 
 type partitionOffsetMetrics struct {
-	currentOffset prometheus.GaugeFunc
-	lastOffset    atomic.Int64
+	currentOffset         prometheus.Gauge
+	consumptionLag        prometheus.Gauge
+	consumptionLagSeconds prometheus.Gauge
 
 	// Error counters
 	commitFailures prometheus.Counter
@@ -20,12 +20,25 @@ type partitionOffsetMetrics struct {
 	commitsTotal prometheus.Counter
 	appendsTotal prometheus.Counter
 
+	// Replaced with consumption lag metric. Remove once rolled out.
 	latestDelay      prometheus.Gauge // Latest delta between record timestamp and current time
 	processedRecords prometheus.Counter
 }
 
 func newPartitionOffsetMetrics() *partitionOffsetMetrics {
 	p := &partitionOffsetMetrics{
+		currentOffset: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "loki_dataobj_consumer_current_offset",
+			Help: "The last consumed offset.",
+		}),
+		consumptionLag: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "loki_dataobj_consumer_consumption_lag",
+			Help: "The consumption lag in offsets.",
+		}),
+		consumptionLagSeconds: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "loki_dataobj_consumer_consumption_lag_seconds",
+			Help: "The consumption lag in seconds.",
+		}),
 		commitFailures: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "loki_dataobj_consumer_commit_failures_total",
 			Help: "Total number of commit failures",
@@ -51,24 +64,13 @@ func newPartitionOffsetMetrics() *partitionOffsetMetrics {
 			Help: "Total number of records processed.",
 		}),
 	}
-
-	p.currentOffset = prometheus.NewGaugeFunc(
-		prometheus.GaugeOpts{
-			Name: "loki_dataobj_consumer_current_offset",
-			Help: "The last consumed offset for this partition",
-		},
-		p.getCurrentOffset,
-	)
-
 	return p
-}
-
-func (p *partitionOffsetMetrics) getCurrentOffset() float64 {
-	return float64(p.lastOffset.Load())
 }
 
 func (p *partitionOffsetMetrics) register(reg prometheus.Registerer) error {
 	collectors := []prometheus.Collector{
+		p.consumptionLag,
+		p.consumptionLagSeconds,
 		p.commitFailures,
 		p.appendFailures,
 		p.appendsTotal,
@@ -89,6 +91,8 @@ func (p *partitionOffsetMetrics) register(reg prometheus.Registerer) error {
 
 func (p *partitionOffsetMetrics) unregister(reg prometheus.Registerer) {
 	collectors := []prometheus.Collector{
+		p.consumptionLag,
+		p.consumptionLagSeconds,
 		p.commitFailures,
 		p.appendFailures,
 		p.appendsTotal,
@@ -100,10 +104,6 @@ func (p *partitionOffsetMetrics) unregister(reg prometheus.Registerer) {
 	for _, collector := range collectors {
 		reg.Unregister(collector)
 	}
-}
-
-func (p *partitionOffsetMetrics) updateOffset(offset int64) {
-	p.lastOffset.Store(offset)
 }
 
 func (p *partitionOffsetMetrics) incCommitFailures() {
@@ -122,11 +122,14 @@ func (p *partitionOffsetMetrics) incCommitsTotal() {
 	p.commitsTotal.Inc()
 }
 
-func (p *partitionOffsetMetrics) observeProcessingDelay(recordTimestamp time.Time) {
-	// Convert milliseconds to seconds and calculate delay
-	if !recordTimestamp.IsZero() { // Only observe if timestamp is valid
-		delay := time.Since(recordTimestamp).Seconds()
+func (p *partitionOffsetMetrics) observeConsumptionLag(lastProducedOffset, offset int64) {
+	p.consumptionLag.Set(math.Abs(float64(lastProducedOffset - offset)))
+}
 
-		p.latestDelay.Set(delay)
+func (p *partitionOffsetMetrics) observeConsumptionLagSeconds(t time.Time) {
+	if !t.IsZero() {
+		secs := time.Since(t).Seconds()
+		p.consumptionLagSeconds.Set(secs)
+		p.latestDelay.Set(secs)
 	}
 }
