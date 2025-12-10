@@ -34,7 +34,7 @@ func tokenizeLabelfmt(input arrow.RecordBatch, line string, labelFmts []log.Labe
 
 	var timestampIdx = -1
 	for i := 0; i < len(input.Columns()); i++ {
-		if input.ColumnName(i) == "timestamp_ns.builtin.timestamp" {
+		if input.ColumnName(i) == types.ColumnFullNameTimestamp {
 			timestampIdx = i
 			break
 		}

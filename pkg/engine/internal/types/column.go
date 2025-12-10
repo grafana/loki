@@ -41,6 +41,10 @@ const (
 	MetadataKeyColumnDataType = "column_datatype"
 )
 
+const (
+	ColumnFullNameTimestamp = "timestamp_ns.builtin.timestamp"
+)
+
 // Names of error columns
 const (
 	ColumnNameError        = "__error__"
