@@ -13,11 +13,11 @@ type partitionOffsetMetrics struct {
 	lastOffset    atomic.Int64
 
 	// Error counters
-	commitFailures prometheus.Counter
+
 	appendFailures prometheus.Counter
 
 	// Request counters
-	commitsTotal prometheus.Counter
+
 	appendsTotal prometheus.Counter
 
 	latestDelay      prometheus.Gauge // Latest delta between record timestamp and current time
@@ -26,18 +26,12 @@ type partitionOffsetMetrics struct {
 
 func newPartitionOffsetMetrics() *partitionOffsetMetrics {
 	p := &partitionOffsetMetrics{
-		commitFailures: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "loki_dataobj_consumer_commit_failures_total",
-			Help: "Total number of commit failures",
-		}),
+
 		appendFailures: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "loki_dataobj_consumer_append_failures_total",
 			Help: "Total number of append failures",
 		}),
-		commitsTotal: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "loki_dataobj_consumer_commits_total",
-			Help: "Total number of commits",
-		}),
+
 		appendsTotal: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "loki_dataobj_consumer_appends_total",
 			Help: "Total number of appends",
@@ -69,7 +63,6 @@ func (p *partitionOffsetMetrics) getCurrentOffset() float64 {
 
 func (p *partitionOffsetMetrics) register(reg prometheus.Registerer) error {
 	collectors := []prometheus.Collector{
-		p.commitFailures,
 		p.appendFailures,
 		p.appendsTotal,
 		p.latestDelay,
@@ -89,7 +82,6 @@ func (p *partitionOffsetMetrics) register(reg prometheus.Registerer) error {
 
 func (p *partitionOffsetMetrics) unregister(reg prometheus.Registerer) {
 	collectors := []prometheus.Collector{
-		p.commitFailures,
 		p.appendFailures,
 		p.appendsTotal,
 		p.latestDelay,
@@ -106,20 +98,12 @@ func (p *partitionOffsetMetrics) updateOffset(offset int64) {
 	p.lastOffset.Store(offset)
 }
 
-func (p *partitionOffsetMetrics) incCommitFailures() {
-	p.commitFailures.Inc()
-}
-
 func (p *partitionOffsetMetrics) incAppendFailures() {
 	p.appendFailures.Inc()
 }
 
 func (p *partitionOffsetMetrics) incAppendsTotal() {
 	p.appendsTotal.Inc()
-}
-
-func (p *partitionOffsetMetrics) incCommitsTotal() {
-	p.commitsTotal.Inc()
 }
 
 func (p *partitionOffsetMetrics) observeProcessingDelay(recordTimestamp time.Time) {
