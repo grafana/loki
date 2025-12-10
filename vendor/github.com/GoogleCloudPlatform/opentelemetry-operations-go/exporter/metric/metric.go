@@ -595,10 +595,11 @@ func gaugeToTimeSeries[N int64 | float64](point metricdata.DataPoint[N], metrics
 		return nil, err
 	}
 	return &monitoringpb.TimeSeries{
-		Resource:   mr,
-		Unit:       string(metrics.Unit),
-		MetricKind: googlemetricpb.MetricDescriptor_GAUGE,
-		ValueType:  valueType,
+		Resource:    mr,
+		Unit:        metrics.Unit,
+		Description: metrics.Description,
+		MetricKind:  googlemetricpb.MetricDescriptor_GAUGE,
+		ValueType:   valueType,
 		Points: []*monitoringpb.Point{{
 			Interval: &monitoringpb.TimeInterval{
 				EndTime: timestamp,
@@ -615,10 +616,11 @@ func sumToTimeSeries[N int64 | float64](point metricdata.DataPoint[N], metrics m
 	}
 	value, valueType := numberDataPointToValue[N](point)
 	return &monitoringpb.TimeSeries{
-		Resource:   mr,
-		Unit:       string(metrics.Unit),
-		MetricKind: googlemetricpb.MetricDescriptor_CUMULATIVE,
-		ValueType:  valueType,
+		Resource:    mr,
+		Unit:        metrics.Unit,
+		Description: metrics.Description,
+		MetricKind:  googlemetricpb.MetricDescriptor_CUMULATIVE,
+		ValueType:   valueType,
 		Points: []*monitoringpb.Point{{
 			Interval: interval,
 			Value:    value,
@@ -639,10 +641,11 @@ func histogramToTimeSeries[N int64 | float64](point metricdata.HistogramDataPoin
 		setSumOfSquaredDeviation(point, distributionValue)
 	}
 	return &monitoringpb.TimeSeries{
-		Resource:   mr,
-		Unit:       string(metrics.Unit),
-		MetricKind: googlemetricpb.MetricDescriptor_CUMULATIVE,
-		ValueType:  googlemetricpb.MetricDescriptor_DISTRIBUTION,
+		Resource:    mr,
+		Unit:        metrics.Unit,
+		Description: metrics.Description,
+		MetricKind:  googlemetricpb.MetricDescriptor_CUMULATIVE,
+		ValueType:   googlemetricpb.MetricDescriptor_DISTRIBUTION,
 		Points: []*monitoringpb.Point{{
 			Interval: interval,
 			Value: &monitoringpb.TypedValue{
@@ -662,10 +665,11 @@ func expHistogramToTimeSeries[N int64 | float64](point metricdata.ExponentialHis
 	distributionValue := expHistToDistribution(point, projectID)
 	// TODO: Implement "setSumOfSquaredDeviationExpHist" for parameter "enableSOSD" functionality.
 	return &monitoringpb.TimeSeries{
-		Resource:   mr,
-		Unit:       string(metrics.Unit),
-		MetricKind: googlemetricpb.MetricDescriptor_CUMULATIVE,
-		ValueType:  googlemetricpb.MetricDescriptor_DISTRIBUTION,
+		Resource:    mr,
+		Unit:        metrics.Unit,
+		Description: metrics.Description,
+		MetricKind:  googlemetricpb.MetricDescriptor_CUMULATIVE,
+		ValueType:   googlemetricpb.MetricDescriptor_DISTRIBUTION,
 		Points: []*monitoringpb.Point{{
 			Interval: interval,
 			Value: &monitoringpb.TypedValue{
