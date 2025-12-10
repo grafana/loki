@@ -14,7 +14,7 @@ import (
 
 func buildLabelfmtColumns(input arrow.RecordBatch, sourceCol *array.String, labelFmts []log.LabelFmt) ([]string, []arrow.Array) {
 	parseFunc := func(row arrow.RecordBatch, line string) (map[string]string, error) {
-		return tokenizeLabelfmt(input, line, labelFmts)
+		return tokenizeLabelfmt(row, line, labelFmts)
 	}
 	return buildColumns(input, sourceCol, nil, parseFunc, types.LabelfmtParserErrorType)
 }

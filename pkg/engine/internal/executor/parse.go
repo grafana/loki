@@ -44,13 +44,13 @@ func parseFn(op types.VariadicOp) VariadicFunction {
 			}
 			headers, parsedColumns = buildJSONColumns(input, sourceCol, requestedKeys)
 		case types.VariadicOpParseLinefmt:
-			sourceCol, requestedKeys, lineFmtTemplate, err = extractLineFmtParameters(args)
+			sourceCol, _, lineFmtTemplate, err = extractLineFmtParameters(args)
 			if err != nil {
 				panic(err)
 			}
 			headers, parsedColumns = buildLinefmtColumns(input, sourceCol, lineFmtTemplate)
 		case types.VariadicOpParseLabelfmt:
-			sourceCol, requestedKeys, labelFmts, err = extractLabelFmtParameters(args)
+			sourceCol, _, labelFmts, err = extractLabelFmtParameters(args)
 			if err != nil {
 				panic(err)
 			}

@@ -9,7 +9,7 @@ import (
 )
 
 func buildLogfmtColumns(input arrow.RecordBatch, sourceCol *array.String, requestedKeys []string, strict bool, keepEmpty bool) ([]string, []arrow.Array) {
-	parseFunc := func(row arrow.RecordBatch, line string) (map[string]string, error) {
+	parseFunc := func(_ arrow.RecordBatch, line string) (map[string]string, error) {
 		return tokenizeLogfmt(line, requestedKeys, strict, keepEmpty)
 	}
 	return buildColumns(input, sourceCol, requestedKeys, parseFunc, types.LogfmtParserErrorType)
