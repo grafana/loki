@@ -26,19 +26,24 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/validation"
 )
 
+const (
+	hitKindEmpty    = "empty"
+	hitKindNonEmpty = "non-empty"
+)
+
 // LogResultCacheMetrics is the metrics wrapper used in log result cache.
 type LogResultCacheMetrics struct {
-	CacheHit  prometheus.Counter
+	CacheHit  *prometheus.CounterVec
 	CacheMiss prometheus.Counter
 }
 
 // NewLogResultCacheMetrics creates metrics to be used in log result cache.
 func NewLogResultCacheMetrics(registerer prometheus.Registerer) *LogResultCacheMetrics {
 	return &LogResultCacheMetrics{
-		CacheHit: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+		CacheHit: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "query_frontend_log_result_cache_hit_total",
-		}),
+		}, []string{"hit_kind"}),
 		CacheMiss: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "query_frontend_log_result_cache_miss_total",
@@ -288,7 +293,7 @@ func (l *logResultCache) handleMiss(ctx context.Context, cacheKey, responseCache
 }
 
 func (l *logResultCache) handleEmptyResponseHit(ctx context.Context, cacheKey, responseCacheKey string, cachedRequest *LokiRequest, lokiReq *LokiRequest, storeNonEmptyEnabled bool) (queryrangebase.Response, error) {
-	l.metrics.CacheHit.Inc()
+	l.metrics.CacheHit.WithLabelValues(hitKindEmpty).Inc()
 	// we start with an empty response
 	result := emptyResponse(lokiReq)
 	// if the request is the same and cover the whole time range,
@@ -455,7 +460,7 @@ func (l *logResultCache) updateCacheWithNonEmptyResponse(ctx context.Context, ca
 }
 
 func (l *logResultCache) handleResponseHit(ctx context.Context, cacheKey, responseCacheKey string, cachedResponse *LokiResponse, cachedRequest *LokiRequest, lokiReq *LokiRequest) (queryrangebase.Response, error) {
-	l.metrics.CacheHit.Inc()
+	l.metrics.CacheHit.WithLabelValues(hitKindNonEmpty).Inc()
 	// Check if the cached response covers the entire requested time range
 	if cachedRequest.StartTs.UnixNano() <= lokiReq.StartTs.UnixNano() && cachedRequest.EndTs.UnixNano() >= lokiReq.EndTs.UnixNano() {
 		// Extract the relevant portion if needed
