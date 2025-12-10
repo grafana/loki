@@ -81,7 +81,7 @@ func retransmitLimit(retransmitMult, n int) int {
 }
 
 // shuffleNodes randomly shuffles the input nodes using the Fisher-Yates shuffle
-func shuffleNodes(nodes []*nodeState) {
+func shuffleNodes(nodes []*NodeState) {
 	n := len(nodes)
 	rand.Shuffle(n, func(i, j int) {
 		nodes[i], nodes[j] = nodes[j], nodes[i]
@@ -103,7 +103,7 @@ func pushPullScale(interval time.Duration, n int) time.Duration {
 
 // moveDeadNodes moves dead and left nodes that that have not changed during the gossipToTheDeadTime interval
 // to the end of the slice and returns the index of the first moved node.
-func moveDeadNodes(nodes []*nodeState, gossipToTheDeadTime time.Duration) int {
+func moveDeadNodes(nodes []*NodeState, gossipToTheDeadTime time.Duration) int {
 	numDead := 0
 	n := len(nodes)
 	for i := 0; i < n-numDead; i++ {
@@ -127,44 +127,20 @@ func moveDeadNodes(nodes []*nodeState, gossipToTheDeadTime time.Duration) int {
 // kRandomNodes is used to select up to k random Nodes, excluding any nodes where
 // the exclude function returns true. It is possible that less than k nodes are
 // returned.
-func kRandomNodes(k int, nodes []*nodeState, delegate NodeSelectionDelegate, exclude func(*nodeState) bool) []Node {
+func kRandomNodes(k int, nodes []*NodeState, delegate NodeSelectionDelegate, exclude func(*NodeState) bool) []Node {
 	kNodes := make([]Node, 0, k)
 
 	// Filter the nodes using the delegate. This allows downstream projects
 	// to implement custom routing logics (e.g. zone-aware gossiping).
 	if delegate != nil {
-		alloc := make([]*nodeState, 2*len(nodes))
-		filteredNodes := alloc[0:0:len(nodes)]
-		preferredNodes := alloc[len(nodes) : len(nodes) : 2*len(nodes)]
+		selected, preferred := delegate.SelectNodes(nodes)
+		nodes = selected
 
-		// Filter nodes by selected ones.
-		for _, node := range nodes {
-			selected, preferred := delegate.SelectNode(node.Node)
-			if selected {
-				filteredNodes = append(filteredNodes, node)
-			}
-			if selected && preferred {
-				preferredNodes = append(preferredNodes, node)
-			}
-		}
-
-		nodes = filteredNodes
-
-		// Select 1 random preferred node first to guarantee at least one preferred node in the result set.
-		if n := len(preferredNodes); n > 0 && k > 0 {
-			startIdx := randomOffset(n)
-
-			for i := 0; i < n; i++ {
-				idx := (startIdx + i) % n
-				state := preferredNodes[idx]
-
-				// Ensure it's not excluded by the filter.
-				if exclude != nil && exclude(state) {
-					continue
-				}
-
-				kNodes = append(kNodes, state.Node)
-				break
+		// Add the preferred node first to guarantee it's in the result set.
+		if preferred != nil && k > 0 {
+			// Ensure it's not excluded by the filter.
+			if exclude == nil || !exclude(preferred) {
+				kNodes = append(kNodes, preferred.Node)
 			}
 		}
 	}

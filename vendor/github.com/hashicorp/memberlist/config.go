@@ -118,6 +118,12 @@ type Config struct {
 	// usage.
 	PushPullInterval time.Duration
 
+	// PushPullNodes is the number of random nodes to perform complete state
+	// syncs with per PushPullInterval. Increasing this number will increase
+	// convergence speeds across larger clusters at the expense of increased
+	// bandwidth usage. Setting this to 0 will use the default of 1.
+	PushPullNodes int
+
 	// ProbeInterval and ProbeTimeout are used to configure probing
 	// behavior for memberlist.
 	//
@@ -315,6 +321,7 @@ func DefaultLANConfig() *Config {
 		SuspicionMult:           4,                      // Suspect a node for 4 * log(N+1) * Interval
 		SuspicionMaxTimeoutMult: 6,                      // For 10k nodes this will give a max timeout of 120 seconds
 		PushPullInterval:        30 * time.Second,       // Low frequency
+		PushPullNodes:           1,                      // Push/pull with a single node
 		ProbeTimeout:            500 * time.Millisecond, // Reasonable RTT time for LAN
 		ProbeInterval:           1 * time.Second,        // Failure check every second
 		DisableTcpPings:         false,                  // TCP pings are safe, even with mixed versions
@@ -349,6 +356,7 @@ func DefaultWANConfig() *Config {
 	conf.TCPTimeout = 30 * time.Second
 	conf.SuspicionMult = 6
 	conf.PushPullInterval = 60 * time.Second
+	conf.PushPullNodes = 1
 	conf.ProbeTimeout = 3 * time.Second
 	conf.ProbeInterval = 5 * time.Second
 	conf.GossipNodes = 4 // Gossip less frequently, but to an additional node
@@ -385,6 +393,7 @@ func DefaultLocalConfig() *Config {
 	conf.RetransmitMult = 2
 	conf.SuspicionMult = 3
 	conf.PushPullInterval = 15 * time.Second
+	conf.PushPullNodes = 1
 	conf.ProbeTimeout = 200 * time.Millisecond
 	conf.ProbeInterval = time.Second
 	conf.GossipInterval = 100 * time.Millisecond

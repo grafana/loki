@@ -76,7 +76,7 @@ func (n *Node) String() string {
 }
 
 // NodeState is used to manage our state view of another node
-type nodeState struct {
+type NodeState struct {
 	Node
 	Incarnation uint32        // Last known incarnation number
 	State       NodeStateType // Current state
@@ -85,17 +85,17 @@ type nodeState struct {
 
 // Address returns the host:port form of a node's address, suitable for use
 // with a transport.
-func (n *nodeState) Address() string {
+func (n *NodeState) Address() string {
 	return n.Node.Address()
 }
 
 // FullAddress returns the node name and host:port form of a node's address,
 // suitable for use with a transport.
-func (n *nodeState) FullAddress() Address {
+func (n *NodeState) FullAddress() Address {
 	return n.Node.FullAddress()
 }
 
-func (n *nodeState) DeadOrLeft() bool {
+func (n *NodeState) DeadOrLeft() bool {
 	return n.State == StateDead || n.State == StateLeft
 }
 
@@ -302,7 +302,7 @@ func failedRemote(err error) bool {
 }
 
 // probeNode handles a single round of failure checking on a node.
-func (m *Memberlist) probeNode(node *nodeState) {
+func (m *Memberlist) probeNode(node *NodeState) {
 	defer metrics.MeasureSinceWithLabels([]string{"memberlist", "probeNode"}, time.Now(), m.metricLabels)
 
 	// We use our health awareness to scale the overall probe interval, so we
@@ -418,7 +418,7 @@ HANDLE_REMOTE_FAILURE:
 	// We intentionally don't use the node selector here for now, because we don't want to limit
 	// indirect probes. We may reconsider this in the future.
 	m.nodeLock.RLock()
-	kNodes := kRandomNodes(m.config.IndirectChecks, m.nodes, nil, func(n *nodeState) bool {
+	kNodes := kRandomNodes(m.config.IndirectChecks, m.nodes, nil, func(n *NodeState) bool {
 		return n.Name == m.config.Name ||
 			n.Name == node.Name ||
 			n.State != StateAlive
@@ -594,7 +594,7 @@ func (m *Memberlist) gossip() {
 
 	// Get some random live, suspect, or recently dead nodes
 	m.nodeLock.RLock()
-	kNodes := kRandomNodes(m.config.GossipNodes, m.nodes, m.config.NodeSelection, func(n *nodeState) bool {
+	kNodes := kRandomNodes(m.config.GossipNodes, m.nodes, m.config.NodeSelection, func(n *NodeState) bool {
 		if n.Name == m.config.Name {
 			return true
 		}
@@ -648,9 +648,15 @@ func (m *Memberlist) gossip() {
 // reasonably expensive as the entire state of this node is exchanged
 // with the other node.
 func (m *Memberlist) pushPull() {
-	// Get a random live node
+	// Determine how many nodes to push/pull with
+	numNodes := m.config.PushPullNodes
+	if numNodes <= 0 {
+		numNodes = 1
+	}
+
+	// Get random live nodes
 	m.nodeLock.RLock()
-	nodes := kRandomNodes(1, m.nodes, m.config.NodeSelection, func(n *nodeState) bool {
+	nodes := kRandomNodes(numNodes, m.nodes, m.config.NodeSelection, func(n *NodeState) bool {
 		return n.Name == m.config.Name ||
 			n.State != StateAlive
 	})
@@ -660,11 +666,12 @@ func (m *Memberlist) pushPull() {
 	if len(nodes) == 0 {
 		return
 	}
-	node := nodes[0]
 
-	// Attempt a push pull
-	if err := m.pushPullNode(node.FullAddress(), false); err != nil {
-		m.logger.Printf("[ERR] memberlist: Push/Pull with %s failed: %s", node.Name, err)
+	// Attempt push/pull with each selected node
+	for _, node := range nodes {
+		if err := m.pushPullNode(node.FullAddress(), false); err != nil {
+			m.logger.Printf("[ERR] memberlist: Push/Pull with %s failed: %s", node.Name, err)
+		}
 	}
 }
 
@@ -914,7 +921,7 @@ func (m *Memberlist) invokeNackHandler(nack nackResp) {
 // accusedInc value, or you can supply 0 to just get the next incarnation number.
 // This alters the node state that's passed in so this MUST be called while the
 // nodeLock is held.
-func (m *Memberlist) refute(me *nodeState, accusedInc uint32) {
+func (m *Memberlist) refute(me *NodeState, accusedInc uint32) {
 	// Make sure the incarnation number beats the accusation.
 	inc := m.nextIncarnation()
 	if accusedInc >= inc {
@@ -1003,7 +1010,7 @@ func (m *Memberlist) aliveNode(a *alive, notify chan struct{}, bootstrap bool) {
 			m.logger.Printf("[WARN] memberlist: Rejected node %s (%v): %s", a.Node, net.IP(a.Addr), errCon)
 			return
 		}
-		state = &nodeState{
+		state = &NodeState{
 			Node: Node{
 				Name: a.Node,
 				Addr: a.Addr,
