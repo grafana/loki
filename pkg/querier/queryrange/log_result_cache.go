@@ -548,12 +548,30 @@ func (l *logResultCache) handleResponseHit(ctx context.Context, cacheKey, respon
 
 	// Check if the cached response covers the entire requested time range
 	if cachedRequest.StartTs.UnixNano() <= lokiReq.StartTs.UnixNano() && cachedRequest.EndTs.UnixNano() >= lokiReq.EndTs.UnixNano() {
+		result := cachedResponse
+
 		// Extract the relevant portion if needed
 		if cachedRequest.StartTs.UnixNano() < lokiReq.StartTs.UnixNano() || cachedRequest.EndTs.UnixNano() > lokiReq.EndTs.UnixNano() {
-			extracted := extractLokiResponse(lokiReq.GetStartTs(), lokiReq.GetEndTs(), cachedResponse)
-			return extracted, nil
+			result = extractLokiResponse(lokiReq.GetStartTs(), lokiReq.GetEndTs(), cachedResponse)
 		}
-		return cachedResponse, nil
+
+		// The cached response may have more entries than the limit, so we need to extract only the relevant
+		result.Data.Result = mergeOrderedNonOverlappingStreams([]*LokiResponse{result}, lokiReq.Limit, lokiReq.Direction)
+
+		level.Debug(l.logger).Log(
+			"msg", "cached response covers entire requested time range - handleResponseHit",
+			"experiment", "positive-results-cache",
+			"cacheKey", cacheKey,
+			"responseKey", responseCacheKey,
+			"cachedReqFrom", cachedRequest.StartTs.Format(time.RFC3339Nano),
+			"cachedReqTo", cachedRequest.EndTs.Format(time.RFC3339Nano),
+			"lokiReqFrom", lokiReq.StartTs.Format(time.RFC3339Nano),
+			"lokiReqTo", lokiReq.EndTs.Format(time.RFC3339Nano),
+			"cachedEntries", debugCountEntries(cachedResponse),
+			"resultEntries", debugCountEntries(result),
+		)
+
+		return result, nil
 	}
 
 	// The cached response doesn't fully cover the request, need to fetch missing parts
@@ -687,7 +705,8 @@ func (l *logResultCache) handleResponseHit(ctx context.Context, cacheKey, respon
 		}
 		extractedCached := extractLokiResponse(overlapStart, overlapEnd, cachedResponse)
 
-		// Merge responses: start (if any) + cached overlap + end (if any)
+		// Build the user-facing response: start (if any) + cached overlap + end (if any)
+		// This applies the request limit via mergeLokiResponse
 		var lokiResult *LokiResponse
 		if startResp != nil {
 			if startResp.Status != loghttp.QueryStatusSuccess {
@@ -726,19 +745,60 @@ func (l *logResultCache) handleResponseHit(ctx context.Context, cacheKey, respon
 			maxCacheSizeCapture := func(id string) int { return l.limits.LogResultCacheMaxResponseSize(ctx, id) }
 			maxCacheSize := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, maxCacheSizeCapture)
 
+			// For caching, merge ALL data without limit: startResp + FULL cachedResponse + endResp
+			// This ensures we extend the cache with all available entries
+			// Collect all non-nil responses to merge
+			var toMerge []queryrangebase.Response
+			if startResp != nil {
+				toMerge = append(toMerge, startResp)
+			}
+			if cachedResponse != nil {
+				toMerge = append(toMerge, cachedResponse)
+			}
+			if endResp != nil {
+				toMerge = append(toMerge, endResp)
+			}
+			cacheResult := mergeLokiResponseWithLimit(0, toMerge...) // 0 = no limit
+
 			// Cache if unlimited or response is small enough
-			// Note, if we are in this function, we already know  caching non-empty responses is enabled.
-			shouldCache := maxCacheSize == 0 || proto.Size(lokiResult) <= maxCacheSize
+			// Note, if we are in this function, we already know caching non-empty responses is enabled.
+			// cacheResult is always non-nil here since we always have cachedResponse.
+			shouldCache := maxCacheSize == 0 || proto.Size(cacheResult) <= maxCacheSize
 
 			// Update cache if the merged response is cacheable and covers a larger range
 			if shouldCache {
-				// Adjust time range if response hit the limit
-				adjStart, adjEnd := adjustCacheTimeRange(lokiReq, lokiResult)
+				// Calculate the extended time range.
+				// For cache extension, we can extend the range if the sub-responses didn't hit the limit.
+				// The cached response was already validated, so we only need to check startResp and endResp.
+				extendedStart := cachedRequest.GetStartTs()
+				extendedEnd := cachedRequest.GetEndTs()
+
+				// Extend start if startResp is under limit (meaning we got all entries in that range)
+				if startResp != nil && lokiReq.GetStartTs().Before(extendedStart) {
+					if responseUnderRequestLimit(startResp, lokiReq.Limit) {
+						extendedStart = lokiReq.GetStartTs()
+					} else {
+						// startResp hit limit - adjust to the actual data bounds
+						minTs, _ := getResponseTimeBounds(startResp)
+						extendedStart = minTs
+					}
+				}
+
+				// Extend end if endResp is under limit (meaning we got all entries in that range)
+				if endResp != nil && lokiReq.GetEndTs().After(extendedEnd) {
+					if responseUnderRequestLimit(endResp, lokiReq.Limit) {
+						extendedEnd = lokiReq.GetEndTs()
+					} else {
+						// endResp hit limit - adjust to the actual data bounds
+						_, maxTs := getResponseTimeBounds(endResp)
+						extendedEnd = maxTs
+					}
+				}
 
 				// Only update if we're extending the cached range
-				if adjStart.Before(cachedRequest.GetStartTs()) || adjEnd.After(cachedRequest.GetEndTs()) {
-					newCachedRequest = cachedRequest.WithStartEnd(adjStart, adjEnd).(*LokiRequest)
-					newCachedResponse = lokiResult
+				if extendedStart.Before(cachedRequest.GetStartTs()) || extendedEnd.After(cachedRequest.GetEndTs()) {
+					newCachedRequest = cachedRequest.WithStartEnd(extendedStart, extendedEnd).(*LokiRequest)
+					newCachedResponse = cacheResult
 					updateCache = true
 
 					level.Debug(l.logger).Log(
@@ -748,9 +808,9 @@ func (l *logResultCache) handleResponseHit(ctx context.Context, cacheKey, respon
 						"responseKey", responseCacheKey,
 						"requestFrom", lokiReq.StartTs.Format(time.RFC3339Nano),
 						"requestTo", lokiReq.EndTs.Format(time.RFC3339Nano),
-						"adjustedRequestFrom", adjStart.Format(time.RFC3339Nano),
-						"adjustedRequestTo", adjEnd.Format(time.RFC3339Nano),
-						"cachedEntries", debugCountEntries(lokiResult),
+						"extendedStart", extendedStart.Format(time.RFC3339Nano),
+						"extendedEnd", extendedEnd.Format(time.RFC3339Nano),
+						"cachedEntries", debugCountEntries(cacheResult),
 					)
 				}
 			}
