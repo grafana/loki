@@ -1020,6 +1020,7 @@ const (
 	ObjectStorageClassSnow               ObjectStorageClass = "SNOW"
 	ObjectStorageClassExpressOnezone     ObjectStorageClass = "EXPRESS_ONEZONE"
 	ObjectStorageClassFsxOpenzfs         ObjectStorageClass = "FSX_OPENZFS"
+	ObjectStorageClassFsxOntap           ObjectStorageClass = "FSX_ONTAP"
 )
 
 // Values returns all known values for ObjectStorageClass. Note that this can be
@@ -1040,6 +1041,7 @@ func (ObjectStorageClass) Values() []ObjectStorageClass {
 		"SNOW",
 		"EXPRESS_ONEZONE",
 		"FSX_OPENZFS",
+		"FSX_ONTAP",
 	}
 }
 
@@ -1425,6 +1427,7 @@ const (
 	StorageClassSnow               StorageClass = "SNOW"
 	StorageClassExpressOnezone     StorageClass = "EXPRESS_ONEZONE"
 	StorageClassFsxOpenzfs         StorageClass = "FSX_OPENZFS"
+	StorageClassFsxOntap           StorageClass = "FSX_ONTAP"
 )
 
 // Values returns all known values for StorageClass. Note that this can be
@@ -1445,6 +1448,7 @@ func (StorageClass) Values() []StorageClass {
 		"SNOW",
 		"EXPRESS_ONEZONE",
 		"FSX_OPENZFS",
+		"FSX_ONTAP",
 	}
 }
 
