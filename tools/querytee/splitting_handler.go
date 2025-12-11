@@ -26,6 +26,7 @@ type SplittingHandler struct {
 	logger              log.Logger
 	logsQueryHandler    queryrangebase.Handler
 	metricsQueryHandler queryrangebase.Handler
+	defaultHandler      queryrangebase.Handler
 }
 
 func NewSplittingHandler(
@@ -34,7 +35,7 @@ func NewSplittingHandler(
 	goldfishManager *goldfish.Manager,
 	logger log.Logger,
 	preferredBackend *ProxyBackend,
-) *SplittingHandler {
+) (*SplittingHandler, error) {
 	splitHandlerFactory := &splitHandlerFactory{
 		codec:            codec,
 		fanOutHandler:    fanOutHandler,
@@ -42,8 +43,19 @@ func NewSplittingHandler(
 		logger:           logger,
 		preferredBackend: preferredBackend,
 	}
-	metricsQueryHandler := splitHandlerFactory.createSplittingHandler(true)
-	logsQueryHandler := splitHandlerFactory.createSplittingHandler(false)
+	preferredRT, err := frontend.NewDownstreamRoundTripper(
+		preferredBackend.endpoint.String(),
+		&http.Transport{
+			MaxIdleConnsPerHost: 100,
+			IdleConnTimeout:     90 * time.Second,
+		},
+		codec,
+	)
+	if err != nil {
+		return nil, err
+	}
+	metricsQueryHandler := splitHandlerFactory.createSplittingHandler(true, preferredRT)
+	logsQueryHandler := splitHandlerFactory.createSplittingHandler(false, preferredRT)
 
 	return &SplittingHandler{
 		codec:               codec,
@@ -52,7 +64,8 @@ func NewSplittingHandler(
 		logger:              logger,
 		logsQueryHandler:    logsQueryHandler,
 		metricsQueryHandler: metricsQueryHandler,
-	}
+		defaultHandler:      preferredRT,
+	}, nil
 }
 
 type splitHandlerFactory struct {
@@ -63,23 +76,9 @@ type splitHandlerFactory struct {
 	preferredBackend *ProxyBackend
 }
 
-func (f *splitHandlerFactory) createSplittingHandler(forMetricQuery bool) queryrangebase.Handler {
+func (f *splitHandlerFactory) createSplittingHandler(forMetricQuery bool, defaultHandler queryrangebase.Handler) queryrangebase.Handler {
 	if f.preferredBackend == nil {
 		// No preferred backend, can't do splitting - fall back to fan-out
-		return f.fanOutHandler
-	}
-
-	// Create downstream round tripper for recent queries (preferred backend only)
-	preferredRT, err := frontend.NewDownstreamRoundTripper(
-		f.preferredBackend.endpoint.String(),
-		&http.Transport{
-			MaxIdleConnsPerHost: 100,
-			IdleConnTimeout:     90 * time.Second,
-		},
-		f.codec,
-	)
-	if err != nil {
-		// Fall back to fan-out handler if we can't create the downstream RT
 		return f.fanOutHandler
 	}
 
@@ -109,8 +108,8 @@ func (f *splitHandlerFactory) createSplittingHandler(forMetricQuery bool) queryr
 	)
 	middleware = append(middleware, engineRouterMiddleware)
 
-	// Wrap the preferred backend handler (v1Next) with the router middleware
-	return queryrangebase.MergeMiddlewares(middleware...).Wrap(preferredRT)
+	// Wrap the default backend handler (v1Next) with the router middleware
+	return queryrangebase.MergeMiddlewares(middleware...).Wrap(defaultHandler)
 }
 
 // ServeHTTP implements http.Handler interface to serve queries that can be split.
@@ -206,6 +205,6 @@ func (f *SplittingHandler) serveSplits(ctx context.Context, req queryrangebase.R
 			return f.logsQueryHandler.Do(ctx, req)
 		}
 	default:
-		return f.logsQueryHandler.Do(ctx, req)
+		return f.defaultHandler.Do(ctx, req)
 	}
 }

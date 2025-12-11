@@ -300,7 +300,10 @@ func (p *Proxy) Start() error {
 			InstrumentCompares: p.cfg.InstrumentCompares,
 			EnableRace:         p.cfg.EnableRace,
 		})
-		queryHandler := routeHandlerFactory.CreateHandler(route.RouteName, comp)
+		queryHandler, err := routeHandlerFactory.CreateHandler(route.RouteName, comp)
+		if err != nil {
+			return err
+		}
 		endpoint.WithQueryHandler(queryHandler)
 		level.Info(p.logger).Log(
 			"msg", "Query middleware handler attached to route",
