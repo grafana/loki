@@ -33,8 +33,9 @@ func newOffsetCommittedDownscaleFunc(offsetManager *partition.KafkaOffsetManager
 		if err != nil {
 			return false, fmt.Errorf("failed to get end offset: %w", err)
 		}
-		// If the end offset is zero then no records have been produced for
-		// this partition, which means we can downscale.
+		// The end offset is the offset of the next record to be produced.
+		// That means if the end offset is zero no records have been produced
+		// for this partition, which in turn means we can downscale.
 		if endOffset == 0 {
 			level.Debug(logger).Log("msg", "no records produced for partition")
 			return true, nil
