@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
 	"reflect"
 	"runtime"
 	"sync"
@@ -302,11 +303,24 @@ func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, con
 		}
 	}
 
-	handleAssignment := func(peer *wire.Peer, msg wire.TaskAssignMessage) error {
+	popRequest := func() (readyRequest, error) {
 		reqsMut.Lock()
+		defer reqsMut.Unlock()
+
+		if len(readyReqs) == 0 {
+			return readyRequest{}, wire.Errorf(http.StatusTooManyRequests, "no threads available")
+		}
+
 		req := readyReqs[0]
 		readyReqs = readyReqs[1:]
-		reqsMut.Unlock()
+		return req, nil
+	}
+
+	handleAssignment := func(peer *wire.Peer, msg wire.TaskAssignMessage) error {
+		req, err := popRequest()
+		if err != nil {
+			return err
+		}
 
 		job, err := w.newJob(req.Context, peer, logger, msg)
 		if err != nil {
