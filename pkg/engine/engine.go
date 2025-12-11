@@ -14,7 +14,6 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/thanos-io/objstore"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -29,7 +28,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
-	"github.com/grafana/loki/v3/pkg/storage/bucket"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/rangeio"
@@ -75,12 +73,12 @@ type Params struct {
 	Logger     log.Logger            // Logger for optional log messages.
 	Registerer prometheus.Registerer // Registerer for optional metrics.
 
-	Config          ExecutorConfig   // Config for the Engine.
-	MetastoreConfig metastore.Config // Config for the Metastore.
+	Config ExecutorConfig // Config for the Engine.
 
-	Scheduler *Scheduler      // Scheduler to manage the execution of tasks.
-	Bucket    objstore.Bucket // Bucket to read stored data from.
-	Limits    logql.Limits    // Limits to apply to engine queries.
+	Scheduler *Scheduler   // Scheduler to manage the execution of tasks.
+	Limits    logql.Limits // Limits to apply to engine queries.
+
+	Metastore metastore.Metastore
 }
 
 // validate validates p and applies defaults.
@@ -106,11 +104,11 @@ type Engine struct {
 	metrics     *metrics
 	rangeConfig rangeio.Config
 
-	scheduler *Scheduler      // Scheduler to manage the execution of tasks.
-	bucket    objstore.Bucket // Bucket to read stored data from.
-	limits    logql.Limits    // Limits to apply to engine queries.
+	scheduler *Scheduler   // Scheduler to manage the execution of tasks.
+	limits    logql.Limits // Limits to apply to engine queries.
 
 	metastore                        metastore.Metastore
+	metastorePlanner                 physical.MetastorePlanner
 	aheadOfTimeCatalogLookupsEnabled bool
 }
 
@@ -126,18 +124,21 @@ func New(params Params) (*Engine, error) {
 		rangeConfig: params.Config.RangeConfig,
 
 		scheduler:                        params.Scheduler,
-		bucket:                           bucket.NewXCapBucket(params.Bucket),
 		limits:                           params.Limits,
 		aheadOfTimeCatalogLookupsEnabled: params.Config.AheadOfTimeCatalogLookupsEnabled,
-	}
 
-	if e.bucket != nil {
-		indexBucket := e.bucket
-		if params.MetastoreConfig.IndexStoragePrefix != "" {
-			indexBucket = objstore.NewPrefixedBucket(e.bucket, params.MetastoreConfig.IndexStoragePrefix)
-		}
-		e.metastore = metastore.NewObjectMetastore(indexBucket, e.logger, params.Registerer)
+		metastore:        params.Metastore,
+		metastorePlanner: physical.NewMetastorePlanner(params.Metastore),
 	}
+	//
+	//if e.bucket != nil {
+	//	indexBucket := e.bucket
+	//	if params.MetastoreConfig.IndexStoragePrefix != "" {
+	//		indexBucket = objstore.NewPrefixedBucket(e.bucket, params.MetastoreConfig.IndexStoragePrefix)
+	//	}
+	//	e.metastore = metastore.NewObjectMetastore(indexBucket, e.logger, params.Registerer)
+	//	e.metastorePlanner =
+	//}
 
 	return e, nil
 }
@@ -352,10 +353,9 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, logger log.Logger, param
 
 func (e *Engine) prepareCatalog(ctx context.Context, params logql.Params, logicalPlan *logical.Plan) (physical.Catalog, error) {
 	start := time.Now()
-	metastoreCatalog := physical.NewMetastoreCatalog(ctx, e.metastore)
 
 	if !e.aheadOfTimeCatalogLookupsEnabled {
-		return metastoreCatalog, nil
+		return physical.NewMetastoreCatalog(ctx, e.metastore), nil
 	}
 
 	unresolved := physical.NewUnresolvedCatalog()
@@ -365,19 +365,7 @@ func (e *Engine) prepareCatalog(ctx context.Context, params logql.Params, logica
 	}
 
 	resolved, err := unresolved.Resolve(func(req physical.CatalogRequest) (physical.CatalogResponse, error) {
-		switch req.Kind {
-		case physical.CatalogRequestKindResolveShardDescriptorsWithShard:
-			descriptors, err := metastoreCatalog.ResolveShardDescriptorsWithShard(req.Selector, req.Predicates, req.Shard, req.From, req.Through)
-			if err != nil {
-				return physical.CatalogResponse{}, err
-			}
-			return physical.CatalogResponse{
-				Kind:        physical.CatalogRequestKindResolveShardDescriptorsWithShard,
-				Descriptors: descriptors,
-			}, nil
-		default:
-			return physical.CatalogResponse{}, fmt.Errorf("unsupported catalog request kind: %v", req.Kind)
-		}
+		return e.queryMetastore(ctx, req)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("resolving catalog: %w", err)
@@ -385,6 +373,40 @@ func (e *Engine) prepareCatalog(ctx context.Context, params logql.Params, logica
 
 	level.Info(e.logger).Log("msg", "finished catalog lookups", "duration", time.Since(start).String(), "requests", unresolved.RequestsCount())
 	return resolved, nil
+}
+
+func (e *Engine) queryMetastore(ctx context.Context, req physical.CatalogRequest) (physical.CatalogResponse, error) {
+	physicalPlan, err := e.metastorePlanner.Plan(ctx, req)
+	if err != nil {
+		return physical.CatalogResponse{}, fmt.Errorf("planning metastore request: %w", err)
+	}
+
+	wf, _, err := e.buildWorkflow(ctx, e.logger, physicalPlan)
+	if err != nil {
+		return physical.CatalogResponse{}, fmt.Errorf("building workflow: %w", err)
+	}
+
+	pipeline, err := wf.Run(ctx)
+	if err != nil {
+		return physical.CatalogResponse{}, fmt.Errorf("running workflow: %w", err)
+	}
+
+	// TODO(ivkalita): switch on request type?
+
+	descriptors, err := e.metastore.CollectScanPointersResult(ctx, executor.TranslateEOF(pipeline))
+	if err != nil {
+		return physical.CatalogResponse{}, fmt.Errorf("reading results: %w", err)
+	}
+
+	filteredDescriptors, err := physical.FilterDescriptorsForShard(req.Shard, descriptors)
+	if err != nil {
+		return physical.CatalogResponse{}, err
+	}
+
+	return physical.CatalogResponse{
+		Kind:        physical.CatalogRequestKindResolveShardDescriptorsWithShard,
+		Descriptors: filteredDescriptors,
+	}, nil
 }
 
 // buildWorkflow builds a workflow from the given physical plan.

@@ -13,6 +13,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
@@ -33,7 +34,7 @@ type Config struct {
 	GetExternalInputs func(ctx context.Context, node physical.Node) []Pipeline
 }
 
-func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger) Pipeline {
+func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger, metastore metastore.Metastore) Pipeline {
 	c := &Context{
 		plan:               plan,
 		batchSize:          cfg.BatchSize,
@@ -42,6 +43,7 @@ func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger
 		logger:             logger,
 		evaluator:          newExpressionEvaluator(),
 		getExternalInputs:  cfg.GetExternalInputs,
+		metastore:          metastore,
 	}
 	if plan == nil {
 		return errorPipeline(ctx, errors.New("plan is nil"))
@@ -66,6 +68,8 @@ type Context struct {
 	getExternalInputs func(ctx context.Context, node physical.Node) []Pipeline
 
 	mergePrefetchCount int
+
+	metastore metastore.Metastore
 }
 
 func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
@@ -95,6 +99,8 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 			return newObservedPipeline(c.executeDataObjScan(ctx, n, nodeRegion))
 		}, inputs)
 
+	case *physical.PointersScan:
+		return newObservedPipeline(c.executePointersScan(ctx, n, nodeRegion))
 	case *physical.TopK:
 		return newObservedPipeline(c.executeTopK(ctx, n, inputs, nodeRegion))
 	case *physical.Limit:
@@ -206,6 +212,28 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 	}, log.With(c.logger, "location", string(node.Location), "section", node.Section), region)
 
 	return pipeline
+}
+
+func (c *Context) executePointersScan(ctx context.Context, node *physical.PointersScan, region *xcap.Region) Pipeline {
+	matchers, err := physical.ExpressionToMatchers(node.Selector, false)
+	if err != nil {
+		return errorPipeline(ctx, fmt.Errorf("expression to matchers: %w", err))
+	}
+
+	return newLazyPipeline(func(ctx context.Context, inputs []Pipeline) Pipeline {
+		pipeline, err := newScanPointersPipeline(ctx, scanPointersOptions{
+			metastore: c.metastore,
+			location:  string(node.Location),
+			start:     node.Start,
+			end:       node.End,
+			matchers:  matchers,
+			region:    region,
+		})
+		if err != nil {
+			return errorPipeline(ctx, err)
+		}
+		return pipeline
+	}, nil)
 }
 
 func (c *Context) executeTopK(ctx context.Context, topK *physical.TopK, inputs []Pipeline, region *xcap.Region) Pipeline {
@@ -336,7 +364,7 @@ func (c *Context) executeScanSet(ctx context.Context, set *physical.ScanSet, _ *
 	// ScanSet typically gets partitioned by the scheduler into multiple scan
 	// nodes.
 	//
-	// However, for locally testing unpartitioned pipelines, we still supprt
+	// However, for locally testing unpartitioned pipelines, we still support
 	// running a ScanSet. In this case, we treat internally execute it as a
 	// Merge on top of multiple sequential scans.
 	ctx, mergeRegion := xcap.StartRegion(ctx, physical.NodeTypeMerge.String())
@@ -356,6 +384,12 @@ func (c *Context) executeScanSet(ctx context.Context, set *physical.ScanSet, _ *
 			targets = append(targets, newLazyPipeline(func(_ context.Context, _ []Pipeline) Pipeline {
 				return newObservedPipeline(c.executeDataObjScan(nodeCtx, partition, partitionRegion))
 			}, nil))
+		case physical.ScanTypePointers:
+			partition := target.PointersScan
+
+			nodeCtx, partitionRegion := startRegionForNode(ctx, partition)
+
+			targets = append(targets, c.executePointersScan(nodeCtx, partition, partitionRegion))
 		default:
 			return errorPipeline(ctx, fmt.Errorf("unrecognized ScanSet target %s", target.Type))
 		}
@@ -388,6 +422,11 @@ func startRegionForNode(ctx context.Context, n physical.Node) (context.Context, 
 			attribute.Int("num_stream_ids", len(n.StreamIDs)),
 			attribute.Int("num_predicates", len(n.Predicates)),
 			attribute.Int("num_projections", len(n.Projections)),
+		)
+
+	case *physical.PointersScan:
+		attributes = append(attributes,
+			attribute.String("location", string(n.Location)),
 		)
 
 	case *physical.TopK:

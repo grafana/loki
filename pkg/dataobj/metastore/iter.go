@@ -26,6 +26,7 @@ func forEachStreamSectionPointer(
 	streamIDs []int64,
 	f func(pointers.SectionPointer),
 ) error {
+	// TODO(ivkalita): remove
 	targetTenant, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return fmt.Errorf("extracting org ID: %w", err)
@@ -210,6 +211,7 @@ func forEachMatchedPointerSectionKey(
 	matchColumnValue string,
 	f func(key SectionKey),
 ) error {
+	// TODO(ivkalita): move to scan_pointers? and remove from here
 	targetTenant, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return fmt.Errorf("extracting org ID: %w", err)

@@ -32,7 +32,7 @@ func TestInstantQueryHandler(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("log selector expression not allowed for instant queries", func(t *testing.T) {
-		api := NewQuerierAPI(mockQuerierConfig(), engine.Config{}, metastore.Config{}, nil, limits, nil, nil, log.NewNopLogger())
+		api := NewQuerierAPI(mockQuerierConfig(), engine.Config{}, nil, nil, limits, nil, nil, log.NewNopLogger())
 
 		ctx := user.InjectOrgID(context.Background(), "user")
 		req, err := http.NewRequestWithContext(ctx, "GET", `/api/v1/query`, nil)
@@ -420,7 +420,7 @@ func setupAPI(t *testing.T, querier *querierMock, enableMetricAggregation bool) 
 	limits, err := validation.NewOverrides(defaultLimits, nil)
 	require.NoError(t, err)
 
-	api := NewQuerierAPI(mockQuerierConfig(), engine.Config{}, metastore.Config{}, querier, limits, nil, nil, log.NewNopLogger())
+	api := NewQuerierAPI(mockQuerierConfig(), engine.Config{}, nil, querier, limits, nil, nil, log.NewNopLogger())
 	return api
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/prometheus/prometheus/model/labels"
 )
 
@@ -11,9 +12,19 @@ type Metastore interface {
 	// Sections returns a list of SectionDescriptors, including metadata (stream IDs, start & end times, bytes), for the given matchers & predicates between [start,end]
 	Sections(ctx context.Context, start, end time.Time, matchers []*labels.Matcher, predicates []*labels.Matcher) ([]*DataobjSectionDescriptor, error)
 
+	GetIndexes(ctx context.Context, start, end time.Time) ([]string, error)
+
+	ScanPointers(ctx context.Context, indexPath string, start, end time.Time, matchers []*labels.Matcher) (ArrowRecordBatchReader, error)
+	CollectScanPointersResult(ctx context.Context, reader ArrowRecordBatchReader) ([]*DataobjSectionDescriptor, error)
+
 	// Labels returns all possible labels from matching streams between [start,end]
 	Labels(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]string, error) // Used to get possible labels for a given stream
 
 	// Values returns all possible values for the given label matchers between [start,end]
 	Values(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]string, error) // Used to get all values for a given set of label matchers
+}
+
+type ArrowRecordBatchReader interface {
+	Read(ctx context.Context) (arrow.RecordBatch, error)
+	Close()
 }
