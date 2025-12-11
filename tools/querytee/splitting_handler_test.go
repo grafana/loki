@@ -159,18 +159,19 @@ func TestSplittingHandler_NilPreferredBackend_CallsFanoutHandler(t *testing.T) {
 	var capturedTenantID string
 	fanOutHandlerCalled := false
 
-	mockFanOutHandler := queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
-		fanOutHandlerCalled = true
-		tenantID, err := user.ExtractOrgID(ctx)
-		if err == nil {
-			capturedTenantID = tenantID
-		}
+	mockFanOutHandler := queryrangebase.HandlerFunc(
+		func(ctx context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+			fanOutHandlerCalled = true
+			tenantID, err := user.ExtractOrgID(ctx)
+			if err == nil {
+				capturedTenantID = tenantID
+			}
 
-		return &queryrange.LokiResponse{
-			Status: "success",
-			Data:   queryrange.LokiData{ResultType: "streams"},
-		}, nil
-	})
+			return &queryrange.LokiResponse{
+				Status: "success",
+				Data:   queryrange.LokiData{ResultType: "streams"},
+			}, nil
+		})
 
 	handler, err := NewSplittingHandler(
 		queryrange.DefaultCodec,

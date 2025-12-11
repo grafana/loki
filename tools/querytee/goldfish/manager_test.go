@@ -140,27 +140,25 @@ func TestManager_ProcessQueryPair(t *testing.T) {
 	req, _ := http.NewRequest("GET", "/loki/api/v1/query_range?query=count_over_time({job=\"test\"}[5m])&start=1700000000&end=1700001000&step=60s", nil)
 	req.Header.Set("X-Scope-OrgID", "tenant1")
 
-	cellAResp := &ResponseData{
-		Body:          []byte(`{"status":"success","data":{"resultType":"matrix","result":[],"stats":{"summary":{"execTime":0.1,"queueTime":0.05,"totalBytesProcessed":1000,"totalLinesProcessed":100,"bytesProcessedPerSecond":10000,"linesProcessedPerSecond":1000,"totalEntriesReturned":5,"splits":1,"shards":2}}}}`),
-		StatusCode:    200,
-		Duration:      100 * time.Millisecond,
-		Stats:         goldfish.QueryStats{ExecTimeMs: 100, QueueTimeMs: 50, BytesProcessed: 1000, LinesProcessed: 100},
-		Hash:          "hash123",
-		Size:          150,
-		UsedNewEngine: false,
+	cellAResp := &BackendResponse{
+		BackendName: "cell-a",
+		Status:      200,
+		Body:        []byte(`{"status":"success","data":{"resultType":"matrix","result":[],"stats":{"summary":{"execTime":0.1,"queueTime":0.05,"totalBytesProcessed":1000,"totalLinesProcessed":100,"bytesProcessedPerSecond":10000,"linesProcessedPerSecond":1000,"totalEntriesReturned":5,"splits":1,"shards":2}}}}`),
+		Duration:    100 * time.Millisecond,
+		TraceID:     "",
+		SpanID:      "",
 	}
 
-	cellBResp := &ResponseData{
-		Body:          []byte(`{"status":"success","data":{"resultType":"matrix","result":[],"stats":{"summary":{"execTime":0.12,"queueTime":0.06,"totalBytesProcessed":1000,"totalLinesProcessed":100,"bytesProcessedPerSecond":8333,"linesProcessedPerSecond":833,"totalEntriesReturned":5,"splits":1,"shards":2}}}}`),
-		StatusCode:    200,
-		Duration:      120 * time.Millisecond,
-		Stats:         goldfish.QueryStats{ExecTimeMs: 120, QueueTimeMs: 60, BytesProcessed: 1000, LinesProcessed: 100},
-		Hash:          "hash123", // Same hash indicates same data
-		Size:          155,
-		UsedNewEngine: true,
+	cellBResp := &BackendResponse{
+		BackendName: "cell-b",
+		Status:      200,
+		Body:        []byte(`{"status":"success","data":{"resultType":"matrix","result":[],"stats":{"summary":{"execTime":0.12,"queueTime":0.06,"totalBytesProcessed":1000,"totalLinesProcessed":100,"bytesProcessedPerSecond":8333,"linesProcessedPerSecond":833,"totalEntriesReturned":5,"splits":1,"shards":2}}},"warnings":["Query was executed using the new experimental query engine and dataobj storage."]}`),
+		Duration:    120 * time.Millisecond,
+		TraceID:     "",
+		SpanID:      "",
 	}
 
-	manager.processQueryPair(req, cellAResp, cellBResp)
+	manager.SendToGoldfish(req, cellAResp, cellBResp)
 
 	// Give async processing time to complete
 	time.Sleep(100 * time.Millisecond)
@@ -175,8 +173,6 @@ func TestManager_ProcessQueryPair(t *testing.T) {
 	assert.Equal(t, 200, sample.CellBStatusCode)
 	assert.Equal(t, int64(100), sample.CellAStats.ExecTimeMs)
 	assert.Equal(t, int64(120), sample.CellBStats.ExecTimeMs)
-	assert.Equal(t, "hash123", sample.CellAResponseHash)
-	assert.Equal(t, "hash123", sample.CellBResponseHash)
 	assert.Equal(t, false, sample.CellAUsedNewEngine)
 	assert.Equal(t, true, sample.CellBUsedNewEngine)
 
@@ -241,29 +237,25 @@ func Test_ProcessQueryPair_populatesTraceIDs(t *testing.T) {
 	req, _ := http.NewRequest("GET", "/loki/api/v1/query_range?query=count_over_time({job=\"test\"}[5m])&start=1700000000&end=1700001000&step=60s", nil)
 	req.Header.Set("X-Scope-OrgID", "tenant1")
 
-	cellAResp := &ResponseData{
-		Body:          []byte(`{"status":"success","data":{"resultType":"matrix","result":[]}}`),
-		StatusCode:    200,
-		Duration:      100 * time.Millisecond,
-		Stats:         goldfish.QueryStats{ExecTimeMs: 100, QueueTimeMs: 50, BytesProcessed: 1000, LinesProcessed: 100},
-		Hash:          "hash123",
-		Size:          150,
-		UsedNewEngine: false,
-		TraceID:       "trace-cell-a-123",
+	cellAResp := &BackendResponse{
+		BackendName: "cell-a",
+		Status:      200,
+		Body:        []byte(`{"status":"success","data":{"resultType":"matrix","result":[]}}`),
+		Duration:    100 * time.Millisecond,
+		TraceID:     "trace-cell-a-123",
+		SpanID:      "",
 	}
 
-	cellBResp := &ResponseData{
-		Body:          []byte(`{"status":"success","data":{"resultType":"matrix","result":[]}}`),
-		StatusCode:    200,
-		Duration:      120 * time.Millisecond,
-		Stats:         goldfish.QueryStats{ExecTimeMs: 120, QueueTimeMs: 60, BytesProcessed: 1000, LinesProcessed: 100},
-		Hash:          "hash123",
-		Size:          155,
-		UsedNewEngine: true,
-		TraceID:       "trace-cell-b-456",
+	cellBResp := &BackendResponse{
+		BackendName: "cell-b",
+		Status:      200,
+		Body:        []byte(`{"status":"success","data":{"resultType":"matrix","result":[]}}`),
+		Duration:    120 * time.Millisecond,
+		TraceID:     "trace-cell-b-456",
+		SpanID:      "",
 	}
 
-	manager.processQueryPair(req, cellAResp, cellBResp)
+	manager.SendToGoldfish(req, cellAResp, cellBResp)
 
 	// Give async processing time to complete
 	time.Sleep(100 * time.Millisecond)
@@ -327,27 +319,25 @@ func TestProcessQueryPairCapturesUser(t *testing.T) {
 				req.Header.Set("X-Query-Tags", tt.queryTags)
 			}
 
-			cellAResp := &ResponseData{
-				Body:          []byte(`{"status":"success","data":{"resultType":"matrix","result":[]}}`),
-				StatusCode:    200,
-				Duration:      100 * time.Millisecond,
-				Stats:         goldfish.QueryStats{ExecTimeMs: 100},
-				Hash:          "hash123",
-				Size:          150,
-				UsedNewEngine: false,
+			cellAResp := &BackendResponse{
+				BackendName: "cell-a",
+				Status:      200,
+				Body:        []byte(`{"status":"success","data":{"resultType":"matrix","result":[]}}`),
+				Duration:    100 * time.Millisecond,
+				TraceID:     "",
+				SpanID:      "",
 			}
 
-			cellBResp := &ResponseData{
-				Body:          []byte(`{"status":"success","data":{"resultType":"matrix","result":[]}}`),
-				StatusCode:    200,
-				Duration:      120 * time.Millisecond,
-				Stats:         goldfish.QueryStats{ExecTimeMs: 120},
-				Hash:          "hash123",
-				Size:          155,
-				UsedNewEngine: false,
+			cellBResp := &BackendResponse{
+				BackendName: "cell-b",
+				Status:      200,
+				Body:        []byte(`{"status":"success","data":{"resultType":"matrix","result":[]}}`),
+				Duration:    120 * time.Millisecond,
+				TraceID:     "",
+				SpanID:      "",
 			}
 
-			manager.processQueryPair(req, cellAResp, cellBResp)
+			manager.SendToGoldfish(req, cellAResp, cellBResp)
 
 			// Give async processing time to complete
 			time.Sleep(100 * time.Millisecond)
@@ -463,27 +453,25 @@ func TestProcessQueryPair_CapturesLogsDrilldown(t *testing.T) {
 				req.Header.Set("X-Query-Tags", tt.queryTags)
 			}
 
-			cellAResp := &ResponseData{
-				Body:          []byte(`{"status":"success","data":{"resultType":"matrix","result":[]}}`),
-				StatusCode:    200,
-				Duration:      100 * time.Millisecond,
-				Stats:         goldfish.QueryStats{ExecTimeMs: 100},
-				Hash:          "hash123",
-				Size:          150,
-				UsedNewEngine: false,
+			cellAResp := &BackendResponse{
+				BackendName: "cell-a",
+				Status:      200,
+				Body:        []byte(`{"status":"success","data":{"resultType":"matrix","result":[]}}`),
+				Duration:    100 * time.Millisecond,
+				TraceID:     "",
+				SpanID:      "",
 			}
 
-			cellBResp := &ResponseData{
-				Body:          []byte(`{"status":"success","data":{"resultType":"matrix","result":[]}}`),
-				StatusCode:    200,
-				Duration:      120 * time.Millisecond,
-				Stats:         goldfish.QueryStats{ExecTimeMs: 120},
-				Hash:          "hash123",
-				Size:          155,
-				UsedNewEngine: false,
+			cellBResp := &BackendResponse{
+				BackendName: "cell-b",
+				Status:      200,
+				Body:        []byte(`{"status":"success","data":{"resultType":"matrix","result":[]}}`),
+				Duration:    120 * time.Millisecond,
+				TraceID:     "",
+				SpanID:      "",
 			}
 
-			manager.processQueryPair(req, cellAResp, cellBResp)
+			manager.SendToGoldfish(req, cellAResp, cellBResp)
 
 			// Give async processing time to complete
 			time.Sleep(100 * time.Millisecond)
@@ -519,29 +507,29 @@ func TestManagerResultPersistenceModes(t *testing.T) {
 	tests := []struct {
 		name         string
 		mode         ResultsPersistenceMode
-		cellAHash    string
-		cellBHash    string
+		cellABody    []byte
+		cellBBody    []byte
 		expectStores int
 	}{
 		{
 			name:         "mismatch only stores when hashes differ",
 			mode:         ResultsPersistenceModeMismatchOnly,
-			cellAHash:    "hash-a",
-			cellBHash:    "hash-b",
+			cellABody:    []byte(`{"status":"success-a","data":{"resultType":"matrix","result":[],"stats":{"summary":{"execTime":0.09,"queueTime":0.05,"totalBytesProcessed":1000,"totalLinesProcessed":100,"bytesProcessedPerSecond":10000,"linesProcessedPerSecond":1000,"totalEntriesReturned":5,"splits":1,"shards":2}}}}`),
+			cellBBody:    []byte(`{"status":"success-b","data":{"resultType":"matrix","result":[],"stats":{"summary":{"execTime":0.11,"queueTime":0.06,"totalBytesProcessed":1000,"totalLinesProcessed":100,"bytesProcessedPerSecond":8333,"linesProcessedPerSecond":833,"totalEntriesReturned":5,"splits":1,"shards":2}}}}`),
 			expectStores: 2,
 		},
 		{
 			name:         "mismatch only skips identical hashes",
 			mode:         ResultsPersistenceModeMismatchOnly,
-			cellAHash:    "hash-same",
-			cellBHash:    "hash-same",
+			cellABody:    []byte(`{"status":"success","data":{"resultType":"matrix","result":[],"stats":{"summary":{"execTime":0.09,"queueTime":0.05,"totalBytesProcessed":1000,"totalLinesProcessed":100,"bytesProcessedPerSecond":10000,"linesProcessedPerSecond":1000,"totalEntriesReturned":5,"splits":1,"shards":2}}}}`),
+			cellBBody:    []byte(`{"status":"success","data":{"resultType":"matrix","result":[],"stats":{"summary":{"execTime":0.11,"queueTime":0.06,"totalBytesProcessed":1000,"totalLinesProcessed":100,"bytesProcessedPerSecond":8333,"linesProcessedPerSecond":833,"totalEntriesReturned":5,"splits":1,"shards":2}}}}`),
 			expectStores: 0,
 		},
 		{
 			name:         "all mode stores for every sample",
 			mode:         ResultsPersistenceModeAll,
-			cellAHash:    "hash-same",
-			cellBHash:    "hash-same",
+			cellABody:    []byte(`{"status":"success","data":{"resultType":"matrix","result":[],"stats":{"summary":{"execTime":0.09,"queueTime":0.05,"totalBytesProcessed":1000,"totalLinesProcessed":100,"bytesProcessedPerSecond":10000,"linesProcessedPerSecond":1000,"totalEntriesReturned":5,"splits":1,"shards":2}}}}`),
+			cellBBody:    []byte(`{"status":"success","data":{"resultType":"matrix","result":[],"stats":{"summary":{"execTime":0.11,"queueTime":0.06,"totalBytesProcessed":1000,"totalLinesProcessed":100,"bytesProcessedPerSecond":8333,"linesProcessedPerSecond":833,"totalEntriesReturned":5,"splits":1,"shards":2}}}}`),
 			expectStores: 2,
 		},
 	}
@@ -559,27 +547,28 @@ func TestManagerResultPersistenceModes(t *testing.T) {
 			req, _ := http.NewRequest("GET", "/loki/api/v1/query_range?query=sum(rate({job=\"app\"}[1m]))", nil)
 			req.Header.Set("X-Scope-OrgID", "tenant1")
 
-			cellA := &ResponseData{
-				Body:        []byte(`{"status":"success","data":{"resultType":"scalar","result":[1: "1"]}}`),
-				StatusCode:  200,
-				Duration:    90 * time.Millisecond,
-				Stats:       goldfish.QueryStats{ExecTimeMs: 90},
-				Hash:        tt.cellAHash,
-				Size:        140,
+			cellA := &BackendResponse{
 				BackendName: "cell-a",
+				Status:      200,
+				Body:        tt.cellABody,
+				Duration:    90 * time.Millisecond,
+				TraceID:     "",
+				SpanID:      "",
 			}
 
-			cellB := &ResponseData{
-				Body:        []byte(`{"status":"success","data":{"resultType":"scalar","result":[1: "2"]}}`),
-				StatusCode:  200,
-				Duration:    110 * time.Millisecond,
-				Stats:       goldfish.QueryStats{ExecTimeMs: 110},
-				Hash:        tt.cellBHash,
-				Size:        150,
+			cellB := &BackendResponse{
 				BackendName: "cell-b",
+				Status:      200,
+				Body:        tt.cellBBody,
+				Duration:    110 * time.Millisecond,
+				TraceID:     "",
+				SpanID:      "",
 			}
 
-			manager.processQueryPair(req, cellA, cellB)
+			manager.SendToGoldfish(req, cellA, cellB)
+
+			// Give async processing time to complete
+			time.Sleep(100 * time.Millisecond)
 
 			require.Equal(t, tt.expectStores, len(results.calls))
 
@@ -678,24 +667,32 @@ func TestManager_StoreQuerySample_UsesComparatorResult(t *testing.T) {
 			manager, err := NewManager(config, mockComparator, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
 			require.NoError(t, err)
 
-			// Create responses with different hashes (both return 200)
-			cellAResp := &ResponseData{
-				StatusCode: 200,
-				Hash:       tt.cellAHash,
-				Body:       []byte(`{"status":"success","data":{"result":[]}}`),
-				Stats:      goldfish.QueryStats{ExecTimeMs: 100},
+			// Create responses with different status values to ensure different hashes
+			// Use status field differences since result parsing is complex
+			cellAResp := &BackendResponse{
+				BackendName: "cell-a",
+				Status:      200,
+				Body:        []byte(`{"status":"success-a","data":{"resultType":"matrix","result":[],"stats":{"summary":{"execTime":0.1,"queueTime":0.05,"totalBytesProcessed":1000,"totalLinesProcessed":100,"bytesProcessedPerSecond":10000,"linesProcessedPerSecond":1000,"totalEntriesReturned":5,"splits":1,"shards":2}}}}`),
+				Duration:    100 * time.Millisecond,
+				TraceID:     "",
+				SpanID:      "",
 			}
-			cellBResp := &ResponseData{
-				StatusCode: 200,
-				Hash:       tt.cellBHash,
-				Body:       []byte(`{"status":"success","data":{"result":[]}}`),
-				Stats:      goldfish.QueryStats{ExecTimeMs: 100},
+			cellBResp := &BackendResponse{
+				BackendName: "cell-b",
+				Status:      200,
+				Body:        []byte(`{"status":"success-b","data":{"resultType":"matrix","result":[],"stats":{"summary":{"execTime":0.1,"queueTime":0.05,"totalBytesProcessed":1000,"totalLinesProcessed":100,"bytesProcessedPerSecond":10000,"linesProcessedPerSecond":1000,"totalEntriesReturned":5,"splits":1,"shards":2}}}}`),
+				Duration:    100 * time.Millisecond,
+				TraceID:     "",
+				SpanID:      "",
 			}
 
 			req, _ := http.NewRequest("GET", "/loki/api/v1/query_range?query=test", nil)
 
 			// Process the query pair
-			manager.processQueryPair(req, cellAResp, cellBResp)
+			manager.SendToGoldfish(req, cellAResp, cellBResp)
+
+			// Give async processing time to complete
+			time.Sleep(100 * time.Millisecond)
 
 			// Verify the stored sample has the correct comparison status from the comparator
 			require.Len(t, storage.samples, 1)
