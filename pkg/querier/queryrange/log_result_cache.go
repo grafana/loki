@@ -283,8 +283,12 @@ func (l *logResultCache) handleMiss(ctx context.Context, cacheKey, responseCache
 		shouldCache := maxCacheSize == 0 || proto.Size(lokiRes) <= maxCacheSize
 
 		if shouldCache {
+			// Adjust time range if response hit the limit
+			adjStart, adjEnd := adjustCacheTimeRange(req, lokiRes)
+			adjustedReq := req.WithStartEnd(adjStart, adjEnd).(*LokiRequest)
+
 			// Cache both the request (for time range, using cache key) and the response (using :resp key)
-			requestData, err := proto.Marshal(req)
+			requestData, err := proto.Marshal(adjustedReq)
 			if err != nil {
 				level.Warn(l.logger).Log("msg", "error marshalling request", "err", err)
 				return resp, nil
@@ -312,6 +316,8 @@ func (l *logResultCache) handleMiss(ctx context.Context, cacheKey, responseCache
 				"responseKey", responseCacheKey,
 				"requestFrom", req.StartTs.Format(time.RFC3339Nano),
 				"requestTo", req.EndTs.Format(time.RFC3339Nano),
+				"adjustedRequestFrom", adjustedReq.StartTs.Format(time.RFC3339Nano),
+				"adjustedRequestTo", adjustedReq.EndTs.Format(time.RFC3339Nano),
 			)
 
 			return resp, nil
@@ -437,8 +443,10 @@ func (l *logResultCache) handleEmptyResponseHit(ctx context.Context, cacheKey, r
 	// If the merged result is non-empty (e.g., endResp had data), update cache with marker and response cache key
 	// This allows future requests to treat it as a non-empty cached response
 	// If a future request's end matches no log lines, extractLokiResponse will handle returning an empty response
-	if !isEmpty(result) && storeNonEmptyEnabled {
-		newCachedRequest := lokiReq.WithStartEnd(lokiReq.GetStartTs(), lokiReq.GetEndTs()).(*LokiRequest)
+	if storeNonEmptyEnabled && !isEmpty(result) {
+		// Adjust time range if response hit the limit
+		adjStart, adjEnd := adjustCacheTimeRange(lokiReq, result)
+		newCachedRequest := lokiReq.WithStartEnd(adjStart, adjEnd).(*LokiRequest)
 		l.updateCacheWithNonEmptyResponse(ctx, cacheKey, responseCacheKey, newCachedRequest, result)
 		return result, nil
 	}
@@ -575,9 +583,22 @@ func (l *logResultCache) handleResponseHit(ctx context.Context, cacheKey, respon
 				// Note, if we are in this function, we already know  caching non-empty responses is enabled.
 				shouldCache := maxCacheSize == 0 || proto.Size(lokiResp) <= maxCacheSize
 				if shouldCache {
-					newCachedRequest = cachedRequest.WithStartEnd(lokiReq.GetStartTs(), lokiReq.GetEndTs()).(*LokiRequest)
+					// Adjust time range if response hit the limit
+					adjStart, adjEnd := adjustCacheTimeRange(lokiReq, lokiResp)
+					newCachedRequest = cachedRequest.WithStartEnd(adjStart, adjEnd).(*LokiRequest)
 					newCachedResponse = lokiResp
 					updateCache = true
+
+					level.Debug(l.logger).Log(
+						"msg", "will replace cache with non-empty response - handleResponseHit",
+						"experiment", "positive-results-cache",
+						"cacheKey", cacheKey,
+						"responseKey", responseCacheKey,
+						"requestFrom", lokiReq.StartTs.Format(time.RFC3339Nano),
+						"requestTo", lokiReq.EndTs.Format(time.RFC3339Nano),
+						"adjustedRequestFrom", adjStart.Format(time.RFC3339Nano),
+						"adjustedRequestTo", adjEnd.Format(time.RFC3339Nano),
+					)
 				}
 			}
 		}
@@ -684,14 +705,25 @@ func (l *logResultCache) handleResponseHit(ctx context.Context, cacheKey, respon
 
 			// Update cache if the merged response is cacheable and covers a larger range
 			if shouldCache {
-				newCachedStart := lokiReq.GetStartTs()
-				newCachedEnd := lokiReq.GetEndTs()
+				// Adjust time range if response hit the limit
+				adjStart, adjEnd := adjustCacheTimeRange(lokiReq, lokiResult)
 
 				// Only update if we're extending the cached range
-				if newCachedStart.Before(cachedRequest.GetStartTs()) || newCachedEnd.After(cachedRequest.GetEndTs()) {
-					newCachedRequest = cachedRequest.WithStartEnd(newCachedStart, newCachedEnd).(*LokiRequest)
+				if adjStart.Before(cachedRequest.GetStartTs()) || adjEnd.After(cachedRequest.GetEndTs()) {
+					newCachedRequest = cachedRequest.WithStartEnd(adjStart, adjEnd).(*LokiRequest)
 					newCachedResponse = lokiResult
 					updateCache = true
+
+					level.Debug(l.logger).Log(
+						"msg", "will update cache with non-empty response - handleResponseHit",
+						"experiment", "positive-results-cache",
+						"cacheKey", cacheKey,
+						"responseKey", responseCacheKey,
+						"requestFrom", lokiReq.StartTs.Format(time.RFC3339Nano),
+						"requestTo", lokiReq.EndTs.Format(time.RFC3339Nano),
+						"adjustedRequestFrom", adjStart.Format(time.RFC3339Nano),
+						"adjustedRequestTo", adjEnd.Format(time.RFC3339Nano),
+					)
 				}
 			}
 		}
@@ -746,6 +778,57 @@ func extractLokiResponse(start, end time.Time, r *LokiResponse) *LokiResponse {
 
 func isEmpty(lokiRes *LokiResponse) bool {
 	return lokiRes.Status == loghttp.QueryStatusSuccess && len(lokiRes.Data.Result) == 0
+}
+
+// responseUnderRequestLimit checks if the entries returned in the response is under the request limit.
+func responseUnderRequestLimit(lokiRes *LokiResponse, reqLimit uint32) bool {
+	var totalEntries uint32
+	for _, stream := range lokiRes.Data.Result {
+		totalEntries += uint32(len(stream.Entries))
+	}
+	return totalEntries < reqLimit
+}
+
+// getResponseTimeBounds returns the minimum and maximum timestamps across all entries in the response.
+func getResponseTimeBounds(resp *LokiResponse) (minTs, maxTs time.Time) {
+	first := true
+	for _, stream := range resp.Data.Result {
+		for _, entry := range stream.Entries {
+			if first {
+				minTs = entry.Timestamp
+				maxTs = entry.Timestamp
+				first = false
+				continue
+			}
+			if entry.Timestamp.Before(minTs) {
+				minTs = entry.Timestamp
+			}
+			if entry.Timestamp.After(maxTs) {
+				maxTs = entry.Timestamp
+			}
+		}
+	}
+	return minTs, maxTs
+}
+
+// adjustCacheTimeRange returns the time range to cache based on actual response data.
+// If the response hit the limit, the cached range is trimmed to the actual data bounds.
+// For FORWARD queries that hit the limit, we cache [start, maxTs] since we may be missing newer entries.
+// For BACKWARD queries that hit the limit, we cache [minTs, end] since we may be missing older entries.
+func adjustCacheTimeRange(req *LokiRequest, resp *LokiResponse) (start, end time.Time) {
+	// If under limit, cache the full requested range
+	if responseUnderRequestLimit(resp, req.Limit) {
+		return req.GetStartTs(), req.GetEndTs()
+	}
+
+	// Find min/max timestamps in response
+	minTs, maxTs := getResponseTimeBounds(resp)
+
+	// Adjust based on direction
+	if req.Direction == logproto.FORWARD {
+		return req.GetStartTs(), maxTs
+	}
+	return minTs, req.GetEndTs()
 }
 
 func emptyResponse(lokiReq *LokiRequest) *LokiResponse {

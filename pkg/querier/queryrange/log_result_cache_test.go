@@ -1065,6 +1065,378 @@ func Test_LogResultCacheResponseSize(t *testing.T) {
 	})
 }
 
+func Test_LogResultCacheLimitHittingForward(t *testing.T) {
+	// Test the scenario from the bug report:
+	// 1. Request A from T60s to T120s with limit 5, FORWARD direction
+	// 2. Response contains 5 entries (hits limit) with entries from T61s to T65s
+	// 3. Cache should store time range T60s to T65s (not T60s to T120s)
+	// 4. Request B from T70s to T120s should NOT get empty response from cache (no overlap with cached range)
+	// 5. Request C from T60s to T120s should partially hit cache (T60s-T65s) and fetch T65s-T120s
+
+	t.Run("cache miss for non-overlapping range", func(t *testing.T) {
+		mockCache := cache.NewMockCache()
+		var (
+			ctx = user.InjectOrgID(context.Background(), "foo")
+			lrc = NewLogResultCache(
+				log.NewNopLogger(),
+				fakeLimits{
+					splitDuration:                       map[string]time.Duration{"foo": time.Minute},
+					logResultCacheStoreNonEmptyResponse: map[string]bool{"foo": true},
+				},
+				mockCache,
+				nil,
+				nil,
+				nil,
+			)
+		)
+
+		// Request A: T60s to T120s with limit 5, FORWARD
+		reqA := &LokiRequest{
+			StartTs:   time.Unix(0, time.Minute.Nanoseconds()),   // T60s
+			EndTs:     time.Unix(0, 2*time.Minute.Nanoseconds()), // T120s
+			Limit:     5,
+			Direction: logproto.FORWARD,
+			Query:     lblFooBar,
+		}
+
+		// Response A: 5 entries from T61s to T65s (hits limit)
+		respA := nonEmptyResponse(reqA, time.Unix(61, 0), time.Unix(65, 0), lblFooBar)
+
+		fake := newFakeResponse([]mockResponse{
+			{
+				RequestResponse: queryrangebase.RequestResponse{
+					Request:  reqA,
+					Response: respA,
+				},
+			},
+		})
+
+		h := lrc.Wrap(fake)
+
+		// First request - should cache with adjusted time range (T60s to T65s, not T60s to T120s)
+		resp, err := h.Do(ctx, reqA)
+		require.NoError(t, err)
+		require.Equal(t, respA, resp)
+		fake.AssertExpectations(t)
+
+		// Request B: T70s to T120s with same limit and direction
+		// This should NOT hit cache because cached range is T60s to T65s (no overlap with T70s-T120s)
+		reqB := &LokiRequest{
+			StartTs:   time.Unix(0, time.Minute.Nanoseconds()+10*time.Second.Nanoseconds()), // T70s
+			EndTs:     time.Unix(0, 2*time.Minute.Nanoseconds()),                            // T120s
+			Limit:     5,
+			Direction: logproto.FORWARD,
+			Query:     lblFooBar,
+		}
+
+		// Response B: real response for this range
+		respB := nonEmptyResponse(reqB, time.Unix(75, 0), time.Unix(79, 0), lblFooBar)
+
+		fake2 := newFakeResponse([]mockResponse{
+			{
+				RequestResponse: queryrangebase.RequestResponse{
+					Request:  reqB,
+					Response: respB,
+				},
+			},
+		})
+
+		h2 := lrc.Wrap(fake2)
+
+		// Second request - should call handler (cache miss because range not covered)
+		resp2, err := h2.Do(ctx, reqB)
+		require.NoError(t, err)
+		require.Equal(t, respB, resp2)
+		fake2.AssertExpectations(t)
+	})
+
+	t.Run("partial cache hit for overlapping range", func(t *testing.T) {
+		mockCache := cache.NewMockCache()
+		var (
+			ctx = user.InjectOrgID(context.Background(), "foo")
+			lrc = NewLogResultCache(
+				log.NewNopLogger(),
+				fakeLimits{
+					splitDuration:                       map[string]time.Duration{"foo": time.Minute},
+					logResultCacheStoreNonEmptyResponse: map[string]bool{"foo": true},
+				},
+				mockCache,
+				nil,
+				nil,
+				nil,
+			)
+		)
+
+		// Request A: T60s to T120s with limit 5, FORWARD
+		reqA := &LokiRequest{
+			StartTs:   time.Unix(0, time.Minute.Nanoseconds()),   // T60s
+			EndTs:     time.Unix(0, 2*time.Minute.Nanoseconds()), // T120s
+			Limit:     5,
+			Direction: logproto.FORWARD,
+			Query:     lblFooBar,
+		}
+
+		// Response A: 5 entries from T61s to T65s (hits limit)
+		respA := nonEmptyResponse(reqA, time.Unix(61, 0), time.Unix(65, 0), lblFooBar)
+
+		// The cache will store adjusted range [T60s, T65s] (based on max entry timestamp)
+		// When reqC comes in for [T60s, T120s], cache will request missing part [T65s, T120s]
+		reqCMissingPart := reqA.WithStartEnd(time.Unix(65, 0), time.Unix(0, 2*time.Minute.Nanoseconds())).(*LokiRequest)
+
+		// Response for missing part: entries from T80s to T84s (5 entries, which will be ignored after the merge since the cached entries are already 5)
+		respCMissingPart := nonEmptyResponse(reqCMissingPart, time.Unix(80, 0), time.Unix(84, 0), lblFooBar)
+
+		fake := newFakeResponse([]mockResponse{
+			{
+				RequestResponse: queryrangebase.RequestResponse{
+					Request:  reqA,
+					Response: respA,
+				},
+			},
+			{
+				RequestResponse: queryrangebase.RequestResponse{
+					Request:  reqCMissingPart,
+					Response: respCMissingPart,
+				},
+			},
+		})
+
+		h := lrc.Wrap(fake)
+
+		// First request - should cache with adjusted time range (T60s to T65s, not T60s to T120s)
+		resp, err := h.Do(ctx, reqA)
+		require.NoError(t, err)
+		require.Equal(t, respA, resp)
+
+		// Request C: T60s to T120s again (same as reqA)
+		// This should partially hit cache for T60s to T65s, and make a call for T65s to T120s
+		reqC := &LokiRequest{
+			StartTs:   time.Unix(0, time.Minute.Nanoseconds()),   // T60s
+			EndTs:     time.Unix(0, 2*time.Minute.Nanoseconds()), // T120s
+			Limit:     5,
+			Direction: logproto.FORWARD,
+			Query:     lblFooBar,
+		}
+
+		// Second request - should hit cache partially (T60s-T65s) and fetch T65s-T120s
+		resp2, err := h.Do(ctx, reqC)
+		require.NoError(t, err)
+
+		// Verify the response contains entries
+		lokiResp2 := resp2.(*LokiResponse)
+		require.Equal(t, loghttp.QueryStatusSuccess, lokiResp2.Status)
+
+		// Collect all entry timestamps
+		var allTimestamps []int64
+		for _, stream := range lokiResp2.Data.Result {
+			for _, entry := range stream.Entries {
+				allTimestamps = append(allTimestamps, entry.Timestamp.Unix())
+			}
+		}
+
+		// Verify the merge happened correctly:
+		// - Cached entries (T61s-T64s): T65s is excluded because extractLokiResponse uses [start, end) interval
+		//   The cached range ends at T65s (max entry timestamp), so extraction excludes entries at exactly T65s
+		// - Plus entries from fetched missing part (starting at T80s)
+		// - Limited to 5 entries (the request limit) via mergeLokiResponse
+		require.Len(t, allTimestamps, 5, "Should have exactly 5 entries (the limit)")
+
+		// Verify we have entries from BOTH the cached portion AND the fetched portion
+		// This proves the cache correctly stored the adjusted range and fetched missing data
+		hasCachedEntry := false
+		hasFetchedEntry := false
+		for _, ts := range allTimestamps {
+			if ts >= 61 && ts <= 64 { // Cached entries
+				hasCachedEntry = true
+			}
+			if ts >= 80 { // Fetched entries from missing part
+				hasFetchedEntry = true
+			}
+		}
+		require.True(t, hasCachedEntry, "Response should include cached entries")
+		require.True(t, hasFetchedEntry, "Response should include entries from fetched missing part")
+
+		// Verify mock expectations (both requests were made with correct parameters)
+		fake.AssertExpectations(t)
+	})
+}
+
+func Test_LogResultCacheLimitHittingBackward(t *testing.T) {
+	// Test BACKWARD direction limit hitting:
+	// 1. Request A from T60s to T120s with limit 5, BACKWARD direction
+	// 2. Response contains 5 entries (hits limit) with entries from T115s to T119s
+	// 3. Cache should store time range T115s to T120s (not T60s to T120s)
+	// 4. Request B from T60s to T110s should NOT get empty response from cache (no overlap with cached range)
+	// 5. Request C from T60s to T120s should partially hit cache (T115s-T120s) and fetch T60s-T115s
+
+	t.Run("cache miss for non-overlapping range", func(t *testing.T) {
+		mockCache := cache.NewMockCache()
+		var (
+			ctx = user.InjectOrgID(context.Background(), "foo")
+			lrc = NewLogResultCache(
+				log.NewNopLogger(),
+				fakeLimits{
+					splitDuration:                       map[string]time.Duration{"foo": time.Minute},
+					logResultCacheStoreNonEmptyResponse: map[string]bool{"foo": true},
+				},
+				mockCache,
+				nil,
+				nil,
+				nil,
+			)
+		)
+
+		// Request A: T60s to T120s with limit 5, BACKWARD
+		reqA := &LokiRequest{
+			StartTs:   time.Unix(0, time.Minute.Nanoseconds()),   // T60s
+			EndTs:     time.Unix(0, 2*time.Minute.Nanoseconds()), // T120s
+			Limit:     5,
+			Direction: logproto.BACKWARD,
+			Query:     lblFooBar,
+		}
+
+		// Response A: 5 entries from T115s to T119s (hits limit, scanning backward)
+		respA := nonEmptyResponse(reqA, time.Unix(115, 0), time.Unix(119, 0), lblFooBar)
+
+		fake := newFakeResponse([]mockResponse{
+			{
+				RequestResponse: queryrangebase.RequestResponse{
+					Request:  reqA,
+					Response: respA,
+				},
+			},
+		})
+
+		h := lrc.Wrap(fake)
+
+		// First request - should cache with adjusted time range (T115s to T120s, not T60s to T120s)
+		resp, err := h.Do(ctx, reqA)
+		require.NoError(t, err)
+		require.Equal(t, respA, resp)
+		fake.AssertExpectations(t)
+
+		// Request B: T60s to T110s with same limit and direction
+		// This should NOT hit cache because cached range is T115s to T120s (no overlap with T60s-T110s)
+		reqB := &LokiRequest{
+			StartTs:   time.Unix(0, time.Minute.Nanoseconds()),                              // T60s
+			EndTs:     time.Unix(0, time.Minute.Nanoseconds()+50*time.Second.Nanoseconds()), // T110s
+			Limit:     5,
+			Direction: logproto.BACKWARD,
+			Query:     lblFooBar,
+		}
+
+		// Response B: real response for this range (not empty from bad cache)
+		respB := nonEmptyResponse(reqB, time.Unix(105, 0), time.Unix(109, 0), lblFooBar)
+
+		fake2 := newFakeResponse([]mockResponse{
+			{
+				RequestResponse: queryrangebase.RequestResponse{
+					Request:  reqB,
+					Response: respB,
+				},
+			},
+		})
+
+		h2 := lrc.Wrap(fake2)
+
+		// Second request - should call handler (cache miss because range not covered)
+		resp2, err := h2.Do(ctx, reqB)
+		require.NoError(t, err)
+		require.Equal(t, respB, resp2)
+		fake2.AssertExpectations(t)
+	})
+
+	t.Run("partial cache hit for overlapping range", func(t *testing.T) {
+		mockCache := cache.NewMockCache()
+		var (
+			ctx = user.InjectOrgID(context.Background(), "foo")
+			lrc = NewLogResultCache(
+				log.NewNopLogger(),
+				fakeLimits{
+					splitDuration:                       map[string]time.Duration{"foo": time.Minute},
+					logResultCacheStoreNonEmptyResponse: map[string]bool{"foo": true},
+				},
+				mockCache,
+				nil,
+				nil,
+				nil,
+			)
+		)
+
+		// Request A: T60s to T120s with limit 5, BACKWARD
+		reqA := &LokiRequest{
+			StartTs:   time.Unix(0, time.Minute.Nanoseconds()),   // T60s
+			EndTs:     time.Unix(0, 2*time.Minute.Nanoseconds()), // T120s
+			Limit:     5,
+			Direction: logproto.BACKWARD,
+			Query:     lblFooBar,
+		}
+
+		// Response A: 5 entries from T115s to T119s (hits limit, scanning backward)
+		respA := nonEmptyResponse(reqA, time.Unix(115, 0), time.Unix(119, 0), lblFooBar)
+
+		// The cache will store adjusted range [T115s, T120s] (based on min entry timestamp for BACKWARD)
+		// When reqC comes in for [T60s, T120s], cache will request missing part [T60s, T115s]
+		reqCMissingPart := reqA.WithStartEnd(time.Unix(0, time.Minute.Nanoseconds()), time.Unix(115, 0)).(*LokiRequest)
+
+		// Response for missing part: entries from T80s to T84s (5 entries)
+		respCMissingPart := nonEmptyResponse(reqCMissingPart, time.Unix(80, 0), time.Unix(84, 0), lblFooBar)
+
+		fake := newFakeResponse([]mockResponse{
+			{
+				RequestResponse: queryrangebase.RequestResponse{
+					Request:  reqA,
+					Response: respA,
+				},
+			},
+			{
+				RequestResponse: queryrangebase.RequestResponse{
+					Request:  reqCMissingPart,
+					Response: respCMissingPart,
+				},
+			},
+		})
+
+		h := lrc.Wrap(fake)
+
+		// First request - should cache with adjusted time range (T115s to T120s, not T60s to T120s)
+		resp, err := h.Do(ctx, reqA)
+		require.NoError(t, err)
+		require.Equal(t, respA, resp)
+
+		// Request C: T60s to T120s again (same as reqA)
+		// This should partially hit cache for T115s to T120s, and make a call for T60s to T115s
+		reqC := &LokiRequest{
+			StartTs:   time.Unix(0, time.Minute.Nanoseconds()),   // T60s
+			EndTs:     time.Unix(0, 2*time.Minute.Nanoseconds()), // T120s
+			Limit:     5,
+			Direction: logproto.BACKWARD,
+			Query:     lblFooBar,
+		}
+
+		// Second request - should hit cache partially (T115s-T120s) and fetch T60s-T115s
+		resp2, err := h.Do(ctx, reqC)
+		require.NoError(t, err)
+
+		// Verify the response contains entries
+		lokiResp2 := resp2.(*LokiResponse)
+		require.Equal(t, loghttp.QueryStatusSuccess, lokiResp2.Status)
+
+		// Verify the response has entries (the merge logic handles ordering by direction)
+		var totalEntries int
+		for _, stream := range lokiResp2.Data.Result {
+			totalEntries += len(stream.Entries)
+		}
+		require.Equal(t, 5, totalEntries, "Should have exactly 5 entries (the limit)")
+
+		// Verify mock expectations - both requests were made with correct parameters:
+		// 1. First call for reqA - populates cache with adjusted range [T115s, T120s]
+		// 2. Second call for missing part [T60s, T115s] - proves cache correctly identified missing data
+		// This confirms the cache is storing the adjusted time range for BACKWARD queries
+		fake.AssertExpectations(t)
+	})
+}
+
 type fakeResponse struct {
 	*mock.Mock
 }
