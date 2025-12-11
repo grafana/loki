@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.6.3](https://github.com/grafana/loki/compare/v3.6.2...v3.6.3) (2025-12-11)
+
+
+### Bug Fixes
+
+* Do not override S3 region if already specified in configuration chain (backport release-3.6.x) ([#20128](https://github.com/grafana/loki/issues/20128)) ([38582ac](https://github.com/grafana/loki/commit/38582ac8dcce1397580dddd1ecac51692bad7413))
+* Fix regression in S3 client configuration (backport release-3.6.x) ([#20118](https://github.com/grafana/loki/issues/20118)) ([7d8176f](https://github.com/grafana/loki/commit/7d8176f4dd9c00ded84444360e31d7118abf66f0))
+
 ## [3.6.2](https://github.com/grafana/loki/compare/v3.6.1...v3.6.2) (2025-11-25)
 
 
