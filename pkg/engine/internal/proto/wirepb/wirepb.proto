@@ -26,8 +26,18 @@ message AckFrame {
 }
 
 message NackFrame {
+  reserved 2; // Previously error message, now used in 3.
+
   uint64 id = 1;
-  string error = 2;
+  Error error = 3;
+}
+
+message Error {
+  // The HTTP status code of the error.
+  int32 code = 1;
+
+  // A message describing the error.
+  string message = 2;
 }
 
 message DiscardFrame {
