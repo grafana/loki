@@ -28,7 +28,7 @@ const (
 	unknownQueryType = "unknown"
 )
 
-// ManagerInterface defines the interface for Goldfish manager operations.
+// Manager defines the interface for Goldfish manager operations.
 type Manager interface {
 	// ComparisonMinAge returns the minimum age of data to send to goldfish for comparison.
 	ComparisonMinAge() time.Duration
