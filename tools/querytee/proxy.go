@@ -94,7 +94,7 @@ type Proxy struct {
 	done sync.WaitGroup
 
 	// Goldfish manager for query sampling and comparison
-	goldfishManager *goldfish.Manager
+	goldfishManager goldfish.Manager
 }
 
 func NewProxy(
@@ -183,7 +183,7 @@ func NewProxy(
 
 	// At least 2 backends are suggested
 	if len(p.backends) < 2 {
-		level.Warn(p.logger).Log("msg", "The proxy is running with only 1 backend. At least 2 backends are required to fulfil the purpose of the proxy and compare results.")
+		level.Warn(p.logger).Log("msg", "The proxy is running with only 1 backend. At least 2 backends are required to fulfill the purpose of the proxy and compare results.")
 	}
 
 	if cfg.DisableBackendReadProxy != "" {

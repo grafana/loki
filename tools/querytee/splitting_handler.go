@@ -9,6 +9,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/tenant"
+	"github.com/grafana/dskit/user"
 	"github.com/grafana/loki/v3/pkg/engine"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/lokifrontend/frontend"
@@ -22,7 +23,7 @@ import (
 type SplittingHandler struct {
 	codec               queryrangebase.Codec
 	fanOutHandler       queryrangebase.Handler
-	goldfishManager     *goldfish.Manager
+	goldfishManager     goldfish.Manager
 	logger              log.Logger
 	logsQueryHandler    queryrangebase.Handler
 	metricsQueryHandler queryrangebase.Handler
@@ -32,10 +33,14 @@ type SplittingHandler struct {
 func NewSplittingHandler(
 	codec queryrangebase.Codec,
 	fanOutHandler queryrangebase.Handler,
-	goldfishManager *goldfish.Manager,
+	goldfishManager goldfish.Manager,
 	logger log.Logger,
 	preferredBackend *ProxyBackend,
-) (*SplittingHandler, error) {
+) (http.Handler, error) {
+	if preferredBackend == nil {
+		return tenantHandler(queryrange.NewSerializeHTTPHandler(fanOutHandler, codec), logger), nil
+	}
+
 	splitHandlerFactory := &splitHandlerFactory{
 		codec:            codec,
 		fanOutHandler:    fanOutHandler,
@@ -57,7 +62,7 @@ func NewSplittingHandler(
 	metricsQueryHandler := splitHandlerFactory.createSplittingHandler(true, preferredRT)
 	logsQueryHandler := splitHandlerFactory.createSplittingHandler(false, preferredRT)
 
-	return &SplittingHandler{
+	splittingHandler := &SplittingHandler{
 		codec:               codec,
 		fanOutHandler:       fanOutHandler,
 		goldfishManager:     goldfishManager,
@@ -65,20 +70,39 @@ func NewSplittingHandler(
 		logsQueryHandler:    logsQueryHandler,
 		metricsQueryHandler: metricsQueryHandler,
 		defaultHandler:      preferredRT,
-	}, nil
+	}
+
+	return tenantHandler(splittingHandler, logger), nil
+}
+
+func tenantHandler(next http.Handler, logger log.Logger) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, ctx, err := user.ExtractOrgIDFromHTTPRequest(r)
+		if err != nil {
+			level.Warn(logger).Log(
+				"msg", "failed to extract tenant ID",
+				"err", err,
+				"req", r.URL.String(),
+			)
+			http.Error(w, err.Error(), http.StatusUnauthorized)
+			return
+		}
+
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
 }
 
 type splitHandlerFactory struct {
 	codec            queryrangebase.Codec
 	fanOutHandler    queryrangebase.Handler
-	goldfishManager  *goldfish.Manager
+	goldfishManager  goldfish.Manager
 	logger           log.Logger
 	preferredBackend *ProxyBackend
 }
 
 func (f *splitHandlerFactory) createSplittingHandler(forMetricQuery bool, defaultHandler queryrangebase.Handler) queryrangebase.Handler {
 	if f.preferredBackend == nil {
-		// No preferred backend, can't do splitting - fall back to fan-out
+		// No preferred backend, can't do splitting
 		return f.fanOutHandler
 	}
 
@@ -119,7 +143,7 @@ func (f *splitHandlerFactory) createSplittingHandler(forMetricQuery bool, defaul
 func (f *SplittingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	_, ctx, err := tenant.ExtractTenantIDFromHTTPRequest(r)
 	if err != nil {
-		level.Error(f.logger).Log(
+		level.Warn(f.logger).Log(
 			"msg", "failed to extract tenant ID",
 			"err", err,
 			"req", r.URL.String(),

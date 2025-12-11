@@ -28,9 +28,23 @@ const (
 	unknownQueryType = "unknown"
 )
 
+// ManagerInterface defines the interface for Goldfish manager operations.
+type Manager interface {
+	// ComparisonMinAge returns the minimum age of data to send to goldfish for comparison.
+	ComparisonMinAge() time.Duration
+	// ComparisonStartDate returns the configured start date for comparisons.
+	ComparisonStartDate() time.Time
+	// ShouldSample determines if a query should be sampled based on tenant configuration.
+	ShouldSample(tenantID string) bool
+	// SendToGoldfish sends backend responses to Goldfish for comparison.
+	SendToGoldfish(httpReq *http.Request, cellAResp, cellBResp *BackendResponse)
+	// Close closes the manager and its dependent storage connections.
+	Close() error
+}
+
 // Manager coordinates Goldfish sampling and comparison operations.
 // It handles query sampling decisions, response comparison, persistence, and storage of results.
-type Manager struct {
+type manager struct {
 	config      Config
 	sampler     *Sampler
 	storage     goldfish.Storage
@@ -50,12 +64,12 @@ type metrics struct {
 
 // NewManager creates a new Goldfish manager with the provided configuration.
 // Returns an error if the configuration is invalid.
-func NewManager(config Config, comparator comparator.ResponsesComparator, storage goldfish.Storage, resultStore ResultStore, logger log.Logger, registerer prometheus.Registerer) (*Manager, error) {
+func NewManager(config Config, comparator comparator.ResponsesComparator, storage goldfish.Storage, resultStore ResultStore, logger log.Logger, registerer prometheus.Registerer) (*manager, error) {
 	if err := config.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid config: %w", err)
 	}
 
-	m := &Manager{
+	m := &manager{
 		config:      config,
 		sampler:     NewSampler(config.SamplingConfig),
 		storage:     storage,
@@ -91,17 +105,17 @@ func NewManager(config Config, comparator comparator.ResponsesComparator, storag
 }
 
 // ComparsionMinAge returns the minimum age of data to send to goldfish for comparison.
-func (m *Manager) ComparisonMinAge() time.Duration {
+func (m *manager) ComparisonMinAge() time.Duration {
 	return m.config.ComparisonMinAge
 }
 
-func (m *Manager) ComparisonStartDate() time.Time {
+func (m *manager) ComparisonStartDate() time.Time {
 	return time.Time(m.config.ComparisonStartDate)
 }
 
 // ShouldSample determines if a query should be sampled based on tenant configuration.
 // Returns false if Goldfish is disabled or if the tenant should not be sampled.
-func (m *Manager) ShouldSample(tenantID string) bool {
+func (m *manager) ShouldSample(tenantID string) bool {
 	if !m.config.Enabled {
 		return false
 	}
@@ -121,7 +135,7 @@ type BackendResponse struct {
 	SpanID      string
 }
 
-func (m *Manager) SendToGoldfish(httpReq *http.Request, cellAResp, cellBResp *BackendResponse) {
+func (m *manager) SendToGoldfish(httpReq *http.Request, cellAResp, cellBResp *BackendResponse) {
 	if !m.config.Enabled {
 		return
 	}
@@ -151,7 +165,7 @@ func (m *Manager) SendToGoldfish(httpReq *http.Request, cellAResp, cellBResp *Ba
 
 // processQueryPair processes a sampled query pair from both cells.
 // It extracts performance statistics, compares responses, persists raw payloads when configured, and stores metadata/results.
-func (m *Manager) processQueryPair(req *http.Request, cellAResp, cellBResp *ResponseData) {
+func (m *manager) processQueryPair(req *http.Request, cellAResp, cellBResp *ResponseData) {
 	// Use a detached context with timeout since this runs async
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -327,7 +341,7 @@ func (m *Manager) processQueryPair(req *http.Request, cellAResp, cellBResp *Resp
 	}
 }
 
-func (m *Manager) persistResultPayloads(ctx context.Context, sample *goldfish.QuerySample, cellAResp, cellBResp *ResponseData, comparison goldfish.ComparisonResult) (*StoredResult, *StoredResult) {
+func (m *manager) persistResultPayloads(ctx context.Context, sample *goldfish.QuerySample, cellAResp, cellBResp *ResponseData, comparison goldfish.ComparisonResult) (*StoredResult, *StoredResult) {
 	if !m.shouldPersistResults(comparison) {
 		return nil, nil
 	}
@@ -368,7 +382,7 @@ func (m *Manager) persistResultPayloads(ctx context.Context, sample *goldfish.Qu
 	return storedA, storedB
 }
 
-func (m *Manager) shouldPersistResults(result goldfish.ComparisonResult) bool {
+func (m *manager) shouldPersistResults(result goldfish.ComparisonResult) bool {
 	if m.resultStore == nil {
 		return false
 	}
@@ -385,7 +399,7 @@ func (m *Manager) shouldPersistResults(result goldfish.ComparisonResult) bool {
 
 // Close closes the manager and its dependent storage connections.
 // Should be called when the manager is no longer needed to properly clean up resources.
-func (m *Manager) Close() error {
+func (m *manager) Close() error {
 	var errs []error
 
 	if m.resultStore != nil {

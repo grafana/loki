@@ -72,7 +72,7 @@ func createTestEndpointWithMetrics(t *testing.T, backends []*ProxyBackend, route
 }
 
 // createTestEndpointWithGoldfish creates a ProxyEndpoint with goldfish manager
-func createTestEndpointWithGoldfish(t *testing.T, backends []*ProxyBackend, routeName string, goldfishManager *querytee_goldfish.Manager) *ProxyEndpoint {
+func createTestEndpointWithGoldfish(t *testing.T, backends []*ProxyBackend, routeName string, goldfishManager querytee_goldfish.Manager) *ProxyEndpoint {
 	metrics := NewProxyMetrics(nil)
 	logger := log.NewNopLogger()
 

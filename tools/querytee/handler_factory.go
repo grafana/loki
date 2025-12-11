@@ -17,7 +17,7 @@ import (
 type HandlerFactory struct {
 	backends           []*ProxyBackend
 	codec              queryrangebase.Codec
-	goldfishManager    *goldfish.Manager
+	goldfishManager    goldfish.Manager
 	instrumentCompares bool
 	enableRace         bool
 	logger             log.Logger
@@ -28,7 +28,7 @@ type HandlerFactory struct {
 type HandlerFactoryConfig struct {
 	Backends           []*ProxyBackend
 	Codec              queryrangebase.Codec
-	GoldfishManager    *goldfish.Manager
+	GoldfishManager    goldfish.Manager
 	InstrumentCompares bool
 	EnableRace         bool
 	Logger             log.Logger
