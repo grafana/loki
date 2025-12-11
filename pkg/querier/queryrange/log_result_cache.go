@@ -227,6 +227,7 @@ func (l *logResultCache) handleMiss(ctx context.Context, cacheKey, responseCache
 		"responseKey", responseCacheKey,
 		"reqFrom", req.StartTs.Format(time.RFC3339Nano),
 		"reqTo", req.EndTs.Format(time.RFC3339Nano),
+		"requestDuration", req.EndTs.Sub(req.StartTs).String(),
 	)
 
 	resp, err := l.next.Do(ctx, req)
@@ -257,6 +258,7 @@ func (l *logResultCache) handleMiss(ctx context.Context, cacheKey, responseCache
 			"cacheKey", cacheKey,
 			"requestFrom", req.StartTs.Format(time.RFC3339Nano),
 			"requestTo", req.EndTs.Format(time.RFC3339Nano),
+			"requestDuration", req.EndTs.Sub(req.StartTs).String(),
 		)
 
 		// cache the request (empty result) using cache key
@@ -316,8 +318,10 @@ func (l *logResultCache) handleMiss(ctx context.Context, cacheKey, responseCache
 				"responseKey", responseCacheKey,
 				"requestFrom", req.StartTs.Format(time.RFC3339Nano),
 				"requestTo", req.EndTs.Format(time.RFC3339Nano),
+				"requestDuration", req.EndTs.Sub(req.StartTs).String(),
 				"adjustedRequestFrom", adjustedReq.StartTs.Format(time.RFC3339Nano),
 				"adjustedRequestTo", adjustedReq.EndTs.Format(time.RFC3339Nano),
+				"adjustedRequestDuration", adjustedReq.EndTs.Sub(adjustedReq.StartTs).String(),
 				"cachedEntries", debugCountEntries(lokiRes),
 			)
 
@@ -339,8 +343,10 @@ func (l *logResultCache) handleEmptyResponseHit(ctx context.Context, cacheKey, r
 		"responseKey", responseCacheKey,
 		"cachedReqFrom", cachedRequest.StartTs.Format(time.RFC3339Nano),
 		"cachedReqTo", cachedRequest.EndTs.Format(time.RFC3339Nano),
+		"cachedRequestDuration", cachedRequest.EndTs.Sub(cachedRequest.StartTs).String(),
 		"lokiReqFrom", lokiReq.StartTs.Format(time.RFC3339Nano),
 		"lokiReqTo", lokiReq.EndTs.Format(time.RFC3339Nano),
+		"requestDuration", lokiReq.EndTs.Sub(lokiReq.StartTs).String(),
 	)
 	// we start with an empty response
 	result := emptyResponse(lokiReq)
@@ -492,6 +498,7 @@ func (l *logResultCache) updateCacheWithNonEmptyResponse(ctx context.Context, ca
 			"maxCacheSize", maxCacheSize,
 			"requestFrom", newCachedRequest.StartTs.Format(time.RFC3339Nano),
 			"requestTo", newCachedRequest.EndTs.Format(time.RFC3339Nano),
+			"requestDuration", newCachedRequest.EndTs.Sub(newCachedRequest.StartTs).String(),
 			"cachedEntries", debugCountEntries(newCachedResponse),
 		)
 		return
@@ -522,6 +529,7 @@ func (l *logResultCache) updateCacheWithNonEmptyResponse(ctx context.Context, ca
 		"responseKey", responseCacheKey,
 		"requestFrom", newCachedRequest.StartTs.Format(time.RFC3339Nano),
 		"requestTo", newCachedRequest.EndTs.Format(time.RFC3339Nano),
+		"requestDuration", newCachedRequest.EndTs.Sub(newCachedRequest.StartTs).String(),
 		"cachedEntries", debugCountEntries(newCachedResponse),
 	)
 
@@ -541,8 +549,10 @@ func (l *logResultCache) handleResponseHit(ctx context.Context, cacheKey, respon
 		"responseKey", responseCacheKey,
 		"cachedReqFrom", cachedRequest.StartTs.Format(time.RFC3339Nano),
 		"cachedReqTo", cachedRequest.EndTs.Format(time.RFC3339Nano),
+		"cachedRequestDuration", cachedRequest.EndTs.Sub(cachedRequest.StartTs).String(),
 		"lokiReqFrom", lokiReq.StartTs.Format(time.RFC3339Nano),
 		"lokiReqTo", lokiReq.EndTs.Format(time.RFC3339Nano),
+		"requestDuration", lokiReq.EndTs.Sub(lokiReq.StartTs).String(),
 		"cachedEntries", debugCountEntries(cachedResponse),
 	)
 
@@ -565,8 +575,10 @@ func (l *logResultCache) handleResponseHit(ctx context.Context, cacheKey, respon
 			"responseKey", responseCacheKey,
 			"cachedReqFrom", cachedRequest.StartTs.Format(time.RFC3339Nano),
 			"cachedReqTo", cachedRequest.EndTs.Format(time.RFC3339Nano),
+			"cachedDuration", cachedRequest.EndTs.Sub(cachedRequest.StartTs).String(),
 			"lokiReqFrom", lokiReq.StartTs.Format(time.RFC3339Nano),
 			"lokiReqTo", lokiReq.EndTs.Format(time.RFC3339Nano),
+			"requestDuration", lokiReq.EndTs.Sub(lokiReq.StartTs).String(),
 			"cachedEntries", debugCountEntries(cachedResponse),
 			"resultEntries", debugCountEntries(result),
 		)
@@ -618,12 +630,29 @@ func (l *logResultCache) handleResponseHit(ctx context.Context, cacheKey, respon
 						"responseKey", responseCacheKey,
 						"requestFrom", lokiReq.StartTs.Format(time.RFC3339Nano),
 						"requestTo", lokiReq.EndTs.Format(time.RFC3339Nano),
+						"requestDuration", lokiReq.EndTs.Sub(lokiReq.StartTs).String(),
 						"adjustedRequestFrom", adjStart.Format(time.RFC3339Nano),
 						"adjustedRequestTo", adjEnd.Format(time.RFC3339Nano),
+						"adjustedRequestDuration", adjEnd.Sub(adjStart).String(),
 						"cachedEntries", debugCountEntries(lokiResp),
+						"cachedDuration", cachedRequest.EndTs.Sub(cachedRequest.StartTs).String(),
 					)
 				}
 			}
+		} else {
+			level.Debug(l.logger).Log(
+				"msg", "no overlap - fetched entire request but response is empty or time range is smaller than cached response",
+				"experiment", "positive-results-cache",
+				"cacheKey", cacheKey,
+				"responseKey", responseCacheKey,
+				"requestFrom", lokiReq.StartTs.Format(time.RFC3339Nano),
+				"requestTo", lokiReq.EndTs.Format(time.RFC3339Nano),
+				"requestDuration", lokiReq.EndTs.Sub(lokiReq.StartTs).String(),
+				"cachedReqFrom", cachedRequest.StartTs.Format(time.RFC3339Nano),
+				"cachedReqTo", cachedRequest.EndTs.Format(time.RFC3339Nano),
+				"cachedEntries", debugCountEntries(lokiResp),
+				"cachedDuration", cachedRequest.EndTs.Sub(cachedRequest.StartTs).String(),
+			)
 		}
 	} else {
 
@@ -655,6 +684,7 @@ func (l *logResultCache) handleResponseHit(ctx context.Context, cacheKey, respon
 					"responseKey", responseCacheKey,
 					"requestFrom", startRequest.StartTs.Format(time.RFC3339Nano),
 					"requestTo", startRequest.EndTs.Format(time.RFC3339Nano),
+					"requestDuration", startRequest.EndTs.Sub(startRequest.StartTs).String(),
 					"entries", debugCountEntries(startResp),
 				)
 
@@ -683,6 +713,7 @@ func (l *logResultCache) handleResponseHit(ctx context.Context, cacheKey, respon
 					"responseKey", responseCacheKey,
 					"requestFrom", endRequest.StartTs.Format(time.RFC3339Nano),
 					"requestTo", endRequest.EndTs.Format(time.RFC3339Nano),
+					"requestDuration", endRequest.EndTs.Sub(endRequest.StartTs).String(),
 					"entries", debugCountEntries(endResp),
 				)
 
@@ -704,6 +735,18 @@ func (l *logResultCache) handleResponseHit(ctx context.Context, cacheKey, respon
 			overlapEnd = cachedRequest.GetEndTs()
 		}
 		extractedCached := extractLokiResponse(overlapStart, overlapEnd, cachedResponse)
+
+		level.Debug(l.logger).Log(
+			"msg", "extracted cached response - handleResponseHit",
+			"experiment", "positive-results-cache",
+			"cacheKey", cacheKey,
+			"responseKey", responseCacheKey,
+			"overlapStart", overlapStart.Format(time.RFC3339Nano),
+			"overlapEnd", overlapEnd.Format(time.RFC3339Nano),
+			"overlapDuration", overlapEnd.Sub(overlapStart).String(),
+			"cachedEntries", debugCountEntries(cachedResponse),
+			"extractedEntries", debugCountEntries(extractedCached),
+		)
 
 		// Build the user-facing response: start (if any) + cached overlap + end (if any)
 		// This applies the request limit via mergeLokiResponse
@@ -737,6 +780,20 @@ func (l *logResultCache) handleResponseHit(ctx context.Context, cacheKey, respon
 		}
 
 		result = lokiResult
+
+		level.Debug(l.logger).Log(
+			"msg", "merged response with cache overlap - handleResponseHit",
+			"experiment", "positive-results-cache",
+			"cacheKey", cacheKey,
+			"responseKey", responseCacheKey,
+			"requestFrom", lokiReq.StartTs.Format(time.RFC3339Nano),
+			"requestTo", lokiReq.EndTs.Format(time.RFC3339Nano),
+			"requestDuration", lokiReq.EndTs.Sub(lokiReq.StartTs).String(),
+			"extractedEntries", debugCountEntries(extractedCached),
+			"startEntries", debugCountEntries(startResp),
+			"endEntries", debugCountEntries(endResp),
+			"resultEntries", debugCountEntries(lokiResult),
+		)
 
 		// Try to update cache if the merged response is still cacheable and covers a larger range
 		// Note: We don't need to check if the feature is enabled here because we're only in this function
@@ -808,6 +865,7 @@ func (l *logResultCache) handleResponseHit(ctx context.Context, cacheKey, respon
 						"responseKey", responseCacheKey,
 						"requestFrom", lokiReq.StartTs.Format(time.RFC3339Nano),
 						"requestTo", lokiReq.EndTs.Format(time.RFC3339Nano),
+						"requestDuration", lokiReq.EndTs.Sub(lokiReq.StartTs).String(),
 						"extendedStart", extendedStart.Format(time.RFC3339Nano),
 						"extendedEnd", extendedEnd.Format(time.RFC3339Nano),
 						"cachedEntries", debugCountEntries(cacheResult),
@@ -829,8 +887,10 @@ func (l *logResultCache) handleResponseHit(ctx context.Context, cacheKey, respon
 		"responseKey", responseCacheKey,
 		"cachedReqFrom", cachedRequest.StartTs.Format(time.RFC3339Nano),
 		"cachedReqTo", cachedRequest.EndTs.Format(time.RFC3339Nano),
+		"cachedRequestDuration", cachedRequest.EndTs.Sub(cachedRequest.StartTs).String(),
 		"requestFrom", lokiReq.StartTs.Format(time.RFC3339Nano),
 		"requestTo", lokiReq.EndTs.Format(time.RFC3339Nano),
+		"requestDuration", lokiReq.EndTs.Sub(lokiReq.StartTs).String(),
 		"cachedEntries", debugCountEntries(cachedResponse),
 		"resultEntries", debugCountEntries(result.(*LokiResponse)),
 	)
@@ -839,6 +899,10 @@ func (l *logResultCache) handleResponseHit(ctx context.Context, cacheKey, respon
 }
 
 func debugCountEntries(lokiRes *LokiResponse) int {
+	if lokiRes == nil {
+		return -1
+	}
+
 	var totalEntries int
 	for _, stream := range lokiRes.Data.Result {
 		totalEntries += len(stream.Entries)
