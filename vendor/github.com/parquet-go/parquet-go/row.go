@@ -408,17 +408,11 @@ func targetSchemaOf(w RowWriter) *Schema {
 // when reading CPU or memory profiles.
 // =============================================================================
 
-type levels struct {
-	repetitionDepth byte
-	repetitionLevel byte
-	definitionLevel byte
-}
-
 // deconstructFunc accepts a row, the current levels, the value to deserialize
 // the current column onto, and returns the row minus the deserialied value(s)
 // It recurses until it hits a leaf node, then deserializes that value
 // individually as the base case.
-type deconstructFunc func([][]Value, levels, reflect.Value)
+type deconstructFunc func([][]Value, columnLevels, reflect.Value)
 
 func deconstructFuncOf(columnIndex int16, node Node) (int16, deconstructFunc) {
 	switch {
@@ -438,7 +432,7 @@ func deconstructFuncOf(columnIndex int16, node Node) (int16, deconstructFunc) {
 //go:noinline
 func deconstructFuncOfOptional(columnIndex int16, node Node) (int16, deconstructFunc) {
 	columnIndex, deconstruct := deconstructFuncOf(columnIndex, Required(node))
-	return columnIndex, func(columns [][]Value, levels levels, value reflect.Value) {
+	return columnIndex, func(columns [][]Value, levels columnLevels, value reflect.Value) {
 		if value.IsValid() {
 			if value.IsZero() {
 				value = reflect.Value{}
@@ -456,7 +450,7 @@ func deconstructFuncOfOptional(columnIndex int16, node Node) (int16, deconstruct
 //go:noinline
 func deconstructFuncOfRepeated(columnIndex int16, node Node) (int16, deconstructFunc) {
 	columnIndex, deconstruct := deconstructFuncOf(columnIndex, Required(node))
-	return columnIndex, func(columns [][]Value, levels levels, value reflect.Value) {
+	return columnIndex, func(columns [][]Value, levels columnLevels, value reflect.Value) {
 		if value.Kind() == reflect.Interface {
 			value = value.Elem()
 		}
@@ -497,7 +491,7 @@ func deconstructFuncOfMap(columnIndex int16, node Node) (int16, deconstructFunc)
 	keyType := keyValueElem.Field(0).Type
 	valueType := keyValueElem.Field(1).Type
 	nextColumnIndex, deconstruct := deconstructFuncOf(columnIndex, schemaOf(keyValueElem))
-	return nextColumnIndex, func(columns [][]Value, levels levels, mapValue reflect.Value) {
+	return nextColumnIndex, func(columns [][]Value, levels columnLevels, mapValue reflect.Value) {
 		if !mapValue.IsValid() || mapValue.Len() == 0 {
 			deconstruct(columns, levels, reflect.Value{})
 			return
@@ -526,7 +520,7 @@ func deconstructFuncOfGroup(columnIndex int16, node Node) (int16, deconstructFun
 	for i, field := range fields {
 		columnIndex, funcs[i] = deconstructFuncOf(columnIndex, field)
 	}
-	return columnIndex, func(columns [][]Value, levels levels, value reflect.Value) {
+	return columnIndex, func(columns [][]Value, levels columnLevels, value reflect.Value) {
 		if value.IsValid() {
 			for i, f := range funcs {
 				f(columns, levels, fields[i].Value(value))
@@ -548,7 +542,7 @@ func deconstructFuncOfLeaf(columnIndex int16, node Node) (int16, deconstructFunc
 	kind := typ.Kind()
 	lt := typ.LogicalType()
 	valueColumnIndex := ^columnIndex
-	return columnIndex + 1, func(columns [][]Value, levels levels, value reflect.Value) {
+	return columnIndex + 1, func(columns [][]Value, levels columnLevels, value reflect.Value) {
 		v := Value{}
 
 		if value.IsValid() {
@@ -566,7 +560,7 @@ func deconstructFuncOfLeaf(columnIndex int16, node Node) (int16, deconstructFunc
 // "reconstructX" turns a Go value into a Go representation of a Parquet series
 // of values
 
-type reconstructFunc func(reflect.Value, levels, [][]Value) error
+type reconstructFunc func(reflect.Value, columnLevels, [][]Value) error
 
 func reconstructFuncOf(columnIndex int16, node Node) (int16, reconstructFunc) {
 	switch {
@@ -591,12 +585,16 @@ func reconstructFuncOfOptional(columnIndex int16, node Node) (int16, reconstruct
 	// deserialization here, that happens in the leaf function, hence this line.
 	nextColumnIndex, reconstruct := reconstructFuncOf(columnIndex, Required(node))
 
-	return nextColumnIndex, func(value reflect.Value, levels levels, columns [][]Value) error {
+	return nextColumnIndex, func(value reflect.Value, levels columnLevels, columns [][]Value) error {
 		levels.definitionLevel++
 
-		if columns[0][0].definitionLevel < levels.definitionLevel {
-			value.SetZero()
-			return nil
+		// For empty groups (no columns), we can't check definition levels.
+		// Treat them as always present (non-null).
+		if len(columns) > 0 && len(columns[0]) > 0 {
+			if columns[0][0].definitionLevel < levels.definitionLevel {
+				value.SetZero()
+				return nil
+			}
 		}
 
 		if value.Kind() == reflect.Ptr {
@@ -633,9 +631,15 @@ func setNullSlice(v reflect.Value) reflect.Value {
 //go:noinline
 func reconstructFuncOfRepeated(columnIndex int16, node Node) (int16, reconstructFunc) {
 	nextColumnIndex, reconstruct := reconstructFuncOf(columnIndex, Required(node))
-	return nextColumnIndex, func(value reflect.Value, levels levels, columns [][]Value) error {
+	return nextColumnIndex, func(value reflect.Value, levels columnLevels, columns [][]Value) error {
 		levels.repetitionDepth++
 		levels.definitionLevel++
+
+		// Handle empty groups (no columns)
+		if len(columns) == 0 || len(columns[0]) == 0 {
+			setMakeSlice(value, 0)
+			return nil
+		}
 
 		if columns[0][0].definitionLevel < levels.definitionLevel {
 			setMakeSlice(value, 0)
@@ -710,12 +714,17 @@ func reconstructFuncOfMap(columnIndex int16, node Node) (int16, reconstructFunc)
 	keyValueType := keyValue.GoType()
 	keyValueElem := keyValueType.Elem()
 	nextColumnIndex, reconstruct := reconstructFuncOf(columnIndex, schemaOf(keyValueElem))
-	return nextColumnIndex, func(value reflect.Value, levels levels, columns [][]Value) error {
+	return nextColumnIndex, func(value reflect.Value, levels columnLevels, columns [][]Value) error {
 		levels.repetitionDepth++
 		levels.definitionLevel++
 
 		if columns[0][0].definitionLevel < levels.definitionLevel {
-			value.Set(reflect.MakeMap(value.Type()))
+			valueType := value.Type()
+			if valueType.Kind() == reflect.Interface {
+				value.Set(reflect.ValueOf(map[string]any{}))
+			} else {
+				value.Set(reflect.MakeMap(valueType))
+			}
 			return nil
 		}
 
@@ -790,7 +799,7 @@ func reconstructFuncOfGroup(columnIndex int16, node Node) (int16, reconstructFun
 		columnOffsets[i] = columnIndex - firstColumnIndex
 	}
 
-	return columnIndex, func(value reflect.Value, levels levels, columns [][]Value) error {
+	return columnIndex, func(value reflect.Value, levels columnLevels, columns [][]Value) error {
 		if value.Kind() == reflect.Interface {
 			value.Set(reflect.MakeMap(reflect.TypeOf((map[string]any)(nil))))
 			value = value.Elem()
@@ -838,7 +847,7 @@ func reconstructFuncOfGroup(columnIndex int16, node Node) (int16, reconstructFun
 //go:noinline
 func reconstructFuncOfLeaf(columnIndex int16, node Node) (int16, reconstructFunc) {
 	typ := node.Type()
-	return columnIndex + 1, func(value reflect.Value, _ levels, columns [][]Value) error {
+	return columnIndex + 1, func(value reflect.Value, _ columnLevels, columns [][]Value) error {
 		column := columns[0]
 		if len(column) == 0 {
 			return fmt.Errorf("no values found in parquet row for column %d", columnIndex)
