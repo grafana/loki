@@ -24,7 +24,7 @@ import (
 type FanOutHandler struct {
 	backends           []*ProxyBackend
 	codec              queryrangebase.Codec
-	goldfishManager    *goldfish.Manager
+	goldfishManager    goldfish.Manager
 	logger             log.Logger
 	metrics            *ProxyMetrics
 	routeName          string
@@ -37,7 +37,7 @@ type FanOutHandler struct {
 type FanOutHandlerConfig struct {
 	Backends           []*ProxyBackend
 	Codec              queryrangebase.Codec
-	GoldfishManager    *goldfish.Manager
+	GoldfishManager    goldfish.Manager
 	Logger             log.Logger
 	Metrics            *ProxyMetrics
 	RouteName          string
