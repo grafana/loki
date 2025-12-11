@@ -45,9 +45,8 @@ func createTestEndpoint(backends []*ProxyBackend, routeName string, comparator c
 		Metrics:         metrics,
 	})
 
-	queryHandler := handlerFactory.CreateHandler(routeName, comparator, false)
-	metricHandler := handlerFactory.CreateHandler(routeName, comparator, true)
-	endpoint.WithQueryHandlers(queryHandler, metricHandler, queryrange.DefaultCodec)
+	queryHandler := handlerFactory.CreateHandler(routeName, comparator)
+	endpoint.WithQueryHandler(queryHandler)
 	return endpoint
 }
 
@@ -65,9 +64,8 @@ func createTestEndpointWithMetrics(backends []*ProxyBackend, routeName string, c
 		InstrumentCompares: instrumentCompares,
 	})
 
-	queryHandler := handlerFactory.CreateHandler(routeName, comp, false)
-	metricQueryHandler := handlerFactory.CreateHandler(routeName, comp, true)
-	endpoint.WithQueryHandlers(queryHandler, metricQueryHandler, queryrange.DefaultCodec)
+	queryHandler := handlerFactory.CreateHandler(routeName, comp)
+	endpoint.WithQueryHandler(queryHandler)
 	return endpoint
 }
 
@@ -85,9 +83,8 @@ func createTestEndpointWithGoldfish(backends []*ProxyBackend, routeName string, 
 	})
 
 	endpoint := NewProxyEndpoint(backends, routeName, metrics, logger, nil, false)
-	queryHandler := handlerFactory.CreateHandler(routeName, nil, false)
-	metricQueryHandler := handlerFactory.CreateHandler(routeName, nil, true)
-	endpoint.WithQueryHandlers(queryHandler, metricQueryHandler, queryrange.DefaultCodec)
+	queryHandler := handlerFactory.CreateHandler(routeName, nil)
+	endpoint.WithQueryHandler(queryHandler)
 	endpoint.WithGoldfish(goldfishManager)
 	return endpoint
 }
@@ -694,7 +691,7 @@ type mockGoldfishStorage struct {
 	results []goldfish.ComparisonResult
 }
 
-func (m *mockGoldfishStorage) StoreQuerySample(_ context.Context, sample *goldfish.QuerySample) error {
+func (m *mockGoldfishStorage) StoreQuerySample(_ context.Context, sample *goldfish.QuerySample, _ *goldfish.ComparisonResult) error {
 	m.samples = append(m.samples, *sample)
 	return nil
 }

@@ -195,6 +195,15 @@ func NewProxy(
 		}
 	}
 
+	// Pre-initialize raceWins metric for all backend/route combinations
+	if cfg.EnableRace {
+		for _, backend := range p.backends {
+			for _, route := range p.readRoutes {
+				p.metrics.raceWins.WithLabelValues(backend.name, route.RouteName)
+			}
+		}
+	}
+
 	// Initialize Goldfish if enabled
 	if cfg.Goldfish.Enabled {
 		// Create storage backend
@@ -291,9 +300,8 @@ func (p *Proxy) Start() error {
 			InstrumentCompares: p.cfg.InstrumentCompares,
 			EnableRace:         p.cfg.EnableRace,
 		})
-		queryHandler := routeHandlerFactory.CreateHandler(route.RouteName, comp, false)
-		metricHandler := routeHandlerFactory.CreateHandler(route.RouteName, comp, true)
-		endpoint.WithQueryHandlers(queryHandler, metricHandler, queryrange.DefaultCodec)
+		queryHandler := routeHandlerFactory.CreateHandler(route.RouteName, comp)
+		endpoint.WithQueryHandler(queryHandler)
 		level.Info(p.logger).Log(
 			"msg", "Query middleware handler attached to route",
 			"path", route.Path,
