@@ -318,6 +318,7 @@ func (l *logResultCache) handleMiss(ctx context.Context, cacheKey, responseCache
 				"requestTo", req.EndTs.Format(time.RFC3339Nano),
 				"adjustedRequestFrom", adjustedReq.StartTs.Format(time.RFC3339Nano),
 				"adjustedRequestTo", adjustedReq.EndTs.Format(time.RFC3339Nano),
+				"cachedEntries", debugCountEntries(lokiRes),
 			)
 
 			return resp, nil
@@ -491,6 +492,7 @@ func (l *logResultCache) updateCacheWithNonEmptyResponse(ctx context.Context, ca
 			"maxCacheSize", maxCacheSize,
 			"requestFrom", newCachedRequest.StartTs.Format(time.RFC3339Nano),
 			"requestTo", newCachedRequest.EndTs.Format(time.RFC3339Nano),
+			"cachedEntries", debugCountEntries(newCachedResponse),
 		)
 		return
 	}
@@ -520,6 +522,7 @@ func (l *logResultCache) updateCacheWithNonEmptyResponse(ctx context.Context, ca
 		"responseKey", responseCacheKey,
 		"requestFrom", newCachedRequest.StartTs.Format(time.RFC3339Nano),
 		"requestTo", newCachedRequest.EndTs.Format(time.RFC3339Nano),
+		"cachedEntries", debugCountEntries(newCachedResponse),
 	)
 
 	// Store three keys: cache key for request, marker key, :resp:limit key for response
@@ -540,6 +543,7 @@ func (l *logResultCache) handleResponseHit(ctx context.Context, cacheKey, respon
 		"cachedReqTo", cachedRequest.EndTs.Format(time.RFC3339Nano),
 		"lokiReqFrom", lokiReq.StartTs.Format(time.RFC3339Nano),
 		"lokiReqTo", lokiReq.EndTs.Format(time.RFC3339Nano),
+		"cachedEntries", debugCountEntries(cachedResponse),
 	)
 
 	// Check if the cached response covers the entire requested time range
@@ -598,6 +602,7 @@ func (l *logResultCache) handleResponseHit(ctx context.Context, cacheKey, respon
 						"requestTo", lokiReq.EndTs.Format(time.RFC3339Nano),
 						"adjustedRequestFrom", adjStart.Format(time.RFC3339Nano),
 						"adjustedRequestTo", adjEnd.Format(time.RFC3339Nano),
+						"cachedEntries", debugCountEntries(lokiResp),
 					)
 				}
 			}
@@ -624,6 +629,17 @@ func (l *logResultCache) handleResponseHit(ctx context.Context, cacheKey, respon
 				if !ok {
 					return fmt.Errorf("unexpected response type %T", resp)
 				}
+
+				level.Debug(l.logger).Log(
+					"msg", "fetched start to cached start response - handleResponseHit",
+					"experiment", "positive-results-cache",
+					"cacheKey", cacheKey,
+					"responseKey", responseCacheKey,
+					"requestFrom", startRequest.StartTs.Format(time.RFC3339Nano),
+					"requestTo", startRequest.EndTs.Format(time.RFC3339Nano),
+					"entries", debugCountEntries(startResp),
+				)
+
 				return nil
 			})
 		}
@@ -641,6 +657,17 @@ func (l *logResultCache) handleResponseHit(ctx context.Context, cacheKey, respon
 				if !ok {
 					return fmt.Errorf("unexpected response type %T", resp)
 				}
+
+				level.Debug(l.logger).Log(
+					"msg", "fetched cached end to end response - handleResponseHit",
+					"experiment", "positive-results-cache",
+					"cacheKey", cacheKey,
+					"responseKey", responseCacheKey,
+					"requestFrom", endRequest.StartTs.Format(time.RFC3339Nano),
+					"requestTo", endRequest.EndTs.Format(time.RFC3339Nano),
+					"entries", debugCountEntries(endResp),
+				)
+
 				return nil
 			})
 		}
@@ -723,6 +750,7 @@ func (l *logResultCache) handleResponseHit(ctx context.Context, cacheKey, respon
 						"requestTo", lokiReq.EndTs.Format(time.RFC3339Nano),
 						"adjustedRequestFrom", adjStart.Format(time.RFC3339Nano),
 						"adjustedRequestTo", adjEnd.Format(time.RFC3339Nano),
+						"cachedEntries", debugCountEntries(lokiResult),
 					)
 				}
 			}
@@ -734,7 +762,28 @@ func (l *logResultCache) handleResponseHit(ctx context.Context, cacheKey, respon
 		l.updateCacheWithNonEmptyResponse(ctx, cacheKey, responseCacheKey, newCachedRequest, newCachedResponse)
 	}
 
+	level.Debug(l.logger).Log(
+		"msg", "final response - handleResponseHit",
+		"experiment", "positive-results-cache",
+		"cacheKey", cacheKey,
+		"responseKey", responseCacheKey,
+		"cachedReqFrom", cachedRequest.StartTs.Format(time.RFC3339Nano),
+		"cachedReqTo", cachedRequest.EndTs.Format(time.RFC3339Nano),
+		"requestFrom", lokiReq.StartTs.Format(time.RFC3339Nano),
+		"requestTo", lokiReq.EndTs.Format(time.RFC3339Nano),
+		"cachedEntries", debugCountEntries(cachedResponse),
+		"resultEntries", debugCountEntries(result.(*LokiResponse)),
+	)
+
 	return result, nil
+}
+
+func debugCountEntries(lokiRes *LokiResponse) int {
+	var totalEntries int
+	for _, stream := range lokiRes.Data.Result {
+		totalEntries += len(stream.Entries)
+	}
+	return totalEntries
 }
 
 // extractLokiResponse extracts response with interval [start, end)
