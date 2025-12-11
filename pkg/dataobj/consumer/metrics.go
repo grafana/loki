@@ -20,10 +20,8 @@ type partitionOffsetMetrics struct {
 	commitsTotal prometheus.Counter
 	appendsTotal prometheus.Counter
 
-	latestDelay prometheus.Gauge // Latest delta between record timestamp and current time
-
-	// Data volume metrics
-	bytesProcessed prometheus.Counter
+	latestDelay      prometheus.Gauge // Latest delta between record timestamp and current time
+	processedRecords prometheus.Counter
 }
 
 func newPartitionOffsetMetrics() *partitionOffsetMetrics {
@@ -48,9 +46,9 @@ func newPartitionOffsetMetrics() *partitionOffsetMetrics {
 			Name: "loki_dataobj_consumer_latest_processing_delay_seconds",
 			Help: "Latest time difference bweteen record timestamp and processing time in seconds",
 		}),
-		bytesProcessed: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "loki_dataobj_consumer_bytes_processed_total",
-			Help: "Total number of bytes processed from this partition",
+		processedRecords: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "loki_dataobj_consumer_processed_records_total",
+			Help: "Total number of records processed.",
 		}),
 	}
 
@@ -75,7 +73,7 @@ func (p *partitionOffsetMetrics) register(reg prometheus.Registerer) error {
 		p.appendFailures,
 		p.appendsTotal,
 		p.latestDelay,
-		p.bytesProcessed,
+		p.processedRecords,
 		p.currentOffset,
 	}
 
@@ -95,7 +93,7 @@ func (p *partitionOffsetMetrics) unregister(reg prometheus.Registerer) {
 		p.appendFailures,
 		p.appendsTotal,
 		p.latestDelay,
-		p.bytesProcessed,
+		p.processedRecords,
 		p.currentOffset,
 	}
 
@@ -131,8 +129,4 @@ func (p *partitionOffsetMetrics) observeProcessingDelay(recordTimestamp time.Tim
 
 		p.latestDelay.Set(delay)
 	}
-}
-
-func (p *partitionOffsetMetrics) addBytesProcessed(bytes int64) {
-	p.bytesProcessed.Add(float64(bytes))
 }
