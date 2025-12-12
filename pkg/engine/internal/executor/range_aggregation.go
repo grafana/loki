@@ -34,6 +34,8 @@ var (
 	rangeAggregationOperations = map[types.RangeAggregationType]aggregationOperation{
 		types.RangeAggregationTypeSum:   aggregationOperationSum,
 		types.RangeAggregationTypeCount: aggregationOperationCount,
+		types.RangeAggregationTypeMax:   aggregationOperationMax,
+		types.RangeAggregationTypeMin:   aggregationOperationMin,
 	}
 )
 

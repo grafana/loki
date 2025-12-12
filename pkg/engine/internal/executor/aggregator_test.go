@@ -1,6 +1,7 @@
 package executor
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -276,4 +277,78 @@ func TestAggregator(t *testing.T) {
 		require.Equal(t, len(expect), len(rows), "number of rows should match")
 		require.ElementsMatch(t, expect, rows)
 	})
+
+	t.Run("basic SUM aggregation with without() grouping", func(t *testing.T) {
+		agg := newAggregator(10, aggregationOperationSum)
+
+		ts1 := time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC)
+		ts2 := time.Date(2024, 1, 1, 10, 1, 0, 0, time.UTC)
+
+		buildFields := func(names ...string) []arrow.Field {
+			result := make([]arrow.Field, len(names))
+			for i, name := range names {
+				result[i] = semconv.FieldFromIdent(semconv.NewIdentifier(name, types.ColumnTypeLabel, types.Loki.String), true)
+			}
+			return result
+		}
+
+		// Add test data
+		agg.Add(ts1, 10, buildFields("env", "service"), []string{"prod", "app1"})
+		agg.Add(ts1, 20, buildFields("env", "cluster"), []string{"prod", "east-1"})
+		agg.Add(ts1, 30, buildFields("method"), []string{"init"})
+
+		agg.Add(ts2, 15, buildFields("env", "service"), []string{"prod", "app1"})
+		agg.Add(ts2, 25, buildFields("env", "cluster"), []string{"prod", "east-1"})
+		agg.Add(ts2, 35, buildFields("method"), []string{"init"})
+
+		// Add more data to same groups to test aggregation
+		agg.Add(ts1, 5, buildFields("env", "service"), []string{"prod", "app1"})
+		agg.Add(ts2, 10, buildFields("env", "cluster"), []string{"prod", "east-1"})
+
+		record, err := agg.BuildRecord()
+		require.NoError(t, err)
+
+		colCluster := semconv.NewIdentifier("cluster", types.ColumnTypeLabel, types.Loki.String).FQN()
+		colMethod := semconv.NewIdentifier("method", types.ColumnTypeLabel, types.Loki.String).FQN()
+
+		expect := arrowtest.Rows{
+			{colTs: ts1, colVal: float64(15), colEnv: "prod", colSvc: "app1", colMethod: nil, colCluster: nil},
+			{colTs: ts1, colVal: float64(20), colEnv: "prod", colCluster: "east-1", colSvc: nil, colMethod: nil},
+			{colTs: ts1, colVal: float64(30), colMethod: "init", colEnv: nil, colSvc: nil, colCluster: nil},
+
+			{colTs: ts2, colVal: float64(15), colEnv: "prod", colSvc: "app1", colMethod: nil, colCluster: nil},
+			{colTs: ts2, colVal: float64(35), colEnv: "prod", colCluster: "east-1", colSvc: nil, colMethod: nil},
+			{colTs: ts2, colVal: float64(35), colMethod: "init", colEnv: nil, colSvc: nil, colCluster: nil},
+		}
+
+		rows, err := arrowtest.RecordRows(record)
+		require.NoError(t, err, "should be able to convert record back to rows")
+		require.Equal(t, len(expect), len(rows), "number of rows should match")
+		require.ElementsMatch(t, expect, rows)
+	})
+}
+
+func BenchmarkAggregator(b *testing.B) {
+	agg := newAggregator(10, aggregationOperationSum)
+
+	fields := []arrow.Field{
+		semconv.FieldFromIdent(semconv.NewIdentifier("env", types.ColumnTypeLabel, types.Loki.String), true),
+		semconv.FieldFromIdent(semconv.NewIdentifier("cluster", types.ColumnTypeLabel, types.Loki.String), true),
+		semconv.FieldFromIdent(semconv.NewIdentifier("service", types.ColumnTypeLabel, types.Loki.String), true),
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		ts := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC).Add(time.Duration(i) * time.Second)
+		env := fmt.Sprintf("env-%d", i%3)
+		cluster := fmt.Sprintf("cluster-%d", i%10)
+		service := fmt.Sprintf("service-%d", i%7)
+
+		agg.Add(ts, 10, fields, []string{env, cluster, service})
+
+	}
+	_, err := agg.BuildRecord()
+	if err != nil {
+		b.Fatal(err)
+	}
 }
