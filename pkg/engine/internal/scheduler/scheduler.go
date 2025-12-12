@@ -193,8 +193,14 @@ func (s *Scheduler) handleStreamData(ctx context.Context, worker *workerConn, ms
 	return registered.localReceiver.Write(ctx, msg.Data)
 }
 
-func (s *Scheduler) handleWorkerHello(_ context.Context, worker *workerConn, msg wire.WorkerHelloMessage) error {
-	return worker.HandleHello(msg)
+func (s *Scheduler) handleWorkerHello(ctx context.Context, worker *workerConn, msg wire.WorkerHelloMessage) error {
+	if err := worker.HandleHello(msg); err != nil {
+		return err
+	}
+
+	// Request to be notified when the worker is ready.
+	s.workerSubscribe(ctx, worker)
+	return nil
 }
 
 func (s *Scheduler) markWorkerReady(_ context.Context, worker *workerConn) error {
