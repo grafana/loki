@@ -55,9 +55,9 @@ type CreateCapacityReservationInput struct {
 	// The number of instances for which to reserve capacity.
 	//
 	// You can request future-dated Capacity Reservations for an instance count with a
-	// minimum of 64 vCPUs. For example, if you request a future-dated Capacity
-	// Reservation for m5.xlarge instances, you must request at least 25 instances (16
-	// * m5.xlarge = 64 vCPUs).
+	// minimum of 32 vCPUs. For example, if you request a future-dated Capacity
+	// Reservation for m5.xlarge instances, you must request at least 8 instances (8 *
+	// m5.xlarge = 32 vCPUs).
 	//
 	// Valid range: 1 - 1000
 	//
@@ -328,40 +328,7 @@ func (c *Client) addOperationCreateCapacityReservationMiddlewares(stack *middlew
 	if err = addInterceptAttempt(stack, options); err != nil {
 		return err
 	}
-	if err = addInterceptExecution(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptBeforeSerialization(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptAfterSerialization(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptBeforeSigning(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptAfterSigning(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptTransmit(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptBeforeDeserialization(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptAfterDeserialization(stack, options); err != nil {
-		return err
-	}
-	if err = addSpanInitializeStart(stack); err != nil {
-		return err
-	}
-	if err = addSpanInitializeEnd(stack); err != nil {
-		return err
-	}
-	if err = addSpanBuildRequestStart(stack); err != nil {
-		return err
-	}
-	if err = addSpanBuildRequestEnd(stack); err != nil {
+	if err = addInterceptors(stack, options); err != nil {
 		return err
 	}
 	return nil

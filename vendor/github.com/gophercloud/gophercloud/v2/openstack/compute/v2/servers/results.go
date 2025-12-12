@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"net/url"
 	"path"
+	"strconv"
 	"time"
 
 	"github.com/gophercloud/gophercloud/v2"
+	"github.com/gophercloud/gophercloud/v2/openstack/utils"
 	"github.com/gophercloud/gophercloud/v2/pagination"
 )
 
@@ -132,16 +134,47 @@ func (r CreateImageResult) ExtractImageID() (string, error) {
 	if r.Err != nil {
 		return "", r.Err
 	}
-	// Get the image id from the header
+
+	microversion := r.Header.Get("X-OpenStack-Nova-API-Version")
+
+	major, minor, err := utils.ParseMicroversion(microversion)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse X-OpenStack-Nova-API-Version header: %s", err)
+	}
+
+	// In microversions prior to 2.45, the image ID was provided in the Location header.
+	if major < 2 || (major == 2 && minor < 45) {
+		return r.extractImageIDFromLocationHeader()
+	}
+
+	// Starting from 2.45, it is included in the response body.
+	return r.extractImageIDFromResponseBody()
+}
+
+func (r CreateImageResult) extractImageIDFromLocationHeader() (string, error) {
 	u, err := url.ParseRequestURI(r.Header.Get("Location"))
 	if err != nil {
 		return "", err
 	}
+
 	imageID := path.Base(u.Path)
 	if imageID == "." || imageID == "/" {
 		return "", fmt.Errorf("Failed to parse the ID of newly created image: %s", u)
 	}
+
 	return imageID, nil
+}
+
+func (r CreateImageResult) extractImageIDFromResponseBody() (string, error) {
+	var response struct {
+		ImageID string `json:"image_id"`
+	}
+
+	if err := r.ExtractInto(&response); err != nil {
+		return "", err
+	}
+
+	return response.ImageID, nil
 }
 
 // Server represents a server/instance in the OpenStack cloud.
@@ -283,6 +316,9 @@ type Server struct {
 	// Locked indicates the lock status of the server
 	// This requires microversion 2.9 or later
 	Locked *bool `json:"locked"`
+
+	// ConfigDrive enables metadata injection through a configuration drive.
+	ConfigDrive bool `json:"-"`
 }
 
 type AttachedVolume struct {
@@ -343,6 +379,7 @@ func (r *Server) UnmarshalJSON(b []byte) error {
 		Image        any                             `json:"image"`
 		LaunchedAt   gophercloud.JSONRFC3339MilliNoZ `json:"OS-SRV-USG:launched_at"`
 		TerminatedAt gophercloud.JSONRFC3339MilliNoZ `json:"OS-SRV-USG:terminated_at"`
+		ConfigDrive  any                             `json:"config_drive"`
 	}
 	err := json.Unmarshal(b, &s)
 	if err != nil {
@@ -363,6 +400,24 @@ func (r *Server) UnmarshalJSON(b []byte) error {
 
 	r.LaunchedAt = time.Time(s.LaunchedAt)
 	r.TerminatedAt = time.Time(s.TerminatedAt)
+
+	switch t := s.ConfigDrive.(type) {
+	case nil:
+		r.ConfigDrive = false
+	case bool:
+		r.ConfigDrive = t
+	case string:
+		if t == "" {
+			r.ConfigDrive = false
+		} else {
+			r.ConfigDrive, err = strconv.ParseBool(t)
+			if err != nil {
+				return fmt.Errorf("failed to parse ConfigDrive %q: %v", t, err)
+			}
+		}
+	default:
+		return fmt.Errorf("unknown type for ConfigDrive: %T (value: %v)", t, t)
+	}
 
 	return err
 }

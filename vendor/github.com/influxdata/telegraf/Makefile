@@ -131,7 +131,7 @@ config:
 	go run ./cmd/telegraf config > etc/telegraf.conf
 
 .PHONY: docs
-docs: build_tools embed_readme_inputs embed_readme_outputs embed_readme_processors embed_readme_aggregators embed_readme_secretstores
+docs: build_tools embed_readme_common embed_readme_inputs embed_readme_outputs embed_readme_processors embed_readme_aggregators embed_readme_secretstores
 
 .PHONY: build
 build:
@@ -270,8 +270,8 @@ plugins/parsers/influx/machine.go: plugins/parsers/influx/machine.go.rl
 
 .PHONY: ci
 ci:
-	docker build -t quay.io/influxdb/telegraf-ci:1.25.4 - < scripts/ci.docker
-	docker push quay.io/influxdb/telegraf-ci:1.25.4
+	docker build -t quay.io/influxdb/telegraf-ci:1.25.5 - < scripts/ci.docker
+	docker push quay.io/influxdb/telegraf-ci:1.25.5
 
 .PHONY: install
 install: $(buildbin)
