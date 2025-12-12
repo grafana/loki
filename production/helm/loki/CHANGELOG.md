@@ -13,7 +13,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
-- [BUGFIX] Fix incorrect syntax in loki-egress-dns CiliumNetworkPolicy manifest
+- [BUGFIX] Fix incorrect syntax in loki-egress-dns CiliumNetworkPolicy manifest [#20221](https://github.com/grafana/loki/pull/20221)
 
 ## 6.48.0
 
