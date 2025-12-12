@@ -122,36 +122,31 @@ func (h *FanOutHandler) Do(ctx context.Context, req queryrangebase.Request) (que
 		// Race mode: return first successful response from ANY backend
 		if h.enableRace {
 			if result.err == nil && result.backendResp.succeeded() {
-				// If the preferred backend wins (v1), then apply the handicap to give v2 a
+				winner := result
+				remaining := len(h.backends) - i - 1
+
+				// If the preferred (v1) backend wins, then apply the handicap to give v2 a
 				// chance to "win" by finishing within the race tolerance of v1.
 				if result.backend.preferred && h.raceTolerance > 0 {
-					var winner *backendResult
-					var remaining int
 					select {
 					case r2 := <-results:
-						winner = r2
 						collected = append(collected, r2)
-						remaining = len(h.backends) - i - 2
+						if r2.err == nil && r2.backendResp.succeeded() {
+							winner = r2
+							remaining = len(h.backends) - i - 2
+						}
 					case <-time.After(h.raceTolerance):
-						winner = result
-						remaining = len(h.backends) - i - 1
+						// tolerance expired, fall back to original winner
 					}
-					return h.finishRace(
-						winner,
-						remaining,
-						httpReq,
-						results,
-						collected,
-						shouldSample)
-				} else {
-					return h.finishRace(
-						result,
-						len(h.backends)-i-1,
-						httpReq,
-						results,
-						collected,
-						shouldSample)
 				}
+
+				return h.finishRace(
+					winner,
+					remaining,
+					httpReq,
+					results,
+					collected,
+					shouldSample)
 			}
 		} else {
 			// Non-race mode: legacy logic (wait for preferred)
