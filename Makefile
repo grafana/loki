@@ -232,18 +232,18 @@ loki-canary: cmd/loki-canary/loki-canary ## build loki-canary executable
 cmd/loki-canary/loki-canary:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
 
-###############
+#############################
 # Loki-Canary (BoringCrypto)#
-###############
+#############################
 .PHONY: cmd/loki-canary-boringcrypto/loki-canary-boringcrypto
 loki-canary-boringcrypto: cmd/loki-canary-boringcrypto/loki-canary-boringcrypto ## build loki-canary (BoringCrypto) executable
 
 cmd/loki-canary-boringcrypto/loki-canary-boringcrypto:
 	CGO_ENABLED=1 GOOS=linux GOARCH=$(GOARCH) GOEXPERIMENT=boringcrypto go build $(GO_FLAGS) -o $@ ./$(@D)/../loki-canary
 
-###############
+########
 # Helm #
-###############
+########
 .PHONY: production/helm/loki/src/helm-test/helm-test
 helm-test: production/helm/loki/src/helm-test/helm-test ## run helm tests
 
@@ -340,9 +340,9 @@ loki-mixin-check: loki-mixin ## check the loki mixin is up to date
 	@git diff --exit-code -- $(MIXIN_OUT_PATH) || (echo "Please build mixin by running 'make loki-mixin'" && false)
 	@git diff --exit-code -- $(MIXIN_OUT_PATH_SSD) || (echo "Please build mixin by running 'make loki-mixin'" && false)
 
-###############
+###########
 # Migrate #
-###############
+###########
 .PHONY: cmd/migrate/migrate
 migrate: cmd/migrate/migrate
 
@@ -461,9 +461,9 @@ else
 	goyacc -l -p $(basename $(notdir $<)) -o $@ $<
 endif
 
-#########
+##########
 # Ragels #
-#########
+##########
 
 ragel: $(RAGEL_GOS)
 
