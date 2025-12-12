@@ -349,7 +349,7 @@ func withoutNameLabel(matchers []*labels.Matcher) []*labels.Matcher {
 
 	dst := make([]*labels.Matcher, 0, len(matchers)-1)
 	for _, m := range matchers {
-		if m.Name == labels.MetricName {
+		if m.Name == model.MetricNameLabel {
 			continue
 		}
 		dst = append(dst, m)

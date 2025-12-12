@@ -19,9 +19,7 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"strconv"
 	"strings"
-	"sync"
 	"unicode/utf8"
 
 	"github.com/gogo/protobuf/types"
@@ -34,15 +32,6 @@ import (
 	"github.com/prometheus/prometheus/schema"
 	"github.com/prometheus/prometheus/util/convertnhcb"
 )
-
-// floatFormatBufPool is exclusively used in formatOpenMetricsFloat.
-var floatFormatBufPool = sync.Pool{
-	New: func() any {
-		// To contain at most 17 digits and additional syntax for a float64.
-		b := make([]byte, 0, 24)
-		return &b
-	},
-}
 
 // ProtobufParser parses the old Prometheus protobuf format and present it
 // as the text-style textparse.Parser interface.
@@ -77,6 +66,8 @@ type ProtobufParser struct {
 	// that we have to decode the next MetricDescriptor.
 	state Entry
 
+	// Whether to completely ignore any native parts of histograms.
+	ignoreNativeHistograms bool
 	// Whether to also parse a classic histogram that is also present as a
 	// native histogram.
 	parseClassicHistograms bool
@@ -93,13 +84,20 @@ type ProtobufParser struct {
 }
 
 // NewProtobufParser returns a parser for the payload in the byte slice.
-func NewProtobufParser(b []byte, parseClassicHistograms, convertClassicHistogramsToNHCB, enableTypeAndUnitLabels bool, st *labels.SymbolTable) Parser {
+func NewProtobufParser(
+	b []byte,
+	ignoreNativeHistograms, parseClassicHistograms, convertClassicHistogramsToNHCB, enableTypeAndUnitLabels bool,
+	st *labels.SymbolTable,
+) Parser {
+	builder := labels.NewScratchBuilderWithSymbolTable(st, 16)
+	builder.SetUnsafeAdd(true)
 	return &ProtobufParser{
 		dec:        dto.NewMetricStreamingDecoder(b),
 		entryBytes: &bytes.Buffer{},
-		builder:    labels.NewScratchBuilderWithSymbolTable(st, 16), // TODO(bwplotka): Try base builder.
+		builder:    builder,
 
 		state:                          EntryInvalid,
+		ignoreNativeHistograms:         ignoreNativeHistograms,
 		parseClassicHistograms:         parseClassicHistograms,
 		enableTypeAndUnitLabels:        enableTypeAndUnitLabels,
 		convertClassicHistogramsToNHCB: convertClassicHistogramsToNHCB,
@@ -194,7 +192,7 @@ func (p *ProtobufParser) Histogram() ([]byte, *int64, *histogram.Histogram, *his
 		h  = p.dec.GetHistogram()
 	)
 
-	if !isNativeHistogram(h) {
+	if p.ignoreNativeHistograms || !isNativeHistogram(h) {
 		// This only happens if we have a classic histogram and
 		// we converted it to NHCB already in Next.
 		if *ts != 0 {
@@ -492,7 +490,7 @@ func (p *ProtobufParser) Next() (Entry, error) {
 	case EntryType:
 		t := p.dec.GetType()
 		if t == dto.MetricType_HISTOGRAM || t == dto.MetricType_GAUGE_HISTOGRAM {
-			if !isNativeHistogram(p.dec.GetHistogram()) {
+			if p.ignoreNativeHistograms || !isNativeHistogram(p.dec.GetHistogram()) {
 				p.state = EntrySeries
 				p.fieldPos = -3 // We have not returned anything, let p.Next() increment it to -2.
 				return p.Next()
@@ -513,7 +511,8 @@ func (p *ProtobufParser) Next() (Entry, error) {
 			t == dto.MetricType_GAUGE_HISTOGRAM {
 			// Non-trivial series (complex metrics, with magic suffixes).
 
-			isClassicHistogram := (t == dto.MetricType_HISTOGRAM || t == dto.MetricType_GAUGE_HISTOGRAM) && !isNativeHistogram(p.dec.GetHistogram())
+			isClassicHistogram := (t == dto.MetricType_HISTOGRAM || t == dto.MetricType_GAUGE_HISTOGRAM) &&
+				(p.ignoreNativeHistograms || !isNativeHistogram(p.dec.GetHistogram()))
 			skipSeries := p.convertClassicHistogramsToNHCB && isClassicHistogram && !p.parseClassicHistograms
 
 			// Did we iterate over all the classic representations fields?
@@ -589,10 +588,11 @@ func (p *ProtobufParser) Next() (Entry, error) {
 			return EntryInvalid, err
 		}
 
-		// If this is a metric family does not contain native
-		// histograms, it means we are here thanks to NHCB conversion.
-		// Return to classic histograms for the consistent flow.
-		if !isNativeHistogram(p.dec.GetHistogram()) {
+		// If this metric is not a native histograms or we are ignoring
+		// native histograms, it means we are here thanks to NHCB
+		// conversion. Return to classic histograms for the consistent
+		// flow.
+		if p.ignoreNativeHistograms || !isNativeHistogram(p.dec.GetHistogram()) {
 			return switchToClassic()
 		}
 
@@ -622,10 +622,7 @@ func (p *ProtobufParser) onSeriesOrHistogramUpdate() error {
 			Unit: p.dec.GetUnit(),
 		}
 		m.AddToLabels(&p.builder)
-		if err := p.dec.Label(schema.IgnoreOverriddenMetadataLabelsScratchBuilder{
-			Overwrite:      m,
-			ScratchBuilder: &p.builder,
-		}); err != nil {
+		if err := p.dec.Label(m.NewIgnoreOverriddenMetadataLabelScratchBuilder(&p.builder)); err != nil {
 			return err
 		}
 	} else {
@@ -690,7 +687,7 @@ func (p *ProtobufParser) getMagicLabel() (bool, string, string) {
 		qq := p.dec.GetSummary().GetQuantile()
 		q := qq[p.fieldPos]
 		p.fieldsDone = p.fieldPos == len(qq)-1
-		return true, model.QuantileLabel, formatOpenMetricsFloat(q.GetQuantile())
+		return true, model.QuantileLabel, labels.FormatOpenMetricsFloat(q.GetQuantile())
 	case dto.MetricType_HISTOGRAM, dto.MetricType_GAUGE_HISTOGRAM:
 		bb := p.dec.GetHistogram().GetBucket()
 		if p.fieldPos >= len(bb) {
@@ -699,39 +696,9 @@ func (p *ProtobufParser) getMagicLabel() (bool, string, string) {
 		}
 		b := bb[p.fieldPos]
 		p.fieldsDone = math.IsInf(b.GetUpperBound(), +1)
-		return true, model.BucketLabel, formatOpenMetricsFloat(b.GetUpperBound())
+		return true, model.BucketLabel, labels.FormatOpenMetricsFloat(b.GetUpperBound())
 	}
 	return false, "", ""
-}
-
-// formatOpenMetricsFloat works like the usual Go string formatting of a float
-// but appends ".0" if the resulting number would otherwise contain neither a
-// "." nor an "e".
-func formatOpenMetricsFloat(f float64) string {
-	// A few common cases hardcoded.
-	switch {
-	case f == 1:
-		return "1.0"
-	case f == 0:
-		return "0.0"
-	case f == -1:
-		return "-1.0"
-	case math.IsNaN(f):
-		return "NaN"
-	case math.IsInf(f, +1):
-		return "+Inf"
-	case math.IsInf(f, -1):
-		return "-Inf"
-	}
-	bp := floatFormatBufPool.Get().(*[]byte)
-	defer floatFormatBufPool.Put(bp)
-
-	*bp = strconv.AppendFloat((*bp)[:0], f, 'g', -1, 64)
-	if bytes.ContainsAny(*bp, "e.") {
-		return string(*bp)
-	}
-	*bp = append(*bp, '.', '0')
-	return string(*bp)
 }
 
 // isNativeHistogram returns false iff the provided histograms has no spans at

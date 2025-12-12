@@ -174,9 +174,8 @@ type ConsumerBalancerBalance interface {
 	Balance(*ConsumerBalancer, map[string]int32) IntoSyncAssignment
 }
 
-// ParseConsumerSyncAssignment returns an assignment as specified a
-// kmsg.ConsumerMemberAssignment, that is, the type encoded in metadata for the
-// consumer protocol.
+// ParseConsumerSyncAssignment parses `assignment` as kmsg.ConsumerMemberAssignment
+// and returns the mapped topic => partitions assignment.
 func ParseConsumerSyncAssignment(assignment []byte) (map[string][]int32, error) {
 	var kassignment kmsg.ConsumerMemberAssignment
 	if err := kassignment.ReadFrom(assignment); err != nil {

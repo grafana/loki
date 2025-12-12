@@ -4,17 +4,20 @@ import (
 	"fmt"
 
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+
+	"github.com/grafana/loki/v3/pkg/xcap/internal/proto"
 )
 
-// FromProtoCapture converts a protobuf Capture to its Go representation.
-func FromProtoCapture(proto *ProtoCapture, capture *Capture) error {
-	if proto == nil {
+// fromProtoCapture converts a protobuf Capture to its Go representation.
+func fromProtoCapture(protoCapture *proto.Capture, capture *Capture) error {
+	if protoCapture == nil {
 		return nil
 	}
 
 	// Build statistics map from proto statistics
-	statsIndex := make(map[uint32]Statistic, len(proto.Statistics))
-	for i, protoStat := range proto.Statistics {
+	statsIndex := make(map[uint32]Statistic, len(protoCapture.Statistics))
+	for i, protoStat := range protoCapture.Statistics {
 		stat, err := unmarshalStatistic(protoStat)
 		if err != nil {
 			return fmt.Errorf("failed to unmarshal statistic: %w", err)
@@ -23,7 +26,7 @@ func FromProtoCapture(proto *ProtoCapture, capture *Capture) error {
 	}
 
 	// Unmarshal regions
-	for _, protoRegion := range proto.Regions {
+	for _, protoRegion := range protoCapture.Regions {
 		region, err := fromProtoRegion(protoRegion, statsIndex)
 		if err != nil {
 			return fmt.Errorf("failed to unmarshal region: %w", err)
@@ -38,10 +41,10 @@ func FromProtoCapture(proto *ProtoCapture, capture *Capture) error {
 }
 
 // fromProtoRegion converts a protobuf Region to its Go representation.
-func fromProtoRegion(proto *ProtoRegion, statIndexToStat map[uint32]Statistic) (*Region, error) {
+func fromProtoRegion(protoRegion *proto.Region, statIndexToStat map[uint32]Statistic) (*Region, error) {
 	// Unmarshal observations
-	observations := make(map[StatisticKey]*AggregatedObservation, len(proto.Observations))
-	for _, protoObs := range proto.Observations {
+	observations := make(map[StatisticKey]*AggregatedObservation, len(protoRegion.Observations))
+	for _, protoObs := range protoRegion.Observations {
 		stat, exists := statIndexToStat[protoObs.StatisticId]
 		if !exists {
 			return nil, fmt.Errorf("invalid statistic_id %d in observation", protoObs.StatisticId)
@@ -62,17 +65,17 @@ func fromProtoRegion(proto *ProtoRegion, statIndexToStat map[uint32]Statistic) (
 
 	// Unmarshal region ID from proto, or generate a new one if not set
 	var regionID identifier
-	copy(regionID[:], proto.Id)
+	copy(regionID[:], protoRegion.Id)
 
 	// Unmarshal parent ID from proto
 	var parentID identifier
-	copy(parentID[:], proto.ParentId)
+	copy(parentID[:], protoRegion.ParentId)
 
 	// Unmarshal attributes from proto
 	attributes := make([]attribute.KeyValue, 0)
-	if proto.Attributes != nil {
-		attributes = make([]attribute.KeyValue, 0, len(proto.Attributes))
-		for _, protoAttr := range proto.Attributes {
+	if protoRegion.Attributes != nil {
+		attributes = make([]attribute.KeyValue, 0, len(protoRegion.Attributes))
+		for _, protoAttr := range protoRegion.Attributes {
 			attr, err := unmarshalAttribute(protoAttr)
 			if err != nil {
 				return nil, fmt.Errorf("failed to unmarshal attribute %s: %w", protoAttr.Key, err)
@@ -81,115 +84,159 @@ func fromProtoRegion(proto *ProtoRegion, statIndexToStat map[uint32]Statistic) (
 		}
 	}
 
+	// Unmarshal events from proto
+	events := make([]Event, 0, len(protoRegion.Events))
+	for _, protoEvent := range protoRegion.Events {
+		event, err := unmarshalEvent(protoEvent)
+		if err != nil {
+			return nil, fmt.Errorf("failed to unmarshal event %s: %w", protoEvent.Name, err)
+		}
+		events = append(events, event)
+	}
+
+	// Unmarshal status from proto
+	status := unmarshalStatus(protoRegion.Status)
+
 	region := &Region{
 		id:           regionID,
 		parentID:     parentID,
-		name:         proto.Name,
-		startTime:    proto.StartTime,
-		endTime:      proto.EndTime,
+		name:         protoRegion.Name,
+		startTime:    protoRegion.StartTime,
+		endTime:      protoRegion.EndTime,
 		observations: observations,
 		attributes:   attributes,
+		events:       events,
+		status:       status,
 		ended:        true, // Regions from proto are always ended
 	}
 
 	return region, nil
 }
 
+// unmarshalEvent converts a protobuf Event to its Go representation.
+func unmarshalEvent(protoEvent *proto.Event) (Event, error) {
+	attributes := make([]attribute.KeyValue, 0, len(protoEvent.Attributes))
+	for _, protoAttr := range protoEvent.Attributes {
+		attr, err := unmarshalAttribute(protoAttr)
+		if err != nil {
+			return Event{}, fmt.Errorf("failed to unmarshal event attribute %s: %w", protoAttr.Key, err)
+		}
+		attributes = append(attributes, attr)
+	}
+
+	return Event{
+		Name:       protoEvent.Name,
+		Timestamp:  protoEvent.Timestamp,
+		Attributes: attributes,
+	}, nil
+}
+
+// unmarshalStatus converts a protobuf Status to its Go representation.
+func unmarshalStatus(protoStatus *proto.Status) Status {
+	if protoStatus == nil {
+		return Status{}
+	}
+	return Status{
+		Code:    codes.Code(protoStatus.Code),
+		Message: protoStatus.Message,
+	}
+}
+
 // unmarshalObservationValue converts a protobuf ObservationValue to a Go value.
-func unmarshalObservationValue(proto *ProtoObservationValue) (any, error) {
-	if proto == nil || proto.Kind == nil {
+func unmarshalObservationValue(protoValue *proto.ObservationValue) (any, error) {
+	if protoValue == nil || protoValue.Kind == nil {
 		return nil, fmt.Errorf("invalid observation value")
 	}
 
-	switch v := proto.Kind.(type) {
-	case *ProtoObservationValue_IntValue:
+	switch v := protoValue.Kind.(type) {
+	case *proto.ObservationValue_IntValue:
 		return v.IntValue, nil
-	case *ProtoObservationValue_FloatValue:
+	case *proto.ObservationValue_FloatValue:
 		return v.FloatValue, nil
-	case *ProtoObservationValue_BoolValue:
+	case *proto.ObservationValue_BoolValue:
 		return v.BoolValue, nil
 	default:
-		return nil, fmt.Errorf("unsupported observation value type: %T", proto.Kind)
+		return nil, fmt.Errorf("unsupported observation value type: %T", protoValue.Kind)
 	}
 }
 
 // unmarshalStatistic converts a protobuf Statistic to a Go Statistic.
-func unmarshalStatistic(proto *ProtoStatistic) (Statistic, error) {
-	dataType, err := unmarshalDataType(proto.DataType)
+func unmarshalStatistic(protoStat *proto.Statistic) (Statistic, error) {
+	dataType, err := unmarshalDataType(protoStat.DataType)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal data type: %w", err)
 	}
 
-	aggType, err := unmarshalAggregationType(proto.AggregationType)
+	aggType, err := unmarshalAggregationType(protoStat.AggregationType)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal aggregation type: %w", err)
 	}
 
 	switch dataType {
 	case DataTypeInt64:
-		return NewStatisticInt64(proto.Name, aggType), nil
+		return NewStatisticInt64(protoStat.Name, aggType), nil
 	case DataTypeFloat64:
-		return NewStatisticFloat64(proto.Name, aggType), nil
+		return NewStatisticFloat64(protoStat.Name, aggType), nil
 	case DataTypeBool:
-		return NewStatisticFlag(proto.Name), nil
+		return NewStatisticFlag(protoStat.Name), nil
 	default:
-		return nil, fmt.Errorf("unsupported data type: %v", proto.DataType)
+		return nil, fmt.Errorf("unsupported data type: %v", protoStat.DataType)
 	}
 }
 
 // unmarshalDataType converts a proto DataType to Go DataType.
-func unmarshalDataType(proto ProtoDataType) (DataType, error) {
-	switch proto {
-	case PROTO_DATA_TYPE_INVALID:
+func unmarshalDataType(protoType proto.DataType) (DataType, error) {
+	switch protoType {
+	case proto.DATA_TYPE_INVALID:
 		return DataTypeInvalid, nil
-	case PROTO_DATA_TYPE_INT64:
+	case proto.DATA_TYPE_INT64:
 		return DataTypeInt64, nil
-	case PROTO_DATA_TYPE_FLOAT64:
+	case proto.DATA_TYPE_FLOAT64:
 		return DataTypeFloat64, nil
-	case PROTO_DATA_TYPE_BOOL:
+	case proto.DATA_TYPE_BOOL:
 		return DataTypeBool, nil
 	default:
-		return DataTypeInvalid, fmt.Errorf("unknown data type: %v", proto)
+		return DataTypeInvalid, fmt.Errorf("unknown data type: %v", protoType)
 	}
 }
 
 // unmarshalAggregationType converts a proto AggregationType to Go AggregationType.
-func unmarshalAggregationType(proto ProtoAggregationType) (AggregationType, error) {
-	switch proto {
-	case PROTO_AGGREGATION_TYPE_INVALID:
+func unmarshalAggregationType(protoType proto.AggregationType) (AggregationType, error) {
+	switch protoType {
+	case proto.AGGREGATION_TYPE_INVALID:
 		return AggregationTypeInvalid, nil
-	case PROTO_AGGREGATION_TYPE_SUM:
+	case proto.AGGREGATION_TYPE_SUM:
 		return AggregationTypeSum, nil
-	case PROTO_AGGREGATION_TYPE_MIN:
+	case proto.AGGREGATION_TYPE_MIN:
 		return AggregationTypeMin, nil
-	case PROTO_AGGREGATION_TYPE_MAX:
+	case proto.AGGREGATION_TYPE_MAX:
 		return AggregationTypeMax, nil
-	case PROTO_AGGREGATION_TYPE_LAST:
+	case proto.AGGREGATION_TYPE_LAST:
 		return AggregationTypeLast, nil
-	case PROTO_AGGREGATION_TYPE_FIRST:
+	case proto.AGGREGATION_TYPE_FIRST:
 		return AggregationTypeFirst, nil
 	default:
-		return AggregationTypeInvalid, fmt.Errorf("unknown aggregation type: %v", proto)
+		return AggregationTypeInvalid, fmt.Errorf("unknown aggregation type: %v", protoType)
 	}
 }
 
 // unmarshalAttribute converts a protobuf attribute to an OpenTelemetry attribute.
-func unmarshalAttribute(proto *ProtoAttribute) (attribute.KeyValue, error) {
-	if proto == nil || proto.Value == nil {
+func unmarshalAttribute(protoAttr *proto.Attribute) (attribute.KeyValue, error) {
+	if protoAttr == nil || protoAttr.Value == nil {
 		return attribute.KeyValue{}, fmt.Errorf("invalid attribute")
 	}
 
-	key := attribute.Key(proto.Key)
-	switch v := proto.Value.Kind.(type) {
-	case *ProtoAttributeValue_StringValue:
+	key := attribute.Key(protoAttr.Key)
+	switch v := protoAttr.Value.Kind.(type) {
+	case *proto.AttributeValue_StringValue:
 		return key.String(v.StringValue), nil
-	case *ProtoAttributeValue_IntValue:
+	case *proto.AttributeValue_IntValue:
 		return key.Int64(v.IntValue), nil
-	case *ProtoAttributeValue_FloatValue:
+	case *proto.AttributeValue_FloatValue:
 		return key.Float64(v.FloatValue), nil
-	case *ProtoAttributeValue_BoolValue:
+	case *proto.AttributeValue_BoolValue:
 		return key.Bool(v.BoolValue), nil
 	default:
-		return attribute.KeyValue{}, fmt.Errorf("unsupported attribute value type: %T", proto.Value.Kind)
+		return attribute.KeyValue{}, fmt.Errorf("unsupported attribute value type: %T", protoAttr.Value.Kind)
 	}
 }

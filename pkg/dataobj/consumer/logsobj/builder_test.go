@@ -21,13 +21,14 @@ import (
 )
 
 var testBuilderConfig = BuilderConfig{
-	TargetPageSize:    2048,
-	TargetObjectSize:  1 << 20, // 1 MiB
-	TargetSectionSize: 8 << 10, // 8 KiB
-
-	BufferSize:              2048 * 8,
-	SectionStripeMergeLimit: 2,
-	DataobjSortOrder:        sortTimestampDESC,
+	BuilderBaseConfig: BuilderBaseConfig{
+		TargetPageSize:          2048,
+		TargetObjectSize:        1 << 20, // 1 MiB
+		TargetSectionSize:       8 << 10, // 8 KiB
+		BufferSize:              2048 * 8,
+		SectionStripeMergeLimit: 2,
+	},
+	DataobjSortOrder: sortTimestampDESC,
 }
 
 func TestBuilder(t *testing.T) {

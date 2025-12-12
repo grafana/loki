@@ -19,12 +19,11 @@ import (
 
 type Profile struct {
 	SampleType             ValueType
-	Sample                 []*Sample
+	Samples                []*Sample
 	TimeUnixNano           uint64
 	DurationNano           uint64
 	PeriodType             ValueType
 	Period                 int64
-	CommentStrindices      []int32
 	ProfileId              ProfileID
 	DroppedAttributesCount uint32
 	OriginalPayloadFormat  string
@@ -58,8 +57,8 @@ func DeleteProfile(orig *Profile, nullable bool) {
 	}
 
 	DeleteValueType(&orig.SampleType, false)
-	for i := range orig.Sample {
-		DeleteSample(orig.Sample[i], true)
+	for i := range orig.Samples {
+		DeleteSample(orig.Samples[i], true)
 	}
 	DeleteValueType(&orig.PeriodType, false)
 	DeleteProfileID(&orig.ProfileId, false)
@@ -85,7 +84,7 @@ func CopyProfile(dest, src *Profile) *Profile {
 	}
 	CopyValueType(&dest.SampleType, &src.SampleType)
 
-	dest.Sample = CopySamplePtrSlice(dest.Sample, src.Sample)
+	dest.Samples = CopySamplePtrSlice(dest.Samples, src.Samples)
 
 	dest.TimeUnixNano = src.TimeUnixNano
 
@@ -95,7 +94,6 @@ func CopyProfile(dest, src *Profile) *Profile {
 
 	dest.Period = src.Period
 
-	dest.CommentStrindices = append(dest.CommentStrindices[:0], src.CommentStrindices...)
 	CopyProfileID(&dest.ProfileId, &src.ProfileId)
 
 	dest.DroppedAttributesCount = src.DroppedAttributesCount
@@ -166,13 +164,13 @@ func (orig *Profile) MarshalJSON(dest *json.Stream) {
 	dest.WriteObjectStart()
 	dest.WriteObjectField("sampleType")
 	orig.SampleType.MarshalJSON(dest)
-	if len(orig.Sample) > 0 {
-		dest.WriteObjectField("sample")
+	if len(orig.Samples) > 0 {
+		dest.WriteObjectField("samples")
 		dest.WriteArrayStart()
-		orig.Sample[0].MarshalJSON(dest)
-		for i := 1; i < len(orig.Sample); i++ {
+		orig.Samples[0].MarshalJSON(dest)
+		for i := 1; i < len(orig.Samples); i++ {
 			dest.WriteMore()
-			orig.Sample[i].MarshalJSON(dest)
+			orig.Samples[i].MarshalJSON(dest)
 		}
 		dest.WriteArrayEnd()
 	}
@@ -189,16 +187,6 @@ func (orig *Profile) MarshalJSON(dest *json.Stream) {
 	if orig.Period != int64(0) {
 		dest.WriteObjectField("period")
 		dest.WriteInt64(orig.Period)
-	}
-	if len(orig.CommentStrindices) > 0 {
-		dest.WriteObjectField("commentStrindices")
-		dest.WriteArrayStart()
-		dest.WriteInt32(orig.CommentStrindices[0])
-		for i := 1; i < len(orig.CommentStrindices); i++ {
-			dest.WriteMore()
-			dest.WriteInt32(orig.CommentStrindices[i])
-		}
-		dest.WriteArrayEnd()
 	}
 	if !orig.ProfileId.IsEmpty() {
 		dest.WriteObjectField("profileId")
@@ -237,10 +225,10 @@ func (orig *Profile) UnmarshalJSON(iter *json.Iterator) {
 		case "sampleType", "sample_type":
 
 			orig.SampleType.UnmarshalJSON(iter)
-		case "sample":
+		case "samples":
 			for iter.ReadArray() {
-				orig.Sample = append(orig.Sample, NewSample())
-				orig.Sample[len(orig.Sample)-1].UnmarshalJSON(iter)
+				orig.Samples = append(orig.Samples, NewSample())
+				orig.Samples[len(orig.Samples)-1].UnmarshalJSON(iter)
 			}
 
 		case "timeUnixNano", "time_unix_nano":
@@ -252,11 +240,6 @@ func (orig *Profile) UnmarshalJSON(iter *json.Iterator) {
 			orig.PeriodType.UnmarshalJSON(iter)
 		case "period":
 			orig.Period = iter.ReadInt64()
-		case "commentStrindices", "comment_strindices":
-			for iter.ReadArray() {
-				orig.CommentStrindices = append(orig.CommentStrindices, iter.ReadInt32())
-			}
-
 		case "profileId", "profile_id":
 
 			orig.ProfileId.UnmarshalJSON(iter)
@@ -283,8 +266,8 @@ func (orig *Profile) SizeProto() int {
 	_ = l
 	l = orig.SampleType.SizeProto()
 	n += 1 + proto.Sov(uint64(l)) + l
-	for i := range orig.Sample {
-		l = orig.Sample[i].SizeProto()
+	for i := range orig.Samples {
+		l = orig.Samples[i].SizeProto()
 		n += 1 + proto.Sov(uint64(l)) + l
 	}
 	if orig.TimeUnixNano != 0 {
@@ -297,13 +280,6 @@ func (orig *Profile) SizeProto() int {
 	n += 1 + proto.Sov(uint64(l)) + l
 	if orig.Period != 0 {
 		n += 1 + proto.Sov(uint64(orig.Period))
-	}
-	if len(orig.CommentStrindices) > 0 {
-		l = 0
-		for _, e := range orig.CommentStrindices {
-			l += proto.Sov(uint64(e))
-		}
-		n += 1 + proto.Sov(uint64(l)) + l
 	}
 	l = orig.ProfileId.SizeProto()
 	n += 1 + proto.Sov(uint64(l)) + l
@@ -338,8 +314,8 @@ func (orig *Profile) MarshalProto(buf []byte) int {
 	pos--
 	buf[pos] = 0xa
 
-	for i := len(orig.Sample) - 1; i >= 0; i-- {
-		l = orig.Sample[i].MarshalProto(buf[:pos])
+	for i := len(orig.Samples) - 1; i >= 0; i-- {
+		l = orig.Samples[i].MarshalProto(buf[:pos])
 		pos -= l
 		pos = proto.EncodeVarint(buf, pos, uint64(l))
 		pos--
@@ -367,26 +343,16 @@ func (orig *Profile) MarshalProto(buf []byte) int {
 		pos--
 		buf[pos] = 0x30
 	}
-	l = len(orig.CommentStrindices)
-	if l > 0 {
-		endPos := pos
-		for i := l - 1; i >= 0; i-- {
-			pos = proto.EncodeVarint(buf, pos, uint64(orig.CommentStrindices[i]))
-		}
-		pos = proto.EncodeVarint(buf, pos, uint64(endPos-pos))
-		pos--
-		buf[pos] = 0x3a
-	}
 	l = orig.ProfileId.MarshalProto(buf[:pos])
 	pos -= l
 	pos = proto.EncodeVarint(buf, pos, uint64(l))
 	pos--
-	buf[pos] = 0x42
+	buf[pos] = 0x3a
 
 	if orig.DroppedAttributesCount != 0 {
 		pos = proto.EncodeVarint(buf, pos, uint64(orig.DroppedAttributesCount))
 		pos--
-		buf[pos] = 0x48
+		buf[pos] = 0x40
 	}
 	l = len(orig.OriginalPayloadFormat)
 	if l > 0 {
@@ -394,7 +360,7 @@ func (orig *Profile) MarshalProto(buf []byte) int {
 		copy(buf[pos:], orig.OriginalPayloadFormat)
 		pos = proto.EncodeVarint(buf, pos, uint64(l))
 		pos--
-		buf[pos] = 0x52
+		buf[pos] = 0x4a
 	}
 	l = len(orig.OriginalPayload)
 	if l > 0 {
@@ -402,7 +368,7 @@ func (orig *Profile) MarshalProto(buf []byte) int {
 		copy(buf[pos:], orig.OriginalPayload)
 		pos = proto.EncodeVarint(buf, pos, uint64(l))
 		pos--
-		buf[pos] = 0x5a
+		buf[pos] = 0x52
 	}
 	l = len(orig.AttributeIndices)
 	if l > 0 {
@@ -412,7 +378,7 @@ func (orig *Profile) MarshalProto(buf []byte) int {
 		}
 		pos = proto.EncodeVarint(buf, pos, uint64(endPos-pos))
 		pos--
-		buf[pos] = 0x62
+		buf[pos] = 0x5a
 	}
 	return len(buf) - pos
 }
@@ -450,7 +416,7 @@ func (orig *Profile) UnmarshalProto(buf []byte) error {
 
 		case 2:
 			if wireType != proto.WireTypeLen {
-				return fmt.Errorf("proto: wrong wireType = %d for field Sample", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Samples", wireType)
 			}
 			var length int
 			length, pos, err = proto.ConsumeLen(buf, pos)
@@ -458,8 +424,8 @@ func (orig *Profile) UnmarshalProto(buf []byte) error {
 				return err
 			}
 			startPos := pos - length
-			orig.Sample = append(orig.Sample, NewSample())
-			err = orig.Sample[len(orig.Sample)-1].UnmarshalProto(buf[startPos:pos])
+			orig.Samples = append(orig.Samples, NewSample())
+			err = orig.Samples[len(orig.Samples)-1].UnmarshalProto(buf[startPos:pos])
 			if err != nil {
 				return err
 			}
@@ -515,38 +481,8 @@ func (orig *Profile) UnmarshalProto(buf []byte) error {
 			}
 
 			orig.Period = int64(num)
-		case 7:
-			switch wireType {
-			case proto.WireTypeLen:
-				var length int
-				length, pos, err = proto.ConsumeLen(buf, pos)
-				if err != nil {
-					return err
-				}
-				startPos := pos - length
-				var num uint64
-				for startPos < pos {
-					num, startPos, err = proto.ConsumeVarint(buf[:pos], startPos)
-					if err != nil {
-						return err
-					}
-					orig.CommentStrindices = append(orig.CommentStrindices, int32(num))
-				}
-				if startPos != pos {
-					return fmt.Errorf("proto: invalid field len = %d for field CommentStrindices", pos-startPos)
-				}
-			case proto.WireTypeVarint:
-				var num uint64
-				num, pos, err = proto.ConsumeVarint(buf, pos)
-				if err != nil {
-					return err
-				}
-				orig.CommentStrindices = append(orig.CommentStrindices, int32(num))
-			default:
-				return fmt.Errorf("proto: wrong wireType = %d for field CommentStrindices", wireType)
-			}
 
-		case 8:
+		case 7:
 			if wireType != proto.WireTypeLen {
 				return fmt.Errorf("proto: wrong wireType = %d for field ProfileId", wireType)
 			}
@@ -562,7 +498,7 @@ func (orig *Profile) UnmarshalProto(buf []byte) error {
 				return err
 			}
 
-		case 9:
+		case 8:
 			if wireType != proto.WireTypeVarint {
 				return fmt.Errorf("proto: wrong wireType = %d for field DroppedAttributesCount", wireType)
 			}
@@ -574,7 +510,7 @@ func (orig *Profile) UnmarshalProto(buf []byte) error {
 
 			orig.DroppedAttributesCount = uint32(num)
 
-		case 10:
+		case 9:
 			if wireType != proto.WireTypeLen {
 				return fmt.Errorf("proto: wrong wireType = %d for field OriginalPayloadFormat", wireType)
 			}
@@ -586,7 +522,7 @@ func (orig *Profile) UnmarshalProto(buf []byte) error {
 			startPos := pos - length
 			orig.OriginalPayloadFormat = string(buf[startPos:pos])
 
-		case 11:
+		case 10:
 			if wireType != proto.WireTypeLen {
 				return fmt.Errorf("proto: wrong wireType = %d for field OriginalPayload", wireType)
 			}
@@ -600,7 +536,7 @@ func (orig *Profile) UnmarshalProto(buf []byte) error {
 				orig.OriginalPayload = make([]byte, length)
 				copy(orig.OriginalPayload, buf[startPos:pos])
 			}
-		case 12:
+		case 11:
 			switch wireType {
 			case proto.WireTypeLen:
 				var length int
@@ -643,12 +579,11 @@ func (orig *Profile) UnmarshalProto(buf []byte) error {
 func GenTestProfile() *Profile {
 	orig := NewProfile()
 	orig.SampleType = *GenTestValueType()
-	orig.Sample = []*Sample{{}, GenTestSample()}
+	orig.Samples = []*Sample{{}, GenTestSample()}
 	orig.TimeUnixNano = uint64(13)
 	orig.DurationNano = uint64(13)
 	orig.PeriodType = *GenTestValueType()
 	orig.Period = int64(13)
-	orig.CommentStrindices = []int32{int32(0), int32(13)}
 	orig.ProfileId = *GenTestProfileID()
 	orig.DroppedAttributesCount = uint32(13)
 	orig.OriginalPayloadFormat = "test_originalpayloadformat"

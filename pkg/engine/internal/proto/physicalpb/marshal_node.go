@@ -7,6 +7,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/proto/expressionpb"
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
 type marshaler interface {
@@ -256,9 +257,13 @@ func (n *ColumnCompat) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) 
 		return nil, err
 	}
 
-	collision, err := n.Collision.MarshalType()
-	if err != nil {
-		return nil, err
+	collisions := make([]types.ColumnType, len(n.Collisions))
+	for i, collision := range n.Collisions {
+		ct, err := collision.MarshalType()
+		if err != nil {
+			return nil, err
+		}
+		collisions[i] = ct
 	}
 
 	return &physical.ColumnCompat{
@@ -266,7 +271,7 @@ func (n *ColumnCompat) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) 
 
 		Source:      source,
 		Destination: destination,
-		Collision:   collision,
+		Collisions:  collisions,
 	}, nil
 }
 

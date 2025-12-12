@@ -839,6 +839,8 @@ type FolderOperationError struct {
 	// to delete contains active resources.
 	//   "DELETED_FOLDER_HEIGHT_VIOLATION" - The attempted action would violate the
 	// max deleted folder depth constraint.
+	//   "FOLDER_TO_DELETE_CONFIGURED_CAPABILITY_VIOLATION" - The folder being
+	// deleted has a configured capability.
 	ErrorMessageId string `json:"errorMessageId,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "ErrorMessageId") to
 	// unconditionally include in API requests. By default, fields with empty or

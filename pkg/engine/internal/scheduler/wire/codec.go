@@ -131,13 +131,9 @@ func (c *protobufCodec) frameFromPbFrame(f *wirepb.Frame) (Frame, error) {
 		return AckFrame{ID: k.Ack.Id}, nil
 
 	case *wirepb.Frame_Nack:
-		var err error
-		if k.Nack.Error != "" {
-			err = errors.New(k.Nack.Error)
-		}
 		return NackFrame{
 			ID:    k.Nack.Id,
-			Error: err,
+			Error: c.errorFromPb(k.Nack.Error),
 		}, nil
 
 	case *wirepb.Frame_Discard:
@@ -155,6 +151,17 @@ func (c *protobufCodec) frameFromPbFrame(f *wirepb.Frame) (Frame, error) {
 
 	default:
 		return nil, fmt.Errorf("unknown frame kind: %T", k)
+	}
+}
+
+func (c *protobufCodec) errorFromPb(errPb *wirepb.Error) *Error {
+	if errPb == nil {
+		return nil
+	}
+
+	return &Error{
+		Code:    errPb.Code,
+		Message: errPb.Message,
 	}
 }
 
@@ -284,6 +291,10 @@ func (c *protobufCodec) taskFromPbTask(t *wirepb.Task) (*workflow.Task, error) {
 		Fragment: fragment,
 		Sources:  sources,
 		Sinks:    sinks,
+		MaxTimeRange: physical.TimeRange{
+			Start: t.MaxTimeRange.Start,
+			End:   t.MaxTimeRange.End,
+		},
 	}, nil
 }
 
@@ -310,6 +321,13 @@ func (c *protobufCodec) taskStatusFromPbTaskStatus(ts *wirepb.TaskStatus) (workf
 		}
 
 		status.Capture = capture
+	}
+
+	if ts.ContributingTimeRange != nil {
+		status.ContributingTimeRange = workflow.ContributingTimeRange{
+			Timestamp: ts.ContributingTimeRange.Timestamp,
+			LessThan:  ts.ContributingTimeRange.LessThan,
+		}
 	}
 
 	return status, nil
@@ -399,14 +417,10 @@ func (c *protobufCodec) frameToPbFrame(from Frame) (*wirepb.Frame, error) {
 		}
 
 	case NackFrame:
-		var errStr string
-		if v.Error != nil {
-			errStr = v.Error.Error()
-		}
 		f.Kind = &wirepb.Frame_Nack{
 			Nack: &wirepb.NackFrame{
 				Id:    v.ID,
-				Error: errStr,
+				Error: c.errorToPb(v.Error),
 			},
 		}
 
@@ -428,6 +442,17 @@ func (c *protobufCodec) frameToPbFrame(from Frame) (*wirepb.Frame, error) {
 	}
 
 	return f, nil
+}
+
+func (c *protobufCodec) errorToPb(e *Error) *wirepb.Error {
+	if e == nil {
+		return nil
+	}
+
+	return &wirepb.Error{
+		Code:    e.Code,
+		Message: e.Message,
+	}
 }
 
 func (c *protobufCodec) messageToPbMessage(from Message) (*wirepb.MessageFrame, error) {
@@ -557,12 +582,20 @@ func (c *protobufCodec) taskToPbTask(from *workflow.Task) (*wirepb.Task, error) 
 		Fragment: fragment,
 		Sources:  sources,
 		Sinks:    sinks,
+		MaxTimeRange: &physicalpb.TimeRange{
+			Start: from.MaxTimeRange.Start,
+			End:   from.MaxTimeRange.End,
+		},
 	}, nil
 }
 
 func (c *protobufCodec) taskStatusToPbTaskStatus(from workflow.TaskStatus) (*wirepb.TaskStatus, error) {
 	ts := &wirepb.TaskStatus{
 		State: c.taskStateToPbTaskState(from.State),
+		ContributingTimeRange: &wirepb.ContributingTimeRange{
+			Timestamp: from.ContributingTimeRange.Timestamp,
+			LessThan:  from.ContributingTimeRange.LessThan,
+		},
 	}
 
 	if from.Error != nil {

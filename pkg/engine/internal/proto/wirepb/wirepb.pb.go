@@ -9,6 +9,8 @@ import (
 	_ "github.com/gogo/protobuf/gogoproto"
 	proto "github.com/gogo/protobuf/proto"
 	github_com_gogo_protobuf_sortkeys "github.com/gogo/protobuf/sortkeys"
+	_ "github.com/gogo/protobuf/types"
+	github_com_gogo_protobuf_types "github.com/gogo/protobuf/types"
 	httpgrpc "github.com/grafana/dskit/httpgrpc"
 	physicalpb "github.com/grafana/loki/v3/pkg/engine/internal/proto/physicalpb"
 	_ "github.com/grafana/loki/v3/pkg/engine/internal/proto/ulid"
@@ -19,12 +21,14 @@ import (
 	reflect "reflect"
 	strconv "strconv"
 	strings "strings"
+	time "time"
 )
 
 // Reference imports to suppress errors if they are not otherwise used.
 var _ = proto.Marshal
 var _ = fmt.Errorf
 var _ = math.Inf
+var _ = time.Kitchen
 
 // This is a compile-time assertion to ensure that this generated file
 // is compatible with the proto package it is being compiled against.
@@ -256,7 +260,7 @@ func (m *AckFrame) GetId() uint64 {
 
 type NackFrame struct {
 	Id    uint64 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
-	Error string `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
+	Error *Error `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
 }
 
 func (m *NackFrame) Reset()      { *m = NackFrame{} }
@@ -298,9 +302,62 @@ func (m *NackFrame) GetId() uint64 {
 	return 0
 }
 
-func (m *NackFrame) GetError() string {
+func (m *NackFrame) GetError() *Error {
 	if m != nil {
 		return m.Error
+	}
+	return nil
+}
+
+type Error struct {
+	// The HTTP status code of the error.
+	Code int32 `protobuf:"varint,1,opt,name=code,proto3" json:"code,omitempty"`
+	// A message describing the error.
+	Message string `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
+}
+
+func (m *Error) Reset()      { *m = Error{} }
+func (*Error) ProtoMessage() {}
+func (*Error) Descriptor() ([]byte, []int) {
+	return fileDescriptor_9956cb67d4b0d2a4, []int{3}
+}
+func (m *Error) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *Error) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_Error.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *Error) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_Error.Merge(m, src)
+}
+func (m *Error) XXX_Size() int {
+	return m.Size()
+}
+func (m *Error) XXX_DiscardUnknown() {
+	xxx_messageInfo_Error.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_Error proto.InternalMessageInfo
+
+func (m *Error) GetCode() int32 {
+	if m != nil {
+		return m.Code
+	}
+	return 0
+}
+
+func (m *Error) GetMessage() string {
+	if m != nil {
+		return m.Message
 	}
 	return ""
 }
@@ -312,7 +369,7 @@ type DiscardFrame struct {
 func (m *DiscardFrame) Reset()      { *m = DiscardFrame{} }
 func (*DiscardFrame) ProtoMessage() {}
 func (*DiscardFrame) Descriptor() ([]byte, []int) {
-	return fileDescriptor_9956cb67d4b0d2a4, []int{3}
+	return fileDescriptor_9956cb67d4b0d2a4, []int{4}
 }
 func (m *DiscardFrame) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -351,8 +408,8 @@ func (m *DiscardFrame) GetId() uint64 {
 type MessageFrame struct {
 	Id uint64 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
 	// Types that are valid to be assigned to Kind:
-	//	*MessageFrame_WorkerReady
 	//	*MessageFrame_WorkerHello
+	//	*MessageFrame_WorkerReady
 	//	*MessageFrame_TaskAssign
 	//	*MessageFrame_TaskCancel
 	//	*MessageFrame_TaskFlag
@@ -366,7 +423,7 @@ type MessageFrame struct {
 func (m *MessageFrame) Reset()      { *m = MessageFrame{} }
 func (*MessageFrame) ProtoMessage() {}
 func (*MessageFrame) Descriptor() ([]byte, []int) {
-	return fileDescriptor_9956cb67d4b0d2a4, []int{4}
+	return fileDescriptor_9956cb67d4b0d2a4, []int{5}
 }
 func (m *MessageFrame) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -402,11 +459,11 @@ type isMessageFrame_Kind interface {
 	Size() int
 }
 
-type MessageFrame_WorkerReady struct {
-	WorkerReady *WorkerReadyMessage `protobuf:"bytes,2,opt,name=worker_ready,json=workerReady,proto3,oneof"`
-}
 type MessageFrame_WorkerHello struct {
 	WorkerHello *WorkerHelloMessage `protobuf:"bytes,10,opt,name=worker_hello,json=workerHello,proto3,oneof"`
+}
+type MessageFrame_WorkerReady struct {
+	WorkerReady *WorkerReadyMessage `protobuf:"bytes,2,opt,name=worker_ready,json=workerReady,proto3,oneof"`
 }
 type MessageFrame_TaskAssign struct {
 	TaskAssign *TaskAssignMessage `protobuf:"bytes,3,opt,name=task_assign,json=taskAssign,proto3,oneof"`
@@ -430,8 +487,8 @@ type MessageFrame_StreamStatus struct {
 	StreamStatus *StreamStatusMessage `protobuf:"bytes,9,opt,name=stream_status,json=streamStatus,proto3,oneof"`
 }
 
-func (*MessageFrame_WorkerReady) isMessageFrame_Kind()  {}
 func (*MessageFrame_WorkerHello) isMessageFrame_Kind()  {}
+func (*MessageFrame_WorkerReady) isMessageFrame_Kind()  {}
 func (*MessageFrame_TaskAssign) isMessageFrame_Kind()   {}
 func (*MessageFrame_TaskCancel) isMessageFrame_Kind()   {}
 func (*MessageFrame_TaskFlag) isMessageFrame_Kind()     {}
@@ -454,16 +511,16 @@ func (m *MessageFrame) GetId() uint64 {
 	return 0
 }
 
-func (m *MessageFrame) GetWorkerReady() *WorkerReadyMessage {
-	if x, ok := m.GetKind().(*MessageFrame_WorkerReady); ok {
-		return x.WorkerReady
+func (m *MessageFrame) GetWorkerHello() *WorkerHelloMessage {
+	if x, ok := m.GetKind().(*MessageFrame_WorkerHello); ok {
+		return x.WorkerHello
 	}
 	return nil
 }
 
-func (m *MessageFrame) GetWorkerHello() *WorkerHelloMessage {
-	if x, ok := m.GetKind().(*MessageFrame_WorkerHello); ok {
-		return x.WorkerHello
+func (m *MessageFrame) GetWorkerReady() *WorkerReadyMessage {
+	if x, ok := m.GetKind().(*MessageFrame_WorkerReady); ok {
+		return x.WorkerReady
 	}
 	return nil
 }
@@ -520,8 +577,8 @@ func (m *MessageFrame) GetStreamStatus() *StreamStatusMessage {
 // XXX_OneofWrappers is for the internal use of the proto package.
 func (*MessageFrame) XXX_OneofWrappers() []interface{} {
 	return []interface{}{
-		(*MessageFrame_WorkerReady)(nil),
 		(*MessageFrame_WorkerHello)(nil),
+		(*MessageFrame_WorkerReady)(nil),
 		(*MessageFrame_TaskAssign)(nil),
 		(*MessageFrame_TaskCancel)(nil),
 		(*MessageFrame_TaskFlag)(nil),
@@ -535,7 +592,7 @@ func (*MessageFrame) XXX_OneofWrappers() []interface{} {
 // WorkerHelloMessage is sent by a peer to the scheduler to establish
 // itself as a control plane connection that can run tasks.
 //
-// WorkerHelloMessage must be sent before WorkerReadyMessage.
+// WorkerHelloMessage must be sent by workers before any other worker messages.
 type WorkerHelloMessage struct {
 	// Threads is the maximum number of threads the worker has available.
 	//
@@ -547,7 +604,7 @@ type WorkerHelloMessage struct {
 func (m *WorkerHelloMessage) Reset()      { *m = WorkerHelloMessage{} }
 func (*WorkerHelloMessage) ProtoMessage() {}
 func (*WorkerHelloMessage) Descriptor() ([]byte, []int) {
-	return fileDescriptor_9956cb67d4b0d2a4, []int{5}
+	return fileDescriptor_9956cb67d4b0d2a4, []int{6}
 }
 func (m *WorkerHelloMessage) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -583,24 +640,17 @@ func (m *WorkerHelloMessage) GetThreads() uint64 {
 	return 0
 }
 
-// WorkerReadyMessage is sent by a worker to the scheduler to request a new
-// task to run. Ready workers are eventually assigned a task via
-// TaskAssignMessage.
+// WorkerReadyMessage is sent by a worker to the scheduler to signal that
+// the worker has at least one worker thread available for running tasks.
 //
-// Workers may send multiple WorkerReadyMessage messages to request more
-// tasks. Workers are automatically unmarked as ready once each
-// WorkerReadyMessage has been responded to with a TaskAssignMessage.
-//
-// The scheduler can reject a WorkerReadyMessage if the worker sends more
-// WorkerReadyMessages than the number of threads it declared in its
-// WorkerHelloMessage.
+// Workers may send WorkerReadyMessage at any time.
 type WorkerReadyMessage struct {
 }
 
 func (m *WorkerReadyMessage) Reset()      { *m = WorkerReadyMessage{} }
 func (*WorkerReadyMessage) ProtoMessage() {}
 func (*WorkerReadyMessage) Descriptor() ([]byte, []int) {
-	return fileDescriptor_9956cb67d4b0d2a4, []int{6}
+	return fileDescriptor_9956cb67d4b0d2a4, []int{7}
 }
 func (m *WorkerReadyMessage) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -631,6 +681,10 @@ var xxx_messageInfo_WorkerReadyMessage proto.InternalMessageInfo
 
 // TaskAssignMessage is sent by the scheduler to a worker when there is a
 // task to run.
+//
+// Workers that have no threads available should reject task assignment with a
+// HTTP 429 Too Many Requests. When this happens, the scheduler will remove the
+// ready state from the worker until it receives a WorkerReadyMessage.
 type TaskAssignMessage struct {
 	Task *Task `protobuf:"bytes,1,opt,name=task,proto3" json:"task,omitempty"`
 	// StreamStates holds the most recent state of each stream that the task
@@ -644,7 +698,7 @@ type TaskAssignMessage struct {
 func (m *TaskAssignMessage) Reset()      { *m = TaskAssignMessage{} }
 func (*TaskAssignMessage) ProtoMessage() {}
 func (*TaskAssignMessage) Descriptor() ([]byte, []int) {
-	return fileDescriptor_9956cb67d4b0d2a4, []int{7}
+	return fileDescriptor_9956cb67d4b0d2a4, []int{8}
 }
 func (m *TaskAssignMessage) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -703,7 +757,7 @@ type TaskCancelMessage struct {
 func (m *TaskCancelMessage) Reset()      { *m = TaskCancelMessage{} }
 func (*TaskCancelMessage) ProtoMessage() {}
 func (*TaskCancelMessage) Descriptor() ([]byte, []int) {
-	return fileDescriptor_9956cb67d4b0d2a4, []int{8}
+	return fileDescriptor_9956cb67d4b0d2a4, []int{9}
 }
 func (m *TaskCancelMessage) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -743,7 +797,7 @@ type TaskFlagMessage struct {
 func (m *TaskFlagMessage) Reset()      { *m = TaskFlagMessage{} }
 func (*TaskFlagMessage) ProtoMessage() {}
 func (*TaskFlagMessage) Descriptor() ([]byte, []int) {
-	return fileDescriptor_9956cb67d4b0d2a4, []int{9}
+	return fileDescriptor_9956cb67d4b0d2a4, []int{10}
 }
 func (m *TaskFlagMessage) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -789,7 +843,7 @@ type TaskStatusMessage struct {
 func (m *TaskStatusMessage) Reset()      { *m = TaskStatusMessage{} }
 func (*TaskStatusMessage) ProtoMessage() {}
 func (*TaskStatusMessage) Descriptor() ([]byte, []int) {
-	return fileDescriptor_9956cb67d4b0d2a4, []int{10}
+	return fileDescriptor_9956cb67d4b0d2a4, []int{11}
 }
 func (m *TaskStatusMessage) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -836,7 +890,7 @@ type StreamBindMessage struct {
 func (m *StreamBindMessage) Reset()      { *m = StreamBindMessage{} }
 func (*StreamBindMessage) ProtoMessage() {}
 func (*StreamBindMessage) Descriptor() ([]byte, []int) {
-	return fileDescriptor_9956cb67d4b0d2a4, []int{11}
+	return fileDescriptor_9956cb67d4b0d2a4, []int{12}
 }
 func (m *StreamBindMessage) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -886,7 +940,7 @@ type StreamDataMessage struct {
 func (m *StreamDataMessage) Reset()      { *m = StreamDataMessage{} }
 func (*StreamDataMessage) ProtoMessage() {}
 func (*StreamDataMessage) Descriptor() ([]byte, []int) {
-	return fileDescriptor_9956cb67d4b0d2a4, []int{12}
+	return fileDescriptor_9956cb67d4b0d2a4, []int{13}
 }
 func (m *StreamDataMessage) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -931,7 +985,7 @@ type StreamStatusMessage struct {
 func (m *StreamStatusMessage) Reset()      { *m = StreamStatusMessage{} }
 func (*StreamStatusMessage) ProtoMessage() {}
 func (*StreamStatusMessage) Descriptor() ([]byte, []int) {
-	return fileDescriptor_9956cb67d4b0d2a4, []int{13}
+	return fileDescriptor_9956cb67d4b0d2a4, []int{14}
 }
 func (m *StreamStatusMessage) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -979,12 +1033,18 @@ type Task struct {
 	// Sinks defines which streams physical nodes write to.
 	// The key is the node ID string representation.
 	Sinks map[string]*StreamList `protobuf:"bytes,5,rep,name=sinks,proto3" json:"sinks,omitempty" protobuf_key:"bytes,1,opt,name=key,proto3" protobuf_val:"bytes,2,opt,name=value,proto3"`
+	// The maximum boundary of timestamps that the task can possibly emit.
+	// Does not account for predicates.
+	// MaxTimeRange is not read when executing a task fragment. It can be used
+	// as metadata to control execution (such as cancelling ongoing tasks based
+	// on their maximum time range).
+	MaxTimeRange *physicalpb.TimeRange `protobuf:"bytes,6,opt,name=max_time_range,json=maxTimeRange,proto3" json:"max_time_range,omitempty"`
 }
 
 func (m *Task) Reset()      { *m = Task{} }
 func (*Task) ProtoMessage() {}
 func (*Task) Descriptor() ([]byte, []int) {
-	return fileDescriptor_9956cb67d4b0d2a4, []int{14}
+	return fileDescriptor_9956cb67d4b0d2a4, []int{15}
 }
 func (m *Task) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -1041,6 +1101,13 @@ func (m *Task) GetSinks() map[string]*StreamList {
 	return nil
 }
 
+func (m *Task) GetMaxTimeRange() *physicalpb.TimeRange {
+	if m != nil {
+		return m.MaxTimeRange
+	}
+	return nil
+}
+
 // StreamList is a list of streams, used in Task's sources and sinks maps.
 type StreamList struct {
 	Streams []*Stream `protobuf:"bytes,1,rep,name=streams,proto3" json:"streams,omitempty"`
@@ -1049,7 +1116,7 @@ type StreamList struct {
 func (m *StreamList) Reset()      { *m = StreamList{} }
 func (*StreamList) ProtoMessage() {}
 func (*StreamList) Descriptor() ([]byte, []int) {
-	return fileDescriptor_9956cb67d4b0d2a4, []int{15}
+	return fileDescriptor_9956cb67d4b0d2a4, []int{16}
 }
 func (m *StreamList) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -1094,7 +1161,7 @@ type Stream struct {
 func (m *Stream) Reset()      { *m = Stream{} }
 func (*Stream) ProtoMessage() {}
 func (*Stream) Descriptor() ([]byte, []int) {
-	return fileDescriptor_9956cb67d4b0d2a4, []int{16}
+	return fileDescriptor_9956cb67d4b0d2a4, []int{17}
 }
 func (m *Stream) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -1137,13 +1204,14 @@ type TaskStatus struct {
 	Error *TaskError `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
 	// Capture is the capture data for this task, if available.
 	// This is an opaque binary representation of the capture payload.
-	Capture []byte `protobuf:"bytes,3,opt,name=capture,proto3" json:"capture,omitempty"`
+	Capture               []byte                 `protobuf:"bytes,3,opt,name=capture,proto3" json:"capture,omitempty"`
+	ContributingTimeRange *ContributingTimeRange `protobuf:"bytes,4,opt,name=contributing_time_range,json=contributingTimeRange,proto3" json:"contributing_time_range,omitempty"`
 }
 
 func (m *TaskStatus) Reset()      { *m = TaskStatus{} }
 func (*TaskStatus) ProtoMessage() {}
 func (*TaskStatus) Descriptor() ([]byte, []int) {
-	return fileDescriptor_9956cb67d4b0d2a4, []int{17}
+	return fileDescriptor_9956cb67d4b0d2a4, []int{18}
 }
 func (m *TaskStatus) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -1193,6 +1261,64 @@ func (m *TaskStatus) GetCapture() []byte {
 	return nil
 }
 
+func (m *TaskStatus) GetContributingTimeRange() *ContributingTimeRange {
+	if m != nil {
+		return m.ContributingTimeRange
+	}
+	return nil
+}
+
+type ContributingTimeRange struct {
+	Timestamp time.Time `protobuf:"bytes,1,opt,name=timestamp,proto3,stdtime" json:"timestamp"`
+	LessThan  bool      `protobuf:"varint,2,opt,name=less_than,json=lessThan,proto3" json:"less_than,omitempty"`
+}
+
+func (m *ContributingTimeRange) Reset()      { *m = ContributingTimeRange{} }
+func (*ContributingTimeRange) ProtoMessage() {}
+func (*ContributingTimeRange) Descriptor() ([]byte, []int) {
+	return fileDescriptor_9956cb67d4b0d2a4, []int{19}
+}
+func (m *ContributingTimeRange) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *ContributingTimeRange) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_ContributingTimeRange.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *ContributingTimeRange) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_ContributingTimeRange.Merge(m, src)
+}
+func (m *ContributingTimeRange) XXX_Size() int {
+	return m.Size()
+}
+func (m *ContributingTimeRange) XXX_DiscardUnknown() {
+	xxx_messageInfo_ContributingTimeRange.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_ContributingTimeRange proto.InternalMessageInfo
+
+func (m *ContributingTimeRange) GetTimestamp() time.Time {
+	if m != nil {
+		return m.Timestamp
+	}
+	return time.Time{}
+}
+
+func (m *ContributingTimeRange) GetLessThan() bool {
+	if m != nil {
+		return m.LessThan
+	}
+	return false
+}
+
 type TaskError struct {
 	Description string `protobuf:"bytes,1,opt,name=description,proto3" json:"description,omitempty"`
 }
@@ -1200,7 +1326,7 @@ type TaskError struct {
 func (m *TaskError) Reset()      { *m = TaskError{} }
 func (*TaskError) ProtoMessage() {}
 func (*TaskError) Descriptor() ([]byte, []int) {
-	return fileDescriptor_9956cb67d4b0d2a4, []int{18}
+	return fileDescriptor_9956cb67d4b0d2a4, []int{20}
 }
 func (m *TaskError) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -1242,6 +1368,7 @@ func init() {
 	proto.RegisterType((*Frame)(nil), "loki.wire.Frame")
 	proto.RegisterType((*AckFrame)(nil), "loki.wire.AckFrame")
 	proto.RegisterType((*NackFrame)(nil), "loki.wire.NackFrame")
+	proto.RegisterType((*Error)(nil), "loki.wire.Error")
 	proto.RegisterType((*DiscardFrame)(nil), "loki.wire.DiscardFrame")
 	proto.RegisterType((*MessageFrame)(nil), "loki.wire.MessageFrame")
 	proto.RegisterType((*WorkerHelloMessage)(nil), "loki.wire.WorkerHelloMessage")
@@ -1260,6 +1387,7 @@ func init() {
 	proto.RegisterType((*StreamList)(nil), "loki.wire.StreamList")
 	proto.RegisterType((*Stream)(nil), "loki.wire.Stream")
 	proto.RegisterType((*TaskStatus)(nil), "loki.wire.TaskStatus")
+	proto.RegisterType((*ContributingTimeRange)(nil), "loki.wire.ContributingTimeRange")
 	proto.RegisterType((*TaskError)(nil), "loki.wire.TaskError")
 }
 
@@ -1268,87 +1396,98 @@ func init() {
 }
 
 var fileDescriptor_9956cb67d4b0d2a4 = []byte{
-	// 1276 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xcc, 0x57, 0x4f, 0x8c, 0xdb, 0xc4,
-	0x17, 0x8e, 0xf3, 0x67, 0x37, 0x79, 0x49, 0xdb, 0xec, 0x74, 0xdb, 0x5a, 0xf9, 0xfd, 0x70, 0x2b,
-	0x83, 0x44, 0xd9, 0xb6, 0x49, 0xdb, 0x15, 0x88, 0x82, 0x04, 0x4a, 0x36, 0x5e, 0x36, 0x6a, 0x9a,
-	0x5d, 0x9c, 0x2d, 0x95, 0xb8, 0xac, 0x66, 0xe3, 0xa9, 0xd7, 0x8a, 0x63, 0x07, 0xcf, 0x64, 0xab,
-	0x95, 0x10, 0xe2, 0xc0, 0x81, 0x23, 0x07, 0x4e, 0xdc, 0x91, 0x7a, 0xe1, 0x8a, 0xc4, 0x91, 0x5b,
-	0x4f, 0xa8, 0x37, 0x2a, 0x0e, 0x15, 0x4d, 0x2f, 0x1c, 0x7b, 0xe1, 0x8e, 0x66, 0xfc, 0x27, 0x8e,
-	0x9d, 0x2d, 0x12, 0x42, 0x5b, 0x2e, 0xbb, 0xf6, 0xf7, 0xbe, 0xf7, 0xcd, 0x7b, 0xe3, 0x37, 0x9f,
-	0x1d, 0xb8, 0x36, 0x1e, 0x9a, 0x0d, 0xe2, 0x98, 0x96, 0x43, 0x1a, 0x96, 0xc3, 0x88, 0xe7, 0x60,
-	0xbb, 0x31, 0xf6, 0x5c, 0xe6, 0x36, 0x1e, 0x58, 0x1e, 0x19, 0xef, 0x07, 0xff, 0xea, 0x02, 0x43,
-	0x25, 0xdb, 0x1d, 0x5a, 0x75, 0x0e, 0xd5, 0xae, 0x9b, 0x16, 0x3b, 0x98, 0xec, 0xd7, 0x07, 0xee,
-	0xa8, 0x61, 0x7a, 0xf8, 0x3e, 0x76, 0x70, 0xc3, 0xa0, 0x43, 0x8b, 0x35, 0x0e, 0x18, 0x1b, 0x9b,
-	0xde, 0x78, 0x10, 0x5d, 0xf8, 0xc9, 0xb5, 0x55, 0xd3, 0x35, 0x5d, 0x5f, 0x9b, 0x5f, 0x05, 0xe8,
-	0xdb, 0xc7, 0x57, 0x30, 0x3e, 0x38, 0xa2, 0xd6, 0x00, 0xdb, 0xe3, 0xfd, 0xd8, 0x65, 0x90, 0xf6,
-	0xd6, 0xf1, 0x69, 0x13, 0xdb, 0x32, 0xc4, 0x1f, 0x9f, 0xaa, 0xfe, 0x22, 0x41, 0x61, 0xd3, 0xc3,
-	0x23, 0x82, 0xde, 0x84, 0x1c, 0x1e, 0x0c, 0x65, 0xe9, 0x92, 0x74, 0xb9, 0x7c, 0xf3, 0x6c, 0x3d,
-	0x6a, 0xa6, 0xde, 0x1c, 0x0c, 0x05, 0x63, 0x2b, 0xa3, 0x73, 0x06, 0x5a, 0x83, 0xbc, 0xc3, 0x99,
-	0x59, 0xc1, 0x5c, 0x8d, 0x31, 0x7b, 0x78, 0x46, 0x15, 0x1c, 0xb4, 0x0e, 0xcb, 0x86, 0x45, 0x07,
-	0xd8, 0x33, 0xe4, 0x9c, 0xa0, 0x5f, 0x88, 0xd1, 0xdb, 0x7e, 0x24, 0xcc, 0x08, 0x99, 0x3c, 0x69,
-	0x44, 0x28, 0xc5, 0x26, 0x91, 0xf3, 0xa9, 0xa4, 0x3b, 0x7e, 0x24, 0x4a, 0x0a, 0x98, 0xad, 0x25,
-	0xc8, 0x0f, 0x2d, 0xc7, 0x50, 0x6b, 0x50, 0x0c, 0x0b, 0x46, 0xa7, 0x21, 0x6b, 0x19, 0xa2, 0xa3,
-	0xbc, 0x9e, 0xb5, 0x0c, 0xf5, 0x06, 0x94, 0xa2, 0x12, 0x93, 0x41, 0xb4, 0x0a, 0x05, 0xe2, 0x79,
-	0xae, 0x27, 0xfa, 0x2a, 0xe9, 0xfe, 0x8d, 0xaa, 0x40, 0x25, 0x5e, 0x66, 0x4a, 0xf2, 0xcf, 0x3c,
-	0x54, 0xe2, 0x25, 0xa5, 0x64, 0x5b, 0x50, 0x79, 0xe0, 0x7a, 0x43, 0xe2, 0xed, 0x79, 0x04, 0x1b,
-	0x47, 0xc1, 0xae, 0xbd, 0x16, 0xeb, 0xe8, 0x9e, 0x08, 0xeb, 0x3c, 0x1a, 0x28, 0x6d, 0x65, 0xf4,
-	0xf2, 0x83, 0x19, 0x1a, 0xd3, 0x38, 0x20, 0xb6, 0xed, 0xca, 0x70, 0x8c, 0xc6, 0x16, 0x8f, 0xa6,
-	0x34, 0x04, 0x8a, 0x3e, 0x84, 0x32, 0xc3, 0x74, 0xb8, 0x87, 0x29, 0xb5, 0x4c, 0x27, 0x78, 0x1a,
-	0xff, 0x8f, 0x49, 0xec, 0x62, 0x3a, 0x6c, 0x8a, 0xe0, 0x4c, 0x01, 0x58, 0x04, 0x46, 0x02, 0x03,
-	0xec, 0x0c, 0x88, 0x1d, 0x3c, 0x99, 0xa4, 0xc0, 0x86, 0x08, 0x26, 0x04, 0x7c, 0x10, 0xdd, 0x82,
-	0x92, 0x10, 0xb8, 0x6f, 0x63, 0x53, 0x2e, 0x88, 0xf4, 0x5a, 0x22, 0x7d, 0xd3, 0xc6, 0xe6, 0x2c,
-	0xb9, 0xc8, 0x02, 0x28, 0x5a, 0x9b, 0x32, 0xcc, 0x26, 0x54, 0x5e, 0x5a, 0xb8, 0x76, 0x5f, 0x04,
-	0x13, 0x6b, 0xfb, 0x20, 0x17, 0xa0, 0xcc, 0x23, 0x78, 0xb4, 0xb7, 0x6f, 0x39, 0x86, 0xbc, 0x9c,
-	0x12, 0xe8, 0x8b, 0x68, 0xcb, 0x72, 0x8c, 0x98, 0x00, 0x8d, 0xc0, 0x98, 0x80, 0x81, 0x19, 0x96,
-	0x8b, 0xc7, 0x08, 0xb4, 0x31, 0xc3, 0x29, 0x01, 0x0e, 0x22, 0x0d, 0x4e, 0x05, 0x02, 0x41, 0x13,
-	0x25, 0x21, 0xa1, 0xa4, 0x24, 0x92, 0x6d, 0x54, 0x68, 0x0c, 0x8e, 0xc6, 0xbc, 0x0e, 0x28, 0xfd,
-	0xcc, 0x91, 0x0c, 0xcb, 0xec, 0x80, 0xcf, 0x19, 0x0d, 0x26, 0x30, 0xbc, 0x55, 0x57, 0x43, 0x7e,
-	0x7c, 0xce, 0xd4, 0x6f, 0xb3, 0xb0, 0x92, 0x7a, 0xee, 0xe8, 0x75, 0xc8, 0xf3, 0xad, 0x0b, 0xac,
-	0xe0, 0x4c, 0x62, 0x9b, 0x75, 0x11, 0x44, 0xfd, 0xb9, 0x7e, 0x08, 0x95, 0xb3, 0x97, 0x72, 0x97,
-	0xcb, 0x37, 0xeb, 0x2f, 0x9b, 0xa8, 0x58, 0x87, 0x84, 0x6a, 0x0e, 0xf3, 0x8e, 0xe2, 0xdd, 0x11,
-	0x8a, 0xae, 0x42, 0x71, 0x44, 0x18, 0x16, 0x5b, 0x9c, 0x13, 0x7a, 0xd5, 0x7a, 0x64, 0x94, 0x5b,
-	0x04, 0x1b, 0xc4, 0xd3, 0x23, 0x46, 0xed, 0x1e, 0xac, 0xa4, 0x04, 0x51, 0x15, 0x72, 0x43, 0x72,
-	0x24, 0x6a, 0x2f, 0xe9, 0xfc, 0x12, 0x5d, 0x85, 0xc2, 0x21, 0xb6, 0x27, 0x44, 0x1c, 0xbd, 0xd3,
-	0x37, 0xcf, 0x2f, 0xdc, 0x71, 0xa2, 0xfb, 0xa4, 0xf7, 0xb2, 0xef, 0x4a, 0xea, 0x57, 0x92, 0xbf,
-	0x2d, 0x73, 0xd3, 0x8c, 0xdc, 0xe8, 0x64, 0x73, 0x47, 0x12, 0x1e, 0x2a, 0x94, 0x0e, 0x6f, 0xd4,
-	0x77, 0xb8, 0x97, 0xde, 0xed, 0x76, 0xda, 0xad, 0xcd, 0x47, 0x4f, 0x2f, 0x66, 0x7e, 0x7b, 0x7a,
-	0xf1, 0x83, 0x05, 0x6f, 0x00, 0xce, 0x6e, 0x1c, 0xae, 0x37, 0x5e, 0xee, 0xce, 0x75, 0xae, 0x23,
-	0xbc, 0xe5, 0xa1, 0x04, 0x67, 0x12, 0xa7, 0xe2, 0xc4, 0x8b, 0x40, 0x6f, 0xc0, 0x29, 0x11, 0xf7,
-	0x26, 0x63, 0x66, 0xed, 0xdb, 0xfe, 0x2e, 0x16, 0xf5, 0x79, 0x50, 0xfd, 0x29, 0xd8, 0xb1, 0xb9,
-	0xe1, 0x3d, 0xf9, 0x62, 0xd7, 0x61, 0x29, 0x38, 0x5d, 0xbe, 0xcd, 0x9e, 0x5b, 0x68, 0x11, 0xad,
-	0x3c, 0x5f, 0x52, 0x0f, 0xa8, 0xea, 0x0f, 0x52, 0x38, 0x47, 0xb1, 0xe3, 0x8f, 0x3e, 0x87, 0x52,
-	0x30, 0xdf, 0x27, 0xd7, 0x42, 0xd1, 0x5f, 0xb1, 0x63, 0xa0, 0x1a, 0x14, 0x3d, 0x32, 0x20, 0xd6,
-	0x21, 0x09, 0xdf, 0x47, 0xd1, 0xbd, 0xfa, 0x7d, 0x54, 0x6f, 0xcc, 0x6d, 0x5e, 0x71, 0xbd, 0x08,
-	0xf2, 0xe2, 0xd0, 0xf2, 0x5a, 0x2b, 0xba, 0xb8, 0x56, 0x7f, 0x96, 0xe0, 0xec, 0x02, 0x4b, 0x7b,
-	0xc5, 0x95, 0x5e, 0x85, 0x82, 0x30, 0xac, 0xbf, 0x73, 0x03, 0x41, 0x52, 0x7f, 0xcd, 0x41, 0x9e,
-	0x0f, 0x0e, 0xa2, 0x90, 0xe7, 0x6a, 0x27, 0x55, 0xaf, 0x58, 0x0c, 0xfd, 0x0f, 0x4a, 0x8c, 0x38,
-	0xd8, 0x61, 0x7c, 0xa7, 0x82, 0x31, 0xf0, 0x81, 0x8e, 0x81, 0x1a, 0x50, 0xbc, 0xef, 0x61, 0x73,
-	0x44, 0x1c, 0x16, 0xbc, 0xcd, 0x83, 0x8f, 0xb6, 0xf0, 0x73, 0xb0, 0xbe, 0x63, 0x63, 0x47, 0x8f,
-	0x48, 0xe8, 0x1d, 0x58, 0xa6, 0xee, 0xc4, 0x1b, 0x10, 0x2a, 0xe7, 0x85, 0xb7, 0x26, 0x5f, 0xa0,
-	0xf5, 0xbe, 0x1f, 0xf6, 0x9d, 0x39, 0x24, 0xa3, 0xeb, 0x50, 0xa0, 0x96, 0x33, 0xa4, 0x72, 0x41,
-	0x64, 0xd5, 0x52, 0x59, 0x3c, 0xe8, 0xe7, 0xf8, 0xc4, 0xda, 0xc7, 0x50, 0x89, 0x4b, 0x2d, 0xf0,
-	0xe4, 0x2b, 0x71, 0x4f, 0x9e, 0x3f, 0xa7, 0xfe, 0x53, 0xe8, 0x5a, 0x94, 0xc5, 0x2c, 0xb9, 0xb6,
-	0x0d, 0x30, 0x5b, 0xe7, 0x5f, 0x10, 0x54, 0x6f, 0x01, 0xcc, 0x02, 0xe8, 0x0a, 0x2c, 0xfb, 0x13,
-	0xc2, 0x5f, 0x9c, 0xbc, 0xcb, 0x95, 0x94, 0x80, 0x1e, 0x32, 0xd4, 0xef, 0x24, 0x58, 0xf2, 0xb1,
-	0xff, 0xde, 0x58, 0xa8, 0x5f, 0x00, 0xcc, 0x9c, 0x0e, 0xad, 0x85, 0xd3, 0x2e, 0x89, 0x69, 0x5f,
-	0x5d, 0xe0, 0x87, 0xe1, 0xac, 0x73, 0xee, 0xec, 0x03, 0xb8, 0x9c, 0xe2, 0x6a, 0x3c, 0x16, 0x7c,
-	0x16, 0xf3, 0x0f, 0x8d, 0x01, 0x1e, 0xb3, 0x89, 0x47, 0xc4, 0xec, 0x55, 0xf4, 0xf0, 0x56, 0xbd,
-	0x06, 0xa5, 0x88, 0x8d, 0x2e, 0x41, 0xd9, 0x20, 0x74, 0xe0, 0x59, 0x63, 0x66, 0xb9, 0x4e, 0xf0,
-	0xbc, 0xe2, 0xd0, 0xda, 0x8f, 0x92, 0xcf, 0x17, 0x95, 0xa0, 0xf3, 0x80, 0x76, 0x9b, 0xfd, 0xdb,
-	0x7b, 0xfd, 0xdd, 0xe6, 0xae, 0xb6, 0xd7, 0xe9, 0x7d, 0xd2, 0xec, 0x76, 0xda, 0xd5, 0x4c, 0x02,
-	0xdf, 0xd0, 0xb5, 0xe6, 0xae, 0xd6, 0xae, 0x4a, 0x09, 0x7c, 0x47, 0xeb, 0xb5, 0x3b, 0xbd, 0x8f,
-	0xaa, 0xd9, 0x04, 0xae, 0xdf, 0xed, 0xf5, 0x38, 0x9e, 0x43, 0x32, 0xac, 0xc6, 0x75, 0xb6, 0xef,
-	0xec, 0x74, 0x35, 0xae, 0x94, 0x4f, 0x46, 0x9a, 0xbd, 0x0d, 0xad, 0xdb, 0xd5, 0xda, 0xd5, 0x02,
-	0x3a, 0x07, 0x2b, 0xb1, 0xc8, 0x66, 0xb3, 0xc3, 0xe1, 0xa5, 0xb5, 0xaf, 0x25, 0x28, 0xc7, 0x0c,
-	0x83, 0x0b, 0xf4, 0x77, 0x75, 0xad, 0x79, 0x27, 0x55, 0xfc, 0x39, 0x58, 0x99, 0x8f, 0xb4, 0xbb,
-	0x5a, 0x55, 0x4a, 0xc1, 0xdb, 0x3b, 0x5a, 0xaf, 0x9a, 0x4d, 0xe9, 0xb4, 0xba, 0xdb, 0x1b, 0xb7,
-	0xb5, 0x76, 0x35, 0x87, 0x2e, 0xc0, 0xd9, 0xb9, 0xc8, 0x46, 0x77, 0xbb, 0xcf, 0x6b, 0x6f, 0x7d,
-	0xf6, 0xf8, 0x99, 0x92, 0x79, 0xf2, 0x4c, 0xc9, 0xbc, 0x78, 0xa6, 0x48, 0x5f, 0x4e, 0x15, 0xe9,
-	0xe1, 0x54, 0x91, 0x1e, 0x4d, 0x15, 0xe9, 0xf1, 0x54, 0x91, 0x7e, 0x9f, 0x2a, 0xd2, 0x1f, 0x53,
-	0x25, 0xf3, 0x62, 0xaa, 0x48, 0xdf, 0x3c, 0x57, 0x32, 0x8f, 0x9f, 0x2b, 0x99, 0x27, 0xcf, 0x95,
-	0xcc, 0xa7, 0xef, 0xff, 0xa3, 0x59, 0xf4, 0x7f, 0xf1, 0xee, 0x2f, 0x89, 0xbb, 0xf5, 0xbf, 0x02,
-	0x00, 0x00, 0xff, 0xff, 0x16, 0x28, 0x7e, 0x49, 0x23, 0x0f, 0x00, 0x00,
+	// 1448 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xcc, 0x58, 0x41, 0x6c, 0x1b, 0x45,
+	0x17, 0xf6, 0xda, 0xeb, 0xc4, 0x7e, 0x71, 0x5b, 0x67, 0x9a, 0xb4, 0x96, 0xff, 0xff, 0xdf, 0x44,
+	0xfb, 0x23, 0x28, 0x69, 0x6b, 0x97, 0x46, 0x45, 0x14, 0xa4, 0x22, 0x3b, 0x76, 0x88, 0xa9, 0xeb,
+	0x84, 0xb5, 0x4b, 0x11, 0x17, 0x6b, 0xbc, 0x3b, 0xd9, 0xac, 0x6c, 0xef, 0x9a, 0xdd, 0x71, 0xda,
+	0x48, 0x1c, 0x38, 0x70, 0xe0, 0xd8, 0x03, 0x12, 0x12, 0x77, 0xa4, 0x5e, 0xb8, 0x22, 0x71, 0xe4,
+	0xd6, 0x13, 0xea, 0xb1, 0xe2, 0x50, 0x68, 0x7a, 0xe1, 0xd8, 0x0b, 0x77, 0x34, 0xb3, 0xeb, 0xf5,
+	0x78, 0xd7, 0x2d, 0x12, 0x42, 0x29, 0x97, 0x64, 0xf7, 0x7b, 0xdf, 0xfb, 0xe6, 0xcd, 0x9b, 0x37,
+	0x6f, 0x66, 0x0d, 0x97, 0x47, 0x7d, 0xb3, 0x4c, 0x6c, 0xd3, 0xb2, 0x49, 0xd9, 0xb2, 0x29, 0x71,
+	0x6d, 0x3c, 0x28, 0x8f, 0x5c, 0x87, 0x3a, 0xe5, 0xbb, 0x96, 0x4b, 0x46, 0xbd, 0xe0, 0x5f, 0x89,
+	0x63, 0x28, 0x3b, 0x70, 0xfa, 0x56, 0x89, 0x41, 0xc5, 0x2b, 0xa6, 0x45, 0x0f, 0xc6, 0xbd, 0x92,
+	0xee, 0x0c, 0xcb, 0xa6, 0x8b, 0xf7, 0xb1, 0x8d, 0xcb, 0x86, 0xd7, 0xb7, 0x68, 0xf9, 0x80, 0xd2,
+	0x91, 0xe9, 0x8e, 0xf4, 0xf0, 0xc1, 0x77, 0x2e, 0xae, 0x98, 0x8e, 0xe9, 0xf8, 0xda, 0xec, 0x29,
+	0x40, 0xd7, 0x4c, 0xc7, 0x31, 0x07, 0xc4, 0x1f, 0xb4, 0x37, 0xde, 0x2f, 0x53, 0x6b, 0x48, 0x3c,
+	0x8a, 0x87, 0xa3, 0x80, 0x70, 0xed, 0xc5, 0x21, 0x8e, 0x0e, 0x8e, 0x3c, 0x4b, 0xc7, 0x83, 0x51,
+	0x4f, 0x78, 0x0c, 0xdc, 0xde, 0x7c, 0xb1, 0xdb, 0x78, 0x60, 0x19, 0xfc, 0x8f, 0x4f, 0x55, 0x7f,
+	0x96, 0x20, 0xbd, 0xed, 0xe2, 0x21, 0x41, 0x6f, 0x40, 0x0a, 0xeb, 0xfd, 0x82, 0xb4, 0x2e, 0x5d,
+	0x58, 0xba, 0x7a, 0xb6, 0x14, 0xce, 0xb6, 0x54, 0xd1, 0xfb, 0x9c, 0xb1, 0x93, 0xd0, 0x18, 0x03,
+	0x6d, 0x80, 0x6c, 0x33, 0x66, 0x92, 0x33, 0x57, 0x04, 0x66, 0x0b, 0x4f, 0xa9, 0x9c, 0x83, 0x36,
+	0x61, 0xd1, 0xb0, 0x3c, 0x1d, 0xbb, 0x46, 0x21, 0xc5, 0xe9, 0xe7, 0x05, 0x7a, 0xcd, 0xb7, 0x4c,
+	0x3c, 0x26, 0x4c, 0xe6, 0x34, 0x24, 0x9e, 0x87, 0x4d, 0x52, 0x90, 0x63, 0x4e, 0xb7, 0x7c, 0x4b,
+	0xe8, 0x14, 0x30, 0xab, 0x0b, 0x20, 0xf7, 0x2d, 0xdb, 0x50, 0x8b, 0x90, 0x99, 0x04, 0x8c, 0x4e,
+	0x43, 0xd2, 0x32, 0xf8, 0x8c, 0x64, 0x2d, 0x69, 0x19, 0x6a, 0x03, 0xb2, 0x61, 0x88, 0x51, 0x23,
+	0x7a, 0x1d, 0xd2, 0xc4, 0x75, 0x1d, 0x37, 0x08, 0x34, 0x2f, 0x8c, 0x59, 0x67, 0xb8, 0xe6, 0x9b,
+	0x3f, 0x94, 0x33, 0xc9, 0x7c, 0x4a, 0xbd, 0x06, 0x69, 0x8e, 0x22, 0x04, 0xb2, 0xee, 0x18, 0x84,
+	0x0b, 0xa5, 0x35, 0xfe, 0x8c, 0x0a, 0xd3, 0x09, 0xb0, 0x24, 0x65, 0xc3, 0x28, 0x55, 0x05, 0x72,
+	0xe2, 0xac, 0x63, 0x11, 0xfe, 0x21, 0x43, 0x4e, 0x9c, 0x61, 0x2c, 0xca, 0x2a, 0xe4, 0xee, 0x3a,
+	0x6e, 0x9f, 0xb8, 0xdd, 0x03, 0x32, 0x18, 0x38, 0x05, 0xe0, 0xc1, 0xfe, 0x4f, 0x08, 0xf6, 0x0e,
+	0x37, 0xef, 0x30, 0x6b, 0xa0, 0xb4, 0x93, 0xd0, 0x96, 0xee, 0x4e, 0x51, 0x41, 0xc3, 0x25, 0xd8,
+	0x38, 0x0a, 0x16, 0x32, 0xae, 0xa1, 0x31, 0x6b, 0x4c, 0x83, 0xa3, 0xe8, 0x7d, 0x58, 0xa2, 0xd8,
+	0xeb, 0x77, 0xb1, 0xe7, 0x59, 0xa6, 0x1d, 0xe4, 0xec, 0xbf, 0x82, 0x44, 0x07, 0x7b, 0xfd, 0x0a,
+	0x37, 0x4e, 0x15, 0x80, 0x86, 0x60, 0x28, 0xa0, 0x63, 0x5b, 0x27, 0x83, 0x60, 0xa1, 0xa3, 0x02,
+	0x5b, 0xdc, 0x18, 0x11, 0xf0, 0x41, 0x74, 0x1d, 0xb2, 0x5c, 0x60, 0x7f, 0x80, 0xcd, 0x42, 0x9a,
+	0xbb, 0x17, 0x23, 0xee, 0xdb, 0x03, 0x6c, 0x4e, 0x9d, 0x33, 0x34, 0x80, 0xc2, 0xb1, 0x3d, 0x8a,
+	0xe9, 0xd8, 0x2b, 0x2c, 0xcc, 0x1d, 0xbb, 0xcd, 0x8d, 0x91, 0xb1, 0x7d, 0x90, 0x09, 0x78, 0xd4,
+	0x25, 0x78, 0xd8, 0xed, 0x59, 0xb6, 0x51, 0x58, 0x8c, 0x09, 0xb4, 0xb9, 0xb5, 0x6a, 0xd9, 0x86,
+	0x20, 0xe0, 0x85, 0xa0, 0x20, 0x60, 0x60, 0x8a, 0x0b, 0x99, 0x17, 0x08, 0xd4, 0x30, 0xc5, 0x31,
+	0x01, 0x06, 0xa2, 0x3a, 0x9c, 0x0a, 0x04, 0x82, 0x49, 0x64, 0xb9, 0x84, 0x12, 0x93, 0x88, 0x4e,
+	0x23, 0xe7, 0x09, 0x70, 0xb8, 0x6b, 0x4a, 0x80, 0xe2, 0x75, 0xc3, 0xea, 0x98, 0x1e, 0xb0, 0x1a,
+	0xf1, 0x82, 0x0a, 0x9c, 0xbc, 0xaa, 0x2b, 0x13, 0xbe, 0x58, 0x23, 0xea, 0xd7, 0x49, 0x58, 0x8e,
+	0xad, 0x3b, 0xfa, 0x3f, 0xc8, 0x2c, 0x75, 0x41, 0x67, 0x39, 0x13, 0x49, 0xb3, 0xc6, 0x8d, 0xa8,
+	0x3d, 0x33, 0x1f, 0xe2, 0x15, 0x92, 0xeb, 0xa9, 0x0b, 0x4b, 0x57, 0x4b, 0x2f, 0xab, 0x28, 0x61,
+	0x86, 0xc4, 0xab, 0xdb, 0xd4, 0x3d, 0x12, 0x67, 0x47, 0x3c, 0x74, 0x09, 0x32, 0x43, 0x42, 0x31,
+	0x4f, 0x71, 0x8a, 0xeb, 0xe5, 0x4b, 0x61, 0x63, 0xde, 0x21, 0xd8, 0x20, 0xae, 0x16, 0x32, 0x8a,
+	0x77, 0x60, 0x39, 0x26, 0x88, 0xf2, 0x90, 0xea, 0x93, 0x23, 0x1e, 0x7b, 0x56, 0x63, 0x8f, 0xe8,
+	0x12, 0xa4, 0x0f, 0xf1, 0x60, 0xec, 0x6f, 0xed, 0xd3, 0x57, 0xcf, 0xcd, 0xcd, 0x38, 0xd1, 0x7c,
+	0xd2, 0xbb, 0xc9, 0x77, 0x24, 0xf5, 0x4b, 0xc9, 0x4f, 0xcb, 0x4c, 0x35, 0x23, 0x27, 0xdc, 0xd9,
+	0xac, 0xc1, 0xf1, 0x96, 0xcc, 0x95, 0x0e, 0xdf, 0x2a, 0xed, 0xb1, 0xd6, 0x7c, 0xbb, 0xd9, 0xa8,
+	0x55, 0xb7, 0x1f, 0x3e, 0x59, 0x4b, 0xfc, 0xf2, 0x64, 0xed, 0xc6, 0x9c, 0x13, 0x87, 0xb1, 0xcb,
+	0x87, 0x9b, 0xe5, 0x97, 0x37, 0xfb, 0x12, 0xd3, 0xe1, 0xbd, 0xe5, 0x81, 0x04, 0x67, 0x22, 0xbb,
+	0xe2, 0xc4, 0x83, 0x40, 0xaf, 0xc1, 0x29, 0x6e, 0x77, 0xc7, 0x23, 0x6a, 0xf5, 0x06, 0x7e, 0x16,
+	0x33, 0xda, 0x2c, 0xa8, 0xfe, 0x18, 0x64, 0x6c, 0xa6, 0x78, 0x4f, 0x3e, 0xd8, 0x4d, 0x58, 0x08,
+	0x76, 0x97, 0xdf, 0x22, 0x57, 0xe7, 0xb6, 0x88, 0xaa, 0xcc, 0x86, 0xd4, 0x02, 0xaa, 0xfa, 0xbd,
+	0x34, 0xa9, 0x23, 0x61, 0xfb, 0xa3, 0xcf, 0x21, 0x1b, 0xd4, 0xf7, 0xc9, 0x4d, 0x21, 0xe3, 0x8f,
+	0xd8, 0x30, 0x50, 0x11, 0x32, 0x2e, 0xd1, 0x89, 0x75, 0x48, 0xdc, 0xe0, 0x44, 0x0a, 0xdf, 0xd5,
+	0xef, 0xc2, 0x78, 0x85, 0x6e, 0xf3, 0x8a, 0xe3, 0x45, 0x20, 0xf3, 0x4d, 0xcb, 0x62, 0xcd, 0x69,
+	0xfc, 0x59, 0xfd, 0x49, 0x82, 0xb3, 0x73, 0x5a, 0xda, 0x2b, 0x8e, 0xf4, 0x12, 0xa4, 0x79, 0xc3,
+	0xfa, 0xab, 0x6e, 0xc0, 0x49, 0xea, 0x37, 0x32, 0xc8, 0xac, 0x70, 0x90, 0x07, 0x32, 0x53, 0x3b,
+	0xa9, 0x78, 0xf9, 0x60, 0xe8, 0x3f, 0x90, 0xa5, 0xc4, 0xc6, 0x36, 0x65, 0x99, 0x0a, 0xca, 0xc0,
+	0x07, 0x1a, 0x06, 0x2a, 0x43, 0x66, 0xdf, 0xc5, 0xe6, 0x90, 0xd8, 0x34, 0x38, 0xcd, 0x83, 0x3b,
+	0xe0, 0xe4, 0x76, 0x59, 0xda, 0x1b, 0x60, 0x5b, 0x0b, 0x49, 0xe8, 0x6d, 0x58, 0xf4, 0x9c, 0xb1,
+	0xab, 0x13, 0xaf, 0x20, 0xf3, 0xde, 0x1a, 0x3d, 0x40, 0x4b, 0x6d, 0xdf, 0xec, 0x77, 0xe6, 0x09,
+	0x19, 0x5d, 0x81, 0xb4, 0x67, 0xd9, 0x7d, 0xaf, 0x90, 0xe6, 0x5e, 0xc5, 0x98, 0x17, 0x33, 0xfa,
+	0x3e, 0x3e, 0x11, 0xdd, 0x80, 0xd3, 0x43, 0x7c, 0xaf, 0xcb, 0x2e, 0xc7, 0x5d, 0x17, 0xdb, 0x26,
+	0x09, 0x4e, 0xec, 0x42, 0x24, 0xc0, 0x8e, 0x35, 0x24, 0x1a, 0xb3, 0x6b, 0xb9, 0x21, 0xbe, 0x17,
+	0xbe, 0x15, 0x3f, 0x82, 0x9c, 0x18, 0xca, 0x9c, 0x9e, 0x7e, 0x51, 0xec, 0xe9, 0xb3, 0xfb, 0xdc,
+	0x5f, 0xc5, 0xa6, 0xe5, 0x51, 0xa1, 0xa5, 0x17, 0x77, 0x01, 0xa6, 0x71, 0xfe, 0x03, 0x82, 0xea,
+	0x75, 0x80, 0xa9, 0x01, 0x5d, 0x84, 0x45, 0xbf, 0xc2, 0xd8, 0xc1, 0xcb, 0xb2, 0xb4, 0x1c, 0x13,
+	0xd0, 0x26, 0x0c, 0xf5, 0x5b, 0x09, 0x16, 0x7c, 0xec, 0xdf, 0x57, 0x56, 0xea, 0x63, 0x09, 0x60,
+	0xda, 0x2a, 0xd1, 0xc6, 0x64, 0xbb, 0x48, 0x7c, 0xbb, 0xac, 0xcc, 0x69, 0xa8, 0x93, 0xcd, 0xc2,
+	0xb8, 0xfe, 0x85, 0x3c, 0xfe, 0xa1, 0xc1, 0xb8, 0xe2, 0xa5, 0x9c, 0xdd, 0x54, 0x74, 0x3c, 0xa2,
+	0x63, 0x97, 0xf0, 0xe2, 0xcd, 0x69, 0x93, 0x57, 0xf4, 0x09, 0x9c, 0xd7, 0x1d, 0x9b, 0xba, 0x56,
+	0x6f, 0x4c, 0x2d, 0xdb, 0x14, 0xab, 0xc8, 0xbf, 0x73, 0xae, 0x0b, 0xba, 0x5b, 0x02, 0x73, 0x5a,
+	0x4d, 0xab, 0xfa, 0x3c, 0x58, 0xbd, 0x07, 0xab, 0x73, 0xf9, 0xa8, 0x0a, 0xd9, 0xf0, 0x43, 0x2e,
+	0x58, 0x8a, 0x62, 0xc9, 0xff, 0xd4, 0x2b, 0x4d, 0x3e, 0xf5, 0x78, 0xb1, 0x72, 0x46, 0x35, 0xc3,
+	0x56, 0xe3, 0xfe, 0xaf, 0x6b, 0x92, 0x36, 0x75, 0x63, 0x49, 0x1d, 0x10, 0xcf, 0xeb, 0xd2, 0x03,
+	0x6c, 0x07, 0x67, 0x64, 0x86, 0x01, 0x9d, 0x03, 0x6c, 0xab, 0x97, 0x21, 0x1b, 0x66, 0x00, 0xad,
+	0xc3, 0x92, 0x41, 0x3c, 0xdd, 0xb5, 0x46, 0xd4, 0x72, 0xec, 0xa0, 0x08, 0x45, 0x68, 0xe3, 0x07,
+	0xc9, 0xe7, 0xf3, 0xec, 0xa2, 0x73, 0x80, 0x3a, 0x95, 0xf6, 0xcd, 0x6e, 0xbb, 0x53, 0xe9, 0xd4,
+	0xbb, 0x8d, 0xd6, 0xc7, 0x95, 0x66, 0xa3, 0x96, 0x4f, 0x44, 0xf0, 0x2d, 0xad, 0x5e, 0xe9, 0xd4,
+	0x6b, 0x79, 0x29, 0x82, 0xef, 0xd5, 0x5b, 0xb5, 0x46, 0xeb, 0x83, 0x7c, 0x32, 0x82, 0x6b, 0xb7,
+	0x5b, 0x2d, 0x86, 0xa7, 0x50, 0x01, 0x56, 0x44, 0x9d, 0xdd, 0x5b, 0x7b, 0xcd, 0x3a, 0x53, 0x92,
+	0xa3, 0x96, 0x4a, 0x6b, 0xab, 0xde, 0x6c, 0xd6, 0x6b, 0xf9, 0x34, 0x5a, 0x85, 0x65, 0xc1, 0xb2,
+	0x5d, 0x69, 0x30, 0x78, 0x61, 0xe3, 0x2b, 0x09, 0x96, 0x84, 0x2e, 0xca, 0x04, 0xda, 0x1d, 0xad,
+	0x5e, 0xb9, 0x15, 0x0b, 0x7e, 0x15, 0x96, 0x67, 0x2d, 0xb5, 0x66, 0x3d, 0x2f, 0xc5, 0xe0, 0xdd,
+	0xbd, 0x7a, 0x2b, 0x9f, 0x8c, 0xe9, 0x54, 0x9b, 0xbb, 0x5b, 0x37, 0xeb, 0xb5, 0x7c, 0x0a, 0x9d,
+	0x87, 0xb3, 0x33, 0x96, 0xad, 0xe6, 0x6e, 0x9b, 0xc5, 0x5e, 0xfd, 0xec, 0xd1, 0x53, 0x25, 0xf1,
+	0xf8, 0xa9, 0x92, 0x78, 0xfe, 0x54, 0x91, 0xbe, 0x38, 0x56, 0xa4, 0x07, 0xc7, 0x8a, 0xf4, 0xf0,
+	0x58, 0x91, 0x1e, 0x1d, 0x2b, 0xd2, 0x6f, 0xc7, 0x8a, 0xf4, 0xfb, 0xb1, 0x92, 0x78, 0x7e, 0xac,
+	0x48, 0xf7, 0x9f, 0x29, 0x89, 0x47, 0xcf, 0x94, 0xc4, 0xe3, 0x67, 0x4a, 0xe2, 0xd3, 0xf7, 0xfe,
+	0xd6, 0x06, 0xf3, 0x7f, 0x76, 0xe8, 0x2d, 0xf0, 0xb7, 0xcd, 0x3f, 0x03, 0x00, 0x00, 0xff, 0xff,
+	0x1d, 0xd2, 0xe9, 0xea, 0xa8, 0x10, 0x00, 0x00,
 }
 
 func (x TaskState) String() string {
@@ -1537,7 +1676,34 @@ func (this *NackFrame) Equal(that interface{}) bool {
 	if this.Id != that1.Id {
 		return false
 	}
-	if this.Error != that1.Error {
+	if !this.Error.Equal(that1.Error) {
+		return false
+	}
+	return true
+}
+func (this *Error) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*Error)
+	if !ok {
+		that2, ok := that.(Error)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Code != that1.Code {
+		return false
+	}
+	if this.Message != that1.Message {
 		return false
 	}
 	return true
@@ -1599,30 +1765,6 @@ func (this *MessageFrame) Equal(that interface{}) bool {
 	}
 	return true
 }
-func (this *MessageFrame_WorkerReady) Equal(that interface{}) bool {
-	if that == nil {
-		return this == nil
-	}
-
-	that1, ok := that.(*MessageFrame_WorkerReady)
-	if !ok {
-		that2, ok := that.(MessageFrame_WorkerReady)
-		if ok {
-			that1 = &that2
-		} else {
-			return false
-		}
-	}
-	if that1 == nil {
-		return this == nil
-	} else if this == nil {
-		return false
-	}
-	if !this.WorkerReady.Equal(that1.WorkerReady) {
-		return false
-	}
-	return true
-}
 func (this *MessageFrame_WorkerHello) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
@@ -1643,6 +1785,30 @@ func (this *MessageFrame_WorkerHello) Equal(that interface{}) bool {
 		return false
 	}
 	if !this.WorkerHello.Equal(that1.WorkerHello) {
+		return false
+	}
+	return true
+}
+func (this *MessageFrame_WorkerReady) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*MessageFrame_WorkerReady)
+	if !ok {
+		that2, ok := that.(MessageFrame_WorkerReady)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if !this.WorkerReady.Equal(that1.WorkerReady) {
 		return false
 	}
 	return true
@@ -2103,6 +2269,9 @@ func (this *Task) Equal(that interface{}) bool {
 			return false
 		}
 	}
+	if !this.MaxTimeRange.Equal(that1.MaxTimeRange) {
+		return false
+	}
 	return true
 }
 func (this *StreamList) Equal(that interface{}) bool {
@@ -2187,6 +2356,36 @@ func (this *TaskStatus) Equal(that interface{}) bool {
 		return false
 	}
 	if !bytes.Equal(this.Capture, that1.Capture) {
+		return false
+	}
+	if !this.ContributingTimeRange.Equal(that1.ContributingTimeRange) {
+		return false
+	}
+	return true
+}
+func (this *ContributingTimeRange) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*ContributingTimeRange)
+	if !ok {
+		that2, ok := that.(ContributingTimeRange)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if !this.Timestamp.Equal(that1.Timestamp) {
+		return false
+	}
+	if this.LessThan != that1.LessThan {
 		return false
 	}
 	return true
@@ -2276,7 +2475,20 @@ func (this *NackFrame) GoString() string {
 	s := make([]string, 0, 6)
 	s = append(s, "&wirepb.NackFrame{")
 	s = append(s, "Id: "+fmt.Sprintf("%#v", this.Id)+",\n")
-	s = append(s, "Error: "+fmt.Sprintf("%#v", this.Error)+",\n")
+	if this.Error != nil {
+		s = append(s, "Error: "+fmt.Sprintf("%#v", this.Error)+",\n")
+	}
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *Error) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 6)
+	s = append(s, "&wirepb.Error{")
+	s = append(s, "Code: "+fmt.Sprintf("%#v", this.Code)+",\n")
+	s = append(s, "Message: "+fmt.Sprintf("%#v", this.Message)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -2303,20 +2515,20 @@ func (this *MessageFrame) GoString() string {
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
-func (this *MessageFrame_WorkerReady) GoString() string {
-	if this == nil {
-		return "nil"
-	}
-	s := strings.Join([]string{`&wirepb.MessageFrame_WorkerReady{` +
-		`WorkerReady:` + fmt.Sprintf("%#v", this.WorkerReady) + `}`}, ", ")
-	return s
-}
 func (this *MessageFrame_WorkerHello) GoString() string {
 	if this == nil {
 		return "nil"
 	}
 	s := strings.Join([]string{`&wirepb.MessageFrame_WorkerHello{` +
 		`WorkerHello:` + fmt.Sprintf("%#v", this.WorkerHello) + `}`}, ", ")
+	return s
+}
+func (this *MessageFrame_WorkerReady) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&wirepb.MessageFrame_WorkerReady{` +
+		`WorkerReady:` + fmt.Sprintf("%#v", this.WorkerReady) + `}`}, ", ")
 	return s
 }
 func (this *MessageFrame_TaskAssign) GoString() string {
@@ -2491,7 +2703,7 @@ func (this *Task) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := make([]string, 0, 9)
+	s := make([]string, 0, 10)
 	s = append(s, "&wirepb.Task{")
 	s = append(s, "Ulid: "+fmt.Sprintf("%#v", this.Ulid)+",\n")
 	s = append(s, "TenantId: "+fmt.Sprintf("%#v", this.TenantId)+",\n")
@@ -2524,6 +2736,9 @@ func (this *Task) GoString() string {
 	if this.Sinks != nil {
 		s = append(s, "Sinks: "+mapStringForSinks+",\n")
 	}
+	if this.MaxTimeRange != nil {
+		s = append(s, "MaxTimeRange: "+fmt.Sprintf("%#v", this.MaxTimeRange)+",\n")
+	}
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -2554,13 +2769,27 @@ func (this *TaskStatus) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := make([]string, 0, 7)
+	s := make([]string, 0, 8)
 	s = append(s, "&wirepb.TaskStatus{")
 	s = append(s, "State: "+fmt.Sprintf("%#v", this.State)+",\n")
 	if this.Error != nil {
 		s = append(s, "Error: "+fmt.Sprintf("%#v", this.Error)+",\n")
 	}
 	s = append(s, "Capture: "+fmt.Sprintf("%#v", this.Capture)+",\n")
+	if this.ContributingTimeRange != nil {
+		s = append(s, "ContributingTimeRange: "+fmt.Sprintf("%#v", this.ContributingTimeRange)+",\n")
+	}
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *ContributingTimeRange) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 6)
+	s = append(s, "&wirepb.ContributingTimeRange{")
+	s = append(s, "Timestamp: "+fmt.Sprintf("%#v", this.Timestamp)+",\n")
+	s = append(s, "LessThan: "+fmt.Sprintf("%#v", this.LessThan)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -2742,15 +2971,55 @@ func (m *NackFrame) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	if len(m.Error) > 0 {
-		i -= len(m.Error)
-		copy(dAtA[i:], m.Error)
-		i = encodeVarintWirepb(dAtA, i, uint64(len(m.Error)))
+	if m.Error != nil {
+		{
+			size, err := m.Error.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintWirepb(dAtA, i, uint64(size))
+		}
 		i--
-		dAtA[i] = 0x12
+		dAtA[i] = 0x1a
 	}
 	if m.Id != 0 {
 		i = encodeVarintWirepb(dAtA, i, uint64(m.Id))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *Error) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *Error) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *Error) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.Message) > 0 {
+		i -= len(m.Message)
+		copy(dAtA[i:], m.Message)
+		i = encodeVarintWirepb(dAtA, i, uint64(len(m.Message)))
+		i--
+		dAtA[i] = 0x12
+	}
+	if m.Code != 0 {
+		i = encodeVarintWirepb(dAtA, i, uint64(m.Code))
 		i--
 		dAtA[i] = 0x8
 	}
@@ -3376,6 +3645,18 @@ func (m *Task) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if m.MaxTimeRange != nil {
+		{
+			size, err := m.MaxTimeRange.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintWirepb(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0x32
+	}
 	if len(m.Sinks) > 0 {
 		for k := range m.Sinks {
 			v := m.Sinks[k]
@@ -3557,6 +3838,18 @@ func (m *TaskStatus) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if m.ContributingTimeRange != nil {
+		{
+			size, err := m.ContributingTimeRange.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintWirepb(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0x22
+	}
 	if len(m.Capture) > 0 {
 		i -= len(m.Capture)
 		copy(dAtA[i:], m.Capture)
@@ -3581,6 +3874,47 @@ func (m *TaskStatus) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x8
 	}
+	return len(dAtA) - i, nil
+}
+
+func (m *ContributingTimeRange) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *ContributingTimeRange) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *ContributingTimeRange) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.LessThan {
+		i--
+		if m.LessThan {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x10
+	}
+	n31, err31 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.Timestamp, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.Timestamp):])
+	if err31 != nil {
+		return 0, err31
+	}
+	i -= n31
+	i = encodeVarintWirepb(dAtA, i, uint64(n31))
+	i--
+	dAtA[i] = 0xa
 	return len(dAtA) - i, nil
 }
 
@@ -3706,7 +4040,23 @@ func (m *NackFrame) Size() (n int) {
 	if m.Id != 0 {
 		n += 1 + sovWirepb(uint64(m.Id))
 	}
-	l = len(m.Error)
+	if m.Error != nil {
+		l = m.Error.Size()
+		n += 1 + l + sovWirepb(uint64(l))
+	}
+	return n
+}
+
+func (m *Error) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Code != 0 {
+		n += 1 + sovWirepb(uint64(m.Code))
+	}
+	l = len(m.Message)
 	if l > 0 {
 		n += 1 + l + sovWirepb(uint64(l))
 	}
@@ -4020,6 +4370,10 @@ func (m *Task) Size() (n int) {
 			n += mapEntrySize + 1 + sovWirepb(uint64(mapEntrySize))
 		}
 	}
+	if m.MaxTimeRange != nil {
+		l = m.MaxTimeRange.Size()
+		n += 1 + l + sovWirepb(uint64(l))
+	}
 	return n
 }
 
@@ -4069,6 +4423,24 @@ func (m *TaskStatus) Size() (n int) {
 	l = len(m.Capture)
 	if l > 0 {
 		n += 1 + l + sovWirepb(uint64(l))
+	}
+	if m.ContributingTimeRange != nil {
+		l = m.ContributingTimeRange.Size()
+		n += 1 + l + sovWirepb(uint64(l))
+	}
+	return n
+}
+
+func (m *ContributingTimeRange) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = github_com_gogo_protobuf_types.SizeOfStdTime(m.Timestamp)
+	n += 1 + l + sovWirepb(uint64(l))
+	if m.LessThan {
+		n += 2
 	}
 	return n
 }
@@ -4158,7 +4530,18 @@ func (this *NackFrame) String() string {
 	}
 	s := strings.Join([]string{`&NackFrame{`,
 		`Id:` + fmt.Sprintf("%v", this.Id) + `,`,
-		`Error:` + fmt.Sprintf("%v", this.Error) + `,`,
+		`Error:` + strings.Replace(this.Error.String(), "Error", "Error", 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *Error) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&Error{`,
+		`Code:` + fmt.Sprintf("%v", this.Code) + `,`,
+		`Message:` + fmt.Sprintf("%v", this.Message) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -4415,6 +4798,7 @@ func (this *Task) String() string {
 		`Fragment:` + strings.Replace(fmt.Sprintf("%v", this.Fragment), "Plan", "physicalpb.Plan", 1) + `,`,
 		`Sources:` + mapStringForSources + `,`,
 		`Sinks:` + mapStringForSinks + `,`,
+		`MaxTimeRange:` + strings.Replace(fmt.Sprintf("%v", this.MaxTimeRange), "TimeRange", "physicalpb.TimeRange", 1) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -4453,6 +4837,18 @@ func (this *TaskStatus) String() string {
 		`State:` + fmt.Sprintf("%v", this.State) + `,`,
 		`Error:` + strings.Replace(this.Error.String(), "TaskError", "TaskError", 1) + `,`,
 		`Capture:` + fmt.Sprintf("%v", this.Capture) + `,`,
+		`ContributingTimeRange:` + strings.Replace(this.ContributingTimeRange.String(), "ContributingTimeRange", "ContributingTimeRange", 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *ContributingTimeRange) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&ContributingTimeRange{`,
+		`Timestamp:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Timestamp), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
+		`LessThan:` + fmt.Sprintf("%v", this.LessThan) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -4788,9 +5184,117 @@ func (m *NackFrame) Unmarshal(dAtA []byte) error {
 					break
 				}
 			}
-		case 2:
+		case 3:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Error", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowWirepb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthWirepb
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthWirepb
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Error == nil {
+				m.Error = &Error{}
+			}
+			if err := m.Error.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipWirepb(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthWirepb
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthWirepb
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *Error) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowWirepb
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: Error: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: Error: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Code", wireType)
+			}
+			m.Code = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowWirepb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Code |= int32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Message", wireType)
 			}
 			var stringLen uint64
 			for shift := uint(0); ; shift += 7 {
@@ -4818,7 +5322,7 @@ func (m *NackFrame) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Error = string(dAtA[iNdEx:postIndex])
+			m.Message = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
@@ -6706,6 +7210,42 @@ func (m *Task) Unmarshal(dAtA []byte) error {
 			}
 			m.Sinks[mapkey] = mapvalue
 			iNdEx = postIndex
+		case 6:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MaxTimeRange", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowWirepb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthWirepb
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthWirepb
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.MaxTimeRange == nil {
+				m.MaxTimeRange = &physicalpb.TimeRange{}
+			}
+			if err := m.MaxTimeRange.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := skipWirepb(dAtA[iNdEx:])
@@ -7053,6 +7593,148 @@ func (m *TaskStatus) Unmarshal(dAtA []byte) error {
 				m.Capture = []byte{}
 			}
 			iNdEx = postIndex
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ContributingTimeRange", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowWirepb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthWirepb
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthWirepb
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.ContributingTimeRange == nil {
+				m.ContributingTimeRange = &ContributingTimeRange{}
+			}
+			if err := m.ContributingTimeRange.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipWirepb(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthWirepb
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthWirepb
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *ContributingTimeRange) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowWirepb
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: ContributingTimeRange: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: ContributingTimeRange: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Timestamp", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowWirepb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthWirepb
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthWirepb
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if err := github_com_gogo_protobuf_types.StdTimeUnmarshal(&m.Timestamp, dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field LessThan", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowWirepb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.LessThan = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := skipWirepb(dAtA[iNdEx:])

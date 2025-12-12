@@ -17,7 +17,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/kafka"
@@ -25,7 +24,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
-var testBuilderConfig = indexobj.BuilderConfig{
+var testBuilderConfig = logsobj.BuilderBaseConfig{
 	TargetPageSize:    128 * 1024,
 	TargetObjectSize:  4 * 1024 * 1024,
 	TargetSectionSize: 2 * 1024 * 1024,
@@ -53,8 +52,8 @@ func TestIndexBuilder_PartitionRevocation(t *testing.T) {
 	// Create a builder with mocks for dependencies
 	builder, err := NewIndexBuilder(
 		Config{
-			BuilderConfig:  testBuilderConfig,
-			EventsPerIndex: 1,
+			BuilderBaseConfig: testBuilderConfig,
+			EventsPerIndex:    1,
 		},
 		metastore.Config{},
 		kafka.Config{},
@@ -77,12 +76,14 @@ func TestIndexBuilder_PartitionRevocation(t *testing.T) {
 		"loki.metastore-events": {0, 1, 2},
 	})
 
+	revokedProcessed := make(chan struct{}, 1)
 	trigger := make(chan struct{})
 	go func() {
 		<-trigger
 		builder.handlePartitionsRevoked(ctx, nil, map[string][]int32{
 			"loki.metastore-events": {1},
 		})
+		revokedProcessed <- struct{}{}
 	}()
 
 	// Trigger the revocation of a partition, but only after we've processed a couple of records.
@@ -102,6 +103,7 @@ func TestIndexBuilder_PartitionRevocation(t *testing.T) {
 	}
 
 	// Verify that the partition was revoked.
+	<-revokedProcessed
 	require.Equal(t, 2, len(builder.partitionStates))
 	require.Nil(t, builder.partitionStates[1])
 }
@@ -121,8 +123,8 @@ func TestIndexBuilder(t *testing.T) {
 
 	p, err := NewIndexBuilder(
 		Config{
-			BuilderConfig:  testBuilderConfig,
-			EventsPerIndex: 3,
+			BuilderBaseConfig: testBuilderConfig,
+			EventsPerIndex:    3,
 		},
 		metastore.Config{},
 		kafka.Config{},
@@ -160,6 +162,9 @@ func TestIndexBuilder(t *testing.T) {
 			Partition: int32(0),
 		})
 	}
+
+	_, err = p.indexer.(*serialIndexer).flushIndex(ctx, 0)
+	require.NoError(t, err)
 
 	indexes := readAllSectionPointers(t, bucket)
 	require.Equal(t, 30, len(indexes))
@@ -228,13 +233,13 @@ func (m *mockKafkaClient) Close() {}
 
 func buildLogObject(t *testing.T, app string, path string, bucket objstore.Bucket) {
 	candidate, err := logsobj.NewBuilder(logsobj.BuilderConfig{
-		TargetPageSize:    128 * 1024,
-		TargetObjectSize:  4 * 1024 * 1024,
-		TargetSectionSize: 2 * 1024 * 1024,
-
-		BufferSize:              4 * 1024 * 1024,
-		SectionStripeMergeLimit: 2,
-
+		BuilderBaseConfig: logsobj.BuilderBaseConfig{
+			TargetPageSize:          128 * 1024,
+			TargetObjectSize:        4 * 1024 * 1024,
+			TargetSectionSize:       2 * 1024 * 1024,
+			BufferSize:              4 * 1024 * 1024,
+			SectionStripeMergeLimit: 2,
+		},
 		DataobjSortOrder: "stream-asc",
 	}, nil)
 	require.NoError(t, err)
