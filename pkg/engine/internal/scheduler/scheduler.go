@@ -407,6 +407,8 @@ func (s *Scheduler) assignTasks(ctx context.Context) {
 			// ready list and wait to receive another Ready message.
 			delete(s.readyWorkers, worker)
 			s.metrics.backoffsTotal.Inc()
+
+			s.workerSubscribe(ctx, worker)
 			continue
 		} else if err != nil {
 			level.Warn(s.logger).Log("msg", "failed to assign task", "id", task.inner.ULID, "conn", worker.RemoteAddr(), "err", err)
@@ -502,6 +504,14 @@ func isTooManyRequestsError(err error) bool {
 
 	var wireError *wire.Error
 	return errors.As(err, &wireError) && wireError.Code == http.StatusTooManyRequests
+}
+
+// workerSubscribe sends a WorkerSubscribe message to the provided worker. The
+// worker will eventually send a WorkerReady message in response.
+func (s *Scheduler) workerSubscribe(ctx context.Context, worker *workerConn) {
+	if err := worker.SendMessageAsync(ctx, wire.WorkerSubscribeMessage{}); err != nil {
+		level.Warn(s.logger).Log("msg", "failed to request subscription for ready worker thread", "err", err)
+	}
 }
 
 // tryBind attempts to bind the receiver's address of check to the sender.
