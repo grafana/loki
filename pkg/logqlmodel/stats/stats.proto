@@ -65,6 +65,10 @@ message Caches {
     (gogoproto.nullable) = false,
     (gogoproto.jsontag) = "instantMetricResult"
   ];
+  Cache positiveResult = 9 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "positiveResult"
+  ];
 }
 
 // Summary is the summary of a query statistics.
