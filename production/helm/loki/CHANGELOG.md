@@ -13,6 +13,8 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+- [BUGFIX] Fix incorrect syntax in loki-egress-dns CiliumNetworkPolicy manifest
+
 ## 6.48.0
 
 - [CHANGE] Changed version of Grafana Loki to 3.6.2
