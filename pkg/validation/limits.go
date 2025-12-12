@@ -157,8 +157,8 @@ type Limits struct {
 	MinShardingLookback                 model.Duration   `yaml:"min_sharding_lookback" json:"min_sharding_lookback"`
 	MaxQueryBytesRead                   flagext.ByteSize `yaml:"max_query_bytes_read" json:"max_query_bytes_read"`
 	MaxQuerierBytesRead                 flagext.ByteSize `yaml:"max_querier_bytes_read" json:"max_querier_bytes_read"`
-	LogResultCacheMaxResponseSize       flagext.ByteSize `yaml:"log_result_cache_max_response_size" json:"log_result_cache_max_response_size" doc:"description=Maximum size of log query responses that can be cached. Responses larger than this will not be cached. 0 means unlimited (all responses will be cached regardless of size)."`
-	LogResultCacheStoreNonEmptyResponse bool             `yaml:"log_result_cache_store_non_empty_response" json:"log_result_cache_store_non_empty_response" doc:"description=Enable caching of non-empty log query responses. When disabled, only empty responses will be cached."`
+	LogResultCacheMaxResponseSize       flagext.ByteSize `yaml:"log_result_cache_max_response_size" json:"log_result_cache_max_response_size" category:"experimental" doc:"description=Experimental. Maximum size of log query responses that can be cached. Responses larger than this will not be cached. 0 means unlimited (all responses will be cached regardless of size)."`
+	LogResultCacheStoreNonEmptyResponse bool             `yaml:"log_result_cache_store_non_empty_response" json:"log_result_cache_store_non_empty_response" category:"experimental" doc:"description=Experimental. Enable caching of non-empty log query responses. When disabled, only empty responses will be cached."`
 	VolumeEnabled                       bool             `yaml:"volume_enabled" json:"volume_enabled" doc:"description=Enable log-volume endpoints."`
 	VolumeMaxSeries                     int              `yaml:"volume_max_series" json:"volume_max_series" doc:"description=The maximum number of aggregated series in a log-volume response"`
 
@@ -447,9 +447,9 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&l.IngesterQuerySplitDuration, "querier.split-ingester-queries-by-interval", "Interval to use for time-based splitting when a request is within the `query_ingesters_within` window; defaults to `split-queries-by-interval` by setting to 0.")
 
 	_ = l.LogResultCacheMaxResponseSize.Set("0")
-	f.Var(&l.LogResultCacheMaxResponseSize, "querier.log-result-cache-max-response-size", "Maximum size of log query responses that can be cached. Responses larger than this will not be cached. 0 means unlimited (all responses will be cached regardless of size).")
+	f.Var(&l.LogResultCacheMaxResponseSize, "querier.log-result-cache-max-response-size", "Experimental. Maximum size of log query responses that can be cached. Responses larger than this will not be cached. 0 means unlimited (all responses will be cached regardless of size).")
 
-	f.BoolVar(&l.LogResultCacheStoreNonEmptyResponse, "querier.log-result-cache-store-non-empty-response", false, "Enable caching of non-empty log query responses. When disabled, only empty responses will be cached.")
+	f.BoolVar(&l.LogResultCacheStoreNonEmptyResponse, "querier.log-result-cache-store-non-empty-response", false, "Experimental. Enable caching of non-empty log query responses. When disabled, only empty responses will be cached.")
 
 	f.StringVar(&l.DeletionMode, "compactor.deletion-mode", "filter-and-delete", "Deletion mode. Can be one of 'disabled', 'filter-only', or 'filter-and-delete'. When set to 'filter-only' or 'filter-and-delete', and if retention_enabled is true, then the log entry deletion API endpoints are available.")
 
