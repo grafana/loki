@@ -188,6 +188,10 @@ func (l *logResultCache) Do(ctx context.Context, req queryrangebase.Request) (qu
 			return l.next.Do(ctx, req)
 		}
 
+		// Track bytes retrieved for non-empty response cache hit (request and response)
+		statsCtx := stats.FromContext(ctx)
+		statsCtx.AddCacheBytesRetrieved(stats.PositiveResultCache, len(buffs[0])+len(buffs[2]))
+
 		return l.handleResponseHit(ctx, cacheKey, responseCacheKey, &cachedResponse, &cachedRequest, lokiReq)
 	}
 
@@ -335,6 +339,7 @@ func (l *logResultCache) handleMiss(ctx context.Context, cacheKey, responseCache
 
 func (l *logResultCache) handleEmptyResponseHit(ctx context.Context, cacheKey, responseCacheKey string, cachedRequest *LokiRequest, lokiReq *LokiRequest, storeNonEmptyEnabled bool) (queryrangebase.Response, error) {
 	l.metrics.CacheHit.WithLabelValues(hitKindEmpty).Inc()
+
 	level.Debug(l.logger).Log(
 		"msg", "empty response cache hit",
 		"experiment", "positive-results-cache",
@@ -536,11 +541,21 @@ func (l *logResultCache) updateCacheWithNonEmptyResponse(ctx context.Context, ca
 	// Store three keys: cache key for request, marker key, :resp:limit key for response
 	if err := l.cache.Store(ctx, []string{cache.HashKey(cacheKey), cache.HashKey(markerCacheKey), cache.HashKey(responseCacheKey)}, [][]byte{requestData, markerValue, responseData}); err != nil {
 		level.Error(l.logger).Log("msg", "error updating cache", "err", err)
+		return
 	}
+
+	// Track cache store stats for non-empty responses
+	statsCtx := stats.FromContext(ctx)
+	statsCtx.AddCacheEntriesStored(stats.PositiveResultCache, 1)
+	statsCtx.AddCacheBytesSent(stats.PositiveResultCache, len(requestData)+len(markerValue)+len(responseData))
 }
 
 func (l *logResultCache) handleResponseHit(ctx context.Context, cacheKey, responseCacheKey string, cachedResponse *LokiResponse, cachedRequest *LokiRequest, lokiReq *LokiRequest) (queryrangebase.Response, error) {
 	l.metrics.CacheHit.WithLabelValues(hitKindNonEmpty).Inc()
+
+	// Track cache hit stats
+	statsCtx := stats.FromContext(ctx)
+	statsCtx.AddCacheEntriesFound(stats.PositiveResultCache, 1)
 
 	level.Debug(l.logger).Log(
 		"msg", "response cache hit",
@@ -567,6 +582,9 @@ func (l *logResultCache) handleResponseHit(ctx context.Context, cacheKey, respon
 
 		// The cached response may have more entries than the limit, so we need to extract only the relevant
 		result.Data.Result = mergeOrderedNonOverlappingStreams([]*LokiResponse{result}, lokiReq.Limit, lokiReq.Direction)
+
+		// Full cache hit - track query length served
+		statsCtx.AddCacheQueryLengthServed(stats.PositiveResultCache, lokiReq.EndTs.Sub(lokiReq.StartTs))
 
 		level.Debug(l.logger).Log(
 			"msg", "cached response covers entire requested time range - handleResponseHit",
@@ -734,6 +752,12 @@ func (l *logResultCache) handleResponseHit(ctx context.Context, cacheKey, respon
 		if cachedRequest.GetEndTs().Before(overlapEnd) {
 			overlapEnd = cachedRequest.GetEndTs()
 		}
+
+		// Track query length served from cache (the overlap portion)
+		if overlapEnd.After(overlapStart) {
+			statsCtx.AddCacheQueryLengthServed(stats.PositiveResultCache, overlapEnd.Sub(overlapStart))
+		}
+
 		extractedCached := extractLokiResponse(overlapStart, overlapEnd, lokiReq.Direction, cachedResponse)
 
 		level.Debug(l.logger).Log(

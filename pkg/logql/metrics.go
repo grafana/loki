@@ -208,6 +208,12 @@ func RecordRangeAndInstantQueryMetrics(
 		"cache_result_hit", resultCache.EntriesFound,
 		"cache_result_download_time", resultCache.CacheDownloadTime(),
 		"cache_result_query_length_served", resultCache.CacheQueryLengthServed(),
+		"cache_positive_result_req", stats.Caches.PositiveResult.EntriesRequested,
+		"cache_positive_result_hit", stats.Caches.PositiveResult.EntriesFound,
+		"cache_positive_result_stored", stats.Caches.PositiveResult.EntriesStored,
+		"cache_positive_result_bytes_received", stats.Caches.PositiveResult.BytesReceived,
+		"cache_positive_result_bytes_sent", stats.Caches.PositiveResult.BytesSent,
+		"cache_positive_result_query_length_served", stats.Caches.PositiveResult.CacheQueryLengthServed(),
 		// The total of chunk reference fetched from index.
 		"ingester_chunk_refs", stats.Ingester.Store.GetTotalChunksRef(),
 		// Total number of chunks fetched.
