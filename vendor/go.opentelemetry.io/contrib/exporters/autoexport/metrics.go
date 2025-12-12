@@ -15,14 +15,14 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-
-	prometheusbridge "go.opentelemetry.io/contrib/bridges/prometheus"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
 	promexporter "go.opentelemetry.io/otel/exporters/prometheus"
 	"go.opentelemetry.io/otel/exporters/stdout/stdoutmetric"
 	"go.opentelemetry.io/otel/sdk/metric"
+
+	prometheusbridge "go.opentelemetry.io/contrib/bridges/prometheus"
 )
 
 const otelExporterOTLPMetricsProtoEnvKey = "OTEL_EXPORTER_OTLP_METRICS_PROTOCOL"
@@ -154,7 +154,7 @@ func init() {
 		}
 		return metric.NewPeriodicReader(r, readerOpts...), nil
 	})
-	RegisterMetricReader("none", func(ctx context.Context) (metric.Reader, error) {
+	RegisterMetricReader("none", func(context.Context) (metric.Reader, error) {
 		return newNoopMetricReader(), nil
 	})
 	RegisterMetricReader("prometheus", func(ctx context.Context) (metric.Reader, error) {
@@ -211,10 +211,10 @@ func init() {
 		return readerWithServer{lis.Addr(), reader, &server}, nil
 	})
 
-	RegisterMetricProducer("prometheus", func(ctx context.Context) (metric.Producer, error) {
+	RegisterMetricProducer("prometheus", func(context.Context) (metric.Producer, error) {
 		return prometheusbridge.NewMetricProducer(), nil
 	})
-	RegisterMetricProducer("none", func(ctx context.Context) (metric.Producer, error) {
+	RegisterMetricProducer("none", func(context.Context) (metric.Producer, error) {
 		return newNoopMetricProducer(), nil
 	})
 }
