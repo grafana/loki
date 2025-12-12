@@ -94,7 +94,7 @@ type Proxy struct {
 	done sync.WaitGroup
 
 	// Goldfish manager for query sampling and comparison
-	goldfishManager *goldfish.Manager
+	goldfishManager goldfish.Manager
 }
 
 func NewProxy(
@@ -183,7 +183,7 @@ func NewProxy(
 
 	// At least 2 backends are suggested
 	if len(p.backends) < 2 {
-		level.Warn(p.logger).Log("msg", "The proxy is running with only 1 backend. At least 2 backends are required to fulfil the purpose of the proxy and compare results.")
+		level.Warn(p.logger).Log("msg", "The proxy is running with only 1 backend. At least 2 backends are required to fulfill the purpose of the proxy and compare results.")
 	}
 
 	if cfg.DisableBackendReadProxy != "" {
@@ -191,6 +191,15 @@ func NewProxy(
 		for _, host := range readDisabledBackendHosts {
 			if host == cfg.PreferredBackend {
 				return nil, fmt.Errorf("the preferred backend cannot be disabled for reading")
+			}
+		}
+	}
+
+	// Pre-initialize raceWins metric for all backend/route combinations
+	if cfg.EnableRace {
+		for _, backend := range p.backends {
+			for _, route := range p.readRoutes {
+				p.metrics.raceWins.WithLabelValues(backend.name, route.RouteName)
 			}
 		}
 	}
@@ -291,9 +300,11 @@ func (p *Proxy) Start() error {
 			InstrumentCompares: p.cfg.InstrumentCompares,
 			EnableRace:         p.cfg.EnableRace,
 		})
-		queryHandler := routeHandlerFactory.CreateHandler(route.RouteName, comp, false)
-		metricHandler := routeHandlerFactory.CreateHandler(route.RouteName, comp, true)
-		endpoint.WithQueryHandlers(queryHandler, metricHandler, queryrange.DefaultCodec)
+		queryHandler, err := routeHandlerFactory.CreateHandler(route.RouteName, comp)
+		if err != nil {
+			return err
+		}
+		endpoint.WithQueryHandler(queryHandler)
 		level.Info(p.logger).Log(
 			"msg", "Query middleware handler attached to route",
 			"path", route.Path,

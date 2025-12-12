@@ -3,6 +3,7 @@ package querytee
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -24,7 +25,7 @@ import (
 type FanOutHandler struct {
 	backends           []*ProxyBackend
 	codec              queryrangebase.Codec
-	goldfishManager    *goldfish.Manager
+	goldfishManager    goldfish.Manager
 	logger             log.Logger
 	metrics            *ProxyMetrics
 	routeName          string
@@ -37,7 +38,7 @@ type FanOutHandler struct {
 type FanOutHandlerConfig struct {
 	Backends           []*ProxyBackend
 	Codec              queryrangebase.Codec
-	GoldfishManager    *goldfish.Manager
+	GoldfishManager    goldfish.Manager
 	Logger             log.Logger
 	Metrics            *ProxyMetrics
 	RouteName          string
@@ -127,6 +128,12 @@ func (h *FanOutHandler) Do(ctx context.Context, req queryrangebase.Request) (que
 	for i, backend := range h.backends {
 		go func(_ int, b *ProxyBackend) {
 			result := h.executeBackendRequest(ctx, httpReq, body, b, req)
+
+			// ensure a valid status code is set in case of error
+			if result.err != nil && result.backendResp.status == 0 {
+				result.backendResp.status = statusCodeFromError(result.err)
+			}
+
 			results <- result
 
 			// Record metrics
@@ -150,7 +157,6 @@ func (h *FanOutHandler) Do(ctx context.Context, req queryrangebase.Request) (que
 				h.metrics.raceWins.WithLabelValues(
 					result.backend.name,
 					h.routeName,
-					issuer,
 				).Inc()
 
 				// Spawn goroutine to collect remaining responses
@@ -164,16 +170,16 @@ func (h *FanOutHandler) Do(ctx context.Context, req queryrangebase.Request) (que
 		} else {
 			// Non-race mode: existing logic (wait for preferred)
 			if result.backend.preferred {
+				// when the preferred backend fails (5xx or request error) we return any successful backend response
+				if !result.backendResp.succeeded() {
+					continue
+				}
+
 				// spawn goroutine to capture remaining and do goldfish comparison
 				remaining := len(h.backends) - i - 1
 				go func() {
 					h.collectRemainingAndCompare(remaining, httpReq, results, collected, shouldSample)
 				}()
-
-				// when the preferred backend fails (5xx) we return any successful backend response
-				if !result.backendResp.succeeded() {
-					continue
-				}
 
 				// when the preferred backends succeeds, but with error, that indicates an invalid request
 				// return the error to the client
@@ -437,4 +443,17 @@ func copyHeaders(from, to http.Header) {
 			to.Add(key, value)
 		}
 	}
+}
+
+// statusCodeFromError determines the appropriate HTTP status code when a backend request fails.
+func statusCodeFromError(err error) int {
+	if errors.Is(err, context.Canceled) {
+		return 499 // Client Closed Request
+	}
+
+	if errors.Is(err, context.DeadlineExceeded) {
+		return http.StatusGatewayTimeout // 504
+	}
+
+	return http.StatusInternalServerError
 }

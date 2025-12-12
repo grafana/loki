@@ -32,7 +32,7 @@ import (
 )
 
 // createTestEndpoint creates a ProxyEndpoint with properly initialized handler pipeline
-func createTestEndpoint(backends []*ProxyBackend, routeName string, comparator comparator.ResponsesComparator, instrumentCompares bool) *ProxyEndpoint {
+func createTestEndpoint(t *testing.T, backends []*ProxyBackend, routeName string, comparator comparator.ResponsesComparator, instrumentCompares bool) *ProxyEndpoint {
 	metrics := NewProxyMetrics(nil)
 	logger := log.NewNopLogger()
 
@@ -45,14 +45,14 @@ func createTestEndpoint(backends []*ProxyBackend, routeName string, comparator c
 		Metrics:         metrics,
 	})
 
-	queryHandler := handlerFactory.CreateHandler(routeName, comparator, false)
-	metricHandler := handlerFactory.CreateHandler(routeName, comparator, true)
-	endpoint.WithQueryHandlers(queryHandler, metricHandler, queryrange.DefaultCodec)
+	queryHandler, err := handlerFactory.CreateHandler(routeName, comparator)
+	require.NoError(t, err)
+	endpoint.WithQueryHandler(queryHandler)
 	return endpoint
 }
 
 // createTestEndpointWithMetrics creates a ProxyEndpoint with custom metrics
-func createTestEndpointWithMetrics(backends []*ProxyBackend, routeName string, comp comparator.ResponsesComparator, instrumentCompares bool, metrics *ProxyMetrics) *ProxyEndpoint {
+func createTestEndpointWithMetrics(t *testing.T, backends []*ProxyBackend, routeName string, comp comparator.ResponsesComparator, instrumentCompares bool, metrics *ProxyMetrics) *ProxyEndpoint {
 	logger := log.NewNopLogger()
 
 	endpoint := NewProxyEndpoint(backends, routeName, metrics, logger, comp, instrumentCompares)
@@ -65,14 +65,14 @@ func createTestEndpointWithMetrics(backends []*ProxyBackend, routeName string, c
 		InstrumentCompares: instrumentCompares,
 	})
 
-	queryHandler := handlerFactory.CreateHandler(routeName, comp, false)
-	metricQueryHandler := handlerFactory.CreateHandler(routeName, comp, true)
-	endpoint.WithQueryHandlers(queryHandler, metricQueryHandler, queryrange.DefaultCodec)
+	queryHandler, err := handlerFactory.CreateHandler(routeName, comp)
+	require.NoError(t, err)
+	endpoint.WithQueryHandler(queryHandler)
 	return endpoint
 }
 
 // createTestEndpointWithGoldfish creates a ProxyEndpoint with goldfish manager
-func createTestEndpointWithGoldfish(backends []*ProxyBackend, routeName string, goldfishManager *querytee_goldfish.Manager) *ProxyEndpoint {
+func createTestEndpointWithGoldfish(t *testing.T, backends []*ProxyBackend, routeName string, goldfishManager querytee_goldfish.Manager) *ProxyEndpoint {
 	metrics := NewProxyMetrics(nil)
 	logger := log.NewNopLogger()
 
@@ -85,9 +85,9 @@ func createTestEndpointWithGoldfish(backends []*ProxyBackend, routeName string, 
 	})
 
 	endpoint := NewProxyEndpoint(backends, routeName, metrics, logger, nil, false)
-	queryHandler := handlerFactory.CreateHandler(routeName, nil, false)
-	metricQueryHandler := handlerFactory.CreateHandler(routeName, nil, true)
-	endpoint.WithQueryHandlers(queryHandler, metricQueryHandler, queryrange.DefaultCodec)
+	queryHandler, err := handlerFactory.CreateHandler(routeName, nil)
+	require.NoError(t, err)
+	endpoint.WithQueryHandler(queryHandler)
 	endpoint.WithGoldfish(goldfishManager)
 	return endpoint
 }
@@ -212,7 +212,7 @@ func Test_ProxyEndpoint_QueryRequests(t *testing.T) {
 		NewProxyBackend("backend-1", backendURL1, time.Second, true),
 		NewProxyBackend("backend-2", backendURL2, time.Second, false).WithFilter(regexp.MustCompile("/loki/api/v1/query_range")),
 	}
-	endpoint := createTestEndpoint(backends, "test", nil, false)
+	endpoint := createTestEndpoint(t, backends, "test", nil, false)
 
 	for _, tc := range []struct {
 		name    string
@@ -458,7 +458,7 @@ func Test_ProxyEndpoint_SummaryMetrics(t *testing.T) {
 
 	comparator := &mockComparator{}
 	proxyMetrics := NewProxyMetrics(prometheus.NewRegistry())
-	endpoint := createTestEndpointWithMetrics(backends, "test", comparator, true, proxyMetrics)
+	endpoint := createTestEndpointWithMetrics(t, backends, "test", comparator, true, proxyMetrics)
 
 	for _, tc := range []struct {
 		name            string
@@ -650,7 +650,7 @@ func Test_endToEnd_traceIDFlow(t *testing.T) {
 	goldfishManager, err := querytee_goldfish.NewManager(goldfishConfig, samplesComparator, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 
-	endpoint := createTestEndpointWithGoldfish(backends, "test", goldfishManager)
+	endpoint := createTestEndpointWithGoldfish(t, backends, "test", goldfishManager)
 
 	// Create request that triggers goldfish sampling
 	req := httptest.NewRequest("GET", "/loki/api/v1/query_range?query=count_over_time({job=\"test\"}[5m])&start=1700000000&end=1700001000", nil)
@@ -694,7 +694,7 @@ type mockGoldfishStorage struct {
 	results []goldfish.ComparisonResult
 }
 
-func (m *mockGoldfishStorage) StoreQuerySample(_ context.Context, sample *goldfish.QuerySample) error {
+func (m *mockGoldfishStorage) StoreQuerySample(_ context.Context, sample *goldfish.QuerySample, _ *goldfish.ComparisonResult) error {
 	m.samples = append(m.samples, *sample)
 	return nil
 }
@@ -795,7 +795,7 @@ func TestProxyEndpoint_QuerySplitting(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	endpoint := createTestEndpointWithGoldfish(backends, "test", goldfishManager)
+	endpoint := createTestEndpointWithGoldfish(t, backends, "test", goldfishManager)
 
 	t.Run("query entirely recent (skips goldfish)", func(t *testing.T) {
 		receivedQueries = []string{}
@@ -1032,7 +1032,7 @@ func TestProxyEndpoint_ServeHTTP_ForwardsResponseHeaders(t *testing.T) {
 	fakeReq := httptest.NewRequestWithContext(context.Background(), "GET", "/loki/api/v1/query_range?query={job=\"test\"}&start=1&end=2", nil)
 	fakeReq.Header.Set("X-Scope-OrgID", "test-tenant")
 
-	endpoint := createTestEndpoint(backends, "test", nil, false)
+	endpoint := createTestEndpoint(t, backends, "test", nil, false)
 	endpoint.ServeHTTP(recorder, fakeReq)
 
 	require.Equal(t, http.StatusOK, recorder.Result().StatusCode, "Status code from backend should be forwarded")
