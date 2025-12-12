@@ -22,10 +22,10 @@ import (
 	flatbuffers "github.com/google/flatbuffers/go"
 )
 
-// / A union is a complex type with children in Field
-// / By default ids in the type vector refer to the offsets in the children
-// / optionally typeIds provides an indirection between the child offset and the type id
-// / for each child `typeIds[offset]` is the id used in the type vector
+/// A union is a complex type with children in Field
+/// By default ids in the type vector refer to the offsets in the children
+/// optionally typeIds provides an indirection between the child offset and the type id
+/// for each child `typeIds[offset]` is the id used in the type vector
 type Union struct {
 	_tab flatbuffers.Table
 }
@@ -35,6 +35,21 @@ func GetRootAsUnion(buf []byte, offset flatbuffers.UOffsetT) *Union {
 	x := &Union{}
 	x.Init(buf, n+offset)
 	return x
+}
+
+func FinishUnionBuffer(builder *flatbuffers.Builder, offset flatbuffers.UOffsetT) {
+	builder.Finish(offset)
+}
+
+func GetSizePrefixedRootAsUnion(buf []byte, offset flatbuffers.UOffsetT) *Union {
+	n := flatbuffers.GetUOffsetT(buf[offset+flatbuffers.SizeUint32:])
+	x := &Union{}
+	x.Init(buf, n+offset+flatbuffers.SizeUint32)
+	return x
+}
+
+func FinishSizePrefixedUnionBuffer(builder *flatbuffers.Builder, offset flatbuffers.UOffsetT) {
+	builder.FinishSizePrefixed(offset)
 }
 
 func (rcv *Union) Init(buf []byte, i flatbuffers.UOffsetT) {

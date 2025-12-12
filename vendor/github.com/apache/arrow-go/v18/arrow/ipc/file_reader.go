@@ -488,7 +488,7 @@ func newRecordBatch(schema *arrow.Schema, memo *dictutils.Memo, meta *memory.Buf
 		defer cols[i].Release()
 	}
 
-	return array.NewRecord(schema, cols, rows)
+	return array.NewRecordBatch(schema, cols, rows)
 }
 
 type ipcSource struct {
@@ -531,12 +531,12 @@ func (src *ipcSource) buffer(i int) *memory.Buffer {
 	return raw
 }
 
-func (src *ipcSource) fieldMetadata(i int) *flatbuf.FieldNode {
+func (src *ipcSource) fieldMetadata(i int) flatbuf.FieldNode {
 	var node flatbuf.FieldNode
 	if !src.meta.Nodes(&node, i) {
 		panic("arrow/ipc: field metadata out of bound")
 	}
-	return &node
+	return node
 }
 
 func (src *ipcSource) variadicCount(i int) int64 {
@@ -553,7 +553,7 @@ type arrayLoaderContext struct {
 	version   MetadataVersion
 }
 
-func (ctx *arrayLoaderContext) field() *flatbuf.FieldNode {
+func (ctx *arrayLoaderContext) field() flatbuf.FieldNode {
 	field := ctx.src.fieldMetadata(ctx.ifield)
 	ctx.ifield++
 	return field
@@ -647,7 +647,7 @@ func (ctx *arrayLoaderContext) loadArray(dt arrow.DataType) arrow.ArrayData {
 	}
 }
 
-func (ctx *arrayLoaderContext) loadCommon(typ arrow.Type, nbufs int) (*flatbuf.FieldNode, []*memory.Buffer) {
+func (ctx *arrayLoaderContext) loadCommon(typ arrow.Type, nbufs int) (flatbuf.FieldNode, []*memory.Buffer) {
 	buffers := make([]*memory.Buffer, 0, nbufs)
 	field := ctx.field()
 
