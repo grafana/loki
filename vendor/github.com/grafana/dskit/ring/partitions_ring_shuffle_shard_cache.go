@@ -4,18 +4,26 @@ import (
 	"math"
 	"sync"
 	"time"
+
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 )
 
 type partitionRingShuffleShardCache struct {
 	mtx                  sync.RWMutex
 	cacheWithoutLookback map[subringCacheKey]*PartitionRing
 	cacheWithLookback    map[subringCacheKey]cachedSubringWithLookback[*PartitionRing]
+	logger               log.Logger
 }
 
-func newPartitionRingShuffleShardCache() *partitionRingShuffleShardCache {
+func newPartitionRingShuffleShardCache(logger log.Logger) *partitionRingShuffleShardCache {
+	if logger == nil {
+		logger = log.NewNopLogger()
+	}
 	return &partitionRingShuffleShardCache{
 		cacheWithoutLookback: map[subringCacheKey]*PartitionRing{},
 		cacheWithLookback:    map[subringCacheKey]cachedSubringWithLookback[*PartitionRing]{},
+		logger:               logger,
 	}
 }
 
@@ -28,6 +36,16 @@ func (r *partitionRingShuffleShardCache) setSubring(identifier string, size int,
 	defer r.mtx.Unlock()
 
 	r.cacheWithoutLookback[subringCacheKey{identifier: identifier, shardSize: size}] = subring
+
+	// Log cache size after adding
+	cacheSize := len(r.cacheWithoutLookback)
+	level.Info(r.logger).Log(
+		"msg", "shuffle shard cache without lookback size",
+		"cache_type", "without_lookback",
+		"size", cacheSize,
+		"identifier", identifier,
+		"shard_size", size,
+	)
 }
 
 func (r *partitionRingShuffleShardCache) getSubring(identifier string, size int) *PartitionRing {
@@ -74,6 +92,17 @@ func (r *partitionRingShuffleShardCache) setSubringWithLookback(identifier strin
 			validForLookbackWindowsStartingAfter:  lookbackWindowStart,
 			validForLookbackWindowsStartingBefore: validForLookbackWindowsStartingBefore,
 		}
+
+		// Log cache size after adding
+		cacheSize := len(r.cacheWithLookback)
+		level.Info(r.logger).Log(
+			"msg", "shuffle shard cache with lookback size",
+			"cache_type", "with_lookback",
+			"size", cacheSize,
+			"identifier", identifier,
+			"shard_size", size,
+			"lookback_period", lookbackPeriod,
+		)
 	}
 }
 

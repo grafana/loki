@@ -2,6 +2,7 @@ package ring
 
 import (
 	"context"
+	"strconv"
 	"sync"
 
 	"github.com/go-kit/log"
@@ -40,7 +41,7 @@ func NewPartitionRingWatcher(name, key string, kv kv.Client, logger log.Logger, 
 		key:    key,
 		kv:     kv,
 		logger: logger,
-		ring:   NewPartitionRing(*NewPartitionRingDesc()),
+		ring:   NewPartitionRing(*NewPartitionRingDesc(), logger),
 		numPartitionsGaugeVec: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
 			Name:        "partition_ring_partitions",
 			Help:        "Number of partitions by state in the partitions ring.",
@@ -92,7 +93,7 @@ func (w *PartitionRingWatcher) loop(ctx context.Context) error {
 }
 
 func (w *PartitionRingWatcher) updatePartitionRing(desc *PartitionRingDesc) {
-	newRing := NewPartitionRing(*desc)
+	newRing := NewPartitionRing(*desc, w.logger)
 	w.ringMx.Lock()
 	oldRing := w.ring
 	w.ring = newRing
@@ -107,17 +108,12 @@ func (w *PartitionRingWatcher) updatePartitionRing(desc *PartitionRingDesc) {
 		w.numPartitionsGaugeVec.WithLabelValues(state.CleanName()).Set(float64(count))
 	}
 
-	// Check partitions whose state change lock status has changed and log them.
+	// Check partitions whose state change is locked and log them.
 	for partitionID, partition := range desc.Partitions {
 		state := partition.GetState().CleanName()
-
-		oldPartition, existedBefore := oldRing.desc.Partitions[partitionID]
-		if !existedBefore || partition.StateChangeLocked != oldPartition.StateChangeLocked {
-			if partition.StateChangeLocked {
-				level.Warn(w.logger).Log("msg", "partition state change is locked", "partition_id", partitionID, "partition_state", state)
-			} else if existedBefore {
-				level.Info(w.logger).Log("msg", "partition state change is unlocked", "partition_id", partitionID, "partition_state", state)
-			}
+		partitionIDStr := strconv.Itoa(int(partitionID))
+		if partition.StateChangeLocked {
+			level.Warn(w.logger).Log("msg", "partition state change is locked", "partition_id", partitionIDStr, "partition_state", state)
 		}
 	}
 }

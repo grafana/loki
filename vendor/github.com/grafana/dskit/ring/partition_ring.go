@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-kit/log"
 	shardUtil "github.com/grafana/dskit/ring/shard"
 )
 
@@ -43,14 +44,17 @@ type PartitionRing struct {
 	activePartitionsCount int
 }
 
-func NewPartitionRing(desc PartitionRingDesc) *PartitionRing {
+func NewPartitionRing(desc PartitionRingDesc, logger log.Logger) *PartitionRing {
+	if logger == nil {
+		logger = log.NewNopLogger()
+	}
 	return &PartitionRing{
 		desc:                  desc,
 		ringTokens:            desc.tokens(),
 		partitionByToken:      desc.partitionByToken(),
 		ownersByPartition:     desc.ownersByPartition(),
 		activePartitionsCount: desc.activePartitionsCount(),
-		shuffleShardCache:     newPartitionRingShuffleShardCache(),
+		shuffleShardCache:     newPartitionRingShuffleShardCache(logger),
 	}
 }
 
@@ -255,7 +259,7 @@ func (r *PartitionRing) shuffleShard(identifier string, size int, lookbackPeriod
 		}
 	}
 
-	return NewPartitionRing(r.desc.WithPartitions(result)), nil
+	return NewPartitionRing(r.desc.WithPartitions(result), r.shuffleShardCache.logger), nil
 }
 
 // PartitionsCount returns the number of partitions in the ring.
