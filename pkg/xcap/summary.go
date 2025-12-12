@@ -248,11 +248,6 @@ const regionNameDataObjScan = "DataObjScan"
 // ToStatsSummary computes a stats.Result from observations in the capture.
 func (c *Capture) ToStatsSummary(execTime, queueTime time.Duration, totalEntriesReturned int) stats.Result {
 	result := stats.Result{
-		Summary: stats.Summary{
-			ExecTime:             execTime.Seconds(),
-			QueueTime:            queueTime.Seconds(),
-			TotalEntriesReturned: int64(totalEntriesReturned),
-		},
 		Querier: stats.Querier{
 			Store: stats.Store{
 				QueryUsedV2Engine: true,
@@ -261,6 +256,7 @@ func (c *Capture) ToStatsSummary(execTime, queueTime time.Duration, totalEntries
 	}
 
 	if c == nil {
+		result.ComputeSummary(execTime, queueTime, totalEntriesReturned)
 		return result
 	}
 
