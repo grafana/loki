@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/go-kit/log"
@@ -20,28 +21,75 @@ import (
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
+type threadState int
+
+const (
+	// threadStateIdle reports that a thread is not running.
+	threadStateIdle threadState = iota
+
+	// threadStateReady reports that a thread is ready to run a task.
+	threadStateReady
+
+	// threadStateBusy reports that a thread is currently running a task.
+	threadStateBusy
+)
+
+func (s threadState) String() string {
+	switch s {
+	case threadStateIdle:
+		return "idle"
+	case threadStateReady:
+		return "ready"
+	case threadStateBusy:
+		return "busy"
+	default:
+		return fmt.Sprintf("threadState(%d)", s)
+	}
+}
+
 // thread represents a worker thread that executes one task at a time.
 type thread struct {
 	BatchSize int64
 	Bucket    objstore.Bucket
 	Logger    log.Logger
 
+	Metrics    *metrics
 	JobManager *jobManager
+
+	stateMut sync.RWMutex
+	state    threadState
+}
+
+// State returns the current state of the thread.
+func (t *thread) State() threadState {
+	t.stateMut.RLock()
+	defer t.stateMut.RUnlock()
+	return t.state
 }
 
 // Run starts the thread. Run will request and run tasks in a loop until the
 // context is canceled.
 func (t *thread) Run(ctx context.Context) error {
+	defer t.setState(threadStateIdle)
+
 	for {
 		level.Debug(t.Logger).Log("msg", "requesting task")
 
+		t.setState(threadStateReady)
 		job, err := t.JobManager.Recv(ctx)
 		if err != nil {
 			return nil
 		}
 
+		t.setState(threadStateBusy)
 		t.runJob(job.Context, job)
 	}
+}
+
+func (t *thread) setState(state threadState) {
+	t.stateMut.Lock()
+	defer t.stateMut.Unlock()
+	t.state = state
 }
 
 func (t *thread) runJob(ctx context.Context, job *threadJob) {
@@ -169,7 +217,9 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	// to finalize the capture before it's included in the TaskStatusMessage.
 	capture.End()
 
-	level.Info(logger).Log("msg", "task completed", "duration", time.Since(startTime))
+	duration := time.Since(startTime)
+	level.Info(logger).Log("msg", "task completed", "duration", duration)
+	t.Metrics.taskExecSeconds.Observe(duration.Seconds())
 
 	// Wait for the scheduler to confirm the task has completed before
 	// requesting a new one. This allows the scheduler to update its bookkeeping

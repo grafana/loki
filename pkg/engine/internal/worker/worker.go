@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/services"
 	"github.com/oklog/ulid/v2"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
 	"go.opentelemetry.io/otel/propagation"
 	"golang.org/x/sync/errgroup"
@@ -110,6 +111,9 @@ type Worker struct {
 	sinks        map[ulid.ULID]*streamSink
 	jobs         map[ulid.ULID]*threadJob
 
+	metrics   *metrics
+	collector *collector
+
 	// jobManager used to manage task assignments.
 	jobManager *jobManager
 }
@@ -149,6 +153,9 @@ func New(config Config) (*Worker, error) {
 		sinks:   make(map[ulid.ULID]*streamSink),
 		jobs:    make(map[ulid.ULID]*threadJob),
 
+		metrics:   newMetrics(),
+		collector: newCollector(),
+
 		jobManager: newJobManager(),
 	}, nil
 }
@@ -167,17 +174,22 @@ func (w *Worker) run(ctx context.Context) error {
 	g, ctx := errgroup.WithContext(ctx)
 
 	// Spin up worker threads.
+	var threads []*thread
 	for i := range w.numThreads {
 		t := &thread{
 			BatchSize: w.config.BatchSize,
 			Logger:    log.With(w.logger, "thread", i),
 			Bucket:    w.config.Bucket,
 
+			Metrics:    w.metrics,
 			JobManager: w.jobManager,
 		}
+		threads = append(threads, t)
 
 		g.Go(func() error { return t.Run(ctx) })
 	}
+
+	w.collector.setThreads(threads)
 
 	g.Go(func() error { return w.runAcceptLoop(ctx) })
 
@@ -317,6 +329,7 @@ func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, con
 			return wire.Errorf(http.StatusTooManyRequests, "no threads available")
 		}
 
+		w.metrics.tasksAssignedTotal.Inc()
 		return nil
 	}
 
@@ -555,4 +568,20 @@ func (w *Worker) handleDataMessage(ctx context.Context, msg wire.StreamDataMessa
 		return fmt.Errorf("stream %s not found for receiving data", msg.StreamID)
 	}
 	return source.Write(ctx, msg.Data)
+}
+
+// RegisterMetrics registers metrics about s to report to reg.
+func (w *Worker) RegisterMetrics(reg prometheus.Registerer) error {
+	var errs []error
+
+	errs = append(errs, reg.Register(w.collector))
+	errs = append(errs, w.metrics.Register(reg))
+
+	return errors.Join(errs...)
+}
+
+// UnregisterMetrics unregisters metrics about s from reg.
+func (w *Worker) UnregisterMetrics(reg prometheus.Registerer) {
+	reg.Unregister(w.collector)
+	w.metrics.Unregister(reg)
 }
