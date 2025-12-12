@@ -174,6 +174,9 @@ func (c *protobufCodec) messageFromPbMessage(mf *wirepb.MessageFrame) (Message, 
 	case *wirepb.MessageFrame_WorkerHello:
 		return WorkerHelloMessage{Threads: int(k.WorkerHello.Threads)}, nil
 
+	case *wirepb.MessageFrame_WorkerSubscribe:
+		return WorkerSubscribeMessage{}, nil
+
 	case *wirepb.MessageFrame_WorkerReady:
 		return WorkerReadyMessage{}, nil
 
@@ -466,6 +469,11 @@ func (c *protobufCodec) messageToPbMessage(from Message) (*wirepb.MessageFrame, 
 	case WorkerHelloMessage:
 		mf.Kind = &wirepb.MessageFrame_WorkerHello{
 			WorkerHello: &wirepb.WorkerHelloMessage{Threads: uint64(v.Threads)},
+		}
+
+	case WorkerSubscribeMessage:
+		mf.Kind = &wirepb.MessageFrame_WorkerSubscribe{
+			WorkerSubscribe: &wirepb.WorkerSubscribeMessage{},
 		}
 
 	case WorkerReadyMessage:

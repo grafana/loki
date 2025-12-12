@@ -1537,6 +1537,15 @@ func (t *Loki) initV2QueryEngineWorker() (services.Service, error) {
 		return nil, err
 	}
 
+	if err := worker.RegisterMetrics(prometheus.DefaultRegisterer); err != nil {
+		return nil, err
+	}
+	worker.Service().AddListener(services.NewListener(
+		nil, nil, nil,
+		func(_ services.State) { worker.UnregisterMetrics(prometheus.DefaultRegisterer) },
+		func(_ services.State, _ error) { worker.UnregisterMetrics(prometheus.DefaultRegisterer) },
+	))
+
 	// Only register HTTP handler when running distributed query execution
 	if t.Cfg.QueryEngine.Distributed {
 		worker.RegisterWorkerServer(t.Server.HTTP)

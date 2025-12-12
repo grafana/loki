@@ -4,12 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/user"
-	"github.com/oklog/ulid/v2"
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
@@ -21,18 +21,30 @@ import (
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
-// threadJob is an individual task to run.
-type threadJob struct {
-	Context context.Context
-	Cancel  context.CancelFunc
+type threadState int
 
-	Scheduler *wire.Peer     // Scheduler which owns the task.
-	Task      *workflow.Task // Task to execute.
+const (
+	// threadStateIdle reports that a thread is not running.
+	threadStateIdle threadState = iota
 
-	Sources map[ulid.ULID]*streamSource // Sources to read task data from.
-	Sinks   map[ulid.ULID]*streamSink   // Sinks to write task data to.
+	// threadStateReady reports that a thread is ready to run a task.
+	threadStateReady
 
-	Close func() // Close function to clean up resources for the job.
+	// threadStateBusy reports that a thread is currently running a task.
+	threadStateBusy
+)
+
+func (s threadState) String() string {
+	switch s {
+	case threadStateIdle:
+		return "idle"
+	case threadStateReady:
+		return "ready"
+	case threadStateBusy:
+		return "busy"
+	default:
+		return fmt.Sprintf("threadState(%d)", s)
+	}
 }
 
 // thread represents a worker thread that executes one task at a time.
@@ -41,64 +53,43 @@ type thread struct {
 	Bucket    objstore.Bucket
 	Logger    log.Logger
 
-	Ready chan<- readyRequest
+	Metrics    *metrics
+	JobManager *jobManager
+
+	stateMut sync.RWMutex
+	state    threadState
+}
+
+// State returns the current state of the thread.
+func (t *thread) State() threadState {
+	t.stateMut.RLock()
+	defer t.stateMut.RUnlock()
+	return t.state
 }
 
 // Run starts the thread. Run will request and run tasks in a loop until the
 // context is canceled.
 func (t *thread) Run(ctx context.Context) error {
-NextTask:
+	defer t.setState(threadStateIdle)
+
 	for {
 		level.Debug(t.Logger).Log("msg", "requesting task")
 
-		// Channel used for task assignment. We create a new buffered channel
-		// for each iteration to ensure that writes to respCh never block.
-		respCh := make(chan readyResponse, 1)
-
-		// When we create the request, we pass the thread's context. This
-		// ensures that the context of tasks written to respCh are bound to the
-		// lifetime of the thread, but can also be canceled by the scheduler.
-		req := readyRequest{
-			Context:  ctx,
-			Response: respCh,
-		}
-
-		// Send our request.
-		select {
-		case <-ctx.Done():
+		t.setState(threadStateReady)
+		job, err := t.JobManager.Recv(ctx)
+		if err != nil {
 			return nil
-		case t.Ready <- req:
 		}
 
-		// Wait for a task assignment.
-		select {
-		case <-ctx.Done():
-			// TODO(rfratto): This will silently drop tasks written to respCh.
-			// But since Run only exits when the worker is exiting, this should
-			// be handled gracefully by the scheduler (it will detect the
-			// dropped connection and fail the assigned tasks).
-			//
-			// If, in the future, we dynamically change the number of threads,
-			// we'll want a mechanism to gracefully handle this so the writer to
-			// respCh knows that the task was dropped.
-			return nil
-
-		case resp := <-respCh:
-			if resp.Error != nil {
-				level.Warn(t.Logger).Log("msg", "task assignment failed, will request a new task", "err", resp.Error)
-				continue NextTask
-			} else if resp.Job == nil {
-				// This may hit if the connection to the scheduler closed but
-				// didn't result in an error. This shouldn't happen, but it's
-				// better to handle it than to let runTask panic from nil
-				// pointers.
-				level.Warn(t.Logger).Log("msg", "missing task assignment, will request a new task")
-				continue NextTask
-			}
-
-			t.runJob(resp.Job.Context, resp.Job)
-		}
+		t.setState(threadStateBusy)
+		t.runJob(job.Context, job)
 	}
+}
+
+func (t *thread) setState(state threadState) {
+	t.stateMut.Lock()
+	defer t.stateMut.Unlock()
+	t.state = state
 }
 
 func (t *thread) runJob(ctx context.Context, job *threadJob) {
@@ -226,7 +217,9 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	// to finalize the capture before it's included in the TaskStatusMessage.
 	capture.End()
 
-	level.Info(logger).Log("msg", "task completed", "duration", time.Since(startTime))
+	duration := time.Since(startTime)
+	level.Info(logger).Log("msg", "task completed", "duration", duration)
+	t.Metrics.taskExecSeconds.Observe(duration.Seconds())
 
 	// Wait for the scheduler to confirm the task has completed before
 	// requesting a new one. This allows the scheduler to update its bookkeeping
