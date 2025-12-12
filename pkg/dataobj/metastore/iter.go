@@ -567,7 +567,7 @@ func buildStreamReaderPredicate(sec *streams.Section, start, end time.Time, matc
 	}
 
 	if minTsColumn == nil || maxTsColumn == nil {
-		return nil, errors.New("buildStreamReaderPredicate: section is missing required columns.")
+		return nil, errors.New("buildStreamReaderPredicate: section is missing required columns")
 	}
 
 	var predicates []streams.Predicate
