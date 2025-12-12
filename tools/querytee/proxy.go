@@ -67,7 +67,7 @@ func (cfg *ProxyConfig) RegisterFlags(f *flag.FlagSet) {
 	})
 	f.BoolVar(&cfg.InstrumentCompares, "proxy.compare-instrument", false, "Reports metrics on comparisons of responses between preferred and non-preferred endpoints for supported routes.")
 	f.BoolVar(&cfg.EnableRace, "proxy.enable-race", false, "When enabled, return the first successful response from any backend instead of waiting for the preferred backend.")
-	f.DurationVar(&cfg.RaceTolerance, "proxy.race-tolerance", 100*time.Millisecond, "The tolerance to handicap races in favor of non-preferred backends by. If a non-preferred backend finishes after the preferred but within the tolerance, it is declared the winner.")
+	f.DurationVar(&cfg.RaceTolerance, "proxy.race-tolerance", 100*time.Millisecond, "The tolerance for handicapping races in favor of non-preferred backends. If the preferred backend finishes first but a non-preferred backend completes within this tolerance, the non-preferred backend is declared the winner.")
 
 	// Register Goldfish configuration flags
 	cfg.Goldfish.RegisterFlags(f)

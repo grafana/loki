@@ -154,7 +154,7 @@ func (h *FanOutHandler) Do(ctx context.Context, req queryrangebase.Request) (que
 				}
 			}
 		} else {
-			// Non-race mode: logacy logic (wait for preferred)
+			// Non-race mode: legacy logic (wait for preferred)
 			if result.backend.preferred {
 				// when the preferred backend fails return any successful response
 				if !result.backendResp.succeeded() {
