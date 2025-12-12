@@ -308,6 +308,12 @@ func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, con
 		defer reqsMut.Unlock()
 
 		if len(readyReqs) == 0 {
+			// Race conditions between threads and the scheduler can trigger
+			// this condition often, even when there's only a single scheduler.
+			//
+			// Schedulers will back off from assigning more tasks after
+			// receiving StatusTooManyRequests. More tasks will only be assigned
+			// after the scheduler gets a WorkerReadyMessage from the worker.
 			return readyRequest{}, wire.Errorf(http.StatusTooManyRequests, "no threads available")
 		}
 
@@ -389,7 +395,7 @@ func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, con
 
 			default:
 				level.Warn(logger).Log("msg", "unsupported message type", "type", reflect.TypeOf(msg).String())
-				return fmt.Errorf("unsupported message type %T", msg)
+				return wire.Errorf(http.StatusNotImplemented, "unsupported message type %T", msg)
 			}
 		},
 	}
