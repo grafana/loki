@@ -47,14 +47,33 @@ type Service struct {
 }
 
 func NewService(cfg Config, router *mux.Router, ring *ring.Ring, localAddr string, logger log.Logger, reg prometheus.Registerer) (*Service, error) {
-	httpClient := &http.Client{
-		Transport: &http2.Transport{
+	var transport *http2.Transport
+	if cfg.Proxy.TLSEnabled {
+		tlsConfig, err := cfg.Proxy.TLS.GetTLSConfig()
+		if err != nil {
+			return nil, fmt.Errorf("failed to build ui proxy tls config: %w", err)
+		}
+		transport = &http2.Transport{
+			TLSClientConfig: tlsConfig,
+			DialTLSContext: func(ctx context.Context, network, addr string, tlsCfg *tls.Config) (net.Conn, error) {
+				timeout := calcTimeout(ctx)
+				dialer := &tls.Dialer{
+					NetDialer: &net.Dialer{Timeout: timeout},
+					Config:    tlsCfg,
+				}
+				return dialer.DialContext(ctx, network, addr)
+			},
+		}
+	} else {
+		transport = &http2.Transport{
 			AllowHTTP: true,
 			DialTLSContext: func(ctx context.Context, network, addr string, _ *tls.Config) (net.Conn, error) {
 				return net.DialTimeout(network, addr, calcTimeout(ctx))
 			},
-		},
+		}
 	}
+
+	httpClient := &http.Client{Transport: transport}
 
 	// Use the instance ID from ring config as the local node name
 	localNodeName := cfg.Ring.InstanceID
