@@ -81,14 +81,14 @@ func validateClusterValidationRoundTripperInputParameters(cluster string, invali
 }
 
 // ClusterValidationMiddleware validates that requests have the correct cluster validation label.
-// If an empty cluster label or nil logger are provided, ClusterValidationMiddleware panics.
+// If empty cluster labels or nil logger are provided, ClusterValidationMiddleware panics.
 // The check is ignored if the request's path belongs to the list of excluded paths or if the User-Agent matches any of the excluded user agents.
 // If the softValidation parameter is true, errors related to the cluster label validation are logged, but not returned.
 // Otherwise, an error is returned.
 func ClusterValidationMiddleware(
-	cluster string, cfg clusterutil.ClusterValidationProtocolConfigForHTTP, invalidClusterRequests *prometheus.CounterVec, logger log.Logger,
+	clusters []string, cfg clusterutil.ClusterValidationProtocolConfigForHTTP, invalidClusterRequests *prometheus.CounterVec, logger log.Logger,
 ) Interface {
-	validateClusterValidationMiddlewareInputParameters(cluster, logger)
+	validateClusterValidationMiddlewareInputParameters(clusters, logger)
 	var reB strings.Builder
 	// Allow for a potential path prefix being configured.
 	reB.WriteString(".*/(metrics|debug/pprof.*|ready")
@@ -119,7 +119,7 @@ func ClusterValidationMiddleware(
 			if route == "" {
 				route = "<unknown-route>"
 			}
-			if err := checkClusterFromRequest(r, cluster, route, cfg.SoftValidation, reExcludedPath, reExcludedUserAgent, invalidClusterRequests, logger); err != nil {
+			if err := checkClusterFromRequest(r, clusters, route, cfg.SoftValidation, reExcludedPath, reExcludedUserAgent, invalidClusterRequests, logger); err != nil {
 				clusterValidationErr := clusterValidationError{
 					ClusterValidationErrorMessage: err.Error(),
 					Route:                         route,
@@ -132,9 +132,9 @@ func ClusterValidationMiddleware(
 	})
 }
 
-func validateClusterValidationMiddlewareInputParameters(cluster string, logger log.Logger) {
-	if cluster == "" {
-		panic("no cluster label provided")
+func validateClusterValidationMiddlewareInputParameters(clusters []string, logger log.Logger) {
+	if len(clusters) == 0 {
+		panic("no cluster labels provided")
 	}
 	if logger == nil {
 		panic("no logger provided")
@@ -142,7 +142,7 @@ func validateClusterValidationMiddlewareInputParameters(cluster string, logger l
 }
 
 func checkClusterFromRequest(
-	r *http.Request, expectedCluster, route string, softValidationEnabled bool, reExcludedPath *regexp.Regexp, reExcludedUserAgent *regexp.Regexp,
+	r *http.Request, expectedClusters []string, route string, softValidationEnabled bool, reExcludedPath *regexp.Regexp, reExcludedUserAgent *regexp.Regexp,
 	invalidClusterRequests *prometheus.CounterVec, logger log.Logger,
 ) error {
 	if reExcludedPath != nil && reExcludedPath.MatchString(r.URL.Path) {
@@ -158,7 +158,7 @@ func checkClusterFromRequest(
 	}
 
 	reqCluster, err := clusterutil.GetClusterFromRequest(r)
-	if err == nil && reqCluster == expectedCluster {
+	if err == nil && clusterutil.IsClusterAllowed(reqCluster, expectedClusters) {
 		return nil
 	}
 
@@ -166,7 +166,7 @@ func checkClusterFromRequest(
 		logger,
 		"path", r.URL.Path,
 		"method", r.Method,
-		"cluster_validation_label", expectedCluster,
+		"cluster_validation_labels", fmt.Sprintf("%v", expectedClusters),
 		"soft_validation", softValidationEnabled,
 		"tenant", r.Header.Get(user.OrgIDHeaderName),
 		"user_agent", r.Header.Get("User-Agent"),
@@ -181,10 +181,12 @@ func checkClusterFromRequest(
 		// No error, but request's and server's cluster validation labels didn't match.
 		var wrongClusterErr error
 		if !softValidationEnabled {
-			wrongClusterErr = fmt.Errorf("rejected request with wrong cluster validation label %q - it should be %q", reqCluster, expectedCluster)
+			wrongClusterErr = fmt.Errorf("rejected request with wrong cluster validation label %q - it should be one of %v", reqCluster, expectedClusters)
 		}
 
-		invalidClusterRequests.WithLabelValues("http", route, expectedCluster, reqCluster).Inc()
+		// Use first expected cluster for metrics compatibility
+		expectedClusterForMetrics := expectedClusters[0]
+		invalidClusterRequests.WithLabelValues("http", route, expectedClusterForMetrics, reqCluster).Inc()
 		level.Warn(logger).Log("msg", "request with wrong cluster validation label", "request_cluster_validation_label", reqCluster)
 		return wrongClusterErr
 	}
@@ -192,10 +194,12 @@ func checkClusterFromRequest(
 	if errors.Is(err, clusterutil.ErrNoClusterValidationLabelInHeader) {
 		var emptyClusterErr error
 		if !softValidationEnabled {
-			emptyClusterErr = fmt.Errorf("rejected request with empty cluster validation label - it should be %q", expectedCluster)
+			emptyClusterErr = fmt.Errorf("rejected request with empty cluster validation label - it should be one of %v", expectedClusters)
 		}
 
-		invalidClusterRequests.WithLabelValues("http", route, expectedCluster, "").Inc()
+		// Use first expected cluster for metrics compatibility
+		expectedClusterForMetrics := expectedClusters[0]
+		invalidClusterRequests.WithLabelValues("http", route, expectedClusterForMetrics, "").Inc()
 		level.Warn(logger).Log("msg", "request with no cluster validation label")
 		return emptyClusterErr
 	}
@@ -205,7 +209,9 @@ func checkClusterFromRequest(
 		rejectedRequestErr = fmt.Errorf("rejected request: %w", err)
 	}
 
-	invalidClusterRequests.WithLabelValues("http", route, expectedCluster, "").Inc()
+	// Use first expected cluster for metrics compatibility
+	expectedClusterForMetrics := expectedClusters[0]
+	invalidClusterRequests.WithLabelValues("http", route, expectedClusterForMetrics, "").Inc()
 	level.Warn(logger).Log("msg", "detected error during cluster validation label extraction", "err", err)
 	return rejectedRequestErr
 }

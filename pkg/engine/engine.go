@@ -334,10 +334,7 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, logger log.Logger, param
 		"duration", duration.String(),
 	)
 
-	region.AddEvent("finished physical planning",
-		attribute.String("plan", physical.PrintAsTree(physicalPlan)),
-		attribute.Stringer("duration", duration),
-	)
+	region.AddEvent("finished physical planning", attribute.Stringer("duration", duration))
 	return physicalPlan, duration, nil
 }
 
@@ -378,10 +375,7 @@ func (e *Engine) buildWorkflow(ctx context.Context, logger log.Logger, physicalP
 		"duration", duration.String(),
 	)
 
-	region.AddEvent("finished execution planning",
-		attribute.String("plan", workflow.Sprint(wf)),
-		attribute.Stringer("duration", duration),
-	)
+	region.AddEvent("finished execution planning", attribute.Stringer("duration", duration))
 	return wf, duration, nil
 }
 
