@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/go-kit/log"
@@ -43,21 +42,11 @@ type thread struct {
 	Logger    log.Logger
 
 	Ready chan<- readyRequest
-
-	stopped  chan struct{}
-	stopOnce sync.Once
-}
-
-func (t *thread) Stop() {
-	t.stopOnce.Do(func() {
-		close(t.stopped)
-	})
 }
 
 // Run starts the thread. Run will request and run tasks in a loop until the
-// thread is stopped. Run will not stop if any job failed, it will log the error and continue
-// acceptinh other jobs.
-func (t *thread) Run() {
+// context is canceled.
+func (t *thread) Run(ctx context.Context) error {
 NextTask:
 	for {
 		level.Debug(t.Logger).Log("msg", "requesting task")
@@ -66,24 +55,20 @@ NextTask:
 		// for each iteration to ensure that writes to respCh never block.
 		respCh := make(chan readyResponse, 1)
 
-		// When we create the request, we pass the thread's context. This
-		// ensures that the context of tasks written to respCh are bound to the
-		// lifetime of the thread, but can also be canceled by the scheduler.
 		req := readyRequest{
-			Context:  context.Background(),
 			Response: respCh,
 		}
 
 		// Send our request.
 		select {
-		case <-t.stopped:
-			return
+		case <-ctx.Done():
+			return nil
 		case t.Ready <- req:
 		}
 
 		// Wait for a task assignment.
 		select {
-		case <-t.stopped:
+		case <-ctx.Done():
 			// TODO(rfratto): This will silently drop tasks written to respCh.
 			// But since Run only exits when the worker is exiting, this should
 			// be handled gracefully by the scheduler (it will detect the
@@ -92,7 +77,7 @@ NextTask:
 			// If, in the future, we dynamically change the number of threads,
 			// we'll want a mechanism to gracefully handle this so the writer to
 			// respCh knows that the task was dropped.
-			return
+			return nil
 
 		case resp := <-respCh:
 			if resp.Error != nil {

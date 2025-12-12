@@ -72,10 +72,6 @@ type Config struct {
 // readyRequest is a message sent from a thread to notify the worker that it's
 // ready for a task.
 type readyRequest struct {
-	// Context associated with the request. Jobs created from this request
-	// should use this context.
-	Context context.Context
-
 	// Response is the channel to send assigned tasks to. Response must be a
 	// buffered channel with at least one slot.
 	Response chan readyResponse
@@ -163,31 +159,29 @@ func (w *Worker) Service() services.Service {
 
 // run starts the worker, running until the provided context is canceled.
 func (w *Worker) run(ctx context.Context) error {
-	threadsGroup := &sync.WaitGroup{}
-	threads := make([]*thread, w.numThreads)
+	threadsCtx, threadsCancel := context.WithCancel(context.Background())
+	defer threadsCancel()
+	threadsGroup, threadsCtx := errgroup.WithContext(threadsCtx)
 
 	// Spin up worker threads.
 	for i := range w.numThreads {
-		threads[i] = &thread{
+		t := &thread{
 			BatchSize: w.config.BatchSize,
 			Logger:    log.With(w.logger, "thread", i),
 			Bucket:    w.config.Bucket,
 
-			Ready:   w.readyCh,
-			stopped: make(chan struct{}),
+			Ready: w.readyCh,
 		}
 
-		threadsGroup.Go(func() { threads[i].Run() })
+		threadsGroup.Go(func() error { return t.Run(threadsCtx) })
 	}
 
 	// Spin up the listener for peer connections
 	peerConnectionsCtx, peerConnectionsCancel := context.WithCancel(context.Background())
 	defer peerConnectionsCancel()
-	listenerCtx, listenerCancel := context.WithCancel(context.Background())
-	defer listenerCancel()
 
 	go func() {
-		w.runAcceptLoop(listenerCtx, peerConnectionsCtx)
+		w.runAcceptLoop(peerConnectionsCtx)
 	}()
 
 	// Spin up the scheduler loop
@@ -215,21 +209,20 @@ func (w *Worker) run(ctx context.Context) error {
 	// Wait for shutdown
 	<-ctx.Done()
 
-	// Stop accepting new connections from peers.
-	listenerCancel()
-
 	// Signal all worker threads to stop. This will make them not to ask for new tasks, but continue processing current jobs.
-	for _, t := range threads {
-		t.Stop()
-	}
+	threadsCancel()
+
 	// Wait for all worker threads to finish their current jobs.
-	threadsGroup.Wait()
+	err := threadsGroup.Wait()
+	if err != nil {
+		return err
+	}
 
 	// Stop scheduler loop
 	schedulerCancel()
 
 	// Wait for scheduler loop to finish
-	err := schedulerGroup.Wait()
+	err = schedulerGroup.Wait()
 	if err != nil {
 		return err
 	}
@@ -243,17 +236,17 @@ func (w *Worker) run(ctx context.Context) error {
 // runAcceptLoop handles incoming connections from peers. Incoming connections
 // are exclusively used to receive task results from other workers, or between
 // threads within this worker.
-func (w *Worker) runAcceptLoop(listenerCtx, peerConnectionsCtx context.Context) {
+func (w *Worker) runAcceptLoop(ctx context.Context) {
 	for {
-		conn, err := w.listener.Accept(listenerCtx)
-		if err != nil && listenerCtx.Err() != nil {
+		conn, err := w.listener.Accept(ctx)
+		if err != nil && ctx.Err() != nil {
 			return
 		} else if err != nil {
 			level.Warn(w.logger).Log("msg", "failed to accept connection", "err", err)
 			continue
 		}
 
-		go w.handleConn(peerConnectionsCtx, conn)
+		go w.handleConn(ctx, conn)
 	}
 }
 
@@ -362,7 +355,7 @@ func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, con
 			return err
 		}
 
-		job, err := w.newJob(req.Context, peer, logger, msg)
+		job, err := w.newJob(context.Background(), peer, logger, msg)
 		if err != nil {
 			return err
 		}

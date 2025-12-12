@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"testing"
 	"testing/synctest"
@@ -204,7 +205,7 @@ func TestWorkerGracefulShutdown(t *testing.T) {
 
 		// Send data for the stream to the worker
 		// We need to connect to the worker 1 on behalf of worker 2 and send a StreamDataMessage
-		workerConn, err := net.worker1Listener.DialFrom(ctx, wire.LocalWorker2)
+		workerConn, err := net.workerListener.DialFrom(ctx, wire.LocalWorker)
 		require.NoError(t, err)
 		defer workerConn.Close()
 
@@ -224,7 +225,7 @@ func TestWorkerGracefulShutdown(t *testing.T) {
 		cancel()
 
 		// Connect to the scheduler on behalf of worker 2
-		schedulerConn, err := net.schedulerListener.DialFrom(ctx, wire.LocalWorker2)
+		schedulerConn, err := net.schedulerListener.DialFrom(ctx, testAddr("worker2"))
 		require.NoError(t, err)
 		defer schedulerConn.Close()
 
@@ -291,21 +292,18 @@ func (w *testRecordWriter) Write(ctx context.Context, record arrow.RecordBatch) 
 
 type testNetwork struct {
 	schedulerListener *wire.Local
-	worker1Listener   *wire.Local
-	worker2Listener   *wire.Local
+	workerListener    *wire.Local
 	dialer            wire.Dialer
 }
 
 func newTestNetwork() *testNetwork {
 	schedulerListener := &wire.Local{Address: wire.LocalScheduler}
-	worker1Listener := &wire.Local{Address: wire.LocalWorker}
-	worker2Listener := &wire.Local{Address: wire.LocalWorker2}
+	workerListener := &wire.Local{Address: wire.LocalWorker}
 
 	return &testNetwork{
 		schedulerListener: schedulerListener,
-		worker1Listener:   worker1Listener,
-		worker2Listener:   worker2Listener,
-		dialer:            wire.NewLocalDialer(schedulerListener, worker1Listener, worker2Listener),
+		workerListener:    workerListener,
+		dialer:            wire.NewLocalDialer(schedulerListener, workerListener),
 	}
 }
 
@@ -343,7 +341,7 @@ func newTestWorkerWithContext(t *testing.T, logger log.Logger, loc objtest.Locat
 		BatchSize: 2048,
 
 		Dialer:           net.dialer,
-		Listener:         net.worker1Listener,
+		Listener:         net.workerListener,
 		SchedulerAddress: wire.LocalScheduler,
 
 		// Create enough threads to guarantee all tasks can be scheduled without
@@ -416,3 +414,10 @@ func readTable(ctx context.Context, t *testing.T, p executor.Pipeline) arrow.Tab
 
 	return array.NewTableFromRecords(recs[0].Schema(), recs)
 }
+
+type testAddr string
+
+var _ net.Addr = testAddr("")
+
+func (addr testAddr) Network() string { return "local" }
+func (addr testAddr) String() string  { return string(addr) }

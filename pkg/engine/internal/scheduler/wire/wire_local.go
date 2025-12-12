@@ -15,9 +15,6 @@ var (
 	// LocalWorker is the address of the local worker when using the
 	// [Local] listener.
 	LocalWorker net.Addr = localAddr("worker")
-
-	// LocalWorker2 is another address of the local worker.
-	LocalWorker2 net.Addr = localAddr("worker2")
 )
 
 type localAddr string
