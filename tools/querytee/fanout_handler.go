@@ -3,6 +3,7 @@ package querytee
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -163,22 +164,22 @@ func (h *FanOutHandler) Do(ctx context.Context, req queryrangebase.Request) (que
 		} else {
 			// Non-race mode: existing logic (wait for preferred)
 			if result.backend.preferred {
+				// when the preferred backend fails (5xx or request error) we return any successful backend response
+				if !result.backendResp.succeeded() {
+					continue
+				}
+
 				// spawn goroutine to capture remaining and do goldfish comparison
 				remaining := len(h.backends) - i - 1
 				go func() {
 					h.collectRemainingAndCompare(remaining, httpReq, results, collected, shouldSample)
 				}()
 
-				// when the preferred backend fails (5xx) we return any successful backend response
-				if !result.backendResp.succeeded() {
-					continue
-				}
-
 				// when the preferred backends succeeds, but with error, that indicates an invalid request
 				// return the error to the client
 				if result.err != nil {
 					return &NonDecodableResponse{
-						StatusCode: result.backendResp.status,
+						StatusCode: statusCodeFromError(result.err),
 						Body:       result.backendResp.body,
 					}, result.err
 				}
@@ -198,7 +199,7 @@ func (h *FanOutHandler) Do(ctx context.Context, req queryrangebase.Request) (que
 	if len(collected) > 0 && collected[0].err != nil {
 		result := collected[0]
 		return &NonDecodableResponse{
-			StatusCode: result.backendResp.status,
+			StatusCode: statusCodeFromError(result.err),
 			Body:       result.backendResp.body,
 		}, result.err
 	}
@@ -346,6 +347,11 @@ func (h *FanOutHandler) recordMetrics(result *backendResult, method, issuer stri
 		return
 	}
 
+	statusCode := result.backendResp.status
+	if result.err != nil {
+		statusCode = statusCodeFromError(result.err)
+	}
+
 	h.metrics.responsesTotal.WithLabelValues(
 		result.backend.name,
 		method,
@@ -357,7 +363,7 @@ func (h *FanOutHandler) recordMetrics(result *backendResult, method, issuer stri
 		result.backend.name,
 		method,
 		h.routeName,
-		strconv.FormatInt(int64(result.backendResp.status), 10),
+		strconv.FormatInt(int64(statusCode), 10),
 		issuer,
 	).Observe(result.backendResp.duration.Seconds())
 }
@@ -436,4 +442,17 @@ func copyHeaders(from, to http.Header) {
 			to.Add(key, value)
 		}
 	}
+}
+
+// statusCodeFromError determines the appropriate HTTP status code when a backend request fails.
+func statusCodeFromError(err error) int {
+	if errors.Is(err, context.Canceled) {
+		return 499 // Client Closed Request
+	}
+
+	if errors.Is(err, context.DeadlineExceeded) {
+		return http.StatusGatewayTimeout // 504
+	}
+
+	return http.StatusInternalServerError
 }
