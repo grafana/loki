@@ -282,6 +282,8 @@ func (c *Capture) ToStatsSummary(execTime, queueTime time.Duration, totalEntries
 	// TODO: this will report the wrong value if the plan has a filter stage.
 	// pick the min of row_out from filter and scan nodes.
 	result.Querier.Store.Dataobj.PostFilterRows = readInt64(observations, StatPipelineRowsOut.Key())
+
+	result.ComputeSummary(execTime, queueTime, totalEntriesReturned)
 	return result
 }
 
