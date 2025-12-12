@@ -155,6 +155,10 @@ func (l *logResultCache) Do(ctx context.Context, req queryrangebase.Request) (qu
 		level.Warn(l.logger).Log("msg", "error fetching cache", "err", err, "cacheKey", cacheKey, "responseKey", responseCacheKey)
 		return l.next.Do(ctx, req)
 	}
+
+	// Track cache request for positive result cache
+	stats.FromContext(ctx).AddCacheEntriesRequested(stats.PositiveResultCache, 1)
+
 	// we expect one, two, or three keys to be found or missing.
 	if len(buffs) > len(cacheKeys) {
 		level.Warn(l.logger).Log("msg", "unexpected length of cache return values", "buffs", len(buffs), "expected", len(cacheKeys))
