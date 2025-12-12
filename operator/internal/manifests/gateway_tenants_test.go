@@ -944,6 +944,9 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 							Containers: []corev1.Container{
 								{
 									Name: gatewayContainerName,
+									Args: []string{
+										"--logs.auth.extract-selectors=SrcK8S_Namespace,DstK8S_Namespace",
+									},
 								},
 								{
 									Name:  "opa",
@@ -1051,6 +1054,9 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 							Containers: []corev1.Container{
 								{
 									Name: gatewayContainerName,
+									Args: []string{
+										"--logs.auth.extract-selectors=SrcK8S_Namespace,DstK8S_Namespace",
+									},
 								},
 								{
 									Name:  "opa",
