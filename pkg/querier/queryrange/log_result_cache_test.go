@@ -459,8 +459,13 @@ func Test_LogResultNonOverlappingCache(t *testing.T) {
 		)
 	)
 
+	nonEmptyHits, err := metrics.CacheHit.GetMetricWithLabelValues("non-empty")
+	require.NoError(t, err)
+	emptyHits, err := metrics.CacheHit.GetMetricWithLabelValues("empty")
+	require.NoError(t, err)
+
 	checkCacheMetrics := func(expectedHits, expectedMisses int) {
-		require.Equal(t, float64(expectedHits), testutil.ToFloat64(metrics.CacheHit))
+		require.Equal(t, float64(expectedHits), testutil.ToFloat64(nonEmptyHits)+testutil.ToFloat64(emptyHits))
 		require.Equal(t, float64(expectedMisses), testutil.ToFloat64(metrics.CacheMiss))
 	}
 
