@@ -52,7 +52,7 @@ type ProxyEndpoint struct {
 	routeName string
 
 	// Goldfish manager for query sampling and comparison
-	goldfishManager *goldfish.Manager
+	goldfishManager goldfish.Manager
 
 	// Handler for processing requests using the middleware pattern.
 	// When set, ServeHTTP uses this instead of the legacy executeBackendRequests.
@@ -87,7 +87,7 @@ func NewProxyEndpoint(
 }
 
 // WithGoldfish adds Goldfish manager to the endpoint.
-func (p *ProxyEndpoint) WithGoldfish(manager *goldfish.Manager) *ProxyEndpoint {
+func (p *ProxyEndpoint) WithGoldfish(manager goldfish.Manager) *ProxyEndpoint {
 	p.goldfishManager = manager
 	return p
 }
