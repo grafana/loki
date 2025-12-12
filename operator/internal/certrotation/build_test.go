@@ -30,7 +30,7 @@ func TestBuildAll(t *testing.T) {
 
 	objs, err := BuildAll(opts)
 	require.NoError(t, err)
-	require.Len(t, objs, 17)
+	require.Len(t, objs, 19)
 
 	for _, obj := range objs {
 		require.True(t, strings.HasPrefix(obj.GetName(), opts.StackName))
