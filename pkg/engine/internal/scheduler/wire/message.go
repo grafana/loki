@@ -68,7 +68,8 @@ type (
 	// WorkerHelloMessage is sent by a peer to the scheduler to establish
 	// itself as a control plane connection that can run tasks.
 	//
-	// WorkerHelloMessage must be sent before [WorkerReadyMessage].
+	// WorkerHelloMessage must be sent by workers before any other worker
+	// messages.
 	WorkerHelloMessage struct {
 		// Threads is the number of threads the worker has available.
 		//
@@ -77,17 +78,10 @@ type (
 		Threads int
 	}
 
-	// WorkerReadyMessage is sent by a worker to the scheduler to request a new
-	// task to run. Ready workers are eventually assigned a task via
-	// [TaskAssignMessage].
+	// WorkerReadyMessage is sent by a worker to the scheduler to signal that
+	// the worker has at least one worker thread available for running tasks.
 	//
-	// Workers may send multiple WorkerReadyMessage messages to request more
-	// tasks. Workers are automatically unmarked as ready once each
-	// [WorkerReadyMessage] has been responded to with a [TaskAssignMessage].
-	//
-	// The scheduler can reject a WorkerReadyMessage if the worker sends more
-	// WorkerReadyMessages than the number of threads it declared in its
-	// [WorkerHelloMessage].
+	// Workers may send WorkerReadyMessage at any time.
 	WorkerReadyMessage struct {
 		// No fields.
 	}
@@ -96,8 +90,12 @@ type (
 // Messages about tasks.
 type (
 	// TaskAssignMessage is sent by the scheduler to a worker when there is a
-	// task to run. TaskAssignMessage is only sent to workers for which there is
-	// still at least one [WorkerReadyMessage].
+	// task to run.
+	//
+	// Workers that have no threads available should reject task assignment with
+	// a HTTP 429 Too Many Requests. When this happens, the scheduler will
+	// remove the ready state from the worker until it receives a
+	// WorkerReadyMessage.
 	TaskAssignMessage struct {
 		Task *workflow.Task // Task to run.
 
