@@ -24,7 +24,7 @@ dependencies:
   - name: rollout-operator
     alias: rollout_operator
     repository: https://grafana.github.io/helm-charts
-    version: 0.38.2
+    version: 0.39.0
     condition: rollout_operator.enabled
 maintainers:
   - name: trevorwhitney
