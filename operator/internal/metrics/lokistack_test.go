@@ -58,6 +58,16 @@ func TestLokiStackMetricsCollect(t *testing.T) {
 			wantMetrics: `# HELP lokistack_info Information about deployed LokiStack instances. Value is always 1.
 # TYPE lokistack_info gauge
 lokistack_info{size="1x.demo",stack_name="test-stack",stack_namespace="test-namespace"} 1
+# HELP lokistack_status_condition Counts the current status conditions of the LokiStack.
+# TYPE lokistack_status_condition gauge
+lokistack_status_condition{condition="Degraded",reason="",size="1x.demo",stack_name="test-stack",stack_namespace="test-namespace",status="false"} 1
+lokistack_status_condition{condition="Degraded",reason="",size="1x.demo",stack_name="test-stack",stack_namespace="test-namespace",status="true"} 0
+lokistack_status_condition{condition="Failed",reason="",size="1x.demo",stack_name="test-stack",stack_namespace="test-namespace",status="false"} 1
+lokistack_status_condition{condition="Failed",reason="",size="1x.demo",stack_name="test-stack",stack_namespace="test-namespace",status="true"} 0
+lokistack_status_condition{condition="Pending",reason="",size="1x.demo",stack_name="test-stack",stack_namespace="test-namespace",status="false"} 1
+lokistack_status_condition{condition="Pending",reason="",size="1x.demo",stack_name="test-stack",stack_namespace="test-namespace",status="true"} 0
+lokistack_status_condition{condition="Ready",reason="",size="1x.demo",stack_name="test-stack",stack_namespace="test-namespace",status="false"} 1
+lokistack_status_condition{condition="Ready",reason="",size="1x.demo",stack_name="test-stack",stack_namespace="test-namespace",status="true"} 0
 `,
 		},
 		{
@@ -90,6 +100,14 @@ lokistack_info{size="1x.demo",stack_name="test-stack",stack_namespace="test-name
 lokistack_info{size="1x.small",stack_name="test-stack",stack_namespace="test-namespace"} 1
 # HELP lokistack_status_condition Counts the current status conditions of the LokiStack.
 # TYPE lokistack_status_condition gauge
+lokistack_status_condition{condition="Degraded",reason="",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace",status="false"} 1
+lokistack_status_condition{condition="Degraded",reason="",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace",status="true"} 0
+lokistack_status_condition{condition="Failed",reason="",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace",status="false"} 1
+lokistack_status_condition{condition="Failed",reason="",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace",status="true"} 0
+lokistack_status_condition{condition="Pending",reason="",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace",status="false"} 1
+lokistack_status_condition{condition="Pending",reason="",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace",status="true"} 0
+lokistack_status_condition{condition="Ready",reason="",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace",status="false"} 1
+lokistack_status_condition{condition="Ready",reason="",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace",status="true"} 0
 lokistack_status_condition{condition="Warning",reason="StorageNeedsSchemaUpdate",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace",status="false"} 0
 lokistack_status_condition{condition="Warning",reason="StorageNeedsSchemaUpdate",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace",status="true"} 1
 `,
@@ -134,6 +152,10 @@ lokistack_status_condition{condition="Warning",reason="StorageNeedsSchemaUpdate"
 lokistack_info{size="1x.small",stack_name="test-stack",stack_namespace="test-namespace"} 1
 # HELP lokistack_status_condition Counts the current status conditions of the LokiStack.
 # TYPE lokistack_status_condition gauge
+lokistack_status_condition{condition="Degraded",reason="",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace",status="false"} 1
+lokistack_status_condition{condition="Degraded",reason="",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace",status="true"} 0
+lokistack_status_condition{condition="Failed",reason="",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace",status="false"} 1
+lokistack_status_condition{condition="Failed",reason="",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace",status="true"} 0
 lokistack_status_condition{condition="Pending",reason="PendingComponents",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace",status="false"} 1
 lokistack_status_condition{condition="Pending",reason="PendingComponents",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace",status="true"} 0
 lokistack_status_condition{condition="Ready",reason="ReadyComponents",size="1x.small",stack_name="test-stack",stack_namespace="test-namespace",status="false"} 0
