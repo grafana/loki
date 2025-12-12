@@ -74,6 +74,7 @@ type Reader struct {
 	shuttingDown    bool
 	done            chan struct{}
 	queryAppend     string
+	labels          string
 }
 
 func NewReader(writer io.Writer,
@@ -92,6 +93,7 @@ func NewReader(writer io.Writer,
 	streamValue string,
 	interval time.Duration,
 	queryAppend string,
+	labels string,
 ) (*Reader, error) {
 	h := http.Header{}
 
@@ -154,6 +156,7 @@ func NewReader(writer io.Writer,
 		done:            make(chan struct{}),
 		shuttingDown:    false,
 		queryAppend:     queryAppend,
+		labels:          labels,
 	}
 
 	go rd.run()
@@ -290,12 +293,27 @@ func (r *Reader) Query(start time.Time, end time.Time) ([]time.Time, error) {
 	if r.useTLS {
 		scheme = "https"
 	}
+	var labels string
+	if r.labels != "" {
+		var lbls []string
+		for _, label := range strings.Split(r.labels, ",") {
+			labelParts := strings.Split(label, "=")
+			if len(labelParts) != 2 {
+				return nil, fmt.Errorf("invalid label format: %s, expected key=value", label)
+			}
+			lbls = append(lbls, fmt.Sprintf("%s=\"%s\"", labelParts[0], labelParts[1]))
+		}
+		labels = fmt.Sprintf("{%s}", strings.Join(lbls, ","))
+	} else {
+		labels = fmt.Sprintf("{%s=\"%s\",%s=\"%s\"}", r.sName, r.sValue, r.lName, r.lVal)
+	}
+
 	u := url.URL{
 		Scheme: scheme,
 		Host:   r.addr,
 		Path:   "/loki/api/v1/query_range",
 		RawQuery: fmt.Sprintf("start=%d&end=%d", start.UnixNano(), end.UnixNano()) +
-			"&query=" + url.QueryEscape(fmt.Sprintf("{%v=\"%v\",%v=\"%v\"} %v", r.sName, r.sValue, r.lName, r.lVal, r.queryAppend)) +
+			"&query=" + url.QueryEscape(fmt.Sprintf("%s %v", labels, r.queryAppend)) +
 			"&limit=1000",
 	}
 	fmt.Fprintf(r.w, "Querying loki for logs with query: %v\n", u.String())
