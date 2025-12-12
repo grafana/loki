@@ -562,7 +562,7 @@ func (l *logResultCache) handleResponseHit(ctx context.Context, cacheKey, respon
 
 		// Extract the relevant portion if needed
 		if cachedRequest.StartTs.UnixNano() < lokiReq.StartTs.UnixNano() || cachedRequest.EndTs.UnixNano() > lokiReq.EndTs.UnixNano() {
-			result = extractLokiResponse(lokiReq.GetStartTs(), lokiReq.GetEndTs(), cachedResponse)
+			result = extractLokiResponse(lokiReq.GetStartTs(), lokiReq.GetEndTs(), lokiReq.Direction, cachedResponse)
 		}
 
 		// The cached response may have more entries than the limit, so we need to extract only the relevant
@@ -734,7 +734,7 @@ func (l *logResultCache) handleResponseHit(ctx context.Context, cacheKey, respon
 		if cachedRequest.GetEndTs().Before(overlapEnd) {
 			overlapEnd = cachedRequest.GetEndTs()
 		}
-		extractedCached := extractLokiResponse(overlapStart, overlapEnd, cachedResponse)
+		extractedCached := extractLokiResponse(overlapStart, overlapEnd, lokiReq.Direction, cachedResponse)
 
 		level.Debug(l.logger).Log(
 			"msg", "extracted cached response - handleResponseHit",
@@ -911,7 +911,7 @@ func debugCountEntries(lokiRes *LokiResponse) int {
 }
 
 // extractLokiResponse extracts response with interval [start, end)
-func extractLokiResponse(start, end time.Time, r *LokiResponse) *LokiResponse {
+func extractLokiResponse(start, end time.Time, direction logproto.Direction, r *LokiResponse) *LokiResponse {
 	extractedResp := LokiResponse{
 		Status:     r.Status,
 		Direction:  r.Direction,
@@ -926,7 +926,24 @@ func extractLokiResponse(start, end time.Time, r *LokiResponse) *LokiResponse {
 		},
 	}
 	for _, stream := range r.Data.Result {
-		if stream.Entries[0].Timestamp.After(end) || stream.Entries[len(stream.Entries)-1].Timestamp.Before(start) {
+		if len(stream.Entries) == 0 {
+			continue
+		}
+
+		// Determine the min and max timestamps in this stream based on entry ordering.
+		// For FORWARD direction: entries are sorted oldest to newest (first=min, last=max)
+		// For BACKWARD direction: entries are sorted newest to oldest (first=max, last=min)
+		var streamMin, streamMax time.Time
+		if direction == logproto.FORWARD {
+			streamMin = stream.Entries[0].Timestamp
+			streamMax = stream.Entries[len(stream.Entries)-1].Timestamp
+		} else {
+			streamMin = stream.Entries[len(stream.Entries)-1].Timestamp
+			streamMax = stream.Entries[0].Timestamp
+		}
+
+		// Skip stream if it's entirely outside the [start, end) range
+		if streamMin.After(end) || streamMin.Equal(end) || streamMax.Before(start) {
 			continue
 		}
 
@@ -943,7 +960,9 @@ func extractLokiResponse(start, end time.Time, r *LokiResponse) *LokiResponse {
 			extractedStream.Entries = append(extractedStream.Entries, entry)
 		}
 
-		extractedResp.Data.Result = append(extractedResp.Data.Result, extractedStream)
+		if len(extractedStream.Entries) > 0 {
+			extractedResp.Data.Result = append(extractedResp.Data.Result, extractedStream)
+		}
 	}
 
 	return &extractedResp
