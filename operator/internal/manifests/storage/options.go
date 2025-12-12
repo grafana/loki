@@ -57,12 +57,16 @@ type S3SSEType string
 const (
 	SSEKMSType S3SSEType = "SSE-KMS"
 	SSES3Type  S3SSEType = "SSE-S3"
+	SSECType   S3SSEType = "SSE-C"
 )
 
 type S3SSEConfig struct {
-	Type                 S3SSEType
+	Type S3SSEType
+	// sse-kms
 	KMSKeyID             string
 	KMSEncryptionContext string
+	// sse-c
+	CustomerEncryptionKey string
 }
 
 // SwiftStorageConfig for Swift storage config
