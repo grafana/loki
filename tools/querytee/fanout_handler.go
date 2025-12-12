@@ -128,6 +128,12 @@ func (h *FanOutHandler) Do(ctx context.Context, req queryrangebase.Request) (que
 	for i, backend := range h.backends {
 		go func(_ int, b *ProxyBackend) {
 			result := h.executeBackendRequest(ctx, httpReq, body, b, req)
+
+			// ensure a valid status code is set in case of error
+			if result.err != nil && result.backendResp.status == 0 {
+				result.backendResp.status = statusCodeFromError(result.err)
+			}
+
 			results <- result
 
 			// Record metrics
@@ -179,7 +185,7 @@ func (h *FanOutHandler) Do(ctx context.Context, req queryrangebase.Request) (que
 				// return the error to the client
 				if result.err != nil {
 					return &NonDecodableResponse{
-						StatusCode: statusCodeFromError(result.err),
+						StatusCode: result.backendResp.status,
 						Body:       result.backendResp.body,
 					}, result.err
 				}
@@ -199,7 +205,7 @@ func (h *FanOutHandler) Do(ctx context.Context, req queryrangebase.Request) (que
 	if len(collected) > 0 && collected[0].err != nil {
 		result := collected[0]
 		return &NonDecodableResponse{
-			StatusCode: statusCodeFromError(result.err),
+			StatusCode: result.backendResp.status,
 			Body:       result.backendResp.body,
 		}, result.err
 	}
@@ -347,11 +353,6 @@ func (h *FanOutHandler) recordMetrics(result *backendResult, method, issuer stri
 		return
 	}
 
-	statusCode := result.backendResp.status
-	if result.err != nil {
-		statusCode = statusCodeFromError(result.err)
-	}
-
 	h.metrics.responsesTotal.WithLabelValues(
 		result.backend.name,
 		method,
@@ -363,7 +364,7 @@ func (h *FanOutHandler) recordMetrics(result *backendResult, method, issuer stri
 		result.backend.name,
 		method,
 		h.routeName,
-		strconv.FormatInt(int64(statusCode), 10),
+		strconv.FormatInt(int64(result.backendResp.status), 10),
 		issuer,
 	).Observe(result.backendResp.duration.Seconds())
 }
