@@ -388,6 +388,7 @@ func (r *BackendResponse) statusCode() int {
 	return r.status
 }
 
+// TODO(twhitney): detectIssuer should also detect Grafana as an issuer
 func detectIssuer(r *http.Request) string {
 	if strings.HasPrefix(r.Header.Get("User-Agent"), "loki-canary") {
 		return canaryIssuer

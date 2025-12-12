@@ -32,6 +32,7 @@ type FanOutHandler struct {
 	comparator         comparator.ResponsesComparator
 	instrumentCompares bool
 	enableRace         bool
+	raceTolerance      time.Duration
 }
 
 // FanOutHandlerConfig holds configuration for creating a FanOutHandler.
@@ -45,6 +46,7 @@ type FanOutHandlerConfig struct {
 	Comparator         comparator.ResponsesComparator
 	InstrumentCompares bool
 	EnableRace         bool
+	RaceTolerance      time.Duration
 }
 
 // NewFanOutHandler creates a new FanOutHandler.
@@ -59,6 +61,7 @@ func NewFanOutHandler(cfg FanOutHandlerConfig) *FanOutHandler {
 		comparator:         cfg.Comparator,
 		instrumentCompares: cfg.InstrumentCompares,
 		enableRace:         cfg.EnableRace,
+		raceTolerance:      cfg.RaceTolerance,
 	}
 }
 
@@ -108,39 +111,8 @@ func (h *FanOutHandler) Do(ctx context.Context, req queryrangebase.Request) (que
 	if err != nil {
 		return nil, fmt.Errorf("failed to extract tenant IDs: %w", err)
 	}
-	shouldSample := false
-	if h.goldfishManager != nil {
-		for _, tenant := range tenants {
-			if h.goldfishManager.ShouldSample(tenant) {
-				shouldSample = true
-				level.Debug(h.logger).Log(
-					"msg", "Goldfish sampling decision",
-					"tenant", tenant,
-					"sampled", shouldSample,
-					"path", httpReq.URL.Path)
-				break
-			}
-		}
-	}
-
-	results := make(chan *backendResult, len(h.backends))
-
-	for i, backend := range h.backends {
-		go func(_ int, b *ProxyBackend) {
-			result := h.executeBackendRequest(ctx, httpReq, body, b, req)
-
-			// ensure a valid status code is set in case of error
-			if result.err != nil && result.backendResp.status == 0 {
-				result.backendResp.status = statusCodeFromError(result.err)
-			}
-
-			results <- result
-
-			// Record metrics
-			h.recordMetrics(result, httpReq.Method, issuer)
-		}(i, backend)
-	}
-
+	shouldSample := h.shouldSample(tenants, httpReq)
+	results := h.makeBackendRequests(ctx, httpReq, body, req, issuer)
 	collected := make([]*backendResult, 0, len(h.backends))
 
 	for i := 0; i < len(h.backends); i++ {
@@ -148,29 +120,38 @@ func (h *FanOutHandler) Do(ctx context.Context, req queryrangebase.Request) (que
 		collected = append(collected, result)
 
 		// Race mode: return first successful response from ANY backend
-		// TODO: move race logic to a separate function, and catch the condition in Do and fan out to two different functions
-		// rather than have it all nested in one.
 		if h.enableRace {
-			// Check if this is the first successful result (race winner)
 			if result.err == nil && result.backendResp.succeeded() {
-				// Record race win metric
-				h.metrics.raceWins.WithLabelValues(
-					result.backend.name,
-					h.routeName,
-				).Inc()
-
-				// Spawn goroutine to collect remaining responses
+				winner := result
 				remaining := len(h.backends) - i - 1
-				go func() {
-					h.collectRemainingAndCompare(remaining, httpReq, results, collected, shouldSample)
-				}()
 
-				return result.response, nil
+				// If the preferred (v1) backend wins, then apply the handicap to give v2 a
+				// chance to "win" by finishing within the race tolerance of v1.
+				if result.backend.preferred && h.raceTolerance > 0 {
+					select {
+					case r2 := <-results:
+						collected = append(collected, r2)
+						if r2.err == nil && r2.backendResp.succeeded() {
+							winner = r2
+							remaining = len(h.backends) - i - 2
+						}
+					case <-time.After(h.raceTolerance):
+						// tolerance expired, fall back to original winner
+					}
+				}
+
+				return h.finishRace(
+					winner,
+					remaining,
+					httpReq,
+					results,
+					collected,
+					shouldSample)
 			}
 		} else {
-			// Non-race mode: existing logic (wait for preferred)
+			// Non-race mode: legacy logic (wait for preferred)
 			if result.backend.preferred {
-				// when the preferred backend fails (5xx or request error) we return any successful backend response
+				// when the preferred backend fails return any successful response
 				if !result.backendResp.succeeded() {
 					continue
 				}
@@ -210,6 +191,20 @@ func (h *FanOutHandler) Do(ctx context.Context, req queryrangebase.Request) (que
 		}, result.err
 	}
 	return nil, fmt.Errorf("all backends failed")
+}
+
+// finishRace records the race winner and spawns a goroutine to collect remaining results.
+func (h *FanOutHandler) finishRace(winner *backendResult, remaining int, httpReq *http.Request, results <-chan *backendResult, collected []*backendResult, shouldSample bool) (queryrangebase.Response, error) {
+	h.metrics.raceWins.WithLabelValues(
+		winner.backend.name,
+		h.routeName,
+	).Inc()
+
+	go func() {
+		h.collectRemainingAndCompare(remaining, httpReq, results, collected, shouldSample)
+	}()
+
+	return winner.response, nil
 }
 
 // collectRemainingAndCompare collects remaining backend results, performs comparisons,
@@ -428,6 +423,55 @@ func (h *FanOutHandler) WithMetrics(metrics *ProxyMetrics) *FanOutHandler {
 func (h *FanOutHandler) WithComparator(comparator comparator.ResponsesComparator) *FanOutHandler {
 	h.comparator = comparator
 	return h
+}
+
+// shouldSample determines if a query should be sampled for goldfish comparison.
+func (h *FanOutHandler) shouldSample(tenants []string, httpReq *http.Request) bool {
+	if h.goldfishManager == nil {
+		return false
+	}
+
+	for _, tenant := range tenants {
+		if h.goldfishManager.ShouldSample(tenant) {
+			level.Debug(h.logger).Log(
+				"msg", "Goldfish sampling decision",
+				"tenant", tenant,
+				"sampled", true,
+				"path", httpReq.URL.Path)
+			return true
+		}
+	}
+
+	return false
+}
+
+// makeBackendRequests initiates backend requests and returns a channel for receiving results.
+func (h *FanOutHandler) makeBackendRequests(
+	ctx context.Context,
+	httpReq *http.Request,
+	body []byte,
+	req queryrangebase.Request,
+	issuer string,
+) chan *backendResult {
+	results := make(chan *backendResult, len(h.backends))
+
+	for i, backend := range h.backends {
+		go func(_ int, b *ProxyBackend) {
+			result := h.executeBackendRequest(ctx, httpReq, body, b, req)
+
+			// ensure a valid status code is set in case of error
+			if result.err != nil && result.backendResp.status == 0 {
+				result.backendResp.status = statusCodeFromError(result.err)
+			}
+
+			results <- result
+
+			// Record metrics
+			h.recordMetrics(result, httpReq.Method, issuer)
+		}(i, backend)
+	}
+
+	return results
 }
 
 func extractOriginalHeaders(ctx context.Context) http.Header {

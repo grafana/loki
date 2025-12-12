@@ -44,6 +44,7 @@ type ProxyConfig struct {
 	RequestURLFilter               *regexp.Regexp
 	InstrumentCompares             bool
 	EnableRace                     bool
+	RaceTolerance                  time.Duration
 	Goldfish                       goldfish.Config
 }
 
@@ -66,6 +67,7 @@ func (cfg *ProxyConfig) RegisterFlags(f *flag.FlagSet) {
 	})
 	f.BoolVar(&cfg.InstrumentCompares, "proxy.compare-instrument", false, "Reports metrics on comparisons of responses between preferred and non-preferred endpoints for supported routes.")
 	f.BoolVar(&cfg.EnableRace, "proxy.enable-race", false, "When enabled, return the first successful response from any backend instead of waiting for the preferred backend.")
+	f.DurationVar(&cfg.RaceTolerance, "proxy.race-tolerance", 100*time.Millisecond, "The tolerance for handicapping races in favor of non-preferred backends. If the preferred backend finishes first but a non-preferred backend completes within this tolerance, the non-preferred backend is declared the winner.")
 
 	// Register Goldfish configuration flags
 	cfg.Goldfish.RegisterFlags(f)
@@ -299,6 +301,7 @@ func (p *Proxy) Start() error {
 			Metrics:            p.metrics,
 			InstrumentCompares: p.cfg.InstrumentCompares,
 			EnableRace:         p.cfg.EnableRace,
+			RaceTolerance:      p.cfg.RaceTolerance,
 		})
 		queryHandler, err := routeHandlerFactory.CreateHandler(route.RouteName, comp)
 		if err != nil {

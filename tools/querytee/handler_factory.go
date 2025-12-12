@@ -2,6 +2,7 @@ package querytee
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/go-kit/log"
 
@@ -22,6 +23,7 @@ type HandlerFactory struct {
 	enableRace         bool
 	logger             log.Logger
 	metrics            *ProxyMetrics
+	raceTolerance      time.Duration
 }
 
 // HandlerFactoryConfig holds configuration for creating a HandlerFactory.
@@ -33,6 +35,7 @@ type HandlerFactoryConfig struct {
 	EnableRace         bool
 	Logger             log.Logger
 	Metrics            *ProxyMetrics
+	RaceTolerance      time.Duration
 }
 
 // NewHandlerFactory creates a new HandlerFactory.
@@ -45,6 +48,7 @@ func NewHandlerFactory(cfg HandlerFactoryConfig) *HandlerFactory {
 		enableRace:         cfg.EnableRace,
 		logger:             cfg.Logger,
 		metrics:            cfg.Metrics,
+		raceTolerance:      cfg.RaceTolerance,
 	}
 }
 
