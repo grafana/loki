@@ -130,12 +130,12 @@ var resourceRequirementsTable = map[lokiv1.LokiStackSizeType]ComponentResources{
 		WALStorage: ResourceRequirements{
 			PVCSize: resource.MustParse("150Gi"),
 		},
-		/* PatternIngester: corev1.ResourceRequirements{
+		PatternIngester: corev1.ResourceRequirements{
 			Requests: map[corev1.ResourceName]resource.Quantity{
-				corev1.ResourceCPU:    resource.MustParse("500m"),
-				corev1.ResourceMemory: resource.MustParse("500Mi"),
+				corev1.ResourceCPU:    resource.MustParse("1"),
+				corev1.ResourceMemory: resource.MustParse("1.5Gi"),
 			},
-		}, */
+		},
 	},
 	lokiv1.SizeOneXExtraSmall: {
 		Querier: corev1.ResourceRequirements{
@@ -193,6 +193,12 @@ var resourceRequirementsTable = map[lokiv1.LokiStackSizeType]ComponentResources{
 		},
 		WALStorage: ResourceRequirements{
 			PVCSize: resource.MustParse("150Gi"),
+		},
+		PatternIngester: corev1.ResourceRequirements{
+			Requests: map[corev1.ResourceName]resource.Quantity{
+				corev1.ResourceCPU:    resource.MustParse("1.5"),
+				corev1.ResourceMemory: resource.MustParse("3Gi"),
+			},
 		},
 	},
 	lokiv1.SizeOneXSmall: {
@@ -252,6 +258,12 @@ var resourceRequirementsTable = map[lokiv1.LokiStackSizeType]ComponentResources{
 		WALStorage: ResourceRequirements{
 			PVCSize: resource.MustParse("150Gi"),
 		},
+		PatternIngester: corev1.ResourceRequirements{
+			Requests: map[corev1.ResourceName]resource.Quantity{
+				corev1.ResourceCPU:    resource.MustParse("4"),
+				corev1.ResourceMemory: resource.MustParse("4Gi"),
+			},
+		},
 	},
 	lokiv1.SizeOneXMedium: {
 		Querier: corev1.ResourceRequirements{
@@ -309,6 +321,12 @@ var resourceRequirementsTable = map[lokiv1.LokiStackSizeType]ComponentResources{
 		},
 		WALStorage: ResourceRequirements{
 			PVCSize: resource.MustParse("150Gi"),
+		},
+		PatternIngester: corev1.ResourceRequirements{
+			Requests: map[corev1.ResourceName]resource.Quantity{
+				corev1.ResourceCPU:    resource.MustParse("6"),
+				corev1.ResourceMemory: resource.MustParse("10Gi"),
+			},
 		},
 	},
 }
