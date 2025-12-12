@@ -2,6 +2,8 @@ package proxyproto
 
 import (
 	"bufio"
+	"errors"
+	"fmt"
 	"io"
 	"net"
 	"sync"
@@ -9,22 +11,33 @@ import (
 	"time"
 )
 
-// DefaultReadHeaderTimeout is how long header processing waits for header to
-// be read from the wire, if Listener.ReaderHeaderTimeout is not set.
-// It's kept as a global variable so to make it easier to find and override,
-// e.g. go build -ldflags -X "github.com/pires/go-proxyproto.DefaultReadHeaderTimeout=1s"
-var DefaultReadHeaderTimeout = 10 * time.Second
+var (
+	// DefaultReadHeaderTimeout is how long header processing waits for header to
+	// be read from the wire, if Listener.ReaderHeaderTimeout is not set.
+	// It's kept as a global variable so to make it easier to find and override,
+	// e.g. go build -ldflags -X "github.com/pires/go-proxyproto.DefaultReadHeaderTimeout=1s"
+	DefaultReadHeaderTimeout = 10 * time.Second
+
+	// ErrInvalidUpstream should be returned when an upstream connection address
+	// is not trusted, and therefore is invalid.
+	ErrInvalidUpstream = fmt.Errorf("proxyproto: upstream connection address not trusted for PROXY information")
+)
 
 // Listener is used to wrap an underlying listener,
 // whose connections may be using the HAProxy Proxy Protocol.
 // If the connection is using the protocol, the RemoteAddr() will return
 // the correct client address. ReadHeaderTimeout will be applied to all
 // connections in order to prevent blocking operations. If no ReadHeaderTimeout
-// is set, a default of 200ms will be used. This can be disabled by setting the
+// is set, a default of 10s will be used. This can be disabled by setting the
 // timeout to < 0.
+//
+// Only one of Policy or ConnPolicy should be provided. If both are provided then
+// a panic would occur during accept.
 type Listener struct {
-	Listener          net.Listener
+	Listener net.Listener
+	// Deprecated: use ConnPolicyFunc instead. This will be removed in future release.
 	Policy            PolicyFunc
+	ConnPolicy        ConnPolicyFunc
 	ValidateHeader    Validator
 	ReadHeaderTimeout time.Duration
 }
@@ -38,10 +51,11 @@ type Conn struct {
 	once              sync.Once
 	readErr           error
 	conn              net.Conn
-	Validate          Validator
 	bufReader         *bufio.Reader
+	reader            io.Reader
 	header            *Header
 	ProxyHeaderPolicy Policy
+	Validate          Validator
 	readHeaderTimeout time.Duration
 }
 
@@ -58,43 +72,70 @@ func ValidateHeader(v Validator) func(*Conn) {
 	}
 }
 
-// Accept waits for and returns the next connection to the listener.
-func (p *Listener) Accept() (net.Conn, error) {
-	// Get the underlying connection
-	conn, err := p.Listener.Accept()
-	if err != nil {
-		return nil, err
+// SetReadHeaderTimeout sets the readHeaderTimeout for a connection when passed as option to NewConn()
+func SetReadHeaderTimeout(t time.Duration) func(*Conn) {
+	return func(c *Conn) {
+		if t >= 0 {
+			c.readHeaderTimeout = t
+		}
 	}
+}
 
-	proxyHeaderPolicy := USE
-	if p.Policy != nil {
-		proxyHeaderPolicy, err = p.Policy(conn.RemoteAddr())
+// Accept waits for and returns the next valid connection to the listener.
+func (p *Listener) Accept() (net.Conn, error) {
+	for {
+		// Get the underlying connection
+		conn, err := p.Listener.Accept()
 		if err != nil {
-			// can't decide the policy, we can't accept the connection
-			conn.Close()
 			return nil, err
 		}
-		// Handle a connection as a regular one
-		if proxyHeaderPolicy == SKIP {
-			return conn, nil
+
+		proxyHeaderPolicy := USE
+		if p.Policy != nil && p.ConnPolicy != nil {
+			panic("only one of policy or connpolicy must be provided.")
 		}
+		if p.Policy != nil || p.ConnPolicy != nil {
+			if p.Policy != nil {
+				proxyHeaderPolicy, err = p.Policy(conn.RemoteAddr())
+			} else {
+				proxyHeaderPolicy, err = p.ConnPolicy(ConnPolicyOptions{
+					Upstream:   conn.RemoteAddr(),
+					Downstream: conn.LocalAddr(),
+				})
+			}
+			if err != nil {
+				// can't decide the policy, we can't accept the connection
+				conn.Close()
+
+				if errors.Is(err, ErrInvalidUpstream) {
+					// keep listening for other connections
+					continue
+				}
+
+				return nil, err
+			}
+			// Handle a connection as a regular one
+			if proxyHeaderPolicy == SKIP {
+				return conn, nil
+			}
+		}
+
+		newConn := NewConn(
+			conn,
+			WithPolicy(proxyHeaderPolicy),
+			ValidateHeader(p.ValidateHeader),
+		)
+
+		// If the ReadHeaderTimeout for the listener is unset, use the default timeout.
+		if p.ReadHeaderTimeout == 0 {
+			p.ReadHeaderTimeout = DefaultReadHeaderTimeout
+		}
+
+		// Set the readHeaderTimeout of the new conn to the value of the listener
+		newConn.readHeaderTimeout = p.ReadHeaderTimeout
+
+		return newConn, nil
 	}
-
-	newConn := NewConn(
-		conn,
-		WithPolicy(proxyHeaderPolicy),
-		ValidateHeader(p.ValidateHeader),
-	)
-
-	// If the ReadHeaderTimeout for the listener is unset, use the default timeout.
-	if p.ReadHeaderTimeout == 0 {
-		p.ReadHeaderTimeout = DefaultReadHeaderTimeout
-	}
-
-	// Set the readHeaderTimeout of the new conn to the value of the listener
-	newConn.readHeaderTimeout = p.ReadHeaderTimeout
-
-	return newConn, nil
 }
 
 // Close closes the underlying listener.
@@ -110,8 +151,15 @@ func (p *Listener) Addr() net.Addr {
 // NewConn is used to wrap a net.Conn that may be speaking
 // the proxy protocol into a proxyproto.Conn
 func NewConn(conn net.Conn, opts ...func(*Conn)) *Conn {
+	// For v1 the header length is at most 108 bytes.
+	// For v2 the header length is at most 52 bytes plus the length of the TLVs.
+	// We use 256 bytes to be safe.
+	const bufSize = 256
+	br := bufio.NewReaderSize(conn, bufSize)
+
 	pConn := &Conn{
-		bufReader: bufio.NewReader(conn),
+		bufReader: br,
+		reader:    io.MultiReader(br, conn),
 		conn:      conn,
 	}
 
@@ -133,7 +181,7 @@ func (p *Conn) Read(b []byte) (int, error) {
 		return 0, p.readErr
 	}
 
-	return p.bufReader.Read(b)
+	return p.reader.Read(b)
 }
 
 // Write wraps original conn.Write
@@ -315,5 +363,27 @@ func (p *Conn) WriteTo(w io.Writer) (int64, error) {
 	if p.readErr != nil {
 		return 0, p.readErr
 	}
-	return p.bufReader.WriteTo(w)
+
+	b := make([]byte, p.bufReader.Buffered())
+	if _, err := p.bufReader.Read(b); err != nil {
+		return 0, err // this should never as we read buffered data
+	}
+
+	var n int64
+	{
+		nn, err := w.Write(b)
+		n += int64(nn)
+		if err != nil {
+			return n, err
+		}
+	}
+	{
+		nn, err := io.Copy(w, p.conn)
+		n += nn
+		if err != nil {
+			return n, err
+		}
+	}
+
+	return n, nil
 }
