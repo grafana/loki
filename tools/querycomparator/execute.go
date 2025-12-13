@@ -115,12 +115,21 @@ func checkResult(result logqlmodel.Result) error {
 
 // doLocalQueryWithV2Engine executes a query using the V2 engine
 func doLocalQueryWithV2Engine(params logql.LiteralParams) (logqlmodel.Result, error) {
+	metastore := metastore.NewObjectMetastore(
+		bucket.NewPrefixedBucketClient(MustDataobjBucket(), "index/v0"),
+		glog.NewLogfmtLogger(os.Stderr),
+		metastore.NewObjectMetastoreMetrics(prometheus.DefaultRegisterer),
+	)
+
 	ctx := user.InjectOrgID(context.Background(), orgID)
-	qe := engine.NewBasic(engine.ExecutorConfig{
-		BatchSize: 512,
-	}, metastore.Config{
-		IndexStoragePrefix: "index/v0",
-	}, MustDataobjBucket(), logql.NoLimits, prometheus.DefaultRegisterer, glog.NewLogfmtLogger(os.Stderr))
+	qe := engine.NewBasic(
+		engine.ExecutorConfig{BatchSize: 512},
+		metastore,
+		MustDataobjBucket(),
+		logql.NoLimits,
+		prometheus.DefaultRegisterer,
+		glog.NewLogfmtLogger(os.Stderr),
+	)
 	query := qe.Query(params)
 	return query.Exec(ctx)
 }

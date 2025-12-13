@@ -47,7 +47,7 @@ func benchmarkReadSections(b *testing.B, bm readSectionsBenchmarkParams) {
 		bucket := objstore.NewInMemBucket()
 
 		objUploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, log.NewNopLogger())
-		require.NoError(b, objUploader.RegisterMetrics(prometheus.NewPedanticRegistry()))
+		require.NoError(b, objUploader.RegisterMetrics(prometheus.DefaultRegisterer))
 
 		metastoreTocWriter := NewTableOfContentsWriter(bucket, log.NewNopLogger())
 
@@ -117,7 +117,7 @@ func benchmarkReadSections(b *testing.B, bm readSectionsBenchmarkParams) {
 		}
 
 		// Create the metastore instance
-		mstore := NewObjectMetastore(bucket, log.NewNopLogger(), nil)
+		mstore := NewObjectMetastore(bucket, log.NewNopLogger(), NewObjectMetastoreMetrics(prometheus.DefaultRegisterer))
 
 		// Prepare benchmark parameters
 		benchCtx := user.InjectOrgID(ctx, tenantID)
@@ -220,7 +220,7 @@ func BenchmarkSectionsForPredicateMatchers(b *testing.B) {
 			bucket := objstore.NewInMemBucket()
 
 			objUploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, log.NewNopLogger())
-			require.NoError(b, objUploader.RegisterMetrics(prometheus.NewPedanticRegistry()))
+			require.NoError(b, objUploader.RegisterMetrics(prometheus.DefaultRegisterer))
 
 			path, err := objUploader.Upload(context.Background(), obj)
 			require.NoError(b, err)
@@ -229,7 +229,7 @@ func BenchmarkSectionsForPredicateMatchers(b *testing.B) {
 			err = metastoreTocWriter.WriteEntry(context.Background(), path, timeRanges)
 			require.NoError(b, err)
 
-			mstore := NewObjectMetastore(bucket, log.NewNopLogger(), prometheus.NewPedanticRegistry())
+			mstore := NewObjectMetastore(bucket, log.NewNopLogger(), NewObjectMetastoreMetrics(prometheus.DefaultRegisterer))
 
 			matchers := []*labels.Matcher{
 				labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),

@@ -12,14 +12,14 @@ import (
 func TestExecutor(t *testing.T) {
 	t.Run("pipeline fails if plan is nil", func(t *testing.T) {
 		ctx := t.Context()
-		pipeline := Run(ctx, Config{}, nil, log.NewNopLogger())
+		pipeline := Run(ctx, Config{}, nil, log.NewNopLogger(), nil)
 		_, err := pipeline.Read(ctx)
 		require.ErrorContains(t, err, "failed to execute pipeline: plan is nil")
 	})
 
 	t.Run("pipeline fails if plan has no root node", func(t *testing.T) {
 		ctx := t.Context()
-		pipeline := Run(ctx, Config{}, &physical.Plan{}, log.NewNopLogger())
+		pipeline := Run(ctx, Config{}, &physical.Plan{}, log.NewNopLogger(), nil)
 		_, err := pipeline.Read(ctx)
 		require.ErrorContains(t, err, "failed to execute pipeline: plan has no root node")
 	})

@@ -50,6 +50,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer"
 	"github.com/grafana/loki/v3/pkg/dataobj/explorer"
 	dataobjindex "github.com/grafana/loki/v3/pkg/dataobj/index"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/distributor"
 	engine_v2 "github.com/grafana/loki/v3/pkg/engine"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
@@ -603,7 +604,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		}
 	}
 
-	t.querierAPI = querier.NewQuerierAPI(t.Cfg.Querier, t.Cfg.QueryEngine, t.Cfg.DataObj.Metastore, t.Querier, t.Overrides, store, prometheus.DefaultRegisterer, logger)
+	t.querierAPI = querier.NewQuerierAPI(t.Cfg.Querier, t.Cfg.QueryEngine, t.getMetastore(store, "dataobj-querier"), t.Querier, t.Overrides, store, prometheus.DefaultRegisterer, logger)
 
 	indexStatsHTTPMiddleware := querier.WrapQuerySpanAndTimeout("query.IndexStats", t.Overrides)
 	indexShardsHTTPMiddleware := querier.WrapQuerySpanAndTimeout("query.IndexShards", t.Overrides)
@@ -1412,26 +1413,44 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	}), nil
 }
 
+func (t *Loki) getMetastore(store objstore.Bucket, component string) metastore.Metastore {
+	logger := log.With(util_log.Logger, "component", component)
+	store = bucket.NewXCapBucket(store)
+
+	if t.Cfg.DataObj.Metastore.IndexStoragePrefix != "" {
+		store = objstore.NewPrefixedBucket(store, t.Cfg.DataObj.Metastore.IndexStoragePrefix)
+	}
+
+	if t.MetastoreMetrics == nil {
+		// there could be multiple metastore clients from different components but the metrics instance should be the
+		// same to avoid reregistration of metrics on the same Prometheus registerer.
+		t.MetastoreMetrics = metastore.NewObjectMetastoreMetrics(prometheus.DefaultRegisterer)
+	}
+
+	return metastore.NewObjectMetastore(store, logger, t.MetastoreMetrics)
+}
+
 func (t *Loki) initV2QueryEngine() (services.Service, error) {
 	if !t.Cfg.QueryEngine.Enable {
 		return nil, nil
 	}
 
-	store, err := t.getDataObjBucket("query-engine")
+	componentName := "query-engine"
+
+	store, err := t.getDataObjBucket(componentName)
 	if err != nil {
 		return nil, err
 	}
 
-	logger := log.With(util_log.Logger, "component", "query-engine")
+	logger := log.With(util_log.Logger, "component", componentName)
 	engine, err := engine_v2.New(engine_v2.Params{
 		Logger:     logger,
 		Registerer: prometheus.DefaultRegisterer,
 
-		Config:          t.Cfg.QueryEngine.Executor,
-		MetastoreConfig: t.Cfg.DataObj.Metastore,
+		Config:    t.Cfg.QueryEngine.Executor,
+		Metastore: t.getMetastore(store, componentName),
 
 		Scheduler: t.queryEngineV2Scheduler,
-		Bucket:    store,
 		Limits:    t.Overrides,
 	})
 	if err != nil {
@@ -1508,6 +1527,8 @@ func (t *Loki) initV2QueryEngineWorker() (services.Service, error) {
 		return nil, nil
 	}
 
+	componentName := "query-engine-worker"
+
 	// Determine the advertise address. Results in nil if not running
 	// distributed execution.
 	listenPort := uint16(t.Cfg.Server.HTTPListenPort)
@@ -1516,14 +1537,15 @@ func (t *Loki) initV2QueryEngineWorker() (services.Service, error) {
 		return nil, err
 	}
 
-	store, err := t.getDataObjBucket("query-engine-worker")
+	store, err := t.getDataObjBucket(componentName)
 	if err != nil {
 		return nil, err
 	}
 
 	worker, err := engine_v2.NewWorker(engine_v2.WorkerParams{
-		Logger: log.With(util_log.Logger, "component", "query-engine-worker"),
-		Bucket: store,
+		Logger:    log.With(util_log.Logger, "component", componentName),
+		Bucket:    store,
+		Metastore: t.getMetastore(store, componentName),
 
 		Config:   t.Cfg.QueryEngine.Worker,
 		Executor: t.Cfg.QueryEngine.Executor,

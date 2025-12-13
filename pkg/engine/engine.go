@@ -14,7 +14,6 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/thanos-io/objstore"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -29,7 +28,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
-	"github.com/grafana/loki/v3/pkg/storage/bucket"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/rangeio"
@@ -58,12 +56,16 @@ type ExecutorConfig struct {
 
 	// RangeConfig determines how to optimize range reads in the V2 engine.
 	RangeConfig rangeio.Config `yaml:"range_reads" category:"experimental" doc:"description=Configures how to read byte ranges from object storage when using the V2 engine."`
+
+	// AheadOfTimeCatalogLookupsEnabled enables ahead of time catalog lookups
+	AheadOfTimeCatalogLookupsEnabled bool `yaml:"ahead_of_time_catalog_lookups_enabled" category:"experimental"`
 }
 
 func (cfg *ExecutorConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.IntVar(&cfg.BatchSize, prefix+"batch-size", 100, "Experimental: Batch size of the next generation query engine.")
 	f.IntVar(&cfg.MergePrefetchCount, prefix+"merge-prefetch-count", 0, "Experimental: The number of inputs that are prefetched simultaneously by any Merge node. A value of 0 means that only the currently processed input is prefetched, 1 means that only the next input is prefetched, and so on. A negative value means that all inputs are be prefetched in parallel.")
 	cfg.RangeConfig.RegisterFlags(prefix+"range-reads.", f)
+	f.BoolVar(&cfg.AheadOfTimeCatalogLookupsEnabled, prefix+"ahead-of-time-catalog-lookups-enabled", false, "Experimental: Enable ahead of time catalog lookups.")
 }
 
 // Params holds parameters for constructing a new [Engine].
@@ -71,12 +73,12 @@ type Params struct {
 	Logger     log.Logger            // Logger for optional log messages.
 	Registerer prometheus.Registerer // Registerer for optional metrics.
 
-	Config          ExecutorConfig   // Config for the Engine.
-	MetastoreConfig metastore.Config // Config for the Metastore.
+	Config ExecutorConfig // Config for the Engine.
 
-	Scheduler *Scheduler      // Scheduler to manage the execution of tasks.
-	Bucket    objstore.Bucket // Bucket to read stored data from.
-	Limits    logql.Limits    // Limits to apply to engine queries.
+	Scheduler *Scheduler   // Scheduler to manage the execution of tasks.
+	Limits    logql.Limits // Limits to apply to engine queries.
+
+	Metastore metastore.Metastore
 }
 
 // validate validates p and applies defaults.
@@ -102,11 +104,12 @@ type Engine struct {
 	metrics     *metrics
 	rangeConfig rangeio.Config
 
-	scheduler *Scheduler      // Scheduler to manage the execution of tasks.
-	bucket    objstore.Bucket // Bucket to read stored data from.
-	limits    logql.Limits    // Limits to apply to engine queries.
+	scheduler *Scheduler   // Scheduler to manage the execution of tasks.
+	limits    logql.Limits // Limits to apply to engine queries.
 
-	metastore metastore.Metastore
+	metastore                        metastore.Metastore
+	metastorePlanner                 physical.MetastorePlanner
+	aheadOfTimeCatalogLookupsEnabled bool
 }
 
 // New creates a new Engine.
@@ -120,18 +123,22 @@ func New(params Params) (*Engine, error) {
 		metrics:     newMetrics(params.Registerer),
 		rangeConfig: params.Config.RangeConfig,
 
-		scheduler: params.Scheduler,
-		bucket:    bucket.NewXCapBucket(params.Bucket),
-		limits:    params.Limits,
-	}
+		scheduler:                        params.Scheduler,
+		limits:                           params.Limits,
+		aheadOfTimeCatalogLookupsEnabled: params.Config.AheadOfTimeCatalogLookupsEnabled,
 
-	if e.bucket != nil {
-		indexBucket := e.bucket
-		if params.MetastoreConfig.IndexStoragePrefix != "" {
-			indexBucket = objstore.NewPrefixedBucket(e.bucket, params.MetastoreConfig.IndexStoragePrefix)
-		}
-		e.metastore = metastore.NewObjectMetastore(indexBucket, e.logger, params.Registerer)
+		metastore:        params.Metastore,
+		metastorePlanner: physical.NewMetastorePlanner(params.Metastore),
 	}
+	//
+	//if e.bucket != nil {
+	//	indexBucket := e.bucket
+	//	if params.MetastoreConfig.IndexStoragePrefix != "" {
+	//		indexBucket = objstore.NewPrefixedBucket(e.bucket, params.MetastoreConfig.IndexStoragePrefix)
+	//	}
+	//	e.metastore = metastore.NewObjectMetastore(indexBucket, e.logger, params.Registerer)
+	//	e.metastorePlanner =
+	//}
 
 	return e, nil
 }
@@ -305,9 +312,12 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, logger log.Logger, param
 	region := xcap.RegionFromContext(ctx)
 	timer := prometheus.NewTimer(e.metrics.physicalPlanning)
 
-	// TODO(rfratto): To improve the performance of the physical planner, we
-	// may want to parallelize metastore lookups across scheduled tasks as well.
-	catalog := physical.NewMetastoreCatalog(ctx, e.metastore)
+	catalog, err := e.prepareCatalog(ctx, params, logicalPlan)
+	if err != nil {
+		level.Warn(logger).Log("msg", "failed to prepare catalog", "err", err)
+		region.RecordError(err)
+		return nil, 0, ErrPlanningFailed
+	}
 
 	// TODO(rfratto): It feels strange that we need to past the start/end time
 	// to the physical planner. Isn't it already represented by the logical
@@ -336,6 +346,64 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, logger log.Logger, param
 
 	region.AddEvent("finished physical planning", attribute.Stringer("duration", duration))
 	return physicalPlan, duration, nil
+}
+
+func (e *Engine) prepareCatalog(ctx context.Context, params logql.Params, logicalPlan *logical.Plan) (physical.Catalog, error) {
+	start := time.Now()
+
+	if !e.aheadOfTimeCatalogLookupsEnabled {
+		return physical.NewMetastoreCatalog(ctx, e.metastore), nil
+	}
+
+	unresolved := physical.NewUnresolvedCatalog()
+	collectorPlanner := physical.NewPlanner(physical.NewContext(params.Start(), params.End()), unresolved)
+	if _, err := collectorPlanner.Build(logicalPlan); err != nil {
+		return nil, fmt.Errorf("collecting catalog requests: %w", err)
+	}
+
+	resolved, err := unresolved.Resolve(func(req physical.CatalogRequest) (physical.CatalogResponse, error) {
+		return e.queryMetastore(ctx, req)
+	})
+	if err != nil {
+		return nil, fmt.Errorf("resolving catalog: %w", err)
+	}
+
+	level.Info(e.logger).Log("msg", "finished catalog lookups", "duration", time.Since(start).String(), "requests", unresolved.RequestsCount())
+	return resolved, nil
+}
+
+func (e *Engine) queryMetastore(ctx context.Context, req physical.CatalogRequest) (physical.CatalogResponse, error) {
+	physicalPlan, err := e.metastorePlanner.Plan(ctx, req)
+	if err != nil {
+		return physical.CatalogResponse{}, fmt.Errorf("planning metastore request: %w", err)
+	}
+
+	wf, _, err := e.buildWorkflow(ctx, e.logger, physicalPlan)
+	if err != nil {
+		return physical.CatalogResponse{}, fmt.Errorf("building workflow: %w", err)
+	}
+
+	pipeline, err := wf.Run(ctx)
+	if err != nil {
+		return physical.CatalogResponse{}, fmt.Errorf("running workflow: %w", err)
+	}
+
+	// TODO(ivkalita): switch on request type?
+
+	descriptors, err := e.metastore.CollectScanPointersResult(ctx, executor.TranslateEOF(pipeline))
+	if err != nil {
+		return physical.CatalogResponse{}, fmt.Errorf("reading results: %w", err)
+	}
+
+	filteredDescriptors, err := physical.FilterDescriptorsForShard(req.Shard, descriptors)
+	if err != nil {
+		return physical.CatalogResponse{}, err
+	}
+
+	return physical.CatalogResponse{
+		Kind:        physical.CatalogRequestKindResolveShardDescriptorsWithShard,
+		Descriptors: filteredDescriptors,
+	}, nil
 }
 
 // buildWorkflow builds a workflow from the given physical plan.

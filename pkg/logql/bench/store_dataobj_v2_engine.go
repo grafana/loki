@@ -17,7 +17,9 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/server"
 	"github.com/grafana/dskit/services"
+	"github.com/grafana/loki/v3/pkg/storage/bucket"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/objstore/providers/filesystem"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
@@ -47,9 +49,10 @@ type DataObjV2EngineStore struct {
 func NewDataObjV2EngineStore(dir string, tenantID string) (*DataObjV2EngineStore, error) {
 	storageDir := filepath.Join(dir, storageDir)
 	return dataobjV2StoreWithOpts(storageDir, tenantID, engine.ExecutorConfig{
-		BatchSize:          512,
-		RangeConfig:        rangeio.DefaultConfig,
-		MergePrefetchCount: 8,
+		BatchSize:                        512,
+		RangeConfig:                      rangeio.DefaultConfig,
+		MergePrefetchCount:               8,
+		AheadOfTimeCatalogLookupsEnabled: true,
 	}, metastore.Config{
 		IndexStoragePrefix: "index/v0",
 	})
@@ -91,6 +94,12 @@ func dataobjV2StoreWithOpts(dataDir string, tenantID string, cfg engine.Executor
 		schedLookupAddr string
 	)
 
+	var metastoreBucket objstore.Bucket = bucketClient
+	if metastoreCfg.IndexStoragePrefix != "" {
+		metastoreBucket = bucket.NewPrefixedBucketClient(bucketClient, metastoreCfg.IndexStoragePrefix)
+	}
+	metastoreMetrics := metastore.NewObjectMetastoreMetrics(prometheus.DefaultRegisterer)
+
 	if *remoteTransport {
 		schedSrv, schedSvc, err = newServerService("scheduler", logger)
 		if err != nil {
@@ -123,10 +132,16 @@ func dataobjV2StoreWithOpts(dataDir string, tenantID string, cfg engine.Executor
 		schedLookupAddr = schedAdvertiseAddr.String()
 	}
 
+	workerLogger := log.With(logger, "component", "worker")
 	worker, err := engine.NewWorker(engine.WorkerParams{
-		Logger:         log.With(logger, "component", "worker"),
-		AdvertiseAddr:  workerAdvertiseAddr,
-		Bucket:         bucketClient,
+		Logger:        workerLogger,
+		AdvertiseAddr: workerAdvertiseAddr,
+		Bucket:        bucketClient,
+		Metastore: metastore.NewObjectMetastore(
+			metastoreBucket,
+			workerLogger,
+			metastoreMetrics,
+		),
 		LocalScheduler: sched,
 		Config: engine.WorkerConfig{
 			SchedulerLookupAddress:  schedLookupAddr,
@@ -156,14 +171,18 @@ func dataobjV2StoreWithOpts(dataDir string, tenantID string, cfg engine.Executor
 		worker.RegisterWorkerServer(workerSrv.HTTP)
 	}
 
+	engineLogger := log.With(logger, "component", "engine")
 	newEngine, err := engine.New(engine.Params{
-		Logger:          logger,
-		Registerer:      prometheus.NewRegistry(),
-		Config:          cfg,
-		MetastoreConfig: metastoreCfg,
-		Scheduler:       sched,
-		Bucket:          bucketClient,
-		Limits:          logql.NoLimits,
+		Logger:     engineLogger,
+		Registerer: prometheus.NewRegistry(),
+		Config:     cfg,
+		Metastore: metastore.NewObjectMetastore(
+			metastoreBucket,
+			workerLogger,
+			metastoreMetrics,
+		),
+		Scheduler: sched,
+		Limits:    logql.NoLimits,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("creating engine: %w", err)

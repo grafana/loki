@@ -22,6 +22,7 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 )
@@ -67,6 +68,8 @@ type Config struct {
 	// Absolute path of the endpoint where the frame handler is registered.
 	// Used for connecting to scheduler and other workers.
 	Endpoint string
+
+	Metastore metastore.Metastore
 }
 
 // readyRequest is a message sent from a thread to notify the worker that it's
@@ -171,6 +174,7 @@ func (w *Worker) run(ctx context.Context) error {
 			BatchSize: w.config.BatchSize,
 			Logger:    log.With(w.logger, "thread", i),
 			Bucket:    w.config.Bucket,
+			Metastore: w.config.Metastore,
 
 			Ready: w.readyCh,
 		}

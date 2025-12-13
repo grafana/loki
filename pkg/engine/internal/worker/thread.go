@@ -9,6 +9,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/user"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/oklog/ulid/v2"
 	"github.com/thanos-io/objstore"
 
@@ -40,6 +41,7 @@ type thread struct {
 	BatchSize int64
 	Bucket    objstore.Bucket
 	Logger    log.Logger
+	Metastore metastore.Metastore
 
 	Ready chan<- readyRequest
 }
@@ -162,7 +164,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	ctx, capture := xcap.NewCapture(ctx, nil)
 	defer capture.End()
 
-	pipeline := executor.Run(ctx, cfg, job.Task.Fragment, logger)
+	pipeline := executor.Run(ctx, cfg, job.Task.Fragment, logger, t.Metastore)
 
 	// If the root pipeline can be interested in some specific contributing time range
 	// then subscribe to changes.

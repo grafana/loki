@@ -108,7 +108,7 @@ func (p *tocMetrics) observeMetastoreProcessing(recordTimestamp time.Time) {
 	}
 }
 
-type objectMetastoreMetrics struct {
+type ObjectMetastoreMetrics struct {
 	indexObjectsTotal                   prometheus.Histogram
 	streamFilterTotalDuration           prometheus.Histogram
 	streamFilterSections                prometheus.Histogram
@@ -122,8 +122,8 @@ type objectMetastoreMetrics struct {
 	resolvedSectionsRatio               prometheus.Histogram
 }
 
-func newObjectMetastoreMetrics() *objectMetastoreMetrics {
-	metrics := &objectMetastoreMetrics{
+func NewObjectMetastoreMetrics(reg prometheus.Registerer) *ObjectMetastoreMetrics {
+	metrics := &ObjectMetastoreMetrics{
 		indexObjectsTotal: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:                            "loki_metastore_index_objects_total",
 			Help:                            "Total number of objects to be searched for a Metastore query",
@@ -214,19 +214,19 @@ func newObjectMetastoreMetrics() *objectMetastoreMetrics {
 		}),
 	}
 
-	return metrics
-}
+	if reg != nil {
+		reg.MustRegister(metrics.indexObjectsTotal)
+		reg.MustRegister(metrics.streamFilterTotalDuration)
+		reg.MustRegister(metrics.streamFilterSections)
+		reg.MustRegister(metrics.streamFilterStreamsReadDuration)
+		reg.MustRegister(metrics.streamFilterPointersReadDuration)
+		reg.MustRegister(metrics.estimateSectionsTotalDuration)
+		reg.MustRegister(metrics.estimateSectionsPointerReadDuration)
+		reg.MustRegister(metrics.estimateSectionsSections)
+		reg.MustRegister(metrics.resolvedSectionsTotalDuration)
+		reg.MustRegister(metrics.resolvedSectionsTotal)
+		reg.MustRegister(metrics.resolvedSectionsRatio)
+	}
 
-func (p *objectMetastoreMetrics) register(reg prometheus.Registerer) {
-	reg.MustRegister(p.indexObjectsTotal)
-	reg.MustRegister(p.streamFilterTotalDuration)
-	reg.MustRegister(p.streamFilterSections)
-	reg.MustRegister(p.streamFilterStreamsReadDuration)
-	reg.MustRegister(p.streamFilterPointersReadDuration)
-	reg.MustRegister(p.estimateSectionsTotalDuration)
-	reg.MustRegister(p.estimateSectionsPointerReadDuration)
-	reg.MustRegister(p.estimateSectionsSections)
-	reg.MustRegister(p.resolvedSectionsTotalDuration)
-	reg.MustRegister(p.resolvedSectionsTotal)
-	reg.MustRegister(p.resolvedSectionsRatio)
+	return metrics
 }
