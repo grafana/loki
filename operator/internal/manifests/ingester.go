@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path"
 
+	"github.com/ViaQ/logerr/v2/kverrors"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
@@ -14,6 +15,7 @@ import (
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
 )
@@ -290,10 +292,12 @@ func configureIngesterGRPCServicePKI(sts *appsv1.StatefulSet, opts Options) erro
 // Ingester pods.
 func newIngesterPodDisruptionBudget(opts Options) *policyv1.PodDisruptionBudget {
 	l := ComponentLabels(LabelIngesterComponent, opts.Name)
-	// Default to 1 if not defined in ResourceRequirementsTable for a given size
-	mu := intstr.FromInt(1)
-	if opts.ResourceRequirements.Ingester.PDBMinAvailable > 0 {
-		mu = intstr.FromInt(opts.ResourceRequirements.Ingester.PDBMinAvailable)
+	pdbMinAvailable := intstr.FromInt32(1)
+	/* if opts.Stack.Size == lokiv1.SizeOneXPico || opts.Stack.Size == lokiv1.SizeOneXMedium {
+		pdbMinAvailable = intstr.FromInt32(opts.Stack.Replication.Factor)
+	} */
+	if opts.Stack.Size == lokiv1.SizeOneXPico || opts.Stack.Size == lokiv1.SizeOneXMedium {
+		pdbMinAvailable = intstr.FromInt(opts.ResourceRequirements.Ingester.PDBMinAvailable)
 	}
 	return &policyv1.PodDisruptionBudget{
 		TypeMeta: metav1.TypeMeta{
@@ -309,7 +313,19 @@ func newIngesterPodDisruptionBudget(opts Options) *policyv1.PodDisruptionBudget 
 			Selector: &metav1.LabelSelector{
 				MatchLabels: l,
 			},
-			MinAvailable: &mu,
+			MinAvailable: &pdbMinAvailable,
 		},
 	}
+}
+
+func ValidateReplicationFactor(opts *Options) error {
+	if opts.Stack.Size != lokiv1.SizeOneXDemo {
+		if opts.Stack.Template.Ingester.Replicas != 2 || opts.Stack.Replication.Factor != 2 {
+			if opts.Stack.Template.Ingester.Replicas <= opts.Stack.Replication.Factor {
+				return kverrors.New("Invalid configuration: ingester replicas should be more than the replication factor")
+			}
+			opts.ResourceRequirements.Ingester.PDBMinAvailable = int(opts.Stack.Replication.Factor)
+		}
+	}
+	return nil
 }
