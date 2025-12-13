@@ -1,6 +1,8 @@
 package physical
 
 import (
+	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -10,162 +12,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
-
-func TestCatalog_ConvertLiteral(t *testing.T) {
-	tests := []struct {
-		expr    Expression
-		want    string
-		wantErr bool
-	}{
-		{
-			expr: NewLiteral("foo"),
-			want: "foo",
-		},
-		{
-			expr:    NewLiteral(false),
-			wantErr: true,
-		},
-		{
-			expr:    NewLiteral(int64(123)),
-			wantErr: true,
-		},
-		{
-			expr:    NewLiteral(types.Timestamp(time.Now().UnixNano())),
-			wantErr: true,
-		},
-		{
-			expr:    NewLiteral(types.Duration(time.Hour.Nanoseconds())),
-			wantErr: true,
-		},
-		{
-			expr:    newColumnExpr("foo", types.ColumnTypeLabel),
-			wantErr: true,
-		},
-		{
-			expr: &BinaryExpr{
-				Left:  newColumnExpr("foo", types.ColumnTypeLabel),
-				Right: NewLiteral("foo"),
-				Op:    types.BinaryOpEq,
-			},
-			wantErr: true,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.expr.String(), func(t *testing.T) {
-			got, err := convertLiteralToString(tt.expr)
-			if tt.wantErr {
-				require.Error(t, err)
-				t.Log(err)
-			} else {
-				require.NoError(t, err)
-				require.Equal(t, tt.want, got)
-			}
-		})
-	}
-}
-
-func TestCatalog_ConvertColumnRef(t *testing.T) {
-	tests := []struct {
-		expr    Expression
-		want    string
-		wantErr bool
-	}{
-		{
-			expr: newColumnExpr("foo", types.ColumnTypeLabel),
-			want: "foo",
-		},
-		{
-			expr:    newColumnExpr("foo", types.ColumnTypeAmbiguous),
-			wantErr: true,
-		},
-		{
-			expr:    newColumnExpr("foo", types.ColumnTypeBuiltin),
-			wantErr: true,
-		},
-		{
-			expr:    NewLiteral(false),
-			wantErr: true,
-		},
-		{
-			expr: &BinaryExpr{
-				Left:  newColumnExpr("foo", types.ColumnTypeLabel),
-				Right: NewLiteral("foo"),
-				Op:    types.BinaryOpEq,
-			},
-			wantErr: true,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.expr.String(), func(t *testing.T) {
-			got, err := convertColumnRef(tt.expr, false)
-			if tt.wantErr {
-				require.Error(t, err)
-				t.Log(err)
-			} else {
-				require.NoError(t, err)
-				require.Equal(t, tt.want, got)
-			}
-		})
-	}
-}
-
-func TestCatalog_ExpressionToMatchers(t *testing.T) {
-	tests := []struct {
-		expr    Expression
-		want    []*labels.Matcher
-		wantErr bool
-	}{
-		{
-			expr:    newColumnExpr("foo", types.ColumnTypeLabel),
-			wantErr: true,
-		},
-		{
-			expr:    NewLiteral("foo"),
-			wantErr: true,
-		},
-		{
-			expr: &BinaryExpr{
-				Left:  newColumnExpr("foo", types.ColumnTypeLabel),
-				Right: NewLiteral("bar"),
-				Op:    types.BinaryOpEq,
-			},
-			want: []*labels.Matcher{
-				labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"),
-			},
-		},
-		{
-			expr: &BinaryExpr{
-				Left: &BinaryExpr{
-					Left:  newColumnExpr("foo", types.ColumnTypeLabel),
-					Right: NewLiteral("bar"),
-					Op:    types.BinaryOpEq,
-				},
-				Right: &BinaryExpr{
-					Left:  newColumnExpr("bar", types.ColumnTypeLabel),
-					Right: NewLiteral("baz"),
-					Op:    types.BinaryOpNeq,
-				},
-				Op: types.BinaryOpAnd,
-			},
-			want: []*labels.Matcher{
-				labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"),
-				labels.MustNewMatcher(labels.MatchNotEqual, "bar", "baz"),
-			},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.expr.String(), func(t *testing.T) {
-			got, err := expressionToMatchers(tt.expr, false)
-			if tt.wantErr {
-				require.Error(t, err)
-				t.Log(err)
-			} else {
-				require.NoError(t, err)
-				require.ElementsMatch(t, tt.want, got)
-			}
-		})
-	}
-}
 
 func TestCatalog_TimeRangeValidate(t *testing.T) {
 	tests := []struct {
@@ -280,7 +126,7 @@ func TestCatalog_FilterDescriptorsForShard(t *testing.T) {
 		desc3.ObjectPath = "baz"
 		desc3.SectionIdx = 3
 		sectionDescriptors := []*metastore.DataobjSectionDescriptor{&desc1, &desc2, &desc3}
-		res, err := filterDescriptorsForShard(shard, sectionDescriptors)
+		res, err := FilterDescriptorsForShard(shard, sectionDescriptors)
 		require.NoError(t, err)
 		tr1, err := newTimeRange(start1, end1)
 		require.NoError(t, err)
@@ -292,5 +138,244 @@ func TestCatalog_FilterDescriptorsForShard(t *testing.T) {
 		}
 		require.ElementsMatch(t, res, expected)
 	})
+}
 
+func TestUnresolvedCatalog_RequestCollection(t *testing.T) {
+	t.Run("Collects unique requests", func(t *testing.T) {
+		catalog := NewUnresolvedCatalog()
+		selector := newTestLabelMatcher("app", "test")
+		predicates := []Expression{newTestLabelMatcher("env", "prod")}
+		shard := ShardInfo{Shard: 1, Of: 2}
+		from := time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC)
+		through := time.Date(2025, time.January, 1, 12, 0, 0, 0, time.UTC)
+
+		// First call should add the request
+		_, err := catalog.ResolveShardDescriptorsWithShard(selector, predicates, shard, from, through)
+		require.NoError(t, err)
+		require.Equal(t, 1, catalog.RequestsCount())
+
+		// Second call with same parameters should not add another request
+		_, err = catalog.ResolveShardDescriptorsWithShard(selector, predicates, shard, from, through)
+		require.NoError(t, err)
+		require.Equal(t, 1, catalog.RequestsCount())
+	})
+
+	t.Run("Collects different requests", func(t *testing.T) {
+		catalog := NewUnresolvedCatalog()
+		selector := newTestLabelMatcher("app", "test")
+		predicates := []Expression{newTestLabelMatcher("env", "prod")}
+		shard1 := ShardInfo{Shard: 1, Of: 2}
+		shard2 := ShardInfo{Shard: 2, Of: 2}
+		from := time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC)
+		through := time.Date(2025, time.January, 1, 12, 0, 0, 0, time.UTC)
+
+		// First request with shard 1
+		_, err := catalog.ResolveShardDescriptorsWithShard(selector, predicates, shard1, from, through)
+		require.NoError(t, err)
+		require.Equal(t, 1, catalog.RequestsCount())
+
+		// Second request with shard 2 should add another request
+		_, err = catalog.ResolveShardDescriptorsWithShard(selector, predicates, shard2, from, through)
+		require.NoError(t, err)
+		require.Equal(t, 2, catalog.RequestsCount())
+	})
+}
+
+func TestUnresolvedCatalog_Resolve(t *testing.T) {
+	t.Run("Successfully resolves all requests", func(t *testing.T) {
+		catalog := NewUnresolvedCatalog()
+		selector := newTestLabelMatcher("app", "test")
+		predicates := []Expression{newTestLabelMatcher("env", "prod")}
+		shard := ShardInfo{Shard: 1, Of: 2}
+		from := time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC)
+		through := time.Date(2025, time.January, 1, 12, 0, 0, 0, time.UTC)
+
+		_, err := catalog.ResolveShardDescriptorsWithShard(selector, predicates, shard, from, through)
+		require.NoError(t, err)
+
+		tr, err := newTimeRange(from, through)
+		require.NoError(t, err)
+
+		// Resolve with a function that returns mock descriptors
+		resolved, err := catalog.Resolve(func(_ CatalogRequest) (CatalogResponse, error) {
+			return CatalogResponse{
+				Kind: CatalogRequestKindResolveShardDescriptorsWithShard,
+				Descriptors: []FilteredShardDescriptor{
+					{Location: "test-location", Streams: []int64{1}, Sections: []int{1}, TimeRange: tr},
+				},
+			}, nil
+		})
+		require.NoError(t, err)
+
+		// Verify we can retrieve the resolved descriptors
+		descriptors, err := resolved.ResolveShardDescriptorsWithShard(selector, predicates, shard, from, through)
+		require.NoError(t, err)
+		require.Len(t, descriptors, 1)
+		require.Equal(t, DataObjLocation("test-location"), descriptors[0].Location)
+	})
+
+	t.Run("Returns error when resolve function fails", func(t *testing.T) {
+		catalog := NewUnresolvedCatalog()
+		selector := newTestLabelMatcher("app", "test")
+		shard := ShardInfo{Shard: 1, Of: 2}
+		from := time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC)
+		through := time.Date(2025, time.January, 1, 12, 0, 0, 0, time.UTC)
+
+		_, err := catalog.ResolveShardDescriptorsWithShard(selector, nil, shard, from, through)
+		require.NoError(t, err)
+
+		// Resolve with a function that returns an error
+		_, err = catalog.Resolve(func(_ CatalogRequest) (CatalogResponse, error) {
+			return CatalogResponse{}, fmt.Errorf("mock error")
+		})
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "failed to resolve catalog response")
+	})
+}
+
+func TestResolvedCatalog_ResolveShardDescriptorsWithShard(t *testing.T) {
+	t.Run("Returns descriptors for resolved request", func(t *testing.T) {
+		catalog := NewUnresolvedCatalog()
+		selector := newTestLabelMatcher("app", "test")
+		predicates := []Expression{newTestLabelMatcher("env", "prod")}
+		shard := ShardInfo{Shard: 1, Of: 2}
+		from := time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC)
+		through := time.Date(2025, time.January, 1, 12, 0, 0, 0, time.UTC)
+
+		_, err := catalog.ResolveShardDescriptorsWithShard(selector, predicates, shard, from, through)
+		require.NoError(t, err)
+
+		tr, err := newTimeRange(from, through)
+		require.NoError(t, err)
+
+		resolved, err := catalog.Resolve(func(_ CatalogRequest) (CatalogResponse, error) {
+			return CatalogResponse{
+				Kind: CatalogRequestKindResolveShardDescriptorsWithShard,
+				Descriptors: []FilteredShardDescriptor{
+					{Location: "test-location", Streams: []int64{1, 2, 3}, Sections: []int{1, 2}, TimeRange: tr},
+				},
+			}, nil
+		})
+		require.NoError(t, err)
+
+		descriptors, err := resolved.ResolveShardDescriptorsWithShard(selector, predicates, shard, from, through)
+		require.NoError(t, err)
+		require.Len(t, descriptors, 1)
+		require.Equal(t, DataObjLocation("test-location"), descriptors[0].Location)
+		require.Equal(t, []int64{1, 2, 3}, descriptors[0].Streams)
+		require.Equal(t, []int{1, 2}, descriptors[0].Sections)
+	})
+
+	t.Run("Returns error for missing request", func(t *testing.T) {
+		catalog := NewUnresolvedCatalog()
+		selector := newTestLabelMatcher("app", "test")
+		shard := ShardInfo{Shard: 1, Of: 2}
+		from := time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC)
+		through := time.Date(2025, time.January, 1, 12, 0, 0, 0, time.UTC)
+
+		resolved, err := catalog.Resolve(func(_ CatalogRequest) (CatalogResponse, error) {
+			return CatalogResponse{}, nil
+		})
+		require.NoError(t, err)
+
+		// Try to resolve a request that was never added
+		_, err = resolved.ResolveShardDescriptorsWithShard(selector, nil, shard, from, through)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "catalog response missing for request")
+	})
+}
+
+func TestMetastoreCatalog_ResolveShardDescriptorsWithShard(t *testing.T) {
+	t.Run("Successfully resolves descriptors", func(t *testing.T) {
+		ctx := context.Background()
+		now := time.Now()
+		start := now.Add(time.Second * -10)
+		end := now.Add(time.Second * -5)
+
+		desc1 := &metastore.DataobjSectionDescriptor{
+			SectionKey: metastore.SectionKey{
+				ObjectPath: "test-path",
+				SectionIdx: 1,
+			},
+			StreamIDs: []int64{1, 2},
+			RowCount:  10,
+			Size:      100,
+			Start:     start,
+			End:       end,
+		}
+
+		mockMetastore := &mockMetastore{
+			sections: []*metastore.DataobjSectionDescriptor{desc1},
+		}
+
+		catalog := NewMetastoreCatalog(ctx, mockMetastore)
+		selector := newTestLabelMatcher("app", "test")
+		shard := ShardInfo{Shard: 1, Of: 2}
+
+		descriptors, err := catalog.ResolveShardDescriptorsWithShard(selector, nil, shard, start, end)
+		require.NoError(t, err)
+		require.Len(t, descriptors, 1)
+		require.Equal(t, DataObjLocation("test-path"), descriptors[0].Location)
+		require.Equal(t, []int64{1, 2}, descriptors[0].Streams)
+	})
+
+	t.Run("Returns error when metastore is nil", func(t *testing.T) {
+		ctx := context.Background()
+		catalog := NewMetastoreCatalog(ctx, nil)
+		selector := newTestLabelMatcher("app", "test")
+		shard := ShardInfo{Shard: 1, Of: 2}
+		now := time.Now()
+
+		_, err := catalog.ResolveShardDescriptorsWithShard(selector, nil, shard, now, now)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "no metastore to resolve objects")
+	})
+
+	t.Run("Returns error when metastore.Sections fails", func(t *testing.T) {
+		ctx := context.Background()
+		mockMetastore := &mockMetastore{
+			err: fmt.Errorf("metastore error"),
+		}
+
+		catalog := NewMetastoreCatalog(ctx, mockMetastore)
+		selector := newTestLabelMatcher("app", "test")
+		shard := ShardInfo{Shard: 1, Of: 2}
+		now := time.Now()
+
+		_, err := catalog.ResolveShardDescriptorsWithShard(selector, nil, shard, now, now)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "failed to resolve data object sections")
+	})
+}
+
+// Test helper functions
+
+// newTestLabelMatcher creates a BinaryExpr that represents a label matcher (label = "value")
+func newTestLabelMatcher(label, value string) Expression {
+	return &BinaryExpr{
+		Op:    types.BinaryOpEq,
+		Left:  &ColumnExpr{Ref: types.ColumnRef{Column: label, Type: types.ColumnTypeLabel}},
+		Right: NewLiteral(value),
+	}
+}
+
+// mockMetastore is a mock implementation of the metastore.Metastore interface for testing
+type mockMetastore struct {
+	sections []*metastore.DataobjSectionDescriptor
+	err      error
+}
+
+func (m *mockMetastore) Sections(_ context.Context, _, _ time.Time, _ []*labels.Matcher, _ []*labels.Matcher) ([]*metastore.DataobjSectionDescriptor, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	return m.sections, nil
+}
+
+func (m *mockMetastore) Labels(_ context.Context, _, _ time.Time, _ ...*labels.Matcher) ([]string, error) {
+	return nil, nil
+}
+
+func (m *mockMetastore) Values(_ context.Context, _, _ time.Time, _ ...*labels.Matcher) ([]string, error) {
+	return nil, nil
 }
