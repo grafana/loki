@@ -20,7 +20,6 @@ const (
 	NodeTypeRangeAggregation
 	NodeTypeVectorAggregation
 	NodeTypeMerge
-	NodeTypeParse
 	NodeTypeCompat
 	NodeTypeTopK
 	NodeTypeParallelize
@@ -46,8 +45,6 @@ func (t NodeType) String() string {
 		return "RangeAggregation"
 	case NodeTypeVectorAggregation:
 		return "VectorAggregation"
-	case NodeTypeParse:
-		return "Parse"
 	case NodeTypeCompat:
 		return "Compat"
 	case NodeTypeTopK:
