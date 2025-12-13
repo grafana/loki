@@ -55,11 +55,7 @@ NextTask:
 		// for each iteration to ensure that writes to respCh never block.
 		respCh := make(chan readyResponse, 1)
 
-		// When we create the request, we pass the thread's context. This
-		// ensures that the context of tasks written to respCh are bound to the
-		// lifetime of the thread, but can also be canceled by the scheduler.
 		req := readyRequest{
-			Context:  ctx,
 			Response: respCh,
 		}
 
