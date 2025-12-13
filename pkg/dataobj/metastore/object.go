@@ -212,8 +212,7 @@ func (m *ObjectMetastore) Sections(ctx context.Context, start, end time.Time, ma
 	}
 
 	// Search the stream sections of the matching objects to find matching streams
-	streamMatchers := streamPredicateFromMatchers(start, end, matchers...)
-	streamSectionPointers, err := m.getSectionsForStreams(ctx, indexObjects, streamMatchers, start, end)
+	streamSectionPointers, err := m.getSectionsForStreams(ctx, indexObjects, start, end, matchers)
 	if err != nil {
 		return nil, err
 	}
@@ -462,7 +461,7 @@ func (m *ObjectMetastore) listStreamsFromObjects(ctx context.Context, paths []st
 	return streamsSlice, nil
 }
 
-func (m *ObjectMetastore) listStreamIDsFromLogObjects(ctx context.Context, objectPaths []string, predicate streams.RowPredicate) ([][]int64, []int, error) {
+func (m *ObjectMetastore) listStreamIDsFromLogObjects(ctx context.Context, objectPaths []string, start, end time.Time, matchers []*labels.Matcher) ([][]int64, []int, error) {
 	streamIDs := make([][]int64, len(objectPaths))
 	sections := make([]int, len(objectPaths))
 
@@ -479,8 +478,8 @@ func (m *ObjectMetastore) listStreamIDsFromLogObjects(ctx context.Context, objec
 			sections[idx] = object.Sections().Count(logs.CheckSection)
 			streamIDs[idx] = make([]int64, 0, 8)
 
-			return forEachStream(ctx, object, predicate, func(stream streams.Stream) {
-				streamIDs[idx] = append(streamIDs[idx], stream.ID)
+			return forEachStreamID(ctx, object, start, end, matchers, func(streamID int64) {
+				streamIDs[idx] = append(streamIDs[idx], streamID)
 			})
 		})
 	}
@@ -494,8 +493,8 @@ func (m *ObjectMetastore) listStreamIDsFromLogObjects(ctx context.Context, objec
 
 // getSectionsForStreams reads the section data from matching streams and aggregates them into section descriptors.
 // This is an exact lookup and includes metadata from the streams in each section: the stream IDs, the min-max timestamps, the number of bytes & number of lines.
-func (m *ObjectMetastore) getSectionsForStreams(ctx context.Context, indexObjects []*dataobj.Object, streamPredicate streams.RowPredicate, start, end time.Time) ([]*DataobjSectionDescriptor, error) {
-	if streamPredicate == nil {
+func (m *ObjectMetastore) getSectionsForStreams(ctx context.Context, indexObjects []*dataobj.Object, start, end time.Time, matchers []*labels.Matcher) ([]*DataobjSectionDescriptor, error) {
+	if len(matchers) == 0 {
 		// At least one stream matcher is required, currently.
 		return nil, nil
 	}
@@ -518,8 +517,8 @@ func (m *ObjectMetastore) getSectionsForStreams(ctx context.Context, indexObject
 			var matchingStreamIDs []int64
 
 			streamReadTimer := prometheus.NewTimer(m.metrics.streamFilterStreamsReadDuration)
-			err := forEachStream(ctx, indexObject, streamPredicate, func(stream streams.Stream) {
-				matchingStreamIDs = append(matchingStreamIDs, stream.ID)
+			err := forEachStreamID(ctx, indexObject, start, end, matchers, func(streamID int64) {
+				matchingStreamIDs = append(matchingStreamIDs, streamID)
 			})
 			if err != nil {
 				return fmt.Errorf("reading streams from index: %w", err)
