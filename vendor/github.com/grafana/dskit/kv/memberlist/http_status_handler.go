@@ -29,6 +29,7 @@ type StatusPageData struct {
 	MessageHistoryBufferBytes int
 	SentMessages              []Message
 	ReceivedMessages          []Message
+	ZoneAwareRouting          ZoneAwareRoutingConfig
 }
 
 // NewHTTPStatusHandler creates a new HTTPStatusHandler that will render the provided template using the data from StatusPageData.
@@ -108,6 +109,7 @@ func (h HTTPStatusHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		MessageHistoryBufferBytes: kv.cfg.MessageHistoryBufferBytes,
 		SentMessages:              sent,
 		ReceivedMessages:          received,
+		ZoneAwareRouting:          kv.cfg.ZoneAwareRouting,
 	}
 
 	accept := req.Header.Get("Accept")
@@ -216,4 +218,10 @@ func downloadKey(w http.ResponseWriter, kv *KV, store map[string]ValueDesc, key 
 var defaultPageContent string
 var defaultPageTemplate = template.Must(template.New("webpage").Funcs(template.FuncMap{
 	"StringsJoin": strings.Join,
+	"GetZoneFromMeta": func(meta []byte) string {
+		return EncodedNodeMetadata(meta).Zone()
+	},
+	"GetRoleFromMeta": func(meta []byte) string {
+		return EncodedNodeMetadata(meta).Role().String()
+	},
 }).Parse(defaultPageContent))

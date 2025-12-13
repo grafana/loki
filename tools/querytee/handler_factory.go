@@ -17,7 +17,7 @@ import (
 type HandlerFactory struct {
 	backends           []*ProxyBackend
 	codec              queryrangebase.Codec
-	goldfishManager    *goldfish.Manager
+	goldfishManager    goldfish.Manager
 	instrumentCompares bool
 	enableRace         bool
 	logger             log.Logger
@@ -28,7 +28,7 @@ type HandlerFactory struct {
 type HandlerFactoryConfig struct {
 	Backends           []*ProxyBackend
 	Codec              queryrangebase.Codec
-	GoldfishManager    *goldfish.Manager
+	GoldfishManager    goldfish.Manager
 	InstrumentCompares bool
 	EnableRace         bool
 	Logger             log.Logger
@@ -48,7 +48,7 @@ func NewHandlerFactory(cfg HandlerFactoryConfig) *HandlerFactory {
 	}
 }
 
-func (f *HandlerFactory) CreateHandler(routeName string, comp comparator.ResponsesComparator) http.Handler {
+func (f *HandlerFactory) CreateHandler(routeName string, comp comparator.ResponsesComparator) (http.Handler, error) {
 	// Create the fan-out handler that sends requests to all backends
 	fanOutHandler := NewFanOutHandler(FanOutHandlerConfig{
 		Backends:           f.backends,
@@ -70,7 +70,7 @@ func (f *HandlerFactory) CreateHandler(routeName string, comp comparator.Respons
 		}
 	}
 
-	splittingHandler := NewSplittingHandler(
+	splittingHandler, err := NewSplittingHandler(
 		f.codec,
 		fanOutHandler,
 		f.goldfishManager,
@@ -78,11 +78,15 @@ func (f *HandlerFactory) CreateHandler(routeName string, comp comparator.Respons
 		preferredBackend,
 	)
 
+	if err != nil {
+		return nil, err
+	}
+
 	httpMiddlewares := []middleware.Interface{
 		httpreq.ExtractQueryTagsMiddleware(),
 		httpreq.PropagateHeadersMiddleware(httpreq.LokiActorPathHeader, httpreq.LokiEncodingFlagsHeader, httpreq.LokiDisablePipelineWrappersHeader),
 		server.NewPrepopulateMiddleware(),
 	}
 
-	return middleware.Merge(httpMiddlewares...).Wrap(splittingHandler)
+	return middleware.Merge(httpMiddlewares...).Wrap(splittingHandler), nil
 }
