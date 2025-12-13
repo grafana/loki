@@ -2208,6 +2208,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>chunksCache.chunkStoreConfig</td>
+			<td>object</td>
+			<td>Renders chunk_store_config block</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>chunksCache.connectionLimit</td>
 			<td>int</td>
 			<td>Maximum number of connections allowed</td>
