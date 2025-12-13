@@ -3872,6 +3872,7 @@ spec:
                     - dynamic
                     - openshift-logging
                     - openshift-network
+                    - openshift
                     type: string
                   openshift:
                     description: Openshift defines the configuration specific to Openshift

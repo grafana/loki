@@ -1,6 +1,7 @@
 package openshift
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path"
@@ -24,7 +25,18 @@ const (
 	ocpMonitoringGroupByLabel = "namespace"
 )
 
-func newOPAOpenShiftContainer(mode lokiv1.ModeType, secretVolumeName, tlsDir, minTLSVersion, ciphers string, withTLS bool, adminGroups []string) corev1.Container {
+type Matchers struct {
+	ByGroup  map[string]Matcher `json:"byGroup,omitempty"`
+	ByTenant map[string]Matcher `json:"byTenant,omitempty"`
+	Default  Matcher            `json:"default,omitempty"`
+}
+
+type Matcher struct {
+	Keys      []string `json:"keys,omitempty"`
+	MatcherOp string   `json:"op,omitempty"`
+}
+
+func newOPAOpenShiftContainer(mode lokiv1.ModeType, secretVolumeName, tlsDir, minTLSVersion, ciphers string, withTLS bool, adminGroups []string) (*corev1.Container, error) {
 	var (
 		image        string
 		args         []string
@@ -43,24 +55,48 @@ func newOPAOpenShiftContainer(mode lokiv1.ModeType, secretVolumeName, tlsDir, mi
 		fmt.Sprintf("--web.listen=:%d", GatewayOPAHTTPPort),
 		fmt.Sprintf("--web.internal.listen=:%d", GatewayOPAInternalPort),
 		fmt.Sprintf("--web.healthchecks.url=http://localhost:%d", GatewayOPAHTTPPort),
-		"--opa.skip-tenants=audit,infrastructure",
 		fmt.Sprintf("--opa.package=%s", opaDefaultPackage),
 	}
 
-	if len(adminGroups) > 0 {
-		args = append(args, fmt.Sprintf("--opa.admin-groups=%s", strings.Join(adminGroups, ",")))
-	}
+	if mode == lokiv1.Openshift {
+		matchers := Matchers{
+			ByGroup: groupsToMatchers(adminGroups),
+			ByTenant: map[string]Matcher{
+				tenantAudit:          {},
+				tenantInfrastructure: {},
+				tenantNetwork: {
+					Keys:      strings.Split(opaNetworkLabelMatchers, ","),
+					MatcherOp: "or",
+				},
+			},
+			Default: Matcher{
+				Keys: strings.Split(opaDefaultLabelMatchers, ","),
+			},
+		}
 
-	if mode != lokiv1.OpenshiftNetwork {
-		args = append(args, []string{
-			fmt.Sprintf("--opa.matcher=%s", opaDefaultLabelMatchers),
-			"--opa.viaq-to-otel-migration=true",
-		}...)
+		matchersStr, err := json.Marshal(matchers)
+		if err != nil {
+			return nil, err
+		}
+		args = append(args, fmt.Sprintf("opa.matchersConfig=%s", matchersStr))
 	} else {
-		args = append(args, []string{
-			fmt.Sprintf("--opa.matcher=%s", opaNetworkLabelMatchers),
-			"--opa.matcher-op=or",
-		}...)
+		args = append(args, "--opa.skip-tenants=audit,infrastructure")
+
+		if len(adminGroups) > 0 {
+			args = append(args, fmt.Sprintf("--opa.admin-groups=%s", strings.Join(adminGroups, ",")))
+		}
+
+		if mode != lokiv1.OpenshiftNetwork {
+			args = append(args, []string{
+				fmt.Sprintf("--opa.matcher=%s", opaDefaultLabelMatchers),
+				"--opa.viaq-to-otel-migration=true",
+			}...)
+		} else {
+			args = append(args, []string{
+				fmt.Sprintf("--opa.matcher=%s", opaNetworkLabelMatchers),
+				"--opa.matcher-op=or",
+			}...)
+		}
 	}
 
 	if withTLS {
@@ -90,7 +126,7 @@ func newOPAOpenShiftContainer(mode lokiv1.ModeType, secretVolumeName, tlsDir, mi
 		args = append(args, fmt.Sprintf(`--openshift.mappings=%s=%s`, t, opaDefaultAPIGroup))
 	}
 
-	return corev1.Container{
+	return &corev1.Container{
 		Name:  opaContainerName,
 		Image: image,
 		Args:  args,
@@ -131,5 +167,14 @@ func newOPAOpenShiftContainer(mode lokiv1.ModeType, secretVolumeName, tlsDir, mi
 			FailureThreshold: 12,
 		},
 		VolumeMounts: volumeMounts,
+	}, nil
+}
+
+func groupsToMatchers(groups []string) map[string]Matcher {
+	matchers := map[string]Matcher{}
+	for _, group := range groups {
+		matchers[group] = Matcher{}
 	}
+
+	return matchers
 }

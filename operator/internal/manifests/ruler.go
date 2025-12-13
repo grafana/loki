@@ -330,7 +330,7 @@ func configureRulerStatefulSetForMode(ss *appsv1.StatefulSet, mode lokiv1.ModeTy
 	switch mode {
 	case lokiv1.Static, lokiv1.Dynamic:
 		return nil // nothing to configure
-	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
+	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork, lokiv1.Openshift:
 		bundleName := alertmanagerSigningCABundleName(ss.Name)
 		monitorServerName := fqdn(openshift.MonitoringSVCMain, openshift.MonitoringNS)
 		return openshift.ConfigureRulerStatefulSet(
@@ -353,7 +353,7 @@ func configureRulerObjsForMode(opts Options) []client.Object {
 	switch opts.Stack.Tenants.Mode {
 	case lokiv1.Static, lokiv1.Dynamic:
 		// nothing to configure
-	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
+	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork, lokiv1.Openshift:
 		openShiftObjs = openshift.BuildRulerObjects(opts.OpenShiftOptions)
 	}
 

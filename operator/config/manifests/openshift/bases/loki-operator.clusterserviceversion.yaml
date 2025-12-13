@@ -942,6 +942,7 @@ spec:
         - urn:alm:descriptor:com.tectonic.ui:select:dynamic
         - urn:alm:descriptor:com.tectonic.ui:select:openshift-logging
         - urn:alm:descriptor:com.tectonic.ui:select:openshift-network
+        - urn:alm:descriptor:com.tectonic.ui:select:openshift
       - description: Openshift defines the configuration specific to Openshift modes.
         displayName: Openshift
         path: tenants.openshift

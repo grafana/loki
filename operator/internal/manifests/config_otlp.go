@@ -10,7 +10,7 @@ import (
 )
 
 func defaultOTLPAttributeConfig(ts *lokiv1.TenantsSpec) config.OTLPAttributeConfig {
-	if ts == nil || ts.Mode != lokiv1.OpenshiftLogging {
+	if ts == nil || (ts.Mode != lokiv1.OpenshiftLogging && ts.Mode != lokiv1.Openshift) {
 		return config.OTLPAttributeConfig{}
 	}
 

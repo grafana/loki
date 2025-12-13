@@ -751,7 +751,7 @@ func TestBuildGateway_WithRulesEnabled(t *testing.T) {
 						Enabled: true,
 					},
 					Tenants: &lokiv1.TenantsSpec{
-						Mode: lokiv1.OpenshiftLogging,
+						Mode: lokiv1.OpenshiftNetwork,
 					},
 				},
 				Timeouts: defaultTimeoutConfig,
@@ -759,6 +759,39 @@ func TestBuildGateway_WithRulesEnabled(t *testing.T) {
 			wantArgs: []string{
 				"--logs.rules.endpoint=https://abcd-ruler-http.efgh.svc.cluster.local:3100",
 				"--logs.rules.read-only=true",
+			},
+		},
+		{
+			desc: "openshift mode",
+			opts: Options{
+				Name:      "abcd",
+				Namespace: "efgh",
+				Gates: configv1.FeatureGates{
+					LokiStackGateway: true,
+					HTTPEncryption:   true,
+					OpenShift: configv1.OpenShiftFeatureGates{
+						ServingCertsService: true,
+					},
+				},
+				Stack: lokiv1.LokiStackSpec{
+					Template: &lokiv1.LokiTemplateSpec{
+						Gateway: &lokiv1.LokiComponentSpec{
+							Replicas: rand.Int31(),
+						},
+					},
+					Rules: &lokiv1.RulesSpec{
+						Enabled: true,
+					},
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.Openshift,
+					},
+				},
+				Timeouts: defaultTimeoutConfig,
+			},
+			wantArgs: []string{
+				"--logs.rules.endpoint=https://abcd-ruler-http.efgh.svc.cluster.local:3100",
+				"--logs.rules.read-only=true",
+				"--logs.rules.label-filters=application:kubernetes_namespace_name,k8s_namespace_name",
 			},
 		},
 	}
