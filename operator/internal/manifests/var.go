@@ -64,7 +64,7 @@ const (
 	DefaultContainerImage = "docker.io/grafana/loki:3.5.5"
 
 	// DefaultLokiStackGatewayImage declares the default image for lokiStack-gateway.
-	DefaultLokiStackGatewayImage = "quay.io/btaani/api:latest"
+	DefaultLokiStackGatewayImage = "quay.io/observatorium/api:latest"
 
 	// PrometheusCAFile declares the path for prometheus CA file for service monitors.
 	PrometheusCAFile string = "/etc/prometheus/configmaps/serving-certs-ca-bundle/service-ca.crt"

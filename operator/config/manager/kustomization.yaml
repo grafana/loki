@@ -5,5 +5,5 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 images:
 - name: controller
-  newName: quay.io/btaani/loki-operator
-  newTag: 0.0.1-29452
+  newName: quay.io/openshift-logging/loki-operator
+  newTag: 0.1.0
