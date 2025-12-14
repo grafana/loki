@@ -2,6 +2,7 @@ package parquet
 
 import (
 	"bytes"
+	"io"
 	"slices"
 
 	"github.com/parquet-go/parquet-go/deprecated"
@@ -361,8 +362,66 @@ func (col *repeatedColumnBuffer) writeNull(levels columnLevels) {
 }
 
 func (col *repeatedColumnBuffer) ReadValuesAt(values []Value, offset int64) (int, error) {
-	// TODO:
-	panic("NOT IMPLEMENTED")
+	length := int64(len(col.definitionLevels))
+	if offset < 0 {
+		return 0, errRowIndexOutOfBounds(offset, length)
+	}
+	if offset >= length {
+		return 0, io.EOF
+	}
+	if length -= offset; length < int64(len(values)) {
+		values = values[:length]
+	}
+
+	numNulls1 := int64(countLevelsNotEqual(col.definitionLevels[:offset], col.maxDefinitionLevel))
+	numNulls2 := int64(countLevelsNotEqual(col.definitionLevels[offset:offset+length], col.maxDefinitionLevel))
+
+	if numNulls2 < length {
+		n, err := col.base.ReadValuesAt(values[:length-numNulls2], offset-numNulls1)
+		if err != nil {
+			return n, err
+		}
+	}
+
+	definitionLevels := col.definitionLevels[offset : offset+length]
+	repetitionLevels := col.repetitionLevels[offset : offset+length]
+
+	if numNulls2 > 0 {
+		columnIndex := ^int16(col.Column())
+		i := length - numNulls2 - 1 // Last index of non-null values
+		j := length - 1             // Last index in output values array
+		maxDefinitionLevel := col.maxDefinitionLevel
+
+		for n := len(definitionLevels) - 1; n >= 0 && j > i; n-- {
+			if definitionLevels[n] != maxDefinitionLevel {
+				values[j] = Value{
+					repetitionLevel: repetitionLevels[n],
+					definitionLevel: definitionLevels[n],
+					columnIndex:     columnIndex,
+				}
+			} else {
+				values[j] = values[i]
+				values[j].repetitionLevel = repetitionLevels[n]
+				values[j].definitionLevel = maxDefinitionLevel
+				i--
+			}
+			j--
+		}
+
+		// Set levels on remaining non-null values at the beginning
+		for k := int64(0); k <= i; k++ {
+			values[k].repetitionLevel = repetitionLevels[k]
+			values[k].definitionLevel = maxDefinitionLevel
+		}
+	} else {
+		// No nulls, but still need to set levels on all values
+		for i := range values[:length] {
+			values[i].repetitionLevel = repetitionLevels[i]
+			values[i].definitionLevel = col.maxDefinitionLevel
+		}
+	}
+
+	return int(length), nil
 }
 
 // repeatedRowLength gives the length of the repeated row starting at the

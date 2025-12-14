@@ -2,12 +2,10 @@ package jsonlite
 
 import (
 	"encoding/json"
-	"iter"
-	"math"
-	"slices"
+	"fmt"
+	"hash/maphash"
 	"strconv"
 	"strings"
-	"time"
 	"unsafe"
 )
 
@@ -18,6 +16,14 @@ const (
 	// on 32-bit systems this is 29 (top 3 bits for kind, bottom 29 for length).
 	kindShift = (unsafe.Sizeof(uintptr(0))*8 - 3)
 	kindMask  = (1 << kindShift) - 1
+	// unparsedBit is set for objects/arrays that haven't been parsed yet (lazy parsing).
+	// On 64-bit systems this is bit 60, on 32-bit systems this is bit 28.
+	unparsedBit = uintptr(1) << (kindShift - 1)
+)
+
+var (
+	// hashseed is the seed used for hashing object keys.
+	hashseed = maphash.MakeSeed()
 )
 
 // Kind represents the type of a JSON value.
@@ -41,6 +47,12 @@ const (
 )
 
 // Value represents a JSON value of any type.
+//
+// Value instances as immutable, they can be safely accessed from multiple
+// goroutines.
+//
+// The zero-value of Value is invalid, all Value instances must be acquired
+// form Parse or from an Iterator.
 type Value struct {
 	p unsafe.Pointer
 	n uintptr
@@ -52,9 +64,7 @@ type field struct {
 }
 
 // Kind returns the type of the JSON value.
-func (v *Value) Kind() Kind {
-	return Kind(v.n >> kindShift)
-}
+func (v *Value) Kind() Kind { return Kind(v.n >> kindShift) }
 
 // Len returns the length of the value.
 // For strings, it returns the number of bytes.
@@ -63,8 +73,18 @@ func (v *Value) Kind() Kind {
 // Panics if called on other types.
 func (v *Value) Len() int {
 	switch v.Kind() {
-	case String, Number, Array, Object:
+	case String:
+		// String values now store quoted JSON - subtract 2 for quotes
+		return int(v.n&kindMask) - 2
+	case Number:
 		return int(v.n & kindMask)
+	case Array, Object:
+		parsed := v
+		if v.unparsed() {
+			parsed = v.parse()
+		}
+		// First element/field is always cached JSON
+		return int(parsed.n&kindMask) - 1
 	default:
 		panic("jsonlite: Len called on non-string/array/object value")
 	}
@@ -76,7 +96,7 @@ func (v *Value) Int() int64 {
 	if v.Kind() != Number {
 		panic("jsonlite: Int called on non-number value")
 	}
-	i, err := strconv.ParseInt(v.raw(), 10, 64)
+	i, err := strconv.ParseInt(v.json(), 10, 64)
 	if err != nil {
 		panic(err)
 	}
@@ -89,7 +109,7 @@ func (v *Value) Uint() uint64 {
 	if v.Kind() != Number {
 		panic("jsonlite: Uint called on non-number value")
 	}
-	u, err := strconv.ParseUint(v.raw(), 10, 64)
+	u, err := strconv.ParseUint(v.json(), 10, 64)
 	if err != nil {
 		panic(err)
 	}
@@ -102,7 +122,7 @@ func (v *Value) Float() float64 {
 	if v.Kind() != Number {
 		panic("jsonlite: Float called on non-number value")
 	}
-	f, err := strconv.ParseFloat(v.raw(), 64)
+	f, err := strconv.ParseFloat(v.json(), 64)
 	if err != nil {
 		panic(err)
 	}
@@ -114,47 +134,70 @@ func (v *Value) Float() float64 {
 // For other types, returns the JSON representation.
 func (v *Value) String() string {
 	switch v.Kind() {
-	case String, Number:
-		return v.raw()
 	case Null:
-		return "null"
-	case True:
-		return "true"
-	case False:
-		return "false"
+		return "<nil>"
+	case String:
+		s, _ := Unquote(v.json())
+		return s
+	case Number, True, False:
+		return v.json()
+	case Array:
+		return (*Value)(v.p).json()
 	default:
-		return string(v.Append(nil))
+		if v.unparsed() {
+			return v.json()
+		}
+		return (*field)(v.p).v.json()
 	}
 }
 
-// Array returns the value as a slice of Values.
+// JSON returns the JSON representation of the value.
+func (v *Value) JSON() string {
+	switch v.Kind() {
+	case String, Number, Null, True, False:
+		return v.json()
+	case Array:
+		return (*Value)(v.p).json()
+	default:
+		if v.unparsed() {
+			return v.json()
+		}
+		return (*field)(v.p).v.json()
+	}
+}
+
+// Array iterates over the array elements.
 // Panics if the value is not an array.
-func (v *Value) Array() iter.Seq[*Value] {
+func (v *Value) Array(yield func(*Value) bool) {
 	if v.Kind() != Array {
 		panic("jsonlite: Array called on non-array value")
 	}
-	return func(yield func(*Value) bool) {
-		elems := unsafe.Slice((*Value)(v.p), v.len())
-		for i := range elems {
-			if !yield(&elems[i]) {
-				return
-			}
+	parsed := v
+	if v.unparsed() {
+		parsed = v.parse()
+	}
+	elems := unsafe.Slice((*Value)(parsed.p), parsed.len())[1:]
+	for i := range elems {
+		if !yield(&elems[i]) {
+			return
 		}
 	}
 }
 
-// Object returns the value as a slice of key/value pairs.
+// Object iterates over the object's key/value pairs.
 // Panics if the value is not an object.
-func (v *Value) Object() iter.Seq2[string, *Value] {
+func (v *Value) Object(yield func(string, *Value) bool) {
 	if v.Kind() != Object {
 		panic("jsonlite: Object called on non-object value")
 	}
-	return func(yield func(string, *Value) bool) {
-		fields := unsafe.Slice((*field)(v.p), v.len())
-		for i := range fields {
-			if !yield(fields[i].k, &fields[i].v) {
-				return
-			}
+	parsed := v
+	if v.unparsed() {
+		parsed = v.parse()
+	}
+	fields := unsafe.Slice((*field)(parsed.p), parsed.len())[1:]
+	for i := range fields {
+		if !yield(fields[i].k, &fields[i].v) {
+			return
 		}
 	}
 }
@@ -166,14 +209,54 @@ func (v *Value) Lookup(k string) *Value {
 	if v.Kind() != Object {
 		panic("jsonlite: Lookup called on non-object value")
 	}
-	fields := unsafe.Slice((*field)(v.p), v.len())
-	i, ok := slices.BinarySearchFunc(fields, k, func(a field, b string) int {
-		return strings.Compare(a.k, b)
-	})
-	if ok {
-		return &fields[i].v
+	parsed := v
+	if v.unparsed() {
+		parsed = v.parse()
 	}
-	return nil
+	fields := unsafe.Slice((*field)(parsed.p), parsed.len())
+	hashes := fields[0].k
+	refkey := byte(maphash.String(hashseed, k))
+	offset := 0
+	for {
+		i := strings.IndexByte(hashes[offset:], refkey)
+		if i < 0 {
+			return nil
+		}
+		j := offset + i + 1
+		f := &fields[j]
+		if f.k == k {
+			return &f.v
+		}
+		offset = j
+	}
+}
+
+// LookupPath searches for a nested field by following a path of keys.
+// Returns nil if any key in the path is not found.
+// Panics if any intermediate value is not an object.
+// If path is empty, returns the value itself.
+func (v *Value) LookupPath(path ...string) *Value {
+	for _, key := range path {
+		if v == nil {
+			return nil
+		}
+		v = v.Lookup(key)
+	}
+	return v
+}
+
+// Index returns the value at index i in an array.
+// Panics if the value is not an array or if the index is out of range.
+func (v *Value) Index(i int) *Value {
+	if v.Kind() != Array {
+		panic("jsonlite: Index called on non-array value")
+	}
+	parsed := v
+	if v.unparsed() {
+		parsed = v.parse()
+	}
+	elems := unsafe.Slice((*Value)(parsed.p), parsed.len())[1:]
+	return &elems[i]
 }
 
 // NumberType returns the classification of the number (int, uint, or float).
@@ -182,7 +265,7 @@ func (v *Value) NumberType() NumberType {
 	if v.Kind() != Number {
 		panic("jsonlite: NumberType called on non-number value")
 	}
-	return NumberTypeOf(v.raw())
+	return NumberTypeOf(v.json())
 }
 
 // Number returns the value as a json.Number.
@@ -191,18 +274,27 @@ func (v *Value) Number() json.Number {
 	if v.Kind() != Number {
 		panic("jsonlite: Number called on non-number value")
 	}
-	return json.Number(v.raw())
+	return json.Number(v.json())
 }
 
-// raw returns the underlying string data without type checking.
-// This is used internally by methods that have already verified the type.
-func (v *Value) raw() string {
+func (v *Value) json() string {
 	return unsafe.String((*byte)(v.p), v.len())
 }
 
-// len returns the length stored in the value without type checking.
 func (v *Value) len() int {
-	return int(v.n & kindMask)
+	return int(v.n & (kindMask &^ unparsedBit))
+}
+
+func (v *Value) unparsed() bool {
+	return (v.n & unparsedBit) != 0
+}
+
+func (v *Value) parse() *Value {
+	parsed, err := Parse(v.JSON())
+	if err != nil {
+		panic(fmt.Errorf("jsonlite: lazy parse failed: %w", err))
+	}
+	return parsed
 }
 
 // NumberType represents the classification of a JSON number.
@@ -238,31 +330,22 @@ func NumberTypeOf(s string) NumberType {
 	return t
 }
 
-func makeNullValue() Value {
-	return Value{n: uintptr(Null) << kindShift}
-}
-
-func makeTrueValue() Value {
-	return Value{n: uintptr(True)<<kindShift | 1}
-}
-
-func makeFalseValue() Value {
-	return Value{n: uintptr(False)<<kindShift | 0}
-}
-
-func makeNumberValue(s string) Value {
+func makeValue(k Kind, s string) Value {
 	return Value{
 		p: unsafe.Pointer(unsafe.StringData(s)),
-		n: (uintptr(Number) << kindShift) | uintptr(len(s)),
+		n: (uintptr(k) << kindShift) | uintptr(len(s)),
 	}
 }
 
-func makeStringValue(s string) Value {
-	return Value{
-		p: unsafe.Pointer(unsafe.StringData(s)),
-		n: (uintptr(String) << kindShift) | uintptr(len(s)),
-	}
-}
+func makeNullValue(s string) Value { return makeValue(Null, s) }
+
+func makeTrueValue(s string) Value { return makeValue(True, s) }
+
+func makeFalseValue(s string) Value { return makeValue(False, s) }
+
+func makeNumberValue(s string) Value { return makeValue(Number, s) }
+
+func makeStringValue(s string) Value { return makeValue(String, s) }
 
 func makeArrayValue(elements []Value) Value {
 	return Value{
@@ -278,196 +361,55 @@ func makeObjectValue(fields []field) Value {
 	}
 }
 
-// AsBool coerces the value to a boolean.
-// Returns false for nil, Null, False, zero numbers, and empty strings/objects/arrays.
-// Returns true for True, non-zero numbers, and non-empty strings/objects/arrays.
-func AsBool(v *Value) bool {
-	if v != nil {
-		switch v.Kind() {
-		case True:
-			return true
-		case Number:
-			f, err := strconv.ParseFloat(v.raw(), 64)
-			return err == nil && f != 0
-		case String, Object, Array:
-			return v.len() > 0
-		}
+func makeUnparsedObjectValue(json string) Value {
+	return Value{
+		p: unsafe.Pointer(unsafe.StringData(json)),
+		n: (uintptr(Object) << kindShift) | uintptr(len(json)) | unparsedBit,
 	}
-	return false
-}
-
-// AsString coerces the value to a string.
-// Returns "" for nil and Null.
-// Returns "true"/"false" for booleans.
-// Returns the raw value for numbers and strings.
-// Returns the JSON representation for objects and arrays.
-func AsString(v *Value) string {
-	if v != nil {
-		switch v.Kind() {
-		case True:
-			return "true"
-		case False:
-			return "false"
-		case Number, String:
-			return v.raw()
-		case Object, Array:
-			return string(v.Append(nil))
-		}
-	}
-	return ""
-}
-
-// AsInt coerces the value to a signed 64-bit integer.
-// Returns 0 for nil, Null, False, objects, and arrays.
-// Returns 1 for True.
-// Parses numbers and strings, truncating floats. Returns 0 on parse failure.
-func AsInt(v *Value) int64 {
-	if v != nil {
-		switch v.Kind() {
-		case True:
-			return 1
-		case Number, String:
-			if i, err := strconv.ParseInt(v.raw(), 10, 64); err == nil {
-				return i
-			}
-			if f, err := strconv.ParseFloat(v.raw(), 64); err == nil {
-				return int64(f)
-			}
-		}
-	}
-	return 0
-}
-
-// AsUint coerces the value to an unsigned 64-bit integer.
-// Returns 0 for nil, Null, False, objects, arrays, and negative numbers.
-// Returns 1 for True.
-// Parses numbers and strings, truncating floats. Returns 0 on parse failure.
-func AsUint(v *Value) uint64 {
-	if v != nil {
-		switch v.Kind() {
-		case True:
-			return 1
-		case Number, String:
-			if u, err := strconv.ParseUint(v.raw(), 10, 64); err == nil {
-				return u
-			}
-			if f, err := strconv.ParseFloat(v.raw(), 64); err == nil {
-				if f >= 0 {
-					return uint64(f)
-				}
-			}
-		}
-	}
-	return 0
-}
-
-// AsFloat coerces the value to a 64-bit floating point number.
-// Returns 0 for nil, Null, False, objects, and arrays.
-// Returns 1 for True.
-// Parses numbers and strings. Returns 0 on parse failure.
-func AsFloat(v *Value) float64 {
-	if v != nil {
-		switch v.Kind() {
-		case True:
-			return 1
-		case Number, String:
-			if f, err := strconv.ParseFloat(v.raw(), 64); err == nil {
-				return f
-			}
-		}
-	}
-	return 0
-}
-
-// AsDuration coerces the value to a time.Duration.
-// Returns 0 for nil, Null, False, objects, and arrays.
-// For strings, parses using time.ParseDuration.
-// For numbers, interprets the value as seconds.
-func AsDuration(v *Value) time.Duration {
-	if v != nil {
-		switch v.Kind() {
-		case True:
-			return time.Second
-		case Number:
-			if f, err := strconv.ParseFloat(v.raw(), 64); err == nil {
-				return time.Duration(f * float64(time.Second))
-			}
-		case String:
-			if d, err := time.ParseDuration(v.raw()); err == nil {
-				return d
-			}
-		}
-	}
-	return 0
-}
-
-// AsTime coerces the value to a time.Time.
-// Returns the zero time for nil, Null, False, objects, and arrays.
-// For strings, parses using RFC3339 format in UTC.
-// For numbers, interprets the value as seconds since Unix epoch.
-func AsTime(v *Value) time.Time {
-	if v != nil {
-		switch v.Kind() {
-		case Number:
-			if f, err := strconv.ParseFloat(v.raw(), 64); err == nil {
-				sec, frac := math.Modf(f)
-				return time.Unix(int64(sec), int64(frac*1e9)).UTC()
-			}
-		case String:
-			if t, err := time.ParseInLocation(time.RFC3339, v.raw(), time.UTC); err == nil {
-				return t
-			}
-		}
-	}
-	return time.Time{}
 }
 
 // Append serializes the Value to JSON and appends it to the buffer.
 // Returns the extended buffer.
-func (v *Value) Append(buf []byte) []byte {
+func (v *Value) Append(buf []byte) []byte { return append(buf, v.JSON()...) }
+
+// Compact appends a compacted JSON representation of the value to buf by recursively
+// reconstructing it from the parsed structure. Unlike Append, this method does not
+// use cached JSON and always regenerates the output.
+func (v *Value) Compact(buf []byte) []byte {
 	switch v.Kind() {
-	case Null:
-		return append(buf, "null"...)
-
-	case True:
-		return append(buf, "true"...)
-
-	case False:
-		return append(buf, "false"...)
-
-	case Number:
-		return append(buf, v.raw()...)
-
-	case String:
-		return AppendQuote(buf, v.String())
-
+	case String, Null, True, False, Number:
+		return append(buf, v.json()...)
 	case Array:
+		parsed := v
+		if v.unparsed() {
+			parsed = v.parse()
+		}
 		buf = append(buf, '[')
 		var count int
-		for elem := range v.Array() {
+		for elem := range parsed.Array {
 			if count > 0 {
 				buf = append(buf, ',')
 			}
-			buf = elem.Append(buf)
+			buf = elem.Compact(buf)
 			count++
 		}
 		return append(buf, ']')
-
-	case Object:
+	default:
+		parsed := v
+		if v.unparsed() {
+			parsed = v.parse()
+		}
 		buf = append(buf, '{')
 		var count int
-		for k, v := range v.Object() {
+		for k, v := range parsed.Object {
 			if count > 0 {
 				buf = append(buf, ',')
 			}
 			buf = AppendQuote(buf, k)
 			buf = append(buf, ':')
-			buf = v.Append(buf)
+			buf = v.Compact(buf)
 			count++
 		}
 		return append(buf, '}')
-
-	default:
-		return buf
 	}
 }

@@ -28,7 +28,7 @@ const (
 	DefaultPageBufferSize       = 256 * 1024
 	DefaultWriteBufferSize      = 32 * 1024
 	DefaultDataPageVersion      = 2
-	DefaultDataPageStatistics   = false
+	DefaultDataPageStatistics   = true
 	DefaultSkipMagicBytes       = false
 	DefaultSkipPageIndex        = false
 	DefaultSkipBloomFilters     = false
@@ -626,7 +626,12 @@ func DataPageVersion(version int) WriterOption {
 // files that intend to be backward compatible with older readers which may not
 // have the ability to load page statistics from the column index.
 //
-// Defaults to false.
+// This used to be disabled by default, but it was switched from false to true
+// after v0.26.0, because the computation of page statistics is cheap and query
+// engines do better the more statistics they have available, enabling is a more
+// sensible default.
+//
+// Defaults to true.
 func DataPageStatistics(enabled bool) WriterOption {
 	return writerOption(func(config *WriterConfig) { config.DataPageStatistics = enabled })
 }

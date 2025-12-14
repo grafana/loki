@@ -117,12 +117,12 @@ func writeProtoStructJSON(b *bytes.Buffer, s *structpb.Struct) {
 
 func writeProtoValueJSON(b *bytes.Buffer, v *structpb.Value) {
 	switch k := v.GetKind().(type) {
-	case *structpb.Value_NumberValue:
-		b.Write(strconv.AppendFloat(b.AvailableBuffer(), k.NumberValue, 'g', -1, 64))
 	case *structpb.Value_StringValue:
 		b.Write(jsonlite.AppendQuote(b.AvailableBuffer(), k.StringValue))
 	case *structpb.Value_BoolValue:
 		b.Write(strconv.AppendBool(b.AvailableBuffer(), k.BoolValue))
+	case *structpb.Value_NumberValue:
+		b.Write(strconv.AppendFloat(b.AvailableBuffer(), k.NumberValue, 'g', -1, 64))
 	case *structpb.Value_StructValue:
 		writeProtoStructJSON(b, k.StructValue)
 	case *structpb.Value_ListValue:

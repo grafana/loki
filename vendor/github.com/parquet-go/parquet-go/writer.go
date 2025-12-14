@@ -13,12 +13,14 @@ import (
 	"os"
 	"reflect"
 	"slices"
+	"strings"
 
 	"github.com/parquet-go/parquet-go/compress"
 	"github.com/parquet-go/parquet-go/encoding"
 	"github.com/parquet-go/parquet-go/encoding/plain"
 	"github.com/parquet-go/parquet-go/encoding/thrift"
 	"github.com/parquet-go/parquet-go/format"
+	"github.com/parquet-go/parquet-go/sparse"
 )
 
 const (
@@ -97,71 +99,105 @@ func NewGenericWriter[T any](output io.Writer, options ...WriterOption) *Generic
 		panic(err)
 	}
 
-	schema := config.Schema
 	t := typeOf[T]()
 
 	var genWriteErr error
 	if t != nil {
 		if columnName, ok := validateColumns(dereference(t)); !ok {
-			genWriteErr = fmt.Errorf("caonnot write %v: it has columns with the same paqruet column name %q", t, columnName)
+			genWriteErr = fmt.Errorf("caonnot write %v: it has columns with the same parquet column name %q", t, columnName)
 		}
 	}
 
-	if schema == nil && t != nil {
-		schema = schemaOf(dereference(t), config.SchemaConfig.StructTags...)
-		if len(schema.Columns()) == 0 {
-			genWriteErr = fmt.Errorf("cannot write %v: it has no columns (maybe it has no exported fields)", t)
-		}
-		config.Schema = schema
-	} else if schema != nil && len(schema.Columns()) == 0 {
-		genWriteErr = fmt.Errorf("cannot write %v: schema has no columns", t)
+	schemaFromConf := config.Schema
+	schemaFromType := (*Schema)(nil)
+
+	if t != nil && dereference(t).Kind() == reflect.Struct {
+		schemaFromType = schemaOf(dereference(t), config.SchemaConfig.StructTags...)
 	}
 
+	config.Schema = cmp.Or(schemaFromConf, schemaFromType)
 	if config.Schema == nil {
 		panic("generic writer must be instantiated with schema or concrete type.")
 	}
+	if len(config.Schema.Columns()) == 0 {
+		genWriteErr = fmt.Errorf("cannot write %v: it has no columns (maybe it has no exported fields)", t)
+	}
 
 	var writeFn writeFunc[T]
-	if genWriteErr != nil {
+	switch {
+	case genWriteErr != nil:
 		writeFn = func(*GenericWriter[T], []T) (int, error) { return 0, genWriteErr }
-	} else {
-		writeFn = writeFuncOf[T](t, config.Schema, config.SchemaConfig.StructTags)
+	case schemaFromType == config.Schema || (schemaFromType != nil && EqualNodes(config.Schema, schemaFromType)):
+		// The schema matches the type T, we can use the optimized
+		// writeRowsFunc algorithms mapping Go values directly to
+		// parquet columns, using the sparse package.
+		writeRows := writeRowsFuncOf(t, config.Schema, nil, config.SchemaConfig.StructTags)
+		writeFn = makeWriteFunc[T](t, writeRows)
+	default:
+		// The schema does not match the type T, we have to
+		// deconstruct each value of type T into a Row first.
+		// This is less efficient but still type-safe.
+		_, writeValue := writeValueFuncOf(0, config.Schema)
+		writeFn = makeWriteFunc[T](t, func(columns []ColumnBuffer, levels columnLevels, rows sparse.Array) {
+			if rows.Len() == 0 {
+				writeValue(columns, levels, reflect.Value{})
+				return
+			}
+			for i := range rows.Len() {
+				v := reflect.ValueOf((*T)(rows.Index(i))).Elem()
+				writeValue(columns, levels, v)
+			}
+		})
 	}
 
 	return &GenericWriter[T]{
 		base: Writer{
 			output: output,
 			config: config,
-			schema: schema,
+			schema: config.Schema,
 			writer: newWriter(output, config),
 		},
 		write: writeFn,
 	}
 }
 
-type writeFunc[T any] func(*GenericWriter[T], []T) (int, error)
-
-func writeFuncOf[T any](t reflect.Type, schema *Schema, tagReplacements []StructTagOption) writeFunc[T] {
-	if t == nil {
-		return (*GenericWriter[T]).writeAny
+func validateColumns(t reflect.Type) (string, bool) {
+	if t.Kind() != reflect.Struct {
+		return "", true
 	}
-	switch t.Kind() {
-	case reflect.Interface, reflect.Map:
-		return (*GenericWriter[T]).writeRows
 
-	case reflect.Struct:
-		return makeWriteFunc[T](t, schema, tagReplacements)
+	columns := make(map[string]struct{}, t.NumField())
 
-	case reflect.Pointer:
-		if e := t.Elem(); e.Kind() == reflect.Struct {
-			return makeWriteFunc[T](t, schema, tagReplacements)
+	for i := range t.NumField() {
+		f := t.Field(i)
+		if !f.IsExported() {
+			continue
+		}
+		fieldTag, columnName := f.Tag.Get("parquet"), f.Name
+		if fieldTag != "" {
+			if commaIdx := strings.IndexByte(fieldTag, ','); commaIdx >= 0 {
+				fieldTag = fieldTag[:commaIdx]
+			}
+			if fieldTag == "-" {
+				continue
+			}
+			if fieldTag != "" {
+				columnName = fieldTag
+			}
+		}
+		if _, exists := columns[columnName]; exists {
+			return columnName, false
+		} else {
+			columns[columnName] = struct{}{}
 		}
 	}
-	panic("cannot create writer for values of type " + t.String())
+
+	return "", true
 }
 
-func makeWriteFunc[T any](t reflect.Type, schema *Schema, tagReplacements []StructTagOption) writeFunc[T] {
-	writeRows := writeRowsFuncOf(t, schema, nil, tagReplacements)
+type writeFunc[T any] func(*GenericWriter[T], []T) (int, error)
+
+func makeWriteFunc[T any](t reflect.Type, writeRows writeRowsFunc) writeFunc[T] {
 	return func(w *GenericWriter[T], rows []T) (n int, err error) {
 		if w.columns == nil {
 			w.columns = make([]ColumnBuffer, len(w.base.writer.currentRowGroup.columns))
@@ -262,32 +298,6 @@ func (w *GenericWriter[T]) ColumnWriters() []*ColumnWriter {
 	return w.base.ColumnWriters()
 }
 
-func (w *GenericWriter[T]) writeRows(rows []T) (int, error) {
-	if cap(w.base.rowbuf) < len(rows) {
-		w.base.rowbuf = make([]Row, len(rows))
-	} else {
-		w.base.rowbuf = w.base.rowbuf[:len(rows)]
-	}
-	defer clearRows(w.base.rowbuf)
-
-	schema := w.base.Schema()
-	for i := range rows {
-		w.base.rowbuf[i] = schema.Deconstruct(w.base.rowbuf[i], &rows[i])
-	}
-
-	return w.base.WriteRows(w.base.rowbuf)
-}
-
-func (w *GenericWriter[T]) writeAny(rows []T) (n int, err error) {
-	for i := range rows {
-		if err = w.base.Write(rows[i]); err != nil {
-			return n, err
-		}
-		n++
-	}
-	return n, nil
-}
-
 // File returns a FileView of the written parquet file.
 // Only available after Close is called.
 func (w *GenericWriter[T]) File() FileView {
@@ -372,6 +382,12 @@ var (
 
 // Deprecated: A Writer uses a parquet schema and sequence of Go values to
 // produce a parquet file to an io.Writer.
+//
+// Use NewGenericWriter instead. To maintain dynamic behavior (schema unknown at compile time),
+// use "any" as the type parameter:
+//
+//	This gives you the same behavior as the old Writer
+//	w := parquet.NewGenericWriter[any](output, schema)
 //
 // This example showcases a typical use of parquet writers:
 //
@@ -753,7 +769,11 @@ func newWriterRowGroup(w *writer, config *WriterConfig) *writerRowGroup {
 
 		c.header.encoder.Reset(c.header.protocol.NewWriter(&c.buffers.header))
 
-		if leaf.maxDefinitionLevel > 0 {
+		if c.maxRepetitionLevel > 0 {
+			c.repetitionLevelHistogram = make([]int64, int(c.maxRepetitionLevel)+1)
+		}
+		if c.maxDefinitionLevel > 0 {
+			c.definitionLevelHistogram = make([]int64, int(c.maxDefinitionLevel)+1)
 			c.encodings = addEncoding(c.encodings, format.RLE)
 		}
 
@@ -964,12 +984,18 @@ func newWriter(output io.Writer, config *WriterConfig) *writer {
 			typeLength = &n
 		}
 
+		var numChildren *int32
+		if !node.Leaf() {
+			n := int32(len(node.Fields()))
+			numChildren = &n
+		}
+
 		w.schemaElements = append(w.schemaElements, format.SchemaElement{
 			Type:           nodeType.PhysicalType(),
 			TypeLength:     typeLength,
 			RepetitionType: repetitionType,
 			Name:           name,
-			NumChildren:    int32(len(node.Fields())),
+			NumChildren:    numChildren,
 			ConvertedType:  nodeType.ConvertedType(),
 			Scale:          scale,
 			Precision:      precision,
@@ -1162,7 +1188,16 @@ func (w *writer) writeRowGroup(rg *writerRowGroup, rowGroupSchema *Schema, rowGr
 	fileOffset := w.writer.offset
 
 	for i, c := range rg.columns {
-		rg.columnIndex[i] = format.ColumnIndex(c.columnIndex.ColumnIndex())
+		columnIndex := c.columnIndex.ColumnIndex()
+		columnIndex.RepetitionLevelHistogram = slices.Clone(c.pageRepetitionLevelHistograms)
+		columnIndex.DefinitionLevelHistogram = slices.Clone(c.pageDefinitionLevelHistograms)
+		rg.columnIndex[i] = columnIndex
+
+		c.columnChunk.MetaData.SizeStatistics = format.SizeStatistics{
+			UnencodedByteArrayDataBytes: c.totalUnencodedByteArrayBytes,
+			RepetitionLevelHistogram:    slices.Clone(c.repetitionLevelHistogram),
+			DefinitionLevelHistogram:    slices.Clone(c.definitionLevelHistogram),
+		}
 
 		if c.dictionary != nil {
 			c.columnChunk.MetaData.DictionaryPageOffset = w.writer.offset
@@ -1194,10 +1229,13 @@ func (w *writer) writeRowGroup(rg *writerRowGroup, rowGroupSchema *Schema, rowGr
 
 	for _, c := range rg.columns {
 		if len(c.filter) > 0 {
-			c.columnChunk.MetaData.BloomFilterOffset = w.writer.offset
+			bloomFilterOffset := w.writer.offset
+			c.columnChunk.MetaData.BloomFilterOffset = bloomFilterOffset
 			if err := c.writeBloomFilter(&w.writer); err != nil {
 				return 0, err
 			}
+			bloomFilterLength := w.writer.offset - bloomFilterOffset
+			c.columnChunk.MetaData.BloomFilterLength = int32(bloomFilterLength)
 		}
 	}
 
@@ -1225,25 +1263,18 @@ func (w *writer) writeRowGroup(rg *writerRowGroup, rowGroupSchema *Schema, rowGr
 		})
 	}
 
-	columns := make([]format.ColumnChunk, len(rg.columnChunk))
-	copy(columns, rg.columnChunk)
-
-	columnIndex := make([]format.ColumnIndex, len(rg.columnIndex))
-	copy(columnIndex, rg.columnIndex)
-
-	offsetIndex := make([]format.OffsetIndex, len(rg.offsetIndex))
-	copy(offsetIndex, rg.offsetIndex)
+	columns := slices.Clone(rg.columnChunk)
+	columnIndex := slices.Clone(rg.columnIndex)
+	offsetIndex := slices.Clone(rg.offsetIndex)
 
 	for i := range columns {
 		c := &columns[i]
-		c.MetaData.EncodingStats = make([]format.PageEncodingStats, len(c.MetaData.EncodingStats))
-		copy(c.MetaData.EncodingStats, rg.columnChunk[i].MetaData.EncodingStats)
+		c.MetaData.EncodingStats = slices.Clone(rg.columnChunk[i].MetaData.EncodingStats)
 	}
 
 	for i := range offsetIndex {
 		c := &offsetIndex[i]
-		c.PageLocations = make([]format.PageLocation, len(c.PageLocations))
-		copy(c.PageLocations, rg.offsetIndex[i].PageLocations)
+		c.PageLocations = slices.Clone(rg.offsetIndex[i].PageLocations)
 	}
 
 	w.rowGroups = append(w.rowGroups, format.RowGroup{
@@ -1427,6 +1458,12 @@ type ColumnWriter struct {
 	rowsBuffer             *buffer[int32]
 	repetitionLevelsBuffer *buffer[byte]
 	definitionLevelsBuffer *buffer[byte]
+
+	totalUnencodedByteArrayBytes  int64
+	repetitionLevelHistogram      []int64
+	definitionLevelHistogram      []int64
+	pageRepetitionLevelHistograms []int64
+	pageDefinitionLevelHistograms []int64
 }
 
 func (c *ColumnWriter) reset() {
@@ -1467,6 +1504,12 @@ func (c *ColumnWriter) reset() {
 	c.columnChunk.MetaData.EncodingStats = c.columnChunk.MetaData.EncodingStats[:0]
 	c.columnChunk.MetaData.BloomFilterOffset = 0
 	c.offsetIndex.PageLocations = c.offsetIndex.PageLocations[:0]
+
+	c.totalUnencodedByteArrayBytes = 0
+	clear(c.repetitionLevelHistogram)
+	clear(c.definitionLevelHistogram)
+	c.pageRepetitionLevelHistograms = c.pageRepetitionLevelHistograms[:0]
+	c.pageDefinitionLevelHistograms = c.pageDefinitionLevelHistograms[:0]
 }
 
 func (c *ColumnWriter) totalRowCount() int64 {
@@ -1739,7 +1782,7 @@ func (c *ColumnWriter) writeDataPage(page Page) (int64, error) {
 		return 0, fmt.Errorf("encoding parquet data page: %w", err)
 	}
 	if c.dataPageType == format.DataPage {
-		buf.prependLevelsToDataPageV1(c.maxDefinitionLevel, c.maxDefinitionLevel)
+		buf.prependLevelsToDataPageV1(c.maxRepetitionLevel, c.maxDefinitionLevel)
 	}
 
 	uncompressedPageSize := buf.size()
@@ -2004,6 +2047,24 @@ func (c *ColumnWriter) recordPageStats(headerSize int32, header *format.PageHead
 		})
 
 		c.numRows += page.NumRows()
+		c.totalUnencodedByteArrayBytes += computeUnencodedByteArraySize(page)
+
+		repetitionLevels := page.RepetitionLevels()
+		definitionLevels := page.DefinitionLevels()
+
+		if c.maxRepetitionLevel > 0 {
+			accumulateLevelHistogram(c.repetitionLevelHistogram, repetitionLevels)
+			c.pageRepetitionLevelHistograms = appendPageLevelHistogram(
+				c.pageRepetitionLevelHistograms, repetitionLevels, c.maxRepetitionLevel,
+			)
+		}
+
+		if c.maxDefinitionLevel > 0 {
+			accumulateLevelHistogram(c.definitionLevelHistogram, definitionLevels)
+			c.pageDefinitionLevelHistograms = appendPageLevelHistogram(
+				c.pageDefinitionLevelHistograms, definitionLevels, c.maxDefinitionLevel,
+			)
+		}
 	}
 
 	pageType := header.Type
