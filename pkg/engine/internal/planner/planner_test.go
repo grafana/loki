@@ -96,9 +96,21 @@ func (t *TestMetastore) Values(_ context.Context, _ time.Time, _ time.Time, _ ..
 	panic("unimplemented")
 }
 
+func (t *TestMetastore) GetIndexes(_ context.Context, _ metastore.GetIndexesRequest) (metastore.GetIndexesResponse, error) {
+	panic("unimplemented")
+}
+
+func (t *TestMetastore) IndexSectionsReader(_ context.Context, _ metastore.IndexSectionsReaderRequest) (metastore.IndexSectionsReaderResponse, error) {
+	panic("unimplemented")
+}
+
+func (t *TestMetastore) CollectSections(_ context.Context, _ metastore.CollectSectionsRequest) (metastore.CollectSectionsResponse, error) {
+	panic("unimplemented")
+}
+
 // Sections implements metastore.Metastore.
-func (t *TestMetastore) Sections(_ context.Context, _ time.Time, _ time.Time, _ []*labels.Matcher, _ []*labels.Matcher) ([]*metastore.DataobjSectionDescriptor, error) {
-	return []*metastore.DataobjSectionDescriptor{
+func (t *TestMetastore) Sections(_ context.Context, _ metastore.SectionsRequest) (metastore.SectionsResponse, error) {
+	return metastore.SectionsResponse{Sections: []*metastore.DataobjSectionDescriptor{
 		{
 			SectionKey: metastore.SectionKey{
 				ObjectPath: "objects/00/0000000000.dataobj",
@@ -121,7 +133,7 @@ func (t *TestMetastore) Sections(_ context.Context, _ time.Time, _ time.Time, _ 
 			Start:     time.Date(2025, time.January, 1, 0, 30, 0, 0, time.UTC),
 			End:       time.Date(2025, time.January, 1, 1, 0, 0, 0, time.UTC),
 		},
-	}, nil
+	}}, nil
 }
 
 var _ metastore.Metastore = (*TestMetastore)(nil)

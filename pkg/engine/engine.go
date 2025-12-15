@@ -340,7 +340,13 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, logger log.Logger, param
 func (e *Engine) queryMetastoreSectionsFunc(ctx context.Context) physical.MetastoreSectionsResolver {
 	return func(start time.Time, end time.Time, selector []*labels.Matcher, predicates []*labels.Matcher) ([]*metastore.DataobjSectionDescriptor, error) {
 		// TODO(ivkalita): query distributedly
-		return e.metastore.Sections(ctx, start, end, selector, predicates)
+		msResp, err := e.metastore.Sections(ctx, metastore.SectionsRequest{
+			Start:      start,
+			End:        end,
+			Matchers:   selector,
+			Predicates: predicates,
+		})
+		return msResp.Sections, err
 	}
 }
 
