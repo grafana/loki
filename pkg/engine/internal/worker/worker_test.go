@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
@@ -171,7 +172,9 @@ func buildWorkflow(ctx context.Context, t *testing.T, logger log.Logger, loc obj
 		logger,
 		prometheus.NewRegistry(),
 	)
-	catalog := physical.NewMetastoreCatalog(ctx, ms)
+	catalog := physical.NewMetastoreCatalog(func(start time.Time, end time.Time, selectors []*labels.Matcher, predicates []*labels.Matcher) ([]*metastore.DataobjSectionDescriptor, error) {
+		return ms.Sections(ctx, start, end, selectors, predicates)
+	})
 	planner := physical.NewPlanner(physical.NewContext(params.Start(), params.End()), catalog)
 	plan, err := planner.Build(logicalPlan)
 	require.NoError(t, err, "expected to create physical plan")
