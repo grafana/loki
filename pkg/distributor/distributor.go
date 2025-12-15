@@ -778,7 +778,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	}
 
 	if !d.ingestionRateLimiter.AllowN(now, tenantID, validationContext.validationMetrics.aggregatedPushStats.lineSize) {
-		d.trackDiscardedData(ctx, req, validationContext, tenantID, validationContext.validationMetrics, validation.RateLimited, streamResolver, format)
+		d.trackDiscardedData(ctx, req.Streams, validationContext, tenantID, validationContext.validationMetrics, validation.RateLimited, streamResolver, format)
 
 		err = fmt.Errorf(validation.RateLimitedErrorMsg, tenantID, int(d.ingestionRateLimiter.Limit(now, tenantID)), validationContext.validationMetrics.aggregatedPushStats.lineCount, validationContext.validationMetrics.aggregatedPushStats.lineSize)
 		d.writeFailuresManager.Log(tenantID, err)
@@ -791,9 +791,30 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	if d.cfg.IngestLimitsEnabled {
 		accepted, err := d.ingestLimits.EnforceLimits(ctx, tenantID, streams)
 		if err == nil && !d.cfg.IngestLimitsDryRunEnabled {
-			if len(accepted) == 0 {
-				// All streams were rejected, the request should be failed.
-				return nil, httpgrpc.Error(http.StatusTooManyRequests, "request exceeded limits")
+			if len(accepted) != len(streams) {
+				discardedStreams := make([]logproto.Stream, 0, len(streams)-len(accepted))
+				for _, stream := range streams {
+					// If the accepted streams do not contain the stream, add it to the discarded streams
+					if !slices.ContainsFunc(accepted, func(s KeyedStream) bool {
+						return s.HashKey == stream.HashKey
+					}) {
+						discardedStreams = append(discardedStreams, stream.Stream)
+					}
+				}
+				d.trackDiscardedData(ctx, discardedStreams, validationContext, tenantID, validationContext.validationMetrics, validation.StreamLimit, streamResolver, format)
+
+				// While many streams may have failed we only log the error for one stream in the insight logs and in the error message.
+				// It's generally not useful to know the stream labels for a stream that is hitting the stream limit as it could be any
+				// stream and isn't necessarily a stream with high cardinality. However, it might also be a high cardinality stream so returning
+				// something here still may be useful. We used to return nothing with this limit and people requested that something is better than nothing.
+				err = fmt.Errorf(validation.StreamLimitErrorMsg, discardedStreams[0].Labels, tenantID)
+				d.writeFailuresManager.Log(tenantID, err)
+				// Set the validation error to the stream limit error so it is returned to the client.
+				validationErr = httpgrpc.Error(http.StatusTooManyRequests, err.Error())
+				// If none of the streams were accpeted, return early.
+				if len(accepted) == 0 {
+					return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "%s", err.Error())
+				}
 			}
 			streams = accepted
 		}
@@ -931,7 +952,7 @@ func (d *Distributor) missingEnforcedLabels(lbs labels.Labels, tenantID string, 
 
 func (d *Distributor) trackDiscardedData(
 	ctx context.Context,
-	req *logproto.PushRequest,
+	streams []logproto.Stream,
 	validationContext validationContext,
 	tenantID string,
 	validationMetrics validationMetrics,
@@ -939,25 +960,17 @@ func (d *Distributor) trackDiscardedData(
 	streamResolver push.StreamResolver,
 	format string,
 ) {
-	for policy, retentionToStats := range validationMetrics.policyPushStats {
-		for retentionHours, stats := range retentionToStats {
-			validation.DiscardedSamples.WithLabelValues(reason, tenantID, retentionHours, policy, format).Add(float64(stats.lineCount))
-			validation.DiscardedBytes.WithLabelValues(reason, tenantID, retentionHours, policy, format).Add(float64(stats.lineSize))
+	for _, stream := range streams {
+		lbs, _, _, retentionHours, policy, err := d.parseStreamLabels(ctx, validationContext, stream.Labels, stream, streamResolver, format)
+		if err != nil {
+			level.Warn(d.logger).Log("msg", "failed to parse stream labels when tracking discarded samples and bytes, this data will not be tracked", "error", err, "stream", stream.Labels)
+			continue
 		}
-	}
-
-	if d.usageTracker != nil {
-		for _, stream := range req.Streams {
-			lbs, _, _, _, _, err := d.parseStreamLabels(ctx, validationContext, stream.Labels, stream, streamResolver, format)
-			if err != nil {
-				continue
-			}
-
-			discardedStreamBytes := util.EntriesTotalSize(stream.Entries)
-
-			if d.usageTracker != nil {
-				d.usageTracker.DiscardedBytesAdd(ctx, tenantID, reason, lbs, float64(discardedStreamBytes), format)
-			}
+		discardedStreamBytes := util.EntriesTotalSize(stream.Entries)
+		validation.DiscardedSamples.WithLabelValues(reason, tenantID, retentionHours, policy, format).Add(float64(len(stream.Entries)))
+		validation.DiscardedBytes.WithLabelValues(reason, tenantID, retentionHours, policy, format).Add(float64(discardedStreamBytes))
+		if d.usageTracker != nil {
+			d.usageTracker.DiscardedBytesAdd(ctx, tenantID, reason, lbs, float64(discardedStreamBytes), format)
 		}
 	}
 }
