@@ -226,14 +226,14 @@ func BenchmarkTableBuffer_Merge(b *testing.B) {
 	}
 	// Build two datasets which each have 1000000 records with 10000 unique metadata columns
 	records := []Record{}
-	for i := range 10000 {
+	for i := range 100000 {
 		records = append(records, Record{StreamID: int64(i), Timestamp: time.Unix(int64(i), 0), Line: []byte(fmt.Sprintf("msg%d", i) + strings.Repeat("A", 1024)), Metadata: labels.FromStrings("env", "prod", "service", "api", "instance", fmt.Sprintf("instance%d", i%10000))})
 	}
 	table1 := buildTable(&tableBuffer{}, pageSize, pageRows, initialCompressionOpts, records, SortTimestampDESC)
 
 	records = []Record{}
 	offset := 10000
-	for i := range 10000 {
+	for i := range 100000 {
 		records = append(records, Record{StreamID: int64(i + offset), Timestamp: time.Unix(int64(i+offset), 0), Line: []byte(fmt.Sprintf("msg%d", i+offset) + strings.Repeat("A", 1024)), Metadata: labels.FromStrings("env", "prod", "service", "api", "instance", fmt.Sprintf("instance%d", (i+offset)%10000))})
 	}
 	table2 := buildTable(&tableBuffer{}, pageSize, pageRows, initialCompressionOpts, records, SortTimestampDESC)

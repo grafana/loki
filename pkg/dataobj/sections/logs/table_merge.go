@@ -181,7 +181,7 @@ func NewColumnAppender(wg *sync.WaitGroup) *columnAppender {
 	return &columnAppender{
 		work:      work,
 		waitGroup: wg,
-		buf:       make([]*rowValue, 0, 1024),
+		buf:       make([]*rowValue, 0, 8192),
 	}
 }
 
@@ -193,8 +193,8 @@ func (ca *columnAppender) appendValue(builder *dataset.ColumnBuilder, row int, v
 	})
 	if len(ca.buf) >= cap(ca.buf) {
 		ca.work <- ca.buf
-		// Make a new buffer to avoid needing to synchronise when the worker is done with the old buffer.
-		ca.buf = make([]*rowValue, 0, 1024)
+		// Make a new buffer in order to avoid needing to synchronise when the worker is done with the old buffer.
+		ca.buf = make([]*rowValue, 0, 8192)
 	}
 }
 
