@@ -184,11 +184,11 @@ func (b *tableBuffer) Timestamp(pageSize, pageRowCount int) *dataset.ColumnBuild
 
 // Metadata gets or creates a metadata column for the buffer. To remove created
 // metadata columns, call [tableBuffer.CleanupMetadatas].
-func (b *tableBuffer) Metadata(key string, pageSize, pageRowCount int, compressionOpts *dataset.CompressionOptions) *dataset.ColumnBuilder {
+func (b *tableBuffer) Metadata(key string, pageSize, pageRowCount int, compressionOpts *dataset.CompressionOptions) (int, *dataset.ColumnBuilder) {
 	index, ok := b.metadataLookup[key]
 	if ok {
 		builder := b.metadatas[index]
-		return builder
+		return index, builder
 	}
 
 	col, err := dataset.NewColumnBuilder(key, dataset.BuilderOptions{
@@ -219,7 +219,7 @@ func (b *tableBuffer) Metadata(key string, pageSize, pageRowCount int, compressi
 		b.metadataLookup = make(map[string]int)
 	}
 	b.metadataLookup[key] = len(b.metadatas) - 1
-	return col
+	return len(b.metadatas) - 1, col
 }
 
 // Message gets or creates a message column for the buffer.

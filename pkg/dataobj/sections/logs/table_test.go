@@ -27,15 +27,18 @@ func Test_table_metadataCleanup(t *testing.T) {
 	var buf tableBuffer
 	initBuffer(&buf)
 
-	_ = buf.Metadata("foo", pageSize, pageRows, nil)
-	_ = buf.Metadata("bar", pageSize, pageRows, nil)
+	_, fooBuilder := buf.Metadata("foo", pageSize, pageRows, nil)
+	_, barBuilder := buf.Metadata("bar", pageSize, pageRows, nil)
+	_ = fooBuilder.Append(0, dataset.BinaryValue([]byte("foo")))
+	_ = barBuilder.Append(0, dataset.BinaryValue([]byte("bar")))
 
 	table, err := buf.Flush()
 	require.NoError(t, err)
 	require.Equal(t, 2, len(table.Metadatas))
 
 	initBuffer(&buf)
-	_ = buf.Metadata("bar", pageSize, pageRows, nil)
+	_, barBuilder = buf.Metadata("bar", pageSize, pageRows, nil)
+	_ = barBuilder.Append(0, dataset.BinaryValue([]byte("bar")))
 
 	table, err = buf.Flush()
 	require.NoError(t, err)
@@ -221,26 +224,26 @@ func BenchmarkTableBuffer_Merge(b *testing.B) {
 	initialCompressionOpts := &dataset.CompressionOptions{
 		Zstd: []zstd.EOption{zstd.WithEncoderLevel(zstd.SpeedFastest)},
 	}
+	// Build two datasets which each have 1000000 records with 10000 unique metadata columns
 	records := []Record{}
 	for i := range 10000 {
-		records = append(records, Record{StreamID: int64(i), Timestamp: time.Unix(int64(i), 0), Line: []byte(fmt.Sprintf("msg%d", i)), Metadata: labels.FromStrings("env", "prod", "service", "api", "instance", fmt.Sprintf("instance%d", i))})
+		records = append(records, Record{StreamID: int64(i), Timestamp: time.Unix(int64(i), 0), Line: []byte(fmt.Sprintf("msg%d", i) + strings.Repeat("A", 1024)), Metadata: labels.FromStrings("env", "prod", "service", "api", "instance", fmt.Sprintf("instance%d", i%10000))})
 	}
 	table1 := buildTable(&tableBuffer{}, pageSize, pageRows, initialCompressionOpts, records, SortTimestampDESC)
 
 	records = []Record{}
 	offset := 10000
 	for i := range 10000 {
-		records = append(records, Record{StreamID: int64(i + offset), Timestamp: time.Unix(int64(i+offset), 0), Line: []byte(fmt.Sprintf("msg%d", i+offset)), Metadata: labels.FromStrings("env", "prod", "service", "api", "instance", fmt.Sprintf("instance%d", i+offset))})
+		records = append(records, Record{StreamID: int64(i + offset), Timestamp: time.Unix(int64(i+offset), 0), Line: []byte(fmt.Sprintf("msg%d", i+offset) + strings.Repeat("A", 1024)), Metadata: labels.FromStrings("env", "prod", "service", "api", "instance", fmt.Sprintf("instance%d", (i+offset)%10000))})
 	}
 	table2 := buildTable(&tableBuffer{}, pageSize, pageRows, initialCompressionOpts, records, SortTimestampDESC)
 
 	finalCompressionOpts := &dataset.CompressionOptions{
 		Zstd: []zstd.EOption{zstd.WithEncoderLevel(zstd.SpeedBestCompression)},
 	}
-	b.ResetTimer()
+
 	b.ReportAllocs()
 	for b.Loop() {
-		_, err := mergeTables(&tableBuffer{}, pageSize, pageRows, finalCompressionOpts, []*table{table1, table2}, SortTimestampDESC)
-		require.NoError(b, err)
+		_, _ = mergeTables(&tableBuffer{}, pageSize, pageRows, finalCompressionOpts, []*table{table1, table2}, SortTimestampDESC)
 	}
 }

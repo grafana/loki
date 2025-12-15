@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"runtime"
 	"sync"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
@@ -53,8 +54,9 @@ func mergeTablesIncremental(buf *tableBuffer, pageSize, pageRowCount int, compre
 }
 
 type rowValue struct {
-	row   int
-	value dataset.Value
+	builder *dataset.ColumnBuilder
+	row     int
+	value   dataset.Value
 }
 
 // mergeTables merges the provided sorted tables into a new single sorted table
@@ -100,10 +102,15 @@ func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *
 	var rows int
 
 	wg := &sync.WaitGroup{}
-	streamIDAppender := columnAppender(wg, streamIDBuilder)
-	timestampAppender := columnAppender(wg, timestampBuilder)
-	messageAppender := columnAppender(wg, messageBuilder)
-	mdAppenders := make(map[*dataset.ColumnBuilder]chan rowValue)
+	pool := &sync.Pool{
+		New: func() any {
+			return &rowValue{}
+		},
+	}
+	appenders := make([]chan *rowValue, 0, runtime.GOMAXPROCS(0))
+	for range runtime.GOMAXPROCS(0) {
+		appenders = append(appenders, columnAppender(wg, pool))
+	}
 
 	tree := loser.New(tableSequences, maxValue, tableSequenceAt, CompareForSortOrder(sort), tableSequenceClose)
 	defer tree.Close()
@@ -133,19 +140,14 @@ func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *
 
 			switch column.Type {
 			case ColumnTypeStreamID:
-				streamIDAppender <- rowValue{row: rows, value: value}
+				_ = streamIDBuilder.Append(rows, value)
 			case ColumnTypeTimestamp:
-				timestampAppender <- rowValue{row: rows, value: value}
+				_ = timestampBuilder.Append(rows, value)
 			case ColumnTypeMetadata:
-				columnBuilder := buf.Metadata(column.Desc.Tag, pageSize, pageRowCount, compressionOpts)
-				mdAppender, ok := mdAppenders[columnBuilder]
-				if !ok {
-					mdAppender = columnAppender(wg, columnBuilder)
-					mdAppenders[columnBuilder] = mdAppender
-				}
-				mdAppender <- rowValue{row: rows, value: value}
+				index, columnBuilder := buf.Metadata(column.Desc.Tag, pageSize, pageRowCount, compressionOpts)
+				appendValue(pool, appenders[index%len(appenders)], columnBuilder, rows, value)
 			case ColumnTypeMessage:
-				messageAppender <- rowValue{row: rows, value: value}
+				_ = messageBuilder.Append(rows, value)
 			default:
 				return nil, fmt.Errorf("unknown column type %s", column.Type)
 			}
@@ -154,10 +156,7 @@ func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *
 		rows++
 	}
 
-	close(streamIDAppender)
-	close(timestampAppender)
-	close(messageAppender)
-	for _, appender := range mdAppenders {
+	for _, appender := range appenders {
 		close(appender)
 	}
 	wg.Wait()
@@ -165,12 +164,21 @@ func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *
 	return buf.Flush()
 }
 
-func columnAppender(wg *sync.WaitGroup, columnBuilder *dataset.ColumnBuilder) chan rowValue {
+func appendValue(pool *sync.Pool, ch chan *rowValue, builder *dataset.ColumnBuilder, row int, value dataset.Value) {
+	rowValue := pool.Get().(*rowValue)
+	rowValue.builder = builder
+	rowValue.row = row
+	rowValue.value = value
+	ch <- rowValue
+}
+
+func columnAppender(wg *sync.WaitGroup, pool *sync.Pool) chan *rowValue {
 	wg.Add(1)
-	ch := make(chan rowValue)
+	ch := make(chan *rowValue, 1024)
 	go func() {
 		for rowValue := range ch {
-			_ = columnBuilder.Append(rowValue.row, rowValue.value)
+			_ = rowValue.builder.Append(rowValue.row, rowValue.value)
+			pool.Put(rowValue)
 		}
 		wg.Done()
 	}()
