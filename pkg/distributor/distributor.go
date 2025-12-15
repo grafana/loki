@@ -778,7 +778,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	}
 
 	if !d.ingestionRateLimiter.AllowN(now, tenantID, validationContext.validationMetrics.aggregatedPushStats.lineSize) {
-		d.trackDiscardedData(ctx, req.Streams, validationContext, tenantID, validationContext.validationMetrics, validation.RateLimited, streamResolver, format)
+		d.trackDiscardedData(ctx, req.Streams, validationContext, tenantID, validation.RateLimited, streamResolver, format)
 
 		err = fmt.Errorf(validation.RateLimitedErrorMsg, tenantID, int(d.ingestionRateLimiter.Limit(now, tenantID)), validationContext.validationMetrics.aggregatedPushStats.lineCount, validationContext.validationMetrics.aggregatedPushStats.lineSize)
 		d.writeFailuresManager.Log(tenantID, err)
@@ -801,7 +801,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 						discardedStreams = append(discardedStreams, stream.Stream)
 					}
 				}
-				d.trackDiscardedData(ctx, discardedStreams, validationContext, tenantID, validationContext.validationMetrics, validation.StreamLimit, streamResolver, format)
+				d.trackDiscardedData(ctx, discardedStreams, validationContext, tenantID, validation.StreamLimit, streamResolver, format)
 
 				// While many streams may have failed we only log the error for one stream in the insight logs and in the error message.
 				// It's generally not useful to know the stream labels for a stream that is hitting the stream limit as it could be any
@@ -961,7 +961,6 @@ func (d *Distributor) trackDiscardedData(
 	streams []logproto.Stream,
 	validationContext validationContext,
 	tenantID string,
-	validationMetrics validationMetrics,
 	reason string,
 	streamResolver push.StreamResolver,
 	format string,
