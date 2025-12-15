@@ -840,3 +840,161 @@ The client closed the connection before receiving a response. This is typically 
 - Retryable: Yes
 - HTTP status: 499 Client Closed Request
 - Configurable per tenant: No
+
+## Query blocked errors
+
+These errors occur when queries are administratively blocked.
+
+### Error: Query blocked by policy
+
+**Error message:**
+
+`query blocked by policy`
+
+**Cause:**
+
+The query matches a configured block rule. Administrators create tenant policies and rate limiting rules to block specific queries or query patterns to protect the cluster from expensive or problematic queries.
+
+**Resolution:**
+
+* **Check with your Loki administrator** about blocked queries and to review policy settings.
+* **Modify the query** to avoid the block pattern:
+  - Change the stream selectors
+  - Adjust the time range
+  - Use different aggregations
+* **Request the block to be removed** if the query is legitimate.
+
+**Configuration reference:**
+
+```yaml
+limits_config:
+  blocked_queries:
+    - pattern: ".*"          # Regex pattern to match
+      regex: true
+      types:                 # Query types to block
+        - metric
+        - filter
+      hash: 0               # Or block specific query hash
+```
+
+**Properties:**
+
+- Enforced by: Query Engine
+- Retryable: No (unless block is removed)
+- HTTP status: 400 Bad Request
+- Configurable per tenant: Yes
+
+### Error: Querying is disabled
+
+**Error message:**
+
+`querying is disabled, please contact your Loki operator`
+
+**Cause:**
+
+Query parallelism is set to 0, effectively disabling queries for the tenant.
+
+**Resolution:**
+
+* **Contact your Loki administrator** to enable querying.
+* **Check configuration** for `max_query_parallelism`:
+
+   ```yaml
+   limits_config:
+     max_query_parallelism: 32     #(the default)
+   ```
+
+**Properties:**
+
+- Enforced by: Query Frontend
+- Retryable: No (until configuration is fixed)
+- HTTP status: 400 Bad Request
+- Configurable per tenant: Yes
+
+### Error: Multi variant queries disabled
+
+Multi variant queries are an experimental feature that enables support for running multiple query variants over the same underlying data. For example, running both a `rate()` and `count_over_time()` query over the same range selector.
+
+**Error message:**
+
+`multi variant queries are disabled for this instance`
+
+**Cause:**
+
+The query uses the variants feature, but it's disabled for the tenant or instance.
+
+**Resolution:**
+
+* **Remove variant expressions** from the query.
+* **Enable the feature** if needed:
+
+   ```yaml
+   limits_config:
+     enable_multi_variant_queries: true  #default is false
+   ```
+
+**Properties:**
+
+- Enforced by: Query Engine
+- Retryable: No (until feature is enabled)
+- HTTP status: 400 Bad Request
+- Configurable per tenant: Yes
+
+## Pipeline processing errors
+
+Pipeline errors occur during log line processing but don't cause query failures. Instead, affected log lines are annotated with error labels.
+
+### Understanding pipeline errors
+
+When a pipeline stage fails (for example, parsing JSON that isn't valid JSON), Loki:
+
+1. Does NOT filter out the log line
+2. Adds an `__error__` label with the error type
+3. Optionally adds `__error_details__` with more information
+4. Passes the log line to the next pipeline stage
+
+### Error types
+
+| Error Label Value | Cause |
+|------------------|-------|
+| `JSONParserErr` | Log line is not valid JSON |
+| `LogfmtParserErr` | Log line is not valid logfmt |
+| `SampleExtractionErr` | Failed to extract numeric value for metrics |
+| `LabelFilterErr` | Label filter operation failed |
+| `TemplateFormatErr` | Template formatting failed |
+
+### Viewing pipeline errors
+
+To see logs with errors:
+
+```logql
+{app="foo"} | json | __error__!=""
+```
+
+To see error details:
+
+```logql
+{app="foo"} | json | __error__!="" | line_format "Error: {{.__error__}} - {{.__error_details__}}"
+```
+
+### Filtering out errors
+
+To exclude logs with parsing errors:
+
+```logql
+{app="foo"} | json | __error__=""
+```
+
+To exclude specific error types:
+
+```logql
+{app="foo"} | json | __error__!="JSONParserErr"
+```
+
+### Dropping error labels
+
+To remove error labels from results:
+
+```logql
+{app="foo"} | json | drop __error__, __error_details__
+```
