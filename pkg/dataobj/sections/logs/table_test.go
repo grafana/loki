@@ -3,11 +3,13 @@ package logs
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/klauspost/compress/zstd"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
@@ -213,4 +215,32 @@ func Test_table_backfillMetadata(t *testing.T) {
 	}
 
 	require.Equal(t, expected, rows, "Rows should match expected data with proper backfill")
+}
+
+func BenchmarkTableBuffer_Merge(b *testing.B) {
+	initialCompressionOpts := &dataset.CompressionOptions{
+		Zstd: []zstd.EOption{zstd.WithEncoderLevel(zstd.SpeedFastest)},
+	}
+	records := []Record{}
+	for i := range 10000 {
+		records = append(records, Record{StreamID: int64(i), Timestamp: time.Unix(int64(i), 0), Line: []byte(fmt.Sprintf("msg%d", i)), Metadata: labels.FromStrings("env", "prod", "service", "api", "instance", fmt.Sprintf("instance%d", i))})
+	}
+	table1 := buildTable(&tableBuffer{}, pageSize, pageRows, initialCompressionOpts, records, SortTimestampDESC)
+
+	records = []Record{}
+	offset := 10000
+	for i := range 10000 {
+		records = append(records, Record{StreamID: int64(i + offset), Timestamp: time.Unix(int64(i+offset), 0), Line: []byte(fmt.Sprintf("msg%d", i+offset)), Metadata: labels.FromStrings("env", "prod", "service", "api", "instance", fmt.Sprintf("instance%d", i+offset))})
+	}
+	table2 := buildTable(&tableBuffer{}, pageSize, pageRows, initialCompressionOpts, records, SortTimestampDESC)
+
+	finalCompressionOpts := &dataset.CompressionOptions{
+		Zstd: []zstd.EOption{zstd.WithEncoderLevel(zstd.SpeedBestCompression)},
+	}
+	b.ResetTimer()
+	b.ReportAllocs()
+	for b.Loop() {
+		_, err := mergeTables(&tableBuffer{}, pageSize, pageRows, finalCompressionOpts, []*table{table1, table2}, SortTimestampDESC)
+		require.NoError(b, err)
+	}
 }
