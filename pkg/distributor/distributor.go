@@ -807,7 +807,13 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 				// It's generally not useful to know the stream labels for a stream that is hitting the stream limit as it could be any
 				// stream and isn't necessarily a stream with high cardinality. However, it might also be a high cardinality stream so returning
 				// something here still may be useful. We used to return nothing with this limit and people requested that something is better than nothing.
-				err = fmt.Errorf(validation.StreamLimitErrorMsg, discardedStreams[0].Labels, tenantID)
+				if len(discardedStreams) == 0 {
+					// This shouldn't be possible, but better to not panic here if somehow this does happen.
+					// since we also log this message as part of the write failures manager this text should make it easier to find your way back here.
+					err = fmt.Errorf(validation.StreamLimitErrorMsg, "stream count was 0, this should not be possible", tenantID)
+				} else {
+					err = fmt.Errorf(validation.StreamLimitErrorMsg, discardedStreams[0].Labels, tenantID)
+				}
 				d.writeFailuresManager.Log(tenantID, err)
 				// Set the validation error to the stream limit error so it is returned to the client.
 				validationErr = httpgrpc.Error(http.StatusTooManyRequests, err.Error())
