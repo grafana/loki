@@ -227,7 +227,7 @@ VectorAggregation operation=sum group_by=()
                         └── Projection all=true expand=(PARSE_LOGFMT(builtin.message, [], false, false))
                             └── Filter predicate[0]=EQ(ambiguous.detected_level, "error")
                                 └── Compat src=metadata dst=metadata collisions=(label)
-                                    └── ScanSet num_targets=2 projections=(ambiguous.detected_level, builtin.message, builtin.timestamp) predicate[0]=GTE(builtin.timestamp, 2024-12-31T23:59:00Z) predicate[1]=LT(builtin.timestamp, 2025-01-01T01:00:00Z)
+                                    └── ScanSet num_targets=2 predicate[0]=GTE(builtin.timestamp, 2024-12-31T23:59:00Z) predicate[1]=LT(builtin.timestamp, 2025-01-01T01:00:00Z)
                                             ├── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=1 projections=()
                                             └── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=0 projections=()
 
