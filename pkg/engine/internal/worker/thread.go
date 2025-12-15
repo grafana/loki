@@ -16,7 +16,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/storage/bucket"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
@@ -112,7 +112,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 
 	cfg := executor.Config{
 		BatchSize: t.BatchSize,
-		Bucket:    t.Bucket,
+		Bucket:    bucket.NewXCapBucket(t.Bucket),
 
 		GetExternalInputs: func(_ context.Context, node physical.Node) []executor.Pipeline {
 			streams := job.Task.Sources[node]
@@ -126,7 +126,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 			// number of source streams (unbounded).
 			//
 			// Binding the [streamSource] to the input in the loop below
-			// increases the reference count. As sources as closed, the
+			// increases the reference count. As sources are closed, the
 			// reference count decreases. Once the reference count reaches 0,
 			// the nodeSource is closed, and reads return EOF.
 			input := new(nodeSource)
@@ -157,12 +157,35 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 		},
 	}
 
-	statsCtx, ctx := stats.NewContext(ctx)
 	ctx = user.InjectOrgID(ctx, job.Task.TenantID)
 
 	ctx, capture := xcap.NewCapture(ctx, nil)
+	defer capture.End()
+
 	pipeline := executor.Run(ctx, cfg, job.Task.Fragment, logger)
-	defer pipeline.Close()
+
+	// If the root pipeline can be interested in some specific contributing time range
+	// then subscribe to changes.
+	// TODO(spiridonov): find a way to subscribe on non-root pipelines.
+	notifier, ok := executor.Unwrap(pipeline).(executor.ContributingTimeRangeChangedNotifier)
+	if ok {
+		notifier.SubscribeToTimeRangeChanges(func(ts time.Time, lessThan bool) {
+			// Send a Running task status update with the current time range
+			err := job.Scheduler.SendMessage(ctx, wire.TaskStatusMessage{
+				ID: job.Task.ULID,
+				Status: workflow.TaskStatus{
+					State: workflow.TaskStateRunning,
+					ContributingTimeRange: workflow.ContributingTimeRange{
+						Timestamp: ts,
+						LessThan:  lessThan,
+					},
+				},
+			})
+			if err != nil {
+				level.Warn(logger).Log("msg", "failed to inform scheduler of task status", "err", err)
+			}
+		})
+	}
 
 	err := job.Scheduler.SendMessageAsync(ctx, wire.TaskStatusMessage{
 		ID:     job.Task.ULID,
@@ -174,22 +197,57 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 		level.Warn(logger).Log("msg", "failed to inform scheduler of task status", "err", err)
 	}
 
-	var totalRows int
+	_, err = t.drainPipeline(ctx, pipeline, job, logger)
+	if err != nil {
+		level.Warn(logger).Log("msg", "task failed", "err", err)
+		_ = job.Scheduler.SendMessageAsync(ctx, wire.TaskStatusMessage{
+			ID: job.Task.ULID,
+			Status: workflow.TaskStatus{
+				State: workflow.TaskStateFailed,
+				Error: err,
+			},
+		})
 
+		pipeline.Close()
+		return
+	}
+
+	// Finally, close all sinks.
+	for _, sink := range job.Sinks {
+		err := sink.Close(ctx)
+		if err != nil {
+			level.Warn(logger).Log("msg", "failed to close sink", "err", err)
+		}
+	}
+
+	// Close before ending capture to ensure all observations are recorded.
+	pipeline.Close()
+	// Explicitly call End() here (even though we have a defer statement)
+	// to finalize the capture before it's included in the TaskStatusMessage.
+	capture.End()
+
+	level.Info(logger).Log("msg", "task completed", "duration", time.Since(startTime))
+
+	// Wait for the scheduler to confirm the task has completed before
+	// requesting a new one. This allows the scheduler to update its bookkeeping
+	// for how many threads have capacity for requesting tasks.
+	err = job.Scheduler.SendMessage(ctx, wire.TaskStatusMessage{
+		ID:     job.Task.ULID,
+		Status: workflow.TaskStatus{State: workflow.TaskStateCompleted, Capture: capture},
+	})
+	if err != nil {
+		level.Warn(logger).Log("msg", "failed to inform scheduler of task status", "err", err)
+	}
+}
+
+func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, job *threadJob, logger log.Logger) (int, error) {
+	var totalRows int
 	for {
 		rec, err := pipeline.Read(ctx)
 		if err != nil && errors.Is(err, executor.EOF) {
 			break
 		} else if err != nil {
-			level.Warn(logger).Log("msg", "task failed", "err", err)
-			_ = job.Scheduler.SendMessageAsync(ctx, wire.TaskStatusMessage{
-				ID: job.Task.ULID,
-				Status: workflow.TaskStatus{
-					State: workflow.TaskStateFailed,
-					Error: err,
-				},
-			})
-			return
+			return totalRows, err
 		}
 
 		totalRows += int(rec.NumRows())
@@ -211,28 +269,6 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 			}
 		}
 	}
-	capture.End()
 
-	// Finally, close all sinks.
-	for _, sink := range job.Sinks {
-		err := sink.Close(ctx)
-		if err != nil {
-			level.Warn(logger).Log("msg", "failed to close sink", "err", err)
-		}
-	}
-
-	// TODO(rfratto): We should find a way to expose queue time here.
-	result := statsCtx.Result(time.Since(startTime), 0, totalRows)
-	level.Info(logger).Log("msg", "task completed", "duration", time.Since(startTime))
-
-	// Wait for the scheduler to confirm the task has completed before
-	// requesting a new one. This allows the scheduler to update its bookkeeping
-	// for how many threads have capacity for requesting tasks.
-	err = job.Scheduler.SendMessage(ctx, wire.TaskStatusMessage{
-		ID:     job.Task.ULID,
-		Status: workflow.TaskStatus{State: workflow.TaskStateCompleted, Statistics: &result, Capture: capture},
-	})
-	if err != nil {
-		level.Warn(logger).Log("msg", "failed to inform scheduler of task status", "err", err)
-	}
+	return totalRows, nil
 }

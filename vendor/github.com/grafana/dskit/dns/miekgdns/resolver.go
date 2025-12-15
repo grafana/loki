@@ -128,7 +128,13 @@ func (r *Resolver) lookupSRV(ctx context.Context, conf *dns.ClientConfig, servic
 				Port:     addr.Port,
 			})
 		default:
-			return "", nil, fmt.Errorf("invalid SRV response record %s", record)
+			// Ignore unexpected non-SRV responses. This matches the behavior of the
+			// built-in go resolver. See https://github.com/grafana/mimir/issues/12713
+			level.Debug(r.logger).Log(
+				"msg", "unexpected non-SRV response record",
+				"target", target,
+				"record", record,
+			)
 		}
 	}
 

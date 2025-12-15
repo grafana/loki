@@ -234,6 +234,9 @@ spec:
           {{- toYaml .accessModes | nindent 10 }}
         {{- with .storageClass }}
         storageClassName: {{ if (eq "-" .) }}""{{ else }}{{ . }}{{ end }}
+        {{- with .volumeAttributesClassName }}
+        volumeAttributesClassName: {{ . }}
+        {{- end }}
         {{- end }}
         resources:
           requests:

@@ -72,13 +72,12 @@ type ModifyVolumeInput struct {
 	//
 	//   - io2 : 100 - 256,000 IOPS
 	//
-	// For io2 volumes, you can achieve up to 256,000 IOPS on [instances built on the Nitro System]. On other instances,
-	// you can achieve performance up to 32,000 IOPS.
+	// [Instances built on the Nitro System]can support up to 256,000 IOPS. Other instances can support up to 32,000 IOPS.
 	//
 	// Default: The existing value is retained if you keep the same volume type. If
 	// you change the volume type to io1 , io2 , or gp3 , the default is 3,000.
 	//
-	// [instances built on the Nitro System]: https://docs.aws.amazon.com/ec2/latest/instancetypes/ec2-nitro-instances.html
+	// [Instances built on the Nitro System]: https://docs.aws.amazon.com/ec2/latest/instancetypes/ec2-nitro-instances.html
 	Iops *int32
 
 	// Specifies whether to enable Amazon EBS Multi-Attach. If you enable

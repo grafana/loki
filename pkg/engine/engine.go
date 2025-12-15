@@ -12,24 +12,24 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
-	"go.opentelemetry.io/otel/trace"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/logical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/storage/bucket"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/rangeio"
@@ -46,11 +46,10 @@ var (
 	ErrSchedulingFailed = errors.New("failed to schedule query")
 )
 
+var tracer = otel.Tracer("pkg/engine")
+
 // ExecutorConfig configures engine execution.
 type ExecutorConfig struct {
-	DataobjStorageLag   time.Duration `yaml:"dataobj_storage_lag" category:"experimental"`
-	DataobjStorageStart flagext.Time  `yaml:"dataobj_storage_start" category:"experimental"`
-
 	// Batch size of the v2 execution engine.
 	BatchSize int `yaml:"batch_size" category:"experimental"`
 
@@ -65,13 +64,6 @@ func (cfg *ExecutorConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSe
 	f.IntVar(&cfg.BatchSize, prefix+"batch-size", 100, "Experimental: Batch size of the next generation query engine.")
 	f.IntVar(&cfg.MergePrefetchCount, prefix+"merge-prefetch-count", 0, "Experimental: The number of inputs that are prefetched simultaneously by any Merge node. A value of 0 means that only the currently processed input is prefetched, 1 means that only the next input is prefetched, and so on. A negative value means that all inputs are be prefetched in parallel.")
 	cfg.RangeConfig.RegisterFlags(prefix+"range-reads.", f)
-
-	f.DurationVar(&cfg.DataobjStorageLag, prefix+"dataobj-storage-lag", 1*time.Hour, "Amount of time until data objects are available.")
-	f.Var(&cfg.DataobjStorageStart, prefix+"dataobj-storage-start", "Initial date when data objects became available. Format YYYY-MM-DD. If not set, assume data objects are always available no matter how far back.")
-}
-
-func (cfg *ExecutorConfig) ValidQueryRange() (time.Time, time.Time) {
-	return time.Time(cfg.DataobjStorageStart).UTC(), time.Now().UTC().Add(-cfg.DataobjStorageLag)
 }
 
 // Params holds parameters for constructing a new [Engine].
@@ -129,7 +121,7 @@ func New(params Params) (*Engine, error) {
 		rangeConfig: params.Config.RangeConfig,
 
 		scheduler: params.Scheduler,
-		bucket:    params.Bucket,
+		bucket:    bucket.NewXCapBucket(params.Bucket),
 		limits:    params.Limits,
 	}
 
@@ -155,7 +147,8 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	// This pain point will eventually go away as remaining usages of
 	// [logql.Engine] disappear.
 
-	ctx, _ = xcap.NewCapture(ctx, nil)
+	ctx, capture := xcap.NewCapture(ctx, nil)
+	defer capture.End()
 	startTime := time.Now()
 
 	ctx, region := xcap.StartRegion(ctx, "Engine.Execute", xcap.WithRegionAttributes(
@@ -172,6 +165,7 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	ctx = e.buildContext(ctx)
 	logger := util_log.WithContext(ctx, e.logger)
 	logger = log.With(logger, "engine", "v2")
+	logger = injectQueryTags(ctx, logger)
 
 	level.Info(logger).Log("msg", "starting query", "query", params.QueryString(), "shard", strings.Join(params.Shards(), ","))
 
@@ -215,22 +209,42 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	}
 
 	durFull := time.Since(startTime)
-	level.Info(logger).Log(
+	logValues := []any{
 		"msg", "finished executing",
+		"query", params.QueryString(),
+		"length", params.End().Sub(params.Start()).String(),
+		"step", params.Step().String(),
 		"duration_logical_planning", durLogicalPlanning,
 		"duration_physical_planning", durPhysicalPlanning,
 		"duration_workflow_planning", durWorkflowPlanning,
 		"duration_execution", durExecution,
 		"duration_full", durFull,
-	)
+	}
 
-	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
-	statsCtx := stats.FromContext(ctx)
-	statsCtx.AddQuerierExecTime(durFull)
-	stats := statsCtx.Result(durFull, queueTime, builder.Len())
-	md := metadata.FromContext(ctx)
+	// Close the pipeline to calculate the stats.
+	pipeline.Close()
 
 	region.SetStatus(codes.Ok, "")
+
+	// explicitly call End() before exporting even though we have a defer above.
+	// It is safe to call End() multiple times.
+	region.End()
+	capture.End()
+	if err := mergeCapture(capture, physicalPlan); err != nil {
+		level.Warn(logger).Log("msg", "failed to merge capture", "err", err)
+		// continue export even if merging fails. Spans from the tasks
+		// would still appear as siblings in the trace right below the Engine.Execute.
+	}
+
+	xcap.ExportTrace(ctx, capture, logger)
+	logValues = append(logValues, xcap.SummaryLogValues(capture)...)
+	level.Info(logger).Log(
+		logValues...,
+	)
+
+	// TODO: capture and report queue time
+	md := metadata.FromContext(ctx)
+	stats := capture.ToStatsSummary(durFull, 0, builder.Len())
 	result := builder.Build(stats, md)
 
 	logql.RecordRangeAndInstantQueryMetrics(ctx, logger, params, strconv.Itoa(http.StatusOK), stats, result.Data)
@@ -239,27 +253,36 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 
 // buildContext initializes a request-scoped context prior to execution.
 func (e *Engine) buildContext(ctx context.Context) context.Context {
-	statsContext, ctx := stats.NewContext(ctx)
 	metadataContext, ctx := metadata.NewContext(ctx)
 
 	// Inject the range config into the context for any calls to
 	// [rangeio.ReadRanges] to make use of.
 	ctx = rangeio.WithConfig(ctx, &e.rangeConfig)
 
-	statsContext.SetQueryUsedV2Engine()
 	metadataContext.AddWarning("Query was executed using the new experimental query engine and dataobj storage.")
 	return ctx
 }
 
+// injectQueryTags adds query tags as key-value pairs from the context into the
+// given logger, if they have been defined via [httpreq.InjectQueryTags].
+// Otherwise, the original logger is returned unmodified.
+func injectQueryTags(ctx context.Context, logger log.Logger) log.Logger {
+	tags := httpreq.ExtractQueryTagsFromContext(ctx)
+	if len(tags) == 0 {
+		return logger
+	}
+	return log.With(logger, httpreq.TagsToKeyValues(tags)...)
+}
+
 // buildLogicalPlan builds a logical plan from the given params.
 func (e *Engine) buildLogicalPlan(ctx context.Context, logger log.Logger, params logql.Params) (*logical.Plan, time.Duration, error) {
-	span := trace.SpanFromContext(ctx)
+	region := xcap.RegionFromContext(ctx)
 	timer := prometheus.NewTimer(e.metrics.logicalPlanning)
 
 	logicalPlan, err := logical.BuildPlan(params)
 	if err != nil {
 		level.Warn(logger).Log("msg", "failed to create logical plan", "err", err)
-		span.RecordError(err)
+		region.RecordError(err)
 		return nil, 0, ErrNotSupported
 	}
 
@@ -270,16 +293,16 @@ func (e *Engine) buildLogicalPlan(ctx context.Context, logger log.Logger, params
 		"duration", duration.String(),
 	)
 
-	span.AddEvent("finished logical planning", trace.WithAttributes(
+	region.AddEvent("finished logical planning",
 		attribute.Stringer("plan", logicalPlan),
 		attribute.Stringer("duration", duration),
-	))
+	)
 	return logicalPlan, duration, nil
 }
 
 // buildPhysicalPlan builds a physical plan from the given logical plan.
 func (e *Engine) buildPhysicalPlan(ctx context.Context, logger log.Logger, params logql.Params, logicalPlan *logical.Plan) (*physical.Plan, time.Duration, error) {
-	span := trace.SpanFromContext(ctx)
+	region := xcap.RegionFromContext(ctx)
 	timer := prometheus.NewTimer(e.metrics.physicalPlanning)
 
 	// TODO(rfratto): To improve the performance of the physical planner, we
@@ -293,14 +316,14 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, logger log.Logger, param
 	physicalPlan, err := planner.Build(logicalPlan)
 	if err != nil {
 		level.Warn(logger).Log("msg", "failed to create physical plan", "err", err)
-		span.RecordError(err)
+		region.RecordError(err)
 		return nil, 0, ErrNotSupported
 	}
 
 	physicalPlan, err = planner.Optimize(physicalPlan)
 	if err != nil {
 		level.Warn(logger).Log("msg", "failed to optimize physical plan", "err", err)
-		span.RecordError(err)
+		region.RecordError(err)
 		return nil, 0, ErrNotSupported
 	}
 
@@ -311,10 +334,7 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, logger log.Logger, param
 		"duration", duration.String(),
 	)
 
-	span.AddEvent("finished physical planning", trace.WithAttributes(
-		attribute.String("plan", physical.PrintAsTree(physicalPlan)),
-		attribute.Stringer("duration", duration),
-	))
+	region.AddEvent("finished physical planning", attribute.Stringer("duration", duration))
 	return physicalPlan, duration, nil
 }
 
@@ -325,7 +345,7 @@ func (e *Engine) buildWorkflow(ctx context.Context, logger log.Logger, physicalP
 		return nil, 0, fmt.Errorf("extracting tenant ID: %w", err)
 	}
 
-	span := trace.SpanFromContext(ctx)
+	region := xcap.RegionFromContext(ctx)
 	timer := prometheus.NewTimer(e.metrics.workflowPlanning)
 
 	opts := workflow.Options{
@@ -338,7 +358,7 @@ func (e *Engine) buildWorkflow(ctx context.Context, logger log.Logger, physicalP
 	wf, err := workflow.New(opts, logger, tenantID, e.scheduler.inner, physicalPlan)
 	if err != nil {
 		level.Warn(logger).Log("msg", "failed to create workflow", "err", err)
-		span.RecordError(err)
+		region.RecordError(err)
 		return nil, 0, ErrNotSupported
 	}
 
@@ -355,22 +375,20 @@ func (e *Engine) buildWorkflow(ctx context.Context, logger log.Logger, physicalP
 		"duration", duration.String(),
 	)
 
-	span.AddEvent("finished execution planning", trace.WithAttributes(
-		attribute.String("plan", workflow.Sprint(wf)),
-		attribute.Stringer("duration", duration),
-	))
+	region.AddEvent("finished execution planning", attribute.Stringer("duration", duration))
 	return wf, duration, nil
 }
 
 // collectResult processes the results of the execution plan.
 func (e *Engine) collectResult(ctx context.Context, logger log.Logger, params logql.Params, pipeline executor.Pipeline) (ResultBuilder, time.Duration, error) {
-	span := trace.SpanFromContext(ctx)
+	region := xcap.RegionFromContext(ctx)
 	timer := prometheus.NewTimer(e.metrics.execution)
+	encodingFlags := httpreq.ExtractEncodingFlagsFromCtx(ctx)
 
 	var builder ResultBuilder
 	switch params.GetExpression().(type) {
 	case syntax.LogSelectorExpr:
-		builder = newStreamsResultBuilder(params.Direction())
+		builder = newStreamsResultBuilder(params.Direction(), encodingFlags.Has(httpreq.FlagCategorizeLabels))
 	case syntax.SampleExpr:
 		if params.Step() > 0 {
 			builder = newMatrixResultBuilder()
@@ -405,8 +423,49 @@ func (e *Engine) collectResult(ctx context.Context, logger log.Logger, params lo
 
 	// We don't log an event here because a final event will be logged by the
 	// caller noting that execution completed.
-	span.AddEvent("finished execution", trace.WithAttributes(
+	region.AddEvent("finished execution",
 		attribute.Stringer("duration", duration),
-	))
+	)
 	return builder, duration, nil
+}
+
+func mergeCapture(capture *xcap.Capture, plan *physical.Plan) error {
+	if capture == nil {
+		return nil
+	}
+
+	// nodeID to parentNodeID mapping.
+	idToParentID := make(map[string]string, plan.Len())
+	for _, root := range plan.Roots() {
+		if err := plan.DFSWalk(root, func(n physical.Node) error {
+			parents := plan.Graph().Parents(n)
+			if len(parents) > 0 {
+				// TODO: This is assuming a single parent which is not always true.
+				// Fix this when we have plans with multiple parents.
+
+				if parents[0].Type() == physical.NodeTypeParallelize {
+					// Skip Parallelize nodes as they are not execution nodes.
+					pp := plan.Graph().Parents(parents[0])
+					if len(pp) > 0 {
+						parents = pp
+					} else {
+						return nil
+					}
+				}
+
+				idToParentID[n.ID().String()] = parents[0].ID().String()
+			}
+			return nil
+		}, dag.PreOrderWalk); err != nil {
+			return err
+		}
+	}
+
+	// Link region by using node_id for finding parent regions.
+	capture.LinkRegions("node_id", func(nodeID string) (string, bool) {
+		parentID, ok := idToParentID[nodeID]
+		return parentID, ok
+	})
+
+	return nil
 }

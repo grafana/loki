@@ -11,7 +11,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
@@ -30,8 +29,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/rangeio"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
-
-var tracer = otel.Tracer("pkg/engine")
 
 var ErrNotSupported = errors.New("feature not supported in new query engine")
 
@@ -116,6 +113,7 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 
 	logger := utillog.WithContext(ctx, e.logger)
 	logger = log.With(logger, "query", params.QueryString(), "shard", strings.Join(params.Shards(), ","), "engine", "v2")
+	encodingFlags := httpreq.ExtractEncodingFlagsFromCtx(ctx)
 
 	// Inject the range config into the context for any calls to
 	// [rangeio.ReadRanges] to make use of.
@@ -212,7 +210,7 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 		var builder ResultBuilder
 		switch params.GetExpression().(type) {
 		case syntax.LogSelectorExpr:
-			builder = newStreamsResultBuilder(params.Direction())
+			builder = newStreamsResultBuilder(params.Direction(), encodingFlags.Has(httpreq.FlagCategorizeLabels))
 		case syntax.SampleExpr:
 			if params.Step() > 0 {
 				builder = newMatrixResultBuilder()

@@ -37,7 +37,11 @@ type DescribeFastSnapshotRestoresInput struct {
 
 	// The filters. The possible values are:
 	//
-	//   - availability-zone : The Availability Zone of the snapshot.
+	//   - availability-zone : The Availability Zone of the snapshot. For example,
+	//   us-east-2a .
+	//
+	//   - availability-zone-id : The ID of the Availability Zone of the snapshot. For
+	//   example, use2-az1 .
 	//
 	//   - owner-id : The ID of the Amazon Web Services account that enabled fast
 	//   snapshot restore on the snapshot.

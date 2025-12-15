@@ -10,6 +10,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bitmask"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/sliceclear"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 // ReaderOptions configures how a [Reader] will read [Row]s.
@@ -48,7 +49,8 @@ type Reader struct {
 	row    int64             // The current row being read.
 	inner  *basicReader      // Underlying reader that reads from columns.
 	ranges rowRanges         // Valid ranges to read across the entire dataset.
-	stats  ReaderStats       // Stats about the read operation.
+
+	region *xcap.Region // Region for recording statistics.
 }
 
 // NewReader creates a new Reader from the provided options.
@@ -62,9 +64,6 @@ func NewReader(opts ReaderOptions) *Reader {
 // returns the number of rows read and any error encountered. At the end of the
 // Dataset, Read returns 0, [io.EOF].
 func (r *Reader) Read(ctx context.Context, s []Row) (int, error) {
-	stats := StatsFromContext(ctx)
-	stats.AddReadCalls(1)
-
 	if len(s) == 0 {
 		return 0, nil
 	}
@@ -75,6 +74,9 @@ func (r *Reader) Read(ctx context.Context, s []Row) (int, error) {
 			return 0, fmt.Errorf("initializing reader: %w", err)
 		}
 	}
+
+	r.region.Record(xcap.StatDatasetReadCalls.Observe(1))
+	ctx = xcap.ContextWithRegion(ctx, r.region)
 
 	// Our Read implementation works by:
 	//
@@ -142,14 +144,15 @@ func (r *Reader) Read(ctx context.Context, s []Row) (int, error) {
 		rowsRead = count
 		passCount = count
 
-		stats.AddPrimaryRowsRead(uint64(rowsRead))
 		var primaryColumnBytes int64
 		for i := range count {
 			primaryColumnBytes += s[i].Size()
 		}
-		stats.AddPrimaryRowBytes(uint64(primaryColumnBytes))
+
+		r.region.Record(xcap.StatDatasetPrimaryRowsRead.Observe(int64(rowsRead)))
+		r.region.Record(xcap.StatDatasetPrimaryRowBytes.Observe(primaryColumnBytes))
 	} else {
-		rowsRead, passCount, err = r.readAndFilterPrimaryColumns(ctx, readSize, s[:readSize], stats)
+		rowsRead, passCount, err = r.readAndFilterPrimaryColumns(ctx, readSize, s[:readSize])
 		if err != nil {
 			return passCount, err
 		}
@@ -179,8 +182,8 @@ func (r *Reader) Read(ctx context.Context, s []Row) (int, error) {
 			totalBytesFilled += s[i].Size() - s[i].SizeOfColumns(r.primaryColumnIndexes)
 		}
 
-		stats.AddSecondaryRowsRead(uint64(count))
-		stats.AddSecondaryRowBytes(uint64(totalBytesFilled))
+		r.region.Record(xcap.StatDatasetSecondaryRowsRead.Observe(int64(count)))
+		r.region.Record(xcap.StatDatasetSecondaryRowBytes.Observe(totalBytesFilled))
 	}
 
 	// We only advance r.row after we successfully read and filled rows. This
@@ -197,7 +200,7 @@ func (r *Reader) Read(ctx context.Context, s []Row) (int, error) {
 // the columns on the reduced row range.
 //
 // It returns the max rows read, rows that passed all the predicates, and any error
-func (r *Reader) readAndFilterPrimaryColumns(ctx context.Context, readSize int, s []Row, stats *ReaderStats) (int, int, error) {
+func (r *Reader) readAndFilterPrimaryColumns(ctx context.Context, readSize int, s []Row) (int, int, error) {
 	var (
 		rowsRead           int // tracks max rows accessed to move the [r.row] cursor
 		passCount          int // number of rows that passed the predicate
@@ -265,8 +268,9 @@ func (r *Reader) readAndFilterPrimaryColumns(ctx context.Context, readSize int, 
 		readSize = passCount
 	}
 
-	stats.AddPrimaryRowsRead(uint64(rowsRead))
-	stats.AddPrimaryRowBytes(uint64(primaryColumnBytes))
+	r.region.Record(xcap.StatDatasetPrimaryRowsRead.Observe(int64(rowsRead)))
+	r.region.Record(xcap.StatDatasetPrimaryRowBytes.Observe(primaryColumnBytes))
+
 	return rowsRead, passCount, nil
 }
 
@@ -394,9 +398,12 @@ func buildMask(full rowRange, s []Row) iter.Seq[rowRange] {
 // Close closes the Reader. Closed Readers can be reused by calling
 // [Reader.Reset].
 func (r *Reader) Close() error {
+	r.region.End()
+
 	if r.inner != nil {
 		return r.inner.Close()
 	}
+
 	return nil
 }
 
@@ -421,11 +428,14 @@ func (r *Reader) Reset(opts ReaderOptions) {
 	r.ranges = sliceclear.Clear(r.ranges)
 	r.primaryColumnIndexes = sliceclear.Clear(r.primaryColumnIndexes)
 	r.ready = false
+	r.region = nil
 }
 
 func (r *Reader) init(ctx context.Context) error {
 	// Reader.init is kept close to the defition of Reader.Reset to make it
 	// easier to follow the correctness of resetting + initializing.
+
+	_, r.region = xcap.StartRegion(ctx, "dataset.Reader")
 
 	// r.validatePredicate must be called before initializing anything else; for
 	// simplicity, other functions assume that the predicate is valid and can
@@ -539,18 +549,17 @@ func (r *Reader) initDownloader(ctx context.Context) error {
 	mask := bitmask.New(len(r.opts.Columns))
 	r.fillPrimaryMask(mask)
 
-	stats := StatsFromContext(ctx)
 	for i, column := range r.opts.Columns {
 		primary := mask.Test(i)
 		r.dl.AddColumn(column, primary)
 
 		if primary {
 			r.primaryColumnIndexes = append(r.primaryColumnIndexes, i)
-			stats.AddPrimaryColumns(1)
-			stats.AddPrimaryColumnPages(uint64(column.ColumnDesc().PagesCount))
+			r.region.Record(xcap.StatDatasetPrimaryColumns.Observe(1))
+			r.region.Record(xcap.StatDatasetPrimaryColumnPages.Observe(int64(column.ColumnDesc().PagesCount)))
 		} else {
-			stats.AddSecondaryColumns(1)
-			stats.AddSecondaryColumnPages(uint64(column.ColumnDesc().PagesCount))
+			r.region.Record(xcap.StatDatasetSecondaryColumns.Observe(1))
+			r.region.Record(xcap.StatDatasetSecondaryColumnPages.Observe(int64(column.ColumnDesc().PagesCount)))
 		}
 	}
 
@@ -584,8 +593,8 @@ func (r *Reader) initDownloader(ctx context.Context) error {
 		rowsCount = max(rowsCount, uint64(column.ColumnDesc().RowsCount))
 	}
 
-	stats.AddTotalRowsAvailable(int64(rowsCount))
-	stats.AddRowsToReadAfterPruning(ranges.TotalRowCount())
+	r.region.Record(xcap.StatDatasetMaxRows.Observe(int64(rowsCount)))
+	r.region.Record(xcap.StatDatasetRowsAfterPruning.Observe(int64(ranges.TotalRowCount())))
 
 	return nil
 }

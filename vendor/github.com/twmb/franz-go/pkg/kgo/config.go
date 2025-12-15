@@ -1877,6 +1877,9 @@ func OnPartitionsLost(onLost func(context.Context, *Client, map[string][]int32))
 // callbacks are blocked from [BlockRebalanceOnPoll]. You can use this as a
 // signal in your processing function to hurry up and unblock rebalancing
 // before your group member is kicked from the group at the session timeout.
+//
+// Since this is meant to be a signal to blocking operations, and to ensure
+// nothing can block this signal, this callback is called in a goroutine.
 func OnPartitionsCallbackBlocked(fn func(context.Context, *Client)) GroupOpt {
 	return groupOpt{func(cfg *cfg) { cfg.onBlocked = fn }}
 }

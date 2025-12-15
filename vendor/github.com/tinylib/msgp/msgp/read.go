@@ -175,7 +175,7 @@ func (m *Reader) CopyNext(w io.Writer) (int64, error) {
 	// Opportunistic optimization: if we can fit the whole thing in the m.R
 	// buffer, then just get a pointer to that, and pass it to w.Write,
 	// avoiding an allocation.
-	if int(sz) <= m.R.BufferSize() {
+	if int(sz) >= 0 && int(sz) <= m.R.BufferSize() {
 		var nn int
 		var buf []byte
 		buf, err = m.R.Next(int(sz))
@@ -582,7 +582,7 @@ func (m *Reader) ReadFloat64() (f float64, err error) {
 	var p []byte
 	p, err = m.R.Peek(9)
 	if err != nil {
-		// we'll allow a coversion from float32 to float64,
+		// we'll allow a conversion from float32 to float64,
 		// since we don't lose any precision
 		if err == io.EOF && len(p) > 0 && p[0] == mfloat32 {
 			ef, err := m.ReadFloat32()

@@ -174,7 +174,7 @@ func (b *Builder) flushRecords(encLevel zstd.EncoderLevel) {
 	// Our stripes are intermediate tables that don't need to have the best
 	// compression. To maintain high throughput on appends, we use the fastest
 	// compression for a stripe. Better compression is then used for sections.
-	compressionOpts := dataset.CompressionOptions{
+	compressionOpts := &dataset.CompressionOptions{
 		Zstd: []zstd.EOption{zstd.WithEncoderLevel(encLevel)},
 	}
 
@@ -192,7 +192,7 @@ func (b *Builder) flushSection() *table {
 		return nil
 	}
 
-	compressionOpts := dataset.CompressionOptions{
+	compressionOpts := &dataset.CompressionOptions{
 		Zstd: []zstd.EOption{zstd.WithEncoderLevel(zstd.SpeedDefault)},
 	}
 
