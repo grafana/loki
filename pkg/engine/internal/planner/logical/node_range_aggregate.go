@@ -51,11 +51,12 @@ func (r *RangeAggregation) String() string {
 			grouping += columnRef.String()
 		}
 	}
-	switch r.Grouping.Mode {
-	case types.GroupingModeByLabelSet, types.GroupingModeByEmptySet:
+	if r.Grouping.Without {
+		if len(r.Grouping.Columns) > 0 {
+			props = fmt.Sprintf("group_without=(%s), %s", grouping, props)
+		}
+	} else {
 		props = fmt.Sprintf("group_by=(%s), %s", grouping, props)
-	case types.GroupingModeWithoutLabelSet:
-		props = fmt.Sprintf("group_without=(%s), %s", grouping, props)
 	}
 
 	return fmt.Sprintf("RANGE_AGGREGATION %s [%s]", r.Table.Name(), props)

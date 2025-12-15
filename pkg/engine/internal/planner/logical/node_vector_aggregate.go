@@ -46,11 +46,12 @@ func (v *VectorAggregation) String() string {
 			grouping += columnRef.String()
 		}
 	}
-	switch v.Grouping.Mode {
-	case types.GroupingModeByLabelSet, types.GroupingModeByEmptySet:
+	if v.Grouping.Without {
+		if len(v.Grouping.Columns) > 0 {
+			props = fmt.Sprintf("%s, group_without=(%s)", props, grouping)
+		}
+	} else {
 		props = fmt.Sprintf("%s, group_by=(%s)", props, grouping)
-	case types.GroupingModeWithoutLabelSet:
-		props = fmt.Sprintf("%s, group_without=(%s)", props, grouping)
 	}
 
 	return fmt.Sprintf("VECTOR_AGGREGATION %s [%s]", v.Table.Name(), props)

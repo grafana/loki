@@ -413,7 +413,7 @@ func (p *Planner) processRangeAggregation(r *logical.RangeAggregation, ctx *Cont
 
 		Grouping: Grouping{
 			Columns: grouping,
-			Mode:    r.Grouping.Mode,
+			Without: r.Grouping.Without,
 		},
 		Operation: r.Operation,
 		Start:     r.Start,
@@ -446,7 +446,7 @@ func (p *Planner) processVectorAggregation(lp *logical.VectorAggregation, ctx *C
 
 		Grouping: Grouping{
 			Columns: grouping,
-			Mode:    lp.Grouping.Mode,
+			Without: lp.Grouping.Without,
 		},
 		Operation: lp.Operation,
 	}

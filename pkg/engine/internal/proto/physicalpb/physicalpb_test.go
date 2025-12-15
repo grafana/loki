@@ -116,7 +116,7 @@ func Test_Node(t *testing.T) {
 					Columns: []physical.ColumnExpression{
 						&physical.ColumnExpr{Ref: types.ColumnRef{Column: "partition_col", Type: types.ColumnTypeLabel}},
 					},
-					Mode: types.GroupingModeByLabelSet,
+					Without: false,
 				},
 				Operation: types.RangeAggregationTypeCount,
 				Start:     time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
@@ -134,7 +134,7 @@ func Test_Node(t *testing.T) {
 					Columns: []physical.ColumnExpression{
 						&physical.ColumnExpr{Ref: types.ColumnRef{Column: "group_col", Type: types.ColumnTypeLabel}},
 					},
-					Mode: types.GroupingModeByLabelSet,
+					Without: false,
 				},
 				Operation: types.VectorAggregationTypeSum,
 			},

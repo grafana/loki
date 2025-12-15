@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/tree"
 )
@@ -177,11 +176,10 @@ func (t *treeFormatter) convertRangeAggregation(r *RangeAggregation) *tree.Node 
 			grouping[i] = r.Grouping.Columns[i].Name()
 		}
 	}
-	switch r.Grouping.Mode {
-	case types.GroupingModeByLabelSet, types.GroupingModeByEmptySet:
-		properties = append(properties, tree.NewProperty("group_by", true, grouping...))
-	case types.GroupingModeWithoutLabelSet, types.GroupingModeWithoutEmptySet:
+	if r.Grouping.Without {
 		properties = append(properties, tree.NewProperty("group_without", true, grouping...))
+	} else {
+		properties = append(properties, tree.NewProperty("group_by", true, grouping...))
 	}
 
 	node := tree.NewNode("RangeAggregation", r.Name(), properties...)
@@ -205,11 +203,10 @@ func (t *treeFormatter) convertVectorAggregation(v *VectorAggregation) *tree.Nod
 			grouping[i] = v.Grouping.Columns[i].Name()
 		}
 	}
-	switch v.Grouping.Mode {
-	case types.GroupingModeByLabelSet, types.GroupingModeByEmptySet:
-		properties = append(properties, tree.NewProperty("group_by", true, grouping...))
-	case types.GroupingModeWithoutLabelSet, types.GroupingModeWithoutEmptySet:
+	if v.Grouping.Without {
 		properties = append(properties, tree.NewProperty("group_without", true, grouping...))
+	} else {
+		properties = append(properties, tree.NewProperty("group_by", true, grouping...))
 	}
 
 	node := tree.NewNode("VectorAggregation", v.Name(), properties...)

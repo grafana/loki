@@ -363,7 +363,7 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 		).RangeAggregation(
 			logical.Grouping{
 				Columns: []logical.ColumnRef{*logical.NewColumnRef("level", types.ColumnTypeAmbiguous)},
-				Mode:    types.GroupingModeByLabelSet,
+				Without: false,
 			},
 			types.RangeAggregationTypeCount,
 			start,         // Start time

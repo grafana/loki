@@ -82,7 +82,7 @@ func TestVectorAggregationPipeline(t *testing.T) {
 				},
 			},
 		},
-		Mode: types.GroupingModeByLabelSet,
+		Without: false,
 	}
 
 	pipeline, err := newVectorAggregationPipeline([]Pipeline{input1, input2}, grouping, newExpressionEvaluator(), types.VectorAggregationTypeSum, nil)

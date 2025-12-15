@@ -159,35 +159,7 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 			// extract all the columns that are used for grouping
 			var arrays []*array.String
 			var fields []arrow.Field
-			switch r.opts.grouping.Mode {
-			case types.GroupingModeByLabelSet:
-				// Gouping by a label set. Take only labels from that set.
-				arrays = make([]*array.String, 0, len(r.opts.grouping.Columns))
-				for _, columnExpr := range r.opts.grouping.Columns {
-					vec, err := r.evaluator.eval(columnExpr, record)
-					if err != nil {
-						return nil, err
-					}
-
-					if vec.DataType().ID() != types.Arrow.String.ID() {
-						return nil, fmt.Errorf("unsupported datatype for grouping %s", vec.DataType())
-					}
-
-					arr := vec.(*array.String)
-					arrays = append(arrays, arr)
-
-					colExpr, ok := columnExpr.(*physical.ColumnExpr)
-					if !ok {
-						return nil, fmt.Errorf("invalid column expression type %T", columnExpr)
-					}
-					ident := semconv.NewIdentifier(colExpr.Ref.Column, colExpr.Ref.Type, types.Loki.String)
-					fields = append(fields, semconv.FieldFromIdent(ident, true))
-				}
-			case types.GroupingModeByEmptySet:
-				// Gouping by an empty set. Group all into one.
-				arrays = make([]*array.String, 0)
-				fields = make([]arrow.Field, 0)
-			case types.GroupingModeWithoutLabelSet, types.GroupingModeWithoutEmptySet:
+			if r.opts.grouping.Without {
 				// Grouping without a lable set. Exclude lables from that set.
 				schema := record.Schema()
 				for i, field := range schema.Fields() {
@@ -224,7 +196,31 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 						}
 					}
 				}
+			} else {
+				// Gouping by a label set. Take only labels from that set.
+				for _, columnExpr := range r.opts.grouping.Columns {
+					vec, err := r.evaluator.eval(columnExpr, record)
+					if err != nil {
+						return nil, err
+					}
+
+					if vec.DataType().ID() != types.Arrow.String.ID() {
+						return nil, fmt.Errorf("unsupported datatype for grouping %s", vec.DataType())
+					}
+
+					arr := vec.(*array.String)
+					arrays = append(arrays, arr)
+
+					colExpr, ok := columnExpr.(*physical.ColumnExpr)
+					if !ok {
+						return nil, fmt.Errorf("invalid column expression type %T", columnExpr)
+					}
+					ident := semconv.NewIdentifier(colExpr.Ref.Column, colExpr.Ref.Type, types.Loki.String)
+					fields = append(fields, semconv.FieldFromIdent(ident, true))
+				}
 			}
+
+			r.aggregator.AddLabels(fields)
 
 			// extract timestamp column to check if the entry is in range
 			tsVec, err := r.evaluator.eval(tsColumnExpr, record)

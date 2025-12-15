@@ -71,7 +71,7 @@ func TestRangeAggregationPipeline_instant(t *testing.T) {
 					},
 				},
 			},
-			Mode: types.GroupingModeByLabelSet,
+			Without: false,
 		},
 		startTs:       time.Unix(20, 0).UTC(),
 		endTs:         time.Unix(20, 0).UTC(),
@@ -160,7 +160,7 @@ func TestRangeAggregationPipeline(t *testing.T) {
 		opts := rangeAggregationOptions{
 			grouping: physical.Grouping{
 				Columns: groupBy,
-				Mode:    types.GroupingModeByLabelSet,
+				Without: false,
 			},
 			startTs:       time.Unix(10, 0),
 			endTs:         time.Unix(40, 0),
@@ -210,7 +210,7 @@ func TestRangeAggregationPipeline(t *testing.T) {
 		opts := rangeAggregationOptions{
 			grouping: physical.Grouping{
 				Columns: groupBy,
-				Mode:    types.GroupingModeByLabelSet,
+				Without: false,
 			},
 			startTs:       time.Unix(10, 0),
 			endTs:         time.Unix(40, 0),
@@ -274,7 +274,7 @@ func TestRangeAggregationPipeline(t *testing.T) {
 		opts := rangeAggregationOptions{
 			grouping: physical.Grouping{
 				Columns: groupBy,
-				Mode:    types.GroupingModeByLabelSet,
+				Without: false,
 			},
 			startTs:       time.Unix(10, 0),
 			endTs:         time.Unix(40, 0),

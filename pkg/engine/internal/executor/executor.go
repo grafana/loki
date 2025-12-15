@@ -427,14 +427,14 @@ func startRegionForNode(ctx context.Context, n physical.Node) (context.Context, 
 			attribute.Int64("range_interval", int64(n.Range)),
 			attribute.Int64("step", int64(n.Step)),
 			attribute.Int("num_grouping", len(n.Grouping.Columns)),
-			attribute.String("grouping_mode", n.Grouping.Mode.String()),
+			attribute.Bool("grouping_without", n.Grouping.Without),
 		)
 
 	case *physical.VectorAggregation:
 		attributes = append(attributes,
 			attribute.String("operation", string(rune(n.Operation))),
 			attribute.Int("num_grouping", len(n.Grouping.Columns)),
-			attribute.String("grouping_mode", n.Grouping.Mode.String()),
+			attribute.Bool("grouping_without", n.Grouping.Without),
 		)
 
 	case *physical.ColumnCompat:

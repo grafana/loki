@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/tree"
 )
 
@@ -72,22 +71,24 @@ func toTreeNode(n Node) *tree.Node {
 			tree.NewProperty("range", false, node.Range),
 		}
 
-		switch node.Grouping.Mode {
-		case types.GroupingModeByLabelSet, types.GroupingModeByEmptySet:
+		if node.Grouping.Without {
+			if len(node.Grouping.Columns) > 0 {
+				treeNode.Properties = append(treeNode.Properties, tree.NewProperty("group_without", true, toAnySlice(node.Grouping.Columns)...))
+			}
+		} else {
 			treeNode.Properties = append(treeNode.Properties, tree.NewProperty("group_by", true, toAnySlice(node.Grouping.Columns)...))
-		case types.GroupingModeWithoutLabelSet:
-			treeNode.Properties = append(treeNode.Properties, tree.NewProperty("group_without", true, toAnySlice(node.Grouping.Columns)...))
 		}
 	case *VectorAggregation:
 		properties := []tree.Property{
 			tree.NewProperty("operation", false, node.Operation),
 		}
 
-		switch node.Grouping.Mode {
-		case types.GroupingModeByLabelSet, types.GroupingModeByEmptySet:
+		if node.Grouping.Without {
+			if len(node.Grouping.Columns) > 0 {
+				properties = append(properties, tree.NewProperty("group_without", true, toAnySlice(node.Grouping.Columns)...))
+			}
+		} else {
 			properties = append(properties, tree.NewProperty("group_by", true, toAnySlice(node.Grouping.Columns)...))
-		case types.GroupingModeWithoutLabelSet:
-			properties = append(properties, tree.NewProperty("group_without", true, toAnySlice(node.Grouping.Columns)...))
 		}
 
 		treeNode.Properties = properties

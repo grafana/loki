@@ -29,7 +29,7 @@ func (v *VectorAggregation) Clone() Node {
 
 		Grouping: Grouping{
 			Columns: cloneExpressions(v.Grouping.Columns),
-			Mode:    v.Grouping.Mode,
+			Without: v.Grouping.Without,
 		},
 		Operation: v.Operation,
 	}

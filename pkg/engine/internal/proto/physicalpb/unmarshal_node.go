@@ -165,14 +165,9 @@ func unmarshalGrouping(g physical.Grouping) (*Grouping, error) {
 		return nil, err
 	}
 
-	var mode GroupingMode
-	if err := mode.unmarshalType(g.Mode); err != nil {
-		return nil, err
-	}
-
 	return &Grouping{
 		Columns: columns,
-		Mode:    mode,
+		Without: g.Without,
 	}, nil
 }
 

@@ -177,7 +177,7 @@ func (r *groupByPushdown) apply(root Node) bool {
 		vecAgg := n.(*VectorAggregation)
 
 		// Can only push down a non-empty by() label set
-		if vecAgg.Grouping.Mode != types.GroupingModeByLabelSet {
+		if vecAgg.Grouping.Without || len(vecAgg.Grouping.Columns) == 0 {
 			continue
 		}
 
@@ -214,7 +214,7 @@ func (r *groupByPushdown) applyToTargets(node Node, grouping []ColumnExpression,
 		}
 
 		// Cannot push down into without()
-		if node.Grouping.Mode == types.GroupingModeWithoutLabelSet {
+		if node.Grouping.Without && len(node.Grouping.Columns) > 0 {
 			return false
 		}
 
@@ -227,7 +227,7 @@ func (r *groupByPushdown) applyToTargets(node Node, grouping []ColumnExpression,
 			var wasAdded bool
 			node.Grouping.Columns, wasAdded = addUniqueColumnExpr(node.Grouping.Columns, colExpr)
 			if wasAdded {
-				node.Grouping.Mode = types.GroupingModeByLabelSet
+				node.Grouping.Without = false
 				changed = true
 			}
 		}
@@ -267,7 +267,7 @@ func (r *projectionPushdown) propagateProjections(node Node, projections []Colum
 	var changed bool
 	switch node := node.(type) {
 	case *RangeAggregation:
-		if node.Grouping.Mode == types.GroupingModeWithoutEmptySet || node.Grouping.Mode == types.GroupingModeWithoutLabelSet {
+		if node.Grouping.Without {
 			return changed
 		}
 		// [Source] RangeAggregation requires partitionBy columns & timestamp.

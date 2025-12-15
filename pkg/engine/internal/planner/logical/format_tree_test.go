@@ -117,7 +117,7 @@ func TestFormatRangeAggregationQuery(t *testing.T) {
 	).RangeAggregation(
 		Grouping{
 			Columns: []ColumnRef{*NewColumnRef("label1", types.ColumnTypeAmbiguous), *NewColumnRef("label2", types.ColumnTypeAmbiguous)},
-			Mode:    types.GroupingModeByLabelSet,
+			Without: false,
 		},
 		types.RangeAggregationTypeCount,
 		time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC), // Start Time
@@ -171,7 +171,7 @@ func TestFormatVectorAggregationQuery(t *testing.T) {
 				*NewColumnRef("app", types.ColumnTypeLabel),
 				*NewColumnRef("env", types.ColumnTypeLabel),
 			},
-			Mode: types.GroupingModeByLabelSet,
+			Without: false,
 		},
 		types.VectorAggregationTypeSum,
 	)

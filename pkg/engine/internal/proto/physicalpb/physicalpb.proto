@@ -80,17 +80,7 @@ message AggregateRange {
 // and range vector aggregators.
 message Grouping {
   repeated loki.expression.ColumnExpression columns = 1;
-  GroupingMode mode = 2;
-}
-
-// GroupingMode represents the way on interpretation of the list of columns for grouping.
-enum GroupingMode {
-  GROUPING_MODE_INVALID = 0;
-
-  GROUPING_MODE_GROUPING_BY_EMPTY_SET = 1;
-  GROUPING_MODE_GROUPING_BY_LABEL_SET = 2;
-  GROUPING_MODE_GROUPING_WITHOUT_EMPTY_SET = 3;
-  GROUPING_MODE_GROUPING_WITHOUT_LABEL_SET = 4;
+  bool without = 2;
 }
 
 // AggregateRangeOp represents the operation to perform on the aggregated

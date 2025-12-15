@@ -58,19 +58,23 @@ func newAggregator(pointsSizeHint int, operation aggregationOperation) *aggregat
 	return &a
 }
 
-// Add adds a new sample value to the aggregation for the given timestamp and grouping label values.
-// It expects labelValues to be in the same order as the groupBy columns.
-func (a *aggregator) Add(ts time.Time, value float64, labels []arrow.Field, labelValues []string) {
-	if len(labels) != len(labelValues) {
-		panic("len(labels) != len(labelValues)")
-	}
-
+// AddLabels merges a list of labels that all sample values will have combined. This can be done several times
+// over the lifetime of an aggregator to accomodate processing of multiple records with different schemas.
+func (a *aggregator) AddLabels(labels []arrow.Field) {
 	for _, label := range labels {
 		if !slices.ContainsFunc(a.labels, func(l arrow.Field) bool {
 			return label.Equal(l)
 		}) {
 			a.labels = append(a.labels, label)
 		}
+	}
+}
+
+// Add adds a new sample value to the aggregation for the given timestamp and grouping label values.
+// It expects labelValues to be in the same order as the groupBy columns.
+func (a *aggregator) Add(ts time.Time, value float64, labels []arrow.Field, labelValues []string) {
+	if len(labels) != len(labelValues) {
+		panic("len(labels) != len(labelValues)")
 	}
 
 	point, ok := a.points[ts]

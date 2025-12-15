@@ -30,7 +30,7 @@ func (r *RangeAggregation) Clone() Node {
 
 		Grouping: Grouping{
 			Columns: cloneExpressions(r.Grouping.Columns),
-			Mode:    r.Grouping.Mode,
+			Without: r.Grouping.Without,
 		},
 		Operation: r.Operation,
 		Start:     r.Start,

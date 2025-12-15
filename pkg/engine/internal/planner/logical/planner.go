@@ -587,44 +587,27 @@ func convertQueryRangeToPredicates(start, end time.Time) []*BinOp {
 	}
 }
 
-// convertGrouping converts [syntax.Grouping] structure into a list of columns and
-// an explicit grouping mode. The way [syntax.Grouping] represents empty and non-empty
-// label sets is fragile and does not survive protobuf encoding (nil vs empty slices),
-// so an explicit [types.GroupingMode] is helpful.
+// convertGrouping converts [syntax.Grouping] structure into a list of columns and a grouping mode.
 func convertGrouping(g *syntax.Grouping) Grouping {
-	var grouping []ColumnRef
-	groupingMode := types.GroupingModeWithoutEmptySet
+	var columns []ColumnRef
 
 	if g == nil {
 		return Grouping{
-			Columns: grouping,
-			Mode:    groupingMode,
+			Columns: columns,
+			Without: true,
 		}
 	}
 
 	if g.Groups != nil {
-		grouping = make([]ColumnRef, len(g.Groups))
+		columns = make([]ColumnRef, len(g.Groups))
 		for i, group := range g.Groups {
-			grouping[i] = *NewColumnRef(group, types.ColumnTypeAmbiguous)
-		}
-	}
-	if g.Without {
-		if g.Groups != nil {
-			groupingMode = types.GroupingModeWithoutLabelSet
-		} else {
-			groupingMode = types.GroupingModeWithoutEmptySet
-		}
-	} else {
-		if g.Groups != nil {
-			groupingMode = types.GroupingModeByLabelSet
-		} else {
-			groupingMode = types.GroupingModeByEmptySet
+			columns[i] = *NewColumnRef(group, types.ColumnTypeAmbiguous)
 		}
 	}
 
 	return Grouping{
-		Columns: grouping,
-		Mode:    groupingMode,
+		Columns: columns,
+		Without: g.Without,
 	}
 }
 

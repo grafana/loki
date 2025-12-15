@@ -253,7 +253,7 @@ func TestGroupByPushdown(t *testing.T) {
 				&ColumnExpr{Ref: types.ColumnRef{Column: "service", Type: types.ColumnTypeLabel}},
 				&ColumnExpr{Ref: types.ColumnRef{Column: "level", Type: types.ColumnTypeLabel}},
 			},
-			Mode: types.GroupingModeByLabelSet,
+			Without: false,
 		}
 
 		// generate plan for sum by(service, instance) (count_over_time{...}[])
@@ -320,7 +320,7 @@ func TestGroupByPushdown(t *testing.T) {
 			Columns: []ColumnExpression{
 				&ColumnExpr{Ref: types.ColumnRef{Column: "service", Type: types.ColumnTypeLabel}},
 			},
-			Mode: types.GroupingModeByLabelSet,
+			Without: false,
 		}
 
 		// generate plan for max by(service) (sum_over_time{...}[])
@@ -368,7 +368,7 @@ func TestProjectionPushdown(t *testing.T) {
 				&ColumnExpr{Ref: types.ColumnRef{Column: "level", Type: types.ColumnTypeLabel}},
 				&ColumnExpr{Ref: types.ColumnRef{Column: "service", Type: types.ColumnTypeLabel}},
 			},
-			Mode: types.GroupingModeByLabelSet,
+			Without: false,
 		}
 
 		plan := &Plan{}
@@ -688,7 +688,7 @@ func TestProjectionPushdown_PushesRequestedKeysToParseOperations(t *testing.T) {
 							{Ref: types.ColumnRef{Column: "duration", Type: types.ColumnTypeAmbiguous}},
 							{Ref: types.ColumnRef{Column: "service", Type: types.ColumnTypeLabel}}, // Label should be skipped
 						},
-						Mode: types.GroupingModeByLabelSet,
+						Without: false,
 					},
 					types.RangeAggregationTypeCount,
 					time.Unix(0, 0),
@@ -744,7 +744,7 @@ func TestProjectionPushdown_PushesRequestedKeysToParseOperations(t *testing.T) {
 							{Ref: types.ColumnRef{Column: "status", Type: types.ColumnTypeAmbiguous}},
 							{Ref: types.ColumnRef{Column: "code", Type: types.ColumnTypeAmbiguous}},
 						},
-						Mode: types.GroupingModeByLabelSet,
+						Without: false,
 					},
 					types.VectorAggregationTypeSum,
 				)

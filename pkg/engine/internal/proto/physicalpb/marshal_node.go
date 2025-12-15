@@ -120,14 +120,9 @@ func marshalGrouping(g *Grouping) (physical.Grouping, error) {
 		return physical.Grouping{}, fmt.Errorf("empty grouping")
 	}
 
-	mode, err := g.Mode.marshalType()
-	if err != nil {
-		return physical.Grouping{}, err
-	}
-
 	return physical.Grouping{
 		Columns: marshalColumnExpressions(g.Columns),
-		Mode:    mode,
+		Without: g.Without,
 	}, nil
 }
 

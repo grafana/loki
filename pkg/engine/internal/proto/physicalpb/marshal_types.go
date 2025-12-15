@@ -30,13 +30,6 @@ var (
 		AGGREGATE_VECTOR_OP_SORT:      types.VectorAggregationTypeSort,
 		AGGREGATE_VECTOR_OP_SORT_DESC: types.VectorAggregationTypeSortDesc,
 	}
-
-	nativeGroupingModeLookup = map[GroupingMode]types.GroupingMode{
-		GROUPING_MODE_GROUPING_BY_EMPTY_SET:      types.GroupingModeByEmptySet,
-		GROUPING_MODE_GROUPING_BY_LABEL_SET:      types.GroupingModeByLabelSet,
-		GROUPING_MODE_GROUPING_WITHOUT_EMPTY_SET: types.GroupingModeWithoutEmptySet,
-		GROUPING_MODE_GROUPING_WITHOUT_LABEL_SET: types.GroupingModeWithoutLabelSet,
-	}
 )
 
 func (op AggregateRangeOp) marshalType() (types.RangeAggregationType, error) {
@@ -51,11 +44,4 @@ func (op AggregateVectorOp) marshalType() (types.VectorAggregationType, error) {
 		return result, nil
 	}
 	return types.VectorAggregationTypeInvalid, fmt.Errorf("unknown AggregateVectorOp: %v", op)
-}
-
-func (m GroupingMode) marshalType() (types.GroupingMode, error) {
-	if result, ok := nativeGroupingModeLookup[m]; ok {
-		return result, nil
-	}
-	return types.GroupingModeInvalid, fmt.Errorf("unknown GroupingMode: %v", m)
 }

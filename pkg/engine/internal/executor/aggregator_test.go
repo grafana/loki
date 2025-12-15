@@ -28,6 +28,7 @@ func TestAggregator(t *testing.T) {
 
 	t.Run("basic SUM aggregation with record building", func(t *testing.T) {
 		agg := newAggregator(10, aggregationOperationSum)
+		agg.AddLabels(groupBy)
 
 		ts1 := time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC)
 		ts2 := time.Date(2024, 1, 1, 10, 1, 0, 0, time.UTC)
@@ -68,6 +69,7 @@ func TestAggregator(t *testing.T) {
 
 	t.Run("basic AVG aggregation with record building", func(t *testing.T) {
 		agg := newAggregator(10, aggregationOperationAvg)
+		agg.AddLabels(groupBy)
 
 		ts1 := time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC)
 		ts2 := time.Date(2024, 1, 1, 10, 1, 0, 0, time.UTC)
@@ -108,6 +110,7 @@ func TestAggregator(t *testing.T) {
 
 	t.Run("basic COUNT aggregation with record building", func(t *testing.T) {
 		agg := newAggregator(10, aggregationOperationCount)
+		agg.AddLabels(groupBy)
 
 		ts1 := time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC)
 		ts2 := time.Date(2024, 1, 1, 10, 1, 0, 0, time.UTC)
@@ -159,6 +162,7 @@ func TestAggregator(t *testing.T) {
 
 	t.Run("basic MAX aggregation with record building", func(t *testing.T) {
 		agg := newAggregator(10, aggregationOperationMax)
+		agg.AddLabels(groupBy)
 
 		ts1 := time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC)
 		ts2 := time.Date(2024, 1, 1, 10, 1, 0, 0, time.UTC)
@@ -200,6 +204,7 @@ func TestAggregator(t *testing.T) {
 
 	t.Run("basic MIN aggregation with record building", func(t *testing.T) {
 		agg := newAggregator(10, aggregationOperationMin)
+		agg.AddLabels(groupBy)
 
 		ts1 := time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC)
 		ts2 := time.Date(2024, 1, 1, 10, 1, 0, 0, time.UTC)
@@ -244,6 +249,7 @@ func TestAggregator(t *testing.T) {
 		groupBy := []arrow.Field{}
 
 		agg := newAggregator(1, aggregationOperationSum)
+		agg.AddLabels(groupBy)
 
 		ts1 := time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC)
 		ts2 := time.Date(2024, 1, 1, 10, 1, 0, 0, time.UTC)
@@ -292,6 +298,8 @@ func TestAggregator(t *testing.T) {
 			return result
 		}
 
+		agg.AddLabels(buildFields("env", "service", "cluster", "method"))
+
 		// Add test data
 		agg.Add(ts1, 10, buildFields("env", "service"), []string{"prod", "app1"})
 		agg.Add(ts1, 20, buildFields("env", "cluster"), []string{"prod", "east-1"})
@@ -329,13 +337,14 @@ func TestAggregator(t *testing.T) {
 }
 
 func BenchmarkAggregator(b *testing.B) {
-	agg := newAggregator(10, aggregationOperationSum)
-
 	fields := []arrow.Field{
 		semconv.FieldFromIdent(semconv.NewIdentifier("env", types.ColumnTypeLabel, types.Loki.String), true),
 		semconv.FieldFromIdent(semconv.NewIdentifier("cluster", types.ColumnTypeLabel, types.Loki.String), true),
 		semconv.FieldFromIdent(semconv.NewIdentifier("service", types.ColumnTypeLabel, types.Loki.String), true),
 	}
+
+	agg := newAggregator(10, aggregationOperationSum)
+	agg.AddLabels(fields)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -346,9 +355,5 @@ func BenchmarkAggregator(b *testing.B) {
 
 		agg.Add(ts, 10, fields, []string{env, cluster, service})
 
-	}
-	_, err := agg.BuildRecord()
-	if err != nil {
-		b.Fatal(err)
 	}
 }
