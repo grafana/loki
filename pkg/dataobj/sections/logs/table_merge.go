@@ -102,14 +102,9 @@ func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *
 	var rows int
 
 	wg := &sync.WaitGroup{}
-	pool := &sync.Pool{
-		New: func() any {
-			return &rowValue{}
-		},
-	}
-	appenders := make([]chan *rowValue, 0, runtime.GOMAXPROCS(0))
+	appenders := make([]*columnAppender, 0, runtime.GOMAXPROCS(0))
 	for range runtime.GOMAXPROCS(0) {
-		appenders = append(appenders, columnAppender(wg, pool))
+		appenders = append(appenders, NewColumnAppender(wg))
 	}
 
 	tree := loser.New(tableSequences, maxValue, tableSequenceAt, CompareForSortOrder(sort), tableSequenceClose)
@@ -140,14 +135,14 @@ func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *
 
 			switch column.Type {
 			case ColumnTypeStreamID:
-				_ = streamIDBuilder.Append(rows, value)
+				appenders[0].appendValue(streamIDBuilder, rows, value)
 			case ColumnTypeTimestamp:
-				_ = timestampBuilder.Append(rows, value)
+				appenders[0].appendValue(timestampBuilder, rows, value)
 			case ColumnTypeMetadata:
 				index, columnBuilder := buf.Metadata(column.Desc.Tag, pageSize, pageRowCount, compressionOpts)
-				appendValue(pool, appenders[index%len(appenders)], columnBuilder, rows, value)
+				appenders[index%len(appenders)].appendValue(columnBuilder, rows, value)
 			case ColumnTypeMessage:
-				_ = messageBuilder.Append(rows, value)
+				appenders[1].appendValue(messageBuilder, rows, value)
 			default:
 				return nil, fmt.Errorf("unknown column type %s", column.Type)
 			}
@@ -157,32 +152,55 @@ func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *
 	}
 
 	for _, appender := range appenders {
-		close(appender)
+		appender.close()
 	}
 	wg.Wait()
 
 	return buf.Flush()
 }
 
-func appendValue(pool *sync.Pool, ch chan *rowValue, builder *dataset.ColumnBuilder, row int, value dataset.Value) {
-	rowValue := pool.Get().(*rowValue)
-	rowValue.builder = builder
-	rowValue.row = row
-	rowValue.value = value
-	ch <- rowValue
+type columnAppender struct {
+	waitGroup *sync.WaitGroup
+	work      chan []*rowValue
+	buf       []*rowValue
 }
 
-func columnAppender(wg *sync.WaitGroup, pool *sync.Pool) chan *rowValue {
+func NewColumnAppender(wg *sync.WaitGroup) *columnAppender {
 	wg.Add(1)
-	ch := make(chan *rowValue, 1024)
+	work := make(chan []*rowValue)
+
 	go func() {
-		for rowValue := range ch {
-			_ = rowValue.builder.Append(rowValue.row, rowValue.value)
-			pool.Put(rowValue)
+		for rowValues := range work {
+			for _, rowValue := range rowValues {
+				_ = rowValue.builder.Append(rowValue.row, rowValue.value)
+			}
 		}
 		wg.Done()
 	}()
-	return ch
+
+	return &columnAppender{
+		work:      work,
+		waitGroup: wg,
+		buf:       make([]*rowValue, 0, 1024),
+	}
+}
+
+func (ca *columnAppender) appendValue(builder *dataset.ColumnBuilder, row int, value dataset.Value) {
+	ca.buf = append(ca.buf, &rowValue{
+		builder: builder,
+		row:     row,
+		value:   value,
+	})
+	if len(ca.buf) >= cap(ca.buf) {
+		ca.work <- ca.buf
+		// Make a new buffer to avoid needing to synchronise when the worker is done with the old buffer.
+		ca.buf = make([]*rowValue, 0, 1024)
+	}
+}
+
+func (ca *columnAppender) close() {
+	ca.work <- ca.buf
+	close(ca.work)
 }
 
 type tableSequence struct {
