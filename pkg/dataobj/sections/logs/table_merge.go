@@ -101,10 +101,12 @@ func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *
 
 	var rows int
 
+	// Start async workers in order to improve throughput
 	wg := &sync.WaitGroup{}
-	appenders := make([]*columnAppender, 0, runtime.GOMAXPROCS(0))
-	for range runtime.GOMAXPROCS(0) {
-		appenders = append(appenders, NewColumnAppender(wg))
+	appenderCount := max(2, runtime.GOMAXPROCS(0))
+	appenders := make([]*columnAppender, 0, appenderCount)
+	for range appenderCount {
+		appenders = append(appenders, newColumnAppender(wg))
 	}
 
 	tree := loser.New(tableSequences, maxValue, tableSequenceAt, CompareForSortOrder(sort), tableSequenceClose)
@@ -142,6 +144,7 @@ func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *
 				index, columnBuilder := buf.Metadata(column.Desc.Tag, pageSize, pageRowCount, compressionOpts)
 				appenders[index%len(appenders)].appendValue(columnBuilder, rows, value)
 			case ColumnTypeMessage:
+				// The message, stream ID and timestamp columns are written on every row. We choose to send message to a separate appender to ensure basic work is also distributed.
 				appenders[1].appendValue(messageBuilder, rows, value)
 			default:
 				return nil, fmt.Errorf("unknown column type %s", column.Type)
@@ -159,13 +162,16 @@ func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *
 	return buf.Flush()
 }
 
+// columnAppender writes column values to columns.
+// They are thread-safe via the appendValue method and will apply values in the order they are received.
+// When using multiple appenders, each distinct column should only be written to a single appender in order to maintain ordering.
 type columnAppender struct {
 	waitGroup *sync.WaitGroup
 	work      chan []*rowValue
 	buf       []*rowValue
 }
 
-func NewColumnAppender(wg *sync.WaitGroup) *columnAppender {
+func newColumnAppender(wg *sync.WaitGroup) *columnAppender {
 	wg.Add(1)
 	work := make(chan []*rowValue)
 
