@@ -309,7 +309,13 @@ VectorAggregation operation=sum group_by=(ambiguous.bar)
 			require.NoError(t, err)
 
 			catalog := physical.NewMetastoreCatalog(func(start time.Time, end time.Time, selectors []*labels.Matcher, predicates []*labels.Matcher) ([]*metastore.DataobjSectionDescriptor, error) {
-				return ms.Sections(ctx, start, end, selectors, predicates)
+				resp, err := ms.Sections(ctx, metastore.SectionsRequest{
+					Start:      start,
+					End:        end,
+					Matchers:   selectors,
+					Predicates: predicates,
+				})
+				return resp.Sections, err
 			})
 			planner := physical.NewPlanner(physical.NewContext(q.Start(), q.End()), catalog)
 
