@@ -49,6 +49,7 @@ message MessageFrame {
 
   oneof kind {
     WorkerHelloMessage worker_hello = 10;
+    WorkerSubscribeMessage worker_subscribe = 11;
     WorkerReadyMessage worker_ready = 2;
 
     TaskAssignMessage task_assign = 3;
@@ -74,10 +75,18 @@ message WorkerHelloMessage {
   uint64 threads = 1;
 }
 
+// WorkerSubscribeMessage is sent by a scheduler to request a WorkerReadyMessage
+// from workers once they have at least one worker thread available.
+//
+// The subscription is cleared once the next WorkerReadyMessage is sent.
+message WorkerSubscribeMessage {}
+
 // WorkerReadyMessage is sent by a worker to the scheduler to signal that
 // the worker has at least one worker thread available for running tasks.
 //
-// Workers may send WorkerReadyMessage at any time.
+// Workers may send WorkerReadyMessage at any time, but one must be sent in
+// response to a WorkerSubscribeMessage once at least one worker thread is
+// available.
 message WorkerReadyMessage {}
 
 // TaskAssignMessage is sent by the scheduler to a worker when there is a
