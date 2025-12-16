@@ -86,17 +86,17 @@ type Catalog interface {
 	ResolveDataObjSections(Expression, []Expression, ShardInfo, time.Time, time.Time) ([]DataObjSections, error)
 }
 
-type MetastoreQuerySectionsFunc func(time.Time, time.Time, []*labels.Matcher, []*labels.Matcher) ([]*metastore.DataobjSectionDescriptor, error)
+type MetastoreSectionsResolver func(time.Time, time.Time, []*labels.Matcher, []*labels.Matcher) ([]*metastore.DataobjSectionDescriptor, error)
 
 // MetastoreCatalog is the default implementation of [Catalog].
 type MetastoreCatalog struct {
-	querySectionsFunc MetastoreQuerySectionsFunc
+	sectionsResolver MetastoreSectionsResolver
 }
 
 // NewMetastoreCatalog creates a new instance of [MetastoreCatalog] for query planning.
-func NewMetastoreCatalog(querySectionsFunc MetastoreQuerySectionsFunc) *MetastoreCatalog {
+func NewMetastoreCatalog(sectionsResolver MetastoreSectionsResolver) *MetastoreCatalog {
 	return &MetastoreCatalog{
-		querySectionsFunc: querySectionsFunc,
+		sectionsResolver: sectionsResolver,
 	}
 }
 
@@ -120,9 +120,9 @@ func (c *MetastoreCatalog) ResolveDataObjSections(selector Expression, predicate
 		predicateMatchers = append(predicateMatchers, matchers...)
 	}
 
-	msSections, err := c.querySectionsFunc(from, through, selectorMatchers, predicateMatchers)
+	msSections, err := c.sectionsResolver(from, through, selectorMatchers, predicateMatchers)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query sections from metastore: %w", err)
+		return nil, fmt.Errorf("resolve metastore sections: %w", err)
 	}
 
 	return filterForShard(shard, msSections)
