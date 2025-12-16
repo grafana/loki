@@ -515,6 +515,28 @@ func TestConfigOptions_RulerAlertManager(t *testing.T) {
 				Hosts:           "https://_web._tcp.alertmanager-operated.openshift-monitoring.svc",
 			},
 		},
+		{
+			desc: "openshift mode",
+			opts: Options{
+				Stack: lokiv1.LokiStackSpec{
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.Openshift,
+					},
+				},
+				Timeouts: testTimeoutConfig(),
+				OpenShiftOptions: openshift.Options{
+					BuildOpts: openshift.BuildOptions{
+						AlertManagerEnabled: true,
+					},
+				},
+			},
+			wantOptions: &config.AlertManagerConfig{
+				EnableV2:        true,
+				EnableDiscovery: true,
+				RefreshInterval: "1m",
+				Hosts:           "https://_web._tcp.alertmanager-operated.openshift-monitoring.svc",
+			},
+		},
 	}
 
 	for _, tc := range tt {
@@ -603,6 +625,43 @@ func TestConfigOptions_RulerAlertManager_UserOverride(t *testing.T) {
 				Stack: lokiv1.LokiStackSpec{
 					Tenants: &lokiv1.TenantsSpec{
 						Mode: lokiv1.OpenshiftNetwork,
+					},
+					Rules: &lokiv1.RulesSpec{
+						Enabled: true,
+					},
+				},
+				Timeouts: testTimeoutConfig(),
+				Ruler: Ruler{
+					Spec: &lokiv1.RulerConfigSpec{
+						AlertManagerSpec: &lokiv1.AlertManagerSpec{
+							EnableV2: false,
+							DiscoverySpec: &lokiv1.AlertManagerDiscoverySpec{
+								EnableSRV:       false,
+								RefreshInterval: "2m",
+							},
+							Endpoints: []string{"http://my-alertmanager"},
+						},
+					},
+				},
+				OpenShiftOptions: openshift.Options{
+					BuildOpts: openshift.BuildOptions{
+						AlertManagerEnabled: true,
+					},
+				},
+			},
+			wantOptions: &config.AlertManagerConfig{
+				EnableV2:        false,
+				EnableDiscovery: false,
+				RefreshInterval: "2m",
+				Hosts:           "http://my-alertmanager",
+			},
+		},
+		{
+			desc: "openshift mode",
+			opts: Options{
+				Stack: lokiv1.LokiStackSpec{
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.Openshift,
 					},
 					Rules: &lokiv1.RulesSpec{
 						Enabled: true,
@@ -763,6 +822,60 @@ func TestConfigOptions_RulerOverrides_OCPApplicationTenant(t *testing.T) {
 				},
 			},
 			wantOptions: nil,
+		},
+		{
+			desc: "openshift mode",
+			opts: Options{
+				Stack: lokiv1.LokiStackSpec{
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.Openshift,
+					},
+					Rules: &lokiv1.RulesSpec{
+						Enabled: true,
+					},
+				},
+				Timeouts: testTimeoutConfig(),
+				Ruler: Ruler{
+					Spec: &lokiv1.RulerConfigSpec{
+						AlertManagerSpec: &lokiv1.AlertManagerSpec{
+							EnableV2: false,
+							DiscoverySpec: &lokiv1.AlertManagerDiscoverySpec{
+								EnableSRV:       false,
+								RefreshInterval: "2m",
+							},
+							Endpoints: []string{"http://my-alertmanager"},
+						},
+					},
+				},
+				OpenShiftOptions: openshift.Options{
+					BuildOpts: openshift.BuildOptions{
+						AlertManagerEnabled:             true,
+						UserWorkloadAlertManagerEnabled: true,
+					},
+				},
+			},
+			wantOptions: map[string]config.LokiOverrides{
+				"application": {
+					Ruler: config.RulerOverrides{
+						AlertManager: &config.AlertManagerConfig{
+							Hosts:           "https://_web._tcp.alertmanager-operated.openshift-user-workload-monitoring.svc",
+							EnableV2:        true,
+							EnableDiscovery: true,
+							RefreshInterval: "1m",
+							Notifier: &config.NotifierConfig{
+								TLS: config.TLSConfig{
+									ServerName: ptr.To("alertmanager-user-workload.openshift-user-workload-monitoring.svc.cluster.local"),
+									CAPath:     ptr.To("/var/run/ca/alertmanager/service-ca.crt"),
+								},
+								HeaderAuth: config.HeaderAuth{
+									Type:            ptr.To("Bearer"),
+									CredentialsFile: ptr.To("/var/run/secrets/kubernetes.io/serviceaccount/token"),
+								},
+							},
+						},
+					},
+				},
+			},
 		},
 	}
 
@@ -971,6 +1084,138 @@ func TestConfigOptions_RulerOverrides(t *testing.T) {
 				},
 			},
 			wantOptions: nil,
+		},
+		{
+			desc: "openshift mode",
+			opts: Options{
+				Stack: lokiv1.LokiStackSpec{
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.Openshift,
+					},
+					Rules: &lokiv1.RulesSpec{
+						Enabled: true,
+					},
+				},
+				Timeouts: testTimeoutConfig(),
+				Ruler: Ruler{
+					Spec: &lokiv1.RulerConfigSpec{
+						AlertManagerSpec: &lokiv1.AlertManagerSpec{
+							EnableV2: false,
+							DiscoverySpec: &lokiv1.AlertManagerDiscoverySpec{
+								EnableSRV:       false,
+								RefreshInterval: "2m",
+							},
+							Endpoints: []string{"http://my-alertmanager"},
+						},
+						Overrides: map[string]lokiv1.RulerOverrides{
+							"application": {
+								AlertManagerOverrides: &lokiv1.AlertManagerSpec{
+									ExternalURL:    "external",
+									ExternalLabels: map[string]string{"external": "label"},
+									EnableV2:       false,
+									Endpoints:      []string{"http://application-alertmanager"},
+									DiscoverySpec: &lokiv1.AlertManagerDiscoverySpec{
+										EnableSRV:       false,
+										RefreshInterval: "3m",
+									},
+									Client: &lokiv1.AlertManagerClientConfig{
+										TLS: &lokiv1.AlertManagerClientTLSConfig{
+											ServerName: ptr.To("application.svc"),
+											CAPath:     ptr.To("/tenant/application/alertmanager/ca.crt"),
+											CertPath:   ptr.To("/tenant/application/alertmanager/cert.crt"),
+											KeyPath:    ptr.To("/tenant/application/alertmanager/cert.key"),
+										},
+										HeaderAuth: &lokiv1.AlertManagerClientHeaderAuth{
+											Type:        ptr.To("Bearer"),
+											Credentials: ptr.To("letmeinplz"),
+										},
+									},
+								},
+							},
+							"other-tenant": {
+								AlertManagerOverrides: &lokiv1.AlertManagerSpec{
+									ExternalURL:    "external1",
+									ExternalLabels: map[string]string{"external1": "label1"},
+									EnableV2:       false,
+									Endpoints:      []string{"http://other-alertmanager"},
+									DiscoverySpec: &lokiv1.AlertManagerDiscoverySpec{
+										EnableSRV:       true,
+										RefreshInterval: "5m",
+									},
+									Client: &lokiv1.AlertManagerClientConfig{
+										TLS: &lokiv1.AlertManagerClientTLSConfig{
+											ServerName: ptr.To("other.svc"),
+											CAPath:     ptr.To("/tenant/other/alertmanager/ca.crt"),
+											CertPath:   ptr.To("/tenant/other/alertmanager/cert.crt"),
+											KeyPath:    ptr.To("/tenant/other/alertmanager/cert.key"),
+										},
+										BasicAuth: &lokiv1.AlertManagerClientBasicAuth{
+											Username: ptr.To("user"),
+											Password: ptr.To("pass"),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+				OpenShiftOptions: openshift.Options{
+					BuildOpts: openshift.BuildOptions{
+						AlertManagerEnabled:             true,
+						UserWorkloadAlertManagerEnabled: true,
+					},
+				},
+			},
+			wantOptions: map[string]config.LokiOverrides{
+				"application": {
+					Ruler: config.RulerOverrides{
+						AlertManager: &config.AlertManagerConfig{
+							ExternalURL:     "external",
+							Hosts:           "http://application-alertmanager",
+							EnableV2:        false,
+							EnableDiscovery: false,
+							RefreshInterval: "3m",
+							ExternalLabels:  map[string]string{"external": "label"},
+							Notifier: &config.NotifierConfig{
+								TLS: config.TLSConfig{
+									ServerName: ptr.To("application.svc"),
+									CAPath:     ptr.To("/tenant/application/alertmanager/ca.crt"),
+									CertPath:   ptr.To("/tenant/application/alertmanager/cert.crt"),
+									KeyPath:    ptr.To("/tenant/application/alertmanager/cert.key"),
+								},
+								HeaderAuth: config.HeaderAuth{
+									Type:        ptr.To("Bearer"),
+									Credentials: ptr.To("letmeinplz"),
+								},
+							},
+						},
+					},
+				},
+				"other-tenant": {
+					Ruler: config.RulerOverrides{
+						AlertManager: &config.AlertManagerConfig{
+							ExternalURL:     "external1",
+							Hosts:           "http://other-alertmanager",
+							EnableV2:        false,
+							EnableDiscovery: true,
+							RefreshInterval: "5m",
+							ExternalLabels:  map[string]string{"external1": "label1"},
+							Notifier: &config.NotifierConfig{
+								TLS: config.TLSConfig{
+									ServerName: ptr.To("other.svc"),
+									CAPath:     ptr.To("/tenant/other/alertmanager/ca.crt"),
+									CertPath:   ptr.To("/tenant/other/alertmanager/cert.crt"),
+									KeyPath:    ptr.To("/tenant/other/alertmanager/cert.key"),
+								},
+								BasicAuth: config.BasicAuth{
+									Username: ptr.To("user"),
+									Password: ptr.To("pass"),
+								},
+							},
+						},
+					},
+				},
+			},
 		},
 	}
 
@@ -1195,6 +1440,66 @@ func TestConfigOptions_RulerOverrides_OCPUserWorkloadOnlyEnabled(t *testing.T) {
 				Hosts:           "http://my-alertmanager",
 			},
 			wantOverridesOptions: nil,
+		},
+		{
+			desc: "openshift mode",
+			opts: Options{
+				Stack: lokiv1.LokiStackSpec{
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.Openshift,
+					},
+					Rules: &lokiv1.RulesSpec{
+						Enabled: true,
+					},
+				},
+				Timeouts: testTimeoutConfig(),
+				Ruler: Ruler{
+					Spec: &lokiv1.RulerConfigSpec{
+						AlertManagerSpec: &lokiv1.AlertManagerSpec{
+							EnableV2: false,
+							DiscoverySpec: &lokiv1.AlertManagerDiscoverySpec{
+								EnableSRV:       false,
+								RefreshInterval: "2m",
+							},
+							Endpoints: []string{"http://my-alertmanager"},
+						},
+					},
+				},
+				OpenShiftOptions: openshift.Options{
+					BuildOpts: openshift.BuildOptions{
+						AlertManagerEnabled:             false,
+						UserWorkloadAlertManagerEnabled: true,
+					},
+				},
+			},
+			wantOptions: &config.AlertManagerConfig{
+				EnableV2:        false,
+				EnableDiscovery: false,
+				RefreshInterval: "2m",
+				Hosts:           "http://my-alertmanager",
+			},
+			wantOverridesOptions: map[string]config.LokiOverrides{
+				"application": {
+					Ruler: config.RulerOverrides{
+						AlertManager: &config.AlertManagerConfig{
+							Hosts:           "https://_web._tcp.alertmanager-operated.openshift-user-workload-monitoring.svc",
+							EnableV2:        true,
+							EnableDiscovery: true,
+							RefreshInterval: "1m",
+							Notifier: &config.NotifierConfig{
+								TLS: config.TLSConfig{
+									ServerName: ptr.To("alertmanager-user-workload.openshift-user-workload-monitoring.svc.cluster.local"),
+									CAPath:     ptr.To("/var/run/ca/alertmanager/service-ca.crt"),
+								},
+								HeaderAuth: config.HeaderAuth{
+									Type:            ptr.To("Bearer"),
+									CredentialsFile: ptr.To("/var/run/secrets/kubernetes.io/serviceaccount/token"),
+								},
+							},
+						},
+					},
+				},
+			},
 		},
 	}
 

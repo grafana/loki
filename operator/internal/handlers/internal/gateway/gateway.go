@@ -49,7 +49,7 @@ func BuildOptions(ctx context.Context, log logr.Logger, k k8s.Client, stack *lok
 	}
 
 	switch stack.Spec.Tenants.Mode {
-	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
+	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork, lokiv1.Openshift:
 		baseDomain, err = getOpenShiftBaseDomain(ctx, k)
 		if err != nil {
 			return "", tenants, err

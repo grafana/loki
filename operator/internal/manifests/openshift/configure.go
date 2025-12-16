@@ -37,6 +37,9 @@ var (
 	networkTenants = []string{
 		tenantNetwork,
 	}
+
+	// allTenants represents the slice of all supported tenants on Openshift mode.
+	allTenants = append(loggingTenants, networkTenants...)
 )
 
 // GetTenants return the slice of all supported tenants for a specified mode
@@ -46,6 +49,8 @@ func GetTenants(mode lokiv1.ModeType) []string {
 		return loggingTenants
 	case lokiv1.OpenshiftNetwork:
 		return networkTenants
+	case lokiv1.Openshift:
+		return allTenants
 	default:
 		return []string{}
 	}
@@ -62,18 +67,21 @@ func ConfigureGatewayDeployment(
 	minTLSVersion, ciphers string,
 	withTLS bool, adminGroups []string,
 ) error {
+	container, err := newOPAOpenShiftContainer(mode, secretVolumeName, tlsDir, minTLSVersion, ciphers, withTLS, adminGroups)
+	if err != nil {
+		return kverrors.Wrap(err, "failed to create OPA container")
+	}
+
 	p := corev1.PodSpec{
 		ServiceAccountName: d.GetName(),
-		Containers: []corev1.Container{
-			newOPAOpenShiftContainer(mode, secretVolumeName, tlsDir, minTLSVersion, ciphers, withTLS, adminGroups),
-		},
+		Containers:         []corev1.Container{*container},
 	}
 
 	if err := mergo.Merge(&d.Spec.Template.Spec, p, mergo.WithAppendSlice); err != nil {
 		return kverrors.Wrap(err, "failed to merge sidecar container spec ")
 	}
 
-	if mode == lokiv1.OpenshiftLogging {
+	if mode == lokiv1.OpenshiftLogging || mode == lokiv1.Openshift {
 		// enable extraction of namespace selector
 		for i, c := range d.Spec.Template.Spec.Containers {
 			if c.Name != "gateway" {

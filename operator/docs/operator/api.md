@@ -2536,6 +2536,9 @@ for the memberlist.</p>
 <tbody><tr><td><p>&#34;dynamic&#34;</p></td>
 <td><p>Dynamic mode delegates the authorization to a third-party OPA-compatible endpoint.</p>
 </td>
+</tr><tr><td><p>&#34;openshift&#34;</p></td>
+<td><p>Openshif mode provides fully automatic OpenShift in-cluster authentication and authorization support for application, infrastructure, audit and network logs.</p>
+</td>
 </tr><tr><td><p>&#34;openshift-logging&#34;</p></td>
 <td><p>OpenshiftLogging mode provides fully automatic OpenShift in-cluster authentication and authorization support for application, infrastructure and audit logs.</p>
 </td>

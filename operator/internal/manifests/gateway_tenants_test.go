@@ -388,6 +388,138 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 				},
 			},
 		},
+		{
+			desc: "openshift mode",
+			opts: &Options{
+				Name:              "lokistack-ocp",
+				Namespace:         "stack-ns",
+				GatewayBaseDomain: "example.com",
+				Gates: configv1.FeatureGates{
+					OpenShift: configv1.OpenShiftFeatureGates{
+						Enabled: true,
+					},
+				},
+				Stack: lokiv1.LokiStackSpec{
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.Openshift,
+					},
+				},
+				Timeouts: TimeoutConfig{
+					Gateway: GatewayTimeoutConfig{
+						WriteTimeout: 1 * time.Minute,
+					},
+				},
+				Tenants: Tenants{
+					Configs: map[string]TenantConfig{
+						"application": {
+							OpenShift: &TenantOpenShiftSpec{
+								CookieSecret: "D31SJpSmPe6aUDTtU2zqAoW1gqEKoH5T",
+							},
+						},
+						"infrastructure": {
+							OpenShift: &TenantOpenShiftSpec{
+								CookieSecret: "i3N1paUy9JwNZIktni4kqXPuMvIHtHNe",
+							},
+						},
+						"audit": {
+							OpenShift: &TenantOpenShiftSpec{
+								CookieSecret: "6UssDXle7OHElqSW4M0DNRZ6JbaTjDM3",
+							},
+						},
+						"network": {
+							OpenShift: &TenantOpenShiftSpec{
+								CookieSecret: "hlVzbIVKMeeZTxNrHMb4hV2aVwAA4bte",
+							},
+						},
+					},
+				},
+			},
+			want: &Options{
+				Name:              "lokistack-ocp",
+				Namespace:         "stack-ns",
+				GatewayBaseDomain: "example.com",
+				Gates: configv1.FeatureGates{
+					OpenShift: configv1.OpenShiftFeatureGates{
+						Enabled: true,
+					},
+				},
+				Stack: lokiv1.LokiStackSpec{
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.Openshift,
+					},
+				},
+				Timeouts: TimeoutConfig{
+					Gateway: GatewayTimeoutConfig{
+						WriteTimeout: 1 * time.Minute,
+					},
+				},
+				Tenants: Tenants{
+					Configs: map[string]TenantConfig{
+						"application": {
+							OpenShift: &TenantOpenShiftSpec{
+								CookieSecret: "D31SJpSmPe6aUDTtU2zqAoW1gqEKoH5T",
+							},
+						},
+						"infrastructure": {
+							OpenShift: &TenantOpenShiftSpec{
+								CookieSecret: "i3N1paUy9JwNZIktni4kqXPuMvIHtHNe",
+							},
+						},
+						"audit": {
+							OpenShift: &TenantOpenShiftSpec{
+								CookieSecret: "6UssDXle7OHElqSW4M0DNRZ6JbaTjDM3",
+							},
+						},
+						"network": {
+							OpenShift: &TenantOpenShiftSpec{
+								CookieSecret: "hlVzbIVKMeeZTxNrHMb4hV2aVwAA4bte",
+							},
+						},
+					},
+				},
+				OpenShiftOptions: openshift.Options{
+					BuildOpts: openshift.BuildOptions{
+						LokiStackName:        "lokistack-ocp",
+						LokiStackNamespace:   "stack-ns",
+						GatewayName:          "lokistack-ocp-gateway",
+						GatewaySvcName:       "lokistack-ocp-gateway-http",
+						GatewaySvcTargetPort: "public",
+						GatewayRouteTimeout:  75 * time.Second,
+						RulerName:            "lokistack-ocp-ruler",
+						Labels:               ComponentLabels(LabelGatewayComponent, "lokistack-ocp"),
+					},
+					Authentication: []openshift.AuthenticationSpec{
+						{
+							TenantName:     "application",
+							TenantID:       "",
+							ServiceAccount: "lokistack-ocp-gateway",
+							RedirectURL:    "https://lokistack-ocp-stack-ns.apps.example.com/openshift/application/callback",
+						},
+						{
+							TenantName:     "infrastructure",
+							TenantID:       "",
+							ServiceAccount: "lokistack-ocp-gateway",
+							RedirectURL:    "https://lokistack-ocp-stack-ns.apps.example.com/openshift/infrastructure/callback",
+						},
+						{
+							TenantName:     "audit",
+							TenantID:       "",
+							ServiceAccount: "lokistack-ocp-gateway",
+							RedirectURL:    "https://lokistack-ocp-stack-ns.apps.example.com/openshift/audit/callback",
+						},
+						{
+							TenantName:     "network",
+							TenantID:       "",
+							ServiceAccount: "lokistack-ocp-gateway",
+							RedirectURL:    "https://lokistack-ocp-stack-ns.apps.example.com/openshift/network/callback",
+						},
+					},
+					Authorization: openshift.AuthorizationSpec{
+						OPAUrl: "http://localhost:8082/v1/data/lokistack/allow",
+					},
+				},
+			},
+		},
 	}
 	for _, tc := range tc {
 		t.Run(tc.desc, func(t *testing.T) {
@@ -1009,6 +1141,90 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 			},
 		},
 		{
+			desc: "openshift mode",
+			tenants: &lokiv1.TenantsSpec{
+				Mode: lokiv1.Openshift,
+			},
+			stackName:   "test",
+			stackNs:     "test-ns",
+			dpl:         defaultGatewayDeployment(),
+			adminGroups: defaultAdminGroups,
+			want: &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "test-ns",
+				},
+				Spec: appsv1.DeploymentSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name: gatewayContainerName,
+									Args: []string{
+										"--logs.auth.extract-selectors=kubernetes_namespace_name,k8s_namespace_name",
+									},
+								},
+								{
+									Name:  "opa",
+									Image: "quay.io/observatorium/opa-openshift:latest",
+									Args: []string{
+										"--log.level=warn",
+										"--web.listen=:8082",
+										"--web.internal.listen=:8083",
+										"--web.healthchecks.url=http://localhost:8082",
+										"--opa.skip-tenants=audit,infrastructure",
+										"--opa.package=lokistack",
+										"--opa.admin-groups=system:cluster-admins,cluster-admin,dedicated-admin",
+										"--opa.matcher=kubernetes_namespace_name,k8s_namespace_name",
+										"--opa.viaq-to-otel-migration=true",
+										`--openshift.mappings=application=loki.grafana.com`,
+										`--openshift.mappings=infrastructure=loki.grafana.com`,
+										`--openshift.mappings=audit=loki.grafana.com`,
+										`--openshift.mappings=network=loki.grafana.com`,
+									},
+									Ports: []corev1.ContainerPort{
+										{
+											Name:          openshift.GatewayOPAHTTPPortName,
+											ContainerPort: openshift.GatewayOPAHTTPPort,
+											Protocol:      corev1.ProtocolTCP,
+										},
+										{
+											Name:          openshift.GatewayOPAInternalPortName,
+											ContainerPort: openshift.GatewayOPAInternalPort,
+											Protocol:      corev1.ProtocolTCP,
+										},
+									},
+									LivenessProbe: &corev1.Probe{
+										ProbeHandler: corev1.ProbeHandler{
+											HTTPGet: &corev1.HTTPGetAction{
+												Path:   "/live",
+												Port:   intstr.FromInt(int(openshift.GatewayOPAInternalPort)),
+												Scheme: corev1.URISchemeHTTP,
+											},
+										},
+										TimeoutSeconds:   2,
+										PeriodSeconds:    30,
+										FailureThreshold: 10,
+									},
+									ReadinessProbe: &corev1.Probe{
+										ProbeHandler: corev1.ProbeHandler{
+											HTTPGet: &corev1.HTTPGetAction{
+												Path:   "/ready",
+												Port:   intstr.FromInt(int(openshift.GatewayOPAInternalPort)),
+												Scheme: corev1.URISchemeHTTP,
+											},
+										},
+										TimeoutSeconds:   1,
+										PeriodSeconds:    5,
+										FailureThreshold: 12,
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
 			desc: "openshift-network mode with http encryption",
 			tenants: &lokiv1.TenantsSpec{
 				Mode: lokiv1.OpenshiftNetwork,
@@ -1383,6 +1599,19 @@ func TestConfigureServiceForMode(t *testing.T) {
 				},
 			},
 		},
+		{
+			desc: "openshift mode",
+			mode: lokiv1.Openshift,
+			svc:  &corev1.ServiceSpec{},
+			want: &corev1.ServiceSpec{
+				Ports: []corev1.ServicePort{
+					{
+						Name: openshift.GatewayOPAInternalPortName,
+						Port: openshift.GatewayOPAInternalPort,
+					},
+				},
+			},
+		},
 	}
 	for _, tc := range tc {
 		t.Run(tc.desc, func(t *testing.T) {
@@ -1456,6 +1685,28 @@ func TestConfigureServiceMonitorForMode(t *testing.T) {
 				Stack: lokiv1.LokiStackSpec{
 					Tenants: &lokiv1.TenantsSpec{
 						Mode: lokiv1.OpenshiftNetwork,
+					},
+				},
+			},
+			sm: &monitoringv1.ServiceMonitor{},
+			want: &monitoringv1.ServiceMonitor{
+				Spec: monitoringv1.ServiceMonitorSpec{
+					Endpoints: []monitoringv1.Endpoint{
+						{
+							Port:   openshift.GatewayOPAInternalPortName,
+							Path:   "/metrics",
+							Scheme: "http",
+						},
+					},
+				},
+			},
+		},
+		{
+			desc: "openshift mode",
+			opts: Options{
+				Stack: lokiv1.LokiStackSpec{
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.Openshift,
 					},
 				},
 			},

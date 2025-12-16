@@ -137,6 +137,10 @@ func TestGetOptions_PruneServiceCAAnnotations_ForTenantMode(t *testing.T) {
 			mode:      lokiv1.OpenshiftNetwork,
 			wantPrune: true,
 		},
+		{
+			mode:      lokiv1.Openshift,
+			wantPrune: true,
+		},
 	}
 
 	for _, tc := range tt {

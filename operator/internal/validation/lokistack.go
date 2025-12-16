@@ -107,7 +107,7 @@ func (v *LokiStackValidator) validateOTLPConfiguration(spec *lokiv1.LokiStackSpe
 		return nil
 	}
 
-	if spec.Tenants.Mode == lokiv1.OpenshiftLogging {
+	if spec.Tenants.Mode == lokiv1.OpenshiftLogging || spec.Tenants.Mode == lokiv1.Openshift {
 		// This tenancy mode always provides stream labels
 		return openshift.ValidateOTLPInvalidDrop(spec)
 	}

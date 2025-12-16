@@ -99,7 +99,7 @@ func configureCertificatesForTenantMode(certs certrotation.ComponentCertificates
 	switch mode {
 	case "", lokiv1.Dynamic, lokiv1.Static:
 		return
-	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
+	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork, lokiv1.Openshift:
 		// Remove serviceCA annotations for existing secrets to
 		// enable upgrading secrets to built-in cert management
 		for name := range certs {
@@ -120,7 +120,7 @@ func configureCABundleForTenantMode(cm *corev1.ConfigMap, mode lokiv1.ModeType) 
 	switch mode {
 	case "", lokiv1.Dynamic, lokiv1.Static:
 		return
-	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
+	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork, lokiv1.Openshift:
 		// Remove serviceCA annotations for existing ConfigMap to
 		// enable upgrading CABundle from built-in cert management
 		for key := range cm.Annotations {
