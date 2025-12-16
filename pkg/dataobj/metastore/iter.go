@@ -7,13 +7,17 @@ import (
 	"io"
 	"time"
 
+	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/apache/arrow-go/v18/arrow/scalar"
 	"github.com/grafana/dskit/user"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
 // forEachStreamSectionPointer iterates over all the section pointers that point to one of the
@@ -464,4 +468,233 @@ func findPointersColumnsByTypes(allColumns []*pointers.Column, columnTypes ...po
 	}
 
 	return result, nil
+}
+
+// forEachStreamID iterates over streams matching the matchers and time range,
+// calling f with each stream ID.
+func forEachStreamID(
+	ctx context.Context,
+	object *dataobj.Object,
+	start, end time.Time,
+	matchers []*labels.Matcher,
+	f func(streamID int64),
+) error {
+	targetTenant, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return fmt.Errorf("extracting org ID: %w", err)
+	}
+
+	for _, section := range object.Sections().Filter(streams.CheckSection) {
+		if section.Tenant != targetTenant {
+			continue
+		}
+
+		sec, err := streams.Open(ctx, section)
+		if err != nil {
+			return fmt.Errorf("opening section: %w", err)
+		}
+
+		predicates, err := buildStreamReaderPredicate(sec, start, end, matchers)
+		if err != nil {
+			return err
+		}
+
+		var idColumn *streams.Column
+		for _, col := range sec.Columns() {
+			if col.Type == streams.ColumnTypeStreamID {
+				idColumn = col
+				break
+			}
+		}
+
+		if idColumn == nil {
+			return errors.New("forEachStreamID: section is missing stream ID column")
+		}
+
+		reader := streams.NewReader(streams.ReaderOptions{
+			Columns:    []*streams.Column{idColumn},
+			Predicates: predicates,
+			Allocator:  memory.DefaultAllocator,
+		})
+
+		for {
+			rec, err := reader.Read(ctx, 1024)
+			if rec != nil && rec.NumRows() > 0 {
+				// ID column is always first in columns
+				idArray := rec.Column(0).(*array.Int64)
+				for i := range idArray.Len() {
+					if !idArray.IsNull(i) {
+						f(idArray.Value(i))
+					}
+				}
+			}
+
+			if err != nil {
+				if errors.Is(err, io.EOF) {
+					break
+				}
+				_ = reader.Close()
+				return fmt.Errorf("reading streams: %w", err)
+			}
+		}
+
+		if err := reader.Close(); err != nil {
+			return fmt.Errorf("closing reader: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// buildStreamReaderPredicate builds predicates for the stream reader
+// using the provided time range and label matchers.
+func buildStreamReaderPredicate(sec *streams.Section, start, end time.Time, matchers []*labels.Matcher) ([]streams.Predicate, error) {
+	var (
+		minTsColumn  *streams.Column
+		maxTsColumn  *streams.Column
+		labelColumns = make(map[string]*streams.Column)
+	)
+
+	for _, col := range sec.Columns() {
+		switch col.Type {
+		case streams.ColumnTypeMinTimestamp:
+			minTsColumn = col
+		case streams.ColumnTypeMaxTimestamp:
+			maxTsColumn = col
+		case streams.ColumnTypeLabel:
+			labelColumns[col.Name] = col
+		}
+	}
+
+	if minTsColumn == nil || maxTsColumn == nil {
+		return nil, errors.New("buildStreamReaderPredicate: section is missing required columns")
+	}
+
+	var predicates []streams.Predicate
+	predicates = append(predicates, buildTimeRangePredicate(minTsColumn, maxTsColumn, start, end))
+	for _, matcher := range matchers {
+		predicates = append(predicates, buildLabelPredicate(matcher, labelColumns))
+	}
+
+	return predicates, nil
+}
+
+// buildTimeRangePredicate builds a predicate for time range overlap.
+// A stream's [minTs, maxTs] overlaps with query [start, end] if:
+// maxTs >= start AND minTs <= end
+func buildTimeRangePredicate(minTsColumn, maxTsColumn *streams.Column, start, end time.Time) streams.Predicate {
+	startTs := scalar.NewTimestampScalar(arrow.Timestamp(start.UnixNano()), arrow.FixedWidthTypes.Timestamp_ns)
+	endTs := scalar.NewTimestampScalar(arrow.Timestamp(end.UnixNano()), arrow.FixedWidthTypes.Timestamp_ns)
+
+	// maxTs >= start
+	maxCheck := streams.NotPredicate{
+		Inner: streams.LessThanPredicate{
+			Column: maxTsColumn,
+			Value:  startTs,
+		},
+	}
+
+	// minTs <= end
+	minCheck := streams.NotPredicate{
+		Inner: streams.GreaterThanPredicate{
+			Column: minTsColumn,
+			Value:  endTs,
+		},
+	}
+
+	return streams.AndPredicate{
+		Left:  maxCheck,
+		Right: minCheck,
+	}
+}
+
+// buildLabelPredicate builds a predicate for a label matcher.
+func buildLabelPredicate(matcher *labels.Matcher, columns map[string]*streams.Column) streams.Predicate {
+	col := columns[matcher.Name]
+
+	switch matcher.Type {
+	case labels.MatchEqual:
+		if col == nil && matcher.Value != "" {
+			// Column(NULL) == "value" is always false
+			return streams.FalsePredicate{}
+		} else if col == nil && matcher.Value == "" {
+			// Column(NULL) == "" is always true
+			return streams.TruePredicate{}
+		}
+
+		buf := memory.NewBufferBytes([]byte(matcher.Value))
+		return streams.EqualPredicate{
+			Column: col,
+			Value:  scalar.NewBinaryScalar(buf, arrow.BinaryTypes.Binary),
+		}
+
+	case labels.MatchNotEqual:
+		if col == nil && matcher.Value != "" {
+			// Column(NULL) != "value" is always true
+			return streams.TruePredicate{}
+		} else if col == nil && matcher.Value == "" {
+			// Column(NULL) != "" is always false
+			return streams.FalsePredicate{}
+		}
+
+		buf := memory.NewBufferBytes([]byte(matcher.Value))
+		return streams.NotPredicate{
+			Inner: streams.EqualPredicate{
+				Column: col,
+				Value:  scalar.NewBinaryScalar(buf, arrow.BinaryTypes.Binary),
+			},
+		}
+
+	case labels.MatchRegexp:
+		if col == nil {
+			// Column(NULL) is treated as empty string.
+			// Return true if regex matches "", false otherwise.
+			if matcher.Matches("") {
+				return streams.TruePredicate{}
+			}
+			return streams.FalsePredicate{}
+		}
+
+		return streams.FuncPredicate{
+			Column: col,
+			Keep: func(_ *streams.Column, value scalar.Scalar) bool {
+				return matcher.Matches(string(getBytes(value)))
+			},
+		}
+
+	case labels.MatchNotRegexp:
+		if col == nil {
+			// Column(NULL) is treated as empty string.
+			// Return true if regex does NOT match "", false otherwise.
+			if !matcher.Matches("") {
+				return streams.TruePredicate{}
+			}
+			return streams.FalsePredicate{}
+		}
+
+		return streams.FuncPredicate{
+			Column: col,
+			Keep: func(_ *streams.Column, value scalar.Scalar) bool {
+				return !matcher.Matches(string(getBytes(value)))
+			},
+		}
+
+	default:
+		panic(fmt.Sprintf("buildLabelPredicate: unsupported label matcher type %s", matcher.Type))
+	}
+}
+
+func getBytes(value scalar.Scalar) []byte {
+	if !value.IsValid() {
+		return nil
+	}
+
+	switch value := value.(type) {
+	case *scalar.Binary:
+		return value.Data()
+	case *scalar.String:
+		return value.Data()
+	}
+
+	return nil
 }
