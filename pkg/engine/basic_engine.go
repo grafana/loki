@@ -10,6 +10,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/thanos-io/objstore"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -154,7 +155,9 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 
 		timer := prometheus.NewTimer(e.metrics.physicalPlanning)
 
-		catalog := physical.NewMetastoreCatalog(ctx, e.metastore)
+		catalog := physical.NewMetastoreCatalog(func(start time.Time, end time.Time, selectors []*labels.Matcher, predicates []*labels.Matcher) ([]*metastore.DataobjSectionDescriptor, error) {
+			return e.metastore.Sections(ctx, start, end, selectors, predicates)
+		})
 		planner := physical.NewPlanner(physical.NewContext(params.Start(), params.End()), catalog)
 		plan, err := planner.Build(logicalPlan)
 		if err != nil {
