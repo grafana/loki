@@ -152,7 +152,7 @@ metadata:
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
     containerImage: quay.io/openshift-logging/loki-operator:0.1.0
-    createdAt: "2025-12-03T16:22:04Z"
+    createdAt: "2025-12-15T18:59:57Z"
     description: |
       The Loki Operator for OCP provides a means for configuring and managing a Loki stack for cluster logging.
       ## Prerequisites and Requirements
@@ -1021,6 +1021,13 @@ spec:
       - description: Roles defines a set of permissions to interact with a tenant.
         displayName: Static Roles
         path: tenants.authorization.roles
+      - description: |-
+          DisableIngress disables automatic creation of external access resources (Route / Ingress).
+          When true, no Route or Ingress will be created for the gateway.
+        displayName: Disable Ingress
+        path: tenants.disableIngress
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
       - description: Mode defines the mode in which lokistack-gateway component will
           be configured.
         displayName: Mode
@@ -1787,15 +1794,6 @@ spec:
           - networking.k8s.io
           resources:
           - ingresses
-          verbs:
-          - create
-          - get
-          - list
-          - update
-          - watch
-        - apiGroups:
-          - networking.k8s.io
-          resources:
           - networkpolicies
           verbs:
           - create
