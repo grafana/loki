@@ -10,6 +10,7 @@ import (
 	"math"
 	"runtime"
 	"sync"
+	"sync/atomic"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
@@ -154,7 +155,7 @@ func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *
 		// Ensure we process all Values held in buffers before iterating, otherwise the table sequence may overwrite them in the next read batch.
 		if tableSequenceEmptyBuffer(seq) {
 			for _, appender := range appenders {
-				appender.syncTo(rows)
+				appender.sync()
 			}
 		}
 
@@ -169,31 +170,39 @@ func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *
 	return buf.Flush()
 }
 
+type batch struct {
+	rows  []*rowValue
+	nonce int
+}
+
 // columnAppender writes column values to columns.
 // They are thread-safe via the appendValue method and will apply values in the order they are received.
 // When using multiple appenders, each distinct column should only be written to a single appender in order to maintain ordering.
 type columnAppender struct {
 	waitGroup *sync.WaitGroup
-	work      chan []*rowValue
+	workChan  chan *batch
 	buf       []*rowValue
 
-	lastRowMut  *sync.Mutex
-	lastRowCond *sync.Cond
-	lastRow     int32
+	batchMut  *sync.Mutex
+	batchCond *sync.Cond
+
+	lastBatchProcessed int32
+	nextBatchNonce     atomic.Int32
 }
 
 func newColumnAppender(wg *sync.WaitGroup) *columnAppender {
-	lastRowMut := &sync.Mutex{}
-	lastRowCond := sync.NewCond(lastRowMut)
+	batchMut := &sync.Mutex{}
+	batchCond := sync.NewCond(batchMut)
 
 	appender := &columnAppender{
-		work:      make(chan []*rowValue),
+		workChan:  make(chan *batch),
 		waitGroup: wg,
 		buf:       make([]*rowValue, 0, 8192),
 
-		lastRowMut:  lastRowMut,
-		lastRowCond: lastRowCond,
-		lastRow:     0,
+		batchMut:           batchMut,
+		batchCond:          batchCond,
+		lastBatchProcessed: 0,
+		nextBatchNonce:     atomic.Int32{},
 	}
 	go appender.loop()
 
@@ -202,9 +211,9 @@ func newColumnAppender(wg *sync.WaitGroup) *columnAppender {
 
 func (ca *columnAppender) loop() {
 	ca.waitGroup.Add(1)
-	for rowValues := range ca.work {
+	for batch := range ca.workChan {
 		maxRow := 0
-		for _, rowValue := range rowValues {
+		for _, rowValue := range batch.rows {
 			maxRow = max(maxRow, rowValue.row)
 			err := rowValue.builder.Append(rowValue.row, rowValue.value)
 			if err != nil {
@@ -212,27 +221,30 @@ func (ca *columnAppender) loop() {
 			}
 		}
 
-		ca.lastRowMut.Lock()
-		ca.lastRow = int32(maxRow)
-		ca.lastRowMut.Unlock()
-		ca.lastRowCond.Broadcast()
+		ca.batchMut.Lock()
+		ca.lastBatchProcessed = int32(batch.nonce)
+		ca.batchMut.Unlock()
+		ca.batchCond.Broadcast()
 	}
 	ca.waitGroup.Done()
 }
 
 // Sync to waits for all work items to be completed up to the provided row number.
 // This must be called after all values for a row have been dispatched.
-func (ca *columnAppender) syncTo(row int) {
-	if len(ca.buf) > 0 && ca.buf[0].row <= row {
-		ca.work <- ca.buf
-		ca.buf = make([]*rowValue, 0, cap(ca.buf))
-	}
+func (ca *columnAppender) sync() {
+	ca.batchMut.Lock()
+	defer ca.batchMut.Unlock()
 
-	ca.lastRowMut.Lock()
-	for ca.lastRow < int32(row) {
-		ca.lastRowCond.Wait()
+	nextBatch := int(ca.nextBatchNonce.Add(1))
+	ca.workChan <- &batch{
+		rows:  ca.buf,
+		nonce: nextBatch,
 	}
-	ca.lastRowMut.Unlock()
+	ca.buf = make([]*rowValue, 0, cap(ca.buf))
+
+	for ca.lastBatchProcessed < int32(nextBatch) {
+		ca.batchCond.Wait()
+	}
 }
 
 func (ca *columnAppender) appendValue(builder *dataset.ColumnBuilder, row int, value dataset.Value) {
@@ -242,15 +254,21 @@ func (ca *columnAppender) appendValue(builder *dataset.ColumnBuilder, row int, v
 		value:   value,
 	})
 	if len(ca.buf) >= cap(ca.buf) {
-		ca.work <- ca.buf
+		ca.workChan <- &batch{
+			rows:  ca.buf,
+			nonce: int(ca.nextBatchNonce.Add(1)),
+		}
 		// Make a new buffer in order to avoid needing to synchronise when the worker is done with the old buffer.
 		ca.buf = make([]*rowValue, 0, cap(ca.buf))
 	}
 }
 
 func (ca *columnAppender) close() {
-	ca.work <- ca.buf
-	close(ca.work)
+	ca.workChan <- &batch{
+		rows:  ca.buf,
+		nonce: int(ca.nextBatchNonce.Add(1)),
+	}
+	close(ca.workChan)
 }
 
 type tableSequence struct {

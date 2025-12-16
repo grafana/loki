@@ -130,10 +130,10 @@ func Test_mergeTables(t *testing.T) {
 				}
 
 				for _, row := range rows[:n] {
-					require.Len(t, row.Values, 6)
-					require.Equal(t, datasetmd.PHYSICAL_TYPE_BINARY, row.Values[5].Type())
+					require.Len(t, row.Values, 3)
+					require.Equal(t, datasetmd.PHYSICAL_TYPE_BINARY, row.Values[2].Type())
 
-					actual = append(actual, string(row.Values[5].Binary()))
+					actual = append(actual, string(row.Values[2].Binary()))
 				}
 			}
 
