@@ -572,7 +572,12 @@ func (m *ObjectMetastore) GetIndexes(ctx context.Context, req GetIndexesRequest)
 	if len(resp.TableOfContentsPaths) == 0 {
 		m.metrics.indexObjectsTotal.Observe(0)
 		m.metrics.resolvedSectionsTotal.Observe(0)
-		level.Debug(utillog.WithContext(ctx, m.logger)).Log("msg", "no sections resolved", "reason", "no toc paths")
+		level.Warn(utillog.WithContext(ctx, m.logger)).Log(
+			"msg", "no sections resolved",
+			"reason", "no toc paths",
+			"start", req.Start,
+			"end", req.End,
+		)
 		return GetIndexesResponse{}, nil
 	}
 
