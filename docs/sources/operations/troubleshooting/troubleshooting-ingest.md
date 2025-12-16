@@ -4,7 +4,6 @@ menuTitle: Troubleshoot ingestion
 description: Describes how to troubleshoot and debug specific errors when ingesting logs into Grafana Loki.
 weight: 
 ---
-<!-- MASTER FILE. -->
 
 # Troubleshoot log ingestion (WRITE)
 
@@ -80,58 +79,6 @@ The tenant has exceeded their configured ingestion rate limit. This is a global 
 - HTTP status: 429 Too Many Requests
 - Configurable per tenant: Yes
 
-### Error: `per_stream_rate_limit`
-
-**Error message:**
-
-`Per stream rate limit exceeded (limit: <limit>/sec) while attempting to ingest for stream <stream_labels> totaling <bytes>, consider splitting a stream via additional labels or contact your Loki administrator to see if the limit can be increased`
-
-**Cause:**
-
-A single stream (unique combination of labels) is sending data faster than the per-stream rate limit. This protects ingesters from being overwhelmed by a single high-volume stream.
-
-**Default configuration:**
-
-- `per_stream_rate_limit`: 3 MB/sec
-- `per_stream_rate_limit_burst`: 15 MB (5x the rate limit)
-
-**Resolution:**
-
-* **Split the stream** by adding more labels to distribute the load:
-
-   ```yaml
-   # Before: {job="app"}
-   # After: {job="app", instance="host1"}
-   ```
-
-* **Increase per-stream limits** (with caution):
-
-   ```yaml
-   limits_config:
-     per_stream_rate_limit: 5MB
-     per_stream_rate_limit_burst: 20MB
-   ```
-
-   {{< admonition type="warning" >}}
-   Do not set `per_stream_rate_limit` higher than 5MB or `per_stream_rate_limit_burst` higher than 20MB without careful consideration.
-   {{< /admonition >}}
-
-* **Use Alloy's rate limiting** to throttle specific streams:
-
-   ```alloy
-   stage.limit {
-     rate  = 100
-     burst = 200
-   }
-   ```
-
-**Properties:**
-
-- Enforced by: Ingester
-- Retryable: Yes
-- HTTP status: 429 Too Many Requests
-- Configurable per tenant: Yes
-
 ### Error: `stream_limit`
 
 **Error message:**
@@ -166,17 +113,6 @@ The tenant has reached the maximum number of active streams. Active streams are 
    limits_config:
      max_global_streams_per_user: 10000
    ```
-
-* **Adjust chunk idle period** to expire streams faster:
-
-   ```yaml
-   ingester:
-     chunk_idle_period: 15m  # Default: 30m
-   ```
-
-   {{< admonition type="warning" >}}
-   Shorter idle periods create more chunks and may impact query performance.
-   {{< /admonition >}}
 
 **Properties:**
 
@@ -222,7 +158,7 @@ A log line exceeds the maximum allowed size.
    ```
 
    {{< admonition type="warning" >}}
-   Large line sizes impact performance and memory usage.
+   Loki was built as a large multi-user, multi-tenant database and as such this limit becomes very important to maintain stability and performance with many users query the database simultaneously. We strongly recommend against increasing the max_line_size, doing so will make it very difficult to provide consistent query performance and stability of the system without having to throw extremely large amounts of memory and/or increasing the GRPC message size limits to really high levels, both of which will likely lead to poorer performance and worse experiences.
    {{< /admonition >}}
 
 * **Filter or truncate logs before sending** using Alloy processing stages:
@@ -380,33 +316,6 @@ Logs are being ingested with timestamps that violate Loki's ordering constraints
    }
    ```
 
-* **Increase max_chunk_age** (global setting, affects all tenants):
-
-   ```yaml
-   ingester:
-     max_chunk_age: 4h  # Default: 2h
-   ```
-
-   {{< admonition type="warning" >}}
-   Larger chunk age increases memory usage and may delay chunk flushing.
-   {{< /admonition >}}
-
-* **Split high-volume streams** to reduce out-of-order conflicts:
-
-   ```alloy
-   // Add instance or host labels to distribute logs
-   loki.source.file "logs" {
-     targets = [
-       {
-         __path__  = "/var/log/*.log",
-         job       = "app",
-         instance  = env("HOSTNAME"),
-       },
-     ]
-     forward_to = [loki.write.default.receiver]
-   }
-   ```
-
 * **Check for clock skew** between log sources and Loki. Ensure clocks are synchronized across your infrastructure.
 
 **Properties:**
@@ -476,13 +385,6 @@ The log entry's timestamp is further in the future than the configured grace per
 
 **Resolution:**
 
-* **Increase the grace period**:
-
-   ```yaml
-   limits_config:
-     creation_grace_period: 15m
-   ```
-
 * **Check for clock skew** between log sources and Loki. Ensure clocks are synchronized across your infrastructure.
 
 * **Verify application timestamps** Validate timestamp generation in your applications.
@@ -518,7 +420,7 @@ The stream has more labels than allowed.
   - Combining related labels
 
 {{< admonition type="warning" >}}
-Do not increase `max_label_names_per_series` as high cardinality can lead to significant performance degradation.
+We strongly recommend against increasing `max_label_names_per_series`, doing so creates a larger index which hurts query performance as well as opens the door for cardinality explosions. You should be able to categorize your logs with 15 labels or typically much less. In all our years of running Loki, out of thousands of requests to increase this value, the number of valid exceptions we have seen can be counted on one hand.
 {{< /admonition >}}
 
 **Properties:**
@@ -546,13 +448,6 @@ A label name exceeds the maximum allowed length.
 
 * **Shorten label names** in your log shipping configuration to under the configured limit. You can use abbreviations or shorter descriptive names.
 
-* **Increase the limit** (not recommended):
-
-   ```yaml
-   limits_config:
-     max_label_name_length: 2048
-   ```
-
 **Properties:**
 
 - Enforced by: Distributor
@@ -579,13 +474,6 @@ A label value exceeds the maximum allowed length.
 * **Shorten label values** in your log shipping configuration to under the configured limit. You can use hash values for very long identifiers.
 
 * **Use structured metadata** for long values instead of labels.
-
-* **Increase the limit**:
-
-   ```yaml
-   limits_config:
-     max_label_value_length: 4096
-   ```
 
 **Properties:**
 
@@ -640,19 +528,6 @@ The HTTP compressed push request body exceeds the configured limit in your gatew
 - Alloy default batch size: 1 MB
 
 **Resolution:**
-
-* **Reduce batch size** in your ingestion client:
-
-   ```alloy
-   loki.write "default" {
-     endpoint {
-       url = "http://loki:3100/loki/api/v1/push"
-       
-       batch_size  = 524288  // 512KB in bytes
-       batch_wait  = "1s"
-     }
-   }
-   ```
 
 * **Split large batches** into smaller, more frequent requests.
 
@@ -710,13 +585,6 @@ Disk space is not limited by Loki configuration; it depends on your infrastructu
   - `NoSuchBucket`: Storage bucket doesn't exist
   - `AccessDenied`: Invalid credentials or permissions
   - `RequestTimeout`: Network or storage latency issues
-
-* **DynamoDB errors:**
-  - `ProvisionedThroughputExceededException`: Write capacity exceeded
-  - `ValidationException`: Invalid data format
-
-* **Cassandra errors:**
-  - `NoConnectionsAvailable`: Cannot connect to Cassandra cluster
 
 **Resolution:**
 
@@ -844,12 +712,6 @@ The WAL has become corrupted, possibly due to:
 
 * **Automatic recovery**: Loki attempts to recover readable data and continues starting.
 
-* **Manual recovery** (if automatic recovery fails):
-  - Stop the ingester
-  - Backup the WAL directory
-  - Delete corrupted WAL files
-  - Restart the ingester (may lose some unrecoverable data)
-
 * **Investigate root cause**:
   - Check disk health
   - Review system logs for I/O errors
@@ -891,6 +753,7 @@ The Loki service is unavailable or not listening on the expected port.
 * **Check network connectivity** between client and Loki.
 * **Confirm the correct hostname and port** configuration.
 * **Review firewall and security group** settings.
+* **Check for CPU starvation** as a Loki pod that is overwhelmed could fail to respond to a request.
 
 **Properties:**
 
