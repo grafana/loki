@@ -1,11 +1,13 @@
 ---
-title: Remove default OpenTelemetry labels
-menuTitle: Remove default labels
+title: Modify default OpenTelemetry labels
+menuTitle: Modify default labels
 description: Describes how to modify your Alloy or OpenTelemetry Collector configuration to demote default index labels to structured metadata.
+aliases:
+  - ./modify-default-labels/ # /docs/loki/<LOKI_VERSION>/get-started/labels/modify-default-labels/remove-default-labels/
 weight: 400
 ---
 
-# Remove default OpenTelemetry labels
+# Modify default OpenTelemetry labels
 
 When Grafana Loki first started supporting OpenTelemetry, we selected a set of [default resource attributes to promote to labels](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/#default-labels-for-opentelemetry). We included some labels such as k8s.pod.name to be consistent with the scrape configs we have been suggesting for many years for Promtail and Grafana Alloy. However, Loki has evolved a lot over the years and with the introduction of Structured Metadata we no longer recommend indexing a few of the labels we included in the defaults as they often have very high [cardinality](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/cardinality/) and Structured Metadata is a much better place for them. We no longer recommend the following as default labels:
 
