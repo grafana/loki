@@ -257,8 +257,6 @@ func (r *Reader) init() error {
 		return fmt.Errorf("mapping predicates: %w", err)
 	}
 
-	fmt.Printf(">>>> Init streams.Reader with %d columns and %d predicates\n", len(dset.Columns()), len(preds))
-
 	innerOptions := dataset.ReaderOptions{
 		Dataset:    dset,
 		Columns:    dset.Columns(),
