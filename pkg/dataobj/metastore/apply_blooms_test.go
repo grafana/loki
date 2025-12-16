@@ -213,3 +213,21 @@ func TestApplyBlooms_PredicateMissReturnsEOF(t *testing.T) {
 	require.ErrorIs(t, err, io.EOF)
 	require.Nil(t, out)
 }
+
+func TestApplyBlooms_InvalidInputSchemaReturnsError(t *testing.T) {
+	t.Parallel()
+
+	inSchema := arrow.NewSchema(nil, nil)
+	inRec := array.NewRecordBatch(inSchema, nil, 1)
+
+	input := &sliceRecordBatchReader{recs: []arrow.RecordBatch{inRec}}
+	predicates := []*labels.Matcher{
+		labels.MustNewMatcher(labels.MatchEqual, "traceID", "abcd"),
+	}
+	reader := newApplyBlooms(nil, predicates, input, nil).(*applyBlooms)
+
+	out, err := reader.Read(context.Background())
+	require.Error(t, err)
+	require.ErrorContains(t, err, "missing mandatory fields")
+	require.Nil(t, out)
+}

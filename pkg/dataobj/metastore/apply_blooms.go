@@ -75,11 +75,9 @@ func (a *applyBlooms) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	}
 
 	// we expect all the input records to have the same schema (otherwise we won't be able to merge them)
-	commonSchema := recs[0].Schema()
-	for _, rec := range recs {
-		if !rec.Schema().Equal(commonSchema) {
-			return nil, fmt.Errorf("unexpected different record schema")
-		}
+	commonSchema, err := a.validateInputRecordsSchema(recs)
+	if err != nil {
+		return nil, fmt.Errorf("validate input schema: %w", err)
 	}
 	chunks := make([][]arrow.Array, commonSchema.NumFields())
 
@@ -178,6 +176,50 @@ func (a *applyBlooms) buildKeepBitmask(rec arrow.RecordBatch, matchedSectionKeys
 	}
 
 	return maskB.NewBooleanArray(), nil
+}
+
+func (a *applyBlooms) validateInputRecordsSchema(recs []arrow.RecordBatch) (*arrow.Schema, error) {
+	if len(recs) == 0 {
+		return nil, fmt.Errorf("no records")
+	}
+
+	commonSchema := recs[0].Schema()
+	for i := 1; i < len(recs); i++ {
+		if !recs[i].Schema().Equal(commonSchema) {
+			return nil, fmt.Errorf("input records schema mismatch")
+		}
+	}
+
+	// applyBlooms only requires a SectionKey (path + section) to be present in the input.
+	var (
+		foundPath    bool
+		foundSection bool
+	)
+	for _, field := range commonSchema.Fields() {
+		if foundPath && foundSection {
+			break
+		}
+		switch pointers.ColumnTypeFromField(field) {
+		case pointers.ColumnTypePath:
+			foundPath = true
+			if field.Type.ID() != arrow.STRING {
+				return nil, fmt.Errorf("invalid path column type: %s", field.Type)
+			}
+		case pointers.ColumnTypeSection:
+			foundSection = true
+			if field.Type.ID() != arrow.INT64 {
+				return nil, fmt.Errorf("invalid section column type: %s", field.Type)
+			}
+		default:
+			continue
+		}
+	}
+
+	if !foundPath || !foundSection {
+		return nil, fmt.Errorf("record is missing mandatory fields path/section")
+	}
+
+	return commonSchema, nil
 }
 
 type bloomStatsProvider interface {
