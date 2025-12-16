@@ -23,7 +23,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 
 	monitoring "cloud.google.com/go/monitoring/apiv3/v2"
-	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
+	semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
 	apioption "google.golang.org/api/option"
 )
 

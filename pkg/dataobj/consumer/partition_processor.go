@@ -241,6 +241,8 @@ func (p *partitionProcessor) emitObjectWrittenEvent(ctx context.Context, objectP
 }
 
 func (p *partitionProcessor) processRecord(ctx context.Context, record partition.Record) {
+	p.metrics.processedRecords.Inc()
+
 	// Update offset metric at the end of processing
 	defer p.metrics.updateOffset(record.Offset)
 

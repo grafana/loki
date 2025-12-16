@@ -26,8 +26,18 @@ message AckFrame {
 }
 
 message NackFrame {
+  reserved 2; // Previously error message, now used in 3.
+
   uint64 id = 1;
-  string error = 2;
+  Error error = 3;
+}
+
+message Error {
+  // The HTTP status code of the error.
+  int32 code = 1;
+
+  // A message describing the error.
+  string message = 2;
 }
 
 message DiscardFrame {
@@ -38,8 +48,8 @@ message MessageFrame {
   uint64 id = 1;
 
   oneof kind {
-    WorkerReadyMessage worker_ready = 2;
     WorkerHelloMessage worker_hello = 10;
+    WorkerReadyMessage worker_ready = 2;
 
     TaskAssignMessage task_assign = 3;
     TaskCancelMessage task_cancel = 4;
@@ -55,7 +65,7 @@ message MessageFrame {
 // WorkerHelloMessage is sent by a peer to the scheduler to establish
 // itself as a control plane connection that can run tasks.
 //
-// WorkerHelloMessage must be sent before WorkerReadyMessage.
+// WorkerHelloMessage must be sent by workers before any other worker messages.
 message WorkerHelloMessage {
   // Threads is the maximum number of threads the worker has available.
   //
@@ -64,21 +74,18 @@ message WorkerHelloMessage {
   uint64 threads = 1;
 }
 
-// WorkerReadyMessage is sent by a worker to the scheduler to request a new
-// task to run. Ready workers are eventually assigned a task via
-// TaskAssignMessage.
+// WorkerReadyMessage is sent by a worker to the scheduler to signal that
+// the worker has at least one worker thread available for running tasks.
 //
-// Workers may send multiple WorkerReadyMessage messages to request more
-// tasks. Workers are automatically unmarked as ready once each
-// WorkerReadyMessage has been responded to with a TaskAssignMessage.
-//
-// The scheduler can reject a WorkerReadyMessage if the worker sends more
-// WorkerReadyMessages than the number of threads it declared in its
-// WorkerHelloMessage.
+// Workers may send WorkerReadyMessage at any time.
 message WorkerReadyMessage {}
 
 // TaskAssignMessage is sent by the scheduler to a worker when there is a
 // task to run.
+//
+// Workers that have no threads available should reject task assignment with a
+// HTTP 429 Too Many Requests. When this happens, the scheduler will remove the
+// ready state from the worker until it receives a WorkerReadyMessage.
 message TaskAssignMessage {
   Task task = 1;
 

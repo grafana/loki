@@ -261,7 +261,7 @@ func RecordRangeAndInstantQueryMetrics(
 	// This is only logged from the querier component, not from the frontend
 	// (where stats are merged and this value would be inaccurate)
 	if !isFrontendContext(ctx) && stats.Index.TotalStreams > 0 {
-		logValues = append(logValues, "total_stream_count", stats.Index.TotalStreams)
+		logValues = append(logValues, "index_total_streams", stats.Index.TotalStreams)
 	}
 
 	// Add frontend-specific metrics: approximate result size, streams count, lines count

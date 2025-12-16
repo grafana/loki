@@ -53,7 +53,7 @@ type Scheduler struct {
 
 	assignMut    sync.RWMutex
 	taskQueue    []*task
-	readyWorkers []*workerConn
+	readyWorkers map[*workerConn]struct{}
 
 	assignSema chan struct{} // assignSema signals that task assignment is ready.
 }
@@ -78,6 +78,8 @@ func New(config Config) (*Scheduler, error) {
 
 		streams: make(map[ulid.ULID]*stream),
 		tasks:   make(map[ulid.ULID]*task),
+
+		readyWorkers: make(map[*workerConn]struct{}),
 
 		assignSema: make(chan struct{}, 1),
 	}
@@ -171,7 +173,7 @@ func (s *Scheduler) handleConn(ctx context.Context, conn wire.Conn) {
 
 	// If our peer exited, we need to make sure we clean up any tasks still
 	// assigned to it by aborting them.
-	s.abortWorkerTasks(ctx, wc, err)
+	s.removeWorker(ctx, wc, err)
 }
 
 func (s *Scheduler) handleStreamData(ctx context.Context, worker *workerConn, msg wire.StreamDataMessage) error {
@@ -196,14 +198,13 @@ func (s *Scheduler) handleWorkerHello(_ context.Context, worker *workerConn, msg
 }
 
 func (s *Scheduler) markWorkerReady(_ context.Context, worker *workerConn) error {
-	if err := worker.MarkReady(); err != nil {
-		return err
-	}
-
 	s.assignMut.Lock()
 	defer s.assignMut.Unlock()
 
-	s.readyWorkers = append(s.readyWorkers, worker)
+	if err := worker.MarkReady(); err != nil {
+		return err
+	}
+	s.readyWorkers[worker] = struct{}{}
 
 	// Wake [Scheduler.runAssignLoop] if we have both peers and tasks available.
 	if len(s.readyWorkers) > 0 && len(s.tasks) > 0 {
@@ -310,17 +311,22 @@ func (s *Scheduler) changeStreamState(ctx context.Context, n *notifier, target *
 	return nil
 }
 
-// abortWorkerTasks immediately aborts all tasks assigned to the given worker.
-// abortWorkerTasks should only be used when the worker has disconnected.
+// removeWorker immediately cleans up state for a worker:
+//
+// - Aborts all tasks assigned to the given worker.
+// - Removes the worker from the ready list.
 //
 // If the reason argument is nil, the tasks are cancelled. Otherwise, they are
 // marked as failed with the provided reason.
-func (s *Scheduler) abortWorkerTasks(ctx context.Context, worker *workerConn, reason error) {
+func (s *Scheduler) removeWorker(ctx context.Context, worker *workerConn, reason error) {
 	var n notifier
 	defer n.Notify(ctx)
 
 	s.resourcesMut.Lock()
 	defer s.resourcesMut.Unlock()
+
+	s.assignMut.Lock()
+	defer s.assignMut.Unlock()
 
 	newStatus := workflow.TaskStatus{State: workflow.TaskStateCancelled}
 	if reason != nil {
@@ -345,6 +351,9 @@ func (s *Scheduler) abortWorkerTasks(ctx context.Context, worker *workerConn, re
 			NewStatus: newStatus,
 		})
 	}
+
+	// Remove the worker from the ready list, if it exists.
+	delete(s.readyWorkers, worker)
 }
 
 func (s *Scheduler) runAssignLoop(ctx context.Context) error {
@@ -380,7 +389,7 @@ func (s *Scheduler) assignTasks(ctx context.Context) {
 
 	for len(s.taskQueue) > 0 && len(s.readyWorkers) > 0 {
 		task := s.taskQueue[0]
-		worker := s.readyWorkers[0]
+		worker := nextWorker(s.readyWorkers)
 
 		// We may have a canceled task in our queue; we take this opportunity to
 		// clean them up.
@@ -389,14 +398,16 @@ func (s *Scheduler) assignTasks(ctx context.Context) {
 			continue
 		}
 
-		// Pop the worker immediately. If the worker fails to accept the task,
-		// we'll treat it as a failed connection and move on.
-		s.readyWorkers = s.readyWorkers[1:]
-
 		level.Debug(s.logger).Log("msg", "assigning task", "id", task.inner.ULID, "conn", worker.RemoteAddr())
 		if err := s.assignTask(ctx, task, worker); err != nil && ctx.Err() != nil {
 			// Our context got canceled, abort task assignment.
 			return
+		} else if err != nil && isTooManyRequestsError(err) {
+			// The worker has no more capacity available, so remove it from the
+			// ready list and wait to receive another Ready message.
+			delete(s.readyWorkers, worker)
+			s.metrics.backoffsTotal.Inc()
+			continue
 		} else if err != nil {
 			level.Warn(s.logger).Log("msg", "failed to assign task", "id", task.inner.ULID, "conn", worker.RemoteAddr(), "err", err)
 			continue
@@ -405,6 +416,15 @@ func (s *Scheduler) assignTasks(ctx context.Context) {
 		// Pop the task now that it's been officially assigned.
 		s.taskQueue = s.taskQueue[1:]
 	}
+}
+
+// nextWorker returns the next worker from the map. The worker returned is
+// random.
+func nextWorker(m map[*workerConn]struct{}) *workerConn {
+	for worker := range m {
+		return worker
+	}
+	return nil
 }
 
 func (s *Scheduler) assignTask(ctx context.Context, task *task, worker *workerConn) error {
@@ -473,6 +493,15 @@ func (s *Scheduler) assignTask(ctx context.Context, task *task, worker *workerCo
 	}
 
 	return nil
+}
+
+func isTooManyRequestsError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	var wireError *wire.Error
+	return errors.As(err, &wireError) && wireError.Code == http.StatusTooManyRequests
 }
 
 // tryBind attempts to bind the receiver's address of check to the sender.
