@@ -282,10 +282,13 @@ func (b *tableBuffer) Reset() {
 	for key, mdIdx := range b.metadataLookup {
 		md := b.metadatas[mdIdx]
 		if md.EstimatedSize() <= 0 {
-			newMetadatas = append(newMetadatas, md)
-			newMetadataLookup[key] = len(newMetadatas) - 1
+			continue
 		}
+		newMetadatas = append(newMetadatas, md)
+		newMetadataLookup[key] = len(newMetadatas) - 1
 	}
+	b.metadatas = newMetadatas
+	b.metadataLookup = newMetadataLookup
 }
 
 // Flush flushes the buffer into a table. Flush returns an error if the stream,

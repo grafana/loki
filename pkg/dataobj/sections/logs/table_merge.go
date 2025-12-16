@@ -87,7 +87,7 @@ func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *
 
 		tableSequences = append(tableSequences, &tableSequence{
 			columns:         dsetColumns,
-			DatasetSequence: NewDatasetSequence(r, 128),
+			DatasetSequence: NewDatasetSequence(r, 1024),
 		})
 	}
 
@@ -151,6 +151,13 @@ func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *
 			}
 		}
 
+		// Ensure we process all Values held in buffers before iterating, otherwise the table sequence may overwrite them in the next read batch.
+		if tableSequenceEmptyBuffer(seq) {
+			for _, appender := range appenders {
+				appender.syncTo(rows)
+			}
+		}
+
 		rows++
 	}
 
@@ -169,26 +176,63 @@ type columnAppender struct {
 	waitGroup *sync.WaitGroup
 	work      chan []*rowValue
 	buf       []*rowValue
+
+	lastRowMut  *sync.Mutex
+	lastRowCond *sync.Cond
+	lastRow     int32
 }
 
 func newColumnAppender(wg *sync.WaitGroup) *columnAppender {
-	wg.Add(1)
-	work := make(chan []*rowValue)
+	lastRowMut := &sync.Mutex{}
+	lastRowCond := sync.NewCond(lastRowMut)
 
-	go func() {
-		for rowValues := range work {
-			for _, rowValue := range rowValues {
-				_ = rowValue.builder.Append(rowValue.row, rowValue.value)
-			}
-		}
-		wg.Done()
-	}()
-
-	return &columnAppender{
-		work:      work,
+	appender := &columnAppender{
+		work:      make(chan []*rowValue),
 		waitGroup: wg,
 		buf:       make([]*rowValue, 0, 8192),
+
+		lastRowMut:  lastRowMut,
+		lastRowCond: lastRowCond,
+		lastRow:     0,
 	}
+	go appender.loop()
+
+	return appender
+}
+
+func (ca *columnAppender) loop() {
+	ca.waitGroup.Add(1)
+	for rowValues := range ca.work {
+		maxRow := 0
+		for _, rowValue := range rowValues {
+			maxRow = max(maxRow, rowValue.row)
+			err := rowValue.builder.Append(rowValue.row, rowValue.value)
+			if err != nil {
+				panic(err)
+			}
+		}
+
+		ca.lastRowMut.Lock()
+		ca.lastRow = int32(maxRow)
+		ca.lastRowMut.Unlock()
+		ca.lastRowCond.Broadcast()
+	}
+	ca.waitGroup.Done()
+}
+
+// Sync to waits for all work items to be completed up to the provided row number.
+// This must be called after all values for a row have been dispatched.
+func (ca *columnAppender) syncTo(row int) {
+	if len(ca.buf) > 0 && ca.buf[0].row <= row {
+		ca.work <- ca.buf
+		ca.buf = make([]*rowValue, 0, cap(ca.buf))
+	}
+
+	ca.lastRowMut.Lock()
+	for ca.lastRow < int32(row) {
+		ca.lastRowCond.Wait()
+	}
+	ca.lastRowMut.Unlock()
 }
 
 func (ca *columnAppender) appendValue(builder *dataset.ColumnBuilder, row int, value dataset.Value) {
@@ -200,7 +244,7 @@ func (ca *columnAppender) appendValue(builder *dataset.ColumnBuilder, row int, v
 	if len(ca.buf) >= cap(ca.buf) {
 		ca.work <- ca.buf
 		// Make a new buffer in order to avoid needing to synchronise when the worker is done with the old buffer.
-		ca.buf = make([]*rowValue, 0, 8192)
+		ca.buf = make([]*rowValue, 0, cap(ca.buf))
 	}
 }
 
@@ -217,6 +261,7 @@ type tableSequence struct {
 var _ loser.Sequence = (*tableSequence)(nil)
 
 func tableSequenceAt(seq *tableSequence) result.Result[dataset.Row] { return seq.At() }
+func tableSequenceEmptyBuffer(seq *tableSequence) bool              { return seq.size-seq.off <= 1 }
 func tableSequenceClose(seq *tableSequence)                         { seq.Close() }
 
 func NewDatasetSequence(r *dataset.Reader, bufferSize int) DatasetSequence {
