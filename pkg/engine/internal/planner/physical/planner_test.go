@@ -18,13 +18,8 @@ type catalog struct {
 }
 
 // ResolveShardDescriptors implements Catalog.
-func (c *catalog) ResolveShardDescriptors(e Expression, from, through time.Time) ([]FilteredShardDescriptor, error) {
-	return c.ResolveShardDescriptorsWithShard(e, nil, noShard, from, through)
-}
-
-// ResolveDataObjForShard implements Catalog.
-func (c *catalog) ResolveShardDescriptorsWithShard(_ Expression, _ []Expression, shard ShardInfo, _, _ time.Time) ([]FilteredShardDescriptor, error) {
-	return filterDescriptorsForShard(shard, c.sectionDescriptors)
+func (c *catalog) ResolveDataObjSections(_ Expression, _ []Expression, shard ShardInfo, _, _ time.Time) ([]DataObjSections, error) {
+	return filterForShard(shard, c.sectionDescriptors)
 }
 
 var _ Catalog = (*catalog)(nil)
@@ -43,11 +38,11 @@ func TestMockCatalog(t *testing.T) {
 	}
 	for _, tt := range []struct {
 		shard          ShardInfo
-		expDescriptors []FilteredShardDescriptor
+		expDescriptors []DataObjSections
 	}{
 		{
 			shard: ShardInfo{0, 1},
-			expDescriptors: []FilteredShardDescriptor{
+			expDescriptors: []DataObjSections{
 				{Location: "obj1", Streams: []int64{1, 2}, Sections: []int{0}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
 				{Location: "obj1", Streams: []int64{1, 2}, Sections: []int{1}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
 				{Location: "obj1", Streams: []int64{1, 2}, Sections: []int{2}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
@@ -57,29 +52,29 @@ func TestMockCatalog(t *testing.T) {
 		},
 		{
 			shard: ShardInfo{0, 4},
-			expDescriptors: []FilteredShardDescriptor{
+			expDescriptors: []DataObjSections{
 				{Location: "obj1", Streams: []int64{1, 2}, Sections: []int{0}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
 				{Location: "obj2", Streams: []int64{3, 4}, Sections: []int{0}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
 			},
 		},
 		{
 			shard: ShardInfo{1, 4},
-			expDescriptors: []FilteredShardDescriptor{
+			expDescriptors: []DataObjSections{
 				{Location: "obj1", Streams: []int64{1, 2}, Sections: []int{1}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
 				{Location: "obj2", Streams: []int64{3, 4}, Sections: []int{1}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
 			},
 		},
 		{
 			shard:          ShardInfo{2, 4},
-			expDescriptors: []FilteredShardDescriptor{{Location: "obj1", Streams: []int64{1, 2}, Sections: []int{2}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}}},
+			expDescriptors: []DataObjSections{{Location: "obj1", Streams: []int64{1, 2}, Sections: []int{2}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}}},
 		},
 		{
 			shard:          ShardInfo{3, 4},
-			expDescriptors: []FilteredShardDescriptor{},
+			expDescriptors: []DataObjSections{},
 		},
 	} {
 		t.Run("shard "+tt.shard.String(), func(t *testing.T) {
-			filteredShardDescriptors, err := catalog.ResolveShardDescriptorsWithShard(nil, nil, tt.shard, timeStart, timeEnd)
+			filteredShardDescriptors, err := catalog.ResolveDataObjSections(nil, nil, tt.shard, timeStart, timeEnd)
 			require.Nil(t, err)
 			require.ElementsMatch(t, tt.expDescriptors, filteredShardDescriptors)
 		})
