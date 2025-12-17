@@ -302,7 +302,7 @@ func (s *Scheduler) changeStreamState(ctx context.Context, n *notifier, target *
 	// best-effort message so we don't need to wait for acknowledgement.
 	receiver, found := s.tasks[target.taskReceiver]
 	if found && receiver.owner != nil {
-		go receiver.owner.SendMessageAsync(ctx, wire.StreamStatusMessage{
+		_ = receiver.owner.SendMessageAsync(ctx, wire.StreamStatusMessage{
 			StreamID: target.inner.ULID,
 			State:    newState,
 		})
@@ -398,7 +398,7 @@ func (s *Scheduler) assignTasks(ctx context.Context) {
 			delete(s.readyWorkers, worker)
 			s.metrics.backoffsTotal.Inc()
 
-			go s.workerSubscribe(ctx, worker)
+			s.workerSubscribe(ctx, worker)
 		}
 
 		return false
@@ -481,7 +481,7 @@ func (s *Scheduler) finalizeAssignment(ctx context.Context, t *task, worker *wor
 	if t.status.State.Terminal() {
 		// Worker received the assignment but task was cancelled in the meantime.
 		// Notify the worker about the cancellation.
-		go worker.SendMessageAsync(ctx, wire.TaskCancelMessage{ID: t.inner.ULID})
+		_ = worker.SendMessageAsync(ctx, wire.TaskCancelMessage{ID: t.inner.ULID})
 		return
 	}
 
@@ -492,7 +492,7 @@ func (s *Scheduler) finalizeAssignment(ctx context.Context, t *task, worker *wor
 	// Reconcile stream states: send updates for any that changed while sending.
 	for streamID, sentState := range sentStates {
 		if current, found := s.streams[streamID]; found && current.state != sentState {
-			go worker.SendMessageAsync(ctx, wire.StreamStatusMessage{
+			_ = worker.SendMessageAsync(ctx, wire.StreamStatusMessage{
 				StreamID: streamID,
 				State:    current.state,
 			})
@@ -557,14 +557,14 @@ func (s *Scheduler) tryBind(ctx context.Context, check *stream) {
 	receivingTask, hasReceivingTask := s.tasks[check.taskReceiver]
 	if hasReceivingTask && receivingTask.owner != nil {
 		// Bind the address of the receiving owner to the sender.
-		go sendingTask.owner.SendMessageAsync(ctx, wire.StreamBindMessage{
+		_ = sendingTask.owner.SendMessageAsync(ctx, wire.StreamBindMessage{
 			StreamID: check.inner.ULID,
 			Receiver: receivingTask.owner.RemoteAddr(),
 		})
 	} else if check.localReceiver != nil {
 		// We're listening for results ourselves; bind our address to the
 		// sender.
-		go sendingTask.owner.SendMessageAsync(ctx, wire.StreamBindMessage{
+		_ = sendingTask.owner.SendMessageAsync(ctx, wire.StreamBindMessage{
 			StreamID: check.inner.ULID,
 			Receiver: s.listener.Addr(),
 		})
@@ -729,7 +729,7 @@ func (s *Scheduler) UnregisterManifest(ctx context.Context, manifest *workflow.M
 		//
 		// This is a best-effort message, so we don't wait for acknowledgement.
 		if owner := registered.owner; owner != nil {
-			go owner.SendMessageAsync(ctx, wire.TaskCancelMessage{ID: registered.inner.ULID})
+			_ = owner.SendMessageAsync(ctx, wire.TaskCancelMessage{ID: registered.inner.ULID})
 		}
 
 		// Inform the owner about the change.
@@ -918,7 +918,7 @@ func (s *Scheduler) Cancel(ctx context.Context, tasks ...*workflow.Task) error {
 			// This is a best-effort message, so we don't wait for acknowledgement.
 			if owner := registered.owner; owner != nil {
 				owner.Unassign(registered)
-				go owner.SendMessageAsync(ctx, wire.TaskCancelMessage{ID: registered.inner.ULID})
+				_ = owner.SendMessageAsync(ctx, wire.TaskCancelMessage{ID: registered.inner.ULID})
 			}
 
 			// Inform the owner about the change.
