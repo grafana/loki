@@ -14,7 +14,6 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/prometheus/model/labels"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -87,6 +86,9 @@ func (p *Params) validate() error {
 	}
 	if p.Scheduler == nil {
 		return errors.New("scheduler is required")
+	}
+	if p.Metastore == nil {
+		return errors.New("metastore is required")
 	}
 	if p.Config.BatchSize <= 0 {
 		return fmt.Errorf("invalid batch size for query engine. must be greater than 0, got %d", p.Config.BatchSize)
@@ -295,7 +297,7 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, logger log.Logger, param
 	region := xcap.RegionFromContext(ctx)
 	timer := prometheus.NewTimer(e.metrics.physicalPlanning)
 
-	catalog := physical.NewMetastoreCatalog(e.queryMetastoreSectionsFunc(ctx))
+	catalog := physical.NewMetastoreCatalog(e.metastoreSectionsResolver(ctx))
 
 	// TODO(rfratto): It feels strange that we need to past the start/end time
 	// to the physical planner. Isn't it already represented by the logical
@@ -326,16 +328,37 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, logger log.Logger, param
 	return physicalPlan, duration, nil
 }
 
-func (e *Engine) queryMetastoreSectionsFunc(ctx context.Context) physical.MetastoreSectionsResolver {
-	return func(start time.Time, end time.Time, selector []*labels.Matcher, predicates []*labels.Matcher) ([]*metastore.DataobjSectionDescriptor, error) {
-		// TODO(ivkalita): query distributedly
-		msResp, err := e.metastore.Sections(ctx, metastore.SectionsRequest{
-			Start:      start,
-			End:        end,
-			Matchers:   selector,
-			Predicates: predicates,
+func (e *Engine) metastoreSectionsResolver(ctx context.Context) physical.MetastoreSectionsResolver {
+	planner := physical.NewMetastorePlanner(e.metastore)
+	return func(selector physical.Expression, predicates []physical.Expression, start time.Time, end time.Time) ([]*metastore.DataobjSectionDescriptor, error) {
+		plan, err := planner.Plan(ctx, selector, predicates, start, end)
+		if err != nil {
+			return nil, fmt.Errorf("metastore: build plan: %w", err)
+		}
+
+		wf, _, err := e.buildWorkflow(ctx, e.logger, plan)
+		if err != nil {
+			return nil, fmt.Errorf("metastore: build workflow: %w", err)
+		}
+		defer wf.Close()
+
+		pipeline, err := wf.Run(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("metastore: run workflow: %w", err)
+		}
+		reader := executor.TranslateEOF(pipeline)
+		defer reader.Close()
+
+		resp, err := e.metastore.CollectSections(ctx, metastore.CollectSectionsRequest{
+			// externalize EOFs returned by executor pipelines (executor.EOF -> io.EOF)
+			// because metastore is not aware about executor implementation details
+			Reader: reader,
 		})
-		return msResp.Sections, err
+		if err != nil {
+			return nil, fmt.Errorf("metastore: collect sections: %w", err)
+		}
+
+		return resp.SectionsResponse.Sections, nil
 	}
 }
 

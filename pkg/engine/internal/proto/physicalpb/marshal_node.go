@@ -90,6 +90,18 @@ func (n *Node_Join) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
 	return n.Join.MarshalPhysical(nodeID)
 }
 
+// MarshalPhysical converts a protobuf node into a physical plan node. Returns
+// an error if the conversion fails or is unsupported.
+func (n *Node_Merge) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
+	return n.Merge.MarshalPhysical(nodeID)
+}
+
+// MarshalPhysical converts a protobuf node into a physical plan node. Returns
+// an error if the conversion fails or is unsupported.
+func (n *Node_PointersScan) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
+	return n.PointersScan.MarshalPhysical(nodeID)
+}
+
 // MarshalPhysical converts a protobuf AggregateRange into a physical plan node. Returns
 // an error if the conversion fails or is unsupported.
 func (n *AggregateRange) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
@@ -205,6 +217,13 @@ func marshalExpressions(exprs []*expressionpb.Expression) []physical.Expression 
 	return out
 }
 
+func marshalExpression(expr *expressionpb.Expression) (physical.Expression, error) {
+	if expr == nil {
+		return nil, nil
+	}
+	return expr.MarshalPhysical()
+}
+
 // MarshalPhysical converts a protobuf Filter into a physical plan node. Returns
 // an error if the conversion fails or is unsupported.
 func (n *Filter) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
@@ -294,20 +313,34 @@ func (n *ScanSet) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
 // MarshalPhysical converts a protobuf ScanTarget into a physical plan scan target. Returns
 // an error if the conversion fails or is unsupported.
 func (n *ScanTarget) MarshalPhysical() (*physical.ScanTarget, error) {
-	target := &physical.ScanTarget{
-		Type: physical.ScanTypeDataObject,
-	}
+	target := &physical.ScanTarget{}
 
-	if n.GetDataObject() != nil {
+	switch {
+	case n.GetDataObject() != nil:
+		target.Type = physical.ScanTypeDataObject
+
 		// Targets aren't real nodes, so they don't get a real ULID.
 		dataObj, err := n.GetDataObject().MarshalPhysical(ulid.Zero)
 		if err != nil {
 			return nil, err
 		}
 		target.DataObject = dataObj.(*physical.DataObjScan)
-	}
+		return target, nil
 
-	return target, nil
+	case n.GetPointers() != nil:
+		target.Type = physical.ScanTypePointers
+
+		// Targets aren't real nodes, so they don't get a real ULID.
+		ptrScan, err := n.GetPointers().MarshalPhysical(ulid.Zero)
+		if err != nil {
+			return nil, err
+		}
+		target.Pointers = ptrScan.(*physical.PointersScan)
+		return target, nil
+
+	default:
+		return nil, fmt.Errorf("unsupported scan target: no kind set")
+	}
 }
 
 // MarshalPhysical converts a protobuf TopK into a physical plan node. Returns
@@ -338,4 +371,30 @@ func (n *Parallelize) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
 // an error if the conversion fails or is unsupported.
 func (n *Join) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
 	return &physical.Join{NodeID: nodeID}, nil
+}
+
+// MarshalPhysical converts a protobuf Merge into a physical plan node. Returns
+// an error if the conversion fails or is unsupported.
+func (n *Merge) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
+	return &physical.Merge{NodeID: nodeID}, nil
+}
+
+// MarshalPhysical converts a protobuf PointersScan into a physical plan node. Returns
+// an error if the conversion fails or is unsupported.
+func (n *PointersScan) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
+	selector, err := marshalExpression(n.Selector)
+	if err != nil {
+		return nil, err
+	}
+
+	return &physical.PointersScan{
+		NodeID: nodeID,
+
+		Location:     physical.DataObjLocation(n.Location),
+		Selector:     selector,
+		Predicates:   marshalExpressions(n.Predicates),
+		Start:        n.Start,
+		End:          n.End,
+		MaxTimeRange: marshalTimeRange(n.MaxTimeRange),
+	}, nil
 }

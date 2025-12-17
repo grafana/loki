@@ -86,7 +86,7 @@ type Catalog interface {
 	ResolveDataObjSections(Expression, []Expression, ShardInfo, time.Time, time.Time) ([]DataObjSections, error)
 }
 
-type MetastoreSectionsResolver func(time.Time, time.Time, []*labels.Matcher, []*labels.Matcher) ([]*metastore.DataobjSectionDescriptor, error)
+type MetastoreSectionsResolver func(Expression, []Expression, time.Time, time.Time) ([]*metastore.DataobjSectionDescriptor, error)
 
 // MetastoreCatalog is the default implementation of [Catalog].
 type MetastoreCatalog struct {
@@ -104,23 +104,8 @@ func NewMetastoreCatalog(sectionsResolver MetastoreSectionsResolver) *MetastoreC
 // objects based on a given [Expression]. The expression is required
 // to be a (tree of) [BinaryExpression] with a [ColumnExpression]
 // on the left and a [LiteralExpression] on the right.
-func (c *MetastoreCatalog) ResolveDataObjSections(selector Expression, predicates []Expression, shard ShardInfo, from, through time.Time) ([]DataObjSections, error) {
-	selectorMatchers, err := expressionToMatchers(selector, false)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert selector expression into selector matchers: %w", err)
-	}
-
-	predicateMatchers := make([]*labels.Matcher, 0, len(predicates))
-	for _, predicate := range predicates {
-		matchers, err := expressionToMatchers(predicate, true)
-		if err != nil {
-			// Not all predicates are supported by the metastore, so some will be skipped
-			continue
-		}
-		predicateMatchers = append(predicateMatchers, matchers...)
-	}
-
-	msSections, err := c.sectionsResolver(from, through, selectorMatchers, predicateMatchers)
+func (c *MetastoreCatalog) ResolveDataObjSections(selector Expression, predicates []Expression, shard ShardInfo, start, end time.Time) ([]DataObjSections, error) {
+	msSections, err := c.sectionsResolver(selector, predicates, start, end)
 	if err != nil {
 		return nil, fmt.Errorf("resolve metastore sections: %w", err)
 	}
@@ -151,6 +136,30 @@ func filterForShard(shard ShardInfo, sections []*metastore.DataobjSectionDescrip
 	}
 
 	return result, nil
+}
+
+func CatalogRequestToMetastoreSectionsRequest(selector Expression, predicates []Expression, start, end time.Time) (metastore.SectionsRequest, error) {
+	selectorMatchers, err := expressionToMatchers(selector, false)
+	if err != nil {
+		return metastore.SectionsRequest{}, fmt.Errorf("failed to convert selector expression into selector matchers: %w", err)
+	}
+
+	predicateMatchers := make([]*labels.Matcher, 0, len(predicates))
+	for _, predicate := range predicates {
+		matchers, err := expressionToMatchers(predicate, true)
+		if err != nil {
+			// Not all predicates are supported by the metastore, so some will be skipped
+			continue
+		}
+		predicateMatchers = append(predicateMatchers, matchers...)
+	}
+
+	return metastore.SectionsRequest{
+		Start:      start,
+		End:        end,
+		Matchers:   selectorMatchers,
+		Predicates: predicateMatchers,
+	}, nil
 }
 
 // expressionToMatchers converts a selector expression to a list of matchers.

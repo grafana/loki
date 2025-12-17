@@ -38,6 +38,10 @@ func (n *Node) UnmarshalPhysical(from physical.Node) error {
 		n.Kind = &Node_Parallelize{}
 	case *physical.Join:
 		n.Kind = &Node_Join{}
+	case *physical.Merge:
+		n.Kind = &Node_Merge{}
+	case *physical.PointersScan:
+		n.Kind = &Node_PointersScan{}
 	default:
 		return fmt.Errorf("unsupported physical node type: %T", from)
 	}
@@ -127,6 +131,20 @@ func (n *Node_Parallelize) UnmarshalPhysical(from physical.Node) error {
 func (n *Node_Join) UnmarshalPhysical(from physical.Node) error {
 	n.Join = new(Join)
 	return n.Join.UnmarshalPhysical(from)
+}
+
+// UnmarshalPhysical reads from into n. Returns an error if the conversion fails
+// or is unsupported.
+func (n *Node_Merge) UnmarshalPhysical(from physical.Node) error {
+	n.Merge = new(Merge)
+	return n.Merge.UnmarshalPhysical(from)
+}
+
+// UnmarshalPhysical reads from into n. Returns an error if the conversion fails
+// or is unsupported.
+func (n *Node_PointersScan) UnmarshalPhysical(from physical.Node) error {
+	n.PointersScan = new(PointersScan)
+	return n.PointersScan.UnmarshalPhysical(from)
 }
 
 // UnmarshalPhysical reads from into n. Returns an error if the conversion fails
@@ -258,6 +276,18 @@ func unmarshalExpressions(from []physical.Expression) ([]*expressionpb.Expressio
 		if err := out[i].UnmarshalPhysical(expr); err != nil {
 			return nil, err
 		}
+	}
+	return out, nil
+}
+
+func unmarshalExpression(from physical.Expression) (*expressionpb.Expression, error) {
+	if from == nil {
+		return nil, nil
+	}
+
+	out := new(expressionpb.Expression)
+	if err := out.UnmarshalPhysical(from); err != nil {
+		return nil, err
 	}
 	return out, nil
 }
@@ -396,6 +426,12 @@ func (n *ScanTarget) UnmarshalPhysical(from *physical.ScanTarget) error {
 		}
 		n.Kind = &ScanTarget_DataObject{DataObject: new(DataObjScan)}
 		return n.GetDataObject().UnmarshalPhysical(from.DataObject)
+	case physical.ScanTypePointers:
+		if from.Pointers == nil {
+			return fmt.Errorf("pointers is nil for ScanTypePointers")
+		}
+		n.Kind = &ScanTarget_Pointers{Pointers: new(PointersScan)}
+		return n.GetPointers().UnmarshalPhysical(from.Pointers)
 	default:
 		return fmt.Errorf("unsupported scan type: %s", from.Type)
 	}
@@ -444,5 +480,46 @@ func (n *Join) UnmarshalPhysical(from physical.Node) error {
 	}
 
 	*n = Join{}
+	return nil
+}
+
+// UnmarshalPhysical reads from into n. Returns an error if the conversion fails
+// or is unsupported.
+func (n *Merge) UnmarshalPhysical(from physical.Node) error {
+	_, ok := from.(*physical.Merge)
+	if !ok {
+		return fmt.Errorf("unsupported physical node type: %T", from)
+	}
+
+	*n = Merge{}
+	return nil
+}
+
+// UnmarshalPhysical reads from into n. Returns an error if the conversion fails
+// or is unsupported.
+func (n *PointersScan) UnmarshalPhysical(from physical.Node) error {
+	scan, ok := from.(*physical.PointersScan)
+	if !ok {
+		return fmt.Errorf("unsupported physical node type: %T", from)
+	}
+
+	selector, err := unmarshalExpression(scan.Selector)
+	if err != nil {
+		return err
+	}
+
+	predicates, err := unmarshalExpressions(scan.Predicates)
+	if err != nil {
+		return err
+	}
+
+	*n = PointersScan{
+		Location:     string(scan.Location),
+		Selector:     selector,
+		Predicates:   predicates,
+		Start:        scan.Start,
+		End:          scan.End,
+		MaxTimeRange: unmarshalTimeRange(scan.MaxTimeRange),
+	}
 	return nil
 }

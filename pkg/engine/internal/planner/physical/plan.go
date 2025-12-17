@@ -26,6 +26,7 @@ const (
 	NodeTypeParallelize
 	NodeTypeScanSet
 	NodeTypeJoin
+	NodeTypePointersScan
 )
 
 func (t NodeType) String() string {
@@ -58,6 +59,8 @@ func (t NodeType) String() string {
 		return "ScanSet"
 	case NodeTypeJoin:
 		return "Join"
+	case NodeTypePointersScan:
+		return "PointersScan"
 	default:
 		return "Undefined"
 	}
@@ -106,6 +109,8 @@ var _ Node = (*TopK)(nil)
 var _ Node = (*Parallelize)(nil)
 var _ Node = (*ScanSet)(nil)
 var _ Node = (*Join)(nil)
+var _ Node = (*PointersScan)(nil)
+var _ Node = (*Merge)(nil)
 
 func (*DataObjScan) isNode()       {}
 func (*Projection) isNode()        {}
@@ -118,6 +123,8 @@ func (*TopK) isNode()              {}
 func (*Parallelize) isNode()       {}
 func (*ScanSet) isNode()           {}
 func (*Join) isNode()              {}
+func (*PointersScan) isNode()      {}
+func (*Merge) isNode()             {}
 
 // Plan represents a physical execution plan as a directed acyclic graph (DAG).
 // It maintains the relationships between nodes, tracking parent-child connections
@@ -182,9 +189,17 @@ func (p *Plan) CalculateMaxTimeRange() TimeRange {
 				return fmt.Errorf("stop after RangeAggregation")
 			case *ScanSet:
 				for _, t := range s.Targets {
-					timeRange = timeRange.Merge(t.DataObject.MaxTimeRange)
+					switch t.Type {
+					case ScanTypeDataObject:
+						timeRange = timeRange.Merge(t.DataObject.MaxTimeRange)
+					case ScanTypePointers:
+						timeRange = timeRange.Merge(t.Pointers.MaxTimeRange)
+					}
+
 				}
 			case *DataObjScan:
+				timeRange = timeRange.Merge(s.MaxTimeRange)
+			case *PointersScan:
 				timeRange = timeRange.Merge(s.MaxTimeRange)
 			}
 

@@ -1,12 +1,10 @@
 package planner
 
 import (
-	"context"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
@@ -84,62 +82,32 @@ func (q *TestQuery) Step() time.Duration {
 
 var _ logql.Params = (*TestQuery)(nil)
 
-type TestMetastore struct{}
-
-// Labels implements metastore.Metastore.
-func (t *TestMetastore) Labels(_ context.Context, _ time.Time, _ time.Time, _ ...*labels.Matcher) ([]string, error) {
-	panic("unimplemented")
-}
-
-// Values implements metastore.Metastore.
-func (t *TestMetastore) Values(_ context.Context, _ time.Time, _ time.Time, _ ...*labels.Matcher) ([]string, error) {
-	panic("unimplemented")
-}
-
-func (t *TestMetastore) GetIndexes(_ context.Context, _ metastore.GetIndexesRequest) (metastore.GetIndexesResponse, error) {
-	panic("unimplemented")
-}
-
-func (t *TestMetastore) IndexSectionsReader(_ context.Context, _ metastore.IndexSectionsReaderRequest) (metastore.IndexSectionsReaderResponse, error) {
-	panic("unimplemented")
-}
-
-func (t *TestMetastore) CollectSections(_ context.Context, _ metastore.CollectSectionsRequest) (metastore.CollectSectionsResponse, error) {
-	panic("unimplemented")
-}
-
-// Sections implements metastore.Metastore.
-func (t *TestMetastore) Sections(_ context.Context, _ metastore.SectionsRequest) (metastore.SectionsResponse, error) {
-	return metastore.SectionsResponse{Sections: []*metastore.DataobjSectionDescriptor{
-		{
-			SectionKey: metastore.SectionKey{
-				ObjectPath: "objects/00/0000000000.dataobj",
-				SectionIdx: 0,
-			},
-			StreamIDs: []int64{1, 3, 5, 7, 9},
-			RowCount:  1000,
-			Size:      1 << 10,
-			Start:     time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC),
-			End:       time.Date(2025, time.January, 1, 0, 30, 0, 0, time.UTC),
+var mockedMetastoreSections = []*metastore.DataobjSectionDescriptor{
+	{
+		SectionKey: metastore.SectionKey{
+			ObjectPath: "objects/00/0000000000.dataobj",
+			SectionIdx: 0,
 		},
-		{
-			SectionKey: metastore.SectionKey{
-				ObjectPath: "objects/00/0000000000.dataobj",
-				SectionIdx: 1,
-			},
-			StreamIDs: []int64{1, 3, 5, 7, 9},
-			RowCount:  1000,
-			Size:      1 << 10,
-			Start:     time.Date(2025, time.January, 1, 0, 30, 0, 0, time.UTC),
-			End:       time.Date(2025, time.January, 1, 1, 0, 0, 0, time.UTC),
+		StreamIDs: []int64{1, 3, 5, 7, 9},
+		RowCount:  1000,
+		Size:      1 << 10,
+		Start:     time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC),
+		End:       time.Date(2025, time.January, 1, 0, 30, 0, 0, time.UTC),
+	},
+	{
+		SectionKey: metastore.SectionKey{
+			ObjectPath: "objects/00/0000000000.dataobj",
+			SectionIdx: 1,
 		},
-	}}, nil
+		StreamIDs: []int64{1, 3, 5, 7, 9},
+		RowCount:  1000,
+		Size:      1 << 10,
+		Start:     time.Date(2025, time.January, 1, 0, 30, 0, 0, time.UTC),
+		End:       time.Date(2025, time.January, 1, 1, 0, 0, 0, time.UTC),
+	},
 }
-
-var _ metastore.Metastore = (*TestMetastore)(nil)
 
 func TestFullQueryPlanning(t *testing.T) {
-	ms := &TestMetastore{}
 	testCases := []struct {
 		comment  string
 		query    string
@@ -293,9 +261,6 @@ VectorAggregation operation=sum group_by=(ambiguous.bar)
 
 	for _, tc := range testCases {
 		t.Run(tc.comment, func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
-			t.Cleanup(cancel)
-
 			q := &TestQuery{
 				statement: tc.query,
 				start:     time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC),
@@ -308,14 +273,8 @@ VectorAggregation operation=sum group_by=(ambiguous.bar)
 			logicalPlan, err := logical.BuildPlan(q)
 			require.NoError(t, err)
 
-			catalog := physical.NewMetastoreCatalog(func(start time.Time, end time.Time, selectors []*labels.Matcher, predicates []*labels.Matcher) ([]*metastore.DataobjSectionDescriptor, error) {
-				resp, err := ms.Sections(ctx, metastore.SectionsRequest{
-					Start:      start,
-					End:        end,
-					Matchers:   selectors,
-					Predicates: predicates,
-				})
-				return resp.Sections, err
+			catalog := physical.NewMetastoreCatalog(func(_ physical.Expression, _ []physical.Expression, _ time.Time, _ time.Time) ([]*metastore.DataobjSectionDescriptor, error) {
+				return mockedMetastoreSections, nil
 			})
 			planner := physical.NewPlanner(physical.NewContext(q.Start(), q.End()), catalog)
 

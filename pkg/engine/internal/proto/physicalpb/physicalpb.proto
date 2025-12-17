@@ -48,6 +48,8 @@ message Node {
     TopK top_k = 10;
     Parallelize parallelize = 11;
     Join join = 12;
+    Merge merge = 13;
+    PointersScan pointers_scan = 14;
   }
 }
 
@@ -236,13 +238,41 @@ message ScanSet {
 message ScanTarget {
   oneof kind {
     DataObjScan data_object = 1;
+    PointersScan pointers = 2;
   }
 }
+
+// Merge combines multiple input streams into a single stream with no
+// guaranteed ordering.
+message Merge {}
 
 // Parallelize represents a hint to the engine to partition and parallelize the
 // children branches of the Parallelize and emit results as a single sequence
 // with no guaranteed order.
 message Parallelize {}
+
+// PointersScan represents an operation to read pointers from an index file.
+message PointersScan {
+  // Stored location of the index to read.
+  string location = 1;
+
+  // Selector expression for the scan.
+  loki.expression.Expression selector = 2;
+
+  // Predicates for the scan.
+  repeated loki.expression.Expression predicates = 3;
+
+  google.protobuf.Timestamp start = 4 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+  google.protobuf.Timestamp end = 5 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+
+  TimeRange max_time_range = 6;
+}
 
 // Join represents a join operation in the physical plan.
 // For now it is only an inner join on `timestamp`. Will be expanded later.
