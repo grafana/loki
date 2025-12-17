@@ -117,7 +117,7 @@ func benchmarkReadSections(b *testing.B, bm readSectionsBenchmarkParams) {
 		}
 
 		// Create the metastore instance
-		mstore := NewObjectMetastore(bucket, log.NewNopLogger(), nil)
+		mstore := newTestObjectMetastore(bucket)
 
 		// Prepare benchmark parameters
 		benchCtx := user.InjectOrgID(ctx, tenantID)
@@ -233,7 +233,7 @@ func BenchmarkSectionsForPredicateMatchers(b *testing.B) {
 			err = metastoreTocWriter.WriteEntry(context.Background(), path, timeRanges)
 			require.NoError(b, err)
 
-			mstore := NewObjectMetastore(bucket, log.NewNopLogger(), prometheus.DefaultRegisterer)
+			mstore := newTestObjectMetastore(bucket)
 
 			matchers := []*labels.Matcher{
 				labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),

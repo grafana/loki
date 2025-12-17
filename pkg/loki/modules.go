@@ -37,6 +37,8 @@ import (
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/bloombuild/builder"
 	"github.com/grafana/loki/v3/pkg/bloombuild/planner"
@@ -595,15 +597,19 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		serverutil.ResponseJSONMiddleware(),
 	}
 
-	var store objstore.Bucket
+	var (
+		store objstore.Bucket
+		ms    metastore.Metastore
+	)
 	if t.Cfg.QueryEngine.Enable {
 		store, err = t.getDataObjBucket("dataobj-querier")
 		if err != nil {
 			return nil, err
 		}
+		ms = metastore.NewObjectMetastore(store, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics)
 	}
 
-	t.querierAPI = querier.NewQuerierAPI(t.Cfg.Querier, t.Cfg.QueryEngine, t.Cfg.DataObj.Metastore, t.Querier, t.Overrides, store, prometheus.DefaultRegisterer, logger)
+	t.querierAPI = querier.NewQuerierAPI(t.Cfg.Querier, t.Cfg.QueryEngine, ms, t.Querier, t.Overrides, store, prometheus.DefaultRegisterer, logger)
 
 	indexStatsHTTPMiddleware := querier.WrapQuerySpanAndTimeout("query.IndexStats", t.Overrides)
 	indexShardsHTTPMiddleware := querier.WrapQuerySpanAndTimeout("query.IndexShards", t.Overrides)
@@ -1423,16 +1429,19 @@ func (t *Loki) initV2QueryEngine() (services.Service, error) {
 	}
 
 	logger := log.With(util_log.Logger, "component", "query-engine")
+
+	ms := metastore.NewObjectMetastore(store, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics)
+
 	engine, err := engine_v2.New(engine_v2.Params{
 		Logger:     logger,
 		Registerer: prometheus.DefaultRegisterer,
 
-		Config:          t.Cfg.QueryEngine.Executor,
-		MetastoreConfig: t.Cfg.DataObj.Metastore,
+		Config: t.Cfg.QueryEngine.Executor,
 
 		Scheduler: t.queryEngineV2Scheduler,
-		Bucket:    store,
 		Limits:    t.Overrides,
+
+		Metastore: ms,
 	})
 	if err != nil {
 		return nil, err

@@ -26,6 +26,8 @@ import (
 	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/grafana/loki/v3/pkg/storage/bucket"
+
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
@@ -43,7 +45,7 @@ type ObjectMetastore struct {
 	bucket      objstore.Bucket
 	parallelism int
 	logger      log.Logger
-	metrics     *objectMetastoreMetrics
+	metrics     *ObjectMetastoreMetrics
 }
 
 type SectionKey struct {
@@ -109,16 +111,19 @@ func iterTableOfContentsPaths(start, end time.Time) iter.Seq2[string, multitenan
 	}
 }
 
-func NewObjectMetastore(b objstore.Bucket, logger log.Logger, reg prometheus.Registerer) *ObjectMetastore {
+func NewObjectMetastore(b objstore.Bucket, cfg Config, logger log.Logger, metrics *ObjectMetastoreMetrics) *ObjectMetastore {
+	if cfg.IndexStoragePrefix != "" {
+		b = objstore.NewPrefixedBucket(b, cfg.IndexStoragePrefix)
+	}
+	b = bucket.NewXCapBucket(b)
+
 	store := &ObjectMetastore{
 		bucket:      b,
 		parallelism: 64,
 		logger:      logger,
-		metrics:     newObjectMetastoreMetrics(),
+		metrics:     metrics,
 	}
-	if reg != nil {
-		store.metrics.register(reg)
-	}
+
 	return store
 }
 

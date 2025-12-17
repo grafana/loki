@@ -275,7 +275,7 @@ func TestSectionsForStreamMatchers(t *testing.T) {
 	err = metastoreTocWriter.WriteEntry(context.Background(), path, timeRanges)
 	require.NoError(t, err)
 
-	mstore := NewObjectMetastore(bucket, log.NewNopLogger(), prometheus.NewPedanticRegistry())
+	mstore := newTestObjectMetastore(bucket)
 
 	tests := []struct {
 		name       string
@@ -414,7 +414,7 @@ func TestSectionsForPredicateMatchers(t *testing.T) {
 	err = metastoreTocWriter.WriteEntry(context.Background(), path, timeRanges)
 	require.NoError(t, err)
 
-	mstore := NewObjectMetastore(bucket, log.NewNopLogger(), prometheus.NewPedanticRegistry())
+	mstore := newTestObjectMetastore(bucket)
 
 	tests := []struct {
 		name       string
@@ -489,7 +489,7 @@ func queryMetastore(t *testing.T, tenant string, mfunc func(context.Context, tim
 		builder.addStreamAndFlush(tenant, stream)
 	}
 
-	mstore := NewObjectMetastore(builder.bucket, log.NewNopLogger(), nil)
+	mstore := newTestObjectMetastore(builder.bucket)
 	defer func() {
 		require.NoError(t, mstore.bucket.Close())
 	}()
@@ -529,4 +529,8 @@ func newTestDataBuilder(t testing.TB) *testDataBuilder {
 		meta:     meta,
 		uploader: uploader,
 	}
+}
+
+func newTestObjectMetastore(bucket objstore.Bucket) *ObjectMetastore {
+	return NewObjectMetastore(bucket, Config{}, log.NewNopLogger(), NewObjectMetastoreMetrics(prometheus.NewRegistry()))
 }
