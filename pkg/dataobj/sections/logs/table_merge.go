@@ -17,6 +17,15 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/loser"
 )
 
+// A pool for valueBatch objects, with a pre-allocated row buffer.
+var valueBatchPool = &sync.Pool{
+	New: func() any {
+		return &valueBatch{
+			rows: make([]*rowValue, 0, 1024),
+		}
+	},
+}
+
 // mergeTablesIncremental incrementally merges the provides sorted tables into
 // a single table. Incremental merging limits memory overhead as only mergeSize
 // tables are open at a time.
@@ -168,18 +177,19 @@ func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *
 }
 
 func syncAppenders(appenders []*columnAppender) {
-	syncIds := make([]int32, 0, len(appenders))
+	syncIDs := make([]int32, 0, len(appenders))
 	for _, appender := range appenders {
-		syncIds = append(syncIds, appender.startSync())
+		syncIDs = append(syncIDs, appender.startSync())
 	}
 	for i, appender := range appenders {
-		appender.awaitSync(syncIds[i])
+		appender.awaitSync(syncIDs[i])
 	}
 }
 
+// valueBatch references a batch of rowValues, plus an optional syncID which will be recorded by the appender once the batch has been processed.
 type valueBatch struct {
 	rows   []*rowValue
-	syncId int32
+	syncID int32
 }
 
 // columnAppender writes column values to columns.
@@ -200,12 +210,12 @@ type columnAppender struct {
 func newColumnAppender(wg *sync.WaitGroup) *columnAppender {
 	batchMut := &sync.Mutex{}
 	batchCond := sync.NewCond(batchMut)
-	initialBuf := bufpool.Get().(*valueBatch)
+	initialBatch := valueBatchPool.Get().(*valueBatch)
 
 	appender := &columnAppender{
 		workChan:  make(chan *valueBatch),
 		waitGroup: wg,
-		batch:     initialBuf,
+		batch:     initialBatch,
 
 		syncMut:  batchMut,
 		syncCond: batchCond,
@@ -228,26 +238,19 @@ func (ca *columnAppender) loop() {
 			}
 		}
 
-		if batch.syncId != 0 {
+		if batch.syncID != 0 {
+			// If a syncID is present, record it and broadcast to all waiters.
 			ca.syncMut.Lock()
-			ca.lastSync = batch.syncId
+			ca.lastSync = batch.syncID
 			ca.syncMut.Unlock()
 			ca.syncCond.Broadcast()
-			batch.syncId = 0
+			batch.syncID = 0
 		}
 
 		batch.rows = batch.rows[:0]
-		bufpool.Put(batch)
+		valueBatchPool.Put(batch)
 	}
 	ca.waitGroup.Done()
-}
-
-var bufpool = &sync.Pool{
-	New: func() any {
-		return &valueBatch{
-			rows: make([]*rowValue, 0, 1024),
-		}
-	},
 }
 
 // Sync writes the current buffer to the work channel with a sync ID for later identification
@@ -256,24 +259,25 @@ func (ca *columnAppender) startSync() int32 {
 	defer ca.syncMut.Unlock()
 
 	ca.syncCounter++
-	syncId := ca.syncCounter
-	ca.batch.syncId = syncId
+	syncID := ca.syncCounter
+	ca.batch.syncID = syncID
 	ca.workChan <- ca.batch
-	ca.batch = bufpool.Get().(*valueBatch)
+	ca.batch = valueBatchPool.Get().(*valueBatch)
 
-	return syncId
+	return syncID
 }
 
-// awaitSync waits for the given syncId to have been processed by the worker.
-func (ca *columnAppender) awaitSync(syncId int32) {
+// awaitSync waits for the given syncID to have been processed by the worker.
+func (ca *columnAppender) awaitSync(syncID int32) {
 	ca.syncMut.Lock()
 	defer ca.syncMut.Unlock()
 
-	for ca.lastSync < syncId {
+	for ca.lastSync < syncID {
 		ca.syncCond.Wait()
 	}
 }
 
+// appendValue adds a value to the current batch. If the batch is full, it is sent to the worker and a new batch is started.
 func (ca *columnAppender) appendValue(builder *dataset.ColumnBuilder, row int, value dataset.Value) {
 	ca.batch.rows = append(ca.batch.rows, &rowValue{
 		builder: builder,
@@ -282,8 +286,7 @@ func (ca *columnAppender) appendValue(builder *dataset.ColumnBuilder, row int, v
 	})
 	if len(ca.batch.rows) >= cap(ca.batch.rows) {
 		ca.workChan <- ca.batch
-		// Make a new buffer in order to avoid needing to synchronise when the worker is done with the old buffer.
-		ca.batch = bufpool.Get().(*valueBatch)
+		ca.batch = valueBatchPool.Get().(*valueBatch)
 	}
 }
 
