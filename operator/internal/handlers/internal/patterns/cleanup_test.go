@@ -50,9 +50,9 @@ var (
 		},
 	}
 
-	patternIngesterDeployment = appsv1.Deployment{
+	patternIngesterStatefulSet = appsv1.StatefulSet{
 		TypeMeta: metav1.TypeMeta{
-			Kind: "Deployment",
+			Kind: "StatefulSet",
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "my-stack-pattern-ingester",
@@ -137,14 +137,14 @@ func TestCleanup_RemovePatternIngesterWhenDisabled(t *testing.T) {
 	// Disable the pattern ingester
 	stack.Spec.PatternIngester.Enabled = false
 
-	// Get should return pattern ingester deployment
+	// Get should return pattern ingester StatefulSet
 	k.GetStub = func(_ context.Context, name types.NamespacedName, out client.Object, _ ...client.GetOption) error {
 		_, ok := out.(*lokiv1.RulerConfig)
 		if ok {
 			return apierrors.NewNotFound(schema.GroupResource{}, "no ruler config")
 		}
-		if patternIngesterDeployment.Name == name.Name {
-			k.SetClientObject(out, &patternIngesterDeployment)
+		if patternIngesterStatefulSet.Name == name.Name {
+			k.SetClientObject(out, &patternIngesterStatefulSet)
 			return nil
 		}
 

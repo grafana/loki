@@ -23,7 +23,7 @@ func Cleanup(ctx context.Context, log logr.Logger, k k8s.Client, stack *lokiv1.L
 	stackKey := client.ObjectKeyFromObject(stack)
 
 	if err := removePatternIngester(ctx, k, stackKey); err != nil {
-		log.Error(err, "failed to remove pattern ingester Deployment")
+		log.Error(err, "failed to remove pattern ingester Statefulset")
 		return err
 	}
 
@@ -33,12 +33,12 @@ func Cleanup(ctx context.Context, log logr.Logger, k k8s.Client, stack *lokiv1.L
 func removePatternIngester(ctx context.Context, c client.Client, stack client.ObjectKey) error {
 	key := client.ObjectKey{Name: manifests.PatternIngesterName(stack.Name), Namespace: stack.Namespace}
 
-	var patternIngester appsv1.Deployment
+	var patternIngester appsv1.StatefulSet
 	if err := c.Get(ctx, key, &patternIngester); err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil
 		}
-		return kverrors.Wrap(err, "failed to lookup Deployment", "name", key)
+		return kverrors.Wrap(err, "failed to lookup StatefulSet", "name", key)
 	}
 
 	if err := c.Delete(ctx, &patternIngester, &client.DeleteOptions{}); err != nil {

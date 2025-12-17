@@ -13,8 +13,8 @@ import (
 	"github.com/grafana/loki/operator/internal/manifests/storage"
 )
 
-func TestNewPatternIngesterDeployment_HasTemplateConfigHashAnnotation(t *testing.T) {
-	d := NewPatternIngesterDeployment(Options{
+func TestNewPatternIngesterStatefulSet_HasTemplateConfigHashAnnotation(t *testing.T) {
+	ss := NewPatternIngesterStatefulSet(Options{
 		Name:       "abcd",
 		Namespace:  "efgh",
 		ConfigSHA1: "deadbeef",
@@ -28,13 +28,13 @@ func TestNewPatternIngesterDeployment_HasTemplateConfigHashAnnotation(t *testing
 		},
 	})
 
-	annotations := d.Spec.Template.Annotations
+	annotations := ss.Spec.Template.Annotations
 	require.Contains(t, annotations, AnnotationLokiConfigHash)
 	require.Equal(t, annotations[AnnotationLokiConfigHash], "deadbeef")
 }
 
-func TestNewPatternIngesterDeployment_HasTemplateObjectStoreHashAnnotation(t *testing.T) {
-	d := NewPatternIngesterDeployment(Options{
+func TestNewPatternIngesterStatefulSet_HasTemplateObjectStoreHashAnnotation(t *testing.T) {
+	ss := NewPatternIngesterStatefulSet(Options{
 		Name:      "abcd",
 		Namespace: "efgh",
 		ObjectStorage: storage.Options{
@@ -50,13 +50,13 @@ func TestNewPatternIngesterDeployment_HasTemplateObjectStoreHashAnnotation(t *te
 		},
 	})
 
-	annotations := d.Spec.Template.Annotations
+	annotations := ss.Spec.Template.Annotations
 	require.Contains(t, annotations, AnnotationLokiObjectStoreHash)
 	require.Equal(t, annotations[AnnotationLokiObjectStoreHash], "deadbeef")
 }
 
-func TestNewPatternIngesterDeployment_HasTemplateCertRotationRequiredAtAnnotation(t *testing.T) {
-	ss := NewPatternIngesterDeployment(Options{
+func TestNewPatternIngesterStatefulSet_HasTemplateCertRotationRequiredAtAnnotation(t *testing.T) {
+	ss := NewPatternIngesterStatefulSet(Options{
 		Name:                   "abcd",
 		Namespace:              "efgh",
 		CertRotationRequiredAt: "deadbeef",
@@ -74,14 +74,14 @@ func TestNewPatternIngesterDeployment_HasTemplateCertRotationRequiredAtAnnotatio
 	require.Equal(t, annotations[AnnotationCertRotationRequiredAt], "deadbeef")
 }
 
-func TestNewPatternIngesterDeployment_SelectorMatchesLabels(t *testing.T) {
-	// You must set the .spec.selector field of a Deployment to match the labels of
+func TestNewPatternIngesterStatefulSet_SelectorMatchesLabels(t *testing.T) {
+	// You must set the .spec.selector field of a StatefulSet to match the labels of
 	// its .spec.template.metadata.labels. Prior to Kubernetes 1.8, the
 	// .spec.selector field was defaulted when omitted. In 1.8 and later versions,
 	// failing to specify a matching Pod Selector will result in a validation error
-	// during Deployment creation.
+	// during StatefulSet creation.
 	// See https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/#pod-selector
-	ss := NewPatternIngesterDeployment(Options{
+	ss := NewPatternIngesterStatefulSet(Options{
 		Name:      "abcd",
 		Namespace: "efgh",
 		Stack: lokiv1.LokiStackSpec{
@@ -126,7 +126,7 @@ func TestBuildPatternIngester_PodDisruptionBudget(t *testing.T) {
 	require.EqualValues(t, ComponentLabels(LabelPatternIngesterComponent, opts.Name), pdb.Spec.Selector.MatchLabels)
 }
 
-func TestNewPatternIngesterDeployment_TopologySpreadConstraints(t *testing.T) {
+func TestNewPatternIngesterStatefulSet_TopologySpreadConstraints(t *testing.T) {
 	obj, _ := BuildPatternIngester(Options{
 		Name:      "abcd",
 		Namespace: "efgh",
@@ -152,7 +152,7 @@ func TestNewPatternIngesterDeployment_TopologySpreadConstraints(t *testing.T) {
 		},
 	})
 
-	d := obj[0].(*appsv1.Deployment)
+	ss := obj[0].(*appsv1.StatefulSet)
 	require.Equal(t, []corev1.TopologySpreadConstraint{
 		{
 			MaxSkew:           2,
@@ -176,5 +176,5 @@ func TestNewPatternIngesterDeployment_TopologySpreadConstraints(t *testing.T) {
 				},
 			},
 		},
-	}, d.Spec.Template.Spec.TopologySpreadConstraints)
+	}, ss.Spec.Template.Spec.TopologySpreadConstraints)
 }

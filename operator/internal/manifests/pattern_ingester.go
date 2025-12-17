@@ -17,53 +17,53 @@ import (
 )
 
 func BuildPatternIngester(opts Options) ([]client.Object, error) {
-	deployment := NewPatternIngesterDeployment(opts)
+	sts := NewPatternIngesterStatefulSet(opts)
 	if opts.Gates.HTTPEncryption {
-		if err := configurePatternIngesterHTTPServicePKI(deployment, opts); err != nil {
+		if err := configurePatternIngesterHTTPServicePKI(sts, opts); err != nil {
 			return nil, err
 		}
 	}
 
 	if opts.Gates.GRPCEncryption {
-		if err := configurePatternIngesterGRPCServicePKI(deployment, opts); err != nil {
+		if err := configurePatternIngesterGRPCServicePKI(sts, opts); err != nil {
 			return nil, err
 		}
 	}
 
 	if opts.Gates.HTTPEncryption || opts.Gates.GRPCEncryption {
 		caBundleName := signingCABundleName(opts.Name)
-		if err := configureServiceCA(&deployment.Spec.Template.Spec, caBundleName); err != nil {
+		if err := configureServiceCA(&sts.Spec.Template.Spec, caBundleName); err != nil {
 			return nil, err
 		}
 	}
 
 	if opts.Gates.RestrictedPodSecurityStandard {
-		if err := configurePodSpecForRestrictedStandard(&deployment.Spec.Template.Spec); err != nil {
+		if err := configurePodSpecForRestrictedStandard(&sts.Spec.Template.Spec); err != nil {
 			return nil, err
 		}
 	}
 
-	if err := configureHashRingEnv(&deployment.Spec.Template.Spec, opts); err != nil {
+	if err := configureHashRingEnv(&sts.Spec.Template.Spec, opts); err != nil {
 		return nil, err
 	}
 
-	if err := configureProxyEnv(&deployment.Spec.Template.Spec, opts); err != nil {
+	if err := configureProxyEnv(&sts.Spec.Template.Spec, opts); err != nil {
 		return nil, err
 	}
 
-	if err := configureReplication(&deployment.Spec.Template, opts.Stack.Replication, LabelPatternIngesterComponent, opts.Name); err != nil {
+	if err := configureReplication(&sts.Spec.Template, opts.Stack.Replication, LabelPatternIngesterComponent, opts.Name); err != nil {
 		return nil, err
 	}
 
 	return []client.Object{
-		deployment,
+		sts,
 		NewPatternIngesterGRPCService(opts),
 		NewPatternIngesterHTTPService(opts),
 		newPatternIngesterPodDisruptionBudget(opts),
 	}, nil
 }
 
-func NewPatternIngesterDeployment(opts Options) *appsv1.Deployment {
+func NewPatternIngesterStatefulSet(opts Options) *appsv1.StatefulSet {
 	l := ComponentLabels(LabelPatternIngesterComponent, opts.Name)
 	a := commonAnnotations(opts)
 	podSpec := corev1.PodSpec{
@@ -134,16 +134,16 @@ func NewPatternIngesterDeployment(opts Options) *appsv1.Deployment {
 		podSpec.NodeSelector = opts.Stack.Template.PatternIngester.NodeSelector
 	}
 
-	return &appsv1.Deployment{
+	return &appsv1.StatefulSet{
 		TypeMeta: metav1.TypeMeta{
-			Kind:       "Deployment",
+			Kind:       "StatefulSet",
 			APIVersion: appsv1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   PatternIngesterName(opts.Name),
 			Labels: l,
 		},
-		Spec: appsv1.DeploymentSpec{
+		Spec: appsv1.StatefulSetSpec{
 			Replicas: ptr.To(opts.Stack.Template.PatternIngester.Replicas),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: labels.Merge(l, GossipLabels()),
@@ -155,9 +155,6 @@ func NewPatternIngesterDeployment(opts Options) *appsv1.Deployment {
 					Annotations: a,
 				},
 				Spec: podSpec,
-			},
-			Strategy: appsv1.DeploymentStrategy{
-				Type: appsv1.RollingUpdateDeploymentStrategyType,
 			},
 		},
 	}
@@ -220,14 +217,14 @@ func NewPatternIngesterHTTPService(opts Options) *corev1.Service {
 	}
 }
 
-func configurePatternIngesterHTTPServicePKI(deployment *appsv1.Deployment, opts Options) error {
+func configurePatternIngesterHTTPServicePKI(sts *appsv1.StatefulSet, opts Options) error {
 	serviceName := serviceNamePatternIngesterHTTP(opts.Name)
-	return configureHTTPServicePKI(&deployment.Spec.Template.Spec, serviceName)
+	return configureHTTPServicePKI(&sts.Spec.Template.Spec, serviceName)
 }
 
-func configurePatternIngesterGRPCServicePKI(deployment *appsv1.Deployment, opts Options) error {
+func configurePatternIngesterGRPCServicePKI(sts *appsv1.StatefulSet, opts Options) error {
 	serviceName := serviceNamePatternIngesterGRPC(opts.Name)
-	return configureGRPCServicePKI(&deployment.Spec.Template.Spec, serviceName)
+	return configureGRPCServicePKI(&sts.Spec.Template.Spec, serviceName)
 }
 
 // newPatternIngesterPodDisruptionBudget returns a PodDisruptionBudget for the LokiStack
