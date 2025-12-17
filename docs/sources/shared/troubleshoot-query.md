@@ -28,7 +28,7 @@ Query errors can be observed using these Prometheus metrics:
 
 - `loki_request_duration_seconds` - Query latency by route and status code
 - `loki_logql_querystats_bytes_processed_per_seconds` - Bytes processed during queries
-- `cortex_frontend_query_stats_latency_seconds` - Frontend query latency
+- `loki_frontend_query_range_duration_seconds_bucket` - Frontend query latency
 
 You can set up alerts on 4xx and 5xx status codes to detect query problems early. This can be helpful when tuning limits configurations.
 
@@ -203,12 +203,6 @@ Aggregation functions like `sum_over_time`, `avg_over_time`, `min_over_time`, `m
    
    # Valid - unwrap a numeric label
    sum_over_time({app="foo"} | json | unwrap duration [5m])
-   ```
-
-* **Use count_over_time** if you just want to count log lines (no unwrap needed):
-
-   ```logql
-   count_over_time({app="foo"} | json [5m])
    ```
 
 **Properties:**
