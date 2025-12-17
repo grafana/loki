@@ -185,7 +185,7 @@ func TestWorkerGracefulShutdown(t *testing.T) {
 		synctest.Wait()
 
 		// Now send data to the input stream
-		// The worker should process this data even though its context was canceled
+		// The worker should process this data even though its context will be canceled
 		schema := arrow.NewSchema([]arrow.Field{
 			semconv.FieldFromIdent(semconv.ColumnIdentTimestamp, false),
 			semconv.FieldFromIdent(semconv.ColumnIdentMessage, false),
