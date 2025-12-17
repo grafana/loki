@@ -26,6 +26,12 @@ var valueBatchPool = &sync.Pool{
 	},
 }
 
+var rowValuePool = &sync.Pool{
+	New: func() any {
+		return new(rowValue)
+	},
+}
+
 // mergeTablesIncremental incrementally merges the provides sorted tables into
 // a single table. Incremental merging limits memory overhead as only mergeSize
 // tables are open at a time.
@@ -236,6 +242,7 @@ func (ca *columnAppender) loop() {
 			if err != nil {
 				panic(err)
 			}
+			rowValuePool.Put(rowValue)
 		}
 
 		if batch.syncID != 0 {
@@ -279,11 +286,12 @@ func (ca *columnAppender) awaitSync(syncID int32) {
 
 // appendValue adds a value to the current batch. If the batch is full, it is sent to the worker and a new batch is started.
 func (ca *columnAppender) appendValue(builder *dataset.ColumnBuilder, row int, value dataset.Value) {
-	ca.batch.rows = append(ca.batch.rows, &rowValue{
-		builder: builder,
-		row:     row,
-		value:   value,
-	})
+	rowValue := rowValuePool.Get().(*rowValue)
+	rowValue.builder = builder
+	rowValue.row = row
+	rowValue.value = value
+	ca.batch.rows = append(ca.batch.rows, rowValue)
+
 	if len(ca.batch.rows) >= cap(ca.batch.rows) {
 		ca.workChan <- ca.batch
 		ca.batch = valueBatchPool.Get().(*valueBatch)
