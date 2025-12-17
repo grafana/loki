@@ -112,8 +112,11 @@ func Test_Node(t *testing.T) {
 			node: &physical.RangeAggregation{
 				NodeID: ulid.Make(),
 
-				PartitionBy: []physical.ColumnExpression{
-					&physical.ColumnExpr{Ref: types.ColumnRef{Column: "partition_col", Type: types.ColumnTypeLabel}},
+				Grouping: physical.Grouping{
+					Columns: []physical.ColumnExpression{
+						&physical.ColumnExpr{Ref: types.ColumnRef{Column: "partition_col", Type: types.ColumnTypeLabel}},
+					},
+					Without: false,
 				},
 				Operation: types.RangeAggregationTypeCount,
 				Start:     time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
@@ -127,8 +130,11 @@ func Test_Node(t *testing.T) {
 			node: &physical.VectorAggregation{
 				NodeID: ulid.Make(),
 
-				GroupBy: []physical.ColumnExpression{
-					&physical.ColumnExpr{Ref: types.ColumnRef{Column: "group_col", Type: types.ColumnTypeLabel}},
+				Grouping: physical.Grouping{
+					Columns: []physical.ColumnExpression{
+						&physical.ColumnExpr{Ref: types.ColumnRef{Column: "group_col", Type: types.ColumnTypeLabel}},
+					},
+					Without: false,
 				},
 				Operation: types.VectorAggregationTypeSum,
 			},
