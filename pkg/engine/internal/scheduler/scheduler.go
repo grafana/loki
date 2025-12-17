@@ -385,15 +385,9 @@ func (s *Scheduler) assignTasks(ctx context.Context) {
 	//
 	// TODO(rfratto): Is there going to be too much overhead for locking this
 	// for this long?
-	s.resourcesMut.Lock()
-	defer s.resourcesMut.Unlock()
-
-	s.assignMut.Lock()
-	defer s.assignMut.Unlock()
-
 	level.Debug(s.logger).Log("msg", "performing task assignment")
 
-	for len(s.taskQueue) > 0 && len(s.readyWorkers) > 0 {
+	assignOne := func() {
 		task := s.taskQueue[0]
 		worker := nextWorker(s.readyWorkers)
 
@@ -401,7 +395,7 @@ func (s *Scheduler) assignTasks(ctx context.Context) {
 		// clean them up.
 		if state := task.status.State; state.Terminal() {
 			s.taskQueue = s.taskQueue[1:]
-			continue
+			return
 		}
 
 		level.Debug(s.logger).Log("msg", "assigning task", "id", task.inner.ULID, "conn", worker.RemoteAddr())
@@ -414,15 +408,27 @@ func (s *Scheduler) assignTasks(ctx context.Context) {
 			delete(s.readyWorkers, worker)
 			s.metrics.backoffsTotal.Inc()
 
-			s.workerSubscribe(ctx, worker)
-			continue
+			// spawn a separate routine as this could block if the buffer is full
+			go s.workerSubscribe(ctx, worker)
+
+			return
 		} else if err != nil {
 			level.Warn(s.logger).Log("msg", "failed to assign task", "id", task.inner.ULID, "conn", worker.RemoteAddr(), "err", err)
-			continue
+			return
 		}
 
 		// Pop the task now that it's been officially assigned.
 		s.taskQueue = s.taskQueue[1:]
+	}
+
+	for ctx.Err() == nil && len(s.taskQueue) > 0 && len(s.readyWorkers) > 0 {
+		s.resourcesMut.Lock()
+		s.assignMut.Lock()
+
+		assignOne()
+
+		s.assignMut.Unlock()
+		s.resourcesMut.Unlock()
 	}
 }
 
