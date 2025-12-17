@@ -1,20 +1,10 @@
-## [2.9.10](https://github.com/grafana/loki/compare/v2.9.9...v2.9.10) (2024-08-09)
-
-
-### Bug Fixes
-
-* Update dependencies versions to remove CVE ([#13835](https://github.com/grafana/loki/pull/13835)) ([567bef2](https://github.com/grafana/loki/commit/567bef286376663407c54f5da07fa00963ba5485))
-
-
 ## [2.9.17](https://github.com/grafana/loki/compare/v2.9.16...v2.9.17) (2025-11-07)
-
 
 ### Bug Fixes
 
 * bump alpine version ([#19732](https://github.com/grafana/loki/issues/19732)) ([ffcd570](https://github.com/grafana/loki/commit/ffcd570f815ccf0588bda305659d0d4e925e4ef1))
 
 ## [2.9.16](https://github.com/grafana/loki/compare/v2.9.15...v2.9.16) (2025-11-05)
-
 
 ### Bug Fixes
 
@@ -23,7 +13,6 @@
 
 ## [2.9.15](https://github.com/grafana/loki/compare/v2.9.14...v2.9.15) (2025-06-09)
 
-
 ### Bug Fixes
 
 * **ci:** Pull in latest 2.9-specific release code ([#18019](https://github.com/grafana/loki/issues/18019)) ([7b805ba](https://github.com/grafana/loki/commit/7b805ba7c84366e11e8571c9e8c422739bb18684))
@@ -31,11 +20,9 @@
 
 ## [2.9.14](https://github.com/grafana/loki/compare/v2.9.13...v2.9.14) (2025-04-10)
 
-
 ### Features
 
 * Upgrade `golang.org/x/oauth2` to 0.27.0 ([#16960](https://github.com/grafana/loki/issues/16960)) ([fb70d03](https://github.com/grafana/loki/commit/fb70d0305f96a9c6278e9707fc061f03d6aae0f1))
-
 
 ### Bug Fixes
 
@@ -47,13 +34,11 @@
 
 ## [2.9.13](https://github.com/grafana/loki/compare/v2.9.12...v2.9.13) (2025-03-12)
 
-
 ### Bug Fixes
 
 * **deps:** Loki 2.9.x Bump Alpine and Go versions ([#16294](https://github.com/grafana/loki/issues/16294)) ([f2deeb7](https://github.com/grafana/loki/commit/f2deeb76ac39e835bffe61e1e4f78b980afdc0c0))
 
 ## [2.9.12](https://github.com/grafana/loki/compare/v2.9.11...v2.9.12) (2025-02-13)
-
 
 ### Bug Fixes
 
@@ -61,10 +46,15 @@
 
 ## [2.9.11](https://github.com/grafana/loki/compare/v2.9.10...v2.9.11) (2024-12-04)
 
-
 ### Bug Fixes
 
 * switch promtails base image from debian to ubuntu (backport release-2.9.x) ([#15210](https://github.com/grafana/loki/issues/15210)) ([ae1fb5a](https://github.com/grafana/loki/commit/ae1fb5a3d2b8fb57a413b16ab4060b65226867d1))
+
+## [2.9.10](https://github.com/grafana/loki/compare/v2.9.9...v2.9.10) (2024-08-09)
+
+### Bug Fixes
+
+* Update dependencies versions to remove CVE ([#13835](https://github.com/grafana/loki/pull/13835)) ([567bef2](https://github.com/grafana/loki/commit/567bef286376663407c54f5da07fa00963ba5485))
 
 ## [2.9.9](https://github.com/grafana/loki/compare/v2.9.8...v2.9.9) (2024-07-04)
 
@@ -79,31 +69,20 @@
 
 ## [2.9.8](https://github.com/grafana/loki/compare/v2.9.7...v2.9.8) (2024-05-03)
 
-### All Changes
+### Bug Fixes
 
-#### Loki
-
-##### Fixes
-
-* update module golang.org/x/net to v0.23.0 [security] (release-2.9.x) ([#12865](https://github.com/grafana/loki/issues/12865)) ([94e0029](https://github.com/grafana/loki/commit/94e00299ec9b36ad97c147641566b6922268c54e))
+* **deps:** update module golang.org/x/net to v0.23.0 [security] (release-2.9.x) ([#12865](https://github.com/grafana/loki/issues/12865)) ([94e0029](https://github.com/grafana/loki/commit/94e00299ec9b36ad97c147641566b6922268c54e))
+* Trigger release-please for 2.9.7 ([#12822](https://github.com/grafana/loki/issues/12822)) ([55b747c](https://github.com/grafana/loki/commit/55b747ce4ebfe0b46de674104264e4972284ec7d))
 
 ## [2.9.7](https://github.com/grafana/loki/compare/v2.9.6...v2.9.7) (2024-04-10)
 
-### All Changes
-
-#### Loki
-
-##### Fixes
+### Bug Fixes
 
 * Bump go to 1.21.9 and build image to 0.33.1 ([#12542](https://github.com/grafana/loki/issues/12542)) ([efc4d2f](https://github.com/grafana/loki/commit/efc4d2f009e04ecb1db58a637b89b33aa234de34))
 
 ## [2.9.6](https://github.com/grafana/loki/compare/v2.9.5...v2.9.6) (2024-03-21)
 
-### All Changes
-
-#### Loki
-
-##### Fixes
+### Fixes
 
 * promtail failures connecting to local loki installation [release-2.9.x]  ([#12184](https://github.com/grafana/loki/issues/12184)) ([8585e35](https://github.com/grafana/loki/commit/8585e3537375c0deb11462d7256f5da23228f5e1))
 * **release-2.9.x:** frontend: Use `net.JoinHostPort` to support IPv6 addresses ([#10650](https://github.com/grafana/loki/issues/10650)) ([#11870](https://github.com/grafana/loki/issues/11870)) ([7def3b4](https://github.com/grafana/loki/commit/7def3b4e774252e13ba154ca13f72816a84da7dd))
@@ -111,11 +90,11 @@
 
 ## [2.9.5](https://github.com/grafana/loki/compare/v2.9.4...v2.9.5) (2024-02-28)
 
-### All Changes
+### Features
 
-#### Loki
+* add release please config ([#11333](https://github.com/grafana/loki/issues/11333)) ([#11789](https://github.com/grafana/loki/issues/11789)) ([e628f5d](https://github.com/grafana/loki/commit/e628f5d74d073aa0510030ce083b2eb255ef4939)), closes [#11332](https://github.com/grafana/loki/issues/11332)
 
-##### Changes
+#### Changes
 
 * [10677](https://github.com/grafana/loki/pull/10677) **chaudum** Remove deprecated `stream_lag_labels` setting from both the `options` and `client` configuration sections.
 * [10689](https://github.com/grafana/loki/pull/10689) **dylanguedes**: Ingester: Make jitter to be 20% of flush check period instead of 1%.
@@ -137,10 +116,6 @@
 * [11087](https://github.com/grafana/loki/pull/11087) **JoaoBraveCoding**: Adds structured metadata panels for ingested data
 * [11637](https://github.com/grafana/loki/pull/11637) **JoaoBraveCoding**: Add route to write Distributor Latency dashboard
 
-#### Fixes
-
-#### FluentD
-
 #### Jsonnet
 
 * [11312](https://github.com/grafana/loki/pull/11312) **sentoz**: Loki ksonnet: Do not generate configMap for consul if you are using memberlist
@@ -151,63 +126,32 @@
 
 * [10542](https://github.com/grafana/loki/pull/10542) **chaudum**: Remove legacy deployment mode for ingester (Deployment, without WAL) and instead always run them as StatefulSet.
 
-## 2.9.4 (2024-01-24)
-
-### All Changes
-
-#### Loki
-
-##### Fixes
-
-* [11601](https://github.com/grafana/loki/pull/11601) **dannykopping** Ruler: Fixed a panic that can be caused by concurrent read-write access of tenant configs when there are a large amount of rules.
-* [11612](https://github.com/grafana/loki/pull/11612) **dannykopping** Ruler: catering for another data race in tenant config.
-* [11657](https://github.com/grafana/loki/pull/11657) **ashwanthgoli** Log results cache: compose empty response based on the request being served to avoid returning incorrect limit or direction.
-* [11654](https://github.com/grafana/loki/pull/11654) **dannykopping** Cache: atomically check background cache size limit correctly. 
-* [11587](https://github.com/grafana/loki/pull/11587) **trevorwhitney** Fix semantics of label parsing logic of metrics and logs queries. Both only parse the first label if multiple extractions into the same label are requested.
-* [11776](https://github.com/grafana/loki/pull/11776) **ashwanthgoli** Background Cache: Fixes a bug that is causing the background queue size to be incremented twice for each enqueued item.
-
-#### Promtail
-* [11511](https://github.com/grafana/loki/pull/11511) **kavirajk**: chore(promtail): Improve default configuration that is shipped with rpm/deb packages to avoid possible high CPU utilisation if there are lots of files inside `/var/log`.
-
-##### Security
-* [11745](https://github.com/grafana/loki/pull/11745) Update `golang.org/x/crypto` to `v0.18.0`
-
-## [2.9.8](https://github.com/grafana/loki/compare/v2.9.7...v2.9.8) (2024-05-02)
-
-
-### Bug Fixes
-
-* **deps:** update module golang.org/x/net to v0.23.0 [security] (release-2.9.x) ([#12865](https://github.com/grafana/loki/issues/12865)) ([94e0029](https://github.com/grafana/loki/commit/94e00299ec9b36ad97c147641566b6922268c54e))
-* Trigger release-please for 2.9.7 ([#12822](https://github.com/grafana/loki/issues/12822)) ([55b747c](https://github.com/grafana/loki/commit/55b747ce4ebfe0b46de674104264e4972284ec7d))
-
-## [2.9.7](https://github.com/grafana/loki/compare/v2.9.6...v2.9.7) (2024-04-10)
-
-
-### Bug Fixes
-
-* Bump go to 1.21.9 and build image to 0.33.1 ([#12542](https://github.com/grafana/loki/issues/12542)) ([efc4d2f](https://github.com/grafana/loki/commit/efc4d2f009e04ecb1db58a637b89b33aa234de34))
-
-## [2.9.6](https://github.com/grafana/loki/compare/v2.9.5...v2.9.6) (2024-03-21)
-
-
 ### Bug Fixes
 
 * promtail failures connecting to local loki installation [release-2.9.x]  ([#12184](https://github.com/grafana/loki/issues/12184)) ([8585e35](https://github.com/grafana/loki/commit/8585e3537375c0deb11462d7256f5da23228f5e1))
 * **release-2.9.x:** frontend: Use `net.JoinHostPort` to support IPv6 addresses ([#10650](https://github.com/grafana/loki/issues/10650)) ([#11870](https://github.com/grafana/loki/issues/11870)) ([7def3b4](https://github.com/grafana/loki/commit/7def3b4e774252e13ba154ca13f72816a84da7dd))
 * update google.golang.org/protobuf to v1.33.0 ([#12269](https://github.com/grafana/loki/issues/12269)) ([#12287](https://github.com/grafana/loki/issues/12287)) ([3186520](https://github.com/grafana/loki/commit/318652035059fdaa40405f263fc9e37b4d38b157))
-
-## [2.9.5](https://github.com/grafana/loki/compare/v2.9.4...v2.9.5) (2024-02-28)
-
-
-### Features
-
-* add release please config ([#11333](https://github.com/grafana/loki/issues/11333)) ([#11789](https://github.com/grafana/loki/issues/11789)) ([e628f5d](https://github.com/grafana/loki/commit/e628f5d74d073aa0510030ce083b2eb255ef4939)), closes [#11332](https://github.com/grafana/loki/issues/11332)
-
-
-### Bug Fixes
-
 * action repo reference ([#11807](https://github.com/grafana/loki/issues/11807)) ([fb02797](https://github.com/grafana/loki/commit/fb02797a355e0d264d4cbd46045bd3ff2ab121d7))
 * bump base images and go deps to address CVEs ([#12092](https://github.com/grafana/loki/issues/12092)) ([eee3598](https://github.com/grafana/loki/commit/eee35983f38fe04543b169ffa8ece76c23c4217b))
+
+## 2.9.4 (2024-01-24)
+
+### Fixes
+
+* [11601](https://github.com/grafana/loki/pull/11601) **dannykopping** Ruler: Fixed a panic that can be caused by concurrent read-write access of tenant configs when there are a large amount of rules.
+* [11612](https://github.com/grafana/loki/pull/11612) **dannykopping** Ruler: catering for another data race in tenant config.
+* [11657](https://github.com/grafana/loki/pull/11657) **ashwanthgoli** Log results cache: compose empty response based on the request being served to avoid returning incorrect limit or direction.
+* [11654](https://github.com/grafana/loki/pull/11654) **dannykopping** Cache: atomically check background cache size limit correctly.
+* [11587](https://github.com/grafana/loki/pull/11587) **trevorwhitney** Fix semantics of label parsing logic of metrics and logs queries. Both only parse the first label if multiple extractions into the same label are requested.
+* [11776](https://github.com/grafana/loki/pull/11776) **ashwanthgoli** Background Cache: Fixes a bug that is causing the background queue size to be incremented twice for each enqueued item.
+
+#### Promtail
+
+* [11511](https://github.com/grafana/loki/pull/11511) **kavirajk**: chore(promtail): Improve default configuration that is shipped with rpm/deb packages to avoid possible high CPU utilisation if there are lots of files inside `/var/log`.
+
+##### Security
+
+* [11745](https://github.com/grafana/loki/pull/11745) Update `golang.org/x/crypto` to `v0.18.0`
 
 ## 2.9.3 (2023-12-11)
 
@@ -220,7 +164,6 @@
 * [10375](https://github.com/grafana/loki/pull/10375) **trevorwhitney**: Fix ingester query when getting label values by passing matchers
 * [11433](https://github.com/grafana/loki/pull/11433) Upgrade otelhttp from 0.40.0 -> 0.44.0 and base alpine image from 3.18.3 -> 3.18.5 to fix a few CVES (CVE-2023-45142, CVE-2022-21698, CVE-2023-5363).
 
-
 ##### Changes
 
 * [11121](https://github.com/grafana/loki/pull/11121) **periklis** Ensure all lifecycler cfgs ref a valid IPv6 addr and port combination
@@ -229,17 +172,16 @@
 
 ### All Changes
 
-##### Security
+### Security
 
 * [10879](https://github.com/grafana/loki/pull/10879) **DylanGuedes**: Upgrade golang.org/x/net to v0.17.0 to patch CVE-2023-39325 / CVE-2023-44487
 * [10871](https://github.com/grafana/loki/pull/10871) **ashwanthgoli**: Upgrade go to v1.21.3 and grpc-go to v1.56.3 to patch CVE-2023-39325 / CVE-2023-44487
-
 
 ## 2.9.1 (2023-09-14)
 
 ### All Changes
 
-##### Security
+### Security
 
 * [10573](https://github.com/grafana/loki/pull/10573) **DylanGuedes**: Bump Docker base images to Alpine version 3.18.3 to mitigate CVE-2022-48174
 
@@ -250,18 +192,17 @@
 * [10314](https://github.com/grafana/loki/pull/10314) **bboreham**: Fix race conditions in indexshipper.
 * [10585](https://github.com/grafana/loki/pull/10585) **ashwanthgoli** / **chaudum**: Fix bug in index object client that could result in not showing all ingested logs in query results.
 
-
 ## 2.9.0 (2023-09-06)
 
 ### All Changes
 
-##### Security
+### Security
 
 * [10188](https://github.com/grafana/loki/pull/10188) **shantanualsi**: Bump alpine version from 3.16.5 -> 3.16.7
 
-#### Loki
+### Loki
 
-##### Enhancements
+### Enhancements
 * [10322](https://github.com/grafana/loki/pull/10322) **chaudum**: Deprecate misleading setting `-ruler.evaluation-delay-duration`.
 * [10324](https://github.com/grafana/loki/pull/10324) **ashwanthgoli**: Deprecate ingester.unordered-writes and a few unused configs(log.use-buffered, log.use-sync, frontend.forward-headers-list)
 
@@ -312,7 +253,7 @@
 * [10344](https://github.com/grafana/loki/pull/10344) **ashwanthgoli**  Compactor: deprecate `-boltdb.shipper.compactor.` prefix in favor of `-compactor.`.
 * [10073](https://github.com/grafana/loki/pull/10073) **sandeepsukhani,salvacorts,vlad-diachenko** Support attaching structured metadata to log lines.
 
-##### Fixes
+#### Fixes
 
 * [10026](https://github.com/grafana/loki/pull/10026) **aminesnow**: Add support for Alibaba Cloud as storage backend for the ruler.
 * [10065](https://github.com/grafana/loki/pull/10065) **fgouteroux**: Fix the syntax error message when parsing expression rule.
@@ -660,7 +601,7 @@ Check the history of the branch `release-2.7.x`.
 
 * [7587](https://github.com/grafana/loki/pull/7587) **mar4uk**: Add go build tag `promtail_journal_enabled` to include/exclude Promtail journald code from binary.
 
-## 2.7.0
+## 2.7.0 (2022-11-10)
 
 #### Loki
 
@@ -1640,7 +1581,7 @@ This release was created from revision 8012362674568379a3871ff8c4a2bfd1ddba7ad1 
 * Go Version:     1.16.2
 * Cortex Version: 485474c9afb2614fb89af3f48803c37d016bbaed
 
-## 2.2.1 (2021/04/05)
+# 2.2.1 (2021/04/05)
 
 2.2.1 fixes several important bugs, it is recommended everyone running 2.2.0 upgrade to 2.2.1
 
@@ -1653,7 +1594,7 @@ This release was created from revision 8012362674568379a3871ff8c4a2bfd1ddba7ad1 
 * [3566](https://github.com/grafana/loki/pull/3566) **cyriltovena**: Properly release the ticker in Loki client.
 * [3573](https://github.com/grafana/loki/pull/3573) **cyriltovena**: Fixes a race when using specific tenant and multi-client.
 
-## 2.2.0 (2021/03/10)
+# 2.2.0 (2021/03/10)
 
 With over 200 PR's 2.2 includes significant features, performance improvements, and bug fixes!
 
@@ -1919,7 +1860,7 @@ This release was created from revision 8012362674568379a3871ff8c4a2bfd1ddba7ad1 
 * Cortex Version: 7dac81171c665be071bd167becd1f55528a9db32
 
 
-## 2.1.0 (2020/12/23)
+# 2.1.0 (2020/12/23)
 
 Happy Holidays from the Loki team! Please enjoy a new Loki release to welcome in the New Year!
 
@@ -2105,7 +2046,7 @@ This release was created from revision ae9c4b82ec4a5d21267da50d6a1a8170e0ef82ff 
 * Go Version:     1.15.3
 * Cortex Version: 85942c5703cf22b64cecfd291e7e7c42d1b8c30c
 
-## 2.0.1 (2020/12/10)
+# 2.0.1 (2020/12/10)
 
 2.0.1 is a special release, it only exists to add the v3 support to Loki's chunk format.
 
@@ -2119,7 +2060,7 @@ This is mostly a safety measure to help if someone upgrades from 2.0.0 and skips
 
 It should be noted this does not help anyone upgrading from a version older than 2.0.0, that is you should at least upgrade to 2.0.0 before going to a newer version if you are on a version older than 2.0.0.
 
-## 2.0.0 (2020/10/26)
+# 2.0.0 (2020/10/26)
 
 2.0.0 is here!!
 
@@ -2137,7 +2078,7 @@ Thanks again for the many incredible contributions and improvements from the won
 
 Check the [upgrade guide](https://github.com/grafana/loki/blob/master/docs/sources/setup/upgrade/_index.md#200) for detailed information on all these changes.
 
-### 2.0!!!!
+# 2.0!!!!
 
 There are too many PR's to list individually for the major improvements which we thought justified a 2.0 but here is the high level:
 
