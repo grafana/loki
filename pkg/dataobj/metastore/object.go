@@ -31,7 +31,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
-	"github.com/grafana/loki/v3/pkg/storage/bucket"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
@@ -112,7 +111,7 @@ func iterTableOfContentsPaths(start, end time.Time) iter.Seq2[string, multitenan
 
 func NewObjectMetastore(b objstore.Bucket, logger log.Logger, reg prometheus.Registerer) *ObjectMetastore {
 	store := &ObjectMetastore{
-		bucket:      bucket.NewXCapBucket(b),
+		bucket:      b,
 		parallelism: 64,
 		logger:      logger,
 		metrics:     newObjectMetastoreMetrics(),
