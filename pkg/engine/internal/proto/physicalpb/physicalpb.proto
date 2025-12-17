@@ -53,8 +53,10 @@ message Node {
 
 // AggregateRange aggregates samples into windowed ranges.
 message AggregateRange {
+  reserved 1;
+
   // Grouping for the data.
-  Grouping grouping = 1;
+  Grouping grouping = 7;
 
   AggregateRangeOp operation = 2;
 
@@ -98,8 +100,10 @@ enum AggregateRangeOp {
 // AggregateVector represents an operation to aggregate a range vector into an
 // instant vector, with optional grouping on specified dimensions.
 message AggregateVector {
+  reserved 1;
+
   // Grouping for the data.
-  Grouping grouping = 1;
+  Grouping grouping = 3;
 
   // Aggregation operation to perform over the underlying range vector.
   AggregateVectorOp operation = 2;
