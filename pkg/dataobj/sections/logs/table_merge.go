@@ -10,7 +10,6 @@ import (
 	"math"
 	"runtime"
 	"sync"
-	"sync/atomic"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
@@ -88,7 +87,7 @@ func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *
 
 		tableSequences = append(tableSequences, &tableSequence{
 			columns:         dsetColumns,
-			DatasetSequence: NewDatasetSequence(r, 1024),
+			DatasetSequence: NewDatasetSequence(r, 256),
 		})
 	}
 
@@ -152,11 +151,9 @@ func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *
 			}
 		}
 
-		// Ensure we process all Values held in buffers before iterating, otherwise the table sequence may overwrite them in the next read batch.
 		if tableSequenceEmptyBuffer(seq) {
-			for _, appender := range appenders {
-				appender.sync()
-			}
+			// Ensure we process all Values held in buffers before continuing iteration, otherwise the table sequence may re-use the values.
+			syncAppenders(appenders)
 		}
 
 		rows++
@@ -170,9 +167,19 @@ func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *
 	return buf.Flush()
 }
 
-type batch struct {
-	rows  []*rowValue
-	nonce int
+func syncAppenders(appenders []*columnAppender) {
+	syncIds := make([]int32, 0, len(appenders))
+	for _, appender := range appenders {
+		syncIds = append(syncIds, appender.startSync())
+	}
+	for i, appender := range appenders {
+		appender.awaitSync(syncIds[i])
+	}
+}
+
+type valueBatch struct {
+	rows   []*rowValue
+	syncId int32
 }
 
 // columnAppender writes column values to columns.
@@ -180,29 +187,29 @@ type batch struct {
 // When using multiple appenders, each distinct column should only be written to a single appender in order to maintain ordering.
 type columnAppender struct {
 	waitGroup *sync.WaitGroup
-	workChan  chan *batch
-	buf       []*rowValue
+	workChan  chan *valueBatch
+	batch     *valueBatch
 
-	batchMut  *sync.Mutex
-	batchCond *sync.Cond
+	syncMut  *sync.Mutex
+	syncCond *sync.Cond
 
-	lastBatchProcessed int32
-	nextBatchNonce     atomic.Int32
+	lastSync    int32
+	syncCounter int32
 }
 
 func newColumnAppender(wg *sync.WaitGroup) *columnAppender {
 	batchMut := &sync.Mutex{}
 	batchCond := sync.NewCond(batchMut)
+	initialBuf := bufpool.Get().(*valueBatch)
 
 	appender := &columnAppender{
-		workChan:  make(chan *batch),
+		workChan:  make(chan *valueBatch),
 		waitGroup: wg,
-		buf:       make([]*rowValue, 0, 8192),
+		batch:     initialBuf,
 
-		batchMut:           batchMut,
-		batchCond:          batchCond,
-		lastBatchProcessed: 0,
-		nextBatchNonce:     atomic.Int32{},
+		syncMut:  batchMut,
+		syncCond: batchCond,
+		lastSync: 0,
 	}
 	go appender.loop()
 
@@ -221,53 +228,67 @@ func (ca *columnAppender) loop() {
 			}
 		}
 
-		ca.batchMut.Lock()
-		ca.lastBatchProcessed = int32(batch.nonce)
-		ca.batchMut.Unlock()
-		ca.batchCond.Broadcast()
+		if batch.syncId != 0 {
+			ca.syncMut.Lock()
+			ca.lastSync = batch.syncId
+			ca.syncMut.Unlock()
+			ca.syncCond.Broadcast()
+			batch.syncId = 0
+		}
+
+		batch.rows = batch.rows[:0]
+		bufpool.Put(batch)
 	}
 	ca.waitGroup.Done()
 }
 
-// Sync to waits for all work items to be completed up to the provided row number.
-// This must be called after all values for a row have been dispatched.
-func (ca *columnAppender) sync() {
-	ca.batchMut.Lock()
-	defer ca.batchMut.Unlock()
+var bufpool = &sync.Pool{
+	New: func() any {
+		return &valueBatch{
+			rows: make([]*rowValue, 0, 1024),
+		}
+	},
+}
 
-	nextBatch := int(ca.nextBatchNonce.Add(1))
-	ca.workChan <- &batch{
-		rows:  ca.buf,
-		nonce: nextBatch,
-	}
-	ca.buf = make([]*rowValue, 0, cap(ca.buf))
+// Sync writes the current buffer to the work channel with a sync ID for later identification
+func (ca *columnAppender) startSync() int32 {
+	ca.syncMut.Lock()
+	defer ca.syncMut.Unlock()
 
-	for ca.lastBatchProcessed < int32(nextBatch) {
-		ca.batchCond.Wait()
+	ca.syncCounter++
+	syncId := ca.syncCounter
+	ca.batch.syncId = syncId
+	ca.workChan <- ca.batch
+	ca.batch = bufpool.Get().(*valueBatch)
+
+	return syncId
+}
+
+// awaitSync waits for the given syncId to have been processed by the worker.
+func (ca *columnAppender) awaitSync(syncId int32) {
+	ca.syncMut.Lock()
+	defer ca.syncMut.Unlock()
+
+	for ca.lastSync < syncId {
+		ca.syncCond.Wait()
 	}
 }
 
 func (ca *columnAppender) appendValue(builder *dataset.ColumnBuilder, row int, value dataset.Value) {
-	ca.buf = append(ca.buf, &rowValue{
+	ca.batch.rows = append(ca.batch.rows, &rowValue{
 		builder: builder,
 		row:     row,
 		value:   value,
 	})
-	if len(ca.buf) >= cap(ca.buf) {
-		ca.workChan <- &batch{
-			rows:  ca.buf,
-			nonce: int(ca.nextBatchNonce.Add(1)),
-		}
+	if len(ca.batch.rows) >= cap(ca.batch.rows) {
+		ca.workChan <- ca.batch
 		// Make a new buffer in order to avoid needing to synchronise when the worker is done with the old buffer.
-		ca.buf = make([]*rowValue, 0, cap(ca.buf))
+		ca.batch = bufpool.Get().(*valueBatch)
 	}
 }
 
 func (ca *columnAppender) close() {
-	ca.workChan <- &batch{
-		rows:  ca.buf,
-		nonce: int(ca.nextBatchNonce.Add(1)),
-	}
+	ca.workChan <- ca.batch
 	close(ca.workChan)
 }
 
