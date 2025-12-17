@@ -61,6 +61,16 @@ Key points:
 - **No data loss** - PersistentVolumeClaims and data are preserved
 - New StatefulSets will be created with correct service references
 
+## 3.6.0
+
+### Loki 3.6.0
+
+#### Upgraded AWS SDK to v2
+
+Loki uses the official AWS SDK for configuring and communication with S3 object storage. Version 1 of the SDK reached its end of life on 31st, 2025, and therefore had to be replaced with Version 2. While the user-facing configuration in Loki did not change, internal functionality of the object store client did change, without affecting functionality of Loki.
+
+Please refer to the full release notes of v2 [https://github.com/aws/aws-sdk-go-v2/releases/tag/release-2025-01-15](https://github.com/aws/aws-sdk-go-v2/releases/tag/release-2025-01-15) for further information and whether you may be impacted by any of the changes. 
+
 ## 3.5.0
 
 ### Loki 3.5.8

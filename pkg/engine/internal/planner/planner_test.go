@@ -127,7 +127,7 @@ func (t *TestMetastore) Sections(_ context.Context, _ time.Time, _ time.Time, _ 
 var _ metastore.Metastore = (*TestMetastore)(nil)
 
 func TestFullQueryPlanning(t *testing.T) {
-	metastore := &TestMetastore{}
+	ms := &TestMetastore{}
 	testCases := []struct {
 		comment  string
 		query    string
@@ -296,7 +296,9 @@ VectorAggregation operation=sum group_by=(ambiguous.bar)
 			logicalPlan, err := logical.BuildPlan(q)
 			require.NoError(t, err)
 
-			catalog := physical.NewMetastoreCatalog(ctx, metastore)
+			catalog := physical.NewMetastoreCatalog(func(start time.Time, end time.Time, selectors []*labels.Matcher, predicates []*labels.Matcher) ([]*metastore.DataobjSectionDescriptor, error) {
+				return ms.Sections(ctx, start, end, selectors, predicates)
+			})
 			planner := physical.NewPlanner(physical.NewContext(q.Start(), q.End()), catalog)
 
 			plan, err := planner.Build(logicalPlan)
