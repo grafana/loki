@@ -14,6 +14,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/thanos-io/objstore"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -305,9 +306,7 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, logger log.Logger, param
 	region := xcap.RegionFromContext(ctx)
 	timer := prometheus.NewTimer(e.metrics.physicalPlanning)
 
-	// TODO(rfratto): To improve the performance of the physical planner, we
-	// may want to parallelize metastore lookups across scheduled tasks as well.
-	catalog := physical.NewMetastoreCatalog(ctx, e.metastore)
+	catalog := physical.NewMetastoreCatalog(e.queryMetastoreSectionsFunc(ctx))
 
 	// TODO(rfratto): It feels strange that we need to past the start/end time
 	// to the physical planner. Isn't it already represented by the logical
@@ -336,6 +335,13 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, logger log.Logger, param
 
 	region.AddEvent("finished physical planning", attribute.Stringer("duration", duration))
 	return physicalPlan, duration, nil
+}
+
+func (e *Engine) queryMetastoreSectionsFunc(ctx context.Context) physical.MetastoreSectionsResolver {
+	return func(start time.Time, end time.Time, selector []*labels.Matcher, predicates []*labels.Matcher) ([]*metastore.DataobjSectionDescriptor, error) {
+		// TODO(ivkalita): query distributedly
+		return e.metastore.Sections(ctx, start, end, selector, predicates)
+	}
 }
 
 // buildWorkflow builds a workflow from the given physical plan.

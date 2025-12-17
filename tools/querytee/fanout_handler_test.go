@@ -198,9 +198,9 @@ func TestFanOutHandler_Do_WithFilter(t *testing.T) {
 	require.Equal(t, 1, requestCount, "expected only 1 backend to receive request due to filter")
 }
 
-func TestFanOutHandler_Do_RaceModeReturnsFirstSuccessful(t *testing.T) {
+func TestFanOutHandler_Do_RaceModeReturnsNonPreferredIfWithinTolerance(t *testing.T) {
 	backend1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(10 * time.Millisecond)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, err := w.Write([]byte(`{"status":"success","data":{"resultType":"streams","result":[{"stream":{"backend":"1"},"values":[["1000000000","log line 1"]]}]}}`))
@@ -209,7 +209,7 @@ func TestFanOutHandler_Do_RaceModeReturnsFirstSuccessful(t *testing.T) {
 	defer backend1.Close()
 
 	backend2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(50 * time.Millisecond)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, err := w.Write([]byte(`{"status":"success","data":{"resultType":"streams","result":[{"stream":{"backend":"2"},"values":[["1000000000","log line 2"]]}]}}`))
@@ -226,12 +226,13 @@ func TestFanOutHandler_Do_RaceModeReturnsFirstSuccessful(t *testing.T) {
 	}
 
 	handler := NewFanOutHandler(FanOutHandlerConfig{
-		Backends:   backends,
-		Codec:      queryrange.DefaultCodec,
-		Logger:     log.NewNopLogger(),
-		Metrics:    NewProxyMetrics(prometheus.NewRegistry()),
-		RouteName:  "test_route",
-		EnableRace: true,
+		Backends:      backends,
+		Codec:         queryrange.DefaultCodec,
+		Logger:        log.NewNopLogger(),
+		Metrics:       NewProxyMetrics(prometheus.NewRegistry()),
+		RouteName:     "test_route",
+		EnableRace:    true,
+		RaceTolerance: 100 * time.Millisecond,
 	})
 
 	req := &queryrange.LokiRequest{
