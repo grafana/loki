@@ -253,10 +253,7 @@ func decodeResponse(opts *DecodeOptions, rType *ResourceType, resp response) (ma
 	perResourceErrors := make(map[string]error) // Tracks resource validation errors, where we have a resource name.
 	ret := make(map[string]dataAndErrTuple)     // Return result, a map from resource name to either resource data or error.
 	for _, r := range resp.resources {
-		result, err := rType.Decoder.Decode(AnyProto{
-			TypeURL: r.GetTypeUrl(),
-			Value:   r.GetValue(),
-		}, *opts)
+		result, err := rType.Decoder.Decode(NewAnyProto(r), *opts)
 
 		// Name field of the result is left unpopulated only when resource
 		// deserialization fails.

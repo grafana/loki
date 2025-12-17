@@ -281,6 +281,14 @@ type TenantsSpec struct {
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Openshift"
 	Openshift *OpenshiftTenantSpec `json:"openshift,omitempty"`
+
+	// DisableIngress disables automatic creation of external access resources (Route / Ingress).
+	// When true, no Route or Ingress will be created for the gateway.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:booleanSwitch",displayName="Disable Ingress"
+	DisableIngress bool `json:"disableIngress,omitempty"`
 }
 
 // OpenshiftTenantSpec defines the configuration specific to Openshift modes.

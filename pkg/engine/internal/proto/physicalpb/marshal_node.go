@@ -7,6 +7,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/proto/expressionpb"
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
 type marshaler interface {
@@ -97,16 +98,31 @@ func (n *AggregateRange) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error
 		return nil, err
 	}
 
+	grouping, err := marshalGrouping(n.Grouping)
+	if err != nil {
+		return nil, err
+	}
+
 	return &physical.RangeAggregation{
 		NodeID: nodeID,
 
-		PartitionBy: marshalColumnExpressions(n.PartitionBy),
-
+		Grouping:  grouping,
 		Operation: operation,
 		Start:     n.Start,
 		End:       n.End,
 		Step:      n.Step,
 		Range:     n.Range,
+	}, nil
+}
+
+func marshalGrouping(g *Grouping) (physical.Grouping, error) {
+	if g == nil {
+		return physical.Grouping{}, fmt.Errorf("empty grouping")
+	}
+
+	return physical.Grouping{
+		Columns: marshalColumnExpressions(g.Columns),
+		Without: g.Without,
 	}, nil
 }
 
@@ -134,10 +150,15 @@ func (n *AggregateVector) MarshalPhysical(nodeID ulid.ULID) (physical.Node, erro
 		return nil, err
 	}
 
+	grouping, err := marshalGrouping(n.Grouping)
+	if err != nil {
+		return nil, err
+	}
+
 	return &physical.VectorAggregation{
 		NodeID: nodeID,
 
-		GroupBy:   marshalColumnExpressions(n.GroupBy),
+		Grouping:  grouping,
 		Operation: operation,
 	}, nil
 }
@@ -231,9 +252,13 @@ func (n *ColumnCompat) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) 
 		return nil, err
 	}
 
-	collision, err := n.Collision.MarshalType()
-	if err != nil {
-		return nil, err
+	collisions := make([]types.ColumnType, len(n.Collisions))
+	for i, collision := range n.Collisions {
+		ct, err := collision.MarshalType()
+		if err != nil {
+			return nil, err
+		}
+		collisions[i] = ct
 	}
 
 	return &physical.ColumnCompat{
@@ -241,7 +266,7 @@ func (n *ColumnCompat) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) 
 
 		Source:      source,
 		Destination: destination,
-		Collision:   collision,
+		Collisions:  collisions,
 	}, nil
 }
 

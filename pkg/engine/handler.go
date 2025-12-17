@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/go-kit/log"
@@ -22,7 +23,7 @@ import (
 
 // Handler returns an [http.Handler] for serving queries. Unsupported queries
 // will result in an error.
-func Handler(cfg ExecutorConfig, logger log.Logger, engine *Engine, limits querier_limits.Limits) http.Handler {
+func Handler(cfg Config, logger log.Logger, engine *Engine, limits querier_limits.Limits) http.Handler {
 	return executorHandler(cfg, logger, engine, limits)
 }
 
@@ -31,7 +32,7 @@ type queryExecutor interface {
 	Execute(ctx context.Context, params logql.Params) (logqlmodel.Result, error)
 }
 
-func executorHandler(cfg ExecutorConfig, logger log.Logger, exec queryExecutor, limits querier_limits.Limits) http.Handler {
+func executorHandler(cfg Config, logger log.Logger, exec queryExecutor, limits querier_limits.Limits) http.Handler {
 	h := &queryHandler{
 		cfg:    cfg,
 		logger: logger,
@@ -42,7 +43,7 @@ func executorHandler(cfg ExecutorConfig, logger log.Logger, exec queryExecutor, 
 }
 
 type queryHandler struct {
-	cfg    ExecutorConfig
+	cfg    Config
 	logger log.Logger
 	exec   queryExecutor
 	limits querier_limits.Limits
@@ -118,8 +119,8 @@ func (h *queryHandler) validateMaxEntriesLimits(ctx context.Context, expr syntax
 }
 
 func (h *queryHandler) execute(ctx context.Context, logger log.Logger, params logql.Params) (logqlmodel.Result, error) {
-	if !h.validTimeRange(params) {
-		return logqlmodel.Result{}, httpgrpc.Errorf(http.StatusNotImplemented, "query outside of acceptable time range")
+	if err := h.validateTimeRange(params); err != nil {
+		return logqlmodel.Result{}, httpgrpc.Error(http.StatusNotImplemented, err.Error())
 	}
 
 	res, err := h.exec.Execute(ctx, params)
@@ -133,13 +134,21 @@ func (h *queryHandler) execute(ctx context.Context, logger log.Logger, params lo
 	return res, nil
 }
 
-// validTimeRange asserts whether the requested time range in the params are
-// supported by the new engine.
-func (h *queryHandler) validTimeRange(params logql.Params) bool {
+// validateTimeRange returns an error if the requested time range in params is
+// outside of the time range supported by the new engine.
+func (h *queryHandler) validateTimeRange(params logql.Params) error {
 	reqStart, reqEnd := params.Start(), params.End()
 	validStart, validEnd := h.cfg.ValidQueryRange()
 
-	return reqEnd.Before(validEnd) && reqStart.After(validStart)
+	if !reqEnd.After(validEnd) && !reqStart.Before(validStart) {
+		return nil
+	}
+
+	return fmt.Errorf(
+		"query outside of acceptable time range: requested {start=%s, end=%s}, valid range {start=%s, end=%s}",
+		reqStart, reqEnd,
+		validStart, validEnd,
+	)
 }
 
 func (h *queryHandler) doInstantRequest(ctx context.Context, req *queryrange.LokiInstantRequest) (logqlmodel.Result, error) {

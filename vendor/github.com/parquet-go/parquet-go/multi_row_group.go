@@ -2,6 +2,7 @@ package parquet
 
 import (
 	"io"
+	"slices"
 )
 
 // MultiRowGroup wraps multiple row groups to appear as if it was a single
@@ -13,47 +14,47 @@ func MultiRowGroup(rowGroups ...RowGroup) RowGroup {
 	if len(rowGroups) == 1 {
 		return rowGroups[0]
 	}
-
 	schema, err := compatibleSchemaOf(rowGroups)
 	if err != nil {
 		panic(err)
 	}
-
-	rowGroupsCopy := make([]RowGroup, len(rowGroups))
-	copy(rowGroupsCopy, rowGroups)
-
-	c := new(multiRowGroup)
-	c.init(schema, rowGroupsCopy)
-	return c
+	return newMultiRowGroup(schema, nil, slices.Clone(rowGroups))
 }
 
-func (c *multiRowGroup) init(schema *Schema, rowGroups []RowGroup) error {
-	columns := make([]multiColumnChunk, len(schema.Columns()))
+func newMultiRowGroup(schema *Schema, sorting []SortingColumn, rowGroups []RowGroup) *multiRowGroup {
+	m := new(multiRowGroup)
+	m.init(schema, sorting, rowGroups)
+	return m
+}
 
-	rowGroupColumnChunks := make([][]ColumnChunk, len(rowGroups))
+func (m *multiRowGroup) init(schema *Schema, sorting []SortingColumn, rowGroups []RowGroup) *multiRowGroup {
+	columns := make([]multiColumnChunk, len(schema.Columns()))
+	columnChunks := make([][]ColumnChunk, len(rowGroups))
+
 	for i, rowGroup := range rowGroups {
-		rowGroupColumnChunks[i] = rowGroup.ColumnChunks()
+		columnChunks[i] = rowGroup.ColumnChunks()
 	}
 
 	for i := range columns {
-		columns[i].rowGroup = c
+		columns[i].rowGroup = m
 		columns[i].column = i
-		columns[i].chunks = make([]ColumnChunk, len(rowGroupColumnChunks))
+		columns[i].chunks = make([]ColumnChunk, len(columnChunks))
 
-		for j, columnChunks := range rowGroupColumnChunks {
-			columns[i].chunks[j] = columnChunks[i]
+		for j, chunks := range columnChunks {
+			columns[i].chunks[j] = chunks[i]
 		}
 	}
 
-	c.schema = schema
-	c.rowGroups = rowGroups
-	c.columns = make([]ColumnChunk, len(columns))
+	m.schema = schema
+	m.sorting = sorting
+	m.rowGroups = rowGroups
+	m.columns = make([]ColumnChunk, len(columns))
 
 	for i := range columns {
-		c.columns[i] = &columns[i]
+		m.columns[i] = &columns[i]
 	}
 
-	return nil
+	return m
 }
 
 func compatibleSchemaOf(rowGroups []RowGroup) (*Schema, error) {
@@ -87,22 +88,23 @@ type multiRowGroup struct {
 	schema    *Schema
 	rowGroups []RowGroup
 	columns   []ColumnChunk
+	sorting   []SortingColumn
 }
 
-func (c *multiRowGroup) NumRows() (numRows int64) {
-	for _, rowGroup := range c.rowGroups {
+func (m *multiRowGroup) NumRows() (numRows int64) {
+	for _, rowGroup := range m.rowGroups {
 		numRows += rowGroup.NumRows()
 	}
 	return numRows
 }
 
-func (c *multiRowGroup) ColumnChunks() []ColumnChunk { return c.columns }
+func (m *multiRowGroup) ColumnChunks() []ColumnChunk { return m.columns }
 
-func (c *multiRowGroup) SortingColumns() []SortingColumn { return nil }
+func (m *multiRowGroup) SortingColumns() []SortingColumn { return m.sorting }
 
-func (c *multiRowGroup) Schema() *Schema { return c.schema }
+func (m *multiRowGroup) Schema() *Schema { return m.schema }
 
-func (c *multiRowGroup) Rows() Rows { return NewRowGroupRowReader(c) }
+func (m *multiRowGroup) Rows() Rows { return NewRowGroupRowReader(m) }
 
 type multiColumnChunk struct {
 	rowGroup *multiRowGroup

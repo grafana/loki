@@ -209,6 +209,11 @@ type Distributor struct {
 	// are consumed.
 	numMetadataPartitions int
 
+	// inflightBytes keeps track of the total number of bytes for all in-flight
+	// push requests.
+	inflightBytes      *atomic.Uint64
+	inflightBytesGauge prometheus.Gauge
+
 	// kafka metrics
 	kafkaAppends           *prometheus.CounterVec
 	kafkaWriteBytesTotal   prometheus.Counter
@@ -283,6 +288,8 @@ func New(
 		return nil, fmt.Errorf("partition ring is required for kafka writes")
 	}
 
+	ingestLimits := newIngestLimits(limitsFrontendClient, registerer)
+
 	var kafkaWriter KafkaProducer
 	if cfg.KafkaEnabled {
 		kafkaClient, err := kafka_client.NewWriterClient("distributor", cfg.KafkaConfig, 20, logger, registerer)
@@ -295,10 +302,18 @@ func New(
 		)
 
 		if cfg.DataObjTeeConfig.Enabled {
+			resolver := NewSegmentationPartitionResolver(
+				uint64(cfg.DataObjTeeConfig.PerPartitionRateBytes),
+				dataObjConsumerPartitionRing,
+				registerer,
+				logger,
+			)
 			dataObjTee, err := NewDataObjTee(
 				&cfg.DataObjTeeConfig,
+				resolver,
+				ingestLimits,
+				overrides,
 				kafkaClient,
-				dataObjConsumerPartitionRing,
 				logger,
 				registerer,
 			)
@@ -379,8 +394,14 @@ func New(
 		writeFailuresManager:  writefailures.NewManager(logger, registerer, cfg.WriteFailuresLogging, configs, "distributor"),
 		kafkaWriter:           kafkaWriter,
 		partitionRing:         partitionRing,
-		ingestLimits:          newIngestLimits(limitsFrontendClient, registerer),
+		ingestLimits:          ingestLimits,
 		numMetadataPartitions: numMetadataPartitions,
+		inflightBytes:         atomic.NewUint64(0),
+		inflightBytesGauge: promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
+			Namespace: constants.Loki,
+			Name:      "distributor_inflight_bytes",
+			Help:      "The number of bytes currently inflight.",
+		}),
 	}
 
 	if overrides.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
@@ -529,6 +550,14 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 // Push a set of streams.
 // The returned error is the last one seen.
 func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRequest, streamResolver *requestScopedStreamResolver, format string) (*logproto.PushResponse, error) {
+	requestSizeBytes := uint64(req.Size())
+	d.inflightBytes.Add(requestSizeBytes)
+	d.inflightBytesGauge.Add(float64(requestSizeBytes))
+	defer func() {
+		d.inflightBytes.Sub(requestSizeBytes)
+		d.inflightBytesGauge.Sub(float64(requestSizeBytes))
+	}()
+
 	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err

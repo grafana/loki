@@ -63,7 +63,7 @@ type downloadedObject struct {
 }
 
 const (
-	indexConsumerGroup = "index-builder"
+	defaultIndexConsumerGroup = "index-builder"
 )
 
 // An interface for the methods needed from a calculator. Useful for testing.
@@ -72,6 +72,7 @@ type calculator interface {
 	Flush() (*dataobj.Object, io.Closer, error)
 	TimeRanges() []multitenancy.TimeRange
 	Reset()
+	IsFull() bool
 }
 
 // An interface for the methods needed from a kafka client. Useful for testing.
@@ -134,7 +135,7 @@ func NewIndexBuilder(
 	}
 
 	// Create index building dependencies
-	builder, err := indexobj.NewBuilder(cfg.BuilderConfig, scratchStore)
+	builder, err := indexobj.NewBuilder(cfg.BuilderBaseConfig, scratchStore)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create index builder: %w", err)
 	}
@@ -166,6 +167,11 @@ func NewIndexBuilder(
 		indexerConfig{QueueSize: 64},
 	)
 
+	consumerGroup := defaultIndexConsumerGroup
+	if kafkaCfg.ConsumerGroup != "" {
+		consumerGroup = kafkaCfg.ConsumerGroup
+	}
+
 	kafkaCfg.AutoCreateTopicEnabled = true
 	eventConsumerClient, err := client.NewReaderClient(
 		"index_builder",
@@ -175,7 +181,7 @@ func NewIndexBuilder(
 		kgo.ConsumeTopics(kafkaCfg.Topic),
 		kgo.InstanceID(instanceID),
 		kgo.SessionTimeout(3*time.Minute),
-		kgo.ConsumerGroup(indexConsumerGroup),
+		kgo.ConsumerGroup(consumerGroup),
 		kgo.Balancers(kgo.RoundRobinBalancer()),
 		kgo.RebalanceTimeout(5*time.Minute),
 		kgo.DisableAutoCommit(),

@@ -50,7 +50,8 @@ func (e RedisError) Error() string { return string(e) }
 func (RedisError) RedisError() {}
 
 func ParseErrorReply(line []byte) error {
-	return RedisError(line[1:])
+	msg := string(line[1:])
+	return parseTypedRedisError(msg)
 }
 
 //------------------------------------------------------------------------------
@@ -201,7 +202,7 @@ func (r *Reader) ReadLine() ([]byte, error) {
 		var blobErr string
 		blobErr, err = r.readStringReply(line)
 		if err == nil {
-			err = RedisError(blobErr)
+			err = parseTypedRedisError(blobErr)
 		}
 		return nil, err
 	case RespAttr:

@@ -569,6 +569,14 @@ type Bucket struct {
 	// [UpdateBucketBundle]: https://docs.aws.amazon.com/lightsail/2016-11-28/api-reference/API_UpdateBucketBundle.html
 	BundleId *string
 
+	// An array of cross-origin resource sharing (CORS) rules that identify origins
+	// and the HTTP methods that can be executed on your bucket. This field is only
+	// included in the response when CORS configuration is requested or when updating
+	// CORS configuration. For more information, see [Configuring cross-origin resource sharing (CORS)].
+	//
+	// [Configuring cross-origin resource sharing (CORS)]: https://docs.aws.amazon.com/lightsail/latest/userguide/configure-cors.html
+	Cors *BucketCorsConfig
+
 	// The timestamp when the distribution was created.
 	CreatedAt *time.Time
 
@@ -687,6 +695,78 @@ type BucketBundle struct {
 
 	// The monthly network transfer quota of the bundle.
 	TransferPerMonthInGb *int32
+
+	noSmithyDocumentSerde
+}
+
+// Describes the cross-origin resource sharing (CORS) configuration for a
+// Lightsail bucket. CORS defines a way for client web applications that are loaded
+// in one domain to interact with resources in a different domain. For more
+// information, see [Configuring cross-origin resource sharing (CORS)].
+//
+// [Configuring cross-origin resource sharing (CORS)]: https://docs.aws.amazon.com/lightsail/latest/userguide/configure-cors.html
+type BucketCorsConfig struct {
+
+	// A set of origins and methods (cross-origin access that you want to allow). You
+	// can add up to 20 rules to the configuration. The total size is limited to 64 KB.
+	Rules []BucketCorsRule
+
+	noSmithyDocumentSerde
+}
+
+// Describes a cross-origin resource sharing (CORS) rule for a Lightsail bucket.
+// CORS rules specify which origins are allowed to access the bucket, which HTTP
+// methods are allowed, and other access control information. For more information,
+// see [Configuring cross-origin resource sharing (CORS)].
+//
+// [Configuring cross-origin resource sharing (CORS)]: https://docs.aws.amazon.com/lightsail/latest/userguide/configure-cors.html
+type BucketCorsRule struct {
+
+	// The HTTP methods that are allowed when accessing the bucket from the specified
+	// origin. Each CORS rule must identify at least one origin and one method.
+	//
+	// You can use the following HTTP methods:
+	//
+	//   - GET - Retrieves data from the server, such as downloading files or viewing
+	//   content.
+	//
+	//   - PUT - Uploads or replaces data on the server, such as uploading new files.
+	//
+	//   - POST - Sends data to the server for processing, such as submitting forms or
+	//   creating new resources.
+	//
+	//   - DELETE - Removes data from the server, such as deleting files or resources.
+	//
+	//   - HEAD - Retrieves only the headers from the server without the actual
+	//   content, useful for checking if a resource exists.
+	//
+	// This member is required.
+	AllowedMethods []string
+
+	// One or more origins you want customers to be able to access the bucket from.
+	// Each CORS rule must identify at least one origin and one method.
+	//
+	// This member is required.
+	AllowedOrigins []string
+
+	// Headers that are specified in the Access-Control-Request-Headers header. These
+	// headers are allowed in a preflight OPTIONS request. In response to any
+	// preflight OPTIONS request, Amazon S3 returns any requested headers that are
+	// allowed.
+	AllowedHeaders []string
+
+	// One or more headers in the response that you want customers to be able to
+	// access from their applications (for example, from a JavaScript XMLHttpRequest
+	// object).
+	ExposeHeaders []string
+
+	// A unique identifier for the CORS rule. The ID value can be up to 255 characters
+	// long. The IDs help you find a rule in the configuration.
+	Id *string
+
+	// The time in seconds that your browser is to cache the preflight response for
+	// the specified resource. A CORS rule can have only one maxAgeSeconds element.
+	MaxAgeSeconds *int32
 
 	noSmithyDocumentSerde
 }

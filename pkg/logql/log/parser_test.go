@@ -12,12 +12,13 @@ import (
 
 func Test_jsonParser_Parse(t *testing.T) {
 	tests := []struct {
-		name         string
-		line         []byte
-		lbs          labels.Labels
-		want         labels.Labels
-		wantJSONPath map[string][]string
-		hints        ParserHint
+		name               string
+		line               []byte
+		lbs                labels.Labels
+		want               labels.Labels
+		wantJSONPath       map[string][]string
+		hints              ParserHint
+		structuredMetadata map[string]string
 	}{
 		{
 			"multi depth",
@@ -35,6 +36,7 @@ func Test_jsonParser_Parse(t *testing.T) {
 				"pod_deployment_ref": {"pod", "deployment", "ref"},
 			},
 			NoParserHints(),
+			nil,
 		},
 		{
 			"multi depth with duplicates",
@@ -56,6 +58,7 @@ func Test_jsonParser_Parse(t *testing.T) {
 				"pod_deployment_ref": {"pod", "deployment", "ref"},
 			},
 			NoParserHints(),
+			nil,
 		},
 		{
 			"numeric",
@@ -69,6 +72,7 @@ func Test_jsonParser_Parse(t *testing.T) {
 				"price__net_": {"price", "_net_"},
 			},
 			NoParserHints(),
+			nil,
 		},
 		{
 			"whitespace key value",
@@ -79,6 +83,7 @@ func Test_jsonParser_Parse(t *testing.T) {
 				"foo": {" ", "foo"},
 			},
 			NoParserHints(),
+			nil,
 		},
 		{
 			"whitespace key and whitespace subkey values",
@@ -89,6 +94,7 @@ func Test_jsonParser_Parse(t *testing.T) {
 				"": {" ", " "},
 			},
 			NoParserHints(),
+			nil,
 		},
 		{
 			"whitespace key and empty subkey values",
@@ -99,6 +105,7 @@ func Test_jsonParser_Parse(t *testing.T) {
 				"": {" ", ""},
 			},
 			NoParserHints(),
+			nil,
 		},
 		{
 			"empty key and empty subkey values",
@@ -109,6 +116,7 @@ func Test_jsonParser_Parse(t *testing.T) {
 				"": {"", ""},
 			},
 			NoParserHints(),
+			nil,
 		},
 		{
 			"escaped",
@@ -124,6 +132,7 @@ func Test_jsonParser_Parse(t *testing.T) {
 				"foo":         {"foo"},
 			},
 			NoParserHints(),
+			nil,
 		},
 		{
 			"utf8 error rune",
@@ -139,6 +148,7 @@ func Test_jsonParser_Parse(t *testing.T) {
 				"foo":         {"foo"},
 			},
 			NoParserHints(),
+			nil,
 		},
 		{
 			"skip arrays",
@@ -149,6 +159,7 @@ func Test_jsonParser_Parse(t *testing.T) {
 				"counter": {"counter"},
 			},
 			NoParserHints(),
+			nil,
 		},
 		{
 			"bad key replaced",
@@ -159,6 +170,7 @@ func Test_jsonParser_Parse(t *testing.T) {
 				"cou_nter": {"cou-nter"},
 			},
 			NoParserHints(),
+			nil,
 		},
 		{
 			"nested bad key replaced",
@@ -169,6 +181,7 @@ func Test_jsonParser_Parse(t *testing.T) {
 				"foo_cou_nter": {"foo", "cou-nter"},
 			},
 			NoParserHints(),
+			nil,
 		},
 		{
 			"errors",
@@ -179,6 +192,7 @@ func Test_jsonParser_Parse(t *testing.T) {
 			),
 			map[string][]string{},
 			NoParserHints(),
+			nil,
 		},
 		{
 			"errors hints",
@@ -190,6 +204,7 @@ func Test_jsonParser_Parse(t *testing.T) {
 			),
 			map[string][]string{},
 			NewParserHint([]string{"__error__"}, nil, false, true, "", nil),
+			nil,
 		},
 		{
 			"duplicate extraction",
@@ -210,6 +225,25 @@ func Test_jsonParser_Parse(t *testing.T) {
 				"pod_deployment_ref": {"pod", "deployment", "ref"},
 			},
 			NoParserHints(),
+			nil,
+		},
+		{
+			"duplicate conflict with structured metadata",
+			[]byte(`{"app":"foo","namespace":"prod","pod":"pod_parsed"}`),
+			labels.EmptyLabels(),
+			labels.FromStrings(
+				"app", "foo",
+				"namespace", "prod",
+				"pod", "pod_sm",
+				"pod_extracted", "pod_parsed",
+			),
+			map[string][]string{
+				"app":           {"app"},
+				"namespace":     {"namespace"},
+				"pod_extracted": {"pod"},
+			},
+			NoParserHints(),
+			map[string]string{"pod": "pod_sm"},
 		},
 	}
 	for _, tt := range tests {
@@ -219,6 +253,11 @@ func Test_jsonParser_Parse(t *testing.T) {
 
 			b := NewBaseLabelsBuilderWithGrouping(nil, tt.hints, false, false).ForLabels(tt.lbs, labels.StableHash(tt.lbs))
 			b.Reset()
+
+			for key, value := range tt.structuredMetadata {
+				b.Set(StructuredMetadataLabel, key, value)
+			}
+
 			_, _ = j.Process(0, tt.line, b)
 			labels := b.LabelsResult().Labels()
 			require.Equal(t, origLine, string(tt.line), "original log line was modified")
@@ -368,12 +407,13 @@ func TestJSONExpressionParser(t *testing.T) {
 	testLine := []byte(`{"app":"foo","field with space":"value","field with ÜFT8👌":"value","null_field":null,"bool_field":false,"namespace":"prod","pod":{"uuid":"foo","deployment":{"ref":"foobar", "params": [1,2,3,"string_value"]}}}`)
 
 	tests := []struct {
-		name        string
-		line        []byte
-		expressions []LabelExtractionExpr
-		lbs         labels.Labels
-		want        labels.Labels
-		hints       ParserHint
+		name               string
+		line               []byte
+		expressions        []LabelExtractionExpr
+		lbs                labels.Labels
+		want               labels.Labels
+		hints              ParserHint
+		structuredMetadata map[string]string
 	}{
 		{
 			"single field",
@@ -384,6 +424,7 @@ func TestJSONExpressionParser(t *testing.T) {
 			labels.EmptyLabels(),
 			labels.FromStrings("app", "foo"),
 			NoParserHints(),
+			nil,
 		},
 		{
 			"alternate syntax",
@@ -394,6 +435,7 @@ func TestJSONExpressionParser(t *testing.T) {
 			labels.EmptyLabels(),
 			labels.FromStrings("test", "value"),
 			NoParserHints(),
+			nil,
 		},
 		{
 			"multiple fields",
@@ -407,6 +449,7 @@ func TestJSONExpressionParser(t *testing.T) {
 				"namespace", "prod",
 			),
 			NoParserHints(),
+			nil,
 		},
 		{
 			"utf8",
@@ -417,6 +460,7 @@ func TestJSONExpressionParser(t *testing.T) {
 			labels.EmptyLabels(),
 			labels.FromStrings("utf8", "value"),
 			NoParserHints(),
+			nil,
 		},
 		{
 			"nested field",
@@ -427,6 +471,7 @@ func TestJSONExpressionParser(t *testing.T) {
 			labels.EmptyLabels(),
 			labels.FromStrings("uuid", "foo"),
 			NoParserHints(),
+			nil,
 		},
 		{
 			"nested field alternate syntax",
@@ -437,6 +482,7 @@ func TestJSONExpressionParser(t *testing.T) {
 			labels.EmptyLabels(),
 			labels.FromStrings("uuid", "foo"),
 			NoParserHints(),
+			nil,
 		},
 		{
 			"nested field alternate syntax 2",
@@ -447,6 +493,7 @@ func TestJSONExpressionParser(t *testing.T) {
 			labels.EmptyLabels(),
 			labels.FromStrings("uuid", "foo"),
 			NoParserHints(),
+			nil,
 		},
 		{
 			"nested field alternate syntax 3",
@@ -457,6 +504,7 @@ func TestJSONExpressionParser(t *testing.T) {
 			labels.EmptyLabels(),
 			labels.FromStrings("uuid", "foo"),
 			NoParserHints(),
+			nil,
 		},
 		{
 			"array element",
@@ -467,6 +515,7 @@ func TestJSONExpressionParser(t *testing.T) {
 			labels.EmptyLabels(),
 			labels.FromStrings("param", "1"),
 			NoParserHints(),
+			nil,
 		},
 		{
 			"object element not present",
@@ -477,6 +526,7 @@ func TestJSONExpressionParser(t *testing.T) {
 			labels.EmptyLabels(),
 			labels.FromStrings("undefined", ""),
 			NoParserHints(),
+			nil,
 		},
 		{
 			"accessing invalid array index",
@@ -487,6 +537,7 @@ func TestJSONExpressionParser(t *testing.T) {
 			labels.EmptyLabels(),
 			labels.FromStrings("param", ""),
 			NoParserHints(),
+			nil,
 		},
 		{
 			"array string element",
@@ -497,6 +548,7 @@ func TestJSONExpressionParser(t *testing.T) {
 			labels.EmptyLabels(),
 			labels.FromStrings("param", "string_value"),
 			NoParserHints(),
+			nil,
 		},
 		{
 			"full array",
@@ -507,6 +559,7 @@ func TestJSONExpressionParser(t *testing.T) {
 			labels.EmptyLabels(),
 			labels.FromStrings("params", `[1,2,3,"string_value"]`),
 			NoParserHints(),
+			nil,
 		},
 		{
 			"full object",
@@ -517,6 +570,7 @@ func TestJSONExpressionParser(t *testing.T) {
 			labels.EmptyLabels(),
 			labels.FromStrings("deployment", `{"ref":"foobar", "params": [1,2,3,"string_value"]}`),
 			NoParserHints(),
+			nil,
 		},
 		{
 			"expression matching nothing",
@@ -527,6 +581,7 @@ func TestJSONExpressionParser(t *testing.T) {
 			labels.EmptyLabels(),
 			labels.FromStrings("nope", ""),
 			NoParserHints(),
+			nil,
 		},
 		{
 			"null field",
@@ -538,6 +593,7 @@ func TestJSONExpressionParser(t *testing.T) {
 			labels.FromStrings("nf", ""), // null is coerced to an empty string
 
 			NoParserHints(),
+			nil,
 		},
 		{
 			"boolean field",
@@ -548,6 +604,7 @@ func TestJSONExpressionParser(t *testing.T) {
 			labels.EmptyLabels(),
 			labels.FromStrings("bool", `false`),
 			NoParserHints(),
+			nil,
 		},
 		{
 			"label override",
@@ -560,6 +617,7 @@ func TestJSONExpressionParser(t *testing.T) {
 				"uuid_extracted", "foo",
 			),
 			NoParserHints(),
+			nil,
 		},
 		{
 			"non-matching expression",
@@ -572,6 +630,7 @@ func TestJSONExpressionParser(t *testing.T) {
 				"request_size", "",
 			),
 			NoParserHints(),
+			nil,
 		},
 		{
 			"empty line",
@@ -582,6 +641,7 @@ func TestJSONExpressionParser(t *testing.T) {
 			labels.EmptyLabels(),
 			labels.FromStrings("uuid", ""),
 			NoParserHints(),
+			nil,
 		},
 		{
 			"existing labels are not affected",
@@ -594,6 +654,7 @@ func TestJSONExpressionParser(t *testing.T) {
 				"uuid", "",
 			),
 			NoParserHints(),
+			nil,
 		},
 		{
 			"invalid JSON line",
@@ -606,6 +667,7 @@ func TestJSONExpressionParser(t *testing.T) {
 				logqlmodel.ErrorLabel, errJSON,
 			),
 			NoParserHints(),
+			nil,
 		},
 		{
 			"invalid JSON line with hints",
@@ -619,6 +681,7 @@ func TestJSONExpressionParser(t *testing.T) {
 				logqlmodel.PreserveErrorLabel, "true",
 			),
 			NewParserHint([]string{"__error__"}, nil, false, true, "", nil),
+			nil,
 		},
 		{
 			"empty line",
@@ -629,6 +692,7 @@ func TestJSONExpressionParser(t *testing.T) {
 			labels.FromStrings("foo", "bar"),
 			labels.FromStrings("foo", "bar"),
 			NoParserHints(),
+			nil,
 		},
 		{
 			"nested escaped object",
@@ -641,6 +705,7 @@ func TestJSONExpressionParser(t *testing.T) {
 				"app", `{ "key": "value", "key2":"value2"}`,
 			),
 			NoParserHints(),
+			nil,
 		},
 		{
 			"nested object with escaped value",
@@ -653,6 +718,7 @@ func TestJSONExpressionParser(t *testing.T) {
 				"app", `{"name":"great \"loki\""}`,
 			),
 			NoParserHints(),
+			nil,
 		},
 		{
 			"field with escaped value inside the json string",
@@ -665,6 +731,7 @@ func TestJSONExpressionParser(t *testing.T) {
 				"app", `{"name":"great \"loki\""}`,
 			),
 			NoParserHints(),
+			nil,
 		},
 		{
 			"duplicate field name takes first value",
@@ -677,6 +744,20 @@ func TestJSONExpressionParser(t *testing.T) {
 				"app", "foo",
 			),
 			NoParserHints(),
+			nil,
+		},
+		{
+			"duplicate conflict with structured metadata",
+			testLine,
+			[]LabelExtractionExpr{
+				NewLabelExtractionExpr("app", "app"),
+			},
+			labels.EmptyLabels(),
+			labels.FromStrings("app", "app_sm",
+				"app_extracted", "foo",
+			),
+			NoParserHints(),
+			map[string]string{"app": "app_sm"},
 		},
 	}
 	for _, tt := range tests {
@@ -685,6 +766,10 @@ func TestJSONExpressionParser(t *testing.T) {
 			require.NoError(t, err, "cannot create JSON expression parser")
 			b := NewBaseLabelsBuilderWithGrouping(nil, tt.hints, false, false).ForLabels(tt.lbs, labels.StableHash(tt.lbs))
 			b.Reset()
+			// Set structured metadata if specified
+			for key, value := range tt.structuredMetadata {
+				b.Set(StructuredMetadataLabel, key, value)
+			}
 			_, _ = j.Process(0, tt.line, b)
 			require.Equal(t, tt.want, b.LabelsResult().Labels())
 		})
@@ -1023,11 +1108,12 @@ func TestNewRegexpParser(t *testing.T) {
 
 func Test_regexpParser_Parse(t *testing.T) {
 	tests := []struct {
-		name   string
-		parser Stage
-		line   []byte
-		lbs    labels.Labels
-		want   labels.Labels
+		name               string
+		parser             Stage
+		line               []byte
+		lbs                labels.Labels
+		want               labels.Labels
+		structuredMetadata map[string]string
 	}{
 		{
 			"no matches",
@@ -1035,6 +1121,7 @@ func Test_regexpParser_Parse(t *testing.T) {
 			[]byte("blah"),
 			labels.FromStrings("app", "foo"),
 			labels.FromStrings("app", "foo"),
+			nil,
 		},
 		{
 			"double matches",
@@ -1044,6 +1131,7 @@ func Test_regexpParser_Parse(t *testing.T) {
 			labels.FromStrings("app", "bar",
 				"foo", "matchebuzz bar",
 			),
+			nil,
 		},
 		{
 			"duplicate labels",
@@ -1053,6 +1141,7 @@ func Test_regexpParser_Parse(t *testing.T) {
 			labels.FromStrings("bar", "foo",
 				"bar_extracted", "bar",
 			),
+			nil,
 		},
 		{
 			"multiple labels extracted",
@@ -1063,12 +1152,28 @@ func Test_regexpParser_Parse(t *testing.T) {
 				"status", "200",
 				"latency", "500",
 			),
+			nil,
+		},
+		{
+			"duplicate conflict with structured metadata",
+			mustStage(NewRegexpParser("status=(?P<status>\\w+),latency=(?P<latency>\\w+)(ms|ns)")),
+			[]byte("status=200,latency=500ms"),
+			labels.EmptyLabels(),
+			labels.FromStrings("status", "400",
+				"status_extracted", "200",
+				"latency", "500",
+			),
+			map[string]string{"status": "400"},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			b := NewBaseLabelsBuilder().ForLabels(tt.lbs, labels.StableHash(tt.lbs))
 			b.Reset()
+			// Set structured metadata if specified
+			for key, value := range tt.structuredMetadata {
+				b.Set(StructuredMetadataLabel, key, value)
+			}
 			_, _ = tt.parser.Process(0, tt.line, b)
 			require.Equal(t, tt.want, b.LabelsResult().Labels())
 		})
@@ -1077,12 +1182,13 @@ func Test_regexpParser_Parse(t *testing.T) {
 
 func TestLogfmtParser_parse(t *testing.T) {
 	tests := []struct {
-		name       string
-		line       []byte
-		lbs        labels.Labels
-		want       labels.Labels
-		wantStrict labels.Labels
-		hints      ParserHint
+		name               string
+		line               []byte
+		lbs                labels.Labels
+		want               labels.Labels
+		wantStrict         labels.Labels
+		hints              ParserHint
+		structuredMetadata map[string]string
 	}{
 		{
 			"not logfmt",
@@ -1094,6 +1200,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 				"__error_details__", "logfmt syntax error at pos 8 : unexpected '='",
 			),
 			NoParserHints(),
+			nil,
 		},
 		{
 			"not logfmt with hints",
@@ -1106,6 +1213,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 				"__preserve_error__", "true",
 			),
 			NewParserHint([]string{"__error__"}, nil, false, true, "", nil),
+			nil,
 		},
 		{
 			"utf8 error rune",
@@ -1114,6 +1222,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 			labels.FromStrings("bar", " f", "buzz", "foo"),
 			labels.EmptyLabels(),
 			NoParserHints(),
+			nil,
 		},
 		{
 			"key alone logfmt",
@@ -1123,6 +1232,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 				"bar", "foo"),
 			labels.EmptyLabels(),
 			NoParserHints(),
+			nil,
 		},
 		{
 			"quoted logfmt",
@@ -1133,6 +1243,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 			),
 			labels.EmptyLabels(),
 			NoParserHints(),
+			nil,
 		},
 		{
 			"escaped control chars in logfmt",
@@ -1143,6 +1254,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 			),
 			labels.EmptyLabels(),
 			NoParserHints(),
+			nil,
 		},
 		{
 			"literal control chars in logfmt",
@@ -1153,6 +1265,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 			),
 			labels.EmptyLabels(),
 			NoParserHints(),
+			nil,
 		},
 		{
 			"escaped slash logfmt",
@@ -1163,6 +1276,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 			),
 			labels.EmptyLabels(),
 			NoParserHints(),
+			nil,
 		},
 		{
 			"literal newline and escaped slash logfmt",
@@ -1173,6 +1287,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 			),
 			labels.EmptyLabels(),
 			NoParserHints(),
+			nil,
 		},
 		{
 			"double property logfmt",
@@ -1184,6 +1299,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 			),
 			labels.EmptyLabels(),
 			NoParserHints(),
+			nil,
 		},
 		{
 			"duplicate from line property",
@@ -1194,6 +1310,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 			),
 			labels.EmptyLabels(),
 			NoParserHints(),
+			nil,
 		},
 		{
 			"duplicate property",
@@ -1205,6 +1322,19 @@ func TestLogfmtParser_parse(t *testing.T) {
 			),
 			labels.EmptyLabels(),
 			NoParserHints(),
+			nil,
+		},
+		// string interning should not cache conflicts across streams
+		{
+			"no duplicate property",
+			[]byte(`foo="foo bar" foobar=10ms`),
+			labels.EmptyLabels(),
+			labels.FromStrings("foo", "foo bar",
+				"foobar", "10ms",
+			),
+			labels.EmptyLabels(),
+			NoParserHints(),
+			nil,
 		},
 		{
 			"invalid key names",
@@ -1217,6 +1347,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 			),
 			labels.EmptyLabels(),
 			NoParserHints(),
+			nil,
 		},
 		{
 			"nil",
@@ -1225,6 +1356,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 			labels.FromStrings("foo", "bar"),
 			labels.EmptyLabels(),
 			NoParserHints(),
+			nil,
 		},
 		{
 			"empty key",
@@ -1240,6 +1372,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 				"__error_details__", "logfmt syntax error at pos 15 : unexpected '='",
 			),
 			NoParserHints(),
+			nil,
 		},
 		{
 			"error rune in key",
@@ -1254,6 +1387,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 				"__error_details__", "logfmt syntax error at pos 20 : invalid key",
 			),
 			NoParserHints(),
+			nil,
 		},
 		{
 			"double quote in key",
@@ -1268,6 +1402,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 				"__error_details__", `logfmt syntax error at pos 17 : unexpected '"'`,
 			),
 			NoParserHints(),
+			nil,
 		},
 		{
 			"= in value",
@@ -1281,6 +1416,19 @@ func TestLogfmtParser_parse(t *testing.T) {
 				"__error_details__", `logfmt syntax error at pos 7 : unexpected '='`,
 			),
 			NoParserHints(),
+			nil,
+		},
+		{
+			"duplicate conflict with structured metadata",
+			[]byte(`app=foo level=error`),
+			labels.EmptyLabels(),
+			labels.FromStrings("app", "foo_sm",
+				"app_extracted", "foo",
+				"level", "error",
+			),
+			labels.EmptyLabels(),
+			NoParserHints(),
+			map[string]string{"app": "foo_sm"},
 		},
 	}
 
@@ -1290,6 +1438,10 @@ func TestLogfmtParser_parse(t *testing.T) {
 			t.Run(tt.name, func(t *testing.T) {
 				b := NewBaseLabelsBuilderWithGrouping(nil, tt.hints, false, false).ForLabels(tt.lbs, labels.StableHash(tt.lbs))
 				b.Reset()
+				// Set structured metadata if specified
+				for key, value := range tt.structuredMetadata {
+					b.Set(StructuredMetadataLabel, key, value)
+				}
 				_, _ = p.Process(0, tt.line, b)
 				require.Equal(t, tt.want, b.LabelsResult().Labels())
 			})
@@ -1302,6 +1454,10 @@ func TestLogfmtParser_parse(t *testing.T) {
 			t.Run(tt.name, func(t *testing.T) {
 				b := NewBaseLabelsBuilderWithGrouping(nil, tt.hints, false, false).ForLabels(tt.lbs, labels.StableHash(tt.lbs))
 				b.Reset()
+				// Set structured metadata if specified
+				for key, value := range tt.structuredMetadata {
+					b.Set(StructuredMetadataLabel, key, value)
+				}
 				_, _ = p.Process(0, tt.line, b)
 
 				want := tt.want
@@ -1402,7 +1558,13 @@ func TestLogfmtConsistentPrecedence(t *testing.T) {
 		_, ok = parser.Process(0, []byte(line), basicStream)
 		require.True(t, ok)
 
+		// structured metadata is preserved and parsed labels get _extracted suffix
 		res, cat, ok := metadataStream.GetWithCategory("app")
+		require.Equal(t, "loki", res)
+		require.Equal(t, StructuredMetadataLabel, cat)
+		require.True(t, ok)
+
+		res, cat, ok = metadataStream.GetWithCategory("app_extracted")
 		require.Equal(t, "lowkey", res)
 		require.Equal(t, ParsedLabel, cat)
 		require.True(t, ok)
@@ -1431,7 +1593,13 @@ func TestLogfmtConsistentPrecedence(t *testing.T) {
 		_, ok = parser.Process(0, []byte(line), metadataStream)
 		require.True(t, ok)
 
+		// structured metadata is preserved and parsed labels get _extracted suffix
 		res, cat, ok := metadataStream.GetWithCategory("app")
+		require.Equal(t, "loki", res)
+		require.Equal(t, StructuredMetadataLabel, cat)
+		require.True(t, ok)
+
+		res, cat, ok = metadataStream.GetWithCategory("app_extracted")
 		require.Equal(t, "lowkey", res)
 		require.Equal(t, ParsedLabel, cat)
 		require.True(t, ok)
@@ -1447,11 +1615,12 @@ func TestLogfmtExpressionParser(t *testing.T) {
 	testLine := []byte(`app=foo level=error spaces="value with ÜFT8👌" ts=2021-02-12T19:18:10.037940878Z`)
 
 	tests := []struct {
-		name        string
-		line        []byte
-		expressions []LabelExtractionExpr
-		lbs         labels.Labels
-		want        labels.Labels
+		name               string
+		line               []byte
+		expressions        []LabelExtractionExpr
+		lbs                labels.Labels
+		want               labels.Labels
+		structuredMetadata map[string]string
 	}{
 		{
 			"single field",
@@ -1461,6 +1630,7 @@ func TestLogfmtExpressionParser(t *testing.T) {
 			},
 			labels.EmptyLabels(),
 			labels.FromStrings("app", "foo"),
+			nil,
 		},
 		{
 			"multiple fields",
@@ -1475,6 +1645,7 @@ func TestLogfmtExpressionParser(t *testing.T) {
 				"level", "error",
 				"ts", "2021-02-12T19:18:10.037940878Z",
 			),
+			nil,
 		},
 		{
 			"label renaming",
@@ -1484,6 +1655,7 @@ func TestLogfmtExpressionParser(t *testing.T) {
 			},
 			labels.EmptyLabels(),
 			labels.FromStrings("test", "error"),
+			nil,
 		},
 		{
 			"multiple fields with label renaming",
@@ -1498,6 +1670,7 @@ func TestLogfmtExpressionParser(t *testing.T) {
 				"lvl", "error",
 				"timestamp", "2021-02-12T19:18:10.037940878Z",
 			),
+			nil,
 		},
 		{
 			"value with spaces and ÜFT8👌",
@@ -1507,6 +1680,7 @@ func TestLogfmtExpressionParser(t *testing.T) {
 			},
 			labels.EmptyLabels(),
 			labels.FromStrings("spaces", "value with ÜFT8👌"),
+			nil,
 		},
 		{
 			"expression matching nothing",
@@ -1516,6 +1690,7 @@ func TestLogfmtExpressionParser(t *testing.T) {
 			},
 			labels.EmptyLabels(),
 			labels.FromStrings("nope", ""),
+			nil,
 		},
 		{
 			"double property logfmt",
@@ -1527,6 +1702,7 @@ func TestLogfmtExpressionParser(t *testing.T) {
 			labels.FromStrings("ap", "bar",
 				"app", "foo",
 			),
+			nil,
 		},
 		{
 			"label override",
@@ -1538,6 +1714,7 @@ func TestLogfmtExpressionParser(t *testing.T) {
 			labels.FromStrings("app", "bar",
 				"app_extracted", "foo",
 			),
+			nil,
 		},
 		{
 			"label override 2",
@@ -1549,6 +1726,19 @@ func TestLogfmtExpressionParser(t *testing.T) {
 			labels.FromStrings("level", "debug",
 				"lvl", "error",
 			),
+			nil,
+		},
+		{
+			"structured metadata conflict",
+			testLine,
+			[]LabelExtractionExpr{
+				NewLabelExtractionExpr("app", "app"),
+			},
+			labels.EmptyLabels(),
+			labels.FromStrings("app", "foo_sm",
+				"app_extracted", "foo",
+			),
+			map[string]string{"app": "foo_sm"},
 		},
 	}
 	for _, tt := range tests {
@@ -1559,6 +1749,10 @@ func TestLogfmtExpressionParser(t *testing.T) {
 			}
 			b := NewBaseLabelsBuilder().ForLabels(tt.lbs, labels.StableHash(tt.lbs))
 			b.Reset()
+			// Set structured metadata if specified
+			for key, value := range tt.structuredMetadata {
+				b.Set(StructuredMetadataLabel, key, value)
+			}
 			_, _ = l.Process(0, tt.line, b)
 			require.Equal(t, tt.want, b.LabelsResult().Labels())
 		})
@@ -1589,13 +1783,13 @@ func TestXExpressionParserFailures(t *testing.T) {
 
 func Test_unpackParser_Parse(t *testing.T) {
 	tests := []struct {
-		name string
-		line []byte
-		lbs  labels.Labels
-
-		wantLbs  labels.Labels
-		wantLine []byte
-		hints    ParserHint
+		name               string
+		line               []byte
+		lbs                labels.Labels
+		wantLbs            labels.Labels
+		wantLine           []byte
+		hints              ParserHint
+		structuredMetadata map[string]string
 	}{
 		{
 			"should extract only map[string]string",
@@ -1607,6 +1801,7 @@ func Test_unpackParser_Parse(t *testing.T) {
 			),
 			[]byte(`some message`),
 			NoParserHints(),
+			nil,
 		},
 		{
 			"wrong json",
@@ -1617,6 +1812,7 @@ func Test_unpackParser_Parse(t *testing.T) {
 			),
 			[]byte(`"app":"foo","namespace":"prod","_entry":"some message","pod":{"uid":"1"}`),
 			NoParserHints(),
+			nil,
 		},
 		{
 			"empty line",
@@ -1625,6 +1821,7 @@ func Test_unpackParser_Parse(t *testing.T) {
 			labels.FromStrings("cluster", "us-central1"),
 			[]byte(``),
 			NoParserHints(),
+			nil,
 		},
 		{
 			"wrong json with hints",
@@ -1636,6 +1833,7 @@ func Test_unpackParser_Parse(t *testing.T) {
 			),
 			[]byte(`"app":"foo","namespace":"prod","_entry":"some message","pod":{"uid":"1"}`),
 			NewParserHint([]string{"__error__"}, nil, false, true, "", nil),
+			nil,
 		},
 		{
 			"not a map",
@@ -1647,6 +1845,7 @@ func Test_unpackParser_Parse(t *testing.T) {
 			),
 			[]byte(`["foo","bar"]`),
 			NoParserHints(),
+			nil,
 		},
 		{
 			"should rename",
@@ -1661,6 +1860,7 @@ func Test_unpackParser_Parse(t *testing.T) {
 			),
 			[]byte(`some message`),
 			NoParserHints(),
+			nil,
 		},
 		{
 			"should not change log and labels if no packed entry",
@@ -1673,6 +1873,7 @@ func Test_unpackParser_Parse(t *testing.T) {
 			),
 			[]byte(`{"bar":1,"app":"foo","namespace":"prod","pod":{"uid":"1"}}`),
 			NoParserHints(),
+			nil,
 		},
 		{
 			"non json with escaped quotes",
@@ -1685,6 +1886,7 @@ func Test_unpackParser_Parse(t *testing.T) {
 			),
 			[]byte(`I0303 17:49:45.976518    1526 kubelet_getters.go:178] "Pod status updated" pod="openshift-etcd/etcd-ip-10-0-150-50.us-east-2.compute.internal" status=Running`),
 			NoParserHints(),
+			nil,
 		},
 		{
 			"invalid key names",
@@ -1696,6 +1898,19 @@ func Test_unpackParser_Parse(t *testing.T) {
 			),
 			[]byte(`some message`),
 			NoParserHints(),
+			nil,
+		},
+		{
+			"duplicate conflict with structured metadata",
+			[]byte(`{"app":"foo","namespace":"prod","_entry":"some message"}`),
+			labels.EmptyLabels(),
+			labels.FromStrings("app", "foo_sm",
+				"app_extracted", "foo",
+				"namespace", "prod",
+			),
+			[]byte(`some message`),
+			NoParserHints(),
+			map[string]string{"app": "foo_sm"},
 		},
 	}
 	for _, tt := range tests {
@@ -1703,6 +1918,10 @@ func Test_unpackParser_Parse(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			b := NewBaseLabelsBuilderWithGrouping(nil, tt.hints, false, false).ForLabels(tt.lbs, labels.StableHash(tt.lbs))
 			b.Reset()
+			// Set structured metadata if specified
+			for key, value := range tt.structuredMetadata {
+				b.Set(StructuredMetadataLabel, key, value)
+			}
 			cp := string(tt.line)
 			l, _ := j.Process(0, tt.line, b)
 			require.Equal(t, tt.wantLbs, b.LabelsResult().Labels())
@@ -1715,10 +1934,11 @@ func Test_unpackParser_Parse(t *testing.T) {
 
 func Test_PatternParser(t *testing.T) {
 	tests := []struct {
-		pattern string
-		line    []byte
-		lbs     labels.Labels
-		want    labels.Labels
+		pattern            string
+		line               []byte
+		lbs                labels.Labels
+		want               labels.Labels
+		structuredMetadata map[string]string
 	}{
 		{
 			`<ip> <userid> <user> [<_>] "<method> <path> <_>" <status> <size>`,
@@ -1733,6 +1953,7 @@ func Test_PatternParser(t *testing.T) {
 				"status", "200",
 				"size", "2326",
 			),
+			nil,
 		},
 		{
 			`<_> msg="<method> <path> (<status>) <duration>"`,
@@ -1744,12 +1965,30 @@ func Test_PatternParser(t *testing.T) {
 				"status", "204",
 				"duration", "1.238734ms",
 			),
+			nil,
 		},
 		{
 			`foo <f>"`,
 			[]byte(`bar`),
 			labels.FromStrings("method", "bar"),
 			labels.FromStrings("method", "bar"),
+			nil,
+		},
+		{
+			`<ip> <userid> <user> [<_>] "<method> <path> <_>" <status> <size>`,
+			[]byte(`127.0.0.1 user-identifier frank [10/Oct/2000:13:55:36 -0700] "GET /apache_pb.gif HTTP/1.0" 200 2326`),
+			labels.EmptyLabels(),
+			labels.FromStrings(
+				"ip", "127.0.0.1",
+				"userid", "user-identifier",
+				"user", "not_frank",
+				"user_extracted", "frank",
+				"method", "GET",
+				"path", "/apache_pb.gif",
+				"status", "200",
+				"size", "2326",
+			),
+			map[string]string{"user": "not_frank"},
 		},
 	}
 
@@ -1758,6 +1997,10 @@ func Test_PatternParser(t *testing.T) {
 			t.Parallel()
 			b := NewBaseLabelsBuilder().ForLabels(tt.lbs, labels.StableHash(tt.lbs))
 			b.Reset()
+			// Set structured metadata if specified
+			for key, value := range tt.structuredMetadata {
+				b.Set(StructuredMetadataLabel, key, value)
+			}
 			pp, err := NewPatternParser(tt.pattern)
 			require.NoError(t, err)
 			_, _ = pp.Process(0, tt.line, b)

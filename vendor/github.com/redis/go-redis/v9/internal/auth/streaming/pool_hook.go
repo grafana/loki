@@ -34,9 +34,10 @@ type ReAuthPoolHook struct {
 	shouldReAuth     map[uint64]func(error)
 	shouldReAuthLock sync.RWMutex
 
-	// workers is a semaphore channel limiting concurrent re-auth operations
+	// workers is a semaphore limiting concurrent re-auth operations
 	// Initialized with poolSize tokens to prevent pool exhaustion
-	workers chan struct{}
+	// Uses FastSemaphore for better performance with eventual fairness
+	workers *internal.FastSemaphore
 
 	// reAuthTimeout is the maximum time to wait for acquiring a connection for re-auth
 	reAuthTimeout time.Duration
@@ -59,16 +60,10 @@ type ReAuthPoolHook struct {
 // The poolSize parameter is used to initialize the worker semaphore, ensuring that
 // re-auth operations don't exhaust the connection pool.
 func NewReAuthPoolHook(poolSize int, reAuthTimeout time.Duration) *ReAuthPoolHook {
-	workers := make(chan struct{}, poolSize)
-	// Initialize the workers channel with tokens (semaphore pattern)
-	for i := 0; i < poolSize; i++ {
-		workers <- struct{}{}
-	}
-
 	return &ReAuthPoolHook{
 		shouldReAuth:    make(map[uint64]func(error)),
 		scheduledReAuth: make(map[uint64]bool),
-		workers:         workers,
+		workers:         internal.NewFastSemaphore(int32(poolSize)),
 		reAuthTimeout:   reAuthTimeout,
 	}
 }
@@ -162,10 +157,10 @@ func (r *ReAuthPoolHook) OnPut(_ context.Context, conn *pool.Conn) (bool, bool, 
 		r.scheduledLock.Unlock()
 		r.shouldReAuthLock.Unlock()
 		go func() {
-			<-r.workers
+			r.workers.AcquireBlocking()
 			// safety first
 			if conn == nil || (conn != nil && conn.IsClosed()) {
-				r.workers <- struct{}{}
+				r.workers.Release()
 				return
 			}
 			defer func() {
@@ -176,44 +171,31 @@ func (r *ReAuthPoolHook) OnPut(_ context.Context, conn *pool.Conn) (bool, bool, 
 				r.scheduledLock.Lock()
 				delete(r.scheduledReAuth, connID)
 				r.scheduledLock.Unlock()
-				r.workers <- struct{}{}
+				r.workers.Release()
 			}()
 
-			var err error
-			timeout := time.After(r.reAuthTimeout)
+			// Create timeout context for connection acquisition
+			// This prevents indefinite waiting if the connection is stuck
+			ctx, cancel := context.WithTimeout(context.Background(), r.reAuthTimeout)
+			defer cancel()
 
-			// Try to acquire the connection
-			// We need to ensure the connection is both Usable and not Used
-			// to prevent data races with concurrent operations
-			const baseDelay = 10 * time.Microsecond
-			acquired := false
-			attempt := 0
-			for !acquired {
-				select {
-				case <-timeout:
-					// Timeout occurred, cannot acquire connection
-					err = pool.ErrConnUnusableTimeout
-					reAuthFn(err)
-					return
-				default:
-					// Try to acquire: set Usable=false, then check Used
-					if conn.CompareAndSwapUsable(true, false) {
-						if !conn.IsUsed() {
-							acquired = true
-						} else {
-							// Release Usable and retry with exponential backoff
-							// todo(ndyakov): think of a better way to do this without the need
-							// to release the connection, but just wait till it is not used
-							conn.SetUsable(true)
-						}
-					}
-					if !acquired {
-						// Exponential backoff: 10, 20, 40, 80... up to 5120 microseconds
-						delay := baseDelay * time.Duration(1<<uint(attempt%10)) // Cap exponential growth
-						time.Sleep(delay)
-						attempt++
-					}
-				}
+			// Try to acquire the connection for re-authentication
+			// We need to ensure the connection is IDLE (not IN_USE) before transitioning to UNUSABLE
+			// This prevents re-authentication from interfering with active commands
+			// Use AwaitAndTransition to wait for the connection to become IDLE
+			stateMachine := conn.GetStateMachine()
+			if stateMachine == nil {
+				// No state machine - should not happen, but handle gracefully
+				reAuthFn(pool.ErrConnUnusableTimeout)
+				return
+			}
+
+			// Use predefined slice to avoid allocation
+			_, err := stateMachine.AwaitAndTransition(ctx, pool.ValidFromIdle(), pool.StateUnusable)
+			if err != nil {
+				// Timeout or other error occurred, cannot acquire connection
+				reAuthFn(err)
+				return
 			}
 
 			// safety first
@@ -222,8 +204,8 @@ func (r *ReAuthPoolHook) OnPut(_ context.Context, conn *pool.Conn) (bool, bool, 
 				reAuthFn(nil)
 			}
 
-			// Release the connection
-			conn.SetUsable(true)
+			// Release the connection: transition from UNUSABLE back to IDLE
+			stateMachine.Transition(pool.StateIdle)
 		}()
 	}
 

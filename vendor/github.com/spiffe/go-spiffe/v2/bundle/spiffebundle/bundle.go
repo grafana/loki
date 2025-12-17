@@ -5,6 +5,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"sync"
@@ -16,15 +17,12 @@ import (
 	"github.com/spiffe/go-spiffe/v2/internal/jwtutil"
 	"github.com/spiffe/go-spiffe/v2/internal/x509util"
 	"github.com/spiffe/go-spiffe/v2/spiffeid"
-	"github.com/zeebo/errs"
 )
 
 const (
 	x509SVIDUse = "x509-svid"
 	jwtSVIDUse  = "jwt-svid"
 )
-
-var spiffebundleErr = errs.Class("spiffebundle")
 
 type bundleDoc struct {
 	jose.JSONWebKeySet
@@ -59,7 +57,7 @@ func New(trustDomain spiffeid.TrustDomain) *Bundle {
 func Load(trustDomain spiffeid.TrustDomain, path string) (*Bundle, error) {
 	bundleBytes, err := os.ReadFile(path)
 	if err != nil {
-		return nil, spiffebundleErr.New("unable to read SPIFFE bundle: %w", err)
+		return nil, wrapSpiffebundleErr(fmt.Errorf("unable to read SPIFFE bundle: %w", err))
 	}
 
 	return Parse(trustDomain, bundleBytes)
@@ -70,7 +68,7 @@ func Load(trustDomain spiffeid.TrustDomain, path string) (*Bundle, error) {
 func Read(trustDomain spiffeid.TrustDomain, r io.Reader) (*Bundle, error) {
 	b, err := io.ReadAll(r)
 	if err != nil {
-		return nil, spiffebundleErr.New("unable to read: %v", err)
+		return nil, wrapSpiffebundleErr(fmt.Errorf("unable to read: %v", err))
 	}
 
 	return Parse(trustDomain, b)
@@ -81,7 +79,7 @@ func Read(trustDomain spiffeid.TrustDomain, r io.Reader) (*Bundle, error) {
 func Parse(trustDomain spiffeid.TrustDomain, bundleBytes []byte) (*Bundle, error) {
 	jwks := &bundleDoc{}
 	if err := json.Unmarshal(bundleBytes, jwks); err != nil {
-		return nil, spiffebundleErr.New("unable to parse JWKS: %v", err)
+		return nil, wrapSpiffebundleErr(fmt.Errorf("unable to parse JWKS: %v", err))
 	}
 
 	bundle := New(trustDomain)
@@ -95,19 +93,19 @@ func Parse(trustDomain spiffeid.TrustDomain, bundleBytes []byte) (*Bundle, error
 	if jwks.Keys == nil {
 		// The parameter keys MUST be present.
 		// https://github.com/spiffe/spiffe/blob/main/standards/SPIFFE_Trust_Domain_and_Bundle.md#413-keys
-		return nil, spiffebundleErr.New("no authorities found")
+		return nil, wrapSpiffebundleErr(errors.New("no authorities found"))
 	}
 	for i, key := range jwks.Keys {
 		switch key.Use {
 		// Two SVID types are supported: x509-svid and jwt-svid.
 		case x509SVIDUse:
 			if len(key.Certificates) != 1 {
-				return nil, spiffebundleErr.New("expected a single certificate in %s entry %d; got %d", x509SVIDUse, i, len(key.Certificates))
+				return nil, wrapSpiffebundleErr(fmt.Errorf("expected a single certificate in %s entry %d; got %d", x509SVIDUse, i, len(key.Certificates)))
 			}
 			bundle.AddX509Authority(key.Certificates[0])
 		case jwtSVIDUse:
 			if err := bundle.AddJWTAuthority(key.KeyID, key.Key); err != nil {
-				return nil, spiffebundleErr.New("error adding authority %d of JWKS: %v", i, errors.Unwrap(err))
+				return nil, wrapSpiffebundleErr(fmt.Errorf("error adding authority %d of JWKS: %v", i, errors.Unwrap(err)))
 			}
 		}
 	}
@@ -239,7 +237,7 @@ func (b *Bundle) HasJWTAuthority(keyID string) bool {
 // under the given key ID, it is replaced. A key ID must be specified.
 func (b *Bundle) AddJWTAuthority(keyID string, jwtAuthority crypto.PublicKey) error {
 	if keyID == "" {
-		return spiffebundleErr.New("keyID cannot be empty")
+		return wrapSpiffebundleErr(errors.New("keyID cannot be empty"))
 	}
 
 	b.mtx.Lock()
@@ -405,7 +403,7 @@ func (b *Bundle) GetBundleForTrustDomain(trustDomain spiffeid.TrustDomain) (*Bun
 	defer b.mtx.RUnlock()
 
 	if b.trustDomain != trustDomain {
-		return nil, spiffebundleErr.New("no SPIFFE bundle for trust domain %q", trustDomain)
+		return nil, wrapSpiffebundleErr(fmt.Errorf("no SPIFFE bundle for trust domain %q", trustDomain))
 	}
 
 	return b, nil
@@ -419,7 +417,7 @@ func (b *Bundle) GetX509BundleForTrustDomain(trustDomain spiffeid.TrustDomain) (
 	defer b.mtx.RUnlock()
 
 	if b.trustDomain != trustDomain {
-		return nil, spiffebundleErr.New("no X.509 bundle for trust domain %q", trustDomain)
+		return nil, wrapSpiffebundleErr(fmt.Errorf("no X.509 bundle for trust domain %q", trustDomain))
 	}
 
 	return b.X509Bundle(), nil
@@ -433,7 +431,7 @@ func (b *Bundle) GetJWTBundleForTrustDomain(trustDomain spiffeid.TrustDomain) (*
 	defer b.mtx.RUnlock()
 
 	if b.trustDomain != trustDomain {
-		return nil, spiffebundleErr.New("no JWT bundle for trust domain %q", trustDomain)
+		return nil, wrapSpiffebundleErr(fmt.Errorf("no JWT bundle for trust domain %q", trustDomain))
 	}
 
 	return b.JWTBundle(), nil
@@ -482,4 +480,8 @@ func copySequenceNumber(sequenceNumber *uint64) *uint64 {
 	}
 	copied := *sequenceNumber
 	return &copied
+}
+
+func wrapSpiffebundleErr(err error) error {
+	return fmt.Errorf("spiffebundle: %w", err)
 }

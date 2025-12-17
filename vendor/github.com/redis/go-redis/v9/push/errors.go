@@ -145,25 +145,31 @@ func IsHandlerNilError(err error) bool {
 	return errors.Is(err, ErrHandlerNil)
 }
 
-// IsHandlerExistsError checks if an error is due to attempting to overwrite an existing handler
+// IsHandlerExistsError checks if an error is due to attempting to overwrite an existing handler.
+// This function works correctly even when the error is wrapped.
 func IsHandlerExistsError(err error) bool {
-	if handlerErr, ok := err.(*HandlerError); ok {
+	var handlerErr *HandlerError
+	if errors.As(err, &handlerErr) {
 		return handlerErr.Operation == ProcessorOperationRegister && handlerErr.Reason == ReasonHandlerExists
 	}
 	return false
 }
 
-// IsProtectedHandlerError checks if an error is due to attempting to unregister a protected handler
+// IsProtectedHandlerError checks if an error is due to attempting to unregister a protected handler.
+// This function works correctly even when the error is wrapped.
 func IsProtectedHandlerError(err error) bool {
-	if handlerErr, ok := err.(*HandlerError); ok {
+	var handlerErr *HandlerError
+	if errors.As(err, &handlerErr) {
 		return handlerErr.Operation == ProcessorOperationUnregister && handlerErr.Reason == ReasonHandlerProtected
 	}
 	return false
 }
 
-// IsVoidProcessorError checks if an error is due to void processor operations
+// IsVoidProcessorError checks if an error is due to void processor operations.
+// This function works correctly even when the error is wrapped.
 func IsVoidProcessorError(err error) bool {
-	if procErr, ok := err.(*ProcessorError); ok {
+	var procErr *ProcessorError
+	if errors.As(err, &procErr) {
 		return procErr.ProcessorType == ProcessorTypeVoidProcessor && procErr.Reason == ReasonPushNotificationsDisabled
 	}
 	return false
