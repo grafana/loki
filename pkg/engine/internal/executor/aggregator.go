@@ -59,7 +59,7 @@ func newAggregator(pointsSizeHint int, operation aggregationOperation) *aggregat
 }
 
 // AddLabels merges a list of labels that all sample values will have combined. This can be done several times
-// over the lifetime of an aggregator to accomodate processing of multiple records with different schemas.
+// over the lifetime of an aggregator to accommodate processing of multiple records with different schemas.
 func (a *aggregator) AddLabels(labels []arrow.Field) {
 	for _, label := range labels {
 		if !slices.ContainsFunc(a.labels, func(l arrow.Field) bool {

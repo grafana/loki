@@ -14,6 +14,10 @@ type ScanTarget struct {
 	// DataObj is non-nil if Type is [ScanTypeDataObject]. Despite DataObjScan
 	// implementing [Node], the value is not inserted into the graph as a node.
 	DataObject *DataObjScan
+
+	// Pointers is non-nil if Type is [ScanTypePointers]. Despite PointersScan
+	// implementing [Node], the value is not inserted into the graph as a node.
+	Pointers *PointersScan
 }
 
 // Clone returns a copy of the scan target.
@@ -21,6 +25,9 @@ func (t *ScanTarget) Clone() *ScanTarget {
 	res := &ScanTarget{Type: t.Type}
 	if t.DataObject != nil {
 		res.DataObject = t.DataObject.Clone().(*DataObjScan)
+	}
+	if t.Pointers != nil {
+		res.Pointers = t.Pointers.Clone().(*PointersScan)
 	}
 	return res
 }
@@ -31,6 +38,7 @@ type ScanType int
 const (
 	ScanTypeInvalid ScanType = iota
 	ScanTypeDataObject
+	ScanTypePointers
 )
 
 // String returns a string representation of the scan type.
@@ -40,6 +48,8 @@ func (ty ScanType) String() string {
 		return "ScanTypeInvalid"
 	case ScanTypeDataObject:
 		return "ScanTypeDataObject"
+	case ScanTypePointers:
+		return "ScanTypePointers"
 	default:
 		return fmt.Sprintf("ScanType(%d)", ty)
 	}
@@ -107,7 +117,12 @@ func (s *ScanSet) Shards() iter.Seq[Node] {
 				if !yield(node) {
 					return
 				}
-
+			case ScanTypePointers:
+				node := target.Pointers.Clone().(*PointersScan)
+				node.NodeID = target.Pointers.NodeID
+				if !yield(node) {
+					return
+				}
 			default:
 				panic(fmt.Sprintf("invalid scan type %s", target.Type))
 			}

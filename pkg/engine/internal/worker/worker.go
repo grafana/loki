@@ -23,6 +23,7 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 )
@@ -34,6 +35,9 @@ type Config struct {
 
 	// Bucket to read stored data from.
 	Bucket objstore.Bucket
+
+	// Metastore client to access indexes.
+	Metastore metastore.Metastore
 
 	// Dialer to establish connections to scheduler and remote workers.
 	Dialer wire.Dialer
@@ -178,6 +182,7 @@ func (w *Worker) run(ctx context.Context) error {
 			BatchSize: w.config.BatchSize,
 			Logger:    log.With(w.logger, "thread", i),
 			Bucket:    w.config.Bucket,
+			Metastore: w.config.Metastore,
 
 			Metrics:    w.metrics,
 			JobManager: w.jobManager,
