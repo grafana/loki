@@ -4,6 +4,13 @@
 
 * bump alpine version ([#19732](https://github.com/grafana/loki/issues/19732)) ([ffcd570](https://github.com/grafana/loki/commit/ffcd570f815ccf0588bda305659d0d4e925e4ef1))
 
+## [2.9.18](https://github.com/grafana/loki/compare/v2.9.17...v2.9.18) (2025-12-17)
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/docker/docker to v28 [security] (release-2.9.x) ([#19743](https://github.com/grafana/loki/issues/19743)) ([ce5c5a7](https://github.com/grafana/loki/commit/ce5c5a74fa9c273059029758a303821e4358f7d8))
+
 ## [2.9.16](https://github.com/grafana/loki/compare/v2.9.15...v2.9.16) (2025-11-05)
 
 ### Bug Fixes
