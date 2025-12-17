@@ -182,7 +182,7 @@ func (ns *NamedStores) populateStoreType() error {
 	checkForDuplicates := func(name string) error {
 		switch name {
 		case types.StorageTypeAWS, types.StorageTypeAWSDynamo, types.StorageTypeS3,
-			types.StorageTypeGCP, types.StorageTypeGCPColumnKey, types.StorageTypeBigTable, types.StorageTypeBigTableHashed, types.StorageTypeGCS,
+			types.StorageTypeGCS,
 			types.StorageTypeAzure, types.StorageTypeBOS, types.StorageTypeSwift, types.StorageTypeCassandra,
 			types.StorageTypeFileSystem, types.StorageTypeInMemory, types.StorageTypeGrpc:
 			return fmt.Errorf("named store %q should not match with the name of a predefined storage type", name)
@@ -278,7 +278,6 @@ type Config struct {
 	AWSStorageConfig       aws.StorageConfig         `yaml:"aws"`
 	AzureStorageConfig     azure.BlobStorageConfig   `yaml:"azure"`
 	BOSStorageConfig       baidubce.BOSStorageConfig `yaml:"bos"`
-	GCPStorageConfig       gcp.Config                `yaml:"bigtable" doc:"description=Deprecated: Configures storing indexes in Bigtable. Required fields only required when bigtable is defined in config."`
 	GCSConfig              gcp.GCSConfig             `yaml:"gcs" doc:"description=Configures storing chunks in GCS. Required fields only required when gcs is defined in config."`
 	CassandraStorageConfig cassandra.Config          `yaml:"cassandra" doc:"description=Deprecated: Configures storing chunks and/or the index in Cassandra."`
 	BoltDBConfig           local.BoltDBConfig        `yaml:"boltdb" doc:"description=Deprecated: Configures storing index in BoltDB. Required fields only required when boltdb is present in the configuration."`
@@ -317,7 +316,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.AzureStorageConfig.RegisterFlags(f)
 	cfg.BOSStorageConfig.RegisterFlags(f)
 	cfg.COSConfig.RegisterFlags(f)
-	cfg.GCPStorageConfig.RegisterFlags(f)
 	cfg.GCSConfig.RegisterFlags(f)
 	cfg.CassandraStorageConfig.RegisterFlags(f)
 	cfg.BoltDBConfig.RegisterFlags(f)
@@ -345,9 +343,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 func (cfg *Config) Validate() error {
 	if err := cfg.CassandraStorageConfig.Validate(); err != nil {
 		return errors.Wrap(err, "invalid Cassandra Storage config")
-	}
-	if err := cfg.GCPStorageConfig.Validate(); err != nil {
-		return errors.Wrap(err, "invalid GCP Storage Storage config")
 	}
 	if err := cfg.Swift.Validate(); err != nil {
 		return errors.Wrap(err, "invalid Swift Storage config")
@@ -444,16 +439,6 @@ func NewIndexClient(component string, periodCfg config.PeriodConfig, tableRange 
 				level.Warn(logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
 			}
 			return aws.NewDynamoDBIndexClient(cfg.AWSStorageConfig.DynamoDBConfig, schemaCfg, registerer)
-
-		case types.StorageTypeGCP:
-			return gcp.NewStorageClientV1(context.Background(), cfg.GCPStorageConfig, schemaCfg)
-
-		case types.StorageTypeGCPColumnKey, types.StorageTypeBigTable:
-			return gcp.NewStorageClientColumnKey(context.Background(), cfg.GCPStorageConfig, schemaCfg)
-
-		case types.StorageTypeBigTableHashed:
-			cfg.GCPStorageConfig.DistributeKeys = true
-			return gcp.NewStorageClientColumnKey(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 
 		case types.StorageTypeCassandra:
 			return cassandra.NewStorageClient(cfg.CassandraStorageConfig, schemaCfg, registerer)
@@ -577,9 +562,6 @@ func NewChunkClient(name, component string, cfg Config, schemaCfg config.SchemaC
 			}
 			return aws.NewDynamoDBChunkClient(cfg.AWSStorageConfig.DynamoDBConfig, schemaCfg, registerer)
 
-		case types.StorageTypeGCP, types.StorageTypeGCPColumnKey, types.StorageTypeBigTable, types.StorageTypeBigTableHashed:
-			return gcp.NewBigtableObjectClient(context.Background(), cfg.GCPStorageConfig, schemaCfg)
-
 		case types.StorageTypeCassandra:
 			return cassandra.NewObjectClient(cfg.CassandraStorageConfig, schemaCfg, registerer, cfg.MaxParallelGetChunk)
 
@@ -618,8 +600,6 @@ func NewTableClient(name, component string, periodCfg config.PeriodConfig, cfg C
 				level.Warn(logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
 			}
 			return aws.NewDynamoDBTableClient(cfg.AWSStorageConfig.DynamoDBConfig, registerer)
-		case types.StorageTypeGCP, types.StorageTypeGCPColumnKey, types.StorageTypeBigTable, types.StorageTypeBigTableHashed:
-			return gcp.NewTableClient(context.Background(), cfg.GCPStorageConfig)
 		case types.StorageTypeCassandra:
 			return cassandra.NewTableClient(context.Background(), cfg.CassandraStorageConfig, registerer)
 		case types.StorageTypeBoltDB:

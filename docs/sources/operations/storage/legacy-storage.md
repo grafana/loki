@@ -18,11 +18,9 @@ maintenance tasks. It consists of:
 
 - An index for the chunks. This index can be backed by:
     - [Amazon DynamoDB](https://aws.amazon.com/dynamodb)
-    - [Google Bigtable](https://cloud.google.com/bigtable)
     - [Apache Cassandra](https://cassandra.apache.org)
 - A key-value (KV) store for the chunk data itself, which can be:
     - [Amazon DynamoDB](https://aws.amazon.com/dynamodb)
-    - [Google Bigtable](https://cloud.google.com/bigtable)
     - [Apache Cassandra](https://cassandra.apache.org)
     - [Amazon S3](https://aws.amazon.com/s3)
     - [Google Cloud Storage](https://cloud.google.com/storage/)
@@ -34,7 +32,7 @@ that need to access Loki data: the [ingester](../../../get-started/components/#i
 {{< /admonition >}}
 
 The chunk store relies on a unified interface to the
-"[NoSQL](https://en.wikipedia.org/wiki/NoSQL)" stores (DynamoDB, Bigtable, and
+"[NoSQL](https://en.wikipedia.org/wiki/NoSQL)" stores (DynamoDB and
 Cassandra) that can be used to back the chunk store index. This interface
 assumes that the index is a collection of entries keyed by:
 
@@ -47,7 +45,7 @@ The interface works somewhat differently across the supported databases:
 - DynamoDB supports range and hash keys natively. Index entries are thus
   modelled directly as DynamoDB entries, with the hash key as the distribution
   key and the range as the DynamoDB range key.
-- For Bigtable and Cassandra, index entries are modelled as individual column
+- For Cassandra, index entries are modelled as individual column
   values. The hash key becomes the row key and the range key becomes the column
   key.
 

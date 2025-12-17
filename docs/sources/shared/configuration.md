@@ -3530,7 +3530,6 @@ The `gcs_storage_config` block configures the connection to Google Cloud Storage
 
 The `grpc_client` block configures the gRPC client used to communicate between a client and server component in Loki. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
-- `bigtable`
 - `bloom-build.builder.grpc`
 - `bloom-gateway-client.grpc`
 - `boltdb.shipper.index-gateway-client.grpc`
@@ -5189,14 +5188,13 @@ The `period_config` block configures what index schemas should be used for from 
 
 # store and object_store below affect which <storage_config> key is used. Which
 # index to use. Either tsdb or boltdb-shipper. Following stores are deprecated:
-# aws, aws-dynamo, gcp, gcp-columnkey, bigtable, bigtable-hashed, cassandra,
-# grpc.
+# aws, aws-dynamo, cassandra, grpc.
 [store: <string> | default = ""]
 
 # Which store to use for the chunks. Either aws (alias s3), azure, gcs,
 # alibabacloud, bos, cos, swift, filesystem, or a named_store (refer to
-# named_stores_config). Following stores are deprecated: aws-dynamo, gcp,
-# gcp-columnkey, bigtable, bigtable-hashed, cassandra, grpc.
+# named_stores_config). Following stores are deprecated: aws-dynamo, cassandra,
+# grpc.
 [object_store: <string> | default = ""]
 
 # The schema version to use, current recommended schema is v13.
@@ -6380,32 +6378,6 @@ The `storage_config` block configures one of many possible stores for both the i
 # The bos_storage_config block configures the connection to Baidu Object Storage
 # (BOS) object storage backend.
 [bos: <bos_storage_config>]
-
-# Deprecated: Configures storing indexes in Bigtable. Required fields only
-# required when bigtable is defined in config.
-bigtable:
-  # Bigtable project ID.
-  # CLI flag: -bigtable.project
-  [project: <string> | default = ""]
-
-  # Bigtable instance ID. Please refer to
-  # https://cloud.google.com/docs/authentication/production for more information
-  # about how to configure authentication.
-  # CLI flag: -bigtable.instance
-  [instance: <string> | default = ""]
-
-  # The grpc_client block configures the gRPC client used to communicate between
-  # a client and server component in Loki.
-  # The CLI flags prefix for this block configuration is: bigtable
-  [grpc_client_config: <grpc_client>]
-
-  # If enabled, once a tables info is fetched, it is cached.
-  # CLI flag: -bigtable.table-cache.enabled
-  [table_cache_enabled: <boolean> | default = true]
-
-  # Duration to cache tables before checking again.
-  # CLI flag: -bigtable.table-cache.expiration
-  [table_cache_expiration: <duration> | default = 30m]
 
 # Configures storing chunks in GCS. Required fields only required when gcs is
 # defined in config.
@@ -7739,7 +7711,6 @@ bos:
 
 The TLS configuration. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
-- `bigtable`
 - `bloom-build.builder.grpc`
 - `bloom-gateway-client.grpc`
 - `bloom.metas-cache.memcached`
