@@ -338,6 +338,10 @@ func (r *projectionPushdown) handleScanSet(node *ScanSet, projections []ColumnEx
 			continue
 		}
 
+		if colExpr.Ref.Type == types.ColumnTypeGenerated {
+			continue
+		}
+
 		var wasAdded bool
 		node.Projections, wasAdded = addUniqueColumnExpr(node.Projections, colExpr)
 		if wasAdded {
