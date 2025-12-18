@@ -182,14 +182,14 @@ func (s *Scheduler) handleStreamData(ctx context.Context, worker *workerConn, ms
 	}
 
 	s.resourcesMut.RLock()
-	defer s.resourcesMut.RUnlock()
-
 	registered, found := s.streams[msg.StreamID]
 	if !found {
 		return fmt.Errorf("stream %d not found", msg.StreamID)
 	} else if registered.localReceiver == nil {
 		return fmt.Errorf("scheduler is not listening for data for stream %s", msg.StreamID)
 	}
+	s.resourcesMut.RUnlock()
+
 	return registered.localReceiver.Write(ctx, msg.Data)
 }
 
@@ -404,25 +404,25 @@ func (s *Scheduler) assignTasks(ctx context.Context) {
 	}
 
 	for ctx.Err() == nil {
-		task, worker, msg, ok := s.prepareAssignment()
+		t, worker, msg, ok := s.prepareAssignment()
 		if !ok {
 			return
 		}
 
 		if assigned := assignOne(worker, msg); !assigned {
-			// Re-enqueue the failed assignment.
-			s.assignMut.Lock()
-			s.taskQueue = append(s.taskQueue, task)
-			s.assignMut.Unlock()
 			continue
 		}
 
-		s.finalizeAssignment(ctx, task, worker, msg.StreamStates)
+		// remove from queue on successful assignment.
+		s.assignMut.Lock()
+		s.taskQueue = s.taskQueue[1:]
+		s.assignMut.Unlock()
+
+		s.finalizeAssignment(ctx, t, worker, msg.StreamStates)
 	}
 }
 
 // prepareAssignment builds a TaskAssignMessage for the next task and worker.
-// The task is removed from the taskQueue optimistically.
 //
 // Returns false if no candidates available.
 func (s *Scheduler) prepareAssignment() (*task, *workerConn, wire.TaskAssignMessage, bool) {
@@ -442,7 +442,6 @@ func (s *Scheduler) prepareAssignment() (*task, *workerConn, wire.TaskAssignMess
 	}
 
 	task := s.taskQueue[0]
-	s.taskQueue = s.taskQueue[1:] // remove optimistically
 	worker := nextWorker(s.readyWorkers)
 
 	msg := wire.TaskAssignMessage{
