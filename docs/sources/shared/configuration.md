@@ -2097,6 +2097,11 @@ The `azure_storage_config` block configures the connection to Azure object stora
 # CLI flag: -<prefix>.azure.container-name
 [container_name: <string> | default = "loki"]
 
+# Azure active directory endpoint override. Use when the Azure SDK does not
+# support your environment.
+# CLI flag: -<prefix>.azure.active-directory-endpoint
+[active_directory_endpoint: <string> | default = ""]
+
 # Azure storage endpoint suffix without schema. The storage account name will be
 # prefixed to this value to create the FQDN.
 # CLI flag: -<prefix>.azure.endpoint-suffix
