@@ -197,7 +197,7 @@ func (suite *FederatedTokenTestSuite) Test_ServicePrincipalTokenFromFederatedTok
 }
 
 func (suite *FederatedTokenTestSuite) Test_ServicePrincipalTokenFromFederatedToken_ActiveDirectoryEndpoint_Override() {
-	testAdEndpoint := "https://login.microsoftonline.us"
+	testAdEndpoint := "https://login.microsoftonline.test"
 
 	suite.config.cfg.ActiveDirectoryEndpoint = testAdEndpoint
 	suite.config.cfg.Environment = azureGlobal
