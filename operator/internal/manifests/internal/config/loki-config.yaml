@@ -185,15 +185,6 @@ ingester_client:
 {{- if and .Stack.PatternIngester .Stack.PatternIngester.Enabled }}
 pattern_ingester:
   enabled: true
-  lifecycler:
-    ring:
-      heartbeat_timeout: 1m
-      replication_factor: {{ .Stack.Replication.Factor }}
-      kvstore:
-        store: memberlist
-    num_tokens: 512
-    heartbeat_period: 5s
-    join_after: 30s
   client_config:
     grpc_client_config:
       max_recv_msg_size: 67108864
