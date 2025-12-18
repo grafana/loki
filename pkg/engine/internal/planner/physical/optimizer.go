@@ -338,6 +338,7 @@ func (r *projectionPushdown) handleScanSet(node *ScanSet, projections []ColumnEx
 			continue
 		}
 
+		// There are no generated columns in data objects
 		if colExpr.Ref.Type == types.ColumnTypeGenerated {
 			continue
 		}
@@ -368,6 +369,11 @@ func (r *projectionPushdown) handleDataobjScan(node *DataObjScan, projections []
 	for _, colExpr := range projections {
 		colExpr, ok := colExpr.(*ColumnExpr)
 		if !ok {
+			continue
+		}
+
+		// There are no generated columns in data objects
+		if colExpr.Ref.Type == types.ColumnTypeGenerated {
 			continue
 		}
 

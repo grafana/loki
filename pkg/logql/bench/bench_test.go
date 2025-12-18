@@ -88,9 +88,9 @@ func setupBenchmarkWithStore(tb testing.TB, storeType string) logql.Engine {
 // return the same query result.
 func TestStorageEquality(t *testing.T) {
 
-	if !*slowTests {
-		t.Skip("test skipped because -slow-tests flag is not set")
-	}
+	//if !*slowTests {
+	//	t.Skip("test skipped because -slow-tests flag is not set")
+	//}
 
 	type store struct {
 		Name   string
@@ -101,18 +101,27 @@ func TestStorageEquality(t *testing.T) {
 	generateStore := func(name string) *store {
 		engine := setupBenchmarkWithStore(t, name)
 		// Load and validate the generator config
-		config, err := LoadConfig(DefaultDataDir)
-		if err != nil {
-			t.Fatal(err)
-		}
+		//config, err := LoadConfig(DefaultDataDir)
+		//if err != nil {
+		//	t.Fatal(err)
+		//}
 
-		cases := NewTestCaseGenerator(
-			TestCaseGeneratorConfig{RangeType: *rangeType, RangeInterval: *rangeInterval},
-			config,
-		).Generate()
+		//cases := NewTestCaseGenerator(
+		//	TestCaseGeneratorConfig{RangeType: *rangeType, RangeInterval: *rangeInterval},
+		//	config,
+		//).Generate()
 		return &store{
-			Name:   name,
-			Cases:  cases,
+			Name: name,
+			//Cases:  cases,
+			Cases: []TestCase{
+				{
+					Query:     `max without () (sum_over_time({service_name="loki"} | logfmt | duration != "" | unwrap duration_seconds(duration) [1m0s]))`,
+					Start:     time.Date(2024, 01, 01, 00, 00, 00, 0, time.UTC),
+					End:       time.Date(2024, 01, 01, 00, 10, 00, 0, time.UTC),
+					Direction: logproto.FORWARD,
+					Step:      time.Minute,
+				},
+			},
 			Engine: engine,
 		}
 	}

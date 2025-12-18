@@ -188,10 +188,10 @@ func buildPlanForLogQuery(
 	if hasLogfmtParser {
 		builder = builder.Parse(types.VariadicOpParseLogfmt, logfmtStrict, logfmtKeepEmpty)
 
-		// The old logfmt parse implementation does not seem to return errors, unlike json parse
-		builder = builder.ProjectDrop(
-			NewColumnRef(types.ColumnNameError, types.ColumnTypeGenerated), NewColumnRef(types.ColumnNameErrorDetails, types.ColumnTypeGenerated),
-		)
+		//// The old logfmt parse implementation does not seem to return errors, unlike json parse
+		//builder = builder.ProjectDrop(
+		//	NewColumnRef(types.ColumnNameError, types.ColumnTypeGenerated), NewColumnRef(types.ColumnNameErrorDetails, types.ColumnTypeGenerated),
+		//)
 	}
 	if hasJSONParser {
 		// JSON has no parameters
@@ -253,7 +253,7 @@ func walkRangeAggregation(e *syntax.RangeAggregationExpr, params logql.Params) (
 			return nil, errUnimplemented
 		}
 
-		// Unwrap turns a column into numerical `value` column, and that original column shoul be dropped from the result.
+		// Unwrap turns a column into numerical `value` column, and that original column should be dropped from the result.
 		builder = builder.
 			Cast(unwrapIdentifier, unwrapOperation).
 			ProjectDrop(&ColumnRef{
