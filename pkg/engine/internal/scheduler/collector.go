@@ -22,7 +22,9 @@ type collector struct {
 	tasksInflight   *prometheus.Desc
 	streamsInflight *prometheus.Desc
 
-	connections *prometheus.Desc
+	connections  *prometheus.Desc
+	readyWorkers *prometheus.Desc
+	taskQueue    *prometheus.Desc
 }
 
 var _ prometheus.Collector = (*collector)(nil)
@@ -69,6 +71,19 @@ func newCollector(sched *Scheduler) *collector {
 			nil,
 			nil,
 		),
+
+		readyWorkers: prometheus.NewDesc(
+			"loki_engine_scheduler_ready_workers",
+			"Current number of workers ready to accept tasks",
+			nil,
+			nil,
+		),
+		taskQueue: prometheus.NewDesc(
+			"loki_engine_scheduler_task_queue_length",
+			"Current number of tasks waiting in the assignment queue",
+			nil,
+			nil,
+		),
 	}
 }
 
@@ -105,6 +120,7 @@ func (mc *collector) Collect(ch chan<- prometheus.Metric) {
 
 	mc.collectResourceStats(ch)
 	mc.collectConnStats(ch)
+	mc.collectAssignStats(ch)
 }
 
 func (mc *collector) collectResourceStats(ch chan<- prometheus.Metric) {
@@ -153,8 +169,18 @@ func (mc *collector) collectConnStats(ch chan<- prometheus.Metric) {
 	ch <- prometheus.MustNewConstMetric(mc.connections, prometheus.GaugeValue, float64(totalConnections))
 }
 
+func (mc *collector) collectAssignStats(ch chan<- prometheus.Metric) {
+	mc.sched.assignMut.RLock()
+	defer mc.sched.assignMut.RUnlock()
+
+	ch <- prometheus.MustNewConstMetric(mc.readyWorkers, prometheus.GaugeValue, float64(len(mc.sched.readyWorkers)))
+	ch <- prometheus.MustNewConstMetric(mc.taskQueue, prometheus.GaugeValue, float64(len(mc.sched.taskQueue)))
+}
+
 func (mc *collector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- mc.tasksInflight
 	ch <- mc.streamsInflight
 	ch <- mc.connections
+	ch <- mc.readyWorkers
+	ch <- mc.taskQueue
 }
