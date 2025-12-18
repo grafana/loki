@@ -22,7 +22,6 @@ details on how to configure the storage and the index.
 
 For more information:
 
-- [Table Manager](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/table-manager/)
 - [Retention](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/retention/)
 - [Logs Deletion](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/logs-deletion/)
 
@@ -35,7 +34,6 @@ For more information:
 
 ### ❌ Deprecated index stores
 
-- [Amazon DynamoDB](https://aws.amazon.com/dynamodb). Support for this is deprecated and will be removed in a future release.
 - [BoltDB](https://github.com/boltdb/bolt) (doesn't work when clustering Loki)
 
 ### ✅ Supported and recommended chunks stores
@@ -52,10 +50,6 @@ For more information:
 - [Filesystem](filesystem/) (please read more about the filesystem to understand the pros/cons before using with production data)
 - S3 API compatible storage, such as [MinIO](https://min.io/)
 
-### ❌ Deprecated chunks stores
-
-- [Amazon DynamoDB](https://aws.amazon.com/dynamodb). Support for this is deprecated and will be removed in a future release.
-
 ## Cloud Storage Permissions
 
 ### S3
@@ -70,50 +64,6 @@ When using S3 as object storage, the following permissions are needed:
 Resources: `arn:aws:s3:::<bucket_name>`, `arn:aws:s3:::<bucket_name>/*`
 
 See the [AWS deployment section](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/storage/#aws-deployment-s3-single-store) on the storage page for a detailed setup guide.
-
-### DynamoDB
-
-{{< admonition type="note" >}}
-DynamoDB support is deprecated and will be removed in a future release.
-{{< /admonition >}}
-
-When using DynamoDB for the index, the following permissions are needed:
-
-- `dynamodb:BatchGetItem`
-- `dynamodb:BatchWriteItem`
-- `dynamodb:DeleteItem`
-- `dynamodb:DescribeTable`
-- `dynamodb:GetItem`
-- `dynamodb:ListTagsOfResource`
-- `dynamodb:PutItem`
-- `dynamodb:Query`
-- `dynamodb:TagResource`
-- `dynamodb:UntagResource`
-- `dynamodb:UpdateItem`
-- `dynamodb:UpdateTable`
-- `dynamodb:CreateTable`
-- `dynamodb:DeleteTable` (if `table_manager.retention_period` is more than 0s)
-
-Resources: `arn:aws:dynamodb:<aws_region>:<aws_account_id>:table/<prefix>*`
-
-- `dynamodb:ListTables`
-
-Resources: `*`
-
-#### AutoScaling
-
-If you enable autoscaling from table manager, the following permissions are needed:
-
-##### Application Autoscaling
-
-- `application-autoscaling:DescribeScalableTargets`
-- `application-autoscaling:DescribeScalingPolicies`
-- `application-autoscaling:RegisterScalableTarget`
-- `application-autoscaling:DeregisterScalableTarget`
-- `application-autoscaling:PutScalingPolicy`
-- `application-autoscaling:DeleteScalingPolicy`
-
-Resources: `*`
 
 ##### IAM
 

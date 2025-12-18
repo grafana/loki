@@ -65,7 +65,6 @@ import (
 	internalserver "github.com/grafana/loki/v3/pkg/server"
 	"github.com/grafana/loki/v3/pkg/storage"
 	"github.com/grafana/loki/v3/pkg/storage/config"
-	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/v3/pkg/tracing"
 	"github.com/grafana/loki/v3/pkg/ui"
@@ -111,7 +110,6 @@ type Config struct {
 	CompactorGRPCClient compactorclient.GRPCConfig `yaml:"compactor_grpc_client,omitempty"`
 	LimitsConfig        validation.Limits          `yaml:"limits_config"`
 	Worker              worker.Config              `yaml:"frontend_worker,omitempty"`
-	TableManager        index.TableManagerConfig   `yaml:"table_manager,omitempty"`
 	MemberlistKV        memberlist.KVConfig        `yaml:"memberlist"`
 	KafkaConfig         kafka.Config               `yaml:"kafka_config,omitempty" category:"experimental"`
 	DataObj             dataobjconfig.Config       `yaml:"dataobj,omitempty" category:"experimental"`
@@ -152,7 +150,6 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 			"The default value 'all' runs Loki in single binary mode. "+
 			"The value 'read' is an alias to run only read-path related components such as the querier and query-frontend, but all in the same process. "+
 			"The value 'write' is an alias to run only write-path related components such as the distributor and compactor, but all in the same process. "+
-			"Supported values: all, compactor, distributor, ingester, querier, query-scheduler, ingester-querier, query-frontend, index-gateway, ruler, table-manager, read, write. "+
 			"A full list of available targets can be printed when running Loki with the '-list-targets' command line flag. ",
 	)
 	f.BoolVar(&c.AuthEnabled, "auth.enabled", true,
@@ -214,7 +211,6 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.ChunkStoreConfig.RegisterFlags(f)
 	c.SchemaConfig.RegisterFlags(f)
 	c.LimitsConfig.RegisterFlags(f)
-	c.TableManager.RegisterFlags(f)
 	c.Frontend.RegisterFlags(f)
 	c.Ruler.RegisterFlags(f)
 	c.RulerStorage.RegisterFlags(f)
@@ -297,9 +293,6 @@ func (c *Config) Validate() error {
 	}
 	if err := c.QueryScheduler.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid query_scheduler config"))
-	}
-	if err := c.TableManager.Validate(); err != nil {
-		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid table_manager config"))
 	}
 	if err := c.Ruler.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid ruler config"))
@@ -428,7 +421,6 @@ type Loki struct {
 	Store                               storage.Store
 	BloomStore                          bloomshipper.Store
 	bloomGatewayClient                  bloomgateway.Client
-	tableManager                        *index.TableManager
 	frontend                            Frontend
 	ruler                               *base_ruler.Ruler
 	ruleEvaluator                       ruler.Evaluator
@@ -773,7 +765,6 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(RulerStorage, t.initRulerStorage, modules.UserInvisibleModule)
 	mm.RegisterModule(Ruler, t.initRuler)
 	mm.RegisterModule(RuleEvaluator, t.initRuleEvaluator, modules.UserInvisibleModule)
-	mm.RegisterModule(TableManager, t.initTableManager)
 	mm.RegisterModule(Compactor, t.initCompactor)
 	mm.RegisterModule(BloomStore, t.initBloomStore, modules.UserInvisibleModule)
 	mm.RegisterModule(BloomPlanner, t.initBloomPlanner)
@@ -830,7 +821,6 @@ func (t *Loki) setupModuleManager() error {
 		QueryEngineScheduler:         {Server, Overrides, TenantConfigs, Analytics},
 		Ruler:                        {Ring, Server, RulerStorage, RuleEvaluator, Overrides, TenantConfigs, Analytics, UIRing},
 		RuleEvaluator:                {Ring, Server, Store, IngesterQuerier, Overrides, TenantConfigs, Analytics},
-		TableManager:                 {Server, Analytics, UIRing},
 		Compactor:                    {Server, Overrides, MemberlistKV, Analytics, UIRing},
 		IndexGateway:                 {Server, Store, BloomStore, IndexGatewayRing, IndexGatewayInterceptors, Analytics, UIRing},
 		BloomGateway:                 {Server, BloomStore, Analytics, UIRing},

@@ -81,20 +81,6 @@ You can authenticate Blob Storage access by using a storage account name and key
 
 You may use any substitutable services, such as those that implement the S3 API like [MinIO](https://min.io/).
 
-## Index storage
-
-### DynamoDB (deprecated)
-
-DynamoDB is a cloud database offered by AWS. It is a good candidate for a managed index store, especially if you're already running in AWS.
-
-{{< admonition type="note" >}}
-This storage type for indexes is deprecated and may be removed in future major versions of Loki.
-{{< /admonition >}}
-
-#### Rate limiting
-
-DynamoDB is susceptible to rate limiting, particularly due to overconsuming what is called [provisioned capacity](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/HowItWorks.ReadWriteCapacityMode.html). This can be controlled via the [provisioning](#provisioning) configs in the table manager.
-
 ### BoltDB (deprecated)
 
 BoltDB is an embedded database on disk. It is not replicated and thus cannot be used for high availability or clustered Loki deployments, but is commonly paired with a `filesystem` chunk store for proof of concept deployments, trying out Loki, and development. The [boltdb-shipper](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/boltdb-shipper/) aims to support clustered deployments using `boltdb` as an index.
@@ -128,40 +114,6 @@ schema_config:
 ```
 
 For all data ingested before 2023-07-01, Loki used BoltDB with the v11 schema, and then switched after that point to the more effective TSDB with the v13 schema. This dramatically simplifies upgrading, ensuring it's simple to take advantage of new storage optimizations. These configs should be immutable for as long as you care about retention.
-
-## Table Manager (deprecated)
-
-One of the subcomponents in Loki is the `table-manager`. It is responsible for pre-creating and expiring index tables. This helps partition the writes and reads in Loki across a set of distinct indices in order to prevent unbounded growth.
-
-```yaml
-table_manager:
-  # The retention period must be a multiple of the index / chunks
-  # table "period" (see period_config).
-  retention_deletes_enabled: true
-  # This is 15 weeks retention, based on the 168h (1week) period durations used in the rest of the examples.
-  retention_period: 2520h
-```
-
-For more information, see the [table manager](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/) documentation.
-
-### Provisioning
-
-In the case of AWS DynamoDB, you'll likely want to tune the provisioned throughput for your tables as well. This is to prevent your tables being rate limited on one hand and assuming unnecessary cost on the other. By default Loki uses a [provisioned capacity](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/HowItWorks.ReadWriteCapacityMode.html) strategy for DynamoDB tables like so:
-
-```yaml
-table_manager:
-  index_tables_provisioning:
-    # Read/write throughput requirements for the current table
-    # (the table which would handle writes/reads for data timestamped at the current time)
-    provisioned_write_throughput: <int> | default = 3000
-    provisioned_read_throughput: <int> | default = 300
-
-    # Read/write throughput requirements for non-current tables
-    inactive_write_throughput: <int> | default = 1
-    inactive_read_throughput: <int> | Default = 300
-```
-
-Note, there are a few other DynamoDB provisioning options including DynamoDB autoscaling and on-demand capacity. See the [provisioning configuration](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#table_manager) in the `table_manager` block documentation for more information.
 
 ## Upgrading Schemas
 
