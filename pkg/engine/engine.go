@@ -15,7 +15,6 @@ import (
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/thanos-io/objstore"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -30,7 +29,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
-	"github.com/grafana/loki/v3/pkg/storage/bucket"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/rangeio"
@@ -72,12 +70,11 @@ type Params struct {
 	Logger     log.Logger            // Logger for optional log messages.
 	Registerer prometheus.Registerer // Registerer for optional metrics.
 
-	Config          ExecutorConfig   // Config for the Engine.
-	MetastoreConfig metastore.Config // Config for the Metastore.
+	Config ExecutorConfig // Config for the Engine.
 
-	Scheduler *Scheduler      // Scheduler to manage the execution of tasks.
-	Bucket    objstore.Bucket // Bucket to read stored data from.
-	Limits    logql.Limits    // Limits to apply to engine queries.
+	Scheduler *Scheduler          // Scheduler to manage the execution of tasks.
+	Metastore metastore.Metastore // Metastore to access the indexes
+	Limits    logql.Limits        // Limits to apply to engine queries.
 }
 
 // validate validates p and applies defaults.
@@ -103,9 +100,8 @@ type Engine struct {
 	metrics     *metrics
 	rangeConfig rangeio.Config
 
-	scheduler *Scheduler      // Scheduler to manage the execution of tasks.
-	bucket    objstore.Bucket // Bucket to read stored data from.
-	limits    logql.Limits    // Limits to apply to engine queries.
+	scheduler *Scheduler   // Scheduler to manage the execution of tasks.
+	limits    logql.Limits // Limits to apply to engine queries.
 
 	metastore metastore.Metastore
 }
@@ -122,16 +118,9 @@ func New(params Params) (*Engine, error) {
 		rangeConfig: params.Config.RangeConfig,
 
 		scheduler: params.Scheduler,
-		bucket:    bucket.NewXCapBucket(params.Bucket),
 		limits:    params.Limits,
-	}
 
-	if e.bucket != nil {
-		indexBucket := e.bucket
-		if params.MetastoreConfig.IndexStoragePrefix != "" {
-			indexBucket = objstore.NewPrefixedBucket(e.bucket, params.MetastoreConfig.IndexStoragePrefix)
-		}
-		e.metastore = metastore.NewObjectMetastore(indexBucket, e.logger, params.Registerer)
+		metastore: params.Metastore,
 	}
 
 	return e, nil
@@ -340,7 +329,13 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, logger log.Logger, param
 func (e *Engine) queryMetastoreSectionsFunc(ctx context.Context) physical.MetastoreSectionsResolver {
 	return func(start time.Time, end time.Time, selector []*labels.Matcher, predicates []*labels.Matcher) ([]*metastore.DataobjSectionDescriptor, error) {
 		// TODO(ivkalita): query distributedly
-		return e.metastore.Sections(ctx, start, end, selector, predicates)
+		msResp, err := e.metastore.Sections(ctx, metastore.SectionsRequest{
+			Start:      start,
+			End:        end,
+			Matchers:   selector,
+			Predicates: predicates,
+		})
+		return msResp.Sections, err
 	}
 }
 
