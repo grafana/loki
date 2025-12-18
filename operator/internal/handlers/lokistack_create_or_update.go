@@ -75,9 +75,9 @@ func CreateOrUpdateLokiStack(
 	}
 
 	if err = patterns.Cleanup(ctx, ll, k, &stack); err != nil {
-    return nil, err
-  }
-  
+		return nil, err
+	}
+
 	if err = gateway.Cleanup(ctx, ll, k, &stack); err != nil {
 		return nil, err
 	}
