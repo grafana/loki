@@ -82,9 +82,8 @@ func (p *Peer) recvMessages(ctx context.Context) error {
 			if ctx.Err() != nil {
 				// Context got canceled; shut down
 				return nil
-			} else {
-				return err
 			}
+			return err
 		}
 
 		switch frame := frame.(type) {
