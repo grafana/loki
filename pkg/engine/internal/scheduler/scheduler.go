@@ -182,13 +182,14 @@ func (s *Scheduler) handleStreamData(ctx context.Context, worker *workerConn, ms
 	}
 
 	s.resourcesMut.RLock()
+	defer s.resourcesMut.RUnlock()
+
 	registered, found := s.streams[msg.StreamID]
 	if !found {
 		return fmt.Errorf("stream %d not found", msg.StreamID)
 	} else if registered.localReceiver == nil {
 		return fmt.Errorf("scheduler is not listening for data for stream %s", msg.StreamID)
 	}
-	s.resourcesMut.RUnlock()
 
 	return registered.localReceiver.Write(ctx, msg.Data)
 }
