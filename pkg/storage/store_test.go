@@ -204,8 +204,17 @@ func getLocalStore(path string, cm ClientMetrics) Store {
 	}
 
 	storeConfig := Config{
-		BoltDBConfig:      local.BoltDBConfig{Directory: filepath.Join(path, "index")},
-		FSConfig:          local.FSConfig{Directory: filepath.Join(path, "chunks")},
+		FSConfig: local.FSConfig{Directory: filepath.Join(path, "chunks")},
+		BoltDBShipperConfig: boltdb.IndexCfg{
+			Config: indexshipper.Config{
+				ActiveIndexDirectory: filepath.Join(path, "index"),
+				CacheLocation:        filepath.Join(path, "cache"),
+				Mode:                 indexshipper.ModeReadWrite,
+				ResyncInterval:       1 * time.Hour,
+				CacheTTL:             1 * time.Hour,
+			},
+			BuildPerTenantIndex: false,
+		},
 		MaxChunkBatchSize: 10,
 	}
 
@@ -213,7 +222,7 @@ func getLocalStore(path string, cm ClientMetrics) Store {
 		Configs: []config.PeriodConfig{
 			{
 				From:       config.DayTime{Time: start},
-				IndexType:  "boltdb",
+				IndexType:  "boltdb-shipper",
 				ObjectType: types.StorageTypeFileSystem,
 				Schema:     "v13",
 				IndexTables: config.IndexPeriodicTableConfig{

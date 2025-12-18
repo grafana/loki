@@ -81,24 +81,16 @@ You can authenticate Blob Storage access by using a storage account name and key
 
 You may use any substitutable services, such as those that implement the S3 API like [MinIO](https://min.io/).
 
-### BoltDB (deprecated)
-
-BoltDB is an embedded database on disk. It is not replicated and thus cannot be used for high availability or clustered Loki deployments, but is commonly paired with a `filesystem` chunk store for proof of concept deployments, trying out Loki, and development. The [boltdb-shipper](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/boltdb-shipper/) aims to support clustered deployments using `boltdb` as an index.
-
-{{< admonition type="note" >}}
-This storage type for indexes is deprecated and may be removed in future major versions of Loki.
-{{< /admonition >}}
-
 ## Schema Config
 
 Loki aims to be backwards compatible and over the course of its development has had many internal changes that facilitate better and more efficient storage/querying. Loki allows incrementally upgrading to these new storage _schemas_ and can query across them transparently. This makes upgrading a breeze.
-For instance, this is what it looks like when migrating from BoltDB with v11 schema to TSDB with v13 schema starting 2023-07-01:
+For instance, this is what it looks like when migrating from single-store BoltDB with v11 schema to single-store TSDB with v13 schema starting 2023-07-01:
 
 ```yaml
 schema_config:
   configs:
     - from: 2019-07-01
-      store: boltdb
+      store: boltdb-shipper
       object_store: filesystem
       schema: v11
       index:

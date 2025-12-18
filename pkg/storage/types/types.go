@@ -6,7 +6,6 @@ var SupportedIndexTypes = []string{
 }
 
 var DeprecatedIndexTypes = []string{
-	StorageTypeBoltDB,
 	StorageTypeGrpc,
 }
 
@@ -15,6 +14,7 @@ var UnsupportedIndexTypes = []string{
 	StorageTypeAWSDynamo,
 	StorageTypeBigTable,
 	StorageTypeBigTableHashed,
+	StorageTypeBoltDB,
 	StorageTypeCassandra,
 	StorageTypeGCP,
 	StorageTypeGCPColumnKey,

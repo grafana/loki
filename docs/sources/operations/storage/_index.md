@@ -32,10 +32,6 @@ For more information:
 - [Single Store TSDB](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/) index store which stores TSDB index files in the object store. This is the recommended index store for Loki 2.8 and newer.
 - [Single Store BoltDB (boltdb-shipper)](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/boltdb-shipper/) index store which stores boltdb index files in the object store. Recommended store for Loki 2.0 through 2.7.x.
 
-### ❌ Deprecated index stores
-
-- [BoltDB](https://github.com/boltdb/bolt) (doesn't work when clustering Loki)
-
 ### ✅ Supported and recommended chunks stores
 
 - [Amazon Simple Storage Service (S3)](https://aws.amazon.com/s3)
