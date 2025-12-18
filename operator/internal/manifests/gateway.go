@@ -18,6 +18,7 @@ import (
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/gateway"
 )
 
@@ -76,11 +77,15 @@ func BuildGateway(opts Options) ([]client.Object, error) {
 	}
 
 	if opts.Gates.HTTPEncryption {
+		var gatewayTLS *lokiv1.TLSSpec
+		if opts.Stack.Tenants != nil && opts.Stack.Tenants.Gateway != nil && opts.Stack.Tenants.Gateway.TLS != nil {
+			gatewayTLS = opts.Stack.Tenants.Gateway.TLS
+		}
 		serviceName := serviceNameGatewayHTTP(opts.Name)
 		serverCAName := gatewaySigningCABundleName(GatewayName(opts.Name))
 		upstreamCAName := signingCABundleName(opts.Name)
 		upstreamClientName := gatewayClientSecretName(opts.Name)
-		if err := configureGatewayServerPKI(&dpl.Spec.Template.Spec, opts.Namespace, serviceName, serverCAName, upstreamCAName, upstreamClientName, minTLSVersion, ciphers); err != nil {
+		if err := configureGatewayServerPKI(&dpl.Spec.Template.Spec, opts.Namespace, serviceName, serverCAName, upstreamCAName, upstreamClientName, minTLSVersion, ciphers, gatewayTLS); err != nil {
 			return nil, err
 		}
 	}
@@ -272,6 +277,11 @@ func NewGatewayHTTPService(opts Options) *corev1.Service {
 	serviceName := serviceNameGatewayHTTP(opts.Name)
 	labels := ComponentLabels(LabelGatewayComponent, opts.Name)
 
+	enableSigningService := opts.Gates.OpenShift.ServingCertsService
+	if opts.Stack.Tenants != nil && opts.Stack.Tenants.Gateway != nil && opts.Stack.Tenants.Gateway.TLS != nil {
+		enableSigningService = false
+	}
+
 	return &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Service",
@@ -280,7 +290,7 @@ func NewGatewayHTTPService(opts Options) *corev1.Service {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        serviceName,
 			Labels:      labels,
-			Annotations: serviceAnnotations(serviceName, opts.Gates.OpenShift.ServingCertsService),
+			Annotations: serviceAnnotations(serviceName, enableSigningService),
 		},
 		Spec: corev1.ServiceSpec{
 			Ports: []corev1.ServicePort{
@@ -492,6 +502,7 @@ func configureGatewayServerPKI(
 	namespace, serviceName, serverCAName string,
 	upstreamCAName, upstreamClientName string,
 	minTLSVersion, ciphers string,
+	tlsOptions *lokiv1.TLSSpec,
 ) error {
 	var gwIndex int
 	for i, c := range podSpec.Containers {
@@ -538,14 +549,6 @@ func configureGatewayServerPKI(
 
 	gwVolumes = append(gwVolumes,
 		corev1.Volume{
-			Name: tlsSecretVolume,
-			VolumeSource: corev1.VolumeSource{
-				Secret: &corev1.SecretVolumeSource{
-					SecretName: serviceName,
-				},
-			},
-		},
-		corev1.Volume{
 			Name: upstreamClientName,
 			VolumeSource: corev1.VolumeSource{
 				Secret: &corev1.SecretVolumeSource{
@@ -576,6 +579,72 @@ func configureGatewayServerPKI(
 			},
 		},
 	)
+
+	// Default: OpenShift auto-generated secret
+	serverTLSVolume := corev1.Volume{
+		Name: tlsSecretVolume,
+		VolumeSource: corev1.VolumeSource{
+			Secret: &corev1.SecretVolumeSource{
+				SecretName: serviceName,
+			},
+		},
+	}
+
+	if tlsOptions != nil && tlsOptions.Certificate != nil && tlsOptions.Key != nil {
+		sources := []corev1.VolumeProjection{}
+		
+		// Certificate
+		switch {
+		case tlsOptions.Certificate.ConfigMapName != "":
+			sources = append(sources, corev1.VolumeProjection{
+				ConfigMap: &corev1.ConfigMapProjection{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: tlsOptions.Certificate.ConfigMapName,
+					},
+					Items: []corev1.KeyToPath{{
+						Key:  tlsOptions.Certificate.Key,
+						Path: "tls.crt",
+					}},
+				},
+			})
+		case tlsOptions.Certificate.SecretName != "":
+			sources = append(sources, corev1.VolumeProjection{
+				Secret: &corev1.SecretProjection{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: tlsOptions.Certificate.SecretName,
+					},
+					Items: []corev1.KeyToPath{{
+						Key:  tlsOptions.Certificate.Key,
+						Path: "tls.crt",
+					}},
+				},
+			})
+		}
+
+		// Key
+		sources = append(sources, corev1.VolumeProjection{
+			Secret: &corev1.SecretProjection{
+				LocalObjectReference: corev1.LocalObjectReference{
+					Name: tlsOptions.Key.SecretName,
+				},
+				Items: []corev1.KeyToPath{{
+					Key:  tlsOptions.Key.Key,
+					Path: "tls.key",
+				}},
+			},
+		})
+
+		serverTLSVolume = corev1.Volume{
+			Name: tlsSecretVolume,
+			VolumeSource: corev1.VolumeSource{
+				Projected: &corev1.ProjectedVolumeSource{
+					Sources: sources,
+				},
+			},
+		}
+	}
+
+	gwVolumes = append(gwVolumes, serverTLSVolume)
 
 	gwContainer.VolumeMounts = append(
 		gwContainer.VolumeMounts,
