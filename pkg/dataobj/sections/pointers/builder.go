@@ -42,6 +42,9 @@ type SectionPointer struct {
 	ColumnIndex       int64
 	ColumnName        string
 	ValuesBloomFilter []byte
+
+	// EXPERIMENTAL, do not merge
+	ParsedKey string
 }
 
 func (p *SectionPointer) Reset() {
@@ -67,6 +70,9 @@ const (
 	PointerKindInvalid     PointerKind = iota // PointerKindInvalid is an invalid pointer kind.
 	PointerKindStreamIndex                    // PointerKindStreamIndex is a pointer for a stream index.
 	PointerKindColumnIndex                    // PointerKindColumnIndex is a pointer for a column index.
+
+	// EXPERIMENTAL, do not merge
+	PointerKindParsedKey // PointerKindParsedKey is a pointer for a parsed key.
 )
 
 type streamKey struct {
@@ -160,6 +166,18 @@ func (b *Builder) RecordColumnIndex(path string, section int64, columnName strin
 		ValuesBloomFilter: valuesBloomFilter,
 	}
 	b.pointers = append(b.pointers, newPointer)
+}
+
+func (b *Builder) RecordParsedKeys(path string, section int64, keys []string) {
+	for _, key := range keys {
+		newPointer := &SectionPointer{
+			Path:        path,
+			Section:     section,
+			PointerKind: PointerKindParsedKey,
+			ParsedKey:   key,
+		}
+		b.pointers = append(b.pointers, newPointer)
+	}
 }
 
 // EstimatedSize returns the estimated size of the Pointers section in bytes.
@@ -333,6 +351,23 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 		return fmt.Errorf("creating values bloom filter column: %w", err)
 	}
 
+	parsedKeyBuilder, err := dataset.NewColumnBuilder("parsed_key", dataset.BuilderOptions{
+		PageSizeHint:    b.pageSize,
+		PageMaxRowCount: b.pageRowCount,
+		Type: dataset.ColumnType{
+			Physical: datasetmd.PHYSICAL_TYPE_BINARY,
+			Logical:  ColumnTypeParsedKey.String(),
+		},
+		Encoding:    datasetmd.ENCODING_TYPE_PLAIN,
+		Compression: datasetmd.COMPRESSION_TYPE_ZSTD,
+		Statistics: dataset.StatisticsOptions{
+			StoreRangeStats: true,
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("creating column name column: %w", err)
+	}
+
 	// Populate our column builders.
 	for i, pointer := range b.pointers {
 		_ = pathBuilder.Append(i, dataset.BinaryValue([]byte(pointer.Path)))
@@ -354,6 +389,10 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 			_ = columnIndexBuilder.Append(i, dataset.Int64Value(pointer.ColumnIndex))
 			_ = valuesBloomFilterBuilder.Append(i, dataset.BinaryValue(pointer.ValuesBloomFilter))
 		}
+
+		if pointer.PointerKind == PointerKindParsedKey {
+			_ = parsedKeyBuilder.Append(i, dataset.BinaryValue([]byte(pointer.ParsedKey)))
+		}
 	}
 
 	// Encode our builders to sections. We ignore errors after enc.OpenStreams
@@ -373,6 +412,7 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 		errs = append(errs, encodeColumn(enc, ColumnTypeColumnName, columnNameBuilder))
 		errs = append(errs, encodeColumn(enc, ColumnTypeColumnIndex, columnIndexBuilder))
 		errs = append(errs, encodeColumn(enc, ColumnTypeValuesBloomFilter, valuesBloomFilterBuilder))
+		errs = append(errs, encodeColumn(enc, ColumnTypeParsedKey, parsedKeyBuilder))
 
 		if err := errors.Join(errs...); err != nil {
 			return fmt.Errorf("encoding columns: %w", err)

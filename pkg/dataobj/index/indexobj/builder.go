@@ -258,6 +258,44 @@ func (b *Builder) AppendColumnIndex(tenantID string, path string, section int64,
 	return nil
 }
 
+func (b *Builder) RecordParsedKeys(tenantID string, path string, section int64, keys []string) error {
+	// Check whether the buffer is full before a stream can be appended; this is
+	// tends to overestimate, but we may still go over our target size.
+	//
+	// Since this check only happens after the first call to Append,
+	// b.currentSizeEstimate will always be updated to reflect the size following
+	// the previous append.
+
+	newEntrySize := len(keys) * 10
+
+	if b.state != builderStateEmpty && b.currentSizeEstimate+newEntrySize > int(b.cfg.TargetObjectSize) {
+		b.builderFull = true
+	}
+
+	timer := prometheus.NewTimer(b.metrics.appendTime)
+	defer timer.ObserveDuration()
+
+	tenantPointers, ok := b.pointers[tenantID]
+	if !ok {
+		tenantPointers = pointers.NewBuilder(b.metrics.pointers, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows)
+		tenantPointers.SetTenant(tenantID)
+		b.pointers[tenantID] = tenantPointers
+	}
+	tenantPointers.RecordParsedKeys(path, section, keys)
+
+	// If our Pointers section has gotten big enough, we want to flush it to the
+	// encoder and start a new section.
+	if tenantPointers.EstimatedSize() > int(b.cfg.TargetSectionSize) {
+		if err := b.builder.Append(tenantPointers); err != nil {
+			return err
+		}
+	}
+
+	b.currentSizeEstimate = b.estimatedSize()
+	b.state = builderStateDirty
+	return nil
+}
+
 func (b *Builder) estimatedSize() int {
 	var size int
 	for _, tenantStreams := range b.streams {

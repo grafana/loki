@@ -111,6 +111,8 @@ const (
 	ColumnTypeColumnName        // ColumnTypeColumnName is a column containing the name of the column in the referenced object.
 	ColumnTypeColumnIndex       // ColumnTypeColumnIndex is a column containing the index of the column in the referenced object.
 	ColumnTypeValuesBloomFilter // ColumnTypeValuesBloomFilter is a column containing a bloom filter of the values in the column in the referenced object.
+
+	ColumnTypeParsedKey // ColumnTypeParsedKey is a column containing a unique set of parsed keys seen in this section.
 )
 
 // ParseColumnType parses a [ColumnType] from a string. The expected string
@@ -145,6 +147,9 @@ func ParseColumnType(text string) (ColumnType, error) {
 		return ColumnTypeColumnIndex, nil
 	case "values_bloom_filter":
 		return ColumnTypeValuesBloomFilter, nil
+
+	case "parsed_key":
+		return ColumnTypeParsedKey, nil
 	}
 
 	return ColumnTypeInvalid, fmt.Errorf("invalid column type %q", text)
@@ -166,6 +171,8 @@ var columnTypeNames = map[ColumnType]string{
 	ColumnTypeColumnName:        "column_name",
 	ColumnTypeColumnIndex:       "column_index",
 	ColumnTypeValuesBloomFilter: "values_bloom_filter",
+
+	ColumnTypeParsedKey: "parsed_key",
 }
 
 // String returns the human-readable name of ct.

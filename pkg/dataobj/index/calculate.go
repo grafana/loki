@@ -43,6 +43,7 @@ func getLogsCalculationSteps() []logsIndexCalculation {
 	return []logsIndexCalculation{
 		&streamStatisticsCalculation{},
 		&columnValuesCalculation{},
+		&parsedKeysSet{},
 	}
 }
 

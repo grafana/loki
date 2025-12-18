@@ -56,7 +56,7 @@ func createTestLogObject(t *testing.T, tenants int) *dataobj.Object {
 			Entries: []push.Entry{
 				{
 					Timestamp: time.Unix(10, 0).UTC(),
-					Line:      "hello from foo",
+					Line:      "hello from foo count=1",
 					StructuredMetadata: push.LabelsAdapter{
 						{Name: "trace_id", Value: "123"},
 						{Name: "span_id", Value: "456"},
@@ -84,7 +84,7 @@ func createTestLogObject(t *testing.T, tenants int) *dataobj.Object {
 				},
 				{
 					Timestamp: time.Unix(25, 0).UTC(),
-					Line:      "error message from bar",
+					Line:      "error message from bar latency=3",
 					StructuredMetadata: push.LabelsAdapter{
 						{Name: "trace_id", Value: "def"},
 						{Name: "level", Value: "error"},
@@ -222,7 +222,8 @@ func requireValidPointers(t *testing.T, obj *dataobj.Object) {
 			for _, pointer := range buf[:n] {
 				require.NotEqual(t, pointer.Path, "")
 				require.Greater(t, pointer.PointerKind, pointers.PointerKind(0))
-				if pointer.PointerKind == pointers.PointerKindStreamIndex {
+				switch pointer.PointerKind {
+				case pointers.PointerKindStreamIndex:
 					key := fmt.Sprintf("%s:%s:%d", section.Tenant, pointer.Path, pointer.Section)
 					pointersByTenant[key]++
 					require.Greater(t, pointer.StreamIDRef, int64(0))
@@ -231,9 +232,13 @@ func requireValidPointers(t *testing.T, obj *dataobj.Object) {
 					require.Greater(t, pointer.EndTs, time.Unix(0, 0))
 					require.Greater(t, pointer.LineCount, int64(0))
 					require.Greater(t, pointer.UncompressedSize, int64(0))
-				} else {
+				case pointers.PointerKindColumnIndex:
 					require.Greater(t, pointer.ColumnIndex, int64(0))
 					require.Greater(t, len(pointer.ValuesBloomFilter), 0)
+				case pointers.PointerKindParsedKey:
+					require.Greater(t, len(pointer.ParsedKey), 0)
+				default:
+					t.Fatalf("unexpected pointer kind: %d", pointer.PointerKind)
 				}
 				totalPointers++
 			}

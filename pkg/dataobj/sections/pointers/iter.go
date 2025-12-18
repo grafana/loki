@@ -120,6 +120,8 @@ func decodeRow(columns []*Column, row dataset.Row, pointer *SectionPointer, sym 
 				pointer.PointerKind = PointerKindStreamIndex
 			case int64(PointerKindColumnIndex):
 				pointer.PointerKind = PointerKindColumnIndex
+			case int64(PointerKindParsedKey):
+				pointer.PointerKind = PointerKindParsedKey
 			default:
 				return fmt.Errorf("invalid pointer kind %d", columnValue.Int64())
 			}
@@ -180,6 +182,12 @@ func decodeRow(columns []*Column, row dataset.Row, pointer *SectionPointer, sym 
 			pointer.ValuesBloomFilter = slicegrow.GrowToCap(pointer.ValuesBloomFilter, len(filterBytes))
 			pointer.ValuesBloomFilter = pointer.ValuesBloomFilter[:len(filterBytes)]
 			copy(pointer.ValuesBloomFilter, filterBytes)
+
+		case ColumnTypeParsedKey:
+			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_BINARY {
+				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
+			}
+			pointer.ParsedKey = sym.Get(unsafeString(columnValue.Binary()))
 
 		default:
 			// TODO(rfratto): We probably don't want to return an error on unexpected
