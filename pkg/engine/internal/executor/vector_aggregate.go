@@ -8,6 +8,8 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
+
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/xcap"
@@ -23,7 +25,7 @@ type vectorAggregationPipeline struct {
 
 	aggregator *aggregator
 	evaluator  expressionEvaluator
-	groupBy    []physical.ColumnExpression
+	grouping   physical.Grouping
 	region     *xcap.Region
 
 	tsEval    evalFunc // used to evaluate the timestamp column
@@ -34,12 +36,10 @@ var (
 	vectorAggregationOperations = map[types.VectorAggregationType]aggregationOperation{
 		types.VectorAggregationTypeSum:   aggregationOperationSum,
 		types.VectorAggregationTypeCount: aggregationOperationCount,
-		types.VectorAggregationTypeMax:   aggregationOperationMax,
-		types.VectorAggregationTypeMin:   aggregationOperationMin,
 	}
 )
 
-func newVectorAggregationPipeline(inputs []Pipeline, groupBy []physical.ColumnExpression, evaluator expressionEvaluator, operation types.VectorAggregationType, region *xcap.Region) (*vectorAggregationPipeline, error) {
+func newVectorAggregationPipeline(inputs []Pipeline, grouping physical.Grouping, evaluator expressionEvaluator, operation types.VectorAggregationType, region *xcap.Region) (*vectorAggregationPipeline, error) {
 	if len(inputs) == 0 {
 		return nil, fmt.Errorf("vector aggregation expects at least one input")
 	}
@@ -52,8 +52,8 @@ func newVectorAggregationPipeline(inputs []Pipeline, groupBy []physical.ColumnEx
 	return &vectorAggregationPipeline{
 		inputs:     inputs,
 		evaluator:  evaluator,
-		groupBy:    groupBy,
-		aggregator: newAggregator(groupBy, 0, op),
+		grouping:   grouping,
+		aggregator: newAggregator(0, op),
 		region:     region,
 		tsEval: evaluator.newFunc(&physical.ColumnExpr{
 			Ref: types.ColumnRef{
@@ -79,10 +79,6 @@ func (v *vectorAggregationPipeline) Read(ctx context.Context) (arrow.RecordBatch
 }
 
 func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch, error) {
-	var (
-		labelValues = make([]string, len(v.groupBy))
-	)
-
 	v.aggregator.Reset() // reset before reading new inputs
 	inputsExhausted := false
 	for !inputsExhausted {
@@ -114,30 +110,88 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch
 			valueArr := valueVec.(*array.Float64)
 
 			// extract all the columns that are used for grouping
-			arrays := make([]*array.String, 0, len(v.groupBy))
+			var arrays []*array.String
+			var fields []arrow.Field
 
-			for _, columnExpr := range v.groupBy {
-				vec, err := v.evaluator.eval(columnExpr, record)
-				if err != nil {
-					return nil, err
+			if v.grouping.Without {
+				// Grouping without a lable set. Exclude lables from that set.
+				schema := record.Schema()
+				for i, field := range schema.Fields() {
+					ident, err := semconv.ParseFQN(field.Name)
+					if err != nil {
+						return nil, err
+					}
+
+					if ident.ColumnType() == types.ColumnTypeLabel ||
+						ident.ColumnType() == types.ColumnTypeMetadata ||
+						ident.ColumnType() == types.ColumnTypeParsed {
+						found := false
+						for _, g := range v.grouping.Columns {
+							colExpr, ok := g.(*physical.ColumnExpr)
+							if !ok {
+								return nil, fmt.Errorf("unknown column expression %v", g)
+							}
+
+							// Match ambiguous columns only by name
+							if colExpr.Ref.Type == types.ColumnTypeAmbiguous && colExpr.Ref.Column == ident.ShortName() {
+								found = true
+								break
+							}
+
+							// Match all other columns by name and type
+							if colExpr.Ref.Column == ident.ShortName() && colExpr.Ref.Type == ident.ColumnType() {
+								found = true
+								break
+							}
+						}
+						if !found {
+							arrays = append(arrays, record.Column(i).(*array.String))
+							fields = append(fields, field)
+						}
+					}
 				}
+			} else {
+				// Gouping by a label set. Take only labels from that set.
+				for _, columnExpr := range v.grouping.Columns {
+					vec, err := v.evaluator.eval(columnExpr, record)
+					if err != nil {
+						return nil, err
+					}
 
-				if vec.DataType().ID() != types.Arrow.String.ID() {
-					return nil, fmt.Errorf("unsupported datatype for grouping %s", vec.DataType())
+					if vec.DataType().ID() != types.Arrow.String.ID() {
+						return nil, fmt.Errorf("unsupported datatype for grouping %s", vec.DataType())
+					}
+
+					arr := vec.(*array.String)
+					arrays = append(arrays, arr)
+
+					colExpr, ok := columnExpr.(*physical.ColumnExpr)
+					if !ok {
+						return nil, fmt.Errorf("invalid column expression type %T", columnExpr)
+					}
+					ident := semconv.NewIdentifier(colExpr.Ref.Column, colExpr.Ref.Type, types.Loki.String)
+					fields = append(fields, semconv.FieldFromIdent(ident, true))
 				}
-
-				arr := vec.(*array.String)
-				arrays = append(arrays, arr)
 			}
 
+			v.aggregator.AddLabels(fields)
+
 			for row := range int(record.NumRows()) {
-				// reset for each row
-				clear(labelValues)
-				for col, arr := range arrays {
-					labelValues[col] = arr.Value(row)
+				if valueArr.IsNull(row) {
+					continue
 				}
 
-				v.aggregator.Add(tsCol.Value(row).ToTime(arrow.Nanosecond), valueArr.Value(row), labelValues)
+				labelValues := make([]string, 0, len(arrays))
+				labels := make([]arrow.Field, 0, len(arrays))
+				for i, arr := range arrays {
+					val := arr.Value(row)
+					if val != "" {
+						labelValues = append(labelValues, val)
+						labels = append(labels, fields[i])
+					}
+				}
+
+				v.aggregator.Add(tsCol.Value(row).ToTime(arrow.Nanosecond), valueArr.Value(row), labels, labelValues)
 			}
 		}
 	}
