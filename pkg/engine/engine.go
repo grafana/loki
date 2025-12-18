@@ -331,6 +331,9 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, logger log.Logger, param
 func (e *Engine) metastoreSectionsResolver(ctx context.Context) physical.MetastoreSectionsResolver {
 	planner := physical.NewMetastorePlanner(e.metastore)
 	return func(selector physical.Expression, predicates []physical.Expression, start time.Time, end time.Time) ([]*metastore.DataobjSectionDescriptor, error) {
+		ctx, region := xcap.StartRegion(ctx, "ObjectMetastore.Sections")
+		defer region.End()
+
 		plan, err := planner.Plan(ctx, selector, predicates, start, end)
 		if err != nil {
 			return nil, fmt.Errorf("metastore: build plan: %w", err)
