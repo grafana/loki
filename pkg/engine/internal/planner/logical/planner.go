@@ -274,7 +274,7 @@ func walkRangeAggregation(e *syntax.RangeAggregationExpr, params logql.Params) (
 	}
 
 	builder = builder.RangeAggregation(
-		nil, rangeAggType, params.Start(), params.End(), params.Step(), rangeInterval,
+		convertGrouping(e.Grouping), rangeAggType, params.Start(), params.End(), params.Step(), rangeInterval,
 	)
 
 	switch e.Operation {
@@ -290,11 +290,6 @@ func walkRangeAggregation(e *syntax.RangeAggregationExpr, params logql.Params) (
 }
 
 func walkVectorAggregation(e *syntax.VectorAggregationExpr, params logql.Params) (Value, error) {
-	// `without()` grouping is not supported.
-	if e.Grouping != nil && e.Grouping.Without {
-		return nil, errUnimplemented
-	}
-
 	left, err := walk(e.Left, params)
 	if err != nil {
 		return nil, err
@@ -305,14 +300,9 @@ func walkVectorAggregation(e *syntax.VectorAggregationExpr, params logql.Params)
 		return nil, errUnimplemented
 	}
 
-	groupBy := make([]ColumnRef, 0, len(e.Grouping.Groups))
-	for _, group := range e.Grouping.Groups {
-		groupBy = append(groupBy, *NewColumnRef(group, types.ColumnTypeAmbiguous))
-	}
-
 	return &VectorAggregation{
 		Table:     left,
-		GroupBy:   groupBy,
+		Grouping:  convertGrouping(e.Grouping),
 		Operation: vecAggType,
 	}, nil
 }
@@ -431,7 +421,7 @@ func convertVectorAggregationType(op string) types.VectorAggregationType {
 	switch op {
 	case syntax.OpTypeSum:
 		return types.VectorAggregationTypeSum
-	// case syntax.OpTypeCount:
+	//case syntax.OpTypeCount:
 	//	return types.VectorAggregationTypeCount
 	case syntax.OpTypeMax:
 		return types.VectorAggregationTypeMax
@@ -594,6 +584,30 @@ func convertQueryRangeToPredicates(start, end time.Time) []*BinOp {
 			Right: NewLiteral(types.Timestamp(end.UTC().UnixNano())),
 			Op:    types.BinaryOpLt,
 		},
+	}
+}
+
+// convertGrouping converts [syntax.Grouping] structure into a list of columns and a grouping mode.
+func convertGrouping(g *syntax.Grouping) Grouping {
+	var columns []ColumnRef
+
+	if g == nil {
+		return Grouping{
+			Columns: columns,
+			Without: true,
+		}
+	}
+
+	if g.Groups != nil {
+		columns = make([]ColumnRef, len(g.Groups))
+		for i, group := range g.Groups {
+			columns[i] = *NewColumnRef(group, types.ColumnTypeAmbiguous)
+		}
+	}
+
+	return Grouping{
+		Columns: columns,
+		Without: g.Without,
 	}
 }
 

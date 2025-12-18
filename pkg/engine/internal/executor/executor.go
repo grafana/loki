@@ -280,7 +280,7 @@ func (c *Context) executeRangeAggregation(ctx context.Context, plan *physical.Ra
 	}
 
 	pipeline, err := newRangeAggregationPipeline(inputs, c.evaluator, rangeAggregationOptions{
-		partitionBy:   plan.PartitionBy,
+		grouping:      plan.Grouping,
 		startTs:       plan.Start,
 		endTs:         plan.End,
 		rangeInterval: plan.Range,
@@ -299,7 +299,7 @@ func (c *Context) executeVectorAggregation(ctx context.Context, plan *physical.V
 		return emptyPipeline()
 	}
 
-	pipeline, err := newVectorAggregationPipeline(inputs, plan.GroupBy, c.evaluator, plan.Operation, region)
+	pipeline, err := newVectorAggregationPipeline(inputs, plan.Grouping, c.evaluator, plan.Operation, region)
 	if err != nil {
 		return errorPipeline(ctx, err)
 	}
@@ -426,13 +426,15 @@ func startRegionForNode(ctx context.Context, n physical.Node) (context.Context, 
 			attribute.Int64("end_ts", n.End.UnixNano()),
 			attribute.Int64("range_interval", int64(n.Range)),
 			attribute.Int64("step", int64(n.Step)),
-			attribute.Int("num_partition_by", len(n.PartitionBy)),
+			attribute.Int("num_grouping", len(n.Grouping.Columns)),
+			attribute.Bool("grouping_without", n.Grouping.Without),
 		)
 
 	case *physical.VectorAggregation:
 		attributes = append(attributes,
 			attribute.String("operation", string(rune(n.Operation))),
-			attribute.Int("num_group_by", len(n.GroupBy)),
+			attribute.Int("num_grouping", len(n.Grouping.Columns)),
+			attribute.Bool("grouping_without", n.Grouping.Without),
 		)
 
 	case *physical.ColumnCompat:

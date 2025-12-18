@@ -213,6 +213,10 @@ func (g *TestCaseGenerator) Generate() []TestCase {
 			fmt.Sprintf(`count_over_time(%s[%s])`, selector, rangeInterval),
 			fmt.Sprintf(`count_over_time(%s | detected_level=~"error|warn" [%s])`, selector, rangeInterval),
 			fmt.Sprintf(`count_over_time(%s |= "level" [%s])`, selector, rangeInterval),
+			//fmt.Sprintf(`avg_over_time(%s | json | unwrap rows_affected [%s])`, selector, rangeInterval),
+			//fmt.Sprintf(`avg_over_time(%s |= "level" | json | unwrap rows_affected [%s])`, selector, rangeInterval),
+			//fmt.Sprintf(`min_over_time(%s |= "level" | json | unwrap rows_affected [%s])`, selector, rangeInterval),
+			//fmt.Sprintf(`max_over_time(%s |= "level" | json | unwrap rows_affected [%s])`, selector, rangeInterval),
 			fmt.Sprintf(`rate(%s | detected_level=~"error|warn" [%s])`, selector, rangeInterval),
 		}
 
@@ -246,6 +250,11 @@ func (g *TestCaseGenerator) Generate() []TestCase {
 
 	addMetricQuery(fmt.Sprintf(`sum by (level) (sum_over_time({service_name="database"} | json | unwrap rows_affected [%s]))`, rangeInterval), start, end, step)
 	addMetricQuery(fmt.Sprintf(`sum by (level) (sum_over_time({service_name="loki"} | logfmt | duration != "" | unwrap duration_seconds(duration) [%s]))`, rangeInterval), start, end, step)
+	//addMetricQuery(fmt.Sprintf(`max by (level) (min_over_time({service_name="loki"} | logfmt | duration != "" | unwrap duration_seconds(duration) [%s]))`, rangeInterval), start, end, step)
+	//addMetricQuery(fmt.Sprintf(`avg by (level) (avg_over_time({service_name="loki"} | logfmt | duration != "" | unwrap duration_seconds(duration) [%s]))`, rangeInterval), start, end, step)
+	//addMetricQuery(fmt.Sprintf(`max by () (avg_over_time({service_name="loki"} | logfmt | duration != "" | unwrap duration_seconds(duration) [%s]))`, rangeInterval), start, end, step)
+	//addMetricQuery(fmt.Sprintf(`max by (level) (avg_over_time({service_name="loki"} | logfmt | duration != "" | unwrap duration_seconds(duration) [%s]) without (service_name))`, rangeInterval), start, end, step)
+	//addMetricQuery(fmt.Sprintf(`max without () (sum_over_time({service_name="loki"} | logfmt | duration != "" | unwrap duration_seconds(duration) [%s]))`, rangeInterval), start, end, step)
 
 	// Dense period queries
 	for _, interval := range g.logGenCfg.DenseIntervals {
