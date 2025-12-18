@@ -213,6 +213,15 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) (Node, e
 	p.plan.graph.Add(scanSet)
 
 	for _, dataObj := range dataObjs {
+		predicatesToPushdown := make([]Expression, 0, len(predicates))
+		if len(dataObj.Labels) > 0 {
+			for _, predicate := range predicates {
+				p, disambiguated := disambiguateExpression(predicate, dataObj.Labels)
+				if disambiguated {
+					predicatesToPushdown = append(predicatesToPushdown, p)
+				}
+			}
+		}
 		for _, section := range dataObj.Sections {
 			scanSet.Targets = append(scanSet.Targets, &ScanTarget{
 				Type: ScanTypeDataObject,
@@ -224,6 +233,7 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) (Node, e
 					StreamIDs:    dataObj.Streams,
 					Section:      section,
 					MaxTimeRange: dataObj.TimeRange,
+					Predicates:   predicatesToPushdown,
 				},
 			})
 		}
@@ -644,6 +654,76 @@ func (p *Planner) wrapNodeWith(node Node, wrapper Node) (Node, error) {
 		return nil, err
 	}
 	return wrapper, nil
+}
+
+// disambiguateExpression recursively updates ColumnTypeAmbiguous references
+// to ColumnTypeMetadata if the column name does not exist in the provided label set
+func disambiguateExpression(expr Expression, labels []string) (Expression, bool) {
+	if expr == nil {
+		return nil, false
+	}
+
+	switch e := expr.(type) {
+	case *BinaryExpr:
+		leftExpr, leftChanged := disambiguateExpression(e.Left, labels)
+		rightExpr, rightChanged := disambiguateExpression(e.Right, labels)
+		if !leftChanged && !rightChanged {
+			return e, false
+		}
+
+		return &BinaryExpr{
+			Left:  leftExpr,
+			Right: rightExpr,
+			Op:    e.Op,
+		}, true
+	case *ColumnExpr:
+		if e.Ref.Type == types.ColumnTypeAmbiguous {
+			if slices.Contains(labels, e.Ref.Column) {
+				return &ColumnExpr{
+					Ref: types.ColumnRef{
+						Column: e.Ref.Column,
+						Type:   types.ColumnTypeLabel,
+					},
+				}, true
+			}
+
+			return &ColumnExpr{
+				Ref: types.ColumnRef{
+					Column: e.Ref.Column,
+					Type:   types.ColumnTypeMetadata,
+				},
+			}, true
+		}
+		return e, false
+	case *UnaryExpr:
+		leftExpr, leftChanged := disambiguateExpression(e.Left, labels)
+		if !leftChanged {
+			return e, false
+		}
+
+		return &UnaryExpr{
+			Left: leftExpr,
+			Op:   e.Op,
+		}, true
+	case *VariadicExpr:
+		anyChanged := false
+		newExprs := make([]Expression, len(e.Expressions))
+		for i, subExpr := range e.Expressions {
+			exp, changed := disambiguateExpression(subExpr, labels)
+			newExprs[i] = exp
+			anyChanged = anyChanged || changed
+		}
+		if !anyChanged {
+			return e, false
+		}
+
+		return &VariadicExpr{
+			Op:          e.Op,
+			Expressions: newExprs,
+		}, true
+	default:
+		return e, false
+	}
 }
 
 // Optimize runs optimization passes over the plan, modifying it

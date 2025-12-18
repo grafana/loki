@@ -61,9 +61,14 @@ type DataobjSectionDescriptor struct {
 	Size      int64
 	Start     time.Time
 	End       time.Time
+	Labels    []string
 }
 
 func NewSectionDescriptor(pointer pointers.SectionPointer) *DataobjSectionDescriptor {
+	return NewSectionDescriptorWithLabels(pointer, nil)
+}
+
+func NewSectionDescriptorWithLabels(pointer pointers.SectionPointer, labels []string) *DataobjSectionDescriptor {
 	return &DataobjSectionDescriptor{
 		SectionKey: SectionKey{
 			ObjectPath: pointer.Path,
@@ -74,6 +79,7 @@ func NewSectionDescriptor(pointer pointers.SectionPointer) *DataobjSectionDescri
 		Size:      pointer.UncompressedSize,
 		Start:     pointer.StartTs,
 		End:       pointer.EndTs,
+		Labels:    labels,
 	}
 }
 
@@ -87,6 +93,23 @@ func (d *DataobjSectionDescriptor) Merge(pointer pointers.SectionPointer) {
 	if pointer.EndTs.After(d.End) {
 		d.End = pointer.EndTs
 	}
+}
+
+func (d *DataobjSectionDescriptor) MergeWithLabels(pointer pointers.SectionPointer, lbls []string) {
+	lblMap := map[string]struct{}{}
+	for _, label := range lbls {
+		lblMap[label] = struct{}{}
+	}
+	for _, label := range d.Labels {
+		lblMap[label] = struct{}{}
+	}
+	newLabels := make([]string, 0, len(lblMap))
+	for label := range lblMap {
+		newLabels = append(newLabels, label)
+	}
+
+	d.Merge(pointer)
+	d.Labels = newLabels
 }
 
 // Table of Content files are stored in well-known locations that can be computed from a known time.
