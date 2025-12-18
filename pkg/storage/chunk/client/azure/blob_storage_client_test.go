@@ -178,12 +178,12 @@ func (suite *FederatedTokenTestSuite) Test_ServicePrincipalTokenFromFederatedTok
 	suite.config.cfg.ActiveDirectoryEndpoint = ""
 	suite.config.cfg.Environment = azureGlobal
 
-	newOAuthConfigFunc := func(activeDirectoryEndpoint, tenantID string) (*adal.OAuthConfig, error) {
+	newOAuthConfigFunc := func(activeDirectoryEndpoint, _ string) (*adal.OAuthConfig, error) {
 		require.Equal(suite.T(), azure.PublicCloud.ActiveDirectoryEndpoint, activeDirectoryEndpoint)
 		return suite.mockOAuthConfig, nil
 	}
 
-	servicePrincipalTokenFromFederatedTokenFunc := func(oauthConfig adal.OAuthConfig, clientID, jwt, resource string, _ ...adal.TokenRefreshCallback) (*adal.ServicePrincipalToken, error) {
+	servicePrincipalTokenFromFederatedTokenFunc := func(_ adal.OAuthConfig, _, _, _ string, _ ...adal.TokenRefreshCallback) (*adal.ServicePrincipalToken, error) {
 		return suite.mockedServicePrincipalToken, nil
 	}
 
@@ -202,12 +202,12 @@ func (suite *FederatedTokenTestSuite) Test_ServicePrincipalTokenFromFederatedTok
 	suite.config.cfg.ActiveDirectoryEndpoint = testAdEndpoint
 	suite.config.cfg.Environment = azureGlobal
 
-	newOAuthConfigFunc := func(activeDirectoryEndpoint, tenantID string) (*adal.OAuthConfig, error) {
+	newOAuthConfigFunc := func(activeDirectoryEndpoint, _ string) (*adal.OAuthConfig, error) {
 		require.Equal(suite.T(), testAdEndpoint, activeDirectoryEndpoint)
 		return suite.mockOAuthConfig, nil
 	}
 
-	servicePrincipalTokenFromFederatedTokenFunc := func(oauthConfig adal.OAuthConfig, clientID, jwt, resource string, _ ...adal.TokenRefreshCallback) (*adal.ServicePrincipalToken, error) {
+	servicePrincipalTokenFromFederatedTokenFunc := func(_ adal.OAuthConfig, _, _, _ string, _ ...adal.TokenRefreshCallback) (*adal.ServicePrincipalToken, error) {
 		return suite.mockedServicePrincipalToken, nil
 	}
 
