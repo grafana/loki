@@ -326,6 +326,8 @@ The query produces results with too many unique label combinations. This protect
    sum by (status, method) (rate({job="nginx"} | json [5m]))
    ```
 
+   Another alternative is using `drop` or `keep` to reduce the number of labels and hence the cardinality.
+
 * **Increase the limit** if needed:
 
    ```yaml
@@ -358,12 +360,10 @@ The query requests more log entries than the configured maximum. This applies to
 
 * **Reduce the limit parameter** in your query request.
 
-* **Use pagination** with the `limit` parameter: `{job="app"} | limit 1000`
-
 * **Add more specific filters** to return fewer results:
 
    ```logql
-   {app="foo"} |= "error" | json | level="error"
+   {app="foo"} |= "error" 
    ```
 
 * **Reduce the time range** of the query.
@@ -400,17 +400,6 @@ The estimated data volume for the query exceeds the configured limit. This is de
 
 * **Add more specific stream selectors** to reduce data volume.
 * **Reduce the time range** of the query.
-* **Use line filters** to reduce processing:
-
-   ```logql
-   {app="foo"} |= "error"
-   ```
-
-* **Use sampling**
-
-  ```logql
-   {job="app"} | line_format "{{__timestamp__}} {{.msg}}" | sample 0.1
-   ```
 
 * **Increase the limit** if resources allow:
 
@@ -453,11 +442,6 @@ The number of chunks that the query would read exceeds the configured limit. Thi
    ```
 
 * **Reduce the query time range** to scan fewer chunks.
-* **Add line filters** to reduce processing:
-
-   ```logql
-   {app="foo"} |= "error"
-   ```
 
 * **Increase the limit** if resources allow:
 
@@ -553,29 +537,6 @@ Even after query splitting and sharding, individual query shards exceed the per-
 - Retryable: No (query must be modified)
 - HTTP status: 400 Bad Request
 - Configurable per tenant: Yes
-
-### Error: Limit reached while evaluating query
-
-**Error message:**
-
-`limit reached while evaluating the query`
-
-**Cause:**
-
-An internal limit was reached during query evaluation. This is a catch-all for various internal limits.
-
-**Resolution:**
-
-* **Simplify the query** - reduce complexity.
-* **Reduce the time range**.
-* **Add more specific stream selectors**.
-
-**Properties:**
-
-- Enforced by: Query Engine
-- Retryable: No
-- HTTP status: 400 Bad Request
-- Configurable per tenant: Varies
 
 ### Error: Interval value exceeds limit
 
