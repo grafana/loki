@@ -156,7 +156,13 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 		timer := prometheus.NewTimer(e.metrics.physicalPlanning)
 
 		catalog := physical.NewMetastoreCatalog(func(start time.Time, end time.Time, selectors []*labels.Matcher, predicates []*labels.Matcher) ([]*metastore.DataobjSectionDescriptor, error) {
-			return e.metastore.Sections(ctx, start, end, selectors, predicates)
+			resp, err := e.metastore.Sections(ctx, metastore.SectionsRequest{
+				Start:      start,
+				End:        end,
+				Matchers:   selectors,
+				Predicates: predicates,
+			})
+			return resp.Sections, err
 		})
 		planner := physical.NewPlanner(physical.NewContext(params.Start(), params.End()), catalog)
 		plan, err := planner.Build(logicalPlan)

@@ -71,10 +71,10 @@ func queryMetastore(params logql.LiteralParams) error {
 // Currently, it does not pass structured metadata predicates
 func getSections(start, end time.Time, streamMatchers []*labels.Matcher) ([]*metastore.DataobjSectionDescriptor, error) {
 	ctx := user.InjectOrgID(context.Background(), orgID)
-	metastore := metastore.NewObjectMetastore(MustIndexBucket(), log.NewLogfmtLogger(os.Stderr), nil)
-	sections, err := metastore.Sections(ctx, start, end, streamMatchers, nil)
+	ms := metastore.NewObjectMetastore(MustIndexBucket(), log.NewLogfmtLogger(os.Stderr), nil)
+	sectionsResp, err := ms.Sections(ctx, metastore.SectionsRequest{Start: start, End: end, Matchers: streamMatchers})
 	if err != nil {
 		return nil, err
 	}
-	return sections, nil
+	return sectionsResp.Sections, nil
 }
