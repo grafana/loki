@@ -41,16 +41,34 @@ type Writer struct {
 	// attributes are ignored.
 	ObjectAttrs
 
-	// SendCRC32C specifies whether to transmit a CRC32C field. It should be set
-	// to true in addition to setting the Writer's CRC32C field, because zero
-	// is a valid CRC and normally a zero would not be transmitted.
-	// If a CRC32C is sent, and the data written does not match the checksum,
-	// the write will be rejected.
+	// SendCRC32C specifies whether to transmit a CRC32C checksum. When this is
+	// true and the Writer's CRC32C field is set, that checksum is sent to GCS.
+	// If the data written does not match the checksum, the write is rejected.
+	// It is necessary to set this field to true in addition to setting the
+	// Writer's CRC32C field because zero is a valid CRC.
 	//
-	// Note: SendCRC32C must be set to true BEFORE the first call to
-	// Writer.Write() in order to send the checksum. If it is set after that
-	// point, the checksum will be ignored.
+	// When using gRPC, the client automatically calculates and sends checksums
+	// per-chunk and for the full object. However, A user-provided checksum takes
+	// precedence over the auto-calculated checksum for full object.
+	// To disable auto checksum behavior, see DisableAutoChecksum.
+	//
+	// Note: SendCRC32C must be set before the first call to Writer.Write().
 	SendCRC32C bool
+
+	// DisableAutoChecksum disables automatic CRC32C checksum calculation and
+	// validation in gRPC Writer. By default when using gRPC, the Writer
+	// automatically performs checksum validation for both individual chunks and
+	// the entire object. Setting this to true disables this behavior. This flag
+	// is ignored when not using gRPC.
+	//
+	// Disabling automatic checksumming does not prevent a user-provided checksum
+	// from being sent. If SendCRC32C is true and the Writer's CRC32C field is
+	// populated, that checksum will still be sent to GCS for validation.
+	//
+	// Note: DisableAutoChecksum must be set before the first call to
+	// Writer.Write(). Automatic checksumming is not enabled for writes
+	// using the HTTP client or for unfinalized writes to appendable objects in gRPC.
+	DisableAutoChecksum bool
 
 	// ChunkSize controls the maximum number of bytes of the object that the
 	// Writer will attempt to send to the server in a single request. Objects
@@ -286,6 +304,7 @@ func (w *Writer) openWriter() (err error) {
 		appendGen:            w.o.gen,
 		encryptionKey:        w.o.encryptionKey,
 		sendCRC32C:           w.SendCRC32C,
+		disableAutoChecksum:  w.DisableAutoChecksum,
 		append:               w.Append,
 		finalizeOnClose:      w.FinalizeOnClose,
 		donec:                w.donec,

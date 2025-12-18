@@ -67,7 +67,7 @@ func createTestChunk(t *testing.T, userID string, lbs labels.Labels, from, throu
 		blockSize  = 256 * 1024
 	)
 	labelsBuilder := labels.NewBuilder(lbs)
-	labelsBuilder.Set(labels.MetricName, "logs")
+	labelsBuilder.Set(model.MetricNameLabel, "logs")
 	metric := labelsBuilder.Labels()
 	fp := model.Fingerprint(labels.StableHash(lbs))
 	chunkEnc := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, compression.None, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, blockSize, targetSize)

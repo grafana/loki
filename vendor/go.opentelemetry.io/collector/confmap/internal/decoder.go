@@ -7,6 +7,7 @@ import (
 	"encoding"
 	"errors"
 	"fmt"
+	"maps"
 	"reflect"
 	"slices"
 	"strings"
@@ -218,9 +219,7 @@ func unmarshalerEmbeddedStructsHookFunc() mapstructure.DecodeHookFuncValue {
 					if fromAsMap == nil && len(resultMap) > 0 {
 						fromAsMap = make(map[string]any, len(resultMap))
 					}
-					for k, v := range resultMap {
-						fromAsMap[k] = v
-					}
+					maps.Copy(fromAsMap, resultMap)
 				}
 			}
 		}

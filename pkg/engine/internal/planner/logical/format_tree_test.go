@@ -115,7 +115,10 @@ func TestFormatRangeAggregationQuery(t *testing.T) {
 			Op:    types.BinaryOpGt,
 		},
 	).RangeAggregation(
-		[]ColumnRef{*NewColumnRef("label1", types.ColumnTypeAmbiguous), *NewColumnRef("label2", types.ColumnTypeAmbiguous)},
+		Grouping{
+			Columns: []ColumnRef{*NewColumnRef("label1", types.ColumnTypeAmbiguous), *NewColumnRef("label2", types.ColumnTypeAmbiguous)},
+			Without: false,
+		},
 		types.RangeAggregationTypeCount,
 		time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC), // Start Time
 		time.Date(1970, 1, 1, 1, 0, 0, 0, time.UTC), // End Time
@@ -134,7 +137,7 @@ func TestFormatRangeAggregationQuery(t *testing.T) {
 	t.Logf("Actual output:\n%s", actual)
 
 	expected := `
-RangeAggregation <%5> table=%4 operation=count start_ts=1970-01-01T00:00:00Z end_ts=1970-01-01T01:00:00Z step=1m0s range=5m0s partition_by=(ambiguous.label1, ambiguous.label2)
+RangeAggregation <%5> table=%4 operation=count start_ts=1970-01-01T00:00:00Z end_ts=1970-01-01T01:00:00Z step=1m0s range=5m0s group_by=(ambiguous.label1, ambiguous.label2)
 │   ├── ColumnRef column=label1 type=ambiguous
 │   └── ColumnRef column=label2 type=ambiguous
 └── SELECT <%4> table=%2 predicate=%3
@@ -163,9 +166,12 @@ func TestFormatVectorAggregationQuery(t *testing.T) {
 			},
 		},
 	).VectorAggregation(
-		[]ColumnRef{
-			*NewColumnRef("app", types.ColumnTypeLabel),
-			*NewColumnRef("env", types.ColumnTypeLabel),
+		Grouping{
+			Columns: []ColumnRef{
+				*NewColumnRef("app", types.ColumnTypeLabel),
+				*NewColumnRef("env", types.ColumnTypeLabel),
+			},
+			Without: false,
 		},
 		types.VectorAggregationTypeSum,
 	)

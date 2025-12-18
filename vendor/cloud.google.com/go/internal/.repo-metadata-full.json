@@ -539,6 +539,16 @@
     "release_level": "preview",
     "library_type": "GAPIC_AUTO"
   },
+  "cloud.google.com/go/bigquery/datapolicies/apiv2": {
+    "api_shortname": "bigquerydatapolicy",
+    "distribution_name": "cloud.google.com/go/bigquery/datapolicies/apiv2",
+    "description": "BigQuery Data Policy API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/bigquery/latest/datapolicies/apiv2",
+    "release_level": "preview",
+    "library_type": "GAPIC_AUTO"
+  },
   "cloud.google.com/go/bigquery/datapolicies/apiv2beta1": {
     "api_shortname": "bigquerydatapolicy",
     "distribution_name": "cloud.google.com/go/bigquery/datapolicies/apiv2beta1",
@@ -726,6 +736,16 @@
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/binaryauthorization/latest/apiv1beta1",
+    "release_level": "preview",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/capacityplanner/apiv1beta": {
+    "api_shortname": "capacityplanner",
+    "distribution_name": "cloud.google.com/go/capacityplanner/apiv1beta",
+    "description": "Capacity Planner API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/capacityplanner/latest/apiv1beta",
     "release_level": "preview",
     "library_type": "GAPIC_AUTO"
   },
@@ -1259,16 +1279,6 @@
     "release_level": "preview",
     "library_type": "GAPIC_AUTO"
   },
-  "cloud.google.com/go/dlp/apiv2": {
-    "api_shortname": "dlp",
-    "distribution_name": "cloud.google.com/go/dlp/apiv2",
-    "description": "Sensitive Data Protection (DLP)",
-    "language": "go",
-    "client_library_type": "generated",
-    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/dlp/latest/apiv2",
-    "release_level": "stable",
-    "library_type": "GAPIC_AUTO"
-  },
   "cloud.google.com/go/documentai/apiv1": {
     "api_shortname": "documentai",
     "distribution_name": "cloud.google.com/go/documentai/apiv1",
@@ -1458,6 +1468,16 @@
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/functions/latest/metadata",
     "release_level": "preview",
     "library_type": "CORE"
+  },
+  "cloud.google.com/go/geminidataanalytics/apiv1beta": {
+    "api_shortname": "geminidataanalytics",
+    "distribution_name": "cloud.google.com/go/geminidataanalytics/apiv1beta",
+    "description": "Data Analytics API with Gemini",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/geminidataanalytics/latest/apiv1beta",
+    "release_level": "preview",
+    "library_type": "GAPIC_AUTO"
   },
   "cloud.google.com/go/gkebackup/apiv1": {
     "api_shortname": "gkebackup",
@@ -1686,6 +1706,16 @@
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/lifesciences/latest/apiv2beta",
+    "release_level": "preview",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/locationfinder/apiv1": {
+    "api_shortname": "cloudlocationfinder",
+    "distribution_name": "cloud.google.com/go/locationfinder/apiv1",
+    "description": "Cloud Location Finder API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/locationfinder/latest/apiv1",
     "release_level": "preview",
     "library_type": "GAPIC_AUTO"
   },

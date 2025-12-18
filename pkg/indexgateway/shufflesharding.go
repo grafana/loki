@@ -21,6 +21,7 @@ var (
 
 type Limits interface {
 	IndexGatewayShardSize(tenantID string) int
+	IndexGatewayMaxCapacity(tenantID string) float64
 	TSDBMaxBytesPerShard(string) int
 	TSDBPrecomputeChunks(string) bool
 }

@@ -32,10 +32,11 @@ import (
 	"strings"
 	"time"
 
+	"go.uber.org/zap"
+
 	"go.etcd.io/etcd/client/pkg/v3/fileutil"
 	"go.etcd.io/etcd/client/pkg/v3/tlsutil"
-
-	"go.uber.org/zap"
+	"go.etcd.io/etcd/client/pkg/v3/verify"
 )
 
 // NewListener creates a new listner.
@@ -43,7 +44,7 @@ func NewListener(addr, scheme string, tlsinfo *TLSInfo) (l net.Listener, err err
 	return newListener(addr, scheme, WithTLSInfo(tlsinfo))
 }
 
-// NewListenerWithOpts creates a new listener which accpets listener options.
+// NewListenerWithOpts creates a new listener which accepts listener options.
 func NewListenerWithOpts(addr, scheme string, opts ...ListenerOption) (net.Listener, error) {
 	return newListener(addr, scheme, opts...)
 }
@@ -59,16 +60,12 @@ func newListener(addr, scheme string, opts ...ListenerOption) (net.Listener, err
 	switch {
 	case lnOpts.IsSocketOpts():
 		// new ListenConfig with socket options.
-		config, err := newListenConfig(lnOpts.socketOpts)
-		if err != nil {
-			return nil, err
-		}
-		lnOpts.ListenConfig = config
+		lnOpts.ListenConfig = newListenConfig(lnOpts.socketOpts)
 		// check for timeout
 		fallthrough
 	case lnOpts.IsTimeout(), lnOpts.IsSocketOpts():
 		// timeout listener with socket options.
-		ln, err := lnOpts.ListenConfig.Listen(context.TODO(), "tcp", addr)
+		ln, err := newKeepAliveListener(&lnOpts.ListenConfig, addr)
 		if err != nil {
 			return nil, err
 		}
@@ -78,7 +75,7 @@ func newListener(addr, scheme string, opts ...ListenerOption) (net.Listener, err
 			writeTimeout: lnOpts.writeTimeout,
 		}
 	case lnOpts.IsTimeout():
-		ln, err := net.Listen("tcp", addr)
+		ln, err := newKeepAliveListener(nil, addr)
 		if err != nil {
 			return nil, err
 		}
@@ -88,7 +85,7 @@ func newListener(addr, scheme string, opts ...ListenerOption) (net.Listener, err
 			writeTimeout: lnOpts.writeTimeout,
 		}
 	default:
-		ln, err := net.Listen("tcp", addr)
+		ln, err := newKeepAliveListener(nil, addr)
 		if err != nil {
 			return nil, err
 		}
@@ -102,6 +99,22 @@ func newListener(addr, scheme string, opts ...ListenerOption) (net.Listener, err
 	return wrapTLS(scheme, lnOpts.tlsInfo, lnOpts.Listener)
 }
 
+func newKeepAliveListener(cfg *net.ListenConfig, addr string) (net.Listener, error) {
+	var ln net.Listener
+	var err error
+
+	if cfg != nil {
+		ln, err = cfg.Listen(context.TODO(), "tcp", addr)
+	} else {
+		ln, err = net.Listen("tcp", addr)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return NewKeepAliveListener(ln, "tcp", nil)
+}
+
 func wrapTLS(scheme string, tlsinfo *TLSInfo, l net.Listener) (net.Listener, error) {
 	if scheme != "https" && scheme != "unixs" {
 		return l, nil
@@ -112,7 +125,7 @@ func wrapTLS(scheme string, tlsinfo *TLSInfo, l net.Listener) (net.Listener, err
 	return newTLSListener(l, tlsinfo, checkSAN)
 }
 
-func newListenConfig(sopts *SocketOpts) (net.ListenConfig, error) {
+func newListenConfig(sopts *SocketOpts) net.ListenConfig {
 	lc := net.ListenConfig{}
 	if sopts != nil {
 		ctls := getControls(sopts)
@@ -120,7 +133,7 @@ func newListenConfig(sopts *SocketOpts) (net.ListenConfig, error) {
 			lc.Control = ctls.Control
 		}
 	}
-	return lc, nil
+	return lc
 }
 
 type TLSInfo struct {
@@ -152,6 +165,14 @@ type TLSInfo struct {
 	// Note that cipher suites are prioritized in the given order.
 	CipherSuites []uint16
 
+	// MinVersion is the minimum TLS version that is acceptable.
+	// If not set, the minimum version is TLS 1.2.
+	MinVersion uint16
+
+	// MaxVersion is the maximum TLS version that is acceptable.
+	// If not set, the default used by Go is selected (see tls.Config.MaxVersion).
+	MaxVersion uint16
+
 	selfCert bool
 
 	// parseFunc exists to simplify testing. Typically, parseFunc
@@ -159,11 +180,22 @@ type TLSInfo struct {
 	parseFunc func([]byte, []byte) (tls.Certificate, error)
 
 	// AllowedCN is a CN which must be provided by a client.
+	//
+	// Deprecated: use AllowedCNs instead.
 	AllowedCN string
 
 	// AllowedHostname is an IP address or hostname that must match the TLS
 	// certificate provided by a client.
+	//
+	// Deprecated: use AllowedHostnames instead.
 	AllowedHostname string
+
+	// AllowedCNs is a list of acceptable CNs which must be provided by a client.
+	AllowedCNs []string
+
+	// AllowedHostnames is a list of acceptable IP addresses or hostnames that must match the
+	// TLS certificate provided by a client.
+	AllowedHostnames []string
 
 	// Logger logs TLS errors.
 	// If nil, all logs are discarded.
@@ -172,6 +204,9 @@ type TLSInfo struct {
 	// EmptyCN indicates that the cert must have empty CN.
 	// If true, ClientConfig() will return an error for a cert with non empty CN.
 	EmptyCN bool
+
+	// LocalAddr is the local IP address to use when communicating with a peer.
+	LocalAddr string
 }
 
 func (info TLSInfo) String() string {
@@ -182,34 +217,35 @@ func (info TLSInfo) Empty() bool {
 	return info.CertFile == "" && info.KeyFile == ""
 }
 
-func SelfCert(lg *zap.Logger, dirpath string, hosts []string, selfSignedCertValidity uint, additionalUsages ...x509.ExtKeyUsage) (info TLSInfo, err error) {
-	info.Logger = lg
+func SelfCert(lg *zap.Logger, dirpath string, hosts []string, selfSignedCertValidity uint, additionalUsages ...x509.ExtKeyUsage) (TLSInfo, error) {
+	verify.Assert(lg != nil, "nil log isn't allowed")
+
+	var err error
+	info := TLSInfo{Logger: lg}
 	if selfSignedCertValidity == 0 {
-		err = fmt.Errorf("selfSignedCertValidity is invalid,it should be greater than 0")
+		err = errors.New("selfSignedCertValidity is invalid,it should be greater than 0")
 		info.Logger.Warn(
 			"cannot generate cert",
 			zap.Error(err),
 		)
-		return
+		return info, err
 	}
-	err = fileutil.TouchDirAll(dirpath)
+	err = fileutil.TouchDirAll(lg, dirpath)
 	if err != nil {
-		if info.Logger != nil {
-			info.Logger.Warn(
-				"cannot create cert directory",
-				zap.Error(err),
-			)
-		}
-		return
+		info.Logger.Warn(
+			"cannot create cert directory",
+			zap.Error(err),
+		)
+		return info, err
 	}
 
 	certPath, err := filepath.Abs(filepath.Join(dirpath, "cert.pem"))
 	if err != nil {
-		return
+		return info, err
 	}
 	keyPath, err := filepath.Abs(filepath.Join(dirpath, "key.pem"))
 	if err != nil {
-		return
+		return info, err
 	}
 	_, errcert := os.Stat(certPath)
 	_, errkey := os.Stat(keyPath)
@@ -219,19 +255,17 @@ func SelfCert(lg *zap.Logger, dirpath string, hosts []string, selfSignedCertVali
 		info.ClientCertFile = certPath
 		info.ClientKeyFile = keyPath
 		info.selfCert = true
-		return
+		return info, err
 	}
 
 	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
 	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
 	if err != nil {
-		if info.Logger != nil {
-			info.Logger.Warn(
-				"cannot generate random number",
-				zap.Error(err),
-			)
-		}
-		return
+		info.Logger.Warn(
+			"cannot generate random number",
+			zap.Error(err),
+		)
+		return info, err
 	}
 
 	tmpl := x509.Certificate{
@@ -240,17 +274,16 @@ func SelfCert(lg *zap.Logger, dirpath string, hosts []string, selfSignedCertVali
 		NotBefore:    time.Now(),
 		NotAfter:     time.Now().Add(time.Duration(selfSignedCertValidity) * 365 * (24 * time.Hour)),
 
-		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature | x509.KeyUsageCRLSign,
 		ExtKeyUsage:           append([]x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}, additionalUsages...),
 		BasicConstraintsValid: true,
+		IsCA:                  true,
 	}
 
-	if info.Logger != nil {
-		info.Logger.Warn(
-			"automatically generate certificates",
-			zap.Time("certificate-validity-bound-not-after", tmpl.NotAfter),
-		)
-	}
+	info.Logger.Warn(
+		"automatically generate certificates",
+		zap.Time("certificate-validity-bound-not-after", tmpl.NotAfter),
+	)
 
 	for _, host := range hosts {
 		h, _, _ := net.SplitHostPort(host)
@@ -263,24 +296,20 @@ func SelfCert(lg *zap.Logger, dirpath string, hosts []string, selfSignedCertVali
 
 	priv, err := ecdsa.GenerateKey(elliptic.P521(), rand.Reader)
 	if err != nil {
-		if info.Logger != nil {
-			info.Logger.Warn(
-				"cannot generate ECDSA key",
-				zap.Error(err),
-			)
-		}
-		return
+		info.Logger.Warn(
+			"cannot generate ECDSA key",
+			zap.Error(err),
+		)
+		return info, err
 	}
 
 	derBytes, err := x509.CreateCertificate(rand.Reader, &tmpl, &tmpl, &priv.PublicKey, priv)
 	if err != nil {
-		if info.Logger != nil {
-			info.Logger.Warn(
-				"cannot generate x509 certificate",
-				zap.Error(err),
-			)
-		}
-		return
+		info.Logger.Warn(
+			"cannot generate x509 certificate",
+			zap.Error(err),
+		)
+		return info, err
 	}
 
 	certOut, err := os.Create(certPath)
@@ -290,34 +319,29 @@ func SelfCert(lg *zap.Logger, dirpath string, hosts []string, selfSignedCertVali
 			zap.String("path", certPath),
 			zap.Error(err),
 		)
-		return
+		return info, err
 	}
 	pem.Encode(certOut, &pem.Block{Type: "CERTIFICATE", Bytes: derBytes})
 	certOut.Close()
-	if info.Logger != nil {
-		info.Logger.Info("created cert file", zap.String("path", certPath))
-	}
+
+	info.Logger.Info("created cert file", zap.String("path", certPath))
 
 	b, err := x509.MarshalECPrivateKey(priv)
 	if err != nil {
-		return
+		return info, err
 	}
-	keyOut, err := os.OpenFile(keyPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	keyOut, err := os.OpenFile(keyPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
-		if info.Logger != nil {
-			info.Logger.Warn(
-				"cannot key file",
-				zap.String("path", keyPath),
-				zap.Error(err),
-			)
-		}
-		return
+		info.Logger.Warn(
+			"cannot key file",
+			zap.String("path", keyPath),
+			zap.Error(err),
+		)
+		return info, err
 	}
 	pem.Encode(keyOut, &pem.Block{Type: "EC PRIVATE KEY", Bytes: b})
 	keyOut.Close()
-	if info.Logger != nil {
-		info.Logger.Info("created key file", zap.String("path", keyPath))
-	}
+	info.Logger.Info("created key file", zap.String("path", keyPath))
 	return SelfCert(lg, dirpath, hosts, selfSignedCertValidity)
 }
 
@@ -326,8 +350,8 @@ func SelfCert(lg *zap.Logger, dirpath string, hosts []string, selfSignedCertVali
 // Previously,
 // 1. Server has non-empty (*tls.Config).Certificates on client hello
 // 2. Server calls (*tls.Config).GetCertificate iff:
-//    - Server's (*tls.Config).Certificates is not empty, or
-//    - Client supplies SNI; non-empty (*tls.ClientHelloInfo).ServerName
+//   - Server's (*tls.Config).Certificates is not empty, or
+//   - Client supplies SNI; non-empty (*tls.ClientHelloInfo).ServerName
 //
 // When (*tls.Config).Certificates is always populated on initial handshake,
 // client is expected to provide a valid matching SNI to pass the TLS
@@ -365,8 +389,17 @@ func (info TLSInfo) baseConfig() (*tls.Config, error) {
 		}
 	}
 
+	var minVersion uint16
+	if info.MinVersion != 0 {
+		minVersion = info.MinVersion
+	} else {
+		// Default minimum version is TLS 1.2, previous versions are insecure and deprecated.
+		minVersion = tls.VersionTLS12
+	}
+
 	cfg := &tls.Config{
-		MinVersion: tls.VersionTLS12,
+		MinVersion: minVersion,
+		MaxVersion: info.MaxVersion,
 		ServerName: info.ServerName,
 	}
 
@@ -377,17 +410,50 @@ func (info TLSInfo) baseConfig() (*tls.Config, error) {
 	// Client certificates may be verified by either an exact match on the CN,
 	// or a more general check of the CN and SANs.
 	var verifyCertificate func(*x509.Certificate) bool
+
+	if info.AllowedCN != "" && len(info.AllowedCNs) > 0 {
+		return nil, fmt.Errorf("AllowedCN and AllowedCNs are mutually exclusive (cn=%q, cns=%q)", info.AllowedCN, info.AllowedCNs)
+	}
+	if info.AllowedHostname != "" && len(info.AllowedHostnames) > 0 {
+		return nil, fmt.Errorf("AllowedHostname and AllowedHostnames are mutually exclusive (hostname=%q, hostnames=%q)", info.AllowedHostname, info.AllowedHostnames)
+	}
+	if info.AllowedCN != "" && info.AllowedHostname != "" {
+		return nil, fmt.Errorf("AllowedCN and AllowedHostname are mutually exclusive (cn=%q, hostname=%q)", info.AllowedCN, info.AllowedHostname)
+	}
+	if len(info.AllowedCNs) > 0 && len(info.AllowedHostnames) > 0 {
+		return nil, fmt.Errorf("AllowedCNs and AllowedHostnames are mutually exclusive (cns=%q, hostnames=%q)", info.AllowedCNs, info.AllowedHostnames)
+	}
+
 	if info.AllowedCN != "" {
-		if info.AllowedHostname != "" {
-			return nil, fmt.Errorf("AllowedCN and AllowedHostname are mutually exclusive (cn=%q, hostname=%q)", info.AllowedCN, info.AllowedHostname)
-		}
+		info.Logger.Warn("AllowedCN is deprecated, use AllowedCNs instead")
 		verifyCertificate = func(cert *x509.Certificate) bool {
 			return info.AllowedCN == cert.Subject.CommonName
 		}
 	}
 	if info.AllowedHostname != "" {
+		info.Logger.Warn("AllowedHostname is deprecated, use AllowedHostnames instead")
 		verifyCertificate = func(cert *x509.Certificate) bool {
 			return cert.VerifyHostname(info.AllowedHostname) == nil
+		}
+	}
+	if len(info.AllowedCNs) > 0 {
+		verifyCertificate = func(cert *x509.Certificate) bool {
+			for _, allowedCN := range info.AllowedCNs {
+				if allowedCN == cert.Subject.CommonName {
+					return true
+				}
+			}
+			return false
+		}
+	}
+	if len(info.AllowedHostnames) > 0 {
+		verifyCertificate = func(cert *x509.Certificate) bool {
+			for _, allowedHostname := range info.AllowedHostnames {
+				if cert.VerifyHostname(allowedHostname) == nil {
+					return true
+				}
+			}
+			return false
 		}
 	}
 	if verifyCertificate != nil {
@@ -408,23 +474,19 @@ func (info TLSInfo) baseConfig() (*tls.Config, error) {
 	cfg.GetCertificate = func(clientHello *tls.ClientHelloInfo) (cert *tls.Certificate, err error) {
 		cert, err = tlsutil.NewCert(info.CertFile, info.KeyFile, info.parseFunc)
 		if os.IsNotExist(err) {
-			if info.Logger != nil {
-				info.Logger.Warn(
-					"failed to find peer cert files",
-					zap.String("cert-file", info.CertFile),
-					zap.String("key-file", info.KeyFile),
-					zap.Error(err),
-				)
-			}
+			info.Logger.Warn(
+				"failed to find peer cert files",
+				zap.String("cert-file", info.CertFile),
+				zap.String("key-file", info.KeyFile),
+				zap.Error(err),
+			)
 		} else if err != nil {
-			if info.Logger != nil {
-				info.Logger.Warn(
-					"failed to create peer certificate",
-					zap.String("cert-file", info.CertFile),
-					zap.String("key-file", info.KeyFile),
-					zap.Error(err),
-				)
-			}
+			info.Logger.Warn(
+				"failed to create peer certificate",
+				zap.String("cert-file", info.CertFile),
+				zap.String("key-file", info.KeyFile),
+				zap.Error(err),
+			)
 		}
 		return cert, err
 	}
@@ -435,23 +497,19 @@ func (info TLSInfo) baseConfig() (*tls.Config, error) {
 		}
 		cert, err = tlsutil.NewCert(certfile, keyfile, info.parseFunc)
 		if os.IsNotExist(err) {
-			if info.Logger != nil {
-				info.Logger.Warn(
-					"failed to find client cert files",
-					zap.String("cert-file", certfile),
-					zap.String("key-file", keyfile),
-					zap.Error(err),
-				)
-			}
+			info.Logger.Warn(
+				"failed to find client cert files",
+				zap.String("cert-file", certfile),
+				zap.String("key-file", keyfile),
+				zap.Error(err),
+			)
 		} else if err != nil {
-			if info.Logger != nil {
-				info.Logger.Warn(
-					"failed to create client certificate",
-					zap.String("cert-file", certfile),
-					zap.String("key-file", keyfile),
-					zap.Error(err),
-				)
-			}
+			info.Logger.Warn(
+				"failed to create client certificate",
+				zap.String("cert-file", certfile),
+				zap.String("key-file", keyfile),
+				zap.Error(err),
+			)
 		}
 		return cert, err
 	}
@@ -496,11 +554,6 @@ func (info TLSInfo) ServerConfig() (*tls.Config, error) {
 
 	// "h2" NextProtos is necessary for enabling HTTP2 for go's HTTP server
 	cfg.NextProtos = []string{"h2"}
-
-	// go1.13 enables TLS 1.3 by default
-	// and in TLS 1.3, cipher suites are not configurable
-	// setting Max TLS version to TLS 1.2 for go 1.13
-	cfg.MaxVersion = tls.VersionTLS12
 
 	return cfg, nil
 }
@@ -555,11 +608,6 @@ func (info TLSInfo) ClientConfig() (*tls.Config, error) {
 			return nil, fmt.Errorf("cert has non empty Common Name (%s): %s", cn, info.CertFile)
 		}
 	}
-
-	// go1.13 enables TLS 1.3 by default
-	// and in TLS 1.3, cipher suites are not configurable
-	// setting Max TLS version to TLS 1.2 for go 1.13
-	cfg.MaxVersion = tls.VersionTLS12
 
 	return cfg, nil
 }

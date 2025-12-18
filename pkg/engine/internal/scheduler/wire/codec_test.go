@@ -3,8 +3,10 @@ package wire
 import (
 	"errors"
 	"net"
+	"net/http"
 	"net/netip"
 	"testing"
+	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
@@ -30,7 +32,7 @@ func TestProtobufCodec_Frames(t *testing.T) {
 		"NackFrame with error": {
 			frame: NackFrame{
 				ID:    44,
-				Error: errors.New("test error"),
+				Error: Errorf(http.StatusInternalServerError, "test error"),
 			},
 		},
 		"DiscardFrame": {
@@ -65,6 +67,9 @@ func TestProtobufCodec_Messages(t *testing.T) {
 	}{
 		"WorkerHelloMessage": {
 			message: WorkerHelloMessage{Threads: 4},
+		},
+		"WorkerSubscribeMessage": {
+			message: WorkerSubscribeMessage{},
 		},
 		"WorkerReadyMessage": {
 			message: WorkerReadyMessage{},
@@ -123,6 +128,18 @@ func TestProtobufCodec_Messages(t *testing.T) {
 				ID: taskULID,
 				Status: workflow.TaskStatus{
 					State: workflow.TaskStateRunning,
+				},
+			},
+		},
+		"TaskStatusMessage with Running state and ContributingTimeRange": {
+			message: TaskStatusMessage{
+				ID: taskULID,
+				Status: workflow.TaskStatus{
+					State: workflow.TaskStateRunning,
+					ContributingTimeRange: workflow.ContributingTimeRange{
+						Timestamp: time.Now().Add(-time.Minute),
+						LessThan:  true,
+					},
 				},
 			},
 		},

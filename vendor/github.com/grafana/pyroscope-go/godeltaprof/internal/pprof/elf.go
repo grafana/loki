@@ -6,8 +6,8 @@ package pprof
 
 import (
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
-	"fmt"
 	"os"
 )
 
@@ -18,13 +18,17 @@ var (
 
 // elfBuildID returns the GNU build ID of the named ELF binary,
 // without introducing a dependency on debug/elf and its dependencies.
+//
+//nolint:gocognit
 func elfBuildID(file string) (string, error) {
 	buf := make([]byte, 256)
-	f, err := os.Open(file)
+	f, err := os.Open(file) //nolint:gosec
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 
 	if _, err := f.ReadAt(buf[:64], 0); err != nil {
 		return "", err
@@ -58,7 +62,7 @@ func elfBuildID(file string) (string, error) {
 		}
 		shnum = int(byteOrder.Uint16(buf[48:]))
 	case 2: // 64-bit file header
-		shoff = int64(byteOrder.Uint64(buf[40:]))
+		shoff = int64(byteOrder.Uint64(buf[40:])) //nolint:gosec
 		shentsize = int64(byteOrder.Uint16(buf[58:]))
 		if shentsize != 64 {
 			return "", errBadELF
@@ -80,8 +84,8 @@ func elfBuildID(file string) (string, error) {
 			size = int64(byteOrder.Uint32(buf[20:]))
 		} else {
 			// 64-bit section header
-			off = int64(byteOrder.Uint64(buf[24:]))
-			size = int64(byteOrder.Uint64(buf[32:]))
+			off = int64(byteOrder.Uint64(buf[24:]))  //nolint:gosec
+			size = int64(byteOrder.Uint64(buf[32:])) //nolint:gosec
 		}
 		size += off
 		for off < size {
@@ -93,7 +97,7 @@ func elfBuildID(file string) (string, error) {
 			noteType := int(byteOrder.Uint32(buf[8:]))
 			descOff := off + int64(12+(nameSize+3)&^3)
 			off = descOff + int64((descSize+3)&^3)
-			if nameSize != 4 || noteType != 3 || buf[12] != 'G' || buf[13] != 'N' || buf[14] != 'U' || buf[15] != '\x00' { // want name GNU\x00 type 3 (NT_GNU_BUILD_ID)
+			if nameSize != 4 || noteType != 3 || buf[12] != 'G' || buf[13] != 'N' || buf[14] != 'U' || buf[15] != '\x00' { //nolint:lll    // want name GNU\x00 type 3 (NT_GNU_BUILD_ID)
 				continue
 			}
 			if descSize > len(buf) {
@@ -102,8 +106,10 @@ func elfBuildID(file string) (string, error) {
 			if _, err := f.ReadAt(buf[:descSize], descOff); err != nil {
 				return "", err
 			}
-			return fmt.Sprintf("%x", buf[:descSize]), nil
+
+			return hex.EncodeToString(buf[:descSize]), nil
 		}
 	}
+
 	return "", errNoBuildID
 }

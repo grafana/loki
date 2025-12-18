@@ -12,7 +12,7 @@ import (
 )
 
 // Creates a Lightsail load balancer. To learn more about deciding whether to load
-// balance your application, see [Configure your Lightsail instances for load balancing]. You can create up to 5 load balancers per AWS
+// balance your application, see [Configure your Lightsail instances for load balancing]. You can create up to 10 load balancers per AWS
 // Region in your account.
 //
 // When you create a load balancer, you can specify a unique name and port

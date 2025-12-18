@@ -1,10 +1,13 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: MPL-2.0
+
 package memberlist
 
 import (
 	"sync"
 	"time"
 
-	"github.com/armon/go-metrics"
+	"github.com/hashicorp/go-metrics/compat"
 )
 
 // awareness manages a simple metric for tracking the estimated health of the
@@ -21,13 +24,17 @@ type awareness struct {
 	// score is the current awareness score. Lower values are healthier and
 	// zero is the minimum value.
 	score int
+
+	// metricLabels is the slice of labels to put on all emitted metrics
+	metricLabels []metrics.Label
 }
 
 // newAwareness returns a new awareness object.
-func newAwareness(max int) *awareness {
+func newAwareness(max int, metricLabels []metrics.Label) *awareness {
 	return &awareness{
-		max:   max,
-		score: 0,
+		max:          max,
+		score:        0,
+		metricLabels: metricLabels,
 	}
 }
 
@@ -47,7 +54,7 @@ func (a *awareness) ApplyDelta(delta int) {
 	a.Unlock()
 
 	if initial != final {
-		metrics.SetGauge([]string{"memberlist", "health", "score"}, float32(final))
+		metrics.SetGaugeWithLabels([]string{"memberlist", "health", "score"}, float32(final), a.metricLabels)
 	}
 }
 

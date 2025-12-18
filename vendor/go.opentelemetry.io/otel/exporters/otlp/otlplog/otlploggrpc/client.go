@@ -5,9 +5,12 @@ package otlploggrpc // import "go.opentelemetry.io/otel/exporters/otlp/otlplog/o
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
+	collogpb "go.opentelemetry.io/proto/otlp/collector/logs/v1"
+	logpb "go.opentelemetry.io/proto/otlp/logs/v1"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/backoff"
@@ -20,8 +23,6 @@ import (
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc/internal/retry"
-	collogpb "go.opentelemetry.io/proto/otlp/collector/logs/v1"
-	logpb "go.opentelemetry.io/proto/otlp/logs/v1"
 )
 
 // The methods of this type are not expected to be called concurrently.
@@ -85,11 +86,12 @@ func newGRPCDialOptions(cfg config) []grpc.DialOption {
 		dialOpts = append(dialOpts, grpc.WithDefaultServiceConfig(cfg.serviceConfig.Value))
 	}
 	// Prioritize GRPCCredentials over Insecure (passing both is an error).
-	if cfg.gRPCCredentials.Value != nil {
+	switch {
+	case cfg.gRPCCredentials.Value != nil:
 		dialOpts = append(dialOpts, grpc.WithTransportCredentials(cfg.gRPCCredentials.Value))
-	} else if cfg.insecure.Value {
+	case cfg.insecure.Value:
 		dialOpts = append(dialOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	} else {
+	default:
 		// Default to using the host's root CA.
 		dialOpts = append(dialOpts, grpc.WithTransportCredentials(
 			credentials.NewTLS(nil),
@@ -192,7 +194,7 @@ func (c *client) exportContext(parent context.Context) (context.Context, context
 	)
 
 	if c.exportTimeout > 0 {
-		ctx, cancel = context.WithTimeout(parent, c.exportTimeout)
+		ctx, cancel = context.WithTimeoutCause(parent, c.exportTimeout, errors.New("exporter export timeout"))
 	} else {
 		ctx, cancel = context.WithCancel(parent)
 	}
@@ -215,9 +217,9 @@ func newNoopClient() *noopClient {
 	return &noopClient{}
 }
 
-func (c *noopClient) UploadLogs(context.Context, []*logpb.ResourceLogs) error { return nil }
+func (*noopClient) UploadLogs(context.Context, []*logpb.ResourceLogs) error { return nil }
 
-func (c *noopClient) Shutdown(context.Context) error { return nil }
+func (*noopClient) Shutdown(context.Context) error { return nil }
 
 // retryable returns if err identifies a request that can be retried and a
 // duration to wait for if an explicit throttle time is included in err.
@@ -228,6 +230,8 @@ func retryable(err error) (bool, time.Duration) {
 
 func retryableGRPCStatus(s *status.Status) (bool, time.Duration) {
 	switch s.Code() {
+	// Follows the retryable error codes defined in
+	// https://opentelemetry.io/docs/specs/otlp/#failures
 	case codes.Canceled,
 		codes.DeadlineExceeded,
 		codes.Aborted,

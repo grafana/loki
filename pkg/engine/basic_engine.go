@@ -10,6 +10,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/thanos-io/objstore"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -113,6 +114,7 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 
 	logger := utillog.WithContext(ctx, e.logger)
 	logger = log.With(logger, "query", params.QueryString(), "shard", strings.Join(params.Shards(), ","), "engine", "v2")
+	encodingFlags := httpreq.ExtractEncodingFlagsFromCtx(ctx)
 
 	// Inject the range config into the context for any calls to
 	// [rangeio.ReadRanges] to make use of.
@@ -153,7 +155,9 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 
 		timer := prometheus.NewTimer(e.metrics.physicalPlanning)
 
-		catalog := physical.NewMetastoreCatalog(ctx, e.metastore)
+		catalog := physical.NewMetastoreCatalog(func(start time.Time, end time.Time, selectors []*labels.Matcher, predicates []*labels.Matcher) ([]*metastore.DataobjSectionDescriptor, error) {
+			return e.metastore.Sections(ctx, start, end, selectors, predicates)
+		})
 		planner := physical.NewPlanner(physical.NewContext(params.Start(), params.End()), catalog)
 		plan, err := planner.Build(logicalPlan)
 		if err != nil {
@@ -209,7 +213,7 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 		var builder ResultBuilder
 		switch params.GetExpression().(type) {
 		case syntax.LogSelectorExpr:
-			builder = newStreamsResultBuilder(params.Direction())
+			builder = newStreamsResultBuilder(params.Direction(), encodingFlags.Has(httpreq.FlagCategorizeLabels))
 		case syntax.SampleExpr:
 			if params.Step() > 0 {
 				builder = newMatrixResultBuilder()

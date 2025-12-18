@@ -31,6 +31,7 @@ type HeapProfiler struct {
 	impl    pprof.DeltaHeapProfiler
 	mutex   sync.Mutex
 	options pprof.ProfileBuilderOptions
+	gz      gz
 }
 
 func NewHeapProfiler() *HeapProfiler {
@@ -63,7 +64,8 @@ func (d *HeapProfiler) Profile(w io.Writer) error {
 	// and also try again if we're very unlucky.
 	// The loop should only execute one iteration in the common case.
 	var p []runtime.MemProfileRecord
-	n, ok := runtime.MemProfile(nil, true)
+	var ok bool
+	n, _ := runtime.MemProfile(nil, true)
 	for {
 		// Allocate room for a slightly bigger profile,
 		// in case a few more entries have been added
@@ -72,11 +74,15 @@ func (d *HeapProfiler) Profile(w io.Writer) error {
 		n, ok = runtime.MemProfile(p, true)
 		if ok {
 			p = p[0:n]
+
 			break
 		}
 		// Profile grew; try again.
 	}
 	rate := int64(runtime.MemProfileRate)
-	b := pprof.NewProfileBuilder(w, &d.options, pprof.HeapProfileConfig(rate))
+
+	zw := d.gz.get(w)
+	b := pprof.NewProfileBuilder(w, zw, &d.options, pprof.HeapProfileConfig(rate))
+
 	return d.impl.WriteHeapProto(b, p, rate)
 }

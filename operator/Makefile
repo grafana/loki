@@ -21,7 +21,7 @@ LOKI_OPERATOR_NS ?= kubernetes-operators
 # To re-generate a bundle for another specific version without changing the standard setup, you can:
 # - use the VERSION as arg of the bundle target (e.g make bundle VERSION=0.0.2)
 # - use environment variables to overwrite this value (e.g export VERSION=0.0.2)
-VERSION ?= 0.8.0
+VERSION ?= 0.9.0
 CHANNELS ?= "alpha"
 DEFAULT_CHANNEL ?= "alpha"
 
@@ -224,13 +224,8 @@ ifndef ignore-not-found
 endif
 
 .PHONY: quickstart
-ifeq ($(or $(findstring openshift-logging,$(IMG)),$(findstring openshift-logging,$(BUNDLE_IMG))),openshift-logging)
 quickstart: $(KIND) ## Quickstart full dev environment on local kind cluster
 	@./quickstart.sh $(filter-out $@,$(MAKECMDGOALS))
-else
-quickstart: oci-build oci-push $(KIND)
-	@./quickstart.sh $(filter-out $@,$(MAKECMDGOALS))
-endif
 
 .PHONY: quickstart-cleanup
 quickstart-cleanup: $(KIND) ## Cleanup for quickstart set up

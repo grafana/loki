@@ -73,7 +73,7 @@ func TestRuler_PrometheusRules(t *testing.T) {
 		return &alertingRule{
 			Name:   name,
 			Query:  `count_over_time({foo="bar"}[5m]) < 1`,
-			State:  "inactive",
+			State:  "unknown",
 			Health: "unknown",
 			Type:   "alerting",
 			Alerts: []*Alert{},
@@ -115,7 +115,7 @@ func TestRuler_PrometheusRules(t *testing.T) {
 						&alertingRule{
 							Name:   "COUNT_ALERT",
 							Query:  `count_over_time({foo="bar"}[5m]) < 1`,
-							State:  "inactive",
+							State:  "unknown",
 							Health: "unknown",
 							Type:   "alerting",
 							Alerts: []*Alert{},
@@ -151,7 +151,7 @@ func TestRuler_PrometheusRules(t *testing.T) {
 						&alertingRule{
 							Name:   "COUNT_ALERT",
 							Query:  `count_over_time({foo="bar"}[5m]) < 1`,
-							State:  "inactive",
+							State:  "unknown",
 							Health: "unknown",
 							Type:   "alerting",
 							Alerts: []*Alert{},
@@ -182,7 +182,7 @@ func TestRuler_PrometheusRules(t *testing.T) {
 						&alertingRule{
 							Name:   "COUNT_ALERT",
 							Query:  `count_over_time({foo="bar"}[5m]) < 1`,
-							State:  "inactive",
+							State:  "unknown",
 							Health: "unknown",
 							Type:   "alerting",
 							Alerts: []*Alert{},
@@ -517,7 +517,7 @@ func TestRuler_PrometheusRules(t *testing.T) {
 						&alertingRule{
 							Name:   "UniqueNamedRuleN3G2",
 							Query:  `count_over_time({foo="bar"}[5m]) < 1`,
-							State:  "inactive",
+							State:  "unknown",
 							Health: "unknown",
 							Type:   "alerting",
 							Alerts: []*Alert{},

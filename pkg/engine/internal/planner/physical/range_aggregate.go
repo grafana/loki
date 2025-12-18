@@ -12,8 +12,7 @@ import (
 type RangeAggregation struct {
 	NodeID ulid.ULID
 
-	PartitionBy []ColumnExpression // Columns to partition the data by.
-
+	Grouping  Grouping
 	Operation types.RangeAggregationType
 	Start     time.Time
 	End       time.Time
@@ -29,8 +28,10 @@ func (r *RangeAggregation) Clone() Node {
 	return &RangeAggregation{
 		NodeID: ulid.Make(),
 
-		PartitionBy: cloneExpressions(r.PartitionBy),
-
+		Grouping: Grouping{
+			Columns: cloneExpressions(r.Grouping.Columns),
+			Without: r.Grouping.Without,
+		},
 		Operation: r.Operation,
 		Start:     r.Start,
 		End:       r.End,

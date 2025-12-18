@@ -24,7 +24,7 @@ import (
 	"github.com/grafana/loki/pkg/push"
 )
 
-var testCalculatorConfig = indexobj.BuilderConfig{
+var testCalculatorConfig = logsobj.BuilderBaseConfig{
 	TargetPageSize:          2048,
 	TargetObjectSize:        1 << 22, // 4 MiB
 	BufferSize:              2048 * 8,
@@ -39,11 +39,13 @@ func createTestLogObject(t *testing.T, tenants int) *dataobj.Object {
 	t.Helper()
 
 	builder, err := logsobj.NewBuilder(logsobj.BuilderConfig{
-		TargetPageSize:          2048,
-		TargetObjectSize:        1 << 22,
-		TargetSectionSize:       1 << 21,
-		BufferSize:              2048 * 8,
-		SectionStripeMergeLimit: 2,
+		BuilderBaseConfig: logsobj.BuilderBaseConfig{
+			TargetPageSize:          2048,
+			TargetObjectSize:        1 << 22,
+			TargetSectionSize:       1 << 21,
+			BufferSize:              2048 * 8,
+			SectionStripeMergeLimit: 2,
+		},
 	}, nil)
 	require.NoError(t, err)
 

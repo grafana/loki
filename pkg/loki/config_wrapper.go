@@ -179,7 +179,7 @@ func applyInstanceConfigs(r, defaults *ConfigWrapper) {
 		}
 		r.Frontend.FrontendV2.InfNames = r.Common.InstanceInterfaceNames
 		r.IndexGateway.Ring.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
-		r.Querier.EngineV2.InterfaceNames = r.Common.InstanceInterfaceNames
+		r.QueryEngine.InterfaceNames = r.Common.InstanceInterfaceNames
 	}
 }
 
@@ -561,8 +561,8 @@ func appendLoopbackInterface(cfg, defaults *ConfigWrapper) {
 		cfg.DataObj.Consumer.LifecyclerConfig.InfNames = append(cfg.DataObj.Consumer.LifecyclerConfig.InfNames, loopbackIface)
 	}
 
-	if reflect.DeepEqual(cfg.Querier.EngineV2.InterfaceNames, defaults.Querier.EngineV2.InterfaceNames) {
-		cfg.Querier.EngineV2.InterfaceNames = append(cfg.Querier.EngineV2.InterfaceNames, loopbackIface)
+	if reflect.DeepEqual(cfg.QueryEngine.InterfaceNames, defaults.QueryEngine.InterfaceNames) {
+		cfg.QueryEngine.InterfaceNames = append(cfg.QueryEngine.InterfaceNames, loopbackIface)
 	}
 }
 

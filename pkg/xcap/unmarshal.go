@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 
 	"github.com/grafana/loki/v3/pkg/xcap/internal/proto"
 )
@@ -83,6 +84,19 @@ func fromProtoRegion(protoRegion *proto.Region, statIndexToStat map[uint32]Stati
 		}
 	}
 
+	// Unmarshal events from proto
+	events := make([]Event, 0, len(protoRegion.Events))
+	for _, protoEvent := range protoRegion.Events {
+		event, err := unmarshalEvent(protoEvent)
+		if err != nil {
+			return nil, fmt.Errorf("failed to unmarshal event %s: %w", protoEvent.Name, err)
+		}
+		events = append(events, event)
+	}
+
+	// Unmarshal status from proto
+	status := unmarshalStatus(protoRegion.Status)
+
 	region := &Region{
 		id:           regionID,
 		parentID:     parentID,
@@ -91,10 +105,41 @@ func fromProtoRegion(protoRegion *proto.Region, statIndexToStat map[uint32]Stati
 		endTime:      protoRegion.EndTime,
 		observations: observations,
 		attributes:   attributes,
+		events:       events,
+		status:       status,
 		ended:        true, // Regions from proto are always ended
 	}
 
 	return region, nil
+}
+
+// unmarshalEvent converts a protobuf Event to its Go representation.
+func unmarshalEvent(protoEvent *proto.Event) (Event, error) {
+	attributes := make([]attribute.KeyValue, 0, len(protoEvent.Attributes))
+	for _, protoAttr := range protoEvent.Attributes {
+		attr, err := unmarshalAttribute(protoAttr)
+		if err != nil {
+			return Event{}, fmt.Errorf("failed to unmarshal event attribute %s: %w", protoAttr.Key, err)
+		}
+		attributes = append(attributes, attr)
+	}
+
+	return Event{
+		Name:       protoEvent.Name,
+		Timestamp:  protoEvent.Timestamp,
+		Attributes: attributes,
+	}, nil
+}
+
+// unmarshalStatus converts a protobuf Status to its Go representation.
+func unmarshalStatus(protoStatus *proto.Status) Status {
+	if protoStatus == nil {
+		return Status{}
+	}
+	return Status{
+		Code:    codes.Code(protoStatus.Code),
+		Message: protoStatus.Message,
+	}
 }
 
 // unmarshalObservationValue converts a protobuf ObservationValue to a Go value.

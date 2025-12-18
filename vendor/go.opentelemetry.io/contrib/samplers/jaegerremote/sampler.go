@@ -24,10 +24,10 @@ import (
 	"sync"
 
 	jaeger_api_v2 "github.com/jaegertracing/jaeger-idl/proto-gen/api_v2"
-
-	"go.opentelemetry.io/contrib/samplers/jaegerremote/internal/utils"
 	"go.opentelemetry.io/otel/sdk/trace"
 	oteltrace "go.opentelemetry.io/otel/trace"
+
+	"go.opentelemetry.io/contrib/samplers/jaegerremote/internal/ratelimiter"
 )
 
 const (
@@ -94,7 +94,7 @@ func (s *probabilisticSampler) Description() string {
 // number of sequential requests can be sampled each second.
 type rateLimitingSampler struct {
 	maxTracesPerSecond float64
-	rateLimiter        *utils.RateLimiter
+	rateLimiter        *ratelimiter.RateLimiter
 }
 
 // newRateLimitingSampler creates new rateLimitingSampler.
@@ -105,7 +105,7 @@ func newRateLimitingSampler(maxTracesPerSecond float64) *rateLimitingSampler {
 
 func (s *rateLimitingSampler) init(maxTracesPerSecond float64) *rateLimitingSampler {
 	if s.rateLimiter == nil {
-		s.rateLimiter = utils.NewRateLimiter(maxTracesPerSecond, math.Max(maxTracesPerSecond, 1.0))
+		s.rateLimiter = ratelimiter.NewRateLimiter(maxTracesPerSecond, math.Max(maxTracesPerSecond, 1.0))
 	} else {
 		s.rateLimiter.Update(maxTracesPerSecond, math.Max(maxTracesPerSecond, 1.0))
 	}
@@ -143,7 +143,7 @@ func (s *rateLimitingSampler) Equal(other trace.Sampler) bool {
 	return false
 }
 
-func (s *rateLimitingSampler) Description() string {
+func (*rateLimitingSampler) Description() string {
 	return "rateLimitingSampler{}"
 }
 
@@ -200,7 +200,7 @@ func (s *guaranteedThroughputProbabilisticSampler) update(lowerBound, samplingRa
 	}
 }
 
-func (s *guaranteedThroughputProbabilisticSampler) Description() string {
+func (*guaranteedThroughputProbabilisticSampler) Description() string {
 	return "guaranteedThroughputProbabilisticSampler{}"
 }
 
@@ -289,7 +289,7 @@ func (s *perOperationSampler) getSamplerForOperation(operation string) trace.Sam
 	return newSampler
 }
 
-func (s *perOperationSampler) Description() string {
+func (*perOperationSampler) Description() string {
 	return "perOperationSampler{}"
 }
 

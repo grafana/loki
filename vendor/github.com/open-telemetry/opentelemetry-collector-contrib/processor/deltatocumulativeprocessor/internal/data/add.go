@@ -54,7 +54,7 @@ func (Adder) Histograms(state, dp pmetric.HistogramDataPoint) error {
 	// given we have limited error handling at this stage (and already verified boundaries are correct),
 	// doing a best-effort add of whatever we have appears reasonable.
 	n := min(state.BucketCounts().Len(), dp.BucketCounts().Len())
-	for i := 0; i < n; i++ {
+	for i := range n {
 		sum := state.BucketCounts().At(i) + dp.BucketCounts().At(i)
 		state.BucketCounts().SetAt(i, sum)
 	}

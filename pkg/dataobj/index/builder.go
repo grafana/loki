@@ -135,7 +135,7 @@ func NewIndexBuilder(
 	}
 
 	// Create index building dependencies
-	builder, err := indexobj.NewBuilder(cfg.BuilderConfig, scratchStore)
+	builder, err := indexobj.NewBuilder(cfg.BuilderBaseConfig, scratchStore)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create index builder: %w", err)
 	}

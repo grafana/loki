@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/gogo/protobuf/proto"
+	remoteapi "github.com/prometheus/client_golang/exp/api/remote"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/promslog"
@@ -435,7 +436,7 @@ type QueueManager struct {
 
 	clientMtx   sync.RWMutex
 	storeClient WriteClient
-	protoMsg    config.RemoteWriteProtoMsg
+	protoMsg    remoteapi.WriteMessageType
 	compr       compression.Type
 
 	seriesMtx      sync.Mutex // Covers seriesLabels, seriesMetadata, droppedSeries and builder.
@@ -484,7 +485,7 @@ func NewQueueManager(
 	enableExemplarRemoteWrite bool,
 	enableNativeHistogramRemoteWrite bool,
 	enableTypeAndUnitLabels bool,
-	protoMsg config.RemoteWriteProtoMsg,
+	protoMsg remoteapi.WriteMessageType,
 ) *QueueManager {
 	if logger == nil {
 		logger = promslog.NewNopLogger()
@@ -532,7 +533,7 @@ func NewQueueManager(
 		compr:    compression.Snappy, // Hardcoded for now, but scaffolding exists for likely future use.
 	}
 
-	walMetadata := t.protoMsg != config.RemoteWriteProtoMsgV1
+	walMetadata := t.protoMsg != remoteapi.WriteV1MessageType
 
 	t.watcher = wlog.NewWatcher(watcherMetrics, readerMetrics, logger, client.Name(), t, dir, enableExemplarRemoteWrite, enableNativeHistogramRemoteWrite, walMetadata)
 
@@ -540,7 +541,7 @@ func NewQueueManager(
 	// with the new approach, which stores metadata as WAL records and
 	// ships them alongside series. If both mechanisms are set, the new one
 	// takes precedence by implicitly disabling the older one.
-	if t.mcfg.Send && t.protoMsg != config.RemoteWriteProtoMsgV1 {
+	if t.mcfg.Send && t.protoMsg != remoteapi.WriteV1MessageType {
 		logger.Warn("usage of 'metadata_config.send' is redundant when using remote write v2 (or higher) as metadata will always be gathered from the WAL and included for every series within each write request")
 		t.mcfg.Send = false
 	}
@@ -557,7 +558,7 @@ func NewQueueManager(
 // This is only used for the metadata_config.send setting and 1.x Remote Write.
 func (t *QueueManager) AppendWatcherMetadata(ctx context.Context, metadata []scrape.MetricMetadata) {
 	// no op for any newer proto format, which will cache metadata sent to it from the WAL watcher.
-	if t.protoMsg != config.RemoteWriteProtoMsgV1 {
+	if t.protoMsg != remoteapi.WriteV1MessageType {
 		return
 	}
 
@@ -832,7 +833,7 @@ outer:
 			t.metrics.droppedHistogramsTotal.WithLabelValues(reasonTooOld).Inc()
 			continue
 		}
-		if t.protoMsg == config.RemoteWriteProtoMsgV1 && h.H != nil && h.H.Schema == histogram.CustomBucketsSchema {
+		if t.protoMsg == remoteapi.WriteV1MessageType && h.H != nil && h.H.Schema == histogram.CustomBucketsSchema {
 			// We cannot send native histograms with custom buckets (NHCB) via remote write v1.
 			t.metrics.droppedHistogramsTotal.WithLabelValues(reasonNHCBNotSupported).Inc()
 			t.logger.Warn("Dropped native histogram with custom buckets (NHCB) as remote write v1 does not support itB", "ref", h.Ref)
@@ -893,7 +894,7 @@ outer:
 			t.metrics.droppedHistogramsTotal.WithLabelValues(reasonTooOld).Inc()
 			continue
 		}
-		if t.protoMsg == config.RemoteWriteProtoMsgV1 && h.FH != nil && h.FH.Schema == histogram.CustomBucketsSchema {
+		if t.protoMsg == remoteapi.WriteV1MessageType && h.FH != nil && h.FH.Schema == histogram.CustomBucketsSchema {
 			// We cannot send native histograms with custom buckets (NHCB) via remote write v1.
 			t.metrics.droppedHistogramsTotal.WithLabelValues(reasonNHCBNotSupported).Inc()
 			t.logger.Warn("Dropped float native histogram with custom buckets (NHCB) as remote write v1 does not support itB", "ref", h.Ref)
@@ -1008,7 +1009,7 @@ func (t *QueueManager) StoreSeries(series []record.RefSeries, index int) {
 
 // StoreMetadata keeps track of known series' metadata for lookups when sending samples to remote.
 func (t *QueueManager) StoreMetadata(meta []record.RefMetadata) {
-	if t.protoMsg == config.RemoteWriteProtoMsgV1 {
+	if t.protoMsg == remoteapi.WriteV1MessageType {
 		return
 	}
 
@@ -1567,9 +1568,9 @@ func (s *shards) runShard(ctx context.Context, shardID int, queue *queue) {
 	}
 	defer stop()
 
-	sendBatch := func(batch []timeSeries, protoMsg config.RemoteWriteProtoMsg, compr compression.Type, timer bool) {
+	sendBatch := func(batch []timeSeries, protoMsg remoteapi.WriteMessageType, compr compression.Type, timer bool) {
 		switch protoMsg {
-		case config.RemoteWriteProtoMsgV1:
+		case remoteapi.WriteV1MessageType:
 			nPendingSamples, nPendingExemplars, nPendingHistograms := populateTimeSeries(batch, pendingData, s.qm.sendExemplars, s.qm.sendNativeHistograms)
 			n := nPendingSamples + nPendingExemplars + nPendingHistograms
 			if timer {
@@ -1577,7 +1578,7 @@ func (s *shards) runShard(ctx context.Context, shardID int, queue *queue) {
 					"exemplars", nPendingExemplars, "shard", shardNum, "histograms", nPendingHistograms)
 			}
 			_ = s.sendSamples(ctx, pendingData[:n], nPendingSamples, nPendingExemplars, nPendingHistograms, pBuf, encBuf, compr)
-		case config.RemoteWriteProtoMsgV2:
+		case remoteapi.WriteV2MessageType:
 			nPendingSamples, nPendingExemplars, nPendingHistograms, nPendingMetadata, nUnexpectedMetadata := populateV2TimeSeries(&symbolTable, batch, pendingDataV2, s.qm.sendExemplars, s.qm.sendNativeHistograms, s.qm.enableTypeAndUnitLabels)
 			n := nPendingSamples + nPendingExemplars + nPendingHistograms
 			if nUnexpectedMetadata > 0 {
@@ -1953,20 +1954,27 @@ func populateV2TimeSeries(symbolTable *writev2.SymbolsTable, batch []timeSeries,
 	var nPendingSamples, nPendingExemplars, nPendingHistograms, nPendingMetadata, nUnexpectedMetadata int
 	for nPending, d := range batch {
 		pendingData[nPending].Samples = pendingData[nPending].Samples[:0]
-		if d.metadata != nil {
+		switch {
+		case enableTypeAndUnitLabels:
+			m := schema.NewMetadataFromLabels(d.seriesLabels)
+			pendingData[nPending].Metadata.Type = writev2.FromMetadataType(m.Type)
+			pendingData[nPending].Metadata.UnitRef = symbolTable.Symbolize(m.Unit)
+			pendingData[nPending].Metadata.HelpRef = 0 // Type and unit does not give us help.
+			// Use Help from d.metadata if available.
+			if d.metadata != nil {
+				pendingData[nPending].Metadata.HelpRef = symbolTable.Symbolize(d.metadata.Help)
+				nPendingMetadata++
+			}
+		case d.metadata != nil:
 			pendingData[nPending].Metadata.Type = writev2.FromMetadataType(d.metadata.Type)
 			pendingData[nPending].Metadata.HelpRef = symbolTable.Symbolize(d.metadata.Help)
 			pendingData[nPending].Metadata.UnitRef = symbolTable.Symbolize(d.metadata.Unit)
 			nPendingMetadata++
-		} else {
-			var m schema.Metadata
-			if enableTypeAndUnitLabels {
-				m = schema.NewMetadataFromLabels(d.seriesLabels)
-			}
+		default:
 			// Safeguard against sending garbage in case of not having metadata
 			// for whatever reason.
-			pendingData[nPending].Metadata.Type = writev2.FromMetadataType(m.Type)
-			pendingData[nPending].Metadata.UnitRef = symbolTable.Symbolize(m.Unit)
+			pendingData[nPending].Metadata.Type = writev2.FromMetadataType(model.MetricTypeUnknown)
+			pendingData[nPending].Metadata.UnitRef = 0
 			pendingData[nPending].Metadata.HelpRef = 0
 		}
 

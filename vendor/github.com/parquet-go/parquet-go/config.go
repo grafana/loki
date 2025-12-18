@@ -2,12 +2,13 @@ package parquet
 
 import (
 	"fmt"
+	"maps"
 	"math"
+	"reflect"
 	"runtime/debug"
+	"slices"
 	"strings"
 	"sync"
-
-	"slices"
 
 	"github.com/parquet-go/parquet-go/compress"
 	"github.com/parquet-go/parquet-go/encoding"
@@ -160,13 +161,16 @@ func (c *FileConfig) Validate() error {
 //		// ...
 //	})
 type ReaderConfig struct {
-	Schema *Schema
+	Schema       *Schema
+	SchemaConfig *SchemaConfig
 }
 
 // DefaultReaderConfig returns a new ReaderConfig value initialized with the
 // default reader configuration.
 func DefaultReaderConfig() *ReaderConfig {
-	return &ReaderConfig{}
+	return &ReaderConfig{
+		SchemaConfig: DefaultSchemaConfig(),
+	}
 }
 
 // NewReaderConfig constructs a new reader configuration applying the options
@@ -190,7 +194,8 @@ func (c *ReaderConfig) Apply(options ...ReaderOption) {
 // ConfigureReader applies configuration options from c to config.
 func (c *ReaderConfig) ConfigureReader(config *ReaderConfig) {
 	*config = ReaderConfig{
-		Schema: coalesceSchema(c.Schema, config.Schema),
+		Schema:       coalesceSchema(c.Schema, config.Schema),
+		SchemaConfig: coalesceSchemaConfig(c.SchemaConfig, config.SchemaConfig),
 	}
 }
 
@@ -210,7 +215,7 @@ func (c *ReaderConfig) Validate() error {
 type WriterConfig struct {
 	CreatedBy            string
 	ColumnPageBuffers    BufferPool
-	ColumnIndexSizeLimit int
+	ColumnIndexSizeLimit func(path []string) int
 	PageBufferSize       int
 	WriteBufferSize      int
 	DataPageVersion      int
@@ -223,6 +228,8 @@ type WriterConfig struct {
 	Sorting              SortingConfig
 	SkipPageBounds       [][]string
 	Encodings            map[Kind]encoding.Encoding
+	DictionaryMaxBytes   int64
+	SchemaConfig         *SchemaConfig
 }
 
 // DefaultWriterConfig returns a new WriterConfig value initialized with the
@@ -231,12 +238,13 @@ func DefaultWriterConfig() *WriterConfig {
 	return &WriterConfig{
 		CreatedBy:            defaultCreatedBy(),
 		ColumnPageBuffers:    &defaultColumnBufferPool,
-		ColumnIndexSizeLimit: DefaultColumnIndexSizeLimit,
+		ColumnIndexSizeLimit: func(path []string) int { return DefaultColumnIndexSizeLimit },
 		PageBufferSize:       DefaultPageBufferSize,
 		WriteBufferSize:      DefaultWriteBufferSize,
 		DataPageVersion:      DefaultDataPageVersion,
 		DataPageStatistics:   DefaultDataPageStatistics,
 		MaxRowsPerRowGroup:   DefaultMaxRowsPerRowGroup,
+		SchemaConfig:         DefaultSchemaConfig(),
 		Sorting: SortingConfig{
 			SortingBuffers: &defaultSortingBufferPool,
 		},
@@ -268,9 +276,7 @@ func (c *WriterConfig) ConfigureWriter(config *WriterConfig) {
 		if keyValueMetadata == nil {
 			keyValueMetadata = make(map[string]string, len(c.KeyValueMetadata))
 		}
-		for k, v := range c.KeyValueMetadata {
-			keyValueMetadata[k] = v
-		}
+		maps.Copy(keyValueMetadata, c.KeyValueMetadata)
 	}
 
 	encodings := config.Encodings
@@ -278,15 +284,13 @@ func (c *WriterConfig) ConfigureWriter(config *WriterConfig) {
 		if encodings == nil {
 			encodings = make(map[Kind]encoding.Encoding, len(c.Encodings))
 		}
-		for k, v := range c.Encodings {
-			encodings[k] = v
-		}
+		maps.Copy(encodings, c.Encodings)
 	}
 
 	*config = WriterConfig{
 		CreatedBy:            coalesceString(c.CreatedBy, config.CreatedBy),
 		ColumnPageBuffers:    coalesceBufferPool(c.ColumnPageBuffers, config.ColumnPageBuffers),
-		ColumnIndexSizeLimit: coalesceInt(c.ColumnIndexSizeLimit, config.ColumnIndexSizeLimit),
+		ColumnIndexSizeLimit: coalesceColumnIndexLimit(c.ColumnIndexSizeLimit, config.ColumnIndexSizeLimit),
 		PageBufferSize:       coalesceInt(c.PageBufferSize, config.PageBufferSize),
 		WriteBufferSize:      coalesceInt(c.WriteBufferSize, config.WriteBufferSize),
 		DataPageVersion:      coalesceInt(c.DataPageVersion, config.DataPageVersion),
@@ -294,11 +298,12 @@ func (c *WriterConfig) ConfigureWriter(config *WriterConfig) {
 		MaxRowsPerRowGroup:   coalesceInt64(c.MaxRowsPerRowGroup, config.MaxRowsPerRowGroup),
 		KeyValueMetadata:     keyValueMetadata,
 		Schema:               coalesceSchema(c.Schema, config.Schema),
-		BloomFilters:         coalesceBloomFilters(c.BloomFilters, config.BloomFilters),
+		BloomFilters:         coalesceSlices(c.BloomFilters, config.BloomFilters),
 		Compression:          coalesceCompression(c.Compression, config.Compression),
 		Sorting:              coalesceSortingConfig(c.Sorting, config.Sorting),
-		SkipPageBounds:       coalesceSkipPageBounds(c.SkipPageBounds, config.SkipPageBounds),
+		SkipPageBounds:       coalesceSlices(c.SkipPageBounds, config.SkipPageBounds),
 		Encodings:            encodings,
+		SchemaConfig:         coalesceSchemaConfig(c.SchemaConfig, config.SchemaConfig),
 	}
 }
 
@@ -307,7 +312,6 @@ func (c *WriterConfig) Validate() error {
 	const baseName = "parquet.(*WriterConfig)."
 	return errorInvalidConfiguration(
 		validateNotNil(baseName+"ColumnPageBuffers", c.ColumnPageBuffers),
-		validatePositiveInt(baseName+"ColumnIndexSizeLimit", c.ColumnIndexSizeLimit),
 		validatePositiveInt(baseName+"PageBufferSize", c.PageBufferSize),
 		validateOneOfInt(baseName+"DataPageVersion", c.DataPageVersion, 1, 2),
 		c.Sorting.Validate(),
@@ -424,6 +428,16 @@ func (c *SortingConfig) Apply(options ...SortingOption) {
 
 func (c *SortingConfig) ConfigureSorting(config *SortingConfig) {
 	*config = coalesceSortingConfig(*c, *config)
+}
+
+// SchemaOption is an interface implemented by types that carry configuration
+// options for parquet schemas.  SchemaOption also implements ReaderOption and WriterOption
+// and may be used to configure the way NewGenericReader and NewGenericWriter derive schemas from the arguments.
+type SchemaOption interface {
+	ReaderOption
+	WriterOption
+
+	ConfigureSchema(*SchemaConfig)
 }
 
 // FileOption is an interface implemented by types that carry configuration
@@ -591,11 +605,12 @@ func ColumnPageBuffers(buffers BufferPool) WriterOption {
 }
 
 // ColumnIndexSizeLimit creates a configuration option to customize the size
-// limit of page boundaries recorded in column indexes.
+// limit of page boundaries recorded in column indexes. The result of the provided
+// function must be larger then 0.
 //
-// Defaults to 16.
-func ColumnIndexSizeLimit(sizeLimit int) WriterOption {
-	return writerOption(func(config *WriterConfig) { config.ColumnIndexSizeLimit = sizeLimit })
+// Defaults to the function that returns 16 for all paths.
+func ColumnIndexSizeLimit(f func(path []string) int) WriterOption {
+	return writerOption(func(config *WriterConfig) { config.ColumnIndexSizeLimit = f })
 }
 
 // DataPageVersion creates a configuration option which configures the version of
@@ -709,6 +724,19 @@ func DefaultEncoding(enc encoding.Encoding) WriterOption {
 	})
 }
 
+// DictionaryMaxBytes creates a configuration option which sets the maximum
+// size in bytes for each column's dictionary.
+//
+// When a column's dictionary exceeds this limit, that column will switch from
+// dictionary encoding to PLAIN encoding for the remainder of the row group.
+// Pages written before the limit was reached remain dictionary-encoded, while
+// subsequent pages use PLAIN encoding.
+//
+// A value of 0 (the default) means unlimited dictionary size.
+func DictionaryMaxBytes(size int64) WriterOption {
+	return writerOption(func(config *WriterConfig) { config.DictionaryMaxBytes = size })
+}
+
 // ColumnBufferCapacity creates a configuration option which defines the size of
 // row group column buffers.
 //
@@ -758,6 +786,71 @@ func DropDuplicatedRows(drop bool) SortingOption {
 	return sortingOption(func(config *SortingConfig) { config.DropDuplicatedRows = drop })
 }
 
+// The SchemaConfig type carries configuration options for parquet schemas.
+//
+// SchemaConfig implements the SchemaOption interface so it can be used directly
+// as argument to the SchemaOf function when needed, for example:
+//
+//	schema := parquet.SchemaOf(obj, &parquet.SchemaConfig{
+//		...
+//	})
+type SchemaConfig struct {
+	StructTags []StructTagOption
+}
+
+func (c *SchemaConfig) ConfigureSchema(config *SchemaConfig) {
+	config.StructTags = coalesceStructTags(c.StructTags, config.StructTags)
+}
+
+func (c *SchemaConfig) ConfigureReader(config *ReaderConfig) {
+	c.ConfigureSchema(config.SchemaConfig)
+}
+
+func (c *SchemaConfig) ConfigureWriter(config *WriterConfig) {
+	c.ConfigureSchema(config.SchemaConfig)
+}
+
+func DefaultSchemaConfig() *SchemaConfig {
+	return &SchemaConfig{}
+}
+
+// StructTagOption performs runtime replacement of "parquet..." struct tags.  This
+// option can be used anywhere a schema is derived from a Go struct including
+// SchemaOf, NewGenericReader, and NewGenericWriter.
+type StructTagOption struct {
+	ColumnPath []string
+	StructTag  reflect.StructTag
+}
+
+var (
+	_ SchemaOption = (*StructTagOption)(nil)
+	_ ReaderOption = (*StructTagOption)(nil)
+	_ WriterOption = (*StructTagOption)(nil)
+)
+
+// StructTag performs runtime replacement of struct tags when deriving a schema from
+// a Go struct for the column at the given path.  This option can be used anywhere a schema is
+// derived from a Go struct including SchemaOf, NewGenericReader, and NewGenericWriter.
+//
+// This option is additive, it may be used multiple times to affect multiple columns.
+//
+// When renaming a column, configure the option by its original name.
+func StructTag(tag reflect.StructTag, path ...string) SchemaOption {
+	return &StructTagOption{StructTag: tag, ColumnPath: path}
+}
+
+func (f *StructTagOption) ConfigureSchema(config *SchemaConfig) {
+	config.StructTags = append(config.StructTags, *f)
+}
+
+func (f *StructTagOption) ConfigureWriter(config *WriterConfig) {
+	f.ConfigureSchema(config.SchemaConfig)
+}
+
+func (f *StructTagOption) ConfigureReader(config *ReaderConfig) {
+	f.ConfigureSchema(config.SchemaConfig)
+}
+
 type fileOption func(*FileConfig)
 
 func (opt fileOption) ConfigureFile(config *FileConfig) { opt(config) }
@@ -803,11 +896,18 @@ func coalesceString(s1, s2 string) string {
 	return s2
 }
 
-func coalesceBytes(b1, b2 []byte) []byte {
-	if b1 != nil {
-		return b1
+func coalesceSlices[T any](s1, s2 []T) []T {
+	if s1 != nil {
+		return s1
 	}
-	return b2
+	return s2
+}
+
+func coalesceColumnIndexLimit(f1, f2 func([]string) int) func([]string) int {
+	if f1 != nil {
+		return f1
+	}
+	return f2
 }
 
 func coalesceBufferPool(p1, p2 BufferPool) BufferPool {
@@ -824,33 +924,12 @@ func coalesceSchema(s1, s2 *Schema) *Schema {
 	return s2
 }
 
-func coalesceSortingColumns(s1, s2 []SortingColumn) []SortingColumn {
-	if s1 != nil {
-		return s1
-	}
-	return s2
-}
-
 func coalesceSortingConfig(c1, c2 SortingConfig) SortingConfig {
 	return SortingConfig{
 		SortingBuffers:     coalesceBufferPool(c1.SortingBuffers, c2.SortingBuffers),
-		SortingColumns:     coalesceSortingColumns(c1.SortingColumns, c2.SortingColumns),
+		SortingColumns:     coalesceSlices(c1.SortingColumns, c2.SortingColumns),
 		DropDuplicatedRows: c1.DropDuplicatedRows,
 	}
-}
-
-func coalesceBloomFilters(f1, f2 []BloomFilterColumn) []BloomFilterColumn {
-	if f1 != nil {
-		return f1
-	}
-	return f2
-}
-
-func coalesceSkipPageBounds(b1, b2 [][]string) [][]string {
-	if b1 != nil {
-		return b1
-	}
-	return b2
 }
 
 func coalesceCompression(c1, c2 compress.Codec) compress.Codec {
@@ -858,6 +937,20 @@ func coalesceCompression(c1, c2 compress.Codec) compress.Codec {
 		return c1
 	}
 	return c2
+}
+
+func coalesceSchemaConfig(f1, f2 *SchemaConfig) *SchemaConfig {
+	if f1 != nil {
+		return f1
+	}
+	return f2
+}
+
+func coalesceStructTags(s1, s2 []StructTagOption) []StructTagOption {
+	if len(s1) > 0 {
+		return s1
+	}
+	return s2
 }
 
 func validatePositiveInt(optionName string, optionValue int) error {
@@ -934,4 +1027,5 @@ var (
 	_ WriterOption   = (*WriterConfig)(nil)
 	_ RowGroupOption = (*RowGroupConfig)(nil)
 	_ SortingOption  = (*SortingConfig)(nil)
+	_ SchemaOption   = (*SchemaConfig)(nil)
 )

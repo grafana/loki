@@ -16,13 +16,14 @@ import (
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 )
 
 // Define our own builder config for the Table Of Contents object because they are smaller than logs objects.
-var tocBuilderCfg = indexobj.BuilderConfig{
+var tocBuilderCfg = logsobj.BuilderBaseConfig{
 	TargetObjectSize:  32 * 1024 * 1024,
 	TargetPageSize:    4 * 1024 * 1024,
 	BufferSize:        32 * 1024 * 1024, // 8x page size

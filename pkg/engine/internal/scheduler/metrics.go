@@ -12,9 +12,10 @@ type metrics struct {
 	// registry to collect metrics as a unit.
 	reg *prometheus.Registry
 
-	tasksTotal   *prometheus.CounterVec
-	streamsTotal *prometheus.CounterVec
-	connsTotal   prometheus.Counter
+	tasksTotal    *prometheus.CounterVec
+	streamsTotal  *prometheus.CounterVec
+	connsTotal    prometheus.Counter
+	backoffsTotal prometheus.Counter
 
 	taskQueueSeconds prometheus.Histogram
 	taskExecSeconds  prometheus.Histogram
@@ -37,6 +38,10 @@ func newMetrics() *metrics {
 		connsTotal: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "loki_engine_scheduler_connections_total",
 			Help: "Total number of connections to the scheduler for any purpose (control or data plane)",
+		}),
+		backoffsTotal: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Name: "loki_engine_scheduler_assignment_backoffs_total",
+			Help: "Total number of times the scheduler has backed off of assigning tasks to a worker because of HTTP 429 errors",
 		}),
 
 		taskQueueSeconds: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{

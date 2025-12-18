@@ -148,7 +148,10 @@ type Statistics struct {
 	Max []byte `thrift:"1"`
 	Min []byte `thrift:"2"`
 	// Count of null value in the column.
-	NullCount int64 `thrift:"3"`
+	// The writezero tag satisfies spec:
+	// "Writers SHOULD always write this field even if it is zero (i.e. no null value) or the column is not nullable."
+	// https://github.com/apache/parquet-format/blob/apache-parquet-format-2.12.0/src/main/thrift/parquet.thrift#L283-L291
+	NullCount int64 `thrift:"3,writezero"`
 	// Count of distinct values occurring.
 	DistinctCount int64 `thrift:"4"`
 	// Min and max values for the column, determined by its ColumnOrder.
@@ -688,7 +691,8 @@ type DataPageHeader struct {
 	RepetitionLevelEncoding Encoding `thrift:"4,required"`
 
 	// Optional statistics for the data in this page.
-	Statistics Statistics `thrift:"5,optional"`
+	// The writezero tag supports writezero fields of Statistics.
+	Statistics Statistics `thrift:"5,optional,writezero"`
 }
 
 type IndexPageHeader struct {
@@ -740,7 +744,8 @@ type DataPageHeaderV2 struct {
 	IsCompressed *bool `thrift:"7,optional"`
 
 	// Optional statistics for the data in this page.
-	Statistics Statistics `thrift:"8,optional"`
+	// The writezero tag supports writezero fields of Statistics.
+	Statistics Statistics `thrift:"8,optional,writezero"`
 }
 
 // Block-based algorithm type annotation.
@@ -894,7 +899,8 @@ type ColumnMetaData struct {
 	DictionaryPageOffset int64 `thrift:"11,optional"`
 
 	// optional statistics for this column chunk.
-	Statistics Statistics `thrift:"12,optional"`
+	// The writezero tag supports writezero fields of Statistics.
+	Statistics Statistics `thrift:"12,optional,writezero"`
 
 	// Set of all encodings used for pages in this column chunk.
 	// This information can be used to determine if all data pages are
@@ -1117,7 +1123,10 @@ type ColumnIndex struct {
 	BoundaryOrder BoundaryOrder `thrift:"4,required"`
 
 	// A list containing the number of null values for each page.
-	NullCounts []int64 `thrift:"5,optional"`
+	// The writezero tag satisfies spec:
+	// "Writers SHOULD always write this field even if no null values are present or the column is not nullable."
+	// https://github.com/apache/parquet-format/blob/apache-parquet-format-2.12.0/src/main/thrift/parquet.thrift#L1197-L1198
+	NullCounts []int64 `thrift:"5,optional,writezero"`
 
 	// Contains repetition level histograms for each page
 	// concatenated together.  The repetition_level_histogram field on

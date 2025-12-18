@@ -122,11 +122,11 @@ func addresses(addrs []net.Addr) []string {
 	return servers
 }
 
-// jumpHash consistently chooses a hash bucket number in the range [0, numBuckets) for the given key.
+// Hash consistently chooses a hash bucket number in the range [0, numBuckets) for the given key.
 // numBuckets must be >= 1.
 //
 // Copied from github.com/dgryski/go-jump/blob/master/jump.go
-func jumpHash(key uint64, numBuckets int) int32 {
+func Hash(key uint64, numBuckets int) int32 {
 
 	var b int64 = -1
 	var j int64
@@ -155,7 +155,7 @@ func (s *Selector) FromString(key string) (net.Addr, error) {
 		return s.addrs[0], nil
 	}
 	cs := xxhash.Sum64String(key)
-	idx := jumpHash(cs, len(s.addrs))
+	idx := Hash(cs, len(s.addrs))
 	return s.addrs[idx], nil
 }
 
@@ -167,7 +167,7 @@ func (s *Selector) FromUInt64(key uint64) (net.Addr, error) {
 	} else if len(s.addrs) == 1 {
 		return s.addrs[0], nil
 	}
-	idx := jumpHash(key, len(s.addrs))
+	idx := Hash(key, len(s.addrs))
 	return s.addrs[idx], nil
 }
 

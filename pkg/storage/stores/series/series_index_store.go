@@ -114,7 +114,7 @@ func (c *IndexReaderWriter) calculateIndexEntries(ctx context.Context, from, thr
 	seenIndexEntries := map[string]struct{}{}
 	entries := []series_index.Entry{}
 
-	metricName := chunk.Metric.Get(labels.MetricName)
+	metricName := chunk.Metric.Get(model.MetricNameLabel)
 	if metricName == "" {
 		return nil, nil, fmt.Errorf("no MetricNameLabel for chunk")
 	}
@@ -270,7 +270,7 @@ func (c *IndexReaderWriter) chunksToSeries(ctx context.Context, in []logproto.Ch
 		outer:
 			for _, chk := range chunks {
 				for _, matcher := range matchers {
-					if matcher.Name == astmapper.ShardLabel || matcher.Name == labels.MetricName {
+					if matcher.Name == astmapper.ShardLabel || matcher.Name == model.MetricNameLabel {
 						continue
 					}
 					if !matcher.Matches(chk.Metric.Get(matcher.Name)) {
@@ -282,7 +282,7 @@ func (c *IndexReaderWriter) chunksToSeries(ctx context.Context, in []logproto.Ch
 					continue outer
 				}
 
-				lbls = append(lbls, labels.NewBuilder(chk.Metric).Del(labels.MetricName).Labels())
+				lbls = append(lbls, labels.NewBuilder(chk.Metric).Del(model.MetricNameLabel).Labels())
 			}
 
 			return lbls, nil

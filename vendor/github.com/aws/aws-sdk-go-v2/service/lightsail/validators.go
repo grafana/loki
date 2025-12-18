@@ -2985,6 +2985,58 @@ func validateBucketAccessLogConfig(v *types.BucketAccessLogConfig) error {
 	}
 }
 
+func validateBucketCorsConfig(v *types.BucketCorsConfig) error {
+	if v == nil {
+		return nil
+	}
+	invalidParams := smithy.InvalidParamsError{Context: "BucketCorsConfig"}
+	if v.Rules != nil {
+		if err := validateBucketCorsRules(v.Rules); err != nil {
+			invalidParams.AddNested("Rules", err.(smithy.InvalidParamsError))
+		}
+	}
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	} else {
+		return nil
+	}
+}
+
+func validateBucketCorsRule(v *types.BucketCorsRule) error {
+	if v == nil {
+		return nil
+	}
+	invalidParams := smithy.InvalidParamsError{Context: "BucketCorsRule"}
+	if v.AllowedMethods == nil {
+		invalidParams.Add(smithy.NewErrParamRequired("AllowedMethods"))
+	}
+	if v.AllowedOrigins == nil {
+		invalidParams.Add(smithy.NewErrParamRequired("AllowedOrigins"))
+	}
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	} else {
+		return nil
+	}
+}
+
+func validateBucketCorsRules(v []types.BucketCorsRule) error {
+	if v == nil {
+		return nil
+	}
+	invalidParams := smithy.InvalidParamsError{Context: "BucketCorsRules"}
+	for i := range v {
+		if err := validateBucketCorsRule(&v[i]); err != nil {
+			invalidParams.AddNested(fmt.Sprintf("[%d]", i), err.(smithy.InvalidParamsError))
+		}
+	}
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	} else {
+		return nil
+	}
+}
+
 func validateContainerServiceDeploymentRequest(v *types.ContainerServiceDeploymentRequest) error {
 	if v == nil {
 		return nil
@@ -5126,6 +5178,11 @@ func validateOpUpdateBucketInput(v *UpdateBucketInput) error {
 	if v.AccessLogConfig != nil {
 		if err := validateBucketAccessLogConfig(v.AccessLogConfig); err != nil {
 			invalidParams.AddNested("AccessLogConfig", err.(smithy.InvalidParamsError))
+		}
+	}
+	if v.Cors != nil {
+		if err := validateBucketCorsConfig(v.Cors); err != nil {
+			invalidParams.AddNested("Cors", err.(smithy.InvalidParamsError))
 		}
 	}
 	if invalidParams.Len() > 0 {

@@ -734,7 +734,7 @@ func TestCompactedIndex(t *testing.T) {
 		"__name__ label should get dropped while indexing chunks": {
 			addChunks: []chunk.Chunk{
 				{
-					Metric:   labels.NewBuilder(testCtx.lbls1).Set(labels.MetricName, "log").Labels(),
+					Metric:   labels.NewBuilder(testCtx.lbls1).Set(model.MetricNameLabel, "log").Labels(),
 					ChunkRef: chunkMetaToChunkRef(testCtx.userID, buildChunkMetas(testCtx.shiftTableStart(11), testCtx.shiftTableStart(11))[0], testCtx.lbls1),
 					Data:     dummyChunkData{},
 				},
@@ -996,4 +996,60 @@ func (d dummyChunkData) UncompressedSize() int {
 
 func (d dummyChunkData) Entries() int {
 	return 1
+}
+
+// TestSetupBuilder_ManyFiles verifies that setupBuilder can handle processing
+// many files without running into resource exhaustion issues.
+func TestSetupBuilder_ManyFiles(t *testing.T) {
+	now := model.Now()
+	periodConfig := config.PeriodConfig{
+		IndexTables: config.IndexPeriodicTableConfig{
+			PeriodicTableConfig: config.PeriodicTableConfig{Period: config.ObjectStorageIndexRequiredPeriod}},
+		Schema: "v12",
+	}
+	indexBkts := IndexBuckets(now, now, []config.TableRange{periodConfig.GetIndexTableNumberRange(config.DayTime{Time: now})})
+	tableName := indexBkts[0]
+
+	tempDir := t.TempDir()
+	objectStoragePath := filepath.Join(tempDir, "objects")
+	tablePathInStorage := filepath.Join(objectStoragePath, tableName.Prefix)
+	tableWorkingDirectory := filepath.Join(tempDir, "working-dir", tableName.Prefix)
+
+	require.NoError(t, util.EnsureDirectory(objectStoragePath))
+	require.NoError(t, util.EnsureDirectory(tablePathInStorage))
+	require.NoError(t, util.EnsureDirectory(tableWorkingDirectory))
+
+	// Create a large number of files
+	numFiles := 100
+	indexFormat, err := periodConfig.TSDBFormat()
+	require.NoError(t, err)
+
+	// Create per-tenant index files in the user's directory
+	userTablePath := filepath.Join(tablePathInStorage, "user1")
+	require.NoError(t, util.EnsureDirectory(userTablePath))
+
+	lbls := mustParseLabels(`{foo="bar"}`)
+	for i := 0; i < numFiles; i++ {
+		streams := []stream{
+			buildStream(lbls, buildChunkMetas(int64(i*1000), int64(i*1000+100)), ""),
+		}
+		setupPerTenantIndex(t, indexFormat, streams, userTablePath, time.Unix(int64(i), 0))
+	}
+
+	objectClient, err := local.NewFSObjectClient(local.FSConfig{Directory: objectStoragePath})
+	require.NoError(t, err)
+
+	idxSet, err := newMockIndexSet("user1", tableName.Prefix, filepath.Join(tableWorkingDirectory, "user1"), objectClient)
+	require.NoError(t, err)
+
+	// This should complete without errors even with many files
+	// because files are closed immediately after processing
+	ctx := context.Background()
+	builder, err := setupBuilder(ctx, indexFormat, "user1", idxSet, []Index{})
+	require.NoError(t, err)
+	require.NotNil(t, builder)
+
+	// Verify builder has the expected data
+	builder.FinalizeChunks()
+	require.Greater(t, len(builder.streams), 0)
 }

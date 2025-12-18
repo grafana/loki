@@ -101,7 +101,7 @@ func fillStore(cm storage.ClientMetrics) error {
 				panic(err)
 			}
 			labelsBuilder := labels.NewBuilder(lbs)
-			labelsBuilder.Set(labels.MetricName, "logs")
+			labelsBuilder.Set(model.MetricNameLabel, "logs")
 			metric := labelsBuilder.Labels()
 			fp := client.Fingerprint(lbs)
 			chunkEnc := chunkenc.NewMemChunk(chunkfmt, compression.LZ4_4M, headfmt, 262144, 1572864)

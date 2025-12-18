@@ -32,7 +32,7 @@ const (
 
 func ForStateMetric(base labels.Labels, alertName string) labels.Labels {
 	b := labels.NewBuilder(base)
-	b.Set(labels.MetricName, AlertForStateMetricName)
+	b.Set(model.MetricNameLabel, AlertForStateMetricName)
 	b.Set(labels.AlertName, alertName)
 	return b.Labels()
 }

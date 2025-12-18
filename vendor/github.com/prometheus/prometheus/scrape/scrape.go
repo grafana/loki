@@ -41,6 +41,7 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/atomic"
 
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/discovery/targetgroup"
@@ -131,6 +132,7 @@ type scrapeLoopOptions struct {
 	trackTimestampsStaleness bool
 	interval                 time.Duration
 	timeout                  time.Duration
+	scrapeNativeHist         bool
 	alwaysScrapeClassicHist  bool
 	convertClassicHistToNHCB bool
 	fallbackScrapeProtocol   string
@@ -212,7 +214,7 @@ func newScrapePool(cfg *config.ScrapeConfig, app storage.Appendable, offsetSeed 
 			opts.timeout,
 			opts.alwaysScrapeClassicHist,
 			opts.convertClassicHistToNHCB,
-			options.EnableNativeHistogramsIngestion,
+			cfg.ScrapeNativeHistogramsEnabled(),
 			options.EnableCreatedTimestampZeroIngestion,
 			options.EnableTypeAndUnitLabels,
 			options.ExtraMetrics,
@@ -371,6 +373,7 @@ func (sp *scrapePool) restartLoops(reuseCache bool) {
 		trackTimestampsStaleness = sp.config.TrackTimestampsStaleness
 		mrc                      = sp.config.MetricRelabelConfigs
 		fallbackScrapeProtocol   = sp.config.ScrapeFallbackProtocol.HeaderMediaType()
+		scrapeNativeHist         = sp.config.ScrapeNativeHistogramsEnabled()
 		alwaysScrapeClassicHist  = sp.config.AlwaysScrapeClassicHistogramsEnabled()
 		convertClassicHistToNHCB = sp.config.ConvertClassicHistogramsToNHCBEnabled()
 	)
@@ -415,6 +418,7 @@ func (sp *scrapePool) restartLoops(reuseCache bool) {
 				interval:                 targetInterval,
 				timeout:                  targetTimeout,
 				fallbackScrapeProtocol:   fallbackScrapeProtocol,
+				scrapeNativeHist:         scrapeNativeHist,
 				alwaysScrapeClassicHist:  alwaysScrapeClassicHist,
 				convertClassicHistToNHCB: convertClassicHistToNHCB,
 			})
@@ -527,6 +531,7 @@ func (sp *scrapePool) sync(targets []*Target) {
 		trackTimestampsStaleness = sp.config.TrackTimestampsStaleness
 		mrc                      = sp.config.MetricRelabelConfigs
 		fallbackScrapeProtocol   = sp.config.ScrapeFallbackProtocol.HeaderMediaType()
+		scrapeNativeHist         = sp.config.ScrapeNativeHistogramsEnabled()
 		alwaysScrapeClassicHist  = sp.config.AlwaysScrapeClassicHistogramsEnabled()
 		convertClassicHistToNHCB = sp.config.ConvertClassicHistogramsToNHCBEnabled()
 	)
@@ -564,6 +569,7 @@ func (sp *scrapePool) sync(targets []*Target) {
 				mrc:                      mrc,
 				interval:                 interval,
 				timeout:                  timeout,
+				scrapeNativeHist:         scrapeNativeHist,
 				alwaysScrapeClassicHist:  alwaysScrapeClassicHist,
 				convertClassicHistToNHCB: convertClassicHistToNHCB,
 				fallbackScrapeProtocol:   fallbackScrapeProtocol,
@@ -634,6 +640,16 @@ func (sp *scrapePool) refreshTargetLimitErr() error {
 		return fmt.Errorf("target_limit exceeded (number of targets: %d, limit: %d)", l, sp.config.TargetLimit)
 	}
 	return nil
+}
+
+func (sp *scrapePool) disableEndOfRunStalenessMarkers(targets []*Target) {
+	sp.mtx.Lock()
+	defer sp.mtx.Unlock()
+	for i := range targets {
+		if l, ok := sp.loops[targets[i].hash()]; ok {
+			l.disableEndOfRunStalenessMarkers()
+		}
+	}
 }
 
 func verifyLabelLimits(lset labels.Labels, limits *labelLimits) error {
@@ -939,8 +955,7 @@ type scrapeLoop struct {
 	enableTypeAndUnitLabels  bool
 	fallbackScrapeProtocol   string
 
-	// Feature flagged options.
-	enableNativeHistogramIngestion bool
+	enableNativeHistogramScraping bool
 
 	appender            func(ctx context.Context) storage.Appender
 	symbolTable         *labels.SymbolTable
@@ -953,7 +968,7 @@ type scrapeLoop struct {
 	cancel      func()
 	stopped     chan struct{}
 
-	disabledEndOfRunStalenessMarkers bool
+	disabledEndOfRunStalenessMarkers atomic.Bool
 
 	reportExtraMetrics  bool
 	appendMetadataToWAL bool
@@ -1248,7 +1263,7 @@ func newScrapeLoop(ctx context.Context,
 	timeout time.Duration,
 	alwaysScrapeClassicHist bool,
 	convertClassicHistToNHCB bool,
-	enableNativeHistogramIngestion bool,
+	enableNativeHistogramScraping bool,
 	enableCTZeroIngestion bool,
 	enableTypeAndUnitLabels bool,
 	reportExtraMetrics bool,
@@ -1283,39 +1298,39 @@ func newScrapeLoop(ctx context.Context,
 	}
 
 	sl := &scrapeLoop{
-		scraper:                        sc,
-		buffers:                        buffers,
-		cache:                          cache,
-		appender:                       appender,
-		symbolTable:                    symbolTable,
-		sampleMutator:                  sampleMutator,
-		reportSampleMutator:            reportSampleMutator,
-		stopped:                        make(chan struct{}),
-		offsetSeed:                     offsetSeed,
-		l:                              l,
-		parentCtx:                      ctx,
-		appenderCtx:                    appenderCtx,
-		honorTimestamps:                honorTimestamps,
-		trackTimestampsStaleness:       trackTimestampsStaleness,
-		enableCompression:              enableCompression,
-		sampleLimit:                    sampleLimit,
-		bucketLimit:                    bucketLimit,
-		maxSchema:                      maxSchema,
-		labelLimits:                    labelLimits,
-		interval:                       interval,
-		timeout:                        timeout,
-		alwaysScrapeClassicHist:        alwaysScrapeClassicHist,
-		convertClassicHistToNHCB:       convertClassicHistToNHCB,
-		enableCTZeroIngestion:          enableCTZeroIngestion,
-		enableTypeAndUnitLabels:        enableTypeAndUnitLabels,
-		fallbackScrapeProtocol:         fallbackScrapeProtocol,
-		enableNativeHistogramIngestion: enableNativeHistogramIngestion,
-		reportExtraMetrics:             reportExtraMetrics,
-		appendMetadataToWAL:            appendMetadataToWAL,
-		metrics:                        metrics,
-		skipOffsetting:                 skipOffsetting,
-		validationScheme:               validationScheme,
-		escapingScheme:                 escapingScheme,
+		scraper:                       sc,
+		buffers:                       buffers,
+		cache:                         cache,
+		appender:                      appender,
+		symbolTable:                   symbolTable,
+		sampleMutator:                 sampleMutator,
+		reportSampleMutator:           reportSampleMutator,
+		stopped:                       make(chan struct{}),
+		offsetSeed:                    offsetSeed,
+		l:                             l,
+		parentCtx:                     ctx,
+		appenderCtx:                   appenderCtx,
+		honorTimestamps:               honorTimestamps,
+		trackTimestampsStaleness:      trackTimestampsStaleness,
+		enableCompression:             enableCompression,
+		sampleLimit:                   sampleLimit,
+		bucketLimit:                   bucketLimit,
+		maxSchema:                     maxSchema,
+		labelLimits:                   labelLimits,
+		interval:                      interval,
+		timeout:                       timeout,
+		alwaysScrapeClassicHist:       alwaysScrapeClassicHist,
+		convertClassicHistToNHCB:      convertClassicHistToNHCB,
+		enableCTZeroIngestion:         enableCTZeroIngestion,
+		enableTypeAndUnitLabels:       enableTypeAndUnitLabels,
+		fallbackScrapeProtocol:        fallbackScrapeProtocol,
+		enableNativeHistogramScraping: enableNativeHistogramScraping,
+		reportExtraMetrics:            reportExtraMetrics,
+		appendMetadataToWAL:           appendMetadataToWAL,
+		metrics:                       metrics,
+		skipOffsetting:                skipOffsetting,
+		validationScheme:              validationScheme,
+		escapingScheme:                escapingScheme,
 	}
 	sl.ctx, sl.cancel = context.WithCancel(ctx)
 
@@ -1393,7 +1408,7 @@ mainLoop:
 
 	close(sl.stopped)
 
-	if !sl.disabledEndOfRunStalenessMarkers {
+	if !sl.disabledEndOfRunStalenessMarkers.Load() {
 		sl.endOfRunStaleness(last, ticker, sl.interval)
 	}
 }
@@ -1559,6 +1574,11 @@ func (sl *scrapeLoop) endOfRunStaleness(last time.Time, ticker *time.Ticker, int
 	case <-time.After(interval / 10):
 	}
 
+	// Check if end-of-run staleness markers have been disabled while we were waiting.
+	if sl.disabledEndOfRunStalenessMarkers.Load() {
+		return
+	}
+
 	// Call sl.append again with an empty scrape to trigger stale markers.
 	// If the target has since been recreated and scraped, the
 	// stale markers will be out of order and ignored.
@@ -1593,7 +1613,7 @@ func (sl *scrapeLoop) stop() {
 }
 
 func (sl *scrapeLoop) disableEndOfRunStalenessMarkers() {
-	sl.disabledEndOfRunStalenessMarkers = true
+	sl.disabledEndOfRunStalenessMarkers.Store(true)
 }
 
 func (sl *scrapeLoop) getCache() *scrapeCache {
@@ -1622,7 +1642,7 @@ func (sl *scrapeLoop) updateStaleMarkers(app storage.Appender, defTime int64) (e
 		}
 		return err == nil
 	})
-	return
+	return err
 }
 
 func (sl *scrapeLoop) append(app storage.Appender, b []byte, contentType string, ts time.Time) (total, added, seriesAdded int, err error) {
@@ -1632,11 +1652,12 @@ func (sl *scrapeLoop) append(app storage.Appender, b []byte, contentType string,
 		// Empty scrape. Just update the stale makers and swap the cache (but don't flush it).
 		err = sl.updateStaleMarkers(app, defTime)
 		sl.cache.iterDone(false)
-		return
+		return total, added, seriesAdded, err
 	}
 
 	p, err := textparse.New(b, contentType, sl.symbolTable, textparse.ParserOptions{
 		EnableTypeAndUnitLabels:                 sl.enableTypeAndUnitLabels,
+		IgnoreNativeHistograms:                  !sl.enableNativeHistogramScraping,
 		ConvertClassicHistogramsToNHCB:          sl.convertClassicHistToNHCB,
 		KeepClassicOnClassicAndNativeHistograms: sl.alwaysScrapeClassicHist,
 		OpenMetricsSkipCTSeries:                 sl.enableCTZeroIngestion,
@@ -1649,7 +1670,7 @@ func (sl *scrapeLoop) append(app storage.Appender, b []byte, contentType string,
 			"fallback_media_type", sl.fallbackScrapeProtocol,
 			"err", err,
 		)
-		return
+		return total, added, seriesAdded, err
 	}
 	if err != nil {
 		sl.l.Debug(
@@ -1663,8 +1684,8 @@ func (sl *scrapeLoop) append(app storage.Appender, b []byte, contentType string,
 		appErrs        = appendErrors{}
 		sampleLimitErr error
 		bucketLimitErr error
-		lset           labels.Labels     // escapes to heap so hoisted out of loop
-		e              exemplar.Exemplar // escapes to heap so hoisted out of loop
+		lset           labels.Labels     // Escapes to heap so hoisted out of loop.
+		e              exemplar.Exemplar // Escapes to heap so hoisted out of loop.
 		lastMeta       *metaEntry
 		lastMFName     []byte
 	)
@@ -1734,7 +1755,7 @@ loop:
 			t = *parsedTimestamp
 		}
 
-		if sl.cache.getDropped(met) || isHistogram && !sl.enableNativeHistogramIngestion {
+		if sl.cache.getDropped(met) {
 			continue
 		}
 		ce, seriesCached, seriesAlreadyScraped := sl.cache.get(met)
@@ -1931,7 +1952,7 @@ loop:
 	if err == nil {
 		err = sl.updateStaleMarkers(app, defTime)
 	}
-	return
+	return total, added, seriesAdded, err
 }
 
 func isSeriesPartOfFamily(mName string, mfName []byte, typ model.MetricType) bool {
@@ -2129,32 +2150,32 @@ func (sl *scrapeLoop) report(app storage.Appender, start time.Time, duration tim
 	b := labels.NewBuilderWithSymbolTable(sl.symbolTable)
 
 	if err = sl.addReportSample(app, scrapeHealthMetric, ts, health, b); err != nil {
-		return
+		return err
 	}
 	if err = sl.addReportSample(app, scrapeDurationMetric, ts, duration.Seconds(), b); err != nil {
-		return
+		return err
 	}
 	if err = sl.addReportSample(app, scrapeSamplesMetric, ts, float64(scraped), b); err != nil {
-		return
+		return err
 	}
 	if err = sl.addReportSample(app, samplesPostRelabelMetric, ts, float64(added), b); err != nil {
-		return
+		return err
 	}
 	if err = sl.addReportSample(app, scrapeSeriesAddedMetric, ts, float64(seriesAdded), b); err != nil {
-		return
+		return err
 	}
 	if sl.reportExtraMetrics {
 		if err = sl.addReportSample(app, scrapeTimeoutMetric, ts, sl.timeout.Seconds(), b); err != nil {
-			return
+			return err
 		}
 		if err = sl.addReportSample(app, scrapeSampleLimitMetric, ts, float64(sl.sampleLimit), b); err != nil {
-			return
+			return err
 		}
 		if err = sl.addReportSample(app, scrapeBodySizeBytesMetric, ts, float64(bytes), b); err != nil {
-			return
+			return err
 		}
 	}
-	return
+	return err
 }
 
 func (sl *scrapeLoop) reportStale(app storage.Appender, start time.Time) (err error) {
@@ -2164,32 +2185,32 @@ func (sl *scrapeLoop) reportStale(app storage.Appender, start time.Time) (err er
 	b := labels.NewBuilder(labels.EmptyLabels())
 
 	if err = sl.addReportSample(app, scrapeHealthMetric, ts, stale, b); err != nil {
-		return
+		return err
 	}
 	if err = sl.addReportSample(app, scrapeDurationMetric, ts, stale, b); err != nil {
-		return
+		return err
 	}
 	if err = sl.addReportSample(app, scrapeSamplesMetric, ts, stale, b); err != nil {
-		return
+		return err
 	}
 	if err = sl.addReportSample(app, samplesPostRelabelMetric, ts, stale, b); err != nil {
-		return
+		return err
 	}
 	if err = sl.addReportSample(app, scrapeSeriesAddedMetric, ts, stale, b); err != nil {
-		return
+		return err
 	}
 	if sl.reportExtraMetrics {
 		if err = sl.addReportSample(app, scrapeTimeoutMetric, ts, stale, b); err != nil {
-			return
+			return err
 		}
 		if err = sl.addReportSample(app, scrapeSampleLimitMetric, ts, stale, b); err != nil {
-			return
+			return err
 		}
 		if err = sl.addReportSample(app, scrapeBodySizeBytesMetric, ts, stale, b); err != nil {
-			return
+			return err
 		}
 	}
-	return
+	return err
 }
 
 func (sl *scrapeLoop) addReportSample(app storage.Appender, s reportSample, t int64, v float64, b *labels.Builder) error {

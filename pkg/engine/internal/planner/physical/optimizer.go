@@ -175,7 +175,9 @@ func (r *groupByPushdown) apply(root Node) bool {
 	var changed bool
 	for _, n := range nodes {
 		vecAgg := n.(*VectorAggregation)
-		if len(vecAgg.GroupBy) == 0 {
+
+		// Can only push down a non-empty by() label set
+		if vecAgg.Grouping.Without || len(vecAgg.Grouping.Columns) == 0 {
 			continue
 		}
 
@@ -195,7 +197,7 @@ func (r *groupByPushdown) apply(root Node) bool {
 			return false
 		}
 
-		if r.applyToTargets(vecAgg, vecAgg.GroupBy, supportedAggTypes...) {
+		if r.applyToTargets(vecAgg, vecAgg.Grouping.Columns, supportedAggTypes...) {
 			changed = true
 		}
 	}
@@ -203,7 +205,7 @@ func (r *groupByPushdown) apply(root Node) bool {
 	return changed
 }
 
-func (r *groupByPushdown) applyToTargets(node Node, groupBy []ColumnExpression, supportedAggTypes ...types.RangeAggregationType) bool {
+func (r *groupByPushdown) applyToTargets(node Node, grouping []ColumnExpression, supportedAggTypes ...types.RangeAggregationType) bool {
 	var changed bool
 	switch node := node.(type) {
 	case *RangeAggregation:
@@ -211,15 +213,21 @@ func (r *groupByPushdown) applyToTargets(node Node, groupBy []ColumnExpression, 
 			return false
 		}
 
-		for _, colExpr := range groupBy {
+		// Cannot push down into without()
+		if node.Grouping.Without && len(node.Grouping.Columns) > 0 {
+			return false
+		}
+
+		for _, colExpr := range grouping {
 			colExpr, ok := colExpr.(*ColumnExpr)
 			if !ok {
 				continue
 			}
 
 			var wasAdded bool
-			node.PartitionBy, wasAdded = addUniqueColumnExpr(node.PartitionBy, colExpr)
+			node.Grouping.Columns, wasAdded = addUniqueColumnExpr(node.Grouping.Columns, colExpr)
 			if wasAdded {
+				node.Grouping.Without = false
 				changed = true
 			}
 		}
@@ -229,7 +237,7 @@ func (r *groupByPushdown) applyToTargets(node Node, groupBy []ColumnExpression, 
 
 	// Continue to children
 	for _, child := range r.plan.Children(node) {
-		if r.applyToTargets(child, groupBy, supportedAggTypes...) {
+		if r.applyToTargets(child, grouping, supportedAggTypes...) {
 			changed = true
 		}
 	}
@@ -259,10 +267,12 @@ func (r *projectionPushdown) propagateProjections(node Node, projections []Colum
 	var changed bool
 	switch node := node.(type) {
 	case *RangeAggregation:
+		if node.Grouping.Without {
+			return changed
+		}
 		// [Source] RangeAggregation requires partitionBy columns & timestamp.
-		projections = append(projections, node.PartitionBy...)
-		// Always project timestamp column even if partitionBy is empty.
-		// Timestamp values are required to perform range aggregation.
+		projections = append(projections, node.Grouping.Columns...)
+		// Always project timestamp column. Timestamp values are required to perform range aggregation.
 		projections = append(projections, &ColumnExpr{Ref: types.ColumnRef{Column: types.ColumnNameBuiltinTimestamp, Type: types.ColumnTypeBuiltin}})
 	case *Filter:
 		// [Source] Filter nodes require predicate columns.

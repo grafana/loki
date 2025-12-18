@@ -3964,7 +3964,7 @@ null
     "pullPolicy": "IfNotPresent",
     "registry": "docker.io",
     "repository": "grafana/enterprise-logs",
-    "tag": "3.5.4"
+    "tag": "3.6.3"
   },
   "license": {
     "contents": "NOTAVALIDLICENSE"
@@ -4000,7 +4000,7 @@ null
     "tolerations": []
   },
   "useExternalLicense": false,
-  "version": "3.5.4"
+  "version": "3.6.1"
 }
 </pre>
 </td>
@@ -4111,7 +4111,7 @@ null
 			<td>string</td>
 			<td>Docker image tag</td>
 			<td><pre lang="json">
-"3.5.4"
+"3.6.3"
 </pre>
 </td>
 		</tr>
@@ -7104,7 +7104,7 @@ null
 			<td>string</td>
 			<td>Overrides the image tag whose default is the chart's appVersion</td>
 			<td><pre lang="json">
-"3.5.7"
+"3.6.3"
 </pre>
 </td>
 		</tr>
@@ -7982,7 +7982,7 @@ true
 			<td>string</td>
 			<td></td>
 			<td><pre lang="json">
-"v0.15.3"
+"v0.15.4"
 </pre>
 </td>
 		</tr>
@@ -12515,7 +12515,7 @@ false
 			<td>string</td>
 			<td>Docker image tag</td>
 			<td><pre lang="json">
-"1.30.10"
+"1.30.9"
 </pre>
 </td>
 		</tr>

@@ -27,16 +27,17 @@ var (
 	errConnNotAvailableForWrite = errors.New("redis: connection not available for write operation")
 )
 
-// getCachedTimeNs returns the current time in nanoseconds from the global cache.
-// This is updated every 50ms by a background goroutine, avoiding expensive syscalls.
-// Max staleness: 50ms.
+// getCachedTimeNs returns the current time in nanoseconds.
+// This function previously used a global cache updated by a background goroutine,
+// but that caused unnecessary CPU usage when the client was idle (ticker waking up
+// the scheduler every 50ms). We now use time.Now() directly, which is fast enough
+// on modern systems (vDSO on Linux) and only adds ~1-2% overhead in extreme
+// high-concurrency benchmarks while eliminating idle CPU usage.
 func getCachedTimeNs() int64 {
-	return globalTimeCache.nowNs.Load()
+	return time.Now().UnixNano()
 }
 
-// GetCachedTimeNs returns the current time in nanoseconds from the global cache.
-// This is updated every 50ms by a background goroutine, avoiding expensive syscalls.
-// Max staleness: 50ms.
+// GetCachedTimeNs returns the current time in nanoseconds.
 // Exported for use by other packages that need fast time access.
 func GetCachedTimeNs() int64 {
 	return getCachedTimeNs()

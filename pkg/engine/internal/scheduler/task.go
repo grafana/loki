@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"fmt"
+	"net/http"
 	"slices"
 	"time"
 
@@ -15,6 +16,11 @@ type task struct {
 
 	inner   *workflow.Task
 	handler workflow.TaskEventHandler
+
+	// metadata holds additional metadata associated with the task.
+	// This can be used to stortracing and other information that
+	// should be propagated to workers.
+	metadata http.Header
 
 	owner  *workerConn
 	status workflow.TaskStatus
@@ -38,16 +44,26 @@ var validTaskTransitions = map[workflow.TaskState][]workflow.TaskState{
 func (t *task) setState(m *metrics, newStatus workflow.TaskStatus) (bool, error) {
 	oldState, newState := t.status.State, newStatus.State
 
-	if newState == oldState {
+	switch {
+	case newStatus != t.status && newState == oldState:
+		// State is the same (so we don't have to validate transitions), but
+		// there's a new payload about the status, so we should store it.
+		t.status = newStatus
+		return true, nil
+
+	case newState == oldState:
+		// Status is the exact same, no need to update.
 		return false, nil
+
+	default:
+		validStates := validTaskTransitions[oldState]
+		if !slices.Contains(validStates, newState) {
+			return false, fmt.Errorf("invalid state transition from %s to %s", oldState, newState)
+		}
+
+		t.status = newStatus
+		m.tasksTotal.WithLabelValues(newState.String()).Inc()
+		return true, nil
 	}
 
-	validStates := validTaskTransitions[oldState]
-	if !slices.Contains(validStates, newState) {
-		return false, fmt.Errorf("invalid state transition from %s to %s", oldState, newState)
-	}
-
-	t.status = newStatus
-	m.tasksTotal.WithLabelValues(newState.String()).Inc()
-	return true, nil
 }

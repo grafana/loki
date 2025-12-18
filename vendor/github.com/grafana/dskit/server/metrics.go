@@ -32,6 +32,10 @@ type Metrics struct {
 func NewServerMetrics(cfg Config) *Metrics {
 	reg := cfg.registererOrDefault()
 	factory := promauto.With(reg)
+	messageSizeNativeHistogramFactor := float64(0)
+	if cfg.MetricsMessageSizeNativeHistograms {
+		messageSizeNativeHistogramFactor = cfg.MetricsNativeHistogramFactor
+	}
 
 	return &Metrics{
 		TCPConnections: factory.NewGaugeVec(prometheus.GaugeOpts{
@@ -73,16 +77,22 @@ func NewServerMetrics(cfg Config) *Metrics {
 			Help:      "Total count of requests for a particular tenant.",
 		}, []string{"method", "route", "status_code", "ws", "tenant"}),
 		ReceivedMessageSize: factory.NewHistogramVec(prometheus.HistogramOpts{
-			Namespace: cfg.MetricsNamespace,
-			Name:      "request_message_bytes",
-			Help:      "Size (in bytes) of messages received in the request.",
-			Buckets:   middleware.BodySizeBuckets,
+			Namespace:                       cfg.MetricsNamespace,
+			Name:                            "request_message_bytes",
+			Help:                            "Size (in bytes) of messages received in the request.",
+			Buckets:                         middleware.BodySizeBuckets,
+			NativeHistogramBucketFactor:     messageSizeNativeHistogramFactor,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: time.Hour,
 		}, []string{"method", "route"}),
 		SentMessageSize: factory.NewHistogramVec(prometheus.HistogramOpts{
-			Namespace: cfg.MetricsNamespace,
-			Name:      "response_message_bytes",
-			Help:      "Size (in bytes) of messages sent in response.",
-			Buckets:   middleware.BodySizeBuckets,
+			Namespace:                       cfg.MetricsNamespace,
+			Name:                            "response_message_bytes",
+			Help:                            "Size (in bytes) of messages sent in response.",
+			Buckets:                         middleware.BodySizeBuckets,
+			NativeHistogramBucketFactor:     messageSizeNativeHistogramFactor,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: time.Hour,
 		}, []string{"method", "route"}),
 		InflightRequests: factory.NewGaugeVec(prometheus.GaugeOpts{
 			Namespace: cfg.MetricsNamespace,

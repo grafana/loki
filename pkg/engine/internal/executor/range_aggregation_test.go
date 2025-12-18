@@ -56,19 +56,22 @@ func TestRangeAggregationPipeline_instant(t *testing.T) {
 	}
 
 	opts := rangeAggregationOptions{
-		partitionBy: []physical.ColumnExpression{
-			&physical.ColumnExpr{
-				Ref: types.ColumnRef{
-					Column: "env",
-					Type:   types.ColumnTypeAmbiguous,
+		grouping: physical.Grouping{
+			Columns: []physical.ColumnExpression{
+				&physical.ColumnExpr{
+					Ref: types.ColumnRef{
+						Column: "env",
+						Type:   types.ColumnTypeAmbiguous,
+					},
+				},
+				&physical.ColumnExpr{
+					Ref: types.ColumnRef{
+						Column: "service",
+						Type:   types.ColumnTypeAmbiguous,
+					},
 				},
 			},
-			&physical.ColumnExpr{
-				Ref: types.ColumnRef{
-					Column: "service",
-					Type:   types.ColumnTypeAmbiguous,
-				},
-			},
+			Without: false,
 		},
 		startTs:       time.Unix(20, 0).UTC(),
 		endTs:         time.Unix(20, 0).UTC(),
@@ -138,7 +141,7 @@ func TestRangeAggregationPipeline(t *testing.T) {
 		}}
 	)
 
-	partitionBy := []physical.ColumnExpression{
+	groupBy := []physical.ColumnExpression{
 		&physical.ColumnExpr{
 			Ref: types.ColumnRef{
 				Column: "env",
@@ -155,7 +158,10 @@ func TestRangeAggregationPipeline(t *testing.T) {
 
 	t.Run("aligned windows", func(t *testing.T) {
 		opts := rangeAggregationOptions{
-			partitionBy:   partitionBy,
+			grouping: physical.Grouping{
+				Columns: groupBy,
+				Without: false,
+			},
 			startTs:       time.Unix(10, 0),
 			endTs:         time.Unix(40, 0),
 			rangeInterval: 10 * time.Second,
@@ -202,7 +208,10 @@ func TestRangeAggregationPipeline(t *testing.T) {
 
 	t.Run("overlapping windows", func(t *testing.T) {
 		opts := rangeAggregationOptions{
-			partitionBy:   partitionBy,
+			grouping: physical.Grouping{
+				Columns: groupBy,
+				Without: false,
+			},
 			startTs:       time.Unix(10, 0),
 			endTs:         time.Unix(40, 0),
 			rangeInterval: 10 * time.Second,
@@ -263,7 +272,10 @@ func TestRangeAggregationPipeline(t *testing.T) {
 
 	t.Run("non-overlapping windows", func(t *testing.T) {
 		opts := rangeAggregationOptions{
-			partitionBy:   partitionBy,
+			grouping: physical.Grouping{
+				Columns: groupBy,
+				Without: false,
+			},
 			startTs:       time.Unix(10, 0),
 			endTs:         time.Unix(40, 0),
 			rangeInterval: 5 * time.Second,

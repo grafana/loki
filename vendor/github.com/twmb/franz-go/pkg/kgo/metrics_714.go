@@ -52,7 +52,7 @@ func (cl *Client) pushMetrics() {
 			err = kerr.ErrorForCode(gresp.ErrorCode)
 		}
 		if err != nil {
-			cl.cfg.logger.Log(LogLevelInfo, "unable to get telemetry subscriptions, retrying in 30s", "err", err)
+			cl.cfg.logger.Log(LogLevelDebug, "unable to get telemetry subscriptions, retrying in 30s", "err", err)
 			after := time.NewTimer(30 * time.Second)
 			select {
 			case <-cl.ctx.Done():
@@ -69,7 +69,7 @@ func (cl *Client) pushMetrics() {
 		// and re-get.
 		if len(gresp.RequestedMetrics) == 0 {
 			wait := time.Duration(gresp.PushIntervalMillis) * time.Millisecond
-			cl.cfg.logger.Log(LogLevelInfo, "no metrics requested, sleeping and asking again later", "sleep", wait)
+			cl.cfg.logger.Log(LogLevelDebug, "no metrics requested, sleeping and asking again later", "sleep", wait)
 			after := time.NewTimer(wait)
 			select {
 			case <-cl.ctx.Done():
@@ -165,7 +165,7 @@ func (cl *Client) pushMetrics() {
 				}
 			}
 			if err != nil {
-				cl.cfg.logger.Log(LogLevelWarn, "unable to send client metrics, resetting subscription", "err", err)
+				cl.cfg.logger.Log(LogLevelDebug, "unable to send client metrics, resetting subscription", "err", err)
 				break
 			}
 
@@ -190,10 +190,10 @@ func (cl *Client) pushMetrics() {
 				cl.cfg.logger.Log(LogLevelInfo, "client metrics compression is not supported by the broker even though we only used previously supported compressors, re-getting our subscription information", "err", err)
 			default:
 				if !kerr.IsRetriable(err) {
-					cl.cfg.logger.Log(LogLevelError, "client metrics received an unknown error we do not know how to handle, exiting metrics loop", "err", err)
+					cl.cfg.logger.Log(LogLevelWarn, "client metrics received an unknown error we do not know how to handle, exiting metrics loop", "err", err)
 					return
 				}
-				cl.cfg.logger.Log(LogLevelWarn, "client metrics received an unknown error that is retryably, continuing to next push cycle", "err", err)
+				cl.cfg.logger.Log(LogLevelWarn, "client metrics received an unknown error that is retriable, continuing to next push cycle", "err", err)
 			}
 		}
 	}

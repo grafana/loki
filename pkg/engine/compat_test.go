@@ -25,7 +25,7 @@ import (
 
 func TestStreamsResultBuilder(t *testing.T) {
 	t.Run("empty builder returns non-nil result", func(t *testing.T) {
-		builder := newStreamsResultBuilder(logproto.BACKWARD)
+		builder := newStreamsResultBuilder(logproto.BACKWARD, false)
 		md, _ := metadata.NewContext(t.Context())
 		require.NotNil(t, builder.Build(stats.Result{}, md).Data)
 	})
@@ -66,7 +66,7 @@ func TestStreamsResultBuilder(t *testing.T) {
 		pipeline := executor.NewBufferedPipeline(record)
 		defer pipeline.Close()
 
-		builder := newStreamsResultBuilder(logproto.BACKWARD)
+		builder := newStreamsResultBuilder(logproto.BACKWARD, false)
 		err := collectResult(context.Background(), pipeline, builder)
 
 		require.NoError(t, err)
@@ -147,7 +147,7 @@ func TestStreamsResultBuilder(t *testing.T) {
 		pipeline := executor.NewBufferedPipeline(record)
 		defer pipeline.Close()
 
-		builder := newStreamsResultBuilder(logproto.BACKWARD)
+		builder := newStreamsResultBuilder(logproto.BACKWARD, false)
 		err := collectResult(context.Background(), pipeline, builder)
 
 		require.NoError(t, err)
@@ -244,7 +244,7 @@ func TestStreamsResultBuilder(t *testing.T) {
 		record2 := rows2.Record(memory.DefaultAllocator, schema)
 		defer record2.Release()
 
-		builder := newStreamsResultBuilder(logproto.FORWARD)
+		builder := newStreamsResultBuilder(logproto.FORWARD, false)
 
 		// Collect first record
 		builder.CollectRecord(record1)
@@ -300,7 +300,7 @@ func TestStreamsResultBuilder(t *testing.T) {
 			nil,
 		)
 
-		builder := newStreamsResultBuilder(logproto.BACKWARD)
+		builder := newStreamsResultBuilder(logproto.BACKWARD, false)
 
 		// First record: 5 rows (buffer grows to 5)
 		rows1 := make(arrowtest.Rows, 5)
@@ -370,7 +370,7 @@ func TestStreamsResultBuilder(t *testing.T) {
 			nil,
 		)
 
-		builder := newStreamsResultBuilder(logproto.BACKWARD)
+		builder := newStreamsResultBuilder(logproto.BACKWARD, false)
 
 		// First record: 3 valid rows
 		rows1 := make(arrowtest.Rows, 3)
@@ -447,7 +447,7 @@ func TestStreamsResultBuilder(t *testing.T) {
 		}
 
 		record := rows.Record(memory.DefaultAllocator, schema)
-		builder := newStreamsResultBuilder(logproto.BACKWARD)
+		builder := newStreamsResultBuilder(logproto.BACKWARD, false)
 		builder.CollectRecord(record)
 		record.Release()
 		require.Equal(t, 2, builder.Len())
@@ -468,6 +468,48 @@ func TestStreamsResultBuilder(t *testing.T) {
 				Labels: labels.FromStrings("Aparsed", "A", "env", "prod", "metadata", "md value", "Zparsed", "Z").String(),
 				Entries: []logproto.Entry{
 					{Line: "log line", Timestamp: time.Unix(0, 1620000000000000000), StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("metadata", "md value")), Parsed: logproto.FromLabelsToLabelAdapters(labels.FromStrings("Aparsed", "A", "Zparsed", "Z"))},
+				},
+			},
+		}
+		require.Equal(t, expected, streams)
+	})
+	t.Run("categorize labels does not consider metadata when building output streams", func(t *testing.T) {
+		colTs := semconv.ColumnIdentTimestamp
+		colMsg := semconv.ColumnIdentMessage
+		colEnv := semconv.NewIdentifier("env", types.ColumnTypeLabel, types.Loki.String)
+		colMetadata := semconv.NewIdentifier("metadata", types.ColumnTypeMetadata, types.Loki.String)
+
+		schema := arrow.NewSchema(
+			[]arrow.Field{
+				semconv.FieldFromIdent(colTs, false),
+				semconv.FieldFromIdent(colMsg, false),
+				semconv.FieldFromIdent(colEnv, false),
+				semconv.FieldFromIdent(colMetadata, false),
+			},
+			nil,
+		)
+		rows := arrowtest.Rows{
+			{colTs.FQN(): time.Unix(0, 1620000000000000000).UTC(), colMsg.FQN(): "log line", colEnv.FQN(): "prod", colMetadata.FQN(): "a md value"},
+			{colTs.FQN(): time.Unix(0, 1620000000000000000).UTC(), colMsg.FQN(): "log line", colEnv.FQN(): "prod", colMetadata.FQN(): "another md value"},
+		}
+
+		record := rows.Record(memory.DefaultAllocator, schema)
+		builder := newStreamsResultBuilder(logproto.BACKWARD, true)
+		builder.CollectRecord(record)
+		record.Release()
+		require.Equal(t, 2, builder.Len())
+
+		md, _ := metadata.NewContext(t.Context())
+		result := builder.Build(stats.Result{}, md)
+		streams := result.Data.(logqlmodel.Streams)
+		require.Equal(t, 1, len(streams), "should have 1 unique stream")
+
+		expected := logqlmodel.Streams{
+			push.Stream{
+				Labels: labels.FromStrings("env", "prod").String(),
+				Entries: []logproto.Entry{
+					{Line: "log line", Timestamp: time.Unix(0, 1620000000000000000), StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("metadata", "a md value")), Parsed: logproto.FromLabelsToLabelAdapters(labels.Labels{})},
+					{Line: "log line", Timestamp: time.Unix(0, 1620000000000000000), StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("metadata", "another md value")), Parsed: logproto.FromLabelsToLabelAdapters(labels.Labels{})},
 				},
 			},
 		}

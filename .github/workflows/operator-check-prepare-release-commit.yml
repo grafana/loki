@@ -12,6 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: "read"
+      id-token: "write"
     if: |
       github.event.pull_request.head.ref == 'release-please--branches--main--components--operator' &&
       contains(github.event.pull_request.title, 'chore( operator): community release')

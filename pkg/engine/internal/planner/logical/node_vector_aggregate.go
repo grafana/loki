@@ -14,8 +14,7 @@ type VectorAggregation struct {
 
 	Table Value // The table relation to aggregate.
 
-	// The columns to group by. If empty, all rows are aggregated into a single result.
-	GroupBy []ColumnRef
+	Grouping Grouping // The grouping
 
 	// The type of aggregation operation to perform (e.g., sum, min, max)
 	Operation types.VectorAggregationType
@@ -38,15 +37,21 @@ func (v *VectorAggregation) Name() string {
 func (v *VectorAggregation) String() string {
 	props := fmt.Sprintf("operation=%s", v.Operation)
 
-	if len(v.GroupBy) > 0 {
-		groupBy := ""
-		for i, columnRef := range v.GroupBy {
+	grouping := ""
+	if len(v.Grouping.Columns) > 0 {
+		for i, columnRef := range v.Grouping.Columns {
 			if i > 0 {
-				groupBy += ", "
+				grouping += ", "
 			}
-			groupBy += columnRef.String()
+			grouping += columnRef.String()
 		}
-		props += fmt.Sprintf(", group_by=(%s)", groupBy)
+	}
+	if v.Grouping.Without {
+		if len(v.Grouping.Columns) > 0 {
+			props = fmt.Sprintf("%s, group_without=(%s)", props, grouping)
+		}
+	} else {
+		props = fmt.Sprintf("%s, group_by=(%s)", props, grouping)
 	}
 
 	return fmt.Sprintf("VECTOR_AGGREGATION %s [%s]", v.Table.Name(), props)

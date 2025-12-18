@@ -7,7 +7,7 @@ This library reads MaxMind
 [GeoIP2](https://www.maxmind.com/en/geolocation_landing) databases.
 
 This library is built using
-[the Go maxminddb reader](https://github.com/oschwald/maxminddb-golang/v2). All
+[the Go maxminddb reader](https://github.com/oschwald/maxminddb-golang). All
 data for the database record is decoded using this library. Version 2.0
 provides significant performance improvements with 56% fewer allocations and
 34% less memory usage compared to v1. Version 2.0 also adds `Network` and

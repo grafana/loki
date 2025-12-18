@@ -155,7 +155,7 @@ func (t *table) ForEachSeries(ctx context.Context, callback SeriesCallback) erro
 			series.Reset(
 				[]byte(seriesID),
 				[]byte(userID),
-				labels.NewBuilder(lbls).Del(labels.MetricName).Labels(),
+				labels.NewBuilder(lbls).Del(model.MetricNameLabel).Labels(),
 			)
 			series.AppendChunks(chunks...)
 			if err := callback(&series); err != nil {
@@ -178,7 +178,7 @@ func (t *table) CleanupSeries(_ []byte, _ labels.Labels) error {
 }
 
 func (t *table) RemoveChunk(_, _ model.Time, userID []byte, lbls labels.Labels, chunkID string) (bool, error) {
-	seriesID := labels.NewBuilder(lbls).Set(labels.MetricName, "logs").Labels().String()
+	seriesID := labels.NewBuilder(lbls).Set(model.MetricNameLabel, "logs").Labels().String()
 	for i, chk := range t.chunks[string(userID)][seriesID] {
 		if getChunkID(chk) == chunkID {
 			t.chunks[string(userID)][seriesID] = append(t.chunks[string(userID)][seriesID][:i], t.chunks[string(userID)][seriesID][i+1:]...)

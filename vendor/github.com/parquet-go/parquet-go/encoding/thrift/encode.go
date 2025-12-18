@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"cmp"
 	"fmt"
+	"maps"
 	"math"
 	"reflect"
 	"slices"
@@ -40,9 +41,7 @@ func (e *Encoder) Encode(v any) error {
 
 		newCache := make(map[typeID]encodeFunc, len(cache)+1)
 		newCache[makeTypeID(t)] = encode
-		for k, v := range cache {
-			newCache[k] = v
-		}
+		maps.Copy(newCache, cache)
 
 		encoderCache.Store(newCache)
 	}
@@ -279,7 +278,7 @@ encodeFields:
 			}
 		}
 
-		if !f.flags.have(required) && x.IsZero() {
+		if !f.flags.have(required) && !f.flags.have(writeZero) && x.IsZero() {
 			continue encodeFields
 		}
 

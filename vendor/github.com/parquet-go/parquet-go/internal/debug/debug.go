@@ -73,7 +73,7 @@ var (
 )
 
 func init() {
-	for _, arg := range strings.Split(os.Getenv("PARQUETGODEBUG"), ",") {
+	for arg := range strings.SplitSeq(os.Getenv("PARQUETGODEBUG"), ",") {
 		k := arg
 		v := ""
 		i := strings.IndexByte(arg, '=')

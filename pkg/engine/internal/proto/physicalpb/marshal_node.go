@@ -98,16 +98,31 @@ func (n *AggregateRange) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error
 		return nil, err
 	}
 
+	grouping, err := marshalGrouping(n.Grouping)
+	if err != nil {
+		return nil, err
+	}
+
 	return &physical.RangeAggregation{
 		NodeID: nodeID,
 
-		PartitionBy: marshalColumnExpressions(n.PartitionBy),
-
+		Grouping:  grouping,
 		Operation: operation,
 		Start:     n.Start,
 		End:       n.End,
 		Step:      n.Step,
 		Range:     n.Range,
+	}, nil
+}
+
+func marshalGrouping(g *Grouping) (physical.Grouping, error) {
+	if g == nil {
+		return physical.Grouping{}, fmt.Errorf("empty grouping")
+	}
+
+	return physical.Grouping{
+		Columns: marshalColumnExpressions(g.Columns),
+		Without: g.Without,
 	}, nil
 }
 
@@ -135,10 +150,15 @@ func (n *AggregateVector) MarshalPhysical(nodeID ulid.ULID) (physical.Node, erro
 		return nil, err
 	}
 
+	grouping, err := marshalGrouping(n.Grouping)
+	if err != nil {
+		return nil, err
+	}
+
 	return &physical.VectorAggregation{
 		NodeID: nodeID,
 
-		GroupBy:   marshalColumnExpressions(n.GroupBy),
+		Grouping:  grouping,
 		Operation: operation,
 	}, nil
 }

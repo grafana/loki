@@ -21,12 +21,14 @@ import (
 )
 
 var testBuilderConfig = logsobj.BuilderConfig{
-	TargetPageSize:          2048,
-	MaxPageRows:             10,
-	TargetObjectSize:        1 << 22, // 4 MiB
-	TargetSectionSize:       1 << 22, // 4 MiB
-	BufferSize:              2048 * 8,
-	SectionStripeMergeLimit: 2,
+	BuilderBaseConfig: logsobj.BuilderBaseConfig{
+		TargetPageSize:          2048,
+		MaxPageRows:             10,
+		TargetObjectSize:        1 << 22, // 4 MiB
+		TargetSectionSize:       1 << 22, // 4 MiB
+		BufferSize:              2048 * 8,
+		SectionStripeMergeLimit: 2,
+	},
 }
 
 func TestPartitionProcessor_Flush(t *testing.T) {

@@ -151,8 +151,8 @@ metadata:
     capabilities: Full Lifecycle
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
-    containerImage: docker.io/grafana/loki-operator:0.8.0
-    createdAt: "2025-11-03T17:23:36Z"
+    containerImage: docker.io/grafana/loki-operator:0.9.0
+    createdAt: "2025-12-15T18:59:53Z"
     description: The Community Loki Operator provides Kubernetes native deployment
       and management of Loki and related logging components.
     operators.operatorframework.io/builder: operator-sdk-unknown
@@ -162,7 +162,7 @@ metadata:
   labels:
     operatorframework.io/arch.amd64: supported
     operatorframework.io/arch.arm64: supported
-  name: loki-operator.v0.8.0
+  name: loki-operator.v0.9.0
   namespace: placeholder
 spec:
   apiservicedefinitions: {}
@@ -1001,6 +1001,13 @@ spec:
       - description: Roles defines a set of permissions to interact with a tenant.
         displayName: Static Roles
         path: tenants.authorization.roles
+      - description: |-
+          DisableIngress disables automatic creation of external access resources (Route / Ingress).
+          When true, no Route or Ingress will be created for the gateway.
+        displayName: Disable Ingress
+        path: tenants.disableIngress
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
       - description: Mode defines the mode in which lokistack-gateway component will
           be configured.
         displayName: Mode
@@ -1782,15 +1789,6 @@ spec:
           - networking.k8s.io
           resources:
           - ingresses
-          verbs:
-          - create
-          - get
-          - list
-          - update
-          - watch
-        - apiGroups:
-          - networking.k8s.io
-          resources:
           - networkpolicies
           verbs:
           - create
@@ -1850,11 +1848,11 @@ spec:
         serviceAccountName: loki-operator-controller-manager
       deployments:
       - label:
-          app.kubernetes.io/instance: loki-operator-v0.8.0
+          app.kubernetes.io/instance: loki-operator-v0.9.0
           app.kubernetes.io/managed-by: operator-lifecycle-manager
           app.kubernetes.io/name: loki-operator
           app.kubernetes.io/part-of: loki-operator
-          app.kubernetes.io/version: 0.8.0
+          app.kubernetes.io/version: 0.9.0
           control-plane: controller-manager
         name: loki-operator-controller-manager
         spec:
@@ -1888,7 +1886,7 @@ spec:
                   value: quay.io/observatorium/api:latest
                 - name: RELATED_IMAGE_OPA
                   value: quay.io/observatorium/opa-openshift:latest
-                image: docker.io/grafana/loki-operator:0.8.0
+                image: docker.io/grafana/loki-operator:0.9.0
                 imagePullPolicy: IfNotPresent
                 livenessProbe:
                   httpGet:
@@ -2007,8 +2005,8 @@ spec:
     name: gateway
   - image: quay.io/observatorium/opa-openshift:latest
     name: opa
-  replaces: loki-operator.v0.7.1
-  version: 0.8.0
+  replaces: loki-operator.v0.8.0
+  version: 0.9.0
   webhookdefinitions:
   - admissionReviewVersions:
     - v1

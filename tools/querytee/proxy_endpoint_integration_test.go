@@ -96,6 +96,7 @@ func TestProxyEndpoint_GoldfishQueriesContinueAfterNonGoldfishComplete(t *testin
 	// Create request
 	req, err := http.NewRequestWithContext(parentCtx, "GET", "/test", nil)
 	require.NoError(t, err)
+	req.Header.Set("X-Scope-OrgID", "test-tenant")
 
 	// Create response recorder
 	recorder := httptest.NewRecorder()

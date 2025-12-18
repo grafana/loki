@@ -9,13 +9,14 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
-var testBuilderConfig = BuilderConfig{
+var testBuilderConfig = logsobj.BuilderBaseConfig{
 	TargetPageSize:    2048,
 	TargetObjectSize:  1 << 22, // 4 MiB
 	TargetSectionSize: 1 << 21, // 2 MiB

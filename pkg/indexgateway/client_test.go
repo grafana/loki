@@ -438,6 +438,91 @@ func TestDoubleRegistration(t *testing.T) {
 	defer client.Stop()
 }
 
+func Test_jumpHashShuffleSharding(t *testing.T) {
+
+	tests := []struct {
+		description string
+		input       []string
+		factor      float64
+		expected    []string
+	}{
+		{
+			description: "empty address list",
+			input:       []string{},
+			factor:      0.5,
+			expected:    []string{},
+		},
+		{
+			description: "single address",
+			input:       []string{"gateway-1"},
+			factor:      0.5,
+			expected:    []string{"gateway-1"},
+		},
+		{
+			description: "max capacity 1.0 returns all addresses",
+			input:       []string{"gateway-1", "gateway-2", "gateway-3"},
+			factor:      1.0,
+			expected:    []string{"gateway-1", "gateway-2", "gateway-3"},
+		},
+		{
+			description: "max capacity 0.0 returns all addresses",
+			input:       []string{"gateway-1", "gateway-2", "gateway-3"},
+			factor:      0.0,
+			expected:    []string{"gateway-1", "gateway-2", "gateway-3"},
+		},
+		{
+			description: "max capacity rounds up",
+			input:       []string{"gateway-1", "gateway-2", "gateway-3"},
+			factor:      0.5,
+			expected:    []string{"gateway-2", "gateway-3"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.description, func(t *testing.T) {
+			mockLimits := &mockLimits{maxCapacity: tt.factor}
+			client := &GatewayClient{limits: mockLimits}
+
+			result := client.jumpHashShuffleSharding("tenant1", tt.input)
+			require.Equal(t, tt.expected, result)
+		})
+	}
+
+	t.Run("same tenant gets same subset", func(t *testing.T) {
+		mockLimits := &mockLimits{maxCapacity: 0.5}
+		client := &GatewayClient{limits: mockLimits}
+
+		addrs := []string{"gateway-1", "gateway-2", "gateway-3"}
+
+		// Call multiple times with the same tenant
+		result1 := client.jumpHashShuffleSharding("tenant1", addrs)
+		result2 := client.jumpHashShuffleSharding("tenant1", addrs)
+		result3 := client.jumpHashShuffleSharding("tenant1", addrs)
+
+		require.Equal(t, result1, result2)
+		require.Equal(t, result2, result3)
+	})
+
+	t.Run("different tenants get different subsets", func(t *testing.T) {
+		mockLimits := &mockLimits{maxCapacity: 0.3}
+		client := &GatewayClient{limits: mockLimits}
+
+		addrs := make([]string, 9)
+		for i := range len(addrs) {
+			addrs[i] = fmt.Sprintf("gateway-%d", i)
+		}
+
+		result1 := client.jumpHashShuffleSharding("tenant1", addrs)
+		result2 := client.jumpHashShuffleSharding("tenant2", addrs)
+		result3 := client.jumpHashShuffleSharding("tenant3", addrs)
+
+		require.Equal(t, []string{"gateway-3", "gateway-4", "gateway-5"}, result1)
+		require.Equal(t, []string{"gateway-5", "gateway-6", "gateway-7"}, result2)
+		require.Equal(t, []string{"gateway-7", "gateway-8", "gateway-0"}, result3)
+	})
+
+}
+
 func Test_addressesForQueryEndTime(t *testing.T) {
 	// Use the current time as reference and create relative times
 	now := time.Date(2025, time.September, 11, 0, 0, 0, 0, time.UTC)

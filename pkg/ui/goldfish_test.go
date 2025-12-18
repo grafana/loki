@@ -29,7 +29,7 @@ type mockStorage struct {
 	getQueryFunc        func(ctx context.Context, correlationID string) (*goldfish.QuerySample, error)
 }
 
-func (m *mockStorage) StoreQuerySample(_ context.Context, _ *goldfish.QuerySample) error {
+func (m *mockStorage) StoreQuerySample(_ context.Context, _ *goldfish.QuerySample, _ *goldfish.ComparisonResult) error {
 	return nil
 }
 

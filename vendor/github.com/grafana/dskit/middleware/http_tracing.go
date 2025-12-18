@@ -16,7 +16,7 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	semconv "go.opentelemetry.io/otel/semconv/v1.20.0" // otelhttp uses semconv v1.20.0 so we stick to the same version in order to produce consistent attributes on HTTP and HTTPGRPC spans.
+	semconv "go.opentelemetry.io/otel/semconv/v1.37.0" // otelhttp uses semconv v1.37.0 so we stick to the same version in order to produce consistent attributes on HTTP and HTTPGRPC spans.
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
 
@@ -254,9 +254,9 @@ func handleHTTPGRPCRequestWithOTel(ctx context.Context, req any, httpRequest *ht
 	parentSpan := trace.SpanFromContext(ctx)
 	if parentSpan.SpanContext().IsValid() {
 		parentSpan.SetAttributes(
-			semconv.HTTPMethod(method),
+			semconv.HTTPRequestMethodKey.String(method),
 			semconv.HTTPRouteKey.String(routeName),
-			attribute.String("http.target", urlPath),
+			attribute.String("url.path", urlPath),
 			semconv.UserAgentOriginal(userAgent),
 		)
 	}
@@ -266,10 +266,10 @@ func handleHTTPGRPCRequestWithOTel(ctx context.Context, req any, httpRequest *ht
 	startSpanOpts := []trace.SpanStartOption{
 		trace.WithSpanKind(trace.SpanKindServer),
 		trace.WithAttributes(
-			semconv.HTTPMethod(method),
+			semconv.HTTPRequestMethodKey.String(method),
 			semconv.HTTPRouteKey.String(routeName),
 			semconv.UserAgentOriginal(userAgent),
-			attribute.String("http.target", urlPath),
+			attribute.String("url.path", urlPath),
 		),
 	}
 
