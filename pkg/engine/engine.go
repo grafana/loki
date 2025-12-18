@@ -116,13 +116,15 @@ func New(params Params) (*Engine, error) {
 		return nil, err
 	}
 
+	hedgedBucket := NewHedgedBucket(bucket.NewXCapBucket(params.Bucket), 50*time.Millisecond, 3)
+
 	e := &Engine{
 		logger:      params.Logger,
 		metrics:     newMetrics(params.Registerer),
 		rangeConfig: params.Config.RangeConfig,
 
 		scheduler: params.Scheduler,
-		bucket:    bucket.NewXCapBucket(params.Bucket),
+		bucket:    hedgedBucket,
 		limits:    params.Limits,
 	}
 
