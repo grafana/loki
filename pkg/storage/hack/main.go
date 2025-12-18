@@ -46,8 +46,7 @@ func main() {
 
 func getStore(cm storage.ClientMetrics) (storage.Store, *config.SchemaConfig, error) {
 	storeConfig := storage.Config{
-		BoltDBConfig: local.BoltDBConfig{Directory: "/tmp/benchmark/index"},
-		FSConfig:     local.FSConfig{Directory: "/tmp/benchmark/chunks"},
+		FSConfig: local.FSConfig{Directory: "/tmp/benchmark/chunks"},
 	}
 
 	schemaCfg := config.SchemaConfig{

@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -276,7 +275,6 @@ type Config struct {
 	AzureStorageConfig   azure.BlobStorageConfig   `yaml:"azure"`
 	BOSStorageConfig     baidubce.BOSStorageConfig `yaml:"bos"`
 	GCSConfig            gcp.GCSConfig             `yaml:"gcs" doc:"description=Configures storing chunks in GCS. Required fields only required when gcs is defined in config."`
-	BoltDBConfig         local.BoltDBConfig        `yaml:"boltdb" doc:"description=Deprecated: Configures storing index in BoltDB. Required fields only required when boltdb is present in the configuration."`
 	FSConfig             local.FSConfig            `yaml:"filesystem" doc:"description=Configures storing the chunks on the local file system. Required fields only required when filesystem is present in the configuration."`
 	Swift                openstack.SwiftConfig     `yaml:"swift"`
 	Hedging              hedging.Config            `yaml:"hedging"`
@@ -316,7 +314,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.BOSStorageConfig.RegisterFlags(f)
 	cfg.COSConfig.RegisterFlags(f)
 	cfg.GCSConfig.RegisterFlags(f)
-	cfg.BoltDBConfig.RegisterFlags(f)
 	cfg.FSConfig.RegisterFlags(f)
 	cfg.Swift.RegisterFlags(f)
 	cfg.Hedging.RegisterFlagsWithPrefix("store.", f)
@@ -418,14 +415,6 @@ func NewIndexClient(component string, periodCfg config.PeriodConfig, tableRange 
 		case types.TSDBType:
 			// TODO(chaudum): Move TSDB index client creation into this code path
 			return nil, fmt.Errorf("code path not supported")
-		}
-
-	case util.StringsContain(types.DeprecatedIndexTypes, periodCfg.IndexType):
-		level.Warn(logger).Log("msg", fmt.Sprintf("%s is deprecated. Consider migrating to tsdb", periodCfg.IndexType))
-
-		switch periodCfg.IndexType {
-		case types.StorageTypeBoltDB:
-			return local.NewBoltDBIndexClient(cfg.BoltDBConfig)
 		}
 	}
 

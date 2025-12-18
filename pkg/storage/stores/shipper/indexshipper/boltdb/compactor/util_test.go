@@ -225,9 +225,6 @@ func newTestStore(t testing.TB, clientMetrics storage.ClientMetrics) *testStore 
 	require.NoError(t, schemaCfg.Validate())
 
 	cfg := storage.Config{
-		BoltDBConfig: local.BoltDBConfig{
-			Directory: indexDir,
-		},
 		FSConfig: local.FSConfig{
 			Directory: chunkDir,
 		},
