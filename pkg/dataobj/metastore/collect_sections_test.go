@@ -9,8 +9,6 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
-	"github.com/go-kit/log"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 )
@@ -78,7 +76,7 @@ func TestCollectSections_StopsOnEOFAndAggregates(t *testing.T) {
 	}, 0)
 
 	reader := &sliceRecordBatchReader{recs: []arrow.RecordBatch{empty, rec1, rec2}}
-	m := NewObjectMetastore(objstore.NewInMemBucket(), log.NewNopLogger(), prometheus.NewRegistry())
+	m := newTestObjectMetastore(objstore.NewInMemBucket())
 
 	resp, err := m.CollectSections(context.Background(), CollectSectionsRequest{Reader: reader})
 	require.NoError(t, err)
@@ -108,7 +106,7 @@ func TestCollectSections_PropagatesReaderError(t *testing.T) {
 
 	readErr := errors.New("boom")
 	reader := &sliceRecordBatchReader{recs: []arrow.RecordBatch{rec}, errs: []error{readErr}}
-	m := NewObjectMetastore(objstore.NewInMemBucket(), log.NewNopLogger(), prometheus.NewRegistry())
+	m := newTestObjectMetastore(objstore.NewInMemBucket())
 
 	_, err := m.CollectSections(context.Background(), CollectSectionsRequest{Reader: reader})
 	require.ErrorIs(t, err, readErr)
@@ -117,7 +115,7 @@ func TestCollectSections_PropagatesReaderError(t *testing.T) {
 func TestIndexSectionsReader_RequiresSelector(t *testing.T) {
 	t.Parallel()
 
-	m := NewObjectMetastore(objstore.NewInMemBucket(), log.NewNopLogger(), prometheus.NewRegistry())
+	m := newTestObjectMetastore(objstore.NewInMemBucket())
 	_, err := m.IndexSectionsReader(context.Background(), IndexSectionsReaderRequest{
 		IndexPath: "does-not-matter",
 		SectionsRequest: SectionsRequest{
