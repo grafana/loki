@@ -36,16 +36,7 @@ var ErrNotSupported = errors.New("feature not supported in new query engine")
 // NewBasic creates a new instance of the basic query engine that implements the
 // [logql.Engine] interface. The basic engine executes plans sequentially with
 // no local or distributed parallelism.
-func NewBasic(cfg ExecutorConfig, metastoreCfg metastore.Config, bucket objstore.Bucket, limits logql.Limits, reg prometheus.Registerer, logger log.Logger) *Basic {
-	var ms metastore.Metastore
-	if bucket != nil {
-		indexBucket := bucket
-		if metastoreCfg.IndexStoragePrefix != "" {
-			indexBucket = objstore.NewPrefixedBucket(bucket, metastoreCfg.IndexStoragePrefix)
-		}
-		ms = metastore.NewObjectMetastore(indexBucket, logger, reg)
-	}
-
+func NewBasic(cfg ExecutorConfig, ms metastore.Metastore, bucket objstore.Bucket, limits logql.Limits, reg prometheus.Registerer, logger log.Logger) *Basic {
 	if cfg.BatchSize <= 0 {
 		panic(fmt.Sprintf("invalid batch size for query engine. must be greater than 0, got %d", cfg.BatchSize))
 	}
