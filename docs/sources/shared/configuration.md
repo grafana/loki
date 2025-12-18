@@ -2516,8 +2516,7 @@ The `chunk_store_config` block configures how chunks will be cached and how long
 [chunk_cache_config_l2: <cache_config>]
 
 # Write dedupe cache is deprecated along with legacy index types (aws,
-# aws-dynamo, bigtable, bigtable-hashed, cassandra, gcp, gcp-columnkey,
-# grpc-store).
+# aws-dynamo, grpc-store).
 # Consider using TSDB index which does not require a write dedupe cache.
 # The CLI flags prefix for this block configuration is: store.index-cache-write
 [write_dedupe_cache_config: <cache_config>]
@@ -5188,13 +5187,12 @@ The `period_config` block configures what index schemas should be used for from 
 
 # store and object_store below affect which <storage_config> key is used. Which
 # index to use. Either tsdb or boltdb-shipper. Following stores are deprecated:
-# aws, aws-dynamo, cassandra, grpc.
+# aws, aws-dynamo, grpc.
 [store: <string> | default = ""]
 
 # Which store to use for the chunks. Either aws (alias s3), azure, gcs,
 # alibabacloud, bos, cos, swift, filesystem, or a named_store (refer to
-# named_stores_config). Following stores are deprecated: aws-dynamo, cassandra,
-# grpc.
+# named_stores_config). Following stores are deprecated: aws-dynamo, grpc.
 [object_store: <string> | default = ""]
 
 # The schema version to use, current recommended schema is v13.
@@ -6382,124 +6380,6 @@ The `storage_config` block configures one of many possible stores for both the i
 # Configures storing chunks in GCS. Required fields only required when gcs is
 # defined in config.
 [gcs: <gcs_storage_config>]
-
-# Deprecated: Configures storing chunks and/or the index in Cassandra.
-cassandra:
-  # Comma-separated hostnames or IPs of Cassandra instances.
-  # CLI flag: -cassandra.addresses
-  [addresses: <string> | default = ""]
-
-  # Port that Cassandra is running on
-  # CLI flag: -cassandra.port
-  [port: <int> | default = 9042]
-
-  # Keyspace to use in Cassandra.
-  # CLI flag: -cassandra.keyspace
-  [keyspace: <string> | default = ""]
-
-  # Consistency level for Cassandra.
-  # CLI flag: -cassandra.consistency
-  [consistency: <string> | default = "QUORUM"]
-
-  # Replication factor to use in Cassandra.
-  # CLI flag: -cassandra.replication-factor
-  [replication_factor: <int> | default = 3]
-
-  # Instruct the cassandra driver to not attempt to get host info from the
-  # system.peers table.
-  # CLI flag: -cassandra.disable-initial-host-lookup
-  [disable_initial_host_lookup: <boolean> | default = false]
-
-  # Use SSL when connecting to cassandra instances.
-  # CLI flag: -cassandra.ssl
-  [SSL: <boolean> | default = false]
-
-  # Require SSL certificate validation.
-  # CLI flag: -cassandra.host-verification
-  [host_verification: <boolean> | default = true]
-
-  # Policy for selecting Cassandra host. Supported values are: round-robin,
-  # token-aware.
-  # CLI flag: -cassandra.host-selection-policy
-  [host_selection_policy: <string> | default = "round-robin"]
-
-  # Path to certificate file to verify the peer.
-  # CLI flag: -cassandra.ca-path
-  [CA_path: <string> | default = ""]
-
-  # Path to certificate file used by TLS.
-  # CLI flag: -cassandra.tls-cert-path
-  [tls_cert_path: <string> | default = ""]
-
-  # Path to private key file used by TLS.
-  # CLI flag: -cassandra.tls-key-path
-  [tls_key_path: <string> | default = ""]
-
-  # Enable password authentication when connecting to cassandra.
-  # CLI flag: -cassandra.auth
-  [auth: <boolean> | default = false]
-
-  # Username to use when connecting to cassandra.
-  # CLI flag: -cassandra.username
-  [username: <string> | default = ""]
-
-  # Password to use when connecting to cassandra.
-  # CLI flag: -cassandra.password
-  [password: <string> | default = ""]
-
-  # File containing password to use when connecting to cassandra.
-  # CLI flag: -cassandra.password-file
-  [password_file: <string> | default = ""]
-
-  # If set, when authenticating with cassandra a custom authenticator will be
-  # expected during the handshake. This flag can be set multiple times.
-  # CLI flag: -cassandra.custom-authenticator
-  [custom_authenticators: <list of strings> | default = []]
-
-  # Timeout when connecting to cassandra.
-  # CLI flag: -cassandra.timeout
-  [timeout: <duration> | default = 2s]
-
-  # Initial connection timeout, used during initial dial to server.
-  # CLI flag: -cassandra.connect-timeout
-  [connect_timeout: <duration> | default = 5s]
-
-  # Interval to retry connecting to cassandra nodes marked as DOWN.
-  # CLI flag: -cassandra.reconnent-interval
-  [reconnect_interval: <duration> | default = 1s]
-
-  # Number of retries to perform on a request. Set to 0 to disable retries.
-  # CLI flag: -cassandra.max-retries
-  [max_retries: <int> | default = 0]
-
-  # Maximum time to wait before retrying a failed request.
-  # CLI flag: -cassandra.retry-max-backoff
-  [retry_max_backoff: <duration> | default = 10s]
-
-  # Minimum time to wait before retrying a failed request.
-  # CLI flag: -cassandra.retry-min-backoff
-  [retry_min_backoff: <duration> | default = 100ms]
-
-  # Limit number of concurrent queries to Cassandra. Set to 0 to disable the
-  # limit.
-  # CLI flag: -cassandra.query-concurrency
-  [query_concurrency: <int> | default = 0]
-
-  # Number of TCP connections per host.
-  # CLI flag: -cassandra.num-connections
-  [num_connections: <int> | default = 2]
-
-  # Convict hosts of being down on failure.
-  # CLI flag: -cassandra.convict-hosts-on-failure
-  [convict_hosts_on_failure: <boolean> | default = true]
-
-  # Table options used to create index or chunk tables. This value is used as
-  # plain text in the table `WITH` like this, "CREATE TABLE
-  # <generated_by_cortex> (...) WITH <cassandra.table-options>". For details,
-  # see https://cortexmetrics.io/docs/production/cassandra. By default it will
-  # use the default table options of your Cassandra cluster.
-  # CLI flag: -cassandra.table-options
-  [table_options: <string> | default = ""]
 
 # Deprecated: Configures storing index in BoltDB. Required fields only required
 # when boltdb is present in the configuration.

@@ -18,10 +18,8 @@ maintenance tasks. It consists of:
 
 - An index for the chunks. This index can be backed by:
     - [Amazon DynamoDB](https://aws.amazon.com/dynamodb)
-    - [Apache Cassandra](https://cassandra.apache.org)
 - A key-value (KV) store for the chunk data itself, which can be:
     - [Amazon DynamoDB](https://aws.amazon.com/dynamodb)
-    - [Apache Cassandra](https://cassandra.apache.org)
     - [Amazon S3](https://aws.amazon.com/s3)
     - [Google Cloud Storage](https://cloud.google.com/storage/)
 
@@ -45,9 +43,6 @@ The interface works somewhat differently across the supported databases:
 - DynamoDB supports range and hash keys natively. Index entries are thus
   modelled directly as DynamoDB entries, with the hash key as the distribution
   key and the range as the DynamoDB range key.
-- For Cassandra, index entries are modelled as individual column
-  values. The hash key becomes the row key and the range key becomes the column
-  key.
 
 A set of schemas are used to map the matchers and label sets used on reads and
 writes to the chunk store into appropriate operations on the index. Schemas have

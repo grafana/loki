@@ -36,7 +36,6 @@ For more information:
 ### ❌ Deprecated index stores
 
 - [Amazon DynamoDB](https://aws.amazon.com/dynamodb). Support for this is deprecated and will be removed in a future release.
-- [Apache Cassandra](https://cassandra.apache.org). Support for this is deprecated and will be removed in a future release.
 - [BoltDB](https://github.com/boltdb/bolt) (doesn't work when clustering Loki)
 
 ### ✅ Supported and recommended chunks stores
@@ -56,7 +55,6 @@ For more information:
 ### ❌ Deprecated chunks stores
 
 - [Amazon DynamoDB](https://aws.amazon.com/dynamodb). Support for this is deprecated and will be removed in a future release.
-- [Apache Cassandra](https://cassandra.apache.org). Support for this is deprecated and will be removed in a future release.
 
 ## Cloud Storage Permissions
 

@@ -9,10 +9,9 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-
-	"github.com/grafana/dskit/flagext"
 
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/storage/bucket"
@@ -22,7 +21,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/aws"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/azure"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/baidubce"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/client/cassandra"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/congestion"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/gcp"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/grpc"
@@ -274,22 +272,21 @@ func (ns *NamedStores) Exists(name string) bool {
 
 // Config chooses which storage client to use.
 type Config struct {
-	AlibabaStorageConfig   alibaba.OssConfig         `yaml:"alibabacloud"`
-	AWSStorageConfig       aws.StorageConfig         `yaml:"aws"`
-	AzureStorageConfig     azure.BlobStorageConfig   `yaml:"azure"`
-	BOSStorageConfig       baidubce.BOSStorageConfig `yaml:"bos"`
-	GCSConfig              gcp.GCSConfig             `yaml:"gcs" doc:"description=Configures storing chunks in GCS. Required fields only required when gcs is defined in config."`
-	CassandraStorageConfig cassandra.Config          `yaml:"cassandra" doc:"description=Deprecated: Configures storing chunks and/or the index in Cassandra."`
-	BoltDBConfig           local.BoltDBConfig        `yaml:"boltdb" doc:"description=Deprecated: Configures storing index in BoltDB. Required fields only required when boltdb is present in the configuration."`
-	FSConfig               local.FSConfig            `yaml:"filesystem" doc:"description=Configures storing the chunks on the local file system. Required fields only required when filesystem is present in the configuration."`
-	Swift                  openstack.SwiftConfig     `yaml:"swift"`
-	GrpcConfig             grpc.Config               `yaml:"grpc_store" doc:"deprecated"`
-	Hedging                hedging.Config            `yaml:"hedging"`
-	NamedStores            NamedStores               `yaml:"named_stores"`
-	COSConfig              ibmcloud.COSConfig        `yaml:"cos"`
-	IndexCacheValidity     time.Duration             `yaml:"index_cache_validity"`
-	CongestionControl      congestion.Config         `yaml:"congestion_control,omitempty"`
-	ObjectPrefix           string                    `yaml:"object_prefix" doc:"description=Experimental. Sets a constant prefix for all keys inserted into object storage. Example: loki/"`
+	AlibabaStorageConfig alibaba.OssConfig         `yaml:"alibabacloud"`
+	AWSStorageConfig     aws.StorageConfig         `yaml:"aws"`
+	AzureStorageConfig   azure.BlobStorageConfig   `yaml:"azure"`
+	BOSStorageConfig     baidubce.BOSStorageConfig `yaml:"bos"`
+	GCSConfig            gcp.GCSConfig             `yaml:"gcs" doc:"description=Configures storing chunks in GCS. Required fields only required when gcs is defined in config."`
+	BoltDBConfig         local.BoltDBConfig        `yaml:"boltdb" doc:"description=Deprecated: Configures storing index in BoltDB. Required fields only required when boltdb is present in the configuration."`
+	FSConfig             local.FSConfig            `yaml:"filesystem" doc:"description=Configures storing the chunks on the local file system. Required fields only required when filesystem is present in the configuration."`
+	Swift                openstack.SwiftConfig     `yaml:"swift"`
+	GrpcConfig           grpc.Config               `yaml:"grpc_store" doc:"deprecated"`
+	Hedging              hedging.Config            `yaml:"hedging"`
+	NamedStores          NamedStores               `yaml:"named_stores"`
+	COSConfig            ibmcloud.COSConfig        `yaml:"cos"`
+	IndexCacheValidity   time.Duration             `yaml:"index_cache_validity"`
+	CongestionControl    congestion.Config         `yaml:"congestion_control,omitempty"`
+	ObjectPrefix         string                    `yaml:"object_prefix" doc:"description=Experimental. Sets a constant prefix for all keys inserted into object storage. Example: loki/"`
 
 	IndexQueriesCacheConfig  cache.Config `yaml:"index_queries_cache_config"`
 	DisableBroadIndexQueries bool         `yaml:"disable_broad_index_queries"`
@@ -317,7 +314,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.BOSStorageConfig.RegisterFlags(f)
 	cfg.COSConfig.RegisterFlags(f)
 	cfg.GCSConfig.RegisterFlags(f)
-	cfg.CassandraStorageConfig.RegisterFlags(f)
 	cfg.BoltDBConfig.RegisterFlags(f)
 	cfg.FSConfig.RegisterFlags(f)
 	cfg.Swift.RegisterFlags(f)
@@ -341,9 +337,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 // Validate config and returns error on failure
 func (cfg *Config) Validate() error {
-	if err := cfg.CassandraStorageConfig.Validate(); err != nil {
-		return errors.Wrap(err, "invalid Cassandra Storage config")
-	}
 	if err := cfg.Swift.Validate(); err != nil {
 		return errors.Wrap(err, "invalid Swift Storage config")
 	}
@@ -439,9 +432,6 @@ func NewIndexClient(component string, periodCfg config.PeriodConfig, tableRange 
 				level.Warn(logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
 			}
 			return aws.NewDynamoDBIndexClient(cfg.AWSStorageConfig.DynamoDBConfig, schemaCfg, registerer)
-
-		case types.StorageTypeCassandra:
-			return cassandra.NewStorageClient(cfg.CassandraStorageConfig, schemaCfg, registerer)
 
 		case types.StorageTypeBoltDB:
 			return local.NewBoltDBIndexClient(cfg.BoltDBConfig)
@@ -562,9 +552,6 @@ func NewChunkClient(name, component string, cfg Config, schemaCfg config.SchemaC
 			}
 			return aws.NewDynamoDBChunkClient(cfg.AWSStorageConfig.DynamoDBConfig, schemaCfg, registerer)
 
-		case types.StorageTypeCassandra:
-			return cassandra.NewObjectClient(cfg.CassandraStorageConfig, schemaCfg, registerer, cfg.MaxParallelGetChunk)
-
 		case types.StorageTypeGrpc:
 			return grpc.NewStorageClient(cfg.GrpcConfig, schemaCfg)
 		}
@@ -600,8 +587,6 @@ func NewTableClient(name, component string, periodCfg config.PeriodConfig, cfg C
 				level.Warn(logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
 			}
 			return aws.NewDynamoDBTableClient(cfg.AWSStorageConfig.DynamoDBConfig, registerer)
-		case types.StorageTypeCassandra:
-			return cassandra.NewTableClient(context.Background(), cfg.CassandraStorageConfig, registerer)
 		case types.StorageTypeBoltDB:
 			return local.NewTableClient(cfg.BoltDBConfig.Directory)
 		case types.StorageTypeGrpc:

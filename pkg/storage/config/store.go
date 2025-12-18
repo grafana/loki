@@ -12,7 +12,7 @@ import (
 type ChunkStoreConfig struct {
 	ChunkCacheConfig            cache.Config  `yaml:"chunk_cache_config"`
 	ChunkCacheConfigL2          cache.Config  `yaml:"chunk_cache_config_l2"`
-	WriteDedupeCacheConfig      cache.Config  `yaml:"write_dedupe_cache_config" doc:"description=Write dedupe cache is deprecated along with legacy index types (aws, aws-dynamo, bigtable, bigtable-hashed, cassandra, gcp, gcp-columnkey, grpc-store).\nConsider using TSDB index which does not require a write dedupe cache."`
+	WriteDedupeCacheConfig      cache.Config  `yaml:"write_dedupe_cache_config" doc:"description=Write dedupe cache is deprecated along with legacy index types (aws, aws-dynamo, grpc-store).\nConsider using TSDB index which does not require a write dedupe cache."`
 	SkipQueryWritebackOlderThan time.Duration `yaml:"skip_query_writeback_cache_older_than"`
 
 	L2ChunkCacheHandoff   time.Duration  `yaml:"l2_chunk_cache_handoff"`

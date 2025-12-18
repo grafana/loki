@@ -81,31 +81,7 @@ You can authenticate Blob Storage access by using a storage account name and key
 
 You may use any substitutable services, such as those that implement the S3 API like [MinIO](https://min.io/).
 
-### Cassandra (deprecated)
-
-Cassandra is a popular database and one of the possible chunk stores for Loki and is production safe.
-
-{{< admonition type="note" >}}
-This storage type for chunks is deprecated and may be removed in future major versions of Loki.
-{{< /admonition >}}
-
 ## Index storage
-
-### Cassandra (deprecated)
-
-Cassandra can also be utilized for the index store and aside from the [boltdb-shipper](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/boltdb-shipper/), it's the only non-cloud offering that can be used for the index that's horizontally scalable and has configurable replication. It's a good candidate when you already run Cassandra, are running on-prem, or do not wish to use a managed cloud offering.
-
-{{< admonition type="note" >}}
-This storage type for indexes is deprecated and may be removed in future major versions of Loki.
-{{< /admonition >}}
-
-### BigTable (deprecated)
-
-Bigtable is a cloud database offered by Google. It is a good candidate for a managed index store if you're already using it (due to its heavy fixed costs) or wish to run in GCP.
-
-{{< admonition type="note" >}}
-This storage type for indexes is deprecated and may be removed in future major versions of Loki.
-{{< /admonition >}}
 
 ### DynamoDB (deprecated)
 
@@ -453,38 +429,6 @@ storage_config:
     region: <region>
     service_instance_id: <cos_service_instance_id>
     auth_endpoint: <iam_endpoint_for_authentication>
-```
-
-### On premise deployment (Cassandra+Cassandra)
-
-{{< admonition type="note" >}}
-Cassandra as storage backend for chunks and indexes is deprecated.
-{{< /admonition >}}
-
-**Keeping this for posterity, but this is likely not a common config. Cassandra should work and could be faster in some situations but is likely much more expensive.**
-
-```yaml
-storage_config:
-  cassandra:
-    addresses: <comma-separated-IPs-or-hostnames>
-    keyspace: <keyspace>
-    auth: <true|false>
-    username: <username> # only applicable when auth=true
-    password: <password> # only applicable when auth=true
-
-schema_config:
-  configs:
-    - from: 2020-07-01
-      store: cassandra
-      object_store: cassandra
-      schema: v11
-      index:
-        prefix: index_
-        period: 168h
-      chunks:
-        prefix: chunk_
-        period: 168h
-
 ```
 
 ### On premise deployment (MinIO Single Store)
