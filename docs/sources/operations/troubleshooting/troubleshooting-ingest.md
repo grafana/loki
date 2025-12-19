@@ -113,6 +113,9 @@ The tenant has reached the maximum number of active streams. Active streams are 
    limits_config:
      max_global_streams_per_user: 10000
    ```
+{{< admonition type="note" >}}
+Do not increase stream limits to accommodate high cardinality labels, this can result in Loki flushing extremely high numbers of small files which will make for extremely poor query performance.  As volume and the size of the infrastructure being monitored increase, it would be expected to increase the stream limit. However even for hundreds of TBs per day of logs you should avoid exceeding 300,000 max global streams per user.
+{{< /admonition >}}
 
 **Properties:**
 
