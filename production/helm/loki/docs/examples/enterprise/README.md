@@ -26,6 +26,7 @@ If you are using the enterprise provisioner to automatically create tenants, you
    # Copy the generated token from the container
    docker cp <container-id>:/tmp/token ./admin-token
    ```
+   > Alternatively see [batchjob.yaml](batchjob.yaml) for an example that uses a configmap in k8s to retreive the bucket configuration. Note that this requires GEL to be already in place with a `helm install` command beforehand to access the data
 
 2. Create the admin token secret:
    ```bash
@@ -66,7 +67,6 @@ An additional tenant for monitoring will also be created based on the value of `
 # Get provisioner job logs
 kubectl logs -l job-name=loki-provisioner --namespace {KUBERNETES_NAMESPACE}
 ```
-
 
 ### Manual Token Generation
 
