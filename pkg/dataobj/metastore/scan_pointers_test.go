@@ -6,9 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
-	"github.com/apache/arrow-go/v18/arrow/scalar"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
@@ -21,9 +19,7 @@ import (
 func TestScanPointers_NoSelectorReturnsEOF(t *testing.T) {
 	t.Parallel()
 
-	sStart := scalar.NewTimestampScalar(arrow.Timestamp(now.UnixNano()), arrow.FixedWidthTypes.Timestamp_ns)
-	sEnd := scalar.NewTimestampScalar(arrow.Timestamp(now.UnixNano()), arrow.FixedWidthTypes.Timestamp_ns)
-	s := newScanPointers(nil, sStart, sEnd, nil, nil)
+	s := newScanPointers(nil, now, now, nil, nil)
 
 	rec, err := s.Read(context.Background())
 	require.ErrorIs(t, err, io.EOF)
@@ -60,10 +56,7 @@ func TestScanPointers_MissingOrgIDReturnsError(t *testing.T) {
 	start := now.Add(-4 * time.Hour)
 	end := now.Add(-time.Hour)
 	matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")}
-	sStart := scalar.NewTimestampScalar(arrow.Timestamp(start.UnixNano()), arrow.FixedWidthTypes.Timestamp_ns)
-	sEnd := scalar.NewTimestampScalar(arrow.Timestamp(end.UnixNano()), arrow.FixedWidthTypes.Timestamp_ns)
-
-	s := newScanPointers(obj, sStart, sEnd, matchers, nil)
+	s := newScanPointers(obj, start, end, matchers, nil)
 
 	rec, err := s.Read(context.Background())
 	require.Error(t, err)
@@ -111,10 +104,8 @@ func TestScanPointers_FiltersByStreamMatcherAndTime(t *testing.T) {
 	start := now.Add(-4 * time.Hour)
 	end := now.Add(-time.Hour)
 	matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")}
-	sStart := scalar.NewTimestampScalar(arrow.Timestamp(start.UnixNano()), arrow.FixedWidthTypes.Timestamp_ns)
-	sEnd := scalar.NewTimestampScalar(arrow.Timestamp(end.UnixNano()), arrow.FixedWidthTypes.Timestamp_ns)
 
-	s := newScanPointers(obj, sStart, sEnd, matchers, nil)
+	s := newScanPointers(obj, start, end, matchers, nil)
 	t.Cleanup(s.Close)
 
 	rec, err := s.Read(ctx)

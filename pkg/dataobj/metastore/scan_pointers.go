@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
+	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/memory"
@@ -14,6 +16,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
@@ -22,8 +25,8 @@ type scanPointers struct {
 	obj      *dataobj.Object
 	matchers []*labels.Matcher
 
-	sStart *scalar.Timestamp
-	sEnd   *scalar.Timestamp
+	start time.Time
+	end   time.Time
 
 	initialized        bool
 	matchingStreamIDs  []scalar.Scalar
@@ -33,18 +36,20 @@ type scanPointers struct {
 	cols               []*pointers.Column
 
 	// stats
-	rowsRead int64
+	rowsRead       int64
+	labelsByStream map[int64]labels.Labels
 }
 
-func newScanPointers(idxObj *dataobj.Object, sStart, sEnd *scalar.Timestamp, matchers []*labels.Matcher, region *xcap.Region) *scanPointers {
+func newScanPointers(idxObj *dataobj.Object, start, end time.Time, matchers []*labels.Matcher, region *xcap.Region) *scanPointers {
 	return &scanPointers{
 		obj:      idxObj,
 		matchers: matchers,
 
-		sStart: sStart,
-		sEnd:   sEnd,
+		start: start,
+		end:   end,
 
-		region: region,
+		region:         region,
+		labelsByStream: make(map[int64]labels.Labels),
 	}
 }
 
@@ -70,6 +75,47 @@ func (s *scanPointers) Read(ctx context.Context) (arrow.RecordBatch, error) {
 		s.rowsRead += rec.NumRows()
 		return rec, nil
 	}
+}
+
+func (s *scanPointers) removeLabelPredicates(predicates []*labels.Matcher) []*labels.Matcher {
+	allLabels := s.allLabels()
+	newPredicates := make([]*labels.Matcher, 0, len(predicates))
+	for _, predicate := range predicates {
+		if !slices.Contains(allLabels, predicate.Name) {
+			newPredicates = append(newPredicates, predicate)
+		}
+	}
+	return newPredicates
+}
+
+func (s *scanPointers) allLabels() []string {
+	allLabelsMap := map[string]struct{}{}
+	for _, lbls := range s.labelsByStream {
+		lbls.Range(func(l labels.Label) {
+			allLabelsMap[l.Name] = struct{}{}
+		})
+	}
+
+	allLabels := make([]string, 0, len(allLabelsMap))
+	for label := range allLabelsMap {
+		allLabels = append(allLabels, label)
+	}
+
+	return allLabels
+}
+
+func (s *scanPointers) LabelsByStreamID() map[int64][]string {
+	allLabelsMap := map[int64][]string{}
+	for id, lbls := range s.labelsByStream {
+		_, ok := allLabelsMap[id]
+		if !ok {
+			allLabelsMap[id] = []string{}
+		}
+		lbls.Range(func(l labels.Label) {
+			allLabelsMap[id] = append(allLabelsMap[id], l.Name)
+		})
+	}
+	return allLabelsMap
 }
 
 func (s *scanPointers) init(ctx context.Context) error {
@@ -99,7 +145,7 @@ func (s *scanPointers) init(ctx context.Context) error {
 	}
 
 	// find stream ids that satisfy the predicate and start/end
-	s.matchingStreamIDs, err = s.findMatchingStreamIDs(ctx)
+	err = s.populateMatchingStreamsAndLabels(ctx)
 	if err != nil {
 		return fmt.Errorf("creating matching stream ids: %w", err)
 	}
@@ -119,16 +165,21 @@ func (s *scanPointers) init(ctx context.Context) error {
 	return nil
 }
 
-func (s *scanPointers) findMatchingStreamIDs(ctx context.Context) ([]scalar.Scalar, error) {
-	var matchingStreamIDs []scalar.Scalar
-	err := forEachStreamID(ctx, s.obj, s.sStart, s.sEnd, s.matchers, func(streamID int64) {
-		matchingStreamIDs = append(matchingStreamIDs, scalar.NewInt64Scalar(streamID))
+func (s *scanPointers) populateMatchingStreamsAndLabels(ctx context.Context) error {
+	predicate := streamPredicateFromMatchers(s.start, s.end, s.matchers...)
+	err := forEachStream(ctx, s.obj, predicate, func(stream streams.Stream) {
+		s.labelsByStream[stream.ID] = stream.Labels
 	})
-	if err != nil {
-		return nil, fmt.Errorf("error iterating streams: %v", err)
+
+	for streamID := range s.labelsByStream {
+		s.matchingStreamIDs = append(s.matchingStreamIDs, scalar.NewInt64Scalar(streamID))
 	}
 
-	return matchingStreamIDs, nil
+	if err != nil {
+		return fmt.Errorf("error iterating streams: %v", err)
+	}
+
+	return nil
 }
 
 func (s *scanPointers) prepareForNextSection(ctx context.Context) error {
@@ -203,10 +254,11 @@ func (s *scanPointers) prepareForNextSectionOrSkip(ctx context.Context) (bool, e
 
 	s.cols = cols
 
+	sStart, sEnd := s.scalarTimestamps()
 	s.pointersReader = pointers.NewReader(pointers.ReaderOptions{
 		Columns: s.cols,
 		Predicates: []pointers.Predicate{
-			pointers.WhereTimeRangeOverlapsWith(colMinTimestamp, colMaxTimestamp, s.sStart, s.sEnd),
+			pointers.WhereTimeRangeOverlapsWith(colMinTimestamp, colMaxTimestamp, sStart, sEnd),
 			pointers.InPredicate{
 				Column: colStreamID,
 				Values: s.matchingStreamIDs,
@@ -216,6 +268,12 @@ func (s *scanPointers) prepareForNextSectionOrSkip(ctx context.Context) (bool, e
 	})
 
 	return false, nil
+}
+
+func (s *scanPointers) scalarTimestamps() (*scalar.Timestamp, *scalar.Timestamp) {
+	sStart := scalar.NewTimestampScalar(arrow.Timestamp(s.start.UnixNano()), arrow.FixedWidthTypes.Timestamp_ns)
+	sEnd := scalar.NewTimestampScalar(arrow.Timestamp(s.end.UnixNano()), arrow.FixedWidthTypes.Timestamp_ns)
+	return sStart, sEnd
 }
 
 func (s *scanPointers) Close() {

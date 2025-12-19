@@ -71,6 +71,7 @@ type DataObjSections struct {
 	Streams   []int64
 	Sections  []int
 	TimeRange TimeRange
+	Labels    []string
 }
 
 // Catalog is an interface that provides methods for interacting with
@@ -137,6 +138,7 @@ func filterForShard(shard ShardInfo, sections []*metastore.DataobjSectionDescrip
 	for _, s := range sections {
 		ds := DataObjSections{}
 		ds.Location = DataObjLocation(s.ObjectPath)
+		ds.Labels = s.Labels
 
 		if int(s.SectionIdx)%int(shard.Of) == int(shard.Shard) {
 			ds.Streams = s.StreamIDs
