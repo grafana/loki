@@ -190,6 +190,7 @@ func (s *Scheduler) handleStreamData(ctx context.Context, worker *workerConn, ms
 	} else if registered.localReceiver == nil {
 		return fmt.Errorf("scheduler is not listening for data for stream %s", msg.StreamID)
 	}
+
 	return registered.localReceiver.Write(ctx, msg.Data)
 }
 
@@ -374,71 +375,75 @@ func (s *Scheduler) runAssignLoop(ctx context.Context) error {
 }
 
 func (s *Scheduler) assignTasks(ctx context.Context) {
-	var n notifier
-	defer n.Notify(ctx)
+	level.Debug(s.logger).Log("msg", "performing task assignment")
 
-	// We need to grab the lock on resources to prevent stream states from being
-	// modified while we're assigning the task.
-	//
-	// This prevents a race condition where a task owner misses a stream state
-	// change while we're assigning tasks at the same time as a state change.
-	//
-	// TODO(rfratto): Is there going to be too much overhead for locking this
-	// for this long?
-	s.resourcesMut.Lock()
-	defer s.resourcesMut.Unlock()
+	assignOne := func(worker *workerConn, msg wire.TaskAssignMessage) bool {
+		// TODO(rfratto): allow assignment timeout to be configurable.
+		ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+
+		level.Debug(s.logger).Log("msg", "assigning task", "id", msg.Task.ULID, "conn", worker.RemoteAddr())
+
+		err := worker.SendMessage(ctx, msg)
+		if err == nil {
+			return true
+		}
+
+		level.Warn(s.logger).Log("msg", "failed to assign task", "id", msg.Task.ULID, "conn", worker.RemoteAddr(), "err", err)
+		if isTooManyRequestsError(err) {
+			// The worker has no more capacity available, so remove it from the
+			// ready list and wait to receive another Ready message.
+			s.assignMut.Lock()
+			delete(s.readyWorkers, worker)
+			s.assignMut.Unlock()
+
+			s.metrics.backoffsTotal.Inc()
+			s.workerSubscribe(ctx, worker)
+		}
+
+		return false
+	}
+
+	for ctx.Err() == nil {
+		t, worker, msg, ok := s.prepareAssignment()
+		if !ok {
+			return
+		}
+
+		if assigned := assignOne(worker, msg); !assigned {
+			continue
+		}
+
+		// remove from queue on successful assignment.
+		s.assignMut.Lock()
+		s.taskQueue = s.taskQueue[1:]
+		s.assignMut.Unlock()
+
+		s.finalizeAssignment(ctx, t, worker, msg.StreamStates)
+	}
+}
+
+// prepareAssignment builds a TaskAssignMessage for the next task and worker.
+//
+// Returns false if no candidates available.
+func (s *Scheduler) prepareAssignment() (*task, *workerConn, wire.TaskAssignMessage, bool) {
+	s.resourcesMut.RLock()
+	defer s.resourcesMut.RUnlock()
 
 	s.assignMut.Lock()
 	defer s.assignMut.Unlock()
 
-	level.Debug(s.logger).Log("msg", "performing task assignment")
-
-	for len(s.taskQueue) > 0 && len(s.readyWorkers) > 0 {
-		task := s.taskQueue[0]
-		worker := nextWorker(s.readyWorkers)
-
-		// We may have a canceled task in our queue; we take this opportunity to
-		// clean them up.
-		if state := task.status.State; state.Terminal() {
-			s.taskQueue = s.taskQueue[1:]
-			continue
-		}
-
-		level.Debug(s.logger).Log("msg", "assigning task", "id", task.inner.ULID, "conn", worker.RemoteAddr())
-		if err := s.assignTask(ctx, task, worker); err != nil && ctx.Err() != nil {
-			// Our context got canceled, abort task assignment.
-			return
-		} else if err != nil && isTooManyRequestsError(err) {
-			// The worker has no more capacity available, so remove it from the
-			// ready list and wait to receive another Ready message.
-			delete(s.readyWorkers, worker)
-			s.metrics.backoffsTotal.Inc()
-
-			s.workerSubscribe(ctx, worker)
-			continue
-		} else if err != nil {
-			level.Warn(s.logger).Log("msg", "failed to assign task", "id", task.inner.ULID, "conn", worker.RemoteAddr(), "err", err)
-			continue
-		}
-
-		// Pop the task now that it's been officially assigned.
+	// clean up any terminal tasks at the front of the queue.
+	for len(s.taskQueue) > 0 && s.taskQueue[0].status.State.Terminal() {
 		s.taskQueue = s.taskQueue[1:]
 	}
-}
 
-// nextWorker returns the next worker from the map. The worker returned is
-// random.
-func nextWorker(m map[*workerConn]struct{}) *workerConn {
-	for worker := range m {
-		return worker
+	if len(s.taskQueue) == 0 || len(s.readyWorkers) == 0 {
+		return nil, nil, wire.TaskAssignMessage{}, false
 	}
-	return nil
-}
 
-func (s *Scheduler) assignTask(ctx context.Context, task *task, worker *workerConn) error {
-	// TODO(rfratto): allow assignment timeout to be configurable.
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
+	task := s.taskQueue[0]
+	worker := nextWorker(s.readyWorkers)
 
 	msg := wire.TaskAssignMessage{
 		Task:         task.inner,
@@ -456,50 +461,126 @@ func (s *Scheduler) assignTask(ctx context.Context, task *task, worker *workerCo
 				// before creating tasks, but we'll ignore it if it does.
 				continue
 			}
+
 			msg.StreamStates[rawSource.ULID] = source.state
 		}
 	}
 
-	if err := worker.SendMessage(ctx, msg); err != nil {
-		// TODO(rfratto): Should we forcibly close peer connections if they fail
-		// to accept tasks?
-		return err
+	return task, worker, msg, true
+}
+
+// pendingMessage represents a message to send to a worker after releasing locks.
+type pendingMessage struct {
+	peer *workerConn
+	msg  wire.Message
+}
+
+// finalizeAssignment completes the assignment of the task to the worker.
+func (s *Scheduler) finalizeAssignment(ctx context.Context, t *task, worker *workerConn, sentStates map[ulid.ULID]workflow.StreamState) {
+	var pendingMsgs []pendingMessage
+
+	// Collect bookkeeping and messages under lock.
+	func() {
+		s.resourcesMut.Lock()
+		defer s.resourcesMut.Unlock()
+
+		s.assignMut.Lock()
+		defer s.assignMut.Unlock()
+
+		if t.status.State.Terminal() {
+			// Worker received the assignment but task was cancelled in the meantime.
+			// Notify the worker about the cancellation.
+			pendingMsgs = append(pendingMsgs, pendingMessage{peer: worker, msg: wire.TaskCancelMessage{ID: t.inner.ULID}})
+			return
+		}
+
+		worker.Assign(t)
+		t.assignTime = time.Now()
+		s.metrics.taskQueueSeconds.Observe(t.assignTime.Sub(t.queueTime).Seconds())
+
+		// Reconcile stream states: send updates for any that changed while sending.
+		for streamID, sentState := range sentStates {
+			if current, found := s.streams[streamID]; found && current.state != sentState {
+				pendingMsgs = append(pendingMsgs, pendingMessage{
+					peer: worker,
+					msg: wire.StreamStatusMessage{
+						StreamID: streamID,
+						State:    current.state,
+					},
+				})
+			}
+		}
+
+		// Collect address binding messages.
+		for _, sources := range t.inner.Sources {
+			for _, rawSource := range sources {
+				if source, found := s.streams[rawSource.ULID]; found {
+					if msg := s.prepareBindMessage(source); msg != nil {
+						pendingMsgs = append(pendingMsgs, *msg)
+					}
+				}
+			}
+		}
+		for _, sinks := range t.inner.Sinks {
+			for _, rawSink := range sinks {
+				if sink, found := s.streams[rawSink.ULID]; found {
+					if msg := s.prepareBindMessage(sink); msg != nil {
+						pendingMsgs = append(pendingMsgs, *msg)
+					}
+				}
+			}
+		}
+	}()
+
+	// TODO(rfratto): allow timeout to be configurable.
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	for _, p := range pendingMsgs {
+		_ = p.peer.SendMessageAsync(ctx, p.msg)
+	}
+}
+
+// prepareBindMessage prepares a StreamBindMessage for the given stream if both
+// sender and receiver are available. Returns nil if binding is not possible yet.
+//
+// prepareBindMessage must be called while the resourcesMut lock is held.
+func (s *Scheduler) prepareBindMessage(check *stream) *pendingMessage {
+	sendingTask, hasSendingTask := s.tasks[check.taskSender]
+	if !hasSendingTask || sendingTask.owner == nil {
+		// No sender, abort early.
+		return nil
 	}
 
-	// The worker accepted the message, so we can assign the task to it now.
-	worker.Assign(task)
-
-	// The queue time of a task is the duration from when it entered the queue
-	// to when a worker accepted the assignment.
-	//
-	// We track this moment as the "assign time" to be able to calculate
-	// execution time later.
-	task.assignTime = time.Now()
-	s.metrics.taskQueueSeconds.Observe(task.assignTime.Sub(task.queueTime).Seconds())
-
-	// Now that the task has been accepted, we can attempt address bindings. We
-	// do this on task assignment to simplify the implementation, though it
-	// means that the first call to tryBind will always fail (because one end
-	// isn't available yet).
-	for _, sources := range task.inner.Sources {
-		for _, rawSource := range sources {
-			source, found := s.streams[rawSource.ULID]
-			if !found {
-				continue
-			}
-			s.tryBind(ctx, source)
+	receivingTask, hasReceivingTask := s.tasks[check.taskReceiver]
+	if hasReceivingTask && receivingTask.owner != nil {
+		// Bind the address of the receiving owner to the sender.
+		return &pendingMessage{
+			peer: sendingTask.owner,
+			msg: wire.StreamBindMessage{
+				StreamID: check.inner.ULID,
+				Receiver: receivingTask.owner.RemoteAddr(),
+			},
+		}
+	} else if check.localReceiver != nil {
+		// We're listening for results ourselves; bind our address to the sender.
+		return &pendingMessage{
+			peer: sendingTask.owner,
+			msg: wire.StreamBindMessage{
+				StreamID: check.inner.ULID,
+				Receiver: s.listener.Addr(),
+			},
 		}
 	}
-	for _, sinks := range task.inner.Sinks {
-		for _, rawSink := range sinks {
-			sink, found := s.streams[rawSink.ULID]
-			if !found {
-				continue
-			}
-			s.tryBind(ctx, sink)
-		}
-	}
 
+	return nil
+}
+
+// nextWorker returns the next worker from the map. The worker returned is
+// random.
+func nextWorker(m map[*workerConn]struct{}) *workerConn {
+	for worker := range m {
+		return worker
+	}
 	return nil
 }
 
@@ -517,35 +598,6 @@ func isTooManyRequestsError(err error) bool {
 func (s *Scheduler) workerSubscribe(ctx context.Context, worker *workerConn) {
 	if err := worker.SendMessageAsync(ctx, wire.WorkerSubscribeMessage{}); err != nil {
 		level.Warn(s.logger).Log("msg", "failed to request subscription for ready worker thread", "err", err)
-	}
-}
-
-// tryBind attempts to bind the receiver's address of check to the sender.
-// tryBind is a no-op if the stream does not have both a sender and receiver
-// yet.
-//
-// tryBind must be called while the resourcesMut lock is held.
-func (s *Scheduler) tryBind(ctx context.Context, check *stream) {
-	sendingTask, hasSendingTask := s.tasks[check.taskSender]
-	if !hasSendingTask || sendingTask.owner == nil {
-		// No sender, abort early.
-		return
-	}
-
-	receivingTask, hasReceivingTask := s.tasks[check.taskReceiver]
-	if hasReceivingTask && receivingTask.owner != nil {
-		// Bind the address of the receiving owner to the sender.
-		_ = sendingTask.owner.SendMessageAsync(ctx, wire.StreamBindMessage{
-			StreamID: check.inner.ULID,
-			Receiver: receivingTask.owner.RemoteAddr(),
-		})
-	} else if check.localReceiver != nil {
-		// We're listening for results ourselves; bind our address to the
-		// sender.
-		_ = sendingTask.owner.SendMessageAsync(ctx, wire.StreamBindMessage{
-			StreamID: check.inner.ULID,
-			Receiver: s.listener.Addr(),
-		})
 	}
 }
 
@@ -750,21 +802,35 @@ func (s *Scheduler) deleteTask(t *task) {
 // Listen binds the caller as the receiver of the specified stream. Listening on
 // a stream prevents tasks from reading from it.
 func (s *Scheduler) Listen(ctx context.Context, writer workflow.RecordWriter, stream *workflow.Stream) error {
-	s.resourcesMut.Lock()
-	defer s.resourcesMut.Unlock()
+	var pending *pendingMessage
 
-	registered, found := s.streams[stream.ULID]
-	if !found {
-		return fmt.Errorf("stream %s not registered", stream.ULID)
-	} else if err := registered.setLocalListener(writer); err != nil {
+	err := func() error {
+		s.resourcesMut.Lock()
+		defer s.resourcesMut.Unlock()
+
+		registered, found := s.streams[stream.ULID]
+		if !found {
+			return fmt.Errorf("stream %s not registered", stream.ULID)
+		} else if err := registered.setLocalListener(writer); err != nil {
+			return err
+		}
+
+		// Usually, address binding is handled upon task assignment in
+		// [Scheduler.assignTask]. However, calls to Listen can happen after the
+		// sending task is already assigned. In this case, we'll attempt to bind
+		// now.
+		pending = s.prepareBindMessage(registered)
+		return nil
+	}()
+
+	if err != nil {
 		return err
 	}
 
-	// Usually, address binding is handled upon task assignment in
-	// [Scheduler.assignTask]. However, calls to Listen can happen after the
-	// sending task is already assigned. In this case, we'll attempt to bind
-	// now.
-	s.tryBind(ctx, registered)
+	// Send bind message outside the lock.
+	if pending != nil {
+		_ = pending.peer.SendMessageAsync(ctx, pending.msg)
+	}
 	return nil
 }
 

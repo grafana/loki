@@ -337,12 +337,16 @@ github.com/apache/arrow-go/v18/arrow
 github.com/apache/arrow-go/v18/arrow/array
 github.com/apache/arrow-go/v18/arrow/arrio
 github.com/apache/arrow-go/v18/arrow/bitutil
+github.com/apache/arrow-go/v18/arrow/compute
+github.com/apache/arrow-go/v18/arrow/compute/exec
+github.com/apache/arrow-go/v18/arrow/compute/internal/kernels
 github.com/apache/arrow-go/v18/arrow/csv
 github.com/apache/arrow-go/v18/arrow/decimal
 github.com/apache/arrow-go/v18/arrow/decimal128
 github.com/apache/arrow-go/v18/arrow/decimal256
 github.com/apache/arrow-go/v18/arrow/encoded
 github.com/apache/arrow-go/v18/arrow/endian
+github.com/apache/arrow-go/v18/arrow/extensions
 github.com/apache/arrow-go/v18/arrow/float16
 github.com/apache/arrow-go/v18/arrow/internal
 github.com/apache/arrow-go/v18/arrow/internal/debug
@@ -357,12 +361,21 @@ github.com/apache/arrow-go/v18/internal/bitutils
 github.com/apache/arrow-go/v18/internal/hashing
 github.com/apache/arrow-go/v18/internal/json
 github.com/apache/arrow-go/v18/internal/utils
+github.com/apache/arrow-go/v18/parquet
+github.com/apache/arrow-go/v18/parquet/compress
+github.com/apache/arrow-go/v18/parquet/internal/debug
+github.com/apache/arrow-go/v18/parquet/internal/gen-go/parquet
+github.com/apache/arrow-go/v18/parquet/schema
+github.com/apache/arrow-go/v18/parquet/variant
 # github.com/apache/cassandra-gocql-driver/v2 v2.0.0
 ## explicit; go 1.19
 github.com/apache/cassandra-gocql-driver/v2
 github.com/apache/cassandra-gocql-driver/v2/internal/lru
 github.com/apache/cassandra-gocql-driver/v2/internal/murmur
 github.com/apache/cassandra-gocql-driver/v2/internal/streams
+# github.com/apache/thrift v0.22.0
+## explicit; go 1.23
+github.com/apache/thrift/lib/go/thrift
 # github.com/armon/go-metrics v0.4.1
 ## explicit; go 1.12
 github.com/armon/go-metrics
@@ -1408,6 +1421,10 @@ github.com/julienschmidt/httprouter
 # github.com/kamstrup/intmap v0.5.1
 ## explicit; go 1.23
 github.com/kamstrup/intmap
+# github.com/klauspost/asmfmt v1.3.2
+## explicit; go 1.16
+github.com/klauspost/asmfmt
+github.com/klauspost/asmfmt/cmd/asmfmt
 # github.com/klauspost/compress v1.18.2
 ## explicit; go 1.23
 github.com/klauspost/compress
@@ -1496,6 +1513,12 @@ github.com/mfridman/interpolate
 # github.com/miekg/dns v1.1.68
 ## explicit; go 1.23.0
 github.com/miekg/dns
+# github.com/minio/asm2plan9s v0.0.0-20200509001527-cdd76441f9d8
+## explicit
+github.com/minio/asm2plan9s
+# github.com/minio/c2goasm v0.0.0-20190812172519-36a3d3bbc4f3
+## explicit
+github.com/minio/c2goasm
 # github.com/minio/crc64nvme v1.1.0
 ## explicit; go 1.22
 github.com/minio/crc64nvme
