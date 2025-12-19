@@ -475,7 +475,7 @@ func doMultiUntilQuorumWithoutSuccessfulContextCancellation[T any](ctx context.C
 					returnErr = setErr
 
 					// Interrupt the execution of all workers.
-					cancelWorkersCtx(setErr)
+					cancelWorkersCtx(fmt.Errorf("request canceled because quorum was not reached in another replication set due to error: %w", setErr))
 				})
 
 				return
