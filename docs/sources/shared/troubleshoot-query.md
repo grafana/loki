@@ -486,9 +486,6 @@ The query contains too many stream matchers. This limit prevents queries with ex
 * **Use regex matchers** to consolidate multiple values:
 
    ```logql
-   # Bad: 5 matchers
-   {cluster="prod", namespace="api", pod="nginx-1", container="app", version="v2"}
-   
    # Good: 3 matchers using regex patterns
    {cluster="prod", namespace=~"api|web", pod=~"nginx-.*"}
    ```
