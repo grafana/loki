@@ -23,12 +23,14 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/thanos-io/objstore"
+	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"
+
+	"github.com/grafana/loki/v3/pkg/storage/bucket"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
@@ -43,7 +45,7 @@ type ObjectMetastore struct {
 	bucket      objstore.Bucket
 	parallelism int
 	logger      log.Logger
-	metrics     *objectMetastoreMetrics
+	metrics     *ObjectMetastoreMetrics
 }
 
 type SectionKey struct {
@@ -109,16 +111,19 @@ func iterTableOfContentsPaths(start, end time.Time) iter.Seq2[string, multitenan
 	}
 }
 
-func NewObjectMetastore(bucket objstore.Bucket, logger log.Logger, reg prometheus.Registerer) *ObjectMetastore {
+func NewObjectMetastore(b objstore.Bucket, cfg Config, logger log.Logger, metrics *ObjectMetastoreMetrics) *ObjectMetastore {
+	if cfg.IndexStoragePrefix != "" {
+		b = objstore.NewPrefixedBucket(b, cfg.IndexStoragePrefix)
+	}
+	b = bucket.NewXCapBucket(b)
+
 	store := &ObjectMetastore{
-		bucket:      bucket,
+		bucket:      b,
 		parallelism: 64,
 		logger:      logger,
-		metrics:     newObjectMetastoreMetrics(),
+		metrics:     metrics,
 	}
-	if reg != nil {
-		store.metrics.register(reg)
-	}
+
 	return store
 }
 
@@ -159,125 +164,6 @@ func (m *ObjectMetastore) streams(ctx context.Context, start, end time.Time, mat
 	// Search the stream sections of the matching objects to find matching streams
 	predicate := streamPredicateFromMatchers(start, end, matchers...)
 	return m.listStreamsFromObjects(ctx, paths, predicate)
-}
-
-func (m *ObjectMetastore) Sections(ctx context.Context, start, end time.Time, matchers []*labels.Matcher, predicates []*labels.Matcher) ([]*DataobjSectionDescriptor, error) {
-	ctx, region := xcap.StartRegion(ctx, "ObjectMetastore.Sections")
-	defer region.End()
-
-	sectionsTimer := prometheus.NewTimer(m.metrics.resolvedSectionsTotalDuration)
-
-	// Get all metastore paths for the time range
-	var tablePaths []string
-	for path := range iterTableOfContentsPaths(start, end) {
-		tablePaths = append(tablePaths, path)
-	}
-
-	// Return early if no toc files are found
-	if len(tablePaths) == 0 {
-		m.metrics.indexObjectsTotal.Observe(0)
-		m.metrics.resolvedSectionsTotal.Observe(0)
-		level.Debug(utillog.WithContext(ctx, m.logger)).Log("msg", "no sections resolved", "reason", "no toc paths")
-		return nil, nil
-	}
-
-	// List index objects from all tables concurrently
-	indexPaths, err := m.listObjectsFromTables(ctx, tablePaths, start, end)
-	if err != nil {
-		return nil, err
-	}
-
-	m.metrics.indexObjectsTotal.Observe(float64(len(indexPaths)))
-	region.Record(xcap.StatMetastoreIndexObjects.Observe(int64(len(indexPaths))))
-
-	// Return early if no index files are found
-	if len(indexPaths) == 0 {
-		m.metrics.resolvedSectionsTotal.Observe(0)
-		level.Debug(utillog.WithContext(ctx, m.logger)).Log("msg", "no sections resolved", "reason", "no index paths")
-		return nil, nil
-	}
-
-	// init index files
-	indexObjects := make([]*dataobj.Object, len(indexPaths))
-	g, initCtx := errgroup.WithContext(ctx)
-	g.SetLimit(m.parallelism)
-	for idx, indexPath := range indexPaths {
-		g.Go(func() error {
-			indexObjects[idx], err = dataobj.FromBucket(initCtx, m.bucket, indexPath)
-			return err
-		})
-	}
-	if err := g.Wait(); err != nil {
-		return nil, err
-	}
-
-	// Search the stream sections of the matching objects to find matching streams
-	streamSectionPointers, err := m.getSectionsForStreams(ctx, indexObjects, start, end, matchers)
-	if err != nil {
-		return nil, err
-	}
-	initialSectionPointersCount := len(streamSectionPointers)
-
-	if len(predicates) > 0 {
-		// Search the section AMQs to estimate sections that might match the predicates
-		// AMQs may return false positives so this is an over-estimate.
-		//
-		// Only match one predicate at a time in order to obtain the intersection of all estimates, rather than the union.
-		for _, predicate := range predicates {
-			if predicate.Type != labels.MatchEqual {
-				continue
-			}
-			matchedSections, err := m.estimateSectionsForMatcher(ctx, indexObjects, predicate)
-			if err != nil {
-				return nil, err
-			}
-
-			streamSectionPointers = intersectSections(streamSectionPointers, matchedSections)
-			if len(streamSectionPointers) == 0 {
-				level.Debug(utillog.WithContext(ctx, m.logger)).Log("msg", "no sections resolved", "reason", "no matching predicates")
-				// Short circuit here if no sections match the predicates
-				return streamSectionPointers, nil
-			}
-		}
-	}
-
-	duration := sectionsTimer.ObserveDuration()
-	m.metrics.resolvedSectionsTotal.Observe(float64(len(streamSectionPointers)))
-	m.metrics.resolvedSectionsRatio.Observe(float64(len(streamSectionPointers)) / float64(initialSectionPointersCount))
-	region.Record(xcap.StatMetastoreResolvedSections.Observe(int64(len(streamSectionPointers))))
-
-	level.Debug(utillog.WithContext(ctx, m.logger)).Log(
-		"msg", "resolved sections",
-		"duration", duration,
-		"tables", len(tablePaths),
-		"indexes", len(indexPaths),
-		"sections", len(streamSectionPointers),
-		"ratio", float64(len(streamSectionPointers))/float64(initialSectionPointersCount),
-		"matchers", matchersToString(matchers),
-		"start", start,
-		"end", end,
-	)
-
-	return streamSectionPointers, nil
-}
-
-func intersectSections(sectionPointers []*DataobjSectionDescriptor, sectionMembershipEstimates []SectionKey) []*DataobjSectionDescriptor {
-	existence := make(map[SectionKey]struct{}, len(sectionMembershipEstimates))
-	for _, section := range sectionMembershipEstimates {
-		existence[section] = struct{}{}
-	}
-
-	nextEmptyIdx := 0
-	key := SectionKey{}
-	for _, section := range sectionPointers {
-		key.ObjectPath = section.ObjectPath
-		key.SectionIdx = section.SectionIdx
-		if _, ok := existence[key]; ok {
-			sectionPointers[nextEmptyIdx] = section
-			nextEmptyIdx++
-		}
-	}
-	return sectionPointers[:nextEmptyIdx]
 }
 
 func (m *ObjectMetastore) DataObjects(ctx context.Context, start, end time.Time, _ ...*labels.Matcher) ([]string, error) {
@@ -461,161 +347,6 @@ func (m *ObjectMetastore) listStreamsFromObjects(ctx context.Context, paths []st
 	return streamsSlice, nil
 }
 
-func (m *ObjectMetastore) listStreamIDsFromLogObjects(ctx context.Context, objectPaths []string, start, end time.Time, matchers []*labels.Matcher) ([][]int64, []int, error) {
-	streamIDs := make([][]int64, len(objectPaths))
-	sections := make([]int, len(objectPaths))
-
-	g, ctx := errgroup.WithContext(ctx)
-	g.SetLimit(m.parallelism)
-
-	for idx, objectPath := range objectPaths {
-		g.Go(func() error {
-			object, err := dataobj.FromBucket(ctx, m.bucket, objectPath)
-			if err != nil {
-				return fmt.Errorf("getting object from bucket: %w", err)
-			}
-
-			sections[idx] = object.Sections().Count(logs.CheckSection)
-			streamIDs[idx] = make([]int64, 0, 8)
-
-			return forEachStreamID(ctx, object, start, end, matchers, func(streamID int64) {
-				streamIDs[idx] = append(streamIDs[idx], streamID)
-			})
-		})
-	}
-
-	if err := g.Wait(); err != nil {
-		return nil, nil, err
-	}
-
-	return streamIDs, sections, nil
-}
-
-// getSectionsForStreams reads the section data from matching streams and aggregates them into section descriptors.
-// This is an exact lookup and includes metadata from the streams in each section: the stream IDs, the min-max timestamps, the number of bytes & number of lines.
-func (m *ObjectMetastore) getSectionsForStreams(ctx context.Context, indexObjects []*dataobj.Object, start, end time.Time, matchers []*labels.Matcher) ([]*DataobjSectionDescriptor, error) {
-	if len(matchers) == 0 {
-		// At least one stream matcher is required, currently.
-		return nil, nil
-	}
-
-	sStart := scalar.NewTimestampScalar(arrow.Timestamp(start.UnixNano()), arrow.FixedWidthTypes.Timestamp_ns)
-	sEnd := scalar.NewTimestampScalar(arrow.Timestamp(end.UnixNano()), arrow.FixedWidthTypes.Timestamp_ns)
-
-	timer := prometheus.NewTimer(m.metrics.streamFilterTotalDuration)
-	defer timer.ObserveDuration()
-
-	var sectionDescriptors []*DataobjSectionDescriptor
-
-	sectionDescriptorsMutex := sync.Mutex{}
-	g, ctx := errgroup.WithContext(ctx)
-	g.SetLimit(m.parallelism)
-
-	for _, indexObject := range indexObjects {
-		g.Go(func() error {
-			var key SectionKey
-			var matchingStreamIDs []int64
-
-			streamReadTimer := prometheus.NewTimer(m.metrics.streamFilterStreamsReadDuration)
-			err := forEachStreamID(ctx, indexObject, start, end, matchers, func(streamID int64) {
-				matchingStreamIDs = append(matchingStreamIDs, streamID)
-			})
-			if err != nil {
-				return fmt.Errorf("reading streams from index: %w", err)
-			}
-			streamReadTimer.ObserveDuration()
-
-			if len(matchingStreamIDs) == 0 {
-				// No streams match, so skip reading the section pointers or we'll match all of them.
-				return nil
-			}
-
-			objectSectionDescriptors := make(map[SectionKey]*DataobjSectionDescriptor)
-			sectionPointerReadTimer := prometheus.NewTimer(m.metrics.streamFilterPointersReadDuration)
-
-			err = forEachStreamSectionPointer(ctx, indexObject, sStart, sEnd, matchingStreamIDs, func(pointer pointers.SectionPointer) {
-				key.ObjectPath = pointer.Path
-				key.SectionIdx = pointer.Section
-
-				sectionDescriptor, ok := objectSectionDescriptors[key]
-				if !ok {
-					objectSectionDescriptors[key] = NewSectionDescriptor(pointer)
-					return
-				}
-				sectionDescriptor.Merge(pointer)
-			})
-
-			if err != nil {
-				return fmt.Errorf("reading section pointers from index: %w", err)
-			}
-			sectionPointerReadTimer.ObserveDuration()
-
-			// Merge the section descriptors for the object into the global section descriptors in one batch
-			sectionDescriptorsMutex.Lock()
-			for _, sectionDescriptor := range objectSectionDescriptors {
-				sectionDescriptors = append(sectionDescriptors, sectionDescriptor)
-			}
-			sectionDescriptorsMutex.Unlock()
-
-			return nil
-		})
-	}
-
-	if err := g.Wait(); err != nil {
-		return nil, err
-	}
-
-	m.metrics.streamFilterSections.Observe(float64(len(sectionDescriptors)))
-	return sectionDescriptors, nil
-}
-
-// estimateSectionsForMatcher checks the matcher against the section AMQs to determine approximate section membership.
-// This is an inexact lookup and only returns probable sections: there may be false positives, but no true negatives. There is no additional metadata returned beyond the section info.
-func (m *ObjectMetastore) estimateSectionsForMatcher(ctx context.Context, indexObjects []*dataobj.Object, matcher *labels.Matcher) ([]SectionKey, error) {
-	timer := prometheus.NewTimer(m.metrics.estimateSectionsTotalDuration)
-	defer timer.ObserveDuration()
-
-	g, ctx := errgroup.WithContext(ctx)
-	g.SetLimit(m.parallelism)
-
-	sColumnName := scalar.NewStringScalar(matcher.Name)
-
-	var matchedSections []SectionKey
-	var matchedSectionsMu sync.Mutex
-	for _, indexObject := range indexObjects {
-		g.Go(func() error {
-			pointerReadTimer := prometheus.NewTimer(m.metrics.estimateSectionsPointerReadDuration)
-			var objMatchedSections []SectionKey
-			err := forEachMatchedPointerSectionKey(ctx, indexObject, sColumnName, matcher.Value, func(sk SectionKey) {
-				objMatchedSections = append(objMatchedSections, sk)
-			})
-			if err != nil {
-				return fmt.Errorf("reading section keys: %w", err)
-			}
-			pointerReadTimer.ObserveDuration()
-
-			if len(objMatchedSections) == 0 {
-				// TODO(benclive): Find a way to differentiate between unknown columns and columns missing the target value.
-				// For now, log a warning to track how often this happens.
-				level.Warn(m.logger).Log("msg", "no section keys found for column")
-			}
-
-			matchedSectionsMu.Lock()
-			matchedSections = append(matchedSections, objMatchedSections...)
-			matchedSectionsMu.Unlock()
-
-			return nil
-		})
-	}
-
-	if err := g.Wait(); err != nil {
-		return nil, err
-	}
-
-	m.metrics.estimateSectionsSections.Observe(float64(len(matchedSections)))
-	return matchedSections, nil
-}
-
 func addLabels(mtx *sync.Mutex, streams map[uint64][]*labels.Labels, newLabels *labels.Labels) {
 	mtx.Lock()
 	defer mtx.Unlock()
@@ -721,4 +452,205 @@ func dedupeAndSort(objects [][]string) []string {
 	}
 	sort.Strings(paths)
 	return paths
+}
+
+func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (SectionsResponse, error) {
+	ctx, region := xcap.StartRegion(ctx, "ObjectMetastore.Sections")
+	defer region.End()
+
+	sectionsTimer := prometheus.NewTimer(m.metrics.resolvedSectionsTotalDuration)
+
+	selector := streamPredicateFromMatchers(req.Start, req.End, req.Matchers...)
+	if selector == nil {
+		// At least one stream matcher is required, currently.
+		return SectionsResponse{}, nil
+	}
+
+	indexes, err := m.GetIndexes(ctx, GetIndexesRequest{Start: req.Start, End: req.End})
+	if err != nil {
+		return SectionsResponse{}, err
+	}
+
+	// Return early if no index files found
+	if len(indexes.IndexesPaths) == 0 {
+		m.metrics.resolvedSectionsTotal.Observe(0)
+		level.Debug(utillog.WithContext(ctx, m.logger)).Log("msg", "no sections resolved", "reason", "no index paths")
+		return SectionsResponse{}, nil
+	}
+
+	var sections []*DataobjSectionDescriptor
+	sectionsMu := sync.Mutex{}
+	g, ctx := errgroup.WithContext(ctx)
+	g.SetLimit(m.parallelism)
+
+	totalSections := atomic.NewUint64(0)
+	for _, indexPath := range indexes.IndexesPaths {
+		g.Go(func() error {
+			readerResp, err := m.IndexSectionsReader(ctx, IndexSectionsReaderRequest{
+				IndexPath:       indexPath,
+				SectionsRequest: req,
+				Region:          region,
+			})
+			if err != nil {
+				return fmt.Errorf("get index sections reader: %w", err)
+			}
+			reader := readerResp.Reader
+			defer reader.Close()
+			sectionsResp, err := m.CollectSections(ctx, CollectSectionsRequest{reader})
+			if err != nil {
+				return fmt.Errorf("collect sections: %w", err)
+			}
+
+			// Merge the section descriptors for the object into the global section descriptors in one batch
+			sectionsMu.Lock()
+
+			// this is temporary, the stats will be collected differently in a distributed metastore
+			statsProvider := reader.(bloomStatsProvider)
+			totalSections.Add(statsProvider.totalReadRows())
+
+			sections = append(sections, sectionsResp.SectionsResponse.Sections...)
+			sectionsMu.Unlock()
+
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return SectionsResponse{}, err
+	}
+
+	ratio := float64(len(sections)) / float64(totalSections.Load())
+	m.metrics.streamFilterSections.Observe(float64(totalSections.Load()))
+	m.metrics.resolvedSectionsTotal.Observe(float64(len(sections)))
+	m.metrics.resolvedSectionsRatio.Observe(ratio)
+	region.Record(xcap.StatMetastoreResolvedSections.Observe(int64(len(sections))))
+	duration := sectionsTimer.ObserveDuration()
+
+	level.Debug(utillog.WithContext(ctx, m.logger)).Log(
+		"msg", "resolved sections",
+		"duration", duration,
+		"tables", len(indexes.TableOfContentsPaths),
+		"indexes", len(indexes.IndexesPaths),
+		"sections", len(sections),
+		"ratio", ratio,
+		"matchers", matchersToString(req.Matchers),
+		"start", req.Start,
+		"end", req.End,
+	)
+
+	return SectionsResponse{sections}, nil
+}
+
+func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSectionsReaderRequest) (IndexSectionsReaderResponse, error) {
+	if len(req.SectionsRequest.Matchers) == 0 {
+		// At least one stream matcher is required
+		return IndexSectionsReaderResponse{}, fmt.Errorf("at least one selector is required")
+	}
+
+	idxObj, err := dataobj.FromBucket(ctx, m.bucket, req.IndexPath)
+	if err != nil {
+		return IndexSectionsReaderResponse{}, fmt.Errorf("prepare obj %s: %w", req.IndexPath, err)
+	}
+
+	sStart := scalar.NewTimestampScalar(arrow.Timestamp(req.SectionsRequest.Start.UnixNano()), arrow.FixedWidthTypes.Timestamp_ns)
+	sEnd := scalar.NewTimestampScalar(arrow.Timestamp(req.SectionsRequest.End.UnixNano()), arrow.FixedWidthTypes.Timestamp_ns)
+
+	scanner := newScanPointers(idxObj, sStart, sEnd, req.SectionsRequest.Matchers, req.Region)
+	blooms := newApplyBlooms(idxObj, req.SectionsRequest.Predicates, scanner, req.Region)
+
+	return IndexSectionsReaderResponse{Reader: blooms}, nil
+}
+
+func (m *ObjectMetastore) GetIndexes(ctx context.Context, req GetIndexesRequest) (GetIndexesResponse, error) {
+	ctx, region := xcap.StartRegion(ctx, "ObjectMetastore.GetIndexes")
+	defer region.End()
+
+	resp := GetIndexesResponse{}
+
+	// Get all metastore paths for the time range
+	for path := range iterTableOfContentsPaths(req.Start, req.End) {
+		resp.TableOfContentsPaths = append(resp.TableOfContentsPaths, path)
+	}
+
+	// Return early if no toc files are found
+	if len(resp.TableOfContentsPaths) == 0 {
+		m.metrics.indexObjectsTotal.Observe(0)
+		m.metrics.resolvedSectionsTotal.Observe(0)
+		level.Warn(utillog.WithContext(ctx, m.logger)).Log(
+			"msg", "no sections resolved",
+			"reason", "no toc paths",
+			"start", req.Start,
+			"end", req.End,
+		)
+		return GetIndexesResponse{}, nil
+	}
+
+	// List index objects from all tables concurrently
+	indexPaths, err := m.listObjectsFromTables(ctx, resp.TableOfContentsPaths, req.Start, req.End)
+	if err != nil {
+		return resp, err
+	}
+
+	resp.IndexesPaths = indexPaths
+
+	m.metrics.indexObjectsTotal.Observe(float64(len(indexPaths)))
+	region.Record(xcap.StatMetastoreIndexObjects.Observe(int64(len(indexPaths))))
+
+	return resp, nil
+}
+
+func (m *ObjectMetastore) CollectSections(ctx context.Context, req CollectSectionsRequest) (CollectSectionsResponse, error) {
+	objectSectionDescriptors := make(map[SectionKey]*DataobjSectionDescriptor)
+	for {
+		rec, err := req.Reader.Read(ctx)
+		if err != nil && !errors.Is(err, io.EOF) {
+			level.Warn(m.logger).Log(
+				"msg", "error during execution",
+				"err", err,
+			)
+			return CollectSectionsResponse{}, err
+		}
+
+		if rec != nil && rec.NumRows() > 0 {
+			if err := addSectionDescriptors(rec, objectSectionDescriptors); err != nil {
+				return CollectSectionsResponse{}, err
+			}
+		}
+
+		if errors.Is(err, io.EOF) {
+			break
+		}
+	}
+
+	sections := make([]*DataobjSectionDescriptor, 0, len(objectSectionDescriptors))
+	for _, s := range objectSectionDescriptors {
+		sections = append(sections, s)
+	}
+
+	return CollectSectionsResponse{
+		SectionsResponse: SectionsResponse{
+			Sections: sections,
+		},
+	}, nil
+}
+
+func addSectionDescriptors(rec arrow.RecordBatch, result map[SectionKey]*DataobjSectionDescriptor) error {
+	numRows := int(rec.NumRows())
+	buf := make([]pointers.SectionPointer, numRows)
+	num, err := pointers.FromRecordBatch(rec, buf, pointers.PopulateSection)
+	if err != nil {
+		return fmt.Errorf("convert arrow record to section pointers: %w", err)
+	}
+
+	for i := range num {
+		ptr := buf[i]
+		key := SectionKey{ObjectPath: ptr.Path, SectionIdx: ptr.Section}
+		existing, ok := result[key]
+		if !ok {
+			result[key] = NewSectionDescriptor(ptr)
+			continue
+		}
+		existing.Merge(ptr)
+	}
+	return nil
 }

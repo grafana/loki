@@ -3,7 +3,6 @@ package wire
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net"
 	"net/http"
 	"reflect"
@@ -50,6 +49,9 @@ type Handler func(ctx context.Context, peer *Peer, message Message) error
 func (p *Peer) Serve(ctx context.Context) error {
 	p.lazyInit()
 
+	// Defer connection close here in Serve since Peer does not have an explicit Close method.
+	defer p.Conn.Close()
+
 	g, ctx := errgroup.WithContext(ctx)
 
 	g.Go(func() error { return p.recvMessages(ctx) })
@@ -76,11 +78,12 @@ func (p *Peer) recvMessages(ctx context.Context) error {
 
 	for {
 		frame, err := p.Conn.Recv(ctx)
-		if err != nil && ctx.Err() != nil {
-			// Context got canceled; shut down
-			return nil
-		} else if err != nil {
-			return fmt.Errorf("recv: %w", err)
+		if err != nil {
+			if ctx.Err() != nil {
+				// Context got canceled; shut down
+				return nil
+			}
+			return err
 		}
 
 		switch frame := frame.(type) {

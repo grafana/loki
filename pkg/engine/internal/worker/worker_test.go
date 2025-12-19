@@ -20,7 +20,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
-	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
@@ -367,12 +366,19 @@ func buildWorkflow(ctx context.Context, t *testing.T, logger log.Logger, loc obj
 	require.NoError(t, err, "expected to create logical plan")
 
 	ms := metastore.NewObjectMetastore(
-		objstore.NewPrefixedBucket(loc.Bucket, loc.IndexPrefix),
+		loc.Bucket,
+		metastore.Config{IndexStoragePrefix: loc.IndexPrefix},
 		logger,
-		prometheus.NewRegistry(),
+		metastore.NewObjectMetastoreMetrics(prometheus.NewRegistry()),
 	)
 	catalog := physical.NewMetastoreCatalog(func(start time.Time, end time.Time, selectors []*labels.Matcher, predicates []*labels.Matcher) ([]*metastore.DataobjSectionDescriptor, error) {
-		return ms.Sections(ctx, start, end, selectors, predicates)
+		resp, err := ms.Sections(ctx, metastore.SectionsRequest{
+			Start:      start,
+			End:        end,
+			Matchers:   selectors,
+			Predicates: predicates,
+		})
+		return resp.Sections, err
 	})
 	planner := physical.NewPlanner(physical.NewContext(params.Start(), params.End()), catalog)
 	plan, err := planner.Build(logicalPlan)
