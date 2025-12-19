@@ -102,7 +102,7 @@ func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *
 
 		tableSequences = append(tableSequences, &tableSequence{
 			columns:         dsetColumns,
-			DatasetSequence: NewDatasetSequence(r, 256),
+			DatasetSequence: NewDatasetSequence(r, 128),
 		})
 	}
 
@@ -166,11 +166,6 @@ func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *
 			}
 		}
 
-		if tableSequenceEmptyBuffer(seq) {
-			// Ensure we process all Values held in buffers before continuing iteration, otherwise the table sequence may re-use the values.
-			syncAppenders(appenders)
-		}
-
 		rows++
 	}
 
@@ -182,20 +177,9 @@ func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *
 	return buf.Flush()
 }
 
-func syncAppenders(appenders []*columnAppender) {
-	syncIDs := make([]int32, 0, len(appenders))
-	for _, appender := range appenders {
-		syncIDs = append(syncIDs, appender.startSync())
-	}
-	for i, appender := range appenders {
-		appender.awaitSync(syncIDs[i])
-	}
-}
-
-// valueBatch references a batch of rowValues, plus an optional syncID which will be recorded by the appender once the batch has been processed.
+// valueBatch references a batch of rowValues.
 type valueBatch struct {
-	rows   []*rowValue
-	syncID int32
+	rows []*rowValue
 }
 
 // columnAppender writes column values to columns.
@@ -205,27 +189,13 @@ type columnAppender struct {
 	waitGroup *sync.WaitGroup
 	workChan  chan *valueBatch
 	batch     *valueBatch
-
-	syncMut  *sync.Mutex
-	syncCond *sync.Cond
-
-	lastSync    int32
-	syncCounter int32
 }
 
 func newColumnAppender(wg *sync.WaitGroup) *columnAppender {
-	batchMut := &sync.Mutex{}
-	batchCond := sync.NewCond(batchMut)
-	initialBatch := valueBatchPool.Get().(*valueBatch)
-
 	appender := &columnAppender{
 		workChan:  make(chan *valueBatch),
 		waitGroup: wg,
-		batch:     initialBatch,
-
-		syncMut:  batchMut,
-		syncCond: batchCond,
-		lastSync: 0,
+		batch:     valueBatchPool.Get().(*valueBatch),
 	}
 	go appender.loop()
 
@@ -235,9 +205,7 @@ func newColumnAppender(wg *sync.WaitGroup) *columnAppender {
 func (ca *columnAppender) loop() {
 	ca.waitGroup.Add(1)
 	for batch := range ca.workChan {
-		maxRow := 0
 		for _, rowValue := range batch.rows {
-			maxRow = max(maxRow, rowValue.row)
 			err := rowValue.builder.Append(rowValue.row, rowValue.value)
 			if err != nil {
 				panic(err)
@@ -245,43 +213,10 @@ func (ca *columnAppender) loop() {
 			rowValuePool.Put(rowValue)
 		}
 
-		if batch.syncID != 0 {
-			// If a syncID is present, record it and broadcast to all waiters.
-			ca.syncMut.Lock()
-			ca.lastSync = batch.syncID
-			ca.syncMut.Unlock()
-			ca.syncCond.Broadcast()
-			batch.syncID = 0
-		}
-
 		batch.rows = batch.rows[:0]
 		valueBatchPool.Put(batch)
 	}
 	ca.waitGroup.Done()
-}
-
-// Sync writes the current buffer to the work channel with a sync ID for later identification
-func (ca *columnAppender) startSync() int32 {
-	ca.syncMut.Lock()
-	defer ca.syncMut.Unlock()
-
-	ca.syncCounter++
-	syncID := ca.syncCounter
-	ca.batch.syncID = syncID
-	ca.workChan <- ca.batch
-	ca.batch = valueBatchPool.Get().(*valueBatch)
-
-	return syncID
-}
-
-// awaitSync waits for the given syncID to have been processed by the worker.
-func (ca *columnAppender) awaitSync(syncID int32) {
-	ca.syncMut.Lock()
-	defer ca.syncMut.Unlock()
-
-	for ca.lastSync < syncID {
-		ca.syncCond.Wait()
-	}
 }
 
 // appendValue adds a value to the current batch. If the batch is full, it is sent to the worker and a new batch is started.
@@ -311,18 +246,18 @@ type tableSequence struct {
 var _ loser.Sequence = (*tableSequence)(nil)
 
 func tableSequenceAt(seq *tableSequence) result.Result[dataset.Row] { return seq.At() }
-func tableSequenceEmptyBuffer(seq *tableSequence) bool              { return seq.size-seq.off <= 1 }
 func tableSequenceClose(seq *tableSequence)                         { seq.Close() }
 
 func NewDatasetSequence(r *dataset.Reader, bufferSize int) DatasetSequence {
 	return DatasetSequence{
-		r:   r,
-		buf: make([]dataset.Row, bufferSize),
+		r:          r,
+		bufferSize: bufferSize,
 	}
 }
 
 type DatasetSequence struct {
-	curValue result.Result[dataset.Row]
+	bufferSize int
+	curValue   result.Result[dataset.Row]
 
 	r *dataset.Reader
 
@@ -338,6 +273,7 @@ func (seq *DatasetSequence) Next() bool {
 		return true
 	}
 
+	seq.buf = make([]dataset.Row, seq.bufferSize)
 ReadBatch:
 	n, err := seq.r.Read(context.Background(), seq.buf)
 	if err != nil && !errors.Is(err, io.EOF) {
