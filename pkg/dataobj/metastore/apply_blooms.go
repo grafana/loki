@@ -57,6 +57,7 @@ func (a *applyBlooms) totalReadRows() uint64 {
 }
 
 func (a *applyBlooms) Read(ctx context.Context) (arrow.RecordBatch, error) {
+	ctx = xcap.ContextWithRegion(ctx, a.region)
 	if len(a.predicates) == 0 {
 		rec, err := a.input.Read(ctx)
 		if rec != nil {

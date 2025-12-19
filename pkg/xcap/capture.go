@@ -120,7 +120,7 @@ func (c *Capture) LinkRegions(linkByAttribute string, resolveParent func(string)
 	}
 
 	// Call End() to finalise the capture. This is a no-op if already ended.
-	c.End()
+	//c.End()
 
 	getAttributeValue := func(r *Region) (string, bool) {
 		if attr := r.getAttribute(linkByAttribute); attr.Valid() && attr.Value.Type() == attribute.STRING {

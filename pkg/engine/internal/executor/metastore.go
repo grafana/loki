@@ -21,10 +21,12 @@ func (m *metastorePipeline) Read(ctx context.Context) (arrow.RecordBatch, error)
 }
 
 func (m *metastorePipeline) Close() {
+	m.reader.Close()
+	// the order is important, reader.Close() collects stats for m.region so the region must be ended after
+	// the reader is closed
 	if m.region != nil {
 		m.region.End()
 	}
-	m.reader.Close()
 }
 
 var _ Pipeline = (*metastorePipeline)(nil)

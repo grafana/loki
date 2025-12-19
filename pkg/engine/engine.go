@@ -361,6 +361,13 @@ func (e *Engine) metastoreSectionsResolver(ctx context.Context) physical.Metasto
 			return nil, fmt.Errorf("metastore: collect sections: %w", err)
 		}
 
+		// close to report the stats
+		reader.Close()
+
+		if err := mergeCapture(xcap.CaptureFromContext(ctx), plan); err != nil {
+			level.Warn(e.logger).Log("msg", "failed to merge capture", "err", err)
+		}
+
 		return resp.SectionsResponse.Sections, nil
 	}
 }
