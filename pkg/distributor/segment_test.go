@@ -164,7 +164,7 @@ func TestSegmentationPartitionResolver_Resolve(t *testing.T) {
 func TestSegmentationPartitionResolver_GetTenantSubring(t *testing.T) {
 	// Set up a fake partition ring with two active partitions.
 	ringWithActivePartitions := mockPartitionRingReader{}
-	ringWithActivePartitions.ring, _ = ring.NewPartitionRing(ring.PartitionRingDesc{
+	ring, err := ring.NewPartitionRing(ring.PartitionRingDesc{
 		Partitions: map[int32]ring.PartitionDesc{
 			1: {
 				Id:             1,
@@ -192,6 +192,8 @@ func TestSegmentationPartitionResolver_GetTenantSubring(t *testing.T) {
 			},
 		},
 	})
+	require.NoError(t, err)
+	ringWithActivePartitions.ring = ring
 
 	t.Run("no rate returns full ring", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
@@ -224,7 +226,7 @@ func TestSegmentationPartitionResolver_GetTenantSubring(t *testing.T) {
 func TestSegmentationPartitionResolver_GetSegmentationKeySubring(t *testing.T) {
 	// Set up a fake partition ring with two active partitions.
 	ringWithActivePartitions := mockPartitionRingReader{}
-	ringWithActivePartitions.ring, _ = ring.NewPartitionRing(ring.PartitionRingDesc{
+	ring, err := ring.NewPartitionRing(ring.PartitionRingDesc{
 		Partitions: map[int32]ring.PartitionDesc{
 			1: {
 				Id:             1,
@@ -252,6 +254,8 @@ func TestSegmentationPartitionResolver_GetSegmentationKeySubring(t *testing.T) {
 			},
 		},
 	})
+	require.NoError(t, err)
+	ringWithActivePartitions.ring = ring
 
 	t.Run("no rate returns full ring", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
