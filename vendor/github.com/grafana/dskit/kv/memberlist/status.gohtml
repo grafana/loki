@@ -12,6 +12,7 @@
 <ul>
     <li>Health Score: {{ .Memberlist.GetHealthScore }} (lower = better, 0 = healthy)</li>
     <li>Members: {{ .Memberlist.NumMembers }}</li>
+    <li>Zone-aware routing: {{ if .ZoneAwareRouting.Enabled }}enabled{{ else }}disabled{{ end }}</li>
 </ul>
 
 <h2>KV Store</h2>
@@ -58,6 +59,10 @@
         <th>Name</th>
         <th>Address</th>
         <th>State</th>
+        {{ if .ZoneAwareRouting.Enabled }}
+            <th>Zone</th>
+            <th>Role</th>
+        {{ end }}
     </tr>
     </thead>
 
@@ -67,6 +72,10 @@
             <td>{{ .Name }}</td>
             <td>{{ .Address }}</td>
             <td>{{ .State }}</td>
+            {{ if $.ZoneAwareRouting.Enabled }}
+                <td>{{ GetZoneFromMeta .Meta }}</td>
+                <td>{{ GetRoleFromMeta .Meta }}</td>
+            {{ end }}
         </tr>
     {{ end }}
     </tbody>

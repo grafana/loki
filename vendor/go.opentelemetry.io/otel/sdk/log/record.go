@@ -93,6 +93,9 @@ type Record struct {
 	attributeValueLengthLimit int
 	attributeCountLimit       int
 
+	// specifies whether we should deduplicate any key value collections or not
+	allowDupKeys bool
+
 	noCmp [0]func() //nolint: unused  // This is indeed used.
 }
 
@@ -167,7 +170,11 @@ func (r *Record) Body() log.Value {
 
 // SetBody sets the body of the log record.
 func (r *Record) SetBody(v log.Value) {
-	r.body = v
+	if !r.allowDupKeys {
+		r.body = r.dedupeBodyCollections(v)
+	} else {
+		r.body = v
+	}
 }
 
 // WalkAttributes walks all attributes the log record holds by calling f for
@@ -192,56 +199,60 @@ func (r *Record) AddAttributes(attrs ...log.KeyValue) {
 	if n == 0 {
 		// Avoid the more complex duplicate map lookups below.
 		var drop int
-		attrs, drop = dedup(attrs)
-		r.setDropped(drop)
+		if !r.allowDupKeys {
+			attrs, drop = dedup(attrs)
+			r.setDropped(drop)
+		}
 
-		attrs, drop = head(attrs, r.attributeCountLimit)
+		attrs, drop := head(attrs, r.attributeCountLimit)
 		r.addDropped(drop)
 
 		r.addAttrs(attrs)
 		return
 	}
 
-	// Used to find duplicates between attrs and existing attributes in r.
-	rIndex := r.attrIndex()
-	defer putIndex(rIndex)
+	if !r.allowDupKeys {
+		// Used to find duplicates between attrs and existing attributes in r.
+		rIndex := r.attrIndex()
+		defer putIndex(rIndex)
 
-	// Unique attrs that need to be added to r. This uses the same underlying
-	// array as attrs.
-	//
-	// Note, do not iterate attrs twice by just calling dedup(attrs) here.
-	unique := attrs[:0]
-	// Used to find duplicates within attrs itself. The index value is the
-	// index of the element in unique.
-	uIndex := getIndex()
-	defer putIndex(uIndex)
+		// Unique attrs that need to be added to r. This uses the same underlying
+		// array as attrs.
+		//
+		// Note, do not iterate attrs twice by just calling dedup(attrs) here.
+		unique := attrs[:0]
+		// Used to find duplicates within attrs itself. The index value is the
+		// index of the element in unique.
+		uIndex := getIndex()
+		defer putIndex(uIndex)
 
-	// Deduplicate attrs within the scope of all existing attributes.
-	for _, a := range attrs {
-		// Last-value-wins for any duplicates in attrs.
-		idx, found := uIndex[a.Key]
-		if found {
-			r.addDropped(1)
-			unique[idx] = a
-			continue
-		}
-
-		idx, found = rIndex[a.Key]
-		if found {
-			// New attrs overwrite any existing with the same key.
-			r.addDropped(1)
-			if idx < 0 {
-				r.front[-(idx + 1)] = a
-			} else {
-				r.back[idx] = a
+		// Deduplicate attrs within the scope of all existing attributes.
+		for _, a := range attrs {
+			// Last-value-wins for any duplicates in attrs.
+			idx, found := uIndex[a.Key]
+			if found {
+				r.addDropped(1)
+				unique[idx] = a
+				continue
 			}
-		} else {
-			// Unique attribute.
-			unique = append(unique, a)
-			uIndex[a.Key] = len(unique) - 1
+
+			idx, found = rIndex[a.Key]
+			if found {
+				// New attrs overwrite any existing with the same key.
+				r.addDropped(1)
+				if idx < 0 {
+					r.front[-(idx + 1)] = a
+				} else {
+					r.back[idx] = a
+				}
+			} else {
+				// Unique attribute.
+				unique = append(unique, a)
+				uIndex[a.Key] = len(unique) - 1
+			}
 		}
+		attrs = unique
 	}
-	attrs = unique
 
 	if r.attributeCountLimit > 0 && n+len(attrs) > r.attributeCountLimit {
 		// Truncate the now unique attributes to comply with limit.
@@ -297,8 +308,11 @@ func (r *Record) addAttrs(attrs []log.KeyValue) {
 // SetAttributes sets (and overrides) attributes to the log record.
 func (r *Record) SetAttributes(attrs ...log.KeyValue) {
 	var drop int
-	attrs, drop = dedup(attrs)
-	r.setDropped(drop)
+	r.setDropped(0)
+	if !r.allowDupKeys {
+		attrs, drop = dedup(attrs)
+		r.setDropped(drop)
+	}
 
 	attrs, drop = head(attrs, r.attributeCountLimit)
 	r.addDropped(drop)
@@ -387,11 +401,8 @@ func (r *Record) SetTraceFlags(flags trace.TraceFlags) {
 }
 
 // Resource returns the entity that collected the log.
-func (r *Record) Resource() resource.Resource {
-	if r.resource == nil {
-		return *resource.Empty()
-	}
-	return *r.resource
+func (r *Record) Resource() *resource.Resource {
+	return r.resource
 }
 
 // InstrumentationScope returns the scope that the Logger was created with.
@@ -429,12 +440,34 @@ func (r *Record) applyValueLimits(val log.Value) log.Value {
 		}
 		val = log.SliceValue(sl...)
 	case log.KindMap:
-		// Deduplicate then truncate. Do not do at the same time to avoid
-		// wasted truncation operations.
-		kvs, dropped := dedup(val.AsMap())
-		r.addDropped(dropped)
+		kvs := val.AsMap()
+		if !r.allowDupKeys {
+			// Deduplicate then truncate. Do not do at the same time to avoid
+			// wasted truncation operations.
+			var dropped int
+			kvs, dropped = dedup(kvs)
+			r.addDropped(dropped)
+		}
 		for i := range kvs {
 			kvs[i] = r.applyAttrLimits(kvs[i])
+		}
+		val = log.MapValue(kvs...)
+	}
+	return val
+}
+
+func (r *Record) dedupeBodyCollections(val log.Value) log.Value {
+	switch val.Kind() {
+	case log.KindSlice:
+		sl := val.AsSlice()
+		for i := range sl {
+			sl[i] = r.dedupeBodyCollections(sl[i])
+		}
+		val = log.SliceValue(sl...)
+	case log.KindMap:
+		kvs, _ := dedup(val.AsMap())
+		for i := range kvs {
+			kvs[i].Value = r.dedupeBodyCollections(kvs[i].Value)
 		}
 		val = log.MapValue(kvs...)
 	}

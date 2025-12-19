@@ -3,6 +3,7 @@ package wire
 import (
 	"errors"
 	"net"
+	"net/http"
 	"net/netip"
 	"testing"
 	"time"
@@ -31,7 +32,7 @@ func TestProtobufCodec_Frames(t *testing.T) {
 		"NackFrame with error": {
 			frame: NackFrame{
 				ID:    44,
-				Error: errors.New("test error"),
+				Error: Errorf(http.StatusInternalServerError, "test error"),
 			},
 		},
 		"DiscardFrame": {
@@ -66,6 +67,9 @@ func TestProtobufCodec_Messages(t *testing.T) {
 	}{
 		"WorkerHelloMessage": {
 			message: WorkerHelloMessage{Threads: 4},
+		},
+		"WorkerSubscribeMessage": {
+			message: WorkerSubscribeMessage{},
 		},
 		"WorkerReadyMessage": {
 			message: WorkerReadyMessage{},

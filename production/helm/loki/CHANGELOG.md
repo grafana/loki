@@ -15,6 +15,11 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [BUGFIX] Fix rendering of `dnsConfig` for `backend`, `read`, `write`, `single-binary` and `table-manager`. [#20013](https://github.com/grafana/loki/pull/20013)
 
+## 6.49.0
+
+- [CHANGE] Updated version of Grafana Loki to 3.6.3
+- [CHANGE] Updated version of Rollout Operator to 0.38.2
+
 ## 6.48.0
 
 - [CHANGE] Changed version of Grafana Loki to 3.6.2
