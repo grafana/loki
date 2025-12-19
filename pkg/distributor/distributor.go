@@ -107,6 +107,7 @@ type Config struct {
 	IngesterEnabled           bool `yaml:"ingester_writes_enabled"`
 	IngestLimitsEnabled       bool `yaml:"ingest_limits_enabled"`
 	IngestLimitsDryRunEnabled bool `yaml:"ingest_limits_dry_run_enabled"`
+	ActivateStreams           bool `yaml:"activate_streams"`
 
 	KafkaConfig kafka.Config `yaml:"-"`
 
@@ -126,11 +127,15 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	fs.BoolVar(&cfg.IngesterEnabled, "distributor.ingester-writes-enabled", true, "Enable writes to Ingesters during Push requests. Defaults to true.")
 	fs.BoolVar(&cfg.IngestLimitsEnabled, "distributor.ingest-limits-enabled", false, "Enable checking limits against the ingest-limits service. Defaults to false.")
 	fs.BoolVar(&cfg.IngestLimitsDryRunEnabled, "distributor.ingest-limits-dry-run-enabled", false, "Enable dry-run mode where limits are checked the ingest-limits service, but not enforced. Defaults to false.")
+	fs.BoolVar(&cfg.ActivateStreams, "distributor.activate-streams", true, "Enable stream activation. Defaults to true.")
 }
 
 func (cfg *Config) Validate() error {
 	if !cfg.KafkaEnabled && !cfg.IngesterEnabled {
 		return fmt.Errorf("at least one of kafka and ingestor writes must be enabled")
+	}
+	if cfg.ActivateStreams && !cfg.KafkaEnabled {
+		return fmt.Errorf("activate_streams requires kafka_writes_enabled to be true")
 	}
 	if err := cfg.DataObjTeeConfig.Validate(); err != nil {
 		return err
