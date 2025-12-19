@@ -65,11 +65,11 @@ func TestSegmentationKey_Sum64(t *testing.T) {
 func TestSegmentationPartitionResolver_Resolve(t *testing.T) {
 	// Set up a fake empty ring.
 	emptyRing := mockPartitionRingReader{}
-	emptyRing.ring = ring.NewPartitionRing(ring.PartitionRingDesc{})
+	emptyRing.ring, _ = ring.NewPartitionRing(ring.PartitionRingDesc{})
 
 	// Set up a fake partition ring with a single active partition.
 	ringWithActivePartition := mockPartitionRingReader{}
-	ringWithActivePartition.ring = ring.NewPartitionRing(ring.PartitionRingDesc{
+	ringWithActivePartition.ring, _ = ring.NewPartitionRing(ring.PartitionRingDesc{
 		Partitions: map[int32]ring.PartitionDesc{
 			1: {
 				Id:             1,
@@ -164,7 +164,7 @@ func TestSegmentationPartitionResolver_Resolve(t *testing.T) {
 func TestSegmentationPartitionResolver_GetTenantSubring(t *testing.T) {
 	// Set up a fake partition ring with two active partitions.
 	ringWithActivePartitions := mockPartitionRingReader{}
-	ringWithActivePartitions.ring = ring.NewPartitionRing(ring.PartitionRingDesc{
+	ringWithActivePartitions.ring, _ = ring.NewPartitionRing(ring.PartitionRingDesc{
 		Partitions: map[int32]ring.PartitionDesc{
 			1: {
 				Id:             1,
@@ -224,7 +224,7 @@ func TestSegmentationPartitionResolver_GetTenantSubring(t *testing.T) {
 func TestSegmentationPartitionResolver_GetSegmentationKeySubring(t *testing.T) {
 	// Set up a fake partition ring with two active partitions.
 	ringWithActivePartitions := mockPartitionRingReader{}
-	ringWithActivePartitions.ring = ring.NewPartitionRing(ring.PartitionRingDesc{
+	ringWithActivePartitions.ring, _ = ring.NewPartitionRing(ring.PartitionRingDesc{
 		Partitions: map[int32]ring.PartitionDesc{
 			1: {
 				Id:             1,
