@@ -326,7 +326,15 @@ The query produces results with too many unique label combinations. This protect
    sum by (status, method) (rate({job="nginx"} | json [5m]))
    ```
 
-   Another alternative is using `drop` or `keep` to reduce the number of labels and hence the cardinality.
+   Another alternative is using `drop` or `keep` to reduce the number of labels and hence the cardinality:
+
+   ```logql
+   # Drop high-cardinality labels like request_id or trace_id
+   {job="nginx"} | json | drop request_id, trace_id, session_id
+   
+   # Keep only the labels you need
+   {job="nginx"} | json | keep status, method, path
+   ```
 
 * **Increase the limit** if needed:
 
@@ -461,7 +469,7 @@ The number of chunks that the query would read exceeds the configured limit. Thi
 
 **Error message:**
 
-`max streams matchers per query exceeded, matchers-count > limit (1000 > 500)`
+`max streams matchers per query exceeded, matchers-count > limit (1500 > 1000)`
 
 **Cause:**
 
@@ -478,11 +486,11 @@ The query contains too many stream matchers. This limit prevents queries with ex
 * **Use regex matchers** to consolidate multiple values:
 
    ```logql
-   # Instead of many matchers
-   {job="app1"} or {job="app2"} or {job="app3"}
+   # Bad: 5 matchers
+   {cluster="prod", namespace="api", pod="nginx-1", container="app", version="v2"}
    
-   # Use regex
-   {job=~"app1|app2|app3"}
+   # Good: 3 matchers using regex patterns
+   {cluster="prod", namespace=~"api|web", pod=~"nginx-.*"}
    ```
 
 * **Increase the limit** if needed:
@@ -494,7 +502,7 @@ The query contains too many stream matchers. This limit prevents queries with ex
 
 **Properties:**
 
-- Enforced by: Query Frontend
+- Enforced by: Querier
 - Retryable: No (query must be modified)
 - HTTP status: 400 Bad Request
 - Configurable per tenant: Yes
