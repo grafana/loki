@@ -21,14 +21,8 @@ import (
 var valueBatchPool = &sync.Pool{
 	New: func() any {
 		return &valueBatch{
-			rows: make([]*rowValue, 0, 1024),
+			rows: make([]rowValue, 1024),
 		}
-	},
-}
-
-var rowValuePool = &sync.Pool{
-	New: func() any {
-		return new(rowValue)
 	},
 }
 
@@ -179,7 +173,8 @@ func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *
 
 // valueBatch references a batch of rowValues.
 type valueBatch struct {
-	rows []*rowValue
+	rows []rowValue
+	size int
 }
 
 // columnAppender writes column values to columns.
@@ -205,15 +200,14 @@ func newColumnAppender(wg *sync.WaitGroup) *columnAppender {
 func (ca *columnAppender) loop() {
 	ca.waitGroup.Add(1)
 	for batch := range ca.workChan {
-		for _, rowValue := range batch.rows {
+		for _, rowValue := range batch.rows[:batch.size] {
 			err := rowValue.builder.Append(rowValue.row, rowValue.value)
 			if err != nil {
 				panic(err)
 			}
-			rowValuePool.Put(rowValue)
 		}
 
-		batch.rows = batch.rows[:0]
+		batch.size = 0
 		valueBatchPool.Put(batch)
 	}
 	ca.waitGroup.Done()
@@ -221,13 +215,12 @@ func (ca *columnAppender) loop() {
 
 // appendValue adds a value to the current batch. If the batch is full, it is sent to the worker and a new batch is started.
 func (ca *columnAppender) appendValue(builder *dataset.ColumnBuilder, row int, value dataset.Value) {
-	rowValue := rowValuePool.Get().(*rowValue)
-	rowValue.builder = builder
-	rowValue.row = row
-	rowValue.value = value
-	ca.batch.rows = append(ca.batch.rows, rowValue)
+	ca.batch.rows[ca.batch.size].builder = builder
+	ca.batch.rows[ca.batch.size].row = row
+	ca.batch.rows[ca.batch.size].value = value
+	ca.batch.size++
 
-	if len(ca.batch.rows) >= cap(ca.batch.rows) {
+	if ca.batch.size >= len(ca.batch.rows) {
 		ca.workChan <- ca.batch
 		ca.batch = valueBatchPool.Get().(*valueBatch)
 	}
