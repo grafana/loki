@@ -7,6 +7,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/bucket/azure"
 	"github.com/grafana/loki/v3/pkg/storage/bucket/filesystem"
 	"github.com/grafana/loki/v3/pkg/storage/bucket/gcs"
+	"github.com/grafana/loki/v3/pkg/storage/bucket/oci"
 	"github.com/grafana/loki/v3/pkg/storage/bucket/s3"
 	"github.com/grafana/loki/v3/pkg/storage/bucket/swift"
 
@@ -20,6 +21,7 @@ type NamedStores struct {
 	GCS        map[string]NamedGCSStorageConfig        `yaml:"gcs"`
 	S3         map[string]NamedS3StorageConfig         `yaml:"s3"`
 	Swift      map[string]NamedSwiftStorageConfig      `yaml:"swift"`
+	OCI        map[string]NamedOCIStorageConfig        `yaml:"oci"`
 
 	// contains mapping from named store reference name to store type
 	storeType map[string]string `yaml:"-"`
@@ -78,6 +80,13 @@ func (ns *NamedStores) populateStoreType() error {
 		ns.storeType[name] = GCS
 	}
 
+	for name := range ns.OCI {
+		if err := checkForDuplicates(name); err != nil {
+			return err
+		}
+		ns.storeType[name] = OCI
+	}
+
 	for name := range ns.Swift {
 		if err := checkForDuplicates(name); err != nil {
 			return err
@@ -113,6 +122,13 @@ func (ns *NamedStores) OverrideConfig(storeCfg *Config, namedStore string) error
 		}
 
 		storeCfg.GCS = (gcs.Config)(nsCfg)
+	case OCI:
+		nsCfg, ok := ns.OCI[namedStore]
+		if !ok {
+			return fmt.Errorf("Unrecognized named oci storage config %s", namedStore)
+		}
+
+		storeCfg.OCI = (oci.Config)(nsCfg)
 	case S3:
 		nsCfg, ok := ns.S3[namedStore]
 		if !ok {
@@ -177,6 +193,14 @@ type NamedGCSStorageConfig gcs.Config
 func (cfg *NamedGCSStorageConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	flagext.DefaultValues((*gcs.Config)(cfg))
 	return unmarshal((*gcs.Config)(cfg))
+}
+
+type NamedOCIStorageConfig oci.Config
+
+// UnmarshalYAML implements the yaml.Unmarshaler interface.
+func (cfg *NamedOCIStorageConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	flagext.DefaultValues((*oci.Config)(cfg))
+	return unmarshal((*oci.Config)(cfg))
 }
 
 type NamedAzureStorageConfig azure.Config
