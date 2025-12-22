@@ -1,0 +1,57 @@
+# Example configuration for flexible segmentation keys in segment topic
+# This demonstrates the key=value based segmentation rules
+
+# Global configuration
+limits_config:
+  # Segmentation rules configuration
+  segmentation_rules:
+    # Simple key rule - matches any value for service_name
+    - "service_name"
+    
+    # Key=value rule - when service_name=querier, also include tenant and cluster
+    - "service_name=querier,tenant,cluster"
+    
+    # Key=value rule - when service_name=ingester, also include tenant and region
+    - "service_name=ingester,tenant,region"
+    
+    # Key=value rule - when service_name=distributor, also include tenant and zone
+    - "service_name=distributor,tenant,zone"
+    
+    # Key=value rule with specific additional key values
+    # When service_name=querier AND tenant=94018, also include level
+    - "service_name=querier,tenant=94018,level"
+
+# Per-tenant overrides
+overrides:
+  # Tenant with high-volume querier service
+  tenant-high-volume:
+    segmentation_rules:
+      - "service_name=querier,tenant,cluster,shard"
+      - "service_name=ingester,tenant,region"
+      - "service_name"
+  
+  # Tenant with simple configuration
+  tenant-simple:
+    segmentation_rules:
+      - "service_name"
+      - "tenant"
+
+# Example of how this would work:
+#
+# For a stream with labels: {service_name="querier", tenant="tenant1", cluster="us-east-1"}
+# The segmentation key would be: "cluster=us-east-1,service_name=querier,tenant=tenant1"
+#
+# For a stream with labels: {service_name="ingester", tenant="tenant1", region="us-west-2"}
+# The segmentation key would be: "service_name=ingester,tenant=tenant1,region=us-west-2"
+#
+# For a stream with labels: {service_name="other", tenant="tenant1"}
+# The segmentation key would be: "service_name=other" (matches simple key rule)
+#
+# For a stream with labels: {service_name="querier", tenant="94018", level="info"}
+# The segmentation key would be: "level=info,service_name=querier,tenant=94018" (matches specific tenant value)
+#
+# For a stream with labels: {service_name="querier", tenant="94019", level="info"}
+# The segmentation key would be: "service_name=querier,tenant=94019" (doesn't match specific tenant=94018 rule)
+#
+# For a stream with labels: {service_name="querier", tenant="tenant1", cluster="us-east-1", shard="shard-1"}
+# The segmentation key would be: "cluster=us-east-1,service_name=querier,shard=shard-1,tenant=tenant1"
