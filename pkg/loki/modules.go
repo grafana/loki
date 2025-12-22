@@ -1530,8 +1530,10 @@ func (t *Loki) initV2QueryEngineWorker() (services.Service, error) {
 		return nil, err
 	}
 
+	logger := log.With(util_log.Logger, "component", "query-engine-worker")
+
 	worker, err := engine_v2.NewWorker(engine_v2.WorkerParams{
-		Logger: log.With(util_log.Logger, "component", "query-engine-worker"),
+		Logger: logger,
 		Bucket: store,
 
 		Config:   t.Cfg.QueryEngine.Worker,
@@ -1541,6 +1543,8 @@ func (t *Loki) initV2QueryEngineWorker() (services.Service, error) {
 
 		AdvertiseAddr: advertiseAddr,
 		Endpoint:      "/api/v2/frame",
+
+		Metastore: metastore.NewObjectMetastore(store, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics),
 	})
 	if err != nil {
 		return nil, err

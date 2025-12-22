@@ -74,6 +74,8 @@ func dataobjV2StoreWithOpts(dataDir string, tenantID string, cfg engine.Executor
 
 	storeDir := filepath.Join(dataDir, "dataobj")
 	bucketClient, err := filesystem.NewBucket(storeDir)
+	registerer := prometheus.NewRegistry()
+	ms := metastore.NewObjectMetastore(bucketClient, metastoreCfg, logger, metastore.NewObjectMetastoreMetrics(registerer))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create filesystem bucket for DataObjV2EngineStore: %w", err)
 	}
@@ -142,7 +144,8 @@ func dataobjV2StoreWithOpts(dataDir string, tenantID string, cfg engine.Executor
 			// LogQL query.
 			WorkerThreads: max(runtime.GOMAXPROCS(0), 8),
 		},
-		Executor: cfg,
+		Executor:  cfg,
+		Metastore: ms,
 	})
 
 	if err != nil {
@@ -156,8 +159,6 @@ func dataobjV2StoreWithOpts(dataDir string, tenantID string, cfg engine.Executor
 		worker.RegisterWorkerServer(workerSrv.HTTP)
 	}
 
-	registerer := prometheus.NewRegistry()
-	ms := metastore.NewObjectMetastore(bucketClient, metastoreCfg, logger, metastore.NewObjectMetastoreMetrics(registerer))
 	newEngine, err := engine.New(engine.Params{
 		Logger:     logger,
 		Registerer: registerer,
