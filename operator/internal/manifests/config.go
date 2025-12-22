@@ -151,11 +151,12 @@ func ConfigOptions(opt Options) config.Options {
 			},
 			ServerNames: config.TLSServerNames{
 				GRPC: config.GRPCServerNames{
-					Compactor:     fqdn(serviceNameCompactorGRPC(opt.Name), opt.Namespace),
-					IndexGateway:  fqdn(serviceNameIndexGatewayGRPC(opt.Name), opt.Namespace),
-					Ingester:      fqdn(serviceNameIngesterGRPC(opt.Name), opt.Namespace),
-					QueryFrontend: fqdn(serviceNameQueryFrontendGRPC(opt.Name), opt.Namespace),
-					Ruler:         fqdn(serviceNameRulerGRPC(opt.Name), opt.Namespace),
+					Compactor:       fqdn(serviceNameCompactorGRPC(opt.Name), opt.Namespace),
+					IndexGateway:    fqdn(serviceNameIndexGatewayGRPC(opt.Name), opt.Namespace),
+					Ingester:        fqdn(serviceNameIngesterGRPC(opt.Name), opt.Namespace),
+					QueryFrontend:   fqdn(serviceNameQueryFrontendGRPC(opt.Name), opt.Namespace),
+					Ruler:           fqdn(serviceNameRulerGRPC(opt.Name), opt.Namespace),
+					PatternIngester: fqdn(serviceNamePatternIngesterGRPC(opt.Name), opt.Namespace),
 				},
 				HTTP: config.HTTPServerNames{
 					Querier: fqdn(serviceNameQuerierHTTP(opt.Name), opt.Namespace),
@@ -202,6 +203,10 @@ func ConfigOptions(opt Options) config.Options {
 			PollInterval:          pollInterval,
 			AlertManager:          amConfig,
 			RemoteWrite:           rwConfig,
+		},
+		PatternIngester: config.Address{
+			FQDN: fqdn(NewPatternIngesterGRPCService(opt).GetName(), opt.Namespace),
+			Port: grpcPort,
 		},
 		Retention:      retentionConfig(&opt.Stack),
 		OTLPAttributes: otlpAttributeConfig(&opt.Stack),

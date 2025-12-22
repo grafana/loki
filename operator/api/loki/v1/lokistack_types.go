@@ -449,6 +449,13 @@ type LokiTemplateSpec struct {
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Ruler pods"
 	Ruler *LokiComponentSpec `json:"ruler,omitempty"`
+
+	// PatternIngester defines the pattern-ingester component spec.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Pattern-Ingester pods"
+	PatternIngester *LokiComponentSpec `json:"patternIngester,omitempty"`
 }
 
 // ClusterProxy is the Proxy configuration when the cluster is behind a Proxy.
@@ -1100,6 +1107,15 @@ type RulesSpec struct {
 	NamespaceSelector *metav1.LabelSelector `json:"namespaceSelector,omitempty"`
 }
 
+type PatternIngester struct {
+	// Enabled defines a flag to enable/disable the pattern-ingester component
+	//
+	// +required
+	// +kubebuilder:validation:Required
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:booleanSwitch",displayName="Enable"
+	Enabled bool `json:"enabled"`
+}
+
 // LokiStackSpec defines the desired state of LokiStack
 type LokiStackSpec struct {
 	// ManagementState defines if the CR should be managed by the operator or not.
@@ -1198,6 +1214,13 @@ type LokiStackSpec struct {
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Network Policies"
 	NetworkPolicies *NetworkPoliciesSpec `json:"networkPolicies,omitempty"`
+
+	// PatternIngester defines the pattern-ingester configuration.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Pattern-Ingester"
+	PatternIngester *PatternIngester `json:"patternIngester,omitempty"`
 }
 
 type ReplicationSpec struct {
@@ -1400,6 +1423,13 @@ type LokiStackComponentStatus struct {
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=status,xDescriptors="urn:alm:descriptor:com.tectonic.ui:podStatuses",displayName="Ruler",order=6
 	Ruler PodStatusMap `json:"ruler,omitempty"`
+
+	// PatternIngester is a map to the per pod status of the lokistack pattern ingester deployment.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=status,xDescriptors="urn:alm:descriptor:com.tectonic.ui:podStatuses",displayName="Pattern Ingester",order=6
+	PatternIngester PodStatusMap `json:"patternIngester,omitempty"`
 }
 
 // CredentialMode represents the type of authentication used for accessing the object storage.

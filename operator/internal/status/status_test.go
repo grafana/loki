@@ -33,26 +33,28 @@ func TestRefreshSuccess(t *testing.T) {
 	}
 
 	componentPods := map[string]*corev1.PodList{
-		manifests.LabelCompactorComponent:     createPodList(manifests.LabelCompactorComponent, true, corev1.PodRunning),
-		manifests.LabelDistributorComponent:   createPodList(manifests.LabelDistributorComponent, true, corev1.PodRunning),
-		manifests.LabelIngesterComponent:      createPodList(manifests.LabelIngesterComponent, true, corev1.PodRunning),
-		manifests.LabelQuerierComponent:       createPodList(manifests.LabelQuerierComponent, true, corev1.PodRunning),
-		manifests.LabelQueryFrontendComponent: createPodList(manifests.LabelQueryFrontendComponent, true, corev1.PodRunning),
-		manifests.LabelIndexGatewayComponent:  createPodList(manifests.LabelIndexGatewayComponent, true, corev1.PodRunning),
-		manifests.LabelRulerComponent:         createPodList(manifests.LabelRulerComponent, true, corev1.PodRunning),
-		manifests.LabelGatewayComponent:       createPodList(manifests.LabelGatewayComponent, true, corev1.PodRunning),
+		manifests.LabelCompactorComponent:       createPodList(manifests.LabelCompactorComponent, true, corev1.PodRunning),
+		manifests.LabelDistributorComponent:     createPodList(manifests.LabelDistributorComponent, true, corev1.PodRunning),
+		manifests.LabelIngesterComponent:        createPodList(manifests.LabelIngesterComponent, true, corev1.PodRunning),
+		manifests.LabelQuerierComponent:         createPodList(manifests.LabelQuerierComponent, true, corev1.PodRunning),
+		manifests.LabelQueryFrontendComponent:   createPodList(manifests.LabelQueryFrontendComponent, true, corev1.PodRunning),
+		manifests.LabelIndexGatewayComponent:    createPodList(manifests.LabelIndexGatewayComponent, true, corev1.PodRunning),
+		manifests.LabelRulerComponent:           createPodList(manifests.LabelRulerComponent, true, corev1.PodRunning),
+		manifests.LabelGatewayComponent:         createPodList(manifests.LabelGatewayComponent, true, corev1.PodRunning),
+		manifests.LabelPatternIngesterComponent: createPodList(manifests.LabelPatternIngesterComponent, true, corev1.PodRunning),
 	}
 
 	wantStatus := lokiv1.LokiStackStatus{
 		Components: lokiv1.LokiStackComponentStatus{
-			Compactor:     lokiv1.PodStatusMap{lokiv1.PodReady: {"compactor-pod-0"}},
-			Distributor:   lokiv1.PodStatusMap{lokiv1.PodReady: {"distributor-pod-0"}},
-			IndexGateway:  lokiv1.PodStatusMap{lokiv1.PodReady: {"index-gateway-pod-0"}},
-			Ingester:      lokiv1.PodStatusMap{lokiv1.PodReady: {"ingester-pod-0"}},
-			Querier:       lokiv1.PodStatusMap{lokiv1.PodReady: {"querier-pod-0"}},
-			QueryFrontend: lokiv1.PodStatusMap{lokiv1.PodReady: {"query-frontend-pod-0"}},
-			Gateway:       lokiv1.PodStatusMap{lokiv1.PodReady: {"lokistack-gateway-pod-0"}},
-			Ruler:         lokiv1.PodStatusMap{lokiv1.PodReady: {"ruler-pod-0"}},
+			Compactor:       lokiv1.PodStatusMap{lokiv1.PodReady: {"compactor-pod-0"}},
+			Distributor:     lokiv1.PodStatusMap{lokiv1.PodReady: {"distributor-pod-0"}},
+			IndexGateway:    lokiv1.PodStatusMap{lokiv1.PodReady: {"index-gateway-pod-0"}},
+			Ingester:        lokiv1.PodStatusMap{lokiv1.PodReady: {"ingester-pod-0"}},
+			Querier:         lokiv1.PodStatusMap{lokiv1.PodReady: {"querier-pod-0"}},
+			QueryFrontend:   lokiv1.PodStatusMap{lokiv1.PodReady: {"query-frontend-pod-0"}},
+			Gateway:         lokiv1.PodStatusMap{lokiv1.PodReady: {"lokistack-gateway-pod-0"}},
+			Ruler:           lokiv1.PodStatusMap{lokiv1.PodReady: {"ruler-pod-0"}},
+			PatternIngester: lokiv1.PodStatusMap{lokiv1.PodReady: {"pattern-ingester-pod-0"}},
 		},
 		Storage: lokiv1.LokiStackStorageStatus{
 			CredentialMode: lokiv1.CredentialModeStatic,
@@ -79,7 +81,7 @@ func TestRefreshSuccess(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, 1, k.GetCallCount())
-	require.Equal(t, 8, k.ListCallCount())
+	require.Equal(t, 9, k.ListCallCount())
 
 	require.Equal(t, 1, sw.UpdateCallCount())
 	_, updated, _ := sw.UpdateArgsForCall(0)
@@ -145,7 +147,7 @@ func TestRefreshSuccess_ZoneAwarePendingPod(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, 1, k.GetCallCount())
-	require.Equal(t, 9, k.ListCallCount())
+	require.Equal(t, 10, k.ListCallCount())
 	require.Equal(t, 1, sw.UpdateCallCount())
 	_, updated, _ := sw.UpdateArgsForCall(0)
 	updatedStack, ok := updated.(*lokiv1.LokiStack)

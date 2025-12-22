@@ -151,8 +151,8 @@ metadata:
     capabilities: Full Lifecycle
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
-    containerImage: docker.io/grafana/loki-operator:0.9.0
-    createdAt: "2025-12-15T18:59:53Z"
+    containerImage: docker.io/grafana/loki-operator:0.8.0
+    createdAt: "2025-11-28T11:49:45Z"
     description: The Community Loki Operator provides Kubernetes native deployment
       and management of Loki and related logging components.
     operators.operatorframework.io/builder: operator-sdk-unknown
@@ -660,6 +660,15 @@ spec:
         path: networkPolicies.ruleSet
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:text
+      - description: PatternIngester defines the pattern-ingester configuration.
+        displayName: Pattern-Ingester
+        path: patternIngesterSpec
+      - description: Enabled defines a flag to enable/disable the pattern-ingester
+          component
+        displayName: Enable
+        path: patternIngesterSpec.enabled
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
       - description: Proxy defines the spec for the object proxy to configure cluster
           proxy information.
         displayName: Cluster Proxy
@@ -858,6 +867,21 @@ spec:
       - description: Replicas defines the number of replica pods of the component.
         displayName: Replicas
         path: template.ingester.replicas
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:hidden
+      - description: PatternIngester defines the pattern-ingester component spec.
+        displayName: Pattern-Ingester pods
+        path: template.patternIngester
+      - description: |-
+          PodAntiAffinity defines the pod anti affinity scheduling rules to schedule pods
+          of a component.
+        displayName: PodAntiAffinity
+        path: template.patternIngester.podAntiAffinity
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podAntiAffinity
+      - description: Replicas defines the number of replica pods of the component.
+        displayName: Replicas
+        path: template.patternIngester.replicas
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:hidden
       - description: Querier defines the querier component spec.

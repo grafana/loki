@@ -1761,6 +1761,20 @@ PodStatusMap
 <p>Ruler is a map to the per pod status of the lokistack ruler statefulset.</p>
 </td>
 </tr>
+<tr>
+<td>
+<code>patternIngester</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-PodStatusMap">
+PodStatusMap
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>PatternIngester is a map to the per pod status of the lokistack pattern ingester deployment.</p>
+</td>
+</tr>
 </tbody>
 </table>
 
@@ -2139,6 +2153,20 @@ When enabled, the operator creates NetworkPolicies to control ingress/egress bet
 Loki components and related services.</p>
 </td>
 </tr>
+<tr>
+<td>
+<code>patternIngester</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-PatternIngester">
+PatternIngester
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>PatternIngester defines the pattern-ingester configuration.</p>
+</td>
+</tr>
 </tbody>
 </table>
 
@@ -2407,6 +2435,20 @@ LokiComponentSpec
 <td>
 <em>(Optional)</em>
 <p>Ruler defines the ruler component spec.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>patternIngester</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-LokiComponentSpec">
+LokiComponentSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>PatternIngester defines the pattern-ingester component spec.</p>
 </td>
 </tr>
 </tbody>
@@ -3276,6 +3318,34 @@ OpenshiftOTLPConfig
 <td>
 <em>(Optional)</em>
 <p>OTLP contains settings for ingesting data using OTLP in the OpenShift tenancy mode.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## PatternIngester { #loki-grafana-com-v1-PatternIngester }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiStackSpec">LokiStackSpec</a>)
+</p>
+<div>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>enabled</code><br/>
+<em>
+bool
+</em>
+</td>
+<td>
+<p>Enabled defines a flag to enable/disable the pattern-ingester component</p>
 </td>
 </tr>
 </tbody>

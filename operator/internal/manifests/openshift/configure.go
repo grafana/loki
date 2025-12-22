@@ -113,6 +113,33 @@ func ConfigureGatewayDeploymentRulesAPI(d *appsv1.Deployment, containerName stri
 	return nil
 }
 
+/*
+// ConfigureGatewayDeploymentPatternsAPI merges CLI argument to the gateway container
+// that allow only Patterns API access with a valid namespace input for all logging tenants.
+func ConfigureGatewayDeploymentPatternsAPI(d *appsv1.Deployment, containerName string) error {
+	var gwIndex int
+	for i, c := range d.Spec.Template.Spec.Containers {
+		if c.Name == containerName {
+			gwIndex = i
+			break
+		}
+	}
+
+	container := corev1.Container{
+		Args: []string{
+			fmt.Sprintf("--logs.pattern.label-filters=%s:%s", tenantApplication, opaDefaultLabelMatchers),
+			fmt.Sprintf("--logs.pattern.label-filters=%s:%s", tenantInfrastructure, opaDefaultLabelMatchers),
+			fmt.Sprintf("--logs.pattern.label-filters=%s:%s", tenantAudit, opaDefaultLabelMatchers),
+		},
+	}
+
+	if err := mergo.Merge(&d.Spec.Template.Spec.Containers[gwIndex], container, mergo.WithAppendSlice); err != nil {
+		return kverrors.Wrap(err, "failed to merge container")
+	}
+
+	return nil
+ } */
+
 // ConfigureGatewayService merges the OpenPolicyAgent sidecar metrics port into
 // the service spec. With this the metrics are exposed through the same service.
 func ConfigureGatewayService(s *corev1.ServiceSpec) error {

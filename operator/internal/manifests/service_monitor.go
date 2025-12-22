@@ -18,6 +18,7 @@ func BuildServiceMonitors(opts Options) []client.Object {
 		NewIndexGatewayServiceMonitor(opts),
 		NewRulerServiceMonitor(opts),
 		NewGatewayServiceMonitor(opts),
+		NewPatternIngesterServiceMonitor(opts),
 	}
 }
 
@@ -116,6 +117,17 @@ func NewGatewayServiceMonitor(opts Options) *monitoringv1.ServiceMonitor {
 	}
 
 	return sm
+}
+
+// NewIngesterServiceMonitor creates a k8s service monitor for the pattern ingester component
+func NewPatternIngesterServiceMonitor(opts Options) *monitoringv1.ServiceMonitor {
+	l := ComponentLabels(LabelPatternIngesterComponent, opts.Name)
+
+	serviceMonitorName := serviceMonitorName(PatternIngesterName(opts.Name))
+	serviceName := serviceNamePatternIngesterHTTP(opts.Name)
+	lokiEndpoint := lokiServiceMonitorEndpoint(opts.Name, lokiHTTPPortName, serviceName, opts.Namespace, opts.Gates.ServiceMonitorTLSEndpoints)
+
+	return newServiceMonitor(opts.Namespace, serviceMonitorName, l, lokiEndpoint)
 }
 
 func newServiceMonitor(namespace, serviceMonitorName string, labels labels.Set, endpoint monitoringv1.Endpoint) *monitoringv1.ServiceMonitor {
