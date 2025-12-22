@@ -1,7 +1,10 @@
 // Package lz4block provides LZ4 BlockSize types and pools of buffers.
 package lz4block
 
-import "sync"
+import (
+	"fmt"
+	"sync"
+)
 
 const (
 	Block64Kb uint32 = 1 << (16 + iota*2)
@@ -12,11 +15,11 @@ const (
 )
 
 var (
-	BlockPool64K  = sync.Pool{New: func() interface{} { return make([]byte, Block64Kb) }}
-	BlockPool256K = sync.Pool{New: func() interface{} { return make([]byte, Block256Kb) }}
-	BlockPool1M   = sync.Pool{New: func() interface{} { return make([]byte, Block1Mb) }}
-	BlockPool4M   = sync.Pool{New: func() interface{} { return make([]byte, Block4Mb) }}
-	BlockPool8M   = sync.Pool{New: func() interface{} { return make([]byte, Block8Mb) }}
+	blockPool64K  = sync.Pool{New: func() interface{} { return &[Block64Kb]byte{} }}
+	blockPool256K = sync.Pool{New: func() interface{} { return &[Block256Kb]byte{} }}
+	blockPool1M   = sync.Pool{New: func() interface{} { return &[Block1Mb]byte{} }}
+	blockPool4M   = sync.Pool{New: func() interface{} { return &[Block4Mb]byte{} }}
+	blockPool8M   = sync.Pool{New: func() interface{} { return &[Block8Mb]byte{} }}
 )
 
 func Index(b uint32) BlockSizeIndex {
@@ -50,35 +53,37 @@ func (b BlockSizeIndex) IsValid() bool {
 }
 
 func (b BlockSizeIndex) Get() []byte {
-	var buf interface{}
 	switch b {
 	case 4:
-		buf = BlockPool64K.Get()
+		return blockPool64K.Get().(*[Block64Kb]byte)[:]
 	case 5:
-		buf = BlockPool256K.Get()
+		return blockPool256K.Get().(*[Block256Kb]byte)[:]
 	case 6:
-		buf = BlockPool1M.Get()
+		return blockPool1M.Get().(*[Block1Mb]byte)[:]
 	case 7:
-		buf = BlockPool4M.Get()
+		return blockPool4M.Get().(*[Block4Mb]byte)[:]
 	case 3:
-		buf = BlockPool8M.Get()
+		return blockPool8M.Get().(*[Block8Mb]byte)[:]
+	default:
+		panic(fmt.Errorf("invalid block index %d", b))
 	}
-	return buf.([]byte)
 }
 
 func Put(buf []byte) {
 	// Safeguard: do not allow invalid buffers.
 	switch c := cap(buf); uint32(c) {
 	case Block64Kb:
-		BlockPool64K.Put(buf[:c])
+		blockPool64K.Put((*[Block64Kb]byte)(buf[:c]))
 	case Block256Kb:
-		BlockPool256K.Put(buf[:c])
+		blockPool256K.Put((*[Block256Kb]byte)(buf[:c]))
 	case Block1Mb:
-		BlockPool1M.Put(buf[:c])
+		blockPool1M.Put((*[Block1Mb]byte)(buf[:c]))
 	case Block4Mb:
-		BlockPool4M.Put(buf[:c])
+		blockPool4M.Put((*[Block4Mb]byte)(buf[:c]))
 	case Block8Mb:
-		BlockPool8M.Put(buf[:c])
+		blockPool8M.Put((*[Block8Mb]byte)(buf[:c]))
+	default:
+		panic(fmt.Errorf("invalid block size %d", c))
 	}
 }
 

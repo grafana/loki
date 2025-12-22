@@ -117,6 +117,7 @@ func (r *Reader) Read(buf []byte) (n int, err error) {
 	for len(buf) > 0 {
 		var bn int
 		if r.idx == 0 {
+		read:
 			if r.isNotConcurrent() {
 				bn, err = r.read(buf)
 			} else {
@@ -129,12 +130,29 @@ func (r *Reader) Read(buf []byte) (n int, err error) {
 			}
 			switch err {
 			case nil:
+			case lz4errors.ErrEndOfStream:
+
+				// Read Checksum.
+				err = r.frame.CloseR(r.src)
+				if err != nil {
+					return
+				}
+
+				//Check for new stream.
+				r.Reset(r.src)
+				if err = r.init(); r.state.next(err) {
+					return
+				}
+
+				goto read
 			case io.EOF:
 				if er := r.frame.CloseR(r.src); er != nil {
 					err = er
 				}
 				lz4block.Put(r.data)
 				r.data = nil
+				// reset frame to release the buffer held by Block
+				r.frame.Reset(r.num)
 				return
 			default:
 				return
@@ -157,9 +175,9 @@ func (r *Reader) Read(buf []byte) (n int, err error) {
 }
 
 // read uncompresses the next block as follow:
-// - if buf has enough room, the block is uncompressed into it directly
-//   and the lenght of used space is returned
-// - else, the uncompress data is stored in r.data and 0 is returned
+//   - if buf has enough room, the block is uncompressed into it directly
+//     and the lenght of used space is returned
+//   - else, the uncompress data is stored in r.data and 0 is returned
 func (r *Reader) read(buf []byte) (int, error) {
 	block := r.frame.Blocks.Block
 	_, err := block.Read(r.frame, r.src, r.cum)
@@ -212,6 +230,7 @@ func (r *Reader) Reset(reader io.Reader) {
 // WriteTo efficiently uncompresses the data from the Reader underlying source to w.
 func (r *Reader) WriteTo(w io.Writer) (n int64, err error) {
 	switch r.state.state {
+	case readState:
 	case closedState, errorState:
 		return 0, r.state.err
 	case newState:
@@ -232,6 +251,7 @@ func (r *Reader) WriteTo(w io.Writer) (n int64, err error) {
 	for {
 		var bn int
 		var dst []byte
+	read:
 		if r.isNotConcurrent() {
 			bn, err = r.read(data)
 			dst = data[:bn]
@@ -246,6 +266,26 @@ func (r *Reader) WriteTo(w io.Writer) (n int64, err error) {
 		}
 		switch err {
 		case nil:
+		case lz4errors.ErrEndOfStream:
+
+			// Read Checksum.
+			err = r.frame.CloseR(r.src)
+			if err != nil {
+				return
+			}
+
+			//Check for new stream.
+			r.Reset(r.src)
+			if err = r.init(); r.state.next(err) {
+
+				if err == io.EOF {
+					err = nil
+				}
+
+				return
+			}
+
+			goto read
 		case io.EOF:
 			err = r.frame.CloseR(r.src)
 			return

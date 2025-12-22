@@ -32,33 +32,7 @@ func decodeBlock(dst, src, dict []byte) (ret int) {
 
 		// Literals.
 		if lLen := b >> 4; lLen > 0 {
-			switch {
-			case lLen < 0xF && si+16 < uint(len(src)):
-				// Shortcut 1
-				// if we have enough room in src and dst, and the literals length
-				// is small enough (0..14) then copy all 16 bytes, even if not all
-				// are part of the literals.
-				copy(dst[di:], src[si:si+16])
-				si += lLen
-				di += lLen
-				if mLen := b & 0xF; mLen < 0xF {
-					// Shortcut 2
-					// if the match length (4..18) fits within the literals, then copy
-					// all 18 bytes, even if not all are part of the literals.
-					mLen += 4
-					if offset := u16(src[si:]); mLen <= offset && offset < di {
-						i := di - offset
-						// The remaining buffer may not hold 18 bytes.
-						// See https://github.com/pierrec/lz4/issues/51.
-						if end := i + 18; end <= uint(len(dst)) {
-							copy(dst[di:], dst[i:end])
-							si += 2
-							di += mLen
-							continue
-						}
-					}
-				}
-			case lLen == 0xF:
+			if lLen == 0xF {
 				for {
 					x := uint(src[si])
 					if lLen += x; int(lLen) < 0 {
@@ -69,20 +43,27 @@ func decodeBlock(dst, src, dict []byte) (ret int) {
 						break
 					}
 				}
-				fallthrough
-			default:
-				copy(dst[di:di+lLen], src[si:si+lLen])
-				si += lLen
-				di += lLen
 			}
+			if lLen <= 16 && si+16 < uint(len(src)) {
+				// Shortcut 1: if we have enough room in src and dst, and the
+				// literal length is at most 16, then copy 16 bytes, even if not
+				// all are part of the literal. The compiler inlines this copy.
+				copy(dst[di:di+16], src[si:si+16])
+			} else {
+				copy(dst[di:di+lLen], src[si:si+lLen])
+			}
+			si += lLen
+			di += lLen
 		}
 
+		// Match.
 		mLen := b & 0xF
 		if si == uint(len(src)) && mLen == 0 {
 			break
 		} else if si >= uint(len(src)) {
 			return hasError
 		}
+		mLen += minMatch
 
 		offset := u16(src[si:])
 		if offset == 0 {
@@ -90,9 +71,17 @@ func decodeBlock(dst, src, dict []byte) (ret int) {
 		}
 		si += 2
 
-		// Match.
-		mLen += minMatch
-		if mLen == minMatch+0xF {
+		if mLen <= 16 {
+			// Shortcut 2: if the match length is at most 16 and we're far
+			// enough from the end of dst, copy 16 bytes unconditionally
+			// so that the compiler can inline the copy.
+			if mLen <= offset && offset < di && di+16 <= uint(len(dst)) {
+				i := di - offset
+				copy(dst[di:di+16], dst[i:i+16])
+				di += mLen
+				continue
+			}
+		} else if mLen >= 15+minMatch {
 			for {
 				x := uint(src[si])
 				if mLen += x; int(mLen) < 0 {

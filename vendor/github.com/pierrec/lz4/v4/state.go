@@ -69,7 +69,7 @@ func (s *_State) check(errp *error) {
 }
 
 func (s *_State) fail() error {
-	s.state = errorState
 	s.err = fmt.Errorf("%w[%s]", lz4errors.ErrInternalUnhandledState, s.state)
+	s.state = errorState
 	return s.err
 }
