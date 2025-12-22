@@ -14,9 +14,12 @@ type PointersScan struct {
 	Selector   Expression
 	Predicates []Expression
 
-	MaxTimeRange TimeRange
-	Start        time.Time
-	End          time.Time
+	Start time.Time
+	End   time.Time
+}
+
+func (s *PointersScan) MaxTimeRange() TimeRange {
+	return TimeRange{s.Start, s.End}
 }
 
 func (s *PointersScan) ID() ulid.ULID { return s.NodeID }
@@ -27,13 +30,12 @@ func (s *PointersScan) Clone() Node {
 		selector = s.Selector.Clone()
 	}
 	return &PointersScan{
-		NodeID:       ulid.Make(),
-		Location:     s.Location,
-		Selector:     selector,
-		Predicates:   cloneExpressions(s.Predicates),
-		MaxTimeRange: s.MaxTimeRange,
-		Start:        s.Start,
-		End:          s.End,
+		NodeID:     ulid.Make(),
+		Location:   s.Location,
+		Selector:   selector,
+		Predicates: cloneExpressions(s.Predicates),
+		Start:      s.Start,
+		End:        s.End,
 	}
 }
 

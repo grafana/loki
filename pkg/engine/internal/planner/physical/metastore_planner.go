@@ -61,11 +61,6 @@ func (p MetastorePlanner) Plan(ctx context.Context, selector Expression, predica
 
 				Start: start,
 				End:   end,
-
-				MaxTimeRange: TimeRange{
-					Start: start,
-					End:   end,
-				},
 			},
 		})
 	}

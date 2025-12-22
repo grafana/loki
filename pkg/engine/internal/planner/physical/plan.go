@@ -193,14 +193,14 @@ func (p *Plan) CalculateMaxTimeRange() TimeRange {
 					case ScanTypeDataObject:
 						timeRange = timeRange.Merge(t.DataObject.MaxTimeRange)
 					case ScanTypePointers:
-						timeRange = timeRange.Merge(t.Pointers.MaxTimeRange)
+						timeRange = timeRange.Merge(t.Pointers.MaxTimeRange())
 					}
 
 				}
 			case *DataObjScan:
 				timeRange = timeRange.Merge(s.MaxTimeRange)
 			case *PointersScan:
-				timeRange = timeRange.Merge(s.MaxTimeRange)
+				timeRange = timeRange.Merge(s.MaxTimeRange())
 			}
 
 			return nil

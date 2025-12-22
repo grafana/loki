@@ -270,8 +270,6 @@ message PointersScan {
     (gogoproto.stdtime) = true,
     (gogoproto.nullable) = false
   ];
-
-  TimeRange max_time_range = 6;
 }
 
 // Join represents a join operation in the physical plan.

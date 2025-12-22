@@ -20,6 +20,10 @@ func (m *metastorePipeline) Read(ctx context.Context) (arrow.RecordBatch, error)
 	return rec, translateEOF(err, true)
 }
 
+func (m *metastorePipeline) Region() *xcap.Region {
+	return m.region
+}
+
 func (m *metastorePipeline) Close() {
 	m.reader.Close()
 	// the order is important, reader.Close() collects stats for m.region so the region must be ended after

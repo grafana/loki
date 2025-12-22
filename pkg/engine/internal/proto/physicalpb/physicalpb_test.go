@@ -192,10 +192,6 @@ func Test_Node(t *testing.T) {
 				},
 				Start: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 				End:   time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC),
-				MaxTimeRange: physical.TimeRange{
-					Start: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
-					End:   time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC),
-				},
 			},
 		},
 		{
@@ -222,10 +218,6 @@ func Test_Node(t *testing.T) {
 							Start:      time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
 							End:        time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC),
 							Predicates: []physical.Expression{physical.NewLiteral("predicate")},
-							MaxTimeRange: physical.TimeRange{
-								Start: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
-								End:   time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC),
-							},
 						},
 					},
 				},

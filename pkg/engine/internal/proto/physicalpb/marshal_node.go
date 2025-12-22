@@ -390,11 +390,10 @@ func (n *PointersScan) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) 
 	return &physical.PointersScan{
 		NodeID: nodeID,
 
-		Location:     physical.DataObjLocation(n.Location),
-		Selector:     selector,
-		Predicates:   marshalExpressions(n.Predicates),
-		Start:        n.Start,
-		End:          n.End,
-		MaxTimeRange: marshalTimeRange(n.MaxTimeRange),
+		Location:   physical.DataObjLocation(n.Location),
+		Selector:   selector,
+		Predicates: marshalExpressions(n.Predicates),
+		Start:      n.Start,
+		End:        n.End,
 	}, nil
 }
