@@ -18,6 +18,7 @@ import (
 	"github.com/parquet-go/parquet-go/compress"
 	"github.com/parquet-go/parquet-go/deprecated"
 	"github.com/parquet-go/parquet-go/encoding"
+	"github.com/parquet-go/parquet-go/internal/memory"
 )
 
 // Schema represents a parquet schema created from a Go value.
@@ -370,7 +371,14 @@ func (s *Schema) Reconstruct(value any, row Row) error {
 		v = v.Elem()
 	}
 
-	b := valuesSliceBufferPool.Get().(*valuesSliceBuffer)
+	b := valuesSliceBufferPool.Get(
+		func() *valuesSliceBuffer {
+			return &valuesSliceBuffer{
+				values: make([][]Value, 0, 64),
+			}
+		},
+		func(v *valuesSliceBuffer) { v.values = v.values[:0] },
+	)
 
 	state := s.lazyLoadState()
 	funcs := s.lazyLoadFuncs()
@@ -405,19 +413,10 @@ func (v *valuesSliceBuffer) reserve(n int) [][]Value {
 }
 
 func (v *valuesSliceBuffer) release() {
-	v.values = v.values[:0]
 	valuesSliceBufferPool.Put(v)
 }
 
-var valuesSliceBufferPool = &sync.Pool{
-	New: func() any {
-		return &valuesSliceBuffer{
-			// use 64 as a cache friendly base estimate of max column numbers we will be
-			// reading.
-			values: make([][]Value, 0, 64),
-		}
-	},
-}
+var valuesSliceBufferPool memory.Pool[valuesSliceBuffer]
 
 // Lookup returns the leaf column at the given path.
 //
@@ -1185,7 +1184,7 @@ func makeNodeOf(path []string, t reflect.Type, name string, tags parquetTags, ta
 	if node.Repeated() && !list {
 		repeated := node.GoType().Elem()
 		if repeated.Kind() == reflect.Slice {
-			// Special case: allow [][]uint as seen in a logical map of strings
+			// Special case: allow [][]uint8 as seen in a logical map of strings
 			if repeated.Elem().Kind() != reflect.Uint8 {
 				panic("unhandled nested slice on parquet schema without list tag")
 			}

@@ -7,6 +7,7 @@ import (
 	"github.com/parquet-go/parquet-go/deprecated"
 	"github.com/parquet-go/parquet-go/encoding"
 	"github.com/parquet-go/parquet-go/encoding/plain"
+	"github.com/parquet-go/parquet-go/internal/memory"
 	"github.com/parquet-go/parquet-go/sparse"
 )
 
@@ -38,7 +39,7 @@ func newBooleanDictionary(typ Type, columnIndex int16, numValues int32, data enc
 	return &booleanDictionary{
 		booleanPage: booleanPage{
 			typ:         typ,
-			bits:        values[:bitpack.ByteCount(uint(numValues))],
+			bits:        memory.SliceBufferFrom(values[:bitpack.ByteCount(uint(numValues))]),
 			numValues:   numValues,
 			columnIndex: ^columnIndex,
 		},
@@ -53,7 +54,7 @@ func (d *booleanDictionary) Type() Type { return newIndexedType(d.typ, d) }
 
 func (d *booleanDictionary) Len() int { return int(d.numValues) }
 
-func (d *booleanDictionary) Size() int64 { return int64(len(d.bits)) }
+func (d *booleanDictionary) Size() int64 { return int64(d.bits.Len()) }
 
 func (d *booleanDictionary) Index(i int32) Value { return d.makeValue(d.index(i)) }
 
@@ -69,13 +70,15 @@ func (d *booleanDictionary) insert(indexes []int32, rows sparse.Array) {
 	if d.table[0] < 0 {
 		d.table[0] = d.numValues
 		d.numValues++
-		d.bits = plain.AppendBoolean(d.bits, int(d.table[0]), false)
+		bits := plain.AppendBoolean(d.bits.Slice(), int(d.table[0]), false)
+		d.bits = memory.SliceBufferFrom(bits)
 	}
 
 	if d.table[1] < 0 {
 		d.table[1] = d.numValues
 		d.numValues++
-		d.bits = plain.AppendBoolean(d.bits, int(d.table[1]), true)
+		bits := plain.AppendBoolean(d.bits.Slice(), int(d.table[1]), true)
+		d.bits = memory.SliceBufferFrom(bits)
 	}
 
 	values := rows.Uint8Array()
@@ -123,7 +126,7 @@ func (d *booleanDictionary) Bounds(indexes []int32) (min, max Value) {
 }
 
 func (d *booleanDictionary) Reset() {
-	d.bits = d.bits[:0]
+	d.bits.Reset()
 	d.offset = 0
 	d.numValues = 0
 	d.table = [2]int32{-1, -1}
@@ -138,12 +141,14 @@ func (d *booleanDictionary) insertBoolean(value bool) int32 {
 	if d.table[0] < 0 {
 		d.table[0] = d.numValues
 		d.numValues++
-		d.bits = plain.AppendBoolean(d.bits, int(d.table[0]), false)
+		bits := plain.AppendBoolean(d.bits.Slice(), int(d.table[0]), false)
+		d.bits = memory.SliceBufferFrom(bits)
 	}
 	if d.table[1] < 0 {
 		d.table[1] = d.numValues
 		d.numValues++
-		d.bits = plain.AppendBoolean(d.bits, int(d.table[1]), true)
+		bits := plain.AppendBoolean(d.bits.Slice(), int(d.table[1]), true)
+		d.bits = memory.SliceBufferFrom(bits)
 	}
 	if value {
 		return d.table[1]

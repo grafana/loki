@@ -6,6 +6,7 @@ import (
 	"github.com/parquet-go/bitpack/unsafecast"
 	"github.com/parquet-go/parquet-go/deprecated"
 	"github.com/parquet-go/parquet-go/encoding"
+	"github.com/parquet-go/parquet-go/internal/memory"
 	"github.com/parquet-go/parquet-go/sparse"
 )
 
@@ -31,8 +32,8 @@ func newByteArrayDictionary(typ Type, columnIndex int16, numValues int32, data e
 	return &byteArrayDictionary{
 		byteArrayPage: byteArrayPage{
 			typ:         typ,
-			values:      values,
-			offsets:     offsets,
+			values:      memory.SliceBufferFrom(values),
+			offsets:     memory.SliceBufferFrom(offsets),
 			columnIndex: ^columnIndex,
 		},
 	}
@@ -42,7 +43,7 @@ func (d *byteArrayDictionary) Type() Type { return newIndexedType(d.typ, d) }
 
 func (d *byteArrayDictionary) Len() int { return d.len() }
 
-func (d *byteArrayDictionary) Size() int64 { return int64(len(d.values)) }
+func (d *byteArrayDictionary) Size() int64 { return int64(d.values.Len()) }
 
 func (d *byteArrayDictionary) Index(i int32) Value { return d.makeValueBytes(d.index(int(i))) }
 
@@ -74,8 +75,8 @@ func (d *byteArrayDictionary) insert(indexes []int32, rows sparse.Array) {
 			value = d.alloc.copyString(value)
 			index = int32(len(d.table))
 			d.table[value] = index
-			d.values = append(d.values, value...)
-			d.offsets = append(d.offsets, uint32(len(d.values)))
+			d.values.Append([]byte(value)...)
+			d.offsets.AppendValue(uint32(d.values.Len()))
 		}
 
 		indexes[i] = index
@@ -120,8 +121,8 @@ func (d *byteArrayDictionary) Bounds(indexes []int32) (min, max Value) {
 }
 
 func (d *byteArrayDictionary) Reset() {
-	d.offsets = d.offsets[:1]
-	d.values = d.values[:0]
+	d.offsets.Resize(1)
+	d.values.Resize(0)
 	for k := range d.table {
 		delete(d.table, k)
 	}

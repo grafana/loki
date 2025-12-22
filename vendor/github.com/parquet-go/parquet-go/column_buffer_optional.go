@@ -2,9 +2,9 @@ package parquet
 
 import (
 	"io"
-	"slices"
 
 	"github.com/parquet-go/parquet-go/deprecated"
+	"github.com/parquet-go/parquet-go/internal/memory"
 	"github.com/parquet-go/parquet-go/sparse"
 )
 
@@ -23,18 +23,16 @@ type optionalColumnBuffer struct {
 	base               ColumnBuffer
 	reordered          bool
 	maxDefinitionLevel byte
-	rows               []int32
-	sortIndex          []int32
-	definitionLevels   []byte
+	rows               memory.SliceBuffer[int32]
+	sortIndex          memory.SliceBuffer[int32]
+	definitionLevels   memory.SliceBuffer[byte]
 	nullOrdering       nullOrdering
 }
 
-func newOptionalColumnBuffer(base ColumnBuffer, rows []int32, levels []byte, maxDefinitionLevel byte, nullOrdering nullOrdering) *optionalColumnBuffer {
+func newOptionalColumnBuffer(base ColumnBuffer, maxDefinitionLevel byte, nullOrdering nullOrdering) *optionalColumnBuffer {
 	return &optionalColumnBuffer{
 		base:               base,
-		rows:               rows,
 		maxDefinitionLevel: maxDefinitionLevel,
-		definitionLevels:   levels,
 		nullOrdering:       nullOrdering,
 	}
 }
@@ -44,8 +42,8 @@ func (col *optionalColumnBuffer) Clone() ColumnBuffer {
 		base:               col.base.Clone(),
 		reordered:          col.reordered,
 		maxDefinitionLevel: col.maxDefinitionLevel,
-		rows:               slices.Clone(col.rows),
-		definitionLevels:   slices.Clone(col.definitionLevels),
+		rows:               col.rows.Clone(),
+		definitionLevels:   col.definitionLevels.Clone(),
 		nullOrdering:       col.nullOrdering,
 	}
 }
@@ -55,11 +53,11 @@ func (col *optionalColumnBuffer) Type() Type {
 }
 
 func (col *optionalColumnBuffer) NumValues() int64 {
-	return int64(len(col.definitionLevels))
+	return int64(col.definitionLevels.Len())
 }
 
 func (col *optionalColumnBuffer) ColumnIndex() (ColumnIndex, error) {
-	return columnIndexOfNullable(col.base, col.maxDefinitionLevel, col.definitionLevels)
+	return columnIndexOfNullable(col.base, col.maxDefinitionLevel, col.definitionLevels.Slice())
 }
 
 func (col *optionalColumnBuffer) OffsetIndex() (OffsetIndex, error) {
@@ -87,16 +85,18 @@ func (col *optionalColumnBuffer) Page() Page {
 	// This case is also important because the cyclic sorting modifies the
 	// buffer which makes it unsafe to read the buffer concurrently.
 	if col.reordered {
-		numNulls := countLevelsNotEqual(col.definitionLevels, col.maxDefinitionLevel)
-		numValues := len(col.rows) - numNulls
+		numNulls := countLevelsNotEqual(col.definitionLevels.Slice(), col.maxDefinitionLevel)
+		numValues := col.rows.Len() - numNulls
 
 		if numValues > 0 {
-			if cap(col.sortIndex) < numValues {
-				col.sortIndex = make([]int32, numValues)
+			if col.sortIndex.Cap() < numValues {
+				col.sortIndex = memory.SliceBufferFor[int32](numValues)
 			}
-			sortIndex := col.sortIndex[:numValues]
+			col.sortIndex.Resize(numValues)
+			sortIndex := col.sortIndex.Slice()
+			rows := col.rows.Slice()
 			i := 0
-			for _, j := range col.rows {
+			for _, j := range rows {
 				if j >= 0 {
 					sortIndex[j] = int32(i)
 					i++
@@ -112,10 +112,11 @@ func (col *optionalColumnBuffer) Page() Page {
 			}
 		}
 
+		rows := col.rows.Slice()
 		i := 0
-		for _, r := range col.rows {
+		for _, r := range rows {
 			if r >= 0 {
-				col.rows[i] = int32(i)
+				rows[i] = int32(i)
 				i++
 			}
 		}
@@ -123,31 +124,33 @@ func (col *optionalColumnBuffer) Page() Page {
 		col.reordered = false
 	}
 
-	return newOptionalPage(col.base.Page(), col.maxDefinitionLevel, col.definitionLevels)
+	return newOptionalPage(col.base.Page(), col.maxDefinitionLevel, col.definitionLevels.Slice())
 }
 
 func (col *optionalColumnBuffer) Reset() {
 	col.base.Reset()
-	col.rows = col.rows[:0]
-	col.definitionLevels = col.definitionLevels[:0]
+	col.rows.Resize(0)
+	col.definitionLevels.Resize(0)
 }
 
 func (col *optionalColumnBuffer) Size() int64 {
-	return int64(4*len(col.rows)+4*len(col.sortIndex)+len(col.definitionLevels)) + col.base.Size()
+	return int64(4*col.rows.Len()+4*col.sortIndex.Len()+col.definitionLevels.Len()) + col.base.Size()
 }
 
-func (col *optionalColumnBuffer) Cap() int { return cap(col.rows) }
+func (col *optionalColumnBuffer) Cap() int { return col.rows.Cap() }
 
-func (col *optionalColumnBuffer) Len() int { return len(col.rows) }
+func (col *optionalColumnBuffer) Len() int { return col.rows.Len() }
 
 func (col *optionalColumnBuffer) Less(i, j int) bool {
+	rows := col.rows.Slice()
+	definitionLevels := col.definitionLevels.Slice()
 	return col.nullOrdering(
 		col.base,
-		int(col.rows[i]),
-		int(col.rows[j]),
+		int(rows[i]),
+		int(rows[j]),
 		col.maxDefinitionLevel,
-		col.definitionLevels[i],
-		col.definitionLevels[j],
+		definitionLevels[i],
+		definitionLevels[j],
 	)
 }
 
@@ -157,8 +160,10 @@ func (col *optionalColumnBuffer) Swap(i, j int) {
 	// reorder the underlying buffer using a cyclic sort when the buffer is
 	// materialized into a page view.
 	col.reordered = true
-	col.rows[i], col.rows[j] = col.rows[j], col.rows[i]
-	col.definitionLevels[i], col.definitionLevels[j] = col.definitionLevels[j], col.definitionLevels[i]
+	rows := col.rows.Slice()
+	definitionLevels := col.definitionLevels.Slice()
+	rows[i], rows[j] = rows[j], rows[i]
+	definitionLevels[i], definitionLevels[j] = definitionLevels[j], definitionLevels[i]
 }
 
 func (col *optionalColumnBuffer) WriteValues(values []Value) (n int, err error) {
@@ -176,8 +181,8 @@ func (col *optionalColumnBuffer) WriteValues(values []Value) (n int, err error) 
 		// Write the contiguous null values up until the first non-null value
 		// obtained in the for loop above.
 		for _, v := range values[i:n] {
-			col.rows = append(col.rows, -1)
-			col.definitionLevels = append(col.definitionLevels, v.definitionLevel)
+			col.rows.AppendValue(-1)
+			col.definitionLevels.AppendValue(v.definitionLevel)
 		}
 
 		// Collect index range of contiguous non-null values, from i to n.
@@ -191,10 +196,13 @@ func (col *optionalColumnBuffer) WriteValues(values []Value) (n int, err error) 
 		// and the outer for loop will terminate.
 		if i < n {
 			count, err := col.base.WriteValues(values[i:n])
-			col.definitionLevels = appendLevel(col.definitionLevels, col.maxDefinitionLevel, count)
+
+			for range count {
+				col.definitionLevels.AppendValue(col.maxDefinitionLevel)
+			}
 
 			for count > 0 {
-				col.rows = append(col.rows, rowIndex)
+				col.rows.AppendValue(rowIndex)
 				rowIndex++
 				count--
 			}
@@ -212,29 +220,31 @@ func (col *optionalColumnBuffer) writeValues(levels columnLevels, rows sparse.Ar
 	// we still need to output a row to the buffer to record the definition
 	// level.
 	if rows.Len() == 0 {
-		col.definitionLevels = append(col.definitionLevels, levels.definitionLevel)
-		col.rows = append(col.rows, -1)
+		col.definitionLevels.AppendValue(levels.definitionLevel)
+		col.rows.AppendValue(-1)
 		return
 	}
 
 	baseLen := col.base.Len()
-	col.definitionLevels = appendLevel(col.definitionLevels, levels.definitionLevel, rows.Len())
-
-	i := len(col.rows)
-	j := len(col.rows) + rows.Len()
-
-	if j <= cap(col.rows) {
-		col.rows = col.rows[:j]
-	} else {
-		tmp := make([]int32, j, 2*j)
-		copy(tmp, col.rows)
-		col.rows = tmp
+	for range rows.Len() {
+		col.definitionLevels.AppendValue(levels.definitionLevel)
 	}
 
-	if levels.definitionLevel != col.maxDefinitionLevel {
-		broadcastValueInt32(col.rows[i:], -1)
+	i := col.rows.Len()
+	j := col.rows.Len() + rows.Len()
+
+	if j <= col.rows.Cap() {
+		col.rows.Resize(j)
 	} else {
-		broadcastRangeInt32(col.rows[i:], int32(baseLen))
+		col.rows.Grow(j - col.rows.Len())
+		col.rows.Resize(j)
+	}
+
+	rowsSlice := col.rows.Slice()
+	if levels.definitionLevel != col.maxDefinitionLevel {
+		broadcastValueInt32(rowsSlice[i:], -1)
+	} else {
+		broadcastRangeInt32(rowsSlice[i:], int32(baseLen))
 		col.base.writeValues(levels, rows)
 	}
 }
@@ -303,17 +313,18 @@ func (col *optionalColumnBuffer) writeByteArray(levels columnLevels, value []byt
 }
 
 func (col *optionalColumnBuffer) writeNull(levels columnLevels) {
-	col.definitionLevels = append(col.definitionLevels, levels.definitionLevel)
-	col.rows = append(col.rows, -1)
+	col.definitionLevels.AppendValue(levels.definitionLevel)
+	col.rows.AppendValue(-1)
 }
 
 func (col *optionalColumnBuffer) writeLevel() {
-	col.definitionLevels = append(col.definitionLevels, col.maxDefinitionLevel)
-	col.rows = append(col.rows, int32(col.base.Len()-1))
+	col.definitionLevels.AppendValue(col.maxDefinitionLevel)
+	col.rows.AppendValue(int32(col.base.Len() - 1))
 }
 
 func (col *optionalColumnBuffer) ReadValuesAt(values []Value, offset int64) (int, error) {
-	length := int64(len(col.definitionLevels))
+	definitionLevels := col.definitionLevels.Slice()
+	length := int64(len(definitionLevels))
 	if offset < 0 {
 		return 0, errRowIndexOutOfBounds(offset, length)
 	}
@@ -324,8 +335,8 @@ func (col *optionalColumnBuffer) ReadValuesAt(values []Value, offset int64) (int
 		values = values[:length]
 	}
 
-	numNulls1 := int64(countLevelsNotEqual(col.definitionLevels[:offset], col.maxDefinitionLevel))
-	numNulls2 := int64(countLevelsNotEqual(col.definitionLevels[offset:offset+length], col.maxDefinitionLevel))
+	numNulls1 := int64(countLevelsNotEqual(definitionLevels[:offset], col.maxDefinitionLevel))
+	numNulls2 := int64(countLevelsNotEqual(definitionLevels[offset:offset+length], col.maxDefinitionLevel))
 
 	if numNulls2 < length {
 		n, err := col.base.ReadValuesAt(values[:length-numNulls2], offset-numNulls1)
@@ -338,12 +349,12 @@ func (col *optionalColumnBuffer) ReadValuesAt(values []Value, offset int64) (int
 		columnIndex := ^int16(col.Column())
 		i := numNulls2 - 1
 		j := length - 1
-		definitionLevels := col.definitionLevels[offset : offset+length]
+		definitionLevelsSlice := definitionLevels[offset : offset+length]
 		maxDefinitionLevel := col.maxDefinitionLevel
 
-		for n := len(definitionLevels) - 1; n >= 0 && j > i; n-- {
-			if definitionLevels[n] != maxDefinitionLevel {
-				values[j] = Value{definitionLevel: definitionLevels[n], columnIndex: columnIndex}
+		for n := len(definitionLevelsSlice) - 1; n >= 0 && j > i; n-- {
+			if definitionLevelsSlice[n] != maxDefinitionLevel {
+				values[j] = Value{definitionLevel: definitionLevelsSlice[n], columnIndex: columnIndex}
 			} else {
 				values[j] = values[i]
 				i--

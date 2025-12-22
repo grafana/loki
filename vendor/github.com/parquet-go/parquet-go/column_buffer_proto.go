@@ -1,7 +1,6 @@
 package parquet
 
 import (
-	"bytes"
 	"fmt"
 	"slices"
 	"strconv"
@@ -10,6 +9,7 @@ import (
 
 	"github.com/parquet-go/jsonlite"
 	"github.com/parquet-go/parquet-go/format"
+	"github.com/parquet-go/parquet-go/internal/memory"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/durationpb"
@@ -70,30 +70,30 @@ func writeProtoDuration(col ColumnBuffer, levels columnLevels, dur *durationpb.D
 }
 
 func writeProtoStruct(col ColumnBuffer, levels columnLevels, s *structpb.Struct, node Node) {
-	b := getColumnWriteBuffer()
+	b := memory.SliceBuffer[byte]{}
 	b.Grow(2 * proto.Size(s))
-	writeProtoStructJSON(b, s)
-	col.writeByteArray(levels, b.Bytes())
-	putColumnWriteBuffer(b)
+	writeProtoStructJSON(&b, s)
+	col.writeByteArray(levels, b.Slice())
+	b.Reset()
 }
 
 func writeProtoList(col ColumnBuffer, levels columnLevels, l *structpb.ListValue, node Node) {
-	b := getColumnWriteBuffer()
+	b := memory.SliceBuffer[byte]{}
 	b.Grow(2 * proto.Size(l))
-	writeProtoListValueJSON(b, l)
-	col.writeByteArray(levels, b.Bytes())
-	putColumnWriteBuffer(b)
+	writeProtoListValueJSON(&b, l)
+	col.writeByteArray(levels, b.Slice())
+	b.Reset()
 }
 
-func writeProtoStructJSON(b *bytes.Buffer, s *structpb.Struct) {
+func writeProtoStructJSON(b *memory.SliceBuffer[byte], s *structpb.Struct) {
 	if s == nil {
-		b.WriteString("null")
+		b.Append('n', 'u', 'l', 'l')
 		return
 	}
 
 	fields := s.GetFields()
 	if len(fields) == 0 {
-		b.WriteString("{}")
+		b.Append('{', '}')
 		return
 	}
 
@@ -103,49 +103,57 @@ func writeProtoStructJSON(b *bytes.Buffer, s *structpb.Struct) {
 	}
 	slices.Sort(keys)
 
-	b.WriteByte('{')
+	b.AppendValue('{')
 	for i, key := range keys {
 		if i > 0 {
-			b.WriteByte(',')
+			b.AppendValue(',')
 		}
-		b.Write(jsonlite.AppendQuote(b.AvailableBuffer(), key))
-		b.WriteByte(':')
+		b.AppendFunc(func(buf []byte) []byte {
+			return jsonlite.AppendQuote(buf, key)
+		})
+		b.AppendValue(':')
 		writeProtoValueJSON(b, fields[key])
 	}
-	b.WriteByte('}')
+	b.AppendValue('}')
 }
 
-func writeProtoValueJSON(b *bytes.Buffer, v *structpb.Value) {
+func writeProtoValueJSON(b *memory.SliceBuffer[byte], v *structpb.Value) {
 	switch k := v.GetKind().(type) {
-	case *structpb.Value_NumberValue:
-		b.Write(strconv.AppendFloat(b.AvailableBuffer(), k.NumberValue, 'g', -1, 64))
 	case *structpb.Value_StringValue:
-		b.Write(jsonlite.AppendQuote(b.AvailableBuffer(), k.StringValue))
+		b.AppendFunc(func(buf []byte) []byte {
+			return jsonlite.AppendQuote(buf, k.StringValue)
+		})
 	case *structpb.Value_BoolValue:
-		b.Write(strconv.AppendBool(b.AvailableBuffer(), k.BoolValue))
+		b.AppendFunc(func(buf []byte) []byte {
+			return strconv.AppendBool(buf, k.BoolValue)
+		})
+	case *structpb.Value_NumberValue:
+		b.AppendFunc(func(buf []byte) []byte {
+			return strconv.AppendFloat(buf, k.NumberValue, 'g', -1, 64)
+		})
 	case *structpb.Value_StructValue:
 		writeProtoStructJSON(b, k.StructValue)
 	case *structpb.Value_ListValue:
 		writeProtoListValueJSON(b, k.ListValue)
 	default:
-		b.WriteString("null")
+		b.Append('n', 'u', 'l', 'l')
 	}
 }
 
-func writeProtoListValueJSON(b *bytes.Buffer, l *structpb.ListValue) {
+func writeProtoListValueJSON(b *memory.SliceBuffer[byte], l *structpb.ListValue) {
 	if l == nil {
-		b.WriteString("null")
+		b.Append('n', 'u', 'l', 'l')
 		return
 	}
 	values := l.GetValues()
-	b.WriteByte('[')
+	b.AppendValue('[')
 	for i, v := range values {
 		if i > 0 {
-			b.WriteByte(',')
+			b.AppendValue(',')
 		}
 		writeProtoValueJSON(b, v)
 	}
-	b.WriteByte(']')
+	b.AppendValue(']')
 }
 
 func writeProtoAny(col ColumnBuffer, levels columnLevels, a *anypb.Any, node Node) {

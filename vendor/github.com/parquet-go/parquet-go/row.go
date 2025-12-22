@@ -714,6 +714,11 @@ func reconstructFuncOfMap(columnIndex int16, node Node) (int16, reconstructFunc)
 	keyValueType := keyValue.GoType()
 	keyValueElem := keyValueType.Elem()
 	nextColumnIndex, reconstruct := reconstructFuncOf(columnIndex, schemaOf(keyValueElem))
+
+	// Check if the value field of the map is a LIST type
+	valueNode := fieldByName(keyValue, "value")
+	valueIsList := valueNode != nil && isList(valueNode)
+
 	return nextColumnIndex, func(value reflect.Value, levels columnLevels, columns [][]Value) error {
 		levels.repetitionDepth++
 		levels.definitionLevel++
@@ -778,13 +783,54 @@ func reconstructFuncOfMap(columnIndex int16, node Node) (int16, reconstructFunc)
 				values[j] = column[len(column):len(column):cap(column)]
 			}
 
-			value.SetMapIndex(elem.Field(0).Convert(k), elem.Field(1).Convert(v))
+			mapKey := elem.Field(0).Convert(k)
+			mapValue := elem.Field(1)
+
+			// If the value is a LIST type, we need to extract the elements from the
+			// wrapper struct. The wrapper struct has a "List" field containing
+			// []struct { Element T }, and we need to convert it to []T.
+			if valueIsList && v.Kind() == reflect.Slice {
+				mapValue = convertListWrapperToSlice(mapValue, v)
+			} else {
+				mapValue = mapValue.Convert(v)
+			}
+
+			value.SetMapIndex(mapKey, mapValue)
 			elem.SetZero()
 			levels.repetitionLevel = levels.repetitionDepth
 		}
 
 		return nil
 	}
+}
+
+// convertListWrapperToSlice converts a LIST wrapper struct to a slice.
+// The wrapper struct has the form: struct { List []struct { Element T } }
+// and this function returns a reflect.Value of type []T containing the elements.
+func convertListWrapperToSlice(wrapper reflect.Value, targetSliceType reflect.Type) reflect.Value {
+	// Get the "List" field from the wrapper struct
+	listField := wrapper.FieldByName("List")
+	if !listField.IsValid() {
+		// If there's no List field, try direct conversion as fallback
+		return wrapper.Convert(targetSliceType)
+	}
+
+	// Create the target slice with the same length
+	n := listField.Len()
+	result := reflect.MakeSlice(targetSliceType, n, n)
+	elemType := targetSliceType.Elem()
+
+	// Copy elements from the wrapper to the result slice
+	for i := range n {
+		listElem := listField.Index(i)
+		// Get the "Element" field from each list element struct
+		elementField := listElem.FieldByName("Element")
+		if elementField.IsValid() {
+			result.Index(i).Set(elementField.Convert(elemType))
+		}
+	}
+
+	return result
 }
 
 //go:noinline
