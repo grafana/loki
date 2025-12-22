@@ -56,16 +56,42 @@ func (c *Client) CreateNatGateway(ctx context.Context, params *CreateNatGatewayI
 
 type CreateNatGatewayInput struct {
 
-	// The ID of the subnet in which to create the NAT gateway.
-	//
-	// This member is required.
-	SubnetId *string
-
 	// [Public NAT gateways only] The allocation ID of an Elastic IP address to
 	// associate with the NAT gateway. You cannot specify an Elastic IP address with a
 	// private NAT gateway. If the Elastic IP address is associated with another
 	// resource, you must first disassociate it.
 	AllocationId *string
+
+	// Specifies whether to create a zonal (single-AZ) or regional (multi-AZ) NAT
+	// gateway. Defaults to zonal .
+	//
+	// A zonal NAT gateway is a NAT Gateway that provides redundancy and scalability
+	// within a single availability zone. A regional NAT gateway is a single NAT
+	// Gateway that works across multiple availability zones (AZs) in your VPC,
+	// providing redundancy, scalability and availability across all the AZs in a
+	// Region.
+	//
+	// For more information, see [Regional NAT gateways for automatic multi-AZ expansion] in the Amazon VPC User Guide.
+	//
+	// [Regional NAT gateways for automatic multi-AZ expansion]: https://docs.aws.amazon.com/vpc/latest/userguide/nat-gateways-regional.html
+	AvailabilityMode types.AvailabilityMode
+
+	// For regional NAT gateways only: Specifies which Availability Zones you want the
+	// NAT gateway to support and the Elastic IP addresses (EIPs) to use in each AZ.
+	// The regional NAT gateway uses these EIPs to handle outbound NAT traffic from
+	// their respective AZs. If not specified, the NAT gateway will automatically
+	// expand to new AZs and associate EIPs upon detection of an elastic network
+	// interface. If you specify this parameter, auto-expansion is disabled and you
+	// must manually manage AZ coverage.
+	//
+	// A regional NAT gateway is a single NAT Gateway that works across multiple
+	// availability zones (AZs) in your VPC, providing redundancy, scalability and
+	// availability across all the AZs in a Region.
+	//
+	// For more information, see [Regional NAT gateways for automatic multi-AZ expansion] in the Amazon VPC User Guide.
+	//
+	// [Regional NAT gateways for automatic multi-AZ expansion]: https://docs.aws.amazon.com/vpc/latest/userguide/nat-gateways-regional.html
+	AvailabilityZoneAddresses []types.AvailabilityZoneAddress
 
 	// Unique, case-sensitive identifier that you provide to ensure the idempotency of
 	// the request. For more information, see [Ensuring idempotency].
@@ -108,8 +134,14 @@ type CreateNatGatewayInput struct {
 	// [Create a NAT gateway]: https://docs.aws.amazon.com/vpc/latest/userguide/nat-gateway-working-with.html
 	SecondaryPrivateIpAddresses []string
 
+	// The ID of the subnet in which to create the NAT gateway.
+	SubnetId *string
+
 	// The tags to assign to the NAT gateway.
 	TagSpecifications []types.TagSpecification
+
+	// The ID of the VPC where you want to create a regional NAT gateway.
+	VpcId *string
 
 	noSmithyDocumentSerde
 }
@@ -199,9 +231,6 @@ func (c *Client) addOperationCreateNatGatewayMiddlewares(stack *middleware.Stack
 	if err = addIdempotencyToken_opCreateNatGatewayMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = addOpCreateNatGatewayValidationMiddleware(stack); err != nil {
-		return err
-	}
 	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opCreateNatGateway(options.Region), middleware.Before); err != nil {
 		return err
 	}
@@ -226,40 +255,7 @@ func (c *Client) addOperationCreateNatGatewayMiddlewares(stack *middleware.Stack
 	if err = addInterceptAttempt(stack, options); err != nil {
 		return err
 	}
-	if err = addInterceptExecution(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptBeforeSerialization(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptAfterSerialization(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptBeforeSigning(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptAfterSigning(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptTransmit(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptBeforeDeserialization(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptAfterDeserialization(stack, options); err != nil {
-		return err
-	}
-	if err = addSpanInitializeStart(stack); err != nil {
-		return err
-	}
-	if err = addSpanInitializeEnd(stack); err != nil {
-		return err
-	}
-	if err = addSpanBuildRequestStart(stack); err != nil {
-		return err
-	}
-	if err = addSpanBuildRequestEnd(stack); err != nil {
+	if err = addInterceptors(stack, options); err != nil {
 		return err
 	}
 	return nil

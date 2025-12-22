@@ -72,6 +72,18 @@ type GetCapacityReservationUsageOutput struct {
 	// Information about the Capacity Reservation usage.
 	InstanceUsages []types.InstanceUsage
 
+	//  Indicates whether the Capacity Reservation is interruptible, meaning instances
+	// may be terminated when the owner reclaims capacity.
+	Interruptible *bool
+
+	//  Information about the capacity allocated to the interruptible Capacity
+	// Reservation, including instance counts and allocation status.
+	InterruptibleCapacityAllocation *types.InterruptibleCapacityAllocation
+
+	//  Details about the interruption configuration and source reservation for
+	// interruptible Capacity Reservations.
+	InterruptionInfo *types.InterruptionInfo
+
 	// The token to use to retrieve the next page of results. This value is null when
 	// there are no more results to return.
 	NextToken *string
@@ -222,40 +234,7 @@ func (c *Client) addOperationGetCapacityReservationUsageMiddlewares(stack *middl
 	if err = addInterceptAttempt(stack, options); err != nil {
 		return err
 	}
-	if err = addInterceptExecution(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptBeforeSerialization(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptAfterSerialization(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptBeforeSigning(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptAfterSigning(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptTransmit(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptBeforeDeserialization(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptAfterDeserialization(stack, options); err != nil {
-		return err
-	}
-	if err = addSpanInitializeStart(stack); err != nil {
-		return err
-	}
-	if err = addSpanInitializeEnd(stack); err != nil {
-		return err
-	}
-	if err = addSpanBuildRequestStart(stack); err != nil {
-		return err
-	}
-	if err = addSpanBuildRequestEnd(stack); err != nil {
+	if err = addInterceptors(stack, options); err != nil {
 		return err
 	}
 	return nil
