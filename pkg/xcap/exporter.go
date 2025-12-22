@@ -156,7 +156,18 @@ func summarizeObservations(capture *Capture) *observations {
 	// metastore index and resolved section stats
 	result.merge(
 		collect.fromRegions("ObjectMetastore.Sections", true).
-			filter(StatMetastoreIndexObjects.Key(), StatMetastoreResolvedSections.Key()).
+			filter(StatMetastoreIndexObjects.Key(), StatMetastoreSectionsResolved.Key()).
+			normalizeKeys(),
+	)
+
+	result.merge(
+		collect.fromRegions("PointersScan", true).
+			filter(
+				StatMetastoreStreamsRead.Key(),
+				StatMetastoreStreamsReadTime.Key(),
+				StatMetastoreSectionPointersRead.Key(),
+				StatMetastoreSectionPointersReadTime.Key(),
+			).
 			normalizeKeys(),
 	)
 
