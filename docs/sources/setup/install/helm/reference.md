@@ -3040,6 +3040,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>commonLabels</td>
+			<td>object</td>
+			<td>Labels to be added to resources</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>compactor</td>
 			<td>object</td>
 			<td>Configuration for the compactor</td>

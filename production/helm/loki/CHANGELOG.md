@@ -13,6 +13,8 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+- [FEATURE] Add common labels to all resources
+
 ## 6.49.0
 
 - [CHANGE] Updated version of Grafana Loki to 3.6.3
