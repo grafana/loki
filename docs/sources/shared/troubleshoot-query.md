@@ -570,3 +570,273 @@ The range vector interval (in brackets like `[5m]`) exceeds configured limits.
 - Retryable: No (query must be modified)
 - HTTP status: 400 Bad Request
 - Configurable per tenant: Yes
+
+## Time range errors
+
+These errors relate to the time range specified in queries.
+
+### Error: Query time range exceeds limit
+
+**Error message:**
+
+`the query time range exceeds the limit (query length: <duration>, limit: <limit>)`
+
+**Cause:**
+
+The difference between the query's start and end time exceeds the maximum allowed query length.
+
+**Default configuration:**
+
+- `max_query_length`: 721h (30 days + 1 hour)
+
+**Resolution:**
+
+* **Reduce the query time range**:
+
+   ```logcli
+   # Instead of querying 60 days
+   logcli query '{app="foo"}' --from="60d" --to="now"
+   
+   # Query 30 days or less
+   logcli query '{app="foo"}' --from="30d" --to="now"
+   ```
+
+* **Increase the limit** if storage retention supports it:
+
+   ```yaml
+   limits_config:
+     max_query_length: 2160h  # 90 days
+   ```
+
+**Properties:**
+
+- Enforced by: Query Frontend/Querier
+- Retryable: No (query must be modified)
+- HTTP status: 400 Bad Request
+- Configurable per tenant: Yes
+
+### Error: Data is no longer available
+
+**Error message:**
+
+`this data is no longer available, it is past now - max_query_lookback (<duration>)`
+
+**Cause:**
+
+The entire query time range falls before the `max_query_lookback` limit. This happens when trying to query data older than the configured lookback period.
+
+**Default configuration:**
+
+- `max_query_lookback`: 0 (The default value of 0 does not set a limit.)
+
+**Resolution:**
+
+* **Query more recent data** within the lookback window.
+* **Adjust the lookback limit** if the data should be queryable:
+
+   ```yaml
+   limits_config:
+     max_query_lookback: 8760h  # 1 year
+   ```
+
+   {{< admonition type="caution" >}}
+   The lookback limit should not exceed your retention period.
+   {{< /admonition >}}
+
+**Properties:**
+
+- Enforced by: Query Frontend/Querier
+- Retryable: No
+- HTTP status: 400 Bad Request
+- Configurable per tenant: Yes
+
+### Error: Invalid query time range
+
+**Error message:**
+
+`invalid query, through < from (<end> < <start>)`
+
+**Cause:**
+
+The query end time is before the start time, which is invalid.
+
+**Resolution:**
+
+* **Swap start and end times** if they were reversed.
+* **Check timestamp formats** to ensure times are correctly specified.
+
+**Properties:**
+
+- Enforced by: Query Frontend/Querier
+- Retryable: No (query must be fixed)
+- HTTP status: 400 Bad Request
+- Configurable per tenant: No
+
+## Required labels errors
+
+These errors occur when queries don't meet configured label requirements.
+
+### Error: Missing required matchers
+
+**Error message:**
+
+`stream selector is missing required matchers [<required_labels>], labels present in the query were [<present_labels>]`
+
+**Cause:**
+
+The tenant is configured to require certain label matchers in all queries, but the query doesn't include them.
+
+**Default configuration:**
+
+- `required_labels`: [] (none required by default)
+
+**Resolution:**
+
+* **Check with your administrator** about which labels are required.
+
+* **Add the required labels** to your query:
+
+   ```logql
+   # If 'namespace' is required
+   {app="foo", namespace="production"}
+   ```
+
+**Properties:**
+
+- Enforced by: Query Frontend
+- Retryable: No (query must include required labels)
+- HTTP status: 400 Bad Request
+- Configurable per tenant: Yes
+
+### Error: Not enough label matchers
+
+**Error message:**
+
+`stream selector has less label matchers than required: (present: [<labels>], number_present: <count>, required_number_label_matchers: <required>)`
+
+**Cause:**
+
+The tenant is configured to require a minimum number of label matchers, but the query has fewer.
+
+**Default configuration:**
+
+- `minimum_labels_number`: 0 (no minimum by default)
+
+**Resolution:**
+
+* **Add more label matchers** to meet the minimum requirement:
+
+   ```logql
+   # If minimum is 2, add another selector
+   {app="foo", namespace="production"}
+   ```
+
+**Properties:**
+
+- Enforced by: Query Frontend
+- Retryable: No (query must meet requirements)
+- HTTP status: 400 Bad Request
+- Configurable per tenant: Yes
+
+## Timeout errors
+
+Timeout errors occur when queries take too long to execute.
+
+### Error: Request timed out
+
+**Error message:**
+
+`request timed out, decrease the duration of the request or add more label matchers (prefer exact match over regex match) to reduce the amount of data processed`
+
+Or:
+
+`context deadline exceeded`
+
+**Cause:**
+
+The query exceeded the configured timeout. This can happen due to:
+
+- Large time ranges
+- High cardinality queries
+- Complex query expressions
+- Insufficient cluster resources
+- Network issues
+
+**Default configuration:**
+
+- `query_timeout`: 1m
+- `server.http_server_read_timeout`: 30s
+- `server.http_server_write_timeout`: 30s
+
+**Resolution:**
+
+* **Reduce the time range** of the query.
+* **Add more specific filters** to reduce data processing:
+
+   ```logql
+   # Less specific (slower)
+   {namespace=~"prod.*"}
+   
+   # More specific (faster)
+   {namespace="production"}
+   ```
+
+* **Prefer exact matchers over regex** when possible.
+* **Add line filters early** in the pipeline:
+
+   ```logql
+   {app="foo"} |= "error" | json | level="error"
+   ```
+
+* **Increase timeout limits** (if resources allow):
+
+   ```yaml
+   limits_config:
+     query_timeout: 5m
+   
+   server:
+     http_server_read_timeout: 5m
+     http_server_write_timeout: 5m
+   ```
+
+* **Use sampling** for exploratory queries
+
+  ```logql
+   {job="app"} | line_format "{{__timestamp__}} {{.msg}}" | sample 0.1
+   ```
+
+* **Check for network issues** between components.
+
+**Properties:**
+
+- Enforced by: Query Frontend/Querier
+- Retryable: Yes (with modifications)
+- HTTP status: 504 Gateway Timeout
+- Configurable per tenant: Yes (query_timeout)
+
+### Error: Request cancelled by client
+
+**Error message:**
+
+`the request was cancelled by the client`
+
+**Cause:**
+
+The client closed the connection before receiving a response. This is typically caused by:
+
+- Client-side timeout
+- User navigating away in Grafana
+- Network interruption
+
+**Resolution:**
+
+* **Increase client timeout** in Grafana or LogCLI.
+* **Optimize the query** to return faster.
+* **Check network connectivity** between client and Loki. 
+
+**Properties:**
+
+- Enforced by: Client
+- Retryable: Yes
+- HTTP status: 499 Client Closed Request
+- Configurable per tenant: No
