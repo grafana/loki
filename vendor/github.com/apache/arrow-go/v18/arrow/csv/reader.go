@@ -282,7 +282,7 @@ func (r *Reader) next1() bool {
 
 	r.validate(recs)
 	r.read(recs)
-	r.cur = r.bld.NewRecord()
+	r.cur = r.bld.NewRecordBatch()
 
 	return true
 }
@@ -305,7 +305,7 @@ func (r *Reader) nextall() bool {
 		r.validate(rec)
 		r.read(rec)
 	}
-	r.cur = r.bld.NewRecord()
+	r.cur = r.bld.NewRecordBatch()
 
 	return true
 }
@@ -338,7 +338,7 @@ func (r *Reader) nextn() bool {
 		r.done = true
 	}
 
-	r.cur = r.bld.NewRecord()
+	r.cur = r.bld.NewRecordBatch()
 	return n > 0
 }
 

@@ -39,7 +39,7 @@ type RecordReader interface {
 	Next() bool
 	RecordBatch() arrow.RecordBatch
 	// Deprecated: Use [RecordBatch] instead.
-	Record() arrow.Record
+	Record() arrow.RecordBatch
 	Err() error
 }
 
@@ -102,7 +102,7 @@ func (rs *simpleRecords) Schema() *arrow.Schema          { return rs.schema }
 func (rs *simpleRecords) RecordBatch() arrow.RecordBatch { return rs.cur }
 
 // Deprecated: Use [RecordBatch] instead.
-func (rs *simpleRecords) Record() arrow.Record { return rs.RecordBatch() }
+func (rs *simpleRecords) Record() arrow.RecordBatch { return rs.RecordBatch() }
 func (rs *simpleRecords) Next() bool {
 	if len(rs.recs) == 0 {
 		return false

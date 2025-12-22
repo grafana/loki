@@ -33,6 +33,21 @@ func GetRootAsDictionaryEncoding(buf []byte, offset flatbuffers.UOffsetT) *Dicti
 	return x
 }
 
+func FinishDictionaryEncodingBuffer(builder *flatbuffers.Builder, offset flatbuffers.UOffsetT) {
+	builder.Finish(offset)
+}
+
+func GetSizePrefixedRootAsDictionaryEncoding(buf []byte, offset flatbuffers.UOffsetT) *DictionaryEncoding {
+	n := flatbuffers.GetUOffsetT(buf[offset+flatbuffers.SizeUint32:])
+	x := &DictionaryEncoding{}
+	x.Init(buf, n+offset+flatbuffers.SizeUint32)
+	return x
+}
+
+func FinishSizePrefixedDictionaryEncodingBuffer(builder *flatbuffers.Builder, offset flatbuffers.UOffsetT) {
+	builder.FinishSizePrefixed(offset)
+}
+
 func (rcv *DictionaryEncoding) Init(buf []byte, i flatbuffers.UOffsetT) {
 	rcv._tab.Bytes = buf
 	rcv._tab.Pos = i
@@ -42,9 +57,9 @@ func (rcv *DictionaryEncoding) Table() flatbuffers.Table {
 	return rcv._tab
 }
 
-// / The known dictionary id in the application where this data is used. In
-// / the file or streaming formats, the dictionary ids are found in the
-// / DictionaryBatch messages
+/// The known dictionary id in the application where this data is used. In
+/// the file or streaming formats, the dictionary ids are found in the
+/// DictionaryBatch messages
 func (rcv *DictionaryEncoding) Id() int64 {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(4))
 	if o != 0 {
@@ -53,18 +68,18 @@ func (rcv *DictionaryEncoding) Id() int64 {
 	return 0
 }
 
-// / The known dictionary id in the application where this data is used. In
-// / the file or streaming formats, the dictionary ids are found in the
-// / DictionaryBatch messages
+/// The known dictionary id in the application where this data is used. In
+/// the file or streaming formats, the dictionary ids are found in the
+/// DictionaryBatch messages
 func (rcv *DictionaryEncoding) MutateId(n int64) bool {
 	return rcv._tab.MutateInt64Slot(4, n)
 }
 
-// / The dictionary indices are constrained to be non-negative integers. If
-// / this field is null, the indices must be signed int32. To maximize
-// / cross-language compatibility and performance, implementations are
-// / recommended to prefer signed integer types over unsigned integer types
-// / and to avoid uint64 indices unless they are required by an application.
+/// The dictionary indices are constrained to be non-negative integers. If
+/// this field is null, the indices must be signed int32. To maximize
+/// cross-language compatibility and performance, implementations are
+/// recommended to prefer signed integer types over unsigned integer types
+/// and to avoid uint64 indices unless they are required by an application.
 func (rcv *DictionaryEncoding) IndexType(obj *Int) *Int {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(6))
 	if o != 0 {
@@ -78,15 +93,15 @@ func (rcv *DictionaryEncoding) IndexType(obj *Int) *Int {
 	return nil
 }
 
-// / The dictionary indices are constrained to be non-negative integers. If
-// / this field is null, the indices must be signed int32. To maximize
-// / cross-language compatibility and performance, implementations are
-// / recommended to prefer signed integer types over unsigned integer types
-// / and to avoid uint64 indices unless they are required by an application.
-// / By default, dictionaries are not ordered, or the order does not have
-// / semantic meaning. In some statistical, applications, dictionary-encoding
-// / is used to represent ordered categorical data, and we provide a way to
-// / preserve that metadata here
+/// The dictionary indices are constrained to be non-negative integers. If
+/// this field is null, the indices must be signed int32. To maximize
+/// cross-language compatibility and performance, implementations are
+/// recommended to prefer signed integer types over unsigned integer types
+/// and to avoid uint64 indices unless they are required by an application.
+/// By default, dictionaries are not ordered, or the order does not have
+/// semantic meaning. In some statistical, applications, dictionary-encoding
+/// is used to represent ordered categorical data, and we provide a way to
+/// preserve that metadata here
 func (rcv *DictionaryEncoding) IsOrdered() bool {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(8))
 	if o != 0 {
@@ -95,10 +110,10 @@ func (rcv *DictionaryEncoding) IsOrdered() bool {
 	return false
 }
 
-// / By default, dictionaries are not ordered, or the order does not have
-// / semantic meaning. In some statistical, applications, dictionary-encoding
-// / is used to represent ordered categorical data, and we provide a way to
-// / preserve that metadata here
+/// By default, dictionaries are not ordered, or the order does not have
+/// semantic meaning. In some statistical, applications, dictionary-encoding
+/// is used to represent ordered categorical data, and we provide a way to
+/// preserve that metadata here
 func (rcv *DictionaryEncoding) MutateIsOrdered(n bool) bool {
 	return rcv._tab.MutateBoolSlot(8, n)
 }

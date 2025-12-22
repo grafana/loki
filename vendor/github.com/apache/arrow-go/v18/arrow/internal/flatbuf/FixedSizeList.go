@@ -33,6 +33,21 @@ func GetRootAsFixedSizeList(buf []byte, offset flatbuffers.UOffsetT) *FixedSizeL
 	return x
 }
 
+func FinishFixedSizeListBuffer(builder *flatbuffers.Builder, offset flatbuffers.UOffsetT) {
+	builder.Finish(offset)
+}
+
+func GetSizePrefixedRootAsFixedSizeList(buf []byte, offset flatbuffers.UOffsetT) *FixedSizeList {
+	n := flatbuffers.GetUOffsetT(buf[offset+flatbuffers.SizeUint32:])
+	x := &FixedSizeList{}
+	x.Init(buf, n+offset+flatbuffers.SizeUint32)
+	return x
+}
+
+func FinishSizePrefixedFixedSizeListBuffer(builder *flatbuffers.Builder, offset flatbuffers.UOffsetT) {
+	builder.FinishSizePrefixed(offset)
+}
+
 func (rcv *FixedSizeList) Init(buf []byte, i flatbuffers.UOffsetT) {
 	rcv._tab.Bytes = buf
 	rcv._tab.Pos = i
@@ -42,7 +57,7 @@ func (rcv *FixedSizeList) Table() flatbuffers.Table {
 	return rcv._tab
 }
 
-// / Number of list items per value
+/// Number of list items per value
 func (rcv *FixedSizeList) ListSize() int32 {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(4))
 	if o != 0 {
@@ -51,7 +66,7 @@ func (rcv *FixedSizeList) ListSize() int32 {
 	return 0
 }
 
-// / Number of list items per value
+/// Number of list items per value
 func (rcv *FixedSizeList) MutateListSize(n int32) bool {
 	return rcv._tab.MutateInt32Slot(4, n)
 }
