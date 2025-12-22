@@ -71,7 +71,7 @@ You can authenticate Blob Storage access by using a storage account name and key
 
 #### Baidu Object Storage (BOS)
 
-[BOS](https://intl.cloud.baidu.com/product/bos.html) is the Baidu CLoud hosted object storage.
+[BOS](https://intl.cloud.baidu.com/product/bos.html) is the Baidu Cloud hosted object storage.
 
 #### Alibaba Object Storage Service (OSS)
 
