@@ -152,6 +152,14 @@ func CreateOrUpdateLokiStack(
 		return nil, optErr
 	}
 
+	if err = manifests.ValidateReplicationFactor(&opts); err != nil {
+		return nil, &status.DegradedError{
+			Message: fmt.Sprintf("Invalid configuration: ingester replicas (%d) should be more than the replication factor (%d)", opts.Stack.Template.Ingester.Replicas, opts.Stack.Replication.Factor),
+			Reason:  lokiv1.ReasonInvalidReplicationFactor,
+			Requeue: true,
+		}
+	}
+
 	objects, err := manifests.BuildAll(opts)
 	if err != nil {
 		ll.Error(err, "failed to build manifests")
