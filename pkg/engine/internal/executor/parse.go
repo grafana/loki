@@ -3,6 +3,7 @@ package executor
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"unsafe"
 
 	"github.com/apache/arrow-go/v18/arrow"
@@ -12,22 +13,48 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util"
+	"github.com/grafana/loki/v3/pkg/logql/log"
 )
 
 func parseFn(op types.VariadicOp) VariadicFunction {
-	return VariadicFunctionFunc(func(args ...arrow.Array) (arrow.Array, error) {
-		sourceCol, requestedKeys, strict, keepEmpty, err := extractParseFnParameters(args)
-		if err != nil {
-			panic(err)
-		}
+	return VariadicFunctionFunc(func(input arrow.RecordBatch, args ...arrow.Array) (arrow.Array, error) {
+		var (
+			sourceCol       *array.String
+			requestedKeys   []string
+			strict          bool
+			keepEmpty       bool
+			lineFmtTemplate string
+			labelFmts       []log.LabelFmt
+			err             error
+		)
 
 		var headers []string
 		var parsedColumns []arrow.Array
 		switch op {
 		case types.VariadicOpParseLogfmt:
-			headers, parsedColumns = buildLogfmtColumns(sourceCol, requestedKeys, strict, keepEmpty)
+			sourceCol, requestedKeys, strict, keepEmpty, err = extractParseFnParameters(args)
+			if err != nil {
+				panic(err)
+			}
+			headers, parsedColumns = buildLogfmtColumns(input, sourceCol, requestedKeys, strict, keepEmpty)
 		case types.VariadicOpParseJSON:
-			headers, parsedColumns = buildJSONColumns(sourceCol, requestedKeys)
+			sourceCol, requestedKeys, _, _, err = extractParseFnParameters(args)
+			if err != nil {
+				panic(err)
+			}
+			headers, parsedColumns = buildJSONColumns(input, sourceCol, requestedKeys)
+		case types.VariadicOpParseLinefmt:
+			sourceCol, _, lineFmtTemplate, err = extractLineFmtParameters(args)
+			if err != nil {
+				panic(err)
+			}
+			headers, parsedColumns = buildLinefmtColumns(input, sourceCol, lineFmtTemplate)
+		case types.VariadicOpParseLabelfmt:
+			sourceCol, _, labelFmts, err = extractLabelFmtParameters(args)
+			if err != nil {
+				panic(err)
+			}
+			headers, parsedColumns = buildLabelfmtColumns(input, sourceCol, labelFmts)
 		default:
 			return nil, fmt.Errorf("unsupported parser kind: %v", op)
 		}
@@ -36,8 +63,14 @@ func parseFn(op types.VariadicOp) VariadicFunction {
 		newFields := make([]arrow.Field, 0, len(headers))
 		for _, header := range headers {
 			ct := types.ColumnTypeParsed
+			if op == types.VariadicOpParseLabelfmt {
+				ct = types.ColumnTypeLabel
+			}
 			if header == semconv.ColumnIdentError.ShortName() || header == semconv.ColumnIdentErrorDetails.ShortName() {
 				ct = types.ColumnTypeGenerated
+			}
+			if header == semconv.ColumnIdentMessage.ShortName() {
+				ct = types.ColumnTypeBuiltin
 			}
 			ident := semconv.NewIdentifier(header, ct, types.Loki.String)
 			newFields = append(newFields, semconv.FieldFromIdent(ident, true))
@@ -49,6 +82,85 @@ func parseFn(op types.VariadicOp) VariadicFunction {
 
 		return array.NewStructArrayWithFields(parsedColumns, newFields)
 	})
+}
+
+func extractLineFmtParameters(args []arrow.Array) (*array.String, []string, string, error) {
+	if len(args) != 3 {
+		return nil, nil, "", fmt.Errorf("parse function expected 3 arguments, got %d", len(args))
+	}
+	var sourceColArr, templateArr arrow.Array
+	sourceColArr = args[0]
+	// requestedKeysArr = args[1] not needed
+	templateArr = args[2]
+
+	if sourceColArr == nil {
+		return nil, nil, "", fmt.Errorf("parse function arguments did not include a source ColumnVector to parse")
+	}
+
+	sourceCol, ok := sourceColArr.(*array.String)
+	if !ok {
+		return nil, nil, "", fmt.Errorf("parse can only operate on string column types, got %T", sourceColArr)
+	}
+
+	stringArr, ok := templateArr.(*array.String)
+	if !ok {
+		return nil, nil, "", fmt.Errorf("template must be a string, got %T", templateArr)
+	}
+
+	var template string
+	templateIdx := 0
+	if (stringArr != nil) && (stringArr.Len() > 0) {
+		template = stringArr.Value(templateIdx)
+	}
+	return sourceCol, nil, template, nil
+
+}
+
+func extractLabelFmtParameters(args []arrow.Array) (*array.String, []string, []log.LabelFmt, error) {
+	if len(args) != 3 {
+		return nil, nil, nil, fmt.Errorf("parse function expected 3 arguments, got %d", len(args))
+	}
+	var sourceColArr, labelFmtArray arrow.Array
+	sourceColArr = args[0]
+	// requestedKeysArr = args[1] not needed
+	labelFmtArray = args[2]
+
+	if sourceColArr == nil {
+		return nil, nil, nil, fmt.Errorf("parse function arguments did not include a source ColumnVector to parse")
+	}
+
+	sourceCol, ok := sourceColArr.(*array.String)
+	if !ok {
+		return nil, nil, nil, fmt.Errorf("parse can only operate on string column types, got %T", sourceColArr)
+	}
+
+	listArr, ok := labelFmtArray.(*array.List)
+	if !ok {
+		return nil, nil, nil, fmt.Errorf("labelfmts array must be of type struct, got %T", labelFmtArray)
+	}
+	var labelFmts []log.LabelFmt
+	listValues := listArr.ListValues()
+	switch listValues := listValues.(type) {
+	case *array.Struct:
+		if sourceCol.Len() == 0 {
+			return sourceCol, nil, []log.LabelFmt{}, nil
+		}
+		// listValues will repeat one copy for each line of input; we want to only grab one copy
+		for i := 0; i < (listValues.Len() / sourceCol.Len()); i++ {
+			name := listValues.Field(0).ValueStr(i)
+			val := listValues.Field(1).ValueStr(i)
+			rename, err := strconv.ParseBool(listValues.Field(2).ValueStr(i))
+			if err != nil {
+				return nil, nil, nil, fmt.Errorf("wrong format for labelFmt value rename: error %v", err)
+			}
+			labelFmts = append(labelFmts, log.LabelFmt{Name: name, Value: val, Rename: rename})
+		}
+	default:
+		return nil, nil, nil, fmt.Errorf("unknown labelfmt type %T; expected *array.Struct", listValues)
+	}
+
+	return sourceCol, nil, labelFmts, nil
+
 }
 
 func extractParseFnParameters(args []arrow.Array) (*array.String, []string, bool, bool, error) {
@@ -113,13 +225,13 @@ func extractParseFnParameters(args []arrow.Array) (*array.String, []string, bool
 }
 
 // parseFunc represents a function that parses a single line and returns key-value pairs
-type parseFunc func(line string) (map[string]string, error)
+type parseFunc func(recordRow arrow.RecordBatch, line string) (map[string]string, error)
 
 // buildColumns builds Arrow columns from input lines using the provided parser
 // Returns the column headers, the Arrow columns, and any error
-func buildColumns(input *array.String, _ []string, parseFunc parseFunc, errorType string) ([]string, []arrow.Array) {
+func buildColumns(input arrow.RecordBatch, sourceCol *array.String, _ []string, parseFunc parseFunc, errorType string) ([]string, []arrow.Array) {
 	columnBuilders := make(map[string]*array.StringBuilder)
-	columnOrder := parseLines(input, columnBuilders, parseFunc, errorType)
+	columnOrder := parseLines(input, sourceCol, columnBuilders, parseFunc, errorType)
 
 	// Build final arrays
 	columns := make([]arrow.Array, 0, len(columnOrder))
@@ -135,14 +247,15 @@ func buildColumns(input *array.String, _ []string, parseFunc parseFunc, errorTyp
 }
 
 // parseLines discovers columns dynamically as lines are parsed
-func parseLines(input *array.String, columnBuilders map[string]*array.StringBuilder, parseFunc parseFunc, errorType string) []string {
+func parseLines(input arrow.RecordBatch, sourceCol *array.String, columnBuilders map[string]*array.StringBuilder, parseFunc parseFunc, errorType string) []string {
 	columnOrder := []string{}
 	var errorBuilder, errorDetailsBuilder *array.StringBuilder
 	hasErrorColumns := false
 
-	for i := 0; i < input.Len(); i++ {
-		line := input.Value(i)
-		parsed, err := parseFunc(line)
+	for i := 0; i < sourceCol.Len(); i++ {
+		line := sourceCol.Value(i)
+		// pass the corresponding row of input as well
+		parsed, err := parseFunc(input.NewSlice(int64(i), int64(i+1)), line)
 
 		// Handle error columns
 		if err != nil {

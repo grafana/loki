@@ -136,9 +136,9 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.RecordBa
 
 		fn, err := variadicFunctions.GetForSignature(expr.Op)
 		if err != nil {
-			return nil, fmt.Errorf("failed to lookup unary function: %w", err)
+			return nil, fmt.Errorf("failed to lookup variadic function: %w", err)
 		}
-		return fn.Evaluate(args...)
+		return fn.Evaluate(input, args...)
 	}
 
 	return nil, fmt.Errorf("unknown expression: %v", expr)
