@@ -248,7 +248,15 @@ func walkRangeAggregation(e *syntax.RangeAggregationExpr, params logql.Params) (
 			return nil, errUnimplemented
 		}
 
-		builder = builder.Cast(unwrapIdentifier, unwrapOperation)
+		// Unwrap turns a column into numerical `value` column, and that original column should be dropped from the result.
+		builder = builder.
+			Cast(unwrapIdentifier, unwrapOperation).
+			ProjectDrop(&ColumnRef{
+				Ref: types.ColumnRef{
+					Column: unwrapIdentifier,
+					Type:   types.ColumnTypeAmbiguous,
+				},
+			})
 	}
 
 	var rangeAggType types.RangeAggregationType
@@ -272,6 +280,23 @@ func walkRangeAggregation(e *syntax.RangeAggregationExpr, params logql.Params) (
 	default:
 		return nil, errUnimplemented
 	}
+
+	// Filter out rows with any errors from parsing or unwrap stages.
+	builder = builder.Select(
+		&BinOp{
+			Left: &BinOp{
+				Left:  NewColumnRef(types.ColumnNameError, types.ColumnTypeGenerated),
+				Right: NewLiteral(""),
+				Op:    types.BinaryOpEq,
+			},
+			Right: &BinOp{
+				Left:  NewColumnRef(types.ColumnNameErrorDetails, types.ColumnTypeGenerated),
+				Right: NewLiteral(""),
+				Op:    types.BinaryOpEq,
+			},
+			Op: types.BinaryOpAnd,
+		},
+	)
 
 	builder = builder.RangeAggregation(
 		convertGrouping(e.Grouping), rangeAggType, params.Start(), params.End(), params.Step(), rangeInterval,

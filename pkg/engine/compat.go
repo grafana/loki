@@ -444,7 +444,10 @@ func collectSamplesFromRow(builder *labels.Builder, rec arrow.RecordBatch, i int
 
 		// allow any string columns
 		if ident.DataType() == types.Loki.String {
-			builder.Set(shortName, col.(*array.String).Value(i))
+			val := col.(*array.String).Value(i)
+			if val != "" {
+				builder.Set(shortName, val)
+			}
 		}
 	}
 

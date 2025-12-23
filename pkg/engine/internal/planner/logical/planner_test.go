@@ -144,10 +144,14 @@ func TestConvertAST_MetricQuery_Success(t *testing.T) {
 %8 = LT builtin.timestamp 1970-01-01T02:00:00Z
 %9 = SELECT %7 [predicate=%8]
 %10 = SELECT %9 [predicate=%4]
-%11 = RANGE_AGGREGATION %10 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
-%12 = VECTOR_AGGREGATION %11 [operation=sum, group_by=(ambiguous.level)]
-%13 = LOGQL_COMPAT %12
-RETURN %13
+%11 = EQ generated.__error__ ""
+%12 = EQ generated.__error_details__ ""
+%13 = AND %11 %12
+%14 = SELECT %10 [predicate=%13]
+%15 = RANGE_AGGREGATION %14 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
+%16 = VECTOR_AGGREGATION %15 [operation=sum, group_by=(ambiguous.level)]
+%17 = LOGQL_COMPAT %16
+RETURN %17
 `
 
 		require.Equal(t, expected, logicalPlan.String())
@@ -178,11 +182,15 @@ RETURN %13
 %6 = SELECT %4 [predicate=%5]
 %7 = LT builtin.timestamp 1970-01-01T02:00:00Z
 %8 = SELECT %6 [predicate=%7]
-%9 = RANGE_AGGREGATION %8 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
-%10 = DIV %9 300
-%11 = VECTOR_AGGREGATION %10 [operation=sum, group_by=(ambiguous.level)]
-%12 = LOGQL_COMPAT %11
-RETURN %12
+%9 = EQ generated.__error__ ""
+%10 = EQ generated.__error_details__ ""
+%11 = AND %9 %10
+%12 = SELECT %8 [predicate=%11]
+%13 = RANGE_AGGREGATION %12 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
+%14 = DIV %13 300
+%15 = VECTOR_AGGREGATION %14 [operation=sum, group_by=(ambiguous.level)]
+%16 = LOGQL_COMPAT %15
+RETURN %16
 `
 
 		require.Equal(t, expected, logicalPlan.String())
@@ -211,13 +219,17 @@ RETURN %12
 %4 = SELECT %2 [predicate=%3]
 %5 = LT builtin.timestamp 1970-01-01T02:00:00Z
 %6 = SELECT %4 [predicate=%5]
-%7 = RANGE_AGGREGATION %6 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
-%8 = DIV %7 300
-%9 = SUB %8 100
-%10 = POW %9 2
-%11 = VECTOR_AGGREGATION %10 [operation=sum, group_by=(ambiguous.level)]
-%12 = LOGQL_COMPAT %11
-RETURN %12
+%7 = EQ generated.__error__ ""
+%8 = EQ generated.__error_details__ ""
+%9 = AND %7 %8
+%10 = SELECT %6 [predicate=%9]
+%11 = RANGE_AGGREGATION %10 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
+%12 = DIV %11 300
+%13 = SUB %12 100
+%14 = POW %13 2
+%15 = VECTOR_AGGREGATION %14 [operation=sum, group_by=(ambiguous.level)]
+%16 = LOGQL_COMPAT %15
+RETURN %16
 `
 
 		require.Equal(t, expected, logicalPlan.String())
@@ -412,10 +424,15 @@ func TestPlannerCreatesCastOperationForUnwrap(t *testing.T) {
 %5 = LT builtin.timestamp 1970-01-01T02:00:00Z
 %6 = SELECT %4 [predicate=%5]
 %7 = PROJECT %6 [mode=*E, expr=CAST_DURATION(ambiguous.response_time)]
-%8 = RANGE_AGGREGATION %7 [operation=sum, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
-%9 = VECTOR_AGGREGATION %8 [operation=sum, group_by=(ambiguous.status)]
-%10 = LOGQL_COMPAT %9
-RETURN %10
+%8 = PROJECT %7 [mode=*D, expr=ambiguous.response_time]
+%9 = EQ generated.__error__ ""
+%10 = EQ generated.__error_details__ ""
+%11 = AND %9 %10
+%12 = SELECT %8 [predicate=%11]
+%13 = RANGE_AGGREGATION %12 [operation=sum, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
+%14 = VECTOR_AGGREGATION %13 [operation=sum, group_by=(ambiguous.status)]
+%15 = LOGQL_COMPAT %14
+RETURN %15
 `
 		require.Equal(t, expected, plan.String())
 	})
@@ -446,10 +463,14 @@ func TestPlannerCreatesProjectionWithParseOperation(t *testing.T) {
 %7 = PROJECT %6 [mode=*E, expr=PARSE_LOGFMT(builtin.message, [], false, false)]
 %8 = EQ ambiguous.level "error"
 %9 = SELECT %7 [predicate=%8]
-%10 = RANGE_AGGREGATION %9 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
-%11 = VECTOR_AGGREGATION %10 [operation=sum, group_by=(ambiguous.level)]
-%12 = LOGQL_COMPAT %11
-RETURN %12
+%10 = EQ generated.__error__ ""
+%11 = EQ generated.__error_details__ ""
+%12 = AND %10 %11
+%13 = SELECT %9 [predicate=%12]
+%14 = RANGE_AGGREGATION %13 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
+%15 = VECTOR_AGGREGATION %14 [operation=sum, group_by=(ambiguous.level)]
+%16 = LOGQL_COMPAT %15
+RETURN %16
 `
 		require.Equal(t, expected, plan.String())
 	})
@@ -507,10 +528,14 @@ RETURN %11
 %7 = PROJECT %6 [mode=*E, expr=PARSE_JSON(builtin.message, [], false, false)]
 %8 = EQ ambiguous.level "error"
 %9 = SELECT %7 [predicate=%8]
-%10 = RANGE_AGGREGATION %9 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
-%11 = VECTOR_AGGREGATION %10 [operation=sum, group_by=(ambiguous.level)]
-%12 = LOGQL_COMPAT %11
-RETURN %12
+%10 = EQ generated.__error__ ""
+%11 = EQ generated.__error_details__ ""
+%12 = AND %10 %11
+%13 = SELECT %9 [predicate=%12]
+%14 = RANGE_AGGREGATION %13 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
+%15 = VECTOR_AGGREGATION %14 [operation=sum, group_by=(ambiguous.level)]
+%16 = LOGQL_COMPAT %15
+RETURN %16
 `
 		require.Equal(t, expected, plan.String())
 	})
@@ -611,10 +636,14 @@ RETURN %15
 %11 = PROJECT %10 [mode=*E, expr=PARSE_LOGFMT(builtin.message, [], false, false)]
 %12 = EQ ambiguous.level "debug"
 %13 = SELECT %11 [predicate=%12]
-%14 = RANGE_AGGREGATION %13 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
-%15 = VECTOR_AGGREGATION %14 [operation=sum, group_by=(ambiguous.level)]
-%16 = LOGQL_COMPAT %15
-RETURN %16
+%14 = EQ generated.__error__ ""
+%15 = EQ generated.__error_details__ ""
+%16 = AND %14 %15
+%17 = SELECT %13 [predicate=%16]
+%18 = RANGE_AGGREGATION %17 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
+%19 = VECTOR_AGGREGATION %18 [operation=sum, group_by=(ambiguous.level)]
+%20 = LOGQL_COMPAT %19
+RETURN %20
 `
 
 		require.Equal(t, expected, plan.String(), "Metric query should preserve operation order: filters before parse, then parse, then filters after parse")
