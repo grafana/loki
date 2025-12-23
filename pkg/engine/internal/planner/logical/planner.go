@@ -187,11 +187,6 @@ func buildPlanForLogQuery(
 	// multiple parse stages. We will handle this in a future PR.
 	if hasLogfmtParser {
 		builder = builder.Parse(types.VariadicOpParseLogfmt, logfmtStrict, logfmtKeepEmpty)
-
-		//// The old logfmt parse implementation does not seem to return errors, unlike json parse
-		//builder = builder.ProjectDrop(
-		//	NewColumnRef(types.ColumnNameError, types.ColumnTypeGenerated), NewColumnRef(types.ColumnNameErrorDetails, types.ColumnTypeGenerated),
-		//)
 	}
 	if hasJSONParser {
 		// JSON has no parameters
