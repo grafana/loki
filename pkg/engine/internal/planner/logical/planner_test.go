@@ -461,17 +461,16 @@ func TestPlannerCreatesProjectionWithParseOperation(t *testing.T) {
 %5 = LT builtin.timestamp 1970-01-01T02:00:00Z
 %6 = SELECT %4 [predicate=%5]
 %7 = PROJECT %6 [mode=*E, expr=PARSE_LOGFMT(builtin.message, [], false, false)]
-%8 = PROJECT %7 [mode=*D, expr=generated.__error__, expr=generated.__error_details__]
-%9 = EQ ambiguous.level "error"
-%10 = SELECT %8 [predicate=%9]
-%11 = EQ generated.__error__ ""
-%12 = EQ generated.__error_details__ ""
-%13 = AND %11 %12
-%14 = SELECT %10 [predicate=%13]
-%15 = RANGE_AGGREGATION %14 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
-%16 = VECTOR_AGGREGATION %15 [operation=sum, group_by=(ambiguous.level)]
-%17 = LOGQL_COMPAT %16
-RETURN %17
+%8 = EQ ambiguous.level "error"
+%9 = SELECT %7 [predicate=%8]
+%10 = EQ generated.__error__ ""
+%11 = EQ generated.__error_details__ ""
+%12 = AND %10 %11
+%13 = SELECT %9 [predicate=%12]
+%14 = RANGE_AGGREGATION %13 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
+%15 = VECTOR_AGGREGATION %14 [operation=sum, group_by=(ambiguous.level)]
+%16 = LOGQL_COMPAT %15
+RETURN %16
 `
 		require.Equal(t, expected, plan.String())
 	})
@@ -497,12 +496,11 @@ RETURN %17
 %5 = LT builtin.timestamp 1970-01-01T02:00:00Z
 %6 = SELECT %4 [predicate=%5]
 %7 = PROJECT %6 [mode=*E, expr=PARSE_LOGFMT(builtin.message, [], false, false)]
-%8 = PROJECT %7 [mode=*D, expr=generated.__error__, expr=generated.__error_details__]
-%9 = EQ ambiguous.level "error"
-%10 = SELECT %8 [predicate=%9]
-%11 = TOPK %10 [sort_by=builtin.timestamp, k=1000, asc=false, nulls_first=false]
-%12 = LOGQL_COMPAT %11
-RETURN %12
+%8 = EQ ambiguous.level "error"
+%9 = SELECT %7 [predicate=%8]
+%10 = TOPK %9 [sort_by=builtin.timestamp, k=1000, asc=false, nulls_first=false]
+%11 = LOGQL_COMPAT %10
+RETURN %11
 `
 		require.Equal(t, expected, plan.String())
 	})
@@ -600,12 +598,11 @@ RETURN %11
 %9 = SELECT %8 [predicate=%2]
 %10 = SELECT %9 [predicate=%3]
 %11 = PROJECT %10 [mode=*E, expr=PARSE_LOGFMT(builtin.message, [], false, false)]
-%12 = PROJECT %11 [mode=*D, expr=generated.__error__, expr=generated.__error_details__]
-%13 = EQ ambiguous.level "debug"
-%14 = SELECT %12 [predicate=%13]
-%15 = TOPK %14 [sort_by=builtin.timestamp, k=1000, asc=false, nulls_first=false]
-%16 = LOGQL_COMPAT %15
-RETURN %16
+%12 = EQ ambiguous.level "debug"
+%13 = SELECT %11 [predicate=%12]
+%14 = TOPK %13 [sort_by=builtin.timestamp, k=1000, asc=false, nulls_first=false]
+%15 = LOGQL_COMPAT %14
+RETURN %15
 `
 
 		require.Equal(t, expected, plan.String(), "Operations should be in the correct order: LineFilter before Parse, LabelFilter after Parse")
@@ -637,17 +634,16 @@ RETURN %16
 %9 = SELECT %8 [predicate=%2]
 %10 = SELECT %9 [predicate=%3]
 %11 = PROJECT %10 [mode=*E, expr=PARSE_LOGFMT(builtin.message, [], false, false)]
-%12 = PROJECT %11 [mode=*D, expr=generated.__error__, expr=generated.__error_details__]
-%13 = EQ ambiguous.level "debug"
-%14 = SELECT %12 [predicate=%13]
-%15 = EQ generated.__error__ ""
-%16 = EQ generated.__error_details__ ""
-%17 = AND %15 %16
-%18 = SELECT %14 [predicate=%17]
-%19 = RANGE_AGGREGATION %18 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
-%20 = VECTOR_AGGREGATION %19 [operation=sum, group_by=(ambiguous.level)]
-%21 = LOGQL_COMPAT %20
-RETURN %21
+%12 = EQ ambiguous.level "debug"
+%13 = SELECT %11 [predicate=%12]
+%14 = EQ generated.__error__ ""
+%15 = EQ generated.__error_details__ ""
+%16 = AND %14 %15
+%17 = SELECT %13 [predicate=%16]
+%18 = RANGE_AGGREGATION %17 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
+%19 = VECTOR_AGGREGATION %18 [operation=sum, group_by=(ambiguous.level)]
+%20 = LOGQL_COMPAT %19
+RETURN %20
 `
 
 		require.Equal(t, expected, plan.String(), "Metric query should preserve operation order: filters before parse, then parse, then filters after parse")
