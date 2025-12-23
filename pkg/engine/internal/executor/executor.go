@@ -13,6 +13,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
@@ -24,6 +25,7 @@ var tracer = otel.Tracer("pkg/engine/internal/executor")
 type Config struct {
 	BatchSize int64
 	Bucket    objstore.Bucket
+	Metastore metastore.Metastore
 
 	MergePrefetchCount int
 
@@ -39,6 +41,7 @@ func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger
 		batchSize:          cfg.BatchSize,
 		mergePrefetchCount: cfg.MergePrefetchCount,
 		bucket:             cfg.Bucket,
+		metastore:          cfg.Metastore,
 		logger:             logger,
 		evaluator:          newExpressionEvaluator(),
 		getExternalInputs:  cfg.GetExternalInputs,
@@ -62,6 +65,7 @@ type Context struct {
 	plan      *physical.Plan
 	evaluator expressionEvaluator
 	bucket    objstore.Bucket
+	metastore metastore.Metastore
 
 	getExternalInputs func(ctx context.Context, node physical.Node) []Pipeline
 
@@ -94,7 +98,8 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 		return newLazyPipeline(func(ctx context.Context, _ []Pipeline) Pipeline {
 			return newObservedPipeline(c.executeDataObjScan(ctx, n, nodeRegion))
 		}, inputs)
-
+	case *physical.PointersScan:
+		return newObservedPipeline(c.executePointersScan(ctx, n, nodeRegion))
 	case *physical.TopK:
 		return newObservedPipeline(c.executeTopK(ctx, n, inputs, nodeRegion))
 	case *physical.Limit:
@@ -109,8 +114,10 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 		return newObservedPipeline(c.executeVectorAggregation(ctx, n, inputs, nodeRegion))
 	case *physical.ColumnCompat:
 		return newObservedPipeline(c.executeColumnCompat(ctx, n, inputs, nodeRegion))
+	case *physical.Merge:
+		return newObservedPipeline(c.executeMerge(ctx, n, inputs, nodeRegion))
 	case *physical.Parallelize:
-		return c.executeParallelize(ctx, n, inputs)
+		return c.executeParallelize(ctx, n, inputs, nodeRegion)
 	case *physical.ScanSet:
 		return c.executeScanSet(ctx, n, nodeRegion)
 	default:
@@ -120,12 +127,12 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 
 func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObjScan, region *xcap.Region) Pipeline {
 	if c.bucket == nil {
-		return errorPipeline(ctx, errors.New("no object store bucket configured"))
+		return errorPipelineWithRegion(ctx, errors.New("no object store bucket configured"), region)
 	}
 
 	obj, err := dataobj.FromBucket(ctx, c.bucket, string(node.Location))
 	if err != nil {
-		return errorPipeline(ctx, fmt.Errorf("creating data object: %w", err))
+		return errorPipelineWithRegion(ctx, fmt.Errorf("creating data object: %w", err), region)
 	}
 	region.AddEvent("opened dataobj")
 
@@ -136,7 +143,7 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 
 	tenant, err := user.ExtractOrgID(ctx)
 	if err != nil {
-		return errorPipeline(ctx, fmt.Errorf("missing org ID: %w", err))
+		return errorPipelineWithRegion(ctx, fmt.Errorf("missing org ID: %w", err), region)
 	}
 
 	for _, sec := range obj.Sections().Filter(streams.CheckSection) {
@@ -145,18 +152,18 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 		}
 
 		if streamsSection != nil {
-			return errorPipeline(ctx, fmt.Errorf("multiple streams sections found in data object %q", node.Location))
+			return errorPipelineWithRegion(ctx, fmt.Errorf("multiple streams sections found in data object %q", node.Location), region)
 		}
 
 		var err error
 		streamsSection, err = streams.Open(ctx, sec)
 		if err != nil {
-			return errorPipeline(ctx, fmt.Errorf("opening streams section %q: %w", sec.Type, err))
+			return errorPipelineWithRegion(ctx, fmt.Errorf("opening streams section %q: %w", sec.Type, err), region)
 		}
 		region.AddEvent("opened streams section")
 	}
 	if streamsSection == nil {
-		return errorPipeline(ctx, fmt.Errorf("streams section not found in data object %q", node.Location))
+		return errorPipelineWithRegion(ctx, fmt.Errorf("streams section not found in data object %q", node.Location), region)
 	}
 
 	for i, sec := range obj.Sections().Filter(logs.CheckSection) {
@@ -167,13 +174,13 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 		var err error
 		logsSection, err = logs.Open(ctx, sec)
 		if err != nil {
-			return errorPipeline(ctx, fmt.Errorf("opening logs section %q: %w", sec.Type, err))
+			return errorPipelineWithRegion(ctx, fmt.Errorf("opening logs section %q: %w", sec.Type, err), region)
 		}
 		region.AddEvent("opened logs section")
 		break
 	}
 	if logsSection == nil {
-		return errorPipeline(ctx, fmt.Errorf("logs section %d not found in data object %q", node.Section, node.Location))
+		return errorPipelineWithRegion(ctx, fmt.Errorf("logs section %d not found in data object %q", node.Section, node.Location), region)
 	}
 
 	predicates := make([]logs.Predicate, 0, len(node.Predicates))
@@ -181,7 +188,7 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 	for _, p := range node.Predicates {
 		conv, err := buildLogsPredicate(p, logsSection.Columns())
 		if err != nil {
-			return errorPipeline(ctx, err)
+			return errorPipelineWithRegion(ctx, err, region)
 		}
 		predicates = append(predicates, conv)
 	}
@@ -208,9 +215,33 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 	return pipeline
 }
 
+func (c *Context) executePointersScan(ctx context.Context, node *physical.PointersScan, region *xcap.Region) Pipeline {
+	if c.metastore == nil {
+		return errorPipelineWithRegion(ctx, errors.New("no metastore configured"), region)
+	}
+
+	req, err := physical.CatalogRequestToMetastoreSectionsRequest(node.Selector, node.Predicates, node.Start, node.End)
+	if err != nil {
+		return errorPipelineWithRegion(ctx, fmt.Errorf("convert catalog request to metastore request: %w", err), region)
+	}
+
+	return newLazyPipeline(func(ctx context.Context, _ []Pipeline) Pipeline {
+		pipeline, err := newScanPointersPipeline(ctx, scanPointersOptions{
+			metastore: c.metastore,
+			location:  string(node.Location),
+			req:       req,
+			region:    region,
+		})
+		if err != nil {
+			return errorPipelineWithRegion(ctx, err, region)
+		}
+		return pipeline
+	}, nil)
+}
+
 func (c *Context) executeTopK(ctx context.Context, topK *physical.TopK, inputs []Pipeline, region *xcap.Region) Pipeline {
 	if len(inputs) == 0 {
-		return emptyPipeline()
+		return emptyPipelineWithRegion(region)
 	}
 
 	pipeline, err := newTopkPipeline(topkOptions{
@@ -223,7 +254,7 @@ func (c *Context) executeTopK(ctx context.Context, topK *physical.TopK, inputs [
 		Region:     region,
 	})
 	if err != nil {
-		return errorPipeline(ctx, err)
+		return errorPipelineWithRegion(ctx, err, region)
 	}
 
 	return pipeline
@@ -231,11 +262,11 @@ func (c *Context) executeTopK(ctx context.Context, topK *physical.TopK, inputs [
 
 func (c *Context) executeLimit(ctx context.Context, limit *physical.Limit, inputs []Pipeline, region *xcap.Region) Pipeline {
 	if len(inputs) == 0 {
-		return emptyPipeline()
+		return emptyPipelineWithRegion(region)
 	}
 
 	if len(inputs) > 1 {
-		return errorPipeline(ctx, fmt.Errorf("limit expects exactly one input, got %d", len(inputs)))
+		return errorPipelineWithRegion(ctx, fmt.Errorf("limit expects exactly one input, got %d", len(inputs)), region)
 	}
 
 	return NewLimitPipeline(inputs[0], limit.Skip, limit.Fetch, region)
@@ -243,11 +274,11 @@ func (c *Context) executeLimit(ctx context.Context, limit *physical.Limit, input
 
 func (c *Context) executeFilter(ctx context.Context, filter *physical.Filter, inputs []Pipeline, region *xcap.Region) Pipeline {
 	if len(inputs) == 0 {
-		return emptyPipeline()
+		return emptyPipelineWithRegion(region)
 	}
 
 	if len(inputs) > 1 {
-		return errorPipeline(ctx, fmt.Errorf("filter expects exactly one input, got %d", len(inputs)))
+		return errorPipelineWithRegion(ctx, fmt.Errorf("filter expects exactly one input, got %d", len(inputs)), region)
 	}
 
 	return NewFilterPipeline(filter, inputs[0], c.evaluator, region)
@@ -255,28 +286,28 @@ func (c *Context) executeFilter(ctx context.Context, filter *physical.Filter, in
 
 func (c *Context) executeProjection(ctx context.Context, proj *physical.Projection, inputs []Pipeline, region *xcap.Region) Pipeline {
 	if len(inputs) == 0 {
-		return emptyPipeline()
+		return emptyPipelineWithRegion(region)
 	}
 
 	if len(inputs) > 1 {
 		// unsupported for now
-		return errorPipeline(ctx, fmt.Errorf("projection expects exactly one input, got %d", len(inputs)))
+		return errorPipelineWithRegion(ctx, fmt.Errorf("projection expects exactly one input, got %d", len(inputs)), region)
 	}
 
 	if len(proj.Expressions) == 0 {
-		return errorPipeline(ctx, fmt.Errorf("projection expects at least one expression, got 0"))
+		return errorPipelineWithRegion(ctx, fmt.Errorf("projection expects at least one expression, got 0"), region)
 	}
 
 	p, err := NewProjectPipeline(inputs[0], proj, &c.evaluator, region)
 	if err != nil {
-		return errorPipeline(ctx, err)
+		return errorPipelineWithRegion(ctx, err, region)
 	}
 	return p
 }
 
 func (c *Context) executeRangeAggregation(ctx context.Context, plan *physical.RangeAggregation, inputs []Pipeline, region *xcap.Region) Pipeline {
 	if len(inputs) == 0 {
-		return emptyPipeline()
+		return emptyPipelineWithRegion(region)
 	}
 
 	pipeline, err := newRangeAggregationPipeline(inputs, c.evaluator, rangeAggregationOptions{
@@ -288,7 +319,7 @@ func (c *Context) executeRangeAggregation(ctx context.Context, plan *physical.Ra
 		operation:     plan.Operation,
 	}, region)
 	if err != nil {
-		return errorPipeline(ctx, err)
+		return errorPipelineWithRegion(ctx, err, region)
 	}
 
 	return pipeline
@@ -296,12 +327,12 @@ func (c *Context) executeRangeAggregation(ctx context.Context, plan *physical.Ra
 
 func (c *Context) executeVectorAggregation(ctx context.Context, plan *physical.VectorAggregation, inputs []Pipeline, region *xcap.Region) Pipeline {
 	if len(inputs) == 0 {
-		return emptyPipeline()
+		return emptyPipelineWithRegion(region)
 	}
 
 	pipeline, err := newVectorAggregationPipeline(inputs, plan.Grouping, c.evaluator, plan.Operation, region)
 	if err != nil {
-		return errorPipeline(ctx, err)
+		return errorPipelineWithRegion(ctx, err, region)
 	}
 
 	return pipeline
@@ -309,37 +340,52 @@ func (c *Context) executeVectorAggregation(ctx context.Context, plan *physical.V
 
 func (c *Context) executeColumnCompat(ctx context.Context, compat *physical.ColumnCompat, inputs []Pipeline, region *xcap.Region) Pipeline {
 	if len(inputs) == 0 {
-		return emptyPipeline()
+		return emptyPipelineWithRegion(region)
 	}
 
 	if len(inputs) > 1 {
-		return errorPipeline(ctx, fmt.Errorf("columncompat expects exactly one input, got %d", len(inputs)))
+		return errorPipelineWithRegion(ctx, fmt.Errorf("columncompat expects exactly one input, got %d", len(inputs)), region)
 	}
 
 	return newColumnCompatibilityPipeline(compat, inputs[0], region)
 }
 
-func (c *Context) executeParallelize(ctx context.Context, _ *physical.Parallelize, inputs []Pipeline) Pipeline {
+func (c *Context) executeMerge(ctx context.Context, _ *physical.Merge, inputs []Pipeline, region *xcap.Region) Pipeline {
 	if len(inputs) == 0 {
-		return emptyPipeline()
+		return emptyPipelineWithRegion(region)
+	}
+
+	pipeline, err := newMergePipeline(inputs, c.mergePrefetchCount, region)
+	if err != nil {
+		return errorPipelineWithRegion(ctx, err, region)
+	}
+
+	return pipeline
+}
+
+func (c *Context) executeParallelize(ctx context.Context, _ *physical.Parallelize, inputs []Pipeline, region *xcap.Region) Pipeline {
+	if len(inputs) == 0 {
+		return emptyPipelineWithRegion(region)
 	} else if len(inputs) > 1 {
-		return errorPipeline(ctx, fmt.Errorf("parallelize expects exactly one input, got %d", len(inputs)))
+		return errorPipelineWithRegion(ctx, fmt.Errorf("parallelize expects exactly one input, got %d", len(inputs)), region)
 	}
 
 	// Parallelize is a hint node to the scheduler for parallel execution. If we
 	// see an Parallelize node in the plan, we ignore it and immediately
 	// propagate up the input.
+	if region != nil {
+		region.End()
+	}
 	return inputs[0]
 }
 
-func (c *Context) executeScanSet(ctx context.Context, set *physical.ScanSet, _ *xcap.Region) Pipeline {
+func (c *Context) executeScanSet(ctx context.Context, set *physical.ScanSet, region *xcap.Region) Pipeline {
 	// ScanSet typically gets partitioned by the scheduler into multiple scan
 	// nodes.
 	//
 	// However, for locally testing unpartitioned pipelines, we still supprt
 	// running a ScanSet. In this case, we treat internally execute it as a
 	// Merge on top of multiple sequential scans.
-	ctx, mergeRegion := xcap.StartRegion(ctx, physical.NodeTypeMerge.String())
 
 	var targets []Pipeline
 	for _, target := range set.Targets {
@@ -356,17 +402,21 @@ func (c *Context) executeScanSet(ctx context.Context, set *physical.ScanSet, _ *
 			targets = append(targets, newLazyPipeline(func(_ context.Context, _ []Pipeline) Pipeline {
 				return newObservedPipeline(c.executeDataObjScan(nodeCtx, partition, partitionRegion))
 			}, nil))
+		case physical.ScanTypePointers:
+			partition := target.Pointers
+			nodeCtx, partitionRegion := startRegionForNode(ctx, partition)
+			targets = append(targets, c.executePointersScan(nodeCtx, partition, partitionRegion))
 		default:
-			return errorPipeline(ctx, fmt.Errorf("unrecognized ScanSet target %s", target.Type))
+			return errorPipelineWithRegion(ctx, fmt.Errorf("unrecognized ScanSet target %s", target.Type), region)
 		}
 	}
 	if len(targets) == 0 {
-		return emptyPipeline()
+		return emptyPipelineWithRegion(region)
 	}
 
-	pipeline, err := newMergePipeline(targets, c.mergePrefetchCount, mergeRegion)
+	pipeline, err := newMergePipeline(targets, c.mergePrefetchCount, region)
 	if err != nil {
-		return errorPipeline(ctx, err)
+		return errorPipelineWithRegion(ctx, err, region)
 	}
 
 	return pipeline
@@ -388,6 +438,12 @@ func startRegionForNode(ctx context.Context, n physical.Node) (context.Context, 
 			attribute.Int("num_stream_ids", len(n.StreamIDs)),
 			attribute.Int("num_predicates", len(n.Predicates)),
 			attribute.Int("num_projections", len(n.Projections)),
+		)
+
+	case *physical.PointersScan:
+		attributes = append(attributes,
+			attribute.String("location", string(n.Location)),
+			attribute.Int("num_predicates", len(n.Predicates)),
 		)
 
 	case *physical.TopK:

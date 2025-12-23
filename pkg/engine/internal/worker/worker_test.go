@@ -18,7 +18,6 @@ import (
 	"github.com/grafana/dskit/user"
 	"github.com/oklog/ulid/v2"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
@@ -339,6 +338,7 @@ func newTestWorkerWithContext(t *testing.T, logger log.Logger, loc objtest.Locat
 		Logger:    logger,
 		Bucket:    loc.Bucket,
 		BatchSize: 2048,
+		Metastore: metastore.NewObjectMetastore(loc.Bucket, metastore.Config{}, logger, metastore.NewObjectMetastoreMetrics(prometheus.NewRegistry())),
 
 		Dialer:           net.dialer,
 		Listener:         net.workerListener,
@@ -371,13 +371,12 @@ func buildWorkflow(ctx context.Context, t *testing.T, logger log.Logger, loc obj
 		logger,
 		metastore.NewObjectMetastoreMetrics(prometheus.NewRegistry()),
 	)
-	catalog := physical.NewMetastoreCatalog(func(start time.Time, end time.Time, selectors []*labels.Matcher, predicates []*labels.Matcher) ([]*metastore.DataobjSectionDescriptor, error) {
-		resp, err := ms.Sections(ctx, metastore.SectionsRequest{
-			Start:      start,
-			End:        end,
-			Matchers:   selectors,
-			Predicates: predicates,
-		})
+	catalog := physical.NewMetastoreCatalog(func(selector physical.Expression, predicates []physical.Expression, start time.Time, end time.Time) ([]*metastore.DataobjSectionDescriptor, error) {
+		req, err := physical.CatalogRequestToMetastoreSectionsRequest(selector, predicates, start, end)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := ms.Sections(ctx, req)
 		return resp.Sections, err
 	})
 	planner := physical.NewPlanner(physical.NewContext(params.Start(), params.End()), catalog)

@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/dskit/user"
 	"github.com/thanos-io/objstore"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
@@ -51,6 +52,7 @@ func (s threadState) String() string {
 type thread struct {
 	BatchSize int64
 	Bucket    objstore.Bucket
+	Metastore metastore.Metastore
 	Logger    log.Logger
 
 	Metrics    *metrics
@@ -104,6 +106,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	cfg := executor.Config{
 		BatchSize: t.BatchSize,
 		Bucket:    bucket.NewXCapBucket(t.Bucket),
+		Metastore: t.Metastore,
 
 		GetExternalInputs: func(_ context.Context, node physical.Node) []executor.Pipeline {
 			streams := job.Task.Sources[node]

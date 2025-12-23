@@ -242,3 +242,331 @@ The `count_over_time` function doesn't use unwrapped values - it just counts log
 - Retryable: No (query must be fixed)
 - HTTP status: 400 Bad Request
 - Configurable per tenant: No
+
+## Query limit errors
+
+These errors occur when queries exceed configured resource limits. They return HTTP status code `400 Bad Request`.
+
+### Error: Maximum series reached
+
+**Error message:**
+
+`maximum number of series (<limit>) reached for a single query; consider reducing query cardinality by adding more specific stream selectors, reducing the time range, or aggregating results with functions like sum(), count() or topk()`
+
+**Cause:**
+
+The query matches more unique label combinations (series) than the configured limit allows. This protects against queries that would consume excessive memory.
+
+**Default configuration:**
+
+- `max_query_series`: 500 (default)
+
+**Resolution:**
+
+* **Add more specific stream selectors** to reduce cardinality:
+
+   ```logql
+   # Too broad
+   {job="ingress-nginx"}
+   
+   # More specific
+   {job="ingress-nginx", namespace="production", pod=~"ingress-nginx-.*"}
+   ```
+
+* **Reduce the time range** of the query.
+
+* **Use label filters** to narrow down results: `{job="app"} |= "error"`
+
+* **Use aggregation functions** to reduce cardinality:
+
+   ```logql
+   sum by (status) (rate({job="nginx"} | json [5m]))
+   ```
+
+* **Increase the limit** if resources allow:
+
+   ```yaml
+   limits_config:
+     max_query_series: 1000  #default is 500
+   ```
+
+**Properties:**
+
+- Enforced by: Query Frontend
+- Retryable: No (query must be modified)
+- HTTP status: 400 Bad Request
+- Configurable per tenant: Yes
+
+### Error: Cardinality issues
+
+**Error message:**
+
+`cardinality limit exceeded for {}; 100001 entries, more than limit of 100000`
+
+**Cause:**
+
+The query produces results with too many unique label combinations. This protects against queries that would generate excessive memory usage and slow performance.
+
+**Default configuration:**
+
+- `cardinality_limit`: 100000
+
+**Resolution:**
+
+* **Use more specific label selectors** to reduce the number of unique streams.
+* **Apply aggregation functions** to reduce cardinality:
+
+   ```logql
+   sum by (status) (rate({job="nginx"}[5m]))
+   ```
+
+* **Use `by()` or `without()` clauses** to group results and reduce dimensions:
+
+   ```logql
+   sum by (status, method) (rate({job="nginx"} | json [5m]))
+   ```
+
+   Another alternative is using `drop` or `keep` to reduce the number of labels and hence the cardinality:
+
+   ```logql
+   # Drop high-cardinality labels like request_id or trace_id
+   {job="nginx"} | json | drop request_id, trace_id, session_id
+   
+   # Keep only the labels you need
+   {job="nginx"} | json | keep status, method, path
+   ```
+
+* **Increase the limit** if needed:
+
+   ```yaml
+   limits_config:
+     cardinality_limit: 200000  #default is 100000
+   ```
+
+**Properties:**
+
+- Enforced by: Query Engine
+- Retryable: No (query must be modified)
+- HTTP status: 400 Bad Request
+- Configurable per tenant: Yes
+
+### Error: Max entries limit per query exceeded
+
+**Error message:**
+
+`max entries limit per query exceeded, limit > max_entries_limit_per_query (<requested> > <limit>)`
+
+**Cause:**
+
+The query requests more log entries than the configured maximum. This applies to log queries (not metric queries).
+
+**Default configuration:**
+
+- `max_entries_limit_per_query`: 5000
+
+**Resolution:**
+
+* **Reduce the limit parameter** in your query request.
+
+* **Add more specific filters** to return fewer results:
+
+   ```logql
+   {app="foo"} |= "error" 
+   ```
+
+* **Reduce the time range** of the query.
+
+* **Increase the limit** if needed:
+
+   ```yaml
+   limits_config:
+     max_entries_limit_per_query: 10000  #default is 5000
+   ```
+
+**Properties:**
+
+- Enforced by: Querier/Query Frontend
+- Retryable: No (query must be modified)
+- HTTP status: 400 Bad Request
+- Configurable per tenant: Yes
+
+### Error: Query would read too many bytes
+
+**Error message:**
+
+`the query would read too many bytes (query: <size>, limit: <limit>); consider adding more specific stream selectors or reduce the time range of the query`
+
+**Cause:**
+
+The estimated data volume for the query exceeds the configured limit. This is determined before query execution using index statistics.
+
+**Default configuration:**
+
+- `max_query_bytes_read`: 0B (disabled by default)
+
+**Resolution:**
+
+* **Add more specific stream selectors** to reduce data volume.
+* **Reduce the time range** of the query.
+
+* **Increase the limit** if resources allow:
+
+   ```yaml
+   limits_config:
+     max_query_bytes_read: 10GB
+   ```
+
+**Properties:**
+
+- Enforced by: Query Frontend
+- Retryable: No (query must be modified)
+- HTTP status: 400 Bad Request
+- Configurable per tenant: Yes
+
+### Error: Too many chunks (count)
+
+**Error message:**
+
+`the query hit the max number of chunks limit (limit: 2000000 chunks)`
+
+**Cause:**
+
+The number of chunks that the query would read exceeds the configured limit. This protects against queries that would scan excessive amounts of data and consume too much memory.
+
+**Default configuration:**
+
+- `max_chunks_per_query`: 2000000
+
+**Resolution:**
+
+* **Narrow stream selectors** to reduce the number of matching chunks:
+
+   ```logql
+   # Too broad
+   {job="app"}
+   
+   # More specific
+   {job="app", environment="production", namespace="api"}
+   ```
+
+* **Reduce the query time range** to scan fewer chunks.
+
+* **Increase the limit** if resources allow:
+
+   ```yaml
+   limits_config:
+     max_chunks_per_query: 5000000  #default is 2000000
+   ```
+
+**Properties:**
+
+- Enforced by: Query Frontend
+- Retryable: No (query must be modified)
+- HTTP status: 400 Bad Request
+- Configurable per tenant: Yes
+
+### Error: Stream matcher limits
+
+**Error message:**
+
+`max streams matchers per query exceeded, matchers-count > limit (1500 > 1000)`
+
+**Cause:**
+
+The query contains too many stream matchers. This limit prevents queries with excessive complexity that could impact query performance.
+
+**Default configuration:**
+
+- `max_streams_matchers_per_query`: 1000
+
+**Resolution:**
+
+* **Simplify your query** by using fewer label matchers.
+* **Combine multiple queries** instead of using many OR conditions.
+* **Use regex matchers** to consolidate multiple values:
+
+   ```logql
+   # Good: 3 matchers using regex patterns
+   {cluster="prod", namespace=~"api|web", pod=~"nginx-.*"}
+   ```
+
+* **Increase the limit** if needed:
+
+   ```yaml
+   limits_config:
+     max_streams_matchers_per_query: 2000  #default is 1000
+   ```
+
+**Properties:**
+
+- Enforced by: Querier
+- Retryable: No (query must be modified)
+- HTTP status: 400 Bad Request
+- Configurable per tenant: Yes
+
+### Error: Query too large for single querier
+
+**Error message:**
+
+`query too large to execute on a single querier: (query: <size>, limit: <limit>); consider adding more specific stream selectors, reduce the time range of the query, or adjust parallelization settings`
+
+Or for un-shardable queries:
+
+`un-shardable query too large to execute on a single querier: (query: <size>, limit: <limit>); consider adding more specific stream selectors or reduce the time range of the query`
+
+**Cause:**
+
+Even after query splitting and sharding, individual query shards exceed the per-querier byte limit.
+
+**Default configuration:**
+
+- `max_querier_bytes_read`: 150GB (per querier)
+
+**Resolution:**
+
+* **Add more specific stream selectors**.
+* **Reduce the time range** or Break large queries into smaller time ranges.
+* **Simplify the query** if possible - some queries cannot be sharded.
+* **Increase the limit** (requires more querier resources):
+
+   ```yaml
+   limits_config:
+     max_querier_bytes_read: 200GB  # default is 150GB
+   ```
+
+* **Scale querier resources**
+
+**Properties:**
+
+- Enforced by: Query Frontend
+- Retryable: No (query must be modified)
+- HTTP status: 400 Bad Request
+- Configurable per tenant: Yes
+
+### Error: Interval value exceeds limit
+
+**Error message:**
+
+`[interval] value exceeds limit`
+
+**Cause:**
+
+The range vector interval (in brackets like `[5m]`) exceeds configured limits.
+
+**Resolution:**
+
+* **Reduce the range interval** in your query:
+
+   ```logql
+   # If [1d] is too large, try smaller intervals
+   rate({app="foo"}[1h])
+   ```
+
+* **Check your configuration** for `max_query_length` limits. The default is `30d1h`.
+
+**Properties:**
+
+- Enforced by: Query Engine
+- Retryable: No (query must be modified)
+- HTTP status: 400 Bad Request
+- Configurable per tenant: Yes

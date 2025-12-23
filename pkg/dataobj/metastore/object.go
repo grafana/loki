@@ -523,7 +523,7 @@ func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (Se
 	m.metrics.streamFilterSections.Observe(float64(totalSections.Load()))
 	m.metrics.resolvedSectionsTotal.Observe(float64(len(sections)))
 	m.metrics.resolvedSectionsRatio.Observe(ratio)
-	region.Record(xcap.StatMetastoreResolvedSections.Observe(int64(len(sections))))
+	region.Record(xcap.StatMetastoreSectionsResolved.Observe(int64(len(sections))))
 	duration := sectionsTimer.ObserveDuration()
 
 	level.Debug(utillog.WithContext(ctx, m.logger)).Log(
@@ -626,6 +626,9 @@ func (m *ObjectMetastore) CollectSections(ctx context.Context, req CollectSectio
 	for _, s := range objectSectionDescriptors {
 		sections = append(sections, s)
 	}
+
+	region := xcap.RegionFromContext(ctx)
+	region.Record(xcap.StatMetastoreSectionsResolved.Observe(int64(len(sections))))
 
 	return CollectSectionsResponse{
 		SectionsResponse: SectionsResponse{
