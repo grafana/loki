@@ -555,8 +555,9 @@ func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSect
 	sStart := scalar.NewTimestampScalar(arrow.Timestamp(req.SectionsRequest.Start.UnixNano()), arrow.FixedWidthTypes.Timestamp_ns)
 	sEnd := scalar.NewTimestampScalar(arrow.Timestamp(req.SectionsRequest.End.UnixNano()), arrow.FixedWidthTypes.Timestamp_ns)
 
+	// TODO(ivkalita): either merge scanPointers and applyBlooms or extract streams sections reader
 	scanner := newScanPointers(idxObj, sStart, sEnd, req.SectionsRequest.Matchers, req.Region)
-	blooms := newApplyBlooms(idxObj, req.SectionsRequest.Predicates, scanner, req.Region)
+	blooms := newApplyBlooms(idxObj, req.SectionsRequest.Predicates, scanner, scanner, req.Region)
 
 	return IndexSectionsReaderResponse{Reader: blooms}, nil
 }
