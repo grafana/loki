@@ -22,17 +22,22 @@ import (
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
+type streamsMetadataProvider interface {
+	GetStreamLabels(ctx context.Context, id int64) (labels.Labels, error)
+}
+
 type applyBlooms struct {
 	logger     log.Logger
 	obj        *dataobj.Object
 	predicates []*labels.Matcher
 	input      ArrowRecordBatchReader
+	streams    streamsMetadataProvider
 	region     *xcap.Region
 
 	rowsRead uint64
 }
 
-func newApplyBlooms(obj *dataobj.Object, predicates []*labels.Matcher, input ArrowRecordBatchReader, region *xcap.Region) ArrowRecordBatchReader {
+func newApplyBlooms(obj *dataobj.Object, predicates []*labels.Matcher, input ArrowRecordBatchReader, streams streamsMetadataProvider, region *xcap.Region) ArrowRecordBatchReader {
 	var equalPredicates []*labels.Matcher
 	for _, p := range predicates {
 		if p.Type == labels.MatchEqual {
@@ -44,6 +49,7 @@ func newApplyBlooms(obj *dataobj.Object, predicates []*labels.Matcher, input Arr
 		obj:        obj,
 		predicates: equalPredicates,
 		input:      input,
+		streams:    streams,
 		region:     region,
 	}
 }
