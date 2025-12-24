@@ -2500,6 +2500,8 @@ Starting with the 3.0 release we began using [conventional commits](https://www.
 
 ## [2.9.9](https://github.com/grafana/loki/compare/v2.9.8...v2.9.9) (2024-07-04)
 
+* [11899](https://github.com/grafana/loki/pull/11899) **toontijtgat**: add documentation for ruler_alertmanager_config and change the function so that you only need to fill in the value you want to override.
+
 ### All Changes
 
 #### Loki

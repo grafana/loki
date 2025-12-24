@@ -204,7 +204,7 @@ func (r *DefaultMultiTenantManager) getOrCreateNotifier(userID string) (*notifie
 
 		// Apply the tenant specific alertmanager config when defined
 		if amOverrides := r.limits.RulerAlertManagerConfig(userID); amOverrides != nil {
-			amCfg = applyAlertmanagerDefaults(*amOverrides)
+			amCfg = applyAlertmanagerDefaults(*amOverrides,*amCfg)
 		}
 
 		var err error
