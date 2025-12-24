@@ -13,7 +13,35 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/loser"
+
+	"github.com/grafana/loki/pkg/push"
 )
+
+// areDuplicates returns true if two entries should be considered duplicates: same line and same metadata
+func areDuplicates(a, b logproto.Entry) bool {
+	if a.Line != b.Line {
+		return false
+	}
+	if !labelAdaptersEqual(a.StructuredMetadata, b.StructuredMetadata) {
+		return false
+	}
+	if !labelAdaptersEqual(a.Parsed, b.Parsed) {
+		return false
+	}
+	return true
+}
+
+func labelAdaptersEqual(a, b push.LabelsAdapter) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].Name != b[i].Name || a[i].Value != b[i].Value {
+			return false
+		}
+	}
+	return true
+}
 
 type streamIterator struct {
 	i      int
@@ -139,7 +167,7 @@ func (i *mergeEntryIterator) fillBuffer() {
 
 		var dupe bool
 		for _, t := range previous {
-			if t.Line == entry.Line {
+			if areDuplicates(t.Entry, entry) {
 				i.stats.AddDuplicates(1)
 				dupe = true
 				break
