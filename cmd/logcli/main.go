@@ -619,8 +619,8 @@ func newLabelQuery(cmd *kingpin.CmdClause) *labelquery.LabelQuery {
 
 	cmd.Arg("label", "The name of the label.").Default("").StringVar(&labelName)
 	cmd.Flag("since", "Lookback window.").Default("1h").DurationVar(&since)
-	cmd.Flag("from", "Start looking for labels at this absolute time (inclusive)").StringVar(&from)
-	cmd.Flag("to", "Stop looking for labels at this absolute time (exclusive)").StringVar(&to)
+	cmd.Flag("from", "Start looking for labels at this absolute time (inclusive)").Short('s').StringVar(&from)
+	cmd.Flag("to", "Stop looking for labels at this absolute time (exclusive)").Short('e').StringVar(&to)
 
 	return q
 }
@@ -646,8 +646,8 @@ func newSeriesQuery(cmd *kingpin.CmdClause) *seriesquery.SeriesQuery {
 
 	cmd.Arg("matcher", "eg '{foo=\"bar\",baz=~\".*blip\"}'").Required().StringVar(&q.Matcher)
 	cmd.Flag("since", "Lookback window.").Default("1h").DurationVar(&since)
-	cmd.Flag("from", "Start looking for logs at this absolute time (inclusive)").StringVar(&from)
-	cmd.Flag("to", "Stop looking for logs at this absolute time (exclusive)").StringVar(&to)
+	cmd.Flag("from", "Start looking for logs at this absolute time (inclusive)").Short('s').StringVar(&from)
+	cmd.Flag("to", "Stop looking for logs at this absolute time (exclusive)").Short('e').StringVar(&to)
 	cmd.Flag("analyze-labels", "Printout a summary of labels including count of label value combinations, useful for debugging high cardinality series").BoolVar(&q.AnalyzeLabels)
 
 	return q
@@ -689,8 +689,8 @@ func newQuery(instant bool, cmd *kingpin.CmdClause) *query.Query {
 	} else {
 		cmd.Arg("query", "eg '{foo=\"bar\",baz=~\".*blip\"} |~ \".*error.*\"'").Required().StringVar(&q.QueryString)
 		cmd.Flag("since", "Lookback window.").Default("1h").DurationVar(&since)
-		cmd.Flag("from", "Start looking for logs at this absolute time (inclusive)").StringVar(&from)
-		cmd.Flag("to", "Stop looking for logs at this absolute time (exclusive)").StringVar(&to)
+		cmd.Flag("from", "Start looking for logs at this absolute time (inclusive)").Short('s').StringVar(&from)
+		cmd.Flag("to", "Stop looking for logs at this absolute time (exclusive)").Short('e').StringVar(&to)
 		cmd.Flag("step", "Query resolution step width, for metric queries. Evaluate the query at the specified step over the time range.").DurationVar(&q.Step)
 		cmd.Flag("interval", "Query interval, for log queries. Return entries at the specified interval, ignoring those between. **This parameter is experimental, please see Issue 1779**").DurationVar(&q.Interval)
 		cmd.Flag("batch", "Query batch size to use until 'limit' is reached").Default("1000").IntVar(&q.BatchSize)
@@ -721,13 +721,27 @@ func mustParse(t string, defaultTime time.Time) time.Time {
 		return defaultTime
 	}
 
-	ret, err := time.Parse(time.RFC3339Nano, t)
-
-	if err != nil {
-		log.Fatalf("Unable to parse time %v", err)
+	// Try multiple time formats in order of preference
+	formats := []string{
+		time.RFC3339Nano,
+		time.RFC3339,
+		"2006-01-02T15:04:05",     // Without timezone, seconds
+		"2006-01-02T15:04",        // Without timezone, no seconds
+		"2006-01-02",              // Date only (midnight)
 	}
 
-	return ret
+	for _, format := range formats {
+		if ret, err := time.Parse(format, t); err == nil {
+			// If no timezone specified, use local timezone
+			if ret.Location() == time.UTC && !strings.Contains(t, "Z") && !strings.Contains(t, "+") && !strings.Contains(t, "-") {
+				ret = time.Date(ret.Year(), ret.Month(), ret.Day(), ret.Hour(), ret.Minute(), ret.Second(), ret.Nanosecond(), time.Local)
+			}
+			return ret
+		}
+	}
+
+	log.Fatalf("Unable to parse time %q. Supported formats: YYYY-MM-DD, YYYY-MM-DDTHH:MM, YYYY-MM-DDTHH:MM:SS, RFC3339", t)
+	return time.Time{}
 }
 
 // This method is to duplicate the same logic of `step` value from `start` and `end`
