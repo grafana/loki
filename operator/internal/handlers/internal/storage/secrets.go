@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -42,8 +43,10 @@ var (
 	errS3EndpointUnparseable       = errors.New("can not parse S3 endpoint as URL")
 	errS3EndpointNoURL             = errors.New("endpoint for S3 must be an HTTP or HTTPS URL")
 	errS3EndpointUnsupportedScheme = errors.New("scheme of S3 endpoint URL is unsupported")
+	errS3EndpointAWSNoRegion       = errors.New("endpoint for AWS S3 must include correct region")
+	errS3EndpointNoBucketName      = errors.New("bucket name must not be included in AWS S3 endpoint URL")
+	errS3EndpointAWSInvalid        = errors.New("endpoint for AWS S3 is invalid, must match either https://s3.region.amazonaws.com or https://vpce-id.s3.region.vpce.amazonaws.com")
 	errS3EndpointPathNotAllowed    = errors.New("endpoint for S3 must not include a path")
-	errS3EndpointAWSInvalid        = errors.New("endpoint for AWS S3 must include correct region")
 	errS3ForcePathStyleInvalid     = errors.New(`forcepathstyle must be "true" or "false"`)
 
 	errGCPParseCredentialsFile      = errors.New("gcp storage secret cannot be parsed from JSON content")
@@ -61,6 +64,21 @@ var (
 const (
 	awsEndpointSuffix      = ".amazonaws.com"
 	gcpAccountTypeExternal = "external_account"
+)
+
+var (
+	// Regular AWS S3 endpoint: https://s3.{region}.amazonaws.com
+	awsS3EndpointRegex = regexp.MustCompile(`^https://s3\.([a-z0-9-]+)\.amazonaws\.com$`)
+
+	// VPC endpoint: https://vpce-{id}.s3.{region}.vpce.amazonaws.com
+	awsVPCEndpointRegex = regexp.MustCompile(`^https://vpce-[a-z0-9-]+\.s3\.([a-z0-9-]+)\.vpce\.amazonaws\.com$`)
+
+	// Invalid patterns with bucket names (to detect and reject)
+	// Regular S3 with bucket: https://bucket-name.s3.region.amazonaws.com
+	awsS3WithBucketRegex = regexp.MustCompile(`^https://([a-z0-9.-]+)\.s3\.([a-z0-9-]+)\.amazonaws\.com$`)
+
+	// VPC with bucket: https://bucket-name.vpce-id.s3.region.vpce.amazonaws.com
+	awsVPCWithBucketRegex = regexp.MustCompile(`^https://([a-z0-9.-]+)\.vpce-[a-z0-9-]+\.s3\.([a-z0-9-]+)\.vpce\.amazonaws\.com$`)
 )
 
 func getSecrets(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack, fg configv1.FeatureGates) (*corev1.Secret, *corev1.Secret, error) {
@@ -483,7 +501,7 @@ func extractS3ConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMod
 	}
 }
 
-func validateS3Endpoint(endpoint string, region string) error {
+func validateS3Endpoint(endpoint, region string) error {
 	if len(endpoint) == 0 {
 		return fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSEndpoint)
 	}
@@ -492,30 +510,47 @@ func validateS3Endpoint(endpoint string, region string) error {
 	if err != nil {
 		return fmt.Errorf("%w: %w", errS3EndpointUnparseable, err)
 	}
-
 	if parsedURL.Scheme == "" {
-		// Assume "just a hostname" when scheme is empty and produce a clearer error message
 		return errS3EndpointNoURL
 	}
-
 	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
 		return fmt.Errorf("%w: %s", errS3EndpointUnsupportedScheme, parsedURL.Scheme)
 	}
 
+	// Non-AWS S3 compatible endpoints (e.g., MinIO) - no further validation needed
 	if parsedURL.Path != "" && parsedURL.Path != "/" {
 		return fmt.Errorf("%w: %s", errS3EndpointPathNotAllowed, parsedURL.Path)
 	}
 
 	if strings.HasSuffix(parsedURL.Host, awsEndpointSuffix) {
+		// AWS endpoint validation
 		if len(region) == 0 {
 			return fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSRegion)
 		}
 
-		validEndpoint := fmt.Sprintf("https://s3.%s%s", region, awsEndpointSuffix)
-		if endpoint != validEndpoint {
-			return fmt.Errorf("%w: %s", errS3EndpointAWSInvalid, validEndpoint)
+		if awsS3WithBucketRegex.MatchString(endpoint) || awsVPCWithBucketRegex.MatchString(endpoint) {
+			return errS3EndpointNoBucketName
 		}
+
+		// Validate correct endpoint formats
+		if matches := awsS3EndpointRegex.FindStringSubmatch(endpoint); matches != nil {
+			if extractedRegion := matches[1]; extractedRegion != region {
+				return fmt.Errorf("%w: expected region %s, got %s", errS3EndpointAWSNoRegion, region, extractedRegion)
+			}
+			return nil
+		}
+
+		if matches := awsVPCEndpointRegex.FindStringSubmatch(endpoint); matches != nil {
+			if extractedRegion := matches[1]; extractedRegion != region {
+				return fmt.Errorf("%w: expected region %s, got %s", errS3EndpointAWSNoRegion, region, extractedRegion)
+			}
+			return nil
+		}
+
+		// If doesn't match any of the valid patterns, just return the error
+		return fmt.Errorf("%w: %s", errS3EndpointAWSInvalid, endpoint)
 	}
+
 	return nil
 }
 
