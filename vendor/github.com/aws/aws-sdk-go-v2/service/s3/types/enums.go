@@ -715,6 +715,7 @@ const (
 	InventoryOptionalFieldChecksumAlgorithm            InventoryOptionalField = "ChecksumAlgorithm"
 	InventoryOptionalFieldObjectAccessControlList      InventoryOptionalField = "ObjectAccessControlList"
 	InventoryOptionalFieldObjectOwner                  InventoryOptionalField = "ObjectOwner"
+	InventoryOptionalFieldLifecycleExpirationDate      InventoryOptionalField = "LifecycleExpirationDate"
 )
 
 // Values returns all known values for InventoryOptionalField. Note that this can
@@ -738,6 +739,7 @@ func (InventoryOptionalField) Values() []InventoryOptionalField {
 		"ChecksumAlgorithm",
 		"ObjectAccessControlList",
 		"ObjectOwner",
+		"LifecycleExpirationDate",
 	}
 }
 
