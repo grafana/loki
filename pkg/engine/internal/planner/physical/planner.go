@@ -340,7 +340,9 @@ func (p *Planner) processProjection(lp *logical.Projection, ctx *Context) (Node,
 	for i := range lp.Expressions {
 		expressions[i] = p.convertPredicate(lp.Expressions[i])
 		if funcExpr, ok := lp.Expressions[i].(*logical.FunctionOp); ok {
-			if funcExpr.Op == types.VariadicOpParseJSON || funcExpr.Op == types.VariadicOpParseLogfmt {
+			if funcExpr.Op == types.VariadicOpParseJSON ||
+				funcExpr.Op == types.VariadicOpParseLogfmt ||
+				funcExpr.Op == types.VariadicOpParseRegexp { // TODO(meher): Do we need VariadicOpParseRegexp here?
 				needsCompat = true
 			}
 		}

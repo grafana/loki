@@ -2,6 +2,7 @@ package executor
 
 import (
 	"fmt"
+	"regexp"
 	"sort"
 	"unsafe"
 
@@ -16,18 +17,28 @@ import (
 
 func parseFn(op types.VariadicOp) VariadicFunction {
 	return VariadicFunctionFunc(func(args ...arrow.Array) (arrow.Array, error) {
-		sourceCol, requestedKeys, strict, keepEmpty, err := extractParseFnParameters(args)
-		if err != nil {
-			panic(err)
-		}
-
 		var headers []string
 		var parsedColumns []arrow.Array
+
 		switch op {
 		case types.VariadicOpParseLogfmt:
+			sourceCol, requestedKeys, strict, keepEmpty, err := extractParseFnParameters(args)
+			if err != nil {
+				panic(err)
+			}
 			headers, parsedColumns = buildLogfmtColumns(sourceCol, requestedKeys, strict, keepEmpty)
 		case types.VariadicOpParseJSON:
+			sourceCol, requestedKeys, _, _, err := extractParseFnParameters(args)
+			if err != nil {
+				panic(err)
+			}
 			headers, parsedColumns = buildJSONColumns(sourceCol, requestedKeys)
+		case types.VariadicOpParseRegexp:
+			sourceCol, pattern, requestedKeys, err := extractRegexpParseFnParameters(args)
+			if err != nil {
+				panic(err)
+			}
+			headers, parsedColumns = buildRegexpColumns(sourceCol, pattern, requestedKeys)
 		default:
 			return nil, fmt.Errorf("unsupported parser kind: %v", op)
 		}
@@ -49,6 +60,105 @@ func parseFn(op types.VariadicOp) VariadicFunction {
 
 		return array.NewStructArrayWithFields(parsedColumns, newFields)
 	})
+}
+
+func extractRegexpParseFnParameters(args []arrow.Array) (*array.String, string, []string, error) {
+	// Valid signature: parseRegexp(sourceColVec, pattern, requestedKeys) // TODO(meher): is requestedKeys needed here?
+	if len(args) != 3 {
+		return nil, "", nil, fmt.Errorf("regexp parse function expected 3 arguments, got %d", len(args))
+	}
+
+	sourceColArr := args[0]
+	patternArr := args[1]
+	requestedKeysArr := args[2]
+
+	if sourceColArr == nil {
+		return nil, "", nil, fmt.Errorf("regexp parse function arguments did not include a source ColumnVector")
+	}
+
+	sourceCol, ok := sourceColArr.(*array.String)
+	if !ok {
+		return nil, "", nil, fmt.Errorf("regexp parse can only operate on string column types, got %T", sourceColArr)
+	}
+
+	// Extract pattern (scalar string)
+	var pattern string
+	if patternArr != nil && patternArr.Len() > 0 {
+		strArr, ok := patternArr.(*array.String)
+		if !ok {
+			return nil, "", nil, fmt.Errorf("pattern must be a string, got %T", patternArr)
+		}
+		pattern = strArr.Value(0)
+	}
+
+	// Extract requested keys
+	var requestedKeys []string
+	if requestedKeysArr != nil && !requestedKeysArr.IsNull(0) {
+		reqKeysList, ok := requestedKeysArr.(*array.List)
+		if ok {
+			firstRow, ok := util.ArrayListValue(reqKeysList, 0).([]string)
+			if ok {
+				requestedKeys = append(requestedKeys, firstRow...)
+			}
+		}
+	}
+
+	return sourceCol, pattern, requestedKeys, nil
+}
+
+func buildRegexpColumns(input *array.String, pattern string, requestedKeys []string) ([]string, []arrow.Array) {
+	regex, err := regexp.Compile(pattern)
+	if err != nil {
+		return buildErrorColumns(input, "RegexpParseErr", err.Error())
+	}
+
+	// Build name index for capture groups
+	nameIndex := make(map[int]string)
+	for i, name := range regex.SubexpNames() {
+		if name != "" {
+			nameIndex[i] = name
+		}
+	}
+
+	if len(nameIndex) == 0 {
+		return buildErrorColumns(input, "RegexpParseErr", "at least one named capture must be supplied")
+	}
+
+	parseFunc := func(line string) (map[string]string, error) {
+		result := make(map[string]string)
+		matches := regex.FindStringSubmatch(line)
+
+		if matches == nil {
+			return result, nil
+		}
+
+		for i, value := range matches {
+			if name, ok := nameIndex[i]; ok {
+				result[name] = value
+			}
+		}
+		return result, nil
+	}
+
+	return buildColumns(input, requestedKeys, parseFunc, "RegexpParseErr")
+}
+
+func buildErrorColumns(input *array.String, errType, errDetails string) ([]string, []arrow.Array) {
+	errBuilder := array.NewStringBuilder(memory.DefaultAllocator)
+	errDetailsBuilder := array.NewStringBuilder(memory.DefaultAllocator)
+
+	for i := 0; i < input.Len(); i++ {
+		errBuilder.Append(errType)
+		errDetailsBuilder.Append(errDetails)
+	}
+
+	return []string{
+			semconv.ColumnIdentError.ShortName(),
+			semconv.ColumnIdentErrorDetails.ShortName(),
+		}, []arrow.Array{
+			errBuilder.NewArray(),
+			errDetailsBuilder.NewArray(),
+		}
 }
 
 func extractParseFnParameters(args []arrow.Array) (*array.String, []string, bool, bool, error) {
