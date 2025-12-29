@@ -58,7 +58,7 @@ The LogQL query contains syntax errors. This could be due to:
 **Common examples:**
 
 | Invalid Query | Error | Fix |
-|--------------|-------|-----|
+| -------------- | ------- | ----- |
 | `{app="foo"` | Missing closing brace | `{app="foo"}` |
 | `{app="foo"} \|= test` | Unquoted filter string | `{app="foo"} \|= "test"` |
 | `rate({app="foo"}[5minutes])` | Invalid duration unit | `rate({app="foo"}[5m])` |
@@ -832,7 +832,7 @@ The client closed the connection before receiving a response. This is typically 
 
 * **Increase client timeout** in Grafana or LogCLI.
 * **Optimize the query** to return faster.
-* **Check network connectivity** between client and Loki. 
+* **Check network connectivity** between client and Loki.
 
 **Properties:**
 
@@ -956,7 +956,7 @@ When a pipeline stage fails (for example, parsing JSON that isn't valid JSON), L
 ### Error types
 
 | Error Label Value | Cause |
-|------------------|-------|
+| ------------------ | ------- |
 | `JSONParserErr` | Log line is not valid JSON |
 | `LogfmtParserErr` | Log line is not valid logfmt |
 | `SampleExtractionErr` | Failed to extract numeric value for metrics |
