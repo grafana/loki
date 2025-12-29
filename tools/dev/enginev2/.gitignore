@@ -1,0 +1,6 @@
+# Ignore all data directories created by Docker
+data/
+
+# Ignore any local configuration overrides
+*.local.yaml
+loki-read-config.local.yaml

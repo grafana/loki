@@ -1,0 +1,268 @@
+# Loki Unified Configuration for Engine V2 Development
+# Used by all components: Distributor, Ingester, DataObj Consumer, Ingest Limits Frontend, and Querier
+#
+# Usage:
+#   - Docker services: Use with -target=<component>
+#   - Local querier: ./cmd/loki/loki -target=querier -config.file=tools/dev/enginev2/loki-config.yaml
+
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9095
+  log_level: info
+  grpc_server_max_recv_msg_size: 104857600  # 100MB
+  grpc_server_max_send_msg_size: 104857600
+
+common:
+  ring:
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: memberlist
+  replication_factor: 1
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  
+  # Required for standalone querier to satisfy cache-generation-loader dependency
+  # This is needed when using TSDB index type (object storage index)
+  # Points to querier's own gRPC port since we don't run a compactor in this dev setup
+  compactor_grpc_address: localhost:9200
+
+# Memberlist for ring coordination between Docker Loki components
+# Uses Docker DNS names for service discovery
+memberlist:
+  bind_addr:
+    - 0.0.0.0
+  bind_port: 7946
+  join_members:
+    - loki-distributor:7946
+    - loki-dataobj-consumer:7946
+    - loki-ingester:7946
+    - loki-ingest-limits-frontend:7946
+    - loki-dataobj-index-builder:7946
+
+# Schema configuration
+schema_config:
+  configs:
+    - from: 2024-01-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+# Storage configuration
+storage_config:
+  filesystem:
+    directory: /loki/chunks
+  
+  tsdb_shipper:
+    active_index_directory: /loki/tsdb-index
+    cache_location: /loki/tsdb-cache
+  
+  # Object store configuration for DataObj
+  object_store:
+    filesystem:
+      dir: /loki/dataobj
+
+# Kafka configuration (using Docker DNS for broker)
+kafka_config:
+  topic: loki-logs
+  writer_config:
+    address: broker:29092
+  reader_config:
+    address: broker:29092
+
+# Ingester configuration - partition ingester for Kafka mode
+ingester:
+  kafka_ingestion:
+    enabled: true
+    # Partition ring config - this is what the distributor uses to find active partitions
+    partition_ring:
+      kvstore:
+        store: memberlist
+  lifecycler:
+    # ID must contain partition number suffix (e.g., "-partition-0")
+    id: ingester-partition-0
+    ring:
+      kvstore:
+        store: memberlist
+      replication_factor: 1
+
+# Distributor configuration
+distributor:
+  ring:
+    kvstore:
+      store: memberlist
+  
+  # Enable Kafka writes, disable direct ingester writes
+  kafka_writes_enabled: true
+  ingester_writes_enabled: false
+  
+  # DataObj Tee - duplicates streams to a separate topic for DataObj Consumer
+  # Requires the ingest-limits-frontend service for rate tracking
+  dataobj_tee:
+    enabled: true
+    topic: loki-dataobjs
+    max_buffered_bytes: 104857600  # 100MB
+    per_partition_rate_bytes: 104857600  # 100MB/s - high for dev
+
+# Ingest Limits - required for DataObj Tee rate tracking
+ingest_limits:
+  enabled: true
+  topic: loki-stream-metadata
+  num_partitions: 1
+  consumer_group: ingest-limits
+  active_window: 1m
+  rate_window: 1m
+  bucket_size: 1s
+  eviction_interval: 1m
+  lifecycler:
+    ring:
+      kvstore:
+        store: memberlist
+      replication_factor: 1
+    num_tokens: 128
+    heartbeat_period: 5s
+    join_after: 0s
+    min_ready_duration: 0s
+    final_sleep: 0s
+
+# Ingest Limits Frontend configuration - provides rate tracking for DataObj Tee
+ingest_limits_frontend:
+  num_partitions: 1
+  lifecycler:
+    ring:
+      kvstore:
+        store: memberlist
+      replication_factor: 1
+    num_tokens: 128
+    heartbeat_period: 5s
+    join_after: 0s
+    min_ready_duration: 0s
+    final_sleep: 0s
+
+# DataObj configuration
+# Note: BuilderConfig fields (target_page_size, buffer_size, etc.) are set via CLI flags
+dataobj:
+  enabled: true
+  storage_bucket_prefix: ""
+  
+  # Consumer configuration
+  consumer:
+    topic: loki-dataobjs
+    idle_flush_timeout: 3s
+    
+    # Lifecycler for ring membership
+    # ID must contain partition number suffix (e.g., "consumer-0")
+    lifecycler:
+      id: dataobj-consumer-0
+      ring:
+        kvstore:
+          store: memberlist
+        replication_factor: 1
+        heartbeat_timeout: 1m
+      num_tokens: 128
+      heartbeat_period: 5s
+      join_after: 0s
+      observe_period: 0s
+      min_ready_duration: 0s
+      final_sleep: 0s
+    
+    # Partition ring configuration for Kafka consumption
+    partition_ring:
+      kvstore:
+        store: memberlist
+  
+  # Metastore configuration
+  metastore:
+    index_storage_prefix: "index/v0"
+    partition_ratio: 10
+  
+  # Index Builder configuration
+  index:
+    events_per_index: 1         # Create index after each DataObj event (fast for dev)
+    flush_interval: 3s         # Check for stale partitions frequently
+    max_idle_time: 6s          # Flush quickly when idle
+
+# Query Engine V2 configuration
+query_engine:
+  # Enable Engine V2
+  enable: true
+  
+  # Distributed execution (false for single-service development)
+  distributed: false
+  
+  # Executor configuration (inline fields from ExecutorConfig)
+  batch_size: 100               # Rows per Arrow RecordBatch
+  merge_prefetch_count: 4       # Parallel inputs to prefetch in merge
+  
+  # Storage lag - time until data objects are available for querying
+  # Set to 0s for development to query recent data immediately
+  storage_lag: 0s
+  
+  # Storage start date - earliest valid data date
+  # Queries before this date will not use Engine V2
+  storage_start_date: "2024-01-01T00:00:00Z"
+  
+  # Enable engine router to direct queries to V2 when in valid time range
+  enable_engine_router: true
+
+# Querier configuration
+querier:
+  # Query engine configuration (logql.EngineOpts)
+  engine:
+    max_look_back_period: 30s  # Maximum lookback for instant log queries
+  
+  # Maximum concurrent queries
+  max_concurrent: 4
+  
+  # Only query DataObj storage, not ingesters (querier doesn't connect to ingesters in this setup)
+  query_store_only: true
+  
+  # Tail configuration
+  tail_max_duration: 1h
+
+# Query range configuration
+query_range:
+  # Align queries with step for better performance
+  align_queries_with_step: true
+  
+  # Disable result caching for development (enable in production)
+  cache_results: false
+  
+  # Maximum retries
+  max_retries: 3
+
+# Limits configuration (combined write and read limits)
+limits_config:
+  # Write limits
+  ingestion_rate_mb: 100
+  ingestion_burst_size_mb: 200
+  max_streams_per_user: 0
+  max_global_streams_per_user: 0
+  max_line_size: 262144  # 256KB
+  max_line_size_truncate: false
+  reject_old_samples: false
+  reject_old_samples_max_age: 168h
+  creation_grace_period: 10m
+  max_label_name_length: 1024
+  max_label_value_length: 2048
+  max_label_names_per_series: 30
+  unordered_writes: true
+  
+  # Query limits
+  max_query_length: 721h                    # 30 days
+  max_query_lookback: 720h                  # 30 days
+  max_entries_limit_per_query: 10000        # Max log entries per query
+  max_query_series: 10000                   # Max series per query
+  max_streams_matchers_per_query: 1000      # Max stream matchers
+  max_concurrent_tail_requests: 10          # Max concurrent tail requests
+  max_query_parallelism: 16                 # Max parallel sub-queries
+  max_cache_freshness_per_query: 10m        # Cache freshness
+  cardinality_limit: 100000                 # Max unique label combinations
+  split_queries_by_interval: 1h             # Split queries by time for parallelization

@@ -1,0 +1,224 @@
+# Engine V2 Development Environment - Write Path
+# This setup runs the Loki write path components with Kafka integration and DataObj storage
+# Docker services use internal networking; local querier reads from shared filesystem
+
+services:
+  # Kafka broker for buffering logs
+  broker:
+    image: apache/kafka:latest
+    hostname: broker
+    container_name: loki-kafka
+    user: root  # Run as root to avoid permission issues with volumes
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://broker:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_NODE_ID: 1
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@broker:29093
+      KAFKA_LISTENERS: PLAINTEXT://broker:29092,CONTROLLER://broker:29093,PLAINTEXT_HOST://0.0.0.0:9092
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LOG_DIRS: /tmp/kraft-combined-logs
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_NUM_PARTITIONS: 1
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+    volumes:
+      - kafka-data:/tmp/kraft-combined-logs
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Kafka UI for monitoring topics and messages
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: loki-kafka-ui
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: loki-dev
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: broker:29092
+    depends_on:
+      broker:
+        condition: service_healthy
+
+  # Ingest Limits Frontend - provides rate tracking for DataObj Tee
+  loki-ingest-limits-frontend:
+    build:
+      context: ../../..
+      dockerfile: cmd/loki/Dockerfile
+    hostname: loki-ingest-limits-frontend
+    container_name: loki-ingest-limits-frontend
+    user: "10001:10001"
+    command:
+      - "-target=ingest-limits-frontend"
+      - "-config.file=/etc/loki/config.yaml"
+    ports:
+      - "3103:3100"  # HTTP for status/metrics
+      - "9097:9095"  # gRPC for rate tracking
+    volumes:
+      - ./loki-config.yaml:/etc/loki/config.yaml:ro
+      - ./data/loki:/loki
+    depends_on:
+      broker:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/usr/bin/loki", "-target=ingest-limits-frontend", "-config.file=/etc/loki/config.yaml", "-verify-config"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  # Loki Distributor - receives logs and writes to Kafka
+  loki-distributor:
+    build:
+      context: ../../..
+      dockerfile: cmd/loki/Dockerfile
+    hostname: loki-distributor
+    container_name: loki-distributor
+    user: "10001:10001"
+    command:
+      - "-target=distributor"
+      - "-config.file=/etc/loki/config.yaml"
+    ports:
+      - "3100:3100"  # HTTP API for pushing logs
+      - "9095:9095"  # gRPC
+    volumes:
+      - ./loki-config.yaml:/etc/loki/config.yaml:ro
+      - ./data/loki:/loki
+    depends_on:
+      broker:
+        condition: service_healthy
+      loki-ingest-limits-frontend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/usr/bin/loki", "-target=distributor", "-config.file=/etc/loki/config.yaml", "-verify-config"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  # Partition Ingester - consumes from Kafka and creates active partitions in the ingester partition ring
+  # This is required for the distributor to write to Kafka (kafka_writes_enabled requires active partitions)
+  loki-ingester:
+    build:
+      context: ../../..
+      dockerfile: cmd/loki/Dockerfile
+    hostname: loki-ingester
+    container_name: loki-ingester
+    user: "10001:10001"
+    command:
+      - "-target=ingester"
+      - "-config.file=/etc/loki/config.yaml"
+    ports:
+      - "3102:3100"  # HTTP for status/metrics
+      - "9096:9095"  # gRPC
+    volumes:
+      - ./loki-config.yaml:/etc/loki/config.yaml:ro
+      - ./data/loki:/loki
+    depends_on:
+      broker:
+        condition: service_healthy
+      loki-distributor:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "/usr/bin/loki", "-target=ingester", "-config.file=/etc/loki/config.yaml", "-verify-config"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  # DataObj Consumer - consumes from Kafka and writes DataObj files
+  loki-dataobj-consumer:
+    build:
+      context: ../../..
+      dockerfile: cmd/loki/Dockerfile
+    hostname: loki-dataobj-consumer
+    container_name: loki-dataobj-consumer
+    user: "10001:10001"
+    command:
+      - "-target=dataobj-consumer"
+      - "-config.file=/etc/loki/config.yaml"
+      # BuilderConfig flags (these are not in config yaml)
+      - "-dataobj-consumer.target-page-size=2MB"
+      - "-dataobj-consumer.target-builder-memory-limit=128MB"
+      - "-dataobj-consumer.target-section-size=128MB"
+      - "-dataobj-consumer.buffer-size=16MB"
+      - "-dataobj-consumer.section-stripe-merge-limit=2"
+    ports:
+      - "3101:3100"  # HTTP for status/metrics
+    volumes:
+      - ./loki-config.yaml:/etc/loki/config.yaml:ro
+      - ./data/loki:/loki
+    depends_on:
+      broker:
+        condition: service_healthy
+      loki-distributor:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "/usr/bin/loki", "-target=dataobj-consumer", "-config.file=/etc/loki/config.yaml", "-verify-config"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  # DataObj Index Builder - consumes metastore events from Kafka and builds index files
+  # This is REQUIRED for Engine V2 queries to discover DataObj files
+  loki-dataobj-index-builder:
+    build:
+      context: ../../..
+      dockerfile: cmd/loki/Dockerfile
+    hostname: loki-dataobj-index-builder
+    container_name: loki-dataobj-index-builder
+    user: "10001:10001"
+    command:
+      - "-target=dataobj-index-builder"
+      - "-config.file=/etc/loki/config.yaml"
+      - "-kafka.topic=loki.metastore-events"
+    ports:
+      - "3104:3100"  # HTTP for status/metrics
+    volumes:
+      - ./loki-config.yaml:/etc/loki/config.yaml:ro
+      - ./data/loki:/loki
+    depends_on:
+      broker:
+        condition: service_healthy
+      loki-dataobj-consumer:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "/usr/bin/loki", "-target=dataobj-index-builder", "-config.file=/etc/loki/config.yaml", "-verify-config"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  # Optional: Grafana for visualization
+  grafana:
+    image: grafana/grafana:11.4.0
+    container_name: loki-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
+    volumes:
+      - grafana-data:/var/lib/grafana
+    restart: unless-stopped
+
+volumes:
+  kafka-data:
+  grafana-data:

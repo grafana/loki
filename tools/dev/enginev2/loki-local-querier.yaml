@@ -1,0 +1,126 @@
+# Loki Querier Configuration for Engine V2 Development (Local Process)
+# This config is for the querier running locally OUTSIDE Docker
+# It does NOT use memberlist - just reads DataObj files directly from storage
+#
+# Usage:
+#   go run cmd/loki/main.go -target=querier -config.file=tools/dev/enginev2/loki-querier-config.yaml
+
+auth_enabled: false
+
+server:
+  http_listen_port: 3200
+  grpc_listen_port: 9200
+  log_level: info
+  grpc_server_max_recv_msg_size: 104857600  # 100MB
+  grpc_server_max_send_msg_size: 104857600
+
+common:
+  ring:
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: inmemory   # No memberlist - standalone querier
+  replication_factor: 1
+  path_prefix: ./tools/dev/enginev2/data/loki
+  storage:
+    filesystem:
+      chunks_directory: ./tools/dev/enginev2/data/loki/chunks
+      rules_directory: ./tools/dev/enginev2/data/loki/rules
+  
+  # Required for standalone querier - points to own gRPC port
+  compactor_grpc_address: localhost:9200
+
+# No memberlist - querier runs standalone and just reads from storage
+# memberlist section is intentionally omitted
+
+# Schema configuration
+schema_config:
+  configs:
+    - from: 2024-01-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+# Storage configuration - using local paths
+storage_config:
+  filesystem:
+    directory: ./tools/dev/enginev2/data/loki/chunks
+  
+  tsdb_shipper:
+    active_index_directory: ./tools/dev/enginev2/data/loki/tsdb-index
+    cache_location: ./tools/dev/enginev2/data/loki/tsdb-cache
+  
+  # Object store configuration for DataObj - local filesystem
+  object_store:
+    filesystem:
+      dir: ./tools/dev/enginev2/data/loki/dataobj
+
+# DataObj configuration - only metastore needed for reading
+dataobj:
+  enabled: true
+  storage_bucket_prefix: ""
+  
+  # Metastore configuration - where index files are stored
+  metastore:
+    index_storage_prefix: "index/v0"
+    partition_ratio: 10
+
+# Query Engine V2 configuration
+query_engine:
+  # Enable Engine V2
+  enable: true
+  
+  # Distributed execution (false for single-service development)
+  distributed: false
+  
+  # Executor configuration
+  batch_size: 100
+  merge_prefetch_count: 4
+  
+  # Storage lag - 0s for development to query recent data immediately
+  storage_lag: 0s
+  
+  # Storage start date
+  storage_start_date: "2024-01-01T00:00:00Z"
+  
+  # Enable engine router
+  enable_engine_router: true
+
+# Querier configuration
+querier:
+  engine:
+    max_look_back_period: 30s
+  
+  max_concurrent: 4
+  
+  # IMPORTANT: Only query DataObj storage, not ingesters
+  # The querier is standalone and can't reach Docker ingesters anyway
+  query_store_only: true
+  
+  tail_max_duration: 1h
+
+# Query scheduler - explicitly disable ring to prevent "empty ring" errors
+# Without this, Loki auto-enables use_scheduler_ring when no frontend/scheduler address is set
+query_scheduler:
+  use_scheduler_ring: false
+
+# Query range configuration
+query_range:
+  align_queries_with_step: true
+  cache_results: false
+  max_retries: 3
+
+# Limits configuration (query limits only)
+limits_config:
+  max_query_length: 721h
+  max_query_lookback: 720h
+  max_entries_limit_per_query: 10000
+  max_query_series: 10000
+  max_streams_matchers_per_query: 1000
+  max_concurrent_tail_requests: 10
+  max_query_parallelism: 16
+  max_cache_freshness_per_query: 10m
+  cardinality_limit: 100000
+  split_queries_by_interval: 1h
