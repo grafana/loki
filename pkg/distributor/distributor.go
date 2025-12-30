@@ -789,17 +789,12 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	// These limits are checked after the ingestion rate limit as this
 	// is how it works in ingesters.
 	if d.cfg.IngestLimitsEnabled {
-		accepted, err := d.ingestLimits.EnforceLimits(ctx, tenantID, streams)
+		accepted, rejected, err := d.ingestLimits.EnforceLimits(ctx, tenantID, streams)
 		if err == nil && !d.cfg.IngestLimitsDryRunEnabled {
-			if len(accepted) != len(streams) {
-				discardedStreams := make([]logproto.Stream, 0, len(streams)-len(accepted))
-				for _, stream := range streams {
-					// If the accepted streams do not contain the stream, add it to the discarded streams
-					if !slices.ContainsFunc(accepted, func(s KeyedStream) bool {
-						return s.HashKey == stream.HashKey
-					}) {
-						discardedStreams = append(discardedStreams, stream.Stream)
-					}
+			if len(rejected) > 0 {
+				discardedStreams := make([]logproto.Stream, 0, len(rejected))
+				for _, stream := range rejected {
+					discardedStreams = append(discardedStreams, stream.Stream)
 				}
 				d.trackDiscardedData(ctx, discardedStreams, validationContext, tenantID, validation.StreamLimit, streamResolver, format)
 
@@ -807,13 +802,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 				// It's generally not useful to know the stream labels for a stream that is hitting the stream limit as it could be any
 				// stream and isn't necessarily a stream with high cardinality. However, it might also be a high cardinality stream so returning
 				// something here still may be useful. We used to return nothing with this limit and people requested that something is better than nothing.
-				if len(discardedStreams) == 0 {
-					// This shouldn't be possible, but better to not panic here if somehow this does happen.
-					// since we also log this message as part of the write failures manager this text should make it easier to find your way back here.
-					err = fmt.Errorf(validation.StreamLimitErrorMsg, "stream count was 0, this should not be possible", tenantID)
-				} else {
-					err = fmt.Errorf(validation.StreamLimitErrorMsg, discardedStreams[0].Labels, tenantID)
-				}
+				err = fmt.Errorf(validation.StreamLimitErrorMsg, rejected[0].Stream.Labels, tenantID)
 				d.writeFailuresManager.Log(tenantID, err)
 				// Set the validation error to the stream limit error so it is returned to the client.
 				validationErr = httpgrpc.Error(http.StatusTooManyRequests, err.Error())
