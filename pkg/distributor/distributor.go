@@ -617,6 +617,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	}
 
 	var ingestionBlockedError error
+	var totalEntriesSize, totalLineCount int
 
 	err = func() error {
 		sp := trace.SpanFromContext(ctx)
@@ -672,8 +673,8 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 			}
 
 			n := 0
-			pushSize := 0
 			prevTs := stream.Entries[0].Timestamp
+			streamEntriesSize := 0
 
 			labelNamer := otlptranslator.LabelNamer{}
 			for _, entry := range stream.Entries {
@@ -747,8 +748,10 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 				}
 
 				n++
-				validationContext.validationMetrics.compute(entry, retentionHours, policy)
-				pushSize += len(entry.Line)
+				entrySize := util.EntryTotalSize(&entry)
+				totalEntriesSize += entrySize
+				streamEntriesSize += entrySize
+				totalLineCount++
 			}
 			stream.Entries = stream.Entries[:n]
 			if len(stream.Entries) == 0 {
@@ -756,7 +759,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 				continue
 			}
 
-			maybeShardStreams(stream, lbs, pushSize, policy)
+			maybeShardStreams(stream, lbs, streamEntriesSize, policy)
 		}
 		return nil
 	}()
@@ -777,10 +780,10 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 		return &logproto.PushResponse{}, validationErr
 	}
 
-	if !d.ingestionRateLimiter.AllowN(now, tenantID, validationContext.validationMetrics.aggregatedPushStats.lineSize) {
+	if !d.ingestionRateLimiter.AllowN(now, tenantID, totalEntriesSize) {
 		d.trackDiscardedData(ctx, req.Streams, validationContext, tenantID, validation.RateLimited, streamResolver, format)
 
-		err = fmt.Errorf(validation.RateLimitedErrorMsg, tenantID, int(d.ingestionRateLimiter.Limit(now, tenantID)), validationContext.validationMetrics.aggregatedPushStats.lineCount, validationContext.validationMetrics.aggregatedPushStats.lineSize)
+		err = fmt.Errorf(validation.RateLimitedErrorMsg, tenantID, int(d.ingestionRateLimiter.Limit(now, tenantID)), totalLineCount, totalEntriesSize)
 		d.writeFailuresManager.Log(tenantID, err)
 		// Return a 429 to indicate to the client they are being rate limited
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "%s", err.Error())
