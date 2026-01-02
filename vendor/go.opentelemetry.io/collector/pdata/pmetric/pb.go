@@ -3,92 +3,54 @@
 
 package pmetric // import "go.opentelemetry.io/collector/pdata/pmetric"
 
-import (
-	"go.opentelemetry.io/collector/pdata/internal"
-)
-
 var _ MarshalSizer = (*ProtoMarshaler)(nil)
 
 type ProtoMarshaler struct{}
 
 func (e *ProtoMarshaler) MarshalMetrics(md Metrics) ([]byte, error) {
-	if !internal.UseCustomProtoEncoding.IsEnabled() {
-		return md.getOrig().Marshal()
-	}
-	size := internal.SizeProtoOrigExportMetricsServiceRequest(md.getOrig())
+	size := md.getOrig().SizeProto()
 	buf := make([]byte, size)
-	_ = internal.MarshalProtoOrigExportMetricsServiceRequest(md.getOrig(), buf)
+	_ = md.getOrig().MarshalProto(buf)
 	return buf, nil
 }
 
 func (e *ProtoMarshaler) MetricsSize(md Metrics) int {
-	if !internal.UseCustomProtoEncoding.IsEnabled() {
-		return md.getOrig().Size()
-	}
-	return internal.SizeProtoOrigExportMetricsServiceRequest(md.getOrig())
+	return md.getOrig().SizeProto()
 }
 
 func (e *ProtoMarshaler) ResourceMetricsSize(md ResourceMetrics) int {
-	if !internal.UseCustomProtoEncoding.IsEnabled() {
-		return md.orig.Size()
-	}
-	return internal.SizeProtoOrigResourceMetrics(md.orig)
+	return md.orig.SizeProto()
 }
 
 func (e *ProtoMarshaler) ScopeMetricsSize(md ScopeMetrics) int {
-	if !internal.UseCustomProtoEncoding.IsEnabled() {
-		return md.orig.Size()
-	}
-	return internal.SizeProtoOrigScopeMetrics(md.orig)
+	return md.orig.SizeProto()
 }
 
 func (e *ProtoMarshaler) MetricSize(md Metric) int {
-	if !internal.UseCustomProtoEncoding.IsEnabled() {
-		return md.orig.Size()
-	}
-	return internal.SizeProtoOrigMetric(md.orig)
+	return md.orig.SizeProto()
 }
 
 func (e *ProtoMarshaler) NumberDataPointSize(md NumberDataPoint) int {
-	if !internal.UseCustomProtoEncoding.IsEnabled() {
-		return md.orig.Size()
-	}
-	return internal.SizeProtoOrigNumberDataPoint(md.orig)
+	return md.orig.SizeProto()
 }
 
 func (e *ProtoMarshaler) SummaryDataPointSize(md SummaryDataPoint) int {
-	if !internal.UseCustomProtoEncoding.IsEnabled() {
-		return md.orig.Size()
-	}
-	return internal.SizeProtoOrigSummaryDataPoint(md.orig)
+	return md.orig.SizeProto()
 }
 
 func (e *ProtoMarshaler) HistogramDataPointSize(md HistogramDataPoint) int {
-	if !internal.UseCustomProtoEncoding.IsEnabled() {
-		return md.orig.Size()
-	}
-	return internal.SizeProtoOrigHistogramDataPoint(md.orig)
+	return md.orig.SizeProto()
 }
 
 func (e *ProtoMarshaler) ExponentialHistogramDataPointSize(md ExponentialHistogramDataPoint) int {
-	if !internal.UseCustomProtoEncoding.IsEnabled() {
-		return md.orig.Size()
-	}
-	return internal.SizeProtoOrigExponentialHistogramDataPoint(md.orig)
+	return md.orig.SizeProto()
 }
 
 type ProtoUnmarshaler struct{}
 
 func (d *ProtoUnmarshaler) UnmarshalMetrics(buf []byte) (Metrics, error) {
 	md := NewMetrics()
-	if !internal.UseCustomProtoEncoding.IsEnabled() {
-		err := md.getOrig().Unmarshal(buf)
-		if err != nil {
-			return Metrics{}, err
-		}
-		return md, nil
-	}
-	err := internal.UnmarshalProtoOrigExportMetricsServiceRequest(md.getOrig(), buf)
+	err := md.getOrig().UnmarshalProto(buf)
 	if err != nil {
 		return Metrics{}, err
 	}

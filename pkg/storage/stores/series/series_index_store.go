@@ -114,7 +114,7 @@ func (c *IndexReaderWriter) calculateIndexEntries(ctx context.Context, from, thr
 	seenIndexEntries := map[string]struct{}{}
 	entries := []series_index.Entry{}
 
-	metricName := chunk.Metric.Get(labels.MetricName)
+	metricName := chunk.Metric.Get(model.MetricNameLabel)
 	if metricName == "" {
 		return nil, nil, fmt.Errorf("no MetricNameLabel for chunk")
 	}
@@ -198,6 +198,10 @@ func (c *IndexReaderWriter) GetChunkRefs(ctx context.Context, userID string, fro
 	return chunks, nil
 }
 
+func (c *IndexReaderWriter) GetChunkRefsWithSizingInfo(_ context.Context, _ string, _, _ model.Time, _ chunk.Predicate) ([]logproto.ChunkRefWithSizingInfo, error) {
+	panic("store does not support getting chunk refs with sizing info")
+}
+
 func (c *IndexReaderWriter) SetChunkFilterer(f chunk.RequestChunkFilterer) {
 	c.chunkFilterer = f
 }
@@ -266,7 +270,7 @@ func (c *IndexReaderWriter) chunksToSeries(ctx context.Context, in []logproto.Ch
 		outer:
 			for _, chk := range chunks {
 				for _, matcher := range matchers {
-					if matcher.Name == astmapper.ShardLabel || matcher.Name == labels.MetricName {
+					if matcher.Name == astmapper.ShardLabel || matcher.Name == model.MetricNameLabel {
 						continue
 					}
 					if !matcher.Matches(chk.Metric.Get(matcher.Name)) {
@@ -278,7 +282,7 @@ func (c *IndexReaderWriter) chunksToSeries(ctx context.Context, in []logproto.Ch
 					continue outer
 				}
 
-				lbls = append(lbls, labels.NewBuilder(chk.Metric).Del(labels.MetricName).Labels())
+				lbls = append(lbls, labels.NewBuilder(chk.Metric).Del(model.MetricNameLabel).Labels())
 			}
 
 			return lbls, nil
@@ -795,4 +799,9 @@ func (c *IndexReaderWriter) GetShards(
 // old index stores do not implement tsdb.ForSeries -- skip
 func (c *IndexReaderWriter) HasForSeries(_, _ model.Time) (sharding.ForSeries, bool) {
 	return nil, false
+}
+
+// old index stores do not have chunk sizing info
+func (c *IndexReaderWriter) HasChunkSizingInfo(_, _ model.Time) bool {
+	return false
 }

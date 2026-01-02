@@ -174,6 +174,52 @@ func Test_Hedging(t *testing.T) {
 	}
 }
 
+func (suite *FederatedTokenTestSuite) Test_ServicePrincipalTokenFromFederatedToken_ActiveDirectoryEndpoint_Default() {
+	suite.config.cfg.ActiveDirectoryEndpoint = ""
+	suite.config.cfg.Environment = azureGlobal
+
+	newOAuthConfigFunc := func(activeDirectoryEndpoint, _ string) (*adal.OAuthConfig, error) {
+		require.Equal(suite.T(), azure.PublicCloud.ActiveDirectoryEndpoint, activeDirectoryEndpoint)
+		return suite.mockOAuthConfig, nil
+	}
+
+	servicePrincipalTokenFromFederatedTokenFunc := func(_ adal.OAuthConfig, _, _, _ string, _ ...adal.TokenRefreshCallback) (*adal.ServicePrincipalToken, error) {
+		return suite.mockedServicePrincipalToken, nil
+	}
+
+	_, err := suite.config.servicePrincipalTokenFromFederatedToken(
+		"https://test.blob.core.windows.net",
+		newOAuthConfigFunc,
+		servicePrincipalTokenFromFederatedTokenFunc,
+	)
+
+	require.NoError(suite.T(), err)
+}
+
+func (suite *FederatedTokenTestSuite) Test_ServicePrincipalTokenFromFederatedToken_ActiveDirectoryEndpoint_Override() {
+	testAdEndpoint := "https://login.microsoftonline.test"
+
+	suite.config.cfg.ActiveDirectoryEndpoint = testAdEndpoint
+	suite.config.cfg.Environment = azureGlobal
+
+	newOAuthConfigFunc := func(activeDirectoryEndpoint, _ string) (*adal.OAuthConfig, error) {
+		require.Equal(suite.T(), testAdEndpoint, activeDirectoryEndpoint)
+		return suite.mockOAuthConfig, nil
+	}
+
+	servicePrincipalTokenFromFederatedTokenFunc := func(_ adal.OAuthConfig, _, _, _ string, _ ...adal.TokenRefreshCallback) (*adal.ServicePrincipalToken, error) {
+		return suite.mockedServicePrincipalToken, nil
+	}
+
+	_, err := suite.config.servicePrincipalTokenFromFederatedToken(
+		"https://test.blob.core.windows.net",
+		newOAuthConfigFunc,
+		servicePrincipalTokenFromFederatedTokenFunc,
+	)
+
+	require.NoError(suite.T(), err)
+}
+
 func Test_DefaultContainerURL(t *testing.T) {
 	c, err := NewBlobStorage(&BlobStorageConfig{
 		ContainerName:      "foo",

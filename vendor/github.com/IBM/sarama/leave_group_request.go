@@ -36,9 +36,11 @@ func (r *LeaveGroupRequest) encode(pe packetEncoder) error {
 			if err := pe.putNullableString(member.GroupInstanceId); err != nil {
 				return err
 			}
+			pe.putEmptyTaggedFieldArray()
 		}
 	}
 
+	pe.putEmptyTaggedFieldArray()
 	return nil
 }
 
@@ -67,10 +69,15 @@ func (r *LeaveGroupRequest) decode(pd packetDecoder, version int16) (err error) 
 				return err
 			}
 			r.Members[i] = memberIdentity
+			_, err = pd.getEmptyTaggedFieldArray()
+			if err != nil {
+				return err
+			}
 		}
 	}
 
-	return nil
+	_, err = pd.getEmptyTaggedFieldArray()
+	return err
 }
 
 func (r *LeaveGroupRequest) key() int16 {
@@ -82,15 +89,28 @@ func (r *LeaveGroupRequest) version() int16 {
 }
 
 func (r *LeaveGroupRequest) headerVersion() int16 {
+	if r.Version >= 4 {
+		return 2
+	}
 	return 1
 }
 
 func (r *LeaveGroupRequest) isValidVersion() bool {
-	return r.Version >= 0 && r.Version <= 3
+	return r.Version >= 0 && r.Version <= 4
+}
+
+func (r *LeaveGroupRequest) isFlexible() bool {
+	return r.isFlexibleVersion(r.Version)
+}
+
+func (r *LeaveGroupRequest) isFlexibleVersion(version int16) bool {
+	return version >= 4
 }
 
 func (r *LeaveGroupRequest) requiredVersion() KafkaVersion {
 	switch r.Version {
+	case 4:
+		return V2_4_0_0
 	case 3:
 		return V2_4_0_0
 	case 2:

@@ -37,6 +37,7 @@ import (
 	"github.com/baidubce/bce-sdk-go/bce"
 	"github.com/baidubce/bce-sdk-go/http"
 	"github.com/baidubce/bce-sdk-go/util"
+	"github.com/baidubce/bce-sdk-go/util/log"
 )
 
 // PutObject - put the object from the string or the stream
@@ -83,6 +84,7 @@ func PutObject(cli bce.Client, bucket, object string, body *bce.Body, args *PutO
 			http.BCE_SERVER_SIDE_ENCRYPTION_KEY_ID:  args.Encryption.SSEKmsKeyId,
 			http.BCE_SERVER_SIDE_ENCRYPTION_KEY_MD5: args.Encryption.SSECKeyMD5,
 			http.BCE_FORBID_OVERWRITE:               strconv.FormatBool(args.ForbidOverwrite),
+			http.BCE_CONTENT_CRC64ECMA:              args.ContentCrc64ECMA,
 		})
 		if args.ObjectExpires > 0 {
 			req.SetHeader(http.BCE_OBJECT_EXPIRES, fmt.Sprintf("%d", args.ObjectExpires))
@@ -134,6 +136,11 @@ func PutObject(cli bce.Client, bucket, object string, body *bce.Body, args *PutO
 				NeedReturnCallback = true
 			}
 		}
+		if len(args.CannedAcl) != 0 {
+			if validCannedAcl(args.CannedAcl) {
+				req.SetHeader(http.BCE_ACL, args.CannedAcl)
+			}
+		}
 		if len(args.ObjectTagging) != 0 {
 			if ok, encodeTagging := validObjectTagging(args.ObjectTagging); ok {
 				req.SetHeader(http.BCE_OBJECT_TAGGING, encodeTagging)
@@ -166,6 +173,7 @@ func PutObject(cli bce.Client, bucket, object string, body *bce.Body, args *PutO
 		getHeader(http.BCE_CONTENT_CRC32, &jsonBody.ContentCrc32),
 		getHeader(http.BCE_CONTENT_CRC32C, &jsonBody.ContentCrc32c),
 		getHeader(http.BCE_SERVER_SIDE_ENCRYPTION, &jsonBody.ServerSideEncryption),
+		getHeader(http.BCE_CONTENT_CRC64ECMA, &jsonBody.ContentCrc64ECMA),
 	}
 	if err := handleGetOptions(resp, getOptions); err != nil {
 		return "", nil, bce.NewBceClientError(fmt.Sprintf("Handle get options error: %s", err))
@@ -394,6 +402,7 @@ func CopyObject(cli bce.Client, bucket, object, source string, args *CopyObjectA
 			http.BCE_SERVER_SIDE_ENCRYPTION_KEY:      args.Encryption.SSECKey,
 			http.BCE_SERVER_SIDE_ENCRYPTION_KEY_ID:   args.Encryption.SSEKmsKeyId,
 			http.BCE_SERVER_SIDE_ENCRYPTION_KEY_MD5:  args.Encryption.SSECKeyMD5,
+			http.BCE_CONTENT_CRC64ECMA:               args.ContentCrc64ECMA,
 		})
 		if args.ObjectExpires > 0 {
 			req.SetHeader(http.BCE_OBJECT_EXPIRES, fmt.Sprintf("%d", args.ObjectExpires))
@@ -430,6 +439,11 @@ func CopyObject(cli bce.Client, bucket, object, source string, args *CopyObjectA
 			}
 			req.SetHeader(http.BCE_TRAFFIC_LIMIT, fmt.Sprintf("%d", args.TrafficLimit))
 		}
+
+		if validCannedAcl(args.CannedAcl) {
+			req.SetHeader(http.BCE_ACL, args.CannedAcl)
+		}
+
 		if err := setUserMetadata(req, args.UserMeta); err != nil {
 			return nil, err
 		}
@@ -456,6 +470,9 @@ func CopyObject(cli bce.Client, bucket, object, source string, args *CopyObjectA
 	}
 	if resp.Header(http.BCE_VERSION_ID) != "" {
 		jsonBody.VersionId = resp.Header(http.BCE_VERSION_ID)
+	}
+	if resp.Header(http.BCE_REQUEST_ID) != "" {
+		jsonBody.RequestId = resp.Header(http.BCE_REQUEST_ID)
 	}
 	return jsonBody, nil
 }
@@ -510,55 +527,45 @@ func GetObject(cli bce.Client, bucket, object string, ctx *BosContext, args map[
 	if resp.IsFail() {
 		return nil, resp.ServiceError()
 	}
-	headers := resp.Headers()
+
 	result := &GetObjectResult{}
-	if val, ok := headers[http.CACHE_CONTROL]; ok {
-		result.CacheControl = val
+	getOptions := []GetOption{
+		getHeader(http.CACHE_CONTROL, &result.CacheControl),
+		getHeader(http.CONTENT_DISPOSITION, &result.ContentDisposition),
+		getHeader(http.CONTENT_LENGTH, &result.ContentLength),
+		getHeader(http.CONTENT_RANGE, &result.ContentRange),
+		getHeader(http.CONTENT_TYPE, &result.ContentType),
+		getHeader(http.CONTENT_MD5, &result.ContentMD5),
+		getHeader(http.EXPIRES, &result.Expires),
+		getHeader(http.LAST_MODIFIED, &result.LastModified),
+		getHeader(http.CONTENT_LANGUAGE, &result.ContentLanguage),
+		getHeader(http.CONTENT_ENCODING, &result.ContentEncoding),
+		getHeader(http.BCE_CONTENT_SHA256, &result.ContentSha256),
+		getHeader(http.BCE_CONTENT_CRC32, &result.ContentCrc32),
+		getHeader(http.BCE_STORAGE_CLASS, &result.StorageClass),
+		getHeader(http.BCE_VERSION_ID, &result.VersionId),
+		getHeader(http.BCE_OBJECT_TYPE, &result.ObjectType),
+		getHeader(http.BCE_NEXT_APPEND_OFFSET, &result.NextAppendOffset),
+		getHeader(http.BCE_CONTENT_CRC32C, &result.ContentCrc32c),
+		getHeader(http.BCE_EXPIRATION_DATE, &result.ExpirationDate),
+		getHeader(http.BCE_SERVER_SIDE_ENCRYPTION, &result.Encryption.ServerSideEncryption),
+		getHeader(http.BCE_SERVER_SIDE_ENCRYPTION_KEY, &result.Encryption.SSECKey),
+		getHeader(http.BCE_SERVER_SIDE_ENCRYPTION_KEY_MD5, &result.Encryption.SSECKeyMD5),
+		getHeader(http.BCE_SERVER_SIDE_ENCRYPTION_KEY_ID, &result.Encryption.SSEKmsKeyId),
+		getHeader(http.BCE_OBJECT_RETENTION_DATE, &result.RetentionDate),
+		getHeader(http.BCE_TAGGING_COUNT, &result.objectTagCount),
+		getHeader(http.BCE_CONTENT_CRC64ECMA, &result.ContentCrc64ECMA),
 	}
-	if val, ok := headers[http.CONTENT_DISPOSITION]; ok {
-		result.ContentDisposition = val
+
+	if err := handleGetOptions(resp, getOptions); err != nil {
+		log.Warnf("Handle get options error: %s", err)
 	}
-	if val, ok := headers[http.CONTENT_LENGTH]; ok {
-		if length, err := strconv.ParseInt(val, 10, 64); err == nil {
-			result.ContentLength = length
-		}
-	}
-	if val, ok := headers[http.CONTENT_RANGE]; ok {
-		result.ContentRange = val
-	}
-	if val, ok := headers[http.CONTENT_TYPE]; ok {
-		result.ContentType = val
-	}
-	if val, ok := headers[http.CONTENT_MD5]; ok {
-		result.ContentMD5 = val
-	}
-	if val, ok := headers[http.EXPIRES]; ok {
-		result.Expires = val
-	}
-	if val, ok := headers[http.LAST_MODIFIED]; ok {
-		result.LastModified = val
-	}
+
+	headers := resp.Headers()
 	if val, ok := headers[http.ETAG]; ok {
 		result.ETag = strings.Trim(val, "\"")
 	}
-	if val, ok := headers[http.CONTENT_LANGUAGE]; ok {
-		result.ContentLanguage = val
-	}
-	if val, ok := headers[http.CONTENT_ENCODING]; ok {
-		result.ContentEncoding = val
-	}
-	if val, ok := headers[toHttpHeaderKey(http.BCE_CONTENT_SHA256)]; ok {
-		result.ContentSha256 = val
-	}
-	if val, ok := headers[toHttpHeaderKey(http.BCE_CONTENT_CRC32)]; ok {
-		result.ContentCrc32 = val
-	}
-	if val, ok := headers[toHttpHeaderKey(http.BCE_STORAGE_CLASS)]; ok {
-		result.StorageClass = val
-	}
-	if val, ok := headers[toHttpHeaderKey(http.BCE_VERSION_ID)]; ok {
-		result.VersionId = val
-	}
+
 	bcePrefix := toHttpHeaderKey(http.BCE_USER_METADATA_PREFIX)
 	for k, v := range headers {
 		if strings.Index(k, bcePrefix) == 0 {
@@ -567,36 +574,6 @@ func GetObject(cli bce.Client, bucket, object string, ctx *BosContext, args map[
 			}
 			result.UserMeta[k[len(bcePrefix):]] = v
 		}
-	}
-	if val, ok := headers[toHttpHeaderKey(http.BCE_OBJECT_TYPE)]; ok {
-		result.ObjectType = val
-	}
-	if val, ok := headers[toHttpHeaderKey(http.BCE_NEXT_APPEND_OFFSET)]; ok {
-		result.NextAppendOffset = val
-	}
-	if val, ok := headers[toHttpHeaderKey(http.BCE_CONTENT_CRC32C)]; ok {
-		result.ContentCrc32c = val
-	}
-	if val, ok := headers[toHttpHeaderKey(http.BCE_EXPIRATION_DATE)]; ok {
-		result.ExpirationDate = val
-	}
-	if val, ok := headers[toHttpHeaderKey(http.BCE_SERVER_SIDE_ENCRYPTION)]; ok {
-		result.Encryption.ServerSideEncryption = val
-	}
-	if val, ok := headers[toHttpHeaderKey(http.BCE_SERVER_SIDE_ENCRYPTION_KEY)]; ok {
-		result.Encryption.SSECKey = val
-	}
-	if val, ok := headers[toHttpHeaderKey(http.BCE_SERVER_SIDE_ENCRYPTION_KEY_MD5)]; ok {
-		result.Encryption.SSECKeyMD5 = val
-	}
-	if val, ok := headers[toHttpHeaderKey(http.BCE_SERVER_SIDE_ENCRYPTION_KEY_ID)]; ok {
-		result.Encryption.SSEKmsKeyId = val
-	}
-	if val, ok := headers[toHttpHeaderKey(http.BCE_OBJECT_RETENTION_DATE)]; ok {
-		result.RetentionDate = val
-	}
-	if val, ok := headers[toHttpHeaderKey(http.BCE_TAGGING_COUNT)]; ok {
-		result.objectTagCount, _ = strconv.ParseInt(val, 10, 64)
 	}
 	result.Body = resp.Body()
 	return result, nil
@@ -631,55 +608,39 @@ func GetObjectMeta(cli bce.Client, bucket, object string, ctx *BosContext, optio
 	}
 	headers := resp.Headers()
 	result := &GetObjectMetaResult{}
-	if val, ok := headers[http.CACHE_CONTROL]; ok {
-		result.CacheControl = val
+	getOptions := []GetOption{
+		getHeader(http.CACHE_CONTROL, &result.CacheControl),
+		getHeader(http.CONTENT_DISPOSITION, &result.ContentDisposition),
+		getHeader(http.CONTENT_LENGTH, &result.ContentLength),
+		getHeader(http.CONTENT_RANGE, &result.ContentRange),
+		getHeader(http.CONTENT_TYPE, &result.ContentType),
+		getHeader(http.CONTENT_MD5, &result.ContentMD5),
+		getHeader(http.EXPIRES, &result.Expires),
+		getHeader(http.LAST_MODIFIED, &result.LastModified),
+		getHeader(http.CONTENT_ENCODING, &result.ContentEncoding),
+		getHeader(http.BCE_CONTENT_SHA256, &result.ContentSha256),
+		getHeader(http.BCE_CONTENT_CRC32, &result.ContentCrc32),
+		getHeader(http.BCE_STORAGE_CLASS, &result.StorageClass),
+		getHeader(http.BCE_RESTORE, &result.BceRestore),
+		getHeader(http.BCE_VERSION_ID, &result.VersionId),
+		getHeader(http.BCE_OBJECT_TYPE, &result.ObjectType),
+		getHeader(http.BCE_NEXT_APPEND_OFFSET, &result.NextAppendOffset),
+		getHeader(http.BCE_CONTENT_CRC32C, &result.ContentCrc32c),
+		getHeader(http.BCE_EXPIRATION_DATE, &result.ExpirationDate),
+		getHeader(http.BCE_SERVER_SIDE_ENCRYPTION, &result.Encryption.ServerSideEncryption),
+		getHeader(http.BCE_SERVER_SIDE_ENCRYPTION_KEY, &result.Encryption.SSECKey),
+		getHeader(http.BCE_SERVER_SIDE_ENCRYPTION_KEY_MD5, &result.Encryption.SSECKeyMD5),
+		getHeader(http.BCE_SERVER_SIDE_ENCRYPTION_KEY_ID, &result.Encryption.SSEKmsKeyId),
+		getHeader(http.BCE_OBJECT_RETENTION_DATE, &result.RetentionDate),
+		getHeader(http.BCE_TAGGING_COUNT, &result.objectTagCount),
+		getHeader(http.BCE_CONTENT_CRC64ECMA, &result.ContentCrc64ECMA),
 	}
-	if val, ok := headers[http.CONTENT_DISPOSITION]; ok {
-		result.ContentDisposition = val
-	}
-	if val, ok := headers[http.CONTENT_LENGTH]; ok {
-		if length, err := strconv.ParseInt(val, 10, 64); err == nil {
-			result.ContentLength = length
-		}
-	}
-	if val, ok := headers[http.CONTENT_RANGE]; ok {
-		result.ContentRange = val
-	}
-	if val, ok := headers[http.CONTENT_TYPE]; ok {
-		result.ContentType = val
-	}
-	if val, ok := headers[http.CONTENT_MD5]; ok {
-		result.ContentMD5 = val
-	}
-	if val, ok := headers[http.EXPIRES]; ok {
-		result.Expires = val
-	}
-	if val, ok := headers[http.LAST_MODIFIED]; ok {
-		result.LastModified = val
+
+	if err := handleGetOptions(resp, getOptions); err != nil {
+		log.Warnf("Handle get options error: %s", err)
 	}
 	if val, ok := headers[http.ETAG]; ok {
 		result.ETag = strings.Trim(val, "\"")
-	}
-	if val, ok := headers[http.CONTENT_ENCODING]; ok {
-		result.ContentEncoding = val
-	}
-	if val, ok := headers[toHttpHeaderKey(http.BCE_CONTENT_SHA256)]; ok {
-		result.ContentSha256 = val
-	}
-	if val, ok := headers[toHttpHeaderKey(http.BCE_CONTENT_CRC32)]; ok {
-		result.ContentCrc32 = val
-	}
-	if val, ok := headers[toHttpHeaderKey(http.BCE_STORAGE_CLASS)]; ok {
-		result.StorageClass = val
-	}
-	if val, ok := headers[toHttpHeaderKey(http.BCE_RESTORE)]; ok {
-		result.BceRestore = val
-	}
-	if val, ok := headers[http.BCE_OBJECT_TYPE]; ok {
-		result.BceObjectType = val
-	}
-	if val, ok := headers[http.BCE_VERSION_ID]; ok {
-		result.VersionId = val
 	}
 	bcePrefix := toHttpHeaderKey(http.BCE_USER_METADATA_PREFIX)
 	for k, v := range headers {
@@ -689,36 +650,6 @@ func GetObjectMeta(cli bce.Client, bucket, object string, ctx *BosContext, optio
 			}
 			result.UserMeta[k[len(bcePrefix):]] = v
 		}
-	}
-	if val, ok := headers[toHttpHeaderKey(http.BCE_OBJECT_TYPE)]; ok {
-		result.ObjectType = val
-	}
-	if val, ok := headers[toHttpHeaderKey(http.BCE_NEXT_APPEND_OFFSET)]; ok {
-		result.NextAppendOffset = val
-	}
-	if val, ok := headers[toHttpHeaderKey(http.BCE_CONTENT_CRC32C)]; ok {
-		result.ContentCrc32c = val
-	}
-	if val, ok := headers[toHttpHeaderKey(http.BCE_EXPIRATION_DATE)]; ok {
-		result.ExpirationDate = val
-	}
-	if val, ok := headers[toHttpHeaderKey(http.BCE_SERVER_SIDE_ENCRYPTION)]; ok {
-		result.Encryption.ServerSideEncryption = val
-	}
-	if val, ok := headers[toHttpHeaderKey(http.BCE_SERVER_SIDE_ENCRYPTION_KEY)]; ok {
-		result.Encryption.SSECKey = val
-	}
-	if val, ok := headers[toHttpHeaderKey(http.BCE_SERVER_SIDE_ENCRYPTION_KEY_MD5)]; ok {
-		result.Encryption.SSECKeyMD5 = val
-	}
-	if val, ok := headers[toHttpHeaderKey(http.BCE_SERVER_SIDE_ENCRYPTION_KEY_ID)]; ok {
-		result.Encryption.SSEKmsKeyId = val
-	}
-	if val, ok := headers[toHttpHeaderKey(http.BCE_OBJECT_RETENTION_DATE)]; ok {
-		result.RetentionDate = val
-	}
-	if val, ok := headers[toHttpHeaderKey(http.BCE_TAGGING_COUNT)]; ok {
-		result.objectTagCount, _ = strconv.ParseInt(val, 10, 64)
 	}
 	defer func() { resp.Body().Close() }()
 	return result, nil
@@ -888,6 +819,7 @@ func AppendObject(cli bce.Client, bucket, object string, content *bce.Body, args
 			http.BCE_CONTENT_CRC32C:      args.ContentCrc32c,
 			http.BCE_CONTENT_CRC32C_FLAG: strconv.FormatBool(args.ContentCrc32cFlag),
 			http.CONTENT_ENCODING:        args.ContentEncoding,
+			http.BCE_CONTENT_CRC64ECMA:   args.ContentCrc64ECMA,
 		})
 		if args.ObjectExpires > 0 {
 			req.SetHeader(http.BCE_OBJECT_EXPIRES, fmt.Sprintf("%d", args.ObjectExpires))
@@ -926,8 +858,14 @@ func AppendObject(cli bce.Client, bucket, object string, content *bce.Body, args
 	defer func() { resp.Body().Close() }()
 	headers := resp.Headers()
 	result := &AppendObjectResult{}
-	if val, ok := headers[http.CONTENT_MD5]; ok {
-		result.ContentMD5 = val
+	getOptions := []GetOption{
+		getHeader(http.CONTENT_MD5, &result.ContentMD5),
+		getHeader(http.BCE_CONTENT_CRC32, &result.ContentCrc32),
+		getHeader(http.BCE_CONTENT_CRC32C, &result.ContentCrc32c),
+		getHeader(http.BCE_CONTENT_CRC64ECMA, &result.ContentCrc64ECMA),
+	}
+	if err := handleGetOptions(resp, getOptions); err != nil {
+		log.Warnf("Handle get options error: %s", err)
 	}
 	if val, ok := headers[toHttpHeaderKey(http.BCE_NEXT_APPEND_OFFSET)]; ok {
 		nextOffset, offsetErr := strconv.ParseInt(val, 10, 64)
@@ -938,14 +876,8 @@ func AppendObject(cli bce.Client, bucket, object string, content *bce.Body, args
 	} else {
 		result.NextAppendOffset = content.Size()
 	}
-	if val, ok := headers[toHttpHeaderKey(http.BCE_CONTENT_CRC32)]; ok {
-		result.ContentCrc32 = val
-	}
 	if val, ok := headers[http.ETAG]; ok {
 		result.ETag = strings.Trim(val, "\"")
-	}
-	if val, ok := headers[toHttpHeaderKey(http.BCE_CONTENT_CRC32C)]; ok {
-		result.ContentCrc32c = val
 	}
 	return result, nil
 }
@@ -1059,6 +991,10 @@ func GeneratePresignedUrlInternal(conf *bce.BceClientConfiguration, signer auth.
 	// Set basic arguments
 	if len(method) == 0 {
 		method = http.GET
+	}
+	if method == http.GET && (object == "" || object == "v1") {
+		log.Warnf("objectKey '%s' is invalid, cannot generate presigned url.", object)
+		return ""
 	}
 	req.SetMethod(method)
 	req.SetEndpoint(conf.Endpoint)

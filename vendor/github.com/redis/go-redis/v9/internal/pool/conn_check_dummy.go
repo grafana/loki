@@ -2,8 +2,19 @@
 
 package pool
 
-import "net"
+import (
+	"errors"
+	"net"
+)
 
-func connCheck(conn net.Conn) error {
+// errUnexpectedRead is placeholder error variable for non-unix build constraints
+var errUnexpectedRead = errors.New("unexpected read from socket")
+
+func connCheck(_ net.Conn) error {
 	return nil
+}
+
+// since we can't check for data on the socket, we just assume there is some
+func maybeHasData(_ net.Conn) bool {
+	return true
 }

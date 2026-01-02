@@ -16,7 +16,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 )
 
 // ReaderOptions customizes the behavior of a [Reader].
@@ -117,7 +116,6 @@ type Reader struct {
 	ready bool
 	inner *dataset.Reader
 	buf   []dataset.Row
-	stats dataset.ReaderStats
 }
 
 // NewReader creates a new Reader from the provided options. Options are not
@@ -154,7 +152,7 @@ func (r *Reader) Schema() *arrow.Schema { return r.schema }
 //
 // When a record is returned, it will match the schema specified by
 // [Reader.Schema]. These records must always be released after use.
-func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.Record, error) {
+func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.RecordBatch, error) {
 	if !r.ready {
 		err := r.init(ctx)
 		if err != nil {
@@ -166,9 +164,8 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.Record, error) 
 	r.buf = r.buf[:batchSize]
 
 	builder := array.NewRecordBuilder(r.opts.Allocator, r.schema)
-	defer builder.Release()
 
-	n, readErr := r.inner.Read(dataset.WithStats(ctx, &r.stats), r.buf)
+	n, readErr := r.inner.Read(ctx, r.buf)
 	for rowIndex := range n {
 		row := r.buf[rowIndex]
 
@@ -179,6 +176,7 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.Record, error) 
 			}
 
 			columnBuilder := builder.Field(columnIndex)
+			columnType := r.opts.Columns[columnIndex].Type
 
 			if val.IsNil() {
 				columnBuilder.AppendNull()
@@ -193,7 +191,6 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.Record, error) 
 			// Passing our byte slices to [array.StringBuilder.BinaryBuilder.Append] are safe; it
 			// will copy the contents of the value and we can reuse the buffer on the
 			// next call to [dataset.Reader.Read].
-			columnType := r.opts.Columns[columnIndex].Type
 			switch columnType {
 			case ColumnTypeInvalid:
 				columnBuilder.AppendNull() // Unsupported column
@@ -213,10 +210,10 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.Record, error) 
 
 	// We only return readErr after processing n so that we properly handle n>0
 	// while also getting an error such as io.EOF.
-	return builder.NewRecord(), readErr
+	return builder.NewRecordBatch(), readErr
 }
 
-func (r *Reader) init(ctx context.Context) error {
+func (r *Reader) init(_ context.Context) error {
 	if err := r.opts.Validate(); err != nil {
 		return fmt.Errorf("invalid options: %w", err)
 	} else if r.opts.Allocator == nil {
@@ -255,9 +252,6 @@ func (r *Reader) init(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("mapping predicates: %w", err)
 	}
-
-	// TODO(ashwanth): remove when global stats are updated by the executor.
-	r.stats.LinkGlobalStats(stats.FromContext(ctx))
 
 	innerOptions := dataset.ReaderOptions{
 		Dataset:    dset,
@@ -414,7 +408,6 @@ func mustConvertType(dtype arrow.DataType) datasetmd.PhysicalType {
 func (r *Reader) Reset(opts ReaderOptions) {
 	r.opts = opts
 	r.schema = columnsSchema(opts.Columns)
-	r.stats.Reset()
 
 	r.ready = false
 
@@ -423,10 +416,6 @@ func (r *Reader) Reset(opts ReaderOptions) {
 		// fully reset on the next call to [Reader.init].
 		_ = r.inner.Close()
 	}
-}
-
-func (r *Reader) Stats() *dataset.ReaderStats {
-	return &r.stats
 }
 
 // Close closes the Reader and releases any resources it holds. Closed Readers

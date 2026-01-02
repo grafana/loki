@@ -235,12 +235,35 @@ lokitool rules lint ./output/rules.yaml
 # diff rules against the currently managed ruleset in Loki
 lokitool rules diff --rule-dirs=./output
 
+# diff only specific namespaces using comma-separated list
+lokitool rules diff --rule-dirs=./output --namespaces=namespace1,namespace2
+
+# diff using regex to match namespaces
+lokitool rules diff --rule-dirs=./output --namespaces-regex='^prod-.*'
+
+# diff while ignoring specific namespaces
+lokitool rules diff --rule-dirs=./output --ignored-namespaces=test,dev
+
+# diff while ignoring namespaces matching regex
+lokitool rules diff --rule-dirs=./output --ignored-namespaces-regex='^test-.*'
+
 # ensure the remote ruleset matches your local ruleset, creating/updating/deleting remote rules which differ from your local specification.
 lokitool rules sync --rule-dirs=./output
+
+# sync only specific namespaces (supports --namespaces, --namespaces-regex, --ignored-namespaces, --ignored-namespaces-regex)
+lokitool rules sync --rule-dirs=./output --namespaces-regex='^prod-.*'
 
 # print the remote ruleset
 lokitool rules print
 ```
+
+{{< admonition type="note" >}}
+The `diff` and `sync` commands support namespace filtering with the following flags (only one can be used at a time):
+- `--namespaces`: comma-separated list of namespaces to check
+- `--namespaces-regex`: regex matching namespaces to check
+- `--ignored-namespaces`: comma-separated list of namespaces to ignore
+- `--ignored-namespaces-regex`: regex matching namespaces to ignore
+{{< /admonition >}}
 
 ### Terraform
 
@@ -304,16 +327,16 @@ The [Cortex rules action](https://github.com/grafana/cortex-rules-action) introd
   uses: grafana/cortex-rules-action@master
   env:
     ACTION: check
-    RULES_DIR: <source_dir_of_rules> # Example: logs/recording_rules/,logs/alerts/
+    RULES_DIR: <SOURCE_DIR_OF_RULES> # Example: logs/recording_rules/,logs/alerts/
     BACKEND: loki
 
 - name: Deploy rules to Loki staging
   uses: grafana/cortex-rules-action@master
   env:
-    CORTEX_ADDRESS: <loki_ingress_addr>
+    CORTEX_ADDRESS: <LOKI_INGRESS_ADDR>
     CORTEX_TENANT_ID: fake
     ACTION: sync
-    RULES_DIR: <source_dir_of_rules> # Example: logs/recording_rules/,logs/alerts/
+    RULES_DIR: <SOURCE_DIR_OF_RULES> # Example: logs/recording_rules/,logs/alerts/
     BACKEND: loki
 ```
 
@@ -327,7 +350,7 @@ A full sharding-enabled Ruler example is:
 
 ```yaml
 ruler:
-  alertmanager_url: <alertmanager_endpoint>
+  alertmanager_url: <ALERTMANAGER_ENDPOINT>
   enable_alertmanager_v2: true # true by default since Loki 3.2.0
   enable_api: true
   enable_sharding: true
@@ -339,7 +362,7 @@ ruler:
   rule_path: /tmp/rules
   storage:
     gcs:
-      bucket_name: <loki-rules-bucket>
+      bucket_name: <LOKI_RULES_BUCKET>
 ```
 
 ## Ruler storage

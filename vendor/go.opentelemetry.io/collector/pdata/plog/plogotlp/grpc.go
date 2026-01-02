@@ -11,8 +11,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"go.opentelemetry.io/collector/pdata/internal"
-	otlpcollectorlog "go.opentelemetry.io/collector/pdata/internal/data/protogen/collector/logs/v1"
-	_ "go.opentelemetry.io/collector/pdata/internal/grpcencoding" // enforces custom gRPC encoding to be loaded.
+	"go.opentelemetry.io/collector/pdata/internal/otelgrpc"
 	"go.opentelemetry.io/collector/pdata/internal/otlp"
 )
 
@@ -32,11 +31,11 @@ type GRPCClient interface {
 
 // NewGRPCClient returns a new GRPCClient connected using the given connection.
 func NewGRPCClient(cc *grpc.ClientConn) GRPCClient {
-	return &grpcClient{rawClient: otlpcollectorlog.NewLogsServiceClient(cc)}
+	return &grpcClient{rawClient: otelgrpc.NewLogsServiceClient(cc)}
 }
 
 type grpcClient struct {
-	rawClient otlpcollectorlog.LogsServiceClient
+	rawClient otelgrpc.LogsServiceClient
 }
 
 func (c *grpcClient) Export(ctx context.Context, request ExportRequest, opts ...grpc.CallOption) (ExportResponse, error) {
@@ -75,14 +74,14 @@ func (*UnimplementedGRPCServer) unexported() {}
 
 // RegisterGRPCServer registers the Server to the grpc.Server.
 func RegisterGRPCServer(s *grpc.Server, srv GRPCServer) {
-	otlpcollectorlog.RegisterLogsServiceServer(s, &rawLogsServer{srv: srv})
+	otelgrpc.RegisterLogsServiceServer(s, &rawLogsServer{srv: srv})
 }
 
 type rawLogsServer struct {
 	srv GRPCServer
 }
 
-func (s rawLogsServer) Export(ctx context.Context, request *otlpcollectorlog.ExportLogsServiceRequest) (*otlpcollectorlog.ExportLogsServiceResponse, error) {
+func (s rawLogsServer) Export(ctx context.Context, request *internal.ExportLogsServiceRequest) (*internal.ExportLogsServiceResponse, error) {
 	otlp.MigrateLogs(request.ResourceLogs)
 	rsp, err := s.srv.Export(ctx, ExportRequest{orig: request, state: internal.NewState()})
 	return rsp.orig, err

@@ -1,5 +1,5 @@
 # Loki configuration file for reading data from the logql benchmark dataset.
-# Run Loki from the project root 
+# Run Loki from the project root
 #   $ make loki
 #   $ ./cmd/loki/loki -config.file=./pkg/logql/bench/config.yaml -config.expand-env=true
 #
@@ -78,10 +78,12 @@ storage_config:
     filesystem:
       dir: ${PWD}/pkg/logql/bench/data/storage
 
-querier:
-  engine:
-    enable_v2_engine: true
-    batch_size: 8192
+query_engine:
+  enable: true
+  batch_size: 8192
+
+query_range:
+  cache_results: false
 
 dataobj:
   storage_bucket_prefix: "dataobj"

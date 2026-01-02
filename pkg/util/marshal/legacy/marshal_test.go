@@ -57,8 +57,11 @@ var queryTests = []struct {
 			],
 			"stats" : {
 				"index": {
+					"bloomFilterTime": 0,
+					"chunkRefsLookupTime": 0,
 					"postFilterChunks": 0,
 					"totalChunks": 0,
+					"totalStreams": 0,
 					"usedBloomFilters": false,
 					"shardsDuration": 0
 				},
@@ -105,6 +108,7 @@ var queryTests = []struct {
 					"totalReached": 0
 				},
 				"querier": {
+					"querierExecTime": 0,
 					"store": {
 						"chunksDownloadTime": 0,
 						"congestionControlLatency": 0,

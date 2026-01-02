@@ -1,5 +1,12 @@
 # Changes
 
+## [0.9.0](https://github.com/googleapis/google-cloud-go/compare/compute/metadata/v0.8.4...compute/metadata/v0.9.0) (2025-09-24)
+
+
+### Features
+
+* **compute/metadata:** Retry on HTTP 429 ([#12932](https://github.com/googleapis/google-cloud-go/issues/12932)) ([1e91f5c](https://github.com/googleapis/google-cloud-go/commit/1e91f5c07acacd38ecdd4ff3e83e092b745e0bc2))
+
 ## [0.8.4](https://github.com/googleapis/google-cloud-go/compare/compute/metadata/v0.8.3...compute/metadata/v0.8.4) (2025-09-18)
 
 

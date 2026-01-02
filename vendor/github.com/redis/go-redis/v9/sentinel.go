@@ -12,9 +12,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/redis/go-redis/v9/auth"
 	"github.com/redis/go-redis/v9/internal"
 	"github.com/redis/go-redis/v9/internal/pool"
 	"github.com/redis/go-redis/v9/internal/rand"
+	"github.com/redis/go-redis/v9/internal/util"
+	"github.com/redis/go-redis/v9/maintnotifications"
+	"github.com/redis/go-redis/v9/push"
 )
 
 //------------------------------------------------------------------------------
@@ -60,7 +64,26 @@ type FailoverOptions struct {
 	Protocol int
 	Username string
 	Password string
-	DB       int
+
+	// Push notifications are always enabled for RESP3 connections
+	// CredentialsProvider allows the username and password to be updated
+	// before reconnecting. It should return the current username and password.
+	CredentialsProvider func() (username string, password string)
+
+	// CredentialsProviderContext is an enhanced parameter of CredentialsProvider,
+	// done to maintain API compatibility. In the future,
+	// there might be a merge between CredentialsProviderContext and CredentialsProvider.
+	// There will be a conflict between them; if CredentialsProviderContext exists, we will ignore CredentialsProvider.
+	CredentialsProviderContext func(ctx context.Context) (username string, password string, err error)
+
+	// StreamingCredentialsProvider is used to retrieve the credentials
+	// for the connection from an external source. Those credentials may change
+	// during the connection lifetime. This is useful for managed identity
+	// scenarios where the credentials are retrieved from an external source.
+	//
+	// Currently, this is a placeholder for the future implementation.
+	StreamingCredentialsProvider auth.StreamingCredentialsProvider
+	DB                           int
 
 	MaxRetries      int
 	MinRetryBackoff time.Duration
@@ -70,6 +93,20 @@ type FailoverOptions struct {
 	ReadTimeout           time.Duration
 	WriteTimeout          time.Duration
 	ContextTimeoutEnabled bool
+
+	// ReadBufferSize is the size of the bufio.Reader buffer for each connection.
+	// Larger buffers can improve performance for commands that return large responses.
+	// Smaller buffers can improve memory usage for larger pools.
+	//
+	// default: 32KiB (32768 bytes)
+	ReadBufferSize int
+
+	// WriteBufferSize is the size of the bufio.Writer buffer for each connection.
+	// Larger buffers can improve performance for large pipelines and commands with many arguments.
+	// Smaller buffers can improve memory usage for larger pools.
+	//
+	// default: 32KiB (32768 bytes)
+	WriteBufferSize int
 
 	PoolFIFO bool
 
@@ -96,7 +133,22 @@ type FailoverOptions struct {
 	DisableIdentity bool
 
 	IdentitySuffix string
-	UnstableResp3  bool
+
+	// FailingTimeoutSeconds is the timeout in seconds for marking a cluster node as failing.
+	// When a node is marked as failing, it will be avoided for this duration.
+	// Only applies to failover cluster clients. Default is 15 seconds.
+	FailingTimeoutSeconds int
+
+	UnstableResp3 bool
+
+	// MaintNotificationsConfig is not supported for FailoverClients at the moment
+	// MaintNotificationsConfig provides custom configuration for maintnotifications upgrades.
+	// When MaintNotificationsConfig.Mode is not "disabled", the client will handle
+	// upgrade notifications gracefully and manage connection/pool state transitions
+	// seamlessly. Requires Protocol: 3 (RESP3) for push notifications.
+	// If nil, maintnotifications upgrades are disabled.
+	// (however if Mode is nil, it defaults to "auto" - enable if server supports it)
+	//MaintNotificationsConfig *maintnotifications.Config
 }
 
 func (opt *FailoverOptions) clientOptions() *Options {
@@ -107,14 +159,20 @@ func (opt *FailoverOptions) clientOptions() *Options {
 		Dialer:    opt.Dialer,
 		OnConnect: opt.OnConnect,
 
-		DB:       opt.DB,
-		Protocol: opt.Protocol,
-		Username: opt.Username,
-		Password: opt.Password,
+		DB:                           opt.DB,
+		Protocol:                     opt.Protocol,
+		Username:                     opt.Username,
+		Password:                     opt.Password,
+		CredentialsProvider:          opt.CredentialsProvider,
+		CredentialsProviderContext:   opt.CredentialsProviderContext,
+		StreamingCredentialsProvider: opt.StreamingCredentialsProvider,
 
 		MaxRetries:      opt.MaxRetries,
 		MinRetryBackoff: opt.MinRetryBackoff,
 		MaxRetryBackoff: opt.MaxRetryBackoff,
+
+		ReadBufferSize:  opt.ReadBufferSize,
+		WriteBufferSize: opt.WriteBufferSize,
 
 		DialTimeout:           opt.DialTimeout,
 		ReadTimeout:           opt.ReadTimeout,
@@ -137,6 +195,10 @@ func (opt *FailoverOptions) clientOptions() *Options {
 
 		IdentitySuffix: opt.IdentitySuffix,
 		UnstableResp3:  opt.UnstableResp3,
+
+		MaintNotificationsConfig: &maintnotifications.Config{
+			Mode: maintnotifications.ModeDisabled,
+		},
 	}
 }
 
@@ -156,6 +218,10 @@ func (opt *FailoverOptions) sentinelOptions(addr string) *Options {
 		MinRetryBackoff: opt.MinRetryBackoff,
 		MaxRetryBackoff: opt.MaxRetryBackoff,
 
+		// The sentinel client uses a 4KiB read/write buffer size.
+		ReadBufferSize:  4096,
+		WriteBufferSize: 4096,
+
 		DialTimeout:           opt.DialTimeout,
 		ReadTimeout:           opt.ReadTimeout,
 		WriteTimeout:          opt.WriteTimeout,
@@ -177,6 +243,10 @@ func (opt *FailoverOptions) sentinelOptions(addr string) *Options {
 
 		IdentitySuffix: opt.IdentitySuffix,
 		UnstableResp3:  opt.UnstableResp3,
+
+		MaintNotificationsConfig: &maintnotifications.Config{
+			Mode: maintnotifications.ModeDisabled,
+		},
 	}
 }
 
@@ -187,17 +257,24 @@ func (opt *FailoverOptions) clusterOptions() *ClusterOptions {
 		Dialer:    opt.Dialer,
 		OnConnect: opt.OnConnect,
 
-		Protocol: opt.Protocol,
-		Username: opt.Username,
-		Password: opt.Password,
+		Protocol:                     opt.Protocol,
+		Username:                     opt.Username,
+		Password:                     opt.Password,
+		CredentialsProvider:          opt.CredentialsProvider,
+		CredentialsProviderContext:   opt.CredentialsProviderContext,
+		StreamingCredentialsProvider: opt.StreamingCredentialsProvider,
 
 		MaxRedirects: opt.MaxRetries,
 
+		ReadOnly:       opt.ReplicaOnly,
 		RouteByLatency: opt.RouteByLatency,
 		RouteRandomly:  opt.RouteRandomly,
 
 		MinRetryBackoff: opt.MinRetryBackoff,
 		MaxRetryBackoff: opt.MaxRetryBackoff,
+
+		ReadBufferSize:  opt.ReadBufferSize,
+		WriteBufferSize: opt.WriteBufferSize,
 
 		DialTimeout:           opt.DialTimeout,
 		ReadTimeout:           opt.ReadTimeout,
@@ -215,10 +292,14 @@ func (opt *FailoverOptions) clusterOptions() *ClusterOptions {
 
 		TLSConfig: opt.TLSConfig,
 
-		DisableIdentity:  opt.DisableIdentity,
-		DisableIndentity: opt.DisableIndentity,
+		DisableIdentity:       opt.DisableIdentity,
+		DisableIndentity:      opt.DisableIndentity,
+		IdentitySuffix:        opt.IdentitySuffix,
+		FailingTimeoutSeconds: opt.FailingTimeoutSeconds,
 
-		IdentitySuffix: opt.IdentitySuffix,
+		MaintNotificationsConfig: &maintnotifications.Config{
+			Mode: maintnotifications.ModeDisabled,
+		},
 	}
 }
 
@@ -247,6 +328,7 @@ func (opt *FailoverOptions) clusterOptions() *ClusterOptions {
 //     URL attributes (scheme, host, userinfo, resp.), query parameters using these
 //     names will be treated as unknown parameters
 //   - unknown parameter names will result in an error
+//   - use "skip_verify=true" to ignore TLS certificate validation
 //
 // Example:
 //
@@ -354,6 +436,10 @@ func setupFailoverConnParams(u *url.URL, o *FailoverOptions) (*FailoverOptions, 
 		o.SentinelAddrs = append(o.SentinelAddrs, net.JoinHostPort(h, p))
 	}
 
+	if o.TLSConfig != nil && q.has("skip_verify") {
+		o.TLSConfig.InsecureSkipVerify = q.bool("skip_verify")
+	}
+
 	// any parameters left?
 	if r := q.remaining(); len(r) > 0 {
 		return nil, fmt.Errorf("redis: unexpected option: %s", strings.Join(r, ", "))
@@ -393,8 +479,6 @@ func NewFailoverClient(failoverOpt *FailoverOptions) *Client {
 	opt.Dialer = masterReplicaDialer(failover)
 	opt.init()
 
-	var connPool *pool.ConnPool
-
 	rdb := &Client{
 		baseClient: &baseClient{
 			opt: opt,
@@ -402,15 +486,29 @@ func NewFailoverClient(failoverOpt *FailoverOptions) *Client {
 	}
 	rdb.init()
 
-	connPool = newConnPool(opt, rdb.dialHook)
-	rdb.connPool = connPool
+	// Initialize push notification processor using shared helper
+	// Use void processor by default for RESP2 connections
+	rdb.pushProcessor = initializePushProcessor(opt)
+
+	var err error
+	rdb.connPool, err = newConnPool(opt, rdb.dialHook)
+	if err != nil {
+		panic(fmt.Errorf("redis: failed to create connection pool: %w", err))
+	}
+	rdb.pubSubPool, err = newPubSubPool(opt, rdb.dialHook)
+	if err != nil {
+		panic(fmt.Errorf("redis: failed to create pubsub pool: %w", err))
+	}
+
 	rdb.onClose = rdb.wrappedOnClose(failover.Close)
 
 	failover.mu.Lock()
 	failover.onFailover = func(ctx context.Context, addr string) {
-		_ = connPool.Filter(func(cn *pool.Conn) bool {
-			return cn.RemoteAddr().String() != addr
-		})
+		if connPool, ok := rdb.connPool.(*pool.ConnPool); ok {
+			_ = connPool.Filter(func(cn *pool.Conn) bool {
+				return cn.RemoteAddr().String() != addr
+			})
+		}
 	}
 	failover.mu.Unlock()
 
@@ -468,13 +566,38 @@ func NewSentinelClient(opt *Options) *SentinelClient {
 		},
 	}
 
+	// Initialize push notification processor using shared helper
+	// Use void processor for Sentinel clients
+	c.pushProcessor = NewVoidPushNotificationProcessor()
+
 	c.initHooks(hooks{
 		dial:    c.baseClient.dial,
 		process: c.baseClient.process,
 	})
-	c.connPool = newConnPool(opt, c.dialHook)
+	var err error
+	c.connPool, err = newConnPool(opt, c.dialHook)
+	if err != nil {
+		panic(fmt.Errorf("redis: failed to create connection pool: %w", err))
+	}
+	c.pubSubPool, err = newPubSubPool(opt, c.dialHook)
+	if err != nil {
+		panic(fmt.Errorf("redis: failed to create pubsub pool: %w", err))
+	}
 
 	return c
+}
+
+// GetPushNotificationHandler returns the handler for a specific push notification name.
+// Returns nil if no handler is registered for the given name.
+func (c *SentinelClient) GetPushNotificationHandler(pushNotificationName string) push.NotificationHandler {
+	return c.pushProcessor.GetHandler(pushNotificationName)
+}
+
+// RegisterPushNotificationHandler registers a handler for a specific push notification name.
+// Returns an error if a handler is already registered for this push notification name.
+// If protected is true, the handler cannot be unregistered.
+func (c *SentinelClient) RegisterPushNotificationHandler(pushNotificationName string, handler push.NotificationHandler, protected bool) error {
+	return c.pushProcessor.RegisterHandler(pushNotificationName, handler, protected)
 }
 
 func (c *SentinelClient) Process(ctx context.Context, cmd Cmder) error {
@@ -486,13 +609,31 @@ func (c *SentinelClient) Process(ctx context.Context, cmd Cmder) error {
 func (c *SentinelClient) pubSub() *PubSub {
 	pubsub := &PubSub{
 		opt: c.opt,
-
-		newConn: func(ctx context.Context, channels []string) (*pool.Conn, error) {
-			return c.newConn(ctx)
+		newConn: func(ctx context.Context, addr string, channels []string) (*pool.Conn, error) {
+			cn, err := c.pubSubPool.NewConn(ctx, c.opt.Network, addr, channels)
+			if err != nil {
+				return nil, err
+			}
+			// will return nil if already initialized
+			err = c.initConn(ctx, cn)
+			if err != nil {
+				_ = cn.Close()
+				return nil, err
+			}
+			// Track connection in PubSubPool
+			c.pubSubPool.TrackConn(cn)
+			return cn, nil
 		},
-		closeConn: c.connPool.CloseConn,
+		closeConn: func(cn *pool.Conn) error {
+			// Untrack connection from PubSubPool
+			c.pubSubPool.UntrackConn(cn)
+			_ = cn.Close()
+			return nil
+		},
+		pushProcessor: c.pushProcessor,
 	}
 	pubsub.init()
+
 	return pubsub
 }
 
@@ -627,10 +768,10 @@ type sentinelFailover struct {
 	onFailover func(ctx context.Context, addr string)
 	onUpdate   func(ctx context.Context)
 
-	mu          sync.RWMutex
-	_masterAddr string
-	sentinel    *SentinelClient
-	pubsub      *PubSub
+	mu         sync.RWMutex
+	masterAddr string
+	sentinel   *SentinelClient
+	pubsub     *PubSub
 }
 
 func (c *sentinelFailover) Close() error {
@@ -715,6 +856,11 @@ func (c *sentinelFailover) MasterAddr(ctx context.Context) (string, error) {
 		}
 	}
 
+	// short circuit if no sentinels configured
+	if len(c.sentinelAddrs) == 0 {
+		return "", errors.New("redis: no sentinels configured")
+	}
+
 	var (
 		masterAddr string
 		wg         sync.WaitGroup
@@ -758,7 +904,22 @@ func (c *sentinelFailover) MasterAddr(ctx context.Context) (string, error) {
 	for err := range errCh {
 		errs = append(errs, err)
 	}
-	return "", fmt.Errorf("redis: all sentinels specified in configuration are unreachable: %w", errors.Join(errs...))
+	return "", fmt.Errorf("redis: all sentinels specified in configuration are unreachable: %s", joinErrors(errs))
+}
+
+func joinErrors(errs []error) string {
+	if len(errs) == 0 {
+		return ""
+	}
+	if len(errs) == 1 {
+		return errs[0].Error()
+	}
+	b := []byte(errs[0].Error())
+	for _, err := range errs[1:] {
+		b = append(b, '\n')
+		b = append(b, err.Error()...)
+	}
+	return util.BytesToString(b)
 }
 
 func (c *sentinelFailover) replicaAddrs(ctx context.Context, useDisconnected bool) ([]string, error) {
@@ -878,7 +1039,7 @@ func parseReplicaAddrs(addrs []map[string]string, keepDisconnected bool) []strin
 
 func (c *sentinelFailover) trySwitchMaster(ctx context.Context, addr string) {
 	c.mu.RLock()
-	currentAddr := c._masterAddr //nolint:ifshort
+	currentAddr := c.masterAddr //nolint:ifshort
 	c.mu.RUnlock()
 
 	if addr == currentAddr {
@@ -888,10 +1049,10 @@ func (c *sentinelFailover) trySwitchMaster(ctx context.Context, addr string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if addr == c._masterAddr {
+	if addr == c.masterAddr {
 		return
 	}
-	c._masterAddr = addr
+	c.masterAddr = addr
 
 	internal.Logger.Printf(ctx, "sentinel: new master=%q addr=%q",
 		c.opt.MasterName, addr)

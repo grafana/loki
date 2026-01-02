@@ -2,9 +2,9 @@ package distributor
 
 import (
 	"context"
-	"encoding/binary"
+	"errors"
 	"fmt"
-	"hash/fnv"
+	"math/rand/v2"
 
 	"github.com/grafana/dskit/ring"
 	ring_client "github.com/grafana/dskit/ring/client"
@@ -16,12 +16,14 @@ import (
 	"github.com/grafana/loki/v3/pkg/limits/proto"
 )
 
-// ingestLimitsFrontendClient is used for tests.
+// The ingestLimitsFrontendClient interface is used to mock calls in tests.
 type ingestLimitsFrontendClient interface {
 	ExceedsLimits(context.Context, *proto.ExceedsLimitsRequest) (*proto.ExceedsLimitsResponse, error)
+	UpdateRates(context.Context, *proto.UpdateRatesRequest) (*proto.UpdateRatesResponse, error)
 }
 
-// ingestLimitsFrontendRingClient uses the ring to query ingest-limits frontends.
+// ingestLimitsFrontendRingClient uses the ring to discover ingest-limits-frontend
+// instances and proxy requests to them.
 type ingestLimitsFrontendRingClient struct {
 	ring ring.ReadRing
 	pool *ring_client.Pool
@@ -34,30 +36,49 @@ func newIngestLimitsFrontendRingClient(ring ring.ReadRing, pool *ring_client.Poo
 	}
 }
 
-// Implements the ingestLimitsFrontendClient interface.
+// Implements the [ingestLimitsFrontendClient] interface.
 func (c *ingestLimitsFrontendRingClient) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRequest) (*proto.ExceedsLimitsResponse, error) {
-	// We use an FNV-1 of all stream hashes in the request to load balance requests
-	// to limits-frontends instances.
-	h := fnv.New32()
-	for _, stream := range req.Streams {
-		// Add the stream hash to FNV-1.
-		buf := make([]byte, binary.MaxVarintLen64)
-		binary.PutUvarint(buf, stream.StreamHash)
-		_, _ = h.Write(buf)
-	}
-	// Get the limits-frontend instances from the ring.
-	var descs [5]ring.InstanceDesc
-	rs, err := c.ring.Get(h.Sum32(), limits_frontend_client.LimitsRead, descs[0:], nil, nil)
+	var resp *proto.ExceedsLimitsResponse
+	err := c.withRandomShuffle(ctx, func(ctx context.Context, client proto.IngestLimitsFrontendClient) error {
+		var clientErr error
+		resp, clientErr = client.ExceedsLimits(ctx, req)
+		return clientErr
+	})
+	return resp, err
+}
+
+// Implements the [ingestLimitsFrontendClient] interface.
+func (c *ingestLimitsFrontendRingClient) UpdateRates(ctx context.Context, req *proto.UpdateRatesRequest) (*proto.UpdateRatesResponse, error) {
+	var resp *proto.UpdateRatesResponse
+	err := c.withRandomShuffle(ctx, func(ctx context.Context, client proto.IngestLimitsFrontendClient) error {
+		var clientErr error
+		resp, clientErr = client.UpdateRates(ctx, req)
+		return clientErr
+	})
+	return resp, err
+}
+
+// withRandomShuffle gets all healthy frontends in the ring, randomly shuffles
+// them, and then calls f.
+func (c *ingestLimitsFrontendRingClient) withRandomShuffle(ctx context.Context, f func(ctx context.Context, client proto.IngestLimitsFrontendClient) error) error {
+	rs, err := c.ring.GetAllHealthy(limits_frontend_client.LimitsRead)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get limits-frontend instances from ring: %w", err)
+		return fmt.Errorf("failed to get limits-frontend instances from ring: %w", err)
 	}
+	if len(rs.Instances) == 0 {
+		return errors.New("no healthy instances found")
+	}
+	// Randomly shuffle instances to evenly distribute requests.
+	rand.Shuffle(len(rs.Instances), func(i, j int) {
+		rs.Instances[i], rs.Instances[j] = rs.Instances[j], rs.Instances[i]
+	})
 	var lastErr error
-	// Send the request to the limits-frontend to see if it exceeds the tenant
-	// limits. If the RPC fails, failover to the next instance in the ring.
+	// Pass the instance to f. If it fails, failover to the next instance.
+	// Repeat until there are no more instances.
 	for _, instance := range rs.Instances {
 		select {
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			return ctx.Err()
 		default:
 		}
 		c, err := c.pool.GetClientFor(instance.Addr)
@@ -66,33 +87,32 @@ func (c *ingestLimitsFrontendRingClient) ExceedsLimits(ctx context.Context, req 
 			continue
 		}
 		client := c.(proto.IngestLimitsFrontendClient)
-		resp, err := client.ExceedsLimits(ctx, req)
-		if err != nil {
+		if err = f(ctx, client); err != nil {
 			lastErr = err
 			continue
 		}
-		return resp, nil
+		return nil
 	}
-	return nil, lastErr
+	return lastErr
 }
 
 type ingestLimits struct {
 	client         ingestLimitsFrontendClient
-	requests       prometheus.Counter
-	requestsFailed prometheus.Counter
+	requests       *prometheus.CounterVec
+	requestsFailed *prometheus.CounterVec
 }
 
 func newIngestLimits(client ingestLimitsFrontendClient, r prometheus.Registerer) *ingestLimits {
 	return &ingestLimits{
 		client: client,
-		requests: promauto.With(r).NewCounter(prometheus.CounterOpts{
+		requests: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_distributor_ingest_limits_requests_total",
 			Help: "The total number of requests.",
-		}),
-		requestsFailed: promauto.With(r).NewCounter(prometheus.CounterOpts{
+		}, []string{"operation"}),
+		requestsFailed: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_distributor_ingest_limits_requests_failed_total",
 			Help: "The total number of requests that failed.",
-		}),
+		}, []string{"operation"}),
 	}
 }
 
@@ -140,20 +160,16 @@ func (l *ingestLimits) EnforceLimits(ctx context.Context, tenant string, streams
 // an error if the client failed to send the request or receive a response
 // from the server. Any streams that could not have their limits checked
 // and returned in the results with the reason "ReasonFailed".
-func (l *ingestLimits) ExceedsLimits(
-	ctx context.Context,
-	tenant string,
-	streams []KeyedStream,
-) ([]*proto.ExceedsLimitsResult, error) {
-	l.requests.Inc()
+func (l *ingestLimits) ExceedsLimits(ctx context.Context, tenant string, streams []KeyedStream) ([]*proto.ExceedsLimitsResult, error) {
+	l.requests.WithLabelValues("ExceedsLimits").Inc()
 	req, err := newExceedsLimitsRequest(tenant, streams)
 	if err != nil {
-		l.requestsFailed.Inc()
+		l.requestsFailed.WithLabelValues("ExceedsLimits").Inc()
 		return nil, err
 	}
 	resp, err := l.client.ExceedsLimits(ctx, req)
 	if err != nil {
-		l.requestsFailed.Inc()
+		l.requestsFailed.WithLabelValues("ExceedsLimits").Inc()
 		return nil, err
 	}
 	return resp.Results, nil
@@ -168,11 +184,50 @@ func newExceedsLimitsRequest(tenant string, streams []KeyedStream) (*proto.Excee
 	for _, stream := range streams {
 		entriesSize, structuredMetadataSize := calculateStreamSizes(stream.Stream)
 		streamMetadata = append(streamMetadata, &proto.StreamMetadata{
-			StreamHash: stream.HashKeyNoShard,
-			TotalSize:  entriesSize + structuredMetadataSize,
+			StreamHash:      stream.HashKeyNoShard,
+			TotalSize:       entriesSize + structuredMetadataSize,
+			IngestionPolicy: stream.Policy,
 		})
 	}
 	return &proto.ExceedsLimitsRequest{
+		Tenant:  tenant,
+		Streams: streamMetadata,
+	}, nil
+}
+
+// UpdateRates updates the rates for the streams and returns a slice of the
+// updated rates for all streams. Any streams that could not have rates updated
+// have a rate of zero.
+func (l *ingestLimits) UpdateRates(ctx context.Context, tenant string, streams []SegmentedStream) ([]*proto.UpdateRatesResult, error) {
+	l.requests.WithLabelValues("UpdateRates").Inc()
+	req, err := newUpdateRatesRequest(tenant, streams)
+	if err != nil {
+		l.requestsFailed.WithLabelValues("UpdateRates").Inc()
+		return nil, err
+	}
+	resp, err := l.client.UpdateRates(ctx, req)
+	if err != nil {
+		l.requestsFailed.WithLabelValues("UpdateRates").Inc()
+		return nil, err
+	}
+	return resp.Results, nil
+}
+
+func newUpdateRatesRequest(tenant string, streams []SegmentedStream) (*proto.UpdateRatesRequest, error) {
+	// The distributor sends the hashes of all streams in the request to the
+	// limits-frontend. The limits-frontend is responsible for deciding if
+	// the request would exceed the tenants limits, and if so, which streams
+	// from the request caused it to exceed its limits.
+	streamMetadata := make([]*proto.StreamMetadata, 0, len(streams))
+	for _, stream := range streams {
+		entriesSize, structuredMetadataSize := calculateStreamSizes(stream.Stream)
+		streamMetadata = append(streamMetadata, &proto.StreamMetadata{
+			StreamHash:      stream.SegmentationKeyHash,
+			TotalSize:       entriesSize + structuredMetadataSize,
+			IngestionPolicy: stream.Policy,
+		})
+	}
+	return &proto.UpdateRatesRequest{
 		Tenant:  tenant,
 		Streams: streamMetadata,
 	}, nil

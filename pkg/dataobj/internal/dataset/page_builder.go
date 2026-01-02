@@ -57,8 +57,15 @@ type pageBuilder struct {
 // combination of opts.Value and opts.Encoding.
 func newPageBuilder(opts BuilderOptions) (*pageBuilder, error) {
 	var (
+		// We avoid giving an initial capacity to the buffers below to reduce
+		// the memory footprint for page builders (one per column), since it's
+		// atypical for every column to completely fill its pages.
+		//
+		// However, this will slightly increase the memory footprint for any
+		// column with at least one full page, due to how Go grows slices.
+
 		presenceBuffer = bytes.NewBuffer(nil)
-		valuesBuffer   = bytes.NewBuffer(make([]byte, 0, opts.PageSizeHint))
+		valuesBuffer   = bytes.NewBuffer(nil)
 
 		valuesWriter = newCompressWriter(valuesBuffer, opts.Compression, opts.CompressionOptions)
 	)
@@ -99,7 +106,7 @@ func (b *pageBuilder) canAppend(n, valueSize int) bool {
 // Append appends value into the pageBuilder. Append returns true if the data
 // was appended; false if the pageBuilder is full.
 func (b *pageBuilder) Append(value Value) bool {
-	if value.IsNil() || value.IsZero() {
+	if value.IsNil() {
 		return b.AppendNull()
 	}
 

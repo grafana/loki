@@ -699,6 +699,7 @@ func (p *Process) OpenFilesWithContext(ctx context.Context) ([]OpenFilesStat, er
 	if err != nil {
 		return nil, err
 	}
+	defer windows.CloseHandle(process)
 
 	buffer := make([]byte, 1024)
 	var size uint32
@@ -956,7 +957,7 @@ func getProcessMemoryInfo(h windows.Handle, mem *PROCESS_MEMORY_COUNTERS) (err e
 			err = syscall.EINVAL
 		}
 	}
-	return
+	return err
 }
 
 type SYSTEM_TIMES struct { //nolint:revive //FIXME

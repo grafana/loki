@@ -580,6 +580,18 @@ spec:
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:select:Managed
         - urn:alm:descriptor:com.tectonic.ui:select:Unmanaged
+      - description: |-
+          NetworkPolicies defines the NetworkPolicies configuration for LokiStack components.
+          When enabled, the operator creates NetworkPolicies to control ingress/egress between
+          Loki components and related services.
+        displayName: Network Policies
+        path: networkPolicies
+      - description: RuleSet determines which of the pre-defined sets of NetworkPolicy
+          rules is used for this LokiStack.
+        displayName: Network Policy Rule-Set
+        path: networkPolicies.ruleSet
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:text
       - description: Proxy defines the spec for the object proxy to configure cluster
           proxy information.
         displayName: Cluster Proxy
@@ -921,6 +933,13 @@ spec:
       - description: Roles defines a set of permissions to interact with a tenant.
         displayName: Static Roles
         path: tenants.authorization.roles
+      - description: |-
+          DisableIngress disables automatic creation of external access resources (Route / Ingress).
+          When true, no Route or Ingress will be created for the gateway.
+        displayName: Disable Ingress
+        path: tenants.disableIngress
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
       - description: Mode defines the mode in which lokistack-gateway component will
           be configured.
         displayName: Mode

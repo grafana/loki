@@ -14,6 +14,7 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/compactor/client/grpc"
 	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
@@ -64,8 +65,9 @@ type JobBuilder struct {
 	currentManifest    manifestJobs
 	currentManifestMtx sync.RWMutex
 
-	currSegmentStorageUpdates *storageUpdatesCollection
-	metrics                   *jobBuilderMetrics
+	currSegmentStorageUpdates   *storageUpdatesCollection
+	currSegmentNumJobsToProcess atomic.Int32
+	metrics                     *jobBuilderMetrics
 }
 
 func NewJobBuilder(
@@ -105,6 +107,10 @@ func (b *JobBuilder) BuildJobs(ctx context.Context, jobsChan chan<- *grpc.Job) {
 			// Continue to next iteration
 		}
 	}
+}
+
+func (b *JobBuilder) JobsLeft() int {
+	return int(b.currSegmentNumJobsToProcess.Load())
 }
 
 func (b *JobBuilder) buildJobs(ctx context.Context, jobsChan chan<- *grpc.Job) error {
@@ -191,6 +197,7 @@ func (b *JobBuilder) processManifest(ctx context.Context, manifest *deletionprot
 		b.currentManifestMtx.Unlock()
 
 		b.currSegmentStorageUpdates.reset(segment.TableName, segment.UserID)
+		b.currSegmentNumJobsToProcess.Store(estimateJobCountForSegment(segment))
 
 		// Process each chunks group (same deletion query)
 		for _, group := range segment.ChunksGroups {
@@ -375,6 +382,7 @@ func (b *JobBuilder) OnJobResponse(response *grpc.JobResult) error {
 	// Check for job failure
 	if response.Error != "" {
 		util_log.Logger.Log("msg", "job failed", "job_id", response.JobId, "error", response.Error)
+		b.currSegmentNumJobsToProcess.Store(0)
 		b.currentManifest.cancel()
 		return nil
 	}
@@ -382,12 +390,14 @@ func (b *JobBuilder) OnJobResponse(response *grpc.JobResult) error {
 	var updates deletionproto.StorageUpdates
 	err := proto.Unmarshal(response.Result, &updates)
 	if err != nil {
+		b.currSegmentNumJobsToProcess.Store(0)
 		b.currentManifest.cancel()
 		return err
 	}
 
 	b.currSegmentStorageUpdates.addUpdates(jobDetails.labels, updates)
 	delete(b.currentManifest.jobsInProgress, response.JobId)
+	b.currSegmentNumJobsToProcess.Dec()
 
 	return nil
 }
@@ -599,4 +609,19 @@ func (i *storageUpdatesIterator) ForEachSeries(callback func(labels string, rebu
 	}
 
 	return nil
+}
+
+func estimateJobCountForSegment(s *deletionproto.Segment) int32 {
+	jobCount := int32(0)
+	for _, group := range s.ChunksGroups {
+		for _, chunks := range group.Chunks {
+			numChunks := len(chunks.IDs)
+			jobCount += int32(numChunks / maxChunksPerJob)
+			if numChunks%maxChunksPerJob != 0 {
+				jobCount++
+			}
+		}
+	}
+
+	return jobCount
 }

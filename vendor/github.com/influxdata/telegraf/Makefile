@@ -180,7 +180,7 @@ vet:
 .PHONY: lint-install
 lint-install:
 	@echo "Installing golangci-lint"
-	go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.5
+	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.5.0
 
 	@echo "Installing markdownlint"
 	npm install -g markdownlint-cli
@@ -206,6 +206,19 @@ lint-branch:
 		exit 1; \
 	}
 	golangci-lint run
+
+.PHONY: vuln-install
+vuln-install:
+	@echo "Installing govulncheck"
+	go install golang.org/x/vuln/cmd/govulncheck@latest
+
+.PHONY: vuln
+vuln:
+	@which govulncheck >/dev/null 2>&1 || { \
+		echo "govulncheck not found, please run: make vuln-install"; \
+		exit 1; \
+	}
+	govulncheck ./...
 
 .PHONY: tidy
 tidy:
@@ -257,8 +270,8 @@ plugins/parsers/influx/machine.go: plugins/parsers/influx/machine.go.rl
 
 .PHONY: ci
 ci:
-	docker build -t quay.io/influxdb/telegraf-ci:1.24.1 - < scripts/ci.docker
-	docker push quay.io/influxdb/telegraf-ci:1.24.1
+	docker build -t quay.io/influxdb/telegraf-ci:1.25.4 - < scripts/ci.docker
+	docker push quay.io/influxdb/telegraf-ci:1.25.4
 
 .PHONY: install
 install: $(buildbin)
@@ -295,7 +308,7 @@ mipsel += mipsel.deb linux_mipsel.tar.gz
 .PHONY: mipsel
 mipsel:
 	@ echo $(mipsel)
-loong64 += linux_loong64.tar.gz loong64.deb loong64.rpm
+loong64 += linux_loong64.tar.gz loong64.deb loongarch64.rpm
 .PHONY: loong64
 loong64:
 	@ echo $(loong64)
@@ -381,6 +394,7 @@ $(include_packages):
 			--rpm-posttrans scripts/rpm/post-install.sh \
 			--rpm-os ${GOOS} \
 			--rpm-tag "Requires(pre): /usr/sbin/useradd" \
+			--rpm-tag "Recommends: influxdata-archive-keyring" \
 			--name telegraf \
 			--version $(version) \
 			--iteration $(rpm_iteration) \
@@ -403,6 +417,7 @@ $(include_packages):
 			--after-remove scripts/deb/post-remove.sh \
 			--before-remove scripts/deb/pre-remove.sh \
 			--description "Plugin-driven server agent for reporting metrics into InfluxDB." \
+			--deb-recommends "influxdata-archive-keyring" \
 			--name telegraf \
 			--version $(version) \
 			--iteration $(deb_iteration) \
@@ -441,8 +456,8 @@ mipsel.deb linux_mipsel.tar.gz: export GOARCH := mipsle
 riscv64.deb riscv64.rpm linux_riscv64.tar.gz: export GOOS := linux
 riscv64.deb riscv64.rpm linux_riscv64.tar.gz: export GOARCH := riscv64
 
-loong64.deb loong64.rpm linux_loong64.tar.gz: export GOOS := linux
-loong64.deb loong64.rpm linux_loong64.tar.gz: export GOARCH := loong64
+loong64.deb loongarch64.rpm linux_loong64.tar.gz: export GOOS := linux
+loong64.deb loongarch64.rpm linux_loong64.tar.gz: export GOARCH := loong64
 
 s390x.deb s390x.rpm linux_s390x.tar.gz: export GOOS := linux
 s390x.deb s390x.rpm linux_s390x.tar.gz: export GOARCH := s390x

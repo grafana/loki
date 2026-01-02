@@ -53,6 +53,10 @@ _shared-workflows-dockerhub-login
 
 # vscode
 .vscode
+!.vscode/launch.json
+
+# zed
+.zed
 
 # nix
 nix/result
@@ -74,3 +78,5 @@ mem.prof
 *.pprof
 
 **/.claude/settings.local.json
+
+host-*.json

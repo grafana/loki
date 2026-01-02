@@ -70,6 +70,7 @@ type BosClientConfiguration struct {
 	PathStyleEnable       bool
 	DisableKeepAlives     bool
 	NoVerifySSL           bool
+	ExclusiveHTTPClient   bool
 	retryPolicy           bce.RetryPolicy
 	DialTimeout           *time.Duration // timeout of building a connection
 	KeepAlive             *time.Duration // interval between keep-alive probes for an active connection
@@ -80,18 +81,21 @@ type BosClientConfiguration struct {
 	ResponseHeaderTimeout *time.Duration // http.Transport.ResponseHeaderTimeout
 	HTTPClientTimeout     *time.Duration // http.Client.Timeout
 	HTTPClient            *http.Client   // customized http client to send request
+	UploadRatelimit       *int64         // the limit of upload rate, unit:KB/s
+	DownloadRatelimit     *int64         // the limit of download rate, unit:KB/s
 }
 
 func NewBosClientConfig(ak, sk, endpoint string) *BosClientConfiguration {
 	return &BosClientConfiguration{
-		Ak:                ak,
-		Sk:                sk,
-		Endpoint:          endpoint,
-		RedirectDisabled:  false,
-		PathStyleEnable:   false,
-		DisableKeepAlives: false,
-		NoVerifySSL:       false,
-		retryPolicy:       bce.DEFAULT_RETRY_POLICY,
+		Ak:                  ak,
+		Sk:                  sk,
+		Endpoint:            endpoint,
+		RedirectDisabled:    false,
+		PathStyleEnable:     false,
+		DisableKeepAlives:   false,
+		NoVerifySSL:         false,
+		ExclusiveHTTPClient: true,
+		retryPolicy:         api.DEFAULT_BOS_RETRY_POLICY,
 	}
 }
 
@@ -180,6 +184,21 @@ func (cfg *BosClientConfiguration) WithHttpClient(val http.Client) *BosClientCon
 	return cfg
 }
 
+func (cfg *BosClientConfiguration) WithUploadRateLimit(val int64) *BosClientConfiguration {
+	cfg.UploadRatelimit = &val
+	return cfg
+}
+
+func (cfg *BosClientConfiguration) WithDownloadRateLimit(val int64) *BosClientConfiguration {
+	cfg.DownloadRatelimit = &val
+	return cfg
+}
+
+func (cfg *BosClientConfiguration) WithExclusiveHTTPClient(val bool) *BosClientConfiguration {
+	cfg.ExclusiveHTTPClient = val
+	return cfg
+}
+
 // NewClient make the BOS service client with default configuration.
 // Use `cli.Config.xxx` to access the config or change it to non-default value.
 func NewClient(ak, sk, endpoint string) (*Client, error) {
@@ -218,6 +237,7 @@ func NewStsClient(ak, sk, endpoint string, expiration int) (*Client, error) {
 
 func NewClientWithConfig(config *BosClientConfiguration) (*Client, error) {
 	var credentials *auth.BceCredentials
+	var bceClient *bce.BceClient
 	var err error
 	ak, sk, endpoint := config.Ak, config.Sk, config.Endpoint
 	if len(ak) == 0 && len(sk) == 0 { // to support public-read-write request
@@ -232,7 +252,7 @@ func NewClientWithConfig(config *BosClientConfiguration) (*Client, error) {
 		endpoint = DEFAULT_SERVICE_DOMAIN
 	}
 	if config.retryPolicy == nil {
-		config.retryPolicy = bce.DEFAULT_RETRY_POLICY
+		config.retryPolicy = api.DEFAULT_BOS_RETRY_POLICY
 	}
 	defaultSignOptions := &auth.SignOptions{
 		HeadersToSign: auth.DEFAULT_HEADERS_TO_SIGN,
@@ -257,14 +277,23 @@ func NewClientWithConfig(config *BosClientConfiguration) (*Client, error) {
 		ResponseHeaderTimeout:     config.ResponseHeaderTimeout,
 		HTTPClientTimeout:         config.HTTPClientTimeout,
 		HTTPClient:                config.HTTPClient,
+		UploadRatelimit:           config.UploadRatelimit,
+		DownloadRatelimit:         config.DownloadRatelimit,
+	}
+	if config.HTTPClientTimeout != nil {
+		defaultConf.ConnectionTimeoutInMillis = int(config.HTTPClientTimeout.Milliseconds())
 	}
 	v1Signer := &auth.BceV1Signer{}
 	defaultContext := &api.BosContext{
 		PathStyleEnable: config.PathStyleEnable,
 	}
-	client := &Client{bce.NewBceClientWithTimeout(defaultConf, v1Signer),
-		DEFAULT_MAX_PARALLEL, DEFAULT_MULTIPART_SIZE, defaultContext}
-	return client, nil
+	if config.ExclusiveHTTPClient || config.HTTPClient != nil ||
+		config.UploadRatelimit != nil || config.DownloadRatelimit != nil {
+		bceClient = bce.NewBceClientWithExclusiveHTTPClient(defaultConf, v1Signer)
+	} else {
+		bceClient = bce.NewBceClientWithTimeout(defaultConf, v1Signer)
+	}
+	return &Client{bceClient, DEFAULT_MAX_PARALLEL, DEFAULT_MULTIPART_SIZE, defaultContext}, nil
 }
 
 // ListBuckets - list all buckets
@@ -1465,45 +1494,6 @@ func (c *Client) GetObjectToFileWithContext(ctx context.Context, bucket, object,
 	return nil
 }
 
-// SetObjectMeta - set the given object metadata
-//
-// PARAMS:
-//   - bucket: the name of the bucket
-//   - object: the name of the object
-//   - args: new object meta value for changing
-//   - options: option func to set various requeset headers
-//
-// RETURNS:
-//   - error: any error if it occurs
-func (c *Client) SetObjectMeta(bucket, object string, args *api.SetObjectMetaArgs,
-	options ...api.Option) error {
-	cpArgs := &api.CopyObjectArgs{
-		ObjectMeta:        args.ObjectMeta,
-		ObjectExpires:     args.ObjectExpires,
-		MetadataDirective: api.METADATA_DIRECTIVE_UPDATE,
-	}
-	source := fmt.Sprintf("/%s/%s", bucket, object)
-	_, err := api.CopyObject(c, bucket, object, source, cpArgs, c.BosContext, options...)
-	return err
-}
-
-// SetObjectMetaWithContext - support to cancel request by context.Context
-func (c *Client) SetObjectMetaWithContext(ctx context.Context, bucket, object string,
-	args *api.SetObjectMetaArgs, options ...api.Option) error {
-	cpArgs := &api.CopyObjectArgs{
-		ObjectMeta:        args.ObjectMeta,
-		ObjectExpires:     args.ObjectExpires,
-		MetadataDirective: api.METADATA_DIRECTIVE_UPDATE,
-	}
-	source := fmt.Sprintf("/%s/%s", bucket, object)
-	bosContext := &api.BosContext{
-		PathStyleEnable: c.BosContext.PathStyleEnable,
-		Ctx:             ctx,
-	}
-	_, err := api.CopyObject(c, bucket, object, source, cpArgs, bosContext, options...)
-	return err
-}
-
 // GetObjectMeta - get the given object metadata
 //
 // PARAMS:
@@ -2624,8 +2614,13 @@ func (c *Client) ParallelUpload(bucket string, object string, filename string, c
 	}
 
 	completeArgs := &api.CompleteMultipartUploadArgs{
-		Parts:         partEtags,
-		ObjectExpires: args.ObjectExpires,
+		Parts: partEtags,
+	}
+
+	if args != nil {
+		if args.ObjectExpires > 0 {
+			completeArgs.ObjectExpires = args.ObjectExpires
+		}
 	}
 
 	completeMultipartUploadResult, err := c.CompleteMultipartUploadFromStruct(bucket, object, initiateMultipartUploadResult.UploadId, completeArgs)
@@ -2665,6 +2660,10 @@ func (c *Client) parallelPartUpload(bucket string, object string, filename strin
 		partSize = (fileSize + MAX_PART_NUMBER + 1) / MAX_PART_NUMBER
 		partSize = (partSize + MULTIPART_ALIGN - 1) / MULTIPART_ALIGN * MULTIPART_ALIGN
 		partNum = (fileSize + partSize - 1) / partSize
+	}
+	// 文件大小为 0 时，至少执行一次 UploadPart
+	if partNum == 0 {
+		partNum = 1
 	}
 
 	parallelChan := make(chan int, c.MaxParallel)
@@ -2834,6 +2833,9 @@ func (c *Client) ParallelCopy(srcBucketName string, srcObjectName string,
 		completeArgs.ContentCrc32cFlag = args.ContentCrc32cFlag
 		if args.ObjectExpires > 0 {
 			completeArgs.ObjectExpires = args.ObjectExpires
+		}
+		if len(args.ContentCrc64ECMA) > 0 {
+			completeArgs.ContentCrc64ECMA = args.ContentCrc64ECMA
 		}
 	}
 

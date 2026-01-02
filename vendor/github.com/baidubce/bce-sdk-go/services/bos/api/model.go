@@ -106,10 +106,26 @@ type AclRefererType struct {
 	StringEquals []string `json:"stringEquals,omitempty"`
 }
 
+type AclTimeCond struct {
+	DateLessThan          string `json:"dateLessThan,omitempty"`
+	DateLessThanEquals    string `json:"dateLessThanEquals,omitempty"`
+	DateGreaterThan       string `json:"dateGreaterThan,omitempty"`
+	DateGreaterThanEquals string `json:"dateGreaterThanEquals,omitempty"`
+}
+
+type AclUserAgentType struct {
+	StringLike   []string `json:"stringLike,omitempty"`
+	StringEquals []string `json:"stringEquals,omitempty"`
+}
+
 type AclCondType struct {
-	IpAddress []string       `json:"ipAddress,omitempty"`
-	Referer   AclRefererType `json:"referer,omitempty"`
-	VpcId     []string       `json:"vpcId,omitempty"`
+	IpAddress       []string         `json:"ipAddress,omitempty"`
+	NotIpAddress    []string         `json:"notIpAddress,omitempty"`
+	Referer         AclRefererType   `json:"referer,omitempty"`
+	SecureTransport bool             `json:"secureTransport,omitempty"`
+	CurrentTime     AclTimeCond      `json:"currentTime,omitempty"`
+	UserAgent       AclUserAgentType `json:"userAgent,omitempty"`
+	VpcId           []string         `json:"vpcId,omitempty"`
 }
 
 // GrantType defines the grant struct in ACL setting
@@ -285,6 +301,7 @@ type PutObjectArgs struct {
 	ContentCrc32       string
 	StorageClass       string
 	Process            string
+	CannedAcl          string
 	ObjectTagging      string
 	TrafficLimit       int64
 	ContentCrc32c      string
@@ -293,6 +310,7 @@ type PutObjectArgs struct {
 	ContentEncoding    string
 	ForbidOverwrite    bool
 	Encryption         SSEHeaders
+	ContentCrc64ECMA   string
 	// please set other header/params of http request By Option
 	// alternative Options please refer to service/bos/api/option.go
 }
@@ -327,11 +345,13 @@ type CopyObjectArgs struct {
 	IfModifiedSince   string
 	IfUnmodifiedSince string
 	TrafficLimit      int64
+	CannedAcl         string
 	TaggingDirective  string
 	ObjectTagging     string
 	ContentCrc32c     string
 	ContentCrc32cFlag bool
 	ObjectExpires     int
+	ContentCrc64ECMA  string
 	// please set other header/params of http request By Option
 	// alternative Options please refer to service/bos/api/option.go
 }
@@ -348,6 +368,7 @@ type MultiCopyObjectArgs struct {
 	GrantFullControl  []string
 	ObjectExpires     int
 	UserMeta          map[string]string
+	ContentCrc64ECMA  string
 }
 
 type CallbackResult struct {
@@ -361,6 +382,7 @@ type PutObjectResult struct {
 	StorageClass         string         `json:"-"`
 	VersionId            string         `json:"-"`
 	ServerSideEncryption string         `json:"-"`
+	ContentCrc64ECMA     string         `json:"-"`
 }
 
 type PostObjectResult struct {
@@ -377,11 +399,6 @@ type CopyObjectResult struct {
 	Code         string `json:"code,omitempty"`
 	Message      string `json:"message,omitempty"`
 	RequestId    string `json:"requestId,omitempty"`
-}
-
-type SetObjectMetaArgs struct {
-	ObjectMeta
-	ObjectExpires int
 }
 
 type ObjectMeta struct {
@@ -409,6 +426,7 @@ type ObjectMeta struct {
 	Encryption         SSEHeaders
 	RetentionDate      string
 	objectTagCount     int64
+	ContentCrc64ECMA   string
 }
 
 // GetObjectResult defines the result data of the get object api.
@@ -514,6 +532,7 @@ type AppendObjectArgs struct {
 	ContentCrc32cFlag  bool
 	ObjectExpires      int
 	ContentEncoding    string
+	ContentCrc64ECMA   string
 }
 
 // AppendObjectResult defines the result data structure for appending object.
@@ -523,6 +542,7 @@ type AppendObjectResult struct {
 	ContentCrc32     string
 	ETag             string
 	ContentCrc32c    string
+	ContentCrc64ECMA string
 }
 
 // DeleteObjectArgs defines the input args structure for a single object.
@@ -578,6 +598,7 @@ type UploadPartArgs struct {
 	TrafficLimit      int64
 	ContentCrc32c     string
 	ContentCrc32cFlag bool
+	ContentCrc64ECMA  string
 }
 
 // UploadPartCopyArgs defines the optional arguments of UploadPartCopy.
@@ -590,6 +611,7 @@ type UploadPartCopyArgs struct {
 	TrafficLimit      int64
 	ContentCrc32c     string
 	ContentCrc32cFlag bool
+	ContentCrc64ECMA  string
 }
 
 type PutSymlinkArgs struct {
@@ -614,17 +636,19 @@ type CompleteMultipartUploadArgs struct {
 	ContentCrc32c     string            `json:"-"`
 	ContentCrc32cFlag bool              `json:"-"`
 	ObjectExpires     int               `json:"-"`
+	ContentCrc64ECMA  string            `json:"-"`
 }
 
 // CompleteMultipartUploadResult defines the result structure of CompleteMultipartUpload.
 type CompleteMultipartUploadResult struct {
-	Location      string `json:"location"`
-	Bucket        string `json:"bucket"`
-	Key           string `json:"key"`
-	ETag          string `json:"eTag"`
-	ContentCrc32  string `json:"-"`
-	ContentCrc32c string `json:"-"`
-	VersionId     string `json:"-"`
+	Location         string `json:"location"`
+	Bucket           string `json:"bucket"`
+	Key              string `json:"key"`
+	ETag             string `json:"eTag"`
+	ContentCrc32     string `json:"-"`
+	ContentCrc32c    string `json:"-"`
+	VersionId        string `json:"-"`
+	ContentCrc64ECMA string `json:"-"`
 }
 
 // ListPartsArgs defines the input optional arguments of listing parts information.
@@ -706,20 +730,34 @@ type EncryptionKey struct {
 }
 
 type PutBucketNotificationSt struct {
-	Id         string                        `json:"id"`
-	Name       string                        `json:"name"`
-	AppId      string                        `json:"appId"`
-	Status     string                        `json:"status"`
-	Encryption EncryptionKey                 `json:"encryption"`
-	Resources  []string                      `json:"resources"`
-	Events     []string                      `json:"events"`
-	Apps       []PutBucketNotificationAppsSt `json:"apps"`
+	Id          string                        `json:"id"`
+	Name        string                        `json:"name"`
+	AppId       string                        `json:"appId"`
+	Status      string                        `json:"status"`
+	Encryption  EncryptionKey                 `json:"encryption"`
+	Resources   []string                      `json:"resources"`
+	Events      []string                      `json:"events"`
+	Apps        []PutBucketNotificationAppsSt `json:"apps"`
+	ContentType NotificationContentTypeSt     `json:"contentType,omitempty"`
+	Quota       NotificationQuotaSt           `json:"quota,omitempty"`
+}
+
+type NotificationQuotaSt struct {
+	QuotaDay int64   `json:"quotaDay,omitempty"`
+	QuotaSec float64 `json:"quotaSec,omitempty"`
 }
 
 type PutBucketNotificationAppsSt struct {
 	Id       string `json:"id"`
 	EventUrl string `json:"eventUrl"`
 	XVars    string `json:"xVars"`
+	Cfc      string `json:"cfc"`
+	XParams  string `json:"xParams"`
+}
+
+type NotificationContentTypeSt struct {
+	Extensions []string `json:"extensions,omitempty"`
+	MimeTypes  []string `json:"mimeTypes,omitempty"`
 }
 
 type MirrorConfigurationRule struct {

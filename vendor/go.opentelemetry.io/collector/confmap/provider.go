@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	yaml "sigs.k8s.io/yaml/goyaml.v3"
+	yaml "go.yaml.in/yaml/v3"
 )
 
 // ProviderSettings are the settings to initialize a Provider.
@@ -85,6 +85,8 @@ type Provider interface {
 	//
 	// This method must be called when the Collector service ends, either in case of
 	// success or error. Retrieve cannot be called after Shutdown.
+	//
+	// Provider MUST shutdown and wait for any goroutine(s) that were created to call `watcher`, if any.
 	//
 	// Should never be called concurrently with itself or with Retrieve.
 	// If ctx is cancelled should return immediately with an error.

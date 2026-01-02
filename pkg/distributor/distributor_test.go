@@ -484,7 +484,7 @@ func Test_PushWithEnforcedLabels(t *testing.T) {
 	// enforced labels configured, but all labels are missing.
 	_, err := distributors[0].Push(ctx, req)
 	require.Error(t, err)
-	expectedErr := httpgrpc.Errorf(http.StatusBadRequest, validation.MissingEnforcedLabelsErrorMsg, "app,env", "test", "{foo=\"bar\"}")
+	expectedErr := httpgrpc.Errorf(http.StatusBadRequest, validation.MissingEnforcedLabelsErrorMsg, "app,env", "test", "{foo=\"bar\"}", "")
 	require.EqualError(t, err, expectedErr.Error())
 
 	// Verify metrics for discarded samples due to missing enforced labels
@@ -861,7 +861,7 @@ func TestStreamShard(t *testing.T) {
 				shardTracker:     NewShardTracker(),
 			}
 
-			derivedStreams := d.shardStream(baseStream, tc.streamSize, "fake")
+			derivedStreams := d.shardStream(baseStream, tc.streamSize, "fake", "")
 			require.Len(t, derivedStreams, tc.wantDerivedStreamSize)
 
 			for _, s := range derivedStreams {
@@ -906,7 +906,7 @@ func TestStreamShardAcrossCalls(t *testing.T) {
 			shardTracker:     NewShardTracker(),
 		}
 
-		derivedStreams := d.shardStream(baseStream, streamRate, "fake")
+		derivedStreams := d.shardStream(baseStream, streamRate, "fake", "")
 		require.Len(t, derivedStreams, 2)
 
 		for i, s := range derivedStreams {
@@ -917,7 +917,7 @@ func TestStreamShardAcrossCalls(t *testing.T) {
 			require.Equal(t, lbls.Get(ingester.ShardLbName), fmt.Sprint(i))
 		}
 
-		derivedStreams = d.shardStream(baseStream, streamRate, "fake")
+		derivedStreams = d.shardStream(baseStream, streamRate, "fake", "")
 		require.Len(t, derivedStreams, 2)
 
 		for i, s := range derivedStreams {
@@ -1245,7 +1245,7 @@ func BenchmarkShardStream(b *testing.B) {
 
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			d.shardStream(stream, 0, "fake") //nolint:errcheck
+			d.shardStream(stream, 0, "fake", "") //nolint:errcheck
 		}
 	})
 
@@ -1255,7 +1255,7 @@ func BenchmarkShardStream(b *testing.B) {
 
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			d.shardStream(stream, 0, "fake") //nolint:errcheck
+			d.shardStream(stream, 0, "fake", "") //nolint:errcheck
 		}
 	})
 
@@ -1265,7 +1265,7 @@ func BenchmarkShardStream(b *testing.B) {
 
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			d.shardStream(stream, 0, "fake") //nolint:errcheck
+			d.shardStream(stream, 0, "fake", "") //nolint:errcheck
 		}
 	})
 
@@ -1275,7 +1275,7 @@ func BenchmarkShardStream(b *testing.B) {
 
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			d.shardStream(stream, 0, "fake") //nolint:errcheck
+			d.shardStream(stream, 0, "fake", "") //nolint:errcheck
 		}
 	})
 }
@@ -1291,7 +1291,7 @@ func Benchmark_SortLabelsOnPush(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		stream := request.Streams[0]
 		stream.Labels = `{buzz="f", a="b"}`
-		_, _, _, _, _, err := d.parseStreamLabels(vCtx, stream.Labels, stream, streamResolver, constants.Loki)
+		_, _, _, _, _, err := d.parseStreamLabels(context.Background(), vCtx, stream.Labels, stream, streamResolver, constants.Loki)
 		if err != nil {
 			panic("parseStreamLabels fail,err:" + err.Error())
 		}
@@ -1331,7 +1331,7 @@ func TestParseStreamLabels(t *testing.T) {
 		vCtx := d.validator.getValidationContextForTime(testTime, "123")
 		streamResolver := newRequestScopedStreamResolver("123", d.validator.Limits, nil)
 		t.Run(tc.name, func(t *testing.T) {
-			lbs, lbsString, hash, _, _, err := d.parseStreamLabels(vCtx, tc.origLabels, logproto.Stream{
+			lbs, lbsString, hash, _, _, err := d.parseStreamLabels(context.Background(), vCtx, tc.origLabels, logproto.Stream{
 				Labels: tc.origLabels,
 			}, streamResolver, constants.Loki)
 			if tc.expectedErr != nil {
@@ -1771,7 +1771,7 @@ func TestDistributor_PushIngestionBlockedByPolicy(t *testing.T) {
 			policy:           "test-policy",
 			labels:           `{foo="bar"}`,
 			expectError:      true,
-			expectedErrorMsg: fmt.Sprintf(validation.BlockedIngestionPolicyErrorMsg, "test", now.Add(1*time.Hour).Format(time.RFC3339), defaultErrCode),
+			expectedErrorMsg: fmt.Sprintf(validation.BlockedIngestionPolicyErrorMsg, "test", "test-policy", now.Add(1*time.Hour).Format(time.RFC3339), defaultErrCode),
 			yes:              true,
 		},
 		{
@@ -1791,7 +1791,7 @@ func TestDistributor_PushIngestionBlockedByPolicy(t *testing.T) {
 			policy:           "test-policy",
 			labels:           `{foo="bar"}`,
 			expectError:      true,
-			expectedErrorMsg: fmt.Sprintf(validation.BlockedIngestionPolicyErrorMsg, "test", now.Add(1*time.Hour).Format(time.RFC3339), defaultErrCode),
+			expectedErrorMsg: fmt.Sprintf(validation.BlockedIngestionPolicyErrorMsg, "test", "test-policy", now.Add(1*time.Hour).Format(time.RFC3339), defaultErrCode),
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1879,7 +1879,7 @@ func prepare(t *testing.T, numDistributors, numIngesters int, limits *validation
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ingestersRing))
 
-	partitionRing := ring.NewPartitionRing(ring.PartitionRingDesc{
+	partitionRing, err := ring.NewPartitionRing(ring.PartitionRingDesc{
 		Partitions: map[int32]ring.PartitionDesc{
 			1: {
 				Id:             1,
@@ -1896,6 +1896,7 @@ func prepare(t *testing.T, numDistributors, numIngesters int, limits *validation
 			},
 		},
 	})
+	require.NoError(t, err)
 	partitionRingReader := mockPartitionRingReader{
 		ring: partitionRing,
 	}
@@ -1937,7 +1938,7 @@ func prepare(t *testing.T, numDistributors, numIngesters int, limits *validation
 		ingesterConfig := ingester.Config{MaxChunkAge: 2 * time.Hour}
 		limitsFrontendCfg := limits_frontend_client.Config{}
 
-		d, err := New(distributorConfig, ingesterConfig, clientConfig, runtime.DefaultTenantConfigs(), ingestersRing, partitionRingReader, overrides, prometheus.NewPedanticRegistry(), constants.Loki, nil, nil, limitsFrontendCfg, limitsFrontendRing, 1, log.NewNopLogger())
+		d, err := New(distributorConfig, ingesterConfig, clientConfig, runtime.DefaultTenantConfigs(), ingestersRing, partitionRingReader, overrides, prometheus.NewPedanticRegistry(), constants.Loki, nil, nil, limitsFrontendCfg, limitsFrontendRing, 1, nil, log.NewNopLogger())
 		require.NoError(t, err)
 		require.NoError(t, services.StartAndAwaitRunning(context.Background(), d))
 		distributors[i] = d
@@ -2138,7 +2139,7 @@ type mockTee struct {
 	tenant     string
 }
 
-func (mt *mockTee) Duplicate(tenant string, streams []KeyedStream) {
+func (mt *mockTee) Duplicate(_ context.Context, tenant string, streams []KeyedStream) {
 	mt.mu.Lock()
 	defer mt.mu.Unlock()
 	mt.duplicated = append(mt.duplicated, streams)
@@ -2336,10 +2337,10 @@ func TestRequestScopedStreamResolver(t *testing.T) {
 	retentionPeriod = resolver.RetentionPeriodFor(labels.FromStrings("env", "dev"))
 	require.Equal(t, 24*time.Hour, retentionPeriod)
 
-	policy := resolver.PolicyFor(labels.FromStrings("env", "prod"))
+	policy := resolver.PolicyFor(t.Context(), labels.FromStrings("env", "prod"))
 	require.Equal(t, "policy0", policy)
 
-	policy = resolver.PolicyFor(labels.FromStrings("env", "dev"))
+	policy = resolver.PolicyFor(t.Context(), labels.FromStrings("env", "dev"))
 	require.Empty(t, policy)
 
 	// We now modify the underlying limits to test that the resolver is not affected by changes to the limits
@@ -2378,10 +2379,10 @@ func TestRequestScopedStreamResolver(t *testing.T) {
 	retentionPeriod = resolver.RetentionPeriodFor(labels.FromStrings("env", "dev"))
 	require.Equal(t, 24*time.Hour, retentionPeriod)
 
-	policy = resolver.PolicyFor(labels.FromStrings("env", "prod"))
+	policy = resolver.PolicyFor(t.Context(), labels.FromStrings("env", "prod"))
 	require.Equal(t, "policy0", policy)
 
-	policy = resolver.PolicyFor(labels.FromStrings("env", "dev"))
+	policy = resolver.PolicyFor(t.Context(), labels.FromStrings("env", "dev"))
 	require.Empty(t, policy)
 
 	// But a new resolver should return the new values
@@ -2397,10 +2398,10 @@ func TestRequestScopedStreamResolver(t *testing.T) {
 	retentionPeriod = newResolver.RetentionPeriodFor(labels.FromStrings("env", "dev"))
 	require.Equal(t, 72*time.Hour, retentionPeriod)
 
-	policy = newResolver.PolicyFor(labels.FromStrings("env", "prod"))
+	policy = newResolver.PolicyFor(t.Context(), labels.FromStrings("env", "prod"))
 	require.Empty(t, policy)
 
-	policy = newResolver.PolicyFor(labels.FromStrings("env", "dev"))
+	policy = newResolver.PolicyFor(t.Context(), labels.FromStrings("env", "dev"))
 	require.Equal(t, "policy1", policy)
 }
 
@@ -2576,10 +2577,10 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 			d.cfg.IngestLimitsDryRunEnabled = test.ingestLimitsDryRunEnabled
 
 			mockClient := mockIngestLimitsFrontendClient{
-				t:               t,
-				expectedRequest: test.expectedLimitsRequest,
-				response:        test.limitsResponse,
-				responseErr:     test.limitsResponseErr,
+				t:                            t,
+				expectedExceedsLimitsRequest: test.expectedLimitsRequest,
+				exceedsLimitsResponse:        test.limitsResponse,
+				exceedsLimitsResponseErr:     test.limitsResponseErr,
 			}
 			l := newIngestLimits(&mockClient, prometheus.NewRegistry())
 			d.ingestLimits = l
