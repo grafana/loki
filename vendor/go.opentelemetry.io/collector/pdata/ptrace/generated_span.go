@@ -8,8 +8,6 @@ package ptrace
 
 import (
 	"go.opentelemetry.io/collector/pdata/internal"
-	"go.opentelemetry.io/collector/pdata/internal/data"
-	otlptrace "go.opentelemetry.io/collector/pdata/internal/data/protogen/trace/v1"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
@@ -22,11 +20,11 @@ import (
 // Must use NewSpan function to create new instances.
 // Important: zero-initialized instance is not valid for use.
 type Span struct {
-	orig  *otlptrace.Span
+	orig  *internal.Span
 	state *internal.State
 }
 
-func newSpan(orig *otlptrace.Span, state *internal.State) Span {
+func newSpan(orig *internal.Span, state *internal.State) Span {
 	return Span{orig: orig, state: state}
 }
 
@@ -35,7 +33,7 @@ func newSpan(orig *otlptrace.Span, state *internal.State) Span {
 // This must be used only in testing code. Users should use "AppendEmpty" when part of a Slice,
 // OR directly access the member if this is embedded in another struct.
 func NewSpan() Span {
-	return newSpan(internal.NewOrigSpan(), internal.NewState())
+	return newSpan(internal.NewSpan(), internal.NewState())
 }
 
 // MoveTo moves all properties from the current struct overriding the destination and
@@ -47,7 +45,7 @@ func (ms Span) MoveTo(dest Span) {
 	if ms.orig == dest.orig {
 		return
 	}
-	internal.DeleteOrigSpan(dest.orig, false)
+	internal.DeleteSpan(dest.orig, false)
 	*dest.orig, *ms.orig = *ms.orig, *dest.orig
 }
 
@@ -59,7 +57,7 @@ func (ms Span) TraceID() pcommon.TraceID {
 // SetTraceID replaces the traceid associated with this Span.
 func (ms Span) SetTraceID(v pcommon.TraceID) {
 	ms.state.AssertMutable()
-	ms.orig.TraceId = data.TraceID(v)
+	ms.orig.TraceId = internal.TraceID(v)
 }
 
 // SpanID returns the spanid associated with this Span.
@@ -70,12 +68,12 @@ func (ms Span) SpanID() pcommon.SpanID {
 // SetSpanID replaces the spanid associated with this Span.
 func (ms Span) SetSpanID(v pcommon.SpanID) {
 	ms.state.AssertMutable()
-	ms.orig.SpanId = data.SpanID(v)
+	ms.orig.SpanId = internal.SpanID(v)
 }
 
 // TraceState returns the tracestate associated with this Span.
 func (ms Span) TraceState() pcommon.TraceState {
-	return pcommon.TraceState(internal.NewTraceState(&ms.orig.TraceState, ms.state))
+	return pcommon.TraceState(internal.NewTraceStateWrapper(&ms.orig.TraceState, ms.state))
 }
 
 // ParentSpanID returns the parentspanid associated with this Span.
@@ -86,7 +84,7 @@ func (ms Span) ParentSpanID() pcommon.SpanID {
 // SetParentSpanID replaces the parentspanid associated with this Span.
 func (ms Span) SetParentSpanID(v pcommon.SpanID) {
 	ms.state.AssertMutable()
-	ms.orig.ParentSpanId = data.SpanID(v)
+	ms.orig.ParentSpanId = internal.SpanID(v)
 }
 
 // Flags returns the flags associated with this Span.
@@ -119,7 +117,7 @@ func (ms Span) Kind() SpanKind {
 // SetKind replaces the kind associated with this Span.
 func (ms Span) SetKind(v SpanKind) {
 	ms.state.AssertMutable()
-	ms.orig.Kind = otlptrace.Span_SpanKind(v)
+	ms.orig.Kind = internal.SpanKind(v)
 }
 
 // StartTimestamp returns the starttimestamp associated with this Span.
@@ -146,7 +144,7 @@ func (ms Span) SetEndTimestamp(v pcommon.Timestamp) {
 
 // Attributes returns the Attributes associated with this Span.
 func (ms Span) Attributes() pcommon.Map {
-	return pcommon.Map(internal.NewMap(&ms.orig.Attributes, ms.state))
+	return pcommon.Map(internal.NewMapWrapper(&ms.orig.Attributes, ms.state))
 }
 
 // DroppedAttributesCount returns the droppedattributescount associated with this Span.
@@ -200,5 +198,5 @@ func (ms Span) Status() Status {
 // CopyTo copies all properties from the current struct overriding the destination.
 func (ms Span) CopyTo(dest Span) {
 	dest.state.AssertMutable()
-	internal.CopyOrigSpan(dest.orig, ms.orig)
+	internal.CopySpan(dest.orig, ms.orig)
 }

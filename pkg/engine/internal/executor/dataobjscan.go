@@ -19,6 +19,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 type dataobjScanOptions struct {
@@ -34,6 +35,7 @@ type dataobjScanOptions struct {
 type dataobjScan struct {
 	opts   dataobjScanOptions
 	logger log.Logger
+	region *xcap.Region
 
 	initialized     bool
 	initializedAt   time.Time
@@ -46,22 +48,23 @@ type dataobjScan struct {
 var _ Pipeline = (*dataobjScan)(nil)
 
 // newDataobjScanPipeline creates a new Pipeline which emits a single
-// [arrow.Record] composed of the requested log section in a data object. Rows
+// [arrow.RecordBatch] composed of the requested log section in a data object. Rows
 // in the returned record are ordered by timestamp in the direction specified
 // by opts.Direction.
-func newDataobjScanPipeline(opts dataobjScanOptions, logger log.Logger) *dataobjScan {
+func newDataobjScanPipeline(opts dataobjScanOptions, logger log.Logger, region *xcap.Region) *dataobjScan {
 	return &dataobjScan{
 		opts:   opts,
 		logger: logger,
+		region: region,
 	}
 }
 
-func (s *dataobjScan) Read(ctx context.Context) (arrow.Record, error) {
+func (s *dataobjScan) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	if err := s.init(); err != nil {
 		return nil, err
 	}
 
-	return s.read(ctx)
+	return s.read(xcap.ContextWithRegion(ctx, s.region))
 }
 
 func (s *dataobjScan) init() error {
@@ -343,10 +346,10 @@ NextProjection:
 	return found
 }
 
-// read reads the entire section into memory and generates an [arrow.Record]
+// read reads the entire section into memory and generates an [arrow.RecordBatch]
 // from the data. It returns an error if reading a section resulted in an
 // error.
-func (s *dataobjScan) read(ctx context.Context) (arrow.Record, error) {
+func (s *dataobjScan) read(ctx context.Context) (arrow.RecordBatch, error) {
 	rec, err := s.reader.Read(ctx, int(s.opts.BatchSize))
 	if err != nil && !errors.Is(err, io.EOF) {
 		return nil, err
@@ -370,11 +373,9 @@ func (s *dataobjScan) read(ctx context.Context) (arrow.Record, error) {
 
 // Close closes s and releases all resources.
 func (s *dataobjScan) Close() {
-	if s.reader != nil {
-		// TODO(ashwanth): remove this once we have stats collection via executor
-		s.reader.Stats().LogSummary(s.logger, time.Since(s.initializedAt))
+	if s.region != nil {
+		s.region.End()
 	}
-
 	if s.streams != nil {
 		s.streams.Close()
 	}
@@ -386,4 +387,10 @@ func (s *dataobjScan) Close() {
 	s.streams = nil
 	s.streamsInjector = nil
 	s.reader = nil
+	s.region = nil
+}
+
+// Region implements RegionProvider.
+func (s *dataobjScan) Region() *xcap.Region {
+	return s.region
 }

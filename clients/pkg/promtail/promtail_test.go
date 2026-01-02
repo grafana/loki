@@ -515,7 +515,7 @@ func getPromMetrics(t *testing.T, httpListenAddr net.Addr) ([]byte, string) {
 func parsePromMetrics(t *testing.T, bytes []byte, contentType string, metricName string, label string) map[string]float64 {
 	rb := map[string]float64{}
 
-	pr, err := textparse.New(bytes, contentType, "", false, false, false, nil)
+	pr, err := textparse.New(bytes, contentType, nil, textparse.ParserOptions{})
 	require.NoError(t, err)
 	for {
 		et, err := pr.Next()
@@ -530,7 +530,7 @@ func parsePromMetrics(t *testing.T, bytes []byte, contentType string, metricName
 			var res labels.Labels
 			_, _, v := pr.Series()
 			pr.Labels(&res)
-			switch res.Get(labels.MetricName) {
+			switch res.Get(model.MetricNameLabel) {
 			case metricName:
 				rb[res.Get(label)] = v
 				continue

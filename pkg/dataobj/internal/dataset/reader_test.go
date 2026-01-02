@@ -16,6 +16,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 func Test_Reader_ReadAll(t *testing.T) {
@@ -91,6 +92,68 @@ func Test_Reader_ReadWithPageFiltering(t *testing.T) {
 		}
 	}
 	require.Equal(t, expected, convertToTestPersons(actualRows))
+}
+
+// Test_Reader_ReadWithPageFilteringOnEmptyPredicate tests that a Reader filters rows with empty predicate values.
+// Filtering for an explicitly empty value also includes Null values and these rows should not be excluded by page skipping.
+func Test_Reader_ReadWithPageFilteringOnEmptyPredicate(t *testing.T) {
+	// Create builders for each column
+	firstNameBuilder := buildStringColumn(t, "first_name")
+	lastNameBuilder := buildStringColumn(t, "middle_name")
+
+	// Row with both values.
+	firstNameBuilder.append(0, BinaryValue([]byte("John")))
+	lastNameBuilder.append(0, BinaryValue([]byte("Doe")))
+
+	// Row with null value.
+	firstNameBuilder.append(2, BinaryValue([]byte("Jim")))
+	lastNameBuilder.append(2, Value{})
+
+	firstName, err := firstNameBuilder.Flush()
+	require.NoError(t, err)
+	lastName, err := lastNameBuilder.Flush()
+	require.NoError(t, err)
+
+	dset := FromMemory([]*MemColumn{firstName, lastName})
+	cols, err := result.Collect(dset.ListColumns(context.Background()))
+	require.NoError(t, err)
+
+	r := NewReader(ReaderOptions{
+		Dataset: dset,
+		Columns: cols,
+
+		Predicates: []Predicate{
+			// Imitate predicate from logql: {last_name=""}
+			EqualPredicate{
+				Column: cols[1], // last_name column
+				Value:  BinaryValue([]byte("")),
+			},
+		},
+	})
+	defer r.Close()
+
+	actualRows, err := readDataset(r, 3)
+	require.NoError(t, err)
+
+	actualFirstNames := make([]string, 0, len(actualRows))
+	actualLastNames := make([]string, 0, len(actualRows))
+	for _, row := range actualRows {
+		if row.Values[0].IsNil() && row.Values[1].IsNil() {
+			continue
+		}
+		actualFirstNames = append(actualFirstNames, string(row.Values[0].Binary()))
+		if !row.Values[1].IsNil() {
+			actualLastNames = append(actualLastNames, string(row.Values[1].Binary()))
+		} else {
+			actualLastNames = append(actualLastNames, "[nil]")
+		}
+	}
+
+	// Filter expected data manually to verify
+	expectedFirstNames := []string{"Jim"}
+	expectedLastNames := []string{"[nil]"}
+	require.Equal(t, expectedFirstNames, actualFirstNames)
+	require.Equal(t, expectedLastNames, actualLastNames)
 }
 
 func Test_Reader_ReadWithPredicate_NoSecondary(t *testing.T) {
@@ -820,4 +883,48 @@ func Test_DatasetGenerator(t *testing.T) {
 
 	t.Logf("timestamp column size: %s", humanize.Bytes(uint64(cols[0].ColumnDesc().UncompressedSize)))
 	t.Logf("label column size: %s", humanize.Bytes(uint64(cols[1].ColumnDesc().UncompressedSize)))
+}
+
+// Test_Reader_Stats tests that the reader properly tracks statistics via xcap regions.
+func Test_Reader_Stats(t *testing.T) {
+	dset, columns := buildTestDataset(t)
+
+	r := NewReader(ReaderOptions{
+		Dataset: dset,
+		Columns: columns,
+		Predicates: []Predicate{
+			GreaterThanPredicate{
+				Column: columns[3], // birth_year
+				Value:  Int64Value(1985),
+			},
+			EqualPredicate{
+				Column: columns[0], // first_name
+				Value:  BinaryValue([]byte("Alice")),
+			},
+		},
+	})
+	defer r.Close()
+
+	ctx, _ := xcap.NewCapture(context.Background(), nil)
+	_, err := readDatasetWithContext(ctx, r, 3)
+	require.NoError(t, err)
+
+	require.NotNil(t, r.region, "region should be available after reading")
+
+	observations := r.region.Observations()
+	obsMap := make(map[string]int64)
+	for _, obs := range observations {
+		obsMap[obs.Statistic.Name()] = obs.Value.(int64)
+	}
+
+	require.Equal(t, int64(2), obsMap[xcap.StatDatasetReadCalls.Name()])
+	require.Equal(t, int64(2), obsMap[xcap.StatDatasetPrimaryColumns.Name()])
+	require.Equal(t, int64(2), obsMap[xcap.StatDatasetSecondaryColumns.Name()])
+	require.Equal(t, int64(5), obsMap[xcap.StatDatasetPrimaryColumnPages.Name()])
+	require.Equal(t, int64(8), obsMap[xcap.StatDatasetSecondaryColumnPages.Name()])
+
+	require.Equal(t, int64(len(basicReaderTestData)), obsMap[xcap.StatDatasetMaxRows.Name()])
+	require.Equal(t, int64(3), obsMap[xcap.StatDatasetRowsAfterPruning.Name()])
+	require.Equal(t, int64(3), obsMap[xcap.StatDatasetPrimaryRowsRead.Name()])
+	require.Equal(t, int64(1), obsMap[xcap.StatDatasetSecondaryRowsRead.Name()])
 }

@@ -3,6 +3,7 @@ package logical
 import (
 	"time"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
@@ -39,35 +40,35 @@ func (b *Builder) Limit(skip uint32, fetch uint32) *Builder {
 }
 
 // Parse applies a [Parse] operation to the Builder.
-func (b *Builder) Parse(kind ParserKind) *Builder {
-	return &Builder{
-		val: &Parse{
-			Table: b.val,
-			Kind:  kind,
+func (b *Builder) Parse(op types.VariadicOp, strict bool, keepEmpty bool) *Builder {
+	val := &FunctionOp{
+		Op: op,
+		Values: []Value{
+			// source column
+			&ColumnRef{
+				Ref: semconv.ColumnIdentMessage.ColumnRef(),
+			},
+			// nil for requested keys (to be filled in by projection pushdown optimizer)
+			NewLiteral([]string{}),
+			NewLiteral(strict),
+			NewLiteral(keepEmpty),
 		},
 	}
+	return b.ProjectExpand(val)
 }
 
 // Cast applies an [Projection] operation, with an [UnaryOp] cast operation, to the Builder.
-func (b *Builder) Cast(identifier string, operation types.UnaryOp) *Builder {
-	return &Builder{
-		val: &Projection{
-			Relation: b.val,
-			Expressions: []Value{
-				&UnaryOp{
-					Op: operation,
-					Value: &ColumnRef{
-						Ref: types.ColumnRef{
-							Column: identifier,
-							Type:   types.ColumnTypeAmbiguous,
-						},
-					},
-				},
+func (b *Builder) Cast(identifier string, op types.UnaryOp) *Builder {
+	val := &UnaryOp{
+		Op: op,
+		Value: &ColumnRef{
+			Ref: types.ColumnRef{
+				Column: identifier,
+				Type:   types.ColumnTypeAmbiguous,
 			},
-			All:    true,
-			Expand: true,
 		},
 	}
+	return b.ProjectExpand(val)
 }
 
 // Sort applies a [Sort] operation to the Builder.
@@ -79,6 +80,20 @@ func (b *Builder) Sort(column ColumnRef, ascending, nullsFirst bool) *Builder {
 			Column:     column,
 			Ascending:  ascending,
 			NullsFirst: nullsFirst,
+		},
+	}
+}
+
+// TopK applies a [TopK] operation to the Builder.
+func (b *Builder) TopK(sortBy *ColumnRef, K int, ascending, nullsFirst bool) *Builder {
+	return &Builder{
+		val: &TopK{
+			Table: b.val,
+
+			SortBy:     sortBy,
+			Ascending:  ascending,
+			NullsFirst: nullsFirst,
+			K:          K,
 		},
 	}
 }
@@ -107,7 +122,7 @@ func (b *Builder) BinOpLeft(op types.BinaryOp, left Value) *Builder {
 
 // RangeAggregation applies a [RangeAggregation] operation to the Builder.
 func (b *Builder) RangeAggregation(
-	partitionBy []ColumnRef,
+	grouping Grouping,
 	operation types.RangeAggregationType,
 	startTS, endTS time.Time,
 	step time.Duration,
@@ -118,7 +133,7 @@ func (b *Builder) RangeAggregation(
 			Table: b.val,
 
 			Operation:     operation,
-			PartitionBy:   partitionBy,
+			Grouping:      grouping,
 			Start:         startTS,
 			End:           endTS,
 			Step:          step,
@@ -129,13 +144,13 @@ func (b *Builder) RangeAggregation(
 
 // VectorAggregation applies a [VectorAggregation] operation to the Builder.
 func (b *Builder) VectorAggregation(
-	groupBy []ColumnRef,
+	grouping Grouping,
 	operation types.VectorAggregationType,
 ) *Builder {
 	return &Builder{
 		val: &VectorAggregation{
 			Table:     b.val,
-			GroupBy:   groupBy,
+			Grouping:  grouping,
 			Operation: operation,
 		},
 	}

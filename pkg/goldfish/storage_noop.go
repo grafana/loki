@@ -14,7 +14,7 @@ func NewNoopStorage() *NoopStorage {
 }
 
 // StoreQuerySample is a no-op
-func (n *NoopStorage) StoreQuerySample(_ context.Context, _ *QuerySample) error {
+func (n *NoopStorage) StoreQuerySample(_ context.Context, _ *QuerySample, _ *ComparisonResult) error {
 	return nil
 }
 
@@ -25,6 +25,16 @@ func (n *NoopStorage) StoreComparisonResult(_ context.Context, _ *ComparisonResu
 
 // GetSampledQueries returns an error as goldfish is disabled
 func (n *NoopStorage) GetSampledQueries(_ context.Context, _, _ int, _ QueryFilter) (*APIResponse, error) {
+	return nil, errors.New("goldfish feature is disabled")
+}
+
+// GetQueryByCorrelationID returns an error as goldfish is disabled
+func (n *NoopStorage) GetQueryByCorrelationID(_ context.Context, _ string) (*QuerySample, error) {
+	return nil, errors.New("goldfish feature is disabled")
+}
+
+// GetStatistics returns an error as goldfish is disabled
+func (n *NoopStorage) GetStatistics(_ context.Context, _ StatsFilter) (*Statistics, error) {
 	return nil, errors.New("goldfish feature is disabled")
 }
 

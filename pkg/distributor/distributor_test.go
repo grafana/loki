@@ -484,7 +484,7 @@ func Test_PushWithEnforcedLabels(t *testing.T) {
 	// enforced labels configured, but all labels are missing.
 	_, err := distributors[0].Push(ctx, req)
 	require.Error(t, err)
-	expectedErr := httpgrpc.Errorf(http.StatusBadRequest, validation.MissingEnforcedLabelsErrorMsg, "app,env", "test", "{foo=\"bar\"}")
+	expectedErr := httpgrpc.Errorf(http.StatusBadRequest, validation.MissingEnforcedLabelsErrorMsg, "app,env", "test", "{foo=\"bar\"}", "")
 	require.EqualError(t, err, expectedErr.Error())
 
 	// Verify metrics for discarded samples due to missing enforced labels
@@ -861,7 +861,7 @@ func TestStreamShard(t *testing.T) {
 				shardTracker:     NewShardTracker(),
 			}
 
-			derivedStreams := d.shardStream(baseStream, tc.streamSize, "fake")
+			derivedStreams := d.shardStream(baseStream, tc.streamSize, "fake", "")
 			require.Len(t, derivedStreams, tc.wantDerivedStreamSize)
 
 			for _, s := range derivedStreams {
@@ -906,7 +906,7 @@ func TestStreamShardAcrossCalls(t *testing.T) {
 			shardTracker:     NewShardTracker(),
 		}
 
-		derivedStreams := d.shardStream(baseStream, streamRate, "fake")
+		derivedStreams := d.shardStream(baseStream, streamRate, "fake", "")
 		require.Len(t, derivedStreams, 2)
 
 		for i, s := range derivedStreams {
@@ -917,7 +917,7 @@ func TestStreamShardAcrossCalls(t *testing.T) {
 			require.Equal(t, lbls.Get(ingester.ShardLbName), fmt.Sprint(i))
 		}
 
-		derivedStreams = d.shardStream(baseStream, streamRate, "fake")
+		derivedStreams = d.shardStream(baseStream, streamRate, "fake", "")
 		require.Len(t, derivedStreams, 2)
 
 		for i, s := range derivedStreams {
@@ -1245,7 +1245,7 @@ func BenchmarkShardStream(b *testing.B) {
 
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			d.shardStream(stream, 0, "fake") //nolint:errcheck
+			d.shardStream(stream, 0, "fake", "") //nolint:errcheck
 		}
 	})
 
@@ -1255,7 +1255,7 @@ func BenchmarkShardStream(b *testing.B) {
 
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			d.shardStream(stream, 0, "fake") //nolint:errcheck
+			d.shardStream(stream, 0, "fake", "") //nolint:errcheck
 		}
 	})
 
@@ -1265,7 +1265,7 @@ func BenchmarkShardStream(b *testing.B) {
 
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			d.shardStream(stream, 0, "fake") //nolint:errcheck
+			d.shardStream(stream, 0, "fake", "") //nolint:errcheck
 		}
 	})
 
@@ -1275,7 +1275,7 @@ func BenchmarkShardStream(b *testing.B) {
 
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			d.shardStream(stream, 0, "fake") //nolint:errcheck
+			d.shardStream(stream, 0, "fake", "") //nolint:errcheck
 		}
 	})
 }
@@ -1771,7 +1771,7 @@ func TestDistributor_PushIngestionBlockedByPolicy(t *testing.T) {
 			policy:           "test-policy",
 			labels:           `{foo="bar"}`,
 			expectError:      true,
-			expectedErrorMsg: fmt.Sprintf(validation.BlockedIngestionPolicyErrorMsg, "test", now.Add(1*time.Hour).Format(time.RFC3339), defaultErrCode),
+			expectedErrorMsg: fmt.Sprintf(validation.BlockedIngestionPolicyErrorMsg, "test", "test-policy", now.Add(1*time.Hour).Format(time.RFC3339), defaultErrCode),
 			yes:              true,
 		},
 		{
@@ -1791,7 +1791,7 @@ func TestDistributor_PushIngestionBlockedByPolicy(t *testing.T) {
 			policy:           "test-policy",
 			labels:           `{foo="bar"}`,
 			expectError:      true,
-			expectedErrorMsg: fmt.Sprintf(validation.BlockedIngestionPolicyErrorMsg, "test", now.Add(1*time.Hour).Format(time.RFC3339), defaultErrCode),
+			expectedErrorMsg: fmt.Sprintf(validation.BlockedIngestionPolicyErrorMsg, "test", "test-policy", now.Add(1*time.Hour).Format(time.RFC3339), defaultErrCode),
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1879,7 +1879,7 @@ func prepare(t *testing.T, numDistributors, numIngesters int, limits *validation
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ingestersRing))
 
-	partitionRing := ring.NewPartitionRing(ring.PartitionRingDesc{
+	partitionRing, err := ring.NewPartitionRing(ring.PartitionRingDesc{
 		Partitions: map[int32]ring.PartitionDesc{
 			1: {
 				Id:             1,
@@ -1896,6 +1896,7 @@ func prepare(t *testing.T, numDistributors, numIngesters int, limits *validation
 			},
 		},
 	})
+	require.NoError(t, err)
 	partitionRingReader := mockPartitionRingReader{
 		ring: partitionRing,
 	}
@@ -2138,7 +2139,7 @@ type mockTee struct {
 	tenant     string
 }
 
-func (mt *mockTee) Duplicate(tenant string, streams []KeyedStream) {
+func (mt *mockTee) Duplicate(_ context.Context, tenant string, streams []KeyedStream) {
 	mt.mu.Lock()
 	defer mt.mu.Unlock()
 	mt.duplicated = append(mt.duplicated, streams)
@@ -2576,10 +2577,10 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 			d.cfg.IngestLimitsDryRunEnabled = test.ingestLimitsDryRunEnabled
 
 			mockClient := mockIngestLimitsFrontendClient{
-				t:               t,
-				expectedRequest: test.expectedLimitsRequest,
-				response:        test.limitsResponse,
-				responseErr:     test.limitsResponseErr,
+				t:                            t,
+				expectedExceedsLimitsRequest: test.expectedLimitsRequest,
+				exceedsLimitsResponse:        test.limitsResponse,
+				exceedsLimitsResponseErr:     test.limitsResponseErr,
 			}
 			l := newIngestLimits(&mockClient, prometheus.NewRegistry())
 			d.ingestLimits = l

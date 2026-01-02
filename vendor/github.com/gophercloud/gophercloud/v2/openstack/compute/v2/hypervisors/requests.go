@@ -53,7 +53,7 @@ func List(client *gophercloud.ServiceClient, opts ListOptsBuilder) pagination.Pa
 	}
 
 	return pagination.NewPager(client, url, func(r pagination.PageResult) pagination.Page {
-		return HypervisorPage{pagination.SinglePageBase(r)}
+		return HypervisorPage{pagination.LinkedPageBase{PageResult: r}}
 	})
 }
 
@@ -66,9 +66,42 @@ func GetStatistics(ctx context.Context, client *gophercloud.ServiceClient) (r St
 	return
 }
 
+// GetOptsBuilder allows extensions to add additional parameters to the
+// Get request.
+type GetOptsBuilder interface {
+	ToHypervisorGetQuery() (string, error)
+}
+
+// GetOpts allows the opt-in to add the servers to the response
+type GetOpts struct {
+	// WithServers is a bool to include all servers which belong to the hypervisor
+	// This requires microversion 2.53 or later
+	WithServers *bool `q:"with_servers"`
+}
+
+// ToHypervisorGetQuery formats a GetOpts into a query string.
+func (opts GetOpts) ToHypervisorGetQuery() (string, error) {
+	q, err := gophercloud.BuildQueryString(opts)
+	return q.String(), err
+}
+
 // Get makes a request against the API to get details for specific hypervisor.
 func Get(ctx context.Context, client *gophercloud.ServiceClient, hypervisorID string) (r HypervisorResult) {
-	resp, err := client.Get(ctx, hypervisorsGetURL(client, hypervisorID), &r.Body, &gophercloud.RequestOpts{
+	return GetExt(ctx, client, hypervisorID, nil)
+}
+
+// Show makes a request against the API to get details for specific hypervisor with optional query parameters
+func GetExt(ctx context.Context, client *gophercloud.ServiceClient, hypervisorID string, opts GetOptsBuilder) (r HypervisorResult) {
+	url := hypervisorsGetURL(client, hypervisorID)
+	if opts != nil {
+		query, err := opts.ToHypervisorGetQuery()
+		if err != nil {
+			return HypervisorResult{gophercloud.Result{Err: err}}
+		}
+		url += query
+	}
+
+	resp, err := client.Get(ctx, url, &r.Body, &gophercloud.RequestOpts{
 		OkCodes: []int{200},
 	})
 	_, r.Header, r.Err = gophercloud.ParseResponse(resp, err)

@@ -1,6 +1,7 @@
 package executor
 
 import (
+	"fmt"
 	"slices"
 
 	"github.com/apache/arrow-go/v18/arrow"
@@ -50,6 +51,20 @@ func NewScalar(value types.Literal, rows int) arrow.Array {
 		value := value.Any().(types.Timestamp)
 		for range rows {
 			builder.Append(arrow.Timestamp(value))
+		}
+	case *array.ListBuilder:
+		//TODO(twhitney): currently only supporting string list, but we can add more types here as we need them
+		value, ok := value.Any().([]string)
+		if !ok {
+			panic(fmt.Errorf("unsupported list literal type: %T", value))
+		}
+
+		valueBuilder := builder.ValueBuilder().(*array.StringBuilder)
+		for range rows {
+			builder.Append(true)
+			for _, val := range value {
+				valueBuilder.Append(val)
+			}
 		}
 	}
 	return builder.NewArray()

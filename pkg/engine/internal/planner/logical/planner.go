@@ -14,8 +14,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
-var errUnimplemented = errors.New("query contains unimplemented features")
-var unimplementedFeature = func(s string) error { return fmt.Errorf("%w: %s", errUnimplemented, s) }
+var (
+	errUnimplemented     = errors.New("query contains unimplemented features")
+	unimplementedFeature = func(s string) error { return fmt.Errorf("%w: %s", errUnimplemented, s) }
+)
 
 // BuildPlan converts a LogQL query represented as [logql.Params] into a logical [Plan].
 // It may return an error as second argument in case the traversal of the AST of the query fails.
@@ -66,6 +68,8 @@ func buildPlanForLogQuery(
 		predicates          []Value
 		postParsePredicates []Value
 		hasLogfmtParser     bool
+		logfmtStrict        bool
+		logfmtKeepEmpty     bool
 		hasJSONParser       bool
 	)
 
@@ -84,17 +88,9 @@ func buildPlanForLogQuery(
 			// which would lead to multiple predicates of the same expression.
 			return false // do not traverse children
 		case *syntax.LogfmtParserExpr:
-			// TODO: support --strict and --keep-empty
-			if e.Strict {
-				err = errUnimplemented
-				return false
-			}
-			if e.KeepEmpty {
-				err = errUnimplemented
-				return false
-			}
-
 			hasLogfmtParser = true
+			logfmtStrict = e.Strict
+			logfmtKeepEmpty = e.KeepEmpty
 			return true // continue traversing to find label filters
 		case *syntax.LineParserExpr:
 			switch e.Op {
@@ -188,12 +184,13 @@ func buildPlanForLogQuery(
 
 	// TODO: there's a subtle bug here, as it is actually possible to have both a logfmt parser and a json parser
 	// for example, the query `{app="foo"} | json | line_format "{{.nested_json}}" | json ` is valid, and will need
-	// multiple parse stages. We will handle thid in a future PR.
+	// multiple parse stages. We will handle this in a future PR.
 	if hasLogfmtParser {
-		builder = builder.Parse(ParserLogfmt)
+		builder = builder.Parse(types.VariadicOpParseLogfmt, logfmtStrict, logfmtKeepEmpty)
 	}
 	if hasJSONParser {
-		builder = builder.Parse(ParserJSON)
+		// JSON has no parameters
+		builder = builder.Parse(types.VariadicOpParseJSON, false, false)
 	}
 	for _, value := range postParsePredicates {
 		builder = builder.Select(value)
@@ -206,14 +203,9 @@ func buildPlanForLogQuery(
 
 	// Metric queries do not apply a limit.
 	if !isMetricQuery {
-		// SORT -> SortMerge
 		// We always sort DESC. ASC timestamp sorting is not supported for logs
 		// queries, and metric queries do not need sorting.
-		builder = builder.Sort(*timestampColumnRef(), false, false)
-
-		// LIMIT -> Limit
-		limit := params.Limit()
-		builder = builder.Limit(0, limit)
+		builder = builder.TopK(timestampColumnRef(), int(params.Limit()), false, false)
 	}
 
 	return builder.Value(), nil
@@ -259,24 +251,45 @@ func walkRangeAggregation(e *syntax.RangeAggregationExpr, params logql.Params) (
 		builder = builder.Cast(unwrapIdentifier, unwrapOperation)
 	}
 
-	rangeAggType := convertRangeAggregationType(e.Operation)
-	if rangeAggType == types.RangeAggregationTypeInvalid {
+	var rangeAggType types.RangeAggregationType
+	switch e.Operation {
+	case syntax.OpRangeTypeCount:
+		rangeAggType = types.RangeAggregationTypeCount
+	case syntax.OpRangeTypeSum:
+		rangeAggType = types.RangeAggregationTypeSum
+	case syntax.OpRangeTypeMax:
+		rangeAggType = types.RangeAggregationTypeMax
+	case syntax.OpRangeTypeMin:
+		rangeAggType = types.RangeAggregationTypeMin
+	// case syntax.OpRangeTypeBytesRate:
+	//	rangeAggType = types.RangeAggregationTypeBytes // bytes_rate is implemented as bytes_over_time/$interval
+	case syntax.OpRangeTypeRate:
+		if e.Left.Unwrap != nil {
+			rangeAggType = types.RangeAggregationTypeSum // rate of an unwrap is implemented as sum_over_time/$interval
+		} else {
+			rangeAggType = types.RangeAggregationTypeCount // rate is implemented as count_over_time/$interval
+		}
+	default:
 		return nil, errUnimplemented
 	}
 
 	builder = builder.RangeAggregation(
-		nil, rangeAggType, params.Start(), params.End(), params.Step(), rangeInterval,
+		convertGrouping(e.Grouping), rangeAggType, params.Start(), params.End(), params.Step(), rangeInterval,
 	)
+
+	switch e.Operation {
+	// case syntax.OpRangeTypeBytesRate:
+	//	// bytes_rate is implemented as bytes_over_time/$interval
+	//	builder = builder.BinOpRight(types.BinaryOpDiv, NewLiteral(rangeInterval.Seconds()))
+	case syntax.OpRangeTypeRate:
+		// rate is implemented as count_over_time/$interval
+		builder = builder.BinOpRight(types.BinaryOpDiv, NewLiteral(rangeInterval.Seconds()))
+	}
 
 	return builder.Value(), nil
 }
 
 func walkVectorAggregation(e *syntax.VectorAggregationExpr, params logql.Params) (Value, error) {
-	// `without()` grouping is not supported.
-	if e.Grouping != nil && e.Grouping.Without {
-		return nil, errUnimplemented
-	}
-
 	left, err := walk(e.Left, params)
 	if err != nil {
 		return nil, err
@@ -287,14 +300,9 @@ func walkVectorAggregation(e *syntax.VectorAggregationExpr, params logql.Params)
 		return nil, errUnimplemented
 	}
 
-	groupBy := make([]ColumnRef, 0, len(e.Grouping.Groups))
-	for _, group := range e.Grouping.Groups {
-		groupBy = append(groupBy, *NewColumnRef(group, types.ColumnTypeAmbiguous))
-	}
-
 	return &VectorAggregation{
 		Table:     left,
-		GroupBy:   groupBy,
+		Grouping:  convertGrouping(e.Grouping),
 		Operation: vecAggType,
 	}, nil
 }
@@ -344,9 +352,7 @@ func walkBinOp(e *syntax.BinOpExpr, params logql.Params) (Value, error) {
 }
 
 func walkLiteral(e *syntax.LiteralExpr, _ logql.Params) (Value, error) {
-	return &Literal{
-		NewLiteral(e.Val),
-	}, nil
+	return NewLiteral(e.Val), nil
 }
 
 func walk(e syntax.Expr, params logql.Params) (Value, error) {
@@ -417,27 +423,12 @@ func convertVectorAggregationType(op string) types.VectorAggregationType {
 		return types.VectorAggregationTypeSum
 	//case syntax.OpTypeCount:
 	//	return types.VectorAggregationTypeCount
-	//case syntax.OpTypeMax:
-	//	return types.VectorAggregationTypeMax
-	//case syntax.OpTypeMin:
-	//	return types.VectorAggregationTypeMin
+	case syntax.OpTypeMax:
+		return types.VectorAggregationTypeMax
+	case syntax.OpTypeMin:
+		return types.VectorAggregationTypeMin
 	default:
 		return types.VectorAggregationTypeInvalid
-	}
-}
-
-func convertRangeAggregationType(op string) types.RangeAggregationType {
-	switch op {
-	case syntax.OpRangeTypeCount:
-		return types.RangeAggregationTypeCount
-	case syntax.OpRangeTypeSum:
-		return types.RangeAggregationTypeSum
-	//case syntax.OpRangeTypeMax:
-	//	return types.RangeAggregationTypeMax
-	//case syntax.OpRangeTypeMin:
-	//	return types.RangeAggregationTypeMin
-	default:
-		return types.RangeAggregationTypeInvalid
 	}
 }
 
@@ -593,6 +584,30 @@ func convertQueryRangeToPredicates(start, end time.Time) []*BinOp {
 			Right: NewLiteral(types.Timestamp(end.UTC().UnixNano())),
 			Op:    types.BinaryOpLt,
 		},
+	}
+}
+
+// convertGrouping converts [syntax.Grouping] structure into a list of columns and a grouping mode.
+func convertGrouping(g *syntax.Grouping) Grouping {
+	var columns []ColumnRef
+
+	if g == nil {
+		return Grouping{
+			Columns: columns,
+			Without: true,
+		}
+	}
+
+	if g.Groups != nil {
+		columns = make([]ColumnRef, len(g.Groups))
+		for i, group := range g.Groups {
+			columns[i] = *NewColumnRef(group, types.ColumnTypeAmbiguous)
+		}
+	}
+
+	return Grouping{
+		Columns: columns,
+		Without: g.Without,
 	}
 }
 

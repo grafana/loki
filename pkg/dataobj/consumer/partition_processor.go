@@ -35,6 +35,7 @@ type builder interface {
 	Flush() (*dataobj.Object, io.Closer, error)
 	TimeRanges() []multitenancy.TimeRange
 	UnregisterMetrics(prometheus.Registerer)
+	CopyAndSort(obj *dataobj.Object) (*dataobj.Object, io.Closer, error)
 }
 
 // committer allows mocking of certain [kgo.Client] methods in tests.
@@ -72,6 +73,9 @@ type partitionProcessor struct {
 	// lastModified is used to know when the idle is exceeded.
 	// The initial value is zero and must be reset to zero after each flush.
 	lastModified time.Time
+
+	// earliestRecordTime tracks the earliest timestamp all the records Appended to the builder for each object.
+	earliestRecordTime time.Time
 
 	// Metrics
 	metrics *partitionOffsetMetrics
@@ -123,6 +127,8 @@ func newPartitionProcessor(
 	}
 
 	return &partitionProcessor{
+		topic:                   topic,
+		partition:               partition,
 		committer:               committer,
 		logger:                  logger,
 		decoder:                 decoder,
@@ -213,8 +219,9 @@ func (p *partitionProcessor) initBuilder() error {
 
 func (p *partitionProcessor) emitObjectWrittenEvent(ctx context.Context, objectPath string) error {
 	event := &metastore.ObjectWrittenEvent{
-		ObjectPath: objectPath,
-		WriteTime:  p.clock.Now().Format(time.RFC3339),
+		ObjectPath:         objectPath,
+		WriteTime:          p.clock.Now().Format(time.RFC3339),
+		EarliestRecordTime: p.earliestRecordTime.Format(time.RFC3339),
 	}
 
 	eventBytes, err := event.Marshal()
@@ -234,8 +241,14 @@ func (p *partitionProcessor) emitObjectWrittenEvent(ctx context.Context, objectP
 }
 
 func (p *partitionProcessor) processRecord(ctx context.Context, record partition.Record) {
+	p.metrics.processedRecords.Inc()
+
 	// Update offset metric at the end of processing
 	defer p.metrics.updateOffset(record.Offset)
+
+	if record.Timestamp.Before(p.earliestRecordTime) || p.earliestRecordTime.IsZero() {
+		p.earliestRecordTime = record.Timestamp
+	}
 
 	// Observe processing delay
 	p.metrics.observeProcessingDelay(record.Timestamp)
@@ -322,6 +335,7 @@ func (p *partitionProcessor) flush(ctx context.Context) error {
 
 	p.lastModified = time.Time{}
 	p.lastFlushed = p.clock.Now()
+	p.earliestRecordTime = time.Time{}
 
 	return nil
 }
@@ -334,13 +348,7 @@ func (p *partitionProcessor) sort(obj *dataobj.Object, closer io.Closer) (*datao
 		level.Debug(p.logger).Log("msg", "partition processor sorted logs object-wide", "duration", time.Since(start))
 	}()
 
-	// Create a new object builder but do not register metrics!
-	builder, err := logsobj.NewBuilder(p.builderCfg, p.scratchStore)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return builder.CopyAndSort(obj)
+	return p.builder.CopyAndSort(obj)
 }
 
 // commits the offset of the last record processed. It should be called after

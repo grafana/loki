@@ -11,12 +11,15 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
+
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 type rangeAggregationOptions struct {
-	partitionBy []physical.ColumnExpression
+	grouping physical.Grouping
 
 	// start and end timestamps are equal for instant queries.
 	startTs       time.Time     // start timestamp of the query
@@ -55,8 +58,8 @@ type timestampMatchingWindowsFunc func(time.Time) []window
 // rangeAggregationPipeline is a pipeline that performs aggregations over a time window.
 //
 // 1. It reads from the input pipelines
-// 2. Partitions the data by the specified columns
-// 3. Applies the aggregation function on each partition
+// 2. Groups the data by the specified columns
+// 3. Applies the aggregation function on each group
 //
 // Current version only supports counting for instant queries.
 type rangeAggregationPipeline struct {
@@ -67,13 +70,15 @@ type rangeAggregationPipeline struct {
 	windowsForTimestamp timestampMatchingWindowsFunc // function to find matching time windows for a given timestamp
 	evaluator           expressionEvaluator          // used to evaluate column expressions
 	opts                rangeAggregationOptions
+	region              *xcap.Region
 }
 
-func newRangeAggregationPipeline(inputs []Pipeline, evaluator expressionEvaluator, opts rangeAggregationOptions) (*rangeAggregationPipeline, error) {
+func newRangeAggregationPipeline(inputs []Pipeline, evaluator expressionEvaluator, opts rangeAggregationOptions, region *xcap.Region) (*rangeAggregationPipeline, error) {
 	r := &rangeAggregationPipeline{
 		inputs:    inputs,
 		evaluator: evaluator,
 		opts:      opts,
+		region:    region,
 	}
 	r.init()
 	return r, nil
@@ -101,13 +106,13 @@ func (r *rangeAggregationPipeline) init() {
 		panic(fmt.Sprintf("unknown range aggregation operation: %v", r.opts.operation))
 	}
 
-	r.aggregator = newAggregator(r.opts.partitionBy, len(windows), op)
+	r.aggregator = newAggregator(len(windows), op)
 }
 
 // Read reads the next value into its state.
 // It returns an error if reading fails or when the pipeline is exhausted. In this case, the function returns EOF.
 // The implementation must retain the returned error in its state and return it with subsequent Value() calls.
-func (r *rangeAggregationPipeline) Read(ctx context.Context) (arrow.Record, error) {
+func (r *rangeAggregationPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	if r.inputsExhausted {
 		return nil, EOF
 	}
@@ -116,10 +121,9 @@ func (r *rangeAggregationPipeline) Read(ctx context.Context) (arrow.Record, erro
 }
 
 // TODOs:
-// - Support implicit partitioning by all labels when partitionBy is empty
 // - Use columnar access pattern. Current approach is row-based which does not benefit from the storage format.
 // - Add toggle to return partial results on Read() call instead of returning only after exhausting all inputs.
-func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, error) {
+func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch, error) {
 	var (
 		tsColumnExpr = &physical.ColumnExpr{
 			Ref: types.ColumnRef{
@@ -134,9 +138,6 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, erro
 				Type:   types.ColumnTypeGenerated,
 			},
 		} // value column expression
-
-		// reused on each row read
-		labelValues = make([]string, len(r.opts.partitionBy))
 	)
 
 	r.aggregator.Reset() // reset before reading new inputs
@@ -155,21 +156,71 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, erro
 
 			inputsExhausted = false
 
-			// extract all the columns that are used for partitioning
-			arrays := make([]*array.String, 0, len(r.opts.partitionBy))
-			for _, columnExpr := range r.opts.partitionBy {
-				vec, err := r.evaluator.eval(columnExpr, record)
-				if err != nil {
-					return nil, err
-				}
+			// extract all the columns that are used for grouping
+			var arrays []*array.String
+			var fields []arrow.Field
+			if r.opts.grouping.Without {
+				// Grouping without a lable set. Exclude lables from that set.
+				schema := record.Schema()
+				for i, field := range schema.Fields() {
+					ident, err := semconv.ParseFQN(field.Name)
+					if err != nil {
+						return nil, err
+					}
 
-				if vec.DataType().ID() != types.Arrow.String.ID() {
-					return nil, fmt.Errorf("unsupported datatype for partitioning %s", vec.DataType())
-				}
+					if ident.ColumnType() == types.ColumnTypeLabel ||
+						ident.ColumnType() == types.ColumnTypeMetadata ||
+						ident.ColumnType() == types.ColumnTypeParsed {
+						found := false
+						for _, g := range r.opts.grouping.Columns {
+							colExpr, ok := g.(*physical.ColumnExpr)
+							if !ok {
+								return nil, fmt.Errorf("unknown column expression %v", g)
+							}
 
-				arr := vec.(*array.String)
-				arrays = append(arrays, arr)
+							// Match ambiguous columns only by name
+							if colExpr.Ref.Type == types.ColumnTypeAmbiguous && colExpr.Ref.Column == ident.ShortName() {
+								found = true
+								break
+							}
+
+							// Match all other columns by name and type
+							if colExpr.Ref.Column == ident.ShortName() && colExpr.Ref.Type == ident.ColumnType() {
+								found = true
+								break
+							}
+						}
+						if !found {
+							arrays = append(arrays, record.Column(i).(*array.String))
+							fields = append(fields, field)
+						}
+					}
+				}
+			} else {
+				// Gouping by a label set. Take only labels from that set.
+				for _, columnExpr := range r.opts.grouping.Columns {
+					vec, err := r.evaluator.eval(columnExpr, record)
+					if err != nil {
+						return nil, err
+					}
+
+					if vec.DataType().ID() != types.Arrow.String.ID() {
+						return nil, fmt.Errorf("unsupported datatype for grouping %s", vec.DataType())
+					}
+
+					arr := vec.(*array.String)
+					arrays = append(arrays, arr)
+
+					colExpr, ok := columnExpr.(*physical.ColumnExpr)
+					if !ok {
+						return nil, fmt.Errorf("invalid column expression type %T", columnExpr)
+					}
+					ident := semconv.NewIdentifier(colExpr.Ref.Column, colExpr.Ref.Type, types.Loki.String)
+					fields = append(fields, semconv.FieldFromIdent(ident, true))
+				}
 			}
+
+			r.aggregator.AddLabels(fields)
 
 			// extract timestamp column to check if the entry is in range
 			tsVec, err := r.evaluator.eval(tsColumnExpr, record)
@@ -189,24 +240,32 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, erro
 			}
 
 			for row := range int(record.NumRows()) {
+				var value float64
+				if r.opts.operation != types.RangeAggregationTypeCount {
+					if valArr.IsNull(row) {
+						continue
+					}
+
+					value = valArr.Value(row)
+				}
+
 				windows := r.windowsForTimestamp(tsCol.Value(row).ToTime(arrow.Nanosecond))
 				if len(windows) == 0 {
 					continue // out of range, skip this row
 				}
 
-				// reset label values and hash for each row
-				clear(labelValues)
-				for col, arr := range arrays {
-					labelValues[col] = arr.Value(row)
-				}
-
-				var value float64
-				if r.opts.operation != types.RangeAggregationTypeCount {
-					value = valArr.Value(row)
+				labelValues := make([]string, 0, len(arrays))
+				labels := make([]arrow.Field, 0, len(arrays))
+				for i, arr := range arrays {
+					val := arr.Value(row)
+					if val != "" {
+						labelValues = append(labelValues, val)
+						labels = append(labels, fields[i])
+					}
 				}
 
 				for _, w := range windows {
-					r.aggregator.Add(w.end, value, labelValues)
+					r.aggregator.Add(w.end, value, labels, labelValues)
 				}
 			}
 		}
@@ -219,9 +278,17 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, erro
 // Close closes the resources of the pipeline.
 // The implementation must close all the of the pipeline's inputs.
 func (r *rangeAggregationPipeline) Close() {
+	if r.region != nil {
+		r.region.End()
+	}
 	for _, input := range r.inputs {
 		input.Close()
 	}
+}
+
+// Region implements RegionProvider.
+func (r *rangeAggregationPipeline) Region() *xcap.Region {
+	return r.region
 }
 
 func newMatcherFactoryFromOpts(opts rangeAggregationOptions) *matcherFactory {

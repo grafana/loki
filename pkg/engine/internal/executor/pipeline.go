@@ -4,21 +4,65 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 // Pipeline represents a data processing pipeline that can read Arrow records.
 // It provides methods to read data, access the current record, and close resources.
 type Pipeline interface {
-	// Read collects the next value ([arrow.Record]) from the pipeline and returns it to the caller.
+	// Read collects the next value ([arrow.RecordBatch]) from the pipeline and returns it to the caller.
 	// It returns an error if reading fails or when the pipeline is exhausted. In this case, the function returns EOF.
-	Read(context.Context) (arrow.Record, error)
+	Read(context.Context) (arrow.RecordBatch, error)
 	// Close closes the resources of the pipeline.
-	// The implementation must close all the of the pipeline's inputs.
+	// The implementation must close all the of the pipeline's inputs and must be safe to call multiple times.
 	Close()
+}
+
+// WrappedPipeline represents a pipeline that wraps another pipeline.
+type WrappedPipeline interface {
+	Pipeline
+
+	// Unwrap returns the inner pipeline. Implementations must always return the
+	// same non-nil value representing the inner pipeline.
+	Unwrap() Pipeline
+}
+
+// Unwrap recursively unwraps the provided pipeline. [WrappedPipeline.Unwrap] is
+// invoked for each wrapped pipeline until the first non-wrapped pipeline is
+// reached.
+func Unwrap(p Pipeline) Pipeline {
+	for {
+		wrapped, ok := p.(WrappedPipeline)
+		if !ok {
+			return p
+		}
+		p = wrapped.Unwrap()
+	}
+}
+
+// RegionProvider is an optional interface that pipelines can implement
+// to expose their associated xcap region for statistics collection.
+type RegionProvider interface {
+	// Region returns the xcap region associated with this pipeline node, if any.
+	// Returns nil if no region is associated with this pipeline.
+	Region() *xcap.Region
+}
+
+// Contributing time range would be anything less than `ts` if `lessThan` is true, or greater
+// than `ts` otherwise.
+type ContributingTimeRangeChangedHandler = func(ts time.Time, lessThan bool)
+
+// ContributingTimeRangeChangedNotifier is an optional interface that pipelines can implement
+// to notify others that they are interested only in inputs from some specific time range.
+type ContributingTimeRangeChangedNotifier interface {
+	// SubscribeToTimeRangeChanges adds a callback function to a list of listeners.
+	SubscribeToTimeRangeChanges(callback ContributingTimeRangeChangedHandler)
 }
 
 var (
@@ -27,15 +71,16 @@ var (
 )
 
 type state struct {
-	batch arrow.Record
+	batch arrow.RecordBatch
 	err   error
 }
 
-type readFunc func(context.Context, []Pipeline) (arrow.Record, error)
+type readFunc func(context.Context, []Pipeline) (arrow.RecordBatch, error)
 
 type GenericPipeline struct {
 	inputs []Pipeline
 	read   readFunc
+	region *xcap.Region
 }
 
 func newGenericPipeline(read readFunc, inputs ...Pipeline) *GenericPipeline {
@@ -45,10 +90,21 @@ func newGenericPipeline(read readFunc, inputs ...Pipeline) *GenericPipeline {
 	}
 }
 
-var _ Pipeline = (*GenericPipeline)(nil)
+func newGenericPipelineWithRegion(read readFunc, region *xcap.Region, inputs ...Pipeline) *GenericPipeline {
+	return &GenericPipeline{
+		read:   read,
+		inputs: inputs,
+		region: region,
+	}
+}
+
+var (
+	_ Pipeline       = (*GenericPipeline)(nil)
+	_ RegionProvider = (*GenericPipeline)(nil)
+)
 
 // Read implements Pipeline.
-func (p *GenericPipeline) Read(ctx context.Context) (arrow.Record, error) {
+func (p *GenericPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	if p.read == nil {
 		return nil, EOF
 	}
@@ -57,9 +113,17 @@ func (p *GenericPipeline) Read(ctx context.Context) (arrow.Record, error) {
 
 // Close implements Pipeline.
 func (p *GenericPipeline) Close() {
+	if p.region != nil {
+		p.region.End()
+	}
 	for _, inp := range p.inputs {
 		inp.Close()
 	}
+}
+
+// Region implements RegionProvider.
+func (p *GenericPipeline) Region() *xcap.Region {
+	return p.region
 }
 
 func errorPipeline(ctx context.Context, err error) Pipeline {
@@ -67,15 +131,31 @@ func errorPipeline(ctx context.Context, err error) Pipeline {
 	span.RecordError(err)
 	span.SetStatus(codes.Error, err.Error())
 
-	return newGenericPipeline(func(_ context.Context, _ []Pipeline) (arrow.Record, error) {
+	return newGenericPipeline(func(_ context.Context, _ []Pipeline) (arrow.RecordBatch, error) {
 		return nil, fmt.Errorf("failed to execute pipeline: %w", err)
 	})
 }
 
+func errorPipelineWithRegion(ctx context.Context, err error, region *xcap.Region) Pipeline {
+	span := trace.SpanFromContext(ctx)
+	span.RecordError(err)
+	span.SetStatus(codes.Error, err.Error())
+
+	return newGenericPipelineWithRegion(func(_ context.Context, _ []Pipeline) (arrow.RecordBatch, error) {
+		return nil, fmt.Errorf("failed to execute pipeline: %w", err)
+	}, region)
+}
+
 func emptyPipeline() Pipeline {
-	return newGenericPipeline(func(_ context.Context, _ []Pipeline) (arrow.Record, error) {
+	return newGenericPipeline(func(_ context.Context, _ []Pipeline) (arrow.RecordBatch, error) {
 		return nil, EOF
 	})
+}
+
+func emptyPipelineWithRegion(region *xcap.Region) Pipeline {
+	return newGenericPipelineWithRegion(func(_ context.Context, _ []Pipeline) (arrow.RecordBatch, error) {
+		return nil, EOF
+	}, region)
 }
 
 // prefetchWrapper wraps a [Pipeline] with pre-fetching capability,
@@ -109,7 +189,7 @@ func newPrefetchingPipeline(p Pipeline) *prefetchWrapper {
 }
 
 // Read implements [Pipeline].
-func (p *prefetchWrapper) Read(ctx context.Context) (arrow.Record, error) {
+func (p *prefetchWrapper) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	p.init(ctx)
 	return p.read(ctx)
 }
@@ -152,7 +232,7 @@ func (p prefetchWrapper) prefetch(ctx context.Context) error {
 	}
 }
 
-func (p *prefetchWrapper) read(_ context.Context) (arrow.Record, error) {
+func (p *prefetchWrapper) read(_ context.Context) (arrow.RecordBatch, error) {
 	state := <-p.ch
 
 	// Reading from a channel that is closed while waiting yields a zero-value.
@@ -179,6 +259,14 @@ func (p *prefetchWrapper) Close() {
 	p.Pipeline.Close()
 }
 
+// Region implements RegionProvider.
+func (p *prefetchWrapper) Region() *xcap.Region {
+	if provider, ok := p.Pipeline.(RegionProvider); ok {
+		return provider.Region()
+	}
+	return nil
+}
+
 type tracedPipeline struct {
 	name  string
 	inner Pipeline
@@ -194,7 +282,7 @@ func tracePipeline(name string, pipeline Pipeline) *tracedPipeline {
 	}
 }
 
-func (p *tracedPipeline) Read(ctx context.Context) (arrow.Record, error) {
+func (p *tracedPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	ctx, span := tracer.Start(ctx, p.name+".Read")
 	defer span.End()
 
@@ -234,7 +322,7 @@ var _ Pipeline = (*lazyPipeline)(nil)
 
 // Read reads the next value from the inner pipeline. If this is the first call
 // to Read, the inner  pipeline will be constructed using the provided context.
-func (lp *lazyPipeline) Read(ctx context.Context) (arrow.Record, error) {
+func (lp *lazyPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	if lp.built == nil {
 		lp.built = lp.ctor(ctx, lp.inputs)
 	}
@@ -247,4 +335,68 @@ func (lp *lazyPipeline) Close() {
 		lp.built.Close()
 	}
 	lp.built = nil
+}
+
+// Region implements RegionProvider.
+func (lp *lazyPipeline) Region() *xcap.Region {
+	if lp.built != nil {
+		if provider, ok := lp.built.(RegionProvider); ok {
+			return provider.Region()
+		}
+	}
+	return nil
+}
+
+// observedPipeline wraps a Pipeline to automatically collect common statistics
+// and record them to the pipeline's region.
+type observedPipeline struct {
+	inner  Pipeline
+	region *xcap.Region
+}
+
+var _ Pipeline = (*observedPipeline)(nil)
+
+// newObservedPipeline wraps a pipeline to automatically collect common statistics.
+// If the pipeline has a region, statistics will be recorded to it.
+func newObservedPipeline(inner Pipeline) *observedPipeline {
+	p := &observedPipeline{
+		inner: inner,
+	}
+
+	if provider, ok := inner.(RegionProvider); ok {
+		p.region = provider.Region()
+	}
+
+	return p
+}
+
+// Read implements Pipeline.
+func (p *observedPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
+	start := time.Now()
+
+	if p.region != nil {
+		p.region.Record(xcap.StatPipelineReadCalls.Observe(1))
+	}
+
+	rec, err := p.inner.Read(ctx)
+
+	if p.region != nil {
+		if rec != nil {
+			p.region.Record(xcap.StatPipelineRowsOut.Observe(rec.NumRows()))
+		}
+
+		p.region.Record(xcap.StatPipelineReadDuration.Observe(time.Since(start).Seconds()))
+	}
+
+	return rec, err
+}
+
+// Unwrap returns the underlying pipeline.
+func (p *observedPipeline) Unwrap() Pipeline {
+	return p.inner
+}
+
+// Close implements Pipeline.
+func (p *observedPipeline) Close() {
+	p.inner.Close()
 }

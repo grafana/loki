@@ -2,8 +2,6 @@ package executor
 
 import (
 	"errors"
-	"slices"
-	"strings"
 	"testing"
 	"time"
 
@@ -16,158 +14,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
-
-func TestFindDuplicates(t *testing.T) {
-	tests := []struct {
-		name     string
-		slice1   []string
-		slice2   []string
-		expected []duplicate
-	}{
-		{
-			name:     "empty slices",
-			slice1:   []string{},
-			slice2:   []string{},
-			expected: nil,
-		},
-		{
-			name:     "first slice empty",
-			slice1:   []string{},
-			slice2:   []string{"a", "b", "c"},
-			expected: nil,
-		},
-		{
-			name:     "second slice empty",
-			slice1:   []string{"a", "b", "c"},
-			slice2:   []string{},
-			expected: nil,
-		},
-		{
-			name:     "no duplicates",
-			slice1:   []string{"a", "b", "c"},
-			slice2:   []string{"d", "e", "f"},
-			expected: nil,
-		},
-		{
-			name:   "single duplicate",
-			slice1: []string{"a", "b", "c"},
-			slice2: []string{"c", "d", "e"},
-			expected: []duplicate{
-				{
-					value: "c",
-					s1Idx: 2,
-					s2Idx: 0,
-				},
-			},
-		},
-		{
-			name:   "multiple duplicates",
-			slice1: []string{"a", "b", "c", "d"},
-			slice2: []string{"c", "d", "e", "f"},
-			expected: []duplicate{
-				{
-					value: "c",
-					s1Idx: 2,
-					s2Idx: 0,
-				},
-				{
-					value: "d",
-					s1Idx: 3,
-					s2Idx: 1,
-				},
-			},
-		},
-		{
-			name:   "duplicate with different positions",
-			slice1: []string{"x", "y", "z"},
-			slice2: []string{"z", "y", "x"},
-			expected: []duplicate{
-				{
-					value: "x",
-					s1Idx: 0,
-					s2Idx: 2,
-				},
-				{
-					value: "y",
-					s1Idx: 1,
-					s2Idx: 1,
-				},
-				{
-					value: "z",
-					s1Idx: 2,
-					s2Idx: 0,
-				},
-			},
-		},
-		{
-			name:   "identical slices",
-			slice1: []string{"a", "b", "c"},
-			slice2: []string{"a", "b", "c"},
-			expected: []duplicate{
-				{
-					value: "a",
-					s1Idx: 0,
-					s2Idx: 0,
-				},
-				{
-					value: "b",
-					s1Idx: 1,
-					s2Idx: 1,
-				},
-				{
-					value: "c",
-					s1Idx: 2,
-					s2Idx: 2,
-				},
-			},
-		},
-		{
-			name:   "duplicate values in first slice - function assumes unique elements",
-			slice1: []string{"a", "b", "a"}, // Note: function assumes unique elements
-			slice2: []string{"a", "c"},
-			expected: []duplicate{
-				{
-					value: "a",
-					s1Idx: 2,
-					s2Idx: 0, // Will use the last occurrence index due to map overwrite
-				},
-			},
-		},
-		{
-			name:   "duplicate values in second slice - function assumes unique elements",
-			slice1: []string{"a", "b"},
-			slice2: []string{"a", "c", "a"}, // Note: function assumes unique elements
-			expected: []duplicate{
-				{
-					value: "a",
-					s1Idx: 0, // Will use the last occurrence index due to map overwrite
-					s2Idx: 2,
-				},
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := findDuplicates(tt.slice1, tt.slice2)
-
-			// Sort both expected and result slices by value for consistent comparison
-			// since the order of duplicates in the result is not guaranteed
-			sortDuplicatesByValue(result)
-			sortDuplicatesByValue(tt.expected)
-
-			require.Equal(t, tt.expected, result)
-		})
-	}
-}
-
-// sortDuplicatesByValue sorts a slice of duplicate structs by their value field
-func sortDuplicatesByValue(duplicates []duplicate) {
-	if len(duplicates) <= 1 {
-		return
-	}
-	slices.SortStableFunc(duplicates, func(a, b duplicate) int { return strings.Compare(a.value, b.value) })
-}
 
 func TestNewColumnCompatibilityPipeline(t *testing.T) {
 	tests := []struct {
@@ -183,7 +29,7 @@ func TestNewColumnCompatibilityPipeline(t *testing.T) {
 		{
 			name: "no column collisions - returns early",
 			compat: &physical.ColumnCompat{
-				Collision:   types.ColumnTypeLabel,
+				Collisions:  []types.ColumnType{types.ColumnTypeLabel},
 				Source:      types.ColumnTypeMetadata,
 				Destination: types.ColumnTypeMetadata,
 			},
@@ -215,7 +61,7 @@ func TestNewColumnCompatibilityPipeline(t *testing.T) {
 		{
 			name: "single column collision - string type",
 			compat: &physical.ColumnCompat{
-				Collision:   types.ColumnTypeLabel,
+				Collisions:  []types.ColumnType{types.ColumnTypeLabel},
 				Source:      types.ColumnTypeMetadata,
 				Destination: types.ColumnTypeMetadata,
 			},
@@ -248,7 +94,7 @@ func TestNewColumnCompatibilityPipeline(t *testing.T) {
 		{
 			name: "multiple column collisions",
 			compat: &physical.ColumnCompat{
-				Collision:   types.ColumnTypeLabel,
+				Collisions:  []types.ColumnType{types.ColumnTypeLabel},
 				Source:      types.ColumnTypeMetadata,
 				Destination: types.ColumnTypeMetadata,
 			},
@@ -300,7 +146,7 @@ func TestNewColumnCompatibilityPipeline(t *testing.T) {
 		{
 			name: "collision with null values in collision column",
 			compat: &physical.ColumnCompat{
-				Collision:   types.ColumnTypeLabel,
+				Collisions:  []types.ColumnType{types.ColumnTypeLabel},
 				Source:      types.ColumnTypeMetadata,
 				Destination: types.ColumnTypeMetadata,
 			},
@@ -333,7 +179,7 @@ func TestNewColumnCompatibilityPipeline(t *testing.T) {
 		{
 			name: "collision with null values in source column",
 			compat: &physical.ColumnCompat{
-				Collision:   types.ColumnTypeLabel,
+				Collisions:  []types.ColumnType{types.ColumnTypeLabel},
 				Source:      types.ColumnTypeMetadata,
 				Destination: types.ColumnTypeMetadata,
 			},
@@ -360,7 +206,7 @@ func TestNewColumnCompatibilityPipeline(t *testing.T) {
 		{
 			name: "multiple batches with collisions",
 			compat: &physical.ColumnCompat{
-				Collision:   types.ColumnTypeLabel,
+				Collisions:  []types.ColumnType{types.ColumnTypeLabel},
 				Source:      types.ColumnTypeMetadata,
 				Destination: types.ColumnTypeMetadata,
 			},
@@ -395,7 +241,7 @@ func TestNewColumnCompatibilityPipeline(t *testing.T) {
 		{
 			name: "empty batch does not add _extracted column",
 			compat: &physical.ColumnCompat{
-				Collision:   types.ColumnTypeLabel,
+				Collisions:  []types.ColumnType{types.ColumnTypeLabel},
 				Source:      types.ColumnTypeMetadata,
 				Destination: types.ColumnTypeMetadata,
 			},
@@ -417,7 +263,7 @@ func TestNewColumnCompatibilityPipeline(t *testing.T) {
 		{
 			name: "non-string column types - should copy through unchanged",
 			compat: &physical.ColumnCompat{
-				Collision:   types.ColumnTypeLabel,
+				Collisions:  []types.ColumnType{types.ColumnTypeLabel},
 				Source:      types.ColumnTypeMetadata,
 				Destination: types.ColumnTypeMetadata,
 			},
@@ -464,6 +310,152 @@ func TestNewColumnCompatibilityPipeline(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "multiple collision types - label and metadata",
+			compat: &physical.ColumnCompat{
+				Collisions:  []types.ColumnType{types.ColumnTypeLabel, types.ColumnTypeMetadata},
+				Source:      types.ColumnTypeParsed,
+				Destination: types.ColumnTypeParsed,
+			},
+			schema: arrow.NewSchema([]arrow.Field{
+				semconv.FieldFromFQN("utf8.builtin.message", true),
+				// Collision columns from Label type
+				semconv.FieldFromFQN("utf8.label.status", true),
+				semconv.FieldFromFQN("utf8.label.level", true),
+				// Collision columns from Metadata type
+				semconv.FieldFromFQN("utf8.metadata.status", true),
+				semconv.FieldFromFQN("utf8.metadata.env", true),
+				// Source columns (Parsed) that collide with both types
+				semconv.FieldFromFQN("utf8.parsed.status", true), // collides with both label.status and metadata.status
+				semconv.FieldFromFQN("utf8.parsed.level", true),  // collides with label.level
+				semconv.FieldFromFQN("utf8.parsed.env", true),    // collides with metadata.env
+				semconv.FieldFromFQN("utf8.parsed.unique", true), // no collision
+			}, nil),
+			inputRows: []arrowtest.Rows{
+				{
+					{
+						"utf8.builtin.message": "test message",
+						"utf8.label.status":    "active",
+						"utf8.label.level":     "debug",
+						"utf8.metadata.status": "200",
+						"utf8.metadata.env":    "production",
+						"utf8.parsed.status":   "ok",
+						"utf8.parsed.level":    "info",
+						"utf8.parsed.env":      "staging",
+						"utf8.parsed.unique":   "value",
+					},
+					{
+						"utf8.builtin.message": "test message 2",
+						"utf8.label.status":    "inactive",
+						"utf8.label.level":     "debug",
+						"utf8.metadata.status": "404",
+						"utf8.metadata.env":    "development",
+						"utf8.parsed.status":   "error",
+						"utf8.parsed.level":    "debug",
+						"utf8.parsed.env":      "local",
+						"utf8.parsed.unique":   "another",
+					},
+					// no duplicates as collision columns are null
+					{
+						"utf8.builtin.message": "test message 3",
+						"utf8.label.status":    nil,
+						"utf8.label.level":     nil,
+						"utf8.metadata.status": nil,
+						"utf8.metadata.env":    nil,
+						"utf8.parsed.status":   "error",
+						"utf8.parsed.level":    "debug",
+						"utf8.parsed.env":      "local",
+						"utf8.parsed.unique":   "another",
+					},
+					{
+						"utf8.builtin.message": "test message 4",
+						"utf8.label.status":    "inactive",
+						"utf8.label.level":     "debug",
+						"utf8.metadata.status": nil,
+						"utf8.metadata.env":    nil,
+						"utf8.parsed.status":   "error",
+						"utf8.parsed.level":    "info",
+						"utf8.parsed.env":      "local",
+						"utf8.parsed.unique":   "another",
+					},
+				},
+			},
+			expectedSchema: arrow.NewSchema([]arrow.Field{
+				semconv.FieldFromFQN("utf8.builtin.message", true),
+				semconv.FieldFromFQN("utf8.label.status", true),
+				semconv.FieldFromFQN("utf8.label.level", true),
+				semconv.FieldFromFQN("utf8.metadata.status", true),
+				semconv.FieldFromFQN("utf8.metadata.env", true),
+				semconv.FieldFromFQN("utf8.parsed.status", true),
+				semconv.FieldFromFQN("utf8.parsed.level", true),
+				semconv.FieldFromFQN("utf8.parsed.env", true),
+				semconv.FieldFromFQN("utf8.parsed.unique", true),
+				// Extracted columns (sorted by name)
+				semconv.FieldFromFQN("utf8.parsed.env_extracted", true),
+				semconv.FieldFromFQN("utf8.parsed.level_extracted", true),
+				semconv.FieldFromFQN("utf8.parsed.status_extracted", true),
+			}, nil),
+			expectedRows: []arrowtest.Rows{
+				{
+					{
+						"utf8.builtin.message":         "test message",
+						"utf8.label.status":            "active",
+						"utf8.label.level":             "debug",
+						"utf8.metadata.status":         "200",
+						"utf8.metadata.env":            "production",
+						"utf8.parsed.status":           nil,
+						"utf8.parsed.level":            nil,
+						"utf8.parsed.env":              nil,
+						"utf8.parsed.unique":           "value",
+						"utf8.parsed.env_extracted":    "staging",
+						"utf8.parsed.level_extracted":  "info",
+						"utf8.parsed.status_extracted": "ok",
+					},
+					{
+						"utf8.builtin.message":         "test message 2",
+						"utf8.label.status":            "inactive",
+						"utf8.label.level":             "debug",
+						"utf8.metadata.status":         "404",
+						"utf8.metadata.env":            "development",
+						"utf8.parsed.status":           nil,
+						"utf8.parsed.level":            nil,
+						"utf8.parsed.env":              nil,
+						"utf8.parsed.unique":           "another",
+						"utf8.parsed.env_extracted":    "local",
+						"utf8.parsed.level_extracted":  "debug",
+						"utf8.parsed.status_extracted": "error",
+					},
+					{
+						"utf8.builtin.message":         "test message 3",
+						"utf8.label.status":            nil,
+						"utf8.label.level":             nil,
+						"utf8.metadata.status":         nil,
+						"utf8.metadata.env":            nil,
+						"utf8.parsed.status":           "error",
+						"utf8.parsed.level":            "debug",
+						"utf8.parsed.env":              "local",
+						"utf8.parsed.unique":           "another",
+						"utf8.parsed.env_extracted":    nil,
+						"utf8.parsed.level_extracted":  nil,
+						"utf8.parsed.status_extracted": nil,
+					},
+					{
+						"utf8.builtin.message":         "test message 4",
+						"utf8.label.status":            "inactive",
+						"utf8.label.level":             "debug",
+						"utf8.metadata.status":         nil,
+						"utf8.metadata.env":            nil,
+						"utf8.parsed.status":           nil,
+						"utf8.parsed.level":            nil,
+						"utf8.parsed.env":              "local",
+						"utf8.parsed.unique":           "another",
+						"utf8.parsed.env_extracted":    nil,
+						"utf8.parsed.level_extracted":  "info",
+						"utf8.parsed.status_extracted": "error",
+					},
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -476,7 +468,7 @@ func TestNewColumnCompatibilityPipeline(t *testing.T) {
 				input = NewArrowtestPipeline(tt.schema, tt.inputRows[0])
 			} else {
 				// Multiple batches
-				var records []arrow.Record
+				var records []arrow.RecordBatch
 				for _, rows := range tt.inputRows {
 					record := rows.Record(memory.DefaultAllocator, tt.schema)
 					records = append(records, record)
@@ -485,7 +477,7 @@ func TestNewColumnCompatibilityPipeline(t *testing.T) {
 			}
 
 			// Create compatibility pipeline
-			pipeline := newColumnCompatibilityPipeline(tt.compat, input)
+			pipeline := newColumnCompatibilityPipeline(tt.compat, input, nil)
 			defer pipeline.Close()
 
 			if tt.expectError {
@@ -537,7 +529,7 @@ func TestNewColumnCompatibilityPipeline(t *testing.T) {
 func TestNewColumnCompatibilityPipeline_ErrorCases(t *testing.T) {
 	t.Run("invalid field name in schema", func(t *testing.T) {
 		compat := &physical.ColumnCompat{
-			Collision:   types.ColumnTypeLabel,
+			Collisions:  []types.ColumnType{types.ColumnTypeLabel},
 			Source:      types.ColumnTypeMetadata,
 			Destination: types.ColumnTypeMetadata,
 		}
@@ -551,7 +543,7 @@ func TestNewColumnCompatibilityPipeline_ErrorCases(t *testing.T) {
 			{"invalid-field-name": "test"},
 		})
 
-		pipeline := newColumnCompatibilityPipeline(compat, input)
+		pipeline := newColumnCompatibilityPipeline(compat, input, nil)
 		defer pipeline.Close()
 
 		_, err := pipeline.Read(t.Context())
@@ -561,7 +553,7 @@ func TestNewColumnCompatibilityPipeline_ErrorCases(t *testing.T) {
 
 	t.Run("input pipeline error", func(t *testing.T) {
 		compat := &physical.ColumnCompat{
-			Collision:   types.ColumnTypeLabel,
+			Collisions:  []types.ColumnType{types.ColumnTypeLabel},
 			Source:      types.ColumnTypeMetadata,
 			Destination: types.ColumnTypeMetadata,
 		}
@@ -570,7 +562,7 @@ func TestNewColumnCompatibilityPipeline_ErrorCases(t *testing.T) {
 		expectedErr := errors.New("test error")
 		input := errorPipeline(t.Context(), expectedErr)
 
-		pipeline := newColumnCompatibilityPipeline(compat, input)
+		pipeline := newColumnCompatibilityPipeline(compat, input, nil)
 		defer pipeline.Close()
 
 		_, err := pipeline.Read(t.Context())
@@ -579,7 +571,7 @@ func TestNewColumnCompatibilityPipeline_ErrorCases(t *testing.T) {
 
 	t.Run("non-string collision column should panic", func(t *testing.T) {
 		compat := &physical.ColumnCompat{
-			Collision:   types.ColumnTypeLabel,
+			Collisions:  []types.ColumnType{types.ColumnTypeLabel},
 			Source:      types.ColumnTypeMetadata,
 			Destination: types.ColumnTypeMetadata,
 		}
@@ -595,7 +587,7 @@ func TestNewColumnCompatibilityPipeline_ErrorCases(t *testing.T) {
 			{"utf8.label.status": "200", "int64.metadata.status": int64(200)},
 		})
 
-		pipeline := newColumnCompatibilityPipeline(compat, input)
+		pipeline := newColumnCompatibilityPipeline(compat, input, nil)
 		defer pipeline.Close()
 
 		// This should panic with "invalid column type: only string columns can be checked for collisions"

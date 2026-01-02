@@ -17,6 +17,7 @@ func (r *DescribeGroupsRequest) encode(pe packetEncoder) error {
 	if r.Version >= 3 {
 		pe.putBool(r.IncludeAuthorizedOperations)
 	}
+	pe.putEmptyTaggedFieldArray()
 	return nil
 }
 
@@ -31,7 +32,8 @@ func (r *DescribeGroupsRequest) decode(pd packetDecoder, version int16) (err err
 			return err
 		}
 	}
-	return nil
+	_, err = pd.getEmptyTaggedFieldArray()
+	return err
 }
 
 func (r *DescribeGroupsRequest) key() int16 {
@@ -43,15 +45,28 @@ func (r *DescribeGroupsRequest) version() int16 {
 }
 
 func (r *DescribeGroupsRequest) headerVersion() int16 {
+	if r.Version >= 5 {
+		return 2
+	}
 	return 1
 }
 
 func (r *DescribeGroupsRequest) isValidVersion() bool {
-	return r.Version >= 0 && r.Version <= 4
+	return r.Version >= 0 && r.Version <= 5
+}
+
+func (r *DescribeGroupsRequest) isFlexible() bool {
+	return r.isFlexibleVersion(r.Version)
+}
+
+func (r *DescribeGroupsRequest) isFlexibleVersion(version int16) bool {
+	return version >= 5
 }
 
 func (r *DescribeGroupsRequest) requiredVersion() KafkaVersion {
 	switch r.Version {
+	case 5:
+		return V2_4_0_0
 	case 4:
 		return V2_4_0_0
 	case 3:

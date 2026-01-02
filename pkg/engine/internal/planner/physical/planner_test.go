@@ -18,13 +18,8 @@ type catalog struct {
 }
 
 // ResolveShardDescriptors implements Catalog.
-func (c *catalog) ResolveShardDescriptors(e Expression, from, through time.Time) ([]FilteredShardDescriptor, error) {
-	return c.ResolveShardDescriptorsWithShard(e, nil, noShard, from, through)
-}
-
-// ResolveDataObjForShard implements Catalog.
-func (c *catalog) ResolveShardDescriptorsWithShard(_ Expression, _ []Expression, shard ShardInfo, _, _ time.Time) ([]FilteredShardDescriptor, error) {
-	return filterDescriptorsForShard(shard, c.sectionDescriptors)
+func (c *catalog) ResolveDataObjSections(_ Expression, _ []Expression, shard ShardInfo, _, _ time.Time) ([]DataObjSections, error) {
+	return filterForShard(shard, c.sectionDescriptors)
 }
 
 var _ Catalog = (*catalog)(nil)
@@ -43,11 +38,11 @@ func TestMockCatalog(t *testing.T) {
 	}
 	for _, tt := range []struct {
 		shard          ShardInfo
-		expDescriptors []FilteredShardDescriptor
+		expDescriptors []DataObjSections
 	}{
 		{
 			shard: ShardInfo{0, 1},
-			expDescriptors: []FilteredShardDescriptor{
+			expDescriptors: []DataObjSections{
 				{Location: "obj1", Streams: []int64{1, 2}, Sections: []int{0}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
 				{Location: "obj1", Streams: []int64{1, 2}, Sections: []int{1}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
 				{Location: "obj1", Streams: []int64{1, 2}, Sections: []int{2}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
@@ -57,70 +52,66 @@ func TestMockCatalog(t *testing.T) {
 		},
 		{
 			shard: ShardInfo{0, 4},
-			expDescriptors: []FilteredShardDescriptor{
+			expDescriptors: []DataObjSections{
 				{Location: "obj1", Streams: []int64{1, 2}, Sections: []int{0}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
 				{Location: "obj2", Streams: []int64{3, 4}, Sections: []int{0}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
 			},
 		},
 		{
 			shard: ShardInfo{1, 4},
-			expDescriptors: []FilteredShardDescriptor{
+			expDescriptors: []DataObjSections{
 				{Location: "obj1", Streams: []int64{1, 2}, Sections: []int{1}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
 				{Location: "obj2", Streams: []int64{3, 4}, Sections: []int{1}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
 			},
 		},
 		{
 			shard:          ShardInfo{2, 4},
-			expDescriptors: []FilteredShardDescriptor{{Location: "obj1", Streams: []int64{1, 2}, Sections: []int{2}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}}},
+			expDescriptors: []DataObjSections{{Location: "obj1", Streams: []int64{1, 2}, Sections: []int{2}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}}},
 		},
 		{
 			shard:          ShardInfo{3, 4},
-			expDescriptors: []FilteredShardDescriptor{},
+			expDescriptors: []DataObjSections{},
 		},
 	} {
 		t.Run("shard "+tt.shard.String(), func(t *testing.T) {
-			filteredShardDescriptors, err := catalog.ResolveShardDescriptorsWithShard(nil, nil, tt.shard, timeStart, timeEnd)
+			filteredShardDescriptors, err := catalog.ResolveDataObjSections(nil, nil, tt.shard, timeStart, timeEnd)
 			require.Nil(t, err)
 			require.ElementsMatch(t, tt.expDescriptors, filteredShardDescriptors)
 		})
 	}
 }
 
-func locations(t *testing.T, plan *Plan, node Node) []string {
+func locations(plan *Plan, node Node) []string {
 	res := make([]string, 0)
-
-	visitor := &nodeCollectVisitor{
-		onVisitScanSet: func(set *ScanSet) error {
-			for _, target := range set.Targets {
+	_ = plan.DFSWalk(node, func(n Node) error {
+		switch node := n.(type) {
+		case *ScanSet:
+			for _, target := range node.Targets {
 				switch target.Type {
 				case ScanTypeDataObject:
 					res = append(res, string(target.DataObject.Location))
 				}
 			}
-			return nil
-		},
-	}
-
-	require.NoError(t, plan.DFSWalk(node, visitor, PreOrderWalk))
+		}
+		return nil
+	}, dag.PreOrderWalk)
 	return res
 }
 
-func sections(t *testing.T, plan *Plan, node Node) [][]int {
+func sections(plan *Plan, node Node) [][]int {
 	res := make([][]int, 0)
-
-	visitor := &nodeCollectVisitor{
-		onVisitScanSet: func(set *ScanSet) error {
-			for _, target := range set.Targets {
+	_ = plan.DFSWalk(node, func(n Node) error {
+		switch node := n.(type) {
+		case *ScanSet:
+			for _, target := range node.Targets {
 				switch target.Type {
 				case ScanTypeDataObject:
 					res = append(res, []int{target.DataObject.Section})
 				}
 			}
-			return nil
-		},
-	}
-
-	require.NoError(t, plan.DFSWalk(node, visitor, PreOrderWalk))
+		}
+		return nil
+	}, dag.PreOrderWalk)
 	return res
 }
 
@@ -202,8 +193,8 @@ func TestPlanner_ConvertMaketable(t *testing.T) {
 			planner.reset()
 			node, err := planner.processMakeTable(relation, NewContext(timeStart, timeEnd))
 			require.NoError(t, err)
-			require.ElementsMatch(t, tt.expPaths, locations(t, planner.plan, node))
-			require.ElementsMatch(t, tt.expSections, sections(t, planner.plan, node))
+			require.ElementsMatch(t, tt.expPaths, locations(planner.plan, node))
+			require.ElementsMatch(t, tt.expSections, sections(planner.plan, node))
 		})
 	}
 }
@@ -274,7 +265,7 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 				Shard: logical.NewShard(0, 1),
 			},
 		).Parse(
-			logical.ParserLogfmt,
+			types.VariadicOpParseLogfmt, false, false,
 		).Select(
 			&logical.BinOp{
 				Left:  logical.NewColumnRef("level", types.ColumnTypeAmbiguous),
@@ -294,7 +285,7 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 		planner := NewPlanner(NewContext(time.Now(), time.Now()), catalog)
 
 		physicalPlan, err := planner.Build(logicalPlan)
-		t.Logf("Physical plan\n%s\n", PrintAsTree(physicalPlan))
+		t.Logf("\nPhysical plan\n%s\n", PrintAsTree(physicalPlan))
 		require.NoError(t, err)
 
 		// Verify ParseNode exists in correct position
@@ -310,22 +301,35 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 
 		compatNode, ok := children[0].(*ColumnCompat)
 		require.True(t, ok, "Filter's child should be ColumnCompat")
-		require.Equal(t, types.ColumnTypeParsed, compatNode.Source)
-
 		children = physicalPlan.Children(compatNode)
-		require.Len(t, children, 1)
 
-		parseNode, ok := children[0].(*ParseNode)
-		require.True(t, ok, "ColumnCompat's child should be ParseNode")
-		require.Equal(t, ParserLogfmt, parseNode.Kind)
-		require.Empty(t, parseNode.RequestedKeys)
+		projectionNode, ok := children[0].(*Projection)
+		require.True(t, ok, "ColumnCompat's child should be Projection")
+		require.Len(t, projectionNode.Expressions, 1)
+
+		expr, ok := projectionNode.Expressions[0].(*VariadicExpr)
+		require.True(t, ok)
+		require.Equal(t, types.VariadicOpParseLogfmt, expr.Op)
+
+		funcArgs := expr.Expressions
+		require.Len(t, funcArgs, 4)
+
+		sourcCol, ok := funcArgs[0].(*ColumnExpr)
+		require.True(t, ok)
+		require.Equal(t, types.ColumnNameBuiltinMessage, sourcCol.Ref.Column)
+		require.Equal(t, types.ColumnTypeBuiltin, sourcCol.Ref.Type)
 
 		physicalPlan, err = planner.Optimize(physicalPlan)
-		t.Logf("Optimized plan\n%s\n", PrintAsTree(physicalPlan))
+		t.Logf("\nOptimized plan\n%s\n", PrintAsTree(physicalPlan))
 		require.NoError(t, err)
 
-		// For log queries, parse nodes should request all keys (nil)
-		require.Nil(t, parseNode.RequestedKeys)
+		funcArgs = expr.Expressions
+		require.Len(t, funcArgs, 4)
+
+		sourcCol, ok = funcArgs[0].(*ColumnExpr)
+		require.True(t, ok)
+		require.Equal(t, types.ColumnNameBuiltinMessage, sourcCol.Ref.Column)
+		require.Equal(t, types.ColumnTypeBuiltin, sourcCol.Ref.Type)
 	})
 
 	t.Run("Build a query plan for a metric query with Parse", func(t *testing.T) {
@@ -344,7 +348,7 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 				Shard: logical.NewShard(0, 1),
 			},
 		).Parse(
-			logical.ParserLogfmt,
+			types.VariadicOpParseLogfmt, false, false,
 		).Select(
 			&logical.BinOp{
 				Left:  logical.NewColumnRef("level", types.ColumnTypeAmbiguous),
@@ -352,7 +356,10 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 				Op:    types.BinaryOpEq,
 			},
 		).RangeAggregation(
-			[]logical.ColumnRef{*logical.NewColumnRef("level", types.ColumnTypeAmbiguous)},
+			logical.Grouping{
+				Columns: []logical.ColumnRef{*logical.NewColumnRef("level", types.ColumnTypeAmbiguous)},
+				Without: false,
+			},
 			types.RangeAggregationTypeCount,
 			start,         // Start time
 			end,           // End time
@@ -371,32 +378,64 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 		planner := NewPlanner(NewContext(start, end), catalog)
 
 		physicalPlan, err := planner.Build(logicalPlan)
-		t.Logf("Physical plan\n%s\n", PrintAsTree(physicalPlan))
+		t.Logf("\nPhysical plan\n%s\n", PrintAsTree(physicalPlan))
 		require.NoError(t, err)
 
-		// Find ParseNode in the plan
-		var parseNode *ParseNode
-		visitor := &nodeCollectVisitor{
-			onVisitParse: func(node *ParseNode) error {
-				parseNode = node
-				return nil
-			},
-		}
+		// Verify ParseNode exists in correct position
 		root, err := physicalPlan.Root()
 		require.NoError(t, err)
-		err = physicalPlan.DFSWalk(root, visitor, PreOrderWalk)
-		require.NoError(t, err)
-		require.NotNil(t, parseNode, "ParseNode should exist in the plan")
 
-		require.Equal(t, ParserLogfmt, parseNode.Kind)
-		require.Empty(t, parseNode.RequestedKeys) // Before optimization
+		// Physical plan is built bottom up, so it should be RangeAggregation -> Filter -> Projection -> ...
+		rangeAgg, ok := root.(*RangeAggregation)
+		require.True(t, ok, "Root should be RangeAggregation")
+
+		children := physicalPlan.Children(rangeAgg)
+		require.Len(t, children, 1)
+
+		filterNode, ok := children[0].(*Filter)
+		require.True(t, ok, "RangeAggregation's child should be Filter")
+
+		children = physicalPlan.Children(filterNode)
+		require.Len(t, children, 1)
+
+		compatNode, ok := children[0].(*ColumnCompat)
+		require.True(t, ok, "Filter's child should be ColumnCompat")
+		children = physicalPlan.Children(compatNode)
+
+		projectionNode, ok := children[0].(*Projection)
+		require.True(t, ok, "ColumnCompat's child should be Projection")
+		require.Len(t, projectionNode.Expressions, 1)
+
+		expr, ok := projectionNode.Expressions[0].(*VariadicExpr)
+		require.True(t, ok)
+		require.Equal(t, types.VariadicOpParseLogfmt, expr.Op)
+
+		funcArgs := expr.Expressions
+		require.Len(t, funcArgs, 4)
+
+		sourcCol, ok := funcArgs[0].(*ColumnExpr)
+		require.True(t, ok)
+		require.Equal(t, types.ColumnNameBuiltinMessage, sourcCol.Ref.Column)
+		require.Equal(t, types.ColumnTypeBuiltin, sourcCol.Ref.Type)
 
 		physicalPlan, err = planner.Optimize(physicalPlan)
-		t.Logf("Optimized plan\n%s\n", PrintAsTree(physicalPlan))
+		t.Logf("\nOptimized plan\n%s\n", PrintAsTree(physicalPlan))
 		require.NoError(t, err)
 
-		// For metric queries, parse nodes should request specific keys used in aggregations
-		require.Equal(t, []string{"level"}, parseNode.RequestedKeys)
+		funcArgs = expr.Expressions
+		require.Len(t, funcArgs, 4)
+
+		sourcCol, ok = funcArgs[0].(*ColumnExpr)
+		require.True(t, ok)
+		require.Equal(t, types.ColumnNameBuiltinMessage, sourcCol.Ref.Column)
+		require.Equal(t, types.ColumnTypeBuiltin, sourcCol.Ref.Type)
+
+		reqKeys, ok := funcArgs[1].(*LiteralExpr)
+		require.True(t, ok)
+
+		keys, ok := reqKeys.Literal().(types.StringListLiteral)
+		require.True(t, ok)
+		require.Equal(t, []string{"level"}, keys.Value())
 	})
 }
 
@@ -470,7 +509,7 @@ func TestPlanner_Convert_RangeAggregations(t *testing.T) {
 			Op:    types.BinaryOpLt,
 		},
 	).RangeAggregation(
-		[]logical.ColumnRef{},
+		logical.NoGrouping,
 		types.RangeAggregationTypeCount,
 		time.Date(2023, 10, 1, 0, 0, 0, 0, time.UTC), // Start Time
 		time.Date(2023, 10, 1, 1, 0, 0, 0, time.UTC), // End Time
@@ -524,7 +563,7 @@ func TestPlanner_Convert_Rate(t *testing.T) {
 			Op:    types.BinaryOpLt,
 		},
 	).RangeAggregation(
-		[]logical.ColumnRef{},
+		logical.NoGrouping,
 		types.RangeAggregationTypeCount,
 		time.Date(2023, 10, 1, 0, 0, 0, 0, time.UTC), // Start Time
 		time.Date(2023, 10, 1, 1, 0, 0, 0, time.UTC), // End Time
@@ -580,7 +619,7 @@ func TestPlanner_BuildMathExpressions(t *testing.T) {
 			Op:    types.BinaryOpLt,
 		},
 	).RangeAggregation(
-		[]logical.ColumnRef{},
+		logical.NoGrouping,
 		types.RangeAggregationTypeCount,
 		time.Date(2023, 10, 1, 0, 0, 0, 0, time.UTC), // Start Time
 		time.Date(2023, 10, 1, 1, 0, 0, 0, time.UTC), // End Time
@@ -634,7 +673,7 @@ func TestPlanner_BuildMathExpressionsWithTwoInputs(t *testing.T) {
 			Op:    types.BinaryOpLt,
 		},
 	).RangeAggregation(
-		[]logical.ColumnRef{},
+		logical.NoGrouping,
 		types.RangeAggregationTypeCount,
 		time.Date(2023, 10, 1, 0, 0, 0, 0, time.UTC), // Start Time
 		time.Date(2023, 10, 1, 1, 0, 0, 0, time.UTC), // End Time
@@ -667,7 +706,7 @@ func TestPlanner_BuildMathExpressionsWithTwoInputs(t *testing.T) {
 			Op:    types.BinaryOpLt,
 		},
 	).RangeAggregation(
-		[]logical.ColumnRef{},
+		logical.NoGrouping,
 		types.RangeAggregationTypeCount,
 		time.Date(2023, 10, 1, 0, 0, 0, 0, time.UTC), // Start Time
 		time.Date(2023, 10, 1, 1, 0, 0, 0, time.UTC), // End Time
@@ -729,23 +768,29 @@ func TestPlanner_MakeTable_Ordering(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("ascending", func(t *testing.T) {
-		planner := NewPlanner(NewContext(time.Now(), time.Now()).WithDirection(ASC), catalog)
+		planner := NewPlanner(NewContext(now, now.Add(time.Minute)).WithDirection(ASC), catalog)
 		plan, err := planner.Build(logicalPlan)
 		require.NoError(t, err)
 
 		expectedPlan := &Plan{}
-		parallelize := expectedPlan.graph.Add(&Parallelize{id: "parallelize"})
-		compat := expectedPlan.graph.Add(&ColumnCompat{id: "compat", Source: types.ColumnTypeMetadata, Destination: types.ColumnTypeMetadata, Collision: types.ColumnTypeLabel})
+		parallelize := expectedPlan.graph.Add(&Parallelize{})
+		compat := expectedPlan.graph.Add(&ColumnCompat{Source: types.ColumnTypeMetadata, Destination: types.ColumnTypeMetadata, Collisions: []types.ColumnType{types.ColumnTypeLabel}})
 		scanSet := expectedPlan.graph.Add(&ScanSet{
-			id: "scanset",
-
 			// Targets should be added in the order of the scan timestamps
 			// ASC => oldest to newest
 			Targets: []*ScanTarget{
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{id: "scan4", Location: "obj3", Section: 3, StreamIDs: []int64{5, 1}}},
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{id: "scan3", Location: "obj3", Section: 2, StreamIDs: []int64{5, 1}}},
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{id: "scan2", Location: "obj2", Section: 1, StreamIDs: []int64{3, 4}}},
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{id: "scan1", Location: "obj1", Section: 3, StreamIDs: []int64{1, 2}}},
+				{Type: ScanTypeDataObject, DataObject: &DataObjScan{
+					Location: "obj3", Section: 3, StreamIDs: []int64{5, 1}, MaxTimeRange: TimeRange{Start: now.Add(-2 * time.Minute), End: now.Add(-45 * time.Second)},
+				}},
+				{Type: ScanTypeDataObject, DataObject: &DataObjScan{
+					Location: "obj3", Section: 2, StreamIDs: []int64{5, 1}, MaxTimeRange: TimeRange{Start: now.Add(-time.Minute), End: now.Add(-30 * time.Second)},
+				}},
+				{Type: ScanTypeDataObject, DataObject: &DataObjScan{
+					Location: "obj2", Section: 1, StreamIDs: []int64{3, 4}, MaxTimeRange: TimeRange{Start: now, End: now.Add(time.Second * 10)},
+				}},
+				{Type: ScanTypeDataObject, DataObject: &DataObjScan{
+					Location: "obj1", Section: 3, StreamIDs: []int64{1, 2}, MaxTimeRange: TimeRange{Start: now, End: now.Add(time.Second * 10)},
+				}},
 			},
 		})
 
@@ -763,22 +808,28 @@ func TestPlanner_MakeTable_Ordering(t *testing.T) {
 	})
 
 	t.Run("descending", func(t *testing.T) {
-		planner := NewPlanner(NewContext(time.Now(), time.Now()).WithDirection(DESC), catalog)
+		planner := NewPlanner(NewContext(now, now.Add(time.Minute)).WithDirection(DESC), catalog)
 		plan, err := planner.Build(logicalPlan)
 		require.NoError(t, err)
 
 		expectedPlan := &Plan{}
-		parallelize := expectedPlan.graph.Add(&Parallelize{id: "parallelize"})
-		compat := expectedPlan.graph.Add(&ColumnCompat{id: "compat", Source: types.ColumnTypeMetadata, Destination: types.ColumnTypeMetadata, Collision: types.ColumnTypeLabel})
+		parallelize := expectedPlan.graph.Add(&Parallelize{})
+		compat := expectedPlan.graph.Add(&ColumnCompat{Source: types.ColumnTypeMetadata, Destination: types.ColumnTypeMetadata, Collisions: []types.ColumnType{types.ColumnTypeLabel}})
 		scanSet := expectedPlan.graph.Add(&ScanSet{
-			id: "scanset",
-
 			// Targets should be added in the order of the scan timestamps
 			Targets: []*ScanTarget{
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{id: "scan1", Location: "obj1", Section: 3, StreamIDs: []int64{1, 2}}},
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{id: "scan2", Location: "obj2", Section: 1, StreamIDs: []int64{3, 4}}},
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{id: "scan3", Location: "obj3", Section: 2, StreamIDs: []int64{5, 1}}},
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{id: "scan4", Location: "obj3", Section: 3, StreamIDs: []int64{5, 1}}},
+				{Type: ScanTypeDataObject, DataObject: &DataObjScan{
+					Location: "obj1", Section: 3, StreamIDs: []int64{1, 2}, MaxTimeRange: TimeRange{Start: now, End: now.Add(time.Second * 10)},
+				}},
+				{Type: ScanTypeDataObject, DataObject: &DataObjScan{
+					Location: "obj2", Section: 1, StreamIDs: []int64{3, 4}, MaxTimeRange: TimeRange{Start: now, End: now.Add(time.Second * 10)},
+				}},
+				{Type: ScanTypeDataObject, DataObject: &DataObjScan{
+					Location: "obj3", Section: 2, StreamIDs: []int64{5, 1}, MaxTimeRange: TimeRange{Start: now.Add(-time.Minute), End: now.Add(-30 * time.Second)},
+				}},
+				{Type: ScanTypeDataObject, DataObject: &DataObjScan{
+					Location: "obj3", Section: 3, StreamIDs: []int64{5, 1}, MaxTimeRange: TimeRange{Start: now.Add(-2 * time.Minute), End: now.Add(-45 * time.Second)},
+				}},
 			},
 		})
 

@@ -226,7 +226,9 @@ func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequ
 	}
 
 	predicate := chunk.NewPredicate(matchers, &req.Plan)
+	chunkRefsLookupStart := time.Now()
 	chunks, _, err := g.indexQuerier.GetChunks(ctx, instanceID, req.From, req.Through, predicate, nil)
+	chunkRefsLookupDuration := time.Since(chunkRefsLookupStart)
 	if err != nil {
 		return nil, err
 	}
@@ -243,6 +245,17 @@ func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequ
 	initialChunkCount := len(result.Refs)
 	result.Stats.TotalChunks = int64(initialChunkCount)
 	result.Stats.PostFilterChunks = int64(initialChunkCount) // populate early for error reponses
+	result.Stats.ChunkRefsLookupTime = chunkRefsLookupDuration.Seconds()
+
+	// Compute unique streams matched from chunk refs
+	// Allocate map size based on chunk count since unique streams <= number of chunks
+	{
+		seen := make(map[uint64]struct{}, initialChunkCount)
+		for _, ref := range result.Refs {
+			seen[ref.Fingerprint] = struct{}{}
+		}
+		result.Stats.TotalStreams = int64(len(seen))
+	}
 
 	defer func() {
 		if err == nil {
@@ -278,17 +291,19 @@ func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequ
 
 	start = time.Now()
 	chunkRefs, used, err := g.bloomQuerier.FilterChunkRefs(ctx, instanceID, req.From, req.Through, seriesMap, result.Refs, req.Plan)
+	bloomFilterDuration := time.Since(start)
 	if err != nil {
 		return nil, err
 	}
 	sp.AddEvent("bloomQuerier.FilterChunkRefs", trace.WithAttributes(
-		attribute.String("duration", time.Since(start).String()),
+		attribute.String("duration", bloomFilterDuration.String()),
 	))
 
 	result.Refs = chunkRefs
 	level.Info(logger).Log("msg", "return filtered chunk refs", "unfiltered", initialChunkCount, "filtered", len(result.Refs), "used_blooms", used)
 	result.Stats.PostFilterChunks = int64(len(result.Refs))
 	result.Stats.UsedBloomFilters = used
+	result.Stats.BloomFilterTime = bloomFilterDuration.Seconds()
 	return result, nil
 }
 
@@ -465,6 +480,8 @@ func (g *Gateway) boundedShards(
 	ctx, sp := tracer.Start(ctx, "indexgateway.boundedShards")
 	defer sp.End()
 
+	start := time.Now()
+
 	// 1) for all bounds, get chunk refs
 	refs, err := g.indexQuerier.GetChunkRefsWithSizingInfo(ctx, instanceID, req.From, req.Through, p)
 	if err != nil {
@@ -549,6 +566,19 @@ func (g *Gateway) boundedShards(
 		"end_delta", time.Since(req.Through.Time()).String(),
 		"filters", len(filters),
 	)
+
+	// Populate index statistics for metrics logging
+	resp.Statistics.Index.TotalChunks = int64(ct)
+	resp.Statistics.Index.PostFilterChunks = int64(len(filtered))
+	// compute unique streams matched post-filtering
+	{
+		seen := make(map[model.Fingerprint]struct{}, 1024)
+		for _, ref := range filtered {
+			seen[model.Fingerprint(ref.Fingerprint)] = struct{}{}
+		}
+		resp.Statistics.Index.TotalStreams = int64(len(seen))
+	}
+	resp.Statistics.Index.ShardsDuration = int64(time.Since(start))
 
 	// 3) build shards
 	return server.Send(resp)

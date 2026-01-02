@@ -2,18 +2,27 @@ package scheduler
 
 import (
 	"fmt"
+	"net/http"
 	"slices"
+	"time"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 )
 
 // task wraps a [workflow.Task] with its handler.
 type task struct {
+	assignTime time.Time // Time when task was assigned to a worker.
+	queueTime  time.Time // Time when task was enqueued.
+
 	inner   *workflow.Task
 	handler workflow.TaskEventHandler
 
-	owner  *wire.Peer
+	// metadata holds additional metadata associated with the task.
+	// This can be used to stortracing and other information that
+	// should be propagated to workers.
+	metadata http.Header
+
+	owner  *workerConn
 	status workflow.TaskStatus
 }
 
@@ -32,18 +41,29 @@ var validTaskTransitions = map[workflow.TaskState][]workflow.TaskState{
 //
 // Returns true if the state was updated, false otherwise (such as if the task
 // is already in the desired state).
-func (t *task) setState(newStatus workflow.TaskStatus) (bool, error) {
+func (t *task) setState(m *metrics, newStatus workflow.TaskStatus) (bool, error) {
 	oldState, newState := t.status.State, newStatus.State
 
-	if newState == oldState {
+	switch {
+	case newStatus != t.status && newState == oldState:
+		// State is the same (so we don't have to validate transitions), but
+		// there's a new payload about the status, so we should store it.
+		t.status = newStatus
+		return true, nil
+
+	case newState == oldState:
+		// Status is the exact same, no need to update.
 		return false, nil
+
+	default:
+		validStates := validTaskTransitions[oldState]
+		if !slices.Contains(validStates, newState) {
+			return false, fmt.Errorf("invalid state transition from %s to %s", oldState, newState)
+		}
+
+		t.status = newStatus
+		m.tasksTotal.WithLabelValues(newState.String()).Inc()
+		return true, nil
 	}
 
-	validStates := validTaskTransitions[oldState]
-	if !slices.Contains(validStates, newState) {
-		return false, fmt.Errorf("invalid state transition from %s to %s", oldState, newState)
-	}
-
-	t.status = newStatus
-	return true, nil
 }

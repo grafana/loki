@@ -29,11 +29,10 @@ type ProduceResponseBlock struct {
 }
 
 func (b *ProduceResponseBlock) decode(pd packetDecoder, version int16) (err error) {
-	tmp, err := pd.getInt16()
+	b.Err, err = pd.getKError()
 	if err != nil {
 		return err
 	}
-	b.Err = KError(tmp)
 
 	b.Offset, err = pd.getInt64()
 	if err != nil {
@@ -59,7 +58,7 @@ func (b *ProduceResponseBlock) decode(pd packetDecoder, version int16) (err erro
 }
 
 func (b *ProduceResponseBlock) encode(pe packetEncoder, version int16) (err error) {
-	pe.putInt16(int16(b.Err))
+	pe.putKError(b.Err)
 	pe.putInt64(b.Offset)
 
 	if version >= 2 {
@@ -127,12 +126,9 @@ func (r *ProduceResponse) decode(pd packetDecoder, version int16) (err error) {
 	}
 
 	if r.Version >= 1 {
-		millis, err := pd.getInt32()
-		if err != nil {
+		if r.ThrottleTime, err = pd.getDurationMs(); err != nil {
 			return err
 		}
-
-		r.ThrottleTime = time.Duration(millis) * time.Millisecond
 	}
 
 	return nil
@@ -162,7 +158,7 @@ func (r *ProduceResponse) encode(pe packetEncoder) error {
 	}
 
 	if r.Version >= 1 {
-		pe.putInt32(int32(r.ThrottleTime / time.Millisecond))
+		pe.putDurationMs(r.ThrottleTime)
 	}
 	return nil
 }

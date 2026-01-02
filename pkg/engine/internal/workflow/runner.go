@@ -3,46 +3,68 @@ package workflow
 import (
 	"context"
 	"fmt"
+	"time"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
+	"github.com/apache/arrow-go/v18/arrow"
+
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
+
+// A Manifest is a collection of related Tasks and Streams. A manifest is given
+// to a [Runner] before tasks can run.
+type Manifest struct {
+	// Streams are the collection of streams within a manifest.
+	Streams []*Stream
+
+	// Tasks are the collection of Tasks within a manifest. Tasks only reference
+	// Streams within the same manifest.
+	Tasks []*Task
+
+	StreamEventHandler StreamEventHandler // Handler for stream events.
+	TaskEventHandler   TaskEventHandler   // Handler for task events.
+}
+
+// A RecordWriter is used to write records to a stream.
+type RecordWriter interface {
+	// Write writes a new record to the stream.
+	Write(ctx context.Context, record arrow.RecordBatch) error
+}
 
 // A Runner can asynchronously execute a workflow.
 type Runner interface {
-	// AddStreams registers a list of Streams that can be used by Tasks.
-	// AddStreams returns an error if any of the streams (by ID) are already
-	// registered.
+	// RegisterManifest registers a Manifest to use with the runner. Registering
+	// a manifest records all of the streams and tasks inside of it for use.
 	//
-	// The provided handler will be called whenever any of the provided streams
-	// change state.
-	AddStreams(ctx context.Context, handler StreamEventHandler, streams ...*Stream) error
-
-	// RemoveStreams removes a list of Streams that can be used by Tasks. The
-	// associated [StreamEventHandler] will no longer be called for removed
-	// streams.
+	// Tasks within the manifest must only reference streams within the same
+	// manifest.
 	//
-	// RemoveStreams returns an error if there are active tasks using the
-	// streams.
-	RemoveStreams(ctx context.Context, streams ...*Stream) error
+	// RegisterManifest returns an error if a stream or task is already
+	// associated with a different manifest.
+	//
+	// The handlers defined by the manifest will be invoked whenever the
+	// corresponding resources of the manifest change state.
+	RegisterManifest(ctx context.Context, manifest *Manifest) error
 
-	// Listen binds the caller as the receiver of the specified stream.
-	// Listening on a stream prevents tasks from reading from it.
-	Listen(ctx context.Context, stream *Stream) (executor.Pipeline, error)
+	// UnregisterManifest unregisters a Manifest from the runner. Unregistering
+	// a manifest forcibly cancels any tasks associated with it.
+	//
+	// UnregisterManifest returns an error if the manifest is not registered or
+	// if it contains unregistered streams or tasks.
+	UnregisterManifest(ctx context.Context, manifest *Manifest) error
+
+	// Listen binds the stream to write to the provided writer. Listen returns
+	// an error if the stream was not defined in a registered manifest, or if a
+	// task is already bound to the stream as a reader.
+	Listen(ctx context.Context, writer RecordWriter, stream *Stream) error
 
 	// Start begins executing the provided tasks in the background. Start
-	// returns an error if any of the Tasks references an unregistered Stream,
-	// or if any of the tasks are a reader of a stream that's already bound.
-	//
-	// The provided handler will be called whenever any of the provided tasks
-	// change state.
-	//
-	// Implementations must track executed tasks until the tasks enter a
-	// terminal state.
+	// returns an error if any of the Tasks were not registered through a
+	// manifest.
 	//
 	// The provided context is used for the lifetime of the Start call. To
 	// cancel started tasks, use [Runner.Cancel].
-	Start(ctx context.Context, handler TaskEventHandler, tasks ...*Task) error
+	Start(ctx context.Context, tasks ...*Task) error
 
 	// Cancel requests cancellation of the specified tasks. Cancel returns an
 	// error if any of the tasks were not found.
@@ -102,9 +124,25 @@ type TaskStatus struct {
 	// set when State is [TaskStateFailed].
 	Error error
 
+	// Capture contains observations about the execution of the task.
+	Capture *xcap.Capture
+
 	// Statistics report analytics about the lifetime of a task. Only set
 	// for terminal task states (see [TaskState.Terminal]).
 	Statistics *stats.Result
+
+	// ContributingTimeRange of a running task. Only set for non-terminal states.
+	ContributingTimeRange ContributingTimeRange
+}
+
+// ContributingTimeRange represents a time range of input data that can change the
+// current state of a running task. Anything outside of this range can not meaningfully
+// contribute to the task state.
+type ContributingTimeRange struct {
+	// End of the range
+	Timestamp time.Time
+	// Less than Timestamp
+	LessThan bool
 }
 
 // TaskState represents the state of a Task. It is sent as an event by a

@@ -436,10 +436,7 @@ func (p *OpenMetricsParser) nextToken() token {
 }
 
 func (p *OpenMetricsParser) parseError(exp string, got token) error {
-	e := p.l.i + 1
-	if len(p.l.b) < e {
-		e = len(p.l.b)
-	}
+	e := min(len(p.l.b), p.l.i+1)
 	return fmt.Errorf("%s, got %q (%q) while parsing: %q", exp, p.l.b[p.l.start:e], got, p.l.b[p.start:e])
 }
 
@@ -776,7 +773,7 @@ func normalizeFloatsInLabelValues(t model.MetricType, l, v string) string {
 	if (t == model.MetricTypeSummary && l == model.QuantileLabel) || (t == model.MetricTypeHistogram && l == model.BucketLabel) {
 		f, err := strconv.ParseFloat(v, 64)
 		if err == nil {
-			return formatOpenMetricsFloat(f)
+			return labels.FormatOpenMetricsFloat(f)
 		}
 	}
 	return v

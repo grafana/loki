@@ -123,8 +123,7 @@ func buildUnitSuffixes(unit string) (mainUnitSuffix, perUnitSuffix string) {
 func cleanUpUnit(unit string) string {
 	// Multiple consecutive underscores are replaced with a single underscore.
 	// This is part of the OTel to Prometheus specification: https://github.com/open-telemetry/opentelemetry-specification/blob/v1.38.0/specification/compatibility/prometheus_and_openmetrics.md#otlp-metric-points-to-prometheus.
-	return strings.TrimPrefix(multipleUnderscoresRE.ReplaceAllString(
+	return strings.TrimPrefix(collapseMultipleUnderscores(
 		strings.Map(replaceInvalidMetricChar, unit),
-		"_",
 	), "_")
 }

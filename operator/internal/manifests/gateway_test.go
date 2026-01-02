@@ -11,8 +11,10 @@ import (
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 
 	configv1 "github.com/grafana/loki/operator/api/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
@@ -284,9 +286,10 @@ func TestBuildGateway_HasExtraObjectsForTenantMode(t *testing.T) {
 		},
 		OpenShiftOptions: openshift.Options{
 			BuildOpts: openshift.BuildOptions{
-				GatewayName:        "abc",
-				LokiStackName:      "abc",
-				LokiStackNamespace: "efgh",
+				GatewayName:           "abc",
+				LokiStackName:         "abc",
+				LokiStackNamespace:    "efgh",
+				ExternalAccessEnabled: true,
 			},
 		},
 		Stack: lokiv1.LokiStackSpec{
@@ -318,11 +321,12 @@ func TestBuildGateway_WithExtraObjectsForTenantMode_RouteSvcMatches(t *testing.T
 		},
 		OpenShiftOptions: openshift.Options{
 			BuildOpts: openshift.BuildOptions{
-				GatewayName:          "abc",
-				GatewaySvcName:       serviceNameGatewayHTTP("abcd"),
-				GatewaySvcTargetPort: gatewayHTTPPortName,
-				LokiStackName:        "abc",
-				LokiStackNamespace:   "efgh",
+				GatewayName:           "abc",
+				GatewaySvcName:        serviceNameGatewayHTTP("abcd"),
+				GatewaySvcTargetPort:  gatewayHTTPPortName,
+				LokiStackName:         "abc",
+				LokiStackNamespace:    "efgh",
+				ExternalAccessEnabled: true,
 			},
 		},
 		Stack: lokiv1.LokiStackSpec{
@@ -341,7 +345,7 @@ func TestBuildGateway_WithExtraObjectsForTenantMode_RouteSvcMatches(t *testing.T
 	require.NoError(t, err)
 
 	svc := objs[5].(*corev1.Service)
-	rt := objs[7].(*routev1.Route)
+	rt := objs[10].(*routev1.Route)
 	require.Equal(t, svc.Kind, rt.Spec.To.Kind)
 	require.Equal(t, svc.Name, rt.Spec.To.Name)
 	require.Equal(t, svc.Spec.Ports[0].Name, rt.Spec.Port.TargetPort.StrVal)
@@ -395,11 +399,12 @@ func TestBuildGateway_WithExtraObjectsForTenantMode_ReplacesIngressWithRoute(t *
 		},
 		OpenShiftOptions: openshift.Options{
 			BuildOpts: openshift.BuildOptions{
-				GatewayName:          GatewayName("abcd"),
-				GatewaySvcName:       serviceNameGatewayHTTP("abcd"),
-				GatewaySvcTargetPort: gatewayHTTPPortName,
-				LokiStackName:        "abc",
-				LokiStackNamespace:   "efgh",
+				GatewayName:           GatewayName("abcd"),
+				GatewaySvcName:        serviceNameGatewayHTTP("abcd"),
+				GatewaySvcTargetPort:  gatewayHTTPPortName,
+				LokiStackName:         "abc",
+				LokiStackNamespace:    "efgh",
+				ExternalAccessEnabled: true,
 			},
 		},
 		Stack: lokiv1.LokiStackSpec{
@@ -987,7 +992,7 @@ func TestBuildGateway_PodDisruptionBudget(t *testing.T) {
 	}
 	objs, err := BuildGateway(opts)
 	require.NoError(t, err)
-	require.Len(t, objs, 13)
+	require.Len(t, objs, 12)
 
 	pdb := objs[6].(*policyv1.PodDisruptionBudget)
 	require.NotNil(t, pdb)
@@ -1056,4 +1061,98 @@ func TestBuildGateway_TopologySpreadConstraint(t *testing.T) {
 			},
 		},
 	})
+}
+
+func TestBuildGateway_ExternalAccessControl(t *testing.T) {
+	tt := []struct {
+		desc                   string
+		externalAccessDisabled *bool
+		expectIngress          bool
+	}{
+		{
+			desc:                   "external access enabled (default) - Kubernetes",
+			externalAccessDisabled: nil,
+			expectIngress:          true,
+		},
+		{
+			desc:                   "external access explicitly enabled - Kubernetes",
+			externalAccessDisabled: ptr.To(false),
+			expectIngress:          true,
+		},
+		{
+			desc:                   "external access disabled - Kubernetes",
+			externalAccessDisabled: ptr.To(true),
+			expectIngress:          false,
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.desc, func(t *testing.T) {
+			t.Parallel()
+
+			tenantsSpec := &lokiv1.TenantsSpec{
+				Mode: lokiv1.Static,
+				Authorization: &lokiv1.AuthorizationSpec{
+					RoleBindings: []lokiv1.RoleBindingsSpec{
+						{
+							Name: "test-binding",
+							Subjects: []lokiv1.Subject{
+								{
+									Name: "test@example.com",
+									Kind: "user",
+								},
+							},
+							Roles: []string{"read-write"},
+						},
+					},
+					Roles: []lokiv1.RoleSpec{
+						{
+							Name:        "read-write",
+							Resources:   []string{"logs"},
+							Tenants:     []string{"test"},
+							Permissions: []lokiv1.PermissionType{"read", "write"},
+						},
+					},
+				},
+			}
+
+			if tc.externalAccessDisabled != nil {
+				tenantsSpec.DisableIngress = *tc.externalAccessDisabled
+			}
+
+			opts := Options{
+				Name:      "test-stack",
+				Namespace: "test-ns",
+				Image:     "test-image",
+				Stack: lokiv1.LokiStackSpec{
+					Size: lokiv1.SizeOneXExtraSmall,
+					Template: &lokiv1.LokiTemplateSpec{
+						Gateway: &lokiv1.LokiComponentSpec{
+							Replicas: 1,
+						},
+					},
+					Tenants: tenantsSpec,
+				},
+				Timeouts: defaultTimeoutConfig,
+			}
+
+			objs, err := BuildGateway(opts)
+			require.NoError(t, err)
+
+			ingressCount := 0
+
+			for _, obj := range objs {
+				switch obj.(type) {
+				case *networkingv1.Ingress:
+					ingressCount++
+				}
+			}
+
+			if tc.expectIngress {
+				require.Equal(t, 1, ingressCount, "Expected exactly one Ingress object")
+			} else {
+				require.Equal(t, 0, ingressCount, "Expected no Ingress objects")
+			}
+		})
+	}
 }

@@ -7,6 +7,8 @@ import (
 	"sort"
 	"time"
 
+	"github.com/oklog/ulid/v2"
+
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/logical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
@@ -128,6 +130,16 @@ func (p *Planner) convertPredicate(inst logical.Value) Expression {
 		return &ColumnExpr{Ref: inst.Ref}
 	case *logical.Literal:
 		return NewLiteral(inst.Value())
+	case *logical.FunctionOp:
+		exprs := make([]Expression, len(inst.Values))
+		for i, v := range inst.Values {
+			exprs[i] = p.convertPredicate(v)
+		}
+		node := &VariadicExpr{
+			Op:          inst.Op,
+			Expressions: exprs,
+		}
+		return node
 	default:
 		panic(fmt.Sprintf("invalid value for predicate: %T", inst))
 	}
@@ -146,12 +158,12 @@ func (p *Planner) process(inst logical.Value, ctx *Context) (Node, error) {
 		return p.processSort(inst, ctx)
 	case *logical.Limit:
 		return p.processLimit(inst, ctx)
+	case *logical.TopK:
+		return p.processTopK(inst, ctx)
 	case *logical.RangeAggregation:
 		return p.processRangeAggregation(inst, ctx)
 	case *logical.VectorAggregation:
 		return p.processVectorAggregation(inst, ctx)
-	case *logical.Parse:
-		return p.processParse(inst, ctx)
 	case *logical.BinOp:
 		return p.processBinOp(inst, ctx)
 	case *logical.UnaryOp:
@@ -177,34 +189,41 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) (Node, e
 
 	from, through := ctx.GetResolveTimeRange()
 
-	filteredShardDescriptors, err := p.catalog.ResolveShardDescriptorsWithShard(p.convertPredicate(lp.Selector), predicates, ShardInfo(*shard), from, through)
+	dataObjs, err := p.catalog.ResolveDataObjSections(p.convertPredicate(lp.Selector), predicates, ShardInfo(*shard), from, through)
 	if err != nil {
 		return nil, err
 	}
-	sort.Slice(filteredShardDescriptors, func(i, j int) bool {
-		return filteredShardDescriptors[i].TimeRange.End.After(filteredShardDescriptors[j].TimeRange.End)
+	sort.Slice(dataObjs, func(i, j int) bool {
+		return dataObjs[i].TimeRange.End.After(dataObjs[j].TimeRange.End)
 	})
 	if ctx.direction == ASC {
-		slices.Reverse(filteredShardDescriptors)
+		slices.Reverse(dataObjs)
 	}
 
 	// Scan work can be parallelized across multiple workers, so we wrap
 	// everything into a single Parallelize node.
-	var parallelize Node = &Parallelize{}
+	var parallelize Node = &Parallelize{
+		NodeID: ulid.Make(),
+	}
 	p.plan.graph.Add(parallelize)
 
-	scanSet := &ScanSet{}
+	scanSet := &ScanSet{
+		NodeID: ulid.Make(),
+	}
 	p.plan.graph.Add(scanSet)
 
-	for _, desc := range filteredShardDescriptors {
-		for _, section := range desc.Sections {
+	for _, dataObj := range dataObjs {
+		for _, section := range dataObj.Sections {
 			scanSet.Targets = append(scanSet.Targets, &ScanTarget{
 				Type: ScanTypeDataObject,
 
 				DataObject: &DataObjScan{
-					Location:  desc.Location,
-					StreamIDs: desc.Streams,
-					Section:   section,
+					NodeID: ulid.Make(),
+
+					Location:     dataObj.Location,
+					StreamIDs:    dataObj.Streams,
+					Section:      section,
+					MaxTimeRange: dataObj.TimeRange,
 				},
 			})
 		}
@@ -214,9 +233,11 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) (Node, e
 
 	if p.context.v1Compatible {
 		compat := &ColumnCompat{
+			NodeID: ulid.Make(),
+
 			Source:      types.ColumnTypeMetadata,
 			Destination: types.ColumnTypeMetadata,
-			Collision:   types.ColumnTypeLabel,
+			Collisions:  []types.ColumnType{types.ColumnTypeLabel},
 		}
 		base, err = p.wrapNodeWith(base, compat)
 		if err != nil {
@@ -235,6 +256,8 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) (Node, e
 // Convert [logical.Select] into one [Filter] node.
 func (p *Planner) processSelect(lp *logical.Select, ctx *Context) (Node, error) {
 	node := &Filter{
+		NodeID: ulid.Make(),
+
 		Predicates: []Expression{p.convertPredicate(lp.Predicate)},
 	}
 	p.plan.graph.Add(node)
@@ -256,6 +279,8 @@ func (p *Planner) processSort(lp *logical.Sort, ctx *Context) (Node, error) {
 	}
 
 	node := &TopK{
+		NodeID: ulid.Make(),
+
 		SortBy:     &ColumnExpr{Ref: lp.Column.Ref},
 		Ascending:  order == ASC,
 		NullsFirst: false,
@@ -279,14 +304,51 @@ func (p *Planner) processSort(lp *logical.Sort, ctx *Context) (Node, error) {
 	return node, nil
 }
 
+// processTopK processes a [logical.TopK] node.
+func (p *Planner) processTopK(lp *logical.TopK, ctx *Context) (Node, error) {
+	order := DESC
+	if lp.Ascending {
+		order = ASC
+	}
+
+	node := &TopK{
+		NodeID: ulid.Make(),
+
+		SortBy:     &ColumnExpr{Ref: lp.SortBy.Ref},
+		Ascending:  order == ASC,
+		NullsFirst: lp.NullsFirst,
+		K:          lp.K,
+	}
+
+	p.plan.graph.Add(node)
+
+	child, err := p.process(lp.Table, ctx.WithDirection(order))
+	if err != nil {
+		return nil, err
+	}
+
+	if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: child}); err != nil {
+		return nil, err
+	}
+	return node, nil
+}
+
 // Converts a [logical.Projection] into a physical [Projection] node.
 func (p *Planner) processProjection(lp *logical.Projection, ctx *Context) (Node, error) {
 	expressions := make([]Expression, len(lp.Expressions))
+	needsCompat := false
 	for i := range lp.Expressions {
 		expressions[i] = p.convertPredicate(lp.Expressions[i])
+		if funcExpr, ok := lp.Expressions[i].(*logical.FunctionOp); ok {
+			if funcExpr.Op == types.VariadicOpParseJSON || funcExpr.Op == types.VariadicOpParseLogfmt {
+				needsCompat = true
+			}
+		}
 	}
 
-	node := &Projection{
+	var node Node = &Projection{
+		NodeID: ulid.Make(),
+
 		Expressions: expressions,
 		All:         lp.All,
 		Expand:      lp.Expand,
@@ -302,12 +364,30 @@ func (p *Planner) processProjection(lp *logical.Projection, ctx *Context) (Node,
 		return nil, err
 	}
 
+	if needsCompat && p.context.v1Compatible {
+		compat := &ColumnCompat{
+			NodeID: ulid.Make(),
+
+			Source:      types.ColumnTypeParsed,
+			Destination: types.ColumnTypeParsed,
+			// Check for collisions against both label and metadata columns.
+			Collisions: []types.ColumnType{types.ColumnTypeLabel, types.ColumnTypeMetadata},
+		}
+		var err error
+		node, err = p.wrapNodeWith(node, compat)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	return node, nil
 }
 
 // Convert [logical.Limit] into one [Limit] node.
 func (p *Planner) processLimit(lp *logical.Limit, ctx *Context) (Node, error) {
 	node := &Limit{
+		NodeID: ulid.Make(),
+
 		Skip:  lp.Skip,
 		Fetch: lp.Fetch,
 	}
@@ -323,18 +403,23 @@ func (p *Planner) processLimit(lp *logical.Limit, ctx *Context) (Node, error) {
 }
 
 func (p *Planner) processRangeAggregation(r *logical.RangeAggregation, ctx *Context) (Node, error) {
-	partitionBy := make([]ColumnExpression, len(r.PartitionBy))
-	for i, col := range r.PartitionBy {
-		partitionBy[i] = &ColumnExpr{Ref: col.Ref}
+	grouping := make([]ColumnExpression, len(r.Grouping.Columns))
+	for i, col := range r.Grouping.Columns {
+		grouping[i] = &ColumnExpr{Ref: col.Ref}
 	}
 
 	node := &RangeAggregation{
-		PartitionBy: partitionBy,
-		Operation:   r.Operation,
-		Start:       r.Start,
-		End:         r.End,
-		Range:       r.RangeInterval,
-		Step:        r.Step,
+		NodeID: ulid.Make(),
+
+		Grouping: Grouping{
+			Columns: grouping,
+			Without: r.Grouping.Without,
+		},
+		Operation: r.Operation,
+		Start:     r.Start,
+		End:       r.End,
+		Range:     r.RangeInterval,
+		Step:      r.Step,
 	}
 	p.plan.graph.Add(node)
 
@@ -351,13 +436,18 @@ func (p *Planner) processRangeAggregation(r *logical.RangeAggregation, ctx *Cont
 
 // Convert [logical.VectorAggregation] into one [VectorAggregation] node.
 func (p *Planner) processVectorAggregation(lp *logical.VectorAggregation, ctx *Context) (Node, error) {
-	groupBy := make([]ColumnExpression, len(lp.GroupBy))
-	for i, col := range lp.GroupBy {
-		groupBy[i] = &ColumnExpr{Ref: col.Ref}
+	grouping := make([]ColumnExpression, len(lp.Grouping.Columns))
+	for i, col := range lp.Grouping.Columns {
+		grouping[i] = &ColumnExpr{Ref: col.Ref}
 	}
 
 	node := &VectorAggregation{
-		GroupBy:   groupBy,
+		NodeID: ulid.Make(),
+
+		Grouping: Grouping{
+			Columns: grouping,
+			Without: lp.Grouping.Without,
+		},
 		Operation: lp.Operation,
 	}
 	p.plan.graph.Add(node)
@@ -411,10 +501,12 @@ func (p *Planner) collapseMathExpressions(lp logical.Value, rootNode bool, ctx *
 			}
 
 			// Insert an InnerJoin on timestamp before Projection
-			join := &Join{}
+			join := &Join{NodeID: ulid.Make()}
 			p.plan.graph.Add(join)
 
 			projection := &Projection{
+				NodeID: ulid.Make(),
+
 				Expressions: []Expression{
 					&BinaryExpr{
 						Left:  leftChild,
@@ -463,6 +555,8 @@ func (p *Planner) collapseMathExpressions(lp logical.Value, rootNode bool, ctx *
 		// we have to stop here and produce a Node, otherwise keep collapsing
 		if rootNode {
 			projection := &Projection{
+				NodeID: ulid.Make(),
+
 				Expressions: []Expression{expr},
 				All:         true,
 				Expand:      true,
@@ -489,6 +583,8 @@ func (p *Planner) collapseMathExpressions(lp logical.Value, rootNode bool, ctx *
 		}
 		if rootNode {
 			projection := &Projection{
+				NodeID: ulid.Make(),
+
 				Expressions: []Expression{expr},
 				All:         true,
 				Expand:      true,
@@ -505,7 +601,7 @@ func (p *Planner) collapseMathExpressions(lp logical.Value, rootNode bool, ctx *
 
 		return expr, input, inputRef, nil
 	case *logical.Literal:
-		return &LiteralExpr{Literal: v.Literal}, nil, nil, nil
+		return NewLiteral(v.Value()), nil, nil, nil
 	default:
 		// If it is neigher a literal nor an expression, then we continue `p.process` on this node and represent in
 		// as a column ref `value` in the final math expression.
@@ -537,38 +633,6 @@ func (p *Planner) processUnaryOp(lp *logical.UnaryOp, ctx *Context) (Node, error
 	_, node, _, err := p.collapseMathExpressions(lp, true, ctx)
 	if err != nil {
 		return nil, err
-	}
-
-	return node, nil
-}
-
-// Convert [logical.Parse] into one [ParseNode] node.
-// A ParseNode initially has an empty list of RequestedKeys which will be populated during optimization.
-func (p *Planner) processParse(lp *logical.Parse, ctx *Context) (Node, error) {
-	var node Node = &ParseNode{
-		Kind: convertParserKind(lp.Kind),
-	}
-	p.plan.graph.Add(node)
-
-	child, err := p.process(lp.Table, ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: child}); err != nil {
-		return nil, err
-	}
-
-	if p.context.v1Compatible {
-		compat := &ColumnCompat{
-			Source:      types.ColumnTypeParsed,
-			Destination: types.ColumnTypeParsed,
-			Collision:   types.ColumnTypeLabel,
-		}
-		node, err = p.wrapNodeWith(node, compat)
-		if err != nil {
-			return nil, err
-		}
 	}
 
 	return node, nil
@@ -615,15 +679,4 @@ func (p *Planner) Optimize(plan *Plan) (*Plan, error) {
 		}
 	}
 	return plan, nil
-}
-
-func convertParserKind(kind logical.ParserKind) ParserKind {
-	switch kind {
-	case logical.ParserLogfmt:
-		return ParserLogfmt
-	case logical.ParserJSON:
-		return ParserJSON
-	default:
-		return ParserInvalid
-	}
 }

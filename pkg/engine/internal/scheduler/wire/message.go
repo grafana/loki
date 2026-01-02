@@ -3,6 +3,7 @@ package wire
 import (
 	"fmt"
 	"net"
+	"net/http"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/oklog/ulid/v2"
@@ -17,26 +18,30 @@ const (
 	// MessageKindInvalid represents an invalid message.
 	MessageKindInvalid MessageKind = iota
 
-	MessageKindWorkerReady  // MessageKindWorkerReady represents [WorkerReadyMessage].
-	MessageKindTaskAssign   // MessageKindTaskAssign represents [TaskAssignMessage].
-	MessageKindTaskCancel   // MessageKindTaskCancel represents [TaskCancelMessage].
-	MessageKindTaskFlag     // MessageKindTaskFlag represents [TaskFlagMessage].
-	MessageKindTaskStatus   // MessageKindTaskStatus represents [TaskStatusMessage].
-	MessageKindStreamBind   // MessageKindStreamBind represents [StreamBindMessage].
-	MessageKindStreamData   // MessageKindStreamData represents [StreamDataMessage].
-	MessageKindStreamStatus // MessageKindStreamStatus represents [StreamStatusMessage].
+	MessageKindWorkerHello     // MessageKindWorkerHello represents [WorkerHelloMessage].
+	MessageKindWorkerSubscribe // MessageKindWorkerSubscribe represents [WorkerSubscribeMessage].
+	MessageKindWorkerReady     // MessageKindWorkerReady represents [WorkerReadyMessage].
+	MessageKindTaskAssign      // MessageKindTaskAssign represents [TaskAssignMessage].
+	MessageKindTaskCancel      // MessageKindTaskCancel represents [TaskCancelMessage].
+	MessageKindTaskFlag        // MessageKindTaskFlag represents [TaskFlagMessage].
+	MessageKindTaskStatus      // MessageKindTaskStatus represents [TaskStatusMessage].
+	MessageKindStreamBind      // MessageKindStreamBind represents [StreamBindMessage].
+	MessageKindStreamData      // MessageKindStreamData represents [StreamDataMessage].
+	MessageKindStreamStatus    // MessageKindStreamStatus represents [StreamStatusMessage].
 )
 
 var kindNames = [...]string{
-	MessageKindInvalid:      "Invalid",
-	MessageKindWorkerReady:  "WorkerReady",
-	MessageKindTaskAssign:   "TaskAssign",
-	MessageKindTaskCancel:   "TaskCancel",
-	MessageKindTaskFlag:     "TaskFlag",
-	MessageKindTaskStatus:   "TaskStatus",
-	MessageKindStreamBind:   "StreamBind",
-	MessageKindStreamData:   "StreamData",
-	MessageKindStreamStatus: "StreamStatus",
+	MessageKindInvalid:         "Invalid",
+	MessageKindWorkerHello:     "WorkerHello",
+	MessageKindWorkerSubscribe: "WorkerSubscribe",
+	MessageKindWorkerReady:     "WorkerReady",
+	MessageKindTaskAssign:      "TaskAssign",
+	MessageKindTaskCancel:      "TaskCancel",
+	MessageKindTaskFlag:        "TaskFlag",
+	MessageKindTaskStatus:      "TaskStatus",
+	MessageKindStreamBind:      "StreamBind",
+	MessageKindStreamData:      "StreamData",
+	MessageKindStreamStatus:    "StreamStatus",
 }
 
 // String returns a string representation of k.
@@ -62,13 +67,34 @@ type Message interface {
 
 // Messages about workers.
 type (
-	// WorkerReadyMessage is sent by a worker to the scheduler to request a new
-	// task to run. Ready workers are eventually assigned a task via
-	// [TaskAssignMessage].
+	// WorkerHelloMessage is sent by a peer to the scheduler to establish
+	// itself as a control plane connection that can run tasks.
 	//
-	// Workers may send multiple WorkerReadyMessage messages to request more
-	// tasks. Workers are automatically unmarked as ready once each
-	// [WorkerReadyMessage] has been responded to with a [TaskAssignMessage].
+	// WorkerHelloMessage must be sent by workers before any other worker
+	// messages.
+	WorkerHelloMessage struct {
+		// Threads is the number of threads the worker has available.
+		//
+		// The scheduler uses Threads to determine the maximum number of tasks
+		// that can be assigned concurrently to a worker.
+		Threads int
+	}
+
+	// WorkerSubscribeMessage is sent by a scheduler to request a
+	// [WorkerReadyMessage] from workers once they have at least one worker
+	// thread available.
+	//
+	// The subscription is cleared once the next [WorkerReadyMessage] is sent.
+	WorkerSubscribeMessage struct {
+		// No fields.
+	}
+
+	// WorkerReadyMessage is sent by a worker to the scheduler to signal that
+	// the worker has at least one worker thread available for running tasks.
+	//
+	// Workers may send WorkerReadyMessage at any time, but one must be sent in
+	// response to a [WorkerSubscribeMessage] once at least one worker thread is
+	// available.
 	WorkerReadyMessage struct {
 		// No fields.
 	}
@@ -77,8 +103,12 @@ type (
 // Messages about tasks.
 type (
 	// TaskAssignMessage is sent by the scheduler to a worker when there is a
-	// task to run. TaskAssignMessage is only sent to workers for which there is
-	// still at least one [WorkerReadyMessage].
+	// task to run.
+	//
+	// Workers that have no threads available should reject task assignment with
+	// a HTTP 429 Too Many Requests. When this happens, the scheduler will
+	// remove the ready state from the worker until it receives a
+	// WorkerReadyMessage.
 	TaskAssignMessage struct {
 		Task *workflow.Task // Task to run.
 
@@ -88,6 +118,9 @@ type (
 		// StreamStates does not have any entries for streams that the task
 		// writes to.
 		StreamStates map[ulid.ULID]workflow.StreamState
+
+		// Metadata holds additional metadata about the task.
+		Metadata http.Header
 	}
 
 	// TaskCancelMessage is sent by the scheduler to a worker when a task is no
@@ -126,8 +159,8 @@ type (
 	// StreamDataMessage is sent by a worker to a stream receiver to provide
 	// payload data for a stream.
 	StreamDataMessage struct {
-		StreamID ulid.ULID    // ID of the stream.
-		Data     arrow.Record // Payload data for the stream.
+		StreamID ulid.ULID         // ID of the stream.
+		Data     arrow.RecordBatch // Payload data for the stream.
 	}
 
 	// StreamStatusMessage communicates the status of the sending side of a
@@ -149,16 +182,24 @@ type (
 
 // Marker implementations
 
-func (WorkerReadyMessage) isMessage()  {}
-func (TaskAssignMessage) isMessage()   {}
-func (TaskCancelMessage) isMessage()   {}
-func (TaskFlagMessage) isMessage()     {}
-func (TaskStatusMessage) isMessage()   {}
-func (StreamBindMessage) isMessage()   {}
-func (StreamDataMessage) isMessage()   {}
-func (StreamStatusMessage) isMessage() {}
+func (WorkerHelloMessage) isMessage()     {}
+func (WorkerSubscribeMessage) isMessage() {}
+func (WorkerReadyMessage) isMessage()     {}
+func (TaskAssignMessage) isMessage()      {}
+func (TaskCancelMessage) isMessage()      {}
+func (TaskFlagMessage) isMessage()        {}
+func (TaskStatusMessage) isMessage()      {}
+func (StreamBindMessage) isMessage()      {}
+func (StreamDataMessage) isMessage()      {}
+func (StreamStatusMessage) isMessage()    {}
 
 // Kinds
+
+// Kind returns [MessageKindWorkerHello].
+func (WorkerHelloMessage) Kind() MessageKind { return MessageKindWorkerHello }
+
+// Kind returns [MessageKindWorkerSubscribe].
+func (WorkerSubscribeMessage) Kind() MessageKind { return MessageKindWorkerSubscribe }
 
 // Kind returns [MessageKindWorkerReady].
 func (WorkerReadyMessage) Kind() MessageKind { return MessageKindWorkerReady }

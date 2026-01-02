@@ -71,8 +71,6 @@ func parseGCPLogsEntry(data []byte, other model.LabelSet, otherInternal labels.L
 	}
 
 	var processed labels.Labels
-
-	// apply relabeling
 	if len(relabelConfig) > 0 {
 		processed, _ = relabel.Process(lbs.Labels(), relabelConfig...)
 	} else {
@@ -87,7 +85,7 @@ func parseGCPLogsEntry(data []byte, other model.LabelSet, otherInternal labels.L
 			return // (will continue Range loop, not abort)
 		}
 		// ignore invalid labels
-		if !model.LabelName(lbl.Name).IsValid() || !model.LabelValue(lbl.Value).IsValid() {
+		if !model.UTF8Validation.IsValidLabelName(lbl.Name) || !model.LabelValue(lbl.Value).IsValid() {
 			return // (will continue Range loop, not abort)
 		}
 		final[model.LabelName(lbl.Name)] = model.LabelValue(lbl.Value)

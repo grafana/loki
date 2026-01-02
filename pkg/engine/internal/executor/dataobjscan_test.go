@@ -82,7 +82,7 @@ func Test_dataobjScan(t *testing.T) {
 			Projections:    nil,           // All columns
 
 			BatchSize: 512,
-		}, log.NewNopLogger())
+		}, log.NewNopLogger(), nil)
 
 		expectFields := []arrow.Field{
 			semconv.FieldFromFQN("utf8.label.env", true),
@@ -115,7 +115,7 @@ prod,notloki,NULL,notloki-pod-1,1970-01-01 00:00:02,hello world`
 			},
 
 			BatchSize: 512,
-		}, log.NewNopLogger())
+		}, log.NewNopLogger(), nil)
 
 		expectFields := []arrow.Field{
 			semconv.FieldFromFQN("utf8.label.env", true),
@@ -141,7 +141,7 @@ prod,1970-01-01 00:00:02`
 			Projections:    nil,        // All columns
 
 			BatchSize: 512,
-		}, log.NewNopLogger())
+		}, log.NewNopLogger(), nil)
 
 		expectFields := []arrow.Field{
 			semconv.FieldFromFQN("utf8.label.env", true),
@@ -172,7 +172,7 @@ prod,notloki,NULL,notloki-pod-1,1970-01-01 00:00:02,hello world`
 				&physical.ColumnExpr{Ref: types.ColumnRef{Column: "env", Type: types.ColumnTypeAmbiguous}},
 			},
 			BatchSize: 512,
-		}, log.NewNopLogger())
+		}, log.NewNopLogger(), nil)
 
 		expectFields := []arrow.Field{
 			semconv.FieldFromFQN("utf8.label.env", true),
@@ -251,7 +251,7 @@ func Test_dataobjScan_DuplicateColumns(t *testing.T) {
 			StreamIDs:      []int64{1, 2, 3}, // All streams
 			Projections:    nil,              // All columns
 			BatchSize:      512,
-		}, log.NewNopLogger())
+		}, log.NewNopLogger(), nil)
 
 		expectFields := []arrow.Field{
 			semconv.FieldFromFQN("utf8.label.env", true),
@@ -285,7 +285,7 @@ prod,NULL,pod-1,loki,NULL,override,1970-01-01 00:00:01,message 1`
 				&physical.ColumnExpr{Ref: types.ColumnRef{Column: "pod", Type: types.ColumnTypeAmbiguous}},
 			},
 			BatchSize: 512,
-		}, log.NewNopLogger())
+		}, log.NewNopLogger(), nil)
 
 		expectFields := []arrow.Field{
 			semconv.FieldFromFQN("utf8.label.pod", true),
@@ -311,7 +311,7 @@ pod-1,override`
 				&physical.ColumnExpr{Ref: types.ColumnRef{Column: "namespace", Type: types.ColumnTypeAmbiguous}},
 			},
 			BatchSize: 512,
-		}, log.NewNopLogger())
+		}, log.NewNopLogger(), nil)
 
 		expectFields := []arrow.Field{
 			semconv.FieldFromFQN("utf8.label.namespace", true),
@@ -333,12 +333,14 @@ func buildDataobj(t testing.TB, streams []logproto.Stream) *dataobj.Object {
 	t.Helper()
 
 	builder, err := logsobj.NewBuilder(logsobj.BuilderConfig{
-		TargetPageSize:          8_000,
-		TargetObjectSize:        math.MaxInt,
-		TargetSectionSize:       32_000,
-		BufferSize:              8_000,
-		SectionStripeMergeLimit: 2,
-		DataobjSortOrder:        "timestamp-desc",
+		BuilderBaseConfig: logsobj.BuilderBaseConfig{
+			TargetPageSize:          8_000,
+			TargetObjectSize:        math.MaxInt,
+			TargetSectionSize:       32_000,
+			BufferSize:              8_000,
+			SectionStripeMergeLimit: 2,
+		},
+		DataobjSortOrder: "timestamp-desc",
 	}, nil)
 	require.NoError(t, err)
 

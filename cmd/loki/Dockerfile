@@ -1,4 +1,4 @@
-ARG GO_VERSION=1.24
+ARG GO_VERSION=1.25
 
 # Go build stage
 FROM golang:${GO_VERSION} AS build
@@ -20,12 +20,13 @@ RUN mkdir -p /etc/loki /loki/rules /loki/rules-temp && \
 FROM gcr.io/distroless/static:nonroot
 
 COPY --from=build /src/loki/cmd/loki/loki /usr/bin/loki
-COPY --from=filesystem /etc/loki /etc/loki
-COPY --from=filesystem /loki /loki
+COPY --from=filesystem --chown=10001:10001 /etc/loki /etc/loki
+COPY --from=filesystem --chown=10001:10001 /loki /loki
 COPY --from=filesystem /etc/passwd /etc/passwd
 COPY --from=filesystem /etc/group /etc/group
 
 USER 10001
+WORKDIR /
 EXPOSE 3100
 ENTRYPOINT [ "/usr/bin/loki" ]
 CMD ["-config.file=/etc/loki/local-config.yaml"]

@@ -14,7 +14,7 @@ import (
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
-// This operation is not supported by directory buckets.
+// This operation is not supported for directory buckets.
 //
 // This implementation of the GET action uses the acl subresource to return the
 // access control list (ACL) of a bucket. To use GET to return the ACL of the
@@ -35,6 +35,10 @@ import (
 // requests to read ACLs are still supported and return the
 // bucket-owner-full-control ACL with the owner being the account that created the
 // bucket. For more information, see [Controlling object ownership and disabling ACLs]in the Amazon S3 User Guide.
+//
+// You must URL encode any signed header values that contain spaces. For example,
+// if your header value is my file.txt , containing two spaces after my , you must
+// URL encode this value to my%20%20file.txt .
 //
 // The following operations are related to GetBucketAcl :
 //
@@ -95,7 +99,7 @@ type GetBucketAclOutput struct {
 	// A list of grants.
 	Grants []types.Grant
 
-	// Container for the bucket owner's display name and ID.
+	// Container for the bucket owner's ID.
 	Owner *types.Owner
 
 	// Metadata pertaining to the operation's result.
@@ -147,6 +151,9 @@ func (c *Client) addOperationGetBucketAclMiddlewares(stack *middleware.Stack, op
 	if err = addRecordResponseTiming(stack); err != nil {
 		return err
 	}
+	if err = addSpanRetryLoop(stack, options); err != nil {
+		return err
+	}
 	if err = addClientUserAgent(stack, options); err != nil {
 		return err
 	}
@@ -169,6 +176,9 @@ func (c *Client) addOperationGetBucketAclMiddlewares(stack *middleware.Stack, op
 		return err
 	}
 	if err = addIsExpressUserAgent(stack); err != nil {
+		return err
+	}
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpGetBucketAclValidationMiddleware(stack); err != nil {
@@ -202,6 +212,15 @@ func (c *Client) addOperationGetBucketAclMiddlewares(stack *middleware.Stack, op
 		return err
 	}
 	if err = addSerializeImmutableHostnameBucketMiddleware(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeRetryLoop(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAttempt(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptors(stack, options); err != nil {
 		return err
 	}
 	return nil

@@ -37,6 +37,8 @@ import (
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/bloombuild/builder"
 	"github.com/grafana/loki/v3/pkg/bloombuild/planner"
@@ -51,6 +53,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/explorer"
 	dataobjindex "github.com/grafana/loki/v3/pkg/dataobj/index"
 	"github.com/grafana/loki/v3/pkg/distributor"
+	engine_v2 "github.com/grafana/loki/v3/pkg/engine"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/ingester"
 	"github.com/grafana/loki/v3/pkg/limits"
@@ -125,6 +128,9 @@ const (
 	QueryLimiter                 = "query-limiter"
 	QueryLimitsInterceptors      = "query-limits-interceptors"
 	QueryLimitsTripperware       = "query-limits-tripperware"
+	QueryEngine                  = "query-engine"
+	QueryEngineScheduler         = "query-engine-scheduler"
+	QueryEngineWorker            = "query-engine-worker"
 	Store                        = "store"
 	TableManager                 = "table-manager"
 	RulerStorage                 = "ruler-storage"
@@ -354,6 +360,16 @@ func (t *Loki) initDistributor() (services.Service, error) {
 		return nil, errors.New("kafka is enabled in distributor but not in ingester")
 	}
 
+	// Add ingestion policy interceptors to ingester client
+	t.Cfg.IngesterClient.GRPCUnaryClientInterceptors = append(
+		t.Cfg.IngesterClient.GRPCUnaryClientInterceptors,
+		validation.ClientIngestionPolicyInterceptor,
+	)
+	t.Cfg.IngesterClient.GRCPStreamClientInterceptors = append(
+		t.Cfg.IngesterClient.GRCPStreamClientInterceptors,
+		validation.StreamClientIngestionPolicyInterceptor,
+	)
+
 	var err error
 	logger := log.With(util_log.Logger, "component", "distributor")
 	t.distributor, err = distributor.New(
@@ -581,15 +597,19 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		serverutil.ResponseJSONMiddleware(),
 	}
 
-	var store objstore.Bucket
-	if t.Cfg.Querier.EngineV2.Enable {
-		store, err = t.createDataObjBucket("dataobj-querier")
+	var (
+		store objstore.Bucket
+		ms    metastore.Metastore
+	)
+	if t.Cfg.QueryEngine.Enable {
+		store, err = t.getDataObjBucket("dataobj-querier")
 		if err != nil {
 			return nil, err
 		}
+		ms = metastore.NewObjectMetastore(store, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics)
 	}
 
-	t.querierAPI = querier.NewQuerierAPI(t.Cfg.Querier, t.Cfg.DataObj.Metastore, t.Querier, t.Overrides, store, prometheus.DefaultRegisterer, logger)
+	t.querierAPI = querier.NewQuerierAPI(t.Cfg.Querier, t.Cfg.QueryEngine, ms, t.Querier, t.Overrides, store, prometheus.DefaultRegisterer, logger)
 
 	indexStatsHTTPMiddleware := querier.WrapQuerySpanAndTimeout("query.IndexStats", t.Overrides)
 	indexShardsHTTPMiddleware := querier.WrapQuerySpanAndTimeout("query.IndexShards", t.Overrides)
@@ -1148,10 +1168,40 @@ func (i ingesterQueryOptions) QueryIngestersWithin() time.Duration {
 func (t *Loki) initQueryFrontendMiddleware() (_ services.Service, err error) {
 	level.Debug(util_log.Logger).Log("msg", "initializing query frontend tripperware")
 
+	v2Router := queryrange.RouterConfig{
+		Enabled: t.Cfg.QueryEngine.EnableEngineRouter,
+	}
+
+	if t.Cfg.QueryEngine.EnableEngineRouter {
+		start, end := t.Cfg.QueryEngine.ValidQueryRange()
+
+		level.Debug(util_log.Logger).Log(
+			"msg", "initializing v2 engine router",
+			"start_time", start,
+			"end_time", end,
+			"destination", t.Cfg.QueryEngine.DownstreamAddress,
+		)
+
+		handler, err := frontend.NewDownstreamRoundTripper(t.Cfg.QueryEngine.DownstreamAddress, http.DefaultTransport, queryrange.DefaultCodec)
+		if err != nil {
+			return nil, fmt.Errorf("creating downstream round tripper for v2 engine: %w", err)
+		}
+
+		v2Router = queryrange.RouterConfig{
+			Enabled: true,
+
+			Start: start,
+			Lag:   t.Cfg.QueryEngine.StorageLag,
+
+			Validate: engine_v2.IsQuerySupported,
+			Handler:  handler,
+		}
+	}
+
 	middleware, stopper, err := queryrange.NewMiddleware(
 		t.Cfg.QueryRange,
 		t.Cfg.Querier.Engine,
-		t.Cfg.Querier.EngineV2,
+		v2Router,
 		ingesterQueryOptions{t.Cfg.Querier},
 		util_log.Logger,
 		t.Overrides,
@@ -1366,6 +1416,155 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 		}
 		return nil
 	}), nil
+}
+
+func (t *Loki) initV2QueryEngine() (services.Service, error) {
+	if !t.Cfg.QueryEngine.Enable {
+		return nil, nil
+	}
+
+	store, err := t.getDataObjBucket("query-engine")
+	if err != nil {
+		return nil, err
+	}
+
+	logger := log.With(util_log.Logger, "component", "query-engine")
+
+	ms := metastore.NewObjectMetastore(store, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics)
+
+	engine, err := engine_v2.New(engine_v2.Params{
+		Logger:     logger,
+		Registerer: prometheus.DefaultRegisterer,
+
+		Config: t.Cfg.QueryEngine.Executor,
+
+		Scheduler: t.queryEngineV2Scheduler,
+		Limits:    t.Overrides,
+
+		Metastore: ms,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// TODO(rfratto): Validate that no other module which responds to these
+	// paths is enabled.
+	if t.Cfg.QueryEngine.Distributed {
+		toMerge := []middleware.Interface{
+			httpreq.ExtractQueryMetricsMiddleware(),
+			httpreq.ExtractQueryTagsMiddleware(),
+			httpreq.PropagateHeadersMiddleware(httpreq.LokiEncodingFlagsHeader, httpreq.LokiDisablePipelineWrappersHeader),
+			serverutil.RecoveryHTTPMiddleware,
+			t.HTTPAuthMiddleware,
+			serverutil.NewPrepopulateMiddleware(),
+			serverutil.ResponseJSONMiddleware(),
+		}
+
+		httpMiddleware := middleware.Merge(toMerge...)
+		handler := httpMiddleware.Wrap(engine_v2.Handler(t.Cfg.QueryEngine, logger, engine, t.Overrides))
+
+		t.Server.HTTP.Path("/loki/api/v1/query_range").Methods("GET", "POST").Handler(handler)
+		t.Server.HTTP.Path("/loki/api/v1/query").Methods("GET", "POST").Handler(handler)
+	}
+
+	t.queryEngineV2 = engine
+	return nil, nil
+}
+
+func (t *Loki) initV2QueryEngineScheduler() (services.Service, error) {
+	if !t.Cfg.QueryEngine.Enable {
+		return nil, nil
+	}
+
+	// Determine the advertise address. Results in nil if not running
+	// distributed execution.
+	listenPort := uint16(t.Cfg.Server.HTTPListenPort)
+	advertiseAddr, err := t.Cfg.QueryEngine.AdvertiseAddr(listenPort)
+	if err != nil {
+		return nil, err
+	}
+
+	sched, err := engine_v2.NewScheduler(engine_v2.SchedulerParams{
+		Logger: log.With(util_log.Logger, "component", "query-engine-scheduler"),
+
+		AdvertiseAddr: advertiseAddr,
+		Endpoint:      "/api/v2/frame",
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if err := sched.RegisterMetrics(prometheus.DefaultRegisterer); err != nil {
+		return nil, err
+	}
+	sched.Service().AddListener(services.NewListener(
+		nil, nil, nil,
+		func(_ services.State) { sched.UnregisterMetrics(prometheus.DefaultRegisterer) },
+		func(_ services.State, _ error) { sched.UnregisterMetrics(prometheus.DefaultRegisterer) },
+	))
+
+	// Only register HTTP handler when running distributed query execution
+	if t.Cfg.QueryEngine.Distributed {
+		sched.RegisterSchedulerServer(t.Server.HTTP)
+	}
+
+	t.queryEngineV2Scheduler = sched
+	return sched.Service(), nil
+}
+
+func (t *Loki) initV2QueryEngineWorker() (services.Service, error) {
+	if !t.Cfg.QueryEngine.Enable {
+		return nil, nil
+	}
+
+	// Determine the advertise address. Results in nil if not running
+	// distributed execution.
+	listenPort := uint16(t.Cfg.Server.HTTPListenPort)
+	advertiseAddr, err := t.Cfg.QueryEngine.AdvertiseAddr(listenPort)
+	if err != nil {
+		return nil, err
+	}
+
+	store, err := t.getDataObjBucket("query-engine-worker")
+	if err != nil {
+		return nil, err
+	}
+
+	logger := log.With(util_log.Logger, "component", "query-engine-worker")
+
+	worker, err := engine_v2.NewWorker(engine_v2.WorkerParams{
+		Logger: logger,
+		Bucket: store,
+
+		Config:   t.Cfg.QueryEngine.Worker,
+		Executor: t.Cfg.QueryEngine.Executor,
+
+		LocalScheduler: t.queryEngineV2Scheduler,
+
+		AdvertiseAddr: advertiseAddr,
+		Endpoint:      "/api/v2/frame",
+
+		Metastore: metastore.NewObjectMetastore(store, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if err := worker.RegisterMetrics(prometheus.DefaultRegisterer); err != nil {
+		return nil, err
+	}
+	worker.Service().AddListener(services.NewListener(
+		nil, nil, nil,
+		func(_ services.State) { worker.UnregisterMetrics(prometheus.DefaultRegisterer) },
+		func(_ services.State, _ error) { worker.UnregisterMetrics(prometheus.DefaultRegisterer) },
+	))
+
+	// Only register HTTP handler when running distributed query execution
+	if t.Cfg.QueryEngine.Distributed {
+		worker.RegisterWorkerServer(t.Server.HTTP)
+	}
+
+	return worker.Service(), nil
 }
 
 func (t *Loki) initRulerStorage() (_ services.Service, err error) {
@@ -1993,12 +2192,14 @@ func (t *Loki) initIngesterGRPCInterceptors() (services.Service, error) {
 		t.Cfg.Server.GRPCStreamMiddleware,
 		serverutil.StreamServerQueryTagsInterceptor,
 		serverutil.StreamServerHTTPHeadersInterceptor,
+		validation.StreamServerIngestionPolicyInterceptor,
 	)
 
 	t.Cfg.Server.GRPCMiddleware = append(
 		t.Cfg.Server.GRPCMiddleware,
 		serverutil.UnaryServerQueryTagsInterceptor,
 		serverutil.UnaryServerHTTPHeadersnIterceptor,
+		validation.ServerIngestionPolicyInterceptor,
 	)
 
 	return nil, nil
@@ -2090,7 +2291,7 @@ func (t *Loki) initUIRing() (services.Service, error) {
 }
 
 func (t *Loki) initDataObjExplorer() (services.Service, error) {
-	store, err := t.createDataObjBucket("dataobj-explorer")
+	store, err := t.getDataObjBucket("dataobj-explorer")
 	if err != nil {
 		return nil, err
 	}
@@ -2134,7 +2335,7 @@ func (t *Loki) initUI() (services.Service, error) {
 }
 
 func (t *Loki) initDataObjConsumerRing() (_ services.Service, err error) {
-	if !t.Cfg.Ingester.KafkaIngestion.Enabled {
+	if !t.Cfg.DataObj.Enabled {
 		return nil, nil
 	}
 
@@ -2160,7 +2361,7 @@ func (t *Loki) initDataObjConsumerRing() (_ services.Service, err error) {
 }
 
 func (t *Loki) initDataObjConsumerPartitionRing() (services.Service, error) {
-	if !t.Cfg.Ingester.KafkaIngestion.Enabled {
+	if !t.Cfg.DataObj.Enabled {
 		return nil, nil
 	}
 	kvClient, err := kv.NewClient(
@@ -2198,10 +2399,10 @@ func (t *Loki) initDataObjConsumerPartitionRing() (services.Service, error) {
 }
 
 func (t *Loki) initDataObjConsumer() (services.Service, error) {
-	if !t.Cfg.Ingester.KafkaIngestion.Enabled {
+	if !t.Cfg.DataObj.Enabled {
 		return nil, nil
 	}
-	store, err := t.createDataObjBucket("dataobj-consumer")
+	store, err := t.getDataObjBucket("dataobj-consumer")
 	if err != nil {
 		return nil, err
 	}
@@ -2228,18 +2429,23 @@ func (t *Loki) initDataObjConsumer() (services.Service, error) {
 	httpMiddleware := middleware.Merge(
 		serverutil.RecoveryHTTPMiddleware,
 	)
-	t.Server.HTTP.Methods("POST", "GET", "DELETE").Path("/dataobj-consumer/prepare_partition_downscale").Handler(
-		httpMiddleware.Wrap(http.HandlerFunc(t.dataObjConsumer.PreparePartitionDownscaleHandler)),
-	)
+	t.Server.HTTP.
+		Methods(http.MethodGet, http.MethodPost, http.MethodDelete).
+		Path("/dataobj-consumer/prepare-downscale").
+		Handler(httpMiddleware.Wrap(http.HandlerFunc(t.dataObjConsumer.PrepareDownscaleHandler)))
+	t.Server.HTTP.
+		Methods(http.MethodGet, http.MethodPost, http.MethodDelete).
+		Path("/dataobj-consumer/prepare-delayed-downscale").
+		Handler(httpMiddleware.Wrap(http.HandlerFunc(t.dataObjConsumer.PrepareDelayedDownscaleHandler)))
 
 	return t.dataObjConsumer, nil
 }
 
 func (t *Loki) initDataObjIndexBuilder() (services.Service, error) {
-	if !t.Cfg.Ingester.KafkaIngestion.Enabled {
+	if !t.Cfg.DataObj.Enabled {
 		return nil, nil
 	}
-	store, err := t.createDataObjBucket("dataobj-index-builder")
+	store, err := t.getDataObjBucket("dataobj-index-builder")
 	if err != nil {
 		return nil, err
 	}
@@ -2275,7 +2481,7 @@ func (t *Loki) initScratchStore() (services.Service, error) {
 	return services.NewIdleService(nil, nil), nil
 }
 
-func (t *Loki) createDataObjBucket(clientName string) (objstore.Bucket, error) {
+func (t *Loki) getDataObjBucket(clientName string) (objstore.Bucket, error) {
 	schema, err := t.Cfg.SchemaConfig.SchemaForTime(model.Now())
 	if err != nil {
 		return nil, fmt.Errorf("failed to get schema for now: %w", err)

@@ -20,10 +20,10 @@ package encrypt
 import (
 	"crypto/md5"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"net/http"
 
-	"github.com/minio/minio-go/v7/internal/json"
 	"golang.org/x/crypto/argon2"
 )
 

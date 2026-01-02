@@ -39,7 +39,7 @@ func newStreamInjector(view *streamsView) *streamInjector {
 //
 // Inject fails if there is no stream ID column in the input record, or if the
 // stream ID doesn't exist in the view given to [newStreamInjector].
-func (si *streamInjector) Inject(ctx context.Context, in arrow.Record) (arrow.Record, error) {
+func (si *streamInjector) Inject(ctx context.Context, in arrow.RecordBatch) (arrow.RecordBatch, error) {
 	streamIDCol, streamIDIndex, err := columnForIdent(streamInjectorColumnIdent, in)
 	if err != nil {
 		return nil, err
@@ -85,7 +85,7 @@ func (si *streamInjector) Inject(ctx context.Context, in arrow.Record) (arrow.Re
 		// label column all at once.
 		it, err := si.view.Labels(ctx, findID)
 		if err != nil {
-			return nil, fmt.Errorf("stream ID %d not found in section", findID)
+			return nil, err
 		}
 
 		for label := range it {
@@ -138,5 +138,5 @@ func (si *streamInjector) Inject(ctx context.Context, in arrow.Record) (arrow.Re
 	}
 
 	schema := arrow.NewSchemaWithEndian(fields, &md, in.Schema().Endianness())
-	return array.NewRecord(schema, arrs, in.NumRows()), nil
+	return array.NewRecordBatch(schema, arrs, in.NumRows()), nil
 }

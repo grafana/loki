@@ -1,11 +1,12 @@
 package physical
 
 import (
-	"fmt"
 	"slices"
+
+	"github.com/oklog/ulid/v2"
 )
 
-// DataObjLocation is a string that uniquely indentifies a data object location in
+// DataObjLocation is a string that uniquely identifies a data object location in
 // object storage.
 type DataObjLocation string
 
@@ -13,7 +14,7 @@ type DataObjLocation string
 // It contains information about the object location, stream IDs, projections,
 // predicates for reading data from a data object.
 type DataObjScan struct {
-	id string
+	NodeID ulid.ULID
 
 	// Location is the unique name of the data object that is used as source for
 	// reading streams.
@@ -31,25 +32,29 @@ type DataObjScan struct {
 	// returned. Predicates would almost always contain a time range filter to
 	// only read the logs for the requested time range.
 	Predicates []Expression
+	// The maximum boundary of timestamps that scanning the
+	// data object can possibly emit. Does not account for
+	// predicates.
+	// MaxTimeRange is not read when executing a scan.
+	// It can be used as metadata to control physical plan execution.
+	MaxTimeRange TimeRange
 }
 
 // ID implements the [Node] interface.
-// Returns a string that uniquely identifies the node in the plan.
-func (s *DataObjScan) ID() string {
-	if s.id == "" {
-		return fmt.Sprintf("%p", s)
-	}
-	return s.id
-}
+// Returns the ULID that uniquely identifies the node in the plan.
+func (s *DataObjScan) ID() ulid.ULID { return s.NodeID }
 
-// Clone returns a deep copy of the node (minus its ID).
+// Clone returns a deep copy of the node with a new unique ID.
 func (s *DataObjScan) Clone() Node {
 	return &DataObjScan{
-		Location:    s.Location,
-		Section:     s.Section,
-		StreamIDs:   slices.Clone(s.StreamIDs),
-		Projections: cloneExpressions(s.Projections),
-		Predicates:  cloneExpressions(s.Predicates),
+		NodeID: ulid.Make(),
+
+		Location:     s.Location,
+		Section:      s.Section,
+		StreamIDs:    slices.Clone(s.StreamIDs),
+		Projections:  cloneExpressions(s.Projections),
+		Predicates:   cloneExpressions(s.Predicates),
+		MaxTimeRange: s.MaxTimeRange,
 	}
 }
 
@@ -57,10 +62,4 @@ func (s *DataObjScan) Clone() Node {
 // Returns the type of the node.
 func (*DataObjScan) Type() NodeType {
 	return NodeTypeDataObjScan
-}
-
-// Accept implements the [Node] interface.
-// Dispatches itself to the provided [Visitor] v
-func (s *DataObjScan) Accept(v Visitor) error {
-	return v.VisitDataObjScan(s)
 }

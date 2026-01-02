@@ -89,10 +89,9 @@ spec:
         {{ toYaml .extraContainers | nindent 8 }}
         {{- end }}
         - name: memcached
-          {{- with $.ctx.Values.memcached.image }}
-          image: {{ .repository }}:{{ .tag }}
-          imagePullPolicy: {{ .pullPolicy }}
-          {{- end }}
+          {{- $dict := dict "service" $.ctx.Values.memcached.image "global" $.ctx.Values.global }}
+          image: {{ include "loki.baseImage" $dict }}
+          imagePullPolicy: {{ $.ctx.Values.memcached.image.pullPolicy }}
           resources:
           {{- if .resources }}
             {{- toYaml .resources | nindent 12 }}
@@ -155,10 +154,9 @@ spec:
 
       {{- if $.ctx.Values.memcachedExporter.enabled }}
         - name: exporter
-          {{- with $.ctx.Values.memcachedExporter.image }}
-          image: {{ .repository}}:{{ .tag }}
-          imagePullPolicy: {{ .pullPolicy }}
-          {{- end }}
+          {{- $dict := dict "service" $.ctx.Values.memcachedExporter.image "global" $.ctx.Values.global }}
+          image: {{ include "loki.baseImage" $dict }}
+          imagePullPolicy: {{ $.ctx.Values.memcachedExporter.image.pullPolicy }}
           ports:
             - containerPort: 9150
               name: http-metrics
@@ -203,6 +201,9 @@ spec:
         accessModes: [ "ReadWriteOnce" ]
         {{- with .persistence.storageClass }}
         storageClassName: {{ if (eq "-" .) }}""{{ else }}{{ . }}{{ end }}
+        {{- end }}
+        {{- with .persistence.volumeAttributesClassName }}
+        volumeAttributesClassName: {{ . }}
         {{- end }}
         resources:
           requests:

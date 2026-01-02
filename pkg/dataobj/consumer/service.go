@@ -35,6 +35,7 @@ type Service struct {
 	lifecycler                  *ring.Lifecycler
 	partitionInstanceLifecycler *ring.PartitionInstanceLifecycler
 	partitionReader             *partition.ReaderService
+	downscalePermitted          downscalePermittedFunc
 	watcher                     *services.FailureWatcher
 	logger                      log.Logger
 	reg                         prometheus.Registerer
@@ -127,11 +128,20 @@ func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, bucket objsto
 		processorFactory.New,
 		logger,
 		prometheus.WrapRegistererWithPrefix("loki_dataobj_consumer_", reg),
+		partitionInstanceLifecycler,
 	)
 	if err != nil {
 		return nil, err
 	}
 	s.partitionReader = partitionReader
+
+	// TODO: We have to pass prometheus.NewRegistry() to avoid duplicate
+	// metric registration with partition.NewReaderService.
+	offsetManager, err := partition.NewKafkaOffsetManager(kafkaCfg, cfg.LifecyclerConfig.ID, logger, prometheus.NewRegistry())
+	if err != nil {
+		return nil, err
+	}
+	s.downscalePermitted = newOffsetCommittedDownscaleFunc(offsetManager, partitionID, logger)
 
 	watcher := services.NewFailureWatcher()
 	watcher.WatchService(lifecycler)

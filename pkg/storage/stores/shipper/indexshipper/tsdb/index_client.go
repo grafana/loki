@@ -324,6 +324,9 @@ func (c *IndexClient) GetShards(ctx context.Context, userID string, from, throug
 
 		series = append(series, x)
 	}
+
+	// Record total unique streams matched in index statistics
+	resp.Statistics.Index.TotalStreams += int64(len(m))
 	sort.Sort(series)
 	resp.Shards = series.ShardsFor(targetBytesPerShard)
 
@@ -346,7 +349,7 @@ func withoutNameLabel(matchers []*labels.Matcher) []*labels.Matcher {
 
 	dst := make([]*labels.Matcher, 0, len(matchers)-1)
 	for _, m := range matchers {
-		if m.Name == labels.MetricName {
+		if m.Name == model.MetricNameLabel {
 			continue
 		}
 		dst = append(dst, m)

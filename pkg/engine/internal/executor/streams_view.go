@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 // streamsView provides a view of the streams in a section, allowing for
@@ -144,6 +145,9 @@ func (v *streamsView) init(ctx context.Context) (err error) {
 		return nil
 	}
 
+	ctx, region := xcap.StartRegion(ctx, "streamsView.init")
+	defer region.End()
+
 	if v.idColumn == nil { // Initialized in [newStreamsView].
 		// The streams builder always produces a section with a streams ID column.
 		// If we hit this, someone probably made a custom section and provided it
@@ -167,8 +171,9 @@ func (v *streamsView) init(ctx context.Context) (err error) {
 	}
 
 	r := streams.NewReader(readerOptions)
+	defer r.Close()
 
-	var records []arrow.Record
+	var records []arrow.RecordBatch
 
 	for {
 		rec, err := r.Read(ctx, v.batchSize)

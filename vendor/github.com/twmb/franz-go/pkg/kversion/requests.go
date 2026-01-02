@@ -1044,8 +1044,37 @@ func b40() *release {
 	return now
 }
 
+func b41() *release {
+	now := b40().clone(4, 1)
+
+	now.incmax(0, 13) // 13 produce KAFKA-10551 6f783f85362 KIP-516
+	now.incmax(1, 18) // 18 fetch KAFKA-14145 742b327025f KIP-1166
+	now.incmax(45, 1) // 1 alter partition assignments KAFKA-14121 cbd72cc216e KIP-860
+	now.incmax(66, 2) // 2 list transactions KAFKA-19073 0c1fbf3aebb KIP-1152
+	now.incmax(74, 1) // 1 list config resources (rename & extend) KAFKA-18904 c26b09c6092 KIP-1142
+
+	// 8f82f14a483 for v0, KAFKA-16713 66147d5de7c KIP-932 for v1
+	now.addkeyver(76, 1) // 1 share group heartbeat
+	now.addkeyver(77, 1) // 1 share group describe
+	now.addkeyver(78, 1) // 1 share fetch
+	now.addkeyver(79, 1) // 1 share acknowledge
+
+	// KAFKA-16950 fecbfb81332 KIP-932
+	now.addkey(83) // 0 initialize share group state
+	now.addkey(84) // 0 read share group state
+	now.addkey(85) // 0 write share group state
+	now.addkey(86) // 0 delete share group state
+	now.addkey(87) // 0 read share group state summary
+
+	now.addkey(90) // 0 describe share group offsets e3e4c179592, then KAFKA-16720 952113e8e0e KIP-932
+	now.addkey(91) // 0 alter share group offsets KAFKA-16717 6a6b80215d8 KIP-932
+	now.addkey(92) // 0 delete share group offsets KAFKA-16718 63229a768ce KIP-932
+
+	return now
+}
+
 func btip() *release {
-	return b40()
+	return b41()
 }
 
 ///////////////////////////////
@@ -1243,6 +1272,15 @@ func c40() *release {
 	return now
 }
 
+func c41() *release {
+	now := c40().clone(4, 1)
+
+	now.incmax(1, 18)
+	now.incmax(45, 1)
+
+	return now
+}
+
 func ctip() *release {
-	return c40()
+	return c41()
 }

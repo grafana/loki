@@ -10,8 +10,11 @@ See https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#sy
 Expand the name of the chart.
 */}}
 {{- define "loki.name" -}}
-{{- $default := ternary "enterprise-logs" "loki" .Values.enterprise.enabled }}
-{{- coalesce .Values.nameOverride $default | trunc 63 | trimSuffix "-" }}
+{{- $name := ternary "enterprise-logs" "loki" .Values.enterprise.enabled }}
+{{- if .Values.nameOverride }}
+{{- $name = (tpl .Values.nameOverride $) }}
+{{- end }}
+{{- $name | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
 {{/*
@@ -32,7 +35,7 @@ singleBinary fullname
 {{- if .Values.fullnameOverride -}}
 {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}
 {{- else -}}
-{{- $name := default .Chart.Name .Values.nameOverride -}}
+{{- $name := (include "loki.name" $) -}}
 {{- if contains $name .Release.Name -}}
 {{- .Release.Name | trunc 63 | trimSuffix "-" -}}
 {{- else -}}
@@ -149,10 +152,12 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 Create the name of the service account to use
 */}}
 {{- define "loki.serviceAccountName" -}}
-{{- if .Values.serviceAccount.create -}}
-    {{ default (include "loki.name" .) .Values.serviceAccount.name }}
+{{- if .Values.serviceAccount.name }}
+  {{- tpl .Values.serviceAccount.name $ }}
+{{- else if .Values.serviceAccount.create -}}
+  {{- include "loki.fullname" . }}
 {{- else -}}
-    {{ default "default" .Values.serviceAccount.name }}
+  {{- "default" }}
 {{- end -}}
 {{- end -}}
 
@@ -160,7 +165,7 @@ Create the name of the service account to use
 Base template for building docker image reference
 */}}
 {{- define "loki.baseImage" }}
-{{- $registry := .global.registry | default .service.registry | default "" -}}
+{{- $registry := .global.imageRegistry | default ((.global.image).registry) | default .global.registry | default .service.registry | default "" -}}
 {{- $repository := .service.repository | default "" -}}
 {{- $ref := ternary (printf ":%s" (.service.tag | default .defaultVersion | toString)) (printf "@%s" .service.digest) (empty .service.digest) -}}
 {{- if and $registry $repository -}}
@@ -199,8 +204,9 @@ Generated storage config for loki common config
 */}}
 {{- define "loki.commonStorageConfig" -}}
 {{- if .Values.loki.storage.use_thanos_objstore -}}
+{{- $bucketName := required "Please define loki.storage.bucketNames.chunks" (dig "storage" "bucketNames" "chunks" "" .Values.loki) }}
 object_store:
-  {{- include "loki.thanosStorageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.chunks) | nindent 2 }}
+  {{- include "loki.thanosStorageConfig" (dict "ctx" . "bucketName" $bucketName) | nindent 2 }}
 {{- else if .Values.minio.enabled -}}
 s3:
   endpoint: {{ include "loki.minio" $ }}
@@ -210,7 +216,11 @@ s3:
   s3forcepathstyle: true
   insecure: true
 {{- else if (eq (include "loki.isUsingObjectStorage" . ) "true")  -}}
-{{- include "loki.lokiStorageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.chunks) | nindent 0 }}
+{{- $bucketName := "" }}
+{{- if not (or (dig "aws" "s3" "" .Values.loki.storage_config) (dig "aws" "bucketnames" "" .Values.loki.storage_config)) -}}
+{{- $bucketName = required "Please define loki.storage.bucketNames.chunks" (dig "storage" "bucketNames" "chunks" "" .Values.loki) }}
+{{- end -}}
+{{- include "loki.lokiStorageConfig" (dict "ctx" . "bucketName" $bucketName) | nindent 0 }}
 {{- else if .Values.loki.storage.filesystem }}
 filesystem:
   {{- toYaml .Values.loki.storage.filesystem | nindent 2 }}
@@ -221,13 +231,16 @@ filesystem:
 Storage config for ruler
 */}}
 {{- define "loki.rulerStorageConfig" -}}
-{{- if .Values.minio.enabled -}}
+{{- if eq (dig "storage" "type" "" .Values.loki.rulerConfig) "local" -}}
+type: "local"
+{{- else if .Values.minio.enabled -}}
 type: "s3"
 s3:
   bucketnames: ruler
 {{- else if (eq (include "loki.isUsingObjectStorage" . ) "true") }}
 type: {{ .Values.loki.storage.type | quote }}
-{{- include "loki.lokiStorageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.ruler) | nindent 0 }}
+{{- $bucketName := required "Please define loki.storage.bucketNames.ruler" (dig "storage" "bucketNames" "ruler" "" .Values.loki) }}
+{{- include "loki.lokiStorageConfig" (dict "ctx" . "bucketName" $bucketName) | nindent 0 }}
 {{- else }}
 type: "local"
 {{- end }}
@@ -390,7 +403,8 @@ ruler:
 {{- define "loki.rulerThanosStorageConfig" -}}
 {{- if and .Values.loki.storage.use_thanos_objstore .Values.ruler.enabled}}
   backend: {{ .Values.loki.storage.object_store.type }}
-  {{- include "loki.thanosStorageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.ruler) | nindent 2 }}
+  {{- $bucketName := required "Please define loki.storage.bucketNames.ruler" (dig "storage" "bucketNames" "ruler" "" .Values.loki) }}
+  {{- include "loki.thanosStorageConfig" (dict "ctx" . "bucketName" $bucketName) | nindent 2 }}
 {{- end }}
 {{- end }}
 
@@ -668,7 +682,16 @@ Create the service endpoint including port for MinIO.
 
 {{/* Configure the correct name for the memberlist service */}}
 {{- define "loki.memberlist" -}}
-{{ include "loki.name" . }}-memberlist
+{{- if .Values.memberlist.service.name }}
+{{- tpl .Values.memberlist.service.name $ }}
+{{- else }}
+{{- include "loki.fullname" . }}-memberlist
+{{- end -}}
+{{- end -}}
+
+{{/* Configure the correct name for the runtime config */}}
+{{- define "loki.runtime.name" -}}
+{{ include "loki.fullname" . }}-runtime
 {{- end -}}
 
 {{/* Determine the public host for the Loki cluster */}}
@@ -1248,3 +1271,14 @@ azure:
 storage_prefix: {{ .storage_prefix }}
 {{- end }}
 {{- end }}
+
+{{/*
+Pod security context
+*/}}
+{{- define "loki.podSecurityContext" -}}
+{{- if semverCompare ">=1.23-0" $.Capabilities.KubeVersion.GitVersion }}
+{{- toYaml .Values.loki.podSecurityContext }}
+{{- else }}
+{{- toYaml (omit .Values.loki.podSecurityContext "fsGroupChangePolicy")  }}
+{{- end }}
+{{- end -}}
