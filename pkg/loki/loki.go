@@ -370,6 +370,8 @@ func (c *Config) Validate() error {
 	errs = append(errs, validateSchemaRequirements(c)...)
 	errs = append(errs, validateDirectoriesExist(c)...)
 
+	warnIfQueryIngestersWithinTooShort(c)
+
 	// The output format isn't great for this, so try to get the operators attention if there are multiple errors
 	if len(errs) > 1 {
 		errs = append([]error{fmt.Errorf("MULTIPLE CONFIG ERRORS FOUND, PLEASE READ CAREFULLY")}, errs...)
@@ -379,6 +381,41 @@ func (c *Config) Validate() error {
 	}
 
 	return nil
+}
+
+func warnIfQueryIngestersWithinTooShort(c *Config) {
+	shouldWarn, maxRetention := shouldWarnQueryIngestersWithin(
+		c.Querier.QueryIngestersWithin,
+		c.Ingester.MaxChunkAge,
+		c.Ingester.MaxChunkIdle,
+	)
+	if !shouldWarn {
+		return
+	}
+
+	level.Warn(util_log.Logger).Log(
+		"msg", "querier.query_ingesters_within is shorter than ingester chunk retention; queries may return gaps until chunks are flushed",
+		"querier.query_ingesters_within", c.Querier.QueryIngestersWithin,
+		"ingester.max_chunk_age", c.Ingester.MaxChunkAge,
+		"ingester.chunk_idle_period", c.Ingester.MaxChunkIdle,
+		"max_chunk_retention", maxRetention,
+	)
+}
+
+func shouldWarnQueryIngestersWithin(queryIngestersWithin, maxChunkAge, maxChunkIdle time.Duration) (bool, time.Duration) {
+	maxRetention := maxDuration(maxChunkAge, maxChunkIdle)
+	if queryIngestersWithin <= 0 || maxRetention <= 0 {
+		return false, maxRetention
+	}
+
+	return queryIngestersWithin < maxRetention, maxRetention
+}
+
+func maxDuration(left, right time.Duration) time.Duration {
+	if left > right {
+		return left
+	}
+	return right
 }
 
 func (c *Config) isTarget(m string) bool {
