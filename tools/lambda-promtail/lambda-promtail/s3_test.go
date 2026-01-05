@@ -395,6 +395,40 @@ func Test_getLabels(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "s3_access_logs",
+			args: args{
+				record: events.S3EventRecord{
+					AWSRegion: "us-west-2",
+					S3: events.S3Entity{
+						Bucket: events.S3Bucket{
+							Name: "mintel-core-frontend-app-shell-prod-replica-logs",
+							OwnerIdentity: events.S3UserIdentity{
+								PrincipalID: "test",
+							},
+						},
+						Object: events.S3Object{
+							Key: "replica-access-logs/2025-12-06-00-00-26-D9C9ED584E11F3F8",
+						},
+					},
+				},
+			},
+			want: map[string]string{
+				"bucket":        "mintel-core-frontend-app-shell-prod-replica-logs",
+				"bucket_owner":  "test",
+				"bucket_region": "us-west-2",
+				"day":           "06",
+				"file_id":       "D9C9ED584E11F3F8",
+				"hour":          "00",
+				"key":           "replica-access-logs/2025-12-06-00-00-26-D9C9ED584E11F3F8",
+				"minute":        "00",
+				"month":         "12",
+				"second":        "26",
+				"type":          S3_ACCESS_LOG_TYPE,
+				"year":          "2025",
+			},
+			wantErr: false,
+		},
+		{
 			name: "missing_type",
 			args: args{
 				record: events.S3EventRecord{
@@ -603,6 +637,27 @@ func Test_parseS3Log(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "s3_access_logs",
+			args: args{
+				batchSize: 131072, // Set large enough we don't try and send to promtail
+				filename:  "", // We'll create the content inline since it's plain text
+				b: &batch{
+					streams: map[string]*logproto.Stream{},
+				},
+				labels: map[string]string{
+					"type":    S3_ACCESS_LOG_TYPE,
+					"bucket":  "mintel-core-frontend-app-shell-prod-replica-logs",
+					"file_id": "D9C9ED584E11F3F8",
+				},
+			},
+			expectedLen:    1,
+			expectedStream: `{__aws_log_type="s3_access", __aws_s3_access="D9C9ED584E11F3F8", __aws_s3_access_owner="mintel-core-frontend-app-shell-prod-replica-logs"}`,
+			expectedTimestamps: []time.Time{
+				time.Date(2025, time.December, 5, 23, 49, 46, 0, time.FixedZone("UTC", 0)),
+			},
+			wantErr: false,
+		},
+		{
 			name: "missing_parser",
 			args: args{
 				batchSize: 131072, // Set large enough we don't try and send to promtail
@@ -652,10 +707,17 @@ func Test_parseS3Log(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var err error
 			batchSize = tt.args.batchSize
-			tt.args.obj, err = os.Open(tt.args.filename)
-			if err != nil {
-				t.Errorf("parseS3Log() failed to open test file: %s - %v", tt.args.filename, err)
+			// Handle S3 access logs with inline test data (plain text, not a file)
+			if tt.name == "s3_access_logs" {
+				testLogLine := `8a2b8c083616eedb641d19d09a3df1c58140281be5de78bd378053da98598f92 mintel-core-frontend-app-shell-prod-replica [05/Dec/2025:23:49:46 +0000] 64.252.71.196 - RWXJ337PHNKAXKAJ WEBSITE.GET.OBJECT gnpd-data-entry/projects/gnpd/image-sets/a38f9766-2dee-4f2d-bc44-e0c5965ee79a "GET /gnpd-data-entry/projects/gnpd/image-sets/a38f9766-2dee-4f2d-bc44-e0c5965ee79a?productInfo=Batch+Entry+175699%3A5+%7C+Iwatsuka+Seika+The+Hitotsumami+Pizza+Margarita+Flavoured+Rice+Cracker HTTP/1.1" 404 NoSuchKey 625 - 48 - "-" "Amazon CloudFront" - 8htnihf1feY67Nx1Yr6bflyfkVxBFtZmdiJTvsOo3P/DTqfkA6jsaT5IYoKdyIGJeORE+LtJM74LOoNS0joL4c7qVyr+aEdM - - - mintel-core-frontend-app-shell-prod-replica.s3-website-us-west-2.amazonaws.com - - -`
+				tt.args.obj = io.NopCloser(bytes.NewReader([]byte(testLogLine)))
+			} else {
+				tt.args.obj, err = os.Open(tt.args.filename)
+				if err != nil {
+					t.Errorf("parseS3Log() failed to open test file: %s - %v", tt.args.filename, err)
+				}
 			}
+
 			buf := &bytes.Buffer{}
 			log := log.NewLogfmtLogger(buf)
 			if err := parseS3Log(context.Background(), tt.args.b, tt.args.labels, tt.args.obj, &log); (err != nil) != tt.wantErr {
