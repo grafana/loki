@@ -8,8 +8,7 @@ import (
 // The Projection instruction projects (keeps/drops) columns from a relation.
 // Projection implements both [Instruction] and [Value].
 type Projection struct {
-	b  baseNode
-	id string
+	b baseNode
 
 	Relation    Value   // The input relation.
 	Expressions []Value // The expressions to apply for projecting columns.
@@ -25,19 +24,14 @@ var (
 )
 
 // Name returns an identifier for the Projection operation.
-func (p *Projection) Name() string {
-	if p.id != "" {
-		return p.id
-	}
-	return fmt.Sprintf("%p", p)
-}
+func (p *Projection) Name() string { return p.b.Name() }
 
 // String returns the disassembled SSA form of the Projection instruction.
 func (p *Projection) String() string {
 	params := make([]string, 0, len(p.Expressions)+1)
 	params = append(params, fmt.Sprintf("mode=%s", p.mode()))
 	for _, expr := range p.Expressions {
-		params = append(params, fmt.Sprintf("expr=%s", expr.String()))
+		params = append(params, fmt.Sprintf("expr=%s", expr.Name()))
 	}
 	return fmt.Sprintf("PROJECT %s [%s]", p.Relation.Name(), strings.Join(params, ", "))
 }

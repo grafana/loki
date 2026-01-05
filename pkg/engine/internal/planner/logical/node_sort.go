@@ -11,8 +11,7 @@ import (
 // The Sort instruction sorts rows from a table relation. Sort implements both
 // [Instruction] and [Value].
 type Sort struct {
-	b  baseNode
-	id string
+	b baseNode
 
 	Table Value // The table relation to sort.
 
@@ -27,12 +26,7 @@ var (
 )
 
 // Name returns an identifier for the Sort operation.
-func (s *Sort) Name() string {
-	if s.id != "" {
-		return s.id
-	}
-	return fmt.Sprintf("%p", s)
-}
+func (s *Sort) Name() string { return s.b.Name() }
 
 // String returns the disassembled SSA form of the Sort instruction.
 func (s *Sort) String() string {

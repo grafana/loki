@@ -7,8 +7,7 @@ import (
 // The Limit instruction limits the number of rows from a table relation. Limit
 // implements [Instruction] and [Value].
 type Limit struct {
-	b  baseNode
-	id string
+	b baseNode
 
 	Table Value // Table relation to limit.
 
@@ -27,12 +26,7 @@ var (
 )
 
 // Name returns an identifier for the Limit operation.
-func (l *Limit) Name() string {
-	if l.id != "" {
-		return l.id
-	}
-	return fmt.Sprintf("%p", l)
-}
+func (l *Limit) Name() string { return l.b.Name() }
 
 // String returns the disassembled SSA form of the Limit instruction.
 func (l *Limit) String() string {

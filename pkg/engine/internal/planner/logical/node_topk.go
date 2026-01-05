@@ -12,8 +12,7 @@ import (
 // The TopK instruction find the top K rows from a table relation. TopK implements both
 // [Instruction] and [Value].
 type TopK struct {
-	b  baseNode
-	id string
+	b baseNode
 
 	Table Value // The table relation to sort.
 
@@ -29,12 +28,7 @@ var (
 )
 
 // Name returns an identifier for the TopK operation.
-func (s *TopK) Name() string {
-	if s.id != "" {
-		return s.id
-	}
-	return fmt.Sprintf("%p", s)
-}
+func (s *TopK) Name() string { return s.b.Name() }
 
 // String returns the disassembled SSA form of the TopK instruction.
 func (s *TopK) String() string {

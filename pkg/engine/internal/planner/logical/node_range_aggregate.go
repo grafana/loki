@@ -13,8 +13,7 @@ import (
 // 1. It evaluates the aggregation at step intervals unlike traditional window functions which are evaluated for each row.
 // 2. It uses a time window defined by query [$range].
 type RangeAggregation struct {
-	b  baseNode
-	id string
+	b baseNode
 
 	Table    Value    // The table relation to aggregate.
 	Grouping Grouping // The grouping
@@ -32,12 +31,7 @@ var (
 )
 
 // Name returns an identifier for the RangeAggregation operation.
-func (r *RangeAggregation) Name() string {
-	if r.id != "" {
-		return r.id
-	}
-	return fmt.Sprintf("%p", r)
-}
+func (r *RangeAggregation) Name() string { return r.b.Name() }
 
 // String returns the disassembled SSA form of the RangeAggregation instruction.
 func (r *RangeAggregation) String() string {

@@ -8,8 +8,7 @@ import (
 // The MakeTable instruction yields a table relation from an identifier.
 // MakeTable implements both [Instruction] and [Value].
 type MakeTable struct {
-	b  baseNode
-	id string
+	b baseNode
 
 	// Selector is used to generate a table relation. All streams for which the
 	// selector passes are included in the resulting table.
@@ -34,12 +33,7 @@ var (
 )
 
 // Name returns an identifier for the MakeTable operation.
-func (t *MakeTable) Name() string {
-	if t.id != "" {
-		return t.id
-	}
-	return fmt.Sprintf("%p", t)
-}
+func (t *MakeTable) Name() string { return t.b.Name() }
 
 // String returns the disassembled SSA form of the MakeTable instruction.
 func (t *MakeTable) String() string {

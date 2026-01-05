@@ -10,8 +10,7 @@ import (
 // The FunctionOp instruction yields the result of function operation Op Value.
 // UnaryOp implements both [Instruction] and [Value].
 type FunctionOp struct {
-	b  baseNode
-	id string
+	b baseNode
 
 	Op     types.VariadicOp
 	Values []Value
@@ -23,12 +22,7 @@ var (
 )
 
 // Name returns an identifier for the UnaryOp operation.
-func (u *FunctionOp) Name() string {
-	if u.id != "" {
-		return u.id
-	}
-	return fmt.Sprintf("%p", u)
-}
+func (u *FunctionOp) Name() string { return u.b.Name() }
 
 // String returns the disassembled SSA form of the FunctionOp instruction.
 func (u *FunctionOp) String() string {

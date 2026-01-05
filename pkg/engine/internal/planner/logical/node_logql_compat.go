@@ -7,8 +7,7 @@ import (
 // The LOGQL_COMPAT instruction is a marker to indicate v1 engine compatibility.
 // LogQLCompat implements [Instruction] and [Value].
 type LogQLCompat struct {
-	b  baseNode
-	id string
+	b baseNode
 
 	Value Value
 }
@@ -18,12 +17,7 @@ func (c *LogQLCompat) String() string {
 	return fmt.Sprintf("LOGQL_COMPAT %s", c.Value.Name())
 }
 
-func (c *LogQLCompat) Name() string {
-	if c.id == "" {
-		return "LogQL Compatibility"
-	}
-	return c.id
-}
+func (c *LogQLCompat) Name() string { return c.b.Name() }
 
 // Operands appends the operands of c to the provided slice. The pointers may
 // be modified to change operands of c.

@@ -10,8 +10,7 @@ import (
 // It computes aggregations over time series data at each timestamp instant
 // grouping results by specified dimensions.
 type VectorAggregation struct {
-	b  baseNode
-	id string
+	b baseNode
 
 	Table Value // The table relation to aggregate.
 
@@ -27,12 +26,7 @@ var (
 )
 
 // Name returns an identifier for the VectorAggregation operation.
-func (v *VectorAggregation) Name() string {
-	if v.id != "" {
-		return v.id
-	}
-	return fmt.Sprintf("%p", v)
-}
+func (v *VectorAggregation) Name() string { return v.b.Name() }
 
 // String returns the disassembled SSA form of the VectorAggregation instruction.
 func (v *VectorAggregation) String() string {

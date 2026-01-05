@@ -9,8 +9,7 @@ import (
 // The UnaryOp instruction yields the result of unary operation Op Value.
 // UnaryOp implements both [Instruction] and [Value].
 type UnaryOp struct {
-	b  baseNode
-	id string
+	b baseNode
 
 	Op    types.UnaryOp
 	Value Value
@@ -22,12 +21,7 @@ var (
 )
 
 // Name returns an identifier for the UnaryOp operation.
-func (u *UnaryOp) Name() string {
-	if u.id != "" {
-		return u.id
-	}
-	return fmt.Sprintf("%p", u)
-}
+func (u *UnaryOp) Name() string { return u.b.Name() }
 
 // String returns the disassembled SSA form of the UnaryOp instruction.
 func (u *UnaryOp) String() string {

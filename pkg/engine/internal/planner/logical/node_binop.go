@@ -9,8 +9,7 @@ import (
 // The BinOp instruction yields the result of binary operation Left Op Right.
 // BinOp implements both [Instruction] and [Value].
 type BinOp struct {
-	b  baseNode
-	id string
+	b baseNode
 
 	Left, Right Value
 	Op          types.BinaryOp
@@ -22,12 +21,7 @@ var (
 )
 
 // Name returns an identifier for the BinOp operation.
-func (b *BinOp) Name() string {
-	if b.id != "" {
-		return b.id
-	}
-	return fmt.Sprintf("%p", b)
-}
+func (b *BinOp) Name() string { return b.b.Name() }
 
 // String returns the disassembled SSA form of the BinOp instruction.
 func (b *BinOp) String() string {

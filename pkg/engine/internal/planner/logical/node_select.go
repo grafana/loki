@@ -7,8 +7,7 @@ import (
 // The Select instruction filters rows from a table relation. Select implements
 // both [Instruction] and [Value].
 type Select struct {
-	b  baseNode
-	id string
+	b baseNode
 
 	Table Value // The table relation to filter.
 
@@ -24,12 +23,7 @@ var (
 )
 
 // Name returns an identifier for the Select operation.
-func (s *Select) Name() string {
-	if s.id != "" {
-		return s.id
-	}
-	return fmt.Sprintf("%p", s)
-}
+func (s *Select) Name() string { return s.b.Name() }
 
 // String returns the disassembled SSA form of the Select instruction.
 func (s *Select) String() string {
