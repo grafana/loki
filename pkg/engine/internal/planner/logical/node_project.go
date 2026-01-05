@@ -8,6 +8,7 @@ import (
 // The Projection instruction projects (keeps/drops) columns from a relation.
 // Projection implements both [Instruction] and [Value].
 type Projection struct {
+	b  baseNode
 	id string
 
 	Relation    Value   // The input relation.
@@ -55,5 +56,22 @@ func (p *Projection) mode() string {
 	return mode
 }
 
-func (p *Projection) isInstruction() {}
-func (p *Projection) isValue()       {}
+// Operands appends the operands of p to the provided slice. The pointers may
+// be modified to change operands of p.
+func (p *Projection) Operands(buf []*Value) []*Value {
+	buf = append(buf, &p.Relation)
+	for i := range p.Expressions {
+		buf = append(buf, &p.Expressions[i])
+	}
+	return buf
+}
+
+// Referrers returns a list of instructions that reference the Projection.
+//
+// The list of instructions can be modified to update the reference list, such
+// as when modifying the plan.
+func (p *Projection) Referrers() *[]Instruction { return &p.b.referrers }
+
+func (p *Projection) base() *baseNode { return &p.b }
+func (p *Projection) isInstruction()  {}
+func (p *Projection) isValue()        {}

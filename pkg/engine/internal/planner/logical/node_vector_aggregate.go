@@ -10,6 +10,7 @@ import (
 // It computes aggregations over time series data at each timestamp instant
 // grouping results by specified dimensions.
 type VectorAggregation struct {
+	b  baseNode
 	id string
 
 	Table Value // The table relation to aggregate.
@@ -57,5 +58,20 @@ func (v *VectorAggregation) String() string {
 	return fmt.Sprintf("VECTOR_AGGREGATION %s [%s]", v.Table.Name(), props)
 }
 
-func (v *VectorAggregation) isInstruction() {}
-func (v *VectorAggregation) isValue()       {}
+// Operands appends the operands of v to the provided slice. The pointers may
+// be modified to change operands of v.
+func (v *VectorAggregation) Operands(buf []*Value) []*Value {
+	// NOTE(rfratto): Only fields of type Value are considered operands, so
+	// v.Grouping.Columns is ignored here. Should that change?
+	return append(buf, &v.Table)
+}
+
+// Referrers returns a list of instructions that reference the VectorAggregation.
+//
+// The list of instructions can be modified to update the reference list, such
+// as when modifying the plan.
+func (v *VectorAggregation) Referrers() *[]Instruction { return &v.b.referrers }
+
+func (v *VectorAggregation) base() *baseNode { return &v.b }
+func (v *VectorAggregation) isInstruction()  {}
+func (v *VectorAggregation) isValue()        {}

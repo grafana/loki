@@ -7,6 +7,7 @@ import (
 // The Limit instruction limits the number of rows from a table relation. Limit
 // implements [Instruction] and [Value].
 type Limit struct {
+	b  baseNode
 	id string
 
 	Table Value // Table relation to limit.
@@ -40,5 +41,18 @@ func (l *Limit) String() string {
 	return fmt.Sprintf("LIMIT %v [skip=%d, fetch=%d]", l.Table.Name(), l.Skip, l.Fetch)
 }
 
-func (l *Limit) isInstruction() {}
-func (l *Limit) isValue()       {}
+// Operands appends the operands of l to the provided slice. The pointers may
+// be modified to change operands of l.
+func (l *Limit) Operands(buf []*Value) []*Value {
+	return append(buf, &l.Table)
+}
+
+// Referrers returns a list of instructions that reference the Limit.
+//
+// The list of instructions can be modified to update the reference list, such
+// as when modifying the plan.
+func (l *Limit) Referrers() *[]Instruction { return &l.b.referrers }
+
+func (l *Limit) base() *baseNode { return &l.b }
+func (l *Limit) isInstruction()  {}
+func (l *Limit) isValue()        {}

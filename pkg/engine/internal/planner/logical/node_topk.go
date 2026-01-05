@@ -12,6 +12,7 @@ import (
 // The TopK instruction find the top K rows from a table relation. TopK implements both
 // [Instruction] and [Value].
 type TopK struct {
+	b  baseNode
 	id string
 
 	Table Value // The table relation to sort.
@@ -47,5 +48,18 @@ func (s *TopK) String() string {
 	)
 }
 
-func (s *TopK) isInstruction() {}
-func (s *TopK) isValue()       {}
+// Operands appends the operands of s to the provided slice. The pointers may
+// be modified to change operands of s.
+func (s *TopK) Operands(buf []*Value) []*Value {
+	return append(buf, &s.Table)
+}
+
+// Referrers returns a list of instructions that reference the TopK.
+//
+// The list of instructions can be modified to update the reference list, such
+// as when modifying the plan.
+func (s *TopK) Referrers() *[]Instruction { return &s.b.referrers }
+
+func (s *TopK) base() *baseNode { return &s.b }
+func (s *TopK) isInstruction()  {}
+func (s *TopK) isValue()        {}

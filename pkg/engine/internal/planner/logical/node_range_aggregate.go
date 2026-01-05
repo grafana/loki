@@ -13,6 +13,7 @@ import (
 // 1. It evaluates the aggregation at step intervals unlike traditional window functions which are evaluated for each row.
 // 2. It uses a time window defined by query [$range].
 type RangeAggregation struct {
+	b  baseNode
 	id string
 
 	Table    Value    // The table relation to aggregate.
@@ -62,5 +63,20 @@ func (r *RangeAggregation) String() string {
 	return fmt.Sprintf("RANGE_AGGREGATION %s [%s]", r.Table.Name(), props)
 }
 
-func (r *RangeAggregation) isInstruction() {}
-func (r *RangeAggregation) isValue()       {}
+// Operands appends the operands of r to the provided slice. The pointers may
+// be modified to change operands of r.
+func (r *RangeAggregation) Operands(buf []*Value) []*Value {
+	// NOTE(rfratto): Only fields of type Value are considered operands, so
+	// r.Grouping.Columns is ignored here. Should that change?
+	return append(buf, &r.Table)
+}
+
+// Referrers returns a list of instructions that reference the RangeAggregation.
+//
+// The list of instructions can be modified to update the reference list, such
+// as when modifying the plan.
+func (r *RangeAggregation) Referrers() *[]Instruction { return &r.b.referrers }
+
+func (r *RangeAggregation) base() *baseNode { return &r.b }
+func (r *RangeAggregation) isInstruction()  {}
+func (r *RangeAggregation) isValue()        {}

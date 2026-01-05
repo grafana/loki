@@ -9,6 +9,7 @@ import (
 // The BinOp instruction yields the result of binary operation Left Op Right.
 // BinOp implements both [Instruction] and [Value].
 type BinOp struct {
+	b  baseNode
 	id string
 
 	Left, Right Value
@@ -33,5 +34,18 @@ func (b *BinOp) String() string {
 	return fmt.Sprintf("%s %s %s", b.Op, b.Left.Name(), b.Right.Name())
 }
 
-func (b *BinOp) isValue()       {}
-func (b *BinOp) isInstruction() {}
+// Operands appends the operands of b to the provided slice. The pointers may
+// be modified to change operands of b.
+func (b *BinOp) Operands(buf []*Value) []*Value {
+	return append(buf, &b.Left, &b.Right)
+}
+
+// Referrers returns a list of instructions that reference the BinOp.
+//
+// The list of instructions can be modified to update the reference list, such
+// as when modifying the plan.
+func (b *BinOp) Referrers() *[]Instruction { return &b.b.referrers }
+
+func (b *BinOp) base() *baseNode { return &b.b }
+func (b *BinOp) isValue()        {}
+func (b *BinOp) isInstruction()  {}
