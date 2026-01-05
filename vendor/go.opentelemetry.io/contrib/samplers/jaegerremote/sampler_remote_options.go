@@ -26,7 +26,6 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
-
 	"go.opentelemetry.io/otel/sdk/trace"
 )
 

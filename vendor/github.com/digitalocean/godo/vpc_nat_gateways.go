@@ -30,6 +30,7 @@ type VPCNATGatewayRequest struct {
 	UDPTimeoutSeconds  uint32        `json:"udp_timeout_seconds,omitempty"`
 	ICMPTimeoutSeconds uint32        `json:"icmp_timeout_seconds,omitempty"`
 	TCPTimeoutSeconds  uint32        `json:"tcp_timeout_seconds,omitempty"`
+	ProjectID          string        `json:"project_id,omitempty"`
 }
 
 // VPCNATGateway represents a DigitalOcean VPC NAT Gateway resource
@@ -47,6 +48,7 @@ type VPCNATGateway struct {
 	TCPTimeoutSeconds  uint32        `json:"tcp_timeout_seconds,omitempty"`
 	CreatedAt          time.Time     `json:"created_at"`
 	UpdatedAt          time.Time     `json:"updated_at"`
+	ProjectID          string        `json:"project_id,omitempty"`
 }
 
 // IngressVPC defines the ingress configs supported by a VPC NAT Gateway

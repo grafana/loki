@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"hash/crc32"
 	"io"
 	"net/http"
 	"net/url"
@@ -51,6 +52,10 @@ func (w *gRPCWriter) Write(p []byte) (n int, err error) {
 	case <-w.donec:
 		return 0, w.streamResult
 	case w.writesChan <- cmd:
+		// update fullObjectChecksum on every write and send it on finalWrite
+		if !w.disableAutoChecksum {
+			w.fullObjectChecksum = crc32.Update(w.fullObjectChecksum, crc32cTable, p)
+		}
 		// write command successfully delivered to sender. We no longer own cmd.
 		break
 	}
@@ -170,6 +175,7 @@ func (c *grpcStorageClient) OpenWriter(params *openWriterParams, opts ...storage
 
 		flushSupported:        params.append,
 		sendCRC32C:            params.sendCRC32C,
+		disableAutoChecksum:   params.disableAutoChecksum,
 		forceOneShot:          params.chunkSize <= 0,
 		forceEmptyContentType: params.forceEmptyContentType,
 		append:                params.append,
@@ -239,8 +245,11 @@ type gRPCWriter struct {
 	setSize           func(int64)
 	setTakeoverOffset func(int64)
 
+	fullObjectChecksum uint32
+
 	flushSupported        bool
 	sendCRC32C            bool
+	disableAutoChecksum   bool
 	forceOneShot          bool
 	forceEmptyContentType bool
 	append                bool
@@ -785,23 +794,60 @@ func completion(r *storagepb.BidiWriteObjectResponse) *gRPCBidiWriteCompletion {
 	}
 }
 
-func bidiWriteObjectRequest(buf []byte, offset int64, flush, finishWrite bool) *storagepb.BidiWriteObjectRequest {
+// Server contract expects full object checksum to be sent only on first or last write.
+// Checksums of full object are already being sent on first Write during initialization of sender.
+// Send objectChecksums only on final request and nil in other cases.
+func bidiWriteObjectRequest(r gRPCBidiWriteRequest, bufChecksum *uint32, objectChecksums *storagepb.ObjectChecksums) *storagepb.BidiWriteObjectRequest {
 	var data *storagepb.BidiWriteObjectRequest_ChecksummedData
-	if buf != nil {
+	if r.buf != nil {
 		data = &storagepb.BidiWriteObjectRequest_ChecksummedData{
 			ChecksummedData: &storagepb.ChecksummedData{
-				Content: buf,
+				Content: r.buf,
+				Crc32C:  bufChecksum,
 			},
 		}
 	}
 	req := &storagepb.BidiWriteObjectRequest{
-		Data:        data,
-		WriteOffset: offset,
-		FinishWrite: finishWrite,
-		Flush:       flush,
-		StateLookup: flush,
+		Data:            data,
+		WriteOffset:     r.offset,
+		FinishWrite:     r.finishWrite,
+		Flush:           r.flush,
+		StateLookup:     r.flush,
+		ObjectChecksums: objectChecksums,
 	}
 	return req
+}
+
+type getObjectChecksumsParams struct {
+	fullObjectChecksum  func() uint32
+	finishWrite         bool
+	sendCRC32C          bool
+	disableAutoChecksum bool
+	attrs               *ObjectAttrs
+}
+
+// getObjectChecksums determines what checksum information to include in the final
+// gRPC request
+//
+// function returns a populated ObjectChecksums only when finishWrite is true
+// If CRC32C is disabled, it returns the user-provided checksum if available.
+// If CRC32C is enabled, it returns the user-provided checksum if available,
+// or the computed checksum of the entire object.
+func getObjectChecksums(params *getObjectChecksumsParams) *storagepb.ObjectChecksums {
+	if !params.finishWrite {
+		return nil
+	}
+
+	// send user's checksum on last write op if available
+	if params.sendCRC32C {
+		return toProtoChecksums(params.sendCRC32C, params.attrs)
+	}
+	if params.disableAutoChecksum {
+		return nil
+	}
+	return &storagepb.ObjectChecksums{
+		Crc32C: proto.Uint32(params.fullObjectChecksum()),
+	}
 }
 
 type gRPCBidiWriteBufferSender interface {
@@ -832,6 +878,9 @@ type gRPCOneshotBidiWriteBufferSender struct {
 	bucket       string
 	firstMessage *storagepb.BidiWriteObjectRequest
 	streamErr    error
+
+	checksumSettings   func() (bool, bool, *ObjectAttrs)
+	fullObjectChecksum func() uint32
 }
 
 func (w *gRPCWriter) newGRPCOneshotBidiWriteBufferSender() *gRPCOneshotBidiWriteBufferSender {
@@ -843,11 +892,13 @@ func (w *gRPCWriter) newGRPCOneshotBidiWriteBufferSender() *gRPCOneshotBidiWrite
 				WriteObjectSpec: w.spec,
 			},
 			CommonObjectRequestParams: toProtoCommonObjectRequestParams(w.encryptionKey),
-			// For a non-resumable upload, checksums must be sent in this message.
-			// TODO: Currently the checksums are only sent on the first message
-			// of the stream, but in the future, we must also support sending it
-			// on the *last* message of the stream (instead of the first).
-			ObjectChecksums: toProtoChecksums(w.sendCRC32C, w.attrs),
+			ObjectChecksums:           toProtoChecksums(w.sendCRC32C, w.attrs),
+		},
+		checksumSettings: func() (bool, bool, *ObjectAttrs) {
+			return w.sendCRC32C, w.disableAutoChecksum, w.attrs
+		},
+		fullObjectChecksum: func() uint32 {
+			return w.fullObjectChecksum
 		},
 	}
 }
@@ -888,7 +939,20 @@ func (s *gRPCOneshotBidiWriteBufferSender) connect(ctx context.Context, cs gRPCB
 				continue
 			}
 
-			req := bidiWriteObjectRequest(r.buf, r.offset, r.flush, r.finishWrite)
+			sendCrc32C, disableAutoChecksum, attrs := s.checksumSettings()
+			var bufChecksum *uint32
+			if !disableAutoChecksum {
+				bufChecksum = proto.Uint32(crc32.Checksum(r.buf, crc32cTable))
+			}
+			objectChecksums := getObjectChecksums(&getObjectChecksumsParams{
+				fullObjectChecksum:  s.fullObjectChecksum,
+				finishWrite:         r.finishWrite,
+				sendCRC32C:          sendCrc32C,
+				disableAutoChecksum: disableAutoChecksum,
+				attrs:               attrs,
+			})
+			req := bidiWriteObjectRequest(r, bufChecksum, objectChecksums)
+
 			if firstSend {
 				proto.Merge(req, s.firstMessage)
 				firstSend = false
@@ -932,6 +996,9 @@ type gRPCResumableBidiWriteBufferSender struct {
 	startWriteRequest *storagepb.StartResumableWriteRequest
 	upid              string
 
+	checksumSettings   func() (bool, bool, *ObjectAttrs)
+	fullObjectChecksum func() uint32
+
 	streamErr error
 }
 
@@ -942,10 +1009,13 @@ func (w *gRPCWriter) newGRPCResumableBidiWriteBufferSender() *gRPCResumableBidiW
 		startWriteRequest: &storagepb.StartResumableWriteRequest{
 			WriteObjectSpec:           w.spec,
 			CommonObjectRequestParams: toProtoCommonObjectRequestParams(w.encryptionKey),
-			// TODO: Currently the checksums are only sent on the request to initialize
-			// the upload, but in the future, we must also support sending it
-			// on the *last* message of the stream.
-			ObjectChecksums: toProtoChecksums(w.sendCRC32C, w.attrs),
+			ObjectChecksums:           toProtoChecksums(w.sendCRC32C, w.attrs),
+		},
+		checksumSettings: func() (bool, bool, *ObjectAttrs) {
+			return w.sendCRC32C, w.disableAutoChecksum, w.attrs
+		},
+		fullObjectChecksum: func() uint32 {
+			return w.fullObjectChecksum
 		},
 	}
 }
@@ -1005,7 +1075,21 @@ func (s *gRPCResumableBidiWriteBufferSender) connect(ctx context.Context, cs gRP
 							cs.requestAcks <- struct{}{}
 							continue
 						}
-						req := bidiWriteObjectRequest(r.buf, r.offset, r.flush, r.finishWrite)
+
+						sendCrc32C, disableAutoChecksum, attrs := s.checksumSettings()
+						var bufChecksum *uint32
+						if !disableAutoChecksum {
+							bufChecksum = proto.Uint32(crc32.Checksum(r.buf, crc32cTable))
+						}
+						objectChecksums := getObjectChecksums(&getObjectChecksumsParams{
+							fullObjectChecksum:  s.fullObjectChecksum,
+							finishWrite:         r.finishWrite,
+							sendCRC32C:          sendCrc32C,
+							disableAutoChecksum: disableAutoChecksum,
+							attrs:               attrs,
+						})
+						req := bidiWriteObjectRequest(r, bufChecksum, objectChecksums)
+
 						if firstSend {
 							req.FirstMessage = &storagepb.BidiWriteObjectRequest_UploadId{UploadId: s.upid}
 							firstSend = false
@@ -1319,7 +1403,14 @@ func (s *gRPCAppendBidiWriteBufferSender) maybeHandleRedirectionError(err error)
 func (s *gRPCAppendBidiWriteBufferSender) send(stream storagepb.Storage_BidiWriteObjectClient, buf []byte, offset int64, flush, finishWrite, sendFirstMessage bool) error {
 	finalizeObject := finishWrite && s.finalizeOnClose
 	flush = flush || finishWrite
-	req := bidiWriteObjectRequest(buf, offset, flush, finalizeObject)
+	r := gRPCBidiWriteRequest{
+		buf:         buf,
+		offset:      offset,
+		flush:       flush,
+		finishWrite: finalizeObject,
+	}
+	// TODO(b/453869602): implement default checksumming for appendable writes
+	req := bidiWriteObjectRequest(r, nil, nil)
 	if finalizeObject {
 		// appendable objects pass checksums on the finalize message only
 		req.ObjectChecksums = s.objectChecksums

@@ -134,9 +134,10 @@ func TestToStatsSummary(t *testing.T) {
 		require.Equal(t, execTime.Seconds(), result.Summary.ExecTime)
 		require.Equal(t, queueTime.Seconds(), result.Summary.QueueTime)
 		require.Equal(t, int64(entriesReturned), result.Summary.TotalEntriesReturned)
-		require.Equal(t, int64(0), result.Summary.TotalBytesProcessed)
-		require.Equal(t, int64(0), result.Summary.TotalLinesProcessed)
-		require.Equal(t, int64(0), result.Summary.TotalPostFilterLines)
+		require.Equal(t, int64(0), result.Querier.Store.Dataobj.PrePredicateDecompressedRows)
+		require.Equal(t, int64(0), result.Querier.Store.Dataobj.PrePredicateDecompressedBytes)
+		require.Equal(t, int64(0), result.Querier.Store.Dataobj.PostPredicateDecompressedBytes)
+		require.Equal(t, int64(0), result.Querier.Store.Dataobj.PostFilterRows)
 	})
 
 	t.Run("computes bytes and lines from DataObjScan regions", func(t *testing.T) {
@@ -174,20 +175,10 @@ func TestToStatsSummary(t *testing.T) {
 		require.Equal(t, queueTime.Seconds(), result.Summary.QueueTime)
 		require.Equal(t, int64(entriesReturned), result.Summary.TotalEntriesReturned)
 
-		// TotalBytesProcessed = primary + secondary = (1000+2000) + (500+1000) = 4500
-		require.Equal(t, int64(4500), result.Summary.TotalBytesProcessed)
-
-		// TotalLinesProcessed = primary_rows_read = 100 + 200 = 300
-		require.Equal(t, int64(300), result.Summary.TotalLinesProcessed)
-
-		// TotalPostFilterLines = rows_out = 80 + 150 = 230
-		require.Equal(t, int64(230), result.Summary.TotalPostFilterLines)
-
-		// BytesProcessedPerSecond = 4500 / 2 = 2250
-		require.Equal(t, int64(2250), result.Summary.BytesProcessedPerSecond)
-
-		// LinesProcessedPerSecond = 300 / 2 = 150
-		require.Equal(t, int64(150), result.Summary.LinesProcessedPerSecond)
+		require.Equal(t, int64(300), result.Querier.Store.Dataobj.PrePredicateDecompressedRows)
+		require.Equal(t, int64(3000), result.Querier.Store.Dataobj.PrePredicateDecompressedBytes)
+		require.Equal(t, int64(1500), result.Querier.Store.Dataobj.PostPredicateDecompressedBytes)
+		require.Equal(t, int64(230), result.Querier.Store.Dataobj.PostFilterRows)
 	})
 
 	t.Run("missing statistics result in zero values", func(t *testing.T) {
@@ -202,11 +193,11 @@ func TestToStatsSummary(t *testing.T) {
 		execTime := 1 * time.Second
 		result := capture.ToStatsSummary(execTime, 0, 0)
 
-		// Only primary bytes recorded
-		require.Equal(t, int64(1000), result.Summary.TotalBytesProcessed)
-		// No rows recorded
-		require.Equal(t, int64(0), result.Summary.TotalLinesProcessed)
 		require.Equal(t, int64(0), result.Summary.TotalPostFilterLines)
+		require.Equal(t, int64(0), result.Querier.Store.Dataobj.PrePredicateDecompressedRows)
+		require.Equal(t, int64(1000), result.Querier.Store.Dataobj.PrePredicateDecompressedBytes)
+		require.Equal(t, int64(0), result.Querier.Store.Dataobj.PostPredicateDecompressedBytes)
+		require.Equal(t, int64(0), result.Querier.Store.Dataobj.PostFilterRows)
 	})
 
 	t.Run("rolls up child region observations into DataObjScan", func(t *testing.T) {
@@ -227,6 +218,6 @@ func TestToStatsSummary(t *testing.T) {
 		result := capture.ToStatsSummary(time.Second, 0, 0)
 
 		// Child observations rolled up into DataObjScan: 500 + 300 = 800
-		require.Equal(t, int64(800), result.Summary.TotalBytesProcessed)
+		require.Equal(t, int64(800), result.Querier.Store.Dataobj.PrePredicateDecompressedBytes)
 	})
 }

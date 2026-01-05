@@ -20,9 +20,9 @@ var tracer = otel.Tracer("xcap")
 // the parent-child relationships defined by the regions.
 //
 // Observations within a region are added as attributes to the corresponding span.
-func ExportTrace(ctx context.Context, capture *Capture, logger log.Logger) error {
+func ExportTrace(ctx context.Context, capture *Capture, logger log.Logger) {
 	if capture == nil {
-		return nil
+		return
 	}
 
 	regions := capture.regions
@@ -44,8 +44,6 @@ func ExportTrace(ctx context.Context, capture *Capture, logger log.Logger) error
 			continue
 		}
 	}
-
-	return nil
 }
 
 // createSpans creates a span for the given region and recursively creates spans for its children.
@@ -116,14 +114,13 @@ func observationToAttribute(key StatisticKey, obs *AggregatedObservation) attrib
 	return attrKey.String(fmt.Sprintf("%v", obs.Value))
 }
 
-// ExportLog exports a Capture as a structured log line with aggregated statistics.
-func ExportLog(capture *Capture, logger log.Logger) {
-	if capture == nil || logger == nil {
-		return
+// SummaryLogValues exports a Capture as a structured log line with aggregated statistics.
+func SummaryLogValues(capture *Capture) []any {
+	if capture == nil {
+		return nil
 	}
 
-	summary := summarizeObservations(capture)
-	level.Info(logger).Log(summary.toLogValues()...)
+	return summarizeObservations(capture).toLogValues()
 }
 
 // summarizeObservations collects and summarizes observations from the capture.
@@ -159,7 +156,18 @@ func summarizeObservations(capture *Capture) *observations {
 	// metastore index and resolved section stats
 	result.merge(
 		collect.fromRegions("ObjectMetastore.Sections", true).
-			filter(StatMetastoreIndexObjects.Key(), StatMetastoreResolvedSections.Key()).
+			filter(StatMetastoreIndexObjects.Key(), StatMetastoreSectionsResolved.Key()).
+			normalizeKeys(),
+	)
+
+	result.merge(
+		collect.fromRegions("PointersScan", true).
+			filter(
+				StatMetastoreStreamsRead.Key(),
+				StatMetastoreStreamsReadTime.Key(),
+				StatMetastoreSectionPointersRead.Key(),
+				StatMetastoreSectionPointersReadTime.Key(),
+			).
 			normalizeKeys(),
 	)
 

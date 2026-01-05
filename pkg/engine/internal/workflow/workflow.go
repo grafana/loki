@@ -199,12 +199,11 @@ func (wf *Workflow) dispatchTasks(ctx context.Context, tasks []*Task) error {
 		lane := wf.admissionControl.get(taskType)
 		tasks := groups[taskType]
 
-		var offset int64
+		var offset, batchSize int64
 		total := int64(len(tasks))
-		maxBatchSize := min(total, lane.capacity)
 
-		for ; offset < total; offset += maxBatchSize {
-			batchSize := min(maxBatchSize, total-offset)
+		for ; offset < total; offset += batchSize {
+			batchSize = int64(1)
 			if err := lane.Acquire(ctx, batchSize); err != nil {
 				return fmt.Errorf("failed to acquire tokens from admission lane %s: %w", taskType, err)
 			}

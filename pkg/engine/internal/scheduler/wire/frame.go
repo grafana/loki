@@ -72,7 +72,7 @@ type NackFrame struct {
 	ID uint64
 
 	// Error is the error that occurred.
-	Error error
+	Error *Error
 }
 
 // FrameKind returns [FrameKindNack].

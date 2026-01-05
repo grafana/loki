@@ -135,11 +135,11 @@ func (o *observations) toLogValues() []any {
 		if strings.HasSuffix(p.name, "duration") {
 			switch val := value.(type) {
 			case float64:
-				value = time.Duration(val * 1000).String()
+				value = time.Duration(val * float64(time.Second)).String()
 			case int64:
-				value = time.Duration(val * 1000).String()
+				value = time.Duration(val * int64(time.Second)).String()
 			case uint64:
-				value = time.Duration(val * 1000).String()
+				value = time.Duration(val * uint64(time.Second)).String()
 			}
 		}
 
@@ -248,11 +248,6 @@ const regionNameDataObjScan = "DataObjScan"
 // ToStatsSummary computes a stats.Result from observations in the capture.
 func (c *Capture) ToStatsSummary(execTime, queueTime time.Duration, totalEntriesReturned int) stats.Result {
 	result := stats.Result{
-		Summary: stats.Summary{
-			ExecTime:             execTime.Seconds(),
-			QueueTime:            queueTime.Seconds(),
-			TotalEntriesReturned: int64(totalEntriesReturned),
-		},
 		Querier: stats.Querier{
 			Store: stats.Store{
 				QueryUsedV2Engine: true,
@@ -261,6 +256,7 @@ func (c *Capture) ToStatsSummary(execTime, queueTime time.Duration, totalEntries
 	}
 
 	if c == nil {
+		result.ComputeSummary(execTime, queueTime, totalEntriesReturned)
 		return result
 	}
 
@@ -274,26 +270,16 @@ func (c *Capture) ToStatsSummary(execTime, queueTime time.Duration, totalEntries
 		StatDatasetSecondaryColumnUncompressedBytes.Key(),
 	)
 
-	// TotalBytesProcessed: sum of uncompressed bytes from primary and secondary columns
-	result.Summary.TotalBytesProcessed = readInt64(observations, StatDatasetPrimaryColumnUncompressedBytes.Key()) +
-		readInt64(observations, StatDatasetSecondaryColumnUncompressedBytes.Key())
-
-	// TotalLinesProcessed: primary rows read
-	result.Summary.TotalLinesProcessed = readInt64(observations, StatDatasetPrimaryRowsRead.Key())
-
+	// TODO: track and report TotalStructuredMetadataBytesProcessed
+	result.Querier.Store.Dataobj.PrePredicateDecompressedBytes = readInt64(observations, StatDatasetPrimaryColumnUncompressedBytes.Key())
+	result.Querier.Store.Dataobj.PostPredicateDecompressedBytes = readInt64(observations, StatDatasetSecondaryColumnUncompressedBytes.Key())
+	result.Querier.Store.Dataobj.PrePredicateDecompressedRows = readInt64(observations, StatDatasetPrimaryRowsRead.Key())
 	// TotalPostFilterLines: rows output after filtering
 	// TODO: this will report the wrong value if the plan has a filter stage.
 	// pick the min of row_out from filter and scan nodes.
-	result.Summary.TotalPostFilterLines = readInt64(observations, StatPipelineRowsOut.Key())
+	result.Querier.Store.Dataobj.PostFilterRows = readInt64(observations, StatPipelineRowsOut.Key())
 
-	// TODO: track and report TotalStructuredMetadataBytesProcessed
-
-	if execTime > 0 {
-		execSeconds := execTime.Seconds()
-		result.Summary.BytesProcessedPerSecond = int64(float64(result.Summary.TotalBytesProcessed) / execSeconds)
-		result.Summary.LinesProcessedPerSecond = int64(float64(result.Summary.TotalLinesProcessed) / execSeconds)
-	}
-
+	result.ComputeSummary(execTime, queueTime, totalEntriesReturned)
 	return result
 }
 

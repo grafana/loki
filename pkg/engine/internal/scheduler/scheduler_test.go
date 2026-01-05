@@ -2,7 +2,6 @@ package scheduler
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"sync"
 	"testing"
@@ -475,45 +474,6 @@ func TestScheduler_worker(t *testing.T) {
 		require.Error(t, peer.SendMessage(ctx, wire.WorkerHelloMessage{Threads: 0}), "Scheduler should reject WorkerHello with <= 0 threads")
 	})
 
-	t.Run("Workers may only request one task per advertised thread", func(t *testing.T) {
-		counts := []int{1, 10, 100}
-
-		for _, count := range counts {
-			t.Run(fmt.Sprintf("threads=%d", count), func(t *testing.T) {
-				sched := newTestScheduler(t)
-
-				ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
-				defer cancel()
-
-				conn, err := sched.DialFrom(ctx, wire.LocalWorker)
-				require.NoError(t, err)
-				defer conn.Close()
-
-				messages := make(chan wire.Message, 10)
-
-				peer := wire.Peer{
-					Logger: log.NewNopLogger(),
-					Conn:   conn,
-					Handler: func(ctx context.Context, _ *wire.Peer, message wire.Message) error {
-						select {
-						case <-ctx.Done():
-						case messages <- message:
-						}
-						return nil
-					},
-				}
-				go func() { _ = peer.Serve(ctx) }()
-
-				require.NoError(t, peer.SendMessage(ctx, wire.WorkerHelloMessage{Threads: count}), "Scheduler should accept WorkerHello")
-
-				for range count {
-					require.NoError(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}), "Scheduler should accept ReadyMessage within total count")
-				}
-				require.Error(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}), "Scheduler should reject ReadyMessage beyond total count")
-			})
-		}
-	})
-
 	t.Run("Tasks are assigned to ready worker", func(t *testing.T) {
 		sched := newTestScheduler(t)
 
@@ -556,26 +516,31 @@ func TestScheduler_worker(t *testing.T) {
 
 		var assignedTask *workflow.Task
 
-		select {
-		case <-ctx.Done():
-			require.Fail(t, "time out before receiving task")
-		case msg := <-messages:
-			switch msg := msg.(type) {
-			case wire.TaskAssignMessage:
-				assignedTask = msg.Task
-			default:
-				require.Fail(t, "Unexpected message type %T", msg)
+	WaitAssign:
+		for {
+			select {
+			case <-ctx.Done():
+				require.Fail(t, "time out before receiving task")
+			case msg := <-messages:
+				switch msg := msg.(type) {
+				case wire.WorkerSubscribeMessage:
+					continue // Ignore; we already sent WorkerReady
+				case wire.TaskAssignMessage:
+					assignedTask = msg.Task
+					break WaitAssign
+				default:
+					require.Fail(t, "Unexpected message type", "Unexpected message type %T", msg)
+				}
 			}
 		}
 
 		require.Equal(t, exampleTask.ULID, assignedTask.ULID, "Should have been assigned expected task")
 
-		// Validate that the worker can request for more tasks after an assigned
-		// task terminates.
+		// Validate that the scheduler is not tracking thread counts with
+		// WorkerReady.
 		terminalStatus := workflow.TaskStatus{State: workflow.TaskStateFailed}
-		require.Error(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}), "Scheduler should reject ReadyMessage beyond total count")
+		require.NoError(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}), "Scheduler should not reject ReadyMessage beyond total count")
 		require.NoError(t, peer.SendMessage(ctx, wire.TaskStatusMessage{ID: assignedTask.ULID, Status: terminalStatus}), "Scheduler should accept TaskStatusMessage")
-		require.NoError(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}), "Scheduler should permit ReadyMessage after task termination")
 	})
 
 	t.Run("Owner is notified of canceled tasks", func(t *testing.T) {
@@ -619,18 +584,23 @@ func TestScheduler_worker(t *testing.T) {
 		require.NoError(t, sched.Start(t.Context(), exampleTask), "Scheduler should start registered task")
 
 		// Wait for assignment.
-		select {
-		case <-ctx.Done():
-			require.Fail(t, "time out before receiving expected message")
-		case msg := <-messages:
-			switch msg := msg.(type) {
-			case wire.TaskAssignMessage:
-			default:
-				require.Fail(t, "Unexpected message type %T", msg)
+	WaitAssign:
+		for {
+			select {
+			case <-ctx.Done():
+				require.Fail(t, "time out before receiving expected message")
+			case msg := <-messages:
+				switch msg := msg.(type) {
+				case wire.WorkerSubscribeMessage:
+					continue // Ignore; we already sent WorkerReady
+				case wire.TaskAssignMessage:
+					break WaitAssign
+				default:
+					require.Fail(t, "Unexpected message type", "Unexpected message type %T", msg)
+				}
 			}
 		}
 
-		require.Error(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}), "Scheduler should reject ready message before cancellation")
 		require.NoError(t, sched.Cancel(t.Context(), exampleTask), "Scheduler should permit cancellation of registered task")
 
 		// Wait for cancellation.
@@ -646,8 +616,6 @@ func TestScheduler_worker(t *testing.T) {
 				require.Fail(t, "Unexpected message type %T", msg)
 			}
 		}
-
-		require.NoError(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}), "Scheduler should accept ready message after cancellation")
 	})
 
 	t.Run("Owned tasks are canceled upon connection loss", func(t *testing.T) {
@@ -695,14 +663,20 @@ func TestScheduler_worker(t *testing.T) {
 		require.NoError(t, sched.Start(t.Context(), exampleTask), "Scheduler should start registered task")
 
 		// Wait for assignment.
-		select {
-		case <-ctx.Done():
-			require.Fail(t, "time out before receiving expected message")
-		case msg := <-messages:
-			switch msg := msg.(type) {
-			case wire.TaskAssignMessage:
-			default:
-				require.Fail(t, "Unexpected message type %T", msg)
+	WaitAssign:
+		for {
+			select {
+			case <-ctx.Done():
+				require.Fail(t, "time out before receiving expected message")
+			case msg := <-messages:
+				switch msg := msg.(type) {
+				case wire.WorkerSubscribeMessage:
+					continue // Ignore; we already sent WorkerReady
+				case wire.TaskAssignMessage:
+					break WaitAssign
+				default:
+					require.Fail(t, "Unexpected message type", "Unexpected message type %T", msg)
+				}
 			}
 		}
 
@@ -788,6 +762,8 @@ func TestScheduler_worker(t *testing.T) {
 						require.Equal(t, stream.ULID, msg.StreamID, "Should have seen expected stream")
 						require.Equal(t, wire.LocalScheduler, msg.Receiver, "Should have seen expected receiver")
 						return
+					case wire.WorkerSubscribeMessage:
+						// Ignore; we already sent WorkerReady
 					case wire.TaskAssignMessage:
 					default:
 						require.Fail(t, "Unexpected message", "Unexpected message type %T", msg)
@@ -846,14 +822,20 @@ func TestScheduler_worker(t *testing.T) {
 			require.NoError(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}), "Scheduler should accept ready message")
 
 			// Wait for assignment.
-			select {
-			case <-ctx.Done():
-				require.Fail(t, "time out before receiving task")
-			case msg := <-messages:
-				switch msg := msg.(type) {
-				case wire.TaskAssignMessage:
-				default:
-					require.Fail(t, "Unexpected message", "Unexpected message type %T", msg)
+		WaitAssign:
+			for {
+				select {
+				case <-ctx.Done():
+					require.Fail(t, "time out before receiving task")
+				case msg := <-messages:
+					switch msg := msg.(type) {
+					case wire.WorkerSubscribeMessage:
+						continue // Ignore; we already sent WorkerReady
+					case wire.TaskAssignMessage:
+						break WaitAssign
+					default:
+						require.Fail(t, "Unexpected message", "Unexpected message type %T", msg)
+					}
 				}
 			}
 
@@ -925,9 +907,7 @@ func TestScheduler_worker(t *testing.T) {
 			}
 			go func() { _ = peer.Serve(ctx) }()
 
-			// Send two ready messages (so we can accept two tasks).
 			require.NoError(t, peer.SendMessage(ctx, wire.WorkerHelloMessage{Threads: 2}), "Scheduler should accept hello message")
-			require.NoError(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}), "Scheduler should accept ready message")
 			require.NoError(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}), "Scheduler should accept ready message")
 
 			// Scheduler the receiver first; we'll schedule the sender once the task has been assigned.
@@ -939,6 +919,8 @@ func TestScheduler_worker(t *testing.T) {
 					require.Fail(t, "time out before receiving task")
 				case msg := <-messages:
 					switch msg := msg.(type) {
+					case wire.WorkerSubscribeMessage:
+						continue // Ignore; we already sent WorkerReady
 					case wire.StreamBindMessage:
 						require.Equal(t, stream.ULID, msg.StreamID, "Should have seen expected stream")
 						require.Equal(t, wire.LocalWorker, msg.Receiver, "Should have seen expected receiver")
@@ -1000,9 +982,7 @@ func TestScheduler_worker(t *testing.T) {
 			}
 			go func() { _ = peer.Serve(ctx) }()
 
-			// Send two ready messages (so we can accept two tasks).
 			require.NoError(t, peer.SendMessage(ctx, wire.WorkerHelloMessage{Threads: 2}), "Scheduler should accept hello message")
-			require.NoError(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}), "Scheduler should accept ready message")
 			require.NoError(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}), "Scheduler should accept ready message")
 
 			// Schedule the sender first; we'll schedule the receiver once the task has been assigned.
@@ -1014,6 +994,8 @@ func TestScheduler_worker(t *testing.T) {
 					require.Fail(t, "time out before receiving task")
 				case msg := <-messages:
 					switch msg := msg.(type) {
+					case wire.WorkerSubscribeMessage:
+						continue // Ignore; we already sent WorkerReady
 					case wire.StreamBindMessage:
 						require.Equal(t, stream.ULID, msg.StreamID, "Should have seen expected stream")
 						require.Equal(t, wire.LocalWorker, msg.Receiver, "Should have seen expected receiver")
@@ -1076,14 +1058,20 @@ func TestScheduler_worker(t *testing.T) {
 		require.NoError(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}), "Scheduler should accept ready message")
 
 		// Wait for assignment.
-		select {
-		case <-ctx.Done():
-			require.Fail(t, "time out before receiving task")
-		case msg := <-messages:
-			switch msg := msg.(type) {
-			case wire.TaskAssignMessage:
-			default:
-				require.Fail(t, "Unexpected message", "Unexpected message type %T", msg)
+	WaitAssign:
+		for {
+			select {
+			case <-ctx.Done():
+				require.Fail(t, "time out before receiving task")
+			case msg := <-messages:
+				switch msg := msg.(type) {
+				case wire.WorkerSubscribeMessage:
+					continue // Ignore; we already sent WorkerReady
+				case wire.TaskAssignMessage:
+					break WaitAssign
+				default:
+					require.Fail(t, "Unexpected message", "Unexpected message type %T", msg)
+				}
 			}
 		}
 
@@ -1154,14 +1142,20 @@ func TestScheduler_worker(t *testing.T) {
 		require.NoError(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}), "Scheduler should accept ready message")
 
 		// Wait for assignment.
-		select {
-		case <-ctx.Done():
-			require.Fail(t, "time out before receiving task")
-		case msg := <-messages:
-			switch msg := msg.(type) {
-			case wire.TaskAssignMessage:
-			default:
-				require.Fail(t, "Unexpected message", "Unexpected message type %T", msg)
+	WaitAssign:
+		for {
+			select {
+			case <-ctx.Done():
+				require.Fail(t, "time out before receiving task")
+			case msg := <-messages:
+				switch msg := msg.(type) {
+				case wire.WorkerSubscribeMessage:
+					continue // Ignore; we already sent WorkerReady
+				case wire.TaskAssignMessage:
+					break WaitAssign
+				default:
+					require.Fail(t, "Unexpected message", "Unexpected message type %T", msg)
+				}
 			}
 		}
 
@@ -1224,9 +1218,8 @@ func TestScheduler_worker(t *testing.T) {
 		}
 		go func() { _ = peer.Serve(ctx) }()
 
-		// Send two ready messages so we get the tasks.
+		// Send a ready message so we get the tasks.
 		require.NoError(t, peer.SendMessage(ctx, wire.WorkerHelloMessage{Threads: 2}), "Scheduler should accept hello message")
-		require.NoError(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}), "Scheduler should accept ready message")
 		require.NoError(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}), "Scheduler should accept ready message")
 
 		// Wait for assignment of both tasks.
@@ -1237,6 +1230,7 @@ func TestScheduler_worker(t *testing.T) {
 			case msg := <-messages:
 				switch msg := msg.(type) {
 				case wire.StreamBindMessage: // Ignore bindings
+				case wire.WorkerSubscribeMessage: // Ignore subscriptions
 				case wire.TaskAssignMessage:
 					assigned++
 				default:
@@ -1316,19 +1310,25 @@ func TestScheduler_worker(t *testing.T) {
 		}
 		go func() { _ = peer.Serve(ctx) }()
 
-		// Send two ready messages so we get the tasks.
+		// Send a ready message so we get the tasks.
 		require.NoError(t, peer.SendMessage(ctx, wire.WorkerHelloMessage{Threads: 2}), "Scheduler should accept hello message")
 		require.NoError(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}), "Scheduler should accept ready message")
 
 		// Wait for task assignment.
-		select {
-		case <-ctx.Done():
-			require.Fail(t, "time out before receiving task")
-		case msg := <-messages:
-			switch msg := msg.(type) {
-			case wire.TaskAssignMessage:
-			default:
-				require.Fail(t, "Unexpected message", "Unexpected message type %T", msg)
+	WaitAssign:
+		for {
+			select {
+			case <-ctx.Done():
+				require.Fail(t, "time out before receiving task")
+			case msg := <-messages:
+				switch msg := msg.(type) {
+				case wire.WorkerSubscribeMessage:
+					continue // Ignore; we already sent WorkerReady
+				case wire.TaskAssignMessage:
+					break WaitAssign
+				default:
+					require.Fail(t, "Unexpected message", "Unexpected message type %T", msg)
+				}
 			}
 		}
 
