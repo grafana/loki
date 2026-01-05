@@ -123,12 +123,12 @@ func newIngestLimits(client ingestLimitsFrontendClient, r prometheus.Registerer)
 func (l *ingestLimits) EnforceLimits(ctx context.Context, tenant string, streams []KeyedStream) ([]KeyedStream, []KeyedStream, error) {
 	results, err := l.ExceedsLimits(ctx, tenant, streams)
 	if err != nil {
-		return streams, nil, err
+		return streams, []KeyedStream{}, err
 	}
 	// Fast path. No results means all streams were accepted and there were
 	// no failures, so we can return the input streams.
 	if len(results) == 0 {
-		return streams, nil, nil
+		return streams, []KeyedStream{}, nil
 	}
 	// We can do this without allocation if needed, but doing so will modify
 	// the original backing array. See "Filtering without allocation" from
