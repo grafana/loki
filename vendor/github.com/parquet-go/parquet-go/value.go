@@ -336,7 +336,15 @@ func makeValue(k Kind, lt *format.LogicalType, v reflect.Value) Value {
 
 	case FixedLenByteArray:
 		switch v.Kind() {
-		case reflect.String: // uuid
+		case reflect.String:
+			if lt.UUID != nil { // uuid
+				uuidStr := v.String()
+				encoded, err := uuid.MustParse(uuidStr).MarshalBinary()
+				if err != nil {
+					panic(fmt.Errorf("error marshalling uuid: %w", err))
+				}
+				return makeValueByteArray(k, unsafe.SliceData(encoded), len(encoded))
+			}
 			return makeValueString(k, v.String())
 		case reflect.Array:
 			if v.Type().Elem().Kind() == reflect.Uint8 {

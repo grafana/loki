@@ -178,6 +178,9 @@ type KVConfig struct {
 
 	TCPTransport TCPTransportConfig `yaml:",inline"`
 
+	// Zone-aware routing configuration.
+	ZoneAwareRouting ZoneAwareRoutingConfig `yaml:"zone_aware_routing"`
+
 	MetricsNamespace string `yaml:"-"`
 
 	// Codecs to register. Codecs need to be registered before joining other members.
@@ -226,6 +229,7 @@ func (cfg *KVConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
 	f.IntVar(&cfg.WatchPrefixBufferSize, prefix+"memberlist.watch-prefix-buffer-size", watchPrefixBufferSize, "Size of the buffered channel for the WatchPrefix function.")
 
 	cfg.TCPTransport.RegisterFlagsWithPrefix(f, prefix)
+	cfg.ZoneAwareRouting.RegisterFlagsWithPrefix(f, prefix+"memberlist.zone-aware-routing.")
 
 	cfg.discoverMembersBackoff = backoff.Config{
 		MinBackoff: 100 * time.Millisecond,
@@ -236,6 +240,11 @@ func (cfg *KVConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
 
 func (cfg *KVConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.RegisterFlagsWithPrefix(f, "")
+}
+
+// Validate validates the KV configuration.
+func (cfg *KVConfig) Validate() error {
+	return cfg.ZoneAwareRouting.Validate()
 }
 
 func generateRandomSuffix(logger log.Logger) string {
@@ -268,6 +277,9 @@ type KV struct {
 	memberlist       *memberlist.Memberlist
 	localBroadcasts  *memberlist.TransmitLimitedQueue // queue for messages generated locally
 	gossipBroadcasts *memberlist.TransmitLimitedQueue // queue for messages that we forward from other nodes
+
+	// Node metadata for zone-aware routing (nil if zone-aware routing is disabled).
+	nodeMeta []byte
 
 	// KV Store.
 	storeMu sync.RWMutex
@@ -481,9 +493,61 @@ func (m *KV) buildMemberlistConfig() (*memberlist.Config, error) {
 	// node, because the TCP-based fallback will always trigger.
 	mlCfg.DisableTcpPings = true
 
+	// Configure zone-aware routing if enabled.
+	if m.cfg.ZoneAwareRouting.Enabled {
+		if err := m.configureZoneAwareRouting(mlCfg); err != nil {
+			return nil, fmt.Errorf("failed to configure zone-aware routing: %w", err)
+		}
+	}
+
 	level.Info(m.logger).Log("msg", "Using memberlist cluster label and node name", "cluster_label", mlCfg.Label, "node", mlCfg.Name)
 
 	return mlCfg, nil
+}
+
+// configureZoneAwareRouting configures zone-aware routing for memberlist.
+func (m *KV) configureZoneAwareRouting(mlCfg *memberlist.Config) error {
+	// Parse the role from the config string.
+	var role NodeRole
+	switch m.cfg.ZoneAwareRouting.Role {
+	case NodeRoleMember.String():
+		role = NodeRoleMember
+	case NodeRoleBridge.String():
+		role = NodeRoleBridge
+	default:
+		return fmt.Errorf("invalid zone-aware routing role: %s (valid values: %s, %s)", m.cfg.ZoneAwareRouting.Role, NodeRoleMember.String(), NodeRoleBridge.String())
+	}
+
+	// Encode the local node metadata.
+	localMeta, err := EncodeNodeMetadata(role, m.cfg.ZoneAwareRouting.Zone)
+	if err != nil {
+		return fmt.Errorf("failed to encode node metadata: %w", err)
+	}
+
+	// Store the encoded metadata so NodeMeta() can return it.
+	m.nodeMeta = localMeta
+
+	// Set up the node selection delegate.
+	mlCfg.NodeSelection = newZoneAwareNodeSelectionDelegate(role, m.cfg.ZoneAwareRouting.Zone, m.logger, m.registerer)
+
+	// The bridge always prefer another bridge as first node. If the bridge only push/pull to 1 node per interval, then
+	// it will only communicate to bridges, potentially leading to network partitioning if the gossiping is not
+	// working to propagate changes. To reduce the likelihood of network partitioning when gossiping is not
+	// working and periodic push/pull is enabled, we configure the bridge to push/pull to 2 nodes per interval
+	// (the first node is a bridge, and the second node is selected randomly).
+	if role == NodeRoleBridge {
+		mlCfg.PushPullNodes = 2
+	} else {
+		mlCfg.PushPullNodes = 1
+	}
+
+	level.Info(m.logger).Log(
+		"msg", "zone-aware routing enabled",
+		"zone", m.cfg.ZoneAwareRouting.Zone,
+		"role", role.String(),
+	)
+
+	return nil
 }
 
 func (m *KV) starting(ctx context.Context) error {
@@ -1295,9 +1359,9 @@ func (m *KV) broadcastNewValue(key string, change Mergeable, version uint, codec
 
 // NodeMeta is method from Memberlist Delegate interface
 func (m *KV) NodeMeta(_ int) []byte {
-	// we can send local state from here (512 bytes only)
-	// if state is updated, we need to tell memberlist to distribute it.
-	return nil
+	// Return the encoded node metadata if zone-aware routing is enabled.
+	// Otherwise, return nil (no metadata).
+	return m.nodeMeta
 }
 
 // NotifyMsg is method from Memberlist Delegate interface

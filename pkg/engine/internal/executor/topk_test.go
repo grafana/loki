@@ -13,6 +13,11 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
 
+type contributingTimeRangeChangedEvent struct {
+	ts       time.Time
+	lessThan bool
+}
+
 func Test_topk(t *testing.T) {
 	colTs := semconv.ColumnIdentTimestamp.FQN()
 	colMsg := semconv.ColumnIdentMessage.FQN()
@@ -60,6 +65,11 @@ func Test_topk(t *testing.T) {
 	require.NoError(t, err, "should be able to create a topk pipeline")
 	defer topkPipeline.Close()
 
+	events := []contributingTimeRangeChangedEvent{}
+	topkPipeline.SubscribeToTimeRangeChanges(func(ts time.Time, lessThan bool) {
+		events = append(events, contributingTimeRangeChangedEvent{ts: ts, lessThan: lessThan})
+	})
+
 	rec, err := topkPipeline.Read(t.Context())
 	require.NoError(t, err, "should be able to read the sorted batch")
 
@@ -73,6 +83,19 @@ func Test_topk(t *testing.T) {
 	require.NoError(t, err, "should be able to convert record back to rows")
 
 	require.ElementsMatch(t, expect, rows, "should return the top 3 rows")
+
+	// Should call the callback twice: after "line B" and after "line C"
+	expectedEvents := []contributingTimeRangeChangedEvent{
+		{
+			ts:       time.Unix(6, 0).UTC(),
+			lessThan: true,
+		},
+		{
+			ts:       time.Unix(3, 0).UTC(),
+			lessThan: true,
+		},
+	}
+	require.Equal(t, expectedEvents, events)
 }
 
 func Test_topk_emptyPipelines(t *testing.T) {

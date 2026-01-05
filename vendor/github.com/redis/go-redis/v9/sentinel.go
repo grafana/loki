@@ -17,6 +17,7 @@ import (
 	"github.com/redis/go-redis/v9/internal/pool"
 	"github.com/redis/go-redis/v9/internal/rand"
 	"github.com/redis/go-redis/v9/internal/util"
+	"github.com/redis/go-redis/v9/maintnotifications"
 	"github.com/redis/go-redis/v9/push"
 )
 
@@ -194,6 +195,10 @@ func (opt *FailoverOptions) clientOptions() *Options {
 
 		IdentitySuffix: opt.IdentitySuffix,
 		UnstableResp3:  opt.UnstableResp3,
+
+		MaintNotificationsConfig: &maintnotifications.Config{
+			Mode: maintnotifications.ModeDisabled,
+		},
 	}
 }
 
@@ -238,6 +243,10 @@ func (opt *FailoverOptions) sentinelOptions(addr string) *Options {
 
 		IdentitySuffix: opt.IdentitySuffix,
 		UnstableResp3:  opt.UnstableResp3,
+
+		MaintNotificationsConfig: &maintnotifications.Config{
+			Mode: maintnotifications.ModeDisabled,
+		},
 	}
 }
 
@@ -287,6 +296,10 @@ func (opt *FailoverOptions) clusterOptions() *ClusterOptions {
 		DisableIndentity:      opt.DisableIndentity,
 		IdentitySuffix:        opt.IdentitySuffix,
 		FailingTimeoutSeconds: opt.FailingTimeoutSeconds,
+
+		MaintNotificationsConfig: &maintnotifications.Config{
+			Mode: maintnotifications.ModeDisabled,
+		},
 	}
 }
 
@@ -843,6 +856,11 @@ func (c *sentinelFailover) MasterAddr(ctx context.Context) (string, error) {
 		}
 	}
 
+	// short circuit if no sentinels configured
+	if len(c.sentinelAddrs) == 0 {
+		return "", errors.New("redis: no sentinels configured")
+	}
+
 	var (
 		masterAddr string
 		wg         sync.WaitGroup
@@ -890,10 +908,12 @@ func (c *sentinelFailover) MasterAddr(ctx context.Context) (string, error) {
 }
 
 func joinErrors(errs []error) string {
+	if len(errs) == 0 {
+		return ""
+	}
 	if len(errs) == 1 {
 		return errs[0].Error()
 	}
-
 	b := []byte(errs[0].Error())
 	for _, err := range errs[1:] {
 		b = append(b, '\n')

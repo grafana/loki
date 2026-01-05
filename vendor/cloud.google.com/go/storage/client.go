@@ -265,6 +265,9 @@ type openWriterParams struct {
 	// sendCRC32C - see `Writer.SendCRC32C`.
 	// Optional.
 	sendCRC32C bool
+	// disableAutoChecksum - see `Writer.DisableAutoChecksum`.
+	// Optional.
+	disableAutoChecksum bool
 	// append - Write with appendable object semantics.
 	// Optional.
 	append bool

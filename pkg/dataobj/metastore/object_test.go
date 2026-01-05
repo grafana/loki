@@ -65,7 +65,7 @@ var (
 
 // Similar to store_test.go -- we need a populated dataobj/builder/metastore to test labels and values
 type testDataBuilder struct {
-	t      *testing.T
+	t      testing.TB
 	bucket objstore.Bucket
 
 	builder  *logsobj.Builder
@@ -216,7 +216,7 @@ func TestValuesEmptyMatcher(t *testing.T) {
 func TestSectionsForStreamMatchers(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), tenantID)
 
-	builder, err := indexobj.NewBuilder(indexobj.BuilderConfig{
+	builder, err := indexobj.NewBuilder(logsobj.BuilderBaseConfig{
 		TargetPageSize:          1024 * 1024,
 		TargetObjectSize:        10 * 1024 * 1024,
 		TargetSectionSize:       128,
@@ -275,7 +275,7 @@ func TestSectionsForStreamMatchers(t *testing.T) {
 	err = metastoreTocWriter.WriteEntry(context.Background(), path, timeRanges)
 	require.NoError(t, err)
 
-	mstore := NewObjectMetastore(bucket, log.NewNopLogger(), prometheus.NewPedanticRegistry())
+	mstore := newTestObjectMetastore(bucket)
 
 	tests := []struct {
 		name       string
@@ -350,10 +350,10 @@ func TestSectionsForStreamMatchers(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			sections, err := mstore.Sections(ctx, tt.start, tt.end, tt.matchers, tt.predicates)
+			sectionsResp, err := mstore.Sections(ctx, SectionsRequest{tt.start, tt.end, tt.matchers, tt.predicates})
 			require.NoError(t, err)
-			require.Len(t, sections, tt.wantCount)
-			for _, section := range sections {
+			require.Len(t, sectionsResp.Sections, tt.wantCount)
+			for _, section := range sectionsResp.Sections {
 				require.NotEqual(t, section.SectionIdx, altTenantSection)
 			}
 		})
@@ -363,7 +363,7 @@ func TestSectionsForStreamMatchers(t *testing.T) {
 func TestSectionsForPredicateMatchers(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), tenantID)
 
-	builder, err := indexobj.NewBuilder(indexobj.BuilderConfig{
+	builder, err := indexobj.NewBuilder(logsobj.BuilderBaseConfig{
 		TargetPageSize:          1024 * 1024,
 		TargetObjectSize:        10 * 1024 * 1024,
 		TargetSectionSize:       128,
@@ -414,7 +414,7 @@ func TestSectionsForPredicateMatchers(t *testing.T) {
 	err = metastoreTocWriter.WriteEntry(context.Background(), path, timeRanges)
 	require.NoError(t, err)
 
-	mstore := NewObjectMetastore(bucket, log.NewNopLogger(), prometheus.NewPedanticRegistry())
+	mstore := newTestObjectMetastore(bucket)
 
 	tests := []struct {
 		name       string
@@ -471,9 +471,9 @@ func TestSectionsForPredicateMatchers(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			sections, err := mstore.Sections(ctx, now.Add(-3*time.Hour), now.Add(time.Hour), matchers, tt.predicates)
+			sectionsResp, err := mstore.Sections(ctx, SectionsRequest{now.Add(-3 * time.Hour), now.Add(time.Hour), matchers, tt.predicates})
 			require.NoError(t, err)
-			require.Len(t, sections, tt.wantCount)
+			require.Len(t, sectionsResp.Sections, tt.wantCount)
 		})
 	}
 }
@@ -489,7 +489,7 @@ func queryMetastore(t *testing.T, tenant string, mfunc func(context.Context, tim
 		builder.addStreamAndFlush(tenant, stream)
 	}
 
-	mstore := NewObjectMetastore(builder.bucket, log.NewNopLogger(), nil)
+	mstore := newTestObjectMetastore(builder.bucket)
 	defer func() {
 		require.NoError(t, mstore.bucket.Close())
 	}()
@@ -499,15 +499,17 @@ func queryMetastore(t *testing.T, tenant string, mfunc func(context.Context, tim
 	mfunc(ctx, start, end, mstore)
 }
 
-func newTestDataBuilder(t *testing.T) *testDataBuilder {
+func newTestDataBuilder(t testing.TB) *testDataBuilder {
 	bucket := objstore.NewInMemBucket()
 
 	builder, err := logsobj.NewBuilder(logsobj.BuilderConfig{
-		TargetPageSize:          1024 * 1024,      // 1MB
-		TargetObjectSize:        10 * 1024 * 1024, // 10MB
-		TargetSectionSize:       1024 * 1024,      // 1MB
-		BufferSize:              1024 * 1024,      // 1MB
-		SectionStripeMergeLimit: 2,
+		BuilderBaseConfig: logsobj.BuilderBaseConfig{
+			TargetPageSize:          1024 * 1024,      // 1MB
+			TargetObjectSize:        10 * 1024 * 1024, // 10MB
+			TargetSectionSize:       1024 * 1024,      // 1MB
+			BufferSize:              1024 * 1024,      // 1MB
+			SectionStripeMergeLimit: 2,
+		},
 	}, nil)
 	require.NoError(t, err)
 
@@ -527,4 +529,8 @@ func newTestDataBuilder(t *testing.T) *testDataBuilder {
 		meta:     meta,
 		uploader: uploader,
 	}
+}
+
+func newTestObjectMetastore(bucket objstore.Bucket) *ObjectMetastore {
+	return NewObjectMetastore(bucket, Config{}, log.NewNopLogger(), NewObjectMetastoreMetrics(prometheus.NewRegistry()))
 }

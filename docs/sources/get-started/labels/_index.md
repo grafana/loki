@@ -89,19 +89,19 @@ By default, the following resource attributes will be stored as labels, with per
 - service.name
 - service.namespace
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 Because Loki has a default limit of 15 index labels, we recommend storing only select resource attributes as labels. Although the default config selects more than 15 Resource Attributes, some are mutually exclusive.
-{{% /admonition %}}
+{{< /admonition >}}
 
 {{< admonition type="tip" >}}
-For Grafana Cloud Logs, see the [current OpenTelemetry guidance](https://grafana.com/docs/grafana-cloud/send-data/otlp/otlp-format-considerations/#logs).
+For Grafana Cloud Logs, see the [current OpenTelemetry guidance](https://grafana.com/docs/grafana-cloud/send-data/otlp/otlp-format-considerations/#logs). The Faro specific attributes `app_id`, `kind`, and `app_key` are promoted to labels for Grafana Cloud Logs but not Loki.
 {{< /admonition >}}
 
 The default list of resource attributes to store as labels can be configured using `default_resource_attributes_as_index_labels` under the [distributor's otlp_config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#distributor). You can set global limits using [limits_config.otlp_config](/docs/loki/<LOKI_VERSION>/configure/#limits_config). If you are using Grafana Cloud, contact support to configure this setting.
 
 {{< admonition type="caution" >}}
 Because of the potential for high [cardinality](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/cardinality/), `k8s.pod.name` and `service.instance.id` are no longer recommended as default labels. But because removing these resource attributes from the default labels would be a breaking change for existing users, they have not yet been deprecated as default labels. If you are a new user of Grafana Loki, we recommend that you modify your Alloy or OpenTelemetry Collector configuration to convert `k8s.pod.name` and `service.instance.id` from index labels to structured metadata.
-For sample configurations, refer to [Remove default labels](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/remove-default-labels).
+For sample configurations, refer to [Modify default labels](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/modify-default-labels).
 {{< /admonition >}}
 
 ## Labeling is iterative

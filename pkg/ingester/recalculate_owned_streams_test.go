@@ -198,7 +198,11 @@ func newMockPartitionRingWithActivePartitions(activePartitions ...int32) *ring.P
 			State:          ring.OwnerActive,
 		}
 	}
-	return ring.NewPartitionRing(partitionRing)
+	r, err := ring.NewPartitionRing(partitionRing)
+	if err != nil {
+		panic(err)
+	}
+	return r
 }
 
 func Test_ownedStreamsPartitionStrategy_checkRingForChanges(t *testing.T) {

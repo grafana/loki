@@ -1879,7 +1879,7 @@ func prepare(t *testing.T, numDistributors, numIngesters int, limits *validation
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ingestersRing))
 
-	partitionRing := ring.NewPartitionRing(ring.PartitionRingDesc{
+	partitionRing, err := ring.NewPartitionRing(ring.PartitionRingDesc{
 		Partitions: map[int32]ring.PartitionDesc{
 			1: {
 				Id:             1,
@@ -1896,6 +1896,7 @@ func prepare(t *testing.T, numDistributors, numIngesters int, limits *validation
 			},
 		},
 	})
+	require.NoError(t, err)
 	partitionRingReader := mockPartitionRingReader{
 		ring: partitionRing,
 	}
@@ -2576,10 +2577,10 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 			d.cfg.IngestLimitsDryRunEnabled = test.ingestLimitsDryRunEnabled
 
 			mockClient := mockIngestLimitsFrontendClient{
-				t:               t,
-				expectedRequest: test.expectedLimitsRequest,
-				response:        test.limitsResponse,
-				responseErr:     test.limitsResponseErr,
+				t:                            t,
+				expectedExceedsLimitsRequest: test.expectedLimitsRequest,
+				exceedsLimitsResponse:        test.limitsResponse,
+				exceedsLimitsResponseErr:     test.limitsResponseErr,
 			}
 			l := newIngestLimits(&mockClient, prometheus.NewRegistry())
 			d.ingestLimits = l

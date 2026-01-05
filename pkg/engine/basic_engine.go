@@ -11,7 +11,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
@@ -31,23 +30,12 @@ import (
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
-var tracer = otel.Tracer("pkg/engine")
-
 var ErrNotSupported = errors.New("feature not supported in new query engine")
 
 // NewBasic creates a new instance of the basic query engine that implements the
 // [logql.Engine] interface. The basic engine executes plans sequentially with
 // no local or distributed parallelism.
-func NewBasic(cfg ExecutorConfig, metastoreCfg metastore.Config, bucket objstore.Bucket, limits logql.Limits, reg prometheus.Registerer, logger log.Logger) *Basic {
-	var ms metastore.Metastore
-	if bucket != nil {
-		indexBucket := bucket
-		if metastoreCfg.IndexStoragePrefix != "" {
-			indexBucket = objstore.NewPrefixedBucket(bucket, metastoreCfg.IndexStoragePrefix)
-		}
-		ms = metastore.NewObjectMetastore(indexBucket, logger, reg)
-	}
-
+func NewBasic(cfg ExecutorConfig, ms metastore.Metastore, bucket objstore.Bucket, limits logql.Limits, reg prometheus.Registerer, logger log.Logger) *Basic {
 	if cfg.BatchSize <= 0 {
 		panic(fmt.Sprintf("invalid batch size for query engine. must be greater than 0, got %d", cfg.BatchSize))
 	}
@@ -116,6 +104,7 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 
 	logger := utillog.WithContext(ctx, e.logger)
 	logger = log.With(logger, "query", params.QueryString(), "shard", strings.Join(params.Shards(), ","), "engine", "v2")
+	encodingFlags := httpreq.ExtractEncodingFlagsFromCtx(ctx)
 
 	// Inject the range config into the context for any calls to
 	// [rangeio.ReadRanges] to make use of.
@@ -156,7 +145,14 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 
 		timer := prometheus.NewTimer(e.metrics.physicalPlanning)
 
-		catalog := physical.NewMetastoreCatalog(ctx, e.metastore)
+		catalog := physical.NewMetastoreCatalog(func(selectors physical.Expression, predicates []physical.Expression, start time.Time, end time.Time) ([]*metastore.DataobjSectionDescriptor, error) {
+			req, err := physical.CatalogRequestToMetastoreSectionsRequest(selectors, predicates, start, end)
+			if err != nil {
+				return nil, err
+			}
+			resp, err := e.metastore.Sections(ctx, req)
+			return resp.Sections, err
+		})
 		planner := physical.NewPlanner(physical.NewContext(params.Start(), params.End()), catalog)
 		plan, err := planner.Build(logicalPlan)
 		if err != nil {
@@ -204,6 +200,7 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 			BatchSize:          int64(e.cfg.BatchSize),
 			MergePrefetchCount: e.cfg.MergePrefetchCount,
 			Bucket:             e.bucket,
+			Metastore:          e.metastore,
 		}
 
 		pipeline := executor.Run(ctx, cfg, physicalPlan, logger)
@@ -212,7 +209,7 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 		var builder ResultBuilder
 		switch params.GetExpression().(type) {
 		case syntax.LogSelectorExpr:
-			builder = newStreamsResultBuilder(params.Direction())
+			builder = newStreamsResultBuilder(params.Direction(), encodingFlags.Has(httpreq.FlagCategorizeLabels))
 		case syntax.SampleExpr:
 			if params.Step() > 0 {
 				builder = newMatrixResultBuilder()

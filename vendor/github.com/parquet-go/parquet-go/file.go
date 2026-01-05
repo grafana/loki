@@ -741,6 +741,11 @@ type FilePages struct {
 	skip       int64
 	dictionary Dictionary
 
+	// track the last page to prevent re-reading the same page
+	lastPageIndex int
+	lastPage      Page
+	serveLastPage bool
+
 	bufferSize int
 }
 
@@ -758,6 +763,11 @@ func (f *FilePages) init(c *FileColumnChunk, reader io.ReaderAt) {
 	f.section = *io.NewSectionReader(reader, f.baseOffset, c.chunk.MetaData.TotalCompressedSize)
 	f.rbuf, f.rbufpool = getBufioReader(&f.section, f.bufferSize)
 	f.decoder.Reset(f.protocol.NewReader(f.rbuf))
+	f.index = 0
+	Release(f.lastPage)
+	f.lastPage = nil
+	f.lastPageIndex = -1
+	f.serveLastPage = false
 }
 
 // ReadDictionary returns the dictionary of the column chunk, or nil if the
@@ -784,6 +794,22 @@ func (f *FilePages) ReadPage() (Page, error) {
 	// seekToRowStart indicates whether we are in the process of seeking to the start
 	// of requested row to read, as opposed to reading sequentially values and moving through pages
 	seekToRowStart := f.skip > 0
+
+	// serve the last page if SeekToRow targeted the same page as last returned
+	if f.serveLastPage && f.lastPage != nil {
+		f.serveLastPage = false
+		f.index = f.lastPageIndex + 1
+
+		numRows := f.lastPage.NumRows()
+		if f.skip < numRows {
+			tail := f.lastPage.Slice(f.skip, numRows)
+			f.skip = 0
+			return tail, nil
+		}
+
+		f.skip -= numRows // fall through to reading the next page
+	}
+
 	for {
 		// Instantiate a new format.PageHeader for each page.
 		//
@@ -838,6 +864,15 @@ func (f *FilePages) ReadPage() (Page, error) {
 		if page == nil {
 			continue
 		}
+
+		if f.lastPage != nil {
+			Release(f.lastPage) // in case we cached a valid last page, release it now
+		}
+
+		// track last page
+		f.lastPage = page
+		Retain(page)
+		f.lastPageIndex = f.index
 
 		f.index++
 		if f.skip == 0 {
@@ -907,7 +942,7 @@ func (f *FilePages) readDictionary() error {
 	return f.readDictionaryPage(header, page)
 }
 
-func (f *FilePages) readDictionaryPage(header *format.PageHeader, page *buffer) error {
+func (f *FilePages) readDictionaryPage(header *format.PageHeader, page *buffer[byte]) error {
 	if header.DictionaryPageHeader == nil {
 		return ErrMissingPageHeader
 	}
@@ -919,7 +954,7 @@ func (f *FilePages) readDictionaryPage(header *format.PageHeader, page *buffer) 
 	return nil
 }
 
-func (f *FilePages) readDataPageV1(header *format.PageHeader, page *buffer) (Page, error) {
+func (f *FilePages) readDataPageV1(header *format.PageHeader, page *buffer[byte]) (Page, error) {
 	if header.DataPageHeader == nil {
 		return nil, ErrMissingPageHeader
 	}
@@ -931,7 +966,7 @@ func (f *FilePages) readDataPageV1(header *format.PageHeader, page *buffer) (Pag
 	return f.chunk.column.decodeDataPageV1(DataPageHeaderV1{header.DataPageHeader}, page, f.dictionary, header.UncompressedPageSize)
 }
 
-func (f *FilePages) readDataPageV2(header *format.PageHeader, page *buffer) (Page, error) {
+func (f *FilePages) readDataPageV2(header *format.PageHeader, page *buffer[byte]) (Page, error) {
 	if header.DataPageHeaderV2 == nil {
 		return nil, ErrMissingPageHeader
 	}
@@ -946,7 +981,7 @@ func (f *FilePages) readDataPageV2(header *format.PageHeader, page *buffer) (Pag
 	return f.chunk.column.decodeDataPageV2(DataPageHeaderV2{header.DataPageHeaderV2}, page, f.dictionary, header.UncompressedPageSize)
 }
 
-func (f *FilePages) readPage(header *format.PageHeader, reader *bufio.Reader) (*buffer, error) {
+func (f *FilePages) readPage(header *format.PageHeader, reader *bufio.Reader) (*buffer[byte], error) {
 	page := buffers.get(int(header.CompressedPageSize))
 	defer page.unref()
 
@@ -981,12 +1016,17 @@ func (f *FilePages) readPage(header *format.PageHeader, reader *bufio.Reader) (*
 }
 
 // SeekToRow seeks to the given row index in the column chunk.
-func (f *FilePages) SeekToRow(rowIndex int64) (err error) {
+func (f *FilePages) SeekToRow(rowIndex int64) error {
 	if f.chunk == nil {
 		return io.ErrClosedPipe
 	}
+
 	if index := f.chunk.offsetIndex.Load(); index == nil {
-		_, err = f.section.Seek(f.dataOffset-f.baseOffset, io.SeekStart)
+		_, err := f.section.Seek(f.dataOffset-f.baseOffset, io.SeekStart)
+		if err != nil {
+			return err
+		}
+
 		f.skip = rowIndex
 		f.index = 0
 		if f.dictOffset > 0 {
@@ -994,18 +1034,55 @@ func (f *FilePages) SeekToRow(rowIndex int64) (err error) {
 		}
 	} else {
 		pages := index.index.PageLocations
-		index := sort.Search(len(pages), func(i int) bool {
+		target := sort.Search(len(pages), func(i int) bool {
 			return pages[i].FirstRowIndex > rowIndex
 		}) - 1
-		if index < 0 {
+		if target < 0 {
 			return ErrSeekOutOfRange
 		}
-		_, err = f.section.Seek(pages[index].Offset-f.baseOffset, io.SeekStart)
-		f.skip = rowIndex - pages[index].FirstRowIndex
-		f.index = index
+
+		f.skip = rowIndex - pages[target].FirstRowIndex
+
+		// positioned at the last returned page: serve it
+		if f.lastPage != nil && target == f.lastPageIndex {
+			f.serveLastPage = true
+			return nil
+		}
+
+		// already positioned at the target page
+		if f.index == target {
+			return nil
+		}
+
+		f.index = target
+
+		// if the target page is within the unread portion of the current buffer, just skip/discard some bytes
+		var pos int64
+		pos, err := f.section.Seek(0, io.SeekCurrent) // no-op seek to retrieve position
+		if err != nil {
+			return err
+		}
+
+		unread := int64(f.rbuf.Buffered())
+		currOffset := pos - unread                          // section relative offset
+		targetOffset := pages[target].Offset - f.baseOffset // section relative target offset
+		skipBytes := targetOffset - currOffset
+		if skipBytes == 0 {
+			return nil
+		}
+		if skipBytes > 0 && skipBytes <= unread {
+			_, err = f.rbuf.Discard(int(skipBytes))
+			return err
+		}
+
+		_, err = f.section.Seek(pages[target].Offset-f.baseOffset, io.SeekStart)
+		if err != nil {
+			return err
+		}
 	}
+
 	f.rbuf.Reset(&f.section)
-	return err
+	return nil
 }
 
 // Close closes the page reader.
@@ -1019,6 +1096,10 @@ func (f *FilePages) Close() error {
 	f.dataOffset = 0
 	f.dictOffset = 0
 	f.index = 0
+	Release(f.lastPage)
+	f.lastPage = nil
+	f.lastPageIndex = -1
+	f.serveLastPage = false
 	f.skip = 0
 	f.dictionary = nil
 	return nil

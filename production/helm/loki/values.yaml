@@ -86,7 +86,7 @@ loki:
     # -- Docker image repository
     repository: grafana/loki
     # -- Overrides the image tag whose default is the chart's appVersion
-    tag: 3.5.7
+    tag: 3.6.3
     # -- Overrides the image tag with an image digest
     digest: null
     # -- Docker image pull policy
@@ -630,7 +630,7 @@ enterprise:
   # Enable enterprise features, license must be provided
   enabled: false
   # Default version of GEL to deploy
-  version: 3.5.4
+  version: 3.6.1
   # -- Optional name of the GEL cluster, otherwise will use .Release.Name
   # The cluster name must match what is in your GEL license
   cluster_name: null
@@ -672,7 +672,7 @@ enterprise:
     # -- Docker image repository
     repository: grafana/enterprise-logs
     # -- Docker image tag
-    tag: 3.5.4
+    tag: 3.6.3
     # -- Overrides the image tag with an image digest
     digest: null
     # -- Docker image pull policy
@@ -1692,6 +1692,10 @@ write:
     # If empty or set to null, no storageClassName spec is
     # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
     storageClass: null
+    # -- Volume attributes class name to be used.
+    # If empty or set to null, no volumeAttributesClassName spec is set.
+    # Requires Kubernetes 1.31
+    volumeAttributesClassName: null
     # -- Selector for persistent disk
     selector: null
     # -- Annotations for volume claim
@@ -1823,6 +1827,10 @@ read:
     # If empty or set to null, no storageClassName spec is
     # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
     storageClass: null
+    # -- Volume attributes class name to be used.
+    # If empty or set to null, no volumeAttributesClassName spec is set.
+    # Requires Kubernetes 1.31
+    volumeAttributesClassName: null
     # -- Selector for persistent disk
     selector: null
     # -- Annotations for volume claim
@@ -1950,6 +1958,10 @@ backend:
     # If empty or set to null, no storageClassName spec is
     # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
     storageClass: null
+    # -- Volume attributes class name to be used.
+    # If empty or set to null, no volumeAttributesClassName spec is set.
+    # Requires Kubernetes 1.31
+    volumeAttributesClassName: null
     # -- Selector for persistent disk
     selector: null
     # -- Annotations for volume claim
@@ -2109,6 +2121,10 @@ ingester:
         #   If empty or set to null, no storageClassName spec is
         #   set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
         storageClass: null
+        # -- Volume attributes class name to be used.
+        # If empty or set to null, no volumeAttributesClassName spec is set.
+        # Requires Kubernetes 1.31
+        volumeAttributesClassName: null
         # - name: wal
         #   size: 150Gi
     # -- Enable StatefulSetAutoDeletePVC feature
@@ -2675,6 +2691,10 @@ indexGateway:
     # If empty or set to null, no storageClassName spec is
     # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
     storageClass: null
+    # -- Volume attributes class name to be used.
+    # If empty or set to null, no volumeAttributesClassName spec is set.
+    # Requires Kubernetes 1.31
+    volumeAttributesClassName: null
     # -- Annotations for index gateway PVCs
     annotations: {}
     # -- Labels for index gateway PVCs
@@ -2787,6 +2807,10 @@ compactor:
         #   If empty or set to null, no storageClassName spec is
         #   set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
         storageClass: null
+        # -- Volume attributes class name to be used.
+        # If empty or set to null, no volumeAttributesClassName spec is set.
+        # Requires Kubernetes 1.31
+        volumeAttributesClassName: null
         # -- Annotations for compactor PVCs
         annotations: {}
         # -- Labels for compactor PVCs
@@ -2906,6 +2930,10 @@ bloomGateway:
         #   If empty or set to null, no storageClassName spec is
         #   set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
         storageClass: null
+        # -- Volume attributes class name to be used.
+        # If empty or set to null, no volumeAttributesClassName spec is set.
+        # Requires Kubernetes 1.31
+        volumeAttributesClassName: null
     # -- Enable StatefulSetAutoDeletePVC feature
     enableStatefulSetAutoDeletePVC: false
     whenDeleted: Retain
@@ -3016,6 +3044,10 @@ bloomPlanner:
         #   If empty or set to null, no storageClassName spec is
         #   set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
         storageClass: null
+        # -- Volume attributes class name to be used.
+        # If empty or set to null, no volumeAttributesClassName spec is set.
+        # Requires Kubernetes 1.31
+        volumeAttributesClassName: null
         # -- Annotations for bloom-planner PVCs
         annotations: {}
         # -- Labels for bloom planner PVCs
@@ -3240,6 +3272,10 @@ patternIngester:
         #   If empty or set to null, no storageClassName spec is
         #   set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
         storageClass: null
+        # -- Volume attributes class name to be used.
+        # If empty or set to null, no volumeAttributesClassName spec is set.
+        # Requires Kubernetes 1.31
+        volumeAttributesClassName: null
         # -- Annotations for pattern ingester PVCs
         annotations: {}
         # -- Labels for pattern ingester PVCs
@@ -3351,6 +3387,10 @@ ruler:
     # If empty or set to null, no storageClassName spec is
     # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
     storageClass: null
+    # -- Volume attributes class name to be used.
+    # If empty or set to null, no volumeAttributesClassName spec is set.
+    # Requires Kubernetes 1.31
+    volumeAttributesClassName: null
     # -- Annotations for ruler PVCs
     annotations: {}
     # -- Labels for ruler PVCs
@@ -3551,7 +3591,7 @@ memcachedExporter:
   enabled: true
   image:
     repository: prom/memcached-exporter
-    tag: v0.15.3
+    tag: v0.15.4
     pullPolicy: IfNotPresent
   resources:
     requests: {}
@@ -3694,6 +3734,10 @@ resultsCache:
     # If empty or set to null, no storageClassName spec is
     # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
     storageClass: null
+    # -- Volume attributes class name to be used.
+    # If empty or set to null, no volumeAttributesClassName spec is set.
+    # Requires Kubernetes 1.31
+    volumeAttributesClassName: null
     # -- Volume mount path
     mountPath: /data
     # -- PVC additional labels
@@ -3805,6 +3849,10 @@ chunksCache:
     # If empty or set to null, no storageClassName spec is
     # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
     storageClass: null
+    # -- Volume attributes class name to be used.
+    # If empty or set to null, no volumeAttributesClassName spec is set.
+    # Requires Kubernetes 1.31
+    volumeAttributesClassName: null
     # -- Volume mount path
     mountPath: /data
     labels: {}
@@ -3919,6 +3967,10 @@ chunksCache:
       # If empty or set to null, no storageClassName spec is
       # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
       storageClass: null
+      # -- Volume attributes class name to be used.
+      # If empty or set to null, no volumeAttributesClassName spec is set.
+      # Requires Kubernetes 1.31
+      volumeAttributesClassName: null
       # -- Volume mount path
       mountPath: /data
       labels: {}
@@ -4027,7 +4079,7 @@ sidecar:
     # -- The Docker registry and image for the k8s sidecar
     repository: docker.io/kiwigrid/k8s-sidecar
     # -- Docker image tag
-    tag: 1.30.10
+    tag: 1.30.9
     # -- Docker image sha. If empty, no sha will be used
     sha: ""
     # -- Docker image pull policy

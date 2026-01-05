@@ -12,8 +12,7 @@ import (
 type VectorAggregation struct {
 	NodeID ulid.ULID
 
-	// GroupBy defines the columns to group by. If empty, all rows are aggregated into a single result.
-	GroupBy []ColumnExpression
+	Grouping Grouping // Grouping of the data.
 
 	// Operation defines the type of aggregation operation to perform (e.g., sum, min, max)
 	Operation types.VectorAggregationType
@@ -28,7 +27,10 @@ func (v *VectorAggregation) Clone() Node {
 	return &VectorAggregation{
 		NodeID: ulid.Make(),
 
-		GroupBy:   cloneExpressions(v.GroupBy),
+		Grouping: Grouping{
+			Columns: cloneExpressions(v.Grouping.Columns),
+			Without: v.Grouping.Without,
+		},
 		Operation: v.Operation,
 	}
 }

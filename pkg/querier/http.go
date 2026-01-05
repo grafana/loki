@@ -54,25 +54,27 @@ type QueryResponse struct {
 // nolint // QuerierAPI defines HTTP handler functions for the querier.
 type QuerierAPI struct {
 	querier  Querier
-	cfg      Config
+	cfgV1    Config        // current/legacy engine config
+	cfgV2    engine.Config // new/next generation engine config
+	engineV1 logql.Engine  // current/legacy query engine
+	engineV2 logql.Engine  // new/next generation query engine
 	limits   querier_limits.Limits
-	engineV1 logql.Engine // Loki's current query engine
-	engineV2 logql.Engine // Loki's next generation query engine
 	logger   log.Logger
 }
 
 // NewQuerierAPI returns an instance of the QuerierAPI.
-func NewQuerierAPI(cfg Config, mCfg metastore.Config, querier Querier, limits querier_limits.Limits, store objstore.Bucket, reg prometheus.Registerer, logger log.Logger) *QuerierAPI {
+func NewQuerierAPI(v1Cfg Config, v2Cfg engine.Config, ms metastore.Metastore, querier Querier, limits querier_limits.Limits, store objstore.Bucket, reg prometheus.Registerer, logger log.Logger) *QuerierAPI {
 	q := &QuerierAPI{
-		cfg:      cfg,
+		cfgV1:    v1Cfg,
+		cfgV2:    v2Cfg,
 		limits:   limits,
 		querier:  querier,
-		engineV1: logql.NewEngine(cfg.Engine, querier, limits, logger),
+		engineV1: logql.NewEngine(v1Cfg.Engine, querier, limits, logger),
 		logger:   logger,
 	}
 
-	if cfg.EngineV2.Enable {
-		q.engineV2 = engine.NewBasic(cfg.EngineV2.Executor, mCfg, store, limits, reg, logger)
+	if v2Cfg.Enable {
+		q.engineV2 = engine.NewBasic(v2Cfg.Executor, ms, store, limits, reg, logger)
 	}
 
 	return q
@@ -92,7 +94,7 @@ func (q *QuerierAPI) RangeQueryHandler(ctx context.Context, req *queryrange.Loki
 		return result, err
 	}
 
-	if q.cfg.EngineV2.Enable && hasDataObjectsAvailable(q.cfg, params.Start(), params.End()) {
+	if q.cfgV2.Enable && hasDataObjectsAvailable(q.cfgV2, params.Start(), params.End()) {
 		query := q.engineV2.Query(params)
 		result, err = query.Exec(ctx)
 		if err == nil {
@@ -109,11 +111,11 @@ func (q *QuerierAPI) RangeQueryHandler(ctx context.Context, req *queryrange.Loki
 	return query.Exec(ctx)
 }
 
-func hasDataObjectsAvailable(config Config, start, end time.Time) bool {
+func hasDataObjectsAvailable(config engine.Config, start, end time.Time) bool {
 	// Data objects in object storage lag behind 20-30 minutes.
 	// We are generous and only enable v2 engine queries that end earlier than 1DataObjStorageLag ago (default 1h),
 	// to ensure data objects are available.
-	v2Start, v2End := config.EngineV2.Executor.ValidQueryRange()
+	v2Start, v2End := config.ValidQueryRange()
 	return end.Before(v2End) && start.After(v2Start)
 }
 
@@ -133,7 +135,7 @@ func (q *QuerierAPI) InstantQueryHandler(ctx context.Context, req *queryrange.Lo
 		return logqlmodel.Result{}, err
 	}
 
-	if q.cfg.EngineV2.Enable && hasDataObjectsAvailable(q.cfg, params.Start(), params.End()) {
+	if q.cfgV2.Enable && hasDataObjectsAvailable(q.cfgV2, params.Start(), params.End()) {
 		query := q.engineV2.Query(params)
 		result, err := query.Exec(ctx)
 		if err == nil {
@@ -449,13 +451,13 @@ func (r *asyncPatternResponses) len() int {
 
 func (q *QuerierAPI) PatternsHandler(ctx context.Context, req *logproto.QueryPatternsRequest) (*logproto.QueryPatternsResponse, error) {
 	// Calculate query intervals for ingester vs store
-	ingesterQueryInterval, storeQueryInterval := BuildQueryIntervalsWithLookback(q.cfg, req.Start, req.End, q.cfg.QueryPatternIngestersWithin)
+	ingesterQueryInterval, storeQueryInterval := BuildQueryIntervalsWithLookback(q.cfgV1, req.Start, req.End, q.cfgV1.QueryPatternIngestersWithin)
 
 	responses := asyncPatternResponses{}
 	g, ctx := errgroup.WithContext(ctx)
 
 	// Query pattern ingesters for recent data
-	if ingesterQueryInterval != nil && !q.cfg.QueryStoreOnly && q.querier != nil {
+	if ingesterQueryInterval != nil && !q.cfgV1.QueryStoreOnly && q.querier != nil {
 		g.Go(func() error {
 			splitReq := *req
 			splitReq.Start = ingesterQueryInterval.start
@@ -472,7 +474,7 @@ func (q *QuerierAPI) PatternsHandler(ctx context.Context, req *logproto.QueryPat
 
 	// Query store for older data by converting to LogQL query
 	// Only query the store if pattern persistence is enabled for at least one tenant
-	if storeQueryInterval != nil && !q.cfg.QueryIngesterOnly && q.engineV1 != nil {
+	if storeQueryInterval != nil && !q.cfgV1.QueryIngesterOnly && q.engineV1 != nil {
 		tenantIDs, err := tenant.TenantIDs(ctx)
 		if err != nil {
 			return nil, err

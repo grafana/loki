@@ -77,17 +77,22 @@ import (
 //   - s3:DeleteObjectVersion - To delete a specific version of an object from a
 //     versioning-enabled bucket, you must have the s3:DeleteObjectVersion permission.
 //
-//   - Directory bucket permissions - To grant access to this API operation on a
-//     directory bucket, we recommend that you use the [CreateSession]CreateSession API operation
-//     for session-based authorization. Specifically, you grant the
-//     s3express:CreateSession permission to the directory bucket in a bucket policy
-//     or an IAM identity-based policy. Then, you make the CreateSession API call on
-//     the bucket to obtain a session token. With the session token in your request
-//     header, you can make API requests to this operation. After the session token
-//     expires, you make another CreateSession API call to generate a new session
-//     token for use. Amazon Web Services CLI or SDKs create session and refresh the
-//     session token automatically to avoid service interruptions when a session
-//     expires. For more information about authorization, see [CreateSession]CreateSession .
+// If the s3:DeleteObject or s3:DeleteObjectVersion permissions are explicitly
+//
+//	denied in your bucket policy, attempts to delete any unversioned objects result
+//	in a 403 Access Denied error.
+//
+//	- Directory bucket permissions - To grant access to this API operation on a
+//	directory bucket, we recommend that you use the [CreateSession]CreateSession API operation
+//	for session-based authorization. Specifically, you grant the
+//	s3express:CreateSession permission to the directory bucket in a bucket policy
+//	or an IAM identity-based policy. Then, you make the CreateSession API call on
+//	the bucket to obtain a session token. With the session token in your request
+//	header, you can make API requests to this operation. After the session token
+//	expires, you make another CreateSession API call to generate a new session
+//	token for use. Amazon Web Services CLI or SDKs create session and refresh the
+//	session token automatically to avoid service interruptions when a session
+//	expires. For more information about authorization, see [CreateSession]CreateSession .
 //
 // HTTP Host header syntax  Directory buckets - The HTTP Host header syntax is
 // Bucket-name.s3express-zone-id.region-code.amazonaws.com .
@@ -109,10 +114,11 @@ import (
 // [Deleting objects from versioning-suspended buckets]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/DeletingObjectsfromVersioningSuspendedBuckets.html
 // [PutObject]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObject.html
 // [PutBucketLifecycle]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketLifecycle.html
-// [CreateSession]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_CreateSession.html
 // [Deleting object versions from a versioning-enabled bucket]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/DeletingObjectVersions.html
 // [Regional and Zonal endpoints for directory buckets in Availability Zones]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/endpoint-directory-buckets-AZ.html
 // [Using MFA Delete]: https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingMFADelete.html
+//
+// [CreateSession]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_CreateSession.html
 func (c *Client) DeleteObject(ctx context.Context, params *DeleteObjectInput, optFns ...func(*Options)) (*DeleteObjectOutput, error) {
 	if params == nil {
 		params = &DeleteObjectInput{}

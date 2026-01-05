@@ -245,8 +245,9 @@ func (c *grpcStorageClient) ListBuckets(ctx context.Context, project string, opt
 			// BucketIterator is returned to them from the veneer.
 			if pageToken == "" {
 				req := &storagepb.ListBucketsRequest{
-					Parent: toProjectResource(it.projectID),
-					Prefix: it.Prefix,
+					Parent:               toProjectResource(it.projectID),
+					Prefix:               it.Prefix,
+					ReturnPartialSuccess: it.ReturnPartialSuccess,
 				}
 				gitr = c.raw.ListBuckets(ctx, req, s.gax...)
 			}
@@ -262,6 +263,9 @@ func (c *grpcStorageClient) ListBuckets(ctx context.Context, project string, opt
 			it.buckets = append(it.buckets, b)
 		}
 
+		if resp, ok := gitr.Response.(*storagepb.ListBucketsResponse); ok {
+			it.unreachable = resp.Unreachable
+		}
 		return next, nil
 	}
 	it.pageInfo, it.nextFunc = iterator.NewPageInfo(
@@ -456,6 +460,7 @@ func (c *grpcStorageClient) ListObjects(ctx context.Context, bucket string, q *Q
 		ReadMask:                 q.toFieldMask(), // a nil Query still results in a "*" FieldMask
 		SoftDeleted:              it.query.SoftDeleted,
 		IncludeFoldersAsPrefixes: it.query.IncludeFoldersAsPrefixes,
+		Filter:                   it.query.Filter,
 	}
 	if s.userProject != "" {
 		ctx = setUserProjectMetadata(ctx, s.userProject)
@@ -622,6 +627,18 @@ func (c *grpcStorageClient) UpdateObject(ctx context.Context, params *updateObje
 			// We can, however, use dot notation for adding keys
 			for key := range uattrs.Metadata {
 				fieldMask.Paths = append(fieldMask.Paths, fmt.Sprintf("metadata.%s", key))
+			}
+		}
+	}
+
+	if uattrs.Contexts != nil && uattrs.Contexts.Custom != nil {
+		if len(uattrs.Contexts.Custom) == 0 {
+			// pass fieldMask with no key value and empty map to delete all keys
+			fieldMask.Paths = append(fieldMask.Paths, "contexts.custom")
+		} else {
+			for key := range uattrs.Contexts.Custom {
+				// pass fieldMask with key value with empty value in map to delete key
+				fieldMask.Paths = append(fieldMask.Paths, fmt.Sprintf("contexts.custom.%s", key))
 			}
 		}
 	}

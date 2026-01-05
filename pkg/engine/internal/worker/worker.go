@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
 	"reflect"
 	"runtime"
 	"sync"
@@ -17,10 +18,12 @@ import (
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/services"
 	"github.com/oklog/ulid/v2"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
 	"go.opentelemetry.io/otel/propagation"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 )
@@ -32,6 +35,9 @@ type Config struct {
 
 	// Bucket to read stored data from.
 	Bucket objstore.Bucket
+
+	// Metastore client to access indexes.
+	Metastore metastore.Metastore
 
 	// Dialer to establish connections to scheduler and remote workers.
 	Dialer wire.Dialer
@@ -71,10 +77,6 @@ type Config struct {
 // readyRequest is a message sent from a thread to notify the worker that it's
 // ready for a task.
 type readyRequest struct {
-	// Context associated with the request. Jobs created from this request
-	// should use this context.
-	Context context.Context
-
 	// Response is the channel to send assigned tasks to. Response must be a
 	// buffered channel with at least one slot.
 	Response chan readyResponse
@@ -109,7 +111,11 @@ type Worker struct {
 	sinks        map[ulid.ULID]*streamSink
 	jobs         map[ulid.ULID]*threadJob
 
-	readyCh chan readyRequest // Written to whenever a thread is ready for a task.
+	metrics   *metrics
+	collector *collector
+
+	// jobManager used to manage task assignments.
+	jobManager *jobManager
 }
 
 // New creates a new instance of a worker. Use [Worker.Service] to manage
@@ -147,7 +153,10 @@ func New(config Config) (*Worker, error) {
 		sinks:   make(map[ulid.ULID]*streamSink),
 		jobs:    make(map[ulid.ULID]*threadJob),
 
-		readyCh: make(chan readyRequest),
+		metrics:   newMetrics(),
+		collector: newCollector(),
+
+		jobManager: newJobManager(),
 	}, nil
 }
 
@@ -162,30 +171,49 @@ func (w *Worker) Service() services.Service {
 
 // run starts the worker, running until the provided context is canceled.
 func (w *Worker) run(ctx context.Context) error {
-	g, ctx := errgroup.WithContext(ctx)
+	threadsCtx, threadsCancel := context.WithCancel(context.Background())
+	defer threadsCancel()
+	threadsGroup, threadsCtx := errgroup.WithContext(threadsCtx)
 
 	// Spin up worker threads.
+	var threads []*thread
 	for i := range w.numThreads {
 		t := &thread{
 			BatchSize: w.config.BatchSize,
 			Logger:    log.With(w.logger, "thread", i),
 			Bucket:    w.config.Bucket,
+			Metastore: w.config.Metastore,
 
-			Ready: w.readyCh,
+			Metrics:    w.metrics,
+			JobManager: w.jobManager,
 		}
+		threads = append(threads, t)
 
-		g.Go(func() error { return t.Run(ctx) })
+		threadsGroup.Go(func() error { return t.Run(threadsCtx) })
 	}
 
-	g.Go(func() error { return w.runAcceptLoop(ctx) })
+	w.collector.setThreads(threads)
 
+	// Spin up the listener for peer connections
+	peerConnectionsCtx, peerConnectionsCancel := context.WithCancel(context.Background())
+	defer peerConnectionsCancel()
+
+	go func() {
+		w.runAcceptLoop(peerConnectionsCtx)
+	}()
+
+	// Spin up the scheduler loop
+	schedulerCtx, schedulerCancel := context.WithCancel(context.Background())
+	defer schedulerCancel()
+
+	schedulerGroup := errgroup.Group{}
 	if w.config.SchedulerLookupAddress != "" {
 		disc, err := newSchedulerLookup(w.logger, w.config.SchedulerLookupAddress, w.config.SchedulerLookupInterval)
 		if err != nil {
 			return fmt.Errorf("creating scheduler lookup: %w", err)
 		}
-		g.Go(func() error {
-			return disc.Run(ctx, func(ctx context.Context, addr net.Addr) {
+		schedulerGroup.Go(func() error {
+			return disc.Run(schedulerCtx, func(ctx context.Context, addr net.Addr) {
 				_ = w.schedulerLoop(ctx, addr)
 			})
 		})
@@ -193,20 +221,44 @@ func (w *Worker) run(ctx context.Context) error {
 
 	if w.config.SchedulerAddress != nil {
 		level.Info(w.logger).Log("msg", "directly connecting to scheduler", "scheduler_addr", w.config.SchedulerAddress)
-		g.Go(func() error { return w.schedulerLoop(ctx, w.config.SchedulerAddress) })
+		schedulerGroup.Go(func() error { return w.schedulerLoop(schedulerCtx, w.config.SchedulerAddress) })
 	}
 
-	return g.Wait()
+	// Wait for shutdown
+	<-ctx.Done()
+
+	// Signal all worker threads to stop. This will make them not to ask for new tasks, but continue processing current jobs.
+	threadsCancel()
+
+	// Wait for all worker threads to finish their current jobs.
+	err := threadsGroup.Wait()
+	if err != nil {
+		return err
+	}
+
+	// Stop scheduler loop
+	schedulerCancel()
+
+	// Wait for scheduler loop to finish
+	err = schedulerGroup.Wait()
+	if err != nil {
+		return err
+	}
+
+	// Close all peer connections
+	peerConnectionsCancel()
+
+	return nil
 }
 
 // runAcceptLoop handles incoming connections from peers. Incoming connections
 // are exclusively used to receive task results from other workers, or between
 // threads within this worker.
-func (w *Worker) runAcceptLoop(ctx context.Context) error {
+func (w *Worker) runAcceptLoop(ctx context.Context) {
 	for {
 		conn, err := w.listener.Accept(ctx)
 		if err != nil && ctx.Err() != nil {
-			return nil
+			return
 		} else if err != nil {
 			level.Warn(w.logger).Log("msg", "failed to accept connection", "err", err)
 			continue
@@ -289,67 +341,34 @@ func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, con
 	level.Info(logger).Log("msg", "connected to scheduler")
 
 	var (
-		reqsMut   sync.Mutex
-		readyReqs []readyRequest
+		// waitReady is used to signal that the scheduler should be told when
+		// there's a ready thread.
+		waitReady = make(chan struct{}, 1)
 	)
 
-	cancelRequests := func(err error) {
-		reqsMut.Lock()
-		defer reqsMut.Unlock()
-
-		for _, req := range readyReqs {
-			req.Response <- readyResponse{Error: err}
+	handleWorkerSubscribe := func() error {
+		select {
+		case waitReady <- struct{}{}:
+		default:
+			// Already queued, nothing to do.
 		}
+
+		return nil
 	}
 
 	handleAssignment := func(peer *wire.Peer, msg wire.TaskAssignMessage) error {
-		reqsMut.Lock()
-		req := readyReqs[0]
-		readyReqs = readyReqs[1:]
-		reqsMut.Unlock()
-
-		job, err := w.newJob(req.Context, peer, logger, msg)
+		job, err := w.newJob(ctx, peer, logger, msg)
 		if err != nil {
 			return err
 		}
 
-		// Response is guaranteed to be buffered so we don't need to worry about
-		// blocking here.
-		req.Response <- readyResponse{Job: job}
+		if err := w.jobManager.Send(ctx, job); err != nil {
+			job.Close() // Clean up resources associated with the job.
+			return wire.Errorf(http.StatusTooManyRequests, "no threads available")
+		}
+
+		w.metrics.tasksAssignedTotal.Inc()
 		return nil
-	}
-
-	failAssignment := func(err error) {
-		reqsMut.Lock()
-		defer reqsMut.Unlock()
-
-		if len(readyReqs) == 0 {
-			// If this hits, the scheduler responded with an assignment after we
-			// marked the SendMessage call as failing. We'll just ignore it
-			// here.
-			return
-		}
-
-		req := readyReqs[0]
-		readyReqs = readyReqs[1:]
-
-		// Response is guaranteed to be buffered so we don't need to worry about
-		// blocking here.
-		req.Response <- readyResponse{Error: err}
-	}
-
-	requestAssignment := func(ctx context.Context, peer *wire.Peer, req readyRequest) {
-		reqsMut.Lock()
-		readyReqs = append(readyReqs, req)
-		reqsMut.Unlock()
-
-		err := peer.SendMessage(ctx, wire.WorkerReadyMessage{})
-		if err != nil {
-			// Fail one of the requests. It really doesn't matter which one, as
-			// long as one of them is told about the error.
-			failAssignment(err)
-			return
-		}
 	}
 
 	peer := &wire.Peer{
@@ -361,21 +380,24 @@ func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, con
 
 		Handler: func(ctx context.Context, peer *wire.Peer, msg wire.Message) error {
 			switch msg := msg.(type) {
+			case wire.WorkerSubscribeMessage:
+				return handleWorkerSubscribe()
+
 			case wire.TaskAssignMessage:
 				return handleAssignment(peer, msg)
 
 			case wire.TaskCancelMessage:
-				return w.handleCancelMessage(ctx, msg)
+				return w.handleCancelMessage(msg)
 
 			case wire.StreamBindMessage:
 				return w.handleBindMessage(ctx, msg)
 
 			case wire.StreamStatusMessage:
-				return w.handleStreamStatusMessage(ctx, msg)
+				return w.handleStreamStatusMessage(msg)
 
 			default:
 				level.Warn(logger).Log("msg", "unsupported message type", "type", reflect.TypeOf(msg).String())
-				return fmt.Errorf("unsupported message type %T", msg)
+				return wire.Errorf(http.StatusNotImplemented, "unsupported message type %T", msg)
 			}
 		},
 	}
@@ -384,8 +406,8 @@ func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, con
 	g.Go(func() error { return peer.Serve(ctx) })
 
 	// Perform a handshake with the scheduler. This must be done before
-	// launching the goroutine to request task assignment, as WorkerReady
-	// messages are rejected until a WorkerHello is acknowledged.
+	// launching the other worker message goroutines, as WorkerReady messages
+	// are rejected until a WorkerHello is acknowledged.
 	if err := peer.SendMessage(ctx, wire.WorkerHelloMessage{Threads: w.numThreads}); err != nil {
 		level.Error(logger).Log("msg", "failed to perform handshake with scheduler", "err", err)
 		return err
@@ -393,19 +415,28 @@ func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, con
 
 	g.Go(func() error {
 		for {
+			// Wait for a signal that we want to wait for a ready thread.
 			select {
 			case <-ctx.Done():
 				return nil
-			case req := <-w.readyCh:
-				requestAssignment(ctx, peer, req)
+			case <-waitReady:
+			}
+
+			if err := w.jobManager.WaitReady(ctx); err != nil {
+				// Context got canceled; abort.
+				break
+			}
+
+			if err := peer.SendMessageAsync(ctx, wire.WorkerReadyMessage{}); err != nil {
+				level.Warn(logger).Log("msg", "failed to send ready message", "err", err)
 			}
 		}
+
+		return nil
 	})
 
-	// Wait for all worker goroutines to exit. Before we return, we'll clean up
-	// any pending ready requests to tell them that they won't receive a task.
+	// Wait for all worker goroutines to exit.
 	err := g.Wait()
-	cancelRequests(err)
 
 	level.Info(logger).Log("msg", "disconnected from scheduler", "err", err)
 	return err
@@ -526,7 +557,7 @@ func (w *Worker) newJob(ctx context.Context, scheduler *wire.Peer, logger log.Lo
 	return job, nil
 }
 
-func (w *Worker) handleCancelMessage(_ context.Context, msg wire.TaskCancelMessage) error {
+func (w *Worker) handleCancelMessage(msg wire.TaskCancelMessage) error {
 	w.resourcesMut.RLock()
 	job, found := w.jobs[msg.ID]
 	w.resourcesMut.RUnlock()
@@ -550,7 +581,7 @@ func (w *Worker) handleBindMessage(ctx context.Context, msg wire.StreamBindMessa
 	return sink.Bind(ctx, msg.Receiver)
 }
 
-func (w *Worker) handleStreamStatusMessage(_ context.Context, msg wire.StreamStatusMessage) error {
+func (w *Worker) handleStreamStatusMessage(msg wire.StreamStatusMessage) error {
 	w.resourcesMut.RLock()
 	source, found := w.sources[msg.StreamID]
 	w.resourcesMut.RUnlock()
@@ -575,4 +606,20 @@ func (w *Worker) handleDataMessage(ctx context.Context, msg wire.StreamDataMessa
 		return fmt.Errorf("stream %s not found for receiving data", msg.StreamID)
 	}
 	return source.Write(ctx, msg.Data)
+}
+
+// RegisterMetrics registers metrics about s to report to reg.
+func (w *Worker) RegisterMetrics(reg prometheus.Registerer) error {
+	var errs []error
+
+	errs = append(errs, reg.Register(w.collector))
+	errs = append(errs, w.metrics.Register(reg))
+
+	return errors.Join(errs...)
+}
+
+// UnregisterMetrics unregisters metrics about s from reg.
+func (w *Worker) UnregisterMetrics(reg prometheus.Registerer) {
+	reg.Unregister(w.collector)
+	w.metrics.Unregister(reg)
 }

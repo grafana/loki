@@ -2,6 +2,7 @@ package parquet
 
 import (
 	"io"
+	"slices"
 	"sort"
 )
 
@@ -228,4 +229,42 @@ func (w *SortingWriter[T]) sortAndWriteBufferedRows() error {
 // Only available after Close is called.
 func (w *SortingWriter[T]) File() FileView {
 	return w.output.File()
+}
+
+// EqualSortingColumns compares two slices of sorting columns for equality.
+//
+// Two sorting column slices are considered equal if they have the same length
+// and each corresponding pair of sorting columns is equal. Two sorting columns
+// are equal if they have:
+//   - The same column path (including nested field paths)
+//   - The same sort direction (ascending or descending)
+//   - The same nulls handling (nulls first or nulls last)
+//
+// The comparison is order-sensitive, meaning that [A, B] is not equal to [B, A].
+// Both nil and empty slices are considered equal.
+//
+// This function is useful for:
+//   - Validating that merged row groups maintain expected sorting
+//   - Comparing sorting configurations between different row groups
+//   - Testing sorting column propagation in merge operations
+//
+// Example:
+//
+//	cols1 := []SortingColumn{Ascending("name"), Descending("age")}
+//	cols2 := []SortingColumn{Ascending("name"), Descending("age")}
+//	equal := EqualSortingColumns(cols1, cols2) // returns true
+//
+//	cols3 := []SortingColumn{Descending("age"), Ascending("name")}
+//	equal = EqualSortingColumns(cols1, cols3) // returns false (different order)
+//
+//	cols4 := []SortingColumn{Ascending("name"), Ascending("age")}
+//	equal = EqualSortingColumns(cols1, cols4) // returns false (different direction)
+func EqualSortingColumns(a, b []SortingColumn) bool {
+	return len(a) == len(b) && slices.EqualFunc(a, b, equalSortingColumn)
+}
+
+// equalSortingColumn compares two individual sorting columns for equality.
+// Two sorting columns are equal if they have the same path, direction, and nulls handling.
+func equalSortingColumn(a, b SortingColumn) bool {
+	return slices.Equal(a.Path(), b.Path()) && a.Descending() == b.Descending() && a.NullsFirst() == b.NullsFirst()
 }

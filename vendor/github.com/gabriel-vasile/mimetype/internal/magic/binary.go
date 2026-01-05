@@ -6,26 +6,52 @@ import (
 	"encoding/binary"
 )
 
-var (
-	// Lnk matches Microsoft lnk binary format.
-	Lnk = prefix([]byte{0x4C, 0x00, 0x00, 0x00, 0x01, 0x14, 0x02, 0x00})
-	// Wasm matches a web assembly File Format file.
-	Wasm = prefix([]byte{0x00, 0x61, 0x73, 0x6D})
-	// Exe matches a Windows/DOS executable file.
-	Exe = prefix([]byte{0x4D, 0x5A})
-	// Elf matches an Executable and Linkable Format file.
-	Elf = prefix([]byte{0x7F, 0x45, 0x4C, 0x46})
-	// Nes matches a Nintendo Entertainment system ROM file.
-	Nes = prefix([]byte{0x4E, 0x45, 0x53, 0x1A})
-	// SWF matches an Adobe Flash swf file.
-	SWF = prefix([]byte("CWS"), []byte("FWS"), []byte("ZWS"))
-	// Torrent has bencoded text in the beginning.
-	Torrent = prefix([]byte("d8:announce"))
-	// PAR1 matches a parquet file.
-	Par1 = prefix([]byte{0x50, 0x41, 0x52, 0x31})
-	// CBOR matches a Concise Binary Object Representation https://cbor.io/
-	CBOR = prefix([]byte{0xD9, 0xD9, 0xF7})
-)
+// Lnk matches Microsoft lnk binary format.
+func Lnk(raw []byte, _ uint32) bool {
+	return bytes.HasPrefix(raw, []byte{0x4C, 0x00, 0x00, 0x00, 0x01, 0x14, 0x02, 0x00})
+}
+
+// Wasm matches a web assembly File Format file.
+func Wasm(raw []byte, _ uint32) bool {
+	return bytes.HasPrefix(raw, []byte{0x00, 0x61, 0x73, 0x6D})
+}
+
+// Exe matches a Windows/DOS executable file.
+func Exe(raw []byte, _ uint32) bool {
+	return len(raw) > 1 && raw[0] == 0x4D && raw[1] == 0x5A
+}
+
+// Elf matches an Executable and Linkable Format file.
+func Elf(raw []byte, _ uint32) bool {
+	return bytes.HasPrefix(raw, []byte{0x7F, 0x45, 0x4C, 0x46})
+}
+
+// Nes matches a Nintendo Entertainment system ROM file.
+func Nes(raw []byte, _ uint32) bool {
+	return bytes.HasPrefix(raw, []byte{0x4E, 0x45, 0x53, 0x1A})
+}
+
+// SWF matches an Adobe Flash swf file.
+func SWF(raw []byte, _ uint32) bool {
+	return bytes.HasPrefix(raw, []byte("CWS")) ||
+		bytes.HasPrefix(raw, []byte("FWS")) ||
+		bytes.HasPrefix(raw, []byte("ZWS"))
+}
+
+// Torrent has bencoded text in the beginning.
+func Torrent(raw []byte, _ uint32) bool {
+	return bytes.HasPrefix(raw, []byte("d8:announce"))
+}
+
+// PAR1 matches a parquet file.
+func Par1(raw []byte, _ uint32) bool {
+	return bytes.HasPrefix(raw, []byte{0x50, 0x41, 0x52, 0x31})
+}
+
+// CBOR matches a Concise Binary Object Representation https://cbor.io/
+func CBOR(raw []byte, _ uint32) bool {
+	return bytes.HasPrefix(raw, []byte{0xD9, 0xD9, 0xF7})
+}
 
 // Java bytecode and Mach-O binaries share the same magic number.
 // More info here https://github.com/threatstack/libmagic/blob/master/magic/Magdir/cafebabe
@@ -71,7 +97,7 @@ func Dbf(raw []byte, limit uint32) bool {
 	}
 
 	// 3rd and 4th bytes contain the last update month and day of month.
-	if !(0 < raw[2] && raw[2] < 13 && 0 < raw[3] && raw[3] < 32) {
+	if raw[2] == 0 || raw[2] > 12 || raw[3] == 0 || raw[3] > 31 {
 		return false
 	}
 
@@ -153,7 +179,7 @@ func Marc(raw []byte, limit uint32) bool {
 	return bytes.Contains(raw[:min(2048, len(raw))], []byte{0x1E})
 }
 
-// Glb matches a glTF model format file.
+// GLB matches a glTF model format file.
 // GLB is the binary file format representation of 3D models saved in
 // the GL transmission Format (glTF).
 // GLB uses little endian and its header structure is as follows:
@@ -168,8 +194,10 @@ func Marc(raw []byte, limit uint32) bool {
 //
 // [glTF specification]: https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html
 // [IANA glTF entry]: https://www.iana.org/assignments/media-types/model/gltf-binary
-var Glb = prefix([]byte("\x67\x6C\x54\x46\x02\x00\x00\x00"),
-	[]byte("\x67\x6C\x54\x46\x01\x00\x00\x00"))
+func GLB(raw []byte, _ uint32) bool {
+	return bytes.HasPrefix(raw, []byte("\x67\x6C\x54\x46\x02\x00\x00\x00")) ||
+		bytes.HasPrefix(raw, []byte("\x67\x6C\x54\x46\x01\x00\x00\x00"))
+}
 
 // TzIf matches a Time Zone Information Format (TZif) file.
 // See more: https://tools.ietf.org/id/draft-murchison-tzdist-tzif-00.html#rfc.section.3

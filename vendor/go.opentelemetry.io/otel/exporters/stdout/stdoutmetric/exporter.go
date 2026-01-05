@@ -63,7 +63,7 @@ func (e *exporter) Export(ctx context.Context, data *metricdata.ResourceMetrics)
 	return e.encVal.Load().(encoderHolder).Encode(data)
 }
 
-func (e *exporter) ForceFlush(context.Context) error {
+func (*exporter) ForceFlush(context.Context) error {
 	// exporter holds no state, nothing to flush.
 	return nil
 }
@@ -77,7 +77,7 @@ func (e *exporter) Shutdown(context.Context) error {
 	return nil
 }
 
-func (e *exporter) MarshalLog() interface{} {
+func (*exporter) MarshalLog() any {
 	return struct{ Type string }{Type: "STDOUT"}
 }
 

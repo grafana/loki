@@ -392,6 +392,7 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 			NewKafkaConsumerFactory(i, registerer, cfg.KafkaIngestion.KafkaConfig.MaxConsumerWorkers),
 			logger,
 			registerer,
+			i.partitionRingLifecycler,
 			partition.WithHeaderToContextExtractor(validation.IngestionPoliciesKafkaHeadersToContext),
 		)
 		if err != nil {

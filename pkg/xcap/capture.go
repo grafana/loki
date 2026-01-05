@@ -14,9 +14,13 @@ package xcap
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
+	"github.com/gogo/protobuf/proto"
 	"go.opentelemetry.io/otel/attribute"
+
+	internal "github.com/grafana/loki/v3/pkg/xcap/internal/proto"
 )
 
 // Capture captures statistical information about the lifetime of a query.
@@ -40,7 +44,7 @@ func NewCapture(ctx context.Context, attributes []attribute.KeyValue) (context.C
 		regions:    make([]*Region, 0),
 	}
 
-	ctx = WithCapture(ctx, capture)
+	ctx = contextWithCapture(ctx, capture)
 	return ctx, capture
 }
 
@@ -55,16 +59,6 @@ func (c *Capture) End() {
 	}
 
 	c.ended = true
-}
-
-// Attributes returns the attributes associated with this capture.
-func (c *Capture) Attributes() []attribute.KeyValue {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	attrs := make([]attribute.KeyValue, len(c.attributes))
-	copy(attrs, c.attributes)
-	return attrs
 }
 
 // AddRegion adds a region to this capture. This is called by Region
@@ -85,14 +79,12 @@ func (c *Capture) Regions() []*Region {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	regions := make([]*Region, len(c.regions))
-	copy(regions, c.regions)
-	return regions
+	return c.regions
 }
 
 // GetAllStatistics returns statistics used across all regions
 // in this capture.
-func (c *Capture) GetAllStatistics() []Statistic {
+func (c *Capture) getAllStatistics() []Statistic {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
@@ -116,16 +108,113 @@ func (c *Capture) GetAllStatistics() []Statistic {
 	return result
 }
 
-// Merge appends all regions from other into this capture.
-func (c *Capture) Merge(other *Capture) {
-	if other == nil {
+// LinkRegions links root regions based on the provided link attribute and resolveParent function.
+//   - It extracts the value of the linkByAttribute (must be a string attribute)
+//   - Calls resolveParent() with that value to determine the parent's attribute value
+//   - It finds the region with the matching attribute value and sets it as the parent
+//   - It accepts an optional defaultRootRegion to attach orphaned regions to it.
+//
+// Use a linkByAttribute that is unique for each region.
+func (c *Capture) LinkRegions(
+	linkByAttribute string,
+	resolveParent func(string) (string, bool),
+	defaultRootRegion *Region,
+) {
+	if linkByAttribute == "" {
 		return
 	}
 
-	// TODO: This does not merge attributes, handle it if required.
+	getAttributeValue := func(r *Region) (string, bool) {
+		if attr := r.getAttribute(linkByAttribute); attr.Valid() && attr.Value.Type() == attribute.STRING {
+			return attr.Value.AsString(), true
+		}
 
-	c.mu.Lock()
-	defer c.mu.Unlock()
+		return "", false
+	}
 
-	c.regions = append(c.regions, other.Regions()...)
+	attrToRegion := make(map[string]*Region, len(c.regions))
+	for _, r := range c.regions {
+		// regions without the link attribute are not added to the map.
+		if val, ok := getAttributeValue(r); ok {
+			attrToRegion[val] = r
+		}
+	}
+
+	for _, r := range c.regions {
+		if !r.parentID.IsZero() {
+			// region already has a parent. No linking required.
+			continue
+		}
+
+		attrVal, ok := getAttributeValue(r)
+		if !ok {
+			continue
+		}
+
+		// iterate over the parents to find the first that has a linked region (or falling back to default root)
+		for {
+			parentAttrVal, ok := resolveParent(attrVal)
+			if !ok {
+				if defaultRootRegion != nil {
+					r.parentID = defaultRootRegion.id
+				}
+				break
+			}
+
+			parentRegion, ok := attrToRegion[parentAttrVal]
+			if !ok {
+				// it might be that the parent does not have a region
+				// let's skip it and attach to the parent of the parent
+				attrVal = parentAttrVal
+				continue
+			}
+
+			r.parentID = parentRegion.id
+			break
+		}
+	}
+}
+
+// MarshalBinary implements encoding.BinaryMarshaler for Capture.
+// It serializes the Capture to its protobuf representation and returns the binary data.
+func (c *Capture) MarshalBinary() ([]byte, error) {
+	if c == nil {
+		return nil, nil
+	}
+
+	protoCapture, err := toProtoCapture(c)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert capture to proto: %w", err)
+	}
+
+	if protoCapture == nil {
+		return nil, nil
+	}
+
+	data, err := proto.Marshal(protoCapture)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal proto capture: %w", err)
+	}
+
+	return data, nil
+}
+
+// UnmarshalBinary implements encoding.BinaryUnmarshaler for Capture.
+// It deserializes binary data into a Capture from its protobuf representation.
+func (c *Capture) UnmarshalBinary(data []byte) error {
+	if len(data) == 0 {
+		return nil
+	}
+
+	protoCapture := &internal.Capture{}
+	if err := proto.Unmarshal(data, protoCapture); err != nil {
+		return fmt.Errorf("failed to unmarshal proto capture: %w", err)
+	}
+
+	err := fromProtoCapture(protoCapture, c)
+	if err != nil {
+		return fmt.Errorf("failed to convert proto to capture: %w", err)
+	}
+
+	return nil
 }

@@ -18,13 +18,8 @@ type catalog struct {
 }
 
 // ResolveShardDescriptors implements Catalog.
-func (c *catalog) ResolveShardDescriptors(e Expression, from, through time.Time) ([]FilteredShardDescriptor, error) {
-	return c.ResolveShardDescriptorsWithShard(e, nil, noShard, from, through)
-}
-
-// ResolveDataObjForShard implements Catalog.
-func (c *catalog) ResolveShardDescriptorsWithShard(_ Expression, _ []Expression, shard ShardInfo, _, _ time.Time) ([]FilteredShardDescriptor, error) {
-	return filterDescriptorsForShard(shard, c.sectionDescriptors)
+func (c *catalog) ResolveDataObjSections(_ Expression, _ []Expression, shard ShardInfo, _, _ time.Time) ([]DataObjSections, error) {
+	return filterForShard(shard, c.sectionDescriptors)
 }
 
 var _ Catalog = (*catalog)(nil)
@@ -43,11 +38,11 @@ func TestMockCatalog(t *testing.T) {
 	}
 	for _, tt := range []struct {
 		shard          ShardInfo
-		expDescriptors []FilteredShardDescriptor
+		expDescriptors []DataObjSections
 	}{
 		{
 			shard: ShardInfo{0, 1},
-			expDescriptors: []FilteredShardDescriptor{
+			expDescriptors: []DataObjSections{
 				{Location: "obj1", Streams: []int64{1, 2}, Sections: []int{0}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
 				{Location: "obj1", Streams: []int64{1, 2}, Sections: []int{1}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
 				{Location: "obj1", Streams: []int64{1, 2}, Sections: []int{2}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
@@ -57,29 +52,29 @@ func TestMockCatalog(t *testing.T) {
 		},
 		{
 			shard: ShardInfo{0, 4},
-			expDescriptors: []FilteredShardDescriptor{
+			expDescriptors: []DataObjSections{
 				{Location: "obj1", Streams: []int64{1, 2}, Sections: []int{0}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
 				{Location: "obj2", Streams: []int64{3, 4}, Sections: []int{0}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
 			},
 		},
 		{
 			shard: ShardInfo{1, 4},
-			expDescriptors: []FilteredShardDescriptor{
+			expDescriptors: []DataObjSections{
 				{Location: "obj1", Streams: []int64{1, 2}, Sections: []int{1}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
 				{Location: "obj2", Streams: []int64{3, 4}, Sections: []int{1}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
 			},
 		},
 		{
 			shard:          ShardInfo{2, 4},
-			expDescriptors: []FilteredShardDescriptor{{Location: "obj1", Streams: []int64{1, 2}, Sections: []int{2}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}}},
+			expDescriptors: []DataObjSections{{Location: "obj1", Streams: []int64{1, 2}, Sections: []int{2}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}}},
 		},
 		{
 			shard:          ShardInfo{3, 4},
-			expDescriptors: []FilteredShardDescriptor{},
+			expDescriptors: []DataObjSections{},
 		},
 	} {
 		t.Run("shard "+tt.shard.String(), func(t *testing.T) {
-			filteredShardDescriptors, err := catalog.ResolveShardDescriptorsWithShard(nil, nil, tt.shard, timeStart, timeEnd)
+			filteredShardDescriptors, err := catalog.ResolveDataObjSections(nil, nil, tt.shard, timeStart, timeEnd)
 			require.Nil(t, err)
 			require.ElementsMatch(t, tt.expDescriptors, filteredShardDescriptors)
 		})
@@ -361,7 +356,10 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 				Op:    types.BinaryOpEq,
 			},
 		).RangeAggregation(
-			[]logical.ColumnRef{*logical.NewColumnRef("level", types.ColumnTypeAmbiguous)},
+			logical.Grouping{
+				Columns: []logical.ColumnRef{*logical.NewColumnRef("level", types.ColumnTypeAmbiguous)},
+				Without: false,
+			},
 			types.RangeAggregationTypeCount,
 			start,         // Start time
 			end,           // End time
@@ -511,7 +509,7 @@ func TestPlanner_Convert_RangeAggregations(t *testing.T) {
 			Op:    types.BinaryOpLt,
 		},
 	).RangeAggregation(
-		[]logical.ColumnRef{},
+		logical.NoGrouping,
 		types.RangeAggregationTypeCount,
 		time.Date(2023, 10, 1, 0, 0, 0, 0, time.UTC), // Start Time
 		time.Date(2023, 10, 1, 1, 0, 0, 0, time.UTC), // End Time
@@ -565,7 +563,7 @@ func TestPlanner_Convert_Rate(t *testing.T) {
 			Op:    types.BinaryOpLt,
 		},
 	).RangeAggregation(
-		[]logical.ColumnRef{},
+		logical.NoGrouping,
 		types.RangeAggregationTypeCount,
 		time.Date(2023, 10, 1, 0, 0, 0, 0, time.UTC), // Start Time
 		time.Date(2023, 10, 1, 1, 0, 0, 0, time.UTC), // End Time
@@ -621,7 +619,7 @@ func TestPlanner_BuildMathExpressions(t *testing.T) {
 			Op:    types.BinaryOpLt,
 		},
 	).RangeAggregation(
-		[]logical.ColumnRef{},
+		logical.NoGrouping,
 		types.RangeAggregationTypeCount,
 		time.Date(2023, 10, 1, 0, 0, 0, 0, time.UTC), // Start Time
 		time.Date(2023, 10, 1, 1, 0, 0, 0, time.UTC), // End Time
@@ -675,7 +673,7 @@ func TestPlanner_BuildMathExpressionsWithTwoInputs(t *testing.T) {
 			Op:    types.BinaryOpLt,
 		},
 	).RangeAggregation(
-		[]logical.ColumnRef{},
+		logical.NoGrouping,
 		types.RangeAggregationTypeCount,
 		time.Date(2023, 10, 1, 0, 0, 0, 0, time.UTC), // Start Time
 		time.Date(2023, 10, 1, 1, 0, 0, 0, time.UTC), // End Time
@@ -708,7 +706,7 @@ func TestPlanner_BuildMathExpressionsWithTwoInputs(t *testing.T) {
 			Op:    types.BinaryOpLt,
 		},
 	).RangeAggregation(
-		[]logical.ColumnRef{},
+		logical.NoGrouping,
 		types.RangeAggregationTypeCount,
 		time.Date(2023, 10, 1, 0, 0, 0, 0, time.UTC), // Start Time
 		time.Date(2023, 10, 1, 1, 0, 0, 0, time.UTC), // End Time
@@ -776,7 +774,7 @@ func TestPlanner_MakeTable_Ordering(t *testing.T) {
 
 		expectedPlan := &Plan{}
 		parallelize := expectedPlan.graph.Add(&Parallelize{})
-		compat := expectedPlan.graph.Add(&ColumnCompat{Source: types.ColumnTypeMetadata, Destination: types.ColumnTypeMetadata, Collision: types.ColumnTypeLabel})
+		compat := expectedPlan.graph.Add(&ColumnCompat{Source: types.ColumnTypeMetadata, Destination: types.ColumnTypeMetadata, Collisions: []types.ColumnType{types.ColumnTypeLabel}})
 		scanSet := expectedPlan.graph.Add(&ScanSet{
 			// Targets should be added in the order of the scan timestamps
 			// ASC => oldest to newest
@@ -816,7 +814,7 @@ func TestPlanner_MakeTable_Ordering(t *testing.T) {
 
 		expectedPlan := &Plan{}
 		parallelize := expectedPlan.graph.Add(&Parallelize{})
-		compat := expectedPlan.graph.Add(&ColumnCompat{Source: types.ColumnTypeMetadata, Destination: types.ColumnTypeMetadata, Collision: types.ColumnTypeLabel})
+		compat := expectedPlan.graph.Add(&ColumnCompat{Source: types.ColumnTypeMetadata, Destination: types.ColumnTypeMetadata, Collisions: []types.ColumnType{types.ColumnTypeLabel}})
 		scanSet := expectedPlan.graph.Add(&ScanSet{
 			// Targets should be added in the order of the scan timestamps
 			Targets: []*ScanTarget{
