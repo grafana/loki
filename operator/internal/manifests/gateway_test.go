@@ -927,10 +927,196 @@ func TestBuildGateway_WithHTTPEncryption(t *testing.T) {
 			},
 		},
 		{
+			Name: "abcd-gateway-client-http",
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					SecretName: "abcd-gateway-client-http",
+				},
+			},
+		},
+		{
+			Name: "abcd-ca-bundle",
+			VolumeSource: corev1.VolumeSource{
+				ConfigMap: &corev1.ConfigMapVolumeSource{
+					DefaultMode: &defaultConfigMapMode,
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: "abcd-ca-bundle",
+					},
+				},
+			},
+		},
+		{
+			Name: "abcd-gateway-ca-bundle",
+			VolumeSource: corev1.VolumeSource{
+				ConfigMap: &corev1.ConfigMapVolumeSource{
+					DefaultMode: &defaultConfigMapMode,
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: "abcd-gateway-ca-bundle",
+					},
+				},
+			},
+		},
+		{
 			Name: "tls-secret",
 			VolumeSource: corev1.VolumeSource{
 				Secret: &corev1.SecretVolumeSource{
 					SecretName: "abcd-gateway-http",
+				},
+			},
+		},
+	}
+	require.Equal(t, expectedVolumes, dpl.Spec.Template.Spec.Volumes)
+}
+
+func TestBuildGateway_WithHTTPEncryption_WithCustomTLS(t *testing.T) {
+	objs, err := BuildGateway(Options{
+		Name:      "abcd",
+		Namespace: "efgh",
+		Gates: configv1.FeatureGates{
+			LokiStackGateway: true,
+			HTTPEncryption:   true,
+		},
+		Stack: lokiv1.LokiStackSpec{
+			Template: &lokiv1.LokiTemplateSpec{
+				Gateway: &lokiv1.LokiComponentSpec{
+					Replicas: rand.Int31(),
+				},
+				Ruler: &lokiv1.LokiComponentSpec{
+					Replicas: rand.Int31(),
+				},
+			},
+			Rules: &lokiv1.RulesSpec{
+				Enabled: true,
+			},
+			Tenants: &lokiv1.TenantsSpec{
+				Mode:           lokiv1.Static,
+				Authorization:  &lokiv1.AuthorizationSpec{},
+				Authentication: []lokiv1.AuthenticationSpec{},
+				Gateway: &lokiv1.GatewaySpec{
+					TLS: &lokiv1.TLSSpec{
+						Certificate: &lokiv1.ValueReference{
+							Key:           "tls.crt",
+							ConfigMapName: "my-custom-cert",
+						},
+						Key: &lokiv1.SecretReference{
+							Key:        "tls.key",
+							SecretName: "my-custom-key",
+						},
+					},
+				},
+			},
+		},
+		Timeouts: defaultTimeoutConfig,
+	})
+
+	require.NoError(t, err)
+
+	dpl := objs[2].(*appsv1.Deployment)
+	require.NotNil(t, dpl)
+	require.Len(t, dpl.Spec.Template.Spec.Containers, 1)
+
+	c := dpl.Spec.Template.Spec.Containers[0]
+
+	expectedArgs := []string{
+		"--debug.name=lokistack-gateway",
+		"--web.listen=0.0.0.0:8080",
+		"--web.internal.listen=0.0.0.0:8081",
+		"--web.healthchecks.url=https://localhost:8080",
+		"--log.level=warn",
+		"--logs.read.endpoint=https://abcd-query-frontend-http.efgh.svc.cluster.local:3100",
+		"--logs.tail.endpoint=https://abcd-query-frontend-http.efgh.svc.cluster.local:3100",
+		"--logs.write.endpoint=https://abcd-distributor-http.efgh.svc.cluster.local:3100",
+		"--logs.write-timeout=4m0s",
+		"--rbac.config=/etc/lokistack-gateway/rbac.yaml",
+		"--tenants.config=/etc/lokistack-gateway/tenants.yaml",
+		"--server.read-timeout=48s",
+		"--server.write-timeout=6m0s",
+		"--logs.rules.endpoint=https://abcd-ruler-http.efgh.svc.cluster.local:3100",
+		"--logs.rules.read-only=true",
+		"--tls.client-auth-type=NoClientCert",
+		"--tls.min-version=VersionTLS12",
+		"--tls.server.cert-file=/var/run/tls/http/server/tls.crt",
+		"--tls.server.key-file=/var/run/tls/http/server/tls.key",
+		"--tls.healthchecks.server-ca-file=/var/run/ca/server/service-ca.crt",
+		"--tls.healthchecks.server-name=abcd-gateway-http.efgh.svc.cluster.local",
+		"--tls.internal.server.cert-file=/var/run/tls/http/server/tls.crt",
+		"--tls.internal.server.key-file=/var/run/tls/http/server/tls.key",
+		"--tls.min-version=",
+		"--tls.cipher-suites=",
+		"--logs.tls.ca-file=/var/run/ca/upstream/service-ca.crt",
+		"--logs.tls.cert-file=/var/run/tls/http/upstream/tls.crt",
+		"--logs.tls.key-file=/var/run/tls/http/upstream/tls.key",
+	}
+	require.Equal(t, expectedArgs, c.Args)
+
+	expectedVolumeMounts := []corev1.VolumeMount{
+		{
+			Name:      "rbac",
+			ReadOnly:  true,
+			MountPath: path.Join(gateway.LokiGatewayMountDir, gateway.LokiGatewayRbacFileName),
+			SubPath:   "rbac.yaml",
+		},
+		{
+			Name:      "tenants",
+			ReadOnly:  true,
+			MountPath: path.Join(gateway.LokiGatewayMountDir, gateway.LokiGatewayTenantFileName),
+			SubPath:   "tenants.yaml",
+		},
+		{
+			Name:      "lokistack-gateway",
+			ReadOnly:  true,
+			MountPath: path.Join(gateway.LokiGatewayMountDir, gateway.LokiGatewayRegoFileName),
+			SubPath:   "lokistack-gateway.rego",
+		},
+		{
+			Name:      "tls-secret",
+			ReadOnly:  true,
+			MountPath: "/var/run/tls/http/server",
+		},
+		{
+			Name:      "abcd-gateway-client-http",
+			ReadOnly:  true,
+			MountPath: "/var/run/tls/http/upstream",
+		},
+		{
+			Name:      "abcd-ca-bundle",
+			ReadOnly:  true,
+			MountPath: "/var/run/ca/upstream",
+		},
+		{
+			Name:      "abcd-gateway-ca-bundle",
+			ReadOnly:  true,
+			MountPath: "/var/run/ca/server",
+		},
+	}
+	require.Equal(t, expectedVolumeMounts, c.VolumeMounts)
+
+	expectedVolumes := []corev1.Volume{
+		{
+			Name: "rbac",
+			VolumeSource: corev1.VolumeSource{
+				ConfigMap: &corev1.ConfigMapVolumeSource{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: "abcd-gateway",
+					},
+				},
+			},
+		},
+		{
+			Name: "tenants",
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					SecretName: "abcd-gateway",
+				},
+			},
+		},
+		{
+			Name: "lokistack-gateway",
+			VolumeSource: corev1.VolumeSource{
+				ConfigMap: &corev1.ConfigMapVolumeSource{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: "abcd-gateway",
+					},
 				},
 			},
 		},
@@ -964,8 +1150,49 @@ func TestBuildGateway_WithHTTPEncryption(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "tls-secret",
+			VolumeSource: corev1.VolumeSource{
+				Projected: &corev1.ProjectedVolumeSource{
+					Sources: []corev1.VolumeProjection{
+						{
+							ConfigMap: &corev1.ConfigMapProjection{
+								LocalObjectReference: corev1.LocalObjectReference{
+									Name: "my-custom-cert",
+								},
+								Items: []corev1.KeyToPath{
+									{
+										Key:  "tls.crt",
+										Path: "tls.crt",
+									},
+								},
+							},
+						},
+						{
+							Secret: &corev1.SecretProjection{
+								LocalObjectReference: corev1.LocalObjectReference{
+									Name: "my-custom-key",
+								},
+								Items: []corev1.KeyToPath{
+									{
+										Key:  "tls.key",
+										Path: "tls.key",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
 	}
 	require.Equal(t, expectedVolumes, dpl.Spec.Template.Spec.Volumes)
+
+	// Verify service does not have serving-certs annotation when custom TLS is provided
+	svc := objs[5].(*corev1.Service)
+	require.NotNil(t, svc)
+	_, hasServingCertAnnotation := svc.Annotations["service.beta.openshift.io/serving-cert-secret-name"]
+	require.False(t, hasServingCertAnnotation, "service should not have serving-cert annotation with custom TLS")
 }
 
 func TestBuildGateway_PodDisruptionBudget(t *testing.T) {

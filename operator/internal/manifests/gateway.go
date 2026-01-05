@@ -277,9 +277,9 @@ func NewGatewayHTTPService(opts Options) *corev1.Service {
 	serviceName := serviceNameGatewayHTTP(opts.Name)
 	labels := ComponentLabels(LabelGatewayComponent, opts.Name)
 
-	enableSigningService := opts.Gates.OpenShift.ServingCertsService
+	enableSASigningService := opts.Gates.OpenShift.ServingCertsService
 	if opts.Stack.Tenants != nil && opts.Stack.Tenants.Gateway != nil && opts.Stack.Tenants.Gateway.TLS != nil {
-		enableSigningService = false
+		enableSASigningService = false
 	}
 
 	return &corev1.Service{
@@ -290,7 +290,7 @@ func NewGatewayHTTPService(opts Options) *corev1.Service {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        serviceName,
 			Labels:      labels,
-			Annotations: serviceAnnotations(serviceName, enableSigningService),
+			Annotations: serviceAnnotations(serviceName, enableSASigningService),
 		},
 		Spec: corev1.ServiceSpec{
 			Ports: []corev1.ServicePort{
@@ -592,7 +592,7 @@ func configureGatewayServerPKI(
 
 	if tlsOptions != nil && tlsOptions.Certificate != nil && tlsOptions.Key != nil {
 		sources := []corev1.VolumeProjection{}
-		
+
 		// Certificate
 		switch {
 		case tlsOptions.Certificate.ConfigMapName != "":

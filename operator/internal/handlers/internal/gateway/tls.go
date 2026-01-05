@@ -15,13 +15,10 @@ import (
 )
 
 const (
-	fieldNameCertificate   = "certificate"
-	fieldNameKey           = "key"
-	fieldNameCA            = "ca"
-	fieldNameKeyPassphrase = "keyPassphrase"
+	fieldNameCertificate = "certificate"
+	fieldNameKey         = "key"
 )
 
-// validateTLSConfig checks if the referenced TLS resources are valid
 func validateTLSConfig(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack) error {
 	if stack.Spec.Tenants == nil || stack.Spec.Tenants.Gateway == nil || stack.Spec.Tenants.Gateway.TLS == nil {
 		return nil
@@ -51,7 +48,7 @@ func validateValueRef(ctx context.Context, k k8s.Client, namespace string, ref *
 		return validateSecretRef(ctx, k, namespace, ref.SecretName, ref.Key, fieldName)
 	}
 
-	return kverrors.New("invalid call to validateValueRef ref not set", "field", fieldName, "ref", ref)
+	return kverrors.New("invalid call to validateValueRef configmap and secret not set", "field", fieldName, "ref", ref)
 }
 
 func validateConfigRef(ctx context.Context, k k8s.Client, namespace, name, key, fieldName string) error {
