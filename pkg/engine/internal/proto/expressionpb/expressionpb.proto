@@ -81,6 +81,8 @@ enum VariadicOp {
 
   VARIADIC_OP_PARSE_LOGFMT = 1; // Parse logfmt text into a set of columns.
   VARIADIC_OP_PARSE_JSON = 2; // Parse JSON text into a set of columns.
+  VARIADIC_OP_PARSE_LABELFMT = 3; // Parse new labels based on given transformations.
+  VARIADIC_OP_PARSE_LINEFMT = 4; // Parse into a new line based on a given pattern.
 }
 
 // LiteralExpression represents a constant literal value in an expression tree.
