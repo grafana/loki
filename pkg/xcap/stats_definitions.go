@@ -71,3 +71,12 @@ var (
 	StatMetastoreSectionPointersRead     = NewStatisticInt64("metastore.sections.pointers.read", AggregationTypeSum)
 	StatMetastoreSectionPointersReadTime = NewStatisticFloat64("metastore.sections.pointers.read.duration", AggregationTypeSum)
 )
+
+// Task scheduling statistics.
+var (
+	// Task queue duration (queued to assignment) in seconds.
+	StatTaskQueueDuration = NewStatisticFloat64("task.queue.duration", AggregationTypeSum)
+
+	// Time spent waiting for task admission (before being queued) in seconds.
+	StatTaskAdmissionWaitDuration = NewStatisticFloat64("task.admission.wait.duration", AggregationTypeSum)
+)
