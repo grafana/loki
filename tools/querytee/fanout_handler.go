@@ -118,7 +118,7 @@ func (h *FanOutHandler) Do(ctx context.Context, req queryrangebase.Request) (que
 
 	// If feature flag is enabled, not sampling for Goldfish, and no basic comparator configured,
 	// skip fan-out and only send to preferred backend
-	if h.skipFanOutWhenNotSampling && !shouldSample && h.comparator == nil {
+	if h.skipFanOutWhenNotSampling && !shouldSample {
 		return h.executePreferredBackendOnly(ctx, httpReq, body, req, issuer)
 	}
 
