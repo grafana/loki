@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/bucket/bos"
 	"github.com/grafana/loki/v3/pkg/storage/bucket/filesystem"
 	"github.com/grafana/loki/v3/pkg/storage/bucket/gcs"
+	"github.com/grafana/loki/v3/pkg/storage/bucket/oci"
 	"github.com/grafana/loki/v3/pkg/storage/bucket/oss"
 	"github.com/grafana/loki/v3/pkg/storage/bucket/s3"
 	"github.com/grafana/loki/v3/pkg/storage/bucket/swift"
@@ -45,12 +46,15 @@ const (
 	// BOS is the value for the Baidu Cloud BOS storage backend
 	BOS = "bos"
 
+	// OCI is the value for the Oracle Cloud storage backend
+	OCI = "oci"
+
 	// validPrefixCharactersRegex allows only alphanumeric characters and dashes to prevent subtle bugs and simplify validation
 	validPrefixCharactersRegex = `^[\da-zA-Z-]+$`
 )
 
 var (
-	SupportedBackends = []string{S3, GCS, Azure, Swift, Filesystem, Alibaba, BOS}
+	SupportedBackends = []string{S3, GCS, Azure, Swift, Filesystem, Alibaba, BOS, OCI}
 
 	ErrUnsupportedStorageBackend        = errors.New("unsupported storage backend")
 	ErrInvalidCharactersInStoragePrefix = errors.New("storage prefix contains invalid characters, it may only contain digits, English alphabet letters and dashes")
@@ -83,6 +87,7 @@ type Config struct {
 	Filesystem filesystem.Config `yaml:"filesystem"`
 	Alibaba    oss.Config        `yaml:"alibaba"`
 	BOS        bos.Config        `yaml:"bos"`
+	OCI        oci.Config        `yaml:"oci"`
 
 	StoragePrefix string `yaml:"storage_prefix"`
 
@@ -113,6 +118,7 @@ func (cfg *Config) RegisterFlagsWithPrefixAndDefaultDirectory(prefix, dir string
 	cfg.Filesystem.RegisterFlagsWithPrefixAndDefaultDirectory(prefix, dir, f)
 	cfg.Alibaba.RegisterFlagsWithPrefix(prefix, f)
 	cfg.BOS.RegisterFlagsWithPrefix(prefix, f)
+	cfg.OCI.RegisterFlagsWithPrefix(prefix, f)
 	f.StringVar(&cfg.StoragePrefix, prefix+"storage-prefix", "", "Prefix for all objects stored in the backend storage. For simplicity, it may only contain digits, English alphabet letters and dashes.")
 }
 
@@ -158,6 +164,8 @@ func (cfg *Config) disableRetries(backend string) error {
 		cfg.Azure.MaxRetries = 1
 	case Swift:
 		cfg.Swift.MaxRetries = 1
+	case OCI:
+		cfg.OCI.MaxRequestRetries = 1
 	case Filesystem, Alibaba, BOS:
 		// do nothing
 	default:
@@ -177,6 +185,8 @@ func (cfg *Config) configureTransport(backend string, rt http.RoundTripper) erro
 		cfg.Azure.Transport = rt
 	case Swift:
 		cfg.Swift.HTTP.Transport = rt
+	case OCI:
+		cfg.OCI.HTTPConfig.Transport = rt
 	case Filesystem, Alibaba, BOS:
 		// do nothing
 	default:
@@ -203,6 +213,8 @@ func NewClient(ctx context.Context, backend string, cfg Config, name string, log
 		client, err = azure.NewBucketClient(cfg.Azure, name, logger, instrumentTransport())
 	case Swift:
 		client, err = swift.NewBucketClient(cfg.Swift, name, logger, instrumentTransport())
+	case OCI:
+		client, err = oci.NewBucketClient(cfg.OCI, logger, instrumentTransport())
 	case Filesystem:
 		client, err = filesystem.NewBucketClient(cfg.Filesystem)
 	case Alibaba:

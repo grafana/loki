@@ -395,7 +395,7 @@ ruler_storage:
   [<thanos_object_store_config>]
 
   # Backend storage to use. Supported backends are: local, s3, gcs, azure,
-  # swift, filesystem, alibabacloud, bos
+  # swift, filesystem, alibabacloud, bos, oci
   # CLI flag: -ruler-storage.backend
   [backend: <string> | default = "filesystem"]
 
@@ -5199,7 +5199,7 @@ The `period_config` block configures what index schemas should be used for from 
 [store: <string> | default = ""]
 
 # Which store to use for the chunks. Either aws (alias s3), azure, gcs,
-# alibabacloud, bos, cos, swift, filesystem, or a named_store (refer to
+# alibabacloud, bos, cos, swift, filesystem, oci, or a named_store (refer to
 # named_stores_config). Following stores are deprecated: aws-dynamo, gcp,
 # gcp-columnkey, bigtable, bigtable-hashed, cassandra, grpc.
 [object_store: <string> | default = ""]
@@ -6688,6 +6688,8 @@ object_store:
 
     [swift: <map of string to NamedSwiftStorageConfig>]
 
+    [oci: <map of string to NamedOCIStorageConfig>]
+
 # The maximum number of chunks to fetch per batch.
 # CLI flag: -store.max-chunk-batch-size
 [max_chunk_batch_size: <int> | default = 50]
@@ -7733,6 +7735,63 @@ bos:
   # Baidu Cloud Engine (BCE) Secret Access Key.
   # CLI flag: -<prefix>.bos.secret-key
   [secret_key: <string> | default = ""]
+
+oci:
+  # Credential provider (default, instance-principal, oke-workload-identity, or
+  # raw)
+  # CLI flag: -<prefix>.oci.provider
+  [provider: <string> | default = "default"]
+
+  # OCI bucket name
+  # CLI flag: -<prefix>.oci.bucket
+  [bucket: <string> | default = ""]
+
+  # Compartment OCID
+  # CLI flag: -<prefix>.oci.compartment-ocid
+  [compartment_ocid: <string> | default = ""]
+
+  [tenancy_ocid: <string> | default = ""]
+
+  [user_ocid: <string> | default = ""]
+
+  # OCI Region name
+  # CLI flag: -<prefix>.oci.region
+  [region: <string> | default = ""]
+
+  [fingerprint: <string> | default = ""]
+
+  [privatekey: <string> | default = ""]
+
+  [passphrase: <string> | default = ""]
+
+  [part_size: <int>]
+
+  # Max retries on request error
+  # CLI flag: -<prefix>.oci.max-request-retries
+  [max_request_retries: <int> | default = 3]
+
+  [request_retry_interval: <int>]
+
+  http_config:
+    [idle_conn_timeout: <int>]
+
+    [response_header_timeout: <int>]
+
+    [insecure_skip_verify: <boolean>]
+
+    [tls_handshake_timeout: <int>]
+
+    [expect_continue_timeout: <int>]
+
+    [max_idle_conns: <int>]
+
+    [max_idle_conns_per_host: <int>]
+
+    [max_conns_per_host: <int>]
+
+    [disable_compression: <boolean>]
+
+    [client_timeout: <duration>]
 
 # Prefix for all objects stored in the backend storage. For simplicity, it may
 # only contain digits, English alphabet letters and dashes.
