@@ -16,54 +16,58 @@ import (
 
 // HandlerFactory creates the appropriate handler based on configuration.
 type HandlerFactory struct {
-	backends           []*ProxyBackend
-	codec              queryrangebase.Codec
-	goldfishManager    goldfish.Manager
-	instrumentCompares bool
-	enableRace         bool
-	logger             log.Logger
-	metrics            *ProxyMetrics
-	raceTolerance      time.Duration
+	backends                  []*ProxyBackend
+	codec                     queryrangebase.Codec
+	goldfishManager           goldfish.Manager
+	instrumentCompares        bool
+	enableRace                bool
+	logger                    log.Logger
+	metrics                   *ProxyMetrics
+	raceTolerance             time.Duration
+	skipFanOutWhenNotSampling bool
 }
 
 // HandlerFactoryConfig holds configuration for creating a HandlerFactory.
 type HandlerFactoryConfig struct {
-	Backends           []*ProxyBackend
-	Codec              queryrangebase.Codec
-	GoldfishManager    goldfish.Manager
-	InstrumentCompares bool
-	EnableRace         bool
-	Logger             log.Logger
-	Metrics            *ProxyMetrics
-	RaceTolerance      time.Duration
+	Backends                  []*ProxyBackend
+	Codec                     queryrangebase.Codec
+	GoldfishManager           goldfish.Manager
+	InstrumentCompares        bool
+	EnableRace                bool
+	Logger                    log.Logger
+	Metrics                   *ProxyMetrics
+	RaceTolerance             time.Duration
+	SkipFanOutWhenNotSampling bool
 }
 
 // NewHandlerFactory creates a new HandlerFactory.
 func NewHandlerFactory(cfg HandlerFactoryConfig) *HandlerFactory {
 	return &HandlerFactory{
-		backends:           cfg.Backends,
-		codec:              cfg.Codec,
-		goldfishManager:    cfg.GoldfishManager,
-		instrumentCompares: cfg.InstrumentCompares,
-		enableRace:         cfg.EnableRace,
-		logger:             cfg.Logger,
-		metrics:            cfg.Metrics,
-		raceTolerance:      cfg.RaceTolerance,
+		backends:                  cfg.Backends,
+		codec:                     cfg.Codec,
+		goldfishManager:           cfg.GoldfishManager,
+		instrumentCompares:        cfg.InstrumentCompares,
+		enableRace:                cfg.EnableRace,
+		logger:                    cfg.Logger,
+		metrics:                   cfg.Metrics,
+		raceTolerance:             cfg.RaceTolerance,
+		skipFanOutWhenNotSampling: cfg.SkipFanOutWhenNotSampling,
 	}
 }
 
 func (f *HandlerFactory) CreateHandler(routeName string, comp comparator.ResponsesComparator) (http.Handler, error) {
 	// Create the fan-out handler that sends requests to all backends
 	fanOutHandler := NewFanOutHandler(FanOutHandlerConfig{
-		Backends:           f.backends,
-		Codec:              f.codec,
-		Comparator:         comp,
-		GoldfishManager:    f.goldfishManager,
-		InstrumentCompares: f.instrumentCompares,
-		EnableRace:         f.enableRace,
-		Logger:             f.logger,
-		Metrics:            f.metrics,
-		RouteName:          routeName,
+		Backends:                  f.backends,
+		Codec:                     f.codec,
+		Comparator:                comp,
+		GoldfishManager:           f.goldfishManager,
+		InstrumentCompares:        f.instrumentCompares,
+		EnableRace:                f.enableRace,
+		Logger:                    f.logger,
+		Metrics:                   f.metrics,
+		RouteName:                 routeName,
+		SkipFanOutWhenNotSampling: f.skipFanOutWhenNotSampling,
 	})
 
 	var preferredBackend *ProxyBackend
