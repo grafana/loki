@@ -266,6 +266,8 @@ func (p *partitionProcessor) processRecord(ctx context.Context, record partition
 		return
 	}
 
+	p.metrics.processedBytes.Add(float64(stream.Size()))
+
 	if err := p.builder.Append(tenant, stream); err != nil {
 		if !errors.Is(err, logsobj.ErrBuilderFull) {
 			level.Error(p.logger).Log("msg", "failed to append stream", "err", err)
