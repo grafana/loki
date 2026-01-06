@@ -144,6 +144,9 @@ func (wf *Workflow) init(ctx context.Context) error {
 	return wf.runner.Listen(ctx, wf.resultsPipeline, wf.resultsStream)
 }
 
+// Len returns the total number of tasks in the workflow.
+func (wf *Workflow) Len() int { return len(wf.manifest.Tasks) }
+
 // Close releases resources associated with the workflow.
 func (wf *Workflow) Close() {
 	if err := wf.runner.UnregisterManifest(context.Background(), wf.manifest); err != nil {

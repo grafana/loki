@@ -407,6 +407,7 @@ func (e *Engine) buildWorkflow(ctx context.Context, logger log.Logger, physicalP
 	level.Info(logger).Log(
 		"msg", "finished execution planning",
 		"duration", duration.String(),
+		"tasks", wf.Len(),
 	)
 
 	region.AddEvent("finished execution planning", attribute.Stringer("duration", duration))
