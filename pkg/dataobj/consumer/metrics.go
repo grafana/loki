@@ -22,6 +22,8 @@ type partitionOffsetMetrics struct {
 	latestDelay      prometheus.Gauge // Latest delta between record timestamp and current time
 	processedRecords prometheus.Counter
 	processedBytes   prometheus.Counter
+
+	flushDuration prometheus.Histogram
 }
 
 func newPartitionOffsetMetrics() *partitionOffsetMetrics {
@@ -50,6 +52,15 @@ func newPartitionOffsetMetrics() *partitionOffsetMetrics {
 			Name: "loki_dataobj_consumer_processed_bytes_total",
 			Help: "Total number of bytes processed.",
 		}),
+		flushDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name: "loki_dataobj_consumer_flush_duration_seconds",
+			Help: "Time taken to flush a data object (build, sort, upload, etc).",
+
+			Buckets:                         prometheus.DefBuckets,
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 0,
+		}),
 	}
 
 	p.currentOffset = prometheus.NewGaugeFunc(
@@ -75,6 +86,7 @@ func (p *partitionOffsetMetrics) register(reg prometheus.Registerer) error {
 		p.processedRecords,
 		p.processedBytes,
 		p.currentOffset,
+		p.flushDuration,
 	}
 
 	for _, collector := range collectors {
@@ -95,6 +107,7 @@ func (p *partitionOffsetMetrics) unregister(reg prometheus.Registerer) {
 		p.processedRecords,
 		p.processedBytes,
 		p.currentOffset,
+		p.flushDuration,
 	}
 
 	for _, collector := range collectors {
