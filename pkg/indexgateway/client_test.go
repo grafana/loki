@@ -420,6 +420,7 @@ func Benchmark_QueriesMatchingLargeNumOfRows(b *testing.B) {
 	benchmarkIndexQueries(b, queries)
 }*/
 
+
 func TestDoubleRegistration(t *testing.T) {
 	logger := log.NewNopLogger()
 	r := prometheus.NewRegistry()

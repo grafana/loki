@@ -53,6 +53,7 @@ type Config struct {
 	Internal bool `yaml:"-"`
 }
 
+
 // RegisterFlags registers flags.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("ingester.client", f)
