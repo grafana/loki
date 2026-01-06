@@ -37,6 +37,9 @@ var (
 	vectorAggregationOperations = map[types.VectorAggregationType]aggregationOperation{
 		types.VectorAggregationTypeSum:   aggregationOperationSum,
 		types.VectorAggregationTypeCount: aggregationOperationCount,
+		types.VectorAggregationTypeAvg:   aggregationOperationAvg,
+		types.VectorAggregationTypeMax:   aggregationOperationMax,
+		types.VectorAggregationTypeMin:   aggregationOperationMin,
 	}
 )
 
