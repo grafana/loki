@@ -222,6 +222,7 @@ func TestGatewayClient_RingMode(t *testing.T) {
 
 func createSimpleGatewayClient(t *testing.T, addrs []string) (log.Logger, *dskitclient.Pool, *GatewayClient) {
 	logger := log.NewNopLogger()
+<<<<<<< HEAD
 	r := prometheus.NewRegistry()
 	o, _ := validation.NewOverrides(validation.Limits{}, nil)
 	client, err := NewGatewayClient(
