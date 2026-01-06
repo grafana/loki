@@ -25,7 +25,7 @@ type PoolConfig struct {
 func (cfg *PoolConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&cfg.ClientCleanupPeriod, prefix+"client-cleanup-period", 15*time.Second, "How frequently to clean up clients for ingesters that have gone away.")
 	f.BoolVar(&cfg.HealthCheckIngesters, prefix+"health-check-ingesters", true, "Run a health check on each ingester client during periodic cleanup.")
-	f.DurationVar(&cfg.HealthCheckGracePeriod, prefix+"health-check-grace-period", 2*time.Minute, "The duration during which the health check is allowed to fail before the client is removed from the pool.")
+	f.DurationVar(&cfg.HealthCheckGracePeriod, prefix+"health-check-grace-period", 2*time.Minute, "Grace period to wait before removing an unhealthy client from the pool.")
 	f.DurationVar(&cfg.RemoteTimeout, prefix+"remote-timeout", 1*time.Second, "Timeout for the health check.")
 }
 
