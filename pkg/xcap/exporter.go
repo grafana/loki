@@ -159,7 +159,7 @@ func summarizeObservations(capture *Capture) *observations {
 				StatPipelineReadDuration.Key(),
 				StatPipelineExecDuration.Key(),
 			).
-			prefix("range_aggregation").
+			prefix("range_aggregation_").
 			normalizeKeys(),
 	)
 
@@ -169,7 +169,7 @@ func summarizeObservations(capture *Capture) *observations {
 				StatPipelineReadDuration.Key(),
 				StatPipelineExecDuration.Key(),
 			).
-			prefix("vector_aggregation").
+			prefix("vector_aggregation_").
 			normalizeKeys(),
 	)
 
