@@ -30,7 +30,6 @@ import (
 
 	"github.com/gogo/protobuf/jsonpb"
 	jaeger_api_v2 "github.com/jaegertracing/jaeger-idl/proto-gen/api_v2"
-
 	"go.opentelemetry.io/otel/sdk/trace"
 )
 
@@ -49,7 +48,7 @@ type SamplingStrategyFetcher interface {
 // samplingStrategyParser is used to parse sampling strategy updates. The output object
 // should be of the type that is recognized by the SamplerUpdaters.
 type samplingStrategyParser interface {
-	Parse(response []byte) (interface{}, error)
+	Parse(response []byte) (any, error)
 }
 
 // samplerUpdater is used by Sampler to apply sampling strategies,
@@ -62,7 +61,7 @@ type samplingStrategyParser interface {
 //
 // Sampler invokes the updaters while holding a lock on the main sampler.
 type samplerUpdater interface {
-	Update(sampler trace.Sampler, strategy interface{}) (modified trace.Sampler, err error)
+	Update(sampler trace.Sampler, strategy any) (modified trace.Sampler, err error)
 }
 
 // Sampler is a delegating sampler that polls a remote server
@@ -70,7 +69,7 @@ type samplerUpdater interface {
 // delegates to it for sampling decisions.
 type Sampler struct {
 	// These fields must be first in the struct because `sync/atomic` expects 64-bit alignment.
-	// Cf. https://github.com/uber/jaeger-client-go/issues/155, https://goo.gl/zW7dgq
+	// Cf. https://github.com/jaegertracing/jaeger-client-go/issues/155, https://pkg.go.dev/sync/atomic#pkg-note-BUG
 	closed int64 // 0 - not closed, 1 - closed
 
 	sync.RWMutex // used to serialize access to samplerConfig.sampler
@@ -119,7 +118,7 @@ func (s *Sampler) Close() {
 }
 
 // Description returns a human-readable name for the Sampler.
-func (s *Sampler) Description() string {
+func (*Sampler) Description() string {
 	return "JaegerRemoteSampler{}"
 }
 
@@ -173,7 +172,7 @@ func (s *Sampler) UpdateSampler() {
 }
 
 // NB: this function should only be called while holding a Write lock.
-func (s *Sampler) updateSamplerViaUpdaters(strategy interface{}) error {
+func (s *Sampler) updateSamplerViaUpdaters(strategy any) error {
 	for _, updater := range s.updaters {
 		sampler, err := updater.Update(s.sampler, strategy)
 		if err != nil {
@@ -193,7 +192,7 @@ func (s *Sampler) updateSamplerViaUpdaters(strategy interface{}) error {
 type probabilisticSamplerUpdater struct{}
 
 // Update implements Update of samplerUpdater.
-func (u *probabilisticSamplerUpdater) Update(sampler trace.Sampler, strategy interface{}) (trace.Sampler, error) {
+func (*probabilisticSamplerUpdater) Update(sampler trace.Sampler, strategy any) (trace.Sampler, error) {
 	type response interface {
 		GetProbabilisticSampling() *jaeger_api_v2.ProbabilisticSamplingStrategy
 	}
@@ -218,7 +217,7 @@ func (u *probabilisticSamplerUpdater) Update(sampler trace.Sampler, strategy int
 type rateLimitingSamplerUpdater struct{}
 
 // Update implements Update of samplerUpdater.
-func (u *rateLimitingSamplerUpdater) Update(sampler trace.Sampler, strategy interface{}) (trace.Sampler, error) {
+func (*rateLimitingSamplerUpdater) Update(sampler trace.Sampler, strategy any) (trace.Sampler, error) {
 	type response interface {
 		GetRateLimitingSampling() *jaeger_api_v2.RateLimitingSamplingStrategy
 	}
@@ -246,7 +245,7 @@ type perOperationSamplerUpdater struct {
 }
 
 // Update implements Update of samplerUpdater.
-func (u *perOperationSamplerUpdater) Update(sampler trace.Sampler, strategy interface{}) (trace.Sampler, error) {
+func (u *perOperationSamplerUpdater) Update(sampler trace.Sampler, strategy any) (trace.Sampler, error) {
 	type response interface {
 		GetOperationSampling() *jaeger_api_v2.PerOperationSamplingStrategies
 	}
@@ -288,7 +287,7 @@ func (f *httpSamplingStrategyFetcher) Fetch(serviceName string) ([]byte, error) 
 	v.Set("service", serviceName)
 	uri := f.serverURL + "?" + v.Encode()
 
-	resp, err := f.httpClient.Get(uri) // nolint:bodyclose  // False-positive.
+	resp, err := f.httpClient.Get(uri)
 	if err != nil {
 		return nil, err
 	}
@@ -310,7 +309,7 @@ func (f *httpSamplingStrategyFetcher) Fetch(serviceName string) ([]byte, error) 
 
 type samplingStrategyParserImpl struct{}
 
-func (p *samplingStrategyParserImpl) Parse(response []byte) (interface{}, error) {
+func (*samplingStrategyParserImpl) Parse(response []byte) (any, error) {
 	strategy := new(jaeger_api_v2.SamplingStrategyResponse)
 	// Official Jaeger Remote Sampling protocol contains enums encoded as strings.
 	// Legacy protocol contains enums as numbers.

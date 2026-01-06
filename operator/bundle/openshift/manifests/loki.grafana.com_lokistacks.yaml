@@ -3863,6 +3863,11 @@ spec:
                           type: object
                         type: array
                     type: object
+                  disableIngress:
+                    description: |-
+                      DisableIngress disables automatic creation of external access resources (Route / Ingress).
+                      When true, no Route or Ingress will be created for the gateway.
+                    type: boolean
                   mode:
                     default: openshift-logging
                     description: Mode defines the mode in which lokistack-gateway

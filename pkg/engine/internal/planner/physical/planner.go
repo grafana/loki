@@ -189,15 +189,15 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) (Node, e
 
 	from, through := ctx.GetResolveTimeRange()
 
-	filteredShardDescriptors, err := p.catalog.ResolveShardDescriptorsWithShard(p.convertPredicate(lp.Selector), predicates, ShardInfo(*shard), from, through)
+	dataObjs, err := p.catalog.ResolveDataObjSections(p.convertPredicate(lp.Selector), predicates, ShardInfo(*shard), from, through)
 	if err != nil {
 		return nil, err
 	}
-	sort.Slice(filteredShardDescriptors, func(i, j int) bool {
-		return filteredShardDescriptors[i].TimeRange.End.After(filteredShardDescriptors[j].TimeRange.End)
+	sort.Slice(dataObjs, func(i, j int) bool {
+		return dataObjs[i].TimeRange.End.After(dataObjs[j].TimeRange.End)
 	})
 	if ctx.direction == ASC {
-		slices.Reverse(filteredShardDescriptors)
+		slices.Reverse(dataObjs)
 	}
 
 	// Scan work can be parallelized across multiple workers, so we wrap
@@ -212,18 +212,18 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) (Node, e
 	}
 	p.plan.graph.Add(scanSet)
 
-	for _, desc := range filteredShardDescriptors {
-		for _, section := range desc.Sections {
+	for _, dataObj := range dataObjs {
+		for _, section := range dataObj.Sections {
 			scanSet.Targets = append(scanSet.Targets, &ScanTarget{
 				Type: ScanTypeDataObject,
 
 				DataObject: &DataObjScan{
 					NodeID: ulid.Make(),
 
-					Location:     desc.Location,
-					StreamIDs:    desc.Streams,
+					Location:     dataObj.Location,
+					StreamIDs:    dataObj.Streams,
 					Section:      section,
-					MaxTimeRange: desc.TimeRange,
+					MaxTimeRange: dataObj.TimeRange,
 				},
 			})
 		}
@@ -403,20 +403,23 @@ func (p *Planner) processLimit(lp *logical.Limit, ctx *Context) (Node, error) {
 }
 
 func (p *Planner) processRangeAggregation(r *logical.RangeAggregation, ctx *Context) (Node, error) {
-	partitionBy := make([]ColumnExpression, len(r.PartitionBy))
-	for i, col := range r.PartitionBy {
-		partitionBy[i] = &ColumnExpr{Ref: col.Ref}
+	grouping := make([]ColumnExpression, len(r.Grouping.Columns))
+	for i, col := range r.Grouping.Columns {
+		grouping[i] = &ColumnExpr{Ref: col.Ref}
 	}
 
 	node := &RangeAggregation{
 		NodeID: ulid.Make(),
 
-		PartitionBy: partitionBy,
-		Operation:   r.Operation,
-		Start:       r.Start,
-		End:         r.End,
-		Range:       r.RangeInterval,
-		Step:        r.Step,
+		Grouping: Grouping{
+			Columns: grouping,
+			Without: r.Grouping.Without,
+		},
+		Operation: r.Operation,
+		Start:     r.Start,
+		End:       r.End,
+		Range:     r.RangeInterval,
+		Step:      r.Step,
 	}
 	p.plan.graph.Add(node)
 
@@ -433,15 +436,18 @@ func (p *Planner) processRangeAggregation(r *logical.RangeAggregation, ctx *Cont
 
 // Convert [logical.VectorAggregation] into one [VectorAggregation] node.
 func (p *Planner) processVectorAggregation(lp *logical.VectorAggregation, ctx *Context) (Node, error) {
-	groupBy := make([]ColumnExpression, len(lp.GroupBy))
-	for i, col := range lp.GroupBy {
-		groupBy[i] = &ColumnExpr{Ref: col.Ref}
+	grouping := make([]ColumnExpression, len(lp.Grouping.Columns))
+	for i, col := range lp.Grouping.Columns {
+		grouping[i] = &ColumnExpr{Ref: col.Ref}
 	}
 
 	node := &VectorAggregation{
 		NodeID: ulid.Make(),
 
-		GroupBy:   groupBy,
+		Grouping: Grouping{
+			Columns: grouping,
+			Without: lp.Grouping.Without,
+		},
 		Operation: lp.Operation,
 	}
 	p.plan.graph.Add(node)

@@ -248,11 +248,6 @@ const regionNameDataObjScan = "DataObjScan"
 // ToStatsSummary computes a stats.Result from observations in the capture.
 func (c *Capture) ToStatsSummary(execTime, queueTime time.Duration, totalEntriesReturned int) stats.Result {
 	result := stats.Result{
-		Summary: stats.Summary{
-			ExecTime:             execTime.Seconds(),
-			QueueTime:            queueTime.Seconds(),
-			TotalEntriesReturned: int64(totalEntriesReturned),
-		},
 		Querier: stats.Querier{
 			Store: stats.Store{
 				QueryUsedV2Engine: true,
@@ -261,6 +256,7 @@ func (c *Capture) ToStatsSummary(execTime, queueTime time.Duration, totalEntries
 	}
 
 	if c == nil {
+		result.ComputeSummary(execTime, queueTime, totalEntriesReturned)
 		return result
 	}
 
@@ -282,6 +278,8 @@ func (c *Capture) ToStatsSummary(execTime, queueTime time.Duration, totalEntries
 	// TODO: this will report the wrong value if the plan has a filter stage.
 	// pick the min of row_out from filter and scan nodes.
 	result.Querier.Store.Dataobj.PostFilterRows = readInt64(observations, StatPipelineRowsOut.Key())
+
+	result.ComputeSummary(execTime, queueTime, totalEntriesReturned)
 	return result
 }
 

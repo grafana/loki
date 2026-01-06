@@ -125,6 +125,9 @@ type TCPTransport struct {
 	sentPacketsErrors     prometheus.Counter
 	droppedPackets        prometheus.Counter
 	unknownConnections    prometheus.Counter
+
+	sentBytes     prometheus.Counter
+	receivedBytes prometheus.Counter
 }
 
 // NewTCPTransport returns a new tcp-based transport with the given configuration. On
@@ -272,6 +275,9 @@ func (t *TCPTransport) debugLog() log.Logger {
 func (t *TCPTransport) handleConnection(conn net.Conn) {
 	t.debugLog().Log("msg", "New connection", "addr", conn.RemoteAddr())
 
+	// Wrap the connection to track sent/received bytes.
+	conn = newMeteredConn(conn, t.sentBytes, t.receivedBytes)
+
 	closeConn := true
 	defer func() {
 		if closeConn {
@@ -364,10 +370,17 @@ func (a addr) String() string {
 }
 
 func (t *TCPTransport) getConnection(addr string, timeout time.Duration) (net.Conn, error) {
+	var conn net.Conn
+	var err error
 	if t.cfg.TLSEnabled {
-		return tls.DialWithDialer(&net.Dialer{Timeout: timeout}, "tcp", addr, t.tlsConfig)
+		conn, err = tls.DialWithDialer(&net.Dialer{Timeout: timeout}, "tcp", addr, t.tlsConfig)
+	} else {
+		conn, err = net.DialTimeout("tcp", addr, timeout)
 	}
-	return net.DialTimeout("tcp", addr, timeout)
+	if err != nil {
+		return nil, err
+	}
+	return newMeteredConn(conn, t.sentBytes, t.receivedBytes), nil
 }
 
 // GetAutoBindPort returns the bind port that was automatically given by the
@@ -673,7 +686,7 @@ func (t *TCPTransport) registerMetrics(registerer prometheus.Registerer) {
 		Namespace: t.cfg.MetricsNamespace,
 		Subsystem: subsystem,
 		Name:      "packets_received_bytes_total",
-		Help:      "Total bytes received as packets",
+		Help:      "Total bytes received as packets. This metric only tracks broadcast packets, and does not include full state syncs or pings.",
 	})
 
 	t.receivedPacketsErrors = promauto.With(registerer).NewCounter(prometheus.CounterOpts{
@@ -701,7 +714,7 @@ func (t *TCPTransport) registerMetrics(registerer prometheus.Registerer) {
 		Namespace: t.cfg.MetricsNamespace,
 		Subsystem: subsystem,
 		Name:      "packets_sent_bytes_total",
-		Help:      "Total bytes sent as packets",
+		Help:      "Total bytes sent as packets. This metric only tracks broadcast packets, and does not include full state syncs or pings.",
 	})
 
 	t.sentPacketsErrors = promauto.With(registerer).NewCounter(prometheus.CounterOpts{
@@ -716,5 +729,19 @@ func (t *TCPTransport) registerMetrics(registerer prometheus.Registerer) {
 		Subsystem: subsystem,
 		Name:      "unknown_connections_total",
 		Help:      "Number of unknown TCP connections (not a packet or stream)",
+	})
+
+	t.sentBytes = promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+		Namespace: t.cfg.MetricsNamespace,
+		Subsystem: subsystem,
+		Name:      "sent_bytes_total",
+		Help:      "Total bytes sent by the transport. This metric tracks all data transferred, including broadcast packets, full state syncs, and pings.",
+	})
+
+	t.receivedBytes = promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+		Namespace: t.cfg.MetricsNamespace,
+		Subsystem: subsystem,
+		Name:      "received_bytes_total",
+		Help:      "Total bytes sent by the transport. This metric tracks all data transferred, including broadcast packets, full state syncs, and pings.",
 	})
 }

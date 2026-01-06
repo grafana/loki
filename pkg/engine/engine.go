@@ -14,7 +14,6 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/thanos-io/objstore"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -29,7 +28,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
-	"github.com/grafana/loki/v3/pkg/storage/bucket"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/rangeio"
@@ -71,12 +69,11 @@ type Params struct {
 	Logger     log.Logger            // Logger for optional log messages.
 	Registerer prometheus.Registerer // Registerer for optional metrics.
 
-	Config          ExecutorConfig   // Config for the Engine.
-	MetastoreConfig metastore.Config // Config for the Metastore.
+	Config ExecutorConfig // Config for the Engine.
 
-	Scheduler *Scheduler      // Scheduler to manage the execution of tasks.
-	Bucket    objstore.Bucket // Bucket to read stored data from.
-	Limits    logql.Limits    // Limits to apply to engine queries.
+	Scheduler *Scheduler          // Scheduler to manage the execution of tasks.
+	Metastore metastore.Metastore // Metastore to access the indexes
+	Limits    logql.Limits        // Limits to apply to engine queries.
 }
 
 // validate validates p and applies defaults.
@@ -90,6 +87,9 @@ func (p *Params) validate() error {
 	if p.Scheduler == nil {
 		return errors.New("scheduler is required")
 	}
+	if p.Metastore == nil {
+		return errors.New("metastore is required")
+	}
 	if p.Config.BatchSize <= 0 {
 		return fmt.Errorf("invalid batch size for query engine. must be greater than 0, got %d", p.Config.BatchSize)
 	}
@@ -102,9 +102,8 @@ type Engine struct {
 	metrics     *metrics
 	rangeConfig rangeio.Config
 
-	scheduler *Scheduler      // Scheduler to manage the execution of tasks.
-	bucket    objstore.Bucket // Bucket to read stored data from.
-	limits    logql.Limits    // Limits to apply to engine queries.
+	scheduler *Scheduler   // Scheduler to manage the execution of tasks.
+	limits    logql.Limits // Limits to apply to engine queries.
 
 	metastore metastore.Metastore
 }
@@ -121,16 +120,9 @@ func New(params Params) (*Engine, error) {
 		rangeConfig: params.Config.RangeConfig,
 
 		scheduler: params.Scheduler,
-		bucket:    bucket.NewXCapBucket(params.Bucket),
 		limits:    params.Limits,
-	}
 
-	if e.bucket != nil {
-		indexBucket := e.bucket
-		if params.MetastoreConfig.IndexStoragePrefix != "" {
-			indexBucket = objstore.NewPrefixedBucket(e.bucket, params.MetastoreConfig.IndexStoragePrefix)
-		}
-		e.metastore = metastore.NewObjectMetastore(indexBucket, e.logger, params.Registerer)
+		metastore: params.Metastore,
 	}
 
 	return e, nil
@@ -230,7 +222,7 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	// It is safe to call End() multiple times.
 	region.End()
 	capture.End()
-	if err := mergeCapture(capture, physicalPlan); err != nil {
+	if err := mergeCapture(capture, physicalPlan, region); err != nil {
 		level.Warn(logger).Log("msg", "failed to merge capture", "err", err)
 		// continue export even if merging fails. Spans from the tasks
 		// would still appear as siblings in the trace right below the Engine.Execute.
@@ -305,9 +297,7 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, logger log.Logger, param
 	region := xcap.RegionFromContext(ctx)
 	timer := prometheus.NewTimer(e.metrics.physicalPlanning)
 
-	// TODO(rfratto): To improve the performance of the physical planner, we
-	// may want to parallelize metastore lookups across scheduled tasks as well.
-	catalog := physical.NewMetastoreCatalog(ctx, e.metastore)
+	catalog := physical.NewMetastoreCatalog(e.metastoreSectionsResolver(ctx))
 
 	// TODO(rfratto): It feels strange that we need to past the start/end time
 	// to the physical planner. Isn't it already represented by the logical
@@ -334,11 +324,52 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, logger log.Logger, param
 		"duration", duration.String(),
 	)
 
-	region.AddEvent("finished physical planning",
-		attribute.String("plan", physical.PrintAsTree(physicalPlan)),
-		attribute.Stringer("duration", duration),
-	)
+	region.AddEvent("finished physical planning", attribute.Stringer("duration", duration))
 	return physicalPlan, duration, nil
+}
+
+func (e *Engine) metastoreSectionsResolver(ctx context.Context) physical.MetastoreSectionsResolver {
+	planner := physical.NewMetastorePlanner(e.metastore)
+	return func(selector physical.Expression, predicates []physical.Expression, start time.Time, end time.Time) ([]*metastore.DataobjSectionDescriptor, error) {
+		ctx, region := xcap.StartRegion(ctx, "ObjectMetastore.Sections")
+		defer region.End()
+
+		plan, err := planner.Plan(ctx, selector, predicates, start, end)
+		if err != nil {
+			return nil, fmt.Errorf("metastore: build plan: %w", err)
+		}
+
+		wf, _, err := e.buildWorkflow(ctx, e.logger, plan)
+		if err != nil {
+			return nil, fmt.Errorf("metastore: build workflow: %w", err)
+		}
+		defer wf.Close()
+
+		pipeline, err := wf.Run(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("metastore: run workflow: %w", err)
+		}
+		reader := executor.TranslateEOF(pipeline)
+		defer reader.Close()
+
+		resp, err := e.metastore.CollectSections(ctx, metastore.CollectSectionsRequest{
+			// externalize EOFs returned by executor pipelines (executor.EOF -> io.EOF)
+			// because metastore is not aware about executor implementation details
+			Reader: reader,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("metastore: collect sections: %w", err)
+		}
+
+		// close to report the stats
+		reader.Close()
+
+		if err := mergeCapture(xcap.CaptureFromContext(ctx), plan, region); err != nil {
+			level.Warn(e.logger).Log("msg", "failed to merge capture", "err", err)
+		}
+
+		return resp.SectionsResponse.Sections, nil
+	}
 }
 
 // buildWorkflow builds a workflow from the given physical plan.
@@ -378,10 +409,7 @@ func (e *Engine) buildWorkflow(ctx context.Context, logger log.Logger, physicalP
 		"duration", duration.String(),
 	)
 
-	region.AddEvent("finished execution planning",
-		attribute.String("plan", workflow.Sprint(wf)),
-		attribute.Stringer("duration", duration),
-	)
+	region.AddEvent("finished execution planning", attribute.Stringer("duration", duration))
 	return wf, duration, nil
 }
 
@@ -435,7 +463,7 @@ func (e *Engine) collectResult(ctx context.Context, logger log.Logger, params lo
 	return builder, duration, nil
 }
 
-func mergeCapture(capture *xcap.Capture, plan *physical.Plan) error {
+func mergeCapture(capture *xcap.Capture, plan *physical.Plan, root *xcap.Region) error {
 	if capture == nil {
 		return nil
 	}
@@ -449,13 +477,18 @@ func mergeCapture(capture *xcap.Capture, plan *physical.Plan) error {
 				// TODO: This is assuming a single parent which is not always true.
 				// Fix this when we have plans with multiple parents.
 
-				if parents[0].Type() == physical.NodeTypeParallelize {
-					// Skip Parallelize nodes as they are not execution nodes.
-					pp := plan.Graph().Parents(parents[0])
-					if len(pp) > 0 {
-						parents = pp
-					} else {
-						return nil
+				if n.Type() == physical.NodeTypeScanSet {
+					ss := n.(*physical.ScanSet)
+					for _, t := range ss.Targets {
+						switch t.Type {
+						case physical.ScanTypePointers:
+							idToParentID[t.Pointers.NodeID.String()] = n.ID().String()
+						case physical.ScanTypeDataObject:
+							// dataobj scans are correctly mapped to parents without extra mapping
+							continue
+						default:
+							panic("unsupported scan type")
+						}
 					}
 				}
 
@@ -471,7 +504,7 @@ func mergeCapture(capture *xcap.Capture, plan *physical.Plan) error {
 	capture.LinkRegions("node_id", func(nodeID string) (string, bool) {
 		parentID, ok := idToParentID[nodeID]
 		return parentID, ok
-	})
+	}, root)
 
 	return nil
 }

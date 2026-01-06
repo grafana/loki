@@ -47,7 +47,7 @@ func benchmarkReadSections(b *testing.B, bm readSectionsBenchmarkParams) {
 		bucket := objstore.NewInMemBucket()
 
 		objUploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, log.NewNopLogger())
-		require.NoError(b, objUploader.RegisterMetrics(prometheus.NewPedanticRegistry()))
+		require.NoError(b, objUploader.RegisterMetrics(prometheus.DefaultRegisterer))
 
 		metastoreTocWriter := NewTableOfContentsWriter(bucket, log.NewNopLogger())
 
@@ -117,7 +117,7 @@ func benchmarkReadSections(b *testing.B, bm readSectionsBenchmarkParams) {
 		}
 
 		// Create the metastore instance
-		mstore := NewObjectMetastore(bucket, log.NewNopLogger(), nil)
+		mstore := newTestObjectMetastore(bucket)
 
 		// Prepare benchmark parameters
 		benchCtx := user.InjectOrgID(ctx, tenantID)
@@ -132,9 +132,13 @@ func benchmarkReadSections(b *testing.B, bm readSectionsBenchmarkParams) {
 
 		// Run the benchmark
 		for range b.N {
-			sections, err := mstore.Sections(benchCtx, start, end, matchers, nil)
+			sectionsResp, err := mstore.Sections(benchCtx, SectionsRequest{
+				Start:    start,
+				End:      end,
+				Matchers: matchers,
+			})
 			require.NoError(b, err)
-			require.NotEmpty(b, sections)
+			require.NotEmpty(b, sectionsResp.Sections)
 		}
 
 		// Stop timer before cleanup
@@ -220,7 +224,7 @@ func BenchmarkSectionsForPredicateMatchers(b *testing.B) {
 			bucket := objstore.NewInMemBucket()
 
 			objUploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, log.NewNopLogger())
-			require.NoError(b, objUploader.RegisterMetrics(prometheus.NewPedanticRegistry()))
+			require.NoError(b, objUploader.RegisterMetrics(prometheus.DefaultRegisterer))
 
 			path, err := objUploader.Upload(context.Background(), obj)
 			require.NoError(b, err)
@@ -229,7 +233,7 @@ func BenchmarkSectionsForPredicateMatchers(b *testing.B) {
 			err = metastoreTocWriter.WriteEntry(context.Background(), path, timeRanges)
 			require.NoError(b, err)
 
-			mstore := NewObjectMetastore(bucket, log.NewNopLogger(), prometheus.NewPedanticRegistry())
+			mstore := newTestObjectMetastore(bucket)
 
 			matchers := []*labels.Matcher{
 				labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),
@@ -242,9 +246,14 @@ func BenchmarkSectionsForPredicateMatchers(b *testing.B) {
 			b.ReportAllocs()
 
 			for range b.N {
-				sections, err := mstore.Sections(ctx, start, end, matchers, tt.predicates)
+				sectionsResp, err := mstore.Sections(ctx, SectionsRequest{
+					Start:      start,
+					End:        end,
+					Matchers:   matchers,
+					Predicates: tt.predicates,
+				})
 				require.NoError(b, err)
-				require.Len(b, sections, tt.wantCount)
+				require.Len(b, sectionsResp.Sections, tt.wantCount)
 			}
 
 			b.StopTimer()

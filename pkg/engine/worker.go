@@ -10,8 +10,10 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/worker"
 )
@@ -32,8 +34,9 @@ func (cfg *WorkerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet)
 
 // WorkerParams holds parameters for constructing a new [Worker].
 type WorkerParams struct {
-	Logger log.Logger      // Logger for optional log messages.
-	Bucket objstore.Bucket // Bucket to read stored data from.
+	Logger    log.Logger          // Logger for optional log messages.
+	Bucket    objstore.Bucket     // Bucket to read stored data from.
+	Metastore metastore.Metastore // Metastore to access indexes.
 
 	Config   WorkerConfig   // Configuration for the worker.
 	Executor ExecutorConfig // Configuration for task execution.
@@ -111,8 +114,9 @@ func NewWorker(params WorkerParams) (*Worker, error) {
 	}
 
 	inner, err := worker.New(worker.Config{
-		Logger: params.Logger,
-		Bucket: params.Bucket,
+		Logger:    params.Logger,
+		Bucket:    params.Bucket,
+		Metastore: params.Metastore,
 
 		Dialer:   dialer,
 		Listener: listener,
@@ -151,4 +155,14 @@ func (w *Worker) RegisterWorkerServer(router *mux.Router) {
 // Service returns the service used to manage the lifecycle of the Worker.
 func (w *Worker) Service() services.Service {
 	return w.inner.Service()
+}
+
+// RegisterMetrics registers metrics about w to report to reg.
+func (w *Worker) RegisterMetrics(reg prometheus.Registerer) error {
+	return w.inner.RegisterMetrics(reg)
+}
+
+// UnregisterMetrics unregisters metrics about w from reg.
+func (w *Worker) UnregisterMetrics(reg prometheus.Registerer) {
+	w.inner.UnregisterMetrics(reg)
 }
