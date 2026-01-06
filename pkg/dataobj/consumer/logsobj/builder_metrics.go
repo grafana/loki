@@ -19,6 +19,7 @@ type builderMetrics struct {
 	targetPageSize   prometheus.Gauge
 	targetObjectSize prometheus.Gauge
 
+	appends       prometheus.Counter
 	appendTime    prometheus.Histogram
 	buildTime     prometheus.Histogram
 	flushFailures prometheus.Counter
@@ -43,7 +44,6 @@ func newBuilderMetrics() *builderMetrics {
 
 			Help: "Configured target page size in bytes.",
 		}),
-
 		targetObjectSize: prometheus.NewGauge(prometheus.GaugeOpts{
 			Namespace: "loki",
 			Subsystem: "dataobj",
@@ -51,7 +51,12 @@ func newBuilderMetrics() *builderMetrics {
 
 			Help: "Configured target object size in bytes.",
 		}),
-
+		appends: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: "loki",
+			Subsystem: "dataobj",
+			Name:      "appends_total",
+			Help:      "Total number of appends.",
+		}),
 		appendTime: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Namespace: "loki",
 			Subsystem: "dataobj",
@@ -64,7 +69,6 @@ func newBuilderMetrics() *builderMetrics {
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 0,
 		}),
-
 		buildTime: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Namespace: "loki",
 			Subsystem: "dataobj",
@@ -77,7 +81,6 @@ func newBuilderMetrics() *builderMetrics {
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 0,
 		}),
-
 		sizeEstimate: prometheus.NewGauge(prometheus.GaugeOpts{
 			Namespace: "loki",
 			Subsystem: "dataobj",
@@ -85,7 +88,6 @@ func newBuilderMetrics() *builderMetrics {
 
 			Help: "Current estimated size of the data object in bytes.",
 		}),
-
 		builtSize: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Namespace: "loki",
 			Subsystem: "dataobj",
@@ -97,7 +99,6 @@ func newBuilderMetrics() *builderMetrics {
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 0,
 		}),
-
 		flushFailures: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: "loki",
 			Subsystem: "dataobj",
@@ -105,7 +106,6 @@ func newBuilderMetrics() *builderMetrics {
 
 			Help: "Total number of flush failures.",
 		}),
-
 		sortDurationSeconds: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Namespace: "loki",
 			Subsystem: "dataobj",
@@ -137,6 +137,7 @@ func (m *builderMetrics) Register(reg prometheus.Registerer) error {
 	errs = append(errs, reg.Register(m.targetPageSize))
 	errs = append(errs, reg.Register(m.targetObjectSize))
 
+	errs = append(errs, reg.Register(m.appends))
 	errs = append(errs, reg.Register(m.appendTime))
 	errs = append(errs, reg.Register(m.buildTime))
 
@@ -158,6 +159,7 @@ func (m *builderMetrics) Unregister(reg prometheus.Registerer) {
 	reg.Unregister(m.targetPageSize)
 	reg.Unregister(m.targetObjectSize)
 
+	reg.Unregister(m.appends)
 	reg.Unregister(m.appendTime)
 	reg.Unregister(m.buildTime)
 
