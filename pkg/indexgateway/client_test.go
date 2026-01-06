@@ -239,7 +239,7 @@ func TestGatewayClient(t *testing.T) {
 	cfg.Mode = SimpleMode
 	flagext.DefaultValues(&cfg)
 	cfg.Address = storeAddress
-	cfg.PoolConfig = clientpool.PoolConfig{ClientCleanupPeriod: 500 * time.Millisecond}
+	cfg.PoolConfig = clientpool.PoolConfig{ClientCleanupPeriod: 500 * time.Millisecond, HealthCheckGracePeriod: 0}
 
 	overrides, _ := validation.NewOverrides(validation.Limits{}, nil)
 	gatewayClient, err := NewGatewayClient(cfg, prometheus.DefaultRegisterer, overrides, logger, constants.Loki)

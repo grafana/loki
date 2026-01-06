@@ -59,6 +59,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.PoolConfig.RegisterFlagsWithPrefix("distributor.", f)
 
 	f.DurationVar(&cfg.PoolConfig.RemoteTimeout, "ingester.client.healthcheck-timeout", 1*time.Second, "How quickly a dead client will be removed after it has been detected to disappear. Set this to a value to allow time for a secondary health check to recover the missing client.")
+	f.DurationVar(&cfg.PoolConfig.HealthCheckGracePeriod, "ingester.client.healthcheck-grace-period", 2*time.Minute, "The duration during which the health check is allowed to fail before the client is removed from the pool.")
 	f.DurationVar(&cfg.RemoteTimeout, "ingester.client.timeout", 5*time.Second, "The remote request timeout on the client side.")
 }
 
