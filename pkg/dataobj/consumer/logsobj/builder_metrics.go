@@ -38,30 +38,19 @@ func newBuilderMetrics() *builderMetrics {
 		streams: streams.NewMetrics(),
 		dataobj: dataobj.NewMetrics(),
 		targetPageSize: prometheus.NewGauge(prometheus.GaugeOpts{
-			Namespace: "loki",
-			Subsystem: "dataobj",
-			Name:      "config_target_page_size_bytes",
-
+			Name: "loki_dataobj_config_target_page_size_bytes",
 			Help: "Configured target page size in bytes.",
 		}),
 		targetObjectSize: prometheus.NewGauge(prometheus.GaugeOpts{
-			Namespace: "loki",
-			Subsystem: "dataobj",
-			Name:      "config_target_object_size_bytes",
-
+			Name: "loki_dataobj_config_target_object_size_bytes",
 			Help: "Configured target object size in bytes.",
 		}),
 		appends: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: "loki",
-			Subsystem: "dataobj",
-			Name:      "appends_total",
-			Help:      "Total number of appends.",
+			Name: "loki_dataobj_appends_total",
+			Help: "Total number of appends.",
 		}),
 		appendTime: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Namespace: "loki",
-			Subsystem: "dataobj",
-			Name:      "append_time_seconds",
-
+			Name: "loki_dataobj_append_time_seconds",
 			Help: "Time taken appending a set of log lines in a stream to a data object.",
 
 			Buckets:                         prometheus.DefBuckets,
@@ -70,10 +59,7 @@ func newBuilderMetrics() *builderMetrics {
 			NativeHistogramMinResetDuration: 0,
 		}),
 		buildTime: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Namespace: "loki",
-			Subsystem: "dataobj",
-			Name:      "build_time_seconds",
-
+			Name: "loki_dataobj_build_time_seconds",
 			Help: "Time taken building a data object to flush.",
 
 			Buckets:                         prometheus.DefBuckets,
@@ -82,17 +68,11 @@ func newBuilderMetrics() *builderMetrics {
 			NativeHistogramMinResetDuration: 0,
 		}),
 		sizeEstimate: prometheus.NewGauge(prometheus.GaugeOpts{
-			Namespace: "loki",
-			Subsystem: "dataobj",
-			Name:      "size_estimate_bytes",
-
+			Name: "loki_dataobj_size_estimate_bytes",
 			Help: "Current estimated size of the data object in bytes.",
 		}),
 		builtSize: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Namespace: "loki",
-			Subsystem: "dataobj",
-			Name:      "built_size_bytes",
-
+			Name: "loki_dataobj_built_size_bytes",
 			Help: "Distribution of constructed data object sizes in bytes.",
 
 			NativeHistogramBucketFactor:     1.1,
@@ -100,17 +80,11 @@ func newBuilderMetrics() *builderMetrics {
 			NativeHistogramMinResetDuration: 0,
 		}),
 		flushFailures: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: "loki",
-			Subsystem: "dataobj",
-			Name:      "flush_failures_total",
-
+			Name: "loki_dataobj_flush_failures_total",
 			Help: "Total number of flush failures.",
 		}),
 		sortDurationSeconds: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Namespace: "loki",
-			Subsystem: "dataobj",
-			Name:      "sort_duration_seconds",
-
+			Name: "loki_dataobj_sort_duration_seconds",
 			Help: "Time taken sorting logs object-wide after flushing.",
 
 			NativeHistogramBucketFactor:     1.1,
