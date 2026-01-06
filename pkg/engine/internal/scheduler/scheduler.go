@@ -22,6 +22,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 // Config holds configuration options for [Scheduler].
@@ -496,7 +497,13 @@ func (s *Scheduler) finalizeAssignment(ctx context.Context, t *task, worker *wor
 
 		worker.Assign(t)
 		t.assignTime = time.Now()
-		s.metrics.taskQueueSeconds.Observe(t.assignTime.Sub(t.queueTime).Seconds())
+		queueDuration := t.assignTime.Sub(t.queueTime).Seconds()
+		s.metrics.taskQueueSeconds.Observe(queueDuration)
+
+		// Record queue duration to the task region if available.
+		if t.wfRegion != nil {
+			t.wfRegion.Record(xcap.StatTaskQueueDuration.Observe(queueDuration))
+		}
 
 		// Reconcile stream states: send updates for any that changed while sending.
 		for streamID, sentState := range sentStates {
@@ -853,12 +860,17 @@ func (s *Scheduler) Start(ctx context.Context, tasks ...*workflow.Task) error {
 	metadata := make(http.Header)
 	tc.Inject(ctx, propagation.HeaderCarrier(metadata))
 
+	wfRegion := xcap.RegionFromContext(ctx)
+
 	for _, t := range trackedTasks {
 		if t.metadata == nil {
 			t.metadata = make(http.Header)
 		}
 
 		maps.Copy(t.metadata, metadata)
+
+		// Assign the workflow region to the task for metrics recording.
+		t.wfRegion = wfRegion
 	}
 
 	// We set markPending *after* enqueueTasks to give tasks an opportunity to
