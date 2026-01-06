@@ -3,6 +3,7 @@ package clientpool
 import (
 	"flag"
 	"time"
+	
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/ring"
