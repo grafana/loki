@@ -5,6 +5,7 @@ var (
 	StatPipelineRowsOut      = NewStatisticInt64("rows.out", AggregationTypeSum)
 	StatPipelineReadCalls    = NewStatisticInt64("read.calls", AggregationTypeSum)
 	StatPipelineReadDuration = NewStatisticFloat64("read.duration", AggregationTypeSum)
+	StatPipelineExecDuration = NewStatisticFloat64("exec.duration", AggregationTypeSum)
 )
 
 // ColumnCompat statistics.

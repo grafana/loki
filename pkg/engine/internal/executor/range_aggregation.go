@@ -138,6 +138,9 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 				Type:   types.ColumnTypeGenerated,
 			},
 		} // value column expression
+
+		startedAt     = time.Now()
+		inputReadTime time.Duration
 	)
 
 	r.aggregator.Reset() // reset before reading new inputs
@@ -146,7 +149,10 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 		inputsExhausted = true
 
 		for _, input := range r.inputs {
+			inputStart := time.Now()
 			record, err := input.Read(ctx)
+			inputReadTime += time.Since(inputStart)
+
 			if err != nil {
 				if errors.Is(err, EOF) {
 					continue
@@ -272,6 +278,12 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 	}
 
 	r.inputsExhausted = true
+
+	if r.region != nil {
+		computeTime := time.Since(startedAt) - inputReadTime
+		r.region.Record(xcap.StatPipelineExecDuration.Observe(computeTime.Seconds()))
+	}
+
 	return r.aggregator.BuildRecord()
 }
 
