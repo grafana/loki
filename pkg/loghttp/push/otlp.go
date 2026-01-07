@@ -59,6 +59,11 @@ func extractLogs(r *http.Request, maxRecvMsgSize int, pushStats *Stats) (plog.Lo
 	pushStats.ContentEncoding = r.Header.Get(contentEnc)
 	// bodySize should always reflect the compressed size of the request body
 	bodySize := loki_util.NewSizeReader(r.Body)
+
+	// text logs can compress well, we allow up to 10 times to prevent compression bombs
+	maxCompressionRatio := 10
+	maxCompressedMsgSize := maxRecvMsgSize * maxCompressionRatio
+
 	var body io.Reader = bodySize
 	if maxRecvMsgSize > 0 {
 		// Read from LimitReader with limit max+1. So if the underlying
@@ -75,14 +80,24 @@ func extractLogs(r *http.Request, maxRecvMsgSize int, pushStats *Stats) (plog.Lo
 		defer func(reader *gzip.Reader) {
 			_ = reader.Close()
 		}(r)
+		if maxRecvMsgSize > 0 {
+			body = io.LimitReader(body, int64(maxCompressedMsgSize)+1)
+		}
+
 	case zstdContentEncoding:
 		var err error
 		body, err = zstd.NewReader(body)
 		if err != nil {
 			return plog.NewLogs(), err
 		}
+		if maxRecvMsgSize > 0 {
+			body = io.LimitReader(body, int64(maxCompressedMsgSize)+1)
+		}
 	case lz4ContentEncoding:
 		body = io.NopCloser(lz4.NewReader(body))
+		if maxRecvMsgSize > 0 {
+			body = io.LimitReader(body, int64(maxCompressedMsgSize)+1)
+		}
 	case "":
 		// no content encoding, use the body as is
 	default:
@@ -90,10 +105,16 @@ func extractLogs(r *http.Request, maxRecvMsgSize int, pushStats *Stats) (plog.Lo
 	}
 	buf, err := io.ReadAll(body)
 	if err != nil {
-		if size := bodySize.Size(); size > int64(maxRecvMsgSize) && maxRecvMsgSize > 0 {
-			return plog.NewLogs(), fmt.Errorf(messageSizeLargerErrFmt, loki_util.ErrMessageSizeTooLarge, size, maxRecvMsgSize)
-		}
 		return plog.NewLogs(), err
+	}
+
+	// Check the size of the compressed body
+	if size := bodySize.Size(); size > int64(maxRecvMsgSize) && maxRecvMsgSize > 0 {
+		return plog.NewLogs(), fmt.Errorf(messageSizeLargerErrFmt, loki_util.ErrMessageSizeTooLarge, size, maxRecvMsgSize)
+	}
+	// Check the size of the decompressed body
+	if len(buf) > maxCompressedMsgSize && maxCompressedMsgSize > 0 {
+		return plog.NewLogs(), fmt.Errorf(messageSizeLargerErrFmt, loki_util.ErrMessageSizeTooLarge, len(buf), maxCompressedMsgSize)
 	}
 
 	pushStats.BodySize = bodySize.Size()
