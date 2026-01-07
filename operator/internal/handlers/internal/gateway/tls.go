@@ -15,6 +15,7 @@ import (
 )
 
 const (
+	fieldNameCA          = "ca"
 	fieldNameCertificate = "certificate"
 	fieldNameKey         = "key"
 )
@@ -25,6 +26,12 @@ func validateTLSConfig(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStac
 	}
 
 	tls := stack.Spec.Tenants.Gateway.TLS
+	if tls.CA != nil {
+		if err := validateValueRef(ctx, k, stack.Namespace, tls.CA, fieldNameCA); err != nil {
+			return err
+		}
+	}
+
 	if tls.Certificate != nil {
 		if err := validateValueRef(ctx, k, stack.Namespace, tls.Certificate, fieldNameCertificate); err != nil {
 			return err

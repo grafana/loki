@@ -1291,6 +1291,12 @@ type SecretReference struct {
 
 // TLSSpec contains options for TLS connections.
 type TLSSpec struct {
+	// CA can be used to specify a custom list of trusted certificate authorities.
+	//
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Certificate Authority Bundle"
+	CA *ValueReference `json:"ca,omitempty"`
+
 	// Certificate points to the server certificate to use.
 	//
 	// +kubebuilder:validation:Optional

@@ -3858,6 +3858,32 @@ spec:
                         description: TLS defines the TLS configuration for the Gateway
                           server.
                         properties:
+                          ca:
+                            description: CA can be used to specify a custom list of
+                              trusted certificate authorities.
+                            properties:
+                              configMapName:
+                                description: ConfigMapName contains the name of the
+                                  ConfigMap containing the referenced value.
+                                type: string
+                              key:
+                                description: Name of the key used to get the value
+                                  in either the referenced ConfigMap or Secret.
+                                type: string
+                              secretName:
+                                description: SecretName contains the name of the Secret
+                                  containing the referenced value.
+                                type: string
+                            required:
+                            - key
+                            type: object
+                            x-kubernetes-validations:
+                            - message: Either configMapName or secretName needs to
+                                be set
+                              rule: has(self.configMapName) || has(self.secretName)
+                            - message: Only one of configMapName and secretName can
+                                be set
+                              rule: '!(has(self.configMapName) && has(self.secretName))'
                           certificate:
                             description: Certificate points to the server certificate
                               to use.

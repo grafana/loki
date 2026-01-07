@@ -23,6 +23,16 @@ func TestValidateTLSConfig(t *testing.T) {
 		stackNamespace = "some-ns"
 	)
 
+	validCAConfigMap := corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "tls-ca-configmap",
+			Namespace: stackNamespace,
+		},
+		Data: map[string]string{
+			"ca.crt": "test",
+		},
+	}
+
 	validCertConfigMap := corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "tls-cert-configmap",
@@ -82,6 +92,10 @@ func TestValidateTLSConfig(t *testing.T) {
 		{
 			name: "valid cert from ConfigMap and key from Secret",
 			tlsSpec: &lokiv1.TLSSpec{
+				CA: &lokiv1.ValueReference{
+					Key:           "ca.crt",
+					ConfigMapName: validCAConfigMap.Name,
+				},
 				Certificate: &lokiv1.ValueReference{
 					Key:           "tls.crt",
 					ConfigMapName: validCertConfigMap.Name,
@@ -106,6 +120,20 @@ func TestValidateTLSConfig(t *testing.T) {
 				},
 			},
 			expError: nil,
+		},
+		{
+			name: "missing CA from ConfigMap",
+			tlsSpec: &lokiv1.TLSSpec{
+				CA: &lokiv1.ValueReference{
+					Key:           "ca.crt",
+					ConfigMapName: "non-existent-configmap",
+				},
+			},
+			expError: &status.DegradedError{
+				Message: "Missing configmap for field \"ca\" in gateway TLS configuration: non-existent-configmap",
+				Reason:  lokiv1.ReasonMissingGatewayTLSConfig,
+				Requeue: false,
+			},
 		},
 		{
 			name: "missing cert ConfigMap",
@@ -220,6 +248,9 @@ func TestValidateTLSConfig(t *testing.T) {
 				switch obj := object.(type) {
 				case *corev1.ConfigMap:
 					switch name.Name {
+					case validCAConfigMap.Name:
+						k.SetClientObject(obj, &validCAConfigMap)
+						return nil
 					case validCertConfigMap.Name:
 						k.SetClientObject(obj, &validCertConfigMap)
 						return nil
