@@ -12,8 +12,8 @@ import (
 // InvalidTypeError is used as a panic value when using [Value] methods with
 // the incorrect type.
 type InvalidTypeError struct {
-	Expected datasetmd.ValueType
-	Actual   datasetmd.ValueType
+	Expected datasetmd.PhysicalType
+	Actual   datasetmd.PhysicalType
 }
 
 // Error returns a string representation denoting the expected and actual
@@ -25,7 +25,7 @@ func (e *InvalidTypeError) Error() string {
 // UnsupportedTypeError is used as a panic value when using [Value] methods with
 // an unsupported type.
 type UnsupportedTypeError struct {
-	Got datasetmd.ValueType
+	Got datasetmd.PhysicalType
 }
 
 // Error returns a string representation denoting the unsupported type.
@@ -48,7 +48,7 @@ type Value struct {
 	_ [0]func() // Disallow equality checking of two Values
 
 	// kind holds the type of the value.
-	kind datasetmd.ValueType
+	kind datasetmd.PhysicalType
 
 	// num holds the value for numeric kinds, or the string length for string
 	// kinds.
@@ -60,7 +60,7 @@ type Value struct {
 	// data optionally holds a pointer to the start of a byte slice. When data is
 	// specified, num is the length of the byte slice, and cap is the capacity.
 	//
-	// data can be set even if kind is not [datasetmd.VALUE_TYPE_BYTE_ARRAY]. In
+	// data can be set even if kind is not [datasetmd.PHYSICAL_TYPE_BINARY]. In
 	// that case, data can still be used to access the underlying memory for
 	// reuse via [Value.Buffer].
 	data *byte
@@ -69,7 +69,7 @@ type Value struct {
 // Int64Value rerturns a [Value] for an int64.
 func Int64Value(v int64) Value {
 	return Value{
-		kind: datasetmd.VALUE_TYPE_INT64,
+		kind: datasetmd.PHYSICAL_TYPE_INT64,
 		num:  uint64(v),
 	}
 }
@@ -77,15 +77,15 @@ func Int64Value(v int64) Value {
 // Uint64Value returns a [Value] for a uint64.
 func Uint64Value(v uint64) Value {
 	return Value{
-		kind: datasetmd.VALUE_TYPE_UINT64,
+		kind: datasetmd.PHYSICAL_TYPE_UINT64,
 		num:  v,
 	}
 }
 
-// ByteArrayValue returns a [Value] for a byte slice representing a string.
-func ByteArrayValue(v []byte) Value {
+// BinaryValue returns a [Value] for a byte slice representing a string.
+func BinaryValue(v []byte) Value {
 	return Value{
-		kind: datasetmd.VALUE_TYPE_BYTE_ARRAY,
+		kind: datasetmd.PHYSICAL_TYPE_BINARY,
 		num:  uint64(len(v)),
 		cap:  uint64(cap(v)),
 		data: unsafe.SliceData(v),
@@ -94,7 +94,7 @@ func ByteArrayValue(v []byte) Value {
 
 // IsNil returns whether v is nil.
 func (v *Value) IsNil() bool {
-	return v.Type() == datasetmd.VALUE_TYPE_UNSPECIFIED
+	return v.Type() == datasetmd.PHYSICAL_TYPE_UNSPECIFIED
 }
 
 // IsZero reports whether v is the zero value.
@@ -102,19 +102,19 @@ func (v *Value) IsZero() bool {
 	return v.IsNil() || v.num == 0
 }
 
-// Type returns the [datasetmd.ValueType] of v. If v is nil, Type returns
-// [datasetmd.VALUE_TYPE_UNSPECIFIED].
-func (v *Value) Type() datasetmd.ValueType {
+// Type returns the [datasetmd.PhysicalType] of v. If v is nil, Type returns
+// [datasetmd.PHYSICAL_TYPE_UNSPECIFIED].
+func (v *Value) Type() datasetmd.PhysicalType {
 	if v == nil {
-		return datasetmd.VALUE_TYPE_UNSPECIFIED
+		return datasetmd.PHYSICAL_TYPE_UNSPECIFIED
 	}
 	return v.kind
 }
 
 // Int64 returns v's value as an int64. It panics if v is not a
-// [datasetmd.VALUE_TYPE_INT64].
+// [datasetmd.PHYSICAL_TYPE_INT64].
 func (v *Value) Int64() int64 {
-	if expect, actual := datasetmd.VALUE_TYPE_INT64, v.Type(); expect != actual {
+	if expect, actual := datasetmd.PHYSICAL_TYPE_INT64, v.Type(); expect != actual {
 		panic(&InvalidTypeError{expect, actual})
 	}
 	return v.int64()
@@ -123,9 +123,9 @@ func (v *Value) Int64() int64 {
 func (v *Value) int64() int64 { return int64(v.num) }
 
 // Uint64 returns v's value as a uint64. It panics if v is not a
-// [datasetmd.VALUE_TYPE_UINT64].
+// [datasetmd.PHYSICAL_TYPE_UINT64].
 func (v *Value) Uint64() uint64 {
-	if expect, actual := datasetmd.VALUE_TYPE_UINT64, v.Type(); expect != actual {
+	if expect, actual := datasetmd.PHYSICAL_TYPE_UINT64, v.Type(); expect != actual {
 		panic(&InvalidTypeError{expect, actual})
 	}
 	return v.uint64()
@@ -133,11 +133,11 @@ func (v *Value) Uint64() uint64 {
 
 func (v *Value) uint64() uint64 { return v.num }
 
-// ByteSlice returns v's value as a byte slice. If v is not a string,
-// ByteSlice returns a byte slice of the form "VALUE_TYPE_T", where T is the
+// ByteSlice returns v's value as binary data. If v is not a string,
+// ByteSlice returns a byte slice of the form "PHYSICAL_TYPE_T", where T is the
 // underlying type of v.
-func (v *Value) ByteArray() []byte {
-	if expect, actual := datasetmd.VALUE_TYPE_BYTE_ARRAY, v.Type(); expect != actual {
+func (v *Value) Binary() []byte {
+	if expect, actual := datasetmd.PHYSICAL_TYPE_BINARY, v.Type(); expect != actual {
 		panic(&InvalidTypeError{expect, actual})
 	}
 	return v.byteArray()
@@ -157,7 +157,7 @@ func (v *Value) byteArray() []byte {
 	}
 
 	// v.data can only be non-nil if it was previously used as a
-	// [datasetmd.VALUE_TYPE_BYTE_ARRAY].
+	// [datasetmd.PHYSICAL_TYPE_BINARY].
 	//
 	// If this is the case, it's safe to interpret v.num and v.cap as the
 	// length/cap, since there's no way to change the type of a Value other than
@@ -166,21 +166,21 @@ func (v *Value) byteArray() []byte {
 }
 
 // Zero sets Value to its zero state while retaining any underlying memory if
-// Value was a [datasetmd.VALUE_TYPE_BYTE_ARRAY]. After calling Zero,
+// Value was a [datasetmd.PHYSICAL_TYPE_BINARY]. After calling Zero,
 // [Value.IsNil] and [Value.IsZero] will both report true.
 //
-// However, [Value.ByteArray] will continue to return the underlying memory.
+// However, [Value.Binary] will continue to return the underlying memory.
 func (v *Value) Zero() {
-	v.kind = datasetmd.VALUE_TYPE_UNSPECIFIED
+	v.kind = datasetmd.PHYSICAL_TYPE_UNSPECIFIED
 }
 
 // MarshalBinary encodes v into a binary representation. Non-NULL values encode
 // first with the type (encoded as uvarint), followed by an encoded value,
 // where:
 //
-//   - [datasetmd.VALUE_TYPE_INT64] encodes as a varint.
-//   - [datasetmd.VALUE_TYPE_UINT64] encodes as a uvarint.
-//   - [datasetmd.VALUE_TYPE_STRING] encodes the string as a sequence of bytes.
+//   - [datasetmd.PHYSICAL_TYPE_INT64] encodes as a varint.
+//   - [datasetmd.PHYSICAL_TYPE_UINT64] encodes as a uvarint.
+//   - [datasetmd.PHYSICAL_TYPE_BINARY] encodes the string as a sequence of bytes.
 //
 // NULL values encode as nil.
 func (v Value) MarshalBinary() (data []byte, err error) {
@@ -191,12 +191,12 @@ func (v Value) MarshalBinary() (data []byte, err error) {
 	buf := binary.AppendUvarint(nil, uint64(v.Type()))
 
 	switch v.Type() {
-	case datasetmd.VALUE_TYPE_INT64:
+	case datasetmd.PHYSICAL_TYPE_INT64:
 		buf = binary.AppendVarint(buf, v.Int64())
-	case datasetmd.VALUE_TYPE_UINT64:
+	case datasetmd.PHYSICAL_TYPE_UINT64:
 		buf = binary.AppendUvarint(buf, v.Uint64())
-	case datasetmd.VALUE_TYPE_BYTE_ARRAY:
-		buf = append(buf, v.ByteArray()...)
+	case datasetmd.PHYSICAL_TYPE_BINARY:
+		buf = append(buf, v.Binary()...)
 	default:
 		return nil, fmt.Errorf("dataset.Value.MarshalBinary: unsupported type %s", v.Type())
 	}
@@ -217,21 +217,21 @@ func (v *Value) UnmarshalBinary(data []byte) error {
 		return fmt.Errorf("dataset.Value.UnmarshalBinary: invalid type")
 	}
 
-	switch vtyp := datasetmd.ValueType(typ); vtyp {
-	case datasetmd.VALUE_TYPE_INT64:
+	switch vtyp := datasetmd.PhysicalType(typ); vtyp {
+	case datasetmd.PHYSICAL_TYPE_INT64:
 		val, n := binary.Varint(data[n:])
 		if n <= 0 {
 			return fmt.Errorf("dataset.Value.UnmarshalBinary: invalid int64 value")
 		}
 		*v = Int64Value(val)
-	case datasetmd.VALUE_TYPE_UINT64:
+	case datasetmd.PHYSICAL_TYPE_UINT64:
 		val, n := binary.Uvarint(data[n:])
 		if n <= 0 {
 			return fmt.Errorf("dataset.Value.UnmarshalBinary: invalid uint64 value")
 		}
 		*v = Uint64Value(val)
-	case datasetmd.VALUE_TYPE_BYTE_ARRAY:
-		*v = ByteArrayValue(data[n:])
+	case datasetmd.PHYSICAL_TYPE_BINARY:
+		*v = BinaryValue(data[n:])
 	default:
 		return fmt.Errorf("dataset.Value.UnmarshalBinary: unsupported type %s", vtyp)
 	}
@@ -242,13 +242,13 @@ func (v *Value) UnmarshalBinary(data []byte) error {
 // Size returns the size of v in bytes when encoded.
 func (v Value) Size() int {
 	switch v.Type() {
-	case datasetmd.VALUE_TYPE_INT64:
+	case datasetmd.PHYSICAL_TYPE_INT64:
 		return int(unsafe.Sizeof(int64(0)))
-	case datasetmd.VALUE_TYPE_UINT64:
+	case datasetmd.PHYSICAL_TYPE_UINT64:
 		return int(unsafe.Sizeof(uint64(0)))
-	case datasetmd.VALUE_TYPE_BYTE_ARRAY:
+	case datasetmd.PHYSICAL_TYPE_BINARY:
 		return int(v.num)
-	case datasetmd.VALUE_TYPE_UNSPECIFIED:
+	case datasetmd.PHYSICAL_TYPE_UNSPECIFIED:
 		return 0
 	default:
 		panic(&UnsupportedTypeError{v.Type()})
@@ -263,14 +263,22 @@ func (v Value) Size() int {
 func CompareValues(a, b *Value) int {
 	var (
 		aType, bType = a.Type(), b.Type()
-		aNil, bNil   = aType == datasetmd.VALUE_TYPE_UNSPECIFIED, bType == datasetmd.VALUE_TYPE_UNSPECIFIED
+		aNil, bNil   = aType == datasetmd.PHYSICAL_TYPE_UNSPECIFIED, bType == datasetmd.PHYSICAL_TYPE_UNSPECIFIED
 	)
 
 	// Handle nil values first to avoid the panic if the types don't match.
 	switch {
 	case aNil && !bNil:
+		if bType == datasetmd.PHYSICAL_TYPE_BINARY && b.IsZero() {
+			// Nil value for a and empty string for b should still be treated as equal
+			return 0
+		}
 		return -1
 	case !aNil && bNil:
+		if aType == datasetmd.PHYSICAL_TYPE_BINARY && a.IsZero() {
+			// Empty string for a and nil value for b should still be treated as equal
+			return 0
+		}
 		return 1
 	case aNil && bNil:
 		return 0
@@ -278,13 +286,13 @@ func CompareValues(a, b *Value) int {
 	case aType != bType:
 		panic(&InvalidTypeError{aType, bType})
 
-	case aType == datasetmd.VALUE_TYPE_INT64:
+	case aType == datasetmd.PHYSICAL_TYPE_INT64:
 		return cmpInteger(a.int64(), b.int64())
 
-	case aType == datasetmd.VALUE_TYPE_UINT64:
+	case aType == datasetmd.PHYSICAL_TYPE_UINT64:
 		return cmpInteger(a.uint64(), b.uint64())
 
-	case aType == datasetmd.VALUE_TYPE_BYTE_ARRAY:
+	case aType == datasetmd.PHYSICAL_TYPE_BINARY:
 		return bytes.Compare(a.byteArray(), b.byteArray())
 	}
 

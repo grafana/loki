@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.17.2
+    controller-gen.kubebuilder.io/version: v0.19.0
   name: lokistacks.loki.grafana.com
 spec:
   group: loki.grafana.com
@@ -612,6 +612,22 @@ spec:
                 - Managed
                 - Unmanaged
                 type: string
+              networkPolicies:
+                description: |-
+                  NetworkPolicies defines the NetworkPolicies configuration for LokiStack components.
+                  When enabled, the operator creates NetworkPolicies to control ingress/egress between
+                  Loki components and related services.
+                properties:
+                  ruleSet:
+                    description: RuleSet determines which of the pre-defined sets
+                      of NetworkPolicy rules is used for this LokiStack.
+                    enum:
+                    - None
+                    - RestrictIngressEgress
+                    type: string
+                required:
+                - ruleSet
+                type: object
               proxy:
                 description: Proxy defines the spec for the object proxy to configure
                   cluster proxy information.
@@ -3829,6 +3845,11 @@ spec:
                           type: object
                         type: array
                     type: object
+                  disableIngress:
+                    description: |-
+                      DisableIngress disables automatic creation of external access resources (Route / Ingress).
+                      When true, no Route or Ingress will be created for the gateway.
+                    type: boolean
                   mode:
                     default: openshift-logging
                     description: Mode defines the mode in which lokistack-gateway
@@ -4026,6 +4047,13 @@ spec:
                   - type
                   type: object
                 type: array
+              networkPolicyRuleSet:
+                description: NetworkPolicyRuleSet indicates which NetworkPolicies
+                  ruleset was applied by the operator for this LokiStack.
+                enum:
+                - None
+                - RestrictIngressEgress
+                type: string
               storage:
                 description: |-
                   Storage provides summary of all changes that have occurred

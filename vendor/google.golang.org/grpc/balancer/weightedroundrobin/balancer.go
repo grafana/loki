@@ -38,7 +38,7 @@ import (
 
 	"google.golang.org/grpc/balancer"
 	"google.golang.org/grpc/balancer/endpointsharding"
-	"google.golang.org/grpc/balancer/pickfirst/pickfirstleaf"
+	"google.golang.org/grpc/balancer/pickfirst"
 	"google.golang.org/grpc/balancer/weightedroundrobin/internal"
 	"google.golang.org/grpc/balancer/weightedtarget"
 	"google.golang.org/grpc/connectivity"
@@ -60,7 +60,7 @@ var (
 	rrFallbackMetric = estats.RegisterInt64Count(estats.MetricDescriptor{
 		Name:           "grpc.lb.wrr.rr_fallback",
 		Description:    "EXPERIMENTAL. Number of scheduler updates in which there were not enough endpoints with valid weight, which caused the WRR policy to fall back to RR behavior.",
-		Unit:           "update",
+		Unit:           "{update}",
 		Labels:         []string{"grpc.target"},
 		OptionalLabels: []string{"grpc.lb.locality"},
 		Default:        false,
@@ -69,7 +69,7 @@ var (
 	endpointWeightNotYetUsableMetric = estats.RegisterInt64Count(estats.MetricDescriptor{
 		Name:           "grpc.lb.wrr.endpoint_weight_not_yet_usable",
 		Description:    "EXPERIMENTAL. Number of endpoints from each scheduler update that don't yet have usable weight information (i.e., either the load report has not yet been received, or it is within the blackout period).",
-		Unit:           "endpoint",
+		Unit:           "{endpoint}",
 		Labels:         []string{"grpc.target"},
 		OptionalLabels: []string{"grpc.lb.locality"},
 		Default:        false,
@@ -78,7 +78,7 @@ var (
 	endpointWeightStaleMetric = estats.RegisterInt64Count(estats.MetricDescriptor{
 		Name:           "grpc.lb.wrr.endpoint_weight_stale",
 		Description:    "EXPERIMENTAL. Number of endpoints from each scheduler update whose latest weight is older than the expiration period.",
-		Unit:           "endpoint",
+		Unit:           "{endpoint}",
 		Labels:         []string{"grpc.target"},
 		OptionalLabels: []string{"grpc.lb.locality"},
 		Default:        false,
@@ -86,7 +86,7 @@ var (
 	endpointWeightsMetric = estats.RegisterFloat64Histo(estats.MetricDescriptor{
 		Name:           "grpc.lb.wrr.endpoint_weights",
 		Description:    "EXPERIMENTAL. Weight of each endpoint, recorded on every scheduler update. Endpoints without usable weights will be recorded as weight 0.",
-		Unit:           "endpoint",
+		Unit:           "{endpoint}",
 		Labels:         []string{"grpc.target"},
 		OptionalLabels: []string{"grpc.lb.locality"},
 		Default:        false,
@@ -109,7 +109,7 @@ func (bb) Build(cc balancer.ClientConn, bOpts balancer.BuildOptions) balancer.Ba
 		scToWeight:       make(map[balancer.SubConn]*endpointWeight),
 	}
 
-	b.child = endpointsharding.NewBalancer(b, bOpts, balancer.Get(pickfirstleaf.Name).Build, endpointsharding.Options{})
+	b.child = endpointsharding.NewBalancer(b, bOpts, balancer.Get(pickfirst.Name).Build, endpointsharding.Options{})
 	b.logger = prefixLogger(b)
 	b.logger.Infof("Created")
 	return b
@@ -239,7 +239,7 @@ func (b *wrrBalancer) UpdateClientConnState(ccs balancer.ClientConnState) error 
 	return b.child.UpdateClientConnState(balancer.ClientConnState{
 		// Make pickfirst children use health listeners for outlier detection to
 		// work.
-		ResolverState: pickfirstleaf.EnableHealthListener(ccs.ResolverState),
+		ResolverState: pickfirst.EnableHealthListener(ccs.ResolverState),
 	})
 }
 
@@ -404,9 +404,7 @@ func (b *wrrBalancer) Close() {
 }
 
 func (b *wrrBalancer) ExitIdle() {
-	if ei, ok := b.child.(balancer.ExitIdler); ok { // Should always be ok, as child is endpoint sharding.
-		ei.ExitIdle()
-	}
+	b.child.ExitIdle()
 }
 
 // picker is the WRR policy's picker.  It uses live-updating backend weights to

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	netURL "net/url"
 )
 
 const (
@@ -41,7 +42,9 @@ type AppsService interface {
 	CreateDeployment(ctx context.Context, appID string, create ...*DeploymentCreateRequest) (*Deployment, *Response, error)
 
 	GetLogs(ctx context.Context, appID, deploymentID, component string, logType AppLogType, follow bool, tailLines int) (*AppLogs, *Response, error)
+	// Deprecated: Use GetExecWithOpts instead.
 	GetExec(ctx context.Context, appID, deploymentID, component string) (*AppExec, *Response, error)
+	GetExecWithOpts(ctx context.Context, appID, componentName string, opts *AppGetExecOptions) (*AppExec, *Response, error)
 
 	ListRegions(ctx context.Context) ([]*AppRegion, *Response, error)
 
@@ -58,7 +61,7 @@ type AppsService interface {
 
 	ListBuildpacks(ctx context.Context) ([]*Buildpack, *Response, error)
 	UpgradeBuildpack(ctx context.Context, appID string, opts UpgradeBuildpackOptions) (*UpgradeBuildpackResponse, *Response, error)
-
+	GetAppHealth(ctx context.Context, appID string) (*AppHealth, *Response, error)
 	GetAppDatabaseConnectionDetails(ctx context.Context, appID string) ([]*GetDatabaseConnectionDetailsResponse, *Response, error)
 	ResetDatabasePassword(ctx context.Context, appID string, component string) (*Deployment, *Response, error)
 	ToggleDatabaseTrustedSource(
@@ -71,6 +74,12 @@ type AppsService interface {
 		*Response,
 		error,
 	)
+
+	GetAppInstances(ctx context.Context, appID string, opts *GetAppInstancesOpts) ([]*AppInstance, *Response, error)
+
+	ListJobInvocations(ctx context.Context, appID string, opts *ListJobInvocationsOptions) ([]*JobInvocation, *Response, error)
+	GetJobInvocation(ctx context.Context, appID string, jobInvocationId string, opts *GetJobInvocationOptions) (*JobInvocation, *Response, error)
+	GetJobInvocationLogs(ctx context.Context, appID, jobInvocationId string, opts *GetJobInvocationLogsOptions) (*AppLogs, *Response, error)
 }
 
 // AppLogs represent app logs.
@@ -89,6 +98,38 @@ type AppUpdateRequest struct {
 	Spec *AppSpec `json:"spec"`
 	// Whether or not to update the source versions (for example fetching a new commit or image digest) of all components. By default (when this is false) only newly added sources will be updated to avoid changes like updating the scale of a component from also updating the respective code.
 	UpdateAllSourceVersions bool `json:"update_all_source_versions"`
+}
+
+// GetExecOptions represents options for retrieving the websocket URL used for sending/receiving console input and output.
+type AppGetExecOptions struct {
+	DeploymentID string `json:"deployment_id,omitempty"`
+	// InstanceName is the unique name of the instance to connect to. It is an optional parameter.
+	// If not provided, the first available instance will be used.
+	InstanceName string `json:"instance_name,omitempty"`
+}
+
+type GetJobInvocationLogsOptions struct {
+	// JobName is the name of the job to retrieve logs for.
+	JobName string
+	// Follow indicates whether to stream the logs.
+	Follow bool
+	// TailLines is the number of lines from the end of the logs to retrieve.
+	TailLines int
+}
+
+type GetJobInvocationOptions struct {
+	JobName string `url:"job_name,omitempty"`
+}
+
+type ListJobInvocationsOptions struct {
+	// For paginated result sets, page of results to retrieve.
+	Page int `url:"page,omitempty"`
+	// For paginated result sets, the number of results to include per page.
+	PerPage int `url:"per_page,omitempty"`
+	// DeploymentID is an optional paramerter. This is used to filter job invocations to a specific deployment.
+	DeploymentID string `url:"deployment_id,omitempty"`
+	// JobNames is an optional parameter. This is used to filter job invocations by job names.
+	JobNames []string `url:"job_names,omitempty"`
 }
 
 // DeploymentCreateRequest represents a request to create a deployment.
@@ -143,6 +184,16 @@ type deploymentsRoot struct {
 	Meta        *Meta         `json:"meta"`
 }
 
+type jobInvocationRoot struct {
+	JobInvocation *JobInvocation `json:"job_invocation,omitempty"`
+}
+
+type jobInvocationsRoot struct {
+	JobInvocations []*JobInvocation `json:"job_invocations"`
+	Links          *Links           `json:"links"`
+	Meta           *Meta            `json:"meta"`
+}
+
 type appTierRoot struct {
 	Tier *AppTier `json:"tier"`
 }
@@ -180,9 +231,31 @@ type AppsServiceOp struct {
 	client *Client
 }
 
+type GetAppInstancesOpts struct {
+	// reserved for future use.
+}
+
 // URN returns a URN identifier for the app
 func (a App) URN() string {
 	return ToURN("app", a.ID)
+}
+
+type appHealthRoot struct {
+	Health *AppHealth `json:"app_health"`
+}
+
+func (s *AppsServiceOp) GetAppHealth(ctx context.Context, appID string) (*AppHealth, *Response, error) {
+	path := fmt.Sprintf("%s/%s/health", appsBasePath, appID)
+	req, err := s.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	root := new(appHealthRoot)
+	resp, err := s.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	return root.Health, resp, nil
 }
 
 // Create an app.
@@ -372,6 +445,80 @@ func (s *AppsServiceOp) CreateDeployment(ctx context.Context, appID string, crea
 	return root.Deployment, resp, nil
 }
 
+// ListJobInvocations lists all job invocations for a given app.
+func (s *AppsServiceOp) ListJobInvocations(ctx context.Context, appID string, opts *ListJobInvocationsOptions) ([]*JobInvocation, *Response, error) {
+	path := fmt.Sprintf("%s/%s/job-invocations", appsBasePath, appID)
+
+	path, err := addOptions(path, opts)
+	if err != nil {
+		return nil, nil, err
+	}
+	req, err := s.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	root := new(jobInvocationsRoot)
+	resp, err := s.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+
+	if l := root.Links; l != nil {
+		resp.Links = l
+	}
+
+	if m := root.Meta; m != nil {
+		resp.Meta = m
+	}
+	return root.JobInvocations, resp, nil
+}
+
+// GetJobInvocation gets a specific job invocation for a given app.
+func (s *AppsServiceOp) GetJobInvocation(ctx context.Context, appID string, jobInvocationId string, opts *GetJobInvocationOptions) (*JobInvocation, *Response, error) {
+	url := fmt.Sprintf("%s/%s/job-invocations/%s", appsBasePath, appID, jobInvocationId)
+
+	url, err := addOptions(url, opts)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	req, err := s.client.NewRequest(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	root := new(jobInvocationRoot)
+	resp, err := s.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	return root.JobInvocation, resp, nil
+}
+
+// GetJobInvocationLogs retrieves job invocation logs.
+func (s *AppsServiceOp) GetJobInvocationLogs(ctx context.Context, appID, jobInvocationId string, opts *GetJobInvocationLogsOptions) (*AppLogs, *Response, error) {
+	url := fmt.Sprintf("%s/%s/jobs/%s/invocations/%s/logs?type=JOB_INVOCATION", appsBasePath, appID, opts.JobName, jobInvocationId)
+
+	if opts.Follow {
+		url += fmt.Sprintf("&follow=%t", opts.Follow)
+	}
+	if opts.TailLines > 0 {
+		url += fmt.Sprintf("&tail_lines=%d", opts.TailLines)
+	}
+
+	req, err := s.client.NewRequest(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	logs := new(AppLogs)
+	resp, err := s.client.Do(ctx, req, logs)
+	if err != nil {
+		return nil, resp, err
+	}
+	return logs, resp, nil
+}
+
 // GetLogs retrieves app logs.
 func (s *AppsServiceOp) GetLogs(ctx context.Context, appID, deploymentID, component string, logType AppLogType, follow bool, tailLines int) (*AppLogs, *Response, error) {
 	var url string
@@ -397,12 +544,38 @@ func (s *AppsServiceOp) GetLogs(ctx context.Context, appID, deploymentID, compon
 }
 
 // GetExec retrieves the websocket URL used for sending/receiving console input and output.
+// Deprecated: Use GetExecWithOpts instead.
 func (s *AppsServiceOp) GetExec(ctx context.Context, appID, deploymentID, component string) (*AppExec, *Response, error) {
+	return s.GetExecWithOpts(ctx, appID, component, &AppGetExecOptions{
+		DeploymentID: deploymentID,
+	})
+}
+
+// GetExecWithOpts retrieves the websocket URL used for sending/receiving console input and output.
+func (s *AppsServiceOp) GetExecWithOpts(ctx context.Context, appID, componentName string, opts *AppGetExecOptions) (*AppExec, *Response, error) {
 	var url string
-	if deploymentID == "" {
-		url = fmt.Sprintf("%s/%s/components/%s/exec", appsBasePath, appID, component)
+	if opts.DeploymentID == "" {
+		url = fmt.Sprintf("%s/%s/components/%s/exec", appsBasePath, appID, componentName)
 	} else {
-		url = fmt.Sprintf("%s/%s/deployments/%s/components/%s/exec", appsBasePath, appID, deploymentID, component)
+		url = fmt.Sprintf("%s/%s/deployments/%s/components/%s/exec", appsBasePath, appID, opts.DeploymentID, componentName)
+	}
+
+	params := map[string]string{
+		"instance_name": opts.InstanceName,
+	}
+
+	urlValues := netURL.Values{}
+
+	for k, v := range params {
+		if v == "" {
+			continue
+		}
+
+		urlValues.Add(k, v)
+	}
+
+	if len(urlValues) > 0 {
+		url = fmt.Sprintf("%s?%s", url, urlValues.Encode())
 	}
 
 	req, err := s.client.NewRequest(ctx, http.MethodGet, url, nil)
@@ -626,6 +799,23 @@ func (s *AppsServiceOp) ToggleDatabaseTrustedSource(
 		return nil, resp, err
 	}
 	return root, resp, nil
+}
+
+// GetAppInstances returns a list of emphemeral compute instances of the current deployment for an app.
+// opts is reserved for future use.
+func (s *AppsServiceOp) GetAppInstances(ctx context.Context, appID string, opts *GetAppInstancesOpts) ([]*AppInstance, *Response, error) {
+	path := fmt.Sprintf("%s/%s/instances", appsBasePath, appID)
+
+	req, err := s.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	root := new(GetAppInstancesResponse)
+	resp, err := s.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	return root.Instances, resp, nil
 }
 
 // AppComponentType is an app component type.

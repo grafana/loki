@@ -2,32 +2,39 @@ package deletion
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/gogo/protobuf/proto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/compactor/client/grpc"
+	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	storage_chunk "github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+
+	"github.com/grafana/loki/pkg/push"
 )
 
 type mockChunkClient struct {
 	client.Client
 	chunks map[string]storage_chunk.Chunk
+	mtx    sync.RWMutex
 }
 
 func (m *mockChunkClient) GetChunks(_ context.Context, chunks []storage_chunk.Chunk) ([]storage_chunk.Chunk, error) {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+
 	var result []storage_chunk.Chunk
 	for _, chk := range chunks {
 		if storedChk, ok := m.chunks[chunkKey(chk)]; ok {
@@ -38,19 +45,13 @@ func (m *mockChunkClient) GetChunks(_ context.Context, chunks []storage_chunk.Ch
 }
 
 func (m *mockChunkClient) PutChunks(_ context.Context, chunks []storage_chunk.Chunk) error {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
 	for _, chk := range chunks {
 		m.chunks[chunkKey(chk)] = chk
 	}
 	return nil
-}
-
-// Helper to convert prometheus labels.Labels to push.LabelsAdapter
-func toLabelsAdapter(lbls labels.Labels) push.LabelsAdapter {
-	out := make(push.LabelsAdapter, 0, len(lbls))
-	for _, l := range lbls {
-		out = append(out, push.LabelAdapter{Name: l.Name, Value: l.Value})
-	}
-	return out
 }
 
 // Helper to generate a unique key for a chunk (for test map)
@@ -66,9 +67,9 @@ func createTestChunk(t *testing.T, userID string, lbs labels.Labels, from, throu
 		blockSize  = 256 * 1024
 	)
 	labelsBuilder := labels.NewBuilder(lbs)
-	labelsBuilder.Set(labels.MetricName, "logs")
+	labelsBuilder.Set(model.MetricNameLabel, "logs")
 	metric := labelsBuilder.Labels()
-	fp := model.Fingerprint(lbs.Hash())
+	fp := model.Fingerprint(labels.StableHash(lbs))
 	chunkEnc := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, compression.None, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, blockSize, targetSize)
 
 	for ts := from; !ts.After(through); ts = ts.Add(logInterval) {
@@ -98,17 +99,17 @@ func TestJobRunner_Run(t *testing.T) {
 	lblFoo, err := syntax.ParseLabels(`{foo="bar"}`)
 	require.NoError(t, err)
 
-	chk := createTestChunk(t, userID, lblFoo, yesterdaysTableInterval.Start.Add(-6*time.Hour), yesterdaysTableInterval.Start.Add(6*time.Hour), "test data", toLabelsAdapter(labels.FromStrings("foo", "bar")), time.Minute)
+	chk := createTestChunk(t, userID, lblFoo, yesterdaysTableInterval.Start.Add(-6*time.Hour), yesterdaysTableInterval.Start.Add(6*time.Hour), "test data", logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar")), time.Minute)
 
 	for _, tc := range []struct {
 		name           string
-		deleteRequests []DeleteRequest
-		expectedResult *storageUpdates
+		deleteRequests []deletionproto.DeleteRequest
+		expectedResult *deletionproto.StorageUpdates
 		expectError    bool
 	}{
 		{
 			name: "delete request without line filter should fail",
-			deleteRequests: []DeleteRequest{
+			deleteRequests: []deletionproto.DeleteRequest{
 				{
 					RequestID: "test-request-5",
 					Query:     lblFoo.String(),
@@ -120,7 +121,7 @@ func TestJobRunner_Run(t *testing.T) {
 		},
 		{
 			name: "delete request not matching any data",
-			deleteRequests: []DeleteRequest{
+			deleteRequests: []deletionproto.DeleteRequest{
 				{
 					RequestID: "test-request-1",
 					Query:     `{foo="different"} |= "test"`,
@@ -128,11 +129,11 @@ func TestJobRunner_Run(t *testing.T) {
 					EndTime:   now,
 				},
 			},
-			expectedResult: &storageUpdates{},
+			expectedResult: &deletionproto.StorageUpdates{},
 		},
 		{
 			name: "single delete request deleting some data",
-			deleteRequests: []DeleteRequest{
+			deleteRequests: []deletionproto.DeleteRequest{
 				{
 					RequestID: "test-request-2",
 					Query:     lblFoo.String() + ` |= "test"`,
@@ -140,20 +141,19 @@ func TestJobRunner_Run(t *testing.T) {
 					EndTime:   yesterdaysTableInterval.Start.Add(time.Hour),
 				},
 			},
-			expectedResult: &storageUpdates{
-				ChunksToDelete: []string{chunkKey(chk)},
-				ChunksToIndex: []chunk{
-					{
+			expectedResult: &deletionproto.StorageUpdates{
+				RebuiltChunks: map[string]*deletionproto.Chunk{
+					chunkKey(chk): {
 						From:        yesterdaysTableInterval.Start.Add(time.Hour).Add(time.Minute),
 						Through:     yesterdaysTableInterval.Start.Add(6 * time.Hour),
-						Fingerprint: lblFoo.Hash(),
+						Fingerprint: labels.StableHash(lblFoo),
 					},
 				},
 			},
 		},
 		{
 			name: "multiple delete requests deleting data",
-			deleteRequests: []DeleteRequest{
+			deleteRequests: []deletionproto.DeleteRequest{
 				{
 					RequestID: "test-request-3",
 					Query:     lblFoo.String() + ` |= "test"`,
@@ -167,20 +167,19 @@ func TestJobRunner_Run(t *testing.T) {
 					EndTime:   yesterdaysTableInterval.Start.Add(time.Hour),
 				},
 			},
-			expectedResult: &storageUpdates{
-				ChunksToDelete: []string{chunkKey(chk)},
-				ChunksToIndex: []chunk{
-					{
+			expectedResult: &deletionproto.StorageUpdates{
+				RebuiltChunks: map[string]*deletionproto.Chunk{
+					chunkKey(chk): {
 						From:        yesterdaysTableInterval.Start.Add(time.Hour).Add(time.Minute),
 						Through:     yesterdaysTableInterval.Start.Add(6 * time.Hour),
-						Fingerprint: lblFoo.Hash(),
+						Fingerprint: labels.StableHash(lblFoo),
 					},
 				},
 			},
 		},
 		{
 			name: "delete request with time range outside chunk time range",
-			deleteRequests: []DeleteRequest{
+			deleteRequests: []deletionproto.DeleteRequest{
 				{
 					RequestID: "test-request-6",
 					Query:     lblFoo.String() + ` |= "test"`,
@@ -188,11 +187,11 @@ func TestJobRunner_Run(t *testing.T) {
 					EndTime:   yesterdaysTableInterval.Start.Add(-23 * time.Hour),
 				},
 			},
-			expectedResult: &storageUpdates{},
+			expectedResult: &deletionproto.StorageUpdates{},
 		},
 		{
 			name: "delete request with structured metadata filter",
-			deleteRequests: []DeleteRequest{
+			deleteRequests: []deletionproto.DeleteRequest{
 				{
 					RequestID: "test-request-7",
 					Query:     lblFoo.String() + ` | foo="bar"`,
@@ -200,20 +199,19 @@ func TestJobRunner_Run(t *testing.T) {
 					EndTime:   yesterdaysTableInterval.Start.Add(2 * time.Hour),
 				},
 			},
-			expectedResult: &storageUpdates{
-				ChunksToDelete: []string{chunkKey(chk)},
-				ChunksToIndex: []chunk{
-					{
+			expectedResult: &deletionproto.StorageUpdates{
+				RebuiltChunks: map[string]*deletionproto.Chunk{
+					chunkKey(chk): {
 						From:        yesterdaysTableInterval.Start.Add(2 * time.Hour).Add(time.Minute),
 						Through:     yesterdaysTableInterval.Start.Add(6 * time.Hour),
-						Fingerprint: lblFoo.Hash(),
+						Fingerprint: labels.StableHash(lblFoo),
 					},
 				},
 			},
 		},
 		{
 			name: "delete request with line and structured metadata filters",
-			deleteRequests: []DeleteRequest{
+			deleteRequests: []deletionproto.DeleteRequest{
 				{
 					RequestID: "test-request-8",
 					Query:     lblFoo.String() + ` | foo="bar" |= "test"`,
@@ -221,20 +219,19 @@ func TestJobRunner_Run(t *testing.T) {
 					EndTime:   yesterdaysTableInterval.Start.Add(3 * time.Hour),
 				},
 			},
-			expectedResult: &storageUpdates{
-				ChunksToDelete: []string{chunkKey(chk)},
-				ChunksToIndex: []chunk{
-					{
+			expectedResult: &deletionproto.StorageUpdates{
+				RebuiltChunks: map[string]*deletionproto.Chunk{
+					chunkKey(chk): {
 						From:        yesterdaysTableInterval.Start.Add(3 * time.Hour).Add(time.Minute),
 						Through:     yesterdaysTableInterval.Start.Add(6 * time.Hour),
-						Fingerprint: lblFoo.Hash(),
+						Fingerprint: labels.StableHash(lblFoo),
 					},
 				},
 			},
 		},
 		{
 			name: "delete request deleting the whole chunk",
-			deleteRequests: []DeleteRequest{
+			deleteRequests: []deletionproto.DeleteRequest{
 				{
 					RequestID: "test-request-8",
 					Query:     lblFoo.String() + ` |= "test"`,
@@ -242,13 +239,15 @@ func TestJobRunner_Run(t *testing.T) {
 					EndTime:   yesterdaysTableInterval.Start.Add(7 * time.Hour),
 				},
 			},
-			expectedResult: &storageUpdates{
-				ChunksToDelete: []string{chunkKey(chk)},
+			expectedResult: &deletionproto.StorageUpdates{
+				RebuiltChunks: map[string]*deletionproto.Chunk{
+					chunkKey(chk): nil,
+				},
 			},
 		},
 		{
 			name: "old chunk to be de-indexed when new chunk wont belong to the current table",
-			deleteRequests: []DeleteRequest{
+			deleteRequests: []deletionproto.DeleteRequest{
 				{
 					RequestID: "test-request-8",
 					Query:     lblFoo.String() + ` |= "test"`,
@@ -256,7 +255,7 @@ func TestJobRunner_Run(t *testing.T) {
 					EndTime:   yesterdaysTableInterval.Start.Add(7 * time.Hour),
 				},
 			},
-			expectedResult: &storageUpdates{
+			expectedResult: &deletionproto.StorageUpdates{
 				ChunksToDeIndex: []string{chunkKey(chk)},
 			},
 		},
@@ -269,20 +268,15 @@ func TestJobRunner_Run(t *testing.T) {
 				},
 			}
 
-			// Ensure Metrics is set for each DeleteRequest
-			for i := range tc.deleteRequests {
-				tc.deleteRequests[i].Metrics = newDeleteRequestsManagerMetrics(nil)
-			}
-
 			// Create job runner
-			runner := NewJobRunner(func(_ context.Context, _ string) (client.Client, error) {
+			runner := NewJobRunner(1, func(_ string) (client.Client, error) {
 				return mockClient, nil
-			})
+			}, nil)
 
 			// Create job
 			job := grpc.Job{
 				Id: "test-job",
-				Payload: mustMarshal(t, deletionJob{
+				Payload: mustMarshal(t, &deletionproto.DeletionJob{
 					UserID:         userID,
 					TableName:      tableName,
 					ChunkIDs:       []string{chunkKey(chk)},
@@ -291,7 +285,7 @@ func TestJobRunner_Run(t *testing.T) {
 			}
 
 			// Run job
-			resultJSON, err := runner.Run(context.Background(), &job)
+			resultProto, err := runner.Run(context.Background(), &job)
 
 			if tc.expectError {
 				require.Error(t, err)
@@ -299,29 +293,165 @@ func TestJobRunner_Run(t *testing.T) {
 			}
 
 			require.NoError(t, err)
-			result := &storageUpdates{}
-			require.NoError(t, json.Unmarshal(resultJSON, result))
+			result := &deletionproto.StorageUpdates{}
+			require.NoError(t, proto.Unmarshal(resultProto, result))
 
 			// For test cases where we expect no changes
-			if len(tc.expectedResult.ChunksToDelete) == 0 && len(tc.expectedResult.ChunksToIndex) == 0 {
+			if len(tc.expectedResult.RebuiltChunks) == 0 {
 				require.Equal(t, tc.expectedResult, result)
 				return
 			}
 
 			// For test cases where we expect changes
-			require.Equal(t, tc.expectedResult.ChunksToDelete, result.ChunksToDelete)
-			require.Equal(t, len(tc.expectedResult.ChunksToIndex), len(result.ChunksToIndex))
-			if len(result.ChunksToIndex) > 0 {
-				require.Equal(t, tc.expectedResult.ChunksToIndex[0].From, result.ChunksToIndex[0].From)
-				require.Equal(t, tc.expectedResult.ChunksToIndex[0].Through, result.ChunksToIndex[0].Through)
-				require.Equal(t, tc.expectedResult.ChunksToIndex[0].Fingerprint, result.ChunksToIndex[0].Fingerprint)
+			require.Equal(t, len(tc.expectedResult.RebuiltChunks), len(result.RebuiltChunks))
+			for chunkID := range tc.expectedResult.RebuiltChunks {
+				_, ok := result.RebuiltChunks[chunkID]
+				require.True(t, ok)
+				if tc.expectedResult.RebuiltChunks[chunkID] == nil {
+					require.Nil(t, result.RebuiltChunks[chunkID])
+				} else {
+					require.Equal(t, tc.expectedResult.RebuiltChunks[chunkID].From, result.RebuiltChunks[chunkID].From)
+					require.Equal(t, tc.expectedResult.RebuiltChunks[chunkID].Through, result.RebuiltChunks[chunkID].Through)
+					require.Equal(t, tc.expectedResult.RebuiltChunks[chunkID].Fingerprint, result.RebuiltChunks[chunkID].Fingerprint)
+				}
 			}
 		})
 	}
 }
 
-func mustMarshal(t *testing.T, v interface{}) []byte {
-	b, err := json.Marshal(v)
+func TestJobRunner_Run_ConcurrentChunkProcessing(t *testing.T) {
+	now := model.Now()
+	userID := "test-user"
+	yesterdaysTableNumber := (now.Unix() / 86400) - 1
+	tableName := fmt.Sprintf("table_%d", yesterdaysTableNumber)
+	yesterdaysTableInterval := retention.ExtractIntervalFromTableName(tableName)
+
+	// Create test labels
+	lblFoo, err := syntax.ParseLabels(`{foo="bar"}`)
+	require.NoError(t, err)
+
+	var chks []storage_chunk.Chunk
+
+	for i := 0; i < 24; i++ {
+		chkStart := yesterdaysTableInterval.Start.Add(time.Duration(i) * time.Hour)
+		chkEnd := chkStart.Add(time.Hour)
+		chk := createTestChunk(t, userID, lblFoo, chkStart, chkEnd, "test data", logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar")), time.Minute)
+		chks = append(chks, chk)
+	}
+
+	overlappingChunk := createTestChunk(t, userID, lblFoo, yesterdaysTableInterval.End.Add(-30*time.Minute), yesterdaysTableInterval.End.Add(30*time.Minute), "test data overlapping multiple tables", logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar")), time.Minute)
+	chks = append(chks, overlappingChunk)
+
+	chunksMap := map[string]storage_chunk.Chunk{}
+	var chunkIDs []string
+	for _, chk := range chks {
+		chunkID := chunkKey(chk)
+		chunksMap[chunkID] = chk
+		chunkIDs = append(chunkIDs, chunkID)
+	}
+
+	// Setup mock chunk client
+	mockClient := &mockChunkClient{
+		chunks: chunksMap,
+	}
+
+	deleteRequests := []deletionproto.DeleteRequest{
+		{
+			// partially delete the first chunk
+			RequestID: "test-request-0",
+			Query:     lblFoo.String() + ` |= "test"`,
+			StartTime: yesterdaysTableInterval.Start,
+			EndTime:   yesterdaysTableInterval.Start.Add(30 * time.Minute),
+		},
+		{
+			// Delete 4 complete chunks in the middle.
+			// Since the chunks overlap by a minute, it would also cause deletion of one log line from the adjoining chunk on both ends.
+			RequestID: "test-request-1",
+			Query:     lblFoo.String() + ` |= "test"`,
+			StartTime: yesterdaysTableInterval.Start.Add(6 * time.Hour),
+			EndTime:   yesterdaysTableInterval.Start.Add(10 * time.Hour),
+		},
+		{
+			// Delete the whole part of chunk which overlaps the yesterdays table which would cause chunk to get de-indexed
+			RequestID: "test-request-2",
+			Query:     lblFoo.String() + ` |= "overlapping"`,
+			StartTime: yesterdaysTableInterval.End.Add(-30 * time.Minute),
+			EndTime:   yesterdaysTableInterval.End,
+		},
+	}
+
+	expectedStorageUpdates := &deletionproto.StorageUpdates{
+		RebuiltChunks: map[string]*deletionproto.Chunk{
+			chunkKey(chks[0]): {
+				// chunk recreated by test-request-0
+				From:        yesterdaysTableInterval.Start.Add(31 * time.Minute),
+				Through:     yesterdaysTableInterval.Start.Add(time.Hour),
+				Fingerprint: labels.StableHash(lblFoo),
+			},
+			chunkKey(chks[5]): {
+				// chunk recreated by test-request-1, removing just last line
+				From:        chks[5].From,
+				Through:     chks[5].Through.Add(-time.Minute),
+				Fingerprint: labels.StableHash(lblFoo),
+			},
+			chunkKey(chks[6]): nil, ///////////////////////////////////////////////////////
+			chunkKey(chks[7]): nil, //   chunks completely deleted by test-request-1	 //
+			chunkKey(chks[8]): nil, //													 //
+			chunkKey(chks[9]): nil, ///////////////////////////////////////////////////////
+			chunkKey(chks[10]): {
+				// chunk recreated by test-request-1, removing just first line
+				From:        chks[10].From.Add(time.Minute),
+				Through:     chks[10].Through,
+				Fingerprint: labels.StableHash(lblFoo),
+			},
+		},
+		ChunksToDeIndex: []string{
+			chunkKey(overlappingChunk), // chunk de-indexed by test-request-2
+		},
+	}
+
+	// Create job runner with chunk processing concurrency of 2
+	runner := NewJobRunner(2, func(_ string) (client.Client, error) {
+		return mockClient, nil
+	}, nil)
+
+	// Create the job
+	job := grpc.Job{
+		Id: "test-job",
+		Payload: mustMarshal(t, &deletionproto.DeletionJob{
+			UserID:         userID,
+			TableName:      tableName,
+			ChunkIDs:       chunkIDs,
+			DeleteRequests: deleteRequests,
+		}),
+	}
+
+	// Run the job
+	resultProto, err := runner.Run(context.Background(), &job)
+	require.NoError(t, err)
+
+	require.NoError(t, err)
+	result := &deletionproto.StorageUpdates{}
+	require.NoError(t, proto.Unmarshal(resultProto, result))
+
+	// verify we got the expected storage updates
+	require.Equal(t, len(expectedStorageUpdates.RebuiltChunks), len(result.RebuiltChunks))
+	for chunkID := range expectedStorageUpdates.RebuiltChunks {
+		_, ok := result.RebuiltChunks[chunkID]
+		require.True(t, ok)
+		if expectedStorageUpdates.RebuiltChunks[chunkID] == nil {
+			require.Nil(t, result.RebuiltChunks[chunkID])
+		} else {
+			require.Equal(t, expectedStorageUpdates.RebuiltChunks[chunkID].From, result.RebuiltChunks[chunkID].From)
+			require.Equal(t, expectedStorageUpdates.RebuiltChunks[chunkID].Through, result.RebuiltChunks[chunkID].Through)
+			require.Equal(t, expectedStorageUpdates.RebuiltChunks[chunkID].Fingerprint, result.RebuiltChunks[chunkID].Fingerprint)
+		}
+	}
+	require.Equal(t, expectedStorageUpdates.ChunksToDeIndex, result.ChunksToDeIndex)
+}
+
+func mustMarshal(t *testing.T, v proto.Message) []byte {
+	b, err := proto.Marshal(v)
 	require.NoError(t, err)
 	return b
 }

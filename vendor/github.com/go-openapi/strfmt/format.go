@@ -1,30 +1,19 @@
-// Copyright 2015 go-swagger maintainers
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//    http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-FileCopyrightText: Copyright 2015-2025 go-swagger maintainers
+// SPDX-License-Identifier: Apache-2.0
 
 package strfmt
 
 import (
 	"encoding"
-	stderrors "errors"
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/go-openapi/errors"
-	"github.com/mitchellh/mapstructure"
+	"github.com/go-viper/mapstructure/v2"
 )
 
 // Default is the default formats registry
@@ -33,25 +22,22 @@ var Default = NewSeededFormats(nil, nil)
 // Validator represents a validator for a string format.
 type Validator func(string) bool
 
-// Format represents a string format.
-//
-// All implementations of Format provide a string representation and text
-// marshaling/unmarshaling interface to be used by encoders (e.g. encoding/json).
-type Format interface {
-	String() string
-	encoding.TextMarshaler
-	encoding.TextUnmarshaler
+// NewFormats creates a new formats registry seeded with the values from the default
+func NewFormats() Registry {
+	//nolint:forcetypeassert
+	return NewSeededFormats(Default.(*defaultFormats).data, nil)
 }
 
-// Registry is a registry of string formats, with a validation method.
-type Registry interface {
-	Add(string, Format, Validator) bool
-	DelByName(string) bool
-	GetType(string) (reflect.Type, bool)
-	ContainsName(string) bool
-	Validates(string, string) bool
-	Parse(string, string) (interface{}, error)
-	MapStructureHookFunc() mapstructure.DecodeHookFunc
+// NewSeededFormats creates a new formats registry
+func NewSeededFormats(seeds []knownFormat, normalizer NameNormalizer) Registry {
+	if normalizer == nil {
+		normalizer = DefaultNameNormalizer
+	}
+	// copy here, don't modify the  original
+	return &defaultFormats{
+		data:          slices.Clone(seeds),
+		normalizeName: normalizer,
+	}
 }
 
 type knownFormat struct {
@@ -71,38 +57,20 @@ func DefaultNameNormalizer(name string) string {
 
 type defaultFormats struct {
 	sync.Mutex
+
 	data          []knownFormat
 	normalizeName NameNormalizer
 }
 
-// NewFormats creates a new formats registry seeded with the values from the default
-func NewFormats() Registry {
-	//nolint:forcetypeassert
-	return NewSeededFormats(Default.(*defaultFormats).data, nil)
-}
-
-// NewSeededFormats creates a new formats registry
-func NewSeededFormats(seeds []knownFormat, normalizer NameNormalizer) Registry {
-	if normalizer == nil {
-		normalizer = DefaultNameNormalizer
-	}
-	// copy here, don't modify original
-	d := append([]knownFormat(nil), seeds...)
-	return &defaultFormats{
-		data:          d,
-		normalizeName: normalizer,
-	}
-}
-
 // MapStructureHookFunc is a decode hook function for mapstructure
 func (f *defaultFormats) MapStructureHookFunc() mapstructure.DecodeHookFunc {
-	return func(from reflect.Type, to reflect.Type, obj interface{}) (interface{}, error) {
+	return func(from reflect.Type, to reflect.Type, obj any) (any, error) {
 		if from.Kind() != reflect.String {
 			return obj, nil
 		}
 		data, ok := obj.(string)
 		if !ok {
-			return nil, fmt.Errorf("failed to cast %+v to string", obj)
+			return nil, fmt.Errorf("failed to cast %+v to string: %w", obj, ErrFormat)
 		}
 
 		for _, v := range f.data {
@@ -118,7 +86,7 @@ func (f *defaultFormats) MapStructureHookFunc() mapstructure.DecodeHookFunc {
 				case "datetime":
 					input := data
 					if len(input) == 0 {
-						return nil, stderrors.New("empty string is an invalid datetime format")
+						return nil, fmt.Errorf("empty string is an invalid datetime format: %w", ErrFormat)
 					}
 					return ParseDateTime(input)
 				case "duration":
@@ -139,6 +107,8 @@ func (f *defaultFormats) MapStructureHookFunc() mapstructure.DecodeHookFunc {
 					return UUID4(data), nil
 				case "uuid5":
 					return UUID5(data), nil
+				case "uuid7":
+					return UUID7(data), nil
 				case "hostname":
 					return Hostname(data), nil
 				case "ipv4":
@@ -307,7 +277,7 @@ func (f *defaultFormats) Validates(name, data string) bool {
 // Parse a string into the appropriate format representation type.
 //
 // E.g. parsing a string a "date" will return a Date type.
-func (f *defaultFormats) Parse(name, data string) (interface{}, error) {
+func (f *defaultFormats) Parse(name, data string) (any, error) {
 	f.Lock()
 	defer f.Unlock()
 	nme := f.normalizeName(name)

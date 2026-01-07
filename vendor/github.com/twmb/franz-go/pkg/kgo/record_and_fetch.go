@@ -3,6 +3,7 @@ package kgo
 import (
 	"context"
 	"errors"
+	"iter"
 	"reflect"
 	"time"
 	"unsafe"
@@ -51,6 +52,7 @@ func (a RecordAttrs) TimestampType() int8 {
 // CompressionType signifies with which algorithm this record was compressed.
 //
 // 0 is no compression, 1 is gzip, 2 is snappy, 3 is lz4, and 4 is zstd.
+// The returned uint8 can be converted directly to a [CompressionCodecType].
 func (a RecordAttrs) CompressionType() uint8 {
 	return a.attrs & 0b0000_0111
 }
@@ -335,38 +337,53 @@ type FetchError struct {
 // Errors returns all errors in a fetch with the topic and partition that
 // errored.
 //
-// There are a few classes of errors possible:
+// There are a few classes of errors possible, in order from most-retryable
+// (or ignorable) to least retryable:
 //
 //  1. a normal kerr.Error; these are usually the non-retryable kerr.Errors,
 //     but theoretically a non-retryable error can be fixed at runtime (auth
 //     error? fix auth). It is worth restarting the client for these errors if
-//     you do not intend to fix this problem at runtime.
+//     you do not intend to fix this problem at runtime. These can also be
+//     returned when metadata loading of the topic or partition has a
+//     non-retryable error.
 //
 //  2. an injected *ErrDataLoss; these are informational, the client
 //     automatically resets consuming to where it should and resumes. This
 //     error is worth logging and investigating, but not worth restarting the
 //     client for.
 //
-//  3. an untyped batch parse failure; these are usually unrecoverable by
-//     restarts, and it may be best to just let the client continue.
-//     Restarting is an option, but you may need to manually repair your
-//     partition.
-//
-//  4. an injected ErrClientClosed; this is a fatal informational error that
-//     is returned from every Poll call if the client has been closed.
-//     A corresponding helper function IsClientClosed can be used to detect
-//     this error.
-//
-//  5. an injected context error; this can be present if the context you were
+//  3. an injected context error; this can be present if the context you were
 //     using for polling timed out or was canceled.
 //
-//  6. an injected ErrGroupSession; this is an informational error that is
+//  4. an injected ErrGroupSession; this is an informational error that is
 //     injected once a group session is lost in a way that is not the standard
 //     rebalance. This error can signify that your consumer member is not able
 //     to connect to the group (ACL problems, unreachable broker), or you
 //     blocked rebalancing for too long, or your callbacks took too long.
 //
-// This list may grow over time.
+//  5. an injected ErrClientClosed; this is a fatal informational error that
+//     is returned from every Poll call if the client has been closed.
+//     A corresponding helper function IsClientClosed can be used to detect
+//     this error.
+//
+//  6. If using NewOffset().AtCommitted(), an untyped error is injected if a
+//     partition the client wants to consume has no commit.
+//
+//  7. an untyped batch parse failure; these are usually unrecoverable by
+//     restarts, and it may be best to just let the client continue.
+//     Restarting is an option, but you may need to manually repair your
+//     partition. This usually implies data corruption on the broker.
+//
+//  8. An untyped non-retryable error that the client does not know how to
+//     handle when it was trying to validate some aspect of fetching (something
+//     failed very unexpectedly when listing offsets to learn where to fetch, or
+//     when validating the epoch in offsets). The client still internally will
+//     retry what it was doing, but odds are not great.
+//
+// This list may grow over time. Generally, untyped, non-context errors are not
+// retryable. Typed errors are usually retryable given time or given wider
+// system fixes (perhaps live-updating auth or certs or ACLs, or restarting a
+// down broker).
 func (fs Fetches) Errors() []FetchError {
 	var errs []FetchError
 	fs.EachError(func(t string, p int32, err error) {
@@ -463,6 +480,8 @@ func (fs Fetches) EachError(fn func(string, int32, error)) {
 // RecordIter returns an iterator over all records in a fetch.
 //
 // Note that errors should be inspected as well.
+//
+// Alternatively, use [RecordsAll] for a native Go iterator over records in the fetch.
 func (fs Fetches) RecordIter() *FetchesRecordIter {
 	iter := &FetchesRecordIter{fetches: fs}
 	iter.prepareNext()
@@ -517,6 +536,19 @@ beforePartition:
 		i.pi++
 		i.ri = 0
 		goto beforePartition
+	}
+}
+
+// RecordsAll returns a Go native iterator that yields the records in a fetch.
+//
+// Similarly to [RecordIter], the errors should be inspected separately.
+func (fs Fetches) RecordsAll() iter.Seq[*Record] {
+	return func(yield func(*Record) bool) {
+		for iter := fs.RecordIter(); !iter.Done(); {
+			if !yield(iter.Next()) {
+				return
+			}
+		}
 	}
 }
 

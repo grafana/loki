@@ -31,9 +31,9 @@ func TestCompactedIndex_IndexProcessor(t *testing.T) {
 			store := newTestStore(t, cm)
 			chunkfmt, headfmt, err := tt.config.ChunkFormat()
 			require.NoError(t, err)
-			c1 := createChunk(t, chunkfmt, headfmt, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, tt.from, tt.from.Add(1*time.Hour))
-			c2 := createChunk(t, chunkfmt, headfmt, "2", labels.Labels{labels.Label{Name: "foo", Value: "bar"}, labels.Label{Name: "fizz", Value: "buzz"}}, tt.from, tt.from.Add(1*time.Hour))
-			c3 := createChunk(t, chunkfmt, headfmt, "2", labels.Labels{labels.Label{Name: "foo", Value: "buzz"}, labels.Label{Name: "bar", Value: "buzz"}}, tt.from, tt.from.Add(1*time.Hour))
+			c1 := createChunk(t, chunkfmt, headfmt, "1", labels.New(labels.Label{Name: "foo", Value: "bar"}), tt.from, tt.from.Add(1*time.Hour))
+			c2 := createChunk(t, chunkfmt, headfmt, "2", labels.New(labels.Label{Name: "foo", Value: "bar"}, labels.Label{Name: "fizz", Value: "buzz"}), tt.from, tt.from.Add(1*time.Hour))
+			c3 := createChunk(t, chunkfmt, headfmt, "2", labels.New(labels.Label{Name: "foo", Value: "buzz"}, labels.Label{Name: "bar", Value: "buzz"}), tt.from, tt.from.Add(1*time.Hour))
 
 			require.NoError(t, store.Put(context.TODO(), []chunk.Chunk{
 				c1, c2, c3,
@@ -46,8 +46,20 @@ func TestCompactedIndex_IndexProcessor(t *testing.T) {
 
 			compactedIndex := newCompactedIndex(tables[0].DB, tables[0].name, t.TempDir(), tt.config, util_log.Logger)
 
+			// trying to remove a chunk for inexistent stream should return false for chunk existence
+			chunkExisted, err := compactedIndex.RemoveChunk(c1.From, c1.Through, []byte(c1.UserID), c3.Metric, schemaCfg.ExternalKey(c1.ChunkRef))
+			require.NoError(t, err)
+			require.False(t, chunkExisted)
+
+			// trying to remove an inexistent chunk from an existing stream should return false for chunk existence
+			inexistentChunk := c1
+			inexistentChunk.From = inexistentChunk.From.Add(time.Second)
+			chunkExisted, err = compactedIndex.RemoveChunk(inexistentChunk.From, inexistentChunk.Through, []byte(inexistentChunk.UserID), inexistentChunk.Metric, schemaCfg.ExternalKey(inexistentChunk.ChunkRef))
+			require.NoError(t, err)
+			require.False(t, chunkExisted)
+
 			// remove c1, c2 chunk and index c4 with same labels as c2
-			c4 := createChunk(t, chunkfmt, headfmt, "2", labels.Labels{labels.Label{Name: "foo", Value: "bar"}, labels.Label{Name: "fizz", Value: "buzz"}}, tt.from, tt.from.Add(30*time.Minute))
+			c4 := createChunk(t, chunkfmt, headfmt, "2", labels.New(labels.Label{Name: "foo", Value: "bar"}, labels.Label{Name: "fizz", Value: "buzz"}), tt.from, tt.from.Add(30*time.Minute))
 			err = compactedIndex.ForEachSeries(context.Background(), func(series retention.Series) (err error) {
 				if series.Labels().Get("fizz") == "buzz" {
 					approxKB := math.Round(float64(c4.Data.UncompressedSize()) / float64(1<<10))
@@ -57,7 +69,9 @@ func TestCompactedIndex_IndexProcessor(t *testing.T) {
 				}
 				if series.Labels().Get("foo") == "bar" {
 					for _, chk := range series.Chunks() {
-						require.NoError(t, compactedIndex.RemoveChunk(chk.From, chk.Through, series.UserID(), series.Labels(), chk.ChunkID))
+						chunkExisted, err := compactedIndex.RemoveChunk(chk.From, chk.Through, series.UserID(), series.Labels(), chk.ChunkID)
+						require.NoError(t, err)
+						require.True(t, chunkExisted)
 					}
 				}
 				return nil

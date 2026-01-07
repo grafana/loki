@@ -10,30 +10,31 @@ type EndTxnResponse struct {
 	Err          KError
 }
 
+func (e *EndTxnResponse) setVersion(v int16) {
+	e.Version = v
+}
+
 func (e *EndTxnResponse) encode(pe packetEncoder) error {
-	pe.putInt32(int32(e.ThrottleTime / time.Millisecond))
-	pe.putInt16(int16(e.Err))
+	pe.putDurationMs(e.ThrottleTime)
+	pe.putKError(e.Err)
 	return nil
 }
 
 func (e *EndTxnResponse) decode(pd packetDecoder, version int16) (err error) {
-	throttleTime, err := pd.getInt32()
-	if err != nil {
+	if e.ThrottleTime, err = pd.getDurationMs(); err != nil {
 		return err
 	}
-	e.ThrottleTime = time.Duration(throttleTime) * time.Millisecond
 
-	kerr, err := pd.getInt16()
+	e.Err, err = pd.getKError()
 	if err != nil {
 		return err
 	}
-	e.Err = KError(kerr)
 
 	return nil
 }
 
 func (e *EndTxnResponse) key() int16 {
-	return 26
+	return apiKeyEndTxn
 }
 
 func (e *EndTxnResponse) version() int16 {

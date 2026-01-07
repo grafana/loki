@@ -9,8 +9,12 @@ type DeleteAclsResponse struct {
 	FilterResponses []*FilterResponse
 }
 
+func (d *DeleteAclsResponse) setVersion(v int16) {
+	d.Version = v
+}
+
 func (d *DeleteAclsResponse) encode(pe packetEncoder) error {
-	pe.putInt32(int32(d.ThrottleTime / time.Millisecond))
+	pe.putDurationMs(d.ThrottleTime)
 
 	if err := pe.putArrayLength(len(d.FilterResponses)); err != nil {
 		return err
@@ -26,11 +30,9 @@ func (d *DeleteAclsResponse) encode(pe packetEncoder) error {
 }
 
 func (d *DeleteAclsResponse) decode(pd packetDecoder, version int16) (err error) {
-	throttleTime, err := pd.getInt32()
-	if err != nil {
+	if d.ThrottleTime, err = pd.getDurationMs(); err != nil {
 		return err
 	}
-	d.ThrottleTime = time.Duration(throttleTime) * time.Millisecond
 
 	n, err := pd.getArrayLength()
 	if err != nil {
@@ -49,7 +51,7 @@ func (d *DeleteAclsResponse) decode(pd packetDecoder, version int16) (err error)
 }
 
 func (d *DeleteAclsResponse) key() int16 {
-	return 31
+	return apiKeyDeleteAcls
 }
 
 func (d *DeleteAclsResponse) version() int16 {
@@ -85,7 +87,7 @@ type FilterResponse struct {
 }
 
 func (f *FilterResponse) encode(pe packetEncoder, version int16) error {
-	pe.putInt16(int16(f.Err))
+	pe.putKError(f.Err)
 	if err := pe.putNullableString(f.ErrMsg); err != nil {
 		return err
 	}
@@ -103,11 +105,10 @@ func (f *FilterResponse) encode(pe packetEncoder, version int16) error {
 }
 
 func (f *FilterResponse) decode(pd packetDecoder, version int16) (err error) {
-	kerr, err := pd.getInt16()
+	f.Err, err = pd.getKError()
 	if err != nil {
 		return err
 	}
-	f.Err = KError(kerr)
 
 	if f.ErrMsg, err = pd.getNullableString(); err != nil {
 		return err
@@ -137,7 +138,7 @@ type MatchingAcl struct {
 }
 
 func (m *MatchingAcl) encode(pe packetEncoder, version int16) error {
-	pe.putInt16(int16(m.Err))
+	pe.putKError(m.Err)
 	if err := pe.putNullableString(m.ErrMsg); err != nil {
 		return err
 	}
@@ -154,11 +155,10 @@ func (m *MatchingAcl) encode(pe packetEncoder, version int16) error {
 }
 
 func (m *MatchingAcl) decode(pd packetDecoder, version int16) (err error) {
-	kerr, err := pd.getInt16()
+	m.Err, err = pd.getKError()
 	if err != nil {
 		return err
 	}
-	m.Err = KError(kerr)
 
 	if m.ErrMsg, err = pd.getNullableString(); err != nil {
 		return err

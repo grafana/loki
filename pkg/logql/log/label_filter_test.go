@@ -171,7 +171,7 @@ func TestBinary_Filter(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.f.String(), func(t *testing.T) {
-			b := NewBaseLabelsBuilder().ForLabels(tt.lbs, tt.lbs.Hash())
+			b := NewBaseLabelsBuilder().ForLabels(tt.lbs, labels.StableHash(tt.lbs))
 			b.Reset()
 			_, got := tt.f.Process(0, nil, b)
 			require.Equal(t, tt.want, got)
@@ -204,7 +204,7 @@ func TestBytes_Filter(t *testing.T) {
 		f := NewBytesLabelFilter(LabelFilterEqual, "bar", tt.expectedBytes)
 		lbs := labels.FromStrings("bar", tt.label)
 		t.Run(f.String(), func(t *testing.T) {
-			b := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
+			b := NewBaseLabelsBuilder().ForLabels(lbs, labels.StableHash(lbs))
 			b.Reset()
 			_, got := f.Process(0, nil, b)
 			require.Equal(t, tt.want, got)
@@ -272,7 +272,7 @@ func TestErrorFiltering(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.f.String(), func(t *testing.T) {
-			b := NewBaseLabelsBuilder().ForLabels(tt.lbs, tt.lbs.Hash())
+			b := NewBaseLabelsBuilder().ForLabels(tt.lbs, labels.StableHash(tt.lbs))
 			b.Reset()
 			b.SetErr(tt.err)
 			_, got := tt.f.Process(0, nil, b)
@@ -410,7 +410,7 @@ func TestStringLabelFilter(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			_, ok := tc.filter.Process(0, []byte("sample log line"), NewBaseLabelsBuilder().ForLabels(tc.labels, tc.labels.Hash()))
+			_, ok := tc.filter.Process(0, []byte("sample log line"), NewBaseLabelsBuilder().ForLabels(tc.labels, labels.StableHash(tc.labels)))
 			assert.Equal(t, tc.shouldMatch, ok)
 		})
 	}
@@ -470,6 +470,54 @@ func BenchmarkLineLabelFilters(b *testing.B) {
 
 			for i := 0; i < b.N; i++ {
 				_, result = f.Process(0, line, lbl)
+			}
+		})
+	}
+}
+
+func TestLineFilterLabelFilter_String(t *testing.T) {
+	type fields struct {
+		Matcher *labels.Matcher
+		Filter  Filterer
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		want   string
+	}{
+		{
+			name: "it correctly surrounds regex containing backticks with double quotes",
+			fields: fields{
+				Matcher: labels.MustNewMatcher(labels.MatchRegexp, "msg", "`.`"),
+				Filter:  mustFilter(newRegexpFilter("`.`", "`.`", true)),
+			},
+			want: "msg=~\"`.`\"",
+		},
+		{
+			name: "it correctly surrounds regex containing double quote with backticks",
+			fields: fields{
+				Matcher: labels.MustNewMatcher(labels.MatchRegexp, "msg", `"`),
+				Filter:  mustFilter(newRegexpFilter(`"`, `"`, true)),
+			},
+			want: "msg=~`\"`",
+		},
+		{
+			name: "it correctly surrounds regex containing both backticks and double quotes with double quotes",
+			fields: fields{
+				Matcher: labels.MustNewMatcher(labels.MatchRegexp, "msg", "`\""),
+				Filter:  mustFilter(newRegexpFilter("`\"", "`\"", true)),
+			},
+			want: "msg=~\"`\\\"\"",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &LineFilterLabelFilter{
+				Matcher: tt.fields.Matcher,
+				Filter:  tt.fields.Filter,
+			}
+			if got := s.String(); got != tt.want {
+				t.Errorf("LineFilterLabelFilter.String() = %v, want %v", got, tt.want)
 			}
 		})
 	}

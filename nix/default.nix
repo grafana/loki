@@ -32,7 +32,8 @@ let
 
   loki-helm-test = pkgs.callPackage ../production/helm/loki/src/helm-test {
     inherit pkgs;
-    inherit (pkgs) lib buildGoModule dockerTools;
+    inherit (pkgs) lib dockerTools;
+    buildGoModule = pkgs.buildGo125Module;
     rev = gitRevision;
   };
 in
@@ -49,6 +50,10 @@ in
 
     subPackages = [ "cmd/logcli" ];
 
+     tags = [
+        "slicelabels"
+     ];
+
     meta = with lib; {
       description = "LogCLI is a command line tool for interacting with Loki.";
       mainProgram = "logcli";
@@ -60,6 +65,10 @@ in
     pname = "loki-canary";
 
     subPackages = [ "cmd/loki-canary" ];
+
+     tags = [
+        "slicelabels"
+     ];
 
     meta = with lib; {
       description = "Loki Canary is a canary for the Loki project.";
@@ -73,7 +82,10 @@ in
 
     buildInputs = with pkgs; lib.optionals stdenv.hostPlatform.isLinux [ systemd.dev ];
 
-    tags = [ "promtail_journal_enabled" ];
+    tags = [
+        "promtail_journal_enabled"
+        "slicelabels"
+    ];
 
     subPackages = [ "clients/cmd/promtail" ];
 

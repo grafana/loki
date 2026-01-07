@@ -278,7 +278,7 @@ One of the first places you should visit is Logs Drilldown which lets you automa
 The Kubernetes Monitoring Helm chart deploys Grafana Alloy to collect and forward telemetry data from the Kubernetes cluster. The Helm chart is designed to abstract you away from creating an Alloy configuration file. However if you would like to understand the pipeline you can view the Alloy UI. To access the Alloy UI, you will need to port-forward the Alloy service to your local machine. To do this, run the following command:
 
 ```bash
-export POD_NAME=$(kubectl get pods --namespace meta -l "app.kubernetes.io/name=alloy-logs,app.kubernetes.io/instance=k8s" -o jsonpath="{.items[0].metadata.name}") && \
+export POD_NAME=$(kubectl get pods --namespace meta -l "app.kubernetes.io/name=alloy-logs,app.kubernetes.io/instance=k8s-alloy-logs" -o jsonpath="{.items[0].metadata.name}") && \
 kubectl --namespace meta port-forward $POD_NAME 12345 --address 0.0.0.0
 ```
 

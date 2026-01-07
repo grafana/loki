@@ -225,6 +225,11 @@ func (b *BucketHandle) SignedURL(object string, opts *SignedURLOptions) (string,
 // to be non-nil. You may need to set the GoogleAccessID and PrivateKey fields
 // in some cases. Read more on the [automatic detection of credentials] for this method.
 //
+// To allow the unauthenticated client to upload to any object name in the
+// bucket with a given prefix rather than a specific object name, you can pass
+// an empty string for object and set [PostPolicyV4Options].Conditions to
+// include [ConditionStartsWith]("$key", "prefix").
+//
 // [automatic detection of credentials]: https://pkg.go.dev/cloud.google.com/go/storage#hdr-Credential_requirements_for_signing
 func (b *BucketHandle) GenerateSignedPostPolicyV4(object string, opts *PostPolicyV4Options) (*PostPolicyV4, error) {
 	// Make a copy of opts so we don't modify the pointer parameter.
@@ -2326,6 +2331,11 @@ func (it *ObjectIterator) Next() (*ObjectAttrs, error) {
 // whose names begin with the prefix. By default, all buckets in the project
 // are returned.
 //
+// To receive a partial list of buckets when some are unavailable, set the
+// iterator's ReturnPartialSuccess field to true. You can then call the
+// iterator's Unreachable method to retrieve the names of the unreachable
+// buckets.
+//
 // Note: The returned iterator is not safe for concurrent operations without explicit synchronization.
 func (c *Client) Buckets(ctx context.Context, projectID string) *BucketIterator {
 	o := makeStorageOpts(true, c.retry, "")
@@ -2338,12 +2348,24 @@ func (c *Client) Buckets(ctx context.Context, projectID string) *BucketIterator 
 type BucketIterator struct {
 	// Prefix restricts the iterator to buckets whose names begin with it.
 	Prefix string
+	// If true, the iterator will return a partial result of buckets even if
+	// some buckets are unreachable. Call the Unreachable() method to retrieve the
+	// list of unreachable buckets. By default (false), the iterator will return
+	// an error if any buckets are unreachable.
+	ReturnPartialSuccess bool
 
-	ctx       context.Context
-	projectID string
-	buckets   []*BucketAttrs
-	pageInfo  *iterator.PageInfo
-	nextFunc  func() error
+	ctx         context.Context
+	projectID   string
+	buckets     []*BucketAttrs
+	unreachable []string
+	pageInfo    *iterator.PageInfo
+	nextFunc    func() error
+}
+
+// Unreachable returns a list of bucket names that could not be reached
+// during the iteration if ReturnPartialSuccess was set to true.
+func (it *BucketIterator) Unreachable() []string {
+	return it.unreachable
 }
 
 // Next returns the next result. Its second return value is iterator.Done if

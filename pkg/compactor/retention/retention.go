@@ -21,17 +21,12 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
-	chunk_util "github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/filter"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 var chunkBucket = []byte("chunks")
-
-const (
-	MarkersFolder = "markers"
-)
 
 type Chunk struct {
 	ChunkID string
@@ -96,7 +91,7 @@ type SeriesIterator interface {
 }
 
 type IndexCleaner interface {
-	RemoveChunk(from, through model.Time, userID []byte, labels labels.Labels, chunkID string) error
+	RemoveChunk(from, through model.Time, userID []byte, labels labels.Labels, chunkID string) (bool, error)
 	// CleanupSeries is for cleaning up the series that do have any chunks left in the index.
 	// It would only be called for the series that have all their chunks deleted without adding new ones.
 	CleanupSeries(userID []byte, lbls labels.Labels) error
@@ -115,6 +110,7 @@ type IndexProcessor interface {
 	SeriesIterator
 	chunkIndexer
 	IndexCleaner
+	ChunkExists(userID []byte, lbls labels.Labels, chunkRef logproto.ChunkRef) (bool, error)
 }
 
 var errNoChunksFound = errors.New("no chunks found in table, please check if there are really no chunks and manually drop the table or " +
@@ -129,20 +125,20 @@ type TableMarker interface {
 }
 
 type Marker struct {
-	workingDirectory string
-	expiration       ExpirationChecker
-	markerMetrics    *markerMetrics
-	chunkClient      client.Client
-	markTimeout      time.Duration
+	markerStorageClient client.ObjectClient
+	expiration          ExpirationChecker
+	markerMetrics       *markerMetrics
+	chunkClient         client.Client
+	markTimeout         time.Duration
 }
 
-func NewMarker(workingDirectory string, expiration ExpirationChecker, markTimeout time.Duration, chunkClient client.Client, r prometheus.Registerer) (*Marker, error) {
+func NewMarker(markerStorageClient client.ObjectClient, expiration ExpirationChecker, markTimeout time.Duration, chunkClient client.Client, r prometheus.Registerer) (*Marker, error) {
 	return &Marker{
-		workingDirectory: workingDirectory,
-		expiration:       expiration,
-		markerMetrics:    newMarkerMetrics(r),
-		chunkClient:      chunkClient,
-		markTimeout:      markTimeout,
+		markerStorageClient: markerStorageClient,
+		expiration:          expiration,
+		markerMetrics:       newMarkerMetrics(r),
+		chunkClient:         chunkClient,
+		markTimeout:         markTimeout,
 	}, nil
 }
 
@@ -165,7 +161,7 @@ func (t *Marker) FindAndMarkChunksForDeletion(ctx context.Context, tableName, us
 }
 
 func (t *Marker) markTable(ctx context.Context, tableName, userID string, indexProcessor IndexProcessor, logger log.Logger) (bool, bool, error) {
-	markerWriter, err := NewMarkerStorageWriter(t.workingDirectory)
+	markerWriter, err := NewMarkerWriter(t.markerStorageClient)
 	if err != nil {
 		return false, false, fmt.Errorf("failed to create marker writer: %w", err)
 	}
@@ -200,7 +196,7 @@ func (t *Marker) markTable(ctx context.Context, tableName, userID string, indexP
 
 // MarkChunksForDeletion marks the given list of chunks for deletion
 func (t *Marker) MarkChunksForDeletion(tableName string, chunks []string) error {
-	markerWriter, err := NewMarkerStorageWriter(t.workingDirectory)
+	markerWriter, err := NewMarkerWriter(t.markerStorageClient)
 	if err != nil {
 		return fmt.Errorf("failed to create marker writer: %w", err)
 	}
@@ -267,12 +263,17 @@ func markForDelete(
 			return nil
 		}
 
+		// Removing logs with filter is an intensive operation. However, tracking processed series is not free either.
+		// We want to only track series which have logs to be removed with filter, to skip the ones we have already processed
+		// and not have too much data for tracking.
+		seriesHasLogsToRemoveWithFilter := false
 		for i := 0; i < len(chunks) && iterCtx.Err() == nil; i++ {
 			c := chunks[i]
 			// see if the chunk is deleted completely or partially
 			if expired, filterFunc := expiration.Expired(s.UserID(), c, s.Labels(), s.SeriesID(), tableName, now); expired {
 				linesDeleted := true // tracks whether we deleted at least some data from the chunk
 				if filterFunc != nil {
+					seriesHasLogsToRemoveWithFilter = true
 					wroteChunks := false
 					var err error
 					wroteChunks, linesDeleted, err = chunkRewriter.rewriteChunk(ctx, s.UserID(), c, tableInterval, filterFunc)
@@ -298,8 +299,12 @@ func markForDelete(
 							return err
 						}
 					}
-					if err := indexFile.RemoveChunk(c.From, c.Through, s.UserID(), s.Labels(), c.ChunkID); err != nil {
+					chunkExisted, err := indexFile.RemoveChunk(c.From, c.Through, s.UserID(), s.Labels(), c.ChunkID)
+					if err != nil {
 						return fmt.Errorf("failed to remove chunk %s from index with error %s", c.ChunkID, err)
+					}
+					if !chunkExisted {
+						return fmt.Errorf("could not find entry of chunk %s to remove it", c.ChunkID)
 					}
 					continue
 				}
@@ -312,8 +317,12 @@ func markForDelete(
 			if c.Through.After(tableInterval.End) {
 				if expiration.DropFromIndex(s.UserID(), c, labels.EmptyLabels(), tableInterval.End, now) {
 					modified = true
-					if err := indexFile.RemoveChunk(c.From, c.Through, s.UserID(), s.Labels(), c.ChunkID); err != nil {
+					chunkExisted, err := indexFile.RemoveChunk(c.From, c.Through, s.UserID(), s.Labels(), c.ChunkID)
+					if err != nil {
 						return fmt.Errorf("failed to remove chunk %s from index with error %s", c.ChunkID, err)
+					}
+					if !chunkExisted {
+						return fmt.Errorf("could not find entry of chunk %s to remove it", c.ChunkID)
 					}
 					continue
 				}
@@ -326,7 +335,12 @@ func markForDelete(
 			return err
 		}
 
-		return expiration.MarkSeriesAsProcessed(s.UserID(), s.SeriesID(), s.Labels(), tableName)
+		if seriesHasLogsToRemoveWithFilter {
+			if err := expiration.MarkSeriesAsProcessed(s.UserID(), s.SeriesID(), s.Labels(), tableName); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) && errors.Is(iterCtx.Err(), context.DeadlineExceeded) {
@@ -377,7 +391,7 @@ type Sweeper struct {
 }
 
 func NewSweeper(
-	workingDir string,
+	markerStorageClient client.ObjectClient,
 	deleteClient ChunkClient,
 	deleteWorkerCount int,
 	minAgeDelete time.Duration,
@@ -386,7 +400,7 @@ func NewSweeper(
 ) (*Sweeper, error) {
 	m := newSweeperMetrics(r)
 
-	p, err := newMarkerStorageReader(workingDir, deleteWorkerCount, minAgeDelete, m)
+	p, err := newMarkerReader(markerStorageClient, deleteWorkerCount, minAgeDelete, m)
 	if err != nil {
 		return nil, err
 	}
@@ -483,7 +497,7 @@ func (c *chunkRewriter) rewriteChunk(ctx context.Context, userID []byte, ce Chun
 		return false, false, fmt.Errorf("expected 1 entry for chunk %s but found %d in storage", ce.ChunkID, len(chks))
 	}
 
-	newChunkData, err := chks[0].Data.Rebound(ce.From, ce.Through, func(ts time.Time, s string, structuredMetadata labels.Labels) bool {
+	newChunkData, err := chks[0].Data.Rewrite(func(ts time.Time, s string, structuredMetadata labels.Labels) bool {
 		if filterFunc(ts, s, structuredMetadata) {
 			linesDeleted = true
 			return true
@@ -492,7 +506,7 @@ func (c *chunkRewriter) rewriteChunk(ctx context.Context, userID []byte, ce Chun
 		return false
 	})
 	if err != nil {
-		if errors.Is(err, chunk.ErrSliceNoDataInRange) {
+		if errors.Is(err, chunk.ErrRewriteNoDataLeft) {
 			level.Info(util_log.Logger).Log("msg", "Delete request filterFunc leaves an empty chunk", "chunk ref", ce.ChunkID)
 			return false, true, nil
 		}
@@ -547,9 +561,9 @@ func (c *chunkRewriter) rewriteChunk(ctx context.Context, userID []byte, ce Chun
 }
 
 // CopyMarkers checks for markers in the src dir and copies them to the dst.
-func CopyMarkers(src string, dst string) error {
-	markersDir := filepath.Join(src, MarkersFolder)
-	info, err := os.Stat(markersDir)
+// dstName must be a human-readable name for what dst is.
+func CopyMarkers(src string, dst client.ObjectClient, dstName string) error {
+	info, err := os.Stat(src)
 	if err != nil {
 		if os.IsNotExist(err) {
 			// nothing to migrate
@@ -563,28 +577,27 @@ func CopyMarkers(src string, dst string) error {
 		return nil
 	}
 
-	markers, err := os.ReadDir(markersDir)
+	markers, err := os.ReadDir(src)
 	if err != nil {
 		return fmt.Errorf("read markers dir: %w", err)
 	}
 
-	targetDir := filepath.Join(dst, MarkersFolder)
-	if err := chunk_util.EnsureDirectory(targetDir); err != nil {
-		return fmt.Errorf("ensure target markers dir: %w", err)
+	if len(markers) == 0 {
+		return nil
 	}
 
-	level.Info(util_log.Logger).Log("msg", fmt.Sprintf("found markers in retention dir %s, moving them to period specific dir: %s", markersDir, targetDir))
+	level.Info(util_log.Logger).Log("msg", fmt.Sprintf("found markers in retention dir %s, moving them to period specific destination: %s", src, dstName))
 	for _, marker := range markers {
 		if marker.IsDir() {
 			continue
 		}
 
-		data, err := os.ReadFile(filepath.Join(markersDir, marker.Name()))
+		data, err := os.ReadFile(filepath.Join(src, marker.Name()))
 		if err != nil {
 			return fmt.Errorf("read marker file: %w", err)
 		}
 
-		if err := os.WriteFile(filepath.Join(targetDir, marker.Name()), data, 0640); err != nil { // #nosec G306 -- this is fencing off the "other" permissions
+		if err := dst.PutObject(context.Background(), marker.Name(), bytes.NewReader(data)); err != nil { // #nosec G306 -- this is fencing off the "other" permissions -- nosemgrep: incorrect-default-permissions
 			return fmt.Errorf("write marker file: %w", err)
 		}
 	}

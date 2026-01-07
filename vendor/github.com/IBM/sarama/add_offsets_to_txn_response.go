@@ -11,30 +11,31 @@ type AddOffsetsToTxnResponse struct {
 	Err          KError
 }
 
+func (a *AddOffsetsToTxnResponse) setVersion(v int16) {
+	a.Version = v
+}
+
 func (a *AddOffsetsToTxnResponse) encode(pe packetEncoder) error {
-	pe.putInt32(int32(a.ThrottleTime / time.Millisecond))
-	pe.putInt16(int16(a.Err))
+	pe.putDurationMs(a.ThrottleTime)
+	pe.putKError(a.Err)
 	return nil
 }
 
 func (a *AddOffsetsToTxnResponse) decode(pd packetDecoder, version int16) (err error) {
-	throttleTime, err := pd.getInt32()
-	if err != nil {
+	if a.ThrottleTime, err = pd.getDurationMs(); err != nil {
 		return err
 	}
-	a.ThrottleTime = time.Duration(throttleTime) * time.Millisecond
 
-	kerr, err := pd.getInt16()
+	a.Err, err = pd.getKError()
 	if err != nil {
 		return err
 	}
-	a.Err = KError(kerr)
 
 	return nil
 }
 
 func (a *AddOffsetsToTxnResponse) key() int16 {
-	return 25
+	return apiKeyAddOffsetsToTxn
 }
 
 func (a *AddOffsetsToTxnResponse) version() int16 {

@@ -70,6 +70,23 @@ const (
 	BOS_CONFIG_PREFIX  = "bos://"
 	BOS_SHARE_ENDPOINT = "bos-share.baidubce.com"
 
+	INVENTORY_SCHEDULE_DAILY   = "ThreeDaily"
+	INVENTORY_SCHEDULE_WEEKLY  = "Weekly"
+	INVENTORY_SCHEDULE_MONTHLY = "Monthly"
+
+	INVENTORY_FILE_FORMAT_CSV = "CSV"
+
+	INVENTORY_OBJECT_VERSIONS_ALL     = "All"
+	INVENTORY_OBJECT_VERSIONS_CURRENT = "Current"
+
+	REQUEST_PAYMENT_REQUESTER    = "Requester"
+	REQUEST_PAYMENT_BUCKET_OWNER = "BucketOwner"
+
+	EVENT_FROM_CLIENT      = "Client"
+	EVENT_FROM_LIFECYCLE   = "Lifecycle"
+	EVENT_FROM_REPLICATION = "Replication"
+	EVENT_FROM_BATCH       = "Batch"
+
 	// BOS Client error message format
 	BOS_CRC32C_CHECK_ERROR_MSG = "End-to-end check of crc32c failed, client-crc32c:%s, server-crc32c:%s"
 )
@@ -129,7 +146,8 @@ func getCnameUri(uri string) string {
 }
 
 func validMetadataDirective(val string) bool {
-	if val == METADATA_DIRECTIVE_COPY || val == METADATA_DIRECTIVE_REPLACE {
+	if val == METADATA_DIRECTIVE_COPY ||
+		val == METADATA_DIRECTIVE_REPLACE {
 		return true
 	}
 	return false
@@ -165,6 +183,15 @@ func validCannedAcl(val string) bool {
 	return false
 }
 
+func isAclHeaderkey(key string) bool {
+	if key == http.BCE_ACL ||
+		key == http.BCE_GRANT_READ ||
+		key == http.BCE_GRANT_FULL_CONTROL {
+		return true
+	}
+	return false
+}
+
 func validObjectTagging(tagging string) (bool, string) {
 	if len(tagging) > 4000 {
 		return false, ""
@@ -188,6 +215,23 @@ func validObjectTagging(tagging string) (bool, string) {
 	return true, strings.Join(encodeTagging, "&")
 }
 
+func taggingMapToStr(tags map[string]string) string {
+	var values []string
+	for k, v := range tags {
+		encodeKey := url.QueryEscape(k)
+		encodeValue := url.QueryEscape(v)
+		if len(encodeKey) > 128 || len(encodeValue) > 256 ||
+			len(encodeKey) == 0 || len(encodeValue) == 0 {
+			continue
+		}
+		values = append(values, encodeKey+"="+encodeValue)
+	}
+	if len(values) == 0 {
+		return ""
+	}
+	return strings.Join(values, "&")
+}
+
 func toHttpHeaderKey(key string) string {
 	var result bytes.Buffer
 	needToUpper := true
@@ -200,6 +244,7 @@ func toHttpHeaderKey(key string) string {
 			needToUpper = true
 		} else {
 			result.WriteByte(c)
+			needToUpper = false
 		}
 	}
 	return result.String()
@@ -207,7 +252,7 @@ func toHttpHeaderKey(key string) string {
 
 func setOptionalNullHeaders(req *BosRequest, args map[string]string) {
 	for k, v := range args {
-		if len(v) == 0 {
+		if len(v) == 0 || v == "false" {
 			continue
 		}
 		switch k {
@@ -240,9 +285,6 @@ func setOptionalNullHeaders(req *BosRequest, args map[string]string) {
 		case http.BCE_CONTENT_CRC32C:
 			fallthrough
 		case http.BCE_CONTENT_CRC32C_FLAG:
-			if v == "false" {
-				continue
-			}
 			fallthrough
 		case http.BCE_COPY_SOURCE_RANGE:
 			fallthrough
@@ -253,6 +295,18 @@ func setOptionalNullHeaders(req *BosRequest, args map[string]string) {
 		case http.BCE_COPY_SOURCE_IF_MODIFIED_SINCE:
 			fallthrough
 		case http.BCE_COPY_SOURCE_IF_UNMODIFIED_SINCE:
+			fallthrough
+		case http.BCE_SERVER_SIDE_ENCRYPTION:
+			fallthrough
+		case http.BCE_SERVER_SIDE_ENCRYPTION_KEY:
+			fallthrough
+		case http.BCE_SERVER_SIDE_ENCRYPTION_KEY_ID:
+			fallthrough
+		case http.BCE_SERVER_SIDE_ENCRYPTION_KEY_MD5:
+			fallthrough
+		case http.BCE_FORBID_OVERWRITE:
+			fallthrough
+		case http.BCE_OBJECT_EXPIRES:
 			req.SetHeader(k, v)
 		}
 	}
@@ -269,7 +323,11 @@ func setUserMetadata(req *BosRequest, meta map[string]string) error {
 		if len(k)+len(v) > 32*1024 {
 			return bce.NewBceClientError("MetadataTooLarge")
 		}
-		req.SetHeader(http.BCE_USER_METADATA_PREFIX+k, v)
+		// to lower and deduplicate
+		userMetaHeader := http.BCE_USER_METADATA_PREFIX + strings.ToLower(k)
+		if _, ok := req.Headers()[userMetaHeader]; !ok {
+			req.SetHeader(userMetaHeader, v)
+		}
 	}
 	return nil
 }
@@ -481,4 +539,11 @@ func ParseObjectTagResult(rawData []byte) (map[string]interface{}, error) {
 		return nil, fmt.Errorf("decode tags error")
 	}
 	return tags, nil
+}
+
+func joinUserIds(ids []string) string {
+	for i := range ids {
+		ids[i] = "id=\"" + ids[i] + "\""
+	}
+	return strings.Join(ids, ",")
 }

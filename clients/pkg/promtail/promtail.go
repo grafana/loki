@@ -140,6 +140,10 @@ func (p *Promtail) reloadConfig(cfg *config.Config) error {
 		p.client.Stop()
 	}
 
+	if err := cfg.Validate(); err != nil {
+		return fmt.Errorf("error validating config: %w", err)
+	}
+
 	cfg.Setup(p.logger)
 	if cfg.LimitsConfig.ReadlineRateEnabled {
 		stages.SetReadLineRateLimiter(cfg.LimitsConfig.ReadlineRate, cfg.LimitsConfig.ReadlineBurst, cfg.LimitsConfig.ReadlineRateDrop)
@@ -287,7 +291,7 @@ func (p *Promtail) reload() error {
 	cfg, err := p.newConfig()
 	if err != nil {
 		reloadFailTotal.Inc()
-		return fmt.Errorf("Error new Config: %w", err)
+		return fmt.Errorf("error new Config: %w", err)
 	}
 	err = p.reloadConfig(cfg)
 	if err != nil {

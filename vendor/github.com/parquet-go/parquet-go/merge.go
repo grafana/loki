@@ -1,11 +1,14 @@
 package parquet
 
 import (
-	"container/heap"
-	"errors"
+	"cmp"
 	"fmt"
 	"io"
-	"sync"
+	"iter"
+	"slices"
+
+	"github.com/parquet-go/parquet-go/encoding"
+	"github.com/parquet-go/parquet-go/format"
 )
 
 // MergeRowGroups constructs a row group which is a merged view of rowGroups. If
@@ -27,60 +30,231 @@ func MergeRowGroups(rowGroups []RowGroup, options ...RowGroupOption) (RowGroup, 
 
 	schema := config.Schema
 	if len(rowGroups) == 0 {
+		if schema == nil {
+			return nil, fmt.Errorf("cannot merge empty row groups without a schema")
+		}
 		return newEmptyRowGroup(schema), nil
 	}
 	if schema == nil {
-		schema = rowGroups[0].Schema()
-
-		for _, rowGroup := range rowGroups[1:] {
-			if !EqualNodes(schema, rowGroup.Schema()) {
-				return nil, ErrRowGroupSchemaMismatch
-			}
+		schemas := make([]Node, len(rowGroups))
+		for i, rowGroup := range rowGroups {
+			schemas[i] = rowGroup.Schema()
 		}
+		schema = NewSchema(rowGroups[0].Schema().Name(), MergeNodes(schemas...))
 	}
 
-	mergedRowGroups := make([]RowGroup, len(rowGroups))
-	copy(mergedRowGroups, rowGroups)
-
+	mergedRowGroups := slices.Clone(rowGroups)
 	for i, rowGroup := range mergedRowGroups {
-		if rowGroupSchema := rowGroup.Schema(); !EqualNodes(schema, rowGroupSchema) {
-			conv, err := Convert(schema, rowGroupSchema)
-			if err != nil {
-				return nil, fmt.Errorf("cannot merge row groups: %w", err)
-			}
-			mergedRowGroups[i] = ConvertRowGroup(rowGroup, conv)
+		rowGroupSchema := rowGroup.Schema()
+		// Always apply conversion when merging multiple row groups to ensure
+		// column indices match the merged schema layout. The merge process can
+		// reorder fields even when schemas are otherwise identical.
+		conv, err := Convert(schema, rowGroupSchema)
+		if err != nil {
+			return nil, fmt.Errorf("cannot merge row groups: %w", err)
 		}
+		mergedRowGroups[i] = ConvertRowGroup(rowGroup, conv)
 	}
 
-	m := &mergedRowGroup{sorting: config.Sorting.SortingColumns}
-	m.init(schema, mergedRowGroups)
+	// Determine the effective sorting columns for the merge
+	mergedSortingColumns := slices.Clone(config.Sorting.SortingColumns)
+	if len(mergedSortingColumns) == 0 {
+		// Auto-detect common sorting columns from input row groups
+		sortingColumns := make([][]SortingColumn, len(mergedRowGroups))
+		for i, rowGroup := range mergedRowGroups {
+			sortingColumns[i] = rowGroup.SortingColumns()
+		}
+		mergedSortingColumns = MergeSortingColumns(sortingColumns...)
+	}
 
-	if len(m.sorting) == 0 {
-		// When the row group has no ordering, use a simpler version of the
+	if len(mergedSortingColumns) == 0 {
+		// When there are no effective sorting columns, use a simpler version of the
 		// merger which simply concatenates rows from each of the row groups.
 		// This is preferable because it makes the output deterministic, the
 		// heap merge may otherwise reorder rows across groups.
-		return &m.multiRowGroup, nil
+		//
+		// IMPORTANT: We need to ensure conversions are applied even in the simple
+		// concatenation path. Instead of returning the multiRowGroup directly
+		// (which bypasses row-level conversion), we create a simple concatenating
+		// row reader that preserves the conversion logic.
+		return newMultiRowGroup(schema, nil, mergedRowGroups), nil
 	}
 
-	for _, rowGroup := range m.rowGroups {
-		if !sortingColumnsHavePrefix(rowGroup.SortingColumns(), m.sorting) {
-			return nil, ErrRowGroupSortingColumnsMismatch
+	mergedCompare := compareRowsFuncOf(schema, mergedSortingColumns)
+	// Optimization: detect non-overlapping row groups and create segments
+	rowGroupSegments := make([]RowGroup, 0)
+	for segment := range overlappingRowGroups(mergedRowGroups, schema, mergedSortingColumns, mergedCompare) {
+		if len(segment) == 1 {
+			rowGroupSegments = append(rowGroupSegments, segment[0])
+		} else {
+			merged := &mergedRowGroup{compare: mergedCompare}
+			merged.init(schema, mergedSortingColumns, segment)
+			rowGroupSegments = append(rowGroupSegments, merged)
 		}
 	}
 
-	m.compare = compareRowsFuncOf(schema, m.sorting)
-	return m, nil
+	if len(rowGroupSegments) == 1 {
+		return rowGroupSegments[0], nil
+	}
+
+	return newMultiRowGroup(schema, mergedSortingColumns, rowGroupSegments), nil
+}
+
+// overlappingRowGroups analyzes row groups to find non-overlapping segments
+// Returns groups of row groups where each group either:
+// 1. Contains a single non-overlapping row group (can be concatenated)
+// 2. Contains multiple overlapping row groups (need to be merged)
+func overlappingRowGroups(rowGroups []RowGroup, schema *Schema, sorting []SortingColumn, compare func(Row, Row) int) iter.Seq[[]RowGroup] {
+	return func(yield func([]RowGroup) bool) {
+		type rowGroupRange struct {
+			rowGroup RowGroup
+			minRow   Row
+			maxRow   Row
+		}
+
+		rowGroupRanges := make([]rowGroupRange, 0, len(rowGroups))
+		for _, rg := range rowGroups {
+			if rg.NumRows() == 0 {
+				continue
+			}
+			minRow, maxRow, err := rowGroupRangeOfSortedColumns(rg, schema, sorting)
+			if err != nil {
+				yield(rowGroups)
+				return
+			}
+			rowGroupRanges = append(rowGroupRanges, rowGroupRange{
+				rowGroup: rg,
+				minRow:   minRow,
+				maxRow:   maxRow,
+			})
+		}
+		if len(rowGroupRanges) == 0 {
+			return
+		}
+		if len(rowGroupRanges) == 1 {
+			yield([]RowGroup{rowGroupRanges[0].rowGroup})
+			return
+		}
+
+		// Sort row groups by their minimum values
+		slices.SortFunc(rowGroupRanges, func(a, b rowGroupRange) int {
+			return compare(a.minRow, b.minRow)
+		})
+
+		// Detect overlapping segments
+		currentSegment := []RowGroup{rowGroupRanges[0].rowGroup}
+		currentMax := rowGroupRanges[0].maxRow
+
+		for _, rr := range rowGroupRanges[1:] {
+			if cmp := compare(rr.minRow, currentMax); cmp <= 0 {
+				// Overlapping - add to current segment and extend max if necessary
+				currentSegment = append(currentSegment, rr.rowGroup)
+				if cmp > 0 {
+					currentMax = rr.maxRow
+				}
+			} else {
+				// Non-overlapping - yield current segment
+				if !yield(currentSegment) {
+					return
+				}
+				currentSegment = []RowGroup{rr.rowGroup}
+				currentMax = rr.maxRow
+			}
+		}
+
+		if len(currentSegment) > 0 {
+			yield(currentSegment)
+		}
+	}
+}
+
+func rowGroupRangeOfSortedColumns(rg RowGroup, schema *Schema, sorting []SortingColumn) (minRow, maxRow Row, err error) {
+	// Extract min/max values from column indices
+	columnChunks := rg.ColumnChunks()
+	columns := schema.Columns()
+	minValues := make([]Value, len(columns))
+	maxValues := make([]Value, len(columns))
+
+	// Fill in default null values for non-sorting columns
+	for i := range columns {
+		minValues[i] = Value{}.Level(0, 0, i)
+		maxValues[i] = Value{}.Level(0, 0, i)
+	}
+
+	for _, sortingColumn := range sorting {
+		// Find column index
+		sortingColumnIndex := -1
+		sortingColumnPath := columnPath(sortingColumn.Path())
+		for columnIndex, columnPath := range columns {
+			if slices.Equal(columnPath, sortingColumnPath) {
+				sortingColumnIndex = columnIndex
+				break
+			}
+		}
+		if sortingColumnIndex < 0 {
+			return nil, nil, fmt.Errorf("sorting column %v not found in schema", sortingColumnPath)
+		}
+
+		columnChunk := columnChunks[sortingColumnIndex]
+		columnIndex, err := columnChunk.ColumnIndex()
+		if err != nil || columnIndex == nil || columnIndex.NumPages() == 0 {
+			// No column index available - fall back to merging
+			return nil, nil, fmt.Errorf("column index not available for sorting column %s", sortingColumnPath)
+		}
+
+		// Since data is sorted by sorting columns, we can efficiently get min/max:
+		// - Min value = min of first non-null page
+		// - Max value = max of last non-null page
+		numPages := columnIndex.NumPages()
+
+		// Find first non-null page for min value
+		var globalMin Value
+		var found bool
+		for pageIdx := range numPages {
+			if !columnIndex.NullPage(pageIdx) {
+				if minValue := columnIndex.MinValue(pageIdx); !minValue.IsNull() {
+					globalMin, found = minValue, true
+					break
+				}
+			}
+		}
+		if !found {
+			return nil, nil, fmt.Errorf("no valid pages found in column index for column %s", sortingColumnPath)
+		}
+
+		// Find last non-null page for max value
+		var globalMax Value
+		for pageIdx := numPages - 1; pageIdx >= 0; pageIdx-- {
+			if !columnIndex.NullPage(pageIdx) {
+				if maxValue := columnIndex.MaxValue(pageIdx); !maxValue.IsNull() {
+					globalMax = maxValue
+					break
+				}
+			}
+		}
+
+		// Set the min/max values with proper levels
+		minValues[sortingColumnIndex] = globalMin.Level(0, 1, sortingColumnIndex)
+		maxValues[sortingColumnIndex] = globalMax.Level(0, 1, sortingColumnIndex)
+	}
+
+	minRow = Row(minValues)
+	maxRow = Row(maxValues)
+	return
+}
+
+// compareValues compares two parquet values, taking into account the descending flag
+func compareValues(a, b Value, columnType Type, descending bool) int {
+	cmp := columnType.Compare(a, b)
+	if descending {
+		return -cmp
+	}
+	return cmp
 }
 
 type mergedRowGroup struct {
 	multiRowGroup
-	sorting []SortingColumn
 	compare func(Row, Row) int
-}
-
-func (m *mergedRowGroup) SortingColumns() []SortingColumn {
-	return m.sorting
 }
 
 func (m *mergedRowGroup) Rows() Rows {
@@ -91,41 +265,22 @@ func (m *mergedRowGroup) Rows() Rows {
 		rows[i] = m.rowGroups[i].Rows()
 	}
 	return &mergedRowGroupRows{
-		merge: mergedRowReader{
-			compare: m.compare,
-			readers: makeBufferedRowReaders(len(rows), func(i int) RowReader { return rows[i] }),
-		},
+		merge:  mergeRowReaders(rows, m.compare),
 		rows:   rows,
 		schema: m.schema,
 	}
 }
 
 type mergedRowGroupRows struct {
-	merge     mergedRowReader
+	merge     RowReader
 	rowIndex  int64
 	seekToRow int64
 	rows      []Rows
 	schema    *Schema
 }
 
-func (r *mergedRowGroupRows) WriteRowsTo(w RowWriter) (n int64, err error) {
-	b := newMergeBuffer()
-	b.setup(r.rows, r.merge.compare)
-	n, err = b.WriteRowsTo(w)
-	r.rowIndex += int64(n)
-	b.release()
-	return
-}
-
-func (r *mergedRowGroupRows) readInternal(rows []Row) (int, error) {
-	n, err := r.merge.ReadRows(rows)
-	r.rowIndex += int64(n)
-	return n, err
-}
-
 func (r *mergedRowGroupRows) Close() (lastErr error) {
-	r.merge.close()
-	r.rowIndex = 0
+	r.rowIndex = -1
 	r.seekToRow = 0
 
 	for _, rows := range r.rows {
@@ -138,18 +293,29 @@ func (r *mergedRowGroupRows) Close() (lastErr error) {
 }
 
 func (r *mergedRowGroupRows) ReadRows(rows []Row) (int, error) {
+	if r.rowIndex < 0 {
+		return 0, io.EOF
+	}
+
 	for r.rowIndex < r.seekToRow {
 		n := min(int(r.seekToRow-r.rowIndex), len(rows))
-		n, err := r.readInternal(rows[:n])
+		n, err := r.merge.ReadRows(rows[:n])
 		if err != nil {
 			return 0, err
 		}
+		rows = rows[n:]
+		r.rowIndex += int64(n)
 	}
 
-	return r.readInternal(rows)
+	n, err := r.merge.ReadRows(rows)
+	r.rowIndex += int64(n)
+	return n, err
 }
 
 func (r *mergedRowGroupRows) SeekToRow(rowIndex int64) error {
+	if r.rowIndex < 0 {
+		return fmt.Errorf("SeekToRow: cannot seek to %d on closed merged row group rows", rowIndex)
+	}
 	if rowIndex >= r.rowIndex {
 		r.seekToRow = rowIndex
 		return nil
@@ -163,23 +329,147 @@ func (r *mergedRowGroupRows) Schema() *Schema {
 
 // MergeRowReader constructs a RowReader which creates an ordered sequence of
 // all the readers using the given compare function as the ordering predicate.
-func MergeRowReaders(readers []RowReader, compare func(Row, Row) int) RowReader {
-	return &mergedRowReader{
-		compare: compare,
-		readers: makeBufferedRowReaders(len(readers), func(i int) RowReader { return readers[i] }),
+func MergeRowReaders(rows []RowReader, compare func(Row, Row) int) RowReader {
+	return mergeRowReaders(rows, compare)
+}
+
+func mergeRowReaders[T RowReader](rows []T, compare func(Row, Row) int) RowReader {
+	switch len(rows) {
+	case 0:
+		return emptyRows{}
+	case 1:
+		return rows[0]
+	case 2:
+		return &mergedRowReader2{
+			compare: compare,
+			buffers: [2]bufferedRowReader{
+				{rows: rows[0]},
+				{rows: rows[1]},
+			},
+		}
+	default:
+		buffers := make([]bufferedRowReader, len(rows))
+		readers := make([]*bufferedRowReader, len(rows))
+		for i, r := range rows {
+			buffers[i].rows = r
+			readers[i] = &buffers[i]
+		}
+		return &mergedRowReader{
+			compare: compare,
+			readers: readers,
+		}
 	}
 }
 
-func makeBufferedRowReaders(numReaders int, readerAt func(int) RowReader) []*bufferedRowReader {
-	buffers := make([]bufferedRowReader, numReaders)
-	readers := make([]*bufferedRowReader, numReaders)
+// mergedRowReader2 is a specialized implementation for merging exactly 2 readers
+// that avoids heap overhead by doing direct comparisons
+type mergedRowReader2 struct {
+	compare     func(Row, Row) int
+	readers     [2]*bufferedRowReader
+	buffers     [2]bufferedRowReader
+	initialized bool
+}
 
-	for i := range readers {
-		buffers[i].rows = readerAt(i)
-		readers[i] = &buffers[i]
+func (m *mergedRowReader2) initialize() error {
+	for i := range m.buffers {
+		r := &m.buffers[i]
+		switch err := r.read(); err {
+		case nil:
+			m.readers[i] = r
+		case io.EOF:
+			m.readers[i] = nil
+		default:
+			return err
+		}
+	}
+	return nil
+}
+
+func (m *mergedRowReader2) ReadRows(rows []Row) (n int, err error) {
+	if !m.initialized {
+		m.initialized = true
+		if err := m.initialize(); err != nil {
+			return 0, err
+		}
 	}
 
-	return readers
+	r0 := m.readers[0]
+	r1 := m.readers[1]
+
+	if r0 != nil && r0.empty() {
+		if err := r0.read(); err != nil {
+			if err != io.EOF {
+				return 0, err
+			}
+			r0, m.readers[0] = nil, nil
+		}
+	}
+
+	if r1 != nil && r1.empty() {
+		if err := r1.read(); err != nil {
+			if err != io.EOF {
+				return 0, err
+			}
+			r1, m.readers[1] = nil, nil
+		}
+	}
+
+	if r0 == nil && r1 == nil {
+		return 0, io.EOF
+	}
+
+	switch {
+	case r0 == nil:
+		for n < len(rows) {
+			rows[n] = append(rows[n][:0], r1.head()...)
+			n++
+			if !r1.next() {
+				break
+			}
+		}
+
+	case r1 == nil:
+		for n < len(rows) {
+			rows[n] = append(rows[n][:0], r0.head()...)
+			n++
+			if !r0.next() {
+				break
+			}
+		}
+
+	default:
+		var hasNext0 bool
+		var hasNext1 bool
+
+		for n < len(rows) {
+			switch cmp := m.compare(r0.head(), r1.head()); {
+			case cmp < 0:
+				rows[n] = append(rows[n][:0], r0.head()...)
+				n++
+				hasNext0 = r0.next()
+				hasNext1 = true
+			case cmp > 0:
+				rows[n] = append(rows[n][:0], r1.head()...)
+				n++
+				hasNext0 = true
+				hasNext1 = r1.next()
+			default:
+				rows[n] = append(rows[n][:0], r0.head()...)
+				n++
+				hasNext0 = r0.next()
+				if n < len(rows) {
+					rows[n] = append(rows[n][:0], r1.head()...)
+					n++
+					hasNext1 = r1.next()
+				}
+			}
+			if !hasNext0 || !hasNext1 {
+				break
+			}
+		}
+	}
+
+	return n, nil
 }
 
 type mergedRowReader struct {
@@ -214,15 +504,8 @@ func (m *mergedRowReader) initialize() error {
 	}
 
 	m.readers = m.readers[:n]
-	heap.Init(m)
+	m.heapInit()
 	return nil
-}
-
-func (m *mergedRowReader) close() {
-	for _, r := range m.readers {
-		r.close()
-	}
-	m.readers = nil
 }
 
 func (m *mergedRowReader) ReadRows(rows []Row) (n int, err error) {
@@ -236,15 +519,17 @@ func (m *mergedRowReader) ReadRows(rows []Row) (n int, err error) {
 
 	for n < len(rows) && len(m.readers) != 0 {
 		r := m.readers[0]
-		if r.end == r.off { // This readers buffer has been exhausted, repopulate it.
+		if r.empty() { // This readers buffer has been exhausted, repopulate it.
 			if err := r.read(); err != nil {
 				if err == io.EOF {
-					heap.Pop(m)
+					m.heapPop()
 					continue
 				}
 				return n, err
 			} else {
-				heap.Fix(m, 0)
+				if !m.heapDown(0, len(m.readers)) { // heap.Fix
+					m.heapUp(0)
+				}
 				continue
 			}
 		}
@@ -252,13 +537,11 @@ func (m *mergedRowReader) ReadRows(rows []Row) (n int, err error) {
 		rows[n] = append(rows[n][:0], r.head()...)
 		n++
 
-		if err := r.next(); err != nil {
-			if err != io.EOF {
-				return n, err
-			}
+		if !r.next() {
 			return n, nil
-		} else {
-			heap.Fix(m, 0)
+		}
+		if !m.heapDown(0, len(m.readers)) { // heap.Fix
+			m.heapUp(0)
 		}
 	}
 
@@ -269,55 +552,83 @@ func (m *mergedRowReader) ReadRows(rows []Row) (n int, err error) {
 	return n, err
 }
 
-func (m *mergedRowReader) Less(i, j int) bool {
-	return m.compare(m.readers[i].head(), m.readers[j].head()) < 0
+func (m *mergedRowReader) heapInit() {
+	n := len(m.readers)
+	for i := n/2 - 1; i >= 0; i-- {
+		m.heapDown(i, n)
+	}
 }
 
-func (m *mergedRowReader) Len() int {
-	return len(m.readers)
+func (m *mergedRowReader) heapPop() {
+	n := len(m.readers) - 1
+	m.heapSwap(0, n)
+	m.heapDown(0, n)
+	m.readers = m.readers[:n]
 }
 
-func (m *mergedRowReader) Swap(i, j int) {
+func (m *mergedRowReader) heapUp(j int) {
+	for {
+		i := (j - 1) / 2 // parent
+		if i == j || !(m.compare(m.readers[j].head(), m.readers[i].head()) < 0) {
+			break
+		}
+		m.heapSwap(i, j)
+		j = i
+	}
+}
+
+func (m *mergedRowReader) heapDown(i0, n int) bool {
+	i := i0
+	for {
+		j1 := 2*i + 1
+		if j1 >= n || j1 < 0 { // j1 < 0 after int overflow
+			break
+		}
+		j := j1 // left child
+		if j2 := j1 + 1; j2 < n && m.compare(m.readers[j2].head(), m.readers[j1].head()) < 0 {
+			j = j2 // = 2*i + 2  // right child
+		}
+		if !(m.compare(m.readers[j].head(), m.readers[i].head()) < 0) {
+			break
+		}
+		m.heapSwap(i, j)
+		i = j
+	}
+	return i > i0
+}
+
+func (m *mergedRowReader) heapSwap(i, j int) {
 	m.readers[i], m.readers[j] = m.readers[j], m.readers[i]
-}
-
-func (m *mergedRowReader) Push(x any) {
-	panic("NOT IMPLEMENTED")
-}
-
-func (m *mergedRowReader) Pop() any {
-	i := len(m.readers) - 1
-	r := m.readers[i]
-	m.readers = m.readers[:i]
-	return r
 }
 
 type bufferedRowReader struct {
 	rows RowReader
 	off  int32
 	end  int32
-	buf  [10]Row
+	buf  [24]Row
+}
+
+func (r *bufferedRowReader) empty() bool {
+	return r.end == r.off
 }
 
 func (r *bufferedRowReader) head() Row {
 	return r.buf[r.off]
 }
 
-func (r *bufferedRowReader) next() error {
-	if r.off++; r.off == r.end {
-		r.off = 0
-		r.end = 0
+func (r *bufferedRowReader) next() bool {
+	r.off++
+	hasNext := r.off < r.end
+	if !hasNext {
 		// We need to read more rows, however it is unsafe to do so here because we haven't
 		// returned the current rows to the caller yet which may cause buffer corruption.
-		return io.EOF
+		r.off = 0
+		r.end = 0
 	}
-	return nil
+	return hasNext
 }
 
 func (r *bufferedRowReader) read() error {
-	if r.rows == nil {
-		return io.EOF
-	}
 	n, err := r.rows.ReadRows(r.buf[r.end:])
 	if err != nil && n == 0 {
 		return err
@@ -326,176 +637,180 @@ func (r *bufferedRowReader) read() error {
 	return nil
 }
 
-func (r *bufferedRowReader) close() {
-	r.rows = nil
-	r.off = 0
-	r.end = 0
-}
-
-type mergeBuffer struct {
-	compare func(Row, Row) int
-	rows    []Rows
-	buffer  [][]Row
-	head    []int
-	len     int
-	copy    [mergeBufferSize]Row
-}
-
-const mergeBufferSize = 1 << 10
-
-func newMergeBuffer() *mergeBuffer {
-	return mergeBufferPool.Get().(*mergeBuffer)
-}
-
-var mergeBufferPool = &sync.Pool{
-	New: func() any {
-		return new(mergeBuffer)
-	},
-}
-
-func (m *mergeBuffer) setup(rows []Rows, compare func(Row, Row) int) {
-	m.compare = compare
-	m.rows = append(m.rows, rows...)
-	size := len(rows)
-	if len(m.buffer) < size {
-		extra := size - len(m.buffer)
-		b := make([][]Row, extra)
-		for i := range b {
-			b[i] = make([]Row, 0, mergeBufferSize)
-		}
-		m.buffer = append(m.buffer, b...)
-		m.head = append(m.head, make([]int, extra)...)
-	}
-	m.len = size
-}
-
-func (m *mergeBuffer) reset() {
-	for i := range m.rows {
-		m.buffer[i] = m.buffer[i][:0]
-		m.head[i] = 0
-	}
-	m.rows = m.rows[:0]
-	m.compare = nil
-	for i := range m.copy {
-		m.copy[i] = nil
-	}
-	m.len = 0
-}
-
-func (m *mergeBuffer) release() {
-	m.reset()
-	mergeBufferPool.Put(m)
-}
-
-func (m *mergeBuffer) fill() error {
-	m.len = len(m.rows)
-	for i := range m.rows {
-		if m.head[i] < len(m.buffer[i]) {
-			// There is still rows data in m.buffer[i]. Skip filling the row buffer until
-			// all rows have been read.
-			continue
-		}
-		m.head[i] = 0
-		m.buffer[i] = m.buffer[i][:mergeBufferSize]
-		n, err := m.rows[i].ReadRows(m.buffer[i])
-		if err != nil {
-			if !errors.Is(err, io.EOF) {
-				return err
-			}
-		}
-		m.buffer[i] = m.buffer[i][:n]
-	}
-	heap.Init(m)
-	return nil
-}
-
-func (m *mergeBuffer) Less(i, j int) bool {
-	x := m.buffer[i]
-	if len(x) == 0 {
-		return false
-	}
-	y := m.buffer[j]
-	if len(y) == 0 {
-		return true
-	}
-	return m.compare(x[m.head[i]], y[m.head[j]]) == -1
-}
-
-func (m *mergeBuffer) Pop() any {
-	m.len--
-	// We don't use the popped value.
-	return nil
-}
-
-func (m *mergeBuffer) Len() int {
-	return m.len
-}
-
-func (m *mergeBuffer) Swap(i, j int) {
-	m.buffer[i], m.buffer[j] = m.buffer[j], m.buffer[i]
-	m.head[i], m.head[j] = m.head[j], m.head[i]
-}
-
-func (m *mergeBuffer) Push(x any) {
-	panic("NOT IMPLEMENTED")
-}
-
-func (m *mergeBuffer) WriteRowsTo(w RowWriter) (n int64, err error) {
-	err = m.fill()
-	if err != nil {
-		return 0, err
-	}
-	var count int
-	for m.left() {
-		size := m.read()
-		if size == 0 {
-			break
-		}
-		count, err = w.WriteRows(m.copy[:size])
-		if err != nil {
-			return
-		}
-		n += int64(count)
-		err = m.fill()
-		if err != nil {
-			return
-		}
-	}
-	return
-}
-
-func (m *mergeBuffer) left() bool {
-	for i := range m.len {
-		if m.head[i] < len(m.buffer[i]) {
-			return true
-		}
-	}
-	return false
-}
-
-func (m *mergeBuffer) read() (n int64) {
-	for n < int64(len(m.copy)) && m.Len() != 0 {
-		r := m.buffer[:m.len][0]
-		if len(r) == 0 {
-			heap.Pop(m)
-			continue
-		}
-		m.copy[n] = append(m.copy[n][:0], r[m.head[0]]...)
-		m.head[0]++
-		n++
-		if m.head[0] < len(r) {
-			// There is still rows in this row group. Adjust  the heap
-			heap.Fix(m, 0)
-		} else {
-			heap.Pop(m)
-		}
-	}
-	return
-}
-
 var (
 	_ RowReaderWithSchema = (*mergedRowGroupRows)(nil)
-	_ RowWriterTo         = (*mergedRowGroupRows)(nil)
-	_ heap.Interface      = (*mergeBuffer)(nil)
-	_ RowWriterTo         = (*mergeBuffer)(nil)
 )
+
+// MergeNodes takes a list of nodes and greedily retains properties of the schemas:
+// - keeps last compression that is not nil
+// - keeps last non-plain encoding that is not nil
+// - keeps last non-zero field id
+// - union of all columns for group nodes
+// - retains the most permissive repetition (required < optional < repeated)
+func MergeNodes(nodes ...Node) Node {
+	switch len(nodes) {
+	case 0:
+		return nil
+	case 1:
+		return nodes[0]
+	default:
+		merged := nodes[0]
+		for _, node := range nodes[1:] {
+			merged = mergeTwoNodes(merged, node)
+		}
+		return merged
+	}
+}
+
+// mergeTwoNodes merges two nodes using greedy property retention
+func mergeTwoNodes(a, b Node) Node {
+	leaf1 := a.Leaf()
+	leaf2 := b.Leaf()
+	// Both must be either leaf or group nodes
+	if leaf1 != leaf2 {
+		// Cannot merge leaf with group - return the last one
+		return b
+	}
+
+	var merged Node
+	if leaf1 {
+		// Prefer the type with a logical type annotation if one exists.
+		// This ensures that logical types like JSON are preserved when merging
+		// a typed node (from an authoritative schema) with a plain node (from
+		// reflection-based schema generation).
+		merged = Leaf(selectLogicalType(b.Type(), a.Type()))
+
+		// Apply compression (keep last non-nil)
+		compression1 := a.Compression()
+		compression2 := b.Compression()
+		compression := cmp.Or(compression2, compression1)
+		if compression != nil {
+			merged = Compressed(merged, compression)
+		}
+
+		// Apply encoding (keep last non-plain, non-nil)
+		encoding := encoding.Encoding(&Plain)
+		encoding1 := a.Encoding()
+		encoding2 := b.Encoding()
+		if !isPlainEncoding(encoding1) {
+			encoding = encoding1
+		}
+		if !isPlainEncoding(encoding2) {
+			encoding = encoding2
+		}
+		if encoding != nil {
+			merged = Encoded(merged, encoding)
+		}
+	} else {
+		fields1 := slices.Clone(a.Fields())
+		fields2 := slices.Clone(b.Fields())
+		sortFields(fields1)
+		sortFields(fields2)
+
+		group := make(Group, len(fields1))
+		i1 := 0
+		i2 := 0
+		for i1 < len(fields1) && i2 < len(fields2) {
+			name1 := fields1[i1].Name()
+			name2 := fields2[i2].Name()
+			switch {
+			case name1 < name2:
+				group[name1] = nullable(fields1[i1])
+				i1++
+			case name1 > name2:
+				group[name2] = nullable(fields2[i2])
+				i2++
+			default:
+				group[name1] = mergeTwoNodes(fields1[i1], fields2[i2])
+				i1++
+				i2++
+			}
+		}
+
+		for _, field := range fields1[i1:] {
+			group[field.Name()] = nullable(field)
+		}
+
+		for _, field := range fields2[i2:] {
+			group[field.Name()] = nullable(field)
+		}
+
+		merged = group
+
+		if logicalType := b.Type().LogicalType(); logicalType != nil {
+			switch {
+			case logicalType.List != nil:
+				merged = &listNode{group}
+			case logicalType.Map != nil:
+				merged = &mapNode{group}
+			}
+		}
+	}
+
+	// Apply repetition (most permissive: required < optional < repeated)
+	if a.Repeated() || b.Repeated() {
+		merged = Repeated(merged)
+	} else if a.Optional() || b.Optional() {
+		merged = Optional(merged)
+	} else {
+		merged = Required(merged)
+	}
+
+	// Apply field ID (keep last non-zero)
+	return FieldID(merged, cmp.Or(b.ID(), a.ID()))
+}
+
+// isPlainEncoding checks if the encoding is plain encoding
+func isPlainEncoding(enc encoding.Encoding) bool {
+	return enc == nil || enc.Encoding() == format.Plain
+}
+
+func nullable(n Node) Node {
+	if !n.Repeated() {
+		return Optional(n)
+	}
+	return n
+}
+
+func selectLogicalType(t1, t2 Type) Type {
+	if t1.LogicalType() != nil {
+		return t1
+	}
+	return t2
+}
+
+// MergeSortingColumns returns the common prefix of all sorting columns passed as arguments.
+// This function is used to determine the resulting sorting columns when merging multiple
+// row groups that each have their own sorting columns.
+//
+// The function returns the longest common prefix where all sorting columns match exactly
+// (same path, same descending flag, same nulls first flag). If any row group has no
+// sorting columns, or if there's no common prefix, an empty slice is returned.
+//
+// Example:
+//
+//	columns1 := []SortingColumn{Ascending("A"), Ascending("B"), Descending("C")}
+//	columns2 := []SortingColumn{Ascending("A"), Ascending("B"), Ascending("D")}
+//	result := MergeSortingColumns(columns1, columns2)
+//	// result will be []SortingColumn{Ascending("A"), Ascending("B")}
+func MergeSortingColumns(sortingColumns ...[]SortingColumn) []SortingColumn {
+	if len(sortingColumns) == 0 {
+		return nil
+	}
+	merged := slices.Clone(sortingColumns[0])
+	for _, columns := range sortingColumns[1:] {
+		merged = commonSortingPrefix(merged, columns)
+	}
+	return merged
+}
+
+// commonSortingPrefix returns the common prefix of two sorting column slices
+func commonSortingPrefix(a, b []SortingColumn) []SortingColumn {
+	minLen := min(len(a), len(b))
+	for i := range minLen {
+		if !equalSortingColumn(a[i], b[i]) {
+			return a[:i]
+		}
+	}
+	return a[:minLen]
+}

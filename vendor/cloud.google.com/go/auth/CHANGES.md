@@ -1,4 +1,33 @@
+## [0.17.0](https://github.com/googleapis/google-cloud-go/releases/tag/auth%2Fv0.17.0) (2025-10-02)
+
+### Features
+
+* Add trust boundary support for service accounts and impersonation (HTTP/gRPC) (#11870) ([5c2b665](https://github.com/googleapis/google-cloud-go/commit/5c2b665f392e6dd90192f107188720aa1357e7da))
+* add trust boundary support for external accounts (#12864) ([a67a146](https://github.com/googleapis/google-cloud-go/commit/a67a146a6a88a6f1ba10c409dfce8015ecd60a64))
+
 # Changelog
+
+## [0.16.5](https://github.com/googleapis/google-cloud-go/compare/auth/v0.16.4...auth/v0.16.5) (2025-08-14)
+
+
+### Bug Fixes
+
+* **auth:** Improve error message for unknown credentials type ([#12673](https://github.com/googleapis/google-cloud-go/issues/12673)) ([558b164](https://github.com/googleapis/google-cloud-go/commit/558b16429f621276694405fa5f2091199f2d4c4d))
+* **auth:** Set Content-Type in userTokenProvider.exchangeToken ([#12634](https://github.com/googleapis/google-cloud-go/issues/12634)) ([1197ebc](https://github.com/googleapis/google-cloud-go/commit/1197ebcbca491f8c610da732c7361c90bc6f46d0))
+
+## [0.16.4](https://github.com/googleapis/google-cloud-go/compare/auth/v0.16.3...auth/v0.16.4) (2025-08-06)
+
+
+### Bug Fixes
+
+* **auth:** Add UseDefaultClient: true to metadata.Options ([#12666](https://github.com/googleapis/google-cloud-go/issues/12666)) ([1482191](https://github.com/googleapis/google-cloud-go/commit/1482191e88236693efef68769752638281566766)), refs [#11078](https://github.com/googleapis/google-cloud-go/issues/11078) [#12657](https://github.com/googleapis/google-cloud-go/issues/12657)
+
+## [0.16.3](https://github.com/googleapis/google-cloud-go/compare/auth/v0.16.2...auth/v0.16.3) (2025-07-17)
+
+
+### Bug Fixes
+
+* **auth:** Fix race condition in cachedTokenProvider.tokenAsync ([#12586](https://github.com/googleapis/google-cloud-go/issues/12586)) ([73867cc](https://github.com/googleapis/google-cloud-go/commit/73867ccc1e9808d65361bcfc0776bd95fe34dbb3))
 
 ## [0.16.2](https://github.com/googleapis/google-cloud-go/compare/auth/v0.16.1...auth/v0.16.2) (2025-06-04)
 

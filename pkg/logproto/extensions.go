@@ -77,11 +77,11 @@ func SeriesIdentifierFromMap(in map[string]string) SeriesIdentifier {
 
 func SeriesIdentifierFromLabels(in labels.Labels) SeriesIdentifier {
 	id := SeriesIdentifier{
-		Labels: make([]SeriesIdentifier_LabelsEntry, len(in)),
+		Labels: make([]SeriesIdentifier_LabelsEntry, 0, in.Len()),
 	}
-	for i, l := range in {
-		id.Labels[i] = SeriesIdentifier_LabelsEntry{Key: l.Name, Value: l.Value}
-	}
+	in.Range(func(l labels.Label) {
+		id.Labels = append(id.Labels, SeriesIdentifier_LabelsEntry{Key: l.Name, Value: l.Value})
+	})
 	return id
 }
 

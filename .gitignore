@@ -36,7 +36,6 @@ dist
 .aws-sam
 .idea
 pkg/loki/wal
-tools/lambda-promtail/main
 tools/dev/kafka/data/
 pkg/ui/frontend/node_modules/*
 pkg/ui/frontend/.vite/*
@@ -54,6 +53,10 @@ _shared-workflows-dockerhub-login
 
 # vscode
 .vscode
+!.vscode/launch.json
+
+# zed
+.zed
 
 # nix
 nix/result
@@ -75,3 +78,5 @@ mem.prof
 *.pprof
 
 **/.claude/settings.local.json
+
+host-*.json

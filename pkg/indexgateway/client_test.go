@@ -437,3 +437,258 @@ func TestDoubleRegistration(t *testing.T) {
 	require.NoError(t, err)
 	defer client.Stop()
 }
+
+func Test_jumpHashShuffleSharding(t *testing.T) {
+
+	tests := []struct {
+		description string
+		input       []string
+		factor      float64
+		expected    []string
+	}{
+		{
+			description: "empty address list",
+			input:       []string{},
+			factor:      0.5,
+			expected:    []string{},
+		},
+		{
+			description: "single address",
+			input:       []string{"gateway-1"},
+			factor:      0.5,
+			expected:    []string{"gateway-1"},
+		},
+		{
+			description: "max capacity 1.0 returns all addresses",
+			input:       []string{"gateway-1", "gateway-2", "gateway-3"},
+			factor:      1.0,
+			expected:    []string{"gateway-1", "gateway-2", "gateway-3"},
+		},
+		{
+			description: "max capacity 0.0 returns all addresses",
+			input:       []string{"gateway-1", "gateway-2", "gateway-3"},
+			factor:      0.0,
+			expected:    []string{"gateway-1", "gateway-2", "gateway-3"},
+		},
+		{
+			description: "max capacity rounds up",
+			input:       []string{"gateway-1", "gateway-2", "gateway-3"},
+			factor:      0.5,
+			expected:    []string{"gateway-2", "gateway-3"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.description, func(t *testing.T) {
+			mockLimits := &mockLimits{maxCapacity: tt.factor}
+			client := &GatewayClient{limits: mockLimits}
+
+			result := client.jumpHashShuffleSharding("tenant1", tt.input)
+			require.Equal(t, tt.expected, result)
+		})
+	}
+
+	t.Run("same tenant gets same subset", func(t *testing.T) {
+		mockLimits := &mockLimits{maxCapacity: 0.5}
+		client := &GatewayClient{limits: mockLimits}
+
+		addrs := []string{"gateway-1", "gateway-2", "gateway-3"}
+
+		// Call multiple times with the same tenant
+		result1 := client.jumpHashShuffleSharding("tenant1", addrs)
+		result2 := client.jumpHashShuffleSharding("tenant1", addrs)
+		result3 := client.jumpHashShuffleSharding("tenant1", addrs)
+
+		require.Equal(t, result1, result2)
+		require.Equal(t, result2, result3)
+	})
+
+	t.Run("different tenants get different subsets", func(t *testing.T) {
+		mockLimits := &mockLimits{maxCapacity: 0.3}
+		client := &GatewayClient{limits: mockLimits}
+
+		addrs := make([]string, 9)
+		for i := range len(addrs) {
+			addrs[i] = fmt.Sprintf("gateway-%d", i)
+		}
+
+		result1 := client.jumpHashShuffleSharding("tenant1", addrs)
+		result2 := client.jumpHashShuffleSharding("tenant2", addrs)
+		result3 := client.jumpHashShuffleSharding("tenant3", addrs)
+
+		require.Equal(t, []string{"gateway-3", "gateway-4", "gateway-5"}, result1)
+		require.Equal(t, []string{"gateway-5", "gateway-6", "gateway-7"}, result2)
+		require.Equal(t, []string{"gateway-7", "gateway-8", "gateway-0"}, result3)
+	})
+
+}
+
+func Test_addressesForQueryEndTime(t *testing.T) {
+	// Use the current time as reference and create relative times
+	now := time.Date(2025, time.September, 11, 0, 0, 0, 0, time.UTC)
+
+	t.Run("empty bucket list", func(t *testing.T) {
+		addrs := []string{"127.0.0.1", "127.0.0.2"}
+		buckets := []time.Duration{}
+
+		tests := []struct {
+			name string
+			t    time.Time
+			want []string
+		}{
+			{
+				name: "any timestamp",
+				t:    now.Add(-300 * time.Hour),
+				want: []string{"127.0.0.1", "127.0.0.2"},
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				got := addressesForQueryEndTime(addrs, tt.t, buckets, now)
+				require.Equal(t, tt.want, got)
+			})
+		}
+	})
+
+	t.Run("empty address list", func(t *testing.T) {
+		addrs := []string{}
+		buckets := []time.Duration{-168 * time.Hour, -336 * time.Hour, -504 * time.Hour}
+
+		tests := []struct {
+			name string
+			t    time.Time
+			want []string
+		}{
+			{
+				name: "first bucket",
+				t:    now.Add(-1 * time.Hour),
+				want: []string{},
+			},
+			{
+				name: "third bucket",
+				t:    now.Add(-400 * time.Hour),
+				want: []string{},
+			},
+			{
+				name: "inf bucket",
+				t:    now.Add(-600 * time.Hour),
+				want: []string{},
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				got := addressesForQueryEndTime(addrs, tt.t, buckets, now)
+				require.Equal(t, tt.want, got)
+			})
+		}
+	})
+
+	t.Run("address list smaller than pow(2, len(buckets))", func(t *testing.T) {
+		addrs := []string{"127.0.0.1", "127.0.0.2"}
+		buckets := []time.Duration{-168 * time.Hour, -336 * time.Hour, -504 * time.Hour}
+
+		tests := []struct {
+			name string
+			t    time.Time
+			want []string
+		}{
+			{
+				name: "first bucket",
+				t:    now.Add(-1 * time.Hour),
+				want: []string{"127.0.0.1", "127.0.0.2"},
+			},
+			{
+				name: "third bucket",
+				t:    now.Add(-400 * time.Hour),
+				want: []string{"127.0.0.1", "127.0.0.2"},
+			},
+			{
+				name: "inf bucket",
+				t:    now.Add(-600 * time.Hour),
+				want: []string{"127.0.0.1", "127.0.0.2"},
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				got := addressesForQueryEndTime(addrs, tt.t, buckets, now)
+				require.Equal(t, tt.want, got)
+			})
+		}
+	})
+
+	t.Run("address list equal to pow(2, len(buckets))", func(t *testing.T) {
+		addrs := []string{"127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4", "127.0.0.5", "127.0.0.6", "127.0.0.7", "127.0.0.8"}
+		buckets := []time.Duration{-168 * time.Hour, -336 * time.Hour, -504 * time.Hour}
+
+		tests := []struct {
+			name string
+			t    time.Time
+			want []string
+		}{
+			{
+				name: "first bucket",
+				t:    now.Add(-1 * time.Hour),
+				want: []string{"127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4"},
+			},
+			{
+				name: "second bucket",
+				t:    now.Add(-335 * time.Hour),
+				want: []string{"127.0.0.5", "127.0.0.6"},
+			},
+			{
+				name: "third bucket",
+				t:    now.Add(-400 * time.Hour),
+				want: []string{"127.0.0.7"},
+			},
+			{
+				name: "inf bucket",
+				t:    now.Add(-600 * time.Hour),
+				want: []string{"127.0.0.8"},
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				got := addressesForQueryEndTime(addrs, tt.t, buckets, now)
+				require.Equal(t, tt.want, got)
+			})
+		}
+	})
+
+	t.Run("address list greather than pow(2, len(buckets))", func(t *testing.T) {
+		addrs := []string{"127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4", "127.0.0.5", "127.0.0.6", "127.0.0.7", "127.0.0.8", "127.0.0.9", "127.0.0.10", "127.0.0.11"}
+		buckets := []time.Duration{-168 * time.Hour, -336 * time.Hour, -504 * time.Hour}
+
+		tests := []struct {
+			name string
+			t    time.Time
+			want []string
+		}{
+			{
+				name: "first bucket",
+				t:    now.Add(-1 * time.Hour),
+				want: []string{"127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4", "127.0.0.5"},
+			},
+			{
+				name: "second bucket",
+				t:    now.Add(-335 * time.Hour),
+				want: []string{"127.0.0.6", "127.0.0.7"},
+			},
+			{
+				name: "third bucket",
+				t:    now.Add(-400 * time.Hour),
+				want: []string{"127.0.0.8"},
+			},
+			{
+				name: "inf bucket",
+				t:    now.Add(-600 * time.Hour),
+				want: []string{"127.0.0.9", "127.0.0.10", "127.0.0.11"},
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				got := addressesForQueryEndTime(addrs, tt.t, buckets, now)
+				require.Equal(t, tt.want, got)
+			})
+		}
+	})
+}

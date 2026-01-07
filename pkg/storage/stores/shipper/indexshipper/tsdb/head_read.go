@@ -22,6 +22,7 @@ import (
 	"github.com/prometheus/prometheus/storage"
 
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/util/labelpool"
 )
 
 // Index returns an IndexReader against the block.
@@ -117,7 +118,7 @@ func (h *headIndexReader) Series(ref storage.SeriesRef, from int64, through int6
 		h.head.metrics.seriesNotFound.Inc()
 		return 0, storage.ErrNotFound
 	}
-	*lbls = append((*lbls)[:0], s.ls...)
+	lbls.CopyFrom(s.ls)
 
 	queryBounds := newBounds(model.Time(from), model.Time(through))
 
@@ -142,14 +143,20 @@ func (h *headIndexReader) ChunkStats(ref storage.SeriesRef, from, through int64,
 		return 0, index.ChunkStats{}, storage.ErrNotFound
 	}
 	if len(by) == 0 {
-		*lbls = append((*lbls)[:0], s.ls...)
+		lbls.CopyFrom(s.ls)
 	} else {
-		*lbls = (*lbls)[:0]
-		for _, l := range s.ls {
+		builder := labelpool.Get()
+
+		s.ls.Range(func(l labels.Label) {
 			if _, ok := by[l.Name]; ok {
-				*lbls = append(*lbls, l)
+				builder.Add(l.Name, l.Value)
 			}
-		}
+		})
+
+		builder.Sort()
+		*lbls = builder.Labels()
+
+		labelpool.Put(builder)
 	}
 
 	queryBounds := newBounds(model.Time(from), model.Time(through))
@@ -191,9 +198,9 @@ func (h *headIndexReader) LabelNamesFor(ids ...storage.SeriesRef) ([]string, err
 		if memSeries == nil {
 			return nil, storage.ErrNotFound
 		}
-		for _, lbl := range memSeries.ls {
+		memSeries.ls.Range(func(lbl labels.Label) {
 			namesMap[lbl.Name] = struct{}{}
-		}
+		})
 	}
 	names := make([]string, 0, len(namesMap))
 	for name := range namesMap {

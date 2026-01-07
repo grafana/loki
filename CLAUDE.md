@@ -1,6 +1,7 @@
 # Loki Development Guide
 
 ## Build & Test Commands
+
 ```bash
 make all                      # build all binaries
 make loki                     # build loki only
@@ -10,8 +11,22 @@ make test-integration         # run integration tests
 go test ./...                 # run all tests with Go directly
 go test -v ./pkg/logql/...    # run tests in specific package
 go test -run TestName ./pkg/path  # run a specific test
-make lint                     # run all linters
+make lint  # run all linters (use in CI-like environment)
 make format                   # format code (gofmt and goimports)
+```
+
+### Building the Frontend
+
+The Loki UI/frontend (different from the query-frontend) is located in pkg/ui/frontend and is built with [Vite](https://vitejs.dev/). 
+From pkg/ui/frontend, you can use the following commands.
+
+```bash
+make build          # build the frontend
+make check-deps     # check for vulnerabilities in the frontend dependencies
+make clean          # clean the frontend
+make dev            # start the frontend in development mode
+make lint           # lint the frontend code
+make test           # run the frontend tests
 ```
 
 ## Code Style Guidelines
@@ -33,3 +48,6 @@ make format                   # format code (gofmt and goimports)
 - Document upgrading steps in `docs/sources/setup/upgrade/_index.md`
 - Preview docs locally with `make docs` from the `/docs` directory
 - Include examples and clear descriptions for public APIs
+
+## Using Tools
+- When using the `mcp__acp__Write` tool, write to a path within the current worktree to avoid sandboxing/permissions issues. This includes when writing plan files.

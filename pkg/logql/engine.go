@@ -94,10 +94,10 @@ func (s SelectLogParams) String() string {
 // LogSelector returns the LogSelectorExpr from the SelectParams.
 // The `LogSelectorExpr` can then returns all matchers and filters to use for that request.
 func (s SelectLogParams) LogSelector() (syntax.LogSelectorExpr, error) {
-	if s.QueryRequest.Plan == nil {
+	if s.Plan == nil {
 		return nil, errors.New("query plan is empty")
 	}
-	expr, ok := s.QueryRequest.Plan.AST.(syntax.LogSelectorExpr)
+	expr, ok := s.Plan.AST.(syntax.LogSelectorExpr)
 	if !ok {
 		return nil, errors.New("only log selector is supported")
 	}
@@ -117,10 +117,10 @@ func (s SelectSampleParams) WithStoreChunks(chunkRefGroup *logproto.ChunkRefGrou
 // Expr returns the SampleExpr from the SelectSampleParams.
 // The `LogSelectorExpr` can then returns all matchers and filters to use for that request.
 func (s SelectSampleParams) Expr() (syntax.SampleExpr, error) {
-	if s.SampleQueryRequest.Plan == nil {
+	if s.Plan == nil {
 		return nil, errors.New("query plan is empty")
 	}
-	expr, ok := s.SampleQueryRequest.Plan.AST.(syntax.SampleExpr)
+	expr, ok := s.Plan.AST.(syntax.SampleExpr)
 	if !ok {
 		return nil, errors.New("only sample expression supported")
 	}
@@ -160,19 +160,12 @@ type EngineOpts struct {
 	// MaxCountMinSketchHeapSize is the maximum number of labels the heap for a topk query using a count min sketch
 	// can track. This impacts the memory usage and accuracy of a sharded probabilistic topk query.
 	MaxCountMinSketchHeapSize int `yaml:"max_count_min_sketch_heap_size"`
-
-	// Enable the next generation Loki Query Engine for supported queries.
-	EnableV2Engine bool `yaml:"enable_v2_engine" category:"experimental"`
-
-	// Batch size of the v2 execution engine.
-	BatchSize int `yaml:"batch_size" category:"experimental"`
 }
 
 func (opts *EngineOpts) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&opts.MaxLookBackPeriod, prefix+"max-lookback-period", 30*time.Second, "The maximum amount of time to look back for log lines. Used only for instant log queries.")
 	f.IntVar(&opts.MaxCountMinSketchHeapSize, prefix+"max-count-min-sketch-heap-size", 10_000, "The maximum number of labels the heap of a topk query using a count min sketch can track.")
-	f.BoolVar(&opts.EnableV2Engine, prefix+"enable-v2-engine", false, "Experimental: Enable next generation query engine for supported queries.")
-	f.IntVar(&opts.BatchSize, prefix+"batch-size", 100, "Experimental: Batch size of the next generation query engine.")
+
 	// Log executing query by default
 	opts.LogExecutingQuery = true
 }
@@ -294,7 +287,9 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
 
-	statResult := statsCtx.Result(time.Since(start), queueTime, q.resultLength(data))
+	execTime := time.Since(start)
+	statsCtx.AddQuerierExecTime(execTime)
+	statResult := statsCtx.Result(execTime, queueTime, q.resultLength(data))
 	sp.SetAttributes(tracing.KeyValuesToOTelAttributes(statResult.KVList())...)
 
 	status, _ := server.ClientHTTPStatusAndError(err)
@@ -447,7 +442,7 @@ func vectorsToSeriesWithLimit(vec promql.Vector, sm map[uint64]promql.Series, ma
 	for _, p := range vec {
 		var (
 			series promql.Series
-			hash   = p.Metric.Hash()
+			hash   = labels.StableHash(p.Metric)
 			ok     bool
 		)
 
@@ -483,7 +478,7 @@ func multiVariantVectorsToSeries(ctx context.Context, maxSeries int, vec promql.
 	for _, p := range vec {
 		var (
 			series promql.Series
-			hash   = p.Metric.Hash()
+			hash   = labels.StableHash(p.Metric)
 			ok     bool
 		)
 

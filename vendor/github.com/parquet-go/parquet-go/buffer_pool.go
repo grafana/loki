@@ -60,14 +60,25 @@ func (p *memoryBuffer) Read(b []byte) (n int, err error) {
 }
 
 func (p *memoryBuffer) Write(b []byte) (int, error) {
-	n := copy(p.data[p.off:cap(p.data)], b)
-	p.data = p.data[:p.off+n]
+	// Calculate the end position after writing
+	end := p.off + len(b)
 
-	if n < len(b) {
-		p.data = append(p.data, b[n:]...)
+	// If writing beyond current length, we need to extend
+	if end > len(p.data) {
+		// First, copy what fits in existing capacity
+		n := copy(p.data[p.off:cap(p.data)], b)
+		p.data = p.data[:p.off+n]
+
+		// Then append any remaining data
+		if n < len(b) {
+			p.data = append(p.data, b[n:]...)
+		}
+	} else {
+		// Writing within existing data - just overwrite, don't truncate
+		copy(p.data[p.off:], b)
 	}
 
-	p.off += len(b)
+	p.off = end
 	return len(b), nil
 }
 
@@ -188,7 +199,13 @@ func (c *chunkMemoryBuffer) Write(b []byte) (int, error) {
 		}
 		curData := c.data[c.idx]
 		n := copy(curData[c.off:cap(curData)], b)
-		c.data[c.idx] = curData[:c.off+n]
+
+		// Only extend the slice if writing beyond current length
+		newLen := c.off + n
+		if newLen > len(curData) {
+			c.data[c.idx] = curData[:newLen]
+		}
+
 		c.off += n
 		b = b[n:]
 		if c.off >= cap(curData) {
@@ -207,9 +224,9 @@ func (c *chunkMemoryBuffer) WriteTo(w io.Writer) (int64, error) {
 		curData := c.data[c.idx]
 		n, e := w.Write(curData[c.off:])
 		numWritten += int64(n)
+		c.off += n
 		err = e
 		if c.idx == len(c.data)-1 {
-			c.off = int(numWritten)
 			break
 		}
 		c.idx++
@@ -257,7 +274,7 @@ func (c *chunkMemoryBuffer) currentOff() int64 {
 	if c.idx == 0 {
 		return int64(c.off)
 	}
-	return int64((c.idx-1)*cap(c.data[0]) + c.off)
+	return int64(c.idx*cap(c.data[0]) + c.off)
 }
 
 func (c *chunkMemoryBuffer) endOff() int64 {
@@ -326,8 +343,8 @@ func (pool *fileBufferPool) GetBuffer() io.ReadWriteSeeker {
 
 func (pool *fileBufferPool) PutBuffer(buf io.ReadWriteSeeker) {
 	if f, _ := buf.(*os.File); f != nil {
-		defer f.Close()
-		os.Remove(f.Name())
+		_ = f.Close()
+		_ = os.Remove(f.Name())
 	}
 }
 

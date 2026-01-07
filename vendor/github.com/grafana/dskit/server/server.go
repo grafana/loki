@@ -34,10 +34,12 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/keepalive"
+	"google.golang.org/grpc/tap"
 
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 
 	"github.com/grafana/dskit/clusterutil"
+	"github.com/grafana/dskit/grpcutil"
 	"github.com/grafana/dskit/httpgrpc"
 	httpgrpc_server "github.com/grafana/dskit/httpgrpc/server"
 	"github.com/grafana/dskit/log"
@@ -83,6 +85,9 @@ type Config struct {
 	// https://pkg.go.dev/github.com/prometheus/client_golang/prometheus#HistogramOpts
 	// for details. A generally useful value is 1.1.
 	MetricsNativeHistogramFactor float64 `yaml:"-"`
+	// MetricsMessageSizeNativeHistograms enables use of MetricsNativeHistogramFactor for response_message_bytes,
+	// request_message_bytes metrics
+	MetricsMessageSizeNativeHistograms bool `yaml:"-"`
 
 	HTTPListenNetwork           string `yaml:"http_listen_network"`
 	HTTPListenAddress           string `yaml:"http_listen_address"`
@@ -117,6 +122,7 @@ type Config struct {
 	HTTPLogClosedConnectionsWithoutResponse bool `yaml:"http_log_closed_connections_without_response_enabled"`
 
 	GRPCOptions                   []grpc.ServerOption            `yaml:"-"`
+	GRPCTapHandles                []tap.ServerInHandle           `yaml:"-"`
 	GRPCMiddleware                []grpc.UnaryServerInterceptor  `yaml:"-"`
 	GRPCStreamMiddleware          []grpc.StreamServerInterceptor `yaml:"-"`
 	HTTPMiddleware                []middleware.Interface         `yaml:"-"`
@@ -433,7 +439,7 @@ func newServer(cfg Config, metrics *Metrics) (*Server, error) {
 	grpcMiddleware = append(grpcMiddleware, cfg.GRPCMiddleware...)
 	if cfg.ClusterValidation.GRPC.Enabled {
 		grpcMiddleware = append(grpcMiddleware, middleware.ClusterUnaryServerInterceptor(
-			cfg.ClusterValidation.Label, cfg.ClusterValidation.GRPC.SoftValidation,
+			cfg.ClusterValidation.GetAllowedClusterLabels(), cfg.ClusterValidation.GRPC.SoftValidation,
 			metrics.InvalidClusterRequests, logger,
 		))
 	}
@@ -468,7 +474,7 @@ func newServer(cfg Config, metrics *Metrics) (*Server, error) {
 
 	var grpcServerLimit *grpcInflightLimitCheck
 	if cfg.GrpcMethodLimiter != nil {
-		grpcServerLimit = newGrpcInflightLimitCheck(cfg.GrpcMethodLimiter)
+		grpcServerLimit = newGrpcInflightLimitCheck(cfg.GrpcMethodLimiter, logger)
 		grpcMiddleware = append(grpcMiddleware, grpcServerLimit.UnaryServerInterceptor)
 		grpcStreamMiddleware = append(grpcStreamMiddleware, grpcServerLimit.StreamServerInterceptor)
 	}
@@ -486,11 +492,14 @@ func newServer(cfg Config, metrics *Metrics) (*Server, error) {
 		grpc.StatsHandler(otelgrpc.NewServerHandler()),
 	}
 
+	var tapHandles []tap.ServerInHandle
+	tapHandles = append(tapHandles, cfg.GRPCTapHandles...)
 	if grpcServerLimit != nil {
-		grpcOptions = append(grpcOptions,
-			grpc.StatsHandler(grpcServerLimit),
-			grpc.InTapHandle(grpcServerLimit.TapHandle),
-		)
+		grpcOptions = append(grpcOptions, grpc.StatsHandler(grpcServerLimit))
+		tapHandles = append(tapHandles, grpcServerLimit.TapHandle)
+	}
+	if len(tapHandles) > 0 {
+		grpcOptions = append(grpcOptions, grpc.InTapHandle(grpcutil.ComposeTapHandles(tapHandles)))
 	}
 
 	if cfg.GRPCServerStatsTrackingEnabled {
@@ -607,9 +616,10 @@ func BuildHTTPMiddleware(cfg Config, router *mux.Router, metrics *Metrics, logge
 	}
 	if cfg.ClusterValidation.HTTP.Enabled {
 		httpMiddleware = append(httpMiddleware, middleware.ClusterValidationMiddleware(
-			cfg.ClusterValidation.Label, cfg.ClusterValidation.HTTP.ExcludedPaths,
-			cfg.ClusterValidation.HTTP.SoftValidation,
-			metrics.InvalidClusterRequests, logger,
+			cfg.ClusterValidation.GetAllowedClusterLabels(),
+			cfg.ClusterValidation.HTTP,
+			metrics.InvalidClusterRequests,
+			logger,
 		))
 	}
 

@@ -3,27 +3,38 @@ package metastore
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"iter"
 	"maps"
 	"slices"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/scalar"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/tenant"
+	"github.com/grafana/dskit/user"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/thanos-io/objstore"
+	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/grafana/loki/v3/pkg/storage/bucket"
+
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
+	utillog "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 const (
@@ -34,31 +45,86 @@ type ObjectMetastore struct {
 	bucket      objstore.Bucket
 	parallelism int
 	logger      log.Logger
+	metrics     *ObjectMetastoreMetrics
 }
 
-func metastorePath(tenantID string, window time.Time) string {
-	return fmt.Sprintf("tenant-%s/metastore/%s.store", tenantID, window.Format(time.RFC3339))
+type SectionKey struct {
+	ObjectPath string
+	SectionIdx int64
 }
 
-func iterStorePaths(tenantID string, start, end time.Time) iter.Seq[string] {
-	minMetastoreWindow := start.Truncate(metastoreWindowSize).UTC()
-	maxMetastoreWindow := end.Truncate(metastoreWindowSize).UTC()
+type DataobjSectionDescriptor struct {
+	SectionKey
 
-	return func(yield func(t string) bool) {
-		for metastoreWindow := minMetastoreWindow; !metastoreWindow.After(maxMetastoreWindow); metastoreWindow = metastoreWindow.Add(metastoreWindowSize) {
-			if !yield(metastorePath(tenantID, metastoreWindow)) {
+	StreamIDs []int64
+	RowCount  int
+	Size      int64
+	Start     time.Time
+	End       time.Time
+}
+
+func NewSectionDescriptor(pointer pointers.SectionPointer) *DataobjSectionDescriptor {
+	return &DataobjSectionDescriptor{
+		SectionKey: SectionKey{
+			ObjectPath: pointer.Path,
+			SectionIdx: pointer.Section,
+		},
+		StreamIDs: []int64{pointer.StreamIDRef},
+		RowCount:  int(pointer.LineCount),
+		Size:      pointer.UncompressedSize,
+		Start:     pointer.StartTs,
+		End:       pointer.EndTs,
+	}
+}
+
+func (d *DataobjSectionDescriptor) Merge(pointer pointers.SectionPointer) {
+	d.StreamIDs = append(d.StreamIDs, pointer.StreamIDRef)
+	d.RowCount += int(pointer.LineCount)
+	d.Size += pointer.UncompressedSize
+	if pointer.StartTs.Before(d.Start) {
+		d.Start = pointer.StartTs
+	}
+	if pointer.EndTs.After(d.End) {
+		d.End = pointer.EndTs
+	}
+}
+
+// Table of Content files are stored in well-known locations that can be computed from a known time.
+func tableOfContentsPath(window time.Time) string {
+	return fmt.Sprintf("tocs/%s.toc", strings.ReplaceAll(window.Format(time.RFC3339), ":", "_"))
+}
+
+func iterTableOfContentsPaths(start, end time.Time) iter.Seq2[string, multitenancy.TimeRange] {
+	minTocWindow := start.Truncate(metastoreWindowSize).UTC()
+	maxTocWindow := end.Truncate(metastoreWindowSize).UTC()
+
+	return func(yield func(t string, timeRange multitenancy.TimeRange) bool) {
+		for tocWindow := minTocWindow; !tocWindow.After(maxTocWindow); tocWindow = tocWindow.Add(metastoreWindowSize) {
+			tocTimeRange := multitenancy.TimeRange{
+				MinTime: tocWindow,
+				MaxTime: tocWindow.Add(metastoreWindowSize),
+			}
+			if !yield(tableOfContentsPath(tocWindow), tocTimeRange) {
 				return
 			}
 		}
 	}
 }
 
-func NewObjectMetastore(bucket objstore.Bucket, logger log.Logger) *ObjectMetastore {
-	return &ObjectMetastore{
-		bucket:      bucket,
+func NewObjectMetastore(b objstore.Bucket, cfg Config, logger log.Logger, metrics *ObjectMetastoreMetrics) *ObjectMetastore {
+	if cfg.IndexStoragePrefix != "" {
+		b = objstore.NewPrefixedBucket(b, cfg.IndexStoragePrefix)
+	}
+	b = bucket.NewXCapBucket(b)
+
+	store := &ObjectMetastore{
+		bucket:      b,
 		parallelism: 64,
 		logger:      logger,
+		metrics:     metrics,
 	}
+
+	return store
 }
 
 func matchersToString(matchers []*labels.Matcher) string {
@@ -74,72 +140,30 @@ func matchersToString(matchers []*labels.Matcher) string {
 	return s.String()
 }
 
-func (m *ObjectMetastore) Streams(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]*labels.Labels, error) {
+func (m *ObjectMetastore) streams(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]*labels.Labels, error) {
 	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
-	level.Debug(m.logger).Log("msg", "ObjectMetastore.Streams", "tenant", tenantID, "start", start, "end", end, "matchers", matchersToString(matchers))
+	level.Debug(utillog.WithContext(ctx, m.logger)).Log("msg", "ObjectMetastore.Streams", "tenant", tenantID, "start", start, "end", end, "matchers", matchersToString(matchers))
 
 	// Get all metastore paths for the time range
-	var storePaths []string
-	for path := range iterStorePaths(tenantID, start, end) {
-		storePaths = append(storePaths, path)
+	var (
+		tablePaths []string
+	)
+	for path := range iterTableOfContentsPaths(start, end) {
+		tablePaths = append(tablePaths, path)
 	}
 
 	// List objects from all stores concurrently
-	paths, err := m.listObjectsFromStores(ctx, storePaths, start, end)
+	paths, err := m.listObjectsFromTables(ctx, tablePaths, start, end)
 	if err != nil {
 		return nil, err
 	}
 
 	// Search the stream sections of the matching objects to find matching streams
-	predicate := predicateFromMatchers(start, end, matchers...)
+	predicate := streamPredicateFromMatchers(start, end, matchers...)
 	return m.listStreamsFromObjects(ctx, paths, predicate)
-}
-
-func (m *ObjectMetastore) StreamIDs(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]string, [][]int64, []int, error) {
-	tenantID, err := tenant.TenantID(ctx)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	level.Debug(m.logger).Log("msg", "ObjectMetastore.StreamIDs", "tenant", tenantID, "start", start, "end", end, "matchers", matchersToString(matchers))
-
-	// Get all metastore paths for the time range
-	var storePaths []string
-	for path := range iterStorePaths(tenantID, start, end) {
-		storePaths = append(storePaths, path)
-	}
-	level.Debug(m.logger).Log("msg", "got metastore object paths", "tenant", tenantID, "paths", strings.Join(storePaths, ","))
-
-	// List objects from all stores concurrently
-	paths, err := m.listObjectsFromStores(ctx, storePaths, start, end)
-	level.Debug(m.logger).Log("msg", "got data object paths", "tenant", tenantID, "paths", strings.Join(storePaths, ","), "err", err)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-
-	// Search the stream sections of the matching objects to find matching streams
-	predicate := predicateFromMatchers(start, end, matchers...)
-	streamIDs, sections, err := m.listStreamIDsFromObjects(ctx, paths, predicate)
-	level.Debug(m.logger).Log("msg", "got streams and sections", "tenant", tenantID, "streams", len(streamIDs), "sections", len(sections), "err", err)
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to list stream IDs and sections from objects: %w", err)
-	}
-
-	// Remove objects that do not contain any matching streams
-	level.Debug(m.logger).Log("msg", "remove objects that do not contain any matching streams", "paths", len(paths), "streams", len(streamIDs), "sections", len(sections))
-	for i := 0; i < len(paths); i++ {
-		if len(streamIDs[i]) == 0 {
-			level.Debug(m.logger).Log("msg", "remove object", "path", paths[i])
-			paths = slices.Delete(paths, i, i+1)
-			streamIDs = slices.Delete(streamIDs, i, i+1)
-			sections = slices.Delete(sections, i, i+1)
-			i--
-		}
-	}
-
-	return paths, streamIDs, sections, nil
 }
 
 func (m *ObjectMetastore) DataObjects(ctx context.Context, start, end time.Time, _ ...*labels.Matcher) ([]string, error) {
@@ -147,16 +171,16 @@ func (m *ObjectMetastore) DataObjects(ctx context.Context, start, end time.Time,
 	if err != nil {
 		return nil, err
 	}
-	level.Debug(m.logger).Log("msg", "ObjectMetastore.DataObjects", "tenant", tenantID, "start", start, "end", end)
+	level.Debug(utillog.WithContext(ctx, m.logger)).Log("msg", "ObjectMetastore.DataObjects", "tenant", tenantID, "start", start, "end", end)
 
 	// Get all metastore paths for the time range
-	var storePaths []string
-	for path := range iterStorePaths(tenantID, start, end) {
-		storePaths = append(storePaths, path)
+	var tablePaths []string
+	for path := range iterTableOfContentsPaths(start, end) {
+		tablePaths = append(tablePaths, path)
 	}
 
-	// List objects from all stores concurrently
-	return m.listObjectsFromStores(ctx, storePaths, start, end)
+	// List objects from all tables concurrently
+	return m.listObjectsFromTables(ctx, tablePaths, start, end)
 }
 
 func (m *ObjectMetastore) Labels(ctx context.Context, start, end time.Time, matchers ...*labels.Matcher) ([]string, error) {
@@ -184,7 +208,7 @@ func (m *ObjectMetastore) Values(ctx context.Context, start, end time.Time, matc
 }
 
 func (m *ObjectMetastore) forEachLabel(ctx context.Context, start, end time.Time, foreach func(labels.Label), matchers ...*labels.Matcher) error {
-	streams, err := m.Streams(ctx, start, end, matchers...)
+	streams, err := m.streams(ctx, start, end, matchers...)
 	if err != nil {
 		return err
 	}
@@ -194,15 +218,15 @@ func (m *ObjectMetastore) forEachLabel(ctx context.Context, start, end time.Time
 			continue
 		}
 
-		for _, streamLabel := range *streamLabels {
+		streamLabels.Range(func(streamLabel labels.Label) {
 			foreach(streamLabel)
-		}
+		})
 	}
 
 	return nil
 }
 
-func predicateFromMatchers(start, end time.Time, matchers ...*labels.Matcher) streams.RowPredicate {
+func streamPredicateFromMatchers(start, end time.Time, matchers ...*labels.Matcher) streams.RowPredicate {
 	if len(matchers) == 0 {
 		return nil
 	}
@@ -251,9 +275,7 @@ func predicateFromMatchers(start, end time.Time, matchers ...*labels.Matcher) st
 		return predicates[0]
 	}
 
-	current := streams.AndRowPredicate{
-		Left: predicates[0],
-	}
+	current := predicates[0]
 
 	for _, predicate := range predicates[1:] {
 		and := streams.AndRowPredicate{
@@ -265,15 +287,18 @@ func predicateFromMatchers(start, end time.Time, matchers ...*labels.Matcher) st
 	return current
 }
 
-// listObjectsFromStores concurrently lists objects from multiple metastore files
-func (m *ObjectMetastore) listObjectsFromStores(ctx context.Context, storePaths []string, start, end time.Time) ([]string, error) {
-	objects := make([][]string, len(storePaths))
+// listObjectsFromTables concurrently lists objects from multiple metastore files
+func (m *ObjectMetastore) listObjectsFromTables(ctx context.Context, tablePaths []string, start, end time.Time) ([]string, error) {
+	objects := make([][]string, len(tablePaths))
 	g, ctx := errgroup.WithContext(ctx)
 
-	for i, path := range storePaths {
+	sStart := scalar.NewTimestampScalar(arrow.Timestamp(start.UnixNano()), arrow.FixedWidthTypes.Timestamp_ns)
+	sEnd := scalar.NewTimestampScalar(arrow.Timestamp(end.UnixNano()), arrow.FixedWidthTypes.Timestamp_ns)
+
+	for i, path := range tablePaths {
 		g.Go(func() error {
 			var err error
-			objects[i], err = m.listObjects(ctx, path, start, end)
+			objects[i], err = m.listObjects(ctx, path, sStart, sEnd)
 			// If the metastore object is not found, it means it's outside of any existing window
 			// and we can safely ignore it.
 			if err != nil && !m.bucket.IsObjNotFoundErr(err) {
@@ -322,44 +347,11 @@ func (m *ObjectMetastore) listStreamsFromObjects(ctx context.Context, paths []st
 	return streamsSlice, nil
 }
 
-func (m *ObjectMetastore) listStreamIDsFromObjects(ctx context.Context, paths []string, predicate streams.RowPredicate) ([][]int64, []int, error) {
-	streamIDs := make([][]int64, len(paths))
-	sections := make([]int, len(paths))
-
-	g, ctx := errgroup.WithContext(ctx)
-	g.SetLimit(m.parallelism)
-
-	for i, path := range paths {
-		func(idx int) {
-			g.Go(func() error {
-				object, err := dataobj.FromBucket(ctx, m.bucket, path)
-				if err != nil {
-					return fmt.Errorf("getting object from bucket: %w", err)
-				}
-				sections[idx] = object.Sections().Count(logs.CheckSection)
-				streamIDs[idx] = make([]int64, 0, 8)
-
-				return forEachStream(ctx, object, predicate, func(stream streams.Stream) {
-					streamIDs[idx] = append(streamIDs[idx], stream.ID)
-				})
-			})
-		}(i)
-	}
-
-	if err := g.Wait(); err != nil {
-		return nil, nil, err
-	}
-
-	return streamIDs, sections, nil
-}
-
 func addLabels(mtx *sync.Mutex, streams map[uint64][]*labels.Labels, newLabels *labels.Labels) {
 	mtx.Lock()
 	defer mtx.Unlock()
 
-	sort.Sort(newLabels)
-
-	key := newLabels.Hash()
+	key := labels.StableHash(*newLabels)
 	matches, ok := streams[key]
 	if !ok {
 		streams[key] = append(streams[key], newLabels)
@@ -374,12 +366,14 @@ func addLabels(mtx *sync.Mutex, streams map[uint64][]*labels.Labels, newLabels *
 	streams[key] = append(streams[key], newLabels)
 }
 
-func (m *ObjectMetastore) listObjects(ctx context.Context, path string, start, end time.Time) ([]string, error) {
+func (m *ObjectMetastore) listObjects(ctx context.Context, path string, sStart, sEnd *scalar.Timestamp) ([]string, error) {
 	var buf bytes.Buffer
 	objectReader, err := m.bucket.Get(ctx, path)
 	if err != nil {
 		return nil, err
 	}
+	defer objectReader.Close()
+
 	n, err := buf.ReadFrom(objectReader)
 	if err != nil {
 		return nil, fmt.Errorf("reading metastore object: %w", err)
@@ -390,26 +384,28 @@ func (m *ObjectMetastore) listObjects(ctx context.Context, path string, start, e
 	}
 	var objectPaths []string
 
-	err = forEachStream(ctx, object, nil, func(stream streams.Stream) {
-		ok, objPath := objectOverlapsRange(stream.Labels, start, end)
-		if ok {
-			objectPaths = append(objectPaths, objPath)
-		}
+	err = forEachIndexPointer(ctx, object, sStart, sEnd, func(indexPointer indexpointers.IndexPointer) {
+		objectPaths = append(objectPaths, indexPointer.Path)
 	})
 	if err != nil {
 		return nil, err
 	}
+
 	return objectPaths, nil
 }
 
 func forEachStream(ctx context.Context, object *dataobj.Object, predicate streams.RowPredicate, f func(streams.Stream)) error {
+	targetTenant, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return fmt.Errorf("extracting org ID: %w", err)
+	}
 	var reader streams.RowReader
 	defer reader.Close()
 
 	buf := make([]streams.Stream, 1024)
 
-	for _, section := range object.Sections() {
-		if !streams.CheckSection(section) {
+	for _, section := range object.Sections().Filter(streams.CheckSection) {
+		if section.Tenant != targetTenant {
 			continue
 		}
 
@@ -427,10 +423,10 @@ func forEachStream(ctx context.Context, object *dataobj.Object, predicate stream
 		}
 		for {
 			num, err := reader.Read(ctx, buf)
-			if err != nil && err != io.EOF {
+			if err != nil && !errors.Is(err, io.EOF) {
 				return err
 			}
-			if num == 0 && err == io.EOF {
+			if num == 0 && errors.Is(err, io.EOF) {
 				break
 			}
 			for _, stream := range buf[:num] {
@@ -458,36 +454,206 @@ func dedupeAndSort(objects [][]string) []string {
 	return paths
 }
 
-// objectOverlapsRange checks if an object's time range overlaps with the query range
-func objectOverlapsRange(lbs labels.Labels, start, end time.Time) (bool, string) {
-	var (
-		objStart, objEnd time.Time
-		objPath          string
+func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (SectionsResponse, error) {
+	ctx, region := xcap.StartRegion(ctx, "ObjectMetastore.Sections")
+	defer region.End()
+
+	sectionsTimer := prometheus.NewTimer(m.metrics.resolvedSectionsTotalDuration)
+
+	selector := streamPredicateFromMatchers(req.Start, req.End, req.Matchers...)
+	if selector == nil {
+		// At least one stream matcher is required, currently.
+		return SectionsResponse{}, nil
+	}
+
+	indexes, err := m.GetIndexes(ctx, GetIndexesRequest{Start: req.Start, End: req.End})
+	if err != nil {
+		return SectionsResponse{}, err
+	}
+
+	// Return early if no index files found
+	if len(indexes.IndexesPaths) == 0 {
+		m.metrics.resolvedSectionsTotal.Observe(0)
+		level.Debug(utillog.WithContext(ctx, m.logger)).Log("msg", "no sections resolved", "reason", "no index paths")
+		return SectionsResponse{}, nil
+	}
+
+	var sections []*DataobjSectionDescriptor
+	sectionsMu := sync.Mutex{}
+	g, ctx := errgroup.WithContext(ctx)
+	g.SetLimit(m.parallelism)
+
+	totalSections := atomic.NewUint64(0)
+	for _, indexPath := range indexes.IndexesPaths {
+		g.Go(func() error {
+			readerResp, err := m.IndexSectionsReader(ctx, IndexSectionsReaderRequest{
+				IndexPath:       indexPath,
+				SectionsRequest: req,
+				Region:          region,
+			})
+			if err != nil {
+				return fmt.Errorf("get index sections reader: %w", err)
+			}
+			reader := readerResp.Reader
+			defer reader.Close()
+			sectionsResp, err := m.CollectSections(ctx, CollectSectionsRequest{reader})
+			if err != nil {
+				return fmt.Errorf("collect sections: %w", err)
+			}
+
+			// Merge the section descriptors for the object into the global section descriptors in one batch
+			sectionsMu.Lock()
+
+			// this is temporary, the stats will be collected differently in a distributed metastore
+			statsProvider := reader.(bloomStatsProvider)
+			totalSections.Add(statsProvider.totalReadRows())
+
+			sections = append(sections, sectionsResp.SectionsResponse.Sections...)
+			sectionsMu.Unlock()
+
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return SectionsResponse{}, err
+	}
+
+	ratio := float64(len(sections)) / float64(totalSections.Load())
+	m.metrics.streamFilterSections.Observe(float64(totalSections.Load()))
+	m.metrics.resolvedSectionsTotal.Observe(float64(len(sections)))
+	m.metrics.resolvedSectionsRatio.Observe(ratio)
+	region.Record(xcap.StatMetastoreSectionsResolved.Observe(int64(len(sections))))
+	duration := sectionsTimer.ObserveDuration()
+
+	level.Debug(utillog.WithContext(ctx, m.logger)).Log(
+		"msg", "resolved sections",
+		"duration", duration,
+		"tables", len(indexes.TableOfContentsPaths),
+		"indexes", len(indexes.IndexesPaths),
+		"sections", len(sections),
+		"ratio", ratio,
+		"matchers", matchersToString(req.Matchers),
+		"start", req.Start,
+		"end", req.End,
 	)
-	for _, lb := range lbs {
-		if lb.Name == labelNameStart {
-			tsNano, err := strconv.ParseInt(lb.Value, 10, 64)
-			if err != nil {
-				panic(err)
+
+	return SectionsResponse{sections}, nil
+}
+
+func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSectionsReaderRequest) (IndexSectionsReaderResponse, error) {
+	if len(req.SectionsRequest.Matchers) == 0 {
+		// At least one stream matcher is required
+		return IndexSectionsReaderResponse{}, fmt.Errorf("at least one selector is required")
+	}
+
+	idxObj, err := dataobj.FromBucket(ctx, m.bucket, req.IndexPath)
+	if err != nil {
+		return IndexSectionsReaderResponse{}, fmt.Errorf("prepare obj %s: %w", req.IndexPath, err)
+	}
+
+	sStart := scalar.NewTimestampScalar(arrow.Timestamp(req.SectionsRequest.Start.UnixNano()), arrow.FixedWidthTypes.Timestamp_ns)
+	sEnd := scalar.NewTimestampScalar(arrow.Timestamp(req.SectionsRequest.End.UnixNano()), arrow.FixedWidthTypes.Timestamp_ns)
+
+	scanner := newScanPointers(idxObj, sStart, sEnd, req.SectionsRequest.Matchers, req.Region)
+	blooms := newApplyBlooms(idxObj, req.SectionsRequest.Predicates, scanner, req.Region)
+
+	return IndexSectionsReaderResponse{Reader: blooms}, nil
+}
+
+func (m *ObjectMetastore) GetIndexes(ctx context.Context, req GetIndexesRequest) (GetIndexesResponse, error) {
+	ctx, region := xcap.StartRegion(ctx, "ObjectMetastore.GetIndexes")
+	defer region.End()
+
+	resp := GetIndexesResponse{}
+
+	// Get all metastore paths for the time range
+	for path := range iterTableOfContentsPaths(req.Start, req.End) {
+		resp.TableOfContentsPaths = append(resp.TableOfContentsPaths, path)
+	}
+
+	// Return early if no toc files are found
+	if len(resp.TableOfContentsPaths) == 0 {
+		m.metrics.indexObjectsTotal.Observe(0)
+		m.metrics.resolvedSectionsTotal.Observe(0)
+		level.Warn(utillog.WithContext(ctx, m.logger)).Log(
+			"msg", "no sections resolved",
+			"reason", "no toc paths",
+			"start", req.Start,
+			"end", req.End,
+		)
+		return GetIndexesResponse{}, nil
+	}
+
+	// List index objects from all tables concurrently
+	indexPaths, err := m.listObjectsFromTables(ctx, resp.TableOfContentsPaths, req.Start, req.End)
+	if err != nil {
+		return resp, err
+	}
+
+	resp.IndexesPaths = indexPaths
+
+	m.metrics.indexObjectsTotal.Observe(float64(len(indexPaths)))
+	region.Record(xcap.StatMetastoreIndexObjects.Observe(int64(len(indexPaths))))
+
+	return resp, nil
+}
+
+func (m *ObjectMetastore) CollectSections(ctx context.Context, req CollectSectionsRequest) (CollectSectionsResponse, error) {
+	objectSectionDescriptors := make(map[SectionKey]*DataobjSectionDescriptor)
+	for {
+		rec, err := req.Reader.Read(ctx)
+		if err != nil && !errors.Is(err, io.EOF) {
+			level.Warn(m.logger).Log(
+				"msg", "error during execution",
+				"err", err,
+			)
+			return CollectSectionsResponse{}, err
+		}
+
+		if rec != nil && rec.NumRows() > 0 {
+			if err := addSectionDescriptors(rec, objectSectionDescriptors); err != nil {
+				return CollectSectionsResponse{}, err
 			}
-			objStart = time.Unix(0, tsNano).UTC()
 		}
-		if lb.Name == labelNameEnd {
-			tsNano, err := strconv.ParseInt(lb.Value, 10, 64)
-			if err != nil {
-				panic(err)
-			}
-			objEnd = time.Unix(0, tsNano).UTC()
-		}
-		if lb.Name == labelNamePath {
-			objPath = lb.Value
+
+		if errors.Is(err, io.EOF) {
+			break
 		}
 	}
-	if objStart.IsZero() || objEnd.IsZero() {
-		return false, ""
+
+	sections := make([]*DataobjSectionDescriptor, 0, len(objectSectionDescriptors))
+	for _, s := range objectSectionDescriptors {
+		sections = append(sections, s)
 	}
-	if objEnd.Before(start) || objStart.After(end) {
-		return false, ""
+
+	region := xcap.RegionFromContext(ctx)
+	region.Record(xcap.StatMetastoreSectionsResolved.Observe(int64(len(sections))))
+
+	return CollectSectionsResponse{
+		SectionsResponse: SectionsResponse{
+			Sections: sections,
+		},
+	}, nil
+}
+
+func addSectionDescriptors(rec arrow.RecordBatch, result map[SectionKey]*DataobjSectionDescriptor) error {
+	numRows := int(rec.NumRows())
+	buf := make([]pointers.SectionPointer, numRows)
+	num, err := pointers.FromRecordBatch(rec, buf, pointers.PopulateSection)
+	if err != nil {
+		return fmt.Errorf("convert arrow record to section pointers: %w", err)
 	}
-	return true, objPath
+
+	for i := range num {
+		ptr := buf[i]
+		key := SectionKey{ObjectPath: ptr.Path, SectionIdx: ptr.Section}
+		existing, ok := result[key]
+		if !ok {
+			result[key] = NewSectionDescriptor(ptr)
+			continue
+		}
+		existing.Merge(ptr)
+	}
+	return nil
 }

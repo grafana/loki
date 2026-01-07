@@ -23,6 +23,9 @@ type (
 	// included if the inner Predicate is false.
 	NotPredicate struct{ Inner Predicate }
 
+	// TruePredicate is a [Predicate] which always returns true.
+	TruePredicate struct{}
+
 	// FalsePredicate is a [Predicate] which always returns false.
 	FalsePredicate struct{}
 
@@ -74,6 +77,7 @@ type (
 func (AndPredicate) isPredicate()         {}
 func (OrPredicate) isPredicate()          {}
 func (NotPredicate) isPredicate()         {}
+func (TruePredicate) isPredicate()        {}
 func (FalsePredicate) isPredicate()       {}
 func (EqualPredicate) isPredicate()       {}
 func (InPredicate) isPredicate()          {}
@@ -102,6 +106,7 @@ func WalkPredicate(p Predicate, fn func(p Predicate) bool) {
 	case NotPredicate:
 		WalkPredicate(p.Inner, fn)
 
+	case TruePredicate: // No children.
 	case FalsePredicate: // No children.
 	case EqualPredicate: // No children.
 	case InPredicate: // No children.
@@ -190,26 +195,26 @@ func (s Uint64ValueSet) Size() int {
 	return len(s.values)
 }
 
-type ByteArrayValueSet struct {
+type BinaryValueSet struct {
 	values map[string]Value
 }
 
-func NewByteArrayValueSet(values []Value) ByteArrayValueSet {
+func NewBinaryValueSet(values []Value) BinaryValueSet {
 	valuesMap := make(map[string]Value, len(values))
 	for _, v := range values {
-		valuesMap[unsafeString(v.ByteArray())] = v
+		valuesMap[unsafeString(v.Binary())] = v
 	}
-	return ByteArrayValueSet{
+	return BinaryValueSet{
 		values: valuesMap,
 	}
 }
 
-func (s ByteArrayValueSet) Contains(value Value) bool {
-	_, ok := s.values[unsafeString(value.ByteArray())]
+func (s BinaryValueSet) Contains(value Value) bool {
+	_, ok := s.values[unsafeString(value.Binary())]
 	return ok
 }
 
-func (s ByteArrayValueSet) Iter() iter.Seq[Value] {
+func (s BinaryValueSet) Iter() iter.Seq[Value] {
 	return func(yield func(v Value) bool) {
 		for _, v := range s.values {
 			ok := yield(v)
@@ -220,7 +225,7 @@ func (s ByteArrayValueSet) Iter() iter.Seq[Value] {
 	}
 }
 
-func (s ByteArrayValueSet) Size() int {
+func (s BinaryValueSet) Size() int {
 	return len(s.values)
 }
 

@@ -1,4 +1,4 @@
-package types
+package types //nolint:revive
 
 import (
 	"fmt"
@@ -39,6 +39,19 @@ const (
 
 	MetadataKeyColumnType     = "column_type"
 	MetadataKeyColumnDataType = "column_datatype"
+)
+
+// Names of error columns
+const (
+	ColumnNameError        = "__error__"
+	ColumnNameErrorDetails = "__error_details__"
+)
+
+// Error types.
+const (
+	LogfmtParserErrorType     = "LogfmtParserErr"
+	JSONParserErrorType       = "JSONParserErr"
+	SampleExtractionErrorType = "SampleExtractionErr"
 )
 
 var ctNames = [7]string{"invalid", "builtin", "label", "metadata", "parsed", "ambiguous", "generated"}

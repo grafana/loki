@@ -43,6 +43,76 @@ The next Loki release introduces a new configuration option (i.e. `-distibutor.m
 
 Supported clients should check the configuration options for max send message size if applicable.
 
+## Helm Chart Upgrades
+
+### Helm Chart 6.34.0 - Zone-aware Ingester Breaking Change
+
+{{< admonition type="warning" >}}
+Helm chart version 6.34.0 introduces a **breaking change** that affects users with zone-aware ingester replication enabled.
+{{< /admonition >}}
+
+If you are using zone-aware ingesters (`ingester.zoneAwareReplication.enabled: true`), upgrading to Helm chart 6.34.0 requires manual StatefulSet deletion before the upgrade. This is due to a fix for the `serviceName` field in zone-aware ingester StatefulSets, which is an immutable field in Kubernetes.
+
+**For detailed upgrade instructions, see**: [Helm Chart 6.x Upgrade Guide - Zone-aware Ingester Breaking Change](https://grafana.com/docs/loki/latest/setup/upgrade/upgrade-to-6x/#breaking-zone-aware-ingester-statefulset-servicename-fix-6340)
+
+Key points:
+- Only affects deployments with `ingester.zoneAwareReplication.enabled: true`
+- Requires manual StatefulSet deletion with `--cascade=orphan`
+- **No data loss** - PersistentVolumeClaims and data are preserved
+- New StatefulSets will be created with correct service references
+
+## 3.6.0
+
+### Loki 3.6.0
+
+#### Upgraded AWS SDK to v2
+
+Loki uses the official AWS SDK for configuring and communication with S3 object storage. Version 1 of the SDK reached its end of life on 31st, 2025, and therefore had to be replaced with Version 2. While the user-facing configuration in Loki did not change, internal functionality of the object store client did change, without affecting functionality of Loki.
+
+Please refer to the full release notes of v2 [https://github.com/aws/aws-sdk-go-v2/releases/tag/release-2025-01-15](https://github.com/aws/aws-sdk-go-v2/releases/tag/release-2025-01-15) for further information and whether you may be impacted by any of the changes. 
+
+## 3.5.0
+
+### Loki 3.5.8
+
+#### Removal of BusyBox Shell from Docker Images
+
+Starting in Loki version **3.5.8**, the `busybox` utility was removed from the official Loki Docker images. This means that **shell utilities like `/bin/sh` are no longer available** inside the container by default.
+
+#### Impact
+
+- **You cannot `exec` into the Loki container to use a shell as before**. Commands like `kubectl exec -it podname -- sh` or `docker exec -it containername sh` will fail because `/bin/sh` does not exist in the image.
+- Common utilities provided by BusyBox (e.g., `ls`, `cat`, `ps`) are also not available inside the container.
+
+#### Why was BusyBox removed?
+
+Removing BusyBox addresses the following CVEs:
+
+- CVE-2023-42364
+- CVE-2023-42365
+- CVE-2023-42363
+- CVE-2023-42366
+- CVE-2025-46394
+- CVE-2024-58251
+
+#### How do I troubleshoot or inspect a running Loki container now?
+
+If you need to debug or inspect a Loki container:
+1. **Use ephemeral containers:** Kubernetes allows you to attach an ephemeral container _with a shell_ to a running Pod for debugging (if your cluster supports it).
+   - Example:
+     ```
+     kubectl debug -it <pod-name> --image=busybox --target=<container-name>
+     ```
+2. **Copy files out/in instead of shelling in:** Use `kubectl cp` or `docker cp` to move logs or config files for inspection.
+3. **Include shell utilities in your own derived image:** If your operational process requires a shell, you can build a custom Docker image based on Loki and add BusyBox or another shell to it (not recommended for production).
+   - Example Dockerfile snippet:
+     ```
+     FROM grafana/loki:3.5.8
+     USER root
+     RUN apk add --no-cache busybox
+     USER 10001
+     ```
+
 ## 3.4.0
 
 ### Loki 3.4.0

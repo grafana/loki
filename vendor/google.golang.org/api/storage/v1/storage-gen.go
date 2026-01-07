@@ -709,24 +709,152 @@ func (s BucketCustomPlacementConfig) MarshalJSON() ([]byte, error) {
 
 // BucketEncryption: Encryption configuration for a bucket.
 type BucketEncryption struct {
+	// CustomerManagedEncryptionEnforcementConfig: If set, the new objects created
+	// in this bucket must comply with this enforcement config. Changing this has
+	// no effect on existing objects; it applies to new objects only. If omitted,
+	// the new objects are allowed to be encrypted with Customer Managed Encryption
+	// type by default.
+	CustomerManagedEncryptionEnforcementConfig *BucketEncryptionCustomerManagedEncryptionEnforcementConfig `json:"customerManagedEncryptionEnforcementConfig,omitempty"`
+	// CustomerSuppliedEncryptionEnforcementConfig: If set, the new objects created
+	// in this bucket must comply with this enforcement config. Changing this has
+	// no effect on existing objects; it applies to new objects only. If omitted,
+	// the new objects are allowed to be encrypted with Customer Supplied
+	// Encryption type by default.
+	CustomerSuppliedEncryptionEnforcementConfig *BucketEncryptionCustomerSuppliedEncryptionEnforcementConfig `json:"customerSuppliedEncryptionEnforcementConfig,omitempty"`
 	// DefaultKmsKeyName: A Cloud KMS key that will be used to encrypt objects
 	// inserted into this bucket, if no encryption method is specified.
 	DefaultKmsKeyName string `json:"defaultKmsKeyName,omitempty"`
-	// ForceSendFields is a list of field names (e.g. "DefaultKmsKeyName") to
-	// unconditionally include in API requests. By default, fields with empty or
-	// default values are omitted from API requests. See
+	// GoogleManagedEncryptionEnforcementConfig: If set, the new objects created in
+	// this bucket must comply with this enforcement config. Changing this has no
+	// effect on existing objects; it applies to new objects only. If omitted, the
+	// new objects are allowed to be encrypted with Google Managed Encryption type
+	// by default.
+	GoogleManagedEncryptionEnforcementConfig *BucketEncryptionGoogleManagedEncryptionEnforcementConfig `json:"googleManagedEncryptionEnforcementConfig,omitempty"`
+	// ForceSendFields is a list of field names (e.g.
+	// "CustomerManagedEncryptionEnforcementConfig") to unconditionally include in
+	// API requests. By default, fields with empty or default values are omitted
+	// from API requests. See
 	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
 	// details.
 	ForceSendFields []string `json:"-"`
-	// NullFields is a list of field names (e.g. "DefaultKmsKeyName") to include in
-	// API requests with the JSON null value. By default, fields with empty values
-	// are omitted from API requests. See
+	// NullFields is a list of field names (e.g.
+	// "CustomerManagedEncryptionEnforcementConfig") to include in API requests
+	// with the JSON null value. By default, fields with empty values are omitted
+	// from API requests. See
 	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
 
 func (s BucketEncryption) MarshalJSON() ([]byte, error) {
 	type NoMethod BucketEncryption
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// BucketEncryptionCustomerManagedEncryptionEnforcementConfig: If set, the new
+// objects created in this bucket must comply with this enforcement config.
+// Changing this has no effect on existing objects; it applies to new objects
+// only. If omitted, the new objects are allowed to be encrypted with Customer
+// Managed Encryption type by default.
+type BucketEncryptionCustomerManagedEncryptionEnforcementConfig struct {
+	// EffectiveTime: Server-determined value that indicates the time from which
+	// configuration was enforced and effective. This value is in RFC 3339 format.
+	EffectiveTime string `json:"effectiveTime,omitempty"`
+	// RestrictionMode: Restriction mode for Customer-Managed Encryption Keys.
+	// Defaults to NotRestricted.
+	//
+	// Possible values:
+	//   "NotRestricted" - Creation of new objects with Customer-Managed Encryption
+	// is not restricted.
+	//   "FullyRestricted" - Creation of new objects with Customer-Managed
+	// Encryption is fully restricted.
+	RestrictionMode string `json:"restrictionMode,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "EffectiveTime") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "EffectiveTime") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s BucketEncryptionCustomerManagedEncryptionEnforcementConfig) MarshalJSON() ([]byte, error) {
+	type NoMethod BucketEncryptionCustomerManagedEncryptionEnforcementConfig
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// BucketEncryptionCustomerSuppliedEncryptionEnforcementConfig: If set, the new
+// objects created in this bucket must comply with this enforcement config.
+// Changing this has no effect on existing objects; it applies to new objects
+// only. If omitted, the new objects are allowed to be encrypted with Customer
+// Supplied Encryption type by default.
+type BucketEncryptionCustomerSuppliedEncryptionEnforcementConfig struct {
+	// EffectiveTime: Server-determined value that indicates the time from which
+	// configuration was enforced and effective. This value is in RFC 3339 format.
+	EffectiveTime string `json:"effectiveTime,omitempty"`
+	// RestrictionMode: Restriction mode for Customer-Supplied Encryption Keys.
+	// Defaults to NotRestricted.
+	//
+	// Possible values:
+	//   "NotRestricted" - Creation of new objects with Customer-Supplied
+	// Encryption is not restricted.
+	//   "FullyRestricted" - Creation of new objects with Customer-Supplied
+	// Encryption is fully restricted.
+	RestrictionMode string `json:"restrictionMode,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "EffectiveTime") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "EffectiveTime") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s BucketEncryptionCustomerSuppliedEncryptionEnforcementConfig) MarshalJSON() ([]byte, error) {
+	type NoMethod BucketEncryptionCustomerSuppliedEncryptionEnforcementConfig
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// BucketEncryptionGoogleManagedEncryptionEnforcementConfig: If set, the new
+// objects created in this bucket must comply with this enforcement config.
+// Changing this has no effect on existing objects; it applies to new objects
+// only. If omitted, the new objects are allowed to be encrypted with Google
+// Managed Encryption type by default.
+type BucketEncryptionGoogleManagedEncryptionEnforcementConfig struct {
+	// EffectiveTime: Server-determined value that indicates the time from which
+	// configuration was enforced and effective. This value is in RFC 3339 format.
+	EffectiveTime string `json:"effectiveTime,omitempty"`
+	// RestrictionMode: Restriction mode for Google-Managed Encryption Keys.
+	// Defaults to NotRestricted.
+	//
+	// Possible values:
+	//   "NotRestricted" - Creation of new objects with Google Managed Encryption
+	// is not restricted.
+	//   "FullyRestricted" - Creation of new objects with Google Managed Encryption
+	// is fully restricted.
+	RestrictionMode string `json:"restrictionMode,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "EffectiveTime") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "EffectiveTime") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s BucketEncryptionGoogleManagedEncryptionEnforcementConfig) MarshalJSON() ([]byte, error) {
+	type NoMethod BucketEncryptionGoogleManagedEncryptionEnforcementConfig
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
@@ -1483,6 +1611,9 @@ type Buckets struct {
 	// sets. Provide this value in a subsequent request to return the next page of
 	// results.
 	NextPageToken string `json:"nextPageToken,omitempty"`
+	// Unreachable: The list of bucket resource names that could not be reached
+	// during the listing operation.
+	Unreachable []string `json:"unreachable,omitempty"`
 
 	// ServerResponse contains the HTTP response code and headers from the server.
 	googleapi.ServerResponse `json:"-"`
@@ -1517,6 +1648,12 @@ type BulkRestoreObjectsRequest struct {
 	// CopySourceAcl: If true, copies the source object's ACL; otherwise, uses the
 	// bucket's default object ACL. The default is false.
 	CopySourceAcl bool `json:"copySourceAcl,omitempty"`
+	// CreatedAfterTime: Restores only the objects that were created after this
+	// time.
+	CreatedAfterTime string `json:"createdAfterTime,omitempty"`
+	// CreatedBeforeTime: Restores only the objects that were created before this
+	// time.
+	CreatedBeforeTime string `json:"createdBeforeTime,omitempty"`
 	// MatchGlobs: Restores only the objects matching any of the specified glob(s).
 	// If this parameter is not specified, all objects will be restored within the
 	// specified time range.
@@ -5086,6 +5223,14 @@ func (c *BucketsListCall) Prefix(prefix string) *BucketsListCall {
 //	"noAcl" - Omit owner, acl and defaultObjectAcl properties.
 func (c *BucketsListCall) Projection(projection string) *BucketsListCall {
 	c.urlParams_.Set("projection", projection)
+	return c
+}
+
+// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess": If
+// true, return a list of bucket resource names for buckets that are in
+// unreachable locations.
+func (c *BucketsListCall) ReturnPartialSuccess(returnPartialSuccess bool) *BucketsListCall {
+	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
 	return c
 }
 

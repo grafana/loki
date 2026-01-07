@@ -15,6 +15,10 @@ import (
 
 	"github.com/redis/go-redis/v9/auth"
 	"github.com/redis/go-redis/v9/internal/pool"
+	"github.com/redis/go-redis/v9/internal/proto"
+	"github.com/redis/go-redis/v9/internal/util"
+	"github.com/redis/go-redis/v9/maintnotifications"
+	"github.com/redis/go-redis/v9/push"
 )
 
 // Limiter is the interface of a rate limiter or a circuit breaker.
@@ -30,7 +34,6 @@ type Limiter interface {
 
 // Options keeps the settings to set up redis connection.
 type Options struct {
-
 	// Network type, either tcp or unix.
 	//
 	// default: is tcp.
@@ -108,6 +111,16 @@ type Options struct {
 	// default: 5 seconds
 	DialTimeout time.Duration
 
+	// DialerRetries is the maximum number of retry attempts when dialing fails.
+	//
+	// default: 5
+	DialerRetries int
+
+	// DialerRetryTimeout is the backoff duration between retry attempts.
+	//
+	// default: 100 milliseconds
+	DialerRetryTimeout time.Duration
+
 	// ReadTimeout for socket reads. If reached, commands will fail
 	// with a timeout instead of blocking. Supported values:
 	//
@@ -130,6 +143,20 @@ type Options struct {
 	// See https://redis.uptrace.dev/guide/go-redis-debugging.html#timeouts
 	ContextTimeoutEnabled bool
 
+	// ReadBufferSize is the size of the bufio.Reader buffer for each connection.
+	// Larger buffers can improve performance for commands that return large responses.
+	// Smaller buffers can improve memory usage for larger pools.
+	//
+	// default: 32KiB (32768 bytes)
+	ReadBufferSize int
+
+	// WriteBufferSize is the size of the bufio.Writer buffer for each connection.
+	// Larger buffers can improve performance for large pipelines and commands with many arguments.
+	// Smaller buffers can improve memory usage for larger pools.
+	//
+	// default: 32KiB (32768 bytes)
+	WriteBufferSize int
+
 	// PoolFIFO type of connection pool.
 	//
 	//	- true for FIFO pool
@@ -137,6 +164,7 @@ type Options struct {
 	//
 	// Note that FIFO has slightly higher overhead compared to LIFO,
 	// but it helps closing idle connections faster reducing the pool size.
+	// default: false
 	PoolFIFO bool
 
 	// PoolSize is the base number of socket connections.
@@ -146,6 +174,10 @@ type Options struct {
 	//
 	// default: 10 * runtime.GOMAXPROCS(0)
 	PoolSize int
+
+	// MaxConcurrentDials is the maximum number of concurrent connection creation goroutines.
+	// If <= 0, defaults to PoolSize. If > PoolSize, it will be capped at PoolSize.
+	MaxConcurrentDials int
 
 	// PoolTimeout is the amount of time client waits for connection if all connections
 	// are busy before returning an error.
@@ -216,6 +248,25 @@ type Options struct {
 	// UnstableResp3 enables Unstable mode for Redis Search module with RESP3.
 	// When unstable mode is enabled, the client will use RESP3 protocol and only be able to use RawResult
 	UnstableResp3 bool
+
+	// Push notifications are always enabled for RESP3 connections (Protocol: 3)
+	// and are not available for RESP2 connections. No configuration option is needed.
+
+	// PushNotificationProcessor is the processor for handling push notifications.
+	// If nil, a default processor will be created for RESP3 connections.
+	PushNotificationProcessor push.NotificationProcessor
+
+	// FailingTimeoutSeconds is the timeout in seconds for marking a cluster node as failing.
+	// When a node is marked as failing, it will be avoided for this duration.
+	// Default is 15 seconds.
+	FailingTimeoutSeconds int
+
+	// MaintNotificationsConfig provides custom configuration for maintnotifications.
+	// When MaintNotificationsConfig.Mode is not "disabled", the client will handle
+	// cluster upgrade notifications gracefully and manage connection/pool state
+	// transitions seamlessly. Requires Protocol: 3 (RESP3) for push notifications.
+	// If nil, maintnotifications are in "auto" mode and will be enabled if the server supports it.
+	MaintNotificationsConfig *maintnotifications.Config
 }
 
 func (opt *Options) init() {
@@ -235,11 +286,28 @@ func (opt *Options) init() {
 	if opt.DialTimeout == 0 {
 		opt.DialTimeout = 5 * time.Second
 	}
+	if opt.DialerRetries == 0 {
+		opt.DialerRetries = 5
+	}
+	if opt.DialerRetryTimeout == 0 {
+		opt.DialerRetryTimeout = 100 * time.Millisecond
+	}
 	if opt.Dialer == nil {
 		opt.Dialer = NewDialer(opt)
 	}
 	if opt.PoolSize == 0 {
 		opt.PoolSize = 10 * runtime.GOMAXPROCS(0)
+	}
+	if opt.MaxConcurrentDials <= 0 {
+		opt.MaxConcurrentDials = opt.PoolSize
+	} else if opt.MaxConcurrentDials > opt.PoolSize {
+		opt.MaxConcurrentDials = opt.PoolSize
+	}
+	if opt.ReadBufferSize == 0 {
+		opt.ReadBufferSize = proto.DefaultBufferSize
+	}
+	if opt.WriteBufferSize == 0 {
+		opt.WriteBufferSize = proto.DefaultBufferSize
 	}
 	switch opt.ReadTimeout {
 	case -2:
@@ -286,11 +354,38 @@ func (opt *Options) init() {
 	case 0:
 		opt.MaxRetryBackoff = 512 * time.Millisecond
 	}
+
+	if opt.FailingTimeoutSeconds == 0 {
+		opt.FailingTimeoutSeconds = 15
+	}
+
+	opt.MaintNotificationsConfig = opt.MaintNotificationsConfig.ApplyDefaultsWithPoolConfig(opt.PoolSize, opt.MaxActiveConns)
+
+	// auto-detect endpoint type if not specified
+	endpointType := opt.MaintNotificationsConfig.EndpointType
+	if endpointType == "" || endpointType == maintnotifications.EndpointTypeAuto {
+		// Auto-detect endpoint type if not specified
+		endpointType = maintnotifications.DetectEndpointType(opt.Addr, opt.TLSConfig != nil)
+	}
+	opt.MaintNotificationsConfig.EndpointType = endpointType
 }
 
 func (opt *Options) clone() *Options {
 	clone := *opt
+
+	// Deep clone MaintNotificationsConfig to avoid sharing between clients
+	if opt.MaintNotificationsConfig != nil {
+		configClone := *opt.MaintNotificationsConfig
+		clone.MaintNotificationsConfig = &configClone
+	}
+
 	return &clone
+}
+
+// NewDialer returns a function that will be used as the default dialer
+// when none is specified in Options.Dialer.
+func (opt *Options) NewDialer() func(context.Context, string, string) (net.Conn, error) {
+	return NewDialer(opt)
 }
 
 // NewDialer returns a function that will be used as the default dialer
@@ -539,6 +634,7 @@ func setupConnParams(u *url.URL, o *Options) (*Options, error) {
 	o.MinIdleConns = q.int("min_idle_conns")
 	o.MaxIdleConns = q.int("max_idle_conns")
 	o.MaxActiveConns = q.int("max_active_conns")
+	o.MaxConcurrentDials = q.int("max_concurrent_dials")
 	if q.has("conn_max_idle_time") {
 		o.ConnMaxIdleTime = q.duration("conn_max_idle_time")
 	} else {
@@ -578,19 +674,86 @@ func getUserPassword(u *url.URL) (string, string) {
 func newConnPool(
 	opt *Options,
 	dialer func(ctx context.Context, network, addr string) (net.Conn, error),
-) *pool.ConnPool {
+) (*pool.ConnPool, error) {
+	poolSize, err := util.SafeIntToInt32(opt.PoolSize, "PoolSize")
+	if err != nil {
+		return nil, err
+	}
+
+	minIdleConns, err := util.SafeIntToInt32(opt.MinIdleConns, "MinIdleConns")
+	if err != nil {
+		return nil, err
+	}
+
+	maxIdleConns, err := util.SafeIntToInt32(opt.MaxIdleConns, "MaxIdleConns")
+	if err != nil {
+		return nil, err
+	}
+
+	maxActiveConns, err := util.SafeIntToInt32(opt.MaxActiveConns, "MaxActiveConns")
+	if err != nil {
+		return nil, err
+	}
+
 	return pool.NewConnPool(&pool.Options{
 		Dialer: func(ctx context.Context) (net.Conn, error) {
 			return dialer(ctx, opt.Network, opt.Addr)
 		},
-		PoolFIFO:        opt.PoolFIFO,
-		PoolSize:        opt.PoolSize,
-		PoolTimeout:     opt.PoolTimeout,
-		DialTimeout:     opt.DialTimeout,
-		MinIdleConns:    opt.MinIdleConns,
-		MaxIdleConns:    opt.MaxIdleConns,
-		MaxActiveConns:  opt.MaxActiveConns,
-		ConnMaxIdleTime: opt.ConnMaxIdleTime,
-		ConnMaxLifetime: opt.ConnMaxLifetime,
-	})
+		PoolFIFO:                 opt.PoolFIFO,
+		PoolSize:                 poolSize,
+		MaxConcurrentDials:       opt.MaxConcurrentDials,
+		PoolTimeout:              opt.PoolTimeout,
+		DialTimeout:              opt.DialTimeout,
+		DialerRetries:            opt.DialerRetries,
+		DialerRetryTimeout:       opt.DialerRetryTimeout,
+		MinIdleConns:             minIdleConns,
+		MaxIdleConns:             maxIdleConns,
+		MaxActiveConns:           maxActiveConns,
+		ConnMaxIdleTime:          opt.ConnMaxIdleTime,
+		ConnMaxLifetime:          opt.ConnMaxLifetime,
+		ReadBufferSize:           opt.ReadBufferSize,
+		WriteBufferSize:          opt.WriteBufferSize,
+		PushNotificationsEnabled: opt.Protocol == 3,
+	}), nil
+}
+
+func newPubSubPool(opt *Options, dialer func(ctx context.Context, network, addr string) (net.Conn, error),
+) (*pool.PubSubPool, error) {
+	poolSize, err := util.SafeIntToInt32(opt.PoolSize, "PoolSize")
+	if err != nil {
+		return nil, err
+	}
+
+	minIdleConns, err := util.SafeIntToInt32(opt.MinIdleConns, "MinIdleConns")
+	if err != nil {
+		return nil, err
+	}
+
+	maxIdleConns, err := util.SafeIntToInt32(opt.MaxIdleConns, "MaxIdleConns")
+	if err != nil {
+		return nil, err
+	}
+
+	maxActiveConns, err := util.SafeIntToInt32(opt.MaxActiveConns, "MaxActiveConns")
+	if err != nil {
+		return nil, err
+	}
+
+	return pool.NewPubSubPool(&pool.Options{
+		PoolFIFO:                 opt.PoolFIFO,
+		PoolSize:                 poolSize,
+		MaxConcurrentDials:       opt.MaxConcurrentDials,
+		PoolTimeout:              opt.PoolTimeout,
+		DialTimeout:              opt.DialTimeout,
+		DialerRetries:            opt.DialerRetries,
+		DialerRetryTimeout:       opt.DialerRetryTimeout,
+		MinIdleConns:             minIdleConns,
+		MaxIdleConns:             maxIdleConns,
+		MaxActiveConns:           maxActiveConns,
+		ConnMaxIdleTime:          opt.ConnMaxIdleTime,
+		ConnMaxLifetime:          opt.ConnMaxLifetime,
+		ReadBufferSize:           32 * 1024,
+		WriteBufferSize:          32 * 1024,
+		PushNotificationsEnabled: opt.Protocol == 3,
+	}, dialer), nil
 }

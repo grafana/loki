@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	shardUtil "github.com/grafana/dskit/ring/shard"
@@ -42,15 +43,41 @@ type PartitionRing struct {
 	activePartitionsCount int
 }
 
-func NewPartitionRing(desc PartitionRingDesc) *PartitionRing {
+// PartitionRingOptions holds optional configuration parameters for creating a PartitionRing.
+type PartitionRingOptions struct {
+	// ShuffleShardCacheSize is the size of the cache used for shuffle sharding.
+	// If zero or negative, an unbounded map-based cache is used.
+	// If positive, an LRU cache with the specified size is used.
+	ShuffleShardCacheSize int
+}
+
+// DefaultPartitionRingOptions returns the default options for creating a PartitionRing.
+func DefaultPartitionRingOptions() PartitionRingOptions {
+	return PartitionRingOptions{
+		ShuffleShardCacheSize: 0,
+	}
+}
+
+// NewPartitionRing creates a new PartitionRing with default options.
+func NewPartitionRing(desc PartitionRingDesc) (*PartitionRing, error) {
+	return NewPartitionRingWithOptions(desc, DefaultPartitionRingOptions())
+}
+
+// NewPartitionRingWithOptions creates a new PartitionRing with custom options.
+func NewPartitionRingWithOptions(desc PartitionRingDesc, opts PartitionRingOptions) (*PartitionRing, error) {
+	shuffleShardCache, err := newPartitionRingShuffleShardCache(opts.ShuffleShardCacheSize)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create shuffle shard cache: %w", err)
+	}
+
 	return &PartitionRing{
 		desc:                  desc,
 		ringTokens:            desc.tokens(),
 		partitionByToken:      desc.partitionByToken(),
 		ownersByPartition:     desc.ownersByPartition(),
 		activePartitionsCount: desc.activePartitionsCount(),
-		shuffleShardCache:     newPartitionRingShuffleShardCache(),
-	}
+		shuffleShardCache:     shuffleShardCache,
+	}, nil
 }
 
 // ActivePartitionForKey returns partition for the given key. Only active partitions are considered.
@@ -254,7 +281,7 @@ func (r *PartitionRing) shuffleShard(identifier string, size int, lookbackPeriod
 		}
 	}
 
-	return NewPartitionRing(r.desc.WithPartitions(result)), nil
+	return NewPartitionRing(r.desc.WithPartitions(result))
 }
 
 // PartitionsCount returns the number of partitions in the ring.
@@ -352,6 +379,31 @@ func (r *PartitionRing) PartitionOwnerIDsCopy(partitionID int32) []string {
 	}
 
 	return slices.Clone(ids)
+}
+
+// MultiPartitionOwnerIDs returns the ownerIDs of the given partitionID removing the suffix added to support ownership of multiple partitions.
+// The slice returned will try to use the provided buf, and it can be modified (it will modify the buf if it was used).
+func (r *PartitionRing) MultiPartitionOwnerIDs(partitionID int32, buf []string) []string {
+	ids := r.ownersByPartition[partitionID]
+	if len(ids) == 0 {
+		return nil
+	}
+
+	if cap(buf) < len(ids) {
+		buf = make([]string, len(ids))
+	} else {
+		buf = buf[:len(ids)]
+	}
+
+	for i, ownerID := range ids {
+		if p := strings.LastIndexByte(ownerID, '/'); p != -1 {
+			buf[i] = ownerID[:p]
+		} else {
+			// This isn't expected here: all owner IDs should have a suffix when multiple partitions can be owned.
+			buf[i] = ownerID
+		}
+	}
+	return buf
 }
 
 func (r *PartitionRing) String() string {
@@ -483,4 +535,8 @@ func (r *ActivePartitionBatchRing) Get(key uint32, _ Operation, bufInstances []I
 		MaxUnavailableZones:  0,
 		ZoneAwarenessEnabled: false,
 	}, nil
+}
+
+func multiPartitionOwnerInstanceID(instanceID string, partitionID int32) string {
+	return instanceID + "/" + strconv.Itoa(int(partitionID))
 }

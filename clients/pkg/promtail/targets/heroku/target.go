@@ -68,7 +68,7 @@ func (h *Target) run() error {
 	// To prevent metric collisions because all metrics are going to be registered in the global Prometheus registry.
 
 	tentativeServerMetricNamespace := "promtail_heroku_drain_target_" + h.jobName
-	if !model.LabelName(tentativeServerMetricNamespace).IsValidLegacy() {
+	if !model.LegacyValidation.IsValidLabelName(tentativeServerMetricNamespace) {
 		return fmt.Errorf("invalid prometheus-compatible job name: %s", h.jobName)
 	}
 	h.config.Server.MetricsNamespace = tentativeServerMetricNamespace
@@ -106,7 +106,7 @@ func (h *Target) drain(w http.ResponseWriter, r *http.Request) {
 	for herokuScanner.Scan() {
 		ts := time.Now()
 		message := herokuScanner.Message()
-		lb := labels.NewBuilder(nil)
+		lb := labels.NewBuilder(labels.EmptyLabels())
 		lb.Set("__heroku_drain_host", message.Hostname)
 		lb.Set("__heroku_drain_app", message.Application)
 		lb.Set("__heroku_drain_proc", message.Process)
@@ -128,16 +128,21 @@ func (h *Target) drain(w http.ResponseWriter, r *http.Request) {
 			lb.Set(lokiClient.ReservedLabelTenantID, tenantIDHeaderValue)
 		}
 
-		processed, _ := relabel.Process(lb.Labels(), h.relabelConfigs...)
+		var processed labels.Labels
+		if len(h.relabelConfigs) > 0 {
+			processed, _ = relabel.Process(lb.Labels(), h.relabelConfigs...)
+		} else {
+			processed = lb.Labels()
+		}
 
 		// Start with the set of labels fixed in the configuration
 		filtered := h.Labels().Clone()
-		for _, lbl := range processed {
+		processed.Range(func(lbl labels.Label) {
 			if strings.HasPrefix(lbl.Name, "__") {
-				continue
+				return // (will continue Range loop, not abort)
 			}
 			filtered[model.LabelName(lbl.Name)] = model.LabelValue(lbl.Value)
-		}
+		})
 
 		// Then, inject it as the reserved label, so it's used by the remote write client
 		if tenantIDHeaderValue != "" {

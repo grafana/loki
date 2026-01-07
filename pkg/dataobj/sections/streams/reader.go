@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 )
 
 // ReaderOptions customizes the behavior of a [Reader].
@@ -34,35 +35,26 @@ type ReaderOptions struct {
 // Validate returns an error if the opts is not valid. ReaderOptions are only
 // valid when:
 //
-//   - Each [Column] in Columns belongs to the same [Section].
-//   - Each [Predicate] in Predicates references a [Column] from Columns.
+//   - Each [Column] in Columns and Predicates belongs to the same [Section].
 //   - Scalar values used in predicates are of a supported type: an int64,
 //     uint64, timestamp, or a byte array.
 func (opts *ReaderOptions) Validate() error {
-	columnLookup := make(map[*Column]struct{}, len(opts.Columns))
-
-	if len(opts.Columns) > 0 {
-		// Ensure all columns belong to the same section.
-		var checkSection *Section
-
-		for _, col := range opts.Columns {
-			if checkSection != nil && col.Section != checkSection {
-				return fmt.Errorf("all columns must belong to the same section: got=%p want=%p", col.Section, checkSection)
-			} else if checkSection == nil {
-				checkSection = col.Section
-			}
-			columnLookup[col] = struct{}{}
+	// Ensure all columns belong to the same section.
+	var checkSection *Section
+	var errs []error
+	validateSection := func(col *Column) {
+		if checkSection != nil && col.Section != checkSection {
+			errs = append(errs, fmt.Errorf("all columns must belong to the same section: got=%p want=%p", col.Section, checkSection))
+		} else if checkSection == nil {
+			checkSection = col.Section
 		}
 	}
 
-	var errs []error
-
-	validateColumn := func(col *Column) {
-		if col == nil {
-			errs = append(errs, fmt.Errorf("column is nil"))
-		} else if _, found := columnLookup[col]; !found {
-			errs = append(errs, fmt.Errorf("column %p not in Columns", col))
-		}
+	for _, col := range opts.Columns {
+		validateSection(col)
+	}
+	if len(errs) > 0 {
+		return errors.Join(errs...)
 	}
 
 	validateScalar := func(s scalar.Scalar) {
@@ -74,36 +66,36 @@ func (opts *ReaderOptions) Validate() error {
 
 	for _, p := range opts.Predicates {
 		walkPredicate(p, func(p Predicate) bool {
-			// Validate that predicates reference valid columns and use valid
-			// scalars.
+			// Validate that predicates use valid scalars.
 			switch p := p.(type) {
 			case nil: // End of walk; nothing to do.
 
 			case AndPredicate: // Nothing to do.
 			case OrPredicate: // Nothing to do.
 			case NotPredicate: // Nothing to do.
+			case TruePredicate: // Nothing to do.
 			case FalsePredicate: // Nothing to do.
 
 			case EqualPredicate:
-				validateColumn(p.Column)
+				validateSection(p.Column)
 				validateScalar(p.Value)
 
 			case InPredicate:
-				validateColumn(p.Column)
+				validateSection(p.Column)
 				for _, val := range p.Values {
 					validateScalar(val)
 				}
 
 			case GreaterThanPredicate:
-				validateColumn(p.Column)
+				validateSection(p.Column)
 				validateScalar(p.Value)
 
 			case LessThanPredicate:
-				validateColumn(p.Column)
+				validateSection(p.Column)
 				validateScalar(p.Value)
 
 			case FuncPredicate:
-				validateColumn(p.Column)
+				validateSection(p.Column)
 
 			default:
 				errs = append(errs, fmt.Errorf("unrecognized predicate type %T", p))
@@ -160,7 +152,7 @@ func (r *Reader) Schema() *arrow.Schema { return r.schema }
 //
 // When a record is returned, it will match the schema specified by
 // [Reader.Schema]. These records must always be released after use.
-func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.Record, error) {
+func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.RecordBatch, error) {
 	if !r.ready {
 		err := r.init()
 		if err != nil {
@@ -172,13 +164,17 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.Record, error) 
 	r.buf = r.buf[:batchSize]
 
 	builder := array.NewRecordBuilder(r.opts.Allocator, r.schema)
-	defer builder.Release()
 
 	n, readErr := r.inner.Read(ctx, r.buf)
 	for rowIndex := range n {
 		row := r.buf[rowIndex]
 
 		for columnIndex, val := range row.Values {
+			if columnIndex >= len(r.opts.Columns) {
+				// Ignore columns that are not in projection list.
+				continue
+			}
+
 			columnBuilder := builder.Field(columnIndex)
 
 			if val.IsNil() {
@@ -191,7 +187,7 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.Record, error) 
 			// should align with both [columnToField] (for Arrow type) and
 			// [Builder.encodeTo] (for dataset type).
 			//
-			// Passing our byte slices to [array.BinaryBuilder.Append] are safe; it
+			// Passing our byte slices to [array.StringBuilder.BinaryBuilder.Append] are safe; it
 			// will copy the contents of the value and we can reuse the buffer on the
 			// next call to [dataset.Reader.Read].
 			columnType := r.opts.Columns[columnIndex].Type
@@ -203,7 +199,7 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.Record, error) 
 			case ColumnTypeMinTimestamp, ColumnTypeMaxTimestamp: // Values are nanosecond timestamps as int64
 				columnBuilder.(*array.TimestampBuilder).Append(arrow.Timestamp(val.Int64()))
 			case ColumnTypeLabel: // Appends labels as byte arrays
-				columnBuilder.(*array.BinaryBuilder).Append(val.ByteArray())
+				columnBuilder.(*array.StringBuilder).BinaryBuilder.Append(val.Binary())
 			case ColumnTypeRows: // Appends rows as int64
 				columnBuilder.(*array.Int64Builder).Append(val.Int64())
 			case ColumnTypeUncompressedSize: // Appends uncompressed size as int64
@@ -218,7 +214,7 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.Record, error) 
 
 	// We only return readErr after processing n so that we properly handle n>0
 	// while also getting an error such as io.EOF.
-	return builder.NewRecord(), readErr
+	return builder.NewRecordBatch(), readErr
 }
 
 func (r *Reader) init() error {
@@ -228,16 +224,32 @@ func (r *Reader) init() error {
 		r.opts.Allocator = memory.DefaultAllocator
 	}
 
-	dset, err := newColumnsDataset(r.opts.Columns)
-	if err != nil {
-		return fmt.Errorf("creating dataset: %w", err)
-	} else if len(dset.Columns()) != len(r.opts.Columns) {
-		return fmt.Errorf("dataset has %d columns, expected %d", len(dset.Columns()), len(r.opts.Columns))
+	// Compose dataset using projected columns and any additional columns
+	// used for evaluating predicates.
+	//
+	// Non-projected columns are appended to the end of the list to allow
+	// easy filtering of Row Values with index >= len(r.opts.Columns).
+	cols := appendMissingColumns(r.opts.Columns, predicateColumns(r.opts.Predicates))
+
+	var innerSection *columnar.Section
+	innerColumns := make([]*columnar.Column, len(cols))
+	for i, column := range cols {
+		if innerSection == nil {
+			innerSection = column.Section.inner
+		}
+		innerColumns[i] = column.inner
 	}
 
-	columnLookup := make(map[*Column]dataset.Column, len(r.opts.Columns))
+	dset, err := columnar.MakeDataset(innerSection, innerColumns)
+	if err != nil {
+		return fmt.Errorf("creating dataset: %w", err)
+	} else if len(dset.Columns()) != len(cols) {
+		return fmt.Errorf("dataset has %d columns, expected %d", len(dset.Columns()), len(cols))
+	}
+
+	columnLookup := make(map[*Column]dataset.Column, len(cols))
 	for i, col := range dset.Columns() {
-		columnLookup[r.opts.Columns[i]] = col
+		columnLookup[cols[i]] = col
 	}
 
 	preds, err := mapPredicates(r.opts.Predicates, columnLookup)
@@ -246,10 +258,10 @@ func (r *Reader) init() error {
 	}
 
 	innerOptions := dataset.ReaderOptions{
-		Dataset:         dset,
-		Columns:         dset.Columns(),
-		Predicates:      preds,
-		TargetCacheSize: 16_000_000, // Permit up to 16MB of cache pages.
+		Dataset:    dset,
+		Columns:    dset.Columns(),
+		Predicates: preds,
+		Prefetch:   true,
 	}
 	if r.inner == nil {
 		r.inner = dataset.NewReader(innerOptions)
@@ -303,6 +315,9 @@ func mapPredicate(p Predicate, columnLookup map[*Column]dataset.Column) dataset.
 			Inner: mapPredicate(p.Inner, columnLookup),
 		}
 
+	case TruePredicate:
+		return dataset.TruePredicate{}
+
 	case FalsePredicate:
 		return dataset.FalsePredicate{}
 
@@ -328,13 +343,13 @@ func mapPredicate(p Predicate, columnLookup map[*Column]dataset.Column) dataset.
 		}
 
 		var valueSet dataset.ValueSet
-		switch col.ColumnInfo().Type {
-		case datasetmd.VALUE_TYPE_INT64:
+		switch col.ColumnDesc().Type.Physical {
+		case datasetmd.PHYSICAL_TYPE_INT64:
 			valueSet = dataset.NewInt64ValueSet(vals)
-		case datasetmd.VALUE_TYPE_UINT64:
+		case datasetmd.PHYSICAL_TYPE_UINT64:
 			valueSet = dataset.NewUint64ValueSet(vals)
-		case datasetmd.VALUE_TYPE_BYTE_ARRAY:
-			valueSet = dataset.NewByteArrayValueSet(vals)
+		case datasetmd.PHYSICAL_TYPE_BINARY:
+			valueSet = dataset.NewBinaryValueSet(vals)
 		default:
 			panic("InPredicate not implemented for datatype")
 		}
@@ -384,7 +399,7 @@ func mapPredicate(p Predicate, columnLookup map[*Column]dataset.Column) dataset.
 	}
 }
 
-func mustConvertType(dtype arrow.DataType) datasetmd.ValueType {
+func mustConvertType(dtype arrow.DataType) datasetmd.PhysicalType {
 	toType, ok := arrowconv.DatasetType(dtype)
 	if !ok {
 		panic(fmt.Sprintf("unsupported dataset type %s", dtype))
@@ -407,6 +422,31 @@ func (r *Reader) Reset(opts ReaderOptions) {
 	}
 }
 
+// Close closes the Reader and releases any resources it holds. Closed Readers
+// can be reused by calling [Reader.Reset].
+func (r *Reader) Close() error {
+	if r.inner != nil {
+		return r.inner.Close()
+	}
+	return nil
+}
+
+func appendMissingColumns(dst, src []*Column) []*Column {
+	exists := make(map[*Column]struct{}, len(dst))
+	for _, col := range dst {
+		exists[col] = struct{}{}
+	}
+
+	for _, col := range src {
+		if _, ok := exists[col]; !ok {
+			// Not seen, add it.
+			dst = append(dst, col)
+		}
+	}
+
+	return dst
+}
+
 func columnsSchema(cols []*Column) *arrow.Schema {
 	fields := make([]arrow.Field, 0, len(cols))
 	for _, col := range cols {
@@ -420,7 +460,7 @@ var columnDatatypes = map[ColumnType]arrow.DataType{
 	ColumnTypeStreamID:         arrow.PrimitiveTypes.Int64,
 	ColumnTypeMinTimestamp:     arrow.FixedWidthTypes.Timestamp_ns,
 	ColumnTypeMaxTimestamp:     arrow.FixedWidthTypes.Timestamp_ns,
-	ColumnTypeLabel:            arrow.BinaryTypes.Binary,
+	ColumnTypeLabel:            arrow.BinaryTypes.String,
 	ColumnTypeRows:             arrow.PrimitiveTypes.Int64,
 	ColumnTypeUncompressedSize: arrow.PrimitiveTypes.Int64,
 }

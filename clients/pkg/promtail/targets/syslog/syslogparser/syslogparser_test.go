@@ -63,7 +63,7 @@ func TestParseStream_OctetCounting_LongMessage(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, 1, len(results))
-	require.EqualError(t, results[0].Error, "message too long to parse. was size 8198, max length 8192")
+	require.EqualError(t, results[0].Error, "message length (8198) exceeds maximum length (8192)")
 }
 
 func TestParseStream_NewlineSeparated(t *testing.T) {

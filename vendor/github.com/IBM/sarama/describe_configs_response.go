@@ -53,6 +53,10 @@ type DescribeConfigsResponse struct {
 	Resources    []*ResourceResponse
 }
 
+func (r *DescribeConfigsResponse) setVersion(v int16) {
+	r.Version = v
+}
+
 type ResourceResponse struct {
 	ErrorCode int16
 	ErrorMsg  string
@@ -78,7 +82,7 @@ type ConfigSynonym struct {
 }
 
 func (r *DescribeConfigsResponse) encode(pe packetEncoder) (err error) {
-	pe.putInt32(int32(r.ThrottleTime / time.Millisecond))
+	pe.putDurationMs(r.ThrottleTime)
 	if err = pe.putArrayLength(len(r.Resources)); err != nil {
 		return err
 	}
@@ -94,11 +98,9 @@ func (r *DescribeConfigsResponse) encode(pe packetEncoder) (err error) {
 
 func (r *DescribeConfigsResponse) decode(pd packetDecoder, version int16) (err error) {
 	r.Version = version
-	throttleTime, err := pd.getInt32()
-	if err != nil {
+	if r.ThrottleTime, err = pd.getDurationMs(); err != nil {
 		return err
 	}
-	r.ThrottleTime = time.Duration(throttleTime) * time.Millisecond
 
 	n, err := pd.getArrayLength()
 	if err != nil {
@@ -118,7 +120,7 @@ func (r *DescribeConfigsResponse) decode(pd packetDecoder, version int16) (err e
 }
 
 func (r *DescribeConfigsResponse) key() int16 {
-	return 32
+	return apiKeyDescribeConfigs
 }
 
 func (r *DescribeConfigsResponse) version() int16 {

@@ -16,6 +16,7 @@ func (a *SyncGroupRequestAssignment) encode(pe packetEncoder, version int16) (er
 		return err
 	}
 
+	pe.putEmptyTaggedFieldArray()
 	return nil
 }
 
@@ -28,7 +29,8 @@ func (a *SyncGroupRequestAssignment) decode(pd packetDecoder, version int16) (er
 		return err
 	}
 
-	return nil
+	_, err = pd.getEmptyTaggedFieldArray()
+	return err
 }
 
 type SyncGroupRequest struct {
@@ -44,6 +46,10 @@ type SyncGroupRequest struct {
 	GroupInstanceId *string
 	// GroupAssignments contains each assignment.
 	GroupAssignments []SyncGroupRequestAssignment
+}
+
+func (s *SyncGroupRequest) setVersion(v int16) {
+	s.Version = v
 }
 
 func (s *SyncGroupRequest) encode(pe packetEncoder) (err error) {
@@ -72,6 +78,7 @@ func (s *SyncGroupRequest) encode(pe packetEncoder) (err error) {
 		}
 	}
 
+	pe.putEmptyTaggedFieldArray()
 	return nil
 }
 
@@ -108,11 +115,12 @@ func (s *SyncGroupRequest) decode(pd packetDecoder, version int16) (err error) {
 		}
 	}
 
-	return nil
+	_, err = pd.getEmptyTaggedFieldArray()
+	return err
 }
 
 func (r *SyncGroupRequest) key() int16 {
-	return 14
+	return apiKeySyncGroup
 }
 
 func (r *SyncGroupRequest) version() int16 {
@@ -120,15 +128,28 @@ func (r *SyncGroupRequest) version() int16 {
 }
 
 func (r *SyncGroupRequest) headerVersion() int16 {
+	if r.Version >= 4 {
+		return 2
+	}
 	return 1
 }
 
 func (r *SyncGroupRequest) isValidVersion() bool {
-	return r.Version >= 0 && r.Version <= 3
+	return r.Version >= 0 && r.Version <= 4
+}
+
+func (r *SyncGroupRequest) isFlexible() bool {
+	return r.isFlexibleVersion(r.Version)
+}
+
+func (r *SyncGroupRequest) isFlexibleVersion(version int16) bool {
+	return version >= 4
 }
 
 func (r *SyncGroupRequest) requiredVersion() KafkaVersion {
 	switch r.Version {
+	case 4:
+		return V2_4_0_0
 	case 3:
 		return V2_3_0_0
 	case 2:

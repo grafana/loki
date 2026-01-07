@@ -1,6 +1,97 @@
 # Changes
 
 
+## [1.58.0](https://github.com/googleapis/google-cloud-go/releases/tag/storage%2Fv1.58.0) (2025-12-03)
+
+### Features
+
+* calculate crc32c by default and pass checksum in trailing and per-chunk request (#13205) ([2ab1c77](https://github.com/googleapis/google-cloud-go/commit/2ab1c77826f2d9c9d02b977296a78cf0ba3bd8bf))
+* add support for partial success in ListBuckets (#13320) ([d91e47f](https://github.com/googleapis/google-cloud-go/commit/d91e47f2fc91a95ad4fd54e574b371e172a3889b))
+* add object contexts in Go GCS SDK (#13390) ([079c4d9](https://github.com/googleapis/google-cloud-go/commit/079c4d960a2bafa5d170e2b1c97b00ea8b7917d9))
+
+### Bug Fixes
+
+* omit empty filter in http list object request (#13434) ([377eb13](https://github.com/googleapis/google-cloud-go/commit/377eb13bbadb4f455fac61c500f50ba9057890d4))
+
+## [1.57.2](https://github.com/googleapis/google-cloud-go/releases/tag/storage%2Fv1.57.2) (2025-11-14)
+
+### Bug Fixes
+
+* Handle redirect on takeover. (#13354) ([b0f1362](https://github.com/googleapis/google-cloud-go/commit/b0f136268be1e4c629e288353bc277549ac5c663))
+* add env var to allow disabling bound token (#13236) ([cdaf6a6](https://github.com/googleapis/google-cloud-go/commit/cdaf6a6da006a19db932a74885ea3722b4e42311))
+
+### Documentation
+
+* updates to docs and docs formatting ([93ca68d](https://github.com/googleapis/google-cloud-go/commit/93ca68d54b6d213f22e0d67ae01d135cf26d37c6))
+
+## [1.57.1](https://github.com/googleapis/google-cloud-go/compare/storage/v1.57.0...storage/v1.57.1) (2025-10-28)
+
+
+### Bug Fixes
+* **storage:** Takeover idempotence ([#13230](https://github.com/googleapis/google-cloud-go/issues/13230)) ([cc5d2a1](https://github.com/googleapis/google-cloud-go/commit/cc5d2a12293a509a14da9bea8a86c8655eaf4a71))
+* **storage:** Copy metadata when using Copier with grpc ([#12919](https://github.com/googleapis/google-cloud-go/issues/12919)) ([57a2e80](https://github.com/googleapis/google-cloud-go/commit/57a2e804f690ec8d4c55fd1c73b0dafd5cff46e5))
+* **storage:** Fix takeover response handling ([#13239](https://github.com/googleapis/google-cloud-go/issues/13239)) ([26d75bc](https://github.com/googleapis/google-cloud-go/commit/26d75bc08e242348d26691877aba7fa68cf30f7f))
+* **storage:** Remove default timeout for gRPC operations ([#13022](https://github.com/googleapis/google-cloud-go/issues/13022)) ([b94c3ba](https://github.com/googleapis/google-cloud-go/commit/b94c3ba69994d9c56ae8f302449dd8df6f287296))
+* **storage:** Skip download of file outside of target dir ([#12945](https://github.com/googleapis/google-cloud-go/issues/12945)) ([6259aee](https://github.com/googleapis/google-cloud-go/commit/6259aeec393d0d996961cac38396daa57ad1a290))
+* **storage:** Upgrade gRPC service registration func ([8fffca2](https://github.com/googleapis/google-cloud-go/commit/8fffca2819fa3dc858c213aa0c503e0df331b084))
+
+## [1.57.0](https://github.com/googleapis/google-cloud-go/compare/storage/v1.56.1...storage/v1.57.0) (2025-09-23)
+
+
+### Features
+
+* **storage/control:** Add new GetIamPolicy, SetIamPolicy, and TestIamPermissions RPCs ([d73f912](https://github.com/googleapis/google-cloud-go/commit/d73f9123be77bb3278f48d510cd0fb22feb605bc))
+* **storage:** Post support dynamic key name ([#12677](https://github.com/googleapis/google-cloud-go/issues/12677)) ([9e761f9](https://github.com/googleapis/google-cloud-go/commit/9e761f961a2c4351b3e0793ed655314ac5853903))
+* **storage:** WithMeterProvider allows custom meter provider configuration ([#12668](https://github.com/googleapis/google-cloud-go/issues/12668)) ([7f574b0](https://github.com/googleapis/google-cloud-go/commit/7f574b01e0b454c1ef5c13e6a58075e394ee990d))
+
+
+### Bug Fixes
+
+* **storage:** Free buffers in Bidi Reader ([#12839](https://github.com/googleapis/google-cloud-go/issues/12839)) ([bc247fd](https://github.com/googleapis/google-cloud-go/commit/bc247fdc3f5234a8bd6934e58d5b0b578f1335cb))
+* **storage:** Make Writer thread-safe. ([#12753](https://github.com/googleapis/google-cloud-go/issues/12753)) ([9ea380b](https://github.com/googleapis/google-cloud-go/commit/9ea380bea5b980a9054d201be4f315a195da2182))
+* **storage:** No progress report for oneshot write ([#12746](https://github.com/googleapis/google-cloud-go/issues/12746)) ([b97c286](https://github.com/googleapis/google-cloud-go/commit/b97c286ec369a10a81b1a8a3a1aae18b46d2dfbc))
+
+
+### Performance Improvements
+
+* **storage:** Pipeline gRPC writes ([#12422](https://github.com/googleapis/google-cloud-go/issues/12422)) ([1f2c5fe](https://github.com/googleapis/google-cloud-go/commit/1f2c5fe2843724302086fe04cb8dab8b515969c5))
+
+## [1.56.1](https://github.com/googleapis/google-cloud-go/compare/storage/v1.56.0...storage/v1.56.1) (2025-08-19)
+
+
+### Bug Fixes
+
+* **storage:** Fix redirect logic in MRD ([#12733](https://github.com/googleapis/google-cloud-go/issues/12733)) ([9f369f9](https://github.com/googleapis/google-cloud-go/commit/9f369f931853220550cabb3d67a5a5d3d9e137ba))
+* **storage:** Pass all user options to NewService ([#12615](https://github.com/googleapis/google-cloud-go/issues/12615)) ([77cdb83](https://github.com/googleapis/google-cloud-go/commit/77cdb832a374eba29e4de7699324a87f1d20eea3))
+* **storage:** ZB Reader redirect support ([#12703](https://github.com/googleapis/google-cloud-go/issues/12703)) ([3c7ea5c](https://github.com/googleapis/google-cloud-go/commit/3c7ea5ceb199d5787d36bf8f415f028bea66e3b5))
+
+## [1.56.0](https://github.com/googleapis/google-cloud-go/compare/storage/v1.55.0...storage/v1.56.0) (2025-07-24)
+
+
+### Features
+
+* **storage/control:** Update BUILD configs to support rest transportation for all client ([116a33a](https://github.com/googleapis/google-cloud-go/commit/116a33ab13c9fac6f6830dded55c24d38504707b))
+
+
+### Bug Fixes
+
+* **storage:** Avoid integration test segfaults. ([#12419](https://github.com/googleapis/google-cloud-go/issues/12419)) ([a9dec07](https://github.com/googleapis/google-cloud-go/commit/a9dec0763f85f083cc1da451249caae7ad97d904))
+* **storage:** Current object generation takeover. ([#12383](https://github.com/googleapis/google-cloud-go/issues/12383)) ([9ca8e01](https://github.com/googleapis/google-cloud-go/commit/9ca8e015405a523bbe68cbff2defbdff3dac0a61))
+* **storage:** Fix MultiRangeDownloader deadlock ([#12548](https://github.com/googleapis/google-cloud-go/issues/12548)) ([2eb23bb](https://github.com/googleapis/google-cloud-go/commit/2eb23bb01ffe92c967e772ef66c846357fbf5419))
+* **storage:** Remove object length limit for unfinalized reads ([#12489](https://github.com/googleapis/google-cloud-go/issues/12489)) ([5566d7d](https://github.com/googleapis/google-cloud-go/commit/5566d7dd5cc83afce38821961c447f5945e48456))
+
+
+### Performance Improvements
+
+* **storage:** Zero copy for MultiRangeDownloader ([#12542](https://github.com/googleapis/google-cloud-go/issues/12542)) ([a5e6a68](https://github.com/googleapis/google-cloud-go/commit/a5e6a681164d5be62270cde16891685a9f03bb12))
+
+
+### Documentation
+
+* **storage/internal:** Fix broken link for message `CustomPlacementConfig` ([9614487](https://github.com/googleapis/google-cloud-go/commit/96144875e01bfc8a59c2671c6eae87233710cef7))
+* **storage:** Fix typo in storage/doc.go ([#12391](https://github.com/googleapis/google-cloud-go/issues/12391)) ([bf74408](https://github.com/googleapis/google-cloud-go/commit/bf744088f0ed23ea510b914c994e1754ca1fc7c4))
+* **storage:** Improve error inspection documentation ([#12301](https://github.com/googleapis/google-cloud-go/issues/12301)) ([420da1a](https://github.com/googleapis/google-cloud-go/commit/420da1a64ac4040c8b2e6d6f0d66e7633426ac25))
+
 ## [1.55.0](https://github.com/googleapis/google-cloud-go/compare/storage/v1.54.0...storage/v1.55.0) (2025-05-29)
 
 

@@ -7,6 +7,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/util/filter"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -15,7 +16,7 @@ import (
 // deleteRequestBatch holds a batch of requests loaded for processing
 type deleteRequestBatch struct {
 	deleteRequestsToProcess map[string]*userDeleteRequests
-	duplicateRequests       []DeleteRequest
+	duplicateRequests       []deletionproto.DeleteRequest
 	count                   int
 	metrics                 *deleteRequestsManagerMetrics
 }
@@ -29,7 +30,7 @@ func newDeleteRequestBatch(metrics *deleteRequestsManagerMetrics) *deleteRequest
 
 func (b *deleteRequestBatch) reset() {
 	b.deleteRequestsToProcess = map[string]*userDeleteRequests{}
-	b.duplicateRequests = []DeleteRequest{}
+	b.duplicateRequests = []deletionproto.DeleteRequest{}
 	b.count = 0
 }
 
@@ -47,8 +48,8 @@ func (b *deleteRequestBatch) userIDs() []string {
 }
 
 // addDeleteRequest add a requests to the batch
-func (b *deleteRequestBatch) addDeleteRequest(dr *DeleteRequest) {
-	dr.Metrics = b.metrics
+func (b *deleteRequestBatch) addDeleteRequest(dr *deleteRequest) {
+	dr.TotalLinesDeletedMetric = b.metrics.deletedLinesTotal
 	ur, ok := b.deleteRequestsToProcess[dr.UserID]
 	if !ok {
 		ur = &userDeleteRequests{
@@ -70,15 +71,15 @@ func (b *deleteRequestBatch) addDeleteRequest(dr *DeleteRequest) {
 	b.count++
 }
 
-func (b *deleteRequestBatch) checkDuplicate(deleteRequest DeleteRequest) error {
+func (b *deleteRequestBatch) checkDuplicate(deleteRequest deleteRequest) (bool, error) {
 	ur, ok := b.deleteRequestsToProcess[deleteRequest.UserID]
 	if !ok {
-		return nil
+		return false, nil
 	}
 	for _, requestLoadedForProcessing := range ur.requests {
 		isDuplicate, err := requestLoadedForProcessing.IsDuplicate(&deleteRequest)
 		if err != nil {
-			return err
+			return false, err
 		}
 		if isDuplicate {
 			level.Info(util_log.Logger).Log(
@@ -87,14 +88,15 @@ func (b *deleteRequestBatch) checkDuplicate(deleteRequest DeleteRequest) error {
 				"duplicate_request_id", deleteRequest.RequestID,
 				"user", deleteRequest.UserID,
 			)
-			b.duplicateRequests = append(b.duplicateRequests, deleteRequest)
+			b.duplicateRequests = append(b.duplicateRequests, deleteRequest.DeleteRequest)
+			return true, nil
 		}
 	}
 
-	return nil
+	return false, nil
 }
 
-func (b *deleteRequestBatch) expired(userID []byte, chk retention.Chunk, lbls labels.Labels, skipRequest func(*DeleteRequest) bool) (bool, filter.Func) {
+func (b *deleteRequestBatch) expired(userID []byte, chk retention.Chunk, lbls labels.Labels, skipRequest func(*deleteRequest) bool) (bool, filter.Func) {
 	userIDStr := unsafeGetString(userID)
 	if b.deleteRequestsToProcess[userIDStr] == nil || !intervalsOverlap(b.deleteRequestsToProcess[userIDStr].requestsInterval, model.Interval{
 		Start: chk.From,
@@ -155,11 +157,29 @@ func (b *deleteRequestBatch) intervalMayHaveExpiredChunks(userID string) bool {
 	return len(b.deleteRequestsToProcess) != 0
 }
 
-func (b *deleteRequestBatch) getAllRequestsForUser(userID string) []*DeleteRequest {
+func (b *deleteRequestBatch) getAllRequestsForUser(userID string) []*deleteRequest {
 	userRequests, ok := b.deleteRequestsToProcess[userID]
 	if !ok {
 		return nil
 	}
 
 	return userRequests.requests
+}
+
+func (b *deleteRequestBatch) getAllRequests() []*deleteRequest {
+	requests := make([]*deleteRequest, 0, b.count)
+	for _, ur := range b.deleteRequestsToProcess {
+		requests = append(requests, ur.requests...)
+	}
+
+	return requests
+}
+
+func (b *deleteRequestBatch) getDeletionIntervalForUser(userID string) model.Interval {
+	userRequests, ok := b.deleteRequestsToProcess[userID]
+	if !ok {
+		return model.Interval{}
+	}
+
+	return userRequests.requestsInterval
 }

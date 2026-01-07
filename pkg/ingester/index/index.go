@@ -140,7 +140,7 @@ func labelsString(b *bytes.Buffer, ls labels.Labels) {
 	b.WriteByte('{')
 	i := 0
 	ls.Range(func(l labels.Label) {
-		if l.Name == labels.MetricName {
+		if l.Name == model.MetricNameLabel {
 			return
 		}
 		if i > 0 {

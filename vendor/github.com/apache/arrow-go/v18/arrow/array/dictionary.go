@@ -63,7 +63,7 @@ type Dictionary struct {
 // and dictionary using the given type.
 func NewDictionaryArray(typ arrow.DataType, indices, dict arrow.Array) *Dictionary {
 	a := &Dictionary{}
-	a.array.refCount.Add(1)
+	a.refCount.Add(1)
 	dictdata := NewData(typ, indices.Len(), indices.Data().Buffers(), indices.Data().Children(), indices.NullN(), indices.Data().Offset())
 	dictdata.dictionary = dict.Data().(*Data)
 	dict.Data().Retain()
@@ -296,8 +296,8 @@ func (d *Dictionary) GetOneForMarshal(i int) interface{} {
 }
 
 func (d *Dictionary) MarshalJSON() ([]byte, error) {
-	vals := make([]interface{}, d.Len())
-	for i := 0; i < d.Len(); i++ {
+	vals := make([]any, d.Len())
+	for i := range d.Len() {
 		vals[i] = d.GetOneForMarshal(i)
 	}
 	return json.Marshal(vals)
@@ -365,31 +365,31 @@ func createIndexBuilder(mem memory.Allocator, dt arrow.FixedWidthDataType) (ret 
 func createMemoTable(mem memory.Allocator, dt arrow.DataType) (ret hashing.MemoTable, err error) {
 	switch dt.ID() {
 	case arrow.INT8:
-		ret = hashing.NewInt8MemoTable(0)
+		ret = hashing.NewMemoTable[int8](0)
 	case arrow.UINT8:
-		ret = hashing.NewUint8MemoTable(0)
+		ret = hashing.NewMemoTable[uint8](0)
 	case arrow.INT16:
-		ret = hashing.NewInt16MemoTable(0)
+		ret = hashing.NewMemoTable[int16](0)
 	case arrow.UINT16:
-		ret = hashing.NewUint16MemoTable(0)
+		ret = hashing.NewMemoTable[uint16](0)
 	case arrow.INT32:
-		ret = hashing.NewInt32MemoTable(0)
+		ret = hashing.NewMemoTable[int32](0)
 	case arrow.UINT32:
-		ret = hashing.NewUint32MemoTable(0)
+		ret = hashing.NewMemoTable[uint32](0)
 	case arrow.INT64:
-		ret = hashing.NewInt64MemoTable(0)
+		ret = hashing.NewMemoTable[int64](0)
 	case arrow.UINT64:
-		ret = hashing.NewUint64MemoTable(0)
+		ret = hashing.NewMemoTable[uint64](0)
 	case arrow.DURATION, arrow.TIMESTAMP, arrow.DATE64, arrow.TIME64:
-		ret = hashing.NewInt64MemoTable(0)
+		ret = hashing.NewMemoTable[int64](0)
 	case arrow.TIME32, arrow.DATE32, arrow.INTERVAL_MONTHS:
-		ret = hashing.NewInt32MemoTable(0)
+		ret = hashing.NewMemoTable[int32](0)
 	case arrow.FLOAT16:
-		ret = hashing.NewUint16MemoTable(0)
+		ret = hashing.NewMemoTable[uint16](0)
 	case arrow.FLOAT32:
-		ret = hashing.NewFloat32MemoTable(0)
+		ret = hashing.NewMemoTable[float32](0)
 	case arrow.FLOAT64:
-		ret = hashing.NewFloat64MemoTable(0)
+		ret = hashing.NewMemoTable[float64](0)
 	case arrow.BINARY, arrow.FIXED_SIZE_BINARY, arrow.DECIMAL32, arrow.DECIMAL64,
 		arrow.DECIMAL128, arrow.DECIMAL256, arrow.INTERVAL_DAY_TIME, arrow.INTERVAL_MONTH_DAY_NANO:
 		ret = hashing.NewBinaryMemoTable(0, 0, NewBinaryBuilder(mem, arrow.BinaryTypes.Binary))
@@ -432,7 +432,7 @@ func createDictBuilder[T arrow.ValueType](mem memory.Allocator, idxbldr IndexBui
 			dt:         dt,
 		},
 	}
-	ret.builder.refCount.Add(1)
+	ret.refCount.Add(1)
 
 	if init != nil {
 		if err := ret.InsertDictValues(init.(arrValues[T])); err != nil {
@@ -451,7 +451,7 @@ func createBinaryDictBuilder(mem memory.Allocator, idxbldr IndexBuilder, memo ha
 			dt:         dt,
 		},
 	}
-	ret.builder.refCount.Add(1)
+	ret.refCount.Add(1)
 
 	if init != nil {
 		switch v := init.(type) {
@@ -479,7 +479,7 @@ func createFixedSizeDictBuilder[T fsbType](mem memory.Allocator, idxbldr IndexBu
 		},
 		byteWidth: int(unsafe.Sizeof(z)),
 	}
-	ret.builder.refCount.Add(1)
+	ret.refCount.Add(1)
 
 	if init != nil {
 		if err := ret.InsertDictValues(init.(arrValues[T])); err != nil {
@@ -517,7 +517,7 @@ func NewDictionaryBuilderWithDict(mem memory.Allocator, dt *arrow.DictionaryType
 				dt:         dt,
 			},
 		}
-		ret.builder.refCount.Add(1)
+		ret.refCount.Add(1)
 		debug.Assert(init == nil, "arrow/array: doesn't make sense to init a null dictionary")
 		return ret
 	case arrow.UINT8:
@@ -554,7 +554,7 @@ func NewDictionaryBuilderWithDict(mem memory.Allocator, dt *arrow.DictionaryType
 			},
 			byteWidth: dt.ValueType.(*arrow.FixedSizeBinaryType).ByteWidth,
 		}
-		ret.builder.refCount.Add(1)
+		ret.refCount.Add(1)
 
 		if init != nil {
 			if err = ret.InsertDictValues(init.(*FixedSizeBinary)); err != nil {
@@ -656,7 +656,7 @@ func (b *dictionaryBuilder) Resize(n int) {
 }
 
 func (b *dictionaryBuilder) ResetFull() {
-	b.builder.reset()
+	b.reset()
 	b.idxBuilder.NewArray().Release()
 	b.memoTable.Reset()
 }
@@ -1153,8 +1153,8 @@ func (b *FixedSizeBinaryDictionaryBuilder) Append(v []byte) error {
 
 func (b *FixedSizeBinaryDictionaryBuilder) InsertDictValues(arr *FixedSizeBinary) (err error) {
 	var (
-		beg = arr.array.data.offset * b.byteWidth
-		end = (arr.array.data.offset + arr.data.length) * b.byteWidth
+		beg = arr.data.offset * b.byteWidth
+		end = (arr.data.offset + arr.data.length) * b.byteWidth
 	)
 	data := arr.valueBytes[beg:end]
 	for len(data) > 0 {
@@ -1650,6 +1650,32 @@ func UnifyTableDicts(alloc memory.Allocator, table arrow.Table) (arrow.Table, er
 		defer cols[i].Release()
 	}
 	return NewTable(table.Schema(), cols, table.NumRows()), nil
+}
+
+type dictWrapper[T arrow.ValueType] struct {
+	*Dictionary
+
+	typedDict arrow.TypedArray[T]
+}
+
+// NewDictWrapper creates a simple wrapper around a Dictionary array that provides
+// a Value method which will use the underlying dictionary to return the value
+// at the given index. This simplifies the interaction of a dictionary array to
+// provide a typed interface as if it were a non-dictionary array.
+func NewDictWrapper[T arrow.ValueType](dict *Dictionary) (arrow.TypedArray[T], error) {
+	typed, ok := dict.Dictionary().(arrow.TypedArray[T])
+	if !ok {
+		return nil, fmt.Errorf("arrow/array: dictionary type %s is not a typed array of %T", dict.Dictionary().DataType(), (*T)(nil))
+	}
+
+	return &dictWrapper[T]{
+		Dictionary: dict,
+		typedDict:  typed,
+	}, nil
+}
+
+func (dw *dictWrapper[T]) Value(i int) T {
+	return dw.typedDict.Value(dw.GetValueIndex(i))
 }
 
 var (

@@ -454,9 +454,9 @@ func minimalWorkingConfig(t *testing.T, dir, target string, cfgTransformers ...f
 	cfg.CompactorConfig.CompactorRing.InstanceAddr = localhost
 	cfg.CompactorConfig.WorkingDirectory = filepath.Join(dir, "compactor")
 
-	cfg.Ruler.Config.Ring.InstanceAddr = localhost
-	cfg.Ruler.Config.StoreConfig.Type = types.StorageTypeLocal
-	cfg.Ruler.Config.StoreConfig.Local.Directory = dir
+	cfg.Ruler.Ring.InstanceAddr = localhost
+	cfg.Ruler.StoreConfig.Type = types.StorageTypeLocal
+	cfg.Ruler.StoreConfig.Local.Directory = dir
 
 	cfg.Common.CompactorAddress = "http://localhost:0"
 	cfg.Common.PathPrefix = dir

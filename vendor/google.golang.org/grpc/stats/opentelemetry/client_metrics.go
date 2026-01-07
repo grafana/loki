@@ -54,7 +54,7 @@ func (h *clientMetricsHandler) initializeMetrics() {
 		metrics = DefaultMetrics()
 	}
 
-	h.clientMetrics.attemptStarted = createInt64Counter(metrics.Metrics(), "grpc.client.attempt.started", meter, otelmetric.WithUnit("attempt"), otelmetric.WithDescription("Number of client call attempts started."))
+	h.clientMetrics.attemptStarted = createInt64Counter(metrics.Metrics(), "grpc.client.attempt.started", meter, otelmetric.WithUnit("{attempt}"), otelmetric.WithDescription("Number of client call attempts started."))
 	h.clientMetrics.attemptDuration = createFloat64Histogram(metrics.Metrics(), "grpc.client.attempt.duration", meter, otelmetric.WithUnit("s"), otelmetric.WithDescription("End-to-end time taken to complete a client call attempt."), otelmetric.WithExplicitBucketBoundaries(DefaultLatencyBounds...))
 	h.clientMetrics.attemptSentTotalCompressedMessageSize = createInt64Histogram(metrics.Metrics(), "grpc.client.attempt.sent_total_compressed_message_size", meter, otelmetric.WithUnit("By"), otelmetric.WithDescription("Compressed message bytes sent per client call attempt."), otelmetric.WithExplicitBucketBoundaries(DefaultSizeBounds...))
 	h.clientMetrics.attemptRcvdTotalCompressedMessageSize = createInt64Histogram(metrics.Metrics(), "grpc.client.attempt.rcvd_total_compressed_message_size", meter, otelmetric.WithUnit("By"), otelmetric.WithDescription("Compressed message bytes received per call attempt."), otelmetric.WithExplicitBucketBoundaries(DefaultSizeBounds...))
@@ -72,9 +72,6 @@ func (h *clientMetricsHandler) initializeMetrics() {
 func getOrCreateCallInfo(ctx context.Context, cc *grpc.ClientConn, method string, opts ...grpc.CallOption) (context.Context, *callInfo) {
 	ci := getCallInfo(ctx)
 	if ci == nil {
-		if logger.V(2) {
-			logger.Info("Creating new CallInfo since its not present in context")
-		}
 		ci = &callInfo{
 			target: cc.CanonicalTarget(),
 			method: determineMethod(method, opts...),
@@ -177,7 +174,8 @@ func (h *clientMetricsHandler) TagRPC(ctx context.Context, info *stats.RPCTagInf
 			// executes on the callpath that this OpenTelemetry component
 			// currently supports.
 			TelemetryLabels: map[string]string{
-				"grpc.lb.locality": "",
+				"grpc.lb.locality":        "",
+				"grpc.lb.backend_service": "",
 			},
 		}
 		ctx = istats.SetLabels(ctx, labels)

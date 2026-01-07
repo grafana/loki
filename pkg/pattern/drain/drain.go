@@ -26,18 +26,13 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 	"unsafe"
 
 	"github.com/hashicorp/golang-lru/v2/simplelru"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/labels"
-
-	"github.com/grafana/loki/v3/pkg/loghttp/push"
-	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/pattern/aggregation"
-	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 type Config struct {
@@ -50,6 +45,8 @@ type Config struct {
 	ParamString          string
 	MaxEvictionRatio     float64
 	MaxAllowedLineLength int
+	MaxChunkAge          time.Duration
+	SampleInterval       time.Duration
 }
 
 type Limits interface {
@@ -141,21 +138,22 @@ func DefaultConfig() *Config {
 		MaxClusters:          300,
 		MaxEvictionRatio:     0.25,
 		MaxAllowedLineLength: 3000,
+		MaxChunkAge:          time.Hour,
+		SampleInterval:       10 * time.Second,
 	}
 }
 
-func New(tenantID string, config *Config, limits Limits, format string, patternWriter aggregation.EntryWriter, metrics *Metrics) *Drain {
+func New(tenantID string, config *Config, limits Limits, format string, metrics *Metrics) *Drain {
 	if config.LogClusterDepth < 3 {
 		panic("depth argument must be at least 3")
 	}
 	config.maxNodeDepth = config.LogClusterDepth - 2
 
 	d := &Drain{
-		config:        config,
-		rootNode:      createNode(),
-		metrics:       metrics,
-		format:        format,
-		patternWriter: patternWriter,
+		config:   config,
+		rootNode: createNode(),
+		metrics:  metrics,
+		format:   format,
 	}
 
 	limiter := newLimiter(config.MaxEvictionRatio)
@@ -203,14 +201,13 @@ type Drain struct {
 	state           interface{}
 	limiter         *limiter
 	pruning         bool
-	patternWriter   aggregation.EntryWriter
 }
 
 func (d *Drain) Clusters() []*LogCluster {
 	return d.idToCluster.Values()
 }
 
-func (d *Drain) Train(lvl, content string, ts int64, lbls labels.Labels) *LogCluster {
+func (d *Drain) Train(content string, ts int64) *LogCluster {
 	if !d.limiter.Allow() {
 		return nil
 	}
@@ -223,10 +220,10 @@ func (d *Drain) Train(lvl, content string, ts int64, lbls labels.Labels) *LogClu
 		return nil
 	}
 
-	return d.train(lvl, d.tokens, d.state, ts, lbls)
+	return d.train(d.tokens, d.state, ts, int64(len(content)))
 }
 
-func (d *Drain) train(lvl string, tokens []string, state interface{}, ts int64, lbls labels.Labels) *LogCluster {
+func (d *Drain) train(tokens []string, state any, ts int64, contentSize int64) *LogCluster {
 	if len(tokens) < 4 {
 		if d.metrics != nil && d.metrics.LinesSkipped != nil {
 			d.metrics.LinesSkipped.WithLabelValues(TooFewTokens).Inc()
@@ -252,24 +249,17 @@ func (d *Drain) train(lvl string, tokens []string, state interface{}, ts int64, 
 		clusterID := d.clustersCounter
 		tokens, state = d.tokenizer.Clone(tokens, state)
 		matchCluster = &LogCluster{
-			Tokens:     tokens,
-			TokenState: state,
-			id:         clusterID,
-			Size:       1,
-			Stringer:   d.tokenizer.Join,
-			Chunks:     Chunks{},
+			Tokens:      tokens,
+			TokenState:  state,
+			id:          clusterID,
+			Size:        1,
+			Stringer:    d.tokenizer.Join,
+			Chunks:      Chunks{},
+			Volume:      contentSize,
+			SampleCount: 1,
 		}
 		modeTs := model.TimeFromUnixNano(ts)
-		previousSample := matchCluster.append(modeTs)
-		if previousSample != nil {
-			d.writePattern(
-				previousSample.Timestamp,
-				lbls,
-				matchCluster.String(),
-				previousSample.Value,
-				lvl,
-			)
-		}
+		matchCluster.append(modeTs, d.config.MaxChunkAge, d.config.SampleInterval)
 		d.idToCluster.Set(clusterID, matchCluster)
 		d.addSeqToPrefixTree(d.rootNode, matchCluster)
 		if d.metrics != nil {
@@ -277,50 +267,13 @@ func (d *Drain) train(lvl string, tokens []string, state interface{}, ts int64, 
 		}
 	} else {
 		matchCluster.Tokens = d.createTemplate(tokens, matchCluster.Tokens)
-		previousSample := matchCluster.append(model.TimeFromUnixNano(ts))
-		if previousSample != nil {
-			d.writePattern(
-				previousSample.Timestamp,
-				lbls,
-				matchCluster.String(),
-				previousSample.Value,
-				lvl,
-			)
-		}
+		matchCluster.append(model.TimeFromUnixNano(ts), d.config.MaxChunkAge, d.config.SampleInterval)
+		matchCluster.Volume += contentSize
+		matchCluster.SampleCount++
 		// Touch cluster to update its state in the cache.
 		d.idToCluster.Get(matchCluster.id)
 	}
 	return matchCluster
-}
-
-func (d *Drain) writePattern(
-	ts model.Time,
-	streamLbls labels.Labels,
-	pattern string,
-	count int64,
-	lvl string,
-) {
-	service := streamLbls.Get(push.LabelServiceName)
-	if service == "" {
-		service = push.ServiceUnknown
-	}
-
-	newLbls := labels.Labels{
-		labels.Label{Name: constants.PatternLabel, Value: service},
-	}
-
-	newStructuredMetadata := []logproto.LabelAdapter{
-		{Name: constants.LevelLabel, Value: lvl},
-	}
-
-	if d.patternWriter != nil {
-		d.patternWriter.WriteEntry(
-			ts.Time(),
-			aggregation.PatternEntry(ts.Time(), count, pattern, streamLbls),
-			newLbls,
-			newStructuredMetadata,
-		)
-	}
 }
 
 func deduplicatePlaceholders(line string, placeholder string) string {
@@ -463,9 +416,10 @@ func (d *Drain) getSeqDistance(clusterTokens, tokens []string, includeParams boo
 		if len(token1) > 0 && token1[0] == 0 && token1 != token2 {
 			return 0, -1
 		}
-		if token1 == d.config.ParamString {
+		switch token1 {
+		case d.config.ParamString:
 			paramCount++
-		} else if token1 == token2 {
+		case token2:
 			simTokens++
 		}
 	}
@@ -575,9 +529,9 @@ func (d *Drain) createTemplate(tokens, matchClusterTokens []string) []string {
 }
 
 func unsafeString(s []byte) string {
-	return unsafe.String(unsafe.SliceData(s), len(s)) // #nosec G103 -- we know the string is not mutated
+	return unsafe.String(unsafe.SliceData(s), len(s)) // #nosec G103 -- we know the string is not mutated -- nosemgrep: use-of-unsafe-block
 }
 
 func unsafeBytes(s string) []byte {
-	return unsafe.Slice(unsafe.StringData(s), len(s)) // #nosec G103 -- we know the string is not mutated
+	return unsafe.Slice(unsafe.StringData(s), len(s)) // #nosec G103 -- we know the string is not mutated -- nosemgrep: use-of-unsafe-block
 }

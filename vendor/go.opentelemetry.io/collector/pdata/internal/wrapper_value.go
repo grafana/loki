@@ -3,73 +3,73 @@
 
 package internal // import "go.opentelemetry.io/collector/pdata/internal"
 
-import (
-	otlpcommon "go.opentelemetry.io/collector/pdata/internal/data/protogen/common/v1"
-)
-
-type Value struct {
-	orig  *otlpcommon.AnyValue
+type ValueWrapper struct {
+	orig  *AnyValue
 	state *State
 }
 
-func GetOrigValue(ms Value) *otlpcommon.AnyValue {
+func GetValueOrig(ms ValueWrapper) *AnyValue {
 	return ms.orig
 }
 
-func GetValueState(ms Value) *State {
+func GetValueState(ms ValueWrapper) *State {
 	return ms.state
 }
 
-func NewValue(orig *otlpcommon.AnyValue, state *State) Value {
-	return Value{orig: orig, state: state}
+func NewValueWrapper(orig *AnyValue, state *State) ValueWrapper {
+	return ValueWrapper{orig: orig, state: state}
 }
 
-func CopyOrigValue(dest, src *otlpcommon.AnyValue) {
-	switch sv := src.Value.(type) {
-	case *otlpcommon.AnyValue_KvlistValue:
-		dv, ok := dest.Value.(*otlpcommon.AnyValue_KvlistValue)
-		if !ok {
-			dv = &otlpcommon.AnyValue_KvlistValue{KvlistValue: &otlpcommon.KeyValueList{}}
-			dest.Value = dv
-		}
-		if sv.KvlistValue == nil {
-			dv.KvlistValue = nil
-			return
-		}
-		dv.KvlistValue.Values = CopyOrigMap(dv.KvlistValue.Values, sv.KvlistValue.Values)
-	case *otlpcommon.AnyValue_ArrayValue:
-		dv, ok := dest.Value.(*otlpcommon.AnyValue_ArrayValue)
-		if !ok {
-			dv = &otlpcommon.AnyValue_ArrayValue{ArrayValue: &otlpcommon.ArrayValue{}}
-			dest.Value = dv
-		}
-		if sv.ArrayValue == nil {
-			dv.ArrayValue = nil
-			return
-		}
-		dv.ArrayValue.Values = CopyOrigSlice(dv.ArrayValue.Values, sv.ArrayValue.Values)
-	case *otlpcommon.AnyValue_BytesValue:
-		bv, ok := dest.Value.(*otlpcommon.AnyValue_BytesValue)
-		if !ok {
-			bv = &otlpcommon.AnyValue_BytesValue{}
-			dest.Value = bv
-		}
-		bv.BytesValue = make([]byte, len(sv.BytesValue))
-		copy(bv.BytesValue, sv.BytesValue)
-	default:
-		// Primitive immutable type, no need for deep copy.
-		dest.Value = sv
+func GenTestValueWrapper() ValueWrapper {
+	orig := GenTestAnyValue()
+	return NewValueWrapper(orig, NewState())
+}
+
+func NewAnyValueStringValue() *AnyValue_StringValue {
+	if !UseProtoPooling.IsEnabled() {
+		return &AnyValue_StringValue{}
 	}
+	return ProtoPoolAnyValue_StringValue.Get().(*AnyValue_StringValue)
 }
 
-func FillTestValue(dest Value) {
-	dest.orig.Value = &otlpcommon.AnyValue_StringValue{StringValue: "v"}
+func NewAnyValueIntValue() *AnyValue_IntValue {
+	if !UseProtoPooling.IsEnabled() {
+		return &AnyValue_IntValue{}
+	}
+	return ProtoPoolAnyValue_IntValue.Get().(*AnyValue_IntValue)
 }
 
-func GenerateTestValue() Value {
-	var orig otlpcommon.AnyValue
-	state := StateMutable
-	ms := NewValue(&orig, &state)
-	FillTestValue(ms)
-	return ms
+func NewAnyValueBoolValue() *AnyValue_BoolValue {
+	if !UseProtoPooling.IsEnabled() {
+		return &AnyValue_BoolValue{}
+	}
+	return ProtoPoolAnyValue_BoolValue.Get().(*AnyValue_BoolValue)
+}
+
+func NewAnyValueDoubleValue() *AnyValue_DoubleValue {
+	if !UseProtoPooling.IsEnabled() {
+		return &AnyValue_DoubleValue{}
+	}
+	return ProtoPoolAnyValue_DoubleValue.Get().(*AnyValue_DoubleValue)
+}
+
+func NewAnyValueBytesValue() *AnyValue_BytesValue {
+	if !UseProtoPooling.IsEnabled() {
+		return &AnyValue_BytesValue{}
+	}
+	return ProtoPoolAnyValue_BytesValue.Get().(*AnyValue_BytesValue)
+}
+
+func NewAnyValueArrayValue() *AnyValue_ArrayValue {
+	if !UseProtoPooling.IsEnabled() {
+		return &AnyValue_ArrayValue{}
+	}
+	return ProtoPoolAnyValue_ArrayValue.Get().(*AnyValue_ArrayValue)
+}
+
+func NewAnyValueKvlistValue() *AnyValue_KvlistValue {
+	if !UseProtoPooling.IsEnabled() {
+		return &AnyValue_KvlistValue{}
+	}
+	return ProtoPoolAnyValue_KvlistValue.Get().(*AnyValue_KvlistValue)
 }

@@ -130,6 +130,9 @@ func (c *tablesManager) start(ctx context.Context) {
 		}()
 
 		for _, container := range c.storeContainers {
+			if container.sweeper == nil {
+				continue
+			}
 			wg.Add(1)
 			go func(sc storeContainer) {
 				// starts the chunk sweeper
@@ -453,8 +456,8 @@ func (c *tablesManager) ApplyStorageUpdates(ctx context.Context, iterator deleti
 			}
 		}
 
-		if err := iterator.ForEachSeries(func(labels string, chunksToDelete []string, chunksToDeIndex []string, chunksToIndex []deletion.Chunk) error {
-			return table.applyStorageUpdates(userID, labels, chunksToDelete, chunksToDeIndex, chunksToIndex)
+		if err := iterator.ForEachSeries(func(labels string, rebuiltChunks map[string]deletion.Chunk, chunksToDeIndex []string) error {
+			return table.applyStorageUpdates(userID, labels, rebuiltChunks, chunksToDeIndex)
 		}); err != nil {
 			return err
 		}

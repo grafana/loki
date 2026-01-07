@@ -16,7 +16,6 @@ package storage
 
 import (
 	"context"
-	"io"
 	"time"
 
 	"cloud.google.com/go/iam/apiv1/iampb"
@@ -88,7 +87,7 @@ type storageClient interface {
 	RewriteObject(ctx context.Context, req *rewriteObjectRequest, opts ...storageOption) (*rewriteObjectResponse, error)
 
 	NewRangeReader(ctx context.Context, params *newRangeReaderParams, opts ...storageOption) (*Reader, error)
-	OpenWriter(params *openWriterParams, opts ...storageOption) (*io.PipeWriter, error)
+	OpenWriter(params *openWriterParams, opts ...storageOption) (internalWriter, error)
 
 	// IAM methods.
 
@@ -266,6 +265,9 @@ type openWriterParams struct {
 	// sendCRC32C - see `Writer.SendCRC32C`.
 	// Optional.
 	sendCRC32C bool
+	// disableAutoChecksum - see `Writer.DisableAutoChecksum`.
+	// Optional.
+	disableAutoChecksum bool
 	// append - Write with appendable object semantics.
 	// Optional.
 	append bool
@@ -290,11 +292,6 @@ type openWriterParams struct {
 	setObj func(*ObjectAttrs)
 	// setSize callback for updated the persisted size in Writer.obj.
 	setSize func(int64)
-	// setFlush callback for providing a Flush function implementation - see `Writer.Flush`.
-	// Required.
-	setFlush func(func() (int64, error))
-	// setPipeWriter callback for reseting `Writer.pw` if needed.
-	setPipeWriter func(*io.PipeWriter)
 	// setTakeoverOffset callback for returning offset to start writing from to Writer.
 	setTakeoverOffset func(int64)
 }

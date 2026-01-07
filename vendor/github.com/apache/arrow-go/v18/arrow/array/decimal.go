@@ -83,8 +83,8 @@ func (a *baseDecimal[T]) setData(data *Data) {
 	vals := data.buffers[1]
 	if vals != nil {
 		a.values = arrow.GetData[T](vals.Bytes())
-		beg := a.array.data.offset
-		end := beg + a.array.data.length
+		beg := a.data.offset
+		end := beg + a.data.length
 		a.values = a.values[beg:end]
 	}
 }
@@ -187,7 +187,7 @@ func newDecimalBuilder[T interface {
 		builder: builder{mem: mem},
 		dtype:   dtype,
 	}
-	bdb.builder.refCount.Add(1)
+	bdb.refCount.Add(1)
 	return bdb
 }
 
@@ -263,7 +263,7 @@ func (b *baseDecimalBuilder[T]) AppendValues(v []T, valid []bool) {
 	if len(v) > 0 {
 		copy(b.rawData[b.length:], v)
 	}
-	b.builder.unsafeAppendBoolsToBitmap(valid, len(v))
+	b.unsafeAppendBoolsToBitmap(valid, len(v))
 }
 
 func (b *baseDecimalBuilder[T]) init(capacity int) {
@@ -276,7 +276,7 @@ func (b *baseDecimalBuilder[T]) init(capacity int) {
 }
 
 func (b *baseDecimalBuilder[T]) Reserve(n int) {
-	b.builder.reserve(n, b.Resize)
+	b.reserve(n, b.Resize)
 }
 
 func (b *baseDecimalBuilder[T]) Resize(n int) {
@@ -288,7 +288,7 @@ func (b *baseDecimalBuilder[T]) Resize(n int) {
 	if b.capacity == 0 {
 		b.init(n)
 	} else {
-		b.builder.resize(nBuilder, b.init)
+		b.resize(nBuilder, b.init)
 		b.data.Resize(b.traits.BytesRequired(n))
 		b.rawData = arrow.GetData[T](b.data.Bytes())
 	}

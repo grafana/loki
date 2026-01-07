@@ -10,30 +10,46 @@ type DescribeLogDirsResponse struct {
 	Version int16
 
 	LogDirs []DescribeLogDirsResponseDirMetadata
+
+	ErrorCode KError
+}
+
+func (r *DescribeLogDirsResponse) setVersion(v int16) {
+	r.Version = v
 }
 
 func (r *DescribeLogDirsResponse) encode(pe packetEncoder) error {
-	pe.putInt32(int32(r.ThrottleTime / time.Millisecond))
+	pe.putDurationMs(r.ThrottleTime)
+
+	if r.Version >= 3 {
+		pe.putKError(r.ErrorCode)
+	}
 
 	if err := pe.putArrayLength(len(r.LogDirs)); err != nil {
 		return err
 	}
 
 	for _, dir := range r.LogDirs {
-		if err := dir.encode(pe); err != nil {
+		if err := dir.encode(pe, r.Version); err != nil {
 			return err
 		}
 	}
 
+	pe.putEmptyTaggedFieldArray()
 	return nil
 }
 
-func (r *DescribeLogDirsResponse) decode(pd packetDecoder, version int16) error {
-	throttleTime, err := pd.getInt32()
-	if err != nil {
+func (r *DescribeLogDirsResponse) decode(pd packetDecoder, version int16) (err error) {
+	if r.ThrottleTime, err = pd.getDurationMs(); err != nil {
 		return err
 	}
-	r.ThrottleTime = time.Duration(throttleTime) * time.Millisecond
+
+	if version >= 3 {
+		r.ErrorCode, err = pd.getKError()
+		if err != nil {
+			return err
+		}
+	}
 
 	// Decode array of DescribeLogDirsResponseDirMetadata
 	n, err := pd.getArrayLength()
@@ -50,11 +66,12 @@ func (r *DescribeLogDirsResponse) decode(pd packetDecoder, version int16) error 
 		r.LogDirs[i] = dir
 	}
 
-	return nil
+	_, err = pd.getEmptyTaggedFieldArray()
+	return err
 }
 
 func (r *DescribeLogDirsResponse) key() int16 {
-	return 35
+	return apiKeyDescribeLogDirs
 }
 
 func (r *DescribeLogDirsResponse) version() int16 {
@@ -62,18 +79,37 @@ func (r *DescribeLogDirsResponse) version() int16 {
 }
 
 func (r *DescribeLogDirsResponse) headerVersion() int16 {
+	if r.Version >= 2 {
+		return 1
+	}
 	return 0
 }
 
 func (r *DescribeLogDirsResponse) isValidVersion() bool {
-	return r.Version >= 0 && r.Version <= 1
+	return r.Version >= 0 && r.Version <= 4
+}
+
+func (r *DescribeLogDirsResponse) isFlexible() bool {
+	return r.isFlexibleVersion(r.Version)
+}
+
+func (r *DescribeLogDirsResponse) isFlexibleVersion(version int16) bool {
+	return version >= 2
 }
 
 func (r *DescribeLogDirsResponse) requiredVersion() KafkaVersion {
-	if r.Version > 0 {
+	switch r.Version {
+	case 4:
+		return V3_3_0_0
+	case 3:
+		return V3_2_0_0
+	case 2:
+		return V2_6_0_0
+	case 1:
 		return V2_0_0_0
+	default:
+		return V1_0_0_0
 	}
-	return V1_0_0_0
 }
 
 func (r *DescribeLogDirsResponse) throttleTime() time.Duration {
@@ -86,12 +122,16 @@ type DescribeLogDirsResponseDirMetadata struct {
 	// The absolute log directory path
 	Path   string
 	Topics []DescribeLogDirsResponseTopic
+
+	TotalBytes  int64
+	UsableBytes int64
 }
 
-func (r *DescribeLogDirsResponseDirMetadata) encode(pe packetEncoder) error {
-	pe.putInt16(int16(r.ErrorCode))
+func (r *DescribeLogDirsResponseDirMetadata) encode(pe packetEncoder, version int16) error {
+	pe.putKError(r.ErrorCode)
 
-	if err := pe.putString(r.Path); err != nil {
+	err := pe.putString(r.Path)
+	if err != nil {
 		return err
 	}
 
@@ -99,20 +139,25 @@ func (r *DescribeLogDirsResponseDirMetadata) encode(pe packetEncoder) error {
 		return err
 	}
 	for _, topic := range r.Topics {
-		if err := topic.encode(pe); err != nil {
+		if err := topic.encode(pe, version); err != nil {
 			return err
 		}
 	}
 
+	if version >= 4 {
+		pe.putInt64(r.TotalBytes)
+		pe.putInt64(r.UsableBytes)
+	}
+
+	pe.putEmptyTaggedFieldArray()
 	return nil
 }
 
-func (r *DescribeLogDirsResponseDirMetadata) decode(pd packetDecoder, version int16) error {
-	errCode, err := pd.getInt16()
+func (r *DescribeLogDirsResponseDirMetadata) decode(pd packetDecoder, version int16) (err error) {
+	r.ErrorCode, err = pd.getKError()
 	if err != nil {
 		return err
 	}
-	r.ErrorCode = KError(errCode)
 
 	path, err := pd.getString()
 	if err != nil {
@@ -137,7 +182,21 @@ func (r *DescribeLogDirsResponseDirMetadata) decode(pd packetDecoder, version in
 		r.Topics[i] = t
 	}
 
-	return nil
+	if version >= 4 {
+		totalBytes, err := pd.getInt64()
+		if err != nil {
+			return err
+		}
+		r.TotalBytes = totalBytes
+		usableBytes, err := pd.getInt64()
+		if err != nil {
+			return err
+		}
+		r.UsableBytes = usableBytes
+	}
+
+	_, err = pd.getEmptyTaggedFieldArray()
+	return err
 }
 
 // DescribeLogDirsResponseTopic contains a topic's partitions descriptions
@@ -146,20 +205,20 @@ type DescribeLogDirsResponseTopic struct {
 	Partitions []DescribeLogDirsResponsePartition
 }
 
-func (r *DescribeLogDirsResponseTopic) encode(pe packetEncoder) error {
+func (r *DescribeLogDirsResponseTopic) encode(pe packetEncoder, version int16) error {
 	if err := pe.putString(r.Topic); err != nil {
 		return err
 	}
-
 	if err := pe.putArrayLength(len(r.Partitions)); err != nil {
 		return err
 	}
 	for _, partition := range r.Partitions {
-		if err := partition.encode(pe); err != nil {
+		if err := partition.encode(pe, version); err != nil {
 			return err
 		}
 	}
 
+	pe.putEmptyTaggedFieldArray()
 	return nil
 }
 
@@ -174,6 +233,7 @@ func (r *DescribeLogDirsResponseTopic) decode(pd packetDecoder, version int16) e
 	if err != nil {
 		return err
 	}
+
 	r.Partitions = make([]DescribeLogDirsResponsePartition, n)
 	for i := 0; i < n; i++ {
 		p := DescribeLogDirsResponsePartition{}
@@ -183,7 +243,8 @@ func (r *DescribeLogDirsResponseTopic) decode(pd packetDecoder, version int16) e
 		r.Partitions[i] = p
 	}
 
-	return nil
+	_, err = pd.getEmptyTaggedFieldArray()
+	return err
 }
 
 // DescribeLogDirsResponsePartition describes a partition's log directory
@@ -202,11 +263,15 @@ type DescribeLogDirsResponsePartition struct {
 	IsTemporary bool
 }
 
-func (r *DescribeLogDirsResponsePartition) encode(pe packetEncoder) error {
+func (r *DescribeLogDirsResponsePartition) encode(pe packetEncoder, version int16) error {
+	isFlexible := version >= 2
 	pe.putInt32(r.PartitionID)
 	pe.putInt64(r.Size)
 	pe.putInt64(r.OffsetLag)
 	pe.putBool(r.IsTemporary)
+	if isFlexible {
+		pe.putEmptyTaggedFieldArray()
+	}
 
 	return nil
 }
@@ -236,5 +301,6 @@ func (r *DescribeLogDirsResponsePartition) decode(pd packetDecoder, version int1
 	}
 	r.IsTemporary = isTemp
 
-	return nil
+	_, err = pd.getEmptyTaggedFieldArray()
+	return err
 }

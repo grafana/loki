@@ -19,13 +19,10 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
-
-	"cloud.google.com/go/internal/trace"
 )
 
 var crc32cTable = crc32.MakeTable(crc32.Castagnoli)
@@ -37,6 +34,7 @@ var crc32cTable = crc32.MakeTable(crc32.Castagnoli)
 // Each field is read-only.
 type ReaderObjectAttrs struct {
 	// Size is the length of the object's content.
+	// Size may be out of date for unfinalized objects.
 	Size int64
 
 	// StartOffset is the byte offset within the object
@@ -116,7 +114,8 @@ func (o *ObjectHandle) NewReader(ctx context.Context) (*Reader, error) {
 func (o *ObjectHandle) NewRangeReader(ctx context.Context, offset, length int64) (r *Reader, err error) {
 	// This span covers the life of the reader. It is closed via the context
 	// in Reader.Close.
-	ctx = trace.StartSpan(ctx, "cloud.google.com/go/storage.Object.Reader")
+	ctx, _ = startSpan(ctx, "Object.Reader")
+	defer func() { endSpan(ctx, err) }()
 
 	if err := o.validate(); err != nil {
 		return nil, err
@@ -150,8 +149,6 @@ func (o *ObjectHandle) NewRangeReader(ctx context.Context, offset, length int64)
 	// span now if there is an error.
 	if err == nil {
 		r.ctx = ctx
-	} else {
-		trace.EndSpan(ctx, err)
 	}
 
 	return r, err
@@ -167,7 +164,8 @@ func (o *ObjectHandle) NewRangeReader(ctx context.Context, offset, length int64)
 func (o *ObjectHandle) NewMultiRangeDownloader(ctx context.Context) (mrd *MultiRangeDownloader, err error) {
 	// This span covers the life of the reader. It is closed via the context
 	// in Reader.Close.
-	ctx = trace.StartSpan(ctx, "cloud.google.com/go/storage.Object.MultiRangeDownloader")
+	ctx, _ = startSpan(ctx, "Object.MultiRangeDownloader")
+	defer func() { endSpan(ctx, err) }()
 
 	if err := o.validate(); err != nil {
 		return nil, err
@@ -195,8 +193,6 @@ func (o *ObjectHandle) NewMultiRangeDownloader(ctx context.Context) (mrd *MultiR
 	// span now if there is an error.
 	if err == nil {
 		r.ctx = ctx
-	} else {
-		trace.EndSpan(ctx, err)
 	}
 
 	return r, err
@@ -260,7 +256,7 @@ func setConditionsHeaders(headers http.Header, conds *Conditions) error {
 	return nil
 }
 
-var emptyBody = ioutil.NopCloser(strings.NewReader(""))
+var emptyBody = io.NopCloser(strings.NewReader(""))
 
 // Reader reads a Cloud Storage object.
 // It implements io.Reader.
@@ -275,16 +271,17 @@ type Reader struct {
 	seen, remain, size int64
 	checkCRC           bool // Did we check the CRC? This is now only used by tests.
 
-	reader io.ReadCloser
-	ctx    context.Context
-	mu     sync.Mutex
-	handle *ReadHandle
+	reader      io.ReadCloser
+	ctx         context.Context
+	mu          sync.Mutex
+	handle      *ReadHandle
+	unfinalized bool
 }
 
 // Close closes the Reader. It must be called when done reading.
 func (r *Reader) Close() error {
 	err := r.reader.Close()
-	trace.EndSpan(r.ctx, err)
+	endSpan(r.ctx, err)
 	return err
 }
 
@@ -311,6 +308,7 @@ func (r *Reader) WriteTo(w io.Writer) (int64, error) {
 // Size returns the size of the object in bytes.
 // The returned value is always the same and is not affected by
 // calls to Read or Close.
+// Size may be out of date for a Reader to an unfinalized object.
 //
 // Deprecated: use Reader.Attrs.Size.
 func (r *Reader) Size() int64 {
@@ -318,7 +316,11 @@ func (r *Reader) Size() int64 {
 }
 
 // Remain returns the number of bytes left to read, or -1 if unknown.
+// Unfinalized objects will return -1.
 func (r *Reader) Remain() int64 {
+	if r.unfinalized {
+		return -1
+	}
 	return r.remain
 }
 
@@ -430,7 +432,7 @@ func (mrd *MultiRangeDownloader) Add(output io.Writer, offset, length int64, cal
 // Call [MultiRangeDownloader.Wait] to avoid this error.
 func (mrd *MultiRangeDownloader) Close() error {
 	err := mrd.reader.close()
-	trace.EndSpan(mrd.ctx, err)
+	endSpan(mrd.ctx, err)
 	return err
 }
 

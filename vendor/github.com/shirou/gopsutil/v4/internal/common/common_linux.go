@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -19,20 +18,6 @@ import (
 
 // cachedBootTime must be accessed via atomic.Load/StoreUint64
 var cachedBootTime uint64
-
-func DoSysctrl(mib string) ([]string, error) {
-	cmd := exec.Command("sysctl", "-n", mib)
-	cmd.Env = getSysctrlEnv(os.Environ())
-	out, err := cmd.Output()
-	if err != nil {
-		return []string{}, err
-	}
-	v := strings.Replace(string(out), "{ ", "", 1)
-	v = strings.Replace(string(v), " }", "", 1)
-	values := strings.Fields(string(v))
-
-	return values, nil
-}
 
 func NumProcs() (uint64, error) {
 	return NumProcsWithContext(context.Background())
@@ -119,18 +104,18 @@ func BootTimeWithContext(ctx context.Context, enableCache bool) (uint64, error) 
 }
 
 func handleBootTimeFileReadErr(err error) (uint64, error) {
-	if os.IsPermission(err) {
-		var info syscall.Sysinfo_t
-		err := syscall.Sysinfo(&info)
-		if err != nil {
-			return 0, err
-		}
-
-		currentTime := time.Now().UnixNano() / int64(time.Second)
-		t := currentTime - int64(info.Uptime)
-		return uint64(t), nil
+	if !os.IsPermission(err) {
+		return 0, err
 	}
-	return 0, err
+	var info syscall.Sysinfo_t
+	err = syscall.Sysinfo(&info)
+	if err != nil {
+		return 0, err
+	}
+
+	currentTime := time.Now().UnixNano() / int64(time.Second)
+	t := currentTime - int64(info.Uptime)
+	return uint64(t), nil
 }
 
 func readBootTimeStat(ctx context.Context) (uint64, error) {

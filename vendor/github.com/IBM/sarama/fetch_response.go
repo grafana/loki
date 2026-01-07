@@ -48,8 +48,7 @@ type FetchResponseBlock struct {
 	// partition. This is the last offset such that the state of all
 	// transactional records prior to this offset have been decided (ABORTED or
 	// COMMITTED)
-	LastStableOffset       int64
-	LastRecordsBatchOffset *int64
+	LastStableOffset int64
 	// LogStartOffset contains the current log start offset.
 	LogStartOffset int64
 	// AbortedTransactions contains the aborted transactions.
@@ -62,6 +61,10 @@ type FetchResponseBlock struct {
 
 	Partial bool
 	Records *Records // deprecated: use FetchResponseBlock.RecordsSet
+
+	// recordsNextOffset contains the next consecutive offset following this response block.
+	// This field is computed locally and is not part of the server's binary response.
+	recordsNextOffset *int64
 }
 
 func (b *FetchResponseBlock) decode(pd packetDecoder, version int16) (err error) {
@@ -71,11 +74,10 @@ func (b *FetchResponseBlock) decode(pd packetDecoder, version int16) (err error)
 		sizeMetric = getOrRegisterHistogram("consumer-fetch-response-size", metricRegistry)
 	}
 
-	tmp, err := pd.getInt16()
+	b.Err, err = pd.getKError()
 	if err != nil {
 		return err
 	}
-	b.Err = KError(tmp)
 
 	b.HighWaterMarkOffset, err = pd.getInt64()
 	if err != nil {
@@ -150,7 +152,7 @@ func (b *FetchResponseBlock) decode(pd packetDecoder, version int16) (err error)
 			return err
 		}
 
-		b.LastRecordsBatchOffset, err = records.recordsOffset()
+		b.recordsNextOffset, err = records.nextOffset()
 		if err != nil {
 			return err
 		}
@@ -214,7 +216,7 @@ func (b *FetchResponseBlock) isPartial() (bool, error) {
 }
 
 func (b *FetchResponseBlock) encode(pe packetEncoder, version int16) (err error) {
-	pe.putInt16(int16(b.Err))
+	pe.putKError(b.Err)
 
 	pe.putInt64(b.HighWaterMarkOffset)
 
@@ -278,15 +280,17 @@ type FetchResponse struct {
 	Timestamp     time.Time
 }
 
+func (r *FetchResponse) setVersion(v int16) {
+	r.Version = v
+}
+
 func (r *FetchResponse) decode(pd packetDecoder, version int16) (err error) {
 	r.Version = version
 
 	if r.Version >= 1 {
-		throttle, err := pd.getInt32()
-		if err != nil {
+		if r.ThrottleTime, err = pd.getDurationMs(); err != nil {
 			return err
 		}
-		r.ThrottleTime = time.Duration(throttle) * time.Millisecond
 	}
 
 	if r.Version >= 7 {
@@ -339,7 +343,7 @@ func (r *FetchResponse) decode(pd packetDecoder, version int16) (err error) {
 
 func (r *FetchResponse) encode(pe packetEncoder) (err error) {
 	if r.Version >= 1 {
-		pe.putInt32(int32(r.ThrottleTime / time.Millisecond))
+		pe.putDurationMs(r.ThrottleTime)
 	}
 
 	if r.Version >= 7 {
@@ -375,7 +379,7 @@ func (r *FetchResponse) encode(pe packetEncoder) (err error) {
 }
 
 func (r *FetchResponse) key() int16 {
-	return 1
+	return apiKeyFetch
 }
 
 func (r *FetchResponse) version() int16 {

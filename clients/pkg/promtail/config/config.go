@@ -6,6 +6,8 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/multierror"
+	"github.com/prometheus/common/model"
 	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/v3/clients/pkg/promtail/client"
@@ -86,6 +88,19 @@ func (c Config) String() string {
 	return string(b)
 }
 
+func (c *Config) Validate() error {
+	var errors []error
+	for i := range c.ScrapeConfig {
+		for j := range c.ScrapeConfig[i].RelabelConfigs {
+			err := c.ScrapeConfig[i].RelabelConfigs[j].Validate(model.UTF8Validation)
+			if err != nil {
+				errors = append(errors, fmt.Errorf("ScrapeConfig[%d].RelabelConfigs[%d]: %w", i, j, err))
+			}
+		}
+	}
+	return multierror.New(errors...).Err()
+}
+
 func (c *Config) Setup(l log.Logger) {
 	if c.ClientConfig.URL.URL != nil {
 		level.Warn(l).Log("msg", "use of CLI client.* and config file Client block are both deprecated in favour of the config file Clients block and will be removed in a future release")
@@ -110,7 +125,7 @@ func (c *Config) Setup(l log.Logger) {
 	// yaml is doing so explicitly to make a key specific to a client.
 	if len(c.ClientConfig.ExternalLabels.LabelSet) > 0 {
 		for i := range c.ClientConfigs {
-			c.ClientConfigs[i].ExternalLabels = flagext.LabelSet{LabelSet: c.ClientConfig.ExternalLabels.LabelSet.Merge(c.ClientConfigs[i].ExternalLabels.LabelSet)}
+			c.ClientConfigs[i].ExternalLabels = flagext.LabelSet{LabelSet: c.ClientConfig.ExternalLabels.Merge(c.ClientConfigs[i].ExternalLabels.LabelSet)}
 		}
 	}
 }

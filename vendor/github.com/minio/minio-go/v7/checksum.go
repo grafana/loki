@@ -24,12 +24,13 @@ import (
 	"encoding/binary"
 	"errors"
 	"hash"
-	"hash/crc32"
 	"io"
 	"math/bits"
 	"net/http"
 	"sort"
+	"strings"
 
+	"github.com/klauspost/crc32"
 	"github.com/minio/crc64nvme"
 )
 
@@ -432,9 +433,19 @@ func addAutoChecksumHeaders(opts *PutObjectOptions) {
 	if opts.UserMetadata == nil {
 		opts.UserMetadata = make(map[string]string, 1)
 	}
-	opts.UserMetadata["X-Amz-Checksum-Algorithm"] = opts.AutoChecksum.String()
-	if opts.AutoChecksum.FullObjectRequested() {
-		opts.UserMetadata[amzChecksumMode] = ChecksumFullObjectMode.String()
+
+	addChecksum := true
+	for k := range opts.UserMetadata {
+		if strings.HasPrefix(strings.ToLower(k), "x-amz-checksum-") {
+			addChecksum = false
+		}
+	}
+
+	if addChecksum && opts.AutoChecksum.IsSet() {
+		opts.UserMetadata[amzChecksumAlgo] = opts.AutoChecksum.String()
+		if opts.AutoChecksum.FullObjectRequested() {
+			opts.UserMetadata[amzChecksumMode] = ChecksumFullObjectMode.String()
+		}
 	}
 }
 
@@ -446,14 +457,17 @@ func applyAutoChecksum(opts *PutObjectOptions, allParts []ObjectPart) {
 		// Add composite hash of hashes.
 		crc, err := opts.AutoChecksum.CompositeChecksum(allParts)
 		if err == nil {
-			opts.UserMetadata = map[string]string{opts.AutoChecksum.Key(): crc.Encoded()}
+			opts.UserMetadata = map[string]string{
+				opts.AutoChecksum.Key(): crc.Encoded(),
+				amzChecksumMode:         ChecksumCompositeMode.String(),
+			}
 		}
 	} else if opts.AutoChecksum.CanMergeCRC() {
 		crc, err := opts.AutoChecksum.FullObjectChecksum(allParts)
 		if err == nil {
 			opts.UserMetadata = map[string]string{
-				opts.AutoChecksum.KeyCapitalized(): crc.Encoded(),
-				amzChecksumMode:                    ChecksumFullObjectMode.String(),
+				opts.AutoChecksum.Key(): crc.Encoded(),
+				amzChecksumMode:         ChecksumFullObjectMode.String(),
 			}
 		}
 	}

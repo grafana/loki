@@ -357,6 +357,16 @@ var ParseTestCases = []struct {
 		}, nil),
 	},
 	{
+		in: "{ foo = \"bar\" } | logfmt | msg =~ \"`.`\" ",
+		exp: newPipelineExpr(
+			newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+			MultiStageExpr{
+				newLogfmtParserExpr(nil),
+				newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchRegexp, "msg", "`.`"))),
+			},
+		),
+	},
+	{
 		in:  `unk({ foo = "bar" }[5m])`,
 		err: logqlmodel.NewParseError("syntax error: unexpected IDENTIFIER", 1, 1),
 	},
@@ -387,6 +397,30 @@ var ParseTestCases = []struct {
 	{
 		in:  `min({ foo = "bar" }[5m])`,
 		err: logqlmodel.NewParseError("syntax error: unexpected RANGE", 0, 20),
+	},
+	{
+		in: `avg(
+					label_replace(
+						count_over_time({ foo = "bar" }[5h]) or 0,
+						"bar",
+						"$1$2",
+						"foo",
+						"(.*).(.*)"
+					)
+				) by (bar,foo)`,
+		err: logqlmodel.NewParseError("unexpected literal for right leg of logical/set binary operation (or): 0.000000", 0, 0),
+	},
+	{
+		in: `avg(
+					label_replace(
+						count_over_time({ foo = "bar" }[5h]) or sum_over_time({ foo = "bar" }[5h]),
+						"bar",
+						"$1$2",
+						"foo",
+						"(.*).(.*)"
+					)
+				) by (bar,foo)`,
+		err: logqlmodel.NewParseError("invalid aggregation sum_over_time without unwrap", 0, 0),
 	},
 	// line filter for ip-matcher
 	{
@@ -3734,5 +3768,12 @@ func TestParseSampleExpr_String(t *testing.T) {
 
 		// escaping is hard: the result is {cluster="beep", namespace="boop"} | msg=~`\w.*` which is equivalent to the original
 		require.Equal(t, "{cluster=\"beep\", namespace=\"boop\"} | msg=~`\\w.*`", expr.String())
+	})
+
+	t.Run("it correctly surrounds regex containing backticks with double quotes", func(t *testing.T) {
+		query := "{foo=\"bar\"} | logfmt | msg=~\"`.\\\"`\""
+		expr, err := ParseExpr(query)
+		require.NoError(t, err)
+		require.Equal(t, query, expr.String())
 	})
 }

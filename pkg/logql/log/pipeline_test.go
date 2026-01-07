@@ -16,15 +16,15 @@ func TestNoopPipeline(t *testing.T) {
 
 	l, lbr, matches := pipeline.ForStream(lbs).Process(0, []byte(""), labels.EmptyLabels())
 	require.Equal(t, []byte(""), l)
-	require.Equal(t, NewLabelsResult(lbs.String(), lbs.Hash(), lbs, labels.EmptyLabels(), labels.EmptyLabels()), lbr)
-	require.Equal(t, lbs.Hash(), lbr.Hash())
+	require.Equal(t, NewLabelsResult(lbs.String(), labels.StableHash(lbs), lbs, labels.EmptyLabels(), labels.EmptyLabels()), lbr)
+	require.Equal(t, labels.StableHash(lbs), lbr.Hash())
 	require.Equal(t, lbs.String(), lbr.String())
 	require.Equal(t, true, matches)
 
 	ls, lbr, matches := pipeline.ForStream(lbs).ProcessString(0, "", labels.EmptyLabels())
 	require.Equal(t, "", ls)
-	require.Equal(t, NewLabelsResult(lbs.String(), lbs.Hash(), lbs, labels.EmptyLabels(), labels.EmptyLabels()), lbr)
-	require.Equal(t, lbs.Hash(), lbr.Hash())
+	require.Equal(t, NewLabelsResult(lbs.String(), labels.StableHash(lbs), lbs, labels.EmptyLabels(), labels.EmptyLabels()), lbr)
+	require.Equal(t, labels.StableHash(lbs), lbr.Hash())
 	require.Equal(t, lbs.String(), lbr.String())
 	require.Equal(t, true, matches)
 
@@ -32,15 +32,15 @@ func TestNoopPipeline(t *testing.T) {
 	expectedLabelsResults := appendLabels(lbs, structuredMetadata)
 	l, lbr, matches = pipeline.ForStream(lbs).Process(0, []byte(""), structuredMetadata)
 	require.Equal(t, []byte(""), l)
-	require.Equal(t, NewLabelsResult(expectedLabelsResults.String(), expectedLabelsResults.Hash(), lbs, structuredMetadata, labels.EmptyLabels()), lbr)
-	require.Equal(t, expectedLabelsResults.Hash(), lbr.Hash())
+	require.Equal(t, NewLabelsResult(expectedLabelsResults.String(), labels.StableHash(expectedLabelsResults), lbs, structuredMetadata, labels.EmptyLabels()), lbr)
+	require.Equal(t, labels.StableHash(expectedLabelsResults), lbr.Hash())
 	require.Equal(t, expectedLabelsResults.String(), lbr.String())
 	require.Equal(t, true, matches)
 
 	ls, lbr, matches = pipeline.ForStream(lbs).ProcessString(0, "", structuredMetadata)
 	require.Equal(t, "", ls)
-	require.Equal(t, NewLabelsResult(expectedLabelsResults.String(), expectedLabelsResults.Hash(), lbs, structuredMetadata, labels.EmptyLabels()), lbr)
-	require.Equal(t, expectedLabelsResults.Hash(), lbr.Hash())
+	require.Equal(t, NewLabelsResult(expectedLabelsResults.String(), labels.StableHash(expectedLabelsResults), lbs, structuredMetadata, labels.EmptyLabels()), lbr)
+	require.Equal(t, labels.StableHash(expectedLabelsResults), lbr.Hash())
 	require.Equal(t, expectedLabelsResults.String(), lbr.String())
 	require.Equal(t, true, matches)
 
@@ -49,8 +49,8 @@ func TestNoopPipeline(t *testing.T) {
 	expectedLabelsResults = labels.FromStrings("foo", "bar", "foo_extracted", "baz", "y", "1", "z", "2")
 	l, lbr, matches = pipeline.ForStream(lbs).Process(0, []byte(""), labels.NewBuilder(structuredMetadata).Set("foo", "baz").Labels())
 	require.Equal(t, []byte(""), l)
-	require.Equal(t, NewLabelsResult(expectedLabelsResults.String(), expectedLabelsResults.Hash(), lbs, expectedNonIndexedLabels, labels.EmptyLabels()), lbr)
-	require.Equal(t, expectedLabelsResults.Hash(), lbr.Hash())
+	require.Equal(t, NewLabelsResult(expectedLabelsResults.String(), labels.StableHash(expectedLabelsResults), lbs, expectedNonIndexedLabels, labels.EmptyLabels()), lbr)
+	require.Equal(t, labels.StableHash(expectedLabelsResults), lbr.Hash())
 	require.Equal(t, expectedLabelsResults.String(), lbr.String())
 	require.Equal(t, true, matches)
 
@@ -67,15 +67,15 @@ func TestPipeline(t *testing.T) {
 
 	l, lbr, matches := p.ForStream(lbs).Process(0, []byte("line"), labels.EmptyLabels())
 	require.Equal(t, []byte("lbs bar"), l)
-	require.Equal(t, NewLabelsResult(lbs.String(), lbs.Hash(), lbs, labels.EmptyLabels(), labels.EmptyLabels()), lbr)
-	require.Equal(t, lbs.Hash(), lbr.Hash())
+	require.Equal(t, NewLabelsResult(lbs.String(), labels.StableHash(lbs), lbs, labels.EmptyLabels(), labels.EmptyLabels()), lbr)
+	require.Equal(t, labels.StableHash(lbs), lbr.Hash())
 	require.Equal(t, lbs.String(), lbr.String())
 	require.Equal(t, true, matches)
 
 	ls, lbr, matches := p.ForStream(lbs).ProcessString(0, "line", labels.EmptyLabels())
 	require.Equal(t, "lbs bar", ls)
-	require.Equal(t, NewLabelsResult(lbs.String(), lbs.Hash(), lbs, labels.EmptyLabels(), labels.EmptyLabels()), lbr)
-	require.Equal(t, lbs.Hash(), lbr.Hash())
+	require.Equal(t, NewLabelsResult(lbs.String(), labels.StableHash(lbs), lbs, labels.EmptyLabels(), labels.EmptyLabels()), lbr)
+	require.Equal(t, labels.StableHash(lbs), lbr.Hash())
 	require.Equal(t, lbs.String(), lbr.String())
 	require.Equal(t, true, matches)
 
@@ -115,15 +115,15 @@ func TestPipelineWithStructuredMetadata(t *testing.T) {
 
 	l, lbr, matches := p.ForStream(lbs).Process(0, []byte("line"), structuredMetadata)
 	require.Equal(t, []byte("lbs bar bob"), l)
-	require.Equal(t, NewLabelsResult(expectedLabelsResults.String(), expectedLabelsResults.Hash(), lbs, structuredMetadata, labels.EmptyLabels()), lbr)
-	require.Equal(t, expectedLabelsResults.Hash(), lbr.Hash())
+	require.Equal(t, NewLabelsResult(expectedLabelsResults.String(), labels.StableHash(expectedLabelsResults), lbs, structuredMetadata, labels.EmptyLabels()), lbr)
+	require.Equal(t, labels.StableHash(expectedLabelsResults), lbr.Hash())
 	require.Equal(t, expectedLabelsResults.String(), lbr.String())
 	require.Equal(t, true, matches)
 
 	ls, lbr, matches := p.ForStream(lbs).ProcessString(0, "line", structuredMetadata)
 	require.Equal(t, "lbs bar bob", ls)
-	require.Equal(t, NewLabelsResult(expectedLabelsResults.String(), expectedLabelsResults.Hash(), lbs, structuredMetadata, labels.EmptyLabels()), lbr)
-	require.Equal(t, expectedLabelsResults.Hash(), lbr.Hash())
+	require.Equal(t, NewLabelsResult(expectedLabelsResults.String(), labels.StableHash(expectedLabelsResults), lbs, structuredMetadata, labels.EmptyLabels()), lbr)
+	require.Equal(t, labels.StableHash(expectedLabelsResults), lbr.Hash())
 	require.Equal(t, expectedLabelsResults.String(), lbr.String())
 	require.Equal(t, true, matches)
 
@@ -133,15 +133,15 @@ func TestPipelineWithStructuredMetadata(t *testing.T) {
 	expectedLabelsResults = appendLabels(expectedLabelsResults, structuredMetadata)
 	l, lbr, matches = p.ForStream(lbs).Process(0, []byte("line"), labels.NewBuilder(structuredMetadata).Set("foo", "baz").Labels())
 	require.Equal(t, []byte("lbs bar bob"), l)
-	require.Equal(t, NewLabelsResult(expectedLabelsResults.String(), expectedLabelsResults.Hash(), lbs, expectedNonIndexedLabels, labels.EmptyLabels()), lbr)
-	require.Equal(t, expectedLabelsResults.Hash(), lbr.Hash())
+	require.Equal(t, NewLabelsResult(expectedLabelsResults.String(), labels.StableHash(expectedLabelsResults), lbs, expectedNonIndexedLabels, labels.EmptyLabels()), lbr)
+	require.Equal(t, labels.StableHash(expectedLabelsResults), lbr.Hash())
 	require.Equal(t, expectedLabelsResults.String(), lbr.String())
 	require.Equal(t, true, matches)
 
 	ls, lbr, matches = p.ForStream(lbs).ProcessString(0, "line", labels.NewBuilder(structuredMetadata).Set("foo", "baz").Labels())
 	require.Equal(t, "lbs bar bob", ls)
-	require.Equal(t, NewLabelsResult(expectedLabelsResults.String(), expectedLabelsResults.Hash(), lbs, expectedNonIndexedLabels, labels.EmptyLabels()), lbr)
-	require.Equal(t, expectedLabelsResults.Hash(), lbr.Hash())
+	require.Equal(t, NewLabelsResult(expectedLabelsResults.String(), labels.StableHash(expectedLabelsResults), lbs, expectedNonIndexedLabels, labels.EmptyLabels()), lbr)
+	require.Equal(t, labels.StableHash(expectedLabelsResults), lbr.Hash())
 	require.Equal(t, expectedLabelsResults.String(), lbr.String())
 	require.Equal(t, true, matches)
 
@@ -393,7 +393,7 @@ func TestDropLabelsPipeline(t *testing.T) {
 			require.Equal(t, labels.EmptyLabels(), finalLbs.Stream())
 			require.Equal(t, labels.EmptyLabels(), finalLbs.StructuredMetadata())
 			require.Equal(t, tt.wantLabels[i], finalLbs.Parsed())
-			require.Equal(t, tt.wantLabels[i].Hash(), finalLbs.Hash())
+			require.Equal(t, labels.StableHash(tt.wantLabels[i]), finalLbs.Hash())
 		}
 	}
 
@@ -515,7 +515,7 @@ func TestKeepLabelsPipeline(t *testing.T) {
 				require.Equal(t, labels.EmptyLabels(), finalLbs.Stream())
 				require.Equal(t, labels.EmptyLabels(), finalLbs.StructuredMetadata())
 				require.Equal(t, tt.wantLabels[i], finalLbs.Parsed())
-				require.Equal(t, tt.wantLabels[i].Hash(), finalLbs.Hash())
+				require.Equal(t, labels.StableHash(tt.wantLabels[i]), finalLbs.Hash())
 				require.Equal(t, tt.wantLabels[i].String(), finalLbs.String())
 			}
 		})

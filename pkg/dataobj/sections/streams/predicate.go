@@ -19,6 +19,9 @@ type (
 	// included if the inner Predicate is false.
 	NotPredicate struct{ Inner Predicate }
 
+	// TruePredicate is a [Predicate] which always returns true.
+	TruePredicate struct{}
+
 	// FalsePredicate is a [Predicate] which always returns false.
 	FalsePredicate struct{}
 
@@ -70,6 +73,7 @@ type (
 func (AndPredicate) isPredicate()         {}
 func (OrPredicate) isPredicate()          {}
 func (NotPredicate) isPredicate()         {}
+func (TruePredicate) isPredicate()        {}
 func (FalsePredicate) isPredicate()       {}
 func (EqualPredicate) isPredicate()       {}
 func (InPredicate) isPredicate()          {}
@@ -98,6 +102,7 @@ func walkPredicate(p Predicate, fn func(Predicate) bool) {
 	case NotPredicate:
 		walkPredicate(p.Inner, fn)
 
+	case TruePredicate: // No children.
 	case FalsePredicate: // No children.
 	case EqualPredicate: // No children.
 	case InPredicate: // No children.
@@ -106,8 +111,53 @@ func walkPredicate(p Predicate, fn func(Predicate) bool) {
 	case FuncPredicate: // No children.
 
 	default:
-		panic("streams.walkPredicate: unsupported predicate type")
+		panic("streams.WalkPredicate: unsupported predicate type")
 	}
 
 	fn(nil)
+}
+
+// predicateColumns returns a slice of all columns referenced in the given predicates.
+// It ensures that each column is only included once, even if it appears in multiple predicates.
+func predicateColumns(predicates []Predicate) []*Column {
+	exists := make(map[*Column]struct{})
+	columns := make([]*Column, 0, len(predicates))
+
+	// appendColumn adds a column if it is not a duplicate.
+	appendColumn := func(c *Column) {
+		if c == nil {
+			return
+		}
+		if _, ok := exists[c]; ok {
+			return
+		}
+		columns = append(columns, c)
+		exists[c] = struct{}{}
+	}
+
+	for _, p := range predicates {
+		walkPredicate(p, func(p Predicate) bool {
+			switch p := p.(type) {
+			case nil: // End of walk; nothing to do.
+			case AndPredicate: // Nothing to do.
+			case OrPredicate: // Nothing to do.
+			case NotPredicate: // Nothing to do.
+			case TruePredicate: // Nothing to do.
+			case FalsePredicate: // Nothing to do.
+			case EqualPredicate:
+				appendColumn(p.Column)
+			case InPredicate:
+				appendColumn(p.Column)
+			case GreaterThanPredicate:
+				appendColumn(p.Column)
+			case LessThanPredicate:
+				appendColumn(p.Column)
+			case FuncPredicate:
+				appendColumn(p.Column)
+			}
+			return true
+		})
+	}
+
+	return columns
 }

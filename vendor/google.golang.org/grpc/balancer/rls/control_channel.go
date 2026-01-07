@@ -92,12 +92,7 @@ func newControlChannel(rlsServerName, serviceConfig string, rpcTimeout time.Dura
 	ctrlCh.cc.Connect()
 	ctrlCh.client = rlsgrpc.NewRouteLookupServiceClient(ctrlCh.cc)
 	ctrlCh.logger.Infof("Control channel created to RLS server at: %v", rlsServerName)
-	start := make(chan struct{})
-	go func() {
-		close(start)
-		ctrlCh.monitorConnectivityState()
-	}()
-	<-start
+	go ctrlCh.monitorConnectivityState()
 	return ctrlCh, nil
 }
 

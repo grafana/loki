@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"testing"
+	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
@@ -17,75 +18,66 @@ import (
 )
 
 func TestReader(t *testing.T) {
-	alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
-	defer alloc.AssertSize(t, 0)
-
 	expect := arrowtest.Rows{
 		{
 			"stream_id.int64":         int64(1),
-			"app.label.binary":        []byte("foo"),
-			"cluster.label.binary":    []byte("test"),
-			"min_timestamp.timestamp": arrowUnixTime(10),
-			"max_timestamp.timestamp": arrowUnixTime(15),
+			"app.label.utf8":          "foo",
+			"cluster.label.utf8":      "test",
+			"min_timestamp.timestamp": time.Unix(10, 0).UTC(),
+			"max_timestamp.timestamp": time.Unix(15, 0).UTC(),
 			"rows.int64":              int64(2),
 			"uncompressed_size.int64": int64(25),
 		},
 		{
 			"stream_id.int64":         int64(2),
-			"app.label.binary":        []byte("bar"),
-			"cluster.label.binary":    []byte("test"),
-			"min_timestamp.timestamp": arrowUnixTime(5),
-			"max_timestamp.timestamp": arrowUnixTime(20),
+			"app.label.utf8":          "bar",
+			"cluster.label.utf8":      "test",
+			"min_timestamp.timestamp": time.Unix(5, 0).UTC(),
+			"max_timestamp.timestamp": time.Unix(20, 0).UTC(),
 			"rows.int64":              int64(2),
 			"uncompressed_size.int64": int64(45),
 		},
 		{
 			"stream_id.int64":         int64(3),
-			"app.label.binary":        []byte("baz"),
-			"cluster.label.binary":    []byte("test"),
-			"min_timestamp.timestamp": arrowUnixTime(25),
-			"max_timestamp.timestamp": arrowUnixTime(30),
+			"app.label.utf8":          "baz",
+			"cluster.label.utf8":      "test",
+			"min_timestamp.timestamp": time.Unix(25, 0).UTC(),
+			"max_timestamp.timestamp": time.Unix(30, 0).UTC(),
 			"rows.int64":              int64(2),
 			"uncompressed_size.int64": int64(35),
 		},
 	}
 
-	sec := buildStreamsSection(t, 1)
+	sec := buildStreamsSection(t, 1, 0)
 
 	r := streams.NewReader(streams.ReaderOptions{
 		Columns:    sec.Columns(),
 		Predicates: nil,
-		Allocator:  alloc,
+		Allocator:  memory.DefaultAllocator,
 	})
 
 	actualTable, err := readTable(context.Background(), r)
-	if actualTable != nil {
-		defer actualTable.Release()
-	}
 	require.NoError(t, err)
 
-	actual, err := arrowtest.TableRows(alloc, actualTable)
+	actual, err := arrowtest.TableRows(memory.DefaultAllocator, actualTable)
 	require.NoError(t, err, "failed to get rows from table")
 	require.Equal(t, expect, actual)
 }
 
 func TestReader_Predicate(t *testing.T) {
-	alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
-	defer alloc.AssertSize(t, 0)
-
 	expect := arrowtest.Rows{
 		{
 			"stream_id.int64":         int64(2),
-			"app.label.binary":        []byte("bar"),
-			"cluster.label.binary":    []byte("test"),
-			"min_timestamp.timestamp": arrowUnixTime(5),
-			"max_timestamp.timestamp": arrowUnixTime(20),
+			"app.label.utf8":          "bar",
+			"cluster.label.utf8":      "test",
+			"min_timestamp.timestamp": time.Unix(5, 0).UTC(),
+			"max_timestamp.timestamp": time.Unix(20, 0).UTC(),
 			"rows.int64":              int64(2),
 			"uncompressed_size.int64": int64(45),
 		},
 	}
 
-	sec := buildStreamsSection(t, 1)
+	sec := buildStreamsSection(t, 1, 0)
 
 	appLabel := sec.Columns()[5]
 	require.Equal(t, "app", appLabel.Name)
@@ -99,37 +91,31 @@ func TestReader_Predicate(t *testing.T) {
 				Value:  scalar.NewBinaryScalar(memory.NewBufferBytes([]byte("bar")), arrow.BinaryTypes.Binary),
 			},
 		},
-		Allocator: alloc,
+		Allocator: memory.DefaultAllocator,
 	})
 
 	actualTable, err := readTable(context.Background(), r)
-	if actualTable != nil {
-		defer actualTable.Release()
-	}
 	require.NoError(t, err)
 
-	actual, err := arrowtest.TableRows(alloc, actualTable)
+	actual, err := arrowtest.TableRows(memory.DefaultAllocator, actualTable)
 	require.NoError(t, err, "failed to get rows from table")
 	require.Equal(t, expect, actual)
 }
 
 func TestReader_InPredicate(t *testing.T) {
-	alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
-	defer alloc.AssertSize(t, 0)
-
 	expect := arrowtest.Rows{
 		{
 			"stream_id.int64":         int64(2),
-			"app.label.binary":        []byte("bar"),
-			"cluster.label.binary":    []byte("test"),
-			"min_timestamp.timestamp": arrowUnixTime(5),
-			"max_timestamp.timestamp": arrowUnixTime(20),
+			"app.label.utf8":          "bar",
+			"cluster.label.utf8":      "test",
+			"min_timestamp.timestamp": time.Unix(5, 0).UTC(),
+			"max_timestamp.timestamp": time.Unix(20, 0).UTC(),
 			"rows.int64":              int64(2),
 			"uncompressed_size.int64": int64(45),
 		},
 	}
 
-	sec := buildStreamsSection(t, 1)
+	sec := buildStreamsSection(t, 1, 0)
 
 	streamID := sec.Columns()[0]
 	require.Equal(t, "", streamID.Name)
@@ -145,40 +131,34 @@ func TestReader_InPredicate(t *testing.T) {
 				},
 			},
 		},
-		Allocator: alloc,
+		Allocator: memory.DefaultAllocator,
 	})
 
 	actualTable, err := readTable(context.Background(), r)
-	if actualTable != nil {
-		defer actualTable.Release()
-	}
 	require.NoError(t, err)
 
-	actual, err := arrowtest.TableRows(alloc, actualTable)
+	actual, err := arrowtest.TableRows(memory.DefaultAllocator, actualTable)
 	require.NoError(t, err, "failed to get rows from table")
 	require.Equal(t, expect, actual)
 }
 
 func TestReader_ColumnSubset(t *testing.T) {
-	alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
-	defer alloc.AssertSize(t, 0)
-
 	expect := arrowtest.Rows{
 		{
-			"stream_id.int64":  int64(1),
-			"app.label.binary": []byte("foo"),
+			"stream_id.int64": int64(1),
+			"app.label.utf8":  "foo",
 		},
 		{
-			"stream_id.int64":  int64(2),
-			"app.label.binary": []byte("bar"),
+			"stream_id.int64": int64(2),
+			"app.label.utf8":  "bar",
 		},
 		{
-			"stream_id.int64":  int64(3),
-			"app.label.binary": []byte("baz"),
+			"stream_id.int64": int64(3),
+			"app.label.utf8":  "baz",
 		},
 	}
 
-	sec := buildStreamsSection(t, 1)
+	sec := buildStreamsSection(t, 1, 0)
 
 	var (
 		streamID = sec.Columns()[0]
@@ -193,26 +173,19 @@ func TestReader_ColumnSubset(t *testing.T) {
 	r := streams.NewReader(streams.ReaderOptions{
 		Columns:    []*streams.Column{streamID, appLabel},
 		Predicates: nil,
-		Allocator:  alloc,
+		Allocator:  memory.DefaultAllocator,
 	})
 
 	actualTable, err := readTable(context.Background(), r)
-	if actualTable != nil {
-		defer actualTable.Release()
-	}
 	require.NoError(t, err)
 
-	actual, err := arrowtest.TableRows(alloc, actualTable)
+	actual, err := arrowtest.TableRows(memory.DefaultAllocator, actualTable)
 	require.NoError(t, err, "failed to get rows from table")
 	require.Equal(t, expect, actual)
 }
 
-func arrowUnixTime(sec int64) string {
-	return arrowtest.Time(unixTime(sec).UTC())
-}
-
 func readTable(ctx context.Context, r *streams.Reader) (arrow.Table, error) {
-	var recs []arrow.Record
+	var recs []arrow.RecordBatch
 
 	for {
 		rec, err := r.Read(ctx, 128)
@@ -220,7 +193,6 @@ func readTable(ctx context.Context, r *streams.Reader) (arrow.Table, error) {
 			if rec.NumRows() > 0 {
 				recs = append(recs, rec)
 			}
-			defer rec.Release()
 		}
 
 		if err != nil && errors.Is(err, io.EOF) {

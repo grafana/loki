@@ -114,9 +114,10 @@ func tempDir(dir, dest string) string {
 type PendingFile struct {
 	*os.File
 
-	path   string
-	done   bool
-	closed bool
+	path           string
+	done           bool
+	closed         bool
+	replaceOnClose bool
 }
 
 // Cleanup is a no-op if CloseAtomicallyReplace succeeded, and otherwise closes
@@ -131,7 +132,7 @@ func (t *PendingFile) Cleanup() error {
 	// reporting, there is nothing the caller can recover here.
 	var closeErr error
 	if !t.closed {
-		closeErr = t.Close()
+		closeErr = t.File.Close()
 	}
 	if err := os.Remove(t.Name()); err != nil {
 		return err
@@ -159,7 +160,7 @@ func (t *PendingFile) CloseAtomicallyReplace() error {
 		return err
 	}
 	t.closed = true
-	if err := t.Close(); err != nil {
+	if err := t.File.Close(); err != nil {
 		return err
 	}
 	if err := os.Rename(t.Name(), t.path); err != nil {
@@ -167,6 +168,15 @@ func (t *PendingFile) CloseAtomicallyReplace() error {
 	}
 	t.done = true
 	return nil
+}
+
+// Close closes the file. By default it just calls Close() on the underlying file. For PendingFiles created with
+// WithReplaceOnClose it calls CloseAtomicallyReplace() instead.
+func (t *PendingFile) Close() error {
+	if t.replaceOnClose {
+		return t.CloseAtomicallyReplace()
+	}
+	return t.File.Close()
 }
 
 // TempFile creates a temporary file destined to atomically creating or
@@ -189,6 +199,7 @@ type config struct {
 	attemptPermCopy bool
 	ignoreUmask     bool
 	chmod           *os.FileMode
+	renameOnClose   bool
 }
 
 // NewPendingFile creates a temporary file destined to atomically creating or
@@ -244,7 +255,7 @@ func NewPendingFile(path string, opts ...Option) (*PendingFile, error) {
 		}
 	}
 
-	return &PendingFile{File: f, path: cfg.path}, nil
+	return &PendingFile{File: f, path: cfg.path, replaceOnClose: cfg.renameOnClose}, nil
 }
 
 // Symlink wraps os.Symlink, replacing an existing symlink with the same name

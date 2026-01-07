@@ -85,18 +85,27 @@ import (
 
 // An Object is a representation of a data object.
 type Object struct {
-	dec *decoder
+	rr   rangeReader
+	dec  *decoder
+	size int64
 
 	metadata *filemd.Metadata
 	sections []*Section
+	tenants  []string
 }
 
 // FromBucket opens an Object from the given storage bucket and path.
 // FromBucket returns an error if the metadata of the Object cannot be read or
 // if the provided ctx times out.
 func FromBucket(ctx context.Context, bucket objstore.BucketReader, path string) (*Object, error) {
-	dec := &decoder{rr: &bucketRangeReader{bucket: bucket, path: path}}
-	obj := &Object{dec: dec}
+	rr := &bucketRangeReader{bucket: bucket, path: path}
+	size, err := rr.Size(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("getting size: %w", err)
+	}
+
+	dec := &decoder{rr: rr, size: size}
+	obj := &Object{rr: rr, dec: dec, size: size}
 	if err := obj.init(ctx); err != nil {
 		return nil, err
 	}
@@ -107,8 +116,9 @@ func FromBucket(ctx context.Context, bucket objstore.BucketReader, path string) 
 // specifies the size of the data object in bytes. FromReaderAt returns an
 // error if the metadata of the Object cannot be read.
 func FromReaderAt(r io.ReaderAt, size int64) (*Object, error) {
-	dec := &decoder{rr: &readerAtRangeReader{size: size, r: r}}
-	obj := &Object{dec: dec}
+	rr := &readerAtRangeReader{size: size, r: r}
+	dec := &decoder{rr: rr, size: size}
+	obj := &Object{rr: rr, dec: dec, size: size}
 	if err := obj.init(context.Background()); err != nil {
 		return nil, err
 	}
@@ -121,24 +131,46 @@ func (o *Object) init(ctx context.Context) error {
 		return fmt.Errorf("reading metadata: %w", err)
 	}
 
-	readSections := make([]*Section, 0, len(metadata.Sections))
+	sections := make([]*Section, 0, len(metadata.Sections))
+	tenants := make(map[string]struct{})
+
 	for i, sec := range metadata.Sections {
 		typ, err := getSectionType(metadata, sec)
 		if err != nil {
 			return fmt.Errorf("getting section %d type: %w", i, err)
 		}
 
-		readSections = append(readSections, &Section{
+		tenant := metadata.Dictionary[sec.TenantRef]
+		sections = append(sections, &Section{
 			Type:   typ,
-			Reader: o.dec.SectionReader(metadata, sec),
+			Reader: o.dec.SectionReader(metadata, sec, sec.ExtensionData),
+			Tenant: tenant,
 		})
+		tenants[tenant] = struct{}{}
 	}
 
 	o.metadata = metadata
-	o.sections = readSections
+	o.sections = sections
+	o.tenants = make([]string, 0, len(tenants))
+	for tenant := range tenants {
+		o.tenants = append(o.tenants, tenant)
+	}
+
 	return nil
 }
+
+// Size returns the size of the data object in bytes.
+func (o *Object) Size() int64 { return o.size }
 
 // Sections returns the list of sections available in the Object. The slice of
 // returned sections must not be mutated.
 func (o *Object) Sections() Sections { return o.sections }
+
+// Tenant returns the list of tenant that have sections in the Object. The slice of
+// returned tenants must not be mutated.
+func (o *Object) Tenants() []string { return o.tenants }
+
+// Reader returns a reader for the entire raw data object.
+func (o *Object) Reader(ctx context.Context) (io.ReadCloser, error) {
+	return o.rr.Read(ctx)
+}

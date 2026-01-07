@@ -2,6 +2,7 @@ package arrowtest_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/memory"
@@ -71,11 +72,39 @@ func TestRows_Record(t *testing.T) {
 		{"name": "Eve", "age": int64(35), "location": "Eden"},
 	}
 
-	alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
-	defer alloc.AssertSize(t, 0)
+	record := expect.Record(memory.DefaultAllocator, expect.Schema())
 
-	record := expect.Record(alloc, expect.Schema())
-	defer record.Release()
+	actual, err := arrowtest.RecordRows(record)
+	require.NoError(t, err)
+
+	require.Equal(t, expect, actual)
+}
+
+func TestRows_Record_Bytes(t *testing.T) {
+	expect := arrowtest.Rows{
+		{"name": []byte("Alice")},
+		{"name": []byte("Bob")},
+		{"name": []byte("Dennis")},
+		{"name": []byte("Eve")},
+	}
+
+	record := expect.Record(memory.DefaultAllocator, expect.Schema())
+
+	actual, err := arrowtest.RecordRows(record)
+	require.NoError(t, err)
+
+	require.Equal(t, expect, actual)
+}
+
+func TestRows_Record_Time(t *testing.T) {
+	expect := arrowtest.Rows{
+		{"name": "Alice", "last_ping": time.Unix(30, 0)},
+		{"name": "Bob", "last_ping": time.Unix(25, 0)},
+		{"name": "Dennis", "last_ping": time.Unix(40, 0)},
+		{"name": "Eve", "last_ping": time.Unix(35, 0)},
+	}
+
+	record := expect.Record(memory.DefaultAllocator, expect.Schema())
 
 	actual, err := arrowtest.RecordRows(record)
 	require.NoError(t, err)

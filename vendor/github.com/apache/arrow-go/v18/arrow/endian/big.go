@@ -19,12 +19,22 @@
 
 package endian
 
-import "encoding/binary"
-
-var Native = binary.BigEndian
+import "math/bits"
 
 const (
 	IsBigEndian     = true
 	NativeEndian    = BigEndian
 	NonNativeEndian = LittleEndian
 )
+
+func FromLE[T uint16 | uint32 | uint64](x T) T {
+	switch v := any(x).(type) {
+	case uint16:
+		return T(bits.Reverse16(v))
+	case uint32:
+		return T(bits.Reverse32(v))
+	case uint64:
+		return T(bits.Reverse64(v))
+	}
+	return x
+}

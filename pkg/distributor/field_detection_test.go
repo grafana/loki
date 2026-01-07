@@ -167,6 +167,140 @@ func Test_DetectLogLevels(t *testing.T) {
 			Value: constants.LogLevelTrace,
 		})
 	})
+
+	t.Run("detected_level with mixed case value gets normalized to lowercase", func(t *testing.T) {
+		// Test various mixed case values
+		testCases := []struct {
+			input    string
+			expected string
+		}{
+			{"WaRn", constants.LogLevelWarn},
+			{"InFo", constants.LogLevelInfo},
+			{"CRITICAL", constants.LogLevelCritical},
+			{"Debug", constants.LogLevelDebug},
+			{"FaTaL", constants.LogLevelFatal},
+			{"tRaCe", constants.LogLevelTrace},
+			{"ERROR", constants.LogLevelError},
+		}
+
+		for _, tc := range testCases {
+			// Create a fresh setup for each test case
+			limits, ingester := setup(true)
+			distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil })
+
+			writeReq := makeWriteRequestWithLabels(1, 10, []string{`{foo="bar"}`}, false, false, false)
+			writeReq.Streams[0].Entries[0].Line = `test log`
+			writeReq.Streams[0].Entries[0].StructuredMetadata = push.LabelsAdapter{
+				{
+					Name:  constants.LevelLabel,
+					Value: tc.input,
+				},
+			}
+
+			_, err := distributors[0].Push(ctx, writeReq)
+			require.NoError(t, err)
+			topVal := ingester.Peek()
+
+			sm := topVal.Streams[0].Entries[0].StructuredMetadata
+			require.Len(t, sm, 1)
+			require.Equal(t, constants.LevelLabel, sm[0].Name)
+			require.Equal(t, tc.expected, sm[0].Value, "Input %q should normalize to %q", tc.input, tc.expected)
+		}
+	})
+
+	t.Run("level from stream labels gets normalized to lowercase in detected_level", func(t *testing.T) {
+		// Test various mixed case values in stream labels
+		testCases := []struct {
+			streamLabel string
+			expected    string
+		}{
+			{`{foo="bar", level="ERROR"}`, constants.LogLevelError},
+			{`{foo="bar", level="WaRn"}`, constants.LogLevelWarn},
+			{`{foo="bar", level="InFo"}`, constants.LogLevelInfo},
+			{`{foo="bar", level="CRITICAL"}`, constants.LogLevelCritical},
+			{`{foo="bar", level="Debug"}`, constants.LogLevelDebug},
+			{`{foo="bar", level="FaTaL"}`, constants.LogLevelFatal},
+			{`{foo="bar", level="tRaCe"}`, constants.LogLevelTrace},
+		}
+
+		for _, tc := range testCases {
+			// Create a fresh setup for each test case
+			limits, ingester := setup(true)
+			distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil })
+
+			writeReq := makeWriteRequestWithLabels(1, 10, []string{tc.streamLabel}, false, false, false)
+			writeReq.Streams[0].Entries[0].Line = `log message without level`
+
+			_, err := distributors[0].Push(ctx, writeReq)
+			require.NoError(t, err)
+			topVal := ingester.Peek()
+
+			// Verify that detected_level is normalized to lowercase
+			sm := topVal.Streams[0].Entries[0].StructuredMetadata
+			require.Len(t, sm, 1, "Expected detected_level in structured metadata for stream label %s", tc.streamLabel)
+			require.Equal(t, constants.LevelLabel, sm[0].Name)
+			require.Equal(t, tc.expected, sm[0].Value, "Stream label %q should normalize to %q in detected_level", tc.streamLabel, tc.expected)
+		}
+	})
+
+	t.Run("indexed OTEL severity takes precedence over structured metadata or log line", func(t *testing.T) {
+		limits, ingester := setup(true)
+		distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil })
+
+		writeReq := makeWriteRequestWithLabels(2, 10, []string{`{foo="bar", SeverityText="debug"}`}, false, false, false)
+		writeReq.Streams[0].Entries[0].Line = `{"msg":"this is a test message", "level":"error"}`
+		writeReq.Streams[0].Entries[0].StructuredMetadata = push.LabelsAdapter{
+			{
+				Name:  loghttp_push.OTLPSeverityNumber,
+				Value: fmt.Sprintf("%d", plog.SeverityNumberWarn),
+			},
+		}
+		writeReq.Streams[0].Entries[1].Line = `{"msg":"this is another message", "level":"trace"}`
+		writeReq.Streams[0].Entries[1].StructuredMetadata = push.LabelsAdapter{
+			{
+				Name:  loghttp_push.OTLPSeverityText,
+				Value: constants.LogLevelInfo,
+			},
+		}
+
+		_, err := distributors[0].Push(ctx, writeReq)
+		require.NoError(t, err)
+		topVal := ingester.Peek()
+		require.Equal(t, `{SeverityText="debug", foo="bar"}`, topVal.Streams[0].Labels)
+
+		// Verify that detected_level from structured metadata is preserved and used
+		sm := topVal.Streams[0].Entries[0].StructuredMetadata
+
+		detectedLevelLbls := make([]logproto.LabelAdapter, 0, len(sm))
+		for _, sm := range sm {
+			if sm.Name == constants.LevelLabel {
+				detectedLevelLbls = append(detectedLevelLbls, sm)
+			}
+		}
+
+		require.Len(t, detectedLevelLbls, 1)
+		require.Contains(t, detectedLevelLbls, logproto.LabelAdapter{
+			Name:  constants.LevelLabel,
+			Value: constants.LogLevelDebug,
+		})
+
+		// Verify that detected_level from structured metadata is preserved and used
+		sm2 := topVal.Streams[0].Entries[1].StructuredMetadata
+
+		detectedLevelLbls2 := make([]logproto.LabelAdapter, 0, len(sm))
+		for _, sm := range sm2 {
+			if sm.Name == constants.LevelLabel {
+				detectedLevelLbls2 = append(detectedLevelLbls2, sm)
+			}
+		}
+
+		require.Len(t, detectedLevelLbls2, 1)
+		require.Contains(t, detectedLevelLbls2, logproto.LabelAdapter{
+			Name:  constants.LevelLabel,
+			Value: constants.LogLevelDebug,
+		})
+	})
+
 }
 
 func Test_detectLogLevelFromLogEntry(t *testing.T) {
@@ -220,6 +354,146 @@ func Test_detectLogLevelFromLogEntry(t *testing.T) {
 				Line: "this is a warning log",
 			},
 			expectedLogLevel: constants.LogLevelWarn,
+		},
+		{
+			name: "non otlp with debug keyword in log line",
+			entry: logproto.Entry{
+				Line: "this is a debug message",
+			},
+			expectedLogLevel: constants.LogLevelDebug,
+		},
+		{
+			name: "non otlp with DEBUG keyword in log line",
+			entry: logproto.Entry{
+				Line: "this is a DEBUG message",
+			},
+			expectedLogLevel: constants.LogLevelDebug,
+		},
+		{
+			name: "non otlp with debug: prefix in log line",
+			entry: logproto.Entry{
+				Line: "debug: something happened",
+			},
+			expectedLogLevel: constants.LogLevelDebug,
+		},
+		{
+			name: "non otlp with DEBUG: prefix in log line",
+			entry: logproto.Entry{
+				Line: "DEBUG: something happened",
+			},
+			expectedLogLevel: constants.LogLevelDebug,
+		},
+		{
+			name: "non otlp with critical keyword in log line",
+			entry: logproto.Entry{
+				Line: "this is a critical message",
+			},
+			expectedLogLevel: constants.LogLevelUnknown,
+		},
+		{
+			name: "non otlp with CRITICAL keyword in log line",
+			entry: logproto.Entry{
+				Line: "this is a CRITICAL message",
+			},
+			expectedLogLevel: constants.LogLevelUnknown,
+		},
+		{
+			name: "non otlp with critical: prefix in log line",
+			entry: logproto.Entry{
+				Line: "critical: something happened",
+			},
+			expectedLogLevel: constants.LogLevelCritical,
+		},
+		{
+			name: "non otlp with CRITICAL: prefix in log line",
+			entry: logproto.Entry{
+				Line: "CRITICAL: something happened",
+			},
+			expectedLogLevel: constants.LogLevelCritical,
+		},
+		{
+			name: "non otlp with [debug] bracket pattern in log line",
+			entry: logproto.Entry{
+				Line: "[debug] this is a debug message",
+			},
+			expectedLogLevel: constants.LogLevelDebug,
+		},
+		{
+			name: "non otlp with [DEBUG] bracket pattern in log line",
+			entry: logproto.Entry{
+				Line: "[DEBUG] this is a debug message",
+			},
+			expectedLogLevel: constants.LogLevelDebug,
+		},
+		{
+			name: "non otlp with [critical] bracket pattern in log line",
+			entry: logproto.Entry{
+				Line: "[critical] this is a critical message",
+			},
+			expectedLogLevel: constants.LogLevelCritical,
+		},
+		{
+			name: "non otlp with [CRITICAL] bracket pattern in log line",
+			entry: logproto.Entry{
+				Line: "[CRITICAL] this is a critical message",
+			},
+			expectedLogLevel: constants.LogLevelCritical,
+		},
+		{
+			name: "non otlp with [info] bracket pattern in log line",
+			entry: logproto.Entry{
+				Line: "[info] this is an info message",
+			},
+			expectedLogLevel: constants.LogLevelInfo,
+		},
+		{
+			name: "non otlp with [INFO] bracket pattern in log line",
+			entry: logproto.Entry{
+				Line: "[INFO] this is an info message",
+			},
+			expectedLogLevel: constants.LogLevelInfo,
+		},
+		{
+			name: "non otlp with [warn] bracket pattern in log line",
+			entry: logproto.Entry{
+				Line: "[warn] this is a warning message",
+			},
+			expectedLogLevel: constants.LogLevelWarn,
+		},
+		{
+			name: "non otlp with [WARNING] bracket pattern in log line",
+			entry: logproto.Entry{
+				Line: "[WARNING] this is a warning message",
+			},
+			expectedLogLevel: constants.LogLevelWarn,
+		},
+		{
+			name: "non otlp with [error] bracket pattern in log line",
+			entry: logproto.Entry{
+				Line: "[error] this is an error message",
+			},
+			expectedLogLevel: constants.LogLevelError,
+		},
+		{
+			name: "non otlp with [ERROR] bracket pattern in log line",
+			entry: logproto.Entry{
+				Line: "[ERROR] this is an error message",
+			},
+			expectedLogLevel: constants.LogLevelError,
+		},
+		{
+			name: "non otlp with [err] bracket pattern in log line",
+			entry: logproto.Entry{
+				Line: "[err] this is an error message",
+			},
+			expectedLogLevel: constants.LogLevelError,
+		},
+		{
+			name: "non otlp with [ERR] bracket pattern in log line",
+			entry: logproto.Entry{
+				Line: "[ERR] this is an error message",
+			},
+			expectedLogLevel: constants.LogLevelError,
 		},
 		{
 			name: "json log line with an error",
@@ -399,6 +673,76 @@ func Test_detectLogLevelFromLogEntryWithCustomLabels(t *testing.T) {
 				Line: "this is a warning log",
 			},
 			expectedLogLevel: constants.LogLevelWarn,
+		},
+		{
+			name: "non otlp with debug keyword in log line",
+			entry: logproto.Entry{
+				Line: "this is a debug message",
+			},
+			expectedLogLevel: constants.LogLevelDebug,
+		},
+		{
+			name: "non otlp with DEBUG keyword in log line",
+			entry: logproto.Entry{
+				Line: "this is a DEBUG message",
+			},
+			expectedLogLevel: constants.LogLevelDebug,
+		},
+		{
+			name: "non otlp with debug: prefix in log line",
+			entry: logproto.Entry{
+				Line: "debug: something happened",
+			},
+			expectedLogLevel: constants.LogLevelDebug,
+		},
+		{
+			name: "non otlp with DEBUG: prefix in log line",
+			entry: logproto.Entry{
+				Line: "DEBUG: something happened",
+			},
+			expectedLogLevel: constants.LogLevelDebug,
+		},
+		{
+			name: "non otlp with critical keyword in log line",
+			entry: logproto.Entry{
+				Line: "this is a critical message",
+			},
+			expectedLogLevel: constants.LogLevelUnknown,
+		},
+		{
+			name: "non otlp with CRITICAL keyword in log line",
+			entry: logproto.Entry{
+				Line: "this is a CRITICAL message",
+			},
+			expectedLogLevel: constants.LogLevelUnknown,
+		},
+		{
+			name: "non otlp with critical: prefix in log line",
+			entry: logproto.Entry{
+				Line: "critical: something happened",
+			},
+			expectedLogLevel: constants.LogLevelCritical,
+		},
+		{
+			name: "non otlp with CRITICAL: prefix in log line",
+			entry: logproto.Entry{
+				Line: "CRITICAL: something happened",
+			},
+			expectedLogLevel: constants.LogLevelCritical,
+		},
+		{
+			name: "non otlp with [debug] bracket pattern in custom test",
+			entry: logproto.Entry{
+				Line: "[debug] this is a debug message with custom fields",
+			},
+			expectedLogLevel: constants.LogLevelDebug,
+		},
+		{
+			name: "non otlp with [CRITICAL] bracket pattern in custom test",
+			entry: logproto.Entry{
+				Line: "[CRITICAL] this is a critical message with custom fields",
+			},
+			expectedLogLevel: constants.LogLevelCritical,
 		},
 		{
 			name: "json log line with an error",

@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	"gopkg.in/yaml.v3"
+	yaml "go.yaml.in/yaml/v3"
 )
 
 // ProviderSettings are the settings to initialize a Provider.
@@ -19,6 +19,9 @@ type ProviderSettings struct {
 	// when instantiating a Provider with a ProviderFactory,
 	// nil Logger references should be replaced with a no-op Logger.
 	Logger *zap.Logger
+
+	// prevent unkeyed literal initialization
+	_ struct{}
 }
 
 // ProviderFactory defines a factory that can be used to instantiate
@@ -83,6 +86,8 @@ type Provider interface {
 	// This method must be called when the Collector service ends, either in case of
 	// success or error. Retrieve cannot be called after Shutdown.
 	//
+	// Provider MUST shutdown and wait for any goroutine(s) that were created to call `watcher`, if any.
+	//
 	// Should never be called concurrently with itself or with Retrieve.
 	// If ctx is cancelled should return immediately with an error.
 	Shutdown(ctx context.Context) error
@@ -95,6 +100,8 @@ type ChangeEvent struct {
 	// Error is nil if the config is changed and needs to be re-fetched.
 	// Any non-nil error indicates that there was a problem with watching the config changes.
 	Error error
+	// prevent unkeyed literal initialization
+	_ struct{}
 }
 
 // Retrieved holds the result of a call to the Retrieve method of a Provider object.

@@ -4,9 +4,9 @@ dependencies:
   version: 5.4.0
 - name: grafana-agent-operator
   repository: https://grafana.github.io/helm-charts
-  version: 0.5.1
+  version: 0.5.2
 - name: rollout-operator
   repository: https://grafana.github.io/helm-charts
-  version: 0.30.0
-digest: sha256:3365014cf05666db8086eab3c5db010086b8593e102e8dfab3f9ff46a84e7291
-generated: "2025-06-19T15:18:36.444222773Z"
+  version: 0.38.2
+digest: sha256:41050cfda9502b3e9f345ff9ed2650bb19e5e86defd4022ae0de06b10823d9eb
+generated: "2025-12-10T10:36:03.227724116Z"

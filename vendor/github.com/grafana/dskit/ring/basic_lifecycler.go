@@ -53,8 +53,6 @@ type BasicLifecyclerConfig struct {
 	HeartbeatTimeout    time.Duration
 	TokensObservePeriod time.Duration
 	NumTokens           int
-	// HideTokensInStatusPage allows tokens to be hidden from management tools e.g. the status page, for use in contexts which do not utilize tokens.
-	HideTokensInStatusPage bool
 
 	// If true lifecycler doesn't unregister instance from the ring when it's stopping. Default value is false,
 	// which means unregistering.
@@ -63,6 +61,11 @@ type BasicLifecyclerConfig struct {
 	// If set, specifies the TokenGenerator implementation that will be used for generating tokens.
 	// Default value is nil, which means that RandomTokenGenerator is used.
 	RingTokenGenerator TokenGenerator
+
+	// Versions are the component versions associated with this instance.
+	Versions InstanceVersions
+
+	StatusPageConfig StatusPageConfig
 }
 
 /*
@@ -153,6 +156,20 @@ func (l *BasicLifecycler) GetState() InstanceState {
 	return l.currInstanceDesc.GetState()
 }
 
+func (l *BasicLifecycler) GetReadOnlyState() (bool, time.Time) {
+	l.currState.RLock()
+	defer l.currState.RUnlock()
+
+	if l.currInstanceDesc == nil {
+		return false, time.Time{}
+	}
+
+	if l.currInstanceDesc.ReadOnly {
+		return true, time.Unix(l.currInstanceDesc.ReadOnlyUpdatedTimestamp, 0)
+	}
+	return false, time.Time{}
+}
+
 func (l *BasicLifecycler) GetTokens() Tokens {
 	l.currState.RLock()
 	defer l.currState.RUnlock()
@@ -189,6 +206,12 @@ func (l *BasicLifecycler) IsRegistered() bool {
 func (l *BasicLifecycler) ChangeState(ctx context.Context, state InstanceState) error {
 	return l.run(func() error {
 		return l.changeState(ctx, state)
+	})
+}
+
+func (l *BasicLifecycler) ChangeReadOnlyState(ctx context.Context, readOnly bool) error {
+	return l.run(func() error {
+		return l.changeReadOnlyState(ctx, readOnly)
 	})
 }
 
@@ -317,10 +340,15 @@ func (l *BasicLifecycler) registerInstance(ctx context.Context) error {
 			registeredAt = time.Now()
 		}
 
+		readOnly, readOnlyUpdatedTimestamp := instanceDesc.GetReadOnlyState()
+		if readOnlyUpdatedTimestamp.IsZero() {
+			// Store the zero timestamp as 0 in the ring, not as -62135596800.
+			readOnlyUpdatedTimestamp = time.Unix(0, 0)
+		}
 		// Always overwrite the instance in the ring (even if already exists) because some properties
 		// may have changed (stated, tokens, zone, address) and even if they didn't the heartbeat at
 		// least did.
-		instanceDesc = ringDesc.AddIngester(l.cfg.ID, l.cfg.Addr, l.cfg.Zone, tokens, state, registeredAt, false, time.Time{})
+		instanceDesc = ringDesc.AddIngester(l.cfg.ID, l.cfg.Addr, l.cfg.Zone, tokens, state, registeredAt, readOnly, readOnlyUpdatedTimestamp, l.cfg.Versions)
 		return ringDesc, true, nil
 	})
 
@@ -447,7 +475,8 @@ func (l *BasicLifecycler) updateInstance(ctx context.Context, update func(*Desc,
 			// a resharding of tenants among instances: to guarantee query correctness we need to update the
 			// registration timestamp to current time.
 			registeredAt := time.Now()
-			instanceDesc = ringDesc.AddIngester(l.cfg.ID, l.cfg.Addr, l.cfg.Zone, l.GetTokens(), l.GetState(), registeredAt, false, time.Time{})
+			readOnly, readOnlyUpdatedTimestamp := l.GetReadOnlyState()
+			instanceDesc = ringDesc.AddIngester(l.cfg.ID, l.cfg.Addr, l.cfg.Zone, l.GetTokens(), l.GetState(), registeredAt, readOnly, readOnlyUpdatedTimestamp, l.cfg.Versions)
 		}
 
 		prevTimestamp := instanceDesc.Timestamp
@@ -514,6 +543,26 @@ func (l *BasicLifecycler) changeState(ctx context.Context, state InstanceState) 
 	return err
 }
 
+func (l *BasicLifecycler) changeReadOnlyState(ctx context.Context, readOnly bool) error {
+	err := l.updateInstance(ctx, func(_ *Desc, i *InstanceDesc) bool {
+		// No-op if the state hasn't changed.
+		if i.ReadOnly == readOnly {
+			return false
+		}
+
+		i.ReadOnly = readOnly
+		i.ReadOnlyUpdatedTimestamp = time.Now().Unix()
+		return true
+	})
+
+	if err != nil {
+		from, _ := l.GetReadOnlyState()
+		level.Warn(l.logger).Log("msg", "failed to change instance read-only state in the ring", "from", from, "to", readOnly, "err", err)
+	}
+
+	return err
+}
+
 // run a function within the lifecycler service goroutine.
 func (l *BasicLifecycler) run(fn func() error) error {
 	sc := l.ServiceContext()
@@ -548,5 +597,5 @@ func (l *BasicLifecycler) getRing(ctx context.Context) (*Desc, error) {
 }
 
 func (l *BasicLifecycler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	newRingPageHandler(l, l.cfg.HeartbeatTimeout, l.cfg.HideTokensInStatusPage).handle(w, req)
+	newRingPageHandler(l, l.cfg.HeartbeatTimeout, l.cfg.StatusPageConfig).handle(w, req)
 }

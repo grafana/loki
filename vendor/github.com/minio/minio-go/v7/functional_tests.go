@@ -88,7 +88,7 @@ func createHTTPTransport() (transport *http.Transport) {
 		transport.TLSClientConfig.InsecureSkipVerify = true
 	}
 
-	return
+	return transport
 }
 
 var readFull = func(r io.Reader, buf []byte) (n int, err error) {
@@ -123,7 +123,7 @@ var readFull = func(r io.Reader, buf []byte) (n int, err error) {
 	} else if n > 0 && err == io.EOF {
 		err = io.ErrUnexpectedEOF
 	}
-	return
+	return n, err
 }
 
 func baseLogger(testName, function string, args map[string]interface{}, startTime time.Time) *slog.Logger {
@@ -282,7 +282,7 @@ var mintDataDir = os.Getenv("MINT_DATA_DIR")
 
 func getMintDataDirFilePath(filename string) (fp string) {
 	if mintDataDir == "" {
-		return
+		return fp
 	}
 	return filepath.Join(mintDataDir, filename)
 }
@@ -1970,7 +1970,7 @@ func testPutObjectWithChecksums() {
 	// initialize logging params
 	startTime := time.Now()
 	testName := getFuncName()
-	function := "PutObject(bucketName, objectName, reader,size, opts)"
+	function := "PutObject(bucketName, objectName, reader, size, opts)"
 	args := map[string]interface{}{
 		"bucketName": "",
 		"objectName": "",
@@ -1982,7 +1982,7 @@ func testPutObjectWithChecksums() {
 		return
 	}
 
-	c, err := NewClient(ClientConfig{})
+	c, err := NewClient(ClientConfig{TrailingHeaders: true})
 	if err != nil {
 		logError(testName, function, args, startTime, "", "MinIO client object creation failed", err)
 		return
@@ -2037,6 +2037,10 @@ func testPutObjectWithChecksums() {
 		h := test.cs.Hasher()
 		h.Reset()
 
+		if test.cs.IsSet() {
+			meta["x-amz-checksum-algorithm"] = test.cs.String()
+		}
+
 		// Test with a bad CRC - we haven't called h.Write(b), so this is a checksum of empty data
 		meta[test.cs.Key()] = base64.StdEncoding.EncodeToString(h.Sum(nil))
 		args["metadata"] = meta
@@ -2071,6 +2075,9 @@ func testPutObjectWithChecksums() {
 		cmpChecksum(resp.ChecksumCRC32, meta["x-amz-checksum-crc32"])
 		cmpChecksum(resp.ChecksumCRC32C, meta["x-amz-checksum-crc32c"])
 		cmpChecksum(resp.ChecksumCRC64NVME, meta["x-amz-checksum-crc64nvme"])
+		if resp.ChecksumMode != minio.ChecksumFullObjectMode.String() {
+			logError(testName, function, args, startTime, "", "Checksum mode is not full object", fmt.Errorf("got %s, want %s", resp.ChecksumMode, minio.ChecksumFullObjectMode.String()))
+		}
 
 		// Read the data back
 		gopts := minio.GetObjectOptions{Checksum: true}
@@ -2091,6 +2098,9 @@ func testPutObjectWithChecksums() {
 		cmpChecksum(st.ChecksumCRC32, meta["x-amz-checksum-crc32"])
 		cmpChecksum(st.ChecksumCRC32C, meta["x-amz-checksum-crc32c"])
 		cmpChecksum(st.ChecksumCRC64NVME, meta["x-amz-checksum-crc64nvme"])
+		if st.ChecksumMode != minio.ChecksumFullObjectMode.String() {
+			logError(testName, function, args, startTime, "", "Checksum mode is not full object", fmt.Errorf("got %s, want %s", st.ChecksumMode, minio.ChecksumFullObjectMode.String()))
+		}
 
 		if st.Size != int64(bufSize) {
 			logError(testName, function, args, startTime, "", "Number of bytes returned by PutObject does not match GetObject, expected "+string(bufSize)+" got "+string(st.Size), err)
@@ -2323,7 +2333,7 @@ func testPutObjectWithTrailingChecksums() {
 }
 
 // Test PutObject with custom checksums.
-func testPutMultipartObjectWithChecksums(trailing bool) {
+func testPutMultipartObjectWithChecksums() {
 	// initialize logging params
 	startTime := time.Now()
 	testName := getFuncName()
@@ -2331,7 +2341,7 @@ func testPutMultipartObjectWithChecksums(trailing bool) {
 	args := map[string]interface{}{
 		"bucketName": "",
 		"objectName": "",
-		"opts":       fmt.Sprintf("minio.PutObjectOptions{UserMetadata: metadata, Trailing: %v}", trailing),
+		"opts":       "minio.PutObjectOptions{UserMetadata: metadata, Trailing: true}",
 	}
 
 	if !isFullMode() {
@@ -2339,7 +2349,7 @@ func testPutMultipartObjectWithChecksums(trailing bool) {
 		return
 	}
 
-	c, err := NewClient(ClientConfig{TrailingHeaders: trailing})
+	c, err := NewClient(ClientConfig{TrailingHeaders: true})
 	if err != nil {
 		logError(testName, function, args, startTime, "", "MinIO client object creation failed", err)
 		return
@@ -2431,14 +2441,13 @@ func testPutMultipartObjectWithChecksums(trailing bool) {
 		reader.Close()
 		h := test.cs.Hasher()
 		h.Reset()
-		want := hashMultiPart(b, partSize, test.cs)
+		// wantChksm might be the full object checksum or the multipart checksum, depending on the test.cs type.
+		wantChksm := hashMultiPart(b, partSize, test.cs)
+		// wantFullObjectChksm is always the full object checksum that is returned after CopyObject.
+		wantFullObjectChksm := hashMultiPart(b, len(b), test.cs)
 
-		var cs minio.ChecksumType
-		rd := io.Reader(io.NopCloser(bytes.NewReader(b)))
-		if trailing {
-			cs = test.cs
-			rd = bytes.NewReader(b)
-		}
+		rd := bytes.NewReader(b)
+		cs := test.cs
 
 		// Set correct CRC.
 		args["section"] = "PutObject"
@@ -2447,7 +2456,6 @@ func testPutMultipartObjectWithChecksums(trailing bool) {
 			DisableMultipart:     false,
 			UserMetadata:         nil,
 			PartSize:             partSize,
-			AutoChecksum:         test.cs,
 			Checksum:             cs,
 		})
 		if err != nil {
@@ -2457,15 +2465,15 @@ func testPutMultipartObjectWithChecksums(trailing bool) {
 
 		switch test.cs.Base() {
 		case minio.ChecksumCRC32C:
-			cmpChecksum(resp.ChecksumCRC32C, want)
+			cmpChecksum(resp.ChecksumCRC32C, wantChksm)
 		case minio.ChecksumCRC32:
-			cmpChecksum(resp.ChecksumCRC32, want)
+			cmpChecksum(resp.ChecksumCRC32, wantChksm)
 		case minio.ChecksumSHA1:
-			cmpChecksum(resp.ChecksumSHA1, want)
+			cmpChecksum(resp.ChecksumSHA1, wantChksm)
 		case minio.ChecksumSHA256:
-			cmpChecksum(resp.ChecksumSHA256, want)
+			cmpChecksum(resp.ChecksumSHA256, wantChksm)
 		case minio.ChecksumCRC64NVME:
-			cmpChecksum(resp.ChecksumCRC64NVME, want)
+			cmpChecksum(resp.ChecksumCRC64NVME, wantChksm)
 		}
 
 		args["section"] = "HeadObject"
@@ -2476,15 +2484,51 @@ func testPutMultipartObjectWithChecksums(trailing bool) {
 		}
 		switch test.cs.Base() {
 		case minio.ChecksumCRC32C:
-			cmpChecksum(st.ChecksumCRC32C, want)
+			cmpChecksum(st.ChecksumCRC32C, wantChksm)
 		case minio.ChecksumCRC32:
-			cmpChecksum(st.ChecksumCRC32, want)
+			cmpChecksum(st.ChecksumCRC32, wantChksm)
 		case minio.ChecksumSHA1:
-			cmpChecksum(st.ChecksumSHA1, want)
+			cmpChecksum(st.ChecksumSHA1, wantChksm)
 		case minio.ChecksumSHA256:
-			cmpChecksum(st.ChecksumSHA256, want)
+			cmpChecksum(st.ChecksumSHA256, wantChksm)
 		case minio.ChecksumCRC64NVME:
-			cmpChecksum(st.ChecksumCRC64NVME, want)
+			cmpChecksum(st.ChecksumCRC64NVME, wantChksm)
+		}
+
+		// Use the CopyObject API to make a copy, in the case it was a composite checksum,
+		// it will change because the copy is no longer a multipart object. S3 returns the checksum
+		// of the full object when HeadObject is called on the copy.
+		args["section"] = "CopyObject"
+		objectCopyName := objectName + "-copy"
+		_, err = c.CopyObject(context.Background(), minio.CopyDestOptions{
+			Bucket: bucketName,
+			Object: objectCopyName,
+		}, minio.CopySrcOptions{
+			Bucket: bucketName,
+			Object: objectName,
+		})
+		if err != nil {
+			logError(testName, function, args, startTime, "", "CopyObject failed", err)
+			return
+		}
+
+		args["section"] = "HeadObject-Copy"
+		st, err = c.StatObject(context.Background(), bucketName, objectCopyName, minio.StatObjectOptions{Checksum: true})
+		if err != nil {
+			logError(testName, function, args, startTime, "", "StatObject failed", err)
+			return
+		}
+		switch test.cs.Base() {
+		case minio.ChecksumCRC32C:
+			cmpChecksum(st.ChecksumCRC32C, wantFullObjectChksm)
+		case minio.ChecksumCRC32:
+			cmpChecksum(st.ChecksumCRC32, wantFullObjectChksm)
+		case minio.ChecksumSHA1:
+			cmpChecksum(st.ChecksumSHA1, wantFullObjectChksm)
+		case minio.ChecksumSHA256:
+			cmpChecksum(st.ChecksumSHA256, wantFullObjectChksm)
+		case minio.ChecksumCRC64NVME:
+			cmpChecksum(st.ChecksumCRC64NVME, wantFullObjectChksm)
 		}
 
 		args["section"] = "GetObjectAttributes"
@@ -2494,19 +2538,19 @@ func testPutMultipartObjectWithChecksums(trailing bool) {
 			return
 		}
 
-		if strings.ContainsRune(want, '-') {
-			want = want[:strings.IndexByte(want, '-')]
+		if strings.ContainsRune(wantChksm, '-') {
+			wantChksm = wantChksm[:strings.IndexByte(wantChksm, '-')]
 		}
 		switch test.cs {
 		// Full Object CRC does not return anything with GetObjectAttributes
 		case minio.ChecksumCRC32C:
-			cmpChecksum(s.Checksum.ChecksumCRC32C, want)
+			cmpChecksum(s.Checksum.ChecksumCRC32C, wantChksm)
 		case minio.ChecksumCRC32:
-			cmpChecksum(s.Checksum.ChecksumCRC32, want)
+			cmpChecksum(s.Checksum.ChecksumCRC32, wantChksm)
 		case minio.ChecksumSHA1:
-			cmpChecksum(s.Checksum.ChecksumSHA1, want)
+			cmpChecksum(s.Checksum.ChecksumSHA1, wantChksm)
 		case minio.ChecksumSHA256:
-			cmpChecksum(s.Checksum.ChecksumSHA256, want)
+			cmpChecksum(s.Checksum.ChecksumSHA256, wantChksm)
 		}
 
 		// Read the data back
@@ -2530,22 +2574,22 @@ func testPutMultipartObjectWithChecksums(trailing bool) {
 		// Test part 2 checksum...
 		h.Reset()
 		h.Write(b[partSize : 2*partSize])
-		want = base64.StdEncoding.EncodeToString(h.Sum(nil))
+		wantChksm = base64.StdEncoding.EncodeToString(h.Sum(nil))
 
 		switch test.cs {
 		// Full Object CRC does not return any part CRC for whatever reason.
 		case minio.ChecksumCRC32C:
-			cmpChecksum(st.ChecksumCRC32C, want)
+			cmpChecksum(st.ChecksumCRC32C, wantChksm)
 		case minio.ChecksumCRC32:
-			cmpChecksum(st.ChecksumCRC32, want)
+			cmpChecksum(st.ChecksumCRC32, wantChksm)
 		case minio.ChecksumSHA1:
-			cmpChecksum(st.ChecksumSHA1, want)
+			cmpChecksum(st.ChecksumSHA1, wantChksm)
 		case minio.ChecksumSHA256:
-			cmpChecksum(st.ChecksumSHA256, want)
+			cmpChecksum(st.ChecksumSHA256, wantChksm)
 		case minio.ChecksumCRC64NVME:
 			// AWS doesn't return part checksum, but may in the future.
 			if st.ChecksumCRC64NVME != "" {
-				cmpChecksum(st.ChecksumCRC64NVME, want)
+				cmpChecksum(st.ChecksumCRC64NVME, wantChksm)
 			}
 		}
 
@@ -2589,11 +2633,10 @@ func testTrailingChecksums() {
 		return
 	}
 
-	hashMultiPart := func(b []byte, partSize int, hasher hash.Hash) string {
+	hashMultiPart := func(b []byte, partSize int, hasher hash.Hash) (oparts []minio.ObjectPart) {
 		r := bytes.NewReader(b)
 		tmp := make([]byte, partSize)
 		parts := 0
-		var all []byte
 		for {
 			n, err := io.ReadFull(r, tmp)
 			if err != nil && err != io.ErrUnexpectedEOF {
@@ -2605,14 +2648,16 @@ func testTrailingChecksums() {
 			parts++
 			hasher.Reset()
 			hasher.Write(tmp[:n])
-			all = append(all, hasher.Sum(nil)...)
+			oparts = append(oparts, minio.ObjectPart{
+				PartNumber:     parts,
+				Size:           int64(n),
+				ChecksumCRC32C: base64.StdEncoding.EncodeToString(hasher.Sum(nil)),
+			})
 			if err != nil {
 				break
 			}
 		}
-		hasher.Reset()
-		hasher.Write(all)
-		return fmt.Sprintf("%s-%d", base64.StdEncoding.EncodeToString(hasher.Sum(nil)), parts)
+		return oparts
 	}
 	defer cleanupBucket(bucketName, c)
 	tests := []struct {
@@ -2636,6 +2681,7 @@ func testTrailingChecksums() {
 				DisableMultipart:     false,
 				UserMetadata:         nil,
 				PartSize:             5 << 20,
+				Checksum:             minio.ChecksumFullObjectCRC32C,
 			},
 		},
 		{
@@ -2647,6 +2693,7 @@ func testTrailingChecksums() {
 				DisableMultipart:     false,
 				UserMetadata:         nil,
 				PartSize:             6_645_654, // Rather arbitrary size
+				Checksum:             minio.ChecksumFullObjectCRC32C,
 			},
 		},
 		{
@@ -2658,6 +2705,7 @@ func testTrailingChecksums() {
 				DisableMultipart:     false,
 				UserMetadata:         nil,
 				PartSize:             5 << 20,
+				Checksum:             minio.ChecksumFullObjectCRC32C,
 			},
 		},
 		{
@@ -2669,6 +2717,7 @@ func testTrailingChecksums() {
 				DisableMultipart:     false,
 				UserMetadata:         nil,
 				PartSize:             6_645_654, // Rather arbitrary size
+				Checksum:             minio.ChecksumFullObjectCRC32C,
 			},
 		},
 	}
@@ -2696,7 +2745,14 @@ func testTrailingChecksums() {
 		reader.Close()
 		h := test.hasher
 		h.Reset()
-		test.ChecksumCRC32C = hashMultiPart(b, int(test.PO.PartSize), test.hasher)
+
+		parts := hashMultiPart(b, int(test.PO.PartSize), test.hasher)
+		cksum, err := minio.ChecksumFullObjectCRC32C.FullObjectChecksum(parts)
+		if err != nil {
+			logError(testName, function, args, startTime, "", "checksum calculation failed", err)
+			return
+		}
+		test.ChecksumCRC32C = cksum.Encoded()
 
 		// Set correct CRC.
 		resp, err := c.PutObject(context.Background(), bucketName, objectName, bytes.NewReader(b), int64(bufSize), test.PO)
@@ -3310,7 +3366,7 @@ func validateObjectAttributeRequest(OA *minio.ObjectAttributes, opts *minio.Obje
 	if opts.VersionID != "" {
 		if OA.VersionID != opts.VersionID {
 			err = fmt.Errorf("Expected versionId %s but got versionId %s", opts.VersionID, OA.VersionID)
-			return
+			return err
 		}
 	}
 
@@ -3337,12 +3393,12 @@ func validateObjectAttributeRequest(OA *minio.ObjectAttributes, opts *minio.Obje
 	if test.HasPartChecksums {
 		if partsMissingChecksum {
 			err = fmt.Errorf("One or all parts were missing a checksum")
-			return
+			return err
 		}
 	} else {
 		if foundPartChecksum {
 			err = fmt.Errorf("Did not expect ObjectParts to have checksums but found one")
-			return
+			return err
 		}
 	}
 
@@ -3354,52 +3410,52 @@ func validateObjectAttributeRequest(OA *minio.ObjectAttributes, opts *minio.Obje
 	if test.HasFullChecksum {
 		if !hasFullObjectChecksum {
 			err = fmt.Errorf("Full object checksum not found")
-			return
+			return err
 		}
 	} else {
 		if hasFullObjectChecksum {
 			err = fmt.Errorf("Did not expect a full object checksum but we got one")
-			return
+			return err
 		}
 	}
 
 	if OA.ETag != test.ETag {
 		err = fmt.Errorf("Etags do not match, got %s but expected %s", OA.ETag, test.ETag)
-		return
+		return err
 	}
 
 	if test.HasParts {
 		if len(OA.ObjectParts.Parts) < 1 {
 			err = fmt.Errorf("Was expecting ObjectParts but none were present")
-			return
+			return err
 		}
 	}
 
 	if OA.StorageClass == "" {
 		err = fmt.Errorf("Was expecting a StorageClass but got none")
-		return
+		return err
 	}
 
 	if OA.ObjectSize != test.ObjectSize {
 		err = fmt.Errorf("Was expecting a ObjectSize but got none")
-		return
+		return err
 	}
 
 	if test.HasParts {
 		if opts.MaxParts == 0 {
 			if len(OA.ObjectParts.Parts) != OA.ObjectParts.PartsCount {
 				err = fmt.Errorf("expected %s parts but got %d", OA.ObjectParts.PartsCount, len(OA.ObjectParts.Parts))
-				return
+				return err
 			}
 		} else if (opts.MaxParts + opts.PartNumberMarker) > OA.ObjectParts.PartsCount {
 			if len(OA.ObjectParts.Parts) != (OA.ObjectParts.PartsCount - opts.PartNumberMarker) {
 				err = fmt.Errorf("expected %d parts but got %d", (OA.ObjectParts.PartsCount - opts.PartNumberMarker), len(OA.ObjectParts.Parts))
-				return
+				return err
 			}
 		} else if opts.MaxParts != 0 {
 			if opts.MaxParts != len(OA.ObjectParts.Parts) {
 				err = fmt.Errorf("expected %d parts but got %d", opts.MaxParts, len(OA.ObjectParts.Parts))
-				return
+				return err
 			}
 		}
 	}
@@ -3407,18 +3463,18 @@ func validateObjectAttributeRequest(OA *minio.ObjectAttributes, opts *minio.Obje
 	if OA.ObjectParts.NextPartNumberMarker == OA.ObjectParts.PartsCount {
 		if OA.ObjectParts.IsTruncated {
 			err = fmt.Errorf("Expected ObjectParts to NOT be truncated, but it was")
-			return
+			return err
 		}
 	}
 
 	if OA.ObjectParts.NextPartNumberMarker != OA.ObjectParts.PartsCount {
 		if !OA.ObjectParts.IsTruncated {
 			err = fmt.Errorf("Expected ObjectParts to be truncated, but it was NOT")
-			return
+			return err
 		}
 	}
 
-	return
+	return err
 }
 
 // Test PutObject using a large data to trigger multipart readat
@@ -3629,6 +3685,93 @@ func testPutObjectStreaming() {
 			return
 		}
 
+	}
+
+	logSuccess(testName, function, args, startTime)
+}
+
+// Test PutObject with preconditions on non-existent objects
+func testPutObjectPreconditionOnNonExistent() {
+	startTime := time.Now()
+	testName := getFuncName()
+	function := "PutObject(bucketName, objectName, reader, size, opts) with preconditions"
+	args := map[string]interface{}{
+		"bucketName": "",
+		"objectName": "",
+		"opts":       "minio.PutObjectOptions{SetMatchETag/SetMatchETagExcept}",
+	}
+
+	c, err := NewClient(ClientConfig{})
+	if err != nil {
+		logError(testName, function, args, startTime, "", "MinIO client object creation failed", err)
+		return
+	}
+
+	bucketName := randString(60, rand.NewSource(time.Now().UnixNano()), "minio-go-test-")
+	args["bucketName"] = bucketName
+
+	err = c.MakeBucket(context.Background(), bucketName, minio.MakeBucketOptions{Region: "us-east-1"})
+	if err != nil {
+		logError(testName, function, args, startTime, "", "MakeBucket failed", err)
+		return
+	}
+
+	defer cleanupBucket(bucketName, c)
+
+	// Test 1: PutObject with SetMatchETag on non-existent object should fail
+	objectName := randString(60, rand.NewSource(time.Now().UnixNano()), "test-object-")
+	args["objectName"] = objectName
+
+	data := bytes.NewReader([]byte("test data"))
+
+	opts := minio.PutObjectOptions{}
+	opts.SetMatchETag("some-etag")
+
+	_, err = c.PutObject(context.Background(), bucketName, objectName, data, int64(data.Len()), opts)
+	if err == nil {
+		logError(testName, function, args, startTime, "", "PutObject with SetMatchETag on non-existent object should have failed", nil)
+		return
+	}
+
+	errResp := minio.ToErrorResponse(err)
+	if errResp.Code != "NoSuchKey" {
+		logError(testName, function, args, startTime, "", fmt.Sprintf("Expected NoSuchKey error (AWS standard for non-existent objects), got %s", errResp.Code), err)
+		return
+	}
+
+	// Test 2: PutObject with SetMatchETagExcept (If-None-Match) on non-existent object should succeed
+	objectName2 := randString(60, rand.NewSource(time.Now().UnixNano()), "test-object2-")
+	args["objectName"] = objectName2
+
+	data2 := bytes.NewReader([]byte("test data 2"))
+	opts2 := minio.PutObjectOptions{}
+	opts2.SetMatchETagExcept("some-etag")
+
+	_, err = c.PutObject(context.Background(), bucketName, objectName2, data2, int64(data2.Len()), opts2)
+	if err != nil {
+		logError(testName, function, args, startTime, "", "PutObject with SetMatchETagExcept (If-None-Match) on non-existent object should have succeeded", err)
+		return
+	}
+	// Test 3: CompleteMultipartUpload with preconditions on non-existent object should fail
+	objectName3 := randString(60, rand.NewSource(time.Now().UnixNano()), "test-multipart-")
+	args["objectName"] = objectName3
+
+	data3 := bytes.Repeat([]byte("a"), 5*1024*1024+1)
+	reader3 := bytes.NewReader(data3)
+
+	opts3 := minio.PutObjectOptions{}
+	opts3.SetMatchETag("non-existent-etag")
+
+	_, err = c.PutObject(context.Background(), bucketName, objectName3, reader3, int64(len(data3)), opts3)
+	if err == nil {
+		logError(testName, function, args, startTime, "", "CompleteMultipartUpload with SetMatchETag on non-existent object should have failed", nil)
+		return
+	}
+
+	errResp = minio.ToErrorResponse(err)
+	if errResp.Code != "NoSuchKey" {
+		logError(testName, function, args, startTime, "", fmt.Sprintf("Expected NoSuchKey error (AWS standard for non-existent objects) for multipart, got %s", errResp.Code), err)
+		return
 	}
 
 	logSuccess(testName, function, args, startTime)
@@ -4172,7 +4315,7 @@ func testFPutObjectMultipart() {
 		"opts":       "",
 	}
 
-	c, err := NewClient(ClientConfig{})
+	c, err := NewClient(ClientConfig{TrailingHeaders: true})
 	if err != nil {
 		logError(testName, function, args, startTime, "", "MinIO client object creation failed", err)
 		return
@@ -5581,6 +5724,161 @@ func testPresignedPostPolicyWrongFile() {
 	if !strings.Contains(resBodyStr, "Policy Condition failed: [eq, $x-amz-checksum-crc32c, 8TDyHg=") {
 		logError(testName, function, args, startTime, "", "Unexpected response body", errors.New(resBodyStr))
 		return
+	}
+
+	logSuccess(testName, function, args, startTime)
+}
+
+// testPresignedPostPolicyEmptyFileName tests that an empty file name in the presigned post policy
+func testPresignedPostPolicyEmptyFileName() {
+	// initialize logging params
+	startTime := time.Now()
+	testName := getFuncName()
+	function := "PresignedPostPolicy(policy)"
+	args := map[string]interface{}{
+		"policy": "",
+	}
+
+	c, err := NewClient(ClientConfig{})
+	if err != nil {
+		logError(testName, function, args, startTime, "", "MinIO client object creation failed", err)
+		return
+	}
+
+	// Generate a new random bucket name.
+	bucketName := randString(60, rand.NewSource(time.Now().UnixNano()), "minio-go-test-")
+
+	// Make a new bucket in 'us-east-1' (source bucket).
+	err = c.MakeBucket(context.Background(), bucketName, minio.MakeBucketOptions{Region: "us-east-1"})
+	if err != nil {
+		logError(testName, function, args, startTime, "", "MakeBucket failed", err)
+		return
+	}
+
+	defer cleanupBucket(bucketName, c)
+
+	// Generate 33K of data.
+	reader := getDataReader("datafile-33-kB")
+	defer reader.Close()
+
+	objectName := randString(60, rand.NewSource(time.Now().UnixNano()), "")
+	// Azure requires the key to not start with a number
+	metadataKey := randString(60, rand.NewSource(time.Now().UnixNano()), "user")
+	metadataValue := randString(60, rand.NewSource(time.Now().UnixNano()), "")
+
+	buf, err := io.ReadAll(reader)
+	if err != nil {
+		logError(testName, function, args, startTime, "", "ReadAll failed", err)
+		return
+	}
+
+	policy := minio.NewPostPolicy()
+	policy.SetBucket(bucketName)
+	policy.SetKey(objectName)
+	policy.SetExpires(time.Now().UTC().AddDate(0, 0, 10)) // expires in 10 days
+	policy.SetContentType("binary/octet-stream")
+	policy.SetContentLengthRange(10, 1024*1024)
+	policy.SetUserMetadata(metadataKey, metadataValue)
+	policy.SetContentEncoding("gzip")
+
+	// Add CRC32C
+	checksum := minio.ChecksumCRC32C.ChecksumBytes(buf)
+	err = policy.SetChecksum(checksum)
+	if err != nil {
+		logError(testName, function, args, startTime, "", "SetChecksum failed", err)
+		return
+	}
+
+	args["policy"] = policy.String()
+
+	presignedPostPolicyURL, formData, err := c.PresignedPostPolicy(context.Background(), policy)
+	if err != nil {
+		logError(testName, function, args, startTime, "", "PresignedPostPolicy failed", err)
+		return
+	}
+
+	var formBuf bytes.Buffer
+	writer := multipart.NewWriter(&formBuf)
+	for k, v := range formData {
+		writer.WriteField(k, v)
+	}
+
+	// Get a 33KB file to upload and test if set post policy works
+	filePath := getMintDataDirFilePath("datafile-33-kB")
+	if filePath == "" {
+		// Make a temp file with 33 KB data.
+		file, err := os.CreateTemp(os.TempDir(), "PresignedPostPolicyTest")
+		if err != nil {
+			logError(testName, function, args, startTime, "", "TempFile creation failed", err)
+			return
+		}
+		if _, err = io.Copy(file, getDataReader("datafile-33-kB")); err != nil {
+			logError(testName, function, args, startTime, "", "Copy failed", err)
+			return
+		}
+		if err = file.Close(); err != nil {
+			logError(testName, function, args, startTime, "", "File Close failed", err)
+			return
+		}
+		filePath = file.Name()
+	}
+
+	// add file to post request
+	f, err := os.Open(filePath)
+	defer f.Close()
+	if err != nil {
+		logError(testName, function, args, startTime, "", "File open failed", err)
+		return
+	}
+	w, err := writer.CreateFormFile("", filePath)
+	if err != nil {
+		logError(testName, function, args, startTime, "", "CreateFormFile failed", err)
+		return
+	}
+
+	_, err = io.Copy(w, f)
+	if err != nil {
+		logError(testName, function, args, startTime, "", "Copy failed", err)
+		return
+	}
+	writer.Close()
+
+	httpClient := &http.Client{
+		// Setting a sensible time out of 30secs to wait for response
+		// headers. Request is pro-actively canceled after 30secs
+		// with no response.
+		Timeout:   30 * time.Second,
+		Transport: createHTTPTransport(),
+	}
+	args["url"] = presignedPostPolicyURL.String()
+
+	req, err := http.NewRequest(http.MethodPost, presignedPostPolicyURL.String(), bytes.NewReader(formBuf.Bytes()))
+	if err != nil {
+		logError(testName, function, args, startTime, "", "Http request failed", err)
+		return
+	}
+
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	// make post request with correct form data
+	res, err := httpClient.Do(req)
+	if err != nil {
+		logError(testName, function, args, startTime, "", "Http request failed", err)
+		return
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusBadRequest {
+		logError(testName, function, args, startTime, "", "Http request failed", errors.New(res.Status))
+		return
+	}
+
+	body, err := io.ReadAll(res.Body)
+	if err != nil {
+		logError(testName, function, args, startTime, "", "ReadAll failed", err)
+		return
+	}
+	if !strings.Contains(string(body), "MalformedPOSTRequest") {
+		logError(testName, function, args, startTime, "", "Invalid error from server", errors.New(string(body)))
 	}
 
 	logSuccess(testName, function, args, startTime)
@@ -8487,6 +8785,7 @@ func testCopyObjectV2() {
 		logError(testName, function, args, startTime, "", "GetObject failed", err)
 		return
 	}
+
 	// Check the various fields of source object against destination object.
 	objInfo, err = r.Stat()
 	if err != nil {
@@ -8523,6 +8822,260 @@ func testCopyObjectV2() {
 	}
 
 	logSuccess(testName, function, args, startTime)
+}
+
+// Tests copy object with various checksum scenarios, tries to not repeat CopyObjectV2 test and
+// instead just focus on Checksum.
+func testCopyObjectWithChecksums() {
+	startTime := time.Now()
+	testName := getFuncName()
+	function := "CopyObjectWithChecksums(destination, source)"
+	args := map[string]interface{}{}
+
+	c, err := NewClient(ClientConfig{CredsV2: true})
+	if err != nil {
+		logError(testName, function, args, startTime, "", "MinIO v2 client object creation failed", err)
+		return
+	}
+
+	// Generate a new random bucket name.
+	bucketName := randString(60, rand.NewSource(time.Now().UnixNano()), "minio-go-test-")
+
+	// Make a new bucket in 'us-east-1' (source bucket).
+	err = c.MakeBucket(context.Background(), bucketName, minio.MakeBucketOptions{Region: "us-east-1"})
+	if err != nil {
+		logError(testName, function, args, startTime, "", "MakeBucket failed", err)
+		return
+	}
+	defer cleanupBucket(bucketName, c)
+
+	// Make a new bucket in 'us-east-1' (destination bucket).
+	err = c.MakeBucket(context.Background(), bucketName+"-copy", minio.MakeBucketOptions{Region: "us-east-1"})
+	if err != nil {
+		logError(testName, function, args, startTime, "", "MakeBucket failed", err)
+		return
+	}
+	defer cleanupBucket(bucketName+"-copy", c)
+
+	// Generate 33K of data.
+	bufSize := dataFileMap["datafile-33-kB"]
+	reader := getDataReader("datafile-33-kB")
+	defer reader.Close()
+
+	// PutObject to upload the object to the bucket, this object will have a Crc64NVME checksum applied
+	// by default since nothing was explicitly specified.
+	objectName := randString(60, rand.NewSource(time.Now().UnixNano()), "")
+	_, err = c.PutObject(context.Background(), bucketName, objectName, reader, int64(bufSize), minio.PutObjectOptions{ContentType: "binary/octet-stream"})
+	if err != nil {
+		logError(testName, function, args, startTime, "", "PutObject failed", err)
+		return
+	}
+	// GetObject to obtain the eTag
+	r, err := c.GetObject(context.Background(), bucketName, objectName, minio.GetObjectOptions{})
+	if err != nil {
+		logError(testName, function, args, startTime, "", "GetObject failed", err)
+		return
+	}
+	objInfo, err := r.Stat()
+	if err != nil {
+		logError(testName, function, args, startTime, "", "Stat failed", err)
+		return
+	}
+	r.Close()
+
+	// Copy source options
+	src := minio.CopySrcOptions{
+		Bucket:             bucketName,
+		Object:             objectName,
+		MatchModifiedSince: time.Date(2014, time.April, 0, 0, 0, 0, 0, time.UTC),
+		MatchETag:          objInfo.ETag,
+	}
+
+	tests := []struct {
+		csType minio.ChecksumType
+		cs     wantChecksums
+	}{
+		{csType: minio.ChecksumCRC64NVME, cs: wantChecksums{minio.ChecksumCRC64NVME: "iRtfQH3xflQ="}},
+		{csType: minio.ChecksumCRC32C, cs: wantChecksums{minio.ChecksumCRC32C: "aHnJMw=="}},
+		{csType: minio.ChecksumCRC32, cs: wantChecksums{minio.ChecksumCRC32: "tIZ8hA=="}},
+		{csType: minio.ChecksumSHA1, cs: wantChecksums{minio.ChecksumSHA1: "6YIIbcWH1iLaCFqs5vwq5Rwvm+o="}},
+		{csType: minio.ChecksumSHA256, cs: wantChecksums{minio.ChecksumSHA256: "GKeJTopbMGPs3h4fAw4oe0R2QnnmFVJeIWkqCkp28Yo="}},
+		// In S3, all copied objects without checksums and specified destination checksum algorithms
+		// automatically gain a CRC-64NVME checksum algorithm. Use ChecksumNone for this case.
+		{csType: minio.ChecksumNone, cs: wantChecksums{minio.ChecksumCRC64NVME: "iRtfQH3xflQ="}},
+	}
+
+	for _, test := range tests {
+		args := map[string]interface{}{}
+		args["srcOpts"] = src
+		args["section"] = "setup"
+		args["checksum"] = test.csType.String()
+
+		// Copy destination options
+		bucketCopyName := bucketName + "-copy"
+		objectCopyName := objectName + "-copy-" + test.csType.String()
+		dst := minio.CopyDestOptions{
+			Bucket:          bucketCopyName,
+			Object:          objectCopyName,
+			ReplaceMetadata: true,
+		}
+		if test.csType != minio.ChecksumNone {
+			// Request the server-side checksum on the copy.
+			// ChecksumNone is a flag to leave off the header
+			dst.ChecksumType = test.csType
+		}
+		args["destOpts"] = dst
+
+		// Perform the Copy
+		args["section"] = "CopyObject"
+		_, err = c.CopyObject(context.Background(), dst, src)
+		if err != nil {
+			logError(testName, function, args, startTime, "", "CopyObject failed", err)
+			return
+		}
+
+		// Checksum verification
+		args["section"] = "HeadObject"
+		st, err := c.StatObject(context.Background(), bucketCopyName, objectCopyName, minio.StatObjectOptions{Checksum: true})
+		if err != nil {
+			logError(testName, function, args, startTime, "", "StatObject failed", err)
+			return
+		}
+		if st.ChecksumMode != "FULL_OBJECT" {
+			logError(testName, function, args, startTime, "", "ChecksumMode want: FULL_OBJECT, got "+st.ChecksumMode, nil)
+			return
+		}
+		err = cmpChecksum(st, test.cs)
+		if err != nil {
+			logError(testName, function, args, startTime, "", "Checksum mismatch", err)
+			return
+		}
+
+		logSuccess(testName, function, args, startTime)
+	}
+}
+
+// Tests replacing an object with CopyObject and a new Checksum type
+func testReplaceObjectWithChecksums() {
+	startTime := time.Now()
+	testName := getFuncName()
+	function := "CopyObjectWithChecksums(destination, source)"
+	args := map[string]interface{}{}
+
+	c, err := NewClient(ClientConfig{CredsV2: true})
+	if err != nil {
+		logError(testName, function, args, startTime, "", "MinIO v2 client object creation failed", err)
+		return
+	}
+
+	// Generate a new random bucket name.
+	bucketName := randString(60, rand.NewSource(time.Now().UnixNano()), "minio-go-test-")
+
+	// Make a new bucket in 'us-east-1' (source bucket).
+	err = c.MakeBucket(context.Background(), bucketName, minio.MakeBucketOptions{Region: "us-east-1"})
+	if err != nil {
+		logError(testName, function, args, startTime, "", "MakeBucket failed", err)
+		return
+	}
+	defer cleanupBucket(bucketName, c)
+
+	tests := []struct {
+		csType minio.ChecksumType
+		cs     wantChecksums
+	}{
+		{csType: minio.ChecksumCRC64NVME, cs: wantChecksums{minio.ChecksumCRC64NVME: "iRtfQH3xflQ="}},
+		{csType: minio.ChecksumCRC32C, cs: wantChecksums{minio.ChecksumCRC32C: "aHnJMw=="}},
+		{csType: minio.ChecksumCRC32, cs: wantChecksums{minio.ChecksumCRC32: "tIZ8hA=="}},
+		{csType: minio.ChecksumSHA1, cs: wantChecksums{minio.ChecksumSHA1: "6YIIbcWH1iLaCFqs5vwq5Rwvm+o="}},
+		{csType: minio.ChecksumSHA256, cs: wantChecksums{minio.ChecksumSHA256: "GKeJTopbMGPs3h4fAw4oe0R2QnnmFVJeIWkqCkp28Yo="}},
+		// In S3, all copied objects without checksums and specified destination checksum algorithms
+		// automatically gain a CRC-64NVME checksum algorithm. Use ChecksumNone for this case.
+		{csType: minio.ChecksumNone, cs: wantChecksums{minio.ChecksumCRC64NVME: "iRtfQH3xflQ="}},
+	}
+
+	for _, test := range tests {
+		args := map[string]interface{}{}
+		args["section"] = "setup"
+		args["destOpts"] = ""
+		args["checksum"] = test.csType.String()
+
+		bufSize := dataFileMap["datafile-33-kB"]
+		reader := getDataReader("datafile-33-kB")
+		defer reader.Close()
+
+		// PutObject to upload the object to the bucket
+		objectName := randString(60, rand.NewSource(time.Now().UnixNano()), "")
+		_, err = c.PutObject(context.Background(), bucketName, objectName, reader, int64(bufSize), minio.PutObjectOptions{ContentType: "binary/octet-stream"})
+		if err != nil {
+			logError(testName, function, args, startTime, "", "PutObject failed", err)
+			return
+		}
+		// GetObject to obtain the eTag
+		r, err := c.GetObject(context.Background(), bucketName, objectName, minio.GetObjectOptions{})
+		if err != nil {
+			logError(testName, function, args, startTime, "", "GetObject failed", err)
+			return
+		}
+		objInfo, err := r.Stat()
+		if err != nil {
+			logError(testName, function, args, startTime, "", "Stat failed", err)
+			return
+		}
+		r.Close()
+
+		// Copy source options
+		src := minio.CopySrcOptions{
+			Bucket:             bucketName,
+			Object:             objectName,
+			MatchModifiedSince: time.Date(2014, time.April, 0, 0, 0, 0, 0, time.UTC),
+			MatchETag:          objInfo.ETag,
+		}
+
+		// Copy destination options, overwrite the existing object
+		dst := minio.CopyDestOptions{
+			Bucket: bucketName,
+			Object: objectName,
+			// S3 requires that we send some new metadata otherwise it complains that the
+			// CopyObject is illegal.
+			UserMetadata: map[string]string{
+				"TestMeta": objectName + "-meta-" + test.csType.String(),
+			},
+			ReplaceMetadata: true,
+		}
+		if test.csType != minio.ChecksumNone {
+			// Request the server-side checksum on the copy.
+			// ChecksumNone is a flag to leave off the header
+			dst.ChecksumType = test.csType
+		}
+		args["destOpts"] = dst
+
+		// Perform the Copy
+		args["section"] = "CopyObject"
+		_, err = c.CopyObject(context.Background(), dst, src)
+		if err != nil {
+			logError(testName, function, args, startTime, "", "CopyObject failed", err)
+			return
+		}
+
+		// Checksum verification
+		args["section"] = "HeadObject"
+		st, err := c.StatObject(context.Background(), bucketName, objectName, minio.StatObjectOptions{Checksum: true})
+		if err != nil {
+			logError(testName, function, args, startTime, "", "StatObject failed", err)
+			return
+		}
+		if st.ChecksumMode != "FULL_OBJECT" {
+			logError(testName, function, args, startTime, "", "ChecksumMode want: FULL_OBJECT, got "+st.ChecksumMode, nil)
+			return
+		}
+		err = cmpChecksum(st, test.cs)
+		if err != nil {
+			logError(testName, function, args, startTime, "", "Checksum mismatch", err)
+			return
+		}
+
+		logSuccess(testName, function, args, startTime)
+	}
 }
 
 func testComposeObjectErrorCasesWrapper(c *minio.Client) {
@@ -8810,6 +9363,7 @@ func testEncryptedCopyObjectWrapper(c *minio.Client, bucketName string, sseSrc, 
 	testName := getFuncNameLoc(2)
 	function := "CopyObject(destination, source)"
 	args := map[string]interface{}{}
+	args["testName"] = testName
 	var srcEncryption, dstEncryption encrypt.ServerSide
 
 	// Make a new bucket in 'us-east-1' (source bucket).
@@ -8824,8 +9378,19 @@ func testEncryptedCopyObjectWrapper(c *minio.Client, bucketName string, sseSrc, 
 	// 1. create an sse-c encrypted object to copy by uploading
 	const srcSize = 1024 * 1024
 	buf := bytes.Repeat([]byte("abcde"), srcSize) // gives a buffer of 5MiB
+
+	// Calculate the CRC32C checksum for the object
+	meta := map[string]string{}
+	h := minio.ChecksumCRC32C.Hasher()
+	h.Reset()
+	h.Write(buf)
+	meta[minio.ChecksumCRC32C.Key()] = base64.StdEncoding.EncodeToString(h.Sum(nil))
+
 	_, err = c.PutObject(context.Background(), bucketName, "srcObject", bytes.NewReader(buf), int64(len(buf)), minio.PutObjectOptions{
 		ServerSideEncryption: sseSrc,
+		DisableMultipart:     true,
+		DisableContentSha256: true,
+		UserMetadata:         meta,
 	})
 	if err != nil {
 		logError(testName, function, args, startTime, "", "PutObject call failed", err)
@@ -8862,7 +9427,7 @@ func testEncryptedCopyObjectWrapper(c *minio.Client, bucketName string, sseSrc, 
 	}
 	// 3. get copied object and check if content is equal
 	coreClient := minio.Core{Client: c}
-	reader, _, _, err := coreClient.GetObject(context.Background(), bucketName, "dstObject", minio.GetObjectOptions{ServerSideEncryption: dstEncryption})
+	reader, oi, _, err := coreClient.GetObject(context.Background(), bucketName, "dstObject", minio.GetObjectOptions{ServerSideEncryption: dstEncryption, Checksum: true})
 	if err != nil {
 		logError(testName, function, args, startTime, "", "GetObject failed", err)
 		return
@@ -8878,6 +9443,12 @@ func testEncryptedCopyObjectWrapper(c *minio.Client, bucketName string, sseSrc, 
 		return
 	}
 	reader.Close()
+
+	err = cmpChecksum(oi, wantChecksums{minio.ChecksumCRC32C: "bSoobA=="})
+	if err != nil {
+		logError(testName, function, args, startTime, "", "Checksum mismatch on dstObject", err)
+		return
+	}
 
 	// Test key rotation for source object in-place.
 	var newSSE encrypt.ServerSide
@@ -8902,7 +9473,7 @@ func testEncryptedCopyObjectWrapper(c *minio.Client, bucketName string, sseSrc, 
 		}
 
 		// Get copied object and check if content is equal
-		reader, _, _, err = coreClient.GetObject(context.Background(), bucketName, "srcObject", minio.GetObjectOptions{ServerSideEncryption: newSSE})
+		reader, oi, _, err = coreClient.GetObject(context.Background(), bucketName, "srcObject", minio.GetObjectOptions{ServerSideEncryption: newSSE, Checksum: true})
 		if err != nil {
 			logError(testName, function, args, startTime, "", "GetObject failed", err)
 			return
@@ -8918,6 +9489,13 @@ func testEncryptedCopyObjectWrapper(c *minio.Client, bucketName string, sseSrc, 
 			return
 		}
 		reader.Close()
+
+		err = cmpChecksum(oi, wantChecksums{minio.ChecksumCRC32C: "bSoobA=="})
+		if err != nil {
+			fmt.Printf("srcObject objectInfo: %+v\n", oi)
+			logError(testName, function, args, startTime, "", "Checksum mismatch on srcObject for in-place", err)
+			return
+		}
 
 		// Test in-place decryption.
 		dst = minio.CopyDestOptions{
@@ -8940,7 +9518,7 @@ func testEncryptedCopyObjectWrapper(c *minio.Client, bucketName string, sseSrc, 
 	}
 
 	// Get copied decrypted object and check if content is equal
-	reader, _, _, err = coreClient.GetObject(context.Background(), bucketName, "srcObject", minio.GetObjectOptions{})
+	reader, oi, _, err = coreClient.GetObject(context.Background(), bucketName, "srcObject", minio.GetObjectOptions{Checksum: true})
 	if err != nil {
 		logError(testName, function, args, startTime, "", "GetObject failed", err)
 		return
@@ -8957,6 +9535,12 @@ func testEncryptedCopyObjectWrapper(c *minio.Client, bucketName string, sseSrc, 
 		return
 	}
 
+	err = cmpChecksum(oi, wantChecksums{minio.ChecksumCRC32C: "bSoobA=="})
+	if err != nil {
+		logError(testName, function, args, startTime, "", "Checksum mismatch for decrypted object", err)
+		return
+	}
+
 	logSuccess(testName, function, args, startTime)
 }
 
@@ -8968,7 +9552,7 @@ func testUnencryptedToSSECCopyObject() {
 	function := "CopyObject(destination, source)"
 	args := map[string]interface{}{}
 
-	c, err := NewClient(ClientConfig{})
+	c, err := NewClient(ClientConfig{TrailingHeaders: true})
 	if err != nil {
 		logError(testName, function, args, startTime, "", "MinIO v2 client object creation failed", err)
 		return
@@ -8988,7 +9572,7 @@ func testUnencryptedToSSES3CopyObject() {
 	function := "CopyObject(destination, source)"
 	args := map[string]interface{}{}
 
-	c, err := NewClient(ClientConfig{})
+	c, err := NewClient(ClientConfig{TrailingHeaders: true})
 	if err != nil {
 		logError(testName, function, args, startTime, "", "MinIO v2 client object creation failed", err)
 		return
@@ -9009,7 +9593,7 @@ func testUnencryptedToUnencryptedCopyObject() {
 	function := "CopyObject(destination, source)"
 	args := map[string]interface{}{}
 
-	c, err := NewClient(ClientConfig{})
+	c, err := NewClient(ClientConfig{TrailingHeaders: true})
 	if err != nil {
 		logError(testName, function, args, startTime, "", "MinIO v2 client object creation failed", err)
 		return
@@ -9029,7 +9613,7 @@ func testEncryptedSSECToSSECCopyObject() {
 	function := "CopyObject(destination, source)"
 	args := map[string]interface{}{}
 
-	c, err := NewClient(ClientConfig{})
+	c, err := NewClient(ClientConfig{TrailingHeaders: true})
 	if err != nil {
 		logError(testName, function, args, startTime, "", "MinIO v2 client object creation failed", err)
 		return
@@ -9050,7 +9634,7 @@ func testEncryptedSSECToSSES3CopyObject() {
 	function := "CopyObject(destination, source)"
 	args := map[string]interface{}{}
 
-	c, err := NewClient(ClientConfig{})
+	c, err := NewClient(ClientConfig{TrailingHeaders: true})
 	if err != nil {
 		logError(testName, function, args, startTime, "", "MinIO v2 client object creation failed", err)
 		return
@@ -9071,7 +9655,7 @@ func testEncryptedSSECToUnencryptedCopyObject() {
 	function := "CopyObject(destination, source)"
 	args := map[string]interface{}{}
 
-	c, err := NewClient(ClientConfig{})
+	c, err := NewClient(ClientConfig{TrailingHeaders: true})
 	if err != nil {
 		logError(testName, function, args, startTime, "", "MinIO v2 client object creation failed", err)
 		return
@@ -9092,7 +9676,7 @@ func testEncryptedSSES3ToSSECCopyObject() {
 	function := "CopyObject(destination, source)"
 	args := map[string]interface{}{}
 
-	c, err := NewClient(ClientConfig{})
+	c, err := NewClient(ClientConfig{TrailingHeaders: true})
 	if err != nil {
 		logError(testName, function, args, startTime, "", "MinIO v2 client object creation failed", err)
 		return
@@ -9113,7 +9697,7 @@ func testEncryptedSSES3ToSSES3CopyObject() {
 	function := "CopyObject(destination, source)"
 	args := map[string]interface{}{}
 
-	c, err := NewClient(ClientConfig{})
+	c, err := NewClient(ClientConfig{TrailingHeaders: true})
 	if err != nil {
 		logError(testName, function, args, startTime, "", "MinIO v2 client object creation failed", err)
 		return
@@ -9134,7 +9718,7 @@ func testEncryptedSSES3ToUnencryptedCopyObject() {
 	function := "CopyObject(destination, source)"
 	args := map[string]interface{}{}
 
-	c, err := NewClient(ClientConfig{})
+	c, err := NewClient(ClientConfig{TrailingHeaders: true})
 	if err != nil {
 		logError(testName, function, args, startTime, "", "MinIO v2 client object creation failed", err)
 		return
@@ -9155,7 +9739,7 @@ func testEncryptedCopyObjectV2() {
 	function := "CopyObject(destination, source)"
 	args := map[string]interface{}{}
 
-	c, err := NewClient(ClientConfig{CredsV2: true})
+	c, err := NewClient(ClientConfig{CredsV2: true, TrailingHeaders: true})
 	if err != nil {
 		logError(testName, function, args, startTime, "", "MinIO v2 client object creation failed", err)
 		return
@@ -9914,7 +10498,7 @@ func testUnencryptedToSSECCopyObjectPart() {
 	function := "CopyObjectPart(destination, source)"
 	args := map[string]interface{}{}
 
-	client, err := NewClient(ClientConfig{})
+	client, err := NewClient(ClientConfig{TrailingHeaders: true})
 	if err != nil {
 		logError(testName, function, args, startTime, "", "MinIO v4 client object creation failed", err)
 		return
@@ -10914,7 +11498,7 @@ func testUserMetadataCopyingWrapper(c *minio.Client) {
 		objInfo, err := c.StatObject(context.Background(), bucketName, object, minio.StatObjectOptions{})
 		if err != nil {
 			logError(testName, function, args, startTime, "", "Stat failed", err)
-			return
+			return h
 		}
 		h = make(http.Header)
 		for k, vs := range objInfo.Metadata {
@@ -11090,7 +11674,7 @@ func testStorageClassMetadataPutObject() {
 		objInfo, err := c.StatObject(context.Background(), bucketName, object, minio.StatObjectOptions{})
 		if err != nil {
 			logError(testName, function, args, startTime, "", "Stat failed", err)
-			return
+			return h
 		}
 		h = make(http.Header)
 		for k, vs := range objInfo.Metadata {
@@ -11211,7 +11795,7 @@ func testStorageClassMetadataCopyObject() {
 		args["object"] = object
 		if err != nil {
 			logError(testName, function, args, startTime, "", "Stat failed", err)
-			return
+			return h
 		}
 		h = make(http.Header)
 		for k, vs := range objInfo.Metadata {
@@ -11560,8 +12144,11 @@ func testPutObjectMetadataNonUSASCIIV2() {
 	}
 
 	for k, v := range metadata {
+		if strings.HasPrefix(strings.ToLower(k), "x-amz-checksum-") {
+			continue
+		}
 		if st.Metadata.Get(http.CanonicalHeaderKey("X-Amz-Meta-"+k)) != v {
-			logError(testName, function, args, startTime, "", "Expected upload object metadata "+k+": "+v+" but got "+st.Metadata.Get("X-Amz-Meta-"+k), err)
+			logError(testName, function, args, startTime, "", "Expected upload object metadata "+k+": "+v+" but got "+st.Metadata.Get(http.CanonicalHeaderKey("X-Amz-Meta-"+k)), err)
 			return
 		}
 	}
@@ -14026,6 +14613,29 @@ func mustParseBool(str string) bool {
 	return b
 }
 
+// wantChecksums is a map of expected checksums for an object.
+type wantChecksums map[minio.ChecksumType]string
+
+// cmpChecksum compares the checksums of an object against expected values.
+func cmpChecksum(oi minio.ObjectInfo, chksums wantChecksums) error {
+	if oi.ChecksumCRC64NVME != chksums[minio.ChecksumCRC64NVME] {
+		return fmt.Errorf("Checksum mismatch for CRC64NVME, want: %s, got: %s", chksums[minio.ChecksumCRC64NVME], oi.ChecksumCRC64NVME)
+	}
+	if oi.ChecksumCRC32C != chksums[minio.ChecksumCRC32C] {
+		return fmt.Errorf("Checksum mismatch for CRC32C, want: %s, got: %s", chksums[minio.ChecksumCRC32C], oi.ChecksumCRC32C)
+	}
+	if oi.ChecksumCRC32 != chksums[minio.ChecksumCRC32] {
+		return fmt.Errorf("Checksum mismatch for CRC32, want: %s, got: %s", chksums[minio.ChecksumCRC32], oi.ChecksumCRC32)
+	}
+	if oi.ChecksumSHA1 != chksums[minio.ChecksumSHA1] {
+		return fmt.Errorf("Checksum mismatch for SHA1, want: %s, got: %s", chksums[minio.ChecksumSHA1], oi.ChecksumSHA1)
+	}
+	if oi.ChecksumSHA256 != chksums[minio.ChecksumSHA256] {
+		return fmt.Errorf("Checksum mismatch for SHA256, want: %s, got: %s", chksums[minio.ChecksumSHA256], oi.ChecksumSHA256)
+	}
+	return nil
+}
+
 func main() {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(
 		os.Stdout,
@@ -14050,6 +14660,8 @@ func main() {
 
 	// execute tests
 	if isFullMode() {
+		testCopyObjectWithChecksums()
+		testReplaceObjectWithChecksums()
 		testCorsSetGetDelete()
 		testCors()
 		testListMultipartUpload()
@@ -14069,8 +14681,7 @@ func main() {
 		testUserMetadataCopyingV2()
 		testPutObjectWithChecksums()
 		testPutObjectWithTrailingChecksums()
-		testPutMultipartObjectWithChecksums(false)
-		testPutMultipartObjectWithChecksums(true)
+		testPutMultipartObjectWithChecksums()
 		testPutObject0ByteV2()
 		testPutObjectMetadataNonUSASCIIV2()
 		testPutObjectNoLengthV2()
@@ -14085,6 +14696,7 @@ func main() {
 		testPutObjectWithMetadata()
 		testPutObjectReadAt()
 		testPutObjectStreaming()
+		testPutObjectPreconditionOnNonExistent()
 		testGetObjectSeekEnd()
 		testGetObjectClosedTwice()
 		testGetObjectS3Zip()
@@ -14098,6 +14710,7 @@ func main() {
 		testGetObjectReadAtWhenEOFWasReached()
 		testPresignedPostPolicy()
 		testPresignedPostPolicyWrongFile()
+		testPresignedPostPolicyEmptyFileName()
 		testCopyObject()
 		testComposeObjectErrorCases()
 		testCompose10KSources()

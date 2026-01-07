@@ -1,8 +1,10 @@
 package logs_test
 
 import (
-	"bytes"
 	"context"
+	"fmt"
+	"io"
+	"strings"
 	"testing"
 	"time"
 
@@ -11,27 +13,28 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
+	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
 func Test(t *testing.T) {
 	records := []logs.Record{
 		{
+			StreamID:  2,
+			Timestamp: time.Unix(10, 0),
+			Metadata:  labels.New(labels.Label{Name: "cluster", Value: "test"}, labels.Label{Name: "app", Value: "foo"}),
+			Line:      []byte("foo bar"),
+		},
+		{
 			StreamID:  1,
 			Timestamp: time.Unix(10, 0),
-			Metadata:  nil,
+			Metadata:  labels.EmptyLabels(),
 			Line:      []byte("hello world"),
 		},
 		{
 			StreamID:  2,
 			Timestamp: time.Unix(100, 0),
-			Metadata:  []labels.Label{{Name: "cluster", Value: "test"}, {Name: "app", Value: "bar"}},
+			Metadata:  labels.New(labels.Label{Name: "cluster", Value: "test"}, labels.Label{Name: "app", Value: "bar"}),
 			Line:      []byte("goodbye world"),
-		},
-		{
-			StreamID:  1,
-			Timestamp: time.Unix(5, 0),
-			Metadata:  []labels.Label{{Name: "cluster", Value: "test"}, {Name: "app", Value: "foo"}},
-			Line:      []byte("foo bar"),
 		},
 	}
 
@@ -39,6 +42,7 @@ func Test(t *testing.T) {
 		PageSizeHint:     1024,
 		BufferSize:       256,
 		StripeMergeLimit: 2,
+		SortOrder:        logs.SortStreamASC,
 	}
 
 	tracker := logs.NewBuilder(nil, opts)
@@ -46,34 +50,32 @@ func Test(t *testing.T) {
 		tracker.Append(record)
 	}
 
-	buf, err := buildObject(tracker)
+	obj, closer, err := buildObject(tracker)
 	require.NoError(t, err)
+	defer closer.Close()
 
-	// The order of records should be sorted by stream ID then timestamp, and all
+	// The order of records should be sorted by timestamp DESC then stream ID, and all
 	// metadata should be sorted by key then value.
 	expect := []logs.Record{
 		{
 			StreamID:  1,
-			Timestamp: time.Unix(5, 0),
-			Metadata:  []labels.Label{{Name: "app", Value: "foo"}, {Name: "cluster", Value: "test"}},
-			Line:      []byte("foo bar"),
-		},
-		{
-			StreamID:  1,
 			Timestamp: time.Unix(10, 0),
-			Metadata:  []labels.Label{},
+			Metadata:  labels.EmptyLabels(),
 			Line:      []byte("hello world"),
 		},
 		{
 			StreamID:  2,
 			Timestamp: time.Unix(100, 0),
-			Metadata:  []labels.Label{{Name: "app", Value: "bar"}, {Name: "cluster", Value: "test"}},
+			Metadata:  labels.New(labels.Label{Name: "app", Value: "bar"}, labels.Label{Name: "cluster", Value: "test"}),
 			Line:      []byte("goodbye world"),
 		},
+		{
+			StreamID:  2,
+			Timestamp: time.Unix(10, 0),
+			Metadata:  labels.New(labels.Label{Name: "app", Value: "foo"}, labels.Label{Name: "cluster", Value: "test"}),
+			Line:      []byte("foo bar"),
+		},
 	}
-
-	obj, err := dataobj.FromReaderAt(bytes.NewReader(buf), int64(len(buf)))
-	require.NoError(t, err)
 
 	i := 0
 	for result := range logs.Iter(context.Background(), obj) {
@@ -84,14 +86,49 @@ func Test(t *testing.T) {
 	}
 }
 
-func buildObject(lt *logs.Builder) ([]byte, error) {
-	var buf bytes.Buffer
-
-	builder := dataobj.NewBuilder()
-	if err := builder.Append(lt); err != nil {
-		return nil, err
-	} else if _, err := builder.Flush(&buf); err != nil {
-		return nil, err
+func TestLogsBuilder_10000Columns(t *testing.T) {
+	// Make a dataset of 100 records, each with 100 unique metadata labels, each with a single 256 byte value.
+	var records []logs.Record
+	for i := range 100 {
+		megaRecord := logs.Record{
+			StreamID:  2,
+			Timestamp: time.Unix(10, 0),
+			Line:      []byte("foo bar"),
+		}
+		lbb := labels.NewScratchBuilder(100)
+		for j := range 100 {
+			lbb.Add(fmt.Sprintf("key%d-%d", i, j), fmt.Sprintf("value%d-%d-%s", i, j, strings.Repeat("A", 256)))
+		}
+		megaRecord.Metadata = lbb.Labels()
+		records = append(records, megaRecord)
 	}
-	return buf.Bytes(), nil
+
+	opts := logs.BuilderOptions{
+		PageSizeHint:     2 * 1024 * 1024,
+		BufferSize:       256,
+		StripeMergeLimit: 2,
+		SortOrder:        logs.SortStreamASC,
+	}
+
+	dataobj := dataobj.NewBuilder(scratch.NewMemory())
+
+	builder := logs.NewBuilder(nil, opts)
+	for _, record := range records {
+		builder.Append(record)
+	}
+
+	err := dataobj.Append(builder)
+	require.NoError(t, err)
+
+	_, closer, err := dataobj.Flush()
+	require.NoError(t, err)
+	require.NoError(t, closer.Close())
+}
+
+func buildObject(lt *logs.Builder) (*dataobj.Object, io.Closer, error) {
+	builder := dataobj.NewBuilder(nil)
+	if err := builder.Append(lt); err != nil {
+		return nil, nil, err
+	}
+	return builder.Flush()
 }

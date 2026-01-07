@@ -3,25 +3,30 @@ on:
   workflow_dispatch:
     inputs:
       ref:
-        description: 'Git ref to run benchmarks on'
+        description: "Git ref to run benchmarks on"
         required: false
-        default: 'main'
-        type: 'string'
+        default: "main"
+        type: "string"
       bench_chunks_v1:
-        description: 'Benchmark V1 chunk store'
+        description: "Benchmark V1 chunk store"
         required: false
         default: true
-        type: 'boolean'
-      bench_dataobj_v1:
-        description: 'Benchmark V1 data object store'
+        type: "boolean"
+      bench_dataobj_old_engine:
+        description: "Benchmark data object store with old engine"
         required: false
         default: true
-        type: 'boolean'
-      bench_dataobj_v2:
-        description: 'Benchmark V2 chunk store'
+        type: "boolean"
+      bench_dataobj_new_engine:
+        description: "Benchmark data object store with new engine"
         required: false
         default: false # Disabled by default due to less complete implementation
-        type: 'boolean'
+        type: "boolean"
+      instant_queries:
+        description: "Run benchmarks for Instant queries"
+        required: false
+        default: false
+        type: "boolean"
 permissions: {}
 jobs:
   generate-testdata:
@@ -37,7 +42,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v4
         with:
-          go-version: '1.24.3'
+          go-version: "1.24.9"
 
       # The metastore generates invalid filenames for Windows (with colons),
       # which get rejected by upload-artifact. We zip these files to avoid this
@@ -67,8 +72,8 @@ jobs:
 
           # Use explicit equality checks to avoid template injection.
           ${{ inputs.bench_chunks_v1 == true }} && STORES+=("chunk")
-          ${{ inputs.bench_dataobj_v1 == true }} && STORES+=("dataobj")
-          ${{ inputs.bench_dataobj_v2 == true }} && STORES+=("dataobj-engine")
+          ${{ inputs.bench_dataobj_old_engine == true }} && STORES+=("dataobj")
+          ${{ inputs.bench_dataobj_new_engine == true }} && STORES+=("dataobj-engine")
 
           MATRIX_JSON=$(jq -nc --arg stores "${STORES[*]}" '{"store": $stores | split(" ")}')
           echo "matrix=$MATRIX_JSON" >> "$GITHUB_OUTPUT"
@@ -88,7 +93,7 @@ jobs:
           ref: ${{ inputs.ref }}
 
       - name: Download test data
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v4.1.3
         with:
           name: logql-bench-testdata-${{ steps.checkout.outputs.commit }}
           path: ./pkg/logql/bench
@@ -100,15 +105,17 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v4
         with:
-          go-version: '1.24.3'
+          go-version: "1.24.9"
 
       - name: Create results directory
         run: mkdir -p ./pkg/logql/bench/results
 
       - name: Run benchmarks
+        shell: bash # Use bash shell to propagate pipe failures
         run: |
           go test \
             -run=^$ -bench=LogQL/query=.+/kind=.+/store=${{ matrix.store }}$ \
+            ${{ inputs.instant_queries == true && '-range-type=instant' || '' }} \
             -count=10 -timeout=5h -benchmem \
             -cpuprofile=results/cpu.pprof \
             -memprofile=results/mem.pprof \

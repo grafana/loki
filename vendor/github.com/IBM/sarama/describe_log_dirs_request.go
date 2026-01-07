@@ -10,6 +10,10 @@ type DescribeLogDirsRequest struct {
 	DescribeTopics []DescribeLogDirsRequestTopic
 }
 
+func (r *DescribeLogDirsRequest) setVersion(v int16) {
+	r.Version = v
+}
+
 // DescribeLogDirsRequestTopic is a describe request about the log dir of one or more partitions within a Topic
 type DescribeLogDirsRequestTopic struct {
 	Topic        string
@@ -22,7 +26,6 @@ func (r *DescribeLogDirsRequest) encode(pe packetEncoder) error {
 		// In order to query all topics we must send null
 		length = -1
 	}
-
 	if err := pe.putArrayLength(length); err != nil {
 		return err
 	}
@@ -35,8 +38,10 @@ func (r *DescribeLogDirsRequest) encode(pe packetEncoder) error {
 		if err := pe.putInt32Array(d.PartitionIDs); err != nil {
 			return err
 		}
+		pe.putEmptyTaggedFieldArray()
 	}
 
+	pe.putEmptyTaggedFieldArray()
 	return nil
 }
 
@@ -45,6 +50,7 @@ func (r *DescribeLogDirsRequest) decode(pd packetDecoder, version int16) error {
 	if err != nil {
 		return err
 	}
+
 	if n == -1 {
 		n = 0
 	}
@@ -64,14 +70,19 @@ func (r *DescribeLogDirsRequest) decode(pd packetDecoder, version int16) error {
 			return err
 		}
 		topics[i].PartitionIDs = pIDs
+		_, err = pd.getEmptyTaggedFieldArray()
+		if err != nil {
+			return err
+		}
 	}
 	r.DescribeTopics = topics
 
-	return nil
+	_, err = pd.getEmptyTaggedFieldArray()
+	return err
 }
 
 func (r *DescribeLogDirsRequest) key() int16 {
-	return 35
+	return apiKeyDescribeLogDirs
 }
 
 func (r *DescribeLogDirsRequest) version() int16 {
@@ -79,16 +90,35 @@ func (r *DescribeLogDirsRequest) version() int16 {
 }
 
 func (r *DescribeLogDirsRequest) headerVersion() int16 {
+	if r.Version >= 2 {
+		return 2
+	}
 	return 1
 }
 
 func (r *DescribeLogDirsRequest) isValidVersion() bool {
-	return r.Version >= 0 && r.Version <= 1
+	return r.Version >= 0 && r.Version <= 4
+}
+
+func (r *DescribeLogDirsRequest) isFlexible() bool {
+	return r.isFlexibleVersion(r.Version)
+}
+
+func (r *DescribeLogDirsRequest) isFlexibleVersion(version int16) bool {
+	return version >= 2
 }
 
 func (r *DescribeLogDirsRequest) requiredVersion() KafkaVersion {
-	if r.Version > 0 {
+	switch r.Version {
+	case 4:
+		return V3_3_0_0
+	case 3:
+		return V3_2_0_0
+	case 2:
+		return V2_6_0_0
+	case 1:
 		return V2_0_0_0
+	default:
+		return V1_0_0_0
 	}
-	return V1_0_0_0
 }

@@ -1,9 +1,7 @@
 # General Information
 
 Processors are used at various stages of a pipeline. Generally, a processor
-pre-processes data before it is exported (e.g. modify attributes or sample) or
-helps ensure that data makes it through a pipeline successfully (e.g.
-batch/retry).
+pre-processes data before it is exported (e.g. modify attributes or sample).
 
 Some important aspects of pipelines and processors to be aware of:
 - [Recommended Processors](#recommended-processors)
@@ -11,6 +9,7 @@ Some important aspects of pipelines and processors to be aware of:
 - [Exclusive Ownership](#exclusive-ownership)
 - [Shared Ownership](#shared-ownership)
 - [Ordering Processors](#ordering-processors)
+- [Creating Custom Processor](#creating-custom-processors)
 
 Supported processors (sorted alphabetically):
 - [Batch Processor](batchprocessor/README.md)
@@ -31,7 +30,7 @@ processor documentation for more information.
 1. [memory_limiter](memorylimiterprocessor/README.md)
 2. Any sampling or initial filtering processors
 3. Any processor relying on sending source from `Context` (e.g. `k8sattributes`)
-3. [batch](batchprocessor/README.md)
+3. [batch](batchprocessor/README.md), although prefer using the exporter's batching capabilities
 4. Any other processors
 
 ## Data Ownership
@@ -107,3 +106,8 @@ data cloning described in Exclusive Ownership section.
 
 The order processors are specified in a pipeline is important as this is the
 order in which each processor is applied.
+
+## Creating Custom Processors
+
+To create a custom processor for the OpenTelemetry Collector, you need to implement the processor interface, define the processor's configuration, and register it with the Collector. The process typically involves creating a factory, implementing the required processing logic, and handling configuration options. For a practical example and guidance, refer to the [`processorhelper`](https://pkg.go.dev/go.opentelemetry.io/collector/processor/processorhelper) package, which provides utilities and patterns to simplify processor development.
+

@@ -8,6 +8,10 @@ type HeartbeatRequest struct {
 	GroupInstanceId *string
 }
 
+func (r *HeartbeatRequest) setVersion(v int16) {
+	r.Version = v
+}
+
 func (r *HeartbeatRequest) encode(pe packetEncoder) error {
 	if err := pe.putString(r.GroupId); err != nil {
 		return err
@@ -25,6 +29,7 @@ func (r *HeartbeatRequest) encode(pe packetEncoder) error {
 		}
 	}
 
+	pe.putEmptyTaggedFieldArray()
 	return nil
 }
 
@@ -45,11 +50,12 @@ func (r *HeartbeatRequest) decode(pd packetDecoder, version int16) (err error) {
 		}
 	}
 
-	return nil
+	_, err = pd.getEmptyTaggedFieldArray()
+	return err
 }
 
 func (r *HeartbeatRequest) key() int16 {
-	return 12
+	return apiKeyHeartbeat
 }
 
 func (r *HeartbeatRequest) version() int16 {
@@ -57,15 +63,28 @@ func (r *HeartbeatRequest) version() int16 {
 }
 
 func (r *HeartbeatRequest) headerVersion() int16 {
+	if r.Version >= 4 {
+		return 2
+	}
 	return 1
 }
 
 func (r *HeartbeatRequest) isValidVersion() bool {
-	return r.Version >= 0 && r.Version <= 3
+	return r.Version >= 0 && r.Version <= 4
+}
+
+func (r *HeartbeatRequest) isFlexible() bool {
+	return r.isFlexibleVersion(r.Version)
+}
+
+func (r *HeartbeatRequest) isFlexibleVersion(version int16) bool {
+	return version >= 4
 }
 
 func (r *HeartbeatRequest) requiredVersion() KafkaVersion {
 	switch r.Version {
+	case 4:
+		return V2_4_0_0
 	case 3:
 		return V2_3_0_0
 	case 2:
