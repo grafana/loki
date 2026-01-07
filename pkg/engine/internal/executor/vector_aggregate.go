@@ -176,20 +176,14 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch
 
 			v.aggregator.AddLabels(fields)
 
+			labelsCache := newLabelsCache()
+
 			for row := range int(record.NumRows()) {
 				if valueArr.IsNull(row) {
 					continue
 				}
 
-				labelValues := make([]string, 0, len(arrays))
-				labels := make([]arrow.Field, 0, len(arrays))
-				for i, arr := range arrays {
-					val := arr.Value(row)
-					if val != "" {
-						labelValues = append(labelValues, val)
-						labels = append(labels, fields[i])
-					}
-				}
+				labels, labelValues := labelsCache.getLabels(arrays, fields, row)
 
 				v.aggregator.Add(tsCol.Value(row).ToTime(arrow.Nanosecond), valueArr.Value(row), labels, labelValues)
 			}
