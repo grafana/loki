@@ -31,7 +31,7 @@ func TestSinglePartitionConsumer(t *testing.T) {
 	consumer := NewSinglePartitionConsumer(client, testTopic, 0, -2, dst, log.NewNopLogger(), prometheus.NewRegistry())
 	cancelCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	go consumer.Run(cancelCtx)
+	go consumer.Run(cancelCtx) //nolint:errcheck
 
 	// Wait for the expected number of records to arrive.
 	var records []*kgo.Record
