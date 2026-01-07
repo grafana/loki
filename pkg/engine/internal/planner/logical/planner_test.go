@@ -597,17 +597,18 @@ RETURN %12
 %4 = SELECT %2 [predicate=%3]
 %5 = LT builtin.timestamp 1970-01-01T02:00:00Z
 %6 = SELECT %4 [predicate=%5]
-%7 = PROJECT %6 [mode=*E, expr=PARSE_REGEXP(builtin.message, ".* foo=(?P<foo>.+) .*", [])]
-%8 = EQ ambiguous.foo "bar"
-%9 = SELECT %7 [predicate=%8]
-%10 = EQ generated.__error__ ""
-%11 = EQ generated.__error_details__ ""
-%12 = AND %10 %11
-%13 = SELECT %9 [predicate=%12]
-%14 = RANGE_AGGREGATION %13 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
-%15 = VECTOR_AGGREGATION %14 [operation=sum, group_by=(ambiguous.foo)]
-%16 = LOGQL_COMPAT %15
-RETURN %16
+%7 = PARSE_REGEXP(builtin.message, ".* foo=(?P<foo>.+) .*")
+%8 = PROJECT %6 [mode=*E, expr=%7]
+%9 = EQ ambiguous.foo "bar"
+%10 = SELECT %8 [predicate=%9]
+%11 = EQ generated.__error__ ""
+%12 = EQ generated.__error_details__ ""
+%13 = AND %11 %12
+%14 = SELECT %10 [predicate=%13]
+%15 = RANGE_AGGREGATION %14 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
+%16 = VECTOR_AGGREGATION %15 [operation=sum, group_by=(ambiguous.foo)]
+%17 = LOGQL_COMPAT %16
+RETURN %17
 `
 		require.Equal(t, expected, plan.String())
 	})
@@ -633,12 +634,13 @@ RETURN %16
 %4 = SELECT %2 [predicate=%3]
 %5 = LT builtin.timestamp 1970-01-01T02:00:00Z
 %6 = SELECT %4 [predicate=%5]
-%7 = PROJECT %6 [mode=*E, expr=PARSE_REGEXP(builtin.message, "(?P<level>\w+):\s+(?P<message>.*)", [])]
-%8 = EQ ambiguous.level "error"
-%9 = SELECT %7 [predicate=%8]
-%10 = TOPK %9 [sort_by=builtin.timestamp, k=1000, asc=false, nulls_first=false]
-%11 = LOGQL_COMPAT %10
-RETURN %11
+%7 = PARSE_REGEXP(builtin.message, "(?P<level>\w+):\s+(?P<message>.*)")
+%8 = PROJECT %6 [mode=*E, expr=%7]
+%9 = EQ ambiguous.level "error"
+%10 = SELECT %8 [predicate=%9]
+%11 = TOPK %10 [sort_by=builtin.timestamp, k=1000, asc=false, nulls_first=false]
+%12 = LOGQL_COMPAT %11
+RETURN %12
 `
 		require.Equal(t, expected, plan.String())
 	})
@@ -648,7 +650,7 @@ RETURN %11
 		parsers := map[string]string{
 			`json`:                     `PARSE_JSON(builtin.message, [], false, false)`,
 			`logfmt`:                   `PARSE_LOGFMT(builtin.message, [], false, false)`,
-			`regexp "(?P<level>\\w+)"`: `PARSE_REGEXP(builtin.message, "(?P<level>\w+)", [])`,
+			`regexp "(?P<level>\\w+)"`: `PARSE_REGEXP(builtin.message, "(?P<level>\w+)")`,
 		}
 
 		for parser, statement := range parsers {
@@ -697,7 +699,7 @@ RETURN %16
 		parsers := map[string]string{
 			`json`:                     `PARSE_JSON(builtin.message, [], false, false)`,
 			`logfmt`:                   `PARSE_LOGFMT(builtin.message, [], false, false)`,
-			`regexp "(?P<level>\\w+)"`: `PARSE_REGEXP(builtin.message, "(?P<level>\w+)", [])`,
+			`regexp "(?P<level>\\w+)"`: `PARSE_REGEXP(builtin.message, "(?P<level>\w+)")`,
 		}
 
 		for parser, statement := range parsers {

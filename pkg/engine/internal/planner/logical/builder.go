@@ -69,8 +69,6 @@ func (b *Builder) ParseRegexp(pattern string) *Builder {
 			},
 			// regex pattern
 			NewLiteral(pattern),
-			// requested keys (to be filled in by projection pushdown optimizer)
-			NewLiteral([]string{}),
 		},
 	}
 	return b.ProjectExpand(val)
