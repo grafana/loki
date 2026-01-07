@@ -83,7 +83,7 @@ func (c *SinglePartitionConsumer) stopping(_ error) error {
 func (c *SinglePartitionConsumer) Run(ctx context.Context) error {
 	// Consume the topic and partition from the specified offset.
 	c.client.AddConsumePartitions(map[string]map[int32]kgo.Offset{
-		c.topic: map[int32]kgo.Offset{
+		c.topic: {
 			c.partition: kgo.NewOffset().At(c.initialOffset),
 		},
 	})
