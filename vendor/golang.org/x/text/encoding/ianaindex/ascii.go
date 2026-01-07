@@ -66,8 +66,8 @@ func (d asciiEncoder) Transform(dst, src []byte, atEOF bool) (nDst, nSrc int, er
 
 var asciiEnc = &internal.Encoding{
 	Encoding: &internal.SimpleEncoding{
-		asciiDecoder{},
-		asciiEncoder{},
+		Decoder: asciiDecoder{},
+		Encoder: asciiEncoder{},
 	},
 	Name: "US-ASCII",
 	MIB:  identifier.ASCII,

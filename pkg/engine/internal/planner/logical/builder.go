@@ -199,5 +199,10 @@ func (b *Builder) Value() Value { return b.val }
 
 // ToPlan converts the Builder to a Plan.
 func (b *Builder) ToPlan() (*Plan, error) {
-	return convertToPlan(b.val)
+	p, err := convertToPlan(b.val)
+	if err != nil {
+		return nil, err
+	}
+	buildReferrers(p.Instructions...)
+	return p, nil
 }
