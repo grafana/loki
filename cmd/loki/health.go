@@ -28,6 +28,7 @@ func CheckHealth(args []string) bool {
 // RunHealthCheck performs a health check against the /ready endpoint
 // Returns exit code 0 if healthy, 1 if unhealthy
 func RunHealthCheck(args []string) int {
+
 	url := getHealthURL(args)
 
 	client := &http.Client{
@@ -54,7 +55,7 @@ func RunHealthCheck(args []string) int {
 // Looks for -health.url=<url> or -health.url <url>
 func getHealthURL(args []string) string {
 	urlPattern := regexp.MustCompile(`^-+health\.url[=:]?(.*)$`)
-	argPattern := regexp.MustCompile(`^-`)
+	healthArgPattern := regexp.MustCompile(`^-`)
 
 	for i, a := range args {
 		if matches := urlPattern.FindStringSubmatch(a); matches != nil {
@@ -62,7 +63,7 @@ func getHealthURL(args []string) string {
 				return matches[1]
 			}
 			// Check next argument for the URL value
-			if i+1 < len(args) && !argPattern.MatchString(args[i+1]) {
+			if i+1 < len(args) && !healthArgPattern.MatchString(args[i+1]) {
 				return args[i+1]
 			}
 		}
