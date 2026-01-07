@@ -250,6 +250,8 @@ func (f *regexpFunction) Evaluate(lhs arrow.Array, rhs arrow.Array, _, rhsIsScal
 		return builder.NewArray(), nil
 	}
 
+	builder.Reserve(lhsArr.Len())
+
 	var (
 		re  *regexp.Regexp
 		err error
@@ -306,6 +308,7 @@ func (f *genericBoolFunction[E, T]) Evaluate(lhs arrow.Array, rhs arrow.Array, _
 	}
 
 	builder := array.NewBooleanBuilder(memory.DefaultAllocator)
+	builder.Reserve(lhsArr.Len())
 
 	for i := range lhsArr.Len() {
 		if lhsArr.IsNull(i) || rhsArr.IsNull(i) {
@@ -345,6 +348,7 @@ func (f *genericFloat64Function[E, T]) Evaluate(lhs arrow.Array, rhs arrow.Array
 	}
 
 	builder := array.NewFloat64Builder(memory.DefaultAllocator)
+	builder.Reserve(lhsArr.Len())
 
 	for i := range lhsArr.Len() {
 		if lhsArr.IsNull(i) || rhsArr.IsNull(i) {
