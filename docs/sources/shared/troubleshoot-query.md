@@ -28,11 +28,7 @@ Query errors can be observed using these Prometheus metrics:
 
 - `loki_request_duration_seconds` - Query latency by route and status code
 - `loki_logql_querystats_bytes_processed_per_seconds` - Bytes processed during queries
-<<<<<<< HEAD
 - `loki_frontend_query_range_duration_seconds_bucket` - Frontend query latency
-=======
-- `cortex_frontend_query_stats_latency_seconds` - Frontend query latency
->>>>>>> cfb82ff97b (docs: Troubleshooting queries Part 5)
 
 You can set up alerts on 4xx and 5xx status codes to detect query problems early. This can be helpful when tuning limits configurations.
 
@@ -62,11 +58,7 @@ The LogQL query contains syntax errors. This could be due to:
 **Common examples:**
 
 | Invalid Query | Error | Fix |
-<<<<<<< HEAD
 | -------------- | ------- | ----- |
-=======
-|--------------|-------|-----|
->>>>>>> cfb82ff97b (docs: Troubleshooting queries Part 5)
 | `{app="foo"` | Missing closing brace | `{app="foo"}` |
 | `{app="foo"} \|= test` | Unquoted filter string | `{app="foo"} \|= "test"` |
 | `rate({app="foo"}[5minutes])` | Invalid duration unit | `rate({app="foo"}[5m])` |
@@ -213,15 +205,6 @@ Aggregation functions like `sum_over_time`, `avg_over_time`, `min_over_time`, `m
    sum_over_time({app="foo"} | json | unwrap duration [5m])
    ```
 
-<<<<<<< HEAD
-=======
-* **Use count_over_time** if you just want to count log lines (no unwrap needed):
-
-   ```logql
-   count_over_time({app="foo"} | json [5m])
-   ```
-
->>>>>>> cfb82ff97b (docs: Troubleshooting queries Part 5)
 **Properties:**
 
 - Enforced by: Query Parser
@@ -343,7 +326,6 @@ The query produces results with too many unique label combinations. This protect
    sum by (status, method) (rate({job="nginx"} | json [5m]))
    ```
 
-<<<<<<< HEAD
    Another alternative is using `drop` or `keep` to reduce the number of labels and hence the cardinality:
 
    ```logql
@@ -354,8 +336,6 @@ The query produces results with too many unique label combinations. This protect
    {job="nginx"} | json | keep status, method, path
    ```
 
-=======
->>>>>>> cfb82ff97b (docs: Troubleshooting queries Part 5)
 * **Increase the limit** if needed:
 
    ```yaml
@@ -388,19 +368,10 @@ The query requests more log entries than the configured maximum. This applies to
 
 * **Reduce the limit parameter** in your query request.
 
-<<<<<<< HEAD
 * **Add more specific filters** to return fewer results:
 
    ```logql
    {app="foo"} |= "error" 
-=======
-* **Use pagination** with the `limit` parameter: `{job="app"} | limit 1000`
-
-* **Add more specific filters** to return fewer results:
-
-   ```logql
-   {app="foo"} |= "error" | json | level="error"
->>>>>>> cfb82ff97b (docs: Troubleshooting queries Part 5)
    ```
 
 * **Reduce the time range** of the query.
@@ -437,20 +408,6 @@ The estimated data volume for the query exceeds the configured limit. This is de
 
 * **Add more specific stream selectors** to reduce data volume.
 * **Reduce the time range** of the query.
-<<<<<<< HEAD
-=======
-* **Use line filters** to reduce processing:
-
-   ```logql
-   {app="foo"} |= "error"
-   ```
-
-* **Use sampling**
-
-  ```logql
-   {job="app"} | line_format "{{__timestamp__}} {{.msg}}" | sample 0.1
-   ```
->>>>>>> cfb82ff97b (docs: Troubleshooting queries Part 5)
 
 * **Increase the limit** if resources allow:
 
@@ -493,14 +450,6 @@ The number of chunks that the query would read exceeds the configured limit. Thi
    ```
 
 * **Reduce the query time range** to scan fewer chunks.
-<<<<<<< HEAD
-=======
-* **Add line filters** to reduce processing:
-
-   ```logql
-   {app="foo"} |= "error"
-   ```
->>>>>>> cfb82ff97b (docs: Troubleshooting queries Part 5)
 
 * **Increase the limit** if resources allow:
 
@@ -520,11 +469,7 @@ The number of chunks that the query would read exceeds the configured limit. Thi
 
 **Error message:**
 
-<<<<<<< HEAD
 `max streams matchers per query exceeded, matchers-count > limit (1500 > 1000)`
-=======
-`max streams matchers per query exceeded, matchers-count > limit (1000 > 500)`
->>>>>>> cfb82ff97b (docs: Troubleshooting queries Part 5)
 
 **Cause:**
 
@@ -541,16 +486,8 @@ The query contains too many stream matchers. This limit prevents queries with ex
 * **Use regex matchers** to consolidate multiple values:
 
    ```logql
-<<<<<<< HEAD
    # Good: 3 matchers using regex patterns
    {cluster="prod", namespace=~"api|web", pod=~"nginx-.*"}
-=======
-   # Instead of many matchers
-   {job="app1"} or {job="app2"} or {job="app3"}
-   
-   # Use regex
-   {job=~"app1|app2|app3"}
->>>>>>> cfb82ff97b (docs: Troubleshooting queries Part 5)
    ```
 
 * **Increase the limit** if needed:
@@ -562,11 +499,7 @@ The query contains too many stream matchers. This limit prevents queries with ex
 
 **Properties:**
 
-<<<<<<< HEAD
 - Enforced by: Querier
-=======
-- Enforced by: Query Frontend
->>>>>>> cfb82ff97b (docs: Troubleshooting queries Part 5)
 - Retryable: No (query must be modified)
 - HTTP status: 400 Bad Request
 - Configurable per tenant: Yes
@@ -610,32 +543,6 @@ Even after query splitting and sharding, individual query shards exceed the per-
 - HTTP status: 400 Bad Request
 - Configurable per tenant: Yes
 
-<<<<<<< HEAD
-=======
-### Error: Limit reached while evaluating query
-
-**Error message:**
-
-`limit reached while evaluating the query`
-
-**Cause:**
-
-An internal limit was reached during query evaluation. This is a catch-all for various internal limits.
-
-**Resolution:**
-
-* **Simplify the query** - reduce complexity.
-* **Reduce the time range**.
-* **Add more specific stream selectors**.
-
-**Properties:**
-
-- Enforced by: Query Engine
-- Retryable: No
-- HTTP status: 400 Bad Request
-- Configurable per tenant: Varies
-
->>>>>>> cfb82ff97b (docs: Troubleshooting queries Part 5)
 ### Error: Interval value exceeds limit
 
 **Error message:**
@@ -1049,11 +956,7 @@ When a pipeline stage fails (for example, parsing JSON that isn't valid JSON), L
 ### Error types
 
 | Error Label Value | Cause |
-<<<<<<< HEAD
 | ------------------ | ------- |
-=======
-|------------------|-------|
->>>>>>> cfb82ff97b (docs: Troubleshooting queries Part 5)
 | `JSONParserErr` | Log line is not valid JSON |
 | `LogfmtParserErr` | Log line is not valid logfmt |
 | `SampleExtractionErr` | Failed to extract numeric value for metrics |
@@ -1095,416 +998,3 @@ To remove error labels from results:
 ```logql
 {app="foo"} | json | drop __error__, __error_details__
 ```
-<<<<<<< HEAD
-=======
-
-## Authentication and connection errors
-
-These errors occur when connecting to Loki, often when using LogCLI.
-
-### Error: No org ID
-
-**Error message:**
-
-`no org id`
-
-**Cause:**
-
-Multi-tenancy is enabled but no tenant ID was provided in the request.
-
-**Resolution:**
-
-* **Add the X-Scope-OrgID header** in your request.
-* **For LogCLI**, use the `--org-id` flag:
-
-   ```bash
-   logcli query '{app="foo"}' --org-id="my-tenant"
-   ```
-
-* **In Grafana**, configure the tenant ID in the data source settings.
-
-**Properties:**
-
-- Enforced by: Loki API
-- Retryable: Yes (with tenant ID)
-- HTTP status: 400 Bad Request
-- Configurable per tenant: No
-
-### Error: Authentication configuration conflict
-
-**Error message:**
-
-`at most one of HTTP basic auth (username/password), bearer-token & bearer-token-file is allowed to be configured`
-
-Or:
-
-`at most one of the options bearer-token & bearer-token-file is allowed to be configured`
-
-**Cause:**
-
-Multiple authentication methods are configured simultaneously in LogCLI.
-
-**Resolution:**
-
-* **Use only one authentication method**:
-
-   ```bash
-   # Basic auth
-   logcli query '{app="foo"}' --username="user" --password="pass"
-   
-   # OR bearer token
-   logcli query '{app="foo"}' --bearer-token="token"
-   
-   # OR bearer token file
-   logcli query '{app="foo"}' --bearer-token-file="/path/to/token"
-   ```
-
-**Properties:**
-
-- Enforced by: LogCLI
-- Retryable: Yes (with correct configuration)
-- HTTP status: N/A (client-side error)
-- Configurable per tenant: No
-
-### Error: Run out of attempts while querying
-
-**Error message:**
-
-`run out of attempts while querying the server`
-
-**Cause:**
-
-LogCLI exhausted all retry attempts when trying to reach Loki. This usually indicates:
-
-- Network connectivity issues
-- Server unavailability
-- Authentication failures
-
-**Resolution:**
-
-* **Check Loki server availability**.
-* **Verify network connectivity**.
-* **Check authentication credentials**.
-* **Increase retries** if transient issues are expected:
-
-   ```bash
-   logcli query '{app="foo"}' --retries=5
-   ```
-
-**Properties:**
-
-- Enforced by: LogCLI
-- Retryable: Yes (automatic retries exhausted)
-- HTTP status: Varies
-- Configurable per tenant: No
-
-### Error: WebSocket connection closed unexpectedly
-
-**Error message:**
-
-`websocket: close 1006 (abnormal closure): unexpected EOF`
-
-**Cause:**
-
-When tailing logs, the WebSocket connection was closed unexpectedly. This can happen if:
-
-- The querier handling the tail request stopped
-- Network interruption occurred
-- Server-side timeout
-
-**Resolution:**
-
-* LogCLI will automatically attempt to reconnect, up to 5 times.
-* **Check Loki querier health** if reconnections fail.
-* **Review network stability** between client and server.
-
-**Properties:**
-
-- Enforced by: Network/Server
-- Retryable: Yes (automatic reconnection)
-- HTTP status: N/A (WebSocket error)
-- Configurable per tenant: No
-
-## Data availability errors
-
-These errors occur when requested data is not available.
-
-### Error: No data found
-
-**Error message:**
-
-`no data found`
-
-Or an empty result set with no error message.
-
-**Cause:**
-
-The query time range contains no matching log data. This can happen if:
-
-- No logs match the stream selectors
-- The time range is outside the data retention period
-- Log ingestion is not working
-- Stream labels don't match any existing streams
-
-**Resolution:**
-
-* **Verify the time range** contains data for your streams.
-* **Check if log ingestion is working** correctly:
-
-   ```bash
-   # Check if any data is being ingested
-   logcli query '{job=~".+"}'
-   ```
-
-* **Verify stream selectors** match existing log streams:
-
-   ```bash
-   # List available streams
-   curl http://loki:3100/loki/api/v1/series
-   ```
-
-* **Check data retention** settings to ensure logs are still available.
-* **Use broader selectors** to test if any data exists:
-
-   ```logql
-   {job=~".+"}
-   ```
-
-**Properties:**
-
-- Enforced by: Query Engine
-- Retryable: Yes (with different parameters)
-- HTTP status: 200 OK (with empty result)
-- Configurable per tenant: No
-
-### Error: Index not ready
-
-**Error message:**
-
-`index not ready`
-
-Or:
-
-`index gateway not ready for time range`
-
-**Cause:**
-
-The index for the requested time range is not yet available for querying. This can happen when:
-
-- Index files are still being synced from storage
-- The index gateway is still starting up
-- Querying data older than the configured ready index period
-
-**Default configuration:**
-
-- `query_ready_index_num_days`: 0 (all indexes are considered ready)
-
-**Resolution:**
-
-* **Wait for the index to become available** - this is often a temporary issue during startup.
-* **Query more recent data** that's available in ingesters:
-
-   ```logql
-   {app="foo"} # Query last few hours instead of older data
-   ```
-
-* **Check the configuration** for index readiness:
-
-   ```yaml
-   query_range:
-     query_ready_index_num_days: 7  #default is 0
-   ```
-
-* **Verify index synchronization** is working correctly by checking ingester and index gateway logs.
-
-**Properties:**
-
-- Enforced by: Index Gateway/Querier
-- Retryable: Yes (wait and retry)
-- HTTP status: 503 Service Unavailable
-- Configurable per tenant: No
-
-### Error: Tenant limits
-
-**Error message:**
-
-`max concurrent tail requests limit exceeded, count > limit (10 > 5)`
-
-**Cause:**
-
-The tenant has exceeded the maximum number of concurrent streaming (tail) requests. This limit protects the cluster from excessive resource consumption by real-time log streaming.
-
-**Default configuration:**
-
-- `max_concurrent_tail_requests`: 10
-
-**Resolution:**
-
-* **Reduce the number of concurrent tail/streaming queries**.
-* **Use batch queries** instead of real-time streaming where possible:
-
-   ```logql
-   # Instead of tailing in real-time
-   # Use periodic range queries
-   {app="foo"} |= "error"
-   ```
-
-* **Increase the limit** if more concurrent tails are needed:
-
-   ```yaml
-   limits_config:
-     max_concurrent_tail_requests: 20  #default is 10
-   ```
-
-**Properties:**
-
-- Enforced by: Querier
-- Retryable: Yes (when connections are available)
-- HTTP status: 429 Too Many Requests
-- Configurable per tenant: Yes
-
-## Storage errors
-
-These errors occur when Loki cannot read data from storage.
-
-### Error: Failed to load chunk
-
-**Error message:**
-
-`failed to load chunk '<chunk_key>'`
-
-**Cause:**
-
-Loki couldn't retrieve a chunk from object storage. Possible causes:
-
-- Chunk was deleted or moved
-- Storage permissions issue
-- Network connectivity to storage
-- Storage service unavailable
-
-**Resolution:**
-
-* **Check storage connectivity** from Loki components.
-* **Verify storage credentials and permissions**.
-* **Check for chunk corruption** or deletion.
-* **Review storage service status**.
-
-**Properties:**
-
-- Enforced by: Storage Client
-- Retryable: Yes (automatically)
-- HTTP status: 500 Internal Server Error
-- Configurable per tenant: No
-
-### Error: Object not found in storage
-
-**Error message:**
-
-`object not found in storage`
-
-**Cause:**
-
-The requested chunk or object doesn't exist in storage. This might happen if:
-
-- Data was deleted due to retention
-- Compaction removed the chunk
-- Chunk was never written successfully
-
-**Resolution:**
-
-* **Check if data is within retention period**.
-* **Verify data was ingested successfully**.
-* **Review compaction jobs** for issues.
-
-**Properties:**
-
-- Enforced by: Storage Client
-- Retryable: No (data doesn't exist)
-- HTTP status: 404 or 500 depending on context
-- Configurable per tenant: No
-
-### Error: Failed to decode chunk
-
-**Error message:**
-
-`failed to decode chunk '<chunk_key>' for tenant '<tenant>': <error>`
-
-**Cause:**
-
-A chunk was retrieved from storage but couldn't be decoded. This indicates chunk corruption.
-
-**Resolution:**
-
-* **Report to Loki administrators** for investigation.
-* **Check for storage data integrity issues**.
-* Note that the corrupted chunk data may be unrecoverable.
-
-**Properties:**
-
-- Enforced by: Storage Client
-- Retryable: No (chunk is corrupted)
-- HTTP status: 500 Internal Server Error
-- Configurable per tenant: No
-
-## Troubleshooting workflow
-
-Follow this workflow when investigating query issues:
-
-* **Check the error message** - Identify which category of error you're encountering.
-
-* **Review query syntax** - Use the LogQL documentation to validate your query.
-
-* **Check query statistics** - In Grafana, enable "Query Inspector" to see:
-  - Bytes processed
-  - Number of chunks scanned
-  - Execution time breakdown
-
-* **Simplify the query** - Start with a basic selector and add complexity:
-
-   ```logql
-   # Start simple
-   {app="foo"}
-   
-   # Add filters
-   {app="foo"} |= "error"
-   
-   # Add parsing
-   {app="foo"} |= "error" | json
-   
-   # Add label filters
-   {app="foo"} |= "error" | json | level="error"
-   ```
-
-* **Check metrics** for query performance:
-
-   ```promql
-   # Query latency
-   histogram_quantile(0.99, sum(rate(loki_request_duration_seconds_bucket[5m])) by (le, route))
-   
-   # Query errors
-   sum by (status_code) (rate(loki_request_duration_seconds_count[5m]))
-   ```
-
-* **Review Loki logs** for detailed error information:
-
-   ```bash
-   kubectl logs -l app=loki-read --tail=100 | grep -i error
-   ```
-
-* **Test with LogCLI** for more detailed output:
-
-   ```bash
-   logcli query '{app="foo"}' --stats --limit=10
-   ```
-
-## Related resources
-
-- Learn more about [LogQL Query Language](https://grafana.com/docs/loki/<LOKI_VERSION>/query/)
-- Configure appropriate [query limits](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#limits_config)
-- Learn more about [Query performance tuning](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/query-acceleration/)
-- Review the [LogCLI documentation](https://grafana.com/docs/loki/<LOKI_VERSION>/query/logcli/)
-- Learn more about [LogQL query optimization](https://grafana.com/docs/loki/<LOKI_VERSION>/query/log_queries/)
-- Review [query performance best practices](https://grafana.com/docs/loki/<LOKI_VERSION>/best-practices/)
-- Use [query debugging features](https://grafana.com/docs/loki/<LOKI_VERSION>/query/query_stats/) to analyze slow queries
-- Explore the [Grafana Loki GitHub repository](https://github.com/grafana/loki) for community support
->>>>>>> cfb82ff97b (docs: Troubleshooting queries Part 5)
