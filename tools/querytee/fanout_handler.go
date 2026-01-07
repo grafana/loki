@@ -116,12 +116,6 @@ func (h *FanOutHandler) Do(ctx context.Context, req queryrangebase.Request) (que
 	}
 	shouldSample := h.shouldSample(tenants, httpReq)
 
-	// If feature flag is enabled, not sampling for Goldfish, and no basic comparator configured,
-	// skip fan-out and only send to preferred backend
-	if h.skipFanOutWhenNotSampling && !shouldSample {
-		return h.executePreferredBackendOnly(ctx, httpReq, body, req, issuer)
-	}
-
 	results := h.makeBackendRequests(ctx, httpReq, body, req, issuer)
 	collected := make([]*backendResult, 0, len(h.backends))
 
@@ -350,51 +344,6 @@ func (h *FanOutHandler) executeBackendRequest(
 
 	result.response = response
 	return result
-}
-
-// executePreferredBackendOnly executes the request only against the preferred backend.
-// Used when goldfish sampling is disabled and no basic comparator is configured,
-// to avoid unnecessary fan-out to secondary backends.
-func (h *FanOutHandler) executePreferredBackendOnly(
-	ctx context.Context,
-	httpReq *http.Request,
-	body []byte,
-	req queryrangebase.Request,
-	issuer string,
-) (queryrangebase.Response, error) {
-	// Find preferred backend
-	var preferredBackend *ProxyBackend
-	for _, b := range h.backends {
-		if b.preferred {
-			preferredBackend = b
-			break
-		}
-	}
-	if preferredBackend == nil {
-		return nil, fmt.Errorf("no preferred backend configured")
-	}
-
-	level.Debug(h.logger).Log(
-		"msg", "skipping fan-out, sending to preferred backend only",
-		"backend", preferredBackend.name,
-		"path", httpReq.URL.Path,
-	)
-
-	// Execute request to preferred backend only
-	result := h.executeBackendRequest(ctx, httpReq, body, preferredBackend, req)
-	h.recordMetrics(result, httpReq.Method, issuer)
-
-	if result.err != nil {
-		if result.backendResp != nil && result.backendResp.status > 0 {
-			return &NonDecodableResponse{
-				StatusCode: result.backendResp.status,
-				Body:       result.backendResp.body,
-			}, result.err
-		}
-		return nil, result.err
-	}
-
-	return result.response, nil
 }
 
 // recordMetrics records request duration metrics.
