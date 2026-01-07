@@ -266,7 +266,8 @@ func (p *partitionProcessor) processRecord(ctx context.Context, record partition
 		return
 	}
 
-	p.metrics.incAppendsTotal()
+	p.metrics.processedBytes.Add(float64(stream.Size()))
+
 	if err := p.builder.Append(tenant, stream); err != nil {
 		if !errors.Is(err, logsobj.ErrBuilderFull) {
 			level.Error(p.logger).Log("msg", "failed to append stream", "err", err)
@@ -279,7 +280,6 @@ func (p *partitionProcessor) processRecord(ctx context.Context, record partition
 			return
 		}
 
-		p.metrics.incAppendsTotal()
 		if err := p.builder.Append(tenant, stream); err != nil {
 			level.Error(p.logger).Log("msg", "failed to append stream after flushing", "err", err)
 			p.metrics.incAppendFailures()
@@ -307,6 +307,9 @@ func (p *partitionProcessor) flushAndCommit(ctx context.Context) error {
 // flush builds a complete data object from the builder, uploads it, records
 // it in the metastore, and emits an object written event to the events topic.
 func (p *partitionProcessor) flush(ctx context.Context) error {
+	timer := prometheus.NewTimer(p.metrics.flushDuration)
+	defer timer.ObserveDuration()
+
 	// The time range must be read before the flush as the builder is reset
 	// at the end of each flush, resetting the time range.
 	obj, closer, err := p.builder.Flush()
