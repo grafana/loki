@@ -189,7 +189,7 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) (Node, e
 
 	from, through := ctx.GetResolveTimeRange()
 
-	dataObjs, err := p.catalog.ResolveDataObjSections(p.convertPredicate(lp.Selector), predicates, ShardInfo(*shard), from, through)
+	dataObjs, err := p.catalog.ResolveDataObjSections(p.convertPredicate(lp.Selector), predicates, ShardInfo{Shard: shard.Shard, Of: shard.Of}, from, through)
 	if err != nil {
 		return nil, err
 	}
