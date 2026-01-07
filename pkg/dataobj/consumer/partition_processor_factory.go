@@ -63,6 +63,7 @@ func (f *partitionProcessorFactory) New(committer partition.Committer, logger lo
 		f.logger,
 		f.reg,
 		f.cfg.IdleFlushTimeout,
+		f.cfg.MaxDataObjAge,
 		f.metastoreEvents,
 		f.topic,
 		f.partition,
