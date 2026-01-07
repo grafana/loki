@@ -46,12 +46,7 @@ Streams consume resources throughout the system:
 - **Object storage operations**: Each stream generates flush operations
 - **Query overhead**: More streams means more chunks to scan during queries
 
-Beyond ~200,000 streams, these costs become prohibitive regardless of infrastructure:
-
-- Ingesters run out of memory even with maximum RAM
-- Index queries become too slow
-- Chunk flush operations overwhelm object storage
-- Query performance becomes unacceptable
+Beyond ~200,000 streams, these costs become prohibitive regardless of infrastructure.
 
 **Consequences of exceeding**:
 
@@ -84,26 +79,23 @@ Ingestion rate limits protect against cascading failures:
 
 - Sudden traffic spikes can overwhelm ingesters before autoscaling responds
 - Unbounded ingestion can exhaust ingester memory
-- High burst rates can cause distributor backpressure
+- Unbounded ingestion can exhaust distributor memory
 - Network and storage I/O can become bottlenecks
 
 Rate limits provide a safety mechanism that allows the system to scale gracefully rather than failing catastrophically.
 
-**Consequences of exceeding**:
+**Consequences of not setting rate limits properly**:
 
-- Request rejections with HTTP 429 (Too Many Requests)
-- Data loss if clients don't implement retry logic
-- Backpressure on log shipping agents
-- Potential cascading failures during infrastructure scaling
-- Degraded performance for all tenants
+- Cascading failure of distributors and ingesters leading to an entire write path and recent read path outage.
+- Overwhelming ingesters causing WAL's to run out of disk space and making for slow WAL replay and difficult recovery.
+- Overwhelming object storage.
 
 **What to do instead**:
 
-- Set rate limits with 50% headroom above peak usage
-- Configure burst limits to handle short-term spikes
-- Implement exponential backoff in log shipping clients
-- Monitor ingestion patterns and adjust limits proactively
-- Scale infrastructure before increasing limits significantly
+- Always set rate limits for all tenants.
+- Implement exponential backoff in log shipping clients.
+- Monitor ingestion patterns and adjust limits proactively.
+- Scale infrastructure before increasing limits significantly.
 
 ### per_stream_rate_limit
 
@@ -134,6 +126,7 @@ Unlike the global rate limit, per-stream limits cannot be solved by adding more 
 
 **What to do instead**:
 
+- First try adjusting automatic stream sharding by setting a lower `desired_rate` (not less than 128kb/s).
 - Split high-volume streams by adding appropriate labels (such as instance)
 - Use client-side rate limiting with Promtail's limit stage
 - Sample verbose logs at the application level
@@ -214,11 +207,11 @@ Query limits protect the query execution path and ensure that compute resources 
 - **Default**: 1 minute
 - **Maximum**: 5 minutes (you should not increase beyond this)
 
-The query timeout controls how long a query can execute before being terminated. This limit exists because Loki's query architecture distributes subqueries across worker routines in queriers. Each querier can run a limited number of concurrent workers, and this total compute capacity is shared across all tenants.
+The query timeout controls how long a query can execute before being terminated. This limit exists because Loki is designed as a synchronous query engine and not for extremely long running queries.
 
 **Why you should not exceed 5 minutes**:
 
-A longer timeout allows a single query to reserve worker routines for an extended period. In a multi-tenant environment, if one tenant runs queries with a 10-minute timeout, they could monopolize workers that should be available to other tenants. This creates a negative experience where other users face increased query queue times or timeouts.
+As Loki was not engineered for extremely long running query operations, the behavior of increasing the query limit is uncertain. Particularly in multi-tenant or large multi-user environments this would very likely lead to difficulty maintaining system stability.
 
 **Consequences of exceeding**:
 
@@ -227,33 +220,25 @@ A longer timeout allows a single query to reserve worker routines for an extende
 - Potential denial of service to other users
 - Unpredictable query performance
 
-**What to do instead**: Optimize queries to complete faster by using smaller time ranges, applying filters early, and leveraging query acceleration features like Bloom filters.
+**What to do instead**: Optimize queries to complete faster by using smaller time ranges, more specific labels, and applying filters early.
 
 ### max_label_names_per_series
 
 - **Default**: 15
 - **Recommended**: 15 (do not exceed)
 
-This limit controls the maximum number of labels that can be attached to a single log stream. Cardinality is one of the primary cost drivers in Loki's query execution time.
+This limit controls the maximum number of labels that can be attached to a single log stream.
 
 **Why you should not exceed 15 labels**:
 
-Each label added to a stream increases the cardinality of the label set. High cardinality causes Loki to:
-
-- Build massive indexes
-- Create excessive numbers of streams
-- Fragment data across many small chunks
-- Degrade query performance exponentially
+It should be possible to identify and categorize logs with less than 15 labels. More labels increases the likelihood of higher cardinality and over fragmentation of logs into too many streams and chunks. Even if the labels have fixed cardinality, each label requires space in the index and makes the index larger and potentially slows index operations. Always strive to use fewer labels.
 
 Having more than 15 labels per stream typically indicates a fundamental misuse of Loki's label system. Loki is designed for a small set of labels that describe the log source (such as cluster, namespace, job), not for storing metadata as labels.
 
 **Consequences of exceeding**:
 
-- Exponential increase in memory usage on ingesters
-- Significantly slower query performance
-- Increased storage costs due to index bloat
-- Higher CPU usage during queries
-- Potential out-of-memory conditions
+- Increase in memory usage on ingesters
+- Larger index which leads to slower index operations and slower query performance
 
 **What to do instead**:
 
@@ -264,30 +249,17 @@ Having more than 15 labels per stream typically indicates a fundamental misuse o
 ### max_line_size
 
 - **Default**: 256KB
-- **Absolute maximum**: 300KB (requests above this are refused)
+- **Maximum**: 256KB
 
 This limit controls the maximum size in bytes that a single log line can be during ingestion.
 
-**Why you should not exceed 256KB**:
-
-Large log lines have cascading negative effects throughout Loki:
-
-- **Memory pressure**: Ingesters must buffer log lines in memory before compression
-- **Compression overhead**: Larger lines take longer to compress and decompress
-- **Query performance**: Scanning large chunks slows down query execution
-- **Network I/O**: Transferring large lines between components increases latency
-- **OOM risk**: Under high load, large lines can cause out-of-memory conditions
-
-While the system may technically accept lines up to 300KB, this impacts performance and stability significantly. Beyond 300KB, the risk of system destabilization is too high.
-
 **Consequences of exceeding**:
 
-- Ingester memory exhaustion
-- Slower compression and decompression
-- Degraded query performance
-- Increased risk of OOM failures
-- Potential data loss during high load
-- SLA violations
+Having a limit on log line size is fundamental to Loki's design, increasing this limit can have several unintended consequences which can make it extremely difficult to run a stable Loki cluster:
+
+- Chunks are expected to be a maximum of a few MB, if a log line were larger than this it could create very large chunks which will negatively affect query performance as a chunk is a unit of parallelism and expected to be around 2MB or less.
+- Queriers and query-frontends running out of memory (OOM failures) will be extremely difficult to avoid leading to multi-user/tenant impacts.
+- GRPC message size exhaustion, which increases to this limit will likely have performance impacts affecting multiple users/tenants.
 
 **What to do instead**:
 
@@ -295,6 +267,7 @@ While the system may technically accept lines up to 300KB, this impacts performa
 - Avoid embedding large payloads (base64-encoded data, full HTTP bodies) in logs
 - Log references to external data instead of the data itself
 - Split multi-line events into separate log entries
+- Set `max_line_size_truncate` to truncate large log lines.
 
 ## Understanding limit violations
 
