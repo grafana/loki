@@ -9,6 +9,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
+	"github.com/grafana/loki/v3/pkg/logql/log"
 )
 
 func NewScalar(value types.Literal, rows int) arrow.Array {
@@ -53,16 +54,32 @@ func NewScalar(value types.Literal, rows int) arrow.Array {
 		}
 	case *array.ListBuilder:
 		//TODO(twhitney): currently only supporting string list, but we can add more types here as we need them
-		value, ok := value.Any().([]string)
+		v, ok := value.Any().([]string)
 		if !ok {
-			panic(fmt.Errorf("unsupported list literal type: %T", value))
-		}
-
-		valueBuilder := builder.ValueBuilder().(*array.StringBuilder)
-		for range rows {
-			builder.Append(true)
-			for _, val := range value {
-				valueBuilder.Append(val)
+			v, ok := value.Any().([]log.LabelFmt)
+			if !ok {
+				panic(fmt.Errorf("unsupported list literal type: %T", v))
+			}
+			valueBuilder := builder.ValueBuilder().(*array.StructBuilder)
+			for range rows {
+				builder.Append(true)
+				for _, val := range v {
+					nameBuilder := valueBuilder.FieldBuilder(0).(*array.StringBuilder)
+					nameBuilder.Append(val.Name)
+					valBuilder := valueBuilder.FieldBuilder(1).(*array.StringBuilder)
+					valBuilder.Append(val.Value)
+					renameBuilder := valueBuilder.FieldBuilder(2).(*array.BooleanBuilder)
+					renameBuilder.Append(val.Rename)
+					valueBuilder.Append(true)
+				}
+			}
+		} else {
+			valueBuilder := builder.ValueBuilder().(*array.StringBuilder)
+			for range rows {
+				builder.Append(true)
+				for _, val := range v {
+					valueBuilder.Append(val)
+				}
 			}
 		}
 	}

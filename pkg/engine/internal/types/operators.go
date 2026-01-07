@@ -17,6 +17,7 @@ const (
 	UnaryOpCastFloat    // Cast string to float value operation (unwrap).
 	UnaryOpCastBytes    // Cast string bytes to float value operation (unwrap).
 	UnaryOpCastDuration // Cast string duration to float value operation (unwrap).
+	UnaryOpParseLinefmt // Parse linefmt line
 )
 
 // String returns the string representation of the UnaryOp.
@@ -129,8 +130,10 @@ const (
 	// VariadicOpKindInvalid indicates an invalid unary operation.
 	VariadicOpInvalid VariadicOp = iota
 
-	VariadicOpParseLogfmt // Parse logfmt line to set of columns operation (logfmt).
-	VariadicOpParseJSON   // Parse JSON line to set of columns operation (json).
+	VariadicOpParseLogfmt   // Parse logfmt line to set of columns operation (logfmt).
+	VariadicOpParseJSON     // Parse JSON line to set of columns operation (json).
+	VariadicOpParseLinefmt  // Parse linefmt line
+	VariadicOpParseLabelfmt // Parse labelfmt line to set of labels operation (labelfmt).
 )
 
 // String returns the string representation of the UnaryOp.
@@ -140,6 +143,10 @@ func (t VariadicOp) String() string {
 		return "PARSE_LOGFMT"
 	case VariadicOpParseJSON:
 		return "PARSE_JSON"
+	case VariadicOpParseLinefmt:
+		return "PARSE_LINEFMT"
+	case VariadicOpParseLabelfmt:
+		return "PARSE_LABELFMT"
 	default:
 		panic(fmt.Sprintf("unknown variadic operator %d", t))
 	}

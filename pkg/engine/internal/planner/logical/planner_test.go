@@ -295,9 +295,11 @@ func TestCanExecuteQuery(t *testing.T) {
 		},
 		{
 			statement: `{env="prod"} | line_format "{.cluster}"`,
+			expected:  true,
 		},
 		{
 			statement: `{env="prod"} | label_format cluster="us"`,
+			expected:  true,
 		},
 		{
 			statement: `{env="prod"} |= "metric.go" | retry > 2`,

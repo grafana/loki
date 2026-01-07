@@ -340,7 +340,8 @@ func (p *Planner) processProjection(lp *logical.Projection, ctx *Context) (Node,
 	for i := range lp.Expressions {
 		expressions[i] = p.convertPredicate(lp.Expressions[i])
 		if funcExpr, ok := lp.Expressions[i].(*logical.FunctionOp); ok {
-			if funcExpr.Op == types.VariadicOpParseJSON || funcExpr.Op == types.VariadicOpParseLogfmt {
+			if slices.Contains([]types.VariadicOp{types.VariadicOpParseJSON, types.VariadicOpParseLogfmt,
+				types.VariadicOpParseLinefmt, types.VariadicOpParseLabelfmt}, funcExpr.Op) {
 				needsCompat = true
 			}
 		}
@@ -473,7 +474,7 @@ func (p *Planner) processVectorAggregation(lp *logical.VectorAggregation, ctx *C
 //   - acc: currently accumulated expression.
 //   - input: a physical plan node of the only input of that expression, if any.
 //   - inputRef: a pointer to a node in `acc` that refers the input, if any. This is for convenience of
-//     renaming the column refenrece without a need to search for it in `acc` expression.
+//     renaming the column reference without a need to search for it in `acc` expression.
 //   - err: error
 func (p *Planner) collapseMathExpressions(lp logical.Value, rootNode bool, ctx *Context) (acc Expression, input Node, inputRef *ColumnExpr, err error) {
 	switch v := lp.(type) {
