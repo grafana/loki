@@ -13,8 +13,9 @@ type partitionOffsetMetrics struct {
 	lastOffset    atomic.Int64
 
 	// Error counters
-	commitFailures prometheus.Counter
-	appendFailures prometheus.Counter
+	commitFailures        prometheus.Counter
+	appendFailures        prometheus.Counter
+	flushDueToMaxAgeTotal prometheus.Counter
 
 	// Request counters
 	commitsTotal prometheus.Counter
@@ -61,6 +62,10 @@ func newPartitionOffsetMetrics() *partitionOffsetMetrics {
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 0,
 		}),
+		flushDueToMaxAgeTotal: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "loki_dataobj_consumer_flush_due_to_max_age_total",
+			Help: "Total number of times a data object was flushed due to max age reached.",
+		}),
 	}
 
 	p.currentOffset = prometheus.NewGaugeFunc(
@@ -82,6 +87,7 @@ func (p *partitionOffsetMetrics) register(reg prometheus.Registerer) error {
 	collectors := []prometheus.Collector{
 		p.commitFailures,
 		p.appendFailures,
+		p.flushDueToMaxAgeTotal,
 		p.latestDelay,
 		p.processedRecords,
 		p.processedBytes,
@@ -103,6 +109,7 @@ func (p *partitionOffsetMetrics) unregister(reg prometheus.Registerer) {
 	collectors := []prometheus.Collector{
 		p.commitFailures,
 		p.appendFailures,
+		p.flushDueToMaxAgeTotal,
 		p.latestDelay,
 		p.processedRecords,
 		p.processedBytes,
@@ -129,6 +136,10 @@ func (p *partitionOffsetMetrics) incAppendFailures() {
 
 func (p *partitionOffsetMetrics) incCommitsTotal() {
 	p.commitsTotal.Inc()
+}
+
+func (p *partitionOffsetMetrics) incFlushDueToMaxAgeTotal() {
+	p.flushDueToMaxAgeTotal.Inc()
 }
 
 func (p *partitionOffsetMetrics) observeProcessingDelay(recordTimestamp time.Time) {

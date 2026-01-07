@@ -69,6 +69,8 @@ type partitionProcessor struct {
 	idleFlushTimeout time.Duration
 	// The initial value is the zero time.
 	lastFlushed time.Time
+	// Handling flushing dataobjs even if they are not full or idle for too long.
+	maxDataObjAge time.Duration
 
 	// lastModified is used to know when the idle is exceeded.
 	// The initial value is zero and must be reset to zero after each flush.
@@ -267,6 +269,14 @@ func (p *partitionProcessor) processRecord(ctx context.Context, record partition
 	}
 
 	p.metrics.processedBytes.Add(float64(stream.Size()))
+
+	if time.Since(p.earliestRecordTime) > p.maxDataObjAge {
+		p.metrics.incFlushDueToMaxAgeTotal()
+		if err := p.flushAndCommit(ctx); err != nil {
+			level.Error(p.logger).Log("msg", "failed to flush and commit dataobj that reached max age", "err", err)
+			return
+		}
+	}
 
 	if err := p.builder.Append(tenant, stream); err != nil {
 		if !errors.Is(err, logsobj.ErrBuilderFull) {
