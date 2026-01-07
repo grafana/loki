@@ -197,7 +197,6 @@ func BenchmarkRegexpParser_Process(b *testing.B) {
 				b.Fatal(err)
 			}
 
-			b.ResetTimer()
 			for b.Loop() {
 				_, err := parser.process(tc.line)
 				if err != nil {

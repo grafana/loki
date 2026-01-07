@@ -600,10 +600,14 @@ RETURN %12
 %7 = PROJECT %6 [mode=*E, expr=PARSE_REGEXP(builtin.message, ".* foo=(?P<foo>.+) .*", [])]
 %8 = EQ ambiguous.foo "bar"
 %9 = SELECT %7 [predicate=%8]
-%10 = RANGE_AGGREGATION %9 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
-%11 = VECTOR_AGGREGATION %10 [operation=sum, group_by=(ambiguous.foo)]
-%12 = LOGQL_COMPAT %11
-RETURN %12
+%10 = EQ generated.__error__ ""
+%11 = EQ generated.__error_details__ ""
+%12 = AND %10 %11
+%13 = SELECT %9 [predicate=%12]
+%14 = RANGE_AGGREGATION %13 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
+%15 = VECTOR_AGGREGATION %14 [operation=sum, group_by=(ambiguous.foo)]
+%16 = LOGQL_COMPAT %15
+RETURN %16
 `
 		require.Equal(t, expected, plan.String())
 	})
