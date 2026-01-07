@@ -18,7 +18,6 @@ type partitionOffsetMetrics struct {
 
 	// Request counters
 	commitsTotal prometheus.Counter
-	appendsTotal prometheus.Counter
 
 	latestDelay      prometheus.Gauge // Latest delta between record timestamp and current time
 	processedRecords prometheus.Counter
@@ -37,10 +36,6 @@ func newPartitionOffsetMetrics() *partitionOffsetMetrics {
 		commitsTotal: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "loki_dataobj_consumer_commits_total",
 			Help: "Total number of commits",
-		}),
-		appendsTotal: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "loki_dataobj_consumer_appends_total",
-			Help: "Total number of appends",
 		}),
 		latestDelay: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "loki_dataobj_consumer_latest_processing_delay_seconds",
@@ -71,7 +66,6 @@ func (p *partitionOffsetMetrics) register(reg prometheus.Registerer) error {
 	collectors := []prometheus.Collector{
 		p.commitFailures,
 		p.appendFailures,
-		p.appendsTotal,
 		p.latestDelay,
 		p.processedRecords,
 		p.currentOffset,
@@ -91,7 +85,6 @@ func (p *partitionOffsetMetrics) unregister(reg prometheus.Registerer) {
 	collectors := []prometheus.Collector{
 		p.commitFailures,
 		p.appendFailures,
-		p.appendsTotal,
 		p.latestDelay,
 		p.processedRecords,
 		p.currentOffset,
@@ -112,10 +105,6 @@ func (p *partitionOffsetMetrics) incCommitFailures() {
 
 func (p *partitionOffsetMetrics) incAppendFailures() {
 	p.appendFailures.Inc()
-}
-
-func (p *partitionOffsetMetrics) incAppendsTotal() {
-	p.appendsTotal.Inc()
 }
 
 func (p *partitionOffsetMetrics) incCommitsTotal() {
