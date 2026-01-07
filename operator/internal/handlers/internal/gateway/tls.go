@@ -26,6 +26,14 @@ func validateTLSConfig(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStac
 	}
 
 	tls := stack.Spec.Tenants.Gateway.TLS
+	if tls.Certificate == nil || tls.Key == nil {
+		return &status.DegradedError{
+			Message: "Missing certificate or key in gateway TLS configuration. Please provide both certificate and key.",
+			Reason:  lokiv1.ReasonInvalidGatewayTLSConfig,
+			Requeue: false,
+		}
+	}
+
 	if tls.CA != nil {
 		if err := validateValueRef(ctx, k, stack.Namespace, tls.CA, fieldNameCA); err != nil {
 			return err

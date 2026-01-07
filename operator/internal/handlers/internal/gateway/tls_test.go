@@ -128,10 +128,36 @@ func TestValidateTLSConfig(t *testing.T) {
 					Key:           "ca.crt",
 					ConfigMapName: "non-existent-configmap",
 				},
+				Certificate: &lokiv1.ValueReference{
+					Key:           "tls.crt",
+					ConfigMapName: validCertConfigMap.Name,
+				},
+				Key: &lokiv1.SecretReference{
+					Key:        "tls.key",
+					SecretName: validKeySecret.Name,
+				},
 			},
 			expError: &status.DegradedError{
 				Message: "Missing configmap for field \"ca\" in gateway TLS configuration: non-existent-configmap",
 				Reason:  lokiv1.ReasonMissingGatewayTLSConfig,
+				Requeue: false,
+			},
+		},
+		{
+			name: "missing certificate from config",
+			tlsSpec: &lokiv1.TLSSpec{
+				CA: &lokiv1.ValueReference{
+					Key:           "ca.crt",
+					ConfigMapName: validCAConfigMap.Name,
+				},
+				Key: &lokiv1.SecretReference{
+					Key:        "tls.key",
+					SecretName: validKeySecret.Name,
+				},
+			},
+			expError: &status.DegradedError{
+				Message: "Missing certificate or key in gateway TLS configuration. Please provide both certificate and key.",
+				Reason:  lokiv1.ReasonInvalidGatewayTLSConfig,
 				Requeue: false,
 			},
 		},
