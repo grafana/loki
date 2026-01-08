@@ -102,10 +102,9 @@ func (c *SinglePartitionConsumer) Run(ctx context.Context) error {
 		default:
 			c.polls.Inc()
 			fetches := c.client.PollRecords(ctx, -1)
-			// If the client is closed, or the context was canceled, return
-			// the error as no fetches were polled. We use this instead of
-			// [kgo.IsClientClosed] so we can also check if the context was
-			// canceled.
+			// If the client is closed, or the context was canceled, return the error
+			// as no fetches were polled. We use this instead of [kgo.IsClientClosed]
+			// so we can also check if the context was canceled.
 			if err := fetches.Err0(); errors.Is(err, kgo.ErrClientClosed) || errors.Is(err, context.Canceled) {
 				return err
 			}
