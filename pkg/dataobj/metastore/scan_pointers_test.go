@@ -21,12 +21,11 @@ import (
 func TestScanPointers_NoSelectorReturnsEOF(t *testing.T) {
 	t.Parallel()
 
+	s := newScanPointers(nil, now, now, nil, nil)
 	sStart := scalar.NewTimestampScalar(arrow.Timestamp(now.UnixNano()), arrow.FixedWidthTypes.Timestamp_ns)
 	sEnd := scalar.NewTimestampScalar(arrow.Timestamp(now.UnixNano()), arrow.FixedWidthTypes.Timestamp_ns)
 	s := newScanPointers(nil, sStart, sEnd, nil, nil)
-
-	rec, err := s.Read(context.Background())
-	require.ErrorIs(t, err, io.EOF)
+uire.ErrorIs(t, err, io.EOF)
 	require.Nil(t, rec)
 }
 

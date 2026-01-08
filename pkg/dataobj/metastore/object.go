@@ -56,14 +56,19 @@ type SectionKey struct {
 type DataobjSectionDescriptor struct {
 	SectionKey
 
-	StreamIDs []int64
-	RowCount  int
-	Size      int64
-	Start     time.Time
-	End       time.Time
+	StreamIDs        []int64
+	RowCount         int
+	Size             int64
+	Start            time.Time
+	End              time.Time
+	LabelsByStreamID map[int64]labels.Labels
 }
 
 func NewSectionDescriptor(pointer pointers.SectionPointer) *DataobjSectionDescriptor {
+	return NewSectionDescriptorWithLabels(pointer, labels.EmptyLabels())
+}
+
+func NewSectionDescriptorWithLabels(pointer pointers.SectionPointer, lbls labels.Labels) *DataobjSectionDescriptor {
 	return &DataobjSectionDescriptor{
 		SectionKey: SectionKey{
 			ObjectPath: pointer.Path,
@@ -74,6 +79,9 @@ func NewSectionDescriptor(pointer pointers.SectionPointer) *DataobjSectionDescri
 		Size:      pointer.UncompressedSize,
 		Start:     pointer.StartTs,
 		End:       pointer.EndTs,
+		LabelsByStreamID: map[int64]labels.Labels{
+			pointer.StreamIDRef: lbls,
+		},
 	}
 }
 
@@ -87,6 +95,22 @@ func (d *DataobjSectionDescriptor) Merge(pointer pointers.SectionPointer) {
 	if pointer.EndTs.After(d.End) {
 		d.End = pointer.EndTs
 	}
+}
+
+func (d *DataobjSectionDescriptor) MergeWithLabels(pointer pointers.SectionPointer, lbls labels.Labels) {
+	curLbls, exists := d.LabelsByStreamID[pointer.StreamIDRef]
+	if !exists {
+		d.LabelsByStreamID[pointer.StreamIDRef] = lbls
+		return
+	}
+
+	b := labels.NewBuilder(curLbls)
+	lbls.Range(func(l labels.Label) {
+		b.Set(l.Name, l.Value)
+	})
+	d.LabelsByStreamID[pointer.StreamIDRef] = b.Labels()
+
+	d.Merge(pointer)
 }
 
 // Table of Content files are stored in well-known locations that can be computed from a known time.
@@ -496,7 +520,21 @@ func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (Se
 			}
 			reader := readerResp.Reader
 			defer reader.Close()
-			sectionsResp, err := m.CollectSections(ctx, CollectSectionsRequest{reader})
+
+			object, err := dataobj.FromBucket(ctx, m.bucket, indexPath)
+			if err != nil {
+				return fmt.Errorf("getting object from bucket: %w", err)
+			}
+			labelsByStreamID := map[int64]labels.Labels{}
+			predicate := streamPredicateFromMatchers(req.Start, req.End, req.Matchers...)
+			err = forEachStream(ctx, object, predicate, func(s streams.Stream) {
+				labelsByStreamID[s.ID] = s.Labels
+			})
+			if err != nil {
+				level.Warn(m.logger).Log("msg", "failed to get labels for streams", "err", err)
+			}
+
+			sectionsResp, err := m.CollectSections(ctx, CollectSectionsRequest{reader, labelsByStreamID})
 			if err != nil {
 				return fmt.Errorf("collect sections: %w", err)
 			}
@@ -552,13 +590,16 @@ func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSect
 		return IndexSectionsReaderResponse{}, fmt.Errorf("prepare obj %s: %w", req.IndexPath, err)
 	}
 
-	sStart := scalar.NewTimestampScalar(arrow.Timestamp(req.SectionsRequest.Start.UnixNano()), arrow.FixedWidthTypes.Timestamp_ns)
-	sEnd := scalar.NewTimestampScalar(arrow.Timestamp(req.SectionsRequest.End.UnixNano()), arrow.FixedWidthTypes.Timestamp_ns)
+	reader := newIndexSectionsReader(
+		idxObj,
+		req.SectionsRequest.Start,
+		req.SectionsRequest.End,
+		req.SectionsRequest.Matchers,
+		req.SectionsRequest.Predicates,
+		req.Region,
+	)
 
-	scanner := newScanPointers(idxObj, sStart, sEnd, req.SectionsRequest.Matchers, req.Region)
-	blooms := newApplyBlooms(idxObj, req.SectionsRequest.Predicates, scanner, req.Region)
-
-	return IndexSectionsReaderResponse{Reader: blooms}, nil
+	return IndexSectionsReaderResponse{Reader: reader}, nil
 }
 
 func (m *ObjectMetastore) GetIndexes(ctx context.Context, req GetIndexesRequest) (GetIndexesResponse, error) {
@@ -612,7 +653,7 @@ func (m *ObjectMetastore) CollectSections(ctx context.Context, req CollectSectio
 		}
 
 		if rec != nil && rec.NumRows() > 0 {
-			if err := addSectionDescriptors(rec, objectSectionDescriptors); err != nil {
+			if err := addSectionDescriptors(rec, objectSectionDescriptors, req.LabelsByStreamID); err != nil {
 				return CollectSectionsResponse{}, err
 			}
 		}
@@ -637,7 +678,7 @@ func (m *ObjectMetastore) CollectSections(ctx context.Context, req CollectSectio
 	}, nil
 }
 
-func addSectionDescriptors(rec arrow.RecordBatch, result map[SectionKey]*DataobjSectionDescriptor) error {
+func addSectionDescriptors(rec arrow.RecordBatch, result map[SectionKey]*DataobjSectionDescriptor, labels map[int64]labels.Labels) error {
 	numRows := int(rec.NumRows())
 	buf := make([]pointers.SectionPointer, numRows)
 	num, err := pointers.FromRecordBatch(rec, buf, pointers.PopulateSection)
@@ -648,12 +689,21 @@ func addSectionDescriptors(rec arrow.RecordBatch, result map[SectionKey]*Dataobj
 	for i := range num {
 		ptr := buf[i]
 		key := SectionKey{ObjectPath: ptr.Path, SectionIdx: ptr.Section}
+		lbls, lblsOk := labels[ptr.StreamIDRef]
 		existing, ok := result[key]
 		if !ok {
-			result[key] = NewSectionDescriptor(ptr)
+			if lblsOk && lbls.Len() > 0 {
+				result[key] = NewSectionDescriptorWithLabels(ptr, lbls)
+			} else {
+				result[key] = NewSectionDescriptor(ptr)
+			}
 			continue
 		}
-		existing.Merge(ptr)
+		if lblsOk && lbls.Len() > 0 {
+			existing.MergeWithLabels(ptr, lbls)
+		} else {
+			existing.Merge(ptr)
+		}
 	}
 	return nil
 }

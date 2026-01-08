@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
@@ -77,6 +78,33 @@ func (s *scanPointers) Read(ctx context.Context) (arrow.RecordBatch, error) {
 		s.sectionPointersRead += rec.NumRows()
 		return rec, nil
 	}
+}
+
+func (s *scanPointers) removeLabelPredicates(predicates []*labels.Matcher) []*labels.Matcher {
+	allLabels := s.allLabels()
+	newPredicates := make([]*labels.Matcher, 0, len(predicates))
+	for _, predicate := range predicates {
+		if !slices.Contains(allLabels, predicate.Name) {
+			newPredicates = append(newPredicates, predicate)
+		}
+	}
+	return newPredicates
+}
+
+func (s *scanPointers) allLabels() []string {
+	allLabelsMap := map[string]struct{}{}
+	for _, lbls := range s.labelsByStream {
+		lbls.Range(func(l labels.Label) {
+			allLabelsMap[l.Name] = struct{}{}
+		})
+	}
+
+	allLabels := make([]string, 0, len(allLabelsMap))
+	for label := range allLabelsMap {
+		allLabels = append(allLabels, label)
+	}
+
+	return allLabels
 }
 
 func (s *scanPointers) init(ctx context.Context) error {
@@ -227,6 +255,12 @@ func (s *scanPointers) prepareForNextSectionOrSkip(ctx context.Context) (bool, e
 	})
 
 	return false, nil
+}
+
+func (s *scanPointers) scalarTimestamps() (*scalar.Timestamp, *scalar.Timestamp) {
+	sStart := scalar.NewTimestampScalar(arrow.Timestamp(s.start.UnixNano()), arrow.FixedWidthTypes.Timestamp_ns)
+	sEnd := scalar.NewTimestampScalar(arrow.Timestamp(s.end.UnixNano()), arrow.FixedWidthTypes.Timestamp_ns)
+	return sStart, sEnd
 }
 
 func (s *scanPointers) Close() {
