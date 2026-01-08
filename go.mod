@@ -5,7 +5,7 @@ go 1.25.5
 ignore ./tools/dev
 
 require (
-	cloud.google.com/go/bigtable v1.40.1
+	cloud.google.com/go/bigtable v1.41.0
 	cloud.google.com/go/pubsub/v2 v2.3.0
 	cloud.google.com/go/storage v1.58.0
 	dario.cat/mergo v1.0.2
