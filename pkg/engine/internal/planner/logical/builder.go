@@ -57,6 +57,23 @@ func (b *Builder) Parse(op types.VariadicOp, strict bool, keepEmpty bool) *Build
 	return b.ProjectExpand(val)
 }
 
+// ParseRegexp applies a regex [Parse] operation to the Builder.
+// The pattern must contain at least one named capture group like (?P<name>...).
+func (b *Builder) ParseRegexp(pattern string) *Builder {
+	val := &FunctionOp{
+		Op: types.VariadicOpParseRegexp,
+		Values: []Value{
+			// source column
+			&ColumnRef{
+				Ref: semconv.ColumnIdentMessage.ColumnRef(),
+			},
+			// regex pattern
+			NewLiteral(pattern),
+		},
+	}
+	return b.ProjectExpand(val)
+}
+
 // Cast applies an [Projection] operation, with an [UnaryOp] cast operation, to the Builder.
 func (b *Builder) Cast(identifier string, op types.UnaryOp) *Builder {
 	val := &UnaryOp{
