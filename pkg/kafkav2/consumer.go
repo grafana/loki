@@ -25,9 +25,9 @@ type SinglePartitionConsumer struct {
 	initialOffset int64
 	records       chan<- *kgo.Record
 
-	logger       log.Logger
-	pollFailures prometheus.Counter
-	polls        prometheus.Counter
+	logger      log.Logger
+	fetchErrors prometheus.Counter
+	polls       prometheus.Counter
 }
 
 // NewSinglePartitionConsumer returns a new SinglePartitionConsumer. It
@@ -61,9 +61,9 @@ func NewSinglePartitionConsumer(
 		initialOffset: initialOffset,
 		records:       records,
 		logger:        log.With(logger, "topic", topic, "partition", partition),
-		pollFailures: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Name: "single_partition_consumer_poll_failures_total",
-			Help: "The number of polls that failed.",
+		fetchErrors: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "single_partition_consumer_fetch_erros_total",
+			Help: "The number of fetch errors.",
 		}),
 		polls: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Name: "single_partition_consumer_polls_total",
@@ -106,17 +106,25 @@ func (c *SinglePartitionConsumer) Run(ctx context.Context) error {
 			// the error as no fetches were polled. We use this instead of
 			// [kgo.IsClientClosed] so we can also check if the context was
 			// canceled.
-			if err := fetches.Err0(); err != nil {
-				if errors.Is(err, kgo.ErrClientClosed) || errors.Is(err, context.Canceled) {
-					return err
-				}
+			if err := fetches.Err0(); errors.Is(err, kgo.ErrClientClosed) || errors.Is(err, context.Canceled) {
+				return err
+			}
+			// The client can fetch from multiple brokers in a single poll. This means
+			// we must handle both records and errors at the same time, as some brokers
+			// might be polled successfully while others return errors.
+			fetches.EachRecord(func(record *kgo.Record) {
+				c.records <- record
+			})
+			var numErrs int
+			fetches.EachError(func(_ string, _ int32, err error) {
 				level.Error(c.logger).Log("msg", "failed to poll fetches", "err", err)
-				c.pollFailures.Inc()
-				b.Wait()
+				c.fetchErrors.Inc()
+				numErrs++
+			})
+			if numErrs == 0 {
+				b.Reset()
 			} else {
-				fetches.EachRecord(func(record *kgo.Record) {
-					c.records <- record
-				})
+				b.Wait()
 			}
 		}
 	}
