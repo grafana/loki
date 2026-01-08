@@ -25,7 +25,7 @@ app.kubernetes.io/component: index-gateway
 index-gateway image
 */}}
 {{- define "loki.indexGatewayImage" -}}
-{{- $dict := dict "loki" .Values.loki.image "service" .Values.indexGateway.image "global" .Values.global.image "defaultVersion" .Chart.AppVersion -}}
+{{- $dict := dict "loki" .Values.loki.image "service" .Values.indexGateway.image "global" .Values.global "defaultVersion" .Chart.AppVersion -}}
 {{- include "loki.lokiImage" $dict -}}
 {{- end }}
 

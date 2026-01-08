@@ -321,6 +321,64 @@ func main() {
 }
 ```
 
+### Anonymous Plus Database
+
+The Anonymous Plus database extends the Anonymous IP database with additional
+fields for confidence scoring, provider identification, and temporal tracking.
+
+```go
+package main
+
+import (
+	"fmt"
+	"log"
+	"net/netip"
+
+	"github.com/oschwald/geoip2-golang/v2"
+)
+
+func main() {
+	db, err := geoip2.Open("GeoIP-Anonymous-Plus.mmdb")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer db.Close()
+
+	ip, err := netip.ParseAddr("1.2.0.1")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	record, err := db.AnonymousPlus(ip)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if !record.HasData() {
+		fmt.Println("No data found for this IP")
+		return
+	}
+
+	// Standard anonymous IP flags
+	fmt.Printf("Is Anonymous: %v\n", record.IsAnonymous)
+	fmt.Printf("Is Anonymous VPN: %v\n", record.IsAnonymousVPN)
+	fmt.Printf("Is Hosting Provider: %v\n", record.IsHostingProvider)
+	fmt.Printf("Is Public Proxy: %v\n", record.IsPublicProxy)
+	fmt.Printf("Is Residential Proxy: %v\n", record.IsResidentialProxy)
+	fmt.Printf("Is Tor Exit Node: %v\n", record.IsTorExitNode)
+
+	// Anonymous Plus specific fields
+	fmt.Printf("Anonymizer Confidence: %v\n", record.AnonymizerConfidence)
+	fmt.Printf("Provider Name: %v\n", record.ProviderName)
+	if !record.NetworkLastSeen.IsZero() {
+		fmt.Printf("Network Last Seen: %v\n", record.NetworkLastSeen.Format("2006-01-02"))
+	}
+
+	fmt.Printf("Network: %v\n", record.Network)
+	fmt.Printf("IP Address: %v\n", record.IPAddress)
+}
+```
+
 ### Enterprise Database
 
 The Enterprise database provides the most comprehensive data, including all
@@ -374,9 +432,7 @@ func main() {
 	fmt.Printf("Connection Type: %v\n", record.Traits.ConnectionType)
 	fmt.Printf("Domain: %v\n", record.Traits.Domain)
 	fmt.Printf("User Type: %v\n", record.Traits.UserType)
-	fmt.Printf("Static IP Score: %v\n", record.Traits.StaticIPScore)
 	fmt.Printf("Is Anycast: %v\n", record.Traits.IsAnycast)
-	fmt.Printf("Is Legitimate Proxy: %v\n", record.Traits.IsLegitimateProxy)
 
 	// Mobile carrier information (if available)
 	if record.Traits.MobileCountryCode != "" {
