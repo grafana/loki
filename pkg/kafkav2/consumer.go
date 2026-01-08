@@ -4,8 +4,11 @@ import (
 	"context"
 	"errors"
 	"strconv"
+	"time"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -45,6 +48,12 @@ func NewSinglePartitionConsumer(
 		"topic":     topic,
 		"partition": strconv.Itoa(int(partition)),
 	}, r)
+	// Consume the topic and partition from the specified offset.
+	client.AddConsumePartitions(map[string]map[int32]kgo.Offset{
+		topic: {
+			partition: kgo.NewOffset().At(initialOffset),
+		},
+	})
 	c := SinglePartitionConsumer{
 		client:        client,
 		topic:         topic,
@@ -81,13 +90,12 @@ func (c *SinglePartitionConsumer) stopping(_ error) error {
 }
 
 func (c *SinglePartitionConsumer) Run(ctx context.Context) error {
-	// Consume the topic and partition from the specified offset.
-	c.client.AddConsumePartitions(map[string]map[int32]kgo.Offset{
-		c.topic: {
-			c.partition: kgo.NewOffset().At(c.initialOffset),
-		},
+	b := backoff.New(ctx, backoff.Config{
+		MinBackoff: time.Millisecond * 100,
+		MaxBackoff: time.Second * 10,
+		MaxRetries: 0, // Infinite retries.
 	})
-	for {
+	for b.Ongoing() {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -100,13 +108,16 @@ func (c *SinglePartitionConsumer) Run(ctx context.Context) error {
 			// canceled.
 			if err := fetches.Err0(); err != nil {
 				if errors.Is(err, kgo.ErrClientClosed) || errors.Is(err, context.Canceled) {
-					c.pollFailures.Inc()
 					return err
 				}
+				level.Error(c.logger).Log("msg", "failed to poll fetches", "err", err)
+				c.pollFailures.Inc()
+				b.Wait()
 			}
 			fetches.EachRecord(func(record *kgo.Record) {
 				c.records <- record
 			})
 		}
 	}
+	return nil
 }
