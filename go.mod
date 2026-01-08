@@ -140,7 +140,7 @@ require (
 	github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db
 	github.com/ncw/swift/v2 v2.0.5
 	github.com/oklog/ulid/v2 v2.1.1
-	github.com/parquet-go/parquet-go v0.26.0
+	github.com/parquet-go/parquet-go v0.26.4
 	github.com/pressly/goose/v3 v3.26.0
 	github.com/prometheus/alertmanager v0.30.0
 	github.com/prometheus/common/sigv4 v0.1.0
@@ -268,8 +268,8 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatautil v0.139.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/processor/deltatocumulativeprocessor v0.139.0 // indirect
 	github.com/oschwald/maxminddb-golang/v2 v2.1.1 // indirect
-	github.com/parquet-go/bitpack v0.2.0 // indirect
-	github.com/parquet-go/jsonlite v0.8.1 // indirect
+	github.com/parquet-go/bitpack v1.0.0 // indirect
+	github.com/parquet-go/jsonlite v1.0.0 // indirect
 	github.com/philhofer/fwd v1.2.0 // indirect
 	github.com/pires/go-proxyproto v0.8.1 // indirect
 	github.com/pkg/xattr v0.4.12 // indirect
