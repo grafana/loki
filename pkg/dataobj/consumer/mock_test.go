@@ -119,12 +119,12 @@ func (m *mockBuilder) CopyAndSort(obj *dataobj.Object) (*dataobj.Object, io.Clos
 	return m.builder.CopyAndSort(obj)
 }
 
-func (m *mockBuilder) Flush() (*dataobj.Object, io.Closer, error) {
+func (m *mockBuilder) Flush(ctx context.Context) (*dataobj.Object, io.Closer, error) {
 	if err := m.nextErr; err != nil {
 		m.nextErr = nil
 		return nil, nil, err
 	}
-	return m.builder.Flush()
+	return m.builder.Flush(ctx)
 }
 
 func (m *mockBuilder) TimeRanges() []multitenancy.TimeRange {

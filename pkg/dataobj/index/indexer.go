@@ -480,7 +480,7 @@ func (si *serialIndexer) flushIndex(ctx context.Context, partition int32) (strin
 		return "", nil // Nothing to flush
 	}
 
-	obj, closer, err := si.calculator.Flush()
+	obj, closer, err := si.calculator.Flush(ctx)
 	if err != nil {
 		return "", fmt.Errorf("failed to flush calculator: %w", err)
 	}

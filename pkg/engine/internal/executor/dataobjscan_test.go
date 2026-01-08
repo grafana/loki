@@ -348,7 +348,7 @@ func buildDataobj(t testing.TB, streams []logproto.Stream) *dataobj.Object {
 		require.NoError(t, builder.Append("tenant", stream))
 	}
 
-	obj, closer, err := builder.Flush()
+	obj, closer, err := builder.Flush(t.Context())
 	require.NoError(t, err)
 	t.Cleanup(func() { closer.Close() })
 	return obj

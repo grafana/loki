@@ -155,7 +155,7 @@ func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, dataobjPath stri
 					closer io.Closer
 				)
 
-				obj, closer, err = m.tocBuilder.Flush()
+				obj, closer, err = m.tocBuilder.Flush(ctx)
 				if err != nil {
 					return nil, errors.Wrap(err, "flushing metastore builder")
 				}

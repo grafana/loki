@@ -71,7 +71,7 @@ func buildObject(t *testing.T, columns []*dataset.MemColumn) *dataobj.Object {
 	err := objBuilder.Append(sectionBuilder)
 	require.NoError(t, err)
 
-	obj, closer, err := objBuilder.Flush()
+	obj, closer, err := objBuilder.Flush(t.Context())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = closer.Close() })
 

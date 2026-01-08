@@ -395,7 +395,7 @@ func (b *Builder) TimeRanges() []multitenancy.TimeRange {
 //
 // [Builder.Reset] is called after a successful Flush to discard any pending
 // data and allow new data to be appended.
-func (b *Builder) Flush() (*dataobj.Object, io.Closer, error) {
+func (b *Builder) Flush(ctx context.Context) (*dataobj.Object, io.Closer, error) {
 	if b.state == builderStateEmpty {
 		return nil, nil, ErrBuilderEmpty
 	}
@@ -418,7 +418,7 @@ func (b *Builder) Flush() (*dataobj.Object, io.Closer, error) {
 		return nil, nil, fmt.Errorf("building object: %w", err)
 	}
 
-	obj, closer, err := b.builder.Flush()
+	obj, closer, err := b.builder.Flush(ctx)
 	if err != nil {
 		b.metrics.flushFailures.Inc()
 		return nil, nil, fmt.Errorf("building object: %w", err)
@@ -426,7 +426,7 @@ func (b *Builder) Flush() (*dataobj.Object, io.Closer, error) {
 
 	b.metrics.builtSize.Observe(float64(obj.Size()))
 
-	err = b.observeObject(context.Background(), obj)
+	err = b.observeObject(ctx, obj)
 
 	b.Reset()
 	return obj, closer, err
@@ -524,7 +524,7 @@ func (b *Builder) CopyAndSort(obj *dataobj.Object) (*dataobj.Object, io.Closer, 
 		}
 	}
 
-	return b.builder.Flush()
+	return b.builder.Flush(ctx)
 }
 
 func (b *Builder) observeObject(ctx context.Context, obj *dataobj.Object) error {

@@ -65,8 +65,8 @@ func (c *Calculator) TimeRanges() []multitenancy.TimeRange {
 	return c.indexobjBuilder.TimeRanges()
 }
 
-func (c *Calculator) Flush() (*dataobj.Object, io.Closer, error) {
-	return c.indexobjBuilder.Flush()
+func (c *Calculator) Flush(ctx context.Context) (*dataobj.Object, io.Closer, error) {
+	return c.indexobjBuilder.Flush(ctx)
 }
 
 func (c *Calculator) IsFull() bool {

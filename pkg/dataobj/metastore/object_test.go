@@ -78,7 +78,7 @@ func (b *testDataBuilder) addStreamAndFlush(tenant string, stream logproto.Strea
 	require.NoError(b.t, err)
 
 	timeRanges := b.builder.TimeRanges()
-	obj, closer, err := b.builder.Flush()
+	obj, closer, err := b.builder.Flush(context.TODO())
 	require.NoError(b.t, err)
 	defer closer.Close()
 
@@ -214,7 +214,7 @@ func TestValuesEmptyMatcher(t *testing.T) {
 }
 
 func TestSectionsForStreamMatchers(t *testing.T) {
-	ctx := user.InjectOrgID(context.Background(), tenantID)
+	ctx := user.InjectOrgID(t.Context(), tenantID)
 
 	builder, err := indexobj.NewBuilder(logsobj.BuilderBaseConfig{
 		TargetPageSize:          1024 * 1024,
@@ -259,7 +259,7 @@ func TestSectionsForStreamMatchers(t *testing.T) {
 	timeRanges := builder.TimeRanges()
 	require.Len(t, timeRanges, 2)
 
-	obj, closer, err := builder.Flush()
+	obj, closer, err := builder.Flush(ctx)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = closer.Close() })
 
@@ -268,11 +268,11 @@ func TestSectionsForStreamMatchers(t *testing.T) {
 	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, log.NewNopLogger())
 	require.NoError(t, uploader.RegisterMetrics(prometheus.NewPedanticRegistry()))
 
-	path, err := uploader.Upload(context.Background(), obj)
+	path, err := uploader.Upload(ctx, obj)
 	require.NoError(t, err)
 
 	metastoreTocWriter := NewTableOfContentsWriter(bucket, log.NewNopLogger())
-	err = metastoreTocWriter.WriteEntry(context.Background(), path, timeRanges)
+	err = metastoreTocWriter.WriteEntry(ctx, path, timeRanges)
 	require.NoError(t, err)
 
 	mstore := newTestObjectMetastore(bucket)
@@ -361,7 +361,7 @@ func TestSectionsForStreamMatchers(t *testing.T) {
 }
 
 func TestSectionsForPredicateMatchers(t *testing.T) {
-	ctx := user.InjectOrgID(context.Background(), tenantID)
+	ctx := user.InjectOrgID(t.Context(), tenantID)
 
 	builder, err := indexobj.NewBuilder(logsobj.BuilderBaseConfig{
 		TargetPageSize:          1024 * 1024,
@@ -398,7 +398,7 @@ func TestSectionsForPredicateMatchers(t *testing.T) {
 	timeRanges := builder.TimeRanges()
 	require.Len(t, timeRanges, 1)
 
-	obj, closer, err := builder.Flush()
+	obj, closer, err := builder.Flush(ctx)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = closer.Close() })
 
@@ -407,11 +407,11 @@ func TestSectionsForPredicateMatchers(t *testing.T) {
 	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, log.NewNopLogger())
 	require.NoError(t, uploader.RegisterMetrics(prometheus.NewPedanticRegistry()))
 
-	path, err := uploader.Upload(context.Background(), obj)
+	path, err := uploader.Upload(ctx, obj)
 	require.NoError(t, err)
 
 	metastoreTocWriter := NewTableOfContentsWriter(bucket, log.NewNopLogger())
-	err = metastoreTocWriter.WriteEntry(context.Background(), path, timeRanges)
+	err = metastoreTocWriter.WriteEntry(ctx, path, timeRanges)
 	require.NoError(t, err)
 
 	mstore := newTestObjectMetastore(bucket)

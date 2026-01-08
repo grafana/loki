@@ -253,7 +253,7 @@ func buildLogObject(t *testing.T, app string, path string, bucket objstore.Bucke
 		require.NoError(t, err)
 	}
 
-	obj, closer, err := candidate.Flush()
+	obj, closer, err := candidate.Flush(t.Context())
 	require.NoError(t, err)
 	defer closer.Close()
 

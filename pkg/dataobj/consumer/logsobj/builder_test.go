@@ -82,7 +82,7 @@ func TestBuilder(t *testing.T) {
 		for _, entry := range testStreams {
 			require.NoError(t, builder.Append("tenant", entry))
 		}
-		obj, closer, err := builder.Flush()
+		obj, closer, err := builder.Flush(t.Context())
 		require.NoError(t, err)
 		defer closer.Close()
 
@@ -118,7 +118,7 @@ func TestBuilder_Append(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	obj, closer, err := builder.Flush()
+	obj, closer, err := builder.Flush(t.Context())
 	require.NoError(t, err)
 	defer closer.Close()
 
@@ -153,7 +153,7 @@ func TestBuilder_CopyAndSort(t *testing.T) {
 		}
 	}
 
-	obj1, closer1, err := builder.Flush()
+	obj1, closer1, err := builder.Flush(t.Context())
 	require.NoError(t, err)
 	defer closer1.Close()
 

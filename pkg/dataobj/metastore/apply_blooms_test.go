@@ -92,7 +92,7 @@ func TestApplyBlooms_IgnoresNonEqualPredicates(t *testing.T) {
 func TestApplyBlooms_FiltersByBloomOnSectionKey(t *testing.T) {
 	t.Parallel()
 
-	ctx := user.InjectOrgID(context.Background(), tenantID)
+	ctx := user.InjectOrgID(t.Context(), tenantID)
 
 	builder, err := indexobj.NewBuilder(logsobj.BuilderBaseConfig{
 		TargetPageSize:          1024 * 1024,
@@ -120,7 +120,7 @@ func TestApplyBlooms_FiltersByBloomOnSectionKey(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, builder.AppendColumnIndex(tenantID, "test-path", 0, "traceID", 0, traceBloomBytes))
 
-	obj, closer, err := builder.Flush()
+	obj, closer, err := builder.Flush(ctx)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = closer.Close() })
 
@@ -160,7 +160,7 @@ func TestApplyBlooms_FiltersByBloomOnSectionKey(t *testing.T) {
 func TestApplyBlooms_PredicateMissReturnsEOF(t *testing.T) {
 	t.Parallel()
 
-	ctx := user.InjectOrgID(context.Background(), tenantID)
+	ctx := user.InjectOrgID(t.Context(), tenantID)
 
 	builder, err := indexobj.NewBuilder(logsobj.BuilderBaseConfig{
 		TargetPageSize:          1024 * 1024,
@@ -188,7 +188,7 @@ func TestApplyBlooms_PredicateMissReturnsEOF(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, builder.AppendColumnIndex(tenantID, "test-path", 0, "traceID", 0, traceBloomBytes))
 
-	obj, closer, err := builder.Flush()
+	obj, closer, err := builder.Flush(ctx)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = closer.Close() })
 

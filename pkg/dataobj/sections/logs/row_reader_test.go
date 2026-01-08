@@ -53,13 +53,13 @@ func buildSection(t *testing.T) *Section {
 	b := dataobj.NewBuilder(nil)
 	require.NoError(t, b.Append(logsBuilder))
 
-	obj, closer, err := b.Flush()
+	obj, closer, err := b.Flush(t.Context())
 	require.NoError(t, err)
 	t.Cleanup(func() { closer.Close() })
 
 	var logsSection *Section
 	for _, section := range obj.Sections() {
-		logsSection, err = Open(context.Background(), section)
+		logsSection, err = Open(t.Context(), section)
 		require.NoError(t, err)
 	}
 	return logsSection
