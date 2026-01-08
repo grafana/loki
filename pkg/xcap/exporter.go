@@ -154,7 +154,7 @@ func summarizeObservations(capture *Capture) *observations {
 	)
 
 	result.merge(
-		collect.fromRegions("RangeAggregation", true).
+		collect.fromRegions("RangeAggregation", false).
 			filter(
 				StatPipelineReadDuration.Key(),
 				StatPipelineExecDuration.Key(),
@@ -164,7 +164,7 @@ func summarizeObservations(capture *Capture) *observations {
 	)
 
 	result.merge(
-		collect.fromRegions("VectorAggregation", true).
+		collect.fromRegions("VectorAggregation", false).
 			filter(
 				StatPipelineReadDuration.Key(),
 				StatPipelineExecDuration.Key(),
