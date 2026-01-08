@@ -22,8 +22,8 @@ import (
 	flatbuffers "github.com/google/flatbuffers/go"
 )
 
-// / Same as List, but with 64-bit offsets, allowing to represent
-// / extremely large data values.
+/// Same as List, but with 64-bit offsets, allowing to represent
+/// extremely large data values.
 type LargeList struct {
 	_tab flatbuffers.Table
 }
@@ -33,6 +33,21 @@ func GetRootAsLargeList(buf []byte, offset flatbuffers.UOffsetT) *LargeList {
 	x := &LargeList{}
 	x.Init(buf, n+offset)
 	return x
+}
+
+func FinishLargeListBuffer(builder *flatbuffers.Builder, offset flatbuffers.UOffsetT) {
+	builder.Finish(offset)
+}
+
+func GetSizePrefixedRootAsLargeList(buf []byte, offset flatbuffers.UOffsetT) *LargeList {
+	n := flatbuffers.GetUOffsetT(buf[offset+flatbuffers.SizeUint32:])
+	x := &LargeList{}
+	x.Init(buf, n+offset+flatbuffers.SizeUint32)
+	return x
+}
+
+func FinishSizePrefixedLargeListBuffer(builder *flatbuffers.Builder, offset flatbuffers.UOffsetT) {
+	builder.FinishSizePrefixed(offset)
 }
 
 func (rcv *LargeList) Init(buf []byte, i flatbuffers.UOffsetT) {
