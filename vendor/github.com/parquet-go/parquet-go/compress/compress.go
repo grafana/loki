@@ -7,9 +7,9 @@ package compress
 import (
 	"bytes"
 	"io"
-	"sync"
 
 	"github.com/parquet-go/parquet-go/format"
+	"github.com/parquet-go/parquet-go/internal/memory"
 )
 
 // The Codec interface represents parquet compression codecs implemented by the
@@ -47,7 +47,7 @@ type Writer interface {
 }
 
 type Compressor struct {
-	writers sync.Pool // *writer
+	writers memory.Pool[writer]
 }
 
 type writer struct {
@@ -56,18 +56,21 @@ type writer struct {
 }
 
 func (c *Compressor) Encode(dst, src []byte, newWriter func(io.Writer) (Writer, error)) ([]byte, error) {
-	w, _ := c.writers.Get().(*writer)
-	if w != nil {
-		w.output = *bytes.NewBuffer(dst[:0])
-		w.writer.Reset(&w.output)
-	} else {
-		w = new(writer)
-		w.output = *bytes.NewBuffer(dst[:0])
-		var err error
-		if w.writer, err = newWriter(&w.output); err != nil {
-			return dst, err
-		}
-	}
+	w := c.writers.Get(
+		func() *writer {
+			w := new(writer)
+			w.output = *bytes.NewBuffer(dst[:0])
+			var err error
+			if w.writer, err = newWriter(&w.output); err != nil {
+				panic(err) // Will be caught below
+			}
+			return w
+		},
+		func(w *writer) {
+			w.output = *bytes.NewBuffer(dst[:0])
+			w.writer.Reset(&w.output)
+		},
+	)
 
 	defer func() {
 		w.output = *bytes.NewBuffer(nil)
@@ -85,7 +88,7 @@ func (c *Compressor) Encode(dst, src []byte, newWriter func(io.Writer) (Writer, 
 }
 
 type Decompressor struct {
-	readers sync.Pool // *reader
+	readers memory.Pool[reader]
 }
 
 type reader struct {
@@ -94,20 +97,23 @@ type reader struct {
 }
 
 func (d *Decompressor) Decode(dst, src []byte, newReader func(io.Reader) (Reader, error)) ([]byte, error) {
-	r, _ := d.readers.Get().(*reader)
-	if r != nil {
-		r.input.Reset(src)
-		if err := r.reader.Reset(&r.input); err != nil {
-			return dst, err
-		}
-	} else {
-		r = new(reader)
-		r.input.Reset(src)
-		var err error
-		if r.reader, err = newReader(&r.input); err != nil {
-			return dst, err
-		}
-	}
+	r := d.readers.Get(
+		func() *reader {
+			r := new(reader)
+			r.input.Reset(src)
+			var err error
+			if r.reader, err = newReader(&r.input); err != nil {
+				panic(err) // Will be caught below
+			}
+			return r
+		},
+		func(r *reader) {
+			r.input.Reset(src)
+			if err := r.reader.Reset(&r.input); err != nil {
+				panic(err) // Will be caught below
+			}
+		},
+	)
 
 	defer func() {
 		r.input.Reset(nil)

@@ -9,11 +9,11 @@ import (
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
+	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
-	"github.com/grafana/loki/v3/pkg/kafka/partition"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/scratch"
 
@@ -52,9 +52,9 @@ func TestPartitionProcessor_Flush(t *testing.T) {
 		}
 		b, err := s.Marshal()
 		require.NoError(t, err)
-		p.processRecord(ctx, partition.Record{
-			TenantID:  "test-tenant",
-			Content:   b,
+		p.processRecord(ctx, &kgo.Record{
+			Key:       []byte("test-tenant"),
+			Value:     b,
 			Timestamp: now,
 		})
 
@@ -94,9 +94,9 @@ func TestPartitionProcessor_Flush(t *testing.T) {
 		}
 		b, err := s.Marshal()
 		require.NoError(t, err)
-		p.processRecord(ctx, partition.Record{
-			TenantID:  "test-tenant",
-			Content:   b,
+		p.processRecord(ctx, &kgo.Record{
+			Key:       []byte("test-tenant"),
+			Value:     b,
 			Timestamp: now,
 		})
 
@@ -149,9 +149,9 @@ func TestPartitionProcessor_IdleFlush(t *testing.T) {
 	}
 	b, err := s.Marshal()
 	require.NoError(t, err)
-	p.processRecord(ctx, partition.Record{
-		TenantID:  "test-tenant",
-		Content:   b,
+	p.processRecord(ctx, &kgo.Record{
+		Key:       []byte("test-tenant"),
+		Value:     b,
 		Timestamp: clock.Now(),
 	})
 	// A modification should have happened.
@@ -195,9 +195,9 @@ func TestPartitionProcessor_OffsetsCommitted(t *testing.T) {
 		}
 		b, err := s.Marshal()
 		require.NoError(t, err)
-		p.processRecord(ctx, partition.Record{
-			TenantID:  "test-tenant",
-			Content:   b,
+		p.processRecord(ctx, &kgo.Record{
+			Key:       []byte("test-tenant"),
+			Value:     b,
 			Timestamp: now1,
 			Offset:    1,
 		})
@@ -212,9 +212,9 @@ func TestPartitionProcessor_OffsetsCommitted(t *testing.T) {
 		// Append another record.
 		clock.Advance(time.Minute)
 		now2 := clock.Now()
-		p.processRecord(ctx, partition.Record{
-			TenantID:  "test-tenant",
-			Content:   b,
+		p.processRecord(ctx, &kgo.Record{
+			Key:       []byte("test-tenant"),
+			Value:     b,
 			Timestamp: now2,
 			Offset:    2,
 		})
@@ -247,9 +247,9 @@ func TestPartitionProcessor_OffsetsCommitted(t *testing.T) {
 		}
 		b, err := s.Marshal()
 		require.NoError(t, err)
-		p.processRecord(ctx, partition.Record{
-			TenantID:  "test-tenant",
-			Content:   b,
+		p.processRecord(ctx, &kgo.Record{
+			Key:       []byte("test-tenant"),
+			Value:     b,
 			Timestamp: now1,
 			Offset:    1,
 		})
@@ -294,9 +294,9 @@ func TestPartitionProcessor_ProcessRecord(t *testing.T) {
 	}
 	b, err := s.Marshal()
 	require.NoError(t, err)
-	p.processRecord(ctx, partition.Record{
-		TenantID:  "test-tenant",
-		Content:   b,
+	p.processRecord(ctx, &kgo.Record{
+		Key:       []byte("test-tenant"),
+		Value:     b,
 		Timestamp: clock.Now(),
 	})
 
@@ -322,6 +322,7 @@ func newTestPartitionProcessor(t *testing.T, clock quartz.Clock) *partitionProce
 		nil,
 		"test-topic",
 		1,
+		nil,
 	)
 	p.clock = clock
 	p.eventsProducerClient = &mockKafka{}

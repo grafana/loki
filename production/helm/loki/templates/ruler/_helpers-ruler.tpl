@@ -25,7 +25,7 @@ app.kubernetes.io/component: ruler
 ruler image
 */}}
 {{- define "loki.rulerImage" -}}
-{{- $dict := dict "loki" .Values.loki.image "service" .Values.ruler.image "global" .Values.global.image "defaultVersion" .Chart.AppVersion -}}
+{{- $dict := dict "loki" .Values.loki.image "service" .Values.ruler.image "global" .Values.global "defaultVersion" .Chart.AppVersion -}}
 {{- include "loki.lokiImage" $dict -}}
 {{- end }}
 

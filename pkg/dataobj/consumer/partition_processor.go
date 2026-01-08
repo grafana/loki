@@ -23,7 +23,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/kafka"
-	"github.com/grafana/loki/v3/pkg/kafka/partition"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
@@ -40,7 +39,7 @@ type builder interface {
 
 // committer allows mocking of certain [kgo.Client] methods in tests.
 type committer interface {
-	Commit(ctx context.Context, offset int64) error
+	Commit(ctx context.Context, partition int32, offset int64) error
 }
 
 type producer interface {
@@ -54,7 +53,7 @@ type partitionProcessor struct {
 	partition int32
 	// lastRecord contains the last record appended to the builder. It is used
 	// to commit the correct offset after a flush.
-	lastRecord *partition.Record
+	lastRecord *kgo.Record
 	builder    builder
 	decoder    *kafka.Decoder
 	uploader   *uploader.Uploader
@@ -88,6 +87,8 @@ type partitionProcessor struct {
 	eventsProducerClient    producer
 	metastorePartitionRatio int32
 
+	recordsChan chan *kgo.Record
+
 	// Used for tests.
 	clock quartz.Clock
 }
@@ -105,6 +106,7 @@ func newPartitionProcessor(
 	eventsProducerClient *kgo.Client,
 	topic string,
 	partition int32,
+	recordsChan chan *kgo.Record,
 ) *partitionProcessor {
 	decoder, err := kafka.NewDecoder()
 	if err != nil {
@@ -142,10 +144,11 @@ func newPartitionProcessor(
 		eventsProducerClient:    eventsProducerClient,
 		clock:                   quartz.NewReal(),
 		metastorePartitionRatio: int32(metastoreCfg.PartitionRatio),
+		recordsChan:             recordsChan,
 	}
 }
 
-func (p *partitionProcessor) Start(ctx context.Context, recordsChan <-chan []partition.Record) func() {
+func (p *partitionProcessor) Start(ctx context.Context) func() {
 	// This is a hack to avoid duplicate metrics registration panics. The
 	// problem occurs because [kafka.ReaderService] creates a consumer to
 	// process lag on startup, tears it down, and then creates another one
@@ -164,7 +167,7 @@ func (p *partitionProcessor) Start(ctx context.Context, recordsChan <-chan []par
 			case <-ctx.Done():
 				level.Info(p.logger).Log("msg", "stopping partition processor, context canceled")
 				return
-			case records, ok := <-recordsChan:
+			case record, ok := <-p.recordsChan:
 				if !ok {
 					level.Info(p.logger).Log("msg", "stopping partition processor, channel closed")
 					// Channel was closed. This means no more records will be
@@ -176,10 +179,7 @@ func (p *partitionProcessor) Start(ctx context.Context, recordsChan <-chan []par
 					}
 					return
 				}
-				// Process the records received.
-				for _, record := range records {
-					p.processRecord(ctx, record)
-				}
+				p.processRecord(ctx, record)
 			// This partition is idle, flush it.
 			case <-time.After(p.idleFlushTimeout):
 				if _, err := p.idleFlush(ctx); err != nil {
@@ -240,7 +240,7 @@ func (p *partitionProcessor) emitObjectWrittenEvent(ctx context.Context, objectP
 	return results.FirstErr()
 }
 
-func (p *partitionProcessor) processRecord(ctx context.Context, record partition.Record) {
+func (p *partitionProcessor) processRecord(ctx context.Context, record *kgo.Record) {
 	p.metrics.processedRecords.Inc()
 
 	// Update offset metric at the end of processing
@@ -259,14 +259,15 @@ func (p *partitionProcessor) processRecord(ctx context.Context, record partition
 		return
 	}
 
-	tenant := record.TenantID
-	stream, err := p.decoder.DecodeWithoutLabels(record.Content)
+	tenant := string(record.Key)
+	stream, err := p.decoder.DecodeWithoutLabels(record.Value)
 	if err != nil {
 		level.Error(p.logger).Log("msg", "failed to decode record", "err", err)
 		return
 	}
 
-	p.metrics.incAppendsTotal()
+	p.metrics.processedBytes.Add(float64(stream.Size()))
+
 	if err := p.builder.Append(tenant, stream); err != nil {
 		if !errors.Is(err, logsobj.ErrBuilderFull) {
 			level.Error(p.logger).Log("msg", "failed to append stream", "err", err)
@@ -279,14 +280,13 @@ func (p *partitionProcessor) processRecord(ctx context.Context, record partition
 			return
 		}
 
-		p.metrics.incAppendsTotal()
 		if err := p.builder.Append(tenant, stream); err != nil {
 			level.Error(p.logger).Log("msg", "failed to append stream after flushing", "err", err)
 			p.metrics.incAppendFailures()
 		}
 	}
 
-	p.lastRecord = &record
+	p.lastRecord = record
 	p.lastModified = p.clock.Now()
 }
 
@@ -307,6 +307,9 @@ func (p *partitionProcessor) flushAndCommit(ctx context.Context) error {
 // flush builds a complete data object from the builder, uploads it, records
 // it in the metastore, and emits an object written event to the events topic.
 func (p *partitionProcessor) flush(ctx context.Context) error {
+	timer := prometheus.NewTimer(p.metrics.flushDuration)
+	defer timer.ObserveDuration()
+
 	// The time range must be read before the flush as the builder is reset
 	// at the end of each flush, resetting the time range.
 	obj, closer, err := p.builder.Flush()
@@ -366,7 +369,8 @@ func (p *partitionProcessor) commit(ctx context.Context) error {
 	backoff.Reset()
 	for backoff.Ongoing() {
 		p.metrics.incCommitsTotal()
-		err := p.committer.Commit(ctx, p.lastRecord.Offset)
+		level.Debug(p.logger).Log("msg", "committed offset", "partition", p.partition, "offset", p.lastRecord.Offset)
+		err := p.committer.Commit(ctx, p.partition, p.lastRecord.Offset)
 		if err == nil {
 			return nil
 		}

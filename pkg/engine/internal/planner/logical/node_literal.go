@@ -9,6 +9,7 @@ import (
 //
 // The zero value of a Literal is a NULL value.
 type Literal struct {
+	b     baseNode
 	inner types.Literal
 }
 
@@ -42,4 +43,11 @@ func (l Literal) Value() any {
 	return l.inner.Any()
 }
 
-func (l *Literal) isValue() {}
+// Referrers returns a list of instructions that reference the Literal.
+//
+// The list of instructions can be modified to update the reference list, such
+// as when modifying the plan.
+func (l *Literal) Referrers() *[]Instruction { return &l.b.referrers }
+
+func (l *Literal) base() *baseNode { return &l.b }
+func (l *Literal) isValue()        {}

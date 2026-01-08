@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"cloud.google.com/go/bigtable/internal"
@@ -32,6 +33,19 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
+)
+
+const (
+	// LoadBalancingStrategyEnvVar is the environment variable to control the gRPC load balancing strategy.
+	LoadBalancingStrategyEnvVar = "CBT_LOAD_BALANCING_STRATEGY"
+	// RoundRobinLBPolicy is the policy name for round-robin.
+	RoundRobinLBPolicy = "round_robin"
+	// LeastInFlightLBPolicy is the policy name for least in flight (custom).
+	LeastInFlightLBPolicy = "least_in_flight"
+	// PowerOfTwoLeastInFlightLBPolicy is the policy name for power of two least in flight (custom).
+	PowerOfTwoLeastInFlightLBPolicy = "power_of_two_least_in_flight"
+	// BigtableConnectionPoolEnvVar is the env var for enabling Bigtable Connection Pool.
+	BigtableConnectionPoolEnvVar = "CBT_BIGTABLE_CONN_POOL"
 )
 
 // mergeOutgoingMetadata returns a context populated by the existing outgoing
@@ -123,4 +137,67 @@ func ClientInterceptorOptions(stream []grpc.StreamClientInterceptor, unary []grp
 		option.WithGRPCDialOption(grpc.WithChainStreamInterceptor(stream...)),
 		option.WithGRPCDialOption(grpc.WithChainUnaryInterceptor(unary...)),
 	}
+}
+
+// LoadBalancingStrategy for connection pool.
+type LoadBalancingStrategy int
+
+const (
+	// RoundRobin is the round_robin gRPC load balancing policy.
+	RoundRobin LoadBalancingStrategy = iota
+	// LeastInFlight is the least_in_flight gRPC load balancing policy (custom).
+	LeastInFlight
+	// PowerOfTwoLeastInFlight is the power_of_two_least_in_flight gRPC load balancing policy (custom).
+	PowerOfTwoLeastInFlight
+)
+
+// String returns the string representation of the LoadBalancingStrategy.
+func (s LoadBalancingStrategy) String() string {
+	switch s {
+	case LeastInFlight:
+		return "least_in_flight"
+	case PowerOfTwoLeastInFlight:
+		return "power_of_two_least_in_flight"
+	case RoundRobin:
+		return "round_robin"
+	default:
+		return "round_robin" // Default
+	}
+}
+
+// parseLoadBalancingStrategy parses the string from the environment variable
+// into a LoadBalancingStrategy enum value.
+func parseLoadBalancingStrategy(strategyStr string) LoadBalancingStrategy {
+	switch strings.ToUpper(strategyStr) {
+	case "LEAST_IN_FLIGHT":
+		return LeastInFlight
+	case "POWER_OF_TWO_LEAST_IN_FLIGHT":
+		return PowerOfTwoLeastInFlight
+	case "ROUND_ROBIN":
+		return RoundRobin
+	case "":
+		return RoundRobin // Default if env var is not set
+	default:
+		return RoundRobin // Default for unknown values
+	}
+}
+
+// BigtableLoadBalancingStrategy returns the gRPC service config JSON string for the chosen policy.
+func BigtableLoadBalancingStrategy() LoadBalancingStrategy {
+	strategyStr := os.Getenv(LoadBalancingStrategyEnvVar)
+	return parseLoadBalancingStrategy(strategyStr)
+}
+
+// EnableBigtableConnectionPool uses new conn pool if envVar is set.
+func EnableBigtableConnectionPool() bool {
+	bigtableConnPoolEnvVal := os.Getenv(BigtableConnectionPoolEnvVar)
+	if bigtableConnPoolEnvVal == "" {
+		return false
+	}
+	enableBigtableConnPool, err := strconv.ParseBool(bigtableConnPoolEnvVal)
+	if err != nil {
+		// just fail and use default conn pool
+		return false
+	}
+	return enableBigtableConnPool
 }

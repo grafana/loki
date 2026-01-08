@@ -278,6 +278,12 @@ func (e *Engine) buildLogicalPlan(ctx context.Context, logger log.Logger, params
 		return nil, 0, ErrNotSupported
 	}
 
+	if err := logical.Optimize(logicalPlan); err != nil {
+		level.Warn(logger).Log("msg", "failed to optimize logical plan", "err", err)
+		region.RecordError(err)
+		return nil, 0, ErrNotSupported
+	}
+
 	duration := timer.ObserveDuration()
 	level.Info(logger).Log(
 		"msg", "finished logical planning",
@@ -407,6 +413,7 @@ func (e *Engine) buildWorkflow(ctx context.Context, logger log.Logger, physicalP
 	level.Info(logger).Log(
 		"msg", "finished execution planning",
 		"duration", duration.String(),
+		"tasks", wf.Len(),
 	)
 
 	region.AddEvent("finished execution planning", attribute.Stringer("duration", duration))

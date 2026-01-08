@@ -5,18 +5,19 @@ import (
 
 	"github.com/parquet-go/bitpack/unsafecast"
 	"github.com/parquet-go/parquet-go/encoding"
+	"github.com/parquet-go/parquet-go/internal/memory"
 )
 
 type floatPage struct {
 	typ         Type
-	values      []float32
+	values      memory.SliceBuffer[float32]
 	columnIndex int16
 }
 
 func newFloatPage(typ Type, columnIndex int16, numValues int32, values encoding.Values) *floatPage {
 	return &floatPage{
 		typ:         typ,
-		values:      values.Float()[:numValues],
+		values:      memory.SliceBufferFrom(values.Float()[:numValues]),
 		columnIndex: ^columnIndex,
 	}
 }
@@ -27,30 +28,30 @@ func (page *floatPage) Column() int { return int(^page.columnIndex) }
 
 func (page *floatPage) Dictionary() Dictionary { return nil }
 
-func (page *floatPage) NumRows() int64 { return int64(len(page.values)) }
+func (page *floatPage) NumRows() int64 { return int64(page.values.Len()) }
 
-func (page *floatPage) NumValues() int64 { return int64(len(page.values)) }
+func (page *floatPage) NumValues() int64 { return int64(page.values.Len()) }
 
 func (page *floatPage) NumNulls() int64 { return 0 }
 
-func (page *floatPage) Size() int64 { return 4 * int64(len(page.values)) }
+func (page *floatPage) Size() int64 { return 4 * int64(page.values.Len()) }
 
 func (page *floatPage) RepetitionLevels() []byte { return nil }
 
 func (page *floatPage) DefinitionLevels() []byte { return nil }
 
-func (page *floatPage) Data() encoding.Values { return encoding.FloatValues(page.values) }
+func (page *floatPage) Data() encoding.Values { return encoding.FloatValues(page.values.Slice()) }
 
 func (page *floatPage) Values() ValueReader { return &floatPageValues{page: page} }
 
-func (page *floatPage) min() float32 { return minFloat32(page.values) }
+func (page *floatPage) min() float32 { return minFloat32(page.values.Slice()) }
 
-func (page *floatPage) max() float32 { return maxFloat32(page.values) }
+func (page *floatPage) max() float32 { return maxFloat32(page.values.Slice()) }
 
-func (page *floatPage) bounds() (min, max float32) { return boundsFloat32(page.values) }
+func (page *floatPage) bounds() (min, max float32) { return boundsFloat32(page.values.Slice()) }
 
 func (page *floatPage) Bounds() (min, max Value, ok bool) {
-	if ok = len(page.values) > 0; ok {
+	if ok = page.values.Len() > 0; ok {
 		minFloat32, maxFloat32 := page.bounds()
 		min = page.makeValue(minFloat32)
 		max = page.makeValue(maxFloat32)
@@ -61,7 +62,7 @@ func (page *floatPage) Bounds() (min, max Value, ok bool) {
 func (page *floatPage) Slice(i, j int64) Page {
 	return &floatPage{
 		typ:         page.typ,
-		values:      page.values[i:j],
+		values:      memory.SliceBufferFrom(page.values.Slice()[i:j]),
 		columnIndex: page.columnIndex,
 	}
 }
@@ -83,21 +84,23 @@ func (r *floatPageValues) Read(b []byte) (n int, err error) {
 }
 
 func (r *floatPageValues) ReadFloats(values []float32) (n int, err error) {
-	n = copy(values, r.page.values[r.offset:])
+	pageValues := r.page.values.Slice()
+	n = copy(values, pageValues[r.offset:])
 	r.offset += n
-	if r.offset == len(r.page.values) {
+	if r.offset == len(pageValues) {
 		err = io.EOF
 	}
 	return n, err
 }
 
 func (r *floatPageValues) ReadValues(values []Value) (n int, err error) {
-	for n < len(values) && r.offset < len(r.page.values) {
-		values[n] = r.page.makeValue(r.page.values[r.offset])
+	pageValues := r.page.values.Slice()
+	for n < len(values) && r.offset < len(pageValues) {
+		values[n] = r.page.makeValue(pageValues[r.offset])
 		r.offset++
 		n++
 	}
-	if r.offset == len(r.page.values) {
+	if r.offset == len(pageValues) {
 		err = io.EOF
 	}
 	return n, err
