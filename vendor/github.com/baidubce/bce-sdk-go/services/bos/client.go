@@ -289,7 +289,10 @@ func NewClientWithConfig(config *BosClientConfiguration) (*Client, error) {
 	}
 	if config.ExclusiveHTTPClient || config.HTTPClient != nil ||
 		config.UploadRatelimit != nil || config.DownloadRatelimit != nil {
-		bceClient = bce.NewBceClientWithExclusiveHTTPClient(defaultConf, v1Signer)
+		bceClient, err = bce.NewBceClientWithExclusiveHTTPClient(defaultConf, v1Signer)
+		if err != nil {
+			return nil, bce.NewBceClientError(fmt.Sprintf("%s", err))
+		}
 	} else {
 		bceClient = bce.NewBceClientWithTimeout(defaultConf, v1Signer)
 	}
