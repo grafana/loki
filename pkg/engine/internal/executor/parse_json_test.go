@@ -264,7 +264,6 @@ func BenchmarkJSONParser_Process(b *testing.B) {
 	for _, tc := range testCases {
 		b.Run(tc.name, func(b *testing.B) {
 			j := newJSONParser()
-			b.ResetTimer()
 
 			for b.Loop() {
 				_, err := j.process(tc.line, nil)

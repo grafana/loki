@@ -74,6 +74,24 @@ func (b *Builder) ParseRegexp(pattern string) *Builder {
 	return b.ProjectExpand(val)
 }
 
+// ParsePattern applies a pattern [Parse] operation to the Builder.
+// The pattern must contain at least one named capture like <name>.
+// TODO(meher): Refactor the different Parse*() method to something more generic.
+func (b *Builder) ParsePattern(expression string) *Builder {
+	val := &FunctionOp{
+		Op: types.VariadicOpParsePattern,
+		Values: []Value{
+			// source column
+			&ColumnRef{
+				Ref: semconv.ColumnIdentMessage.ColumnRef(),
+			},
+			// pattern expression
+			NewLiteral(expression),
+		},
+	}
+	return b.ProjectExpand(val)
+}
+
 // Cast applies an [Projection] operation, with an [UnaryOp] cast operation, to the Builder.
 func (b *Builder) Cast(identifier string, op types.UnaryOp) *Builder {
 	val := &UnaryOp{

@@ -42,9 +42,10 @@ var (
 	}
 
 	nativeVariadicOpLookup = map[VariadicOp]types.VariadicOp{
-		VARIADIC_OP_INVALID:      types.VariadicOpInvalid,
-		VARIADIC_OP_PARSE_LOGFMT: types.VariadicOpParseLogfmt,
-		VARIADIC_OP_PARSE_JSON:   types.VariadicOpParseJSON,
+		VARIADIC_OP_INVALID:       types.VariadicOpInvalid,
+		VARIADIC_OP_PARSE_LOGFMT:  types.VariadicOpParseLogfmt,
+		VARIADIC_OP_PARSE_JSON:    types.VariadicOpParseJSON,
+		VARIADIC_OP_PARSE_PATTERN: types.VariadicOpParsePattern,
 	}
 
 	nativeColumnTypeLookup = map[ColumnType]types.ColumnType{
