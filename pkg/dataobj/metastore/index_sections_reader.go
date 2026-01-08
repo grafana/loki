@@ -504,3 +504,106 @@ func (r *indexSectionsReader) scalarTimestamps() (*scalar.Timestamp, *scalar.Tim
 
 var _ ArrowRecordBatchReader = (*indexSectionsReader)(nil)
 var _ bloomStatsProvider = (*indexSectionsReader)(nil)
+
+type bloomStatsProvider interface {
+	totalReadRows() uint64
+}
+
+func forEachMatchedPointerSectionKey(
+	ctx context.Context,
+	object *dataobj.Object,
+	columnName scalar.Scalar,
+	matchColumnValue string,
+	f func(key SectionKey),
+) error {
+	targetTenant, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return fmt.Errorf("extracting org ID: %w", err)
+	}
+
+	var reader pointers.Reader
+	defer reader.Close()
+
+	const batchSize = 128
+	buf := make([]pointers.SectionPointer, batchSize)
+
+	for _, section := range object.Sections().Filter(pointers.CheckSection) {
+		if section.Tenant != targetTenant {
+			continue
+		}
+
+		sec, err := pointers.Open(ctx, section)
+		if err != nil {
+			return fmt.Errorf("opening section: %w", err)
+		}
+
+		pointerCols, err := findPointersColumnsByTypes(
+			sec.Columns(),
+			pointers.ColumnTypePath,
+			pointers.ColumnTypeSection,
+			pointers.ColumnTypeColumnName,
+			pointers.ColumnTypeValuesBloomFilter,
+		)
+		if err != nil {
+			return fmt.Errorf("finding pointers columns: %w", err)
+		}
+
+		var (
+			colColumnName *pointers.Column
+			colBloom      *pointers.Column
+		)
+
+		for _, c := range pointerCols {
+			if c.Type == pointers.ColumnTypeColumnName {
+				colColumnName = c
+			}
+			if c.Type == pointers.ColumnTypeValuesBloomFilter {
+				colBloom = c
+			}
+			if colColumnName != nil && colBloom != nil {
+				break
+			}
+		}
+
+		if colColumnName == nil || colBloom == nil {
+			// the section has no rows for blooms and can be ignored completely
+			continue
+		}
+
+		reader.Reset(
+			pointers.ReaderOptions{
+				Columns: pointerCols,
+				Predicates: []pointers.Predicate{
+					pointers.WhereBloomFilterMatches(colColumnName, colBloom, columnName, matchColumnValue),
+				},
+			},
+		)
+
+		for {
+			rec, readErr := reader.Read(ctx, batchSize)
+			if readErr != nil && !errors.Is(readErr, io.EOF) {
+				return fmt.Errorf("reading record batch: %w", readErr)
+			}
+
+			if rec != nil && rec.NumRows() > 0 {
+				num, err := pointers.FromRecordBatch(rec, buf, pointers.PopulateSectionKey)
+				if err != nil {
+					return err
+				}
+				for i := range num {
+					sk := SectionKey{
+						ObjectPath: buf[i].Path,
+						SectionIdx: buf[i].Section,
+					}
+					f(sk)
+				}
+			}
+
+			if errors.Is(readErr, io.EOF) {
+				break
+			}
+		}
+	}
+
+	return nil
+}
