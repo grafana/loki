@@ -326,7 +326,11 @@ func newMockPartitionRingWithPartitions(activeCount int, inactiveCount int) *rin
 			State:  ring.PartitionInactive,
 		}
 	}
-	return ring.NewPartitionRing(partitionRing)
+	r, err := ring.NewPartitionRing(partitionRing)
+	if err != nil {
+		panic(err)
+	}
+	return r
 }
 
 func TestConvertGlobalToLocalLimit_PartitionRing(t *testing.T) {

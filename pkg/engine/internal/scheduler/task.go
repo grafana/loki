@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 // task wraps a [workflow.Task] with its handler.
@@ -24,6 +25,9 @@ type task struct {
 
 	owner  *workerConn
 	status workflow.TaskStatus
+
+	// wfRegion is the region associated with the parent workflow of this task.
+	wfRegion *xcap.Region
 }
 
 var validTaskTransitions = map[workflow.TaskState][]workflow.TaskState{

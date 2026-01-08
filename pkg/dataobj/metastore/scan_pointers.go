@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/memory"
@@ -33,7 +34,9 @@ type scanPointers struct {
 	cols               []*pointers.Column
 
 	// stats
-	rowsRead int64
+	sectionPointersRead         int64
+	sectionPointersReadDuration time.Duration
+	streamsReadDuration         time.Duration
 }
 
 func newScanPointers(idxObj *dataobj.Object, sStart, sEnd *scalar.Timestamp, matchers []*labels.Matcher, region *xcap.Region) *scanPointers {
@@ -53,6 +56,10 @@ func (s *scanPointers) Read(ctx context.Context) (arrow.RecordBatch, error) {
 		return nil, err
 	}
 
+	defer func(start time.Time) {
+		s.sectionPointersReadDuration += time.Since(start)
+	}(time.Now())
+
 	ctx = xcap.ContextWithRegion(ctx, s.region)
 	for {
 		rec, err := s.pointersReader.Read(ctx, 128)
@@ -67,7 +74,7 @@ func (s *scanPointers) Read(ctx context.Context) (arrow.RecordBatch, error) {
 			continue
 		}
 
-		s.rowsRead += rec.NumRows()
+		s.sectionPointersRead += rec.NumRows()
 		return rec, nil
 	}
 }
@@ -120,6 +127,10 @@ func (s *scanPointers) init(ctx context.Context) error {
 }
 
 func (s *scanPointers) findMatchingStreamIDs(ctx context.Context) ([]scalar.Scalar, error) {
+	defer func(start time.Time) {
+		s.streamsReadDuration = time.Since(start)
+	}(time.Now())
+
 	var matchingStreamIDs []scalar.Scalar
 	err := forEachStreamID(ctx, s.obj, s.sStart, s.sEnd, s.matchers, func(streamID int64) {
 		matchingStreamIDs = append(matchingStreamIDs, scalar.NewInt64Scalar(streamID))
@@ -221,6 +232,12 @@ func (s *scanPointers) prepareForNextSectionOrSkip(ctx context.Context) (bool, e
 func (s *scanPointers) Close() {
 	if s.pointersReader != nil {
 		_ = s.pointersReader.Close()
+	}
+	if s.region != nil {
+		s.region.Record(xcap.StatMetastoreStreamsRead.Observe(int64(len(s.matchingStreamIDs))))
+		s.region.Record(xcap.StatMetastoreStreamsReadTime.Observe(s.streamsReadDuration.Seconds()))
+		s.region.Record(xcap.StatMetastoreSectionPointersRead.Observe(s.sectionPointersRead))
+		s.region.Record(xcap.StatMetastoreSectionPointersReadTime.Observe(s.sectionPointersReadDuration.Seconds()))
 	}
 }
 

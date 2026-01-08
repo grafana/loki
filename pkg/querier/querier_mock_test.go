@@ -424,11 +424,15 @@ func newPartitionInstanceRingMock(ingesterRing ring.InstanceRingReader, ingester
 			}
 		}
 	}
+	partitionRingDesc, err := ring.NewPartitionRing(ring.PartitionRingDesc{
+		Partitions: partitions,
+		Owners:     owners,
+	})
+	if err != nil {
+		panic(err)
+	}
 	partitionRing := partitionRingMock{
-		ring: ring.NewPartitionRing(ring.PartitionRingDesc{
-			Partitions: partitions,
-			Owners:     owners,
-		}),
+		ring: partitionRingDesc,
 	}
 	return ring.NewPartitionInstanceRing(partitionRing, ingesterRing, time.Hour)
 }

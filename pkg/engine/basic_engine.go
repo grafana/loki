@@ -10,7 +10,6 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/prometheus/model/labels"
 	"github.com/thanos-io/objstore"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -146,13 +145,12 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 
 		timer := prometheus.NewTimer(e.metrics.physicalPlanning)
 
-		catalog := physical.NewMetastoreCatalog(func(start time.Time, end time.Time, selectors []*labels.Matcher, predicates []*labels.Matcher) ([]*metastore.DataobjSectionDescriptor, error) {
-			resp, err := e.metastore.Sections(ctx, metastore.SectionsRequest{
-				Start:      start,
-				End:        end,
-				Matchers:   selectors,
-				Predicates: predicates,
-			})
+		catalog := physical.NewMetastoreCatalog(func(selectors physical.Expression, predicates []physical.Expression, start time.Time, end time.Time) ([]*metastore.DataobjSectionDescriptor, error) {
+			req, err := physical.CatalogRequestToMetastoreSectionsRequest(selectors, predicates, start, end)
+			if err != nil {
+				return nil, err
+			}
+			resp, err := e.metastore.Sections(ctx, req)
 			return resp.Sections, err
 		})
 		planner := physical.NewPlanner(physical.NewContext(params.Start(), params.End()), catalog)
@@ -202,6 +200,7 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 			BatchSize:          int64(e.cfg.BatchSize),
 			MergePrefetchCount: e.cfg.MergePrefetchCount,
 			Bucket:             e.bucket,
+			Metastore:          e.metastore,
 		}
 
 		pipeline := executor.Run(ctx, cfg, physicalPlan, logger)

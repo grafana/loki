@@ -1,0 +1,7 @@
+Case-insensitive searches are currently unsupported.
+
+-- column --
+utf8.builtin.message
+
+-- regex --
+(?i)foo
