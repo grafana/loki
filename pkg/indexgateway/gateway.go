@@ -247,6 +247,16 @@ func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequ
 	result.Stats.PostFilterChunks = int64(initialChunkCount) // populate early for error reponses
 	result.Stats.ChunkRefsLookupTime = chunkRefsLookupDuration.Seconds()
 
+	// Compute unique streams matched from chunk refs
+	// Allocate map size based on chunk count since unique streams <= number of chunks
+	{
+		seen := make(map[uint64]struct{}, initialChunkCount)
+		for _, ref := range result.Refs {
+			seen[ref.Fingerprint] = struct{}{}
+		}
+		result.Stats.TotalStreams = int64(len(seen))
+	}
+
 	defer func() {
 		if err == nil {
 			g.metrics.preFilterChunks.WithLabelValues(routeChunkRefs).Observe(float64(initialChunkCount))

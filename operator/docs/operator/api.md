@@ -4959,6 +4959,19 @@ OpenshiftTenantSpec
 <p>Openshift defines the configuration specific to Openshift modes.</p>
 </td>
 </tr>
+<tr>
+<td>
+<code>disableIngress</code><br/>
+<em>
+bool
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>DisableIngress disables automatic creation of external access resources (Route / Ingress).
+When true, no Route or Ingress will be created for the gateway.</p>
+</td>
+</tr>
 </tbody>
 </table>
 

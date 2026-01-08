@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright 2015-2025 go-swagger maintainers
+// SPDX-License-Identifier: Apache-2.0
+
 package sortref
 
 import (
@@ -30,7 +33,7 @@ func (i *mapIterator) Key() string {
 	return i.mapIter.Key().String()
 }
 
-func mustMapIterator(anyMap interface{}) *mapIterator {
+func mustMapIterator(anyMap any) *mapIterator {
 	val := reflect.ValueOf(anyMap)
 
 	return &mapIterator{mapIter: val.MapRange(), len: val.Len()}
@@ -40,7 +43,7 @@ func mustMapIterator(anyMap interface{}) *mapIterator {
 // (shared params, op param, statuscode response, default response, definitions)
 // sort groups internally by number of parts in the key and lexical names
 // flatten groups into a single list of keys
-func DepthFirst(in interface{}) []string {
+func DepthFirst(in any) []string {
 	iterator := mustMapIterator(in)
 	sorted := make([]string, 0, iterator.Len())
 	grouped := make(map[string]Keys, iterator.Len())

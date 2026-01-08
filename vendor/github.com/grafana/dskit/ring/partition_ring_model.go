@@ -206,18 +206,40 @@ func (m *PartitionRingDesc) AddPartition(id int32, state PartitionState, now tim
 
 // UpdatePartitionState changes the state of a partition. Returns true if the state was changed,
 // or false if the update was a no-op.
-func (m *PartitionRingDesc) UpdatePartitionState(id int32, state PartitionState, now time.Time) bool {
+func (m *PartitionRingDesc) UpdatePartitionState(id int32, state PartitionState, now time.Time) (bool, error) {
+	d, ok := m.Partitions[id]
+	if !ok {
+		return false, nil
+	}
+
+	if d.State == state {
+		return false, nil
+	}
+
+	if d.StateChangeLocked {
+		return false, ErrPartitionStateChangeLocked
+	}
+
+	d.State = state
+	d.StateTimestamp = now.Unix()
+	m.Partitions[id] = d
+	return true, nil
+}
+
+// UpdatePartitionStateChangeLock changes the state change lock of a partition. Returns true if the lock was changed,
+// or false if the update was a no-op.
+func (m *PartitionRingDesc) UpdatePartitionStateChangeLock(id int32, locked bool, now time.Time) bool {
 	d, ok := m.Partitions[id]
 	if !ok {
 		return false
 	}
 
-	if d.State == state {
+	if d.StateChangeLocked == locked {
 		return false
 	}
 
-	d.State = state
-	d.StateTimestamp = now.Unix()
+	d.StateChangeLocked = locked
+	d.StateChangeLockedTimestamp = now.Unix()
 	m.Partitions[id] = d
 	return true
 }
@@ -343,6 +365,13 @@ func (m *PartitionRingDesc) mergeWithTime(mergeable memberlist.Mergeable, localC
 
 				thisPart.State = otherPart.State
 				thisPart.StateTimestamp = otherPart.StateTimestamp
+			}
+
+			if otherPart.StateChangeLockedTimestamp > thisPart.StateChangeLockedTimestamp {
+				changed = true
+
+				thisPart.StateChangeLocked = otherPart.StateChangeLocked
+				thisPart.StateChangeLockedTimestamp = otherPart.StateChangeLockedTimestamp
 			}
 		}
 

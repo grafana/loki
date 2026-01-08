@@ -1,7 +1,6 @@
 package executor
 
 import (
-	"fmt"
 	"maps"
 	"slices"
 	"strings"
@@ -12,14 +11,14 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/cespare/xxhash/v2"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
-	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
 type groupState struct {
-	value       float64  // aggregated value
-	labelValues []string // grouping label values
+	value       float64       // aggregated value
+	count       int64         // values counter
+	labels      []arrow.Field // grouping labels
+	labelValues []string      // grouping label values
 }
 
 type aggregationOperation int
@@ -29,25 +28,27 @@ const (
 	aggregationOperationMax
 	aggregationOperationMin
 	aggregationOperationCount
+	aggregationOperationAvg
+	aggregationOperationStddev
+	aggregationOperationStdvar
+	aggregationOperationBytes
 )
 
 // aggregator is used to aggregate sample values by a set of grouping keys for each point in time.
 type aggregator struct {
-	groupBy   []physical.ColumnExpression          // columns to group by
-	points    map[time.Time]map[uint64]*groupState // holds the groupState for each point in time series
-	digest    *xxhash.Digest                       // used to compute key for each group
-	operation aggregationOperation                 // aggregation type
+	points            map[time.Time]map[uint64]*groupState // holds the groupState for each point in time series
+	digest            *xxhash.Digest                       // used to compute key for each group
+	operation         aggregationOperation                 // aggregation type
+	labels            []arrow.Field                        // combined list of all label fields for all sample values
+	clonedLabelValues map[string]string                    // cache of cloned strings to reduce allocations for repeated values
 }
 
-// newAggregator creates a new aggregator with the specified groupBy columns.
-// empty groupBy indicates no grouping. All values are aggregated into a single group.
-// TODO: add without argument to support `without(...)` grouping.
-// A special case of `without()` that has empty groupBy is used for Noop grouping which retains the input labels as is.
-func newAggregator(groupBy []physical.ColumnExpression, pointsSizeHint int, operation aggregationOperation) *aggregator {
+// newAggregator creates a new aggregator with the specified grouping.
+func newAggregator(pointsSizeHint int, operation aggregationOperation) *aggregator {
 	a := aggregator{
-		groupBy:   groupBy,
-		digest:    xxhash.New(),
-		operation: operation,
+		digest:            xxhash.New(),
+		operation:         operation,
+		clonedLabelValues: make(map[string]string),
 	}
 
 	if pointsSizeHint > 0 {
@@ -59,9 +60,25 @@ func newAggregator(groupBy []physical.ColumnExpression, pointsSizeHint int, oper
 	return &a
 }
 
+// AddLabels merges a list of labels that all sample values will have combined. This can be done several times
+// over the lifetime of an aggregator to accommodate processing of multiple records with different schemas.
+func (a *aggregator) AddLabels(labels []arrow.Field) {
+	for _, label := range labels {
+		if !slices.ContainsFunc(a.labels, func(l arrow.Field) bool {
+			return label.Equal(l)
+		}) {
+			a.labels = append(a.labels, label)
+		}
+	}
+}
+
 // Add adds a new sample value to the aggregation for the given timestamp and grouping label values.
 // It expects labelValues to be in the same order as the groupBy columns.
-func (a *aggregator) Add(ts time.Time, value float64, labelValues []string) {
+func (a *aggregator) Add(ts time.Time, value float64, labels []arrow.Field, labelValues []string) {
+	if len(labels) != len(labelValues) {
+		panic("len(labels) != len(labelValues)")
+	}
+
 	point, ok := a.points[ts]
 	if !ok {
 		point = make(map[uint64]*groupState)
@@ -69,13 +86,15 @@ func (a *aggregator) Add(ts time.Time, value float64, labelValues []string) {
 	}
 
 	var key uint64
-	if len(a.groupBy) != 0 {
+	if len(labelValues) != 0 {
 		a.digest.Reset()
 		for i, val := range labelValues {
 			if i > 0 {
 				_, _ = a.digest.Write([]byte{0}) // separator
 			}
 
+			_, _ = a.digest.WriteString(labels[i].Name)
+			_, _ = a.digest.Write([]byte("="))
 			_, _ = a.digest.WriteString(val)
 		}
 		key = a.digest.Sum64()
@@ -96,76 +115,110 @@ func (a *aggregator) Add(ts time.Time, value float64, labelValues []string) {
 			if value < state.value {
 				state.value = value
 			}
-		case aggregationOperationCount:
-			state.value = state.value + 1
-
+		case aggregationOperationAvg:
+			state.value += value
 		}
+
+		state.count++
 	} else {
-		v := value
-		if a.operation == aggregationOperationCount {
-			v = 1
-		}
+		count := int64(1)
 
-		if len(a.groupBy) == 0 {
+		if len(labels) == 0 {
 			// special case: All values aggregated into a single group.
-			// This applies to queries like `sum(...)`, `sum by () (...)`, `count_over_time by () (...)`.
 			point[key] = &groupState{
-				value: v,
+				value: value,
+				count: count,
 			}
 			return
 		}
 
-		// create a new slice since labelValues is reused by the calling code
 		labelValuesCopy := make([]string, len(labelValues))
 		for i, v := range labelValues {
 			// copy the value as this is backed by the arrow array data buffer.
 			// We could retain the record to avoid this copy, but that would hold
 			// all other columns in memory for as long as the query is evaluated.
-			labelValuesCopy[i] = strings.Clone(v)
+			cloned, ok := a.clonedLabelValues[v]
+			if !ok {
+				cloned = strings.Clone(v)
+				a.clonedLabelValues[v] = cloned
+			}
+			labelValuesCopy[i] = cloned
 		}
 
 		// TODO: add limits on number of groups
 		point[key] = &groupState{
+			labels:      labels,
 			labelValues: labelValuesCopy,
-			value:       v,
+			value:       value,
+			count:       count,
 		}
 	}
 }
 
 func (a *aggregator) BuildRecord() (arrow.RecordBatch, error) {
-	fields := make([]arrow.Field, 0, len(a.groupBy)+2)
+	fields := make([]arrow.Field, 0, len(a.labels)+2)
 	fields = append(fields,
 		semconv.FieldFromIdent(semconv.ColumnIdentTimestamp, false),
 		semconv.FieldFromIdent(semconv.ColumnIdentValue, false),
 	)
-
-	for _, column := range a.groupBy {
-		colExpr, ok := column.(*physical.ColumnExpr)
-		if !ok {
-			panic(fmt.Sprintf("invalid column expression type %T", column))
-		}
-		ident := semconv.NewIdentifier(colExpr.Ref.Column, colExpr.Ref.Type, types.Loki.String)
-		fields = append(fields, semconv.FieldFromIdent(ident, true))
+	for _, label := range a.labels {
+		fields = append(fields, arrow.Field{
+			Name:     label.Name,
+			Type:     label.Type,
+			Nullable: true,
+			Metadata: label.Metadata,
+		})
 	}
 
 	schema := arrow.NewSchema(fields, nil)
 	rb := array.NewRecordBuilder(memory.NewGoAllocator(), schema)
 
 	// emit aggregated results in sorted order of timestamp
-	for _, ts := range a.getSortedTimestamps() {
+	sortedTimestamps := a.getSortedTimestamps()
+
+	// preallocate all builders to the total amount of rows
+	total := 0
+	for _, ts := range sortedTimestamps {
+		total += len(a.points[ts])
+	}
+	rb.Field(0).Reserve(total)
+	rb.Field(1).Reserve(total)
+	for i := range a.labels {
+		rb.Field(2 + i).Reserve(total)
+	}
+
+	for _, ts := range sortedTimestamps {
 		tsValue, _ := arrow.TimestampFromTime(ts, arrow.Nanosecond)
 
 		for _, entry := range a.points[ts] {
-			rb.Field(0).(*array.TimestampBuilder).Append(tsValue)
-			rb.Field(1).(*array.Float64Builder).Append(entry.value)
+			var value float64
+			switch a.operation {
+			case aggregationOperationAvg:
+				value = entry.value / float64(entry.count)
+			case aggregationOperationCount:
+				value = float64(entry.count)
+			default:
+				value = entry.value
+			}
 
-			for col, val := range entry.labelValues {
-				builder := rb.Field(col + 2) // offset by 2 as the first 2 fields are timestamp and value
-				// TODO: differentiate between null and actual empty string
-				if val == "" {
+			rb.Field(0).(*array.TimestampBuilder).Append(tsValue)
+			rb.Field(1).(*array.Float64Builder).Append(value)
+
+			for i, label := range a.labels {
+				builder := rb.Field(2 + i) // offset by 2 as the first 2 fields are timestamp and value
+
+				j := slices.IndexFunc(entry.labels, func(l arrow.Field) bool {
+					return l.Name == label.Name
+				})
+				if j == -1 {
 					builder.(*array.StringBuilder).AppendNull()
 				} else {
-					builder.(*array.StringBuilder).Append(val)
+					// TODO: differentiate between null and actual empty string
+					if entry.labelValues[j] == "" {
+						builder.(*array.StringBuilder).AppendNull()
+					} else {
+						builder.(*array.StringBuilder).Append(entry.labelValues[j])
+					}
 				}
 			}
 		}
