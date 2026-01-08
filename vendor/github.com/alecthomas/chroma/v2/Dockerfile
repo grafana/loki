@@ -29,7 +29,7 @@ ENV GOARCH=amd64
 RUN make build/chromad
 
 # Runtime stage
-FROM alpine:3.22 AS runtime
+FROM alpine:3.23 AS runtime
 
 # Install ca-certificates for HTTPS requests
 RUN apk --no-cache add ca-certificates curl

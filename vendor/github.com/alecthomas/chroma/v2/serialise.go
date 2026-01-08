@@ -150,8 +150,12 @@ func NewXMLLexer(from fs.FS, path string) (*RegexLexer, error) {
 
 		regexAnalysers := make([]regexAnalyse, 0, len(config.Analyse.Regexes))
 
+		regexFlags := regexp2.None
+		if config.CaseInsensitive {
+			regexFlags = regexp2.IgnoreCase
+		}
 		for _, ra := range config.Analyse.Regexes {
-			re, err := regexp2.Compile(ra.Pattern, regexp2.None)
+			re, err := regexp2.Compile(ra.Pattern, regexFlags)
 			if err != nil {
 				return nil, fmt.Errorf("%s: %q is not a valid analyser regex: %w", config.Name, ra.Pattern, err)
 			}
