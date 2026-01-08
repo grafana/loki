@@ -35,6 +35,13 @@ import (
 	"github.com/prometheus/client_golang/exp/internal/github.com/efficientgo/core/backoff"
 )
 
+// BackoffConfig configures exponential backoff with jitter for retry operations.
+type BackoffConfig struct {
+	Min        time.Duration `yaml:"min_period"`  // Start backoff at this level
+	Max        time.Duration `yaml:"max_period"`  // Increase exponentially to this level
+	MaxRetries int           `yaml:"max_retries"` // Give up after this many; zero means infinite retries
+}
+
 // API is a client for Prometheus Remote Protocols.
 // NOTE(bwplotka): Only https://prometheus.io/docs/specs/remote_write_spec_2_0/ is currently implemented,
 // read protocols to be implemented if there will be a demand.
@@ -48,18 +55,22 @@ type API struct {
 // APIOption represents a remote API option.
 type APIOption func(o *apiOpts) error
 
+// RetryCallback is called each time Write() retries a request.
+// err is the error that caused the retry.
+type RetryCallback func(err error)
+
 // TODO(bwplotka): Add "too old sample" handling one day.
 type apiOpts struct {
 	logger           *slog.Logger
 	client           *http.Client
-	backoff          backoff.Config
+	backoffConfig    BackoffConfig
 	compression      Compression
 	path             string
 	retryOnRateLimit bool
 }
 
 var defaultAPIOpts = &apiOpts{
-	backoff: backoff.Config{
+	backoffConfig: BackoffConfig{
 		Min:        1 * time.Second,
 		Max:        10 * time.Second,
 		MaxRetries: 10,
@@ -103,10 +114,11 @@ func WithAPINoRetryOnRateLimit() APIOption {
 	}
 }
 
-// WithAPIBackoff returns APIOption that allows overriding backoff configuration.
-func WithAPIBackoff(backoff backoff.Config) APIOption {
+// WithAPIBackoff returns APIOption that allows configuring backoff.
+// By default, exponential backoff with jitter is used (see defaultAPIOpts).
+func WithAPIBackoff(cfg BackoffConfig) APIOption {
 	return func(o *apiOpts) error {
-		o.backoff = backoff
+		o.backoffConfig = cfg
 		return nil
 	}
 }
@@ -160,6 +172,21 @@ func (r retryableError) RetryAfter() time.Duration {
 	return r.retryAfter
 }
 
+// WriteOption represents an option for Write method.
+type WriteOption func(o *writeOpts)
+
+type writeOpts struct {
+	retryCallback RetryCallback
+}
+
+// WithWriteRetryCallback sets a retry callback for this Write request.
+// The callback is invoked each time the request is retried.
+func WithWriteRetryCallback(callback RetryCallback) WriteOption {
+	return func(o *writeOpts) {
+		o.retryCallback = callback
+	}
+}
+
 type vtProtoEnabled interface {
 	SizeVT() int
 	MarshalToSizedBufferVT(dAtA []byte) (int, error)
@@ -179,7 +206,13 @@ type gogoProtoEnabled interface {
 //     will be used
 //   - If neither is supported, it will marshaled using generic google.golang.org/protobuf methods and
 //     error out on unknown scheme.
-func (r *API) Write(ctx context.Context, msgType WriteMessageType, msg any) (_ WriteResponseStats, err error) {
+func (r *API) Write(ctx context.Context, msgType WriteMessageType, msg any, opts ...WriteOption) (_ WriteResponseStats, err error) {
+	// Parse write options.
+	var writeOpts writeOpts
+	for _, opt := range opts {
+		opt(&writeOpts)
+	}
+
 	buf := r.bufPool.Get().(*[]byte)
 
 	if err := msgType.Validate(); err != nil {
@@ -228,13 +261,17 @@ func (r *API) Write(ctx context.Context, msgType WriteMessageType, msg any) (_ W
 		return WriteResponseStats{}, fmt.Errorf("compressing %w", err)
 	}
 	r.bufPool.Put(buf)
-	r.bufPool.Put(comprBuf)
+	defer r.bufPool.Put(comprBuf)
 
 	// Since we retry writes we need to track the total amount of accepted data
 	// across the various attempts.
 	accumulatedStats := WriteResponseStats{}
 
-	b := backoff.New(ctx, r.opts.backoff)
+	b := backoff.New(ctx, backoff.Config{
+		Min:        r.opts.backoffConfig.Min,
+		Max:        r.opts.backoffConfig.Max,
+		MaxRetries: r.opts.backoffConfig.MaxRetries,
+	})
 	for {
 		rs, err := r.attemptWrite(ctx, r.opts.compression, msgType, payload, b.NumRetries())
 		accumulatedStats.Add(rs)
@@ -245,7 +282,7 @@ func (r *API) Write(ctx context.Context, msgType WriteMessageType, msg any) (_ W
 				// TODO(bwplotka): Allow users to disable this check or provide their stats for us to know if it's empty.
 				return accumulatedStats, fmt.Errorf("sent v2 request; "+
 					"got 2xx, but PRW 2.0 response header statistics indicate %v samples, %v histograms "+
-					"and %v exemplars were accepted; assumining failure e.g. the target only supports "+
+					"and %v exemplars were accepted; assuming failure e.g. the target only supports "+
 					"PRW 1.0 prometheus.WriteRequest, but does not check the Content-Type header correctly",
 					accumulatedStats.Samples, accumulatedStats.Histograms, accumulatedStats.Exemplars,
 				)
@@ -257,20 +294,23 @@ func (r *API) Write(ctx context.Context, msgType WriteMessageType, msg any) (_ W
 
 		var retryableErr retryableError
 		if !errors.As(err, &retryableErr) {
-			// TODO(bwplotka): More context in the error e.g. about retries.
 			return accumulatedStats, err
 		}
 
 		if !b.Ongoing() {
-			// TODO(bwplotka): More context in the error e.g. about retries.
 			return accumulatedStats, err
 		}
 
 		backoffDelay := b.NextDelay() + retryableErr.RetryAfter()
+
+		// Invoke retry callback if provided.
+		if writeOpts.retryCallback != nil {
+			writeOpts.retryCallback(retryableErr.error)
+		}
+
 		r.opts.logger.Error("failed to send remote write request; retrying after backoff", "err", err, "backoff", backoffDelay)
 		select {
 		case <-ctx.Done():
-			// TODO(bwplotka): More context in the error e.g. about retries.
 			return WriteResponseStats{}, ctx.Err()
 		case <-time.After(backoffDelay):
 			// Retry.
@@ -408,6 +448,12 @@ func WithWriteHandlerMiddlewares(middlewares ...func(http.Handler) http.Handler)
 	}
 }
 
+// maxDecodedSize limits the maximum allowed bytes of decompressed snappy payloads.
+// This protects against maliciously crafted payloads that could cause excessive memory
+// allocation and potentially lead to out-of-memory (OOM) conditions.
+// All usual payloads should be much smaller than this limit and pass without any problems.
+const maxDecodedSize = 32 * 1024 * 1024
+
 // SnappyDecodeMiddleware returns a middleware that checks if the request body is snappy-encoded and decompresses it.
 // If the request body is not snappy-encoded, it returns an error.
 // Used by default in NewHandler.
@@ -439,6 +485,18 @@ func SnappyDecodeMiddleware(logger *slog.Logger) func(http.Handler) http.Handler
 				return
 			}
 
+			decodedSize, err := snappy.DecodedLen(bodyBytes)
+			if err != nil {
+				logger.Error("Error snappy decoding request body length", "err", err)
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			if decodedSize > maxDecodedSize {
+				logger.Error("Snappy decoded size exceeds the limit", "sizeBytes", decodedSize, "limitBytes", maxDecodedSize)
+				http.Error(w, fmt.Sprintf("decoded size exceeds the %v bytes limit", maxDecodedSize), http.StatusBadRequest)
+				return
+			}
+
 			decompressed, err := snappy.Decode(nil, bodyBytes)
 			if err != nil {
 				// TODO(bwplotka): Add more context to responded error?
@@ -455,8 +513,8 @@ func SnappyDecodeMiddleware(logger *slog.Logger) func(http.Handler) http.Handler
 	}
 }
 
-// NewWriteHandler returns HTTP handler that receives Remote Write 2.0
-// protocol https://prometheus.io/docs/specs/remote_write_spec_2_0/.
+// NewWriteHandler returns an HTTP handler that can receive the Remote Write 1.0 or Remote Write 2.0
+// (https://prometheus.io/docs/specs/remote_write_spec_2_0/) protocol.
 func NewWriteHandler(store writeStorage, acceptedMessageTypes MessageTypes, opts ...WriteHandlerOption) http.Handler {
 	o := writeHandlerOpts{
 		logger:      slog.New(nopSlogHandler{}),
@@ -545,8 +603,8 @@ func (h *writeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeResponse = NewWriteResponse()
 	}
 
-	// Set required X-Prometheus-Remote-Write-Written-* response headers, in all cases, along with any user-defined headers.
-	writeResponse.writeHeaders(w)
+	// Set any necessary response headers.
+	writeResponse.writeHeaders(msgType, w)
 
 	if storeErr != nil {
 		if writeResponse.statusCode == 0 {
