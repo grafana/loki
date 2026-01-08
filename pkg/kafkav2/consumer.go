@@ -113,10 +113,11 @@ func (c *SinglePartitionConsumer) Run(ctx context.Context) error {
 				level.Error(c.logger).Log("msg", "failed to poll fetches", "err", err)
 				c.pollFailures.Inc()
 				b.Wait()
+			} else {
+				fetches.EachRecord(func(record *kgo.Record) {
+					c.records <- record
+				})
 			}
-			fetches.EachRecord(func(record *kgo.Record) {
-				c.records <- record
-			})
 		}
 	}
 	return nil
