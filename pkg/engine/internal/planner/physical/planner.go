@@ -189,7 +189,7 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) (Node, e
 
 	from, through := ctx.GetResolveTimeRange()
 
-	dataObjs, err := p.catalog.ResolveDataObjSections(p.convertPredicate(lp.Selector), predicates, ShardInfo(*shard), from, through)
+	dataObjs, err := p.catalog.ResolveDataObjSections(p.convertPredicate(lp.Selector), predicates, ShardInfo{Shard: shard.Shard, Of: shard.Of}, from, through)
 	if err != nil {
 		return nil, err
 	}
@@ -340,7 +340,9 @@ func (p *Planner) processProjection(lp *logical.Projection, ctx *Context) (Node,
 	for i := range lp.Expressions {
 		expressions[i] = p.convertPredicate(lp.Expressions[i])
 		if funcExpr, ok := lp.Expressions[i].(*logical.FunctionOp); ok {
-			if funcExpr.Op == types.VariadicOpParseJSON || funcExpr.Op == types.VariadicOpParseLogfmt {
+			if funcExpr.Op == types.VariadicOpParseJSON ||
+				funcExpr.Op == types.VariadicOpParseLogfmt ||
+				funcExpr.Op == types.VariadicOpParseRegexp {
 				needsCompat = true
 			}
 		}

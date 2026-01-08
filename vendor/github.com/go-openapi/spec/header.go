@@ -1,16 +1,5 @@
-// Copyright 2015 go-swagger maintainers
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//    http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-FileCopyrightText: Copyright 2015-2025 go-swagger maintainers
+// SPDX-License-Identifier: Apache-2.0
 
 package spec
 
@@ -68,7 +57,7 @@ func (h *Header) CollectionOf(items *Items, format string) *Header {
 }
 
 // WithDefault sets the default value on this item
-func (h *Header) WithDefault(defaultValue interface{}) *Header {
+func (h *Header) WithDefault(defaultValue any) *Header {
 	h.Default = defaultValue
 	return h
 }
@@ -112,8 +101,8 @@ func (h *Header) WithMinimum(minimum float64, exclusive bool) *Header {
 }
 
 // WithEnum sets a the enum values (replace)
-func (h *Header) WithEnum(values ...interface{}) *Header {
-	h.Enum = append([]interface{}{}, values...)
+func (h *Header) WithEnum(values ...any) *Header {
+	h.Enum = append([]any{}, values...)
 	return h
 }
 
@@ -179,7 +168,7 @@ func (h *Header) UnmarshalJSON(data []byte) error {
 }
 
 // JSONLookup look up a value by the json property name
-func (h Header) JSONLookup(token string) (interface{}, error) {
+func (h Header) JSONLookup(token string) (any, error) {
 	if ex, ok := h.Extensions[token]; ok {
 		return &ex, nil
 	}

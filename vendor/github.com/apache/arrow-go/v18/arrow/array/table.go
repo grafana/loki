@@ -374,7 +374,7 @@ func (tr *TableReader) Next() bool {
 	}
 
 	tr.cur += chunksz
-	tr.rec = NewRecord(tr.tbl.Schema(), batch, chunksz)
+	tr.rec = NewRecordBatch(tr.tbl.Schema(), batch, chunksz)
 
 	for _, arr := range batch {
 		arr.Release()

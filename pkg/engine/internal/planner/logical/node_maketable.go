@@ -8,7 +8,7 @@ import (
 // The MakeTable instruction yields a table relation from an identifier.
 // MakeTable implements both [Instruction] and [Value].
 type MakeTable struct {
-	id string
+	b baseNode
 
 	// Selector is used to generate a table relation. All streams for which the
 	// selector passes are included in the resulting table.
@@ -33,12 +33,7 @@ var (
 )
 
 // Name returns an identifier for the MakeTable operation.
-func (t *MakeTable) Name() string {
-	if t.id != "" {
-		return t.id
-	}
-	return fmt.Sprintf("%p", t)
-}
+func (t *MakeTable) Name() string { return t.b.Name() }
 
 // String returns the disassembled SSA form of the MakeTable instruction.
 func (t *MakeTable) String() string {
@@ -49,5 +44,23 @@ func (t *MakeTable) String() string {
 	return fmt.Sprintf("MAKETABLE [selector=%s, predicates=[%s], shard=%s]", t.Selector.Name(), strings.Join(predicateNames, ", "), t.Shard.Name())
 }
 
-func (t *MakeTable) isInstruction() {}
-func (t *MakeTable) isValue()       {}
+// Operands appends the operands of t to the provided slice. The pointers may
+// be modified to change operands of t.
+func (t *MakeTable) Operands(buf []*Value) []*Value {
+	buf = append(buf, &t.Selector)
+	for i := range t.Predicates {
+		buf = append(buf, &t.Predicates[i])
+	}
+	buf = append(buf, &t.Shard)
+	return buf
+}
+
+// Referrers returns a list of instructions that reference the MakeTable.
+//
+// The list of instructions can be modified to update the reference list, such
+// as when modifying the plan.
+func (t *MakeTable) Referrers() *[]Instruction { return &t.b.referrers }
+
+func (t *MakeTable) base() *baseNode { return &t.b }
+func (t *MakeTable) isInstruction()  {}
+func (t *MakeTable) isValue()        {}
