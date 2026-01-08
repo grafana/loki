@@ -366,6 +366,7 @@ func (p *partitionProcessor) commit(ctx context.Context) error {
 	backoff.Reset()
 	for backoff.Ongoing() {
 		p.metrics.incCommitsTotal()
+		level.Debug(p.logger).Log("msg", "committed offset", "partition", p.partition, "offset", p.lastRecord.Offset)
 		err := p.committer.Commit(ctx, p.partition, p.lastRecord.Offset)
 		if err == nil {
 			return nil
