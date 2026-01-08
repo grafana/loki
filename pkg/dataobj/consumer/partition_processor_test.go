@@ -319,7 +319,7 @@ func newTestPartitionProcessor(t *testing.T, clock quartz.Clock) *partitionProce
 		log.NewNopLogger(),
 		prometheus.NewRegistry(),
 		60*time.Minute,
-		1*time.Hour,
+		time.Hour,
 		nil,
 		"test-topic",
 		1,

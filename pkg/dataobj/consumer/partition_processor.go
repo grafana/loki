@@ -272,7 +272,7 @@ func (p *partitionProcessor) processRecord(ctx context.Context, record partition
 
 	p.metrics.processedBytes.Add(float64(stream.Size()))
 
-	if time.Since(p.earliestRecordTime) > p.maxDataObjAge {
+	if p.maxDataObjAge > 0 && p.clock.Since(p.earliestRecordTime) > p.maxDataObjAge {
 		p.metrics.incFlushDueToMaxAgeTotal()
 		if err := p.flushAndCommit(ctx); err != nil {
 			level.Error(p.logger).Log("msg", "failed to flush and commit dataobj that reached max age", "err", err)
