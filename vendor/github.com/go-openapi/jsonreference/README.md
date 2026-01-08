@@ -17,3 +17,10 @@ Feature complete. Stable API
 
 * http://tools.ietf.org/html/draft-ietf-appsawg-json-pointer-07
 * http://tools.ietf.org/html/draft-pbryan-zyp-json-ref-03
+
+## Licensing
+
+This library ships under the [SPDX-License-Identifier: Apache-2.0](./LICENSE).
+
+See the license [NOTICE](./NOTICE), which recalls the licensing terms of all the pieces of software
+on top of which it has been built.
