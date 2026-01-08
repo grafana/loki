@@ -123,7 +123,7 @@ func buildPlanForLogQuery(
 			if val, innerErr := convertLabelFilter(e.LabelFilterer); innerErr != nil {
 				err = innerErr
 			} else {
-				if !hasLogfmtParser && !hasJSONParser && !hasRegexParser {
+				if !hasLogfmtParser && !hasJSONParser && !hasRegexParser && !hasPatternParser {
 					predicates = append(predicates, val)
 				} else {
 					postParsePredicates = append(postParsePredicates, val)
