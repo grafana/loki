@@ -12484,15 +12484,6 @@ false
 </td>
 		</tr>
 		<tr>
-			<td>sidecar.image.digest</td>
-			<td>string</td>
-			<td>Overrides the image tag with an image digest</td>
-			<td><pre lang="json">
-null
-</pre>
-</td>
-		</tr>
-		<tr>
 			<td>sidecar.image.pullPolicy</td>
 			<td>string</td>
 			<td>Docker image pull policy</td>
@@ -12522,7 +12513,7 @@ null
 		<tr>
 			<td>sidecar.image.sha</td>
 			<td>string</td>
-			<td>Docker image sha. If empty, no sha will be used (deprecated)</td>
+			<td>Docker image sha. If empty, no sha will be used</td>
 			<td><pre lang="json">
 ""
 </pre>
