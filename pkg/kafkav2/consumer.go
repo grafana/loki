@@ -114,8 +114,8 @@ func (c *SinglePartitionConsumer) Run(ctx context.Context) error {
 		// might be polled successfully while others return errors.
 		for record := range fetches.RecordsAll() {
 			select {
-				// We must check for cancelation here to avoid a deadlock. This can
-				// happen if the receiver stopped without draining the chan.
+				// We must check for cancelation to avoid a deadlock. This can happen
+				// if the receiver stopped without draining the chan.
 				case <-ctx.Done():
 					return ctx.Err()
 				case c.records <- record:
