@@ -157,7 +157,6 @@ func (p *partitionProcessor) Start(ctx context.Context) func() {
 	p.wg.Add(1)
 	go func() {
 		defer func() {
-			p.unregisterMetrics()
 			level.Info(p.logger).Log("msg", "stopped partition processor")
 			p.wg.Done()
 		}()
@@ -170,13 +169,6 @@ func (p *partitionProcessor) Start(ctx context.Context) func() {
 			case record, ok := <-p.recordsChan:
 				if !ok {
 					level.Info(p.logger).Log("msg", "stopping partition processor, channel closed")
-					// Channel was closed. This means no more records will be
-					// received. We need to flush what we have to avoid data
-					// loss because of how the consumer is torn down between
-					// starting and running phases in [kafka.ReaderService].
-					if err := p.finalFlush(ctx); err != nil {
-						level.Error(p.logger).Log("msg", "failed to flush", "err", err)
-					}
 					return
 				}
 				p.processRecord(ctx, record)
@@ -189,14 +181,6 @@ func (p *partitionProcessor) Start(ctx context.Context) func() {
 		}
 	}()
 	return p.wg.Wait
-}
-
-func (p *partitionProcessor) unregisterMetrics() {
-	if p.builder != nil {
-		p.builder.UnregisterMetrics(p.reg)
-	}
-	p.metrics.unregister(p.reg)
-	p.uploader.UnregisterMetrics(p.reg)
 }
 
 func (p *partitionProcessor) initBuilder() error {
@@ -409,24 +393,4 @@ func (p *partitionProcessor) needsIdleFlush() bool {
 		return false
 	}
 	return p.clock.Since(p.lastModified) > p.idleFlushTimeout
-}
-
-func (p *partitionProcessor) finalFlush(ctx context.Context) error {
-	if !p.needsFinalFlush() {
-		return nil
-	}
-	if err := p.flushAndCommit(ctx); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (p *partitionProcessor) needsFinalFlush() bool {
-	if p.builder == nil || p.builder.GetEstimatedSize() == 0 {
-		return false
-	}
-	if p.lastModified.IsZero() {
-		return false
-	}
-	return true
 }
