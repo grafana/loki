@@ -71,7 +71,7 @@ type DataObjSections struct {
 	Streams          []int64
 	Sections         []int
 	TimeRange        TimeRange
-	LabelsByStreamID map[int64]labels.Labels
+	LabelsByStreamID map[int64][]string
 }
 
 // Catalog is an interface that provides methods for interacting with

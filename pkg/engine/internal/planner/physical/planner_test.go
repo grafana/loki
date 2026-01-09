@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
@@ -878,9 +877,9 @@ func TestPlanner_MetadataColumnResolution(t *testing.T) {
 					StreamIDs:  []int64{1, 2},
 					Start:      timeStart,
 					End:        timeEnd,
-					LabelsByStreamID: map[int64]labels.Labels{
-						1: labels.FromStrings("app", "foo"),
-						2: labels.FromStrings("app", "bar"),
+					LabelsByStreamID: map[int64][]string{
+						1: []string{"app", "foo"},
+						2: []string{"app", "bar"},
 					},
 				},
 			},

@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/oklog/ulid/v2"
-	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/logical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
@@ -220,9 +219,9 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) (Node, e
 		// when they aren't in any of the label sets seen for this query.
 		allLblNames := map[string]struct{}{}
 		for _, lbls := range dataObj.LabelsByStreamID {
-			lbls.Range(func(l labels.Label) {
-				allLblNames[l.Name] = struct{}{}
-			})
+			for _, lbl := range lbls {
+				allLblNames[lbl] = struct{}{}
+			}
 		}
 
 		lblNames := make([]string, 0, len(allLblNames))

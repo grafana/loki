@@ -640,7 +640,7 @@ func TestSectionsForLabelsByStreamID(t *testing.T) {
 
 			if tt.wantLabelsByStreamID != nil {
 				// Collect all stream ID -> labels mappings across all sections
-				gotLabelsByStreamID := make(map[int64]labels.Labels)
+				gotLabelsByStreamID := make(map[int64][]string)
 				for _, section := range sectionsResp.Sections {
 					for streamID, lbls := range section.LabelsByStreamID {
 						gotLabelsByStreamID[streamID] = lbls

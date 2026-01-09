@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
@@ -94,9 +93,9 @@ var mockedMetastoreSections = []*metastore.DataobjSectionDescriptor{
 		Size:      1 << 10,
 		Start:     time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC),
 		End:       time.Date(2025, time.January, 1, 0, 30, 0, 0, time.UTC),
-		LabelsByStreamID: map[int64]labels.Labels{
-			1: labels.FromStrings("app", "one", "foo", "bar"),
-			2: labels.FromStrings("app", "two", "foo", "bar"),
+		LabelsByStreamID: map[int64][]string{
+			1: []string{"app", "one", "foo", "bar"},
+			2: []string{"app", "two", "foo", "bar"},
 		},
 	},
 	{
@@ -109,9 +108,9 @@ var mockedMetastoreSections = []*metastore.DataobjSectionDescriptor{
 		Size:      1 << 10,
 		Start:     time.Date(2025, time.January, 1, 0, 30, 0, 0, time.UTC),
 		End:       time.Date(2025, time.January, 1, 1, 0, 0, 0, time.UTC),
-		LabelsByStreamID: map[int64]labels.Labels{
-			1: labels.FromStrings("app", "one", "foo", "bar"),
-			2: labels.FromStrings("app", "two", "foo", "bar"),
+		LabelsByStreamID: map[int64][]string{
+			1: []string{"app", "one", "foo", "bar"},
+			2: []string{"app", "two", "foo", "bar"},
 		},
 	},
 }

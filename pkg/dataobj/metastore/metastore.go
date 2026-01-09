@@ -58,7 +58,7 @@ type IndexSectionsReaderResponse struct {
 
 type CollectSectionsRequest struct {
 	Reader           ArrowRecordBatchReader
-	LabelsByStreamID map[int64]labels.Labels
+	LabelsByStreamID map[int64][]string
 }
 
 type CollectSectionsResponse struct {

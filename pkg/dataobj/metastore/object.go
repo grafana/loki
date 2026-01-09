@@ -61,14 +61,14 @@ type DataobjSectionDescriptor struct {
 	Size             int64
 	Start            time.Time
 	End              time.Time
-	LabelsByStreamID map[int64]labels.Labels
+	LabelsByStreamID map[int64][]string
 }
 
 func NewSectionDescriptor(pointer pointers.SectionPointer) *DataobjSectionDescriptor {
-	return NewSectionDescriptorWithLabels(pointer, labels.EmptyLabels())
+	return NewSectionDescriptorWithLabels(pointer, nil)
 }
 
-func NewSectionDescriptorWithLabels(pointer pointers.SectionPointer, lbls labels.Labels) *DataobjSectionDescriptor {
+func NewSectionDescriptorWithLabels(pointer pointers.SectionPointer, lbls []string) *DataobjSectionDescriptor {
 	return &DataobjSectionDescriptor{
 		SectionKey: SectionKey{
 			ObjectPath: pointer.Path,
@@ -79,7 +79,7 @@ func NewSectionDescriptorWithLabels(pointer pointers.SectionPointer, lbls labels
 		Size:      pointer.UncompressedSize,
 		Start:     pointer.StartTs,
 		End:       pointer.EndTs,
-		LabelsByStreamID: map[int64]labels.Labels{
+		LabelsByStreamID: map[int64][]string{
 			pointer.StreamIDRef: lbls,
 		},
 	}
@@ -97,18 +97,15 @@ func (d *DataobjSectionDescriptor) Merge(pointer pointers.SectionPointer) {
 	}
 }
 
-func (d *DataobjSectionDescriptor) MergeWithLabels(pointer pointers.SectionPointer, lbls labels.Labels) {
+func (d *DataobjSectionDescriptor) MergeWithLabels(pointer pointers.SectionPointer, lbls []string) {
 	curLbls, exists := d.LabelsByStreamID[pointer.StreamIDRef]
 	if !exists {
 		d.LabelsByStreamID[pointer.StreamIDRef] = lbls
 		return
 	}
 
-	b := labels.NewBuilder(curLbls)
-	lbls.Range(func(l labels.Label) {
-		b.Set(l.Name, l.Value)
-	})
-	d.LabelsByStreamID[pointer.StreamIDRef] = b.Labels()
+	curLbls = append(curLbls, lbls...)
+	d.LabelsByStreamID[pointer.StreamIDRef] = curLbls
 
 	d.Merge(pointer)
 }
@@ -525,10 +522,19 @@ func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (Se
 			if err != nil {
 				return fmt.Errorf("getting object from bucket: %w", err)
 			}
-			labelsByStreamID := map[int64]labels.Labels{}
+			labelsByStreamID := map[int64][]string{}
 			predicate := streamPredicateFromMatchers(req.Start, req.End, req.Matchers...)
 			err = forEachStream(ctx, object, predicate, func(s streams.Stream) {
-				labelsByStreamID[s.ID] = s.Labels
+				lbls, exists := labelsByStreamID[s.ID]
+				if !exists {
+					lbls = make([]string, 0, s.Labels.Len())
+				}
+
+				s.Labels.Range(func(l labels.Label) {
+					lbls = append(lbls, l.Name)
+				})
+
+				labelsByStreamID[s.ID] = lbls
 			})
 			if err != nil {
 				level.Warn(m.logger).Log("msg", "failed to get labels for streams", "err", err)
@@ -678,7 +684,7 @@ func (m *ObjectMetastore) CollectSections(ctx context.Context, req CollectSectio
 	}, nil
 }
 
-func addSectionDescriptors(rec arrow.RecordBatch, result map[SectionKey]*DataobjSectionDescriptor, labels map[int64]labels.Labels) error {
+func addSectionDescriptors(rec arrow.RecordBatch, result map[SectionKey]*DataobjSectionDescriptor, labels map[int64][]string) error {
 	numRows := int(rec.NumRows())
 	buf := make([]pointers.SectionPointer, numRows)
 	num, err := pointers.FromRecordBatch(rec, buf, pointers.PopulateSection)
@@ -692,14 +698,14 @@ func addSectionDescriptors(rec arrow.RecordBatch, result map[SectionKey]*Dataobj
 		lbls, lblsOk := labels[ptr.StreamIDRef]
 		existing, ok := result[key]
 		if !ok {
-			if lblsOk && lbls.Len() > 0 {
+			if lblsOk && len(lbls) > 0 {
 				result[key] = NewSectionDescriptorWithLabels(ptr, lbls)
 			} else {
 				result[key] = NewSectionDescriptor(ptr)
 			}
 			continue
 		}
-		if lblsOk && lbls.Len() > 0 {
+		if lblsOk && len(lbls) > 0 {
 			existing.MergeWithLabels(ptr, lbls)
 		} else {
 			existing.Merge(ptr)

@@ -116,7 +116,7 @@ func (r *indexSectionsReader) totalReadRows() uint64 {
 }
 
 // filterLabelPredicates removes predicates that reference known stream labels.
-// This prevents false negatives on structured metadata columns with the name name.
+// This prevents false negatives on structured metadata columns with the same name.
 func (r *indexSectionsReader) filterLabelPredicates() {
 	if r.predicatesFiltered {
 		return
