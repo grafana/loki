@@ -78,6 +78,8 @@ type partitionProcessor struct {
 
 	// earliestRecordTime tracks the earliest timestamp all the records Appended to the builder for each object.
 	earliestRecordTime time.Time
+	// firstAppendTime tracks the time of the first append to the builder, as `earliestRecordTime` is highly influenced by scenarios of severe lagging.
+	firstAppendTime time.Time
 
 	// Metrics
 	metrics *partitionOffsetMetrics
@@ -272,7 +274,7 @@ func (p *partitionProcessor) processRecord(ctx context.Context, record partition
 
 	p.metrics.processedBytes.Add(float64(stream.Size()))
 
-	if p.maxDataObjAge > 0 && p.clock.Since(p.earliestRecordTime) > p.maxDataObjAge {
+	if p.shouldFlushDueToMaxAge() {
 		p.metrics.incFlushDueToMaxAgeTotal()
 		if err := p.flushAndCommit(ctx); err != nil {
 			level.Error(p.logger).Log("msg", "failed to flush and commit dataobj that reached max age", "err", err)
@@ -298,8 +300,19 @@ func (p *partitionProcessor) processRecord(ctx context.Context, record partition
 		}
 	}
 
+	if p.firstAppendTime.IsZero() {
+		p.firstAppendTime = p.clock.Now()
+	}
+
 	p.lastRecord = &record
 	p.lastModified = p.clock.Now()
+}
+
+func (p *partitionProcessor) shouldFlushDueToMaxAge() bool {
+	return p.maxDataObjAge > 0 &&
+		p.builder.GetEstimatedSize() > 0 &&
+		!p.firstAppendTime.IsZero() &&
+		p.clock.Since(p.firstAppendTime) > p.maxDataObjAge
 }
 
 // flushAndCommit flushes the builder and, if successful, commits the offset
