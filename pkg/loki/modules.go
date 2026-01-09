@@ -1453,7 +1453,7 @@ func (t *Loki) initV2QueryEngine() (services.Service, error) {
 		toMerge := []middleware.Interface{
 			httpreq.ExtractQueryMetricsMiddleware(),
 			httpreq.ExtractQueryTagsMiddleware(),
-			httpreq.PropagateHeadersMiddleware(httpreq.LokiEncodingFlagsHeader, httpreq.LokiDisablePipelineWrappersHeader),
+			httpreq.PropagateHeadersMiddleware(httpreq.LokiActorPathHeader, httpreq.LokiEncodingFlagsHeader, httpreq.LokiDisablePipelineWrappersHeader),
 			serverutil.RecoveryHTTPMiddleware,
 			t.HTTPAuthMiddleware,
 			serverutil.NewPrepopulateMiddleware(),

@@ -30,6 +30,9 @@ var shortCircuitsTotal = promauto.NewCounter(prometheus.CounterOpts{
 
 // Options configures a [Workflow].
 type Options struct {
+	Tenant string   // Tenant ID associated with the workflow.
+	Actor  []string // Optional path to the actor that is generating the workflow.
+
 	// MaxRunningScanTasks specifies the maximum number of scan tasks that may
 	// run concurrently within a single workflow. 0 means no limit.
 	MaxRunningScanTasks int
@@ -81,14 +84,14 @@ type Workflow struct {
 // cannot be partitioned into a Workflow.
 //
 // The provided Runner will be used for Workflow execution.
-func New(opts Options, logger log.Logger, tenantID string, runner Runner, plan *physical.Plan) (*Workflow, error) {
-	graph, err := planWorkflow(tenantID, plan)
+func New(opts Options, logger log.Logger, runner Runner, plan *physical.Plan) (*Workflow, error) {
+	graph, err := planWorkflow(opts.Tenant, plan)
 	if err != nil {
 		return nil, err
 	}
 
 	// Inject a stream for final task results.
-	results, err := injectResultsStream(tenantID, &graph)
+	results, err := injectResultsStream(opts.Tenant, &graph)
 	if err != nil {
 		return nil, err
 	}
@@ -134,6 +137,10 @@ func injectResultsStream(tenantID string, graph *dag.Graph[*Task]) (*Stream, err
 // init initializes the workflow.
 func (wf *Workflow) init(ctx context.Context) error {
 	wf.manifest = &Manifest{
+		ID:     ulid.Make(),
+		Tenant: wf.opts.Tenant,
+		Actor:  wf.opts.Actor,
+
 		Streams: wf.allStreams(),
 		Tasks:   wf.allTasks(),
 
