@@ -59,7 +59,7 @@ func main() {
 	}
 
 	start := time.Now()
-	sortedObj, closer, err := b.CopyAndSort(orig)
+	sortedObj, closer, err := b.CopyAndSort(ctx, orig)
 	duration := time.Since(start)
 	if err != nil {
 		log.Fatal(err)
