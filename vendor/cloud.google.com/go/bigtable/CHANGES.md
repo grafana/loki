@@ -1,5 +1,24 @@
 # Changes
 
+## [1.41.0](https://github.com/googleapis/google-cloud-go/releases/tag/bigtable%2Fv1.41.0) (2025-12-15)
+
+### Features
+
+* Add experimental Bigtable connection pool with custom load balancing strategy.  (#12882) ([7aa9612](https://github.com/googleapis/google-cloud-go/commit/7aa96127a9903d47e8b2834b53e4bd229145161c))
+* Enable ALTS hard bound token in Bigtable w/ direct access (#13153) ([9023934](https://github.com/googleapis/google-cloud-go/commit/9023934127b4aaf8ba02e00486ef0f2fb9822137))
+* Enable routing cookie and attempt headers for enhanced retries (#12964) ([96cfd47](https://github.com/googleapis/google-cloud-go/commit/96cfd47ad729d3507c192e5a73e7473e7c6e7c5a))
+* add PeerInfo proto in Bigtable API ([185951b](https://github.com/googleapis/google-cloud-go/commit/185951b3bea9fb942979e81ce248ccdebb40d94b))
+* precompute featureflags in client and reuse (#13297) ([3b3253a](https://github.com/googleapis/google-cloud-go/commit/3b3253ac1d5c671263456e810cb497d95668fdd0))
+
+### Bug Fixes
+
+* fix project id sent in otel (#13286) ([4865868](https://github.com/googleapis/google-cloud-go/commit/4865868c011724cf51e0141bad3d02a2e9caa78a))
+* screaming uppercase metric status (#13484) ([b35ee8f](https://github.com/googleapis/google-cloud-go/commit/b35ee8fd73f7d740d40b0ed3be4ef0c716cb4eac))
+
+### Performance Improvements
+
+* parallelize the exportTimeSeries function (#13004) ([bafd691](https://github.com/googleapis/google-cloud-go/commit/bafd691de181bf19f39e55d15e1782156524b6ae))
+
 ## [1.40.1](https://github.com/googleapis/google-cloud-go/compare/bigtable/v1.40.0...bigtable/v1.40.1) (2025-09-26)
 
 

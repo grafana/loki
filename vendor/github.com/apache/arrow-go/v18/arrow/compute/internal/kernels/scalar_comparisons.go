@@ -36,9 +36,11 @@ import (
 
 type binaryKernel func(left, right, out []byte, offset int)
 
-type cmpFn[LeftT, RightT arrow.FixedWidthType] func([]LeftT, []RightT, []uint32)
-type cmpScalarLeft[LeftT, RightT arrow.FixedWidthType] func(LeftT, []RightT, []uint32)
-type cmpScalarRight[LeftT, RightT arrow.FixedWidthType] func([]LeftT, RightT, []uint32)
+type (
+	cmpFn[LeftT, RightT arrow.FixedWidthType]          func([]LeftT, []RightT, []uint32)
+	cmpScalarLeft[LeftT, RightT arrow.FixedWidthType]  func(LeftT, []RightT, []uint32)
+	cmpScalarRight[LeftT, RightT arrow.FixedWidthType] func([]LeftT, RightT, []uint32)
+)
 
 type cmpOp[T arrow.FixedWidthType] struct {
 	arrArr    cmpFn[T, T]
@@ -108,7 +110,7 @@ func comparePrimitiveArrayScalar[T arrow.FixedWidthType](op cmpScalarRight[T, T]
 		}
 
 		for j := 0; j < nbatches; j++ {
-			op(left, rightVal, tmpOutSlice)
+			op(left[:batchSize], rightVal, tmpOutSlice)
 			left = left[batchSize:]
 			packBits(tmpOutput, out)
 			out = out[batchSize/8:]
@@ -589,7 +591,7 @@ func compareTimestampKernel(ty exec.InputType, op CompareOperator) exec.ScalarKe
 var (
 	boolEQ = binaryBoolOps{
 		arrArr: func(_ *exec.KernelCtx, lhs, rhs, out bitutil.Bitmap) error {
-			bitutil.BitmapAnd(lhs.Data, rhs.Data, lhs.Offset, rhs.Offset, out.Data, out.Offset, out.Len)
+			bitutil.BitmapXnor(lhs.Data, rhs.Data, lhs.Offset, rhs.Offset, out.Data, out.Offset, out.Len)
 			return nil
 		},
 		arrScalar: func(_ *exec.KernelCtx, lhs bitutil.Bitmap, rhs bool, out bitutil.Bitmap) error {

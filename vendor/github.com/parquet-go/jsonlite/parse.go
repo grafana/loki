@@ -3,8 +3,14 @@ package jsonlite
 import (
 	"errors"
 	"fmt"
-	"slices"
+	"hash/maphash"
 	"strings"
+	"unsafe"
+)
+
+const (
+	// DefaultMaxDepth is the default maximum depth for parsing JSON objects.
+	DefaultMaxDepth = 100
 )
 
 var (
@@ -109,10 +115,13 @@ func nextToken(s string) (token, rest string, ok bool) {
 	}
 }
 
-// Parse parses JSON data and returns a pointer to the root Value.
+// ParseMaxDepth parses JSON data with a maximum nesting depth for objects.
+// Objects at maxDepth <= 0 are stored unparsed and will be lazily parsed
+// when accessed via Lookup(), Array(), or Object() methods.
+// Depth is only decremented for objects, not arrays.
 // Returns an error if the JSON is malformed or empty.
-func Parse(data string) (*Value, error) {
-	v, rest, err := parseValue(data)
+func ParseMaxDepth(data string, maxDepth int) (*Value, error) {
+	v, rest, err := parseValue(data, max(0, maxDepth))
 	if err != nil {
 		return nil, err
 	}
@@ -123,10 +132,14 @@ func Parse(data string) (*Value, error) {
 	return &v, nil
 }
 
+// Parse parses JSON data and returns a pointer to the root Value.
+// Returns an error if the JSON is malformed or empty.
+func Parse(data string) (*Value, error) { return ParseMaxDepth(data, DefaultMaxDepth) }
+
 // parseValue parses a JSON value from s.
 // Returns the parsed value, the remaining unparsed string, and any error.
 // The string is passed by value to keep it in registers.
-func parseValue(s string) (Value, string, error) {
+func parseValue(s string, maxDepth int) (Value, string, error) {
 	token, rest, ok := nextToken(s)
 	if !ok {
 		return Value{}, rest, errUnexpectedEndOfObject
@@ -136,27 +149,27 @@ func parseValue(s string) (Value, string, error) {
 		if token != "null" {
 			return Value{}, rest, fmt.Errorf("invalid token: %q", token)
 		}
-		return makeNullValue(), rest, nil
+		return makeNullValue(token[:4]), rest, nil
 	case 't':
 		if token != "true" {
 			return Value{}, rest, fmt.Errorf("invalid token: %q", token)
 		}
-		return makeTrueValue(), rest, nil
+		return makeTrueValue(token[:4]), rest, nil
 	case 'f':
 		if token != "false" {
 			return Value{}, rest, fmt.Errorf("invalid token: %q", token)
 		}
-		return makeFalseValue(), rest, nil
+		return makeFalseValue(token[:5]), rest, nil
 	case '"':
-		str, err := Unquote(token)
-		if err != nil {
+		// Validate the quoted string but store the quoted token
+		if !validString(token) {
 			return Value{}, rest, fmt.Errorf("invalid token: %q", token)
 		}
-		return makeStringValue(str), rest, nil
+		return makeStringValue(token), rest, nil
 	case '[':
-		return parseArray(rest)
+		return parseArray(s, rest, maxDepth)
 	case '{':
-		return parseObject(rest)
+		return parseObject(s, rest, maxDepth)
 	case ']':
 		return Value{}, rest, errEndOfArray
 	case '}':
@@ -171,85 +184,122 @@ func parseValue(s string) (Value, string, error) {
 	}
 }
 
-func parseArray(s string) (Value, string, error) {
+func parseArray(start, json string, maxDepth int) (Value, string, error) {
 	elements := make([]Value, 0, 32)
 
 	for i := 0; ; i++ {
 		if i != 0 {
-			token, rest, ok := nextToken(s)
+			token, rest, ok := nextToken(json)
 			if !ok {
-				return Value{}, s, errUnexpectedEndOfArray
+				return Value{}, json, errUnexpectedEndOfArray
 			}
 			if token == "]" {
-				return makeArrayValue(slices.Clone(elements)), rest, nil
+				cached := start[:len(start)-len(rest)]
+				result := make([]Value, len(elements)+1)
+				result[0] = makeStringValue(cached)
+				copy(result[1:], elements)
+				return makeArrayValue(result), rest, nil
 			}
 			if token != "," {
-				return Value{}, s, fmt.Errorf("expected ',' or ']', got %q", token)
+				return Value{}, json, fmt.Errorf("expected ',' or ']', got %q", token)
 			}
-			s = rest
+			json = rest
 		}
 
-		v, rest, err := parseValue(s)
+		v, rest, err := parseValue(json, maxDepth)
 		if err != nil {
 			if i == 0 && err == errEndOfArray {
-				return makeArrayValue(slices.Clone(elements)), rest, nil
+				cached := start[:len(start)-len(rest)]
+				result := make([]Value, len(elements)+1)
+				result[0] = makeStringValue(cached)
+				copy(result[1:], elements)
+				return makeArrayValue(result), rest, nil
 			}
 			if err == errEndOfArray {
-				return Value{}, s, fmt.Errorf("unexpected ']' after ','")
+				return Value{}, json, fmt.Errorf("unexpected ']' after ','")
 			}
-			return Value{}, s, err
+			return Value{}, json, err
 		}
-		s = rest
+		json = rest
 		elements = append(elements, v)
 	}
 }
 
-func parseObject(s string) (Value, string, error) {
+func parseObject(start, json string, maxDepth int) (Value, string, error) {
+	if maxDepth == 0 {
+		depth, remain := 1, json
+		for depth > 0 {
+			token, next, ok := nextToken(remain)
+			if !ok {
+				return Value{}, remain, errUnexpectedEndOfObject
+			}
+			remain = next
+			switch token {
+			case "{":
+				depth++
+			case "}":
+				depth--
+			}
+		}
+		json := start[:len(start)-len(remain)]
+		return makeUnparsedObjectValue(json), remain, nil
+	}
+
+	maxDepth--
 	fields := make([]field, 0, 16)
 
 	for i := 0; ; i++ {
-		token, rest, ok := nextToken(s)
+		token, rest, ok := nextToken(json)
 		if !ok {
-			return Value{}, s, errUnexpectedEndOfObject
+			return Value{}, json, errUnexpectedEndOfObject
 		}
 		if token == "}" {
-			slices.SortFunc(fields, func(a, b field) int {
-				return strings.Compare(a.k, b.k)
-			})
-			return makeObjectValue(slices.Clone(fields)), rest, nil
+			cached := start[:len(start)-len(rest)]
+			result := make([]field, len(fields)+1)
+			copy(result[1:], fields)
+
+			fields := result[1:]
+			hashes := make([]byte, len(fields), (len(fields)*8+1)/8)
+			for i := range fields {
+				hashes[i] = byte(maphash.String(hashseed, fields[i].k))
+			}
+
+			result[0].v = makeStringValue(cached)
+			result[0].k = unsafe.String(unsafe.SliceData(hashes), cap(hashes))
+			return makeObjectValue(result), rest, nil
 		}
-		s = rest
+		json = rest
 
 		if i != 0 {
 			if token != "," {
-				return Value{}, s, fmt.Errorf("expected ',' or '}', got %q", token)
+				return Value{}, json, fmt.Errorf("expected ',' or '}', got %q", token)
 			}
-			token, rest, ok = nextToken(s)
+			token, rest, ok = nextToken(json)
 			if !ok {
-				return Value{}, s, errUnexpectedEndOfObject
+				return Value{}, json, errUnexpectedEndOfObject
 			}
-			s = rest
+			json = rest
 		}
 
 		key, err := Unquote(token)
 		if err != nil {
-			return Value{}, s, fmt.Errorf("invalid key: %q: %w", token, err)
+			return Value{}, json, fmt.Errorf("invalid key: %q: %w", token, err)
 		}
 
-		token, rest, ok = nextToken(s)
+		token, rest, ok = nextToken(json)
 		if !ok {
-			return Value{}, s, errUnexpectedEndOfObject
+			return Value{}, json, errUnexpectedEndOfObject
 		}
 		if token != ":" {
-			return Value{}, s, fmt.Errorf("%q → expected ':', got %q", key, token)
+			return Value{}, json, fmt.Errorf("%q → expected ':', got %q", key, token)
 		}
-		s = rest
+		json = rest
 
-		val, rest, err := parseValue(s)
+		val, rest, err := parseValue(json, maxDepth)
 		if err != nil {
-			return Value{}, s, fmt.Errorf("%q → %w", key, err)
+			return Value{}, json, fmt.Errorf("%q → %w", key, err)
 		}
-		s = rest
+		json = rest
 		fields = append(fields, field{k: key, v: val})
 	}
 }

@@ -6,12 +6,12 @@ import (
 	"math/bits"
 	"reflect"
 	"slices"
-	"sync"
 	"time"
 	"unsafe"
 
 	"github.com/parquet-go/jsonlite"
 	"github.com/parquet-go/parquet-go/deprecated"
+	"github.com/parquet-go/parquet-go/internal/memory"
 	"github.com/parquet-go/parquet-go/sparse"
 	"google.golang.org/protobuf/types/known/structpb"
 )
@@ -99,10 +99,9 @@ func writeRowsFuncOfRequired(t reflect.Type, schema *Schema, path columnPath) wr
 }
 
 func writeRowsFuncOfOptional(t reflect.Type, schema *Schema, path columnPath, writeRows writeRowsFunc) writeRowsFunc {
-	// For slices (nested lists) and interface types, we just increment the
-	// definition level for present values without checking for null indexes.
-	// - Slices: []byte is treated as scalar, other slices are nested lists
-	// - Interface: handled by writeRowsFuncOfInterface which manages levels internally
+	// For interface types, we just increment the definition level for present
+	// values without checking for null indexes.
+	// Interface: handled by writeRowsFuncOfInterface which manages levels internally
 	writeOptional := func(columns []ColumnBuffer, levels columnLevels, rows sparse.Array) {
 		if rows.Len() == 0 {
 			writeRows(columns, levels, rows)
@@ -116,8 +115,33 @@ func writeRowsFuncOfOptional(t reflect.Type, schema *Schema, path columnPath, wr
 	case reflect.Interface:
 		return writeOptional
 	case reflect.Slice:
+		// For slices (nested lists), we need to distinguish between nil slices
+		// and empty slices. Nil slices should not increment the definition level
+		// (they represent null), while non-nil empty slices should increment it
+		// (they represent an empty list).
 		if t.Elem().Kind() != reflect.Uint8 {
-			return writeOptional
+			type sliceHeader struct {
+				base unsafe.Pointer
+				len  int
+				cap  int
+			}
+			return func(columns []ColumnBuffer, levels columnLevels, rows sparse.Array) {
+				if rows.Len() == 0 {
+					writeRows(columns, levels, rows)
+					return
+				}
+				// Process each slice individually to check for nil
+				for i := range rows.Len() {
+					p := (*sliceHeader)(rows.Index(i))
+					elemLevels := levels
+					// A nil slice has base=nil, while an empty slice has base!=nil but len=0
+					// We need to increment definition level for non-nil slices (including empty ones)
+					if p.base != nil {
+						elemLevels.definitionLevel++
+					}
+					writeRows(columns, elemLevels, rows.Slice(i, i+1))
+				}
+			}
 		}
 	}
 
@@ -252,6 +276,12 @@ func writeRowsFuncOfPointer(t reflect.Type, schema *Schema, path columnPath, tag
 		}
 	}
 
+	// Check if the schema node at this path is optional. If not, the pointer
+	// is just a Go implementation detail (like proto message types) and we
+	// should not increment the definition level.
+	node := findByPath(schema, path)
+	isOptional := node != nil && node.Optional()
+
 	return func(columns []ColumnBuffer, levels columnLevels, rows sparse.Array) {
 		if rows.Len() == 0 {
 			writeRows(columns, levels, rows)
@@ -264,7 +294,9 @@ func writeRowsFuncOfPointer(t reflect.Type, schema *Schema, path columnPath, tag
 			elemLevels := levels
 			if p != nil {
 				a = makeArray(p, 1, elemSize)
-				elemLevels.definitionLevel++
+				if isOptional {
+					elemLevels.definitionLevel++
+				}
 			}
 			writeRows(columns, elemLevels, a)
 		}
@@ -276,14 +308,6 @@ func writeRowsFuncOfSlice(t reflect.Type, schema *Schema, path columnPath, tagRe
 	elemType := t.Elem()
 	elemSize := uintptr(elemType.Size())
 	writeRows := writeRowsFuncOf(elemType, schema, path, tagReplacements)
-
-	// When the element is a pointer type, the writeRows function will be an
-	// instance returned by writeRowsFuncOfPointer, which handles incrementing
-	// the definition level if the pointer value is not nil.
-	definitionLevelIncrement := byte(0)
-	if elemType.Kind() != reflect.Ptr {
-		definitionLevelIncrement = 1
-	}
 
 	return func(columns []ColumnBuffer, levels columnLevels, rows sparse.Array) {
 		type sliceHeader struct {
@@ -307,7 +331,7 @@ func writeRowsFuncOfSlice(t reflect.Type, schema *Schema, path columnPath, tagRe
 			elemLevels := levels
 			if a.Len() > 0 {
 				b = a.Slice(0, 1)
-				elemLevels.definitionLevel += definitionLevelIncrement
+				elemLevels.definitionLevel++
 			}
 
 			writeRows(columns, elemLevels, b)
@@ -395,6 +419,14 @@ func writeRowsFuncOfInterface(t reflect.Type, schema *Schema, path columnPath) w
 	}
 
 	columnIndex := findColumnIndex(schema, node, path)
+	if columnIndex < 0 {
+		// Empty group node (e.g., from interface{} in map[string]any).
+		// Return a no-op function since there are no columns to write.
+		return func(columns []ColumnBuffer, levels columnLevels, rows sparse.Array) {
+			// No-op: nothing to write for empty groups
+		}
+	}
+
 	// Get the schema-based write function for this node
 	_, writeValue := writeValueFuncOf(columnIndex, node)
 
@@ -420,6 +452,13 @@ func writeRowsFuncOfMapToGroup(t reflect.Type, schema *Schema, path columnPath, 
 	}
 
 	fields := groupNode.Fields()
+	if len(fields) == 0 {
+		// Empty group - return no-op function
+		return func(columns []ColumnBuffer, levels columnLevels, rows sparse.Array) {
+			// No-op: empty group has no fields to write
+		}
+	}
+
 	writers := make([]fieldWriter, len(fields))
 	valueType := t.Elem()
 	columnIndex := findColumnIndex(schema, findByPath(schema, path), path)
@@ -448,12 +487,12 @@ func writeRowsFuncOfMapToGroup(t reflect.Type, schema *Schema, path columnPath, 
 	switch {
 	case t.ConvertibleTo(reflect.TypeFor[map[string]string]()):
 		writeMaps = func(columns []ColumnBuffer, levels columnLevels, rows sparse.Array) {
-			buffer, _ := stringArrayPool.Get().(*stringArray)
-			if buffer == nil {
-				buffer = new(stringArray)
-			}
 			numRows := rows.Len()
 			numValues := len(writers) * numRows
+			buffer := stringArrayPool.Get(
+				func() *stringArray { return new(stringArray) },
+				func(b *stringArray) { b.values = b.values[:0] },
+			)
 			buffer.values = slices.Grow(buffer.values, numValues)[:numValues]
 			defer stringArrayPool.Put(buffer)
 			defer clear(buffer.values)
@@ -512,11 +551,13 @@ func writeRowsFuncOfMapToGroup(t reflect.Type, schema *Schema, path columnPath, 
 
 type stringArray struct{ values []string }
 
-var stringArrayPool sync.Pool // *stringArray
+var stringArrayPool memory.Pool[stringArray]
 
 // findColumnIndex finds the column index for a given node and path.
 // For leaf nodes, returns the column index directly.
 // For group nodes, recursively finds the first leaf column.
+// Returns -1 for empty group nodes (groups with no fields), which can occur
+// when using interface{} types in maps (e.g., map[string]any).
 func findColumnIndex(schema *Schema, node Node, path columnPath) int16 {
 	col := schema.lazyLoadState().mapping.lookup(path)
 	if col.columnIndex >= 0 {
@@ -527,7 +568,9 @@ func findColumnIndex(schema *Schema, node Node, path columnPath) int16 {
 	}
 	fields := node.Fields()
 	if len(fields) == 0 {
-		panic("group node has no fields at path: " + path.String())
+		// Empty group nodes can occur with interface{} types (e.g., map[string]any).
+		// Return -1 to indicate there are no columns to write.
+		return -1
 	}
 	firstFieldPath := path.append(fields[0].Name())
 	return findColumnIndex(schema, fields[0], firstFieldPath)
@@ -549,6 +592,11 @@ func writeRowsFuncOfMap(t reflect.Type, schema *Schema, path columnPath, tagRepl
 	writeKeys := writeRowsFuncOf(keyType, schema, keyPath, tagReplacements)
 
 	valuePath := path.append("key_value", "value")
+	valueNode := findByPath(schema, valuePath)
+	// If the value is a LIST type, adjust the path to include list/element
+	if valueNode != nil && isList(valueNode) {
+		valuePath = valuePath.append("list", "element")
+	}
 	valueType := t.Elem()
 	writeValues := writeRowsFuncOf(valueType, schema, valuePath, tagReplacements)
 
@@ -601,26 +649,36 @@ func writeRowsFuncOfJSON(t reflect.Type, schema *Schema, path columnPath) writeR
 	}
 
 	columnIndex := findColumnIndex(schema, schema, path)
+	if columnIndex < 0 {
+		// Empty group - return no-op function
+		return func(columns []ColumnBuffer, levels columnLevels, rows sparse.Array) {
+			// No-op: empty group has no columns to write
+		}
+	}
+
 	return func(columns []ColumnBuffer, levels columnLevels, rows sparse.Array) {
 		if rows.Len() == 0 {
 			columns[columnIndex].writeNull(levels)
 			return
 		}
 
-		buf := getColumnWriteBuffer()
-		defer putColumnWriteBuffer(buf)
+		b := memory.SliceBuffer[byte]{}
+		w := memory.SliceWriter{Buffer: &b}
+		defer b.Reset()
 
 		for i := range rows.Len() {
-			val := reflect.NewAt(t, rows.Index(i))
-			buf.Reset()
+			v := reflect.NewAt(t, rows.Index(i))
+			b.Resize(0)
 
-			enc := json.NewEncoder(buf)
-			err := enc.Encode(val.Interface())
-			if err != nil {
+			enc := json.NewEncoder(w)
+			enc.SetEscapeHTML(false)
+
+			if err := enc.Encode(v.Interface()); err != nil {
 				panic(err)
 			}
 
-			columns[columnIndex].writeByteArray(levels, buf.Bytes())
+			data := b.Slice()
+			columns[columnIndex].writeByteArray(levels, data[:len(data)-1])
 		}
 	}
 }
@@ -709,6 +767,13 @@ func writeRowsFuncFor[T any](schema *Schema, path columnPath) writeRowsFunc {
 	}
 
 	columnIndex := findColumnIndex(schema, node, path)
+	if columnIndex < 0 {
+		// Empty group - return no-op function
+		return func(columns []ColumnBuffer, levels columnLevels, rows sparse.Array) {
+			// No-op: empty group has no columns to write
+		}
+	}
+
 	_, writeValue := writeValueFuncOf(columnIndex, node)
 
 	return func(columns []ColumnBuffer, levels columnLevels, rows sparse.Array) {

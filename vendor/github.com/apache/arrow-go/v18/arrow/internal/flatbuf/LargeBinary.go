@@ -22,8 +22,8 @@ import (
 	flatbuffers "github.com/google/flatbuffers/go"
 )
 
-// / Same as Binary, but with 64-bit offsets, allowing to represent
-// / extremely large data values.
+/// Same as Binary, but with 64-bit offsets, allowing to represent
+/// extremely large data values.
 type LargeBinary struct {
 	_tab flatbuffers.Table
 }
@@ -33,6 +33,21 @@ func GetRootAsLargeBinary(buf []byte, offset flatbuffers.UOffsetT) *LargeBinary 
 	x := &LargeBinary{}
 	x.Init(buf, n+offset)
 	return x
+}
+
+func FinishLargeBinaryBuffer(builder *flatbuffers.Builder, offset flatbuffers.UOffsetT) {
+	builder.Finish(offset)
+}
+
+func GetSizePrefixedRootAsLargeBinary(buf []byte, offset flatbuffers.UOffsetT) *LargeBinary {
+	n := flatbuffers.GetUOffsetT(buf[offset+flatbuffers.SizeUint32:])
+	x := &LargeBinary{}
+	x.Init(buf, n+offset+flatbuffers.SizeUint32)
+	return x
+}
+
+func FinishSizePrefixedLargeBinaryBuffer(builder *flatbuffers.Builder, offset flatbuffers.UOffsetT) {
+	builder.FinishSizePrefixed(offset)
 }
 
 func (rcv *LargeBinary) Init(buf []byte, i flatbuffers.UOffsetT) {

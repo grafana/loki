@@ -126,11 +126,7 @@ spec:
         {{- if and .Values.sidecar.rules.enabled .Values.ruler.sidecar }}
         - name: loki-sc-rules
           {{- $dict := dict "service" .Values.sidecar.image "global" .Values.global }}
-          {{- if .Values.sidecar.image.sha }}
-          image: "{{ include "loki.baseImage" $dict }}@sha256:{{ .Values.sidecar.image.sha }}"
-          {{- else }}
           image: {{ include "loki.baseImage" $dict }}
-          {{- end }}
           imagePullPolicy: {{ .Values.sidecar.image.pullPolicy }}
           env:
             - name: METHOD
