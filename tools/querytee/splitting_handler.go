@@ -37,6 +37,7 @@ func NewSplittingHandler(
 	goldfishManager goldfish.Manager,
 	logger log.Logger,
 	preferredBackend *ProxyBackend,
+	skipFanoutWhenNotSampling bool,
 ) (http.Handler, error) {
 	if preferredBackend == nil {
 		return tenantHandler(queryrange.NewSerializeHTTPHandler(fanOutHandler, codec), logger), nil
@@ -64,13 +65,14 @@ func NewSplittingHandler(
 	logsQueryHandler := splitHandlerFactory.createSplittingHandler(false, preferredRT)
 
 	splittingHandler := &SplittingHandler{
-		codec:               codec,
-		fanOutHandler:       fanOutHandler,
-		goldfishManager:     goldfishManager,
-		logger:              logger,
-		logsQueryHandler:    logsQueryHandler,
-		metricsQueryHandler: metricsQueryHandler,
-		defaultHandler:      preferredRT,
+		codec:                     codec,
+		fanOutHandler:             fanOutHandler,
+		goldfishManager:           goldfishManager,
+		logger:                    logger,
+		logsQueryHandler:          logsQueryHandler,
+		metricsQueryHandler:       metricsQueryHandler,
+		defaultHandler:            preferredRT,
+		skipFanoutWhenNotSampling: skipFanoutWhenNotSampling,
 	}
 
 	return tenantHandler(splittingHandler, logger), nil

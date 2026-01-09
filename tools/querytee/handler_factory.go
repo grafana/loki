@@ -58,16 +58,15 @@ func NewHandlerFactory(cfg HandlerFactoryConfig) *HandlerFactory {
 func (f *HandlerFactory) CreateHandler(routeName string, comp comparator.ResponsesComparator) (http.Handler, error) {
 	// Create the fan-out handler that sends requests to all backends
 	fanOutHandler := NewFanOutHandler(FanOutHandlerConfig{
-		Backends:                  f.backends,
-		Codec:                     f.codec,
-		Comparator:                comp,
-		GoldfishManager:           f.goldfishManager,
-		InstrumentCompares:        f.instrumentCompares,
-		EnableRace:                f.enableRace,
-		Logger:                    f.logger,
-		Metrics:                   f.metrics,
-		RouteName:                 routeName,
-		SkipFanOutWhenNotSampling: f.skipFanOutWhenNotSampling,
+		Backends:           f.backends,
+		Codec:              f.codec,
+		Comparator:         comp,
+		GoldfishManager:    f.goldfishManager,
+		InstrumentCompares: f.instrumentCompares,
+		EnableRace:         f.enableRace,
+		Logger:             f.logger,
+		Metrics:            f.metrics,
+		RouteName:          routeName,
 	})
 
 	var preferredBackend *ProxyBackend
@@ -84,6 +83,7 @@ func (f *HandlerFactory) CreateHandler(routeName string, comp comparator.Respons
 		f.goldfishManager,
 		f.logger,
 		preferredBackend,
+		f.skipFanOutWhenNotSampling,
 	)
 
 	if err != nil {

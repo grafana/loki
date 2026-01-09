@@ -23,48 +23,45 @@ import (
 // It returns the preferred backend's response as soon as ready, while capturing remaining
 // responses for goldfish comparison in the background.
 type FanOutHandler struct {
-	backends                  []*ProxyBackend
-	codec                     queryrangebase.Codec
-	goldfishManager           goldfish.Manager
-	logger                    log.Logger
-	metrics                   *ProxyMetrics
-	routeName                 string
-	comparator                comparator.ResponsesComparator
-	instrumentCompares        bool
-	enableRace                bool
-	raceTolerance             time.Duration
-	skipFanOutWhenNotSampling bool
+	backends           []*ProxyBackend
+	codec              queryrangebase.Codec
+	goldfishManager    goldfish.Manager
+	logger             log.Logger
+	metrics            *ProxyMetrics
+	routeName          string
+	comparator         comparator.ResponsesComparator
+	instrumentCompares bool
+	enableRace         bool
+	raceTolerance      time.Duration
 }
 
 // FanOutHandlerConfig holds configuration for creating a FanOutHandler.
 type FanOutHandlerConfig struct {
-	Backends                  []*ProxyBackend
-	Codec                     queryrangebase.Codec
-	GoldfishManager           goldfish.Manager
-	Logger                    log.Logger
-	Metrics                   *ProxyMetrics
-	RouteName                 string
-	Comparator                comparator.ResponsesComparator
-	InstrumentCompares        bool
-	EnableRace                bool
-	RaceTolerance             time.Duration
-	SkipFanOutWhenNotSampling bool
+	Backends           []*ProxyBackend
+	Codec              queryrangebase.Codec
+	GoldfishManager    goldfish.Manager
+	Logger             log.Logger
+	Metrics            *ProxyMetrics
+	RouteName          string
+	Comparator         comparator.ResponsesComparator
+	InstrumentCompares bool
+	EnableRace         bool
+	RaceTolerance      time.Duration
 }
 
 // NewFanOutHandler creates a new FanOutHandler.
 func NewFanOutHandler(cfg FanOutHandlerConfig) *FanOutHandler {
 	return &FanOutHandler{
-		backends:                  cfg.Backends,
-		codec:                     cfg.Codec,
-		goldfishManager:           cfg.GoldfishManager,
-		logger:                    cfg.Logger,
-		metrics:                   cfg.Metrics,
-		routeName:                 cfg.RouteName,
-		comparator:                cfg.Comparator,
-		instrumentCompares:        cfg.InstrumentCompares,
-		enableRace:                cfg.EnableRace,
-		raceTolerance:             cfg.RaceTolerance,
-		skipFanOutWhenNotSampling: cfg.SkipFanOutWhenNotSampling,
+		backends:           cfg.Backends,
+		codec:              cfg.Codec,
+		goldfishManager:    cfg.GoldfishManager,
+		logger:             cfg.Logger,
+		metrics:            cfg.Metrics,
+		routeName:          cfg.RouteName,
+		comparator:         cfg.Comparator,
+		instrumentCompares: cfg.InstrumentCompares,
+		enableRace:         cfg.EnableRace,
+		raceTolerance:      cfg.RaceTolerance,
 	}
 }
 
