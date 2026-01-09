@@ -368,7 +368,27 @@ func TestPartitionProcessor_FlushDueToMaxAge(t *testing.T) {
 	})
 
 	// A flush should have occurred since firstAppendTime is now old enough.
-	require.Equal(t, p.lastFlushed, recentClock.Now())
+	firstFlushTime := recentClock.Now()
+	require.Equal(t, p.lastFlushed, firstFlushTime)
+
+	// After the flush, the current record was appended to the fresh builder,
+	// so firstAppendTime is set to the current time (not zero).
+	require.Equal(t, p.firstAppendTime, firstFlushTime)
+
+	// Process another record immediately after the flush.
+	recentClock.Advance(time.Second)
+	p.processRecord(ctx, partition.Record{
+		TenantID:  "test-tenant",
+		Content:   b,
+		Timestamp: recentClock.Now(),
+	})
+
+	// No additional flush should have occurred since firstAppendTime was just set.
+	// If firstAppendTime wasn't reset during flush, this would trigger another flush
+	// because Since(oldFirstAppendTime) would still be > maxDataObjAge.
+	require.Equal(t, p.lastFlushed, firstFlushTime)
+	// firstAppendTime should still be from the first append after the flush.
+	require.Equal(t, p.firstAppendTime, firstFlushTime)
 }
 
 func newTestPartitionProcessor(t *testing.T, clock quartz.Clock) *partitionProcessor {

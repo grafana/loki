@@ -364,6 +364,7 @@ func (p *partitionProcessor) flush(ctx context.Context) error {
 	p.lastModified = time.Time{}
 	p.lastFlushed = p.clock.Now()
 	p.earliestRecordTime = time.Time{}
+	p.firstAppendTime = time.Time{}
 
 	return nil
 }
