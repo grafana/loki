@@ -69,7 +69,7 @@ type partitionProcessor struct {
 	// The initial value is the zero time.
 	lastFlushed time.Time
 	// Handling flushing dataobjs even if they are not full or idle for too long.
-	maxDataObjAge time.Duration
+	maxBuilderAge time.Duration
 
 	// lastModified is used to know when the idle is exceeded.
 	// The initial value is zero and must be reset to zero after each flush.
@@ -107,7 +107,7 @@ func newPartitionProcessor(
 	logger log.Logger,
 	reg prometheus.Registerer,
 	idleFlushTimeout time.Duration,
-	maxDataObjAge time.Duration,
+	maxBuilderAge time.Duration,
 	eventsProducerClient *kgo.Client,
 	topic string,
 	partition int32,
@@ -146,7 +146,7 @@ func newPartitionProcessor(
 		metrics:                 metrics,
 		uploader:                uploader,
 		idleFlushTimeout:        idleFlushTimeout,
-		maxDataObjAge:           maxDataObjAge,
+		maxBuilderAge:           maxBuilderAge,
 		eventsProducerClient:    eventsProducerClient,
 		clock:                   quartz.NewReal(),
 		metastorePartitionRatio: int32(metastoreCfg.PartitionRatio),
@@ -303,10 +303,10 @@ func (p *partitionProcessor) processRecord(ctx context.Context, record *kgo.Reco
 }
 
 func (p *partitionProcessor) shouldFlushDueToMaxAge() bool {
-	return p.maxDataObjAge > 0 &&
+	return p.maxBuilderAge > 0 &&
 		p.builder.GetEstimatedSize() > 0 &&
 		!p.firstAppendTime.IsZero() &&
-		p.clock.Since(p.firstAppendTime) > p.maxDataObjAge
+		p.clock.Since(p.firstAppendTime) > p.maxBuilderAge
 }
 
 // flushAndCommit flushes the builder and, if successful, commits the offset
