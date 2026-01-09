@@ -268,7 +268,7 @@ func (p *partitionProcessor) processRecord(ctx context.Context, record *kgo.Reco
 	p.metrics.processedBytes.Add(float64(stream.Size()))
 
 	if p.shouldFlushDueToMaxAge() {
-		p.metrics.incFlushDueToMaxAgeTotal()
+		p.metrics.incFlushesTotal(FlushReasonMaxAge)
 		if err := p.flushAndCommit(ctx); err != nil {
 			level.Error(p.logger).Log("msg", "failed to flush and commit dataobj that reached max age", "err", err)
 			return
@@ -282,6 +282,7 @@ func (p *partitionProcessor) processRecord(ctx context.Context, record *kgo.Reco
 			return
 		}
 
+		p.metrics.incFlushesTotal(FlushReasonBuilderFull)
 		if err := p.flushAndCommit(ctx); err != nil {
 			level.Error(p.logger).Log("msg", "failed to flush and commit", "err", err)
 			return
@@ -409,6 +410,7 @@ func (p *partitionProcessor) idleFlush(ctx context.Context) (bool, error) {
 	if !p.needsIdleFlush() {
 		return false, nil
 	}
+	p.metrics.incFlushesTotal(FlushReasonIdle)
 	if err := p.flushAndCommit(ctx); err != nil {
 		return false, err
 	}
