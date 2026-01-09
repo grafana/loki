@@ -1,6 +1,7 @@
 package dataobj
 
 import (
+	"context"
 	"fmt"
 	"io"
 
@@ -78,7 +79,7 @@ func (b *Builder) Bytes() int {
 // Flush returns an error if the object could not be constructed.
 // [Builder.Reset] is called after a successful flush to discard any pending
 // data, allowing new data to be appended.
-func (b *Builder) Flush() (*Object, io.Closer, error) {
+func (b *Builder) Flush(_ context.Context) (*Object, io.Closer, error) {
 	snapshot, err := b.encoder.Flush()
 	if err != nil {
 		return nil, nil, fmt.Errorf("flushing object: %w", err)

@@ -120,7 +120,7 @@ func TestLogsBuilder_10000Columns(t *testing.T) {
 	err := dataobj.Append(builder)
 	require.NoError(t, err)
 
-	_, closer, err := dataobj.Flush()
+	_, closer, err := dataobj.Flush(t.Context())
 	require.NoError(t, err)
 	require.NoError(t, closer.Close())
 }
@@ -130,5 +130,5 @@ func buildObject(lt *logs.Builder) (*dataobj.Object, io.Closer, error) {
 	if err := builder.Append(lt); err != nil {
 		return nil, nil, err
 	}
-	return builder.Flush()
+	return builder.Flush(context.TODO())
 }

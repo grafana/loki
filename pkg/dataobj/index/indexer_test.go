@@ -310,7 +310,7 @@ func (c *mockCalculator) Calculate(_ context.Context, _ log.Logger, object *data
 	return nil
 }
 
-func (c *mockCalculator) Flush() (*dataobj.Object, io.Closer, error) {
+func (c *mockCalculator) Flush(_ context.Context) (*dataobj.Object, io.Closer, error) {
 	c.flushCallCount++
 	return c.object, io.NopCloser(bytes.NewReader([]byte("test-data"))), nil
 }

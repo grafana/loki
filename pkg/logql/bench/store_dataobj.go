@@ -109,11 +109,11 @@ func NewDataObjStore(dir, tenant string) (*DataObjStore, error) {
 }
 
 // Write implements Store
-func (s *DataObjStore) Write(_ context.Context, streams []logproto.Stream) error {
+func (s *DataObjStore) Write(ctx context.Context, streams []logproto.Stream) error {
 	for _, stream := range streams {
 		if err := s.builder.Append(s.tenant, stream); errors.Is(err, logsobj.ErrBuilderFull) {
 			// If the builder is full, flush it and try again
-			if err := s.flush(); err != nil {
+			if err := s.flush(ctx); err != nil {
 				return fmt.Errorf("failed to flush builder: %w", err)
 			}
 			// Try appending again
@@ -127,24 +127,24 @@ func (s *DataObjStore) Write(_ context.Context, streams []logproto.Stream) error
 	return nil
 }
 
-func (s *DataObjStore) flush() error {
+func (s *DataObjStore) flush(ctx context.Context) error {
 	// Reset the buffer
 	s.buf.Reset()
 
 	timeRanges := s.builder.TimeRanges()
-	obj, closer, err := s.builder.Flush()
+	obj, closer, err := s.builder.Flush(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to flush builder: %w", err)
 	}
 	defer closer.Close()
 
 	// Upload the data object using the uploader
-	path, err := s.uploader.Upload(context.Background(), obj)
+	path, err := s.uploader.Upload(ctx, obj)
 	if err != nil {
 		return fmt.Errorf("failed to upload data object: %w", err)
 	}
 
-	if err = s.logsMetastoreToc.WriteEntry(context.Background(), path, timeRanges); err != nil {
+	if err = s.logsMetastoreToc.WriteEntry(ctx, path, timeRanges); err != nil {
 		return fmt.Errorf("failed to update metastore: %w", err)
 	}
 
@@ -161,43 +161,43 @@ func (s *DataObjStore) Name() string {
 // Close flushes any remaining data and closes resources
 func (s *DataObjStore) Close() error {
 	// Flush any remaining data
-	if err := s.flush(); err != nil {
+	if err := s.flush(context.TODO()); err != nil {
 		return fmt.Errorf("failed to flush remaining data: %w", err)
 	}
 
-	if err := s.buildIndex(); err != nil {
+	if err := s.buildIndex(context.TODO()); err != nil {
 		return fmt.Errorf("failed to build index: %w", err)
 	}
 
 	return nil
 }
 
-func (s *DataObjStore) buildIndex() error {
+func (s *DataObjStore) buildIndex(ctx context.Context) error {
 	flushAndUpload := func(calculator *index.Calculator) error {
 		timeRanges := calculator.TimeRanges()
-		obj, closer, err := calculator.Flush()
+		obj, closer, err := calculator.Flush(ctx)
 		if err != nil {
 			return fmt.Errorf("failed to flush index: %w", err)
 		}
 		defer closer.Close()
 
-		key, err := index.ObjectKey(context.Background(), obj)
+		key, err := index.ObjectKey(ctx, obj)
 		if err != nil {
 			return fmt.Errorf("failed to create object key: %w", err)
 		}
 
-		reader, err := obj.Reader(context.Background())
+		reader, err := obj.Reader(ctx)
 		if err != nil {
 			return fmt.Errorf("failed to create reader for index object: %w", err)
 		}
 		defer reader.Close()
 
-		err = s.indexWriterBucket.Upload(context.Background(), key, reader)
+		err = s.indexWriterBucket.Upload(ctx, key, reader)
 		if err != nil {
 			return fmt.Errorf("failed to upload index: %w", err)
 		}
 
-		err = s.indexMetastoreToc.WriteEntry(context.Background(), key, timeRanges)
+		err = s.indexMetastoreToc.WriteEntry(ctx, key, timeRanges)
 		if err != nil {
 			return fmt.Errorf("failed to update metastore: %w", err)
 		}

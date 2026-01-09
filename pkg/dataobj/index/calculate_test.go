@@ -101,7 +101,7 @@ func createTestLogObject(t *testing.T, tenants int) *dataobj.Object {
 		}
 	}
 
-	obj, closer, err := builder.Flush()
+	obj, closer, err := builder.Flush(t.Context())
 	require.NoError(t, err)
 	t.Cleanup(func() { closer.Close() })
 
@@ -134,7 +134,7 @@ func TestCalculator_Calculate(t *testing.T) {
 
 		// Verify we can flush the results
 		timeRanges := calculator.TimeRanges()
-		obj, closer, err := calculator.Flush()
+		obj, closer, err := calculator.Flush(t.Context())
 		require.NoError(t, err)
 		defer closer.Close()
 
@@ -178,7 +178,7 @@ func TestCalculator_Calculate(t *testing.T) {
 
 		// Verify we can flush the results
 		timeRanges := calculator.TimeRanges()
-		obj, closer, err := calculator.Flush()
+		obj, closer, err := calculator.Flush(t.Context())
 		require.NoError(t, err)
 		defer closer.Close()
 

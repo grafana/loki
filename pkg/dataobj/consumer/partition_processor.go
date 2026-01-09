@@ -31,7 +31,7 @@ import (
 type builder interface {
 	Append(tenant string, stream logproto.Stream) error
 	GetEstimatedSize() int
-	Flush() (*dataobj.Object, io.Closer, error)
+	Flush(ctx context.Context) (*dataobj.Object, io.Closer, error)
 	TimeRanges() []multitenancy.TimeRange
 	UnregisterMetrics(prometheus.Registerer)
 	CopyAndSort(obj *dataobj.Object) (*dataobj.Object, io.Closer, error)
@@ -296,7 +296,7 @@ func (p *partitionProcessor) flush(ctx context.Context) error {
 
 	// The time range must be read before the flush as the builder is reset
 	// at the end of each flush, resetting the time range.
-	obj, closer, err := p.builder.Flush()
+	obj, closer, err := p.builder.Flush(ctx)
 	if err != nil {
 		level.Error(p.logger).Log("msg", "failed to flush builder", "err", err)
 		return err

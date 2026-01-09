@@ -108,7 +108,7 @@ func buildPointersDecoder(t *testing.T, pageSize, pageRows int) *pointers.Sectio
 	builder := dataobj.NewBuilder(nil)
 	require.NoError(t, builder.Append(s))
 
-	obj, closer, err := builder.Flush()
+	obj, closer, err := builder.Flush(t.Context())
 	require.NoError(t, err)
 	t.Cleanup(func() { closer.Close() })
 

@@ -38,7 +38,7 @@ func buildBenchSection(b *testing.B, numPointers int) *pointers.Section {
 	objectBuilder := dataobj.NewBuilder(nil)
 	require.NoError(b, objectBuilder.Append(sectionBuilder))
 
-	obj, closer, err := objectBuilder.Flush()
+	obj, closer, err := objectBuilder.Flush(b.Context())
 	require.NoError(b, err)
 	b.Cleanup(func() { closer.Close() })
 

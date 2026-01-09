@@ -19,7 +19,7 @@ func TestBuilder_preserve_section_version(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	obj, closer, err := builder.Flush()
+	obj, closer, err := builder.Flush(t.Context())
 	require.NoError(t, err)
 	defer closer.Close()
 
@@ -40,7 +40,7 @@ func TestBuilder_preserve_extension(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	obj, closer, err := builder.Flush()
+	obj, closer, err := builder.Flush(t.Context())
 	require.NoError(t, err)
 	defer closer.Close()
 
@@ -61,7 +61,7 @@ func TestBuilder_preserve_tenant(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	obj, closer, err := builder.Flush()
+	obj, closer, err := builder.Flush(t.Context())
 	require.NoError(t, err)
 	defer closer.Close()
 

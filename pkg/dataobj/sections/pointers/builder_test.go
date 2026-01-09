@@ -153,5 +153,5 @@ func buildObject(st *Builder) (*dataobj.Object, io.Closer, error) {
 	if err := builder.Append(st); err != nil {
 		return nil, nil, err
 	}
-	return builder.Flush()
+	return builder.Flush(context.TODO())
 }

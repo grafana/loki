@@ -146,7 +146,7 @@ func buildStreamsSection(t *testing.T, streamLabels []labels.Labels) *streams.Se
 	objBuilder := dataobj.NewBuilder(nil)
 	require.NoError(t, objBuilder.Append(streamsBuilder), "failed to append streams section")
 
-	obj, closer, err := objBuilder.Flush()
+	obj, closer, err := objBuilder.Flush(t.Context())
 	require.NoError(t, err, "failed to flush dataobj")
 	t.Cleanup(func() { closer.Close() })
 

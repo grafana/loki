@@ -31,7 +31,7 @@ func TestBuilder(t *testing.T) {
 	b := dataobj.NewBuilder(nil)
 	require.NoError(t, b.Append(ib))
 
-	obj, closer, err := b.Flush()
+	obj, closer, err := b.Flush(t.Context())
 	require.NoError(t, err)
 	defer closer.Close()
 

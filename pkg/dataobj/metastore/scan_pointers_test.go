@@ -53,7 +53,7 @@ func TestScanPointers_MissingOrgIDReturnsError(t *testing.T) {
 	require.NoError(t, builder.ObserveLogLine(tenantID, "test-path", 0, 1, 1, now.Add(-3*time.Hour), 5))
 	require.NoError(t, builder.ObserveLogLine(tenantID, "test-path", 0, 1, 1, now.Add(-2*time.Hour), 0))
 
-	obj, closer, err := builder.Flush()
+	obj, closer, err := builder.Flush(t.Context())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = closer.Close() })
 
@@ -73,7 +73,7 @@ func TestScanPointers_MissingOrgIDReturnsError(t *testing.T) {
 func TestScanPointers_FiltersByStreamMatcherAndTime(t *testing.T) {
 	t.Parallel()
 
-	ctx := user.InjectOrgID(context.Background(), tenantID)
+	ctx := user.InjectOrgID(t.Context(), tenantID)
 
 	builder, err := indexobj.NewBuilder(logsobj.BuilderBaseConfig{
 		TargetPageSize:          1024 * 1024,
@@ -104,7 +104,7 @@ func TestScanPointers_FiltersByStreamMatcherAndTime(t *testing.T) {
 	require.NoError(t, builder.ObserveLogLine(tenantID, "test-path", 0, 1, 1, now.Add(-3*time.Hour), 5))
 	require.NoError(t, builder.ObserveLogLine(tenantID, "test-path", 0, 2, 2, now.Add(-3*time.Hour), 5))
 
-	obj, closer, err := builder.Flush()
+	obj, closer, err := builder.Flush(ctx)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = closer.Close() })
 

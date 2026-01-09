@@ -69,7 +69,7 @@ const (
 // An interface for the methods needed from a calculator. Useful for testing.
 type calculator interface {
 	Calculate(context.Context, log.Logger, *dataobj.Object, string) error
-	Flush() (*dataobj.Object, io.Closer, error)
+	Flush(ctx context.Context) (*dataobj.Object, io.Closer, error)
 	TimeRanges() []multitenancy.TimeRange
 	Reset()
 	IsFull() bool

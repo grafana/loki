@@ -34,7 +34,7 @@ func TestTableOfContentsWriter(t *testing.T) {
 		err = tocBuilder.AppendIndexPointer("testdata/metastore.obj", "test", unixTime(10), unixTime(20))
 		require.NoError(t, err)
 
-		obj, closer, err := tocBuilder.Flush()
+		obj, closer, err := tocBuilder.Flush(t.Context())
 		require.NoError(t, err)
 		t.Cleanup(func() { closer.Close() })
 

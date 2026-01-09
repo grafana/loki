@@ -43,7 +43,7 @@ func BenchmarkReadSections(b *testing.B) {
 
 func benchmarkReadSections(b *testing.B, bm readSectionsBenchmarkParams) {
 	b.Run(bm.name, func(b *testing.B) {
-		ctx := context.Background()
+		ctx := b.Context()
 		bucket := objstore.NewInMemBucket()
 
 		objUploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, log.NewNopLogger())
@@ -105,14 +105,14 @@ func benchmarkReadSections(b *testing.B, bm readSectionsBenchmarkParams) {
 
 			// Build and store the index object
 			timeRanges := builder.TimeRanges()
-			obj, closer, err := builder.Flush()
+			obj, closer, err := builder.Flush(ctx)
 			require.NoError(b, err)
 			b.Cleanup(func() { _ = closer.Close() })
 
-			path, err := objUploader.Upload(context.Background(), obj)
+			path, err := objUploader.Upload(ctx, obj)
 			require.NoError(b, err)
 
-			err = metastoreTocWriter.WriteEntry(context.Background(), path, timeRanges)
+			err = metastoreTocWriter.WriteEntry(ctx, path, timeRanges)
 			require.NoError(b, err)
 		}
 
@@ -178,7 +178,7 @@ func BenchmarkSectionsForPredicateMatchers(b *testing.B) {
 
 	for _, tt := range cases {
 		b.Run(tt.name, func(b *testing.B) {
-			ctx := user.InjectOrgID(context.Background(), tenantID)
+			ctx := user.InjectOrgID(b.Context(), tenantID)
 
 			builder, err := indexobj.NewBuilder(logsobj.BuilderBaseConfig{
 				TargetPageSize:          1024 * 1024,
@@ -217,7 +217,7 @@ func BenchmarkSectionsForPredicateMatchers(b *testing.B) {
 			timeRanges := builder.TimeRanges()
 			require.Len(b, timeRanges, 1)
 
-			obj, closer, err := builder.Flush()
+			obj, closer, err := builder.Flush(ctx)
 			require.NoError(b, err)
 			b.Cleanup(func() { _ = closer.Close() })
 
