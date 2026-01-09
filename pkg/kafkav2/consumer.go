@@ -100,31 +100,37 @@ func (c *SinglePartitionConsumer) Run(ctx context.Context) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
-			c.polls.Inc()
-			fetches := c.client.PollRecords(ctx, -1)
-			// If the client is closed, or the context was canceled, return the error
-			// as no fetches were polled. We use this instead of [kgo.IsClientClosed]
-			// so we can also check if the context was canceled.
-			if err := fetches.Err0(); errors.Is(err, kgo.ErrClientClosed) || errors.Is(err, context.Canceled) {
-				return err
+		}
+		c.polls.Inc()
+		fetches := c.client.PollRecords(ctx, -1)
+		// If the client is closed, or the context was canceled, return the error
+		// as no fetches were polled. We use this instead of [kgo.IsClientClosed]
+		// so we can also check if the context was canceled.
+		if err := fetches.Err0(); errors.Is(err, kgo.ErrClientClosed) || errors.Is(err, context.Canceled) {
+			return err
+		}
+		// The client can fetch from multiple brokers in a single poll. This means
+		// we must handle both records and errors at the same time, as some brokers
+		// might be polled successfully while others return errors.
+		for record := range fetches.RecordsAll() {
+			select {
+				// We must check for cancelation here to avoid a deadlock. This can
+				// happen if the receiver stopped without draining the chan.
+				case <-ctx.Done():
+					return ctx.Err()
+				case c.records <- record:
 			}
-			// The client can fetch from multiple brokers in a single poll. This means
-			// we must handle both records and errors at the same time, as some brokers
-			// might be polled successfully while others return errors.
-			fetches.EachRecord(func(record *kgo.Record) {
-				c.records <- record
-			})
-			var numErrs int
-			fetches.EachError(func(_ string, _ int32, err error) {
-				level.Error(c.logger).Log("msg", "failed to poll fetches", "err", err)
-				c.fetchErrors.Inc()
-				numErrs++
-			})
-			if numErrs == 0 {
-				b.Reset()
-			} else {
-				b.Wait()
-			}
+		}
+		var numErrs int
+		fetches.EachError(func(_ string, _ int32, err error) {
+			level.Error(c.logger).Log("msg", "failed to poll fetches", "err", err)
+			c.fetchErrors.Inc()
+			numErrs++
+		})
+		if numErrs == 0 {
+			b.Reset()
+		} else {
+			b.Wait()
 		}
 	}
 	return nil
