@@ -157,7 +157,6 @@ func (p *partitionProcessor) Start(ctx context.Context) func() {
 	p.wg.Add(1)
 	go func() {
 		defer func() {
-			p.unregisterMetrics()
 			level.Info(p.logger).Log("msg", "stopped partition processor")
 			p.wg.Done()
 		}()
@@ -182,14 +181,6 @@ func (p *partitionProcessor) Start(ctx context.Context) func() {
 		}
 	}()
 	return p.wg.Wait
-}
-
-func (p *partitionProcessor) unregisterMetrics() {
-	if p.builder != nil {
-		p.builder.UnregisterMetrics(p.reg)
-	}
-	p.metrics.unregister(p.reg)
-	p.uploader.UnregisterMetrics(p.reg)
 }
 
 func (p *partitionProcessor) initBuilder() error {
