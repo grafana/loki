@@ -32,8 +32,8 @@ var errMinBackends = errors.New("at least 1 backend is required")
 type ProxyConfig struct {
 	ServerServicePort int
 	BackendEndpoints  string
-	PreferredBackend  string //Deprecated: Specify a V1 and/or V2 preferred backend instead.
 
+	PreferredBackend   string //Deprecated: Specify a V1 and/or V2 preferred backend instead.
 	PreferredV1Backend string
 	PreferredV2Backend string
 
