@@ -30,9 +30,13 @@ import (
 var errMinBackends = errors.New("at least 1 backend is required")
 
 type ProxyConfig struct {
-	ServerServicePort              int
-	BackendEndpoints               string
-	PreferredBackend               string
+	ServerServicePort int
+	BackendEndpoints  string
+	PreferredBackend  string //Deprecated: Specify a V1 and/or V2 preferred backend instead.
+
+	PreferredV1Backend string
+	PreferredV2Backend string
+
 	BackendReadTimeout             time.Duration
 	CompareResponses               bool
 	DisableBackendReadProxy        string
@@ -51,7 +55,11 @@ type ProxyConfig struct {
 func (cfg *ProxyConfig) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.ServerServicePort, "server.service-port", 80, "The port where the query-tee service listens to.")
 	f.StringVar(&cfg.BackendEndpoints, "backend.endpoints", "", "Comma separated list of backend endpoints to query.")
-	f.StringVar(&cfg.PreferredBackend, "backend.preferred", "", "The hostname of the preferred backend when selecting the response to send back to the client. If no preferred backend is configured then the query-tee will send back to the client the first successful response received without waiting for other backends.")
+
+	f.StringVar(&cfg.PreferredBackend, "backend.preferred", "", "Deprecated: Please specify a V1 and/or V2 preferred backend instead. The hostname of the preferred backend when selecting the response to send back to the client. If no preferred backend is configured then the query-tee will send back to the client the first successful response received without waiting for other backends.")
+	f.StringVar(&cfg.PreferredV1Backend, "backend.v1-preferred", "", "The hostname of the preferred backend when selecting a v1 (chunks) response to send back to the client. If no preferred backend is configured then the query-tee will send back to the client the first successful response received without waiting for other backends.")
+	f.StringVar(&cfg.PreferredV2Backend, "backend.v2-preferred", "", "The hostname of the preferred backend when selecting a v2 (dataobjs) response to send back to the client. If no preferred backend is configured then the query-tee will send back to the client the first successful response received without waiting for other backends.")
+
 	f.DurationVar(&cfg.BackendReadTimeout, "backend.read-timeout", 90*time.Second, "The timeout when reading the response from a backend.")
 	f.BoolVar(&cfg.CompareResponses, "proxy.compare-responses", false, "Compare responses between preferred and secondary endpoints for supported routes.")
 	f.StringVar(&cfg.DisableBackendReadProxy, "proxy.disable-backend-read", "", "Comma separated list of non-primary backend hostnames to disable their read proxy. Typically used for temporarily not passing any read requests to specified backends.")
@@ -147,16 +155,24 @@ func NewProxy(
 
 		// The backend name is hardcoded as the backend hostname.
 		name := u.Hostname()
-		preferred := name == cfg.PreferredBackend
+		legacyPreferred := name == cfg.PreferredBackend
+		v1Preferred := name == cfg.PreferredV1Backend
+		v2Preferred := name == cfg.PreferredV2Backend
 
 		// In tests we have the same hostname for all backends, so we also
 		// support a numeric preferred backend which is the index in the list
 		// of backends.
 		if preferredIdx, err := strconv.Atoi(cfg.PreferredBackend); err == nil {
-			preferred = preferredIdx == idx
+			legacyPreferred = preferredIdx == idx
+		}
+		if preferredIdx, err := strconv.Atoi(cfg.PreferredV1Backend); err == nil {
+			v1Preferred = preferredIdx == idx
+		}
+		if preferredIdx, err := strconv.Atoi(cfg.PreferredV2Backend); err == nil {
+			v2Preferred = preferredIdx == idx
 		}
 
-		p.backends = append(p.backends, NewProxyBackend(name, u, cfg.BackendReadTimeout, preferred))
+		p.backends = append(p.backends, NewProxyBackend(name, u, cfg.BackendReadTimeout, legacyPreferred, v1Preferred, v2Preferred))
 	}
 
 	// At least 1 backend is required
@@ -168,7 +184,7 @@ func NewProxy(
 	if cfg.PreferredBackend != "" {
 		exists := false
 		for _, b := range p.backends {
-			if b.preferred {
+			if b.v1Preferred {
 				exists = true
 				break
 			}
@@ -337,7 +353,7 @@ func (p *Proxy) Start() error {
 
 	if p.cfg.PassThroughNonRegisteredRoutes {
 		for _, backend := range p.backends {
-			if backend.preferred {
+			if backend.v1Preferred {
 				router.PathPrefix("/").Handler(httputil.NewSingleHostReverseProxy(backend.endpoint))
 				break
 			}
@@ -405,7 +421,7 @@ func filterReadDisabledBackends(backends []*ProxyBackend, disableReadProxyCfg st
 	readEnabledBackends := make([]*ProxyBackend, 0, len(backends))
 	readDisabledBackendNames := strings.Split(disableReadProxyCfg, ",")
 	for _, b := range backends {
-		if !b.preferred {
+		if !b.v1Preferred {
 			readDisabled := false
 			for _, h := range readDisabledBackendNames {
 				if strings.TrimSpace(h) == b.name {

@@ -131,3 +131,63 @@ func Test_ProxyBackend_ForwardRequest_extractsTraceID(t *testing.T) {
 		assert.NotEmpty(t, response.traceID, "should have a trace ID even without parent context")
 	})
 }
+
+func Test_NewProxyBackend_PreferredLogic(t *testing.T) {
+	u, err := url.Parse("http://test")
+	require.NoError(t, err)
+
+	tests := map[string]struct {
+		preferred      []bool
+		expectedV1Pref bool
+		expectedV2Pref bool
+	}{
+		"no preferred args defaults to false": {
+			preferred:      []bool{},
+			expectedV1Pref: false,
+			expectedV2Pref: false,
+		},
+		"legacy preferred true sets v1=true, v2=false": {
+			preferred:      []bool{true},
+			expectedV1Pref: true,
+			expectedV2Pref: false,
+		},
+		"legacy preferred false keeps defaults": {
+			preferred:      []bool{false},
+			expectedV1Pref: false,
+			expectedV2Pref: false,
+		},
+		"v1Preferred=true without legacy": {
+			preferred:      []bool{false, true},
+			expectedV1Pref: true,
+			expectedV2Pref: false,
+		},
+		"v2Preferred=true without legacy": {
+			preferred:      []bool{false, false, true},
+			expectedV1Pref: false,
+			expectedV2Pref: true,
+		},
+		"both v1 and v2 preferred without legacy": {
+			preferred:      []bool{false, true, true},
+			expectedV1Pref: true,
+			expectedV2Pref: true,
+		},
+		"legacy=true overrides v1=false and v2=true": {
+			preferred:      []bool{true, false, true},
+			expectedV1Pref: true,
+			expectedV2Pref: false,
+		},
+		"legacy=true with v1=true keeps v1=true and sets v2=false": {
+			preferred:      []bool{true, true, true},
+			expectedV1Pref: true,
+			expectedV2Pref: false,
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			b := NewProxyBackend("test", u, time.Second, testData.preferred...)
+			assert.Equal(t, testData.expectedV1Pref, b.v1Preferred, "v1Preferred mismatch")
+			assert.Equal(t, testData.expectedV2Pref, b.v2Preferred, "v2Preferred mismatch")
+		})
+	}
+}

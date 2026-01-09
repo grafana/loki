@@ -1021,11 +1021,11 @@ func TestProxyEndpoint_ServeHTTP_ForwardsResponseHeaders(t *testing.T) {
 	require.NoError(t, err)
 
 	backends := []*ProxyBackend{{
-		name:      "backend-1",
-		endpoint:  srvURL,
-		client:    srv.Client(),
-		timeout:   time.Minute,
-		preferred: true,
+		name:        "backend-1",
+		endpoint:    srvURL,
+		client:      srv.Client(),
+		timeout:     time.Minute,
+		v1Preferred: true,
 	}}
 
 	recorder := httptest.NewRecorder()
