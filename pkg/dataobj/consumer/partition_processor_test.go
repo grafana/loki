@@ -325,9 +325,9 @@ func TestPartitionProcessor_FlushDueToMaxAge(t *testing.T) {
 	require.NoError(t, err)
 
 	// Process the record with an old timestamp.
-	p.processRecord(ctx, partition.Record{
-		TenantID:  "test-tenant",
-		Content:   b,
+	p.processRecord(ctx, &kgo.Record{
+		Key:       []byte("test-tenant"),
+		Value:     b,
 		Timestamp: oldTimestamp,
 	})
 
@@ -345,9 +345,9 @@ func TestPartitionProcessor_FlushDueToMaxAge(t *testing.T) {
 
 	// Process another record.
 	recentClock.Advance(time.Minute)
-	p.processRecord(ctx, partition.Record{
-		TenantID:  "test-tenant",
-		Content:   b,
+	p.processRecord(ctx, &kgo.Record{
+		Key:       []byte("test-tenant"),
+		Value:     b,
 		Timestamp: recentClock.Now(),
 	})
 
@@ -361,9 +361,9 @@ func TestPartitionProcessor_FlushDueToMaxAge(t *testing.T) {
 
 	// Advance the clock past maxDataObjAge.
 	recentClock.Advance(6 * time.Hour)
-	p.processRecord(ctx, partition.Record{
-		TenantID:  "test-tenant",
-		Content:   b,
+	p.processRecord(ctx, &kgo.Record{
+		Key:       []byte("test-tenant"),
+		Value:     b,
 		Timestamp: laggingClock.Now(),
 	})
 
@@ -377,9 +377,9 @@ func TestPartitionProcessor_FlushDueToMaxAge(t *testing.T) {
 
 	// Process another record immediately after the flush.
 	recentClock.Advance(time.Second)
-	p.processRecord(ctx, partition.Record{
-		TenantID:  "test-tenant",
-		Content:   b,
+	p.processRecord(ctx, &kgo.Record{
+		Key:       []byte("test-tenant"),
+		Value:     b,
 		Timestamp: recentClock.Now(),
 	})
 
