@@ -548,10 +548,7 @@ func TestSectionsForLabelsByStreamID(t *testing.T) {
 
 	mstore := newTestObjectMetastore(bucket)
 
-	// Define expected labels by stream ID for reference
-	stream1Labels := labels.New(labels.Label{Name: "app", Value: "foo"}, labels.Label{Name: "env", Value: "prod"})
-	stream2Labels := labels.New(labels.Label{Name: "app", Value: "bar"}, labels.Label{Name: "env", Value: "dev"})
-	stream3Labels := labels.New(labels.Label{Name: "app", Value: "foo"}, labels.Label{Name: "env", Value: "dev"})
+	streamLabels := []string{"app", "env"}
 
 	tests := []struct {
 		name                 string
@@ -559,7 +556,7 @@ func TestSectionsForLabelsByStreamID(t *testing.T) {
 		predicates           []*labels.Matcher
 		start, end           time.Time
 		wantCount            int
-		wantLabelsByStreamID map[int64]labels.Labels // Expected stream ID -> labels mapping
+		wantLabelsByStreamID map[int64][]string // Expected stream ID -> labels mapping
 	}{
 		{
 			name: "exact match on app=foo returns sections with correct labels per stream",
@@ -570,9 +567,9 @@ func TestSectionsForLabelsByStreamID(t *testing.T) {
 			start:      now.Add(-4 * time.Hour),
 			end:        now.Add(time.Hour),
 			wantCount:  2,
-			wantLabelsByStreamID: map[int64]labels.Labels{
-				1: stream1Labels,
-				3: stream3Labels,
+			wantLabelsByStreamID: map[int64][]string{
+				1: streamLabels,
+				3: streamLabels,
 			},
 		},
 		{
@@ -584,9 +581,9 @@ func TestSectionsForLabelsByStreamID(t *testing.T) {
 			start:      now.Add(-4 * time.Hour),
 			end:        now.Add(time.Hour),
 			wantCount:  2,
-			wantLabelsByStreamID: map[int64]labels.Labels{
-				2: stream2Labels,
-				3: stream3Labels,
+			wantLabelsByStreamID: map[int64][]string{
+				2: streamLabels,
+				3: streamLabels,
 			},
 		},
 		{
@@ -599,8 +596,8 @@ func TestSectionsForLabelsByStreamID(t *testing.T) {
 			start:      now.Add(-4 * time.Hour),
 			end:        now.Add(time.Hour),
 			wantCount:  1,
-			wantLabelsByStreamID: map[int64]labels.Labels{
-				1: stream1Labels,
+			wantLabelsByStreamID: map[int64][]string{
+				1: streamLabels,
 			},
 		},
 		{
@@ -612,10 +609,10 @@ func TestSectionsForLabelsByStreamID(t *testing.T) {
 			start:      now.Add(-4 * time.Hour),
 			end:        now.Add(time.Hour),
 			wantCount:  3,
-			wantLabelsByStreamID: map[int64]labels.Labels{
-				1: stream1Labels,
-				2: stream2Labels,
-				3: stream3Labels,
+			wantLabelsByStreamID: map[int64][]string{
+				1: streamLabels,
+				2: streamLabels,
+				3: streamLabels,
 			},
 		},
 		{

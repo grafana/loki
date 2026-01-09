@@ -878,8 +878,8 @@ func TestPlanner_MetadataColumnResolution(t *testing.T) {
 					Start:      timeStart,
 					End:        timeEnd,
 					LabelsByStreamID: map[int64][]string{
-						1: []string{"app", "foo"},
-						2: []string{"app", "bar"},
+						1: {"app", "foo"},
+						2: {"app", "bar"},
 					},
 				},
 			},
