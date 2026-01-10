@@ -22,15 +22,15 @@ import (
 	flatbuffers "github.com/google/flatbuffers/go"
 )
 
-// / ----------------------------------------------------------------------
-// / Data structures for describing a table row batch (a collection of
-// / equal-length Arrow arrays)
-// / Metadata about a field at some level of a nested type tree (but not
-// / its children).
-// /
-// / For example, a List<Int16> with values `[[1, 2, 3], null, [4], [5, 6], null]`
-// / would have {length: 5, null_count: 2} for its List node, and {length: 6,
-// / null_count: 0} for its Int16 node, as separate FieldNode structs
+/// ----------------------------------------------------------------------
+/// Data structures for describing a table row batch (a collection of
+/// equal-length Arrow arrays)
+/// Metadata about a field at some level of a nested type tree (but not
+/// its children).
+///
+/// For example, a List<Int16> with values `[[1, 2, 3], null, [4], [5, 6], null]`
+/// would have {length: 5, null_count: 2} for its List node, and {length: 6,
+/// null_count: 0} for its Int16 node, as separate FieldNode structs
 type FieldNode struct {
 	_tab flatbuffers.Struct
 }
@@ -44,28 +44,26 @@ func (rcv *FieldNode) Table() flatbuffers.Table {
 	return rcv._tab.Table
 }
 
-// / The number of value slots in the Arrow array at this level of a nested
-// / tree
+/// The number of value slots in the Arrow array at this level of a nested
+/// tree
 func (rcv *FieldNode) Length() int64 {
 	return rcv._tab.GetInt64(rcv._tab.Pos + flatbuffers.UOffsetT(0))
 }
-
-// / The number of value slots in the Arrow array at this level of a nested
-// / tree
+/// The number of value slots in the Arrow array at this level of a nested
+/// tree
 func (rcv *FieldNode) MutateLength(n int64) bool {
 	return rcv._tab.MutateInt64(rcv._tab.Pos+flatbuffers.UOffsetT(0), n)
 }
 
-// / The number of observed nulls. Fields with null_count == 0 may choose not
-// / to write their physical validity bitmap out as a materialized buffer,
-// / instead setting the length of the bitmap buffer to 0.
+/// The number of observed nulls. Fields with null_count == 0 may choose not
+/// to write their physical validity bitmap out as a materialized buffer,
+/// instead setting the length of the bitmap buffer to 0.
 func (rcv *FieldNode) NullCount() int64 {
 	return rcv._tab.GetInt64(rcv._tab.Pos + flatbuffers.UOffsetT(8))
 }
-
-// / The number of observed nulls. Fields with null_count == 0 may choose not
-// / to write their physical validity bitmap out as a materialized buffer,
-// / instead setting the length of the bitmap buffer to 0.
+/// The number of observed nulls. Fields with null_count == 0 may choose not
+/// to write their physical validity bitmap out as a materialized buffer,
+/// instead setting the length of the bitmap buffer to 0.
 func (rcv *FieldNode) MutateNullCount(n int64) bool {
 	return rcv._tab.MutateInt64(rcv._tab.Pos+flatbuffers.UOffsetT(8), n)
 }

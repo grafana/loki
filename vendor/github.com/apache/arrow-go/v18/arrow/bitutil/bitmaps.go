@@ -484,6 +484,11 @@ var (
 		opByte:    func(l, r byte) byte { return l ^ r },
 		opAligned: alignedBitXorGo,
 	}
+	bitXnorOp = bitOp{
+		opWord:    func(l, r uint64) uint64 { return ^(l ^ r) },
+		opByte:    func(l, r byte) byte { return ^(l ^ r) },
+		opAligned: alignedBitXnorGo,
+	}
 )
 
 func alignedBitmapOp(op bitOp, left, right []byte, lOffset, rOffset int64, out []byte, outOffset int64, length int64) {
@@ -590,6 +595,14 @@ func BitmapXor(left, right []byte, lOffset, rOffset int64, out []byte, outOffset
 
 func BitmapXorAlloc(mem memory.Allocator, left, right []byte, lOffset, rOffset int64, length, outOffset int64) *memory.Buffer {
 	return BitmapOpAlloc(mem, bitXorOp, left, right, lOffset, rOffset, length, outOffset)
+}
+
+func BitmapXnor(left, right []byte, lOffset, rOffset int64, out []byte, outOffset int64, length int64) {
+	BitmapOp(bitXnorOp, left, right, lOffset, rOffset, out, outOffset, length)
+}
+
+func BitmapXnorAlloc(mem memory.Allocator, left, right []byte, lOffset, rOffset int64, length, outOffset int64) *memory.Buffer {
+	return BitmapOpAlloc(mem, bitXnorOp, left, right, lOffset, rOffset, length, outOffset)
 }
 
 func BitmapEquals(left, right []byte, lOffset, rOffset int64, length int64) bool {
