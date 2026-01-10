@@ -139,6 +139,7 @@ func init() {
 	variadicFunctions.register(types.VariadicOpParseLogfmt, parseFn(types.VariadicOpParseLogfmt))
 	variadicFunctions.register(types.VariadicOpParseJSON, parseFn(types.VariadicOpParseJSON))
 	variadicFunctions.register(types.VariadicOpParseRegexp, parseFn(types.VariadicOpParseRegexp))
+	variadicFunctions.register(types.VariadicOpParsePattern, parseFn(types.VariadicOpParsePattern))
 }
 
 type UnaryFunctionRegistry interface {
