@@ -16,6 +16,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/kafka/client"
+	"github.com/grafana/loki/v3/pkg/kafkav2"
 )
 
 const (
@@ -92,6 +93,9 @@ func NewReaderService(
 	if err != nil {
 		return nil, fmt.Errorf("creating kafka reader: %w", err)
 	}
+
+	lagCollector := kafkav2.NewLagCollector(reader.client, kafkaCfg.Topic, partitionID, instanceID, logger)
+	prometheus.WrapRegistererWithPrefix("loki_ingester_", reg).MustRegister(lagCollector)
 
 	offsetManager, err := NewKafkaOffsetManager(
 		kafkaCfg,
