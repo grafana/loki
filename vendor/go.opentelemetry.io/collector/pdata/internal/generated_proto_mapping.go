@@ -16,11 +16,11 @@ import (
 
 // Mapping describes the mapping of a binary in memory, including its address range, file offset, and metadata like build ID
 type Mapping struct {
+	AttributeIndices []int32
 	MemoryStart      uint64
 	MemoryLimit      uint64
 	FileOffset       uint64
 	FilenameStrindex int32
-	AttributeIndices []int32
 }
 
 var (
@@ -68,13 +68,9 @@ func CopyMapping(dest, src *Mapping) *Mapping {
 		dest = NewMapping()
 	}
 	dest.MemoryStart = src.MemoryStart
-
 	dest.MemoryLimit = src.MemoryLimit
-
 	dest.FileOffset = src.FileOffset
-
 	dest.FilenameStrindex = src.FilenameStrindex
-
 	dest.AttributeIndices = append(dest.AttributeIndices[:0], src.AttributeIndices...)
 
 	return dest
@@ -161,6 +157,7 @@ func (orig *Mapping) MarshalJSON(dest *json.Stream) {
 		}
 		dest.WriteArrayEnd()
 	}
+
 	dest.WriteObjectEnd()
 }
 
@@ -191,18 +188,19 @@ func (orig *Mapping) SizeProto() int {
 	var n int
 	var l int
 	_ = l
-	if orig.MemoryStart != 0 {
+	if orig.MemoryStart != uint64(0) {
 		n += 1 + proto.Sov(uint64(orig.MemoryStart))
 	}
-	if orig.MemoryLimit != 0 {
+	if orig.MemoryLimit != uint64(0) {
 		n += 1 + proto.Sov(uint64(orig.MemoryLimit))
 	}
-	if orig.FileOffset != 0 {
+	if orig.FileOffset != uint64(0) {
 		n += 1 + proto.Sov(uint64(orig.FileOffset))
 	}
-	if orig.FilenameStrindex != 0 {
+	if orig.FilenameStrindex != int32(0) {
 		n += 1 + proto.Sov(uint64(orig.FilenameStrindex))
 	}
+
 	if len(orig.AttributeIndices) > 0 {
 		l = 0
 		for _, e := range orig.AttributeIndices {
@@ -217,22 +215,22 @@ func (orig *Mapping) MarshalProto(buf []byte) int {
 	pos := len(buf)
 	var l int
 	_ = l
-	if orig.MemoryStart != 0 {
+	if orig.MemoryStart != uint64(0) {
 		pos = proto.EncodeVarint(buf, pos, uint64(orig.MemoryStart))
 		pos--
 		buf[pos] = 0x8
 	}
-	if orig.MemoryLimit != 0 {
+	if orig.MemoryLimit != uint64(0) {
 		pos = proto.EncodeVarint(buf, pos, uint64(orig.MemoryLimit))
 		pos--
 		buf[pos] = 0x10
 	}
-	if orig.FileOffset != 0 {
+	if orig.FileOffset != uint64(0) {
 		pos = proto.EncodeVarint(buf, pos, uint64(orig.FileOffset))
 		pos--
 		buf[pos] = 0x18
 	}
-	if orig.FilenameStrindex != 0 {
+	if orig.FilenameStrindex != int32(0) {
 		pos = proto.EncodeVarint(buf, pos, uint64(orig.FilenameStrindex))
 		pos--
 		buf[pos] = 0x20
@@ -274,7 +272,6 @@ func (orig *Mapping) UnmarshalProto(buf []byte) error {
 			if err != nil {
 				return err
 			}
-
 			orig.MemoryStart = uint64(num)
 
 		case 2:
@@ -286,7 +283,6 @@ func (orig *Mapping) UnmarshalProto(buf []byte) error {
 			if err != nil {
 				return err
 			}
-
 			orig.MemoryLimit = uint64(num)
 
 		case 3:
@@ -298,7 +294,6 @@ func (orig *Mapping) UnmarshalProto(buf []byte) error {
 			if err != nil {
 				return err
 			}
-
 			orig.FileOffset = uint64(num)
 
 		case 4:
@@ -310,7 +305,6 @@ func (orig *Mapping) UnmarshalProto(buf []byte) error {
 			if err != nil {
 				return err
 			}
-
 			orig.FilenameStrindex = int32(num)
 		case 5:
 			switch wireType {

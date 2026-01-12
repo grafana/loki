@@ -19,11 +19,11 @@ import (
 // SummaryDataPoint is a single data point in a timeseries that describes the time-varying values of a Summary of double values.
 type SummaryDataPoint struct {
 	Attributes        []KeyValue
+	QuantileValues    []*SummaryDataPointValueAtQuantile
 	StartTimeUnixNano uint64
 	TimeUnixNano      uint64
 	Count             uint64
 	Sum               float64
-	QuantileValues    []*SummaryDataPointValueAtQuantile
 	Flags             uint32
 }
 
@@ -51,10 +51,10 @@ func DeleteSummaryDataPoint(orig *SummaryDataPoint, nullable bool) {
 		orig.Reset()
 		return
 	}
-
 	for i := range orig.Attributes {
 		DeleteKeyValue(&orig.Attributes[i], false)
 	}
+
 	for i := range orig.QuantileValues {
 		DeleteSummaryDataPointValueAtQuantile(orig.QuantileValues[i], true)
 	}
@@ -81,13 +81,9 @@ func CopySummaryDataPoint(dest, src *SummaryDataPoint) *SummaryDataPoint {
 	dest.Attributes = CopyKeyValueSlice(dest.Attributes, src.Attributes)
 
 	dest.StartTimeUnixNano = src.StartTimeUnixNano
-
 	dest.TimeUnixNano = src.TimeUnixNano
-
 	dest.Count = src.Count
-
 	dest.Sum = src.Sum
-
 	dest.QuantileValues = CopySummaryDataPointValueAtQuantilePtrSlice(dest.QuantileValues, src.QuantileValues)
 
 	dest.Flags = src.Flags
@@ -233,23 +229,23 @@ func (orig *SummaryDataPoint) SizeProto() int {
 		l = orig.Attributes[i].SizeProto()
 		n += 1 + proto.Sov(uint64(l)) + l
 	}
-	if orig.StartTimeUnixNano != 0 {
+	if orig.StartTimeUnixNano != uint64(0) {
 		n += 9
 	}
-	if orig.TimeUnixNano != 0 {
+	if orig.TimeUnixNano != uint64(0) {
 		n += 9
 	}
-	if orig.Count != 0 {
+	if orig.Count != uint64(0) {
 		n += 9
 	}
-	if orig.Sum != 0 {
+	if orig.Sum != float64(0) {
 		n += 9
 	}
 	for i := range orig.QuantileValues {
 		l = orig.QuantileValues[i].SizeProto()
 		n += 1 + proto.Sov(uint64(l)) + l
 	}
-	if orig.Flags != 0 {
+	if orig.Flags != uint32(0) {
 		n += 1 + proto.Sov(uint64(orig.Flags))
 	}
 	return n
@@ -266,25 +262,25 @@ func (orig *SummaryDataPoint) MarshalProto(buf []byte) int {
 		pos--
 		buf[pos] = 0x3a
 	}
-	if orig.StartTimeUnixNano != 0 {
+	if orig.StartTimeUnixNano != uint64(0) {
 		pos -= 8
 		binary.LittleEndian.PutUint64(buf[pos:], uint64(orig.StartTimeUnixNano))
 		pos--
 		buf[pos] = 0x11
 	}
-	if orig.TimeUnixNano != 0 {
+	if orig.TimeUnixNano != uint64(0) {
 		pos -= 8
 		binary.LittleEndian.PutUint64(buf[pos:], uint64(orig.TimeUnixNano))
 		pos--
 		buf[pos] = 0x19
 	}
-	if orig.Count != 0 {
+	if orig.Count != uint64(0) {
 		pos -= 8
 		binary.LittleEndian.PutUint64(buf[pos:], uint64(orig.Count))
 		pos--
 		buf[pos] = 0x21
 	}
-	if orig.Sum != 0 {
+	if orig.Sum != float64(0) {
 		pos -= 8
 		binary.LittleEndian.PutUint64(buf[pos:], math.Float64bits(orig.Sum))
 		pos--
@@ -297,7 +293,7 @@ func (orig *SummaryDataPoint) MarshalProto(buf []byte) int {
 		pos--
 		buf[pos] = 0x32
 	}
-	if orig.Flags != 0 {
+	if orig.Flags != uint32(0) {
 		pos = proto.EncodeVarint(buf, pos, uint64(orig.Flags))
 		pos--
 		buf[pos] = 0x40
@@ -381,7 +377,6 @@ func (orig *SummaryDataPoint) UnmarshalProto(buf []byte) error {
 			if err != nil {
 				return err
 			}
-
 			orig.Sum = math.Float64frombits(num)
 
 		case 6:
@@ -409,7 +404,6 @@ func (orig *SummaryDataPoint) UnmarshalProto(buf []byte) error {
 			if err != nil {
 				return err
 			}
-
 			orig.Flags = uint32(num)
 		default:
 			pos, err = proto.ConsumeUnknown(buf, pos, wireType)
