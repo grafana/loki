@@ -1878,7 +1878,8 @@ type EpochOffset struct {
 // than the other if this one's epoch is less, or the epoch's are equal and
 // this one's offset is less.
 func (e EpochOffset) Less(o EpochOffset) bool {
-	return e.Epoch < o.Epoch || e.Epoch == o.Epoch && e.Offset < o.Offset
+	ee, oe := max(e.Epoch, -1), max(o.Epoch, -1)
+	return ee < oe || ee == oe && e.Offset < o.Offset
 }
 
 type uncommitted map[string]map[int32]uncommit
@@ -1925,13 +1926,18 @@ func (g *groupConsumer) updateUncommitted(fetches Fetches) {
 					final.LeaderEpoch, // -1 if old message / unknown
 					final.Offset + 1,
 				}
-				prior := topicOffsets[partition.Partition]
+				prior, ok := topicOffsets[partition.Partition]
+				if !ok {
+					uninit := EpochOffset{-1, 0}
+					uncommit := uncommit{uninit, uninit, uninit}
+					prior, topicOffsets[partition.Partition] = uncommit, uncommit
+				}
 
 				if debug {
 					if setHead {
-						fmt.Fprintf(&b, "%d{%d=>%d r%d}, ", partition.Partition, prior.head.Offset, set.Offset, len(partition.Records))
+						fmt.Fprintf(&b, "%d{%d=>%d r%d e%d}, ", partition.Partition, prior.head.Offset, set.Offset, len(partition.Records), set.Epoch)
 					} else {
-						fmt.Fprintf(&b, "%d{%d=>%d=>%d r%d}, ", partition.Partition, prior.head.Offset, prior.dirty.Offset, set.Offset, len(partition.Records))
+						fmt.Fprintf(&b, "%d{%d=>%d=>%d r%d e%d}, ", partition.Partition, prior.head.Offset, prior.dirty.Offset, set.Offset, len(partition.Records), set.Epoch)
 					}
 				}
 
@@ -2400,15 +2406,18 @@ func (cl *Client) CommitRecords(ctx context.Context, rs ...*Record) error {
 			offsets[r.Topic] = toffsets
 		}
 
-		if at, exists := toffsets[r.Partition]; exists {
-			if at.Epoch > r.LeaderEpoch || at.Epoch == r.LeaderEpoch && at.Offset > r.Offset {
-				continue
-			}
-		}
-		toffsets[r.Partition] = EpochOffset{
+		set := EpochOffset{
 			r.LeaderEpoch,
 			r.Offset + 1, // need to advice to next offset to move forward
 		}
+
+		if at, exists := toffsets[r.Partition]; exists {
+			if set.Less(at) {
+				continue
+			}
+		}
+
+		toffsets[r.Partition] = set
 	}
 
 	var rerr error // return error
@@ -2469,11 +2478,11 @@ func (cl *Client) MarkCommitRecords(rs ...*Record) {
 			curTopic = r.Topic
 		}
 
-		current := curPartitions[r.Partition]
+		current, ok := curPartitions[r.Partition]
 		if newHead := (EpochOffset{
 			r.LeaderEpoch,
 			r.Offset + 1,
-		}); current.head.Less(newHead) {
+		}); !ok || current.head.Less(newHead) {
 			curPartitions[r.Partition] = uncommit{
 				dirty:     current.dirty,
 				committed: current.committed,
@@ -2509,8 +2518,8 @@ func (cl *Client) MarkCommitOffsets(unmarked map[string]map[int32]EpochOffset) {
 		}
 
 		for partition, newHead := range partitions {
-			current := curPartitions[partition]
-			if current.head.Less(newHead) {
+			current, ok := curPartitions[partition]
+			if !ok || current.head.Less(newHead) {
 				curPartitions[partition] = uncommit{
 					dirty:     current.dirty,
 					committed: current.committed,

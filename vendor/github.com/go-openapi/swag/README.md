@@ -18,6 +18,7 @@ You may also use it standalone for your projects.
 * [Contents](#contents)
 * [Dependencies](#dependencies)
 * [Release Notes](#release-notes)
+* [Licensing](#licensing)
 * [Note to contributors](#note-to-contributors)
 * [TODOs, suggestions and plans](#todos-suggestions-and-plans)
 
@@ -62,6 +63,42 @@ dependencies outside of the standard library.
 
 ## Release notes
 
+### v0.25.4
+
+** mangling**
+
+Bug fix
+
+* [x] mangler may panic with pluralized overlapping initialisms
+
+Tests
+
+* [x] introduced fuzz tests
+
+### v0.25.3
+
+** mangling**
+
+Bug fix
+
+* [x] mangler may panic with pluralized initialisms
+
+### v0.25.2
+
+Minor changes due to internal maintenance that don't affect the behavior of the library.
+
+* [x] removed indirect test dependencies by switching all tests to `go-openapi/testify`,
+  a fork of `stretch/testify` with zero-dependencies.
+* [x] improvements to CI to catch test reports.
+* [x] modernized licensing annotations in source code, using the more compact SPDX annotations
+  rather than the full license terms.
+* [x] simplified a bit JSON & YAML testing by using newly available assertions
+* started the journey to an OpenSSF score card badge:
+  * [x] explicited permissions in CI workflows
+  * [x] published security policy
+  * pinned dependencies to github actions
+  * introduced fuzzing in tests
+
 ### v0.25.1
 
 * fixes a data race that could occur when using the standard library implementation of a JSON ordered map
@@ -74,7 +111,7 @@ dependencies outside of the standard library.
 * removes the dependency to `mailru/easyjson` by default (#68)
   * functionality remains the same, but performance may somewhat degrade for applications
     that relied on `easyjson`
-  * users of the JSON or YAML utilities who want to use `easyjson` as their prefered JSON serializer library
+  * users of the JSON or YAML utilities who want to use `easyjson` as their preferred JSON serializer library
     will be able to do so by registering this the corresponding JSON adapter at runtime. See below.
   * ordered keys in JSON and YAML objects: this feature used to rely solely on `easyjson`.
     With this release, an implementation relying on the standard `encoding/json` is provided.
@@ -96,16 +133,22 @@ Moving forward, we want to :
 The following would maintain how JSON utilities proposed by `swag` used work, up to `v0.24.1`.
 
   ```go
-  import "github.com/go-openapi/swag/jsonutils/adapters/easyjson/json"
+  import (
+    "github.com/go-openapi/swag/jsonutils/adapters"
+    easyjson "github.com/go-openapi/swag/jsonutils/adapters/easyjson/json"
+  )
 
   func init() {
-    json.Register()
+	  easyjson.Register(adapters.Registry)
   }
   ```
 
 Subsequent calls to `jsonutils.ReadJSON()` or `jsonutils.WriteJSON()` will switch to `easyjson`
 whenever the passed data structures implement the `easyjson.Unmarshaler` or `easyjson.Marshaler` respectively,
 or fallback to the standard library.
+
+For more details, you may also look at our
+[integration tests](jsonutils/adapters/testintegration/integration_suite_test.go#29).
 
 ### v0.24.0
 
@@ -132,6 +175,10 @@ With this release, we have largely modernized the API of `swag`:
 * [x] performance: name mangling utilities run ~ 10% faster (PR #115)
 
 ---
+
+## Licensing
+
+This library ships under the [SPDX-License-Identifier: Apache-2.0](./LICENSE).
 
 ## Note to contributors
 

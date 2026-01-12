@@ -13,13 +13,13 @@
       <rule pattern="//(.*?)\n">
         <token type="CommentSingle"/>
       </rule>
-      <rule pattern="(const|class|value|union|enum|trait|impl|annotation)\b">
+      <rule pattern="(class|value|union|trait|impl|annotation)\b">
         <token type="KeywordDeclaration"/>
       </rule>
       <rule pattern="(fun|let|var)\b">
         <token type="KeywordDeclaration"/>
       </rule>
-      <rule pattern="(mod|use)\b">
+      <rule pattern="(mod|import)\b">
         <token type="KeywordNamespace"/>
       </rule>
       <rule pattern="(if|else|is|for|in|while|return)\b">

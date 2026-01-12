@@ -136,10 +136,26 @@ func errorPipeline(ctx context.Context, err error) Pipeline {
 	})
 }
 
+func errorPipelineWithRegion(ctx context.Context, err error, region *xcap.Region) Pipeline {
+	span := trace.SpanFromContext(ctx)
+	span.RecordError(err)
+	span.SetStatus(codes.Error, err.Error())
+
+	return newGenericPipelineWithRegion(func(_ context.Context, _ []Pipeline) (arrow.RecordBatch, error) {
+		return nil, fmt.Errorf("failed to execute pipeline: %w", err)
+	}, region)
+}
+
 func emptyPipeline() Pipeline {
 	return newGenericPipeline(func(_ context.Context, _ []Pipeline) (arrow.RecordBatch, error) {
 		return nil, EOF
 	})
+}
+
+func emptyPipelineWithRegion(region *xcap.Region) Pipeline {
+	return newGenericPipelineWithRegion(func(_ context.Context, _ []Pipeline) (arrow.RecordBatch, error) {
+		return nil, EOF
+	}, region)
 }
 
 // prefetchWrapper wraps a [Pipeline] with pre-fetching capability,

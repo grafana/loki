@@ -62,6 +62,7 @@ const (
 
 	RESTORE_TIER_STANDARD  = "Standard"  //标准取回对象
 	RESTORE_TIER_EXPEDITED = "Expedited" //快速取回对象
+	RESTORE_TIER_LOWCOST   = "LowCost"   //延迟取回对象
 
 	FORBID_OVERWRITE_FALSE = "false"
 	FORBID_OVERWRITE_TRUE  = "true"
@@ -107,6 +108,7 @@ var VALID_STORAGE_CLASS_TYPE = map[string]int{
 var VALID_RESTORE_TIER = map[string]int{
 	RESTORE_TIER_STANDARD:  1,
 	RESTORE_TIER_EXPEDITED: 1,
+	RESTORE_TIER_LOWCOST:   1,
 }
 
 var VALID_FORBID_OVERWRITE = map[string]int{
