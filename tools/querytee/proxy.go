@@ -181,7 +181,7 @@ func NewProxy(
 	}
 
 	// If the preferred backend is configured, then it must exists among the actual backends.
-	if cfg.PreferredBackend != "" {
+	if cfg.PreferredBackend != "" || cfg.PreferredV1Backend != "" {
 		exists := false
 		for _, b := range p.backends {
 			if b.v1Preferred {
@@ -191,7 +191,21 @@ func NewProxy(
 		}
 
 		if !exists {
-			return nil, fmt.Errorf("the preferred backend (hostname) has not been found among the list of configured backends")
+			return nil, fmt.Errorf("the v1 preferred backend (hostname) has not been found among the list of configured backends")
+		}
+	}
+
+	if cfg.PreferredV2Backend != "" {
+		exists := false
+		for _, b := range p.backends {
+			if b.v2Preferred {
+				exists = true
+				break
+			}
+		}
+
+		if !exists {
+			return nil, fmt.Errorf("the v2 preferred backend (hostname) has not been found among the list of configured backends")
 		}
 	}
 
