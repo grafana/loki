@@ -62,7 +62,7 @@ func TestAddSectionDescriptors_Merge(t *testing.T) {
 	rec := array.NewRecordBatch(schema, cols, 2)
 
 	got := map[SectionKey]*DataobjSectionDescriptor{}
-	require.NoError(t, addSectionDescriptors(rec, got))
+	require.NoError(t, addSectionDescriptors(rec, got, nil))
 	require.Len(t, got, 1)
 
 	desc := got[SectionKey{ObjectPath: "obj-A", SectionIdx: 7}]
