@@ -31,7 +31,7 @@ type FanOutHandler struct {
 	routeName          string
 	comparator         comparator.ResponsesComparator
 	instrumentCompares bool
-	enableRace         bool
+	routingMode        RoutingMode
 	raceTolerance      time.Duration
 }
 
@@ -45,7 +45,7 @@ type FanOutHandlerConfig struct {
 	RouteName          string
 	Comparator         comparator.ResponsesComparator
 	InstrumentCompares bool
-	EnableRace         bool
+	RoutingMode        RoutingMode
 	RaceTolerance      time.Duration
 }
 
@@ -60,7 +60,7 @@ func NewFanOutHandler(cfg FanOutHandlerConfig) *FanOutHandler {
 		routeName:          cfg.RouteName,
 		comparator:         cfg.Comparator,
 		instrumentCompares: cfg.InstrumentCompares,
-		enableRace:         cfg.EnableRace,
+		routingMode:        cfg.RoutingMode,
 		raceTolerance:      cfg.RaceTolerance,
 	}
 }
@@ -116,68 +116,78 @@ func (h *FanOutHandler) Do(ctx context.Context, req queryrangebase.Request) (que
 	results := h.makeBackendRequests(ctx, httpReq, body, req, issuer)
 	collected := make([]*backendResult, 0, len(h.backends))
 
+	switch h.routingMode {
+	case RoutingModeRace:
+		return h.doWithRacing(results, collected, httpReq, shouldSample)
+	case RoutingModeV2Preferred:
+		return h.doWithPreferred(results, collected, httpReq, shouldSample, false)
+	default:
+		return h.doWithPreferred(results, collected, httpReq, shouldSample, true)
+	}
+}
+
+func (h *FanOutHandler) doWithRacing(results <-chan *backendResult, collected []*backendResult, httpReq *http.Request, shouldSample bool) (queryrangebase.Response, error) {
 	for i := 0; i < len(h.backends); i++ {
 		result := <-results
 		collected = append(collected, result)
 
-		// Race mode: return first successful response from ANY backend
-		if h.enableRace {
-			if result.err == nil && result.backendResp.succeeded() {
-				winner := result
-				remaining := len(h.backends) - i - 1
+		if result.err == nil && result.backendResp.succeeded() {
+			winner := result
+			remaining := len(h.backends) - i - 1
 
-				// If the preferred (v1) backend wins, then apply the handicap to give v2 a
-				// chance to "win" by finishing within the race tolerance of v1.
-				if result.backend.v1Preferred && h.raceTolerance > 0 {
-					select {
-					case r2 := <-results:
-						collected = append(collected, r2)
-						if r2.err == nil && r2.backendResp.succeeded() {
-							winner = r2
-							remaining = len(h.backends) - i - 2
-						}
-					case <-time.After(h.raceTolerance):
-						// tolerance expired, fall back to original winner
+			if result.backend.v1Preferred && h.raceTolerance > 0 {
+				select {
+				case r2 := <-results:
+					collected = append(collected, r2)
+					if r2.err == nil && r2.backendResp.succeeded() {
+						winner = r2
+						remaining = len(h.backends) - i - 2
 					}
+				case <-time.After(h.raceTolerance):
 				}
-
-				return h.finishRace(
-					winner,
-					remaining,
-					httpReq,
-					results,
-					collected,
-					shouldSample)
 			}
-		} else {
-			// Non-race mode: legacy logic (wait for preferred)
-			if result.backend.v1Preferred {
-				// when the preferred backend fails return any successful response
-				if !result.backendResp.succeeded() {
-					continue
-				}
 
-				// spawn goroutine to capture remaining and do goldfish comparison
-				remaining := len(h.backends) - i - 1
-				go func() {
-					h.collectRemainingAndCompare(remaining, httpReq, results, collected, shouldSample)
-				}()
+			return h.finishRace(winner, remaining, httpReq, results, collected, shouldSample)
+		}
+	}
 
-				// when the preferred backends succeeds, but with error, that indicates an invalid request
-				// return the error to the client
-				if result.err != nil {
-					return &NonDecodableResponse{
-						StatusCode: result.backendResp.status,
-						Body:       result.backendResp.body,
-					}, result.err
-				}
-				return result.response, nil
+	return h.returnFallback(collected)
+}
+
+func (h *FanOutHandler) doWithPreferred(results <-chan *backendResult, collected []*backendResult, httpReq *http.Request, shouldSample bool, preferV1 bool) (queryrangebase.Response, error) {
+	for i := 0; i < len(h.backends); i++ {
+		result := <-results
+		collected = append(collected, result)
+
+		isPreferred := (preferV1 && result.backend.v1Preferred) || (!preferV1 && result.backend.v2Preferred)
+		if isPreferred {
+			if !result.backendResp.succeeded() {
+				continue
 			}
+
+			remaining := len(h.backends) - i - 1
+			go func() {
+				h.collectRemainingAndCompare(remaining, httpReq, results, collected, shouldSample)
+			}()
+
+			// when the preferred backends succeeds, but with error, that indicates an invalid request
+			// return the error to the client
+			if result.err != nil {
+				return &NonDecodableResponse{
+					StatusCode: result.backendResp.status,
+					Body:       result.backendResp.body,
+				}, result.err
+			}
+			return result.response, nil
 		}
 	}
 
 	// if we get here, no preferred backend was found or the preferred backend
 	// failed. in this case, return any successful response or an error if all failed
+	return h.returnFallback(collected)
+}
+
+func (h *FanOutHandler) returnFallback(collected []*backendResult) (queryrangebase.Response, error) {
 	for _, result := range collected {
 		if result.err == nil && result.backendResp.succeeded() {
 			return result.response, nil

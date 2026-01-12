@@ -9,6 +9,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -29,14 +30,40 @@ import (
 
 var errMinBackends = errors.New("at least 1 backend is required")
 
+type RoutingMode string
+
+const (
+	RoutingModeRace        RoutingMode = "race"
+	RoutingModeV1Preferred RoutingMode = "v1-preferred"
+	RoutingModeV2Preferred RoutingMode = "v2-preferred"
+)
+
+type RoutingConfig struct {
+	Mode          RoutingMode
+	V1Backend     string
+	V2Backend     string
+	RaceTolerance time.Duration
+}
+
+func (cfg *RoutingConfig) RegisterFlags(f *flag.FlagSet) {
+	f.StringVar((*string)(&cfg.Mode), "routing.mode", string(RoutingModeV1Preferred), "Routing mode: race, v1-preferred, or v2-preferred")
+	f.StringVar(&cfg.V1Backend, "routing.v1-backend", "", "The hostname of the v1 (chunks) backend")
+	f.StringVar(&cfg.V2Backend, "routing.v2-backend", "", "The hostname of the v2 (dataobjs) backend")
+	f.DurationVar(&cfg.RaceTolerance, "routing.race-tolerance", 100*time.Millisecond, "Race handicap for v2 in race mode")
+}
+
+func (cfg *RoutingConfig) Validate() error {
+	switch cfg.Mode {
+	case RoutingModeRace, RoutingModeV1Preferred, RoutingModeV2Preferred:
+	default:
+		return fmt.Errorf("invalid routing mode: %s", cfg.Mode)
+	}
+	return nil
+}
+
 type ProxyConfig struct {
-	ServerServicePort int
-	BackendEndpoints  string
-
-	PreferredBackend   string // Deprecated: Specify a V1 and/or V2 preferred backend instead.
-	PreferredV1Backend string
-	PreferredV2Backend string
-
+	ServerServicePort              int
+	BackendEndpoints               string
 	BackendReadTimeout             time.Duration
 	CompareResponses               bool
 	DisableBackendReadProxy        string
@@ -47,19 +74,28 @@ type ProxyConfig struct {
 	SkipSamplesBefore              flagext.Time
 	RequestURLFilter               *regexp.Regexp
 	InstrumentCompares             bool
-	EnableRace                     bool
-	RaceTolerance                  time.Duration
 	SkipFanOutWhenNotSampling      bool
 	Goldfish                       goldfish.Config
+
+	Routing RoutingConfig
+
+	// Deprecated flags kept for backward compatibility
+	// TODO(twhitney): remove in subsequent weekly
+	PreferredBackend string
+	EnableRace       bool
+	RaceTolerance    time.Duration
 }
 
 func (cfg *ProxyConfig) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.ServerServicePort, "server.service-port", 80, "The port where the query-tee service listens to.")
 	f.StringVar(&cfg.BackendEndpoints, "backend.endpoints", "", "Comma separated list of backend endpoints to query.")
 
-	f.StringVar(&cfg.PreferredBackend, "backend.preferred", "", "Deprecated: Please specify a V1 and/or V2 preferred backend instead. The hostname of the preferred backend when selecting the response to send back to the client. If no preferred backend is configured then the query-tee will send back to the client the first successful response received without waiting for other backends.")
-	f.StringVar(&cfg.PreferredV1Backend, "backend.v1-preferred", "", "The hostname of the preferred backend when selecting a v1 (chunks) response to send back to the client. If no preferred backend is configured then the query-tee will send back to the client the first successful response received without waiting for other backends.")
-	f.StringVar(&cfg.PreferredV2Backend, "backend.v2-preferred", "", "The hostname of the preferred backend when selecting a v2 (dataobjs) response to send back to the client. If no preferred backend is configured then the query-tee will send back to the client the first successful response received without waiting for other backends.")
+	cfg.Routing.RegisterFlags(f)
+
+	// Deprecated flags
+	f.StringVar(&cfg.PreferredBackend, "backend.preferred", "", "Deprecated: use -routing.v1-backend instead")
+	f.BoolVar(&cfg.EnableRace, "proxy.enable-race", false, "Deprecated: use -routing.mode=race instead")
+	f.DurationVar(&cfg.RaceTolerance, "proxy.race-tolerance", 100*time.Millisecond, "Deprecated: use -routing.race-tolerance instead")
 
 	f.DurationVar(&cfg.BackendReadTimeout, "backend.read-timeout", 90*time.Second, "The timeout when reading the response from a backend.")
 	f.BoolVar(&cfg.CompareResponses, "proxy.compare-responses", false, "Compare responses between preferred and secondary endpoints for supported routes.")
@@ -75,11 +111,8 @@ func (cfg *ProxyConfig) RegisterFlags(f *flag.FlagSet) {
 		return err
 	})
 	f.BoolVar(&cfg.InstrumentCompares, "proxy.compare-instrument", false, "Reports metrics on comparisons of responses between preferred and non-preferred endpoints for supported routes.")
-	f.BoolVar(&cfg.EnableRace, "proxy.enable-race", false, "When enabled, return the first successful response from any backend instead of waiting for the preferred backend.")
-	f.DurationVar(&cfg.RaceTolerance, "proxy.race-tolerance", 100*time.Millisecond, "The tolerance for handicapping races in favor of non-preferred backends. If the preferred backend finishes first but a non-preferred backend completes within this tolerance, the non-preferred backend is declared the winner.")
 	f.BoolVar(&cfg.SkipFanOutWhenNotSampling, "proxy.skip-fanout-when-not-sampling", false, "When enabled, skip fanning out requests to secondary backends when goldfish sampling is disabled (default_rate=0 and no tenant rules). This reduces load on secondary backends when not doing comparisons.")
 
-	// Register Goldfish configuration flags
 	cfg.Goldfish.RegisterFlags(f)
 }
 
@@ -115,12 +148,18 @@ func NewProxy(
 	readRoutes, writeRoutes []Route,
 	registerer prometheus.Registerer,
 ) (*Proxy, error) {
-	if cfg.CompareResponses && cfg.PreferredBackend == "" {
-		return nil, fmt.Errorf("when enabling comparison of results -backend.preferred flag must be set to hostname of preferred backend")
+	migrateRoutingConfig(&cfg, logger)
+
+	if err := cfg.Routing.Validate(); err != nil {
+		return nil, err
 	}
 
-	if cfg.PassThroughNonRegisteredRoutes && cfg.PreferredBackend == "" {
-		return nil, fmt.Errorf("when enabling passthrough for non-registered routes -backend.preferred flag must be set to hostname of backend where those requests needs to be passed")
+	if cfg.CompareResponses && cfg.Routing.V1Backend == "" {
+		return nil, fmt.Errorf("when enabling comparison of results -routing.v1-backend flag must be set")
+	}
+
+	if cfg.PassThroughNonRegisteredRoutes && cfg.Routing.V1Backend == "" {
+		return nil, fmt.Errorf("when enabling passthrough for non-registered routes -routing.v1-backend flag must be set")
 	}
 
 	if cfg.InstrumentCompares && !cfg.CompareResponses {
@@ -155,11 +194,11 @@ func NewProxy(
 			return nil, errors.Wrapf(err, "invalid backend endpoint %s", part)
 		}
 
-		// The backend name is hardcoded as the backend hostname.
 		name := u.Hostname()
+		//TODO(twhitney): remove legacy config in subsequent rollout
 		legacyPreferred := name == cfg.PreferredBackend
-		v1Preferred := name == cfg.PreferredV1Backend
-		v2Preferred := name == cfg.PreferredV2Backend
+		v1Preferred := name == cfg.Routing.V1Backend
+		v2Preferred := name == cfg.Routing.V2Backend
 
 		// In tests we have the same hostname for all backends, so we also
 		// support a numeric preferred backend which is the index in the list
@@ -167,10 +206,10 @@ func NewProxy(
 		if preferredIdx, err := strconv.Atoi(cfg.PreferredBackend); err == nil {
 			legacyPreferred = preferredIdx == idx
 		}
-		if preferredIdx, err := strconv.Atoi(cfg.PreferredV1Backend); err == nil {
+		if preferredIdx, err := strconv.Atoi(cfg.Routing.V1Backend); err == nil {
 			v1Preferred = preferredIdx == idx
 		}
-		if preferredIdx, err := strconv.Atoi(cfg.PreferredV2Backend); err == nil {
+		if preferredIdx, err := strconv.Atoi(cfg.Routing.V2Backend); err == nil {
 			v2Preferred = preferredIdx == idx
 		}
 
@@ -191,13 +230,12 @@ func NewProxy(
 				break
 			}
 		}
-
 		if !exists {
-			return nil, fmt.Errorf("the v1 preferred backend (hostname) has not been found among the list of configured backends")
+			return nil, fmt.Errorf("the v1 backend (hostname) has not been found among the list of configured backends")
 		}
 	}
 
-	if cfg.PreferredV2Backend != "" {
+	if cfg.Routing.V2Backend != "" {
 		exists := false
 		for _, b := range p.backends {
 			if b.v2Preferred {
@@ -205,9 +243,8 @@ func NewProxy(
 				break
 			}
 		}
-
 		if !exists {
-			return nil, fmt.Errorf("the v2 preferred backend (hostname) has not been found among the list of configured backends")
+			return nil, fmt.Errorf("the v2 backend (hostname) has not been found among the list of configured backends")
 		}
 	}
 
@@ -222,15 +259,13 @@ func NewProxy(
 
 	if cfg.DisableBackendReadProxy != "" {
 		readDisabledBackendHosts := strings.Split(p.cfg.DisableBackendReadProxy, ",")
-		for _, host := range readDisabledBackendHosts {
-			if host == cfg.PreferredBackend {
-				return nil, fmt.Errorf("the preferred backend cannot be disabled for reading")
-			}
+		if slices.Contains(readDisabledBackendHosts, cfg.Routing.V1Backend) {
+			return nil, fmt.Errorf("the v1 backend cannot be disabled for reading")
 		}
 	}
 
 	// Pre-initialize raceWins metric for all backend/route combinations
-	if cfg.EnableRace {
+	if cfg.Routing.Mode == RoutingModeRace {
 		for _, backend := range p.backends {
 			for _, route := range p.readRoutes {
 				p.metrics.raceWins.WithLabelValues(backend.name, route.RouteName)
@@ -332,8 +367,8 @@ func (p *Proxy) Start() error {
 			Logger:                    p.logger,
 			Metrics:                   p.metrics,
 			InstrumentCompares:        p.cfg.InstrumentCompares,
-			EnableRace:                p.cfg.EnableRace,
-			RaceTolerance:             p.cfg.RaceTolerance,
+			RoutingMode:               p.cfg.Routing.Mode,
+			RaceTolerance:             p.cfg.Routing.RaceTolerance,
 			SkipFanOutWhenNotSampling: p.cfg.SkipFanOutWhenNotSampling,
 		})
 		queryHandler, err := routeHandlerFactory.CreateHandler(route.RouteName, comp)
@@ -454,4 +489,25 @@ func filterReadDisabledBackends(backends []*ProxyBackend, disableReadProxyCfg st
 	}
 
 	return readEnabledBackends
+}
+
+func migrateRoutingConfig(cfg *ProxyConfig, logger log.Logger) {
+	if cfg.Routing.V1Backend == "" && cfg.PreferredBackend != "" {
+		cfg.Routing.V1Backend = cfg.PreferredBackend
+		level.Warn(logger).Log("-backend.preferred is deprecated, use -routing.v1-backend")
+	}
+
+	if cfg.Routing.Mode == "" {
+		if cfg.EnableRace {
+			cfg.Routing.Mode = RoutingModeRace
+			level.Warn(logger).Log("msg", "-proxy.enable-race is deprecated, use -routing.mode=race")
+		} else {
+			cfg.Routing.Mode = RoutingModeV1Preferred
+		}
+	}
+
+	if cfg.Routing.RaceTolerance == 0 && cfg.RaceTolerance > 0 {
+		cfg.Routing.RaceTolerance = cfg.RaceTolerance
+		level.Warn(logger).Log("msg", "-proxy.race-tolerance is deprecated, use -routing.race-tolerance")
+	}
 }
