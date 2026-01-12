@@ -156,6 +156,7 @@ func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, bucket objsto
 		logger,
 		reg,
 		cfg.IdleFlushTimeout,
+		cfg.MaxBuilderAge,
 		metastoreEvents,
 		cfg.Topic,
 		partitionID,
