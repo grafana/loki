@@ -3,6 +3,7 @@ package gcp
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"flag"
 	"io"
 	"net"
@@ -370,7 +371,51 @@ func gcsTransport(ctx context.Context, scope string, insecure bool, http2 bool, 
 		transportOptions = append(transportOptions, option.WithoutAuthentication())
 	}
 	if serviceAccount.String() != "" {
-		transportOptions = append(transportOptions, option.WithCredentialsJSON([]byte(serviceAccount.String())))
+		credJSON := []byte(serviceAccount.String())
+		credType, err := detectCredentialType(credJSON)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to detect credential type")
+		}
+		transportOptions = append(transportOptions, option.WithAuthCredentialsJSON(credType, credJSON))
 	}
 	return google_http.NewTransport(ctx, customTransport, transportOptions...)
+}
+
+// detectCredentialType detects the credential type from JSON credentials.
+// It returns the detected type, defaulting to ServiceAccount if the type cannot be determined.
+func detectCredentialType(credJSON []byte) (option.CredentialsType, error) {
+	if len(credJSON) == 0 {
+		return option.ServiceAccount, errors.New("credential JSON is empty")
+	}
+
+	var cred struct {
+		Type string `json:"type"`
+	}
+	if err := json.Unmarshal(credJSON, &cred); err != nil {
+		// If we can't parse the JSON, default to ServiceAccount for backward compatibility
+		// This matches the behavior of the old WithCredentialsJSON which would attempt
+		// to auto-detect and fall back to service account handling.
+		return option.ServiceAccount, nil
+	}
+
+	// Map the JSON type string to the option.CredentialsType
+	// Only handle types that are exported from the option package.
+	// For unexported types (e.g., gdc_service_account, external_account_authorized_user)
+	// or unknown types, default to ServiceAccount for backward compatibility.
+	switch cred.Type {
+	case "service_account":
+		return option.ServiceAccount, nil
+	case "authorized_user":
+		return option.AuthorizedUser, nil
+	case "external_account":
+		return option.ExternalAccount, nil
+	case "impersonated_service_account":
+		return option.ImpersonatedServiceAccount, nil
+	default:
+		// If type is missing, unknown, or not exported from option package,
+		// default to ServiceAccount for backward compatibility.
+		// This ensures the code continues to work with credentials that were
+		// previously handled by the deprecated WithCredentialsJSON function.
+		return option.ServiceAccount, nil
+	}
 }

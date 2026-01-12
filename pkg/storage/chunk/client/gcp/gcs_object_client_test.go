@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"cloud.google.com/go/storage"
+	"github.com/grafana/dskit/flagext"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 	"google.golang.org/api/option"
@@ -265,4 +266,225 @@ func fakeSleepingServer(t *testing.T, responseSleep, connectSleep time.Duration,
 	t.Cleanup(server.Close)
 	server.Start()
 	return server
+}
+
+func TestDetectCredentialType(t *testing.T) {
+	tests := []struct {
+		name           string
+		credJSON       string
+		expectedType   option.CredentialsType
+		expectError    bool
+		errorSubstring string
+	}{
+		{
+			name: "service_account type",
+			credJSON: `{
+				"type": "service_account",
+				"project_id": "test-project",
+				"private_key_id": "key-id",
+				"private_key": "-----BEGIN PRIVATE KEY-----\nKEY\n-----END PRIVATE KEY-----\n",
+				"client_email": "test@test.iam.gserviceaccount.com"
+			}`,
+			expectedType: option.ServiceAccount,
+			expectError:  false,
+		},
+		{
+			name: "authorized_user type",
+			credJSON: `{
+				"type": "authorized_user",
+				"client_id": "123456789",
+				"client_secret": "secret",
+				"refresh_token": "token"
+			}`,
+			expectedType: option.AuthorizedUser,
+			expectError:  false,
+		},
+		{
+			name: "external_account type",
+			credJSON: `{
+				"type": "external_account",
+				"audience": "//iam.googleapis.com/projects/123/locations/global/workloadIdentityPools/pool/providers/provider",
+				"subject_token_type": "urn:ietf:params:oauth:token-type:jwt",
+				"token_url": "https://sts.googleapis.com/v1/token",
+				"credential_source": {
+					"file": "/var/run/secrets/token"
+				}
+			}`,
+			expectedType: option.ExternalAccount,
+			expectError:  false,
+		},
+		{
+			name: "impersonated_service_account type",
+			credJSON: `{
+				"type": "impersonated_service_account",
+				"service_account_impersonation_url": "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/test@test.iam.gserviceaccount.com:generateAccessToken",
+				"source_credentials": {
+					"type": "service_account"
+				}
+			}`,
+			expectedType: option.ImpersonatedServiceAccount,
+			expectError:  false,
+		},
+		{
+			name: "missing type field defaults to ServiceAccount",
+			credJSON: `{
+				"project_id": "test-project",
+				"private_key": "-----BEGIN PRIVATE KEY-----\nKEY\n-----END PRIVATE KEY-----\n"
+			}`,
+			expectedType: option.ServiceAccount,
+			expectError:  false,
+		},
+		{
+			name: "unknown type defaults to ServiceAccount",
+			credJSON: `{
+				"type": "unknown_type",
+				"project_id": "test-project"
+			}`,
+			expectedType: option.ServiceAccount,
+			expectError:  false,
+		},
+		{
+			name: "invalid JSON defaults to ServiceAccount",
+			credJSON: `{
+				"type": "service_account",
+				"project_id": "test-project"
+				// missing closing brace
+			`,
+			expectedType: option.ServiceAccount,
+			expectError:  false,
+		},
+		{
+			name:           "empty JSON returns error",
+			credJSON:       "",
+			expectedType:   option.ServiceAccount,
+			expectError:    true,
+			errorSubstring: "credential JSON is empty",
+		},
+		{
+			name: "gdc_service_account defaults to ServiceAccount (not exported)",
+			credJSON: `{
+				"type": "gdc_service_account",
+				"project_id": "test-project"
+			}`,
+			expectedType: option.ServiceAccount,
+			expectError:  false,
+		},
+		{
+			name: "external_account_authorized_user defaults to ServiceAccount (not exported)",
+			credJSON: `{
+				"type": "external_account_authorized_user",
+				"audience": "//iam.googleapis.com/projects/123/locations/global/workloadIdentityPools/pool/providers/provider"
+			}`,
+			expectedType: option.ServiceAccount,
+			expectError:  false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			credType, err := detectCredentialType([]byte(tc.credJSON))
+			if tc.expectError {
+				require.Error(t, err)
+				if tc.errorSubstring != "" {
+					require.Contains(t, err.Error(), tc.errorSubstring)
+				}
+			} else {
+				require.NoError(t, err)
+			}
+			require.Equal(t, tc.expectedType, credType)
+		})
+	}
+}
+
+func TestGcsTransportWithCredentials(t *testing.T) {
+	tests := []struct {
+		name         string
+		credJSON     string
+		insecure     bool
+		expectError  bool
+		errorMessage string
+	}{
+		{
+			name: "service_account with secure connection",
+			credJSON: `{
+				"type": "service_account",
+				"project_id": "test-project",
+				"private_key_id": "key-id",
+				"private_key": "-----BEGIN PRIVATE KEY-----\nKEY\n-----END PRIVATE KEY-----\n",
+				"client_email": "test@test.iam.gserviceaccount.com"
+			}`,
+			insecure:    false,
+			expectError: false,
+		},
+		{
+			name: "authorized_user with secure connection",
+			credJSON: `{
+				"type": "authorized_user",
+				"client_id": "123456789",
+				"client_secret": "secret",
+				"refresh_token": "token"
+			}`,
+			insecure:    false,
+			expectError: false,
+		},
+		{
+			name: "external_account with secure connection",
+			credJSON: `{
+				"type": "external_account",
+				"audience": "//iam.googleapis.com/projects/123/locations/global/workloadIdentityPools/pool/providers/provider",
+				"subject_token_type": "urn:ietf:params:oauth:token-type:jwt",
+				"token_url": "https://sts.googleapis.com/v1/token",
+				"credential_source": {
+					"file": "/var/run/secrets/token"
+				}
+			}`,
+			insecure:    false,
+			expectError: false,
+		},
+		{
+			name: "insecure connection ignores credentials",
+			credJSON: `{
+				"type": "service_account",
+				"project_id": "test-project"
+			}`,
+			insecure:    true,
+			expectError: false,
+		},
+		{
+			name:        "empty credentials with secure connection",
+			credJSON:    "",
+			insecure:    false,
+			expectError: false,
+		},
+		{
+			name: "invalid JSON with secure connection defaults to ServiceAccount",
+			credJSON: `{
+				"type": "service_account"
+				// invalid JSON
+			`,
+			insecure:    false,
+			expectError: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			var serviceAccount flagext.Secret
+			if tc.credJSON != "" {
+				serviceAccount = flagext.SecretWithValue(tc.credJSON)
+			}
+
+			transport, err := gcsTransport(ctx, storage.ScopeReadWrite, tc.insecure, true, serviceAccount)
+			if tc.expectError {
+				require.Error(t, err)
+				if tc.errorMessage != "" {
+					require.Contains(t, err.Error(), tc.errorMessage)
+				}
+			} else {
+				require.NoError(t, err)
+				require.NotNil(t, transport)
+			}
+		})
+	}
 }
