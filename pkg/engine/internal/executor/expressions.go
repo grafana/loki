@@ -101,6 +101,7 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.RecordBa
 			return nil, err
 		}
 
+		// TODO: implement short circuiting. we currently evaluate both sides always.
 		rhs, err := e.eval(expr.Right, input)
 		if err != nil {
 			return nil, err
