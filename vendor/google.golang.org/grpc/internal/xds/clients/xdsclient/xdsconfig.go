@@ -24,6 +24,20 @@ import (
 	"google.golang.org/grpc/internal/xds/clients"
 )
 
+// ServerFeature indicates the features that will be supported by an xDS server.
+type ServerFeature uint64
+
+const (
+	// ServerFeatureIgnoreResourceDeletion indicates that the server supports a
+	// feature where the xDS client can ignore resource deletions from this server,
+	// as described in gRFC A53.
+	ServerFeatureIgnoreResourceDeletion ServerFeature = 1 << iota
+	// ServerFeatureTrustedXDSServer returns true if this server is trusted,
+	// and gRPC should accept security-config-affecting fields from the server
+	// as described in gRFC A81.
+	ServerFeatureTrustedXDSServer
+)
+
 // Config is used to configure an xDS client. After one has been passed to the
 // xDS client's New function, no part of it may be modified. A Config may be
 // reused; the xdsclient package will also not modify it.
@@ -74,17 +88,7 @@ type Config struct {
 // ServerConfig contains configuration for an xDS management server.
 type ServerConfig struct {
 	ServerIdentifier clients.ServerIdentifier
-
-	// IgnoreResourceDeletion is a server feature which if set to true,
-	// indicates that resource deletion errors from xDS management servers can
-	// be ignored and cached resource data can be used.
-	//
-	// This will be removed in the future once we implement gRFC A88
-	// and two new fields FailOnDataErrors and
-	// ResourceTimerIsTransientError will be introduced.
-	IgnoreResourceDeletion bool
-
-	// TODO: Link to gRFC A88
+	ServerFeature    ServerFeature // ServerFeature stores a bitmap of supported features.
 }
 
 // Authority contains configuration for an xDS control plane authority.
@@ -98,5 +102,11 @@ type Authority struct {
 }
 
 func isServerConfigEqual(a, b *ServerConfig) bool {
-	return a.ServerIdentifier == b.ServerIdentifier && a.IgnoreResourceDeletion == b.IgnoreResourceDeletion
+	return a.ServerIdentifier == b.ServerIdentifier && a.ServerFeature == b.ServerFeature
+}
+
+// SupportsServerFeature returns true if the server configuration indicates that
+// the server supports the given feature.
+func (s *ServerConfig) SupportsServerFeature(feature ServerFeature) bool {
+	return s.ServerFeature&feature != 0
 }

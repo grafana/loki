@@ -21,6 +21,9 @@ package xdsclient
 // ResourceWatcher is notified of the resource updates and errors that are
 // received by the xDS client from the management server.
 //
+// All methods on this interface are guaranteed to be called serially by the xDS
+// client.
+//
 // All methods contain a done parameter which should be called when processing
 // of the update has completed.  For example, if processing a resource requires
 // watching new resources, those watches should be completed before done is
