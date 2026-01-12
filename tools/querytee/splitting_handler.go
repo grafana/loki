@@ -21,13 +21,14 @@ import (
 )
 
 type SplittingHandler struct {
-	codec               queryrangebase.Codec
-	fanOutHandler       queryrangebase.Handler
-	goldfishManager     goldfish.Manager
-	logger              log.Logger
-	logsQueryHandler    queryrangebase.Handler
-	metricsQueryHandler queryrangebase.Handler
-	defaultHandler      queryrangebase.Handler
+	codec                     queryrangebase.Codec
+	fanOutHandler             queryrangebase.Handler
+	goldfishManager           goldfish.Manager
+	skipFanoutWhenNotSampling bool
+	logger                    log.Logger
+	logsQueryHandler          queryrangebase.Handler
+	metricsQueryHandler       queryrangebase.Handler
+	defaultHandler            queryrangebase.Handler
 }
 
 func NewSplittingHandler(
@@ -36,6 +37,7 @@ func NewSplittingHandler(
 	goldfishManager goldfish.Manager,
 	logger log.Logger,
 	preferredBackend *ProxyBackend,
+	skipFanoutWhenNotSampling bool,
 ) (http.Handler, error) {
 	if preferredBackend == nil {
 		return tenantHandler(queryrange.NewSerializeHTTPHandler(fanOutHandler, codec), logger), nil
@@ -63,13 +65,14 @@ func NewSplittingHandler(
 	logsQueryHandler := splitHandlerFactory.createSplittingHandler(false, preferredRT)
 
 	splittingHandler := &SplittingHandler{
-		codec:               codec,
-		fanOutHandler:       fanOutHandler,
-		goldfishManager:     goldfishManager,
-		logger:              logger,
-		logsQueryHandler:    logsQueryHandler,
-		metricsQueryHandler: metricsQueryHandler,
-		defaultHandler:      preferredRT,
+		codec:                     codec,
+		fanOutHandler:             fanOutHandler,
+		goldfishManager:           goldfishManager,
+		logger:                    logger,
+		logsQueryHandler:          logsQueryHandler,
+		metricsQueryHandler:       metricsQueryHandler,
+		defaultHandler:            preferredRT,
+		skipFanoutWhenNotSampling: skipFanoutWhenNotSampling,
 	}
 
 	return tenantHandler(splittingHandler, logger), nil
@@ -170,7 +173,17 @@ func (f *SplittingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var resp queryrangebase.Response
-	if f.goldfishManager != nil && f.goldfishManager.ComparisonMinAge() > 0 {
+	tenants, err := tenant.TenantIDs(ctx)
+	shouldSample := false
+	if err != nil {
+		level.Warn(f.logger).Log("msg", "failed to extract tenant IDs, will skip sampling evaluation", "err", err)
+	} else {
+		shouldSample = f.shouldSample(tenants, r)
+	}
+
+	if f.skipFanoutWhenNotSampling && !shouldSample {
+		resp, err = f.defaultHandler.Do(ctx, req)
+	} else if f.goldfishManager != nil && f.goldfishManager.ComparisonMinAge() > 0 {
 		resp, err = f.serveSplits(ctx, req)
 	} else {
 		resp, err = f.fanOutHandler.Do(ctx, req)
@@ -210,6 +223,26 @@ func (f *SplittingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if _, err := io.Copy(w, httpResp.Body); err != nil {
 		level.Warn(f.logger).Log("msg", "unable to write response body", "err", err)
 	}
+}
+
+// shouldSample determines if a query should be sampled for goldfish comparison.
+func (f *SplittingHandler) shouldSample(tenants []string, httpReq *http.Request) bool {
+	if f.goldfishManager == nil {
+		return false
+	}
+
+	for _, tenant := range tenants {
+		if f.goldfishManager.ShouldSample(tenant) {
+			level.Debug(f.logger).Log(
+				"msg", "Goldfish sampling decision",
+				"tenant", tenant,
+				"sampled", true,
+				"path", httpReq.URL.Path)
+			return true
+		}
+	}
+
+	return false
 }
 
 func (f *SplittingHandler) serveSplits(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {

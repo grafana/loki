@@ -44,6 +44,7 @@ import (
 
 const (
 	serverFeaturesIgnoreResourceDeletion = "ignore_resource_deletion"
+	serverFeaturesTrustedXDSServer       = "trusted_xds_server"
 	gRPCUserAgentName                    = "gRPC Go"
 	clientFeatureNoOverprovisioning      = "envoy.lb.does_not_support_overprovisioning"
 	clientFeatureResourceWrapper         = "xds.config.resource-in-sotw"
@@ -250,6 +251,18 @@ func (sc *ServerConfig) CallCredsConfigs() CallCredsConfigs {
 func (sc *ServerConfig) ServerFeaturesIgnoreResourceDeletion() bool {
 	for _, sf := range sc.serverFeatures {
 		if sf == serverFeaturesIgnoreResourceDeletion {
+			return true
+		}
+	}
+	return false
+}
+
+// ServerFeaturesTrustedXDSServer returns true if this server is trusted,
+// and gRPC should accept security-config-affecting fields from the server
+// as described in gRFC A81.
+func (sc *ServerConfig) ServerFeaturesTrustedXDSServer() bool {
+	for _, sf := range sc.serverFeatures {
+		if sf == serverFeaturesTrustedXDSServer {
 			return true
 		}
 	}

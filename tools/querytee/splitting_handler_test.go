@@ -131,6 +131,7 @@ func TestSplittingHandler_ServeSplits_UnsupportedRequestUsesDefaultHandler(t *te
 				goldfishManager,
 				log.NewNopLogger(),
 				preferredBackend,
+				false,
 			)
 			require.NoError(t, err)
 
@@ -179,6 +180,7 @@ func TestSplittingHandler_NilPreferredBackend_CallsFanoutHandler(t *testing.T) {
 		nil, // no goldfish manager needed
 		log.NewNopLogger(),
 		nil, // nil preferred backend
+		false,
 	)
 	require.NoError(t, err)
 

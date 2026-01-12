@@ -386,6 +386,10 @@ func (f *matcherFactory) createGappedMatcher(windows []window) timestampMatching
 		// For gapped windows, window i covers: (start + i*step - interval, start + i*step]
 		windowIndex := (tNs - startNs + stepNs - 1) / stepNs // subtract 1ns because we are calculating 0-based indexes
 
+		if windowIndex >= int64(len(windows)) {
+			return nil // out of range when bounds do not fit exact number of steps
+		}
+
 		// Verify the timestamp is within the window (not in a gap)
 		if tNs > windows[windowIndex].start.UnixNano() {
 			return windows[windowIndex : windowIndex+1]

@@ -19,12 +19,12 @@ import (
 // different trace.
 // See Link definition in OTLP: https://github.com/open-telemetry/opentelemetry-proto/blob/main/opentelemetry/proto/trace/v1/trace.proto
 type SpanLink struct {
-	TraceId                TraceID
-	SpanId                 SpanID
 	TraceState             string
 	Attributes             []KeyValue
 	DroppedAttributesCount uint32
 	Flags                  uint32
+	TraceId                TraceID
+	SpanId                 SpanID
 }
 
 var (
@@ -51,9 +51,9 @@ func DeleteSpanLink(orig *SpanLink, nullable bool) {
 		orig.Reset()
 		return
 	}
-
 	DeleteTraceID(&orig.TraceId, false)
 	DeleteSpanID(&orig.SpanId, false)
+
 	for i := range orig.Attributes {
 		DeleteKeyValue(&orig.Attributes[i], false)
 	}
@@ -82,11 +82,9 @@ func CopySpanLink(dest, src *SpanLink) *SpanLink {
 	CopySpanID(&dest.SpanId, &src.SpanId)
 
 	dest.TraceState = src.TraceState
-
 	dest.Attributes = CopyKeyValueSlice(dest.Attributes, src.Attributes)
 
 	dest.DroppedAttributesCount = src.DroppedAttributesCount
-
 	dest.Flags = src.Flags
 
 	return dest
@@ -216,6 +214,7 @@ func (orig *SpanLink) SizeProto() int {
 	n += 1 + proto.Sov(uint64(l)) + l
 	l = orig.SpanId.SizeProto()
 	n += 1 + proto.Sov(uint64(l)) + l
+
 	l = len(orig.TraceState)
 	if l > 0 {
 		n += 1 + proto.Sov(uint64(l)) + l
@@ -224,10 +223,10 @@ func (orig *SpanLink) SizeProto() int {
 		l = orig.Attributes[i].SizeProto()
 		n += 1 + proto.Sov(uint64(l)) + l
 	}
-	if orig.DroppedAttributesCount != 0 {
+	if orig.DroppedAttributesCount != uint32(0) {
 		n += 1 + proto.Sov(uint64(orig.DroppedAttributesCount))
 	}
-	if orig.Flags != 0 {
+	if orig.Flags != uint32(0) {
 		n += 5
 	}
 	return n
@@ -264,12 +263,12 @@ func (orig *SpanLink) MarshalProto(buf []byte) int {
 		pos--
 		buf[pos] = 0x22
 	}
-	if orig.DroppedAttributesCount != 0 {
+	if orig.DroppedAttributesCount != uint32(0) {
 		pos = proto.EncodeVarint(buf, pos, uint64(orig.DroppedAttributesCount))
 		pos--
 		buf[pos] = 0x28
 	}
-	if orig.Flags != 0 {
+	if orig.Flags != uint32(0) {
 		pos -= 4
 		binary.LittleEndian.PutUint32(buf[pos:], uint32(orig.Flags))
 		pos--
@@ -362,7 +361,6 @@ func (orig *SpanLink) UnmarshalProto(buf []byte) error {
 			if err != nil {
 				return err
 			}
-
 			orig.DroppedAttributesCount = uint32(num)
 
 		case 6:

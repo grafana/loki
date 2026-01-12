@@ -2,6 +2,7 @@ package logical
 
 import (
 	"fmt"
+	"iter"
 	"slices"
 
 	"github.com/grafana/regexp/syntax"
@@ -40,8 +41,8 @@ func (pass simplifyRegexPass) Apply(p *Plan) error {
 	var operandBuffer []*Value
 
 	for i, instr := range p.Instructions {
-		b, changed := instr.(*BinOp)
-		if !changed || (b.Op != types.BinaryOpMatchRe && b.Op != types.BinaryOpNotMatchRe) {
+		b, ok := instr.(*BinOp)
+		if !ok || !pass.shouldApply(b) {
 			continue
 		}
 
@@ -81,6 +82,85 @@ func (pass simplifyRegexPass) Apply(p *Plan) error {
 	}
 
 	return nil
+}
+
+func (pass simplifyRegexPass) shouldApply(b *BinOp) bool {
+	// We can only support regex simplification on actual regex operations.
+	if b.Op != types.BinaryOpMatchRe && b.Op != types.BinaryOpNotMatchRe {
+		return false
+	}
+
+	// At the moment, we don't support simplifying regex on stream selectors:
+	//
+	//  1. The logic copied from the classic engine produces incorrect results,
+	//     un-anchoring regexes.
+	//  2. The metastore catalogue expects to be able to convert expressions back
+	//     into Prometheus label matchers, which doesn't support the simplified
+	//     expressions (such as MATCH_SUBSTR)
+	//
+	// To avoid this, we'll skip any binop which is found in a MakeTable
+	// selector.
+	for ref := range pass.walkReferences(b) {
+		mt, ok := ref.(*MakeTable)
+		if !ok {
+			continue
+		}
+
+		// We need to see if our bin-op is reachable from specifically
+		// MakeTable's selector, and not just its predicates.
+		//
+		// TODO(rfratto): MakeTable contains predicates *only* to propagate down
+		// bloom filters. Can we find a way to do this without storing the
+		// predicates in the MakeTable? That would allow removing this entire
+		// slow check.
+		var inSelector bool
+		walkNode(mt.Selector, func(n Node) bool {
+			if n == b {
+				inSelector = true
+				return false
+			}
+			return true
+		})
+		if inSelector {
+			return false
+		}
+	}
+
+	return true
+}
+
+// walkReferences returns an iterator over all instructions that directly or
+// indirectly reference v.
+func (pass simplifyRegexPass) walkReferences(v Value) iter.Seq[Instruction] {
+	return func(yield func(Instruction) bool) {
+		var (
+			stack = []Value{v}
+			seen  = map[Node]struct{}{v: {}}
+		)
+
+		for len(stack) > 0 {
+			// Pop a node from the stack.
+			next := stack[0]
+			stack = stack[1:]
+
+			for _, ref := range *next.Referrers() {
+				if _, seen := seen[ref]; seen {
+					continue
+				}
+				seen[ref] = struct{}{}
+
+				if !yield(ref) {
+					return
+				}
+
+				refValue, ok := ref.(Value)
+				if !ok {
+					continue
+				}
+				stack = append(stack, refValue)
+			}
+		}
+	}
 }
 
 func (pass simplifyRegexPass) simplifyBinop(b *BinOp) (simplified []Node, changed bool, err error) {

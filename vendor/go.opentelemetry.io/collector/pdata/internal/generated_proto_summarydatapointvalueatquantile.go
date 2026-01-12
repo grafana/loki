@@ -67,7 +67,6 @@ func CopySummaryDataPointValueAtQuantile(dest, src *SummaryDataPointValueAtQuant
 		dest = NewSummaryDataPointValueAtQuantile()
 	}
 	dest.Quantile = src.Quantile
-
 	dest.Value = src.Value
 
 	return dest
@@ -157,10 +156,10 @@ func (orig *SummaryDataPointValueAtQuantile) SizeProto() int {
 	var n int
 	var l int
 	_ = l
-	if orig.Quantile != 0 {
+	if orig.Quantile != float64(0) {
 		n += 9
 	}
-	if orig.Value != 0 {
+	if orig.Value != float64(0) {
 		n += 9
 	}
 	return n
@@ -170,13 +169,13 @@ func (orig *SummaryDataPointValueAtQuantile) MarshalProto(buf []byte) int {
 	pos := len(buf)
 	var l int
 	_ = l
-	if orig.Quantile != 0 {
+	if orig.Quantile != float64(0) {
 		pos -= 8
 		binary.LittleEndian.PutUint64(buf[pos:], math.Float64bits(orig.Quantile))
 		pos--
 		buf[pos] = 0x9
 	}
-	if orig.Value != 0 {
+	if orig.Value != float64(0) {
 		pos -= 8
 		binary.LittleEndian.PutUint64(buf[pos:], math.Float64bits(orig.Value))
 		pos--
@@ -209,7 +208,6 @@ func (orig *SummaryDataPointValueAtQuantile) UnmarshalProto(buf []byte) error {
 			if err != nil {
 				return err
 			}
-
 			orig.Quantile = math.Float64frombits(num)
 
 		case 2:
@@ -221,7 +219,6 @@ func (orig *SummaryDataPointValueAtQuantile) UnmarshalProto(buf []byte) error {
 			if err != nil {
 				return err
 			}
-
 			orig.Value = math.Float64frombits(num)
 		default:
 			pos, err = proto.ConsumeUnknown(buf, pos, wireType)

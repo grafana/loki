@@ -1,3 +1,23 @@
+## v2.9.0 (2025-11-17)
+
+* [GH-3508](https://github.com/gophercloud/gophercloud/pull/3508) [v2] Trigger "hold" workflow on merge groups
+* [GH-3511](https://github.com/gophercloud/gophercloud/pull/3511) [v2] Closes #2321 - Fix TestRolesCRUD by including DomainID to TestRolesCRUD
+* [GH-3513](https://github.com/gophercloud/gophercloud/pull/3513) [v2] build(deps): bump actions/labeler from 5 to 6
+* [GH-3516](https://github.com/gophercloud/gophercloud/pull/3516) [v2] refactor: Trivial fixes
+* [GH-3524](https://github.com/gophercloud/gophercloud/pull/3524) [v2] [glance]: Add 'uploading' status
+* [GH-3525](https://github.com/gophercloud/gophercloud/pull/3525) [v2] compute: Add host aggregate uuid field
+* [GH-3526](https://github.com/gophercloud/gophercloud/pull/3526) [v2] Enable deletion for network and loadbalancer quotas
+* [GH-3541](https://github.com/gophercloud/gophercloud/pull/3541) [v2] docs: Document tested releases for acceptance tests
+* [GH-3544](https://github.com/gophercloud/gophercloud/pull/3544) [v2] Identity V3: Add Options field to roles.
+* [GH-3547](https://github.com/gophercloud/gophercloud/pull/3547) [v2] Add config_drive to server struct
+* [GH-3548](https://github.com/gophercloud/gophercloud/pull/3548) [v2] Identity: Add description field to roles
+* [GH-3549](https://github.com/gophercloud/gophercloud/pull/3549) [v2] compute: add cpu info topology cells entry
+* [GH-3550](https://github.com/gophercloud/gophercloud/pull/3550) [v2] Migrate epoxy jobs to Ubuntu 24.04 (Noble), drop caracal jobs
+* [GH-3551](https://github.com/gophercloud/gophercloud/pull/3551) [v2] build(deps): bump github/codeql-action from 3 to 4
+* [GH-3557](https://github.com/gophercloud/gophercloud/pull/3557) [v2] Fix EC2 authentication to work with new Keystone auth requirement
+* [GH-3558](https://github.com/gophercloud/gophercloud/pull/3558) [v2] identity/services: add omitempty to the `type` field
+* [GH-3559](https://github.com/gophercloud/gophercloud/pull/3559) [v2] fix: handle Nova create image response for microversion 2.45 and above
+
 ## v2.8.0 (2025-08-18)
 
 * [GH-3348](https://github.com/gophercloud/gophercloud/pull/3348) [v2] [networking] add ExtractRoutersInto func helper to routers
