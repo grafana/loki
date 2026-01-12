@@ -103,9 +103,7 @@ func (ms NumberDataPoint) SetDoubleValue(v float64) {
 	}
 	ov.AsDouble = v
 	ms.orig.Value = ov
-}
-
-// IntValue returns the int associated with this NumberDataPoint.
+} // IntValue returns the int associated with this NumberDataPoint.
 func (ms NumberDataPoint) IntValue() int64 {
 	return ms.orig.GetAsInt()
 }

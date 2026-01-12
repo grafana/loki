@@ -25,6 +25,8 @@ import (
 	"time"
 
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/internal/envconfig"
+	"google.golang.org/grpc/internal/xds/clients/xdsclient"
 	"google.golang.org/grpc/internal/xds/clusterspecifier"
 	"google.golang.org/grpc/internal/xds/matcher"
 	"google.golang.org/protobuf/proto"
@@ -34,7 +36,7 @@ import (
 	v3typepb "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 )
 
-func unmarshalRouteConfigResource(r *anypb.Any) (string, RouteConfigUpdate, error) {
+func unmarshalRouteConfigResource(r *anypb.Any, opts *xdsclient.DecodeOptions) (string, RouteConfigUpdate, error) {
 	r, err := UnwrapResource(r)
 	if err != nil {
 		return "", RouteConfigUpdate{}, fmt.Errorf("failed to unwrap resource: %v", err)
@@ -48,7 +50,7 @@ func unmarshalRouteConfigResource(r *anypb.Any) (string, RouteConfigUpdate, erro
 		return "", RouteConfigUpdate{}, fmt.Errorf("failed to unmarshal resource: %v", err)
 	}
 
-	u, err := generateRDSUpdateFromRouteConfiguration(rc)
+	u, err := generateRDSUpdateFromRouteConfiguration(rc, opts)
 	if err != nil {
 		return rc.GetName(), RouteConfigUpdate{}, err
 	}
@@ -67,12 +69,12 @@ func unmarshalRouteConfigResource(r *anypb.Any) (string, RouteConfigUpdate, erro
 // The RouteConfiguration includes a list of virtualHosts, which may have zero
 // or more elements. We are interested in the element whose domains field
 // matches the server name specified in the "xds:" URI. The only field in the
-// VirtualHost proto that the we are interested in is the list of routes. We
+// VirtualHost proto that we are interested in is the list of routes. We
 // only look at the last route in the list (the default route), whose match
-// field must be empty and whose route field must be set.  Inside that route
+// field must be empty and whose route field must be set. Inside that route
 // message, the cluster field will contain the clusterName or weighted clusters
 // we are looking for.
-func generateRDSUpdateFromRouteConfiguration(rc *v3routepb.RouteConfiguration) (RouteConfigUpdate, error) {
+func generateRDSUpdateFromRouteConfiguration(rc *v3routepb.RouteConfiguration, opts *xdsclient.DecodeOptions) (RouteConfigUpdate, error) {
 	vhs := make([]*VirtualHost, 0, len(rc.GetVirtualHosts()))
 	csps, err := processClusterSpecifierPlugins(rc.ClusterSpecifierPlugins)
 	if err != nil {
@@ -83,7 +85,7 @@ func generateRDSUpdateFromRouteConfiguration(rc *v3routepb.RouteConfiguration) (
 	// ignored and not emitted by the xdsclient.
 	var cspNames = make(map[string]bool)
 	for _, vh := range rc.GetVirtualHosts() {
-		routes, cspNs, err := routesProtoToSlice(vh.Routes, csps)
+		routes, cspNs, err := routesProtoToSlice(vh.Routes, csps, opts)
 		if err != nil {
 			return RouteConfigUpdate{}, fmt.Errorf("received route is invalid: %v", err)
 		}
@@ -206,7 +208,7 @@ func generateRetryConfig(rp *v3routepb.RetryPolicy) (*RetryConfig, error) {
 	return cfg, nil
 }
 
-func routesProtoToSlice(routes []*v3routepb.Route, csps map[string]clusterspecifier.BalancerConfig) ([]*Route, map[string]bool, error) {
+func routesProtoToSlice(routes []*v3routepb.Route, csps map[string]clusterspecifier.BalancerConfig, opts *xdsclient.DecodeOptions) ([]*Route, map[string]bool, error) {
 	var routesRet []*Route
 	var cspNames = make(map[string]bool)
 	for _, r := range routes {
@@ -301,6 +303,12 @@ func routesProtoToSlice(routes []*v3routepb.Route, csps map[string]clusterspecif
 		switch r.GetAction().(type) {
 		case *v3routepb.Route_Route:
 			action := r.GetRoute()
+
+			if envconfig.XDSAuthorityRewrite {
+				if opts != nil && opts.ServerConfig != nil && opts.ServerConfig.SupportsServerFeature(xdsclient.ServerFeatureTrustedXDSServer) {
+					route.AutoHostRewrite = action.GetAutoHostRewrite().GetValue()
+				}
+			}
 
 			// Hash Policies are only applicable for a Ring Hash LB.
 			hp, err := hashPoliciesProtoToSlice(action.HashPolicy)

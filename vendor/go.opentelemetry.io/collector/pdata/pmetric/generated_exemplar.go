@@ -95,9 +95,7 @@ func (ms Exemplar) SetDoubleValue(v float64) {
 	}
 	ov.AsDouble = v
 	ms.orig.Value = ov
-}
-
-// IntValue returns the int associated with this Exemplar.
+} // IntValue returns the int associated with this Exemplar.
 func (ms Exemplar) IntValue() int64 {
 	return ms.orig.GetAsInt()
 }

@@ -16,10 +16,10 @@ import (
 )
 
 type SpanContext struct {
+	TraceState string
+	TraceFlags uint32
 	TraceID    TraceID
 	SpanID     SpanID
-	TraceFlags uint32
-	TraceState string
 	Remote     bool
 }
 
@@ -47,7 +47,6 @@ func DeleteSpanContext(orig *SpanContext, nullable bool) {
 		orig.Reset()
 		return
 	}
-
 	DeleteTraceID(&orig.TraceID, false)
 	DeleteSpanID(&orig.SpanID, false)
 
@@ -75,9 +74,7 @@ func CopySpanContext(dest, src *SpanContext) *SpanContext {
 	CopySpanID(&dest.SpanID, &src.SpanID)
 
 	dest.TraceFlags = src.TraceFlags
-
 	dest.TraceState = src.TraceState
-
 	dest.Remote = src.Remote
 
 	return dest
@@ -191,14 +188,15 @@ func (orig *SpanContext) SizeProto() int {
 	n += 1 + proto.Sov(uint64(l)) + l
 	l = orig.SpanID.SizeProto()
 	n += 1 + proto.Sov(uint64(l)) + l
-	if orig.TraceFlags != 0 {
+	if orig.TraceFlags != uint32(0) {
 		n += 5
 	}
+
 	l = len(orig.TraceState)
 	if l > 0 {
 		n += 1 + proto.Sov(uint64(l)) + l
 	}
-	if orig.Remote {
+	if orig.Remote != false {
 		n += 2
 	}
 	return n
@@ -220,7 +218,7 @@ func (orig *SpanContext) MarshalProto(buf []byte) int {
 	pos--
 	buf[pos] = 0x12
 
-	if orig.TraceFlags != 0 {
+	if orig.TraceFlags != uint32(0) {
 		pos -= 4
 		binary.LittleEndian.PutUint32(buf[pos:], uint32(orig.TraceFlags))
 		pos--
@@ -234,7 +232,7 @@ func (orig *SpanContext) MarshalProto(buf []byte) int {
 		pos--
 		buf[pos] = 0x22
 	}
-	if orig.Remote {
+	if orig.Remote != false {
 		pos--
 		if orig.Remote {
 			buf[pos] = 1
@@ -327,7 +325,6 @@ func (orig *SpanContext) UnmarshalProto(buf []byte) error {
 			if err != nil {
 				return err
 			}
-
 			orig.Remote = num != 0
 		default:
 			pos, err = proto.ConsumeUnknown(buf, pos, wireType)
