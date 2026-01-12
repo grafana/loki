@@ -782,24 +782,12 @@ func buildDeletePredicates(deletes []*logproto.Delete, params logql.Params, rang
 		}
 
 		var timeRangePredicate *BinOp
-		if d.Start <= qStart && d.End >= qEnd {
+		switch {
+		case d.Start <= qStart && d.End >= qEnd:
 			// delete request entirely covers query time range.
 			// keep line if other conditions do not match.
-		} else if d.Start <= qStart {
-			// keep line if ts > del_req_end
-			timeRangePredicate = &BinOp{
-				Left:  timestampColumnRef(),
-				Right: NewLiteral(types.Timestamp(d.End)),
-				Op:    types.BinaryOpGt,
-			}
-		} else if d.End >= qEnd {
-			// keep line if ts < del_req_start
-			timeRangePredicate = &BinOp{
-				Left:  timestampColumnRef(),
-				Right: NewLiteral(types.Timestamp(d.Start)),
-				Op:    types.BinaryOpLt,
-			}
-		} else {
+		case d.Start >= qStart && d.End <= qEnd:
+			// delete request is entirely within query time range.
 			// keep line if ts < del_req_start OR ts > del_req_end
 			timeRangePredicate = &BinOp{
 				Left: &BinOp{
@@ -813,6 +801,20 @@ func buildDeletePredicates(deletes []*logproto.Delete, params logql.Params, rang
 					Op:    types.BinaryOpGt,
 				},
 				Op: types.BinaryOpOr,
+			}
+		case d.Start <= qStart:
+			// keep line if ts > del_req_end
+			timeRangePredicate = &BinOp{
+				Left:  timestampColumnRef(),
+				Right: NewLiteral(types.Timestamp(d.End)),
+				Op:    types.BinaryOpGt,
+			}
+		case d.End >= qEnd:
+			// keep line if ts < del_req_start
+			timeRangePredicate = &BinOp{
+				Left:  timestampColumnRef(),
+				Right: NewLiteral(types.Timestamp(d.Start)),
+				Op:    types.BinaryOpLt,
 			}
 		}
 

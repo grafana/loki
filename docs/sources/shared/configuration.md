@@ -371,6 +371,10 @@ query_engine:
   # CLI flag: -query-engine.downstream-address
   [downstream_address: <string> | default = ""]
 
+  # Enable filtering of log lines matching delete requests.
+  # CLI flag: -query-engine.enable-delete-req-filtering
+  [enable_delete_req_filtering: <boolean> | default = true]
+
 # The query_scheduler block configures the Loki query scheduler. When configured
 # it separates the tenant query queues from the query-frontend.
 [query_scheduler: <query_scheduler>]
