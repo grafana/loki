@@ -93,6 +93,10 @@ var mockedMetastoreSections = []*metastore.DataobjSectionDescriptor{
 		Size:      1 << 10,
 		Start:     time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC),
 		End:       time.Date(2025, time.January, 1, 0, 30, 0, 0, time.UTC),
+		LabelsByStreamID: map[int64][]string{
+			1: {"app", "one", "foo", "bar"},
+			2: {"app", "two", "foo", "bar"},
+		},
 	},
 	{
 		SectionKey: metastore.SectionKey{
@@ -104,6 +108,10 @@ var mockedMetastoreSections = []*metastore.DataobjSectionDescriptor{
 		Size:      1 << 10,
 		Start:     time.Date(2025, time.January, 1, 0, 30, 0, 0, time.UTC),
 		End:       time.Date(2025, time.January, 1, 1, 0, 0, 0, time.UTC),
+		LabelsByStreamID: map[int64][]string{
+			1: {"app", "one", "foo", "bar"},
+			2: {"app", "two", "foo", "bar"},
+		},
 	},
 }
 
@@ -136,8 +144,8 @@ TopK sort_by=builtin.timestamp ascending=false nulls_first=false k=1000
         └── Filter predicate[0]=EQ(ambiguous.label_foo, "bar")
             └── Compat src=metadata dst=metadata collisions=(label)
                 └── ScanSet num_targets=2 predicate[0]=GTE(builtin.timestamp, 2025-01-01T00:00:00Z) predicate[1]=LT(builtin.timestamp, 2025-01-01T01:00:00Z) predicate[2]=MATCH_STR(builtin.message, "baz")
-                        ├── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=1 projections=()
-                        └── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=0 projections=()
+                        ├── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=1 projections=() predicate[0]=EQ(metadata.label_foo, "bar")
+                        └── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=0 projections=() predicate[0]=EQ(metadata.label_foo, "bar")
 `,
 		},
 		{
@@ -211,8 +219,8 @@ VectorAggregation operation=sum group_by=()
                                 └── Filter predicate[0]=EQ(ambiguous.detected_level, "error")
                                     └── Compat src=metadata dst=metadata collisions=(label)
                                         └── ScanSet num_targets=2 predicate[0]=GTE(builtin.timestamp, 2024-12-31T23:59:00Z) predicate[1]=LT(builtin.timestamp, 2025-01-01T01:00:00Z)
-                                                ├── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=1 projections=()
-                                                └── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=0 projections=()
+                                                ├── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=1 projections=() predicate[0]=EQ(metadata.detected_level, "error")
+                                                └── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=0 projections=() predicate[0]=EQ(metadata.detected_level, "error")
 `,
 		},
 		{

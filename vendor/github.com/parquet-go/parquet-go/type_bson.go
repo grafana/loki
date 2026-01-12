@@ -79,7 +79,7 @@ func (t *bsonType) AssignValue(dst reflect.Value, src Value) error {
 
 func (t *bsonType) ConvertValue(val Value, typ Type) (Value, error) {
 	switch typ.(type) {
-	case *byteArrayType, *bsonType:
+	case byteArrayType, *bsonType:
 		return val, nil
 	default:
 		return val, invalidConversion(val, "BSON", typ.String())

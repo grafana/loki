@@ -13,6 +13,8 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+- [BUGFIX] Respect global registry in sidecar image [#19347](https://github.com/grafana/loki/pull/19347).
+
 ## 6.49.0
 
 - [CHANGE] Updated version of Grafana Loki to 3.6.3

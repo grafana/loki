@@ -89,8 +89,32 @@ func NewReaderFromMessageReader(r MessageReader, opts ...Option) (reader *Reader
 }
 
 // NewReader returns a reader that reads records from an input stream.
-func NewReader(r io.Reader, opts ...Option) (*Reader, error) {
-	return NewReaderFromMessageReader(NewMessageReader(r, opts...), opts...)
+func NewReader(r io.Reader, opts ...Option) (rr *Reader, err error) {
+	defer func() {
+		if pErr := recover(); pErr != nil {
+			err = utils.FormatRecoveredError("arrow/ipc: unknown error while reading", pErr)
+		}
+	}()
+	cfg := newConfig(opts...)
+	mr := &messageReader{r: r, mem: cfg.alloc}
+	mr.refCount.Add(1)
+	rr = &Reader{
+		r:        mr,
+		refCount: atomic.Int64{},
+		// types:    make(dictTypeMap),
+		memo:               dictutils.NewMemo(),
+		mem:                cfg.alloc,
+		ensureNativeEndian: cfg.ensureNativeEndian,
+		expectedSchema:     cfg.schema,
+	}
+	rr.refCount.Add(1)
+
+	if !cfg.noAutoSchema {
+		if err := rr.readSchema(cfg.schema); err != nil {
+			return nil, err
+		}
+	}
+	return rr, nil
 }
 
 // Err returns the last error encountered during the iteration over the

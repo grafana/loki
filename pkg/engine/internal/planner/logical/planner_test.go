@@ -1,6 +1,7 @@
 package logical
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -285,6 +286,7 @@ func TestCanExecuteQuery(t *testing.T) {
 		},
 		{
 			statement: `{env="prod"} | regexp ".* foo=(?P<foo>.+) .*"`,
+			expected:  true,
 		},
 		{
 			statement: `{env="prod"} | unpack`,
@@ -574,13 +576,46 @@ RETURN %12
 		require.Equal(t, expected, plan.String())
 	})
 
-	t.Run("preserves operation order with filters before and after projection with parse operation", func(t *testing.T) {
-		// Test that filters before logfmt parse are applied before parsing,
-		// and filters after logfmt parse are applied after parsing.
-		// This is important for performance - we don't want to parse lines
-		// that will be filtered out.
+	t.Run("creates projection instruction with regexp parse operation for metric query", func(t *testing.T) {
+		// Query with regexp parser followed by label filter in an instant metric query
 		q := &query{
-			statement: `{job="app"} |= "error" | label="value" | logfmt | level="debug"`,
+			statement: `sum by (foo) (count_over_time({app="test"} | regexp ".* foo=(?P<foo>.+) .*" | foo="bar" [5m]))`,
+			start:     3600,
+			end:       7200,
+			interval:  5 * time.Minute,
+		}
+
+		plan, err := BuildPlan(q)
+		require.NoError(t, err)
+		t.Logf("\n%s\n", plan.String())
+
+		// Assert against the correct SSA representation
+		// Since there are no filters before regexp, parse comes right after MAKETABLE
+		expected := `%1 = EQ label.app "test"
+%2 = MAKETABLE [selector=%1, predicates=[], shard=0_of_1]
+%3 = GTE builtin.timestamp 1970-01-01T00:55:00Z
+%4 = SELECT %2 [predicate=%3]
+%5 = LT builtin.timestamp 1970-01-01T02:00:00Z
+%6 = SELECT %4 [predicate=%5]
+%7 = PARSE_REGEXP(builtin.message, ".* foo=(?P<foo>.+) .*")
+%8 = PROJECT %6 [mode=*E, expr=%7]
+%9 = EQ ambiguous.foo "bar"
+%10 = SELECT %8 [predicate=%9]
+%11 = EQ generated.__error__ ""
+%12 = EQ generated.__error_details__ ""
+%13 = AND %11 %12
+%14 = SELECT %10 [predicate=%13]
+%15 = RANGE_AGGREGATION %14 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
+%16 = VECTOR_AGGREGATION %15 [operation=sum, group_by=(ambiguous.foo)]
+%17 = LOGQL_COMPAT %16
+RETURN %17
+`
+		require.Equal(t, expected, plan.String())
+	})
+
+	t.Run("creates projection instruction with regexp parse operation for log query", func(t *testing.T) {
+		q := &query{
+			statement: `{app="test"} | regexp "(?P<level>\\w+):\\s+(?P<message>.*)" | level="error"`,
 			start:     3600,
 			end:       7200,
 			direction: logproto.BACKWARD,
@@ -591,8 +626,52 @@ RETURN %12
 		require.NoError(t, err)
 		t.Logf("\n%s\n", plan.String())
 
-		// Expected behavior - PARSE should happen after filters that don't need parsed fields
-		expected := `%1 = EQ label.job "app"
+		// Assert against the SSA representation for log query
+		// Note: LogQL query has \\w+ which LogQL parses to \w+, then printed as \w+ in output
+		expected := `%1 = EQ label.app "test"
+%2 = MAKETABLE [selector=%1, predicates=[], shard=0_of_1]
+%3 = GTE builtin.timestamp 1970-01-01T01:00:00Z
+%4 = SELECT %2 [predicate=%3]
+%5 = LT builtin.timestamp 1970-01-01T02:00:00Z
+%6 = SELECT %4 [predicate=%5]
+%7 = PARSE_REGEXP(builtin.message, "(?P<level>\w+):\s+(?P<message>.*)")
+%8 = PROJECT %6 [mode=*E, expr=%7]
+%9 = EQ ambiguous.level "error"
+%10 = SELECT %8 [predicate=%9]
+%11 = TOPK %10 [sort_by=builtin.timestamp, k=1000, asc=false, nulls_first=false]
+%12 = LOGQL_COMPAT %11
+RETURN %12
+`
+		require.Equal(t, expected, plan.String())
+	})
+
+	t.Run("preserves operation order with filters before and after projection with parse operation", func(t *testing.T) {
+		// A map of parse statement => generated
+		parsers := map[string]string{
+			`json`:                     `PARSE_JSON(builtin.message, [], false, false)`,
+			`logfmt`:                   `PARSE_LOGFMT(builtin.message, [], false, false)`,
+			`regexp "(?P<level>\\w+)"`: `PARSE_REGEXP(builtin.message, "(?P<level>\w+)")`,
+		}
+
+		for parser, statement := range parsers {
+			// Test that filters before logfmt parse are applied before parsing,
+			// and filters after logfmt parse are applied after parsing.
+			// This is important for performance - we don't want to parse lines
+			// that will be filtered out.
+			q := &query{
+				statement: fmt.Sprintf(`{job="app"} |= "error" | label="value" | %s | level="debug"`, parser),
+				start:     3600,
+				end:       7200,
+				direction: logproto.BACKWARD,
+				limit:     1000,
+			}
+
+			plan, err := BuildPlan(q)
+			require.NoError(t, err)
+			t.Logf("\n%s\n", plan.String())
+
+			// Expected behavior - PARSE should happen after filters that don't need parsed fields
+			expected := strings.Replace(`%1 = EQ label.job "app"
 %2 = MATCH_STR builtin.message "error"
 %3 = EQ ambiguous.label "value"
 %4 = MAKETABLE [selector=%1, predicates=[%2, %3], shard=0_of_1]
@@ -602,34 +681,43 @@ RETURN %12
 %8 = SELECT %6 [predicate=%7]
 %9 = SELECT %8 [predicate=%2]
 %10 = SELECT %9 [predicate=%3]
-%11 = PARSE_LOGFMT(builtin.message, [], false, false)
+%11 = {PARSE_STATEMENT}
 %12 = PROJECT %10 [mode=*E, expr=%11]
 %13 = EQ ambiguous.level "debug"
 %14 = SELECT %12 [predicate=%13]
 %15 = TOPK %14 [sort_by=builtin.timestamp, k=1000, asc=false, nulls_first=false]
 %16 = LOGQL_COMPAT %15
 RETURN %16
-`
+`, "{PARSE_STATEMENT}", statement, 1)
 
-		require.Equal(t, expected, plan.String(), "Operations should be in the correct order: LineFilter before Parse, LabelFilter after Parse")
+			require.Equal(t, expected, plan.String(), "Operations should be in the correct order: LineFilter before Parse, LabelFilter after Parse")
+
+		}
 	})
 
 	t.Run("preserves operation order in metric query with filters before and after projection with parse operation", func(t *testing.T) {
-		// Test that filters before logfmt parse are applied before parsing in metric queries too
-		q := &query{
-			statement: `sum by (level) (count_over_time({job="app"} |= "error" | label="value" | logfmt | level="debug" [5m]))`,
-			start:     3600,
-			end:       7200,
-			interval:  5 * time.Minute,
+		parsers := map[string]string{
+			`json`:                     `PARSE_JSON(builtin.message, [], false, false)`,
+			`logfmt`:                   `PARSE_LOGFMT(builtin.message, [], false, false)`,
+			`regexp "(?P<level>\\w+)"`: `PARSE_REGEXP(builtin.message, "(?P<level>\w+)")`,
 		}
 
-		plan, err := BuildPlan(q)
-		require.NoError(t, err)
-		t.Logf("\n%s\n", plan.String())
+		for parser, statement := range parsers {
+			// Test that filters before logfmt parse are applied before parsing in metric queries too
+			q := &query{
+				statement: fmt.Sprintf(`sum by (level) (count_over_time({job="app"} |= "error" | label="value" | %s | level="debug" [5m]))`, parser),
+				start:     3600,
+				end:       7200,
+				interval:  5 * time.Minute,
+			}
 
-		// Expected behavior - PARSE should happen after filters that don't need parsed fields
-		// For metric queries: no SORT, but time range filters are applied earlier
-		expected := `%1 = EQ label.job "app"
+			plan, err := BuildPlan(q)
+			require.NoError(t, err)
+			t.Logf("\n%s\n", plan.String())
+
+			// Expected behavior - PARSE should happen after filters that don't need parsed fields
+			// For metric queries: no SORT, but time range filters are applied earlier
+			expected := strings.Replace(`%1 = EQ label.job "app"
 %2 = MATCH_STR builtin.message "error"
 %3 = EQ ambiguous.label "value"
 %4 = MAKETABLE [selector=%1, predicates=[%2, %3], shard=0_of_1]
@@ -639,7 +727,7 @@ RETURN %16
 %8 = SELECT %6 [predicate=%7]
 %9 = SELECT %8 [predicate=%2]
 %10 = SELECT %9 [predicate=%3]
-%11 = PARSE_LOGFMT(builtin.message, [], false, false)
+%11 = {PARSE_STATEMENT}
 %12 = PROJECT %10 [mode=*E, expr=%11]
 %13 = EQ ambiguous.level "debug"
 %14 = SELECT %12 [predicate=%13]
@@ -651,9 +739,10 @@ RETURN %16
 %20 = VECTOR_AGGREGATION %19 [operation=sum, group_by=(ambiguous.level)]
 %21 = LOGQL_COMPAT %20
 RETURN %21
-`
+`, "{PARSE_STATEMENT}", statement, 1)
 
-		require.Equal(t, expected, plan.String(), "Metric query should preserve operation order: filters before parse, then parse, then filters after parse")
+			require.Equal(t, expected, plan.String(), "Metric query should preserve operation order: filters before parse, then parse, then filters after parse")
+		}
 	})
 }
 

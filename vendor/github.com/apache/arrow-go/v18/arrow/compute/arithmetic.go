@@ -34,6 +34,8 @@ type (
 	RoundOptions           = kernels.RoundOptions
 	RoundMode              = kernels.RoundMode
 	RoundToMultipleOptions = kernels.RoundToMultipleOptions
+	RoundTemporalOptions   = kernels.RoundTemporalOptions
+	RoundTemporalUnit      = kernels.RoundTemporalUnit
 )
 
 const (
@@ -57,12 +59,28 @@ const (
 	RoundHalfToEven = kernels.HalfToEven
 	// Round ties to nearest odd integer
 	RoundHalfToOdd = kernels.HalfToOdd
+
+	// Temporal rounding units
+	RoundTemporalYear        = kernels.RoundTemporalYear
+	RoundTemporalQuarter     = kernels.RoundTemporalQuarter
+	RoundTemporalMonth       = kernels.RoundTemporalMonth
+	RoundTemporalWeek        = kernels.RoundTemporalWeek
+	RoundTemporalDay         = kernels.RoundTemporalDay
+	RoundTemporalHour        = kernels.RoundTemporalHour
+	RoundTemporalMinute      = kernels.RoundTemporalMinute
+	RoundTemporalSecond      = kernels.RoundTemporalSecond
+	RoundTemporalMillisecond = kernels.RoundTemporalMillisecond
+	RoundTemporalMicrosecond = kernels.RoundTemporalMicrosecond
+	RoundTemporalNanosecond  = kernels.RoundTemporalNanosecond
 )
 
 var (
 	DefaultRoundOptions           = RoundOptions{NDigits: 0, Mode: RoundHalfToEven}
 	DefaultRoundToMultipleOptions = RoundToMultipleOptions{
 		Multiple: scalar.NewFloat64Scalar(1), Mode: RoundHalfToEven}
+	DefaultRoundTemporalOptions = RoundTemporalOptions{
+		Multiple: 1, Unit: RoundTemporalDay, WeekStartsMonday: true,
+		CeilIsStrictlyGreater: false, CalendarBasedOrigin: false}
 )
 
 type arithmeticFunction struct {
@@ -572,6 +590,39 @@ use half-to-even rule to break ties.`,
 		ArgNames:    []string{"x"},
 		OptionsType: "RoundToMultipleOptions",
 	}
+	floorTemporalDoc = FunctionDoc{
+		Summary: "Round temporal values down to nearest multiple of specified time unit",
+		Description: `Round temporal values down to nearest multiple of specified time unit.
+Null values emit null. An error is returned if the values have a defined
+timezone but it cannot be found in the timezone database.
+
+Supported units: year, quarter, month, week, day, hour, minute, second,
+millisecond, microsecond, nanosecond.`,
+		ArgNames:    []string{"timestamps"},
+		OptionsType: "RoundTemporalOptions",
+	}
+	ceilTemporalDoc = FunctionDoc{
+		Summary: "Round temporal values up to nearest multiple of specified time unit",
+		Description: `Round temporal values up to nearest multiple of specified time unit.
+Null values emit null. An error is returned if the values have a defined
+timezone but it cannot be found in the timezone database.
+
+Supported units: year, quarter, month, week, day, hour, minute, second,
+millisecond, microsecond, nanosecond.`,
+		ArgNames:    []string{"timestamps"},
+		OptionsType: "RoundTemporalOptions",
+	}
+	roundTemporalDoc = FunctionDoc{
+		Summary: "Round temporal values to nearest multiple of specified time unit",
+		Description: `Round temporal values to nearest multiple of specified time unit.
+Null values emit null. An error is returned if the values have a defined
+timezone but it cannot be found in the timezone database.
+
+Supported units: year, quarter, month, week, day, hour, minute, second,
+millisecond, microsecond, nanosecond.`,
+		ArgNames:    []string{"timestamps"},
+		OptionsType: "RoundTemporalOptions",
+	}
 )
 
 func RegisterScalarArithmetic(reg FunctionRegistry) {
@@ -1003,6 +1054,37 @@ func RegisterScalarArithmetic(reg FunctionRegistry) {
 
 	roundToMultipleFn.defaultOpts = DefaultRoundToMultipleOptions
 	reg.AddFunction(roundToMultipleFn, false)
+
+	// Temporal rounding functions
+	floorTemporalFn := NewScalarFunction("floor_temporal", Unary(), floorTemporalDoc)
+	kns = kernels.GetTemporalRoundingKernels(kernels.InitRoundTemporalState, kernels.FloorTemporalKernel)
+	for _, k := range kns {
+		if err := floorTemporalFn.AddKernel(k); err != nil {
+			panic(err)
+		}
+	}
+	floorTemporalFn.defaultOpts = DefaultRoundTemporalOptions
+	reg.AddFunction(floorTemporalFn, false)
+
+	ceilTemporalFn := NewScalarFunction("ceil_temporal", Unary(), ceilTemporalDoc)
+	kns = kernels.GetTemporalRoundingKernels(kernels.InitRoundTemporalState, kernels.CeilTemporalKernel)
+	for _, k := range kns {
+		if err := ceilTemporalFn.AddKernel(k); err != nil {
+			panic(err)
+		}
+	}
+	ceilTemporalFn.defaultOpts = DefaultRoundTemporalOptions
+	reg.AddFunction(ceilTemporalFn, false)
+
+	roundTemporalFn := NewScalarFunction("round_temporal", Unary(), roundTemporalDoc)
+	kns = kernels.GetTemporalRoundingKernels(kernels.InitRoundTemporalState, kernels.RoundTemporalKernel)
+	for _, k := range kns {
+		if err := roundTemporalFn.AddKernel(k); err != nil {
+			panic(err)
+		}
+	}
+	roundTemporalFn.defaultOpts = DefaultRoundTemporalOptions
+	reg.AddFunction(roundTemporalFn, false)
 }
 
 func impl(ctx context.Context, fn string, opts ArithmeticOptions, left, right Datum) (Datum, error) {
@@ -1226,4 +1308,16 @@ func Round(ctx context.Context, opts RoundOptions, arg Datum) (Datum, error) {
 
 func RoundToMultiple(ctx context.Context, opts RoundToMultipleOptions, arg Datum) (Datum, error) {
 	return CallFunction(ctx, "round_to_multiple", &opts, arg)
+}
+
+func FloorTemporal(ctx context.Context, opts RoundTemporalOptions, arg Datum) (Datum, error) {
+	return CallFunction(ctx, "floor_temporal", &opts, arg)
+}
+
+func CeilTemporal(ctx context.Context, opts RoundTemporalOptions, arg Datum) (Datum, error) {
+	return CallFunction(ctx, "ceil_temporal", &opts, arg)
+}
+
+func RoundTemporal(ctx context.Context, opts RoundTemporalOptions, arg Datum) (Datum, error) {
+	return CallFunction(ctx, "round_temporal", &opts, arg)
 }

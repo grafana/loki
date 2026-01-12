@@ -68,5 +68,5 @@
   <entry type="GenericSubheading" style="bold #800080"/>
   <entry type="GenericTraceback" style="bold #a40000"/>
   <entry type="GenericUnderline" style="underline"/>
-  <entry type="TextWhitespace" style="underline #f8f8f8"/>
+  <entry type="TextWhitespace" style="#f8f8f8"/>
 </style>

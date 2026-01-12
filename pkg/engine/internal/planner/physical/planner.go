@@ -213,6 +213,30 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) (Node, e
 	p.plan.graph.Add(scanSet)
 
 	for _, dataObj := range dataObjs {
+		//TODO: Labels are tracked per stream in the dataObj so that this can eventually be smarter.
+		// If we track labels per stream in the ScanTarget, and disambiguate per streamID when
+		// actually scanning, we can be more precise. For now we just disambiguate columns as metadata
+		// when they aren't in any of the label sets seen for this query.
+		allLblNames := map[string]struct{}{}
+		for _, lbls := range dataObj.LabelsByStreamID {
+			for _, lbl := range lbls {
+				allLblNames[lbl] = struct{}{}
+			}
+		}
+
+		lblNames := make([]string, 0, len(allLblNames))
+		for lblName := range allLblNames {
+			lblNames = append(lblNames, lblName)
+		}
+
+		predicatesToPushdown := make([]Expression, 0, len(predicates))
+		for _, predicate := range predicates {
+			p, disambiguated := disambiguateExpression(predicate, lblNames)
+			if disambiguated {
+				predicatesToPushdown = append(predicatesToPushdown, p)
+			}
+		}
+
 		for _, section := range dataObj.Sections {
 			scanSet.Targets = append(scanSet.Targets, &ScanTarget{
 				Type: ScanTypeDataObject,
@@ -224,6 +248,7 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) (Node, e
 					StreamIDs:    dataObj.Streams,
 					Section:      section,
 					MaxTimeRange: dataObj.TimeRange,
+					Predicates:   predicatesToPushdown,
 				},
 			})
 		}
@@ -340,7 +365,9 @@ func (p *Planner) processProjection(lp *logical.Projection, ctx *Context) (Node,
 	for i := range lp.Expressions {
 		expressions[i] = p.convertPredicate(lp.Expressions[i])
 		if funcExpr, ok := lp.Expressions[i].(*logical.FunctionOp); ok {
-			if funcExpr.Op == types.VariadicOpParseJSON || funcExpr.Op == types.VariadicOpParseLogfmt {
+			if funcExpr.Op == types.VariadicOpParseJSON ||
+				funcExpr.Op == types.VariadicOpParseLogfmt ||
+				funcExpr.Op == types.VariadicOpParseRegexp {
 				needsCompat = true
 			}
 		}
@@ -644,6 +671,67 @@ func (p *Planner) wrapNodeWith(node Node, wrapper Node) (Node, error) {
 		return nil, err
 	}
 	return wrapper, nil
+}
+
+// disambiguateExpression recursively updates ColumnTypeAmbiguous references
+// to ColumnTypeMetadata if the column name does not exist in the provided label set
+func disambiguateExpression(expr Expression, allLbls []string) (Expression, bool) {
+	if expr == nil {
+		return nil, false
+	}
+
+	switch e := expr.(type) {
+	case *BinaryExpr:
+		leftExpr, leftChanged := disambiguateExpression(e.Left, allLbls)
+		rightExpr, rightChanged := disambiguateExpression(e.Right, allLbls)
+		if !leftChanged && !rightChanged {
+			return e, false
+		}
+
+		return &BinaryExpr{
+			Left:  leftExpr,
+			Right: rightExpr,
+			Op:    e.Op,
+		}, true
+	case *ColumnExpr:
+		if e.Ref.Type == types.ColumnTypeAmbiguous && !slices.Contains(allLbls, e.Ref.Column) {
+			return &ColumnExpr{
+				Ref: types.ColumnRef{
+					Column: e.Ref.Column,
+					Type:   types.ColumnTypeMetadata,
+				},
+			}, true
+		}
+		return e, false
+	case *UnaryExpr:
+		leftExpr, leftChanged := disambiguateExpression(e.Left, allLbls)
+		if !leftChanged {
+			return e, false
+		}
+
+		return &UnaryExpr{
+			Left: leftExpr,
+			Op:   e.Op,
+		}, true
+	case *VariadicExpr:
+		anyChanged := false
+		newExprs := make([]Expression, len(e.Expressions))
+		for i, subExpr := range e.Expressions {
+			exp, changed := disambiguateExpression(subExpr, allLbls)
+			newExprs[i] = exp
+			anyChanged = anyChanged || changed
+		}
+		if !anyChanged {
+			return e, false
+		}
+
+		return &VariadicExpr{
+			Op:          e.Op,
+			Expressions: newExprs,
+		}, true
+	default:
+		return e, false
+	}
 }
 
 // Optimize runs optimization passes over the plan, modifying it
