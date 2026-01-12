@@ -34,7 +34,7 @@ type ProxyBackend struct {
 }
 
 // NewProxyBackend makes a new ProxyBackend
-// It accepts preferred booleans to be in the following order [legacy, v1, v2], with v1 and v1 being optional
+// It accepts preferred booleans to be in the following order [legacy, v1, v2], with v1 and v2 being optional
 // for backwards compatibility.
 func NewProxyBackend(name string, endpoint *url.URL, timeout time.Duration, preferred ...bool) *ProxyBackend {
 	var legacyPreferred, v1Preferred, v2Preferred bool
