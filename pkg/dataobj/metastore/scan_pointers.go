@@ -8,13 +8,16 @@ import (
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/apache/arrow-go/v18/arrow/scalar"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/symbolizer"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
@@ -26,7 +29,10 @@ type scanPointers struct {
 	sStart *scalar.Timestamp
 	sEnd   *scalar.Timestamp
 
+	// internal state
 	initialized        bool
+	sym                *symbolizer.Symbolizer
+	streams            map[int64]streams.Stream
 	matchingStreamIDs  []scalar.Scalar
 	pointersSections   []*dataobj.Section
 	pointersSectionIdx int
@@ -48,6 +54,8 @@ func newScanPointers(idxObj *dataobj.Object, sStart, sEnd *scalar.Timestamp, mat
 		sEnd:   sEnd,
 
 		region: region,
+
+		sym: symbolizer.New(128, 1024),
 	}
 }
 
@@ -79,6 +87,15 @@ func (s *scanPointers) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	}
 }
 
+func (s *scanPointers) GetStreamLabels(ctx context.Context, id int64) (labels.Labels, error) {
+	if err := s.init(ctx); err != nil {
+		return labels.EmptyLabels(), err
+	}
+
+	stream, _ := s.streams[id]
+	return stream.Labels, nil
+}
+
 func (s *scanPointers) init(ctx context.Context) error {
 	if s.initialized {
 		return nil
@@ -88,6 +105,28 @@ func (s *scanPointers) init(ctx context.Context) error {
 		return io.EOF
 	}
 
+	err := s.preparePointersSections(ctx)
+	if err != nil {
+		return err
+	}
+
+	err = s.prepareStreams(ctx)
+	if err != nil {
+		return err
+	}
+
+	s.pointersSectionIdx = -1
+	err = s.prepareForNextSection(ctx)
+	if err != nil {
+		return err
+	}
+
+	s.initialized = true
+
+	return nil
+}
+
+func (s *scanPointers) preparePointersSections(ctx context.Context) error {
 	targetTenant, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return fmt.Errorf("extracting org ID: %w", err)
@@ -105,41 +144,129 @@ func (s *scanPointers) init(ctx context.Context) error {
 		return io.EOF
 	}
 
-	// find stream ids that satisfy the predicate and start/end
-	s.matchingStreamIDs, err = s.findMatchingStreamIDs(ctx)
+	return nil
+}
+
+func (s *scanPointers) prepareStreams(ctx context.Context) error {
+	var reader streams.Reader
+	defer func(start time.Time) {
+		_ = reader.Close()
+		s.streamsReadDuration = time.Since(start)
+	}(time.Now())
+
+	targetTenant, err := user.ExtractOrgID(ctx)
 	if err != nil {
-		return fmt.Errorf("creating matching stream ids: %w", err)
+		return fmt.Errorf("extracting org ID: %w", err)
 	}
 
-	if s.matchingStreamIDs == nil {
+	s.streams = make(map[int64]streams.Stream)
+	const batchSize = 1024
+
+	for _, section := range s.obj.Sections().Filter(streams.CheckSection) {
+		if section.Tenant != targetTenant {
+			continue
+		}
+
+		sec, err := streams.Open(ctx, section)
+		if err != nil {
+			return fmt.Errorf("opening section: %w", err)
+		}
+		predicates, err := buildStreamReaderPredicate(sec, s.sStart, s.sEnd, s.matchers)
+		if err != nil {
+			return err
+		}
+
+		var columns []*streams.Column
+		for _, col := range sec.Columns() {
+			if col.Type == streams.ColumnTypeStreamID || col.Type == streams.ColumnTypeLabel {
+				columns = append(columns, col)
+			}
+		}
+
+		if len(columns) == 0 {
+			return fmt.Errorf("no columns to retrieve")
+		}
+
+		reader.Reset(streams.ReaderOptions{
+			Columns:    columns,
+			Predicates: predicates,
+			Allocator:  memory.DefaultAllocator,
+		})
+
+		for {
+			rec, err := reader.Read(ctx, batchSize)
+			if rec != nil && rec.NumRows() > 0 {
+				err := s.addStreams(rec, columns)
+				if err != nil {
+					return err
+				}
+			}
+
+			if err != nil {
+				if errors.Is(err, io.EOF) {
+					break
+				}
+				return fmt.Errorf("reading streams: %w", err)
+			}
+		}
+	}
+
+	if len(s.streams) == 0 {
 		return io.EOF
 	}
-
-	s.pointersSectionIdx = -1
-	err = s.prepareForNextSection(ctx)
-	if err != nil {
-		return err
-	}
-
-	s.initialized = true
 
 	return nil
 }
 
-func (s *scanPointers) findMatchingStreamIDs(ctx context.Context) ([]scalar.Scalar, error) {
-	defer func(start time.Time) {
-		s.streamsReadDuration = time.Since(start)
-	}(time.Now())
+func (s *scanPointers) addStreams(rec arrow.RecordBatch, columns []*streams.Column) error {
+	numRows := int(rec.NumRows())
+	// TODO(ivkalita): reuse buffers
+	lbBuilders := make([]*labels.Builder, numRows)
+	streamIDs := make([]int64, numRows)
+	for cIdx := range int(rec.NumCols()) {
+		col := rec.Column(cIdx)
+		ct := columns[cIdx].Type
+		switch ct {
+		case streams.ColumnTypeLabel:
+			values := col.(*array.String)
+			for rIdx := range numRows {
+				if col.IsNull(rIdx) {
+					continue
+				}
+				if lbBuilders[rIdx] == nil {
+					lbBuilders[rIdx] = labels.NewBuilder(labels.EmptyLabels())
+				}
 
-	var matchingStreamIDs []scalar.Scalar
-	err := forEachStreamID(ctx, s.obj, s.sStart, s.sEnd, s.matchers, func(streamID int64) {
-		matchingStreamIDs = append(matchingStreamIDs, scalar.NewInt64Scalar(streamID))
-	})
-	if err != nil {
-		return nil, fmt.Errorf("error iterating streams: %v", err)
+				lbBuilders[rIdx].Set(columns[cIdx].Name, s.sym.Get(values.Value(rIdx)))
+			}
+		case streams.ColumnTypeStreamID:
+			values := col.(*array.Int64)
+			for rIdx := range numRows {
+				if col.IsNull(rIdx) {
+					continue
+				}
+				streamIDs[rIdx] = values.Value(rIdx)
+			}
+		default:
+			continue
+		}
 	}
 
-	return matchingStreamIDs, nil
+	for rIdx := range numRows {
+		streamID := streamIDs[rIdx]
+		if streamID == 0 {
+			// TODO(ivkalita): can this actually happen?
+			continue
+		}
+		lbs := labels.EmptyLabels()
+		if lbBuilders[rIdx] != nil {
+			lbs = lbBuilders[rIdx].Labels()
+		}
+		s.streams[streamIDs[rIdx]] = streams.Stream{ID: streamID, Labels: lbs}
+		s.matchingStreamIDs = append(s.matchingStreamIDs, scalar.NewInt64Scalar(streamID))
+	}
+
+	return nil
 }
 
 func (s *scanPointers) prepareForNextSection(ctx context.Context) error {
@@ -234,7 +361,7 @@ func (s *scanPointers) Close() {
 		_ = s.pointersReader.Close()
 	}
 	if s.region != nil {
-		s.region.Record(xcap.StatMetastoreStreamsRead.Observe(int64(len(s.matchingStreamIDs))))
+		s.region.Record(xcap.StatMetastoreStreamsRead.Observe(int64(len(s.streams))))
 		s.region.Record(xcap.StatMetastoreStreamsReadTime.Observe(s.streamsReadDuration.Seconds()))
 		s.region.Record(xcap.StatMetastoreSectionPointersRead.Observe(s.sectionPointersRead))
 		s.region.Record(xcap.StatMetastoreSectionPointersReadTime.Observe(s.sectionPointersReadDuration.Seconds()))

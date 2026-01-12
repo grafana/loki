@@ -19,6 +19,12 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
+type testStreamMetadataProvider struct{}
+
+func (p testStreamMetadataProvider) GetStreamLabels(_ context.Context, _ int64) (labels.Labels, error) {
+	return labels.EmptyLabels(), nil
+}
+
 func TestApplyBlooms_Passthrough_NoPredicates(t *testing.T) {
 	t.Parallel()
 
@@ -41,7 +47,7 @@ func TestApplyBlooms_Passthrough_NoPredicates(t *testing.T) {
 	rec2 := makeRec([]string{"c"}, []int64{3})
 
 	input := &sliceRecordBatchReader{recs: []arrow.RecordBatch{rec1, rec2}}
-	reader := newApplyBlooms(nil, nil, input, nil).(*applyBlooms)
+	reader := newApplyBlooms(nil, nil, input, testStreamMetadataProvider{}, nil).(*applyBlooms)
 
 	var total int64
 	for {
@@ -80,7 +86,7 @@ func TestApplyBlooms_IgnoresNonEqualPredicates(t *testing.T) {
 	predicates := []*labels.Matcher{
 		labels.MustNewMatcher(labels.MatchRegexp, "traceID", "abcd"),
 	}
-	reader := newApplyBlooms(nil, predicates, input, nil).(*applyBlooms)
+	reader := newApplyBlooms(nil, predicates, input, testStreamMetadataProvider{}, nil).(*applyBlooms)
 
 	out, err := reader.Read(context.Background())
 	require.NoError(t, err)
@@ -144,7 +150,7 @@ func TestApplyBlooms_FiltersByBloomOnSectionKey(t *testing.T) {
 	predicates := []*labels.Matcher{
 		labels.MustNewMatcher(labels.MatchEqual, "traceID", "abcd"),
 	}
-	reader := newApplyBlooms(obj, predicates, input, nil).(*applyBlooms)
+	reader := newApplyBlooms(obj, predicates, input, testStreamMetadataProvider{}, nil).(*applyBlooms)
 
 	out, err := reader.Read(ctx)
 	require.NoError(t, err)
@@ -207,7 +213,7 @@ func TestApplyBlooms_PredicateMissReturnsEOF(t *testing.T) {
 	predicates := []*labels.Matcher{
 		labels.MustNewMatcher(labels.MatchEqual, "traceID", "doesnotexist"),
 	}
-	reader := newApplyBlooms(obj, predicates, input, nil).(*applyBlooms)
+	reader := newApplyBlooms(obj, predicates, input, testStreamMetadataProvider{}, nil).(*applyBlooms)
 
 	out, err := reader.Read(ctx)
 	require.ErrorIs(t, err, io.EOF)
@@ -224,7 +230,7 @@ func TestApplyBlooms_InvalidInputSchemaReturnsError(t *testing.T) {
 	predicates := []*labels.Matcher{
 		labels.MustNewMatcher(labels.MatchEqual, "traceID", "abcd"),
 	}
-	reader := newApplyBlooms(nil, predicates, input, nil).(*applyBlooms)
+	reader := newApplyBlooms(nil, predicates, input, testStreamMetadataProvider{}, nil).(*applyBlooms)
 
 	out, err := reader.Read(context.Background())
 	require.Error(t, err)
