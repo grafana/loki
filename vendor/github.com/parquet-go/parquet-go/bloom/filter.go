@@ -2,9 +2,9 @@ package bloom
 
 import (
 	"io"
-	"sync"
 
 	"github.com/parquet-go/bitpack/unsafecast"
+	"github.com/parquet-go/parquet-go/internal/memory"
 )
 
 // Filter is an interface representing read-only bloom filters where programs
@@ -79,19 +79,16 @@ func CheckSplitBlock(r io.ReaderAt, n int64, x uint64) (bool, error) {
 }
 
 var (
-	blockPool sync.Pool
+	blockPool memory.Pool[Block]
 )
 
 func acquireBlock() *Block {
-	b, _ := blockPool.Get().(*Block)
-	if b == nil {
-		b = new(Block)
-	}
-	return b
+	return blockPool.Get(
+		func() *Block { return new(Block) },
+		func(b *Block) {},
+	)
 }
 
 func releaseBlock(b *Block) {
-	if b != nil {
-		blockPool.Put(b)
-	}
+	blockPool.Put(b)
 }

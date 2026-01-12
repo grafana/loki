@@ -140,7 +140,7 @@ type mockCommitter struct {
 	offsets []int64
 }
 
-func (m *mockCommitter) Commit(_ context.Context, offset int64) error {
+func (m *mockCommitter) Commit(_ context.Context, _ int32, offset int64) error {
 	m.offsets = append(m.offsets, offset)
 	return nil
 }
