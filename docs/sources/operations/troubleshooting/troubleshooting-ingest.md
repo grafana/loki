@@ -158,7 +158,11 @@ A log line exceeds the maximum allowed size.
 
    ```yaml
    limits_config:
+<<<<<<< HEAD
      max_line_size: 256KB
+=======
+     max_line_size: 512KB
+>>>>>>> 9685813f7b (docs: troubleshooting ingest Part 4)
    ```
 
    {{< admonition type="warning" >}}
@@ -821,3 +825,199 @@ Loki is temporarily unable to handle requests due to high load or maintenance. T
 - Retryable: Yes
 - HTTP status: 503 Service Unavailable
 - Configurable per tenant: No
+
+## Structured metadata errors
+
+These errors occur when using structured metadata incorrectly.
+
+### Error: Structured metadata disabled
+
+**Error message:**
+
+`stream <stream_labels> includes structured metadata, but this feature is disallowed. Please see limits_config.allow_structured_metadata or contact your Loki administrator to enable it`
+
+**Cause:**
+
+Structured metadata is disabled in the Loki configuration. This feature must be explicitly enabled.
+
+**Default configuration:**
+
+- `allow_structured_metadata`: true (enabled by default in recent versions)
+
+**Resolution:**
+
+* **Enable structured metadata**:
+
+   ```yaml
+   limits_config:
+     allow_structured_metadata: true
+   ```
+
+* **Move metadata to regular labels** if structured metadata isn't needed.
+* **Contact your Loki administrator** to enable the feature.
+
+**Properties:**
+
+- Enforced by: Distributor
+- Retryable: No
+- HTTP status: 400 Bad Request
+- Configurable per tenant: Yes
+
+### Error: Structured metadata too large
+
+**Error message:**
+
+`stream '{job="app"}' has structured metadata too large: '70000' bytes, limit: '65536' bytes. Please see limits_config.max_structured_metadata_size or contact your Loki administrator to increase it`
+
+**Cause:**
+
+The structured metadata size exceeds the configured limit.
+
+**Default configuration:**
+
+- `max_structured_metadata_size`: 64 KB
+
+**Resolution:**
+
+* **Reduce the size** of structured metadata by removing unnecessary fields.
+
+* **Increase the limit**:
+
+   ```yaml
+   limits_config:
+     max_structured_metadata_size: 128KB
+   ```
+
+* **Use compression or abbreviations** for metadata values.
+
+**Properties:**
+
+- Enforced by: Distributor
+- Retryable: No
+- HTTP status: 400 Bad Request
+- Configurable per tenant: Yes
+
+### Error: Too many structured metadata entries
+
+**Error message:**
+
+`stream '{job="app"}' has too many structured metadata labels: '150', limit: '128'. Please see limits_config.max_structured_metadata_entries_count or contact your Loki administrator to increase it`
+
+**Cause:**
+
+The number of structured metadata entries exceeds the limit.
+
+**Default configuration:**
+
+- `max_structured_metadata_entries_count`: 128
+
+**Resolution:**
+
+* **Reduce the number** of structured metadata entries by consolidating fields.
+
+* **Increase the limit**:
+
+   ```yaml
+   limits_config:
+     max_structured_metadata_entries_count: 256
+   ```
+
+* **Combine related metadata** into single entries using JSON or other formats.
+
+**Properties:**
+
+- Enforced by: Distributor
+- Retryable: No
+- HTTP status: 400 Bad Request
+- Configurable per tenant: Yes
+
+## Blocked ingestion errors
+
+These errors occur when ingestion is administratively blocked.
+
+### Ingestion blocked
+
+**Error message:**
+
+`ingestion blocked for user <tenant> until <time> with status code 260`
+
+Or for policy-specific blocks:
+
+`ingestion blocked for user <tenant> (policy: <policy>) until <time> with status code 260`
+
+**Cause:**
+
+Ingestion has been administratively blocked for the tenant, typically due to policy violations, billing issues, or maintenance. Status code 260 is a custom Loki status code for blocked ingestion.
+
+**Default configuration:**
+
+- `blocked_ingestion_status_code`: 260 (custom status code)
+- Blocks are configured per tenant or per policy in runtime overrides
+
+**Resolution:**
+
+* **Wait until the block expires** if a time limit is set.
+* **Contact your Loki administrator** to understand the block reason.
+* **Review tenant usage patterns** and policies.
+* **Check for policy-specific blocks** if using ingestion policies.
+
+**Properties:**
+
+- Enforced by: Distributor
+- Retryable: No (until block is lifted)
+- HTTP status: 260 (custom) or configured status code
+- Configurable per tenant: Yes
+
+## Troubleshooting workflow
+
+Follow this workflow when investigating ingestion issues:
+
+* **Check metrics**:
+
+   ```promql
+   # See which errors are occurring
+   sum by (reason) (rate(loki_discarded_samples_total[5m]))
+   
+   # Identify affected tenants
+   sum by (tenant, reason) (rate(loki_discarded_bytes_total[5m]))
+   ```
+
+* **Review logs** from distributors and ingesters:
+
+   ```bash
+   # Enable write failure logging per tenant
+   limits_config:
+     limited_log_push_errors: true
+   ```
+
+* **Test push endpoint**:
+
+   ```bash
+   curl -H "Content-Type: application/json" \
+        -XPOST http://loki:3100/loki/api/v1/push \
+        --data-raw '{"streams":[{"stream":{"job":"test"},"values":[["'"$(date +%s)000000000"'","test log line"]]}]}'
+   ```
+
+* **Check tenant limits**:
+
+   ```bash
+   curl http://loki:3100/loki/api/v1/user_stats
+   ```
+
+* **Review configuration** for affected tenant or global limits.
+
+* **Monitor system resources**:
+  - Ingester memory usage
+  - Disk space for WAL
+  - Storage backend health
+  - Network connectivity
+
+## Additional resources
+
+- [Loki Configuration Reference](https://grafana.com/docs/loki/<LOKI_VERSION>/configuration/)
+- [Request Validation and Rate Limits](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/request-validation-rate-limits/)
+- [Write-Ahead Log Documentation](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/wal/)
+- [Alloy Configuration](https://grafana.com/docs/alloy/<ALLOY_VERSION>/reference/components/loki/)
+- [Alloy loki.source.file](https://grafana.com/docs/alloy/<ALLOY_VERSION>/reference/components/loki.source.file/)
+- [Alloy loki.write](https://grafana.com/docs/alloy/<ALLOY_VERSION>/reference/components/loki.write/)
+- [Multi-tenancy and Limits](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/multi-tenancy/)
