@@ -68,6 +68,8 @@ type partitionProcessor struct {
 	idleFlushTimeout time.Duration
 	// The initial value is the zero time.
 	lastFlushed time.Time
+	// Handling flushing dataobjs even if they are not full or idle for too long.
+	maxBuilderAge time.Duration
 
 	// lastModified is used to know when the idle is exceeded.
 	// The initial value is zero and must be reset to zero after each flush.
@@ -75,6 +77,8 @@ type partitionProcessor struct {
 
 	// earliestRecordTime tracks the earliest timestamp all the records Appended to the builder for each object.
 	earliestRecordTime time.Time
+	// firstAppendTime tracks the time of the first append to the builder, as `earliestRecordTime` is highly influenced by scenarios of severe lagging.
+	firstAppendTime time.Time
 
 	// Metrics
 	metrics *partitionOffsetMetrics
@@ -103,6 +107,7 @@ func newPartitionProcessor(
 	logger log.Logger,
 	reg prometheus.Registerer,
 	idleFlushTimeout time.Duration,
+	maxBuilderAge time.Duration,
 	eventsProducerClient *kgo.Client,
 	topic string,
 	partition int32,
@@ -141,6 +146,7 @@ func newPartitionProcessor(
 		metrics:                 metrics,
 		uploader:                uploader,
 		idleFlushTimeout:        idleFlushTimeout,
+		maxBuilderAge:           maxBuilderAge,
 		eventsProducerClient:    eventsProducerClient,
 		clock:                   quartz.NewReal(),
 		metastorePartitionRatio: int32(metastoreCfg.PartitionRatio),
@@ -252,6 +258,14 @@ func (p *partitionProcessor) processRecord(ctx context.Context, record *kgo.Reco
 
 	p.metrics.processedBytes.Add(float64(stream.Size()))
 
+	if p.shouldFlushDueToMaxAge() {
+		p.metrics.incFlushesTotal(FlushReasonMaxAge)
+		if err := p.flushAndCommit(ctx); err != nil {
+			level.Error(p.logger).Log("msg", "failed to flush and commit dataobj that reached max age", "err", err)
+			return
+		}
+	}
+
 	if err := p.builder.Append(tenant, stream); err != nil {
 		if !errors.Is(err, logsobj.ErrBuilderFull) {
 			level.Error(p.logger).Log("msg", "failed to append stream", "err", err)
@@ -259,6 +273,7 @@ func (p *partitionProcessor) processRecord(ctx context.Context, record *kgo.Reco
 			return
 		}
 
+		p.metrics.incFlushesTotal(FlushReasonBuilderFull)
 		if err := p.flushAndCommit(ctx); err != nil {
 			level.Error(p.logger).Log("msg", "failed to flush and commit", "err", err)
 			return
@@ -270,8 +285,19 @@ func (p *partitionProcessor) processRecord(ctx context.Context, record *kgo.Reco
 		}
 	}
 
+	if p.firstAppendTime.IsZero() {
+		p.firstAppendTime = p.clock.Now()
+	}
+
 	p.lastRecord = record
 	p.lastModified = p.clock.Now()
+}
+
+func (p *partitionProcessor) shouldFlushDueToMaxAge() bool {
+	return p.maxBuilderAge > 0 &&
+		p.builder.GetEstimatedSize() > 0 &&
+		!p.firstAppendTime.IsZero() &&
+		p.clock.Since(p.firstAppendTime) > p.maxBuilderAge
 }
 
 // flushAndCommit flushes the builder and, if successful, commits the offset
@@ -323,6 +349,7 @@ func (p *partitionProcessor) flush(ctx context.Context) error {
 	p.lastModified = time.Time{}
 	p.lastFlushed = p.clock.Now()
 	p.earliestRecordTime = time.Time{}
+	p.firstAppendTime = time.Time{}
 
 	return nil
 }
@@ -374,6 +401,7 @@ func (p *partitionProcessor) idleFlush(ctx context.Context) (bool, error) {
 	if !p.needsIdleFlush() {
 		return false, nil
 	}
+	p.metrics.incFlushesTotal(FlushReasonIdle)
 	if err := p.flushAndCommit(ctx); err != nil {
 		return false, err
 	}
