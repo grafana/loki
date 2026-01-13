@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"strconv"
+	"sync"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -131,33 +133,49 @@ func (t *DataObjTee) Duplicate(ctx context.Context, tenant string, streams []Key
 	for _, rate := range rates {
 		fastRates[rate.StreamHash] = rate.Rate
 	}
+
 	// We use max to prevent negative values becoming large positive values
 	// when converting from float64 to uint64.
 	tenantRateBytesLimit := uint64(max(t.limits.IngestionRateBytes(tenant), 0))
+
+	wg := sync.WaitGroup{}
 	for _, s := range segmentationKeyStreams {
-		go t.duplicate(ctx, tenant, s, fastRates[s.SegmentationKeyHash], tenantRateBytesLimit)
+		wg.Add(1)
+		go func(stream SegmentedStream) {
+			defer wg.Done()
+			t.duplicate(ctx, tenant, stream, fastRates[stream.SegmentationKeyHash], tenantRateBytesLimit, pushTracker)
+		}(s)
 	}
+	wg.Wait()
 }
 
-func (t *DataObjTee) duplicate(ctx context.Context, tenant string, stream SegmentedStream, rateBytes, tenantRateBytes uint64) {
+func (t *DataObjTee) duplicate(ctx context.Context, tenant string, stream SegmentedStream, rateBytes, tenantRateBytes uint64, pushTracker *PushTracker) {
 	t.total.Inc()
+
 	partition, err := t.resolver.Resolve(ctx, tenant, stream.SegmentationKey, rateBytes, tenantRateBytes)
 	if err != nil {
 		level.Error(t.logger).Log("msg", "failed to resolve partition", "err", err)
 		t.failures.Inc()
+		pushTracker.doneWithResult(fmt.Errorf("failed to resolve partition: %w", err))
 		return
 	}
+
 	records, err := kafka.EncodeWithTopic(t.cfg.Topic, partition, tenant, stream.Stream, t.cfg.MaxBufferedBytes)
 	if err != nil {
 		level.Error(t.logger).Log("msg", "failed to encode stream", "err", err)
 		t.failures.Inc()
+		pushTracker.doneWithResult(fmt.Errorf("failed to encode stream: %w", err))
 		return
 	}
+
 	results := t.kafkaClient.ProduceSync(ctx, records...)
 	if err := results.FirstErr(); err != nil {
 		level.Error(t.logger).Log("msg", "failed to produce records", "err", err)
 		t.failures.Inc()
+		pushTracker.doneWithResult(fmt.Errorf("failed to produce records: %w", err))
+		return
 	}
+
 	if t.cfg.DebugMetricsEnabled {
 		t.produced.WithLabelValues(
 			tenant,
