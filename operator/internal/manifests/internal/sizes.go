@@ -132,7 +132,7 @@ var resourceRequirementsTable = map[lokiv1.LokiStackSizeType]ComponentResources{
 		},
 		PatternIngester: corev1.ResourceRequirements{
 			Requests: map[corev1.ResourceName]resource.Quantity{
-				corev1.ResourceCPU:    resource.MustParse("150m"),
+				corev1.ResourceCPU:    resource.MustParse("50m"),
 				corev1.ResourceMemory: resource.MustParse("1.5Gi"),
 			},
 		},
@@ -196,7 +196,7 @@ var resourceRequirementsTable = map[lokiv1.LokiStackSizeType]ComponentResources{
 		},
 		PatternIngester: corev1.ResourceRequirements{
 			Requests: map[corev1.ResourceName]resource.Quantity{
-				corev1.ResourceCPU:    resource.MustParse("1.5"),
+				corev1.ResourceCPU:    resource.MustParse("50m"),
 				corev1.ResourceMemory: resource.MustParse("3Gi"),
 			},
 		},
@@ -260,7 +260,7 @@ var resourceRequirementsTable = map[lokiv1.LokiStackSizeType]ComponentResources{
 		},
 		PatternIngester: corev1.ResourceRequirements{
 			Requests: map[corev1.ResourceName]resource.Quantity{
-				corev1.ResourceCPU:    resource.MustParse("4"),
+				corev1.ResourceCPU:    resource.MustParse("100m"),
 				corev1.ResourceMemory: resource.MustParse("4Gi"),
 			},
 		},
@@ -324,7 +324,7 @@ var resourceRequirementsTable = map[lokiv1.LokiStackSizeType]ComponentResources{
 		},
 		PatternIngester: corev1.ResourceRequirements{
 			Requests: map[corev1.ResourceName]resource.Quantity{
-				corev1.ResourceCPU:    resource.MustParse("6"),
+				corev1.ResourceCPU:    resource.MustParse("200"),
 				corev1.ResourceMemory: resource.MustParse("10Gi"),
 			},
 		},
