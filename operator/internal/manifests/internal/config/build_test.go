@@ -72,7 +72,7 @@ ingester:
 ingester_client:
   grpc_client_config:
     max_recv_msg_size: 67108864
-  remote_timeout: 1s
+  remote_timeout: 5s
 # NOTE: Keep the order of keys as in Loki docs
 # to enable easy diffs when vendoring newer
 # Loki releases.
@@ -335,7 +335,7 @@ ingester:
 ingester_client:
   grpc_client_config:
     max_recv_msg_size: 67108864
-  remote_timeout: 1s
+  remote_timeout: 5s
 # NOTE: Keep the order of keys as in Loki docs
 # to enable easy diffs when vendoring newer
 # Loki releases.
@@ -766,7 +766,7 @@ ingester:
 ingester_client:
   grpc_client_config:
     max_recv_msg_size: 67108864
-  remote_timeout: 1s
+  remote_timeout: 5s
 # NOTE: Keep the order of keys as in Loki docs
 # to enable easy diffs when vendoring newer
 # Loki releases.
@@ -1129,7 +1129,7 @@ ingester:
 ingester_client:
   grpc_client_config:
     max_recv_msg_size: 67108864
-  remote_timeout: 1s
+  remote_timeout: 5s
 # NOTE: Keep the order of keys as in Loki docs
 # to enable easy diffs when vendoring newer
 # Loki releases.
@@ -1493,7 +1493,7 @@ ingester:
 ingester_client:
   grpc_client_config:
     max_recv_msg_size: 67108864
-  remote_timeout: 1s
+  remote_timeout: 5s
 # NOTE: Keep the order of keys as in Loki docs
 # to enable easy diffs when vendoring newer
 # Loki releases.
@@ -1891,7 +1891,7 @@ ingester:
 ingester_client:
   grpc_client_config:
     max_recv_msg_size: 67108864
-  remote_timeout: 1s
+  remote_timeout: 5s
 # NOTE: Keep the order of keys as in Loki docs
 # to enable easy diffs when vendoring newer
 # Loki releases.
@@ -2231,7 +2231,7 @@ ingester:
 ingester_client:
   grpc_client_config:
     max_recv_msg_size: 67108864
-  remote_timeout: 1s
+  remote_timeout: 5s
 # NOTE: Keep the order of keys as in Loki docs
 # to enable easy diffs when vendoring newer
 # Loki releases.
@@ -2675,7 +2675,7 @@ ingester_client:
     tls_server_name: ingester-grpc.svc
     tls_cipher_suites: cipher1,cipher2
     tls_min_version: VersionTLS12
-  remote_timeout: 1s
+  remote_timeout: 5s
 # NOTE: Keep the order of keys as in Loki docs
 # to enable easy diffs when vendoring newer
 # Loki releases.
@@ -3004,7 +3004,7 @@ ingester:
 ingester_client:
   grpc_client_config:
     max_recv_msg_size: 67108864
-  remote_timeout: 1s
+  remote_timeout: 5s
 # NOTE: Keep the order of keys as in Loki docs
 # to enable easy diffs when vendoring newer
 # Loki releases.
@@ -3506,7 +3506,7 @@ ingester:
 ingester_client:
   grpc_client_config:
     max_recv_msg_size: 67108864
-  remote_timeout: 1s
+  remote_timeout: 5s
 # NOTE: Keep the order of keys as in Loki docs
 # to enable easy diffs when vendoring newer
 # Loki releases.
@@ -3772,7 +3772,7 @@ ingester:
 ingester_client:
   grpc_client_config:
     max_recv_msg_size: 67108864
-  remote_timeout: 1s
+  remote_timeout: 5s
 # NOTE: Keep the order of keys as in Loki docs
 # to enable easy diffs when vendoring newer
 # Loki releases.
@@ -4039,7 +4039,7 @@ ingester:
 ingester_client:
   grpc_client_config:
     max_recv_msg_size: 67108864
-  remote_timeout: 1s
+  remote_timeout: 5s
 # NOTE: Keep the order of keys as in Loki docs
 # to enable easy diffs when vendoring newer
 # Loki releases.
@@ -4307,7 +4307,7 @@ ingester:
 ingester_client:
   grpc_client_config:
     max_recv_msg_size: 67108864
-  remote_timeout: 1s
+  remote_timeout: 5s
 # NOTE: Keep the order of keys as in Loki docs
 # to enable easy diffs when vendoring newer
 # Loki releases.
@@ -4611,7 +4611,7 @@ ingester:
 ingester_client:
   grpc_client_config:
     max_recv_msg_size: 67108864
-  remote_timeout: 1s
+  remote_timeout: 5s
 # NOTE: Keep the order of keys as in Loki docs
 # to enable easy diffs when vendoring newer
 # Loki releases.
@@ -4913,7 +4913,7 @@ ingester:
 ingester_client:
   grpc_client_config:
     max_recv_msg_size: 67108864
-  remote_timeout: 1s
+  remote_timeout: 5s
 # NOTE: Keep the order of keys as in Loki docs
 # to enable easy diffs when vendoring newer
 # Loki releases.
@@ -5415,7 +5415,7 @@ ingester:
 ingester_client:
   grpc_client_config:
     max_recv_msg_size: 67108864
-  remote_timeout: 1s
+  remote_timeout: 5s
 # NOTE: Keep the order of keys as in Loki docs
 # to enable easy diffs when vendoring newer
 # Loki releases.
@@ -5595,7 +5595,7 @@ ingester:
 ingester_client:
   grpc_client_config:
     max_recv_msg_size: 67108864
-  remote_timeout: 1s
+  remote_timeout: 5s
 # NOTE: Keep the order of keys as in Loki docs
 # to enable easy diffs when vendoring newer
 # Loki releases.
@@ -5768,7 +5768,7 @@ ingester:
 ingester_client:
   grpc_client_config:
     max_recv_msg_size: 67108864
-  remote_timeout: 1s
+  remote_timeout: 5s
 # NOTE: Keep the order of keys as in Loki docs
 # to enable easy diffs when vendoring newer
 # Loki releases.
@@ -6163,7 +6163,7 @@ ingester:
 ingester_client:
   grpc_client_config:
     max_recv_msg_size: 67108864
-  remote_timeout: 1s
+  remote_timeout: 5s
 # NOTE: Keep the order of keys as in Loki docs
 # to enable easy diffs when vendoring newer
 # Loki releases.
