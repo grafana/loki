@@ -110,9 +110,9 @@ func (cfg *ProxyConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.Routing.RegisterFlags(f)
 
 	// Deprecated flags
-	f.StringVar(&cfg.PreferredBackend, "backend.preferred", "", "Deprecated: use -routing.v1-backend instead")
-	f.BoolVar(&cfg.EnableRace, "proxy.enable-race", false, "Deprecated: use -routing.mode=race instead")
-	f.DurationVar(&cfg.RaceTolerance, "proxy.race-tolerance", 100*time.Millisecond, "Deprecated: use -routing.race-tolerance instead")
+	f.StringVar(&cfg.PreferredBackend, "backend.preferred", "", "Deprecated: use -routing.v1-backend instead. This flag is temporary and will be removed in a future weekly release.")
+	f.BoolVar(&cfg.EnableRace, "proxy.enable-race", false, "Deprecated: use -routing.mode=race instead. This flag is temporary and will be removed in a future weekly release.")
+	f.DurationVar(&cfg.RaceTolerance, "proxy.race-tolerance", 100*time.Millisecond, "Deprecated: use -routing.race-tolerance instead. This flag is temporary and will be removed in a future weekly release.")
 
 	f.DurationVar(&cfg.BackendReadTimeout, "backend.read-timeout", 90*time.Second, "The timeout when reading the response from a backend.")
 	f.BoolVar(&cfg.CompareResponses, "proxy.compare-responses", false, "Compare responses between preferred and secondary endpoints for supported routes.")
@@ -513,7 +513,7 @@ func filterReadDisabledBackends(backends []*ProxyBackend, disableReadProxyCfg st
 func migrateRoutingConfig(cfg *ProxyConfig, logger log.Logger) {
 	if cfg.Routing.V1Backend == "" && cfg.PreferredBackend != "" {
 		cfg.Routing.V1Backend = cfg.PreferredBackend
-		level.Warn(logger).Log("-backend.preferred is deprecated, use -routing.v1-backend")
+		level.Warn(logger).Log("msg", "-backend.preferred is deprecated, use -routing.v1-backend")
 	}
 
 	if cfg.Routing.Mode == "" {
