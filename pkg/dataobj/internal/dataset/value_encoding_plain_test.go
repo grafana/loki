@@ -199,7 +199,9 @@ func Benchmark_plainBytesDecoder_Decode(b *testing.B) {
 					enc = newPlainBytesEncoder(&buf)
 				)
 
+				var totalSize int
 				for _, value := range scenario.makeValues() {
+					totalSize += len(value.Binary())
 					require.NoError(b, enc.Encode(value))
 				}
 
@@ -220,7 +222,7 @@ func Benchmark_plainBytesDecoder_Decode(b *testing.B) {
 					}
 				}
 
-				b.SetBytes(pageSize)
+				b.SetBytes(int64(totalSize))
 				b.ReportMetric(float64(totalRows)/b.Elapsed().Seconds(), "rows/s")
 			})
 		}
