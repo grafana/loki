@@ -324,6 +324,102 @@ func Benchmark_bitmapDecoder(b *testing.B) {
 	b.Run("width=64", func(b *testing.B) { benchmarkBitmapDecoder(b, 64) })
 }
 
+var bitmapDecoderSink Value
+
+func Benchmark_bitmapDecoder_DecodePages(b *testing.B) {
+	const valuesPerStream = 1 << 16
+
+	type scenario struct {
+		name       string
+		valueCount int
+		encoded    []byte
+	}
+
+	build := func(name string, valueCount int, valueAt func(i int) uint64) scenario {
+		var buf bytes.Buffer
+		enc := newBitmapEncoder(&buf)
+		for i := 0; i < valueCount; i++ {
+			require.NoError(b, enc.Encode(Uint64Value(valueAt(i))))
+		}
+		require.NoError(b, enc.Flush())
+		return scenario{name: name, valueCount: valueCount, encoded: buf.Bytes()}
+	}
+
+	scenarios := []scenario{
+		build("variance=rle", valuesPerStream, func(int) uint64 { return 1 }),
+		build("variance=bitpack_width=3", valuesPerStream, func(i int) uint64 { return uint64(i % 8) }),
+		func() scenario {
+			rnd64 := rand.New(rand.NewSource(0))
+			return build("variance=bitpack_width=64", valuesPerStream, func(int) uint64 { return rnd64.Uint64() | (1 << 63) })
+		}(),
+		func() scenario {
+			rnd64 := rand.New(rand.NewSource(0))
+			return build("variance=mixed_rle_and_bitpack", valuesPerStream, func(i int) uint64 {
+				// Alternates between long RLE runs and bitpacked-ish data.
+				if (i/1024)%2 == 0 {
+					return 1
+				}
+				return rnd64.Uint64() | (1 << 63)
+			})
+		}(),
+	}
+
+	pageSizes := []int{256, 1024, 4096}
+
+	for _, sc := range scenarios {
+		b.Run(sc.name, func(b *testing.B) {
+			b.Run(fmt.Sprintf("values_per_stream=%d", sc.valueCount), func(b *testing.B) {
+				for _, pageSize := range pageSizes {
+					b.Run(fmt.Sprintf("page=%d", pageSize), func(b *testing.B) {
+						page := make([]Value, pageSize)
+						dec := newBitmapDecoder(nil)
+						var br bytes.Reader
+
+						b.ReportAllocs()
+						decodedBytesPerOp := int64(sc.valueCount) * 8 // uint64 output
+						b.SetBytes(decodedBytesPerOp)
+
+						b.ResetTimer()
+
+						for i := 0; i < b.N; i++ {
+							br.Reset(sc.encoded)
+							dec.Reset(&br)
+
+							decoded := 0
+							for {
+								n, err := dec.Decode(page)
+								if n > 0 {
+									bitmapDecoderSink = page[n-1]
+									decoded += n
+								}
+
+								if errors.Is(err, io.EOF) {
+									break
+								} else if err != nil {
+									b.Fatal(err)
+								}
+							}
+
+							if decoded != sc.valueCount {
+								b.Fatalf("decoded %d values, expected %d", decoded, sc.valueCount)
+							}
+						}
+
+						b.StopTimer()
+
+						elapsed := b.Elapsed()
+						b.ReportMetric(float64(decodedBytesPerOp), "decoded_B/op")
+						if elapsed > 0 {
+							totalDecoded := int64(sc.valueCount) * int64(b.N)
+							b.ReportMetric(float64(totalDecoded)/elapsed.Seconds()/1000/1000, "million_values/s")
+						}
+					})
+				}
+			})
+		})
+	}
+}
+
 func benchmarkBitmapDecoder(b *testing.B, width int) {
 	b.Run("variance=none", func(b *testing.B) {
 		var buf bytes.Buffer
