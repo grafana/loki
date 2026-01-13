@@ -152,9 +152,16 @@ func indexNextAlt(s string, allowEscaping bool) int {
 	return -1
 }
 
-var metaReplacer = strings.NewReplacer("\\*", "*", "\\?", "?", "\\[", "[", "\\]", "]", "\\{", "{", "\\}", "}")
+var escapeMetaReplacer = strings.NewReplacer("*", "\\*", "?", "\\?", "[", "\\[", "]", "\\]", "{", "\\{", "}", "\\}")
+
+// Escapes meta characters (*?[]{})
+func escapeMeta(path string) string {
+	return escapeMetaReplacer.Replace(path)
+}
+
+var unescapeMetaReplacer = strings.NewReplacer("\\*", "*", "\\?", "?", "\\[", "[", "\\]", "]", "\\{", "{", "\\}", "}")
 
 // Unescapes meta characters (*?[]{})
 func unescapeMeta(pattern string) string {
-	return metaReplacer.Replace(pattern)
+	return unescapeMetaReplacer.Replace(pattern)
 }
