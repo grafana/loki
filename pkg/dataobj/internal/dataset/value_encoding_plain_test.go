@@ -221,7 +221,7 @@ func Benchmark_plainBytesDecoder_Decode(b *testing.B) {
 				}
 
 				b.SetBytes(pageSize)
-				b.ReportMetric(float64(totalRows)/float64(b.N)/b.Elapsed().Seconds(), "rows/s")
+				b.ReportMetric(float64(totalRows)/b.Elapsed().Seconds(), "rows/s")
 			})
 		}
 	}
