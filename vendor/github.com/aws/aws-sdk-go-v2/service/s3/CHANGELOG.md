@@ -1,3 +1,7 @@
+# v1.95.1 (2026-01-09)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
 # v1.95.0 (2025-12-23)
 
 * **Feature**: Add additional validation to Outpost bucket names.
