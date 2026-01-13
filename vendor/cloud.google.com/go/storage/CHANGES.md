@@ -1,6 +1,16 @@
 # Changes
 
 
+## [1.59.0](https://github.com/googleapis/google-cloud-go/releases/tag/storage%2Fv1.59.0) (2026-01-09)
+
+### Features
+
+* add default checksums for appendable writer (excludes appendable takeover writer) (#13379) ([647baf3](https://github.com/googleapis/google-cloud-go/commit/647baf3249b01e7d5eb5902197bb828706c4c08f))
+
+### Bug Fixes
+
+* refactor MultiRangeDownloader to resolve deadlock and race conditions (#13524) ([1cfd100](https://github.com/googleapis/google-cloud-go/commit/1cfd10089f206bca0bdcef1e873574b552ae6abb)
+
 ## [1.58.0](https://github.com/googleapis/google-cloud-go/releases/tag/storage%2Fv1.58.0) (2025-12-03)
 
 ### Features
