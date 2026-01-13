@@ -73,6 +73,11 @@ func createTestEndpointWithMetrics(t *testing.T, backends []*ProxyBackend, route
 
 // createTestEndpointWithGoldfish creates a ProxyEndpoint with goldfish manager
 func createTestEndpointWithGoldfish(t *testing.T, backends []*ProxyBackend, routeName string, goldfishManager querytee_goldfish.Manager) *ProxyEndpoint {
+	return createTestEndpointWithGoldfishAndSplitLag(t, backends, routeName, goldfishManager, 0)
+}
+
+// createTestEndpointWithGoldfishAndSplitLag creates a ProxyEndpoint with goldfish manager and split lag configuration
+func createTestEndpointWithGoldfishAndSplitLag(t *testing.T, backends []*ProxyBackend, routeName string, goldfishManager querytee_goldfish.Manager, splitLag time.Duration) *ProxyEndpoint {
 	metrics := NewProxyMetrics(nil)
 	logger := log.NewNopLogger()
 
@@ -82,6 +87,8 @@ func createTestEndpointWithGoldfish(t *testing.T, backends []*ProxyBackend, rout
 		GoldfishManager: goldfishManager,
 		Logger:          logger,
 		Metrics:         metrics,
+		RoutingMode:     RoutingModeV1Preferred,
+		SplitLag:        splitLag,
 	})
 
 	endpoint := NewProxyEndpoint(backends, routeName, metrics, logger, nil, false)
@@ -795,7 +802,7 @@ func TestProxyEndpoint_QuerySplitting(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	endpoint := createTestEndpointWithGoldfish(t, backends, "test", goldfishManager)
+	endpoint := createTestEndpointWithGoldfishAndSplitLag(t, backends, "test", goldfishManager, minAge)
 
 	t.Run("query entirely recent (skips goldfish)", func(t *testing.T) {
 		receivedQueries = []string{}

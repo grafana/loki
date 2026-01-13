@@ -12,6 +12,8 @@ import (
 	"github.com/grafana/dskit/user"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/tools/querytee/goldfish"
@@ -114,7 +116,7 @@ func TestSplittingHandler_ServeSplits_UnsupportedRequestUsesDefaultHandler(t *te
 			backendURL, err := url.Parse(backend.URL)
 			require.NoError(t, err)
 
-			preferredBackend := NewProxyBackend("preferred", backendURL, 5*time.Second, true)
+			preferredBackend := NewProxyBackend("preferred", backendURL, 5*time.Second, true, false, false)
 			mockFanOutHandler := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
 				fanOutHandlerCalled = true
 				return nil, nil
@@ -125,14 +127,16 @@ func TestSplittingHandler_ServeSplits_UnsupportedRequestUsesDefaultHandler(t *te
 				comparisonStartDate: time.Time{},
 			}
 
-			handler, err := NewSplittingHandler(
-				queryrange.DefaultCodec,
-				mockFanOutHandler,
-				goldfishManager,
-				log.NewNopLogger(),
-				preferredBackend,
-				false,
-			)
+			handler, err := NewSplittingHandler(SplittingHandlerConfig{
+				Codec:                     queryrange.DefaultCodec,
+				FanOutHandler:             mockFanOutHandler,
+				GoldfishManager:           goldfishManager,
+				PreferredBackend:          preferredBackend,
+				SkipFanoutWhenNotSampling: false,
+				RoutingMode:               RoutingModeV1Preferred,
+				SplitStart:                time.Time{},
+				SplitLag:                  1 * time.Hour,
+			}, log.NewNopLogger())
 			require.NoError(t, err)
 
 			ctx := user.InjectOrgID(context.Background(), "test-tenant")
@@ -174,14 +178,16 @@ func TestSplittingHandler_NilPreferredBackend_CallsFanoutHandler(t *testing.T) {
 			}, nil
 		})
 
-	handler, err := NewSplittingHandler(
-		queryrange.DefaultCodec,
-		mockFanOutHandler,
-		nil, // no goldfish manager needed
-		log.NewNopLogger(),
-		nil, // nil preferred backend
-		false,
-	)
+	handler, err := NewSplittingHandler(SplittingHandlerConfig{
+		Codec:                     queryrange.DefaultCodec,
+		FanOutHandler:             mockFanOutHandler,
+		GoldfishManager:           nil,
+		PreferredBackend:          nil, // nil preferred backend
+		SkipFanoutWhenNotSampling: false,
+		RoutingMode:               RoutingModeV1Preferred,
+		SplitStart:                time.Time{},
+		SplitLag:                  0,
+	}, log.NewNopLogger())
 	require.NoError(t, err)
 
 	lokiReq := &queryrange.LokiRequest{
@@ -203,4 +209,384 @@ func TestSplittingHandler_NilPreferredBackend_CallsFanoutHandler(t *testing.T) {
 	require.Equal(t, http.StatusOK, recorder.Code)
 	require.True(t, fanOutHandlerCalled, "expected fanout handler to be called when preferred backend is nil")
 	require.Equal(t, "test-tenant", capturedTenantID, "expected tenant ID to be passed to fanout handler")
+}
+
+// TestSplittingHandler_RoutingModeV1Preferred_SkipsToDefaultWhenNotSampling tests that
+// v1-preferred mode skips fanout and goes directly to the default handler when not sampling.
+func TestSplittingHandler_RoutingModeV1Preferred_SkipsToDefaultWhenNotSampling(t *testing.T) {
+	defaultHandlerCalled := false
+	fanOutHandlerCalled := false
+
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		defaultHandlerCalled = true
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"success","data":{"resultType":"streams","result":[]}}`))
+	}))
+	defer backend.Close()
+
+	backendURL, err := url.Parse(backend.URL)
+	require.NoError(t, err)
+
+	preferredBackend := NewProxyBackend("preferred", backendURL, 5*time.Second, false, true, false)
+	mockFanOutHandler := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+		fanOutHandlerCalled = true
+		return &queryrange.LokiResponse{
+			Status: "success",
+			Data:   queryrange.LokiData{ResultType: "streams"},
+		}, nil
+	})
+
+	goldfishManager := &mockGoldfishManager{
+		comparisonMinAge:   1 * time.Hour,
+		shouldSampleResult: false, // NOT sampling
+	}
+
+	handler, err := NewSplittingHandler(SplittingHandlerConfig{
+		Codec:                     queryrange.DefaultCodec,
+		FanOutHandler:             mockFanOutHandler,
+		GoldfishManager:           goldfishManager,
+		PreferredBackend:          preferredBackend,
+		SkipFanoutWhenNotSampling: true, // Enable skip when not sampling
+		RoutingMode:               RoutingModeV1Preferred,
+		SplitStart:                time.Time{},
+		SplitLag:                  1 * time.Hour,
+	}, log.NewNopLogger())
+	require.NoError(t, err)
+
+	// Use a LokiRequest with a v2-engine-supported query
+	now := time.Now()
+	query := `sum(rate({app="test"}[5m]))`
+	expr, err := syntax.ParseExpr(query)
+	require.NoError(t, err)
+
+	lokiReq := &queryrange.LokiRequest{
+		Query:   query,
+		StartTs: now.Add(-2 * time.Hour),
+		EndTs:   now,
+		Step:    60000,
+		Limit:   100,
+		Path:    "/loki/api/v1/query_range",
+		Plan: &plan.QueryPlan{
+			AST: expr,
+		},
+	}
+
+	ctx := user.InjectOrgID(context.Background(), "test-tenant")
+	httpReq, err := queryrange.DefaultCodec.EncodeRequest(ctx, lokiReq)
+	require.NoError(t, err)
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httpReq)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.True(t, defaultHandlerCalled, "v1-preferred mode should skip to default handler when not sampling")
+	require.False(t, fanOutHandlerCalled, "v1-preferred mode should NOT call fanout handler when not sampling")
+}
+
+// TestSplittingHandler_AlwaysSplitsEvenWhenNotSampling tests that
+// v2-preferred and race modes always split queries when splitLag > 0, regardless of sampling.
+func TestSplittingHandler_AlwaysSplitsEvenWhenNotSampling(t *testing.T) {
+	testCases := []struct {
+		name        string
+		routingMode RoutingMode
+	}{
+		{
+			name:        "v2-preferred mode",
+			routingMode: RoutingModeV2Preferred,
+		},
+		{
+			name:        "race mode",
+			routingMode: RoutingModeRace,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			defaultHandlerCalled := false
+			fanOutHandlerCalled := false
+
+			mockFanOutHandler := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+				fanOutHandlerCalled = true
+				return &queryrange.LokiResponse{
+					Status: "success",
+					Data:   queryrange.LokiData{ResultType: "streams"},
+				}, nil
+			})
+
+			backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				defaultHandlerCalled = true
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{"status":"success","data":{"resultType":"streams","result":[]}}`))
+			}))
+			defer backend.Close()
+
+			backendURL, err := url.Parse(backend.URL)
+			require.NoError(t, err)
+
+			preferredBackend := NewProxyBackend("preferred", backendURL, 5*time.Second, false, false, false)
+
+			goldfishManager := &mockGoldfishManager{
+				comparisonMinAge:   1 * time.Hour,
+				shouldSampleResult: false, // NOT sampling
+			}
+
+			handler, err := NewSplittingHandler(SplittingHandlerConfig{
+				Codec:                     queryrange.DefaultCodec,
+				FanOutHandler:             mockFanOutHandler,
+				GoldfishManager:           goldfishManager,
+				PreferredBackend:          preferredBackend,
+				SkipFanoutWhenNotSampling: true, // Enable skip when not sampling, which should not apply in these 2 modes
+				RoutingMode:               tc.routingMode,
+				SplitStart:                time.Time{},
+				SplitLag:                  time.Hour,
+			}, log.NewNopLogger())
+			require.NoError(t, err)
+
+			now := time.Now()
+			query := `sum(rate({app="test"}[5m]))`
+			expr, err := syntax.ParseExpr(query)
+			require.NoError(t, err)
+
+			lokiReq := &queryrange.LokiRequest{
+				Query:   query,
+				StartTs: now.Add(-2 * time.Hour), // Start before the lag window
+				EndTs:   now,                     // End at now (within lag window)
+				Step:    60000,                   // 1 minute step in milliseconds (required for metric queries)
+				Limit:   100,
+				Path:    "/loki/api/v1/query_range",
+				Plan: &plan.QueryPlan{
+					AST: expr,
+				},
+			}
+
+			ctx := user.InjectOrgID(context.Background(), "test-tenant")
+			httpReq, err := queryrange.DefaultCodec.EncodeRequest(ctx, lokiReq)
+			require.NoError(t, err)
+
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, httpReq)
+
+			require.Equal(t, http.StatusOK, recorder.Code)
+			require.True(t, defaultHandlerCalled, "%s should call handler even when not sampling", tc.name)
+			require.True(t, fanOutHandlerCalled, "fanout handler should be called for post-lag data even when not sampling")
+		})
+	}
+}
+
+// TestSplittingHandler_NoSplitLag_UsesFanoutHandler tests that when splitLag is 0
+// the handler uses the fanout handler directly.
+func TestSplittingHandler_NoSplitLag_UsesFanoutHandler(t *testing.T) {
+	defaultHandlerCalled := false
+	fanOutHandlerCalled := false
+
+	mockFanOutHandler := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+		fanOutHandlerCalled = true
+		return &queryrange.LokiResponse{
+			Status: "success",
+			Data:   queryrange.LokiData{ResultType: "streams"},
+		}, nil
+	})
+
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		defaultHandlerCalled = true
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"success","data":{"resultType":"streams","result":[]}}`))
+	}))
+	defer backend.Close()
+
+	backendURL, err := url.Parse(backend.URL)
+	require.NoError(t, err)
+
+	preferredBackend := NewProxyBackend("preferred", backendURL, 5*time.Second, false, true, false)
+
+	goldfishManager := &mockGoldfishManager{
+		comparisonMinAge:   0,
+		shouldSampleResult: true, // sampling enabled
+	}
+
+	handler, err := NewSplittingHandler(SplittingHandlerConfig{
+		Codec:                     queryrange.DefaultCodec,
+		FanOutHandler:             mockFanOutHandler,
+		GoldfishManager:           goldfishManager,
+		PreferredBackend:          preferredBackend,
+		SkipFanoutWhenNotSampling: false,
+		RoutingMode:               RoutingModeRace,
+		SplitStart:                time.Time{},
+		SplitLag:                  0, // No split lag - should use fanout directly
+	}, log.NewNopLogger())
+	require.NoError(t, err)
+
+	lokiReq := &queryrange.LokiInstantRequest{
+		Query:  `{app="test"}`,
+		TimeTs: time.Now(),
+		Limit:  100,
+		Path:   "/loki/api/v1/query",
+	}
+
+	ctx := user.InjectOrgID(context.Background(), "test-tenant")
+	httpReq, err := queryrange.DefaultCodec.EncodeRequest(ctx, lokiReq)
+	require.NoError(t, err)
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httpReq)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.True(t, fanOutHandlerCalled, "when splitLag is 0, should use fanout handler directly")
+	require.False(t, defaultHandlerCalled, "when splitLag is 0, should NOT use default handler")
+}
+
+// TestSplittingHandler_V1Preferred_SplitsWhenSampling tests that v1-preferred mode
+// does split queries when sampling is enabled.
+func TestSplittingHandler_V1Preferred_SplitsWhenSampling(t *testing.T) {
+	defaultHandlerCalled := false
+	fanOutHandlerCalled := false
+
+	mockFanOutHandler := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+		fanOutHandlerCalled = true
+		return &queryrange.LokiResponse{
+			Status: "success",
+			Data:   queryrange.LokiData{ResultType: "streams"},
+		}, nil
+	})
+
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		defaultHandlerCalled = true
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"success","data":{"resultType":"streams","result":[]}}`))
+	}))
+	defer backend.Close()
+
+	backendURL, err := url.Parse(backend.URL)
+	require.NoError(t, err)
+
+	preferredBackend := NewProxyBackend("preferred", backendURL, 5*time.Second, false, true, false)
+
+	goldfishManager := &mockGoldfishManager{
+		comparisonMinAge:   1 * time.Hour,
+		shouldSampleResult: true, // IS sampling
+	}
+
+	handler, err := NewSplittingHandler(SplittingHandlerConfig{
+		Codec:                     queryrange.DefaultCodec,
+		FanOutHandler:             mockFanOutHandler,
+		GoldfishManager:           goldfishManager,
+		PreferredBackend:          preferredBackend,
+		SkipFanoutWhenNotSampling: true,
+		RoutingMode:               RoutingModeV1Preferred,
+		SplitStart:                time.Time{},
+		SplitLag:                  1 * time.Hour,
+	}, log.NewNopLogger())
+	require.NoError(t, err)
+
+	// Use a LokiRequest with a v2-engine-supported query so it goes through the splitting logic
+	// and calls both the default handler (for pre-lag data) and fanout handler (for post-lag data)
+	now := time.Now()
+	query := `sum(rate({app="test"}[5m]))`
+	expr, err := syntax.ParseExpr(query)
+	require.NoError(t, err)
+
+	lokiReq := &queryrange.LokiRequest{
+		Query:   query,
+		StartTs: now.Add(-2 * time.Hour),
+		EndTs:   now,
+		Step:    60000,
+		Limit:   100,
+		Path:    "/loki/api/v1/query_range",
+		Plan: &plan.QueryPlan{
+			AST: expr,
+		},
+	}
+
+	ctx := user.InjectOrgID(context.Background(), "test-tenant")
+	httpReq, err := queryrange.DefaultCodec.EncodeRequest(ctx, lokiReq)
+	require.NoError(t, err)
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httpReq)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.True(t, defaultHandlerCalled, "v1-preferred mode should split when sampling is enabled")
+	require.True(t, fanOutHandlerCalled, "fanout handler should be called for post-lag data when sampling")
+}
+
+// TestSplittingHandler_SkipFanoutDisabled_AlwaysSplits tests that when
+// SkipFanoutWhenNotSampling is false, all modes split regardless of sampling.
+func TestSplittingHandler_SkipFanoutDisabled_AlwaysSplits(t *testing.T) {
+	for _, routingMode := range []RoutingMode{RoutingModeV1Preferred, RoutingModeV2Preferred, RoutingModeRace} {
+		t.Run(string(routingMode), func(t *testing.T) {
+			defaultHandlerCalled := false
+			fanOutHandlerCalled := false
+
+			mockFanOutHandler := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+				fanOutHandlerCalled = true
+				return &queryrange.LokiResponse{
+					Status: "success",
+					Data:   queryrange.LokiData{ResultType: "streams"},
+				}, nil
+			})
+
+			backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				defaultHandlerCalled = true
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{"status":"success","data":{"resultType":"streams","result":[]}}`))
+			}))
+			defer backend.Close()
+
+			backendURL, err := url.Parse(backend.URL)
+			require.NoError(t, err)
+
+			preferredBackend := NewProxyBackend("preferred", backendURL, 5*time.Second, false, true, false)
+
+			goldfishManager := &mockGoldfishManager{
+				comparisonMinAge:   1 * time.Hour,
+				shouldSampleResult: false, // NOT sampling
+			}
+
+			handler, err := NewSplittingHandler(SplittingHandlerConfig{
+				Codec:                     queryrange.DefaultCodec,
+				FanOutHandler:             mockFanOutHandler,
+				GoldfishManager:           goldfishManager,
+				PreferredBackend:          preferredBackend,
+				SkipFanoutWhenNotSampling: false, // Disabled - should always split
+				RoutingMode:               routingMode,
+				SplitStart:                time.Time{},
+				SplitLag:                  1 * time.Hour,
+			}, log.NewNopLogger())
+			require.NoError(t, err)
+
+			// Use a LokiRequest with a v2-engine-supported query
+			now := time.Now()
+			query := `sum(rate({app="test"}[5m]))`
+			expr, err := syntax.ParseExpr(query)
+			require.NoError(t, err)
+
+			lokiReq := &queryrange.LokiRequest{
+				Query:   query,
+				StartTs: now.Add(-2 * time.Hour),
+				EndTs:   now,
+				Step:    60000,
+				Limit:   100,
+				Path:    "/loki/api/v1/query_range",
+				Plan: &plan.QueryPlan{
+					AST: expr,
+				},
+			}
+
+			ctx := user.InjectOrgID(context.Background(), "test-tenant")
+			httpReq, err := queryrange.DefaultCodec.EncodeRequest(ctx, lokiReq)
+			require.NoError(t, err)
+
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, httpReq)
+
+			require.Equal(t, http.StatusOK, recorder.Code)
+			require.True(t, defaultHandlerCalled)
+			require.True(t, fanOutHandlerCalled)
+		})
+	}
 }

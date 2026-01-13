@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/flagext"
 
 	"github.com/grafana/dskit/middleware"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
@@ -25,6 +26,8 @@ type HandlerFactory struct {
 	metrics                   *ProxyMetrics
 	raceTolerance             time.Duration
 	skipFanOutWhenNotSampling bool
+	splitStart                time.Time
+	splitLag                  time.Duration
 }
 
 // HandlerFactoryConfig holds configuration for creating a HandlerFactory.
@@ -38,6 +41,8 @@ type HandlerFactoryConfig struct {
 	Metrics                   *ProxyMetrics
 	RaceTolerance             time.Duration
 	SkipFanOutWhenNotSampling bool
+	SplitStart                flagext.Time
+	SplitLag                  time.Duration
 }
 
 // NewHandlerFactory creates a new HandlerFactory.
@@ -52,6 +57,8 @@ func NewHandlerFactory(cfg HandlerFactoryConfig) *HandlerFactory {
 		metrics:                   cfg.Metrics,
 		raceTolerance:             cfg.RaceTolerance,
 		skipFanOutWhenNotSampling: cfg.SkipFanOutWhenNotSampling,
+		splitStart:                time.Time(cfg.SplitStart),
+		splitLag:                  cfg.SplitLag,
 	}
 }
 
@@ -71,21 +78,33 @@ func (f *HandlerFactory) CreateHandler(routeName string, comp comparator.Respons
 	})
 
 	var preferredBackend *ProxyBackend
-	for _, b := range f.backends {
-		if b.v1Preferred {
-			preferredBackend = b
-			break
+	switch f.routingMode {
+	case RoutingModeV2Preferred:
+		for _, b := range f.backends {
+			if b.v2Preferred {
+				preferredBackend = b
+				break
+			}
+		}
+	default:
+		for _, b := range f.backends {
+			if b.v1Preferred {
+				preferredBackend = b
+				break
+			}
 		}
 	}
 
-	splittingHandler, err := NewSplittingHandler(
-		f.codec,
-		fanOutHandler,
-		f.goldfishManager,
-		f.logger,
-		preferredBackend,
-		f.skipFanOutWhenNotSampling,
-	)
+	splittingHandler, err := NewSplittingHandler(SplittingHandlerConfig{
+		Codec:                     f.codec,
+		FanOutHandler:             fanOutHandler,
+		GoldfishManager:           f.goldfishManager,
+		PreferredBackend:          preferredBackend,
+		SkipFanoutWhenNotSampling: f.skipFanOutWhenNotSampling,
+		RoutingMode:               f.routingMode,
+		SplitStart:                f.splitStart,
+		SplitLag:                  f.splitLag,
+	}, f.logger)
 
 	if err != nil {
 		return nil, err

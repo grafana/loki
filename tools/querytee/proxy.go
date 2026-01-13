@@ -43,6 +43,16 @@ type RoutingConfig struct {
 	V1Backend     string
 	V2Backend     string
 	RaceTolerance time.Duration
+
+	// SplitStart is the start date of data available in v2 (dataobjs) storage.
+	// Queries for data before this date will only go to the v1 backend.
+	// If not set, assume v2 data is always available.
+	SplitStart flagext.Time
+
+	// SplitLag is the minimum age of data to route to v2.
+	// Data newer than (now - SplitLag) will only go to the v1 backend.
+	// When set to 0, query splitting is disabled.
+	SplitLag time.Duration
 }
 
 func (cfg *RoutingConfig) RegisterFlags(f *flag.FlagSet) {
@@ -50,6 +60,8 @@ func (cfg *RoutingConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.V1Backend, "routing.v1-backend", "", "The hostname of the v1 (chunks) backend")
 	f.StringVar(&cfg.V2Backend, "routing.v2-backend", "", "The hostname of the v2 (dataobjs) backend")
 	f.DurationVar(&cfg.RaceTolerance, "routing.race-tolerance", 100*time.Millisecond, "Race handicap for v2 in race mode")
+	f.Var(&cfg.SplitStart, "routing.split-start", "Start date when v2 data became available. Format YYYY-MM-DD. Queries before this date go only to v1.")
+	f.DurationVar(&cfg.SplitLag, "routing.split-lag", 0, "Minimum age of data to route to v2. Data newer than this goes only to v1. When 0 (default), splitting is disabled.")
 }
 
 func (cfg *RoutingConfig) Validate() error {
@@ -58,6 +70,11 @@ func (cfg *RoutingConfig) Validate() error {
 	default:
 		return fmt.Errorf("invalid routing mode: %s", cfg.Mode)
 	}
+
+	if cfg.SplitLag < 0 {
+		return fmt.Errorf("split lag must be >= 0")
+	}
+
 	return nil
 }
 
@@ -222,7 +239,7 @@ func NewProxy(
 	}
 
 	// If the preferred backend is configured, then it must exists among the actual backends.
-	if cfg.PreferredBackend != "" || cfg.PreferredV1Backend != "" {
+	if cfg.PreferredBackend != "" || cfg.Routing.V1Backend != "" {
 		exists := false
 		for _, b := range p.backends {
 			if b.v1Preferred {
@@ -370,6 +387,8 @@ func (p *Proxy) Start() error {
 			RoutingMode:               p.cfg.Routing.Mode,
 			RaceTolerance:             p.cfg.Routing.RaceTolerance,
 			SkipFanOutWhenNotSampling: p.cfg.SkipFanOutWhenNotSampling,
+			SplitStart:                p.cfg.Routing.SplitStart,
+			SplitLag:                  p.cfg.Routing.SplitLag,
 		})
 		queryHandler, err := routeHandlerFactory.CreateHandler(route.RouteName, comp)
 		if err != nil {
