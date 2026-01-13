@@ -23,6 +23,7 @@ type partitionOffsetMetrics struct {
 	commitFailures prometheus.Counter
 	appendFailures prometheus.Counter
 	flushesTotal   *prometheus.CounterVec
+	flushFailures  prometheus.Counter
 
 	// Request counters
 	commitsTotal prometheus.Counter
@@ -73,6 +74,10 @@ func newPartitionOffsetMetrics() *partitionOffsetMetrics {
 			Name: "loki_dataobj_consumer_flushes_total",
 			Help: "Total number of data objects flushed.",
 		}, []string{"reason"}),
+		flushFailures: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "loki_dataobj_consumer_flush_failures_total",
+			Help: "Total number of flush failures.",
+		}),
 	}
 
 	p.currentOffset = prometheus.NewGaugeFunc(
@@ -100,6 +105,7 @@ func (p *partitionOffsetMetrics) register(reg prometheus.Registerer) error {
 		p.processedBytes,
 		p.currentOffset,
 		p.flushDuration,
+		p.flushFailures,
 	}
 
 	for _, collector := range collectors {
@@ -122,6 +128,7 @@ func (p *partitionOffsetMetrics) unregister(reg prometheus.Registerer) {
 		p.processedBytes,
 		p.currentOffset,
 		p.flushDuration,
+		p.flushFailures,
 	}
 
 	for _, collector := range collectors {
