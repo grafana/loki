@@ -1164,15 +1164,6 @@ func (d *Distributor) createShard(lbls labels.Labels, streamPattern string, shar
 	}
 }
 
-// maxT returns the highest between two given timestamps.
-func maxT(t1, t2 time.Time) time.Time {
-	if t1.Before(t2) {
-		return t2
-	}
-
-	return t1
-}
-
 func (d *Distributor) truncateLines(vContext validationContext, stream *logproto.Stream) {
 	if !vContext.maxLineSizeTruncate {
 		return

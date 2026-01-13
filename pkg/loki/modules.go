@@ -537,12 +537,6 @@ func (t *Loki) initIngestLimitsFrontend() (services.Service, error) {
 	return ingestLimitsFrontend, nil
 }
 
-// initCodec sets the codec used to encode and decode requests.
-func (t *Loki) initCodec() (services.Service, error) {
-	t.Codec = queryrange.DefaultCodec
-	return nil, nil
-}
-
 func (t *Loki) initQuerier() (services.Service, error) {
 	logger := log.With(util_log.Logger, "component", "querier")
 	if t.Cfg.Ingester.QueryStoreMaxLookBackPeriod != 0 {
