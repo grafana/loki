@@ -43,11 +43,9 @@ func DeleteKeyValueList(orig *KeyValueList, nullable bool) {
 		orig.Reset()
 		return
 	}
-
 	for i := range orig.Values {
 		DeleteKeyValue(&orig.Values[i], false)
 	}
-
 	orig.Reset()
 	if nullable {
 		protoPoolKeyValueList.Put(orig)

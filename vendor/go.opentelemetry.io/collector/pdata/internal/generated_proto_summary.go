@@ -43,11 +43,9 @@ func DeleteSummary(orig *Summary, nullable bool) {
 		orig.Reset()
 		return
 	}
-
 	for i := range orig.DataPoints {
 		DeleteSummaryDataPoint(orig.DataPoints[i], true)
 	}
-
 	orig.Reset()
 	if nullable {
 		protoPoolSummary.Put(orig)

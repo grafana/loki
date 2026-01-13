@@ -44,11 +44,9 @@ func DeleteExportTraceServiceRequest(orig *ExportTraceServiceRequest, nullable b
 		orig.Reset()
 		return
 	}
-
 	for i := range orig.ResourceSpans {
 		DeleteResourceSpans(orig.ResourceSpans[i], true)
 	}
-
 	orig.Reset()
 	if nullable {
 		protoPoolExportTraceServiceRequest.Put(orig)

@@ -53,6 +53,47 @@ RETURN %12
 	require.Equal(t, expect, actual, "Actual plan:\n%s", actual)
 }
 
+func Test_simplifyRegexPass_IgnoreStreamSelector(t *testing.T) {
+	// See comment in logical_optimize.go for why stream selectors can't have
+	// regex simplification rules applied yet.
+	params, err := logql.NewLiteralParams(
+		`{cluster=~".*dev.*", job=~"loki.*"} |~ "foo|bar"`,
+		time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC),
+		time.Date(2025, time.January, 2, 0, 0, 0, 0, time.UTC),
+		0 /* step */, 0, /* duration */
+		logproto.BACKWARD,
+		1000,
+		[]string{"0_of_1"},
+		nil,
+	)
+	require.NoError(t, err)
+
+	expect := strings.TrimSpace(`
+%1 = MATCH_RE label.cluster ".*dev.*"
+%2 = MATCH_RE label.job "loki.*"
+%3 = AND %1 %2
+%4 = MATCH_STR builtin.message "foo"
+%5 = MATCH_STR builtin.message "bar"
+%6 = OR %4 %5
+%7 = MAKETABLE [selector=%3, predicates=[%6], shard=0_of_1]
+%8 = GTE builtin.timestamp 2025-01-01T00:00:00Z
+%9 = SELECT %7 [predicate=%8]
+%10 = LT builtin.timestamp 2025-01-02T00:00:00Z
+%11 = SELECT %9 [predicate=%10]
+%12 = SELECT %11 [predicate=%6]
+%13 = TOPK %12 [sort_by=builtin.timestamp, k=1000, asc=false, nulls_first=false]
+%14 = LOGQL_COMPAT %13
+RETURN %14
+`)
+
+	p, err := BuildPlan(params)
+	require.NoError(t, err)
+	require.NoError(t, Optimize(p), "optimization should not fail")
+
+	actual := strings.TrimSpace(p.String())
+	require.Equal(t, expect, actual, "Actual plan:\n%s", actual)
+}
+
 func Test_simplifyRegexPass_Negate(t *testing.T) {
 	params, err := logql.NewLiteralParams(
 		`{job="loki"} !~ "foo|bar"`,

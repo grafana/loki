@@ -50,9 +50,9 @@ func (m *Exemplar) GetAsInt() int64 {
 // Exemplars also hold information about the environment when the measurement was recorded,
 // for example the span and trace ID of the active span when the exemplar was recorded.
 type Exemplar struct {
+	Value              any
 	FilteredAttributes []KeyValue
 	TimeUnixNano       uint64
-	Value              any
 	TraceId            TraceID
 	SpanId             SpanID
 }
@@ -93,10 +93,10 @@ func DeleteExemplar(orig *Exemplar, nullable bool) {
 		orig.Reset()
 		return
 	}
-
 	for i := range orig.FilteredAttributes {
 		DeleteKeyValue(&orig.FilteredAttributes[i], false)
 	}
+
 	switch ov := orig.Value.(type) {
 	case *Exemplar_AsDouble:
 		if UseProtoPooling.IsEnabled() {
@@ -108,11 +108,9 @@ func DeleteExemplar(orig *Exemplar, nullable bool) {
 			ov.AsInt = int64(0)
 			ProtoPoolExemplar_AsInt.Put(ov)
 		}
-
 	}
 	DeleteTraceID(&orig.TraceId, false)
 	DeleteSpanID(&orig.SpanId, false)
-
 	orig.Reset()
 	if nullable {
 		protoPoolExemplar.Put(orig)
@@ -135,7 +133,6 @@ func CopyExemplar(dest, src *Exemplar) *Exemplar {
 	dest.FilteredAttributes = CopyKeyValueSlice(dest.FilteredAttributes, src.FilteredAttributes)
 
 	dest.TimeUnixNano = src.TimeUnixNano
-
 	switch t := src.Value.(type) {
 	case *Exemplar_AsDouble:
 		var ov *Exemplar_AsDouble
@@ -146,6 +143,7 @@ func CopyExemplar(dest, src *Exemplar) *Exemplar {
 		}
 		ov.AsDouble = t.AsDouble
 		dest.Value = ov
+
 	case *Exemplar_AsInt:
 		var ov *Exemplar_AsInt
 		if !UseProtoPooling.IsEnabled() {
@@ -155,6 +153,7 @@ func CopyExemplar(dest, src *Exemplar) *Exemplar {
 		}
 		ov.AsInt = t.AsInt
 		dest.Value = ov
+
 	default:
 		dest.Value = nil
 	}
@@ -277,7 +276,6 @@ func (orig *Exemplar) UnmarshalJSON(iter *json.Iterator) {
 				ov.AsDouble = iter.ReadFloat64()
 				orig.Value = ov
 			}
-
 		case "asInt", "as_int":
 			{
 				var ov *Exemplar_AsInt
@@ -310,7 +308,7 @@ func (orig *Exemplar) SizeProto() int {
 		l = orig.FilteredAttributes[i].SizeProto()
 		n += 1 + proto.Sov(uint64(l)) + l
 	}
-	if orig.TimeUnixNano != 0 {
+	if orig.TimeUnixNano != uint64(0) {
 		n += 9
 	}
 	switch orig := orig.Value.(type) {
@@ -318,8 +316,10 @@ func (orig *Exemplar) SizeProto() int {
 		_ = orig
 		break
 	case *Exemplar_AsDouble:
+
 		n += 9
 	case *Exemplar_AsInt:
+
 		n += 9
 	}
 	l = orig.TraceId.SizeProto()
@@ -340,7 +340,7 @@ func (orig *Exemplar) MarshalProto(buf []byte) int {
 		pos--
 		buf[pos] = 0x3a
 	}
-	if orig.TimeUnixNano != 0 {
+	if orig.TimeUnixNano != uint64(0) {
 		pos -= 8
 		binary.LittleEndian.PutUint64(buf[pos:], uint64(orig.TimeUnixNano))
 		pos--

@@ -305,6 +305,92 @@ func TestPartitionProcessor_ProcessRecord(t *testing.T) {
 	require.Equal(t, clock.Now(), p.lastModified)
 }
 
+func TestPartitionProcessor_FlushDueToMaxAge(t *testing.T) {
+	ctx := t.Context()
+	laggingClock := quartz.NewMock(t)
+	recentClock := quartz.NewMock(t)
+
+	p := newTestPartitionProcessor(t, recentClock)
+
+	// Simulate Kafka lag: record timestamp is much older than maxDataObjAge.
+	oldTimestamp := laggingClock.Now().Add(-6 * time.Hour)
+	s := logproto.Stream{
+		Labels: `{service="test"}`,
+		Entries: []push.Entry{{
+			Timestamp: oldTimestamp,
+			Line:      "abc",
+		}},
+	}
+	b, err := s.Marshal()
+	require.NoError(t, err)
+
+	// Process the record with an old timestamp.
+	p.processRecord(ctx, &kgo.Record{
+		Key:       []byte("test-tenant"),
+		Value:     b,
+		Timestamp: oldTimestamp,
+	})
+
+	// No flush should have occurred since firstAppendTime was zero.
+	require.True(t, p.lastFlushed.IsZero())
+
+	// The record should still have been appended.
+	require.NotNil(t, p.builder)
+	require.Greater(t, p.builder.GetEstimatedSize(), 0)
+	require.Equal(t, recentClock.Now(), p.lastModified)
+
+	// firstAppendTime should be updated to the current time.
+	require.NotZero(t, p.firstAppendTime)
+	require.Equal(t, p.firstAppendTime, recentClock.Now())
+
+	// Process another record.
+	recentClock.Advance(time.Minute)
+	p.processRecord(ctx, &kgo.Record{
+		Key:       []byte("test-tenant"),
+		Value:     b,
+		Timestamp: recentClock.Now(),
+	})
+
+	// No flush should have occurred since firstAppendTime is still recent even though the builder is not empty.
+	require.True(t, p.lastFlushed.IsZero())
+	require.NotNil(t, p.builder)
+	require.Greater(t, p.builder.GetEstimatedSize(), 0)
+	require.Equal(t, recentClock.Now(), p.lastModified)
+	// firstAppendTime should not have been updated.
+	require.NotEqual(t, p.firstAppendTime, recentClock.Now())
+
+	// Advance the clock past maxDataObjAge.
+	recentClock.Advance(6 * time.Hour)
+	p.processRecord(ctx, &kgo.Record{
+		Key:       []byte("test-tenant"),
+		Value:     b,
+		Timestamp: laggingClock.Now(),
+	})
+
+	// A flush should have occurred since firstAppendTime is now old enough.
+	firstFlushTime := recentClock.Now()
+	require.Equal(t, p.lastFlushed, firstFlushTime)
+
+	// After the flush, the current record was appended to the fresh builder,
+	// so firstAppendTime is set to the current time (not zero).
+	require.Equal(t, p.firstAppendTime, firstFlushTime)
+
+	// Process another record immediately after the flush.
+	recentClock.Advance(time.Second)
+	p.processRecord(ctx, &kgo.Record{
+		Key:       []byte("test-tenant"),
+		Value:     b,
+		Timestamp: recentClock.Now(),
+	})
+
+	// No additional flush should have occurred since firstAppendTime was just set.
+	// If firstAppendTime wasn't reset during flush, this would trigger another flush
+	// because Since(oldFirstAppendTime) would still be > maxDataObjAge.
+	require.Equal(t, p.lastFlushed, firstFlushTime)
+	// firstAppendTime should still be from the first append after the flush.
+	require.Equal(t, p.firstAppendTime, firstFlushTime)
+}
+
 func newTestPartitionProcessor(t *testing.T, clock quartz.Clock) *partitionProcessor {
 	t.Helper()
 	p := newPartitionProcessor(
@@ -319,6 +405,7 @@ func newTestPartitionProcessor(t *testing.T, clock quartz.Clock) *partitionProce
 		log.NewNopLogger(),
 		prometheus.NewRegistry(),
 		60*time.Minute,
+		time.Hour,
 		nil,
 		"test-topic",
 		1,

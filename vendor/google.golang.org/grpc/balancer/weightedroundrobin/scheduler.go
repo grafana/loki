@@ -39,7 +39,7 @@ func (p *picker) newScheduler(recordMetrics bool) scheduler {
 	}
 	if n == 1 {
 		if recordMetrics {
-			rrFallbackMetric.Record(p.metricsRecorder, 1, p.target, p.locality)
+			rrFallbackMetric.Record(p.metricsRecorder, 1, p.target, p.locality, p.clusterName)
 		}
 		return &rrScheduler{numSCs: 1, inc: p.inc}
 	}
@@ -58,7 +58,7 @@ func (p *picker) newScheduler(recordMetrics bool) scheduler {
 
 	if numZero >= n-1 {
 		if recordMetrics {
-			rrFallbackMetric.Record(p.metricsRecorder, 1, p.target, p.locality)
+			rrFallbackMetric.Record(p.metricsRecorder, 1, p.target, p.locality, p.clusterName)
 		}
 		return &rrScheduler{numSCs: uint32(n), inc: p.inc}
 	}
