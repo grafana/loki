@@ -28,6 +28,7 @@ type SigV4Config struct { //nolint:revive
 	SecretKey          config.Secret `yaml:"secret_key,omitempty"`
 	Profile            string        `yaml:"profile,omitempty"`
 	RoleARN            string        `yaml:"role_arn,omitempty"`
+	ExternalID         string        `yaml:"external_id,omitempty"`
 	UseFIPSSTSEndpoint bool          `yaml:"use_fips_sts_endpoint,omitempty"`
 	ServiceName        string        `yaml:"service_name,omitempty"`
 }
@@ -35,6 +36,9 @@ type SigV4Config struct { //nolint:revive
 func (c *SigV4Config) Validate() error {
 	if (c.AccessKey == "") != (c.SecretKey == "") {
 		return fmt.Errorf("must provide a AWS SigV4 Access key and Secret Key if credentials are specified in the SigV4 config")
+	}
+	if c.ExternalID != "" && c.RoleARN == "" {
+		return fmt.Errorf("external_id can only be used with role_arn")
 	}
 	return nil
 }
