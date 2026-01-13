@@ -500,7 +500,7 @@ type streamTracker struct {
 }
 
 // TODO taken from Cortex, see if we can refactor out an usable interface.
-type pushTracker struct {
+type PushTracker struct {
 	streamsPending atomic.Int32
 	streamsFailed  atomic.Int32
 	done           chan struct{}
@@ -510,7 +510,7 @@ type pushTracker struct {
 // doneWithResult records the result of a stream push.
 // If err is nil, the stream push is considered successful.
 // If err is not nil, the stream push is considered failed.
-func (p *pushTracker) doneWithResult(err error) {
+func (p *PushTracker) doneWithResult(err error) {
 	if err == nil {
 		if p.streamsPending.Dec() == 0 {
 			p.done <- struct{}{}
@@ -818,19 +818,20 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 		}
 	}
 
+	tracker := PushTracker{
+		done: make(chan struct{}, 1), // buffer avoids blocking if caller terminates - sendSamples() only sends once on each
+		err:  make(chan error, 1),
+	}
+
 	// Nil check for performance reasons, to avoid dynamic lookup and/or no-op
 	// function calls that cannot be inlined.
 	if d.tee != nil {
-		d.tee.Duplicate(context.WithoutCancel(ctx), tenantID, streams)
+		d.tee.Duplicate(context.WithoutCancel(ctx), tenantID, streams, &tracker)
 	}
 
 	const maxExpectedReplicationSet = 5 // typical replication factor 3 plus one for inactive plus one for luck
 	var descs [maxExpectedReplicationSet]ring.InstanceDesc
 
-	tracker := pushTracker{
-		done: make(chan struct{}, 1), // buffer avoids blocking if caller terminates - sendSamples() only sends once on each
-		err:  make(chan error, 1),
-	}
 	streamsToWrite := 0
 	if d.cfg.IngesterEnabled {
 		streamsToWrite += len(streams)
@@ -1200,7 +1201,7 @@ func (d *Distributor) truncateLines(vContext validationContext, stream *logproto
 
 type pushIngesterTask struct {
 	streamTracker []*streamTracker
-	pushTracker   *pushTracker
+	pushTracker   *PushTracker
 	ingester      ring.InstanceDesc
 	ctx           context.Context
 	cancel        context.CancelFunc
@@ -1274,7 +1275,7 @@ func (d *Distributor) sendStreamsErr(ctx context.Context, ingester ring.Instance
 	return err
 }
 
-func (d *Distributor) sendStreamsToKafka(ctx context.Context, streams []KeyedStream, tenant string, tracker *pushTracker, subring *ring.PartitionRing) {
+func (d *Distributor) sendStreamsToKafka(ctx context.Context, streams []KeyedStream, tenant string, tracker *PushTracker, subring *ring.PartitionRing) {
 	for _, s := range streams {
 		go func(s KeyedStream) {
 			err := d.sendStreamToKafka(ctx, s, tenant, subring)

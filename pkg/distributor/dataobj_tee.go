@@ -106,7 +106,7 @@ type SegmentedStream struct {
 }
 
 // Duplicate implements the [Tee] interface.
-func (t *DataObjTee) Duplicate(ctx context.Context, tenant string, streams []KeyedStream) {
+func (t *DataObjTee) Duplicate(ctx context.Context, tenant string, streams []KeyedStream, pushTracker *PushTracker) {
 	segmentationKeyStreams := make([]SegmentedStream, 0, len(streams))
 	for _, stream := range streams {
 		segmentationKey, err := GetSegmentationKey(stream)
