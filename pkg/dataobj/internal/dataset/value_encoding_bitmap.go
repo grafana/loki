@@ -649,7 +649,11 @@ func (dec *bitmapDecoder) readHeader() error {
 		dec.sets = int(header >> 7)
 		dec.setWidth = int((header>>1)&0x3f) + 1
 		dec.setSize = 0 // Sets will be loaded in [bitmapDecoder.nextBitpackSet].
-		dec.set = make([]byte, dec.setWidth)
+		if cap(dec.set) < dec.setWidth {
+			dec.set = make([]byte, dec.setWidth)
+		} else {
+			dec.set = dec.set[:dec.setWidth]
+		}
 	} else {
 		// RLE run.
 		runLength := header >> 1
@@ -690,5 +694,7 @@ func (dec *bitmapDecoder) Reset(r streamio.Reader) {
 	dec.sets = 0
 	dec.setWidth = 0
 	dec.setSize = 0
-	dec.set = nil
+	if dec.set != nil {
+		dec.set = dec.set[:0]
+	}
 }
