@@ -97,15 +97,9 @@ func (dec *plainBytesDecoder) EncodingType() datasetmd.EncodingType {
 // number of decoded values is returned, followed by an error (if any).
 // At the end of the stream, Decode returns 0, [io.EOF].
 func (dec *plainBytesDecoder) Decode(s []Value) (int, error) {
-	if len(s) == 0 {
-		return 0, nil
-	}
-
-	var err error
-
 	for i := range s {
-		err = dec.decode(&s[i])
-		if errors.Is(err, io.EOF) {
+		err := dec.decode(&s[i])
+		if err != nil && errors.Is(err, io.EOF) {
 			if i == 0 {
 				return 0, io.EOF
 			}
