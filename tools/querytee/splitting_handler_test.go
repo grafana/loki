@@ -131,7 +131,7 @@ func TestSplittingHandler_ServeSplits_UnsupportedRequestUsesDefaultHandler(t *te
 				Codec:                     queryrange.DefaultCodec,
 				FanOutHandler:             mockFanOutHandler,
 				GoldfishManager:           goldfishManager,
-				PreferredBackend:          preferredBackend,
+				V1Backend:                 preferredBackend,
 				SkipFanoutWhenNotSampling: false,
 				RoutingMode:               RoutingModeV1Preferred,
 				SplitStart:                time.Time{},
@@ -182,7 +182,7 @@ func TestSplittingHandler_NilPreferredBackend_CallsFanoutHandler(t *testing.T) {
 		Codec:                     queryrange.DefaultCodec,
 		FanOutHandler:             mockFanOutHandler,
 		GoldfishManager:           nil,
-		PreferredBackend:          nil, // nil preferred backend
+		V1Backend:                 nil, // nil preferred backend
 		SkipFanoutWhenNotSampling: false,
 		RoutingMode:               RoutingModeV1Preferred,
 		SplitStart:                time.Time{},
@@ -246,7 +246,7 @@ func TestSplittingHandler_RoutingModeV1Preferred_SkipsToDefaultWhenNotSampling(t
 		Codec:                     queryrange.DefaultCodec,
 		FanOutHandler:             mockFanOutHandler,
 		GoldfishManager:           goldfishManager,
-		PreferredBackend:          preferredBackend,
+		V1Backend:                 preferredBackend,
 		SkipFanoutWhenNotSampling: true, // Enable skip when not sampling
 		RoutingMode:               RoutingModeV1Preferred,
 		SplitStart:                time.Time{},
@@ -336,7 +336,7 @@ func TestSplittingHandler_AlwaysSplitsEvenWhenNotSampling(t *testing.T) {
 				Codec:                     queryrange.DefaultCodec,
 				FanOutHandler:             mockFanOutHandler,
 				GoldfishManager:           goldfishManager,
-				PreferredBackend:          preferredBackend,
+				V1Backend:                 preferredBackend,
 				SkipFanoutWhenNotSampling: true, // Enable skip when not sampling, which should not apply in these 2 modes
 				RoutingMode:               tc.routingMode,
 				SplitStart:                time.Time{},
@@ -411,7 +411,7 @@ func TestSplittingHandler_NoSplitLag_UsesFanoutHandler(t *testing.T) {
 		Codec:                     queryrange.DefaultCodec,
 		FanOutHandler:             mockFanOutHandler,
 		GoldfishManager:           goldfishManager,
-		PreferredBackend:          preferredBackend,
+		V1Backend:                 preferredBackend,
 		SkipFanoutWhenNotSampling: false,
 		RoutingMode:               RoutingModeRace,
 		SplitStart:                time.Time{},
@@ -474,7 +474,7 @@ func TestSplittingHandler_V1Preferred_SplitsWhenSampling(t *testing.T) {
 		Codec:                     queryrange.DefaultCodec,
 		FanOutHandler:             mockFanOutHandler,
 		GoldfishManager:           goldfishManager,
-		PreferredBackend:          preferredBackend,
+		V1Backend:                 preferredBackend,
 		SkipFanoutWhenNotSampling: true,
 		RoutingMode:               RoutingModeV1Preferred,
 		SplitStart:                time.Time{},
@@ -551,7 +551,7 @@ func TestSplittingHandler_SkipFanoutDisabled_AlwaysSplits(t *testing.T) {
 				Codec:                     queryrange.DefaultCodec,
 				FanOutHandler:             mockFanOutHandler,
 				GoldfishManager:           goldfishManager,
-				PreferredBackend:          preferredBackend,
+				V1Backend:                 preferredBackend,
 				SkipFanoutWhenNotSampling: false, // Disabled - should always split
 				RoutingMode:               routingMode,
 				SplitStart:                time.Time{},

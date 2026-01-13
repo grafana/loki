@@ -25,7 +25,7 @@ type SplittingHandlerConfig struct {
 	Codec                     queryrangebase.Codec
 	FanOutHandler             queryrangebase.Handler
 	GoldfishManager           goldfish.Manager
-	PreferredBackend          *ProxyBackend
+	V1Backend                 *ProxyBackend
 	SkipFanoutWhenNotSampling bool
 	RoutingMode               RoutingMode
 	SplitStart                time.Time
@@ -42,11 +42,11 @@ type SplittingHandler struct {
 	logger                    log.Logger
 	logsQueryHandler          queryrangebase.Handler
 	metricsQueryHandler       queryrangebase.Handler
-	defaultHandler            queryrangebase.Handler
+	v1Handler                 queryrangebase.Handler
 }
 
 func NewSplittingHandler(cfg SplittingHandlerConfig, logger log.Logger) (http.Handler, error) {
-	if cfg.PreferredBackend == nil {
+	if cfg.V1Backend == nil {
 		return tenantHandler(queryrange.NewSerializeHTTPHandler(cfg.FanOutHandler, cfg.Codec), logger), nil
 	}
 
@@ -57,8 +57,8 @@ func NewSplittingHandler(cfg SplittingHandlerConfig, logger log.Logger) (http.Ha
 		splitStart:    cfg.SplitStart,
 		splitLag:      cfg.SplitLag,
 	}
-	preferredRT, err := frontend.NewDownstreamRoundTripper(
-		cfg.PreferredBackend.endpoint.String(),
+	v1RoundTrip, err := frontend.NewDownstreamRoundTripper(
+		cfg.V1Backend.endpoint.String(),
 		&http.Transport{
 			MaxIdleConnsPerHost: 100,
 			IdleConnTimeout:     90 * time.Second,
@@ -68,8 +68,8 @@ func NewSplittingHandler(cfg SplittingHandlerConfig, logger log.Logger) (http.Ha
 	if err != nil {
 		return nil, err
 	}
-	metricsQueryHandler := splitHandlerFactory.createSplittingHandler(true, preferredRT)
-	logsQueryHandler := splitHandlerFactory.createSplittingHandler(false, preferredRT)
+	metricsQueryHandler := splitHandlerFactory.createSplittingHandler(true, v1RoundTrip)
+	logsQueryHandler := splitHandlerFactory.createSplittingHandler(false, v1RoundTrip)
 
 	splittingHandler := &SplittingHandler{
 		codec:                     cfg.Codec,
@@ -78,7 +78,7 @@ func NewSplittingHandler(cfg SplittingHandlerConfig, logger log.Logger) (http.Ha
 		logger:                    logger,
 		logsQueryHandler:          logsQueryHandler,
 		metricsQueryHandler:       metricsQueryHandler,
-		defaultHandler:            preferredRT,
+		v1Handler:                 v1RoundTrip,
 		skipFanoutWhenNotSampling: cfg.SkipFanoutWhenNotSampling,
 		routingMode:               cfg.RoutingMode,
 		splitLag:                  cfg.SplitLag,
@@ -112,7 +112,7 @@ type splitHandlerFactory struct {
 	splitLag      time.Duration
 }
 
-func (f *splitHandlerFactory) createSplittingHandler(forMetricQuery bool, defaultHandler queryrangebase.Handler) queryrangebase.Handler {
+func (f *splitHandlerFactory) createSplittingHandler(forMetricQuery bool, v1Handler queryrangebase.Handler) queryrangebase.Handler {
 	routerConfig := queryrange.RouterConfig{
 		Enabled:  true,
 		Validate: engine.IsQuerySupported,
@@ -137,7 +137,7 @@ func (f *splitHandlerFactory) createSplittingHandler(forMetricQuery bool, defaul
 	middleware = append(middleware, engineRouterMiddleware)
 
 	// Wrap the default backend handler (v1Next) with the router middleware
-	return queryrangebase.MergeMiddlewares(middleware...).Wrap(defaultHandler)
+	return queryrangebase.MergeMiddlewares(middleware...).Wrap(v1Handler)
 }
 
 // ServeHTTP implements http.Handler interface to serve queries that can be split.
@@ -190,13 +190,13 @@ func (f *SplittingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	splittingEnabled := f.splitLag > 0
 
 	if useDefault {
-		// Not sampling and v1-preferred: go directly to preferred backend
-		resp, err = f.defaultHandler.Do(ctx, req)
+		// Not sampling and v1-preferred: go directly to v1 backend
+		resp, err = f.v1Handler.Do(ctx, req)
 	} else if splittingEnabled {
-		// Splitting is enabled: use engine router to split queries by time range
+		// Splitting is enabled: use engine router to split queries by time range between v1 and v2 backends
 		resp, err = f.serveSplits(ctx, req)
 	} else {
-		// No splitting configured: fan out to all backends
+		// No splitting configured: fan out without splits to all backends
 		resp, err = f.fanOutHandler.Do(ctx, req)
 	}
 
@@ -273,6 +273,6 @@ func (f *SplittingHandler) serveSplits(ctx context.Context, req queryrangebase.R
 			return f.logsQueryHandler.Do(ctx, req)
 		}
 	default:
-		return f.defaultHandler.Do(ctx, req)
+		return f.v1Handler.Do(ctx, req)
 	}
 }

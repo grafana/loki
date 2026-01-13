@@ -77,21 +77,11 @@ func (f *HandlerFactory) CreateHandler(routeName string, comp comparator.Respons
 		RaceTolerance:      f.raceTolerance,
 	})
 
-	var preferredBackend *ProxyBackend
-	switch f.routingMode {
-	case RoutingModeV2Preferred:
-		for _, b := range f.backends {
-			if b.v2Preferred {
-				preferredBackend = b
-				break
-			}
-		}
-	default:
-		for _, b := range f.backends {
-			if b.v1Preferred {
-				preferredBackend = b
-				break
-			}
+	var v1Backend *ProxyBackend
+	for _, b := range f.backends {
+		if b.v1Preferred {
+			v1Backend = b
+			break
 		}
 	}
 
@@ -99,7 +89,7 @@ func (f *HandlerFactory) CreateHandler(routeName string, comp comparator.Respons
 		Codec:                     f.codec,
 		FanOutHandler:             fanOutHandler,
 		GoldfishManager:           f.goldfishManager,
-		PreferredBackend:          preferredBackend,
+		V1Backend:                 v1Backend,
 		SkipFanoutWhenNotSampling: f.skipFanOutWhenNotSampling,
 		RoutingMode:               f.routingMode,
 		SplitStart:                f.splitStart,
