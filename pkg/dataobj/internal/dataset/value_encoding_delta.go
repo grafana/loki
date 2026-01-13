@@ -107,7 +107,7 @@ func (dec *deltaDecoder) Decode(s []Value) (int, error) {
 
 	for i := range s {
 		v, err = dec.decode()
-		if errors.Is(err, io.EOF) {
+		if err != nil && errors.Is(err, io.EOF) {
 			if i == 0 {
 				return 0, io.EOF
 			}
