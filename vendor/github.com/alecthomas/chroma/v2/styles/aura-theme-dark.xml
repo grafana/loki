@@ -101,7 +101,7 @@
   <entry type="GenericTraceback" style="#ff6767"/>
 
   <!-- Punctuation -->
-  <entry type="Punctuation" style="#edecee"/>
+  <entry type="Punctuation" style="#f694ff"/>
   <entry type="Text" style="#edecee"/>
   <entry type="TextWhitespace" style="#edecee"/>
 </style>
