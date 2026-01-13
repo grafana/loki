@@ -516,12 +516,11 @@ func migrateRoutingConfig(cfg *ProxyConfig, logger log.Logger) {
 		level.Warn(logger).Log("msg", "-backend.preferred is deprecated, use -routing.v1-backend")
 	}
 
-	if cfg.Routing.Mode == "" {
+	// backwards compatability check, since RoutingModeV1Preferred is the default
+	if cfg.Routing.Mode == RoutingModeV1Preferred {
 		if cfg.EnableRace {
 			cfg.Routing.Mode = RoutingModeRace
 			level.Warn(logger).Log("msg", "-proxy.enable-race is deprecated, use -routing.mode=race")
-		} else {
-			cfg.Routing.Mode = RoutingModeV1Preferred
 		}
 	}
 
