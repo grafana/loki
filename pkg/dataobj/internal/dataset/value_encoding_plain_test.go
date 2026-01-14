@@ -3,7 +3,9 @@ package dataset
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
+	"math/rand"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -126,28 +128,107 @@ func Benchmark_plainBytesEncoder_Append(b *testing.B) {
 }
 
 func Benchmark_plainBytesDecoder_Decode(b *testing.B) {
-	buf := bytes.NewBuffer(make([]byte, 0, 1024)) // Large enough to avoid reallocations.
+	const pageSize = 2_000_000
 
-	var (
-		enc    = newPlainBytesEncoder(buf)
-		dec    = newPlainBytesDecoder(buf)
-		decBuf = make([]Value, batchSize)
-	)
-
-	for _, v := range testStrings {
-		require.NoError(b, enc.Encode(BinaryValue([]byte(v))))
+	type scenario struct {
+		name       string
+		makeValues func() []Value
 	}
 
-	var err error
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		for {
-			_, err = dec.Decode(decBuf[:batchSize])
-			if errors.Is(err, io.EOF) {
-				break
-			} else if err != nil {
-				b.Fatal(err)
-			}
+	scenarios := []scenario{
+		{
+			name: "constant-size",
+			makeValues: func() []Value {
+				var result []Value
+
+				const valueSize = 100
+
+				rnd := rand.New(rand.NewSource(0))
+
+				var totalSize int
+				for totalSize+valueSize < pageSize {
+					value := make([]byte, valueSize)
+					_, _ = rnd.Read(value)
+
+					result = append(result, BinaryValue(value))
+					totalSize += valueSize
+				}
+
+				return result
+			},
+		},
+		{
+			name: "variable-size",
+			makeValues: func() []Value {
+				var result []Value
+
+				const (
+					minSize = 16
+					maxSize = 1024
+				)
+
+				rnd := rand.New(rand.NewSource(0))
+
+				var totalSize int
+				for totalSize < pageSize {
+					valueSize := minSize + rnd.Intn(maxSize-minSize+1)
+					if rem := pageSize - totalSize; valueSize > rem {
+						valueSize = rem
+					}
+
+					value := make([]byte, valueSize)
+					_, _ = rnd.Read(value)
+					result = append(result, BinaryValue(value))
+					totalSize += valueSize
+				}
+
+				return result
+			},
+		},
+	}
+
+	batchSizes := []int{1024, 2048, 4096, 8192}
+
+	for _, scenario := range scenarios {
+		for _, batchSize := range batchSizes {
+			benchmarkName := fmt.Sprintf("scenario=%s/batch-size=%d", scenario.name, batchSize)
+			b.Run(benchmarkName, func(b *testing.B) {
+				var buf bytes.Buffer
+
+				var (
+					enc = newPlainBytesEncoder(&buf)
+				)
+
+				var totalSize int
+				for _, value := range scenario.makeValues() {
+					totalSize += len(value.Binary())
+					require.NoError(b, enc.Encode(value))
+				}
+
+				decBuf := make([]Value, batchSize)
+
+				r := bytes.NewReader(buf.Bytes())
+				dec := newPlainBytesDecoder(r)
+
+				var totalRows int
+				for b.Loop() {
+					r.Reset(buf.Bytes())
+					dec.Reset(r) // Not necessary to reset both, but we do it anyway to guarantee a fresh state.
+
+					for {
+						n, err := dec.Decode(decBuf)
+						totalRows += n
+						if err != nil && errors.Is(err, io.EOF) {
+							break
+						} else if err != nil {
+							b.Fatal(err)
+						}
+					}
+				}
+
+				b.SetBytes(int64(totalSize))
+				b.ReportMetric(float64(totalRows)/b.Elapsed().Seconds(), "rows/s")
+			})
 		}
 	}
 }
