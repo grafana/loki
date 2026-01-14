@@ -452,6 +452,10 @@ func schemaElementTypeOf(s *format.SchemaElement) Type {
 			return (*bsonType)(lt.Bson)
 		case lt.UUID != nil:
 			return (*uuidType)(lt.UUID)
+		case lt.Geometry != nil:
+			return (*geometryType)(lt.Geometry)
+		case lt.Geography != nil:
+			return (*geographyType)(lt.Geography)
 		}
 	}
 

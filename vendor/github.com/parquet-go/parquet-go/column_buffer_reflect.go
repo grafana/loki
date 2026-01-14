@@ -18,6 +18,7 @@ import (
 	"github.com/parquet-go/parquet-go/deprecated"
 	"github.com/parquet-go/parquet-go/internal/memory"
 	"github.com/parquet-go/parquet-go/sparse"
+	"github.com/twpayne/go-geom"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/known/anypb"
@@ -752,6 +753,8 @@ func writeValueFuncOfLeaf(columnIndex int16, node Node) (int16, writeValueFunc) 
 				writeProtoList(col, levels, msg, node)
 			case *anypb.Any:
 				writeProtoAny(col, levels, msg, node)
+			case geom.T:
+				writeGeometry(col, levels, msg, node)
 			default:
 				value = value.Elem()
 				goto writeValue
