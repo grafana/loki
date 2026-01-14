@@ -1019,3 +1019,105 @@ func createAlertingRule(alert, expr string) *rulespb.RuleDesc {
 		Expr:  expr,
 	}
 }
+
+func TestContainsPathTraversal(t *testing.T) {
+	tests := []struct {
+		name     string
+		path     string
+		expected bool
+	}{
+		// Safe paths
+		{name: "simple namespace", path: "my-namespace", expected: false},
+		{name: "namespace with dots", path: "my.namespace", expected: false},
+		{name: "namespace with hyphen", path: "my-namespace-v2", expected: false},
+
+		// Path traversal attacks
+		{name: "simple path traversal", path: "..", expected: true},
+		{name: "path traversal with prefix", path: "../etc", expected: true},
+		{name: "path traversal in middle", path: "foo/../bar", expected: true},
+		{name: "multiple path traversal", path: "../../etc/passwd", expected: true},
+
+		// Double URL encoding attacks (after decode)
+		{name: "double encoded traversal result", path: "../../../etc/passwd", expected: true},
+
+		// Slash-based attacks
+		{name: "forward slash", path: "foo/bar", expected: true},
+		{name: "backslash", path: "foo\\bar", expected: true},
+		{name: "absolute path", path: "/etc/passwd", expected: true},
+
+		// Whitespace bypass attempts
+		{name: "tab in path traversal", path: "..\t.", expected: true},
+		{name: "newline in path traversal", path: "..\n.", expected: true},
+		{name: "carriage return in path traversal", path: "..\r.", expected: true},
+
+		// Edge cases
+		{name: "empty string", path: "", expected: false},
+		{name: "single dot", path: ".", expected: false},
+		{name: "dots not adjacent", path: "a.b.c", expected: false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := containsPathTraversal(tc.path)
+			assert.Equal(t, tc.expected, result, "containsPathTraversal(%q) = %v, want %v", tc.path, result, tc.expected)
+		})
+	}
+}
+
+func TestParseNamespace_PathTraversal(t *testing.T) {
+	tests := []struct {
+		name        string
+		namespace   string
+		expectError bool
+	}{
+		{name: "valid namespace", namespace: "my-namespace", expectError: false},
+		{name: "path traversal attack", namespace: "../../../etc/passwd", expectError: true},
+		{name: "double encoded path traversal", namespace: "..%2f..%2f..%2fetc%2fpasswd", expectError: true}, // After one decode by router
+		{name: "with forward slash", namespace: "foo/bar", expectError: true},
+		{name: "with backslash", namespace: "foo\\bar", expectError: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			params := map[string]string{"namespace": tc.namespace}
+			result, err := parseNamespace(params)
+
+			if tc.expectError {
+				assert.ErrorIs(t, err, ErrInvalidPath)
+				assert.Empty(t, result)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tc.namespace, result)
+			}
+		})
+	}
+}
+
+func TestParseGroupName_PathTraversal(t *testing.T) {
+	tests := []struct {
+		name        string
+		groupName   string
+		expectError bool
+	}{
+		{name: "valid group name", groupName: "my-group", expectError: false},
+		{name: "path traversal attack", groupName: "../../../etc/passwd", expectError: true},
+		{name: "double encoded path traversal", groupName: "..%2f..%2f..%2fetc%2fpasswd", expectError: true}, // After one decode by router
+		{name: "with forward slash", groupName: "foo/bar", expectError: true},
+		{name: "with backslash", groupName: "foo\\bar", expectError: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			params := map[string]string{"groupName": tc.groupName}
+			result, err := parseGroupName(params)
+
+			if tc.expectError {
+				assert.ErrorIs(t, err, ErrInvalidPath)
+				assert.Empty(t, result)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tc.groupName, result)
+			}
+		})
+	}
+}

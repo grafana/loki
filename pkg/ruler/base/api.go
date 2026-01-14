@@ -338,6 +338,8 @@ var (
 	ErrNoRuleGroups = errors.New("no rule groups found")
 	// ErrBadRuleGroup is returned when the provided rule group can not be unmarshalled
 	ErrBadRuleGroup = errors.New("unable to decoded rule group")
+	// ErrInvalidPath signals a path traversal attempt was detected
+	ErrInvalidPath = errors.New("invalid path: path traversal not allowed")
 )
 
 func marshalAndSend(output interface{}, w http.ResponseWriter, logger log.Logger) {
@@ -373,6 +375,26 @@ func respondAccepted(w http.ResponseWriter, logger log.Logger) {
 	}
 }
 
+// containsPathTraversal checks if a path contains path traversal sequences.
+func containsPathTraversal(path string) bool {
+	// Remove tabs, carriage returns, and newlines that could be used to bypass checks
+	cleaned := strings.ReplaceAll(path, "\t", "")
+	cleaned = strings.ReplaceAll(cleaned, "\r", "")
+	cleaned = strings.ReplaceAll(cleaned, "\n", "")
+
+	// Check for path traversal sequences
+	if strings.Contains(cleaned, "..") {
+		return true
+	}
+
+	// Check for path separators that could be used for traversal
+	if strings.ContainsAny(cleaned, "/\\") {
+		return true
+	}
+
+	return false
+}
+
 // parseNamespace parses the namespace from the provided set of params, in this
 // api these params are derived from the url path
 func parseNamespace(params map[string]string) (string, error) {
@@ -384,6 +406,10 @@ func parseNamespace(params map[string]string) (string, error) {
 	namespace, err := url.PathUnescape(namespace)
 	if err != nil {
 		return "", err
+	}
+
+	if containsPathTraversal(namespace) {
+		return "", ErrInvalidPath
 	}
 
 	return namespace, nil
@@ -400,6 +426,10 @@ func parseGroupName(params map[string]string) (string, error) {
 	groupName, err := url.PathUnescape(groupName)
 	if err != nil {
 		return "", err
+	}
+
+	if containsPathTraversal(groupName) {
+		return "", ErrInvalidPath
 	}
 
 	return groupName, nil
