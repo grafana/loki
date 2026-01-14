@@ -115,7 +115,7 @@ The tenant has reached the maximum number of active streams. Active streams are 
    ```
 
 {{< admonition type="note" >}}
-Do not increase stream limits to accommodate high cardinality labels, this can result in Loki flushing extremely high numbers of small files which will make for extremely poor query performance.  As volume and the size of the infrastructure being monitored increase, it would be expected to increase the stream limit. However even for hundreds of TBs per day of logs you should avoid exceeding 300,000 max global streams per user.
+Do not increase stream limits to accommodate high cardinality labels, this can result in Loki flushing extremely high numbers of small files which will make for extremely poor query performance. As volume and the size of the infrastructure being monitored increase, it would be expected to increase the stream limit. However even for hundreds of TBs per day of logs you should avoid exceeding 300,000 max global streams per user.
 {{< /admonition >}}
 
 **Properties:**
@@ -158,11 +158,7 @@ A log line exceeds the maximum allowed size.
 
    ```yaml
    limits_config:
-<<<<<<< HEAD
      max_line_size: 256KB
-=======
-     max_line_size: 512KB
->>>>>>> 9685813f7b (docs: troubleshooting ingest Part 4)
    ```
 
    {{< admonition type="warning" >}}
@@ -539,7 +535,7 @@ The HTTP compressed push request body exceeds the configured limit in your gatew
 
 * **Split large batches** into smaller, more frequent requests.
 
-* **Increase batch limit** Increase the allowed body size on your gateway/reverse proxy.  For example, in the Helm chart set `gateway.nginxConfig.clientMaxBodySize`; default is 4M.
+* **Increase batch limit** Increase the allowed body size on your gateway/reverse proxy. For example, in the Helm chart set `gateway.nginxConfig.clientMaxBodySize`; default is 4M.
 
 **Properties:**
 
