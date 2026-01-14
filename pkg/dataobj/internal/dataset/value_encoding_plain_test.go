@@ -207,9 +207,13 @@ func Benchmark_plainBytesDecoder_Decode(b *testing.B) {
 
 				decBuf := make([]Value, batchSize)
 
+				r := bytes.NewReader(buf.Bytes())
+				dec := newPlainBytesDecoder(r)
+
 				var totalRows int
 				for b.Loop() {
-					dec := newPlainBytesDecoder(bytes.NewReader(buf.Bytes()))
+					r.Reset(buf.Bytes())
+					dec.Reset(r) // Not necessary to reset both, but we do it anyway to guarantee a fresh state.
 
 					for {
 						n, err := dec.Decode(decBuf)
