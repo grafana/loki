@@ -192,12 +192,18 @@ func (f *SplittingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if useDefault {
 		// Not sampling and v1-preferred: go directly to v1 backend
 		resp, err = f.v1Handler.Do(ctx, req)
+		if resp != nil {
+			addWarningToResponse(resp, "query was routed to v1 backend")
+		}
 	} else if splittingEnabled {
 		// Splitting is enabled: use engine router to split queries by time range between v1 and v2 backends
 		resp, err = f.serveSplits(ctx, req)
 	} else {
 		// No splitting configured: fan out without splits to all backends
 		resp, err = f.fanOutHandler.Do(ctx, req)
+		if resp != nil {
+			addWarningToResponse(resp, "query was not split, but still routed to all backends")
+		}
 	}
 
 	if err != nil {
@@ -268,11 +274,38 @@ func (f *SplittingHandler) serveSplits(ctx context.Context, req queryrangebase.R
 
 		switch op.Plan.AST.(type) {
 		case syntax.VariantsExpr, syntax.SampleExpr:
-			return f.metricsQueryHandler.Do(ctx, req)
+			level.Info(f.logger).Log("msg", "serving metric split", "query", req.GetQuery())
+			resp, err := f.metricsQueryHandler.Do(ctx, req)
+			if resp != nil {
+				addWarningToResponse(resp, "metrics query was split between v1 and v2 backends")
+			}
+			return resp, err
 		default:
-			return f.logsQueryHandler.Do(ctx, req)
+			level.Info(f.logger).Log("msg", "serving logs split", "query", req.GetQuery())
+			resp, err := f.logsQueryHandler.Do(ctx, req)
+			if resp != nil {
+				addWarningToResponse(resp, "logs query was split between v1 and v2 backends")
+			}
+			return resp, err
 		}
 	default:
-		return f.v1Handler.Do(ctx, req)
+		level.Info(f.logger).Log("msg", "not splitting unsupported request", "query", req.GetQuery())
+		resp, err := f.v1Handler.Do(ctx, req)
+		if resp != nil {
+			addWarningToResponse(resp, "unsupported query was sent to v1 backend")
+		}
+		return resp, err
+	}
+}
+
+// addWarningToResponse adds a warning message to the response based on its type.
+func addWarningToResponse(resp queryrangebase.Response, warning string) {
+	switch r := resp.(type) {
+	case *queryrange.LokiResponse:
+		r.Warnings = append(r.Warnings, warning)
+	case *queryrange.LokiPromResponse:
+		if r.Response != nil {
+			r.Response.Warnings = append(r.Response.Warnings, warning)
+		}
 	}
 }

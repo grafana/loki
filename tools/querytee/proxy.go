@@ -230,6 +230,7 @@ func NewProxy(
 			v2Preferred = preferredIdx == idx
 		}
 
+		level.Debug(logger).Log("msg", "backend added", "name", name, "legacyPreferred", legacyPreferred, "v1Preferred", v1Preferred, "v2Preferred", v2Preferred)
 		p.backends = append(p.backends, NewProxyBackend(name, u, cfg.BackendReadTimeout, legacyPreferred, v1Preferred, v2Preferred))
 	}
 

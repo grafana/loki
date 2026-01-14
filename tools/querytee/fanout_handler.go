@@ -73,6 +73,23 @@ type backendResult struct {
 	err         error
 }
 
+// shouldCompare returns true if the given backend result should be compared against the preferred result.
+func (h *FanOutHandler) shouldCompare(r *backendResult, preferV1 bool) bool {
+	if h.comparator == nil {
+		return false
+	}
+
+	if r.backend.v1Preferred && preferV1 {
+		return true
+	}
+
+	if r.backend.v2Preferred && !preferV1 {
+		return true
+	}
+
+	return false
+}
+
 // Do implements queryrangebase.Handler. It fans out the request to all backends, returns the preferred backend's
 // response, and captures remaining responses for goldfish comparison in the background.
 func (h *FanOutHandler) Do(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
@@ -167,7 +184,7 @@ func (h *FanOutHandler) doWithPreferred(results <-chan *backendResult, collected
 
 			remaining := len(h.backends) - i - 1
 			go func() {
-				h.collectRemainingAndCompare(remaining, httpReq, results, collected, shouldSample)
+				h.collectRemainingAndCompare(remaining, httpReq, results, collected, shouldSample, preferV1)
 			}()
 
 			// when the preferred backends succeeds, but with error, that indicates an invalid request
@@ -212,7 +229,7 @@ func (h *FanOutHandler) finishRace(winner *backendResult, remaining int, httpReq
 	).Inc()
 
 	go func() {
-		h.collectRemainingAndCompare(remaining, httpReq, results, collected, shouldSample)
+		h.collectRemainingAndCompare(remaining, httpReq, results, collected, shouldSample, true)
 	}()
 
 	return winner.response, nil
@@ -220,7 +237,7 @@ func (h *FanOutHandler) finishRace(winner *backendResult, remaining int, httpReq
 
 // collectRemainingAndCompare collects remaining backend results, performs comparisons,
 // and processes goldfish sampling. Should be called asynchronously to not block preferred response from returning.
-func (h *FanOutHandler) collectRemainingAndCompare(remaining int, httpReq *http.Request, results <-chan *backendResult, collected []*backendResult, shouldSample bool) {
+func (h *FanOutHandler) collectRemainingAndCompare(remaining int, httpReq *http.Request, results <-chan *backendResult, collected []*backendResult, shouldSample bool, preferV1 bool) {
 	issuer := detectIssuer(httpReq)
 	for range remaining {
 		r := <-results
@@ -229,14 +246,19 @@ func (h *FanOutHandler) collectRemainingAndCompare(remaining int, httpReq *http.
 
 	var preferredResult *backendResult
 	for _, r := range collected {
-		if r.backend.v1Preferred {
+		if r.backend.v1Preferred && preferV1 {
+			preferredResult = r
+			break
+		}
+
+		if r.backend.v2Preferred && !preferV1 {
 			preferredResult = r
 			break
 		}
 	}
 
 	for _, r := range collected {
-		if h.comparator != nil && !r.backend.v1Preferred {
+		if h.shouldCompare(r, preferV1) {
 			result := comparisonSuccess
 			summary, err := h.compareResponses(preferredResult.backendResp, r.backendResp, time.Now().UTC())
 			if err != nil {
@@ -262,7 +284,7 @@ func (h *FanOutHandler) collectRemainingAndCompare(remaining int, httpReq *http.
 	}
 
 	if shouldSample {
-		h.processGoldfishComparison(httpReq, preferredResult, collected)
+		h.processGoldfishComparison(httpReq, preferredResult, collected, preferV1)
 	}
 }
 
@@ -376,7 +398,7 @@ func (h *FanOutHandler) recordMetrics(result *backendResult, method, issuer stri
 }
 
 // processGoldfishComparison processes responses for goldfish comparison.
-func (h *FanOutHandler) processGoldfishComparison(httpReq *http.Request, preferredResult *backendResult, results []*backendResult) {
+func (h *FanOutHandler) processGoldfishComparison(httpReq *http.Request, preferredResult *backendResult, results []*backendResult, preferV1 bool) {
 	if h.goldfishManager == nil || len(results) < 2 || preferredResult == nil {
 		return
 	}
@@ -384,7 +406,7 @@ func (h *FanOutHandler) processGoldfishComparison(httpReq *http.Request, preferr
 
 	// Find preferred and non-preferred responses
 	for _, r := range results {
-		if r.err != nil || r.backend.v1Preferred {
+		if r.err != nil || (preferV1 && r.backend.v1Preferred) || (!preferV1 && r.backend.v2Preferred) {
 			continue
 		}
 		level.Info(h.logger).Log("msg", "processing responses with Goldfish",
