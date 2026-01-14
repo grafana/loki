@@ -6,9 +6,10 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/tenant"
+	"github.com/prometheus/common/model"
+
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
-	"github.com/prometheus/common/model"
 )
 
 // Getter defines methods to get deletion requests.

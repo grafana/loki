@@ -444,9 +444,9 @@ func (ds *deleteRequestsStoreSQLite) GetAllDeleteRequestsForUser(ctx context.Con
 				timeRange.End,
 				timeRange.Start,
 			})
-		} else {
-			return ds.queryDeleteRequests(ctx, sqlSelectUserRequestsForTimeRange, []any{userID, timeRange.End, timeRange.Start})
 		}
+
+		return ds.queryDeleteRequests(ctx, sqlSelectUserRequestsForTimeRange, []any{userID, timeRange.End, timeRange.Start})
 	}
 
 	if !forQuerytimeFiltering {
