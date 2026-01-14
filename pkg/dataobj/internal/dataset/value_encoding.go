@@ -76,8 +76,7 @@ type (
 func registerValueEncoding(
 	physicalType datasetmd.PhysicalType,
 	encodingType datasetmd.EncodingType,
-	newEncoder func(streamio.Writer) valueEncoder,
-	newDecoder func([]byte) legacyValueDecoder,
+	entry registryEntry,
 ) {
 	key := registryKey{
 		Physical: physicalType,
@@ -87,10 +86,7 @@ func registerValueEncoding(
 		panic(fmt.Sprintf("dataset: registerValueEncoding already called for %s/%s", physicalType, encodingType))
 	}
 
-	registry[key] = registryEntry{
-		NewEncoder: newEncoder,
-		NewDecoder: newDecoder,
-	}
+	registry[key] = entry
 }
 
 // newValueEncoder creates a new valueEncoder for the specified physicalType and

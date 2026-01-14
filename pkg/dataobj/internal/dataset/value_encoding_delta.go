@@ -15,8 +15,10 @@ func init() {
 	registerValueEncoding(
 		datasetmd.PHYSICAL_TYPE_INT64,
 		datasetmd.ENCODING_TYPE_DELTA,
-		func(w streamio.Writer) valueEncoder { return newDeltaEncoder(w) },
-		func(data []byte) legacyValueDecoder { return newDeltaDecoder(data) },
+		registryEntry{
+			NewEncoder: func(w streamio.Writer) valueEncoder { return newDeltaEncoder(w) },
+			NewDecoder: func(data []byte) legacyValueDecoder { return newDeltaDecoder(data) },
+		},
 	)
 }
 

@@ -16,8 +16,10 @@ func init() {
 	registerValueEncoding(
 		datasetmd.PHYSICAL_TYPE_UINT64,
 		datasetmd.ENCODING_TYPE_BITMAP,
-		func(w streamio.Writer) valueEncoder { return newBitmapEncoder(w) },
-		func(data []byte) legacyValueDecoder { return newBitmapDecoder(data) },
+		registryEntry{
+			NewEncoder: func(w streamio.Writer) valueEncoder { return newBitmapEncoder(w) },
+			NewDecoder: func(data []byte) legacyValueDecoder { return newBitmapDecoder(data) },
+		},
 	)
 }
 

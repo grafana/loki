@@ -17,8 +17,10 @@ func init() {
 	registerValueEncoding(
 		datasetmd.PHYSICAL_TYPE_BINARY,
 		datasetmd.ENCODING_TYPE_PLAIN,
-		func(w streamio.Writer) valueEncoder { return newPlainBytesEncoder(w) },
-		func(data []byte) legacyValueDecoder { return newPlainBytesDecoder(data) },
+		registryEntry{
+			NewEncoder: func(w streamio.Writer) valueEncoder { return newPlainBytesEncoder(w) },
+			NewDecoder: func(data []byte) legacyValueDecoder { return newPlainBytesDecoder(data) },
+		},
 	)
 }
 
