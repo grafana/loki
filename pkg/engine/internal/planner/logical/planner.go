@@ -7,6 +7,7 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/deletion"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
@@ -25,7 +26,7 @@ func BuildPlan(params logql.Params) (*Plan, error) {
 	return BuildPlanWithDeletes(params, nil)
 }
 
-func BuildPlanWithDeletes(params logql.Params, deletes []*logproto.Delete) (*Plan, error) {
+func BuildPlanWithDeletes(params logql.Params, deletes []*deletion.Request) (*Plan, error) {
 	var (
 		value Value
 		err   error
@@ -60,7 +61,7 @@ func buildPlanForLogQuery(
 	params logql.Params,
 	isMetricQuery bool,
 	rangeInterval time.Duration,
-	deletes []*logproto.Delete,
+	deletes []*deletion.Request,
 ) (Value, error) {
 	var (
 		err      error
@@ -410,7 +411,7 @@ func walkLiteral(e *syntax.LiteralExpr, _ *walkContext) (Value, error) {
 
 type walkContext struct {
 	params  logql.Params
-	deletes []*logproto.Delete
+	deletes []*deletion.Request
 }
 
 func walk(e syntax.Expr, wc *walkContext) (Value, error) {
@@ -428,7 +429,7 @@ func walk(e syntax.Expr, wc *walkContext) (Value, error) {
 	return nil, errUnimplemented
 }
 
-func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params, deletes []*logproto.Delete) (Value, error) {
+func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params, deletes []*deletion.Request) (Value, error) {
 	val, err := walk(e, &walkContext{
 		params:  params,
 		deletes: deletes,
@@ -700,7 +701,7 @@ func parseShards(shards []string) (*ShardInfo, error) {
 //
 // There is not need to explicitly signal the optimizer to not push these predicates down,
 // canApplyPredicate already correctly handles this by returning an error if there is a label column ref.
-func buildDeletePredicates(deletes []*logproto.Delete, params logql.Params, rangeInterval time.Duration) ([]Value, error) {
+func buildDeletePredicates(deletes []*deletion.Request, params logql.Params, rangeInterval time.Duration) ([]Value, error) {
 	var predicates []Value
 
 	// TODO: consider offset in time range calculations when its supported.

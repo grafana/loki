@@ -25,7 +25,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
-	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
@@ -276,10 +275,10 @@ func (e *Engine) buildLogicalPlan(ctx context.Context, logger log.Logger, params
 	region := xcap.RegionFromContext(ctx)
 	timer := prometheus.NewTimer(e.metrics.logicalPlanning)
 
-	var deleteReqs []*logproto.Delete
+	var deleteReqs []*deletion.Request
 	if e.deleteGetter != nil {
 		var err error
-		deleteReqs, err = deletion.DeletesForUserQuery(ctx, params.Start(), params.End(), e.deleteGetter)
+		deleteReqs, err = deletion.DeletesForUser(ctx, params.Start(), params.End(), e.deleteGetter)
 		if err != nil {
 			return nil, 0, fmt.Errorf("failed to get delete requests: %w", err)
 		}

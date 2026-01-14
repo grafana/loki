@@ -8,16 +8,23 @@ import (
 	"github.com/grafana/dskit/tenant"
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
-	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/prometheus/common/model"
 )
 
+// Getter defines methods to get deletion requests.
 type Getter interface {
 	GetAllDeleteRequestsForUser(ctx context.Context, userID string, forQuerytimeFiltering bool, timeRange *deletion.TimeRange) ([]deletionproto.DeleteRequest, error)
 }
 
-// DeletesForUserQuery returns the deletes for a user (taken from request context) within a given time range.
-func DeletesForUserQuery(ctx context.Context, startT, endT time.Time, g Getter) ([]*logproto.Delete, error) {
+// Request represents a deletion request.
+type Request struct {
+	Selector string
+	Start    int64
+	End      int64
+}
+
+// DeletesForUser returns the delete reqs for a user (taken from request context) overlapping the provided time range.
+func DeletesForUser(ctx context.Context, startT, endT time.Time, g Getter) ([]*Request, error) {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -32,9 +39,9 @@ func DeletesForUserQuery(ctx context.Context, startT, endT time.Time, g Getter) 
 		return nil, err
 	}
 
-	deletes := make([]*logproto.Delete, 0, len(d))
+	deletes := make([]*Request, 0, len(d))
 	for _, del := range d {
-		deletes = append(deletes, &logproto.Delete{
+		deletes = append(deletes, &Request{
 			Selector: del.Query,
 			Start:    del.StartTime.UnixNano(),
 			End:      del.EndTime.UnixNano(),
