@@ -158,7 +158,7 @@ A log line exceeds the maximum allowed size.
 
    ```yaml
    limits_config:
-     max_line_size: 512KB
+     max_line_size: 256KB
    ```
 
    {{< admonition type="warning" >}}
