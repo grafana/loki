@@ -1533,6 +1533,7 @@ func TestContentEncodingAndLength(t *testing.T) {
 			expectedErrorMessage: "message size too large than max (40961 vs 40960)",
 			expectedLogs:         largeOTLPLogs(),
 			maxRecvMsgSize:       1 << 12, // 4 KB
+			maxDecompressedSize:  40960,   // Explicitly set to trigger error
 		},
 		{
 			name:            "zstd_valid_protobuf",
@@ -1589,6 +1590,7 @@ func TestContentEncodingAndLength(t *testing.T) {
 			expectedErrorMessage: "message size too large than max (40961 vs 40960)",
 			expectedLogs:         largeOTLPLogs(),
 			maxRecvMsgSize:       1 << 12, // 4 KB
+			maxDecompressedSize:  40960,   // Explicitly set to trigger error
 		},
 		{
 			name:            "lz4_valid_protobuf",
@@ -1634,6 +1636,7 @@ func TestContentEncodingAndLength(t *testing.T) {
 			expectedErrorMessage: "message size too large than max (81921 vs 81920)",
 			expectedLogs:         largeOTLPLogs(),
 			maxRecvMsgSize:       1 << 13, // 8 KB
+			maxDecompressedSize:  81920,   // Explicitly set to trigger error
 		},
 		{
 			name:            "unsupported_encoding",
@@ -1646,6 +1649,54 @@ func TestContentEncodingAndLength(t *testing.T) {
 			expectedErrorMessage: "unsupported content encoding br: only gzip, lz4 and zstd are supported",
 			expectedLogs:         plog.NewLogs(),
 			maxRecvMsgSize:       100 << 20, // 100 MB
+		},
+		{
+			name:            "gzip_with_zero_maxDecompressedSize",
+			contentType:     "application/x-protobuf",
+			contentEncoding: "gzip",
+			generateBody: func() ([]byte, error) {
+				return createGzipCompressedProtobuf(simpleOTLPLogs())
+			},
+			expectedError:       false,
+			expectedLogs:        simpleOTLPLogs(),
+			maxRecvMsgSize:      100 << 20, // 100 MB
+			maxDecompressedSize: 0,         // 0 means no limit (should still work for small payloads)
+		},
+		{
+			name:            "gzip_large_with_zero_maxDecompressedSize",
+			contentType:     "application/x-protobuf",
+			contentEncoding: "gzip",
+			generateBody: func() ([]byte, error) {
+				return createGzipCompressedProtobuf(largeOTLPLogs())
+			},
+			expectedError:       false, // No limit when maxDecompressedSize is 0
+			expectedLogs:        largeOTLPLogs(),
+			maxRecvMsgSize:      1 << 20, // 1 MB
+			maxDecompressedSize: 0,       // 0 means no limit
+		},
+		{
+			name:            "zstd_with_zero_maxDecompressedSize",
+			contentType:     "application/x-protobuf",
+			contentEncoding: "zstd",
+			generateBody: func() ([]byte, error) {
+				return createZstdCompressedProtobuf(simpleOTLPLogs())
+			},
+			expectedError:       false,
+			expectedLogs:        simpleOTLPLogs(),
+			maxRecvMsgSize:      100 << 20, // 100 MB
+			maxDecompressedSize: 0,         // 0 means no limit
+		},
+		{
+			name:            "lz4_with_zero_maxDecompressedSize",
+			contentType:     "application/x-protobuf",
+			contentEncoding: "lz4",
+			generateBody: func() ([]byte, error) {
+				return createLz4CompressedProtobuf(simpleOTLPLogs())
+			},
+			expectedError:       false,
+			expectedLogs:        simpleOTLPLogs(),
+			maxRecvMsgSize:      100 << 20, // 100 MB
+			maxDecompressedSize: 0,         // 0 means no limit
 		},
 	}
 
@@ -1660,8 +1711,21 @@ func TestContentEncodingAndLength(t *testing.T) {
 
 			stats := NewPushStats()
 			maxDecompressedSize := tc.maxDecompressedSize
-			if maxDecompressedSize == 0 {
-				maxDecompressedSize = 100 << 20 // 100 MB default
+			// Only apply default if maxDecompressedSize is 0 and not explicitly testing zero behavior
+			// For test cases with maxDecompressedSize explicitly set to 0, we want to test the actual behavior
+			// For other cases, calculate as 10x maxRecvMsgSize (matching Validate() behavior) or use 100MB if maxRecvMsgSize is 0
+			zeroMaxDecompressedSizeTests := map[string]bool{
+				"gzip_with_zero_maxDecompressedSize":       true,
+				"gzip_large_with_zero_maxDecompressedSize": true,
+				"zstd_with_zero_maxDecompressedSize":       true,
+				"lz4_with_zero_maxDecompressedSize":        true,
+			}
+			if maxDecompressedSize == 0 && !zeroMaxDecompressedSizeTests[tc.name] {
+				if tc.maxRecvMsgSize > 0 {
+					maxDecompressedSize = tc.maxRecvMsgSize * 50 // 50x default
+				} else {
+					maxDecompressedSize = 5000 << 20 // 5000 MB fallback default (50x 100MB)
+				}
 			}
 			extractedLogs, err := extractLogs(req, tc.maxRecvMsgSize, maxDecompressedSize, stats)
 

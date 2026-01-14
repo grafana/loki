@@ -723,6 +723,108 @@ func TestNegativeSizeHandling(t *testing.T) {
 	require.Equal(t, float64(0), testutil.ToFloat64(structuredMetadataBytesIngested.WithLabelValues(userID, "1", isAggregatedMetric, policy, "loki")))
 }
 
+func TestParseRequestWithZeroMaxDecompressedSize(t *testing.T) {
+	streamResolver := newMockStreamResolver("fake", &fakeLimits{})
+
+	testCases := []struct {
+		name                 string
+		body                 string
+		contentType          string
+		contentEncoding      string
+		maxRecvMsgSize       int
+		maxDecompressedSize  int
+		expectedError        bool
+		expectedErrorMessage string
+	}{
+		{
+			name:                "gzip_with_zero_maxDecompressedSize",
+			body:                gzipString(`{"streams": [{ "stream": { "foo": "bar" }, "values": [ [ "1570818238000000000", "test message" ] ] }]}`),
+			contentType:         "application/json",
+			contentEncoding:     "gzip",
+			maxRecvMsgSize:      100 << 20, // 100 MB
+			maxDecompressedSize: 0,         // 0 means no limit
+			expectedError:       false,
+		},
+		{
+			name:                "deflate_with_zero_maxDecompressedSize",
+			body:                deflateString(`{"streams": [{ "stream": { "foo": "bar" }, "values": [ [ "1570818238000000000", "test message" ] ] }]}`),
+			contentType:         "application/json",
+			contentEncoding:     "deflate",
+			maxRecvMsgSize:      100 << 20, // 100 MB
+			maxDecompressedSize: 0,         // 0 means no limit
+			expectedError:       false,
+		},
+		{
+			name:                "snappy_with_zero_maxDecompressedSize",
+			body:                "", // Will be set below
+			contentType:         "application/x-protobuf",
+			contentEncoding:     "",
+			maxRecvMsgSize:      100 << 20, // 100 MB
+			maxDecompressedSize: 0,         // 0 means no limit
+			expectedError:       false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			var body []byte
+			var err error
+
+			if tc.name == "snappy_with_zero_maxDecompressedSize" {
+				// Create a snappy-compressed protobuf request
+				req := &logproto.PushRequest{
+					Streams: []logproto.Stream{
+						{
+							Labels: `{foo="bar"}`,
+							Entries: []logproto.Entry{
+								{
+									Timestamp: time.Now(),
+									Line:      "test message",
+								},
+							},
+						},
+					},
+				}
+				protoBytes, err := proto.Marshal(req)
+				require.NoError(t, err)
+				body = snappy.Encode(nil, protoBytes)
+			} else {
+				body = []byte(tc.body)
+			}
+
+			request := httptest.NewRequest("POST", "/loki/api/v1/push", bytes.NewReader(body))
+			request.Header.Set("Content-Type", tc.contentType)
+			if tc.contentEncoding != "" {
+				request.Header.Set("Content-Encoding", tc.contentEncoding)
+			}
+
+			_, _, err = ParseRequest(
+				util_log.Logger,
+				"fake",
+				tc.maxRecvMsgSize,
+				tc.maxDecompressedSize,
+				request,
+				&fakeLimits{},
+				nil,
+				ParseLokiRequest,
+				NewMockTracker(),
+				streamResolver,
+				"",
+				"loki",
+			)
+
+			if tc.expectedError {
+				require.Error(t, err)
+				if tc.expectedErrorMessage != "" {
+					require.Contains(t, err.Error(), tc.expectedErrorMessage)
+				}
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
 type fakeLimits struct {
 	enabled         bool
 	labels          []string

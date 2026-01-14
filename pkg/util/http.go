@@ -201,7 +201,7 @@ func ParseProtoReaderWithLimits(ctx context.Context, reader io.Reader, expectedS
 
 func decompressRequest(reader io.Reader, expectedSize, maxCompressedSize, maxDecompressedSize int, compression CompressionType, sp trace.Span) (body []byte, err error) {
 	defer func() {
-		if err != nil && len(body) > maxDecompressedSize {
+		if err != nil && maxDecompressedSize > 0 && len(body) > maxDecompressedSize {
 			err = fmt.Errorf(messageSizeLargerErrFmt, ErrMessageDecompressedSizeTooLarge, len(body), maxDecompressedSize)
 		}
 	}()
@@ -260,8 +260,8 @@ func decompressFromBuffer(buffer *bytes.Buffer, maxCompressedSize, maxDecompress
 		if err != nil {
 			return nil, err
 		}
-		// Check decompressed size
-		if size > maxDecompressedSize {
+		// Check decompressed size (only if limit is set)
+		if maxDecompressedSize > 0 && size > maxDecompressedSize {
 			return nil, fmt.Errorf(messageSizeLargerErrFmt, ErrMessageDecompressedSizeTooLarge, size, maxDecompressedSize)
 		}
 		body, err := snappy.Decode(nil, bufBytes)
