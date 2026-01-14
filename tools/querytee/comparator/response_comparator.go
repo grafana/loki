@@ -18,16 +18,18 @@ import (
 )
 
 type ResponsesComparator interface {
-	Compare(expected, actual []byte, queryEvaluationTime time.Time) (*ComparisonSummary, error)
+	Compare(expected, actual []byte, queryEvaluationTime time.Time) *ComparisonSummary
 }
 
 type ComparisonSummary struct {
-	Skipped        bool
-	MissingMetrics int
+	SkippedExpectedEnties int
+	SkippedActualEntries  int
+	MissingMetrics        int
+	ErrorMessage          string
 }
 
 // SamplesComparatorFunc helps with comparing different types of samples coming from /api/v1/query and /api/v1/query_range routes.
-type SamplesComparatorFunc func(expected, actual json.RawMessage, evaluationTime time.Time, opts SampleComparisonOptions) (*ComparisonSummary, error)
+type SamplesComparatorFunc func(expected, actual json.RawMessage, evaluationTime time.Time, opts SampleComparisonOptions) ComparisonSummary
 
 type SamplesResponse struct {
 	Status string
@@ -79,66 +81,84 @@ func (s *SamplesComparator) RegisterSamplesType(samplesType string, comparator S
 	s.sampleTypesComparator[samplesType] = comparator
 }
 
-func (s *SamplesComparator) Compare(expectedResponse, actualResponse []byte, evaluationTime time.Time) (*ComparisonSummary, error) {
+func (s *SamplesComparator) Compare(expectedResponse, actualResponse []byte, evaluationTime time.Time) ComparisonSummary {
 	var expected, actual SamplesResponse
 
 	err := json.Unmarshal(expectedResponse, &expected)
 	if err != nil {
-		return nil, errors.Wrap(err, "unable to unmarshal expected response")
+		return ComparisonSummary{
+			ErrorMessage: errors.Wrap(err, "unable to unmarshal expected response").Error(),
+		}
 	}
 
 	err = json.Unmarshal(actualResponse, &actual)
 	if err != nil {
-		return nil, errors.Wrap(err, "unable to unmarshal actual response")
+		return ComparisonSummary{
+			ErrorMessage: errors.Wrap(err, "unable to unmarshal actual response").Error(),
+		}
 	}
 
 	if expected.Status != actual.Status {
-		return nil, fmt.Errorf("expected status %s but got %s", expected.Status, actual.Status)
+		return ComparisonSummary{
+			ErrorMessage: fmt.Sprintf("expected status %s but got %s", expected.Status, actual.Status),
+		}
 	}
 
 	if expected.Data.ResultType != actual.Data.ResultType {
-		return nil, fmt.Errorf("expected resultType %s but got %s", expected.Data.ResultType, actual.Data.ResultType)
+		return ComparisonSummary{
+			ErrorMessage: fmt.Errorf("expected resultType %s but got %s", expected.Data.ResultType, actual.Data.ResultType).Error(),
+		}
 	}
 
 	comparator, ok := s.sampleTypesComparator[expected.Data.ResultType]
 	if !ok {
-		return nil, fmt.Errorf("resultType %s not registered for comparison", expected.Data.ResultType)
+		return ComparisonSummary{
+			ErrorMessage: fmt.Sprintf("resultType %s not registered for comparison", expected.Data.ResultType),
+		}
 	}
 
 	return comparator(expected.Data.Result, actual.Data.Result, evaluationTime, s.opts)
 }
 
-func compareMatrix(expectedRaw, actualRaw json.RawMessage, evaluationTime time.Time, opts SampleComparisonOptions) (*ComparisonSummary, error) {
+func compareMatrix(expectedRaw, actualRaw json.RawMessage, evaluationTime time.Time, opts SampleComparisonOptions) (summary ComparisonSummary) {
 	var expected, actual model.Matrix
 
 	err := json.Unmarshal(expectedRaw, &expected)
 	if err != nil {
-		return nil, errors.Wrap(err, "unable to unmarshal expected matrix")
+		summary.ErrorMessage = errors.Wrap(err, "unable to unmarshal expected matrix").Error()
+		return
 	}
 	err = json.Unmarshal(actualRaw, &actual)
 	if err != nil {
-		return nil, errors.Wrap(err, "unable to unmarshal actual matrix")
+		summary.ErrorMessage = errors.Wrap(err, "unable to unmarshal actual matrix").Error()
+		return
 	}
 
 	// Filter out samples outside the comparable window
 	if !opts.SkipSamplesBefore.IsZero() || opts.SkipRecentSamples > 0 {
+		originalExpectedLen := len(expected)
+		originalActualLen := len(actual)
+
 		expected = filterSamplesOutsideWindow(expected, func(sampleTime time.Time) bool {
 			return opts.SkipSample(sampleTime, evaluationTime)
 		})
 		actual = filterSamplesOutsideWindow(actual, func(sampleTime time.Time) bool {
 			return opts.SkipSample(sampleTime, evaluationTime)
 		})
+
+		summary.SkippedExpectedEnties = originalExpectedLen - len(expected)
+		summary.SkippedActualEntries = originalActualLen - len(actual)
 	}
 
 	// If both matrices are empty after filtering, we can skip comparison
 	if len(expected) == 0 && len(actual) == 0 {
-		return &ComparisonSummary{Skipped: true}, nil
+		return
 	}
 
 	if len(expected) != len(actual) {
 		// TODO: log the missing metrics
-		return nil, fmt.Errorf("expected %d metrics but got %d", len(expected),
-			len(actual))
+		summary.ErrorMessage = fmt.Sprintf("expected %d metrics but got %d", len(expected), len(actual))
+		return
 	}
 
 	metricFingerprintToIndexMap := make(map[model.Fingerprint]int, len(expected))
@@ -149,18 +169,20 @@ func compareMatrix(expectedRaw, actualRaw json.RawMessage, evaluationTime time.T
 	for _, expectedMetric := range expected {
 		actualMetricIndex, ok := metricFingerprintToIndexMap[expectedMetric.Metric.Fingerprint()]
 		if !ok {
-			return nil, fmt.Errorf("expected metric %s missing from actual response", expectedMetric.Metric)
+			summary.ErrorMessage = fmt.Sprintf("expected metric %s missing from actual response", expectedMetric.Metric)
+			return
 		}
 
 		actualMetric := actual[actualMetricIndex]
 
 		err := compareMatrixSamples(expectedMetric, actualMetric, opts)
 		if err != nil {
-			return nil, fmt.Errorf("%w\nExpected result for series:\n%v\n\nActual result for series:\n%v", err, expectedMetric, actualMetric)
+			summary.ErrorMessage = fmt.Sprintf("%w\nExpected result for series:\n%v\n\nActual result for series:\n%v", err, expectedMetric, actualMetric)
+			return
 		}
 	}
 
-	return nil, nil
+	return
 }
 
 func compareMatrixSamples(expected, actual *model.SampleStream, opts SampleComparisonOptions) error {
@@ -210,21 +232,26 @@ func filterSamplesOutsideWindow(matrix model.Matrix, skipSample func(time.Time) 
 	return result
 }
 
-func compareVector(expectedRaw, actualRaw json.RawMessage, evaluationTime time.Time, opts SampleComparisonOptions) (*ComparisonSummary, error) {
+func compareVector(expectedRaw, actualRaw json.RawMessage, evaluationTime time.Time, opts SampleComparisonOptions) (summary ComparisonSummary) {
 	var expected, actual model.Vector
 
 	err := json.Unmarshal(expectedRaw, &expected)
 	if err != nil {
-		return nil, errors.Wrap(err, "unable to unmarshal expected vector")
+		summary.ErrorMessage = errors.Wrap(err, "unable to unmarshal expected vector").Error()
+		return
 	}
 
 	err = json.Unmarshal(actualRaw, &actual)
 	if err != nil {
-		return nil, errors.Wrap(err, "unable to unmarshal actual vector")
+		summary.ErrorMessage = errors.Wrap(err, "unable to unmarshal actual vector").Error()
+		return
 	}
 
 	// Filter out samples outside the comparable windows
 	if !opts.SkipSamplesBefore.IsZero() || opts.SkipRecentSamples > 0 {
+		originalExpectedLen := len(expected)
+		originalActualLen := len(actual)
+
 		filtered := expected[:0]
 		for i := range expected {
 			if !opts.SkipSample(expected[i].Timestamp.Time(), evaluationTime) {
@@ -240,15 +267,18 @@ func compareVector(expectedRaw, actualRaw json.RawMessage, evaluationTime time.T
 			}
 		}
 		actual = filtered
+
+		summary.SkippedExpectedEnties = originalExpectedLen - len(expected)
+		summary.SkippedActualEntries = originalActualLen - len(actual)
 	}
 
 	if len(expected) == 0 && len(actual) == 0 {
-		return &ComparisonSummary{Skipped: true}, nil
+		return
 	}
 
 	if len(expected) != len(actual) {
-		return nil, fmt.Errorf("expected %d metrics but got %d", len(expected),
-			len(actual))
+		summary.ErrorMessage = fmt.Sprintf("expected %d metrics but got %d", len(expected), len(actual))
+		return
 	}
 
 	metricFingerprintToIndexMap := make(map[model.Fingerprint]int, len(expected))
@@ -274,7 +304,8 @@ func compareVector(expectedRaw, actualRaw json.RawMessage, evaluationTime time.T
 			Value:     actualMetric.Value,
 		}, opts)
 		if err != nil {
-			return nil, errors.Wrapf(err, "sample pair not matching for metric %s", expectedMetric.Metric)
+			summary.ErrorMessage = errors.Wrapf(err, "sample pair not matching for metric %s", expectedMetric.Metric).Error()
+			return
 		}
 	}
 
@@ -286,35 +317,42 @@ func compareVector(expectedRaw, actualRaw json.RawMessage, evaluationTime time.T
 			}
 			b.WriteString(m.String())
 		}
-		err = fmt.Errorf("expected metric(s) [%s] missing from actual response", b.String())
+		summary.ErrorMessage = fmt.Sprintf("expected metric(s) [%s] missing from actual response", b.String())
+		summary.MissingMetrics = len(missingMetrics)
 	}
 
-	return &ComparisonSummary{MissingMetrics: len(missingMetrics)}, err
+	return
 }
 
-func compareScalar(expectedRaw, actualRaw json.RawMessage, evaluationTime time.Time, opts SampleComparisonOptions) (*ComparisonSummary, error) {
+func compareScalar(expectedRaw, actualRaw json.RawMessage, evaluationTime time.Time, opts SampleComparisonOptions) (summary ComparisonSummary) {
 	var expected, actual model.Scalar
 	err := json.Unmarshal(expectedRaw, &expected)
 	if err != nil {
-		return nil, errors.Wrap(err, "unable to unmarshal expected scalar")
+		summary.ErrorMessage = errors.Wrap(err, "unable to unmarshal expected scalar").Error()
+		return
 	}
 
 	err = json.Unmarshal(actualRaw, &actual)
 	if err != nil {
-		return nil, errors.Wrap(err, "unable to actual expected scalar")
+		summary.ErrorMessage = errors.Wrap(err, "unable to unmarshal actual scalar").Error()
+		return
 	}
 
 	if opts.SkipSample(expected.Timestamp.Time(), evaluationTime) && opts.SkipSample(actual.Timestamp.Time(), evaluationTime) {
-		return &ComparisonSummary{Skipped: true}, nil
+		summary.SkippedExpectedEnties++
+		summary.SkippedActualEntries++
+		return
 	}
 
-	return nil, compareSamplePair(model.SamplePair{
+	summary.ErrorMessage = compareSamplePair(model.SamplePair{
 		Timestamp: expected.Timestamp,
 		Value:     expected.Value,
 	}, model.SamplePair{
 		Timestamp: actual.Timestamp,
 		Value:     actual.Value,
-	}, opts)
+	}, opts).Error()
+
+	return
 }
 
 func compareSamplePair(expected, actual model.SamplePair, opts SampleComparisonOptions) error {
@@ -345,36 +383,45 @@ func compareSampleValue(first, second model.SampleValue, opts SampleComparisonOp
 	return math.Abs(f-s) <= opts.Tolerance
 }
 
-func compareStreams(expectedRaw, actualRaw json.RawMessage, evaluationTime time.Time, opts SampleComparisonOptions) (*ComparisonSummary, error) {
+func compareStreams(expectedRaw, actualRaw json.RawMessage, evaluationTime time.Time, opts SampleComparisonOptions) (summary ComparisonSummary) {
 	var expected, actual loghttp.Streams
 
 	err := jsoniter.Unmarshal(expectedRaw, &expected)
 	if err != nil {
-		return nil, errors.Wrap(err, "unable to unmarshal expected streams")
+		summary.ErrorMessage = errors.Wrap(err, "unable to unmarshal expected streams").Error()
+		return
 	}
 	err = jsoniter.Unmarshal(actualRaw, &actual)
 	if err != nil {
-		return nil, errors.Wrap(err, "unable to unmarshal actual streams")
+		summary.ErrorMessage = errors.Wrap(err, "unable to unmarshal actual streams").Error()
+		return
 	}
 
 	// Filter out entries outside the comparable window
 	if !opts.SkipSamplesBefore.IsZero() || opts.SkipRecentSamples > 0 {
+		originalExpectedLen := len(expected)
+		originalActualLen := len(actual)
+
 		expected = filterStreamsOutsideWindow(expected, func(entryTime time.Time) bool {
 			return opts.SkipSample(entryTime, evaluationTime)
 		})
 		actual = filterStreamsOutsideWindow(actual, func(entryTime time.Time) bool {
 			return opts.SkipSample(entryTime, evaluationTime)
 		})
+
+		summary.SkippedExpectedEnties = originalExpectedLen - len(expected)
+		summary.SkippedActualEntries = originalActualLen - len(actual)
 	}
 
 	// If both streams are empty after filtering, we can skip comparison
 	if len(expected) == 0 && len(actual) == 0 {
-		return &ComparisonSummary{Skipped: true}, nil
+		return
 	}
 
 	if len(expected) != len(actual) {
 		// TODO: log the missing stream
-		return nil, fmt.Errorf("expected %d streams but got %d", len(expected), len(actual))
+		summary.ErrorMessage = fmt.Sprintf("expected %d streams but got %d", len(expected), len(actual))
+		return
 	}
 
 	streamLabelsToIndexMap := make(map[string]int, len(expected))
@@ -385,7 +432,8 @@ func compareStreams(expectedRaw, actualRaw json.RawMessage, evaluationTime time.
 	for _, expectedStream := range expected {
 		actualStreamIndex, ok := streamLabelsToIndexMap[expectedStream.Labels.String()]
 		if !ok {
-			return nil, fmt.Errorf("expected stream %s missing from actual response", expectedStream.Labels)
+			summary.ErrorMessage = fmt.Sprintf("expected stream %s not found in actual response", expectedStream.Labels)
+			return
 		}
 
 		actualStream := actual[actualStreamIndex]
@@ -393,7 +441,7 @@ func compareStreams(expectedRaw, actualRaw json.RawMessage, evaluationTime time.
 		actualValuesLen := len(actualStream.Entries)
 
 		if expectedValuesLen != actualValuesLen {
-			err := fmt.Errorf("expected %d values for stream %s but got %d", expectedValuesLen,
+			summary.ErrorMessage = fmt.Sprintf("expected %d values for stream %s but got %d", expectedValuesLen,
 				expectedStream.Labels, actualValuesLen)
 			if expectedValuesLen > 0 && actualValuesLen > 0 {
 				// assuming BACKWARD search since that is the default ordering
@@ -401,23 +449,25 @@ func compareStreams(expectedRaw, actualRaw json.RawMessage, evaluationTime time.
 					"oldest-expected-ts", expectedStream.Entries[expectedValuesLen-1].Timestamp.UnixNano(),
 					"newest-actual-ts", actualStream.Entries[0].Timestamp.UnixNano(), "oldest-actual-ts", actualStream.Entries[actualValuesLen-1].Timestamp.UnixNano())
 			}
-			return nil, err
+			return
 		}
 
 		for i, expectedSamplePair := range expectedStream.Entries {
 			actualSamplePair := actualStream.Entries[i]
 			if !expectedSamplePair.Timestamp.Equal(actualSamplePair.Timestamp) {
-				return nil, fmt.Errorf("expected timestamp %v but got %v for stream %s", expectedSamplePair.Timestamp.UnixNano(),
+				summary.ErrorMessage = fmt.Sprintf("expected timestamp %v but got %v for stream %s", expectedSamplePair.Timestamp.UnixNano(),
 					actualSamplePair.Timestamp.UnixNano(), expectedStream.Labels)
+				return
 			}
 			if expectedSamplePair.Line != actualSamplePair.Line {
-				return nil, fmt.Errorf("expected line %s for timestamp %v but got %s for stream %s", expectedSamplePair.Line,
+				summary.ErrorMessage = fmt.Sprintf("expected line %s for timestamp %v but got %s for stream %s", expectedSamplePair.Line,
 					expectedSamplePair.Timestamp.UnixNano(), actualSamplePair.Line, expectedStream.Labels)
+				return
 			}
 		}
 	}
 
-	return nil, nil
+	return
 }
 
 // filterStreamsOutsideWindow filters out entries that are outside the comparable window

@@ -66,13 +66,17 @@ func CompareResponses(sample *goldfish.QuerySample, cellAResp, cellBResp *Respon
 			// it is also possible we match some other unexpected cases
 			// where the hashes differ but the data is equivalent within tolerance (empty matrix?)
 
-			_, err := comparator.Compare(cellAResp.Body, cellBResp.Body, sample.SampledAt)
-			if err == nil {
+			summary := comparator.Compare(cellAResp.Body, cellBResp.Body, sample.SampledAt)
+			if summary.ErrorMessage == "" {
 				result.ComparisonStatus = goldfish.ComparisonStatusMatch
 				result.DifferenceDetails["tolerance_match"] = true
 			} else {
 				result.DifferenceDetails["tolerance_match"] = false
-				result.DifferenceDetails["tolerance_match_error"] = err.Error()
+				result.DifferenceDetails["tolerance_match_error"] = summary.ErrorMessage
+			}
+			result.DifferenceDetails["skipped_entries"] = map[string]any{
+				"cell_a": summary.SkippedExpectedEnties,
+				"cell_b": summary.SkippedActualEntries,
 			}
 		} else {
 			_ = level.Warn(logger).Log(
