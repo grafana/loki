@@ -50,11 +50,11 @@ func TestDeleteRequestsStoreBoltDB(t *testing.T) {
 	compareRequests(t, append(tc.user1Requests, tc.user2Requests...), deleteRequests)
 
 	// get user specific requests and see if they have expected values
-	user1Requests, err := tc.store.GetAllDeleteRequestsForUser(context.Background(), user1, false)
+	user1Requests, err := tc.store.GetAllDeleteRequestsForUser(context.Background(), user1, false, nil)
 	require.NoError(t, err)
 	compareRequests(t, tc.user1Requests, user1Requests)
 
-	user2Requests, err := tc.store.GetAllDeleteRequestsForUser(context.Background(), user2, false)
+	user2Requests, err := tc.store.GetAllDeleteRequestsForUser(context.Background(), user2, false, nil)
 	require.NoError(t, err)
 	compareRequests(t, tc.user2Requests, user2Requests)
 
@@ -92,11 +92,11 @@ func TestDeleteRequestsStoreBoltDB(t *testing.T) {
 	}
 
 	// see if requests in the store have right values
-	user1Requests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), user1, false)
+	user1Requests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), user1, false, nil)
 	require.NoError(t, err)
 	compareRequests(t, tc.user1Requests, user1Requests)
 
-	user2Requests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), user2, false)
+	user2Requests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), user2, false, nil)
 	require.NoError(t, err)
 	compareRequests(t, tc.user2Requests, user2Requests)
 
@@ -307,11 +307,11 @@ func TestDeleteRequestsStore_MergeShardedRequests(t *testing.T) {
 				require.NoError(t, ds.MarkShardAsProcessed(context.Background(), req))
 			}
 
-			inStoreReqs, err := ds.GetAllDeleteRequestsForUser(context.Background(), user1, false)
+			inStoreReqs, err := ds.GetAllDeleteRequestsForUser(context.Background(), user1, false, nil)
 			require.NoError(t, err)
 
 			require.NoError(t, ds.MergeShardedRequests(context.Background()))
-			inStoreReqsAfterMerging, err := ds.GetAllDeleteRequestsForUser(context.Background(), user1, false)
+			inStoreReqsAfterMerging, err := ds.GetAllDeleteRequestsForUser(context.Background(), user1, false, nil)
 			require.NoError(t, err)
 
 			if tc.requestsShouldBeMerged {
@@ -372,7 +372,7 @@ func TestGetAllDeleteRequestsForUser_ExactMatch(t *testing.T) {
 	require.NoError(t, err)
 
 	// fetch delete requests for "user1"
-	deleteRequests, err := tc.store.GetAllDeleteRequestsForUser(context.Background(), "user1", false)
+	deleteRequests, err := tc.store.GetAllDeleteRequestsForUser(context.Background(), "user1", false, nil)
 	require.NoError(t, err)
 
 	// ensure only the request for "user1" is returned
@@ -381,7 +381,7 @@ func TestGetAllDeleteRequestsForUser_ExactMatch(t *testing.T) {
 	require.Equal(t, resp, deleteRequests[0].RequestID)
 
 	// fetch delete requests for "user123"
-	deleteRequests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), "user123", false)
+	deleteRequests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), "user123", false, nil)
 	require.NoError(t, err)
 
 	// ensure only the request for "user123" is returned

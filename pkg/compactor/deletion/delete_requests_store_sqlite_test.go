@@ -47,11 +47,11 @@ func TestDeleteRequestsStoreSQLite(t *testing.T) {
 	compareRequests(t, append(tc.user1Requests, tc.user2Requests...), deleteRequests)
 
 	// get user specific requests and see if they have expected values
-	user1Requests, err := tc.store.GetAllDeleteRequestsForUser(context.Background(), user1, false)
+	user1Requests, err := tc.store.GetAllDeleteRequestsForUser(context.Background(), user1, false, nil)
 	require.NoError(t, err)
 	compareRequests(t, tc.user1Requests, user1Requests)
 
-	user2Requests, err := tc.store.GetAllDeleteRequestsForUser(context.Background(), user2, false)
+	user2Requests, err := tc.store.GetAllDeleteRequestsForUser(context.Background(), user2, false, nil)
 	require.NoError(t, err)
 	compareRequests(t, tc.user2Requests, user2Requests)
 
@@ -94,11 +94,11 @@ func TestDeleteRequestsStoreSQLite(t *testing.T) {
 	}
 
 	// see if requests in the store have right values
-	user1Requests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), user1, false)
+	user1Requests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), user1, false, nil)
 	require.NoError(t, err)
 	compareRequests(t, tc.user1Requests, user1Requests)
 
-	user2Requests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), user2, false)
+	user2Requests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), user2, false, nil)
 	require.NoError(t, err)
 	compareRequests(t, tc.user2Requests, user2Requests)
 
@@ -106,11 +106,11 @@ func TestDeleteRequestsStoreSQLite(t *testing.T) {
 	tc.store.(*deleteRequestsStoreSQLite).indexUpdatePropagationMaxDelay = 0 // set the index propagation max delay to 0
 	time.Sleep(time.Microsecond)                                             // sleep for a microsecond to avoid flaky tests
 
-	user1Requests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), user1, true)
+	user1Requests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), user1, true, nil)
 	require.NoError(t, err)
 	compareRequests(t, user1UnprocessedRequests, user1Requests)
 
-	user2Requests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), user2, true)
+	user2Requests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), user2, true, nil)
 	require.NoError(t, err)
 	compareRequests(t, user2UnprocessedRequests, user2Requests)
 

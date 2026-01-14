@@ -53,11 +53,11 @@ func TestAllDeleteRequestsStoreTypes(t *testing.T) {
 			compareRequests(t, append(tc.user1Requests, tc.user2Requests...), deleteRequests)
 
 			// get user specific requests and see if they have expected values
-			user1Requests, err := tc.store.GetAllDeleteRequestsForUser(context.Background(), user1, false)
+			user1Requests, err := tc.store.GetAllDeleteRequestsForUser(context.Background(), user1, false, nil)
 			require.NoError(t, err)
 			compareRequests(t, tc.user1Requests, user1Requests)
 
-			user2Requests, err := tc.store.GetAllDeleteRequestsForUser(context.Background(), user2, false)
+			user2Requests, err := tc.store.GetAllDeleteRequestsForUser(context.Background(), user2, false, nil)
 			require.NoError(t, err)
 			compareRequests(t, tc.user2Requests, user2Requests)
 
@@ -95,11 +95,11 @@ func TestAllDeleteRequestsStoreTypes(t *testing.T) {
 			}
 
 			// see if requests in the store have right values
-			user1Requests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), user1, false)
+			user1Requests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), user1, false, nil)
 			require.NoError(t, err)
 			compareRequests(t, tc.user1Requests, user1Requests)
 
-			user2Requests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), user2, false)
+			user2Requests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), user2, false, nil)
 			require.NoError(t, err)
 			compareRequests(t, tc.user2Requests, user2Requests)
 
@@ -179,7 +179,7 @@ func TestBatchCreateGetAllStoreTypes(t *testing.T) {
 				require.NoError(t, err)
 
 				// GetAllDeleteRequestsForUser should list consolidated requests and not shards
-				consolidatedRequests, err := tc.store.GetAllDeleteRequestsForUser(context.Background(), user1, false)
+				consolidatedRequests, err := tc.store.GetAllDeleteRequestsForUser(context.Background(), user1, false, nil)
 				require.NoError(t, err)
 				require.Len(t, consolidatedRequests, 1)
 				require.Equal(t, consolidatedRequests[0].RequestID, reqID)
@@ -205,7 +205,7 @@ func TestBatchCreateGetAllStoreTypes(t *testing.T) {
 				require.Equal(t, deleteRequestStatus(1, len(savedRequests)), req.Status)
 
 				// check that we get appropriate status in the consolidated request
-				consolidatedRequests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), user1, false)
+				consolidatedRequests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), user1, false, nil)
 				require.NoError(t, err)
 				require.Len(t, consolidatedRequests, 1)
 				require.Equal(t, consolidatedRequests[0].RequestID, reqID)

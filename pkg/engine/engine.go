@@ -29,7 +29,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
-	"github.com/grafana/loki/v3/pkg/querier/deletion"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/rangeio"
@@ -73,10 +72,10 @@ type Params struct {
 
 	Config ExecutorConfig // Config for the Engine.
 
-	Scheduler    *Scheduler            // Scheduler to manage the execution of tasks.
-	Metastore    metastore.Metastore   // Metastore to access the indexes
-	Limits       logql.Limits          // Limits to apply to engine queries.
-	DeleteGetter deletion.DeleteGetter // DeleteGetter to fetch delete requests for query-time filtering.
+	Scheduler    *Scheduler          // Scheduler to manage the execution of tasks.
+	Metastore    metastore.Metastore // Metastore to access the indexes
+	Limits       logql.Limits        // Limits to apply to engine queries.
+	DeleteGetter DeleteGetter        // DeleteGetter to fetch delete requests for query-time filtering.
 }
 
 // validate validates p and applies defaults.
@@ -105,9 +104,9 @@ type Engine struct {
 	metrics     *metrics
 	rangeConfig rangeio.Config
 
-	scheduler    *Scheduler            // Scheduler to manage the execution of tasks.
-	limits       logql.Limits          // Limits to apply to engine queries.
-	deleteGetter deletion.DeleteGetter // DeleteGetter to fetch delete requests for query-time filtering.
+	scheduler    *Scheduler   // Scheduler to manage the execution of tasks.
+	limits       logql.Limits // Limits to apply to engine queries.
+	deleteGetter DeleteGetter // DeleteGetter to fetch delete requests for query-time filtering.
 
 	metastore metastore.Metastore
 }
@@ -279,7 +278,7 @@ func (e *Engine) buildLogicalPlan(ctx context.Context, logger log.Logger, params
 	var deleteReqs []*logproto.Delete
 	if e.deleteGetter != nil {
 		var err error
-		deleteReqs, err = deletion.DeletesForUserQuery(ctx, params.Start(), params.End(), e.deleteGetter)
+		deleteReqs, err = DeletesForUserQuery(ctx, params.Start(), params.End(), e.deleteGetter)
 		if err != nil {
 			return nil, 0, fmt.Errorf("failed to get delete requests: %w", err)
 		}
