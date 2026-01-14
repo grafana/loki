@@ -45,9 +45,9 @@ type valueDecoder interface {
 	// At the end of the stream, Decode returns 0, [io.EOF].
 	Decode(s []Value) (int, error)
 
-	// Reset discards any state and resets the valueDecoder to read from r. This
-	// permits reusing a valueDecoder rather than allocating a new one.
-	Reset(r streamio.Reader)
+	// Reset discards any state and resets the valueDecoder to read from data.
+	// This permits reusing a valueDecoder rather than allocating a new one.
+	Reset(data []byte)
 }
 
 // registry stores known value encoders and decoders. We use a global variable

@@ -16,7 +16,7 @@ func init() {
 		datasetmd.PHYSICAL_TYPE_INT64,
 		datasetmd.ENCODING_TYPE_DELTA,
 		func(w streamio.Writer) valueEncoder { return newDeltaEncoder(w) },
-		func(data []byte) valueDecoder { return newDeltaDecoder(bytes.NewReader(data)) },
+		func(data []byte) valueDecoder { return newDeltaDecoder(data) },
 	)
 }
 
@@ -78,10 +78,10 @@ type deltaDecoder struct {
 
 var _ valueDecoder = (*deltaDecoder)(nil)
 
-// newDeltaDecoder creates a deltaDecoder that reads encoded numbers from r.
-func newDeltaDecoder(r streamio.Reader) *deltaDecoder {
+// newDeltaDecoder creates a deltaDecoder that reads encoded numbers from data.
+func newDeltaDecoder(data []byte) *deltaDecoder {
 	var dec deltaDecoder
-	dec.Reset(r)
+	dec.Reset(data)
 	return &dec
 }
 
@@ -133,7 +133,7 @@ func (dec *deltaDecoder) decode() (Value, error) {
 }
 
 // Reset resets the deltaDecoder to its initial state.
-func (dec *deltaDecoder) Reset(r streamio.Reader) {
+func (dec *deltaDecoder) Reset(data []byte) {
 	dec.prev = 0
-	dec.r = r
+	dec.r = bytes.NewBuffer(data)
 }

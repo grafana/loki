@@ -28,43 +28,14 @@ func Test_plainBytesEncoder(t *testing.T) {
 
 	var (
 		enc    = newPlainBytesEncoder(&buf)
-		dec    = newPlainBytesDecoder(&buf)
+		dec    = newPlainBytesDecoder(nil)
 		decBuf = make([]Value, batchSize)
 	)
 
 	for _, v := range testStrings {
 		require.NoError(t, enc.Encode(BinaryValue([]byte(v))))
 	}
-
-	var out []string
-
-	for {
-		n, err := dec.Decode(decBuf[:batchSize])
-		if errors.Is(err, io.EOF) {
-			break
-		} else if err != nil {
-			t.Fatal(err)
-		}
-		for _, v := range decBuf[:n] {
-			out = append(out, string(v.Binary()))
-		}
-	}
-
-	require.Equal(t, testStrings, out)
-}
-
-func Test_plainBytesEncoder_partialRead(t *testing.T) {
-	var buf bytes.Buffer
-
-	var (
-		enc    = newPlainBytesEncoder(&buf)
-		dec    = newPlainBytesDecoder(&oneByteReader{&buf})
-		decBuf = make([]Value, batchSize)
-	)
-
-	for _, v := range testStrings {
-		require.NoError(t, enc.Encode(BinaryValue([]byte(v))))
-	}
+	dec.Reset(buf.Bytes())
 
 	var out []string
 
@@ -88,13 +59,14 @@ func Test_plainBytesEncoder_reusingValues(t *testing.T) {
 
 	var (
 		enc    = newPlainBytesEncoder(&buf)
-		dec    = newPlainBytesDecoder(&buf)
+		dec    = newPlainBytesDecoder(nil)
 		decBuf = make([]Value, batchSize)
 	)
 
 	for _, v := range testStrings {
 		require.NoError(t, enc.Encode(BinaryValue([]byte(v))))
 	}
+	dec.Reset(buf.Bytes())
 
 	for i := range decBuf {
 		decBuf[i] = BinaryValue(make([]byte, 64))
@@ -207,13 +179,11 @@ func Benchmark_plainBytesDecoder_Decode(b *testing.B) {
 
 				decBuf := make([]Value, batchSize)
 
-				r := bytes.NewReader(buf.Bytes())
-				dec := newPlainBytesDecoder(r)
+				dec := newPlainBytesDecoder(nil)
 
 				var totalRows int
 				for b.Loop() {
-					r.Reset(buf.Bytes())
-					dec.Reset(r) // Not necessary to reset both, but we do it anyway to guarantee a fresh state.
+					dec.Reset(buf.Bytes())
 
 					for {
 						n, err := dec.Decode(decBuf)
@@ -231,20 +201,4 @@ func Benchmark_plainBytesDecoder_Decode(b *testing.B) {
 			})
 		}
 	}
-}
-
-// oneByteReader is like iotest.OneByteReader but it supports ReadByte.
-type oneByteReader struct {
-	r streamio.Reader
-}
-
-func (r *oneByteReader) Read(p []byte) (int, error) {
-	if len(p) == 0 {
-		return 0, nil
-	}
-	return r.r.Read(p[0:1])
-}
-
-func (r *oneByteReader) ReadByte() (byte, error) {
-	return r.r.ReadByte()
 }

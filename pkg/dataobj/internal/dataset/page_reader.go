@@ -1,7 +1,6 @@
 package dataset
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -191,7 +190,7 @@ func (pr *pageReader) init(ctx context.Context) error {
 	}
 
 	pr.presenceDec = pr.getPresenceDecoder()
-	pr.presenceDec.Reset(bytes.NewReader(openedPage.PresenceData))
+	pr.presenceDec.Reset(openedPage.PresenceData)
 
 	if pr.valuesDec == nil || pr.lastPhysicalType != pr.physicalType || pr.lastEncoding != memPage.Desc.Encoding {
 		var ok bool
@@ -200,7 +199,7 @@ func (pr *pageReader) init(ctx context.Context) error {
 			return fmt.Errorf("unsupported value encoding %s/%s", pr.physicalType, memPage.Desc.Encoding)
 		}
 	} else {
-		pr.valuesDec.Reset(bytes.NewReader(openedPage.ValueData))
+		pr.valuesDec.Reset(openedPage.ValueData)
 	}
 
 	pr.ready = true
