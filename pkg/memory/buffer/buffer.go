@@ -107,8 +107,10 @@ func (buf *Buffer[T]) Cap() int { return cap(buf.data) }
 // modified directly.
 func (buf *Buffer[T]) Data() []T { return buf.data }
 
-// Serialize returns a byte array representing buf, padded to 64-bytes. Padded
-// bytes will be set to zero.
+// Serialize returns the serializable form of the underlying byte array
+// representing buf, padded to 64-bytes. Padded bytes will be set to zero.
+//
+// The returned memory is shared with buf, not a copy.
 func (buf *Buffer[T]) Serialize() []byte {
 	if buf.mem == nil {
 		return nil
