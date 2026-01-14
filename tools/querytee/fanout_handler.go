@@ -14,7 +14,6 @@ import (
 	"github.com/go-kit/log/level"
 
 	"github.com/grafana/dskit/tenant"
-	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/tools/querytee/comparator"
 	"github.com/grafana/loki/v3/tools/querytee/goldfish"
@@ -543,16 +542,4 @@ func statusCodeFromError(err error) int {
 	}
 
 	return http.StatusInternalServerError
-}
-
-// addWarningToResponse adds a warning message to the response based on its type.
-func addWarningToResponse(resp queryrangebase.Response, warning string) {
-	switch r := resp.(type) {
-	case *queryrange.LokiResponse:
-		r.Warnings = append(r.Warnings, warning)
-	case *queryrange.LokiPromResponse:
-		if r.Response != nil {
-			r.Response.Warnings = append(r.Response.Warnings, warning)
-		}
-	}
 }
