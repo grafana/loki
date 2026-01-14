@@ -134,7 +134,7 @@ func newValueEncoder(physicalType datasetmd.PhysicalType, encodingType datasetmd
 // newValueDecoder creates a new decoder for the specified physicalType and
 // encodingType. If no encoding is registered for the specified combination of
 // physicalType and encodingType, newValueDecoder returns nil and false.
-func newValueDecoder(physicalType datasetmd.PhysicalType, encodingType datasetmd.EncodingType, data []byte) (legacyValueDecoder, bool) {
+func newValueDecoder(alloc *memory.Allocator, physicalType datasetmd.PhysicalType, encodingType datasetmd.EncodingType, data []byte) (legacyValueDecoder, bool) {
 	key := registryKey{
 		Physical: physicalType,
 		Encoding: encodingType,
@@ -147,8 +147,7 @@ func newValueDecoder(physicalType datasetmd.PhysicalType, encodingType datasetmd
 	switch {
 	case entry.NewDecoder != nil:
 		dec := &valueDecoderAdapter{
-			// TODO(rfratto): Pass through an allocator to avoid the overhead here.
-			Alloc: new(memory.Allocator),
+			Alloc: alloc,
 			Inner: entry.NewDecoder(data),
 		}
 		return dec, true

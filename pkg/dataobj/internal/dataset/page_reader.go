@@ -8,6 +8,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
+	"github.com/grafana/loki/v3/pkg/memory"
 )
 
 type pageReader struct {
@@ -15,6 +16,7 @@ type pageReader struct {
 	physicalType datasetmd.PhysicalType
 	compression  datasetmd.CompressionType
 	ready        bool // Whether the pageReader is initialized for page.
+	alloc        memory.Allocator
 
 	lastPhysicalType datasetmd.PhysicalType
 	lastEncoding     datasetmd.EncodingType
@@ -167,6 +169,9 @@ func reuseValuesBuffer(dst []Value, src []Value) []Value {
 }
 
 func (pr *pageReader) init(ctx context.Context) error {
+	// Reclaim any memory allocated since the previous init.
+	pr.alloc.Reset()
+
 	// Close any existing reader from a previous pageReader init. Even though
 	// this also happens in [pageReader.Close], we want to do it here as well in
 	// case we seeked backwards in a file.
@@ -194,7 +199,7 @@ func (pr *pageReader) init(ctx context.Context) error {
 
 	if pr.valuesDec == nil || pr.lastPhysicalType != pr.physicalType || pr.lastEncoding != memPage.Desc.Encoding {
 		var ok bool
-		pr.valuesDec, ok = newValueDecoder(pr.physicalType, memPage.Desc.Encoding, openedPage.ValueData)
+		pr.valuesDec, ok = newValueDecoder(&pr.alloc, pr.physicalType, memPage.Desc.Encoding, openedPage.ValueData)
 		if !ok {
 			return fmt.Errorf("unsupported value encoding %s/%s", pr.physicalType, memPage.Desc.Encoding)
 		}
