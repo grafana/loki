@@ -543,3 +543,281 @@ The HTTP compressed push request body exceeds the configured limit in your gatew
 - Retryable: No
 - HTTP status: 413 Request Entity Too Large
 - Configurable per tenant: No
+
+## Storage errors
+
+Storage errors occur when Loki cannot write data to its storage backend or the Write-Ahead Log (WAL).
+
+### Error: Disk space full
+
+**Error message:**
+
+`no space left on device`
+
+**Cause:**
+
+Local storage has run out of space. This can affect ingester WAL, chunk cache, or temporary files.
+
+**Default configuration:**
+
+Disk space is not limited by Loki configuration; it depends on your infrastructure provisioning.
+
+**Resolution:**
+
+* **Free up disk space** on Loki instances.
+* **Configure retention policies** to remove old data.
+* **Scale storage capacity** by adding more disk space.
+* **Monitor disk usage** and set up alerts before reaching critical levels.
+* **Review compactor settings** to ensure old data is being cleaned up.
+
+**Properties:**
+
+- Enforced by: Operating system
+- Retryable: Yes (after freeing space)
+- HTTP status: 500 Internal Server Error
+- Configurable per tenant: No
+
+### Error: Chunk write failure
+
+**Error message:**
+
+`failed to store chunks: storage unavailable`
+
+**Common causes and errors:**
+
+* **S3/Object Storage errors:**
+  - `NoSuchBucket`: Storage bucket doesn't exist
+  - `AccessDenied`: Invalid credentials or permissions
+  - `RequestTimeout`: Network or storage latency issues
+
+**Resolution:**
+
+* **Verify storage configuration**:
+
+   ```yaml
+   storage_config:
+     aws:
+       s3: s3://region/bucket-name
+       s3forcepathstyle: true
+   ```
+
+* **Check credentials and permissions**:
+  - Ensure service account has write permissions
+  - Verify IAM roles for S3
+  - Check API keys for cloud storage
+
+* **Monitor storage health**:
+  - Check object storage availability
+
+* **Review storage metrics**:
+  - `loki_ingester_chunks_flushed_total`
+  - `loki_ingester_chunks_flush_errors_total`
+
+* **Increase retries and timeouts**:
+
+   ```yaml
+   storage_config:
+     aws:
+       s3:
+         http_config:
+           idle_conn_timeout: 90s
+           response_header_timeout: 0s
+   ```
+
+**Properties:**
+
+- Enforced by: Ingester (during chunk flush)
+- Retryable: Yes (with backoff)
+- HTTP status: 500 Internal Server Error
+- Configurable per tenant: No
+
+### Error: WAL disk full
+
+**Error logged:**
+
+`Error writing to WAL, disk full, no further messages will be logged for this error`
+
+**Metric:** `loki_ingester_wal_disk_full_failures_total`
+
+**Cause:**
+
+The disk where the WAL is stored has run out of space. When this occurs, Loki continues accepting writes but doesn't log them to the WAL, losing durability guarantees.
+
+**Default configuration:**
+
+- WAL enabled by default
+- WAL location: configured by `-ingester.wal-dir`
+- Checkpoint interval: `ingester.checkpoint-duration` (default: 5 minutes)
+
+**Resolution:**
+
+* **Increase disk space** for the WAL directory.
+
+* **Monitor disk usage** and set up alerts:
+
+   ```promql
+   loki_ingester_wal_disk_full_failures_total > 0
+   ```
+
+* **Reduce log volume** to decrease WAL growth.
+
+* **Check WAL checkpoint frequency**:
+
+   ```yaml
+   ingester:
+     checkpoint_duration: 5m
+   ```
+
+* **Verify WAL cleanup** is working - old segments should be deleted after checkpointing.
+
+**Properties:**
+
+- Enforced by: Ingester
+- Retryable: N/A (writes are accepted but not persisted to WAL)
+- HTTP status: N/A (writes succeed, but durability is compromised)
+- Configurable per tenant: No
+
+{{< admonition type="note" >}}
+The WAL sacrifices durability for availability - it won't reject writes when the disk is full. After disk space is restored, durability guarantees resume. Use metric `loki_ingester_wal_disk_usage_percent` to monitor disk usage.
+{{< /admonition >}}
+
+### Error: WAL corruption
+
+**Error message:**
+
+`encountered WAL read error, attempting repair`
+
+**Metric:** `loki_ingester_wal_corruptions_total`
+
+**Cause:**
+
+The WAL has become corrupted, possibly due to:
+
+- Disk errors
+- Process crashes during write
+- Filesystem issues
+- Partial deletion of WAL files
+
+**Default configuration:**
+
+- WAL enabled by default
+- Automatic repair attempted on startup
+- WAL location: configured by `-ingester.wal-dir`
+
+**Resolution:**
+
+* **Monitor for corruption**:
+
+   ```promql
+   increase(loki_ingester_wal_corruptions_total[5m]) > 0
+   ```
+
+* **Automatic recovery**: Loki attempts to recover readable data and continues starting.
+
+* **Investigate root cause**:
+  - Check disk health
+  - Review system logs for I/O errors
+  - Verify filesystem integrity
+
+**Properties:**
+
+- Enforced by: Ingester (on startup)
+- Retryable: N/A (Loki attempts automatic recovery)
+- HTTP status: N/A (occurs during startup, not request handling)
+- Configurable per tenant: No
+
+{{< admonition type="note" >}}
+Loki prioritizes availability over complete data recovery. The replication factor provides redundancy if one ingester loses WAL data. Recovered data may be incomplete if corruption is severe.
+{{< /admonition >}}
+
+## Network and connectivity errors
+
+These errors occur due to network issues or service unavailability.
+
+### Error: Connection refused
+
+**Error message:**
+
+`connection refused when connecting to loki:3100`
+
+**Cause:**
+
+The Loki service is unavailable or not listening on the expected port.
+
+**Default configuration:**
+
+- Loki HTTP listen port: 3100 (`-server.http-listen-port`)
+- Loki gRPC listen port: 9095 (`-server.grpc-listen-port`)
+
+**Resolution:**
+
+* **Verify Loki is running** and healthy.
+* **Check network connectivity** between client and Loki.
+* **Confirm the correct hostname and port** configuration.
+* **Review firewall and security group** settings.
+* **Check for CPU starvation** as a Loki pod that is overwhelmed could fail to respond to a request.
+
+**Properties:**
+
+- Enforced by: Network/OS
+- Retryable: Yes (after service recovery)
+- HTTP status: N/A (connection-level error)
+- Configurable per tenant: No
+
+### Error: Context deadline exceeded
+
+**Error message:**
+
+`context deadline exceeded`
+
+**Cause:**
+
+Requests are timing out due to slow response times or network issues.
+
+**Default configuration:**
+
+- Alloy default timeout: 10 seconds
+- Loki server timeout: `-server.http-server-write-timeout` (default: 30s)
+
+**Resolution:**
+
+* **Increase timeout values** in your ingestion client.
+* **Check Loki performance** and resource utilization.
+* **Review network latency** between client and server.
+* **Scale Loki resources** if needed.
+
+**Properties:**
+
+- Enforced by: Client/Server
+- Retryable: Yes
+- HTTP status: 504 Gateway Timeout (or client-side timeout)
+- Configurable per tenant: No
+
+### Error: Service unavailable
+
+**Error message:**
+
+`service unavailable (503)`
+
+**Cause:**
+
+Loki is temporarily unable to handle requests due to high load or maintenance. This can occur when ingesters are unhealthy or the ring is not ready.
+
+**Default configuration:**
+
+- Ingester ring readiness: Requires minimum healthy ingesters based on replication factor
+- Distributor: Returns 503 when no healthy ingesters available
+
+**Resolution:**
+
+* **Implement retry logic** with exponential backoff in your client.
+* **Scale Loki ingester instances** to handle load.
+* **Check for resource constraints** (CPU, memory, storage).
+* **Review ingestion patterns** for sudden spikes.
+
+**Properties:**
+
+- Enforced by: Distributor/Gateway
+- Retryable: Yes
+- HTTP status: 503 Service Unavailable
+- Configurable per tenant: No
