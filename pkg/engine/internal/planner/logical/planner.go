@@ -71,6 +71,8 @@ func buildPlanForLogQuery(
 		logfmtStrict        bool
 		logfmtKeepEmpty     bool
 		hasJSONParser       bool
+		hasRegexParser      bool
+		regexpPattern       string
 	)
 
 	// TODO(chaudum): Implement a Walk function that can return an error
@@ -97,7 +99,11 @@ func buildPlanForLogQuery(
 			case syntax.OpParserTypeJSON:
 				hasJSONParser = true
 				return true
-			case syntax.OpParserTypeRegexp, syntax.OpParserTypeUnpack, syntax.OpParserTypePattern:
+			case syntax.OpParserTypeRegexp:
+				hasRegexParser = true
+				regexpPattern = e.Param
+				return true
+			case syntax.OpParserTypeUnpack, syntax.OpParserTypePattern:
 				// keeping these as a distinct cases so we remember to implement them later
 				err = errUnimplemented
 				return false
@@ -109,7 +115,7 @@ func buildPlanForLogQuery(
 			if val, innerErr := convertLabelFilter(e.LabelFilterer); innerErr != nil {
 				err = innerErr
 			} else {
-				if !hasLogfmtParser && !hasJSONParser {
+				if !hasLogfmtParser && !hasJSONParser && !hasRegexParser {
 					predicates = append(predicates, val)
 				} else {
 					postParsePredicates = append(postParsePredicates, val)
@@ -192,6 +198,11 @@ func buildPlanForLogQuery(
 		// JSON has no parameters
 		builder = builder.Parse(types.VariadicOpParseJSON, false, false)
 	}
+	if hasRegexParser {
+		_ = regexpPattern
+		builder = builder.ParseRegexp(regexpPattern)
+	}
+
 	for _, value := range postParsePredicates {
 		builder = builder.Select(value)
 	}

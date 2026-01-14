@@ -47,25 +47,25 @@ func dictionaryLookupFixedLenByteArrayPointer(dict []byte, len int, indexes []in
 
 func (d *int32Dictionary) lookup(indexes []int32, rows sparse.Array) {
 	checkLookupIndexBounds(indexes, rows)
-	dict := unsafecast.Slice[uint32](d.values)
+	dict := unsafecast.Slice[uint32](d.values.Slice())
 	dictionaryLookup32(dict, indexes, rows).check()
 }
 
 func (d *int64Dictionary) lookup(indexes []int32, rows sparse.Array) {
 	checkLookupIndexBounds(indexes, rows)
-	dict := unsafecast.Slice[uint64](d.values)
+	dict := unsafecast.Slice[uint64](d.values.Slice())
 	dictionaryLookup64(dict, indexes, rows).check()
 }
 
 func (d *floatDictionary) lookup(indexes []int32, rows sparse.Array) {
 	checkLookupIndexBounds(indexes, rows)
-	dict := unsafecast.Slice[uint32](d.values)
+	dict := unsafecast.Slice[uint32](d.values.Slice())
 	dictionaryLookup32(dict, indexes, rows).check()
 }
 
 func (d *doubleDictionary) lookup(indexes []int32, rows sparse.Array) {
 	checkLookupIndexBounds(indexes, rows)
-	dict := unsafecast.Slice[uint64](d.values)
+	dict := unsafecast.Slice[uint64](d.values.Slice())
 	dictionaryLookup64(dict, indexes, rows).check()
 }
 
@@ -97,12 +97,12 @@ func (d *fixedLenByteArrayDictionary) lookupString(indexes []int32, rows sparse.
 
 func (d *uint32Dictionary) lookup(indexes []int32, rows sparse.Array) {
 	checkLookupIndexBounds(indexes, rows)
-	dictionaryLookup32(d.values, indexes, rows).check()
+	dictionaryLookup32(d.values.Slice(), indexes, rows).check()
 }
 
 func (d *uint64Dictionary) lookup(indexes []int32, rows sparse.Array) {
 	checkLookupIndexBounds(indexes, rows)
-	dictionaryLookup64(d.values, indexes, rows).check()
+	dictionaryLookup64(d.values.Slice(), indexes, rows).check()
 }
 
 func (d *be128Dictionary) lookupString(indexes []int32, rows sparse.Array) {
@@ -126,37 +126,37 @@ func (d *be128Dictionary) lookupPointer(indexes []int32, rows sparse.Array) {
 }
 
 func (d *int32Dictionary) bounds(indexes []int32) (min, max int32) {
-	min, max, err := dictionaryBoundsInt32(d.values, indexes)
+	min, max, err := dictionaryBoundsInt32(d.values.Slice(), indexes)
 	err.check()
 	return min, max
 }
 
 func (d *int64Dictionary) bounds(indexes []int32) (min, max int64) {
-	min, max, err := dictionaryBoundsInt64(d.values, indexes)
+	min, max, err := dictionaryBoundsInt64(d.values.Slice(), indexes)
 	err.check()
 	return min, max
 }
 
 func (d *floatDictionary) bounds(indexes []int32) (min, max float32) {
-	min, max, err := dictionaryBoundsFloat32(d.values, indexes)
+	min, max, err := dictionaryBoundsFloat32(d.values.Slice(), indexes)
 	err.check()
 	return min, max
 }
 
 func (d *doubleDictionary) bounds(indexes []int32) (min, max float64) {
-	min, max, err := dictionaryBoundsFloat64(d.values, indexes)
+	min, max, err := dictionaryBoundsFloat64(d.values.Slice(), indexes)
 	err.check()
 	return min, max
 }
 
 func (d *uint32Dictionary) bounds(indexes []int32) (min, max uint32) {
-	min, max, err := dictionaryBoundsUint32(d.values, indexes)
+	min, max, err := dictionaryBoundsUint32(d.values.Slice(), indexes)
 	err.check()
 	return min, max
 }
 
 func (d *uint64Dictionary) bounds(indexes []int32) (min, max uint64) {
-	min, max, err := dictionaryBoundsUint64(d.values, indexes)
+	min, max, err := dictionaryBoundsUint64(d.values.Slice(), indexes)
 	err.check()
 	return min, max
 }

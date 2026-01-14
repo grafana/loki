@@ -16,9 +16,9 @@ import (
 
 // ScopeLogs is a collection of logs from a LibraryInstrumentation.
 type ScopeLogs struct {
-	Scope      InstrumentationScope
-	LogRecords []*LogRecord
 	SchemaUrl  string
+	LogRecords []*LogRecord
+	Scope      InstrumentationScope
 }
 
 var (
@@ -45,7 +45,6 @@ func DeleteScopeLogs(orig *ScopeLogs, nullable bool) {
 		orig.Reset()
 		return
 	}
-
 	DeleteInstrumentationScope(&orig.Scope, false)
 	for i := range orig.LogRecords {
 		DeleteLogRecord(orig.LogRecords[i], true)
@@ -184,6 +183,7 @@ func (orig *ScopeLogs) SizeProto() int {
 		l = orig.LogRecords[i].SizeProto()
 		n += 1 + proto.Sov(uint64(l)) + l
 	}
+
 	l = len(orig.SchemaUrl)
 	if l > 0 {
 		n += 1 + proto.Sov(uint64(l)) + l

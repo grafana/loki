@@ -20,9 +20,9 @@ package flatbuf
 
 import "strconv"
 
-// / ----------------------------------------------------------------------
-// / Top-level Type value, enabling extensible type-specific metadata. We can
-// / add new logical types to Type without breaking backwards compatibility
+/// ----------------------------------------------------------------------
+/// Top-level Type value, enabling extensible type-specific metadata. We can
+/// add new logical types to Type without breaking backwards compatibility
 type Type byte
 
 const (

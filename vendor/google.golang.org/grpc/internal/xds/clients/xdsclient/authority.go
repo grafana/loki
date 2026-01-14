@@ -470,7 +470,7 @@ func (a *authority) handleADSResourceUpdate(serverConfig *ServerConfig, rType Re
 			// "resource-not-found" error.
 			continue
 		}
-		if serverConfig.IgnoreResourceDeletion {
+		if serverConfig.SupportsServerFeature(ServerFeatureIgnoreResourceDeletion) {
 			// Per A53, resource deletions are ignored if the
 			// `ignore_resource_deletion` server feature is enabled through the
 			// xDS client configuration. If the resource deletion is to be

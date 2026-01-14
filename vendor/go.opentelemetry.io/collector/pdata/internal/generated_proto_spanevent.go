@@ -18,9 +18,9 @@ import (
 // SpanEvent is a time-stamped annotation of the span, consisting of user-supplied
 // text description and key-value pairs. See OTLP for event definition.
 type SpanEvent struct {
-	TimeUnixNano           uint64
 	Name                   string
 	Attributes             []KeyValue
+	TimeUnixNano           uint64
 	DroppedAttributesCount uint32
 }
 
@@ -73,9 +73,7 @@ func CopySpanEvent(dest, src *SpanEvent) *SpanEvent {
 		dest = NewSpanEvent()
 	}
 	dest.TimeUnixNano = src.TimeUnixNano
-
 	dest.Name = src.Name
-
 	dest.Attributes = CopyKeyValueSlice(dest.Attributes, src.Attributes)
 
 	dest.DroppedAttributesCount = src.DroppedAttributesCount
@@ -189,9 +187,10 @@ func (orig *SpanEvent) SizeProto() int {
 	var n int
 	var l int
 	_ = l
-	if orig.TimeUnixNano != 0 {
+	if orig.TimeUnixNano != uint64(0) {
 		n += 9
 	}
+
 	l = len(orig.Name)
 	if l > 0 {
 		n += 1 + proto.Sov(uint64(l)) + l
@@ -200,7 +199,7 @@ func (orig *SpanEvent) SizeProto() int {
 		l = orig.Attributes[i].SizeProto()
 		n += 1 + proto.Sov(uint64(l)) + l
 	}
-	if orig.DroppedAttributesCount != 0 {
+	if orig.DroppedAttributesCount != uint32(0) {
 		n += 1 + proto.Sov(uint64(orig.DroppedAttributesCount))
 	}
 	return n
@@ -210,7 +209,7 @@ func (orig *SpanEvent) MarshalProto(buf []byte) int {
 	pos := len(buf)
 	var l int
 	_ = l
-	if orig.TimeUnixNano != 0 {
+	if orig.TimeUnixNano != uint64(0) {
 		pos -= 8
 		binary.LittleEndian.PutUint64(buf[pos:], uint64(orig.TimeUnixNano))
 		pos--
@@ -231,7 +230,7 @@ func (orig *SpanEvent) MarshalProto(buf []byte) int {
 		pos--
 		buf[pos] = 0x1a
 	}
-	if orig.DroppedAttributesCount != 0 {
+	if orig.DroppedAttributesCount != uint32(0) {
 		pos = proto.EncodeVarint(buf, pos, uint64(orig.DroppedAttributesCount))
 		pos--
 		buf[pos] = 0x20
@@ -303,7 +302,6 @@ func (orig *SpanEvent) UnmarshalProto(buf []byte) error {
 			if err != nil {
 				return err
 			}
-
 			orig.DroppedAttributesCount = uint32(num)
 		default:
 			pos, err = proto.ConsumeUnknown(buf, pos, wireType)

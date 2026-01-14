@@ -66,7 +66,7 @@ func CompareResponses(sample *goldfish.QuerySample, cellAResp, cellBResp *Respon
 			// it is also possible we match some other unexpected cases
 			// where the hashes differ but the data is equivalent within tolerance (empty matrix?)
 
-			_, err := comparator.Compare(cellAResp.Body, cellBResp.Body, time.Time{})
+			_, err := comparator.Compare(cellAResp.Body, cellBResp.Body, sample.SampledAt)
 			if err == nil {
 				result.ComparisonStatus = goldfish.ComparisonStatusMatch
 				result.DifferenceDetails["tolerance_match"] = true

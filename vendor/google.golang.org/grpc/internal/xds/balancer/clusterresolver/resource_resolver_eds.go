@@ -76,14 +76,14 @@ func newEDSResolver(nameToWatch string, producer xdsresource.Producer, topLevelR
 }
 
 // ResourceChanged is invoked to report an update for the resource being watched.
-func (er *edsDiscoveryMechanism) ResourceChanged(update *xdsresource.EndpointsResourceData, onDone func()) {
+func (er *edsDiscoveryMechanism) ResourceChanged(update *xdsresource.EndpointsUpdate, onDone func()) {
 	if er.stopped.HasFired() {
 		onDone()
 		return
 	}
 
 	er.mu.Lock()
-	er.update = &update.Resource
+	er.update = update
 	er.mu.Unlock()
 
 	er.topLevelResolver.onUpdate(onDone)

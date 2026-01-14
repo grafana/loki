@@ -1424,6 +1424,11 @@ dataobj:
     # CLI flag: -dataobj-consumer.idle-flush-timeout
     [idle_flush_timeout: <duration> | default = 1h]
 
+    # The maximum amount of time to accumulate data in a builder before flushing
+    # it. Defaults to 1 hour.
+    # CLI flag: -dataobj-consumer.max-builder-age
+    [max_builder_age: <duration> | default = 1h]
+
     # The name of the Kafka topic
     # CLI flag: -dataobj-consumer.topic
     [topic: <string> | default = ""]

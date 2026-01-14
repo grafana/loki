@@ -131,6 +131,7 @@ const (
 
 	VariadicOpParseLogfmt // Parse logfmt line to set of columns operation (logfmt).
 	VariadicOpParseJSON   // Parse JSON line to set of columns operation (json).
+	VariadicOpParseRegexp // Parse line with regex capture groups operation (regexp).
 )
 
 // String returns the string representation of the UnaryOp.
@@ -140,6 +141,8 @@ func (t VariadicOp) String() string {
 		return "PARSE_LOGFMT"
 	case VariadicOpParseJSON:
 		return "PARSE_JSON"
+	case VariadicOpParseRegexp:
+		return "PARSE_REGEXP"
 	default:
 		panic(fmt.Sprintf("unknown variadic operator %d", t))
 	}
