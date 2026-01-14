@@ -169,12 +169,11 @@ func Benchmark_deltaDecoder_Decode(b *testing.B) {
 
 	batchSizes := []int{256, 1024, 4096}
 
-	for datasetName, getEncodedData := range scenarios {
+	for datasetName, makeDataset := range scenarios {
 		for _, batchSize := range batchSizes {
-			decBuf := make([]Value, batchSize)
-
 			b.Run(fmt.Sprintf("%s/batchSize=%d", datasetName, batchSize), func(b *testing.B) {
-				buf := getEncodedData()
+				buf := makeDataset()
+				decBuf := make([]Value, batchSize)
 				reader := bytes.NewReader(buf.Bytes())
 				dec := newDeltaDecoder(reader)
 
@@ -193,7 +192,7 @@ func Benchmark_deltaDecoder_Decode(b *testing.B) {
 					}
 				}
 
-				b.ReportMetric((float64(valuesRead)*float64(unsafe.Sizeof(int64(0))))/float64(b.Elapsed().Seconds())/1024/1024, "MB/s")
+				b.SetBytes(int64(pageSize * int(unsafe.Sizeof(int64(0)))))
 				b.ReportMetric(float64(valuesRead)/float64(b.Elapsed().Seconds()), "rows/s")
 			})
 		}
