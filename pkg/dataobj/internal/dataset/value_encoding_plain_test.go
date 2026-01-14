@@ -159,46 +159,43 @@ func Benchmark_plainBytesDecoder_Decode(b *testing.B) {
 		},
 	}
 
-	batchSizes := []int{1024, 2048, 4096, 8192}
-
 	for _, scenario := range scenarios {
-		for _, batchSize := range batchSizes {
-			benchmarkName := fmt.Sprintf("scenario=%s/batch-size=%d", scenario.name, batchSize)
-			b.Run(benchmarkName, func(b *testing.B) {
-				var buf bytes.Buffer
+		benchmarkName := fmt.Sprintf("scenario=%s", scenario.name)
+		b.Run(benchmarkName, func(b *testing.B) {
+			var buf bytes.Buffer
 
-				var (
-					enc = newPlainBytesEncoder(&buf)
-				)
+			var (
+				enc = newPlainBytesEncoder(&buf)
+			)
 
-				var totalSize int
-				for _, value := range scenario.makeValues() {
-					totalSize += len(value.Binary())
-					require.NoError(b, enc.Encode(value))
-				}
+			var totalSize, totalCount int
+			for _, value := range scenario.makeValues() {
+				totalSize += len(value.Binary())
+				totalCount++
+				require.NoError(b, enc.Encode(value))
+			}
 
-				decBuf := make([]Value, batchSize)
+			decBuf := make([]Value, totalCount)
 
-				dec := newPlainBytesDecoder(nil)
+			dec := newPlainBytesDecoder(nil)
 
-				var totalRows int
-				for b.Loop() {
-					dec.Reset(buf.Bytes())
+			var totalRows int
+			for b.Loop() {
+				dec.Reset(buf.Bytes())
 
-					for {
-						n, err := dec.Decode(decBuf)
-						totalRows += n
-						if err != nil && errors.Is(err, io.EOF) {
-							break
-						} else if err != nil {
-							b.Fatal(err)
-						}
+				for {
+					n, err := dec.Decode(decBuf)
+					totalRows += n
+					if err != nil && errors.Is(err, io.EOF) {
+						break
+					} else if err != nil {
+						b.Fatal(err)
 					}
 				}
+			}
 
-				b.SetBytes(int64(totalSize))
-				b.ReportMetric(float64(totalRows)/b.Elapsed().Seconds(), "rows/s")
-			})
-		}
+			b.SetBytes(int64(totalSize))
+			b.ReportMetric(float64(totalRows)/b.Elapsed().Seconds(), "rows/s")
+		})
 	}
 }
