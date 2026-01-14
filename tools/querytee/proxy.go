@@ -40,8 +40,8 @@ const (
 
 type RoutingConfig struct {
 	Mode          RoutingMode
-	V1Backend     string
-	V2Backend     string
+	V1Preferred   string
+	V2Preferred   string
 	RaceTolerance time.Duration
 
 	// SplitStart is the start date of data available in v2 (dataobjs) storage.
@@ -67,8 +67,8 @@ type RoutingConfig struct {
 
 func (cfg *RoutingConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar((*string)(&cfg.Mode), "routing.mode", string(RoutingModeV1Preferred), "Routing mode: race, v1-preferred, or v2-preferred")
-	f.StringVar(&cfg.V1Backend, "routing.v1-backend", "", "The hostname of the v1 (chunks) backend")
-	f.StringVar(&cfg.V2Backend, "routing.v2-backend", "", "The hostname of the v2 (dataobjs) backend")
+	f.StringVar(&cfg.V1Preferred, "routing.v1-preferred", "", "The hostname of the preferred v1 (chunks) backend")
+	f.StringVar(&cfg.V2Preferred, "routing.v2-preferred", "", "The hostname of the preferred v2 (dataobjs) backend")
 	f.DurationVar(&cfg.RaceTolerance, "routing.race-tolerance", 100*time.Millisecond, "Race handicap for v2 in race mode")
 	f.Var(&cfg.SplitStart, "routing.split-start", "Start date when v2 data became available. Format YYYY-MM-DD. Queries before this date go only to v1.")
 	f.DurationVar(&cfg.SplitLag, "routing.split-lag", 0, "Minimum age of data to route to v2. Data newer than this goes only to v1. When 0 (default), splitting is disabled.")
@@ -169,11 +169,11 @@ func NewProxy(
 		return nil, err
 	}
 
-	if cfg.CompareResponses && cfg.Routing.V1Backend == "" {
+	if cfg.CompareResponses && cfg.Routing.V1Preferred == "" {
 		return nil, fmt.Errorf("when enabling comparison of results -routing.v1-backend flag must be set")
 	}
 
-	if cfg.PassThroughNonRegisteredRoutes && cfg.Routing.V1Backend == "" {
+	if cfg.PassThroughNonRegisteredRoutes && cfg.Routing.V1Preferred == "" {
 		return nil, fmt.Errorf("when enabling passthrough for non-registered routes -routing.v1-backend flag must be set")
 	}
 
@@ -210,16 +210,16 @@ func NewProxy(
 		}
 
 		name := u.Hostname()
-		v1Preferred := name == cfg.Routing.V1Backend
-		v2Preferred := name == cfg.Routing.V2Backend
+		v1Preferred := name == cfg.Routing.V1Preferred
+		v2Preferred := name == cfg.Routing.V2Preferred
 
 		// In tests we have the same hostname for all backends, so we also
 		// support a numeric preferred backend which is the index in the list
 		// of backends.
-		if preferredIdx, err := strconv.Atoi(cfg.Routing.V1Backend); err == nil {
+		if preferredIdx, err := strconv.Atoi(cfg.Routing.V1Preferred); err == nil {
 			v1Preferred = preferredIdx == idx
 		}
-		if preferredIdx, err := strconv.Atoi(cfg.Routing.V2Backend); err == nil {
+		if preferredIdx, err := strconv.Atoi(cfg.Routing.V2Preferred); err == nil {
 			v2Preferred = preferredIdx == idx
 		}
 
@@ -233,7 +233,7 @@ func NewProxy(
 	}
 
 	// If the preferred backend is configured, then it must exists among the actual backends.
-	if cfg.Routing.V1Backend != "" {
+	if cfg.Routing.V1Preferred != "" {
 		exists := false
 		for _, b := range p.backends {
 			if b.v1Preferred {
@@ -246,7 +246,7 @@ func NewProxy(
 		}
 	}
 
-	if cfg.Routing.V2Backend != "" {
+	if cfg.Routing.V2Preferred != "" {
 		exists := false
 		for _, b := range p.backends {
 			if b.v2Preferred {
@@ -270,7 +270,7 @@ func NewProxy(
 
 	if cfg.DisableBackendReadProxy != "" {
 		readDisabledBackendHosts := strings.Split(p.cfg.DisableBackendReadProxy, ",")
-		if slices.Contains(readDisabledBackendHosts, cfg.Routing.V1Backend) {
+		if slices.Contains(readDisabledBackendHosts, cfg.Routing.V1Preferred) {
 			return nil, fmt.Errorf("the v1 backend cannot be disabled for reading")
 		}
 	}

@@ -168,8 +168,8 @@ func Test_Proxy_RequestsForwarding(t *testing.T) {
 				ServerServicePort:  0,
 				BackendReadTimeout: time.Second,
 				Routing: RoutingConfig{
-					Mode:      RoutingModeV1Preferred,
-					V1Backend: strconv.Itoa(testData.preferredBackendIdx),
+					Mode:        RoutingModeV1Preferred,
+					V1Preferred: strconv.Itoa(testData.preferredBackendIdx),
 				},
 			}
 
@@ -326,8 +326,8 @@ func TestProxy_Passthrough(t *testing.T) {
 				BackendReadTimeout:             time.Second,
 				PassThroughNonRegisteredRoutes: true,
 				Routing: RoutingConfig{
-					Mode:      RoutingModeV1Preferred,
-					V1Backend: strconv.Itoa(testData.preferredBackendIdx),
+					Mode:        RoutingModeV1Preferred,
+					V1Preferred: strconv.Itoa(testData.preferredBackendIdx),
 				},
 			}
 
