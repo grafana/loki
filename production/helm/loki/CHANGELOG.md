@@ -14,6 +14,7 @@ Entries should include a reference to the pull request that introduced the chang
 ## Unreleased
 
 - [BUGFIX] Respect global registry in sidecar image [#19347](https://github.com/grafana/loki/pull/19347).
+- [ENHANCEMENT] Add the ability to customize write, read and backend workloads PDB maxUnavailable [#16871](https://github.com/grafana/loki/pull/16871)
 
 ## 6.49.0
 
@@ -244,8 +245,6 @@ Before upgrading to v0.32.0, make sure that the CustomResourceDefinitions (CRDs)
   addresses: 'my-resultsCache-memcached-address' # <- setting results cache address here
   chunksCache:
   addresses: 'my-chunksCache-memcached-address' # <- setting chunks cache address here
-
-- [ENHANCEMENT] Add the ability to customize write, read and backend workloads PDB maxUnavailable
 
 ## 6.29.0
 
