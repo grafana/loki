@@ -389,3 +389,45 @@ func TestGetAllDeleteRequestsForUser_ExactMatch(t *testing.T) {
 	require.Equal(t, "user123", deleteRequests[0].UserID)
 	require.Equal(t, resp2, deleteRequests[0].RequestID)
 }
+
+func TestDeleteRequestsStoreBoltDB_TimeRangeFiltering(t *testing.T) {
+	tc := setupStoreType(t, DeleteRequestsStoreDBTypeBoltDB)
+	defer tc.store.Stop()
+
+	// add requests for user1 to the store
+	for i := 0; i < len(tc.user1Requests); i++ {
+		resp, err := tc.store.AddDeleteRequest(
+			context.Background(),
+			tc.user1Requests[i].UserID,
+			tc.user1Requests[i].Query,
+			tc.user1Requests[i].StartTime,
+			tc.user1Requests[i].EndTime,
+			0,
+		)
+		require.NoError(t, err)
+		tc.user1Requests[i].RequestID = resp
+	}
+
+	// Test time range filtering: query range should pick fully overlapping reqs, 1 left overlap, 1 right overlap
+	// Query range: -3.25h to -0.5h
+	// Should match:
+	//   - Request at -3h (index 2): left overlap
+	//   - Request at -2h (index 1): fully overlapping
+	//   - Request at -1h (index 0): right overlap
+	timeRange := &TimeRange{
+		Start: now.Add(-3*time.Hour - 15*time.Minute),
+		End:   now.Add(-30 * time.Minute),
+	}
+
+	requests, err := tc.store.GetAllDeleteRequestsForUser(context.Background(), user1, false, timeRange)
+	require.NoError(t, err)
+
+	require.Len(t, requests, 3)
+	requestIDs := make(map[string]bool)
+	for _, req := range requests {
+		requestIDs[req.RequestID] = true
+	}
+	require.True(t, requestIDs[tc.user1Requests[2].RequestID]) // -3h request
+	require.True(t, requestIDs[tc.user1Requests[1].RequestID]) // -2h request
+	require.True(t, requestIDs[tc.user1Requests[0].RequestID]) // -1h request
+}
