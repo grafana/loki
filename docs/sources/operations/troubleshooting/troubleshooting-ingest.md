@@ -124,3 +124,422 @@ Do not increase stream limits to accommodate high cardinality labels, this can r
 - Retryable: Yes
 - HTTP status: 429 Too Many Requests
 - Configurable per tenant: Yes
+
+## Validation errors
+
+Validation errors occur when log data doesn't meet Loki's requirements. These return HTTP status code `400 Bad Request` and are **not retryable**.
+
+### Error: `line_too_long`
+
+**Error message:**
+
+`max entry size <max_size> bytes exceeded for stream <stream_labels> while adding an entry with length <entry_size> bytes`
+
+**Cause:**
+
+A log line exceeds the maximum allowed size.
+
+**Default configuration:**
+
+- `max_line_size`: 256 KB
+- `max_line_size_truncate`: false
+
+**Resolution:**
+
+* **Truncate long lines** instead of discarding them:
+
+   ```yaml
+   limits_config:
+     max_line_size: 256KB
+     max_line_size_truncate: true
+   ```
+
+* **Increase the line size limit** (not recommended above 256KB):
+
+   ```yaml
+   limits_config:
+     max_line_size: 256KB
+   ```
+
+   {{< admonition type="warning" >}}
+   Loki was built as a large multi-user, multi-tenant database and as such this limit becomes very important to maintain stability and performance with many users query the database simultaneously. We strongly recommend against increasing the max_line_size, doing so will make it very difficult to provide consistent query performance and stability of the system without having to throw extremely large amounts of memory and/or increasing the GRPC message size limits to really high levels, both of which will likely lead to poorer performance and worse experiences.
+   {{< /admonition >}}
+
+* **Filter or truncate logs before sending** using Alloy processing stages:
+
+   ```alloy
+   stage.replace {
+     expression = "^(.{10000}).*$"
+     replace    = "$1"
+   }
+   ```
+
+**Properties:**
+
+- Enforced by: Distributor
+- Retryable: No
+- HTTP status: 400 Bad Request
+- Configurable per tenant: Yes
+
+### Error: `invalid_labels`
+
+**Error message:**
+
+`error parsing labels <labels> with error: <parse_error>`
+
+**Cause:**
+
+Label names or values contain invalid characters or don't follow Prometheus naming conventions:
+
+- Label names must match regex: `[a-zA-Z_][a-zA-Z0-9_]*`
+- Label names cannot start with `__` (reserved for Grafana internal use)
+- Labels must be valid UTF-8
+- Properly escape special characters in label values
+- Ensure label syntax follows PromQL format: `{key="value"}`
+
+**Default configuration:**
+
+This validation is always enabled and cannot be disabled.
+
+**Resolution:**
+
+* **Fix label names** in your log shipping configuration:
+
+   ```yaml
+   # Incorrect
+   labels:
+     "123-app": "value"      # Starts with number
+     "app-name": "value"     # Contains hyphen
+     "__internal": "value"   # Reserved prefix
+
+   # Correct
+   labels:
+     app_123: "value"
+     app_name: "value"
+     internal_label: "value"
+   ```
+
+* **Use Alloy's relabeling stages** to fix labels:
+
+   ```alloy
+   stage.label_drop {
+     values = ["invalid_label"]
+   }
+   
+   stage.labels {
+     values = {
+       app_name = "",
+     }
+   }
+   ```
+
+**Properties:**
+
+- Enforced by: Distributor
+- Retryable: No
+- HTTP status: 400 Bad Request
+- Configurable per tenant: No
+
+### Error: `missing_labels`
+
+**Error message:**
+
+`error at least one label pair is required per stream`
+
+**Cause:**
+
+A log stream was submitted without any labels. Loki requires at least one label pair for each log stream.
+
+**Default configuration:**
+
+This validation is always enabled and cannot be disabled. Every stream must have at least one label.
+
+**Resolution:**
+
+Ensure all log streams have at least one label. Update your log shipping configuration to include labels:
+
+```alloy
+loki.write "default" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}
+
+loki.source.file "logs" {
+  targets = [
+    {
+      __path__ = "/var/log/*.log",
+      job      = "myapp",
+      environment = "production",
+    },
+  ]
+  forward_to = [loki.write.default.receiver]
+}
+```
+
+**Properties:**
+
+- Enforced by: Distributor
+- Retryable: No
+- HTTP status: 400 Bad Request
+- Configurable per tenant: No
+
+### Error: `out_of_order` / `too_far_behind`
+
+These errors occur when log entries arrive in the wrong chronological order.
+
+**Error messages:**
+
+- When `unordered_writes: false`: `entry out of order`
+- When `unordered_writes: true`: `entry too far behind, entry timestamp is: <timestamp>, oldest acceptable timestamp is: <cutoff>`
+
+**Cause:**
+
+Logs are being ingested with timestamps that violate Loki's ordering constraints:
+
+- With `unordered_writes: false`: Any log older than the most recent log in the stream is rejected
+- With `unordered_writes: true` (default): Logs older than half of `max_chunk_age` from the newest entry are rejected
+
+**Default configuration:**
+
+- `unordered_writes`: true (since Loki 2.4)
+- `max_chunk_age`: 2 hours
+- Acceptable timestamp window: 1 hour behind the newest entry (half of `max_chunk_age`)
+
+**Resolution:**
+
+* **Ensure timestamps are assigned correctly**:
+
+  - Use a timestamp parsing stage in Alloy if logs have embedded timestamps
+  - Avoid letting Alloy assign timestamps at read time for delayed log delivery
+
+   ```alloy
+   stage.timestamp {
+     source = "timestamp_field"
+     format = "RFC3339"
+   }
+   ```
+
+* **Check for clock skew** between log sources and Loki. Ensure clocks are synchronized across your infrastructure.
+
+**Properties:**
+
+- Enforced by: Ingester
+- Retryable: No
+- HTTP status: 400 Bad Request
+- Configurable per tenant: No (for `max_chunk_age`)
+
+### Error: `greater_than_max_sample_age`
+
+**Error message:**
+
+`entry for stream <stream_labels> has timestamp too old: <timestamp>, oldest acceptable timestamp is: <cutoff>`
+
+**Cause:**
+
+The log entry's timestamp is older than the configured maximum sample age. This prevents ingestion of very old logs.
+
+**Default configuration:**
+
+- `reject_old_samples`: true
+- `reject_old_samples_max_age`: 168 hours (7 days)
+
+**Resolution:**
+
+* **Increase the maximum sample age**:
+
+   ```yaml
+   limits_config:
+     reject_old_samples_max_age: 336h  # 14 days
+   ```
+
+* **Fix log delivery delays** causing old timestamps.
+
+* **For historical log imports**, temporarily disable the check per tenant.
+
+* **Check for clock skew** between log sources and Loki. Ensure clocks are synchronized across your infrastructure.
+
+* **Disable old sample rejection** (not recommended):
+
+   ```yaml
+   limits_config:
+     reject_old_samples: false
+   ```
+
+**Properties:**
+
+- Enforced by: Distributor
+- Retryable: No
+- HTTP status: 400 Bad Request
+- Configurable per tenant: Yes
+
+### Error: `too_far_in_future`
+
+**Error message:**
+
+`entry for stream <stream_labels> has timestamp too new: <timestamp>`
+
+**Cause:**
+
+The log entry's timestamp is further in the future than the configured grace period allows.
+
+**Default configuration:**
+
+- `creation_grace_period`: 10 minutes
+
+**Resolution:**
+
+* **Check for clock skew** between log sources and Loki. Ensure clocks are synchronized across your infrastructure.
+
+* **Verify application timestamps** Validate timestamp generation in your applications.
+
+* **Verify timestamp parsing** in your log shipping configuration.
+
+**Properties:**
+
+- Enforced by: Distributor
+- Retryable: No
+- HTTP status: 400 Bad Request
+- Configurable per tenant: Yes
+
+### Error: `max_label_names_per_series`
+
+**Error message:**
+
+`entry for stream <stream_labels> has <count> label names; limit <limit>`
+
+**Cause:**
+
+The stream has more labels than allowed.
+
+**Default configuration:**
+
+- `max_label_names_per_series`: 15
+
+**Resolution:**
+
+* **Reduce the number of labels** by:
+  - Using structured metadata for high-cardinality data
+  - Removing unnecessary labels
+  - Combining related labels
+
+{{< admonition type="warning" >}}
+We strongly recommend against increasing `max_label_names_per_series`, doing so creates a larger index which hurts query performance as well as opens the door for cardinality explosions. You should be able to categorize your logs with 15 labels or typically much less. In all our years of running Loki, out of thousands of requests to increase this value, the number of valid exceptions we have seen can be counted on one hand.
+{{< /admonition >}}
+
+**Properties:**
+
+- Enforced by: Distributor
+- Retryable: No
+- HTTP status: 400 Bad Request
+- Configurable per tenant: Yes
+
+### Error: `label_name_too_long`
+
+**Error message:**
+
+`stream <stream_labels> has label name too long: <label_name>`
+
+**Cause:**
+
+A label name exceeds the maximum allowed length.
+
+**Default configuration:**
+
+- `max_label_name_length`: 1024 bytes
+
+**Resolution:**
+
+* **Shorten label names** in your log shipping configuration to under the configured limit. You can use abbreviations or shorter descriptive names.
+
+**Properties:**
+
+- Enforced by: Distributor
+- Retryable: No
+- HTTP status: 400 Bad Request
+- Configurable per tenant: Yes
+
+### Error: `label_value_too_long`
+
+**Error message:**
+
+`stream <stream_labels> has label value too long: <label_value>`
+
+**Cause:**
+
+A label value exceeds the maximum allowed length.
+
+**Default configuration:**
+
+- `max_label_value_length`: 2048 bytes
+
+**Resolution:**
+
+* **Shorten label values** in your log shipping configuration to under the configured limit. You can use hash values for very long identifiers.
+
+* **Use structured metadata** for long values instead of labels.
+
+**Properties:**
+
+- Enforced by: Distributor
+- Retryable: No
+- HTTP status: 400 Bad Request
+- Configurable per tenant: Yes
+
+### Error: `duplicate_label_names`
+
+**Error message:**
+
+`stream <stream_labels> has duplicate label name: <label_name>`
+
+**Cause:**
+
+The stream has two or more labels with identical names.
+
+**Default configuration:**
+
+This validation is always enabled and cannot be disabled. Duplicate label names are never allowed.
+
+**Resolution:**
+
+* **Remove duplicates** Remove duplicate label definitions in your log shipping configuration to ensure unique label names per stream.
+
+* **Check clients** Check your ingestion pipeline for label conflicts.
+
+* **Verify processing** Verify your label processing and transformation rules.
+
+**Properties:**
+
+- Enforced by: Distributor
+- Retryable: No
+- HTTP status: 400 Bad Request
+- Configurable per tenant: No
+
+### Error: `request_body_too_large`
+
+**Error message:**
+
+`Request body too large: <size> bytes, limit: <limit> bytes`
+
+**Cause:**
+
+The HTTP compressed push request body exceeds the configured limit in your gateway/reverse proxy or service that fronts Loki after decompression.
+
+**Default configuration:**
+
+- Loki server max request body size: Configured at the HTTP server level
+- Nginx gateway (Helm): `gateway.nginxConfig.clientMaxBodySize` (default: 4 MB)
+- Alloy default batch size: 1 MB
+
+**Resolution:**
+
+* **Split large batches** into smaller, more frequent requests.
+
+* **Increase batch limit** Increase the allowed body size on your gateway/reverse proxy.  For example, in the Helm chart set `gateway.nginxConfig.clientMaxBodySize`; default is 4M.
+
+**Properties:**
+
+- Enforced by: Distributor
+- Retryable: No
+- HTTP status: 413 Request Entity Too Large
+- Configurable per tenant: No
