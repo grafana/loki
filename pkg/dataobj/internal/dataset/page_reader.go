@@ -1,7 +1,7 @@
 package dataset
 
 import (
-	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -29,9 +29,6 @@ type pageReader struct {
 
 	pageRow int64
 	nextRow int64
-
-	presenceReader *bufio.Reader
-	valuesReader   *bufio.Reader
 }
 
 // newPageReader returns a new pageReader that reads from the provided page.
@@ -188,30 +185,26 @@ func (pr *pageReader) init(ctx context.Context) error {
 		Data: data,
 	}
 
-	presenceReader, valuesReader, err := memPage.reader(pr.compression)
+	openedPage, pageCloser, err := memPage.open(pr.compression)
 	if err != nil {
 		return fmt.Errorf("opening page for reading: %w", err)
 	}
 
-	pr.presenceReader = pr.getPresenceReader()
-	pr.presenceReader.Reset(presenceReader)
 	pr.presenceDec = pr.getPresenceDecoder()
-	pr.presenceDec.Reset(pr.presenceReader)
+	pr.presenceDec.Reset(bytes.NewReader(openedPage.PresenceData))
 
-	pr.valuesReader = pr.getValuesReader()
-	pr.valuesReader.Reset(valuesReader)
 	if pr.valuesDec == nil || pr.lastPhysicalType != pr.physicalType || pr.lastEncoding != memPage.Desc.Encoding {
 		var ok bool
-		pr.valuesDec, ok = newValueDecoder(pr.physicalType, memPage.Desc.Encoding, pr.valuesReader)
+		pr.valuesDec, ok = newValueDecoder(pr.physicalType, memPage.Desc.Encoding, openedPage.ValueData)
 		if !ok {
 			return fmt.Errorf("unsupported value encoding %s/%s", pr.physicalType, memPage.Desc.Encoding)
 		}
 	} else {
-		pr.valuesDec.Reset(pr.valuesReader)
+		pr.valuesDec.Reset(bytes.NewReader(openedPage.ValueData))
 	}
 
 	pr.ready = true
-	pr.closer = valuesReader
+	pr.closer = pageCloser
 	pr.lastPhysicalType = pr.physicalType
 	pr.lastEncoding = memPage.Desc.Encoding
 	pr.pageRow = 0
@@ -297,20 +290,7 @@ func (pr *pageReader) Close() error {
 		return err
 	}
 
-	// After closing the reader, we reset the valuesReader to make sure it isn't
-	// holding onto the reference to pr.closer.
-	if pr.valuesReader != nil {
-		pr.valuesReader.Reset(nil)
-	}
-
 	return nil
-}
-
-func (pr *pageReader) getPresenceReader() *bufio.Reader {
-	if pr.presenceReader == nil {
-		return bufio.NewReader(nil)
-	}
-	return pr.presenceReader
 }
 
 func (pr *pageReader) getPresenceDecoder() *bitmapDecoder {
@@ -318,11 +298,4 @@ func (pr *pageReader) getPresenceDecoder() *bitmapDecoder {
 		return newBitmapDecoder(nil)
 	}
 	return pr.presenceDec
-}
-
-func (pr *pageReader) getValuesReader() *bufio.Reader {
-	if pr.valuesReader == nil {
-		return bufio.NewReader(nil)
-	}
-	return pr.valuesReader
 }

@@ -1,6 +1,7 @@
 package dataset
 
 import (
+	"bytes"
 	"fmt"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
@@ -111,7 +112,7 @@ func newValueEncoder(physicalType datasetmd.PhysicalType, encodingType datasetmd
 // newValueDecoder creates a new valueDecoder for the specified physicalType and
 // encodingType. If no encoding is registered for the specified combination of
 // physicalType and encodingType, newValueDecoder returns nil and false.
-func newValueDecoder(physicalType datasetmd.PhysicalType, encodingType datasetmd.EncodingType, r streamio.Reader) (valueDecoder, bool) {
+func newValueDecoder(physicalType datasetmd.PhysicalType, encodingType datasetmd.EncodingType, data []byte) (valueDecoder, bool) {
 	key := registryKey{
 		Physical: physicalType,
 		Encoding: encodingType,
@@ -120,5 +121,5 @@ func newValueDecoder(physicalType datasetmd.PhysicalType, encodingType datasetmd
 	if !exist {
 		return nil, false
 	}
-	return entry.NewDecoder(r), true
+	return entry.NewDecoder(bytes.NewReader(data)), true
 }
