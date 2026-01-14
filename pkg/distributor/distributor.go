@@ -840,7 +840,8 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 		streamsToWrite += len(streams)
 	}
 	// We must correctly set streamsPending before beginning any writes to ensure we don't have a race between finishing all of one path before starting the other.
-	tracker.streamsPending.Store(int32(streamsToWrite))
+	// We use Add instead of Store since the Tees could have already added to the count.
+	tracker.streamsPending.Add(int32(streamsToWrite))
 
 	if d.cfg.KafkaEnabled {
 		subring, err := d.partitionRing.PartitionRing().ShuffleShard(tenantID, d.validator.IngestionPartitionsTenantShardSize(tenantID))

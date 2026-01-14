@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"strconv"
-	"sync"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -138,15 +137,14 @@ func (t *DataObjTee) Duplicate(ctx context.Context, tenant string, streams []Key
 	// when converting from float64 to uint64.
 	tenantRateBytesLimit := uint64(max(t.limits.IngestionRateBytes(tenant), 0))
 
-	wg := sync.WaitGroup{}
+	// Add our streams to the pending count so the distributor waits for them.
+	pushTracker.streamsPending.Add(int32(len(segmentationKeyStreams)))
+
 	for _, s := range segmentationKeyStreams {
-		wg.Add(1)
 		go func(stream SegmentedStream) {
-			defer wg.Done()
 			t.duplicate(ctx, tenant, stream, fastRates[stream.SegmentationKeyHash], tenantRateBytesLimit, pushTracker)
 		}(s)
 	}
-	wg.Wait()
 }
 
 func (t *DataObjTee) duplicate(ctx context.Context, tenant string, stream SegmentedStream, rateBytes, tenantRateBytes uint64, pushTracker *PushTracker) {
@@ -183,4 +181,6 @@ func (t *DataObjTee) duplicate(ctx context.Context, tenant string, stream Segmen
 			string(stream.SegmentationKey),
 		).Add(float64(stream.Stream.Size()))
 	}
+
+	pushTracker.doneWithResult(nil)
 }
