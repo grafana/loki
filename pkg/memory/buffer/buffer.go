@@ -59,7 +59,7 @@ func (buf *Buffer[T]) Grow(n int) {
 }
 
 // Resize changes the length of buf to n, allowing to call [Buffer.Set] on any
-// index up to n. Resize panics if n is less than the capacity of the buffer.
+// index up to n. Resize panics if n is bigger than the capacity of the buffer.
 func (buf *Buffer[T]) Resize(n int) {
 	buf.data = buf.data[:n]
 }
