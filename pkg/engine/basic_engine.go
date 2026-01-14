@@ -110,6 +110,11 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 	// [rangeio.ReadRanges] to make use of.
 	ctx = rangeio.WithConfig(ctx, &e.cfg.RangeConfig)
 
+	// Apply query mutator if configured
+	if e.cfg.QueryMutator != nil {
+		params = e.cfg.QueryMutator(ctx, params)
+	}
+
 	logicalPlan, err := func() (*logical.Plan, error) {
 		_, span := tracer.Start(ctx, "QueryEngine.Execute.logicalPlan")
 		defer span.End()

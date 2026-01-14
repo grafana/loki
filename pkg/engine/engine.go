@@ -46,6 +46,10 @@ var (
 
 var tracer = otel.Tracer("pkg/engine")
 
+// QueryMutator is a function that can modify query parameters before
+// the logical plan is built.
+type QueryMutator func(ctx context.Context, params logql.Params) logql.Params
+
 // ExecutorConfig configures engine execution.
 type ExecutorConfig struct {
 	// Batch size of the v2 execution engine.
@@ -56,6 +60,10 @@ type ExecutorConfig struct {
 
 	// RangeConfig determines how to optimize range reads in the V2 engine.
 	RangeConfig rangeio.Config `yaml:"range_reads" category:"experimental" doc:"description=Configures how to read byte ranges from object storage when using the V2 engine."`
+
+	// QueryMutator is an optional function that can modify query parameters
+	// before the logical plan is built.
+	QueryMutator QueryMutator `yaml:"-"`
 }
 
 func (cfg *ExecutorConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
@@ -98,9 +106,10 @@ func (p *Params) validate() error {
 
 // Engine defines parameters for executing queries.
 type Engine struct {
-	logger      log.Logger
-	metrics     *metrics
-	rangeConfig rangeio.Config
+	logger       log.Logger
+	metrics      *metrics
+	rangeConfig  rangeio.Config
+	queryMutator QueryMutator
 
 	scheduler *Scheduler   // Scheduler to manage the execution of tasks.
 	limits    logql.Limits // Limits to apply to engine queries.
@@ -115,9 +124,10 @@ func New(params Params) (*Engine, error) {
 	}
 
 	e := &Engine{
-		logger:      params.Logger,
-		metrics:     newMetrics(params.Registerer),
-		rangeConfig: params.Config.RangeConfig,
+		logger:       params.Logger,
+		metrics:      newMetrics(params.Registerer),
+		rangeConfig:  params.Config.RangeConfig,
+		queryMutator: params.Config.QueryMutator,
 
 		scheduler: params.Scheduler,
 		limits:    params.Limits,
@@ -270,6 +280,16 @@ func injectQueryTags(ctx context.Context, logger log.Logger) log.Logger {
 func (e *Engine) buildLogicalPlan(ctx context.Context, logger log.Logger, params logql.Params) (*logical.Plan, time.Duration, error) {
 	region := xcap.RegionFromContext(ctx)
 	timer := prometheus.NewTimer(e.metrics.logicalPlanning)
+
+	// Apply query mutator if configured
+	if e.queryMutator != nil {
+		params = e.queryMutator(ctx, params)
+	}
+
+	expr := params.GetExpression()
+	if expr == nil {
+		return nil, 0, errors.New("no expression provided")
+	}
 
 	logicalPlan, err := logical.BuildPlan(params)
 	if err != nil {
