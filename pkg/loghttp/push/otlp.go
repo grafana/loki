@@ -44,9 +44,9 @@ const (
 	messageSizeLargerErrFmt = "%w than max (%d vs %d)"
 )
 
-func ParseOTLPRequest(userID string, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, maxRecvMsgSize int, tracker UsageTracker, streamResolver StreamResolver, logger log.Logger) (*logproto.PushRequest, *Stats, error) {
+func ParseOTLPRequest(userID string, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, maxRecvMsgSize, maxDecompressedSize int, tracker UsageTracker, streamResolver StreamResolver, logger log.Logger) (*logproto.PushRequest, *Stats, error) {
 	stats := NewPushStats()
-	otlpLogs, err := extractLogs(r, maxRecvMsgSize, stats)
+	otlpLogs, err := extractLogs(r, maxRecvMsgSize, maxDecompressedSize, stats)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -55,15 +55,10 @@ func ParseOTLPRequest(userID string, r *http.Request, limits Limits, tenantConfi
 	return req, stats, err
 }
 
-func extractLogs(r *http.Request, maxRecvMsgSize int, pushStats *Stats) (plog.Logs, error) {
+func extractLogs(r *http.Request, maxRecvMsgSize, maxDecompressedSize int, pushStats *Stats) (plog.Logs, error) {
 	pushStats.ContentEncoding = r.Header.Get(contentEnc)
 	// bodySize should always reflect the compressed size of the request body
 	bodySize := loki_util.NewSizeReader(r.Body)
-
-	// text logs can compress well, we allow up to 10 times to prevent compression bombs
-	maxCompressionRatio := 10
-	maxCompressedMsgSize := maxRecvMsgSize * maxCompressionRatio
-
 	var body io.Reader = bodySize
 	if maxRecvMsgSize > 0 {
 		// Read from LimitReader with limit max+1. So if the underlying
@@ -72,7 +67,7 @@ func extractLogs(r *http.Request, maxRecvMsgSize int, pushStats *Stats) (plog.Lo
 	}
 	switch pushStats.ContentEncoding {
 	case gzipContentEncoding:
-		r, err := gzip.NewReader(bodySize)
+		r, err := gzip.NewReader(body)
 		if err != nil {
 			return plog.NewLogs(), err
 		}
@@ -80,8 +75,8 @@ func extractLogs(r *http.Request, maxRecvMsgSize int, pushStats *Stats) (plog.Lo
 		defer func(reader *gzip.Reader) {
 			_ = reader.Close()
 		}(r)
-		if maxRecvMsgSize > 0 {
-			body = io.LimitReader(body, int64(maxCompressedMsgSize)+1)
+		if maxDecompressedSize > 0 {
+			body = io.LimitReader(body, int64(maxDecompressedSize)+1)
 		}
 
 	case zstdContentEncoding:
@@ -90,13 +85,13 @@ func extractLogs(r *http.Request, maxRecvMsgSize int, pushStats *Stats) (plog.Lo
 		if err != nil {
 			return plog.NewLogs(), err
 		}
-		if maxRecvMsgSize > 0 {
-			body = io.LimitReader(body, int64(maxCompressedMsgSize)+1)
+		if maxDecompressedSize > 0 {
+			body = io.LimitReader(body, int64(maxDecompressedSize)+1)
 		}
 	case lz4ContentEncoding:
 		body = io.NopCloser(lz4.NewReader(body))
-		if maxRecvMsgSize > 0 {
-			body = io.LimitReader(body, int64(maxCompressedMsgSize)+1)
+		if maxDecompressedSize > 0 {
+			body = io.LimitReader(body, int64(maxDecompressedSize)+1)
 		}
 	case "":
 		// no content encoding, use the body as is
@@ -113,8 +108,8 @@ func extractLogs(r *http.Request, maxRecvMsgSize int, pushStats *Stats) (plog.Lo
 		return plog.NewLogs(), fmt.Errorf(messageSizeLargerErrFmt, loki_util.ErrMessageSizeTooLarge, size, maxRecvMsgSize)
 	}
 	// Check the size of the decompressed body
-	if len(buf) > maxCompressedMsgSize && maxCompressedMsgSize > 0 {
-		return plog.NewLogs(), fmt.Errorf(messageSizeLargerErrFmt, loki_util.ErrMessageSizeTooLarge, len(buf), maxCompressedMsgSize)
+	if len(buf) > maxDecompressedSize && maxDecompressedSize > 0 {
+		return plog.NewLogs(), fmt.Errorf(messageSizeLargerErrFmt, loki_util.ErrMessageDecompressedSizeTooLarge, len(buf), maxDecompressedSize)
 	}
 
 	pushStats.BodySize = bodySize.Size()

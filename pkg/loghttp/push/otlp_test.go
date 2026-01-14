@@ -1442,6 +1442,7 @@ func TestContentEncodingAndLength(t *testing.T) {
 		expectedErrorMessage string
 		expectedLogs         plog.Logs
 		maxRecvMsgSize       int
+		maxDecompressedSize  int
 	}{
 		{
 			name:            "identity_valid_json",
@@ -1658,7 +1659,11 @@ func TestContentEncodingAndLength(t *testing.T) {
 			req.Header.Set("Content-Encoding", tc.contentEncoding)
 
 			stats := NewPushStats()
-			extractedLogs, err := extractLogs(req, tc.maxRecvMsgSize, stats)
+			maxDecompressedSize := tc.maxDecompressedSize
+			if maxDecompressedSize == 0 {
+				maxDecompressedSize = 100 << 20 // 100 MB default
+			}
+			extractedLogs, err := extractLogs(req, tc.maxRecvMsgSize, maxDecompressedSize, stats)
 
 			if tc.expectedError {
 				require.Error(t, err)

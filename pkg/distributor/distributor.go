@@ -87,7 +87,8 @@ type Config struct {
 	PushWorkerCount int        `yaml:"push_worker_count"`
 
 	// Request parser
-	MaxRecvMsgSize int `yaml:"max_recv_msg_size"`
+	MaxRecvMsgSize      int `yaml:"max_recv_msg_size"`
+	MaxDecompressedSize int `yaml:"max_decompressed_size"`
 
 	// For testing.
 	factory ring_client.PoolFactory `yaml:"-"`

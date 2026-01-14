@@ -17,14 +17,17 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
-	attribute "go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"gopkg.in/yaml.v2"
 )
 
 const messageSizeLargerErrFmt = "%w than max (%d vs %d)"
 
-var ErrMessageSizeTooLarge = errors.New("message size too large")
+var (
+	ErrMessageSizeTooLarge             = errors.New("message size too large")
+	ErrMessageDecompressedSizeTooLarge = errors.New("decompressed message size too large")
+)
 
 const (
 	HTTPRateLimited  = "rate_limited"
