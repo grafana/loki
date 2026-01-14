@@ -5,6 +5,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
+	"github.com/grafana/loki/v3/pkg/memory"
 )
 
 // A valueEncoder encodes sequences of [Value], writing them to an underlying
@@ -50,6 +51,31 @@ type legacyValueDecoder interface {
 	Reset(data []byte)
 }
 
+// A valueDecoder reads values from an underlying byte slice. Implementations of
+// encoding types must call registerValueEncoding to register themselves.
+//
+// valueDecoder supersedes [legacyValueDecoder].
+type valueDecoder interface {
+	// PhysicalType returns the type of values supported by the decoder.
+	PhysicalType() datasetmd.PhysicalType
+
+	// EncodingType returns the encoding type used by the decoder.
+	EncodingType() datasetmd.EncodingType
+
+	// Decode up to count values using the provided allocator. An opaque return
+	// variable represents the decoded values. Callers are responsible for
+	// understanding which concrete type the return value is based on the
+	// encoding type.
+	//
+	// TODO(rfratto): Replace the any return type with a more general "array"
+	// type.
+	Decode(alloc *memory.Allocator, count int) (any, error)
+
+	// Reset discards any state and resets the decoder to read from data.
+	// This permits reusing a decoder rather than allocating a new one.
+	Reset(data []byte)
+}
+
 // registry stores known value encoders and decoders. We use a global variable
 // to track implementations to allow encoding implementations to be
 // self-contained in a single file.
@@ -63,6 +89,7 @@ type (
 
 	registryEntry struct {
 		NewEncoder       func(streamio.Writer) valueEncoder
+		NewDecoder       func([]byte) valueDecoder
 		NewLegacyDecoder func([]byte) legacyValueDecoder
 	}
 )
@@ -116,5 +143,20 @@ func newValueDecoder(physicalType datasetmd.PhysicalType, encodingType datasetmd
 	if !exist {
 		return nil, false
 	}
-	return entry.NewLegacyDecoder(data), true
+
+	switch {
+	case entry.NewDecoder != nil:
+		dec := &valueDecoderAdapter{
+			// TODO(rfratto): Pass through an allocator to avoid the overhead here.
+			Alloc: new(memory.Allocator),
+			Inner: entry.NewDecoder(data),
+		}
+		return dec, true
+
+	case entry.NewLegacyDecoder != nil:
+		return entry.NewLegacyDecoder(data), true
+
+	default:
+		return nil, false
+	}
 }
