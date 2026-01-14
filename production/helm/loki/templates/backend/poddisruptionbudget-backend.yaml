@@ -11,5 +11,7 @@ spec:
   selector:
     matchLabels:
       {{- include "loki.backendSelectorLabels" . | nindent 6 }}
-  maxUnavailable: 1
+  {{- with .Values.backend.maxUnavailable }}
+  maxUnavailable: {{ . }}
+  {{- end }}
 {{- end }}
