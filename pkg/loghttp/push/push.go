@@ -309,26 +309,41 @@ func parsePushRequestBody(r *http.Request, maxRecvMsgSize, maxDecompressedSize i
 	var body io.Reader
 	// bodySize should always reflect the compressed size of the request body
 	bodySize := util.NewSizeReader(r.Body)
+
+	// Apply compressed size limit
+	body = bodySize
+	if maxRecvMsgSize > 0 {
+		body = io.LimitReader(body, int64(maxRecvMsgSize)+1)
+	}
+
 	contentEncoding := r.Header.Get(contentEnc)
 	switch contentEncoding {
 	case "":
-		body = bodySize
 	case "snappy":
-		// Snappy-decoding is done by `util.ParseProtoReader(..., util.RawSnappy)` below.
+		// Snappy-decoding is done by `util.ParseProtoReaderWithLimits(..., util.RawSnappy)` below.
 		// Pass on body bytes. Note: HTTP clients do not need to set this header,
 		// but they sometimes do. See #3407.
-		body = bodySize
 	case "gzip":
-		gzipReader, err := gzip.NewReader(bodySize)
+		gzipReader, err := gzip.NewReader(body)
 		if err != nil {
 			return nil, err
 		}
-		defer gzipReader.Close()
+		defer func(gzipReader *gzip.Reader) {
+			_ = gzipReader.Close()
+		}(gzipReader)
 		body = gzipReader
+		if maxDecompressedSize > 0 {
+			body = io.LimitReader(body, int64(maxDecompressedSize)+1)
+		}
 	case "deflate":
-		flateReader := flate.NewReader(bodySize)
-		defer flateReader.Close()
+		flateReader := flate.NewReader(body)
+		defer func(flateReader io.ReadCloser) {
+			_ = flateReader.Close()
+		}(flateReader)
 		body = flateReader
+		if maxDecompressedSize > 0 {
+			body = io.LimitReader(body, int64(maxDecompressedSize)+1)
+		}
 	default:
 		return nil, fmt.Errorf("Content-Encoding %q not supported", contentEncoding)
 	}
@@ -361,7 +376,7 @@ func parsePushRequestBody(r *http.Request, maxRecvMsgSize, maxDecompressedSize i
 	default:
 		// When no content-type header is set or when it is set to
 		// `application/x-protobuf`: expect snappy compression.
-		if err := util.ParseProtoReader(r.Context(), body, int(r.ContentLength), maxRecvMsgSize, &req, util.RawSnappy); err != nil {
+		if err := util.ParseProtoReaderWithLimits(r.Context(), body, int(r.ContentLength), maxRecvMsgSize, maxDecompressedSize, &req, util.RawSnappy); err != nil {
 			return nil, err
 		}
 	}
@@ -370,6 +385,9 @@ func parsePushRequestBody(r *http.Request, maxRecvMsgSize, maxDecompressedSize i
 	pushStats.ContentType = contentType
 	pushStats.ContentEncoding = contentEncoding
 
+	if size := bodySize.Size(); size > int64(maxRecvMsgSize) && maxRecvMsgSize > 0 {
+		return nil, fmt.Errorf("compressed message size %d exceeds limit %d", size, maxRecvMsgSize)
+	}
 	return &req, nil
 }
 
