@@ -93,13 +93,13 @@ func TestCompareMatrix(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := compareMatrix(tc.expected, tc.actual, time.Now(), SampleComparisonOptions{})
+			summary := compareMatrix(tc.expected, tc.actual, time.Now(), SampleComparisonOptions{})
 			if tc.err == nil {
-				require.NoError(t, err)
+				require.Empty(t, summary.ErrorMessage)
 				return
 			}
-			require.Error(t, err)
-			require.ErrorContains(t, err, tc.err.Error())
+			require.NotEmpty(t, summary.ErrorMessage)
+			require.Contains(t, summary.ErrorMessage, tc.err.Error())
 		})
 	}
 }
@@ -189,17 +189,17 @@ func TestCompareMatrix_SamplesOutsideComparableWindow(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := compareMatrix(tc.expected, tc.actual, tc.evaluationTime, SampleComparisonOptions{
+			summary := compareMatrix(tc.expected, tc.actual, tc.evaluationTime, SampleComparisonOptions{
 				SkipSamplesBefore: tc.skipSamplesBefore,
 				SkipRecentSamples: tc.skipRecentSamples,
 			})
 
 			if tc.err == nil {
-				require.NoError(t, err)
+				require.Empty(t, summary.ErrorMessage)
 				return
 			}
-			require.Error(t, err)
-			require.ErrorContains(t, err, tc.err.Error())
+			require.NotEmpty(t, summary.ErrorMessage)
+			require.Contains(t, summary.ErrorMessage, tc.err.Error())
 		})
 	}
 }
@@ -276,13 +276,13 @@ func TestCompareVector(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := compareVector(tc.expected, tc.actual, time.Now(), SampleComparisonOptions{})
+			summary := compareVector(tc.expected, tc.actual, time.Now(), SampleComparisonOptions{})
 			if tc.err == nil {
-				require.NoError(t, err)
+				require.Empty(t, summary.ErrorMessage)
 				return
 			}
-			require.Error(t, err)
-			require.Equal(t, tc.err.Error(), err.Error())
+			require.NotEmpty(t, summary.ErrorMessage)
+			require.Equal(t, tc.err.Error(), summary.ErrorMessage)
 		})
 	}
 }
@@ -313,13 +313,13 @@ func TestCompareScalar(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := compareScalar(tc.expected, tc.actual, time.Now(), SampleComparisonOptions{})
+			summary := compareScalar(tc.expected, tc.actual, time.Now(), SampleComparisonOptions{})
 			if tc.err == nil {
-				require.NoError(t, err)
+				require.Empty(t, summary.ErrorMessage)
 				return
 			}
-			require.Error(t, err)
-			require.Equal(t, tc.err.Error(), err.Error())
+			require.NotEmpty(t, summary.ErrorMessage)
+			require.Equal(t, tc.err.Error(), summary.ErrorMessage)
 		})
 	}
 }
@@ -508,13 +508,13 @@ func TestCompareSamplesResponse(t *testing.T) {
 				UseRelativeError:  tc.useRelativeError,
 				SkipRecentSamples: tc.skipRecentSamples,
 			})
-			_, err := samplesComparator.Compare(tc.expected, tc.actual, time.Now())
+			summary := samplesComparator.Compare(tc.expected, tc.actual, time.Now())
 			if tc.err == nil {
-				require.NoError(t, err)
+				require.Empty(t, summary.ErrorMessage)
 				return
 			}
-			require.Error(t, err)
-			require.Equal(t, tc.err.Error(), err.Error())
+			require.NotEmpty(t, summary.ErrorMessage)
+			require.Equal(t, tc.err.Error(), summary.ErrorMessage)
 		})
 	}
 }
@@ -601,13 +601,13 @@ func TestCompareStreams(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := compareStreams(tc.expected, tc.actual, time.Now(), SampleComparisonOptions{Tolerance: 0})
+			summary := compareStreams(tc.expected, tc.actual, time.Now(), SampleComparisonOptions{Tolerance: 0})
 			if tc.err == nil {
-				require.NoError(t, err)
+				require.Empty(t, summary.ErrorMessage)
 				return
 			}
-			require.Error(t, err)
-			require.Equal(t, tc.err.Error(), err.Error())
+			require.NotEmpty(t, summary.ErrorMessage)
+			require.Equal(t, tc.err.Error(), summary.ErrorMessage)
 		})
 	}
 }
@@ -685,20 +685,18 @@ func TestCompareStreams_SamplesOutsideComparableWindow(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			summary, err := compareStreams(tc.expected, tc.actual, tc.evaluationTime, SampleComparisonOptions{
+			summary := compareStreams(tc.expected, tc.actual, tc.evaluationTime, SampleComparisonOptions{
 				SkipSamplesBefore: tc.skipSamplesBefore,
 				SkipRecentSamples: tc.skipRecentSamples,
 			})
 
 			if tc.err == nil {
-				require.NoError(t, err)
-				if summary != nil {
-					require.True(t, summary.Skipped)
-				}
+				require.Empty(t, summary.ErrorMessage)
+				require.True(t, summary.SkippedActualEntries > 0)
 				return
 			}
-			require.Error(t, err)
-			require.Equal(t, tc.err.Error(), err.Error())
+			require.NotEmpty(t, summary.ErrorMessage)
+			require.Equal(t, tc.err.Error(), summary.ErrorMessage)
 		})
 	}
 }

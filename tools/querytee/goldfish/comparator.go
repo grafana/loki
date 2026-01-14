@@ -74,9 +74,12 @@ func CompareResponses(sample *goldfish.QuerySample, cellAResp, cellBResp *Respon
 				result.DifferenceDetails["tolerance_match"] = false
 				result.DifferenceDetails["tolerance_match_error"] = summary.ErrorMessage
 			}
-			result.DifferenceDetails["skipped_entries"] = map[string]any{
-				"cell_a": summary.SkippedExpectedEnties,
-				"cell_b": summary.SkippedActualEntries,
+
+			if summary.SkippedExpectedEnties > 0 || summary.SkippedActualEntries > 0 {
+				result.DifferenceDetails["skipped_entries"] = map[string]any{
+					"cell_a": summary.SkippedExpectedEnties,
+					"cell_b": summary.SkippedActualEntries,
+				}
 			}
 		} else {
 			_ = level.Warn(logger).Log(

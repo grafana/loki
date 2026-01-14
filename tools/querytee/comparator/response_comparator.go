@@ -177,7 +177,7 @@ func compareMatrix(expectedRaw, actualRaw json.RawMessage, evaluationTime time.T
 
 		err := compareMatrixSamples(expectedMetric, actualMetric, opts)
 		if err != nil {
-			summary.ErrorMessage = fmt.Sprintf("%w\nExpected result for series:\n%v\n\nActual result for series:\n%v", err, expectedMetric, actualMetric)
+			summary.ErrorMessage = fmt.Sprintf("%s\nExpected result for series:\n%v\n\nActual result for series:\n%v", err, expectedMetric, actualMetric)
 			return
 		}
 	}
@@ -344,13 +344,17 @@ func compareScalar(expectedRaw, actualRaw json.RawMessage, evaluationTime time.T
 		return
 	}
 
-	summary.ErrorMessage = compareSamplePair(model.SamplePair{
+	err = compareSamplePair(model.SamplePair{
 		Timestamp: expected.Timestamp,
 		Value:     expected.Value,
 	}, model.SamplePair{
 		Timestamp: actual.Timestamp,
 		Value:     actual.Value,
-	}, opts).Error()
+	}, opts)
+
+	if err != nil {
+		summary.ErrorMessage = err.Error()
+	}
 
 	return
 }
@@ -432,7 +436,7 @@ func compareStreams(expectedRaw, actualRaw json.RawMessage, evaluationTime time.
 	for _, expectedStream := range expected {
 		actualStreamIndex, ok := streamLabelsToIndexMap[expectedStream.Labels.String()]
 		if !ok {
-			summary.ErrorMessage = fmt.Sprintf("expected stream %s not found in actual response", expectedStream.Labels)
+			summary.ErrorMessage = fmt.Sprintf("expected stream %s missing from actual response", expectedStream.Labels)
 			return
 		}
 
@@ -445,7 +449,7 @@ func compareStreams(expectedRaw, actualRaw json.RawMessage, evaluationTime time.
 				expectedStream.Labels, actualValuesLen)
 			if expectedValuesLen > 0 && actualValuesLen > 0 {
 				// assuming BACKWARD search since that is the default ordering
-				level.Error(util_log.Logger).Log("msg", err.Error(), "newest-expected-ts", expectedStream.Entries[0].Timestamp.UnixNano(),
+				level.Error(util_log.Logger).Log("msg", summary.ErrorMessage, "newest-expected-ts", expectedStream.Entries[0].Timestamp.UnixNano(),
 					"oldest-expected-ts", expectedStream.Entries[expectedValuesLen-1].Timestamp.UnixNano(),
 					"newest-actual-ts", actualStream.Entries[0].Timestamp.UnixNano(), "oldest-actual-ts", actualStream.Entries[actualValuesLen-1].Timestamp.UnixNano())
 			}
