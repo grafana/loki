@@ -608,8 +608,6 @@ Disk space is not limited by Loki configuration; it depends on your infrastructu
 
 * **Monitor storage health**:
   - Check object storage availability
-  - Monitor DynamoDB write capacity
-  - Verify Cassandra cluster health
 
 * **Review storage metrics**:
   - `loki_ingester_chunks_flushed_total`
