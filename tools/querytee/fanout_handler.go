@@ -151,6 +151,7 @@ func (h *FanOutHandler) doWithRacing(results <-chan *backendResult, collected []
 		result := <-results
 		collected = append(collected, result)
 
+		//TODO(twhitney): 404s are treated as successful responses, but v2 is missing some metdata endpoints that we should fallback to v1 for
 		if result.err == nil && result.backendResp.succeeded() {
 			winner := result
 			remaining := len(h.backends) - i - 1
