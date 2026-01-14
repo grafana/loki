@@ -1,6 +1,7 @@
 package dataset
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -17,7 +18,7 @@ func init() {
 		datasetmd.PHYSICAL_TYPE_BINARY,
 		datasetmd.ENCODING_TYPE_PLAIN,
 		func(w streamio.Writer) valueEncoder { return newPlainBytesEncoder(w) },
-		func(r streamio.Reader) valueDecoder { return newPlainBytesDecoder(r) },
+		func(data []byte) valueDecoder { return newPlainBytesDecoder(bytes.NewReader(data)) },
 	)
 }
 

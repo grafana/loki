@@ -1,6 +1,7 @@
 package dataset
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -15,7 +16,7 @@ func init() {
 		datasetmd.PHYSICAL_TYPE_INT64,
 		datasetmd.ENCODING_TYPE_DELTA,
 		func(w streamio.Writer) valueEncoder { return newDeltaEncoder(w) },
-		func(r streamio.Reader) valueDecoder { return newDeltaDecoder(r) },
+		func(data []byte) valueDecoder { return newDeltaDecoder(bytes.NewReader(data)) },
 	)
 }
 

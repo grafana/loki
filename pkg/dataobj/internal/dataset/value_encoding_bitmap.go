@@ -1,6 +1,7 @@
 package dataset
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -16,7 +17,7 @@ func init() {
 		datasetmd.PHYSICAL_TYPE_UINT64,
 		datasetmd.ENCODING_TYPE_BITMAP,
 		func(w streamio.Writer) valueEncoder { return newBitmapEncoder(w) },
-		func(r streamio.Reader) valueDecoder { return newBitmapDecoder(r) },
+		func(data []byte) valueDecoder { return newBitmapDecoder(bytes.NewReader(data)) },
 	)
 }
 

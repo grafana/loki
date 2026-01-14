@@ -1,7 +1,6 @@
 package dataset
 
 import (
-	"bytes"
 	"fmt"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
@@ -64,7 +63,7 @@ type (
 
 	registryEntry struct {
 		NewEncoder func(streamio.Writer) valueEncoder
-		NewDecoder func(streamio.Reader) valueDecoder
+		NewDecoder func([]byte) valueDecoder
 	}
 )
 
@@ -78,7 +77,7 @@ func registerValueEncoding(
 	physicalType datasetmd.PhysicalType,
 	encodingType datasetmd.EncodingType,
 	newEncoder func(streamio.Writer) valueEncoder,
-	newDecoder func(streamio.Reader) valueDecoder,
+	newDecoder func([]byte) valueDecoder,
 ) {
 	key := registryKey{
 		Physical: physicalType,
@@ -121,5 +120,5 @@ func newValueDecoder(physicalType datasetmd.PhysicalType, encodingType datasetmd
 	if !exist {
 		return nil, false
 	}
-	return entry.NewDecoder(bytes.NewReader(data)), true
+	return entry.NewDecoder(data), true
 }
