@@ -19,6 +19,7 @@ import (
 	"go.opentelemetry.io/otel/codes"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/engine/internal/deletion"
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/logical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
@@ -75,7 +76,7 @@ type Params struct {
 	Scheduler    *Scheduler          // Scheduler to manage the execution of tasks.
 	Metastore    metastore.Metastore // Metastore to access the indexes
 	Limits       logql.Limits        // Limits to apply to engine queries.
-	DeleteGetter DeleteGetter        // DeleteGetter to fetch delete requests for query-time filtering.
+	DeleteGetter deletion.Getter     // DeleteGetter to fetch delete requests for query-time filtering.
 }
 
 // validate validates p and applies defaults.
@@ -104,9 +105,9 @@ type Engine struct {
 	metrics     *metrics
 	rangeConfig rangeio.Config
 
-	scheduler    *Scheduler   // Scheduler to manage the execution of tasks.
-	limits       logql.Limits // Limits to apply to engine queries.
-	deleteGetter DeleteGetter // DeleteGetter to fetch delete requests for query-time filtering.
+	scheduler    *Scheduler      // Scheduler to manage the execution of tasks.
+	limits       logql.Limits    // Limits to apply to engine queries.
+	deleteGetter deletion.Getter // DeleteGetter to fetch delete requests for query-time filtering.
 
 	metastore metastore.Metastore
 }
@@ -278,7 +279,7 @@ func (e *Engine) buildLogicalPlan(ctx context.Context, logger log.Logger, params
 	var deleteReqs []*logproto.Delete
 	if e.deleteGetter != nil {
 		var err error
-		deleteReqs, err = DeletesForUserQuery(ctx, params.Start(), params.End(), e.deleteGetter)
+		deleteReqs, err = deletion.DeletesForUserQuery(ctx, params.Start(), params.End(), e.deleteGetter)
 		if err != nil {
 			return nil, 0, fmt.Errorf("failed to get delete requests: %w", err)
 		}

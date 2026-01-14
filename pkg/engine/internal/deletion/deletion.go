@@ -1,4 +1,5 @@
-package engine
+// package deletion contains utilities for handling deletion requests in query engine.
+package deletion
 
 import (
 	"context"
@@ -11,18 +12,18 @@ import (
 	"github.com/prometheus/common/model"
 )
 
-type DeleteGetter interface {
+type Getter interface {
 	GetAllDeleteRequestsForUser(ctx context.Context, userID string, forQuerytimeFiltering bool, timeRange *deletion.TimeRange) ([]deletionproto.DeleteRequest, error)
 }
 
 // DeletesForUserQuery returns the deletes for a user (taken from request context) within a given time range.
-func DeletesForUserQuery(ctx context.Context, startT, endT time.Time, g DeleteGetter) ([]*logproto.Delete, error) {
+func DeletesForUserQuery(ctx context.Context, startT, endT time.Time, g Getter) ([]*logproto.Delete, error) {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	// no query-time filtering enabled. fetch all deletes in the time range.
+	// forQuerytimeFiltering is set to false as we want to get all deletes in the time range, not just pending ones.
 	d, err := g.GetAllDeleteRequestsForUser(ctx, userID, false, &deletion.TimeRange{
 		Start: model.TimeFromUnixNano(startT.UnixNano()),
 		End:   model.TimeFromUnixNano(endT.UnixNano()),
