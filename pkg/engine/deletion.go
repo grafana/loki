@@ -12,7 +12,7 @@ import (
 )
 
 type DeleteGetter interface {
-	GetAllDeleteRequestsForUserWithOptions(ctx context.Context, userID string, forQuerytimeFiltering bool, timeRange *deletion.TimeRange) ([]deletionproto.DeleteRequest, error)
+	GetAllDeleteRequestsForUser(ctx context.Context, userID string, forQuerytimeFiltering bool, timeRange *deletion.TimeRange) ([]deletionproto.DeleteRequest, error)
 }
 
 // DeletesForUserQuery returns the deletes for a user (taken from request context) within a given time range.
@@ -23,7 +23,7 @@ func DeletesForUserQuery(ctx context.Context, startT, endT time.Time, g DeleteGe
 	}
 
 	// no query-time filtering enabled. fetch all deletes in the time range.
-	d, err := g.GetAllDeleteRequestsForUserWithOptions(ctx, userID, false, &deletion.TimeRange{
+	d, err := g.GetAllDeleteRequestsForUser(ctx, userID, false, &deletion.TimeRange{
 		Start: model.TimeFromUnixNano(startT.UnixNano()),
 		End:   model.TimeFromUnixNano(endT.UnixNano()),
 	})

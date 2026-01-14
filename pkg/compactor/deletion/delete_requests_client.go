@@ -19,8 +19,7 @@ type CompactorClient interface {
 }
 
 type DeleteRequestsClient interface {
-	GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]deletionproto.DeleteRequest, error)
-	GetAllDeleteRequestsForUserWithOptions(ctx context.Context, userID string, forQuerytimeFiltering bool, timeRange *TimeRange) ([]deletionproto.DeleteRequest, error)
+	GetAllDeleteRequestsForUser(ctx context.Context, userID string, forQuerytimeFiltering bool, timeRange *TimeRange) ([]deletionproto.DeleteRequest, error)
 	Stop()
 }
 
@@ -63,11 +62,7 @@ func NewDeleteRequestsClient(compactorClient CompactorClient, deleteClientMetric
 	return client, nil
 }
 
-func (c *deleteRequestsClient) GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]deletionproto.DeleteRequest, error) {
-	return c.GetAllDeleteRequestsForUserWithOptions(ctx, userID, true, nil)
-}
-
-func (c *deleteRequestsClient) GetAllDeleteRequestsForUserWithOptions(ctx context.Context, userID string, forQuerytimeFiltering bool, timeRange *TimeRange) ([]deletionproto.DeleteRequest, error) {
+func (c *deleteRequestsClient) GetAllDeleteRequestsForUser(ctx context.Context, userID string, forQuerytimeFiltering bool, timeRange *TimeRange) ([]deletionproto.DeleteRequest, error) {
 	// Only use cache when forQuerytimeFiltering is true and timeRange is nil (retains the existing behavior).
 	// Caching based on timeRange would increase cache keys which might not be suitable for in-memory cache.
 	// Revisit this if needed in future.
@@ -160,11 +155,7 @@ func NewNoOpDeleteRequestsClient() DeleteRequestsClient {
 
 type noOpDeleteRequestsClient struct{}
 
-func (n noOpDeleteRequestsClient) GetAllDeleteRequestsForUser(_ context.Context, _ string) ([]deletionproto.DeleteRequest, error) {
-	return nil, nil
-}
-
-func (n noOpDeleteRequestsClient) GetAllDeleteRequestsForUserWithOptions(_ context.Context, _ string, _ bool, _ *TimeRange) ([]deletionproto.DeleteRequest, error) {
+func (n noOpDeleteRequestsClient) GetAllDeleteRequestsForUser(_ context.Context, _ string, _ bool, _ *TimeRange) ([]deletionproto.DeleteRequest, error) {
 	return nil, nil
 }
 

@@ -107,8 +107,8 @@ func (s *compactorGRPCClient) GetAllDeleteRequestsForUser(ctx context.Context, u
 	}
 
 	if timeRange != nil {
-		req.StartTime = time.UnixMilli(timeRange.Start)
-		req.EndTime = time.UnixMilli(timeRange.End)
+		req.StartTime = time.UnixMilli(int64(timeRange.Start))
+		req.EndTime = time.UnixMilli(int64(timeRange.End))
 	}
 
 	grpcResp, err := s.grpcClient.GetDeleteRequests(ctx, req)
