@@ -5,7 +5,7 @@
 *.output
 *.tgz
 *.exe
-__debug_bin
+__debug_bin*
 requirements.lock
 mixin/vendor/
 cmd/loki/loki
@@ -36,17 +36,12 @@ dist
 .aws-sam
 .idea
 pkg/loki/wal
-tools/lambda-promtail/main
 tools/dev/kafka/data/
 pkg/ui/frontend/node_modules/*
 pkg/ui/frontend/.vite/*
 
 # Submodule added by `act` CLI
 _shared-workflows-dockerhub-login
-
-# Workspaces
-*.work
-*.work.sum
 
 # emacs
 .#*
@@ -58,6 +53,10 @@ _shared-workflows-dockerhub-login
 
 # vscode
 .vscode
+!.vscode/launch.json
+
+# zed
+.zed
 
 # nix
 nix/result
@@ -77,3 +76,7 @@ production/helm/loki/src/helm-test/helm-test
 cpu.prof
 mem.prof
 *.pprof
+
+**/.claude/settings.local.json
+
+host-*.json

@@ -14,6 +14,7 @@ import (
 
 	"github.com/parquet-go/parquet-go/encoding/thrift"
 	"github.com/parquet-go/parquet-go/format"
+	"github.com/parquet-go/parquet-go/internal/memory"
 )
 
 const (
@@ -728,7 +729,7 @@ func (c *FileColumnChunk) readBloomFilter(reader io.ReaderAt) (*FileBloomFilter,
 type FilePages struct {
 	chunk    *FileColumnChunk
 	rbuf     *bufio.Reader
-	rbufpool *sync.Pool
+	rbufpool *memory.Pool[bufio.Reader]
 	section  io.SectionReader
 
 	protocol thrift.CompactProtocol
@@ -740,6 +741,11 @@ type FilePages struct {
 	index      int
 	skip       int64
 	dictionary Dictionary
+
+	// track the last page to prevent re-reading the same page
+	lastPageIndex int
+	lastPage      Page
+	serveLastPage bool
 
 	bufferSize int
 }
@@ -758,6 +764,11 @@ func (f *FilePages) init(c *FileColumnChunk, reader io.ReaderAt) {
 	f.section = *io.NewSectionReader(reader, f.baseOffset, c.chunk.MetaData.TotalCompressedSize)
 	f.rbuf, f.rbufpool = getBufioReader(&f.section, f.bufferSize)
 	f.decoder.Reset(f.protocol.NewReader(f.rbuf))
+	f.index = 0
+	Release(f.lastPage)
+	f.lastPage = nil
+	f.lastPageIndex = -1
+	f.serveLastPage = false
 }
 
 // ReadDictionary returns the dictionary of the column chunk, or nil if the
@@ -781,6 +792,25 @@ func (f *FilePages) ReadPage() (Page, error) {
 		return nil, io.EOF
 	}
 
+	// seekToRowStart indicates whether we are in the process of seeking to the start
+	// of requested row to read, as opposed to reading sequentially values and moving through pages
+	seekToRowStart := f.skip > 0
+
+	// serve the last page if SeekToRow targeted the same page as last returned
+	if f.serveLastPage && f.lastPage != nil {
+		f.serveLastPage = false
+		f.index = f.lastPageIndex + 1
+
+		numRows := f.lastPage.NumRows()
+		if f.skip < numRows {
+			tail := f.lastPage.Slice(f.skip, numRows)
+			f.skip = 0
+			return tail, nil
+		}
+
+		f.skip -= numRows // fall through to reading the next page
+	}
+
 	for {
 		// Instantiate a new format.PageHeader for each page.
 		//
@@ -798,6 +828,14 @@ func (f *FilePages) ReadPage() (Page, error) {
 		if err := f.decoder.Decode(header); err != nil {
 			return nil, err
 		}
+
+		// if this is a dictionary page and we've already read and decoded the dictionary we can skip past it.
+		// call f.rbuf.Discard to skip the page data and realign f.rbuf with the next page header
+		if header.Type == format.DictionaryPage && f.dictionary != nil {
+			f.rbuf.Discard(int(header.CompressedPageSize))
+			continue
+		}
+
 		data, err := f.readPage(header, f.rbuf)
 		if err != nil {
 			return nil, err
@@ -828,9 +866,41 @@ func (f *FilePages) ReadPage() (Page, error) {
 			continue
 		}
 
+		if f.lastPage != nil {
+			Release(f.lastPage) // in case we cached a valid last page, release it now
+		}
+
+		// track last page
+		f.lastPage = page
+		Retain(page)
+		f.lastPageIndex = f.index
+
 		f.index++
 		if f.skip == 0 {
-			return page, nil
+			// f.skip==0 can be true:
+			//  (1) while reading a row of a column which has multiple values (ie. X.list.element) and values continue
+			//  across pages. In that case we just want to keep reading without skipping any values.
+			//  (2) when seeking to a specific row and trying to reach the start offset of the first
+			//  row in a new page.
+			if !seekToRowStart || header.Type != format.DataPage {
+				// keep reading values from beginning of new page
+				return page, nil
+			}
+			// We need to seek to beginning of row.
+			// V1 data pages do not necessarily start at a row boundary.
+			if page.NumRows() == 0 {
+				// if current page does not have any rows, continue until a page with at least 1 row is reached
+				Release(page)
+				continue
+			}
+			repLvls := page.RepetitionLevels()
+			if len(repLvls) > 0 && repLvls[0] == 0 {
+				// avoid page slice if page starts at a row boundary
+				return page, nil
+			}
+			tail := page.Slice(0, page.NumRows())
+			Release(page)
+			return tail, nil
 		}
 
 		// TODO: what about pages that don't embed the number of rows?
@@ -866,14 +936,14 @@ func (f *FilePages) readDictionary() error {
 	page := buffers.get(int(header.CompressedPageSize))
 	defer page.unref()
 
-	if _, err := io.ReadFull(rbuf, page.data); err != nil {
+	if _, err := io.ReadFull(rbuf, page.data.Slice()); err != nil {
 		return err
 	}
 
 	return f.readDictionaryPage(header, page)
 }
 
-func (f *FilePages) readDictionaryPage(header *format.PageHeader, page *buffer) error {
+func (f *FilePages) readDictionaryPage(header *format.PageHeader, page *buffer[byte]) error {
 	if header.DictionaryPageHeader == nil {
 		return ErrMissingPageHeader
 	}
@@ -885,7 +955,7 @@ func (f *FilePages) readDictionaryPage(header *format.PageHeader, page *buffer) 
 	return nil
 }
 
-func (f *FilePages) readDataPageV1(header *format.PageHeader, page *buffer) (Page, error) {
+func (f *FilePages) readDataPageV1(header *format.PageHeader, page *buffer[byte]) (Page, error) {
 	if header.DataPageHeader == nil {
 		return nil, ErrMissingPageHeader
 	}
@@ -897,7 +967,7 @@ func (f *FilePages) readDataPageV1(header *format.PageHeader, page *buffer) (Pag
 	return f.chunk.column.decodeDataPageV1(DataPageHeaderV1{header.DataPageHeader}, page, f.dictionary, header.UncompressedPageSize)
 }
 
-func (f *FilePages) readDataPageV2(header *format.PageHeader, page *buffer) (Page, error) {
+func (f *FilePages) readDataPageV2(header *format.PageHeader, page *buffer[byte]) (Page, error) {
 	if header.DataPageHeaderV2 == nil {
 		return nil, ErrMissingPageHeader
 	}
@@ -912,17 +982,17 @@ func (f *FilePages) readDataPageV2(header *format.PageHeader, page *buffer) (Pag
 	return f.chunk.column.decodeDataPageV2(DataPageHeaderV2{header.DataPageHeaderV2}, page, f.dictionary, header.UncompressedPageSize)
 }
 
-func (f *FilePages) readPage(header *format.PageHeader, reader *bufio.Reader) (*buffer, error) {
+func (f *FilePages) readPage(header *format.PageHeader, reader *bufio.Reader) (*buffer[byte], error) {
 	page := buffers.get(int(header.CompressedPageSize))
 	defer page.unref()
 
-	if _, err := io.ReadFull(reader, page.data); err != nil {
+	if _, err := io.ReadFull(reader, page.data.Slice()); err != nil {
 		return nil, err
 	}
 
 	if header.CRC != 0 {
 		headerChecksum := uint32(header.CRC)
-		bufferChecksum := crc32.ChecksumIEEE(page.data)
+		bufferChecksum := crc32.ChecksumIEEE(page.data.Slice())
 
 		if headerChecksum != bufferChecksum {
 			// The parquet specs indicate that corruption errors could be
@@ -947,12 +1017,17 @@ func (f *FilePages) readPage(header *format.PageHeader, reader *bufio.Reader) (*
 }
 
 // SeekToRow seeks to the given row index in the column chunk.
-func (f *FilePages) SeekToRow(rowIndex int64) (err error) {
+func (f *FilePages) SeekToRow(rowIndex int64) error {
 	if f.chunk == nil {
 		return io.ErrClosedPipe
 	}
+
 	if index := f.chunk.offsetIndex.Load(); index == nil {
-		_, err = f.section.Seek(f.dataOffset-f.baseOffset, io.SeekStart)
+		_, err := f.section.Seek(f.dataOffset-f.baseOffset, io.SeekStart)
+		if err != nil {
+			return err
+		}
+
 		f.skip = rowIndex
 		f.index = 0
 		if f.dictOffset > 0 {
@@ -960,18 +1035,55 @@ func (f *FilePages) SeekToRow(rowIndex int64) (err error) {
 		}
 	} else {
 		pages := index.index.PageLocations
-		index := sort.Search(len(pages), func(i int) bool {
+		target := sort.Search(len(pages), func(i int) bool {
 			return pages[i].FirstRowIndex > rowIndex
 		}) - 1
-		if index < 0 {
+		if target < 0 {
 			return ErrSeekOutOfRange
 		}
-		_, err = f.section.Seek(pages[index].Offset-f.baseOffset, io.SeekStart)
-		f.skip = rowIndex - pages[index].FirstRowIndex
-		f.index = index
+
+		f.skip = rowIndex - pages[target].FirstRowIndex
+
+		// positioned at the last returned page: serve it
+		if f.lastPage != nil && target == f.lastPageIndex {
+			f.serveLastPage = true
+			return nil
+		}
+
+		// already positioned at the target page
+		if f.index == target {
+			return nil
+		}
+
+		f.index = target
+
+		// if the target page is within the unread portion of the current buffer, just skip/discard some bytes
+		var pos int64
+		pos, err := f.section.Seek(0, io.SeekCurrent) // no-op seek to retrieve position
+		if err != nil {
+			return err
+		}
+
+		unread := int64(f.rbuf.Buffered())
+		currOffset := pos - unread                          // section relative offset
+		targetOffset := pages[target].Offset - f.baseOffset // section relative target offset
+		skipBytes := targetOffset - currOffset
+		if skipBytes == 0 {
+			return nil
+		}
+		if skipBytes > 0 && skipBytes <= unread {
+			_, err = f.rbuf.Discard(int(skipBytes))
+			return err
+		}
+
+		_, err = f.section.Seek(pages[target].Offset-f.baseOffset, io.SeekStart)
+		if err != nil {
+			return err
+		}
 	}
+
 	f.rbuf.Reset(&f.section)
-	return err
+	return nil
 }
 
 // Close closes the page reader.
@@ -985,6 +1097,10 @@ func (f *FilePages) Close() error {
 	f.dataOffset = 0
 	f.dictOffset = 0
 	f.index = 0
+	Release(f.lastPage)
+	f.lastPage = nil
+	f.lastPageIndex = -1
+	f.serveLastPage = false
 	f.skip = 0
 	f.dictionary = nil
 	return nil
@@ -998,28 +1114,26 @@ type putBufioReaderFunc func()
 
 var (
 	bufioReaderPoolLock sync.Mutex
-	bufioReaderPool     = map[int]*sync.Pool{}
+	bufioReaderPool     = map[int]*memory.Pool[bufio.Reader]{}
 )
 
-func getBufioReader(r io.Reader, bufferSize int) (*bufio.Reader, *sync.Pool) {
+func getBufioReader(r io.Reader, bufferSize int) (*bufio.Reader, *memory.Pool[bufio.Reader]) {
 	pool := getBufioReaderPool(bufferSize)
-	rbuf, _ := pool.Get().(*bufio.Reader)
-	if rbuf == nil {
-		rbuf = bufio.NewReaderSize(r, bufferSize)
-	} else {
-		rbuf.Reset(r)
-	}
+	rbuf := pool.Get(
+		func() *bufio.Reader { return bufio.NewReaderSize(r, bufferSize) },
+		func(rbuf *bufio.Reader) { rbuf.Reset(r) },
+	)
 	return rbuf, pool
 }
 
-func putBufioReader(rbuf *bufio.Reader, pool *sync.Pool) {
-	if rbuf != nil && pool != nil {
+func putBufioReader(rbuf *bufio.Reader, pool *memory.Pool[bufio.Reader]) {
+	if pool != nil {
 		rbuf.Reset(nil)
 		pool.Put(rbuf)
 	}
 }
 
-func getBufioReaderPool(size int) *sync.Pool {
+func getBufioReaderPool(size int) *memory.Pool[bufio.Reader] {
 	bufioReaderPoolLock.Lock()
 	defer bufioReaderPoolLock.Unlock()
 
@@ -1027,7 +1141,7 @@ func getBufioReaderPool(size int) *sync.Pool {
 		return pool
 	}
 
-	pool := &sync.Pool{}
+	pool := &memory.Pool[bufio.Reader]{}
 	bufioReaderPool[size] = pool
 	return pool
 }

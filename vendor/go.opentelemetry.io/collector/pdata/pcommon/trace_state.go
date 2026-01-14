@@ -11,19 +11,18 @@ import (
 //
 // Must use NewTraceState function to create new instances.
 // Important: zero-initialized instance is not valid for use.
-type TraceState internal.TraceState
+type TraceState internal.TraceStateWrapper
 
 func NewTraceState() TraceState {
-	state := internal.StateMutable
-	return TraceState(internal.NewTraceState(new(string), &state))
+	return TraceState(internal.NewTraceStateWrapper(new(string), internal.NewState()))
 }
 
 func (ms TraceState) getOrig() *string {
-	return internal.GetOrigTraceState(internal.TraceState(ms))
+	return internal.GetTraceStateOrig(internal.TraceStateWrapper(ms))
 }
 
 func (ms TraceState) getState() *internal.State {
-	return internal.GetTraceStateState(internal.TraceState(ms))
+	return internal.GetTraceStateState(internal.TraceStateWrapper(ms))
 }
 
 // AsRaw returns the string representation of the tracestate in w3c-trace-context format: https://www.w3.org/TR/trace-context/#tracestate-header
@@ -42,6 +41,10 @@ func (ms TraceState) FromRaw(v string) {
 func (ms TraceState) MoveTo(dest TraceState) {
 	ms.getState().AssertMutable()
 	dest.getState().AssertMutable()
+	// If they point to the same data, they are the same, nothing to do.
+	if ms.getOrig() == dest.getOrig() {
+		return
+	}
 	*dest.getOrig() = *ms.getOrig()
 	*ms.getOrig() = ""
 }

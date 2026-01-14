@@ -15,7 +15,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 )
 
-var errExpectedSingleCert = errors.New("Expected a single certificate")
+var errExpectedSingleCert = errors.New("expected a single certificate")
 
 func TestSignerRotation_ReturnErrorOnMissingIssuer(t *testing.T) {
 	c := signerRotation{}

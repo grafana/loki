@@ -6,6 +6,7 @@ package libc // import "modernc.org/libc"
 
 import (
 	"strings"
+	"time"
 	"unsafe"
 
 	"golang.org/x/sys/unix"
@@ -15,6 +16,11 @@ import (
 	"modernc.org/libc/sys/types"
 	"modernc.org/libc/utime"
 )
+
+// #define FE_DOWNWARD         0x0400
+// #define FE_UPWARD           0x0800
+const FE_DOWNWARD = 0x0400
+const FE_UPWARD = 0x0800
 
 // int sigaction(int signum, const struct sigaction *act, struct sigaction *oldact);
 func Xsigaction(t *TLS, signum int32, act, oldact uintptr) int32 {
@@ -241,12 +247,11 @@ func Xtime(t *TLS, tloc uintptr) types.Time_t {
 	if __ccgo_strace {
 		trc("t=%v tloc=%v, (%v:)", t, tloc, origin(2))
 	}
-	panic(todo(""))
-	// n := time.Now().UTC().Unix()
-	// if tloc != 0 {
-	// 	*(*types.Time_t)(unsafe.Pointer(tloc)) = types.Time_t(n)
-	// }
-	// return types.Time_t(n)
+	n := time.Now().UTC().Unix()
+	if tloc != 0 {
+		*(*types.Time_t)(unsafe.Pointer(tloc)) = types.Time_t(n)
+	}
+	return types.Time_t(n)
 }
 
 // // int getrlimit(int resource, struct rlimit *rlim);

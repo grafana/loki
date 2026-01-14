@@ -18,7 +18,10 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/internal/log"
 )
 
-const envVarSendCertChain = "AZURE_CLIENT_SEND_CERTIFICATE_CHAIN"
+const (
+	credNameEnvironment = "EnvironmentCredential"
+	envVarSendCertChain = "AZURE_CLIENT_SEND_CERTIFICATE_CHAIN"
+)
 
 // EnvironmentCredentialOptions contains optional parameters for EnvironmentCredential
 type EnvironmentCredentialOptions struct {
@@ -60,21 +63,13 @@ type EnvironmentCredentialOptions struct {
 // Note that this credential uses [ParseCertificates] to load the certificate and key from the file. If this
 // function isn't able to parse your certificate, use [ClientCertificateCredential] instead.
 //
-// # User with username and password
-//
-// AZURE_TENANT_ID: (optional) tenant to authenticate in. Defaults to "organizations".
-//
-// AZURE_CLIENT_ID: client ID of the application the user will authenticate to
-//
-// AZURE_USERNAME: a username (usually an email address)
-//
-// AZURE_PASSWORD: the user's password
-//
 // # Configuration for multitenant applications
 //
 // To enable multitenant authentication, set AZURE_ADDITIONALLY_ALLOWED_TENANTS with a semicolon delimited list of tenants
 // the credential may request tokens from in addition to the tenant specified by AZURE_TENANT_ID. Set
 // AZURE_ADDITIONALLY_ALLOWED_TENANTS to "*" to enable the credential to request a token from any tenant.
+//
+// [Entra ID documentation]: https://aka.ms/azsdk/identity/mfa
 type EnvironmentCredential struct {
 	cred azcore.TokenCredential
 }

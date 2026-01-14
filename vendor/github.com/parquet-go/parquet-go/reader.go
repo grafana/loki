@@ -46,7 +46,7 @@ func NewGenericReader[T any](input io.ReaderAt, options ...ReaderOption) *Generi
 		if t == nil {
 			c.Schema = rowGroup.Schema()
 		} else {
-			c.Schema = schemaOf(dereference(t))
+			c.Schema = schemaOf(dereference(t), c.SchemaConfig.StructTags...)
 		}
 	}
 
@@ -80,7 +80,7 @@ func NewGenericRowGroupReader[T any](rowGroup RowGroup, options ...ReaderOption)
 		if t == nil {
 			c.Schema = rowGroup.Schema()
 		} else {
-			c.Schema = schemaOf(dereference(t))
+			c.Schema = schemaOf(dereference(t), c.SchemaConfig.StructTags...)
 		}
 	}
 
@@ -391,7 +391,7 @@ func (r *Reader) Reset() {
 // of the underlying parquet file or an error will be returned.
 //
 // The method returns io.EOF when no more rows can be read from r.
-func (r *Reader) Read(row interface{}) error {
+func (r *Reader) Read(row any) error {
 	if rowType := dereference(reflect.TypeOf(row)); rowType.Kind() == reflect.Struct {
 		if r.seen != rowType {
 			if err := r.updateReadSchema(rowType); err != nil {

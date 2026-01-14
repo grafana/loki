@@ -10,7 +10,7 @@ keywords:
 
 This Helm Chart deploys Grafana Loki on Kubernetes.
 
-This Helm chart deploys Loki to run Loki in [microservice mode](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#microservices-mode) within a Kubernetes cluster. The microservices deployment mode runs components of Loki as distinct processes.
+This Helm chart deploys Loki to run Loki in [microservice mode](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#microservices-mode) within a Kubernetes cluster. The microservices deployment is also referred to as a Distributed deployment. The microservices deployment mode runs components of Loki as distinct processes.
 
 The default Helm chart deploys the following components:
 - **Compactor component** (1 replica): Compacts and processes stored data.
@@ -234,49 +234,49 @@ loki:
       # HTTP configuration settings
       http_config: {}
 
-  deploymentMode: Distributed
+deploymentMode: Distributed
 
-  # Disable minio storage
-  minio:
-      enabled: false
+# Disable minio storage
+minio:
+    enabled: false
 
-  ingester:
-    replicas: 3
-    zoneAwareReplication:
-      enabled: false
-  querier:
-    replicas: 3
-    maxUnavailable: 2
-  queryFrontend:
-    replicas: 2
-    maxUnavailable: 1
-  queryScheduler:
-    replicas: 2
-  distributor:
-    replicas: 3
-    maxUnavailable: 2
-  compactor:
-    replicas: 1
-  indexGateway:
-    replicas: 2
-    maxUnavailable: 1
+ingester:
+  replicas: 3
+  zoneAwareReplication:
+    enabled: false
+querier:
+  replicas: 3
+  maxUnavailable: 2
+queryFrontend:
+  replicas: 2
+  maxUnavailable: 1
+queryScheduler:
+  replicas: 2
+distributor:
+  replicas: 3
+  maxUnavailable: 2
+compactor:
+  replicas: 1
+indexGateway:
+  replicas: 2
+  maxUnavailable: 1
 
-  bloomPlanner:
-    replicas: 0
-  bloomBuilder:
-    replicas: 0
-  bloomGateway:
-    replicas: 0
+bloomPlanner:
+  replicas: 0
+bloomBuilder:
+  replicas: 0
+bloomGateway:
+  replicas: 0
 
-  backend:
-    replicas: 0
-  read:
-    replicas: 0
-  write:
-    replicas: 0
+backend:
+  replicas: 0
+read:
+  replicas: 0
+write:
+  replicas: 0
 
-  singleBinary:
-    replicas: 0
+singleBinary:
+  replicas: 0
 
 ```
 {{< /collapse >}}

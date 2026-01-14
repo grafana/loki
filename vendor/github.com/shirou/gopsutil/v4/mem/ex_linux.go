@@ -14,6 +14,7 @@ type ExVirtualMemory struct {
 	ActiveAnon   uint64 `json:"activeanon"`
 	InactiveAnon uint64 `json:"inactiveanon"`
 	Unevictable  uint64 `json:"unevictable"`
+	Percpu       uint64 `json:"percpu"`
 }
 
 func (v ExVirtualMemory) String() string {
@@ -31,7 +32,7 @@ func (ex *ExLinux) VirtualMemory() (*ExVirtualMemory, error) {
 	return ex.VirtualMemoryWithContext(context.Background())
 }
 
-func (ex *ExLinux) VirtualMemoryWithContext(ctx context.Context) (*ExVirtualMemory, error) {
+func (*ExLinux) VirtualMemoryWithContext(ctx context.Context) (*ExVirtualMemory, error) {
 	_, vmEx, err := fillFromMeminfoWithContext(ctx)
 	if err != nil {
 		return nil, err

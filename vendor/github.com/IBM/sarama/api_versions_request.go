@@ -11,12 +11,16 @@ type ApiVersionsRequest struct {
 	ClientSoftwareVersion string
 }
 
+func (r *ApiVersionsRequest) setVersion(v int16) {
+	r.Version = v
+}
+
 func (r *ApiVersionsRequest) encode(pe packetEncoder) (err error) {
 	if r.Version >= 3 {
-		if err := pe.putCompactString(r.ClientSoftwareName); err != nil {
+		if err := pe.putString(r.ClientSoftwareName); err != nil {
 			return err
 		}
-		if err := pe.putCompactString(r.ClientSoftwareVersion); err != nil {
+		if err := pe.putString(r.ClientSoftwareVersion); err != nil {
 			return err
 		}
 		pe.putEmptyTaggedFieldArray()
@@ -28,22 +32,20 @@ func (r *ApiVersionsRequest) encode(pe packetEncoder) (err error) {
 func (r *ApiVersionsRequest) decode(pd packetDecoder, version int16) (err error) {
 	r.Version = version
 	if r.Version >= 3 {
-		if r.ClientSoftwareName, err = pd.getCompactString(); err != nil {
+		if r.ClientSoftwareName, err = pd.getString(); err != nil {
 			return err
 		}
-		if r.ClientSoftwareVersion, err = pd.getCompactString(); err != nil {
-			return err
-		}
-		if _, err := pd.getEmptyTaggedFieldArray(); err != nil {
+		if r.ClientSoftwareVersion, err = pd.getString(); err != nil {
 			return err
 		}
 	}
 
-	return nil
+	_, err = pd.getEmptyTaggedFieldArray()
+	return err
 }
 
 func (r *ApiVersionsRequest) key() int16 {
-	return 18
+	return apiKeyApiVersions
 }
 
 func (r *ApiVersionsRequest) version() int16 {
@@ -59,6 +61,14 @@ func (r *ApiVersionsRequest) headerVersion() int16 {
 
 func (r *ApiVersionsRequest) isValidVersion() bool {
 	return r.Version >= 0 && r.Version <= 3
+}
+
+func (r *ApiVersionsRequest) isFlexible() bool {
+	return r.isFlexibleVersion(r.Version)
+}
+
+func (r *ApiVersionsRequest) isFlexibleVersion(version int16) bool {
+	return version >= 3
 }
 
 func (r *ApiVersionsRequest) requiredVersion() KafkaVersion {

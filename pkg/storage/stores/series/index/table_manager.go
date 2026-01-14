@@ -228,7 +228,7 @@ func (m *TableManager) loop(ctx context.Context) error {
 
 	// Sleep for a bit to spread the sync load across different times if the tablemanagers are all started at once.
 	select {
-	case <-time.After(time.Duration(rand.Int63n(int64(m.cfg.PollInterval)))): //#nosec G404 -- This is also just essentially jitter, no need for CSPRNG.
+	case <-time.After(time.Duration(rand.Int63n(int64(m.cfg.PollInterval)))): //#nosec G404 -- This is also just essentially jitter, no need for CSPRNG. -- nosemgrep: math-random-used
 	case <-ctx.Done():
 		return nil
 	}
@@ -555,7 +555,7 @@ func ExpectTables(ctx context.Context, client TableClient, expected []config.Tab
 	}
 
 	if len(expected) != len(tables) {
-		return fmt.Errorf("Unexpected number of tables: %v != %v", expected, tables)
+		return fmt.Errorf("unexpected number of tables: %v != %v", expected, tables)
 	}
 
 	sort.Strings(tables)
@@ -563,7 +563,7 @@ func ExpectTables(ctx context.Context, client TableClient, expected []config.Tab
 
 	for i, expect := range expected {
 		if tables[i] != expect.Name {
-			return fmt.Errorf("Expected '%s', found '%s'", expect.Name, tables[i])
+			return fmt.Errorf("expected '%s', found '%s'", expect.Name, tables[i])
 		}
 
 		desc, _, err := client.DescribeTable(ctx, expect.Name)
@@ -572,7 +572,7 @@ func ExpectTables(ctx context.Context, client TableClient, expected []config.Tab
 		}
 
 		if !desc.Equals(expect) {
-			return fmt.Errorf("Expected '%#v', found '%#v' for table '%s'", expect, desc, desc.Name)
+			return fmt.Errorf("expected '%#v', found '%#v' for table '%s'", expect, desc, desc.Name)
 		}
 	}
 

@@ -22,11 +22,11 @@ Some credential types support opt-in persistent token caching (see [the below ta
 
 Persistent caches are encrypted at rest using a mechanism that depends on the operating system:
 
-| Operating system | Encryption facility                            |
-| ---------------- | ---------------------------------------------- |
-| Linux            | kernel key retention service (keyctl)          |
-| macOS            | Keychain (requires cgo and native build tools) |
-| Windows          | Data Protection API (DPAPI)                    |
+| Operating system | Encryption facility                   | Limitations                                                                                                                                                                                                                                      |
+| ---------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Linux            | kernel key retention service (keyctl) | Cache data is lost on system shutdown because kernel keys are stored in memory. Depending on kernel compile options, data may also be lost on logout, or storage may be impossible because the key retention service isn't available. |
+| macOS            | Keychain                              | Building requires cgo and native build tools. Keychain access requires a graphical session, so persistent caching isn't possible in a headless environment such as an SSH session (macOS as host).                                               |
+| Windows          | Data Protection API (DPAPI)           | No specific limitations.                                                                                                                                                                                                                         |
 
 Persistent caching requires encryption. When the required encryption facility is unuseable, or the application is running on an unsupported OS, the persistent cache constructor returns an error. This doesn't mean that authentication is impossible, only that credentials can't persist authentication data and the application will need to reauthenticate the next time it runs. See the package documentation for examples showing how to configure persistent caching and access cached data for [users][user_example] and [service principals][sp_example].
 
@@ -40,6 +40,7 @@ The following table indicates the state of in-memory and persistent caching in e
 | ------------------------------ | ------------------------------------------------------------------- | ------------------------ |
 | `AzureCLICredential`           | Not Supported                                                       | Not Supported            |
 | `AzureDeveloperCLICredential`  | Not Supported                                                       | Not Supported            |
+| `AzurePowerShellCredential`    | Not Supported                                                       | Not Supported            |
 | `AzurePipelinesCredential`     | Supported                                                           | Supported                |
 | `ClientAssertionCredential`    | Supported                                                           | Supported                |
 | `ClientCertificateCredential`  | Supported                                                           | Supported                |
@@ -50,7 +51,6 @@ The following table indicates the state of in-memory and persistent caching in e
 | `InteractiveBrowserCredential` | Supported                                                           | Supported                |
 | `ManagedIdentityCredential`    | Supported                                                           | Not Supported            |
 | `OnBehalfOfCredential`         | Supported                                                           | Not Supported            |
-| `UsernamePasswordCredential`   | Supported                                                           | Supported                |
 | `WorkloadIdentityCredential`   | Supported                                                           | Supported                |
 
 [sp_example]: https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/azidentity#example-package-PersistentServicePrincipalAuthentication

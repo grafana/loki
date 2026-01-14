@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright 2015-2025 go-swagger maintainers
+// SPDX-License-Identifier: Apache-2.0
+
 package sortref
 
 import (
@@ -60,7 +63,7 @@ func (k Keys) Less(i, j int) bool {
 // KeyParts construct a SplitKey with all its /-separated segments decomposed. It is sortable.
 func KeyParts(key string) SplitKey {
 	var res []string
-	for _, part := range strings.Split(key[1:], "/") {
+	for part := range strings.SplitSeq(key[1:], "/") {
 		if part != "" {
 			res = append(res, jsonpointer.Unescape(part))
 		}
@@ -84,22 +87,6 @@ func (s SplitKey) DefinitionName() string {
 	}
 
 	return s[1]
-}
-
-func (s SplitKey) isKeyName(i int) bool {
-	if i <= 0 {
-		return false
-	}
-
-	count := 0
-	for idx := i - 1; idx > 0; idx-- {
-		if s[idx] != "properties" {
-			break
-		}
-		count++
-	}
-
-	return count%2 != 0
 }
 
 // PartAdder know how to construct the components of a new name
@@ -179,7 +166,8 @@ func (s SplitKey) ResponseName() string {
 
 // PathItemRef constructs a $ref object from a split key of the form /{path}/{method}
 func (s SplitKey) PathItemRef() spec.Ref {
-	if len(s) < 3 {
+	const minValidPathItems = 3
+	if len(s) < minValidPathItems {
 		return spec.Ref{}
 	}
 
@@ -198,4 +186,20 @@ func (s SplitKey) PathRef() spec.Ref {
 	}
 
 	return spec.MustCreateRef("#" + path.Join("/", paths, jsonpointer.Escape(s[1])))
+}
+
+func (s SplitKey) isKeyName(i int) bool {
+	if i <= 0 {
+		return false
+	}
+
+	count := 0
+	for idx := i - 1; idx > 0; idx-- {
+		if s[idx] != "properties" {
+			break
+		}
+		count++
+	}
+
+	return count%2 != 0
 }

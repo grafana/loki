@@ -3,6 +3,7 @@ package kgo
 import (
 	"bytes"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -173,9 +174,8 @@ type ConsumerBalancerBalance interface {
 	Balance(*ConsumerBalancer, map[string]int32) IntoSyncAssignment
 }
 
-// ParseConsumerSyncAssignment returns an assignment as specified a
-// kmsg.ConsumerMemberAssignment, that is, the type encoded in metadata for the
-// consumer protocol.
+// ParseConsumerSyncAssignment parses `assignment` as kmsg.ConsumerMemberAssignment
+// and returns the mapped topic => partitions assignment.
 func ParseConsumerSyncAssignment(assignment []byte) (map[string][]int32, error) {
 	var kassignment kmsg.ConsumerMemberAssignment
 	if err := kassignment.ReadFrom(assignment); err != nil {
@@ -295,7 +295,7 @@ func (p *BalancePlan) IntoSyncAssignment() []kmsg.SyncGroupRequestGroupAssignmen
 	for member, assignment := range p.plan {
 		var kassignment kmsg.ConsumerMemberAssignment
 		for topic, partitions := range assignment {
-			sort.Slice(partitions, func(i, j int) bool { return partitions[i] < partitions[j] })
+			slices.Sort(partitions)
 			assnTopic := kmsg.NewConsumerMemberAssignmentTopic()
 			assnTopic.Topic = topic
 			assnTopic.Partitions = partitions
@@ -403,7 +403,7 @@ func (g *groupConsumer) balanceGroup(proto string, members []kmsg.JoinGroupRespo
 			metaTopics = append(metaTopics, topic)
 		}
 
-		_, resp, err := g.cl.fetchMetadataForTopics(g.ctx, false, metaTopics)
+		_, resp, err := g.cl.fetchMetadataForTopics(g.ctx, false, metaTopics, nil)
 		if err != nil {
 			return nil, fmt.Errorf("unable to fetch metadata for group topics: %v", err)
 		}
@@ -432,7 +432,7 @@ func (g *groupConsumer) balanceGroup(proto string, members []kmsg.JoinGroupRespo
 			interests.Reset()
 			fmt.Fprintf(interests, "interested topics: %v, previously owned: ", meta.Topics)
 			for _, owned := range meta.OwnedPartitions {
-				sort.Slice(owned.Partitions, func(i, j int) bool { return owned.Partitions[i] < owned.Partitions[j] })
+				slices.Sort(owned.Partitions)
 				fmt.Fprintf(interests, "%s%v, ", owned.Topic, owned.Partitions)
 			}
 			strInterests := interests.String()

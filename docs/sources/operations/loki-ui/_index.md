@@ -1,18 +1,42 @@
 ---
-title: Loki Deployment UI 
+title: Loki deployment user interface
 menuTitle: Loki UI
-description: Describes how to setup and use the Loki Deployment UI
+description: Describes how to setup and use the Loki Deployment UI.
+draft: true
 weight: 100
 ---
-# Loki Deployment UI 
+
+# Loki deployment user interface 
 
 {{< admonition type="warning" >}}
-The Loki Deployment UI is experimental and subject to change. Before attempting to deploy the Loki make sure to consult the [Considerations](#considerations) section.
+The Loki Deployment UI is experimental and subject to change. Before attempting to deploy the Loki UI, make sure to consult the [Considerations](#considerations) section.
 {{< /admonition >}}
 
 The Loki Deployment UI is a web-based user interface that allows you to manage and monitor a Loki deployment in [microservice mode](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#microservices-mode) or [single binary mode](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#monolithic-mode).
 
 {{< figure max-width="100%" src="/media/docs/loki/loki-ui.png" caption="Loki UI Home Page" >}}
+
+## Considerations
+
+The Loki Deployment UI is experimental and subject to change. Before attempting to deploy the Loki make sure to consult the following considerations:
+
+1. Not all features are available in the Loki Deployment UI. Some features are still in development.
+1. There is no authentication or authorization in the Loki Deployment UI. This means that anyone with access to the UI can make make delete requests, change log levels, etc.
+1. This UI is not intended to replace meta-monitoring for Loki.
+
+## Deployment
+
+Each Loki component now includes the UI service. 
+
+When running Loki as a docker container, the UI service is enabled by default. No additional configuration is required. 
+
+For Loki Helm users discoverability of the UI service needs to be enabled in the Loki configuration. To enable the UI discoverability, add the following paramter to the `loki` section of the `values.yaml` file:
+
+```yaml
+loki:
+  ui:
+   enabled: true
+```
 
 ## Accessing the Loki Deployment UI
 
@@ -25,20 +49,8 @@ http://<LOKI_HOST>:<LOKI_PORT>/ui
 Where `<LOKI_HOST>` is the hostname or IP address of the Loki server and `<LOKI_PORT>` is the port number that Loki is running on. By default, Loki runs on port `3100`. If you are running Loki in Kubernetes the UI is made accessible via the `loki-gateway` service. Either by port-forwarding or by exposing the service via a LoadBalancer. 
 
 {{< admonition type="caution" >}}
-`/ui` currently cannot be changed to another path. This would require further contribution.
+Currently `/ui` cannot be changed to another path. This would require further contributions to the code base.
 {{< /admonition >}}
-
-## Deployment
-
-Each Loki component now includes the UI service. When running Loki as a docker container, the UI service is enabled by default. No additional configuration is required. 
-
-For Loki helm users discoverability of the UI service needs to be enabled in the Loki configuration. To enable the UI discoverability, add the following paramter to the `loki` section of the `values.yaml` file:
-
-```yaml
-loki:
-  ui:
-   enabled: true
-```
 
 ## Features
 
@@ -55,7 +67,6 @@ The Loki Deployment UI provides the following features to manage and monitor a L
 | [Limits](#limits) | View and manage tenant limits | Coming Soon |
 | [Labels](#labels) | View Label stats | Coming Soon |
 | [Rules](#rules) | View and manage rules | Coming Soon |
-
 
 ### Nodes
 
@@ -98,7 +109,6 @@ Finally, three tabs complete the Node page:
 This feature is coming soon.
 
 {{< /admonition >}}
-
 
 ### Rings
 
@@ -195,10 +205,3 @@ This feature is coming soon.
 This feature is coming soon.
 
 {{< /admonition >}}
-
-## Considerations
-
-The Loki Deployment UI is experimental and subject to change. Before attempting to deploy the Loki make sure to consult the following considerations:
-1. Not all features are available in the Loki Deployment UI. Some features are still in development.
-2. There is no authentication or authorization in the Loki Deployment UI. This means that anyone with access to the UI can make make delete requests, change log levels, etc.
-3. This UI is not intended to replace meta monitoring for Loki.

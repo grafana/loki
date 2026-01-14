@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"math/rand"
 	"strconv"
 	"sync"
@@ -248,25 +249,16 @@ func (ca *clusterAdmin) CreateTopic(topic string, detail *TopicDetail, validateO
 		return errors.New("you must specify topic details")
 	}
 
-	topicDetails := make(map[string]*TopicDetail)
-	topicDetails[topic] = detail
-
-	request := &CreateTopicsRequest{
-		TopicDetails: topicDetails,
-		ValidateOnly: validateOnly,
-		Timeout:      ca.conf.Admin.Timeout,
+	topicDetails := map[string]*TopicDetail{
+		topic: detail,
 	}
 
-	if ca.conf.Version.IsAtLeast(V2_0_0_0) {
-		// Version 3 is the same as version 2 (brokers response before throttling)
-		request.Version = 3
-	} else if ca.conf.Version.IsAtLeast(V0_11_0_0) {
-		// Version 2 is the same as version 1 (response has ThrottleTime)
-		request.Version = 2
-	} else if ca.conf.Version.IsAtLeast(V0_10_2_0) {
-		// Version 1 adds validateOnly.
-		request.Version = 1
-	}
+	request := NewCreateTopicsRequest(
+		ca.conf.Version,
+		topicDetails,
+		ca.conf.Admin.Timeout,
+		validateOnly,
+	)
 
 	return ca.retryOnError(isRetriableControllerError, func() error {
 		b, err := ca.Controller()
@@ -375,7 +367,7 @@ func (ca *clusterAdmin) ListTopics() (map[string]TopicDetail, error) {
 		return nil, err
 	}
 
-	topicsDetailsMap := make(map[string]TopicDetail)
+	topicsDetailsMap := make(map[string]TopicDetail, len(metadataResp.Topics))
 
 	var describeConfigsResources []*ConfigResource
 
@@ -384,7 +376,7 @@ func (ca *clusterAdmin) ListTopics() (map[string]TopicDetail, error) {
 			NumPartitions: int32(len(topic.Partitions)),
 		}
 		if len(topic.Partitions) > 0 {
-			topicDetails.ReplicaAssignment = map[int32][]int32{}
+			topicDetails.ReplicaAssignment = make(map[int32][]int32, len(topic.Partitions))
 			for _, partition := range topic.Partitions {
 				topicDetails.ReplicaAssignment[partition.ID] = partition.Replicas
 			}
@@ -423,7 +415,6 @@ func (ca *clusterAdmin) ListTopics() (map[string]TopicDetail, error) {
 		topicDetails.ConfigEntries = make(map[string]*string)
 
 		for _, entry := range resource.Configs {
-			entry := entry
 			// only include non-default non-sensitive config
 			// (don't actually think topic config will ever be sensitive)
 			if entry.Default || entry.Sensitive {
@@ -449,7 +440,10 @@ func (ca *clusterAdmin) DeleteTopic(topic string) error {
 	}
 
 	// Versions 0, 1, 2, and 3 are the same.
-	if ca.conf.Version.IsAtLeast(V2_1_0_0) {
+	// Version 4 is first flexible version.
+	if ca.conf.Version.IsAtLeast(V2_4_0_0) {
+		request.Version = 4
+	} else if ca.conf.Version.IsAtLeast(V2_1_0_0) {
 		request.Version = 3
 	} else if ca.conf.Version.IsAtLeast(V2_0_0_0) {
 		request.Version = 2
@@ -489,8 +483,12 @@ func (ca *clusterAdmin) CreatePartitions(topic string, count int32, assignment [
 		return ErrInvalidTopic
 	}
 
-	topicPartitions := make(map[string]*TopicPartition)
-	topicPartitions[topic] = &TopicPartition{Count: count, Assignment: assignment}
+	topicPartitions := map[string]*TopicPartition{
+		topic: {
+			Count:      count,
+			Assignment: assignment,
+		},
+	}
 
 	request := &CreatePartitionsRequest{
 		TopicPartitions: topicPartitions,
@@ -625,13 +623,14 @@ func (ca *clusterAdmin) DeleteRecords(topic string, partitionOffsets map[int32]i
 		partitionPerBroker[broker] = append(partitionPerBroker[broker], partition)
 	}
 	for broker, partitions := range partitionPerBroker {
-		topics := make(map[string]*DeleteRecordsRequestTopic)
-		recordsToDelete := make(map[int32]int64)
+		recordsToDelete := make(map[int32]int64, len(partitions))
 		for _, p := range partitions {
 			recordsToDelete[p] = partitionOffsets[p]
 		}
-		topics[topic] = &DeleteRecordsRequestTopic{
-			PartitionOffsets: recordsToDelete,
+		topics := map[string]*DeleteRecordsRequestTopic{
+			topic: {
+				PartitionOffsets: recordsToDelete,
+			},
 		}
 		request := &DeleteRecordsRequest{
 			Topics:  topics,
@@ -795,6 +794,10 @@ func (ca *clusterAdmin) IncrementalAlterConfig(resourceType ConfigResourceType, 
 		ValidateOnly: validateOnly,
 	}
 
+	if ca.conf.Version.IsAtLeast(V2_4_0_0) {
+		request.Version = 1
+	}
+
 	var (
 		b   *Broker
 		err error
@@ -823,11 +826,12 @@ func (ca *clusterAdmin) IncrementalAlterConfig(resourceType ConfigResourceType, 
 
 	for _, rspResource := range rsp.Resources {
 		if rspResource.Name == name {
-			if rspResource.ErrorMsg != "" {
-				return errors.New(rspResource.ErrorMsg)
-			}
-			if rspResource.ErrorCode != 0 {
-				return KError(rspResource.ErrorCode)
+			if rspResource.ErrorCode != int16(ErrNoError) {
+				err = KError(rspResource.ErrorCode)
+				if rspResource.ErrorMsg != "" {
+					err = fmt.Errorf("%w: %s", err, rspResource.ErrorMsg)
+				}
+				return err
 			}
 		}
 	}
@@ -982,7 +986,8 @@ func (ca *clusterAdmin) DescribeConsumerGroups(groups []string) (result []*Group
 
 		if ca.conf.Version.IsAtLeast(V2_4_0_0) {
 			// Starting in version 4, the response will include group.instance.id info for members.
-			describeReq.Version = 4
+			// Starting in version 5, the response uses flexible encoding
+			describeReq.Version = 5
 		} else if ca.conf.Version.IsAtLeast(V2_3_0_0) {
 			// Starting in version 3, authorized operations can be requested.
 			describeReq.Version = 3
@@ -1019,7 +1024,10 @@ func (ca *clusterAdmin) ListConsumerGroups() (allGroups map[string]string, err e
 			_ = b.Open(conf) // Ensure that broker is opened
 
 			request := &ListGroupsRequest{}
-			if ca.conf.Version.IsAtLeast(V2_6_0_0) {
+			if ca.conf.Version.IsAtLeast(V3_8_0_0) {
+				// Version 5 adds the TypesFilter field (KIP-848).
+				request.Version = 5
+			} else if ca.conf.Version.IsAtLeast(V2_6_0_0) {
 				// Version 4 adds the StatesFilter field (KIP-518).
 				request.Version = 4
 			} else if ca.conf.Version.IsAtLeast(V2_4_0_0) {
@@ -1039,12 +1047,7 @@ func (ca *clusterAdmin) ListConsumerGroups() (allGroups map[string]string, err e
 				return
 			}
 
-			groups := make(map[string]string)
-			for group, typ := range response.Groups {
-				groups[group] = typ
-			}
-
-			groupMaps <- groups
+			groupMaps <- maps.Clone(response.Groups)
 		}(b, ca.conf)
 	}
 
@@ -1053,9 +1056,7 @@ func (ca *clusterAdmin) ListConsumerGroups() (allGroups map[string]string, err e
 	close(errChan)
 
 	for groupMap := range groupMaps {
-		for group, protocolType := range groupMap {
-			allGroups[group] = protocolType
-		}
+		maps.Copy(allGroups, groupMap)
 	}
 
 	// Intentionally return only the first error for simplicity
@@ -1133,7 +1134,10 @@ func (ca *clusterAdmin) DeleteConsumerGroup(group string) error {
 	request := &DeleteGroupsRequest{
 		Groups: []string{group},
 	}
-	if ca.conf.Version.IsAtLeast(V2_0_0_0) {
+
+	if ca.conf.Version.IsAtLeast(V2_4_0_0) {
+		request.Version = 2
+	} else if ca.conf.Version.IsAtLeast(V2_0_0_0) {
 		request.Version = 1
 	}
 
@@ -1168,10 +1172,12 @@ func (ca *clusterAdmin) DeleteConsumerGroup(group string) error {
 }
 
 func (ca *clusterAdmin) DescribeLogDirs(brokerIds []int32) (allLogDirs map[int32][]DescribeLogDirsResponseDirMetadata, err error) {
-	allLogDirs = make(map[int32][]DescribeLogDirsResponseDirMetadata)
-
+	type result struct {
+		id      int32
+		logdirs []DescribeLogDirsResponseDirMetadata
+	}
 	// Query brokers in parallel, since we may have to query multiple brokers
-	logDirsMaps := make(chan map[int32][]DescribeLogDirsResponseDirMetadata, len(brokerIds))
+	logDirsResults := make(chan result, len(brokerIds))
 	errChan := make(chan error, len(brokerIds))
 	wg := sync.WaitGroup{}
 
@@ -1187,7 +1193,13 @@ func (ca *clusterAdmin) DescribeLogDirs(brokerIds []int32) (allLogDirs map[int32
 			_ = b.Open(conf) // Ensure that broker is opened
 
 			request := &DescribeLogDirsRequest{}
-			if ca.conf.Version.IsAtLeast(V2_0_0_0) {
+			if ca.conf.Version.IsAtLeast(V3_3_0_0) {
+				request.Version = 4
+			} else if ca.conf.Version.IsAtLeast(V3_2_0_0) {
+				request.Version = 3
+			} else if ca.conf.Version.IsAtLeast(V2_6_0_0) {
+				request.Version = 2
+			} else if ca.conf.Version.IsAtLeast(V2_0_0_0) {
 				request.Version = 1
 			}
 			response, err := b.DescribeLogDirs(request)
@@ -1195,20 +1207,21 @@ func (ca *clusterAdmin) DescribeLogDirs(brokerIds []int32) (allLogDirs map[int32
 				errChan <- err
 				return
 			}
-			logDirs := make(map[int32][]DescribeLogDirsResponseDirMetadata)
-			logDirs[b.ID()] = response.LogDirs
-			logDirsMaps <- logDirs
+			if !errors.Is(response.ErrorCode, ErrNoError) {
+				errChan <- response.ErrorCode
+				return
+			}
+			logDirsResults <- result{id: b.ID(), logdirs: response.LogDirs}
 		}(broker, ca.conf)
 	}
 
 	wg.Wait()
-	close(logDirsMaps)
+	close(logDirsResults)
 	close(errChan)
 
-	for logDirsMap := range logDirsMaps {
-		for id, logDirs := range logDirsMap {
-			allLogDirs[id] = logDirs
-		}
+	allLogDirs = make(map[int32][]DescribeLogDirsResponseDirMetadata, len(brokerIds))
+	for logDirsResult := range logDirsResults {
+		allLogDirs[logDirsResult.id] = logDirsResult.logdirs
 	}
 
 	// Intentionally return only the first error for simplicity
@@ -1282,10 +1295,11 @@ func (ca *clusterAdmin) AlterUserScramCredentials(u []AlterUserScramCredentialsU
 // Contains components: strict = false
 // Contains only components: strict = true
 func (ca *clusterAdmin) DescribeClientQuotas(components []QuotaFilterComponent, strict bool) ([]DescribeClientQuotasEntry, error) {
-	request := &DescribeClientQuotasRequest{
-		Components: components,
-		Strict:     strict,
-	}
+	request := NewDescribeClientQuotasRequest(
+		ca.conf.Version,
+		components,
+		strict,
+	)
 
 	b, err := ca.Controller()
 	if err != nil {

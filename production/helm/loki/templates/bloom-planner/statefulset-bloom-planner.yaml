@@ -4,7 +4,7 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: {{ include "loki.bloomPlannerFullname" . }}
-  namespace: {{ .Release.Namespace }}
+  namespace: {{ include "loki.namespace" . }}
   labels:
     {{- include "loki.bloomPlannerLabels" . | nindent 4 }}
   {{- with .Values.loki.annotations }}
@@ -40,7 +40,7 @@ spec:
       labels:
         {{- include "loki.bloomPlannerLabels" . | nindent 8 }}
         app.kubernetes.io/part-of: memberlist
-        {{- with merge .Values.loki.podLabels .Values.bloomPlanner.podLabels }}
+        {{- with merge (dict) .Values.loki.podLabels .Values.bloomPlanner.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
@@ -53,9 +53,16 @@ spec:
       hostAliases:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- if and (semverCompare ">=1.33-0" (include "loki.kubeVersion" .)) (kindIs "bool" .Values.bloomPlanner.hostUsers) }}
+      hostUsers: {{ .Values.bloomPlanner.hostUsers }}
+      {{- end }}
+      {{- with .Values.bloomPlanner.dnsConfig | default .Values.loki.dnsConfig }}
+      dnsConfig:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       {{- include "loki.bloomPlannerPriorityClassName" . | nindent 6 }}
       securityContext:
-        {{- toYaml .Values.loki.podSecurityContext | nindent 8 }}
+        {{- include "loki.podSecurityContext" . | nindent 8 }}
       terminationGracePeriodSeconds: {{ .Values.bloomPlanner.terminationGracePeriodSeconds }}
       {{- with .Values.bloomPlanner.initContainers }}
       initContainers:
@@ -72,7 +79,7 @@ spec:
           args:
             - -config.file=/etc/loki/config/config.yaml
             - -target=bloom-planner
-            {{- with .Values.bloomPlanner.extraArgs }}
+            {{- with (concat .Values.global.extraArgs .Values.bloomPlanner.extraArgs) | uniq }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           ports:
@@ -85,17 +92,19 @@ spec:
             - name: http-memberlist
               containerPort: 7946
               protocol: TCP
-          {{- with .Values.bloomPlanner.extraEnv }}
+          {{- with (concat .Values.global.extraEnv .Values.bloomPlanner.extraEnv) | uniq }}
           env:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with .Values.bloomPlanner.extraEnvFrom }}
+          {{- with (concat .Values.global.extraEnvFrom .Values.bloomPlanner.extraEnvFrom) | uniq }}
           envFrom:
             {{- toYaml . | nindent 12 }}
           {{- end }}
           securityContext:
             {{- toYaml .Values.loki.containerSecurityContext | nindent 12 }}
+          {{- include "loki.bloomPlanner.livenessProbe" . | nindent 10 }}
           {{- include "loki.bloomPlanner.readinessProbe" . | nindent 10 }}
+          {{- include "loki.bloomPlanner.startupProbe" . | nindent 10 }}
           volumeMounts:
             - name: temp
               mountPath: /tmp
@@ -109,7 +118,7 @@ spec:
             - name: license
               mountPath: /etc/loki/license
             {{- end }}
-            {{- with .Values.bloomPlanner.extraVolumeMounts }}
+            {{- with (concat .Values.global.extraVolumeMounts .Values.bloomPlanner.extraVolumeMounts) | uniq }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           {{- with .Values.bloomPlanner.resources }}
@@ -121,7 +130,7 @@ spec:
         {{- end }}
       {{- with .Values.bloomPlanner.affinity }}
       affinity:
-        {{- toYaml . | nindent 8 }}
+        {{- tpl ( . | toYaml) $ | nindent 8 }}
       {{- end }}
       {{- with .Values.bloomPlanner.nodeSelector }}
       nodeSelector:
@@ -152,7 +161,7 @@ spec:
         - name: data
           emptyDir: {}
         {{- end }}
-        {{- with .Values.bloomPlanner.extraVolumes }}
+        {{- with (concat .Values.global.extraVolumes .Values.bloomPlanner.extraVolumes) | uniq }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
   {{- if .Values.bloomPlanner.persistence.enabled }}
@@ -168,9 +177,12 @@ spec:
         {{- end }}
       spec:
         accessModes:
-          - ReadWriteOnce
+          {{- toYaml .accessModes | nindent 10 }}
         {{- with .storageClass }}
         storageClassName: {{ if (eq "-" .) }}""{{ else }}{{ . }}{{ end }}
+        {{- end }}
+        {{- with .volumeAttributesClassName }}
+        volumeAttributesClassName: {{ . }}
         {{- end }}
         resources:
           requests:

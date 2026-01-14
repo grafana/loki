@@ -29,6 +29,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/ibmcloud"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/noop"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/openstack"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/testutils"
 	"github.com/grafana/loki/v3/pkg/storage/config"
@@ -469,7 +470,18 @@ func NewIndexClient(component string, periodCfg config.PeriodConfig, tableRange 
 }
 
 // NewChunkClient makes a new chunk.Client of the desired types.
-func NewChunkClient(name, component string, cfg Config, schemaCfg config.SchemaConfig, cc congestion.Controller, registerer prometheus.Registerer, clientMetrics ClientMetrics, logger log.Logger) (client.Client, error) {
+func NewChunkClient(name, component string, cfg Config, schemaCfg config.SchemaConfig, p config.PeriodConfig, registerer prometheus.Registerer, clientMetrics ClientMetrics, logger log.Logger) (client.Client, error) {
+	var cc congestion.Controller
+	ccCfg := cfg.CongestionControl
+
+	if ccCfg.Enabled {
+		cc = congestion.NewController(
+			ccCfg,
+			logger,
+			congestion.NewMetrics(fmt.Sprintf("%s-%s", name, p.From.String()), ccCfg),
+		)
+	}
+
 	var storeType = name
 
 	if cfg.UseThanosObjstore {
@@ -544,6 +556,10 @@ func NewChunkClient(name, component string, cfg Config, schemaCfg config.SchemaC
 			if cfg.CongestionControl.Enabled {
 				c = cc.Wrap(c)
 			}
+			return client.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
+
+		case types.StorageTypeNoop:
+			c, _ := noop.NewNoopObjectClient()
 			return client.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
 		}
 

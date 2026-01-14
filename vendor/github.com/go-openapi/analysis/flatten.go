@@ -1,23 +1,12 @@
-// Copyright 2015 go-swagger maintainers
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//    http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-FileCopyrightText: Copyright 2015-2025 go-swagger maintainers
+// SPDX-License-Identifier: Apache-2.0
 
 package analysis
 
 import (
-	"fmt"
 	"log"
 	"path"
+	"slices"
 	"sort"
 	"strings"
 
@@ -52,9 +41,9 @@ type context struct {
 
 func newContext() *context {
 	return &context{
-		newRefs:  make(map[string]*newRef, 150),
+		newRefs:  make(map[string]*newRef, allocMediumMap),
 		warnings: make([]string, 0),
-		resolved: make(map[string]string, 50),
+		resolved: make(map[string]string, allocMediumMap),
 	}
 }
 
@@ -251,7 +240,7 @@ func nameInlinedSchemas(opts *FlattenOpts) error {
 
 		asch, err := Schema(SchemaOpts{Schema: sch.Schema, Root: opts.Swagger(), BasePath: opts.BasePath})
 		if err != nil {
-			return fmt.Errorf("schema analysis [%s]: %w", key, err)
+			return ErrAtKey(key, err)
 		}
 
 		if asch.isAnalyzedAsComplex() { // move complex schemas to definitions
@@ -320,7 +309,7 @@ func importNewRef(entry sortref.RefRevIdx, refStr string, opts *FlattenOpts) err
 
 	sch, err := spec.ResolveRefWithBase(opts.Swagger(), &entry.Ref, opts.ExpandOpts(false))
 	if err != nil {
-		return fmt.Errorf("could not resolve schema: %w", err)
+		return ErrResolveSchema(err)
 	}
 
 	// at this stage only $ref analysis matters
@@ -335,7 +324,7 @@ func importNewRef(entry sortref.RefRevIdx, refStr string, opts *FlattenOpts) err
 	// now rewrite those refs with rebase
 	for key, ref := range partialAnalyzer.references.allRefs {
 		if err := replace.UpdateRef(sch, key, spec.MustCreateRef(normalize.RebaseRef(entry.Ref.String(), ref.String()))); err != nil {
-			return fmt.Errorf("failed to rewrite ref for key %q at %s: %w", key, entry.Ref.String(), err)
+			return ErrRewriteRef(key, entry.Ref.String(), err)
 		}
 	}
 
@@ -429,7 +418,7 @@ func importExternalReferences(opts *FlattenOpts) (bool, error) {
 			ref := spec.MustCreateRef(r.path)
 			sch, err := spec.ResolveRefWithBase(opts.Swagger(), &ref, opts.ExpandOpts(false))
 			if err != nil {
-				return false, fmt.Errorf("could not resolve schema: %w", err)
+				return false, ErrResolveSchema(err)
 			}
 
 			r.schema = sch
@@ -542,14 +531,7 @@ func updateRefParents(allRefs map[string]spec.Ref, r *newRef) {
 			continue
 		}
 
-		found := false
-		for _, p := range r.parents {
-			if p == k {
-				found = true
-
-				break
-			}
-		}
+		found := slices.Contains(r.parents, k)
 		if !found {
 			r.parents = append(r.parents, k)
 		}
@@ -643,7 +625,7 @@ func stripOAIGenForRef(opts *FlattenOpts, k string, r *newRef) (bool, error) {
 		}
 
 		debugLog("re-inlined schema: parent: %s, %t", pr[0], asch.isAnalyzedAsComplex())
-		replacedWithComplex = replacedWithComplex || !(path.Dir(pr[0]) == definitionsPath) && asch.isAnalyzedAsComplex()
+		replacedWithComplex = replacedWithComplex || path.Dir(pr[0]) != definitionsPath && asch.isAnalyzedAsComplex()
 	}
 
 	return replacedWithComplex, nil
@@ -666,7 +648,7 @@ func namePointers(opts *FlattenOpts) error {
 
 		result, err := replace.DeepestRef(opts.Swagger(), opts.ExpandOpts(false), ref)
 		if err != nil {
-			return fmt.Errorf("at %s, %w", k, err)
+			return ErrAtKey(k, err)
 		}
 
 		replacingRef := result.Ref
@@ -697,7 +679,7 @@ func namePointers(opts *FlattenOpts) error {
 		// update current replacement, which may have been updated by previous changes of deeper elements
 		result, erd := replace.DeepestRef(opts.Swagger(), opts.ExpandOpts(false), v.Ref)
 		if erd != nil {
-			return fmt.Errorf("at %s, %w", key, erd)
+			return ErrAtKey(key, erd)
 		}
 
 		if opts.flattenContext != nil {
@@ -743,9 +725,9 @@ func flattenAnonPointer(key string, v SchemaRef, refsToReplace map[string]Schema
 	// qualify the expanded schema
 	asch, ers := Schema(SchemaOpts{Schema: v.Schema, Root: opts.Swagger(), BasePath: opts.BasePath})
 	if ers != nil {
-		return fmt.Errorf("schema analysis [%s]: %w", key, ers)
+		return ErrAtKey(key, ers)
 	}
-	callers := make([]string, 0, 64)
+	callers := make([]string, 0, allocMediumMap)
 
 	debugLog("looking for callers")
 
@@ -753,7 +735,7 @@ func flattenAnonPointer(key string, v SchemaRef, refsToReplace map[string]Schema
 	for k, w := range an.references.allRefs {
 		r, err := replace.DeepestRef(opts.Swagger(), opts.ExpandOpts(false), w)
 		if err != nil {
-			return fmt.Errorf("at %s, %w", key, err)
+			return ErrAtKey(key, err)
 		}
 
 		if opts.flattenContext != nil {

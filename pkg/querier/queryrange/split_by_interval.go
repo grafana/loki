@@ -7,12 +7,12 @@ import (
 
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/tenant"
-	"github.com/opentracing/opentracing-go"
-	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
+	attribute "go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -154,11 +154,13 @@ func (h *splitByInterval) Process(
 func (h *splitByInterval) loop(ctx context.Context, ch <-chan *lokiResult, next queryrangebase.Handler) {
 	for data := range ch {
 
-		sp, ctx := opentracing.StartSpanFromContext(ctx, "interval")
-		data.req.LogToSpan(sp)
+		ctx, sp := tracer.Start(ctx, "interval")
+		if sp.SpanContext().IsSampled() {
+			data.req.LogToSpan(sp)
+		}
 
 		resp, err := next.Do(ctx, data.req)
-		sp.Finish()
+		sp.End()
 
 		select {
 		case <-ctx.Done():
@@ -201,9 +203,7 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 		return h.next.Do(ctx, r)
 	}
 
-	if sp := opentracing.SpanFromContext(ctx); sp != nil {
-		sp.LogFields(otlog.Int("n_intervals", len(intervals)))
-	}
+	trace.SpanFromContext(ctx).SetAttributes(attribute.Int("n_intervals", len(intervals)))
 
 	if len(intervals) == 1 {
 		return h.next.Do(ctx, intervals[0])
@@ -265,7 +265,7 @@ func maxRangeVectorAndOffsetDuration(expr syntax.Expr) (time.Duration, time.Dura
 	}
 
 	var maxRVDuration, maxOffset time.Duration
-	expr.Walk(func(e syntax.Expr) {
+	expr.Walk(func(e syntax.Expr) bool {
 		if r, ok := e.(*syntax.LogRangeExpr); ok {
 			if r.Interval > maxRVDuration {
 				maxRVDuration = r.Interval
@@ -274,6 +274,7 @@ func maxRangeVectorAndOffsetDuration(expr syntax.Expr) (time.Duration, time.Dura
 				maxOffset = r.Offset
 			}
 		}
+		return true
 	})
 	return maxRVDuration, maxOffset
 }

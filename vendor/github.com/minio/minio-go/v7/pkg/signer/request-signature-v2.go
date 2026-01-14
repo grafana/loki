@@ -48,11 +48,11 @@ func encodeURL2Path(req *http.Request, virtualHost bool) (path string) {
 			path = "/" + bucketName
 			path += req.URL.Path
 			path = s3utils.EncodePath(path)
-			return
+			return path
 		}
 	}
 	path = s3utils.EncodePath(req.URL.Path)
-	return
+	return path
 }
 
 // PreSignV2 - presign the request in following style.
@@ -148,7 +148,7 @@ func SignV2(req http.Request, accessKeyID, secretAccessKey string, virtualHost b
 
 	// Prepare auth header.
 	authHeader := new(bytes.Buffer)
-	authHeader.WriteString(fmt.Sprintf("%s %s:", signV2Algorithm, accessKeyID))
+	fmt.Fprintf(authHeader, "%s %s:", signV2Algorithm, accessKeyID)
 	encoder := base64.NewEncoder(base64.StdEncoding, authHeader)
 	encoder.Write(hm.Sum(nil))
 	encoder.Close()

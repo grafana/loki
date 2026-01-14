@@ -59,12 +59,36 @@ func Test_getHTTPRequestHeader(t *testing.T) {
 		}, http.Header{
 			"Authorization": []string{"Bearer " + "secureToken"},
 		}, false},
+		{"custom-headers", DefaultClient{
+			CustomHeaders: []string{"X-Custom-Header: custom-value", "X-Another-Header: another-value"},
+		}, http.Header{
+			"X-Custom-Header":  []string{"custom-value"},
+			"X-Another-Header": []string{"another-value"},
+		}, false},
+		{"custom-headers-with-spaces", DefaultClient{
+			CustomHeaders: []string{"X-Custom-Header:  custom-value  ", "X-Another-Header:  another-value  "},
+		}, http.Header{
+			"X-Custom-Header":  []string{"custom-value"},
+			"X-Another-Header": []string{"another-value"},
+		}, false},
+		{"custom-headers-invalid-format", DefaultClient{
+			CustomHeaders: []string{"InvalidHeader"},
+		}, nil, true},
+		{"custom-headers-empty-name", DefaultClient{
+			CustomHeaders: []string{" : value"},
+		}, nil, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := tt.client.getHTTPRequestHeader()
 			if (err != nil) != tt.wantErr {
 				t.Errorf("getHTTPRequestHeader() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			// If we expect an error, we shouldn't have any headers
+			if tt.wantErr {
+				assert.Nil(t, got)
 				return
 			}
 

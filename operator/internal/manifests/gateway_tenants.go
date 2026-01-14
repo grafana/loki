@@ -1,10 +1,11 @@
 package manifests
 
 import (
+	"maps"
 	"strings"
 
+	"dario.cat/mergo"
 	"github.com/ViaQ/logerr/v2/kverrors"
-	"github.com/imdario/mergo"
 	routev1 "github.com/openshift/api/route/v1"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	appsv1 "k8s.io/api/apps/v1"
@@ -54,6 +55,8 @@ func ApplyGatewayDefaultOptions(opts *Options) error {
 		}
 
 		o.WithTenantsForMode(opts.Stack.Tenants.Mode, opts.GatewayBaseDomain, tenantData)
+
+		o.BuildOpts.ExternalAccessEnabled = opts.Stack.Tenants == nil || !opts.Stack.Tenants.DisableIngress
 	}
 
 	if err := mergo.Merge(&opts.OpenShiftOptions, o, mergo.WithOverride); err != nil {
@@ -146,9 +149,7 @@ func configureGatewayObjsForMode(objs []client.Object, opts Options) []client.Ob
 				}
 
 				a := openshift.ServiceAccountAnnotations(opts.OpenShiftOptions)
-				for key, value := range a {
-					sa.Annotations[key] = value
-				}
+				maps.Copy(sa.Annotations, a)
 			}
 		}
 
@@ -199,13 +200,13 @@ func configureCAVolumes(d *appsv1.Deployment, tenants *lokiv1.TenantsSpec) error
 		return nil // nothing to do
 	}
 
-	mountCAConfigMap := func(container *corev1.Container, volumes *[]corev1.Volume, tennantName, configmapName string) {
+	mountCAConfigMap := func(container *corev1.Container, volumes *[]corev1.Volume, tenantName, configmapName string) {
 		container.VolumeMounts = append(container.VolumeMounts, corev1.VolumeMount{
-			Name:      tenantCAVolumeName(tennantName),
-			MountPath: tenantCADir(tennantName),
+			Name:      tenantCAVolumeName(tenantName),
+			MountPath: tenantCADir(tenantName),
 		})
 		*volumes = append(*volumes, corev1.Volume{
-			Name: tenantCAVolumeName(tennantName),
+			Name: tenantCAVolumeName(tenantName),
 			VolumeSource: corev1.VolumeSource{
 				ConfigMap: &corev1.ConfigMapVolumeSource{
 					LocalObjectReference: corev1.LocalObjectReference{

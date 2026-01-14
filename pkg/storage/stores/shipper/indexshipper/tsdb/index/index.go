@@ -40,6 +40,7 @@ import (
 	"github.com/grafana/dskit/multierror"
 
 	"github.com/grafana/loki/v3/pkg/util/encoding"
+	"github.com/grafana/loki/v3/pkg/util/labelpool"
 )
 
 const (
@@ -416,11 +417,11 @@ func (w *Creator) AddSeries(ref storage.SeriesRef, lset labels.Labels, fp model.
 
 	lastHash := w.lastSeriesHash
 	// Ensure series are sorted by the priorities: [`hash(labels)`, `labels`]
-	if (labelHash < lastHash && len(w.lastSeries) > 0) || labelHash == lastHash && labels.Compare(lset, w.lastSeries) < 0 {
+	if (labelHash < lastHash && !w.lastSeries.IsEmpty()) || labelHash == lastHash && labels.Compare(lset, w.lastSeries) < 0 {
 		return errors.Errorf("out-of-order series added with label set %q", lset)
 	}
 
-	if ref < w.lastRef && len(w.lastSeries) != 0 {
+	if ref < w.lastRef && !w.lastSeries.IsEmpty() {
 		return errors.Errorf("series with reference greater than %d already added", ref)
 	}
 	// We add padding to 16 bytes to increase the addressable space we get through 4 byte
@@ -435,9 +436,9 @@ func (w *Creator) AddSeries(ref storage.SeriesRef, lset labels.Labels, fp model.
 
 	w.buf2.Reset()
 	w.buf2.PutBE64(labelHash)
-	w.buf2.PutUvarint(len(lset))
+	w.buf2.PutUvarint(lset.Len())
 
-	for _, l := range lset {
+	err := lset.Validate(func(l labels.Label) error {
 		var err error
 		cacheEntry, ok := w.symbolCache[l.Name]
 		nameIndex := cacheEntry.index
@@ -463,6 +464,10 @@ func (w *Creator) AddSeries(ref storage.SeriesRef, lset labels.Labels, fp model.
 			}
 		}
 		w.buf2.PutUvarint32(valueIndex)
+		return nil
+	})
+	if err != nil {
+		return err
 	}
 
 	w.addChunks(chunks, &w.buf2, &w.buf1, ChunkPageSize)
@@ -472,7 +477,7 @@ func (w *Creator) AddSeries(ref storage.SeriesRef, lset labels.Labels, fp model.
 
 	w.buf2.PutHash(w.crc32)
 
-	w.lastSeries = append(w.lastSeries[:0], lset...)
+	w.lastSeries.CopyFrom(lset)
 	w.lastSeriesHash = labelHash
 	w.lastRef = ref
 
@@ -1617,16 +1622,8 @@ func (r *Reader) SymbolTableSize() uint64 {
 	return uint64(r.symbols.Size())
 }
 
-// SortedLabelValues returns value tuples that exist for the given label name.
-func (r *Reader) SortedLabelValues(name string, matchers ...*labels.Matcher) ([]string, error) {
-	values, err := r.LabelValues(name, matchers...)
-	if err == nil && r.version == FormatV1 {
-		sort.Strings(values)
-	}
-	return values, err
-}
-
 // LabelValues returns value tuples that exist for the given label name.
+// The returned values should be copied if they need to be used beyond the current tsdb read operation, including sending back as response.
 // TODO(replay): Support filtering by matchers
 func (r *Reader) LabelValues(name string, matchers ...*labels.Matcher) ([]string, error) {
 	if len(matchers) > 0 {
@@ -1670,7 +1667,7 @@ func (r *Reader) LabelValues(name string, matchers ...*labels.Matcher) ([]string
 		} else {
 			d.Skip(skip)
 		}
-		s := string(d.UvarintBytes()) // Label value.
+		s := yoloString(d.UvarintBytes()) // Label value.
 		values = append(values, s)
 		if s == lastVal {
 			break
@@ -2139,7 +2136,9 @@ func buildChunkSamples(d encoding.Decbuf, numChunks int, info *chunkSamples) err
 }
 
 func (dec *Decoder) prepSeries(b []byte, lbls *labels.Labels, chks *[]ChunkMeta) (*encoding.Decbuf, uint64, error) {
-	*lbls = (*lbls)[:0]
+	builder := labelpool.Get()
+	defer labelpool.Put(builder)
+
 	if chks != nil {
 		*chks = (*chks)[:0]
 	}
@@ -2166,8 +2165,13 @@ func (dec *Decoder) prepSeries(b []byte, lbls *labels.Labels, chks *[]ChunkMeta)
 			return nil, 0, errors.Wrap(err, "lookup label value")
 		}
 
-		*lbls = append(*lbls, labels.Label{Name: ln, Value: lv})
+		builder.Add(ln, lv)
 	}
+
+	// Commit built labels.
+	builder.Sort()
+	*lbls = builder.Labels()
+
 	return &d, fprint, nil
 }
 
@@ -2177,7 +2181,10 @@ func (dec *Decoder) prepSeriesBy(b []byte, lbls *labels.Labels, chks *[]ChunkMet
 	if by == nil {
 		return dec.prepSeries(b, lbls, chks)
 	}
-	*lbls = (*lbls)[:0]
+
+	builder := labelpool.Get()
+	defer labelpool.Put(builder)
+
 	if chks != nil {
 		*chks = (*chks)[:0]
 	}
@@ -2208,8 +2215,13 @@ func (dec *Decoder) prepSeriesBy(b []byte, lbls *labels.Labels, chks *[]ChunkMet
 			return nil, 0, errors.Wrap(err, "lookup label value")
 		}
 
-		*lbls = append(*lbls, labels.Label{Name: ln, Value: lv})
+		builder.Add(ln, lv)
 	}
+
+	// Commit built labels.
+	builder.Sort()
+	*lbls = builder.Labels()
+
 	return &d, fprint, nil
 }
 
@@ -2520,7 +2532,7 @@ func readChunkMetaWithForcedMintime(d *encoding.Decbuf, mint int64, chunkMeta *C
 }
 
 func yoloString(b []byte) string {
-	return *((*string)(unsafe.Pointer(&b))) // #nosec G103 -- we know the string is not mutated
+	return *((*string)(unsafe.Pointer(&b))) // #nosec G103 -- we know the string is not mutated -- nosemgrep: use-of-unsafe-block
 }
 
 func overlap(from, through, chkFrom, chkThrough int64) bool {

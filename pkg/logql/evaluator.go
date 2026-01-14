@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"golang.org/x/sync/errgroup"
@@ -23,6 +24,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 type QueryRangeType string
@@ -175,7 +177,7 @@ func (p LiteralParams) CachingOptions() resultscache.CachingOptions {
 
 // GetRangeType returns whether a query is an instant query or range query
 func GetRangeType(q Params) QueryRangeType {
-	if q.Start() == q.End() && q.Step() == 0 {
+	if q.Start().Equal(q.End()) && q.Step() == 0 {
 		return InstantType
 	}
 	return RangeType
@@ -243,13 +245,13 @@ func Sortable(q Params) (bool, error) {
 		return false, nil
 	case syntax.SampleExpr:
 		var sortable bool
-		expr.Walk(func(e syntax.Expr) {
+		expr.Walk(func(e syntax.Expr) bool {
 			if rangeExpr, ok := e.(*syntax.VectorAggregationExpr); ok {
 				if rangeExpr.Operation == syntax.OpTypeSort || rangeExpr.Operation == syntax.OpTypeSortDesc {
 					sortable = true
-					return
 				}
 			}
+			return true
 		})
 		return sortable, nil
 	default:
@@ -358,6 +360,8 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 			})
 		}
 		return newVectorAggEvaluator(ctx, nextEvFactory, e, q, ev.maxCountMinSketchHeapSize)
+	case *CountMinSketchEvalExpr:
+		return NewCountMinSketchEvalStepEvaluator(ctx, nextEvFactory, e, q)
 	case *syntax.RangeAggregationExpr:
 		it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
 			&logproto.SampleQueryRequest{
@@ -417,7 +421,7 @@ func newVectorAggEvaluator(
 		nextEvaluator: nextEvaluator,
 		expr:          expr,
 		buf:           make([]byte, 0, 1024),
-		lb:            labels.NewBuilder(nil),
+		lb:            labels.NewBuilder(labels.EmptyLabels()),
 	}, nil
 }
 
@@ -458,19 +462,19 @@ func (e *VectorAggEvaluator) Next() (bool, int64, StepResult) {
 			if e.expr.Grouping.Without {
 				e.lb.Reset(metric)
 				e.lb.Del(e.expr.Grouping.Groups...)
-				e.lb.Del(labels.MetricName)
+				e.lb.Del(model.MetricNameLabel)
 				m = e.lb.Labels()
 			} else {
-				m = make(labels.Labels, 0, len(e.expr.Grouping.Groups))
-				for _, l := range metric {
+				b := labels.NewScratchBuilder(len(e.expr.Grouping.Groups))
+				metric.Range(func(l labels.Label) {
 					for _, n := range e.expr.Grouping.Groups {
 						if l.Name == n {
-							m = append(m, l)
+							b.Add(l.Name, l.Value)
 							break
 						}
 					}
-				}
-				sort.Sort(m)
+				})
+				m = b.Labels()
 			}
 			result[groupingKey] = &groupedAggregation{
 				labels:     m,
@@ -484,27 +488,28 @@ func (e *VectorAggEvaluator) Next() (bool, int64, StepResult) {
 			if e.expr.Params > inputVecLen {
 				resultSize = inputVecLen
 			}
-			if e.expr.Operation == syntax.OpTypeStdvar || e.expr.Operation == syntax.OpTypeStddev {
+			switch e.expr.Operation {
+			case syntax.OpTypeStdvar, syntax.OpTypeStddev:
 				result[groupingKey].value = 0.0
-			} else if e.expr.Operation == syntax.OpTypeTopK {
+			case syntax.OpTypeTopK:
 				result[groupingKey].heap = make(vectorByValueHeap, 0, resultSize)
 				heap.Push(&result[groupingKey].heap, &promql.Sample{
 					F:      s.F,
 					Metric: s.Metric,
 				})
-			} else if e.expr.Operation == syntax.OpTypeBottomK {
+			case syntax.OpTypeBottomK:
 				result[groupingKey].reverseHeap = make(vectorByReverseValueHeap, 0, resultSize)
 				heap.Push(&result[groupingKey].reverseHeap, &promql.Sample{
 					F:      s.F,
 					Metric: s.Metric,
 				})
-			} else if e.expr.Operation == syntax.OpTypeSortDesc {
+			case syntax.OpTypeSortDesc:
 				result[groupingKey].heap = make(vectorByValueHeap, 0)
 				heap.Push(&result[groupingKey].heap, &promql.Sample{
 					F:      s.F,
 					Metric: s.Metric,
 				})
-			} else if e.expr.Operation == syntax.OpTypeSort {
+			case syntax.OpTypeSort:
 				result[groupingKey].reverseHeap = make(vectorByReverseValueHeap, 0)
 				heap.Push(&result[groupingKey].reverseHeap, &promql.Sample{
 					F:      s.F,
@@ -939,12 +944,12 @@ func (e *BinOpStepEvaluator) Error() error {
 
 func matchingSignature(sample promql.Sample, opts *syntax.BinOpOptions) uint64 {
 	if opts == nil || opts.VectorMatching == nil {
-		return sample.Metric.Hash()
+		return labels.StableHash(sample.Metric)
 	} else if opts.VectorMatching.On {
-		return labels.NewBuilder(sample.Metric).Keep(opts.VectorMatching.MatchingLabels...).Labels().Hash()
+		return labels.StableHash(labels.NewBuilder(sample.Metric).Keep(opts.VectorMatching.MatchingLabels...).Labels())
 	}
 
-	return labels.NewBuilder(sample.Metric).Del(opts.VectorMatching.MatchingLabels...).Labels().Hash()
+	return labels.StableHash(labels.NewBuilder(sample.Metric).Del(opts.VectorMatching.MatchingLabels...).Labels())
 }
 
 func vectorBinop(op string, opts *syntax.BinOpOptions, lhs, rhs promql.Vector, lsigs, rsigs []uint64) (promql.Vector, error) {
@@ -994,7 +999,7 @@ func vectorBinop(op string, opts *syntax.BinOpOptions, lhs, rhs promql.Vector, l
 				}
 				matchedSigs[sig] = nil
 			} else {
-				insertSig := metric.Hash()
+				insertSig := labels.StableHash(metric)
 				if !exists {
 					insertedSigs = map[uint64]struct{}{}
 					matchedSigs[sig] = insertedSigs
@@ -1095,15 +1100,14 @@ func resultMetric(lhs, rhs labels.Labels, opts *syntax.BinOpOptions) labels.Labe
 		matching := opts.VectorMatching
 		if matching.Card == syntax.CardOneToOne {
 			if matching.On {
-			Outer:
-				for _, l := range lhs {
+				lhs.Range(func(l labels.Label) {
 					for _, n := range matching.MatchingLabels {
 						if l.Name == n {
-							continue Outer
+							return
 						}
 					}
 					lb.Del(l.Name)
-				}
+				})
 			} else {
 				lb.Del(matching.MatchingLabels...)
 			}
@@ -1229,7 +1233,7 @@ func (r *VectorIterator) Next() (bool, int64, StepResult) {
 		return false, 0, nil
 	}
 	results := make(promql.Vector, 0)
-	vectorPoint := promql.Sample{T: r.currentMs, F: r.val}
+	vectorPoint := promql.Sample{T: r.currentMs, F: r.val, Metric: labels.EmptyLabels()}
 	results = append(results, vectorPoint)
 	return true, r.currentMs, SampleVector(results)
 }
@@ -1318,7 +1322,7 @@ func absentLabels(expr syntax.SampleExpr) (labels.Labels, error) {
 
 	selector, err := expr.Selector()
 	if err != nil {
-		return nil, err
+		return labels.EmptyLabels(), err
 	}
 	lm := selector.Matchers()
 	if len(lm) == 0 {
@@ -1327,7 +1331,7 @@ func absentLabels(expr syntax.SampleExpr) (labels.Labels, error) {
 
 	empty := []string{}
 	for _, ma := range lm {
-		if ma.Name == labels.MetricName {
+		if ma.Name == model.MetricNameLabel {
 			continue
 		}
 		if ma.Type == labels.MatchEqual && !m.Has(ma.Name) {
@@ -1432,14 +1436,14 @@ func (ev *DefaultEvaluator) newVariantsEvaluator(
 						return nil, err
 					}
 
-					e.Grouping.Groups = append(e.Grouping.Groups, "__variant__")
+					e.Grouping.Groups = append(e.Grouping.Groups, constants.VariantLabel)
 
 					sort.Strings(e.Grouping.Groups)
 					variantEvaluator = &VectorAggEvaluator{
 						nextEvaluator: rangeEvaluator,
 						expr:          e,
 						buf:           make([]byte, 0, 1024),
-						lb:            labels.NewBuilder(nil),
+						lb:            labels.NewBuilder(labels.EmptyLabels()),
 					}
 				} else {
 					return nil, fmt.Errorf("expected range aggregation expression but got %T", e.Left)
@@ -1477,7 +1481,6 @@ type sampleWithLabelsAndStreamHash struct {
 	streamHash uint64
 }
 
-// TODO(twhitney): does this need its own test?
 func (it *bufferedVariantsIterator) Next(index int) bool {
 	// Check if there are samples in the buffer for the requested index
 	if samples, ok := it.buffer[index]; ok && len(samples) > 0 {
@@ -1522,17 +1525,13 @@ func (it *bufferedVariantsIterator) getVariantIndex(lbls string) int {
 		return -1
 	}
 
-	for _, lbl := range metric {
-		// TODO: make constant
-		if lbl.Name == "__variant__" {
-			val, err := strconv.Atoi(lbl.Value)
-			if err != nil {
-				it.err = err
-				return -1
-			}
-
-			return val
+	if variant := metric.Get(constants.VariantLabel); variant != "" {
+		val, err := strconv.Atoi(variant)
+		if err != nil {
+			it.err = err
+			return -1
 		}
+		return val
 	}
 
 	it.err = fmt.Errorf("variant label not found in %s", lbls)
@@ -1571,14 +1570,12 @@ type bufferedVariantsIteratorWrapper struct {
 	index int
 }
 
-// TODO(twhitney): does this need its own test?
 func (it *bufferedVariantsIteratorWrapper) Next() bool {
 	return it.bufferedVariantsIterator.Next(it.index)
 }
 
 // VariantsEvaluator is responsible for making sure the window is loaded from all
 // evaluators for all variants
-// TODO(twhitney): does this need its own test?
 type VariantsEvaluator struct {
 	current int64
 

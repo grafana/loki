@@ -15,6 +15,17 @@ import (
 //     values => key value
 //       key => STRING
 //       value => FLOAT64
+// DescribeClientQuotas Response (Version: 1) => throttle_time_ms error_code error_message [entries] _tagged_fields
+//   throttle_time_ms => INT32
+//   error_code => INT16
+//   error_message => COMPACT_NULLABLE_STRING
+//   entries => [entity] [values] _tagged_fields
+//     entity => entity_type entity_name _tagged_fields
+//       entity_type => COMPACT_STRING
+//       entity_name => COMPACT_NULLABLE_STRING
+//     values => key value _tagged_fields
+//       key => COMPACT_STRING
+//       value => FLOAT64
 
 type DescribeClientQuotasResponse struct {
 	Version      int16
@@ -22,6 +33,10 @@ type DescribeClientQuotasResponse struct {
 	ErrorCode    KError                      // The error code, or `0` if the quota description succeeded.
 	ErrorMsg     *string                     // The error message, or `null` if the quota description succeeded.
 	Entries      []DescribeClientQuotasEntry // A result entry.
+}
+
+func (d *DescribeClientQuotasResponse) setVersion(v int16) {
+	d.Version = v
 }
 
 type DescribeClientQuotasEntry struct {
@@ -37,10 +52,10 @@ type QuotaEntityComponent struct {
 
 func (d *DescribeClientQuotasResponse) encode(pe packetEncoder) error {
 	// ThrottleTime
-	pe.putInt32(int32(d.ThrottleTime / time.Millisecond))
+	pe.putDurationMs(d.ThrottleTime)
 
 	// ErrorCode
-	pe.putInt16(int16(d.ErrorCode))
+	pe.putKError(d.ErrorCode)
 
 	// ErrorMsg
 	if err := pe.putNullableString(d.ErrorMsg); err != nil {
@@ -57,23 +72,20 @@ func (d *DescribeClientQuotasResponse) encode(pe packetEncoder) error {
 		}
 	}
 
+	pe.putEmptyTaggedFieldArray()
 	return nil
 }
 
-func (d *DescribeClientQuotasResponse) decode(pd packetDecoder, version int16) error {
-	// ThrottleTime
-	throttleTime, err := pd.getInt32()
-	if err != nil {
+func (d *DescribeClientQuotasResponse) decode(pd packetDecoder, version int16) (err error) {
+	if d.ThrottleTime, err = pd.getDurationMs(); err != nil {
 		return err
 	}
-	d.ThrottleTime = time.Duration(throttleTime) * time.Millisecond
 
 	// ErrorCode
-	errCode, err := pd.getInt16()
+	d.ErrorCode, err = pd.getKError()
 	if err != nil {
 		return err
 	}
-	d.ErrorCode = KError(errCode)
 
 	// ErrorMsg
 	errMsg, err := pd.getNullableString()
@@ -100,7 +112,8 @@ func (d *DescribeClientQuotasResponse) decode(pd packetDecoder, version int16) e
 		d.Entries = []DescribeClientQuotasEntry{}
 	}
 
-	return nil
+	_, err = pd.getEmptyTaggedFieldArray()
+	return err
 }
 
 func (d *DescribeClientQuotasEntry) encode(pe packetEncoder) error {
@@ -125,8 +138,10 @@ func (d *DescribeClientQuotasEntry) encode(pe packetEncoder) error {
 		}
 		// value
 		pe.putFloat64(value)
+		pe.putEmptyTaggedFieldArray()
 	}
 
+	pe.putEmptyTaggedFieldArray()
 	return nil
 }
 
@@ -168,12 +183,17 @@ func (d *DescribeClientQuotasEntry) decode(pd packetDecoder, version int16) erro
 				return err
 			}
 			d.Values[key] = value
+			_, err = pd.getEmptyTaggedFieldArray()
+			if err != nil {
+				return err
+			}
 		}
 	} else {
 		d.Values = map[string]float64{}
 	}
 
-	return nil
+	_, err = pd.getEmptyTaggedFieldArray()
+	return err
 }
 
 func (c *QuotaEntityComponent) encode(pe packetEncoder) error {
@@ -192,6 +212,7 @@ func (c *QuotaEntityComponent) encode(pe packetEncoder) error {
 		}
 	}
 
+	pe.putEmptyTaggedFieldArray()
 	return nil
 }
 
@@ -216,11 +237,12 @@ func (c *QuotaEntityComponent) decode(pd packetDecoder, version int16) error {
 		c.Name = *entityName
 	}
 
-	return nil
+	_, err = pd.getEmptyTaggedFieldArray()
+	return err
 }
 
 func (d *DescribeClientQuotasResponse) key() int16 {
-	return 48
+	return apiKeyDescribeClientQuotas
 }
 
 func (d *DescribeClientQuotasResponse) version() int16 {
@@ -228,15 +250,34 @@ func (d *DescribeClientQuotasResponse) version() int16 {
 }
 
 func (d *DescribeClientQuotasResponse) headerVersion() int16 {
+	if d.Version >= 1 {
+		return 1
+	}
+
 	return 0
 }
 
 func (d *DescribeClientQuotasResponse) isValidVersion() bool {
-	return d.Version == 0
+	return d.Version >= 0 && d.Version <= 1
+}
+
+func (d *DescribeClientQuotasResponse) isFlexible() bool {
+	return d.isFlexibleVersion(d.Version)
+}
+
+func (d *DescribeClientQuotasResponse) isFlexibleVersion(version int16) bool {
+	return version >= 1
 }
 
 func (d *DescribeClientQuotasResponse) requiredVersion() KafkaVersion {
-	return V2_6_0_0
+	switch d.Version {
+	case 1:
+		return V2_8_0_0
+	case 0:
+		return V2_6_0_0
+	default:
+		return V2_8_0_0
+	}
 }
 
 func (r *DescribeClientQuotasResponse) throttleTime() time.Duration {

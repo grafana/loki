@@ -8,68 +8,82 @@ import (
 	"sync"
 	"time"
 
+	"github.com/puzpuzpuz/xsync/v3"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/processor"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/internal/exp/metrics/identity"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/internal/exp/metrics/staleness"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/deltatocumulativeprocessor/internal/data"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/deltatocumulativeprocessor/internal/delta"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/deltatocumulativeprocessor/internal/maps"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/deltatocumulativeprocessor/internal/metrics"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/deltatocumulativeprocessor/internal/telemetry"
 )
 
-var _ processor.Metrics = (*Processor)(nil)
+var _ processor.Metrics = (*deltaToCumulativeProcessor)(nil)
 
-type Processor struct {
+type deltaToCumulativeProcessor struct {
 	next consumer.Metrics
 	cfg  Config
 
 	last state
-	mtx  sync.Mutex
+	aggr data.Aggregator
 
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	stale staleness.Tracker
+	stale *xsync.MapOf[identity.Stream, time.Time]
 	tel   telemetry.Metrics
 }
 
-func newProcessor(cfg *Config, tel telemetry.Metrics, next consumer.Metrics) *Processor {
+func newProcessor(cfg *Config, tel telemetry.Metrics, next consumer.Metrics) *deltaToCumulativeProcessor {
 	ctx, cancel := context.WithCancel(context.Background())
 
-	proc := Processor{
+	limit := maps.Limit(int64(cfg.MaxStreams))
+	proc := deltaToCumulativeProcessor{
 		next: next,
 		cfg:  *cfg,
 		last: state{
-			nums: make(map[identity.Stream]pmetric.NumberDataPoint),
-			hist: make(map[identity.Stream]pmetric.HistogramDataPoint),
-			expo: make(map[identity.Stream]pmetric.ExponentialHistogramDataPoint),
+			ctx:  limit,
+			nums: maps.New[identity.Stream, *mutex[pmetric.NumberDataPoint]](limit),
+			hist: maps.New[identity.Stream, *mutex[pmetric.HistogramDataPoint]](limit),
+			expo: maps.New[identity.Stream, *mutex[pmetric.ExponentialHistogramDataPoint]](limit),
 		},
+		aggr:   delta.Aggregator{Aggregator: new(data.Adder)},
 		ctx:    ctx,
 		cancel: cancel,
 
-		stale: staleness.NewTracker(),
+		stale: xsync.NewMapOf[identity.Stream, time.Time](),
 		tel:   tel,
 	}
 
-	tel.WithTracked(proc.last.Len)
+	tel.WithTracked(proc.last.Size)
 	cfg.Metrics(tel)
 
 	return &proc
 }
 
-func (p *Processor) ConsumeMetrics(ctx context.Context, md pmetric.Metrics) error {
-	p.mtx.Lock()
-	defer p.mtx.Unlock()
+type vals struct {
+	nums *mutex[pmetric.NumberDataPoint]
+	hist *mutex[pmetric.HistogramDataPoint]
+	expo *mutex[pmetric.ExponentialHistogramDataPoint]
+}
 
+func (p *deltaToCumulativeProcessor) ConsumeMetrics(ctx context.Context, md pmetric.Metrics) error {
 	now := time.Now()
 
 	const (
 		keep = true
 		drop = false
 	)
+
+	zero := vals{
+		nums: guard(pmetric.NewNumberDataPoint()),
+		hist: guard(pmetric.NewHistogramDataPoint()),
+		expo: guard(pmetric.NewExponentialHistogramDataPoint()),
+	}
 
 	metrics.Filter(md, func(m metrics.Metric) bool {
 		if m.AggregationTemporality() != pmetric.AggregationTemporalityDelta {
@@ -85,41 +99,70 @@ func (p *Processor) ConsumeMetrics(ctx context.Context, md pmetric.Metrics) erro
 			var attrs telemetry.Attributes
 			defer func() { p.tel.Datapoints().Inc(ctx, attrs...) }()
 
-			// if stream new and state capacity reached, reject
-			exist := p.last.Has(id)
-			if !exist && p.last.Len() >= p.cfg.MaxStreams {
-				attrs.Set(telemetry.Error("limit"))
-				return drop
-			}
-
-			// stream is ok and active, update stale tracker
-			p.stale.Refresh(now, id)
-
-			// this is the first sample of the stream. there is nothing to
-			// aggregate with, so clone this value into the state and done
-			if !exist {
-				p.last.BeginWith(id, dp)
-				return keep
-			}
-
-			// aggregate with state from previous requests.
-			// delta.AccumulateInto(state, dp) stores result in `state`.
-			// this is then copied into `dp` (the value passed onto the pipeline)
 			var err error
 			switch dp := dp.(type) {
 			case pmetric.NumberDataPoint:
-				state := p.last.nums[id]
-				err = delta.AccumulateInto(state, dp)
-				state.CopyTo(dp)
+				last, loaded := p.last.nums.LoadOrStore(id, zero.nums)
+				if maps.Exceeded(last, loaded) {
+					// state is full, reject stream
+					attrs.Set(telemetry.Error("limit"))
+					return drop
+				}
+
+				// stream is ok and active, update stale tracker
+				p.stale.Store(id, now)
+
+				if !loaded {
+					// cached zero was stored, alloc new one
+					zero.nums = guard(pmetric.NewNumberDataPoint())
+				}
+
+				last.use(func(last pmetric.NumberDataPoint) {
+					err = p.aggr.Numbers(last, dp)
+					last.CopyTo(dp)
+				})
 			case pmetric.HistogramDataPoint:
-				state := p.last.hist[id]
-				err = delta.AccumulateInto(state, dp)
-				state.CopyTo(dp)
+				last, loaded := p.last.hist.LoadOrStore(id, zero.hist)
+				if maps.Exceeded(last, loaded) {
+					// state is full, reject stream
+					attrs.Set(telemetry.Error("limit"))
+					return drop
+				}
+
+				// stream is ok and active, update stale tracker
+				p.stale.Store(id, now)
+
+				if !loaded {
+					// cached zero was stored, alloc new one
+					zero.hist = guard(pmetric.NewHistogramDataPoint())
+				}
+
+				last.use(func(last pmetric.HistogramDataPoint) {
+					err = p.aggr.Histograms(last, dp)
+					last.CopyTo(dp)
+				})
 			case pmetric.ExponentialHistogramDataPoint:
-				state := p.last.expo[id]
-				err = delta.AccumulateInto(state, dp)
-				state.CopyTo(dp)
+				last, loaded := p.last.expo.LoadOrStore(id, zero.expo)
+				if maps.Exceeded(last, loaded) {
+					// state is full, reject stream
+					attrs.Set(telemetry.Error("limit"))
+					return drop
+				}
+
+				// stream is ok and active, update stale tracker
+				p.stale.Store(id, now)
+
+				if !loaded {
+					// cached zero was stored, alloc new one
+					zero.expo = guard(pmetric.NewExponentialHistogramDataPoint())
+				}
+
+				last.use(func(last pmetric.ExponentialHistogramDataPoint) {
+					err = p.aggr.Exponential(last, dp)
+					last.CopyTo(dp)
+				})
 			}
+
 			if err != nil {
 				attrs.Set(telemetry.Cause(err))
 				return drop
@@ -141,7 +184,7 @@ func (p *Processor) ConsumeMetrics(ctx context.Context, md pmetric.Metrics) erro
 	return p.next.ConsumeMetrics(ctx, md)
 }
 
-func (p *Processor) Start(_ context.Context, _ component.Host) error {
+func (p *deltaToCumulativeProcessor) Start(_ context.Context, _ component.Host) error {
 	if p.cfg.MaxStale != 0 {
 		// delete stale streams once per minute
 		go func() {
@@ -152,12 +195,16 @@ func (p *Processor) Start(_ context.Context, _ component.Host) error {
 				case <-p.ctx.Done():
 					return
 				case <-tick.C:
-					p.mtx.Lock()
-					stale := p.stale.Collect(p.cfg.MaxStale)
-					for _, id := range stale {
-						p.last.Delete(id)
-					}
-					p.mtx.Unlock()
+					now := time.Now()
+					p.stale.Range(func(id identity.Stream, last time.Time) bool {
+						if now.Sub(last) > p.cfg.MaxStale {
+							p.last.nums.LoadAndDelete(id)
+							p.last.hist.LoadAndDelete(id)
+							p.last.expo.LoadAndDelete(id)
+							p.stale.Delete(id)
+						}
+						return true
+					})
 				}
 			}
 		}()
@@ -166,49 +213,38 @@ func (p *Processor) Start(_ context.Context, _ component.Host) error {
 	return nil
 }
 
-func (p *Processor) Shutdown(_ context.Context) error {
+func (p *deltaToCumulativeProcessor) Shutdown(_ context.Context) error {
 	p.cancel()
 	return nil
 }
 
-func (p *Processor) Capabilities() consumer.Capabilities {
+func (*deltaToCumulativeProcessor) Capabilities() consumer.Capabilities {
 	return consumer.Capabilities{MutatesData: true}
 }
 
 // state keeps a cumulative value, aggregated over time, per stream
 type state struct {
-	nums map[identity.Stream]pmetric.NumberDataPoint
-	hist map[identity.Stream]pmetric.HistogramDataPoint
-	expo map[identity.Stream]pmetric.ExponentialHistogramDataPoint
+	ctx  maps.Context
+	nums *maps.Parallel[identity.Stream, *mutex[pmetric.NumberDataPoint]]
+	hist *maps.Parallel[identity.Stream, *mutex[pmetric.HistogramDataPoint]]
+	expo *maps.Parallel[identity.Stream, *mutex[pmetric.ExponentialHistogramDataPoint]]
 }
 
-func (m state) Len() int {
-	return len(m.nums) + len(m.hist) + len(m.expo)
+func (s state) Size() int {
+	return int(s.ctx.Size())
 }
 
-func (m state) Has(id identity.Stream) bool {
-	_, nok := m.nums[id]
-	_, hok := m.hist[id]
-	_, eok := m.expo[id]
-	return nok || hok || eok
+type mutex[T any] struct {
+	mtx sync.Mutex
+	v   T
 }
 
-func (m state) Delete(id identity.Stream) {
-	delete(m.nums, id)
-	delete(m.hist, id)
-	delete(m.expo, id)
+func (mtx *mutex[T]) use(do func(T)) {
+	mtx.mtx.Lock()
+	do(mtx.v)
+	mtx.mtx.Unlock()
 }
 
-func (m state) BeginWith(id identity.Stream, dp any) {
-	switch dp := dp.(type) {
-	case pmetric.NumberDataPoint:
-		m.nums[id] = pmetric.NewNumberDataPoint()
-		dp.CopyTo(m.nums[id])
-	case pmetric.HistogramDataPoint:
-		m.hist[id] = pmetric.NewHistogramDataPoint()
-		dp.CopyTo(m.hist[id])
-	case pmetric.ExponentialHistogramDataPoint:
-		m.expo[id] = pmetric.NewExponentialHistogramDataPoint()
-		dp.CopyTo(m.expo[id])
-	}
+func guard[T any](v T) *mutex[T] {
+	return &mutex[T]{v: v}
 }

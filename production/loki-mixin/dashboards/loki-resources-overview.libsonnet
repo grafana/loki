@@ -1,11 +1,11 @@
 (import 'dashboard-utils.libsonnet') {
-  local read_pod_matcher = 'container="loki", pod=~"%s-read.*"' % $._config.ssd.pod_prefix_matcher,
+  local read_pod_matcher = 'container="loki", ' + $._config.per_instance_label + '=~"%s-read.*"' % $._config.ssd.pod_prefix_matcher,
   local read_job_matcher = '%s-read' % $._config.ssd.pod_prefix_matcher,
 
-  local write_pod_matcher = 'container="loki", pod=~"%s-write.*"' % $._config.ssd.pod_prefix_matcher,
+  local write_pod_matcher = 'container="loki", ' + $._config.per_instance_label + '=~"%s-write.*"' % $._config.ssd.pod_prefix_matcher,
   local write_job_matcher = '%s-write' % $._config.ssd.pod_prefix_matcher,
 
-  local backend_pod_matcher = 'container="loki", pod=~"%s-backend.*"' % $._config.ssd.pod_prefix_matcher,
+  local backend_pod_matcher = 'container="loki", ' + $._config.per_instance_label + '=~"%s-backend.*"' % $._config.ssd.pod_prefix_matcher,
   local backend_job_matcher = '%s-backend' % $._config.ssd.pod_prefix_matcher,
 
   // This dashboard is for the single scalable deployment only and it :

@@ -1,16 +1,5 @@
-// Copyright 2015 go-swagger maintainers
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//    http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-FileCopyrightText: Copyright 2015-2025 go-swagger maintainers
+// SPDX-License-Identifier: Apache-2.0
 
 package spec
 
@@ -18,7 +7,7 @@ import (
 	"encoding/json"
 
 	"github.com/go-openapi/jsonpointer"
-	"github.com/go-openapi/swag"
+	"github.com/go-openapi/swag/jsonutils"
 )
 
 const (
@@ -109,7 +98,7 @@ type SecurityScheme struct {
 }
 
 // JSONLookup implements an interface to customize json pointer lookup
-func (s SecurityScheme) JSONLookup(token string) (interface{}, error) {
+func (s SecurityScheme) JSONLookup(token string) (any, error) {
 	if ex, ok := s.Extensions[token]; ok {
 		return &ex, nil
 	}
@@ -158,7 +147,7 @@ func (s SecurityScheme) MarshalJSON() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return swag.ConcatJSON(b1, b2), nil
+	return jsonutils.ConcatJSON(b1, b2), nil
 }
 
 // UnmarshalJSON marshal this from JSON

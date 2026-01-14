@@ -1,0 +1,80 @@
+---
+apiVersion: helm-chart-toolbox.grafana.com/v1
+kind: TestPlan
+name: single-binary
+subject:
+  releaseName: loki
+  namespace: loki
+  path: ../../..
+  valuesFile: default-single-binary-values.yaml
+  extraArgs:
+    - --dependency-update
+    - --set
+    - "chunksCache.allocatedMemory=1024"
+
+cluster:
+  type: kind
+
+dependencies:
+  - file: log-generator.yaml
+  - preset: grafana
+    overrides:
+      datasources:
+        datasources.yaml:
+          apiVersion: 1
+          datasources:
+            - name: Loki
+              type: loki
+              url: http://loki.loki.svc:3100/
+              isDefault: true
+              jsonData:
+                httpHeaderName1: X-Scope-OrgID
+              secureJsonData:
+                httpHeaderValue1: "1"
+
+tests:
+  - type: kubernetes-objects-test
+    values:
+      checks:
+        - kind: StatefulSet
+          name: loki
+          namespace: loki
+        - kind: StatefulSet
+          name: loki-chunks-cache
+          namespace: loki
+        - kind: StatefulSet
+          name: loki-results-cache
+          namespace: loki
+
+        # Loki services
+        - kind: Service
+          name: loki
+          namespace: loki
+        - kind: Service
+          name: loki-canary
+          namespace: loki
+        - kind: Service
+          name: loki-chunks-cache
+          namespace: loki
+        - kind: Service
+          name: loki-gateway
+          namespace: loki
+        - kind: Service
+          name: loki-headless
+          namespace: loki
+        - kind: Service
+          name: loki-memberlist
+          namespace: loki
+        - kind: Service
+          name: loki-results-cache
+          namespace: loki
+
+  - type: query-test
+    values:
+      tests:
+        - env:
+            LOKI_URL: http://loki.loki.svc:3100/loki/api/v1/query
+            LOKI_TENANTID: 1
+          queries:
+            - query: count_over_time({source="log-generator"}[1h])
+              type: logql

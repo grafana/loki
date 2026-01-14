@@ -3,35 +3,73 @@
 
 package internal // import "go.opentelemetry.io/collector/pdata/internal"
 
-import (
-	otlpcommon "go.opentelemetry.io/collector/pdata/internal/data/protogen/common/v1"
-)
-
-type Value struct {
-	orig  *otlpcommon.AnyValue
+type ValueWrapper struct {
+	orig  *AnyValue
 	state *State
 }
 
-func GetOrigValue(ms Value) *otlpcommon.AnyValue {
+func GetValueOrig(ms ValueWrapper) *AnyValue {
 	return ms.orig
 }
 
-func GetValueState(ms Value) *State {
+func GetValueState(ms ValueWrapper) *State {
 	return ms.state
 }
 
-func NewValue(orig *otlpcommon.AnyValue, state *State) Value {
-	return Value{orig: orig, state: state}
+func NewValueWrapper(orig *AnyValue, state *State) ValueWrapper {
+	return ValueWrapper{orig: orig, state: state}
 }
 
-func FillTestValue(dest Value) {
-	dest.orig.Value = &otlpcommon.AnyValue_StringValue{StringValue: "v"}
+func GenTestValueWrapper() ValueWrapper {
+	orig := GenTestAnyValue()
+	return NewValueWrapper(orig, NewState())
 }
 
-func GenerateTestValue() Value {
-	var orig otlpcommon.AnyValue
-	state := StateMutable
-	ms := NewValue(&orig, &state)
-	FillTestValue(ms)
-	return ms
+func NewAnyValueStringValue() *AnyValue_StringValue {
+	if !UseProtoPooling.IsEnabled() {
+		return &AnyValue_StringValue{}
+	}
+	return ProtoPoolAnyValue_StringValue.Get().(*AnyValue_StringValue)
+}
+
+func NewAnyValueIntValue() *AnyValue_IntValue {
+	if !UseProtoPooling.IsEnabled() {
+		return &AnyValue_IntValue{}
+	}
+	return ProtoPoolAnyValue_IntValue.Get().(*AnyValue_IntValue)
+}
+
+func NewAnyValueBoolValue() *AnyValue_BoolValue {
+	if !UseProtoPooling.IsEnabled() {
+		return &AnyValue_BoolValue{}
+	}
+	return ProtoPoolAnyValue_BoolValue.Get().(*AnyValue_BoolValue)
+}
+
+func NewAnyValueDoubleValue() *AnyValue_DoubleValue {
+	if !UseProtoPooling.IsEnabled() {
+		return &AnyValue_DoubleValue{}
+	}
+	return ProtoPoolAnyValue_DoubleValue.Get().(*AnyValue_DoubleValue)
+}
+
+func NewAnyValueBytesValue() *AnyValue_BytesValue {
+	if !UseProtoPooling.IsEnabled() {
+		return &AnyValue_BytesValue{}
+	}
+	return ProtoPoolAnyValue_BytesValue.Get().(*AnyValue_BytesValue)
+}
+
+func NewAnyValueArrayValue() *AnyValue_ArrayValue {
+	if !UseProtoPooling.IsEnabled() {
+		return &AnyValue_ArrayValue{}
+	}
+	return ProtoPoolAnyValue_ArrayValue.Get().(*AnyValue_ArrayValue)
+}
+
+func NewAnyValueKvlistValue() *AnyValue_KvlistValue {
+	if !UseProtoPooling.IsEnabled() {
+		return &AnyValue_KvlistValue{}
+	}
+	return ProtoPoolAnyValue_KvlistValue.Get().(*AnyValue_KvlistValue)
 }

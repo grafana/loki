@@ -1,16 +1,5 @@
-// Copyright 2015 go-swagger maintainers
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//    http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-FileCopyrightText: Copyright 2015-2025 go-swagger maintainers
+// SPDX-License-Identifier: Apache-2.0
 
 package spec
 
@@ -19,10 +8,11 @@ import (
 	"encoding/gob"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strconv"
 
 	"github.com/go-openapi/jsonpointer"
-	"github.com/go-openapi/swag"
+	"github.com/go-openapi/swag/jsonutils"
 )
 
 // Swagger this is the root document object for the API specification.
@@ -36,7 +26,7 @@ type Swagger struct {
 }
 
 // JSONLookup look up a value by the json property name
-func (s Swagger) JSONLookup(token string) (interface{}, error) {
+func (s Swagger) JSONLookup(token string) (any, error) {
 	if ex, ok := s.Extensions[token]; ok {
 		return &ex, nil
 	}
@@ -54,7 +44,7 @@ func (s Swagger) MarshalJSON() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return swag.ConcatJSON(b1, b2), nil
+	return jsonutils.ConcatJSON(b1, b2), nil
 }
 
 // UnmarshalJSON unmarshals a swagger spec from json
@@ -227,7 +217,7 @@ type SchemaOrBool struct {
 }
 
 // JSONLookup implements an interface to customize json pointer lookup
-func (s SchemaOrBool) JSONLookup(token string) (interface{}, error) {
+func (s SchemaOrBool) JSONLookup(token string) (any, error) {
 	if token == "allows" {
 		return s.Allows, nil
 	}
@@ -274,7 +264,7 @@ type SchemaOrStringArray struct {
 }
 
 // JSONLookup implements an interface to customize json pointer lookup
-func (s SchemaOrStringArray) JSONLookup(token string) (interface{}, error) {
+func (s SchemaOrStringArray) JSONLookup(token string) (any, error) {
 	r, _, err := jsonpointer.GetForToken(s.Schema, token)
 	return r, err
 }
@@ -333,16 +323,11 @@ type StringOrArray []string
 
 // Contains returns true when the value is contained in the slice
 func (s StringOrArray) Contains(value string) bool {
-	for _, str := range s {
-		if str == value {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(s, value)
 }
 
 // JSONLookup implements an interface to customize json pointer lookup
-func (s SchemaOrArray) JSONLookup(token string) (interface{}, error) {
+func (s SchemaOrArray) JSONLookup(token string) (any, error) {
 	if _, err := strconv.Atoi(token); err == nil {
 		r, _, err := jsonpointer.GetForToken(s.Schemas, token)
 		return r, err
@@ -367,7 +352,7 @@ func (s *StringOrArray) UnmarshalJSON(data []byte) error {
 		return nil
 	}
 
-	var single interface{}
+	var single any
 	if err := json.Unmarshal(data, &single); err != nil {
 		return err
 	}
@@ -379,7 +364,7 @@ func (s *StringOrArray) UnmarshalJSON(data []byte) error {
 		*s = StringOrArray([]string{v})
 		return nil
 	default:
-		return fmt.Errorf("only string or array is allowed, not %T", single)
+		return fmt.Errorf("only string or array is allowed, not %T: %w", single, ErrSpec)
 	}
 }
 

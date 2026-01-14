@@ -18,11 +18,15 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"go.uber.org/atomic"
 	"gopkg.in/yaml.v3"
 
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/services"
 )
+
+// Preprocessor optionally processes and changes config prior to parsing.
+type Preprocessor func(b []byte) ([]byte, error)
 
 // Loader loads the configuration from files.
 type Loader func(r io.Reader) (interface{}, error)
@@ -33,8 +37,9 @@ type Config struct {
 	ReloadPeriod time.Duration `yaml:"period" category:"advanced"`
 	// LoadPath contains the path to the runtime config files.
 	// Requires a non-empty value
-	LoadPath flagext.StringSliceCSV `yaml:"file"`
-	Loader   Loader                 `yaml:"-"`
+	LoadPath     flagext.StringSliceCSV `yaml:"file"`
+	Preprocessor Preprocessor           `yaml:"-"`
+	Loader       Loader                 `yaml:"-"`
 }
 
 // RegisterFlags registers flags.
@@ -54,8 +59,7 @@ type Manager struct {
 	listenersMtx sync.Mutex
 	listeners    []chan interface{}
 
-	configMtx sync.RWMutex
-	config    interface{}
+	configPtr atomic.Pointer[interface{}]
 
 	configLoadSuccess prometheus.Gauge
 	configHash        *prometheus.GaugeVec
@@ -164,6 +168,14 @@ func (om *Manager) loadConfig() error {
 			return errors.Wrapf(err, "read file %q", f)
 		}
 
+		if om.cfg.Preprocessor != nil {
+			buf, err = om.cfg.Preprocessor(buf)
+			if err != nil {
+				om.configLoadSuccess.Set(0)
+				return errors.Wrapf(err, "preprocess file %q", f)
+			}
+		}
+
 		rawData[f] = buf
 		hashes[f] = fmt.Sprintf("%x", sha256.Sum256(buf))
 	}
@@ -184,14 +196,18 @@ func (om *Manager) loadConfig() error {
 	}
 
 	mergedConfig := map[string]interface{}{}
-	for _, f := range om.cfg.LoadPath {
+	for i, f := range om.cfg.LoadPath {
 		data := rawData[f]
 		yamlFile, err := om.unmarshalMaybeGzipped(f, data)
 		if err != nil {
 			om.configLoadSuccess.Set(0)
 			return errors.Wrapf(err, "unmarshal file %q", f)
 		}
-		mergedConfig = mergeConfigMaps(mergedConfig, yamlFile)
+		mergedConfig, err = mergeConfigMaps(mergedConfig, yamlFile, "")
+		if err != nil {
+			om.configLoadSuccess.Set(0)
+			return errors.Wrapf(err, "can't merge file %q on top of the previous %#v", f, om.cfg.LoadPath[:i])
+		}
 	}
 
 	buf, err := yaml.Marshal(mergedConfig)
@@ -246,29 +262,50 @@ func isGzip(data []byte) bool {
 	return len(data) > 2 && data[0] == 0x1f && data[1] == 0x8b
 }
 
-func mergeConfigMaps(a, b map[string]interface{}) map[string]interface{} {
+func mergeConfigMaps(a, b map[string]interface{}, path string) (_ map[string]interface{}, err error) {
 	out := make(map[string]interface{}, len(a))
 	for k, v := range a {
 		out[k] = v
 	}
 	for k, v := range b {
+		aVal, aHasKey := a[k]
+		bVal, bHasKey := b[k]
+
+		_, aIsMap := a[k].(map[string]interface{})
+		_, bIsMap := b[k].(map[string]interface{})
+
+		if aHasKey && aVal == nil && bIsMap {
+			aIsMap = true
+			out[k] = make(map[string]interface{})
+		}
+
+		if bHasKey && bVal == nil && aIsMap {
+			bIsMap = true
+			v = make(map[string]interface{})
+		}
+
+		if aHasKey && aIsMap != bIsMap {
+			return nil, errors.Errorf("conflicting types for %q: %T != %T", path+"."+k, a[k], b[k])
+		}
+
 		if v, ok := v.(map[string]interface{}); ok {
 			if bv, ok := out[k]; ok {
 				if bv, ok := bv.(map[string]interface{}); ok {
-					out[k] = mergeConfigMaps(bv, v)
+					out[k], err = mergeConfigMaps(bv, v, path+"."+k)
+					if err != nil {
+						return nil, err
+					}
 					continue
 				}
 			}
 		}
 		out[k] = v
 	}
-	return out
+	return out, nil
 }
 
 func (om *Manager) setConfig(config interface{}) {
-	om.configMtx.Lock()
-	defer om.configMtx.Unlock()
-	om.config = config
+	om.configPtr.Store(&config)
 }
 
 func (om *Manager) callListeners(newValue interface{}) {
@@ -299,8 +336,8 @@ func (om *Manager) stopping(_ error) error {
 
 // GetConfig returns last loaded config value, possibly nil.
 func (om *Manager) GetConfig() interface{} {
-	om.configMtx.RLock()
-	defer om.configMtx.RUnlock()
-
-	return om.config
+	if p := om.configPtr.Load(); p != nil {
+		return *p
+	}
+	return nil
 }

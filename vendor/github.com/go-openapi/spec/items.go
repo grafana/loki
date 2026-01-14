@@ -1,16 +1,5 @@
-// Copyright 2015 go-swagger maintainers
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//    http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-FileCopyrightText: Copyright 2015-2025 go-swagger maintainers
+// SPDX-License-Identifier: Apache-2.0
 
 package spec
 
@@ -19,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/go-openapi/jsonpointer"
-	"github.com/go-openapi/swag"
+	"github.com/go-openapi/swag/jsonutils"
 )
 
 const (
@@ -28,13 +17,13 @@ const (
 
 // SimpleSchema describe swagger simple schemas for parameters and headers
 type SimpleSchema struct {
-	Type             string      `json:"type,omitempty"`
-	Nullable         bool        `json:"nullable,omitempty"`
-	Format           string      `json:"format,omitempty"`
-	Items            *Items      `json:"items,omitempty"`
-	CollectionFormat string      `json:"collectionFormat,omitempty"`
-	Default          interface{} `json:"default,omitempty"`
-	Example          interface{} `json:"example,omitempty"`
+	Type             string `json:"type,omitempty"`
+	Nullable         bool   `json:"nullable,omitempty"`
+	Format           string `json:"format,omitempty"`
+	Items            *Items `json:"items,omitempty"`
+	CollectionFormat string `json:"collectionFormat,omitempty"`
+	Default          any    `json:"default,omitempty"`
+	Example          any    `json:"example,omitempty"`
 }
 
 // TypeName return the type (or format) of a simple schema
@@ -91,20 +80,20 @@ func (i *Items) CollectionOf(items *Items, format string) *Items {
 }
 
 // WithDefault sets the default value on this item
-func (i *Items) WithDefault(defaultValue interface{}) *Items {
+func (i *Items) WithDefault(defaultValue any) *Items {
 	i.Default = defaultValue
 	return i
 }
 
 // WithMaxLength sets a max length value
-func (i *Items) WithMaxLength(max int64) *Items {
-	i.MaxLength = &max
+func (i *Items) WithMaxLength(maximum int64) *Items {
+	i.MaxLength = &maximum
 	return i
 }
 
 // WithMinLength sets a min length value
-func (i *Items) WithMinLength(min int64) *Items {
-	i.MinLength = &min
+func (i *Items) WithMinLength(minimum int64) *Items {
+	i.MinLength = &minimum
 	return i
 }
 
@@ -121,22 +110,22 @@ func (i *Items) WithMultipleOf(number float64) *Items {
 }
 
 // WithMaximum sets a maximum number value
-func (i *Items) WithMaximum(max float64, exclusive bool) *Items {
-	i.Maximum = &max
+func (i *Items) WithMaximum(maximum float64, exclusive bool) *Items {
+	i.Maximum = &maximum
 	i.ExclusiveMaximum = exclusive
 	return i
 }
 
 // WithMinimum sets a minimum number value
-func (i *Items) WithMinimum(min float64, exclusive bool) *Items {
-	i.Minimum = &min
+func (i *Items) WithMinimum(minimum float64, exclusive bool) *Items {
+	i.Minimum = &minimum
 	i.ExclusiveMinimum = exclusive
 	return i
 }
 
 // WithEnum sets a the enum values (replace)
-func (i *Items) WithEnum(values ...interface{}) *Items {
-	i.Enum = append([]interface{}{}, values...)
+func (i *Items) WithEnum(values ...any) *Items {
+	i.Enum = append([]any{}, values...)
 	return i
 }
 
@@ -213,11 +202,11 @@ func (i Items) MarshalJSON() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return swag.ConcatJSON(b4, b3, b1, b2), nil
+	return jsonutils.ConcatJSON(b4, b3, b1, b2), nil
 }
 
 // JSONLookup look up a value by the json property name
-func (i Items) JSONLookup(token string) (interface{}, error) {
+func (i Items) JSONLookup(token string) (any, error) {
 	if token == jsonRef {
 		return &i.Ref, nil
 	}

@@ -7,6 +7,15 @@ Go port of Coda Hale's Metrics library: <https://github.com/dropwizard/metrics>.
 
 Documentation: <http://godoc.org/github.com/rcrowley/go-metrics>.
 
+Archived as of April 1 2025
+-----
+This repository is no longer maintained. The authors recommend you explore the
+following newer, more widely adopted libraries for your Go instrumentation
+needs:
+
+* [OpenTelemetry Go SDK](https://opentelemetry.io/docs/languages/go/instrumentation/#metrics)
+* [Prometheus Go Client Library](https://pkg.go.dev/github.com/prometheus/client_golang/prometheus)
+
 Usage
 -----
 

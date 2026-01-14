@@ -25,11 +25,6 @@ const (
 	ErrTimestampConversionFailed = "failed to convert extracted time to string"
 	ErrTimestampParsingFailed    = "failed to parse time"
 
-	Unix   = "Unix"
-	UnixMs = "UnixMs"
-	UnixUs = "UnixUs"
-	UnixNs = "UnixNs"
-
 	TimestampActionOnFailureSkip    = "skip"
 	TimestampActionOnFailureFudge   = "fudge"
 	TimestampActionOnFailureDefault = TimestampActionOnFailureFudge

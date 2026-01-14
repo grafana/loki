@@ -30,7 +30,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/oklog/ulid"
+	"github.com/oklog/ulid/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/promslog"
 	"go.uber.org/atomic"
@@ -46,6 +46,7 @@ import (
 	_ "github.com/prometheus/prometheus/tsdb/goversion" // Load the package into main to make sure minimum Go version is met.
 	"github.com/prometheus/prometheus/tsdb/tsdbutil"
 	"github.com/prometheus/prometheus/tsdb/wlog"
+	"github.com/prometheus/prometheus/util/compression"
 )
 
 const (
@@ -80,7 +81,7 @@ func DefaultOptions() *Options {
 		MaxBlockDuration:            DefaultBlockDuration,
 		NoLockfile:                  false,
 		SamplesPerChunk:             DefaultSamplesPerChunk,
-		WALCompression:              wlog.CompressionNone,
+		WALCompression:              compression.None,
 		StripeSize:                  DefaultStripeSize,
 		HeadChunksWriteBufferSize:   chunks.DefaultWriteBufferSize,
 		IsolationDisabled:           defaultIsolationDisabled,
@@ -124,7 +125,7 @@ type Options struct {
 	NoLockfile bool
 
 	// WALCompression configures the compression type to use on records in the WAL.
-	WALCompression wlog.CompressionType
+	WALCompression compression.Type
 
 	// Maximum number of CPUs that can simultaneously processes WAL replay.
 	// If it is <=0, then GOMAXPROCS is used.
@@ -175,15 +176,6 @@ type Options struct {
 	// Disables isolation between reads and in-flight appends.
 	IsolationDisabled bool
 
-	// EnableNativeHistograms enables the ingestion of native histograms.
-	EnableNativeHistograms bool
-
-	// EnableOOONativeHistograms enables the ingestion of OOO native histograms.
-	// It will only take effect if EnableNativeHistograms is set to true and the
-	// OutOfOrderTimeWindow is > 0. This flag will be removed after testing of
-	// OOO Native Histogram ingestion is complete.
-	EnableOOONativeHistograms bool
-
 	// OutOfOrderTimeWindow specifies how much out of order is allowed, if any.
 	// This can change during run-time, so this value from here should only be used
 	// while initialising.
@@ -224,6 +216,9 @@ type Options struct {
 	// PostingsDecoderFactory allows users to customize postings decoders based on BlockMeta.
 	// By default, DefaultPostingsDecoderFactory will be used to create raw posting decoder.
 	PostingsDecoderFactory PostingsDecoderFactory
+
+	// UseUncachedIO allows bypassing the page cache when appropriate.
+	UseUncachedIO bool
 }
 
 type NewCompactorFunc func(ctx context.Context, r prometheus.Registerer, l *slog.Logger, ranges []int64, pool chunkenc.Pool, opts *Options) (Compactor, error)
@@ -268,6 +263,10 @@ type DB struct {
 	// changing the autoCompact var.
 	autoCompactMtx sync.Mutex
 	autoCompact    bool
+
+	// retentionMtx protects access to retention configuration values that can
+	// be updated at runtime through config file changes.
+	retentionMtx sync.RWMutex
 
 	// Cancel a running compaction when a shutdown is initiated.
 	compactCancel context.CancelFunc
@@ -908,6 +907,7 @@ func open(dir string, l *slog.Logger, r prometheus.Registerer, opts *Options, rn
 			MaxBlockChunkSegmentSize:    opts.MaxBlockChunkSegmentSize,
 			EnableOverlappingCompaction: opts.EnableOverlappingCompaction,
 			PD:                          opts.PostingsDecoderFactory,
+			UseUncachedIO:               opts.UseUncachedIO,
 		})
 	}
 	if err != nil {
@@ -965,8 +965,6 @@ func open(dir string, l *slog.Logger, r prometheus.Registerer, opts *Options, rn
 	headOpts.EnableExemplarStorage = opts.EnableExemplarStorage
 	headOpts.MaxExemplars.Store(opts.MaxExemplars)
 	headOpts.EnableMemorySnapshotOnShutdown = opts.EnableMemorySnapshotOnShutdown
-	headOpts.EnableNativeHistograms.Store(opts.EnableNativeHistograms)
-	headOpts.EnableOOONativeHistograms.Store(opts.EnableOOONativeHistograms)
 	headOpts.OutOfOrderTimeWindow.Store(opts.OutOfOrderTimeWindow)
 	headOpts.OutOfOrderCapMax.Store(opts.OutOfOrderCapMax)
 	headOpts.EnableSharding = opts.EnableSharding
@@ -985,16 +983,18 @@ func open(dir string, l *slog.Logger, r prometheus.Registerer, opts *Options, rn
 
 	// Register metrics after assigning the head block.
 	db.metrics = newDBMetrics(db, r)
-	maxBytes := opts.MaxBytes
-	if maxBytes < 0 {
-		maxBytes = 0
-	}
+	maxBytes := max(opts.MaxBytes, 0)
 	db.metrics.maxBytes.Set(float64(maxBytes))
 	db.metrics.retentionDuration.Set((time.Duration(opts.RetentionDuration) * time.Millisecond).Seconds())
 
+	// Calling db.reload() calls db.reloadBlocks() which requires cmtx to be locked.
+	db.cmtx.Lock()
 	if err := db.reload(); err != nil {
+		db.cmtx.Unlock()
 		return nil, err
 	}
+	db.cmtx.Unlock()
+
 	// Set the min valid time for the ingested samples
 	// to be no lower than the maxt of the last block.
 	minValidTime := int64(math.MinInt64)
@@ -1074,6 +1074,16 @@ func (db *DB) Dir() string {
 	return db.dir
 }
 
+// BlockMetas returns the list of metadata for all blocks.
+func (db *DB) BlockMetas() []BlockMeta {
+	blocks := db.Blocks()
+	metas := make([]BlockMeta, 0, len(blocks))
+	for _, b := range blocks {
+		metas = append(metas, b.Meta())
+	}
+	return metas
+}
+
 func (db *DB) run(ctx context.Context) {
 	defer close(db.donec)
 
@@ -1147,6 +1157,20 @@ func (db *DB) ApplyConfig(conf *config.Config) error {
 	oooTimeWindow := int64(0)
 	if conf.StorageConfig.TSDBConfig != nil {
 		oooTimeWindow = conf.StorageConfig.TSDBConfig.OutOfOrderTimeWindow
+
+		// Update retention configuration if provided.
+		if conf.StorageConfig.TSDBConfig.Retention != nil {
+			db.retentionMtx.Lock()
+			if conf.StorageConfig.TSDBConfig.Retention.Time > 0 {
+				db.opts.RetentionDuration = int64(conf.StorageConfig.TSDBConfig.Retention.Time)
+				db.metrics.retentionDuration.Set((time.Duration(db.opts.RetentionDuration) * time.Millisecond).Seconds())
+			}
+			if conf.StorageConfig.TSDBConfig.Retention.Size > 0 {
+				db.opts.MaxBytes = int64(conf.StorageConfig.TSDBConfig.Retention.Size)
+				db.metrics.maxBytes.Set(float64(db.opts.MaxBytes))
+			}
+			db.retentionMtx.Unlock()
+		}
 	}
 	if oooTimeWindow < 0 {
 		oooTimeWindow = 0
@@ -1181,24 +1205,18 @@ func (db *DB) ApplyConfig(conf *config.Config) error {
 	return nil
 }
 
-// EnableNativeHistograms enables the native histogram feature.
-func (db *DB) EnableNativeHistograms() {
-	db.head.EnableNativeHistograms()
+// getRetentionDuration returns the current retention duration in a thread-safe manner.
+func (db *DB) getRetentionDuration() int64 {
+	db.retentionMtx.RLock()
+	defer db.retentionMtx.RUnlock()
+	return db.opts.RetentionDuration
 }
 
-// DisableNativeHistograms disables the native histogram feature.
-func (db *DB) DisableNativeHistograms() {
-	db.head.DisableNativeHistograms()
-}
-
-// EnableOOONativeHistograms enables the ingestion of out-of-order native histograms.
-func (db *DB) EnableOOONativeHistograms() {
-	db.head.EnableOOONativeHistograms()
-}
-
-// DisableOOONativeHistograms disables the ingestion of out-of-order native histograms.
-func (db *DB) DisableOOONativeHistograms() {
-	db.head.DisableOOONativeHistograms()
+// getMaxBytes returns the current max bytes setting in a thread-safe manner.
+func (db *DB) getMaxBytes() int64 {
+	db.retentionMtx.RLock()
+	defer db.retentionMtx.RUnlock()
+	return db.opts.MaxBytes
 }
 
 // dbAppender wraps the DB's head appender and triggers compactions on commit
@@ -1363,6 +1381,7 @@ func (db *DB) CompactOOOHead(ctx context.Context) error {
 // Callback for testing.
 var compactOOOHeadTestingCallback func()
 
+// The db.cmtx mutex should be held before calling this method.
 func (db *DB) compactOOOHead(ctx context.Context) error {
 	if !db.oooWasEnabled.Load() {
 		return nil
@@ -1417,7 +1436,9 @@ func (db *DB) compactOOOHead(ctx context.Context) error {
 
 // compactOOO creates a new block per possible block range in the compactor's directory from the OOO Head given.
 // Each ULID in the result corresponds to a block in a unique time range.
+// The db.cmtx mutex should be held before calling this method.
 func (db *DB) compactOOO(dest string, oooHead *OOOCompactionHead) (_ []ulid.ULID, err error) {
+	db.logger.Info("out-of-order compaction started")
 	start := time.Now()
 
 	blockSize := oooHead.ChunkRange()
@@ -1461,7 +1482,7 @@ func (db *DB) compactOOO(dest string, oooHead *OOOCompactionHead) (_ []ulid.ULID
 }
 
 // compactHead compacts the given RangeHead.
-// The compaction mutex should be held before calling this method.
+// The db.cmtx should be held before calling this method.
 func (db *DB) compactHead(head *RangeHead) error {
 	uids, err := db.compactor.Write(db.dir, head, head.MinTime(), head.BlockMaxTime(), nil)
 	if err != nil {
@@ -1487,7 +1508,7 @@ func (db *DB) compactHead(head *RangeHead) error {
 }
 
 // compactBlocks compacts all the eligible on-disk blocks.
-// The compaction mutex should be held before calling this method.
+// The db.cmtx should be held before calling this method.
 func (db *DB) compactBlocks() (err error) {
 	// Check for compactions of multiple blocks.
 	for {
@@ -1495,7 +1516,7 @@ func (db *DB) compactBlocks() (err error) {
 		// long enough that we end up with a HEAD block that needs to be written.
 		// Check if that's the case and stop compactions early.
 		if db.head.compactable() && !db.waitingForCompactionDelay() {
-			db.logger.Warn("aborting block compactions to persit the head block")
+			db.logger.Warn("aborting block compactions to persist the head block")
 			return nil
 		}
 
@@ -1544,6 +1565,7 @@ func getBlock(allBlocks []*Block, id ulid.ULID) (*Block, bool) {
 }
 
 // reload reloads blocks and truncates the head and its WAL.
+// The db.cmtx mutex should be held before calling this method.
 func (db *DB) reload() error {
 	if err := db.reloadBlocks(); err != nil {
 		return fmt.Errorf("reloadBlocks: %w", err)
@@ -1560,6 +1582,7 @@ func (db *DB) reload() error {
 
 // reloadBlocks reloads blocks without touching head.
 // Blocks that are obsolete due to replacement or retention will be deleted.
+// The db.cmtx mutex should be held before calling this method.
 func (db *DB) reloadBlocks() (err error) {
 	defer func() {
 		if err != nil {
@@ -1568,13 +1591,9 @@ func (db *DB) reloadBlocks() (err error) {
 		db.metrics.reloads.Inc()
 	}()
 
-	// Now that we reload TSDB every minute, there is a high chance for a race condition with a reload
-	// triggered by CleanTombstones(). We need to lock the reload to avoid the situation where
-	// a normal reload and CleanTombstones try to delete the same block.
-	db.mtx.Lock()
-	defer db.mtx.Unlock()
-
+	db.mtx.RLock()
 	loadable, corrupted, err := openBlocks(db.logger, db.dir, db.blocks, db.chunkPool, db.opts.PostingsDecoderFactory)
+	db.mtx.RUnlock()
 	if err != nil {
 		return err
 	}
@@ -1600,11 +1619,13 @@ func (db *DB) reloadBlocks() (err error) {
 	if len(corrupted) > 0 {
 		// Corrupted but no child loaded for it.
 		// Close all new blocks to release the lock for windows.
+		db.mtx.RLock()
 		for _, block := range loadable {
 			if _, open := getBlock(db.blocks, block.Meta().ULID); !open {
 				block.Close()
 			}
 		}
+		db.mtx.RUnlock()
 		errs := tsdb_errors.NewMulti()
 		for ulid, err := range corrupted {
 			if err != nil {
@@ -1643,8 +1664,10 @@ func (db *DB) reloadBlocks() (err error) {
 	})
 
 	// Swap new blocks first for subsequently created readers to be seen.
+	db.mtx.Lock()
 	oldBlocks := db.blocks
 	db.blocks = toLoad
+	db.mtx.Unlock()
 
 	// Only check overlapping blocks when overlapping compaction is enabled.
 	if db.opts.EnableOverlappingCompaction {
@@ -1743,15 +1766,16 @@ func deletableBlocks(db *DB, blocks []*Block) map[ulid.ULID]struct{} {
 // set in the db options.
 func BeyondTimeRetention(db *DB, blocks []*Block) (deletable map[ulid.ULID]struct{}) {
 	// Time retention is disabled or no blocks to work with.
-	if len(blocks) == 0 || db.opts.RetentionDuration == 0 {
-		return
+	retentionDuration := db.getRetentionDuration()
+	if len(blocks) == 0 || retentionDuration == 0 {
+		return deletable
 	}
 
 	deletable = make(map[ulid.ULID]struct{})
 	for i, block := range blocks {
 		// The difference between the first block and this block is greater than or equal to
 		// the retention period so any blocks after that are added as deletable.
-		if i > 0 && blocks[0].Meta().MaxTime-block.Meta().MaxTime >= db.opts.RetentionDuration {
+		if i > 0 && blocks[0].Meta().MaxTime-block.Meta().MaxTime >= retentionDuration {
 			for _, b := range blocks[i:] {
 				deletable[b.meta.ULID] = struct{}{}
 			}
@@ -1766,8 +1790,9 @@ func BeyondTimeRetention(db *DB, blocks []*Block) (deletable map[ulid.ULID]struc
 // set in the db options.
 func BeyondSizeRetention(db *DB, blocks []*Block) (deletable map[ulid.ULID]struct{}) {
 	// Size retention is disabled or no blocks to work with.
-	if len(blocks) == 0 || db.opts.MaxBytes <= 0 {
-		return
+	maxBytes := db.getMaxBytes()
+	if len(blocks) == 0 || maxBytes <= 0 {
+		return deletable
 	}
 
 	deletable = make(map[ulid.ULID]struct{})
@@ -1777,7 +1802,7 @@ func BeyondSizeRetention(db *DB, blocks []*Block) (deletable map[ulid.ULID]struc
 	blocksSize := db.Head().Size()
 	for i, block := range blocks {
 		blocksSize += block.Size()
-		if blocksSize > db.opts.MaxBytes {
+		if blocksSize > maxBytes {
 			// Add this and all following blocks for deletion.
 			for _, b := range blocks[i:] {
 				deletable[b.meta.ULID] = struct{}{}
@@ -1922,7 +1947,7 @@ func OverlappingBlocks(bm []BlockMeta) Overlaps {
 	return overlapGroups
 }
 
-func (db *DB) String() string {
+func (*DB) String() string {
 	return "HEAD"
 }
 
@@ -2287,10 +2312,9 @@ func (db *DB) CleanTombstones() (err error) {
 					db.logger.Error("failed to delete block after failed `CleanTombstones`", "dir", dir, "err", err)
 				}
 			}
-			if err != nil {
-				return fmt.Errorf("reload blocks: %w", err)
-			}
-			return nil
+
+			// This should only be reached if an error occurred.
+			return fmt.Errorf("reload blocks: %w", err)
 		}
 	}
 	return nil

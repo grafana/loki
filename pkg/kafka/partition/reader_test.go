@@ -15,11 +15,13 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/twmb/franz-go/pkg/kadm"
+	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/kafka/client"
 	"github.com/grafana/loki/v3/pkg/kafka/testkafka"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 type mockConsumer struct {
@@ -71,6 +73,7 @@ func readersFromKafkaCfg(
 		consumerFactory,
 		log.NewNopLogger(),
 		nil,
+		nil, // stateProvider is optional in tests
 	)
 	require.NoError(t, err)
 
@@ -93,7 +96,7 @@ func TestPartitionReader_BasicFunctionality(t *testing.T) {
 		0,
 	)
 
-	producer, err := client.NewWriterClient(kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
+	producer, err := client.NewWriterClient("test-client", kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	err = services.StartAndAwaitRunning(context.Background(), partitionReader)
@@ -152,7 +155,7 @@ func TestPartitionReader_ProcessCatchUpAtStartup(t *testing.T) {
 		0,
 	)
 
-	producer, err := client.NewWriterClient(kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
+	producer, err := client.NewWriterClient("test-client", kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	stream := logproto.Stream{
@@ -210,7 +213,7 @@ func TestPartitionReader_ProcessCommits(t *testing.T) {
 		partitionID,
 	)
 
-	producer, err := client.NewWriterClient(kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
+	producer, err := client.NewWriterClient("test-client", kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	// Init the client: This usually happens in "start" but we want to manage our own lifecycle for this test.
@@ -272,7 +275,7 @@ func TestPartitionReader_StartsAtNextOffset(t *testing.T) {
 	}
 
 	// Produce some records
-	producer, err := client.NewWriterClient(kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
+	producer, err := client.NewWriterClient("test-client", kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 	stream := logproto.Stream{
 		Labels: labels.FromStrings("foo", "bar").String(),
@@ -288,7 +291,7 @@ func TestPartitionReader_StartsAtNextOffset(t *testing.T) {
 
 	// Set our offset part way through the records we just produced
 	offset := int64(1)
-	kafkaClient, err := client.NewReaderClient(kafkaCfg, nil, log.NewNopLogger())
+	kafkaClient, err := client.NewReaderClient("test-tenant", kafkaCfg, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 	admClient := kadm.NewClient(kafkaClient)
 	toCommit := kadm.Offsets{}
@@ -334,7 +337,7 @@ func TestPartitionReader_StartsUpIfNoNewRecordsAreAvailable(t *testing.T) {
 	}
 
 	// Produce some records
-	producer, err := client.NewWriterClient(kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
+	producer, err := client.NewWriterClient("test-client", kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 	stream := logproto.Stream{
 		Labels: labels.FromStrings("foo", "bar").String(),
@@ -350,7 +353,7 @@ func TestPartitionReader_StartsUpIfNoNewRecordsAreAvailable(t *testing.T) {
 
 	// Set our offset to the last record produced
 	offset := int64(4)
-	kafkaClient, err := client.NewReaderClient(kafkaCfg, nil, log.NewNopLogger())
+	kafkaClient, err := client.NewReaderClient("test-client", kafkaCfg, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 	admClient := kadm.NewClient(kafkaClient)
 	toCommit := kadm.Offsets{}
@@ -376,4 +379,87 @@ func TestPartitionReader_StartsUpIfNoNewRecordsAreAvailable(t *testing.T) {
 
 	err = services.StopAndAwaitTerminated(context.Background(), partitionReader)
 	require.NoError(t, err)
+}
+
+func TestKafkaReaderWithHeaderExtractor(t *testing.T) {
+	_, kafkaCfg := testkafka.CreateCluster(t, 1, "test-topic")
+
+	// Create a reader with the ingestion policy header extractor
+	metrics := NewReaderMetrics(prometheus.NewRegistry())
+	reader, err := NewKafkaReader(
+		kafkaCfg,
+		0,
+		log.NewNopLogger(),
+		metrics,
+		prometheus.NewRegistry(),
+		WithHeaderToContextExtractor(validation.IngestionPoliciesKafkaHeadersToContext),
+	)
+	require.NoError(t, err)
+	reader.SetOffsetForConsumption(int64(KafkaStartOffset))
+
+	// Produce records with ingestion policy headers
+	writerClient, err := client.NewWriterClient("test-client", kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
+	require.NoError(t, err)
+
+	producer := client.NewProducer("test-producer", writerClient, 1024*1024, prometheus.NewRegistry())
+
+	t.Run("with policy header", func(t *testing.T) {
+		records := []*kgo.Record{
+			{
+				Value:     []byte("test-value-1"),
+				Partition: 0,
+				Headers: []kgo.RecordHeader{
+					{Key: "x-loki-ingestion-policy", Value: []byte("policy-1")},
+				},
+			},
+			{
+				Value:     []byte("test-value-2"),
+				Partition: 0,
+				Headers: []kgo.RecordHeader{
+					{Key: "x-loki-ingestion-policy", Value: []byte("policy-2")},
+					{Key: "other-header", Value: []byte("other-value")},
+				},
+			},
+		}
+
+		results := producer.ProduceSync(t.Context(), records)
+		require.NoError(t, results.FirstErr())
+
+		// Poll records with the reader
+		polledRecords, err := reader.Poll(t.Context(), 10)
+		require.NoError(t, err)
+		require.Len(t, polledRecords, 2)
+
+		// Verify the first record's context has the policy
+		policy1 := validation.ExtractIngestionPolicyContext(polledRecords[0].Ctx)
+		require.Equal(t, "policy-1", policy1)
+
+		// Verify the second record's context has the policy
+		policy2 := validation.ExtractIngestionPolicyContext(polledRecords[1].Ctx)
+		require.Equal(t, "policy-2", policy2)
+	})
+
+	t.Run("without policy header", func(t *testing.T) {
+		records := []*kgo.Record{
+			{
+				Value:     []byte("test-value-3"),
+				Partition: 0,
+				Headers: []kgo.RecordHeader{
+					{Key: "other-header", Value: []byte("other-value")},
+				},
+			},
+		}
+
+		results := producer.ProduceSync(t.Context(), records)
+		require.NoError(t, results.FirstErr())
+
+		// Poll records with the reader
+		polledRecords, err := reader.Poll(t.Context(), 10)
+		require.NoError(t, err)
+		require.Len(t, polledRecords, 1)
+
+		// Verify no policy was extracted
+		policy := validation.ExtractIngestionPolicyContext(polledRecords[0].Ctx)
+		require.Empty(t, policy)
+	})
 }

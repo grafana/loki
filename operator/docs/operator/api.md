@@ -2123,6 +2123,22 @@ TenantsSpec
 <p>Tenants defines the per-tenant authentication and authorization spec for the lokistack-gateway component.</p>
 </td>
 </tr>
+<tr>
+<td>
+<code>networkPolicies</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-NetworkPoliciesSpec">
+NetworkPoliciesSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>NetworkPolicies defines the NetworkPolicies configuration for LokiStack components.
+When enabled, the operator creates NetworkPolicies to control ingress/egress between
+Loki components and related services.</p>
+</td>
+</tr>
 </tbody>
 </table>
 
@@ -2169,6 +2185,20 @@ LokiStackStorageStatus
 <em>(Optional)</em>
 <p>Storage provides summary of all changes that have occurred
 to the storage configuration.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>networkPolicyRuleSet</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-NetworkPolicyRuleSet">
+NetworkPolicyRuleSet
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>NetworkPolicyRuleSet indicates which NetworkPolicies ruleset was applied by the operator for this LokiStack.</p>
 </td>
 </tr>
 <tr>
@@ -2252,6 +2282,21 @@ scheduling of all Loki components to be deployed.</p>
 </tr>
 </thead>
 <tbody>
+<tr>
+<td>
+<code>useRequestsAsLimits</code><br/>
+<em>
+bool
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>When UseRequestsAsLimits is true, the operand Pods are configured to have resource limits equal to the resource
+requests. This imposes a hard limit on resource usage of the LokiStack, but limits its ability to react to load
+spikes, whether on the ingestion or query side.</p>
+<p>Note: This is currently a tech-preview feature.</p>
+</td>
+</tr>
 <tr>
 <td>
 <code>compactor</code><br/>
@@ -2500,6 +2545,66 @@ for the memberlist.</p>
 </tr><tr><td><p>&#34;static&#34;</p></td>
 <td><p>Static mode asserts the Authorization Spec&rsquo;s Roles and RoleBindings
 using an in-process OpenPolicyAgent Rego authorizer.</p>
+</td>
+</tr></tbody>
+</table>
+
+## NetworkPoliciesSpec { #loki-grafana-com-v1-NetworkPoliciesSpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiStackSpec">LokiStackSpec</a>)
+</p>
+<div>
+<p>NetworkPoliciesSpec defines the configuration for NetworkPolicies.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>ruleSet</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-NetworkPolicyRuleSet">
+NetworkPolicyRuleSet
+</a>
+</em>
+</td>
+<td>
+<p>RuleSet determines which of the pre-defined sets of NetworkPolicy rules is used for this LokiStack.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## NetworkPolicyRuleSet { #loki-grafana-com-v1-NetworkPolicyRuleSet }
+(<code>string</code> alias)
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiStackStatus">LokiStackStatus</a>, <a href="#loki-grafana-com-v1-NetworkPoliciesSpec">NetworkPoliciesSpec</a>)
+</p>
+<div>
+<p>NetworkPolicyRuleSet is the type of network policy rule set to use</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr><td><p>&#34;None&#34;</p></td>
+<td><p>The NetworkPolicyRuleSetNone rule-set contains no network policies, effectively removing all network policies created by the operator.</p>
+</td>
+</tr><tr><td><p>&#34;RestrictIngressEgress&#34;</p></td>
+<td><p>The NetworkPolicyRuleSetRestrictIngressEgress rule-set creates NetworkPolicies allowing the following:</p>
+<ul>
+<li>queries and log ingestion through the gateway</li>
+<li>access to object storage for Loki components requiring this</li>
+<li>communication between LokiStack components</li>
+</ul>
 </td>
 </tr></tbody>
 </table>
@@ -3102,12 +3207,26 @@ bool
 <td>
 <em>(Optional)</em>
 <p>DisableRecommendedAttributes can be used to reduce the number of attributes used as stream labels.</p>
-<p>Enabling this setting removes the &ldquo;recommended attributes&rdquo; from the generated Loki configuration. This will cause
-some stream labels to disappear from the index, potentially making queries more expensive and less performant.</p>
-<p>Note that there is a set of &ldquo;required attributes&rdquo;, needed for OpenShift Logging to work properly. Those will be
-added to the configuration, even if this field is set to true.</p>
+<p>Enabling this setting removes the &ldquo;recommended attributes&rdquo; from the stream labels. This requires an update
+to queries that relied on these attributes as stream labels, as they will no longer be indexed as such.</p>
+<p>The recommended attributes are:</p>
+<ul>
+<li>k8s.container.name</li>
+<li>k8s.cronjob.name</li>
+<li>k8s.daemonset.name</li>
+<li>k8s.deployment.name</li>
+<li>k8s.job.name</li>
+<li>k8s.node.name</li>
+<li>k8s.pod.name</li>
+<li>k8s.statefulset.name</li>
+<li>kubernetes.container_name</li>
+<li>kubernetes.host</li>
+<li>kubernetes.pod_name</li>
+<li>service.name</li>
+</ul>
 <p>This option is supposed to be combined with a custom attribute configuration listing the stream labels that
 should continue to exist.</p>
+<p>See also: <a href="https://github.com/rhobs/observability-data-model/blob/main/cluster-logging.md#attributes">https://github.com/rhobs/observability-data-model/blob/main/cluster-logging.md#attributes</a></p>
 </td>
 </tr>
 </tbody>
@@ -4838,6 +4957,19 @@ OpenshiftTenantSpec
 <td>
 <em>(Optional)</em>
 <p>Openshift defines the configuration specific to Openshift modes.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>disableIngress</code><br/>
+<em>
+bool
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>DisableIngress disables automatic creation of external access resources (Route / Ingress).
+When true, no Route or Ingress will be created for the gateway.</p>
 </td>
 </tr>
 </tbody>

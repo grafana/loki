@@ -192,7 +192,7 @@ func (t Transition) IsDaysNull() bool {
 
 // IsDateNull returns true if date field is null
 func (t Transition) IsDateNull() bool {
-	return t.Date.Time.IsZero()
+	return t.Date.IsZero()
 }
 
 // IsNull returns true if no storage-class is set.
@@ -323,7 +323,7 @@ type ExpirationDate struct {
 // MarshalXML encodes expiration date if it is non-zero and encodes
 // empty string otherwise
 func (eDate ExpirationDate) MarshalXML(e *xml.Encoder, startElement xml.StartElement) error {
-	if eDate.Time.IsZero() {
+	if eDate.IsZero() {
 		return nil
 	}
 	return e.EncodeElement(eDate.Format(time.RFC3339), startElement)
@@ -392,7 +392,7 @@ func (e Expiration) IsDaysNull() bool {
 
 // IsDateNull returns true if date field is null
 func (e Expiration) IsDateNull() bool {
-	return e.Date.Time.IsZero()
+	return e.Date.IsZero()
 }
 
 // IsDeleteMarkerExpirationEnabled returns true if the auto-expiration of delete marker is enabled

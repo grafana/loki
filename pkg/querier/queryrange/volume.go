@@ -170,10 +170,7 @@ func toPrometheusData(series map[string][]logproto.LegacySample, aggregateBySeri
 		if aggregateBySeries {
 			lbls, err = syntax.ParseLabels(name)
 		} else {
-			lbls = labels.Labels{{
-				Name:  name,
-				Value: "",
-			}}
+			lbls = labels.FromStrings(name, "")
 		}
 
 		if err != nil {

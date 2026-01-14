@@ -45,15 +45,15 @@ const (
 	// BOS is the value for the Baidu Cloud BOS storage backend
 	BOS = "bos"
 
-	// validPrefixCharactersRegex allows only alphanumeric characters to prevent subtle bugs and simplify validation
-	validPrefixCharactersRegex = `^[\da-zA-Z]+$`
+	// validPrefixCharactersRegex allows only alphanumeric characters and dashes to prevent subtle bugs and simplify validation
+	validPrefixCharactersRegex = `^[\da-zA-Z-]+$`
 )
 
 var (
 	SupportedBackends = []string{S3, GCS, Azure, Swift, Filesystem, Alibaba, BOS}
 
 	ErrUnsupportedStorageBackend        = errors.New("unsupported storage backend")
-	ErrInvalidCharactersInStoragePrefix = errors.New("storage prefix contains invalid characters, it may only contain digits and English alphabet letters")
+	ErrInvalidCharactersInStoragePrefix = errors.New("storage prefix contains invalid characters, it may only contain digits, English alphabet letters and dashes")
 
 	metrics *objstore.Metrics
 
@@ -113,7 +113,7 @@ func (cfg *Config) RegisterFlagsWithPrefixAndDefaultDirectory(prefix, dir string
 	cfg.Filesystem.RegisterFlagsWithPrefixAndDefaultDirectory(prefix, dir, f)
 	cfg.Alibaba.RegisterFlagsWithPrefix(prefix, f)
 	cfg.BOS.RegisterFlagsWithPrefix(prefix, f)
-	f.StringVar(&cfg.StoragePrefix, prefix+"storage-prefix", "", "Prefix for all objects stored in the backend storage. For simplicity, it may only contain digits and English alphabet letters.")
+	f.StringVar(&cfg.StoragePrefix, prefix+"storage-prefix", "", "Prefix for all objects stored in the backend storage. For simplicity, it may only contain digits, English alphabet letters and dashes.")
 }
 
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {

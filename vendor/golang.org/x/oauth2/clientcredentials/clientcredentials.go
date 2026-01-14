@@ -3,7 +3,7 @@
 // license that can be found in the LICENSE file.
 
 // Package clientcredentials implements the OAuth2.0 "client credentials" token flow,
-// also known as the "two-legged OAuth 2.0".
+// also known as "two-legged OAuth 2.0".
 //
 // This should be used when the client is acting on its own behalf or when the client
 // is the resource owner. It may also be used when requesting access to protected
@@ -55,7 +55,7 @@ type Config struct {
 
 // Token uses client credentials to retrieve a token.
 //
-// The provided context optionally controls which HTTP client is used. See the oauth2.HTTPClient variable.
+// The provided context optionally controls which HTTP client is used. See the [oauth2.HTTPClient] variable.
 func (c *Config) Token(ctx context.Context) (*oauth2.Token, error) {
 	return c.TokenSource(ctx).Token()
 }
@@ -64,18 +64,18 @@ func (c *Config) Token(ctx context.Context) (*oauth2.Token, error) {
 // The token will auto-refresh as necessary.
 //
 // The provided context optionally controls which HTTP client
-// is returned. See the oauth2.HTTPClient variable.
+// is returned. See the [oauth2.HTTPClient] variable.
 //
-// The returned Client and its Transport should not be modified.
+// The returned [http.Client] and its Transport should not be modified.
 func (c *Config) Client(ctx context.Context) *http.Client {
 	return oauth2.NewClient(ctx, c.TokenSource(ctx))
 }
 
-// TokenSource returns a TokenSource that returns t until t expires,
+// TokenSource returns a [oauth2.TokenSource] that returns t until t expires,
 // automatically refreshing it as necessary using the provided context and the
 // client ID and client secret.
 //
-// Most users will use Config.Client instead.
+// Most users will use [Config.Client] instead.
 func (c *Config) TokenSource(ctx context.Context) oauth2.TokenSource {
 	source := &tokenSource{
 		ctx:  ctx,

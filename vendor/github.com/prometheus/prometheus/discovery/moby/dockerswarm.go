@@ -70,7 +70,7 @@ type Filter struct {
 }
 
 // NewDiscovererMetrics implements discovery.Config.
-func (*DockerSwarmSDConfig) NewDiscovererMetrics(reg prometheus.Registerer, rmi discovery.RefreshMetricsInstantiator) discovery.DiscovererMetrics {
+func (*DockerSwarmSDConfig) NewDiscovererMetrics(_ prometheus.Registerer, rmi discovery.RefreshMetricsInstantiator) discovery.DiscovererMetrics {
 	return &dockerswarmMetrics{
 		refreshMetrics: rmi,
 	}
@@ -90,7 +90,7 @@ func (c *DockerSwarmSDConfig) SetDirectory(dir string) {
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (c *DockerSwarmSDConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (c *DockerSwarmSDConfig) UnmarshalYAML(unmarshal func(any) error) error {
 	*c = DefaultDockerSwarmSDConfig
 	type plain DockerSwarmSDConfig
 	err := unmarshal((*plain)(c))

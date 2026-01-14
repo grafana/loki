@@ -2,11 +2,12 @@ package parquet
 
 import (
 	"reflect"
+	"time"
 	"unsafe"
 
+	"github.com/parquet-go/bitpack/unsafecast"
 	"github.com/parquet-go/parquet-go/deprecated"
 	"github.com/parquet-go/parquet-go/internal/bytealg"
-	"github.com/parquet-go/parquet-go/internal/unsafecast"
 	"github.com/parquet-go/parquet-go/sparse"
 )
 
@@ -21,7 +22,7 @@ type nullIndexFunc func(bits []uint64, rows sparse.Array)
 
 func nullIndex[T comparable](bits []uint64, rows sparse.Array) {
 	var zero T
-	for i := 0; i < rows.Len(); i++ {
+	for i := range rows.Len() {
 		v := *(*T)(rows.Index(i))
 		if v != zero {
 			x := uint(i) / 64
@@ -35,10 +36,23 @@ func nullIndexStruct(bits []uint64, rows sparse.Array) {
 	bytealg.Broadcast(unsafecast.Slice[byte](bits), 0xFF)
 }
 
+func nullIndexTime(bits []uint64, rows sparse.Array) {
+	for i := range rows.Len() {
+		t := (*time.Time)(rows.Index(i))
+		if !t.IsZero() {
+			x := uint(i) / 64
+			y := uint(i) % 64
+			bits[x] |= 1 << y
+		}
+	}
+}
+
 func nullIndexFuncOf(t reflect.Type) nullIndexFunc {
 	switch t {
 	case reflect.TypeOf(deprecated.Int96{}):
 		return nullIndex[deprecated.Int96]
+	case reflect.TypeOf(time.Time{}):
+		return nullIndexTime
 	}
 
 	switch t.Kind() {
@@ -100,7 +114,7 @@ func nullIndexFuncOf(t reflect.Type) nullIndexFunc {
 
 func nullIndexFuncOfByteArray(n int) nullIndexFunc {
 	return func(bits []uint64, rows sparse.Array) {
-		for i := 0; i < rows.Len(); i++ {
+		for i := range rows.Len() {
 			p := (*byte)(rows.Index(i))
 			b := unsafe.Slice(p, n)
 			if !isZero(b) {

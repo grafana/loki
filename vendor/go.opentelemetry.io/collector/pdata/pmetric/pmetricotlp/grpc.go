@@ -11,7 +11,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"go.opentelemetry.io/collector/pdata/internal"
-	otlpcollectormetrics "go.opentelemetry.io/collector/pdata/internal/data/protogen/collector/metrics/v1"
+	"go.opentelemetry.io/collector/pdata/internal/otelgrpc"
 	"go.opentelemetry.io/collector/pdata/internal/otlp"
 )
 
@@ -31,11 +31,11 @@ type GRPCClient interface {
 
 // NewGRPCClient returns a new GRPCClient connected using the given connection.
 func NewGRPCClient(cc *grpc.ClientConn) GRPCClient {
-	return &grpcClient{rawClient: otlpcollectormetrics.NewMetricsServiceClient(cc)}
+	return &grpcClient{rawClient: otelgrpc.NewMetricsServiceClient(cc)}
 }
 
 type grpcClient struct {
-	rawClient otlpcollectormetrics.MetricsServiceClient
+	rawClient otelgrpc.MetricsServiceClient
 }
 
 func (c *grpcClient) Export(ctx context.Context, request ExportRequest, opts ...grpc.CallOption) (ExportResponse, error) {
@@ -43,8 +43,7 @@ func (c *grpcClient) Export(ctx context.Context, request ExportRequest, opts ...
 	if err != nil {
 		return ExportResponse{}, err
 	}
-	state := internal.StateMutable
-	return ExportResponse{orig: rsp, state: &state}, err
+	return ExportResponse{orig: rsp, state: internal.NewState()}, err
 }
 
 func (c *grpcClient) unexported() {}
@@ -75,16 +74,15 @@ func (*UnimplementedGRPCServer) unexported() {}
 
 // RegisterGRPCServer registers the GRPCServer to the grpc.Server.
 func RegisterGRPCServer(s *grpc.Server, srv GRPCServer) {
-	otlpcollectormetrics.RegisterMetricsServiceServer(s, &rawMetricsServer{srv: srv})
+	otelgrpc.RegisterMetricsServiceServer(s, &rawMetricsServer{srv: srv})
 }
 
 type rawMetricsServer struct {
 	srv GRPCServer
 }
 
-func (s rawMetricsServer) Export(ctx context.Context, request *otlpcollectormetrics.ExportMetricsServiceRequest) (*otlpcollectormetrics.ExportMetricsServiceResponse, error) {
+func (s rawMetricsServer) Export(ctx context.Context, request *internal.ExportMetricsServiceRequest) (*internal.ExportMetricsServiceResponse, error) {
 	otlp.MigrateMetrics(request.ResourceMetrics)
-	state := internal.StateMutable
-	rsp, err := s.srv.Export(ctx, ExportRequest{orig: request, state: &state})
+	rsp, err := s.srv.Export(ctx, ExportRequest{orig: request, state: internal.NewState()})
 	return rsp.orig, err
 }

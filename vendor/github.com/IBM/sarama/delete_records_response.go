@@ -1,6 +1,7 @@
 package sarama
 
 import (
+	"slices"
 	"sort"
 	"time"
 )
@@ -18,8 +19,12 @@ type DeleteRecordsResponse struct {
 	Topics       map[string]*DeleteRecordsResponseTopic
 }
 
+func (d *DeleteRecordsResponse) setVersion(v int16) {
+	d.Version = v
+}
+
 func (d *DeleteRecordsResponse) encode(pe packetEncoder) error {
-	pe.putInt32(int32(d.ThrottleTime / time.Millisecond))
+	pe.putDurationMs(d.ThrottleTime)
 
 	if err := pe.putArrayLength(len(d.Topics)); err != nil {
 		return err
@@ -40,14 +45,12 @@ func (d *DeleteRecordsResponse) encode(pe packetEncoder) error {
 	return nil
 }
 
-func (d *DeleteRecordsResponse) decode(pd packetDecoder, version int16) error {
+func (d *DeleteRecordsResponse) decode(pd packetDecoder, version int16) (err error) {
 	d.Version = version
 
-	throttleTime, err := pd.getInt32()
-	if err != nil {
+	if d.ThrottleTime, err = pd.getDurationMs(); err != nil {
 		return err
 	}
-	d.ThrottleTime = time.Duration(throttleTime) * time.Millisecond
 
 	n, err := pd.getArrayLength()
 	if err != nil {
@@ -73,7 +76,7 @@ func (d *DeleteRecordsResponse) decode(pd packetDecoder, version int16) error {
 }
 
 func (d *DeleteRecordsResponse) key() int16 {
-	return 21
+	return apiKeyDeleteRecords
 }
 
 func (d *DeleteRecordsResponse) version() int16 {
@@ -113,7 +116,7 @@ func (t *DeleteRecordsResponseTopic) encode(pe packetEncoder) error {
 	for partition := range t.Partitions {
 		keys = append(keys, partition)
 	}
-	sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
+	slices.Sort(keys)
 	for _, partition := range keys {
 		pe.putInt32(partition)
 		if err := t.Partitions[partition].encode(pe); err != nil {
@@ -154,7 +157,7 @@ type DeleteRecordsResponsePartition struct {
 
 func (t *DeleteRecordsResponsePartition) encode(pe packetEncoder) error {
 	pe.putInt64(t.LowWatermark)
-	pe.putInt16(int16(t.Err))
+	pe.putKError(t.Err)
 	return nil
 }
 
@@ -165,11 +168,10 @@ func (t *DeleteRecordsResponsePartition) decode(pd packetDecoder, version int16)
 	}
 	t.LowWatermark = lowWatermark
 
-	kErr, err := pd.getInt16()
+	t.Err, err = pd.getKError()
 	if err != nil {
 		return err
 	}
-	t.Err = KError(kErr)
 
 	return nil
 }

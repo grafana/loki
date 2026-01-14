@@ -1,5 +1,5 @@
 { pkgs, version, imageTag, lib }:
-pkgs.buildGo124Module {
+pkgs.buildGo125Module {
   inherit version;
 
   pname = "loki";
@@ -20,6 +20,10 @@ pkgs.buildGo124Module {
       "-X ${prefix}.BuildUser=nix@nixpkgs"
       "-X ${prefix}.BuildDate=unknown"
     ];
+
+  tags = [
+     "slicelabels"
+  ];
 
   subPackages = [ "cmd/loki" ];
 

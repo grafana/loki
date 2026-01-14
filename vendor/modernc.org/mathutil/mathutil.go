@@ -5,7 +5,7 @@
 // Package mathutil provides utilities supplementing the standard 'math' and
 // 'math/rand' packages.
 //
-// Release history and compatibility issues
+// # Release history and compatibility issues
 //
 // 2020-12-20 v1.2.1 fixes MulOverflowInt64.
 //
@@ -14,50 +14,52 @@
 // 2018-10-21 Added BinaryLog
 //
 // 2018-04-25: New functions for determining Max/Min of nullable values. Ex:
-//  func MaxPtr(a, b *int) *int {
-//  func MinPtr(a, b *int) *int {
-//  func MaxBytePtr(a, b *byte) *byte {
-//  func MinBytePtr(a, b *byte) *byte {
-//  ...
+//
+//	func MaxPtr(a, b *int) *int {
+//	func MinPtr(a, b *int) *int {
+//	func MaxBytePtr(a, b *byte) *byte {
+//	func MinBytePtr(a, b *byte) *byte {
+//	...
 //
 // 2017-10-14: New variadic functions for Max/Min. Ex:
-//  func MaxVal(val int, vals ...int) int {
-//  func MinVal(val int, vals ...int) int {
-//  func MaxByteVal(val byte, vals ...byte) byte {
-//  func MinByteVal(val byte, vals ...byte) byte {
-//  ...
+//
+//	func MaxVal(val int, vals ...int) int {
+//	func MinVal(val int, vals ...int) int {
+//	func MaxByteVal(val byte, vals ...byte) byte {
+//	func MinByteVal(val byte, vals ...byte) byte {
+//	...
 //
 // 2016-10-10: New functions QuadPolyDiscriminant and QuadPolyFactors.
 //
 // 2013-12-13: The following functions have been REMOVED
 //
-// 	func Uint64ToBigInt(n uint64) *big.Int
-// 	func Uint64FromBigInt(n *big.Int) (uint64, bool)
+//	func Uint64ToBigInt(n uint64) *big.Int
+//	func Uint64FromBigInt(n *big.Int) (uint64, bool)
 //
 // 2013-05-13: The following functions are now DEPRECATED
 //
-// 	func Uint64ToBigInt(n uint64) *big.Int
-// 	func Uint64FromBigInt(n *big.Int) (uint64, bool)
+//	func Uint64ToBigInt(n uint64) *big.Int
+//	func Uint64FromBigInt(n *big.Int) (uint64, bool)
 //
 // These functions will be REMOVED with Go release 1.1+1.
 //
 // 2013-01-21: The following functions have been REMOVED
 //
-// 	func MaxInt() int
-// 	func MinInt() int
-// 	func MaxUint() uint
-// 	func UintPtrBits() int
+//	func MaxInt() int
+//	func MinInt() int
+//	func MaxUint() uint
+//	func UintPtrBits() int
 //
 // They are now replaced by untyped constants
 //
-// 	MaxInt
-// 	MinInt
-// 	MaxUint
-// 	UintPtrBits
+//	MaxInt
+//	MinInt
+//	MaxUint
+//	UintPtrBits
 //
 // Additionally one more untyped constant was added
 //
-// 	IntBits
+//	IntBits
 //
 // This change breaks any existing code depending on the above removed
 // functions.  They should have not been published in the first place, that was
@@ -71,8 +73,8 @@
 // 1.0.3+1 and REMOVED with Go release 1.0.3+2, b/c of
 // http://code.google.com/p/go/source/detail?r=954a79ee3ea8
 //
-// 	func Uint64ToBigInt(n uint64) *big.Int
-// 	func Uint64FromBigInt(n *big.Int) (uint64, bool)
+//	func Uint64ToBigInt(n uint64) *big.Int
+//	func Uint64FromBigInt(n *big.Int) (uint64, bool)
 package mathutil // import "modernc.org/mathutil"
 
 import (
@@ -507,20 +509,20 @@ k == 1.
 Wrt pseudocode shown at
 http://en.wikipedia.org/wiki/Miller-Rabin_primality_test#Algorithm_and_running_time
 
- Input: n > 3, an odd integer to be tested for primality;
- Input: k, a parameter that determines the accuracy of the test
- Output: composite if n is composite, otherwise probably prime
- write n − 1 as 2^s·d with d odd by factoring powers of 2 from n − 1
- LOOP: repeat k times:
-    pick a random integer a in the range [2, n − 2]
-    x ← a^d mod n
-    if x = 1 or x = n − 1 then do next LOOP
-    for r = 1 .. s − 1
-       x ← x^2 mod n
-       if x = 1 then return composite
-       if x = n − 1 then do next LOOP
-    return composite
- return probably prime
+	Input: n > 3, an odd integer to be tested for primality;
+	Input: k, a parameter that determines the accuracy of the test
+	Output: composite if n is composite, otherwise probably prime
+	write n − 1 as 2^s·d with d odd by factoring powers of 2 from n − 1
+	LOOP: repeat k times:
+	   pick a random integer a in the range [2, n − 2]
+	   x ← a^d mod n
+	   if x = 1 or x = n − 1 then do next LOOP
+	   for r = 1 .. s − 1
+	      x ← x^2 mod n
+	      if x = 1 then return composite
+	      if x = n − 1 then do next LOOP
+	   return composite
+	return probably prime
 
 ... this function behaves like passing 1 for 'k' and additionally a
 fixed/non-random 'a'.  Otherwise it's the same algorithm.
@@ -1385,7 +1387,7 @@ func ClampInt64(v, lo, hi int64) int64 {
 
 // ToBase produces n in base b. For example
 //
-// 	ToBase(2047, 22) -> [1, 5, 4]
+//	ToBase(2047, 22) -> [1, 5, 4]
 //
 //	1 * 22^0           1
 //	5 * 22^1         110

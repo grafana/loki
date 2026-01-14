@@ -751,6 +751,10 @@ func (pp *partitionProducer) flushRetryBuffers() {
 		}
 
 		for _, msg := range pp.retryState[pp.highWatermark].buf {
+			if pp.parent.conf.Producer.Idempotent && msg.retries == 0 && msg.flags == 0 && !msg.hasSequence {
+				msg.sequenceNumber, msg.producerEpoch = pp.parent.txnmgr.getAndIncrementSequenceNumber(msg.Topic, msg.Partition)
+				msg.hasSequence = true
+			}
 			pp.brokerProducer.input <- msg
 		}
 

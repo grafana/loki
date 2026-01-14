@@ -7,7 +7,21 @@ import (
 	"io"
 	"net"
 	"os"
+
+	"github.com/twmb/franz-go/pkg/kerr"
 )
+
+// IsRetryableBrokerErr returns whether the client considers an error from a
+// broker retrayble. This returns true specifically if the client thinks it can
+// retry whatever it was just trying to do with a broker. It returns false in
+// all other cases.
+//
+// This can used external to the library to help filter errors if use kgo
+// hooks: errors may be sent to hooks before the client retries whatever it was
+// just attempting.
+func IsRetryableBrokerErr(err error) bool {
+	return isRetryableBrokerErr(err)
+}
 
 func isRetryableBrokerErr(err error) bool {
 	// The error could be nil if we are evaluating multiple errors at once,
@@ -49,6 +63,12 @@ func isRetryableBrokerErr(err error) bool {
 	// EOF can be returned if a broker kills a connection unexpectedly, and
 	// we can retry that. Same for ErrClosed.
 	if errors.Is(err, net.ErrClosed) || errors.Is(err, io.EOF) {
+		// If the FIRST read is EOF, that is usually not a good sign,
+		// often it's from bad SASL. We err on the side of pessimism
+		// and do not retry.
+		if ee := (*ErrFirstReadEOF)(nil); errors.As(err, &ee) {
+			return false
+		}
 		return true
 	}
 	// We could have a retryable producer ID failure, which then bubbled up
@@ -236,16 +256,19 @@ func (e *errProducerIDLoadFail) Error() string {
 func (e *errProducerIDLoadFail) Unwrap() error { return e.err }
 
 const (
-	firstReadSASL uint8 = iota
+	firstReadDial uint8 = iota
 	firstReadTLS
+	firstReadSASL
 )
 
 func (e *ErrFirstReadEOF) Error() string {
 	switch e.kind {
+	case firstReadDial:
+		return "broker closed the connection immediately after a dial, which often happens if the client is using TLS when the broker is not expecting it: is TLS misconfigured on the client or the broker?"
 	case firstReadTLS:
-		return "broker closed the connection immediately after a dial, which happens if the client is using TLS when the broker is not expecting it: is TLS misconfigured on the client or the broker?"
+		return "broker closed the connection immediately during api versions negotiation, which often happens when the broker requires TLS but the client is using plaintext: is TLS missing?"
 	default: // firstReadSASL
-		return "broker closed the connection immediately after a request was issued, which happens when SASL is required but not provided: is SASL missing?"
+		return "broker closed the connection immediately after a request was issued, which often happens when SASL is required but not provided: is SASL missing?"
 	}
 }
 
@@ -263,15 +286,20 @@ type ErrDataLoss struct {
 	// ConsumedTo is what the client had consumed to for this partition before
 	// data loss was detected.
 	ConsumedTo int64
+	// ConsumedToEpoch is the epoch for the offset the client was currently
+	// consuming.
+	ConsumedToEpoch int32
 	// ResetTo is what the client reset the partition to; everything from
 	// ResetTo to ConsumedTo was lost.
 	ResetTo int64
+	// ResetToEpoch is the epoch the client was reset to.
+	ResetToEpoch int32
 }
 
 func (e *ErrDataLoss) Error() string {
 	return fmt.Sprintf("topic %s partition %d lost records;"+
-		" the client consumed to offset %d but was reset to offset %d",
-		e.Topic, e.Partition, e.ConsumedTo, e.ResetTo)
+		" the client consumed to offset %d epoch %d but was reset to offset %d epoch %d",
+		e.Topic, e.Partition, e.ConsumedTo, e.ConsumedToEpoch, e.ResetTo, e.ResetToEpoch)
 }
 
 type errUnknownController struct {
@@ -334,3 +362,20 @@ func isDecompressErr(err error) bool {
 	var ed *errDecompress
 	return errors.As(err, &ed)
 }
+
+func errCodeMessage(code int16, errMessage *string) error {
+	if err := kerr.ErrorForCode(code); err != nil {
+		if errMessage != nil {
+			return fmt.Errorf("%w: %s", err, *errMessage)
+		}
+		return err
+	}
+	return nil
+}
+
+type errApiVersionsReset struct {
+	err error
+}
+
+func (e *errApiVersionsReset) Error() string { return e.err.Error() }
+func (e *errApiVersionsReset) Unwrap() error { return e.err }

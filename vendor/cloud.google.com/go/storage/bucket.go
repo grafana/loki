@@ -199,11 +199,11 @@ func (b *BucketHandle) SignedURL(object string, opts *SignedURLOptions) (string,
 		newopts.GoogleAccessID = id
 	}
 	if newopts.SignBytes == nil && len(newopts.PrivateKey) == 0 {
-		if b.c.creds != nil && len(b.c.creds.JSON) > 0 {
+		if j, ok := b.c.credsJSON(); ok {
 			var sa struct {
 				PrivateKey string `json:"private_key"`
 			}
-			err := json.Unmarshal(b.c.creds.JSON, &sa)
+			err := json.Unmarshal(j, &sa)
 			if err == nil && sa.PrivateKey != "" {
 				newopts.PrivateKey = []byte(sa.PrivateKey)
 			}
@@ -224,6 +224,11 @@ func (b *BucketHandle) SignedURL(object string, opts *SignedURLOptions) (string,
 // This method requires the Expires field in the specified PostPolicyV4Options
 // to be non-nil. You may need to set the GoogleAccessID and PrivateKey fields
 // in some cases. Read more on the [automatic detection of credentials] for this method.
+//
+// To allow the unauthenticated client to upload to any object name in the
+// bucket with a given prefix rather than a specific object name, you can pass
+// an empty string for object and set [PostPolicyV4Options].Conditions to
+// include [ConditionStartsWith]("$key", "prefix").
 //
 // [automatic detection of credentials]: https://pkg.go.dev/cloud.google.com/go/storage#hdr-Credential_requirements_for_signing
 func (b *BucketHandle) GenerateSignedPostPolicyV4(object string, opts *PostPolicyV4Options) (*PostPolicyV4, error) {
@@ -247,11 +252,11 @@ func (b *BucketHandle) GenerateSignedPostPolicyV4(object string, opts *PostPolic
 		newopts.GoogleAccessID = id
 	}
 	if newopts.SignBytes == nil && newopts.SignRawBytes == nil && len(newopts.PrivateKey) == 0 {
-		if b.c.creds != nil && len(b.c.creds.JSON) > 0 {
+		if j, ok := b.c.credsJSON(); ok {
 			var sa struct {
 				PrivateKey string `json:"private_key"`
 			}
-			err := json.Unmarshal(b.c.creds.JSON, &sa)
+			err := json.Unmarshal(j, &sa)
 			if err == nil && sa.PrivateKey != "" {
 				newopts.PrivateKey = []byte(sa.PrivateKey)
 			}
@@ -269,14 +274,14 @@ func (b *BucketHandle) GenerateSignedPostPolicyV4(object string, opts *PostPolic
 func (b *BucketHandle) detectDefaultGoogleAccessID() (string, error) {
 	returnErr := errors.New("no credentials found on client and not on GCE (Google Compute Engine)")
 
-	if b.c.creds != nil && len(b.c.creds.JSON) > 0 {
+	if j, ok := b.c.credsJSON(); ok {
 		var sa struct {
 			ClientEmail        string `json:"client_email"`
 			SAImpersonationURL string `json:"service_account_impersonation_url"`
 			CredType           string `json:"type"`
 		}
 
-		err := json.Unmarshal(b.c.creds.JSON, &sa)
+		err := json.Unmarshal(j, &sa)
 		if err != nil {
 			returnErr = err
 		} else {
@@ -322,7 +327,7 @@ func (b *BucketHandle) defaultSignBytesFunc(email string) func([]byte) ([]byte, 
 		opts := []option.ClientOption{option.WithHTTPClient(b.c.hc)}
 
 		if b.c.creds != nil {
-			universeDomain, err := b.c.creds.GetUniverseDomain()
+			universeDomain, err := b.c.creds.UniverseDomain(ctx)
 			if err != nil {
 				return nil, err
 			}
@@ -514,6 +519,9 @@ type BucketAttrs struct {
 	// It cannot be modified after bucket creation time.
 	// UniformBucketLevelAccess must also also be enabled on the bucket.
 	HierarchicalNamespace *HierarchicalNamespace
+
+	// OwnerEntity contains entity information in the form "project-owner-projectId".
+	OwnerEntity string
 }
 
 // BucketPolicyOnly is an alias for UniformBucketLevelAccess.
@@ -864,6 +872,7 @@ func newBucket(b *raw.Bucket) (*BucketAttrs, error) {
 		Autoclass:                toAutoclassFromRaw(b.Autoclass),
 		SoftDeletePolicy:         toSoftDeletePolicyFromRaw(b.SoftDeletePolicy),
 		HierarchicalNamespace:    toHierarchicalNamespaceFromRaw(b.HierarchicalNamespace),
+		OwnerEntity:              ownerEntityFromRaw(b.Owner),
 	}, nil
 }
 
@@ -900,6 +909,7 @@ func newBucketFromProto(b *storagepb.Bucket) *BucketAttrs {
 		Autoclass:                toAutoclassFromProto(b.GetAutoclass()),
 		SoftDeletePolicy:         toSoftDeletePolicyFromProto(b.SoftDeletePolicy),
 		HierarchicalNamespace:    toHierarchicalNamespaceFromProto(b.HierarchicalNamespace),
+		OwnerEntity:              ownerEntityFromProto(b.GetOwner()),
 	}
 }
 
@@ -2224,6 +2234,20 @@ func toHierarchicalNamespaceFromRaw(r *raw.BucketHierarchicalNamespace) *Hierarc
 	}
 }
 
+func ownerEntityFromRaw(r *raw.BucketOwner) string {
+	if r == nil {
+		return ""
+	}
+	return r.Entity
+}
+
+func ownerEntityFromProto(p *storagepb.Owner) string {
+	if p == nil {
+		return ""
+	}
+	return p.GetEntity()
+}
+
 // Objects returns an iterator over the objects in the bucket that match the
 // Query q. If q is nil, no filtering is done. Objects will be iterated over
 // lexicographically by name.
@@ -2307,6 +2331,11 @@ func (it *ObjectIterator) Next() (*ObjectAttrs, error) {
 // whose names begin with the prefix. By default, all buckets in the project
 // are returned.
 //
+// To receive a partial list of buckets when some are unavailable, set the
+// iterator's ReturnPartialSuccess field to true. You can then call the
+// iterator's Unreachable method to retrieve the names of the unreachable
+// buckets.
+//
 // Note: The returned iterator is not safe for concurrent operations without explicit synchronization.
 func (c *Client) Buckets(ctx context.Context, projectID string) *BucketIterator {
 	o := makeStorageOpts(true, c.retry, "")
@@ -2319,12 +2348,24 @@ func (c *Client) Buckets(ctx context.Context, projectID string) *BucketIterator 
 type BucketIterator struct {
 	// Prefix restricts the iterator to buckets whose names begin with it.
 	Prefix string
+	// If true, the iterator will return a partial result of buckets even if
+	// some buckets are unreachable. Call the Unreachable() method to retrieve the
+	// list of unreachable buckets. By default (false), the iterator will return
+	// an error if any buckets are unreachable.
+	ReturnPartialSuccess bool
 
-	ctx       context.Context
-	projectID string
-	buckets   []*BucketAttrs
-	pageInfo  *iterator.PageInfo
-	nextFunc  func() error
+	ctx         context.Context
+	projectID   string
+	buckets     []*BucketAttrs
+	unreachable []string
+	pageInfo    *iterator.PageInfo
+	nextFunc    func() error
+}
+
+// Unreachable returns a list of bucket names that could not be reached
+// during the iteration if ReturnPartialSuccess was set to true.
+func (it *BucketIterator) Unreachable() []string {
+	return it.unreachable
 }
 
 // Next returns the next result. Its second return value is iterator.Done if

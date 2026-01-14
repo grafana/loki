@@ -158,7 +158,8 @@ func mkLua(srv *server.Server, c *server.Peer, sha string) (map[string]lua.LGFun
 			return 1
 		},
 		"replicate_commands": func(l *lua.LState) int {
-			// ignored
+			// always succeeds since 7.0.0
+			l.Push(lua.LTrue)
 			return 1
 		},
 		"set_repl": func(l *lua.LState) int {
@@ -169,6 +170,21 @@ func mkLua(srv *server.Server, c *server.Peer, sha string) (map[string]lua.LGFun
 			}
 			// ignored
 			return 1
+		},
+		"setresp": func(l *lua.LState) int {
+			level := l.CheckInt(1)
+			toresp3 := false
+			switch level {
+			case 2:
+				toresp3 = false
+			case 3:
+				toresp3 = true
+			default:
+				l.Error(lua.LString("RESP version must be 2 or 3"), 1)
+				return 0
+			}
+			c.SwitchResp3 = &toresp3
+			return 0
 		},
 	}, luaRedisConstants
 }
@@ -226,7 +242,7 @@ func luaToRedis(l *lua.LState, c *server.Peer, value lua.LValue) {
 			luaToRedis(l, c, r)
 		}
 	default:
-		panic("....")
+		panic(fmt.Sprintf("wat: %T", t))
 	}
 }
 

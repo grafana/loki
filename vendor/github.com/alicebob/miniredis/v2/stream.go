@@ -440,6 +440,13 @@ func (s *streamKey) delete(ids []string) (int, error) {
 	return count, nil
 }
 
+func (g *streamGroup) pendingAfterOrEqual(id string) []pendingEntry {
+	pos := sort.Search(len(g.pending), func(i int) bool {
+		return streamCmp(id, g.pending[i].id) <= 0
+	})
+	return g.pending[pos:]
+}
+
 func (g *streamGroup) pendingAfter(id string) []pendingEntry {
 	pos := sort.Search(len(g.pending), func(i int) bool {
 		return streamCmp(id, g.pending[i].id) < 0

@@ -6,10 +6,9 @@ package mathutil // import "modernc.org/mathutil"
 
 // QCmpUint32 compares a/b and c/d and returns:
 //
-//   -1 if a/b <  c/d
-//    0 if a/b == c/d
-//   +1 if a/b >  c/d
-//
+//	-1 if a/b <  c/d
+//	 0 if a/b == c/d
+//	+1 if a/b >  c/d
 func QCmpUint32(a, b, c, d uint32) int {
 	switch x, y := uint64(a)*uint64(d), uint64(b)*uint64(c); {
 	case x < y:

@@ -82,14 +82,8 @@ func (lb *lbBalancer) processServerList(l *lbpb.ServerList) {
 		}
 
 		md := metadata.Pairs(lbTokenKey, s.LoadBalanceToken)
-		ip := net.IP(s.IpAddress)
-		ipStr := ip.String()
-		if ip.To4() == nil {
-			// Add square brackets to ipv6 addresses, otherwise net.Dial() and
-			// net.SplitHostPort() will return too many colons error.
-			ipStr = fmt.Sprintf("[%s]", ipStr)
-		}
-		addr := imetadata.Set(resolver.Address{Addr: fmt.Sprintf("%s:%d", ipStr, s.Port)}, md)
+		ipStr := net.IP(s.IpAddress).String()
+		addr := imetadata.Set(resolver.Address{Addr: net.JoinHostPort(ipStr, fmt.Sprintf("%d", s.Port))}, md)
 		if lb.logger.V(2) {
 			lb.logger.Infof("Server list entry:|%d|, ipStr:|%s|, port:|%d|, load balancer token:|%v|", i, ipStr, s.Port, s.LoadBalanceToken)
 		}
@@ -260,10 +254,11 @@ func (lb *lbBalancer) newRemoteBalancerCCWrapper() error {
 	// The grpclb server addresses will set field ServerName, and creds will
 	// receive ServerName as authority.
 	target := lb.manualResolver.Scheme() + ":///grpclb.subClientConn"
-	cc, err := grpc.Dial(target, dopts...)
+	cc, err := grpc.NewClient(target, dopts...)
 	if err != nil {
-		return fmt.Errorf("grpc.Dial(%s): %v", target, err)
+		return fmt.Errorf("grpc.NewClient(%s): %v", target, err)
 	}
+	cc.Connect()
 	ccw := &remoteBalancerCCWrapper{
 		cc:      cc,
 		lb:      lb,

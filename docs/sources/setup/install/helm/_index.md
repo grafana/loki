@@ -38,6 +38,7 @@ The following guides provide step-by-step instructions for deploying Loki on clo
 
 - [Amazon EKS](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/deployment-guides/aws/)
 - [Azure AKS](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/deployment-guides/azure/)
+- [Google GKE](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/deployment-guides/gcp/)
 
 ## Reference
 

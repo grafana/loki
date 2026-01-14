@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright 2015-2025 go-swagger maintainers
+// SPDX-License-Identifier: Apache-2.0
+
 package spec
 
 import (
@@ -9,8 +12,9 @@ import (
 
 // OrderSchemaItem holds a named schema (e.g. from a property of an object)
 type OrderSchemaItem struct {
-	Name string
 	Schema
+
+	Name string
 }
 
 // OrderSchemaItems is a sortable slice of named schemas.

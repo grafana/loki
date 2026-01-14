@@ -83,6 +83,9 @@ const (
 	AMXINT8                              // Tile computational operations on 8-bit integers
 	AMXFP8                               // Tile computational operations on FP8 numbers
 	AMXTILE                              // Tile architecture
+	AMXTF32                              // Tile architecture
+	AMXCOMPLEX                           // Matrix Multiplication of TF32 Tiles into Packed Single Precision Tile
+	AMXTRANSPOSE                         // Tile multiply where the first operand is transposed
 	APX_F                                // Intel APX
 	AVX                                  // AVX functions
 	AVX10                                // If set the Intel AVX10 Converged Vector ISA is supported
@@ -217,9 +220,12 @@ const (
 	SEV_SNP                              // AMD SEV Secure Nested Paging supported
 	SGX                                  // Software Guard Extensions
 	SGXLC                                // Software Guard Extensions Launch Control
+	SGXPQC                               // Software Guard Extensions 256-bit Encryption
 	SHA                                  // Intel SHA Extensions
 	SME                                  // AMD Secure Memory Encryption supported
 	SME_COHERENT                         // AMD Hardware cache coherency across encryption domains enforced
+	SM3_X86                              // SM3 instructions
+	SM4_X86                              // SM4 instructions
 	SPEC_CTRL_SSBD                       // Speculative Store Bypass Disable
 	SRBDS_CTRL                           // SRBDS mitigation MSR available
 	SRSO_MSR_FIX                         // Indicates that software may use MSR BP_CFG[BpSpecReduce] to mitigate SRSO.
@@ -250,6 +256,9 @@ const (
 	TLB_FLUSH_NESTED                     // AMD: Flushing includes all the nested translations for guest translations
 	TME                                  // Intel Total Memory Encryption. The following MSRs are supported: IA32_TME_CAPABILITY, IA32_TME_ACTIVATE, IA32_TME_EXCLUDE_MASK, and IA32_TME_EXCLUDE_BASE.
 	TOPEXT                               // TopologyExtensions: topology extensions support. Indicates support for CPUID Fn8000_001D_EAX_x[N:0]-CPUID Fn8000_001E_EDX.
+	TSA_L1_NO                            // AMD only: Not vulnerable to TSA-L1
+	TSA_SQ_NO                            // AM onlyD: Not vulnerable to TSA-SQ
+	TSA_VERW_CLEAR                       // If set, the memory form of the VERW instruction may be used to help mitigate TSA
 	TSCRATEMSR                           // MSR based TSC rate control. Indicates support for MSR TSC ratio MSRC000_0104
 	TSXLDTRK                             // Intel TSX Suspend Load Address Tracking
 	VAES                                 // Vector AES. AVX(512) versions requires additional checks.
@@ -281,13 +290,17 @@ const (
 	CRC32    // CRC32/CRC32C instructions
 	DCPOP    // Data cache clean to Point of Persistence (DC CVAP)
 	EVTSTRM  // Generic timer
-	FCMA     // Floatin point complex number addition and multiplication
+	FCMA     // Floating point complex number addition and multiplication
+	FHM      // FMLAL and FMLSL instructions
 	FP       // Single-precision and double-precision floating point
 	FPHP     // Half-precision floating point
 	GPA      // Generic Pointer Authentication
 	JSCVT    // Javascript-style double->int convert (FJCVTZS)
 	LRCPC    // Weaker release consistency (LDAPR, etc)
 	PMULL    // Polynomial Multiply instructions (PMULL/PMULL2)
+	RNDR     // Random Number instructions
+	TLB      // Outer Shareable and TLB range maintenance instructions
+	TS       // Flag manipulation instructions
 	SHA1     // SHA-1 instructions (SHA1C, etc)
 	SHA2     // SHA-2 instructions (SHA256H, etc)
 	SHA3     // SHA-3 instructions (EOR3, RAXI, XAR, BCAX)
@@ -295,6 +308,13 @@ const (
 	SM3      // SM3 instructions
 	SM4      // SM4 instructions
 	SVE      // Scalable Vector Extension
+
+	// PMU
+	PMU_FIXEDCOUNTER_CYCLES
+	PMU_FIXEDCOUNTER_REFCYCLES
+	PMU_FIXEDCOUNTER_INSTRUCTIONS
+	PMU_FIXEDCOUNTER_TOPDOWN_SLOTS
+
 	// Keep it last. It automatically defines the size of []flagSet
 	lastID
 
@@ -327,9 +347,34 @@ type CPUInfo struct {
 	SGX              SGXSupport
 	AMDMemEncryption AMDMemEncryptionSupport
 	AVX10Level       uint8
+	PMU              PerformanceMonitoringInfo //  holds information about the PMU
 
 	maxFunc   uint32
 	maxExFunc uint32
+}
+
+// PerformanceMonitoringInfo holds information about CPU performance monitoring capabilities.
+// This is primarily populated from CPUID leaf 0xAh on x86
+type PerformanceMonitoringInfo struct {
+	// VersionID (x86 only): Version ID of architectural performance monitoring.
+	// A value of 0 means architectural performance monitoring is not supported or information is unavailable.
+	VersionID uint8
+	// NumGPPMC: Number of General-Purpose Performance Monitoring Counters per logical processor.
+	// On ARM, this is derived from PMCR_EL0.N (number of event counters).
+	NumGPCounters uint8
+	// GPPMCWidth: Bit width of General-Purpose Performance Monitoring Counters.
+	// On ARM, typically 64 for PMU event counters.
+	GPPMCWidth uint8
+	// NumFixedPMC: Number of Fixed-Function Performance Counters.
+	// Valid on x86 if VersionID > 1. On ARM, this typically includes at least the cycle counter (PMCCNTR_EL0).
+	NumFixedPMC uint8
+	// FixedPMCWidth: Bit width of Fixed-Function Performance Counters.
+	// Valid on x86 if VersionID > 1. On ARM, the cycle counter (PMCCNTR_EL0) is 64-bit.
+	FixedPMCWidth uint8
+	// Raw register output from CPUID leaf 0xAh.
+	RawEBX uint32
+	RawEAX uint32
+	RawEDX uint32
 }
 
 var cpuid func(op uint32) (eax, ebx, ecx, edx uint32)
@@ -532,7 +577,7 @@ func (c CPUInfo) Ia32TscAux() uint32 {
 	return ecx
 }
 
-// SveLengths returns arm SVE vector and predicate lengths.
+// SveLengths returns arm SVE vector and predicate lengths in bits.
 // Will return 0, 0 if SVE is not enabled or otherwise unable to detect.
 func (c CPUInfo) SveLengths() (vl, pl uint64) {
 	if !c.Has(SVE) {
@@ -872,7 +917,12 @@ func physicalCores() int {
 	v, _ := vendorID()
 	switch v {
 	case Intel:
-		return logicalCores() / threadsPerCore()
+		lc := logicalCores()
+		tpc := threadsPerCore()
+		if lc > 0 && tpc > 0 {
+			return lc / tpc
+		}
+		return 0
 	case AMD, Hygon:
 		lc := logicalCores()
 		tpc := threadsPerCore()
@@ -1273,6 +1323,8 @@ func support() flagSet {
 		// CPUID.(EAX=7, ECX=1).EAX
 		eax1, _, _, edx1 := cpuidex(7, 1)
 		fs.setIf(fs.inSet(AVX) && eax1&(1<<4) != 0, AVXVNNI)
+		fs.setIf(eax1&(1<<1) != 0, SM3_X86)
+		fs.setIf(eax1&(1<<2) != 0, SM4_X86)
 		fs.setIf(eax1&(1<<7) != 0, CMPCCXADD)
 		fs.setIf(eax1&(1<<10) != 0, MOVSB_ZL)
 		fs.setIf(eax1&(1<<11) != 0, STOSB_SHORT)
@@ -1284,6 +1336,9 @@ func support() flagSet {
 		// CPUID.(EAX=7, ECX=1).EDX
 		fs.setIf(edx1&(1<<4) != 0, AVXVNNIINT8)
 		fs.setIf(edx1&(1<<5) != 0, AVXNECONVERT)
+		fs.setIf(edx1&(1<<6) != 0, AMXTRANSPOSE)
+		fs.setIf(edx1&(1<<7) != 0, AMXTF32)
+		fs.setIf(edx1&(1<<8) != 0, AMXCOMPLEX)
 		fs.setIf(edx1&(1<<10) != 0, AVXVNNIINT16)
 		fs.setIf(edx1&(1<<14) != 0, PREFETCHI)
 		fs.setIf(edx1&(1<<19) != 0, AVX10)
@@ -1339,6 +1394,11 @@ func support() flagSet {
 		fs.setIf(edx&(1<<4) != 0, BHI_CTRL)
 		fs.setIf(edx&(1<<5) != 0, MCDT_NO)
 
+		if fs.inSet(SGX) {
+			eax, _, _, _ := cpuidex(0x12, 0)
+			fs.setIf(eax&(1<<12) != 0, SGXPQC)
+		}
+
 		// Add keylocker features.
 		if fs.inSet(KEYLOCKER) && mfi >= 0x19 {
 			_, ebx, _, _ := cpuidex(0x19, 0)
@@ -1352,6 +1412,7 @@ func support() flagSet {
 			fs.setIf(ebx&(1<<17) != 0, AVX10_256)
 			fs.setIf(ebx&(1<<18) != 0, AVX10_512)
 		}
+
 	}
 
 	// Processor Extended State Enumeration Sub-leaf (EAX = 0DH, ECX = 1)
@@ -1495,12 +1556,28 @@ func support() flagSet {
 	}
 
 	if maxExtendedFunction() >= 0x80000021 && vend == AMD {
-		a, _, _, _ := cpuid(0x80000021)
+		a, _, c, _ := cpuid(0x80000021)
 		fs.setIf((a>>31)&1 == 1, SRSO_MSR_FIX)
 		fs.setIf((a>>30)&1 == 1, SRSO_USER_KERNEL_NO)
 		fs.setIf((a>>29)&1 == 1, SRSO_NO)
 		fs.setIf((a>>28)&1 == 1, IBPB_BRTYPE)
 		fs.setIf((a>>27)&1 == 1, SBPB)
+		fs.setIf((c>>1)&1 == 1, TSA_L1_NO)
+		fs.setIf((c>>2)&1 == 1, TSA_SQ_NO)
+		fs.setIf((a>>5)&1 == 1, TSA_VERW_CLEAR)
+	}
+	if vend == AMD {
+		if family < 0x19 {
+			// AMD CPUs that are older than Family 19h are not vulnerable to TSA but do not set TSA_L1_NO or TSA_SQ_NO.
+			// Source: https://www.amd.com/content/dam/amd/en/documents/resources/bulletin/technical-guidance-for-mitigating-transient-scheduler-attacks.pdf
+			fs.set(TSA_L1_NO)
+			fs.set(TSA_SQ_NO)
+		} else if family == 0x1a {
+			// AMD Family 1Ah models 00h-4Fh and 60h-7Fh are also not vulnerable to TSA but do not set TSA_L1_NO or TSA_SQ_NO.
+			// Future AMD CPUs will set these CPUID bits if appropriate. CPUs will be designed to set these CPUID bits if appropriate.
+			notVuln := model <= 0x4f || (model >= 0x60 && model <= 0x7f)
+			fs.setIf(notVuln, TSA_L1_NO, TSA_SQ_NO)
+		}
 	}
 
 	if mfi >= 0x20 {
@@ -1555,4 +1632,48 @@ func valAsString(values ...uint32) []byte {
 		}
 	}
 	return r
+}
+
+func parseLeaf0AH(c *CPUInfo, eax, ebx, edx uint32) (info PerformanceMonitoringInfo) {
+	info.VersionID = uint8(eax & 0xFF)
+	info.NumGPCounters = uint8((eax >> 8) & 0xFF)
+	info.GPPMCWidth = uint8((eax >> 16) & 0xFF)
+
+	info.RawEBX = ebx
+	info.RawEAX = eax
+	info.RawEDX = edx
+
+	if info.VersionID > 1 { // This information is only valid if VersionID > 1
+		info.NumFixedPMC = uint8(edx & 0x1F)          // Bits 4:0
+		info.FixedPMCWidth = uint8((edx >> 5) & 0xFF) // Bits 12:5
+	}
+	if info.VersionID > 0 {
+		// first 4 fixed events are always instructions retired, cycles, ref cycles and topdown slots
+		if ebx == 0x0 && info.NumFixedPMC == 3 {
+			c.featureSet.set(PMU_FIXEDCOUNTER_INSTRUCTIONS)
+			c.featureSet.set(PMU_FIXEDCOUNTER_CYCLES)
+			c.featureSet.set(PMU_FIXEDCOUNTER_REFCYCLES)
+		}
+		if ebx == 0x0 && info.NumFixedPMC == 4 {
+			c.featureSet.set(PMU_FIXEDCOUNTER_INSTRUCTIONS)
+			c.featureSet.set(PMU_FIXEDCOUNTER_CYCLES)
+			c.featureSet.set(PMU_FIXEDCOUNTER_REFCYCLES)
+			c.featureSet.set(PMU_FIXEDCOUNTER_TOPDOWN_SLOTS)
+		}
+		if ebx != 0x0 {
+			if ((ebx >> 0) & 1) == 0 {
+				c.featureSet.set(PMU_FIXEDCOUNTER_INSTRUCTIONS)
+			}
+			if ((ebx >> 1) & 1) == 0 {
+				c.featureSet.set(PMU_FIXEDCOUNTER_CYCLES)
+			}
+			if ((ebx >> 2) & 1) == 0 {
+				c.featureSet.set(PMU_FIXEDCOUNTER_REFCYCLES)
+			}
+			if ((ebx >> 3) & 1) == 0 {
+				c.featureSet.set(PMU_FIXEDCOUNTER_TOPDOWN_SLOTS)
+			}
+		}
+	}
+	return info
 }

@@ -281,8 +281,11 @@ Exit Code 1
 | AMXBF16            | Tile computational operations on BFLOAT16 numbers                                                                                                                                  |
 | AMXINT8            | Tile computational operations on 8-bit integers                                                                                                                                    |
 | AMXFP16            | Tile computational operations on FP16 numbers                                                                                                                                      |
-| AMXFP8             | Tile computational operations on FP8 numbers                                                                                                                                      |
+| AMXFP8             | Tile computational operations on FP8 numbers                                                                                                                                       |
+| AMXCOMPLEX         | Tile computational operations on complex numbers                                                                                                                                   |
 | AMXTILE            | Tile architecture                                                                                                                                                                  |
+| AMXTF32            | Matrix Multiplication of TF32 Tiles into Packed Single Precision Tile                                                                                                              |
+| AMXTRANSPOSE       | Tile multiply where the first operand is transposed                                                                                                                                |
 | APX_F              | Intel APX                                                                                                                                                                          |
 | AVX                | AVX functions                                                                                                                                                                      |
 | AVX10              | If set the Intel AVX10 Converged Vector ISA is supported                                                                                                                           |
@@ -415,9 +418,12 @@ Exit Code 1
 | SEV_SNP            | AMD SEV Secure Nested Paging supported                                                                                                                                             |
 | SGX                | Software Guard Extensions                                                                                                                                                          |
 | SGXLC              | Software Guard Extensions Launch Control                                                                                                                                           |
+| SGXPQC             | Software Guard Extensions 256-bit Encryption                                                                                                                                       |
 | SHA                | Intel SHA Extensions                                                                                                                                                               |
 | SME                | AMD Secure Memory Encryption supported                                                                                                                                             |
 | SME_COHERENT       | AMD Hardware cache coherency across encryption domains enforced                                                                                                                    |
+| SM3_X86            | SM3 instructions                                                                                                                                                                   |
+| SM4_X86            | SM4 instructions                                                                                                                                                                   |
 | SPEC_CTRL_SSBD     | Speculative Store Bypass Disable                                                                                                                                                   |
 | SRBDS_CTRL         | SRBDS mitigation MSR available                                                                                                                                                     |
 | SSE                | SSE functions                                                                                                                                                                      |
@@ -445,6 +451,9 @@ Exit Code 1
 | TLB_FLUSH_NESTED   | AMD: Flushing includes all the nested translations for guest translations                                                                                                          |
 | TME                | Intel Total Memory Encryption. The following MSRs are supported: IA32_TME_CAPABILITY, IA32_TME_ACTIVATE, IA32_TME_EXCLUDE_MASK, and IA32_TME_EXCLUDE_BASE.                         |
 | TOPEXT             | TopologyExtensions: topology extensions support. Indicates support for CPUID Fn8000_001D_EAX_x[N:0]-CPUID Fn8000_001E_EDX.                                                         |
+| TSA_L1_NO          | AMD only: Not vulnerable to TSA-L1                                                                                                                                                 |
+| TSA_SQ_NO          | AMD only: Not vulnerable to TSA-SQ                                                                                                                                                 |
+| TSA_VERW_CLEAR     | AMD: If set, the memory form of the VERW instruction may be used to help mitigate TSA                                                                                              |
 | TSCRATEMSR         | MSR based TSC rate control. Indicates support for MSR TSC ratio MSRC000_0104                                                                                                       |
 | TSXLDTRK           | Intel TSX Suspend Load Address Tracking                                                                                                                                            |
 | VAES               | Vector AES. AVX(512) versions requires additional checks.                                                                                                                          |
@@ -480,12 +489,16 @@ Exit Code 1
 | DCPOP        | Data cache clean to Point of Persistence (DC CVAP)               |
 | EVTSTRM      | Generic timer                                                    |
 | FCMA         | Floatin point complex number addition and multiplication         |
+| FHM          | FMLAL and FMLSL instructions                                     |
 | FP           | Single-precision and double-precision floating point             |
 | FPHP         | Half-precision floating point                                    |
 | GPA          | Generic Pointer Authentication                                   |
 | JSCVT        | Javascript-style double->int convert (FJCVTZS)                   |
 | LRCPC        | Weaker release consistency (LDAPR, etc)                          |
 | PMULL        | Polynomial Multiply instructions (PMULL/PMULL2)                  |
+| RNDR         | Random Number instructions                                       |
+| TLB          | Outer Shareable and TLB range maintenance instructions           |
+| TS           | Flag manipulation instructions                                   |
 | SHA1         | SHA-1 instructions (SHA1C, etc)                                  |
 | SHA2         | SHA-2 instructions (SHA256H, etc)                                |
 | SHA3         | SHA-3 instructions (EOR3, RAXI, XAR, BCAX)                       |

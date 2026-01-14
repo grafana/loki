@@ -18,6 +18,17 @@ func (i Iterator) Tokens() []Token {
 	return out
 }
 
+// Stdlib converts a Chroma iterator to a Go 1.23-compatible iterator.
+func (i Iterator) Stdlib() func(yield func(Token) bool) {
+	return func(yield func(Token) bool) {
+		for t := i(); t != EOF; t = i() {
+			if !yield(t) {
+				return
+			}
+		}
+	}
+}
+
 // Concaterator concatenates tokens from a series of iterators.
 func Concaterator(iterators ...Iterator) Iterator {
 	return func() Token {
@@ -47,6 +58,7 @@ func Literator(tokens ...Token) Iterator {
 // SplitTokensIntoLines splits tokens containing newlines in two.
 func SplitTokensIntoLines(tokens []Token) (out [][]Token) {
 	var line []Token // nolint: prealloc
+tokenLoop:
 	for _, token := range tokens {
 		for strings.Contains(token.Value, "\n") {
 			parts := strings.SplitAfterN(token.Value, "\n", 2)
@@ -59,6 +71,11 @@ func SplitTokensIntoLines(tokens []Token) (out [][]Token) {
 			line = append(line, clone)
 			out = append(out, line)
 			line = nil
+
+			// If the tail token is empty, don't emit it.
+			if len(token.Value) == 0 {
+				continue tokenLoop
+			}
 		}
 		line = append(line, token)
 	}
@@ -72,5 +89,5 @@ func SplitTokensIntoLines(tokens []Token) (out [][]Token) {
 			out = out[:len(out)-1]
 		}
 	}
-	return
+	return out
 }

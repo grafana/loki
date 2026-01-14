@@ -80,6 +80,9 @@ type STSCertificateIdentity struct {
 	// Certificate is the client certificate that is used for
 	// STS authentication.
 	Certificate tls.Certificate
+
+	// Optional, used for token revokation
+	TokenRevokeType string
 }
 
 // NewSTSCertificateIdentity returns a STSCertificateIdentity that authenticates
@@ -122,16 +125,16 @@ func (i *STSCertificateIdentity) RetrieveWithCredContext(cc *CredContext) (Value
 	queryValues := url.Values{}
 	queryValues.Set("Action", "AssumeRoleWithCertificate")
 	queryValues.Set("Version", STSVersion)
+	queryValues.Set("DurationSeconds", strconv.FormatUint(uint64(livetime.Seconds()), 10))
+	if i.TokenRevokeType != "" {
+		queryValues.Set("TokenRevokeType", i.TokenRevokeType)
+	}
 	endpointURL.RawQuery = queryValues.Encode()
 
 	req, err := http.NewRequest(http.MethodPost, endpointURL.String(), nil)
 	if err != nil {
 		return Value{}, err
 	}
-	if req.Form == nil {
-		req.Form = url.Values{}
-	}
-	req.Form.Add("DurationSeconds", strconv.FormatUint(uint64(livetime.Seconds()), 10))
 
 	client := i.Client
 	if client == nil {

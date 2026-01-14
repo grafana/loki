@@ -25,7 +25,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/network"
@@ -104,7 +103,7 @@ func (c *DockerSDConfig) SetDirectory(dir string) {
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (c *DockerSDConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (c *DockerSDConfig) UnmarshalYAML(unmarshal func(any) error) error {
 	*c = DefaultDockerSDConfig
 	type plain DockerSDConfig
 	err := unmarshal((*plain)(c))
@@ -211,7 +210,7 @@ func (d *DockerDiscovery) refresh(ctx context.Context) ([]*targetgroup.Group, er
 		return nil, fmt.Errorf("error while computing network labels: %w", err)
 	}
 
-	allContainers := make(map[string]types.Container)
+	allContainers := make(map[string]container.Summary)
 	for _, c := range containers {
 		allContainers[c.ID] = c
 	}
@@ -236,18 +235,14 @@ func (d *DockerDiscovery) refresh(ctx context.Context) ([]*targetgroup.Group, er
 		containerNetworkMode := container.NetworkMode(c.HostConfig.NetworkMode)
 		if len(networks) == 0 {
 			// Try to lookup shared networks
-			for {
-				if containerNetworkMode.IsContainer() {
-					tmpContainer, exists := allContainers[containerNetworkMode.ConnectedContainer()]
-					if !exists {
-						break
-					}
-					networks = tmpContainer.NetworkSettings.Networks
-					containerNetworkMode = container.NetworkMode(tmpContainer.HostConfig.NetworkMode)
-					if len(networks) > 0 {
-						break
-					}
-				} else {
+			for containerNetworkMode.IsContainer() {
+				tmpContainer, exists := allContainers[containerNetworkMode.ConnectedContainer()]
+				if !exists {
+					break
+				}
+				networks = tmpContainer.NetworkSettings.Networks
+				containerNetworkMode = container.NetworkMode(tmpContainer.HostConfig.NetworkMode)
+				if len(networks) > 0 {
 					break
 				}
 			}

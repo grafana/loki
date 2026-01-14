@@ -102,25 +102,25 @@ func newTestChunkStoreConfigWithMockStorage(t require.TestingT, schemaCfg config
 func TestChunkStore_LabelValuesForMetricName(t *testing.T) {
 	now := model.Now()
 
-	fooMetric1 := labels.FromStrings(labels.MetricName, "foo",
+	fooMetric1 := labels.FromStrings(model.MetricNameLabel, "foo",
 		"bar", "baz",
 		"flip", "flop",
 		"toms", "code",
 	)
-	fooMetric2 := labels.FromStrings(labels.MetricName, "foo",
+	fooMetric2 := labels.FromStrings(model.MetricNameLabel, "foo",
 		"bar", "beep",
 		"toms", "code",
 	)
-	fooMetric3 := labels.FromStrings(labels.MetricName, "foo",
+	fooMetric3 := labels.FromStrings(model.MetricNameLabel, "foo",
 		"bar", "bop",
 		"flip", "flap",
 	)
 
 	// barMetric1 is a subset of barMetric2 to test over-matching bug.
-	barMetric1 := labels.FromStrings(labels.MetricName, "bar",
+	barMetric1 := labels.FromStrings(model.MetricNameLabel, "bar",
 		"bar", "baz",
 	)
-	barMetric2 := labels.FromStrings(labels.MetricName, "bar",
+	barMetric2 := labels.FromStrings(model.MetricNameLabel, "bar",
 		"bar", "baz",
 		"toms", "code",
 	)
@@ -221,25 +221,25 @@ func TestChunkStore_LabelValuesForMetricName(t *testing.T) {
 func TestChunkStore_LabelNamesForMetricName(t *testing.T) {
 	now := model.Now()
 
-	fooMetric1 := labels.FromStrings(labels.MetricName, "foo",
+	fooMetric1 := labels.FromStrings(model.MetricNameLabel, "foo",
 		"bar", "baz",
 		"flip", "flop",
 		"toms", "code",
 	)
-	fooMetric2 := labels.FromStrings(labels.MetricName, "foo",
+	fooMetric2 := labels.FromStrings(model.MetricNameLabel, "foo",
 		"bar", "beep",
 		"toms", "code",
 	)
-	fooMetric3 := labels.FromStrings(labels.MetricName, "foo",
+	fooMetric3 := labels.FromStrings(model.MetricNameLabel, "foo",
 		"bar", "bop",
 		"flip", "flap",
 	)
 
 	// barMetric1 is a subset of barMetric2 to test over-matching bug.
-	barMetric1 := labels.FromStrings(labels.MetricName, "bar",
+	barMetric1 := labels.FromStrings(model.MetricNameLabel, "bar",
 		"bar", "baz",
 	)
-	barMetric2 := labels.FromStrings(labels.MetricName, "bar",
+	barMetric2 := labels.FromStrings(model.MetricNameLabel, "bar",
 		"bar", "baz",
 		"toms", "code",
 	)
@@ -337,12 +337,12 @@ func TestChunkStore_getMetricNameChunks(t *testing.T) {
 			chunkFmt, headBlockFmt, _ := schemaCfg.Configs[0].ChunkFormat()
 
 			now := model.Now()
-			chunk1 := dummyChunkWithFormat(t, now, labels.FromStrings(labels.MetricName, "foo",
+			chunk1 := dummyChunkWithFormat(t, now, labels.FromStrings(model.MetricNameLabel, "foo",
 				"bar", "baz",
 				"flip", "flop",
 				"toms", "code",
 			), chunkFmt, headBlockFmt)
-			chunk2 := dummyChunkWithFormat(t, now, labels.FromStrings(labels.MetricName, "foo",
+			chunk2 := dummyChunkWithFormat(t, now, labels.FromStrings(model.MetricNameLabel, "foo",
 				"bar", "beep",
 				"toms", "code",
 			), chunkFmt, headBlockFmt)
@@ -444,12 +444,12 @@ func TestChunkStore_getMetricNameChunks(t *testing.T) {
 
 func Test_GetSeries(t *testing.T) {
 	now := model.Now()
-	ch1lbs := labels.FromStrings(labels.MetricName, "foo",
+	ch1lbs := labels.FromStrings(model.MetricNameLabel, "foo",
 		"bar", "baz",
 		"flip", "flop",
 		"toms", "code",
 	)
-	ch2lbs := labels.FromStrings(labels.MetricName, "foo",
+	ch2lbs := labels.FromStrings(model.MetricNameLabel, "foo",
 		"bar", "beep",
 		"toms", "code",
 	)
@@ -461,54 +461,54 @@ func Test_GetSeries(t *testing.T) {
 		{
 			`foo`,
 			[]labels.Labels{
-				labels.NewBuilder(ch1lbs).Del(labels.MetricName).Labels(),
-				labels.NewBuilder(ch2lbs).Del(labels.MetricName).Labels(),
+				labels.NewBuilder(ch1lbs).Del(model.MetricNameLabel).Labels(),
+				labels.NewBuilder(ch2lbs).Del(model.MetricNameLabel).Labels(),
 			},
 		},
 		{
 			`foo{flip=""}`,
-			[]labels.Labels{labels.NewBuilder(ch2lbs).Del(labels.MetricName).Labels()},
+			[]labels.Labels{labels.NewBuilder(ch2lbs).Del(model.MetricNameLabel).Labels()},
 		},
 		{
 			`foo{bar="baz"}`,
-			[]labels.Labels{labels.NewBuilder(ch1lbs).Del(labels.MetricName).Labels()},
+			[]labels.Labels{labels.NewBuilder(ch1lbs).Del(model.MetricNameLabel).Labels()},
 		},
 		{
 			`foo{bar="beep"}`,
-			[]labels.Labels{labels.NewBuilder(ch2lbs).Del(labels.MetricName).Labels()},
+			[]labels.Labels{labels.NewBuilder(ch2lbs).Del(model.MetricNameLabel).Labels()},
 		},
 		{
 			`foo{toms="code"}`,
 			[]labels.Labels{
-				labels.NewBuilder(ch1lbs).Del(labels.MetricName).Labels(),
-				labels.NewBuilder(ch2lbs).Del(labels.MetricName).Labels(),
+				labels.NewBuilder(ch1lbs).Del(model.MetricNameLabel).Labels(),
+				labels.NewBuilder(ch2lbs).Del(model.MetricNameLabel).Labels(),
 			},
 		},
 		{
 			`foo{bar!="baz"}`,
-			[]labels.Labels{labels.NewBuilder(ch2lbs).Del(labels.MetricName).Labels()},
+			[]labels.Labels{labels.NewBuilder(ch2lbs).Del(model.MetricNameLabel).Labels()},
 		},
 		{
 			`foo{bar=~"beep|baz"}`,
 			[]labels.Labels{
-				labels.NewBuilder(ch1lbs).Del(labels.MetricName).Labels(),
-				labels.NewBuilder(ch2lbs).Del(labels.MetricName).Labels(),
+				labels.NewBuilder(ch1lbs).Del(model.MetricNameLabel).Labels(),
+				labels.NewBuilder(ch2lbs).Del(model.MetricNameLabel).Labels(),
 			},
 		},
 		{
 			`foo{bar=~"beeping|baz"}`,
-			[]labels.Labels{labels.NewBuilder(ch1lbs).Del(labels.MetricName).Labels()},
+			[]labels.Labels{labels.NewBuilder(ch1lbs).Del(model.MetricNameLabel).Labels()},
 		},
 		{
 			`foo{toms="code", bar=~"beep|baz"}`,
 			[]labels.Labels{
-				labels.NewBuilder(ch1lbs).Del(labels.MetricName).Labels(),
-				labels.NewBuilder(ch2lbs).Del(labels.MetricName).Labels(),
+				labels.NewBuilder(ch1lbs).Del(model.MetricNameLabel).Labels(),
+				labels.NewBuilder(ch2lbs).Del(model.MetricNameLabel).Labels(),
 			},
 		},
 		{
 			`foo{toms="code", bar="baz"}`,
-			[]labels.Labels{labels.NewBuilder(ch1lbs).Del(labels.MetricName).Labels()},
+			[]labels.Labels{labels.NewBuilder(ch1lbs).Del(model.MetricNameLabel).Labels()},
 		},
 	}
 	for _, schema := range schemas {
@@ -544,12 +544,12 @@ func Test_GetSeries(t *testing.T) {
 
 func Test_GetSeriesShard(t *testing.T) {
 	now := model.Now()
-	ch1lbs := labels.FromStrings(labels.MetricName, "foo",
+	ch1lbs := labels.FromStrings(model.MetricNameLabel, "foo",
 		"bar", "baz",
 		"flip", "flop",
 		"toms", "code",
 	)
-	ch2lbs := labels.FromStrings(labels.MetricName, "foo",
+	ch2lbs := labels.FromStrings(model.MetricNameLabel, "foo",
 		"bar", "beep",
 		"toms", "code",
 	)
@@ -560,11 +560,11 @@ func Test_GetSeriesShard(t *testing.T) {
 	}{
 		{
 			`foo{__cortex_shard__="6_of_16"}`,
-			[]labels.Labels{labels.NewBuilder(ch2lbs).Del(labels.MetricName).Labels()},
+			[]labels.Labels{labels.NewBuilder(ch2lbs).Del(model.MetricNameLabel).Labels()},
 		},
 		{
 			`foo{__cortex_shard__="8_of_16"}`,
-			[]labels.Labels{labels.NewBuilder(ch1lbs).Del(labels.MetricName).Labels()},
+			[]labels.Labels{labels.NewBuilder(ch1lbs).Del(model.MetricNameLabel).Labels()},
 		},
 	}
 	for _, storeCase := range stores {
@@ -673,14 +673,14 @@ func TestChunkStoreError(t *testing.T) {
 func TestSeriesStore_LabelValuesForMetricName(t *testing.T) {
 	now := model.Now()
 
-	fooMetric1 := labels.FromStrings(labels.MetricName, "foo",
+	fooMetric1 := labels.FromStrings(model.MetricNameLabel, "foo",
 		"bar", "baz",
 		"flip", "flop",
 		"toms", "code",
 		"env", "dev",
 		"class", "not-secret",
 	)
-	fooMetric2 := labels.FromStrings(labels.MetricName, "foo",
+	fooMetric2 := labels.FromStrings(model.MetricNameLabel, "foo",
 		"bar", "beep",
 		"toms", "code",
 		"env", "prod",

@@ -912,17 +912,8 @@ type mode_t = uint32 /* alltypes.h:175:18 */
 
 type syscall_arg_t = int32 /* syscall.h:22:14 */
 
-func a_cas(tls *TLS, p uintptr, t int32, s int32) int32 { /* atomic_arch.h:2:19: */
-	panic(`arch/i386/atomic_arch.h:4:2: assembler statements not supported`)
-	return t
-}
-
 func a_and(tls *TLS, p uintptr, v int32) { /* atomic_arch.h:29:20: */
 	panic(`arch/i386/atomic_arch.h:31:2: assembler statements not supported`)
-}
-
-func a_or(tls *TLS, p uintptr, v int32) { /* atomic_arch.h:37:20: */
-	panic(`arch/i386/atomic_arch.h:39:2: assembler statements not supported`)
 }
 
 func a_ctz_64(tls *TLS, x uint64_t) int32 { /* atomic_arch.h:87:19: */
@@ -940,22 +931,6 @@ func a_ctz_32(tls *TLS, x uint32_t) int32 { /* atomic_arch.h:96:19: */
 func a_clz_32(tls *TLS, x uint32_t) int32 { /* atomic_arch.h:104:19: */
 	panic(`arch/i386/atomic_arch.h:106:2: assembler statements not supported`)
 	return int32(x)
-}
-
-func a_or_64(tls *TLS, p uintptr, v uint64_t) { /* atomic.h:220:20: */
-	bp := tls.Alloc(8)
-	defer tls.Free(8)
-
-	*(*struct{ v uint64_t })(unsafe.Pointer(bp)) = func() (r struct{ v uint64_t }) {
-		*(*uint64_t)(unsafe.Pointer(uintptr(unsafe.Pointer(&r)) + 0)) = v
-		return r
-	}()
-	if *(*uint32_t)(unsafe.Pointer(bp)) != 0 {
-		a_or(tls, p, int32(*(*uint32_t)(unsafe.Pointer(bp))))
-	}
-	if *(*uint32_t)(unsafe.Pointer(bp + 1*4)) != 0 {
-		a_or(tls, p+uintptr(1)*4, int32(*(*uint32_t)(unsafe.Pointer(bp + 1*4))))
-	}
 }
 
 type a_cas_p_undefined_but_pointer_not_32bit = [1]int8 /* atomic.h:229:14 */

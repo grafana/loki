@@ -50,6 +50,17 @@ type Context struct {
 	store Store
 	// result accumulates results for JoinResult.
 	result Result
+	// recvWaitTime accumulates the time the querier spent waiting on ingester
+	// gRPC Recv() in nanoseconds.
+	// We use an int64 nanoseconds value here because the Ingester RecvWaitTime field
+	// is a double (so that it will pass correctly in json), but there are no
+	// atomic operations on doubles.
+	recvWaitTime int64
+	// querierExecTime accumulates the querier execution time in nanoseconds
+	// We use an int64 nanoseconds value here because the Queriers exec time field
+	// is a double (so that it will pass correctly in json), but there are no
+	// atomic operations on doubles.
+	querierExecTime int64
 
 	mtx sync.Mutex
 }
@@ -95,6 +106,7 @@ func (c *Context) Ingester() Ingester {
 		TotalBatches:       c.ingester.TotalBatches,
 		TotalLinesSent:     c.ingester.TotalLinesSent,
 		Store:              c.store,
+		RecvWaitTime:       time.Duration(c.recvWaitTime).Seconds(),
 	}
 }
 
@@ -140,6 +152,8 @@ func (c *Context) Reset() {
 	c.result.Reset()
 	c.caches.Reset()
 	c.index.Reset()
+	c.recvWaitTime = 0
+	c.querierExecTime = 0
 }
 
 // Result calculates the summary based on store and ingester data.
@@ -147,12 +161,23 @@ func (c *Context) Result(execTime time.Duration, queueTime time.Duration, totalE
 	r := c.result
 
 	r.Merge(Result{
+		// ewelch: I'm not sure why we have a separate store object in the context and we don't use the
+		// store object in the querier object. I didn't try to solve this when adding the querier exec time
+		// but I suspect this could be simplified?
 		Querier: Querier{
-			Store: c.store,
+			Store:           c.store,
+			QuerierExecTime: time.Duration(c.querierExecTime).Seconds(),
 		},
-		Ingester: c.ingester,
-		Caches:   c.caches,
-		Index:    c.index,
+		Ingester: Ingester{
+			TotalReached:       c.ingester.TotalReached,
+			TotalChunksMatched: c.ingester.TotalChunksMatched,
+			TotalBatches:       c.ingester.TotalBatches,
+			TotalLinesSent:     c.ingester.TotalLinesSent,
+			Store:              c.ingester.Store,
+			RecvWaitTime:       time.Duration(c.recvWaitTime).Seconds(),
+		},
+		Caches: c.caches,
+		Index:  c.index,
 	})
 
 	r.ComputeSummary(execTime, queueTime, totalEntriesReturned)
@@ -181,12 +206,16 @@ func JoinIngesters(ctx context.Context, inc Ingester) {
 // ComputeSummary compute the summary of the statistics.
 func (r *Result) ComputeSummary(execTime time.Duration, queueTime time.Duration, totalEntriesReturned int) {
 	r.Summary.TotalBytesProcessed = r.Querier.Store.Chunk.DecompressedBytes + r.Querier.Store.Chunk.HeadChunkBytes +
-		r.Ingester.Store.Chunk.DecompressedBytes + r.Ingester.Store.Chunk.HeadChunkBytes
+		r.Ingester.Store.Chunk.DecompressedBytes + r.Ingester.Store.Chunk.HeadChunkBytes +
+		r.Querier.Store.Dataobj.PrePredicateDecompressedBytes + r.Querier.Store.Dataobj.PostPredicateDecompressedBytes
 	r.Summary.TotalStructuredMetadataBytesProcessed = r.Querier.Store.Chunk.DecompressedStructuredMetadataBytes + r.Querier.Store.Chunk.HeadChunkStructuredMetadataBytes +
-		r.Ingester.Store.Chunk.DecompressedStructuredMetadataBytes + r.Ingester.Store.Chunk.HeadChunkStructuredMetadataBytes
+		r.Ingester.Store.Chunk.DecompressedStructuredMetadataBytes + r.Ingester.Store.Chunk.HeadChunkStructuredMetadataBytes +
+		r.Querier.Store.Dataobj.PrePredicateDecompressedStructuredMetadataBytes + r.Querier.Store.Dataobj.PostPredicateStructuredMetadataBytes
 	r.Summary.TotalLinesProcessed = r.Querier.Store.Chunk.DecompressedLines + r.Querier.Store.Chunk.HeadChunkLines +
-		r.Ingester.Store.Chunk.DecompressedLines + r.Ingester.Store.Chunk.HeadChunkLines
-	r.Summary.TotalPostFilterLines = r.Querier.Store.Chunk.PostFilterLines + r.Ingester.Store.Chunk.PostFilterLines
+		r.Ingester.Store.Chunk.DecompressedLines + r.Ingester.Store.Chunk.HeadChunkLines +
+		r.Querier.Store.Dataobj.PrePredicateDecompressedRows
+	r.Summary.TotalPostFilterLines = r.Querier.Store.Chunk.PostFilterLines + r.Ingester.Store.Chunk.PostFilterLines +
+		r.Querier.Store.Dataobj.PostFilterRows
 	r.Summary.ExecTime = execTime.Seconds()
 	if execTime != 0 {
 		r.Summary.BytesProcessedPerSecond = int64(float64(r.Summary.TotalBytesProcessed) /
@@ -217,8 +246,24 @@ func (s *Store) Merge(m Store) {
 	s.Chunk.CompressedBytes += m.Chunk.CompressedBytes
 	s.Chunk.TotalDuplicates += m.Chunk.TotalDuplicates
 	s.Chunk.PostFilterLines += m.Chunk.PostFilterLines
+	s.Dataobj.PrePredicateDecompressedRows += m.Dataobj.PrePredicateDecompressedRows
+	s.Dataobj.PrePredicateDecompressedBytes += m.Dataobj.PrePredicateDecompressedBytes
+	s.Dataobj.PrePredicateDecompressedStructuredMetadataBytes += m.Dataobj.PrePredicateDecompressedStructuredMetadataBytes
+	s.Dataobj.PostPredicateDecompressedBytes += m.Dataobj.PostPredicateDecompressedBytes
+	s.Dataobj.PostPredicateRows += m.Dataobj.PostPredicateRows
+	s.Dataobj.PostPredicateStructuredMetadataBytes += m.Dataobj.PostPredicateStructuredMetadataBytes
+	s.Dataobj.PostFilterRows += m.Dataobj.PostFilterRows
+	s.Dataobj.PagesScanned += m.Dataobj.PagesScanned
+	s.Dataobj.PagesDownloaded += m.Dataobj.PagesDownloaded
+	s.Dataobj.PagesDownloadedBytes += m.Dataobj.PagesDownloadedBytes
+	s.Dataobj.PageBatches += m.Dataobj.PageBatches
+	s.Dataobj.TotalPageDownloadTime += m.Dataobj.TotalPageDownloadTime
+	s.Dataobj.TotalRowsAvailable += m.Dataobj.TotalRowsAvailable
 	if m.QueryReferencedStructured {
 		s.QueryReferencedStructured = true
+	}
+	if m.QueryUsedV2Engine {
+		s.QueryUsedV2Engine = true
 	}
 }
 
@@ -233,6 +278,7 @@ func (s *Summary) Merge(m Summary) {
 
 func (q *Querier) Merge(m Querier) {
 	q.Store.Merge(m.Store)
+	q.QuerierExecTime += m.QuerierExecTime
 }
 
 func (i *Ingester) Merge(m Ingester) {
@@ -241,12 +287,16 @@ func (i *Ingester) Merge(m Ingester) {
 	i.TotalLinesSent += m.TotalLinesSent
 	i.TotalChunksMatched += m.TotalChunksMatched
 	i.TotalReached += m.TotalReached
+	i.RecvWaitTime += m.RecvWaitTime
 }
 
 func (i *Index) Merge(m Index) {
 	i.TotalChunks += m.TotalChunks
 	i.PostFilterChunks += m.PostFilterChunks
 	i.ShardsDuration += m.ShardsDuration
+	i.TotalStreams += m.TotalStreams
+	i.ChunkRefsLookupTime += m.ChunkRefsLookupTime
+	i.BloomFilterTime += m.BloomFilterTime
 	if m.UsedBloomFilters {
 		i.UsedBloomFilters = m.UsedBloomFilters
 	}
@@ -295,7 +345,8 @@ func (r *Result) Merge(m Result) {
 	r.Summary.Merge(m.Summary)
 	r.Index.Merge(m.Index)
 	r.ComputeSummary(ConvertSecondsToNanoseconds(r.Summary.ExecTime+m.Summary.ExecTime),
-		ConvertSecondsToNanoseconds(r.Summary.QueueTime+m.Summary.QueueTime), int(r.Summary.TotalEntriesReturned))
+		ConvertSecondsToNanoseconds(r.Summary.QueueTime+m.Summary.QueueTime),
+		int(r.Summary.TotalEntriesReturned))
 }
 
 // ConvertSecondsToNanoseconds converts time.Duration representation of seconds (float64)
@@ -344,6 +395,10 @@ func (r Result) QueryReferencedStructuredMetadata() bool {
 	return r.Querier.Store.QueryReferencedStructured || r.Ingester.Store.QueryReferencedStructured
 }
 
+func (r Result) QueryUsedV2Engine() bool {
+	return r.Querier.Store.QueryUsedV2Engine
+}
+
 func (c *Context) AddIngesterBatch(size int64) {
 	atomic.AddInt64(&c.ingester.TotalBatches, 1)
 	atomic.AddInt64(&c.ingester.TotalLinesSent, size)
@@ -355,6 +410,12 @@ func (c *Context) AddIngesterTotalChunkMatched(i int64) {
 
 func (c *Context) AddIngesterReached(i int32) {
 	atomic.AddInt32(&c.ingester.TotalReached, i)
+}
+
+// AddIngesterRecvWait accumulates the time the querier spent waiting
+// for batches from ingesters over gRPC Recv().
+func (c *Context) AddIngesterRecvWait(d time.Duration) {
+	atomic.AddInt64(&c.recvWaitTime, int64(d))
 }
 
 func (c *Context) AddHeadChunkLines(i int64) {
@@ -513,8 +574,65 @@ func (c *Context) AddSplitQueries(num int64) {
 	atomic.AddInt64(&c.result.Summary.Splits, num)
 }
 
+func (c *Context) AddPrePredicateDecompressedRows(i int64) {
+	atomic.AddInt64(&c.store.Dataobj.PrePredicateDecompressedRows, i)
+}
+
+func (c *Context) AddPrePredicateDecompressedBytes(i int64) {
+	atomic.AddInt64(&c.store.Dataobj.PrePredicateDecompressedBytes, i)
+}
+
+func (c *Context) AddPostPredicateDecompressedBytes(i int64) {
+	atomic.AddInt64(&c.store.Dataobj.PostPredicateDecompressedBytes, i)
+}
+
+func (c *Context) AddPostPredicateRows(i int64) {
+	atomic.AddInt64(&c.store.Dataobj.PostPredicateRows, i)
+}
+
+func (c *Context) AddPostPredicateStructuredMetadataBytes(i int64) {
+	atomic.AddInt64(&c.store.Dataobj.PostPredicateStructuredMetadataBytes, i)
+}
+
+func (c *Context) AddPostFilterRows(i int64) {
+	atomic.AddInt64(&c.store.Dataobj.PostFilterRows, i)
+}
+
+func (c *Context) AddPagesScanned(i int64) {
+	atomic.AddInt64(&c.store.Dataobj.PagesScanned, i)
+}
+
+func (c *Context) AddPagesDownloaded(i int64) {
+	atomic.AddInt64(&c.store.Dataobj.PagesDownloaded, i)
+}
+
+func (c *Context) AddPagesDownloadedBytes(i int64) {
+	atomic.AddInt64(&c.store.Dataobj.PagesDownloadedBytes, i)
+}
+
+func (c *Context) AddPageBatches(i int64) {
+	atomic.AddInt64(&c.store.Dataobj.PageBatches, i)
+}
+
+func (c *Context) AddPageDownloadTime(duration time.Duration) {
+	atomic.AddInt64(&c.store.Dataobj.TotalPageDownloadTime, int64(duration))
+}
+
+func (c *Context) AddTotalRowsAvailable(i int64) {
+	atomic.AddInt64(&c.store.Dataobj.TotalRowsAvailable, i)
+}
+
 func (c *Context) SetQueryReferencedStructuredMetadata() {
 	c.store.QueryReferencedStructured = true
+}
+
+func (c *Context) SetQueryUsedV2Engine() {
+	c.store.QueryUsedV2Engine = true
+}
+
+// AddQuerierExecTime accumulates the querier execution time.
+func (c *Context) AddQuerierExecTime(d time.Duration) {
+	atomic.AddInt64(&c.querierExecTime, int64(d))
 }
 
 func (c *Context) getCacheStatsByType(t CacheType) *Cache {
@@ -552,6 +670,7 @@ func (r Result) KVList() []any {
 		"Ingester.TotalChunksMatched", r.Ingester.TotalChunksMatched,
 		"Ingester.TotalBatches", r.Ingester.TotalBatches,
 		"Ingester.TotalLinesSent", r.Ingester.TotalLinesSent,
+		"Ingester.RecvWaitTime", ConvertSecondsToNanoseconds(r.Ingester.RecvWaitTime),
 		"Ingester.TotalChunksRef", r.Ingester.Store.TotalChunksRef,
 		"Ingester.TotalChunksDownloaded", r.Ingester.Store.TotalChunksDownloaded,
 		"Ingester.ChunksDownloadTime", time.Duration(r.Ingester.Store.ChunksDownloadTime),
@@ -576,6 +695,12 @@ func (r Result) KVList() []any {
 		"Querier.CompressedBytes", humanize.Bytes(uint64(r.Querier.Store.Chunk.CompressedBytes)),
 		"Querier.TotalDuplicates", r.Querier.Store.Chunk.TotalDuplicates,
 		"Querier.QueryReferencedStructuredMetadata", r.Querier.Store.QueryReferencedStructured,
+		"Querier.QueryUsedV2Engine", r.Querier.Store.QueryUsedV2Engine,
+	}
+
+	if r.QueryUsedV2Engine() {
+		// Specifying prefix in case r.Ingester.Store ever uses the new engine.
+		result = append(result, r.Querier.Store.Dataobj.kvList("Querier.")...)
 	}
 
 	result = append(result, r.Caches.kvList()...)
@@ -648,5 +773,23 @@ func (c Caches) kvList() []any {
 		"Cache.InstantMetricResult.BytesSent", humanize.Bytes(uint64(c.InstantMetricResult.BytesSent)),
 		"Cache.InstantMetricResult.BytesReceived", humanize.Bytes(uint64(c.InstantMetricResult.BytesReceived)),
 		"Cache.InstantMetricResult.DownloadTime", c.InstantMetricResult.CacheDownloadTime(),
+	}
+}
+
+func (d Dataobj) kvList(prefix string) []any {
+	return []any{
+		prefix + "Dataobj.PrePredicateDecompressedRows", d.PrePredicateDecompressedRows,
+		prefix + "Dataobj.PrePredicateDecompressedBytes", humanize.Bytes(uint64(d.PrePredicateDecompressedBytes)),
+		prefix + "Dataobj.PrePredicateDecompressedStructuredMetadataBytes", humanize.Bytes(uint64(d.PrePredicateDecompressedStructuredMetadataBytes)),
+		prefix + "Dataobj.PostPredicateRows", d.PostPredicateRows,
+		prefix + "Dataobj.PostPredicateDecompressedBytes", humanize.Bytes(uint64(d.PostPredicateDecompressedBytes)),
+		prefix + "Dataobj.PostPredicateStructuredMetadataBytes", humanize.Bytes(uint64(d.PostPredicateStructuredMetadataBytes)),
+		prefix + "Dataobj.PostFilterRows", d.PostFilterRows,
+		prefix + "Dataobj.PagesScanned", d.PagesScanned,
+		prefix + "Dataobj.PagesDownloaded", d.PagesDownloaded,
+		prefix + "Dataobj.PagesDownloadedBytes", humanize.Bytes(uint64(d.PagesDownloadedBytes)),
+		prefix + "Dataobj.PageBatches", d.PageBatches,
+		prefix + "Dataobj.TotalRowsAvailable", d.TotalRowsAvailable,
+		prefix + "Dataobj.TotalPageDownloadTime", time.Duration(d.TotalPageDownloadTime),
 	}
 }

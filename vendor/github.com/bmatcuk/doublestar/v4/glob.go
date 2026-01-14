@@ -158,7 +158,7 @@ func (g *glob) globAlts(fsys fs.FS, pattern string, openingIdx, closingIdx int, 
 				nextIdx += patIdx
 			}
 
-			alt := buildAlt(d, pattern, startIdx, openingIdx, patIdx, nextIdx, afterIdx)
+			alt := buildAlt(escapeMeta(d), pattern, startIdx, openingIdx, patIdx, nextIdx, afterIdx)
 			matches, err = g.doGlob(fsys, alt, matches, firstSegment, beforeMeta)
 			if err != nil {
 				return
@@ -225,7 +225,7 @@ func (g *glob) globDir(fsys fs.FS, dir, pattern string, matches []string, canMat
 	var matched bool
 	for _, info := range dirs {
 		name := info.Name()
-		matched, e = matchWithSeparator(pattern, name, '/', false)
+		matched, e = matchWithSeparator(pattern, name, '/', false, g.caseInsensitive)
 		if e != nil {
 			return
 		}

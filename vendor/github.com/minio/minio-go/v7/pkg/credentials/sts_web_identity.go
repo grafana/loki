@@ -93,6 +93,9 @@ type STSWebIdentity struct {
 
 	// roleSessionName is the identifier for the assumed role session.
 	roleSessionName string
+
+	// Optional, used for token revokation
+	TokenRevokeType string
 }
 
 // NewSTSWebIdentity returns a pointer to a new
@@ -135,7 +138,7 @@ func WithPolicy(policy string) func(*STSWebIdentity) {
 }
 
 func getWebIdentityCredentials(clnt *http.Client, endpoint, roleARN, roleSessionName string, policy string,
-	getWebIDTokenExpiry func() (*WebIdentityToken, error),
+	getWebIDTokenExpiry func() (*WebIdentityToken, error), tokenRevokeType string,
 ) (AssumeRoleWithWebIdentityResponse, error) {
 	idToken, err := getWebIDTokenExpiry()
 	if err != nil {
@@ -168,6 +171,9 @@ func getWebIdentityCredentials(clnt *http.Client, endpoint, roleARN, roleSession
 		v.Set("Policy", policy)
 	}
 	v.Set("Version", STSVersion)
+	if tokenRevokeType != "" {
+		v.Set("TokenRevokeType", tokenRevokeType)
+	}
 
 	u, err := url.Parse(endpoint)
 	if err != nil {
@@ -236,7 +242,7 @@ func (m *STSWebIdentity) RetrieveWithCredContext(cc *CredContext) (Value, error)
 		return Value{}, errors.New("STS endpoint unknown")
 	}
 
-	a, err := getWebIdentityCredentials(client, stsEndpoint, m.RoleARN, m.roleSessionName, m.Policy, m.GetWebIDTokenExpiry)
+	a, err := getWebIdentityCredentials(client, stsEndpoint, m.RoleARN, m.roleSessionName, m.Policy, m.GetWebIDTokenExpiry, m.TokenRevokeType)
 	if err != nil {
 		return Value{}, err
 	}

@@ -275,7 +275,7 @@ func TestNotifierSendsUserIDHeader(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	n.Send(&notifier.Alert{
-		Labels: labels.Labels{labels.Label{Name: "alertname", Value: "testalert"}},
+		Labels: labels.FromStrings("alertname", "testalert"),
 	})
 
 	wg.Wait()
@@ -361,11 +361,11 @@ func TestMultiTenantsNotifierSendsUserIDHeader(t *testing.T) {
 	}
 
 	n1.Send(&notifier.Alert{
-		Labels: labels.Labels{labels.Label{Name: "alertname1", Value: "testalert1"}},
+		Labels: labels.FromStrings("alertname1", "testalert1"),
 	})
 
 	n2.Send(&notifier.Alert{
-		Labels: labels.Labels{labels.Label{Name: "alertname2", Value: "testalert2"}},
+		Labels: labels.FromStrings("alertname2", "testalert2"),
 	})
 
 	// Wait for notifications with a timeout
@@ -545,6 +545,8 @@ func TestGetRules(t *testing.T) {
 						KVStore: kv.Config{
 							Mock: kvStore,
 						},
+						HeartbeatPeriod:  time.Second,
+						HeartbeatTimeout: time.Minute,
 					}
 					m := loki_storage.NewClientMetrics()
 					defer m.Unregister()
@@ -590,7 +592,7 @@ func TestGetRules(t *testing.T) {
 							d = ring.NewDesc()
 						}
 						for rID, tokens := range allTokensByRuler {
-							d.AddIngester(rID, rulerAddrMap[rID].lifecycler.GetInstanceAddr(), "", tokens, ring.ACTIVE, time.Now(), false, time.Now())
+							d.AddIngester(rID, rulerAddrMap[rID].lifecycler.GetInstanceAddr(), "", tokens, ring.ACTIVE, time.Now(), false, time.Now(), nil)
 						}
 						return d, true, nil
 					})
@@ -772,7 +774,7 @@ func TestSharding(t *testing.T) {
 			sharding:         true,
 			shardingStrategy: util.ShardingStrategyDefault,
 			setupRing: func(desc *ring.Desc) {
-				desc.AddIngester(ruler1, ruler1Addr, "", []uint32{0}, ring.ACTIVE, time.Now(), false, time.Now())
+				desc.AddIngester(ruler1, ruler1Addr, "", []uint32{0}, ring.ACTIVE, time.Now(), false, time.Now(), nil)
 			},
 			expectedRules: expectedRulesMap{ruler1: allRules},
 		},
@@ -782,7 +784,7 @@ func TestSharding(t *testing.T) {
 			shardingStrategy: util.ShardingStrategyDefault,
 			enabledUsers:     []string{user1},
 			setupRing: func(desc *ring.Desc) {
-				desc.AddIngester(ruler1, ruler1Addr, "", []uint32{0}, ring.ACTIVE, time.Now(), false, time.Now())
+				desc.AddIngester(ruler1, ruler1Addr, "", []uint32{0}, ring.ACTIVE, time.Now(), false, time.Now(), nil)
 			},
 			expectedRules: expectedRulesMap{ruler1: map[string]rulespb.RuleGroupList{
 				user1: {user1Group1, user1Group2},
@@ -794,7 +796,7 @@ func TestSharding(t *testing.T) {
 			shardingStrategy: util.ShardingStrategyDefault,
 			disabledUsers:    []string{user1},
 			setupRing: func(desc *ring.Desc) {
-				desc.AddIngester(ruler1, ruler1Addr, "", []uint32{0}, ring.ACTIVE, time.Now(), false, time.Now())
+				desc.AddIngester(ruler1, ruler1Addr, "", []uint32{0}, ring.ACTIVE, time.Now(), false, time.Now(), nil)
 			},
 			expectedRules: expectedRulesMap{ruler1: map[string]rulespb.RuleGroupList{
 				user2: {user2Group1},
@@ -806,8 +808,8 @@ func TestSharding(t *testing.T) {
 			sharding:         true,
 			shardingStrategy: util.ShardingStrategyDefault,
 			setupRing: func(desc *ring.Desc) {
-				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{user1Group1Token + 1, user2Group1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now())
-				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{user1Group2Token + 1, user3Group1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now())
+				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{user1Group1Token + 1, user2Group1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now(), nil)
+				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{user1Group2Token + 1, user3Group1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now(), nil)
 			},
 
 			expectedRules: expectedRulesMap{
@@ -828,8 +830,8 @@ func TestSharding(t *testing.T) {
 			shardingStrategy: util.ShardingStrategyDefault,
 			enabledUsers:     []string{user1},
 			setupRing: func(desc *ring.Desc) {
-				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{user1Group1Token + 1, user2Group1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now())
-				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{user1Group2Token + 1, user3Group1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now())
+				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{user1Group1Token + 1, user2Group1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now(), nil)
+				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{user1Group2Token + 1, user3Group1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now(), nil)
 			},
 
 			expectedRules: expectedRulesMap{
@@ -848,8 +850,8 @@ func TestSharding(t *testing.T) {
 			shardingStrategy: util.ShardingStrategyDefault,
 			disabledUsers:    []string{user1},
 			setupRing: func(desc *ring.Desc) {
-				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{user1Group1Token + 1, user2Group1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now())
-				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{user1Group2Token + 1, user3Group1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now())
+				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{user1Group1Token + 1, user2Group1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now(), nil)
+				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{user1Group2Token + 1, user3Group1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now(), nil)
 			},
 
 			expectedRules: expectedRulesMap{
@@ -868,7 +870,7 @@ func TestSharding(t *testing.T) {
 			shardingStrategy: util.ShardingStrategyDefault,
 
 			setupRing: func(desc *ring.Desc) {
-				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{user1Group1Token + 1, user2Group1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now())
+				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{user1Group1Token + 1, user2Group1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now(), nil)
 				desc.Ingesters[ruler2] = ring.InstanceDesc{
 					Addr:      ruler2Addr,
 					Timestamp: time.Now().Add(-time.Hour).Unix(),
@@ -892,8 +894,8 @@ func TestSharding(t *testing.T) {
 			shardingStrategy: util.ShardingStrategyDefault,
 
 			setupRing: func(desc *ring.Desc) {
-				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{user1Group1Token + 1, user2Group1Token + 1}), ring.LEAVING, time.Now(), false, time.Now())
-				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{user1Group2Token + 1, user3Group1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now())
+				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{user1Group1Token + 1, user2Group1Token + 1}), ring.LEAVING, time.Now(), false, time.Now(), nil)
+				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{user1Group2Token + 1, user3Group1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now(), nil)
 			},
 
 			expectedRules: expectedRulesMap{
@@ -908,8 +910,8 @@ func TestSharding(t *testing.T) {
 			shardingStrategy: util.ShardingStrategyDefault,
 
 			setupRing: func(desc *ring.Desc) {
-				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{user1Group1Token + 1, user2Group1Token + 1}), ring.JOINING, time.Now(), false, time.Now())
-				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{user1Group2Token + 1, user3Group1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now())
+				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{user1Group1Token + 1, user2Group1Token + 1}), ring.JOINING, time.Now(), false, time.Now(), nil)
+				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{user1Group2Token + 1, user3Group1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now(), nil)
 			},
 
 			expectedRules: expectedRulesMap{
@@ -924,7 +926,7 @@ func TestSharding(t *testing.T) {
 			shardingStrategy: util.ShardingStrategyShuffle,
 
 			setupRing: func(desc *ring.Desc) {
-				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{0}), ring.ACTIVE, time.Now(), false, time.Now())
+				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{0}), ring.ACTIVE, time.Now(), false, time.Now(), nil)
 			},
 
 			expectedRules: expectedRulesMap{
@@ -938,8 +940,8 @@ func TestSharding(t *testing.T) {
 			shuffleShardSize: 1,
 
 			setupRing: func(desc *ring.Desc) {
-				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{userToken(user1, 0) + 1, userToken(user2, 0) + 1, userToken(user3, 0) + 1}), ring.ACTIVE, time.Now(), false, time.Now())
-				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{user1Group1Token + 1, user1Group2Token + 1, user2Group1Token + 1, user3Group1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now())
+				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{userToken(user1, 0) + 1, userToken(user2, 0) + 1, userToken(user3, 0) + 1}), ring.ACTIVE, time.Now(), false, time.Now(), nil)
+				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{user1Group1Token + 1, user1Group2Token + 1, user2Group1Token + 1, user3Group1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now(), nil)
 			},
 
 			expectedRules: expectedRulesMap{
@@ -956,8 +958,8 @@ func TestSharding(t *testing.T) {
 
 			setupRing: func(desc *ring.Desc) {
 				// Exact same tokens setup as previous test.
-				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{userToken(user1, 0) + 1, userToken(user2, 0) + 1, userToken(user3, 0) + 1}), ring.ACTIVE, time.Now(), false, time.Now())
-				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{user1Group1Token + 1, user1Group2Token + 1, user2Group1Token + 1, user3Group1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now())
+				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{userToken(user1, 0) + 1, userToken(user2, 0) + 1, userToken(user3, 0) + 1}), ring.ACTIVE, time.Now(), false, time.Now(), nil)
+				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{user1Group1Token + 1, user1Group2Token + 1, user2Group1Token + 1, user3Group1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now(), nil)
 			},
 
 			expectedRules: expectedRulesMap{
@@ -972,8 +974,8 @@ func TestSharding(t *testing.T) {
 			shuffleShardSize: 1,
 
 			setupRing: func(desc *ring.Desc) {
-				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{userToken(user1, 0) + 1}), ring.ACTIVE, time.Now(), false, time.Now())
-				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{userToken(user2, 0) + 1, userToken(user3, 0) + 1}), ring.ACTIVE, time.Now(), false, time.Now())
+				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{userToken(user1, 0) + 1}), ring.ACTIVE, time.Now(), false, time.Now(), nil)
+				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{userToken(user2, 0) + 1, userToken(user3, 0) + 1}), ring.ACTIVE, time.Now(), false, time.Now(), nil)
 			},
 
 			expectedRules: expectedRulesMap{
@@ -992,9 +994,9 @@ func TestSharding(t *testing.T) {
 			shuffleShardSize: 2,
 
 			setupRing: func(desc *ring.Desc) {
-				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{userToken(user1, 0) + 1, user1Group1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now())
-				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{userToken(user1, 1) + 1, user1Group2Token + 1, userToken(user2, 1) + 1, userToken(user3, 1) + 1}), ring.ACTIVE, time.Now(), false, time.Now())
-				desc.AddIngester(ruler3, ruler3Addr, "", sortTokens([]uint32{userToken(user2, 0) + 1, userToken(user3, 0) + 1, user2Group1Token + 1, user3Group1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now())
+				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{userToken(user1, 0) + 1, user1Group1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now(), nil)
+				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{userToken(user1, 1) + 1, user1Group2Token + 1, userToken(user2, 1) + 1, userToken(user3, 1) + 1}), ring.ACTIVE, time.Now(), false, time.Now(), nil)
+				desc.AddIngester(ruler3, ruler3Addr, "", sortTokens([]uint32{userToken(user2, 0) + 1, userToken(user3, 0) + 1, user2Group1Token + 1, user3Group1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now(), nil)
 			},
 
 			expectedRules: expectedRulesMap{
@@ -1016,9 +1018,9 @@ func TestSharding(t *testing.T) {
 			shuffleShardSize: 2,
 
 			setupRing: func(desc *ring.Desc) {
-				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{userToken(user1, 0) + 1, userToken(user2, 1) + 1, user1Group1Token + 1, user1Group2Token + 1}), ring.ACTIVE, time.Now(), false, time.Now())
-				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{userToken(user1, 1) + 1, userToken(user3, 1) + 1, user2Group1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now())
-				desc.AddIngester(ruler3, ruler3Addr, "", sortTokens([]uint32{userToken(user2, 0) + 1, userToken(user3, 0) + 1, user3Group1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now())
+				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{userToken(user1, 0) + 1, userToken(user2, 1) + 1, user1Group1Token + 1, user1Group2Token + 1}), ring.ACTIVE, time.Now(), false, time.Now(), nil)
+				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{userToken(user1, 1) + 1, userToken(user3, 1) + 1, user2Group1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now(), nil)
+				desc.AddIngester(ruler3, ruler3Addr, "", sortTokens([]uint32{userToken(user2, 0) + 1, userToken(user3, 0) + 1, user3Group1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now(), nil)
 			},
 
 			expectedRules: expectedRulesMap{
@@ -1040,9 +1042,9 @@ func TestSharding(t *testing.T) {
 			enabledUsers:     []string{user1},
 
 			setupRing: func(desc *ring.Desc) {
-				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{userToken(user1, 0) + 1, user1Group1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now())
-				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{userToken(user1, 1) + 1, user1Group2Token + 1, userToken(user2, 1) + 1, userToken(user3, 1) + 1}), ring.ACTIVE, time.Now(), false, time.Now())
-				desc.AddIngester(ruler3, ruler3Addr, "", sortTokens([]uint32{userToken(user2, 0) + 1, userToken(user3, 0) + 1, user2Group1Token + 1, user3Group1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now())
+				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{userToken(user1, 0) + 1, user1Group1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now(), nil)
+				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{userToken(user1, 1) + 1, user1Group2Token + 1, userToken(user2, 1) + 1, userToken(user3, 1) + 1}), ring.ACTIVE, time.Now(), false, time.Now(), nil)
+				desc.AddIngester(ruler3, ruler3Addr, "", sortTokens([]uint32{userToken(user2, 0) + 1, userToken(user3, 0) + 1, user2Group1Token + 1, user3Group1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now(), nil)
 			},
 
 			expectedRules: expectedRulesMap{
@@ -1063,9 +1065,9 @@ func TestSharding(t *testing.T) {
 			disabledUsers:    []string{user1},
 
 			setupRing: func(desc *ring.Desc) {
-				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{userToken(user1, 0) + 1, user1Group1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now())
-				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{userToken(user1, 1) + 1, user1Group2Token + 1, userToken(user2, 1) + 1, userToken(user3, 1) + 1}), ring.ACTIVE, time.Now(), false, time.Now())
-				desc.AddIngester(ruler3, ruler3Addr, "", sortTokens([]uint32{userToken(user2, 0) + 1, userToken(user3, 0) + 1, user2Group1Token + 1, user3Group1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now())
+				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{userToken(user1, 0) + 1, user1Group1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now(), nil)
+				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{userToken(user1, 1) + 1, user1Group2Token + 1, userToken(user2, 1) + 1, userToken(user3, 1) + 1}), ring.ACTIVE, time.Now(), false, time.Now(), nil)
+				desc.AddIngester(ruler3, ruler3Addr, "", sortTokens([]uint32{userToken(user2, 0) + 1, userToken(user3, 0) + 1, user2Group1Token + 1, user3Group1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now(), nil)
 			},
 
 			expectedRules: expectedRulesMap{
@@ -1082,7 +1084,7 @@ func TestSharding(t *testing.T) {
 			sharding:     true,
 			shardingAlgo: util.ShardingAlgoByRule,
 			setupRing: func(desc *ring.Desc) {
-				desc.AddIngester(ruler1, ruler1Addr, "", []uint32{0}, ring.ACTIVE, time.Now(), false, time.Now())
+				desc.AddIngester(ruler1, ruler1Addr, "", []uint32{0}, ring.ACTIVE, time.Now(), false, time.Now(), nil)
 			},
 			expectedRules: expectedRulesMap{ruler1: allRulesSharded},
 		},
@@ -1092,7 +1094,7 @@ func TestSharding(t *testing.T) {
 			shardingAlgo: util.ShardingAlgoByRule,
 			enabledUsers: []string{user1},
 			setupRing: func(desc *ring.Desc) {
-				desc.AddIngester(ruler1, ruler1Addr, "", []uint32{0}, ring.ACTIVE, time.Now(), false, time.Now())
+				desc.AddIngester(ruler1, ruler1Addr, "", []uint32{0}, ring.ACTIVE, time.Now(), false, time.Now(), nil)
 			},
 			expectedRules: expectedRulesMap{ruler1: map[string]rulespb.RuleGroupList{
 				user1: {
@@ -1108,7 +1110,7 @@ func TestSharding(t *testing.T) {
 			shardingAlgo:  util.ShardingAlgoByRule,
 			disabledUsers: []string{user1},
 			setupRing: func(desc *ring.Desc) {
-				desc.AddIngester(ruler1, ruler1Addr, "", []uint32{0}, ring.ACTIVE, time.Now(), false, time.Now())
+				desc.AddIngester(ruler1, ruler1Addr, "", []uint32{0}, ring.ACTIVE, time.Now(), false, time.Now(), nil)
 			},
 			expectedRules: expectedRulesMap{ruler1: map[string]rulespb.RuleGroupList{
 				user2: {
@@ -1126,8 +1128,8 @@ func TestSharding(t *testing.T) {
 			sharding:     true,
 			shardingAlgo: util.ShardingAlgoByRule,
 			setupRing: func(desc *ring.Desc) {
-				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{user1Group1Rule1Token + 1, user2Group1Rule2Token + 1, user1Group1Rule2Token + 1}), ring.ACTIVE, time.Now(), false, time.Now())
-				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{user1Group2Rule1Token + 1, user3Group1Rule1Token + 1, user3Group1Rule2Token + 1, user2Group1Rule1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now())
+				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{user1Group1Rule1Token + 1, user2Group1Rule2Token + 1, user1Group1Rule2Token + 1}), ring.ACTIVE, time.Now(), false, time.Now(), nil)
+				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{user1Group2Rule1Token + 1, user3Group1Rule1Token + 1, user3Group1Rule2Token + 1, user2Group1Rule1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now(), nil)
 			},
 
 			expectedRules: expectedRulesMap{
@@ -1155,8 +1157,8 @@ func TestSharding(t *testing.T) {
 			shardingAlgo: util.ShardingAlgoByRule,
 			enabledUsers: []string{user1},
 			setupRing: func(desc *ring.Desc) {
-				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{user1Group1Rule1Token + 1, user2Group1Rule2Token + 1, user1Group1Rule2Token + 1}), ring.ACTIVE, time.Now(), false, time.Now())
-				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{user1Group2Rule1Token + 1, user3Group1Rule1Token + 1, user3Group1Rule2Token + 1, user2Group1Rule1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now())
+				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{user1Group1Rule1Token + 1, user2Group1Rule2Token + 1, user1Group1Rule2Token + 1}), ring.ACTIVE, time.Now(), false, time.Now(), nil)
+				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{user1Group2Rule1Token + 1, user3Group1Rule1Token + 1, user3Group1Rule2Token + 1, user2Group1Rule1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now(), nil)
 			},
 
 			expectedRules: expectedRulesMap{
@@ -1180,8 +1182,8 @@ func TestSharding(t *testing.T) {
 			shardingAlgo:  util.ShardingAlgoByRule,
 			disabledUsers: []string{user1},
 			setupRing: func(desc *ring.Desc) {
-				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{user1Group1Rule1Token + 1, user2Group1Rule2Token + 1, user1Group1Rule2Token + 1}), ring.ACTIVE, time.Now(), false, time.Now())
-				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{user1Group2Rule1Token + 1, user3Group1Rule1Token + 1, user3Group1Rule2Token + 1, user2Group1Rule1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now())
+				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{user1Group1Rule1Token + 1, user2Group1Rule2Token + 1, user1Group1Rule2Token + 1}), ring.ACTIVE, time.Now(), false, time.Now(), nil)
+				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{user1Group2Rule1Token + 1, user3Group1Rule1Token + 1, user3Group1Rule2Token + 1, user2Group1Rule1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now(), nil)
 			},
 
 			expectedRules: expectedRulesMap{
@@ -1208,7 +1210,7 @@ func TestSharding(t *testing.T) {
 			shardingAlgo: util.ShardingAlgoByRule,
 
 			setupRing: func(desc *ring.Desc) {
-				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{user1Group1Rule1Token + 1, user2Group1Rule2Token + 1, user1Group1Rule2Token + 1}), ring.ACTIVE, time.Now(), false, time.Now())
+				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{user1Group1Rule1Token + 1, user2Group1Rule2Token + 1, user1Group1Rule2Token + 1}), ring.ACTIVE, time.Now(), false, time.Now(), nil)
 				desc.Ingesters[ruler2] = ring.InstanceDesc{
 					Addr:      ruler2Addr,
 					Timestamp: time.Now().Add(-time.Hour).Unix(),
@@ -1237,8 +1239,8 @@ func TestSharding(t *testing.T) {
 			shardingAlgo: util.ShardingAlgoByRule,
 
 			setupRing: func(desc *ring.Desc) {
-				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{user1Group1Rule1Token + 1, user2Group1Rule2Token + 1, user1Group1Rule2Token + 1}), ring.LEAVING, time.Now(), false, time.Now())
-				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{user1Group2Rule1Token + 1, user3Group1Rule1Token + 1, user3Group1Rule2Token + 1, user2Group1Rule1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now())
+				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{user1Group1Rule1Token + 1, user2Group1Rule2Token + 1, user1Group1Rule2Token + 1}), ring.LEAVING, time.Now(), false, time.Now(), nil)
+				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{user1Group2Rule1Token + 1, user3Group1Rule1Token + 1, user3Group1Rule2Token + 1, user2Group1Rule1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now(), nil)
 			},
 
 			expectedRules: expectedRulesMap{
@@ -1253,8 +1255,8 @@ func TestSharding(t *testing.T) {
 			shardingAlgo: util.ShardingAlgoByRule,
 
 			setupRing: func(desc *ring.Desc) {
-				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{user1Group1Rule1Token + 1, user2Group1Rule2Token + 1, user1Group1Rule2Token + 1}), ring.JOINING, time.Now(), false, time.Now())
-				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{user1Group2Rule1Token + 1, user3Group1Rule1Token + 1, user3Group1Rule2Token + 1, user2Group1Rule1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now())
+				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{user1Group1Rule1Token + 1, user2Group1Rule2Token + 1, user1Group1Rule2Token + 1}), ring.JOINING, time.Now(), false, time.Now(), nil)
+				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{user1Group2Rule1Token + 1, user3Group1Rule1Token + 1, user3Group1Rule2Token + 1, user2Group1Rule1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now(), nil)
 			},
 
 			expectedRules: expectedRulesMap{
@@ -1270,7 +1272,7 @@ func TestSharding(t *testing.T) {
 			shardingAlgo:     util.ShardingAlgoByRule,
 
 			setupRing: func(desc *ring.Desc) {
-				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{0}), ring.ACTIVE, time.Now(), false, time.Now())
+				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{0}), ring.ACTIVE, time.Now(), false, time.Now(), nil)
 			},
 
 			expectedRules: expectedRulesMap{
@@ -1285,9 +1287,9 @@ func TestSharding(t *testing.T) {
 			shuffleShardSize: 1,
 
 			setupRing: func(desc *ring.Desc) {
-				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{userToken(user1, 0) + 1, userToken(user2, 0) + 1, userToken(user3, 0) + 1}), ring.ACTIVE, time.Now(), false, time.Now())
+				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{userToken(user1, 0) + 1, userToken(user2, 0) + 1, userToken(user3, 0) + 1}), ring.ACTIVE, time.Now(), false, time.Now(), nil)
 				// immaterial what tokens this ruler has, it won't be assigned any rules
-				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{user1Group2Rule1Token + 1, user3Group1Rule1Token + 1, user3Group1Rule2Token + 1, user2Group1Rule1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now())
+				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{user1Group2Rule1Token + 1, user3Group1Rule1Token + 1, user3Group1Rule2Token + 1, user2Group1Rule1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now(), nil)
 			},
 
 			expectedRules: expectedRulesMap{
@@ -1305,9 +1307,9 @@ func TestSharding(t *testing.T) {
 
 			setupRing: func(desc *ring.Desc) {
 				// Exact same tokens setup as previous test.
-				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{userToken(user1, 0) + 1, userToken(user2, 0) + 1, userToken(user3, 0) + 1}), ring.ACTIVE, time.Now(), false, time.Now())
+				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{userToken(user1, 0) + 1, userToken(user2, 0) + 1, userToken(user3, 0) + 1}), ring.ACTIVE, time.Now(), false, time.Now(), nil)
 				// this ruler has all the rule tokens, so it gets all the rules
-				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{user1Group1Rule1Token + 1, user1Group1Rule2Token + 1, user1Group2Rule1Token + 1, user2Group1Rule1Token + 1, user2Group1Rule2Token + 1, user3Group1Rule1Token + 1, user3Group1Rule2Token + 1}), ring.ACTIVE, time.Now(), false, time.Now())
+				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{user1Group1Rule1Token + 1, user1Group1Rule2Token + 1, user1Group2Rule1Token + 1, user2Group1Rule1Token + 1, user2Group1Rule2Token + 1, user3Group1Rule1Token + 1, user3Group1Rule2Token + 1}), ring.ACTIVE, time.Now(), false, time.Now(), nil)
 			},
 
 			expectedRules: expectedRulesMap{
@@ -1323,8 +1325,8 @@ func TestSharding(t *testing.T) {
 			shuffleShardSize: 1,
 
 			setupRing: func(desc *ring.Desc) {
-				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{userToken(user1, 0) + 1}), ring.ACTIVE, time.Now(), false, time.Now())
-				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{userToken(user2, 0) + 1, userToken(user3, 0) + 1}), ring.ACTIVE, time.Now(), false, time.Now())
+				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{userToken(user1, 0) + 1}), ring.ACTIVE, time.Now(), false, time.Now(), nil)
+				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{userToken(user2, 0) + 1, userToken(user3, 0) + 1}), ring.ACTIVE, time.Now(), false, time.Now(), nil)
 			},
 
 			expectedRules: expectedRulesMap{
@@ -1355,9 +1357,9 @@ func TestSharding(t *testing.T) {
 			shuffleShardSize: 2,
 
 			setupRing: func(desc *ring.Desc) {
-				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{userToken(user1, 0) + 1, user1Group1Rule1Token + 1, user1Group2Rule1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now())
-				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{userToken(user1, 1) + 1, user1Group1Rule2Token + 1, userToken(user2, 1) + 1, userToken(user3, 1) + 1}), ring.ACTIVE, time.Now(), false, time.Now())
-				desc.AddIngester(ruler3, ruler3Addr, "", sortTokens([]uint32{userToken(user2, 0) + 1, userToken(user3, 0) + 1, user2Group1Rule1Token + 1, user2Group1Rule2Token + 1, user3Group1Rule1Token + 1, user3Group1Rule2Token + 1}), ring.ACTIVE, time.Now(), false, time.Now())
+				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{userToken(user1, 0) + 1, user1Group1Rule1Token + 1, user1Group2Rule1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now(), nil)
+				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{userToken(user1, 1) + 1, user1Group1Rule2Token + 1, userToken(user2, 1) + 1, userToken(user3, 1) + 1}), ring.ACTIVE, time.Now(), false, time.Now(), nil)
+				desc.AddIngester(ruler3, ruler3Addr, "", sortTokens([]uint32{userToken(user2, 0) + 1, userToken(user3, 0) + 1, user2Group1Rule1Token + 1, user2Group1Rule2Token + 1, user3Group1Rule1Token + 1, user3Group1Rule2Token + 1}), ring.ACTIVE, time.Now(), false, time.Now(), nil)
 			},
 
 			expectedRules: expectedRulesMap{
@@ -1391,9 +1393,9 @@ func TestSharding(t *testing.T) {
 			shuffleShardSize: 2,
 
 			setupRing: func(desc *ring.Desc) {
-				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{userToken(user1, 0) + 1, userToken(user2, 1) + 1, user1Group1Rule1Token + 1, user1Group1Rule2Token + 1, user1Group2Rule1Token + 1, user2Group1Rule1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now())
-				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{userToken(user1, 1) + 1, userToken(user3, 1) + 1}), ring.ACTIVE, time.Now(), false, time.Now())
-				desc.AddIngester(ruler3, ruler3Addr, "", sortTokens([]uint32{userToken(user2, 0) + 1, userToken(user3, 0) + 1, user3Group1Rule1Token + 1, user3Group1Rule2Token + 1, user2Group1Rule2Token + 1}), ring.ACTIVE, time.Now(), false, time.Now())
+				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{userToken(user1, 0) + 1, userToken(user2, 1) + 1, user1Group1Rule1Token + 1, user1Group1Rule2Token + 1, user1Group2Rule1Token + 1, user2Group1Rule1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now(), nil)
+				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{userToken(user1, 1) + 1, userToken(user3, 1) + 1}), ring.ACTIVE, time.Now(), false, time.Now(), nil)
+				desc.AddIngester(ruler3, ruler3Addr, "", sortTokens([]uint32{userToken(user2, 0) + 1, userToken(user3, 0) + 1, user3Group1Rule1Token + 1, user3Group1Rule2Token + 1, user2Group1Rule2Token + 1}), ring.ACTIVE, time.Now(), false, time.Now(), nil)
 			},
 
 			expectedRules: expectedRulesMap{
@@ -1428,9 +1430,9 @@ func TestSharding(t *testing.T) {
 			enabledUsers:     []string{user1},
 
 			setupRing: func(desc *ring.Desc) {
-				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{userToken(user1, 0) + 1, userToken(user2, 1) + 1, user1Group1Rule1Token + 1, user1Group1Rule2Token + 1}), ring.ACTIVE, time.Now(), false, time.Now())
-				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{userToken(user1, 1) + 1, userToken(user3, 1) + 1, user1Group2Rule1Token + 1, user2Group1Rule1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now())
-				desc.AddIngester(ruler3, ruler3Addr, "", sortTokens([]uint32{userToken(user2, 0) + 1, userToken(user3, 0) + 1, user3Group1Rule1Token + 1, user3Group1Rule2Token + 1, user2Group1Rule2Token + 1}), ring.ACTIVE, time.Now(), false, time.Now())
+				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{userToken(user1, 0) + 1, userToken(user2, 1) + 1, user1Group1Rule1Token + 1, user1Group1Rule2Token + 1}), ring.ACTIVE, time.Now(), false, time.Now(), nil)
+				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{userToken(user1, 1) + 1, userToken(user3, 1) + 1, user1Group2Rule1Token + 1, user2Group1Rule1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now(), nil)
+				desc.AddIngester(ruler3, ruler3Addr, "", sortTokens([]uint32{userToken(user2, 0) + 1, userToken(user3, 0) + 1, user3Group1Rule1Token + 1, user3Group1Rule2Token + 1, user2Group1Rule2Token + 1}), ring.ACTIVE, time.Now(), false, time.Now(), nil)
 			},
 
 			expectedRules: expectedRulesMap{
@@ -1457,9 +1459,9 @@ func TestSharding(t *testing.T) {
 			disabledUsers:    []string{user1},
 
 			setupRing: func(desc *ring.Desc) {
-				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{userToken(user1, 0) + 1, userToken(user2, 1) + 1, user1Group1Rule1Token + 1, user1Group1Rule2Token + 1, user2Group1Rule1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now())
-				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{userToken(user1, 1) + 1, userToken(user3, 1) + 1, user1Group2Rule1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now())
-				desc.AddIngester(ruler3, ruler3Addr, "", sortTokens([]uint32{userToken(user2, 0) + 1, userToken(user3, 0) + 1, user3Group1Rule1Token + 1, user3Group1Rule2Token + 1, user2Group1Rule2Token + 1}), ring.ACTIVE, time.Now(), false, time.Now())
+				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{userToken(user1, 0) + 1, userToken(user2, 1) + 1, user1Group1Rule1Token + 1, user1Group1Rule2Token + 1, user2Group1Rule1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now(), nil)
+				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{userToken(user1, 1) + 1, userToken(user3, 1) + 1, user1Group2Rule1Token + 1}), ring.ACTIVE, time.Now(), false, time.Now(), nil)
+				desc.AddIngester(ruler3, ruler3Addr, "", sortTokens([]uint32{userToken(user2, 0) + 1, userToken(user3, 0) + 1, user3Group1Rule1Token + 1, user3Group1Rule2Token + 1, user2Group1Rule2Token + 1}), ring.ACTIVE, time.Now(), false, time.Now(), nil)
 			},
 
 			expectedRules: expectedRulesMap{
@@ -1748,8 +1750,8 @@ func TestSendAlerts(t *testing.T) {
 		{
 			in: []*promRules.Alert{
 				{
-					Labels:      []labels.Label{{Name: "l1", Value: "v1"}},
-					Annotations: []labels.Label{{Name: "a2", Value: "v2"}},
+					Labels:      labels.FromStrings("l1", "v1"),
+					Annotations: labels.FromStrings("a2", "v2"),
 					ActiveAt:    time.Unix(1, 0),
 					FiredAt:     time.Unix(2, 0),
 					ValidUntil:  time.Unix(3, 0),
@@ -1757,8 +1759,8 @@ func TestSendAlerts(t *testing.T) {
 			},
 			exp: []*notifier.Alert{
 				{
-					Labels:       []labels.Label{{Name: "l1", Value: "v1"}},
-					Annotations:  []labels.Label{{Name: "a2", Value: "v2"}},
+					Labels:       labels.FromStrings("l1", "v1"),
+					Annotations:  labels.FromStrings("a2", "v2"),
 					StartsAt:     time.Unix(2, 0),
 					EndsAt:       time.Unix(3, 0),
 					GeneratorURL: fmt.Sprintf("http://localhost:8080/explore?left=%%7B%%22queries%%22%%3A%%5B%s%%5D%%7D", escapedExpression),
@@ -1768,8 +1770,8 @@ func TestSendAlerts(t *testing.T) {
 		{
 			in: []*promRules.Alert{
 				{
-					Labels:      []labels.Label{{Name: "l1", Value: "v1"}},
-					Annotations: []labels.Label{{Name: "a2", Value: "v2"}},
+					Labels:      labels.FromStrings("l1", "v1"),
+					Annotations: labels.FromStrings("a2", "v2"),
 					ActiveAt:    time.Unix(1, 0),
 					FiredAt:     time.Unix(2, 0),
 					ResolvedAt:  time.Unix(4, 0),
@@ -1777,8 +1779,8 @@ func TestSendAlerts(t *testing.T) {
 			},
 			exp: []*notifier.Alert{
 				{
-					Labels:       []labels.Label{{Name: "l1", Value: "v1"}},
-					Annotations:  []labels.Label{{Name: "a2", Value: "v2"}},
+					Labels:       labels.FromStrings("l1", "v1"),
+					Annotations:  labels.FromStrings("a2", "v2"),
 					StartsAt:     time.Unix(2, 0),
 					EndsAt:       time.Unix(4, 0),
 					GeneratorURL: fmt.Sprintf("http://localhost:8080/explore?left=%%7B%%22queries%%22%%3A%%5B%s%%5D%%7D", escapedExpression),
@@ -1866,10 +1868,7 @@ func TestRecoverAlertsPostOutage(t *testing.T) {
 		fn: func(_ bool, _ *storage.SelectHints, _ ...*labels.Matcher) storage.SeriesSet {
 			return series.NewConcreteSeriesSet([]storage.Series{
 				series.NewConcreteSeries(
-					labels.Labels{
-						{Name: labels.MetricName, Value: "ALERTS_FOR_STATE"},
-						{Name: labels.AlertName, Value: mockRules["user1"][0].GetRules()[0].Alert},
-					},
+					labels.FromStrings(model.MetricNameLabel, "ALERTS_FOR_STATE", labels.AlertName, mockRules["user1"][0].GetRules()[0].Alert),
 					[]model.SamplePair{{Timestamp: model.Time(downAtTimeMs), Value: model.SampleValue(downAtActiveSec)}},
 				),
 			})
@@ -2008,20 +2007,14 @@ func TestRuleGroupAlertsAndSeriesLimit(t *testing.T) {
 				fn: func(_ bool, _ *storage.SelectHints, _ ...*labels.Matcher) storage.SeriesSet {
 					return series.NewConcreteSeriesSet([]storage.Series{
 						series.NewConcreteSeries(
-							labels.Labels{
-								{Name: labels.MetricName, Value: "http_requests"},
-								{Name: labels.InstanceName, Value: "server1"},
-							},
+							labels.FromStrings(model.MetricNameLabel, "http_requests", "instance", "server1"),
 							[]model.SamplePair{
 								{Timestamp: model.Time(seriesStartTime.Add(sampleTimeDiff).UnixMilli()), Value: 100},
 								{Timestamp: model.Time(currentTime.UnixMilli()), Value: 100},
 							},
 						),
 						series.NewConcreteSeries(
-							labels.Labels{
-								{Name: labels.MetricName, Value: "http_requests"},
-								{Name: labels.InstanceName, Value: "server2"},
-							},
+							labels.FromStrings(model.MetricNameLabel, "http_requests", "instance", "server2"),
 							[]model.SamplePair{
 								{Timestamp: model.Time(seriesStartTime.Add(sampleTimeDiff).UnixMilli()), Value: 100},
 								{Timestamp: model.Time(currentTime.UnixMilli()), Value: 100},

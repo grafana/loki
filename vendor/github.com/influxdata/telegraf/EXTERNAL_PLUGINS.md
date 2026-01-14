@@ -1,7 +1,11 @@
+<!-- markdownlint-disable MD013 -->
 # External Plugins
 
-This is a list of plugins that can be compiled outside of Telegraf and used via the `execd` [input](plugins/inputs/execd), [output](plugins/outputs/execd), or [processor](plugins/processors/execd).
-Check out the [external plugin documentation](/docs/EXTERNAL_PLUGINS.md) for more information on writing and contributing a plugin.
+This is a list of plugins that can be compiled outside of Telegraf and used via
+the `execd` [input](/plugins/inputs/execd), [output](/plugins/outputs/execd), or
+[processor](/plugins/processors/execd).
+Check out the [external plugin documentation](/docs/EXTERNAL_PLUGINS.md) for
+more information on writing and contributing a plugin.
 
 Pull requests welcome.
 
@@ -28,7 +32,6 @@ Pull requests welcome.
 - [db2](https://github.com/bonitoo-io/telegraf-input-db2) - Gather the statistic data from DB2 RDBMS
 - [apt](https://github.com/x70b1/telegraf-apt) - Check Debian for package updates.
 - [knot](https://github.com/x70b1/telegraf-knot) - Collect stats from Knot DNS.
-- [fritzbox](https://github.com/hdecarne-github/fritzbox-telegraf-plugin) - Gather statistics from [FRITZ!Box](https://avm.de/produkte/fritzbox/) router and repeater
 - [linux-psi-telegraf-plugin](https://github.com/gridscale/linux-psi-telegraf-plugin) - Gather pressure stall information ([PSI](https://facebookmicrosites.github.io/psi/)) from the Linux Kernel
 - [hwinfo](https://github.com/zachstence/hwinfo-telegraf-plugin) - Gather Windows system hardware information from [HWiNFO](https://www.hwinfo.com/)
 - [libvirt](https://gitlab.com/warrenio/tools/telegraf-input-libvirt) - Gather libvirt domain stats, based on a historical Telegraf implementation [libvirt](https://libvirt.org/)

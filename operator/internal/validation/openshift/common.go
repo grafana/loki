@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/prometheus/prometheus/model/labels"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 
@@ -19,6 +19,7 @@ const (
 	descriptionAnnotationName = "description"
 
 	namespaceLabelName        = "kubernetes_namespace_name"
+	namespaceOTLPLabelName    = "k8s_namespace_name"
 	namespaceOpenshiftLogging = "openshift-logging"
 
 	tenantAudit          = "audit"
@@ -64,8 +65,13 @@ func validateRuleExpression(namespace, tenantID, rawExpr string) error {
 	}
 
 	matchers := selector.Matchers()
-	if tenantID != tenantAudit && !validateIncludesNamespace(namespace, matchers) {
-		return lokiv1.ErrRuleMustMatchNamespace
+	if tenantID == tenantApplication {
+		if !validateIncludesNamespace(namespace, matchers) {
+			return lokiv1.ErrRuleMustMatchNamespace
+		}
+		if !validateExclusiveNamespaceLabels(matchers) {
+			return lokiv1.ErrRuleExclusiveNamespaceLabel
+		}
 	}
 
 	return nil
@@ -73,12 +79,28 @@ func validateRuleExpression(namespace, tenantID, rawExpr string) error {
 
 func validateIncludesNamespace(namespace string, matchers []*labels.Matcher) bool {
 	for _, m := range matchers {
-		if m.Name == namespaceLabelName && m.Type == labels.MatchEqual && m.Value == namespace {
+		if (m.Name == namespaceLabelName || m.Name == namespaceOTLPLabelName) && m.Type == labels.MatchEqual && m.Value == namespace {
 			return true
 		}
 	}
 
 	return false
+}
+
+func validateExclusiveNamespaceLabels(matchers []*labels.Matcher) bool {
+	var namespaceLabelSet, otlpLabelSet bool
+
+	for _, m := range matchers {
+		if m.Name == namespaceLabelName && m.Type == labels.MatchEqual {
+			namespaceLabelSet = true
+		}
+		if m.Name == namespaceOTLPLabelName && m.Type == labels.MatchEqual {
+			otlpLabelSet = true
+		}
+	}
+
+	// Only one of the labels should be set, not both
+	return (namespaceLabelSet || otlpLabelSet) && (!namespaceLabelSet || !otlpLabelSet)
 }
 
 func tenantForNamespace(namespace string) []string {

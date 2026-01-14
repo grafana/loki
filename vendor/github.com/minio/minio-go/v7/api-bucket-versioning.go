@@ -90,6 +90,7 @@ type BucketVersioningConfiguration struct {
 	// Requires versioning to be enabled
 	ExcludedPrefixes []ExcludedPrefix `xml:",omitempty"`
 	ExcludeFolders   bool             `xml:",omitempty"`
+	PurgeOnDelete    string           `xml:",omitempty"`
 }
 
 // Various supported states

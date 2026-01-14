@@ -1,7 +1,11 @@
 package kgo
 
 import (
+	"encoding/base64"
+	"encoding/hex"
 	"fmt"
+	"maps"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -15,11 +19,13 @@ import (
 // HELPERS // -- ugly types to eliminate the toil of nil maps and lookups
 /////////////
 
+func strtid(tid [16]byte) string {
+	return base64.RawURLEncoding.EncodeToString(tid[:])
+}
+
 func dupmsi32(m map[string]int32) map[string]int32 {
 	d := make(map[string]int32, len(m))
-	for t, ps := range m {
-		d[t] = ps
-	}
+	maps.Copy(d, m)
 	return d
 }
 
@@ -51,6 +57,36 @@ func (a *amtps) clone() map[string][]int32 {
 	return dup
 }
 
+func mapi32sDeepEq(l, r map[string][]int32) bool {
+	if len(l) != len(r) {
+		return false
+	}
+	if l == nil && r != nil {
+		return false
+	}
+	if r == nil && l != nil {
+		return false
+	}
+	var dupls, duprs []int32
+	for k, lvs := range l {
+		rvs, ok := r[k]
+		if !ok {
+			return false
+		}
+		if len(lvs) != len(rvs) {
+			return false
+		}
+		dupls = append(dupls[:0], lvs...)
+		duprs = append(duprs[:0], rvs...)
+		slices.Sort(dupls)
+		slices.Sort(duprs)
+		if !slices.Equal(dupls, duprs) {
+			return false
+		}
+	}
+	return true
+}
+
 func (a *amtps) store(m map[string][]int32) { a.v.Store(m) }
 
 type mtps map[string][]int32
@@ -66,7 +102,7 @@ func (m mtps) String() string {
 	sort.Strings(ts)
 	for _, t := range ts {
 		ps = append(ps[:0], m[t]...)
-		sort.Slice(ps, func(i, j int) bool { return ps[i] < ps[j] })
+		slices.Sort(ps)
 		topicsWritten++
 		fmt.Fprintf(&sb, "%s%v", t, ps)
 		if topicsWritten < len(m) {
@@ -295,9 +331,7 @@ func (t *topicsPartitions) storeTopics(topics []string)      { t.v.Store(t.ensur
 func (t *topicsPartitions) clone() topicsPartitionsData {
 	current := t.load()
 	clone := make(map[string]*topicPartitions, len(current))
-	for k, v := range current {
-		clone[k] = v
-	}
+	maps.Copy(clone, current)
 	return clone
 }
 
@@ -407,7 +441,7 @@ func (cl *Client) storePartitionsUpdate(topic string, l *topicPartitions, lv *to
 		})
 	} else {
 		for _, pr := range unknown.buffered {
-			cl.doPartitionRecord(l, lv, pr)
+			cl.doPartition(l, lv, pr)
 		}
 	}
 }
@@ -479,8 +513,13 @@ type topicPartitionsData struct {
 	partitions         []*topicPartition // partition num => partition
 	writablePartitions []*topicPartition // subset of above
 	topic              string
+	id                 [16]byte
 	when               int64
 }
+
+type topicID [16]byte
+
+func (t topicID) String() string { return hex.EncodeToString(t[:]) }
 
 // topicPartition contains all information from Kafka for a topic's partition,
 // as well as what a client is producing to it or info about consuming from it.
@@ -767,8 +806,8 @@ func (k *kip951move) doMove(cl *Client) {
 			}
 			dup := *l.load()
 			r := &dup
-			r.writablePartitions = append([]*topicPartition{}, r.writablePartitions...)
-			r.partitions = append([]*topicPartition{}, r.partitions...)
+			r.writablePartitions = slices.Clone(r.writablePartitions)
+			r.partitions = slices.Clone(r.partitions)
 			lr = oldNew{l, r}
 			topics[topic] = lr
 		}

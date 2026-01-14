@@ -20,6 +20,7 @@ package credentials
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -30,8 +31,6 @@ import (
 	"path"
 	"strings"
 	"time"
-
-	"github.com/goccy/go-json"
 )
 
 // DefaultExpiryWindow - Default expiry window.

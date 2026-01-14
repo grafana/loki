@@ -9,12 +9,15 @@ import (
 	"sync"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/multierror"
 	"github.com/grafana/dskit/ring"
-	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/grafana/loki/v3/pkg/ingester"
 	"github.com/grafana/loki/v3/pkg/ingester/index"
@@ -29,26 +32,31 @@ import (
 	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
 )
 
+var tracer = otel.Tracer("pkg/pattern")
+
 const indexShards = 32
 
 // instance is a tenant instance of the pattern ingester.
 type instance struct {
-	instanceID  string
-	buf         []byte             // buffer used to compute fps.
-	mapper      *ingester.FpMapper // using of mapper no longer needs mutex because reading from streams is lock-free
-	streams     *streamsMap
-	index       *index.BitPrefixInvertedIndex
-	logger      log.Logger
-	metrics     *ingesterMetrics
-	drainCfg    *drain.Config
-	drainLimits drain.Limits
-	ringClient  RingClient
-	ingesterID  string
+	instanceID      string
+	buf             []byte             // buffer used to compute fps.
+	mapper          *ingester.FpMapper // using of mapper no longer needs mutex because reading from streams is lock-free
+	streams         *streamsMap
+	index           *index.BitPrefixInvertedIndex
+	logger          log.Logger
+	metrics         *ingesterMetrics
+	drainCfg        *drain.Config
+	limits          Limits
+	ringClient      RingClient
+	ingesterID      string
+	volumeThreshold float64
 
 	aggMetricsLock             sync.Mutex
 	aggMetricsByStreamAndLevel map[string]map[string]*aggregatedMetrics
 
-	writer aggregation.EntryWriter
+	metricWriter       aggregation.EntryWriter
+	patternWriter      aggregation.EntryWriter
+	aggregationMetrics *aggregation.Metrics
 }
 
 type aggregatedMetrics struct {
@@ -61,10 +69,13 @@ func newInstance(
 	logger log.Logger,
 	metrics *ingesterMetrics,
 	drainCfg *drain.Config,
-	drainLimits drain.Limits,
+	drainLimits Limits,
 	ringClient RingClient,
 	ingesterID string,
-	writer aggregation.EntryWriter,
+	metricWriter aggregation.EntryWriter,
+	patternWriter aggregation.EntryWriter,
+	aggregationMetrics *aggregation.Metrics,
+	volumeThreshold float64,
 ) (*instance, error) {
 	index, err := index.NewBitPrefixWithShards(indexShards)
 	if err != nil {
@@ -78,11 +89,14 @@ func newInstance(
 		index:                      index,
 		metrics:                    metrics,
 		drainCfg:                   drainCfg,
-		drainLimits:                drainLimits,
+		limits:                     drainLimits,
 		ringClient:                 ringClient,
 		ingesterID:                 ingesterID,
+		volumeThreshold:            volumeThreshold,
 		aggMetricsByStreamAndLevel: make(map[string]map[string]*aggregatedMetrics),
-		writer:                     writer,
+		metricWriter:               metricWriter,
+		patternWriter:              patternWriter,
+		aggregationMetrics:         aggregationMetrics,
 	}
 	i.mapper = ingester.NewFPMapper(i.getLabelsFromFingerprint)
 	return i, nil
@@ -106,6 +120,10 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 
 		if ownedStream {
 			if len(reqStream.Entries) == 0 {
+				level.Warn(i.logger).Log(
+					"msg", "skipping empty stream for aggregations",
+					"stream", reqStream.Labels,
+				)
 				continue
 			}
 			s, _, err := i.streams.LoadOrStoreNew(reqStream.Labels,
@@ -224,7 +242,20 @@ func (i *instance) createStream(_ context.Context, pushReqStream logproto.Stream
 	fp := i.getHashForLabels(labels)
 	sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(labels), fp)
 	firstEntryLine := pushReqStream.Entries[0].Line
-	s, err := newStream(fp, sortedLabels, i.metrics, i.logger, drain.DetectLogFormat(firstEntryLine), i.instanceID, i.drainCfg, i.drainLimits)
+
+	s, err := newStream(
+		fp,
+		sortedLabels,
+		i.metrics,
+		i.logger,
+		drain.DetectLogFormat(firstEntryLine),
+		i.instanceID,
+		i.drainCfg,
+		i.limits,
+		i.patternWriter,
+		i.aggregationMetrics,
+		i.volumeThreshold,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create stream: %w", err)
 	}
@@ -241,7 +272,7 @@ func (i *instance) getHashForLabels(ls labels.Labels) model.Fingerprint {
 func (i *instance) getLabelsFromFingerprint(fp model.Fingerprint) labels.Labels {
 	s, ok := i.streams.LoadByFP(fp)
 	if !ok {
-		return nil
+		return labels.EmptyLabels()
 	}
 	return s.labels
 }
@@ -253,21 +284,25 @@ func (i *instance) removeStream(s *stream) {
 	}
 }
 
+// flushPatterns flushes all patterns from all streams in this instance.
+func (i *instance) flushPatterns() {
+	_ = i.streams.ForEach(func(s *stream) (bool, error) {
+		s.flush()
+		return true, nil
+	})
+}
+
 func (i *instance) Observe(ctx context.Context, stream string, entries []logproto.Entry) {
 	i.aggMetricsLock.Lock()
 	defer i.aggMetricsLock.Unlock()
 
-	sp, _ := opentracing.StartSpanFromContext(
-		ctx,
-		"patternIngester.Observe",
-	)
-	defer sp.Finish()
+	_, sp := tracer.Start(ctx, "patternIngester.Observe")
+	defer sp.End()
 
-	sp.LogKV(
-		"event", "observe stream for metrics",
-		"stream", stream,
-		"entries", len(entries),
-	)
+	sp.AddEvent("observe stream for metrics", trace.WithAttributes(
+		attribute.String("stream", stream),
+		attribute.Int("entries", len(entries)),
+	))
 
 	for _, entry := range entries {
 		lvl := constants.LogLevelUnknown
@@ -326,18 +361,29 @@ func (i *instance) writeAggregatedMetrics(
 		service = push.ServiceUnknown
 	}
 
-	newLbls := labels.Labels{
-		labels.Label{Name: push.AggregatedMetricLabel, Value: service},
-		labels.Label{Name: "level", Value: level},
+	newLbls := labels.FromStrings(constants.AggregatedMetricLabel, service)
+
+	sturcturedMetadata := []logproto.LabelAdapter{
+		{Name: constants.LevelLabel, Value: level},
 	}
 
-	if i.writer != nil {
-		i.writer.WriteEntry(
+	if i.metricWriter != nil {
+		aggregatedEntry := aggregation.AggregatedMetricEntry(now, totalBytes, totalCount, streamLbls)
+
+		// Record metrics
+		if i.aggregationMetrics != nil {
+			// Record aggregated metric entry size
+			entrySize := len(aggregatedEntry)
+			i.aggregationMetrics.AggregatedMetricBytesWrittenTotal.WithLabelValues(i.instanceID).Add(float64(entrySize))
+		}
+
+		i.metricWriter.WriteEntry(
 			now.Time(),
-			aggregation.AggregatedMetricEntry(now, totalBytes, totalCount, service, streamLbls),
+			aggregatedEntry,
 			newLbls,
+			sturcturedMetadata,
 		)
 
-		i.metrics.samples.WithLabelValues(service).Inc()
+		i.metrics.metricSamples.WithLabelValues(i.instanceID).Inc()
 	}
 }

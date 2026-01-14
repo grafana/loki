@@ -15,7 +15,6 @@ import (
 	"net/http"
 	"net/textproto"
 	"net/url"
-	"os"
 	"strconv"
 	"time"
 
@@ -26,12 +25,11 @@ import (
 	"github.com/grafana/dskit/instrument"
 	"github.com/grafana/dskit/middleware"
 	"github.com/grafana/dskit/user"
-	otgrpc "github.com/opentracing-contrib/go-grpc"
-	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/keepalive"
 
@@ -41,6 +39,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/build"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
@@ -86,7 +85,7 @@ func NewRemoteEvaluator(client httpgrpc.HTTPClient, overrides RulesLimits, logge
 		client:         client,
 		overrides:      overrides,
 		logger:         logger,
-		insightsLogger: log.NewLogfmtLogger(os.Stderr),
+		insightsLogger: log.With(util_log.Logger, "msg", "request timings", "insight", "true", "source", "loki_ruler", "rule_name"),
 		metrics:        newMetrics(registerer),
 	}, nil
 }
@@ -189,10 +188,10 @@ func DialQueryFrontend(cfg *QueryFrontendConfig) (httpgrpc.HTTPClient, error) {
 				},
 			),
 			grpc.WithChainUnaryInterceptor(
-				otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
 				middleware.ClientUserHeaderInterceptor,
 			),
 			grpc.WithDefaultServiceConfig(serviceConfig),
+			grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
 		},
 		tlsDialOptions...,
 	)
@@ -210,8 +209,8 @@ type Middleware func(ctx context.Context, req *httpgrpc.HTTPRequest) error
 
 // Query performs a query for the given time.
 func (r *RemoteEvaluator) Query(ctx context.Context, ch chan<- queryResponse, orgID, qs string, t time.Time) {
-	logger, ctx := spanlogger.NewWithLogger(ctx, r.logger, "ruler.remoteEvaluation.Query")
-	defer logger.Span.Finish()
+	logger, ctx := spanlogger.NewOTel(ctx, r.logger, tracer, "ruler.remoteEvaluation.Query")
+	defer logger.Finish()
 
 	res, err := r.query(ctx, orgID, qs, t, logger)
 	ch <- queryResponse{res, err}
@@ -292,7 +291,7 @@ func (r *RemoteEvaluator) query(ctx context.Context, orgID, query string, ts tim
 	if err != nil {
 		return nil, err
 	}
-	level.Info(r.insightsLogger).Log("msg", "request timings", "insight", "true", "source", "loki_ruler", "rule_name", ruleName, "rule_type", ruleType, "total", dr.Statistics.Summary.ExecTime, "total_bytes", dr.Statistics.Summary.TotalBytesProcessed, "query_hash", util.HashedQuery(query))
+	level.Info(r.insightsLogger).Log(ruleName, "rule_type", ruleType, "total", dr.Statistics.Summary.ExecTime, "total_bytes", dr.Statistics.Summary.TotalBytesProcessed, "query_hash", util.HashedQuery(query))
 	return dr, err
 }
 

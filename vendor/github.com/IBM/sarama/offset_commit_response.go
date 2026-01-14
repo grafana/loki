@@ -8,6 +8,10 @@ type OffsetCommitResponse struct {
 	Errors         map[string]map[int32]KError
 }
 
+func (r *OffsetCommitResponse) setVersion(v int16) {
+	r.Version = v
+}
+
 func (r *OffsetCommitResponse) AddError(topic string, partition int32, kerror KError) {
 	if r.Errors == nil {
 		r.Errors = make(map[string]map[int32]KError)
@@ -36,7 +40,7 @@ func (r *OffsetCommitResponse) encode(pe packetEncoder) error {
 		}
 		for partition, kerror := range partitions {
 			pe.putInt32(partition)
-			pe.putInt16(int16(kerror))
+			pe.putKError(kerror)
 		}
 	}
 	return nil
@@ -77,11 +81,10 @@ func (r *OffsetCommitResponse) decode(pd packetDecoder, version int16) (err erro
 				return err
 			}
 
-			tmp, err := pd.getInt16()
+			r.Errors[name][id], err = pd.getKError()
 			if err != nil {
 				return err
 			}
-			r.Errors[name][id] = KError(tmp)
 		}
 	}
 
@@ -89,7 +92,7 @@ func (r *OffsetCommitResponse) decode(pd packetDecoder, version int16) (err erro
 }
 
 func (r *OffsetCommitResponse) key() int16 {
-	return 8
+	return apiKeyOffsetCommit
 }
 
 func (r *OffsetCommitResponse) version() int16 {

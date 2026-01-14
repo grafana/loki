@@ -13,8 +13,9 @@ import (
 	"github.com/gogo/status"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/user"
-	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/prometheus/promql"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
 	"google.golang.org/grpc/codes"
 
 	"github.com/grafana/loki/v3/pkg/loghttp"
@@ -341,7 +342,16 @@ func (Codec) QueryRequestUnwrap(ctx context.Context, req *QueryRequest) (queryra
 		if err != nil {
 			return nil, ctx, err
 		}
-		ctx = querylimits.InjectQueryLimitsContext(ctx, *limits)
+		ctx = querylimits.InjectQueryLimitsIntoContext(ctx, *limits)
+	}
+
+	// Add limits context
+	if encodedLimitsCtx, ok := req.Metadata[querylimits.HTTPHeaderQueryLimitsContextKey]; ok {
+		limitsCtx, err := querylimits.UnmarshalQueryLimitsContext([]byte(encodedLimitsCtx))
+		if err != nil {
+			return nil, ctx, err
+		}
+		ctx = querylimits.InjectQueryLimitsContextIntoContext(ctx, *limitsCtx)
 	}
 
 	// Add query time
@@ -453,13 +463,23 @@ func (Codec) QueryRequestWrap(ctx context.Context, r queryrangebase.Request) (*Q
 	}
 
 	// Add limits
-	limits := querylimits.ExtractQueryLimitsContext(ctx)
+	limits := querylimits.ExtractQueryLimitsFromContext(ctx)
 	if limits != nil {
 		encodedLimits, err := querylimits.MarshalQueryLimits(limits)
 		if err != nil {
 			return nil, err
 		}
 		result.Metadata[querylimits.HTTPHeaderQueryLimitsKey] = string(encodedLimits)
+	}
+
+	// Add limits context
+	limitsCtx := querylimits.ExtractQueryLimitsContextFromContext(ctx)
+	if limitsCtx != nil {
+		encodedLimitsCtx, err := querylimits.MarshalQueryLimitsContext(limitsCtx)
+		if err != nil {
+			return nil, err
+		}
+		result.Metadata[querylimits.HTTPHeaderQueryLimitsContextKey] = string(encodedLimitsCtx)
 	}
 
 	// Add org ID
@@ -470,14 +490,7 @@ func (Codec) QueryRequestWrap(ctx context.Context, r queryrangebase.Request) (*Q
 	result.Metadata[user.OrgIDHeaderName] = orgID
 
 	// Tracing
-	tracer, span := opentracing.GlobalTracer(), opentracing.SpanFromContext(ctx)
-	if tracer != nil && span != nil {
-		carrier := opentracing.TextMapCarrier(result.Metadata)
-		err := tracer.Inject(span.Context(), opentracing.TextMap, carrier)
-		if err != nil {
-			return nil, err
-		}
-	}
+	otel.GetTextMapPropagator().Inject(ctx, propagation.MapCarrier(result.Metadata))
 
 	return result, nil
 }

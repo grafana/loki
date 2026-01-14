@@ -17,27 +17,26 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"maps"
 	"math"
 	"slices"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/common/promslog"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.uber.org/atomic"
 
-	"github.com/prometheus/prometheus/promql/parser"
-
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/model"
-	"github.com/prometheus/common/promslog"
-
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/prometheus/prometheus/model/value"
 	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 )
@@ -217,7 +216,7 @@ func (g *Group) run(ctx context.Context) {
 		return
 	}
 
-	ctx = promql.NewOriginContext(ctx, map[string]interface{}{
+	ctx = promql.NewOriginContext(ctx, map[string]any{
 		"ruleGroup": map[string]string{
 			"file": g.File(),
 			"name": g.Name(),
@@ -272,12 +271,7 @@ func (g *Group) run(ctx context.Context) {
 			g.evalIterationFunc(ctx, g, evalTimestamp)
 		}
 
-		restoreStartTime := time.Now()
-		g.RestoreForState(restoreStartTime)
-		totalRestoreTimeSeconds := time.Since(restoreStartTime).Seconds()
-		g.metrics.GroupLastRestoreDuration.WithLabelValues(GroupKey(g.file, g.name)).Set(totalRestoreTimeSeconds)
-		g.logger.Debug("'for' state restoration completed", "duration_seconds", totalRestoreTimeSeconds)
-		g.shouldRestore = false
+		g.RestoreForState(time.Now())
 	}
 
 	for {
@@ -489,9 +483,7 @@ func (g *Group) CopyState(from *Group) {
 			continue
 		}
 
-		for fp, a := range far.active {
-			ar.active[fp] = a
-		}
+		maps.Copy(ar.active, far.active)
 	}
 
 	// Handle deleted and unmatched duplicate rules.
@@ -744,6 +736,12 @@ func (g *Group) cleanupStaleSeries(ctx context.Context, ts time.Time) {
 // RestoreForState restores the 'for' state of the alerts
 // by looking up last ActiveAt from storage.
 func (g *Group) RestoreForState(ts time.Time) {
+	defer func() {
+		totalRestoreTimeSeconds := time.Since(ts).Seconds()
+		g.metrics.GroupLastRestoreDuration.WithLabelValues(GroupKey(g.file, g.name)).Set(totalRestoreTimeSeconds)
+		g.logger.Debug("'for' state restoration completed", "duration_seconds", totalRestoreTimeSeconds)
+		g.shouldRestore = false
+	}()
 	maxtMS := int64(model.TimeFromUnixNano(ts.UnixNano()))
 	// We allow restoration only if alerts were active before after certain time.
 	mint := ts.Add(-g.opts.OutageTolerance)
@@ -791,7 +789,7 @@ func (g *Group) RestoreForState(ts time.Time) {
 		// While not technically the same number of series we expect, it's as good of an approximation as any.
 		seriesByLabels := make(map[string]storage.Series, alertRule.ActiveAlertsCount())
 		for sset.Next() {
-			seriesByLabels[sset.At().Labels().DropMetricName().String()] = sset.At()
+			seriesByLabels[sset.At().Labels().DropReserved(func(n string) bool { return n == labels.MetricName }).String()] = sset.At()
 		}
 
 		// No results for this alert rule.
@@ -1093,13 +1091,12 @@ func (m dependencyMap) isIndependent(r Rule) bool {
 
 // buildDependencyMap builds a data-structure which contains the relationships between rules within a group.
 //
-// Alert rules, by definition, cannot have any dependents - but they can have dependencies. Any recording rule on whose
-// output an Alert rule depends will not be able to run concurrently.
+// Both Alert and RecordingRule can have dependents and dependencies. Alert can have dependents if another rule,
+// with in the group, queries ALERTS or ALERTS_FOR_NAME metrics.
 //
 // There is a class of rule expressions which are considered "indeterminate", because either relationships cannot be
 // inferred, or concurrent evaluation of rules depending on these series would produce undefined/unexpected behaviour:
 //   - wildcard queriers like {cluster="prod1"} which would match every series with that label selector
-//   - any "meta" series (series produced by Prometheus itself) like ALERTS, ALERTS_FOR_STATE
 //
 // Rules which are independent can run concurrently with no side-effects.
 func buildDependencyMap(rules []Rule) dependencyMap {
@@ -1110,9 +1107,6 @@ func buildDependencyMap(rules []Rule) dependencyMap {
 		return dependencies
 	}
 
-	inputs := make(map[string][]Rule, len(rules))
-	outputs := make(map[string][]Rule, len(rules))
-
 	var indeterminate bool
 
 	for _, rule := range rules {
@@ -1120,26 +1114,67 @@ func buildDependencyMap(rules []Rule) dependencyMap {
 			break
 		}
 
-		name := rule.Name()
-		outputs[name] = append(outputs[name], rule)
-
-		parser.Inspect(rule.Query(), func(node parser.Node, path []parser.Node) error {
+		parser.Inspect(rule.Query(), func(node parser.Node, _ []parser.Node) error {
 			if n, ok := node.(*parser.VectorSelector); ok {
+				// Find the name matcher for the rule.
+				var nameMatcher *labels.Matcher
+				if n.Name != "" {
+					nameMatcher = labels.MustNewMatcher(labels.MatchEqual, model.MetricNameLabel, n.Name)
+				} else {
+					for _, m := range n.LabelMatchers {
+						if m.Name == model.MetricNameLabel {
+							nameMatcher = m
+							break
+						}
+					}
+				}
+
 				// A wildcard metric expression means we cannot reliably determine if this rule depends on any other,
 				// which means we cannot safely run any rules concurrently.
-				if n.Name == "" && len(n.LabelMatchers) > 0 {
+				if nameMatcher == nil {
 					indeterminate = true
 					return nil
 				}
 
-				// Rules which depend on "meta-metrics" like ALERTS and ALERTS_FOR_STATE will have undefined behaviour
-				// if they run concurrently.
-				if n.Name == alertMetricName || n.Name == alertForStateMetricName {
-					indeterminate = true
-					return nil
+				// Check if the vector selector is querying "meta-metrics" like ALERTS and ALERTS_FOR_STATE and, if so,
+				// find out the "alertname" label matcher (it could be missing).
+				nameMatchesAlerts := nameMatcher.Matches(alertMetricName) || nameMatcher.Matches(alertForStateMetricName)
+				var alertsNameMatcher *labels.Matcher
+				if nameMatchesAlerts {
+					for _, m := range n.LabelMatchers {
+						if m.Name == labels.AlertName {
+							alertsNameMatcher = m
+							break
+						}
+					}
 				}
 
-				inputs[n.Name] = append(inputs[n.Name], rule)
+				// Find the other rules that this rule depends on.
+				for _, other := range rules {
+					// Rules are defined in order in a rule group. Once we find our rule we can stop searching
+					// because next rules can't be considered dependencies of this rule by specification, given
+					// they are defined later in the group. The next rules can still query this rule, but they're
+					// just not strict dependencies to honor.
+					if other == rule {
+						break
+					}
+
+					otherName := other.Name()
+
+					// If this rule vector selector matches the other rule name, then it's a dependency.
+					if nameMatcher.Matches(otherName) {
+						dependencies[other] = append(dependencies[other], rule)
+						continue
+					}
+
+					// If this rule vector selector is querying the alerts meta-metrics and the other rule
+					// is an alerting rule, then we check if the "alertname" matches. If it does, then it's a dependency.
+					if _, otherIsAlertingRule := other.(*AlertingRule); nameMatchesAlerts && otherIsAlertingRule {
+						if alertsNameMatcher == nil || alertsNameMatcher.Matches(otherName) {
+							dependencies[other] = append(dependencies[other], rule)
+						}
+					}
+				}
 			}
 			return nil
 		})
@@ -1147,14 +1182,6 @@ func buildDependencyMap(rules []Rule) dependencyMap {
 
 	if indeterminate {
 		return nil
-	}
-
-	for output, outRules := range outputs {
-		for _, outRule := range outRules {
-			if inRules, found := inputs[output]; found && len(inRules) > 0 {
-				dependencies[outRule] = append(dependencies[outRule], inRules...)
-			}
-		}
 	}
 
 	return dependencies

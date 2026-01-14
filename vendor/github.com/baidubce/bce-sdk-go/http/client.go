@@ -20,19 +20,30 @@
 package http
 
 import (
+	"context"
+	"crypto/tls"
+	"fmt"
 	"net"
 	"net/http"
 	"net/url"
 	"sync"
 	"time"
+
+	"github.com/baidubce/bce-sdk-go/util/log"
 )
 
-const (
+var (
 	defaultMaxIdleConnsPerHost   = 500
 	defaultResponseHeaderTimeout = 60 * time.Second
 	defaultDialTimeout           = 30 * time.Second
+	defaultKeepAlive             = 30 * time.Second
 	defaultSmallInterval         = 600 * time.Second
 	defaultLargeInterval         = 1200 * time.Second
+	defaultTLSHandshakeTimeout   = 10 * time.Second
+	defaultIdleConnTimeout       = 90 * time.Second
+	defaultHTTPClientTimeout     = 1200 * time.Second
+	NilHTTPClient                = fmt.Errorf("custom HTTP Client is nil")
+	UnknownHTTPTransport         = fmt.Errorf("invalid customized HTTP Client: RoundTripper is not http.Transport")
 )
 
 // The httpClient is the global variable to send the request and get response
@@ -42,22 +53,122 @@ var (
 	transport  *http.Transport
 )
 
+var defaultHTTPClient = &http.Client{
+	Timeout:   defaultHTTPClientTimeout,
+	Transport: NewTransportCustom(&DefaultClientConfig),
+}
+
+type Dialer struct {
+	net.Dialer
+	ReadTimeout  *time.Duration
+	WriteTimeout *time.Duration
+	postRead     []func(n int, err error)
+	postWrite    []func(n int, err error)
+}
+
+func NewDialer(config *ClientConfig) *Dialer {
+	dialer := &Dialer{
+		Dialer: net.Dialer{
+			Timeout:   *config.DialTimeout,
+			KeepAlive: *config.KeepAlive,
+		},
+		ReadTimeout:  config.ReadTimeout,
+		WriteTimeout: config.WriteTimeout,
+		postRead:     config.PostRead,
+		postWrite:    config.PostWrite,
+	}
+	return dialer
+}
+
+func (d *Dialer) Dial(network, address string) (net.Conn, error) {
+	return d.DialContext(context.Background(), network, address)
+}
+
+func (d *Dialer) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
+	c, err := d.Dialer.DialContext(ctx, network, address)
+	if err != nil {
+		return c, err
+	}
+	tc := &timeoutConn{
+		conn:          c,
+		smallInterval: defaultSmallInterval,
+		largeInterval: defaultLargeInterval,
+		readTimeout:   d.ReadTimeout,
+		writeTimeout:  d.WriteTimeout,
+		dialer:        d,
+	}
+	if tc.readTimeout != nil {
+		err = tc.SetReadDeadline(time.Now().Add(*tc.readTimeout))
+	} else {
+		err = tc.SetReadDeadline(time.Now().Add(defaultLargeInterval))
+	}
+	if err != nil {
+		return nil, err
+	}
+	if tc.writeTimeout != nil {
+		err = tc.SetWriteDeadline(time.Now().Add(*tc.writeTimeout))
+	} else {
+		err = tc.SetWriteDeadline(time.Now().Add(defaultLargeInterval))
+	}
+	if err != nil {
+		return nil, err
+	}
+	return tc, err
+}
+
 type timeoutConn struct {
 	conn          net.Conn
 	smallInterval time.Duration
 	largeInterval time.Duration
+	readTimeout   *time.Duration
+	writeTimeout  *time.Duration
+	dialer        *Dialer
 }
 
 func (c *timeoutConn) Read(b []byte) (n int, err error) {
-	c.SetReadDeadline(time.Now().Add(c.smallInterval))
+	if c.readTimeout == nil {
+		err = c.SetReadDeadline(time.Now().Add(c.smallInterval))
+		if err != nil {
+			return n, err
+		}
+	}
 	n, err = c.conn.Read(b)
-	c.SetReadDeadline(time.Now().Add(c.largeInterval))
+	if err != nil {
+		return n, err
+	}
+	if c.readTimeout == nil {
+		err = c.SetReadDeadline(time.Now().Add(c.largeInterval))
+	} else {
+		err = c.SetReadDeadline(time.Now().Add(*c.readTimeout))
+	}
+	if c.dialer != nil {
+		for _, fn := range c.dialer.postRead {
+			fn(n, err)
+		}
+	}
 	return n, err
 }
 func (c *timeoutConn) Write(b []byte) (n int, err error) {
-	c.SetWriteDeadline(time.Now().Add(c.smallInterval))
+	if c.writeTimeout == nil {
+		err = c.SetWriteDeadline(time.Now().Add(c.smallInterval))
+	}
+	if err != nil {
+		return n, err
+	}
 	n, err = c.conn.Write(b)
-	c.SetWriteDeadline(time.Now().Add(c.largeInterval))
+	if err != nil {
+		return n, err
+	}
+	if c.writeTimeout == nil {
+		err = c.SetWriteDeadline(time.Now().Add(c.largeInterval))
+	} else {
+		err = c.SetWriteDeadline(time.Now().Add(*c.writeTimeout))
+	}
+	if c.dialer != nil {
+		for _, fn := range c.dialer.postWrite {
+			fn(n, err)
+		}
+	}
 	return n, err
 }
 func (c *timeoutConn) Close() error                       { return c.conn.Close() }
@@ -68,7 +179,77 @@ func (c *timeoutConn) SetReadDeadline(t time.Time) error  { return c.conn.SetRea
 func (c *timeoutConn) SetWriteDeadline(t time.Time) error { return c.conn.SetWriteDeadline(t) }
 
 type ClientConfig struct {
-	RedirectDisabled bool
+	RedirectDisabled      bool
+	DisableKeepAlives     bool
+	NoVerifySSL           bool
+	DialTimeout           *time.Duration
+	KeepAlive             *time.Duration
+	ReadTimeout           *time.Duration
+	WriteTimeout          *time.Duration
+	TLSHandshakeTimeout   *time.Duration
+	IdleConnectionTimeout *time.Duration
+	ResponseHeaderTimeout *time.Duration
+	HTTPClientTimeout     *time.Duration
+	PostRead              []func(n int, err error)
+	PostWrite             []func(n int, err error)
+}
+
+var DefaultClientConfig = ClientConfig{
+	RedirectDisabled:      false,
+	DisableKeepAlives:     false,
+	DialTimeout:           &defaultDialTimeout,
+	KeepAlive:             &defaultKeepAlive,
+	TLSHandshakeTimeout:   &defaultTLSHandshakeTimeout,
+	IdleConnectionTimeout: &defaultIdleConnTimeout,
+	ResponseHeaderTimeout: &defaultResponseHeaderTimeout,
+	HTTPClientTimeout:     &defaultHTTPClientTimeout,
+}
+
+func (cfg *ClientConfig) Copy(src *ClientConfig) {
+	if src == nil {
+		return
+	}
+	cfg.RedirectDisabled = src.RedirectDisabled
+	cfg.DisableKeepAlives = src.DisableKeepAlives
+	if src.DialTimeout != nil {
+		cfg.DialTimeout = src.DialTimeout
+	}
+	if src.KeepAlive != nil {
+		cfg.KeepAlive = src.KeepAlive
+	}
+	if src.ReadTimeout != nil {
+		cfg.ReadTimeout = src.ReadTimeout
+	}
+	if src.WriteTimeout != nil {
+		cfg.WriteTimeout = src.WriteTimeout
+	}
+	if src.TLSHandshakeTimeout != nil {
+		cfg.TLSHandshakeTimeout = src.TLSHandshakeTimeout
+	}
+	if src.IdleConnectionTimeout != nil {
+		cfg.IdleConnectionTimeout = src.IdleConnectionTimeout
+	}
+	if src.ResponseHeaderTimeout != nil {
+		cfg.ResponseHeaderTimeout = src.ResponseHeaderTimeout
+	}
+	if src.HTTPClientTimeout != nil {
+		cfg.HTTPClientTimeout = src.HTTPClientTimeout
+	}
+	if len(src.PostRead) > 0 {
+		cfg.PostRead = append(cfg.PostRead, src.PostRead...)
+	}
+	if len(src.PostWrite) > 0 {
+		cfg.PostWrite = append(cfg.PostWrite, src.PostWrite...)
+	}
+}
+
+func MergeWithDefaultConfig(cfgs ...*ClientConfig) *ClientConfig {
+	dst := &ClientConfig{}
+	dst.Copy(&DefaultClientConfig)
+	for _, cfg := range cfgs {
+		dst.Copy(cfg)
+	}
+	return dst
 }
 
 var customizeInit sync.Once
@@ -76,15 +257,24 @@ var customizeInit sync.Once
 func InitClient(config ClientConfig) {
 	customizeInit.Do(func() {
 		httpClient = &http.Client{}
+		maxIdleConnsPerHost := defaultMaxIdleConnsPerHost
+		if config.DisableKeepAlives {
+			maxIdleConnsPerHost = -1
+		}
 		transport = &http.Transport{
-			MaxIdleConnsPerHost:   defaultMaxIdleConnsPerHost,
+			MaxIdleConnsPerHost:   maxIdleConnsPerHost,
 			ResponseHeaderTimeout: defaultResponseHeaderTimeout,
+			DisableKeepAlives:     config.DisableKeepAlives,
 			Dial: func(network, address string) (net.Conn, error) {
 				conn, err := net.DialTimeout(network, address, defaultDialTimeout)
 				if err != nil {
 					return nil, err
 				}
-				tc := &timeoutConn{conn, defaultSmallInterval, defaultLargeInterval}
+				tc := &timeoutConn{
+					conn:          conn,
+					smallInterval: defaultSmallInterval,
+					largeInterval: defaultLargeInterval,
+				}
 				tc.SetReadDeadline(time.Now().Add(defaultLargeInterval))
 				return tc, nil
 			},
@@ -98,13 +288,83 @@ func InitClient(config ClientConfig) {
 	})
 }
 
+func NewTransportCustom(config *ClientConfig) *http.Transport {
+	maxIdleConnsPerHost := defaultMaxIdleConnsPerHost
+	if config.DisableKeepAlives {
+		maxIdleConnsPerHost = -1
+	}
+	transport := &http.Transport{
+		DialContext:           NewDialer(config).DialContext,
+		MaxIdleConnsPerHost:   maxIdleConnsPerHost,
+		DisableKeepAlives:     config.DisableKeepAlives,
+		TLSHandshakeTimeout:   *config.TLSHandshakeTimeout,
+		ResponseHeaderTimeout: *config.ResponseHeaderTimeout,
+		IdleConnTimeout:       *config.IdleConnectionTimeout,
+	}
+	if config.NoVerifySSL {
+		transport.TLSClientConfig = &tls.Config{
+			InsecureSkipVerify: true,
+		}
+	}
+	return transport
+}
+
+func InitWithSpecifiedClient(customHTTPClient *http.Client) error {
+	if customHTTPClient == nil {
+		log.Warnf("customized HTTP Client is nil")
+		return NilHTTPClient
+	}
+	if customHTTPClient.Transport == nil {
+		log.Infof("transport is nil")
+		return nil
+	}
+	if customTransport, ok := customHTTPClient.Transport.(*http.Transport); ok {
+		transport = customTransport
+		return nil
+	}
+	log.Warnf("unknown transport type")
+	return UnknownHTTPTransport
+}
+
+func InitExclusiveHTTPClient(config *ClientConfig) *http.Client {
+	config = MergeWithDefaultConfig(config)
+	transport = NewTransportCustom(config)
+	myHTTPClient := &http.Client{
+		Timeout:   *config.HTTPClientTimeout,
+		Transport: transport,
+	}
+	if config.RedirectDisabled {
+		myHTTPClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		}
+	}
+	return myHTTPClient
+}
+
+func InitClientWithTimeout(config *ClientConfig) {
+	customizeInit.Do(func() {
+		config = MergeWithDefaultConfig(config)
+		transport = NewTransportCustom(config)
+		httpClient = &http.Client{
+			Timeout:   *config.HTTPClientTimeout,
+			Transport: transport,
+		}
+		if config.RedirectDisabled {
+			httpClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse
+			}
+		}
+	})
+}
+
 // Execute - do the http requset and get the response
 //
 // PARAMS:
-//     - request: the http request instance to be sent
+//   - request: the http request instance to be sent
+//
 // RETURNS:
-//     - response: the http response returned from the server
-//     - error: nil if ok otherwise the specific error
+//   - response: the http response returned from the server
+//   - error: nil if ok otherwise the specific error
 func Execute(request *Request) (*Response, error) {
 	// Build the request object for the current requesting
 	httpRequest := &http.Request{
@@ -113,8 +373,22 @@ func Execute(request *Request) (*Response, error) {
 		ProtoMinor: 1,
 	}
 
-	// Set the connection timeout for current request
-	httpClient.Timeout = time.Duration(request.Timeout()) * time.Second
+	// get http client
+	curHTTPClient := httpClient
+	if request.HTTPClient() != nil {
+		curHTTPClient = request.HTTPClient()
+	}
+	if curHTTPClient == nil {
+		log.Infof("use default http client to execute request")
+		curHTTPClient = defaultHTTPClient
+	}
+
+	if request.Context() != nil {
+		httpRequest = httpRequest.WithContext(request.Context())
+	} else {
+		// Set the connection timeout for current request
+		curHTTPClient.Timeout = time.Duration(request.Timeout()) * time.Second
+	}
 
 	// Set the request method
 	httpRequest.Method = request.Method()
@@ -147,7 +421,7 @@ func Execute(request *Request) (*Response, error) {
 	}
 
 	// Set the proxy setting if needed
-	if len(request.ProxyUrl()) != 0 {
+	if len(request.ProxyUrl()) != 0 && transport != nil {
 		transport.Proxy = func(_ *http.Request) (*url.URL, error) {
 			return url.Parse(request.ProxyUrl())
 		}
@@ -158,14 +432,15 @@ func Execute(request *Request) (*Response, error) {
 	// that may continue sending request's data subsequently.
 	start := time.Now()
 
-	httpResponse, err := httpClient.Do(httpRequest)
-
+	httpResponse, err := curHTTPClient.Do(httpRequest)
 	end := time.Now()
 	if err != nil {
-		transport.CloseIdleConnections()
+		if transport != nil {
+			transport.CloseIdleConnections()
+		}
 		return nil, err
 	}
-	if httpResponse.StatusCode >= 400 &&
+	if transport != nil && httpResponse.StatusCode >= 400 &&
 		(httpRequest.Method == PUT || httpRequest.Method == POST) {
 		transport.CloseIdleConnections()
 	}
@@ -181,7 +456,11 @@ func SetResponseHeaderTimeout(t int) {
 			if err != nil {
 				return nil, err
 			}
-			tc := &timeoutConn{conn, defaultSmallInterval, defaultLargeInterval}
+			tc := &timeoutConn{
+				conn:          conn,
+				smallInterval: defaultSmallInterval,
+				largeInterval: defaultLargeInterval,
+			}
 			err = tc.SetReadDeadline(time.Now().Add(defaultLargeInterval))
 			if err != nil {
 				return nil, err

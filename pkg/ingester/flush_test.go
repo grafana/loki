@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"context"
+
 	gokitlog "github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/kv"
@@ -19,7 +21,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/net/context"
 
 	"github.com/grafana/dskit/tenant"
 
@@ -74,6 +75,7 @@ type fullWAL struct{}
 func (fullWAL) Log(_ *wal.Record) error { return &os.PathError{Err: syscall.ENOSPC} }
 func (fullWAL) Start()                  {}
 func (fullWAL) Stop() error             { return nil }
+func (fullWAL) IsDiskThrottled() bool   { return false }
 
 func Benchmark_FlushLoop(b *testing.B) {
 	var (
@@ -290,7 +292,7 @@ func Test_flush_not_owned_stream(t *testing.T) {
 	require.True(t, found)
 	fingerprint := instance.getHashForLabels(labels.FromStrings("app", "l"))
 	require.Equal(t, model.Fingerprint(16794418009594958), fingerprint)
-	instance.ownedStreamsSvc.trackStreamOwnership(fingerprint, false)
+	instance.ownedStreamsSvc.trackStreamOwnership(fingerprint, false, noPolicy)
 
 	time.Sleep(2 * cfg.FlushCheckPeriod)
 
@@ -444,10 +446,17 @@ func (s *testStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
 		return err
 	}
 	for ix, chunk := range chunks {
-		for _, label := range chunk.Metric {
-			if label.Value == "" {
-				return fmt.Errorf("Chunk has blank label %q", label.Name)
+		var err error
+		chunk.Metric.Range(func(l labels.Label) {
+			if err != nil {
+				return
 			}
+			if l.Value == "" {
+				err = fmt.Errorf("Chunk has blank label %q", l.Name)
+			}
+		})
+		if err != nil {
+			return err
 		}
 
 		// remove __name__ label
@@ -493,6 +502,14 @@ func (s *testStore) HasForSeries(_, _ model.Time) (sharding.ForSeries, bool) {
 	return nil, false
 }
 
+func (s *testStore) HasChunkSizingInfo(_, _ model.Time) bool {
+	return false
+}
+
+func (s *testStore) GetChunkRefsWithSizingInfo(_ context.Context, _ string, _, _ model.Time, _ chunk.Predicate) ([]logproto.ChunkRefWithSizingInfo, error) {
+	return nil, nil
+}
+
 func (s *testStore) GetSchemaConfigs() []config.PeriodConfig {
 	return defaultPeriodConfigs
 }
@@ -507,6 +524,10 @@ func (s *testStore) Stats(_ context.Context, _ string, _, _ model.Time, _ ...*la
 
 func (s *testStore) Volume(_ context.Context, _ string, _, _ model.Time, _ int32, _ []string, _ string, _ ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	return &logproto.VolumeResponse{}, nil
+}
+
+func (s *testStore) Series(_ context.Context, _ logql.SelectLogParams) ([]logproto.SeriesIdentifier, error) {
+	return nil, nil
 }
 
 func pushTestSamples(t *testing.T, ing logproto.PusherServer) map[string][]logproto.Stream {
@@ -557,6 +578,19 @@ func buildTestStreams(offset int) []logproto.Stream {
 // check that the store is holding data equivalent to what we expect
 func (s *testStore) checkData(t *testing.T, testData map[string][]logproto.Stream) {
 	for userID, expected := range testData {
+		// Ensure all empty label sets use an empty set of adapters, rather than a nil slice, to make the assertion below easier.
+		for _, stream := range expected {
+			for i := range stream.Entries {
+				if len(stream.Entries[i].Parsed) == 0 {
+					stream.Entries[i].Parsed = logproto.EmptyLabelAdapters()
+				}
+
+				if len(stream.Entries[i].StructuredMetadata) == 0 {
+					stream.Entries[i].StructuredMetadata = logproto.EmptyLabelAdapters()
+				}
+			}
+		}
+
 		streams := s.getStreamsForUser(t, userID)
 		require.Equal(t, expected, streams)
 	}

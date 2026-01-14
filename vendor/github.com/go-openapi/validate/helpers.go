@@ -1,16 +1,5 @@
-// Copyright 2015 go-swagger maintainers
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//    http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-FileCopyrightText: Copyright 2015-2025 go-swagger maintainers
+// SPDX-License-Identifier: Apache-2.0
 
 package validate
 
@@ -139,7 +128,7 @@ func (h *pathHelper) stripParametersInPath(path string) string {
 	rexParsePathParam := mustCompileRegexp(`{[^{}]+?}`)
 	strippedSegments := []string{}
 
-	for _, segment := range strings.Split(path, "/") {
+	for segment := range strings.SplitSeq(path, "/") {
 		strippedSegments = append(strippedSegments, rexParsePathParam.ReplaceAllString(segment, "X"))
 	}
 	return strings.Join(strippedSegments, "/")
@@ -149,7 +138,7 @@ func (h *pathHelper) extractPathParams(path string) (params []string) {
 	// Extracts all params from a path, with surrounding "{}"
 	rexParsePathParam := mustCompileRegexp(`{[^{}]+?}`)
 
-	for _, segment := range strings.Split(path, "/") {
+	for segment := range strings.SplitSeq(path, "/") {
 		for _, v := range rexParsePathParam.FindAllStringSubmatch(segment, -1) {
 			params = append(params, v...)
 		}
@@ -161,7 +150,7 @@ type valueHelper struct {
 	// A collection of unexported helpers for value validation
 }
 
-func (h *valueHelper) asInt64(val interface{}) int64 {
+func (h *valueHelper) asInt64(val any) int64 {
 	// Number conversion function for int64, without error checking
 	// (implements an implicit type upgrade).
 	v := reflect.ValueOf(val)
@@ -169,7 +158,7 @@ func (h *valueHelper) asInt64(val interface{}) int64 {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		return v.Int()
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		return int64(v.Uint())
+		return int64(v.Uint()) //nolint:gosec
 	case reflect.Float32, reflect.Float64:
 		return int64(v.Float())
 	default:
@@ -178,13 +167,13 @@ func (h *valueHelper) asInt64(val interface{}) int64 {
 	}
 }
 
-func (h *valueHelper) asUint64(val interface{}) uint64 {
+func (h *valueHelper) asUint64(val any) uint64 {
 	// Number conversion function for uint64, without error checking
 	// (implements an implicit type upgrade).
 	v := reflect.ValueOf(val)
 	switch v.Kind() { //nolint:exhaustive
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		return uint64(v.Int())
+		return uint64(v.Int()) //nolint:gosec
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		return v.Uint()
 	case reflect.Float32, reflect.Float64:
@@ -196,7 +185,7 @@ func (h *valueHelper) asUint64(val interface{}) uint64 {
 }
 
 // Same for unsigned floats
-func (h *valueHelper) asFloat64(val interface{}) float64 {
+func (h *valueHelper) asFloat64(val any) float64 {
 	// Number conversion function for float64, without error checking
 	// (implements an implicit type upgrade).
 	v := reflect.ValueOf(val)
@@ -273,7 +262,7 @@ func (h *paramHelper) checkExpandedParam(pr *spec.Parameter, path, in, operation
 	simpleZero := spec.SimpleSchema{}
 	// Try to explain why... best guess
 	switch {
-	case pr.In == swaggerBody && (pr.SimpleSchema != simpleZero && pr.SimpleSchema.Type != objectType):
+	case pr.In == swaggerBody && (pr.SimpleSchema != simpleZero && pr.Type != objectType):
 		if isRef {
 			// Most likely, a $ref with a sibling is an unwanted situation: in itself this is a warning...
 			// but we detect it because of the following error:

@@ -1,16 +1,5 @@
-// Copyright 2015 go-swagger maintainers
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//    http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-FileCopyrightText: Copyright 2015-2025 go-swagger maintainers
+// SPDX-License-Identifier: Apache-2.0
 
 package spec
 
@@ -21,12 +10,12 @@ import (
 	"sort"
 
 	"github.com/go-openapi/jsonpointer"
-	"github.com/go-openapi/swag"
+	"github.com/go-openapi/swag/jsonutils"
 )
 
 func init() {
-	gob.Register(map[string]interface{}{})
-	gob.Register([]interface{}{})
+	gob.Register(map[string]any{})
+	gob.Register([]any{})
 }
 
 // OperationProps describes an operation
@@ -58,19 +47,22 @@ func (op OperationProps) MarshalJSON() ([]byte, error) {
 	type Alias OperationProps
 	if op.Security == nil {
 		return json.Marshal(&struct {
-			Security []map[string][]string `json:"security,omitempty"`
 			*Alias
+
+			Security []map[string][]string `json:"security,omitempty"`
 		}{
-			Security: op.Security,
 			Alias:    (*Alias)(&op),
+			Security: op.Security,
 		})
 	}
+
 	return json.Marshal(&struct {
-		Security []map[string][]string `json:"security"`
 		*Alias
+
+		Security []map[string][]string `json:"security"`
 	}{
-		Security: op.Security,
 		Alias:    (*Alias)(&op),
+		Security: op.Security,
 	})
 }
 
@@ -80,6 +72,14 @@ func (op OperationProps) MarshalJSON() ([]byte, error) {
 type Operation struct {
 	VendorExtensible
 	OperationProps
+}
+
+// NewOperation creates a new operation instance.
+// It expects an ID as parameter but not passing an ID is also valid.
+func NewOperation(id string) *Operation {
+	op := new(Operation)
+	op.ID = id
+	return op
 }
 
 // SuccessResponse gets a success response model
@@ -104,7 +104,7 @@ func (o *Operation) SuccessResponse() (*Response, int, bool) {
 }
 
 // JSONLookup look up a value by the json property name
-func (o Operation) JSONLookup(token string) (interface{}, error) {
+func (o Operation) JSONLookup(token string) (any, error) {
 	if ex, ok := o.Extensions[token]; ok {
 		return &ex, nil
 	}
@@ -130,16 +130,8 @@ func (o Operation) MarshalJSON() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	concated := swag.ConcatJSON(b1, b2)
+	concated := jsonutils.ConcatJSON(b1, b2)
 	return concated, nil
-}
-
-// NewOperation creates a new operation instance.
-// It expects an ID as parameter but not passing an ID is also valid.
-func NewOperation(id string) *Operation {
-	op := new(Operation)
-	op.ID = id
-	return op
 }
 
 // WithID sets the ID property on this operation, allows for chaining.

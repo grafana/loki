@@ -8,44 +8,45 @@ import (
 	"net"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gorilla/mux"
-	"github.com/grafana/ckit"
-	"github.com/grafana/ckit/peer"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/thanos-io/objstore"
 	"golang.org/x/net/http2"
-)
 
-// This allows to rate limit the number of updates when the cluster is frequently changing (e.g. during rollout).
-const stateUpdateMinInterval = 5 * time.Second
+	// This is equivalent to a main.go for the Loki UI, so the blank import is allowed
+	_ "github.com/go-sql-driver/mysql" //nolint:revive
+
+	"github.com/grafana/loki/v3/pkg/goldfish"
+	"github.com/grafana/loki/v3/pkg/storage/bucket"
+)
 
 type Service struct {
 	services.Service
-	node   *ckit.Node
-	router *mux.Router
-	uiFS   fs.FS
+	ring          *ring.Ring
+	localNodeName string
+	router        *mux.Router
+	uiFS          fs.FS
 
 	client    *http.Client
 	localAddr string
 
-	cfg    Config
-	logger log.Logger
-	reg    prometheus.Registerer
+	cfg             Config
+	logger          log.Logger
+	reg             prometheus.Registerer
+	goldfishStorage goldfish.Storage
+	goldfishMetrics *GoldfishMetrics
+	goldfishBucket  objstore.InstrumentedBucket
+
+	now func() time.Time
 }
 
-func NewService(cfg Config, router *mux.Router, logger log.Logger, reg prometheus.Registerer) (*Service, error) {
-	addr, err := ring.GetInstanceAddr(cfg.AdvertiseAddr, cfg.InfNames, logger, cfg.EnableIPv6)
-	if err != nil {
-		return nil, err
-	}
-	cfg.AdvertiseAddr = addr
-
+func NewService(cfg Config, router *mux.Router, ring *ring.Ring, localAddr string, logger log.Logger, reg prometheus.Registerer) (*Service, error) {
 	httpClient := &http.Client{
 		Transport: &http2.Transport{
 			AllowHTTP: true,
@@ -55,36 +56,32 @@ func NewService(cfg Config, router *mux.Router, logger log.Logger, reg prometheu
 		},
 	}
 
+	// Use the instance ID from ring config as the local node name
+	localNodeName := cfg.Ring.InstanceID
+
 	if !cfg.Debug {
 		logger = level.NewFilter(logger, level.AllowInfo())
 	}
-	advertiseAddr := fmt.Sprintf("%s:%d", cfg.AdvertiseAddr, cfg.AdvertisePort)
-	node, err := ckit.NewNode(httpClient, ckit.Config{
-		Name:          cfg.NodeName,
-		Log:           logger,
-		AdvertiseAddr: advertiseAddr,
-		Label:         cfg.ClusterName,
-	})
-	if err != nil {
-		return nil, err
-	}
-	if reg != nil {
-		if err := reg.Register(node.Metrics()); err != nil {
-			return nil, err
-		}
-	}
 
 	svc := &Service{
-		cfg:       cfg,
-		logger:    logger,
-		reg:       reg,
-		node:      node,
-		router:    router,
-		client:    httpClient,
-		localAddr: advertiseAddr,
+		cfg:           cfg,
+		logger:        logger,
+		reg:           reg,
+		ring:          ring,
+		localNodeName: localNodeName,
+		router:        router,
+		client:        httpClient,
+		localAddr:     localAddr,
+		now:           time.Now,
 	}
+
+	// Initialize metrics if goldfish is enabled
+	if cfg.Goldfish.Enable {
+		svc.goldfishMetrics = NewGoldfishMetrics(reg)
+	}
+
 	svc.Service = services.NewBasicService(nil, svc.run, svc.stop)
-	if err := svc.initUIFs(); err != nil {
+	if err := svc.initGoldfishDB(); err != nil {
 		return nil, err
 	}
 	svc.RegisterHandler()
@@ -92,85 +89,40 @@ func NewService(cfg Config, router *mux.Router, logger log.Logger, reg prometheu
 }
 
 func (s *Service) run(ctx context.Context) error {
-	if err := s.node.ChangeState(ctx, peer.StateParticipant); err != nil {
-		level.Error(s.logger).Log("msg", "failed to change state to participant", "err", err)
-		return err
-	}
-	peers, err := s.getBootstrapPeers()
-	if err != nil {
-		// Warn when failed to get peers on startup as it can result in a split brain. We do not fail hard here
-		// because it would complicate the process of bootstrapping a new cluster.
-		level.Warn(s.logger).Log("msg", "failed to get peers to join at startup; will create a new cluster", "err", err)
-	}
-	level.Info(s.logger).Log("msg", "starting cluster node", "peers_count", len(peers))
-	if err := s.node.Start(peers); err != nil {
-		level.Warn(s.logger).Log("msg", "failed to connect to peers; bootstrapping a new cluster", "err", err)
-
-		err := s.node.Start(nil)
-		if err != nil {
-			level.Error(s.logger).Log("msg", "failed to bootstrap a fresh cluster with no peers", "err", err)
-		}
-	}
-	newPeers := make(map[string]struct{})
-	for _, p := range peers {
-		newPeers[p] = struct{}{}
-	}
-
-	var wg sync.WaitGroup
-	if s.cfg.RejoinInterval > 0 {
-		ticker := time.NewTicker(s.cfg.RejoinInterval)
-		defer ticker.Stop()
-
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case <-ticker.C:
-					peers, err := s.discoverNewPeers(newPeers)
-					if err != nil {
-						level.Warn(s.logger).Log("msg", "failed to get peers to join; will try again", "err", err)
-						continue
-					}
-					if len(peers) > 0 {
-						level.Info(s.logger).Log("msg", "rejoining cluster", "peers_count", len(newPeers))
-						if err := s.node.Start(peers); err != nil {
-							level.Warn(s.logger).Log("msg", "failed to connect to peers; will try again", "err", err)
-							continue
-						}
-					}
-				}
-			}
-		}()
-	}
+	level.Info(s.logger).Log("msg", "UI service running", "node", s.localNodeName, "addr", s.localAddr)
 
 	<-ctx.Done()
-	wg.Wait()
 	return nil
 }
 
 func (s *Service) stop(_ error) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if err := s.node.ChangeState(ctx, peer.StateTerminating); err != nil {
-		level.Error(s.logger).Log("msg", "failed to change state to terminating", "err", err)
+	level.Info(s.logger).Log("msg", "stopping UI service")
+	if s.goldfishStorage != nil {
+		s.goldfishStorage.Close()
 	}
-	if s.reg != nil {
-		s.reg.Unregister(s.node.Metrics())
+	if s.goldfishBucket != nil {
+		s.goldfishBucket.Close()
 	}
-	return s.node.Stop()
+	return nil
 }
 
-// findPeerByName returns the peer with the given name visible to the node.
-func (s *Service) findPeerByName(name string) (peer.Peer, error) {
-	for _, p := range s.node.Peers() {
-		if strings.EqualFold(p.Name, name) {
-			return p, nil
+// findNodeAddressByName returns the HTTP address of the UI instance with the given ID.
+// It queries the UI ring to find the instance address.
+func (s *Service) findNodeAddressByName(instanceID string) (string, error) {
+	// Query all rings to find the instance
+	replicationSet, err := s.ring.GetAllHealthy(ring.Read)
+	if err != nil {
+		return "", fmt.Errorf("failed to get instances from ring: %w", err)
+	}
+
+	// Look for the instance by ID
+	for _, instance := range replicationSet.Instances {
+		if strings.EqualFold(instance.Id, instanceID) {
+			return instance.Addr, nil
 		}
 	}
-	return peer.Peer{}, fmt.Errorf("peer not found: %s", name)
+
+	return "", fmt.Errorf("instance not found in ring: %s", instanceID)
 }
 
 // TODO(rfratto): consider making the max timeout configurable.
@@ -190,4 +142,63 @@ func deadlineDuration(ctx context.Context) (d time.Duration, ok bool) {
 		return time.Until(t), true
 	}
 	return 0, false
+}
+
+// initGoldfishDB initializes the database connection for goldfish features
+func (s *Service) initGoldfishDB() error {
+	if !s.cfg.Goldfish.Enable {
+		level.Info(s.logger).Log("msg", "goldfish feature disabled, using noop storage")
+		s.goldfishStorage = goldfish.NewNoopStorage()
+		return nil
+	}
+
+	// Create storage configuration
+	var storageConfig goldfish.StorageConfig
+	switch s.cfg.Goldfish.Storage.Type {
+	case "cloudsql":
+		storageConfig = goldfish.StorageConfig{
+			Type:             "cloudsql",
+			CloudSQLHost:     s.cfg.Goldfish.Storage.CloudSQLHost,
+			CloudSQLPort:     s.cfg.Goldfish.Storage.CloudSQLPort,
+			CloudSQLDatabase: s.cfg.Goldfish.Storage.CloudSQLDatabase,
+			CloudSQLUser:     s.cfg.Goldfish.Storage.CloudSQLUser,
+			MaxConnections:   s.cfg.Goldfish.Storage.MaxConnections,
+			MaxIdleTime:      s.cfg.Goldfish.Storage.MaxIdleTime,
+		}
+	case "rds":
+		storageConfig = goldfish.StorageConfig{
+			Type:           "rds",
+			RDSEndpoint:    s.cfg.Goldfish.Storage.RDSEndpoint,
+			RDSDatabase:    s.cfg.Goldfish.Storage.RDSDatabase,
+			RDSUser:        s.cfg.Goldfish.Storage.RDSUser,
+			MaxConnections: s.cfg.Goldfish.Storage.MaxConnections,
+			MaxIdleTime:    s.cfg.Goldfish.Storage.MaxIdleTime,
+		}
+	default:
+		return fmt.Errorf("unsupported storage type %s", s.cfg.Goldfish.Storage.Type)
+	}
+
+	storage, err := goldfish.NewMySQLStorage(storageConfig, s.logger)
+	if err != nil {
+		level.Warn(s.logger).Log("msg", "failed to create goldfish storage, goldfish features will be disabled", "err", err)
+		s.cfg.Goldfish.Enable = false
+		s.goldfishStorage = goldfish.NewNoopStorage()
+		return nil
+	}
+
+	s.goldfishStorage = storage
+	level.Info(s.logger).Log("msg", "goldfish storage initialized successfully")
+
+	// Initialize bucket client if results backend is configured
+	if s.cfg.Goldfish.ResultsBackend != "" {
+		bucketClient, err := bucket.NewClient(context.Background(), s.cfg.Goldfish.ResultsBackend, s.cfg.Goldfish.ResultsBucket, "goldfish-ui-results", s.logger)
+		if err != nil {
+			level.Warn(s.logger).Log("msg", "failed to create goldfish bucket client, result fetching will be disabled", "err", err)
+		} else {
+			s.goldfishBucket = bucketClient
+			level.Info(s.logger).Log("msg", "goldfish bucket client initialized successfully", "backend", s.cfg.Goldfish.ResultsBackend)
+		}
+	}
+
+	return nil
 }

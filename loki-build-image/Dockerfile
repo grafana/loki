@@ -4,8 +4,8 @@
 # tag of the Docker image in `../.drone/drone.jsonnet` and run `make drone`.
 # See ../docs/sources/community/maintaining/release-loki-build-image.md for instructions
 # on how to publish a new build image.
-ARG GO_VERSION=1.24
-ARG GOLANG_BASE_IMAGE=golang:${GO_VERSION}-bullseye
+ARG GO_VERSION=1.25.5
+ARG GOLANG_BASE_IMAGE=golang:${GO_VERSION}-trixie
 
 # Install helm (https://helm.sh/) and helm-docs (https://github.com/norwoodj/helm-docs) for generating Helm Chart reference.
 FROM ${GOLANG_BASE_IMAGE} AS helm
@@ -17,7 +17,7 @@ RUN BIN=$([ "$TARGETARCH" = "arm64" ] && echo "helm-docs_Linux_arm64" || echo "h
     curl -L "https://github.com/norwoodj/helm-docs/releases/download/v1.11.2/$BIN.tar.gz" | tar zx && \
     install -t /usr/local/bin helm-docs
 
-FROM alpine:3.21.3 AS lychee
+FROM alpine:3.23.2@sha256:865b95f46d98cf867a156fe4a135ad3fe50d2056aa3f25ed31662dff6da4eb62 AS lychee
 ARG TARGETARCH
 ARG LYCHEE_VER="0.7.0"
 RUN apk add --no-cache curl && \
@@ -26,18 +26,18 @@ RUN apk add --no-cache curl && \
     mv /tmp/lychee /usr/bin/lychee && \
     rm -rf "/tmp/linux-$TARGETARCH" /tmp/lychee-$LYCHEE_VER.tgz
 
-FROM alpine:3.21.3 AS golangci
+FROM alpine:3.23.2@sha256:865b95f46d98cf867a156fe4a135ad3fe50d2056aa3f25ed31662dff6da4eb62 AS golangci
 RUN apk add --no-cache curl && \
     cd / && \
-    curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v1.64.5
+    curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v2.4.0
 
-FROM alpine:3.21.3 AS buf
+FROM alpine:3.23.2@sha256:865b95f46d98cf867a156fe4a135ad3fe50d2056aa3f25ed31662dff6da4eb62 AS buf
 ARG TARGETOS
 RUN apk add --no-cache curl && \
     curl -sSL "https://github.com/bufbuild/buf/releases/download/v1.4.0/buf-$TARGETOS-$(uname -m)" -o "/usr/bin/buf" && \
     chmod +x "/usr/bin/buf"
 
-FROM alpine:3.21.3 AS docker
+FROM alpine:3.23.2@sha256:865b95f46d98cf867a156fe4a135ad3fe50d2056aa3f25ed31662dff6da4eb62 AS docker
 RUN apk add --no-cache docker-cli docker-cli-buildx
 
 FROM ${GOLANG_BASE_IMAGE} AS drone
@@ -52,7 +52,7 @@ RUN curl -L "https://github.com/drone/drone-cli/releases/download/v1.7.0/drone_l
 #   (not golang.org/x/tools@v0.0.0-20190918214920-58d531046acd from golang.org/x/tools/cmd/goyacc@58d531046acdc757f177387bc1725bfa79895d69)
 FROM ${GOLANG_BASE_IMAGE} AS faillint
 RUN GO111MODULE=on go install github.com/fatih/faillint@v1.15.0
-RUN GO111MODULE=on go install golang.org/x/tools/cmd/goimports@v0.30.0
+RUN GO111MODULE=on go install golang.org/x/tools/cmd/goimports@v0.38.0
 
 FROM ${GOLANG_BASE_IMAGE} AS delve
 RUN GO111MODULE=on go install github.com/go-delve/delve/cmd/dlv@latest

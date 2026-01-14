@@ -51,6 +51,7 @@ package publicsuffix // import "golang.org/x/net/publicsuffix"
 import (
 	"fmt"
 	"net/http/cookiejar"
+	"net/netip"
 	"strings"
 )
 
@@ -77,13 +78,17 @@ func (list) String() string {
 // privately managed domain (and in practice, not a top level domain) or an
 // unmanaged top level domain (and not explicitly mentioned in the
 // publicsuffix.org list). For example, "foo.org" and "foo.co.uk" are ICANN
-// domains, "foo.dyndns.org" and "foo.blogspot.co.uk" are private domains and
+// domains, "foo.dyndns.org" is a private domain and
 // "cromulent" is an unmanaged top level domain.
 //
 // Use cases for distinguishing ICANN domains like "foo.com" from private
 // domains like "foo.appspot.com" can be found at
 // https://wiki.mozilla.org/Public_Suffix_List/Use_Cases
 func PublicSuffix(domain string) (publicSuffix string, icann bool) {
+	if _, err := netip.ParseAddr(domain); err == nil {
+		return domain, false
+	}
+
 	lo, hi := uint32(0), uint32(numTLD)
 	s, suffix, icannNode, wildcard := domain, len(domain), false, false
 loop:

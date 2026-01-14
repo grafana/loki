@@ -2,15 +2,19 @@ package tsdb
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"sync"
 	"time"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/grafana/loki/v3/pkg/logql"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 
-	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -24,6 +28,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 	"github.com/grafana/loki/v3/pkg/util"
 )
+
+var tracer = otel.Tracer("pkg/storage/stores/shipper/indexshipper/tsdb")
 
 // implements stores.Index
 type IndexClient struct {
@@ -113,9 +119,6 @@ func cleanMatchers(matchers ...*labels.Matcher) ([]*labels.Matcher, index.Finger
 	return matchers, nil, nil
 }
 
-// TODO(owen-d): synchronize logproto.ChunkRef and tsdb.ChunkRef so we don't have to convert.
-// They share almost the same fields, so we can add the missing `KB` field to the proto and then
-// use that within the tsdb package.
 func (c *IndexClient) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, predicate chunk.Predicate) ([]logproto.ChunkRef, error) {
 	matchers, shard, err := cleanMatchers(predicate.Matchers...)
 	if err != nil {
@@ -130,16 +133,25 @@ func (c *IndexClient) GetChunkRefs(ctx context.Context, userID string, from, thr
 
 	refs := make([]logproto.ChunkRef, 0, len(chks))
 	for _, chk := range chks {
-		refs = append(refs, logproto.ChunkRef{
-			Fingerprint: uint64(chk.Fingerprint),
-			UserID:      chk.User,
-			From:        chk.Start,
-			Through:     chk.End,
-			Checksum:    chk.Checksum,
-		})
+		refs = append(refs, chk.ChunkRef)
 	}
 
 	return refs, err
+}
+
+func (c *IndexClient) GetChunkRefsWithSizingInfo(ctx context.Context, userID string, from, through model.Time, predicate chunk.Predicate) ([]logproto.ChunkRefWithSizingInfo, error) {
+	matchers, shard, err := cleanMatchers(predicate.Matchers...)
+	if err != nil {
+		return nil, err
+	}
+
+	// TODO(owen-d): use a pool to reduce allocs here
+	chks, err := c.idx.GetChunkRefs(ctx, userID, from, through, nil, shard, matchers...)
+	if err != nil {
+		return nil, err
+	}
+
+	return chks, err
 }
 
 func (c *IndexClient) GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]labels.Labels, error) {
@@ -221,26 +233,26 @@ func (c *IndexClient) Stats(ctx context.Context, userID string, from, through mo
 	}
 	res := acc.Stats()
 
-	if sp := opentracing.SpanFromContext(ctx); sp != nil {
-		sp.LogKV(
-			"function", "IndexClient.Stats",
-			"from", from.Time(),
-			"through", through.Time(),
-			"matchers", syntax.MatchersString(matchers),
-			"shard", shard,
-			"intervals", len(intervals),
-			"streams", res.Streams,
-			"chunks", res.Chunks,
-			"bytes", res.Bytes,
-			"entries", res.Entries,
-		)
-	}
+	sp := trace.SpanFromContext(ctx)
+	sp.SetAttributes(
+		attribute.String("function", "IndexClient.Stats"),
+		attribute.String("from", from.Time().String()),
+		attribute.String("through", through.Time().String()),
+		attribute.String("matchers", syntax.MatchersString(matchers)),
+		attribute.String("shard", fmt.Sprintf("%+v", shard)),
+		attribute.Int("intervals", len(intervals)),
+		attribute.Int64("streams", int64(res.Streams)),
+		attribute.Int64("chunks", int64(res.Chunks)),
+		attribute.Int64("bytes", int64(res.Bytes)),
+		attribute.Int64("entries", int64(res.Entries)),
+	)
+
 	return &res, nil
 }
 
 func (c *IndexClient) Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "IndexClient.Volume")
-	defer sp.Finish()
+	ctx, sp := tracer.Start(ctx, "IndexClient.Volume")
+	defer sp.End()
 
 	matchers, shard, err := cleanMatchers(matchers...)
 	if err != nil {
@@ -263,14 +275,14 @@ func (c *IndexClient) Volume(ctx context.Context, userID string, from, through m
 		}
 	}
 
-	sp.LogKV(
-		"from", from.Time(),
-		"through", through.Time(),
-		"matchers", syntax.MatchersString(matchers),
-		"shard", shard,
-		"intervals", len(intervals),
-		"limit", limit,
-		"aggregateBy", aggregateBy,
+	sp.SetAttributes(
+		attribute.String("from", from.Time().String()),
+		attribute.String("through", through.Time().String()),
+		attribute.String("matchers", syntax.MatchersString(matchers)),
+		attribute.String("shard", fmt.Sprintf("%+v", shard)),
+		attribute.Int("intervals", len(intervals)),
+		attribute.Int("limit", int(limit)),
+		attribute.String("aggregateBy", aggregateBy),
 	)
 
 	if err != nil {
@@ -312,6 +324,9 @@ func (c *IndexClient) GetShards(ctx context.Context, userID string, from, throug
 
 		series = append(series, x)
 	}
+
+	// Record total unique streams matched in index statistics
+	resp.Statistics.Index.TotalStreams += int64(len(m))
 	sort.Sort(series)
 	resp.Shards = series.ShardsFor(targetBytesPerShard)
 
@@ -334,7 +349,7 @@ func withoutNameLabel(matchers []*labels.Matcher) []*labels.Matcher {
 
 	dst := make([]*labels.Matcher, 0, len(matchers)-1)
 	for _, m := range matchers {
-		if m.Name == labels.MetricName {
+		if m.Name == model.MetricNameLabel {
 			continue
 		}
 		dst = append(dst, m)
@@ -345,4 +360,8 @@ func withoutNameLabel(matchers []*labels.Matcher) []*labels.Matcher {
 
 func (c *IndexClient) HasForSeries(_, _ model.Time) (sharding.ForSeries, bool) {
 	return c.idx, true
+}
+
+func (c *IndexClient) HasChunkSizingInfo(_, _ model.Time) bool {
+	return true
 }

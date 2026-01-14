@@ -15,14 +15,27 @@ const (
 )
 
 type ProxyMetrics struct {
+	requestsTotal          *prometheus.CounterVec
 	requestDuration        *prometheus.HistogramVec
 	responsesTotal         *prometheus.CounterVec
 	responsesComparedTotal *prometheus.CounterVec
 	missingMetrics         *prometheus.HistogramVec
+
+	// Sampling metrics
+	queriesSampled    *prometheus.CounterVec
+	samplingDecisions *prometheus.CounterVec
+
+	// Race metrics
+	raceWins *prometheus.CounterVec
 }
 
 func NewProxyMetrics(registerer prometheus.Registerer) *ProxyMetrics {
 	m := &ProxyMetrics{
+		requestsTotal: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "cortex_querytee",
+			Name:      "requests_total",
+			Help:      "Total number of HTTP requests received by query-tee.",
+		}, []string{"method", "route"}),
 		requestDuration: promauto.With(registerer).NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: "cortex_querytee",
 			Name:      "request_duration_seconds",
@@ -45,6 +58,24 @@ func NewProxyMetrics(registerer prometheus.Registerer) *ProxyMetrics {
 			Help:      "Number of missing metrics (series) in a vector response.",
 			Buckets:   []float64{.005, .01, .025, .05, .1, .25, .5, 0.75, 1, 1.5, 2, 3, 4, 5, 10, 25, 50, 100},
 		}, []string{"backend", "route", "status_code", "issuer"}),
+
+		queriesSampled: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "cortex_querytee",
+			Name:      "queries_sampled_total",
+			Help:      "Total number of queries that were sampled and sent to Kafka.",
+		}, []string{"tenant", "route"}),
+
+		samplingDecisions: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "cortex_querytee",
+			Name:      "sampling_decisions_total",
+			Help:      "Total number of sampling decisions made.",
+		}, []string{"tenant", "route", "decision"}),
+
+		raceWins: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "loki_querytee",
+			Name:      "race_wins_total",
+			Help:      "Total number of times each backend won the race (when racing is enabled).",
+		}, []string{"backend", "route"}),
 	}
 
 	return m

@@ -10,38 +10,28 @@ type InitProducerIDRequest struct {
 	ProducerEpoch      int16
 }
 
+func (i *InitProducerIDRequest) setVersion(v int16) {
+	i.Version = v
+}
+
 func (i *InitProducerIDRequest) encode(pe packetEncoder) error {
-	if i.Version < 2 {
-		if err := pe.putNullableString(i.TransactionalID); err != nil {
-			return err
-		}
-	} else {
-		if err := pe.putNullableCompactString(i.TransactionalID); err != nil {
-			return err
-		}
+	if err := pe.putNullableString(i.TransactionalID); err != nil {
+		return err
 	}
 	pe.putInt32(int32(i.TransactionTimeout / time.Millisecond))
 	if i.Version >= 3 {
 		pe.putInt64(i.ProducerID)
 		pe.putInt16(i.ProducerEpoch)
 	}
-	if i.Version >= 2 {
-		pe.putEmptyTaggedFieldArray()
-	}
 
+	pe.putEmptyTaggedFieldArray()
 	return nil
 }
 
 func (i *InitProducerIDRequest) decode(pd packetDecoder, version int16) (err error) {
 	i.Version = version
-	if i.Version < 2 {
-		if i.TransactionalID, err = pd.getNullableString(); err != nil {
-			return err
-		}
-	} else {
-		if i.TransactionalID, err = pd.getCompactNullableString(); err != nil {
-			return err
-		}
+	if i.TransactionalID, err = pd.getNullableString(); err != nil {
+		return err
 	}
 
 	timeout, err := pd.getInt32()
@@ -59,17 +49,12 @@ func (i *InitProducerIDRequest) decode(pd packetDecoder, version int16) (err err
 		}
 	}
 
-	if i.Version >= 2 {
-		if _, err := pd.getEmptyTaggedFieldArray(); err != nil {
-			return err
-		}
-	}
-
-	return nil
+	_, err = pd.getEmptyTaggedFieldArray()
+	return err
 }
 
 func (i *InitProducerIDRequest) key() int16 {
-	return 22
+	return apiKeyInitProducerId
 }
 
 func (i *InitProducerIDRequest) version() int16 {
@@ -86,6 +71,14 @@ func (i *InitProducerIDRequest) headerVersion() int16 {
 
 func (i *InitProducerIDRequest) isValidVersion() bool {
 	return i.Version >= 0 && i.Version <= 4
+}
+
+func (i *InitProducerIDRequest) isFlexible() bool {
+	return i.isFlexibleVersion(i.Version)
+}
+
+func (i *InitProducerIDRequest) isFlexibleVersion(version int16) bool {
+	return version >= 2
 }
 
 func (i *InitProducerIDRequest) requiredVersion() KafkaVersion {

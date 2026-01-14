@@ -39,7 +39,6 @@ type canary struct {
 }
 
 func main() {
-
 	lName := flag.String("labelname", "name", "The label name for this instance of loki-canary to use in the log selector")
 	lVal := flag.String("labelvalue", "loki-canary", "The unique label value for this instance of loki-canary to use in the log selector")
 	sName := flag.String("streamname", "stream", "The stream name for this instance of loki-canary to use in the log selector")
@@ -74,6 +73,7 @@ func main() {
 	buckets := flag.Int("buckets", 10, "Number of buckets in the response_latency histogram")
 
 	queryAppend := flag.String("query-append", "", "LogQL filters to be appended to the Canary query e.g. '| json | line_format `{{.log}}`'")
+	labels := flag.String("labels", "", "Comma-separated string of labels for the query e.g. 'service=loki,app=canary'. The parsing logic for this argument is simple, label values must not contain a comma or special characters and should not be quoted. Overwrites labelname and streamname")
 
 	metricTestInterval := flag.Duration("metric-test-interval", 1*time.Hour, "The interval the metric test query should be run")
 	metricTestQueryRange := flag.Duration("metric-test-range", 24*time.Hour, "The range value [24h] used in the metric test instant-query."+
@@ -88,6 +88,9 @@ func main() {
 	spotCheckMax := flag.Duration("spot-check-max", 4*time.Hour, "How far back to check a spot check entry before dropping it")
 	spotCheckQueryRate := flag.Duration("spot-check-query-rate", 1*time.Minute, "Interval that the canary will query Loki for the current list of all spot check entries")
 	spotCheckWait := flag.Duration("spot-check-initial-wait", 10*time.Second, "How long should the spot check query wait before starting to check for entries")
+
+	logBatchSize := flag.Int("logs-batch-size", writer.DefaultLogBatchSize, "Send logs to Loki in batches of a specified size.  Must be a non-negative value (0 or 1 will disable batching)")
+	logBatchSizeMax := flag.Int("logs-batch-size-max", writer.DefaultLogBatchSizeMax, "Upper bound on -logs-batch-size.  Only increase this value if you have increased memory limits for the canary pods")
 
 	printVersion := flag.Bool("version", false, "Print this builds version information")
 
@@ -109,6 +112,21 @@ func main() {
 
 	if *outOfOrderPercentage < 0 || *outOfOrderPercentage > 100 {
 		_, _ = fmt.Fprintf(os.Stderr, "Out of order percentage must be between 0 and 100\n")
+		os.Exit(1)
+	}
+
+	if *logBatchSize < 0 {
+		_, _ = fmt.Fprint(os.Stderr, "-logs-batch-size must not be negative.  A value of '0' or '1' will disable batching entirely\n")
+		os.Exit(1)
+	}
+
+	if *logBatchSizeMax <= 0 {
+		_, _ = fmt.Fprint(os.Stderr, "-logs-batch-size-max must not be <= 0\n")
+		os.Exit(1)
+	}
+
+	if *logBatchSize > *logBatchSizeMax {
+		_, _ = fmt.Fprintf(os.Stderr, "-logs-batch-size must not be more than -logs-batch-size-max\n")
 		os.Exit(1)
 	}
 
@@ -162,6 +180,7 @@ func main() {
 				MaxBackoff: *writeMaxBackoff,
 				MaxRetries: *writeMaxRetries,
 			}
+
 			push, err := writer.NewPush(
 				*addr,
 				*tenantID,
@@ -174,6 +193,7 @@ func main() {
 				*caFile, *certFile, *keyFile,
 				*user, *pass,
 				&backoffCfg,
+				*logBatchSize,
 				log.NewLogfmtLogger(os.Stderr),
 			)
 			if err != nil {
@@ -188,7 +208,7 @@ func main() {
 
 		c.writer = writer.NewWriter(entryWriter, sentChan, *interval, *outOfOrderMin, *outOfOrderMax, *outOfOrderPercentage, *size, logger)
 		var err error
-		c.reader, err = reader.NewReader(os.Stderr, receivedChan, *useTLS, tlsConfig, *caFile, *certFile, *keyFile, *addr, *user, *pass, *tenantID, *queryTimeout, *lName, *lVal, *sName, *sValue, *interval, *queryAppend)
+		c.reader, err = reader.NewReader(os.Stderr, receivedChan, *useTLS, tlsConfig, *caFile, *certFile, *keyFile, *addr, *user, *pass, *tenantID, *queryTimeout, *lName, *lVal, *sName, *sValue, *interval, *queryAppend, *labels)
 		if err != nil {
 			_, _ = fmt.Fprintf(os.Stderr, "Unable to create reader for Loki querier, check config: %s", err)
 			os.Exit(1)

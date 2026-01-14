@@ -239,7 +239,7 @@ func (t *Target) process(frames chan []byte, logStream string) {
 
 func (t *Target) handleOutput(logStream string, ts time.Time, payload string) {
 	// Add all labels from the config, relabel and filter them.
-	lb := labels.NewBuilder(nil)
+	lb := labels.NewBuilder(labels.EmptyLabels())
 	for k, v := range t.labels {
 		lb.Set(string(k), string(v))
 	}
@@ -247,12 +247,12 @@ func (t *Target) handleOutput(logStream string, ts time.Time, payload string) {
 	processed, _ := relabel.Process(lb.Labels(), t.relabelConfig...)
 
 	filtered := make(model.LabelSet)
-	for _, lbl := range processed {
+	processed.Range(func(lbl labels.Label) {
 		if strings.HasPrefix(lbl.Name, "__") {
-			continue
+			return // (will continue Range loop, not abort)
 		}
 		filtered[model.LabelName(lbl.Name)] = model.LabelValue(lbl.Value)
-	}
+	})
 
 	t.handler.Chan() <- api.Entry{
 		Labels: filtered,

@@ -155,9 +155,22 @@ spec:
         disableRecommendedAttributes: true # Set this to remove recommended attributes
 ```
 
-Setting `disableRecommendedAttributes: true` reduces the set of default attributes to only the "required attributes".
+Setting `disableRecommendedAttributes: true` reduces the set of default stream labels to only the "required attributes". This means the following "recommended attributes" are **not** automatically used as stream labels:
 
-Because the set of required attributes only contains a subset of the default stream labels, only setting this option will negatively affect query performance. It needs to be combined with a custom attribute configuration that reintroduces attributes that are needed for queries so that the data contained in those attributes is available again.
+- `k8s.container.name`
+- `k8s.cronjob.name`
+- `k8s.daemonset.name`
+- `k8s.deployment.name`
+- `k8s.job.name`
+- `k8s.node.name`
+- `k8s.pod.name`
+- `k8s.statefulset.name`
+- `kubernetes.container_name`
+- `kubernetes.host`
+- `kubernetes.pod_name`
+- `service.name`
+
+Since these attributes are no longer stream labels by default, queries that previously relied on them **as stream labels** will need to be updated, and their performance might be negatively affected. It is recommended to combine this setting with a [custom attribute mapping](#custom-attribute-mapping) to selectively reintroduce any of these attributes (or other) as stream labels if they are important for your querying strategy.
 
 ## References
 

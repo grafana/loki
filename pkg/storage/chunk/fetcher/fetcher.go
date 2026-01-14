@@ -6,9 +6,9 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
-	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"go.opentelemetry.io/otel"
 
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
@@ -19,6 +19,8 @@ import (
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
+
+var tracer = otel.Tracer("pkg/storage/chunk/fetcher")
 
 var (
 	cacheCorrupt = promauto.NewCounter(prometheus.CounterOpts{
@@ -127,10 +129,11 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk) ([]chun
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "ChunkStore.FetchChunks")
-	defer sp.Finish()
-	log := spanlogger.FromContext(ctx)
-	defer log.Span.Finish()
+	ctx, sp := tracer.Start(ctx, "ChunkStore.FetchChunks")
+	defer sp.End()
+
+	log := spanlogger.FromContext(ctx, util_log.Logger)
+	defer log.Finish()
 
 	// Extend the extendedHandoff to be 10% larger to allow for some overlap because this is a sliding window
 	// and the l1 cache may be oversized enough to allow for some extra chunks

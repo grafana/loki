@@ -30,6 +30,7 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/template"
+	"github.com/prometheus/prometheus/util/namevalidationutil"
 )
 
 // Error represents semantic errors on parsing rule groups.
@@ -92,11 +93,16 @@ type RuleGroups struct {
 }
 
 type ruleGroups struct {
-	Groups []yaml.Node `yaml:"groups"`
+	Groups []RuleGroupNode `yaml:"groups"`
 }
 
 // Validate validates all rules in the rule groups.
-func (g *RuleGroups) Validate(node ruleGroups) (errs []error) {
+func (g *RuleGroups) Validate(node ruleGroups, nameValidationScheme model.ValidationScheme) (errs []error) {
+	if err := namevalidationutil.CheckNameValidationScheme(nameValidationScheme); err != nil {
+		errs = append(errs, err)
+		return errs
+	}
+
 	set := map[string]struct{}{}
 
 	for j, g := range g.Groups {
@@ -112,7 +118,7 @@ func (g *RuleGroups) Validate(node ruleGroups) (errs []error) {
 		}
 
 		for k, v := range g.Labels {
-			if !model.LabelName(k).IsValid() || k == model.MetricNameLabel {
+			if !nameValidationScheme.IsValidLabelName(k) || k == model.MetricNameLabel {
 				errs = append(
 					errs, fmt.Errorf("invalid label name: %s", k),
 				)
@@ -128,9 +134,9 @@ func (g *RuleGroups) Validate(node ruleGroups) (errs []error) {
 		set[g.Name] = struct{}{}
 
 		for i, r := range g.Rules {
-			for _, node := range g.Rules[i].Validate() {
-				var ruleName yaml.Node
-				if r.Alert.Value != "" {
+			for _, node := range r.Validate(node.Groups[j].Rules[i], nameValidationScheme) {
+				var ruleName string
+				if r.Alert != "" {
 					ruleName = r.Alert
 				} else {
 					ruleName = r.Record
@@ -138,7 +144,7 @@ func (g *RuleGroups) Validate(node ruleGroups) (errs []error) {
 				errs = append(errs, &Error{
 					Group:    g.Name,
 					Rule:     i + 1,
-					RuleName: ruleName.Value,
+					RuleName: ruleName,
 					Err:      node,
 				})
 			}
@@ -150,6 +156,17 @@ func (g *RuleGroups) Validate(node ruleGroups) (errs []error) {
 
 // RuleGroup is a list of sequentially evaluated recording and alerting rules.
 type RuleGroup struct {
+	Name        string            `yaml:"name"`
+	Interval    model.Duration    `yaml:"interval,omitempty"`
+	QueryOffset *model.Duration   `yaml:"query_offset,omitempty"`
+	Limit       int               `yaml:"limit,omitempty"`
+	Rules       []Rule            `yaml:"rules"`
+	Labels      map[string]string `yaml:"labels,omitempty"`
+}
+
+// RuleGroupNode adds yaml.v3 layer to support line and columns outputs for invalid rule groups.
+type RuleGroupNode struct {
+	yaml.Node
 	Name        string            `yaml:"name"`
 	Interval    model.Duration    `yaml:"interval,omitempty"`
 	QueryOffset *model.Duration   `yaml:"query_offset,omitempty"`
@@ -181,70 +198,70 @@ type RuleNode struct {
 }
 
 // Validate the rule and return a list of encountered errors.
-func (r *RuleNode) Validate() (nodes []WrappedError) {
-	if r.Record.Value != "" && r.Alert.Value != "" {
+func (r *Rule) Validate(node RuleNode, nameValidationScheme model.ValidationScheme) (nodes []WrappedError) {
+	if r.Record != "" && r.Alert != "" {
 		nodes = append(nodes, WrappedError{
 			err:     errors.New("only one of 'record' and 'alert' must be set"),
-			node:    &r.Record,
-			nodeAlt: &r.Alert,
+			node:    &node.Record,
+			nodeAlt: &node.Alert,
 		})
 	}
-	if r.Record.Value == "" && r.Alert.Value == "" {
+	if r.Record == "" && r.Alert == "" {
 		nodes = append(nodes, WrappedError{
 			err:     errors.New("one of 'record' or 'alert' must be set"),
-			node:    &r.Record,
-			nodeAlt: &r.Alert,
+			node:    &node.Record,
+			nodeAlt: &node.Alert,
 		})
 	}
 
-	if r.Expr.Value == "" {
+	if r.Expr == "" {
 		nodes = append(nodes, WrappedError{
 			err:  errors.New("field 'expr' must be set in rule"),
-			node: &r.Expr,
+			node: &node.Expr,
 		})
-	} else if _, err := parser.ParseExpr(r.Expr.Value); err != nil {
+	} else if _, err := parser.ParseExpr(r.Expr); err != nil {
 		nodes = append(nodes, WrappedError{
 			err:  fmt.Errorf("could not parse expression: %w", err),
-			node: &r.Expr,
+			node: &node.Expr,
 		})
 	}
-	if r.Record.Value != "" {
+	if r.Record != "" {
 		if len(r.Annotations) > 0 {
 			nodes = append(nodes, WrappedError{
 				err:  errors.New("invalid field 'annotations' in recording rule"),
-				node: &r.Record,
+				node: &node.Record,
 			})
 		}
 		if r.For != 0 {
 			nodes = append(nodes, WrappedError{
 				err:  errors.New("invalid field 'for' in recording rule"),
-				node: &r.Record,
+				node: &node.Record,
 			})
 		}
 		if r.KeepFiringFor != 0 {
 			nodes = append(nodes, WrappedError{
 				err:  errors.New("invalid field 'keep_firing_for' in recording rule"),
-				node: &r.Record,
+				node: &node.Record,
 			})
 		}
-		if !model.IsValidMetricName(model.LabelValue(r.Record.Value)) {
+		if !nameValidationScheme.IsValidMetricName(r.Record) {
 			nodes = append(nodes, WrappedError{
-				err:  fmt.Errorf("invalid recording rule name: %s", r.Record.Value),
-				node: &r.Record,
+				err:  fmt.Errorf("invalid recording rule name: %s", r.Record),
+				node: &node.Record,
 			})
 		}
 		// While record is a valid UTF-8 it's common mistake to put PromQL expression in the record name.
 		// Disallow "{}" chars.
-		if strings.Contains(r.Record.Value, "{") || strings.Contains(r.Record.Value, "}") {
+		if strings.Contains(r.Record, "{") || strings.Contains(r.Record, "}") {
 			nodes = append(nodes, WrappedError{
-				err:  fmt.Errorf("braces present in the recording rule name; should it be in expr?: %s", r.Record.Value),
-				node: &r.Record,
+				err:  fmt.Errorf("braces present in the recording rule name; should it be in expr?: %s", r.Record),
+				node: &node.Record,
 			})
 		}
 	}
 
 	for k, v := range r.Labels {
-		if !model.LabelName(k).IsValid() || k == model.MetricNameLabel {
+		if !nameValidationScheme.IsValidLabelName(k) || k == model.MetricNameLabel {
 			nodes = append(nodes, WrappedError{
 				err: fmt.Errorf("invalid label name: %s", k),
 			})
@@ -258,7 +275,7 @@ func (r *RuleNode) Validate() (nodes []WrappedError) {
 	}
 
 	for k := range r.Annotations {
-		if !model.LabelName(k).IsValid() {
+		if !nameValidationScheme.IsValidLabelName(k) {
 			nodes = append(nodes, WrappedError{
 				err: fmt.Errorf("invalid annotation name: %s", k),
 			})
@@ -269,13 +286,13 @@ func (r *RuleNode) Validate() (nodes []WrappedError) {
 		nodes = append(nodes, WrappedError{err: err})
 	}
 
-	return
+	return nodes
 }
 
 // testTemplateParsing checks if the templates used in labels and annotations
 // of the alerting rules are parsed correctly.
-func testTemplateParsing(rl *RuleNode) (errs []error) {
-	if rl.Alert.Value == "" {
+func testTemplateParsing(rl *Rule) (errs []error) {
+	if rl.Alert == "" {
 		// Not an alerting rule.
 		return errs
 	}
@@ -292,7 +309,7 @@ func testTemplateParsing(rl *RuleNode) (errs []error) {
 		tmpl := template.NewTemplateExpander(
 			context.TODO(),
 			strings.Join(append(defs, text), ""),
-			"__alert_"+rl.Alert.Value,
+			"__alert_"+rl.Alert,
 			tmplData,
 			model.Time(timestamp.FromTime(time.Now())),
 			nil,
@@ -322,7 +339,7 @@ func testTemplateParsing(rl *RuleNode) (errs []error) {
 }
 
 // Parse parses and validates a set of rules.
-func Parse(content []byte, ignoreUnknownFields bool) (*RuleGroups, []error) {
+func Parse(content []byte, ignoreUnknownFields bool, nameValidationScheme model.ValidationScheme) (*RuleGroups, []error) {
 	var (
 		groups RuleGroups
 		node   ruleGroups
@@ -347,16 +364,16 @@ func Parse(content []byte, ignoreUnknownFields bool) (*RuleGroups, []error) {
 		return nil, errs
 	}
 
-	return &groups, groups.Validate(node)
+	return &groups, groups.Validate(node, nameValidationScheme)
 }
 
 // ParseFile reads and parses rules from a file.
-func ParseFile(file string, ignoreUnknownFields bool) (*RuleGroups, []error) {
+func ParseFile(file string, ignoreUnknownFields bool, nameValidationScheme model.ValidationScheme) (*RuleGroups, []error) {
 	b, err := os.ReadFile(file)
 	if err != nil {
 		return nil, []error{fmt.Errorf("%s: %w", file, err)}
 	}
-	rgs, errs := Parse(b, ignoreUnknownFields)
+	rgs, errs := Parse(b, ignoreUnknownFields, nameValidationScheme)
 	for i := range errs {
 		errs[i] = fmt.Errorf("%s: %w", file, errs[i])
 	}

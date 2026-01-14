@@ -15,12 +15,20 @@ SHELL = /usr/bin/env bash -o pipefail
 # want to speed up development you can run make BUILD_IN_CONTAINER=false target
 # or you can override this with an environment variable.
 BUILD_IN_CONTAINER ?= true
+NONINTERACTIVE     ?= false
 CI                 ?= false
 
+# Docker flags for container interaction
+ifeq ($(NONINTERACTIVE),true)
+DOCKER_INTERACTIVE_FLAGS :=
+else
+DOCKER_INTERACTIVE_FLAGS := --tty --interactive
+endif
+
 # Ensure you run `make release-workflows` after changing this
-GO_VERSION         := 1.24.1
+GO_VERSION         := 1.25.5
 # Ensure you run `make IMAGE_TAG=<updated-tag> build-image-push` after changing this
-BUILD_IMAGE_TAG    := 0.34.6
+BUILD_IMAGE_TAG    := 0.34.9
 
 IMAGE_TAG          ?= $(shell ./tools/image-tag)
 GIT_REVISION       := $(shell git rev-parse --short HEAD)
@@ -43,7 +51,12 @@ GO_LDFLAGS         := -X $(VPREFIX).Branch=$(GIT_BRANCH) \
                       -X $(VPREFIX).BuildUser=$(shell whoami)@$(shell hostname) \
                       -X $(VPREFIX).BuildDate=$(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-GO_FLAGS           := -ldflags "-extldflags \"-static\" -s -w $(GO_LDFLAGS)" -tags netgo
+UNAME_S := $(shell uname -s)
+ifeq ($(UNAME_S),Linux)
+  GO_FLAGS := -ldflags "-extldflags \"-static\" -s -w $(GO_LDFLAGS)" -tags netgo
+else
+  GO_FLAGS := -ldflags "-s -w $(GO_LDFLAGS)" -tags netgo
+endif
 DYN_GO_FLAGS       := -ldflags "-s -w $(GO_LDFLAGS)" -tags netgo
 
 # Per some websites I've seen to add `-gcflags "all=-N -l"`, the gcflags seem poorly if at all documented
@@ -87,10 +100,22 @@ MOUNT_FLAGS    := :delegated
 define run_in_container
 	@mkdir -p $(shell pwd)/.pkg $(shell pwd)/.cache
 	@echo ">>> Running make $@ in container ..."
-	docker run --rm --tty --interactive \
+	$(eval GIT_MOUNT := $(shell \
+		if git rev-parse --git-dir >/dev/null 2>&1; then \
+			GIT_DIR=$$(git rev-parse --git-dir); \
+			if [ "$$GIT_DIR" != ".git" ]; then \
+				COMMON_DIR=$$(git rev-parse --git-common-dir 2>/dev/null || echo "$$GIT_DIR"); \
+				echo "-v $$GIT_DIR:$$GIT_DIR$(MOUNT_FLAGS) -v $$COMMON_DIR:$$COMMON_DIR$(MOUNT_FLAGS)"; \
+			else \
+				ABS_GIT_DIR=$$(cd $$GIT_DIR && pwd); \
+				echo "-v $$ABS_GIT_DIR:/src/loki/.git$(MOUNT_FLAGS)"; \
+			fi; \
+		fi))
+	docker run --rm $(DOCKER_INTERACTIVE_FLAGS) \
 		-v $(shell go env GOPATH)/pkg:/go/pkg$(MOUNT_FLAGS) \
 		-v $(shell pwd)/.cache:/go/cache$(MOUNT_FLAGS) \
 		-v $(shell pwd):/src/loki$(MOUNT_FLAGS) \
+		$(GIT_MOUNT) \
 		$(BUILD_IMAGE) -f Makefile $@;
 endef
 
@@ -198,8 +223,6 @@ cmd/loki/loki:
 cmd/loki/loki-debug:
 	CGO_ENABLED=0 go build $(DEBUG_GO_FLAGS) -o $@ ./$(@D)
 
-ui-assets:
-	make -C pkg/ui/frontend build
 ###############
 # Loki-Canary #
 ###############
@@ -286,10 +309,10 @@ $(PROMTAIL_GENERATED_FILE): $(PROMTAIL_UI_FILES)
 	GOOS=$(shell go env GOHOSTOS) go generate -x -v ./clients/pkg/promtail/server/ui
 
 clients/cmd/promtail/promtail:
-	CGO_ENABLED=$(PROMTAIL_CGO) go build $(PROMTAIL_GO_FLAGS) --tags=$(PROMTAIL_GO_TAGS) -o $@ ./$(@D)
+	CGO_ENABLED=$(PROMTAIL_CGO) go build $(PROMTAIL_GO_FLAGS) -o $@ ./$(@D)
 
 clients/cmd/promtail/promtail-debug:
-	CGO_ENABLED=$(PROMTAIL_CGO) go build $(PROMTAIL_DEBUG_GO_FLAGS) --tags=$(PROMTAIL_GO_TAGS) -o $@ ./$(@D)
+	CGO_ENABLED=$(PROMTAIL_CGO) go build $(PROMTAIL_DEBUG_GO_FLAGS) -o $@ ./$(@D)
 
 #########
 # Mixin #
@@ -340,7 +363,7 @@ ifeq ($(SKIP_ARM),true)
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/loki-canary
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/lokitool
 	CGO_ENABLED=0 $(GOX) -osarch="darwin/amd64 windows/amd64 windows/386 freebsd/amd64" ./clients/cmd/promtail
-	CGO_ENABLED=1 $(CGO_GOX)  -tags promtail_journal_enabled  -osarch="linux/amd64" ./clients/cmd/promtail
+	CGO_ENABLED=1 $(CGO_GOX) -tags promtail_journal_enabled -osarch="linux/amd64" ./clients/cmd/promtail
 else
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 freebsd/amd64" ./cmd/loki
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 freebsd/amd64" ./cmd/logcli
@@ -349,7 +372,7 @@ else
 	CGO_ENABLED=0 $(GOX) -osarch="darwin/amd64 darwin/arm64 windows/amd64 windows/386 freebsd/amd64" ./clients/cmd/promtail
 	PKG_CONFIG_PATH="/usr/lib/aarch64-linux-gnu/pkgconfig" CC="aarch64-linux-gnu-gcc" $(CGO_GOX)  -tags promtail_journal_enabled  -osarch="linux/arm64" ./clients/cmd/promtail
 	PKG_CONFIG_PATH="/usr/lib/arm-linux-gnueabihf/pkgconfig" CC="arm-linux-gnueabihf-gcc" $(CGO_GOX)  -tags promtail_journal_enabled  -osarch="linux/arm" ./clients/cmd/promtail
-	CGO_ENABLED=1 $(CGO_GOX)  -tags promtail_journal_enabled  -osarch="linux/amd64" ./clients/cmd/promtail
+	CGO_ENABLED=1 $(CGO_GOX) -tags promtail_journal_enabled -osarch="linux/amd64" ./clients/cmd/promtail
 endif
 	for i in dist/*; do zip -j -m $$i.zip $$i; done
 	pushd dist && sha256sum * > SHA256SUMS && popd
@@ -363,26 +386,38 @@ publish: packages
 ########
 # Lint #
 ########
-
-# To run this efficiently on your workstation, run this from the root dir:
-# docker run --rm --tty -i -v $(pwd)/.cache:/go/cache -v $(pwd)/.pkg:/go/pkg -v $(pwd):/src/loki grafana/loki-build-image:0.24.1 lint
-lint: ## run linters
-ifeq ($(BUILD_IN_CONTAINER),true)
-	$(run_in_container)
+ifeq ($(UNAME_S),Linux)
+LINT_FLAGS=--timeout=15m --build-tags=linux,promtail_journal_enabled
+GOFLAGS=-tags=linux,promtail_journal_enabled
 else
+LINT_FLAGS=--timeout=15m
+GOFLAGS=""
+endif
+lint: ## run linters
 	go version
 	golangci-lint version
-	GO111MODULE=on golangci-lint run -v --timeout 15m --build-tags linux,promtail_journal_enabled
-	faillint -paths "sync/atomic=go.uber.org/atomic" ./...
-endif
+	golangci-lint run -v $(LINT_FLAGS)
+	GOFLAGS=$(GOFLAGS) faillint -paths \
+		"sync/atomic=go.uber.org/atomic" \
+		./...
+
+	# Use our spanlogger implementation instead of the one in dskit to make sure we use the correct tracing lib.
+	faillint -paths \
+		"github.com/grafana/dskit/spanlogger=github.com/grafana/loki/pkg/util/spanlogger" \
+		./...
+
+	# We don't use opentracing anymore.
+	faillint -paths \
+		"github.com/opentracing/opentracing-go,github.com/opentracing/opentracing-go/log,github.com/uber/jaeger-client-go,github.com/opentracing-contrib/go-stdlib/nethttp" \
+		./...
 
 ########
 # Test #
 ########
 
 test: all ## run the unit tests
-	$(GOTEST) -covermode=atomic -coverprofile=coverage.txt -p=4 ./... | tee test_results.txt
-	cd tools/lambda-promtail/ && $(GOTEST) -covermode=atomic -coverprofile=lambda-promtail-coverage.txt -p=4 ./... | tee lambda_promtail_test_results.txt
+	go test $(GO_FLAGS) -covermode=atomic -coverprofile=coverage.txt -p=4 ./... | tee test_results.txt
+
 
 test-integration:
 	$(GOTEST) -count=1 -v -tags=integration -timeout 15m ./integration
@@ -445,7 +480,7 @@ endif
 
 protos: clean-protos $(PROTO_GOS)
 
-%.pb.go:
+%.pb.go: ALWAYS_BUILD
 ifeq ($(BUILD_IN_CONTAINER),true)
 	$(run_in_container)
 else
@@ -658,6 +693,11 @@ documentation-helm-reference-check:
 # Misc #
 ########
 
+# Targets can depend on ALWAYS_BUILD to run regardless of whether the target is
+# up-to-date or not because PHONY targets are always rebuilt.
+.PHONY: ALWAYS_BUILD
+ALWAYS_BUILD:
+
 benchmark-store:
 	go run ./pkg/storage/hack/main.go
 	$(GOTEST) ./pkg/storage/ -bench=.  -benchmem -memprofile memprofile.out -cpuprofile cpuprofile.out -trace trace.out
@@ -751,7 +791,7 @@ doc: ## Generates the config file documentation
 ifeq ($(BUILD_IN_CONTAINER),true)
 	$(run_in_container)
 else
-	go run ./tools/doc-generator $(DOC_FLAGS_TEMPLATE) > $(DOC_FLAGS)
+	go run $(GO_FLAGS) ./tools/doc-generator $(DOC_FLAGS_TEMPLATE) > $(DOC_FLAGS)
 endif
 
 docs: doc
@@ -847,3 +887,22 @@ else
 	@echo "Checking diff"
 	@git diff --exit-code --ignore-space-at-eol -- ".github/workflows/*release*" || (echo "Please build release workflows by running 'make release-workflows'" && false)
 endif
+
+.PHONY: update-loki-release-sha
+update-loki-release-sha:
+	@echo "Updating loki-release SHA in .github/jsonnetfile.json"
+	@NEW_SHA=$$(curl -s https://api.github.com/repos/grafana/loki-release/commits/main | jq -r .sha); \
+	jq --arg new_sha "$$NEW_SHA" '.dependencies[] |= if .source.git.remote == "https://github.com/grafana/loki-release.git" then .version = $$new_sha else . end' .github/jsonnetfile.json > .github/jsonnetfile.json.tmp && \
+	mv .github/jsonnetfile.json.tmp .github/jsonnetfile.json
+	@echo "Updated successfully"
+	@$(MAKE) release-workflows
+
+.PHONY: flake-update
+flake-update:
+	@docker run -v $(CURDIR):/loki \
+		--workdir /loki \
+		nixos/nix \
+		nix \
+		--extra-experimental-features nix-command \
+		--extra-experimental-features flakes \
+		flake update

@@ -389,8 +389,9 @@ func (e *PipelineExpr) Shardable(topLevel bool) bool {
 }
 
 func (e *PipelineExpr) Walk(f WalkFn) {
-	f(e)
-
+	if !f(e) {
+		return
+	}
 	if e.Left != nil {
 		e.Left.Walk(f)
 	}
@@ -425,7 +426,7 @@ func (e *PipelineExpr) HasFilter() bool {
 			return true
 		case *LineFilterExpr:
 			// ignore empty matchers as they match everything
-			if !((v.Ty == log.LineMatchEqual || v.Ty == log.LineMatchRegexp) && v.Match == "") {
+			if (v.Ty != log.LineMatchEqual && v.Ty != log.LineMatchRegexp) || v.Match != "" {
 				return true
 			}
 		default:
@@ -496,7 +497,7 @@ func newOrLineFilterExpr(left, right *LineFilterExpr) *LineFilterExpr {
 func newNestedLineFilterExpr(left *LineFilterExpr, right *LineFilterExpr) *LineFilterExpr {
 	// NOTE: When parsing "or" chains in linefilter, particularly variations of NOT filters (!= or !~), we need to transform
 	// say (!= "foo" or "bar "baz") => (!="foo" != "bar" != "baz")
-	if right.Or != nil && !(right.Ty == log.LineMatchEqual || right.Ty == log.LineMatchRegexp || right.Ty == log.LineMatchPattern) {
+	if right.Or != nil && (right.Ty != log.LineMatchEqual && right.Ty != log.LineMatchRegexp && right.Ty != log.LineMatchPattern) {
 		right.Or.IsOrChild = false
 		tmp := right.Or
 		right.Or = nil
@@ -543,7 +544,9 @@ func newNestedLineFilterExpr(left *LineFilterExpr, right *LineFilterExpr) *LineF
 }
 
 func (e *LineFilterExpr) Walk(f WalkFn) {
-	f(e)
+	if !f(e) {
+		return
+	}
 	if e.Left != nil {
 		e.Left.Walk(f)
 	}
@@ -752,7 +755,7 @@ func (e *LineParserExpr) Accept(v RootVisitor) { v.VisitLabelParser(e) }
 func (e *LineParserExpr) Stage() (log.Stage, error) {
 	switch e.Op {
 	case OpParserTypeJSON:
-		return log.NewJSONParser(), nil
+		return log.NewJSONParser(false), nil
 	case OpParserTypeRegexp:
 		return log.NewRegexpParser(e.Param)
 	case OpParserTypeUnpack:
@@ -851,6 +854,27 @@ func (e *DropLabelsExpr) Shardable(_ bool) bool { return true }
 
 func (e *DropLabelsExpr) Stage() (log.Stage, error) {
 	return log.NewDropLabels(e.dropLabels), nil
+}
+
+func (e *DropLabelsExpr) HasNamedMatchers() bool {
+	for _, dropLabel := range e.dropLabels {
+		if dropLabel.Matcher != nil {
+			return true
+		}
+	}
+	return false
+}
+
+func (e *DropLabelsExpr) Names() []string {
+	names := []string{}
+	for _, dropLabel := range e.dropLabels {
+		if dropLabel.Name != "" {
+			names = append(names, dropLabel.Name)
+		} else if dropLabel.Matcher != nil {
+			names = append(names, dropLabel.Matcher.Name)
+		}
+	}
+	return names
 }
 
 func (e *DropLabelsExpr) String() string {
@@ -1161,7 +1185,9 @@ func (r LogRangeExpr) String() string {
 func (r *LogRangeExpr) Shardable(topLevel bool) bool { return r.Left.Shardable(topLevel) }
 
 func (r *LogRangeExpr) Walk(f WalkFn) {
-	f(r)
+	if !f(r) {
+		return
+	}
 	if r.Left != nil {
 		r.Left.Walk(f)
 	}
@@ -1473,7 +1499,9 @@ func (e *RangeAggregationExpr) Shardable(topLevel bool) bool {
 }
 
 func (e *RangeAggregationExpr) Walk(f WalkFn) {
-	f(e)
+	if !f(e) {
+		return
+	}
 	if e.Left != nil {
 		e.Left.Walk(f)
 	}
@@ -1683,7 +1711,9 @@ func (e *VectorAggregationExpr) Shardable(topLevel bool) bool {
 }
 
 func (e *VectorAggregationExpr) Walk(f WalkFn) {
-	f(e)
+	if !f(e) {
+		return
+	}
 	if e.Left != nil {
 		e.Left.Walk(f)
 	}
@@ -1765,9 +1795,10 @@ func (e *BinOpExpr) String() string {
 		}
 		if e.Opts.VectorMatching != nil {
 			group := ""
-			if e.Opts.VectorMatching.Card == CardManyToOne {
+			switch e.Opts.VectorMatching.Card {
+			case CardManyToOne:
 				group = OpGroupLeft
-			} else if e.Opts.VectorMatching.Card == CardOneToMany {
+			case CardOneToMany:
 				group = OpGroupRight
 			}
 			if e.Opts.VectorMatching.Include != nil {
@@ -1803,7 +1834,9 @@ func (e *BinOpExpr) Shardable(topLevel bool) bool {
 }
 
 func (e *BinOpExpr) Walk(f WalkFn) {
-	f(e)
+	if !f(e) {
+		return
+	}
 	if e.SampleExpr != nil {
 		e.SampleExpr.Walk(f)
 	}
@@ -2232,7 +2265,9 @@ func (e *LabelReplaceExpr) Shardable(_ bool) bool {
 }
 
 func (e *LabelReplaceExpr) Walk(f WalkFn) {
-	f(e)
+	if !f(e) {
+		return
+	}
 	if e.Left != nil {
 		e.Left.Walk(f)
 	}
@@ -2377,7 +2412,7 @@ func (e *VectorExpr) MatcherGroups() ([]MatcherRange, error) { return nil, e.err
 func (e *VectorExpr) Extractors() ([]log.SampleExtractor, error) { return []log.SampleExtractor{}, nil }
 
 func ReducesLabels(e Expr) (conflict bool) {
-	e.Walk(func(e Expr) {
+	e.Walk(func(e Expr) bool {
 		switch expr := e.(type) {
 		case *RangeAggregationExpr:
 			if groupingReducesLabels(expr.Grouping) {
@@ -2406,9 +2441,8 @@ func ReducesLabels(e Expr) (conflict bool) {
 					break
 				}
 			}
-		default:
-			return
 		}
+		return true
 	})
 	return
 }
@@ -2512,7 +2546,9 @@ func (m *MultiVariantExpr) Shardable(topLevel bool) bool {
 }
 
 func (m *MultiVariantExpr) Walk(f WalkFn) {
-	f(m)
+	if !f(m) {
+		return
+	}
 
 	if m.logRange != nil {
 		m.logRange.Walk(f)
@@ -2594,26 +2630,6 @@ func (m *MultiVariantExpr) Selector() (LogSelectorExpr, error) {
 	}
 
 	return m.logRange.Left, nil
-}
-
-func (m *MultiVariantExpr) Extractors() ([]log.SampleExtractor, error) {
-	extractors := make([]log.SampleExtractor, 0, len(m.variants))
-	// TODO(twhitney): using the variant index feels fragile, would prefer if variants had to be named in the query.
-	idx := 0
-
-	for _, v := range m.variants {
-		es, err := v.Extractors()
-		if err != nil {
-			return nil, err
-		}
-
-		for _, e := range es {
-			extractors = append(extractors, log.NewVariantsSampleExtractorWrapper(idx, e))
-			idx++
-		}
-	}
-
-	return extractors, nil
 }
 
 func newVariantsExpr(variants []SampleExpr, logRange *LogRangeExpr) VariantsExpr {

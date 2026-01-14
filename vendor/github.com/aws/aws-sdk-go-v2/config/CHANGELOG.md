@@ -1,3 +1,248 @@
+# v1.32.7 (2026-01-09)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.32.6 (2025-12-16)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.32.5 (2025-12-09)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.32.4 (2025-12-08)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.32.3 (2025-12-02)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+* **Dependency Update**: Upgrade to smithy-go v1.24.0. Notably this version of the library reduces the allocation footprint of the middleware system. We observe a ~10% reduction in allocations per SDK call with this change.
+
+# v1.32.2 (2025-11-25)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.32.1 (2025-11-21)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.32.0 (2025-11-19.2)
+
+* **Feature**: Add support for AWS Login credentials (package credentials/logincreds) to the default credential chain.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.31.21 (2025-11-19)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.31.20 (2025-11-12)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.31.19 (2025-11-11)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.31.18 (2025-11-10)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.31.17 (2025-11-04)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+* **Dependency Update**: Upgrade to smithy-go v1.23.2 which should convey some passive reduction of overall allocations, especially when not using the metrics system.
+
+# v1.31.16 (2025-10-30)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.31.15 (2025-10-23)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.31.14 (2025-10-22)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.31.13 (2025-10-16)
+
+* **Dependency Update**: Bump minimum Go version to 1.23.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.31.12 (2025-09-29)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.31.11 (2025-09-26)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.31.10 (2025-09-23)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.31.9 (2025-09-22)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.31.8 (2025-09-10)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.31.7 (2025-09-08)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.31.6 (2025-08-29)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.31.5 (2025-08-28)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.31.4 (2025-08-27)
+
+* **Dependency Update**: Update to smithy-go v1.23.0.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.31.3 (2025-08-26)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.31.2 (2025-08-21)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.31.1 (2025-08-20)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.31.0 (2025-08-11)
+
+* **Feature**: Add support for configuring per-service Options via callback on global config.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.30.3 (2025-08-04)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.30.2 (2025-07-30)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.30.1 (2025-07-29)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.30.0 (2025-07-28)
+
+* **Feature**: Add support for HTTP interceptors.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.29.18 (2025-07-19)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.29.17 (2025-06-17)
+
+* **Dependency Update**: Update to smithy-go v1.22.4.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.29.16 (2025-06-10)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.29.15 (2025-06-06)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.29.14 (2025-04-10)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.29.13 (2025-04-03)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.29.12 (2025-03-27)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.29.11 (2025-03-25)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.29.10 (2025-03-24)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.29.9 (2025-03-04.2)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.29.8 (2025-02-27)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.29.7 (2025-02-18)
+
+* **Bug Fix**: Bump go version to 1.22
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.29.6 (2025-02-05)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.29.5 (2025-02-04)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.29.4 (2025-01-31)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.29.3 (2025-01-30)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.29.2 (2025-01-24)
+
+* **Bug Fix**: Fix env config naming and usage of deprecated ioutil
+* **Dependency Update**: Updated to the latest SDK module versions
+* **Dependency Update**: Upgrade to smithy-go v1.22.2.
+
+# v1.29.1 (2025-01-17)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.29.0 (2025-01-15)
+
+* **Feature**: S3 client behavior is updated to always calculate a checksum by default for operations that support it (such as PutObject or UploadPart), or require it (such as DeleteObjects). The checksum algorithm used by default now becomes CRC32. Checksum behavior can be configured using `when_supported` and `when_required` options - in code using RequestChecksumCalculation, in shared config using request_checksum_calculation, or as env variable using AWS_REQUEST_CHECKSUM_CALCULATION. The S3 client attempts to validate response checksums for all S3 API operations that support checksums. However, if the SDK has not implemented the specified checksum algorithm then this validation is skipped. Checksum validation behavior can be configured using `when_supported` and `when_required` options - in code using ResponseChecksumValidation, in shared config using response_checksum_validation, or as env variable using AWS_RESPONSE_CHECKSUM_VALIDATION.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.28.11 (2025-01-14)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.28.10 (2025-01-10)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.28.9 (2025-01-09)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.28.8 (2025-01-08)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.28.7 (2024-12-19)
+
+* **Bug Fix**: Fix improper use of printf-style functions.
+* **Dependency Update**: Updated to the latest SDK module versions
+
 # v1.28.6 (2024-12-02)
 
 * **Dependency Update**: Updated to the latest SDK module versions

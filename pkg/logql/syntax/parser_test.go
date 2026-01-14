@@ -357,6 +357,16 @@ var ParseTestCases = []struct {
 		}, nil),
 	},
 	{
+		in: "{ foo = \"bar\" } | logfmt | msg =~ \"`.`\" ",
+		exp: newPipelineExpr(
+			newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+			MultiStageExpr{
+				newLogfmtParserExpr(nil),
+				newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchRegexp, "msg", "`.`"))),
+			},
+		),
+	},
+	{
 		in:  `unk({ foo = "bar" }[5m])`,
 		err: logqlmodel.NewParseError("syntax error: unexpected IDENTIFIER", 1, 1),
 	},
@@ -387,6 +397,30 @@ var ParseTestCases = []struct {
 	{
 		in:  `min({ foo = "bar" }[5m])`,
 		err: logqlmodel.NewParseError("syntax error: unexpected RANGE", 0, 20),
+	},
+	{
+		in: `avg(
+					label_replace(
+						count_over_time({ foo = "bar" }[5h]) or 0,
+						"bar",
+						"$1$2",
+						"foo",
+						"(.*).(.*)"
+					)
+				) by (bar,foo)`,
+		err: logqlmodel.NewParseError("unexpected literal for right leg of logical/set binary operation (or): 0.000000", 0, 0),
+	},
+	{
+		in: `avg(
+					label_replace(
+						count_over_time({ foo = "bar" }[5h]) or sum_over_time({ foo = "bar" }[5h]),
+						"bar",
+						"$1$2",
+						"foo",
+						"(.*).(.*)"
+					)
+				) by (bar,foo)`,
+		err: logqlmodel.NewParseError("invalid aggregation sum_over_time without unwrap", 0, 0),
 	},
 	// line filter for ip-matcher
 	{
@@ -3443,7 +3477,7 @@ func Test_PipelineCombined(t *testing.T) {
 	p, err := expr.Pipeline()
 	require.Nil(t, err)
 	sp := p.ForStream(labels.EmptyLabels())
-	line, lbs, matches := sp.Process(0, []byte(`level=debug ts=2020-10-02T10:10:42.092268913Z caller=logging.go:66 traceID=a9d4d8a928d8db1 msg="POST /api/prom/api/v1/query_range (200) 1.5s"`))
+	line, lbs, matches := sp.Process(0, []byte(`level=debug ts=2020-10-02T10:10:42.092268913Z caller=logging.go:66 traceID=a9d4d8a928d8db1 msg="POST /api/prom/api/v1/query_range (200) 1.5s"`), labels.EmptyLabels())
 	require.True(t, matches)
 	require.Equal(
 		t,
@@ -3472,7 +3506,7 @@ func Benchmark_PipelineCombined(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		line, lbs, matches = sp.Process(0, in)
+		line, lbs, matches = sp.Process(0, in, labels.EmptyLabels())
 	}
 	require.True(b, matches)
 	require.Equal(
@@ -3495,6 +3529,7 @@ func Benchmark_MetricPipelineCombined(b *testing.B) {
 	for _, p := range extractors {
 		sp := p.ForStream(labels.EmptyLabels())
 		var (
+			samples []log.ExtractedSample
 			v       float64
 			lbs     log.LabelsResult
 			matches bool
@@ -3505,8 +3540,12 @@ func Benchmark_MetricPipelineCombined(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			v, lbs, matches = sp.Process(0, in)
+			samples, matches = sp.Process(0, in, labels.EmptyLabels())
 		}
+
+		v = samples[0].Value
+		lbs = samples[0].Labels
+
 		require.True(b, matches)
 		require.Equal(
 			b,
@@ -3674,6 +3713,22 @@ func TestParseLabels(t *testing.T) {
 			output: labels.FromStrings("job", "foo"),
 		},
 		{
+			desc:  "multiple labels, already sorted",
+			input: `{env="a", job="foo"}`,
+			output: labels.FromStrings(
+				"env", "a",
+				"job", "foo",
+			),
+		},
+		{
+			desc:  "multiple labels, not sorted",
+			input: `{job="foo", env="a"}`,
+			output: labels.FromStrings(
+				"env", "a",
+				"job", "foo",
+			),
+		},
+		{
 			desc:   "strip empty label value",
 			input:  `{job="foo", bar=""}`,
 			output: labels.FromStrings("job", "foo"),
@@ -3713,5 +3768,12 @@ func TestParseSampleExpr_String(t *testing.T) {
 
 		// escaping is hard: the result is {cluster="beep", namespace="boop"} | msg=~`\w.*` which is equivalent to the original
 		require.Equal(t, "{cluster=\"beep\", namespace=\"boop\"} | msg=~`\\w.*`", expr.String())
+	})
+
+	t.Run("it correctly surrounds regex containing backticks with double quotes", func(t *testing.T) {
+		query := "{foo=\"bar\"} | logfmt | msg=~\"`.\\\"`\""
+		expr, err := ParseExpr(query)
+		require.NoError(t, err)
+		require.Equal(t, query, expr.String())
 	})
 }

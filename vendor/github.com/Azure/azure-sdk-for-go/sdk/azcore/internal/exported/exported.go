@@ -47,8 +47,13 @@ func HasStatusCode(resp *http.Response, statusCodes ...int) bool {
 // AccessToken represents an Azure service bearer access token with expiry information.
 // Exported as azcore.AccessToken.
 type AccessToken struct {
-	Token     string
+	// Token is the access token
+	Token string
+	// ExpiresOn indicates when the token expires
 	ExpiresOn time.Time
+	// RefreshOn is a suggested time to refresh the token.
+	// Clients should ignore this value when it's zero.
+	RefreshOn time.Time
 }
 
 // TokenRequestOptions contain specific parameter that may be used by credentials types when attempting to get a token.
@@ -87,7 +92,7 @@ func DecodeByteArray(s string, v *[]byte, format Base64Encoding) error {
 		return nil
 	}
 	payload := string(s)
-	if payload[0] == '"' {
+	if len(payload) >= 2 && payload[0] == '"' && payload[len(payload)-1] == '"' {
 		// remove surrounding quotes
 		payload = payload[1 : len(payload)-1]
 	}

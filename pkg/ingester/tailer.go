@@ -6,10 +6,11 @@ import (
 	"sync"
 	"time"
 
+	"context"
+
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/prometheus/model/labels"
 	"go.uber.org/atomic"
-	"golang.org/x/net/context"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/log"
@@ -194,7 +195,7 @@ func (t *tailer) processStream(stream logproto.Stream, lbs labels.Labels) []*log
 
 	sp := t.pipeline.ForStream(lbs)
 	for _, e := range stream.Entries {
-		newLine, parsedLbs, ok := sp.ProcessString(e.Timestamp.UnixNano(), e.Line, logproto.FromLabelAdaptersToLabels(e.StructuredMetadata)...)
+		newLine, parsedLbs, ok := sp.ProcessString(e.Timestamp.UnixNano(), e.Line, logproto.FromLabelAdaptersToLabels(e.StructuredMetadata))
 		if !ok {
 			continue
 		}

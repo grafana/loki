@@ -11,12 +11,7 @@ import (
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
-	"gopkg.in/yaml.v3"
 )
-
-func init() {
-	model.NameValidationScheme = model.LegacyValidation
-}
 
 func Test_GroupLoader(t *testing.T) {
 	for _, tc := range []struct {
@@ -255,7 +250,7 @@ groups:
 			err = os.WriteFile(f.Name(), []byte(tc.data), 0777)
 			require.Nil(t, err)
 
-			_, errs := loader.Load(f.Name(), false)
+			_, errs := loader.Load(f.Name(), false, model.LegacyValidation)
 			if tc.match != "" {
 				require.NotNil(t, errs)
 				var found bool
@@ -283,14 +278,14 @@ func TestCachingGroupLoader(t *testing.T) {
 
 		cl := NewCachingGroupLoader(l)
 
-		groups, errs := cl.Load("filename1", true)
+		groups, errs := cl.Load("filename1", true, model.LegacyValidation)
 		require.Nil(t, errs)
 		require.Equal(t, groups, ruleGroup1)
 
 		rules := cl.AlertingRules()
 		require.Equal(t, rulefmt.Rule{Alert: "alert-1-name"}, rules[0])
 
-		groups, errs = cl.Load("filename2", true)
+		groups, errs = cl.Load("filename2", true, model.LegacyValidation)
 		require.Nil(t, errs)
 		require.Equal(t, groups, ruleGroup2)
 
@@ -308,7 +303,7 @@ func TestCachingGroupLoader(t *testing.T) {
 
 		cl := NewCachingGroupLoader(l)
 
-		groups, errs := cl.Load("filename1", true)
+		groups, errs := cl.Load("filename1", true, model.LegacyValidation)
 		require.Equal(t, l.loadErrs, errs)
 		require.Nil(t, groups)
 
@@ -325,10 +320,10 @@ func TestCachingGroupLoader(t *testing.T) {
 
 		cl := NewCachingGroupLoader(l)
 
-		_, errs := cl.Load("filename1", true)
+		_, errs := cl.Load("filename1", true, model.LegacyValidation)
 		require.Nil(t, errs)
 
-		_, errs = cl.Load("filename2", true)
+		_, errs = cl.Load("filename2", true, model.LegacyValidation)
 		require.Nil(t, errs)
 
 		cl.Prune([]string{"filename2"})
@@ -352,7 +347,7 @@ type fakeGroupLoader struct {
 	parseErr   error
 }
 
-func (gl *fakeGroupLoader) Load(identifier string, _ bool) (*rulefmt.RuleGroups, []error) {
+func (gl *fakeGroupLoader) Load(identifier string, _ bool, _ model.ValidationScheme) (*rulefmt.RuleGroups, []error) {
 	return gl.ruleGroups[identifier], gl.loadErrs
 }
 
@@ -364,8 +359,8 @@ var (
 	ruleGroup1 = &rulefmt.RuleGroups{
 		Groups: []rulefmt.RuleGroup{
 			{
-				Rules: []rulefmt.RuleNode{
-					{Alert: yaml.Node{Value: "alert-1-name"}},
+				Rules: []rulefmt.Rule{
+					{Alert: "alert-1-name"},
 				},
 			},
 		},
@@ -373,8 +368,8 @@ var (
 	ruleGroup2 = &rulefmt.RuleGroups{
 		Groups: []rulefmt.RuleGroup{
 			{
-				Rules: []rulefmt.RuleNode{
-					{Alert: yaml.Node{Value: "alert-2-name"}},
+				Rules: []rulefmt.Rule{
+					{Alert: "alert-2-name"},
 				},
 			},
 		},

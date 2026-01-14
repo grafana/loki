@@ -32,14 +32,12 @@ type validate struct {
 
 // parent and current will be the same the first run of validateStruct
 func (v *validate) validateStruct(ctx context.Context, parent reflect.Value, current reflect.Value, typ reflect.Type, ns []byte, structNs []byte, ct *cTag) {
-
 	cs, ok := v.v.structCache.Get(typ)
 	if !ok {
 		cs = v.v.extractStructCache(current, typ.Name())
 	}
 
 	if len(ns) == 0 && len(cs.name) != 0 {
-
 		ns = append(ns, cs.name...)
 		ns = append(ns, '.')
 
@@ -50,21 +48,17 @@ func (v *validate) validateStruct(ctx context.Context, parent reflect.Value, cur
 	// ct is nil on top level struct, and structs as fields that have no tag info
 	// so if nil or if not nil and the structonly tag isn't present
 	if ct == nil || ct.typeof != typeStructOnly {
-
 		var f *cField
 
 		for i := 0; i < len(cs.fields); i++ {
-
 			f = cs.fields[i]
 
 			if v.isPartial {
-
 				if v.ffn != nil {
 					// used with StructFiltered
 					if v.ffn(append(structNs, f.name...)) {
 						continue
 					}
-
 				} else {
 					// used with StructPartial & StructExcept
 					_, ok = v.includeExclude[string(append(structNs, f.name...))]
@@ -83,7 +77,6 @@ func (v *validate) validateStruct(ctx context.Context, parent reflect.Value, cur
 	// first iteration will have no info about nostructlevel tag, and is checked prior to
 	// calling the next iteration of validateStruct called from traverseField.
 	if cs.fn != nil {
-
 		v.slflParent = parent
 		v.slCurrent = current
 		v.ns = ns
@@ -114,6 +107,10 @@ func (v *validate) traverseField(ctx context.Context, parent reflect.Value, curr
 		}
 
 		if ct.typeof == typeOmitNil && (kind != reflect.Invalid && current.IsNil()) {
+			return
+		}
+
+		if ct.typeof == typeOmitZero {
 			return
 		}
 
@@ -238,6 +235,19 @@ OUTER:
 			ct = ct.next
 			continue
 
+		case typeOmitZero:
+			v.slflParent = parent
+			v.flField = current
+			v.cf = cf
+			v.ct = ct
+
+			if !hasNotZeroValue(v) {
+				return
+			}
+
+			ct = ct.next
+			continue
+
 		case typeOmitNil:
 			v.slflParent = parent
 			v.flField = current
@@ -250,7 +260,7 @@ OUTER:
 					return
 				}
 			default:
-				if v.fldIsPointer && field.Interface() == nil {
+				if v.fldIsPointer && getValue(field) == nil {
 					return
 				}
 			}
@@ -274,7 +284,6 @@ OUTER:
 				reusableCF := &cField{}
 
 				for i := 0; i < current.Len(); i++ {
-
 					i64 = int64(i)
 
 					v.misc = append(v.misc[0:0], cf.name...)
@@ -287,7 +296,6 @@ OUTER:
 					if cf.namesEqual {
 						reusableCF.altName = reusableCF.name
 					} else {
-
 						v.misc = append(v.misc[0:0], cf.altName...)
 						v.misc = append(v.misc, '[')
 						v.misc = strconv.AppendInt(v.misc, i64, 10)
@@ -304,8 +312,7 @@ OUTER:
 				reusableCF := &cField{}
 
 				for _, key := range current.MapKeys() {
-
-					pv = fmt.Sprintf("%v", key.Interface())
+					pv = fmt.Sprintf("%v", key)
 
 					v.misc = append(v.misc[0:0], cf.name...)
 					v.misc = append(v.misc, '[')
@@ -330,6 +337,18 @@ OUTER:
 						// can be nil when just keys being validated
 						if ct.next != nil {
 							v.traverseField(ctx, parent, current.MapIndex(key), ns, structNs, reusableCF, ct.next)
+						} else {
+							// Struct fallback when map values are structs
+							val := current.MapIndex(key)
+							switch val.Kind() {
+							case reflect.Ptr:
+								if val.Elem().Kind() == reflect.Struct {
+									// Dive into the struct so its own tags run
+									v.traverseField(ctx, parent, val, ns, structNs, reusableCF, nil)
+								}
+							case reflect.Struct:
+								v.traverseField(ctx, parent, val, ns, structNs, reusableCF, nil)
+							}
 						}
 					} else {
 						v.traverseField(ctx, parent, current.MapIndex(key), ns, structNs, reusableCF, ct)
@@ -349,7 +368,6 @@ OUTER:
 			v.misc = v.misc[0:0]
 
 			for {
-
 				// set Field Level fields
 				v.slflParent = parent
 				v.flField = current
@@ -364,7 +382,6 @@ OUTER:
 
 					// drain rest of the 'or' values, then continue or leave
 					for {
-
 						ct = ct.next
 
 						if ct == nil {
@@ -401,7 +418,6 @@ OUTER:
 					}
 
 					if ct.hasAlias {
-
 						v.errs = append(v.errs,
 							&fieldError{
 								v:              v.v,
@@ -417,9 +433,7 @@ OUTER:
 								typ:            typ,
 							},
 						)
-
 					} else {
-
 						tVal := string(v.misc)[1:]
 
 						v.errs = append(v.errs,
@@ -483,7 +497,6 @@ OUTER:
 			ct = ct.next
 		}
 	}
-
 }
 
 func getValue(val reflect.Value) interface{} {

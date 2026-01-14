@@ -2,6 +2,7 @@ package godo
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math/big"
 	"net/http"
@@ -10,38 +11,44 @@ import (
 )
 
 const (
-	databaseBasePath                    = "/v2/databases"
-	databaseSinglePath                  = databaseBasePath + "/%s"
-	databaseCAPath                      = databaseBasePath + "/%s/ca"
-	databaseConfigPath                  = databaseBasePath + "/%s/config"
-	databaseResizePath                  = databaseBasePath + "/%s/resize"
-	databaseMigratePath                 = databaseBasePath + "/%s/migrate"
-	databaseMaintenancePath             = databaseBasePath + "/%s/maintenance"
-	databaseUpdateInstallationPath      = databaseBasePath + "/%s/install_update"
-	databaseBackupsPath                 = databaseBasePath + "/%s/backups"
-	databaseUsersPath                   = databaseBasePath + "/%s/users"
-	databaseUserPath                    = databaseBasePath + "/%s/users/%s"
-	databaseResetUserAuthPath           = databaseUserPath + "/reset_auth"
-	databaseDBPath                      = databaseBasePath + "/%s/dbs/%s"
-	databaseDBsPath                     = databaseBasePath + "/%s/dbs"
-	databasePoolPath                    = databaseBasePath + "/%s/pools/%s"
-	databasePoolsPath                   = databaseBasePath + "/%s/pools"
-	databaseReplicaPath                 = databaseBasePath + "/%s/replicas/%s"
-	databaseReplicasPath                = databaseBasePath + "/%s/replicas"
-	databaseEvictionPolicyPath          = databaseBasePath + "/%s/eviction_policy"
-	databaseSQLModePath                 = databaseBasePath + "/%s/sql_mode"
-	databaseFirewallRulesPath           = databaseBasePath + "/%s/firewall"
-	databaseOptionsPath                 = databaseBasePath + "/options"
-	databaseUpgradeMajorVersionPath     = databaseBasePath + "/%s/upgrade"
-	databasePromoteReplicaToPrimaryPath = databaseReplicaPath + "/promote"
-	databaseTopicPath                   = databaseBasePath + "/%s/topics/%s"
-	databaseTopicsPath                  = databaseBasePath + "/%s/topics"
-	databaseMetricsCredentialsPath      = databaseBasePath + "/metrics/credentials"
-	databaseEvents                      = databaseBasePath + "/%s/events"
-	databaseIndexesPath                 = databaseBasePath + "/%s/indexes"
-	databaseIndexPath                   = databaseBasePath + "/%s/indexes/%s"
-	databaseLogsinkPath                 = databaseBasePath + "/%s/logsink/%s"
-	databaseLogsinksPath                = databaseBasePath + "/%s/logsink"
+	databaseBasePath                             = "/v2/databases"
+	databaseSinglePath                           = databaseBasePath + "/%s"
+	databaseCAPath                               = databaseBasePath + "/%s/ca"
+	databaseConfigPath                           = databaseBasePath + "/%s/config"
+	databaseResizePath                           = databaseBasePath + "/%s/resize"
+	databaseMigratePath                          = databaseBasePath + "/%s/migrate"
+	databaseMaintenancePath                      = databaseBasePath + "/%s/maintenance"
+	databaseUpdateInstallationPath               = databaseBasePath + "/%s/install_update"
+	databaseBackupsPath                          = databaseBasePath + "/%s/backups"
+	databaseUsersPath                            = databaseBasePath + "/%s/users"
+	databaseUserPath                             = databaseBasePath + "/%s/users/%s"
+	databaseResetUserAuthPath                    = databaseUserPath + "/reset_auth"
+	databaseDBPath                               = databaseBasePath + "/%s/dbs/%s"
+	databaseDBsPath                              = databaseBasePath + "/%s/dbs"
+	databasePoolPath                             = databaseBasePath + "/%s/pools/%s"
+	databasePoolsPath                            = databaseBasePath + "/%s/pools"
+	databaseReplicaPath                          = databaseBasePath + "/%s/replicas/%s"
+	databaseReplicasPath                         = databaseBasePath + "/%s/replicas"
+	databaseEvictionPolicyPath                   = databaseBasePath + "/%s/eviction_policy"
+	databaseSQLModePath                          = databaseBasePath + "/%s/sql_mode"
+	databaseFirewallRulesPath                    = databaseBasePath + "/%s/firewall"
+	databaseOptionsPath                          = databaseBasePath + "/options"
+	databaseUpgradeMajorVersionPath              = databaseBasePath + "/%s/upgrade"
+	databasePromoteReplicaToPrimaryPath          = databaseReplicaPath + "/promote"
+	databaseTopicPath                            = databaseBasePath + "/%s/topics/%s"
+	databaseTopicsPath                           = databaseBasePath + "/%s/topics"
+	databaseMetricsCredentialsPath               = databaseBasePath + "/metrics/credentials"
+	databaseEvents                               = databaseBasePath + "/%s/events"
+	databaseIndexesPath                          = databaseBasePath + "/%s/indexes"
+	databaseIndexPath                            = databaseBasePath + "/%s/indexes/%s"
+	databaseLogsinkPath                          = databaseBasePath + "/%s/logsink/%s"
+	databaseLogsinksPath                         = databaseBasePath + "/%s/logsink"
+	databaseOnlineMigrationsPath                 = databaseBasePath + "/%s/online-migration"
+	databaseOnlineMigrationPath                  = databaseBasePath + "/%s/online-migration/%s"
+	databaseKafkaSchemaRegistryPath              = databaseBasePath + "/%s/schema-registry"
+	databaseKafkaSchemaRegistrySubjectPath       = databaseBasePath + "/%s/schema-registry/%s"
+	databaseKafkaSchemaRegistryConfigPath        = databaseBasePath + "/%s/schema-registry/config"
+	databaseKafkaSchemaRegistrySubjectConfigPath = databaseBasePath + "/%s/schema-registry/config/%s"
 )
 
 // SQL Mode constants allow for MySQL-specific SQL flavor configuration.
@@ -152,12 +159,14 @@ type DatabasesService interface {
 	UpdateFirewallRules(context.Context, string, *DatabaseUpdateFirewallRulesRequest) (*Response, error)
 	GetPostgreSQLConfig(context.Context, string) (*PostgreSQLConfig, *Response, error)
 	GetRedisConfig(context.Context, string) (*RedisConfig, *Response, error)
+	GetValkeyConfig(context.Context, string) (*ValkeyConfig, *Response, error)
 	GetMySQLConfig(context.Context, string) (*MySQLConfig, *Response, error)
 	GetMongoDBConfig(context.Context, string) (*MongoDBConfig, *Response, error)
 	GetOpensearchConfig(context.Context, string) (*OpensearchConfig, *Response, error)
 	GetKafkaConfig(context.Context, string) (*KafkaConfig, *Response, error)
 	UpdatePostgreSQLConfig(context.Context, string, *PostgreSQLConfig) (*Response, error)
 	UpdateRedisConfig(context.Context, string, *RedisConfig) (*Response, error)
+	UpdateValkeyConfig(context.Context, string, *ValkeyConfig) (*Response, error)
 	UpdateMySQLConfig(context.Context, string, *MySQLConfig) (*Response, error)
 	UpdateMongoDBConfig(context.Context, string, *MongoDBConfig) (*Response, error)
 	UpdateOpensearchConfig(context.Context, string, *OpensearchConfig) (*Response, error)
@@ -179,6 +188,17 @@ type DatabasesService interface {
 	ListLogsinks(ctx context.Context, databaseID string, opts *ListOptions) ([]DatabaseLogsink, *Response, error)
 	UpdateLogsink(ctx context.Context, databaseID string, logsinkID string, updateLogsink *DatabaseUpdateLogsinkRequest) (*Response, error)
 	DeleteLogsink(ctx context.Context, databaseID, logsinkID string) (*Response, error)
+	StartOnlineMigration(ctx context.Context, databaseID string, onlineMigrationRequest *DatabaseStartOnlineMigrationRequest) (*DatabaseOnlineMigrationStatus, *Response, error)
+	StopOnlineMigration(ctx context.Context, databaseID, migrationID string) (*Response, error)
+	GetOnlineMigrationStatus(ctx context.Context, databaseID string) (*DatabaseOnlineMigrationStatus, *Response, error)
+	ListKafkaSchemaRegistry(ctx context.Context, databaseID string, opts *ListOptions) ([]DatabaseKafkaSchemaRegistrySubject, *Response, error)
+	CreateKafkaSchemaRegistry(ctx context.Context, databaseID string, createKafkaSchemaRegistry *DatabaseKafkaSchemaRegistryRequest) (*DatabaseKafkaSchemaRegistrySubject, *Response, error)
+	GetKafkaSchemaRegistry(ctx context.Context, databaseID, subject string) (*DatabaseKafkaSchemaRegistrySubject, *Response, error)
+	DeleteKafkaSchemaRegistry(ctx context.Context, databaseID, subject string) (*Response, error)
+	GetKafkaSchemaRegistryConfig(ctx context.Context, databaseID string) (*DatabaseKafkaSchemaRegistryConfig, *Response, error)
+	UpdateKafkaSchemaRegistryConfig(ctx context.Context, databaseID string, updateKafkaSchemaRegistryConfig *DatabaseKafkaSchemaRegistryConfig) (*DatabaseKafkaSchemaRegistryConfig, *Response, error)
+	GetKafkaSchemaRegistrySubjectConfig(ctx context.Context, databaseID, subject string) (*DatabaseKafkaSchemaRegistrySubjectConfigResponse, *Response, error)
+	UpdateKafkaSchemaRegistrySubjectConfig(ctx context.Context, databaseID, subject string, updateKafkaSchemaRegistrySubjectConfig *DatabaseKafkaSchemaRegistryConfig) (*DatabaseKafkaSchemaRegistrySubjectConfigResponse, *Response, error)
 }
 
 // DatabasesServiceOp handles communication with the Databases related methods
@@ -267,10 +287,17 @@ type OpenSearchACL struct {
 	Index      string `json:"index,omitempty"`
 }
 
+// MongoUserSettings represents additional settings for MongoDB users.
+type MongoUserSettings struct {
+	Databases []string `json:"databases,omitempty"`
+	Role      string   `json:"role,omitempty"`
+}
+
 // DatabaseUserSettings contains user settings
 type DatabaseUserSettings struct {
-	ACL           []*KafkaACL      `json:"acl,omitempty"`
-	OpenSearchACL []*OpenSearchACL `json:"opensearch_acl,omitempty"`
+	ACL               []*KafkaACL        `json:"acl,omitempty"`
+	OpenSearchACL     []*OpenSearchACL   `json:"opensearch_acl,omitempty"`
+	MongoUserSettings *MongoUserSettings `json:"mongo_user_settings,omitempty"`
 }
 
 // DatabaseMySQLUserSettings contains MySQL-specific user settings
@@ -364,6 +391,13 @@ type DatabaseLogsink struct {
 	Name   string                 `json:"sink_name,omitempty"`
 	Type   string                 `json:"sink_type,omitempty"`
 	Config *DatabaseLogsinkConfig `json:"config,omitempty"`
+}
+
+// DatabaseOnlineMigrationStatus represents an online migration status
+type DatabaseOnlineMigrationStatus struct {
+	ID        string `json:"id"`
+	Status    string `json:"status"`
+	CreatedAt string `json:"created_at"`
 }
 
 // TopicPartition represents the state of a Kafka topic partition
@@ -515,11 +549,71 @@ type DatabaseFirewallRule struct {
 	CreatedAt   time.Time `json:"created_at"`
 }
 
+// DatabaseStartOnlineMigrationRequest is used to start an online migration for a database cluster
+type DatabaseStartOnlineMigrationRequest struct {
+	Source     *DatabaseOnlineMigrationConfig `json:"source"`
+	DisableSSL bool                           `json:"disable_ssl,omitempty"`
+	IgnoreDBs  []string                       `json:"ignore_dbs,omitempty"`
+}
+
 // DatabaseCreateLogsinkRequest is used to create logsink for a database cluster
 type DatabaseCreateLogsinkRequest struct {
 	Name   string                 `json:"sink_name"`
 	Type   string                 `json:"sink_type"`
 	Config *DatabaseLogsinkConfig `json:"config"`
+}
+
+// MarshalJSON implements custom JSON marshaling for DatabaseCreateLogsinkRequest
+// to ensure the TLS field is always included for rsyslog sink types
+func (r DatabaseCreateLogsinkRequest) MarshalJSON() ([]byte, error) {
+	// For rsyslog, we need to ensure TLS field is always present
+	if r.Type == "rsyslog" {
+		type rsyslogConfig struct {
+			URL          string  `json:"url,omitempty"`
+			IndexPrefix  string  `json:"index_prefix,omitempty"`
+			IndexDaysMax int     `json:"index_days_max,omitempty"`
+			Timeout      float32 `json:"timeout,omitempty"`
+			Server       string  `json:"server,omitempty"`
+			Port         int     `json:"port,omitempty"`
+			TLS          bool    `json:"tls"` // Always include for rsyslog
+			Format       string  `json:"format,omitempty"`
+			Logline      string  `json:"logline,omitempty"`
+			SD           string  `json:"sd,omitempty"`
+			CA           string  `json:"ca,omitempty"`
+			Key          string  `json:"key,omitempty"`
+			Cert         string  `json:"cert,omitempty"`
+		}
+
+		// Create wrapper struct with rsyslog-specific config
+		wrapper := struct {
+			Name   string         `json:"sink_name"`
+			Type   string         `json:"sink_type"`
+			Config *rsyslogConfig `json:"config"`
+		}{
+			Name: r.Name,
+			Type: r.Type,
+			Config: &rsyslogConfig{
+				URL:          r.Config.URL,
+				IndexPrefix:  r.Config.IndexPrefix,
+				IndexDaysMax: r.Config.IndexDaysMax,
+				Timeout:      r.Config.Timeout,
+				Server:       r.Config.Server,
+				Port:         r.Config.Port,
+				TLS:          r.Config.TLS,
+				Format:       r.Config.Format,
+				Logline:      r.Config.Logline,
+				SD:           r.Config.SD,
+				CA:           r.Config.CA,
+				Key:          r.Config.Key,
+				Cert:         r.Config.Cert,
+			},
+		}
+		return json.Marshal(wrapper)
+	}
+
+	// For other sink types, use default marshaling
+	type alias DatabaseCreateLogsinkRequest
+	return json.Marshal(alias(r))
 }
 
 // DatabaseUpdateLogsinkRequest is used to update logsink for a database cluster
@@ -542,6 +636,15 @@ type DatabaseLogsinkConfig struct {
 	CA           string  `json:"ca,omitempty"`
 	Key          string  `json:"key,omitempty"`
 	Cert         string  `json:"cert,omitempty"`
+}
+
+// DatabaseOnlineMigrationConfig represents the configuration options for database online migrations.
+type DatabaseOnlineMigrationConfig struct {
+	Host         string `json:"host,omitempty"`
+	Port         int    `json:"port,omitempty"`
+	DatabaseName string `json:"dbname,omitempty"`
+	Username     string `json:"username,omitempty"`
+	Password     string `json:"password,omitempty"`
 }
 
 // PostgreSQLConfig holds advanced configurations for PostgreSQL database clusters.
@@ -633,6 +736,23 @@ type RedisConfig struct {
 	RedisNotifyKeyspaceEvents          *string `json:"redis_notify_keyspace_events,omitempty"`
 	RedisPersistence                   *string `json:"redis_persistence,omitempty"`
 	RedisACLChannelsDefault            *string `json:"redis_acl_channels_default,omitempty"`
+}
+
+// ValkeyConfig holds advanced configurations for Valkey database clusters.
+type ValkeyConfig struct {
+	ValkeyMaxmemoryPolicy               *string `json:"valkey_maxmemory_policy,omitempty"`
+	ValkeyIOThreads                     *int    `json:"valkey_io_threads,omitempty"`
+	ValkeyLFULogFactor                  *int    `json:"valkey_lfu_log_factor,omitempty"`
+	ValkeyLFUDecayTime                  *int    `json:"valkey_lfu_decay_time,omitempty"`
+	ValkeySSL                           *bool   `json:"valkey_ssl,omitempty"`
+	ValkeyTimeout                       *int    `json:"valkey_timeout,omitempty"`
+	ValkeyNotifyKeyspaceEvents          *string `json:"valkey_notify_keyspace_events,omitempty"`
+	ValkeyPersistence                   *string `json:"valkey_persistence,omitempty"`
+	ValkeyACLChannelsDefault            *string `json:"valkey_acl_channels_default,omitempty"`
+	FrequentSnapshots                   *bool   `json:"frequent_snapshots,omitempty"`
+	ValkeyActiveExpireEffort            *int    `json:"valkey_active_expire_effort,omitempty"`
+	ValkeyPubSubClientOutputBufferLimit *int    `json:"valkey_pubsub_client_output_buffer_limit,omitempty"`
+	ValkeyNumberOfDatabases             *int    `json:"valkey_number_of_databases,omitempty"`
 }
 
 // MySQLConfig holds advanced configurations for MySQL database clusters.
@@ -781,6 +901,10 @@ type databaseRedisConfigRoot struct {
 	Config *RedisConfig `json:"config"`
 }
 
+type databaseValkeyConfigRoot struct {
+	Config *ValkeyConfig `json:"config"`
+}
+
 type databaseMySQLConfigRoot struct {
 	Config *MySQLConfig `json:"config"`
 }
@@ -850,6 +974,10 @@ type databaseLogsinksRoot struct {
 	Sinks []DatabaseLogsink `json:"sinks"`
 }
 
+type databaseLogsinkRoot struct {
+	Sink *DatabaseLogsink `json:"sink"`
+}
+
 type databaseMetricsCredentialsRoot struct {
 	Credentials *DatabaseMetricsCredentials `json:"credentials"`
 }
@@ -869,6 +997,7 @@ type DatabaseOptions struct {
 	MySQLOptions       DatabaseEngineOptions `json:"mysql"`
 	PostgresSQLOptions DatabaseEngineOptions `json:"pg"`
 	RedisOptions       DatabaseEngineOptions `json:"redis"`
+	ValkeyOptions      DatabaseEngineOptions `json:"valkey"`
 	KafkaOptions       DatabaseEngineOptions `json:"kafka"`
 	OpensearchOptions  DatabaseEngineOptions `json:"opensearch"`
 }
@@ -923,6 +1052,32 @@ type IndexReplication struct {
 
 type databaseIndexesRoot struct {
 	Indexes []DatabaseIndex `json:"indexes"`
+}
+
+type DatabaseKafkaSchemaRegistrySubject struct {
+	SubjectName string `json:"subject_name"`
+	SchemaType  string `json:"schema_type"`
+	Schema      string `json:"schema"`
+	SchemaID    int    `json:"schema_id"`
+}
+
+type ListDatabaseKafkaSchemaRegistrySubjectsRoot struct {
+	Subjects []DatabaseKafkaSchemaRegistrySubject `json:"subjects"`
+}
+
+type DatabaseKafkaSchemaRegistryRequest struct {
+	SubjectName string `json:"subject_name"`
+	SchemaType  string `json:"schema_type"`
+	Schema      string `json:"schema"`
+}
+
+type DatabaseKafkaSchemaRegistryConfig struct {
+	CompatibilityLevel string `json:"compatibility_level"`
+}
+
+type DatabaseKafkaSchemaRegistrySubjectConfigResponse struct {
+	SubjectName        string `json:"subject_name"`
+	CompatibilityLevel string `json:"compatibility_level"`
 }
 
 // URN returns a URN identifier for the database
@@ -1576,6 +1731,38 @@ func (svc *DatabasesServiceOp) UpdateRedisConfig(ctx context.Context, databaseID
 	return resp, nil
 }
 
+// GetValkeyConfig updates the config for a Valkey database cluster.
+func (svc *DatabasesServiceOp) GetValkeyConfig(ctx context.Context, databaseID string) (*ValkeyConfig, *Response, error) {
+	path := fmt.Sprintf(databaseConfigPath, databaseID)
+	req, err := svc.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	root := new(databaseValkeyConfigRoot)
+	resp, err := svc.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	return root.Config, resp, nil
+}
+
+// UpdateValkeyConfig updates the config for a Valkey database cluster.
+func (svc *DatabasesServiceOp) UpdateValkeyConfig(ctx context.Context, databaseID string, config *ValkeyConfig) (*Response, error) {
+	path := fmt.Sprintf(databaseConfigPath, databaseID)
+	root := &databaseValkeyConfigRoot{
+		Config: config,
+	}
+	req, err := svc.client.NewRequest(ctx, http.MethodPatch, path, root)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := svc.client.Do(ctx, req, nil)
+	if err != nil {
+		return resp, err
+	}
+	return resp, nil
+}
+
 // GetMySQLConfig retrieves the config for a MySQL database cluster.
 func (svc *DatabasesServiceOp) GetMySQLConfig(ctx context.Context, databaseID string) (*MySQLConfig, *Response, error) {
 	path := fmt.Sprintf(databaseConfigPath, databaseID)
@@ -1904,12 +2091,12 @@ func (svc *DatabasesServiceOp) CreateLogsink(ctx context.Context, databaseID str
 		return nil, nil, err
 	}
 
-	root := new(DatabaseLogsink)
+	root := new(databaseLogsinkRoot)
 	resp, err := svc.client.Do(ctx, req, root)
 	if err != nil {
 		return nil, resp, err
 	}
-	return root, resp, nil
+	return root.Sink, resp, nil
 }
 
 // GetLogsink gets a logsink for a database
@@ -1920,12 +2107,12 @@ func (svc *DatabasesServiceOp) GetLogsink(ctx context.Context, databaseID string
 		return nil, nil, err
 	}
 
-	root := new(DatabaseLogsink)
+	root := new(databaseLogsinkRoot)
 	resp, err := svc.client.Do(ctx, req, root)
 	if err != nil {
 		return nil, resp, err
 	}
-	return root, resp, nil
+	return root.Sink, resp, nil
 }
 
 // ListTopics returns all topics for a given kafka cluster
@@ -1974,4 +2161,182 @@ func (svc *DatabasesServiceOp) DeleteLogsink(ctx context.Context, databaseID, lo
 		return resp, err
 	}
 	return resp, nil
+}
+
+// StartOnlineMigration starts an online migration for a database. Migrating a cluster establishes a connection with an existing cluster
+// and replicates its contents to the target cluster. Online migration is only available for MySQL, PostgreSQL, Redis and Valkey clusters.
+func (svc *DatabasesServiceOp) StartOnlineMigration(ctx context.Context, databaseID string, onlineMigration *DatabaseStartOnlineMigrationRequest) (*DatabaseOnlineMigrationStatus, *Response, error) {
+	path := fmt.Sprintf(databaseOnlineMigrationsPath, databaseID)
+	req, err := svc.client.NewRequest(ctx, http.MethodPut, path, onlineMigration)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	root := new(DatabaseOnlineMigrationStatus)
+	resp, err := svc.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	return root, resp, nil
+}
+
+// GetOnlineMigrationStatus retrieves the status of the most recent online migration
+func (svc *DatabasesServiceOp) GetOnlineMigrationStatus(ctx context.Context, databaseID string) (*DatabaseOnlineMigrationStatus, *Response, error) {
+	path := fmt.Sprintf(databaseOnlineMigrationsPath, databaseID)
+	req, err := svc.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	root := new(DatabaseOnlineMigrationStatus)
+	resp, err := svc.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	return root, resp, nil
+}
+
+// StopOnlineMigration stops an online migration
+func (svc *DatabasesServiceOp) StopOnlineMigration(ctx context.Context, databaseID, migrationID string) (*Response, error) {
+	path := fmt.Sprintf(databaseOnlineMigrationPath, databaseID, migrationID)
+	req, err := svc.client.NewRequest(ctx, http.MethodDelete, path, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := svc.client.Do(ctx, req, nil)
+	if err != nil {
+		return resp, err
+	}
+	return resp, nil
+}
+
+// ListKafkaSchemaRegistry lists the kafka schema registry subjects
+func (svc *DatabasesServiceOp) ListKafkaSchemaRegistry(ctx context.Context, databaseID string, opts *ListOptions) ([]DatabaseKafkaSchemaRegistrySubject, *Response, error) {
+	path := fmt.Sprintf(databaseKafkaSchemaRegistryPath, databaseID)
+	path, err := addOptions(path, opts)
+	if err != nil {
+		return nil, nil, err
+	}
+	req, err := svc.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	root := new(ListDatabaseKafkaSchemaRegistrySubjectsRoot)
+	resp, err := svc.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	return root.Subjects, resp, nil
+}
+
+// CreateKafkaSchemaRegistry creates a kafka schema registry subject
+func (svc *DatabasesServiceOp) CreateKafkaSchemaRegistry(ctx context.Context, databaseID string, createKafkaSchemaRegistry *DatabaseKafkaSchemaRegistryRequest) (*DatabaseKafkaSchemaRegistrySubject, *Response, error) {
+	path := fmt.Sprintf(databaseKafkaSchemaRegistryPath, databaseID)
+	req, err := svc.client.NewRequest(ctx, http.MethodPost, path, createKafkaSchemaRegistry)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	root := new(DatabaseKafkaSchemaRegistrySubject)
+	resp, err := svc.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	return root, resp, nil
+}
+
+// GetKafkaSchemaRegistry retrieves a kafka schema registry subject
+func (svc *DatabasesServiceOp) GetKafkaSchemaRegistry(ctx context.Context, databaseID, subjectName string) (*DatabaseKafkaSchemaRegistrySubject, *Response, error) {
+	path := fmt.Sprintf(databaseKafkaSchemaRegistrySubjectPath, databaseID, subjectName)
+	req, err := svc.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	root := new(DatabaseKafkaSchemaRegistrySubject)
+	resp, err := svc.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	return root, resp, nil
+}
+
+// DeleteKafkaSchemaRegistry deletes a kafka schema registry subject
+func (svc *DatabasesServiceOp) DeleteKafkaSchemaRegistry(ctx context.Context, databaseID, subjectName string) (*Response, error) {
+	path := fmt.Sprintf(databaseKafkaSchemaRegistrySubjectPath, databaseID, subjectName)
+	req, err := svc.client.NewRequest(ctx, http.MethodDelete, path, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := svc.client.Do(ctx, req, nil)
+	if err != nil {
+		return resp, err
+	}
+	return resp, nil
+}
+
+// UpdateKafkaSchemaRegistryConfig updates the configuration for a kafka schema registry
+func (svc *DatabasesServiceOp) UpdateKafkaSchemaRegistryConfig(ctx context.Context, databaseID string, updateKafkaSchemaRegistryConfig *DatabaseKafkaSchemaRegistryConfig) (*DatabaseKafkaSchemaRegistryConfig, *Response, error) {
+	path := fmt.Sprintf(databaseKafkaSchemaRegistryConfigPath, databaseID)
+	req, err := svc.client.NewRequest(ctx, http.MethodPut, path, updateKafkaSchemaRegistryConfig)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	root := new(DatabaseKafkaSchemaRegistryConfig)
+	resp, err := svc.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	return root, resp, nil
+}
+
+// GetKafkaSchemaRegistryConfig retrieves the configuration for a kafka schema registry
+func (svc *DatabasesServiceOp) GetKafkaSchemaRegistryConfig(ctx context.Context, databaseID string) (*DatabaseKafkaSchemaRegistryConfig, *Response, error) {
+	path := fmt.Sprintf(databaseKafkaSchemaRegistryConfigPath, databaseID)
+	req, err := svc.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	root := new(DatabaseKafkaSchemaRegistryConfig)
+	resp, err := svc.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	return root, resp, nil
+}
+
+// UpdateKafkaSchemaRegistrySubjectConfig updates the configuration for a kafka schema registry subject
+func (svc *DatabasesServiceOp) UpdateKafkaSchemaRegistrySubjectConfig(ctx context.Context, databaseID, subject string, updateKafkaSchemaRegistrySubjectConfig *DatabaseKafkaSchemaRegistryConfig) (*DatabaseKafkaSchemaRegistrySubjectConfigResponse, *Response, error) {
+	path := fmt.Sprintf(databaseKafkaSchemaRegistrySubjectConfigPath, databaseID, subject)
+	req, err := svc.client.NewRequest(ctx, http.MethodPut, path, updateKafkaSchemaRegistrySubjectConfig)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	root := new(DatabaseKafkaSchemaRegistrySubjectConfigResponse)
+	resp, err := svc.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	return root, resp, nil
+}
+
+// GetKafkaSchemaRegistrySubjectConfig retrieves the configuration for a kafka schema registry subject
+func (svc *DatabasesServiceOp) GetKafkaSchemaRegistrySubjectConfig(ctx context.Context, databaseID, subject string) (*DatabaseKafkaSchemaRegistrySubjectConfigResponse, *Response, error) {
+	path := fmt.Sprintf(databaseKafkaSchemaRegistrySubjectConfigPath, databaseID, subject)
+	req, err := svc.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	root := new(DatabaseKafkaSchemaRegistrySubjectConfigResponse)
+	resp, err := svc.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	return root, resp, nil
 }

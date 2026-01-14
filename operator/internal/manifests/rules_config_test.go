@@ -140,7 +140,7 @@ func testOptions_withSharding() *Options {
 	// and 2000 of them will be split into 2 shards
 	var alertingRules []lokiv1.AlertingRule
 
-	for i := 0; i < 2000; i++ {
+	for i := range 2000 {
 		alertingRules = append(alertingRules, lokiv1.AlertingRule{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "alerting-rules",

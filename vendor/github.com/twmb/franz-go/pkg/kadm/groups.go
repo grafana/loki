@@ -93,6 +93,27 @@ func (d *DescribedGroup) AssignedPartitions() TopicsSet {
 	return s
 }
 
+// JoinTopics returns the set of topics that all members are interested in
+// consuming.
+//
+// This function is only relevant for groups of time "consumer".
+func (d DescribedGroup) JoinTopics() []string {
+	s := make(map[string]struct{})
+	for _, m := range d.Members {
+		if c, ok := m.Join.AsConsumer(); ok {
+			for _, t := range c.Topics {
+				s[t] = struct{}{}
+			}
+		}
+	}
+	ks := make([]string, 0, len(s))
+	for k := range s {
+		ks = append(ks, k)
+	}
+	sort.Strings(ks)
+	return ks
+}
+
 // DescribedGroup contains data from a describe groups response for a single
 // group.
 type DescribedGroup struct {
@@ -106,7 +127,8 @@ type DescribedGroup struct {
 
 	AuthorizedOperations []ACLOperation // AuthorizedOperations contains operations the requesting client is allowed to perform on this group.
 
-	Err error // Err is non-nil if the group could not be described.
+	Err        error  // Err is non-nil if the group could not be described.
+	ErrMessage string // ErrMessage a potential extra message describing any error.
 }
 
 // DescribedGroups contains data for multiple groups from a describe groups
@@ -132,6 +154,29 @@ func (ds DescribedGroups) AssignedPartitions() TopicsSet {
 	return s
 }
 
+// JoinTopics returns the set of topics that all members are interested in
+// consuming. This is the all-group analogue to DescribedGroup.JoinTopics.
+//
+// This function is only relevant for groups of time "consumer".
+func (ds DescribedGroups) JoinTopics() []string {
+	s := make(map[string]struct{})
+	for _, g := range ds {
+		for _, m := range g.Members {
+			if c, ok := m.Join.AsConsumer(); ok {
+				for _, t := range c.Topics {
+					s[t] = struct{}{}
+				}
+			}
+		}
+	}
+	ks := make([]string, 0, len(s))
+	for k := range s {
+		ks = append(ks, k)
+	}
+	sort.Strings(ks)
+	return ks
+}
+
 // Sorted returns all groups sorted by group name.
 func (ds DescribedGroups) Sorted() []DescribedGroup {
 	s := make([]DescribedGroup, 0, len(ds))
@@ -151,9 +196,9 @@ func (ds DescribedGroups) Sorted() []DescribedGroup {
 // original map (because slices are pointers).
 //
 // If the group does not exist, this returns kerr.GroupIDNotFound.
-func (rs DescribedGroups) On(group string, fn func(*DescribedGroup) error) (DescribedGroup, error) {
-	if len(rs) > 0 {
-		r, ok := rs[group]
+func (ds DescribedGroups) On(group string, fn func(*DescribedGroup) error) (DescribedGroup, error) {
+	if len(ds) > 0 {
+		r, ok := ds[group]
 		if ok {
 			if fn == nil {
 				return r, nil
@@ -175,7 +220,7 @@ func (ds DescribedGroups) Error() error {
 	return nil
 }
 
-// Topics returns a sorted list of all group names.
+// Names returns a sorted list of all group names.
 func (ds DescribedGroups) Names() []string {
 	all := make([]string, 0, len(ds))
 	for g := range ds {
@@ -223,8 +268,18 @@ func (ls ListedGroups) Groups() []string {
 //
 // This may return *ShardErrors or *AuthError.
 func (cl *Client) ListGroups(ctx context.Context, filterStates ...string) (ListedGroups, error) {
+	return cl.ListGroupsByType(ctx, nil, filterStates...)
+}
+
+// ListGroupsByType returns all groups in the cluster, filtered by the given group
+// type (classic, consumer, share, streams). Filter states can be used to
+// further filter by the current group state. Requires Kafka 3.8+.
+//
+// This may return *ShardErrors or *AuthError.
+func (cl *Client) ListGroupsByType(ctx context.Context, types []string, filterStates ...string) (ListedGroups, error) {
 	req := kmsg.NewPtrListGroupsRequest()
 	req.StatesFilter = append(req.StatesFilter, filterStates...)
+	req.TypesFilter = append(req.TypesFilter, types...)
 	shards := cl.cl.RequestSharded(ctx, req)
 	list := make(ListedGroups)
 	return list, shardErrEachBroker(req, shards, func(b BrokerDetail, kr kmsg.Response) error {
@@ -247,8 +302,8 @@ func (cl *Client) ListGroups(ctx context.Context, filterStates ...string) (Liste
 	})
 }
 
-// DescribeGroups describes either all groups specified, or all groups in the
-// cluster if none are specified.
+// DescribeGroups describes either all classic groups specified, or all classic
+// groups in the cluster if none are specified.
 //
 // This may return *ShardErrors or *AuthError.
 //
@@ -262,7 +317,7 @@ func (cl *Client) ListGroups(ctx context.Context, filterStates ...string) (Liste
 func (cl *Client) DescribeGroups(ctx context.Context, groups ...string) (DescribedGroups, error) {
 	var seList *ShardErrors
 	if len(groups) == 0 {
-		listed, err := cl.ListGroups(ctx)
+		listed, err := cl.ListGroupsByType(ctx, []string{"classic"})
 		switch {
 		case err == nil:
 		case errors.As(err, &seList):
@@ -295,6 +350,7 @@ func (cl *Client) DescribeGroups(ctx context.Context, groups ...string) (Describ
 				Protocol:             rg.Protocol,
 				AuthorizedOperations: DecodeACLOperations(rg.AuthorizedOperations),
 				Err:                  kerr.ErrorForCode(rg.ErrorCode),
+				ErrMessage:           unptrStr(rg.ErrorMessage),
 			}
 			for _, rm := range rg.Members {
 				gm := DescribedGroupMember{
@@ -387,9 +443,9 @@ func (ds DeleteGroupResponses) Sorted() []DeleteGroupResponse {
 // well; any modifications within fn are modifications on the returned copy.
 //
 // If the group does not exist, this returns kerr.GroupIDNotFound.
-func (rs DeleteGroupResponses) On(group string, fn func(*DeleteGroupResponse) error) (DeleteGroupResponse, error) {
-	if len(rs) > 0 {
-		r, ok := rs[group]
+func (ds DeleteGroupResponses) On(group string, fn func(*DeleteGroupResponse) error) (DeleteGroupResponse, error) {
+	if len(ds) > 0 {
+		r, ok := ds[group]
 		if ok {
 			if fn == nil {
 				return r, nil
@@ -402,8 +458,8 @@ func (rs DeleteGroupResponses) On(group string, fn func(*DeleteGroupResponse) er
 
 // Error iterates over all groups and returns the first error encountered, if
 // any.
-func (rs DeleteGroupResponses) Error() error {
-	for _, r := range rs {
+func (ds DeleteGroupResponses) Error() error {
+	for _, r := range ds {
 		if r.Err != nil {
 			return r.Err
 		}
@@ -560,7 +616,6 @@ func (cl *Client) LeaveGroup(ctx context.Context, b *LeaveGroupBuilder) (LeaveGr
 	req.Group = b.group
 	for _, id := range b.instanceIDs {
 		m := kmsg.NewLeaveGroupRequestMember()
-		id := id
 		m.InstanceID = id
 		m.Reason = b.reason
 		req.Members = append(req.Members, m)
@@ -644,7 +699,7 @@ func (os OffsetResponses) KOffsets() map[string]map[int32]kgo.Offset {
 	return os.Offsets().KOffsets()
 }
 
-// DeleteFunc keeps only the offsets for which fn returns true.
+// KeepFunc keeps only the offsets for which fn returns true.
 func (os OffsetResponses) KeepFunc(fn func(OffsetResponse) bool) {
 	for t, ps := range os {
 		for p, o := range ps {
@@ -975,7 +1030,7 @@ func (r FetchOffsetsResponse) CommittedPartitions() TopicsSet {
 	return r.Fetched.Partitions()
 }
 
-// FetchOFfsetsResponses contains responses for many fetch offsets requests.
+// FetchOffsetsResponses contains responses for many fetch offsets requests.
 type FetchOffsetsResponses map[string]FetchOffsetsResponse
 
 // EachError calls fn for every response that as a non-nil error.
@@ -1121,7 +1176,7 @@ func (cl *Client) FetchManyOffsets(ctx context.Context, groups ...string) FetchO
 type DeleteOffsetsResponses map[string]map[int32]error
 
 // Lookup returns the response at t and p and whether it exists.
-func (ds DeleteOffsetsResponses) Lookup(t string, p int32) (error, bool) {
+func (ds DeleteOffsetsResponses) Lookup(t string, p int32) (error, bool) { //nolint:revive // error comes first, it is what it is
 	if len(ds) == 0 {
 		return nil, false
 	}
@@ -1353,7 +1408,7 @@ type DescribedGroupLag struct {
 	FetchErr    error // FetchErr is the error returned from fetching offsets, if any.
 }
 
-// Err returns the first of DescribeErr or FetchErr that is non-nil.
+// Error returns the first of DescribeErr or FetchErr that is non-nil.
 func (l *DescribedGroupLag) Error() error {
 	if l.DescribeErr != nil {
 		return l.DescribeErr
@@ -1441,7 +1496,12 @@ func (cl *Client) Lag(ctx context.Context, groups ...string) (DescribedGroupLags
 		return nil, err
 	case errors.As(err, &se) && !se.AllFailed:
 		for _, se := range se.Errs {
-			for _, g := range se.Req.(*kmsg.DescribeGroupsRequest).Groups {
+			// can be ListGroupsRequest as well
+			req, ok := se.Req.(*kmsg.DescribeGroupsRequest)
+			if !ok {
+				continue
+			}
+			for _, g := range req.Groups {
 				lags[g] = DescribedGroupLag{
 					Group:       g,
 					Coordinator: se.Broker,
@@ -1498,9 +1558,12 @@ func (cl *Client) Lag(ctx context.Context, groups ...string) (DescribedGroupLags
 	}
 
 	// We have to list the start & end offset for all assigned and
-	// committed partitions.
+	// committed partitions, as well as any topics that group members
+	// WANT to consume (maybe they have not yet been committed to and
+	// we are currently eagerly rebalancing).
 	var startOffsets, endOffsets ListedOffsets
 	listPartitions := described.AssignedPartitions()
+	listPartitions.MergeTopics(described.JoinTopics())
 	listPartitions.Merge(fetched.CommittedPartitions())
 	if topics := listPartitions.Topics(); len(topics) > 0 {
 		for _, list := range []struct {
@@ -1555,6 +1618,36 @@ func (cl *Client) Lag(ctx context.Context, groups ...string) (DescribedGroupLags
 	return lags, nil
 }
 
+// CalculateGroupLag returns the per-partition lag of all members in a group.
+// The input to this method is the returns from the following methods (make
+// sure to check shard errors):
+//
+//	// Note that FetchOffsets exists to fetch only one group's offsets,
+//	// but some of the code below slightly changes.
+//	groups := DescribeGroups(ctx, group)
+//	commits := FetchManyOffsets(ctx, group)
+//	var endOffsets ListedOffsets
+//	listPartitions := described.AssignedPartitions()
+//	listPartitions.MergeTopics(described.JoinTopics())
+//	listPartitions.Merge(commits.CommittedPartitions()
+//	if topics := listPartitions.Topics(); len(topics) > 0 {
+//		endOffsets = ListEndOffsets(ctx, listPartitions.Topics())
+//	}
+//	for _, group := range groups {
+//		lag := CalculateGroupLag(group, commits[group.Group].Fetched, endOffsets)
+//	}
+//
+// If assigned partitions are missing in the listed end offsets, the partition
+// will have an error indicating it is missing. A missing topic or partition in
+// the commits is assumed to be nothing committing yet.
+func CalculateGroupLag(
+	group DescribedGroup,
+	commit OffsetResponses,
+	endOffsets ListedOffsets,
+) GroupLag {
+	return CalculateGroupLagWithStartOffsets(group, commit, nil, endOffsets)
+}
+
 var noOffsets = make(ListedOffsets)
 
 // CalculateGroupLagWithStartOffsets returns the per-partition lag of all
@@ -1586,9 +1679,6 @@ func CalculateGroupLagWithStartOffsets(
 	}
 	if endOffsets == nil {
 		endOffsets = noOffsets
-	}
-	if group.State == "Empty" {
-		return calculateEmptyLag(commit, startOffsets, endOffsets)
 	}
 
 	l := make(map[string]map[int32]GroupMemberLag)
@@ -1628,6 +1718,19 @@ func CalculateGroupLagWithStartOffsets(
 						pcommit = pcommitActual
 					}
 				}
+
+				// In order of priority, perr (the error on the Lag
+				// calculation) is non-nil if:
+				//
+				//  * The topic is missing from end ListOffsets
+				//  * The partition is missing from end ListOffsets
+				//  * OffsetFetch has an error on the partition
+				//  * ListOffsets has an error on the partition
+				//
+				// If we have no error, then we can calculate lag.
+				// We *do* allow an error on start ListedOffsets;
+				// if there are no start offsets or the start offset
+				// has an error, it is not used for lag calculation.
 				perr = errListMissing
 				if tend != nil {
 					if pendActual, ok := tend[p]; ok {
@@ -1675,54 +1778,45 @@ func CalculateGroupLagWithStartOffsets(
 					Lag:       lag,
 					Err:       perr,
 				}
+			}
+		}
 
+		// For all members, we prime the lag map with the topics the
+		// member is interested in. It is possible the group is
+		// rebalancing (no partitions assigned!) and that topics have
+		// not been committed to.
+		j, ok := m.Join.AsConsumer()
+		if !ok {
+			continue
+		}
+		for _, t := range j.Topics {
+			if _, ok := l[t]; !ok {
+				l[t] = make(map[int32]GroupMemberLag)
 			}
 		}
 	}
 
-	return l
-}
-
-// CalculateGroupLag returns the per-partition lag of all members in a group.
-// The input to this method is the returns from the following methods (make
-// sure to check shard errors):
-//
-//	// Note that FetchOffsets exists to fetch only one group's offsets,
-//	// but some of the code below slightly changes.
-//	groups := DescribeGroups(ctx, group)
-//	commits := FetchManyOffsets(ctx, group)
-//	var endOffsets ListedOffsets
-//	listPartitions := described.AssignedPartitions()
-//	listPartitions.Merge(commits.CommittedPartitions()
-//	if topics := listPartitions.Topics(); len(topics) > 0 {
-//		endOffsets = ListEndOffsets(ctx, listPartitions.Topics())
-//	}
-//	for _, group := range groups {
-//		lag := CalculateGroupLag(group, commits[group.Group].Fetched, endOffsets)
-//	}
-//
-// If assigned partitions are missing in the listed end offsets, the partition
-// will have an error indicating it is missing. A missing topic or partition in
-// the commits is assumed to be nothing committing yet.
-func CalculateGroupLag(
-	group DescribedGroup,
-	commit OffsetResponses,
-	endOffsets ListedOffsets,
-) GroupLag {
-	return CalculateGroupLagWithStartOffsets(group, commit, nil, endOffsets)
-}
-
-func calculateEmptyLag(commit OffsetResponses, startOffsets, endOffsets ListedOffsets) GroupLag {
-	l := make(map[string]map[int32]GroupMemberLag)
+	// Now we go through everything previously committed to and calculate
+	// the lag for any topic or partition that is not currently assigned
+	// to any member. This block also entirely handles the case when the
+	// group.State is "Empty".
 	for t, ps := range commit {
 		lt := l[t]
 		if lt == nil {
 			lt = make(map[int32]GroupMemberLag)
 			l[t] = lt
 		}
-		tstart := startOffsets[t]
-		tend := endOffsets[t]
+		var tstart, tend map[int32]ListedOffset
+		var tlookup bool
 		for p, pcommit := range ps {
+			if _, ok := lt[p]; ok {
+				continue
+			}
+			if !tlookup {
+				tstart = startOffsets[t]
+				tend = endOffsets[t]
+				tlookup = true
+			}
 			var (
 				pend = ListedOffset{
 					Topic:     t,
@@ -1733,18 +1827,8 @@ func calculateEmptyLag(commit OffsetResponses, startOffsets, endOffsets ListedOf
 				perr   error
 			)
 
-			// In order of priority, perr (the error on the Lag
-			// calculation) is non-nil if:
-			//
-			//  * The topic is missing from end ListOffsets
-			//  * The partition is missing from end ListOffsets
-			//  * OffsetFetch has an error on the partition
-			//  * ListOffsets has an error on the partition
-			//
-			// If we have no error, then we can calculate lag.
-			// We *do* allow an error on start ListedOffsets;
-			// if there are no start offsets or the start offset
-			// has an error, it is not used for lag calculation.
+			// The following block duplicates the above;
+			// the difference here is we have no member.
 			perr = errListMissing
 			if tend != nil {
 				if pendActual, ok := tend[p]; ok {
@@ -1790,15 +1874,17 @@ func calculateEmptyLag(commit OffsetResponses, startOffsets, endOffsets ListedOf
 	}
 
 	// Now we look at all topics that we calculated lag for, and check out
-	// the partitions we listed. If those partitions are missing from the
-	// lag calculations above, the partitions were not committed to and we
-	// count that as entirely lagging.
+	// the partitions we listed. Any partition that does not have lag
+	// calculated yet was never committed to and is not currently assigned;
+	// it is entirely lagging.
 	for t, lt := range l {
-		tstart := startOffsets[t]
-		tend := endOffsets[t]
-		for p, pend := range tend {
+		var tstart map[int32]ListedOffset
+		for p, pend := range endOffsets[t] {
 			if _, ok := lt[p]; ok {
 				continue
+			}
+			if tstart == nil {
+				tstart = startOffsets[t]
 			}
 			pcommit := Offset{
 				Topic:       t,
@@ -1843,3 +1929,464 @@ func calculateEmptyLag(commit OffsetResponses, startOffsets, endOffsets ListedOf
 }
 
 var errListMissing = errors.New("missing from list offsets")
+
+////////////////
+// "NEXT" GEN //
+////////////////
+
+// ConsumerGroupMember is the detail of an individual consumer group member as returned
+// by a consumer group describe response (KIP-848).
+type ConsumerGroupMember struct {
+	MemberID    string  // MemberID is the member ID of this group member.
+	InstanceID  *string // InstanceID is a potential user assigned instance ID of this group member.
+	RackID      *string // RackID is the rack ID of this member, if any.
+	MemberEpoch int32   // MemberEpoch is the current member epoch.
+	ClientID    string  // ClientID is the client ID used by this member.
+	ClientHost  string  // ClientHost is the host this member is running on.
+	MemberType  int8    // MemberType is the member type: -1 for unknown, 0 for classic, 1 for consumer (v1+).
+
+	SubscribedTopics     []string // SubscribedTopics are the topic names this member is subscribed to.
+	SubscribedTopicRegex *string  // SubscribedTopicRegex is the topic regex this member is subscribed to, if any.
+
+	Assignment       TopicsSet // Assignment is the current assignment for this member.
+	TargetAssignment TopicsSet // TargetAssignment is the target assignment for this member.
+}
+
+// DescribedConsumerGroup contains data from a consumer group describe response for a single
+// group (KIP-848).
+type DescribedConsumerGroup struct {
+	Group string // Group is the name of the described group.
+
+	Coordinator     BrokerDetail          // Coordinator is the coordinator broker for this group.
+	State           string                // State is the state this group is in.
+	Epoch           int32                 // Epoch is the group epoch.
+	AssignmentEpoch int32                 // AssignmentEpoch is the assignment epoch.
+	AssignorName    string                // AssignorName is the selected assignor for this group.
+	Members         []ConsumerGroupMember // Members contains the members of this group sorted first by InstanceID, or if nil, by MemberID.
+
+	AuthorizedOperations []ACLOperation // AuthorizedOperations contains operations the requesting client is allowed to perform on this group.
+
+	Err error // Err is non-nil if the group could not be described.
+}
+
+// DescribedConsumerGroups contains data for multiple consumer groups from a consumer group
+// describe response.
+type DescribedConsumerGroups map[string]DescribedConsumerGroup
+
+// AssignedPartitions returns the set of unique topics and partitions that are
+// assigned across all members in this group.
+func (d *DescribedConsumerGroup) AssignedPartitions() TopicsSet {
+	s := make(TopicsSet)
+	for _, m := range d.Members {
+		s.Merge(m.Assignment)
+	}
+	return s
+}
+
+// TargetPartitions returns the set of unique topics and partitions that are
+// targeted for assignment across all members in this group.
+func (d *DescribedConsumerGroup) TargetPartitions() TopicsSet {
+	s := make(TopicsSet)
+	for _, m := range d.Members {
+		s.Merge(m.TargetAssignment)
+	}
+	return s
+}
+
+// SubscribedTopics returns the set of topics that all members are interested in
+// consuming.
+func (d DescribedConsumerGroup) SubscribedTopics() []string {
+	s := make(map[string]struct{})
+	for _, m := range d.Members {
+		for _, t := range m.SubscribedTopics {
+			s[t] = struct{}{}
+		}
+	}
+	ks := make([]string, 0, len(s))
+	for k := range s {
+		ks = append(ks, k)
+	}
+	sort.Strings(ks)
+	return ks
+}
+
+// AssignedPartitions returns the set of unique topics and partitions that are
+// assigned across all members in all groups. This is the all-group analogue to
+// DescribedConsumerGroup.AssignedPartitions.
+func (ds DescribedConsumerGroups) AssignedPartitions() TopicsSet {
+	s := make(TopicsSet)
+	for _, g := range ds {
+		for _, m := range g.Members {
+			s.Merge(m.Assignment)
+		}
+	}
+	return s
+}
+
+// SubscribedTopics returns the set of topics that all members are interested in
+// consuming. This is the all-group analogue to DescribedConsumerGroup.SubscribedTopics.
+func (ds DescribedConsumerGroups) SubscribedTopics() []string {
+	s := make(map[string]struct{})
+	for _, g := range ds {
+		for _, m := range g.Members {
+			for _, t := range m.SubscribedTopics {
+				s[t] = struct{}{}
+			}
+		}
+	}
+	ks := make([]string, 0, len(s))
+	for k := range s {
+		ks = append(ks, k)
+	}
+	sort.Strings(ks)
+	return ks
+}
+
+// Sorted returns all groups sorted by group name.
+func (ds DescribedConsumerGroups) Sorted() []DescribedConsumerGroup {
+	s := make([]DescribedConsumerGroup, 0, len(ds))
+	for _, d := range ds {
+		s = append(s, d)
+	}
+	sort.Slice(s, func(i, j int) bool { return s[i].Group < s[j].Group })
+	return s
+}
+
+// Error iterates over all groups and returns the first error encountered, if
+// any.
+func (ds DescribedConsumerGroups) Error() error {
+	for _, d := range ds {
+		if d.Err != nil {
+			return d.Err
+		}
+	}
+	return nil
+}
+
+// Names returns a sorted list of all group names.
+func (ds DescribedConsumerGroups) Names() []string {
+	all := make([]string, 0, len(ds))
+	for g := range ds {
+		all = append(all, g)
+	}
+	sort.Strings(all)
+	return all
+}
+
+// DescribeConsumerGroups describes either all consumer groups specified, or
+// all consumer groups in th ecluster if none are specified. This is the "next
+// generation" equivalent of DescribeGroups and is specifically for consumer
+// groups using the new consumer group protocol.
+//
+// This may return *ShardErrors or *AuthError.
+//
+// If no groups are specified and this method first lists groups, and list
+// groups returns a *ShardErrors, this function describes all successfully
+// listed groups and appends the list shard errors to any describe shard
+// errors.
+//
+// If only one group is described, there will be at most one request issued,
+// and there is no need to deeply inspect the error.
+func (cl *Client) DescribeConsumerGroups(ctx context.Context, groups ...string) (DescribedConsumerGroups, error) {
+	var seList *ShardErrors
+	if len(groups) == 0 {
+		listed, err := cl.ListGroupsByType(ctx, []string{"consumer"})
+		switch {
+		case err == nil:
+		case errors.As(err, &seList):
+		default:
+			return nil, err
+		}
+		groups = listed.Groups()
+		if len(groups) == 0 {
+			return nil, err
+		}
+	}
+
+	req := kmsg.NewPtrConsumerGroupDescribeRequest()
+	req.Groups = groups
+	req.IncludeAuthorizedOperations = true
+
+	shards := cl.cl.RequestSharded(ctx, req)
+	described := make(DescribedConsumerGroups)
+	err := shardErrEachBroker(req, shards, func(b BrokerDetail, kr kmsg.Response) error {
+		resp := kr.(*kmsg.ConsumerGroupDescribeResponse)
+		for _, rg := range resp.Groups {
+			if err := maybeAuthErr(rg.ErrorCode); err != nil {
+				return err
+			}
+			g := DescribedConsumerGroup{
+				Group:                rg.Group,
+				Coordinator:          b,
+				State:                rg.State,
+				Epoch:                rg.Epoch,
+				AssignmentEpoch:      rg.AssignmentEpoch,
+				AssignorName:         rg.AssignorName,
+				AuthorizedOperations: DecodeACLOperations(rg.AuthorizedOperations),
+				Err:                  kerr.ErrorForCode(rg.ErrorCode),
+			}
+			for _, rm := range rg.Members {
+				gm := ConsumerGroupMember{
+					MemberID:             rm.MemberID,
+					InstanceID:           rm.InstanceID,
+					RackID:               rm.RackID,
+					MemberEpoch:          rm.MemberEpoch,
+					ClientID:             rm.ClientID,
+					ClientHost:           rm.ClientHost,
+					MemberType:           rm.MemberType,
+					SubscribedTopics:     rm.SubscribedTopics,
+					SubscribedTopicRegex: rm.SubscribedTopicRegex,
+					Assignment:           make(TopicsSet),
+					TargetAssignment:     make(TopicsSet),
+				}
+
+				for _, tp := range rm.Assignment.TopicPartitions {
+					gm.Assignment.Add(tp.Topic, tp.Partitions...)
+				}
+				for _, tp := range rm.TargetAssignment.TopicPartitions {
+					gm.TargetAssignment.Add(tp.Topic, tp.Partitions...)
+				}
+
+				g.Members = append(g.Members, gm)
+			}
+			sort.Slice(g.Members, func(i, j int) bool {
+				if g.Members[i].InstanceID != nil {
+					if g.Members[j].InstanceID == nil {
+						return true
+					}
+					return *g.Members[i].InstanceID < *g.Members[j].InstanceID
+				}
+				if g.Members[j].InstanceID != nil {
+					return false
+				}
+				return g.Members[i].MemberID < g.Members[j].MemberID
+			})
+			described[g.Group] = g
+		}
+		return nil
+	})
+
+	var seDesc *ShardErrors
+	switch {
+	case err == nil:
+		return described, nil
+	case errors.As(err, &seDesc):
+		return described, seDesc.into()
+	default:
+		return nil, err
+	}
+}
+
+//////////////////
+// SHARE GROUPS //
+//////////////////
+
+// ShareGroupMember is the detail of an individual share group member as returned
+// by a share group describe response (KIP-932).
+type ShareGroupMember struct {
+	MemberID    string  // MemberID is the member ID of this group member.
+	RackID      *string // RackID is the rack ID of this member, if any.
+	MemberEpoch int32   // MemberEpoch is the current member epoch.
+	ClientID    string  // ClientID is the client ID used by this member.
+	ClientHost  string  // ClientHost is the host this member is running on.
+
+	SubscribedTopicNames []string  // SubscribedTopicNames are the topic names this member is subscribed to.
+	Assignment           TopicsSet // Assignment is the current assignment for this member.
+}
+
+// DescribedShareGroup contains data from a share group describe response for a single
+// group (KIP-932).
+type DescribedShareGroup struct {
+	GroupID string // GroupID is the ID of the described group.
+
+	Coordinator     BrokerDetail       // Coordinator is the coordinator broker for this group.
+	GroupState      string             // GroupState is the state this group is in.
+	GroupEpoch      int32              // GroupEpoch is the group epoch.
+	AssignmentEpoch int32              // AssignmentEpoch is the assignment epoch.
+	Assignor        string             // Assignor is the selected assignor for this group.
+	Members         []ShareGroupMember // Members contains the members of this group sorted by MemberID.
+
+	AuthorizedOperations []ACLOperation // AuthorizedOperations contains operations the requesting client is allowed to perform on this group.
+
+	Err error // Err is non-nil if the group could not be described.
+}
+
+// DescribedShareGroups contains data for multiple share groups from a share group
+// describe response.
+type DescribedShareGroups map[string]DescribedShareGroup
+
+// AssignedPartitions returns the set of unique topics and partitions that are
+// assigned across all members in this group.
+func (d *DescribedShareGroup) AssignedPartitions() TopicsSet {
+	s := make(TopicsSet)
+	for _, m := range d.Members {
+		s.Merge(m.Assignment)
+	}
+	return s
+}
+
+// SubscribedTopics returns the set of topics that all members are interested in
+// consuming.
+func (d DescribedShareGroup) SubscribedTopics() []string {
+	s := make(map[string]struct{})
+	for _, m := range d.Members {
+		for _, t := range m.SubscribedTopicNames {
+			s[t] = struct{}{}
+		}
+	}
+	ks := make([]string, 0, len(s))
+	for k := range s {
+		ks = append(ks, k)
+	}
+	sort.Strings(ks)
+	return ks
+}
+
+// AssignedPartitions returns the set of unique topics and partitions that are
+// assigned across all members in all groups. This is the all-group analogue to
+// DescribedShareGroup.AssignedPartitions.
+func (ds DescribedShareGroups) AssignedPartitions() TopicsSet {
+	s := make(TopicsSet)
+	for _, g := range ds {
+		for _, m := range g.Members {
+			s.Merge(m.Assignment)
+		}
+	}
+	return s
+}
+
+// SubscribedTopics returns the set of topics that all members are interested in
+// consuming. This is the all-group analogue to DescribedShareGroup.SubscribedTopics.
+func (ds DescribedShareGroups) SubscribedTopics() []string {
+	s := make(map[string]struct{})
+	for _, g := range ds {
+		for _, m := range g.Members {
+			for _, t := range m.SubscribedTopicNames {
+				s[t] = struct{}{}
+			}
+		}
+	}
+	ks := make([]string, 0, len(s))
+	for k := range s {
+		ks = append(ks, k)
+	}
+	sort.Strings(ks)
+	return ks
+}
+
+// Sorted returns all groups sorted by group ID.
+func (ds DescribedShareGroups) Sorted() []DescribedShareGroup {
+	s := make([]DescribedShareGroup, 0, len(ds))
+	for _, d := range ds {
+		s = append(s, d)
+	}
+	sort.Slice(s, func(i, j int) bool { return s[i].GroupID < s[j].GroupID })
+	return s
+}
+
+// Error iterates over all groups and returns the first error encountered, if
+// any.
+func (ds DescribedShareGroups) Error() error {
+	for _, d := range ds {
+		if d.Err != nil {
+			return d.Err
+		}
+	}
+	return nil
+}
+
+// GroupIDs returns a sorted list of all group IDs.
+func (ds DescribedShareGroups) GroupIDs() []string {
+	all := make([]string, 0, len(ds))
+	for g := range ds {
+		all = append(all, g)
+	}
+	sort.Strings(all)
+	return all
+}
+
+// DescribeShareGroups describes either all share groups specified, or all
+// share groups in the cluster if none are specified.
+//
+// This may return *ShardErrors or *AuthError.
+//
+// If no groups are specified and this method first lists groups, and list
+// groups returns a *ShardErrors, this function describes all successfully
+// listed groups and appends the list shard errors to any describe shard
+// errors.
+//
+// If only one group is described, there will be at most one request issued,
+// and there is no need to deeply inspect the error.
+func (cl *Client) DescribeShareGroups(ctx context.Context, groups ...string) (DescribedShareGroups, error) {
+	var seList *ShardErrors
+	if len(groups) == 0 {
+		listed, err := cl.ListGroupsByType(ctx, []string{"share"})
+		switch {
+		case err == nil:
+		case errors.As(err, &seList):
+		default:
+			return nil, err
+		}
+		groups = listed.Groups()
+		if len(groups) == 0 {
+			return nil, err
+		}
+	}
+
+	req := kmsg.NewPtrShareGroupDescribeRequest()
+	req.GroupIDs = groups
+	req.IncludeAuthorizedOperations = true
+
+	shards := cl.cl.RequestSharded(ctx, req)
+	described := make(DescribedShareGroups)
+	err := shardErrEachBroker(req, shards, func(b BrokerDetail, kr kmsg.Response) error {
+		resp := kr.(*kmsg.ShareGroupDescribeResponse)
+		for _, rg := range resp.Groups {
+			if err := maybeAuthErr(rg.ErrorCode); err != nil {
+				return err
+			}
+			g := DescribedShareGroup{
+				GroupID:              rg.GroupID,
+				Coordinator:          b,
+				GroupState:           rg.GroupState,
+				GroupEpoch:           rg.GroupEpoch,
+				AssignmentEpoch:      rg.AssignmentEpoch,
+				Assignor:             rg.Assignor,
+				AuthorizedOperations: DecodeACLOperations(rg.AuthorizedOperations),
+				Err:                  kerr.ErrorForCode(rg.ErrorCode),
+			}
+			for _, rm := range rg.Members {
+				gm := ShareGroupMember{
+					MemberID:             rm.MemberID,
+					RackID:               rm.RackID,
+					MemberEpoch:          rm.MemberEpoch,
+					ClientID:             rm.ClientID,
+					ClientHost:           rm.ClientHost,
+					SubscribedTopicNames: rm.SubscribedTopicNames,
+					Assignment:           make(TopicsSet),
+				}
+
+				for _, tp := range rm.Assignment.TopicPartitions {
+					gm.Assignment.Add(tp.Topic, tp.Partitions...)
+				}
+
+				g.Members = append(g.Members, gm)
+			}
+			sort.Slice(g.Members, func(i, j int) bool {
+				return g.Members[i].MemberID < g.Members[j].MemberID
+			})
+			described[g.GroupID] = g
+		}
+		return nil
+	})
+
+	var seDesc *ShardErrors
+	switch {
+	case err == nil:
+		return described, nil
+	case errors.As(err, &seDesc):
+		return described, seDesc.into()
+	default:
+		return nil, err
+	}
+}

@@ -45,7 +45,7 @@ func removeFastRegexMatcherFromExpr(expr Expr) Expr {
 	if expr == nil {
 		return nil
 	}
-	expr.Walk(func(e Expr) {
+	expr.Walk(func(e Expr) bool {
 		switch typed := e.(type) {
 		case *MatchersExpr:
 			typed.Mts = RemoveFastRegexMatchers(typed.Mts)
@@ -53,7 +53,7 @@ func removeFastRegexMatcherFromExpr(expr Expr) Expr {
 			typed.LabelFilterer = removeFastRegexMatcherFromLabelFilterer(typed.LabelFilterer)
 		case *LogRangeExpr:
 			if typed.Unwrap == nil {
-				return
+				return true
 			}
 			cleaned := make([]log.LabelFilterer, 0, len(typed.Unwrap.PostFilters))
 			for _, filter := range typed.Unwrap.PostFilters {
@@ -65,9 +65,8 @@ func removeFastRegexMatcherFromExpr(expr Expr) Expr {
 			for i, variant := range typed.variants {
 				typed.variants[i] = removeFastRegexMatcherFromExpr(variant).(SampleExpr)
 			}
-		default:
-			return
 		}
+		return true
 	})
 	return expr
 }

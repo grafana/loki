@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	"context"
+
 	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -18,7 +20,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
-	"golang.org/x/net/context"
 	"golang.org/x/time/rate"
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
@@ -320,7 +321,7 @@ func (i *Ingester) collectChunksToFlush(instance *instance, fp model.Fingerprint
 	stream, ok = instance.streams.LoadByFP(fp)
 
 	if !ok {
-		return nil, nil, nil
+		return nil, labels.EmptyLabels(), nil
 	}
 
 	stream.chunkMtx.Lock()
@@ -508,6 +509,7 @@ func (i *Ingester) encodeChunk(ctx context.Context, ch *chunk.Chunk, desc *chunk
 // If the flush isn't successful, the operation for this userID is requeued allowing this and all other unflushed
 // chunk to have another opportunity to be flushed.
 func (i *Ingester) flushChunk(ctx context.Context, ch *chunk.Chunk) error {
+	i.metrics.chunksFlushRequestsTotal.Inc()
 	if err := i.store.Put(ctx, []chunk.Chunk{*ch}); err != nil {
 		i.metrics.chunksFlushFailures.Inc()
 		return fmt.Errorf("store put chunk: %w", err)

@@ -13,7 +13,9 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/crypto/tls"
 
+	"github.com/grafana/loki/v3/pkg/compactor/client/grpc"
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
+	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
 	"github.com/grafana/loki/v3/pkg/util/log"
 )
 
@@ -45,7 +47,7 @@ type compactorHTTPClient struct {
 
 // NewHTTPClient creates a client which talks to compactor over HTTP.
 // It uses provided TLS config which creating HTTP client.
-func NewHTTPClient(addr string, cfg HTTPConfig) (deletion.CompactorClient, error) {
+func NewHTTPClient(addr string, cfg HTTPConfig) (CompactorClient, error) {
 	u, err := url.Parse(addr)
 	if err != nil {
 		level.Error(log.Logger).Log("msg", "error parsing url", "err", err)
@@ -87,7 +89,7 @@ func (c *compactorHTTPClient) Name() string {
 
 func (c *compactorHTTPClient) Stop() {}
 
-func (c *compactorHTTPClient) GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]deletion.DeleteRequest, error) {
+func (c *compactorHTTPClient) GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]deletionproto.DeleteRequest, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.deleteRequestsURL, nil)
 	if err != nil {
 		level.Error(log.Logger).Log("msg", "error getting delete requests from the store", "err", err)
@@ -112,7 +114,7 @@ func (c *compactorHTTPClient) GetAllDeleteRequestsForUser(ctx context.Context, u
 		return nil, err
 	}
 
-	var deleteRequests []deletion.DeleteRequest
+	var deleteRequests []deletionproto.DeleteRequest
 	if err := json.NewDecoder(resp.Body).Decode(&deleteRequests); err != nil {
 		level.Error(log.Logger).Log("msg", "error marshalling response", "err", err)
 		return nil, err
@@ -150,4 +152,8 @@ func (c *compactorHTTPClient) GetCacheGenerationNumber(ctx context.Context, user
 	}
 
 	return genNumber, err
+}
+
+func (c *compactorHTTPClient) JobQueueClient() grpc.JobQueueClient {
+	panic("compactor does not support interacting with job queue over HTTP")
 }

@@ -25,39 +25,29 @@ app.kubernetes.io/component: compactor
 compactor image
 */}}
 {{- define "loki.compactorImage" -}}
-{{- $dict := dict "loki" .Values.loki.image "service" .Values.compactor.image "global" .Values.global.image "defaultVersion" .Chart.AppVersion -}}
+{{- $dict := dict "loki" .Values.loki.image "service" .Values.compactor.image "global" .Values.global "defaultVersion" .Chart.AppVersion -}}
 {{- include "loki.lokiImage" $dict -}}
 {{- end }}
 
 {{/*
-compactor readinessProbe
+compactor readiness probe
 */}}
-{{- define "loki.compactor.readinessProbe" -}}
-{{- with .Values.compactor.readinessProbe }}
-readinessProbe:
-  {{- toYaml . | nindent 2 }}
-{{- else }}
-{{- with .Values.loki.readinessProbe }}
+{{- define "loki.compactor.readinessProbe" }}
+{{- with .Values.compactor.readinessProbe | default .Values.loki.readinessProbe }}
 readinessProbe:
   {{- toYaml . | nindent 2 }}
 {{- end }}
 {{- end }}
-{{- end -}}
 
 {{/*
-compactor livenessProbe
+compactor liveness probe
 */}}
-{{- define "loki.compactor.livenessProbe" -}}
-{{- with .Values.compactor.livenessProbe }}
-livenessProbe:
-  {{- toYaml . | nindent 2 }}
-{{- else }}
-{{- with .Values.loki.livenessProbe }}
+{{- define "loki.compactor.livenessProbe" }}
+{{- with .Values.compactor.livenessProbe | default .Values.loki.livenessProbe }}
 livenessProbe:
   {{- toYaml . | nindent 2 }}
 {{- end }}
 {{- end }}
-{{- end -}}
 
 {{/*
 compactor priority class name

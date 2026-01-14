@@ -31,9 +31,12 @@ func newBuckets[N int64 | float64](attrs attribute.Set, n int) *buckets[N] {
 
 func (b *buckets[N]) sum(value N) { b.total += value }
 
-func (b *buckets[N]) bin(idx int, value N) {
+func (b *buckets[N]) bin(idx int) {
 	b.counts[idx]++
 	b.count++
+}
+
+func (b *buckets[N]) minMax(value N) {
 	if value < b.min {
 		b.min = value
 	} else if value > b.max {
@@ -44,16 +47,22 @@ func (b *buckets[N]) bin(idx int, value N) {
 // histValues summarizes a set of measurements as an histValues with
 // explicitly defined buckets.
 type histValues[N int64 | float64] struct {
-	noSum  bool
-	bounds []float64
+	noMinMax bool
+	noSum    bool
+	bounds   []float64
 
 	newRes   func(attribute.Set) FilteredExemplarReservoir[N]
-	limit    limiter[*buckets[N]]
+	limit    limiter[buckets[N]]
 	values   map[attribute.Distinct]*buckets[N]
 	valuesMu sync.Mutex
 }
 
-func newHistValues[N int64 | float64](bounds []float64, noSum bool, limit int, r func(attribute.Set) FilteredExemplarReservoir[N]) *histValues[N] {
+func newHistValues[N int64 | float64](
+	bounds []float64,
+	noMinMax, noSum bool,
+	limit int,
+	r func(attribute.Set) FilteredExemplarReservoir[N],
+) *histValues[N] {
 	// The responsibility of keeping all buckets correctly associated with the
 	// passed boundaries is ultimately this type's responsibility. Make a copy
 	// here so we can always guarantee this. Or, in the case of failure, have
@@ -61,17 +70,23 @@ func newHistValues[N int64 | float64](bounds []float64, noSum bool, limit int, r
 	b := slices.Clone(bounds)
 	slices.Sort(b)
 	return &histValues[N]{
-		noSum:  noSum,
-		bounds: b,
-		newRes: r,
-		limit:  newLimiter[*buckets[N]](limit),
-		values: make(map[attribute.Distinct]*buckets[N]),
+		noMinMax: noMinMax,
+		noSum:    noSum,
+		bounds:   b,
+		newRes:   r,
+		limit:    newLimiter[buckets[N]](limit),
+		values:   make(map[attribute.Distinct]*buckets[N]),
 	}
 }
 
 // Aggregate records the measurement value, scoped by attr, and aggregates it
 // into a histogram.
-func (s *histValues[N]) measure(ctx context.Context, value N, fltrAttr attribute.Set, droppedAttr []attribute.KeyValue) {
+func (s *histValues[N]) measure(
+	ctx context.Context,
+	value N,
+	fltrAttr attribute.Set,
+	droppedAttr []attribute.KeyValue,
+) {
 	// This search will return an index in the range [0, len(s.bounds)], where
 	// it will return len(s.bounds) if value is greater than the last element
 	// of s.bounds. This aligns with the buckets in that the length of buckets
@@ -82,24 +97,32 @@ func (s *histValues[N]) measure(ctx context.Context, value N, fltrAttr attribute
 	s.valuesMu.Lock()
 	defer s.valuesMu.Unlock()
 
-	attr := s.limit.Attributes(fltrAttr, s.values)
-	b, ok := s.values[attr.Equivalent()]
+	b, ok := s.values[fltrAttr.Equivalent()]
 	if !ok {
-		// N+1 buckets. For example:
-		//
-		//   bounds = [0, 5, 10]
-		//
-		// Then,
-		//
-		//   buckets = (-∞, 0], (0, 5.0], (5.0, 10.0], (10.0, +∞)
-		b = newBuckets[N](attr, len(s.bounds)+1)
-		b.res = s.newRes(attr)
+		fltrAttr = s.limit.Attributes(fltrAttr, s.values)
+		// If we overflowed, make sure we add to the existing overflow series
+		// if it already exists.
+		b, ok = s.values[fltrAttr.Equivalent()]
+		if !ok {
+			// N+1 buckets. For example:
+			//
+			//   bounds = [0, 5, 10]
+			//
+			// Then,
+			//
+			//   buckets = (-∞, 0], (0, 5.0], (5.0, 10.0], (10.0, +∞)
+			b = newBuckets[N](fltrAttr, len(s.bounds)+1)
+			b.res = s.newRes(fltrAttr)
 
-		// Ensure min and max are recorded values (not zero), for new buckets.
-		b.min, b.max = value, value
-		s.values[attr.Equivalent()] = b
+			// Ensure min and max are recorded values (not zero), for new buckets.
+			b.min, b.max = value, value
+			s.values[fltrAttr.Equivalent()] = b
+		}
 	}
-	b.bin(idx, value)
+	b.bin(idx)
+	if !s.noMinMax {
+		b.minMax(value)
+	}
 	if !s.noSum {
 		b.sum(value)
 	}
@@ -108,10 +131,14 @@ func (s *histValues[N]) measure(ctx context.Context, value N, fltrAttr attribute
 
 // newHistogram returns an Aggregator that summarizes a set of measurements as
 // an histogram.
-func newHistogram[N int64 | float64](boundaries []float64, noMinMax, noSum bool, limit int, r func(attribute.Set) FilteredExemplarReservoir[N]) *histogram[N] {
+func newHistogram[N int64 | float64](
+	boundaries []float64,
+	noMinMax, noSum bool,
+	limit int,
+	r func(attribute.Set) FilteredExemplarReservoir[N],
+) *histogram[N] {
 	return &histogram[N]{
-		histValues: newHistValues[N](boundaries, noSum, limit, r),
-		noMinMax:   noMinMax,
+		histValues: newHistValues[N](boundaries, noMinMax, noSum, limit, r),
 		start:      now(),
 	}
 }
@@ -121,11 +148,12 @@ func newHistogram[N int64 | float64](boundaries []float64, noMinMax, noSum bool,
 type histogram[N int64 | float64] struct {
 	*histValues[N]
 
-	noMinMax bool
-	start    time.Time
+	start time.Time
 }
 
-func (s *histogram[N]) delta(dest *metricdata.Aggregation) int {
+func (s *histogram[N]) delta(
+	dest *metricdata.Aggregation, //nolint:gocritic // The pointer is needed for the ComputeAggregation interface
+) int {
 	t := now()
 
 	// If *dest is not a metricdata.Histogram, memory reuse is missed. In that
@@ -175,7 +203,9 @@ func (s *histogram[N]) delta(dest *metricdata.Aggregation) int {
 	return n
 }
 
-func (s *histogram[N]) cumulative(dest *metricdata.Aggregation) int {
+func (s *histogram[N]) cumulative(
+	dest *metricdata.Aggregation, //nolint:gocritic // The pointer is needed for the ComputeAggregation interface
+) int {
 	t := now()
 
 	// If *dest is not a metricdata.Histogram, memory reuse is missed. In that

@@ -18,11 +18,10 @@
 package credentials
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"runtime"
-
-	"github.com/goccy/go-json"
 )
 
 // A FileMinioClient retrieves credentials from the current user's home

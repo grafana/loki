@@ -206,6 +206,9 @@ func WriteQueryPatternsResponseJSON(r *logproto.QueryPatternsResponse, w io.Writ
 			s.WriteObjectField("pattern")
 			s.WriteStringWithHTMLEscaped(series.Pattern)
 			s.WriteMore()
+			s.WriteObjectField("level")
+			s.WriteString(series.Level)
+			s.WriteMore()
 			s.WriteObjectField("samples")
 			s.WriteArrayStart()
 			for j, sample := range series.Samples {

@@ -80,7 +80,7 @@ type SDConfig struct {
 }
 
 // NewDiscovererMetrics implements discovery.Config.
-func (*SDConfig) NewDiscovererMetrics(reg prometheus.Registerer, rmi discovery.RefreshMetricsInstantiator) discovery.DiscovererMetrics {
+func (*SDConfig) NewDiscovererMetrics(_ prometheus.Registerer, rmi discovery.RefreshMetricsInstantiator) discovery.DiscovererMetrics {
 	return &marathonMetrics{
 		refreshMetrics: rmi,
 	}
@@ -101,7 +101,7 @@ func (c *SDConfig) SetDirectory(dir string) {
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (c *SDConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (c *SDConfig) UnmarshalYAML(unmarshal func(any) error) error {
 	*c = DefaultSDConfig
 	type plain SDConfig
 	err := unmarshal((*plain)(c))
@@ -513,7 +513,7 @@ func extractPortMapping(portMappings []portMapping, containerNet bool) ([]uint32
 	ports := make([]uint32, len(portMappings))
 	labels := make([]map[string]string, len(portMappings))
 
-	for i := 0; i < len(portMappings); i++ {
+	for i := range portMappings {
 		labels[i] = portMappings[i].Labels
 
 		if containerNet {

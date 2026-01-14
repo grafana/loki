@@ -17,8 +17,10 @@
 package http
 
 import (
+	"context"
 	"fmt"
 	"io"
+	"net/http"
 	"strconv"
 	"strings"
 
@@ -38,8 +40,30 @@ type Request struct {
 	params   map[string]string
 
 	// Optional body and length fields to set the body stream and content length
-	body   io.ReadCloser
-	length int64
+	body       io.ReadCloser
+	length     int64
+	ctx        context.Context
+	httpClient *http.Client
+}
+
+func (r *Request) HTTPClient() *http.Client {
+	return r.httpClient
+}
+
+func (r *Request) SetHTTPClient(client *http.Client) {
+	if client != nil {
+		r.httpClient = client
+	}
+}
+
+func (r *Request) Context() context.Context {
+	return r.ctx
+}
+
+func (r *Request) SetContext(ctx context.Context) {
+	if ctx != nil {
+		r.ctx = ctx
+	}
 }
 
 func (r *Request) Protocol() string {

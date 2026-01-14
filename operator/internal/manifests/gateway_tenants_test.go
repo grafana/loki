@@ -269,14 +269,15 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 				},
 				OpenShiftOptions: openshift.Options{
 					BuildOpts: openshift.BuildOptions{
-						LokiStackName:        "lokistack-ocp",
-						LokiStackNamespace:   "stack-ns",
-						GatewayName:          "lokistack-ocp-gateway",
-						GatewaySvcName:       "lokistack-ocp-gateway-http",
-						GatewaySvcTargetPort: "public",
-						GatewayRouteTimeout:  75 * time.Second,
-						RulerName:            "lokistack-ocp-ruler",
-						Labels:               ComponentLabels(LabelGatewayComponent, "lokistack-ocp"),
+						LokiStackName:         "lokistack-ocp",
+						LokiStackNamespace:    "stack-ns",
+						GatewayName:           "lokistack-ocp-gateway",
+						GatewaySvcName:        "lokistack-ocp-gateway-http",
+						GatewaySvcTargetPort:  "public",
+						GatewayRouteTimeout:   75 * time.Second,
+						RulerName:             "lokistack-ocp-ruler",
+						Labels:                ComponentLabels(LabelGatewayComponent, "lokistack-ocp"),
+						ExternalAccessEnabled: true,
 					},
 					Authentication: []openshift.AuthenticationSpec{
 						{
@@ -365,14 +366,15 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 				},
 				OpenShiftOptions: openshift.Options{
 					BuildOpts: openshift.BuildOptions{
-						LokiStackName:        "lokistack-ocp",
-						LokiStackNamespace:   "stack-ns",
-						GatewayName:          "lokistack-ocp-gateway",
-						GatewaySvcName:       "lokistack-ocp-gateway-http",
-						GatewaySvcTargetPort: "public",
-						GatewayRouteTimeout:  75 * time.Second,
-						RulerName:            "lokistack-ocp-ruler",
-						Labels:               ComponentLabels(LabelGatewayComponent, "lokistack-ocp"),
+						LokiStackName:         "lokistack-ocp",
+						LokiStackNamespace:    "stack-ns",
+						GatewayName:           "lokistack-ocp-gateway",
+						GatewaySvcName:        "lokistack-ocp-gateway-http",
+						GatewaySvcTargetPort:  "public",
+						GatewayRouteTimeout:   75 * time.Second,
+						RulerName:             "lokistack-ocp-ruler",
+						Labels:                ComponentLabels(LabelGatewayComponent, "lokistack-ocp"),
+						ExternalAccessEnabled: true,
 					},
 					Authentication: []openshift.AuthenticationSpec{
 						{
@@ -380,6 +382,87 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 							TenantID:       "",
 							ServiceAccount: "lokistack-ocp-gateway",
 							RedirectURL:    "https://lokistack-ocp-stack-ns.apps.example.com/openshift/network/callback",
+						},
+					},
+					Authorization: openshift.AuthorizationSpec{
+						OPAUrl: "http://localhost:8082/v1/data/lokistack/allow",
+					},
+				},
+			},
+		},
+		{
+			desc: "openshift-logging mode with external access disabled",
+			opts: &Options{
+				Name:              "lokistack-ocp",
+				Namespace:         "stack-ns",
+				GatewayBaseDomain: "example.com",
+				Gates: configv1.FeatureGates{
+					OpenShift: configv1.OpenShiftFeatureGates{
+						Enabled: true,
+					},
+				},
+				Stack: lokiv1.LokiStackSpec{
+					Tenants: &lokiv1.TenantsSpec{
+						Mode:           lokiv1.OpenshiftLogging,
+						DisableIngress: true,
+					},
+				},
+				Timeouts: TimeoutConfig{
+					Gateway: GatewayTimeoutConfig{
+						WriteTimeout: 1 * time.Minute,
+					},
+				},
+			},
+			want: &Options{
+				Name:              "lokistack-ocp",
+				Namespace:         "stack-ns",
+				GatewayBaseDomain: "example.com",
+				Gates: configv1.FeatureGates{
+					OpenShift: configv1.OpenShiftFeatureGates{
+						Enabled: true,
+					},
+				},
+				Stack: lokiv1.LokiStackSpec{
+					Tenants: &lokiv1.TenantsSpec{
+						Mode:           lokiv1.OpenshiftLogging,
+						DisableIngress: true,
+					},
+				},
+				Timeouts: TimeoutConfig{
+					Gateway: GatewayTimeoutConfig{
+						WriteTimeout: 1 * time.Minute,
+					},
+				},
+				OpenShiftOptions: openshift.Options{
+					BuildOpts: openshift.BuildOptions{
+						LokiStackName:         "lokistack-ocp",
+						LokiStackNamespace:    "stack-ns",
+						GatewayName:           "lokistack-ocp-gateway",
+						GatewaySvcName:        "lokistack-ocp-gateway-http",
+						GatewaySvcTargetPort:  "public",
+						GatewayRouteTimeout:   75 * time.Second,
+						RulerName:             "lokistack-ocp-ruler",
+						Labels:                ComponentLabels(LabelGatewayComponent, "lokistack-ocp"),
+						ExternalAccessEnabled: false,
+					},
+					Authentication: []openshift.AuthenticationSpec{
+						{
+							TenantName:     "application",
+							TenantID:       "",
+							ServiceAccount: "lokistack-ocp-gateway",
+							RedirectURL:    "https://lokistack-ocp-stack-ns.apps.example.com/openshift/application/callback",
+						},
+						{
+							TenantName:     "infrastructure",
+							TenantID:       "",
+							ServiceAccount: "lokistack-ocp-gateway",
+							RedirectURL:    "https://lokistack-ocp-stack-ns.apps.example.com/openshift/infrastructure/callback",
+						},
+						{
+							TenantName:     "audit",
+							TenantID:       "",
+							ServiceAccount: "lokistack-ocp-gateway",
+							RedirectURL:    "https://lokistack-ocp-stack-ns.apps.example.com/openshift/audit/callback",
 						},
 					},
 					Authorization: openshift.AuthorizationSpec{
@@ -716,7 +799,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 								{
 									Name: gatewayContainerName,
 									Args: []string{
-										"--logs.auth.extract-selectors=kubernetes_namespace_name",
+										"--logs.auth.extract-selectors=kubernetes_namespace_name,k8s_namespace_name",
 									},
 								},
 								{
@@ -730,7 +813,8 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										"--opa.skip-tenants=audit,infrastructure",
 										"--opa.package=lokistack",
 										"--opa.admin-groups=system:cluster-admins,cluster-admin,dedicated-admin",
-										"--opa.matcher=kubernetes_namespace_name",
+										"--opa.matcher=kubernetes_namespace_name,k8s_namespace_name",
+										"--opa.viaq-to-otel-migration=true",
 										`--openshift.mappings=application=loki.grafana.com`,
 										`--openshift.mappings=infrastructure=loki.grafana.com`,
 										`--openshift.mappings=audit=loki.grafana.com`,
@@ -825,7 +909,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 								{
 									Name: gatewayContainerName,
 									Args: []string{
-										"--logs.auth.extract-selectors=kubernetes_namespace_name",
+										"--logs.auth.extract-selectors=kubernetes_namespace_name,k8s_namespace_name",
 									},
 								},
 								{
@@ -839,7 +923,8 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										"--opa.skip-tenants=audit,infrastructure",
 										"--opa.package=lokistack",
 										"--opa.admin-groups=system:cluster-admins,cluster-admin,dedicated-admin",
-										"--opa.matcher=kubernetes_namespace_name",
+										"--opa.matcher=kubernetes_namespace_name,k8s_namespace_name",
+										"--opa.viaq-to-otel-migration=true",
 										"--tls.internal.server.cert-file=/var/run/tls/http/server/tls.crt",
 										"--tls.internal.server.key-file=/var/run/tls/http/server/tls.key",
 										"--tls.min-version=min-version",
@@ -1162,7 +1247,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 								{
 									Name: gatewayContainerName,
 									Args: []string{
-										"--logs.auth.extract-selectors=kubernetes_namespace_name",
+										"--logs.auth.extract-selectors=kubernetes_namespace_name,k8s_namespace_name",
 									},
 								},
 								{
@@ -1176,7 +1261,8 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										"--opa.skip-tenants=audit,infrastructure",
 										"--opa.package=lokistack",
 										"--opa.admin-groups=custom-admins,other-admins",
-										"--opa.matcher=kubernetes_namespace_name",
+										"--opa.matcher=kubernetes_namespace_name,k8s_namespace_name",
+										"--opa.viaq-to-otel-migration=true",
 										`--openshift.mappings=application=loki.grafana.com`,
 										`--openshift.mappings=infrastructure=loki.grafana.com`,
 										`--openshift.mappings=audit=loki.grafana.com`,
@@ -1259,7 +1345,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 								{
 									Name: gatewayContainerName,
 									Args: []string{
-										"--logs.auth.extract-selectors=kubernetes_namespace_name",
+										"--logs.auth.extract-selectors=kubernetes_namespace_name,k8s_namespace_name",
 									},
 								},
 								{
@@ -1272,7 +1358,8 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										"--web.healthchecks.url=http://localhost:8082",
 										"--opa.skip-tenants=audit,infrastructure",
 										"--opa.package=lokistack",
-										"--opa.matcher=kubernetes_namespace_name",
+										"--opa.matcher=kubernetes_namespace_name,k8s_namespace_name",
+										"--opa.viaq-to-otel-migration=true",
 										`--openshift.mappings=application=loki.grafana.com`,
 										`--openshift.mappings=infrastructure=loki.grafana.com`,
 										`--openshift.mappings=audit=loki.grafana.com`,

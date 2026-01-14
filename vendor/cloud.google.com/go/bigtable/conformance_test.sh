@@ -50,11 +50,11 @@ trap cleanup EXIT
 
 # Run the conformance tests
 cd $conformanceTestsHome
-# Tests in https://github.com/googleapis/cloud-bigtable-clients-test/tree/main/tests can only be run on go1.22.7
-go install golang.org/dl/go1.22.7@latest
-go1.22.7 download
+# Tests in https://github.com/googleapis/cloud-bigtable-clients-test/tree/main/tests can only be run on go1.23.0
+go install golang.org/dl/go1.23.0@latest
+go1.23.0 download
 # known_failures.txt contains tests for the unimplemented features
-eval "go1.22.7 test -v -proxy_addr=:$testProxyPort -skip `tr -d '\n' < $testProxyHome/known_failures.txt` | tee -a $sponge_log"
+eval "go1.23.0 test -v -proxy_addr=:$testProxyPort -skip `tr -d '\n' < $testProxyHome/known_failures.txt` | tee -a $sponge_log"
 RETURN_CODE=$?
 
 echo "exiting with ${RETURN_CODE}"

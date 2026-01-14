@@ -140,7 +140,9 @@ func (d DownstreamLogSelectorExpr) Pretty(level int) string {
 }
 
 func (d DownstreamSampleExpr) Walk(f syntax.WalkFn) {
-	f(d)
+	if !f(d) {
+		return
+	}
 	if d.SampleExpr != nil {
 		d.SampleExpr.Walk(f)
 	}
@@ -177,7 +179,9 @@ func (c *ConcatSampleExpr) string(maxDepth int) string {
 }
 
 func (c *ConcatSampleExpr) Walk(f syntax.WalkFn) {
-	f(c)
+	if !f(c) {
+		return
+	}
 	if c.SampleExpr != nil {
 		c.SampleExpr.Walk(f)
 	}
@@ -280,7 +284,9 @@ func (e QuantileSketchEvalExpr) String() string {
 }
 
 func (e *QuantileSketchEvalExpr) Walk(f syntax.WalkFn) {
-	f(e)
+	if !f(e) {
+		return
+	}
 	if e.SampleExpr != nil {
 		e.SampleExpr.Walk(f)
 	}
@@ -311,7 +317,9 @@ func (e QuantileSketchMergeExpr) String() string {
 }
 
 func (e *QuantileSketchMergeExpr) Walk(f syntax.WalkFn) {
-	f(e)
+	if !f(e) {
+		return
+	}
 	if e.SampleExpr != nil {
 		e.SampleExpr.Walk(f)
 	}
@@ -343,7 +351,9 @@ func (e MergeFirstOverTimeExpr) String() string {
 }
 
 func (e *MergeFirstOverTimeExpr) Walk(f syntax.WalkFn) {
-	f(e)
+	if !f(e) {
+		return
+	}
 	if e.SampleExpr != nil {
 		e.SampleExpr.Walk(f)
 	}
@@ -375,7 +385,9 @@ func (e MergeLastOverTimeExpr) String() string {
 }
 
 func (e *MergeLastOverTimeExpr) Walk(f syntax.WalkFn) {
-	f(e)
+	if !f(e) {
+		return
+	}
 	if e.SampleExpr != nil {
 		e.SampleExpr.Walk(f)
 	}
@@ -402,11 +414,16 @@ func (e CountMinSketchEvalExpr) String() string {
 
 		sb.WriteString(d.String())
 	}
+	if len(e.downstreams) == 0 {
+		sb.WriteString(e.SampleExpr.String())
+	}
 	return fmt.Sprintf("CountMinSketchEval<%s>", sb.String())
 }
 
 func (e *CountMinSketchEvalExpr) Walk(f syntax.WalkFn) {
-	f(e)
+	if !f(e) {
+		return
+	}
 	if e.SampleExpr != nil {
 		e.SampleExpr.Walk(f)
 	}
@@ -526,8 +543,8 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 		for cur != nil {
 			qry := DownstreamQuery{
 				Params: ParamsWithExpressionOverride{
-					Params:             ParamOverridesFromShard(params, cur.DownstreamSampleExpr.shard),
-					ExpressionOverride: cur.DownstreamSampleExpr.SampleExpr,
+					Params:             ParamOverridesFromShard(params, cur.shard),
+					ExpressionOverride: cur.SampleExpr,
 				},
 			}
 			queries = append(queries, qry)
@@ -731,8 +748,8 @@ func (ev *DownstreamEvaluator) NewIterator(
 		for cur != nil {
 			qry := DownstreamQuery{
 				Params: ParamsWithExpressionOverride{
-					Params:             ParamOverridesFromShard(params, cur.DownstreamLogSelectorExpr.shard),
-					ExpressionOverride: cur.DownstreamLogSelectorExpr.LogSelectorExpr,
+					Params:             ParamOverridesFromShard(params, cur.shard),
+					ExpressionOverride: cur.LogSelectorExpr,
 				},
 			}
 			queries = append(queries, qry)

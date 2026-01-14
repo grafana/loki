@@ -38,20 +38,18 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"cloud.google.com/go/auth"
 	"cloud.google.com/go/internal/optional"
-	"cloud.google.com/go/internal/trace"
 	"cloud.google.com/go/storage/internal"
 	"cloud.google.com/go/storage/internal/apiv2/storagepb"
 	"github.com/googleapis/gax-go/v2"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
-	"golang.org/x/oauth2/google"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/api/option"
 	"google.golang.org/api/option/internaloption"
 	raw "google.golang.org/api/storage/v1"
-	"google.golang.org/api/transport"
 	htransport "google.golang.org/api/transport/http"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/experimental/stats"
@@ -121,11 +119,23 @@ type Client struct {
 	// xmlHost is the default host used for XML requests.
 	xmlHost string
 	// May be nil.
-	creds *google.Credentials
+	creds *auth.Credentials
 	retry *retryConfig
 
 	// tc is the transport-agnostic client implemented with either gRPC or HTTP.
 	tc storageClient
+
+	// Option to use gRRPC appendable upload API was set.
+	grpcAppendableUploads bool
+}
+
+// credsJSON returns the raw JSON of the Client's creds and true, or an empty slice
+// and false if no credentials JSON is available.
+func (c Client) credsJSON() ([]byte, bool) {
+	if c.creds != nil && len(c.creds.JSON()) > 0 {
+		return c.creds.JSON(), true
+	}
+	return []byte{}, false
 }
 
 // NewClient creates a new Google Cloud Storage client using the HTTP transport.
@@ -138,7 +148,7 @@ type Client struct {
 // You may configure the client by passing in options from the [google.golang.org/api/option]
 // package. You may also use options defined in this package, such as [WithJSONReads].
 func NewClient(ctx context.Context, opts ...option.ClientOption) (*Client, error) {
-	var creds *google.Credentials
+	var creds *auth.Credentials
 
 	// In general, it is recommended to use raw.NewService instead of htransport.NewClient
 	// since raw.NewService configures the correct default endpoints when initializing the
@@ -154,14 +164,15 @@ func NewClient(ctx context.Context, opts ...option.ClientOption) (*Client, error
 		opts = append(opts, internaloption.WithDefaultEndpointTemplate("https://storage.UNIVERSE_DOMAIN/storage/v1/"),
 			internaloption.WithDefaultMTLSEndpoint("https://storage.mtls.googleapis.com/storage/v1/"),
 			internaloption.WithDefaultUniverseDomain("googleapis.com"),
+			internaloption.EnableNewAuthLibrary(),
 		)
 
 		// Don't error out here. The user may have passed in their own HTTP
 		// client which does not auth with ADC or other common conventions.
-		c, err := transport.Creds(ctx, opts...)
+		c, err := internaloption.AuthCreds(ctx, opts)
 		if err == nil {
 			creds = c
-			opts = append(opts, internaloption.WithCredentials(creds))
+			opts = append(opts, option.WithAuthCredentials(creds))
 		}
 	} else {
 		var hostURL *url.URL
@@ -196,7 +207,9 @@ func NewClient(ctx context.Context, opts ...option.ClientOption) (*Client, error
 		return nil, fmt.Errorf("dialing: %w", err)
 	}
 	// RawService should be created with the chosen endpoint to take account of user override.
-	rawService, err := raw.NewService(ctx, option.WithEndpoint(ep), option.WithHTTPClient(hc))
+	// Preserve other user-supplied options as well.
+	opts = append(opts, option.WithEndpoint(ep), option.WithHTTPClient(hc))
+	rawService, err := raw.NewService(ctx, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("storage client: %w", err)
 	}
@@ -238,8 +251,10 @@ func NewGRPCClient(ctx context.Context, opts ...option.ClientOption) (*Client, e
 	if err != nil {
 		return nil, err
 	}
-
-	return &Client{tc: tc}, nil
+	return &Client{
+		tc:                    tc,
+		grpcAppendableUploads: tc.config.grpcAppendableUploads,
+	}, nil
 }
 
 // CheckDirectConnectivitySupported checks if gRPC direct connectivity
@@ -1104,10 +1119,19 @@ type ObjectAttrsToUpdate struct {
 	// extending the RetainUntil time on the object retention must be done
 	// on an ObjectHandle with OverrideUnlockedRetention set to true.
 	Retention *ObjectRetention
+
+	// Contexts allows adding, modifying, or deleting individual object contexts.
+	// To add or modify a context, set the value field in ObjectCustomContextPayload.
+	// To delete a context, set the Delete field in ObjectCustomContextPayload to true.
+	// To remove all contexts, pass Custom as an empty map in Contexts. Passing nil Custom
+	// map will be no-op.
+	Contexts *ObjectContexts
 }
 
 // Delete deletes the single specified object.
-func (o *ObjectHandle) Delete(ctx context.Context) error {
+func (o *ObjectHandle) Delete(ctx context.Context) (err error) {
+	ctx, _ = startSpan(ctx, "Object.Delete")
+	defer func() { endSpan(ctx, err) }()
 	if err := o.validate(); err != nil {
 		return err
 	}
@@ -1181,8 +1205,7 @@ func (o *ObjectHandle) Restore(ctx context.Context, opts *RestoreOptions) (*Obje
 }
 
 // Move changes the name of the object to the destination name.
-// It can only be used to rename an object within the same bucket. The
-// bucket must have [HierarchicalNamespace] enabled to use this method.
+// It can only be used to rename an object within the same bucket.
 //
 // Any preconditions set on the ObjectHandle will be applied for the source
 // object. Set preconditions on the destination object using
@@ -1231,14 +1254,103 @@ type MoveObjectDestination struct {
 // It is the caller's responsibility to call Close when writing is done. To
 // stop writing without saving the data, cancel the context.
 func (o *ObjectHandle) NewWriter(ctx context.Context) *Writer {
-	ctx = trace.StartSpan(ctx, "cloud.google.com/go/storage.Object.Writer")
+	ctx, _ = startSpan(ctx, "Object.Writer")
 	return &Writer{
 		ctx:         ctx,
 		o:           o,
 		donec:       make(chan struct{}),
 		ObjectAttrs: ObjectAttrs{Name: o.object},
 		ChunkSize:   googleapi.DefaultUploadChunkSize,
+		Append:      o.c.grpcAppendableUploads,
 	}
+}
+
+// NewWriterFromAppendableObject opens a new Writer to an object which has been
+// partially flushed to GCS, but not finalized. It returns the Writer as well
+// as the current end offset of the object. All bytes written will be appended
+// continuing from the offset.
+//
+// Generation must be set on the ObjectHandle or an error will be returned.
+//
+// Writer fields such as ChunkSize or ChunkRetryDuration can be set only
+// by setting the equivalent field in [AppendableWriterOpts]. Attributes set
+// on the returned Writer will not be honored since the stream to GCS has
+// already been opened. Some fields such as ObjectAttrs and checksums cannot
+// be set on a takeover for append.
+//
+// It is the caller's responsibility to call Close when writing is complete to
+// close the stream.
+// Calling Close or Flush is necessary to sync any data in the pipe to GCS.
+//
+// The returned Writer is not safe to use across multiple go routines. In
+// addition, if you attempt to append to the same object from multiple
+// Writers at the same time, an error will be returned on Flush or Close.
+//
+// NewWriterFromAppendableObject is supported only for gRPC clients and only for
+// objects which were created append semantics and not finalized.
+// This feature is in preview and is not yet available for general use.
+func (o *ObjectHandle) NewWriterFromAppendableObject(ctx context.Context, opts *AppendableWriterOpts) (*Writer, int64, error) {
+	ctx, _ = startSpan(ctx, "Object.WriterFromAppendableObject")
+	if o.gen < 0 {
+		return nil, 0, errors.New("storage: ObjectHandle.Generation must be set to use NewWriterFromAppendableObject")
+	}
+	toc := make(chan int64)
+	w := &Writer{
+		ctx:               ctx,
+		o:                 o,
+		donec:             make(chan struct{}),
+		ObjectAttrs:       ObjectAttrs{Name: o.object},
+		Append:            true,
+		setTakeoverOffset: func(to int64) { toc <- to },
+	}
+	opts.apply(w)
+	if w.ChunkSize == 0 {
+		w.ChunkSize = googleapi.DefaultUploadChunkSize
+	}
+	err := w.openWriter()
+	if err != nil {
+		return nil, 0, err
+	}
+	// Block until we discover the takeover offset, or the stream fails
+	select {
+	case to, ok := <-toc:
+		if !ok {
+			return nil, 0, errors.New("storage: unexpectedly did not discover takeover offset")
+		}
+		return w, to, nil
+	case <-w.donec:
+		return nil, 0, w.err
+	}
+}
+
+// AppendableWriterOpts provides options to set on a Writer initialized
+// by [NewWriterFromAppendableObject]. Writer options must be set via this
+// struct rather than being modified on the returned Writer. All Writer
+// fields not present in this struct cannot be set when taking over an
+// appendable object.
+//
+// AppendableWriterOpts is supported only for gRPC clients and only for
+// objects which were created append semantics and not finalized.
+// This feature is in preview and is not yet available for general use.
+type AppendableWriterOpts struct {
+	// ChunkSize: See Writer.ChunkSize.
+	ChunkSize int
+	// ChunkRetryDeadline: See Writer.ChunkRetryDeadline.
+	ChunkRetryDeadline time.Duration
+	// ProgressFunc: See Writer.ProgressFunc.
+	ProgressFunc func(int64)
+	// FinalizeOnClose: See Writer.FinalizeOnClose.
+	FinalizeOnClose bool
+}
+
+func (opts *AppendableWriterOpts) apply(w *Writer) {
+	if opts == nil {
+		return
+	}
+	w.ChunkRetryDeadline = opts.ChunkRetryDeadline
+	w.ProgressFunc = opts.ProgressFunc
+	w.ChunkSize = opts.ChunkSize
+	w.FinalizeOnClose = opts.FinalizeOnClose
 }
 
 func (o *ObjectHandle) validate() error {
@@ -1306,6 +1418,7 @@ func (o *ObjectAttrs) toRawObject(bucket string) *raw.Object {
 		Metadata:                o.Metadata,
 		CustomTime:              ct,
 		Retention:               o.Retention.toRawObjectRetention(),
+		Contexts:                toRawObjectContexts(o.Contexts),
 	}
 }
 
@@ -1340,6 +1453,7 @@ func (o *ObjectAttrs) toProtoObject(b string) *storagepb.Object {
 		KmsKey:              o.KMSKeyName,
 		Generation:          o.Generation,
 		Size:                o.Size,
+		Contexts:            toProtoObjectContexts(o.Contexts),
 	}
 }
 
@@ -1382,6 +1496,10 @@ func (uattrs *ObjectAttrsToUpdate) toProtoObject(bucket, object string) *storage
 	}
 
 	o.Metadata = uattrs.Metadata
+
+	if uattrs.Contexts != nil {
+		o.Contexts = toProtoObjectContexts(uattrs.Contexts)
+	}
 
 	return o
 }
@@ -1565,6 +1683,18 @@ type ObjectAttrs struct {
 	// ObjectHandle.Attrs will return ErrObjectNotExist if the object is soft-deleted.
 	// This field is read-only.
 	HardDeleteTime time.Time
+
+	// Contexts store custom key-value metadata that the user could
+	// annotate object with. These key-value pairs can be used to filter objects
+	// during list calls. See https://cloud.google.com/storage/docs/object-contexts
+	// for more details.
+	Contexts *ObjectContexts
+}
+
+// isZero reports whether the ObjectAttrs struct is empty (i.e. all the
+// fields are their zero value).
+func (o *ObjectAttrs) isZero() bool {
+	return reflect.DeepEqual(o, &ObjectAttrs{})
 }
 
 // ObjectRetention contains the retention configuration for this object.
@@ -1672,6 +1802,7 @@ func newObject(o *raw.Object) *ObjectAttrs {
 		Retention:               toObjectRetention(o.Retention),
 		SoftDeleteTime:          convertTime(o.SoftDeleteTime),
 		HardDeleteTime:          convertTime(o.HardDeleteTime),
+		Contexts:                toObjectContexts(o.Contexts),
 	}
 }
 
@@ -1710,6 +1841,7 @@ func newObjectFromProto(o *storagepb.Object) *ObjectAttrs {
 		ComponentCount:    int64(o.ComponentCount),
 		SoftDeleteTime:    convertProtoTime(o.GetSoftDeleteTime()),
 		HardDeleteTime:    convertProtoTime(o.GetHardDeleteTime()),
+		Contexts:          toObjectContextsFromProto(o.GetContexts()),
 	}
 }
 
@@ -1822,6 +1954,11 @@ type Query struct {
 	// If true, only objects that have been soft-deleted will be listed.
 	// By default, soft-deleted objects are not listed.
 	SoftDeleted bool
+
+	// Filters objects based on object attributes like custom contexts.
+	// See https://docs.cloud.google.com/storage/docs/listing-objects#filter-by-object-contexts
+	// for more details.
+	Filter string
 }
 
 // attrToFieldMap maps the field names of ObjectAttrs to the underlying field
@@ -1860,6 +1997,7 @@ var attrToFieldMap = map[string]string{
 	"Retention":               "retention",
 	"HardDeleteTime":          "hardDeleteTime",
 	"SoftDeleteTime":          "softDeleteTime",
+	"Contexts":                "contexts",
 }
 
 // attrToProtoFieldMap maps the field names of ObjectAttrs to the underlying field
@@ -1895,6 +2033,7 @@ var attrToProtoFieldMap = map[string]string{
 	"ComponentCount":          "component_count",
 	"HardDeleteTime":          "hard_delete_time",
 	"SoftDeleteTime":          "soft_delete_time",
+	"Contexts":                "contexts",
 	// MediaLink was explicitly excluded from the proto as it is an HTTP-ism.
 	// "MediaLink":               "mediaLink",
 	// TODO: add object retention - b/308194853

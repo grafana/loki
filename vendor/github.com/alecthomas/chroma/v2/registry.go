@@ -48,6 +48,24 @@ func (l *LexerRegistry) Names(withAliases bool) []string {
 	return out
 }
 
+// Aliases of all the lexers, and skip those lexers who do not have any aliases,
+// or show their name instead
+func (l *LexerRegistry) Aliases(skipWithoutAliases bool) []string {
+	out := []string{}
+	for _, lexer := range l.Lexers {
+		config := lexer.Config()
+		if len(config.Aliases) == 0 {
+			if skipWithoutAliases {
+				continue
+			}
+			out = append(out, config.Name)
+		}
+		out = append(out, config.Aliases...)
+	}
+	sort.Strings(out)
+	return out
+}
+
 // Get a Lexer by name, alias or file extension.
 func (l *LexerRegistry) Get(name string) Lexer {
 	if lexer := l.byName[name]; lexer != nil {

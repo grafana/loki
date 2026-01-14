@@ -3,8 +3,8 @@ package openshift
 import (
 	"fmt"
 
+	"dario.cat/mergo"
 	"github.com/ViaQ/logerr/v2/kverrors"
-	"github.com/imdario/mergo"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -81,7 +81,7 @@ func ConfigureGatewayDeployment(
 			}
 
 			d.Spec.Template.Spec.Containers[i].Args = append(d.Spec.Template.Spec.Containers[i].Args,
-				fmt.Sprintf("--logs.auth.extract-selectors=%s", opaDefaultLabelMatcher),
+				fmt.Sprintf("--logs.auth.extract-selectors=%s", opaDefaultLabelMatchers),
 			)
 		}
 	}
@@ -102,7 +102,7 @@ func ConfigureGatewayDeploymentRulesAPI(d *appsv1.Deployment, containerName stri
 
 	container := corev1.Container{
 		Args: []string{
-			fmt.Sprintf("--logs.rules.label-filters=%s:%s", tenantApplication, opaDefaultLabelMatcher),
+			fmt.Sprintf("--logs.rules.label-filters=%s:%s", tenantApplication, opaDefaultLabelMatchers),
 		},
 	}
 

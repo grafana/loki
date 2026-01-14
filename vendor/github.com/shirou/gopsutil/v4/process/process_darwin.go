@@ -33,11 +33,11 @@ const (
 	KernProcPathname = 12 // path to executable
 )
 
-type _Ctype_struct___0 struct {
+type _Ctype_struct___0 struct { //nolint:revive //FIXME
 	Pad uint64
 }
 
-func pidsWithContext(ctx context.Context) ([]int32, error) {
+func pidsWithContext(_ context.Context) ([]int32, error) {
 	var ret []int32
 
 	kprocs, err := unix.SysctlKinfoProcSlice("kern.proc.all")
@@ -45,14 +45,15 @@ func pidsWithContext(ctx context.Context) ([]int32, error) {
 		return ret, err
 	}
 
-	for _, proc := range kprocs {
+	for i := range kprocs {
+		proc := &kprocs[i]
 		ret = append(ret, int32(proc.Proc.P_pid))
 	}
 
 	return ret, nil
 }
 
-func (p *Process) PpidWithContext(ctx context.Context) (int32, error) {
+func (p *Process) PpidWithContext(_ context.Context) (int32, error) {
 	k, err := p.getKProc()
 	if err != nil {
 		return 0, err
@@ -74,7 +75,7 @@ func (p *Process) NameWithContext(ctx context.Context) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		if len(cmdName) > 0 {
+		if cmdName != "" {
 			extendedName := filepath.Base(cmdName)
 			if strings.HasPrefix(extendedName, p.name) {
 				name = extendedName
@@ -85,7 +86,7 @@ func (p *Process) NameWithContext(ctx context.Context) (string, error) {
 	return name, nil
 }
 
-func (p *Process) createTimeWithContext(ctx context.Context) (int64, error) {
+func (p *Process) createTimeWithContext(_ context.Context) (int64, error) {
 	k, err := p.getKProc()
 	if err != nil {
 		return 0, err
@@ -113,7 +114,7 @@ func (p *Process) ForegroundWithContext(ctx context.Context) (bool, error) {
 	return strings.IndexByte(string(out), '+') != -1, nil
 }
 
-func (p *Process) UidsWithContext(ctx context.Context) ([]uint32, error) {
+func (p *Process) UidsWithContext(_ context.Context) ([]uint32, error) {
 	k, err := p.getKProc()
 	if err != nil {
 		return nil, err
@@ -125,7 +126,7 @@ func (p *Process) UidsWithContext(ctx context.Context) ([]uint32, error) {
 	return []uint32{userEffectiveUID}, nil
 }
 
-func (p *Process) GidsWithContext(ctx context.Context) ([]uint32, error) {
+func (p *Process) GidsWithContext(_ context.Context) ([]uint32, error) {
 	k, err := p.getKProc()
 	if err != nil {
 		return nil, err
@@ -137,7 +138,7 @@ func (p *Process) GidsWithContext(ctx context.Context) ([]uint32, error) {
 	return gids, nil
 }
 
-func (p *Process) GroupsWithContext(ctx context.Context) ([]uint32, error) {
+func (*Process) GroupsWithContext(_ context.Context) ([]uint32, error) {
 	return nil, common.ErrNotImplementedError
 	// k, err := p.getKProc()
 	// if err != nil {
@@ -152,7 +153,7 @@ func (p *Process) GroupsWithContext(ctx context.Context) ([]uint32, error) {
 	// return groups, nil
 }
 
-func (p *Process) TerminalWithContext(ctx context.Context) (string, error) {
+func (*Process) TerminalWithContext(_ context.Context) (string, error) {
 	return "", common.ErrNotImplementedError
 	/*
 		k, err := p.getKProc()
@@ -170,7 +171,7 @@ func (p *Process) TerminalWithContext(ctx context.Context) (string, error) {
 	*/
 }
 
-func (p *Process) NiceWithContext(ctx context.Context) (int32, error) {
+func (p *Process) NiceWithContext(_ context.Context) (int32, error) {
 	k, err := p.getKProc()
 	if err != nil {
 		return 0, err
@@ -178,7 +179,7 @@ func (p *Process) NiceWithContext(ctx context.Context) (int32, error) {
 	return int32(k.Proc.P_nice), nil
 }
 
-func (p *Process) IOCountersWithContext(ctx context.Context) (*IOCountersStat, error) {
+func (*Process) IOCountersWithContext(_ context.Context) (*IOCountersStat, error) {
 	return nil, common.ErrNotImplementedError
 }
 
@@ -236,15 +237,16 @@ func (p *Process) getKProc() (*unix.KinfoProc, error) {
 
 // call ps command.
 // Return value deletes Header line(you must not input wrong arg).
-// And splited by Space. Caller have responsibility to manage.
+// And split by Space. Caller have responsibility to manage.
 // If passed arg pid is 0, get information from all process.
-func callPsWithContext(ctx context.Context, arg string, pid int32, threadOption bool, nameOption bool) ([][]string, error) {
+func callPsWithContext(ctx context.Context, arg string, pid int32, threadOption, nameOption bool) ([][]string, error) {
 	var cmd []string
-	if pid == 0 { // will get from all processes.
+	switch {
+	case pid == 0: // will get from all processes.
 		cmd = []string{"-ax", "-o", arg}
-	} else if threadOption {
+	case threadOption:
 		cmd = []string{"-x", "-o", arg, "-M", "-p", strconv.Itoa(int(pid))}
-	} else {
+	default:
 		cmd = []string{"-x", "-o", arg, "-p", strconv.Itoa(int(pid))}
 	}
 	if nameOption {
@@ -277,42 +279,39 @@ func callPsWithContext(ctx context.Context, arg string, pid int32, threadOption 
 	return ret, nil
 }
 
-var (
-	procPidPath      common.ProcPidPathFunc
-	procPidInfo      common.ProcPidInfoFunc
-	machTimeBaseInfo common.MachTimeBaseInfoFunc
-)
+type dlFuncs struct {
+	lib *common.SystemLib
+}
 
-func registerFuncs() (*common.Library, error) {
-	lib, err := common.NewLibrary(common.System)
+func loadProcFuncs() (*dlFuncs, error) {
+	lib, err := common.NewSystemLib()
 	if err != nil {
 		return nil, err
 	}
-
-	procPidPath = common.GetFunc[common.ProcPidPathFunc](lib, common.ProcPidPathSym)
-	procPidInfo = common.GetFunc[common.ProcPidInfoFunc](lib, common.ProcPidInfoSym)
-	machTimeBaseInfo = common.GetFunc[common.MachTimeBaseInfoFunc](lib, common.MachTimeBaseInfoSym)
-
-	return lib, nil
+	return &dlFuncs{lib}, err
 }
 
-func getTimeScaleToNanoSeconds() float64 {
+func (f *dlFuncs) getTimeScaleToNanoSeconds() float64 {
 	var timeBaseInfo common.MachTimeBaseInfo
 
-	machTimeBaseInfo(uintptr(unsafe.Pointer(&timeBaseInfo)))
+	f.lib.MachTimeBaseInfo(uintptr(unsafe.Pointer(&timeBaseInfo)))
 
 	return float64(timeBaseInfo.Numer) / float64(timeBaseInfo.Denom)
 }
 
-func (p *Process) ExeWithContext(ctx context.Context) (string, error) {
-	lib, err := registerFuncs()
+func (f *dlFuncs) Close() {
+	f.lib.Close()
+}
+
+func (p *Process) ExeWithContext(_ context.Context) (string, error) {
+	funcs, err := loadProcFuncs()
 	if err != nil {
 		return "", err
 	}
-	defer lib.Close()
+	defer funcs.Close()
 
 	buf := common.NewCStr(common.PROC_PIDPATHINFO_MAXSIZE)
-	ret := procPidPath(p.Pid, buf.Addr(), common.PROC_PIDPATHINFO_MAXSIZE)
+	ret := funcs.lib.ProcPidPath(p.Pid, buf.Addr(), common.PROC_PIDPATHINFO_MAXSIZE)
 
 	if ret <= 0 {
 		return "", fmt.Errorf("unknown error: proc_pidpath returned %d", ret)
@@ -321,24 +320,17 @@ func (p *Process) ExeWithContext(ctx context.Context) (string, error) {
 	return buf.GoString(), nil
 }
 
-// sys/proc_info.h
-type vnodePathInfo struct {
-	_       [152]byte
-	vipPath [common.MAXPATHLEN]byte
-	_       [1176]byte
-}
-
 // CwdWithContext retrieves the Current Working Directory for the given process.
 // It uses the proc_pidinfo from libproc and will only work for processes the
 // EUID can access.  Otherwise "operation not permitted" will be returned as the
 // error.
 // Note: This might also work for other *BSD OSs.
-func (p *Process) CwdWithContext(ctx context.Context) (string, error) {
-	lib, err := registerFuncs()
+func (p *Process) CwdWithContext(_ context.Context) (string, error) {
+	funcs, err := loadProcFuncs()
 	if err != nil {
 		return "", err
 	}
-	defer lib.Close()
+	defer funcs.Close()
 
 	// Lock OS thread to ensure the errno does not change
 	runtime.LockOSThread()
@@ -346,8 +338,8 @@ func (p *Process) CwdWithContext(ctx context.Context) (string, error) {
 
 	var vpi vnodePathInfo
 	const vpiSize = int32(unsafe.Sizeof(vpi))
-	ret := procPidInfo(p.Pid, common.PROC_PIDVNODEPATHINFO, 0, uintptr(unsafe.Pointer(&vpi)), vpiSize)
-	errno, _ := lib.Dlsym("errno")
+	ret := funcs.lib.ProcPidInfo(p.Pid, common.PROC_PIDVNODEPATHINFO, 0, uintptr(unsafe.Pointer(&vpi)), vpiSize)
+	errno, _ := funcs.lib.Dlsym("errno")
 	err = *(**unix.Errno)(unsafe.Pointer(&errno))
 	if errors.Is(err, unix.EPERM) {
 		return "", ErrorNotPermitted
@@ -360,11 +352,11 @@ func (p *Process) CwdWithContext(ctx context.Context) (string, error) {
 	if ret != vpiSize {
 		return "", fmt.Errorf("too few bytes; expected %d, got %d", vpiSize, ret)
 	}
-	return common.GoString(&vpi.vipPath[0]), nil
+	return common.GoString((*byte)(unsafe.Pointer(&vpi.Cdir.Path[0]))), nil
 }
 
 func procArgs(pid int32) ([]byte, int, error) {
-	procargs, _, err := common.CallSyscall([]int32{common.CTL_KERN, common.KERN_PROCARGS2, pid})
+	procargs, err := unix.SysctlRaw("kern.procargs2", int(pid))
 	if err != nil {
 		return nil, 0, err
 	}
@@ -394,8 +386,8 @@ func (p *Process) cmdlineSlice() ([]string, error) {
 	// are the arguments. Everything else in the slice is then the environment
 	// of the process.
 	for _, arg := range args[1:] {
-		argStr = string(arg[:])
-		if len(argStr) > 0 {
+		argStr = string(arg)
+		if argStr != "" {
 			if nargs > 0 {
 				argSlice = append(argSlice, argStr)
 				nargs--
@@ -430,30 +422,30 @@ func (p *Process) CmdlineWithContext(ctx context.Context) (string, error) {
 	return strings.Join(r, " "), err
 }
 
-func (p *Process) NumThreadsWithContext(ctx context.Context) (int32, error) {
-	lib, err := registerFuncs()
+func (p *Process) NumThreadsWithContext(_ context.Context) (int32, error) {
+	funcs, err := loadProcFuncs()
 	if err != nil {
 		return 0, err
 	}
-	defer lib.Close()
+	defer funcs.Close()
 
 	var ti ProcTaskInfo
-	procPidInfo(p.Pid, common.PROC_PIDTASKINFO, 0, uintptr(unsafe.Pointer(&ti)), int32(unsafe.Sizeof(ti)))
+	funcs.lib.ProcPidInfo(p.Pid, common.PROC_PIDTASKINFO, 0, uintptr(unsafe.Pointer(&ti)), int32(unsafe.Sizeof(ti)))
 
 	return int32(ti.Threadnum), nil
 }
 
-func (p *Process) TimesWithContext(ctx context.Context) (*cpu.TimesStat, error) {
-	lib, err := registerFuncs()
+func (p *Process) TimesWithContext(_ context.Context) (*cpu.TimesStat, error) {
+	funcs, err := loadProcFuncs()
 	if err != nil {
 		return nil, err
 	}
-	defer lib.Close()
+	defer funcs.Close()
 
 	var ti ProcTaskInfo
-	procPidInfo(p.Pid, common.PROC_PIDTASKINFO, 0, uintptr(unsafe.Pointer(&ti)), int32(unsafe.Sizeof(ti)))
+	funcs.lib.ProcPidInfo(p.Pid, common.PROC_PIDTASKINFO, 0, uintptr(unsafe.Pointer(&ti)), int32(unsafe.Sizeof(ti)))
 
-	timescaleToNanoSeconds := getTimeScaleToNanoSeconds()
+	timescaleToNanoSeconds := funcs.getTimeScaleToNanoSeconds()
 	ret := &cpu.TimesStat{
 		CPU:    "cpu",
 		User:   float64(ti.Total_user) * timescaleToNanoSeconds / 1e9,
@@ -462,15 +454,15 @@ func (p *Process) TimesWithContext(ctx context.Context) (*cpu.TimesStat, error) 
 	return ret, nil
 }
 
-func (p *Process) MemoryInfoWithContext(ctx context.Context) (*MemoryInfoStat, error) {
-	lib, err := registerFuncs()
+func (p *Process) MemoryInfoWithContext(_ context.Context) (*MemoryInfoStat, error) {
+	funcs, err := loadProcFuncs()
 	if err != nil {
 		return nil, err
 	}
-	defer lib.Close()
+	defer funcs.Close()
 
 	var ti ProcTaskInfo
-	procPidInfo(p.Pid, common.PROC_PIDTASKINFO, 0, uintptr(unsafe.Pointer(&ti)), int32(unsafe.Sizeof(ti)))
+	funcs.lib.ProcPidInfo(p.Pid, common.PROC_PIDTASKINFO, 0, uintptr(unsafe.Pointer(&ti)), int32(unsafe.Sizeof(ti)))
 
 	ret := &MemoryInfoStat{
 		RSS:  uint64(ti.Resident_size),
@@ -478,4 +470,55 @@ func (p *Process) MemoryInfoWithContext(ctx context.Context) (*MemoryInfoStat, e
 		Swap: uint64(ti.Pageins),
 	}
 	return ret, nil
+}
+
+// procFDInfo represents a file descriptor entry from sys/proc_info.h
+type procFDInfo struct {
+	ProcFd     int32
+	ProcFdtype uint32
+}
+
+// NumFDsWithContext returns the number of file descriptors used by the process.
+// It uses proc_pidinfo with PROC_PIDLISTFDS to query the kernel for the count
+// of open file descriptors. The method makes a single syscall and calculates
+// the count from the buffer size returned by the kernel.
+func (p *Process) NumFDsWithContext(_ context.Context) (int32, error) {
+	funcs, err := loadProcFuncs()
+	if err != nil {
+		return 0, err
+	}
+	defer funcs.Close()
+
+	// First call: get required buffer size
+	bufferSize := funcs.lib.ProcPidInfo(
+		p.Pid,
+		common.PROC_PIDLISTFDS,
+		0,
+		0, // NULL buffer
+		0, // 0 size
+	)
+	if bufferSize <= 0 {
+		return 0, fmt.Errorf("unknown error: proc_pidinfo returned %d", bufferSize)
+	}
+
+	// Allocate buffer of the required size
+	const sizeofProcFDInfo = int32(unsafe.Sizeof(procFDInfo{}))
+	numEntries := bufferSize / sizeofProcFDInfo
+	buf := make([]procFDInfo, numEntries)
+
+	// Second call: get actual data
+	ret := funcs.lib.ProcPidInfo(
+		p.Pid,
+		common.PROC_PIDLISTFDS,
+		0,
+		uintptr(unsafe.Pointer(&buf[0])), // Real buffer
+		bufferSize,                       // Size from first call
+	)
+	if ret <= 0 {
+		return 0, fmt.Errorf("unknown error: proc_pidinfo returned %d", ret)
+	}
+
+	// Calculate actual number of FDs returned
+	numFDs := ret / sizeofProcFDInfo
+	return numFDs, nil
 }

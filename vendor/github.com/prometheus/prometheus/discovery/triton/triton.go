@@ -71,7 +71,7 @@ type SDConfig struct {
 }
 
 // NewDiscovererMetrics implements discovery.Config.
-func (*SDConfig) NewDiscovererMetrics(reg prometheus.Registerer, rmi discovery.RefreshMetricsInstantiator) discovery.DiscovererMetrics {
+func (*SDConfig) NewDiscovererMetrics(_ prometheus.Registerer, rmi discovery.RefreshMetricsInstantiator) discovery.DiscovererMetrics {
 	return &tritonMetrics{
 		refreshMetrics: rmi,
 	}
@@ -91,7 +91,7 @@ func (c *SDConfig) SetDirectory(dir string) {
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (c *SDConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (c *SDConfig) UnmarshalYAML(unmarshal func(any) error) error {
 	*c = DefaultSDConfig
 	type plain SDConfig
 	err := unmarshal((*plain)(c))

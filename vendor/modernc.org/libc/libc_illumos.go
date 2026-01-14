@@ -12,8 +12,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+
 	// "runtime/debug"
-	"syscall"
 	"time"
 	"unsafe"
 
@@ -27,6 +27,7 @@ import (
 	"modernc.org/libc/limits"
 	"modernc.org/libc/netdb"
 	"modernc.org/libc/netinet/in"
+
 	// "modernc.org/libc/signal"
 	"modernc.org/libc/stdio"
 	"modernc.org/libc/sys/socket"
@@ -49,11 +50,14 @@ var (
 )
 
 type (
-	long  = int
-	ulong = uint
+	syscallErrno = unix.Errno
+	long         = int
+	ulong        = uint
 )
 
 type file uintptr
+
+type Tsize_t = types.Size_t
 
 func (f file) fd() int32 {
 	panic(todo(""))
@@ -427,7 +431,7 @@ func Xwrite(t *TLS, fd int32, buf uintptr, count types.Size_t) types.Ssize_t {
 	}
 	panic(todo(""))
 	// const retry = 5
-	// var err syscall.Errno
+	// var err syscallErrno
 	// for i := 0; i < retry; i++ {
 	// 	var n uintptr
 	// 	switch n, _, err = unix.Syscall(unix.SYS_WRITE, uintptr(fd), buf, uintptr(count)); err {
@@ -937,7 +941,7 @@ func Xfileno(t *TLS, stream uintptr) int32 {
 	//	return -1
 }
 
-func newFtsent(t *TLS, info int, path string, stat *unix.Stat_t, err syscall.Errno) (r *fts.FTSENT) {
+func newFtsent(t *TLS, info int, path string, stat *unix.Stat_t, err syscallErrno) (r *fts.FTSENT) {
 	panic(todo(""))
 	//	var statp uintptr
 	//	if stat != nil {
@@ -962,7 +966,7 @@ func newFtsent(t *TLS, info int, path string, stat *unix.Stat_t, err syscall.Err
 	//	}
 }
 
-func newCFtsent(t *TLS, info int, path string, stat *unix.Stat_t, err syscall.Errno) uintptr {
+func newCFtsent(t *TLS, info int, path string, stat *unix.Stat_t, err syscallErrno) uintptr {
 	p := Xcalloc(t, 1, types.Size_t(unsafe.Sizeof(fts.FTSENT{})))
 	if p == 0 {
 		panic("OOM")
@@ -1370,7 +1374,7 @@ func Xabort(t *TLS) {
 	//	}
 	//	Xsigaction(t, signal.SIGABRT, p, 0)
 	//	Xfree(t, p)
-	//	unix.Kill(unix.Getpid(), syscall.Signal(signal.SIGABRT))
+	//	unix.Kill(unix.Getpid(), unix.Signal(signal.SIGABRT))
 	//	panic(todo("unrechable"))
 }
 
@@ -1614,7 +1618,7 @@ func Xreaddir64(t *TLS, dir uintptr) uintptr {
 	return Xreaddir(t, dir)
 }
 
-func __syscall(r, _ uintptr, errno syscall.Errno) long {
+func __syscall(r, _ uintptr, errno syscallErrno) long {
 	if errno != 0 {
 		return long(-errno)
 	}
@@ -2093,4 +2097,19 @@ func (s *byteScanner) ReadByte() (byte, error) {
 func (s *byteScanner) UnreadByte() error {
 	Xungetc(s.t, int32(s.last), s.stream)
 	return nil
+}
+
+// int clock_gettime(clockid_t clk_id, struct timespec *tp);
+func Xclock_gettime(t *TLS, clk_id int32, tp uintptr) int32 {
+	if __ccgo_strace {
+		trc("t=%v clk_id=%v tp=%v, (%v:)", t, clk_id, tp, origin(2))
+	}
+	panic(todo(""))
+}
+
+func Xgmtime_r(tls *TLS, t uintptr, tm uintptr) (r uintptr) {
+	if __ccgo_strace {
+		trc("tls=%v t=%v tm=%v, (%v:)", tls, t, tm, origin(2))
+	}
+	panic(todo(""))
 }

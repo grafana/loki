@@ -1,5 +1,54 @@
 # Changes
 
+## [0.9.0](https://github.com/googleapis/google-cloud-go/compare/compute/metadata/v0.8.4...compute/metadata/v0.9.0) (2025-09-24)
+
+
+### Features
+
+* **compute/metadata:** Retry on HTTP 429 ([#12932](https://github.com/googleapis/google-cloud-go/issues/12932)) ([1e91f5c](https://github.com/googleapis/google-cloud-go/commit/1e91f5c07acacd38ecdd4ff3e83e092b745e0bc2))
+
+## [0.8.4](https://github.com/googleapis/google-cloud-go/compare/compute/metadata/v0.8.3...compute/metadata/v0.8.4) (2025-09-18)
+
+
+### Bug Fixes
+
+* **compute/metadata:** Set subClient for UseDefaultClient case ([#12911](https://github.com/googleapis/google-cloud-go/issues/12911)) ([9e2646b](https://github.com/googleapis/google-cloud-go/commit/9e2646b1821231183fd775bb107c062865eeaccd))
+
+## [0.8.3](https://github.com/googleapis/google-cloud-go/compare/compute/metadata/v0.8.2...compute/metadata/v0.8.3) (2025-09-17)
+
+
+### Bug Fixes
+
+* **compute/metadata:** Disable Client timeouts for subscription client ([#12910](https://github.com/googleapis/google-cloud-go/issues/12910)) ([187a58a](https://github.com/googleapis/google-cloud-go/commit/187a58a540494e1e8562b046325b8cad8cf7af4a))
+
+## [0.8.2](https://github.com/googleapis/google-cloud-go/compare/compute/metadata/v0.8.1...compute/metadata/v0.8.2) (2025-09-17)
+
+
+### Bug Fixes
+
+* **compute/metadata:** Racy test and uninitialized subClient ([#12892](https://github.com/googleapis/google-cloud-go/issues/12892)) ([4943ca2](https://github.com/googleapis/google-cloud-go/commit/4943ca2bf83908a23806247bc4252dfb440d09cc)), refs [#12888](https://github.com/googleapis/google-cloud-go/issues/12888)
+
+## [0.8.1](https://github.com/googleapis/google-cloud-go/compare/compute/metadata/v0.8.0...compute/metadata/v0.8.1) (2025-09-16)
+
+
+### Bug Fixes
+
+* **compute/metadata:** Use separate client for subscribe methods  ([#12885](https://github.com/googleapis/google-cloud-go/issues/12885)) ([76b80f8](https://github.com/googleapis/google-cloud-go/commit/76b80f8df9bf9339d175407e8c15936fe1ac1c9c))
+
+## [0.8.0](https://github.com/googleapis/google-cloud-go/compare/compute/metadata/v0.7.0...compute/metadata/v0.8.0) (2025-08-06)
+
+
+### Features
+
+* **compute/metadata:** Add Options.UseDefaultClient ([#12657](https://github.com/googleapis/google-cloud-go/issues/12657)) ([1a88209](https://github.com/googleapis/google-cloud-go/commit/1a8820900f20e038291c4bb2c5284a449196e81f)), refs [#11078](https://github.com/googleapis/google-cloud-go/issues/11078)
+
+## [0.7.0](https://github.com/googleapis/google-cloud-go/compare/compute/metadata/v0.6.0...compute/metadata/v0.7.0) (2025-05-13)
+
+
+### Features
+
+* **compute/metadata:** Allow canceling GCE detection ([#11786](https://github.com/googleapis/google-cloud-go/issues/11786)) ([78100fe](https://github.com/googleapis/google-cloud-go/commit/78100fe7e28cd30f1e10b47191ac3c9839663b64))
+
 ## [0.6.0](https://github.com/googleapis/google-cloud-go/compare/compute/metadata/v0.5.2...compute/metadata/v0.6.0) (2024-12-13)
 
 

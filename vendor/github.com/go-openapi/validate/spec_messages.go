@@ -1,16 +1,5 @@
-// Copyright 2015 go-swagger maintainers
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//    http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-FileCopyrightText: Copyright 2015-2025 go-swagger maintainers
+// SPDX-License-Identifier: Apache-2.0
 
 package validate
 
@@ -34,7 +23,7 @@ const (
 	// BothFormDataAndBodyError indicates that an operation specifies both a body and a formData parameter, which is forbidden
 	BothFormDataAndBodyError = "operation %q has both formData and body parameters. Only one such In: type may be used for a given operation"
 
-	// CannotResolveRefError when a $ref could not be resolved
+	// CannotResolveReferenceError when a $ref could not be resolved
 	CannotResolveReferenceError = "could not resolve reference in %s to $ref %s: %v"
 
 	// CircularAncestryDefinitionError ...
@@ -135,7 +124,7 @@ const (
 	// PathParamNotUniqueError ...
 	PathParamNotUniqueError = "params in path %q must be unique: %q conflicts with %q"
 
-	// PathParamNotRequiredError ...
+	// PathParamRequiredError ...
 	PathParamRequiredError = "in operation %q,path param %q must be declared as required"
 
 	// RefNotAllowedInHeaderError indicates a $ref was found in a header definition, which is not allowed by Swagger
@@ -217,10 +206,10 @@ func emptyPathParameterMsg(path string) errors.Error {
 func nonUniqueOperationIDMsg(path string, i int) errors.Error {
 	return errors.New(errors.CompositeErrorCode, NonUniqueOperationIDError, path, i)
 }
-func circularAncestryDefinitionMsg(path string, args interface{}) errors.Error {
+func circularAncestryDefinitionMsg(path string, args any) errors.Error {
 	return errors.New(errors.CompositeErrorCode, CircularAncestryDefinitionError, path, args)
 }
-func duplicatePropertiesMsg(path string, args interface{}) errors.Error {
+func duplicatePropertiesMsg(path string, args any) errors.Error {
 	return errors.New(errors.CompositeErrorCode, DuplicatePropertiesError, path, args)
 }
 func pathParamNotInPathMsg(path, param string) errors.Error {
@@ -262,7 +251,7 @@ func pathParamRequiredMsg(operation, param string) errors.Error {
 func bothFormDataAndBodyMsg(operation string) errors.Error {
 	return errors.New(errors.CompositeErrorCode, BothFormDataAndBodyError, operation)
 }
-func multipleBodyParamMsg(operation string, args interface{}) errors.Error {
+func multipleBodyParamMsg(operation string, args any) errors.Error {
 	return errors.New(errors.CompositeErrorCode, MultipleBodyParamError, operation, args)
 }
 func pathParamNotUniqueMsg(path, param, arg string) errors.Error {
@@ -304,7 +293,7 @@ func defaultValueHeaderDoesNotValidateMsg(operation, header, path string) errors
 func defaultValueHeaderItemsDoesNotValidateMsg(operation, header, path string) errors.Error {
 	return errors.New(errors.CompositeErrorCode, DefaultValueHeaderItemsDoesNotValidateError, operation, header, path)
 }
-func invalidPatternInHeaderMsg(operation, header, path, pattern string, args interface{}) errors.Error {
+func invalidPatternInHeaderMsg(operation, header, path, pattern string, args any) errors.Error {
 	return errors.New(errors.CompositeErrorCode, InvalidPatternInHeaderError, operation, header, path, pattern, args)
 }
 func invalidPatternInMsg(path, in, pattern string) errors.Error {

@@ -22,11 +22,13 @@ import (
 	"bytes"
 	_ "embed"
 	"net/http"
+	"strings"
 	"text/template"
 )
 
 // Config represents the configuration of the web listener.
 type LandingConfig struct {
+	RoutePrefix string         // The route prefix for the exporter.
 	HeaderColor string         // Used for the landing page header.
 	CSS         string         // CSS style tag for the landing page.
 	Name        string         // The name of the exporter, generally suffixed by _exporter.
@@ -36,6 +38,7 @@ type LandingConfig struct {
 	ExtraHTML   string         // Additional HTML to be embedded.
 	ExtraCSS    string         // Additional CSS to be embedded.
 	Version     string         // The version displayed.
+	Profiling   string         // If false, don't display profiling links.
 }
 
 // LandingForm provides a configuration struct for creating a POST form on the landing page.
@@ -62,6 +65,7 @@ type LandingLinks struct {
 
 type LandingPageHandler struct {
 	landingPage []byte
+	routePrefix string
 }
 
 var (
@@ -73,6 +77,8 @@ var (
 
 func NewLandingPage(c LandingConfig) (*LandingPageHandler, error) {
 	var buf bytes.Buffer
+
+	c.Form.Action = strings.TrimPrefix(c.Form.Action, "/")
 
 	length := 0
 	for _, input := range c.Form.Inputs {
@@ -93,6 +99,19 @@ func NewLandingPage(c LandingConfig) (*LandingPageHandler, error) {
 		}
 		c.CSS = buf.String()
 	}
+	if c.RoutePrefix == "" {
+		c.RoutePrefix = "/"
+	} else if !strings.HasSuffix(c.RoutePrefix, "/") {
+		c.RoutePrefix += "/"
+	}
+
+	if c.Profiling == "" {
+		c.Profiling = "true"
+	}
+	// Strip leading '/' from Links if present
+	for i, link := range c.Links {
+		c.Links[i].Address = strings.TrimPrefix(link.Address, "/")
+	}
 	t := template.Must(template.New("landing page").Parse(landingPagehtmlContent))
 
 	buf.Reset()
@@ -102,11 +121,12 @@ func NewLandingPage(c LandingConfig) (*LandingPageHandler, error) {
 
 	return &LandingPageHandler{
 		landingPage: buf.Bytes(),
+		routePrefix: c.RoutePrefix,
 	}, nil
 }
 
 func (h *LandingPageHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/" {
+	if r.URL.Path != h.routePrefix {
 		http.NotFound(w, r)
 		return
 	}

@@ -19,6 +19,10 @@ type AlterClientQuotasResponse struct {
 	Entries      []AlterClientQuotasEntryResponse // The quota configuration entries altered.
 }
 
+func (a *AlterClientQuotasResponse) setVersion(v int16) {
+	a.Version = v
+}
+
 type AlterClientQuotasEntryResponse struct {
 	ErrorCode KError                 // The error code, or `0` if the quota alteration succeeded.
 	ErrorMsg  *string                // The error message, or `null` if the quota alteration succeeded.
@@ -26,8 +30,7 @@ type AlterClientQuotasEntryResponse struct {
 }
 
 func (a *AlterClientQuotasResponse) encode(pe packetEncoder) error {
-	// ThrottleTime
-	pe.putInt32(int32(a.ThrottleTime / time.Millisecond))
+	pe.putDurationMs(a.ThrottleTime)
 
 	// Entries
 	if err := pe.putArrayLength(len(a.Entries)); err != nil {
@@ -42,13 +45,10 @@ func (a *AlterClientQuotasResponse) encode(pe packetEncoder) error {
 	return nil
 }
 
-func (a *AlterClientQuotasResponse) decode(pd packetDecoder, version int16) error {
-	// ThrottleTime
-	throttleTime, err := pd.getInt32()
-	if err != nil {
+func (a *AlterClientQuotasResponse) decode(pd packetDecoder, version int16) (err error) {
+	if a.ThrottleTime, err = pd.getDurationMs(); err != nil {
 		return err
 	}
-	a.ThrottleTime = time.Duration(throttleTime) * time.Millisecond
 
 	// Entries
 	entryCount, err := pd.getArrayLength()
@@ -73,7 +73,7 @@ func (a *AlterClientQuotasResponse) decode(pd packetDecoder, version int16) erro
 
 func (a *AlterClientQuotasEntryResponse) encode(pe packetEncoder) error {
 	// ErrorCode
-	pe.putInt16(int16(a.ErrorCode))
+	pe.putKError(a.ErrorCode)
 
 	// ErrorMsg
 	if err := pe.putNullableString(a.ErrorMsg); err != nil {
@@ -93,13 +93,12 @@ func (a *AlterClientQuotasEntryResponse) encode(pe packetEncoder) error {
 	return nil
 }
 
-func (a *AlterClientQuotasEntryResponse) decode(pd packetDecoder, version int16) error {
+func (a *AlterClientQuotasEntryResponse) decode(pd packetDecoder, version int16) (err error) {
 	// ErrorCode
-	errCode, err := pd.getInt16()
+	a.ErrorCode, err = pd.getKError()
 	if err != nil {
 		return err
 	}
-	a.ErrorCode = KError(errCode)
 
 	// ErrorMsg
 	errMsg, err := pd.getNullableString()
@@ -130,7 +129,7 @@ func (a *AlterClientQuotasEntryResponse) decode(pd packetDecoder, version int16)
 }
 
 func (a *AlterClientQuotasResponse) key() int16 {
-	return 49
+	return apiKeyAlterClientQuotas
 }
 
 func (a *AlterClientQuotasResponse) version() int16 {
