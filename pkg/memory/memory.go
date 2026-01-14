@@ -16,8 +16,9 @@ package memory
 
 // Memory is a contiguous region of member owned by an [Allocator].
 type Memory struct {
-	alloc *Allocator // Owning allocator.
-	data  []byte     // Raw data.
+	// TODO(rfratto): Do we need the Memory type at all?
+
+	data []byte // Raw data.
 }
 
 // Data returns the raw data of the memory region.

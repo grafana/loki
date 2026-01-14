@@ -171,6 +171,8 @@ func (bmap *Bitmap) Clone() *Bitmap {
 	copy(newData, bmap.data)
 
 	return &Bitmap{
+		alloc: bmap.alloc,
+
 		data: newData,
 		len:  bmap.len,
 	}

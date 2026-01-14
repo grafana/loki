@@ -63,9 +63,9 @@ func (set bitmap) Size() int {
 	return len(set) * 64
 }
 
-// IterSet returns an iterator over the set bits in the bitmap, up to (but not
+// IterValues returns an iterator over the set bits in the bitmap, up to (but not
 // including) maxIndex.
-func (set bitmap) IterValue(maxIndex int, value bool) iter.Seq[int] {
+func (set bitmap) IterValues(maxIndex int, value bool) iter.Seq[int] {
 	return func(yield func(int) bool) {
 		var start int
 

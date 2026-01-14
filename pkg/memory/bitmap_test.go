@@ -99,7 +99,7 @@ func Test_bitset_IterValue_true(t *testing.T) {
 	}
 
 	var indices []int
-	for index := range set.IterValue(128, true) {
+	for index := range set.IterValues(128, true) {
 		indices = append(indices, index)
 	}
 
@@ -120,7 +120,7 @@ func Test_bitset_IterValue_false(t *testing.T) {
 	}
 
 	var indices []int
-	for index := range set.IterValue(128, false) {
+	for index := range set.IterValues(128, false) {
 		indices = append(indices, index)
 	}
 
