@@ -188,6 +188,7 @@ func (f *SplittingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// - v1-preferred: Skip fanout when not sampling, only split for goldfish comparison
 	useDefault := f.skipFanoutWhenNotSampling && !shouldSample && f.routingMode == RoutingModeV1Preferred
 	splittingEnabled := f.splitLag > 0
+	level.Debug(f.logger).Log("msg", "routing decision", "useDefault", useDefault, "splittingEnabled", splittingEnabled)
 
 	if useDefault {
 		// Not sampling and v1-preferred: go directly to v1 backend

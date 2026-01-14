@@ -31,7 +31,11 @@ func (testComparator) Compare(_, _ []byte, _ time.Time) (*comparator.ComparisonS
 }
 
 func Test_NewProxy(t *testing.T) {
-	cfg := ProxyConfig{}
+	cfg := ProxyConfig{
+		Routing: RoutingConfig{
+			Mode: RoutingModeV1Preferred,
+		},
+	}
 
 	p, err := NewProxy(cfg, log.NewNopLogger(), testReadRoutes, testWriteRoutes, nil)
 	assert.Equal(t, errMinBackends, err)
@@ -161,9 +165,12 @@ func Test_Proxy_RequestsForwarding(t *testing.T) {
 			// Start the proxy.
 			cfg := ProxyConfig{
 				BackendEndpoints:   strings.Join(backendURLs, ","),
-				PreferredBackend:   strconv.Itoa(testData.preferredBackendIdx),
 				ServerServicePort:  0,
 				BackendReadTimeout: time.Second,
+				Routing: RoutingConfig{
+					Mode:      RoutingModeV1Preferred,
+					V1Backend: strconv.Itoa(testData.preferredBackendIdx),
+				},
 			}
 
 			if len(backendURLs) == 2 {
@@ -315,10 +322,13 @@ func TestProxy_Passthrough(t *testing.T) {
 			// Start the proxy.
 			cfg := ProxyConfig{
 				BackendEndpoints:               strings.Join(backendURLs, ","),
-				PreferredBackend:               strconv.Itoa(testData.preferredBackendIdx),
 				ServerServicePort:              0,
 				BackendReadTimeout:             time.Second,
 				PassThroughNonRegisteredRoutes: true,
+				Routing: RoutingConfig{
+					Mode:      RoutingModeV1Preferred,
+					V1Backend: strconv.Itoa(testData.preferredBackendIdx),
+				},
 			}
 
 			p, err := NewProxy(cfg, log.NewNopLogger(), testReadRoutes, testWriteRoutes, nil)

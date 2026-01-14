@@ -21,17 +21,7 @@ import (
 
 // mockGoldfishManager is a mock implementation of goldfish.ManagerInterface for testing
 type mockGoldfishManager struct {
-	comparisonMinAge    time.Duration
-	comparisonStartDate time.Time
-	shouldSampleResult  bool
-}
-
-func (m *mockGoldfishManager) ComparisonMinAge() time.Duration {
-	return m.comparisonMinAge
-}
-
-func (m *mockGoldfishManager) ComparisonStartDate() time.Time {
-	return m.comparisonStartDate
+	shouldSampleResult bool
 }
 
 func (m *mockGoldfishManager) ShouldSample(_ string) bool {
@@ -116,16 +106,13 @@ func TestSplittingHandler_ServeSplits_UnsupportedRequestUsesDefaultHandler(t *te
 			backendURL, err := url.Parse(backend.URL)
 			require.NoError(t, err)
 
-			preferredBackend := NewProxyBackend("preferred", backendURL, 5*time.Second, true, false, false)
+			preferredBackend := NewProxyBackend("preferred", backendURL, 5*time.Second, true, false)
 			mockFanOutHandler := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
 				fanOutHandlerCalled = true
 				return nil, nil
 			})
 
-			goldfishManager := &mockGoldfishManager{
-				comparisonMinAge:    1 * time.Hour,
-				comparisonStartDate: time.Time{},
-			}
+			goldfishManager := &mockGoldfishManager{}
 
 			handler, err := NewSplittingHandler(SplittingHandlerConfig{
 				Codec:                     queryrange.DefaultCodec,
@@ -228,7 +215,7 @@ func TestSplittingHandler_RoutingModeV1Preferred_SkipsToDefaultWhenNotSampling(t
 	backendURL, err := url.Parse(backend.URL)
 	require.NoError(t, err)
 
-	preferredBackend := NewProxyBackend("preferred", backendURL, 5*time.Second, false, true, false)
+	preferredBackend := NewProxyBackend("preferred", backendURL, 5*time.Second, true, false)
 	mockFanOutHandler := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
 		fanOutHandlerCalled = true
 		return &queryrange.LokiResponse{
@@ -238,7 +225,6 @@ func TestSplittingHandler_RoutingModeV1Preferred_SkipsToDefaultWhenNotSampling(t
 	})
 
 	goldfishManager := &mockGoldfishManager{
-		comparisonMinAge:   1 * time.Hour,
 		shouldSampleResult: false, // NOT sampling
 	}
 
@@ -325,10 +311,9 @@ func TestSplittingHandler_AlwaysSplitsEvenWhenNotSampling(t *testing.T) {
 			backendURL, err := url.Parse(backend.URL)
 			require.NoError(t, err)
 
-			preferredBackend := NewProxyBackend("preferred", backendURL, 5*time.Second, false, false, false)
+			preferredBackend := NewProxyBackend("preferred", backendURL, 5*time.Second, false, false)
 
 			goldfishManager := &mockGoldfishManager{
-				comparisonMinAge:   1 * time.Hour,
 				shouldSampleResult: false, // NOT sampling
 			}
 
@@ -400,10 +385,9 @@ func TestSplittingHandler_NoSplitLag_UsesFanoutHandler(t *testing.T) {
 	backendURL, err := url.Parse(backend.URL)
 	require.NoError(t, err)
 
-	preferredBackend := NewProxyBackend("preferred", backendURL, 5*time.Second, false, true, false)
+	preferredBackend := NewProxyBackend("preferred", backendURL, 5*time.Second, true, false)
 
 	goldfishManager := &mockGoldfishManager{
-		comparisonMinAge:   0,
 		shouldSampleResult: true, // sampling enabled
 	}
 
@@ -463,10 +447,9 @@ func TestSplittingHandler_V1Preferred_SplitsWhenSampling(t *testing.T) {
 	backendURL, err := url.Parse(backend.URL)
 	require.NoError(t, err)
 
-	preferredBackend := NewProxyBackend("preferred", backendURL, 5*time.Second, false, true, false)
+	preferredBackend := NewProxyBackend("preferred", backendURL, 5*time.Second, true, false)
 
 	goldfishManager := &mockGoldfishManager{
-		comparisonMinAge:   1 * time.Hour,
 		shouldSampleResult: true, // IS sampling
 	}
 
@@ -540,10 +523,9 @@ func TestSplittingHandler_SkipFanoutDisabled_AlwaysSplits(t *testing.T) {
 			backendURL, err := url.Parse(backend.URL)
 			require.NoError(t, err)
 
-			preferredBackend := NewProxyBackend("preferred", backendURL, 5*time.Second, false, true, false)
+			preferredBackend := NewProxyBackend("preferred", backendURL, 5*time.Second, true, false)
 
 			goldfishManager := &mockGoldfishManager{
-				comparisonMinAge:   1 * time.Hour,
 				shouldSampleResult: false, // NOT sampling
 			}
 

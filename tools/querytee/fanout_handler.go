@@ -197,7 +197,7 @@ func (h *FanOutHandler) doWithPreferred(results <-chan *backendResult, collected
 			}
 
 			if result.response != nil {
-				addWarningToResponse(result.response, fmt.Sprintf("%s backend won the race", result.backend.name))
+				addWarningToResponse(result.response, fmt.Sprintf("used response from preferred backend %s", result.backend.name))
 			}
 
 			return result.response, nil

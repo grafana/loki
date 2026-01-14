@@ -790,7 +790,6 @@ func TestProxyEndpoint_QuerySplitting(t *testing.T) {
 		SamplingConfig: querytee_goldfish.SamplingConfig{
 			DefaultRate: 1.0, // Always sample
 		},
-		ComparisonMinAge: minAge,
 	}
 	goldfishManager, err := querytee_goldfish.NewManager(
 		goldfishConfig,

@@ -146,40 +146,30 @@ func Test_NewProxyBackend_PreferredLogic(t *testing.T) {
 			expectedV1Pref: false,
 			expectedV2Pref: false,
 		},
-		"legacy preferred true sets v1=true, v2=false": {
+		"v1Preferred=true": {
 			preferred:      []bool{true},
 			expectedV1Pref: true,
 			expectedV2Pref: false,
 		},
-		"legacy preferred false keeps defaults": {
+		"v1Preferred=false": {
 			preferred:      []bool{false},
 			expectedV1Pref: false,
 			expectedV2Pref: false,
 		},
-		"v1Preferred=true without legacy": {
-			preferred:      []bool{false, true},
+		"v1Preferred=true, v2Preferred=false": {
+			preferred:      []bool{true, false},
 			expectedV1Pref: true,
 			expectedV2Pref: false,
 		},
-		"v2Preferred=true without legacy": {
-			preferred:      []bool{false, false, true},
+		"v1Preferred=false, v2Preferred=true": {
+			preferred:      []bool{false, true},
 			expectedV1Pref: false,
 			expectedV2Pref: true,
 		},
-		"both v1 and v2 preferred without legacy": {
-			preferred:      []bool{false, true, true},
+		"both v1 and v2 preferred": {
+			preferred:      []bool{true, true},
 			expectedV1Pref: true,
 			expectedV2Pref: true,
-		},
-		"legacy=true overrides v1=false and v2=true": {
-			preferred:      []bool{true, false, true},
-			expectedV1Pref: true,
-			expectedV2Pref: false,
-		},
-		"legacy=true with v1=true keeps v1=true and sets v2=false": {
-			preferred:      []bool{true, true, true},
-			expectedV1Pref: true,
-			expectedV2Pref: false,
 		},
 	}
 

@@ -47,6 +47,11 @@ type RoutingConfig struct {
 	// SplitStart is the start date of data available in v2 (dataobjs) storage.
 	// Queries for data before this date will only go to the v1 backend.
 	// If not set, assume v2 data is always available.
+	//
+	// When splitting ueries will be split into up to three parts:
+	// 1. Data before SplitStart -> split goes to the v1 backend only
+	// 2. Data between SplitStart and (now - SplitLag) -> split goes to both v1 and v2 backends
+	// 3. Data after (now - SplitLag) -> split goes to the v1 backend only
 	SplitStart flagext.Time
 
 	// SplitLag is the minimum age of data to route to v2.
@@ -95,12 +100,6 @@ type ProxyConfig struct {
 	Goldfish                       goldfish.Config
 
 	Routing RoutingConfig
-
-	// Deprecated flags kept for backward compatibility
-	// TODO(twhitney): remove in subsequent weekly
-	PreferredBackend string
-	EnableRace       bool
-	RaceTolerance    time.Duration
 }
 
 func (cfg *ProxyConfig) RegisterFlags(f *flag.FlagSet) {
@@ -108,11 +107,6 @@ func (cfg *ProxyConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.BackendEndpoints, "backend.endpoints", "", "Comma separated list of backend endpoints to query.")
 
 	cfg.Routing.RegisterFlags(f)
-
-	// Deprecated flags
-	f.StringVar(&cfg.PreferredBackend, "backend.preferred", "", "Deprecated: use -routing.v1-backend instead. This flag is temporary and will be removed in a future weekly release.")
-	f.BoolVar(&cfg.EnableRace, "proxy.enable-race", false, "Deprecated: use -routing.mode=race instead. This flag is temporary and will be removed in a future weekly release.")
-	f.DurationVar(&cfg.RaceTolerance, "proxy.race-tolerance", 100*time.Millisecond, "Deprecated: use -routing.race-tolerance instead. This flag is temporary and will be removed in a future weekly release.")
 
 	f.DurationVar(&cfg.BackendReadTimeout, "backend.read-timeout", 90*time.Second, "The timeout when reading the response from a backend.")
 	f.BoolVar(&cfg.CompareResponses, "proxy.compare-responses", false, "Compare responses between preferred and secondary endpoints for supported routes.")
@@ -165,8 +159,6 @@ func NewProxy(
 	readRoutes, writeRoutes []Route,
 	registerer prometheus.Registerer,
 ) (*Proxy, error) {
-	migrateRoutingConfig(&cfg, logger)
-
 	if err := cfg.Routing.Validate(); err != nil {
 		return nil, err
 	}
@@ -212,17 +204,12 @@ func NewProxy(
 		}
 
 		name := u.Hostname()
-		//TODO(twhitney): remove legacy config in subsequent rollout
-		legacyPreferred := name == cfg.PreferredBackend
 		v1Preferred := name == cfg.Routing.V1Backend
 		v2Preferred := name == cfg.Routing.V2Backend
 
 		// In tests we have the same hostname for all backends, so we also
 		// support a numeric preferred backend which is the index in the list
 		// of backends.
-		if preferredIdx, err := strconv.Atoi(cfg.PreferredBackend); err == nil {
-			legacyPreferred = preferredIdx == idx
-		}
 		if preferredIdx, err := strconv.Atoi(cfg.Routing.V1Backend); err == nil {
 			v1Preferred = preferredIdx == idx
 		}
@@ -230,8 +217,8 @@ func NewProxy(
 			v2Preferred = preferredIdx == idx
 		}
 
-		level.Debug(logger).Log("msg", "backend added", "name", name, "legacyPreferred", legacyPreferred, "v1Preferred", v1Preferred, "v2Preferred", v2Preferred)
-		p.backends = append(p.backends, NewProxyBackend(name, u, cfg.BackendReadTimeout, legacyPreferred, v1Preferred, v2Preferred))
+		level.Debug(logger).Log("msg", "backend added", "name", name, "v1Preferred", v1Preferred, "v2Preferred", v2Preferred)
+		p.backends = append(p.backends, NewProxyBackend(name, u, cfg.BackendReadTimeout, v1Preferred, v2Preferred))
 	}
 
 	// At least 1 backend is required
@@ -240,7 +227,7 @@ func NewProxy(
 	}
 
 	// If the preferred backend is configured, then it must exists among the actual backends.
-	if cfg.PreferredBackend != "" || cfg.Routing.V1Backend != "" {
+	if cfg.Routing.V1Backend != "" {
 		exists := false
 		for _, b := range p.backends {
 			if b.v1Preferred {
@@ -373,7 +360,7 @@ func (p *Proxy) Start() error {
 				"msg", "Goldfish attached to route",
 				"path", route.Path,
 				"methods", strings.Join(route.Methods, ","),
-				"comparison_min_age", p.goldfishManager.ComparisonMinAge(),
+				"split_lag", p.cfg.Routing.SplitLag,
 			)
 		}
 
@@ -509,24 +496,4 @@ func filterReadDisabledBackends(backends []*ProxyBackend, disableReadProxyCfg st
 	}
 
 	return readEnabledBackends
-}
-
-func migrateRoutingConfig(cfg *ProxyConfig, logger log.Logger) {
-	if cfg.Routing.V1Backend == "" && cfg.PreferredBackend != "" {
-		cfg.Routing.V1Backend = cfg.PreferredBackend
-		level.Warn(logger).Log("msg", "-backend.preferred is deprecated, use -routing.v1-backend")
-	}
-
-	// backwards compatability check, since RoutingModeV1Preferred is the default
-	if cfg.Routing.Mode == RoutingModeV1Preferred {
-		if cfg.EnableRace {
-			cfg.Routing.Mode = RoutingModeRace
-			level.Warn(logger).Log("msg", "-proxy.enable-race is deprecated, use -routing.mode=race")
-		}
-	}
-
-	if cfg.Routing.RaceTolerance == 0 && cfg.RaceTolerance > 0 {
-		cfg.Routing.RaceTolerance = cfg.RaceTolerance
-		level.Warn(logger).Log("msg", "-proxy.race-tolerance is deprecated, use -routing.race-tolerance")
-	}
 }
