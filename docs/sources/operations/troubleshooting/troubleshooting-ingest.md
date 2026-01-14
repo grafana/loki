@@ -158,7 +158,7 @@ A log line exceeds the maximum allowed size.
 
    ```yaml
    limits_config:
-     max_line_size: 512KB
+     max_line_size: 256KB
    ```
 
    {{< admonition type="warning" >}}
@@ -608,8 +608,6 @@ Disk space is not limited by Loki configuration; it depends on your infrastructu
 
 * **Monitor storage health**:
   - Check object storage availability
-  - Monitor DynamoDB write capacity
-  - Verify Cassandra cluster health
 
 * **Review storage metrics**:
   - `loki_ingester_chunks_flushed_total`
