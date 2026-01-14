@@ -483,6 +483,13 @@ func (m *Bootstrap) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if msg, ok := m.StatsEviction.(*Bootstrap_StatsEvictionInterval); ok {
+		size, err := msg.MarshalToSizedBufferVTStrict(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+	}
 	if m.MemoryAllocatorManager != nil {
 		size, err := m.MemoryAllocatorManager.MarshalToSizedBufferVTStrict(dAtA[:i])
 		if err != nil {
@@ -1141,6 +1148,33 @@ func (m *Bootstrap_StatsFlushOnAdmin) MarshalToSizedBufferVTStrict(dAtA []byte) 
 	dAtA[i] = 0x1
 	i--
 	dAtA[i] = 0xe8
+	return len(dAtA) - i, nil
+}
+func (m *Bootstrap_StatsEvictionInterval) MarshalToVTStrict(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVTStrict(dAtA[:size])
+}
+
+func (m *Bootstrap_StatsEvictionInterval) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.StatsEvictionInterval != nil {
+		size, err := (*durationpb.Duration)(m.StatsEvictionInterval).MarshalToSizedBufferVTStrict(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x2
+		i--
+		dAtA[i] = 0xd2
+	} else {
+		i = protohelpers.EncodeVarint(dAtA, i, 0)
+		i--
+		dAtA[i] = 0x2
+		i--
+		dAtA[i] = 0xd2
+	}
 	return len(dAtA) - i, nil
 }
 func (m *Admin) MarshalVTStrict() (dAtA []byte, err error) {
@@ -2683,6 +2717,9 @@ func (m *Bootstrap) SizeVT() (n int) {
 		l = m.MemoryAllocatorManager.SizeVT()
 		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
+	if vtmsg, ok := m.StatsEviction.(interface{ SizeVT() int }); ok {
+		n += vtmsg.SizeVT()
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -2694,6 +2731,20 @@ func (m *Bootstrap_StatsFlushOnAdmin) SizeVT() (n int) {
 	var l int
 	_ = l
 	n += 3
+	return n
+}
+func (m *Bootstrap_StatsEvictionInterval) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.StatsEvictionInterval != nil {
+		l = (*durationpb.Duration)(m.StatsEvictionInterval).SizeVT()
+		n += 2 + l + protohelpers.SizeOfVarint(uint64(l))
+	} else {
+		n += 3
+	}
 	return n
 }
 func (m *Admin) SizeVT() (n int) {

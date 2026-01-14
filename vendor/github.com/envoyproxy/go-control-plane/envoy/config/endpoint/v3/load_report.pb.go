@@ -41,14 +41,16 @@ type UpstreamLocalityStats struct {
 	// The total number of requests successfully completed by the endpoints in the
 	// locality.
 	TotalSuccessfulRequests uint64 `protobuf:"varint,2,opt,name=total_successful_requests,json=totalSuccessfulRequests,proto3" json:"total_successful_requests,omitempty"`
-	// The total number of unfinished requests
+	// The total number of unfinished requests. A request can be an HTTP request
+	// or a TCP connection for a TCP connection pool.
 	TotalRequestsInProgress uint64 `protobuf:"varint,3,opt,name=total_requests_in_progress,json=totalRequestsInProgress,proto3" json:"total_requests_in_progress,omitempty"`
 	// The total number of requests that failed due to errors at the endpoint,
 	// aggregated over all endpoints in the locality.
 	TotalErrorRequests uint64 `protobuf:"varint,4,opt,name=total_error_requests,json=totalErrorRequests,proto3" json:"total_error_requests,omitempty"`
 	// The total number of requests that were issued by this Envoy since
 	// the last report. This information is aggregated over all the
-	// upstream endpoints in the locality.
+	// upstream endpoints in the locality. A request can be an HTTP request
+	// or a TCP connection for a TCP connection pool.
 	TotalIssuedRequests uint64 `protobuf:"varint,8,opt,name=total_issued_requests,json=totalIssuedRequests,proto3" json:"total_issued_requests,omitempty"`
 	// The total number of connections in an established state at the time of the
 	// report. This field is aggregated over all the upstream endpoints in the

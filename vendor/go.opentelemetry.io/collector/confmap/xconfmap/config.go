@@ -15,7 +15,7 @@ import (
 
 // As interface types are only used for static typing, a common idiom to find the reflection Type
 // for an interface type Foo is to use a *Foo value.
-var configValidatorType = reflect.TypeOf((*Validator)(nil)).Elem()
+var configValidatorType = reflect.TypeFor[Validator]()
 
 // Validator defines an optional interface for configurations to implement to do validation.
 type Validator interface {

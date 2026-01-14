@@ -58,27 +58,9 @@ func (m *ZipkinConfig) validate(all bool) error {
 
 	var errors []error
 
-	if utf8.RuneCountInString(m.GetCollectorCluster()) < 1 {
-		err := ZipkinConfigValidationError{
-			field:  "CollectorCluster",
-			reason: "value length must be at least 1 runes",
-		}
-		if !all {
-			return err
-		}
-		errors = append(errors, err)
-	}
+	// no validation rules for CollectorCluster
 
-	if utf8.RuneCountInString(m.GetCollectorEndpoint()) < 1 {
-		err := ZipkinConfigValidationError{
-			field:  "CollectorEndpoint",
-			reason: "value length must be at least 1 runes",
-		}
-		if !all {
-			return err
-		}
-		errors = append(errors, err)
-	}
+	// no validation rules for CollectorEndpoint
 
 	// no validation rules for TraceId_128Bit
 
@@ -116,6 +98,37 @@ func (m *ZipkinConfig) validate(all bool) error {
 	// no validation rules for CollectorHostname
 
 	// no validation rules for SplitSpansForRequest
+
+	// no validation rules for TraceContextOption
+
+	if all {
+		switch v := interface{}(m.GetCollectorService()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, ZipkinConfigValidationError{
+					field:  "CollectorService",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, ZipkinConfigValidationError{
+					field:  "CollectorService",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetCollectorService()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return ZipkinConfigValidationError{
+				field:  "CollectorService",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
 
 	if len(errors) > 0 {
 		return ZipkinConfigMultiError(errors)

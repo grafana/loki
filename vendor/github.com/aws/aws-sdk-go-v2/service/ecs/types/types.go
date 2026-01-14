@@ -1824,6 +1824,11 @@ type CreateManagedInstancesProviderConfiguration struct {
 	// This member is required.
 	InstanceLaunchTemplate *InstanceLaunchTemplate
 
+	// Defines how Amazon ECS Managed Instances optimizes the infrastastructure in
+	// your capacity provider. Provides control over the delay between when EC2
+	// instances become idle or underutilized and when Amazon ECS optimizes them.
+	InfrastructureOptimization *InfrastructureOptimization
+
 	// Specifies whether to propagate tags from the capacity provider to the Amazon
 	// ECS Managed Instances. When enabled, tags applied to the capacity provider are
 	// automatically applied to all instances launched by this provider.
@@ -2471,6 +2476,75 @@ type EBSTagSpecification struct {
 	noSmithyDocumentSerde
 }
 
+// Represents an Express service, which provides a simplified way to deploy
+// containerized web applications on Amazon ECS with managed Amazon Web Services
+// infrastructure. An Express service automatically provisions and manages
+// Application Load Balancers, target groups, security groups, and auto-scaling
+// policies.
+//
+// Express services use a service revision architecture where each service can
+// have multiple active configurations, enabling blue-green deployments and gradual
+// rollouts. The service maintains a list of active configurations and manages the
+// lifecycle of the underlying Amazon Web Services resources.
+type ECSExpressGatewayService struct {
+
+	// The list of active service configurations for the Express service.
+	ActiveConfigurations []ExpressGatewayServiceConfiguration
+
+	// The short name or full ARN of the cluster that hosts the Express service.
+	Cluster *string
+
+	// The Unix timestamp for when the Express service was created.
+	CreatedAt *time.Time
+
+	// The current deployment configuration for the Express service.
+	CurrentDeployment *string
+
+	// The ARN of the infrastructure role that manages Amazon Web Services resources
+	// for the Express service.
+	InfrastructureRoleArn *string
+
+	// The ARN that identifies the Express service.
+	ServiceArn *string
+
+	// The name of the Express service.
+	ServiceName *string
+
+	// The current status of the Express service.
+	Status *ExpressGatewayServiceStatus
+
+	// The metadata applied to the Express service.
+	Tags []Tag
+
+	// The Unix timestamp for when the Express service was last updated.
+	UpdatedAt *time.Time
+
+	noSmithyDocumentSerde
+}
+
+// Represents the Amazon Web Services resources managed by Amazon ECS for an
+// Express service, including ingress paths, auto-scaling policies, metric alarms,
+// and security groups.
+type ECSManagedResources struct {
+
+	// The auto-scaling configuration and policies for the Express service.
+	AutoScaling *ManagedAutoScaling
+
+	// The ingress paths and endpoints for the Express service.
+	IngressPaths []ManagedIngressPath
+
+	// The log groups managed by the Express service.
+	LogGroups []ManagedLogGroup
+
+	// The CloudWatch metric alarms associated with the Express service.
+	MetricAlarms []ManagedMetricAlarm
+
+	// The security groups managed by the Express service.
+	ServiceSecurityGroups []ManagedSecurityGroup
+
+	noSmithyDocumentSerde
+}
+
 // The authorization configuration details for the Amazon EFS file system.
 type EFSAuthorizationConfig struct {
 
@@ -2664,6 +2738,173 @@ type ExecuteCommandLogConfiguration struct {
 
 	// An optional folder in the S3 bucket to place logs in.
 	S3KeyPrefix *string
+
+	noSmithyDocumentSerde
+}
+
+// Defines the configuration for the primary container in an Express service. This
+// container receives traffic from the Application Load Balancer and runs your
+// application code.
+//
+// The container configuration includes the container image, port mapping, logging
+// settings, environment variables, and secrets. The container image is the only
+// required parameter, with sensible defaults provided for other settings.
+type ExpressGatewayContainer struct {
+
+	// The image used to start a container. This string is passed directly to the
+	// Docker daemon. Images in the Docker Hub registry are available by default. Other
+	// repositories are specified with either repository-url/image:tag or
+	// repository-url/image@digest .
+	//
+	// For Express services, the image typically contains a web application that
+	// listens on the specified container port. The image can be stored in Amazon ECR,
+	// Docker Hub, or any other container registry accessible to your execution role.
+	//
+	// This member is required.
+	Image *string
+
+	// The log configuration for the container.
+	AwsLogsConfiguration *ExpressGatewayServiceAwsLogsConfiguration
+
+	// The command that is passed to the container.
+	Command []string
+
+	// The port number on the container that receives traffic from the load balancer.
+	// Default is 80.
+	ContainerPort *int32
+
+	// The environment variables to pass to the container.
+	Environment []KeyValuePair
+
+	// The configuration for repository credentials for private registry
+	// authentication.
+	RepositoryCredentials *ExpressGatewayRepositoryCredentials
+
+	// The secrets to pass to the container.
+	Secrets []Secret
+
+	noSmithyDocumentSerde
+}
+
+// The repository credentials for private registry authentication to pass to the
+// container.
+type ExpressGatewayRepositoryCredentials struct {
+
+	// The Amazon Resource Name (ARN) of the secret containing the private repository
+	// credentials.
+	CredentialsParameter *string
+
+	noSmithyDocumentSerde
+}
+
+// Defines the auto-scaling configuration for an Express service. This determines
+// how the service automatically adjusts the number of running tasks based on
+// demand metrics such as CPU utilization, memory utilization, or request count per
+// target.
+//
+// Auto-scaling helps ensure your application can handle varying levels of traffic
+// while optimizing costs by scaling down during low-demand periods. You can
+// specify the minimum and maximum number of tasks, the scaling metric, and the
+// target value for that metric.
+type ExpressGatewayScalingTarget struct {
+
+	// The metric used for auto-scaling decisions. The default metric used for an
+	// Express service is CPUUtilization .
+	AutoScalingMetric ExpressGatewayServiceScalingMetric
+
+	// The target value for the auto-scaling metric. The default value for an Express
+	// service is 60.
+	AutoScalingTargetValue *int32
+
+	// The maximum number of tasks to run in the Express service.
+	MaxTaskCount *int32
+
+	// The minimum number of tasks to run in the Express service.
+	MinTaskCount *int32
+
+	noSmithyDocumentSerde
+}
+
+// Specifies the Amazon CloudWatch Logs configuration for the Express service
+// container.
+type ExpressGatewayServiceAwsLogsConfiguration struct {
+
+	// The name of the CloudWatch Logs log group to send container logs to.
+	//
+	// This member is required.
+	LogGroup *string
+
+	// The prefix for the CloudWatch Logs log stream names. The default for an Express
+	// service is ecs .
+	//
+	// This member is required.
+	LogStreamPrefix *string
+
+	noSmithyDocumentSerde
+}
+
+// Represents a specific configuration revision of an Express service, containing
+// all the settings and parameters for that revision.
+type ExpressGatewayServiceConfiguration struct {
+
+	// The CPU allocation for tasks in this service revision.
+	Cpu *string
+
+	// The Unix timestamp for when this service revision was created.
+	CreatedAt *time.Time
+
+	// The ARN of the task execution role for the service revision.
+	ExecutionRoleArn *string
+
+	// The health check path for this service revision.
+	HealthCheckPath *string
+
+	// The entry point into this service revision.
+	IngressPaths []IngressPathSummary
+
+	// The memory allocation for tasks in this service revision.
+	Memory *string
+
+	// The network configuration for tasks in this service revision.
+	NetworkConfiguration *ExpressGatewayServiceNetworkConfiguration
+
+	// The primary container configuration for this service revision.
+	PrimaryContainer *ExpressGatewayContainer
+
+	// The auto-scaling configuration for this service revision.
+	ScalingTarget *ExpressGatewayScalingTarget
+
+	// The ARN of the service revision.
+	ServiceRevisionArn *string
+
+	// The ARN of the task role for the service revision.
+	TaskRoleArn *string
+
+	noSmithyDocumentSerde
+}
+
+// The network configuration for an Express service. By default, an Express
+// service utilizes subnets and security groups associated with the default VPC.
+type ExpressGatewayServiceNetworkConfiguration struct {
+
+	// The IDs of the security groups associated with the Express service.
+	SecurityGroups []string
+
+	// The IDs of the subnets associated with the Express service.
+	Subnets []string
+
+	noSmithyDocumentSerde
+}
+
+// An object that defines the status of Express service creation and information
+// about the status of the service.
+type ExpressGatewayServiceStatus struct {
+
+	// The status of the Express service.
+	StatusCode ExpressGatewayServiceStatusCode
+
+	// Information about why the Express service is in the current status.
+	StatusReason *string
 
 	noSmithyDocumentSerde
 }
@@ -3043,6 +3284,45 @@ type InferenceAcceleratorOverride struct {
 
 	// The Elastic Inference accelerator type to use.
 	DeviceType *string
+
+	noSmithyDocumentSerde
+}
+
+// The configuration that controls how Amazon ECS optimizes your infrastructure.
+type InfrastructureOptimization struct {
+
+	// This parameter defines the number of seconds Amazon ECS Managed Instances waits
+	// before optimizing EC2 instances that have become idle or underutilized. A longer
+	// delay increases the likelihood of placing new tasks on idle or underutilized
+	// instances instances, reducing startup time. A shorter delay helps reduce
+	// infrastructure costs by optimizing idle or underutilized instances,instances
+	// more quickly.
+	//
+	// Valid values are:
+	//
+	//   - null - Uses the default optimization behavior.
+	//
+	//   - -1 - Disables automatic infrastructure optimization.
+	//
+	//   - A value between 0 and 3600 (inclusive) - Specifies the number of seconds to
+	//   wait before optimizing instances.
+	ScaleInAfter *int32
+
+	noSmithyDocumentSerde
+}
+
+// The entry point into an Express service.
+type IngressPathSummary struct {
+
+	// The type of access to the endpoint for the Express service.
+	//
+	// This member is required.
+	AccessType AccessType
+
+	// The endpoint for access to the service.
+	//
+	// This member is required.
+	Endpoint *string
 
 	noSmithyDocumentSerde
 }
@@ -3815,6 +4095,126 @@ type ManagedAgentStateChange struct {
 	noSmithyDocumentSerde
 }
 
+// The Application Auto Scaling policy created by Amazon ECS when you create an
+// Express service.
+type ManagedApplicationAutoScalingPolicy struct {
+
+	// The metric used for auto scaling decisions. The available metrics are
+	// ECSServiceAverageCPUUtilization , ECSServiceAverageMemoryUtilization , and
+	// ALBRequestCOuntPerTarget .
+	//
+	// This member is required.
+	Metric *string
+
+	// The type of Application Auto Scaling policy associated with the Express
+	// service. Valid values are TargetTrackingScaling , StepScaling , and
+	// PredictiveScaling .
+	//
+	// This member is required.
+	PolicyType *string
+
+	// The status of Application Auto Scaling policy creation.
+	//
+	// This member is required.
+	Status ManagedResourceStatus
+
+	// The target value for the auto scaling metric.
+	//
+	// This member is required.
+	TargetValue float64
+
+	// The Unix timestamp for when the Application Auto Scaling policy was last
+	// updated.
+	//
+	// This member is required.
+	UpdatedAt *time.Time
+
+	// The Amazon Resource Name (ARN) of the Application Auto Scaling policy
+	// associated with the Express service.
+	Arn *string
+
+	// Information about why the Application Auto Scaling policy is in the current
+	// status.
+	StatusReason *string
+
+	noSmithyDocumentSerde
+}
+
+// The auto scaling configuration created by Amazon ECS for an Express service.
+type ManagedAutoScaling struct {
+
+	// The policy used for auto scaling.
+	ApplicationAutoScalingPolicies []ManagedApplicationAutoScalingPolicy
+
+	// Represents a scalable target.
+	ScalableTarget *ManagedScalableTarget
+
+	noSmithyDocumentSerde
+}
+
+// The ACM certificate associated with the HTTPS domain created for the Express
+// service.
+type ManagedCertificate struct {
+
+	// The fully qualified domain name (FQDN) that is secured with this ACM
+	// certificate.
+	//
+	// This member is required.
+	DomainName *string
+
+	// The status of the ACM; certificate.
+	//
+	// This member is required.
+	Status ManagedResourceStatus
+
+	// The Unix timestamp for when the ACM certificate was last updated
+	//
+	// This member is required.
+	UpdatedAt *time.Time
+
+	// The Amazon Resource Name (ARN) of the ACM certificate.
+	Arn *string
+
+	// Information about why the ACM certificate is in the current status.
+	StatusReason *string
+
+	noSmithyDocumentSerde
+}
+
+// The entry point into the Express service.
+type ManagedIngressPath struct {
+
+	// The type of access to the endpoint for the Express service.
+	//
+	// This member is required.
+	AccessType AccessType
+
+	// The endpoint for access to the Express service.
+	//
+	// This member is required.
+	Endpoint *string
+
+	// The ACM certificate for the Express service's domain.
+	Certificate *ManagedCertificate
+
+	// The listeners associated with the Application Load Balancer.
+	Listener *ManagedListener
+
+	// The Application Load Balancer associated with the Express service.
+	LoadBalancer *ManagedLoadBalancer
+
+	// The security groups associated with the Application Load Balancer.
+	LoadBalancerSecurityGroups []ManagedSecurityGroup
+
+	// The listener rules for the Application Load Balancer.
+	Rule *ManagedListenerRule
+
+	// The target groups associated with the Application Load Balancer.
+	TargetGroups []ManagedTargetGroup
+
+	noSmithyDocumentSerde
+}
+
 // The network configuration for Amazon ECS Managed Instances. This specifies the
 // VPC subnets and security groups that instances use for network connectivity.
 // Amazon ECS Managed Instances support multiple network modes including awsvpc
@@ -3841,6 +4241,12 @@ type ManagedInstancesNetworkConfiguration struct {
 // Amazon EC2 instance types and features while offloading infrastructure
 // management to Amazon Web Services.
 type ManagedInstancesProvider struct {
+
+	// Defines how Amazon ECS Managed Instances optimizes the infrastastructure in
+	// your capacity provider. Configure it to turn on or off the infrastructure
+	// optimization in your capacity provider, and to control the idle or underutilized
+	// EC2 instances optimization delay.
+	InfrastructureOptimization *InfrastructureOptimization
 
 	// The Amazon Resource Name (ARN) of the infrastructure role that Amazon ECS
 	// assumes to manage instances. This role must include permissions for Amazon EC2
@@ -3876,6 +4282,168 @@ type ManagedInstancesStorageConfiguration struct {
 
 	// The size of the tasks volume.
 	StorageSizeGiB *int32
+
+	noSmithyDocumentSerde
+}
+
+// The listeners associated with the Express service's Application Load Balancer.
+type ManagedListener struct {
+
+	// The status of the load balancer listener.
+	//
+	// This member is required.
+	Status ManagedResourceStatus
+
+	// The Unix timestamp for when this listener was most recently updated.
+	//
+	// This member is required.
+	UpdatedAt *time.Time
+
+	// The Amazon Resource Name (ARN) of the load balancer listener.
+	Arn *string
+
+	// Informaion about why the load balancer listener is in the current status.
+	StatusReason *string
+
+	noSmithyDocumentSerde
+}
+
+// The listener rule associated with the Express service's Application Load
+// Balancer.
+type ManagedListenerRule struct {
+
+	// The status of the load balancer listener rule.
+	//
+	// This member is required.
+	Status ManagedResourceStatus
+
+	// The Unix timestamp for when this listener rule was most recently updated.
+	//
+	// This member is required.
+	UpdatedAt *time.Time
+
+	// The Amazon Resource Name (ARN) of the load balancer listener rule.
+	Arn *string
+
+	// Information about why the load balancer listener rule is in the current status.
+	StatusReason *string
+
+	noSmithyDocumentSerde
+}
+
+// The Application Load Balancer associated with the Express service.
+type ManagedLoadBalancer struct {
+
+	// The scheme of the load balancer. By default, the scheme of the load balancer is
+	// internet-facing .
+	//
+	// This member is required.
+	Scheme *string
+
+	// The status of the load balancer.
+	//
+	// This member is required.
+	Status ManagedResourceStatus
+
+	// The Unix timestamp for when this load balancer was most recently updated.
+	//
+	// This member is required.
+	UpdatedAt *time.Time
+
+	// The Amazon Resource Name (ARN) of the load balancer.
+	Arn *string
+
+	// The IDs of the security groups associated with the load balancer.
+	SecurityGroupIds []string
+
+	// Information about why the load balancer is in the current status.
+	StatusReason *string
+
+	// The IDs of the subnets associated with the load balancer.
+	SubnetIds []string
+
+	noSmithyDocumentSerde
+}
+
+// The Cloudwatch Log Group created by Amazon ECS for an Express service.
+type ManagedLogGroup struct {
+
+	// The name of the Cloudwatch Log Group associated with the Express service.
+	//
+	// This member is required.
+	LogGroupName *string
+
+	// The status of the Cloudwatch LogGroup.
+	//
+	// This member is required.
+	Status ManagedResourceStatus
+
+	// The Unix timestamp for when the Cloudwatch LogGroup was last updated
+	//
+	// This member is required.
+	UpdatedAt *time.Time
+
+	// The Amazon Resource Name (ARN) of the Cloudwatch Log Group associated with the
+	// Express service.
+	Arn *string
+
+	// Information about why the Cloudwatch LogGroup is in the current status.
+	StatusReason *string
+
+	noSmithyDocumentSerde
+}
+
+// The CloudWatch metric alarm associated with the Express service's scaling
+// policy.
+type ManagedMetricAlarm struct {
+
+	// The status of the CloudWatch metric alarm.
+	//
+	// This member is required.
+	Status ManagedResourceStatus
+
+	// The Unix timestamp for when the CloudWatch metric alarm was last updated.
+	//
+	// This member is required.
+	UpdatedAt *time.Time
+
+	// The Amazon Resource Name (ARN) of the CloudWatch metric alarm.
+	Arn *string
+
+	// Information about why the CloudWatch metric alarm is in the current status.
+	StatusReason *string
+
+	noSmithyDocumentSerde
+}
+
+// Represents a scalable target.
+type ManagedScalableTarget struct {
+
+	// The maximum value to scale to in response to a scale-out activity.
+	//
+	// This member is required.
+	MaxCapacity int32
+
+	// The minimum value to scale to in response to a scale-in activity.
+	//
+	// This member is required.
+	MinCapacity int32
+
+	// The status of the scalable target.
+	//
+	// This member is required.
+	Status ManagedResourceStatus
+
+	// The Unix timestamp for when the target was most recently updated.
+	//
+	// This member is required.
+	UpdatedAt *time.Time
+
+	// The ARN of the scalable target.
+	Arn *string
+
+	// Information about why the scalable target is in the current status.
+	StatusReason *string
 
 	noSmithyDocumentSerde
 }
@@ -3926,6 +4494,28 @@ type ManagedScaling struct {
 	noSmithyDocumentSerde
 }
 
+// A security group associated with the Express service.
+type ManagedSecurityGroup struct {
+
+	// The status of the security group.
+	//
+	// This member is required.
+	Status ManagedResourceStatus
+
+	// The Unix timestamp for when the security group was last updated.
+	//
+	// This member is required.
+	UpdatedAt *time.Time
+
+	// The ARN of the security group.
+	Arn *string
+
+	// Information about why the security group is in the current status.
+	StatusReason *string
+
+	noSmithyDocumentSerde
+}
+
 // The managed storage configuration for the cluster.
 type ManagedStorageConfiguration struct {
 
@@ -3953,6 +4543,47 @@ type ManagedStorageConfiguration struct {
 	//
 	// [Encrypt data stored in Amazon EBS volumes for Amazon ECS]: https://docs.aws.amazon.com/AmazonECS/latest/developerguide/ebs-kms-encryption.html
 	KmsKeyId *string
+
+	noSmithyDocumentSerde
+}
+
+// The target group associated with the Express service's Application Load
+// Balancer. For more information about load balancer target groups, see [CreateTargetGroup]in the
+// Elastic Load Balancing API Reference
+//
+// [CreateTargetGroup]: https://docs.aws.amazon.com/elasticloadbalancing/latest/APIReference/API_CreateTargetGroup.html
+type ManagedTargetGroup struct {
+
+	// The destination for health checks on the targets.
+	//
+	// This member is required.
+	HealthCheckPath *string
+
+	// The port the load balancer uses when performing health checks on targets.
+	//
+	// This member is required.
+	HealthCheckPort int32
+
+	// The port on which the targets receive traffic.
+	//
+	// This member is required.
+	Port int32
+
+	// The status of the target group.
+	//
+	// This member is required.
+	Status ManagedResourceStatus
+
+	// The Unix timestamp for when the target group was last updated.
+	//
+	// This member is required.
+	UpdatedAt *time.Time
+
+	// The Amazon Resource Name (ARN) of the target group.
+	Arn *string
+
+	// Information about why the target group is in the current status.
+	StatusReason *string
 
 	noSmithyDocumentSerde
 }
@@ -4675,6 +5306,12 @@ type Service struct {
 	// The principal that created the service.
 	CreatedBy *string
 
+	// The ARN of the current service deployment.
+	CurrentServiceDeployment *string
+
+	// The list of the service revisions.
+	CurrentServiceRevisions []ServiceCurrentRevisionSummary
+
 	// Optional deployment parameters that control how many tasks run during the
 	// deployment and the ordering of stopping and starting tasks.
 	DeploymentConfiguration *DeploymentConfiguration
@@ -4757,6 +5394,10 @@ type Service struct {
 	// Determines whether to propagate the tags from the task definition or the
 	// service to the task. If no value is specified, the tags aren't propagated.
 	PropagateTags PropagateTags
+
+	// Identifies whether an ECS Service is an Express Service managed by ECS, or
+	// managed by the customer. The valid values are ECS and CUSTOMER
+	ResourceManagementType ResourceManagementType
 
 	// The ARN of the IAM role that's associated with the service. It allows the
 	// Amazon ECS container agent to register container instances with an Elastic Load
@@ -5197,6 +5838,24 @@ type ServiceConnectTlsConfiguration struct {
 	// The Amazon Resource Name (ARN) of the IAM role that's associated with the
 	// Service Connect TLS.
 	RoleArn *string
+
+	noSmithyDocumentSerde
+}
+
+// The summary of the current service revision configuration
+type ServiceCurrentRevisionSummary struct {
+
+	// The ARN of the current service revision.
+	Arn *string
+
+	// The number of pending tasks in the current service revision
+	PendingTaskCount int32
+
+	// The number of requested tasks in the current service revision
+	RequestedTaskCount int32
+
+	// The number of running tasks of the current service revision
+	RunningTaskCount int32
 
 	noSmithyDocumentSerde
 }
@@ -5663,6 +6322,10 @@ type ServiceRevision struct {
 	// The time that the service revision was created. The format is yyyy-mm-dd
 	// HH:mm:ss.SSSSS.
 	CreatedAt *time.Time
+
+	// The resources created and managed by Amazon ECS when you create an Express
+	// service for Amazon ECS.
+	EcsManagedResources *ECSManagedResources
 
 	// The amount of ephemeral storage to allocate for the deployment.
 	FargateEphemeralStorage *DeploymentEphemeralStorage
@@ -6958,6 +7621,35 @@ type Ulimit struct {
 	noSmithyDocumentSerde
 }
 
+// An object that describes an Express service to be updated.
+type UpdatedExpressGatewayService struct {
+
+	// The cluster associated with the Express service that is being updated.
+	Cluster *string
+
+	// The Unix timestamp for when the Express service that is being updated was
+	// created.
+	CreatedAt *time.Time
+
+	// The ARN of the Express service that is being updated.
+	ServiceArn *string
+
+	// The name of the Express service that is being updated.
+	ServiceName *string
+
+	// The status of the Express service that is being updated.
+	Status *ExpressGatewayServiceStatus
+
+	// The configuration to which the current Express service is being updated to.
+	TargetConfiguration *ExpressGatewayServiceConfiguration
+
+	// The Unix timestamp for when the Express service that is being updated was most
+	// recently updated.
+	UpdatedAt *time.Time
+
+	noSmithyDocumentSerde
+}
+
 // The updated configuration for a Amazon ECS Managed Instances provider. You can
 // modify the infrastructure role, instance launch template, and tag propagation
 // settings. Changes apply to new instances launched after the update.
@@ -6980,6 +7672,10 @@ type UpdateManagedInstancesProviderConfiguration struct {
 	//
 	// This member is required.
 	InstanceLaunchTemplate *InstanceLaunchTemplateUpdate
+
+	// The updated infrastructure optimization configuration. Changes to this setting
+	// affect how Amazon ECS optimizes instances going forward.
+	InfrastructureOptimization *InfrastructureOptimization
 
 	// The updated tag propagation setting. When changed, this affects only new
 	// instances launched after the update.

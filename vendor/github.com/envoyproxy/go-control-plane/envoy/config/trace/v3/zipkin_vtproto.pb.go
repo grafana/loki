@@ -9,6 +9,7 @@ package tracev3
 import (
 	protohelpers "github.com/planetscale/vtprotobuf/protohelpers"
 	wrapperspb "github.com/planetscale/vtprotobuf/types/known/wrapperspb"
+	proto "google.golang.org/protobuf/proto"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 )
 
@@ -48,6 +49,33 @@ func (m *ZipkinConfig) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.CollectorService != nil {
+		if vtmsg, ok := interface{}(m.CollectorService).(interface {
+			MarshalToSizedBufferVTStrict([]byte) (int, error)
+		}); ok {
+			size, err := vtmsg.MarshalToSizedBufferVTStrict(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		} else {
+			encoded, err := proto.Marshal(m.CollectorService)
+			if err != nil {
+				return 0, err
+			}
+			i -= len(encoded)
+			copy(dAtA[i:], encoded)
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(encoded)))
+		}
+		i--
+		dAtA[i] = 0x4a
+	}
+	if m.TraceContextOption != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.TraceContextOption))
+		i--
+		dAtA[i] = 0x40
 	}
 	if m.SplitSpansForRequest {
 		i--
@@ -138,6 +166,19 @@ func (m *ZipkinConfig) SizeVT() (n int) {
 	}
 	if m.SplitSpansForRequest {
 		n += 2
+	}
+	if m.TraceContextOption != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.TraceContextOption))
+	}
+	if m.CollectorService != nil {
+		if size, ok := interface{}(m.CollectorService).(interface {
+			SizeVT() int
+		}); ok {
+			l = size.SizeVT()
+		} else {
+			l = proto.Size(m.CollectorService)
+		}
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
 	return n

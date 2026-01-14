@@ -641,7 +641,8 @@ type HealthCheck_HttpHealthCheck struct {
 	// Specifies the HTTP path that will be requested during health checking. For example
 	// “/healthcheck“.
 	Path string `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"`
-	// [#not-implemented-hide:] HTTP specific payload.
+	// HTTP specific payload to be sent as the request body during health checking.
+	// If specified, the method should support a request body (POST, PUT, PATCH, etc.).
 	Send *HealthCheck_Payload `protobuf:"bytes,3,opt,name=send,proto3" json:"send,omitempty"`
 	// Specifies a list of HTTP expected responses to match in the first “response_buffer_size“ bytes of the response body.
 	// If it is set, both the expected response check and status code determine the health check.
@@ -688,7 +689,8 @@ type HealthCheck_HttpHealthCheck struct {
 	// <arch_overview_health_checking_identity>` for more information.
 	ServiceNameMatcher *v31.StringMatcher `protobuf:"bytes,11,opt,name=service_name_matcher,json=serviceNameMatcher,proto3" json:"service_name_matcher,omitempty"`
 	// HTTP Method that will be used for health checking, default is "GET".
-	// GET, HEAD, POST, PUT, DELETE, OPTIONS, TRACE, PATCH methods are supported, but making request body is not supported.
+	// GET, HEAD, POST, PUT, DELETE, OPTIONS, TRACE, PATCH methods are supported.
+	// Request body payloads are supported for POST, PUT, PATCH, and OPTIONS methods only.
 	// CONNECT method is disallowed because it is not appropriate for health check request.
 	// If a non-200 response is expected by the method, it needs to be set in :ref:`expected_statuses <envoy_v3_api_field_config.core.v3.HealthCheck.HttpHealthCheck.expected_statuses>`.
 	Method RequestMethod `protobuf:"varint,13,opt,name=method,proto3,enum=envoy.config.core.v3.RequestMethod" json:"method,omitempty"`
