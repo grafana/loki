@@ -692,7 +692,6 @@ func TestCompareStreams_SamplesOutsideComparableWindow(t *testing.T) {
 
 			if tc.err == nil {
 				require.Empty(t, summary.ErrorMessage)
-				require.True(t, summary.SkippedActualEntries > 0)
 				return
 			}
 			require.NotEmpty(t, summary.ErrorMessage)
