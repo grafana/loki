@@ -21,7 +21,7 @@ type pageReader struct {
 
 	closer      io.Closer
 	presenceDec *bitmapDecoder
-	valuesDec   valueDecoder
+	valuesDec   legacyValueDecoder
 
 	presenceBuf []Value
 	valuesBuf   []Value

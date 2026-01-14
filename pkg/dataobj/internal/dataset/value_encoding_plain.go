@@ -18,7 +18,7 @@ func init() {
 		datasetmd.PHYSICAL_TYPE_BINARY,
 		datasetmd.ENCODING_TYPE_PLAIN,
 		func(w streamio.Writer) valueEncoder { return newPlainBytesEncoder(w) },
-		func(data []byte) valueDecoder { return newPlainBytesDecoder(data) },
+		func(data []byte) legacyValueDecoder { return newPlainBytesDecoder(data) },
 	)
 }
 
@@ -77,7 +77,7 @@ type plainBytesDecoder struct {
 	r streamio.Reader
 }
 
-var _ valueDecoder = (*plainBytesDecoder)(nil)
+var _ legacyValueDecoder = (*plainBytesDecoder)(nil)
 
 // newPlainBytesDecoder creates a plainDecoder that reads encoded strings from
 // data.
@@ -130,7 +130,7 @@ func (dec *plainBytesDecoder) decode(v *Value) error {
 	return nil
 }
 
-// Reset implements [valueDecoder]. It resets the decoder to read from data.
+// Reset implements [legacyValueDecoder]. It resets the decoder to read from data.
 func (dec *plainBytesDecoder) Reset(data []byte) {
 	dec.r = bytes.NewReader(data)
 }
