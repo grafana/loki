@@ -17,64 +17,68 @@ import (
 
 // HandlerFactory creates the appropriate handler based on configuration.
 type HandlerFactory struct {
-	backends                  []*ProxyBackend
-	codec                     queryrangebase.Codec
-	goldfishManager           goldfish.Manager
-	instrumentCompares        bool
-	routingMode               RoutingMode
-	logger                    log.Logger
-	metrics                   *ProxyMetrics
-	raceTolerance             time.Duration
-	skipFanOutWhenNotSampling bool
-	splitStart                time.Time
-	splitLag                  time.Duration
+	backends                      []*ProxyBackend
+	codec                         queryrangebase.Codec
+	goldfishManager               goldfish.Manager
+	instrumentCompares            bool
+	routingMode                   RoutingMode
+	logger                        log.Logger
+	metrics                       *ProxyMetrics
+	raceTolerance                 time.Duration
+	skipFanOutWhenNotSampling     bool
+	splitStart                    time.Time
+	splitLag                      time.Duration
+	addRoutingDecisionsToWarnings bool
 }
 
 // HandlerFactoryConfig holds configuration for creating a HandlerFactory.
 type HandlerFactoryConfig struct {
-	Backends                  []*ProxyBackend
-	Codec                     queryrangebase.Codec
-	GoldfishManager           goldfish.Manager
-	InstrumentCompares        bool
-	RoutingMode               RoutingMode
-	Logger                    log.Logger
-	Metrics                   *ProxyMetrics
-	RaceTolerance             time.Duration
-	SkipFanOutWhenNotSampling bool
-	SplitStart                flagext.Time
-	SplitLag                  time.Duration
+	Backends                      []*ProxyBackend
+	Codec                         queryrangebase.Codec
+	GoldfishManager               goldfish.Manager
+	InstrumentCompares            bool
+	RoutingMode                   RoutingMode
+	Logger                        log.Logger
+	Metrics                       *ProxyMetrics
+	RaceTolerance                 time.Duration
+	SkipFanOutWhenNotSampling     bool
+	SplitStart                    flagext.Time
+	SplitLag                      time.Duration
+	AddRoutingDecisionsToWarnings bool
 }
 
 // NewHandlerFactory creates a new HandlerFactory.
 func NewHandlerFactory(cfg HandlerFactoryConfig) *HandlerFactory {
 	return &HandlerFactory{
-		backends:                  cfg.Backends,
-		codec:                     cfg.Codec,
-		goldfishManager:           cfg.GoldfishManager,
-		instrumentCompares:        cfg.InstrumentCompares,
-		routingMode:               cfg.RoutingMode,
-		logger:                    cfg.Logger,
-		metrics:                   cfg.Metrics,
-		raceTolerance:             cfg.RaceTolerance,
-		skipFanOutWhenNotSampling: cfg.SkipFanOutWhenNotSampling,
-		splitStart:                time.Time(cfg.SplitStart),
-		splitLag:                  cfg.SplitLag,
+		backends:                      cfg.Backends,
+		codec:                         cfg.Codec,
+		goldfishManager:               cfg.GoldfishManager,
+		instrumentCompares:            cfg.InstrumentCompares,
+		routingMode:                   cfg.RoutingMode,
+		logger:                        cfg.Logger,
+		metrics:                       cfg.Metrics,
+		raceTolerance:                 cfg.RaceTolerance,
+		skipFanOutWhenNotSampling:     cfg.SkipFanOutWhenNotSampling,
+		splitStart:                    time.Time(cfg.SplitStart),
+		splitLag:                      cfg.SplitLag,
+		addRoutingDecisionsToWarnings: cfg.AddRoutingDecisionsToWarnings,
 	}
 }
 
 func (f *HandlerFactory) CreateHandler(routeName string, comp comparator.ResponsesComparator) (http.Handler, error) {
 	// Create the fan-out handler that sends requests to all backends
 	fanOutHandler := NewFanOutHandler(FanOutHandlerConfig{
-		Backends:           f.backends,
-		Codec:              f.codec,
-		Comparator:         comp,
-		GoldfishManager:    f.goldfishManager,
-		InstrumentCompares: f.instrumentCompares,
-		RoutingMode:        f.routingMode,
-		Logger:             f.logger,
-		Metrics:            f.metrics,
-		RouteName:          routeName,
-		RaceTolerance:      f.raceTolerance,
+		Backends:                      f.backends,
+		Codec:                         f.codec,
+		Comparator:                    comp,
+		GoldfishManager:               f.goldfishManager,
+		InstrumentCompares:            f.instrumentCompares,
+		RoutingMode:                   f.routingMode,
+		Logger:                        f.logger,
+		Metrics:                       f.metrics,
+		RouteName:                     routeName,
+		RaceTolerance:                 f.raceTolerance,
+		AddRoutingDecisionsToWarnings: f.addRoutingDecisionsToWarnings,
 	})
 
 	var v1Backend *ProxyBackend
@@ -86,14 +90,15 @@ func (f *HandlerFactory) CreateHandler(routeName string, comp comparator.Respons
 	}
 
 	splittingHandler, err := NewSplittingHandler(SplittingHandlerConfig{
-		Codec:                     f.codec,
-		FanOutHandler:             fanOutHandler,
-		GoldfishManager:           f.goldfishManager,
-		V1Backend:                 v1Backend,
-		SkipFanoutWhenNotSampling: f.skipFanOutWhenNotSampling,
-		RoutingMode:               f.routingMode,
-		SplitStart:                f.splitStart,
-		SplitLag:                  f.splitLag,
+		Codec:                         f.codec,
+		FanOutHandler:                 fanOutHandler,
+		GoldfishManager:               f.goldfishManager,
+		V1Backend:                     v1Backend,
+		SkipFanoutWhenNotSampling:     f.skipFanOutWhenNotSampling,
+		RoutingMode:                   f.routingMode,
+		SplitStart:                    f.splitStart,
+		SplitLag:                      f.splitLag,
+		AddRoutingDecisionsToWarnings: f.addRoutingDecisionsToWarnings,
 	}, f.logger)
 
 	if err != nil {

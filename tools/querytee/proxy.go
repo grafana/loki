@@ -58,6 +58,11 @@ type RoutingConfig struct {
 	// Data newer than (now - SplitLag) will only go to the v1 backend.
 	// When set to 0, query splitting is disabled.
 	SplitLag time.Duration
+
+	// AddRoutingDecisionsToWarnings controls whether routing decisions are added
+	// as warnings to query responses. When enabled, responses will include
+	// warnings indicating which backend handled the query and how it was routed.
+	AddRoutingDecisionsToWarnings bool
 }
 
 func (cfg *RoutingConfig) RegisterFlags(f *flag.FlagSet) {
@@ -67,6 +72,7 @@ func (cfg *RoutingConfig) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.RaceTolerance, "routing.race-tolerance", 100*time.Millisecond, "Race handicap for v2 in race mode")
 	f.Var(&cfg.SplitStart, "routing.split-start", "Start date when v2 data became available. Format YYYY-MM-DD. Queries before this date go only to v1.")
 	f.DurationVar(&cfg.SplitLag, "routing.split-lag", 0, "Minimum age of data to route to v2. Data newer than this goes only to v1. When 0 (default), splitting is disabled.")
+	f.BoolVar(&cfg.AddRoutingDecisionsToWarnings, "routing.add-routing-decisions-to-warnings", false, "Add routing decisions as warnings to query responses.")
 }
 
 func (cfg *RoutingConfig) Validate() error {
@@ -366,17 +372,18 @@ func (p *Proxy) Start() error {
 
 		// Create a route-specific handler factory with the filtered backends
 		routeHandlerFactory := NewHandlerFactory(HandlerFactoryConfig{
-			Backends:                  filteredBackends,
-			Codec:                     queryrange.DefaultCodec,
-			GoldfishManager:           p.goldfishManager,
-			Logger:                    p.logger,
-			Metrics:                   p.metrics,
-			InstrumentCompares:        p.cfg.InstrumentCompares,
-			RoutingMode:               p.cfg.Routing.Mode,
-			RaceTolerance:             p.cfg.Routing.RaceTolerance,
-			SkipFanOutWhenNotSampling: p.cfg.SkipFanOutWhenNotSampling,
-			SplitStart:                p.cfg.Routing.SplitStart,
-			SplitLag:                  p.cfg.Routing.SplitLag,
+			Backends:                      filteredBackends,
+			Codec:                         queryrange.DefaultCodec,
+			GoldfishManager:               p.goldfishManager,
+			Logger:                        p.logger,
+			Metrics:                       p.metrics,
+			InstrumentCompares:            p.cfg.InstrumentCompares,
+			RoutingMode:                   p.cfg.Routing.Mode,
+			RaceTolerance:                 p.cfg.Routing.RaceTolerance,
+			SkipFanOutWhenNotSampling:     p.cfg.SkipFanOutWhenNotSampling,
+			SplitStart:                    p.cfg.Routing.SplitStart,
+			SplitLag:                      p.cfg.Routing.SplitLag,
+			AddRoutingDecisionsToWarnings: p.cfg.Routing.AddRoutingDecisionsToWarnings,
 		})
 		queryHandler, err := routeHandlerFactory.CreateHandler(route.RouteName, comp)
 		if err != nil {

@@ -23,45 +23,48 @@ import (
 // It returns the preferred backend's response as soon as ready, while capturing remaining
 // responses for goldfish comparison in the background.
 type FanOutHandler struct {
-	backends           []*ProxyBackend
-	codec              queryrangebase.Codec
-	goldfishManager    goldfish.Manager
-	logger             log.Logger
-	metrics            *ProxyMetrics
-	routeName          string
-	comparator         comparator.ResponsesComparator
-	instrumentCompares bool
-	routingMode        RoutingMode
-	raceTolerance      time.Duration
+	backends                      []*ProxyBackend
+	codec                         queryrangebase.Codec
+	goldfishManager               goldfish.Manager
+	logger                        log.Logger
+	metrics                       *ProxyMetrics
+	routeName                     string
+	comparator                    comparator.ResponsesComparator
+	instrumentCompares            bool
+	routingMode                   RoutingMode
+	raceTolerance                 time.Duration
+	addRoutingDecisionsToWarnings bool
 }
 
 // FanOutHandlerConfig holds configuration for creating a FanOutHandler.
 type FanOutHandlerConfig struct {
-	Backends           []*ProxyBackend
-	Codec              queryrangebase.Codec
-	GoldfishManager    goldfish.Manager
-	Logger             log.Logger
-	Metrics            *ProxyMetrics
-	RouteName          string
-	Comparator         comparator.ResponsesComparator
-	InstrumentCompares bool
-	RoutingMode        RoutingMode
-	RaceTolerance      time.Duration
+	Backends                      []*ProxyBackend
+	Codec                         queryrangebase.Codec
+	GoldfishManager               goldfish.Manager
+	Logger                        log.Logger
+	Metrics                       *ProxyMetrics
+	RouteName                     string
+	Comparator                    comparator.ResponsesComparator
+	InstrumentCompares            bool
+	RoutingMode                   RoutingMode
+	RaceTolerance                 time.Duration
+	AddRoutingDecisionsToWarnings bool
 }
 
 // NewFanOutHandler creates a new FanOutHandler.
 func NewFanOutHandler(cfg FanOutHandlerConfig) *FanOutHandler {
 	return &FanOutHandler{
-		backends:           cfg.Backends,
-		codec:              cfg.Codec,
-		goldfishManager:    cfg.GoldfishManager,
-		logger:             cfg.Logger,
-		metrics:            cfg.Metrics,
-		routeName:          cfg.RouteName,
-		comparator:         cfg.Comparator,
-		instrumentCompares: cfg.InstrumentCompares,
-		routingMode:        cfg.RoutingMode,
-		raceTolerance:      cfg.RaceTolerance,
+		backends:                      cfg.Backends,
+		codec:                         cfg.Codec,
+		goldfishManager:               cfg.GoldfishManager,
+		logger:                        cfg.Logger,
+		metrics:                       cfg.Metrics,
+		routeName:                     cfg.RouteName,
+		comparator:                    cfg.Comparator,
+		instrumentCompares:            cfg.InstrumentCompares,
+		routingMode:                   cfg.RoutingMode,
+		raceTolerance:                 cfg.RaceTolerance,
+		addRoutingDecisionsToWarnings: cfg.AddRoutingDecisionsToWarnings,
 	}
 }
 
@@ -182,6 +185,11 @@ func (h *FanOutHandler) doWithPreferred(results <-chan *backendResult, collected
 				continue
 			}
 
+			// 404s are treated as successful, but v2 does not implement all metadata endpoints, so in that case fall back to v1
+			if !preferV1 && result.backendResp.status == 404 {
+				continue
+			}
+
 			remaining := len(h.backends) - i - 1
 			go func() {
 				h.collectRemainingAndCompare(remaining, httpReq, results, collected, shouldSample, preferV1)
@@ -196,7 +204,7 @@ func (h *FanOutHandler) doWithPreferred(results <-chan *backendResult, collected
 				}, result.err
 			}
 
-			if result.response != nil {
+			if result.response != nil && h.addRoutingDecisionsToWarnings {
 				addWarningToResponse(result.response, fmt.Sprintf("used response from preferred backend %s", result.backend.name))
 			}
 
@@ -237,7 +245,7 @@ func (h *FanOutHandler) finishRace(winner *backendResult, remaining int, httpReq
 		h.collectRemainingAndCompare(remaining, httpReq, results, collected, shouldSample, true)
 	}()
 
-	if winner.response != nil {
+	if winner.response != nil && h.addRoutingDecisionsToWarnings {
 		addWarningToResponse(winner.response, fmt.Sprintf("%s backend won the race", winner.backend.name))
 	}
 
