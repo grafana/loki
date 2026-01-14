@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
+	"github.com/grafana/loki/v3/pkg/memory"
 )
 
 var testStrings = []string{
@@ -26,54 +27,47 @@ var batchSize = 64
 func Test_plainBytesEncoder(t *testing.T) {
 	var buf bytes.Buffer
 
-	var (
-		enc    = newPlainBytesEncoder(&buf)
-		dec    = newPlainBytesDecoder(nil)
-		decBuf = make([]Value, batchSize)
-	)
-
+	enc := newPlainBytesEncoder(&buf)
 	for _, v := range testStrings {
 		require.NoError(t, enc.Encode(BinaryValue([]byte(v))))
 	}
-	dec.Reset(buf.Bytes())
 
+	dec := newPlainBytesDecoder(buf.Bytes())
+
+	var alloc memory.Allocator
 	var out []string
-
 	for {
-		n, err := dec.Decode(decBuf[:batchSize])
-		if errors.Is(err, io.EOF) {
+		v, err := dec.Decode(&alloc, batchSize)
+		if err != nil && errors.Is(err, io.EOF) {
 			break
 		} else if err != nil {
 			t.Fatal(err)
 		}
-		for _, v := range decBuf[:n] {
-			out = append(out, string(v.Binary()))
+
+		strArr := v.(stringArray)
+		for i := range strArr.Len() {
+			out = append(out, string(strArr.Get(i)))
 		}
 	}
 
 	require.Equal(t, testStrings, out)
 }
 
-func Test_plainBytesEncoder_reusingValues(t *testing.T) {
+func Test_plainBytesDecoder_adapter(t *testing.T) {
 	var buf bytes.Buffer
 
-	var (
-		enc    = newPlainBytesEncoder(&buf)
-		dec    = newPlainBytesDecoder(nil)
-		decBuf = make([]Value, batchSize)
-	)
-
+	enc := newPlainBytesEncoder(&buf)
 	for _, v := range testStrings {
 		require.NoError(t, enc.Encode(BinaryValue([]byte(v))))
 	}
-	dec.Reset(buf.Bytes())
 
-	for i := range decBuf {
-		decBuf[i] = BinaryValue(make([]byte, 64))
+	dec := valueDecoderAdapter{
+		Alloc: new(memory.Allocator),
+		Inner: newPlainBytesDecoder(buf.Bytes()),
 	}
 
 	var out []string
-
+	decBuf := make([]Value, batchSize)
 	for {
 		n, err := dec.Decode(decBuf[:batchSize])
 		if errors.Is(err, io.EOF) {
@@ -175,17 +169,21 @@ func Benchmark_plainBytesDecoder_Decode(b *testing.B) {
 				require.NoError(b, enc.Encode(value))
 			}
 
-			decBuf := make([]Value, totalCount)
+			dec := newPlainBytesDecoder(buf.Bytes())
 
-			dec := newPlainBytesDecoder(nil)
+			var alloc memory.Allocator
 
 			var totalRows int
 			for b.Loop() {
+				alloc.Reset()
 				dec.Reset(buf.Bytes())
 
 				for {
-					n, err := dec.Decode(decBuf)
-					totalRows += n
+					n, err := dec.Decode(&alloc, totalCount)
+					if n != nil {
+						sa := n.(stringArray)
+						totalRows += sa.Len()
+					}
 					if err != nil && errors.Is(err, io.EOF) {
 						break
 					} else if err != nil {
