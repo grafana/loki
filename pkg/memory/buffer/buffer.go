@@ -107,15 +107,21 @@ func (buf *Buffer[T]) Cap() int { return cap(buf.data) }
 // modified directly.
 func (buf *Buffer[T]) Data() []T { return buf.data }
 
-// Bytes returns the underlying data size of buf up to the length of buf padded to
-// 64-bytes.
-func (buf *Buffer[T]) Bytes() []byte {
+// Serialize returns a byte array representing buf, padded to 64-bytes. Padded
+// bytes will be set to zero.
+func (buf *Buffer[T]) Serialize() []byte {
 	if buf.mem == nil {
 		return nil
 	}
 
-	alignedLen := memalign.Align(buf.Len())
-	return buf.mem.Data()[:alignedLen]
+	// Arrow recommends padding array data to 64-byte boundaries.
+	// Since bytes beyond where we've already written may have values from
+	// previous instances of the Memory, we want to clear it out before
+	// returning.
+	out := unsafecast.Slice[T, byte](buf.data)
+	alignedLen := memalign.Align(len(out))
+	clear(out[len(out):alignedLen]) // May be a no-op if len is already aligned.
+	return out[:alignedLen]
 }
 
 // castMemory converts a memory region to a slice of type To.
