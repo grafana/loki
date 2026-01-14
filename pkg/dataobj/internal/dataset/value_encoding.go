@@ -62,8 +62,8 @@ type (
 	}
 
 	registryEntry struct {
-		NewEncoder func(streamio.Writer) valueEncoder
-		NewDecoder func([]byte) legacyValueDecoder
+		NewEncoder       func(streamio.Writer) valueEncoder
+		NewLegacyDecoder func([]byte) legacyValueDecoder
 	}
 )
 
@@ -116,5 +116,5 @@ func newValueDecoder(physicalType datasetmd.PhysicalType, encodingType datasetmd
 	if !exist {
 		return nil, false
 	}
-	return entry.NewDecoder(data), true
+	return entry.NewLegacyDecoder(data), true
 }
