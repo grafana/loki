@@ -209,6 +209,11 @@ type Distributor struct {
 	// are consumed.
 	numMetadataPartitions int
 
+	// inflightBytes keeps track of the total number of bytes for all in-flight
+	// push requests.
+	inflightBytes      *atomic.Uint64
+	inflightBytesGauge prometheus.Gauge
+
 	// kafka metrics
 	kafkaAppends           *prometheus.CounterVec
 	kafkaWriteBytesTotal   prometheus.Counter
@@ -307,6 +312,7 @@ func New(
 				&cfg.DataObjTeeConfig,
 				resolver,
 				ingestLimits,
+				overrides,
 				kafkaClient,
 				logger,
 				registerer,
@@ -390,6 +396,12 @@ func New(
 		partitionRing:         partitionRing,
 		ingestLimits:          ingestLimits,
 		numMetadataPartitions: numMetadataPartitions,
+		inflightBytes:         atomic.NewUint64(0),
+		inflightBytesGauge: promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
+			Namespace: constants.Loki,
+			Name:      "distributor_inflight_bytes",
+			Help:      "The number of bytes currently inflight.",
+		}),
 	}
 
 	if overrides.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
@@ -538,6 +550,14 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 // Push a set of streams.
 // The returned error is the last one seen.
 func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRequest, streamResolver *requestScopedStreamResolver, format string) (*logproto.PushResponse, error) {
+	requestSizeBytes := uint64(req.Size())
+	d.inflightBytes.Add(requestSizeBytes)
+	d.inflightBytesGauge.Add(float64(requestSizeBytes))
+	defer func() {
+		d.inflightBytes.Sub(requestSizeBytes)
+		d.inflightBytesGauge.Sub(float64(requestSizeBytes))
+	}()
+
 	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -597,6 +617,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	}
 
 	var ingestionBlockedError error
+	var totalEntriesSize, totalLineCount int
 
 	err = func() error {
 		sp := trace.SpanFromContext(ctx)
@@ -652,8 +673,8 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 			}
 
 			n := 0
-			pushSize := 0
 			prevTs := stream.Entries[0].Timestamp
+			streamEntriesSize := 0
 
 			labelNamer := otlptranslator.LabelNamer{}
 			for _, entry := range stream.Entries {
@@ -727,8 +748,10 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 				}
 
 				n++
-				validationContext.validationMetrics.compute(entry, retentionHours, policy)
-				pushSize += len(entry.Line)
+				entrySize := util.EntryTotalSize(&entry)
+				totalEntriesSize += entrySize
+				streamEntriesSize += entrySize
+				totalLineCount++
 			}
 			stream.Entries = stream.Entries[:n]
 			if len(stream.Entries) == 0 {
@@ -736,7 +759,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 				continue
 			}
 
-			maybeShardStreams(stream, lbs, pushSize, policy)
+			maybeShardStreams(stream, lbs, streamEntriesSize, policy)
 		}
 		return nil
 	}()
@@ -757,10 +780,10 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 		return &logproto.PushResponse{}, validationErr
 	}
 
-	if !d.ingestionRateLimiter.AllowN(now, tenantID, validationContext.validationMetrics.aggregatedPushStats.lineSize) {
-		d.trackDiscardedData(ctx, req, validationContext, tenantID, validationContext.validationMetrics, validation.RateLimited, streamResolver, format)
+	if !d.ingestionRateLimiter.AllowN(now, tenantID, totalEntriesSize) {
+		d.trackDiscardedData(ctx, req.Streams, validationContext, tenantID, validation.RateLimited, streamResolver, format)
 
-		err = fmt.Errorf(validation.RateLimitedErrorMsg, tenantID, int(d.ingestionRateLimiter.Limit(now, tenantID)), validationContext.validationMetrics.aggregatedPushStats.lineCount, validationContext.validationMetrics.aggregatedPushStats.lineSize)
+		err = fmt.Errorf(validation.RateLimitedErrorMsg, tenantID, int(d.ingestionRateLimiter.Limit(now, tenantID)), totalLineCount, totalEntriesSize)
 		d.writeFailuresManager.Log(tenantID, err)
 		// Return a 429 to indicate to the client they are being rate limited
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "%s", err.Error())
@@ -769,11 +792,27 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	// These limits are checked after the ingestion rate limit as this
 	// is how it works in ingesters.
 	if d.cfg.IngestLimitsEnabled {
-		accepted, err := d.ingestLimits.EnforceLimits(ctx, tenantID, streams)
+		accepted, rejected, err := d.ingestLimits.EnforceLimits(ctx, tenantID, streams)
 		if err == nil && !d.cfg.IngestLimitsDryRunEnabled {
-			if len(accepted) == 0 {
-				// All streams were rejected, the request should be failed.
-				return nil, httpgrpc.Error(http.StatusTooManyRequests, "request exceeded limits")
+			if len(rejected) > 0 {
+				discardedStreams := make([]logproto.Stream, 0, len(rejected))
+				for _, stream := range rejected {
+					discardedStreams = append(discardedStreams, stream.Stream)
+				}
+				d.trackDiscardedData(ctx, discardedStreams, validationContext, tenantID, validation.StreamLimit, streamResolver, format)
+
+				// While many streams may have failed we only log the error for one stream in the insight logs and in the error message.
+				// It's generally not useful to know the stream labels for a stream that is hitting the stream limit as it could be any
+				// stream and isn't necessarily a stream with high cardinality. However, it might also be a high cardinality stream so returning
+				// something here still may be useful. We used to return nothing with this limit and people requested that something is better than nothing.
+				err = fmt.Errorf(validation.StreamLimitErrorMsg, rejected[0].Stream.Labels, tenantID)
+				d.writeFailuresManager.Log(tenantID, err)
+				// Set the validation error to the stream limit error so it is returned to the client.
+				validationErr = httpgrpc.Error(http.StatusTooManyRequests, err.Error())
+				// If none of the streams were accepted, return early.
+				if len(accepted) == 0 {
+					return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "%s", err.Error())
+				}
 			}
 			streams = accepted
 		}
@@ -911,33 +950,24 @@ func (d *Distributor) missingEnforcedLabels(lbs labels.Labels, tenantID string, 
 
 func (d *Distributor) trackDiscardedData(
 	ctx context.Context,
-	req *logproto.PushRequest,
+	streams []logproto.Stream,
 	validationContext validationContext,
 	tenantID string,
-	validationMetrics validationMetrics,
 	reason string,
 	streamResolver push.StreamResolver,
 	format string,
 ) {
-	for policy, retentionToStats := range validationMetrics.policyPushStats {
-		for retentionHours, stats := range retentionToStats {
-			validation.DiscardedSamples.WithLabelValues(reason, tenantID, retentionHours, policy, format).Add(float64(stats.lineCount))
-			validation.DiscardedBytes.WithLabelValues(reason, tenantID, retentionHours, policy, format).Add(float64(stats.lineSize))
+	for _, stream := range streams {
+		lbs, _, _, retentionHours, policy, err := d.parseStreamLabels(ctx, validationContext, stream.Labels, stream, streamResolver, format)
+		if err != nil {
+			level.Warn(d.logger).Log("msg", "failed to parse stream labels when tracking discarded samples and bytes, this data will not be tracked", "error", err, "stream", stream.Labels)
+			continue
 		}
-	}
-
-	if d.usageTracker != nil {
-		for _, stream := range req.Streams {
-			lbs, _, _, _, _, err := d.parseStreamLabels(ctx, validationContext, stream.Labels, stream, streamResolver, format)
-			if err != nil {
-				continue
-			}
-
-			discardedStreamBytes := util.EntriesTotalSize(stream.Entries)
-
-			if d.usageTracker != nil {
-				d.usageTracker.DiscardedBytesAdd(ctx, tenantID, reason, lbs, float64(discardedStreamBytes), format)
-			}
+		discardedStreamBytes := util.EntriesTotalSize(stream.Entries)
+		validation.DiscardedSamples.WithLabelValues(reason, tenantID, retentionHours, policy, format).Add(float64(len(stream.Entries)))
+		validation.DiscardedBytes.WithLabelValues(reason, tenantID, retentionHours, policy, format).Add(float64(discardedStreamBytes))
+		if d.usageTracker != nil {
+			d.usageTracker.DiscardedBytesAdd(ctx, tenantID, reason, lbs, float64(discardedStreamBytes), format)
 		}
 	}
 }

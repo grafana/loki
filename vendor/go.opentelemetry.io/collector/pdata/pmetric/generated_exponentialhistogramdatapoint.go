@@ -91,25 +91,25 @@ func (ms ExponentialHistogramDataPoint) SetCount(v uint64) {
 
 // Sum returns the sum associated with this ExponentialHistogramDataPoint.
 func (ms ExponentialHistogramDataPoint) Sum() float64 {
-	return ms.orig.GetSum()
+	return ms.orig.Sum
 }
 
 // HasSum returns true if the ExponentialHistogramDataPoint contains a
 // Sum value otherwise.
 func (ms ExponentialHistogramDataPoint) HasSum() bool {
-	return ms.orig.Sum_ != nil
+	return ms.orig.HasSum()
 }
 
 // SetSum replaces the sum associated with this ExponentialHistogramDataPoint.
 func (ms ExponentialHistogramDataPoint) SetSum(v float64) {
 	ms.state.AssertMutable()
-	ms.orig.Sum_ = &internal.ExponentialHistogramDataPoint_Sum{Sum: v}
+	ms.orig.SetSum(v)
 }
 
 // RemoveSum removes the sum associated with this ExponentialHistogramDataPoint.
 func (ms ExponentialHistogramDataPoint) RemoveSum() {
 	ms.state.AssertMutable()
-	ms.orig.Sum_ = nil
+	ms.orig.RemoveSum()
 }
 
 // Scale returns the scale associated with this ExponentialHistogramDataPoint.
@@ -162,48 +162,48 @@ func (ms ExponentialHistogramDataPoint) Exemplars() ExemplarSlice {
 
 // Min returns the min associated with this ExponentialHistogramDataPoint.
 func (ms ExponentialHistogramDataPoint) Min() float64 {
-	return ms.orig.GetMin()
+	return ms.orig.Min
 }
 
 // HasMin returns true if the ExponentialHistogramDataPoint contains a
 // Min value otherwise.
 func (ms ExponentialHistogramDataPoint) HasMin() bool {
-	return ms.orig.Min_ != nil
+	return ms.orig.HasMin()
 }
 
 // SetMin replaces the min associated with this ExponentialHistogramDataPoint.
 func (ms ExponentialHistogramDataPoint) SetMin(v float64) {
 	ms.state.AssertMutable()
-	ms.orig.Min_ = &internal.ExponentialHistogramDataPoint_Min{Min: v}
+	ms.orig.SetMin(v)
 }
 
 // RemoveMin removes the min associated with this ExponentialHistogramDataPoint.
 func (ms ExponentialHistogramDataPoint) RemoveMin() {
 	ms.state.AssertMutable()
-	ms.orig.Min_ = nil
+	ms.orig.RemoveMin()
 }
 
 // Max returns the max associated with this ExponentialHistogramDataPoint.
 func (ms ExponentialHistogramDataPoint) Max() float64 {
-	return ms.orig.GetMax()
+	return ms.orig.Max
 }
 
 // HasMax returns true if the ExponentialHistogramDataPoint contains a
 // Max value otherwise.
 func (ms ExponentialHistogramDataPoint) HasMax() bool {
-	return ms.orig.Max_ != nil
+	return ms.orig.HasMax()
 }
 
 // SetMax replaces the max associated with this ExponentialHistogramDataPoint.
 func (ms ExponentialHistogramDataPoint) SetMax(v float64) {
 	ms.state.AssertMutable()
-	ms.orig.Max_ = &internal.ExponentialHistogramDataPoint_Max{Max: v}
+	ms.orig.SetMax(v)
 }
 
 // RemoveMax removes the max associated with this ExponentialHistogramDataPoint.
 func (ms ExponentialHistogramDataPoint) RemoveMax() {
 	ms.state.AssertMutable()
-	ms.orig.Max_ = nil
+	ms.orig.RemoveMax()
 }
 
 // ZeroThreshold returns the zerothreshold associated with this ExponentialHistogramDataPoint.

@@ -71,7 +71,7 @@ func (b *ProxyBackend) ForwardRequest(orig *http.Request, body io.ReadCloser) *B
 	// Extract trace ID and span ID from the context
 	traceID, spanID, _ := tracing.ExtractTraceSpanID(req.Context())
 
-	status, responseBody, err := b.doBackendRequest(req)
+	status, responseBody, responseHeaders, err := b.doBackendRequest(req)
 	duration := time.Since(start)
 
 	// Set span status based on response
@@ -85,6 +85,7 @@ func (b *ProxyBackend) ForwardRequest(orig *http.Request, body io.ReadCloser) *B
 		backend:  b,
 		status:   status,
 		body:     responseBody,
+		headers:  responseHeaders,
 		err:      err,
 		duration: duration,
 		traceID:  traceID,
@@ -136,7 +137,7 @@ func (b *ProxyBackend) createBackendRequest(orig *http.Request, body io.ReadClos
 	return req, span
 }
 
-func (b *ProxyBackend) doBackendRequest(req *http.Request) (int, []byte, error) {
+func (b *ProxyBackend) doBackendRequest(req *http.Request) (int, []byte, http.Header, error) {
 	// Explicitly inject trace context into HTTP headers before creating isolated context.
 	// This ensures trace propagation works even with context isolation.
 	b.injectTraceHeaders(req)
@@ -151,17 +152,17 @@ func (b *ProxyBackend) doBackendRequest(req *http.Request) (int, []byte, error) 
 	// Execute the request.
 	res, err := b.client.Do(req.WithContext(ctx))
 	if err != nil {
-		return 0, nil, errors.Wrap(err, "executing backend request")
+		return 0, nil, nil, errors.Wrap(err, "executing backend request")
 	}
 
 	// Read the entire response body.
 	defer res.Body.Close()
 	body, err := io.ReadAll(res.Body)
 	if err != nil {
-		return 0, nil, errors.Wrap(err, "reading backend response")
+		return 0, nil, res.Header, errors.Wrap(err, "reading backend response")
 	}
 
-	return res.StatusCode, body, nil
+	return res.StatusCode, body, res.Header, nil
 }
 
 // injectTraceHeaders explicitly injects trace context into HTTP headers.

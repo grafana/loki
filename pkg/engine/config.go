@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"time"
 
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/netutil"
@@ -26,6 +27,16 @@ type Config struct {
 
 	Executor ExecutorConfig `yaml:",inline"`
 	Worker   WorkerConfig   `yaml:",inline"`
+
+	StorageLag       time.Duration `yaml:"storage_lag" category:"experimental"`
+	StorageStartDate flagext.Time  `yaml:"storage_start_date" category:"experimental"`
+
+	EnableEngineRouter bool   `yaml:"enable_engine_router" category:"experimental"`
+	DownstreamAddress  string `yaml:"downstream_address" category:"experimental"`
+}
+
+func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	cfg.RegisterFlagsWithPrefix("query-engine.", f)
 }
 
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
@@ -37,6 +48,16 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 
 	cfg.Executor.RegisterFlagsWithPrefix(prefix, f)
 	cfg.Worker.RegisterFlagsWithPrefix(prefix, f)
+
+	f.DurationVar(&cfg.StorageLag, prefix+"storage-lag", 1*time.Hour, "Amount of time until data objects are available.")
+	f.Var(&cfg.StorageStartDate, prefix+"storage-start-date", "Initial date when data objects became available. Format YYYY-MM-DD. If not set, assume data objects are always available no matter how far back.")
+
+	f.BoolVar(&cfg.EnableEngineRouter, prefix+"enable-engine-router", false, "Enable routing of query splits in the query frontend to the next generation engine when they fall within the configured time range.")
+	f.StringVar(&cfg.DownstreamAddress, prefix+"downstream-address", "", "Downstream address to send query splits to. This is the HTTP handler address of the query engine scheduler.")
+}
+
+func (cfg *Config) ValidQueryRange() (time.Time, time.Time) {
+	return time.Time(cfg.StorageStartDate).UTC(), time.Now().UTC().Add(-cfg.StorageLag)
 }
 
 // AdvertiseAddress determines the TCP address to advertise for accepting

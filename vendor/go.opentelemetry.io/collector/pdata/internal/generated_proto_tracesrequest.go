@@ -45,7 +45,6 @@ func DeleteTracesRequest(orig *TracesRequest, nullable bool) {
 		orig.Reset()
 		return
 	}
-
 	DeleteRequestContext(orig.RequestContext, true)
 	DeleteTracesData(&orig.TracesData, false)
 
@@ -173,7 +172,7 @@ func (orig *TracesRequest) SizeProto() int {
 	}
 	l = orig.TracesData.SizeProto()
 	n += 1 + proto.Sov(uint64(l)) + l
-	if orig.FormatVersion != 0 {
+	if orig.FormatVersion != uint32(0) {
 		n += 5
 	}
 	return n
@@ -196,7 +195,7 @@ func (orig *TracesRequest) MarshalProto(buf []byte) int {
 	pos--
 	buf[pos] = 0x1a
 
-	if orig.FormatVersion != 0 {
+	if orig.FormatVersion != uint32(0) {
 		pos -= 4
 		binary.LittleEndian.PutUint32(buf[pos:], uint32(orig.FormatVersion))
 		pos--

@@ -7,6 +7,21 @@ import (
 	"time"
 )
 
+// The ABAC status of the general purpose bucket. When ABAC is enabled for the
+// general purpose bucket, you can use tags to manage access to the general purpose
+// buckets as well as for cost tracking purposes. When ABAC is disabled for the
+// general purpose buckets, you can only use tags for cost tracking purposes. For
+// more information, see [Using tags with S3 general purpose buckets].
+//
+// [Using tags with S3 general purpose buckets]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/buckets-tagging.html
+type AbacStatus struct {
+
+	// The ABAC status of the general purpose bucket.
+	Status BucketAbacStatus
+
+	noSmithyDocumentSerde
+}
+
 // Specifies the days since the initiation of an incomplete multipart upload that
 // Amazon S3 will wait before permanently removing all parts of the upload. For
 // more information, see [Aborting Incomplete Multipart Uploads Using a Bucket Lifecycle Configuration]in the Amazon S3 User Guide.
@@ -172,6 +187,47 @@ type AnalyticsS3BucketDestination struct {
 
 	// The prefix to use when exporting data. The prefix is prepended to all results.
 	Prefix *string
+
+	noSmithyDocumentSerde
+}
+
+// A bucket-level setting for Amazon S3 general purpose buckets used to prevent
+// the upload of new objects encrypted with the specified server-side encryption
+// type. For example, blocking an encryption type will block PutObject , CopyObject
+// , PostObject , multipart upload, and replication requests to the bucket for
+// objects with the specified encryption type. However, you can continue to read
+// and list any pre-existing objects already encrypted with the specified
+// encryption type. For more information, see [Blocking or unblocking SSE-C for a general purpose bucket].
+//
+// This data type is used with the following actions:
+//
+// [PutBucketEncryption]
+//
+// [GetBucketEncryption]
+//
+// [DeleteBucketEncryption]
+//
+// Permissions You must have the s3:PutEncryptionConfiguration permission to block
+// or unblock an encryption type for a bucket.
+//
+// You must have the s3:GetEncryptionConfiguration permission to view a bucket's
+// encryption type.
+//
+// [GetBucketEncryption]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketEncryption.html
+// [DeleteBucketEncryption]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucketEncryption.html
+// [PutBucketEncryption]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketEncryption.html
+// [Blocking or unblocking SSE-C for a general purpose bucket]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/blocking-unblocking-s3-c-encryption-gpb.html
+type BlockedEncryptionTypes struct {
+
+	// The object encryption type that you want to block or unblock for an Amazon S3
+	// general purpose bucket.
+	//
+	// Currently, this parameter only supports blocking or unblocking server side
+	// encryption with customer-provided keys (SSE-C). For more information about
+	// SSE-C, see [Using server-side encryption with customer-provided keys (SSE-C)].
+	//
+	// [Using server-side encryption with customer-provided keys (SSE-C)]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/ServerSideEncryptionCustomerKeys.html
+	EncryptionType []EncryptionType
 
 	noSmithyDocumentSerde
 }
@@ -628,13 +684,15 @@ type CreateBucketConfiguration struct {
 	// are key-value pairs of metadata used to categorize and organize your buckets,
 	// track costs, and control access.
 	//
-	//   - This parameter is only supported for S3 directory buckets. For more
-	//   information, see [Using tags with directory buckets].
+	// You must have the s3:TagResource permission to create a general purpose bucket
+	// with tags or the s3express:TagResource permission to create a directory bucket
+	// with tags.
 	//
-	//   - You must have the s3express:TagResource permission to create a directory
-	//   bucket with tags.
+	// When creating buckets with tags, note that tag-based conditions using
+	// aws:ResourceTag and s3:BucketTag condition keys are applicable only after ABAC
+	// is enabled on the bucket. To learn more, see [Enabling ABAC in general purpose buckets].
 	//
-	// [Using tags with directory buckets]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/directory-buckets-tagging.html
+	// [Enabling ABAC in general purpose buckets]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/buckets-tagging-enable-abac.html
 	Tags []Tag
 
 	noSmithyDocumentSerde
@@ -2115,17 +2173,6 @@ type Grant struct {
 	noSmithyDocumentSerde
 }
 
-// End of support notice: Beginning November 21, 2025, Amazon S3 will stop
-// returning DisplayName . Update your applications to use canonical IDs (unique
-// identifier for Amazon Web Services accounts), Amazon Web Services account ID (12
-// digit identifier) or IAM ARNs (full resource naming) as a direct replacement of
-// DisplayName .
-//
-// This change affects the following Amazon Web Services Regions: US East (N.
-// Virginia) Region, US West (N. California) Region, US West (Oregon) Region, Asia
-// Pacific (Singapore) Region, Asia Pacific (Sydney) Region, Asia Pacific (Tokyo)
-// Region, Europe (Ireland) Region, and South America (São Paulo) Region.
-//
 // Container for the person being granted permissions.
 type Grantee struct {
 
@@ -2134,34 +2181,10 @@ type Grantee struct {
 	// This member is required.
 	Type Type
 
-	// Screen name of the grantee.
+	//
 	DisplayName *string
 
-	// Email address of the grantee.
 	//
-	// Using email addresses to specify a grantee is only supported in the following
-	// Amazon Web Services Regions:
-	//
-	//   - US East (N. Virginia)
-	//
-	//   - US West (N. California)
-	//
-	//   - US West (Oregon)
-	//
-	//   - Asia Pacific (Singapore)
-	//
-	//   - Asia Pacific (Sydney)
-	//
-	//   - Asia Pacific (Tokyo)
-	//
-	//   - Europe (Ireland)
-	//
-	//   - South America (São Paulo)
-	//
-	// For a list of all the Amazon S3 supported Regions and endpoints, see [Regions and Endpoints] in the
-	// Amazon Web Services General Reference.
-	//
-	// [Regions and Endpoints]: https://docs.aws.amazon.com/general/latest/gr/rande.html#s3_region
 	EmailAddress *string
 
 	// The canonical user ID of the grantee.
@@ -2196,8 +2219,6 @@ type IndexDocument struct {
 // Container element that identifies who initiated the multipart upload.
 type Initiator struct {
 
-	// Name of the Principal.
-	//
 	// This functionality is not supported for directory buckets.
 	DisplayName *string
 
@@ -3492,40 +3513,10 @@ type OutputSerialization struct {
 	noSmithyDocumentSerde
 }
 
-// End of support notice: Beginning November 21, 2025, Amazon S3 will stop
-// returning DisplayName . Update your applications to use canonical IDs (unique
-// identifier for Amazon Web Services accounts), Amazon Web Services account ID (12
-// digit identifier) or IAM ARNs (full resource naming) as a direct replacement of
-// DisplayName .
-//
-// This change affects the following Amazon Web Services Regions: US East (N.
-// Virginia) Region, US West (N. California) Region, US West (Oregon) Region, Asia
-// Pacific (Singapore) Region, Asia Pacific (Sydney) Region, Asia Pacific (Tokyo)
-// Region, Europe (Ireland) Region, and South America (São Paulo) Region.
-//
 // Container for the owner's display name and ID.
 type Owner struct {
 
-	// Container for the display name of the owner. This value is only supported in
-	// the following Amazon Web Services Regions:
 	//
-	//   - US East (N. Virginia)
-	//
-	//   - US West (N. California)
-	//
-	//   - US West (Oregon)
-	//
-	//   - Asia Pacific (Singapore)
-	//
-	//   - Asia Pacific (Sydney)
-	//
-	//   - Asia Pacific (Tokyo)
-	//
-	//   - Europe (Ireland)
-	//
-	//   - South America (São Paulo)
-	//
-	// This functionality is not supported for directory buckets.
 	DisplayName *string
 
 	// Container for the ID of the owner.
@@ -3698,9 +3689,10 @@ type ProgressEvent struct {
 }
 
 // The PublicAccessBlock configuration that you want to apply to this Amazon S3
-// bucket. You can enable the configuration options in any combination. For more
-// information about when Amazon S3 considers a bucket or object public, see [The Meaning of "Public"]in
-// the Amazon S3 User Guide.
+// bucket. You can enable the configuration options in any combination.
+// Bucket-level settings work alongside account-level settings (which may inherit
+// from organization-level policies). For more information about when Amazon S3
+// considers a bucket or object public, see [The Meaning of "Public"]in the Amazon S3 User Guide.
 //
 // [The Meaning of "Public"]: https://docs.aws.amazon.com/AmazonS3/latest/dev/access-control-block-public-access.html#access-control-block-public-access-policy-status
 type PublicAccessBlockConfiguration struct {
@@ -3801,7 +3793,7 @@ type RecordsEvent struct {
 	// guarantee that a record will be self-contained in one record frame. To ensure
 	// continuous streaming of data, S3 Select might split the same record across
 	// multiple record frames instead of aggregating the results in memory. Some S3
-	// clients (for example, the SDKforJava) handle this behavior by creating a
+	// clients (for example, the SDK for Java) handle this behavior by creating a
 	// ByteStream out of the response by default. Other clients might not handle this
 	// behavior by default. In those cases, you must aggregate the results on the
 	// client side and parse the response.
@@ -4544,6 +4536,22 @@ type ServerSideEncryptionRule struct {
 	// bucket. If a PUT Object request doesn't specify any server-side encryption, this
 	// default encryption will be applied.
 	ApplyServerSideEncryptionByDefault *ServerSideEncryptionByDefault
+
+	// A bucket-level setting for Amazon S3 general purpose buckets used to prevent
+	// the upload of new objects encrypted with the specified server-side encryption
+	// type. For example, blocking an encryption type will block PutObject , CopyObject
+	// , PostObject , multipart upload, and replication requests to the bucket for
+	// objects with the specified encryption type. However, you can continue to read
+	// and list any pre-existing objects already encrypted with the specified
+	// encryption type. For more information, see [Blocking or unblocking SSE-C for a general purpose bucket].
+	//
+	// Currently, this parameter only supports blocking or unblocking server-side
+	// encryption with customer-provided keys (SSE-C). For more information about
+	// SSE-C, see [Using server-side encryption with customer-provided keys (SSE-C)].
+	//
+	// [Blocking or unblocking SSE-C for a general purpose bucket]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/blocking-unblocking-s3-c-encryption-gpb.html
+	// [Using server-side encryption with customer-provided keys (SSE-C)]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/ServerSideEncryptionCustomerKeys.html
+	BlockedEncryptionTypes *BlockedEncryptionTypes
 
 	// Specifies whether Amazon S3 should use an S3 Bucket Key with server-side
 	// encryption using KMS (SSE-KMS) for new objects in the bucket. Existing objects

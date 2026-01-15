@@ -33,6 +33,7 @@ import (
 	"time"
 
 	"google.golang.org/grpc/balancer"
+	"google.golang.org/grpc/balancer/weightedroundrobin"
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/internal"
 	"google.golang.org/grpc/internal/balancer/gracefulswitch"
@@ -163,6 +164,7 @@ func (b *clusterImplBalancer) newPickerLocked() *picker {
 		counter:         b.requestCounter,
 		countMax:        b.requestCountMax,
 		telemetryLabels: b.telemetryLabels,
+		clusterName:     b.clusterName,
 	}
 }
 
@@ -296,7 +298,7 @@ func (b *clusterImplBalancer) UpdateClientConnState(s balancer.ClientConnState) 
 
 	// Addresses and sub-balancer config are sent to sub-balancer.
 	err = b.child.UpdateClientConnState(balancer.ClientConnState{
-		ResolverState:  s.ResolverState,
+		ResolverState:  weightedroundrobin.SetBackendService(s.ResolverState, b.clusterName),
 		BalancerConfig: parsedCfg,
 	})
 
@@ -414,6 +416,7 @@ func (b *clusterImplBalancer) getClusterName() string {
 // SubConn to the wrapper for this purpose.
 type scWrapper struct {
 	balancer.SubConn
+
 	// locality needs to be atomic because it can be updated while being read by
 	// the picker.
 	locality atomic.Pointer[clients.Locality]
@@ -451,7 +454,10 @@ func (b *clusterImplBalancer) NewSubConn(addrs []resolver.Address, opts balancer
 		lID := xdsinternal.GetLocalityID(addr)
 		if (lID == clients.Locality{}) {
 			if b.logger.V(2) {
-				b.logger.Infof("Locality ID for %s unexpectedly empty", addr)
+				// TODO: After A74, we should have the entire CDS config,
+				// allowing us to verify if this is indeed a Logical DNS cluster
+				// and avoid logging the message below.
+				b.logger.Infof("No Locality ID found for address %s. This is normal if %q is a Logical DNS cluster.", addr, clusterName)
 			}
 			return
 		}

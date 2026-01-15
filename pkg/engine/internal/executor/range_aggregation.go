@@ -11,13 +11,15 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
+
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 type rangeAggregationOptions struct {
-	partitionBy []physical.ColumnExpression
+	grouping physical.Grouping
 
 	// start and end timestamps are equal for instant queries.
 	startTs       time.Time     // start timestamp of the query
@@ -56,8 +58,8 @@ type timestampMatchingWindowsFunc func(time.Time) []window
 // rangeAggregationPipeline is a pipeline that performs aggregations over a time window.
 //
 // 1. It reads from the input pipelines
-// 2. Partitions the data by the specified columns
-// 3. Applies the aggregation function on each partition
+// 2. Groups the data by the specified columns
+// 3. Applies the aggregation function on each group
 //
 // Current version only supports counting for instant queries.
 type rangeAggregationPipeline struct {
@@ -104,7 +106,7 @@ func (r *rangeAggregationPipeline) init() {
 		panic(fmt.Sprintf("unknown range aggregation operation: %v", r.opts.operation))
 	}
 
-	r.aggregator = newAggregator(r.opts.partitionBy, len(windows), op)
+	r.aggregator = newAggregator(len(windows), op)
 }
 
 // Read reads the next value into its state.
@@ -119,7 +121,6 @@ func (r *rangeAggregationPipeline) Read(ctx context.Context) (arrow.RecordBatch,
 }
 
 // TODOs:
-// - Support implicit partitioning by all labels when partitionBy is empty
 // - Use columnar access pattern. Current approach is row-based which does not benefit from the storage format.
 // - Add toggle to return partial results on Read() call instead of returning only after exhausting all inputs.
 func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch, error) {
@@ -137,9 +138,6 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 				Type:   types.ColumnTypeGenerated,
 			},
 		} // value column expression
-
-		// reused on each row read
-		labelValues = make([]string, len(r.opts.partitionBy))
 	)
 
 	r.aggregator.Reset() // reset before reading new inputs
@@ -158,21 +156,71 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 
 			inputsExhausted = false
 
-			// extract all the columns that are used for partitioning
-			arrays := make([]*array.String, 0, len(r.opts.partitionBy))
-			for _, columnExpr := range r.opts.partitionBy {
-				vec, err := r.evaluator.eval(columnExpr, record)
-				if err != nil {
-					return nil, err
-				}
+			// extract all the columns that are used for grouping
+			var arrays []*array.String
+			var fields []arrow.Field
+			if r.opts.grouping.Without {
+				// Grouping without a lable set. Exclude lables from that set.
+				schema := record.Schema()
+				for i, field := range schema.Fields() {
+					ident, err := semconv.ParseFQN(field.Name)
+					if err != nil {
+						return nil, err
+					}
 
-				if vec.DataType().ID() != types.Arrow.String.ID() {
-					return nil, fmt.Errorf("unsupported datatype for partitioning %s", vec.DataType())
-				}
+					if ident.ColumnType() == types.ColumnTypeLabel ||
+						ident.ColumnType() == types.ColumnTypeMetadata ||
+						ident.ColumnType() == types.ColumnTypeParsed {
+						found := false
+						for _, g := range r.opts.grouping.Columns {
+							colExpr, ok := g.(*physical.ColumnExpr)
+							if !ok {
+								return nil, fmt.Errorf("unknown column expression %v", g)
+							}
 
-				arr := vec.(*array.String)
-				arrays = append(arrays, arr)
+							// Match ambiguous columns only by name
+							if colExpr.Ref.Type == types.ColumnTypeAmbiguous && colExpr.Ref.Column == ident.ShortName() {
+								found = true
+								break
+							}
+
+							// Match all other columns by name and type
+							if colExpr.Ref.Column == ident.ShortName() && colExpr.Ref.Type == ident.ColumnType() {
+								found = true
+								break
+							}
+						}
+						if !found {
+							arrays = append(arrays, record.Column(i).(*array.String))
+							fields = append(fields, field)
+						}
+					}
+				}
+			} else {
+				// Gouping by a label set. Take only labels from that set.
+				for _, columnExpr := range r.opts.grouping.Columns {
+					vec, err := r.evaluator.eval(columnExpr, record)
+					if err != nil {
+						return nil, err
+					}
+
+					if vec.DataType().ID() != types.Arrow.String.ID() {
+						return nil, fmt.Errorf("unsupported datatype for grouping %s", vec.DataType())
+					}
+
+					arr := vec.(*array.String)
+					arrays = append(arrays, arr)
+
+					colExpr, ok := columnExpr.(*physical.ColumnExpr)
+					if !ok {
+						return nil, fmt.Errorf("invalid column expression type %T", columnExpr)
+					}
+					ident := semconv.NewIdentifier(colExpr.Ref.Column, colExpr.Ref.Type, types.Loki.String)
+					fields = append(fields, semconv.FieldFromIdent(ident, true))
+				}
 			}
+
+			r.aggregator.AddLabels(fields)
 
 			// extract timestamp column to check if the entry is in range
 			tsVec, err := r.evaluator.eval(tsColumnExpr, record)
@@ -191,25 +239,27 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 				valArr = valVec.(*array.Float64)
 			}
 
+			labelsCache := newLabelsCache()
+
 			for row := range int(record.NumRows()) {
+				var value float64
+				if r.opts.operation != types.RangeAggregationTypeCount {
+					if valArr.IsNull(row) {
+						continue
+					}
+
+					value = valArr.Value(row)
+				}
+
 				windows := r.windowsForTimestamp(tsCol.Value(row).ToTime(arrow.Nanosecond))
 				if len(windows) == 0 {
 					continue // out of range, skip this row
 				}
 
-				// reset label values and hash for each row
-				clear(labelValues)
-				for col, arr := range arrays {
-					labelValues[col] = arr.Value(row)
-				}
-
-				var value float64
-				if r.opts.operation != types.RangeAggregationTypeCount {
-					value = valArr.Value(row)
-				}
+				labels, labelValues := labelsCache.getLabels(arrays, fields, row)
 
 				for _, w := range windows {
-					r.aggregator.Add(w.end, value, labelValues)
+					r.aggregator.Add(w.end, value, labels, labelValues)
 				}
 			}
 		}
@@ -288,7 +338,7 @@ func (f *matcherFactory) createExactMatcher(windows []window) timestampMatchingW
 		if len(windows) == 0 {
 			return nil
 		}
-		return []window{windows[0]}
+		return windows[0:1]
 	}
 }
 
@@ -311,7 +361,7 @@ func (f *matcherFactory) createAlignedMatcher(windows []window) timestampMatchin
 		tNs := t.UnixNano()
 		// valid timestamps for window i: t > startNs + (i-1) * intervalNs && t <= startNs + i * intervalNs
 		windowIndex := (tNs - startNs + stepNs - 1) / stepNs // subtract 1ns because we are calculating 0-based indexes
-		return []window{windows[windowIndex]}
+		return windows[windowIndex : windowIndex+1]
 	}
 }
 
@@ -335,11 +385,14 @@ func (f *matcherFactory) createGappedMatcher(windows []window) timestampMatching
 		tNs := t.UnixNano()
 		// For gapped windows, window i covers: (start + i*step - interval, start + i*step]
 		windowIndex := (tNs - startNs + stepNs - 1) / stepNs // subtract 1ns because we are calculating 0-based indexes
-		matchingWindow := windows[windowIndex]
+
+		if windowIndex >= int64(len(windows)) {
+			return nil // out of range when bounds do not fit exact number of steps
+		}
 
 		// Verify the timestamp is within the window (not in a gap)
-		if tNs > matchingWindow.start.UnixNano() {
-			return []window{matchingWindow}
+		if tNs > windows[windowIndex].start.UnixNano() {
+			return windows[windowIndex : windowIndex+1]
 		}
 
 		return nil // timestamp is in a gap

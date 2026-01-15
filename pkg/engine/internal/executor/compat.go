@@ -11,6 +11,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
@@ -30,48 +31,63 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 		}
 
 		// First, find all fields in the schema that have colliding names,
-		// based on the collision column type and the source column type.
+		// based on the collision column types and the source column type.
 		var (
-			collisionFieldIndices []int
-			collisionFieldNames   []string
-			sourceFieldIndices    []int
-			sourceFieldNames      []string
+			sourceFieldIndices  []int
+			sourceFieldNames    []string
+			collisionIdxsByName = make(map[string][]int)
 		)
 
 		schema := batch.Schema()
+		collisionTypes := make(map[types.ColumnType]bool, len(compat.Collisions))
+		for _, ct := range compat.Collisions {
+			collisionTypes[ct] = true
+		}
 
 		for idx := range schema.NumFields() {
 			ident, err := semconv.ParseFQN(schema.Field(idx).Name)
 			if err != nil {
 				return nil, err
 			}
-			switch ident.ColumnType() {
-			case compat.Collision:
-				collisionFieldIndices = append(collisionFieldIndices, idx)
-				collisionFieldNames = append(collisionFieldNames, ident.ShortName())
-			case compat.Source:
+			colType := ident.ColumnType()
+			if collisionTypes[colType] {
+				shortName := ident.ShortName()
+				collisionIdxsByName[shortName] = append(collisionIdxsByName[shortName], idx)
+			} else if colType == compat.Source {
 				sourceFieldIndices = append(sourceFieldIndices, idx)
 				sourceFieldNames = append(sourceFieldNames, ident.ShortName())
 			}
 		}
 
-		duplicates := findDuplicates(collisionFieldNames, sourceFieldNames)
+		// Find source columns that have collisions
+		var duplicates []duplicateColumn
+		for i, sourceName := range sourceFieldNames {
+			if collisionIdxs, exists := collisionIdxsByName[sourceName]; exists {
+				duplicates = append(duplicates, duplicateColumn{
+					name:          sourceName,
+					collisionIdxs: collisionIdxs,
+					sourceIdx:     sourceFieldIndices[i],
+				})
+			}
+		}
 
 		// Return early if there are no colliding column names.
 		if len(duplicates) == 0 {
 			return batch, nil
 		}
 
-		region.Record(statCompatCollisionFound.Observe(true))
+		// Sort by name for deterministic ordering of _extracted columns
+		slices.SortStableFunc(duplicates, func(a, b duplicateColumn) int {
+			return cmp.Compare(a.name, b.name)
+		})
+
+		region.Record(xcap.StatCompatCollisionFound.Observe(true))
 
 		// Next, update the schema with the new columns that have the _extracted suffix.
 		newSchema := batch.Schema()
-		duplicateCols := make([]duplicateColumn, 0, len(duplicates))
 		r := int(batch.NumCols())
-		for i, duplicate := range duplicates {
-			collisionFieldIdx := collisionFieldIndices[duplicate.s1Idx]
-			sourceFieldIdx := sourceFieldIndices[duplicate.s2Idx]
-
+		for i := range duplicates {
+			sourceFieldIdx := duplicates[i].sourceIdx
 			sourceField := newSchema.Field(sourceFieldIdx)
 			sourceIdent, err := semconv.ParseFQN(sourceField.Name)
 			if err != nil {
@@ -83,13 +99,7 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 			if err != nil {
 				return nil, err
 			}
-
-			duplicateCols = append(duplicateCols, duplicateColumn{
-				name:           duplicate.value,
-				collisionIdx:   collisionFieldIdx,
-				sourceIdx:      sourceFieldIdx,
-				destinationIdx: r + i,
-			})
+			duplicates[i].destinationIdx = r + i
 		}
 
 		// Create a new builder with the updated schema.
@@ -104,7 +114,7 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 		for idx := range schema.NumFields() {
 			col := batch.Column(idx)
 
-			duplicateIdx := slices.IndexFunc(duplicateCols, func(d duplicateColumn) bool { return d.sourceIdx == idx })
+			duplicateIdx := slices.IndexFunc(duplicates, func(d duplicateColumn) bool { return d.sourceIdx == idx })
 
 			// If not a colliding column, just copy over the column data of the original record.
 			if duplicateIdx < 0 {
@@ -115,8 +125,11 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 			// If the currently processed column is the source field for a colliding column,
 			// then write non-null values from source column into destination column.
 			// Also, "clear" the original column value by writing a NULL instead of the original value.
-			duplicate := duplicateCols[duplicateIdx]
-			collisionCol := batch.Column(duplicate.collisionIdx)
+			duplicate := duplicates[duplicateIdx]
+			collisionCols := make([]arrow.Array, len(duplicate.collisionIdxs))
+			for i, collIdx := range duplicate.collisionIdxs {
+				collisionCols[i] = batch.Column(collIdx)
+			}
 
 			switch sourceFieldBuilder := builder.Field(idx).(type) {
 			case *array.StringBuilder:
@@ -125,7 +138,8 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 					if col.IsNull(i) || !col.IsValid(i) {
 						sourceFieldBuilder.AppendNull()      // append NULL to original column
 						destinationFieldBuilder.AppendNull() // append NULL to _extracted column
-					} else if collisionCol.IsNull(i) || !collisionCol.IsValid(i) {
+					} else if allColumnsNull(collisionCols, i) {
+						// All collision columns are null for this row, keep value in source column
 						v := col.(*array.String).Value(i)
 						sourceFieldBuilder.Append(v)         // append value to original column
 						destinationFieldBuilder.AppendNull() // append NULL to _extracted column
@@ -150,52 +164,23 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 	}, region, input)
 }
 
-// duplicate holds indexes to a duplicate values in two slices
-type duplicate struct {
-	value        string
-	s1Idx, s2Idx int
-}
-
-// findDuplicates finds strings that appear in both slices and returns
-// their indexes in each slice.
-// The function assumes that elements in a slices are unique.
-func findDuplicates(s1, s2 []string) []duplicate {
-	if len(s1) == 0 || len(s2) == 0 {
-		return nil
-	}
-
-	set1 := make(map[string]int)
-	for i, v := range s1 {
-		set1[v] = i
-	}
-
-	set2 := make(map[string]int)
-	for i, v := range s2 {
-		set2[v] = i
-	}
-
-	// Find duplicates that exist in both slices
-	var duplicates []duplicate
-	for value, s1Idx := range set1 {
-		if s2Idx, exists := set2[value]; exists {
-			duplicates = append(duplicates, duplicate{
-				value: value,
-				s1Idx: s1Idx,
-				s2Idx: s2Idx,
-			})
+// allColumnsNull returns true if all columns are null or invalid at the given row index.
+func allColumnsNull(collisionCols []arrow.Array, rowIdx int) bool {
+	for _, col := range collisionCols {
+		if !col.IsNull(rowIdx) && col.IsValid(rowIdx) {
+			return false
 		}
 	}
-
-	slices.SortStableFunc(duplicates, func(a, b duplicate) int { return cmp.Compare(a.value, b.value) })
-	return duplicates
+	return true
 }
 
 // duplicateColumn holds indexes to fields/columns in an [*arrow.Schema].
 type duplicateColumn struct {
 	// name is the duplicate column name
 	name string
-	// collisionIdx is the index of the collision column
-	collisionIdx int
+	// collisionIdxs holds the indices of ALL collision columns with this name.
+	// Multiple collision types (e.g., label and metadata) can have columns with the same short name.
+	collisionIdxs []int
 	// sourceIdx is the index of the source column
 	sourceIdx int
 	// destinationIdx is the index of the destination column

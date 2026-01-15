@@ -38,8 +38,9 @@ import (
 	dataobjconfig "github.com/grafana/loki/v3/pkg/dataobj/config"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer"
 	dataobjindex "github.com/grafana/loki/v3/pkg/dataobj/index"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/distributor"
-	engine_v2 "github.com/grafana/loki/v3/pkg/engine"
+	"github.com/grafana/loki/v3/pkg/engine"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/ingester"
 	ingester_client "github.com/grafana/loki/v3/pkg/ingester/client"
@@ -91,6 +92,7 @@ type Config struct {
 	UI                  ui.Config                  `yaml:"ui,omitempty"`
 	Distributor         distributor.Config         `yaml:"distributor,omitempty"`
 	Querier             querier.Config             `yaml:"querier,omitempty"`
+	QueryEngine         engine.Config              `yaml:"query_engine,omitempty" category:"experimental"`
 	QueryScheduler      scheduler.Config           `yaml:"query_scheduler"`
 	Frontend            lokifrontend.Config        `yaml:"frontend,omitempty"`
 	QueryRange          queryrange.Config          `yaml:"query_range,omitempty"`
@@ -142,6 +144,7 @@ type Config struct {
 func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Server.MetricsNamespace = constants.Loki
 	c.Server.ExcludeRequestInLog = true
+	c.Server.MetricsNativeHistogramFactor = 1.1 // Allows native histograms for server metrics
 
 	// Set the default module list to 'all'
 	c.Target = []string{All}
@@ -201,6 +204,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Common.RegisterFlags(f)
 	c.Distributor.RegisterFlags(f)
 	c.Querier.RegisterFlags(f)
+	c.QueryEngine.RegisterFlags(f)
 	c.CompactorHTTPClient.RegisterFlags(f)
 	c.CompactorGRPCClient.RegisterFlags(f)
 	c.IngesterClient.RegisterFlags(f)
@@ -448,8 +452,8 @@ type Loki struct {
 	DataObjConsumerPartitionRingWatcher *ring.PartitionRingWatcher
 	dataObjIndexBuilder                 *dataobjindex.Builder
 	scratchStore                        scratch.Store
-	queryEngineV2                       *engine_v2.Engine
-	queryEngineV2Scheduler              *engine_v2.Scheduler
+	queryEngineV2                       *engine.Engine
+	queryEngineV2Scheduler              *engine.Scheduler
 
 	ClientMetrics       storage.ClientMetrics
 	deleteClientMetrics *deletion.DeleteRequestClientMetrics
@@ -462,6 +466,8 @@ type Loki struct {
 	Metrics *server.Metrics
 
 	UsageTracker push.UsageTracker
+
+	metastoreMetrics *metastore.ObjectMetastoreMetrics
 }
 
 // New makes a new Loki.
@@ -471,6 +477,7 @@ func New(cfg Config) (*Loki, error) {
 		ClientMetrics:       storage.NewClientMetrics(),
 		deleteClientMetrics: deletion.NewDeleteRequestClientMetrics(prometheus.DefaultRegisterer),
 		Codec:               queryrange.DefaultCodec,
+		metastoreMetrics:    metastore.NewObjectMetastoreMetrics(prometheus.DefaultRegisterer),
 	}
 	analytics.Edition("oss")
 	loki.setupAuthMiddleware()

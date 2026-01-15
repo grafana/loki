@@ -3,6 +3,7 @@ package distributor
 import (
 	"context"
 	"errors"
+	"fmt"
 	"hash/fnv"
 	"math/rand"
 
@@ -73,9 +74,9 @@ func NewSegmentationPartitionResolver(perPartitionRateBytes uint64, ringReader r
 	}
 }
 
-func (r *SegmentationPartitionResolver) Resolve(_ context.Context, key SegmentationKey, rateBytes uint64) (int32, error) {
+func (r *SegmentationPartitionResolver) Resolve(ctx context.Context, tenant string, key SegmentationKey, rateBytes, tenantRateBytes uint64) (int32, error) {
 	r.total.Inc()
-	// We work with a snapshot of the partition ring to ensure resolving the
+	// We use a snapshot of the partition ring to ensure resolving the
 	// partition for a segmentation key is determinstic even if the ring
 	// changes.
 	ring := r.ringReader.PartitionRing()
@@ -86,33 +87,66 @@ func (r *SegmentationPartitionResolver) Resolve(_ context.Context, key Segmentat
 		r.failed.Inc()
 		return 0, errors.New("no active partitions")
 	}
+	// Get a subring for the tenant based on their ingestion rate limit.
+	// This ensures that streams are not only co-located within the same
+	// segmentation key, but also segmentation keys for a tenant are as
+	// co-located as possible.
+	subring, err := r.getTenantSubring(ctx, ring, tenant, tenantRateBytes)
+	if err != nil {
+		r.failed.Inc()
+		return 0, fmt.Errorf("failed to get tenant subring: %w", err)
+	}
 	// If rate bytes is 0, then we were unable to determine the rate (bytes/sec)
 	// for the segmentation key. When this happens we fallback to randomly
 	// selecting an active partition and incrementing the fallback metric.
 	if rateBytes == 0 {
 		r.randomlySharded.Inc()
-		activePartitionIDs := ring.ActivePartitionIDs()
+		activePartitionIDs := subring.ActivePartitionIDs()
 		rand.Shuffle(len(activePartitionIDs), func(i, j int) {
 			activePartitionIDs[i], activePartitionIDs[j] = activePartitionIDs[j], activePartitionIDs[i]
 		})
 		return activePartitionIDs[0], nil
 	}
+	subring, err = r.getSegmentationKeySubring(ctx, subring, key, rateBytes)
+	if err != nil {
+		r.failed.Inc()
+		return 0, fmt.Errorf("failed to get segmentation key subring: %w", err)
+	}
+	// Get a random partition from the subring.
+	activePartitionIDs := subring.ActivePartitionIDs()
+	idx := rand.Intn(len(activePartitionIDs))
+	return activePartitionIDs[idx], nil
+}
+
+// getTenantRing returns a subring for the tenant based on their rate limit.
+func (r *SegmentationPartitionResolver) getTenantSubring(_ context.Context, ring *ring.PartitionRing, tenant string, tenantRateBytes uint64) (*ring.PartitionRing, error) {
+	if tenantRateBytes == 0 {
+		// If the tenant has no limit, return the full ring.
+		return ring, nil
+	}
+	// The size of the subring is calculated as the tenant's ingestion rate
+	// limit divided by the expected per-tenant rate per partition.
+	partitions := tenantRateBytes / r.perPartitionRateBytes
+	// Must be at least 1 partition.
+	partitions = max(partitions, 1)
+	// Must not exceed the number of active partitions.
+	partitions = min(partitions, uint64(ring.ActivePartitionsCount()))
+	return ring.ShuffleShard(tenant, int(partitions))
+}
+
+func (r *SegmentationPartitionResolver) getSegmentationKeySubring(_ context.Context, ring *ring.PartitionRing, key SegmentationKey, rateBytes uint64) (*ring.PartitionRing, error) {
+	if rateBytes == 0 {
+		// If the rate is 0, return the full ring.
+		return ring, nil
+	}
 	// Use the rate of the segmentation key to shuffle shard the active
 	// partitions. The number of partitions in the shuffle is calculated as
-	// current rate / the expected rate per partition.
+	// current rate divided by the expected per-tenant rate per partition.
 	partitions := rateBytes / r.perPartitionRateBytes
 	// Must be at least 1 partition.
 	partitions = max(partitions, 1)
 	// Must not exceed the number of active partitions.
 	partitions = min(partitions, uint64(ring.ActivePartitionsCount()))
 	// Shuffle shard.
-	subring, err := ring.ShuffleShard(string(key), int(partitions))
-	if err != nil {
-		r.failed.Inc()
-		return 0, err
-	}
-	// Get a random partition from the subring.
-	activePartitionIDs := subring.ActivePartitionIDs()
-	idx := rand.Intn(len(activePartitionIDs))
-	return activePartitionIDs[idx], nil
+	return ring.ShuffleShard(string(key), int(partitions))
 }

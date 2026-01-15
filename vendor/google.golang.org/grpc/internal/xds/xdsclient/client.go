@@ -23,10 +23,11 @@ package xdsclient
 import (
 	"context"
 
-	v3statuspb "github.com/envoyproxy/go-control-plane/envoy/service/status/v3"
 	"google.golang.org/grpc/internal/xds/bootstrap"
 	"google.golang.org/grpc/internal/xds/clients/lrsclient"
-	"google.golang.org/grpc/internal/xds/xdsclient/xdsresource"
+	"google.golang.org/grpc/internal/xds/clients/xdsclient"
+
+	v3statuspb "github.com/envoyproxy/go-control-plane/envoy/service/status/v3"
 )
 
 // XDSClient is a full fledged gRPC client which queries a set of discovery APIs
@@ -47,7 +48,7 @@ type XDSClient interface {
 	// During a race (e.g. an xDS response is received while the user is calling
 	// cancel()), there's a small window where the callback can be called after
 	// the watcher is canceled. Callers need to handle this case.
-	WatchResource(rType xdsresource.Type, resourceName string, watcher xdsresource.ResourceWatcher) (cancel func())
+	WatchResource(typeURL, resourceName string, watcher xdsclient.ResourceWatcher) (cancel func())
 
 	ReportLoad(*bootstrap.ServerConfig) (*lrsclient.LoadStore, func(context.Context))
 

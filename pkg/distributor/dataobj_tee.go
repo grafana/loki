@@ -52,6 +52,7 @@ func (c *DataObjTeeConfig) Validate() error {
 type DataObjTee struct {
 	cfg          *DataObjTeeConfig
 	limitsClient *ingestLimits
+	limits       Limits
 	kafkaClient  *kgo.Client
 	resolver     *SegmentationPartitionResolver
 	logger       log.Logger
@@ -70,6 +71,7 @@ func NewDataObjTee(
 	cfg *DataObjTeeConfig,
 	resolver *SegmentationPartitionResolver,
 	limitsClient *ingestLimits,
+	limits Limits,
 	kafkaClient *kgo.Client,
 	logger log.Logger,
 	reg prometheus.Registerer,
@@ -79,6 +81,7 @@ func NewDataObjTee(
 		resolver:     resolver,
 		kafkaClient:  kafkaClient,
 		limitsClient: limitsClient,
+		limits:       limits,
 		logger:       logger,
 		failures: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "loki_distributor_dataobj_tee_duplicate_stream_failures_total",
@@ -128,14 +131,17 @@ func (t *DataObjTee) Duplicate(ctx context.Context, tenant string, streams []Key
 	for _, rate := range rates {
 		fastRates[rate.StreamHash] = rate.Rate
 	}
+	// We use max to prevent negative values becoming large positive values
+	// when converting from float64 to uint64.
+	tenantRateBytesLimit := uint64(max(t.limits.IngestionRateBytes(tenant), 0))
 	for _, s := range segmentationKeyStreams {
-		go t.duplicate(ctx, tenant, s, fastRates[s.SegmentationKeyHash])
+		go t.duplicate(ctx, tenant, s, fastRates[s.SegmentationKeyHash], tenantRateBytesLimit)
 	}
 }
 
-func (t *DataObjTee) duplicate(ctx context.Context, tenant string, stream SegmentedStream, rateBytes uint64) {
+func (t *DataObjTee) duplicate(ctx context.Context, tenant string, stream SegmentedStream, rateBytes, tenantRateBytes uint64) {
 	t.total.Inc()
-	partition, err := t.resolver.Resolve(ctx, stream.SegmentationKey, rateBytes)
+	partition, err := t.resolver.Resolve(ctx, tenant, stream.SegmentationKey, rateBytes, tenantRateBytes)
 	if err != nil {
 		level.Error(t.logger).Log("msg", "failed to resolve partition", "err", err)
 		t.failures.Inc()

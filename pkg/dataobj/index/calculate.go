@@ -7,12 +7,9 @@ import (
 	"io"
 	"runtime"
 	"sync"
-	"time"
 
-	"github.com/bits-and-blooms/bloom/v3"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/prometheus/prometheus/model/labels"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
@@ -21,6 +18,33 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
+
+type logsIndexCalculation interface {
+	// Prepare is called before the first batch of logs is processed in order to initialize any state.
+	Prepare(ctx context.Context, section *dataobj.Section, stats logs.Stats) error
+	// ProcessBatch is called for each batch of logs records.
+	// Implementations can assume to have exclusive access to the builder via the calculation context. They must not retain references to it after the call returns.
+	ProcessBatch(ctx context.Context, context *logsCalculationContext, batch []logs.Record) error
+	// Flush is called after all logs in a section have been processed.
+	// Implementations can assume to have exclusive access to the builder via the calculation context. They must not retain references to it after the call returns.
+	Flush(ctx context.Context, context *logsCalculationContext) error
+}
+
+type logsCalculationContext struct {
+	tenantID       string
+	objectPath     string
+	sectionIdx     int64
+	streamIDLookup map[int64]int64
+	builder        *indexobj.Builder
+}
+
+// These steps are applied to all logs and are unique to a section
+func getLogsCalculationSteps() []logsIndexCalculation {
+	return []logsIndexCalculation{
+		&streamStatisticsCalculation{},
+		&columnValuesCalculation{},
+	}
+}
 
 // Calculator is used to calculate the indexes for a logs object and write them to the builder.
 // It reads data from the logs object in order to build bloom filters and per-section stream metadata.
@@ -43,6 +67,10 @@ func (c *Calculator) TimeRanges() []multitenancy.TimeRange {
 
 func (c *Calculator) Flush() (*dataobj.Object, io.Closer, error) {
 	return c.indexobjBuilder.Flush()
+}
+
+func (c *Calculator) IsFull() bool {
+	return c.indexobjBuilder.IsFull()
 }
 
 // Calculate reads the log data from the input logs object and appends the resulting indexes to calculator's builder.
@@ -138,14 +166,6 @@ func (c *Calculator) processStreamsSection(ctx context.Context, section *dataobj
 // processLogsSection reads information from the logs section in order to build index information in the c.indexobjBuilder.
 func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.Logger, objectPath string, section *dataobj.Section, sectionIdx int64, streamIDLookup map[int64]int64) error {
 	logsBuf := make([]logs.Record, 8192)
-	type logInfo struct {
-		objectPath string
-		sectionIdx int64
-		streamID   int64
-		timestamp  time.Time
-		length     int64
-	}
-	logsInfo := make([]logInfo, len(logsBuf))
 
 	logsSection, err := logs.Open(ctx, section)
 	if err != nil {
@@ -160,22 +180,24 @@ func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.L
 		return fmt.Errorf("failed to read log section stats: %w", err)
 	}
 
-	columnBloomBuilders := make(map[string]*bloom.BloomFilter)
-	columnIndexes := make(map[string]int64)
-	for _, column := range stats.Columns {
-		logsType, _ := logs.ParseColumnType(column.Type)
-		if logsType != logs.ColumnTypeMetadata {
-			continue
-		}
-		columnBloomBuilders[column.Name] = bloom.NewWithEstimates(uint(column.Cardinality), 1.0/128.0)
-		columnIndexes[column.Name] = column.ColumnIndex
+	calculationContext := &logsCalculationContext{
+		tenantID:       tenantID,
+		objectPath:     objectPath,
+		sectionIdx:     sectionIdx,
+		streamIDLookup: streamIDLookup,
+		builder:        c.indexobjBuilder,
 	}
 
-	// Read the whole logs section to extract all the column values.
-	cnt := 0
+	calculationSteps := getLogsCalculationSteps()
+
+	for _, calculation := range calculationSteps {
+		if err := calculation.Prepare(ctx, section, stats); err != nil {
+			return fmt.Errorf("failed to prepare calculation: %w", err)
+		}
+	}
+
 	// TODO(benclive): Switch to a columnar reader instead of row based
-	// This is also likely to be more performant, especially if we don't need to read the whole log line.
-	// Note: the source object would need a new column storing just the length to avoid reading the log line itself.
+	cnt := 0
 	rowReader := logs.NewRowReader(logsSection)
 	for {
 		n, err := rowReader.Read(ctx, logsBuf)
@@ -186,43 +208,25 @@ func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.L
 			break
 		}
 
-		for i, log := range logsBuf[:n] {
-			cnt++
-			log.Metadata.Range(func(md labels.Label) {
-				columnBloomBuilders[md.Name].Add([]byte(md.Value))
-			})
-			logsInfo[i].objectPath = objectPath
-			logsInfo[i].sectionIdx = sectionIdx
-			logsInfo[i].streamID = log.StreamID
-			logsInfo[i].timestamp = log.Timestamp
-			logsInfo[i].length = int64(len(log.Line))
-		}
-
-		// Lock the mutex once per read for perf reasons.
+		cnt += n
 		c.builderMtx.Lock()
-		for _, log := range logsInfo[:n] {
-			err = c.indexobjBuilder.ObserveLogLine(tenantID, log.objectPath, log.sectionIdx, log.streamID, streamIDLookup[log.streamID], log.timestamp, log.length)
-			if err != nil {
+		for _, calculation := range calculationSteps {
+			if err := calculation.ProcessBatch(ctx, calculationContext, logsBuf[:n]); err != nil {
 				c.builderMtx.Unlock()
-				return fmt.Errorf("failed to observe log line: %w", err)
+				return fmt.Errorf("failed to process batch: %w", err)
 			}
 		}
 		c.builderMtx.Unlock()
 	}
 
-	// Write the indexes (bloom filters) to the new index object.
-	for columnName, bloom := range columnBloomBuilders {
-		bloomBytes, err := bloom.MarshalBinary()
-		if err != nil {
-			return fmt.Errorf("failed to marshal bloom filter: %w", err)
-		}
-		c.builderMtx.Lock()
-		err = c.indexobjBuilder.AppendColumnIndex(tenantID, objectPath, sectionIdx, columnName, columnIndexes[columnName], bloomBytes)
-		c.builderMtx.Unlock()
-		if err != nil {
-			return fmt.Errorf("failed to append column index: %w", err)
+	c.builderMtx.Lock()
+	for _, calculation := range calculationSteps {
+		if err := calculation.Flush(ctx, calculationContext); err != nil {
+			c.builderMtx.Unlock()
+			return fmt.Errorf("failed to flush calculation results: %w", err)
 		}
 	}
+	c.builderMtx.Unlock()
 
 	level.Info(sectionLogger).Log("msg", "finished processing logs section", "rowsProcessed", cnt)
 	return nil

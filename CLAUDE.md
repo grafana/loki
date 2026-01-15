@@ -48,3 +48,6 @@ make test           # run the frontend tests
 - Document upgrading steps in `docs/sources/setup/upgrade/_index.md`
 - Preview docs locally with `make docs` from the `/docs` directory
 - Include examples and clear descriptions for public APIs
+
+## Using Tools
+- When using the `mcp__acp__Write` tool, write to a path within the current worktree to avoid sandboxing/permissions issues. This includes when writing plan files.

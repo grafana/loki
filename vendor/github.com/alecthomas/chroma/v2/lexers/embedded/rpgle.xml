@@ -11,7 +11,7 @@
     <mime_type>text/x-sqlrpgle</mime_type>
     <case_insensitive>true</case_insensitive>
     <analyse>
-      <regex pattern="^\*\*free$" score="0.9"/>
+      <regex pattern="\*\*free" score="0.9"/>
       <regex pattern="ctl-opt" score="0.9"/>
       <regex pattern="dcl-(ds|s|f|proc|pr|pi)" score="0.9"/>
       <regex pattern="\*in[0-9][0-9]" score="0.5"/>

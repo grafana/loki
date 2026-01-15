@@ -9944,6 +9944,122 @@ func awsAwsjson11_serializeDocumentBucketAccessLogConfig(v *types.BucketAccessLo
 	return nil
 }
 
+func awsAwsjson11_serializeDocumentBucketCorsAllowedHeaders(v []string, value smithyjson.Value) error {
+	array := value.Array()
+	defer array.Close()
+
+	for i := range v {
+		av := array.Value()
+		av.String(v[i])
+	}
+	return nil
+}
+
+func awsAwsjson11_serializeDocumentBucketCorsAllowedMethods(v []string, value smithyjson.Value) error {
+	array := value.Array()
+	defer array.Close()
+
+	for i := range v {
+		av := array.Value()
+		av.String(v[i])
+	}
+	return nil
+}
+
+func awsAwsjson11_serializeDocumentBucketCorsAllowedOrigins(v []string, value smithyjson.Value) error {
+	array := value.Array()
+	defer array.Close()
+
+	for i := range v {
+		av := array.Value()
+		av.String(v[i])
+	}
+	return nil
+}
+
+func awsAwsjson11_serializeDocumentBucketCorsConfig(v *types.BucketCorsConfig, value smithyjson.Value) error {
+	object := value.Object()
+	defer object.Close()
+
+	if v.Rules != nil {
+		ok := object.Key("rules")
+		if err := awsAwsjson11_serializeDocumentBucketCorsRules(v.Rules, ok); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func awsAwsjson11_serializeDocumentBucketCorsExposeHeaders(v []string, value smithyjson.Value) error {
+	array := value.Array()
+	defer array.Close()
+
+	for i := range v {
+		av := array.Value()
+		av.String(v[i])
+	}
+	return nil
+}
+
+func awsAwsjson11_serializeDocumentBucketCorsRule(v *types.BucketCorsRule, value smithyjson.Value) error {
+	object := value.Object()
+	defer object.Close()
+
+	if v.AllowedHeaders != nil {
+		ok := object.Key("allowedHeaders")
+		if err := awsAwsjson11_serializeDocumentBucketCorsAllowedHeaders(v.AllowedHeaders, ok); err != nil {
+			return err
+		}
+	}
+
+	if v.AllowedMethods != nil {
+		ok := object.Key("allowedMethods")
+		if err := awsAwsjson11_serializeDocumentBucketCorsAllowedMethods(v.AllowedMethods, ok); err != nil {
+			return err
+		}
+	}
+
+	if v.AllowedOrigins != nil {
+		ok := object.Key("allowedOrigins")
+		if err := awsAwsjson11_serializeDocumentBucketCorsAllowedOrigins(v.AllowedOrigins, ok); err != nil {
+			return err
+		}
+	}
+
+	if v.ExposeHeaders != nil {
+		ok := object.Key("exposeHeaders")
+		if err := awsAwsjson11_serializeDocumentBucketCorsExposeHeaders(v.ExposeHeaders, ok); err != nil {
+			return err
+		}
+	}
+
+	if v.Id != nil {
+		ok := object.Key("id")
+		ok.String(*v.Id)
+	}
+
+	if v.MaxAgeSeconds != nil {
+		ok := object.Key("maxAgeSeconds")
+		ok.Integer(*v.MaxAgeSeconds)
+	}
+
+	return nil
+}
+
+func awsAwsjson11_serializeDocumentBucketCorsRules(v []types.BucketCorsRule, value smithyjson.Value) error {
+	array := value.Array()
+	defer array.Close()
+
+	for i := range v {
+		av := array.Value()
+		if err := awsAwsjson11_serializeDocumentBucketCorsRule(&v[i], av); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func awsAwsjson11_serializeDocumentCacheBehavior(v *types.CacheBehavior, value smithyjson.Value) error {
 	object := value.Object()
 	defer object.Close()
@@ -12330,6 +12446,11 @@ func awsAwsjson11_serializeOpDocumentGetBucketsInput(v *GetBucketsInput, value s
 		ok.Boolean(*v.IncludeConnectedResources)
 	}
 
+	if v.IncludeCors != nil {
+		ok := object.Key("includeCors")
+		ok.Boolean(*v.IncludeCors)
+	}
+
 	if v.PageToken != nil {
 		ok := object.Key("pageToken")
 		ok.String(*v.PageToken)
@@ -13806,6 +13927,13 @@ func awsAwsjson11_serializeOpDocumentUpdateBucketInput(v *UpdateBucketInput, val
 	if v.BucketName != nil {
 		ok := object.Key("bucketName")
 		ok.String(*v.BucketName)
+	}
+
+	if v.Cors != nil {
+		ok := object.Key("cors")
+		if err := awsAwsjson11_serializeDocumentBucketCorsConfig(v.Cors, ok); err != nil {
+			return err
+		}
 	}
 
 	if v.ReadonlyAccessAccounts != nil {

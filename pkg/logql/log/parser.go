@@ -149,7 +149,7 @@ func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.Valu
 			return nil
 		}
 
-		if j.lbs.BaseHas(sanitizedKey) {
+		if j.lbs.BaseHas(sanitizedKey) || j.lbs.HasInCategory(sanitizedKey, StructuredMetadataLabel) {
 			sanitizedKey = sanitizedKey + duplicateSuffix
 		}
 
@@ -179,7 +179,7 @@ func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.Valu
 		return string(sanitized), true
 	})
 
-	if j.lbs.BaseHas(keyString) {
+	if j.lbs.BaseHas(keyString) || j.lbs.HasInCategory(keyString, StructuredMetadataLabel) {
 		j.prefixBuffer[prefixLen] = make([]byte, 0, len(key)+len(duplicateSuffix))
 		j.prefixBuffer[prefixLen] = append(j.prefixBuffer[prefixLen], key...)
 		j.prefixBuffer[prefixLen] = append(j.prefixBuffer[prefixLen], duplicateSuffix...)
@@ -339,7 +339,7 @@ func (r *RegexpParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 				continue
 			}
 
-			if lbs.BaseHas(key) {
+			if lbs.BaseHas(key) || lbs.HasInCategory(key, StructuredMetadataLabel) {
 				key = fmt.Sprintf("%s%s", key, duplicateSuffix)
 			}
 
@@ -406,7 +406,7 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 			continue
 		}
 
-		if lbs.BaseHas(key) {
+		if lbs.BaseHas(key) || lbs.HasInCategory(key, StructuredMetadataLabel) {
 			key = key + duplicateSuffix
 		}
 
@@ -478,7 +478,7 @@ func (l *PatternParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byt
 	names := l.names[:len(matches)]
 	for i, m := range matches {
 		name := names[i]
-		if lbs.BaseHas(name) {
+		if lbs.BaseHas(name) || lbs.HasInCategory(name, StructuredMetadataLabel) {
 			name = name + duplicateSuffix
 		}
 
@@ -544,7 +544,7 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 	keys := make(map[string]string, len(l.expressions))
 	for id, paths := range l.expressions {
 		keys[id] = fmt.Sprintf("%v", paths...)
-		if !lbs.BaseHas(id) {
+		if !lbs.BaseHas(id) && !lbs.HasInCategory(id, StructuredMetadataLabel) {
 			lbs.Set(ParsedLabel, id, "")
 		}
 	}
@@ -599,7 +599,7 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 		}
 
 		if _, ok := l.expressions[key]; ok {
-			if lbs.BaseHas(key) {
+			if lbs.BaseHas(key) || lbs.HasInCategory(key, StructuredMetadataLabel) {
 				key = key + duplicateSuffix
 				if lbs.ParserLabelHints().Extracted(key) || !lbs.ParserLabelHints().ShouldExtract(key) {
 					// Don't extract duplicates if we don't have to
@@ -693,7 +693,7 @@ func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder)
 			return identifier, true
 		})
 
-		if lbs.BaseHas(key) {
+		if lbs.BaseHas(key) || lbs.HasInCategory(key, StructuredMetadataLabel) {
 			key = key + duplicateSuffix
 		}
 
@@ -808,7 +808,7 @@ func (u *UnpackParser) unpack(entry []byte, lbs *LabelsBuilder) ([]byte, error) 
 				return string(key), true
 			})
 
-			if lbs.BaseHas(key) {
+			if lbs.BaseHas(key) || lbs.HasInCategory(key, StructuredMetadataLabel) {
 				key = key + duplicateSuffix
 			}
 

@@ -1,16 +1,5 @@
-// Copyright 2015 go-swagger maintainers
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//    http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-FileCopyrightText: Copyright 2015-2025 go-swagger maintainers
+// SPDX-License-Identifier: Apache-2.0
 
 package strfmt
 
@@ -23,8 +12,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"go.mongodb.org/mongo-driver/bson"
 )
 
 func init() {
@@ -154,7 +141,7 @@ func ParseDuration(cand string) (time.Duration, error) {
 }
 
 // Scan reads a Duration value from database driver type.
-func (d *Duration) Scan(raw interface{}) error {
+func (d *Duration) Scan(raw any) error {
 	switch v := raw.(type) {
 	// TODO: case []byte: // ?
 	case int64:
@@ -201,28 +188,6 @@ func (d *Duration) UnmarshalJSON(data []byte) error {
 	}
 	*d = Duration(tt)
 	return nil
-}
-
-func (d Duration) MarshalBSON() ([]byte, error) {
-	return bson.Marshal(bson.M{"data": d.String()})
-}
-
-func (d *Duration) UnmarshalBSON(data []byte) error {
-	var m bson.M
-	if err := bson.Unmarshal(data, &m); err != nil {
-		return err
-	}
-
-	if data, ok := m["data"].(string); ok {
-		rd, err := ParseDuration(data)
-		if err != nil {
-			return err
-		}
-		*d = Duration(rd)
-		return nil
-	}
-
-	return fmt.Errorf("couldn't unmarshal bson bytes value as Date: %w", ErrFormat)
 }
 
 // DeepCopyInto copies the receiver and writes its value into out.

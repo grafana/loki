@@ -25,15 +25,15 @@ func Test_table_metadataCleanup(t *testing.T) {
 	var buf tableBuffer
 	initBuffer(&buf)
 
-	_ = buf.Metadata("foo", pageSize, pageRows, dataset.CompressionOptions{})
-	_ = buf.Metadata("bar", pageSize, pageRows, dataset.CompressionOptions{})
+	_ = buf.Metadata("foo", pageSize, pageRows, nil)
+	_ = buf.Metadata("bar", pageSize, pageRows, nil)
 
 	table, err := buf.Flush()
 	require.NoError(t, err)
 	require.Equal(t, 2, len(table.Metadatas))
 
 	initBuffer(&buf)
-	_ = buf.Metadata("bar", pageSize, pageRows, dataset.CompressionOptions{})
+	_ = buf.Metadata("bar", pageSize, pageRows, nil)
 
 	table, err = buf.Flush()
 	require.NoError(t, err)
@@ -44,7 +44,7 @@ func Test_table_metadataCleanup(t *testing.T) {
 func initBuffer(buf *tableBuffer) {
 	buf.StreamID(pageSize, pageRows)
 	buf.Timestamp(pageSize, pageRows)
-	buf.Message(pageSize, pageRows, dataset.CompressionOptions{})
+	buf.Message(pageSize, pageRows, nil)
 }
 
 func Test_mergeTables(t *testing.T) {
@@ -94,14 +94,14 @@ func Test_mergeTables(t *testing.T) {
 			var buf tableBuffer
 
 			// Build tables with sort strategy
-			tableA := buildTable(&buf, pageSize, pageRows, dataset.CompressionOptions{}, testRecords.tableA, strategy.sortOrder)
-			tableB := buildTable(&buf, pageSize, pageRows, dataset.CompressionOptions{}, testRecords.tableB, strategy.sortOrder)
-			tableC := buildTable(&buf, pageSize, pageRows, dataset.CompressionOptions{}, testRecords.tableC, strategy.sortOrder)
+			tableA := buildTable(&buf, pageSize, pageRows, nil, testRecords.tableA, strategy.sortOrder)
+			tableB := buildTable(&buf, pageSize, pageRows, nil, testRecords.tableB, strategy.sortOrder)
+			tableC := buildTable(&buf, pageSize, pageRows, nil, testRecords.tableC, strategy.sortOrder)
 
 			// TableC should have been initially deduped by buildTable
 			require.Equal(t, tableC.Timestamp.Desc.RowsCount, 2)
 
-			mergedTable, err := mergeTables(&buf, pageSize, pageRows, dataset.CompressionOptions{}, []*table{tableA, tableB, tableC}, strategy.sortOrder)
+			mergedTable, err := mergeTables(&buf, pageSize, pageRows, nil, []*table{tableA, tableB, tableC}, strategy.sortOrder)
 			require.NoError(t, err)
 
 			mergedColumns, err := result.Collect(mergedTable.ListColumns(context.Background()))
@@ -144,7 +144,7 @@ func Test_table_backfillMetadata(t *testing.T) {
 		{StreamID: 3, Timestamp: time.Unix(3, 0), Line: []byte("msg3"), Metadata: labels.FromStrings("env", "prod")}, // Missing service and version
 		{StreamID: 4, Timestamp: time.Unix(4, 0), Line: []byte("msg4"), Metadata: labels.FromStrings("env", "dev")},  // Missing service and version
 	}
-	table := buildTable(&tableBuffer{}, pageSize, pageRows, dataset.CompressionOptions{}, records, SortTimestampDESC)
+	table := buildTable(&tableBuffer{}, pageSize, pageRows, nil, records, SortTimestampDESC)
 
 	// All metadata columns should have the same row count due to backfill
 	expectedRows := len(records)

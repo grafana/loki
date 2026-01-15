@@ -1,6 +1,8 @@
 package physical
 
 import (
+	"slices"
+
 	"github.com/oklog/ulid/v2"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
@@ -12,9 +14,9 @@ type ColumnCompat struct {
 	NodeID ulid.ULID
 
 	// TODO(chaudum): These fields are poorly named. Come up with more descriptive names.
-	Source      types.ColumnType // column type of the column that may colide with columns of the same name but with collision type
-	Destination types.ColumnType // column type of the generated _extracted column (should be same as source)
-	Collision   types.ColumnType // column type of the column that a source type column may collide with
+	Source      types.ColumnType   // column type of the column that may colide with columns of the same name but with collision type
+	Destination types.ColumnType   // column type of the generated _extracted column (should be same as source)
+	Collisions  []types.ColumnType // column types of the columns that a source type column may collide with
 }
 
 // ID implements the [Node] interface.
@@ -28,7 +30,7 @@ func (m *ColumnCompat) Clone() Node {
 
 		Source:      m.Source,
 		Destination: m.Destination,
-		Collision:   m.Collision,
+		Collisions:  slices.Clone(m.Collisions),
 	}
 }
 

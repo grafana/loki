@@ -6,11 +6,12 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math"
 	"math/rand"
 	"slices"
-	"strings"
 	"time"
 
+	"github.com/cespare/xxhash/v2"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gogo/status"
@@ -34,6 +35,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/discovery"
+	"github.com/grafana/loki/v3/pkg/util/jumphash"
 )
 
 const (
@@ -344,10 +346,7 @@ func (s *GatewayClient) GetVolume(ctx context.Context, in *logproto.VolumeReques
 	return resp, err
 }
 
-func (s *GatewayClient) GetShards(
-	ctx context.Context,
-	in *logproto.ShardsRequest,
-) (res *logproto.ShardsResponse, err error) {
+func (s *GatewayClient) GetShards(ctx context.Context, in *logproto.ShardsRequest) (res *logproto.ShardsResponse, err error) {
 
 	// We try to get the shards from the index gateway,
 	// but if it's not implemented, we fall back to the stats.
@@ -496,9 +495,8 @@ func (s *GatewayClient) poolDoWithStrategy(
 
 	if s.cfg.Mode == SimpleMode {
 		slices.Sort(addrs)
-		allAddr := strings.Join(addrs, ",")
 		addrs = filterServerList(addrs)
-		level.Debug(s.logger).Log("msg", "filtered list of index gateway instances", "all", allAddr, "filtered", strings.Join(addrs, ","))
+		addrs = s.jumpHashShuffleSharding(userID, addrs)
 	}
 
 	// shuffle addresses to make sure we don't always access the same Index Gateway instances in sequence for same tenant.
@@ -533,6 +531,38 @@ func (s *GatewayClient) poolDoWithStrategy(
 	}
 
 	return lastErr
+}
+
+// jumpHashShuffleSharding uses jump hash to consistently select a subset of index gateway instances for a tenant.
+// It ensures that each tenant gets a deterministic set of gateways based on the IndexGatewayMaxCapacity limit,
+// which is expressed as a fraction (0.0 to 1.0) of the total available gateways.
+// The function hashes the tenant ID to distribute tenants across gateways,
+// providing stable gateway assignments while allowing for controlled capacity allocation per tenant.
+func (s *GatewayClient) jumpHashShuffleSharding(tenant string, addrs []string) []string {
+	if len(addrs) <= 1 {
+		return addrs
+	}
+
+	f := s.limits.IndexGatewayMaxCapacity(tenant)
+	if f == 1.0 || f == 0.0 {
+		return addrs
+	}
+
+	maxAvailableGateways := len(addrs)
+	numUserGateways := int(math.Ceil(float64(maxAvailableGateways) * f))
+	if numUserGateways >= maxAvailableGateways {
+		return addrs
+	}
+
+	cs := xxhash.Sum64String(tenant)
+	idx := int(jumphash.Hash(cs, maxAvailableGateways))
+
+	subset := make([]string, 0, numUserGateways)
+	for i := range numUserGateways {
+		subset = append(subset, addrs[(idx+i)%len(addrs)])
+	}
+
+	return subset
 }
 
 func (s *GatewayClient) getServerAddresses(tenantID string) ([]string, error) {

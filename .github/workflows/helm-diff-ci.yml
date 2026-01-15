@@ -67,7 +67,7 @@ jobs:
       - name: Setup Helm plugins
         if: ${{ matrix.scenario.use_k3d }}
         run: |
-          helm plugin install https://github.com/databus23/helm-diff
+          helm plugin install --verify=false https://github.com/databus23/helm-diff
 
       - name: Build helm dependencies
         run: |
@@ -117,7 +117,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4.1.3
 
       - name: Combine diff outputs
         run: |

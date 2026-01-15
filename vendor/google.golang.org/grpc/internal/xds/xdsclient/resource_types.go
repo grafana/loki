@@ -30,25 +30,25 @@ func supportedResourceTypes(config *bootstrap.Config, gServerCfgMap map[xdsclien
 			TypeURL:                    version.V3ListenerURL,
 			TypeName:                   xdsresource.ListenerResourceTypeName,
 			AllResourcesRequiredInSotW: true,
-			Decoder:                    xdsresource.NewGenericListenerResourceTypeDecoder(config),
+			Decoder:                    xdsresource.NewListenerResourceTypeDecoder(config),
 		},
 		version.V3RouteConfigURL: {
 			TypeURL:                    version.V3RouteConfigURL,
 			TypeName:                   xdsresource.RouteConfigTypeName,
 			AllResourcesRequiredInSotW: false,
-			Decoder:                    xdsresource.NewGenericRouteConfigResourceTypeDecoder(),
+			Decoder:                    xdsresource.NewRouteConfigResourceTypeDecoder(config),
 		},
 		version.V3ClusterURL: {
 			TypeURL:                    version.V3ClusterURL,
 			TypeName:                   xdsresource.ClusterResourceTypeName,
 			AllResourcesRequiredInSotW: true,
-			Decoder:                    xdsresource.NewGenericClusterResourceTypeDecoder(config, gServerCfgMap),
+			Decoder:                    xdsresource.NewClusterResourceTypeDecoder(config, gServerCfgMap),
 		},
 		version.V3EndpointsURL: {
 			TypeURL:                    version.V3EndpointsURL,
 			TypeName:                   xdsresource.EndpointsResourceTypeName,
 			AllResourcesRequiredInSotW: false,
-			Decoder:                    xdsresource.NewGenericEndpointsResourceTypeDecoder(),
+			Decoder:                    xdsresource.NewEndpointsResourceTypeDecoder(config),
 		},
 	}
 }

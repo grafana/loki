@@ -22,14 +22,12 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"google.golang.org/grpc/grpclog"
 	igrpclog "google.golang.org/grpc/internal/grpclog"
 	"google.golang.org/grpc/internal/xds/clients"
 	"google.golang.org/grpc/internal/xds/clients/internal/backoff"
-	"google.golang.org/grpc/internal/xds/clients/internal/buffer"
 	"google.golang.org/grpc/internal/xds/clients/internal/pretty"
 	"google.golang.org/grpc/internal/xds/clients/xdsclient/internal/xdsresource"
 
@@ -48,6 +46,13 @@ const (
 	// terse output should be at `INFO` and verbosity 2.
 	perRPCVerbosityLevel = 9
 )
+
+// request represents a queued request message to be sent on the ADS stream. It
+// contains the type of the resource and the list of resource names to be sent.
+type request struct {
+	typ           ResourceType
+	resourceNames []string
+}
 
 // response represents a response received on the ADS stream. It contains the
 // type URL, version, and resources for the response.
@@ -77,9 +82,7 @@ type adsStreamEventHandler interface {
 type resourceTypeState struct {
 	version             string                                     // Last acked version. Should not be reset when the stream breaks.
 	nonce               string                                     // Last received nonce. Should be reset when the stream breaks.
-	bufferedRequests    chan struct{}                              // Channel to buffer requests when writing is blocked.
 	subscribedResources map[string]*xdsresource.ResourceWatchState // Map of subscribed resource names to their state.
-	pendingWrite        bool                                       // True if there is a pending write for this resource type.
 }
 
 // adsStreamImpl provides the functionality associated with an ADS (Aggregated
@@ -100,15 +103,16 @@ type adsStreamImpl struct {
 	// The following fields are initialized in the constructor and are not
 	// written to afterwards, and hence can be accessed without a mutex.
 	streamCh     chan clients.Stream // New ADS streams are pushed here.
-	requestCh    *buffer.Unbounded   // Subscriptions and unsubscriptions are pushed here.
 	runnerDoneCh chan struct{}       // Notify completion of runner goroutine.
 	cancel       context.CancelFunc  // To cancel the context passed to the runner goroutine.
+	fc           *adsFlowControl     // Flow control for ADS stream.
+	notifySender chan struct{}       // To notify the sending goroutine of a pending request.
 
 	// Guards access to the below fields (and to the contents of the map).
 	mu                sync.Mutex
 	resourceTypeState map[ResourceType]*resourceTypeState // Map of resource types to their state.
-	fc                *adsFlowControl                     // Flow control for ADS stream.
 	firstRequest      bool                                // False after the first request is sent out.
+	pendingRequests   []request                           // Subscriptions and unsubscriptions are pushed here.
 }
 
 // adsStreamOpts contains the options for creating a new ADS Stream.
@@ -133,8 +137,9 @@ func newADSStreamImpl(opts adsStreamOpts) *adsStreamImpl {
 		watchExpiryTimeout: opts.watchExpiryTimeout,
 
 		streamCh:          make(chan clients.Stream, 1),
-		requestCh:         buffer.NewUnbounded(),
 		runnerDoneCh:      make(chan struct{}),
+		fc:                newADSFlowControl(),
+		notifySender:      make(chan struct{}, 1),
 		resourceTypeState: make(map[ResourceType]*resourceTypeState),
 	}
 
@@ -150,76 +155,80 @@ func newADSStreamImpl(opts adsStreamOpts) *adsStreamImpl {
 // Stop blocks until the stream is closed and all spawned goroutines exit.
 func (s *adsStreamImpl) Stop() {
 	s.cancel()
-	s.requestCh.Close()
+	s.fc.stop()
 	<-s.runnerDoneCh
 	s.logger.Infof("Shutdown ADS stream")
 }
 
 // subscribe subscribes to the given resource. It is assumed that multiple
 // subscriptions for the same resource is deduped at the caller. A discovery
-// request is sent out on the underlying stream for the resource type when there
-// is sufficient flow control quota.
+// request is sent out on the underlying stream, for the resource type with the
+// newly subscribed resource.
 func (s *adsStreamImpl) subscribe(typ ResourceType, name string) {
 	if s.logger.V(2) {
 		s.logger.Infof("Subscribing to resource %q of type %q", name, typ.TypeName)
 	}
 
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	state, ok := s.resourceTypeState[typ]
 	if !ok {
 		// An entry in the type state map is created as part of the first
 		// subscription request for this type.
-		state = &resourceTypeState{
-			subscribedResources: make(map[string]*xdsresource.ResourceWatchState),
-			bufferedRequests:    make(chan struct{}, 1),
-		}
+		state = &resourceTypeState{subscribedResources: make(map[string]*xdsresource.ResourceWatchState)}
 		s.resourceTypeState[typ] = state
 	}
 
 	// Create state for the newly subscribed resource. The watch timer will
 	// be started when a request for this resource is actually sent out.
 	state.subscribedResources[name] = &xdsresource.ResourceWatchState{State: xdsresource.ResourceWatchStateStarted}
-	state.pendingWrite = true
 
 	// Send a request for the resource type with updated subscriptions.
-	s.requestCh.Put(typ)
+	s.pendingRequests = append(s.pendingRequests, request{typ: typ, resourceNames: resourceNames(state.subscribedResources)})
+	s.mu.Unlock()
+
+	select {
+	case s.notifySender <- struct{}{}:
+	default:
+	}
 }
 
-// Unsubscribe cancels the subscription to the given resource. It is a no-op if
+// unsubscribe cancels the subscription to the given resource. It is a no-op if
 // the given resource does not exist. The watch expiry timer associated with the
 // resource is stopped if one is active. A discovery request is sent out on the
-// stream for the resource type when there is sufficient flow control quota.
-func (s *adsStreamImpl) Unsubscribe(typ ResourceType, name string) {
+// stream for the resource type with the updated set of resource names.
+func (s *adsStreamImpl) unsubscribe(typ ResourceType, name string) {
 	if s.logger.V(2) {
 		s.logger.Infof("Unsubscribing to resource %q of type %q", name, typ.TypeName)
 	}
 
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	state, ok := s.resourceTypeState[typ]
 	if !ok {
+		s.mu.Unlock()
 		return
 	}
-
 	rs, ok := state.subscribedResources[name]
 	if !ok {
+		s.mu.Unlock()
 		return
 	}
 	if rs.ExpiryTimer != nil {
 		rs.ExpiryTimer.Stop()
 	}
 	delete(state.subscribedResources, name)
-	state.pendingWrite = true
 
 	// Send a request for the resource type with updated subscriptions.
-	s.requestCh.Put(typ)
+	s.pendingRequests = append(s.pendingRequests, request{typ: typ, resourceNames: resourceNames(state.subscribedResources)})
+	s.mu.Unlock()
+
+	select {
+	case s.notifySender <- struct{}{}:
+	default:
+	}
 }
 
 // runner is a long-running goroutine that handles the lifecycle of the ADS
-// stream. It spwans another goroutine to handle writes of discovery request
+// stream. It spawns another goroutine to handle writes of discovery request
 // messages on the stream. Whenever an existing stream fails, it performs
 // exponential backoff (if no messages were received on that stream) before
 // creating a new stream.
@@ -240,9 +249,6 @@ func (s *adsStreamImpl) runner(ctx context.Context) {
 		}
 
 		s.mu.Lock()
-		// Flow control is a property of the underlying streaming RPC call and
-		// needs to be initialized everytime a new one is created.
-		s.fc = newADSFlowControl(s.logger)
 		s.firstRequest = true
 		s.mu.Unlock()
 
@@ -256,7 +262,7 @@ func (s *adsStreamImpl) runner(ctx context.Context) {
 
 		// Backoff state is reset upon successful receipt of at least one
 		// message from the server.
-		if s.recv(ctx, stream) {
+		if s.recv(stream) {
 			return backoff.ErrResetBackoff
 		}
 		return nil
@@ -282,51 +288,44 @@ func (s *adsStreamImpl) send(ctx context.Context) {
 				stream = nil
 				continue
 			}
-		case req, ok := <-s.requestCh.Get():
-			if !ok {
-				return
-			}
-			s.requestCh.Load()
-
-			typ := req.(ResourceType)
-			if err := s.sendNew(stream, typ); err != nil {
-				stream = nil
+		case <-s.notifySender:
+			// If there's no stream yet, skip the request. This request will be resent
+			// when a new stream is created. If no stream is created, the watcher will
+			// timeout (same as server not sending response back).
+			if stream == nil {
 				continue
 			}
+
+			// Resetting the pendingRequests slice to nil works for both cases:
+			// - When we successfully sends the requests out on the wire.
+			// - When sending fails. This can happen only when the stream fails,
+			//   and in this case, we rely on the `sendExisting` to send out
+			//   requests for all subscriptions when the stream is recreated.
+			s.mu.Lock()
+			if err := s.sendNewLocked(stream, s.pendingRequests); err != nil {
+				stream = nil
+			}
+			s.pendingRequests = nil
+			s.mu.Unlock()
 		}
 	}
 }
 
-// sendNew attempts to send a discovery request based on a new subscription or
-// unsubscription. If there is no flow control quota, the request is buffered
-// and will be sent later. This method also starts the watch expiry timer for
-// resources that were sent in the request for the first time, i.e. their watch
-// state is `watchStateStarted`.
-func (s *adsStreamImpl) sendNew(stream clients.Stream, typ ResourceType) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	// If there's no stream yet, skip the request. This request will be resent
-	// when a new stream is created. If no stream is created, the watcher will
-	// timeout (same as server not sending response back).
-	if stream == nil {
-		return nil
-	}
-
-	// If local processing of the most recently received response is not yet
-	// complete, i.e. fc.pending == true, queue this write and return early.
-	// This allows us to batch writes for requests which are generated as part
-	// of local processing of a received response.
-	state := s.resourceTypeState[typ]
-	if s.fc.pending.Load() {
-		select {
-		case state.bufferedRequests <- struct{}{}:
-		default:
+// sendNewLocked attempts to send a discovery request based on a new subscription or
+// unsubscription. This method also starts the watch expiry timer for resources
+// that were sent in the request for the first time, i.e. their watch state is
+// `watchStateStarted`.
+//
+// Caller needs to hold c.mu.
+func (s *adsStreamImpl) sendNewLocked(stream clients.Stream, requests []request) error {
+	for _, req := range requests {
+		state := s.resourceTypeState[req.typ]
+		if err := s.sendMessageLocked(stream, req.resourceNames, req.typ.TypeURL, state.version, state.nonce, nil); err != nil {
+			return err
 		}
-		return nil
+		s.startWatchTimersLocked(req.typ, req.resourceNames)
 	}
-
-	return s.sendMessageIfWritePendingLocked(stream, typ, state)
+	return nil
 }
 
 // sendExisting sends out discovery requests for existing resources when
@@ -336,6 +335,10 @@ func (s *adsStreamImpl) sendNew(stream clients.Stream, typ ResourceType) error {
 func (s *adsStreamImpl) sendExisting(stream clients.Stream) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	// Clear any queued requests. Previously subscribed to resources will be
+	// resent below.
+	s.pendingRequests = nil
 
 	for typ, state := range s.resourceTypeState {
 		// Reset only the nonces map when the stream restarts.
@@ -355,66 +358,12 @@ func (s *adsStreamImpl) sendExisting(stream clients.Stream) error {
 			continue
 		}
 
-		state.pendingWrite = true
-		if err := s.sendMessageIfWritePendingLocked(stream, typ, state); err != nil {
+		names := resourceNames(state.subscribedResources)
+		if err := s.sendMessageLocked(stream, names, typ.TypeURL, state.version, state.nonce, nil); err != nil {
 			return err
 		}
+		s.startWatchTimersLocked(typ, names)
 	}
-	return nil
-}
-
-// sendBuffered sends out discovery requests for resources that were buffered
-// when they were subscribed to, because local processing of the previously
-// received response was not yet complete.
-//
-// The stream argument is guaranteed to be non-nil.
-func (s *adsStreamImpl) sendBuffered(stream clients.Stream) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	for typ, state := range s.resourceTypeState {
-		select {
-		case <-state.bufferedRequests:
-			if err := s.sendMessageIfWritePendingLocked(stream, typ, state); err != nil {
-				return err
-			}
-		default:
-			// No buffered request.
-			continue
-		}
-	}
-	return nil
-}
-
-// sendMessageIfWritePendingLocked attempts to sends a discovery request to the
-// server, if there is a pending write for the given resource type.
-//
-// If the request is successfully sent, the pending write field is cleared and
-// watch timers are started for the resources in the request.
-//
-// Caller needs to hold c.mu.
-func (s *adsStreamImpl) sendMessageIfWritePendingLocked(stream clients.Stream, typ ResourceType, state *resourceTypeState) error {
-	if !state.pendingWrite {
-		if s.logger.V(2) {
-			s.logger.Infof("Skipping sending request for type %q, because all subscribed resources were already sent", typ.TypeURL)
-		}
-		return nil
-	}
-
-	names := resourceNames(state.subscribedResources)
-	if err := s.sendMessageLocked(stream, names, typ.TypeURL, state.version, state.nonce, nil); err != nil {
-		return err
-	}
-	state.pendingWrite = false
-
-	// Drain the buffered requests channel because we just sent a request for this
-	// resource type.
-	select {
-	case <-state.bufferedRequests:
-	default:
-	}
-
-	s.startWatchTimersLocked(typ, names)
 	return nil
 }
 
@@ -458,7 +407,7 @@ func (s *adsStreamImpl) sendMessageLocked(stream clients.Stream, names []string,
 	if s.logger.V(perRPCVerbosityLevel) {
 		s.logger.Infof("ADS request sent: %v", pretty.ToJSON(req))
 	} else if s.logger.V(2) {
-		s.logger.Warningf("ADS request sent for type %q, resources: %v, version: %q, nonce: %q", url, names, version, nonce)
+		s.logger.Infof("ADS request sent for type %q, resources: %v, version: %q, nonce: %q", url, names, version, nonce)
 	}
 
 	return nil
@@ -467,29 +416,24 @@ func (s *adsStreamImpl) sendMessageLocked(stream clients.Stream, names []string,
 // recv is responsible for receiving messages from the ADS stream.
 //
 // It performs the following actions:
-//   - Waits for local flow control to be available before sending buffered
-//     requests, if any.
-//   - Receives a message from the ADS stream. If an error is encountered here,
-//     it is handled by the onError method which propagates the error to all
-//     watchers.
+//   - Waits for local flow control to be available before it receives a message
+//     from the ADS stream. If an error is encountered here, it is handled by
+//     the onError method which propagates the error to all watchers.
 //   - Invokes the event handler's OnADSResponse method to process the message.
 //   - Sends an ACK or NACK to the server based on the response.
 //
 // It returns a boolean indicating whether at least one message was received
 // from the server.
-func (s *adsStreamImpl) recv(ctx context.Context, stream clients.Stream) bool {
+func (s *adsStreamImpl) recv(stream clients.Stream) bool {
 	msgReceived := false
 	for {
-		// Wait for ADS stream level flow control to be available, and send out
-		// a request if anything was buffered while we were waiting for local
-		// processing of the previous response to complete.
-		if !s.fc.wait(ctx) {
+		// Wait for ADS stream level flow control to be available.
+		if s.fc.wait() {
 			if s.logger.V(2) {
-				s.logger.Infof("ADS stream context canceled")
+				s.logger.Infof("ADS stream stopped while waiting for flow control")
 			}
 			return msgReceived
 		}
-		s.sendBuffered(stream)
 
 		resources, url, version, nonce, err := s.recvMessage(stream)
 		if err != nil {
@@ -508,8 +452,8 @@ func (s *adsStreamImpl) recv(ctx context.Context, stream clients.Stream) bool {
 		}
 		var resourceNames []string
 		var nackErr error
-		s.fc.setPending()
-		resourceNames, nackErr = s.eventHandler.onResponse(resp, s.fc.onDone)
+		s.fc.setPending(true)
+		resourceNames, nackErr = s.eventHandler.onResponse(resp, sync.OnceFunc(func() { s.fc.setPending(false) }))
 		if xdsresource.ErrType(nackErr) == xdsresource.ErrorTypeResourceTypeUnsupported {
 			// A general guiding principle is that if the server sends
 			// something the client didn't actually subscribe to, then the
@@ -707,69 +651,67 @@ func resourceNames(m map[string]*xdsresource.ResourceWatchState) []string {
 	return ret
 }
 
-// adsFlowControl implements ADS stream level flow control that enables the
-// transport to block the reading of the next message off of the stream until
-// the previous update is consumed by all watchers.
+// adsFlowControl implements ADS stream level flow control that enables the ADS
+// stream to block the reading of the next message until the previous update is
+// consumed by all watchers.
 //
-// The lifetime of the flow control is tied to the lifetime of the stream.
+// The lifetime of the flow control is tied to the lifetime of the stream. When
+// the stream is closed, it is the responsibility of the caller to stop the flow
+// control. This ensures that any goroutine blocked on the flow control's wait
+// method is unblocked.
 type adsFlowControl struct {
-	logger *igrpclog.PrefixLogger
-
-	// Whether the most recent update is pending consumption by all watchers.
-	pending atomic.Bool
-	// Channel used to notify when all the watchers have consumed the most
-	// recent update. Wait() blocks on reading a value from this channel.
-	readyCh chan struct{}
+	mu sync.Mutex
+	// cond is used to signal when the most recent update has been consumed, or
+	// the flow control has been stopped (in which case, waiters should be
+	// unblocked as well).
+	cond    *sync.Cond
+	pending bool // indicates if the most recent update is pending consumption
+	stopped bool // indicates if the ADS stream has been stopped
 }
 
 // newADSFlowControl returns a new adsFlowControl.
-func newADSFlowControl(logger *igrpclog.PrefixLogger) *adsFlowControl {
-	return &adsFlowControl{
-		logger:  logger,
-		readyCh: make(chan struct{}, 1),
+func newADSFlowControl() *adsFlowControl {
+	fc := &adsFlowControl{}
+	fc.cond = sync.NewCond(&fc.mu)
+	return fc
+}
+
+// stop marks the flow control as stopped and signals the condition variable to
+// unblock any goroutine waiting on it.
+func (fc *adsFlowControl) stop() {
+	fc.mu.Lock()
+	defer fc.mu.Unlock()
+
+	fc.stopped = true
+	fc.cond.Broadcast()
+}
+
+// setPending changes the internal state to indicate whether there is an update
+// pending consumption by all watchers. If there is no longer a pending update,
+// the condition variable is signaled to allow the recv method to proceed.
+func (fc *adsFlowControl) setPending(pending bool) {
+	fc.mu.Lock()
+	defer fc.mu.Unlock()
+
+	if fc.stopped {
+		return
+	}
+
+	fc.pending = pending
+	if !pending {
+		fc.cond.Broadcast()
 	}
 }
 
-// setPending changes the internal state to indicate that there is an update
-// pending consumption by all watchers.
-func (fc *adsFlowControl) setPending() {
-	fc.pending.Store(true)
-}
+// wait blocks until all the watchers have consumed the most recent update.
+// Returns true if the flow control was stopped while waiting, false otherwise.
+func (fc *adsFlowControl) wait() bool {
+	fc.mu.Lock()
+	defer fc.mu.Unlock()
 
-// wait blocks until all the watchers have consumed the most recent update and
-// returns true. If the context expires before that, it returns false.
-func (fc *adsFlowControl) wait(ctx context.Context) bool {
-	// If there is no pending update, there is no need to block.
-	if !fc.pending.Load() {
-		// If all watchers finished processing the most recent update before the
-		// `recv` goroutine made the next call to `Wait()`, there would be an
-		// entry in the readyCh channel that needs to be drained to ensure that
-		// the next call to `Wait()` doesn't unblock before it actually should.
-		select {
-		case <-fc.readyCh:
-		default:
-		}
-		return true
+	for fc.pending && !fc.stopped {
+		fc.cond.Wait()
 	}
 
-	select {
-	case <-ctx.Done():
-		return false
-	case <-fc.readyCh:
-		return true
-	}
-}
-
-// onDone indicates that all watchers have consumed the most recent update.
-func (fc *adsFlowControl) onDone() {
-	select {
-	// Writes to the readyCh channel should not block ideally. The default
-	// branch here is to appease the paranoid mind.
-	case fc.readyCh <- struct{}{}:
-	default:
-		if fc.logger.V(2) {
-			fc.logger.Infof("ADS stream flow control readyCh is full")
-		}
-	}
-	fc.pending.Store(false)
+	return fc.stopped
 }

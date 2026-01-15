@@ -140,6 +140,10 @@ func (p *Promtail) reloadConfig(cfg *config.Config) error {
 		p.client.Stop()
 	}
 
+	if err := cfg.Validate(); err != nil {
+		return fmt.Errorf("error validating config: %w", err)
+	}
+
 	cfg.Setup(p.logger)
 	if cfg.LimitsConfig.ReadlineRateEnabled {
 		stages.SetReadLineRateLimiter(cfg.LimitsConfig.ReadlineRate, cfg.LimitsConfig.ReadlineBurst, cfg.LimitsConfig.ReadlineRateDrop)

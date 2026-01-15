@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	libraryVersion = "1.165.1"
+	libraryVersion = "1.171.0"
 	defaultBaseURL = "https://api.digitalocean.com/"
 	userAgent      = "godo/" + libraryVersion
 	mediaType      = "application/json"
@@ -78,6 +78,8 @@ type Client struct {
 	Kubernetes          KubernetesService
 	LoadBalancers       LoadBalancersService
 	Monitoring          MonitoringService
+	Nfs                 NfsService
+	NfsActions          NfsActionsService
 	OneClick            OneClickService
 	Projects            ProjectsService
 	Regions             RegionsService
@@ -304,6 +306,8 @@ func NewClient(httpClient *http.Client) *Client {
 	c.Kubernetes = &KubernetesServiceOp{client: c}
 	c.LoadBalancers = &LoadBalancersServiceOp{client: c}
 	c.Monitoring = &MonitoringServiceOp{client: c}
+	c.Nfs = &NfsServiceOp{client: c}
+	c.NfsActions = &NfsActionsServiceOp{client: c}
 	c.VPCNATGateways = &VPCNATGatewaysServiceOp{client: c}
 	c.OneClick = &OneClickServiceOp{client: c}
 	c.Projects = &ProjectsServiceOp{client: c}

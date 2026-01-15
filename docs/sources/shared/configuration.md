@@ -226,15 +226,15 @@ ui:
         # CLI flag: -ui.ring.multi.secondary
         [secondary: <string> | default = ""]
 
-        # Mirror writes to secondary store.
+        # Mirror writes to the secondary store.
         # CLI flag: -ui.ring.multi.mirror-enabled
         [mirror_enabled: <boolean> | default = false]
 
-        # Timeout for storing value to secondary store.
+        # Timeout for storing a value to the secondary store.
         # CLI flag: -ui.ring.multi.mirror-timeout
         [mirror_timeout: <duration> | default = 2s]
 
-    # Period at which to heartbeat to the ring. 0 = disabled.
+    # Period at which to heartbeat to the ring.
     # CLI flag: -ui.ring.heartbeat-period
     [heartbeat_period: <duration> | default = 15s]
 
@@ -292,6 +292,84 @@ ui:
 # Configures the querier. Only appropriate when running all modules or just the
 # querier.
 [querier: <querier>]
+
+query_engine:
+  # Experimental: Enable next generation query engine for supported queries.
+  # CLI flag: -query-engine.enable
+  [enable: <boolean> | default = false]
+
+  # Experimental: Enable distributed query execution.
+  # CLI flag: -query-engine.distributed
+  [distributed: <boolean> | default = false]
+
+  # Experimental: Name of network interface to read an advertise address from
+  # for accepting incoming traffic from query-engine-worker instances when
+  # distributed execution is enabled.
+  # CLI flag: -query-engine.instance-interface-names
+  [instance_interface_names: <list of strings> | default = [<private network interfaces>]]
+
+  # Experimental: Batch size of the next generation query engine.
+  # CLI flag: -query-engine.batch-size
+  [batch_size: <int> | default = 100]
+
+  # Experimental: The number of inputs that are prefetched simultaneously by any
+  # Merge node. A value of 0 means that only the currently processed input is
+  # prefetched, 1 means that only the next input is prefetched, and so on. A
+  # negative value means that all inputs are be prefetched in parallel.
+  # CLI flag: -query-engine.merge-prefetch-count
+  [merge_prefetch_count: <int> | default = 0]
+
+  # Configures how to read byte ranges from object storage when using the V2
+  # engine.
+  range_reads:
+    # Experimental: maximum number of parallel reads
+    # CLI flag: -query-engine.range-reads.max-parallelism
+    [max_parallelism: <int> | default = 10]
+
+    # Experimental: maximum distance (in bytes) between ranges that causes them
+    # to be coalesced into a single range
+    # CLI flag: -query-engine.range-reads.coalesce-size
+    [coalesce_size: <int> | default = 1048576]
+
+    # Experimental: maximum size of a byte range
+    # CLI flag: -query-engine.range-reads.max-range-size
+    [max_range_size: <int> | default = 8388608]
+
+    # Experimental: minimum size of a byte range
+    # CLI flag: -query-engine.range-reads.min-range-size
+    [min_range_size: <int> | default = 1048576]
+
+  # Experimental: Number of worker threads to spawn. Each worker thread runs one
+  # task at a time. 0 means to use GOMAXPROCS value.
+  # CLI flag: -query-engine.worker-threads
+  [worker_threads: <int> | default = 0]
+
+  # Experimental: Address holding DNS SRV records of schedulers to connect to.
+  # CLI flag: -query-engine.scheduler-lookup-address
+  [scheduler_lookup_address: <string> | default = ""]
+
+  # Experimental: Interval at which to lookup new schedulers by DNS SRV records.
+  # CLI flag: -query-engine.scheduler-lookup-interval
+  [scheduler_lookup_interval: <duration> | default = 10s]
+
+  # Amount of time until data objects are available.
+  # CLI flag: -query-engine.storage-lag
+  [storage_lag: <duration> | default = 1h]
+
+  # Initial date when data objects became available. Format YYYY-MM-DD. If not
+  # set, assume data objects are always available no matter how far back.
+  # CLI flag: -query-engine.storage-start-date
+  [storage_start_date: <time> | default = 0]
+
+  # Enable routing of query splits in the query frontend to the next generation
+  # engine when they fall within the configured time range.
+  # CLI flag: -query-engine.enable-engine-router
+  [enable_engine_router: <boolean> | default = false]
+
+  # Downstream address to send query splits to. This is the HTTP handler address
+  # of the query engine scheduler.
+  # CLI flag: -query-engine.downstream-address
+  [downstream_address: <string> | default = ""]
 
 # The query_scheduler block configures the Loki query scheduler. When configured
 # it separates the tenant query queues from the query-frontend.
@@ -373,16 +451,16 @@ pattern_ingester:
           # CLI flag: -pattern-ingester.multi.secondary
           [secondary: <string> | default = ""]
 
-          # Mirror writes to secondary store.
+          # Mirror writes to the secondary store.
           # CLI flag: -pattern-ingester.multi.mirror-enabled
           [mirror_enabled: <boolean> | default = false]
 
-          # Timeout for storing value to secondary store.
+          # Timeout for storing a value to the secondary store.
           # CLI flag: -pattern-ingester.multi.mirror-timeout
           [mirror_timeout: <duration> | default = 2s]
 
       # The heartbeat timeout after which ingesters are skipped for
-      # reads/writes. 0 = never (timeout disabled).
+      # reads/writes.
       # CLI flag: -pattern-ingester.ring.heartbeat-timeout
       [heartbeat_timeout: <duration> | default = 1m]
 
@@ -404,12 +482,11 @@ pattern_ingester:
     # CLI flag: -pattern-ingester.num-tokens
     [num_tokens: <int> | default = 128]
 
-    # Period at which to heartbeat to consul. 0 = disabled.
+    # Period at which to heartbeat to consul.
     # CLI flag: -pattern-ingester.heartbeat-period
     [heartbeat_period: <duration> | default = 5s]
 
-    # Heartbeat timeout after which instance is assumed to be unhealthy. 0 =
-    # disabled.
+    # Heartbeat timeout after which instance is assumed to be unhealthy.
     # CLI flag: -pattern-ingester.heartbeat-timeout
     [heartbeat_timeout: <duration> | default = 1m]
 
@@ -1133,7 +1210,7 @@ dataobj:
       # CLI flag: -dataobj-consumer.buffer-size
       [buffer_size: <int> | default = 16MiB]
 
-      # The maximum number of log section stripes to merge into a section at
+      # The maximum number of dataobj section stripes to merge into a section at
       # once. Must be greater than 1.
       # CLI flag: -dataobj-consumer.section-stripe-merge-limit
       [section_stripe_merge_limit: <int> | default = 2]
@@ -1171,16 +1248,16 @@ dataobj:
             # CLI flag: -dataobj-consumer.multi.secondary
             [secondary: <string> | default = ""]
 
-            # Mirror writes to secondary store.
+            # Mirror writes to the secondary store.
             # CLI flag: -dataobj-consumer.multi.mirror-enabled
             [mirror_enabled: <boolean> | default = false]
 
-            # Timeout for storing value to secondary store.
+            # Timeout for storing a value to the secondary store.
             # CLI flag: -dataobj-consumer.multi.mirror-timeout
             [mirror_timeout: <duration> | default = 2s]
 
         # The heartbeat timeout after which ingesters are skipped for
-        # reads/writes. 0 = never (timeout disabled).
+        # reads/writes.
         # CLI flag: -dataobj-consumer.ring.heartbeat-timeout
         [heartbeat_timeout: <duration> | default = 1m]
 
@@ -1202,12 +1279,11 @@ dataobj:
       # CLI flag: -dataobj-consumer.num-tokens
       [num_tokens: <int> | default = 128]
 
-      # Period at which to heartbeat to consul. 0 = disabled.
+      # Period at which to heartbeat to consul.
       # CLI flag: -dataobj-consumer.heartbeat-period
       [heartbeat_period: <duration> | default = 5s]
 
-      # Heartbeat timeout after which instance is assumed to be unhealthy. 0 =
-      # disabled.
+      # Heartbeat timeout after which instance is assumed to be unhealthy.
       # CLI flag: -dataobj-consumer.heartbeat-timeout
       [heartbeat_timeout: <duration> | default = 1m]
 
@@ -1312,11 +1388,11 @@ dataobj:
           # CLI flag: -dataobj-consumer.partition-ring.multi.secondary
           [secondary: <string> | default = ""]
 
-          # Mirror writes to secondary store.
+          # Mirror writes to the secondary store.
           # CLI flag: -dataobj-consumer.partition-ring.multi.mirror-enabled
           [mirror_enabled: <boolean> | default = false]
 
-          # Timeout for storing value to secondary store.
+          # Timeout for storing a value to the secondary store.
           # CLI flag: -dataobj-consumer.partition-ring.multi.mirror-timeout
           [mirror_timeout: <duration> | default = 2s]
 
@@ -1348,34 +1424,45 @@ dataobj:
     # CLI flag: -dataobj-consumer.idle-flush-timeout
     [idle_flush_timeout: <duration> | default = 1h]
 
+    # The maximum amount of time to accumulate data in a builder before flushing
+    # it. Defaults to 1 hour.
+    # CLI flag: -dataobj-consumer.max-builder-age
+    [max_builder_age: <duration> | default = 1h]
+
     # The name of the Kafka topic
     # CLI flag: -dataobj-consumer.topic
     [topic: <string> | default = ""]
 
   index:
-    # The size of the target page to use for the index object builder.
+    # The target maximum amount of uncompressed data to hold in data pages (for
+    # columnar sections). Uncompressed size is used for consistent I/O and
+    # planning.
     # CLI flag: -dataobj-index-builder.target-page-size
     [target_page_size: <int> | default = 128KiB]
 
-    # The maximum row count for pages to use for the index builder. A value of 0
-    # means no limit.
+    # The maximum row count for pages to use for the data object builder. A
+    # value of 0 means no limit.
     # CLI flag: -dataobj-index-builder.max-page-rows
     [max_page_rows: <int> | default = 0]
 
-    # The size of the target object to use for the index object builder.
-    # CLI flag: -dataobj-index-builder.target-object-size
+    # The target maximum size of the encoded object and all of its encoded
+    # sections (after compression), to limit memory usage of a builder.
+    # CLI flag: -dataobj-index-builder.target-builder-memory-limit
     [target_object_size: <int> | default = 64MiB]
 
-    # Configures a maximum size for sections, for sections that support it.
+    # The target maximum amount of uncompressed data to hold in sections, for
+    # sections that support being limited by size. Uncompressed size is used for
+    # consistent I/O and planning.
     # CLI flag: -dataobj-index-builder.target-section-size
     [target_section_size: <int> | default = 16MiB]
 
-    # The size of the buffer to use for sorting logs.
+    # The size of logs to buffer in memory before adding into columnar builders,
+    # used to reduce CPU load of sorting.
     # CLI flag: -dataobj-index-builder.buffer-size
     [buffer_size: <int> | default = 2MiB]
 
-    # The maximum number of stripes to merge into a section at once. Must be
-    # greater than 1.
+    # The maximum number of dataobj section stripes to merge into a section at
+    # once. Must be greater than 1.
     # CLI flag: -dataobj-index-builder.section-stripe-merge-limit
     [section_stripe_merge_limit: <int> | default = 2]
 
@@ -1472,16 +1559,16 @@ ingest_limits:
           # CLI flag: -ingest-limits.multi.secondary
           [secondary: <string> | default = ""]
 
-          # Mirror writes to secondary store.
+          # Mirror writes to the secondary store.
           # CLI flag: -ingest-limits.multi.mirror-enabled
           [mirror_enabled: <boolean> | default = false]
 
-          # Timeout for storing value to secondary store.
+          # Timeout for storing a value to the secondary store.
           # CLI flag: -ingest-limits.multi.mirror-timeout
           [mirror_timeout: <duration> | default = 2s]
 
       # The heartbeat timeout after which ingesters are skipped for
-      # reads/writes. 0 = never (timeout disabled).
+      # reads/writes.
       # CLI flag: -ingest-limits.ring.heartbeat-timeout
       [heartbeat_timeout: <duration> | default = 1m]
 
@@ -1503,12 +1590,11 @@ ingest_limits:
     # CLI flag: -ingest-limits.num-tokens
     [num_tokens: <int> | default = 128]
 
-    # Period at which to heartbeat to consul. 0 = disabled.
+    # Period at which to heartbeat to consul.
     # CLI flag: -ingest-limits.heartbeat-period
     [heartbeat_period: <duration> | default = 5s]
 
-    # Heartbeat timeout after which instance is assumed to be unhealthy. 0 =
-    # disabled.
+    # Heartbeat timeout after which instance is assumed to be unhealthy.
     # CLI flag: -ingest-limits.heartbeat-timeout
     [heartbeat_timeout: <duration> | default = 1m]
 
@@ -1642,16 +1728,16 @@ ingest_limits_frontend:
           # CLI flag: -ingest-limits-frontend.multi.secondary
           [secondary: <string> | default = ""]
 
-          # Mirror writes to secondary store.
+          # Mirror writes to the secondary store.
           # CLI flag: -ingest-limits-frontend.multi.mirror-enabled
           [mirror_enabled: <boolean> | default = false]
 
-          # Timeout for storing value to secondary store.
+          # Timeout for storing a value to the secondary store.
           # CLI flag: -ingest-limits-frontend.multi.mirror-timeout
           [mirror_timeout: <duration> | default = 2s]
 
       # The heartbeat timeout after which ingesters are skipped for
-      # reads/writes. 0 = never (timeout disabled).
+      # reads/writes.
       # CLI flag: -ingest-limits-frontend.ring.heartbeat-timeout
       [heartbeat_timeout: <duration> | default = 1m]
 
@@ -1673,12 +1759,11 @@ ingest_limits_frontend:
     # CLI flag: -ingest-limits-frontend.num-tokens
     [num_tokens: <int> | default = 128]
 
-    # Period at which to heartbeat to consul. 0 = disabled.
+    # Period at which to heartbeat to consul.
     # CLI flag: -ingest-limits-frontend.heartbeat-period
     [heartbeat_period: <duration> | default = 5s]
 
-    # Heartbeat timeout after which instance is assumed to be unhealthy. 0 =
-    # disabled.
+    # Heartbeat timeout after which instance is assumed to be unhealthy.
     # CLI flag: -ingest-limits-frontend.heartbeat-timeout
     [heartbeat_timeout: <duration> | default = 1m]
 
@@ -2016,6 +2101,11 @@ The `azure_storage_config` block configures the connection to Azure object stora
 # container must be created before running cortex.
 # CLI flag: -<prefix>.azure.container-name
 [container_name: <string> | default = "loki"]
+
+# Azure active directory endpoint override. Use when the Azure SDK does not
+# support your environment.
+# CLI flag: -<prefix>.azure.active-directory-endpoint
+[active_directory_endpoint: <string> | default = ""]
 
 # Azure storage endpoint suffix without schema. The storage account name will be
 # prefixed to this value to create the FQDN.
@@ -2617,15 +2707,15 @@ ring:
       # CLI flag: -common.storage.ring.multi.secondary
       [secondary: <string> | default = ""]
 
-      # Mirror writes to secondary store.
+      # Mirror writes to the secondary store.
       # CLI flag: -common.storage.ring.multi.mirror-enabled
       [mirror_enabled: <boolean> | default = false]
 
-      # Timeout for storing value to secondary store.
+      # Timeout for storing a value to the secondary store.
       # CLI flag: -common.storage.ring.multi.mirror-timeout
       [mirror_timeout: <duration> | default = 2s]
 
-  # Period at which to heartbeat to the ring. 0 = disabled.
+  # Period at which to heartbeat to the ring.
   # CLI flag: -common.storage.ring.heartbeat-period
   [heartbeat_period: <duration> | default = 15s]
 
@@ -2823,15 +2913,15 @@ compactor_ring:
       # CLI flag: -compactor.ring.multi.secondary
       [secondary: <string> | default = ""]
 
-      # Mirror writes to secondary store.
+      # Mirror writes to the secondary store.
       # CLI flag: -compactor.ring.multi.mirror-enabled
       [mirror_enabled: <boolean> | default = false]
 
-      # Timeout for storing value to secondary store.
+      # Timeout for storing a value to the secondary store.
       # CLI flag: -compactor.ring.multi.mirror-timeout
       [mirror_timeout: <duration> | default = 2s]
 
-  # Period at which to heartbeat to the ring. 0 = disabled.
+  # Period at which to heartbeat to the ring.
   # CLI flag: -compactor.ring.heartbeat-period
   [heartbeat_period: <duration> | default = 15s]
 
@@ -3093,15 +3183,15 @@ ring:
       # CLI flag: -distributor.ring.multi.secondary
       [secondary: <string> | default = ""]
 
-      # Mirror writes to secondary store.
+      # Mirror writes to the secondary store.
       # CLI flag: -distributor.ring.multi.mirror-enabled
       [mirror_enabled: <boolean> | default = false]
 
-      # Timeout for storing value to secondary store.
+      # Timeout for storing a value to the secondary store.
       # CLI flag: -distributor.ring.multi.mirror-timeout
       [mirror_timeout: <duration> | default = 2s]
 
-  # Period at which to heartbeat to the ring. 0 = disabled.
+  # Period at which to heartbeat to the ring.
   # CLI flag: -distributor.ring.heartbeat-period
   [heartbeat_period: <duration> | default = 5s]
 
@@ -3547,7 +3637,7 @@ backoff_config:
 [connect_backoff_max_delay: <duration> | default = 5s]
 
 cluster_validation:
-  # Optionally define the cluster validation label.
+  # Primary cluster validation label.
   # CLI flag: -<prefix>.cluster-validation.label
   [label: <string> | default = ""]
 ```
@@ -3600,15 +3690,15 @@ ring:
       # CLI flag: -index-gateway.ring.multi.secondary
       [secondary: <string> | default = ""]
 
-      # Mirror writes to secondary store.
+      # Mirror writes to the secondary store.
       # CLI flag: -index-gateway.ring.multi.mirror-enabled
       [mirror_enabled: <boolean> | default = false]
 
-      # Timeout for storing value to secondary store.
+      # Timeout for storing a value to the secondary store.
       # CLI flag: -index-gateway.ring.multi.mirror-timeout
       [mirror_timeout: <duration> | default = 2s]
 
-  # Period at which to heartbeat to the ring. 0 = disabled.
+  # Period at which to heartbeat to the ring.
   # CLI flag: -index-gateway.ring.heartbeat-period
   [heartbeat_period: <duration> | default = 15s]
 
@@ -3695,16 +3785,15 @@ lifecycler:
         # CLI flag: -multi.secondary
         [secondary: <string> | default = ""]
 
-        # Mirror writes to secondary store.
+        # Mirror writes to the secondary store.
         # CLI flag: -multi.mirror-enabled
         [mirror_enabled: <boolean> | default = false]
 
-        # Timeout for storing value to secondary store.
+        # Timeout for storing a value to the secondary store.
         # CLI flag: -multi.mirror-timeout
         [mirror_timeout: <duration> | default = 2s]
 
     # The heartbeat timeout after which ingesters are skipped for reads/writes.
-    # 0 = never (timeout disabled).
     # CLI flag: -ring.heartbeat-timeout
     [heartbeat_timeout: <duration> | default = 1m]
 
@@ -3726,12 +3815,11 @@ lifecycler:
   # CLI flag: -ingester.num-tokens
   [num_tokens: <int> | default = 128]
 
-  # Period at which to heartbeat to consul. 0 = disabled.
+  # Period at which to heartbeat to consul.
   # CLI flag: -ingester.heartbeat-period
   [heartbeat_period: <duration> | default = 5s]
 
-  # Heartbeat timeout after which instance is assumed to be unhealthy. 0 =
-  # disabled.
+  # Heartbeat timeout after which instance is assumed to be unhealthy.
   # CLI flag: -ingester.heartbeat-timeout
   [heartbeat_timeout: <duration> | default = 1m]
 
@@ -3989,11 +4077,11 @@ kafka_ingestion:
         # CLI flag: -ingester.partition-ring.multi.secondary
         [secondary: <string> | default = ""]
 
-        # Mirror writes to secondary store.
+        # Mirror writes to the secondary store.
         # CLI flag: -ingester.partition-ring.multi.mirror-enabled
         [mirror_enabled: <boolean> | default = false]
 
-        # Timeout for storing value to secondary store.
+        # Timeout for storing a value to the secondary store.
         # CLI flag: -ingester.partition-ring.multi.mirror-timeout
         [mirror_timeout: <duration> | default = 2s]
 
@@ -4104,8 +4192,8 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 
 # Maximum line size on ingestion path. Example: 256kb. Any log line exceeding
 # this limit will be discarded unless `distributor.max-line-size-truncate` is
-# set which in case it is truncated instead of discarding it completely. There
-# is no limit when unset or set to 0.
+# set, in which case it is truncated rather than discarded completely. There is
+# no limit when set to 0.
 # CLI flag: -distributor.max-line-size
 [max_line_size: <int> | default = 256KB]
 
@@ -4583,6 +4671,13 @@ shard_streams:
 # CLI flag: -index-gateway.shard-size
 [index_gateway_shard_size: <int> | default = 0]
 
+# Experimental. Defines a fraction (between 0.0 and 1.0) of the total index
+# gateways available for a each tenant. A value of 0.0 has the same effect as
+# 1.0, meaning all available index gateways. This setting only applies to simple
+# mode.
+# CLI flag: -index-gateway.max-capacity
+[index_gateway_max_capacity: <float> | default = 1]
+
 # Experimental. Whether to use the bloom gateway component in the read path to
 # filter chunks.
 # CLI flag: -bloom-gateway.enable-filtering
@@ -4994,6 +5089,19 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 # The TLS configuration.
 # The CLI flags prefix for this block configuration is: memberlist
 [<tls_config>]
+
+zone_aware_routing:
+  # Enable zone-aware routing for memberlist gossip.
+  # CLI flag: -memberlist.zone-aware-routing.enabled
+  [enabled: <boolean> | default = false]
+
+  # Availability zone where this node is running.
+  # CLI flag: -memberlist.zone-aware-routing.instance-availability-zone
+  [instance_availability_zone: <string> | default = ""]
+
+  # Role of this node in the cluster. Valid values: member, bridge.
+  # CLI flag: -memberlist.zone-aware-routing.role
+  [role: <string> | default = "member"]
 ```
 
 ### named_stores_config
@@ -5181,74 +5289,6 @@ engine:
   # CLI flag: -querier.engine.max-count-min-sketch-heap-size
   [max_count_min_sketch_heap_size: <int> | default = 10000]
 
-engine_v2:
-  # Experimental: Enable next generation query engine for supported queries.
-  # CLI flag: -querier.engine-v2.enable
-  [enable: <boolean> | default = false]
-
-  # Experimental: Enable distributed query execution.
-  # CLI flag: -querier.engine-v2.distributed
-  [distributed: <boolean> | default = false]
-
-  # Experimental: Name of network interface to read an advertise address from
-  # for accepting incoming traffic from query-engine-worker instances when
-  # distributed execution is enabled.
-  # CLI flag: -querier.engine-v2.instance-interface-names
-  [instance_interface_names: <list of strings> | default = [<private network interfaces>]]
-
-  # Amount of time until data objects are available.
-  # CLI flag: -querier.engine-v2.dataobj-storage-lag
-  [dataobj_storage_lag: <duration> | default = 1h]
-
-  # Initial date when data objects became available. Format YYYY-MM-DD. If not
-  # set, assume data objects are always available no matter how far back.
-  # CLI flag: -querier.engine-v2.dataobj-storage-start
-  [dataobj_storage_start: <time> | default = 0]
-
-  # Experimental: Batch size of the next generation query engine.
-  # CLI flag: -querier.engine-v2.batch-size
-  [batch_size: <int> | default = 100]
-
-  # Experimental: The number of inputs that are prefetched simultaneously by any
-  # Merge node. A value of 0 means that only the currently processed input is
-  # prefetched, 1 means that only the next input is prefetched, and so on. A
-  # negative value means that all inputs are be prefetched in parallel.
-  # CLI flag: -querier.engine-v2.merge-prefetch-count
-  [merge_prefetch_count: <int> | default = 0]
-
-  # Configures how to read byte ranges from object storage when using the V2
-  # engine.
-  range_reads:
-    # Experimental: maximum number of parallel reads
-    # CLI flag: -querier.engine-v2.range-reads.max-parallelism
-    [max_parallelism: <int> | default = 10]
-
-    # Experimental: maximum distance (in bytes) between ranges that causes them
-    # to be coalesced into a single range
-    # CLI flag: -querier.engine-v2.range-reads.coalesce-size
-    [coalesce_size: <int> | default = 1048576]
-
-    # Experimental: maximum size of a byte range
-    # CLI flag: -querier.engine-v2.range-reads.max-range-size
-    [max_range_size: <int> | default = 8388608]
-
-    # Experimental: minimum size of a byte range
-    # CLI flag: -querier.engine-v2.range-reads.min-range-size
-    [min_range_size: <int> | default = 1048576]
-
-  # Experimental: Number of worker threads to spawn. Each worker thread runs one
-  # task at a time. 0 means to use GOMAXPROCS value.
-  # CLI flag: -querier.engine-v2.worker-threads
-  [worker_threads: <int> | default = 0]
-
-  # Experimental: Address holding DNS SRV records of schedulers to connect to.
-  # CLI flag: -querier.engine-v2.scheduler-lookup-address
-  [scheduler_lookup_address: <string> | default = ""]
-
-  # Experimental: Interval at which to lookup new schedulers by DNS SRV records.
-  # CLI flag: -querier.engine-v2.scheduler-lookup-interval
-  [scheduler_lookup_interval: <duration> | default = 10s]
-
 # The maximum number of queries that can be simultaneously processed by the
 # querier.
 # CLI flag: -querier.max-concurrent
@@ -5276,15 +5316,6 @@ engine_v2:
 # of the normal ingesters.
 # CLI flag: -querier.query-partition-ingesters
 [query_partition_ingesters: <boolean> | default = false]
-
-# Amount of time until data objects are available.
-# CLI flag: -querier.dataobj-storage-lag
-[dataobj_storage_lag: <duration> | default = 1h]
-
-# Initial date when data objects became available. Format YYYY-MM-DD. If not
-# set, assume data objects are always available no matter how far back.
-# CLI flag: -querier.dataobj-storage-start
-[dataobj_storage_start: <string> | default = ""]
 ```
 
 ### query_range
@@ -5421,15 +5452,6 @@ label_results_cache:
   # compression. Supported values are: 'snappy' and ''.
   # CLI flag: -frontend.label-results-cache.compression
   [compression: <string> | default = ""]
-
-# Enable routing of queries to the v2 engine when they fall within the
-# configured time range.
-# CLI flag: -querier.enable-v2-engine-router
-[enable_v2_engine_router: <boolean> | default = false]
-
-# Address for executing V2 engine queries.
-# CLI flag: -querier.v2-engine-address
-[v2_engine_address: <string> | default = ""]
 ```
 
 ### query_scheduler
@@ -5499,15 +5521,15 @@ scheduler_ring:
       # CLI flag: -query-scheduler.ring.multi.secondary
       [secondary: <string> | default = ""]
 
-      # Mirror writes to secondary store.
+      # Mirror writes to the secondary store.
       # CLI flag: -query-scheduler.ring.multi.mirror-enabled
       [mirror_enabled: <boolean> | default = false]
 
-      # Timeout for storing value to secondary store.
+      # Timeout for storing a value to the secondary store.
       # CLI flag: -query-scheduler.ring.multi.mirror-timeout
       [mirror_timeout: <duration> | default = 2s]
 
-  # Period at which to heartbeat to the ring. 0 = disabled.
+  # Period at which to heartbeat to the ring.
   # CLI flag: -query-scheduler.ring.heartbeat-period
   [heartbeat_period: <duration> | default = 15s]
 
@@ -5748,15 +5770,15 @@ ring:
       # CLI flag: -ruler.ring.multi.secondary
       [secondary: <string> | default = ""]
 
-      # Mirror writes to secondary store.
+      # Mirror writes to the secondary store.
       # CLI flag: -ruler.ring.multi.mirror-enabled
       [mirror_enabled: <boolean> | default = false]
 
-      # Timeout for storing value to secondary store.
+      # Timeout for storing a value to the secondary store.
       # CLI flag: -ruler.ring.multi.mirror-timeout
       [mirror_timeout: <duration> | default = 2s]
 
-  # Interval between heartbeats sent to the ring. 0 = disabled.
+  # Interval between heartbeats sent to the ring.
   # CLI flag: -ruler.ring.heartbeat-period
   [heartbeat_period: <duration> | default = 5s]
 
@@ -6304,9 +6326,14 @@ grpc_tls_config:
 [http_path_prefix: <string> | default = ""]
 
 cluster_validation:
-  # Optionally define the cluster validation label.
+  # Primary cluster validation label.
   # CLI flag: -server.cluster-validation.label
   [label: <string> | default = ""]
+
+  # Comma-separated list of additional cluster validation labels that the server
+  # will accept from incoming requests.
+  # CLI flag: -server.cluster-validation.additional-labels
+  [additional_labels: <string> | default = ""]
 
   grpc:
     # When enabled, cluster label validation is executed: configured cluster
@@ -7350,7 +7377,8 @@ s3:
   # The S3 storage class to use, not set by default. Details can be found at
   # https://aws.amazon.com/s3/storage-classes/. Supported values are: STANDARD,
   # REDUCED_REDUNDANCY, GLACIER, STANDARD_IA, ONEZONE_IA, INTELLIGENT_TIERING,
-  # DEEP_ARCHIVE, OUTPOSTS, GLACIER_IR, SNOW, EXPRESS_ONEZONE, FSX_OPENZFS
+  # DEEP_ARCHIVE, OUTPOSTS, GLACIER_IR, SNOW, EXPRESS_ONEZONE, FSX_OPENZFS,
+  # FSX_ONTAP
   # CLI flag: -<prefix>.s3.storage-class
   [storage_class: <string> | default = ""]
 
