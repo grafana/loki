@@ -1,7 +1,6 @@
 package executor
 
 import (
-	"iter"
 	"slices"
 	"testing"
 	"time"
@@ -30,9 +29,9 @@ func Test_streamsView(t *testing.T) {
 		var actual []labels.Labels
 
 		for id := 1; id <= 3; id++ {
-			it, err := view.Labels(t.Context(), int64(id))
-			require.NoError(t, err, "failed to get labels iterator")
-			actual = append(actual, collectLabels(it))
+			lbs, err := view.Labels(t.Context(), int64(id))
+			require.NoError(t, err, "failed to get labels")
+			actual = append(actual, labels.New(lbs...))
 		}
 
 		require.Equal(t, inputStreams, actual, "expected all streams to be returned")
@@ -46,9 +45,9 @@ func Test_streamsView(t *testing.T) {
 
 		var actual []labels.Labels
 
-		it, err := view.Labels(t.Context(), int64(2))
-		require.NoError(t, err, "failed to get labels iterator")
-		actual = append(actual, collectLabels(it))
+		lbs, err := view.Labels(t.Context(), int64(2))
+		require.NoError(t, err, "failed to get labels")
+		actual = append(actual, labels.New(lbs...))
 
 		expected := []labels.Labels{
 			inputStreams[1], // Stream ID 2
@@ -65,9 +64,9 @@ func Test_streamsView(t *testing.T) {
 		var actual []labels.Labels
 
 		for _, id := range []int{2, 3} {
-			it, err := view.Labels(t.Context(), int64(id))
-			require.NoError(t, err, "failed to get labels iterator")
-			actual = append(actual, collectLabels(it))
+			lbs, err := view.Labels(t.Context(), int64(id))
+			require.NoError(t, err, "failed to get labels")
+			actual = append(actual, labels.New(lbs...))
 		}
 
 		expected := []labels.Labels{
@@ -96,9 +95,9 @@ func Test_streamsView(t *testing.T) {
 		var actual []labels.Labels
 
 		for id := 1; id <= 3; id++ {
-			it, err := view.Labels(t.Context(), int64(id))
-			require.NoError(t, err, "failed to get labels iterator")
-			actual = append(actual, collectLabels(it))
+			lbs, err := view.Labels(t.Context(), int64(id))
+			require.NoError(t, err, "failed to get labels")
+			actual = append(actual, labels.New(lbs...))
 		}
 
 		require.Equal(t, expect, actual, "expected all streams to be returned with the proper labels")
@@ -129,9 +128,9 @@ func Test_streamsView(t *testing.T) {
 		var actual []labels.Labels
 
 		for id := 1; id <= 3; id++ {
-			it, err := view.Labels(t.Context(), int64(id))
-			require.NoError(t, err, "failed to get labels iterator")
-			actual = append(actual, collectLabels(it))
+			lbs, err := view.Labels(t.Context(), int64(id))
+			require.NoError(t, err, "failed to get labels")
+			actual = append(actual, labels.New(lbs...))
 		}
 
 		require.Equal(t, expect, actual, "expected all streams to be returned with the proper labels")
@@ -154,12 +153,4 @@ func buildStreamsSection(t *testing.T, streamLabels []labels.Labels) *streams.Se
 	sec, err := streams.Open(t.Context(), obj.Sections()[0])
 	require.NoError(t, err, "failed to open streams section")
 	return sec
-}
-
-func collectLabels(it iter.Seq[labels.Label]) labels.Labels {
-	var ls []labels.Label
-	for l := range it {
-		ls = append(ls, l)
-	}
-	return labels.New(ls...)
 }

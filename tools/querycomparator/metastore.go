@@ -11,11 +11,12 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/user"
+	"github.com/prometheus/prometheus/model/labels"
+
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/prometheus/prometheus/model/labels"
 )
 
 // addMetastoreCommand adds the metastore command to the application
@@ -71,10 +72,15 @@ func queryMetastore(params logql.LiteralParams) error {
 // Currently, it does not pass structured metadata predicates
 func getSections(start, end time.Time, streamMatchers []*labels.Matcher) ([]*metastore.DataobjSectionDescriptor, error) {
 	ctx := user.InjectOrgID(context.Background(), orgID)
-	metastore := metastore.NewObjectMetastore(MustIndexBucket(), log.NewLogfmtLogger(os.Stderr), nil)
-	sections, err := metastore.Sections(ctx, start, end, streamMatchers, nil)
+	ms := metastore.NewObjectMetastore(
+		MustDataobjBucket(),
+		metastore.Config{IndexStoragePrefix: "index/v0"},
+		log.NewLogfmtLogger(os.Stderr),
+		metastore.NewObjectMetastoreMetrics(nil),
+	)
+	sectionsResp, err := ms.Sections(ctx, metastore.SectionsRequest{Start: start, End: end, Matchers: streamMatchers})
 	if err != nil {
 		return nil, err
 	}
-	return sections, nil
+	return sectionsResp.Sections, nil
 }

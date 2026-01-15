@@ -1,5 +1,4 @@
 //go:build go1.7 || go1.8
-// +build go1.7 go1.8
 
 /*
  * MinIO Go Library for Amazon S3 Compatible Cloud Storage

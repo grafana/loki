@@ -119,7 +119,9 @@ func newTimeoutExporter(exp Exporter, timeout time.Duration) Exporter {
 
 // Export sets the timeout of ctx before calling the Exporter e wraps.
 func (e *timeoutExporter) Export(ctx context.Context, records []Record) error {
-	ctx, cancel := context.WithTimeout(ctx, e.timeout)
+	// This only used by the batch processor, and it takes processor timeout config.
+	// Thus, the error message points to the processor. So users know they should adjust the processor timeout.
+	ctx, cancel := context.WithTimeoutCause(ctx, e.timeout, errors.New("processor export timeout"))
 	defer cancel()
 	return e.Exporter.Export(ctx, records)
 }

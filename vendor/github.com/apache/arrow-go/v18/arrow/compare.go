@@ -18,6 +18,7 @@ package arrow
 
 import (
 	"reflect"
+	"slices"
 )
 
 type typeEqualsConfig struct {
@@ -39,16 +40,18 @@ func CheckMetadata() TypeEqualOption {
 // TypeEqual checks if two DataType are the same, optionally checking metadata
 // equality for STRUCT types.
 func TypeEqual(left, right DataType, opts ...TypeEqualOption) bool {
+	switch {
+	case left == right:
+		return true
+	case left == nil || right == nil:
+		return false
+	case left.ID() != right.ID():
+		return false
+	}
+
 	var cfg typeEqualsConfig
 	for _, opt := range opts {
 		opt(&cfg)
-	}
-
-	switch {
-	case left == nil || right == nil:
-		return left == nil && right == nil
-	case left.ID() != right.ID():
-		return false
 	}
 
 	switch l := left.(type) {
@@ -120,7 +123,7 @@ func TypeEqual(left, right DataType, opts ...TypeEqualOption) bool {
 			return false
 		}
 
-		if !reflect.DeepEqual(l.ChildIDs(), r.ChildIDs()) {
+		if !slices.Equal(l.ChildIDs(), r.ChildIDs()) {
 			return false
 		}
 
@@ -147,6 +150,8 @@ func TypeEqual(left, right DataType, opts ...TypeEqualOption) bool {
 		r := right.(*RunEndEncodedType)
 		return TypeEqual(l.Encoded(), r.Encoded(), opts...) &&
 			TypeEqual(l.runEnds, r.runEnds, opts...)
+	case *ListViewType:
+		return l.elem.Equal(right.(*ListViewType).elem)
 	default:
 		return reflect.DeepEqual(left, right)
 	}

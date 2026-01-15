@@ -142,9 +142,7 @@ func (v variableLengthList) AppendBinary(data []byte) ([]byte, error) {
 	)
 
 	// Marshal each element in the list.
-	for i := 0; i < sz; i++ {
-		data = append(data, v[i])
-	}
+	data = append(data, v...)
 
 	return data, nil
 }
