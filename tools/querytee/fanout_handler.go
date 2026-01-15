@@ -112,6 +112,7 @@ func (h *FanOutHandler) Do(ctx context.Context, req queryrangebase.Request) (que
 		return nil, fmt.Errorf("failed to extract tenant IDs: %w", err)
 	}
 	shouldSample := h.shouldSample(tenants, httpReq)
+
 	results := h.makeBackendRequests(ctx, httpReq, body, req, issuer)
 	collected := make([]*backendResult, 0, len(h.backends))
 

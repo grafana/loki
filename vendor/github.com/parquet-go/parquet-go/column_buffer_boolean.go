@@ -2,10 +2,10 @@ package parquet
 
 import (
 	"io"
-	"slices"
 
 	"github.com/parquet-go/bitpack"
 	"github.com/parquet-go/parquet-go/deprecated"
+	"github.com/parquet-go/parquet-go/internal/memory"
 	"github.com/parquet-go/parquet-go/sparse"
 )
 
@@ -17,7 +17,7 @@ func newBooleanColumnBuffer(typ Type, columnIndex int16, numValues int32) *boole
 	return &booleanColumnBuffer{
 		booleanPage: booleanPage{
 			typ:         typ,
-			bits:        make([]byte, 0, bufferSize),
+			bits:        memory.SliceBufferFor[byte](int(bufferSize)),
 			columnIndex: ^columnIndex,
 		},
 	}
@@ -27,7 +27,7 @@ func (col *booleanColumnBuffer) Clone() ColumnBuffer {
 	return &booleanColumnBuffer{
 		booleanPage: booleanPage{
 			typ:         col.typ,
-			bits:        slices.Clone(col.bits),
+			bits:        col.bits.Clone(),
 			offset:      col.offset,
 			numValues:   col.numValues,
 			columnIndex: col.columnIndex,
@@ -52,12 +52,12 @@ func (col *booleanColumnBuffer) Pages() Pages { return onePage(col.Page()) }
 func (col *booleanColumnBuffer) Page() Page { return &col.booleanPage }
 
 func (col *booleanColumnBuffer) Reset() {
-	col.bits = col.bits[:0]
+	col.bits.Reset()
 	col.offset = 0
 	col.numValues = 0
 }
 
-func (col *booleanColumnBuffer) Cap() int { return 8 * cap(col.bits) }
+func (col *booleanColumnBuffer) Cap() int { return 8 * col.bits.Cap() }
 
 func (col *booleanColumnBuffer) Len() int { return int(col.numValues) }
 
@@ -68,20 +68,22 @@ func (col *booleanColumnBuffer) Less(i, j int) bool {
 }
 
 func (col *booleanColumnBuffer) valueAt(i int) bool {
+	bits := col.bits.Slice()
 	j := uint32(i) / 8
 	k := uint32(i) % 8
-	return ((col.bits[j] >> k) & 1) != 0
+	return ((bits[j] >> k) & 1) != 0
 }
 
 func (col *booleanColumnBuffer) setValueAt(i int, v bool) {
 	// `offset` is always zero in the page of a column buffer
+	bits := col.bits.Slice()
 	j := uint32(i) / 8
 	k := uint32(i) % 8
 	x := byte(0)
 	if v {
 		x = 1
 	}
-	col.bits[j] = (col.bits[j] & ^(1 << k)) | (x << k)
+	bits[j] = (bits[j] & ^(1 << k)) | (x << k)
 }
 
 func (col *booleanColumnBuffer) Swap(i, j int) {
@@ -103,10 +105,11 @@ func (col *booleanColumnBuffer) WriteValues(values []Value) (int, error) {
 
 func (col *booleanColumnBuffer) writeValues(_ columnLevels, rows sparse.Array) {
 	numBytes := bitpack.ByteCount(uint(col.numValues) + uint(rows.Len()))
-	if cap(col.bits) < numBytes {
-		col.bits = append(make([]byte, 0, max(numBytes, 2*cap(col.bits))), col.bits...)
+	if col.bits.Cap() < numBytes {
+		col.bits.Grow(numBytes - col.bits.Len())
 	}
-	col.bits = col.bits[:numBytes]
+	col.bits.Resize(numBytes)
+	bits := col.bits.Slice()
 	i := 0
 	r := 8 - (int(col.numValues) % 8)
 	bytes := rows.Uint8Array()
@@ -124,7 +127,7 @@ func (col *booleanColumnBuffer) writeValues(_ columnLevels, rows sparse.Array) {
 			}
 			x := uint(col.numValues) / 8
 			y := uint(col.numValues) % 8
-			col.bits[x] = (b << y) | (col.bits[x] & ^(0xFF << y))
+			bits[x] = (b << y) | (bits[x] & ^(0xFF << y))
 			col.numValues += int32(i)
 		}
 
@@ -135,7 +138,7 @@ func (col *booleanColumnBuffer) writeValues(_ columnLevels, rows sparse.Array) {
 			// packing them into a single byte and writing it to the output
 			// buffer. This effectively reduces by 87.5% the number of memory
 			// stores that the program needs to perform to generate the values.
-			i += sparse.GatherBits(col.bits[col.numValues/8:], bytes.Slice(i, i+n))
+			i += sparse.GatherBits(bits[col.numValues/8:], bytes.Slice(i, i+n))
 			col.numValues += int32(n)
 		}
 	}
@@ -144,27 +147,28 @@ func (col *booleanColumnBuffer) writeValues(_ columnLevels, rows sparse.Array) {
 		x := uint(col.numValues) / 8
 		y := uint(col.numValues) % 8
 		b := bytes.Index(i)
-		col.bits[x] = ((b & 1) << y) | (col.bits[x] & ^(1 << y))
+		bits[x] = ((b & 1) << y) | (bits[x] & ^(1 << y))
 		col.numValues++
 		i++
 	}
 
-	col.bits = col.bits[:bitpack.ByteCount(uint(col.numValues))]
+	col.bits.Resize(bitpack.ByteCount(uint(col.numValues)))
 }
 
 func (col *booleanColumnBuffer) writeBoolean(levels columnLevels, value bool) {
 	numBytes := bitpack.ByteCount(uint(col.numValues) + 1)
-	if cap(col.bits) < numBytes {
-		col.bits = append(make([]byte, 0, max(numBytes, 2*cap(col.bits))), col.bits...)
+	if col.bits.Cap() < numBytes {
+		col.bits.Grow(numBytes - col.bits.Len())
 	}
-	col.bits = col.bits[:numBytes]
+	col.bits.Resize(numBytes)
+	bits := col.bits.Slice()
 	x := uint(col.numValues) / 8
 	y := uint(col.numValues) % 8
 	bit := byte(0)
 	if value {
 		bit = 1
 	}
-	col.bits[x] = (bit << y) | (col.bits[x] & ^(1 << y))
+	bits[x] = (bit << y) | (bits[x] & ^(1 << y))
 	col.numValues++
 }
 

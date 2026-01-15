@@ -45,6 +45,7 @@ type ProxyConfig struct {
 	InstrumentCompares             bool
 	EnableRace                     bool
 	RaceTolerance                  time.Duration
+	SkipFanOutWhenNotSampling      bool
 	Goldfish                       goldfish.Config
 }
 
@@ -68,6 +69,7 @@ func (cfg *ProxyConfig) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.InstrumentCompares, "proxy.compare-instrument", false, "Reports metrics on comparisons of responses between preferred and non-preferred endpoints for supported routes.")
 	f.BoolVar(&cfg.EnableRace, "proxy.enable-race", false, "When enabled, return the first successful response from any backend instead of waiting for the preferred backend.")
 	f.DurationVar(&cfg.RaceTolerance, "proxy.race-tolerance", 100*time.Millisecond, "The tolerance for handicapping races in favor of non-preferred backends. If the preferred backend finishes first but a non-preferred backend completes within this tolerance, the non-preferred backend is declared the winner.")
+	f.BoolVar(&cfg.SkipFanOutWhenNotSampling, "proxy.skip-fanout-when-not-sampling", false, "When enabled, skip fanning out requests to secondary backends when goldfish sampling is disabled (default_rate=0 and no tenant rules). This reduces load on secondary backends when not doing comparisons.")
 
 	// Register Goldfish configuration flags
 	cfg.Goldfish.RegisterFlags(f)
@@ -294,14 +296,15 @@ func (p *Proxy) Start() error {
 
 		// Create a route-specific handler factory with the filtered backends
 		routeHandlerFactory := NewHandlerFactory(HandlerFactoryConfig{
-			Backends:           filteredBackends,
-			Codec:              queryrange.DefaultCodec,
-			GoldfishManager:    p.goldfishManager,
-			Logger:             p.logger,
-			Metrics:            p.metrics,
-			InstrumentCompares: p.cfg.InstrumentCompares,
-			EnableRace:         p.cfg.EnableRace,
-			RaceTolerance:      p.cfg.RaceTolerance,
+			Backends:                  filteredBackends,
+			Codec:                     queryrange.DefaultCodec,
+			GoldfishManager:           p.goldfishManager,
+			Logger:                    p.logger,
+			Metrics:                   p.metrics,
+			InstrumentCompares:        p.cfg.InstrumentCompares,
+			EnableRace:                p.cfg.EnableRace,
+			RaceTolerance:             p.cfg.RaceTolerance,
+			SkipFanOutWhenNotSampling: p.cfg.SkipFanOutWhenNotSampling,
 		})
 		queryHandler, err := routeHandlerFactory.CreateHandler(route.RouteName, comp)
 		if err != nil {

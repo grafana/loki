@@ -118,11 +118,11 @@ func (*ECSSDConfig) Name() string { return "ecs" }
 
 // NewDiscoverer returns a Discoverer for the EC2 Config.
 func (c *ECSSDConfig) NewDiscoverer(opts discovery.DiscovererOptions) (discovery.Discoverer, error) {
-	return NewECSDiscovery(c, opts.Logger, opts.Metrics)
+	return NewECSDiscovery(c, opts)
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface for the ECS Config.
-func (c *ECSSDConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (c *ECSSDConfig) UnmarshalYAML(unmarshal func(any) error) error {
 	*c = DefaultECSSDConfig
 	type plain ECSSDConfig
 	err := unmarshal((*plain)(c))
@@ -165,22 +165,22 @@ type ECSDiscovery struct {
 }
 
 // NewECSDiscovery returns a new ECSDiscovery which periodically refreshes its targets.
-func NewECSDiscovery(conf *ECSSDConfig, logger *slog.Logger, metrics discovery.DiscovererMetrics) (*ECSDiscovery, error) {
-	m, ok := metrics.(*ecsMetrics)
+func NewECSDiscovery(conf *ECSSDConfig, opts discovery.DiscovererOptions) (*ECSDiscovery, error) {
+	m, ok := opts.Metrics.(*ecsMetrics)
 	if !ok {
 		return nil, errors.New("invalid discovery metrics type")
 	}
 
-	if logger == nil {
-		logger = promslog.NewNopLogger()
+	if opts.Logger == nil {
+		opts.Logger = promslog.NewNopLogger()
 	}
 	d := &ECSDiscovery{
-		logger: logger,
+		logger: opts.Logger,
 		cfg:    conf,
 	}
 	d.Discovery = refresh.NewDiscovery(
 		refresh.Options{
-			Logger:              logger,
+			Logger:              opts.Logger,
 			Mech:                "ecs",
 			Interval:            time.Duration(d.cfg.RefreshInterval),
 			RefreshF:            d.refresh,
@@ -461,10 +461,7 @@ func (d *ECSDiscovery) describeTasks(ctx context.Context, clusterARN string, tas
 func batchSlice[T any](a []T, size int) [][]T {
 	batches := make([][]T, 0, len(a)/size+1)
 	for i := 0; i < len(a); i += size {
-		end := i + size
-		if end > len(a) {
-			end = len(a)
-		}
+		end := min(i+size, len(a))
 		batches = append(batches, a[i:end])
 	}
 	return batches

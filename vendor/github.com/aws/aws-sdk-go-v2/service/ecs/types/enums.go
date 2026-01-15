@@ -87,6 +87,25 @@ func (AcceleratorType) Values() []AcceleratorType {
 	}
 }
 
+type AccessType string
+
+// Enum values for AccessType
+const (
+	AccessTypePublic  AccessType = "PUBLIC"
+	AccessTypePrivate AccessType = "PRIVATE"
+)
+
+// Values returns all known values for AccessType. Note that this can be expanded
+// in the future, and so it is only as up to date as the client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (AccessType) Values() []AccessType {
+	return []AccessType{
+		"PUBLIC",
+		"PRIVATE",
+	}
+}
+
 type AgentUpdateStatus string
 
 // Enum values for AgentUpdateStatus
@@ -733,6 +752,68 @@ func (ExecuteCommandLogging) Values() []ExecuteCommandLogging {
 	}
 }
 
+type ExpressGatewayServiceInclude string
+
+// Enum values for ExpressGatewayServiceInclude
+const (
+	ExpressGatewayServiceIncludeTags ExpressGatewayServiceInclude = "TAGS"
+)
+
+// Values returns all known values for ExpressGatewayServiceInclude. Note that
+// this can be expanded in the future, and so it is only as up to date as the
+// client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (ExpressGatewayServiceInclude) Values() []ExpressGatewayServiceInclude {
+	return []ExpressGatewayServiceInclude{
+		"TAGS",
+	}
+}
+
+type ExpressGatewayServiceScalingMetric string
+
+// Enum values for ExpressGatewayServiceScalingMetric
+const (
+	ExpressGatewayServiceScalingMetricAverageCPUUtilization    ExpressGatewayServiceScalingMetric = "AVERAGE_CPU"
+	ExpressGatewayServiceScalingMetricAverageMemoryUtilization ExpressGatewayServiceScalingMetric = "AVERAGE_MEMORY"
+	ExpressGatewayServiceScalingMetricRequestCountPerTarget    ExpressGatewayServiceScalingMetric = "REQUEST_COUNT_PER_TARGET"
+)
+
+// Values returns all known values for ExpressGatewayServiceScalingMetric. Note
+// that this can be expanded in the future, and so it is only as up to date as the
+// client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (ExpressGatewayServiceScalingMetric) Values() []ExpressGatewayServiceScalingMetric {
+	return []ExpressGatewayServiceScalingMetric{
+		"AVERAGE_CPU",
+		"AVERAGE_MEMORY",
+		"REQUEST_COUNT_PER_TARGET",
+	}
+}
+
+type ExpressGatewayServiceStatusCode string
+
+// Enum values for ExpressGatewayServiceStatusCode
+const (
+	ExpressGatewayServiceStatusCodeActive   ExpressGatewayServiceStatusCode = "ACTIVE"
+	ExpressGatewayServiceStatusCodeDraining ExpressGatewayServiceStatusCode = "DRAINING"
+	ExpressGatewayServiceStatusCodeInactive ExpressGatewayServiceStatusCode = "INACTIVE"
+)
+
+// Values returns all known values for ExpressGatewayServiceStatusCode. Note that
+// this can be expanded in the future, and so it is only as up to date as the
+// client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (ExpressGatewayServiceStatusCode) Values() []ExpressGatewayServiceStatusCode {
+	return []ExpressGatewayServiceStatusCode{
+		"ACTIVE",
+		"DRAINING",
+		"INACTIVE",
+	}
+}
+
 type FirelensConfigurationType string
 
 // Enum values for FirelensConfigurationType
@@ -1003,6 +1084,31 @@ func (ManagedInstancesMonitoringOptions) Values() []ManagedInstancesMonitoringOp
 	}
 }
 
+type ManagedResourceStatus string
+
+// Enum values for ManagedResourceStatus
+const (
+	ManagedResourceStatusProvisioning   ManagedResourceStatus = "PROVISIONING"
+	ManagedResourceStatusActive         ManagedResourceStatus = "ACTIVE"
+	ManagedResourceStatusDeprovisioning ManagedResourceStatus = "DEPROVISIONING"
+	ManagedResourceStatusDeleted        ManagedResourceStatus = "DELETED"
+	ManagedResourceStatusFailed         ManagedResourceStatus = "FAILED"
+)
+
+// Values returns all known values for ManagedResourceStatus. Note that this can
+// be expanded in the future, and so it is only as up to date as the client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (ManagedResourceStatus) Values() []ManagedResourceStatus {
+	return []ManagedResourceStatus{
+		"PROVISIONING",
+		"ACTIVE",
+		"DEPROVISIONING",
+		"DELETED",
+		"FAILED",
+	}
+}
+
 type ManagedScalingStatus string
 
 // Enum values for ManagedScalingStatus
@@ -1230,6 +1336,25 @@ const (
 func (ProxyConfigurationType) Values() []ProxyConfigurationType {
 	return []ProxyConfigurationType{
 		"APPMESH",
+	}
+}
+
+type ResourceManagementType string
+
+// Enum values for ResourceManagementType
+const (
+	ResourceManagementTypeCustomer ResourceManagementType = "CUSTOMER"
+	ResourceManagementTypeEcs      ResourceManagementType = "ECS"
+)
+
+// Values returns all known values for ResourceManagementType. Note that this can
+// be expanded in the future, and so it is only as up to date as the client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (ResourceManagementType) Values() []ResourceManagementType {
+	return []ResourceManagementType{
+		"CUSTOMER",
+		"ECS",
 	}
 }
 

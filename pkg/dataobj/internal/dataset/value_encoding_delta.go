@@ -1,6 +1,7 @@
 package dataset
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -14,8 +15,10 @@ func init() {
 	registerValueEncoding(
 		datasetmd.PHYSICAL_TYPE_INT64,
 		datasetmd.ENCODING_TYPE_DELTA,
-		func(w streamio.Writer) valueEncoder { return newDeltaEncoder(w) },
-		func(r streamio.Reader) valueDecoder { return newDeltaDecoder(r) },
+		registryEntry{
+			NewEncoder:       func(w streamio.Writer) valueEncoder { return newDeltaEncoder(w) },
+			NewLegacyDecoder: func(data []byte) legacyValueDecoder { return newDeltaDecoder(data) },
+		},
 	)
 }
 
@@ -75,12 +78,12 @@ type deltaDecoder struct {
 	prev int64
 }
 
-var _ valueDecoder = (*deltaDecoder)(nil)
+var _ legacyValueDecoder = (*deltaDecoder)(nil)
 
-// newDeltaDecoder creates a deltaDecoder that reads encoded numbers from r.
-func newDeltaDecoder(r streamio.Reader) *deltaDecoder {
+// newDeltaDecoder creates a deltaDecoder that reads encoded numbers from data.
+func newDeltaDecoder(data []byte) *deltaDecoder {
 	var dec deltaDecoder
-	dec.Reset(r)
+	dec.Reset(data)
 	return &dec
 }
 
@@ -107,7 +110,7 @@ func (dec *deltaDecoder) Decode(s []Value) (int, error) {
 
 	for i := range s {
 		v, err = dec.decode()
-		if errors.Is(err, io.EOF) {
+		if err != nil && errors.Is(err, io.EOF) {
 			if i == 0 {
 				return 0, io.EOF
 			}
@@ -132,7 +135,7 @@ func (dec *deltaDecoder) decode() (Value, error) {
 }
 
 // Reset resets the deltaDecoder to its initial state.
-func (dec *deltaDecoder) Reset(r streamio.Reader) {
+func (dec *deltaDecoder) Reset(data []byte) {
 	dec.prev = 0
-	dec.r = r
+	dec.r = bytes.NewBuffer(data)
 }

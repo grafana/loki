@@ -12493,11 +12493,20 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>sidecar.image.registry</td>
+			<td>string</td>
+			<td></td>
+			<td><pre lang="json">
+"docker.io"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>sidecar.image.repository</td>
 			<td>string</td>
 			<td>The Docker registry and image for the k8s sidecar</td>
 			<td><pre lang="json">
-"docker.io/kiwigrid/k8s-sidecar"
+"kiwigrid/k8s-sidecar"
 </pre>
 </td>
 		</tr>

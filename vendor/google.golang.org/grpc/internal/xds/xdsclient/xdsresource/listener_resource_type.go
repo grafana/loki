@@ -35,8 +35,8 @@ type listenerResourceDecoder struct {
 	bootstrapConfig *bootstrap.Config
 }
 
-func (d *listenerResourceDecoder) Decode(resource *xdsclient.AnyProto, _ xdsclient.DecodeOptions) (*xdsclient.DecodeResult, error) {
-	name, listener, err := unmarshalListenerResource(resource.ToAny())
+func (d *listenerResourceDecoder) Decode(resource *xdsclient.AnyProto, opts xdsclient.DecodeOptions) (*xdsclient.DecodeResult, error) {
+	name, listener, err := unmarshalListenerResource(resource.ToAny(), &opts)
 	if name == "" {
 		// Name is unset only when protobuf deserialization fails.
 		return nil, err
@@ -149,8 +149,8 @@ func (d *delegatingListenerWatcher) AmbientError(err error, onDone func()) {
 
 // WatchListener uses xDS to discover the configuration associated with the
 // provided listener resource name.
-func WatchListener(p ProducerV2, name string, w ListenerWatcher) (cancel func()) {
-	return p.WatchResourceV2(version.V3ListenerURL, name, &delegatingListenerWatcher{watcher: w})
+func WatchListener(p Producer, name string, w ListenerWatcher) (cancel func()) {
+	return p.WatchResource(version.V3ListenerURL, name, &delegatingListenerWatcher{watcher: w})
 }
 
 // NewListenerResourceTypeDecoder returns a xdsclient.Decoder that wraps

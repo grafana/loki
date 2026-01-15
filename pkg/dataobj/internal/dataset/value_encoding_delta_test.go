@@ -3,10 +3,12 @@ package dataset
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"math"
 	"math/rand"
 	"testing"
+	"unsafe"
 
 	"github.com/stretchr/testify/require"
 
@@ -25,13 +27,14 @@ func Test_delta(t *testing.T) {
 
 	var (
 		enc    = newDeltaEncoder(&buf)
-		dec    = newDeltaDecoder(&buf)
+		dec    = newDeltaDecoder(nil)
 		decBuf = make([]Value, batchSize)
 	)
 
 	for _, num := range numbers {
 		require.NoError(t, enc.Encode(Int64Value(num)))
 	}
+	dec.Reset(buf.Bytes())
 
 	var actual []int64
 	for {
@@ -63,7 +66,7 @@ func Fuzz_delta(f *testing.F) {
 
 		var (
 			enc    = newDeltaEncoder(&buf)
-			dec    = newDeltaDecoder(&buf)
+			dec    = newDeltaDecoder(nil)
 			decBuf = make([]Value, batchSize)
 		)
 
@@ -73,6 +76,7 @@ func Fuzz_delta(f *testing.F) {
 			numbers = append(numbers, v)
 			require.NoError(t, enc.Encode(Int64Value(v)))
 		}
+		dec.Reset(buf.Bytes())
 
 		var actual []int64
 		for {
@@ -126,63 +130,72 @@ func Benchmark_deltaEncoder_Encode(b *testing.B) {
 }
 
 func Benchmark_deltaDecoder_Decode(b *testing.B) {
-	b.Run("Sequential", func(b *testing.B) {
-		var buf bytes.Buffer
+	pageSize := 1 << 16
 
-		var (
-			enc = newDeltaEncoder(&buf)
-			dec = newDeltaDecoder(&buf)
-		)
+	scenarios := map[string]func() *bytes.Buffer{
+		"sequential": func() *bytes.Buffer {
+			var buf bytes.Buffer
 
-		for i := 0; i < b.N; i++ {
-			_ = enc.Encode(Int64Value(int64(i)))
-		}
+			enc := newDeltaEncoder(&buf)
 
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			_, _ = dec.decode()
-		}
-	})
-
-	b.Run("Largest delta", func(b *testing.B) {
-		var buf bytes.Buffer
-
-		var (
-			enc = newDeltaEncoder(&buf)
-			dec = newDeltaDecoder(&buf)
-		)
-
-		for i := 0; i < b.N; i++ {
-			if i%2 == 0 {
-				_ = enc.Encode(Int64Value(0))
-			} else {
-				_ = enc.Encode(Int64Value(math.MaxInt64))
+			for i := 0; i < pageSize; i++ {
+				err := enc.Encode(Int64Value(int64(i)))
+				require.NoError(b, err)
 			}
+			return &buf
+		},
+		"largest delta": func() *bytes.Buffer {
+			var buf bytes.Buffer
+			enc := newDeltaEncoder(&buf)
+			for i := 0; i < pageSize; i++ {
+				if i%2 == 0 {
+					_ = enc.Encode(Int64Value(0))
+				} else {
+					_ = enc.Encode(Int64Value(math.MaxInt64))
+				}
+			}
+			return &buf
+		},
+		"random": func() *bytes.Buffer {
+			var buf bytes.Buffer
+			enc := newDeltaEncoder(&buf)
+
+			rnd := rand.New(rand.NewSource(0))
+
+			for i := 0; i < pageSize; i++ {
+				_ = enc.Encode(Int64Value(rnd.Int63()))
+			}
+			return &buf
+		},
+	}
+
+	batchSizes := []int{256, 1024, 4096}
+
+	for datasetName, makeDataset := range scenarios {
+		for _, batchSize := range batchSizes {
+			b.Run(fmt.Sprintf("%s/batchSize=%d", datasetName, batchSize), func(b *testing.B) {
+				buf := makeDataset()
+				decBuf := make([]Value, batchSize)
+				dec := newDeltaDecoder(nil)
+
+				valuesRead := 0
+				for b.Loop() {
+					dec.Reset(buf.Bytes())
+
+					for {
+						n, err := dec.Decode(decBuf)
+						valuesRead += n
+						if err != nil && errors.Is(err, io.EOF) {
+							break
+						} else if err != nil {
+							b.Fatal(err)
+						}
+					}
+				}
+
+				b.SetBytes(int64(pageSize * int(unsafe.Sizeof(int64(0)))))
+				b.ReportMetric(float64(valuesRead)/float64(b.Elapsed().Seconds()), "rows/s")
+			})
 		}
-
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			_, _ = dec.decode()
-		}
-	})
-
-	b.Run("Random", func(b *testing.B) {
-		rnd := rand.New(rand.NewSource(0))
-
-		var buf bytes.Buffer
-
-		var (
-			enc = newDeltaEncoder(&buf)
-			dec = newDeltaDecoder(&buf)
-		)
-
-		for i := 0; i < b.N; i++ {
-			_ = enc.Encode(Int64Value(rnd.Int63()))
-		}
-
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			_, _ = dec.decode()
-		}
-	})
+	}
 }

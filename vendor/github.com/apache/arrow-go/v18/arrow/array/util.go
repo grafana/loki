@@ -202,7 +202,7 @@ func RecordFromStructArray(in *Struct, schema *arrow.Schema) arrow.RecordBatch {
 		schema = arrow.NewSchema(in.DataType().(*arrow.StructType).Fields(), nil)
 	}
 
-	return NewRecord(schema, in.fields, int64(in.Len()))
+	return NewRecordBatch(schema, in.fields, int64(in.Len()))
 }
 
 // RecordFromJSON creates a record batch from JSON data. See array.FromJSON for the details
@@ -261,7 +261,7 @@ func RecordFromJSON(mem memory.Allocator, schema *arrow.Schema, r io.Reader, opt
 			return nil, dec.InputOffset(), fmt.Errorf("failed to decode json: %w", err)
 		}
 
-		return bldr.NewRecord(), dec.InputOffset(), nil
+		return bldr.NewRecordBatch(), dec.InputOffset(), nil
 	}
 
 	for {
@@ -274,7 +274,7 @@ func RecordFromJSON(mem memory.Allocator, schema *arrow.Schema, r io.Reader, opt
 		}
 	}
 
-	return bldr.NewRecord(), dec.InputOffset(), nil
+	return bldr.NewRecordBatch(), dec.InputOffset(), nil
 }
 
 // RecordToJSON writes out the given record following the format of each row is a single object

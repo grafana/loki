@@ -179,6 +179,36 @@ func DurationTypeUnit(unit arrow.TimeUnit) TypeMatcher {
 	return &timeUnitMatcher{arrow.DURATION, unit}
 }
 
+type dateTypeMatcher struct {
+	dateTypeID arrow.Type
+}
+
+func (m *dateTypeMatcher) Matches(typ arrow.DataType) bool {
+	return typ.ID() == m.dateTypeID
+}
+
+func (m *dateTypeMatcher) String() string {
+	if m.dateTypeID == arrow.DATE32 {
+		return "date32"
+	}
+	return "date64"
+}
+
+func (m *dateTypeMatcher) Equals(other TypeMatcher) bool {
+	if o, ok := other.(*dateTypeMatcher); ok {
+		return m.dateTypeID == o.dateTypeID
+	}
+	return false
+}
+
+func Date32Type() TypeMatcher {
+	return &dateTypeMatcher{arrow.DATE32}
+}
+
+func Date64Type() TypeMatcher {
+	return &dateTypeMatcher{arrow.DATE64}
+}
+
 type integerMatcher struct{}
 
 func (integerMatcher) String() string                  { return "integer" }

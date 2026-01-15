@@ -99,7 +99,15 @@ func NewSigV4RoundTripper(cfg *SigV4Config, next http.RoundTripper) (http.RoundT
 	}
 
 	if cfg.RoleARN != "" {
-		awscfg.Credentials = stscreds.NewAssumeRoleProvider(sts.NewFromConfig(awscfg), cfg.RoleARN)
+		awscfg.Credentials = stscreds.NewAssumeRoleProvider(
+			sts.NewFromConfig(awscfg),
+			cfg.RoleARN,
+			func(o *stscreds.AssumeRoleOptions) {
+				if cfg.ExternalID != "" {
+					o.ExternalID = aws.String(cfg.ExternalID)
+				}
+			},
+		)
 	}
 
 	serviceName := "aps"
