@@ -24,6 +24,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 )
@@ -72,6 +73,10 @@ type Config struct {
 	// Absolute path of the endpoint where the frame handler is registered.
 	// Used for connecting to scheduler and other workers.
 	Endpoint string
+
+	// StreamFilterer is an optional filterer that can filter streams based on their labels.
+	// When set, streams are filtered before scanning.
+	StreamFilterer executor.RequestStreamFilterer `yaml:"-"`
 }
 
 // readyRequest is a message sent from a thread to notify the worker that it's
@@ -179,10 +184,11 @@ func (w *Worker) run(ctx context.Context) error {
 	var threads []*thread
 	for i := range w.numThreads {
 		t := &thread{
-			BatchSize: w.config.BatchSize,
-			Logger:    log.With(w.logger, "thread", i),
-			Bucket:    w.config.Bucket,
-			Metastore: w.config.Metastore,
+			BatchSize:      w.config.BatchSize,
+			Logger:         log.With(w.logger, "thread", i),
+			Bucket:         w.config.Bucket,
+			Metastore:      w.config.Metastore,
+			StreamFilterer: w.config.StreamFilterer,
 
 			Metrics:    w.metrics,
 			JobManager: w.jobManager,
