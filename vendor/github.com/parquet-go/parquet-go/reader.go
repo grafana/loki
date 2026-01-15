@@ -655,6 +655,12 @@ func makeLeafColumns(root *Column) []*Column {
 
 func makeFileRowGroups(file *File, columns []*Column) []FileRowGroup {
 	rowGroups := file.metadata.RowGroups
+
+	err := validateRowGroupOrdinals(rowGroups)
+	if err != nil {
+		return nil
+	}
+
 	fileRowGroups := make([]FileRowGroup, len(rowGroups))
 	for i := range fileRowGroups {
 		fileRowGroups[i].init(file, columns, &rowGroups[i])
@@ -668,4 +674,30 @@ func makeRowGroups(fileRowGroups []FileRowGroup) []RowGroup {
 		rowGroups[i] = &fileRowGroups[i]
 	}
 	return rowGroups
+}
+
+func validateRowGroupOrdinals(rowGroups []format.RowGroup) error {
+	allZero := true
+	seen := make(map[int16]struct{})
+	for _, rg := range rowGroups {
+		if rg.Ordinal != 0 {
+			allZero = false
+		}
+		// If we've seen this non-zero ordinal before, it's a duplicate, which is an error.
+		if _, ok := seen[rg.Ordinal]; ok && rg.Ordinal != 0 {
+			return fmt.Errorf("duplicate row group ordinal %d", rg.Ordinal)
+		}
+		seen[rg.Ordinal] = struct{}{}
+	}
+
+	// if all ordinals are zero, it's valid, but they need to be assigned
+	// sequential ordinals starting from zero for page offset calculations
+	if !allZero {
+		return nil
+	}
+
+	for i := range rowGroups {
+		rowGroups[i].Ordinal = int16(i)
+	}
+	return nil
 }

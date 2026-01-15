@@ -815,7 +815,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 				d.writeFailuresManager.Log(tenantID, err)
 				// Set the validation error to the stream limit error so it is returned to the client.
 				validationErr = httpgrpc.Error(http.StatusTooManyRequests, err.Error())
-				// If none of the streams were accpeted, return early.
+				// If none of the streams were accepted, return early.
 				if len(accepted) == 0 {
 					return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "%s", err.Error())
 				}

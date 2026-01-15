@@ -34,10 +34,6 @@ import (
 //     them through their termination. For more information, see [Instance lifecycle]in the Amazon EC2
 //     User Guide.
 //
-//   - SQL license exemption monitoring - For instances registered with the SQL LE
-//     service, status includes SQL license exemption monitoring health and processing
-//     status to provide operational visibility into license exemption functionality.
-//
 // The Amazon EC2 API follows an eventual consistency model. This means that the
 // result of an API command you run that creates or modifies resources might not be
 // immediately available to all subsequent commands you run. For guidance on how to

@@ -115,8 +115,8 @@ func (m *mockBuilder) GetEstimatedSize() int {
 	return m.builder.GetEstimatedSize()
 }
 
-func (m *mockBuilder) CopyAndSort(obj *dataobj.Object) (*dataobj.Object, io.Closer, error) {
-	return m.builder.CopyAndSort(obj)
+func (m *mockBuilder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataobj.Object, io.Closer, error) {
+	return m.builder.CopyAndSort(ctx, obj)
 }
 
 func (m *mockBuilder) Flush() (*dataobj.Object, io.Closer, error) {

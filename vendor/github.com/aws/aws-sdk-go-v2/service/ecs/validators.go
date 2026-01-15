@@ -50,6 +50,26 @@ func (m *validateOpCreateCluster) HandleInitialize(ctx context.Context, in middl
 	return next.HandleInitialize(ctx, in)
 }
 
+type validateOpCreateExpressGatewayService struct {
+}
+
+func (*validateOpCreateExpressGatewayService) ID() string {
+	return "OperationInputValidation"
+}
+
+func (m *validateOpCreateExpressGatewayService) HandleInitialize(ctx context.Context, in middleware.InitializeInput, next middleware.InitializeHandler) (
+	out middleware.InitializeOutput, metadata middleware.Metadata, err error,
+) {
+	input, ok := in.Parameters.(*CreateExpressGatewayServiceInput)
+	if !ok {
+		return out, metadata, fmt.Errorf("unknown input parameters type %T", in.Parameters)
+	}
+	if err := validateOpCreateExpressGatewayServiceInput(input); err != nil {
+		return out, metadata, err
+	}
+	return next.HandleInitialize(ctx, in)
+}
+
 type validateOpCreateService struct {
 }
 
@@ -170,6 +190,26 @@ func (m *validateOpDeleteCluster) HandleInitialize(ctx context.Context, in middl
 	return next.HandleInitialize(ctx, in)
 }
 
+type validateOpDeleteExpressGatewayService struct {
+}
+
+func (*validateOpDeleteExpressGatewayService) ID() string {
+	return "OperationInputValidation"
+}
+
+func (m *validateOpDeleteExpressGatewayService) HandleInitialize(ctx context.Context, in middleware.InitializeInput, next middleware.InitializeHandler) (
+	out middleware.InitializeOutput, metadata middleware.Metadata, err error,
+) {
+	input, ok := in.Parameters.(*DeleteExpressGatewayServiceInput)
+	if !ok {
+		return out, metadata, fmt.Errorf("unknown input parameters type %T", in.Parameters)
+	}
+	if err := validateOpDeleteExpressGatewayServiceInput(input); err != nil {
+		return out, metadata, err
+	}
+	return next.HandleInitialize(ctx, in)
+}
+
 type validateOpDeleteService struct {
 }
 
@@ -285,6 +325,26 @@ func (m *validateOpDescribeContainerInstances) HandleInitialize(ctx context.Cont
 		return out, metadata, fmt.Errorf("unknown input parameters type %T", in.Parameters)
 	}
 	if err := validateOpDescribeContainerInstancesInput(input); err != nil {
+		return out, metadata, err
+	}
+	return next.HandleInitialize(ctx, in)
+}
+
+type validateOpDescribeExpressGatewayService struct {
+}
+
+func (*validateOpDescribeExpressGatewayService) ID() string {
+	return "OperationInputValidation"
+}
+
+func (m *validateOpDescribeExpressGatewayService) HandleInitialize(ctx context.Context, in middleware.InitializeInput, next middleware.InitializeHandler) (
+	out middleware.InitializeOutput, metadata middleware.Metadata, err error,
+) {
+	input, ok := in.Parameters.(*DescribeExpressGatewayServiceInput)
+	if !ok {
+		return out, metadata, fmt.Errorf("unknown input parameters type %T", in.Parameters)
+	}
+	if err := validateOpDescribeExpressGatewayServiceInput(input); err != nil {
 		return out, metadata, err
 	}
 	return next.HandleInitialize(ctx, in)
@@ -910,6 +970,26 @@ func (m *validateOpUpdateContainerInstancesState) HandleInitialize(ctx context.C
 	return next.HandleInitialize(ctx, in)
 }
 
+type validateOpUpdateExpressGatewayService struct {
+}
+
+func (*validateOpUpdateExpressGatewayService) ID() string {
+	return "OperationInputValidation"
+}
+
+func (m *validateOpUpdateExpressGatewayService) HandleInitialize(ctx context.Context, in middleware.InitializeInput, next middleware.InitializeHandler) (
+	out middleware.InitializeOutput, metadata middleware.Metadata, err error,
+) {
+	input, ok := in.Parameters.(*UpdateExpressGatewayServiceInput)
+	if !ok {
+		return out, metadata, fmt.Errorf("unknown input parameters type %T", in.Parameters)
+	}
+	if err := validateOpUpdateExpressGatewayServiceInput(input); err != nil {
+		return out, metadata, err
+	}
+	return next.HandleInitialize(ctx, in)
+}
+
 type validateOpUpdateService struct {
 }
 
@@ -998,6 +1078,10 @@ func addOpCreateClusterValidationMiddleware(stack *middleware.Stack) error {
 	return stack.Initialize.Add(&validateOpCreateCluster{}, middleware.After)
 }
 
+func addOpCreateExpressGatewayServiceValidationMiddleware(stack *middleware.Stack) error {
+	return stack.Initialize.Add(&validateOpCreateExpressGatewayService{}, middleware.After)
+}
+
 func addOpCreateServiceValidationMiddleware(stack *middleware.Stack) error {
 	return stack.Initialize.Add(&validateOpCreateService{}, middleware.After)
 }
@@ -1022,6 +1106,10 @@ func addOpDeleteClusterValidationMiddleware(stack *middleware.Stack) error {
 	return stack.Initialize.Add(&validateOpDeleteCluster{}, middleware.After)
 }
 
+func addOpDeleteExpressGatewayServiceValidationMiddleware(stack *middleware.Stack) error {
+	return stack.Initialize.Add(&validateOpDeleteExpressGatewayService{}, middleware.After)
+}
+
 func addOpDeleteServiceValidationMiddleware(stack *middleware.Stack) error {
 	return stack.Initialize.Add(&validateOpDeleteService{}, middleware.After)
 }
@@ -1044,6 +1132,10 @@ func addOpDeregisterTaskDefinitionValidationMiddleware(stack *middleware.Stack) 
 
 func addOpDescribeContainerInstancesValidationMiddleware(stack *middleware.Stack) error {
 	return stack.Initialize.Add(&validateOpDescribeContainerInstances{}, middleware.After)
+}
+
+func addOpDescribeExpressGatewayServiceValidationMiddleware(stack *middleware.Stack) error {
+	return stack.Initialize.Add(&validateOpDescribeExpressGatewayService{}, middleware.After)
 }
 
 func addOpDescribeServiceDeploymentsValidationMiddleware(stack *middleware.Stack) error {
@@ -1168,6 +1260,10 @@ func addOpUpdateContainerAgentValidationMiddleware(stack *middleware.Stack) erro
 
 func addOpUpdateContainerInstancesStateValidationMiddleware(stack *middleware.Stack) error {
 	return stack.Initialize.Add(&validateOpUpdateContainerInstancesState{}, middleware.After)
+}
+
+func addOpUpdateExpressGatewayServiceValidationMiddleware(stack *middleware.Stack) error {
+	return stack.Initialize.Add(&validateOpUpdateExpressGatewayService{}, middleware.After)
 }
 
 func addOpUpdateServiceValidationMiddleware(stack *middleware.Stack) error {
@@ -1713,6 +1809,49 @@ func validateEphemeralStorage(v *types.EphemeralStorage) error {
 		return nil
 	}
 	invalidParams := smithy.InvalidParamsError{Context: "EphemeralStorage"}
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	} else {
+		return nil
+	}
+}
+
+func validateExpressGatewayContainer(v *types.ExpressGatewayContainer) error {
+	if v == nil {
+		return nil
+	}
+	invalidParams := smithy.InvalidParamsError{Context: "ExpressGatewayContainer"}
+	if v.Image == nil {
+		invalidParams.Add(smithy.NewErrParamRequired("Image"))
+	}
+	if v.AwsLogsConfiguration != nil {
+		if err := validateExpressGatewayServiceAwsLogsConfiguration(v.AwsLogsConfiguration); err != nil {
+			invalidParams.AddNested("AwsLogsConfiguration", err.(smithy.InvalidParamsError))
+		}
+	}
+	if v.Secrets != nil {
+		if err := validateSecretList(v.Secrets); err != nil {
+			invalidParams.AddNested("Secrets", err.(smithy.InvalidParamsError))
+		}
+	}
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	} else {
+		return nil
+	}
+}
+
+func validateExpressGatewayServiceAwsLogsConfiguration(v *types.ExpressGatewayServiceAwsLogsConfiguration) error {
+	if v == nil {
+		return nil
+	}
+	invalidParams := smithy.InvalidParamsError{Context: "ExpressGatewayServiceAwsLogsConfiguration"}
+	if v.LogGroup == nil {
+		invalidParams.Add(smithy.NewErrParamRequired("LogGroup"))
+	}
+	if v.LogStreamPrefix == nil {
+		invalidParams.Add(smithy.NewErrParamRequired("LogStreamPrefix"))
+	}
 	if invalidParams.Len() > 0 {
 		return invalidParams
 	} else {
@@ -2747,6 +2886,31 @@ func validateOpCreateClusterInput(v *CreateClusterInput) error {
 	}
 }
 
+func validateOpCreateExpressGatewayServiceInput(v *CreateExpressGatewayServiceInput) error {
+	if v == nil {
+		return nil
+	}
+	invalidParams := smithy.InvalidParamsError{Context: "CreateExpressGatewayServiceInput"}
+	if v.ExecutionRoleArn == nil {
+		invalidParams.Add(smithy.NewErrParamRequired("ExecutionRoleArn"))
+	}
+	if v.InfrastructureRoleArn == nil {
+		invalidParams.Add(smithy.NewErrParamRequired("InfrastructureRoleArn"))
+	}
+	if v.PrimaryContainer == nil {
+		invalidParams.Add(smithy.NewErrParamRequired("PrimaryContainer"))
+	} else if v.PrimaryContainer != nil {
+		if err := validateExpressGatewayContainer(v.PrimaryContainer); err != nil {
+			invalidParams.AddNested("PrimaryContainer", err.(smithy.InvalidParamsError))
+		}
+	}
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	} else {
+		return nil
+	}
+}
+
 func validateOpCreateServiceInput(v *CreateServiceInput) error {
 	if v == nil {
 		return nil
@@ -2892,6 +3056,21 @@ func validateOpDeleteClusterInput(v *DeleteClusterInput) error {
 	}
 }
 
+func validateOpDeleteExpressGatewayServiceInput(v *DeleteExpressGatewayServiceInput) error {
+	if v == nil {
+		return nil
+	}
+	invalidParams := smithy.InvalidParamsError{Context: "DeleteExpressGatewayServiceInput"}
+	if v.ServiceArn == nil {
+		invalidParams.Add(smithy.NewErrParamRequired("ServiceArn"))
+	}
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	} else {
+		return nil
+	}
+}
+
 func validateOpDeleteServiceInput(v *DeleteServiceInput) error {
 	if v == nil {
 		return nil
@@ -2980,6 +3159,21 @@ func validateOpDescribeContainerInstancesInput(v *DescribeContainerInstancesInpu
 	invalidParams := smithy.InvalidParamsError{Context: "DescribeContainerInstancesInput"}
 	if v.ContainerInstances == nil {
 		invalidParams.Add(smithy.NewErrParamRequired("ContainerInstances"))
+	}
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	} else {
+		return nil
+	}
+}
+
+func validateOpDescribeExpressGatewayServiceInput(v *DescribeExpressGatewayServiceInput) error {
+	if v == nil {
+		return nil
+	}
+	invalidParams := smithy.InvalidParamsError{Context: "DescribeExpressGatewayServiceInput"}
+	if v.ServiceArn == nil {
+		invalidParams.Add(smithy.NewErrParamRequired("ServiceArn"))
 	}
 	if invalidParams.Len() > 0 {
 		return invalidParams
@@ -3576,6 +3770,26 @@ func validateOpUpdateContainerInstancesStateInput(v *UpdateContainerInstancesSta
 	}
 	if len(v.Status) == 0 {
 		invalidParams.Add(smithy.NewErrParamRequired("Status"))
+	}
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	} else {
+		return nil
+	}
+}
+
+func validateOpUpdateExpressGatewayServiceInput(v *UpdateExpressGatewayServiceInput) error {
+	if v == nil {
+		return nil
+	}
+	invalidParams := smithy.InvalidParamsError{Context: "UpdateExpressGatewayServiceInput"}
+	if v.ServiceArn == nil {
+		invalidParams.Add(smithy.NewErrParamRequired("ServiceArn"))
+	}
+	if v.PrimaryContainer != nil {
+		if err := validateExpressGatewayContainer(v.PrimaryContainer); err != nil {
+			invalidParams.AddNested("PrimaryContainer", err.(smithy.InvalidParamsError))
+		}
 	}
 	if invalidParams.Len() > 0 {
 		return invalidParams
