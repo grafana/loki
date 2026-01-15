@@ -45,7 +45,6 @@ func DeleteLogsRequest(orig *LogsRequest, nullable bool) {
 		orig.Reset()
 		return
 	}
-
 	DeleteRequestContext(orig.RequestContext, true)
 	DeleteLogsData(&orig.LogsData, false)
 
@@ -173,7 +172,7 @@ func (orig *LogsRequest) SizeProto() int {
 	}
 	l = orig.LogsData.SizeProto()
 	n += 1 + proto.Sov(uint64(l)) + l
-	if orig.FormatVersion != 0 {
+	if orig.FormatVersion != uint32(0) {
 		n += 5
 	}
 	return n
@@ -196,7 +195,7 @@ func (orig *LogsRequest) MarshalProto(buf []byte) int {
 	pos--
 	buf[pos] = 0x1a
 
-	if orig.FormatVersion != 0 {
+	if orig.FormatVersion != uint32(0) {
 		pos -= 4
 		binary.LittleEndian.PutUint32(buf[pos:], uint32(orig.FormatVersion))
 		pos--

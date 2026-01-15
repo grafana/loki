@@ -130,10 +130,7 @@ func (ms Metric) SetEmptyGauge() Gauge {
 	ov.Gauge = internal.NewGauge()
 	ms.orig.Data = ov
 	return newGauge(ov.Gauge, ms.state)
-}
-
-// Sum returns the sum associated with this Metric.
-//
+} // Sum returns the sum associated with this Metric.
 // Calling this function when Type() != MetricTypeSum returns an invalid
 // zero-initialized instance of Sum. Note that using such Sum instance can cause panic.
 //
@@ -162,10 +159,7 @@ func (ms Metric) SetEmptySum() Sum {
 	ov.Sum = internal.NewSum()
 	ms.orig.Data = ov
 	return newSum(ov.Sum, ms.state)
-}
-
-// Histogram returns the histogram associated with this Metric.
-//
+} // Histogram returns the histogram associated with this Metric.
 // Calling this function when Type() != MetricTypeHistogram returns an invalid
 // zero-initialized instance of Histogram. Note that using such Histogram instance can cause panic.
 //
@@ -194,10 +188,7 @@ func (ms Metric) SetEmptyHistogram() Histogram {
 	ov.Histogram = internal.NewHistogram()
 	ms.orig.Data = ov
 	return newHistogram(ov.Histogram, ms.state)
-}
-
-// ExponentialHistogram returns the exponentialhistogram associated with this Metric.
-//
+} // ExponentialHistogram returns the exponentialhistogram associated with this Metric.
 // Calling this function when Type() != MetricTypeExponentialHistogram returns an invalid
 // zero-initialized instance of ExponentialHistogram. Note that using such ExponentialHistogram instance can cause panic.
 //
@@ -226,10 +217,7 @@ func (ms Metric) SetEmptyExponentialHistogram() ExponentialHistogram {
 	ov.ExponentialHistogram = internal.NewExponentialHistogram()
 	ms.orig.Data = ov
 	return newExponentialHistogram(ov.ExponentialHistogram, ms.state)
-}
-
-// Summary returns the summary associated with this Metric.
-//
+} // Summary returns the summary associated with this Metric.
 // Calling this function when Type() != MetricTypeSummary returns an invalid
 // zero-initialized instance of Summary. Note that using such Summary instance can cause panic.
 //

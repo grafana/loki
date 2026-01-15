@@ -31,9 +31,3 @@ func MustRawBucket() objstore.Bucket {
 	}
 	return bkt
 }
-
-// MustIndexBucket creates a GCS bucket client for index storage
-func MustIndexBucket() objstore.Bucket {
-	bkt := MustDataobjBucket()
-	return objstore.NewPrefixedBucket(bkt, "index/v0")
-}

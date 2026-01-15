@@ -27,12 +27,13 @@ import (
 	v3listenerpb "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
 	v3routepb "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
 	v3httppb "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
+	"google.golang.org/grpc/internal/xds/clients/xdsclient"
 	"google.golang.org/grpc/internal/xds/httpfilter"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 )
 
-func unmarshalListenerResource(r *anypb.Any) (string, ListenerUpdate, error) {
+func unmarshalListenerResource(r *anypb.Any, opts *xdsclient.DecodeOptions) (string, ListenerUpdate, error) {
 	r, err := UnwrapResource(r)
 	if err != nil {
 		return "", ListenerUpdate{}, fmt.Errorf("failed to unwrap resource: %v", err)
@@ -46,7 +47,7 @@ func unmarshalListenerResource(r *anypb.Any) (string, ListenerUpdate, error) {
 		return "", ListenerUpdate{}, fmt.Errorf("failed to unmarshal resource: %v", err)
 	}
 
-	lu, err := processListener(lis)
+	lu, err := processListener(lis, opts)
 	if err != nil {
 		return lis.GetName(), ListenerUpdate{}, err
 	}
@@ -54,16 +55,16 @@ func unmarshalListenerResource(r *anypb.Any) (string, ListenerUpdate, error) {
 	return lis.GetName(), *lu, nil
 }
 
-func processListener(lis *v3listenerpb.Listener) (*ListenerUpdate, error) {
+func processListener(lis *v3listenerpb.Listener, opts *xdsclient.DecodeOptions) (*ListenerUpdate, error) {
 	if lis.GetApiListener() != nil {
-		return processClientSideListener(lis)
+		return processClientSideListener(lis, opts)
 	}
 	return processServerSideListener(lis)
 }
 
 // processClientSideListener checks if the provided Listener proto meets
 // the expected criteria. If so, it returns a non-empty routeConfigName.
-func processClientSideListener(lis *v3listenerpb.Listener) (*ListenerUpdate, error) {
+func processClientSideListener(lis *v3listenerpb.Listener, opts *xdsclient.DecodeOptions) (*ListenerUpdate, error) {
 	update := &ListenerUpdate{}
 
 	apiLisAny := lis.GetApiListener().GetApiListener()
@@ -95,7 +96,7 @@ func processClientSideListener(lis *v3listenerpb.Listener) (*ListenerUpdate, err
 		}
 		update.RouteConfigName = name
 	case *v3httppb.HttpConnectionManager_RouteConfig:
-		routeU, err := generateRDSUpdateFromRouteConfiguration(apiLis.GetRouteConfig())
+		routeU, err := generateRDSUpdateFromRouteConfiguration(apiLis.GetRouteConfig(), opts)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse inline RDS resp: %v", err)
 		}

@@ -63,15 +63,6 @@ type workerConn struct {
 	// that are incompatible with the connection type are rejected.
 	ty connectionType
 
-	// maxThreads represents the maximum number of threads that can be used by
-	// the worker. Only set for control plane connections.
-	//
-	// len(tasks) + readyThreads must not exceed maxThreads.
-	maxThreads int
-
-	// readyThreads represents the number of threads that are ready to be assigned a task.
-	readyThreads int
-
 	// tasks hold the collection of tasks currently assigned to the worker.
 	tasks map[*task]struct{}
 }
@@ -100,7 +91,6 @@ func (wc *workerConn) HandleHello(msg wire.WorkerHelloMessage) error {
 	}
 
 	wc.ty = connectionTypeControlPlane
-	wc.maxThreads = msg.Threads
 	return nil
 }
 
@@ -114,11 +104,6 @@ func (wc *workerConn) MarkReady() error {
 	if got, want := wc.ty, connectionTypeControlPlane; got != want {
 		return fmt.Errorf("worker connection must be in state %q, got %q", want, got)
 	}
-
-	if !wc.hasCapacity() {
-		return fmt.Errorf("maximum capacity %d reached, wait for task assignment or complete existing assigned tasks", wc.maxThreads)
-	}
-	wc.readyThreads++
 	return nil
 }
 
@@ -159,10 +144,6 @@ func (wc *workerConn) Assign(assigned *task) {
 		wc.tasks = make(map[*task]struct{})
 	}
 	wc.tasks[assigned] = struct{}{}
-
-	// Assigning a task removes a ready thread, since len(wc.tasks) increased by
-	// 1.
-	wc.readyThreads--
 }
 
 // Unassign removes a task from the worker.
@@ -171,9 +152,4 @@ func (wc *workerConn) Unassign(assigned *task) {
 	defer wc.mut.Unlock()
 
 	delete(wc.tasks, assigned)
-}
-
-// hasCapacity returns true if the worker has capacity to accept more tasks.
-func (wc *workerConn) hasCapacity() bool {
-	return wc.maxThreads > len(wc.tasks)+wc.readyThreads
 }

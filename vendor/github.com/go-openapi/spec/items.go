@@ -1,16 +1,5 @@
-// Copyright 2015 go-swagger maintainers
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//    http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-FileCopyrightText: Copyright 2015-2025 go-swagger maintainers
+// SPDX-License-Identifier: Apache-2.0
 
 package spec
 
@@ -28,13 +17,13 @@ const (
 
 // SimpleSchema describe swagger simple schemas for parameters and headers
 type SimpleSchema struct {
-	Type             string      `json:"type,omitempty"`
-	Nullable         bool        `json:"nullable,omitempty"`
-	Format           string      `json:"format,omitempty"`
-	Items            *Items      `json:"items,omitempty"`
-	CollectionFormat string      `json:"collectionFormat,omitempty"`
-	Default          interface{} `json:"default,omitempty"`
-	Example          interface{} `json:"example,omitempty"`
+	Type             string `json:"type,omitempty"`
+	Nullable         bool   `json:"nullable,omitempty"`
+	Format           string `json:"format,omitempty"`
+	Items            *Items `json:"items,omitempty"`
+	CollectionFormat string `json:"collectionFormat,omitempty"`
+	Default          any    `json:"default,omitempty"`
+	Example          any    `json:"example,omitempty"`
 }
 
 // TypeName return the type (or format) of a simple schema
@@ -91,7 +80,7 @@ func (i *Items) CollectionOf(items *Items, format string) *Items {
 }
 
 // WithDefault sets the default value on this item
-func (i *Items) WithDefault(defaultValue interface{}) *Items {
+func (i *Items) WithDefault(defaultValue any) *Items {
 	i.Default = defaultValue
 	return i
 }
@@ -135,8 +124,8 @@ func (i *Items) WithMinimum(minimum float64, exclusive bool) *Items {
 }
 
 // WithEnum sets a the enum values (replace)
-func (i *Items) WithEnum(values ...interface{}) *Items {
-	i.Enum = append([]interface{}{}, values...)
+func (i *Items) WithEnum(values ...any) *Items {
+	i.Enum = append([]any{}, values...)
 	return i
 }
 
@@ -217,7 +206,7 @@ func (i Items) MarshalJSON() ([]byte, error) {
 }
 
 // JSONLookup look up a value by the json property name
-func (i Items) JSONLookup(token string) (interface{}, error) {
+func (i Items) JSONLookup(token string) (any, error) {
 	if token == jsonRef {
 		return &i.Ref, nil
 	}

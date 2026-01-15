@@ -5,6 +5,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/sliceclear"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 // readerDownloader is a utility for downloading pages in bulk from a
@@ -228,16 +229,17 @@ func (dl *readerDownloader) downloadBatch(ctx context.Context, requestor *reader
 		return err
 	}
 
-	stats := StatsFromContext(ctx)
-	for _, page := range batch {
-		if page.column.primary {
-			stats.AddPrimaryColumnPagesDownloaded(1)
-			stats.AddPrimaryColumnBytesDownloaded(uint64(page.inner.PageDesc().CompressedSize))
-			stats.AddPrimaryColumnUncompressedBytes(uint64(page.inner.PageDesc().UncompressedSize))
-		} else {
-			stats.AddSecondaryColumnPagesDownloaded(1)
-			stats.AddSecondaryColumnBytesDownloaded(uint64(page.inner.PageDesc().CompressedSize))
-			stats.AddSecondaryColumnUncompressedBytes(uint64(page.inner.PageDesc().UncompressedSize))
+	if region := xcap.RegionFromContext(ctx); region != nil {
+		for _, page := range batch {
+			if page.column.primary {
+				region.Record(xcap.StatDatasetPrimaryPagesDownloaded.Observe(1))
+				region.Record(xcap.StatDatasetPrimaryColumnBytes.Observe(int64(page.inner.PageDesc().CompressedSize)))
+				region.Record(xcap.StatDatasetPrimaryColumnUncompressedBytes.Observe(int64(page.inner.PageDesc().UncompressedSize)))
+			} else {
+				region.Record(xcap.StatDatasetSecondaryPagesDownloaded.Observe(1))
+				region.Record(xcap.StatDatasetSecondaryColumnBytes.Observe(int64(page.inner.PageDesc().CompressedSize)))
+				region.Record(xcap.StatDatasetSecondaryColumnUncompressedBytes.Observe(int64(page.inner.PageDesc().UncompressedSize)))
+			}
 		}
 	}
 
@@ -586,14 +588,14 @@ func (page *readerPage) PageDesc() *PageDesc {
 }
 
 func (page *readerPage) ReadPage(ctx context.Context) (PageData, error) {
-	stats := StatsFromContext(ctx)
-	stats.AddPagesScanned(1)
+	region := xcap.RegionFromContext(ctx)
+	region.Record(xcap.StatDatasetPagesScanned.Observe(1))
 	if page.data != nil {
-		stats.AddPagesFoundInCache(1)
+		region.Record(xcap.StatDatasetPagesFoundInCache.Observe(1))
 		return page.data, nil
 	}
 
-	stats.AddBatchDownloadRequests(1)
+	region.Record(xcap.StatDatasetPageDownloadRequests.Observe(1))
 	if err := page.column.dl.downloadBatch(ctx, page); err != nil {
 		return nil, err
 	}

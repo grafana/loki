@@ -1,0 +1,18 @@
+Alternates of literals should be converted into basic matches combined with OR.
+When the column is a label column, string equality should be used.
+
+-- column --
+utf8.label.foo
+
+-- regex --
+foo|bar|fizz|buzz
+
+-- expect --
+%1 = EQ label.foo "foo"
+%2 = EQ label.foo "bar"
+%3 = OR %1 %2
+%4 = EQ label.foo "fizz"
+%5 = OR %3 %4
+%6 = EQ label.foo "buzz"
+%7 = OR %5 %6
+RETURN %7

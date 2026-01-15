@@ -15,10 +15,10 @@
       <rule pattern="//.*?\n">
         <token type="CommentSingle"/>
       </rule>
-      <rule pattern="/\*.*?\*/">
+      <rule pattern="/\*[\s\S]*?\*/">
         <token type="CommentMultiline"/>
       </rule>
-      <rule pattern="/\+.*?\+/">
+      <rule pattern="/\+[\s\S]*?\+/">
         <token type="CommentMultiline"/>
       </rule>
       <rule pattern="(asm|assert|body|break|case|cast|catch|continue|default|debug|delete|do|else|finally|for|foreach|foreach_reverse|goto|if|in|invariant|is|macro|mixin|new|out|pragma|return|super|switch|this|throw|try|typeid|typeof|version|while|with)\b">

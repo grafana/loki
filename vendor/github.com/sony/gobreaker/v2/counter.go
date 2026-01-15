@@ -1,6 +1,6 @@
 package gobreaker
 
-// Counts holds the numbers of requests and their successes/failures.
+// Counts holds the numbers of requests and their successes/failures/exclusions.
 // CircuitBreaker clears the internal Counts either
 // on the change of the state or at the closed-state intervals.
 // Counts ignores the results of the requests sent before clearing.
@@ -8,6 +8,7 @@ type Counts struct {
 	Requests             uint32
 	TotalSuccesses       uint32
 	TotalFailures        uint32
+	TotalExclusions      uint32
 	ConsecutiveSuccesses uint32
 	ConsecutiveFailures  uint32
 }
@@ -28,10 +29,22 @@ func (c *Counts) onFailure() {
 	c.ConsecutiveSuccesses = 0
 }
 
+func (c *Counts) onExclusion() {
+	c.TotalExclusions++
+}
+
+func (c *Counts) validRequests() uint32 {
+	if c.Requests < c.TotalExclusions {
+		return 0
+	}
+	return c.Requests - c.TotalExclusions
+}
+
 func (c *Counts) clear() {
 	c.Requests = 0
 	c.TotalSuccesses = 0
 	c.TotalFailures = 0
+	c.TotalExclusions = 0
 	c.ConsecutiveSuccesses = 0
 	c.ConsecutiveFailures = 0
 }
@@ -87,6 +100,17 @@ func (rc *rollingCounts) onFailure(age uint64) {
 	if rc.age-age < uint64(len(rc.buckets)) {
 		rc.Counts.onFailure()
 		rc.buckets[rc.index(age)].onFailure()
+	}
+}
+
+func (rc *rollingCounts) onExclusion(age uint64) {
+	if age > rc.age {
+		return
+	}
+
+	if rc.age-age < uint64(len(rc.buckets)) {
+		rc.Counts.onExclusion()
+		rc.buckets[rc.index(age)].onExclusion()
 	}
 }
 
@@ -162,6 +186,12 @@ func (rc *rollingCounts) subtract(oldest uint64) {
 		rc.TotalFailures -= bucket.TotalFailures
 	} else {
 		rc.TotalFailures = 0
+	}
+
+	if rc.TotalExclusions > bucket.TotalExclusions {
+		rc.TotalExclusions -= bucket.TotalExclusions
+	} else {
+		rc.TotalExclusions = 0
 	}
 }
 
