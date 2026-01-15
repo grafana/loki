@@ -488,7 +488,7 @@ func (s *Scheduler) prepareAssignment() (*task, *workerConn, wire.TaskAssignMess
 		return nil, nil, wire.TaskAssignMessage{}, false
 	}
 
-	task, _ := s.taskQueue.Peek()
+	task := s.peekTask()
 	worker := nextWorker(s.readyWorkers)
 
 	msg := wire.TaskAssignMessage{

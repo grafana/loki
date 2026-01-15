@@ -200,8 +200,8 @@ func (n *node[T]) RegisterScope(scope Scope) (*node[T], error) {
 	return newNode, nil
 }
 
-// CreateValue creates a value node along path p. Panics if n is not
-// a scope node.
+// CreateValue pushes a value node to n. If v already exists in n, a duplicate
+// value entry for v is added. Panics if n is not a scope node.
 func (n *node[T]) CreateValue(v T) *node[T] {
 	pq := n.pqueue()
 
