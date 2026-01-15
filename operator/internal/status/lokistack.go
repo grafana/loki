@@ -22,6 +22,9 @@ type LokiStackStatusInfo struct {
 
 	// NetworkPolicies indicates which set of network policies has been deployed, if any
 	NetworkPolicies lokiv1.NetworkPolicyRuleSet
+
+	// Warnings contain the warning conditions generated for the LokiStack
+	Warnings []metav1.Condition
 }
 
 const (
@@ -78,9 +81,10 @@ func (e *DegradedError) Error() string {
 	return fmt.Sprintf("cluster degraded: %s", e.Message)
 }
 
-func generateConditions(ctx context.Context, cs *lokiv1.LokiStackComponentStatus, k k8s.Client, stack *lokiv1.LokiStack, degradedErr *DegradedError) ([]metav1.Condition, error) {
+func generateConditions(ctx context.Context, cs *lokiv1.LokiStackComponentStatus, k k8s.Client, stack *lokiv1.LokiStack, degradedErr *DegradedError, additionalWarnings []metav1.Condition) ([]metav1.Condition, error) {
 	conditions := generateWarnings(stack.Status.Storage.Schemas)
 
+	conditions = append(conditions, additionalWarnings...)
 	mainCondition, err := generateCondition(ctx, cs, k, stack, degradedErr)
 	if err != nil {
 		return nil, err

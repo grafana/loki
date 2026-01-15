@@ -1319,6 +1319,8 @@ const (
 	ReasonStorageNeedsSchemaUpdate LokiStackConditionReason = "StorageNeedsSchemaUpdate"
 	// ReasonInvalidReplicationFactor when the replication factor is equal to or more than the ingester replicas
 	ReasonInvalidReplicationFactor LokiStackConditionReason = "ReasonInvalidReplicationFactor"
+	// ReasonIngesterPDBMinAvailableBelowReplicationFactor when the ingester PDB minimum available pods is less than the replication factor which may cause log ingestion to be unavailable during updates
+	ReasonIngesterPDBMinAvailableBelowReplicationFactor LokiStackConditionReason = "ReasonIngesterPDBMinAvailableBelowReplicationFactor"
 )
 
 // PodStatus is a short description of the status a Pod can be in.

@@ -11,6 +11,7 @@ import (
 
 	v1 "github.com/grafana/loki/operator/api/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
+	"github.com/grafana/loki/operator/internal/manifests/internal"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
 )
 
@@ -115,8 +116,8 @@ func TestBuildIngester_PodDisruptionBudget(t *testing.T) {
 		{
 			Name:                 "Demo stack",
 			Size:                 lokiv1.SizeOneXDemo,
-			PDBMinAvailable:      1,
-			ExpectedMinAvailable: 1,
+			PDBMinAvailable:      0,
+			ExpectedMinAvailable: 0,
 			Replicas:             1,
 			RF:                   1,
 		},
@@ -156,9 +157,12 @@ func TestBuildIngester_PodDisruptionBudget(t *testing.T) {
 						Factor: int32(tc.RF),
 					},
 				},
+				ResourceRequirements: internal.ComponentResources{
+					Ingester: internal.ResourceRequirements{
+						PDBMinAvailable: tc.PDBMinAvailable,
+					},
+				},
 			}
-			err := ValidateReplicationFactor(&opts)
-			require.NoError(t, err)
 
 			objs, err := BuildIngester(opts)
 			require.NoError(t, err)
@@ -171,47 +175,6 @@ func TestBuildIngester_PodDisruptionBudget(t *testing.T) {
 			require.NotNil(t, pdb.Spec.MinAvailable.IntVal)
 			require.Equal(t, int32(tc.ExpectedMinAvailable), pdb.Spec.MinAvailable.IntVal)
 			require.EqualValues(t, ComponentLabels(LabelIngesterComponent, opts.Name), pdb.Spec.Selector.MatchLabels)
-		})
-	}
-}
-
-func TestBuildIngester_PodDisruptionBudgetWithCustomReplicationFactor(t *testing.T) {
-	ingesterReplicas := 3
-	for _, tc := range []struct {
-		Name                    string
-		CustomReplicationFactor int32
-		PDBMinAvailable         int
-		ExpectedMinAvailable    int
-	}{
-		{
-			Name:                    "ingester replicas < replication factor",
-			CustomReplicationFactor: 4,
-			PDBMinAvailable:         1,
-			ExpectedMinAvailable:    2,
-		},
-	} {
-		t.Run(tc.Name, func(t *testing.T) {
-			opts := Options{
-				Name:      "abcd",
-				Namespace: "efgh",
-				Gates:     v1.FeatureGates{},
-				Stack: lokiv1.LokiStackSpec{
-					Template: &lokiv1.LokiTemplateSpec{
-						Ingester: &lokiv1.LokiComponentSpec{
-							Replicas: int32(ingesterReplicas),
-						},
-					},
-					Tenants: &lokiv1.TenantsSpec{
-						Mode: lokiv1.OpenshiftLogging,
-					},
-					Size: lokiv1.SizeOneXPico,
-					Replication: &lokiv1.ReplicationSpec{
-						Factor: tc.CustomReplicationFactor,
-					},
-				},
-			}
-			err := ValidateReplicationFactor(&opts)
-			require.NotNil(t, err)
 		})
 	}
 }
