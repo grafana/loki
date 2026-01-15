@@ -6075,6 +6075,7 @@ null
   "serviceAnnotations": {},
   "serviceLabels": {},
   "serviceType": "ClusterIP",
+  "startupProbe": {},
   "terminationGracePeriodSeconds": 300,
   "tolerations": [],
   "topologySpreadConstraints": [
@@ -6524,6 +6525,15 @@ false
 			<td>Service type for ingester service</td>
 			<td><pre lang="json">
 "ClusterIP"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.startupProbe</td>
+			<td>object</td>
+			<td>startup probe settings for ingester pods. If empty use `loki.startupProbe`</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
