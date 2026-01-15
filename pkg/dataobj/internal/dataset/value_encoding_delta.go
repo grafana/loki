@@ -76,6 +76,7 @@ func (enc *deltaEncoder) Reset(w streamio.Writer) {
 // with each subsequent value being the delta from the previous value.
 type deltaDecoder struct {
 	buf  []byte
+	off  int
 	prev int64
 }
 
@@ -107,32 +108,41 @@ func (dec *deltaDecoder) Decode(alloc *memory.Allocator, count int) (any, error)
 	// Resize must be used again before returning any data if the slice is not completely filled.
 	valuesBuf := buffer.WithCapacity[int64](alloc, count)
 	valuesBuf.Resize(count)
+	values := valuesBuf.Data()
 
 	// Shadow local variables to avoid the pointer indirection of referencing dec.buf and dec.prev.
 	var (
 		buf  []byte
 		prev int64
+		off  int
 	)
 	buf = dec.buf
 	prev = dec.prev
-	defer func() { dec.buf = buf; dec.prev = prev }()
+	off = dec.off
+	defer func() { dec.buf = buf; dec.prev = prev; dec.off = off }()
+
+	// Check the invariant so the compiler can eliminate the bounds check when assigning to values[i].
+	if len(values) != count {
+		panic(fmt.Sprintf("invariant broken: values buffer has %d values, expected %d", len(values), count))
+	}
 
 	for i := range count {
-		delta, n := binary.Varint(buf)
+		delta, n := binary.Varint(buf[off:])
 		if n <= 0 {
 			valuesBuf.Resize(i)
-			return valuesBuf.Data(), io.EOF
+			return values[:i], io.EOF
 		}
 
-		buf = buf[n:]
+		off += n
 		prev += delta
-		valuesBuf.Set(i, prev)
+		values[i] = prev
 	}
-	return valuesBuf.Data(), nil
+	return values, nil
 }
 
 // Reset resets the deltaDecoder to its initial state.
 func (dec *deltaDecoder) Reset(data []byte) {
 	dec.prev = 0
+	dec.off = 0
 	dec.buf = data
 }
