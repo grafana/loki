@@ -40,12 +40,14 @@ func Test_delta(t *testing.T) {
 	var actual []int64
 	for {
 		values, err := dec.Decode(&alloc, batchSize)
-		if errors.Is(err, io.EOF) {
-			break
+		if !errors.Is(err, io.EOF) {
+			require.NoError(t, err)
 		}
-		require.NoError(t, err)
 		for _, v := range values.([]int64) {
 			actual = append(actual, v)
+		}
+		if err != nil {
+			break
 		}
 	}
 
@@ -82,12 +84,14 @@ func Fuzz_delta(f *testing.F) {
 		var actual []int64
 		for {
 			values, err := dec.Decode(&alloc, batchSize)
-			if errors.Is(err, io.EOF) {
-				break
+			if err != nil && !errors.Is(err, io.EOF) {
+				t.Fatalf("error decoding: %v", err)
 			}
-			require.NoError(t, err)
 			for _, v := range values.([]int64) {
 				actual = append(actual, v)
+			}
+			if errors.Is(err, io.EOF) {
+				break
 			}
 		}
 
