@@ -402,7 +402,7 @@ func (d *ReflectionDecoder) unmarshalBool(
 	return newOffset, mmdberrors.NewUnmarshalTypeError(value, result.Type())
 }
 
-var sliceType = reflect.TypeOf([]byte{})
+var sliceType = reflect.TypeFor[[]byte]()
 
 func (d *ReflectionDecoder) unmarshalBytes(
 	size, offset uint,
@@ -700,7 +700,7 @@ func (d *ReflectionDecoder) unmarshalUint(
 	return newOffset, mmdberrors.NewUnmarshalTypeError(value, result.Type())
 }
 
-var bigIntType = reflect.TypeOf(big.Int{})
+var bigIntType = reflect.TypeFor[big.Int]()
 
 func (d *ReflectionDecoder) unmarshalUint128(
 	size, offset uint, result addressableValue,

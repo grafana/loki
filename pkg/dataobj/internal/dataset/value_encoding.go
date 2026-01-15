@@ -5,6 +5,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
+	"github.com/grafana/loki/v3/pkg/memory"
 )
 
 // A valueEncoder encodes sequences of [Value], writing them to an underlying
@@ -30,14 +31,14 @@ type valueEncoder interface {
 	Reset(w streamio.Writer)
 }
 
-// A valueDecoder decodes sequences of [Value] from an underlying
-// [streamio.Reader]. Implementations of encoding types must call
-// registerValueEncoding to register themselves.
-type valueDecoder interface {
-	// PhysicalType returns the type of values supported by the valueDecoder.
+// A legacyValueDecoder decodes sequences of [Value] from an underlying
+// byte slice. Implementations of encoding types must call registerValueEncoding
+// to register themselves.
+type legacyValueDecoder interface {
+	// PhysicalType returns the type of values supported by the decoder.
 	PhysicalType() datasetmd.PhysicalType
 
-	// EncodingType returns the encoding type used by the valueDecoder.
+	// EncodingType returns the encoding type used by the decoder.
 	EncodingType() datasetmd.EncodingType
 
 	// Decode decodes up to len(s) values, storing the results into s. The
@@ -45,9 +46,34 @@ type valueDecoder interface {
 	// At the end of the stream, Decode returns 0, [io.EOF].
 	Decode(s []Value) (int, error)
 
-	// Reset discards any state and resets the valueDecoder to read from r. This
-	// permits reusing a valueDecoder rather than allocating a new one.
-	Reset(r streamio.Reader)
+	// Reset discards any state and resets the decoder to read from data.
+	// This permits reusing a decoder rather than allocating a new one.
+	Reset(data []byte)
+}
+
+// A valueDecoder reads values from an underlying byte slice. Implementations of
+// encoding types must call registerValueEncoding to register themselves.
+//
+// valueDecoder supersedes [legacyValueDecoder].
+type valueDecoder interface {
+	// PhysicalType returns the type of values supported by the decoder.
+	PhysicalType() datasetmd.PhysicalType
+
+	// EncodingType returns the encoding type used by the decoder.
+	EncodingType() datasetmd.EncodingType
+
+	// Decode up to count values using the provided allocator. An opaque return
+	// variable represents the decoded values. Callers are responsible for
+	// understanding which concrete type the return value is based on the
+	// encoding type.
+	//
+	// TODO(rfratto): Replace the any return type with a more general "array"
+	// type.
+	Decode(alloc *memory.Allocator, count int) (any, error)
+
+	// Reset discards any state and resets the decoder to read from data.
+	// This permits reusing a decoder rather than allocating a new one.
+	Reset(data []byte)
 }
 
 // registry stores known value encoders and decoders. We use a global variable
@@ -62,22 +88,22 @@ type (
 	}
 
 	registryEntry struct {
-		NewEncoder func(streamio.Writer) valueEncoder
-		NewDecoder func(streamio.Reader) valueDecoder
+		NewEncoder       func(streamio.Writer) valueEncoder
+		NewDecoder       func([]byte) valueDecoder
+		NewLegacyDecoder func([]byte) legacyValueDecoder
 	}
 )
 
-// registerValueEncoding registers a [valueEncoder] and [valueDecoder] for a
-// specified physicalType and encodingType tuple. If another encoding has been
-// registered for the same tuple, registerValueEncoding panics.
+// registerValueEncoding registers an encoder and decoder for a specified
+// physicalType and encodingType tuple. If another encoding has been registered
+// for the same tuple, registerValueEncoding panics.
 //
 // registerValueEncoding should be called in an init method of files
 // implementing encodings.
 func registerValueEncoding(
 	physicalType datasetmd.PhysicalType,
 	encodingType datasetmd.EncodingType,
-	newEncoder func(streamio.Writer) valueEncoder,
-	newDecoder func(streamio.Reader) valueDecoder,
+	entry registryEntry,
 ) {
 	key := registryKey{
 		Physical: physicalType,
@@ -87,10 +113,7 @@ func registerValueEncoding(
 		panic(fmt.Sprintf("dataset: registerValueEncoding already called for %s/%s", physicalType, encodingType))
 	}
 
-	registry[key] = registryEntry{
-		NewEncoder: newEncoder,
-		NewDecoder: newDecoder,
-	}
+	registry[key] = entry
 }
 
 // newValueEncoder creates a new valueEncoder for the specified physicalType and
@@ -108,10 +131,10 @@ func newValueEncoder(physicalType datasetmd.PhysicalType, encodingType datasetmd
 	return entry.NewEncoder(w), true
 }
 
-// newValueDecoder creates a new valueDecoder for the specified physicalType and
+// newValueDecoder creates a new decoder for the specified physicalType and
 // encodingType. If no encoding is registered for the specified combination of
 // physicalType and encodingType, newValueDecoder returns nil and false.
-func newValueDecoder(physicalType datasetmd.PhysicalType, encodingType datasetmd.EncodingType, r streamio.Reader) (valueDecoder, bool) {
+func newValueDecoder(alloc *memory.Allocator, physicalType datasetmd.PhysicalType, encodingType datasetmd.EncodingType, data []byte) (legacyValueDecoder, bool) {
 	key := registryKey{
 		Physical: physicalType,
 		Encoding: encodingType,
@@ -120,5 +143,19 @@ func newValueDecoder(physicalType datasetmd.PhysicalType, encodingType datasetmd
 	if !exist {
 		return nil, false
 	}
-	return entry.NewDecoder(r), true
+
+	switch {
+	case entry.NewDecoder != nil:
+		dec := &valueDecoderAdapter{
+			Alloc: alloc,
+			Inner: entry.NewDecoder(data),
+		}
+		return dec, true
+
+	case entry.NewLegacyDecoder != nil:
+		return entry.NewLegacyDecoder(data), true
+
+	default:
+		return nil, false
+	}
 }

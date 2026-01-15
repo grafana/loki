@@ -1040,6 +1040,52 @@ func (m *Bootstrap) validate(all bool) error {
 	default:
 		_ = v // ensures v is used
 	}
+	switch v := m.StatsEviction.(type) {
+	case *Bootstrap_StatsEvictionInterval:
+		if v == nil {
+			err := BootstrapValidationError{
+				field:  "StatsEviction",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+
+		if d := m.GetStatsEvictionInterval(); d != nil {
+			dur, err := d.AsDuration(), d.CheckValid()
+			if err != nil {
+				err = BootstrapValidationError{
+					field:  "StatsEvictionInterval",
+					reason: "value is not a valid duration",
+					cause:  err,
+				}
+				if !all {
+					return err
+				}
+				errors = append(errors, err)
+			} else {
+
+				gte := time.Duration(0*time.Second + 1000000*time.Nanosecond)
+
+				if dur < gte {
+					err := BootstrapValidationError{
+						field:  "StatsEvictionInterval",
+						reason: "value must be greater than or equal to 1ms",
+					}
+					if !all {
+						return err
+					}
+					errors = append(errors, err)
+				}
+
+			}
+		}
+
+	default:
+		_ = v // ensures v is used
+	}
 
 	if len(errors) > 0 {
 		return BootstrapMultiError(errors)

@@ -59,7 +59,7 @@ type bigtableClientMonitoredResource struct {
 
 func (bmr *bigtableClientMonitoredResource) exporter() (metric.Exporter, error) {
 	exporter, err := mexporter.New(
-		mexporter.WithProjectID(bmr.clientProject),
+		mexporter.WithProjectID(bmr.project),
 		mexporter.WithMetricDescriptorTypeFormatter(metricFormatter),
 		mexporter.WithCreateServiceTimeSeries(),
 		mexporter.WithMonitoredResourceDescription(bigtableClientMonitoredResourceName, []string{"project_id", "instance", "app_profile", "client_project", "cloud_platform", "host_id", "host_name", "client_name", "uuid", "region"}),

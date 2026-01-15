@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strings"
 
 	"github.com/alecthomas/kingpin/v2"
@@ -59,10 +60,12 @@ type RuleCommand struct {
 	RuleFilesPath string
 
 	// Sync/Diff Rules Config
-	Namespaces           string
-	namespacesMap        map[string]struct{}
-	IgnoredNamespaces    string
-	ignoredNamespacesMap map[string]struct{}
+	Namespaces             string
+	namespacesMap          map[string]struct{}
+	NamespacesRegex        *regexp.Regexp
+	IgnoredNamespaces      string
+	IgnoredNamespacesRegex *regexp.Regexp
+	ignoredNamespacesMap   map[string]struct{}
 
 	// Prepare Rules Config
 	InPlaceEdit                            bool
@@ -175,8 +178,10 @@ func (r *RuleCommand) Register(app *kingpin.Application) {
 
 	// Diff Command
 	diffRulesCmd.Arg("rule-files", "The rule files to check.").ExistingFilesVar(&r.RuleFilesList)
-	diffRulesCmd.Flag("namespaces", "comma-separated list of namespaces to check during a diff. Cannot be used together with --ignored-namespaces.").StringVar(&r.Namespaces)
-	diffRulesCmd.Flag("ignored-namespaces", "comma-separated list of namespaces to ignore during a diff. Cannot be used together with --namespaces.").StringVar(&r.IgnoredNamespaces)
+	diffRulesCmd.Flag("namespaces", "comma-separated list of namespaces to check during a diff. Cannot be used together with other namespaces options.").StringVar(&r.Namespaces)
+	diffRulesCmd.Flag("ignored-namespaces", "comma-separated list of namespaces to ignore during a diff. Cannot be used together with other namespaces options.").StringVar(&r.IgnoredNamespaces)
+	diffRulesCmd.Flag("namespaces-regex", "regex matching namespaces to check during a diff. Cannot be used together with other namespaces options.").RegexpVar(&r.NamespacesRegex)
+	diffRulesCmd.Flag("ignored-namespaces-regex", "regex matching namespaces to ignore during a diff. Cannot be used together with other namespaces options.").RegexpVar(&r.IgnoredNamespacesRegex)
 	diffRulesCmd.Flag("rule-files", "The rule files to check. Flag can be reused to load multiple files.").StringVar(&r.RuleFiles)
 	diffRulesCmd.Flag(
 		"rule-dirs",
@@ -187,8 +192,10 @@ func (r *RuleCommand) Register(app *kingpin.Application) {
 
 	// Sync Command
 	syncRulesCmd.Arg("rule-files", "The rule files to check.").ExistingFilesVar(&r.RuleFilesList)
-	syncRulesCmd.Flag("namespaces", "comma-separated list of namespaces to check during a diff. Cannot be used together with --ignored-namespaces.").StringVar(&r.Namespaces)
-	syncRulesCmd.Flag("ignored-namespaces", "comma-separated list of namespaces to ignore during a sync. Cannot be used together with --namespaces.").StringVar(&r.IgnoredNamespaces)
+	syncRulesCmd.Flag("namespaces", "comma-separated list of namespaces to check during a sync. Cannot be used together with other namespaces options.").StringVar(&r.Namespaces)
+	syncRulesCmd.Flag("ignored-namespaces", "comma-separated list of namespaces to ignore during a sync. Cannot be used together with other namespaces options.").StringVar(&r.IgnoredNamespaces)
+	syncRulesCmd.Flag("namespaces-regex", "regex matching namespaces to check during a sync. Cannot be used together with other namespaces options.").RegexpVar(&r.NamespacesRegex)
+	syncRulesCmd.Flag("ignored-namespaces-regex", "regex matching namespaces to ignore during a sync. Cannot be used together with other namespaces options.").RegexpVar(&r.IgnoredNamespacesRegex)
 	syncRulesCmd.Flag("rule-files", "The rule files to check. Flag can be reused to load multiple files.").StringVar(&r.RuleFiles)
 	syncRulesCmd.Flag(
 		"rule-dirs",
@@ -253,8 +260,10 @@ func (r *RuleCommand) setup(_ *kingpin.ParseContext) error {
 }
 
 func (r *RuleCommand) setupFiles() error {
-	if r.Namespaces != "" && r.IgnoredNamespaces != "" {
-		return errors.New("--namespaces and --ignored-namespaces cannot be set at the same time")
+	if (r.Namespaces != "" && r.IgnoredNamespaces != "") ||
+		(r.NamespacesRegex != nil && r.IgnoredNamespacesRegex != nil) ||
+		(r.Namespaces != "" || r.IgnoredNamespaces != "") && (r.NamespacesRegex != nil || r.IgnoredNamespacesRegex != nil) {
+		return errors.New("only one namespace option can be specified")
 	}
 
 	// Set up ignored namespaces map for sync/diff command
@@ -421,6 +430,13 @@ func (r *RuleCommand) loadRules(_ *kingpin.ParseContext) error {
 
 // shouldCheckNamespace returns whether the namespace should be checked according to the allowed and ignored namespaces
 func (r *RuleCommand) shouldCheckNamespace(namespace string) bool {
+	if r.NamespacesRegex != nil {
+		return r.NamespacesRegex.MatchString(namespace)
+	}
+	if r.IgnoredNamespacesRegex != nil {
+		return !r.IgnoredNamespacesRegex.MatchString(namespace)
+	}
+
 	// when we have an allow list, only check those that we have explicitly defined.
 	if r.namespacesMap != nil {
 		_, allowed := r.namespacesMap[namespace]

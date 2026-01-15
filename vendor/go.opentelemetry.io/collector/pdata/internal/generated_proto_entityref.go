@@ -66,10 +66,9 @@ func CopyEntityRef(dest, src *EntityRef) *EntityRef {
 		dest = NewEntityRef()
 	}
 	dest.SchemaUrl = src.SchemaUrl
-
 	dest.Type = src.Type
-
 	dest.IdKeys = append(dest.IdKeys[:0], src.IdKeys...)
+
 	dest.DescriptionKeys = append(dest.DescriptionKeys[:0], src.DescriptionKeys...)
 
 	return dest
@@ -148,6 +147,7 @@ func (orig *EntityRef) MarshalJSON(dest *json.Stream) {
 		}
 		dest.WriteArrayEnd()
 	}
+
 	if len(orig.DescriptionKeys) > 0 {
 		dest.WriteObjectField("descriptionKeys")
 		dest.WriteArrayStart()
@@ -158,6 +158,7 @@ func (orig *EntityRef) MarshalJSON(dest *json.Stream) {
 		}
 		dest.WriteArrayEnd()
 	}
+
 	dest.WriteObjectEnd()
 }
 
@@ -189,10 +190,12 @@ func (orig *EntityRef) SizeProto() int {
 	var n int
 	var l int
 	_ = l
+
 	l = len(orig.SchemaUrl)
 	if l > 0 {
 		n += 1 + proto.Sov(uint64(l)) + l
 	}
+
 	l = len(orig.Type)
 	if l > 0 {
 		n += 1 + proto.Sov(uint64(l)) + l

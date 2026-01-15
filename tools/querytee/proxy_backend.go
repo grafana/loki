@@ -26,19 +26,40 @@ type ProxyBackend struct {
 
 	// Whether this is the preferred backend from which picking up
 	// the response and sending it back to the client.
-	preferred bool
+	v1Preferred bool
+	v2Preferred bool
 
 	// Only process requests that match the filter.
 	filter *regexp.Regexp
 }
 
 // NewProxyBackend makes a new ProxyBackend
-func NewProxyBackend(name string, endpoint *url.URL, timeout time.Duration, preferred bool) *ProxyBackend {
+// It accepts preferred booleans to be in the following order [legacy, v1, v2], with v1 and v2 being optional
+// for backwards compatibility.
+func NewProxyBackend(name string, endpoint *url.URL, timeout time.Duration, preferred ...bool) *ProxyBackend {
+	var legacyPreferred, v1Preferred, v2Preferred bool
+	if len(preferred) > 0 {
+		legacyPreferred = preferred[0]
+	}
+	if len(preferred) > 1 {
+		v1Preferred = preferred[1]
+	}
+	if len(preferred) > 2 {
+		v2Preferred = preferred[2]
+	}
+
+	// legacy fallback
+	if legacyPreferred {
+		v1Preferred = true
+		v2Preferred = false
+	}
+
 	return &ProxyBackend{
-		name:      name,
-		endpoint:  endpoint,
-		timeout:   timeout,
-		preferred: preferred,
+		name:        name,
+		endpoint:    endpoint,
+		timeout:     timeout,
+		v1Preferred: v1Preferred,
+		v2Preferred: v2Preferred,
 		client: &http.Client{
 			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
 				return errors.New("the query-tee proxy does not follow redirects")
@@ -97,7 +118,8 @@ func (b *ProxyBackend) createBackendRequest(orig *http.Request, body io.ReadClos
 	// Create a child span directly from the original context to preserve parent-child relationship
 	span, spanCtx := tracing.StartSpanFromContext(orig.Context(), "querytee.backend.request")
 	span.SetTag("backend.name", b.name)
-	span.SetTag("backend.preferred", b.preferred)
+	span.SetTag("backend.preferred.v1", b.v1Preferred)
+	span.SetTag("backend.preferred.v2", b.v2Preferred)
 	span.SetTag("backend.endpoint", b.endpoint.String())
 
 	req := orig.Clone(spanCtx)
