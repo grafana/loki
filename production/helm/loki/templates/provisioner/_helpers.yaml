@@ -25,7 +25,7 @@ app.kubernetes.io/component: provisioner
 provisioner image name
 */}}
 {{- define "enterprise-logs.provisionerImage" -}}
-{{- $dict := dict "service" .Values.enterprise.provisioner.image "global" .Values.global.image "defaultVersion" "latest" -}}
+{{- $dict := dict "service" .Values.enterprise.provisioner.image "global" .Values.global "defaultVersion" "latest" -}}
 {{- include "loki.baseImage" $dict -}}
 {{- end -}}
 

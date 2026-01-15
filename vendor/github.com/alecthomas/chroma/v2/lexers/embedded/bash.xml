@@ -23,6 +23,7 @@
     <filename>bash_*</filename>
     <filename>zshrc</filename>
     <filename>.zshrc</filename>
+    <filename>APKBUILD</filename>
     <filename>PKGBUILD</filename>
     <mime_type>application/x-sh</mime_type>
     <mime_type>application/x-shellscript</mime_type>

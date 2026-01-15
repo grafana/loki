@@ -1,0 +1,32 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: tokengen
+  namespace: loki # The namespace of the GEL installation
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app: tokengen
+    spec:
+      serviceAccountName: loki-enterprise-logs # The service account of the GEL installation which has necessary IAM permissions to the storage bucket (e.g. GCS, S3, etc.)
+      restartPolicy: Never
+      containers:
+        - name: tokengen
+          image: grafana/enterprise-logs:latest
+          args:
+            - -target=tokengen
+            - -config.file=/etc/loki/config/config.yaml
+            - -tokengen.token-file=/tmp/token
+          volumeMounts:
+            - name: config-volume
+              mountPath: /etc/loki/config
+              readOnly: true
+      volumes:
+        - name: config-volume
+          configMap:
+            name: enterprise-logs # The configmap of the GEL installation which contains the configuration of the storage bucket
+            items:
+              - key: config.yaml
+                path: config.yaml

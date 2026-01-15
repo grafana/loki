@@ -258,7 +258,7 @@ func (c *BceClient) GetBceClientConfig() *BceClientConfiguration {
 	return c.Config
 }
 
-func NewBceClientWithExclusiveHTTPClient(conf *BceClientConfiguration, sign auth.Signer) *BceClient {
+func NewBceClientWithExclusiveHTTPClient(conf *BceClientConfiguration, sign auth.Signer) (*BceClient, error) {
 	clientConfig := &http.ClientConfig{
 		RedirectDisabled:      conf.RedirectDisabled,
 		DisableKeepAlives:     conf.DisableKeepAlives,
@@ -296,10 +296,14 @@ func NewBceClientWithExclusiveHTTPClient(conf *BceClientConfiguration, sign auth
 
 	if conf.HTTPClient != nil {
 		bceClient.HTTPClient = conf.HTTPClient
+		err := http.InitWithSpecifiedClient(conf.HTTPClient)
+		if err != nil {
+			return nil, err
+		}
 	} else {
 		bceClient.HTTPClient = http.InitExclusiveHTTPClient(clientConfig)
 	}
-	return bceClient
+	return bceClient, nil
 }
 
 func NewBceClientWithTimeout(conf *BceClientConfiguration, sign auth.Signer) *BceClient {

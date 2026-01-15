@@ -13,15 +13,32 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
-- [BUGFIX] do not mark loki.storage.bucketNames.ruler as required, if rulerConfig.storage.type is local. [#19882](https://github.com/grafana/loki/pull/19882)
-- [BUGFIX] Don't mark loki.storage.bucketNames.chunks as required, if an s3 url is provided. [#19873](https://github.com/grafana/loki/pull/19873)
-- [BUGFIX] Do not mark loki.storage.bucketNames.chunks as required, if minio is used. [#19871](https://github.com/grafana/loki/pull/19871)
+- [ENHANCEMENT] Add configurable `startupProbe` to compactor [#20072](https://github.com/grafana/loki/pull/20072).
+- [ENHANCEMENT] Add configurable `startupProbe` to distributor [#20073](https://github.com/grafana/loki/pull/20073).
+- [ENHANCEMENT] Add guards to the `readinessProbe` of the `gateway` container in the `enterprise-gateway` pods, in case the value is empty. Makes it possible to configure livenessProbe and startupProbe in the gateway container in the enterprise-gateway pods [#20074](https://github.com/grafana/loki/pull/20074)
+- [BUGFIX] Fix rendering of `dnsConfig` for `backend`, `read`, `write`, `single-binary` and `table-manager`. [#20013](https://github.com/grafana/loki/pull/20013)
+- [BUGFIX] Respect global registry in sidecar image [#19347](https://github.com/grafana/loki/pull/19347).
+- [BUGFIX] Apply quotation marks to schema date in single-binary-values.yaml example.   [#20252](https://github.com/grafana/loki/pull/20252)
+
+## 6.49.0
+
+- [CHANGE] Updated version of Grafana Loki to 3.6.3
+- [CHANGE] Updated version of Rollout Operator to 0.38.2
+
+## 6.48.0
+
+- [CHANGE] Changed version of Grafana Loki to 3.6.2
+
+## 6.47.0
+
 - [ENHANCEMENT] Use fsGroupChangePolicy=OnRootMismatch on loki to speed up pod starts [#13942](https://github.com/grafana/loki/pull/13942)
+- [ENHANCEMENT] Added `trafficDistribution` configuration option to backend, compactor, distributor, gateway, index-gateway, ingester, querier, query-frontend, query-scheduler,read and write services to enable same-zone traffic routing. [#19558](https://github.com/grafana/loki/pull/19558)
 - [ENHANCEMENT] Add support for configuring `volumeAttributesClassName` for `volumeClaimTemplates`. [#19719](https://github.com/grafana/loki/pull/19719)
-- [BUGFIX] Don't fail for missing bucket name, if minio is enabled. [#19745](https://github.com/grafana/loki/pull/19745)
 - [BUGFIX] Add startupProbe to read pod [#19708](https://github.com/grafana/loki/pull/19708)
-- [ENHANCEMENT] Add guards to the `readinessProbe` of the `gateway` container in the `enterprise-gateway` pods, in case the value is empty [#20074](https://github.com/grafana/loki/pull/20074)
-- [ENHANCEMENT] Makes it possible to configure livenessProbe and startupProbe in the gateway container in the enterprise-gateway pods [#20074](https://github.com/grafana/loki/pull/20074)
+- [BUGFIX] Don't fail for missing bucket name, if minio is enabled. [#19745](https://github.com/grafana/loki/pull/19745)
+- [BUGFIX] Do not mark loki.storage.bucketNames.chunks as required, if minio is used. [#19871](https://github.com/grafana/loki/pull/19871)
+- [BUGFIX] Don't mark loki.storage.bucketNames.chunks as required, if an s3 url is provided. [#19873](https://github.com/grafana/loki/pull/19873)
+- [BUGFIX] do not mark loki.storage.bucketNames.ruler as required, if rulerConfig.storage.type is local. [#19882](https://github.com/grafana/loki/pull/19882)
 
 ## 6.46.0
 

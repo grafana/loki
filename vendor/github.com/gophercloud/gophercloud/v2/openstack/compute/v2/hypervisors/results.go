@@ -11,6 +11,7 @@ import (
 
 // Topology represents a CPU Topology.
 type Topology struct {
+	Cells   int `json:"cells"`
 	Sockets int `json:"sockets"`
 	Cores   int `json:"cores"`
 	Threads int `json:"threads"`

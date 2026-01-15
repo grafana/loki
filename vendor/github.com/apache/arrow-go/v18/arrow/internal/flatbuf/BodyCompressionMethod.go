@@ -20,9 +20,9 @@ package flatbuf
 
 import "strconv"
 
-// / Provided for forward compatibility in case we need to support different
-// / strategies for compressing the IPC message body (like whole-body
-// / compression rather than buffer-level) in the future
+/// Provided for forward compatibility in case we need to support different
+/// strategies for compressing the IPC message body (like whole-body
+/// compression rather than buffer-level) in the future
 type BodyCompressionMethod int8
 
 const (
