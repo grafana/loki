@@ -3117,6 +3117,7 @@ null
   "serviceAnnotations": {},
   "serviceLabels": {},
   "serviceType": "ClusterIP",
+  "startupProbe": {},
   "terminationGracePeriodSeconds": 30,
   "tolerations": []
 }
@@ -3466,6 +3467,15 @@ null
 			<td>Service type for compactor service</td>
 			<td><pre lang="json">
 "ClusterIP"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>compactor.startupProbe</td>
+			<td>object</td>
+			<td>liveness probe settings for ingester pods. If empty use `loki.livenessProbe`</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
