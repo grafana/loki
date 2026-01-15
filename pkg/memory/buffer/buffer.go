@@ -31,6 +31,16 @@ func Make[T any](alloc *memory.Allocator) Buffer[T] {
 	return Buffer[T]{alloc: alloc}
 }
 
+// WithCapacity creates a Buffer managed by the provided allocator. The returned
+// Buffer will have an initial length of zero and a capacity of at least n.
+//
+// The lifetime of the returned Buffer must not exceed the lifetime of alloc.
+func WithCapacity[T any](alloc *memory.Allocator, n int) Buffer[T] {
+	buf := Make[T](alloc)
+	buf.Grow(n)
+	return buf
+}
+
 // Grow increases the capacity of buf, if necessary, to have space for at least
 // another n elements. After Grow(n), at least n elements can be pushed to the
 // slice without another allocation. If n is negative or too large to allocate

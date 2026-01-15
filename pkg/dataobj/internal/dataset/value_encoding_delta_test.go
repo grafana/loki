@@ -27,13 +27,14 @@ func Test_delta(t *testing.T) {
 
 	var (
 		enc    = newDeltaEncoder(&buf)
-		dec    = newDeltaDecoder(&buf)
+		dec    = newDeltaDecoder(nil)
 		decBuf = make([]Value, batchSize)
 	)
 
 	for _, num := range numbers {
 		require.NoError(t, enc.Encode(Int64Value(num)))
 	}
+	dec.Reset(buf.Bytes())
 
 	var actual []int64
 	for {
@@ -65,7 +66,7 @@ func Fuzz_delta(f *testing.F) {
 
 		var (
 			enc    = newDeltaEncoder(&buf)
-			dec    = newDeltaDecoder(&buf)
+			dec    = newDeltaDecoder(nil)
 			decBuf = make([]Value, batchSize)
 		)
 
@@ -75,6 +76,7 @@ func Fuzz_delta(f *testing.F) {
 			numbers = append(numbers, v)
 			require.NoError(t, enc.Encode(Int64Value(v)))
 		}
+		dec.Reset(buf.Bytes())
 
 		var actual []int64
 		for {
@@ -174,13 +176,12 @@ func Benchmark_deltaDecoder_Decode(b *testing.B) {
 			b.Run(fmt.Sprintf("%s/batchSize=%d", datasetName, batchSize), func(b *testing.B) {
 				buf := makeDataset()
 				decBuf := make([]Value, batchSize)
-				reader := bytes.NewReader(buf.Bytes())
-				dec := newDeltaDecoder(reader)
+				dec := newDeltaDecoder(nil)
 
 				valuesRead := 0
 				for b.Loop() {
-					reader.Reset(buf.Bytes())
-					dec.Reset(reader)
+					dec.Reset(buf.Bytes())
+
 					for {
 						n, err := dec.Decode(decBuf)
 						valuesRead += n
