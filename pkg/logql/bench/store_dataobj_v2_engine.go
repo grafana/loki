@@ -74,6 +74,8 @@ func dataobjV2StoreWithOpts(dataDir string, tenantID string, cfg engine.Executor
 
 	storeDir := filepath.Join(dataDir, "dataobj")
 	bucketClient, err := filesystem.NewBucket(storeDir)
+	registerer := prometheus.NewRegistry()
+	ms := metastore.NewObjectMetastore(bucketClient, metastoreCfg, logger, metastore.NewObjectMetastoreMetrics(registerer))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create filesystem bucket for DataObjV2EngineStore: %w", err)
 	}
@@ -92,7 +94,7 @@ func dataobjV2StoreWithOpts(dataDir string, tenantID string, cfg engine.Executor
 	)
 
 	if *remoteTransport {
-		schedSrv, schedSvc, err = newServerService("scheduler", logger)
+		schedSrv, schedSvc, err = newServerService("scheduler", logger, prometheus.NewRegistry())
 		if err != nil {
 			return nil, fmt.Errorf("failed to create scheduler server: %w", err)
 		} else if err := services.StartAndAwaitRunning(ctx, schedSvc); err != nil {
@@ -113,7 +115,7 @@ func dataobjV2StoreWithOpts(dataDir string, tenantID string, cfg engine.Executor
 	}
 
 	if *remoteTransport {
-		workerSrv, workerSvc, err = newServerService("worker", logger)
+		workerSrv, workerSvc, err = newServerService("worker", logger, prometheus.NewRegistry())
 		if err != nil {
 			return nil, fmt.Errorf("failed to create worker server: %w", err)
 		} else if err := services.StartAndAwaitRunning(ctx, workerSvc); err != nil {
@@ -142,7 +144,8 @@ func dataobjV2StoreWithOpts(dataDir string, tenantID string, cfg engine.Executor
 			// LogQL query.
 			WorkerThreads: max(runtime.GOMAXPROCS(0), 8),
 		},
-		Executor: cfg,
+		Executor:  cfg,
+		Metastore: ms,
 	})
 
 	if err != nil {
@@ -157,13 +160,12 @@ func dataobjV2StoreWithOpts(dataDir string, tenantID string, cfg engine.Executor
 	}
 
 	newEngine, err := engine.New(engine.Params{
-		Logger:          logger,
-		Registerer:      prometheus.NewRegistry(),
-		Config:          cfg,
-		MetastoreConfig: metastoreCfg,
-		Scheduler:       sched,
-		Bucket:          bucketClient,
-		Limits:          logql.NoLimits,
+		Logger:     logger,
+		Registerer: registerer,
+		Config:     cfg,
+		Scheduler:  sched,
+		Limits:     logql.NoLimits,
+		Metastore:  ms,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("creating engine: %w", err)
@@ -176,11 +178,11 @@ func dataobjV2StoreWithOpts(dataDir string, tenantID string, cfg engine.Executor
 	}, nil
 }
 
-func newServerService(name string, logger log.Logger) (*server.Server, services.Service, error) {
+func newServerService(name string, logger log.Logger, registerer prometheus.Registerer) (*server.Server, services.Service, error) {
 	logger = log.With(logger, "component", "server", "server", name)
 	serv, err := server.New(server.Config{
 		Log:               logger,
-		Registerer:        prometheus.NewRegistry(),
+		Registerer:        registerer,
 		HTTPListenNetwork: "tcp",
 		HTTPListenAddress: "localhost",
 		HTTPListenPort:    0,

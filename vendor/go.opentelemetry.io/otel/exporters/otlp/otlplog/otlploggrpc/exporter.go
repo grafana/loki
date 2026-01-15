@@ -8,9 +8,10 @@ import (
 	"sync"
 	"sync/atomic"
 
+	logpb "go.opentelemetry.io/proto/otlp/logs/v1"
+
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc/internal/transform"
 	"go.opentelemetry.io/otel/sdk/log"
-	logpb "go.opentelemetry.io/proto/otlp/logs/v1"
 )
 
 type logClient interface {
@@ -88,6 +89,6 @@ func (e *Exporter) Shutdown(ctx context.Context) error {
 }
 
 // ForceFlush does nothing. The Exporter holds no state.
-func (e *Exporter) ForceFlush(ctx context.Context) error {
+func (*Exporter) ForceFlush(context.Context) error {
 	return nil
 }

@@ -624,7 +624,7 @@ func (p *producer) finishPromises(b batchPromise) {
 	}()
 start:
 	for i, pr := range b.recs {
-		pr.LeaderEpoch = 0
+		pr.LeaderEpoch = -1
 		if b.baseOffset == -1 {
 			// if the base offset is invalid/unknown (-1), all record offsets should
 			// be treated as unknown

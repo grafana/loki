@@ -94,8 +94,13 @@ func (sink *streamSink) Send(ctx context.Context, rec arrow.RecordBatch) error {
 		// where the peer rejected our payload should be considered
 		// nonretryable.
 		err := sink.send(ctx, rec)
-		if err == nil || sink.isRetryable(err) {
+		if err == nil {
 			break
+		}
+
+		if !sink.isRetryable(err) {
+			level.Error(sink.Logger).Log("msg", "failed to send data to peer. Encountered non-retryable error", "err", err)
+			return err
 		}
 
 		level.Warn(sink.Logger).Log("msg", "failed to send data to peer", "err", err)
@@ -175,10 +180,8 @@ func (sink *streamSink) getPeer(ctx context.Context) (*wire.Peer, error) {
 // isRetryable checks if the error is retryable:
 //
 //   - Connections closed to the peer can be retried
-//   - Context cancellation cannot be retried
-//   - All other errors can be retried
 func (sink *streamSink) isRetryable(err error) bool {
-	return errors.Is(err, wire.ErrConnClosed) && !errors.Is(err, context.Canceled)
+	return errors.Is(err, wire.ErrConnClosed)
 }
 
 // Close closes the sink.

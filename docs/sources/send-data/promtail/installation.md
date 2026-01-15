@@ -28,15 +28,15 @@ See the instructions [here](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/i
 1. Make sure to modify the tag to the most recent version.
 
     ```bash
-    docker pull grafana/promtail:3.2.1
+    docker pull grafana/promtail:3.6.0
     ```
 
 1. Create your Promtail configuration file in a file called `promtail-config.yaml`. Refer to the [Promtail configuration reference](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/promtail/configuration/) for more details.
 
-1. Note that you will need to replace `<local-path>` in the commands with your local path.
+1. Note that you will need to replace `<local-path>` in the commands with your local path and may need to update the release version to match the current release.
 
     ```bash
-    docker run -v <local-path>:/mnt/config -v /var/log:/var/log --link loki grafana/promtail:3.2.1 --config.file=/mnt/config/promtail-config.yaml
+    docker run -v <local-path>:/mnt/config -v /var/log:/var/log --link loki grafana/promtail:3.6.0 --config.file=/mnt/config/promtail-config.yaml
     ```
 
 ## Install on MacOS with Homebrew
@@ -169,7 +169,7 @@ data:
       grpc_listen_port: 0
 
     clients:
-    - url: https://{YOUR_LOKI_ENDPOINT}/loki/api/v1/push
+    - url: https://<YOUR_LOKI_ENDPOINT>/loki/api/v1/push
 
     positions:
       filename: /tmp/positions.yaml

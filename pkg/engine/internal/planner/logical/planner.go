@@ -71,6 +71,8 @@ func buildPlanForLogQuery(
 		logfmtStrict        bool
 		logfmtKeepEmpty     bool
 		hasJSONParser       bool
+		hasRegexParser      bool
+		regexpPattern       string
 	)
 
 	// TODO(chaudum): Implement a Walk function that can return an error
@@ -97,7 +99,11 @@ func buildPlanForLogQuery(
 			case syntax.OpParserTypeJSON:
 				hasJSONParser = true
 				return true
-			case syntax.OpParserTypeRegexp, syntax.OpParserTypeUnpack, syntax.OpParserTypePattern:
+			case syntax.OpParserTypeRegexp:
+				hasRegexParser = true
+				regexpPattern = e.Param
+				return true
+			case syntax.OpParserTypeUnpack, syntax.OpParserTypePattern:
 				// keeping these as a distinct cases so we remember to implement them later
 				err = errUnimplemented
 				return false
@@ -109,7 +115,7 @@ func buildPlanForLogQuery(
 			if val, innerErr := convertLabelFilter(e.LabelFilterer); innerErr != nil {
 				err = innerErr
 			} else {
-				if !hasLogfmtParser && !hasJSONParser {
+				if !hasLogfmtParser && !hasJSONParser && !hasRegexParser {
 					predicates = append(predicates, val)
 				} else {
 					postParsePredicates = append(postParsePredicates, val)
@@ -192,6 +198,11 @@ func buildPlanForLogQuery(
 		// JSON has no parameters
 		builder = builder.Parse(types.VariadicOpParseJSON, false, false)
 	}
+	if hasRegexParser {
+		_ = regexpPattern
+		builder = builder.ParseRegexp(regexpPattern)
+	}
+
 	for _, value := range postParsePredicates {
 		builder = builder.Select(value)
 	}
@@ -248,7 +259,15 @@ func walkRangeAggregation(e *syntax.RangeAggregationExpr, params logql.Params) (
 			return nil, errUnimplemented
 		}
 
-		builder = builder.Cast(unwrapIdentifier, unwrapOperation)
+		// Unwrap turns a column into numerical `value` column, and that original column should be dropped from the result.
+		builder = builder.
+			Cast(unwrapIdentifier, unwrapOperation).
+			ProjectDrop(&ColumnRef{
+				Ref: types.ColumnRef{
+					Column: unwrapIdentifier,
+					Type:   types.ColumnTypeAmbiguous,
+				},
+			})
 	}
 
 	var rangeAggType types.RangeAggregationType
@@ -273,8 +292,25 @@ func walkRangeAggregation(e *syntax.RangeAggregationExpr, params logql.Params) (
 		return nil, errUnimplemented
 	}
 
+	// Filter out rows with any errors from parsing or unwrap stages.
+	builder = builder.Select(
+		&BinOp{
+			Left: &BinOp{
+				Left:  NewColumnRef(types.ColumnNameError, types.ColumnTypeGenerated),
+				Right: NewLiteral(""),
+				Op:    types.BinaryOpEq,
+			},
+			Right: &BinOp{
+				Left:  NewColumnRef(types.ColumnNameErrorDetails, types.ColumnTypeGenerated),
+				Right: NewLiteral(""),
+				Op:    types.BinaryOpEq,
+			},
+			Op: types.BinaryOpAnd,
+		},
+	)
+
 	builder = builder.RangeAggregation(
-		nil, rangeAggType, params.Start(), params.End(), params.Step(), rangeInterval,
+		convertGrouping(e.Grouping), rangeAggType, params.Start(), params.End(), params.Step(), rangeInterval,
 	)
 
 	switch e.Operation {
@@ -290,11 +326,6 @@ func walkRangeAggregation(e *syntax.RangeAggregationExpr, params logql.Params) (
 }
 
 func walkVectorAggregation(e *syntax.VectorAggregationExpr, params logql.Params) (Value, error) {
-	// `without()` grouping is not supported.
-	if e.Grouping != nil && e.Grouping.Without {
-		return nil, errUnimplemented
-	}
-
 	left, err := walk(e.Left, params)
 	if err != nil {
 		return nil, err
@@ -305,14 +336,9 @@ func walkVectorAggregation(e *syntax.VectorAggregationExpr, params logql.Params)
 		return nil, errUnimplemented
 	}
 
-	groupBy := make([]ColumnRef, 0, len(e.Grouping.Groups))
-	for _, group := range e.Grouping.Groups {
-		groupBy = append(groupBy, *NewColumnRef(group, types.ColumnTypeAmbiguous))
-	}
-
 	return &VectorAggregation{
 		Table:     left,
-		GroupBy:   groupBy,
+		Grouping:  convertGrouping(e.Grouping),
 		Operation: vecAggType,
 	}, nil
 }
@@ -431,7 +457,7 @@ func convertVectorAggregationType(op string) types.VectorAggregationType {
 	switch op {
 	case syntax.OpTypeSum:
 		return types.VectorAggregationTypeSum
-	// case syntax.OpTypeCount:
+	//case syntax.OpTypeCount:
 	//	return types.VectorAggregationTypeCount
 	case syntax.OpTypeMax:
 		return types.VectorAggregationTypeMax
@@ -594,6 +620,30 @@ func convertQueryRangeToPredicates(start, end time.Time) []*BinOp {
 			Right: NewLiteral(types.Timestamp(end.UTC().UnixNano())),
 			Op:    types.BinaryOpLt,
 		},
+	}
+}
+
+// convertGrouping converts [syntax.Grouping] structure into a list of columns and a grouping mode.
+func convertGrouping(g *syntax.Grouping) Grouping {
+	var columns []ColumnRef
+
+	if g == nil {
+		return Grouping{
+			Columns: columns,
+			Without: true,
+		}
+	}
+
+	if g.Groups != nil {
+		columns = make([]ColumnRef, len(g.Groups))
+		for i, group := range g.Groups {
+			columns[i] = *NewColumnRef(group, types.ColumnTypeAmbiguous)
+		}
+	}
+
+	return Grouping{
+		Columns: columns,
+		Without: g.Without,
 	}
 }
 

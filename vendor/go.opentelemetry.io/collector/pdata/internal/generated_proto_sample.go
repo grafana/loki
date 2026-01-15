@@ -17,11 +17,11 @@ import (
 
 // Sample represents each record value encountered within a profiled program.
 type Sample struct {
-	StackIndex         int32
 	Values             []int64
 	AttributeIndices   []int32
-	LinkIndex          int32
 	TimestampsUnixNano []uint64
+	StackIndex         int32
+	LinkIndex          int32
 }
 
 var (
@@ -69,11 +69,11 @@ func CopySample(dest, src *Sample) *Sample {
 		dest = NewSample()
 	}
 	dest.StackIndex = src.StackIndex
-
 	dest.Values = append(dest.Values[:0], src.Values...)
-	dest.AttributeIndices = append(dest.AttributeIndices[:0], src.AttributeIndices...)
-	dest.LinkIndex = src.LinkIndex
 
+	dest.AttributeIndices = append(dest.AttributeIndices[:0], src.AttributeIndices...)
+
+	dest.LinkIndex = src.LinkIndex
 	dest.TimestampsUnixNano = append(dest.TimestampsUnixNano[:0], src.TimestampsUnixNano...)
 
 	return dest
@@ -148,6 +148,7 @@ func (orig *Sample) MarshalJSON(dest *json.Stream) {
 		}
 		dest.WriteArrayEnd()
 	}
+
 	if len(orig.AttributeIndices) > 0 {
 		dest.WriteObjectField("attributeIndices")
 		dest.WriteArrayStart()
@@ -158,6 +159,7 @@ func (orig *Sample) MarshalJSON(dest *json.Stream) {
 		}
 		dest.WriteArrayEnd()
 	}
+
 	if orig.LinkIndex != int32(0) {
 		dest.WriteObjectField("linkIndex")
 		dest.WriteInt32(orig.LinkIndex)
@@ -172,6 +174,7 @@ func (orig *Sample) MarshalJSON(dest *json.Stream) {
 		}
 		dest.WriteArrayEnd()
 	}
+
 	dest.WriteObjectEnd()
 }
 
@@ -208,9 +211,10 @@ func (orig *Sample) SizeProto() int {
 	var n int
 	var l int
 	_ = l
-	if orig.StackIndex != 0 {
+	if orig.StackIndex != int32(0) {
 		n += 1 + proto.Sov(uint64(orig.StackIndex))
 	}
+
 	if len(orig.Values) > 0 {
 		l = 0
 		for _, e := range orig.Values {
@@ -218,6 +222,7 @@ func (orig *Sample) SizeProto() int {
 		}
 		n += 1 + proto.Sov(uint64(l)) + l
 	}
+
 	if len(orig.AttributeIndices) > 0 {
 		l = 0
 		for _, e := range orig.AttributeIndices {
@@ -225,7 +230,7 @@ func (orig *Sample) SizeProto() int {
 		}
 		n += 1 + proto.Sov(uint64(l)) + l
 	}
-	if orig.LinkIndex != 0 {
+	if orig.LinkIndex != int32(0) {
 		n += 1 + proto.Sov(uint64(orig.LinkIndex))
 	}
 	l = len(orig.TimestampsUnixNano)
@@ -240,7 +245,7 @@ func (orig *Sample) MarshalProto(buf []byte) int {
 	pos := len(buf)
 	var l int
 	_ = l
-	if orig.StackIndex != 0 {
+	if orig.StackIndex != int32(0) {
 		pos = proto.EncodeVarint(buf, pos, uint64(orig.StackIndex))
 		pos--
 		buf[pos] = 0x8
@@ -265,7 +270,7 @@ func (orig *Sample) MarshalProto(buf []byte) int {
 		pos--
 		buf[pos] = 0x1a
 	}
-	if orig.LinkIndex != 0 {
+	if orig.LinkIndex != int32(0) {
 		pos = proto.EncodeVarint(buf, pos, uint64(orig.LinkIndex))
 		pos--
 		buf[pos] = 0x20
@@ -307,7 +312,6 @@ func (orig *Sample) UnmarshalProto(buf []byte) error {
 			if err != nil {
 				return err
 			}
-
 			orig.StackIndex = int32(num)
 		case 2:
 			switch wireType {
@@ -379,7 +383,6 @@ func (orig *Sample) UnmarshalProto(buf []byte) error {
 			if err != nil {
 				return err
 			}
-
 			orig.LinkIndex = int32(num)
 		case 5:
 			switch wireType {

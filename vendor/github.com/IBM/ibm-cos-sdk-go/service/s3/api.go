@@ -3700,6 +3700,81 @@ func (c *S3) HeadObjectWithContext(ctx aws.Context, input *HeadObjectInput, opts
 	return out, req.Send()
 }
 
+const opListBucketReplicationFailures = "ListBucketReplicationFailures"
+
+// ListBucketReplicationFailuresRequest generates a "aws/request.Request" representing the
+// client's request for the ListBucketReplicationFailures operation. The "output" return
+// value will be populated with the request's response once the request completes
+// successfully.
+//
+// Use "Send" method on the returned Request to send the API call to the service.
+// the "output" return value is not valid until after Send returns without error.
+//
+// See ListBucketReplicationFailures for more information on using the ListBucketReplicationFailures
+// API call, and error handling.
+//
+// This method is useful when you want to inject custom logic or configuration
+// into the SDK's request lifecycle. Such as custom headers, or retry logic.
+//
+//	// Example sending a request using the ListBucketReplicationFailuresRequest method.
+//	req, resp := client.ListBucketReplicationFailuresRequest(params)
+//
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
+//
+// See also, https://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/ListBucketReplicationFailures
+func (c *S3) ListBucketReplicationFailuresRequest(input *ListBucketReplicationFailuresInput) (req *request.Request, output *ListBucketReplicationFailuresOutput) {
+	op := &request.Operation{
+		Name:       opListBucketReplicationFailures,
+		HTTPMethod: "GET",
+		HTTPPath:   "/{Bucket}?ibm-replication-failures",
+	}
+
+	if input == nil {
+		input = &ListBucketReplicationFailuresInput{}
+	}
+
+	output = &ListBucketReplicationFailuresOutput{}
+	req = c.newRequest(op, input, output)
+	req.Handlers.Build.PushBackNamed(request.NamedHandler{
+		Name: "contentMd5Handler",
+		Fn:   checksum.AddBodyContentMD5Handler,
+	})
+	return
+}
+
+// ListBucketReplicationFailures API operation for Amazon Simple Storage Service.
+//
+// Returns awserr.Error for service API and SDK errors. Use runtime type assertions
+// with awserr.Error's Code and Message methods to get detailed information about
+// the error.
+//
+// See the AWS API reference guide for Amazon Simple Storage Service's
+// API operation ListBucketReplicationFailures for usage and error information.
+// See also, https://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/ListBucketReplicationFailures
+func (c *S3) ListBucketReplicationFailures(input *ListBucketReplicationFailuresInput) (*ListBucketReplicationFailuresOutput, error) {
+	req, out := c.ListBucketReplicationFailuresRequest(input)
+	return out, req.Send()
+}
+
+// ListBucketReplicationFailuresWithContext is the same as ListBucketReplicationFailures with the addition of
+// the ability to pass a context and additional request options.
+//
+// See ListBucketReplicationFailures for details on how to use this API operation.
+//
+// The context must be non-nil and will be used for request cancellation. If
+// the context is nil a panic will occur. In the future the SDK may create
+// sub-contexts for http.Requests. See https://golang.org/pkg/context/
+// for more information on using Contexts.
+func (c *S3) ListBucketReplicationFailuresWithContext(ctx aws.Context, input *ListBucketReplicationFailuresInput, opts ...request.Option) (*ListBucketReplicationFailuresOutput, error) {
+	req, out := c.ListBucketReplicationFailuresRequest(input)
+	req.SetContext(ctx)
+	req.ApplyOptions(opts...)
+	return out, req.Send()
+}
+
 const opListBuckets = "ListBuckets"
 
 // ListBucketsRequest generates a "aws/request.Request" representing the
@@ -5441,6 +5516,82 @@ func (c *S3) PutBucketReplication(input *PutBucketReplicationInput) (*PutBucketR
 // for more information on using Contexts.
 func (c *S3) PutBucketReplicationWithContext(ctx aws.Context, input *PutBucketReplicationInput, opts ...request.Option) (*PutBucketReplicationOutput, error) {
 	req, out := c.PutBucketReplicationRequest(input)
+	req.SetContext(ctx)
+	req.ApplyOptions(opts...)
+	return out, req.Send()
+}
+
+const opPutBucketReplicationReattempt = "PutBucketReplicationReattempt"
+
+// PutBucketReplicationReattemptRequest generates a "aws/request.Request" representing the
+// client's request for the PutBucketReplicationReattempt operation. The "output" return
+// value will be populated with the request's response once the request completes
+// successfully.
+//
+// Use "Send" method on the returned Request to send the API call to the service.
+// the "output" return value is not valid until after Send returns without error.
+//
+// See PutBucketReplicationReattempt for more information on using the PutBucketReplicationReattempt
+// API call, and error handling.
+//
+// This method is useful when you want to inject custom logic or configuration
+// into the SDK's request lifecycle. Such as custom headers, or retry logic.
+//
+//	// Example sending a request using the PutBucketReplicationReattemptRequest method.
+//	req, resp := client.PutBucketReplicationReattemptRequest(params)
+//
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
+//
+// See also, https://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/PutBucketReplicationReattempt
+func (c *S3) PutBucketReplicationReattemptRequest(input *PutBucketReplicationReattemptInput) (req *request.Request, output *PutBucketReplicationReattemptOutput) {
+	op := &request.Operation{
+		Name:       opPutBucketReplicationReattempt,
+		HTTPMethod: "PUT",
+		HTTPPath:   "/{Bucket}?ibm-replication-reattempt",
+	}
+
+	if input == nil {
+		input = &PutBucketReplicationReattemptInput{}
+	}
+
+	output = &PutBucketReplicationReattemptOutput{}
+	req = c.newRequest(op, input, output)
+	req.Handlers.Unmarshal.Swap(restxml.UnmarshalHandler.Name, protocol.UnmarshalDiscardBodyHandler)
+	req.Handlers.Build.PushBackNamed(request.NamedHandler{
+		Name: "contentMd5Handler",
+		Fn:   checksum.AddBodyContentMD5Handler,
+	})
+	return
+}
+
+// PutBucketReplicationReattempt API operation for Amazon Simple Storage Service.
+//
+// Returns awserr.Error for service API and SDK errors. Use runtime type assertions
+// with awserr.Error's Code and Message methods to get detailed information about
+// the error.
+//
+// See the AWS API reference guide for Amazon Simple Storage Service's
+// API operation PutBucketReplicationReattempt for usage and error information.
+// See also, https://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/PutBucketReplicationReattempt
+func (c *S3) PutBucketReplicationReattempt(input *PutBucketReplicationReattemptInput) (*PutBucketReplicationReattemptOutput, error) {
+	req, out := c.PutBucketReplicationReattemptRequest(input)
+	return out, req.Send()
+}
+
+// PutBucketReplicationReattemptWithContext is the same as PutBucketReplicationReattempt with the addition of
+// the ability to pass a context and additional request options.
+//
+// See PutBucketReplicationReattempt for details on how to use this API operation.
+//
+// The context must be non-nil and will be used for request cancellation. If
+// the context is nil a panic will occur. In the future the SDK may create
+// sub-contexts for http.Requests. See https://golang.org/pkg/context/
+// for more information on using Contexts.
+func (c *S3) PutBucketReplicationReattemptWithContext(ctx aws.Context, input *PutBucketReplicationReattemptInput, opts ...request.Option) (*PutBucketReplicationReattemptOutput, error) {
+	req, out := c.PutBucketReplicationReattemptRequest(input)
 	req.SetContext(ctx)
 	req.ApplyOptions(opts...)
 	return out, req.Send()
@@ -15906,6 +16057,128 @@ func (s *LifecycleRuleFilter) SetTag(v *Tag) *LifecycleRuleFilter {
 	return s
 }
 
+type ListBucketReplicationFailuresInput struct {
+	_ struct{} `locationName:"ListBucketReplicationFailuresRequest" type:"structure"`
+
+	// Bucket is a required field
+	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
+
+	ContinuationToken *string `location:"querystring" locationName:"continuation-token" type:"string"`
+
+	// Requests Amazon S3 to encode the object keys in the response and specifies
+	// the encoding method to use. An object key can contain any Unicode character;
+	// however, the XML 1.0 parser cannot parse some characters, such as characters
+	// with an ASCII value from 0 to 10. For characters that are not supported in
+	// XML 1.0, you can add this parameter to request that Amazon S3 encode the
+	// keys in the response.
+	EncodingType *string `location:"querystring" locationName:"encoding-type" type:"string" enum:"EncodingType"`
+
+	FirstSyncAttemptedBefore *string `location:"querystring" locationName:"first-sync-attempted-before" type:"string"`
+
+	MaxKeys *int64 `location:"querystring" locationName:"max-keys" type:"integer"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s ListBucketReplicationFailuresInput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s ListBucketReplicationFailuresInput) GoString() string {
+	return s.String()
+}
+
+// Validate inspects the fields of the type to determine if they are valid.
+func (s *ListBucketReplicationFailuresInput) Validate() error {
+	invalidParams := request.ErrInvalidParams{Context: "ListBucketReplicationFailuresInput"}
+	if s.Bucket == nil {
+		invalidParams.Add(request.NewErrParamRequired("Bucket"))
+	}
+	if s.Bucket != nil && len(*s.Bucket) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("Bucket", 1))
+	}
+
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	}
+	return nil
+}
+
+// SetBucket sets the Bucket field's value.
+func (s *ListBucketReplicationFailuresInput) SetBucket(v string) *ListBucketReplicationFailuresInput {
+	s.Bucket = &v
+	return s
+}
+
+func (s *ListBucketReplicationFailuresInput) getBucket() (v string) {
+	if s.Bucket == nil {
+		return v
+	}
+	return *s.Bucket
+}
+
+// SetContinuationToken sets the ContinuationToken field's value.
+func (s *ListBucketReplicationFailuresInput) SetContinuationToken(v string) *ListBucketReplicationFailuresInput {
+	s.ContinuationToken = &v
+	return s
+}
+
+// SetEncodingType sets the EncodingType field's value.
+func (s *ListBucketReplicationFailuresInput) SetEncodingType(v string) *ListBucketReplicationFailuresInput {
+	s.EncodingType = &v
+	return s
+}
+
+// SetFirstSyncAttemptedBefore sets the FirstSyncAttemptedBefore field's value.
+func (s *ListBucketReplicationFailuresInput) SetFirstSyncAttemptedBefore(v string) *ListBucketReplicationFailuresInput {
+	s.FirstSyncAttemptedBefore = &v
+	return s
+}
+
+// SetMaxKeys sets the MaxKeys field's value.
+func (s *ListBucketReplicationFailuresInput) SetMaxKeys(v int64) *ListBucketReplicationFailuresInput {
+	s.MaxKeys = &v
+	return s
+}
+
+type ListBucketReplicationFailuresOutput struct {
+	_ struct{} `type:"structure" payload:"ListReplicationFailureResult"`
+
+	ListReplicationFailureResult *ListReplicationFailureResult `locationName:"ListReplicationFailureResult" type:"structure" xmlURI:"http://s3.amazonaws.com/doc/2006-03-01/"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s ListBucketReplicationFailuresOutput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s ListBucketReplicationFailuresOutput) GoString() string {
+	return s.String()
+}
+
+// SetListReplicationFailureResult sets the ListReplicationFailureResult field's value.
+func (s *ListBucketReplicationFailuresOutput) SetListReplicationFailureResult(v *ListReplicationFailureResult) *ListBucketReplicationFailuresOutput {
+	s.ListReplicationFailureResult = v
+	return s
+}
+
 type ListBucketsExtendedInput struct {
 	_ struct{} `locationName:"ListBucketsExtendedRequest" type:"structure"`
 
@@ -17856,6 +18129,110 @@ func (s *ListPartsOutput) SetUploadId(v string) *ListPartsOutput {
 	return s
 }
 
+type ListReplicationFailureResult struct {
+	_ struct{} `type:"structure"`
+
+	// Contents is a required field
+	Contents []*ObjectSyncAttempted `locationNameList:"Contents" type:"list" flattened:"true" required:"true"`
+
+	ContinuationToken *string `type:"string"`
+
+	// Requests Amazon S3 to encode the object keys in the response and specifies
+	// the encoding method to use. An object key can contain any Unicode character;
+	// however, the XML 1.0 parser cannot parse some characters, such as characters
+	// with an ASCII value from 0 to 10. For characters that are not supported in
+	// XML 1.0, you can add this parameter to request that Amazon S3 encode the
+	// keys in the response.
+	EncodingType *string `type:"string" enum:"EncodingType"`
+
+	FirstSyncAttemptedBefore *string `type:"string"`
+
+	// IsTruncated is a required field
+	IsTruncated *bool `type:"boolean" required:"true"`
+
+	// KeyCount is a required field
+	KeyCount *int64 `type:"integer" required:"true"`
+
+	MaxKeys *int64 `type:"integer"`
+
+	// Name is a required field
+	Name *string `type:"string" required:"true"`
+
+	NextContinuationToken *string `type:"string"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s ListReplicationFailureResult) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s ListReplicationFailureResult) GoString() string {
+	return s.String()
+}
+
+// SetContents sets the Contents field's value.
+func (s *ListReplicationFailureResult) SetContents(v []*ObjectSyncAttempted) *ListReplicationFailureResult {
+	s.Contents = v
+	return s
+}
+
+// SetContinuationToken sets the ContinuationToken field's value.
+func (s *ListReplicationFailureResult) SetContinuationToken(v string) *ListReplicationFailureResult {
+	s.ContinuationToken = &v
+	return s
+}
+
+// SetEncodingType sets the EncodingType field's value.
+func (s *ListReplicationFailureResult) SetEncodingType(v string) *ListReplicationFailureResult {
+	s.EncodingType = &v
+	return s
+}
+
+// SetFirstSyncAttemptedBefore sets the FirstSyncAttemptedBefore field's value.
+func (s *ListReplicationFailureResult) SetFirstSyncAttemptedBefore(v string) *ListReplicationFailureResult {
+	s.FirstSyncAttemptedBefore = &v
+	return s
+}
+
+// SetIsTruncated sets the IsTruncated field's value.
+func (s *ListReplicationFailureResult) SetIsTruncated(v bool) *ListReplicationFailureResult {
+	s.IsTruncated = &v
+	return s
+}
+
+// SetKeyCount sets the KeyCount field's value.
+func (s *ListReplicationFailureResult) SetKeyCount(v int64) *ListReplicationFailureResult {
+	s.KeyCount = &v
+	return s
+}
+
+// SetMaxKeys sets the MaxKeys field's value.
+func (s *ListReplicationFailureResult) SetMaxKeys(v int64) *ListReplicationFailureResult {
+	s.MaxKeys = &v
+	return s
+}
+
+// SetName sets the Name field's value.
+func (s *ListReplicationFailureResult) SetName(v string) *ListReplicationFailureResult {
+	s.Name = &v
+	return s
+}
+
+// SetNextContinuationToken sets the NextContinuationToken field's value.
+func (s *ListReplicationFailureResult) SetNextContinuationToken(v string) *ListReplicationFailureResult {
+	s.NextContinuationToken = &v
+	return s
+}
+
 // Describes where logs are stored and the prefix that Amazon S3 assigns to
 // all log object keys for a bucket. For more information, see PUT Bucket logging
 // (https://docs.aws.amazon.com/AmazonS3/latest/API/RESTBucketPUTlogging.html)
@@ -18436,6 +18813,81 @@ func (s ObjectLockRule) GoString() string {
 // SetDefaultRetention sets the DefaultRetention field's value.
 func (s *ObjectLockRule) SetDefaultRetention(v *DefaultRetention) *ObjectLockRule {
 	s.DefaultRetention = v
+	return s
+}
+
+type ObjectSyncAttempted struct {
+	_ struct{} `type:"structure"`
+
+	// FirstSyncAttempted is a required field
+	FirstSyncAttempted *time.Time `type:"timestamp" required:"true"`
+
+	// Key is a required field
+	Key *string `min:"1" type:"string" required:"true"`
+
+	// LastSyncAttempted is a required field
+	LastSyncAttempted *time.Time `type:"timestamp" required:"true"`
+
+	SyncFailureCause *string `type:"string"`
+
+	// SyncType is a required field
+	SyncType *string `type:"string" required:"true"`
+
+	// VersionId is a required field
+	VersionId *string `type:"string" required:"true"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s ObjectSyncAttempted) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s ObjectSyncAttempted) GoString() string {
+	return s.String()
+}
+
+// SetFirstSyncAttempted sets the FirstSyncAttempted field's value.
+func (s *ObjectSyncAttempted) SetFirstSyncAttempted(v time.Time) *ObjectSyncAttempted {
+	s.FirstSyncAttempted = &v
+	return s
+}
+
+// SetKey sets the Key field's value.
+func (s *ObjectSyncAttempted) SetKey(v string) *ObjectSyncAttempted {
+	s.Key = &v
+	return s
+}
+
+// SetLastSyncAttempted sets the LastSyncAttempted field's value.
+func (s *ObjectSyncAttempted) SetLastSyncAttempted(v time.Time) *ObjectSyncAttempted {
+	s.LastSyncAttempted = &v
+	return s
+}
+
+// SetSyncFailureCause sets the SyncFailureCause field's value.
+func (s *ObjectSyncAttempted) SetSyncFailureCause(v string) *ObjectSyncAttempted {
+	s.SyncFailureCause = &v
+	return s
+}
+
+// SetSyncType sets the SyncType field's value.
+func (s *ObjectSyncAttempted) SetSyncType(v string) *ObjectSyncAttempted {
+	s.SyncType = &v
+	return s
+}
+
+// SetVersionId sets the VersionId field's value.
+func (s *ObjectSyncAttempted) SetVersionId(v string) *ObjectSyncAttempted {
+	s.VersionId = &v
 	return s
 }
 
@@ -19484,6 +19936,82 @@ func (s PutBucketReplicationOutput) String() string {
 // be included in the string output. The member name will be present, but the
 // value will be replaced with "sensitive".
 func (s PutBucketReplicationOutput) GoString() string {
+	return s.String()
+}
+
+type PutBucketReplicationReattemptInput struct {
+	_ struct{} `locationName:"PutBucketReplicationReattemptRequest" type:"structure"`
+
+	// Bucket is a required field
+	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s PutBucketReplicationReattemptInput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s PutBucketReplicationReattemptInput) GoString() string {
+	return s.String()
+}
+
+// Validate inspects the fields of the type to determine if they are valid.
+func (s *PutBucketReplicationReattemptInput) Validate() error {
+	invalidParams := request.ErrInvalidParams{Context: "PutBucketReplicationReattemptInput"}
+	if s.Bucket == nil {
+		invalidParams.Add(request.NewErrParamRequired("Bucket"))
+	}
+	if s.Bucket != nil && len(*s.Bucket) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("Bucket", 1))
+	}
+
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	}
+	return nil
+}
+
+// SetBucket sets the Bucket field's value.
+func (s *PutBucketReplicationReattemptInput) SetBucket(v string) *PutBucketReplicationReattemptInput {
+	s.Bucket = &v
+	return s
+}
+
+func (s *PutBucketReplicationReattemptInput) getBucket() (v string) {
+	if s.Bucket == nil {
+		return v
+	}
+	return *s.Bucket
+}
+
+type PutBucketReplicationReattemptOutput struct {
+	_ struct{} `type:"structure"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s PutBucketReplicationReattemptOutput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s PutBucketReplicationReattemptOutput) GoString() string {
 	return s.String()
 }
 

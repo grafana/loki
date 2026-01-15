@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 )
 
 // RegionOption applies options to a Region.
@@ -28,6 +29,19 @@ func WithRegionAttributes(attrs ...attribute.KeyValue) RegionOption {
 	return regionOptionFunc(func(cfg *regionConfig) {
 		cfg.attributes = append(cfg.attributes, attrs...)
 	})
+}
+
+// Event represents a time-stamped event within a region.
+type Event struct {
+	Name       string
+	Timestamp  time.Time
+	Attributes []attribute.KeyValue
+}
+
+// Status represents the status of a region's operation.
+type Status struct {
+	Code    codes.Code
+	Message string
 }
 
 // Region captures the lifetime of a specific operation within a capture.
@@ -56,6 +70,12 @@ type Region struct {
 	// observations are all observations recorded in this region.
 	// Map from statistic key to aggregated observation value.
 	observations map[StatisticKey]*AggregatedObservation
+
+	// events are timestamped events recorded in this region.
+	events []Event
+
+	// status is the status of the region's operation.
+	status Status
 
 	// ended indicates whether End() has been called.
 	ended bool
@@ -90,7 +110,7 @@ func StartRegion(ctx context.Context, name string, opts ...RegionOption) (contex
 	}
 
 	// extract parentID from context
-	if pr := regionFromContext(ctx); pr != nil {
+	if pr := RegionFromContext(ctx); pr != nil {
 		r.parentID = pr.id
 	}
 
@@ -98,7 +118,7 @@ func StartRegion(ctx context.Context, name string, opts ...RegionOption) (contex
 	capture.AddRegion(r)
 
 	// Update context with the new region.
-	return contextWithRegion(ctx, r), r
+	return ContextWithRegion(ctx, r), r
 }
 
 // Record records the statistic Observation o into the region. Calling
@@ -130,6 +150,78 @@ func (r *Region) Record(o Observation) {
 	// Aggregate with existing observations.
 	agg := r.observations[key]
 	agg.Record(o)
+}
+
+// AddEvent adds a timestamped event to the region.
+func (r *Region) AddEvent(name string, attrs ...attribute.KeyValue) {
+	if r == nil {
+		return
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.ended {
+		return
+	}
+
+	r.events = append(r.events, Event{
+		Name:       name,
+		Timestamp:  time.Now(),
+		Attributes: attrs,
+	})
+}
+
+// SetStatus sets the status of the region.
+func (r *Region) SetStatus(code codes.Code, message string) {
+	if r == nil {
+		return
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.ended {
+		return
+	}
+
+	r.status = Status{Code: code, Message: message}
+}
+
+// RecordError records an error as an event and sets the status to Error.
+func (r *Region) RecordError(err error) {
+	if r == nil || err == nil {
+		return
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.ended {
+		return
+	}
+
+	r.events = append(r.events, Event{
+		Name:      "exception",
+		Timestamp: time.Now(),
+		Attributes: []attribute.KeyValue{
+			attribute.String("exception.message", err.Error()),
+		},
+	})
+	r.status = Status{Code: codes.Error, Message: err.Error()}
+}
+
+// Observations returns all aggregated observations recorded in the region.
+func (r *Region) Observations() []AggregatedObservation {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	observations := make([]AggregatedObservation, 0, len(r.observations))
+	for _, agg := range r.observations {
+		observations = append(observations, *agg)
+	}
+
+	return observations
 }
 
 // End completes the Region. Updates to the Region are ignored after calling End.

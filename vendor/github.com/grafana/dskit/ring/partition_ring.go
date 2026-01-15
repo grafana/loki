@@ -43,15 +43,41 @@ type PartitionRing struct {
 	activePartitionsCount int
 }
 
-func NewPartitionRing(desc PartitionRingDesc) *PartitionRing {
+// PartitionRingOptions holds optional configuration parameters for creating a PartitionRing.
+type PartitionRingOptions struct {
+	// ShuffleShardCacheSize is the size of the cache used for shuffle sharding.
+	// If zero or negative, an unbounded map-based cache is used.
+	// If positive, an LRU cache with the specified size is used.
+	ShuffleShardCacheSize int
+}
+
+// DefaultPartitionRingOptions returns the default options for creating a PartitionRing.
+func DefaultPartitionRingOptions() PartitionRingOptions {
+	return PartitionRingOptions{
+		ShuffleShardCacheSize: 0,
+	}
+}
+
+// NewPartitionRing creates a new PartitionRing with default options.
+func NewPartitionRing(desc PartitionRingDesc) (*PartitionRing, error) {
+	return NewPartitionRingWithOptions(desc, DefaultPartitionRingOptions())
+}
+
+// NewPartitionRingWithOptions creates a new PartitionRing with custom options.
+func NewPartitionRingWithOptions(desc PartitionRingDesc, opts PartitionRingOptions) (*PartitionRing, error) {
+	shuffleShardCache, err := newPartitionRingShuffleShardCache(opts.ShuffleShardCacheSize)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create shuffle shard cache: %w", err)
+	}
+
 	return &PartitionRing{
 		desc:                  desc,
 		ringTokens:            desc.tokens(),
 		partitionByToken:      desc.partitionByToken(),
 		ownersByPartition:     desc.ownersByPartition(),
 		activePartitionsCount: desc.activePartitionsCount(),
-		shuffleShardCache:     newPartitionRingShuffleShardCache(),
-	}
+		shuffleShardCache:     shuffleShardCache,
+	}, nil
 }
 
 // ActivePartitionForKey returns partition for the given key. Only active partitions are considered.
@@ -255,7 +281,7 @@ func (r *PartitionRing) shuffleShard(identifier string, size int, lookbackPeriod
 		}
 	}
 
-	return NewPartitionRing(r.desc.WithPartitions(result)), nil
+	return NewPartitionRing(r.desc.WithPartitions(result))
 }
 
 // PartitionsCount returns the number of partitions in the ring.
