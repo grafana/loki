@@ -1,5 +1,4 @@
 //go:build mint
-// +build mint
 
 /*
  * MinIO Go Library for Amazon S3 Compatible Cloud Storage
@@ -1959,6 +1958,101 @@ func testObjectTaggingWithVersioning() {
 	// Delete all objects and their versions as long as the bucket itself
 	if err = cleanupVersionedBucket(bucketName, c); err != nil {
 		logError(testName, function, args, startTime, "", "CleanupBucket failed", err)
+		return
+	}
+
+	logSuccess(testName, function, args, startTime)
+}
+
+func testPutObjectWithAutoChecksums() {
+	// initialize logging params
+	startTime := time.Now()
+	testName := getFuncName()
+	function := "PutObject(bucketName, objectName, reader, size, opts)"
+	args := map[string]interface{}{
+		"bucketName": "",
+		"objectName": "",
+		"opts":       "minio.PutObjectOptions{UserMetadata: metadata, Progress: progress}",
+	}
+
+	if !isFullMode() {
+		logIgnored(testName, function, args, startTime, "Skipping functional tests for short/quick runs")
+		return
+	}
+
+	c, err := NewClient(ClientConfig{TrailingHeaders: true})
+	if err != nil {
+		logError(testName, function, args, startTime, "", "MinIO client object creation failed", err)
+		return
+	}
+
+	// Generate a new random bucket name.
+	bucketName := randString(60, rand.NewSource(time.Now().UnixNano()), "minio-go-test-")
+	args["bucketName"] = bucketName
+
+	// Make a new bucket.
+	err = c.MakeBucket(context.Background(), bucketName, minio.MakeBucketOptions{Region: "us-east-1"})
+	if err != nil {
+		logError(testName, function, args, startTime, "", "Make bucket failed", err)
+		return
+	}
+
+	defer cleanupBucket(bucketName, c)
+	const testfile = "datafile-1.03-MB"
+	bufSize := dataFileMap[testfile]
+
+	// Save the data
+	objectName := randString(60, rand.NewSource(time.Now().UnixNano()), "")
+	args["objectName"] = objectName
+	c.TraceOn(os.Stdout)
+
+	cmpChecksum := func(got, want string) {
+		if want != got {
+			logError(testName, function, args, startTime, "", "checksum mismatch", fmt.Errorf("want %s, got %s", want, got))
+			return
+		}
+	}
+
+	meta := map[string]string{}
+	reader := getDataReader(testfile)
+	b, err := io.ReadAll(reader)
+	if err != nil {
+		logError(testName, function, args, startTime, "", "Read failed", err)
+		return
+	}
+	h := minio.ChecksumCRC64NVME.Hasher()
+	h.Reset()
+	h.Write(b)
+	// Upload the data without explicit checksum.
+	resp, err := c.PutObject(context.Background(), bucketName, objectName, bytes.NewReader(b), int64(bufSize), minio.PutObjectOptions{
+		DisableMultipart:     true,
+		DisableContentSha256: false,
+		UserMetadata:         meta,
+		AutoChecksum:         minio.ChecksumNone,
+		Checksum:             minio.ChecksumNone,
+	})
+	_ = resp
+	if err != nil {
+		logError(testName, function, args, startTime, "", "PutObject failed", err)
+		return
+	}
+
+	// Read the metadata back
+	gopts := minio.GetObjectOptions{Checksum: true}
+	st, err := c.StatObject(context.Background(), bucketName, objectName, gopts)
+	if err != nil {
+		logError(testName, function, args, startTime, "", "GetObject failed", err)
+		return
+	}
+	if st.ChecksumCRC64NVME != "" {
+		meta[minio.ChecksumCRC64NVME.Key()] = base64.StdEncoding.EncodeToString(h.Sum(nil))
+		cmpChecksum(st.ChecksumCRC64NVME, meta["x-amz-checksum-crc64nvme"])
+		if st.ChecksumMode != minio.ChecksumFullObjectMode.String() {
+			logError(testName, function, args, startTime, "", "Checksum mode is not full object", fmt.Errorf("got %s, want %s", st.ChecksumMode, minio.ChecksumFullObjectMode.String()))
+		}
+	}
+	if st.Size != int64(bufSize) {
+		logError(testName, function, args, startTime, "", "Number of bytes returned by PutObject does not match GetObject, expected "+string(bufSize)+" got "+string(st.Size), err)
 		return
 	}
 
@@ -14686,6 +14780,7 @@ func main() {
 		testPutObjectMetadataNonUSASCIIV2()
 		testPutObjectNoLengthV2()
 		testPutObjectsUnknownV2()
+		testPutObjectWithAutoChecksums()
 		testGetObjectContextV2()
 		testFPutObjectContextV2()
 		testFGetObjectContextV2()
