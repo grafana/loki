@@ -1,13 +1,14 @@
 package dataset
 
 import (
-	"bytes"
-	"errors"
+	"encoding/binary"
 	"fmt"
 	"io"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
+	"github.com/grafana/loki/v3/pkg/memory"
+	"github.com/grafana/loki/v3/pkg/memory/buffer"
 )
 
 func init() {
@@ -16,8 +17,8 @@ func init() {
 		datasetmd.PHYSICAL_TYPE_INT64,
 		datasetmd.ENCODING_TYPE_DELTA,
 		registryEntry{
-			NewEncoder:       func(w streamio.Writer) valueEncoder { return newDeltaEncoder(w) },
-			NewLegacyDecoder: func(data []byte) legacyValueDecoder { return newDeltaDecoder(data) },
+			NewEncoder: func(w streamio.Writer) valueEncoder { return newDeltaEncoder(w) },
+			NewDecoder: func(data []byte) valueDecoder { return newDeltaDecoder(data) },
 		},
 	)
 }
@@ -74,11 +75,11 @@ func (enc *deltaEncoder) Reset(w streamio.Writer) {
 // deltaDecoder decodes delta-encoded numbers. Values are decoded as varint,
 // with each subsequent value being the delta from the previous value.
 type deltaDecoder struct {
-	r    streamio.Reader
+	buf  []byte
 	prev int64
 }
 
-var _ legacyValueDecoder = (*deltaDecoder)(nil)
+var _ valueDecoder = (*deltaDecoder)(nil)
 
 // newDeltaDecoder creates a deltaDecoder that reads encoded numbers from data.
 func newDeltaDecoder(data []byte) *deltaDecoder {
@@ -97,45 +98,41 @@ func (dec *deltaDecoder) EncodingType() datasetmd.EncodingType {
 	return datasetmd.ENCODING_TYPE_DELTA
 }
 
-// Decode decodes up to len(s) values, storing the results into s. The
-// number of decoded values is returned, followed by an error (if any).
-// At the end of the stream, Decode returns 0, [io.EOF].
-func (dec *deltaDecoder) Decode(s []Value) (int, error) {
-	if len(s) == 0 {
-		return 0, nil
-	}
+// Decode decodes up to count values, storing the results into a new int64 slice obtained from the provided allocator. The
+// decoded values are returned as an any type, which must be cast to []int64.
+// At the end of the stream, Decode returns an [io.EOF].
+func (dec *deltaDecoder) Decode(alloc *memory.Allocator, count int) (any, error) {
+	// Obtain a buffer from the allocator with enough capacity for an optimistic `count` values.
+	// Resize the buffer explicitly in order to use the Set API which avoids a reslice compared to Push.
+	// Resize must be used again before returning any data if the slice is not completely filled.
+	valuesBuf := buffer.WithCapacity[int64](alloc, count)
+	valuesBuf.Resize(count)
 
-	var err error
-	var v Value
+	// Shadow local variables to avoid the pointer indirection of referencing dec.buf and dec.prev.
+	var (
+		buf  []byte
+		prev int64
+	)
+	buf = dec.buf
+	prev = dec.prev
+	defer func() { dec.buf = buf; dec.prev = prev }()
 
-	for i := range s {
-		v, err = dec.decode()
-		if err != nil && errors.Is(err, io.EOF) {
-			if i == 0 {
-				return 0, io.EOF
-			}
-			return i, nil
-		} else if err != nil {
-			return i, err
+	for i := range count {
+		delta, n := binary.Varint(buf)
+		if n <= 0 {
+			valuesBuf.Resize(i)
+			return valuesBuf.Data(), io.EOF
 		}
-		s[i] = v
-	}
-	return len(s), nil
-}
 
-// decode reads the next uint64 value from the stream.
-func (dec *deltaDecoder) decode() (Value, error) {
-	delta, err := streamio.ReadVarint(dec.r)
-	if err != nil {
-		return Int64Value(dec.prev), err
+		buf = buf[n:]
+		prev += delta
+		valuesBuf.Set(i, prev)
 	}
-
-	dec.prev += delta
-	return Int64Value(dec.prev), nil
+	return valuesBuf.Data(), nil
 }
 
 // Reset resets the deltaDecoder to its initial state.
 func (dec *deltaDecoder) Reset(data []byte) {
 	dec.prev = 0
-	dec.r = bytes.NewBuffer(data)
+	dec.buf = data
 }

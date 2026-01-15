@@ -57,6 +57,8 @@ func (a *valueDecoderAdapter) unpackResult(dst []Value, result any) int {
 	switch result := result.(type) {
 	case stringArray:
 		return a.unpackStringArray(dst, result)
+	case []int64:
+		return a.unpackInt64Array(dst, result)
 	default:
 		panic(fmt.Sprintf("legacy decoder adapter found unexpected type %T", result))
 	}
@@ -78,6 +80,13 @@ func (a *valueDecoderAdapter) unpackStringArray(dst []Value, result stringArray)
 	}
 
 	return result.Len()
+}
+
+func (a *valueDecoderAdapter) unpackInt64Array(dst []Value, result []int64) int {
+	for i := range result {
+		dst[i] = Int64Value(result[i])
+	}
+	return len(result)
 }
 
 // Reset discards any state and resets the decoder to read from data.
