@@ -33,6 +33,11 @@ type Config struct {
 
 	EnableEngineRouter bool   `yaml:"enable_engine_router" category:"experimental"`
 	DownstreamAddress  string `yaml:"downstream_address" category:"experimental"`
+
+	// MetadataPropagator propagates context values through task metadata.
+	// Used to pass values like authorization rules from frontend to workers.
+	// Optional; if nil, no custom context propagation is performed.
+	MetadataPropagator MetadataPropagator `yaml:"-"`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {

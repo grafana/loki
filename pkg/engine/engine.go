@@ -46,6 +46,15 @@ var (
 
 var tracer = otel.Tracer("pkg/engine")
 
+// Re-export internal types for external use.
+type (
+	// RequestStreamFilterer creates a StreamFilterer for a given request context.
+	RequestStreamFilterer = executor.RequestStreamFilterer
+
+	// StreamFilterer filters streams based on their labels.
+	StreamFilterer = executor.StreamFilterer
+)
+
 // ExecutorConfig configures engine execution.
 type ExecutorConfig struct {
 	// Batch size of the v2 execution engine.

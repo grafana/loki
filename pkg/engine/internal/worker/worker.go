@@ -25,6 +25,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
+	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 )
@@ -77,6 +78,11 @@ type Config struct {
 	// StreamFilterer is an optional filterer that can filter streams based on their labels.
 	// When set, streams are filtered before scanning.
 	StreamFilterer executor.RequestStreamFilterer `yaml:"-"`
+
+	// MetadataPropagator extracts context values from task metadata.
+	// Used to receive values like authorization rules from the scheduler.
+	// Optional; if nil, no custom context extraction is performed.
+	MetadataPropagator scheduler.MetadataPropagator `yaml:"-"`
 }
 
 // readyRequest is a message sent from a thread to notify the worker that it's
@@ -527,6 +533,11 @@ func (w *Worker) newJob(ctx context.Context, scheduler *wire.Peer, logger log.Lo
 	// Extract tracing context and bind it to the job's context.
 	var tc propagation.TraceContext
 	ctx = tc.Extract(ctx, propagation.HeaderCarrier(msg.Metadata))
+
+	// Extract custom context values (e.g., authorization rules) if a propagator is configured.
+	if w.config.MetadataPropagator != nil {
+		ctx = w.config.MetadataPropagator.Extract(ctx, msg.Metadata)
+	}
 
 	ctx, cancel := context.WithCancel(ctx)
 

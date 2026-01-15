@@ -26,6 +26,20 @@ import (
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
+// MetadataPropagator injects/extracts context values to/from task metadata.
+// This allows passing context values (e.g., authorization rules) from schedulers to workers.
+//
+// Implementations should be safe for concurrent use.
+type MetadataPropagator interface {
+	// Inject writes context values into the metadata header.
+	// Called by the scheduler when starting tasks.
+	Inject(ctx context.Context, metadata http.Header)
+
+	// Extract reads values from metadata and returns a new context with those values.
+	// Called by workers when receiving task assignments.
+	Extract(ctx context.Context, metadata http.Header) context.Context
+}
+
 // Config holds configuration options for [Scheduler].
 type Config struct {
 	// Logger for optional log messages.
@@ -33,13 +47,19 @@ type Config struct {
 
 	// Listener is the listener used for communication with workers.
 	Listener wire.Listener
+
+	// MetadataPropagator propagates context values through task metadata.
+	// Used to pass values like authorization rules from frontend to workers.
+	// Optional; if nil, no custom context propagation is performed.
+	MetadataPropagator MetadataPropagator
 }
 
 // Scheduler is a service that can schedule tasks to connected worker instances.
 type Scheduler struct {
-	logger    log.Logger
-	metrics   *metrics
-	collector *collector
+	logger             log.Logger
+	metrics            *metrics
+	collector          *collector
+	metadataPropagator MetadataPropagator
 
 	initOnce sync.Once
 	svc      services.Service
@@ -74,7 +94,8 @@ func New(config Config) (*Scheduler, error) {
 	}
 
 	s := &Scheduler{
-		logger: config.Logger,
+		logger:             config.Logger,
+		metadataPropagator: config.MetadataPropagator,
 
 		listener: config.Listener,
 
@@ -966,6 +987,11 @@ func (s *Scheduler) Start(ctx context.Context, tasks ...*workflow.Task) error {
 	var tc propagation.TraceContext
 	metadata := make(http.Header)
 	tc.Inject(ctx, propagation.HeaderCarrier(metadata))
+
+	// Inject custom context values (e.g., authorization rules) if a propagator is configured.
+	if s.metadataPropagator != nil {
+		s.metadataPropagator.Inject(ctx, metadata)
+	}
 
 	wfRegion := xcap.RegionFromContext(ctx)
 

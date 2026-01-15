@@ -1487,8 +1487,9 @@ func (t *Loki) initV2QueryEngineScheduler() (services.Service, error) {
 	sched, err := engine_v2.NewScheduler(engine_v2.SchedulerParams{
 		Logger: log.With(util_log.Logger, "component", "query-engine-scheduler"),
 
-		AdvertiseAddr: advertiseAddr,
-		Endpoint:      "/api/v2/frame",
+		AdvertiseAddr:      advertiseAddr,
+		Endpoint:           "/api/v2/frame",
+		MetadataPropagator: t.Cfg.QueryEngine.MetadataPropagator,
 	})
 	if err != nil {
 		return nil, err
@@ -1545,6 +1546,9 @@ func (t *Loki) initV2QueryEngineWorker() (services.Service, error) {
 		Endpoint:      "/api/v2/frame",
 
 		Metastore: metastore.NewObjectMetastore(store, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics),
+
+		MetadataPropagator: t.Cfg.QueryEngine.MetadataPropagator,
+		StreamFilterer:     t.Cfg.QueryEngine.Executor.StreamFilterer,
 	})
 	if err != nil {
 		return nil, err
