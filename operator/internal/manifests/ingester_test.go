@@ -1,6 +1,7 @@
 package manifests
 
 import (
+	"math/rand"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -107,35 +108,18 @@ func TestNewIngesterStatefulSet_SelectorMatchesLabels(t *testing.T) {
 func TestBuildIngester_PodDisruptionBudget(t *testing.T) {
 	for _, tc := range []struct {
 		Name                 string
-		Size                 lokiv1.LokiStackSizeType
 		PDBMinAvailable      int
 		ExpectedMinAvailable int
-		Replicas             int
-		RF                   int
 	}{
 		{
-			Name:                 "Demo stack",
-			Size:                 lokiv1.SizeOneXDemo,
-			PDBMinAvailable:      0,
-			ExpectedMinAvailable: 0,
-			Replicas:             1,
-			RF:                   1,
-		},
-		{
 			Name:                 "Small stack",
-			Size:                 lokiv1.SizeOneXSmall,
 			PDBMinAvailable:      1,
 			ExpectedMinAvailable: 1,
-			Replicas:             2,
-			RF:                   2,
 		},
 		{
 			Name:                 "Medium stack",
-			Size:                 lokiv1.SizeOneXMedium,
 			PDBMinAvailable:      2,
 			ExpectedMinAvailable: 2,
-			Replicas:             3,
-			RF:                   2,
 		},
 	} {
 		t.Run(tc.Name, func(t *testing.T) {
@@ -143,27 +127,22 @@ func TestBuildIngester_PodDisruptionBudget(t *testing.T) {
 				Name:      "abcd",
 				Namespace: "efgh",
 				Gates:     v1.FeatureGates{},
-				Stack: lokiv1.LokiStackSpec{
-					Size: tc.Size,
-					Template: &lokiv1.LokiTemplateSpec{
-						Ingester: &lokiv1.LokiComponentSpec{
-							Replicas: int32(tc.Replicas),
-						},
-					},
-					Tenants: &lokiv1.TenantsSpec{
-						Mode: lokiv1.OpenshiftLogging,
-					},
-					Replication: &lokiv1.ReplicationSpec{
-						Factor: int32(tc.RF),
-					},
-				},
 				ResourceRequirements: internal.ComponentResources{
 					Ingester: internal.ResourceRequirements{
 						PDBMinAvailable: tc.PDBMinAvailable,
 					},
 				},
+				Stack: lokiv1.LokiStackSpec{
+					Template: &lokiv1.LokiTemplateSpec{
+						Ingester: &lokiv1.LokiComponentSpec{
+							Replicas: rand.Int31(),
+						},
+					},
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.OpenshiftLogging,
+					},
+				},
 			}
-
 			objs, err := BuildIngester(opts)
 			require.NoError(t, err)
 			require.Len(t, objs, 4)
@@ -186,7 +165,7 @@ func TestNewIngesterStatefulSet_TopologySpreadConstraints(t *testing.T) {
 		Stack: lokiv1.LokiStackSpec{
 			Template: &lokiv1.LokiTemplateSpec{
 				Ingester: &lokiv1.LokiComponentSpec{
-					Replicas: 3,
+					Replicas: 1,
 				},
 			},
 			Replication: &lokiv1.ReplicationSpec{
@@ -200,7 +179,7 @@ func TestNewIngesterStatefulSet_TopologySpreadConstraints(t *testing.T) {
 						MaxSkew:     1,
 					},
 				},
-				Factor: 2,
+				Factor: 1,
 			},
 		},
 	})
