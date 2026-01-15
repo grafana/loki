@@ -16,14 +16,14 @@ func TestPriorityQueuePopForward(t *testing.T) {
 			Labels: "a",
 			Entries: []logproto.Entry{
 				{Timestamp: time.Unix(0, 1), Line: "a1"},
-				{Timestamp: time.Unix(0, 4), Line: "a3"},
+				{Timestamp: time.Unix(0, 4), Line: "a4"},
 			},
 		},
 		{
 			Labels: "b",
 			Entries: []logproto.Entry{
 				{Timestamp: time.Unix(0, 2), Line: "b2"},
-				{Timestamp: time.Unix(0, 3), Line: "b4"},
+				{Timestamp: time.Unix(0, 3), Line: "b3"},
 			},
 		},
 	}
@@ -57,14 +57,14 @@ func TestPriorityQueuePopBackward(t *testing.T) {
 			Labels: "x",
 			Entries: []logproto.Entry{
 				{Timestamp: time.Unix(0, 10), Line: "x10"},
-				{Timestamp: time.Unix(0, 1), Line: "x5"},
+				{Timestamp: time.Unix(0, 1), Line: "x1"},
 			},
 		},
 		{
 			Labels: "y",
 			Entries: []logproto.Entry{
 				{Timestamp: time.Unix(0, 9), Line: "y9"},
-				{Timestamp: time.Unix(0, 5), Line: "y1"},
+				{Timestamp: time.Unix(0, 5), Line: "y5"},
 			},
 		},
 	}
