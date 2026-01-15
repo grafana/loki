@@ -2146,6 +2146,20 @@ func (mt *mockTee) Duplicate(_ context.Context, tenant string, streams []KeyedSt
 	mt.tenant = tenant
 }
 
+// mockFailingTee is a mock tee that always fails with an error.
+type mockFailingTee struct {
+	err error
+}
+
+func (mt *mockFailingTee) Duplicate(_ context.Context, _ string, streams []KeyedStream, pushTracker *PushTracker) {
+	// Add streams to pending count like a real tee would
+	pushTracker.streamsPending.Add(int32(len(streams)))
+	// Report failure for each stream
+	for range streams {
+		pushTracker.doneWithResult(mt.err)
+	}
+}
+
 func TestDistributorTee(t *testing.T) {
 	data := []*logproto.PushRequest{
 		{
@@ -2197,6 +2211,32 @@ func TestDistributorTee(t *testing.T) {
 
 		require.Equal(t, "test", tee.tenant)
 	}
+}
+
+func TestDistributorTeeFailure(t *testing.T) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	limits.RejectOldSamples = false
+	distributors, _ := prepare(t, 1, 3, limits, nil)
+
+	expectedErr := errors.New("tee failure")
+	tee := &mockFailingTee{err: expectedErr}
+	distributors[0].tee = tee
+
+	req := &logproto.PushRequest{
+		Streams: []logproto.Stream{
+			{
+				Labels: "{job=\"foo\"}",
+				Entries: []logproto.Entry{
+					{Timestamp: time.Unix(123456, 0), Line: "line 1"},
+				},
+			},
+		},
+	}
+
+	_, err := distributors[0].Push(ctx, req)
+	require.Error(t, err)
+	require.ErrorIs(t, err, expectedErr)
 }
 
 func TestDistributor_StructuredMetadataSanitization(t *testing.T) {
