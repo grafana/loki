@@ -25,7 +25,7 @@ app.kubernetes.io/component: compactor
 compactor image
 */}}
 {{- define "loki.compactorImage" -}}
-{{- $dict := dict "loki" .Values.loki.image "service" .Values.compactor.image "global" .Values.global.image "defaultVersion" .Chart.AppVersion -}}
+{{- $dict := dict "loki" .Values.loki.image "service" .Values.compactor.image "global" .Values.global "defaultVersion" .Chart.AppVersion -}}
 {{- include "loki.lokiImage" $dict -}}
 {{- end }}
 

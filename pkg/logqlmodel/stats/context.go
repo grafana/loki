@@ -295,6 +295,8 @@ func (i *Index) Merge(m Index) {
 	i.PostFilterChunks += m.PostFilterChunks
 	i.ShardsDuration += m.ShardsDuration
 	i.TotalStreams += m.TotalStreams
+	i.ChunkRefsLookupTime += m.ChunkRefsLookupTime
+	i.BloomFilterTime += m.BloomFilterTime
 	if m.UsedBloomFilters {
 		i.UsedBloomFilters = m.UsedBloomFilters
 	}

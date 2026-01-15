@@ -30,6 +30,9 @@ should be used to describe the unique runtime environment instrumented code
 is being run on. That way when multiple instances of the code are collected
 at a single endpoint their origin is decipherable.
 
+See [go.opentelemetry.io/otel/sdk/log/internal/x] for information about
+the experimental features.
+
 See [go.opentelemetry.io/otel/log] for more information about
 the OpenTelemetry Logs API.
 */

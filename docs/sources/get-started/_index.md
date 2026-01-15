@@ -43,27 +43,21 @@ To collect logs and view your log data generally involves the following steps:
 
 **Next steps:** Learn more about the Loki query language, [LogQL](https://grafana.com/docs/loki/<LOKI_VERSION>/query/).
 
-## Example Grafana Alloy and Agent configuration files to ship Kubernetes Pod logs to Loki
+## Example Grafana Alloy configuration file to ship Kubernetes Pod logs to Loki
 
-To deploy Grafana Alloy or Agent to collect Pod logs from your Kubernetes cluster and ship them to Loki, you can use a Helm chart, and a `values.yaml` file.
+To deploy Grafana Alloy to collect Pod logs from your Kubernetes cluster and ship them to Loki, you can use a Helm chart, and a `values.yaml` file.
 
 This sample `values.yaml` file is configured to:
 
-- Install Grafana Agent to discover Pod logs.
+- Install Grafana Alloy to discover Pod logs.
 - Add `container` and `pod` labels to the logs.
-- Push the logs to your Loki cluster using the tenant ID `cloud`.
+- Push the logs to your Loki cluster using the tenant ID `local`.
 
 1. Install Loki with the [Helm chart](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/install-scalable/).
 
-1. Deploy either Grafana Alloy or Grafana Agent, using the Helm chart:
-
-   - [Grafana Alloy Helm chart](https://grafana.com/docs/alloy/latest/get-started/install/kubernetes/)
-   - [Grafana Agent Helm chart](https://grafana.com/docs/agent/latest/flow/setup/install/kubernetes/)
+1. Deploy Grafana Alloy using the Helm chart. Refer to [Install Grafana Alloy on Kubernetes](https://grafana.com/docs/alloy/latest/get-started/install/kubernetes/) for more information.
 
 1. Create a `values.yaml` file, based on the following example, making sure to update the value for `forward_to = [loki.write.endpoint.receiver]`:
-
-   {{< tabs >}}
-   {{< tab-content name="Grafana Alloy" >}}
 
    ```yaml
    alloy:
@@ -93,88 +87,8 @@ This sample `values.yaml` file is configured to:
          }
    ```
 
-   {{< /tab-content >}}
-   {{< tab-content name="Grafana Agent" >}}
+1. Then install Alloy in your Kubernetes cluster using:
 
-   ```yaml
-   agent:
-     mounts:
-       varlog: true
-     configMap:
-       content: |
-         logging {
-           level  = "info"
-           format = "logfmt"
-         }
-
-         discovery.kubernetes "k8s" {
-           role = "pod"
-         }
-
-         discovery.relabel "k8s" {
-           targets = discovery.kubernetes.k8s.targets
-
-           rule {
-             source_labels = ["__meta_kubernetes_pod_name"]
-             action = "replace"
-             target_label = "pod"
-           }
-           rule {
-             source_labels = ["__meta_kubernetes_pod_container_name"]
-             action = "replace"
-             target_label = "container"
-           }
-
-           rule {
-             source_labels = ["__meta_kubernetes_namespace", "__meta_kubernetes_pod_label_name"]
-             target_label  = "job"
-             separator     = "/"
-           }
-
-           rule {
-             source_labels = ["__meta_kubernetes_pod_uid", "__meta_kubernetes_pod_container_name"]
-             target_label  = "__path__"
-             separator     = "/"
-             replacement   = "/var/log/pods/*$1/*.log"
-           }
-         }
-
-         local.file_match "pods" {
-           path_targets = discovery.relabel.k8s.output
-         }
-
-         loki.source.file "pods" {
-           targets = local.file_match.pods.targets
-           forward_to = [loki.write.endpoint.receiver]
-         }
-
-         loki.write "endpoint" {
-           endpoint {
-               url = "http://loki-gateway:80/loki/api/v1/push"
-               tenant_id = "cloud"
-           }
-         }
+   ```bash
+   helm install alloy grafana/alloy -f ./values.yaml
    ```
-
-   {{< /tab-content >}}
-   {{< /tabs >}}
-
-1. Then install Alloy or the Agent in your Kubernetes cluster using:
-
-   {{< tabs >}}
-   {{< tab-content name="Grafana Alloy" >}}
-
-   ```alloy
-   helm install alloy grafana/alloy -f ./values.yml
-   ```
-
-   {{< /tab-content >}}
-
-   {{< tab-content name="Grafana Agent" >}}
-
-   ```agent
-   helm upgrade -f values.yaml agent grafana/grafana-agent
-   ```
-
-   {{< /tab-content >}}
-   {{< /tabs >}}

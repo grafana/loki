@@ -33,6 +33,7 @@ import (
 	"github.com/prometheus/prometheus/discovery/targetgroup"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/util/features"
 	"github.com/prometheus/prometheus/util/logging"
 	"github.com/prometheus/prometheus/util/osutil"
 	"github.com/prometheus/prometheus/util/pool"
@@ -67,6 +68,13 @@ func NewManager(o *Options, logger *slog.Logger, newScrapeFailureLogger func(str
 
 	m.metrics.setTargetMetadataCacheGatherer(m)
 
+	// Register scrape features.
+	if r := o.FeatureRegistry; r != nil {
+		r.Set(features.Scrape, "extra_scrape_metrics", o.ExtraMetrics)
+		r.Set(features.Scrape, "start_timestamp_zero_ingestion", o.EnableStartTimestampZeroIngestion)
+		r.Set(features.Scrape, "type_and_unit_labels", o.EnableTypeAndUnitLabels)
+	}
+
 	return m, nil
 }
 
@@ -85,15 +93,16 @@ type Options struct {
 	DiscoveryReloadInterval model.Duration
 	// Option to enable the ingestion of the created timestamp as a synthetic zero sample.
 	// See: https://github.com/prometheus/proposals/blob/main/proposals/2023-06-13_created-timestamp.md
-	EnableCreatedTimestampZeroIngestion bool
-	// Option to enable the ingestion of native histograms.
-	EnableNativeHistogramsIngestion bool
+	EnableStartTimestampZeroIngestion bool
 
 	// EnableTypeAndUnitLabels
 	EnableTypeAndUnitLabels bool
 
 	// Optional HTTP client options to use when scraping.
 	HTTPClientOptions []config_util.HTTPClientOption
+
+	// FeatureRegistry is the registry for tracking enabled/disabled features.
+	FeatureRegistry features.Collector
 
 	// private option for testability.
 	skipOffsetting bool
@@ -182,11 +191,6 @@ func (m *Manager) reload() {
 			scrapeConfig, ok := m.scrapeConfigs[setName]
 			if !ok {
 				m.logger.Error("error reloading target set", "err", "invalid config id:"+setName)
-				continue
-			}
-			if scrapeConfig.ConvertClassicHistogramsToNHCBEnabled() && m.opts.EnableCreatedTimestampZeroIngestion {
-				// TODO(krajorama): fix https://github.com/prometheus/prometheus/issues/15137
-				m.logger.Error("error reloading target set", "err", "cannot convert classic histograms to native histograms with custom buckets and ingest created timestamp zero samples at the same time due to https://github.com/prometheus/prometheus/issues/15137")
 				continue
 			}
 			m.metrics.targetScrapePools.Inc()
@@ -403,4 +407,35 @@ func (m *Manager) TargetsDroppedCounts() map[string]int {
 		counts[tset] = sp.droppedTargetsCount
 	}
 	return counts
+}
+
+func (m *Manager) ScrapePoolConfig(scrapePool string) (*config.ScrapeConfig, error) {
+	m.mtxScrape.Lock()
+	defer m.mtxScrape.Unlock()
+
+	sp, ok := m.scrapePools[scrapePool]
+	if !ok {
+		return nil, fmt.Errorf("scrape pool %q not found", scrapePool)
+	}
+
+	return sp.config, nil
+}
+
+// DisableEndOfRunStalenessMarkers disables the end-of-run staleness markers for the provided targets in the given
+// targetSet. When the end-of-run staleness is disabled for a target, when it goes away, there will be no staleness
+// markers written for its series.
+func (m *Manager) DisableEndOfRunStalenessMarkers(targetSet string, targets []*Target) {
+	// This avoids mutex lock contention.
+	if len(targets) == 0 {
+		return
+	}
+
+	// Only hold the lock to find the scrape pool
+	m.mtxScrape.Lock()
+	sp, ok := m.scrapePools[targetSet]
+	m.mtxScrape.Unlock()
+
+	if ok {
+		sp.disableEndOfRunStalenessMarkers(targets)
+	}
 }

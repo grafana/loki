@@ -89,9 +89,11 @@ func (b *RowBuilder) configure(node Node, columnIndex int16, level columnLevel, 
 		// FIXED_LEN_BYTE_ARRAY is the only type which needs to be given a
 		// non-nil zero-value if the field is required.
 		if kind == FixedLenByteArray {
-			zero := make([]byte, typ.Length())
-			model.ptr = &zero[0]
-			model.u64 = uint64(len(zero))
+			if length := typ.Length(); length != 0 {
+				zero := make([]byte, length)
+				model.ptr = &zero[0]
+				model.u64 = uint64(length)
+			}
 		}
 		group.members = append(group.members, columnIndex)
 		b.models[columnIndex] = model

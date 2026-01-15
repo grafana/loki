@@ -22,8 +22,8 @@ import (
 	flatbuffers "github.com/google/flatbuffers/go"
 )
 
-// / Same as ListView, but with 64-bit offsets and sizes, allowing to represent
-// / extremely large data values.
+/// Same as ListView, but with 64-bit offsets and sizes, allowing to represent
+/// extremely large data values.
 type LargeListView struct {
 	_tab flatbuffers.Table
 }
@@ -33,6 +33,21 @@ func GetRootAsLargeListView(buf []byte, offset flatbuffers.UOffsetT) *LargeListV
 	x := &LargeListView{}
 	x.Init(buf, n+offset)
 	return x
+}
+
+func FinishLargeListViewBuffer(builder *flatbuffers.Builder, offset flatbuffers.UOffsetT) {
+	builder.Finish(offset)
+}
+
+func GetSizePrefixedRootAsLargeListView(buf []byte, offset flatbuffers.UOffsetT) *LargeListView {
+	n := flatbuffers.GetUOffsetT(buf[offset+flatbuffers.SizeUint32:])
+	x := &LargeListView{}
+	x.Init(buf, n+offset+flatbuffers.SizeUint32)
+	return x
+}
+
+func FinishSizePrefixedLargeListViewBuffer(builder *flatbuffers.Builder, offset flatbuffers.UOffsetT) {
+	builder.FinishSizePrefixed(offset)
 }
 
 func (rcv *LargeListView) Init(buf []byte, i flatbuffers.UOffsetT) {

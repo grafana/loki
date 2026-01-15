@@ -1,5 +1,33 @@
 # Change Log
 
+## [1.171.0] - 2025-12-17
+
+- #936 - @dillonledoux - Add fields to AgentCreateRequest for Gradient Agents
+
+## [1.170.0] - 2025-12-09
+
+- #933 - @do-joe - Nfs struct exposes Host and MountPath
+
+## [1.169.0] - 2025-11-13
+
+- #928 - @do-joe - Fix GetLogsink API Response Parsing to Match Actual API Behavior
+
+## [1.168.0] - 2025-11-06
+
+- #926 - @niket-dujari - added provision for attach and detach share
+- #927 - @m3co-code - CON-12804 - add GPU related DOKS cluster plugin options
+- #924 - @llDrLove - CON-12995 Add GPU node pool resources to node pool template response
+
+## [1.167.0] - 2025-10-18
+
+- #921 - @sreeram-venkitesh - MNFS-164: Added NFS resize and snapshot APIs
+
+## [1.166.0] - 2025-10-13
+
+- #912 - @sreeram-venkitesh - MNFS-164: Added NFS APIs
+- #913 - @fyzanshaik - Add ListAssociatedResourcesForDeletion for Droplets
+- #909 - @jvasilevsky - LBAAS-3995: add project ID to nat gateway
+
 ## [1.165.1] - 2025-09-24
 
 - #906 - @do-joe - Fix Database Logsink API Response Parsing and TLS Field Marshaling

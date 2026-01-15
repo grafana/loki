@@ -33,6 +33,21 @@ func GetRootAsFixedSizeBinary(buf []byte, offset flatbuffers.UOffsetT) *FixedSiz
 	return x
 }
 
+func FinishFixedSizeBinaryBuffer(builder *flatbuffers.Builder, offset flatbuffers.UOffsetT) {
+	builder.Finish(offset)
+}
+
+func GetSizePrefixedRootAsFixedSizeBinary(buf []byte, offset flatbuffers.UOffsetT) *FixedSizeBinary {
+	n := flatbuffers.GetUOffsetT(buf[offset+flatbuffers.SizeUint32:])
+	x := &FixedSizeBinary{}
+	x.Init(buf, n+offset+flatbuffers.SizeUint32)
+	return x
+}
+
+func FinishSizePrefixedFixedSizeBinaryBuffer(builder *flatbuffers.Builder, offset flatbuffers.UOffsetT) {
+	builder.FinishSizePrefixed(offset)
+}
+
 func (rcv *FixedSizeBinary) Init(buf []byte, i flatbuffers.UOffsetT) {
 	rcv._tab.Bytes = buf
 	rcv._tab.Pos = i
@@ -42,7 +57,7 @@ func (rcv *FixedSizeBinary) Table() flatbuffers.Table {
 	return rcv._tab
 }
 
-// / Number of bytes per value
+/// Number of bytes per value
 func (rcv *FixedSizeBinary) ByteWidth() int32 {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(4))
 	if o != 0 {
@@ -51,7 +66,7 @@ func (rcv *FixedSizeBinary) ByteWidth() int32 {
 	return 0
 }
 
-// / Number of bytes per value
+/// Number of bytes per value
 func (rcv *FixedSizeBinary) MutateByteWidth(n int32) bool {
 	return rcv._tab.MutateInt32Slot(4, n)
 }

@@ -49,6 +49,7 @@ type BuildOptions struct {
 	Labels                          map[string]string
 	AlertManagerEnabled             bool
 	UserWorkloadAlertManagerEnabled bool
+	ExternalAccessEnabled           bool
 }
 
 // TenantData defines the existing cookieSecret for lokistack reconcile.
