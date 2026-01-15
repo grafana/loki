@@ -144,7 +144,7 @@ func (dec *plainBytesDecoder) Decode(alloc *memory.Allocator, count int) (any, e
 			return stringArray{
 				offsets: offsets[:i+1],
 				data:    values[:totalBytes],
-			}, nil
+			}, io.EOF
 		}
 
 		copied := copy(values[totalBytes:], data[off+uvarintSize:off+uvarintSize+int(stringSize)])

@@ -126,7 +126,7 @@ func (pr *pageReader) read(v []Value) (n int, err error) {
 	var valuesCount int
 	if presentCount > 0 {
 		valuesCount, err = pr.valuesDec.Decode(pr.valuesBuf[:presentCount])
-		if err != nil {
+		if err != nil && !errors.Is(err, io.EOF) {
 			return n, err
 		} else if valuesCount != presentCount {
 			return n, fmt.Errorf("unexpected number of values: %d, expected: %d", valuesCount, presentCount)

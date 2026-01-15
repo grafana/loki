@@ -38,15 +38,19 @@ func Test_plainBytesEncoder(t *testing.T) {
 	var out []string
 	for {
 		v, err := dec.Decode(&alloc, batchSize)
+
+		// Handle potential value before checking errors.
+		if v != nil {
+			strArr := v.(stringArray)
+			for i := range strArr.Len() {
+				out = append(out, string(strArr.Get(i)))
+			}
+		}
+
 		if err != nil && errors.Is(err, io.EOF) {
 			break
 		} else if err != nil {
 			t.Fatal(err)
-		}
-
-		strArr := v.(stringArray)
-		for i := range strArr.Len() {
-			out = append(out, string(strArr.Get(i)))
 		}
 	}
 
@@ -70,11 +74,12 @@ func Test_plainBytesDecoder_adapter(t *testing.T) {
 	decBuf := make([]Value, batchSize)
 	for {
 		n, err := dec.Decode(decBuf[:batchSize])
-		if errors.Is(err, io.EOF) {
+		if n == 0 && errors.Is(err, io.EOF) {
 			break
-		} else if err != nil {
+		} else if err != nil && !errors.Is(err, io.EOF) {
 			t.Fatal(err)
 		}
+
 		for _, v := range decBuf[:n] {
 			out = append(out, string(v.Binary()))
 		}
