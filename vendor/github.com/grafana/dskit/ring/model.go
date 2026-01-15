@@ -28,6 +28,8 @@ func (ts ByID) Len() int           { return len(ts) }
 func (ts ByID) Swap(i, j int)      { ts[i], ts[j] = ts[j], ts[i] }
 func (ts ByID) Less(i, j int) bool { return ts[i].Id < ts[j].Id }
 
+type InstanceVersions map[uint64]uint64
+
 // ProtoDescFactory makes new Descs
 func ProtoDescFactory() proto.Message {
 	return NewDesc()
@@ -54,7 +56,7 @@ func timeToUnixSecons(t time.Time) int64 {
 
 // AddIngester adds the given ingester to the ring. Ingester will only use supplied tokens,
 // any other tokens are removed.
-func (d *Desc) AddIngester(id, addr, zone string, tokens []uint32, state InstanceState, registeredAt time.Time, readOnly bool, readOnlyUpdated time.Time) InstanceDesc {
+func (d *Desc) AddIngester(id, addr, zone string, tokens []uint32, state InstanceState, registeredAt time.Time, readOnly bool, readOnlyUpdated time.Time, versions InstanceVersions) InstanceDesc {
 	if d.Ingesters == nil {
 		d.Ingesters = map[string]InstanceDesc{}
 	}
@@ -69,6 +71,7 @@ func (d *Desc) AddIngester(id, addr, zone string, tokens []uint32, state Instanc
 		RegisteredTimestamp:      timeToUnixSecons(registeredAt),
 		ReadOnly:                 readOnly,
 		ReadOnlyUpdatedTimestamp: timeToUnixSecons(readOnlyUpdated),
+		Versions:                 versions,
 	}
 
 	d.Ingesters[id] = ingester
@@ -177,11 +180,8 @@ func (i *InstanceDesc) IsHealthy(op Operation, heartbeatTimeout time.Duration, n
 }
 
 // IsHeartbeatHealthy returns whether the heartbeat timestamp for the ingester is within the
-// specified timeout period. A timeout of zero disables the timeout; the heartbeat is ignored.
+// specified timeout period.
 func (i *InstanceDesc) IsHeartbeatHealthy(heartbeatTimeout time.Duration, now time.Time) bool {
-	if heartbeatTimeout == 0 {
-		return true
-	}
 	return now.Sub(time.Unix(i.Timestamp, 0)) <= heartbeatTimeout
 }
 

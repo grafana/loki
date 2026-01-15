@@ -86,7 +86,7 @@ loki:
     # -- Docker image repository
     repository: grafana/loki
     # -- Overrides the image tag whose default is the chart's appVersion
-    tag: 3.5.7
+    tag: 3.6.3
     # -- Overrides the image tag with an image digest
     digest: null
     # -- Docker image pull policy
@@ -630,7 +630,7 @@ enterprise:
   # Enable enterprise features, license must be provided
   enabled: false
   # Default version of GEL to deploy
-  version: 3.5.4
+  version: 3.6.1
   # -- Optional name of the GEL cluster, otherwise will use .Release.Name
   # The cluster name must match what is in your GEL license
   cluster_name: null
@@ -672,7 +672,7 @@ enterprise:
     # -- Docker image repository
     repository: grafana/enterprise-logs
     # -- Docker image tag
-    tag: 3.5.4
+    tag: 3.6.3
     # -- Overrides the image tag with an image digest
     digest: null
     # -- Docker image pull policy
@@ -1310,12 +1310,16 @@ enterpriseGateway:
   # -- update strategy
   strategy:
     type: RollingUpdate
+  # -- Liveness probe
+  livenessProbe: {}
   # -- Readiness probe
   readinessProbe:
     httpGet:
       path: /ready
       port: http-metrics
     initialDelaySeconds: 45
+  # -- Startup probe
+  startupProbe: {}
   # -- Request and limit Kubernetes resources
   # -- Values are defined in small.yaml and large.yaml
   resources: {}
@@ -2775,6 +2779,8 @@ compactor:
   readinessProbe: {}
   # -- liveness probe settings for compactor pods. If empty use `loki.livenessProbe`
   livenessProbe: {}
+  # -- liveness probe settings for ingester pods. If empty use `loki.livenessProbe`
+  startupProbe: {}
   # -- Resource requests and limits for the compactor
   resources: {}
   # -- Containers to add to the compactor pods
@@ -3591,7 +3597,7 @@ memcachedExporter:
   enabled: true
   image:
     repository: prom/memcached-exporter
-    tag: v0.15.3
+    tag: v0.15.4
     pullPolicy: IfNotPresent
   resources:
     requests: {}
@@ -4076,10 +4082,11 @@ extraObjects: null
 
 sidecar:
   image:
+    registry: docker.io
     # -- The Docker registry and image for the k8s sidecar
-    repository: docker.io/kiwigrid/k8s-sidecar
+    repository: kiwigrid/k8s-sidecar
     # -- Docker image tag
-    tag: 1.30.10
+    tag: 1.30.9
     # -- Docker image sha. If empty, no sha will be used
     sha: ""
     # -- Docker image pull policy

@@ -72,6 +72,14 @@ func (s State) String() string {
 // If IsSuccessful returns true, the error is counted as a success.
 // Otherwise the error is counted as a failure.
 // If IsSuccessful is nil, default IsSuccessful is used, which returns false for all non-nil errors.
+//
+// IsExcluded determines whether a request error should be ignored
+// for the purposes of updating the circuit breaker metrics.
+// If IsExcluded returns true for a given error,
+// the request is neither counted as a success nor as a failure.
+// This can be used, for example, to ignore context cancellations or
+// other errors that should not affect the circuit breaker state.
+// If IsExcluded is nil, no requests are excluded.
 type Settings struct {
 	Name          string
 	MaxRequests   uint32
@@ -81,6 +89,7 @@ type Settings struct {
 	ReadyToTrip   func(counts Counts) bool
 	OnStateChange func(name string, from State, to State)
 	IsSuccessful  func(err error) bool
+	IsExcluded    func(err error) bool
 }
 
 // CircuitBreaker is a state machine to prevent sending requests that are likely to fail.
@@ -92,6 +101,7 @@ type CircuitBreaker[T any] struct {
 	timeout       time.Duration
 	readyToTrip   func(counts Counts) bool
 	isSuccessful  func(err error) bool
+	isExcluded    func(err error) bool
 	onStateChange func(name string, from State, to State)
 
 	mutex      sync.Mutex
@@ -150,6 +160,12 @@ func NewCircuitBreaker[T any](st Settings) *CircuitBreaker[T] {
 		cb.isSuccessful = st.IsSuccessful
 	}
 
+	if st.IsExcluded == nil {
+		cb.isExcluded = defaultIsExcluded
+	} else {
+		cb.isExcluded = st.IsExcluded
+	}
+
 	cb.toNewGeneration(time.Now())
 
 	return cb
@@ -164,6 +180,10 @@ func defaultReadyToTrip(counts Counts) bool {
 
 func defaultIsSuccessful(err error) bool {
 	return err == nil
+}
+
+func defaultIsExcluded(_ error) bool {
+	return false
 }
 
 // Name returns the name of the CircuitBreaker.
@@ -204,13 +224,13 @@ func (cb *CircuitBreaker[T]) Execute(req func() (T, error)) (T, error) {
 	defer func() {
 		e := recover()
 		if e != nil {
-			cb.afterRequest(generation, age, false)
+			cb.afterRequest(generation, age, fmt.Errorf("%v", e))
 			panic(e)
 		}
 	}()
 
 	result, err := req()
-	cb.afterRequest(generation, age, cb.isSuccessful(err))
+	cb.afterRequest(generation, age, err)
 	return result, err
 }
 
@@ -223,7 +243,7 @@ func (cb *CircuitBreaker[T]) beforeRequest() (uint64, uint64, error) {
 
 	if state == StateOpen {
 		return generation, age, ErrOpenState
-	} else if state == StateHalfOpen && cb.counts.Requests >= cb.maxRequests {
+	} else if state == StateHalfOpen && cb.counts.validRequests() >= cb.maxRequests {
 		return generation, age, ErrTooManyRequests
 	}
 
@@ -231,7 +251,7 @@ func (cb *CircuitBreaker[T]) beforeRequest() (uint64, uint64, error) {
 	return generation, age, nil
 }
 
-func (cb *CircuitBreaker[T]) afterRequest(previous uint64, age uint64, success bool) {
+func (cb *CircuitBreaker[T]) afterRequest(previous uint64, age uint64, err error) {
 	cb.mutex.Lock()
 	defer cb.mutex.Unlock()
 
@@ -241,7 +261,12 @@ func (cb *CircuitBreaker[T]) afterRequest(previous uint64, age uint64, success b
 		return
 	}
 
-	if success {
+	if cb.isExcluded(err) {
+		cb.onExclusion(age)
+		return
+	}
+
+	if cb.isSuccessful(err) {
 		cb.onSuccess(state, age, now)
 	} else {
 		cb.onFailure(state, age, now)
@@ -270,6 +295,10 @@ func (cb *CircuitBreaker[T]) onFailure(state State, age uint64, now time.Time) {
 	case StateHalfOpen:
 		cb.setState(StateOpen, now)
 	}
+}
+
+func (cb *CircuitBreaker[T]) onExclusion(age uint64) {
+	cb.counts.onExclusion(age)
 }
 
 func (cb *CircuitBreaker[T]) currentState(now time.Time) (State, uint64, uint64) {

@@ -329,7 +329,7 @@ func (q *queue) TryDequeue(buf []Record, write func([]Record) bool) int {
 	origRead := q.read
 
 	n := min(len(buf), q.len)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		buf[i] = q.read.Value
 		q.read = q.read.Next()
 	}

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"iter"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
@@ -14,6 +13,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 // streamsView provides a view of the streams in a section, allowing for
@@ -30,6 +30,7 @@ type streamsView struct {
 	initialized  bool
 	streams      arrow.Table
 	idRowMapping map[int64]int // Mapping of stream ID to absolute row index in the streams table.
+	streamLabels map[int64][]labels.Label
 }
 
 type streamsViewOptions struct {
@@ -79,6 +80,7 @@ func newStreamsView(sec *streams.Section, opts *streamsViewOptions) *streamsView
 		idColumn:      streamsIDColumn,
 		searchColumns: append([]*streams.Column{streamsIDColumn}, cols...),
 		batchSize:     opts.BatchSize,
+		streamLabels:  make(map[int64][]labels.Label),
 	}
 }
 
@@ -87,12 +89,17 @@ func (v *streamsView) NumLabels() int {
 	return len(v.searchColumns) - 1
 }
 
-// Labels iterates over all of the non-null labels of a stream with the given
+// Labels returns all of the non-null labels of a stream with the given
 // id. If [streamsViewOptions] included a subset of labels, only those labels
 // are returned.
-func (v *streamsView) Labels(ctx context.Context, id int64) (iter.Seq[labels.Label], error) {
+func (v *streamsView) Labels(ctx context.Context, id int64) ([]labels.Label, error) {
 	if err := v.init(ctx); err != nil {
 		return nil, err
+	}
+
+	lbs, ok := v.streamLabels[id]
+	if ok {
+		return lbs, nil
 	}
 
 	rowColumnIndex, ok := v.idRowMapping[id]
@@ -100,49 +107,54 @@ func (v *streamsView) Labels(ctx context.Context, id int64) (iter.Seq[labels.Lab
 		return nil, fmt.Errorf("stream ID %d not found in section or not included in filter", id)
 	}
 
-	return func(yield func(labels.Label) bool) {
-		for colIndex := range int(v.streams.NumCols()) {
-			// Skip any column which isn't a label column.
-			//
-			// This is safe because [streams.Reader] guarantees that the order of
-			// columns in the Arrow schema matches the order of [streams.Column]s
-			// provided to the reader.
-			if v.searchColumns[colIndex].Type != streams.ColumnTypeLabel {
-				continue
-			}
+	lbs = make([]labels.Label, 0)
 
-			// Find the array where our row is. While columnChunkedRow can return nil
-			// if the row isn't found, we know we're giving it a valid row index so
-			// we can bypass the check here.
-			arr, rowArrayIndex := columnChunkedRow(v.streams.Column(colIndex), rowColumnIndex)
-			if arr.IsNull(rowArrayIndex) {
-				continue
-			}
-
-			label := labels.Label{
-				Name: v.searchColumns[colIndex].Name,
-			}
-
-			switch colValues := arr.(type) {
-			case *array.String:
-				label.Value = colValues.Value(rowArrayIndex)
-			case *array.Binary:
-				label.Value = string(colValues.Value(rowArrayIndex))
-			default:
-				panic(fmt.Sprintf("unexpected column type %T for labels", colValues))
-			}
-
-			if !yield(label) {
-				return
-			}
+	for colIndex := range int(v.streams.NumCols()) {
+		// Skip any column which isn't a label column.
+		//
+		// This is safe because [streams.Reader] guarantees that the order of
+		// columns in the Arrow schema matches the order of [streams.Column]s
+		// provided to the reader.
+		if v.searchColumns[colIndex].Type != streams.ColumnTypeLabel {
+			continue
 		}
-	}, nil
+
+		// Find the array where our row is. While columnChunkedRow can return nil
+		// if the row isn't found, we know we're giving it a valid row index so
+		// we can bypass the check here.
+		arr, rowArrayIndex := columnChunkedRow(v.streams.Column(colIndex), rowColumnIndex)
+		if arr.IsNull(rowArrayIndex) {
+			continue
+		}
+
+		label := labels.Label{
+			Name: v.searchColumns[colIndex].Name,
+		}
+
+		switch colValues := arr.(type) {
+		case *array.String:
+			label.Value = colValues.Value(rowArrayIndex)
+		case *array.Binary:
+			label.Value = string(colValues.Value(rowArrayIndex))
+		default:
+			panic(fmt.Sprintf("unexpected column type %T for labels", colValues))
+		}
+
+		lbs = append(lbs, label)
+	}
+
+	v.streamLabels[id] = lbs
+
+	return lbs, nil
 }
 
 func (v *streamsView) init(ctx context.Context) (err error) {
 	if v.initialized {
 		return nil
 	}
+
+	ctx, region := xcap.StartRegion(ctx, "streamsView.init")
+	defer region.End()
 
 	if v.idColumn == nil { // Initialized in [newStreamsView].
 		// The streams builder always produces a section with a streams ID column.
@@ -167,6 +179,7 @@ func (v *streamsView) init(ctx context.Context) (err error) {
 	}
 
 	r := streams.NewReader(readerOptions)
+	defer r.Close()
 
 	var records []arrow.RecordBatch
 

@@ -183,7 +183,7 @@ func (n *Number) MarshalMsg(b []byte) ([]byte, error) {
 	case IntType:
 		return AppendInt64(b, int64(n.bits)), nil
 	case UintType:
-		return AppendUint64(b, uint64(n.bits)), nil
+		return AppendUint64(b, n.bits), nil
 	case Float64Type:
 		return AppendFloat64(b, math.Float64frombits(n.bits)), nil
 	case Float32Type:

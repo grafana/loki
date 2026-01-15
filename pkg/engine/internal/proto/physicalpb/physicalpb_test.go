@@ -112,8 +112,11 @@ func Test_Node(t *testing.T) {
 			node: &physical.RangeAggregation{
 				NodeID: ulid.Make(),
 
-				PartitionBy: []physical.ColumnExpression{
-					&physical.ColumnExpr{Ref: types.ColumnRef{Column: "partition_col", Type: types.ColumnTypeLabel}},
+				Grouping: physical.Grouping{
+					Columns: []physical.ColumnExpression{
+						&physical.ColumnExpr{Ref: types.ColumnRef{Column: "partition_col", Type: types.ColumnTypeLabel}},
+					},
+					Without: false,
 				},
 				Operation: types.RangeAggregationTypeCount,
 				Start:     time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
@@ -127,8 +130,11 @@ func Test_Node(t *testing.T) {
 			node: &physical.VectorAggregation{
 				NodeID: ulid.Make(),
 
-				GroupBy: []physical.ColumnExpression{
-					&physical.ColumnExpr{Ref: types.ColumnRef{Column: "group_col", Type: types.ColumnTypeLabel}},
+				Grouping: physical.Grouping{
+					Columns: []physical.ColumnExpression{
+						&physical.ColumnExpr{Ref: types.ColumnRef{Column: "group_col", Type: types.ColumnTypeLabel}},
+					},
+					Without: false,
 				},
 				Operation: types.VectorAggregationTypeSum,
 			},
@@ -163,19 +169,58 @@ func Test_Node(t *testing.T) {
 			node: &physical.Join{NodeID: ulid.Make()},
 		},
 		{
+			name: "Merge",
+			node: &physical.Merge{NodeID: ulid.Make()},
+		},
+		{
+			name: "PointersScan",
+			node: &physical.PointersScan{
+				NodeID: ulid.Make(),
+
+				Location: "index/0",
+				Selector: &physical.BinaryExpr{
+					Left:  &physical.ColumnExpr{Ref: types.ColumnRef{Column: "app", Type: types.ColumnTypeLabel}},
+					Right: physical.NewLiteral("foo"),
+					Op:    types.BinaryOpEq,
+				},
+				Predicates: []physical.Expression{
+					&physical.BinaryExpr{
+						Left:  &physical.ColumnExpr{Ref: types.ColumnRef{Column: "env", Type: types.ColumnTypeLabel}},
+						Right: physical.NewLiteral("prod"),
+						Op:    types.BinaryOpEq,
+					},
+				},
+				Start: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+				End:   time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC),
+			},
+		},
+		{
 			name: "ScanSet",
 			node: &physical.ScanSet{
 				NodeID: ulid.Make(),
 
-				Targets: []*physical.ScanTarget{{
-					Type: physical.ScanTypeDataObject,
-					DataObject: &physical.DataObjScan{
-						NodeID:    ulid.Make(),
-						Location:  "s3://bucket/target1",
-						Section:   1,
-						StreamIDs: []int64{10, 20},
+				Targets: []*physical.ScanTarget{
+					{
+						Type: physical.ScanTypeDataObject,
+						DataObject: &physical.DataObjScan{
+							NodeID:    ulid.Make(),
+							Location:  "s3://bucket/target1",
+							Section:   1,
+							StreamIDs: []int64{10, 20},
+						},
 					},
-				}},
+					{
+						Type: physical.ScanTypePointers,
+						Pointers: &physical.PointersScan{
+							NodeID:     ulid.Make(),
+							Location:   "index/0",
+							Selector:   physical.NewLiteral("selector"),
+							Start:      time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+							End:        time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC),
+							Predicates: []physical.Expression{physical.NewLiteral("predicate")},
+						},
+					},
+				},
 				Projections: []physical.ColumnExpression{
 					&physical.ColumnExpr{Ref: types.ColumnRef{Column: "scan_col", Type: types.ColumnTypeBuiltin}},
 				},
