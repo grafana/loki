@@ -136,7 +136,7 @@ func Test_filterStreamsByLabels(t *testing.T) {
 		},
 		{
 			name: "no filter allows all",
-			filterFunc: func(lbls labels.Labels) bool {
+			filterFunc: func(_ labels.Labels) bool {
 				return false // never filter
 			},
 			inputIDs:      []int64{1, 2},
@@ -144,7 +144,7 @@ func Test_filterStreamsByLabels(t *testing.T) {
 		},
 		{
 			name: "filter blocks all",
-			filterFunc: func(lbls labels.Labels) bool {
+			filterFunc: func(_ labels.Labels) bool {
 				return true // always filter
 			},
 			inputIDs:      []int64{1, 2},
