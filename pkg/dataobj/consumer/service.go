@@ -193,6 +193,9 @@ func (s *Service) starting(ctx context.Context) error {
 	if err := services.StartAndAwaitRunning(ctx, s.partitionInstanceLifecycler); err != nil {
 		return fmt.Errorf("failed to start partition instance lifecycler: %w", err)
 	}
+	if err := services.StartAndAwaitRunning(ctx, s.processor); err != nil {
+		return fmt.Errorf("failed to start partition processor: %w", err)
+	}
 	if err := services.StartAndAwaitRunning(ctx, s.consumer); err != nil {
 		return fmt.Errorf("failed to start consumer: %w", err)
 	}
@@ -204,8 +207,6 @@ func (s *Service) starting(ctx context.Context) error {
 
 // running implements the Service interface's running method.
 func (s *Service) running(ctx context.Context) error {
-	// TODO(grobinson): Turn this into a [services.Service] instead.
-	s.processor.Run(ctx)
 	<-ctx.Done()
 	return nil
 }
@@ -218,7 +219,10 @@ func (s *Service) stopping(failureCase error) error {
 		level.Warn(s.logger).Log("msg", "failed to stop flusher", "err", err)
 	}
 	if err := services.StopAndAwaitTerminated(ctx, s.consumer); err != nil {
-		level.Warn(s.logger).Log("msg", "failed to stop partition reader", "err", err)
+		level.Warn(s.logger).Log("msg", "failed to stop consumer", "err", err)
+	}
+	if err := services.StopAndAwaitTerminated(ctx, s.processor); err != nil {
+		level.Warn(s.logger).Log("msg", "failed to stop partition processor", "err", err)
 	}
 	if err := services.StopAndAwaitTerminated(ctx, s.partitionInstanceLifecycler); err != nil {
 		level.Warn(s.logger).Log("msg", "failed to stop partition instance lifecycler", "err", err)
