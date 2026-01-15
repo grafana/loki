@@ -77,6 +77,13 @@ func (pr *pageReader) Read(ctx context.Context, v []Value) (n int, err error) {
 //
 // read advances pr.pageRow but not pr.nextRow.
 func (pr *pageReader) read(v []Value) (n int, err error) {
+	// Reclaim any memory allocated since the previous read call.
+	//
+	// NOTE(rfratto): This is only safe as the pageReader owns the allocator and
+	// copies memory into v. Once we return allocated memory directly, we will
+	// need to find a new mechanism to prevent over-allocating.
+	pr.alloc.Reset()
+
 	pr.presenceBuf = slicegrow.GrowToCap(pr.presenceBuf, len(v))
 	pr.presenceBuf = pr.presenceBuf[:len(v)]
 
@@ -169,9 +176,6 @@ func reuseValuesBuffer(dst []Value, src []Value) []Value {
 }
 
 func (pr *pageReader) init(ctx context.Context) error {
-	// Reclaim any memory allocated since the previous init.
-	pr.alloc.Reset()
-
 	// Close any existing reader from a previous pageReader init. Even though
 	// this also happens in [pageReader.Close], we want to do it here as well in
 	// case we seeked backwards in a file.
