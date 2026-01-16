@@ -118,7 +118,7 @@ func newBatchChunkIterator(
 	// __name__ is not something we filter by because it's a constant in loki
 	// and only used for upstream compatibility; therefore remove it.
 	// The same applies to the sharding label which is injected by the cortex storage code.
-	matchers = removeMatchersByName(matchers, labels.MetricName, astmapper.ShardLabel)
+	matchers = removeMatchersByName(matchers, model.MetricNameLabel, astmapper.ShardLabel)
 	res := &batchChunkIterator{
 		batchSize:     batchSize,
 		schemas:       s,
@@ -420,7 +420,7 @@ func (it *logBatchIterator) buildIterators(chks map[model.Fingerprint][][]*LazyC
 	result := make([]iter.EntryIterator, 0, len(chks))
 	for _, chunks := range chks {
 		if len(chunks) != 0 && len(chunks[0]) != 0 {
-			streamPipeline := it.pipeline.ForStream(labels.NewBuilder(chunks[0][0].Chunk.Metric).Del(labels.MetricName).Labels())
+			streamPipeline := it.pipeline.ForStream(labels.NewBuilder(chunks[0][0].Chunk.Metric).Del(model.MetricNameLabel).Labels())
 			iterator, err := it.buildMergeIterator(chunks, from, through, streamPipeline, nextChunk)
 			if err != nil {
 				return nil, err
@@ -585,7 +585,7 @@ func (it *sampleBatchIterator) buildIterators(
 					extractors,
 					extractor.ForStream(
 						labels.NewBuilder(chunks[0][0].Chunk.Metric).
-							Del(labels.MetricName).
+							Del(model.MetricNameLabel).
 							Labels(),
 					),
 				)

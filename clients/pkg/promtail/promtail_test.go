@@ -530,7 +530,7 @@ func parsePromMetrics(t *testing.T, bytes []byte, contentType string, metricName
 			var res labels.Labels
 			_, _, v := pr.Series()
 			pr.Labels(&res)
-			switch res.Get(labels.MetricName) {
+			switch res.Get(model.MetricNameLabel) {
 			case metricName:
 				rb[res.Get(label)] = v
 				continue

@@ -26,6 +26,8 @@ import (
 	"net/http"
 	"net/url"
 	"time"
+
+	"github.com/minio/minio-go/v7/pkg/set"
 )
 
 // MaxRetry is the maximum number of retries before stopping.
@@ -93,45 +95,43 @@ func (c *Client) newRetryTimer(ctx context.Context, maxRetry int, baseSleep, max
 }
 
 // List of AWS S3 error codes which are retryable.
-var retryableS3Codes = map[string]struct{}{
-	"RequestError":          {},
-	"RequestTimeout":        {},
-	"Throttling":            {},
-	"ThrottlingException":   {},
-	"RequestLimitExceeded":  {},
-	"RequestThrottled":      {},
-	"InternalError":         {},
-	"ExpiredToken":          {},
-	"ExpiredTokenException": {},
-	"SlowDown":              {},
-	"SlowDownWrite":         {},
-	"SlowDownRead":          {},
+var retryableS3Codes = set.CreateStringSet(
+	"RequestError",
+	"RequestTimeout",
+	"Throttling",
+	"ThrottlingException",
+	"RequestLimitExceeded",
+	"RequestThrottled",
+	"InternalError",
+	"ExpiredToken",
+	"ExpiredTokenException",
+	"SlowDown",
+	"SlowDownWrite",
+	"SlowDownRead",
 	// Add more AWS S3 codes here.
-}
+)
 
 // isS3CodeRetryable - is s3 error code retryable.
-func isS3CodeRetryable(s3Code string) (ok bool) {
-	_, ok = retryableS3Codes[s3Code]
-	return ok
+func isS3CodeRetryable(s3Code string) bool {
+	return retryableS3Codes.Contains(s3Code)
 }
 
 // List of HTTP status codes which are retryable.
-var retryableHTTPStatusCodes = map[int]struct{}{
-	http.StatusRequestTimeout:      {},
-	429:                            {}, // http.StatusTooManyRequests is not part of the Go 1.5 library, yet
-	499:                            {}, // client closed request, retry. A non-standard status code introduced by nginx.
-	http.StatusInternalServerError: {},
-	http.StatusBadGateway:          {},
-	http.StatusServiceUnavailable:  {},
-	http.StatusGatewayTimeout:      {},
-	520:                            {}, // It is used by Cloudflare as a catch-all response for when the origin server sends something unexpected.
+var retryableHTTPStatusCodes = set.CreateIntSet(
+	http.StatusRequestTimeout,
+	429, // http.StatusTooManyRequests is not part of the Go 1.5 library, yet
+	499, // client closed request, retry. A non-standard status code introduced by nginx.
+	http.StatusInternalServerError,
+	http.StatusBadGateway,
+	http.StatusServiceUnavailable,
+	http.StatusGatewayTimeout,
+	520, // It is used by Cloudflare as a catch-all response for when the origin server sends something unexpected.
 	// Add more HTTP status codes here.
-}
+)
 
 // isHTTPStatusRetryable - is HTTP error code retryable.
-func isHTTPStatusRetryable(httpStatusCode int) (ok bool) {
-	_, ok = retryableHTTPStatusCodes[httpStatusCode]
-	return ok
+func isHTTPStatusRetryable(httpStatusCode int) bool {
+	return retryableHTTPStatusCodes.Contains(httpStatusCode)
 }
 
 // For now, all http Do() requests are retriable except some well defined errors

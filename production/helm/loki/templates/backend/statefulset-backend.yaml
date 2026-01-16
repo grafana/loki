@@ -144,11 +144,7 @@ spec:
         {{- if .Values.sidecar.rules.enabled }}
         - name: loki-sc-rules
           {{- $dict := dict "service" .Values.sidecar.image "global" .Values.global }}
-          {{- if .Values.sidecar.image.sha }}
-          image: "{{ include "loki.baseImage" $dict }}@sha256:{{ .Values.sidecar.image.sha }}"
-          {{- else }}
           image: {{ include "loki.baseImage" $dict }}
-          {{- end }}
           imagePullPolicy: {{ .Values.sidecar.image.pullPolicy }}
           env:
             - name: METHOD
@@ -228,7 +224,7 @@ spec:
       {{- end }}
       {{- with .Values.backend.dnsConfig | default .Values.loki.dnsConfig }}
       dnsConfig:
-        {{- tpl . $ | nindent 8 }}
+        {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- with .Values.backend.nodeSelector }}
       nodeSelector:

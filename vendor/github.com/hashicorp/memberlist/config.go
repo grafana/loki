@@ -1,3 +1,6 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: MPL-2.0
+
 package memberlist
 
 import (
@@ -9,7 +12,8 @@ import (
 	"strings"
 	"time"
 
-	multierror "github.com/hashicorp/go-multierror"
+	"github.com/hashicorp/go-metrics/compat"
+	"github.com/hashicorp/go-multierror"
 )
 
 type Config struct {
@@ -114,6 +118,12 @@ type Config struct {
 	// usage.
 	PushPullInterval time.Duration
 
+	// PushPullNodes is the number of random nodes to perform complete state
+	// syncs with per PushPullInterval. Increasing this number will increase
+	// convergence speeds across larger clusters at the expense of increased
+	// bandwidth usage. Setting this to 0 will use the default of 1.
+	PushPullNodes int
+
 	// ProbeInterval and ProbeTimeout are used to configure probing
 	// behavior for memberlist.
 	//
@@ -206,6 +216,7 @@ type Config struct {
 	Merge                   MergeDelegate
 	Ping                    PingDelegate
 	Alive                   AliveDelegate
+	NodeSelection           NodeSelectionDelegate
 
 	// DNSConfigPath points to the system's DNS config file, usually located
 	// at /etc/resolv.conf. It can be overridden via config for easier testing.
@@ -244,10 +255,24 @@ type Config struct {
 	// RequireNodeNames controls if the name of a node is required when sending
 	// a message to that node.
 	RequireNodeNames bool
+
 	// CIDRsAllowed If nil, allow any connection (default), otherwise specify all networks
 	// allowed to connect (you must specify IPv6/IPv4 separately)
 	// Using [] will block all connections.
 	CIDRsAllowed []net.IPNet
+
+	// MetricLabels is a map of optional labels to apply to all metrics emitted.
+	MetricLabels []metrics.Label
+
+	// QueueCheckInterval is the interval at which we check the message
+	// queue to apply the warning and max depth.
+	QueueCheckInterval time.Duration
+
+	// MsgpackUseNewTimeFormat when set to true, force the underlying msgpack
+	// codec to use the new format of time.Time when encoding (used in
+	// go-msgpack v1.1.5 by default). Decoding is not affected, as all
+	// go-msgpack v2.1.0+ decoders know how to decode both formats.
+	MsgpackUseNewTimeFormat bool
 }
 
 // ParseCIDRs return a possible empty list of all Network that have been parsed
@@ -296,6 +321,7 @@ func DefaultLANConfig() *Config {
 		SuspicionMult:           4,                      // Suspect a node for 4 * log(N+1) * Interval
 		SuspicionMaxTimeoutMult: 6,                      // For 10k nodes this will give a max timeout of 120 seconds
 		PushPullInterval:        30 * time.Second,       // Low frequency
+		PushPullNodes:           1,                      // Push/pull with a single node
 		ProbeTimeout:            500 * time.Millisecond, // Reasonable RTT time for LAN
 		ProbeInterval:           1 * time.Second,        // Failure check every second
 		DisableTcpPings:         false,                  // TCP pings are safe, even with mixed versions
@@ -317,6 +343,8 @@ func DefaultLANConfig() *Config {
 		HandoffQueueDepth: 1024,
 		UDPBufferSize:     1400,
 		CIDRsAllowed:      nil, // same as allow all
+
+		QueueCheckInterval: 30 * time.Second,
 	}
 }
 
@@ -328,6 +356,7 @@ func DefaultWANConfig() *Config {
 	conf.TCPTimeout = 30 * time.Second
 	conf.SuspicionMult = 6
 	conf.PushPullInterval = 60 * time.Second
+	conf.PushPullNodes = 1
 	conf.ProbeTimeout = 3 * time.Second
 	conf.ProbeInterval = 5 * time.Second
 	conf.GossipNodes = 4 // Gossip less frequently, but to an additional node
@@ -364,6 +393,7 @@ func DefaultLocalConfig() *Config {
 	conf.RetransmitMult = 2
 	conf.SuspicionMult = 3
 	conf.PushPullInterval = 15 * time.Second
+	conf.PushPullNodes = 1
 	conf.ProbeTimeout = 200 * time.Millisecond
 	conf.ProbeInterval = time.Second
 	conf.GossipInterval = 100 * time.Millisecond
