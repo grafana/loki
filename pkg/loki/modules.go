@@ -1904,6 +1904,18 @@ func (t *Loki) initCompactor() (services.Service, error) {
 	}
 
 	indexUpdatePropagationMaxDelay := shipperQuerierIndexUpdateDelay(t.Cfg.StorageConfig.IndexCacheValidity, shipperResyncInterval(t.Cfg.StorageConfig, t.Cfg.SchemaConfig.Configs))
+
+	// Create metastore for dataobj deletion if enabled
+	var ms metastore.Metastore
+	if t.Cfg.CompactorConfig.DataObjDeletionEnabled && t.Cfg.DataObj.Enabled {
+		store, err := t.getDataObjBucket("dataobj-compactor")
+		if err != nil {
+			return nil, fmt.Errorf("failed to create dataobj store for compactor: %w", err)
+		}
+		logger := log.With(util_log.Logger, "component", "compactor-metastore")
+		ms = metastore.NewObjectMetastore(store, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics)
+	}
+
 	t.compactor, err = compactor.NewCompactor(
 		t.Cfg.CompactorConfig,
 		objectClients,
@@ -1913,6 +1925,7 @@ func (t *Loki) initCompactor() (services.Service, error) {
 		indexUpdatePropagationMaxDelay,
 		prometheus.DefaultRegisterer,
 		t.Cfg.MetricsNamespace,
+		ms,
 	)
 	if err != nil {
 		return nil, err

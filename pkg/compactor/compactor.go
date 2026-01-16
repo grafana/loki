@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 	"github.com/grafana/loki/v3/pkg/compactor/jobqueue"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 	chunk_util "github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
@@ -137,6 +138,7 @@ func NewCompactor(
 	indexUpdatePropagationMaxDelay time.Duration,
 	r prometheus.Registerer,
 	metricsNamespace string,
+	metastore metastore.Metastore,
 ) (*Compactor, error) {
 	retentionEnabledStats.Set("false")
 	if cfg.RetentionEnabled {
@@ -193,7 +195,7 @@ func NewCompactor(
 	compactor.subservicesWatcher = services.NewFailureWatcher()
 	compactor.subservicesWatcher.WatchManager(compactor.subservices)
 
-	if err := compactor.init(objectStoreClients, deleteStoreClient, schemaConfig, indexUpdatePropagationMaxDelay, limits, r); err != nil {
+	if err := compactor.init(objectStoreClients, deleteStoreClient, schemaConfig, indexUpdatePropagationMaxDelay, limits, r, metastore); err != nil {
 		return nil, fmt.Errorf("init compactor: %w", err)
 	}
 
@@ -208,6 +210,7 @@ func (c *Compactor) init(
 	indexUpdatePropagationMaxDelay time.Duration,
 	limits Limits,
 	r prometheus.Registerer,
+	metastore metastore.Metastore,
 ) error {
 	err := chunk_util.EnsureDirectory(c.cfg.WorkingDirectory)
 	if err != nil {
@@ -219,7 +222,7 @@ func (c *Compactor) init(
 			return fmt.Errorf("delete store client not initialised when retention is enabled")
 		}
 
-		if err := c.initDeletes(deleteStoreClient, indexUpdatePropagationMaxDelay, r, limits); err != nil {
+		if err := c.initDeletes(deleteStoreClient, indexUpdatePropagationMaxDelay, r, limits, metastore); err != nil {
 			return fmt.Errorf("failed to init delete store: %w", err)
 		}
 	} else {
@@ -343,7 +346,7 @@ func (c *Compactor) init(
 	return nil
 }
 
-func (c *Compactor) initDeletes(objectClient client.ObjectClient, indexUpdatePropagationMaxDelay time.Duration, r prometheus.Registerer, limits Limits) error {
+func (c *Compactor) initDeletes(objectClient client.ObjectClient, indexUpdatePropagationMaxDelay time.Duration, r prometheus.Registerer, limits Limits, metastore metastore.Metastore) error {
 	deletionWorkDir := filepath.Join(c.cfg.WorkingDirectory, "deletion")
 	indexStorageClient := storage.NewIndexStorageClient(objectClient, c.cfg.DeleteRequestStoreKeyPrefix)
 	store, err := deletion.NewDeleteRequestsStore(
@@ -386,10 +389,13 @@ func (c *Compactor) initDeletes(objectClient client.ObjectClient, indexUpdatePro
 
 	// Initialize dataobj deletion manager if enabled
 	if c.cfg.DataObjDeletionEnabled {
+		if metastore == nil {
+			return fmt.Errorf("metastore is required when dataobj deletion is enabled")
+		}
 		level.Info(util_log.Logger).Log("msg", "dataobj deletion enabled, initializing deletion manager")
 		c.dataobjDeletionManager = deletion.NewDataobjDeletionManager(
 			c.cfg.DataObjDeletion,
-			nil, // TODO: Wire up metastore from modules.go
+			metastore,
 			objectClient,
 			c.deleteRequestsStore,
 			util_log.Logger,
