@@ -112,6 +112,8 @@ type Compactor struct {
 
 	// one for each period
 	storeContainers map[config.DayTime]storeContainer
+
+	dataobjDeletionManager *deletion.DataobjDeletionManager
 }
 
 type storeContainer struct {
@@ -381,6 +383,20 @@ func (c *Compactor) initDeletes(objectClient client.ObjectClient, indexUpdatePro
 	}
 
 	c.expirationChecker = newExpirationChecker(retention.NewExpirationChecker(limits), c.deleteRequestsManager)
+
+	// Initialize dataobj deletion manager if enabled
+	if c.cfg.DataObjDeletionEnabled {
+		level.Info(util_log.Logger).Log("msg", "dataobj deletion enabled, initializing deletion manager")
+		c.dataobjDeletionManager = deletion.NewDataobjDeletionManager(
+			c.cfg.DataObjDeletion,
+			nil, // TODO: Wire up metastore from modules.go
+			objectClient,
+			c.deleteRequestsStore,
+			util_log.Logger,
+			r,
+		)
+	}
+
 	return nil
 }
 
@@ -500,6 +516,14 @@ func (c *Compactor) loop(ctx context.Context) error {
 						go func() {
 							defer wg.Done()
 							c.deleteRequestsManager.Start(runningCtx)
+						}()
+					}
+
+					if c.dataobjDeletionManager != nil {
+						wg.Add(1)
+						go func() {
+							defer wg.Done()
+							c.dataobjDeletionManager.Start(runningCtx)
 						}()
 					}
 
