@@ -3237,10 +3237,12 @@ patternIngester:
   extraVolumeMounts: []
   # -- Volumes to add to the pattern ingester pods
   extraVolumes: []
-  # -- readiness probe settings for ingester pods. If empty, use `loki.readinessProbe`
+  # -- readiness probe settings for pattern ingester pods. If empty, use `loki.readinessProbe`
   readinessProbe: {}
-  # -- liveness probe settings for ingester pods. If empty use `loki.livenessProbe`
+  # -- liveness probe settings for pattern ingester pods. If empty use `loki.livenessProbe`
   livenessProbe: {}
+  # -- startup probe settings for pattern ingester pods. If empty use `loki.startupProbe`
+  startupProbe: {}
   # -- Resource requests and limits for the pattern ingester
   resources: {}
   # -- Containers to add to the pattern ingester pods
