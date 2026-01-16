@@ -2373,10 +2373,13 @@ func (t *Loki) initDataObjConsumerPartitionRing() (services.Service, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create KV store for dataobj ring watcher: %w", err)
 	}
-	t.DataObjConsumerPartitionRingWatcher = ring.NewPartitionRingWatcher(
+	partitionRingOpts := ring.DefaultPartitionRingOptions()
+	partitionRingOpts.ShuffleShardCacheSize = 1024
+	t.DataObjConsumerPartitionRingWatcher = ring.NewPartitionRingWatcherWithOptions(
 		consumer.PartitionRingName,
 		consumer.PartitionRingKey,
 		kvClient,
+		partitionRingOpts,
 		util_log.Logger,
 		prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer),
 	)
