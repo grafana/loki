@@ -2,12 +2,17 @@ package deletion
 
 import (
 	"context"
+	"fmt"
 	"time"
+
+	"github.com/grafana/dskit/user"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 
+	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 )
@@ -102,14 +107,125 @@ func (m *DataobjDeletionManager) Start(ctx context.Context) {
 // processDeleteRequests loads pending delete requests and creates tombstones for matching sections.
 func (m *DataobjDeletionManager) processDeleteRequests(ctx context.Context) error {
 	level.Debug(m.logger).Log("msg", "processing dataobj delete requests")
-	// TODO --
-	// 1. Load pending delete requests from deleteRequestStore
-	// 2. For each delete request:
-	//    a. Parse the query to extract matchers and time range
-	//    b. Query metastore.Sections() to find matching sections
-	//    c. Create tombstones via WriteTombstone() for each matching section
-	//    d. Mark the delete request as processed
-	// 3. Log metrics and completion
+
+	requests, err := m.deleteRequestStore.GetUnprocessedShards(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get unprocessed delete requests from deletes store: %w", err)
+	}
+
+	if len(requests) == 0 {
+		level.Debug(m.logger).Log("msg", "no unprocessed delete requests found")
+		return nil
+	}
+
+	level.Info(m.logger).Log("msg", "processing dataobj delete requests", "count", len(requests))
+
+	for _, req := range requests {
+		if err := m.processDeleteRequest(ctx, req); err != nil {
+			level.Error(m.logger).Log("msg", "failed to process delete request", "request_id", req.RequestID,
+				"user_id", req.UserID, "err", err)
+			// Continue processing other requests even if one fails
+			// todo: check how to handle failures here
+			continue
+		}
+		if err := m.deleteRequestStore.MarkShardAsProcessed(ctx, req); err != nil {
+			level.Error(m.logger).Log("msg", "failed to mark delete request as processed",
+				"request_id", req.RequestID, "user_id", req.UserID, "err", err)
+			// Continue - tombstones were created, so this will be retried
+		} else {
+			m.metrics.processedRequests.Inc()
+		}
+	}
+
+	return nil
+}
+
+// processDeleteRequest handles a single delete request by finding matching sections and creating tombstones.
+func (m *DataobjDeletionManager) processDeleteRequest(ctx context.Context, req deletionproto.DeleteRequest) error {
+	tenantCtx := user.InjectOrgID(ctx, req.UserID)
+	logSelector, err := parseDeletionQuery(req.Query)
+	if err != nil {
+		return fmt.Errorf("failed to parse delete query: %w", err)
+	}
+
+	matchers := logSelector.Matchers()
+	if len(matchers) == 0 {
+		return fmt.Errorf("delete query must have at least one matcher")
+	}
+
+	level.Debug(m.logger).Log(
+		"msg", "processing delete request",
+		"request_id", req.RequestID,
+		"user_id", req.UserID,
+		"query", req.Query,
+		"start", req.StartTime.Time(),
+		"end", req.EndTime.Time(),
+	)
+
+	sectionsResp, err := m.metastore.Sections(tenantCtx, metastore.SectionsRequest{
+		Start:    req.StartTime.Time(),
+		End:      req.EndTime.Time(),
+		Matchers: matchers,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to query metastore for sections: %w", err)
+	}
+
+	if len(sectionsResp.Sections) == 0 {
+		level.Info(m.logger).Log(
+			"msg", "no matching sections found for delete request",
+			"request_id", req.RequestID,
+			"user_id", req.UserID,
+		)
+		return nil
+	}
+
+	level.Info(m.logger).Log(
+		"msg", "found sections to delete",
+		"request_id", req.RequestID,
+		"user_id", req.UserID,
+		"count", len(sectionsResp.Sections),
+	)
+
+	sectionsByObject := make(map[string][]uint32)
+	for _, section := range sectionsResp.Sections {
+		sectionsByObject[section.ObjectPath] = append(
+			sectionsByObject[section.ObjectPath],
+			uint32(section.SectionIdx),
+		)
+	}
+
+	createdAt := model.Now()
+	for objectPath, sectionIndices := range sectionsByObject {
+		tombstone := &deletionproto.DataObjectTombstone{
+			ObjectPath:            objectPath,
+			DeletedSectionIndices: sectionIndices,
+			DeleteRequestID:       req.RequestID,
+			CreatedAt:             createdAt,
+			TenantID:              req.UserID,
+		}
+
+		if err := WriteTombstone(ctx, m.objStoreClient, tombstone); err != nil {
+			return fmt.Errorf("failed to write tombstone for object %s: %w", objectPath, err)
+		}
+
+		m.metrics.tombstonesCreated.Inc()
+		level.Info(m.logger).Log(
+			"msg", "created tombstone",
+			"request_id", req.RequestID,
+			"user_id", req.UserID,
+			"object", objectPath,
+			"sections", fmt.Sprintf("%v", sectionIndices),
+		)
+	}
+
+	level.Info(m.logger).Log(
+		"msg", "completed delete request processing",
+		"request_id", req.RequestID,
+		"user_id", req.UserID,
+		"tombstones_created", len(sectionsByObject),
+		"total_sections", len(sectionsResp.Sections),
+	)
 
 	return nil
 }
