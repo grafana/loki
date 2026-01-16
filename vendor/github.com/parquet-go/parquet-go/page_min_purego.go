@@ -2,89 +2,51 @@
 
 package parquet
 
-import "encoding/binary"
+import (
+	"encoding/binary"
+	"slices"
+)
 
-// -----------------------------------------------------------------------------
-// TODO: use generics versions of the these functions to reduce the amount of
-// code to maintain when we drop compatilibty with Go version older than 1.18.
-// -----------------------------------------------------------------------------
-
-func minInt32(data []int32) (min int32) {
-	if len(data) > 0 {
-		min = data[0]
-
-		for _, value := range data {
-			if value < min {
-				min = value
-			}
-		}
+func minInt32(data []int32) int32 {
+	if len(data) == 0 {
+		return 0
 	}
-	return min
+	return slices.Min(data)
 }
 
-func minInt64(data []int64) (min int64) {
-	if len(data) > 0 {
-		min = data[0]
-
-		for _, value := range data {
-			if value < min {
-				min = value
-			}
-		}
+func minInt64(data []int64) int64 {
+	if len(data) == 0 {
+		return 0
 	}
-	return min
+	return slices.Min(data)
 }
 
-func minUint32(data []uint32) (min uint32) {
-	if len(data) > 0 {
-		min = data[0]
-
-		for _, value := range data {
-			if value < min {
-				min = value
-			}
-		}
+func minUint32(data []uint32) uint32 {
+	if len(data) == 0 {
+		return 0
 	}
-	return min
+	return slices.Min(data)
 }
 
-func minUint64(data []uint64) (min uint64) {
-	if len(data) > 0 {
-		min = data[0]
-
-		for _, value := range data {
-			if value < min {
-				min = value
-			}
-		}
+func minUint64(data []uint64) uint64 {
+	if len(data) == 0 {
+		return 0
 	}
-	return min
+	return slices.Min(data)
 }
 
-func minFloat32(data []float32) (min float32) {
-	if len(data) > 0 {
-		min = data[0]
-
-		for _, value := range data {
-			if value < min {
-				min = value
-			}
-		}
+func minFloat32(data []float32) float32 {
+	if len(data) == 0 {
+		return 0
 	}
-	return min
+	return slices.Min(data)
 }
 
-func minFloat64(data []float64) (min float64) {
-	if len(data) > 0 {
-		min = data[0]
-
-		for _, value := range data {
-			if value < min {
-				min = value
-			}
-		}
+func minFloat64(data []float64) float64 {
+	if len(data) == 0 {
+		return 0
 	}
-	return min
+	return slices.Min(data)
 }
 
 func minBE128(data [][16]byte) (min []byte) {

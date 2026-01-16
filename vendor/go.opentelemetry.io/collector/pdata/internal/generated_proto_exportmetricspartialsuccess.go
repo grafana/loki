@@ -16,8 +16,8 @@ import (
 
 // ExportPartialSuccess represents the details of a partially successful export request.
 type ExportMetricsPartialSuccess struct {
-	RejectedDataPoints int64
 	ErrorMessage       string
+	RejectedDataPoints int64
 }
 
 var (
@@ -65,7 +65,6 @@ func CopyExportMetricsPartialSuccess(dest, src *ExportMetricsPartialSuccess) *Ex
 		dest = NewExportMetricsPartialSuccess()
 	}
 	dest.RejectedDataPoints = src.RejectedDataPoints
-
 	dest.ErrorMessage = src.ErrorMessage
 
 	return dest
@@ -155,9 +154,10 @@ func (orig *ExportMetricsPartialSuccess) SizeProto() int {
 	var n int
 	var l int
 	_ = l
-	if orig.RejectedDataPoints != 0 {
+	if orig.RejectedDataPoints != int64(0) {
 		n += 1 + proto.Sov(uint64(orig.RejectedDataPoints))
 	}
+
 	l = len(orig.ErrorMessage)
 	if l > 0 {
 		n += 1 + proto.Sov(uint64(l)) + l
@@ -169,7 +169,7 @@ func (orig *ExportMetricsPartialSuccess) MarshalProto(buf []byte) int {
 	pos := len(buf)
 	var l int
 	_ = l
-	if orig.RejectedDataPoints != 0 {
+	if orig.RejectedDataPoints != int64(0) {
 		pos = proto.EncodeVarint(buf, pos, uint64(orig.RejectedDataPoints))
 		pos--
 		buf[pos] = 0x8
@@ -209,7 +209,6 @@ func (orig *ExportMetricsPartialSuccess) UnmarshalProto(buf []byte) error {
 			if err != nil {
 				return err
 			}
-
 			orig.RejectedDataPoints = int64(num)
 
 		case 2:

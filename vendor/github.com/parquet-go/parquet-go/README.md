@@ -556,6 +556,40 @@ between `os.File` instances are optimized using `copy_file_range(2)` (on linux).
 See [parquet.PageBufferPool](https://pkg.go.dev/github.com/parquet-go/parquet-go#PageBufferPool)
 for the full interface documentation.
 
+#### D. Parallel Column Writes
+
+For applications that need to maximize throughput when writing large columnar datasets, the library supports writing columns in parallel. This is especially useful when each column can be prepared independently and written concurrently, leveraging multiple CPU cores.
+
+You can use Go's goroutines to write to each column's `ColumnWriter` in parallel. Each column's values can be written using `WriteRowValues`, and the column must be closed after writing. It is the application's responsibility to ensure that all columns receive the same number of rows, as mismatched row counts will result in malformed files.
+
+Example:
+
+```go
+columns   = writer.ColumnWriters()
+var (
+    wg        sync.WaitGroup
+    errs      = make([]error, len(columns))
+    rowCounts = make([]int, len(columns))
+)
+for i, col := range columns {
+    wg.Add(1)
+    go func(i int, col parquet.ColumnWriter) {
+        defer wg.Done()
+        n, err := col.WriteRowValues(values[i]) // values[i] is []parquet.Value for column i
+        if err != nil {
+            errs[i] = err
+            return
+        }
+        rowCounts[i] = n
+        errs[i] = col.Close()
+    }(i, col)
+}
+wg.Wait()
+// Check errs and rowCounts for consistency
+```
+
+This approach can significantly reduce the time required to write wide tables or large datasets, especially on multi-core systems. However, you should ensure proper error handling and synchronization, as shown above.
+
 ## Maintenance
 
 While initial design and development occurred at Twilio Segment, the project is now maintained by the open source community. We welcome external contributors.

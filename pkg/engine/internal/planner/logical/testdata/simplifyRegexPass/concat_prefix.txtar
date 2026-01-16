@@ -1,0 +1,11 @@
+Concatenations with a literal prefix should be converted into basic matches.
+
+-- column --
+utf8.builtin.message
+
+-- regex --
+foo.*
+
+-- expect --
+%1 = MATCH_STR builtin.message "foo"
+RETURN %1

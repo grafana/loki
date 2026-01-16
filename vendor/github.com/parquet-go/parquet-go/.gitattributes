@@ -1,1 +1,2 @@
 internal/gen-go/* linguist-generated=true
+testdata/gen/** binary linguist-generated=true
