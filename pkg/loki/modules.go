@@ -37,6 +37,8 @@ import (
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/bloombuild/builder"
 	"github.com/grafana/loki/v3/pkg/bloombuild/planner"
@@ -595,15 +597,19 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		serverutil.ResponseJSONMiddleware(),
 	}
 
-	var store objstore.Bucket
+	var (
+		store objstore.Bucket
+		ms    metastore.Metastore
+	)
 	if t.Cfg.QueryEngine.Enable {
 		store, err = t.getDataObjBucket("dataobj-querier")
 		if err != nil {
 			return nil, err
 		}
+		ms = metastore.NewObjectMetastore(store, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics)
 	}
 
-	t.querierAPI = querier.NewQuerierAPI(t.Cfg.Querier, t.Cfg.QueryEngine, t.Cfg.DataObj.Metastore, t.Querier, t.Overrides, store, prometheus.DefaultRegisterer, logger)
+	t.querierAPI = querier.NewQuerierAPI(t.Cfg.Querier, t.Cfg.QueryEngine, ms, t.Querier, t.Overrides, store, prometheus.DefaultRegisterer, logger)
 
 	indexStatsHTTPMiddleware := querier.WrapQuerySpanAndTimeout("query.IndexStats", t.Overrides)
 	indexShardsHTTPMiddleware := querier.WrapQuerySpanAndTimeout("query.IndexShards", t.Overrides)
@@ -1423,16 +1429,19 @@ func (t *Loki) initV2QueryEngine() (services.Service, error) {
 	}
 
 	logger := log.With(util_log.Logger, "component", "query-engine")
+
+	ms := metastore.NewObjectMetastore(store, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics)
+
 	engine, err := engine_v2.New(engine_v2.Params{
 		Logger:     logger,
 		Registerer: prometheus.DefaultRegisterer,
 
-		Config:          t.Cfg.QueryEngine.Executor,
-		MetastoreConfig: t.Cfg.DataObj.Metastore,
+		Config: t.Cfg.QueryEngine.Executor,
 
 		Scheduler: t.queryEngineV2Scheduler,
-		Bucket:    store,
 		Limits:    t.Overrides,
+
+		Metastore: ms,
 	})
 	if err != nil {
 		return nil, err
@@ -1444,7 +1453,7 @@ func (t *Loki) initV2QueryEngine() (services.Service, error) {
 		toMerge := []middleware.Interface{
 			httpreq.ExtractQueryMetricsMiddleware(),
 			httpreq.ExtractQueryTagsMiddleware(),
-			httpreq.PropagateHeadersMiddleware(httpreq.LokiEncodingFlagsHeader, httpreq.LokiDisablePipelineWrappersHeader),
+			httpreq.PropagateHeadersMiddleware(httpreq.LokiActorPathHeader, httpreq.LokiEncodingFlagsHeader, httpreq.LokiDisablePipelineWrappersHeader),
 			serverutil.RecoveryHTTPMiddleware,
 			t.HTTPAuthMiddleware,
 			serverutil.NewPrepopulateMiddleware(),
@@ -1521,8 +1530,10 @@ func (t *Loki) initV2QueryEngineWorker() (services.Service, error) {
 		return nil, err
 	}
 
+	logger := log.With(util_log.Logger, "component", "query-engine-worker")
+
 	worker, err := engine_v2.NewWorker(engine_v2.WorkerParams{
-		Logger: log.With(util_log.Logger, "component", "query-engine-worker"),
+		Logger: logger,
 		Bucket: store,
 
 		Config:   t.Cfg.QueryEngine.Worker,
@@ -1532,10 +1543,21 @@ func (t *Loki) initV2QueryEngineWorker() (services.Service, error) {
 
 		AdvertiseAddr: advertiseAddr,
 		Endpoint:      "/api/v2/frame",
+
+		Metastore: metastore.NewObjectMetastore(store, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics),
 	})
 	if err != nil {
 		return nil, err
 	}
+
+	if err := worker.RegisterMetrics(prometheus.DefaultRegisterer); err != nil {
+		return nil, err
+	}
+	worker.Service().AddListener(services.NewListener(
+		nil, nil, nil,
+		func(_ services.State) { worker.UnregisterMetrics(prometheus.DefaultRegisterer) },
+		func(_ services.State, _ error) { worker.UnregisterMetrics(prometheus.DefaultRegisterer) },
+	))
 
 	// Only register HTTP handler when running distributed query execution
 	if t.Cfg.QueryEngine.Distributed {

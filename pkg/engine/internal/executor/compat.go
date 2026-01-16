@@ -81,7 +81,7 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 			return cmp.Compare(a.name, b.name)
 		})
 
-		region.Record(statCompatCollisionFound.Observe(true))
+		region.Record(xcap.StatCompatCollisionFound.Observe(true))
 
 		// Next, update the schema with the new columns that have the _extracted suffix.
 		newSchema := batch.Schema()

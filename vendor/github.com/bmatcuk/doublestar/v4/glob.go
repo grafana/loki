@@ -158,7 +158,7 @@ func (g *glob) globAlts(fsys fs.FS, pattern string, openingIdx, closingIdx int, 
 				nextIdx += patIdx
 			}
 
-			alt := buildAlt(d, pattern, startIdx, openingIdx, patIdx, nextIdx, afterIdx)
+			alt := buildAlt(escapeMeta(d), pattern, startIdx, openingIdx, patIdx, nextIdx, afterIdx)
 			matches, err = g.doGlob(fsys, alt, matches, firstSegment, beforeMeta)
 			if err != nil {
 				return

@@ -1,0 +1,10 @@
+regexes that match nothing should always resolve to being true.
+
+-- column --
+utf8.builtin.message
+
+-- regex --
+||||||
+
+-- expect --
+RETURN builtin.message

@@ -14,16 +14,6 @@ import (
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
-// End of support notice: As of October 1, 2025, Amazon S3 has discontinued
-// support for Email Grantee Access Control Lists (ACLs). If you attempt to use an
-// Email Grantee ACL in a request after October 1, 2025, the request will receive
-// an HTTP 405 (Method Not Allowed) error.
-//
-// This change affects the following Amazon Web Services Regions: US East (N.
-// Virginia), US West (N. California), US West (Oregon), Asia Pacific (Singapore),
-// Asia Pacific (Sydney), Asia Pacific (Tokyo), Europe (Ireland), and South America
-// (São Paulo).
-//
 // This action creates an Amazon S3 bucket. To create an Amazon S3 on Outposts
 // bucket, see [CreateBucket]CreateBucket .
 //

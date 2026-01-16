@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"maps"
 	"reflect"
 	"sync/atomic"
 )
@@ -62,9 +63,7 @@ func (d *Decoder) Decode(v any) error {
 
 		newCache := make(map[typeID]decodeFunc, len(cache)+1)
 		newCache[makeTypeID(t)] = decode
-		for k, v := range cache {
-			newCache[k] = v
-		}
+		maps.Copy(newCache, cache)
 
 		decoderCache.Store(newCache)
 	}
@@ -429,9 +428,10 @@ func (dec *structDecoder) decode(r Reader, v reflect.Value, flags flags) error {
 
 	for i, required := range dec.required {
 		if mask := required & seen[i]; mask != required {
+			missing := required &^ seen[i]
 			i *= 64
-			for (mask & 1) != 0 {
-				mask >>= 1
+			for (missing & 1) == 0 {
+				missing >>= 1
 				i++
 			}
 			field := &dec.fields[i]
