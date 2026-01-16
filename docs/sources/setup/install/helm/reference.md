@@ -7708,6 +7708,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>lokiCanary.livenessProbe</td>
+			<td>string</td>
+			<td>Liveness probe</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>lokiCanary.lokiurl</td>
 			<td>string</td>
 			<td>If set overwrites the default value set by loki.host helper function. Use this if gateway not enabled.</td>
@@ -7801,6 +7810,15 @@ true
 			<td>Additional labels for loki-canary Service</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>lokiCanary.startupProbe</td>
+			<td>string</td>
+			<td>Startup probe</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>
