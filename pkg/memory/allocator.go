@@ -19,8 +19,8 @@ import (
 // The zero value of Allocator is ready for use.
 type Allocator struct {
 	regions []*Region
-	free    bitmap // Tracks free regions. 1=free, 0=used
-	empty   bitmap // Tracks nil elements of regions. 1=nil, 0=not-nil
+	free    Bitmap // Tracks free regions. 1=free, 0=used
+	empty   Bitmap // Tracks nil elements of regions. 1=nil, 0=not-nil
 }
 
 // Allocate retrieves the next free Memory region that can hold at least size
@@ -29,7 +29,7 @@ type Allocator struct {
 func (alloc *Allocator) Allocate(size int) *Region {
 	// Iterate over the set bits in the freelist. Each set bit indicates an
 	// available memory region.
-	for i := range alloc.free.IterValues(len(alloc.regions), true) {
+	for i := range alloc.free.IterValues(true) {
 		region := alloc.regions[i]
 		if region != nil && cap(region.data) >= size {
 			alloc.free.Set(i, false)
@@ -48,7 +48,7 @@ func (alloc *Allocator) addRegion(region *Region, free bool) {
 	// Elements in alloc.regions may be set to nil after [Allocator.Trim], so we
 	// should check to see if there's a free slot before appending to the slice.
 	freeSlot := -1
-	for i := range alloc.empty.IterValues(len(alloc.regions), true) {
+	for i := range alloc.empty.IterValues(true) {
 		freeSlot = i
 		break
 	}
@@ -87,7 +87,7 @@ func (alloc *Allocator) Reset() {
 //
 // If Trim is called after Reclaim, all memory regions will be released.
 func (alloc *Allocator) Trim() {
-	for i := range alloc.free.IterValues(len(alloc.regions), true) {
+	for i := range alloc.free.IterValues(true) {
 		region := alloc.regions[i]
 		if region == nil {
 			continue
@@ -120,7 +120,7 @@ func (alloc *Allocator) AllocatedBytes() int {
 // without requiring additional allocations.
 func (alloc *Allocator) FreeBytes() int {
 	var sum int
-	for i := range alloc.free.IterValues(len(alloc.regions), true) {
+	for i := range alloc.free.IterValues(true) {
 		region := alloc.regions[i]
 		if region != nil {
 			sum += cap(region.data)

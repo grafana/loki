@@ -1,6 +1,9 @@
 package memory
 
 import (
+	"iter"
+	"math/bits"
+
 	"github.com/apache/arrow-go/v18/arrow/bitutil"
 
 	"github.com/grafana/loki/v3/pkg/memory/internal/memalign"
@@ -77,6 +80,12 @@ func (bmap *Bitmap) AppendCountUnsafe(value bool, count int) {
 // Set sets the bit at index i to the given value. Set panics if i is out of
 // range of the length.
 func (bmap *Bitmap) Set(i int, value bool) { bitutil.SetBitTo(bmap.data, i, value) }
+
+// SetRange sets all the bits in the range [from, to). SetRange panics if from >
+// to or if to > bmap.Len().
+func (bmap *Bitmap) SetRange(from, to int, value bool) {
+	bitutil.SetBitsTo(bmap.data, int64(from), int64(to-from), value)
+}
 
 // Get returns the value at index i. Get panics if i is out of range.
 func (bmap *Bitmap) Get(i int) bool { return bitutil.BitIsSet(bmap.data, i) }
@@ -178,3 +187,31 @@ func (bmap *Bitmap) Clone() *Bitmap {
 // Bytes returns the raw representation of bmap, with bits stored in Least
 // Significant Bit (LSB) order.
 func (bmap *Bitmap) Bytes() []byte { return bmap.data }
+
+// IterValues returns an iterator over bits, returning the index
+// of each bit matching value.
+func (bmap *Bitmap) IterValues(value bool) iter.Seq[int] {
+	return func(yield func(int) bool) {
+		var start int
+
+		for _, word := range bmap.data {
+			rem := word
+			if !value {
+				rem = ^rem // Use a NOT to get unset bits.
+			}
+
+			for rem != 0 {
+				firstSet := bits.TrailingZeros8(rem)
+				index := start + firstSet
+				if index >= bmap.len {
+					return
+				} else if !yield(index) {
+					return
+				}
+				rem ^= 1 << firstSet
+			}
+
+			start += 8
+		}
+	}
+}

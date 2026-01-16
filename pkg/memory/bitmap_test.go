@@ -63,3 +63,62 @@ func TestBitmap_Set(t *testing.T) {
 		require.False(t, bmap.Get(i), "bit %d should be false", i)
 	}
 }
+
+func TestBitmap_SetRange(t *testing.T) {
+	bmap := memory.MakeBitmap(nil, 64)
+	bmap.Resize(64)
+	bmap.SetRange(0, 5, true)
+	bmap.SetRange(7, 10, true)
+
+	for i := range bmap.Len() {
+		value := bmap.Get(i)
+
+		switch {
+		case i >= 0 && i < 5:
+			require.True(t, value, "bit %d should be true", i)
+		case i >= 7 && i < 10:
+			require.True(t, value, "bit %d should be true", i)
+		default:
+			require.False(t, value, "bit %d should be false", i)
+		}
+	}
+}
+
+func TestBitmap_IterValue_true(t *testing.T) {
+	bmap := memory.MakeBitmap(nil, 128)
+	bmap.Resize(128) // 16 words, 8 bits each
+
+	bitsToSet := []int{1, 3, 5, 65, 70, 127}
+	for _, bit := range bitsToSet {
+		bmap.Set(bit, true)
+	}
+
+	var indices []int
+	for index := range bmap.IterValues(true) {
+		indices = append(indices, index)
+	}
+
+	expected := []int{1, 3, 5, 65, 70, 127}
+	require.Equal(t, expected, indices)
+}
+
+func TestBitmap_IterValue_false(t *testing.T) {
+	bmap := memory.MakeBitmap(nil, 128)
+	bmap.Resize(128) // 16 words, 8 bits each
+
+	// Set all bits first
+	bmap.SetRange(0, 128, true)
+
+	bitsToClear := []int{0, 2, 4, 64, 69, 126}
+	for _, bit := range bitsToClear {
+		bmap.Set(bit, false)
+	}
+
+	var indices []int
+	for index := range bmap.IterValues(false) {
+		indices = append(indices, index)
+	}
+
+	expected := []int{0, 2, 4, 64, 69, 126}
+	require.Equal(t, expected, indices)
+}
