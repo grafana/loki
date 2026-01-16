@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
+	"github.com/grafana/loki/v3/pkg/memory"
 )
 
 func Test_delta(t *testing.T) {
@@ -26,24 +27,27 @@ func Test_delta(t *testing.T) {
 	var buf bytes.Buffer
 
 	var (
-		enc    = newDeltaEncoder(&buf)
-		dec    = newDeltaDecoder(&buf)
-		decBuf = make([]Value, batchSize)
+		enc   = newDeltaEncoder(&buf)
+		dec   = newDeltaDecoder(nil)
+		alloc = memory.Allocator{}
 	)
 
 	for _, num := range numbers {
 		require.NoError(t, enc.Encode(Int64Value(num)))
 	}
+	dec.Reset(buf.Bytes())
 
 	var actual []int64
 	for {
-		n, err := dec.Decode(decBuf[:batchSize])
-		if errors.Is(err, io.EOF) {
-			break
+		values, err := dec.Decode(&alloc, batchSize)
+		if !errors.Is(err, io.EOF) {
+			require.NoError(t, err)
 		}
-		require.NoError(t, err)
-		for _, v := range decBuf[:n] {
-			actual = append(actual, v.Int64())
+		for _, v := range values.([]int64) {
+			actual = append(actual, v)
+		}
+		if err != nil {
+			break
 		}
 	}
 
@@ -64,9 +68,9 @@ func Fuzz_delta(f *testing.F) {
 		var buf bytes.Buffer
 
 		var (
-			enc    = newDeltaEncoder(&buf)
-			dec    = newDeltaDecoder(&buf)
-			decBuf = make([]Value, batchSize)
+			enc   = newDeltaEncoder(&buf)
+			dec   = newDeltaDecoder(nil)
+			alloc = memory.Allocator{}
 		)
 
 		var numbers []int64
@@ -75,16 +79,19 @@ func Fuzz_delta(f *testing.F) {
 			numbers = append(numbers, v)
 			require.NoError(t, enc.Encode(Int64Value(v)))
 		}
+		dec.Reset(buf.Bytes())
 
 		var actual []int64
 		for {
-			n, err := dec.Decode(decBuf[:batchSize])
+			values, err := dec.Decode(&alloc, batchSize)
+			if err != nil && !errors.Is(err, io.EOF) {
+				t.Fatalf("error decoding: %v", err)
+			}
+			for _, v := range values.([]int64) {
+				actual = append(actual, v)
+			}
 			if errors.Is(err, io.EOF) {
 				break
-			}
-			require.NoError(t, err)
-			for _, v := range decBuf[:n] {
-				actual = append(actual, v.Int64())
 			}
 		}
 
@@ -173,21 +180,22 @@ func Benchmark_deltaDecoder_Decode(b *testing.B) {
 		for _, batchSize := range batchSizes {
 			b.Run(fmt.Sprintf("%s/batchSize=%d", datasetName, batchSize), func(b *testing.B) {
 				buf := makeDataset()
-				decBuf := make([]Value, batchSize)
-				reader := bytes.NewReader(buf.Bytes())
-				dec := newDeltaDecoder(reader)
+				dec := newDeltaDecoder(nil)
+
+				var alloc memory.Allocator
 
 				valuesRead := 0
 				for b.Loop() {
-					reader.Reset(buf.Bytes())
-					dec.Reset(reader)
+					alloc.Reset()
+					dec.Reset(buf.Bytes())
+
 					for {
-						n, err := dec.Decode(decBuf)
-						valuesRead += n
+						values, err := dec.Decode(&alloc, batchSize)
+						valuesRead += len(values.([]int64))
 						if err != nil && errors.Is(err, io.EOF) {
 							break
 						} else if err != nil {
-							b.Fatal(err)
+							b.Fatalf("error decoding: %v", err)
 						}
 					}
 				}

@@ -71,7 +71,7 @@ func (f *HandlerFactory) CreateHandler(routeName string, comp comparator.Respons
 
 	var preferredBackend *ProxyBackend
 	for _, b := range f.backends {
-		if b.preferred {
+		if b.v1Preferred {
 			preferredBackend = b
 			break
 		}
