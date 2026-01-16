@@ -105,7 +105,7 @@ compactor:
   retention_delete_delay: 4h
   retention_delete_worker_count: {{.DeleteWorkerCount}}
 {{- end }}
-  delete_request_store: {{.ObjectStorage.SharedStore}}
+  delete_request_store: store-1
 {{- end }}
 {{- if .OTLPAttributes.RemoveDefaultLabels }}
 distributor:
@@ -334,7 +334,7 @@ schema_config:
       index:
         period: 24h
         prefix: index_
-      object_store: {{ $store }}
+      object_store: store-1
       schema: {{ .Version }}
       {{- if or (eq .Version "v11") (eq .Version "v12")}}
       store: boltdb-shipper
@@ -595,6 +595,85 @@ server:
 {{- end }}
   log_level: info
 storage_config:
+  use_thanos_objstore: true
+  object_store:
+    named_stores:
+      {{- with .ObjectStorage.Azure }}
+      azure:
+        store-1:
+          environment: {{ .Env }}
+          container_name: {{ .Container }}
+          account_name: ${AZURE_STORAGE_ACCOUNT_NAME}
+          {{- if .WorkloadIdentity }}
+          use_federated_token: true
+          {{- else }}
+          account_key: ${AZURE_STORAGE_ACCOUNT_KEY}
+          {{- end }}
+          {{- with .EndpointSuffix }}
+          endpoint_suffix: {{ . }}
+          {{- end }}
+      {{- end }}
+      {{- with .ObjectStorage.GCS }}
+      gcs:
+        store-1:
+          bucket_name: {{ .Bucket }}
+      {{- end }}
+      {{- with .ObjectStorage.S3 }}
+      s3:
+        store-1:
+          {{- if .STS }}
+          bucket_name: {{.Buckets}}
+          region: {{.Region}}
+          insecure: false
+          {{- else }}
+          endpoint: {{ .Endpoint }}
+          bucket_name: {{ .Buckets }}
+          region: {{ .Region }}
+          access_key_id: ${AWS_ACCESS_KEY_ID}
+          secret_access_key: ${AWS_ACCESS_KEY_SECRET}
+          {{- if .ForcePathStyle  }}
+          insecure: true
+          {{- end}}
+          {{- end }}
+          {{- with .SSE }}
+          {{- if .Type }}
+          sse_config:
+            type: {{ .Type }}
+            {{- if eq .Type "SSE-KMS" }}
+            kms_key_id: {{ .KMSKeyID }}
+            {{- with .KMSEncryptionContext }}
+            kms_encryption_context: ${AWS_SSE_KMS_ENCRYPTION_CONTEXT}
+            {{- end }}
+            {{- end}}
+          {{- end }}
+          {{- end }}
+      {{- end }}
+      {{- with .ObjectStorage.Swift }}
+      swift:
+        store-1:
+          auth_url: {{ .AuthURL }}
+          username: ${SWIFT_USERNAME}
+          user_domain_name: {{ .UserDomainName }}
+          user_domain_id: {{ .UserDomainID }}
+          user_id: {{ .UserID }}
+          password: ${SWIFT_PASSWORD}
+          domain_id: {{ .DomainID }}
+          domain_name: {{ .DomainName }}
+          project_id: {{ .ProjectID }}
+          project_name: {{ .ProjectName }}
+          project_domain_id: {{ .ProjectDomainID }}
+          project_domain_name: {{ .ProjectDomainName }}
+          region_name: {{ .Region }}
+          container_name: {{ .Container }}
+      {{- end }}
+      {{- with .ObjectStorage.AlibabaCloud}}
+      alibabacloud:
+        store-1:
+          bucket: {{ .Bucket }}
+          endpoint: {{ .Endpoint }}
+          access_key_id: ${ALIBABA_CLOUD_ACCESS_KEY_ID}
+          secret_access_key: ${ALIBABA_CLOUD_ACCESS_KEY_SECRET}
+      {{- end }}
 {{- range $_, $ship := .Shippers }}
 {{- if eq $ship "boltdb" }}
   boltdb_shipper:
