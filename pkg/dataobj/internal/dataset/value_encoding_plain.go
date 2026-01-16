@@ -8,7 +8,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
 	"github.com/grafana/loki/v3/pkg/memory"
-	"github.com/grafana/loki/v3/pkg/memory/buffer"
 )
 
 func init() {
@@ -112,8 +111,8 @@ func (dec *plainBytesDecoder) Decode(alloc *memory.Allocator, count int) (any, e
 		// exactly one allocated reusable memory region than to have it grow a few
 		// times as we try to discover the true size.
 
-		offsetsBuf = buffer.WithCapacity[int32](alloc, count+1)
-		valuesBuf  = buffer.WithCapacity[byte](alloc, len(dec.data))
+		offsetsBuf = memory.MakeBuffer[int32](alloc, count+1)
+		valuesBuf  = memory.MakeBuffer[byte](alloc, len(dec.data))
 
 		// It's going to be far more efficient for us to manipulate the output
 		// slices ourselves, so we'll do that here.

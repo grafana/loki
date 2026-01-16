@@ -1,4 +1,5 @@
-// Package memory provides support for allocating and reusing [Memory] regions.
+// Package memory provides support for allocating and reusing contiguous
+// [Region]s of memory.
 //
 // An [Allocator] supports reclaiming memory regions for reuse, invaliding
 // existing regions. Using a memory region after it has been reclaimed produces
@@ -14,12 +15,12 @@
 // [github.com/grafana/loki/v3/pkg/dataobj].
 package memory
 
-// Memory is a contiguous region of member owned by an [Allocator].
-type Memory struct {
+// Region is a contiguous region of memory owned by an [Allocator].
+type Region struct {
 	// TODO(rfratto): Do we need the Memory type at all?
 
 	data []byte // Raw data.
 }
 
 // Data returns the raw data of the memory region.
-func (m *Memory) Data() []byte { return m.data }
+func (m *Region) Data() []byte { return m.data }
