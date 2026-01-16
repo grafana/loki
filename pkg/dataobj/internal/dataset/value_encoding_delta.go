@@ -8,7 +8,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
 	"github.com/grafana/loki/v3/pkg/memory"
-	"github.com/grafana/loki/v3/pkg/memory/buffer"
 )
 
 func init() {
@@ -106,7 +105,7 @@ func (dec *deltaDecoder) Decode(alloc *memory.Allocator, count int) (any, error)
 	// Obtain a buffer from the allocator with enough capacity for an optimistic `count` values.
 	// Resize the buffer explicitly in order to use the Set API which avoids a reslice compared to Push.
 	// Resize must be used again before returning any data if the slice is not completely filled.
-	valuesBuf := buffer.WithCapacity[int64](alloc, count)
+	valuesBuf := memory.MakeBuffer[int64](alloc, count)
 	valuesBuf.Resize(count)
 	values := valuesBuf.Data()
 
