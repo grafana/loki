@@ -226,15 +226,15 @@ ui:
         # CLI flag: -ui.ring.multi.secondary
         [secondary: <string> | default = ""]
 
-        # Mirror writes to secondary store.
+        # Mirror writes to the secondary store.
         # CLI flag: -ui.ring.multi.mirror-enabled
         [mirror_enabled: <boolean> | default = false]
 
-        # Timeout for storing value to secondary store.
+        # Timeout for storing a value to the secondary store.
         # CLI flag: -ui.ring.multi.mirror-timeout
         [mirror_timeout: <duration> | default = 2s]
 
-    # Period at which to heartbeat to the ring. 0 = disabled.
+    # Period at which to heartbeat to the ring.
     # CLI flag: -ui.ring.heartbeat-period
     [heartbeat_period: <duration> | default = 15s]
 
@@ -451,16 +451,16 @@ pattern_ingester:
           # CLI flag: -pattern-ingester.multi.secondary
           [secondary: <string> | default = ""]
 
-          # Mirror writes to secondary store.
+          # Mirror writes to the secondary store.
           # CLI flag: -pattern-ingester.multi.mirror-enabled
           [mirror_enabled: <boolean> | default = false]
 
-          # Timeout for storing value to secondary store.
+          # Timeout for storing a value to the secondary store.
           # CLI flag: -pattern-ingester.multi.mirror-timeout
           [mirror_timeout: <duration> | default = 2s]
 
       # The heartbeat timeout after which ingesters are skipped for
-      # reads/writes. 0 = never (timeout disabled).
+      # reads/writes.
       # CLI flag: -pattern-ingester.ring.heartbeat-timeout
       [heartbeat_timeout: <duration> | default = 1m]
 
@@ -482,12 +482,11 @@ pattern_ingester:
     # CLI flag: -pattern-ingester.num-tokens
     [num_tokens: <int> | default = 128]
 
-    # Period at which to heartbeat to consul. 0 = disabled.
+    # Period at which to heartbeat to consul.
     # CLI flag: -pattern-ingester.heartbeat-period
     [heartbeat_period: <duration> | default = 5s]
 
-    # Heartbeat timeout after which instance is assumed to be unhealthy. 0 =
-    # disabled.
+    # Heartbeat timeout after which instance is assumed to be unhealthy.
     # CLI flag: -pattern-ingester.heartbeat-timeout
     [heartbeat_timeout: <duration> | default = 1m]
 
@@ -1249,16 +1248,16 @@ dataobj:
             # CLI flag: -dataobj-consumer.multi.secondary
             [secondary: <string> | default = ""]
 
-            # Mirror writes to secondary store.
+            # Mirror writes to the secondary store.
             # CLI flag: -dataobj-consumer.multi.mirror-enabled
             [mirror_enabled: <boolean> | default = false]
 
-            # Timeout for storing value to secondary store.
+            # Timeout for storing a value to the secondary store.
             # CLI flag: -dataobj-consumer.multi.mirror-timeout
             [mirror_timeout: <duration> | default = 2s]
 
         # The heartbeat timeout after which ingesters are skipped for
-        # reads/writes. 0 = never (timeout disabled).
+        # reads/writes.
         # CLI flag: -dataobj-consumer.ring.heartbeat-timeout
         [heartbeat_timeout: <duration> | default = 1m]
 
@@ -1280,12 +1279,11 @@ dataobj:
       # CLI flag: -dataobj-consumer.num-tokens
       [num_tokens: <int> | default = 128]
 
-      # Period at which to heartbeat to consul. 0 = disabled.
+      # Period at which to heartbeat to consul.
       # CLI flag: -dataobj-consumer.heartbeat-period
       [heartbeat_period: <duration> | default = 5s]
 
-      # Heartbeat timeout after which instance is assumed to be unhealthy. 0 =
-      # disabled.
+      # Heartbeat timeout after which instance is assumed to be unhealthy.
       # CLI flag: -dataobj-consumer.heartbeat-timeout
       [heartbeat_timeout: <duration> | default = 1m]
 
@@ -1390,11 +1388,11 @@ dataobj:
           # CLI flag: -dataobj-consumer.partition-ring.multi.secondary
           [secondary: <string> | default = ""]
 
-          # Mirror writes to secondary store.
+          # Mirror writes to the secondary store.
           # CLI flag: -dataobj-consumer.partition-ring.multi.mirror-enabled
           [mirror_enabled: <boolean> | default = false]
 
-          # Timeout for storing value to secondary store.
+          # Timeout for storing a value to the secondary store.
           # CLI flag: -dataobj-consumer.partition-ring.multi.mirror-timeout
           [mirror_timeout: <duration> | default = 2s]
 
@@ -1425,6 +1423,11 @@ dataobj:
     # that is no longer receiving new writes
     # CLI flag: -dataobj-consumer.idle-flush-timeout
     [idle_flush_timeout: <duration> | default = 1h]
+
+    # The maximum amount of time to accumulate data in a builder before flushing
+    # it. Defaults to 1 hour.
+    # CLI flag: -dataobj-consumer.max-builder-age
+    [max_builder_age: <duration> | default = 1h]
 
     # The name of the Kafka topic
     # CLI flag: -dataobj-consumer.topic
@@ -1556,16 +1559,16 @@ ingest_limits:
           # CLI flag: -ingest-limits.multi.secondary
           [secondary: <string> | default = ""]
 
-          # Mirror writes to secondary store.
+          # Mirror writes to the secondary store.
           # CLI flag: -ingest-limits.multi.mirror-enabled
           [mirror_enabled: <boolean> | default = false]
 
-          # Timeout for storing value to secondary store.
+          # Timeout for storing a value to the secondary store.
           # CLI flag: -ingest-limits.multi.mirror-timeout
           [mirror_timeout: <duration> | default = 2s]
 
       # The heartbeat timeout after which ingesters are skipped for
-      # reads/writes. 0 = never (timeout disabled).
+      # reads/writes.
       # CLI flag: -ingest-limits.ring.heartbeat-timeout
       [heartbeat_timeout: <duration> | default = 1m]
 
@@ -1587,12 +1590,11 @@ ingest_limits:
     # CLI flag: -ingest-limits.num-tokens
     [num_tokens: <int> | default = 128]
 
-    # Period at which to heartbeat to consul. 0 = disabled.
+    # Period at which to heartbeat to consul.
     # CLI flag: -ingest-limits.heartbeat-period
     [heartbeat_period: <duration> | default = 5s]
 
-    # Heartbeat timeout after which instance is assumed to be unhealthy. 0 =
-    # disabled.
+    # Heartbeat timeout after which instance is assumed to be unhealthy.
     # CLI flag: -ingest-limits.heartbeat-timeout
     [heartbeat_timeout: <duration> | default = 1m]
 
@@ -1726,16 +1728,16 @@ ingest_limits_frontend:
           # CLI flag: -ingest-limits-frontend.multi.secondary
           [secondary: <string> | default = ""]
 
-          # Mirror writes to secondary store.
+          # Mirror writes to the secondary store.
           # CLI flag: -ingest-limits-frontend.multi.mirror-enabled
           [mirror_enabled: <boolean> | default = false]
 
-          # Timeout for storing value to secondary store.
+          # Timeout for storing a value to the secondary store.
           # CLI flag: -ingest-limits-frontend.multi.mirror-timeout
           [mirror_timeout: <duration> | default = 2s]
 
       # The heartbeat timeout after which ingesters are skipped for
-      # reads/writes. 0 = never (timeout disabled).
+      # reads/writes.
       # CLI flag: -ingest-limits-frontend.ring.heartbeat-timeout
       [heartbeat_timeout: <duration> | default = 1m]
 
@@ -1757,12 +1759,11 @@ ingest_limits_frontend:
     # CLI flag: -ingest-limits-frontend.num-tokens
     [num_tokens: <int> | default = 128]
 
-    # Period at which to heartbeat to consul. 0 = disabled.
+    # Period at which to heartbeat to consul.
     # CLI flag: -ingest-limits-frontend.heartbeat-period
     [heartbeat_period: <duration> | default = 5s]
 
-    # Heartbeat timeout after which instance is assumed to be unhealthy. 0 =
-    # disabled.
+    # Heartbeat timeout after which instance is assumed to be unhealthy.
     # CLI flag: -ingest-limits-frontend.heartbeat-timeout
     [heartbeat_timeout: <duration> | default = 1m]
 
@@ -2100,6 +2101,11 @@ The `azure_storage_config` block configures the connection to Azure object stora
 # container must be created before running cortex.
 # CLI flag: -<prefix>.azure.container-name
 [container_name: <string> | default = "loki"]
+
+# Azure active directory endpoint override. Use when the Azure SDK does not
+# support your environment.
+# CLI flag: -<prefix>.azure.active-directory-endpoint
+[active_directory_endpoint: <string> | default = ""]
 
 # Azure storage endpoint suffix without schema. The storage account name will be
 # prefixed to this value to create the FQDN.
@@ -2701,15 +2707,15 @@ ring:
       # CLI flag: -common.storage.ring.multi.secondary
       [secondary: <string> | default = ""]
 
-      # Mirror writes to secondary store.
+      # Mirror writes to the secondary store.
       # CLI flag: -common.storage.ring.multi.mirror-enabled
       [mirror_enabled: <boolean> | default = false]
 
-      # Timeout for storing value to secondary store.
+      # Timeout for storing a value to the secondary store.
       # CLI flag: -common.storage.ring.multi.mirror-timeout
       [mirror_timeout: <duration> | default = 2s]
 
-  # Period at which to heartbeat to the ring. 0 = disabled.
+  # Period at which to heartbeat to the ring.
   # CLI flag: -common.storage.ring.heartbeat-period
   [heartbeat_period: <duration> | default = 15s]
 
@@ -2907,15 +2913,15 @@ compactor_ring:
       # CLI flag: -compactor.ring.multi.secondary
       [secondary: <string> | default = ""]
 
-      # Mirror writes to secondary store.
+      # Mirror writes to the secondary store.
       # CLI flag: -compactor.ring.multi.mirror-enabled
       [mirror_enabled: <boolean> | default = false]
 
-      # Timeout for storing value to secondary store.
+      # Timeout for storing a value to the secondary store.
       # CLI flag: -compactor.ring.multi.mirror-timeout
       [mirror_timeout: <duration> | default = 2s]
 
-  # Period at which to heartbeat to the ring. 0 = disabled.
+  # Period at which to heartbeat to the ring.
   # CLI flag: -compactor.ring.heartbeat-period
   [heartbeat_period: <duration> | default = 15s]
 
@@ -3177,15 +3183,15 @@ ring:
       # CLI flag: -distributor.ring.multi.secondary
       [secondary: <string> | default = ""]
 
-      # Mirror writes to secondary store.
+      # Mirror writes to the secondary store.
       # CLI flag: -distributor.ring.multi.mirror-enabled
       [mirror_enabled: <boolean> | default = false]
 
-      # Timeout for storing value to secondary store.
+      # Timeout for storing a value to the secondary store.
       # CLI flag: -distributor.ring.multi.mirror-timeout
       [mirror_timeout: <duration> | default = 2s]
 
-  # Period at which to heartbeat to the ring. 0 = disabled.
+  # Period at which to heartbeat to the ring.
   # CLI flag: -distributor.ring.heartbeat-period
   [heartbeat_period: <duration> | default = 5s]
 
@@ -3631,7 +3637,7 @@ backoff_config:
 [connect_backoff_max_delay: <duration> | default = 5s]
 
 cluster_validation:
-  # Optionally define the cluster validation label.
+  # Primary cluster validation label.
   # CLI flag: -<prefix>.cluster-validation.label
   [label: <string> | default = ""]
 ```
@@ -3684,15 +3690,15 @@ ring:
       # CLI flag: -index-gateway.ring.multi.secondary
       [secondary: <string> | default = ""]
 
-      # Mirror writes to secondary store.
+      # Mirror writes to the secondary store.
       # CLI flag: -index-gateway.ring.multi.mirror-enabled
       [mirror_enabled: <boolean> | default = false]
 
-      # Timeout for storing value to secondary store.
+      # Timeout for storing a value to the secondary store.
       # CLI flag: -index-gateway.ring.multi.mirror-timeout
       [mirror_timeout: <duration> | default = 2s]
 
-  # Period at which to heartbeat to the ring. 0 = disabled.
+  # Period at which to heartbeat to the ring.
   # CLI flag: -index-gateway.ring.heartbeat-period
   [heartbeat_period: <duration> | default = 15s]
 
@@ -3779,16 +3785,15 @@ lifecycler:
         # CLI flag: -multi.secondary
         [secondary: <string> | default = ""]
 
-        # Mirror writes to secondary store.
+        # Mirror writes to the secondary store.
         # CLI flag: -multi.mirror-enabled
         [mirror_enabled: <boolean> | default = false]
 
-        # Timeout for storing value to secondary store.
+        # Timeout for storing a value to the secondary store.
         # CLI flag: -multi.mirror-timeout
         [mirror_timeout: <duration> | default = 2s]
 
     # The heartbeat timeout after which ingesters are skipped for reads/writes.
-    # 0 = never (timeout disabled).
     # CLI flag: -ring.heartbeat-timeout
     [heartbeat_timeout: <duration> | default = 1m]
 
@@ -3810,12 +3815,11 @@ lifecycler:
   # CLI flag: -ingester.num-tokens
   [num_tokens: <int> | default = 128]
 
-  # Period at which to heartbeat to consul. 0 = disabled.
+  # Period at which to heartbeat to consul.
   # CLI flag: -ingester.heartbeat-period
   [heartbeat_period: <duration> | default = 5s]
 
-  # Heartbeat timeout after which instance is assumed to be unhealthy. 0 =
-  # disabled.
+  # Heartbeat timeout after which instance is assumed to be unhealthy.
   # CLI flag: -ingester.heartbeat-timeout
   [heartbeat_timeout: <duration> | default = 1m]
 
@@ -4073,11 +4077,11 @@ kafka_ingestion:
         # CLI flag: -ingester.partition-ring.multi.secondary
         [secondary: <string> | default = ""]
 
-        # Mirror writes to secondary store.
+        # Mirror writes to the secondary store.
         # CLI flag: -ingester.partition-ring.multi.mirror-enabled
         [mirror_enabled: <boolean> | default = false]
 
-        # Timeout for storing value to secondary store.
+        # Timeout for storing a value to the secondary store.
         # CLI flag: -ingester.partition-ring.multi.mirror-timeout
         [mirror_timeout: <duration> | default = 2s]
 
@@ -4667,6 +4671,13 @@ shard_streams:
 # CLI flag: -index-gateway.shard-size
 [index_gateway_shard_size: <int> | default = 0]
 
+# Experimental. Defines a fraction (between 0.0 and 1.0) of the total index
+# gateways available for a each tenant. A value of 0.0 has the same effect as
+# 1.0, meaning all available index gateways. This setting only applies to simple
+# mode.
+# CLI flag: -index-gateway.max-capacity
+[index_gateway_max_capacity: <float> | default = 1]
+
 # Experimental. Whether to use the bloom gateway component in the read path to
 # filter chunks.
 # CLI flag: -bloom-gateway.enable-filtering
@@ -5078,6 +5089,19 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 # The TLS configuration.
 # The CLI flags prefix for this block configuration is: memberlist
 [<tls_config>]
+
+zone_aware_routing:
+  # Enable zone-aware routing for memberlist gossip.
+  # CLI flag: -memberlist.zone-aware-routing.enabled
+  [enabled: <boolean> | default = false]
+
+  # Availability zone where this node is running.
+  # CLI flag: -memberlist.zone-aware-routing.instance-availability-zone
+  [instance_availability_zone: <string> | default = ""]
+
+  # Role of this node in the cluster. Valid values: member, bridge.
+  # CLI flag: -memberlist.zone-aware-routing.role
+  [role: <string> | default = "member"]
 ```
 
 ### named_stores_config
@@ -5497,15 +5521,15 @@ scheduler_ring:
       # CLI flag: -query-scheduler.ring.multi.secondary
       [secondary: <string> | default = ""]
 
-      # Mirror writes to secondary store.
+      # Mirror writes to the secondary store.
       # CLI flag: -query-scheduler.ring.multi.mirror-enabled
       [mirror_enabled: <boolean> | default = false]
 
-      # Timeout for storing value to secondary store.
+      # Timeout for storing a value to the secondary store.
       # CLI flag: -query-scheduler.ring.multi.mirror-timeout
       [mirror_timeout: <duration> | default = 2s]
 
-  # Period at which to heartbeat to the ring. 0 = disabled.
+  # Period at which to heartbeat to the ring.
   # CLI flag: -query-scheduler.ring.heartbeat-period
   [heartbeat_period: <duration> | default = 15s]
 
@@ -5746,15 +5770,15 @@ ring:
       # CLI flag: -ruler.ring.multi.secondary
       [secondary: <string> | default = ""]
 
-      # Mirror writes to secondary store.
+      # Mirror writes to the secondary store.
       # CLI flag: -ruler.ring.multi.mirror-enabled
       [mirror_enabled: <boolean> | default = false]
 
-      # Timeout for storing value to secondary store.
+      # Timeout for storing a value to the secondary store.
       # CLI flag: -ruler.ring.multi.mirror-timeout
       [mirror_timeout: <duration> | default = 2s]
 
-  # Interval between heartbeats sent to the ring. 0 = disabled.
+  # Interval between heartbeats sent to the ring.
   # CLI flag: -ruler.ring.heartbeat-period
   [heartbeat_period: <duration> | default = 5s]
 
@@ -6302,9 +6326,14 @@ grpc_tls_config:
 [http_path_prefix: <string> | default = ""]
 
 cluster_validation:
-  # Optionally define the cluster validation label.
+  # Primary cluster validation label.
   # CLI flag: -server.cluster-validation.label
   [label: <string> | default = ""]
+
+  # Comma-separated list of additional cluster validation labels that the server
+  # will accept from incoming requests.
+  # CLI flag: -server.cluster-validation.additional-labels
+  [additional_labels: <string> | default = ""]
 
   grpc:
     # When enabled, cluster label validation is executed: configured cluster
@@ -7348,7 +7377,8 @@ s3:
   # The S3 storage class to use, not set by default. Details can be found at
   # https://aws.amazon.com/s3/storage-classes/. Supported values are: STANDARD,
   # REDUCED_REDUNDANCY, GLACIER, STANDARD_IA, ONEZONE_IA, INTELLIGENT_TIERING,
-  # DEEP_ARCHIVE, OUTPOSTS, GLACIER_IR, SNOW, EXPRESS_ONEZONE, FSX_OPENZFS
+  # DEEP_ARCHIVE, OUTPOSTS, GLACIER_IR, SNOW, EXPRESS_ONEZONE, FSX_OPENZFS,
+  # FSX_ONTAP
   # CLI flag: -<prefix>.s3.storage-class
   [storage_class: <string> | default = ""]
 
@@ -7839,12 +7869,6 @@ Configuration for `tracing`.
 # Set to false to disable tracing.
 # CLI flag: -tracing.enabled
 [enabled: <boolean> | default = true]
-
-# Set to true to drops all spans from the GCS client library. This prevents the
-# GCS client from creating millions of spans in high-throughput production
-# environments.
-# CLI flag: -tracing.filter-gcs-spans
-[filter_gcs_spans: <boolean> | default = true]
 ```
 
 <!-- vale Grafana.Spelling = YES -->

@@ -130,7 +130,9 @@ type Record struct {
 	ProducerID int64
 
 	// LeaderEpoch is the leader epoch of the broker at the time this
-	// record was written, or -1 if on message sets.
+	// record was written, or -1 if on message sets. When producing,
+	// this is always set to -1 (producers do not use this field and the
+	// broker does not reply with the epoch).
 	//
 	// For committing records, it is not recommended to modify the
 	// LeaderEpoch. Clients use the LeaderEpoch for data loss detection.
@@ -337,38 +339,53 @@ type FetchError struct {
 // Errors returns all errors in a fetch with the topic and partition that
 // errored.
 //
-// There are a few classes of errors possible:
+// There are a few classes of errors possible, in order from most-retryable
+// (or ignorable) to least retryable:
 //
 //  1. a normal kerr.Error; these are usually the non-retryable kerr.Errors,
 //     but theoretically a non-retryable error can be fixed at runtime (auth
 //     error? fix auth). It is worth restarting the client for these errors if
-//     you do not intend to fix this problem at runtime.
+//     you do not intend to fix this problem at runtime. These can also be
+//     returned when metadata loading of the topic or partition has a
+//     non-retryable error.
 //
 //  2. an injected *ErrDataLoss; these are informational, the client
 //     automatically resets consuming to where it should and resumes. This
 //     error is worth logging and investigating, but not worth restarting the
 //     client for.
 //
-//  3. an untyped batch parse failure; these are usually unrecoverable by
-//     restarts, and it may be best to just let the client continue.
-//     Restarting is an option, but you may need to manually repair your
-//     partition.
-//
-//  4. an injected ErrClientClosed; this is a fatal informational error that
-//     is returned from every Poll call if the client has been closed.
-//     A corresponding helper function IsClientClosed can be used to detect
-//     this error.
-//
-//  5. an injected context error; this can be present if the context you were
+//  3. an injected context error; this can be present if the context you were
 //     using for polling timed out or was canceled.
 //
-//  6. an injected ErrGroupSession; this is an informational error that is
+//  4. an injected ErrGroupSession; this is an informational error that is
 //     injected once a group session is lost in a way that is not the standard
 //     rebalance. This error can signify that your consumer member is not able
 //     to connect to the group (ACL problems, unreachable broker), or you
 //     blocked rebalancing for too long, or your callbacks took too long.
 //
-// This list may grow over time.
+//  5. an injected ErrClientClosed; this is a fatal informational error that
+//     is returned from every Poll call if the client has been closed.
+//     A corresponding helper function IsClientClosed can be used to detect
+//     this error.
+//
+//  6. If using NewOffset().AtCommitted(), an untyped error is injected if a
+//     partition the client wants to consume has no commit.
+//
+//  7. an untyped batch parse failure; these are usually unrecoverable by
+//     restarts, and it may be best to just let the client continue.
+//     Restarting is an option, but you may need to manually repair your
+//     partition. This usually implies data corruption on the broker.
+//
+//  8. An untyped non-retryable error that the client does not know how to
+//     handle when it was trying to validate some aspect of fetching (something
+//     failed very unexpectedly when listing offsets to learn where to fetch, or
+//     when validating the epoch in offsets). The client still internally will
+//     retry what it was doing, but odds are not great.
+//
+// This list may grow over time. Generally, untyped, non-context errors are not
+// retryable. Typed errors are usually retryable given time or given wider
+// system fixes (perhaps live-updating auth or certs or ACLs, or restarting a
+// down broker).
 func (fs Fetches) Errors() []FetchError {
 	var errs []FetchError
 	fs.EachError(func(t string, p int32, err error) {

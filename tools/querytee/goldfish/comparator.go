@@ -4,11 +4,14 @@ import (
 	"net/http"
 	"time"
 
+	logger "github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/loki/v3/pkg/goldfish"
+	"github.com/grafana/loki/v3/tools/querytee/comparator"
 )
 
 // CompareResponses compares performance statistics and hashes from QuerySample
-func CompareResponses(sample *goldfish.QuerySample, performanceTolerance float64) goldfish.ComparisonResult {
+func CompareResponses(sample *goldfish.QuerySample, cellAResp, cellBResp *ResponseData, performanceTolerance float64, comparator comparator.ResponsesComparator, logger logger.Logger) goldfish.ComparisonResult {
 	result := goldfish.ComparisonResult{
 		CorrelationID:     sample.CorrelationID,
 		DifferenceDetails: make(map[string]any),
@@ -48,12 +51,38 @@ func CompareResponses(sample *goldfish.QuerySample, performanceTolerance float64
 
 	case sample.CellAResponseHash != sample.CellBResponseHash:
 		// Both returned 200 but with different content
-		result.ComparisonStatus = goldfish.ComparisonStatusMismatch
+
 		result.DifferenceDetails["content_hash"] = map[string]any{
 			"cell_a": sample.CellAResponseHash,
 			"cell_b": sample.CellBResponseHash,
 		}
-		return result
+
+		result.ComparisonStatus = goldfish.ComparisonStatusMismatch
+
+		if cellAResp != nil && cellBResp != nil && comparator != nil {
+			// we don't know the structure of the data, or the datatype.
+			// there is a chance the data is floating point numbers that differ within tolerance
+			// and so have different hashes but are "equivalent" within tolerance.
+			// it is also possible we match some other unexpected cases
+			// where the hashes differ but the data is equivalent within tolerance (empty matrix?)
+
+			_, err := comparator.Compare(cellAResp.Body, cellBResp.Body, sample.SampledAt)
+			if err == nil {
+				result.ComparisonStatus = goldfish.ComparisonStatusMatch
+				result.DifferenceDetails["tolerance_match"] = true
+			} else {
+				result.DifferenceDetails["tolerance_match"] = false
+				result.DifferenceDetails["tolerance_match_error"] = err.Error()
+			}
+		} else {
+			_ = level.Warn(logger).Log(
+				"msg", "unable to perform tolerance comparison due to missing response data or comparator",
+				"correlation_id", sample.CorrelationID,
+			)
+		}
+		if result.ComparisonStatus == goldfish.ComparisonStatusMismatch {
+			return result
+		}
 
 	default:
 		// Both returned 200 with identical content

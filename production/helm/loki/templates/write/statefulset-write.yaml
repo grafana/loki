@@ -156,7 +156,7 @@ spec:
       {{- end }}
       {{- with .Values.write.dnsConfig | default .Values.loki.dnsConfig }}
       dnsConfig:
-        {{- tpl . $ | nindent 8 }}
+        {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- with .Values.write.nodeSelector }}
       nodeSelector:

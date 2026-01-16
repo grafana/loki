@@ -33,6 +33,7 @@ type DropletsService interface {
 	GetBackupPolicy(context.Context, int) (*DropletBackupPolicy, *Response, error)
 	ListBackupPolicies(context.Context, *ListOptions) (map[int]*DropletBackupPolicy, *Response, error)
 	ListSupportedBackupPolicies(context.Context) ([]*SupportedBackupPolicy, *Response, error)
+	ListAssociatedResourcesForDeletion(context.Context, int) (*DropletAssociatedResources, *Response, error)
 }
 
 // DropletsServiceOp handles communication with the Droplet related methods of the
@@ -261,6 +262,26 @@ type DropletBackupPolicyRequest struct {
 	Plan    string `json:"plan,omitempty"`
 	Weekday string `json:"weekday,omitempty"`
 	Hour    *int   `json:"hour,omitempty"`
+}
+
+// DropletAssociatedResource represents a billable resource associated with a Droplet.
+type DropletAssociatedResource struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Cost string `json:"cost"`
+}
+
+// DropletAssociatedResources represents the associated billable resources that can be destroyed along with a Droplet.
+type DropletAssociatedResources struct {
+	ReservedIPs     []*DropletAssociatedResource `json:"reserved_ips"`
+	FloatingIPs     []*DropletAssociatedResource `json:"floating_ips"`
+	Snapshots       []*DropletAssociatedResource `json:"snapshots"`
+	Volumes         []*DropletAssociatedResource `json:"volumes"`
+	VolumeSnapshots []*DropletAssociatedResource `json:"volume_snapshots"`
+}
+
+func (a DropletAssociatedResources) String() string {
+	return Stringify(a)
 }
 
 func (d DropletCreateRequest) String() string {
@@ -619,6 +640,27 @@ func (s *DropletsServiceOp) Neighbors(ctx context.Context, dropletID int) ([]Dro
 	}
 
 	return root.Droplets, resp, err
+}
+
+// ListAssociatedResourcesForDeletion lists a Droplet's associated resources that can be destroyed along with the Droplet.
+// Associated resources include reserved IPs, floating IPs, snapshots, volumes, and volume snapshots.
+func (s *DropletsServiceOp) ListAssociatedResourcesForDeletion(ctx context.Context, dropletID int) (*DropletAssociatedResources, *Response, error) {
+	if dropletID < 1 {
+		return nil, nil, NewArgError("dropletID", "cannot be less than 1")
+	}
+	path := fmt.Sprintf("%s/%d/destroy_with_associated_resources", dropletBasePath, dropletID)
+	req, err := s.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	root := new(DropletAssociatedResources)
+	resp, err := s.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+
+	return root, resp, nil
 }
 
 func (s *DropletsServiceOp) dropletActionStatus(ctx context.Context, uri string) (string, error) {

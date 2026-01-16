@@ -788,6 +788,14 @@ func (s *source) loopFetch() {
 			s.fetchState.hardFinish()
 			return
 		case doneFetch := <-canFetch:
+			// Perform another last minute best-effort check on session context
+			// to avoid calling fetch with a canceled context just because it passed
+			// the above selects by chance due to pseudo-random select behavior.
+			if session.ctx.Err() != nil {
+				doneFetch <- struct{}{}
+				s.fetchState.hardFinish()
+				return
+			}
 			again = s.fetchState.maybeFinish(s.fetch(session, doneFetch))
 		}
 	}

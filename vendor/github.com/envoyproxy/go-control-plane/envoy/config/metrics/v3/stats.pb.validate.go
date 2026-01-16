@@ -823,17 +823,6 @@ func (m *HistogramBucketSettings) validate(all bool) error {
 		}
 	}
 
-	if len(m.GetBuckets()) < 1 {
-		err := HistogramBucketSettingsValidationError{
-			field:  "Buckets",
-			reason: "value must contain at least 1 item(s)",
-		}
-		if !all {
-			return err
-		}
-		errors = append(errors, err)
-	}
-
 	_HistogramBucketSettings_Buckets_Unique := make(map[float64]struct{}, len(m.GetBuckets()))
 
 	for idx, item := range m.GetBuckets() {
@@ -856,6 +845,21 @@ func (m *HistogramBucketSettings) validate(all bool) error {
 			err := HistogramBucketSettingsValidationError{
 				field:  fmt.Sprintf("Buckets[%v]", idx),
 				reason: "value must be greater than 0",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+
+	}
+
+	if wrapper := m.GetBins(); wrapper != nil {
+
+		if val := wrapper.GetValue(); val <= 0 || val > 46082 {
+			err := HistogramBucketSettingsValidationError{
+				field:  "Bins",
+				reason: "value must be inside range (0, 46082]",
 			}
 			if !all {
 				return err

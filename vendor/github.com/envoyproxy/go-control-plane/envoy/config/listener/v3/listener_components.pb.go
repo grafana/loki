@@ -443,7 +443,7 @@ type FilterChain struct {
 	//
 	// Deprecated: Marked as deprecated in envoy/config/listener/v3/listener_components.proto.
 	UseProxyProto *wrapperspb.BoolValue `protobuf:"bytes,4,opt,name=use_proxy_proto,json=useProxyProto,proto3" json:"use_proxy_proto,omitempty"`
-	// [#not-implemented-hide:] filter chain metadata.
+	// Filter chain metadata.
 	Metadata *v3.Metadata `protobuf:"bytes,5,opt,name=metadata,proto3" json:"metadata,omitempty"`
 	// Optional custom transport socket implementation to use for downstream connections.
 	// To setup TLS, set a transport socket with name “envoy.transport_sockets.tls“ and

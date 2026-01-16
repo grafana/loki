@@ -44,7 +44,11 @@ func (m *mockPartitionRingReader) PartitionRing() *ring.PartitionRing {
 			Tokens: []uint32{uint32(id)}, // Use partition ID as token for simplicity
 		}
 	}
-	return ring.NewPartitionRing(desc)
+	r, err := ring.NewPartitionRing(desc)
+	if err != nil {
+		panic(err)
+	}
+	return r
 }
 
 func TestCooperativeActiveStickyBalancer(t *testing.T) {

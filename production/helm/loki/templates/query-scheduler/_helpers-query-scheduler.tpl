@@ -25,7 +25,7 @@ app.kubernetes.io/component: query-scheduler
 query-scheduler image
 */}}
 {{- define "loki.querySchedulerImage" -}}
-{{- $dict := dict "loki" .Values.loki.image "service" .Values.queryScheduler.image "global" .Values.global.image "defaultVersion" .Chart.AppVersion -}}
+{{- $dict := dict "loki" .Values.loki.image "service" .Values.queryScheduler.image "global" .Values.global "defaultVersion" .Chart.AppVersion -}}
 {{- include "loki.lokiImage" $dict -}}
 {{- end }}
 

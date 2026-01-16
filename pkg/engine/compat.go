@@ -130,7 +130,8 @@ func (b *streamsResultBuilder) CollectRecord(rec arrow.RecordBatch) {
 			})
 
 		// One of the parsed columns
-		case ident.ColumnType() == types.ColumnTypeParsed:
+		case ident.ColumnType() == types.ColumnTypeParsed || (ident.ColumnType() == types.ColumnTypeGenerated &&
+			shortName == types.ColumnNameError || shortName == types.ColumnNameErrorDetails):
 			parsedCol := col.(*array.String)
 
 			// TODO: keep errors if --strict is set
@@ -443,7 +444,10 @@ func collectSamplesFromRow(builder *labels.Builder, rec arrow.RecordBatch, i int
 
 		// allow any string columns
 		if ident.DataType() == types.Loki.String {
-			builder.Set(shortName, col.(*array.String).Value(i))
+			val := col.(*array.String).Value(i)
+			if val != "" {
+				builder.Set(shortName, val)
+			}
 		}
 	}
 

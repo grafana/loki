@@ -45,11 +45,9 @@ func DeleteLogsData(orig *LogsData, nullable bool) {
 		orig.Reset()
 		return
 	}
-
 	for i := range orig.ResourceLogs {
 		DeleteResourceLogs(orig.ResourceLogs[i], true)
 	}
-
 	orig.Reset()
 	if nullable {
 		protoPoolLogsData.Put(orig)
