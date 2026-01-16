@@ -8,6 +8,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
+// Flush reason constants
+const (
+	FlushReasonMaxAge      = "max_age"
+	FlushReasonBuilderFull = "builder_full"
+	FlushReasonIdle        = "idle"
+)
+
 type partitionOffsetMetrics struct {
 	currentOffset prometheus.GaugeFunc
 	lastOffset    atomic.Int64
@@ -15,13 +22,17 @@ type partitionOffsetMetrics struct {
 	// Error counters
 	commitFailures prometheus.Counter
 	appendFailures prometheus.Counter
+	flushesTotal   *prometheus.CounterVec
+	flushFailures  prometheus.Counter
 
 	// Request counters
 	commitsTotal prometheus.Counter
-	appendsTotal prometheus.Counter
 
 	latestDelay      prometheus.Gauge // Latest delta between record timestamp and current time
 	processedRecords prometheus.Counter
+	processedBytes   prometheus.Counter
+
+	flushDuration prometheus.Histogram
 }
 
 func newPartitionOffsetMetrics() *partitionOffsetMetrics {
@@ -38,10 +49,6 @@ func newPartitionOffsetMetrics() *partitionOffsetMetrics {
 			Name: "loki_dataobj_consumer_commits_total",
 			Help: "Total number of commits",
 		}),
-		appendsTotal: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "loki_dataobj_consumer_appends_total",
-			Help: "Total number of appends",
-		}),
 		latestDelay: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "loki_dataobj_consumer_latest_processing_delay_seconds",
 			Help: "Latest time difference bweteen record timestamp and processing time in seconds",
@@ -49,6 +56,27 @@ func newPartitionOffsetMetrics() *partitionOffsetMetrics {
 		processedRecords: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "loki_dataobj_consumer_processed_records_total",
 			Help: "Total number of records processed.",
+		}),
+		processedBytes: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "loki_dataobj_consumer_processed_bytes_total",
+			Help: "Total number of bytes processed.",
+		}),
+		flushDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name: "loki_dataobj_consumer_flush_duration_seconds",
+			Help: "Time taken to flush a data object (build, sort, upload, etc).",
+
+			Buckets:                         prometheus.DefBuckets,
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 0,
+		}),
+		flushesTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_dataobj_consumer_flushes_total",
+			Help: "Total number of data objects flushed.",
+		}, []string{"reason"}),
+		flushFailures: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "loki_dataobj_consumer_flush_failures_total",
+			Help: "Total number of flush failures.",
 		}),
 	}
 
@@ -71,10 +99,13 @@ func (p *partitionOffsetMetrics) register(reg prometheus.Registerer) error {
 	collectors := []prometheus.Collector{
 		p.commitFailures,
 		p.appendFailures,
-		p.appendsTotal,
+		p.flushesTotal,
 		p.latestDelay,
 		p.processedRecords,
+		p.processedBytes,
 		p.currentOffset,
+		p.flushDuration,
+		p.flushFailures,
 	}
 
 	for _, collector := range collectors {
@@ -91,10 +122,13 @@ func (p *partitionOffsetMetrics) unregister(reg prometheus.Registerer) {
 	collectors := []prometheus.Collector{
 		p.commitFailures,
 		p.appendFailures,
-		p.appendsTotal,
+		p.flushesTotal,
 		p.latestDelay,
 		p.processedRecords,
+		p.processedBytes,
 		p.currentOffset,
+		p.flushDuration,
+		p.flushFailures,
 	}
 
 	for _, collector := range collectors {
@@ -114,12 +148,12 @@ func (p *partitionOffsetMetrics) incAppendFailures() {
 	p.appendFailures.Inc()
 }
 
-func (p *partitionOffsetMetrics) incAppendsTotal() {
-	p.appendsTotal.Inc()
-}
-
 func (p *partitionOffsetMetrics) incCommitsTotal() {
 	p.commitsTotal.Inc()
+}
+
+func (p *partitionOffsetMetrics) incFlushesTotal(reason string) {
+	p.flushesTotal.WithLabelValues(reason).Inc()
 }
 
 func (p *partitionOffsetMetrics) observeProcessingDelay(recordTimestamp time.Time) {

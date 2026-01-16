@@ -1486,7 +1486,12 @@ func VarBinaryImpl[OffsetT int32 | int64](ctx *exec.KernelCtx, batch *exec.ExecS
 	if values.Len > 0 {
 		dataLength := rawOffsets[values.Len] - rawOffsets[0]
 		meanValueLen := float64(dataLength) / float64(values.Len)
-		dataBuilder.reserve(int(meanValueLen))
+		estimatedTotalSize := int(meanValueLen * float64(outputLength))
+
+		// Cap the pre-allocation at a reasonable size
+		const maxPreAlloc = 16777216 // 16 MB
+		estimatedTotalSize = min(estimatedTotalSize, maxPreAlloc)
+		dataBuilder.reserve(estimatedTotalSize)
 	}
 
 	offsetBuilder.reserve(int(outputLength) + 1)
@@ -1503,7 +1508,22 @@ func VarBinaryImpl[OffsetT int32 | int64](ctx *exec.KernelCtx, batch *exec.ExecS
 			}
 			offset += valSize
 			if valSize > OffsetT(spaceAvail) {
-				dataBuilder.reserve(int(valSize))
+				// Calculate how much total capacity we need
+				needed := dataBuilder.len() + int(valSize)
+				newCap := dataBuilder.cap()
+
+				// Double capacity until we have enough space
+				// This gives us O(log n) reallocations instead of O(n)
+				if newCap == 0 {
+					newCap = int(valSize)
+				}
+				for newCap < needed {
+					newCap = newCap * 2
+				}
+
+				// Reserve the additional capacity
+				additional := newCap - dataBuilder.len()
+				dataBuilder.reserve(additional)
 				spaceAvail = dataBuilder.cap() - dataBuilder.len()
 			}
 			dataBuilder.unsafeAppendSlice(rawData[valOffset : valOffset+valSize])
@@ -1571,10 +1591,16 @@ func ListImpl[OffsetT int32 | int64](ctx *exec.KernelCtx, batch *exec.ExecSpan, 
 	if values.Len > 0 {
 		dataLength := rawOffsets[values.Len] - rawOffsets[0]
 		meanListLen := float64(dataLength) / float64(values.Len)
-		childIdxBuilder.reserve(int(meanListLen))
+		estimatedTotal := int(meanListLen * float64(outputLength))
+
+		// Cap the pre-allocation at a reasonable size
+		const maxPreAlloc = 16777216 // 16M elements
+		estimatedTotal = min(estimatedTotal, maxPreAlloc)
+		childIdxBuilder.reserve(estimatedTotal)
 	}
 
 	offsetBuilder.reserve(int(outputLength) + 1)
+	spaceAvail := childIdxBuilder.cap()
 	var offset OffsetT
 	err := fn(ctx, outputLength, values, selection, out,
 		func(idx int64) error {
@@ -1582,10 +1608,29 @@ func ListImpl[OffsetT int32 | int64](ctx *exec.KernelCtx, batch *exec.ExecSpan, 
 			valueOffset := rawOffsets[idx]
 			valueLength := rawOffsets[idx+1] - valueOffset
 			offset += valueLength
-			childIdxBuilder.reserve(int(valueLength))
+			if int(valueLength) > spaceAvail {
+				// Calculate how much total capacity we need
+				needed := childIdxBuilder.len() + int(valueLength)
+				newCap := childIdxBuilder.cap()
+
+				// Double capacity until we have enough space
+				// This gives us O(log n) reallocations instead of O(n)
+				if newCap == 0 {
+					newCap = int(valueLength)
+				}
+				for newCap < needed {
+					newCap = newCap * 2
+				}
+
+				// Reserve the additional capacity
+				additional := newCap - childIdxBuilder.len()
+				childIdxBuilder.reserve(additional)
+				spaceAvail = childIdxBuilder.cap() - childIdxBuilder.len()
+			}
 			for j := valueOffset; j < valueOffset+valueLength; j++ {
 				childIdxBuilder.unsafeAppend(j)
 			}
+			spaceAvail -= int(valueLength)
 			return nil
 		}, func() error {
 			offsetBuilder.unsafeAppend(offset)
@@ -1642,6 +1687,83 @@ func FSLImpl(ctx *exec.KernelCtx, batch *exec.ExecSpan, outputLength int64, out 
 	defer arr.Release()
 	out.Children = make([]exec.ArraySpan, 1)
 	out.Children[0].TakeOwnership(arr.Data())
+	return nil
+}
+
+func MapImpl(ctx *exec.KernelCtx, batch *exec.ExecSpan, outputLength int64, out *exec.ExecResult, fn selectionOutputFn) error {
+	var (
+		values    = &batch.Values[0].Array
+		selection = &batch.Values[1].Array
+
+		rawOffsets      = exec.GetSpanOffsets[int32](values, 1)
+		mem             = exec.GetAllocator(ctx.Ctx)
+		offsetBuilder   = newBufferBuilder[int32](mem)
+		childIdxBuilder = newBufferBuilder[int32](mem)
+	)
+
+	// Maps use the same underlying structure as lists (offsets + child indices)
+	// Pre-allocate based on mean map size
+	if values.Len > 0 {
+		dataLength := rawOffsets[values.Len] - rawOffsets[0]
+		meanMapLen := float64(dataLength) / float64(values.Len)
+		estimatedTotal := int(meanMapLen * float64(outputLength))
+
+		// Cap the pre-allocation at a reasonable size
+		const maxPreAlloc = 16777216 // 16M elements
+		estimatedTotal = min(estimatedTotal, maxPreAlloc)
+		childIdxBuilder.reserve(estimatedTotal)
+	}
+
+	offsetBuilder.reserve(int(outputLength) + 1)
+	spaceAvail := childIdxBuilder.cap()
+	var offset int32
+	err := fn(ctx, outputLength, values, selection, out,
+		func(idx int64) error {
+			offsetBuilder.unsafeAppend(offset)
+			valueOffset := rawOffsets[idx]
+			valueLength := rawOffsets[idx+1] - valueOffset
+			offset += valueLength
+			if int(valueLength) > spaceAvail {
+				// Calculate how much total capacity we need
+				needed := childIdxBuilder.len() + int(valueLength)
+				newCap := childIdxBuilder.cap()
+
+				// Double capacity until we have enough space
+				// This gives us O(log n) reallocations instead of O(n)
+				if newCap == 0 {
+					newCap = int(valueLength)
+				}
+				for newCap < needed {
+					newCap = newCap * 2
+				}
+
+				// Reserve the additional capacity
+				additional := newCap - childIdxBuilder.len()
+				childIdxBuilder.reserve(additional)
+				spaceAvail = childIdxBuilder.cap() - childIdxBuilder.len()
+			}
+			for j := valueOffset; j < valueOffset+valueLength; j++ {
+				childIdxBuilder.unsafeAppend(j)
+			}
+			spaceAvail -= int(valueLength)
+			return nil
+		}, func() error {
+			offsetBuilder.unsafeAppend(offset)
+			return nil
+		})
+
+	if err != nil {
+		return err
+	}
+
+	offsetBuilder.unsafeAppend(offset)
+	out.Buffers[1].WrapBuffer(offsetBuilder.finish())
+
+	out.Children = make([]exec.ArraySpan, 1)
+	out.Children[0].Type = arrow.PrimitiveTypes.Int32
+	out.Children[0].Len = int64(childIdxBuilder.len())
+	out.Children[0].Buffers[1].WrapBuffer(childIdxBuilder.finish())
+
 	return nil
 }
 

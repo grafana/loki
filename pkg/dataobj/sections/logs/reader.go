@@ -166,6 +166,12 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.RecordBatch, er
 	builder := array.NewRecordBuilder(r.opts.Allocator, r.schema)
 
 	n, readErr := r.inner.Read(ctx, r.buf)
+
+	// Preallocate all builders
+	for _, columnBuilder := range builder.Fields() {
+		columnBuilder.Reserve(n)
+	}
+
 	for rowIndex := range n {
 		row := r.buf[rowIndex]
 

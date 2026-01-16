@@ -112,6 +112,7 @@ func (h *FanOutHandler) Do(ctx context.Context, req queryrangebase.Request) (que
 		return nil, fmt.Errorf("failed to extract tenant IDs: %w", err)
 	}
 	shouldSample := h.shouldSample(tenants, httpReq)
+
 	results := h.makeBackendRequests(ctx, httpReq, body, req, issuer)
 	collected := make([]*backendResult, 0, len(h.backends))
 
@@ -127,7 +128,7 @@ func (h *FanOutHandler) Do(ctx context.Context, req queryrangebase.Request) (que
 
 				// If the preferred (v1) backend wins, then apply the handicap to give v2 a
 				// chance to "win" by finishing within the race tolerance of v1.
-				if result.backend.preferred && h.raceTolerance > 0 {
+				if result.backend.v1Preferred && h.raceTolerance > 0 {
 					select {
 					case r2 := <-results:
 						collected = append(collected, r2)
@@ -150,7 +151,7 @@ func (h *FanOutHandler) Do(ctx context.Context, req queryrangebase.Request) (que
 			}
 		} else {
 			// Non-race mode: legacy logic (wait for preferred)
-			if result.backend.preferred {
+			if result.backend.v1Preferred {
 				// when the preferred backend fails return any successful response
 				if !result.backendResp.succeeded() {
 					continue
@@ -218,14 +219,14 @@ func (h *FanOutHandler) collectRemainingAndCompare(remaining int, httpReq *http.
 
 	var preferredResult *backendResult
 	for _, r := range collected {
-		if r.backend.preferred {
+		if r.backend.v1Preferred {
 			preferredResult = r
 			break
 		}
 	}
 
 	for _, r := range collected {
-		if h.comparator != nil && !r.backend.preferred {
+		if h.comparator != nil && !r.backend.v1Preferred {
 			result := comparisonSuccess
 			summary, err := h.compareResponses(preferredResult.backendResp, r.backendResp, time.Now().UTC())
 			if err != nil {
@@ -373,7 +374,7 @@ func (h *FanOutHandler) processGoldfishComparison(httpReq *http.Request, preferr
 
 	// Find preferred and non-preferred responses
 	for _, r := range results {
-		if r.err != nil || r.backend.preferred {
+		if r.err != nil || r.backend.v1Preferred {
 			continue
 		}
 		level.Info(h.logger).Log("msg", "processing responses with Goldfish",

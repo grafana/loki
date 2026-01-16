@@ -481,13 +481,13 @@ func TestMatcher(t *testing.T) {
 	t.Run("gappedMatcher", func(t *testing.T) {
 		opts := rangeAggregationOptions{
 			startTs:       time.Unix(100, 0),
-			endTs:         time.Unix(300, 0),
+			endTs:         time.Unix(360, 0),
 			rangeInterval: 80 * time.Second,
 			step:          100 * time.Second, // step > rangeInterval
 			operation:     types.RangeAggregationTypeCount,
 		}
 
-		// Create windows that align with lower/upper bounds and step
+		// Create windows that align with lower bound and step, but not upper bound
 		windows := []window{
 			{start: time.Unix(20, 0), end: time.Unix(100, 0)},
 			{start: time.Unix(120, 0), end: time.Unix(200, 0)},
@@ -523,6 +523,11 @@ func TestMatcher(t *testing.T) {
 				expected:  nil, // lower bound is exclusive
 			},
 			{
+				name:      "timestamp outside of the last window but within bounds",
+				timestamp: time.Unix(320, 0),
+				expected:  nil,
+			},
+			{
 				name:      "timestamp exactly at end of window 0",
 				timestamp: time.Unix(100, 0),
 				expected:  []window{windows[0]}, // should return window as upperbound is inclusive
@@ -540,6 +545,11 @@ func TestMatcher(t *testing.T) {
 			{
 				name:      "timestamp just before upperbound",
 				timestamp: f.bounds.end.Add(-1 * time.Nanosecond),
+				expected:  nil,
+			},
+			{
+				name:      "timestamp just before the last window end",
+				timestamp: time.Unix(300, 0).Add(-1 * time.Nanosecond),
 				expected:  []window{windows[2]},
 			},
 			{

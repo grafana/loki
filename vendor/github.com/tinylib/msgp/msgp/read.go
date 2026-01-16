@@ -1,8 +1,10 @@
 package msgp
 
 import (
+	"encoding"
 	"encoding/binary"
 	"encoding/json"
+	"fmt"
 	"io"
 	"math"
 	"strconv"
@@ -13,7 +15,7 @@ import (
 )
 
 // where we keep old *Readers
-var readerPool = sync.Pool{New: func() interface{} { return &Reader{} }}
+var readerPool = sync.Pool{New: func() any { return &Reader{} }}
 
 // Type is a MessagePack wire type,
 // including this package's built-in
@@ -207,7 +209,7 @@ func (m *Reader) CopyNext(w io.Writer) (int64, error) {
 		defer done()
 	}
 	// for maps and slices, read elements
-	for x := uintptr(0); x < o; x++ {
+	for range o {
 		var n2 int64
 		n2, err = m.CopyNext(w)
 		if err != nil {
@@ -870,7 +872,7 @@ func (m *Reader) ReadUint64() (u uint64, err error) {
 		if err != nil {
 			return
 		}
-		v := int64(getMint64(p))
+		v := getMint64(p)
 		if v < 0 {
 			err = UintBelowZero{Value: v}
 			return
@@ -1038,7 +1040,7 @@ func (m *Reader) ReadBytesHeader() (sz uint32, err error) {
 		if err != nil {
 			return
 		}
-		sz = uint32(big.Uint32(p[1:]))
+		sz = big.Uint32(p[1:])
 		return
 	default:
 		err = badPrefix(BinType, lead)
@@ -1110,7 +1112,7 @@ func (m *Reader) ReadStringAsBytes(scratch []byte) (b []byte, err error) {
 		if err != nil {
 			return
 		}
-		read = int64(uint8(p[1]))
+		read = int64(p[1])
 	case mstr16:
 		p, err = m.R.Next(3)
 		if err != nil {
@@ -1205,7 +1207,7 @@ func (m *Reader) ReadString() (s string, err error) {
 		if err != nil {
 			return
 		}
-		read = int64(uint8(p[1]))
+		read = int64(p[1])
 	case mstr16:
 		p, err = m.R.Next(3)
 		if err != nil {
@@ -1302,7 +1304,7 @@ func (m *Reader) ReadComplex128() (f complex128, err error) {
 
 // ReadMapStrIntf reads a MessagePack map into a map[string]interface{}.
 // (You must pass a non-nil map into the function.)
-func (m *Reader) ReadMapStrIntf(mp map[string]interface{}) (err error) {
+func (m *Reader) ReadMapStrIntf(mp map[string]any) (err error) {
 	var sz uint32
 	sz, err = m.ReadMapHeader()
 	if err != nil {
@@ -1317,7 +1319,7 @@ func (m *Reader) ReadMapStrIntf(mp map[string]interface{}) (err error) {
 	}
 	for i := uint32(0); i < sz; i++ {
 		var key string
-		var val interface{}
+		var val any
 		key, err = m.ReadString()
 		if err != nil {
 			return
@@ -1447,7 +1449,7 @@ func (m *Reader) ReadJSONNumber() (n json.Number, err error) {
 // Arrays are decoded as []interface{}, and maps are decoded
 // as map[string]interface{}. Integers are decoded as int64
 // and unsigned integers are decoded as uint64.
-func (m *Reader) ReadIntf() (i interface{}, err error) {
+func (m *Reader) ReadIntf() (i any, err error) {
 	var t Type
 	t, err = m.NextType()
 	if err != nil {
@@ -1517,7 +1519,7 @@ func (m *Reader) ReadIntf() (i interface{}, err error) {
 			defer done()
 		}
 
-		mp := make(map[string]interface{})
+		mp := make(map[string]any)
 		err = m.ReadMapStrIntf(mp)
 		i = mp
 		return
@@ -1553,7 +1555,7 @@ func (m *Reader) ReadIntf() (i interface{}, err error) {
 			return
 		}
 
-		out := make([]interface{}, int(sz))
+		out := make([]any, int(sz))
 		for j := range out {
 			out[j], err = m.ReadIntf()
 			if err != nil {
@@ -1566,4 +1568,52 @@ func (m *Reader) ReadIntf() (i interface{}, err error) {
 	default:
 		return nil, fatal // unreachable
 	}
+}
+
+// ReadBinaryUnmarshal reads a binary-encoded object from the reader and unmarshals it into dst.
+func (m *Reader) ReadBinaryUnmarshal(dst encoding.BinaryUnmarshaler) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("msgp: panic during UnmarshalBinary: %v", r)
+		}
+	}()
+	tmp := bytesPool.Get().([]byte)
+	defer bytesPool.Put(tmp) //nolint:staticcheck
+	tmp, err = m.ReadBytes(tmp[:0])
+	if err != nil {
+		return
+	}
+	return dst.UnmarshalBinary(tmp)
+}
+
+// ReadTextUnmarshal reads a text-encoded bin array from the reader and unmarshals it into dst.
+func (m *Reader) ReadTextUnmarshal(dst encoding.TextUnmarshaler) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("msgp: panic during UnmarshalText: %v", r)
+		}
+	}()
+	tmp := bytesPool.Get().([]byte)
+	defer bytesPool.Put(tmp) //nolint:staticcheck
+	tmp, err = m.ReadBytes(tmp[:0])
+	if err != nil {
+		return
+	}
+	return dst.UnmarshalText(tmp)
+}
+
+// ReadTextUnmarshalString reads a text-encoded string from the reader and unmarshals it into dst.
+func (m *Reader) ReadTextUnmarshalString(dst encoding.TextUnmarshaler) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("msgp: panic during UnmarshalText: %v", r)
+		}
+	}()
+	tmp := bytesPool.Get().([]byte)
+	defer bytesPool.Put(tmp) //nolint:staticcheck
+	tmp, err = m.ReadStringAsBytes(tmp[:0])
+	if err != nil {
+		return
+	}
+	return dst.UnmarshalText(tmp)
 }

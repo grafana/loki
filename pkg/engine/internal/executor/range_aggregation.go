@@ -239,6 +239,8 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 				valArr = valVec.(*array.Float64)
 			}
 
+			labelsCache := newLabelsCache()
+
 			for row := range int(record.NumRows()) {
 				var value float64
 				if r.opts.operation != types.RangeAggregationTypeCount {
@@ -254,15 +256,7 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 					continue // out of range, skip this row
 				}
 
-				labelValues := make([]string, 0, len(arrays))
-				labels := make([]arrow.Field, 0, len(arrays))
-				for i, arr := range arrays {
-					val := arr.Value(row)
-					if val != "" {
-						labelValues = append(labelValues, val)
-						labels = append(labels, fields[i])
-					}
-				}
+				labels, labelValues := labelsCache.getLabels(arrays, fields, row)
 
 				for _, w := range windows {
 					r.aggregator.Add(w.end, value, labels, labelValues)
@@ -344,7 +338,7 @@ func (f *matcherFactory) createExactMatcher(windows []window) timestampMatchingW
 		if len(windows) == 0 {
 			return nil
 		}
-		return []window{windows[0]}
+		return windows[0:1]
 	}
 }
 
@@ -367,7 +361,7 @@ func (f *matcherFactory) createAlignedMatcher(windows []window) timestampMatchin
 		tNs := t.UnixNano()
 		// valid timestamps for window i: t > startNs + (i-1) * intervalNs && t <= startNs + i * intervalNs
 		windowIndex := (tNs - startNs + stepNs - 1) / stepNs // subtract 1ns because we are calculating 0-based indexes
-		return []window{windows[windowIndex]}
+		return windows[windowIndex : windowIndex+1]
 	}
 }
 
@@ -391,11 +385,14 @@ func (f *matcherFactory) createGappedMatcher(windows []window) timestampMatching
 		tNs := t.UnixNano()
 		// For gapped windows, window i covers: (start + i*step - interval, start + i*step]
 		windowIndex := (tNs - startNs + stepNs - 1) / stepNs // subtract 1ns because we are calculating 0-based indexes
-		matchingWindow := windows[windowIndex]
+
+		if windowIndex >= int64(len(windows)) {
+			return nil // out of range when bounds do not fit exact number of steps
+		}
 
 		// Verify the timestamp is within the window (not in a gap)
-		if tNs > matchingWindow.start.UnixNano() {
-			return []window{matchingWindow}
+		if tNs > windows[windowIndex].start.UnixNano() {
+			return windows[windowIndex : windowIndex+1]
 		}
 
 		return nil // timestamp is in a gap

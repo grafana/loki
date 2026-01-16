@@ -132,6 +132,7 @@ func parseEndpoints(lbEndpoints []*v3endpointpb.LbEndpoint, uniqueEndpointAddrs 
 			Weight:       weight,
 			HashKey:      hashKey,
 			Metadata:     endpointMetadata,
+			Hostname:     lbEndpoint.GetEndpoint().GetHostname(),
 		})
 	}
 	return endpoints, nil

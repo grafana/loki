@@ -26,6 +26,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/compute/exec"
 	"github.com/apache/arrow-go/v18/arrow/compute/internal/kernels"
+	"github.com/apache/arrow-go/v18/arrow/memory"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -194,7 +195,7 @@ func takeRecordImpl(ctx context.Context, opts FunctionOptions, args ...Datum) (D
 		return nil, err
 	}
 
-	outRec := array.NewRecord(rb.Schema(), cols, nrows)
+	outRec := array.NewRecordBatch(rb.Schema(), cols, nrows)
 	return &RecordDatum{Value: outRec}, nil
 }
 
@@ -360,6 +361,55 @@ func selectListImpl(fn exec.ArrayKernelExec) exec.ArrayKernelExec {
 	}
 }
 
+func selectMapImpl(fn exec.ArrayKernelExec) exec.ArrayKernelExec {
+	return func(ctx *exec.KernelCtx, batch *exec.ExecSpan, out *exec.ExecResult) error {
+		if err := fn(ctx, batch, out); err != nil {
+			return err
+		}
+
+		// out.Children[0] contains the child indexes of key-value pairs that we
+		// want to take after processing. Maps store their data as a struct of keys/items.
+		values := batch.Values[0].Array.MakeArray().(*array.Map)
+		defer values.Release()
+
+		childIndices := out.Children[0].MakeArray()
+		defer childIndices.Release()
+
+		// Maps have a single struct child containing the keys and items
+		// We need to take from both the keys and items arrays
+		takenKeys, err := TakeArrayOpts(ctx.Ctx, values.Keys(), childIndices, kernels.TakeOptions{BoundsCheck: false})
+		if err != nil {
+			return err
+		}
+		defer takenKeys.Release()
+
+		takenItems, err := TakeArrayOpts(ctx.Ctx, values.Items(), childIndices, kernels.TakeOptions{BoundsCheck: false})
+		if err != nil {
+			return err
+		}
+		defer takenItems.Release()
+
+		// Build the struct child array with the taken keys and items
+		// Maps have a single struct child with "key" and "value" fields
+		structType := arrow.StructOf(
+			arrow.Field{Name: "key", Type: values.Keys().DataType()},
+			arrow.Field{Name: "value", Type: values.Items().DataType()},
+		)
+
+		// Create struct data with taken keys and items as children
+		structData := array.NewData(
+			structType,
+			int(childIndices.Len()),
+			[]*memory.Buffer{nil},
+			[]arrow.ArrayData{takenKeys.Data(), takenItems.Data()},
+			0, 0)
+		defer structData.Release()
+
+		out.Children[0].TakeOwnership(structData)
+		return nil
+	}
+}
+
 func denseUnionImpl(fn exec.ArrayKernelExec) exec.ArrayKernelExec {
 	return func(ctx *exec.KernelCtx, batch *exec.ExecSpan, out *exec.ExecResult) error {
 		if err := fn(ctx, batch, out); err != nil {
@@ -510,6 +560,7 @@ func RegisterVectorSelection(reg FunctionRegistry) {
 		{In: exec.NewIDInput(arrow.LIST), Exec: selectListImpl(kernels.TakeExec(kernels.ListImpl[int32]))},
 		{In: exec.NewIDInput(arrow.LARGE_LIST), Exec: selectListImpl(kernels.TakeExec(kernels.ListImpl[int64]))},
 		{In: exec.NewIDInput(arrow.FIXED_SIZE_LIST), Exec: selectListImpl(kernels.TakeExec(kernels.FSLImpl))},
+		{In: exec.NewIDInput(arrow.MAP), Exec: selectMapImpl(kernels.TakeExec(kernels.MapImpl))},
 		{In: exec.NewIDInput(arrow.DENSE_UNION), Exec: denseUnionImpl(kernels.TakeExec(kernels.DenseUnionImpl))},
 		{In: exec.NewIDInput(arrow.EXTENSION), Exec: extensionTakeImpl},
 		{In: exec.NewIDInput(arrow.STRUCT), Exec: structTake},
@@ -619,7 +670,7 @@ func FilterRecordBatch(ctx context.Context, batch arrow.RecordBatch, filter arro
 		return nil, err
 	}
 
-	return array.NewRecord(batch.Schema(), cols, int64(indicesArr.Len())), nil
+	return array.NewRecordBatch(batch.Schema(), cols, int64(indicesArr.Len())), nil
 }
 
 func FilterTable(ctx context.Context, tbl arrow.Table, filter Datum, opts *FilterOptions) (arrow.Table, error) {

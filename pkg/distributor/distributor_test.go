@@ -2416,7 +2416,10 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 		expectedLimitsRequest     *limitsproto.ExceedsLimitsRequest
 		limitsResponse            *limitsproto.ExceedsLimitsResponse
 		limitsResponseErr         error
+		expectedResponse          *logproto.PushResponse
 		expectedErr               string
+		expectedDiscardedSamples  float64
+		expectedDiscardedBytes    float64
 	}{{
 		name:                "limits are not checked when disabled",
 		ingestLimitsEnabled: false,
@@ -2426,7 +2429,10 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 				Labels: "{foo=\"bar\"}",
 			}},
 		},
-		expectedLimitsCalls: 0,
+		expectedLimitsCalls:      0,
+		expectedResponse:         success,
+		expectedDiscardedSamples: 0,
+		expectedDiscardedBytes:   0,
 	}, {
 		name:                "limits are checked",
 		ingestLimitsEnabled: true,
@@ -2451,34 +2457,9 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 		limitsResponse: &limitsproto.ExceedsLimitsResponse{
 			Results: []*limitsproto.ExceedsLimitsResult{},
 		},
-	}, {
-		name:                "max stream limit is exceeded",
-		ingestLimitsEnabled: true,
-		tenant:              "test",
-		streams: logproto.PushRequest{
-			Streams: []logproto.Stream{{
-				Labels: "{foo=\"bar\"}",
-				Entries: []logproto.Entry{{
-					Timestamp: time.Now(),
-					Line:      "baz",
-				}},
-			}},
-		},
-		expectedLimitsCalls: 1,
-		expectedLimitsRequest: &limitsproto.ExceedsLimitsRequest{
-			Tenant: "test",
-			Streams: []*limitsproto.StreamMetadata{{
-				StreamHash: 0x90eb45def17f924,
-				TotalSize:  0x3,
-			}},
-		},
-		limitsResponse: &limitsproto.ExceedsLimitsResponse{
-			Results: []*limitsproto.ExceedsLimitsResult{{
-				StreamHash: 0x90eb45def17f924,
-				Reason:     uint32(limits.ReasonMaxStreams),
-			}},
-		},
-		expectedErr: "rpc error: code = Code(429) desc = request exceeded limits",
+		expectedResponse:         success,
+		expectedDiscardedSamples: 0,
+		expectedDiscardedBytes:   0,
 	}, {
 		name:                "one of two streams exceed max stream limit, request is accepted",
 		ingestLimitsEnabled: true,
@@ -2511,10 +2492,59 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 		},
 		limitsResponse: &limitsproto.ExceedsLimitsResponse{
 			Results: []*limitsproto.ExceedsLimitsResult{{
-				StreamHash: 1,
+				StreamHash: 0x90eb45def17f924,
 				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		},
+		// Note: When some streams are rejected, validationErr is set and returned.
+		// The request will succeed (streams are written) but validationErr is returned.
+		expectedErr:              fmt.Sprintf("rpc error: code = Code(429) desc = %s", fmt.Sprintf(validation.StreamLimitErrorMsg, "{foo=\"bar\"}", "test")),
+		expectedResponse:         success, // Response is returned even when some streams are rejected
+		expectedDiscardedSamples: 1,       // 1 entry from "{foo=\"bar\"}" stream is discarded
+		expectedDiscardedBytes:   3,       // "baz" = 3 bytes
+	}, {
+		name:                "all streams exceed max stream limit, request is rejected",
+		ingestLimitsEnabled: true,
+		tenant:              "test",
+		streams: logproto.PushRequest{
+			Streams: []logproto.Stream{{
+				Labels: "{foo=\"bar\"}",
+				Entries: []logproto.Entry{{
+					Timestamp: time.Now(),
+					Line:      "baz",
+				}},
+			}, {
+				Labels: "{bar=\"baz\"}",
+				Entries: []logproto.Entry{{
+					Timestamp: time.Now(),
+					Line:      "qux",
+				}},
+			}},
+		},
+		expectedLimitsCalls: 1,
+		expectedLimitsRequest: &limitsproto.ExceedsLimitsRequest{
+			Tenant: "test",
+			Streams: []*limitsproto.StreamMetadata{{
+				StreamHash: 0x90eb45def17f924,
+				TotalSize:  0x3,
+			}, {
+				StreamHash: 0x11561609feba8cf6,
+				TotalSize:  0x3,
+			}},
+		},
+		limitsResponse: &limitsproto.ExceedsLimitsResponse{
+			Results: []*limitsproto.ExceedsLimitsResult{{
+				StreamHash: 0x90eb45def17f924,
+				Reason:     uint32(limits.ReasonMaxStreams),
+			}, {
+				StreamHash: 0x11561609feba8cf6,
+				Reason:     uint32(limits.ReasonMaxStreams),
+			}},
+		},
+		expectedErr:              fmt.Sprintf("rpc error: code = Code(429) desc = %s", fmt.Sprintf(validation.StreamLimitErrorMsg, "{foo=\"bar\"}", "test")),
+		expectedResponse:         nil, // Early return when all streams are rejected
+		expectedDiscardedSamples: 2,   // 2 entries (1 from each stream) are discarded
+		expectedDiscardedBytes:   6,   // "baz" (3 bytes) + "qux" (3 bytes) = 6 bytes
 	}, {
 		name:                      "dry-run does not enforce limits",
 		ingestLimitsEnabled:       true,
@@ -2543,6 +2573,9 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		},
+		expectedResponse:         success, // Dry-run doesn't enforce, so request succeeds
+		expectedDiscardedSamples: 0,       // Dry-run doesn't track discarded data
+		expectedDiscardedBytes:   0,
 	}, {
 		name:                "error checking limits",
 		ingestLimitsEnabled: true,
@@ -2564,14 +2597,21 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 				TotalSize:  0x3,
 			}},
 		},
-		limitsResponseErr: errors.New("failed to check limits"),
+		limitsResponseErr:        errors.New("failed to check limits"),
+		expectedResponse:         success, // When EnforceLimits returns error, request continues
+		expectedDiscardedSamples: 0,       // When EnforceLimits errors, streams are accepted
+		expectedDiscardedBytes:   0,
 	}}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			limits := &validation.Limits{}
-			flagext.DefaultValues(limits)
-			distributors, _ := prepare(t, 1, 3, limits, nil)
+			// Reset metrics before each test
+			validation.DiscardedSamples.Reset()
+			validation.DiscardedBytes.Reset()
+
+			validationLimits := &validation.Limits{}
+			flagext.DefaultValues(validationLimits)
+			distributors, _ := prepare(t, 1, 3, validationLimits, nil)
 			d := distributors[0]
 			d.cfg.IngestLimitsEnabled = test.ingestLimitsEnabled
 			d.cfg.IngestLimitsDryRunEnabled = test.ingestLimitsDryRunEnabled
@@ -2589,12 +2629,25 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 			resp, err := d.Push(ctx, &test.streams)
 			if test.expectedErr != "" {
 				require.EqualError(t, err, test.expectedErr)
-				require.Nil(t, resp)
 			} else {
 				require.Nil(t, err)
-				require.Equal(t, success, resp)
+			}
+			if test.expectedResponse == nil {
+				require.Nil(t, resp)
+			} else {
+				require.Equal(t, test.expectedResponse, resp)
 			}
 			require.Equal(t, test.expectedLimitsCalls, mockClient.calls.Load())
+
+			// Note, the ToFloat64 panics if it doesn't find exactly one metric, if you are debugging a panic here
+			// you might need to check that both of these metrics were updated when the validation failure happened.
+			if test.expectedDiscardedSamples > 0 || test.expectedDiscardedBytes > 0 {
+				discardedSamples := testutil.ToFloat64(validation.DiscardedSamples)
+				discardedBytes := testutil.ToFloat64(validation.DiscardedBytes)
+
+				assert.Equal(t, test.expectedDiscardedSamples, discardedSamples, "DiscardedSamples should match expected value")
+				assert.Equal(t, test.expectedDiscardedBytes, discardedBytes, "DiscardedBytes should match expected value")
+			}
 		})
 	}
 }

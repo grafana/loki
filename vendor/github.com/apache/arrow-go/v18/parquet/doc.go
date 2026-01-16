@@ -75,6 +75,60 @@
 //
 // Tip: Some platforms don't necessarily support all kinds of encodings. If you're not
 // sure what to use, just use Plain and Dictionary encoding.
+//
+// # Arrow to Parquet Type Mappings
+//
+// When reading and writing Parquet, the parquet package converts between Arrow
+// and Parquet types in the manner described in the table below.
+//
+// When converting a Parquet type where a large and non-large offset Arrow type
+// would work, the non-large variant is chosen. If the Parquet file is written
+// with `WithStoreSchema`, types will be preserved and dictionaries will be
+// restored when round-tripping.
+//
+//	Arrow Type              Parquet Physical Type     Parquet Logical Type
+//	----------              ---------------------     --------------------
+//	NULL                    Int32                     Null
+//	BOOL                    Boolean                   -
+//	INT8                    Int32                     Int(8, signed)
+//	UINT8                   Int32                     Int(8, unsigned)
+//	INT16                   Int32                     Int(16, signed)
+//	UINT16                  Int32                     Int(16, unsigned)
+//	INT32                   Int32                     Int(32, signed)
+//	UINT32                  Int32                     Int(32, unsigned)
+//	INT64                   Int64                     Int(64, signed)
+//	UINT64                  Int64                     Int(64, unsigned)
+//	FLOAT16                 FixedLenByteArray(2)      Float16
+//	FLOAT32                 Float                     -
+//	FLOAT64                 Double                    -
+//	STRING                  ByteArray                 String
+//	LARGE_STRING            ByteArray                 String
+//	BINARY                  ByteArray                 -
+//	LARGE_BINARY            ByteArray                 -
+//	FIXED_SIZE_BINARY       FixedLenByteArray         -
+//	DECIMAL128              Int32/Int64/FLBA*         Decimal
+//	DECIMAL256              Int32/Int64/FLBA*         Decimal
+//	DATE32                  Int32                     Date
+//	DATE64                  Int32                     Date
+//	TIMESTAMP               Int64 or Int96            Timestamp
+//	TIME32                  Int32                     Time(millis)
+//	TIME64                  Int64                     Time(micros/nanos)
+//	LIST                    Group (LIST)              -
+//	FIXED_SIZE_LIST         Group (LIST)              -
+//	STRUCT                  Group                     -
+//	MAP                     Group (MAP)               -
+//	DICTIONARY              (converted to value type) -
+//	EXTENSION               (depends on storage)      (may be custom)
+//
+// * FLBA means FixedLenByteArray
+//
+// Unsupported Arrow Types (will return arrow.ErrNotImplemented):
+//
+//	DURATION, INTERVAL_MONTHS, INTERVAL_DAY_TIME, INTERVAL_MONTH_DAY_NANO
+//	SPARSE_UNION, DENSE_UNION
+//	STRING_VIEW, BINARY_VIEW, LIST_VIEW, LARGE_LIST_VIEW
+//	LARGE_LIST, RUN_END_ENCODED
+//	DECIMAL32, DECIMAL64
 package parquet
 
 //go:generate go run golang.org/x/tools/cmd/stringer -type=Version -linecomment

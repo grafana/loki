@@ -61,6 +61,18 @@ func (t byteArrayType) AssignValue(dst reflect.Value, src Value) error {
 		dst.SetString(string(v))
 	case reflect.Slice:
 		dst.SetBytes(copyBytes(v))
+	case reflect.Ptr:
+		// Handle pointer types like *string
+		if src.IsNull() {
+			dst.Set(reflect.Zero(dst.Type()))
+		} else {
+			// Allocate a new value of the element type
+			elem := reflect.New(dst.Type().Elem())
+			if err := t.AssignValue(elem.Elem(), src); err != nil {
+				return err
+			}
+			dst.Set(elem)
+		}
 	default:
 		val := reflect.ValueOf(string(v))
 		dst.Set(val)

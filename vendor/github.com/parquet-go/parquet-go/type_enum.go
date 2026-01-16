@@ -79,7 +79,7 @@ func (t *enumType) AssignValue(dst reflect.Value, src Value) error {
 
 func (t *enumType) ConvertValue(val Value, typ Type) (Value, error) {
 	switch typ.(type) {
-	case *byteArrayType, *stringType, *enumType:
+	case byteArrayType, *stringType, *enumType:
 		return val, nil
 	default:
 		return val, invalidConversion(val, "ENUM", typ.String())
