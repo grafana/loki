@@ -1,5 +1,5 @@
 // Package buffer provides a memory buffer for storing a set of typed elements
-// contiguously in a [memory.Memory]-backed region.
+// contiguously in a [memory.Region]-backed region.
 package buffer
 
 import (
@@ -19,7 +19,7 @@ type Buffer[T any] struct {
 	// casted representation of mem.
 
 	alloc *memory.Allocator
-	mem   *memory.Memory
+	mem   *memory.Region
 	data  []T
 }
 
@@ -137,7 +137,7 @@ func (buf *Buffer[T]) Serialize() []byte {
 }
 
 // castMemory converts a memory region to a slice of type To.
-func castMemory[To any](mem *memory.Memory) []To {
+func castMemory[To any](mem *memory.Region) []To {
 	orig := mem.Data()
 
 	var (
