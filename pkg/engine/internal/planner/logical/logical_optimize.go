@@ -40,7 +40,10 @@ type simplifyRegexPass struct{}
 func (pass simplifyRegexPass) Apply(p *Plan) error {
 	var operandBuffer []*Value
 
-	for i, instr := range p.Instructions {
+	// NOTE(rfratto): We can't do a range loop here because we're modifying the
+	// slice as we iterate over it.
+	for i := 0; i < len(p.Instructions); i++ {
+		instr := p.Instructions[i]
 		b, ok := instr.(*BinOp)
 		if !ok || !pass.shouldApply(b) {
 			continue
