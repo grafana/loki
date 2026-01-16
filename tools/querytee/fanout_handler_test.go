@@ -39,9 +39,13 @@ func TestFanOutHandler_Do_ReturnsPreferredResponse(t *testing.T) {
 	backend1URL, _ := url.Parse(backend1.URL)
 	backend2URL, _ := url.Parse(backend2.URL)
 
+	proxyBackend1, err := NewProxyBackend("backend-1", backend1URL, 5*time.Second, true)
+	require.NoError(t, err)
+	proxyBackend2, err := NewProxyBackend("backend-2", backend2URL, 5*time.Second, false)
+	require.NoError(t, err)
 	backends := []*ProxyBackend{
-		NewProxyBackend("backend-1", backend1URL, 5*time.Second, true),  // preferred
-		NewProxyBackend("backend-2", backend2URL, 5*time.Second, false), // non-preferred
+		proxyBackend1, // preferred
+		proxyBackend2, // non-preferred
 	}
 
 	handler := NewFanOutHandler(FanOutHandlerConfig{
@@ -95,18 +99,22 @@ func TestFanOutHandler_Do_AllBackendsFail(t *testing.T) {
 	backend1URL, _ := url.Parse(backend1.URL)
 	backend2URL, _ := url.Parse(backend2.URL)
 
+	proxyBackend1, err := NewProxyBackend("backend-1", backend1URL, 5*time.Second, true)
+	require.NoError(t, err)
+	proxyBackend2, err := NewProxyBackend("backend-2", backend2URL, 5*time.Second, false)
+	require.NoError(t, err)
 	backends := []*ProxyBackend{
-		NewProxyBackend("backend-1", backend1URL, 5*time.Second, true),
-		NewProxyBackend("backend-2", backend2URL, 5*time.Second, false),
+		proxyBackend1,
+		proxyBackend2,
 	}
 
 	handler := NewFanOutHandler(FanOutHandlerConfig{
-		Backends:   backends,
-		Codec:      queryrange.DefaultCodec,
-		Logger:     log.NewNopLogger(),
-		Metrics:    NewProxyMetrics(prometheus.NewRegistry()),
-		RouteName:  "test_route",
-		EnableRace: false,
+		Backends:    backends,
+		Codec:       queryrange.DefaultCodec,
+		Logger:      log.NewNopLogger(),
+		Metrics:     NewProxyMetrics(prometheus.NewRegistry()),
+		RouteName:   "test_route",
+		RoutingMode: RoutingModeV1Preferred,
 	})
 
 	req := &queryrange.LokiRequest{
@@ -151,21 +159,24 @@ func TestFanOutHandler_Do_WithFilter(t *testing.T) {
 	backend2URL, _ := url.Parse(backend2.URL)
 
 	// Backend 2 has a filter that won't match
-	backend2Proxy := NewProxyBackend("backend-2", backend2URL, 5*time.Second, false)
-	backend2Proxy.filter = regexp.MustCompile("^nomatch$")
+	proxyBackend2, err := NewProxyBackend("backend-2", backend2URL, 5*time.Second, false)
+	require.NoError(t, err)
+	proxyBackend2.filter = regexp.MustCompile("^nomatch$")
 
+	proxyBackend1, err := NewProxyBackend("backend-1", backend1URL, 5*time.Second, true)
+	require.NoError(t, err)
 	backends := []*ProxyBackend{
-		NewProxyBackend("backend-1", backend1URL, 5*time.Second, true),
-		backend2Proxy,
+		proxyBackend1,
+		proxyBackend2,
 	}
 
 	handler := NewFanOutHandler(FanOutHandlerConfig{
-		Backends:   backends,
-		Codec:      queryrange.DefaultCodec,
-		Logger:     log.NewNopLogger(),
-		Metrics:    NewProxyMetrics(prometheus.NewRegistry()),
-		RouteName:  "test_route",
-		EnableRace: false,
+		Backends:    backends,
+		Codec:       queryrange.DefaultCodec,
+		Logger:      log.NewNopLogger(),
+		Metrics:     NewProxyMetrics(prometheus.NewRegistry()),
+		RouteName:   "test_route",
+		RoutingMode: RoutingModeV1Preferred,
 	})
 
 	req := &queryrange.LokiRequest{
@@ -220,9 +231,13 @@ func TestFanOutHandler_Do_RaceModeReturnsNonPreferredIfWithinTolerance(t *testin
 	backend1URL, _ := url.Parse(backend1.URL)
 	backend2URL, _ := url.Parse(backend2.URL)
 
+	proxyBackend1, err := NewProxyBackend("backend-1", backend1URL, 5*time.Second, true)
+	require.NoError(t, err)
+	proxyBackend2, err := NewProxyBackend("backend-2", backend2URL, 5*time.Second, false)
+	require.NoError(t, err)
 	backends := []*ProxyBackend{
-		NewProxyBackend("backend-1", backend1URL, 5*time.Second, true),
-		NewProxyBackend("backend-2", backend2URL, 5*time.Second, false),
+		proxyBackend1,
+		proxyBackend2,
 	}
 
 	handler := NewFanOutHandler(FanOutHandlerConfig{
@@ -231,7 +246,7 @@ func TestFanOutHandler_Do_RaceModeReturnsNonPreferredIfWithinTolerance(t *testin
 		Logger:        log.NewNopLogger(),
 		Metrics:       NewProxyMetrics(prometheus.NewRegistry()),
 		RouteName:     "test_route",
-		EnableRace:    true,
+		RoutingMode:   RoutingModeRace,
 		RaceTolerance: 100 * time.Millisecond,
 	})
 
@@ -270,18 +285,22 @@ func TestFanOutHandler_Do_RaceModeAllBackendsFail(t *testing.T) {
 	backend1URL, _ := url.Parse(backend1.URL)
 	backend2URL, _ := url.Parse(backend2.URL)
 
+	proxyBackend1, err := NewProxyBackend("backend-1", backend1URL, 5*time.Second, true)
+	require.NoError(t, err)
+	proxyBackend2, err := NewProxyBackend("backend-2", backend2URL, 5*time.Second, false)
+	require.NoError(t, err)
 	backends := []*ProxyBackend{
-		NewProxyBackend("backend-1", backend1URL, 5*time.Second, true),
-		NewProxyBackend("backend-2", backend2URL, 5*time.Second, false),
+		proxyBackend1,
+		proxyBackend2,
 	}
 
 	handler := NewFanOutHandler(FanOutHandlerConfig{
-		Backends:   backends,
-		Codec:      queryrange.DefaultCodec,
-		Logger:     log.NewNopLogger(),
-		Metrics:    NewProxyMetrics(prometheus.NewRegistry()),
-		RouteName:  "test_route",
-		EnableRace: true,
+		Backends:    backends,
+		Codec:       queryrange.DefaultCodec,
+		Logger:      log.NewNopLogger(),
+		Metrics:     NewProxyMetrics(prometheus.NewRegistry()),
+		RouteName:   "test_route",
+		RoutingMode: RoutingModeRace,
 	})
 
 	req := &queryrange.LokiRequest{
@@ -298,4 +317,116 @@ func TestFanOutHandler_Do_RaceModeAllBackendsFail(t *testing.T) {
 	nonDecodableResp, ok := resp.(*NonDecodableResponse)
 	require.True(t, ok)
 	require.Equal(t, 500, nonDecodableResp.StatusCode)
+}
+
+func TestFanOutHandler_Do_V2PreferredReturnsV2Response(t *testing.T) {
+	backend1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, err := w.Write([]byte(`{"status":"success","data":{"resultType":"streams","result":[{"stream":{"backend":"1"},"values":[["1000000000","log line 1"]]}]}}`))
+		require.NoError(t, err)
+	}))
+	defer backend1.Close()
+
+	backend2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		time.Sleep(10 * time.Millisecond)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, err := w.Write([]byte(`{"status":"success","data":{"resultType":"streams","result":[{"stream":{"backend":"2"},"values":[["1000000000","log line 2"]]}]}}`))
+		require.NoError(t, err)
+	}))
+	defer backend2.Close()
+
+	backend1URL, _ := url.Parse(backend1.URL)
+	backend2URL, _ := url.Parse(backend2.URL)
+
+	proxyBackend1, err := NewProxyBackend("backend-1", backend1URL, 5*time.Second, true, false)
+	require.NoError(t, err)
+	proxyBackend2, err := NewProxyBackend("backend-2", backend2URL, 5*time.Second, false, true)
+	require.NoError(t, err)
+	backends := []*ProxyBackend{
+		proxyBackend1, //v1 preferred
+		proxyBackend2, //v2 preferred
+	}
+
+	handler := NewFanOutHandler(FanOutHandlerConfig{
+		Backends:    backends,
+		Codec:       queryrange.DefaultCodec,
+		Logger:      log.NewNopLogger(),
+		Metrics:     NewProxyMetrics(prometheus.NewRegistry()),
+		RouteName:   "test_route",
+		RoutingMode: RoutingModeV2Preferred,
+	})
+
+	req := &queryrange.LokiRequest{
+		Query:   `{app="test"}`,
+		StartTs: time.Now().Add(-1 * time.Hour),
+		EndTs:   time.Now(),
+		Limit:   100,
+	}
+
+	ctx := user.InjectOrgID(context.Background(), "test-tenant")
+	resp, err := handler.Do(ctx, req)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+
+	lokiResp, ok := resp.(*queryrange.LokiResponse)
+	require.True(t, ok)
+	require.Equal(t, "success", lokiResp.Status)
+	require.Len(t, lokiResp.Data.Result, 1)
+	require.Contains(t, lokiResp.Data.Result[0].Labels, `backend="2"`)
+}
+
+func TestFanOutHandler_Do_V2PreferredFallsBackToV1OnFailure(t *testing.T) {
+	backend1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, err := w.Write([]byte(`{"status":"success","data":{"resultType":"streams","result":[{"stream":{"backend":"1"},"values":[["1000000000","log line 1"]]}]}}`))
+		require.NoError(t, err)
+	}))
+	defer backend1.Close()
+
+	backend2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer backend2.Close()
+
+	backend1URL, _ := url.Parse(backend1.URL)
+	backend2URL, _ := url.Parse(backend2.URL)
+
+	proxyBackend1, err := NewProxyBackend("backend-1", backend1URL, 5*time.Second, true, false)
+	require.NoError(t, err)
+	proxyBackend2, err := NewProxyBackend("backend-2", backend2URL, 5*time.Second, false, true)
+	require.NoError(t, err)
+	backends := []*ProxyBackend{
+		proxyBackend1, //v1 preferred
+		proxyBackend2, //v2 preferred
+	}
+
+	handler := NewFanOutHandler(FanOutHandlerConfig{
+		Backends:    backends,
+		Codec:       queryrange.DefaultCodec,
+		Logger:      log.NewNopLogger(),
+		Metrics:     NewProxyMetrics(prometheus.NewRegistry()),
+		RouteName:   "test_route",
+		RoutingMode: RoutingModeV2Preferred,
+	})
+
+	req := &queryrange.LokiRequest{
+		Query:   `{app="test"}`,
+		StartTs: time.Now().Add(-1 * time.Hour),
+		EndTs:   time.Now(),
+		Limit:   100,
+	}
+
+	ctx := user.InjectOrgID(context.Background(), "test-tenant")
+	resp, err := handler.Do(ctx, req)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+
+	lokiResp, ok := resp.(*queryrange.LokiResponse)
+	require.True(t, ok)
+	require.Equal(t, "success", lokiResp.Status)
+	require.Len(t, lokiResp.Data.Result, 1)
+	require.Contains(t, lokiResp.Data.Result[0].Labels, `backend="1"`)
 }

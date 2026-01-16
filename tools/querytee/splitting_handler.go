@@ -20,59 +20,71 @@ import (
 	"github.com/pkg/errors"
 )
 
-type SplittingHandler struct {
-	codec                     queryrangebase.Codec
-	fanOutHandler             queryrangebase.Handler
-	goldfishManager           goldfish.Manager
-	skipFanoutWhenNotSampling bool
-	logger                    log.Logger
-	logsQueryHandler          queryrangebase.Handler
-	metricsQueryHandler       queryrangebase.Handler
-	defaultHandler            queryrangebase.Handler
+// SplittingHandlerConfig holds configuration for creating a SplittingHandler.
+type SplittingHandlerConfig struct {
+	Codec                         queryrangebase.Codec
+	FanOutHandler                 queryrangebase.Handler
+	GoldfishManager               goldfish.Manager
+	V1Backend                     *ProxyBackend
+	SkipFanoutWhenNotSampling     bool
+	RoutingMode                   RoutingMode
+	SplitStart                    time.Time
+	SplitLag                      time.Duration
+	AddRoutingDecisionsToWarnings bool
 }
 
-func NewSplittingHandler(
-	codec queryrangebase.Codec,
-	fanOutHandler queryrangebase.Handler,
-	goldfishManager goldfish.Manager,
-	logger log.Logger,
-	preferredBackend *ProxyBackend,
-	skipFanoutWhenNotSampling bool,
-) (http.Handler, error) {
-	if preferredBackend == nil {
-		return tenantHandler(queryrange.NewSerializeHTTPHandler(fanOutHandler, codec), logger), nil
+type SplittingHandler struct {
+	codec                         queryrangebase.Codec
+	fanOutHandler                 queryrangebase.Handler
+	goldfishManager               goldfish.Manager
+	skipFanoutWhenNotSampling     bool
+	routingMode                   RoutingMode
+	splitLag                      time.Duration
+	logger                        log.Logger
+	logsQueryHandler              queryrangebase.Handler
+	metricsQueryHandler           queryrangebase.Handler
+	v1Handler                     queryrangebase.Handler
+	addRoutingDecisionsToWarnings bool
+}
+
+func NewSplittingHandler(cfg SplittingHandlerConfig, logger log.Logger) (http.Handler, error) {
+	if cfg.V1Backend == nil {
+		return tenantHandler(queryrange.NewSerializeHTTPHandler(cfg.FanOutHandler, cfg.Codec), logger), nil
 	}
 
 	splitHandlerFactory := &splitHandlerFactory{
-		codec:            codec,
-		fanOutHandler:    fanOutHandler,
-		goldfishManager:  goldfishManager,
-		logger:           logger,
-		preferredBackend: preferredBackend,
+		codec:         cfg.Codec,
+		fanOutHandler: cfg.FanOutHandler,
+		logger:        logger,
+		splitStart:    cfg.SplitStart,
+		splitLag:      cfg.SplitLag,
 	}
-	preferredRT, err := frontend.NewDownstreamRoundTripper(
-		preferredBackend.endpoint.String(),
+	v1RoundTrip, err := frontend.NewDownstreamRoundTripper(
+		cfg.V1Backend.endpoint.String(),
 		&http.Transport{
 			MaxIdleConnsPerHost: 100,
 			IdleConnTimeout:     90 * time.Second,
 		},
-		codec,
+		cfg.Codec,
 	)
 	if err != nil {
 		return nil, err
 	}
-	metricsQueryHandler := splitHandlerFactory.createSplittingHandler(true, preferredRT)
-	logsQueryHandler := splitHandlerFactory.createSplittingHandler(false, preferredRT)
+	metricsQueryHandler := splitHandlerFactory.createSplittingHandler(true, v1RoundTrip)
+	logsQueryHandler := splitHandlerFactory.createSplittingHandler(false, v1RoundTrip)
 
 	splittingHandler := &SplittingHandler{
-		codec:                     codec,
-		fanOutHandler:             fanOutHandler,
-		goldfishManager:           goldfishManager,
-		logger:                    logger,
-		logsQueryHandler:          logsQueryHandler,
-		metricsQueryHandler:       metricsQueryHandler,
-		defaultHandler:            preferredRT,
-		skipFanoutWhenNotSampling: skipFanoutWhenNotSampling,
+		codec:                         cfg.Codec,
+		fanOutHandler:                 cfg.FanOutHandler,
+		goldfishManager:               cfg.GoldfishManager,
+		logger:                        logger,
+		logsQueryHandler:              logsQueryHandler,
+		metricsQueryHandler:           metricsQueryHandler,
+		v1Handler:                     v1RoundTrip,
+		skipFanoutWhenNotSampling:     cfg.SkipFanoutWhenNotSampling,
+		routingMode:                   cfg.RoutingMode,
+		splitLag:                      cfg.SplitLag,
+		addRoutingDecisionsToWarnings: cfg.AddRoutingDecisionsToWarnings,
 	}
 
 	return tenantHandler(splittingHandler, logger), nil
@@ -96,28 +108,20 @@ func tenantHandler(next http.Handler, logger log.Logger) http.Handler {
 }
 
 type splitHandlerFactory struct {
-	codec            queryrangebase.Codec
-	fanOutHandler    queryrangebase.Handler
-	goldfishManager  goldfish.Manager
-	logger           log.Logger
-	preferredBackend *ProxyBackend
+	codec         queryrangebase.Codec
+	fanOutHandler queryrangebase.Handler
+	logger        log.Logger
+	splitStart    time.Time
+	splitLag      time.Duration
 }
 
-func (f *splitHandlerFactory) createSplittingHandler(forMetricQuery bool, defaultHandler queryrangebase.Handler) queryrangebase.Handler {
-	if f.preferredBackend == nil {
-		// No preferred backend, can't do splitting
-		return f.fanOutHandler
-	}
-
+func (f *splitHandlerFactory) createSplittingHandler(forMetricQuery bool, v1Handler queryrangebase.Handler) queryrangebase.Handler {
 	routerConfig := queryrange.RouterConfig{
 		Enabled:  true,
 		Validate: engine.IsQuerySupported,
-		Handler:  f.fanOutHandler, // v2Next: fan-out to all backends for goldfish
-	}
-
-	if f.goldfishManager != nil {
-		routerConfig.Start = f.goldfishManager.ComparisonStartDate()
-		routerConfig.Lag = f.goldfishManager.ComparisonMinAge()
+		Handler:  f.fanOutHandler, // v2Next: fan-out to all backends for comparison
+		Start:    f.splitStart,
+		Lag:      f.splitLag,
 	}
 
 	middleware := []queryrangebase.Middleware{}
@@ -136,13 +140,14 @@ func (f *splitHandlerFactory) createSplittingHandler(forMetricQuery bool, defaul
 	middleware = append(middleware, engineRouterMiddleware)
 
 	// Wrap the default backend handler (v1Next) with the router middleware
-	return queryrangebase.MergeMiddlewares(middleware...).Wrap(defaultHandler)
+	return queryrangebase.MergeMiddlewares(middleware...).Wrap(v1Handler)
 }
 
 // ServeHTTP implements http.Handler interface to serve queries that can be split.
-// If ComparisonMinAge is 0 (legacy mode), serve the non-splitting fan-out handler directly.
-// If ComparisonMinAge > 0 (splitting mode), it wraps the fan-out handler with engineRouter
-// middleware to serve split queries based on data age.
+//
+// Routing behavior depends on the routing mode:
+//   - v2-preferred/race: Always split when splitLag > 0 (sampling only affects goldfish comparison).
+//   - v1-preferred: Skip fanout when not sampling, only split for goldfish comparison.
 func (f *SplittingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	_, ctx, err := tenant.ExtractTenantIDFromHTTPRequest(r)
 	if err != nil {
@@ -181,12 +186,28 @@ func (f *SplittingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		shouldSample = f.shouldSample(tenants, r)
 	}
 
-	if f.skipFanoutWhenNotSampling && !shouldSample {
-		resp, err = f.defaultHandler.Do(ctx, req)
-	} else if f.goldfishManager != nil && f.goldfishManager.ComparisonMinAge() > 0 {
+	// Routing decision logic:
+	// - v2-preferred/race: Always split when splitLag > 0 (sampling only affects goldfish comparison)
+	// - v1-preferred: Skip fanout when not sampling, only split for goldfish comparison
+	useDefault := f.skipFanoutWhenNotSampling && !shouldSample && f.routingMode == RoutingModeV1Preferred
+	splittingEnabled := f.splitLag > 0
+	level.Debug(f.logger).Log("msg", "routing decision", "useDefault", useDefault, "splittingEnabled", splittingEnabled)
+
+	if useDefault {
+		// Not sampling and v1-preferred: go directly to v1 backend
+		resp, err = f.v1Handler.Do(ctx, req)
+		if resp != nil && f.addRoutingDecisionsToWarnings {
+			addWarningToResponse(resp, "query was not split and was routed to v1 backend only")
+		}
+	} else if splittingEnabled {
+		// Splitting is enabled: use engine router to split queries by time range between v1 and v2 backends
 		resp, err = f.serveSplits(ctx, req)
 	} else {
+		// No splitting configured: fan out without splits to all backends
 		resp, err = f.fanOutHandler.Do(ctx, req)
+		if resp != nil && f.addRoutingDecisionsToWarnings {
+			addWarningToResponse(resp, "query was not split, but still routed to all backends")
+		}
 	}
 
 	if err != nil {
@@ -257,11 +278,38 @@ func (f *SplittingHandler) serveSplits(ctx context.Context, req queryrangebase.R
 
 		switch op.Plan.AST.(type) {
 		case syntax.VariantsExpr, syntax.SampleExpr:
-			return f.metricsQueryHandler.Do(ctx, req)
+			level.Info(f.logger).Log("msg", "serving metric split", "query", req.GetQuery())
+			resp, err := f.metricsQueryHandler.Do(ctx, req)
+			if resp != nil && f.addRoutingDecisionsToWarnings {
+				addWarningToResponse(resp, "metrics query was split between v1 and v2 backends")
+			}
+			return resp, err
 		default:
-			return f.logsQueryHandler.Do(ctx, req)
+			level.Info(f.logger).Log("msg", "serving logs split", "query", req.GetQuery())
+			resp, err := f.logsQueryHandler.Do(ctx, req)
+			if resp != nil && f.addRoutingDecisionsToWarnings {
+				addWarningToResponse(resp, "logs query was split between v1 and v2 backends")
+			}
+			return resp, err
 		}
 	default:
-		return f.defaultHandler.Do(ctx, req)
+		level.Info(f.logger).Log("msg", "not splitting unsupported request", "query", req.GetQuery())
+		resp, err := f.v1Handler.Do(ctx, req)
+		if resp != nil && f.addRoutingDecisionsToWarnings {
+			addWarningToResponse(resp, "unsupported query was not split and sent to v1 backend only")
+		}
+		return resp, err
+	}
+}
+
+// addWarningToResponse adds a warning message to the response based on its type.
+func addWarningToResponse(resp queryrangebase.Response, warning string) {
+	switch r := resp.(type) {
+	case *queryrange.LokiResponse:
+		r.Warnings = append(r.Warnings, warning)
+	case *queryrange.LokiPromResponse:
+		if r.Response != nil {
+			r.Response.Warnings = append(r.Response.Warnings, warning)
+		}
 	}
 }

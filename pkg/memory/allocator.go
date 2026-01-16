@@ -12,24 +12,24 @@ import (
 // The Allocator can be reset to reclaim memory regions, marking them as free
 // for future calls to [Allocator.Allocate].
 //
-// Allocator is unsafe and provides no use-after-free checks for [Memory].
+// Allocator is unsafe and provides no use-after-free checks for [Region].
 // Callers must take care to ensure that the lifetime of a returned Memory does
 // not exceed the lifetime of an allocator reuse cycle.
 //
 // The zero value of Allocator is ready for use.
 type Allocator struct {
-	regions []*Memory
-	free    bitmap // Tracks free regions. 1=free, 0=used
-	empty   bitmap // Tracks nil elements of regions. 1=nil, 0=not-nil
+	regions []*Region
+	free    Bitmap // Tracks free regions. 1=free, 0=used
+	empty   Bitmap // Tracks nil elements of regions. 1=nil, 0=not-nil
 }
 
 // Allocate retrieves the next free Memory region that can hold at least size
 // bytes. If there is no such free Memory region, a new memory region will be
 // created.
-func (alloc *Allocator) Allocate(size int) *Memory {
+func (alloc *Allocator) Allocate(size int) *Region {
 	// Iterate over the set bits in the freelist. Each set bit indicates an
 	// available memory region.
-	for i := range alloc.free.IterValues(len(alloc.regions), true) {
+	for i := range alloc.free.IterValues(true) {
 		region := alloc.regions[i]
 		if region != nil && cap(region.data) >= size {
 			alloc.free.Set(i, false)
@@ -37,18 +37,18 @@ func (alloc *Allocator) Allocate(size int) *Memory {
 		}
 	}
 
-	region := &Memory{data: allocBytes(size)}
+	region := &Region{data: allocBytes(size)}
 	alloc.addRegion(region, false) // Track the new region.
 	return region
 }
 
 // addRegion inserts a new region into alloc's list of regions, taking
 // ownership over it.
-func (alloc *Allocator) addRegion(region *Memory, free bool) {
+func (alloc *Allocator) addRegion(region *Region, free bool) {
 	// Elements in alloc.regions may be set to nil after [Allocator.Trim], so we
 	// should check to see if there's a free slot before appending to the slice.
 	freeSlot := -1
-	for i := range alloc.empty.IterValues(len(alloc.regions), true) {
+	for i := range alloc.empty.IterValues(true) {
 		freeSlot = i
 		break
 	}
@@ -87,7 +87,7 @@ func (alloc *Allocator) Reset() {
 //
 // If Trim is called after Reclaim, all memory regions will be released.
 func (alloc *Allocator) Trim() {
-	for i := range alloc.free.IterValues(len(alloc.regions), true) {
+	for i := range alloc.free.IterValues(true) {
 		region := alloc.regions[i]
 		if region == nil {
 			continue
@@ -99,7 +99,7 @@ func (alloc *Allocator) Trim() {
 }
 
 // Reclaim all memory regions back to the Allocator for reuse. After calling
-// Reclaim, any [Memory] returned by the Allocator must no longer be used.
+// Reclaim, any [Region] returned by the Allocator must no longer be used.
 func (alloc *Allocator) Reclaim() {
 	alloc.free.SetRange(0, len(alloc.regions), true)
 }
@@ -120,7 +120,7 @@ func (alloc *Allocator) AllocatedBytes() int {
 // without requiring additional allocations.
 func (alloc *Allocator) FreeBytes() int {
 	var sum int
-	for i := range alloc.free.IterValues(len(alloc.regions), true) {
+	for i := range alloc.free.IterValues(true) {
 		region := alloc.regions[i]
 		if region != nil {
 			sum += cap(region.data)
