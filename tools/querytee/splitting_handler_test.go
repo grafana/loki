@@ -106,7 +106,8 @@ func TestSplittingHandler_ServeSplits_UnsupportedRequestUsesDefaultHandler(t *te
 			backendURL, err := url.Parse(backend.URL)
 			require.NoError(t, err)
 
-			preferredBackend := NewProxyBackend("preferred", backendURL, 5*time.Second, true, false)
+			preferredBackend, err := NewProxyBackend("preferred", backendURL, 5*time.Second, true, false)
+			require.NoError(t, err)
 			mockFanOutHandler := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
 				fanOutHandlerCalled = true
 				return nil, nil
@@ -215,7 +216,8 @@ func TestSplittingHandler_RoutingModeV1Preferred_SkipsToDefaultWhenNotSampling(t
 	backendURL, err := url.Parse(backend.URL)
 	require.NoError(t, err)
 
-	preferredBackend := NewProxyBackend("preferred", backendURL, 5*time.Second, true, false)
+	preferredBackend, err := NewProxyBackend("preferred", backendURL, 5*time.Second, true, false)
+	require.NoError(t, err)
 	mockFanOutHandler := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
 		fanOutHandlerCalled = true
 		return &queryrange.LokiResponse{
@@ -311,7 +313,8 @@ func TestSplittingHandler_AlwaysSplitsEvenWhenNotSampling(t *testing.T) {
 			backendURL, err := url.Parse(backend.URL)
 			require.NoError(t, err)
 
-			preferredBackend := NewProxyBackend("preferred", backendURL, 5*time.Second, false, false)
+			preferredBackend, err := NewProxyBackend("preferred", backendURL, 5*time.Second, false, false)
+			require.NoError(t, err)
 
 			goldfishManager := &mockGoldfishManager{
 				shouldSampleResult: false, // NOT sampling
@@ -385,7 +388,8 @@ func TestSplittingHandler_NoSplitLag_UsesFanoutHandler(t *testing.T) {
 	backendURL, err := url.Parse(backend.URL)
 	require.NoError(t, err)
 
-	preferredBackend := NewProxyBackend("preferred", backendURL, 5*time.Second, true, false)
+	preferredBackend, err := NewProxyBackend("preferred", backendURL, 5*time.Second, true, false)
+	require.NoError(t, err)
 
 	goldfishManager := &mockGoldfishManager{
 		shouldSampleResult: true, // sampling enabled
@@ -447,7 +451,8 @@ func TestSplittingHandler_V1Preferred_SplitsWhenSampling(t *testing.T) {
 	backendURL, err := url.Parse(backend.URL)
 	require.NoError(t, err)
 
-	preferredBackend := NewProxyBackend("preferred", backendURL, 5*time.Second, true, false)
+	preferredBackend, err := NewProxyBackend("preferred", backendURL, 5*time.Second, true, false)
+	require.NoError(t, err)
 
 	goldfishManager := &mockGoldfishManager{
 		shouldSampleResult: true, // IS sampling
@@ -523,7 +528,8 @@ func TestSplittingHandler_SkipFanoutDisabled_AlwaysSplits(t *testing.T) {
 			backendURL, err := url.Parse(backend.URL)
 			require.NoError(t, err)
 
-			preferredBackend := NewProxyBackend("preferred", backendURL, 5*time.Second, true, false)
+			preferredBackend, err := NewProxyBackend("preferred", backendURL, 5*time.Second, true, false)
+			require.NoError(t, err)
 
 			goldfishManager := &mockGoldfishManager{
 				shouldSampleResult: false, // NOT sampling

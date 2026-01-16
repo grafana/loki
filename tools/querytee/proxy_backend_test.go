@@ -64,7 +64,8 @@ func Test_ProxyBackend_createBackendRequest_HTTPBasicAuthentication(t *testing.T
 			orig := httptest.NewRequest("GET", "/test", nil)
 			orig.SetBasicAuth(testData.clientUser, testData.clientPass)
 
-			b := NewProxyBackend("test", u, time.Second, false)
+			b, err := NewProxyBackend("test", u, time.Second, false)
+			require.NoError(t, err)
 			r, span := b.createBackendRequest(orig, nil)
 			defer span.Finish()
 
@@ -86,7 +87,8 @@ func Test_ProxyBackend_ForwardRequest_extractsTraceID(t *testing.T) {
 	u, err := url.Parse(server.URL)
 	require.NoError(t, err)
 
-	backend := NewProxyBackend("test", u, time.Second, false)
+	backend, err := NewProxyBackend("test", u, time.Second, false)
+	require.NoError(t, err)
 
 	// Test case 1: Request with trace context
 	t.Run("extracts trace ID when present", func(t *testing.T) {
@@ -140,6 +142,7 @@ func Test_NewProxyBackend_PreferredLogic(t *testing.T) {
 		preferred      []bool
 		expectedV1Pref bool
 		expectedV2Pref bool
+		errorExpected  bool
 	}{
 		"no preferred args defaults to false": {
 			preferred:      []bool{},
@@ -170,12 +173,19 @@ func Test_NewProxyBackend_PreferredLogic(t *testing.T) {
 			preferred:      []bool{true, true},
 			expectedV1Pref: true,
 			expectedV2Pref: true,
+			errorExpected:  true,
 		},
 	}
 
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
-			b := NewProxyBackend("test", u, time.Second, testData.preferred...)
+			b, err := NewProxyBackend("test", u, time.Second, testData.preferred...)
+			if testData.errorExpected {
+				require.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
 			assert.Equal(t, testData.expectedV1Pref, b.v1Preferred, "v1Preferred mismatch")
 			assert.Equal(t, testData.expectedV2Pref, b.v2Preferred, "v2Preferred mismatch")
 		})

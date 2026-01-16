@@ -35,13 +35,18 @@ type ProxyBackend struct {
 
 // NewProxyBackend makes a new ProxyBackend
 // It accepts preferred booleans in the following order [v1, v2].
-func NewProxyBackend(name string, endpoint *url.URL, timeout time.Duration, preferred ...bool) *ProxyBackend {
+// A backend can be v1Preferred, v2Preferred, or neither, but not both.
+func NewProxyBackend(name string, endpoint *url.URL, timeout time.Duration, preferred ...bool) (*ProxyBackend, error) {
 	var v1Preferred, v2Preferred bool
 	if len(preferred) > 0 {
 		v1Preferred = preferred[0]
 	}
 	if len(preferred) > 1 {
 		v2Preferred = preferred[1]
+	}
+
+	if v1Preferred && v2Preferred {
+		return nil, errors.New("cannot be both v1Preferred and v2Preferred")
 	}
 
 	return &ProxyBackend{
@@ -66,7 +71,7 @@ func NewProxyBackend(name string, endpoint *url.URL, timeout time.Duration, pref
 				DisableCompression:  true,
 			},
 		},
-	}
+	}, nil
 }
 
 func (b *ProxyBackend) WithFilter(f *regexp.Regexp) *ProxyBackend {

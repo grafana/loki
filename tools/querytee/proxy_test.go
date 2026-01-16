@@ -378,11 +378,19 @@ func TestFilterReadDisabledBackend(t *testing.T) {
 		return u
 	}
 
+	backend1, err := NewProxyBackend("test1", urlMustParse("http:/test1"), time.Second, true)
+	require.NoError(t, err)
+	backend2, err := NewProxyBackend("test2", urlMustParse("http:/test2"), time.Second, false)
+	require.NoError(t, err)
+	backend3, err := NewProxyBackend("test3", urlMustParse("http:/test3"), time.Second, false)
+	require.NoError(t, err)
+	backend4, err := NewProxyBackend("test4", urlMustParse("http:/test4"), time.Second, false)
+	require.NoError(t, err)
 	backends := []*ProxyBackend{
-		NewProxyBackend("test1", urlMustParse("http:/test1"), time.Second, true),
-		NewProxyBackend("test2", urlMustParse("http:/test2"), time.Second, false),
-		NewProxyBackend("test3", urlMustParse("http:/test3"), time.Second, false),
-		NewProxyBackend("test4", urlMustParse("http:/test4"), time.Second, false),
+		backend1,
+		backend2,
+		backend3,
+		backend4,
 	}
 	for name, tc := range map[string]struct {
 		disableReadProxyCfg string

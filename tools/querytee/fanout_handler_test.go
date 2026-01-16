@@ -39,9 +39,13 @@ func TestFanOutHandler_Do_ReturnsPreferredResponse(t *testing.T) {
 	backend1URL, _ := url.Parse(backend1.URL)
 	backend2URL, _ := url.Parse(backend2.URL)
 
+	proxyBackend1, err := NewProxyBackend("backend-1", backend1URL, 5*time.Second, true)
+	require.NoError(t, err)
+	proxyBackend2, err := NewProxyBackend("backend-2", backend2URL, 5*time.Second, false)
+	require.NoError(t, err)
 	backends := []*ProxyBackend{
-		NewProxyBackend("backend-1", backend1URL, 5*time.Second, true),  // preferred
-		NewProxyBackend("backend-2", backend2URL, 5*time.Second, false), // non-preferred
+		proxyBackend1, // preferred
+		proxyBackend2, // non-preferred
 	}
 
 	handler := NewFanOutHandler(FanOutHandlerConfig{
@@ -95,9 +99,13 @@ func TestFanOutHandler_Do_AllBackendsFail(t *testing.T) {
 	backend1URL, _ := url.Parse(backend1.URL)
 	backend2URL, _ := url.Parse(backend2.URL)
 
+	proxyBackend1, err := NewProxyBackend("backend-1", backend1URL, 5*time.Second, true)
+	require.NoError(t, err)
+	proxyBackend2, err := NewProxyBackend("backend-2", backend2URL, 5*time.Second, false)
+	require.NoError(t, err)
 	backends := []*ProxyBackend{
-		NewProxyBackend("backend-1", backend1URL, 5*time.Second, true),
-		NewProxyBackend("backend-2", backend2URL, 5*time.Second, false),
+		proxyBackend1,
+		proxyBackend2,
 	}
 
 	handler := NewFanOutHandler(FanOutHandlerConfig{
@@ -151,12 +159,15 @@ func TestFanOutHandler_Do_WithFilter(t *testing.T) {
 	backend2URL, _ := url.Parse(backend2.URL)
 
 	// Backend 2 has a filter that won't match
-	backend2Proxy := NewProxyBackend("backend-2", backend2URL, 5*time.Second, false)
-	backend2Proxy.filter = regexp.MustCompile("^nomatch$")
+	proxyBackend2, err := NewProxyBackend("backend-2", backend2URL, 5*time.Second, false)
+	require.NoError(t, err)
+	proxyBackend2.filter = regexp.MustCompile("^nomatch$")
 
+	proxyBackend1, err := NewProxyBackend("backend-1", backend1URL, 5*time.Second, true)
+	require.NoError(t, err)
 	backends := []*ProxyBackend{
-		NewProxyBackend("backend-1", backend1URL, 5*time.Second, true),
-		backend2Proxy,
+		proxyBackend1,
+		proxyBackend2,
 	}
 
 	handler := NewFanOutHandler(FanOutHandlerConfig{
@@ -220,9 +231,13 @@ func TestFanOutHandler_Do_RaceModeReturnsNonPreferredIfWithinTolerance(t *testin
 	backend1URL, _ := url.Parse(backend1.URL)
 	backend2URL, _ := url.Parse(backend2.URL)
 
+	proxyBackend1, err := NewProxyBackend("backend-1", backend1URL, 5*time.Second, true)
+	require.NoError(t, err)
+	proxyBackend2, err := NewProxyBackend("backend-2", backend2URL, 5*time.Second, false)
+	require.NoError(t, err)
 	backends := []*ProxyBackend{
-		NewProxyBackend("backend-1", backend1URL, 5*time.Second, true),
-		NewProxyBackend("backend-2", backend2URL, 5*time.Second, false),
+		proxyBackend1,
+		proxyBackend2,
 	}
 
 	handler := NewFanOutHandler(FanOutHandlerConfig{
@@ -270,9 +285,13 @@ func TestFanOutHandler_Do_RaceModeAllBackendsFail(t *testing.T) {
 	backend1URL, _ := url.Parse(backend1.URL)
 	backend2URL, _ := url.Parse(backend2.URL)
 
+	proxyBackend1, err := NewProxyBackend("backend-1", backend1URL, 5*time.Second, true)
+	require.NoError(t, err)
+	proxyBackend2, err := NewProxyBackend("backend-2", backend2URL, 5*time.Second, false)
+	require.NoError(t, err)
 	backends := []*ProxyBackend{
-		NewProxyBackend("backend-1", backend1URL, 5*time.Second, true),
-		NewProxyBackend("backend-2", backend2URL, 5*time.Second, false),
+		proxyBackend1,
+		proxyBackend2,
 	}
 
 	handler := NewFanOutHandler(FanOutHandlerConfig{
@@ -321,9 +340,13 @@ func TestFanOutHandler_Do_V2PreferredReturnsV2Response(t *testing.T) {
 	backend1URL, _ := url.Parse(backend1.URL)
 	backend2URL, _ := url.Parse(backend2.URL)
 
+	proxyBackend1, err := NewProxyBackend("backend-1", backend1URL, 5*time.Second, true, false)
+	require.NoError(t, err)
+	proxyBackend2, err := NewProxyBackend("backend-2", backend2URL, 5*time.Second, false, true)
+	require.NoError(t, err)
 	backends := []*ProxyBackend{
-		NewProxyBackend("backend-1", backend1URL, 5*time.Second, true, false), //v1 preferred
-		NewProxyBackend("backend-2", backend2URL, 5*time.Second, false, true), //v2 preferred
+		proxyBackend1, //v1 preferred
+		proxyBackend2, //v2 preferred
 	}
 
 	handler := NewFanOutHandler(FanOutHandlerConfig{
@@ -352,8 +375,6 @@ func TestFanOutHandler_Do_V2PreferredReturnsV2Response(t *testing.T) {
 	require.Equal(t, "success", lokiResp.Status)
 	require.Len(t, lokiResp.Data.Result, 1)
 	require.Contains(t, lokiResp.Data.Result[0].Labels, `backend="2"`)
-
-	time.Sleep(50 * time.Millisecond)
 }
 
 func TestFanOutHandler_Do_V2PreferredFallsBackToV1OnFailure(t *testing.T) {
@@ -373,9 +394,13 @@ func TestFanOutHandler_Do_V2PreferredFallsBackToV1OnFailure(t *testing.T) {
 	backend1URL, _ := url.Parse(backend1.URL)
 	backend2URL, _ := url.Parse(backend2.URL)
 
+	proxyBackend1, err := NewProxyBackend("backend-1", backend1URL, 5*time.Second, true, false)
+	require.NoError(t, err)
+	proxyBackend2, err := NewProxyBackend("backend-2", backend2URL, 5*time.Second, false, true)
+	require.NoError(t, err)
 	backends := []*ProxyBackend{
-		NewProxyBackend("backend-1", backend1URL, 5*time.Second, true, false), //v1 preferred
-		NewProxyBackend("backend-2", backend2URL, 5*time.Second, false, true), //v2 preferred
+		proxyBackend1, //v1 preferred
+		proxyBackend2, //v2 preferred
 	}
 
 	handler := NewFanOutHandler(FanOutHandlerConfig{

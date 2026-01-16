@@ -107,9 +107,12 @@ func Test_ProxyEndpoint_waitBackendResponseForDownstream(t *testing.T) {
 	backendURL3, err := url.Parse("http://backend-3/")
 	require.NoError(t, err)
 
-	backendPref := NewProxyBackend("backend-1", backendURL1, time.Second, true)
-	backendOther1 := NewProxyBackend("backend-2", backendURL2, time.Second, false)
-	backendOther2 := NewProxyBackend("backend-3", backendURL3, time.Second, false)
+	backendPref, err := NewProxyBackend("backend-1", backendURL1, time.Second, true)
+	require.NoError(t, err)
+	backendOther1, err := NewProxyBackend("backend-2", backendURL2, time.Second, false)
+	require.NoError(t, err)
+	backendOther2, err := NewProxyBackend("backend-3", backendURL3, time.Second, false)
+	require.NoError(t, err)
 
 	tests := map[string]struct {
 		backends  []*ProxyBackend
@@ -215,9 +218,13 @@ func Test_ProxyEndpoint_QueryRequests(t *testing.T) {
 	backendURL2, err := url.Parse(backend2.URL)
 	require.NoError(t, err)
 
+	proxyBackend1, err := NewProxyBackend("backend-1", backendURL1, time.Second, true)
+	require.NoError(t, err)
+	proxyBackend2, err := NewProxyBackend("backend-2", backendURL2, time.Second, false)
+	require.NoError(t, err)
 	backends := []*ProxyBackend{
-		NewProxyBackend("backend-1", backendURL1, time.Second, true),
-		NewProxyBackend("backend-2", backendURL2, time.Second, false).WithFilter(regexp.MustCompile("/loki/api/v1/query_range")),
+		proxyBackend1,
+		proxyBackend2.WithFilter(regexp.MustCompile("/loki/api/v1/query_range")),
 	}
 	endpoint := createTestEndpoint(t, backends, "test", nil, false)
 
@@ -334,9 +341,13 @@ func Test_ProxyEndpoint_WriteRequests(t *testing.T) {
 	backendURL2, err := url.Parse(backend2.URL)
 	require.NoError(t, err)
 
+	proxyBackend1, err := NewProxyBackend("backend-1", backendURL1, time.Second, true)
+	require.NoError(t, err)
+	proxyBackend2, err := NewProxyBackend("backend-2", backendURL2, time.Second, false)
+	require.NoError(t, err)
 	backends := []*ProxyBackend{
-		NewProxyBackend("backend-1", backendURL1, time.Second, true),
-		NewProxyBackend("backend-2", backendURL2, time.Second, false).WithFilter(regexp.MustCompile("/loki/api/v1/push")),
+		proxyBackend1,
+		proxyBackend2.WithFilter(regexp.MustCompile("/loki/api/v1/push")),
 	}
 	// endpoint := createTestEndpoint(backends, "test", nil, false)
 	metrics := NewProxyMetrics(nil)
@@ -458,9 +469,13 @@ func Test_ProxyEndpoint_SummaryMetrics(t *testing.T) {
 	backendURL2, err := url.Parse(backend2.URL)
 	require.NoError(t, err)
 
+	proxyBackend1, err := NewProxyBackend("backend-1", backendURL1, time.Second, true)
+	require.NoError(t, err)
+	proxyBackend2, err := NewProxyBackend("backend-2", backendURL2, time.Second, false)
+	require.NoError(t, err)
 	backends := []*ProxyBackend{
-		NewProxyBackend("backend-1", backendURL1, time.Second, true),
-		NewProxyBackend("backend-2", backendURL2, time.Second, false),
+		proxyBackend1,
+		proxyBackend2,
 	}
 
 	comparator := &mockComparator{}
@@ -640,9 +655,13 @@ func Test_endToEnd_traceIDFlow(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create backends
+	proxyBackend1, err := NewProxyBackend("backend-1", u, time.Second, true)
+	require.NoError(t, err)
+	proxyBackend2, err := NewProxyBackend("backend-2", u, time.Second, false)
+	require.NoError(t, err)
 	backends := []*ProxyBackend{
-		NewProxyBackend("backend-1", u, time.Second, true),  // preferred
-		NewProxyBackend("backend-2", u, time.Second, false), // non-preferred
+		proxyBackend1, // preferred
+		proxyBackend2, // non-preferred
 	}
 
 	// Create endpoint with goldfish manager
@@ -779,9 +798,13 @@ func TestProxyEndpoint_QuerySplitting(t *testing.T) {
 	u, err := url.Parse(server.URL)
 	require.NoError(t, err)
 
+	proxyBackend1, err := NewProxyBackend("backend-1", u, time.Second, true)
+	require.NoError(t, err)
+	proxyBackend2, err := NewProxyBackend("backend-2", u, time.Second, false)
+	require.NoError(t, err)
 	backends := []*ProxyBackend{
-		NewProxyBackend("backend-1", u, time.Second, true),  // preferred
-		NewProxyBackend("backend-2", u, time.Second, false), // non-preferred
+		proxyBackend1, // preferred
+		proxyBackend2, // non-preferred
 	}
 
 	storage := &mockGoldfishStorage{}
@@ -1026,13 +1049,9 @@ func TestProxyEndpoint_ServeHTTP_ForwardsResponseHeaders(t *testing.T) {
 	srvURL, err := url.Parse(srv.URL)
 	require.NoError(t, err)
 
-	backends := []*ProxyBackend{{
-		name:        "backend-1",
-		endpoint:    srvURL,
-		client:      srv.Client(),
-		timeout:     time.Minute,
-		v1Preferred: true,
-	}}
+	backend1, err := NewProxyBackend("backend-1", srvURL, time.Minute, true)
+	require.NoError(t, err)
+	backends := []*ProxyBackend{backend1}
 
 	recorder := httptest.NewRecorder()
 	fakeReq := httptest.NewRequestWithContext(context.Background(), "GET", "/loki/api/v1/query_range?query={job=\"test\"}&start=1&end=2", nil)

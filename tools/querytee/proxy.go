@@ -224,7 +224,11 @@ func NewProxy(
 		}
 
 		level.Debug(logger).Log("msg", "backend added", "name", name, "v1Preferred", v1Preferred, "v2Preferred", v2Preferred)
-		p.backends = append(p.backends, NewProxyBackend(name, u, cfg.BackendReadTimeout, v1Preferred, v2Preferred))
+		backend, err := NewProxyBackend(name, u, cfg.BackendReadTimeout, v1Preferred, v2Preferred)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to create backend %s", name)
+		}
+		p.backends = append(p.backends, backend)
 	}
 
 	// At least 1 backend is required

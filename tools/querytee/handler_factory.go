@@ -81,6 +81,11 @@ func (f *HandlerFactory) CreateHandler(routeName string, comp comparator.Respons
 		AddRoutingDecisionsToWarnings: f.addRoutingDecisionsToWarnings,
 	})
 
+	// all routing modes (v1Preferred, v2Preferred, and race) are capable of splitting the request so that only time
+	// ranges valid for dataobjs are sent to v2. splitting needs to know which backend is v1 for routing the following:
+	// * time ranges before we have dataobjs, or within the dataobj lag are sent to v1
+	// * unsupported queries are sent to v1
+	// * unimplemented metadata queries are sent to v1
 	var v1Backend *ProxyBackend
 	for _, b := range f.backends {
 		if b.v1Preferred {
