@@ -1,15 +1,14 @@
-package bitmap_test
+package memory_test
 
 import (
 	"testing"
 
-	"github.com/grafana/loki/v3/pkg/memory/bitmap"
+	"github.com/grafana/loki/v3/pkg/memory"
 )
 
 func BenchmarkBitmap_Appends(b *testing.B) {
 	b.Run("type=AppendCount", func(b *testing.B) {
-		var dst bitmap.Bitmap
-		dst.Grow(100_000)
+		dst := memory.MakeBitmap(nil, 100_000)
 
 		for b.Loop() {
 			dst.AppendCount(true, 100_00)
@@ -18,8 +17,7 @@ func BenchmarkBitmap_Appends(b *testing.B) {
 	})
 
 	b.Run("type=Append", func(b *testing.B) {
-		var dst bitmap.Bitmap
-		dst.Grow(100_000)
+		dst := memory.MakeBitmap(nil, 100_000)
 
 		for b.Loop() {
 			for range 100_000 {
@@ -35,8 +33,7 @@ func BenchmarkBitmap_Appends(b *testing.B) {
 			values[i] = true
 		}
 
-		var dst bitmap.Bitmap
-		dst.Grow(100_000)
+		dst := memory.MakeBitmap(nil, 100_000)
 
 		for b.Loop() {
 			dst.AppendValues(values...)

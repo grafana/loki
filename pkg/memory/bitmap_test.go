@@ -1,105 +1,100 @@
-package memory
+package memory_test
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/memory"
 )
 
-func Test_bitset_Set(t *testing.T) {
-	var set bitmap
-	set.Resize(64)
+func TestBitmap_Append(t *testing.T) {
+	var bmap memory.Bitmap
 
-	// Set some individual bits
-	set.Set(0, true)
-	set.Set(3, true)
-	set.Set(7, true)
+	require.Equal(t, 0, bmap.Len(), "empty bitmaps should have no length")
+	require.Equal(t, 0, bmap.Cap(), "empty bitmaps should have no capacity")
 
-	var expect uint64 = 0b1000_1001
-
-	require.Len(t, set, 1)
-	require.Equal(t, expect, set[0])
-}
-
-func Test_bitset_Clear(t *testing.T) {
-	var set bitmap
-	set.Resize(64)
-
-	// First set some bits
-	set.SetRange(0, 10, true)
-
-	// Clear some bits
-	set.Set(1, false)
-	set.Set(3, false)
-	set.Set(8, false)
-
-	var expect uint64 = 0b0010_1111_0101
-
-	require.Len(t, set, 1)
-	require.Equal(t, expect, set[0])
-}
-
-func Test_bitset_SetRange(t *testing.T) {
-	var set bitmap
-	set.Resize(64)
-	set.SetRange(0, 5, true)
-	set.SetRange(7, 10, true)
-
-	var expect uint64 = 0b0011_1001_1111 // Should be set in LSB ordering.
-
-	require.Len(t, set, 1)
-	require.Equal(t, expect, set[0])
-}
-
-func Test_bitset_ClearRange(t *testing.T) {
-	var set bitmap
-	set.Resize(64)
-
-	// First set some bits
-	set.SetRange(0, 15, true)
-
-	// Clear some ranges
-	set.SetRange(2, 6, false)
-	set.SetRange(8, 12, false)
-
-	var expect uint64 = 0b0111_0000_1100_0011
-
-	require.Len(t, set, 1)
-	require.Equal(t, expect, set[0], "expected %b, got %b", expect, set[0])
-}
-
-func Test_bitset_Resize(t *testing.T) {
-	tt := []struct {
-		elements int
-		words    int
-	}{
-		{elements: 0, words: 0},
-		{elements: 1, words: 1},
-		{elements: 64, words: 1},
-		{elements: 65, words: 2},
-		{elements: 128, words: 2},
+	// Add 20 elements of varying values to bmap; using 20 will ensure that we
+	// hit [memory.Bitmap.Grow], and writes beyond word boundaries.
+	for i := range 20 {
+		bmap.Append(i%2 == 0)
+		require.Equal(t, i+1, bmap.Len(), "length should match number of appends")
+		require.GreaterOrEqual(t, bmap.Cap(), bmap.Len(), "capacity should always be greater or equal to length")
 	}
-	for _, tc := range tt {
-		t.Run(fmt.Sprintf("elements=%d", tc.elements), func(t *testing.T) {
-			var set bitmap
-			set.Resize(tc.elements)
-			require.Len(t, set, tc.words)
-		})
+
+	// Read back all the values and make sure they're still correct.
+	for i := range 20 {
+		expect := i%2 == 0
+		require.Equal(t, expect, bmap.Get(i))
 	}
 }
 
-func Test_bitset_IterValue_true(t *testing.T) {
-	var set bitmap
-	set.Resize(128) // Two words: 64 bits each
+func TestBitmap_AppendCount(t *testing.T) {
+	var bmap memory.Bitmap
+	bmap.AppendCount(false, 3)
+	bmap.AppendCount(true, 5)
+
+	expect := []bool{false, false, false, true, true, true, true, true}
+	for i := range expect {
+		require.Equal(t, expect[i], bmap.Get(i), "unexpected value at index %d", i)
+	}
+}
+
+func TestBitmap_Set(t *testing.T) {
+	var bmap memory.Bitmap
+	bmap.Resize(16) // Make room for at least 10 elements.
+
+	bmap.Set(6, true)
+	bmap.Set(8, true)
+	bmap.Set(9, false)
+	bmap.Set(13, true) // Set bit in another word boundary
+
+	require.True(t, bmap.Get(6), "bit 6 should be true")
+	require.True(t, bmap.Get(8), "bit 8 should be true")
+	require.False(t, bmap.Get(9), "bit 9 should be false")
+	require.True(t, bmap.Get(13), "bit 13 should be true")
+
+	// Verify other bits remain false
+	for i := range bmap.Len() {
+		// Ignore bits we explicitly set.
+		if i == 6 || i == 8 || i == 9 || i == 13 {
+			continue
+		}
+		require.False(t, bmap.Get(i), "bit %d should be false", i)
+	}
+}
+
+func TestBitmap_SetRange(t *testing.T) {
+	bmap := memory.MakeBitmap(nil, 64)
+	bmap.Resize(64)
+	bmap.SetRange(0, 5, true)
+	bmap.SetRange(7, 10, true)
+
+	for i := range bmap.Len() {
+		value := bmap.Get(i)
+
+		switch {
+		case i >= 0 && i < 5:
+			require.True(t, value, "bit %d should be true", i)
+		case i >= 7 && i < 10:
+			require.True(t, value, "bit %d should be true", i)
+		default:
+			require.False(t, value, "bit %d should be false", i)
+		}
+	}
+}
+
+func TestBitmap_IterValue_true(t *testing.T) {
+	bmap := memory.MakeBitmap(nil, 128)
+	bmap.Resize(128) // 16 words, 8 bits each
 
 	bitsToSet := []int{1, 3, 5, 65, 70, 127}
 	for _, bit := range bitsToSet {
-		set.Set(bit, true)
+		bmap.Set(bit, true)
 	}
 
 	var indices []int
-	for index := range set.IterValues(128, true) {
+	for index := range bmap.IterValues(true) {
 		indices = append(indices, index)
 	}
 
@@ -107,20 +102,20 @@ func Test_bitset_IterValue_true(t *testing.T) {
 	require.Equal(t, expected, indices)
 }
 
-func Test_bitset_IterValue_false(t *testing.T) {
-	var set bitmap
-	set.Resize(128) // Two words: 64 bits each
+func TestBitmap_IterValue_false(t *testing.T) {
+	bmap := memory.MakeBitmap(nil, 128)
+	bmap.Resize(128) // 16 words, 8 bits each
 
 	// Set all bits first
-	set.SetRange(0, 128, true)
+	bmap.SetRange(0, 128, true)
 
 	bitsToClear := []int{0, 2, 4, 64, 69, 126}
 	for _, bit := range bitsToClear {
-		set.Set(bit, false)
+		bmap.Set(bit, false)
 	}
 
 	var indices []int
-	for index := range set.IterValues(128, false) {
+	for index := range bmap.IterValues(false) {
 		indices = append(indices, index)
 	}
 
