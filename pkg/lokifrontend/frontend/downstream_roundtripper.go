@@ -11,6 +11,7 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace"
 
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 )
 
 // RoundTripper that forwards requests to downstream URL.
@@ -36,6 +37,21 @@ func (d downstreamRoundTripper) Do(ctx context.Context, req queryrangebase.Reque
 	if err != nil {
 		return nil, fmt.Errorf("connot convert request ot HTTP request: %w", err)
 	}
+
+	// Restore headers that were stored in context by PropagateAllHeadersMiddleware.
+	// The codec encode cycle creates a new HTTP request with only a whitelist of headers,
+	// so we need to restore the original headers from context.
+	// Only add headers that weren't already set by the codec to avoid duplication.
+	if ctxHeaders := httpreq.ExtractAllHeaders(ctx); ctxHeaders != nil {
+		for k, values := range ctxHeaders {
+			if r.Header.Get(k) == "" {
+				for _, v := range values {
+					r.Header.Add(k, v)
+				}
+			}
+		}
+	}
+
 	if err := user.InjectOrgIDIntoHTTPRequest(ctx, r); err != nil {
 		return nil, err
 	}

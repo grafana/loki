@@ -91,6 +91,10 @@ func (f *HandlerFactory) CreateHandler(routeName string, comp comparator.Respons
 	}
 
 	httpMiddlewares := []middleware.Interface{
+		// Propagate all headers except those that affect response encoding.
+		// Accept and Accept-Encoding are excluded because the codec has specific
+		// expectations about response format and we don't want to cause mismatches.
+		httpreq.PropagateAllHeadersMiddleware("Accept", "Accept-Encoding"),
 		httpreq.ExtractQueryTagsMiddleware(),
 		httpreq.PropagateHeadersMiddleware(httpreq.LokiActorPathHeader, httpreq.LokiEncodingFlagsHeader, httpreq.LokiDisablePipelineWrappersHeader),
 		server.NewPrepopulateMiddleware(),

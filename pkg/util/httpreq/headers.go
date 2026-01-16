@@ -55,3 +55,49 @@ func InjectActorPath(ctx context.Context, value string) context.Context {
 func InjectHeader(ctx context.Context, key, value string) context.Context {
 	return context.WithValue(ctx, headerContextKey(key), value)
 }
+
+// allHeadersContextKey is used to store all HTTP headers in context for downstream restoration.
+type allHeadersContextKey struct{}
+
+// PropagateAllHeadersMiddleware stores all HTTP headers in context for downstream restoration.
+// This is useful when requests go through a codec decode/encode cycle that loses headers.
+// Headers in the ignoreList will not be propagated.
+func PropagateAllHeadersMiddleware(ignoreList ...string) middleware.Interface {
+	ignoreSet := make(map[string]struct{}, len(ignoreList))
+	for _, h := range ignoreList {
+		ignoreSet[http.CanonicalHeaderKey(h)] = struct{}{}
+	}
+
+	return middleware.Func(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			ctx := req.Context()
+			ctxHeaders, ok := ctx.Value(allHeadersContextKey{}).(http.Header)
+			if !ok {
+				ctxHeaders = make(http.Header)
+				ctx = context.WithValue(ctx, allHeadersContextKey{}, ctxHeaders)
+				req = req.WithContext(ctx)
+			}
+
+			for k, v := range req.Header {
+				// Skip headers in the ignore list
+				if _, ignored := ignoreSet[http.CanonicalHeaderKey(k)]; ignored {
+					continue
+				}
+				for _, vv := range v {
+					ctxHeaders.Add(k, vv)
+				}
+			}
+
+			next.ServeHTTP(w, req)
+		})
+	})
+}
+
+// ExtractAllHeaders retrieves all headers stored in context by PropagateAllHeadersMiddleware.
+func ExtractAllHeaders(ctx context.Context) http.Header {
+	ctxHeaders, ok := ctx.Value(allHeadersContextKey{}).(http.Header)
+	if !ok {
+		return nil
+	}
+	return ctxHeaders
+}
