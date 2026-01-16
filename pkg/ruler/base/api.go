@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -76,7 +77,7 @@ type RuleGroup struct {
 type rule interface{}
 
 type alertingRule struct {
-	// State can be "pending", "firing", "inactive".
+	// State can be "unknown", "pending", "firing", "inactive".
 	State          string        `json:"state"`
 	Name           string        `json:"name"`
 	Query          string        `json:"query"`
@@ -386,6 +387,10 @@ func parseNamespace(params map[string]string) (string, error) {
 		return "", err
 	}
 
+	if !filepath.IsLocal(namespace) {
+		return "", errors.New("invalid namespace: path traversal not allowed")
+	}
+
 	return namespace, nil
 }
 
@@ -400,6 +405,10 @@ func parseGroupName(params map[string]string) (string, error) {
 	groupName, err := url.PathUnescape(groupName)
 	if err != nil {
 		return "", err
+	}
+
+	if !filepath.IsLocal(groupName) {
+		return "", errors.New("invalid groupname: path traversal not allowed")
 	}
 
 	return groupName, nil

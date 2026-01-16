@@ -110,8 +110,8 @@ func newSeriesCleaner(bucket *bbolt.Bucket, periodConfig config.PeriodConfig, ta
 func (s *seriesCleaner) CleanupSeries(userID []byte, lbls labels.Labels) error {
 	// We need to add metric name label as well if it is missing since the series ids are calculated including that.
 	builder := labels.NewBuilder(lbls)
-	if builder.Get(labels.MetricName) == "" {
-		builder.Set(labels.MetricName, logMetricName)
+	if builder.Get(model.MetricNameLabel) == "" {
+		builder.Set(model.MetricNameLabel, logMetricName)
 	}
 	lbls = builder.Labels()
 
@@ -140,8 +140,8 @@ func (s *seriesCleaner) CleanupSeries(userID []byte, lbls labels.Labels) error {
 func (s *seriesCleaner) RemoveChunk(from, through model.Time, userID []byte, lbls labels.Labels, chunkID string) (bool, error) {
 	// We need to add metric name label as well if it is missing since the series ids are calculated including that.
 	builder := labels.NewBuilder(lbls)
-	if builder.Get(labels.MetricName) == "" {
-		builder.Set(labels.MetricName, logMetricName)
+	if builder.Get(model.MetricNameLabel) == "" {
+		builder.Set(model.MetricNameLabel, logMetricName)
 	}
 	lbls = builder.Labels()
 
@@ -176,8 +176,8 @@ func (s *seriesCleaner) RemoveChunk(from, through model.Time, userID []byte, lbl
 func (s *seriesCleaner) ChunkExists(userID []byte, lbls labels.Labels, chunkRef logproto.ChunkRef) (bool, error) {
 	// We need to add metric name label as well if it is missing since the series ids are calculated including that.
 	builder := labels.NewBuilder(lbls)
-	if builder.Get(labels.MetricName) == "" {
-		builder.Set(labels.MetricName, logMetricName)
+	if builder.Get(model.MetricNameLabel) == "" {
+		builder.Set(model.MetricNameLabel, logMetricName)
 	}
 	lbls = builder.Labels()
 

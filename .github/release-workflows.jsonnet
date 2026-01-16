@@ -31,6 +31,7 @@ local imageJobs = {
   promtail: build.image('promtail', 'clients/cmd/promtail', platform=platforms.all),
   querytee: build.image('loki-query-tee', 'cmd/querytee', platform=[r.forPlatform('linux/amd64'), r.forPlatform('linux/arm64')]),
   'loki-docker-driver': build.dockerPlugin('loki-docker-driver', dockerPluginDir, buildImage=buildImage, platform=[r.forPlatform('linux/amd64'), r.forPlatform('linux/arm64')]),
+  'loki-helm-test': build.image('loki-helm-test', 'production/helm/loki/src/helm-test', platform=platforms.all),
 };
 
 local weeklyImageJobs = {

@@ -77,7 +77,17 @@ func toProtoRegion(region *Region, statsIndex map[StatisticKey]uint32) (*proto.R
 		protoAttributes = append(protoAttributes, protoAttr)
 	}
 
-	return &proto.Region{
+	// Convert events to proto events
+	protoEvents := make([]*proto.Event, 0, len(region.events))
+	for _, event := range region.events {
+		protoEvent, err := marshalEvent(event)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal event %s: %w", event.Name, err)
+		}
+		protoEvents = append(protoEvents, protoEvent)
+	}
+
+	protoRegion := &proto.Region{
 		Name:         region.name,
 		StartTime:    region.startTime,
 		EndTime:      region.endTime,
@@ -85,7 +95,37 @@ func toProtoRegion(region *Region, statsIndex map[StatisticKey]uint32) (*proto.R
 		Id:           region.id[:],
 		ParentId:     region.parentID[:],
 		Attributes:   protoAttributes,
+		Events:       protoEvents,
+		Status:       marshalStatus(region.status),
+	}
+
+	return protoRegion, nil
+}
+
+// marshalEvent converts an Event to its protobuf representation.
+func marshalEvent(event Event) (*proto.Event, error) {
+	protoAttributes := make([]*proto.Attribute, 0, len(event.Attributes))
+	for _, attr := range event.Attributes {
+		protoAttr, err := marshalAttribute(attr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal event attribute %s: %w", attr.Key, err)
+		}
+		protoAttributes = append(protoAttributes, protoAttr)
+	}
+
+	return &proto.Event{
+		Name:       event.Name,
+		Timestamp:  event.Timestamp,
+		Attributes: protoAttributes,
 	}, nil
+}
+
+// marshalStatus converts a Status to its protobuf representation.
+func marshalStatus(status Status) *proto.Status {
+	return &proto.Status{
+		Code:    uint32(status.Code),
+		Message: status.Message,
+	}
 }
 
 // marshalObservationValue converts an observation value to proto ObservationValue.

@@ -63,7 +63,7 @@ type QuerierAPI struct {
 }
 
 // NewQuerierAPI returns an instance of the QuerierAPI.
-func NewQuerierAPI(v1Cfg Config, v2Cfg engine.Config, mCfg metastore.Config, querier Querier, limits querier_limits.Limits, store objstore.Bucket, reg prometheus.Registerer, logger log.Logger) *QuerierAPI {
+func NewQuerierAPI(v1Cfg Config, v2Cfg engine.Config, ms metastore.Metastore, querier Querier, limits querier_limits.Limits, store objstore.Bucket, reg prometheus.Registerer, logger log.Logger) *QuerierAPI {
 	q := &QuerierAPI{
 		cfgV1:    v1Cfg,
 		cfgV2:    v2Cfg,
@@ -74,7 +74,7 @@ func NewQuerierAPI(v1Cfg Config, v2Cfg engine.Config, mCfg metastore.Config, que
 	}
 
 	if v2Cfg.Enable {
-		q.engineV2 = engine.NewBasic(v2Cfg.Executor, mCfg, store, limits, reg, logger)
+		q.engineV2 = engine.NewBasic(v2Cfg.Executor, ms, store, limits, reg, logger)
 	}
 
 	return q

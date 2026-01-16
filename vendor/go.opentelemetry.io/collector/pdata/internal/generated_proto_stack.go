@@ -134,6 +134,7 @@ func (orig *Stack) MarshalJSON(dest *json.Stream) {
 		}
 		dest.WriteArrayEnd()
 	}
+
 	dest.WriteObjectEnd()
 }
 
@@ -156,6 +157,7 @@ func (orig *Stack) SizeProto() int {
 	var n int
 	var l int
 	_ = l
+
 	if len(orig.LocationIndices) > 0 {
 		l = 0
 		for _, e := range orig.LocationIndices {

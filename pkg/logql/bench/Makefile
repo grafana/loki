@@ -35,7 +35,9 @@ grafana:
 		-e GF_AUTH_BASIC_ENABLED=false \
 		-e GF_USERS_DEFAULT_THEME=light \
 		-e GF_CACHING_ENABLED=false \
+		-e GF_PLUGINS_PREINSTALL_SYNC=grafana-lokiexplore-app@main@https://storage.googleapis.com/integration-artifacts/grafana-lokiexplore-app/release/main/any/grafana-lokiexplore-app-main.zip,grafana-lokioperational-app@main@https://storage.googleapis.com/integration-artifacts/grafana-lokioperational-app/release/latest/grafana-lokioperational-app-latest.zip \
 		-v $(PWD)/grafana-datasource.yaml:/etc/grafana/provisioning/datasources/datasources.yml \
+		-v $(PWD)/grafana-plugins.yaml:/etc/grafana/provisioning/plugins/app.yml \
 		grafana/grafana:latest
 	@echo "Grafana available at http://localhost:3000"
 	@echo "Loki datasource pre-configured to connect to localhost:3100"
@@ -55,13 +57,13 @@ loki-debug:
 		--api-version=2 \
 		--accept-multiclient \
 		--continue \
-		-- -config.file=./pkg/logql/bench/config.yaml -config.expand-env=true)
+		-- -config.file=./pkg/logql/bench/config.yaml -config.expand-env=true -target=ui,dataobj-explorer,all)
 
 loki:
 	@echo "Starting Loki on port 3100 with debug port 18001..."
 	@(cd ../../../ && \
 		make loki && \
-		cmd/loki/loki --config.file=./pkg/logql/bench/config.yaml -config.expand-env=true)
+		cmd/loki/loki --config.file=./pkg/logql/bench/config.yaml -config.expand-env=true -target=ui,dataobj-explorer,all)
 
 # server will start a local Loki instance and Grafana for interacting with bench data. You will need
 # to manually kill the grafana process using `make grafana-stop` once you are done.
