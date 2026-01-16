@@ -24,6 +24,8 @@ type consumerMetrics struct {
 	currentOffset       prometheus.Gauge
 	pushLatency         prometheus.Histogram
 	consumeWorkersCount prometheus.Gauge
+	batchSize           prometheus.Histogram
+	workerQueueDepth    prometheus.Gauge
 }
 
 // newConsumerMetrics initializes and returns a new consumerMetrics instance
@@ -47,10 +49,19 @@ func newConsumerMetrics(reg prometheus.Registerer) *consumerMetrics {
 			Name: "loki_ingester_partition_consume_workers_count",
 			Help: "The number of workers that are processing records from Kafka",
 		}),
+		batchSize: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
+			Name:                        "loki_ingester_partition_batch_size",
+			Help:                        "The size of batches being processed",
+			NativeHistogramBucketFactor: 1.1,
+		}),
+		workerQueueDepth: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+			Name: "loki_ingester_partition_worker_queue_depth",
+			Help: "Current depth of worker queue",
+		}),
 	}
 }
 
-func NewKafkaConsumerFactory(pusher logproto.PusherServer, reg prometheus.Registerer, maxConsumerWorkers int) partition.ConsumerFactory {
+func NewKafkaConsumerFactory(pusher logproto.PusherServer, reg prometheus.Registerer, maxConsumerWorkers, maxSuccessBuffer int) partition.ConsumerFactory {
 	metrics := newConsumerMetrics(reg)
 	metrics.consumeWorkersCount.Set(float64(maxConsumerWorkers))
 
@@ -66,6 +77,9 @@ func NewKafkaConsumerFactory(pusher logproto.PusherServer, reg prometheus.Regist
 			metrics:            metrics,
 			committer:          committer,
 			maxConsumerWorkers: maxConsumerWorkers,
+			workerPool:         make(chan struct{}, maxConsumerWorkers),
+			workChan:           make(chan recordWithIndex, maxConsumerWorkers*2), // Buffer to reduce contention
+			successBuffer:      make([]*int64, 0, maxSuccessBuffer),              // Pre-allocate buffer
 		}, nil
 	}
 }
@@ -77,13 +91,32 @@ type kafkaConsumer struct {
 	committer          partition.Committer
 	maxConsumerWorkers int
 	metrics            *consumerMetrics
+
+	// Worker pool management
+	workerPool    chan struct{}
+	workChan      chan recordWithIndex
+	successBuffer []*int64
+	poolMutex     sync.Mutex
+}
+
+type recordWithIndex struct {
+	record partition.Record
+	index  int
 }
 
 func (kc *kafkaConsumer) Start(ctx context.Context, recordsCh <-chan []partition.Record) func() {
 	var wg sync.WaitGroup
 	wg.Add(1)
+
+	// Pre-fill worker pool
+	for i := 0; i < kc.maxConsumerWorkers; i++ {
+		kc.workerPool <- struct{}{}
+	}
+
 	go func() {
 		defer wg.Done()
+		defer close(kc.workChan)
+
 		for {
 			select {
 			case <-ctx.Done():
@@ -108,11 +141,13 @@ func (kc *kafkaConsumer) consume(ctx context.Context, records []partition.Record
 	if len(records) == 0 {
 		return
 	}
+
+	kc.metrics.batchSize.Observe(float64(len(records)))
+
 	var (
 		minOffset    = int64(math.MaxInt64)
 		maxOffset    = int64(0)
 		consumeStart = time.Now()
-		limitWorkers = kc.maxConsumerWorkers
 		wg           sync.WaitGroup
 	)
 
@@ -122,71 +157,53 @@ func (kc *kafkaConsumer) consume(ctx context.Context, records []partition.Record
 		maxOffset = max(maxOffset, record.Offset)
 	}
 
-	level.Debug(kc.logger).Log("msg", "consuming records", "min_offset", minOffset, "max_offset", maxOffset)
+	level.Debug(kc.logger).Log("msg", "consuming records", "min_offset", minOffset, "max_offset", maxOffset, "batch_size", len(records))
 
-	type recordWithIndex struct {
-		record partition.Record
-		index  int
+	// Reuse or resize success buffer
+	kc.poolMutex.Lock()
+	if cap(kc.successBuffer) < len(records) {
+		kc.successBuffer = make([]*int64, len(records))
+	} else {
+		kc.successBuffer = kc.successBuffer[:len(records)]
+		for i := range kc.successBuffer {
+			kc.successBuffer[i] = nil
+		}
 	}
+	kc.poolMutex.Unlock()
 
-	numWorkers := min(limitWorkers, len(records))
-	workChan := make(chan recordWithIndex, numWorkers)
-	// success keeps track of the records that were processed. It is expected to
-	// be sorted in ascending order of offset since the records themselves are
-	// ordered.
-	success := make([]*int64, len(records))
+	kc.metrics.workerQueueDepth.Set(float64(len(kc.workChan)))
 
-	for i := 0; i < numWorkers; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for recordWithIndex := range workChan {
-				stream, err := kc.decoder.DecodeWithoutLabels(recordWithIndex.record.Content)
-				if err != nil {
-					level.Error(kc.logger).Log("msg", "failed to decode record", "error", err)
-					continue
-				}
-
-				recordCtx := user.InjectOrgID(recordWithIndex.record.Ctx, recordWithIndex.record.TenantID)
-				req := &logproto.PushRequest{
-					Streams: []logproto.Stream{stream},
-				}
-
-				level.Debug(kc.logger).Log("msg", "pushing record", "offset", recordWithIndex.record.Offset, "length", len(recordWithIndex.record.Content))
-
-				if err := retryWithBackoff(ctx, func(attempts int) error {
-					pushTime := time.Now()
-					_, err := kc.pusher.Push(recordCtx, req)
-
-					kc.metrics.pushLatency.Observe(time.Since(pushTime).Seconds())
-
-					if err != nil {
-						level.Warn(kc.logger).Log("msg", "failed to push records", "err", err, "offset", recordWithIndex.record.Offset, "attempts", attempts)
-						return err
-					}
-
-					return nil
-				}); err != nil {
-					level.Error(kc.logger).Log("msg", "exhausted all retry attempts, failed to push records", "err", err, "offset", recordWithIndex.record.Offset)
-					continue
-				}
-
-				offset := recordWithIndex.record.Offset
-				success[recordWithIndex.index] = &offset
+	// Distribute work to available workers
+	workersLaunched := 0
+	for i := range records {
+		select {
+		case <-ctx.Done():
+			level.Info(kc.logger).Log("msg", "context canceled during work distribution")
+			return
+		case kc.workChan <- recordWithIndex{record: records[i], index: i}:
+			// Try to acquire worker from pool
+			select {
+			case <-kc.workerPool:
+				wg.Add(1)
+				workersLaunched++
+				go kc.worker(ctx, &wg)
+			default:
+				// No available workers, work will be picked up when workers free up
 			}
-		}()
+		}
 	}
 
-	for i, record := range records {
-		workChan <- recordWithIndex{record: record, index: i}
-	}
-	close(workChan)
-
+	// Wait for all work to complete
 	wg.Wait()
+
+	// Return workers to pool
+	for i := 0; i < workersLaunched; i++ {
+		kc.workerPool <- struct{}{}
+	}
 
 	// Find the highest offset before a gap, and commit that.
 	var highestOffset int64
-	for _, offset := range success {
+	for _, offset := range kc.successBuffer {
 		if offset == nil || *offset == 0 {
 			break
 		}
@@ -200,11 +217,65 @@ func (kc *kafkaConsumer) consume(ctx context.Context, records []partition.Record
 	kc.metrics.currentOffset.Set(float64(maxOffset))
 }
 
-func canRetry(err error) bool {
-	return errors.Is(err, ErrReadOnly)
+func (kc *kafkaConsumer) worker(ctx context.Context, wg *sync.WaitGroup) {
+	defer wg.Done()
+	defer func() {
+		// Return worker token to pool when done
+		kc.workerPool <- struct{}{}
+	}()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case recordWithIndex, ok := <-kc.workChan:
+			if !ok {
+				return
+			}
+			kc.processRecord(ctx, recordWithIndex)
+		default:
+			// No more work, exit
+			return
+		}
+	}
 }
 
-func retryWithBackoff(ctx context.Context, fn func(attempts int) error) error {
+func (kc *kafkaConsumer) processRecord(ctx context.Context, rwi recordWithIndex) {
+	stream, err := kc.decoder.DecodeWithoutLabels(rwi.record.Content)
+	if err != nil {
+		level.Error(kc.logger).Log("msg", "failed to decode record", "error", err)
+		return
+	}
+
+	recordCtx := user.InjectOrgID(rwi.record.Ctx, rwi.record.TenantID)
+	req := &logproto.PushRequest{
+		Streams: []logproto.Stream{stream},
+	}
+
+	level.Debug(kc.logger).Log("msg", "pushing record", "offset", rwi.record.Offset, "length", len(rwi.record.Content))
+
+	if err := kc.retryWithBackoff(ctx, func(attempts int) error {
+		pushTime := time.Now()
+		_, err := kc.pusher.Push(recordCtx, req)
+
+		kc.metrics.pushLatency.Observe(time.Since(pushTime).Seconds())
+
+		if err != nil {
+			level.Warn(kc.logger).Log("msg", "failed to push records", "err", err, "offset", rwi.record.Offset, "attempts", attempts)
+			return err
+		}
+
+		return nil
+	}); err != nil {
+		level.Error(kc.logger).Log("msg", "exhausted all retry attempts, failed to push records", "err", err, "offset", rwi.record.Offset)
+		return
+	}
+
+	offset := rwi.record.Offset
+	kc.successBuffer[rwi.index] = &offset
+}
+
+func (kc *kafkaConsumer) retryWithBackoff(ctx context.Context, fn func(attempts int) error) error {
 	err := fn(0)
 	if err == nil {
 		return nil
@@ -212,12 +283,17 @@ func retryWithBackoff(ctx context.Context, fn func(attempts int) error) error {
 	if !canRetry(err) {
 		return err
 	}
-	backoff := backoff.New(ctx, backoff.Config{
-		MinBackoff: 100 * time.Millisecond,
-		MaxBackoff: 5 * time.Second,
-		MaxRetries: 0, // Retry infinitely
-	})
+
+	// Optimized backoff: faster initial retries with exponential slowdown
+	backoffCfg := backoff.Config{
+		MinBackoff: 50 * time.Millisecond, // Faster initial retry
+		MaxBackoff: 10 * time.Second,      // Longer max for persistent issues
+		MaxRetries: 0,
+	}
+
+	backoff := backoff.New(ctx, backoffCfg)
 	backoff.Wait()
+
 	for backoff.Ongoing() {
 		err = fn(backoff.NumRetries())
 		if err == nil {
@@ -229,4 +305,23 @@ func retryWithBackoff(ctx context.Context, fn func(attempts int) error) error {
 		backoff.Wait()
 	}
 	return backoff.Err()
+}
+
+func canRetry(err error) bool {
+	return errors.Is(err, ErrReadOnly)
+}
+
+// Helper functions for min/max (already present in Go 1.21+)
+func min(a, b int64) int64 {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func max(a, b int64) int64 {
+	if a > b {
+		return a
+	}
+	return b
 }
