@@ -115,6 +115,7 @@ type Compactor struct {
 	storeContainers map[config.DayTime]storeContainer
 
 	dataobjDeletionManager *deletion.DataobjDeletionManager
+	dataobjDeletionSweeper *deletion.DataobjDeletionSweeper
 }
 
 type storeContainer struct {
@@ -387,17 +388,24 @@ func (c *Compactor) initDeletes(objectClient client.ObjectClient, indexUpdatePro
 
 	c.expirationChecker = newExpirationChecker(retention.NewExpirationChecker(limits), c.deleteRequestsManager)
 
-	// Initialize dataobj deletion manager if enabled
+	// Initialize dataobj deletion manager and sweeper if enabled
 	if c.cfg.DataObjDeletionEnabled {
 		if metastore == nil {
 			return fmt.Errorf("metastore is required when dataobj deletion is enabled")
 		}
-		level.Info(util_log.Logger).Log("msg", "dataobj deletion enabled, initializing deletion manager")
+		level.Info(util_log.Logger).Log("msg", "dataobj deletion enabled, initializing deletion manager and sweeper")
 		c.dataobjDeletionManager = deletion.NewDataobjDeletionManager(
 			c.cfg.DataObjDeletion,
 			metastore,
 			objectClient,
 			c.deleteRequestsStore,
+			util_log.Logger,
+			r,
+		)
+		c.dataobjDeletionSweeper = deletion.NewDataobjDeletionSweeper(
+			c.cfg.DataObjDeletion,
+			metastore,
+			objectClient,
 			util_log.Logger,
 			r,
 		)
@@ -530,6 +538,14 @@ func (c *Compactor) loop(ctx context.Context) error {
 						go func() {
 							defer wg.Done()
 							c.dataobjDeletionManager.Start(runningCtx)
+						}()
+					}
+
+					if c.dataobjDeletionSweeper != nil {
+						wg.Add(1)
+						go func() {
+							defer wg.Done()
+							c.dataobjDeletionSweeper.Start(runningCtx)
 						}()
 					}
 

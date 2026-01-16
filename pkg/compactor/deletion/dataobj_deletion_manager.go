@@ -30,6 +30,7 @@ type DataobjDeletionManager struct {
 
 type DataObjDeletionConfig struct {
 	DeletionProcessInterval time.Duration
+	SweepInterval           time.Duration
 }
 
 type dataObjDeletionMetrics struct {
