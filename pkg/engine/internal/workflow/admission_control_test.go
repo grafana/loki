@@ -35,4 +35,16 @@ func TestAdmissionControl_getBucket(t *testing.T) {
 		ty := ac.typeFor(task)
 		require.Equal(t, taskTypeScan, ty)
 	})
+
+	t.Run("Task with a PointersScan node is considered an 'scan' task", func(t *testing.T) {
+		fragment := dag.Graph[physical.Node]{}
+		fragment.Add(&physical.PointersScan{})
+
+		task := &Task{
+			ULID:     ulid.Make(),
+			Fragment: physical.FromGraph(fragment),
+		}
+		ty := ac.typeFor(task)
+		require.Equal(t, taskTypeScan, ty)
+	})
 }

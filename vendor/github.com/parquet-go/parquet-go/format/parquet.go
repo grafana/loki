@@ -2,6 +2,7 @@ package format
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/parquet-go/parquet-go/deprecated"
 )
@@ -92,7 +93,7 @@ type SizeStatistics struct {
 	//
 	// This field should only be set for types that use BYTE_ARRAY as their
 	// physical type.
-	UnencodedByteArrayDataBytes *int64 `thrift:"1,optional"`
+	UnencodedByteArrayDataBytes int64 `thrift:"1,optional"`
 
 	// When present, there is expected to be one element corresponding to each
 	// repetition (i.e. size=max repetition_level+1) where each element
@@ -126,7 +127,7 @@ type BoundingBox struct {
 // Statistics specific to Geometry and Geography logical types
 type GeospatialStatistics struct {
 	// A bounding box of geospatial instances
-	BBox *BoundingBox `thrift:"1,optional"`
+	BBox BoundingBox `thrift:"1,optional"`
 	// Geospatial type codes of all instances, or an empty list if not known
 	GeoSpatialTypes []int32 `thrift:"2,optional"`
 }
@@ -148,7 +149,10 @@ type Statistics struct {
 	Max []byte `thrift:"1"`
 	Min []byte `thrift:"2"`
 	// Count of null value in the column.
-	NullCount int64 `thrift:"3"`
+	// The writezero tag satisfies spec:
+	// "Writers SHOULD always write this field even if it is zero (i.e. no null value) or the column is not nullable."
+	// https://github.com/apache/parquet-format/blob/apache-parquet-format-2.12.0/src/main/thrift/parquet.thrift#L283-L291
+	NullCount int64 `thrift:"3,writezero"`
 	// Count of distinct values occurring.
 	DistinctCount int64 `thrift:"4"`
 	// Min and max values for the column, determined by its ColumnOrder.
@@ -297,22 +301,53 @@ const (
 	Karney    EdgeInterpolationAlgorithm = 4
 )
 
+const (
+	SphericalName = "SPHERICAL"
+	VincentyName  = "VINCENTY"
+	ThomasName    = "THOMAS"
+	AndoyerName   = "ANDOYER"
+	KarneyName    = "KARNEY"
+)
+
 func (e EdgeInterpolationAlgorithm) String() string {
 	switch e {
 	case Spherical:
-		return "SPHERICAL"
+		return SphericalName
 	case Vincenty:
-		return "VINCENTY"
+		return VincentyName
 	case Thomas:
-		return "THOMAS"
+		return ThomasName
 	case Andoyer:
-		return "ANDOYER"
+		return AndoyerName
 	case Karney:
-		return "KARNEY"
+		return KarneyName
 	default:
 		return "EdgeInterpolationAlgorithm(?)"
 	}
 }
+
+func (e *EdgeInterpolationAlgorithm) FromString(s string) error {
+	switch strings.ToUpper(s) {
+	case SphericalName:
+		*e = Spherical
+	case VincentyName:
+		*e = Vincenty
+	case ThomasName:
+		*e = Thomas
+	case AndoyerName:
+		*e = Andoyer
+	case KarneyName:
+		*e = Karney
+	default:
+		return fmt.Errorf("invalid EdgeInterpolationAlgorithm: %q", s)
+	}
+	return nil
+}
+
+const (
+	defaultCRS         = "OGC:CRS84"
+	GeometryDefaultCRS = defaultCRS
+)
 
 // Embedded Geometry logical type annotation
 //
@@ -333,10 +368,12 @@ type GeometryType struct {
 func (t *GeometryType) String() string {
 	crs := t.CRS
 	if crs == "" {
-		crs = "OGC:CRS84"
+		crs = GeometryDefaultCRS
 	}
 	return fmt.Sprintf("GEOMETRY(%q)", crs)
 }
+
+const GeographyDefaultCRS = defaultCRS
 
 // Embedded Geography logical type annotation
 //
@@ -361,7 +398,7 @@ type GeographyType struct {
 func (t *GeographyType) String() string {
 	crs := t.CRS
 	if crs == "" {
-		crs = "OGC:CRS84"
+		crs = GeographyDefaultCRS
 	}
 	return fmt.Sprintf("GEOGRAPHY(%q, %s)", crs, t.Algorithm)
 }
@@ -470,7 +507,7 @@ type SchemaElement struct {
 	// the nesting is flattened to a single list by a depth-first traversal.
 	// The children count is used to construct the nested relationship.
 	// This field is not set when the element is a primitive type
-	NumChildren int32 `thrift:"5,optional"`
+	NumChildren *int32 `thrift:"5,optional"`
 
 	// DEPRECATED: When the schema is the result of a conversion from another model.
 	// Used to record the original type to help with cross conversion.
@@ -688,7 +725,8 @@ type DataPageHeader struct {
 	RepetitionLevelEncoding Encoding `thrift:"4,required"`
 
 	// Optional statistics for the data in this page.
-	Statistics Statistics `thrift:"5,optional"`
+	// The writezero tag supports writezero fields of Statistics.
+	Statistics Statistics `thrift:"5,optional,writezero"`
 }
 
 type IndexPageHeader struct {
@@ -740,7 +778,8 @@ type DataPageHeaderV2 struct {
 	IsCompressed *bool `thrift:"7,optional"`
 
 	// Optional statistics for the data in this page.
-	Statistics Statistics `thrift:"8,optional"`
+	// The writezero tag supports writezero fields of Statistics.
+	Statistics Statistics `thrift:"8,optional,writezero"`
 }
 
 // Block-based algorithm type annotation.
@@ -894,7 +933,8 @@ type ColumnMetaData struct {
 	DictionaryPageOffset int64 `thrift:"11,optional"`
 
 	// optional statistics for this column chunk.
-	Statistics Statistics `thrift:"12,optional"`
+	// The writezero tag supports writezero fields of Statistics.
+	Statistics Statistics `thrift:"12,optional,writezero"`
 
 	// Set of all encodings used for pages in this column chunk.
 	// This information can be used to determine if all data pages are
@@ -909,23 +949,16 @@ type ColumnMetaData struct {
 	// it can be obtained after the BloomFilterHeader has been deserialized.
 	// Writers should write this field so readers can read the bloom filter
 	// in a single I/O.
-	BloomFilterLength *int32 `thrift:"15,optional"`
+	BloomFilterLength int32 `thrift:"15,optional"`
 
 	// Optional statistics to help estimate total memory when converted to in-memory
 	// representations. The histograms contained in these statistics can
 	// also be useful in some cases for more fine-grained nullability/list length
 	// filter pushdown.
-	// TODO: Uncomment this field when Thrift decoding is fixed. Strangely, when it is
-	// uncommented, test cases in file_test.go fail with an inexplicable error decoding
-	// an unrelated field:
-	//    reading parquet file metadata: decoding thrift payload: 4:FIELD<LIST> → 0/1:LIST<STRUCT>: missing required field: 2:FIELD<I64>
-	// (Seems to be complaining about field TotalBytesSize of RowGroup). This only occurs
-	// with testdata/dict-page-offset-zero.parquet, in both TestOpenFileWithoutPageIndex
-	// and TestOpenFile.
-	//SizeStatistics *SizeStatistics `thrift:"16,optional"`
+	SizeStatistics SizeStatistics `thrift:"16,optional"`
 
 	// Optional statistics specific for Geometry and Geography logical types
-	GeospatialStatistics *GeospatialStatistics `thrift:"17,optional"`
+	GeospatialStatistics GeospatialStatistics `thrift:"17,optional"`
 }
 
 type EncryptionWithFooterKey struct{}
@@ -999,7 +1032,10 @@ type RowGroup struct {
 	TotalCompressedSize int64 `thrift:"6,optional"`
 
 	// Row group ordinal in the file.
-	Ordinal int16 `thrift:"7,optional"`
+	// The writezero tag ensures ordinal 0 is serialized; without it, Ordinal=0
+	// would be omitted while Ordinal=1,2,... would be written, which breaks
+	// readers with strict validation for row group ordinals.
+	Ordinal int16 `thrift:"7,optional,writezero"`
 }
 
 // Empty struct to signal the order defined by the physical or logical type.
@@ -1117,7 +1153,10 @@ type ColumnIndex struct {
 	BoundaryOrder BoundaryOrder `thrift:"4,required"`
 
 	// A list containing the number of null values for each page.
-	NullCounts []int64 `thrift:"5,optional"`
+	// The writezero tag satisfies spec:
+	// "Writers SHOULD always write this field even if no null values are present or the column is not nullable."
+	// https://github.com/apache/parquet-format/blob/apache-parquet-format-2.12.0/src/main/thrift/parquet.thrift#L1197-L1198
+	NullCounts []int64 `thrift:"5,optional,writezero"`
 
 	// Contains repetition level histograms for each page
 	// concatenated together.  The repetition_level_histogram field on

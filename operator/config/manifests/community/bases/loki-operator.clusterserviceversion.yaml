@@ -6,7 +6,7 @@ metadata:
     capabilities: Full Lifecycle
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
-    containerImage: docker.io/grafana/loki-operator:0.8.0
+    containerImage: docker.io/grafana/loki-operator:0.9.0
     createdAt: "2022-12-22T13:28:40+00:00"
     description: The Community Loki Operator provides Kubernetes native deployment
       and management of Loki and related logging components.
@@ -914,6 +914,13 @@ spec:
       - description: Roles defines a set of permissions to interact with a tenant.
         displayName: Static Roles
         path: tenants.authorization.roles
+      - description: |-
+          DisableIngress disables automatic creation of external access resources (Route / Ingress).
+          When true, no Route or Ingress will be created for the gateway.
+        displayName: Disable Ingress
+        path: tenants.disableIngress
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
       - description: Mode defines the mode in which lokistack-gateway component will
           be configured.
         displayName: Mode
@@ -2515,5 +2522,5 @@ spec:
   minKubeVersion: 1.21.1
   provider:
     name: Grafana Loki SIG Operator
-  replaces: loki-operator.v0.7.1
+  replaces: loki-operator.v0.8.0
   version: 0.0.0

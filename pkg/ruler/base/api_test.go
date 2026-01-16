@@ -73,7 +73,7 @@ func TestRuler_PrometheusRules(t *testing.T) {
 		return &alertingRule{
 			Name:   name,
 			Query:  `count_over_time({foo="bar"}[5m]) < 1`,
-			State:  "inactive",
+			State:  "unknown",
 			Health: "unknown",
 			Type:   "alerting",
 			Alerts: []*Alert{},
@@ -115,7 +115,7 @@ func TestRuler_PrometheusRules(t *testing.T) {
 						&alertingRule{
 							Name:   "COUNT_ALERT",
 							Query:  `count_over_time({foo="bar"}[5m]) < 1`,
-							State:  "inactive",
+							State:  "unknown",
 							Health: "unknown",
 							Type:   "alerting",
 							Alerts: []*Alert{},
@@ -151,7 +151,7 @@ func TestRuler_PrometheusRules(t *testing.T) {
 						&alertingRule{
 							Name:   "COUNT_ALERT",
 							Query:  `count_over_time({foo="bar"}[5m]) < 1`,
-							State:  "inactive",
+							State:  "unknown",
 							Health: "unknown",
 							Type:   "alerting",
 							Alerts: []*Alert{},
@@ -182,7 +182,7 @@ func TestRuler_PrometheusRules(t *testing.T) {
 						&alertingRule{
 							Name:   "COUNT_ALERT",
 							Query:  `count_over_time({foo="bar"}[5m]) < 1`,
-							State:  "inactive",
+							State:  "unknown",
 							Health: "unknown",
 							Type:   "alerting",
 							Alerts: []*Alert{},
@@ -517,7 +517,7 @@ func TestRuler_PrometheusRules(t *testing.T) {
 						&alertingRule{
 							Name:   "UniqueNamedRuleN3G2",
 							Query:  `count_over_time({foo="bar"}[5m]) < 1`,
-							State:  "inactive",
+							State:  "unknown",
 							Health: "unknown",
 							Type:   "alerting",
 							Alerts: []*Alert{},
@@ -1017,5 +1017,68 @@ func createAlertingRule(alert, expr string) *rulespb.RuleDesc {
 	return &rulespb.RuleDesc{
 		Alert: alert,
 		Expr:  expr,
+	}
+}
+
+// pathTraversalTestCases returns test cases for path traversal validation.
+// These are shared between namespace and group name parsing tests.
+func pathTraversalTestCases() []struct {
+	name        string
+	input       string
+	expectError bool
+} {
+	return []struct {
+		name        string
+		input       string
+		expectError bool
+	}{
+		// Valid paths
+		{name: "simple name", input: "my-name", expectError: false},
+		{name: "name with dots", input: "my.name.v1", expectError: false},
+		{name: "name with underscore", input: "my_name", expectError: false},
+		{name: "subdirectory path", input: "tenant/rules", expectError: false},
+
+		// Path traversal attacks - these should be rejected
+		{name: "simple parent traversal", input: "..", expectError: true},
+		{name: "parent with path", input: "../etc/passwd", expectError: true},
+		{name: "double encoded traversal", input: "..%2f..%2fetc%2fpasswd", expectError: true},
+		{name: "deep traversal", input: "../../../etc/passwd", expectError: true},
+		{name: "traversal escaping root", input: "foo/../../bar", expectError: true},
+		{name: "absolute path", input: "/etc/passwd", expectError: true},
+		{name: "empty string", input: "", expectError: true},
+	}
+}
+
+func TestParseNamespace_PathTraversal(t *testing.T) {
+	for _, tc := range pathTraversalTestCases() {
+		t.Run(tc.name, func(t *testing.T) {
+			params := map[string]string{"namespace": tc.input}
+			result, err := parseNamespace(params)
+
+			if tc.expectError {
+				assert.Error(t, err, "expected error for namespace %q", tc.input)
+				assert.Empty(t, result)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tc.input, result)
+			}
+		})
+	}
+}
+
+func TestParseGroupName_PathTraversal(t *testing.T) {
+	for _, tc := range pathTraversalTestCases() {
+		t.Run(tc.name, func(t *testing.T) {
+			params := map[string]string{"groupName": tc.input}
+			result, err := parseGroupName(params)
+
+			if tc.expectError {
+				assert.Error(t, err, "expected error for groupName %q", tc.input)
+				assert.Empty(t, result)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tc.input, result)
+			}
+		})
 	}
 }

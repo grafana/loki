@@ -1,0 +1,17 @@
+Alternates of literals should be converted into basic matches combined with OR.
+
+-- column --
+utf8.builtin.message
+
+-- regex --
+foo|bar|fizz|buzz
+
+-- expect --
+%1 = MATCH_STR builtin.message "foo"
+%2 = MATCH_STR builtin.message "bar"
+%3 = OR %1 %2
+%4 = MATCH_STR builtin.message "fizz"
+%5 = OR %3 %4
+%6 = MATCH_STR builtin.message "buzz"
+%7 = OR %5 %6
+RETURN %7

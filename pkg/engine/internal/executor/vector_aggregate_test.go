@@ -67,22 +67,25 @@ func TestVectorAggregationPipeline(t *testing.T) {
 	input2 := NewBufferedPipeline(input2Record)
 
 	// Create group by expressions
-	groupBy := []physical.ColumnExpression{
-		&physical.ColumnExpr{
-			Ref: types.ColumnRef{
-				Column: "env",
-				Type:   types.ColumnTypeAmbiguous,
+	grouping := physical.Grouping{
+		Columns: []physical.ColumnExpression{
+			&physical.ColumnExpr{
+				Ref: types.ColumnRef{
+					Column: "env",
+					Type:   types.ColumnTypeAmbiguous,
+				},
+			},
+			&physical.ColumnExpr{
+				Ref: types.ColumnRef{
+					Column: "service",
+					Type:   types.ColumnTypeAmbiguous,
+				},
 			},
 		},
-		&physical.ColumnExpr{
-			Ref: types.ColumnRef{
-				Column: "service",
-				Type:   types.ColumnTypeAmbiguous,
-			},
-		},
+		Without: false,
 	}
 
-	pipeline, err := newVectorAggregationPipeline([]Pipeline{input1, input2}, groupBy, newExpressionEvaluator(), types.VectorAggregationTypeSum, nil)
+	pipeline, err := newVectorAggregationPipeline([]Pipeline{input1, input2}, grouping, newExpressionEvaluator(), types.VectorAggregationTypeSum, nil)
 	require.NoError(t, err)
 	defer pipeline.Close()
 
