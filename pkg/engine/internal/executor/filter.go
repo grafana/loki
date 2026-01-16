@@ -66,6 +66,7 @@ func filterBatch(batch arrow.RecordBatch, include func(int) bool) arrow.RecordBa
 		switch field.Type.ID() {
 		case arrow.BOOL:
 			builder := array.NewBooleanBuilder(memory.DefaultAllocator)
+			builder.Reserve(int(batch.NumRows()))
 			builders[i] = builder
 			additions[i] = func(offset int) {
 				src := batch.Column(i).(*array.Boolean)
@@ -73,6 +74,7 @@ func filterBatch(batch arrow.RecordBatch, include func(int) bool) arrow.RecordBa
 			}
 		case arrow.STRING:
 			builder := array.NewStringBuilder(memory.DefaultAllocator)
+			builder.Reserve(int(batch.NumRows()))
 			builders[i] = builder
 			additions[i] = func(offset int) {
 				src := batch.Column(i).(*array.String)
@@ -80,6 +82,7 @@ func filterBatch(batch arrow.RecordBatch, include func(int) bool) arrow.RecordBa
 			}
 		case arrow.UINT64:
 			builder := array.NewUint64Builder(memory.DefaultAllocator)
+			builder.Reserve(int(batch.NumRows()))
 			builders[i] = builder
 			additions[i] = func(offset int) {
 				src := batch.Column(i).(*array.Uint64)
@@ -87,6 +90,7 @@ func filterBatch(batch arrow.RecordBatch, include func(int) bool) arrow.RecordBa
 			}
 		case arrow.INT64:
 			builder := array.NewInt64Builder(memory.DefaultAllocator)
+			builder.Reserve(int(batch.NumRows()))
 			builders[i] = builder
 			additions[i] = func(offset int) {
 				src := batch.Column(i).(*array.Int64)
@@ -94,6 +98,7 @@ func filterBatch(batch arrow.RecordBatch, include func(int) bool) arrow.RecordBa
 			}
 		case arrow.FLOAT64:
 			builder := array.NewFloat64Builder(memory.DefaultAllocator)
+			builder.Reserve(int(batch.NumRows()))
 			builders[i] = builder
 			additions[i] = func(offset int) {
 				src := batch.Column(i).(*array.Float64)
@@ -101,6 +106,7 @@ func filterBatch(batch arrow.RecordBatch, include func(int) bool) arrow.RecordBa
 			}
 		case arrow.TIMESTAMP:
 			builder := array.NewTimestampBuilder(memory.DefaultAllocator, &arrow.TimestampType{Unit: arrow.Nanosecond, TimeZone: "UTC"})
+			builder.Reserve(int(batch.NumRows()))
 			builders[i] = builder
 			additions[i] = func(offset int) {
 				src := batch.Column(i).(*array.Timestamp)

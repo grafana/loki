@@ -71,14 +71,16 @@ type rangeAggregationPipeline struct {
 	evaluator           expressionEvaluator          // used to evaluate column expressions
 	opts                rangeAggregationOptions
 	region              *xcap.Region
+	identCache          *semconv.IdentifierCache
 }
 
 func newRangeAggregationPipeline(inputs []Pipeline, evaluator expressionEvaluator, opts rangeAggregationOptions, region *xcap.Region) (*rangeAggregationPipeline, error) {
 	r := &rangeAggregationPipeline{
-		inputs:    inputs,
-		evaluator: evaluator,
-		opts:      opts,
-		region:    region,
+		inputs:     inputs,
+		evaluator:  evaluator,
+		opts:       opts,
+		region:     region,
+		identCache: semconv.NewIdentifierCache(),
 	}
 	r.init()
 	return r, nil
@@ -140,6 +142,9 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 		} // value column expression
 	)
 
+	labelValuesCache := newLabelValuesCache()
+	fieldsCache := newFieldsCache()
+
 	r.aggregator.Reset() // reset before reading new inputs
 	inputsExhausted := false
 	for !inputsExhausted {
@@ -158,12 +163,12 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 
 			// extract all the columns that are used for grouping
 			var arrays []*array.String
-			var fields []arrow.Field
+			var groupingFields []arrow.Field
 			if r.opts.grouping.Without {
 				// Grouping without a lable set. Exclude lables from that set.
 				schema := record.Schema()
 				for i, field := range schema.Fields() {
-					ident, err := semconv.ParseFQN(field.Name)
+					ident, err := r.identCache.ParseFQN(field.Name)
 					if err != nil {
 						return nil, err
 					}
@@ -192,11 +197,13 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 						}
 						if !found {
 							arrays = append(arrays, record.Column(i).(*array.String))
-							fields = append(fields, field)
+							groupingFields = append(groupingFields, field)
 						}
 					}
 				}
 			} else {
+				groupingFields = make([]arrow.Field, 0, len(r.opts.grouping.Columns))
+
 				// Gouping by a label set. Take only labels from that set.
 				for _, columnExpr := range r.opts.grouping.Columns {
 					vec, err := r.evaluator.eval(columnExpr, record)
@@ -216,11 +223,11 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 						return nil, fmt.Errorf("invalid column expression type %T", columnExpr)
 					}
 					ident := semconv.NewIdentifier(colExpr.Ref.Column, colExpr.Ref.Type, types.Loki.String)
-					fields = append(fields, semconv.FieldFromIdent(ident, true))
+					groupingFields = append(groupingFields, semconv.FieldFromIdent(ident, true))
 				}
 			}
 
-			r.aggregator.AddLabels(fields)
+			r.aggregator.AddLabels(groupingFields)
 
 			// extract timestamp column to check if the entry is in range
 			tsVec, err := r.evaluator.eval(tsColumnExpr, record)
@@ -239,8 +246,6 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 				valArr = valVec.(*array.Float64)
 			}
 
-			labelsCache := newLabelsCache()
-
 			for row := range int(record.NumRows()) {
 				var value float64
 				if r.opts.operation != types.RangeAggregationTypeCount {
@@ -256,7 +261,8 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 					continue // out of range, skip this row
 				}
 
-				labels, labelValues := labelsCache.getLabels(arrays, fields, row)
+				labelValues := labelValuesCache.getLabelValues(arrays, row)
+				labels := fieldsCache.getFields(arrays, groupingFields, row)
 
 				for _, w := range windows {
 					r.aggregator.Add(w.end, value, labels, labelValues)

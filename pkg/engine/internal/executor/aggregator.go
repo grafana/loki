@@ -156,22 +156,15 @@ func (a *aggregator) Add(ts time.Time, value float64, labels []arrow.Field, labe
 }
 
 func (a *aggregator) BuildRecord() (arrow.RecordBatch, error) {
-	fields := make([]arrow.Field, 0, len(a.labels)+2)
-	fields = append(fields,
+	fields := append(a.labels,
 		semconv.FieldFromIdent(semconv.ColumnIdentTimestamp, false),
 		semconv.FieldFromIdent(semconv.ColumnIdentValue, false),
 	)
-	for _, label := range a.labels {
-		fields = append(fields, arrow.Field{
-			Name:     label.Name,
-			Type:     label.Type,
-			Nullable: true,
-			Metadata: label.Metadata,
-		})
-	}
-
 	schema := arrow.NewSchema(fields, nil)
 	rb := array.NewRecordBuilder(memory.NewGoAllocator(), schema)
+
+	tsColIdx := len(fields) - 2
+	valColIdx := len(fields) - 1
 
 	// emit aggregated results in sorted order of timestamp
 	sortedTimestamps := a.getSortedTimestamps()
@@ -181,11 +174,7 @@ func (a *aggregator) BuildRecord() (arrow.RecordBatch, error) {
 	for _, ts := range sortedTimestamps {
 		total += len(a.points[ts])
 	}
-	rb.Field(0).Reserve(total)
-	rb.Field(1).Reserve(total)
-	for i := range a.labels {
-		rb.Field(2 + i).Reserve(total)
-	}
+	rb.Reserve(total)
 
 	for _, ts := range sortedTimestamps {
 		tsValue, _ := arrow.TimestampFromTime(ts, arrow.Nanosecond)
@@ -201,11 +190,11 @@ func (a *aggregator) BuildRecord() (arrow.RecordBatch, error) {
 				value = entry.value
 			}
 
-			rb.Field(0).(*array.TimestampBuilder).Append(tsValue)
-			rb.Field(1).(*array.Float64Builder).Append(value)
+			rb.Field(tsColIdx).(*array.TimestampBuilder).Append(tsValue)
+			rb.Field(valColIdx).(*array.Float64Builder).Append(value)
 
 			for i, label := range a.labels {
-				builder := rb.Field(2 + i) // offset by 2 as the first 2 fields are timestamp and value
+				builder := rb.Field(i)
 
 				j := slices.IndexFunc(entry.labels, func(l arrow.Field) bool {
 					return l.Name == label.Name

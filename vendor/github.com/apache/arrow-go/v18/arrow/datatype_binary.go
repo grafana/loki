@@ -27,6 +27,32 @@ type OffsetTraits interface {
 	BytesRequired(int) int
 }
 
+var (
+	binaryTypeLayout = DataTypeLayout{
+		Buffers: []BufferSpec{SpecBitmap(), SpecFixedWidth(Int32SizeBytes), SpecVariableWidth()},
+	}
+	stringTypeLayout = DataTypeLayout{
+		Buffers: []BufferSpec{SpecBitmap(), SpecFixedWidth(Int32SizeBytes), SpecVariableWidth()},
+	}
+	largeBinaryTypeLayout = DataTypeLayout{
+		Buffers: []BufferSpec{SpecBitmap(), SpecFixedWidth(Int64SizeBytes), SpecVariableWidth()},
+	}
+	largeStringTypeLayout = DataTypeLayout{
+		Buffers: []BufferSpec{SpecBitmap(), SpecFixedWidth(Int64SizeBytes), SpecVariableWidth()},
+	}
+
+	variadic = SpecVariableWidth()
+
+	binaryViewTypeLayout = DataTypeLayout{
+		Buffers:      []BufferSpec{SpecBitmap(), SpecFixedWidth(ViewHeaderSizeBytes)},
+		VariadicSpec: &variadic,
+	}
+	stringViewTypeLayout = DataTypeLayout{
+		Buffers:      []BufferSpec{SpecBitmap(), SpecFixedWidth(ViewHeaderSizeBytes)},
+		VariadicSpec: &variadic,
+	}
+)
+
 type BinaryType struct{}
 
 func (t *BinaryType) ID() Type            { return BINARY }
@@ -34,10 +60,7 @@ func (t *BinaryType) Name() string        { return "binary" }
 func (t *BinaryType) String() string      { return "binary" }
 func (t *BinaryType) binary()             {}
 func (t *BinaryType) Fingerprint() string { return typeFingerprint(t) }
-func (t *BinaryType) Layout() DataTypeLayout {
-	return DataTypeLayout{Buffers: []BufferSpec{SpecBitmap(),
-		SpecFixedWidth(Int32SizeBytes), SpecVariableWidth()}}
-}
+func (t *BinaryType) Layout() DataTypeLayout {return binaryTypeLayout}
 func (t *BinaryType) OffsetTypeTraits() OffsetTraits { return Int32Traits }
 func (BinaryType) IsUtf8() bool                      { return false }
 
@@ -48,10 +71,7 @@ func (t *StringType) Name() string        { return "utf8" }
 func (t *StringType) String() string      { return "utf8" }
 func (t *StringType) binary()             {}
 func (t *StringType) Fingerprint() string { return typeFingerprint(t) }
-func (t *StringType) Layout() DataTypeLayout {
-	return DataTypeLayout{Buffers: []BufferSpec{SpecBitmap(),
-		SpecFixedWidth(Int32SizeBytes), SpecVariableWidth()}}
-}
+func (t *StringType) Layout() DataTypeLayout {return stringTypeLayout}
 func (t *StringType) OffsetTypeTraits() OffsetTraits { return Int32Traits }
 func (StringType) IsUtf8() bool                      { return true }
 
@@ -62,10 +82,7 @@ func (t *LargeBinaryType) Name() string        { return "large_binary" }
 func (t *LargeBinaryType) String() string      { return "large_binary" }
 func (t *LargeBinaryType) binary()             {}
 func (t *LargeBinaryType) Fingerprint() string { return typeFingerprint(t) }
-func (t *LargeBinaryType) Layout() DataTypeLayout {
-	return DataTypeLayout{Buffers: []BufferSpec{SpecBitmap(),
-		SpecFixedWidth(Int64SizeBytes), SpecVariableWidth()}}
-}
+func (t *LargeBinaryType) Layout() DataTypeLayout {return largeBinaryTypeLayout}
 func (t *LargeBinaryType) OffsetTypeTraits() OffsetTraits { return Int64Traits }
 func (LargeBinaryType) IsUtf8() bool                      { return false }
 
@@ -76,10 +93,7 @@ func (t *LargeStringType) Name() string        { return "large_utf8" }
 func (t *LargeStringType) String() string      { return "large_utf8" }
 func (t *LargeStringType) binary()             {}
 func (t *LargeStringType) Fingerprint() string { return typeFingerprint(t) }
-func (t *LargeStringType) Layout() DataTypeLayout {
-	return DataTypeLayout{Buffers: []BufferSpec{SpecBitmap(),
-		SpecFixedWidth(Int64SizeBytes), SpecVariableWidth()}}
-}
+func (t *LargeStringType) Layout() DataTypeLayout {return largeStringTypeLayout}
 func (t *LargeStringType) OffsetTypeTraits() OffsetTraits { return Int64Traits }
 func (LargeStringType) IsUtf8() bool                      { return true }
 
@@ -92,13 +106,7 @@ func (*BinaryViewType) IsUtf8() bool          { return false }
 func (*BinaryViewType) binary()               {}
 func (*BinaryViewType) view()                 {}
 func (t *BinaryViewType) Fingerprint() string { return typeFingerprint(t) }
-func (*BinaryViewType) Layout() DataTypeLayout {
-	variadic := SpecVariableWidth()
-	return DataTypeLayout{
-		Buffers:      []BufferSpec{SpecBitmap(), SpecFixedWidth(ViewHeaderSizeBytes)},
-		VariadicSpec: &variadic,
-	}
-}
+func (*BinaryViewType) Layout() DataTypeLayout {return binaryViewTypeLayout}
 
 type StringViewType struct{}
 
@@ -109,13 +117,7 @@ func (*StringViewType) IsUtf8() bool          { return true }
 func (*StringViewType) binary()               {}
 func (*StringViewType) view()                 {}
 func (t *StringViewType) Fingerprint() string { return typeFingerprint(t) }
-func (*StringViewType) Layout() DataTypeLayout {
-	variadic := SpecVariableWidth()
-	return DataTypeLayout{
-		Buffers:      []BufferSpec{SpecBitmap(), SpecFixedWidth(ViewHeaderSizeBytes)},
-		VariadicSpec: &variadic,
-	}
-}
+func (*StringViewType) Layout() DataTypeLayout {return stringViewTypeLayout}
 
 var (
 	BinaryTypes = struct {

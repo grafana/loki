@@ -30,6 +30,8 @@ type vectorAggregationPipeline struct {
 
 	tsEval    evalFunc // used to evaluate the timestamp column
 	valueEval evalFunc // used to evaluate the value column
+
+	identCache *semconv.IdentifierCache
 }
 
 var (
@@ -70,6 +72,7 @@ func newVectorAggregationPipeline(inputs []Pipeline, grouping physical.Grouping,
 				Type:   types.ColumnTypeGenerated,
 			},
 		}),
+		identCache: semconv.NewIdentifierCache(),
 	}, nil
 }
 
@@ -82,6 +85,9 @@ func (v *vectorAggregationPipeline) Read(ctx context.Context) (arrow.RecordBatch
 }
 
 func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch, error) {
+	labelValuesCache := newLabelValuesCache()
+	fieldsCache := newFieldsCache()
+
 	v.aggregator.Reset() // reset before reading new inputs
 	inputsExhausted := false
 	for !inputsExhausted {
@@ -114,13 +120,13 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch
 
 			// extract all the columns that are used for grouping
 			var arrays []*array.String
-			var fields []arrow.Field
+			var groupingFields []arrow.Field
 
 			if v.grouping.Without {
 				// Grouping without a lable set. Exclude lables from that set.
 				schema := record.Schema()
 				for i, field := range schema.Fields() {
-					ident, err := semconv.ParseFQN(field.Name)
+					ident, err := v.identCache.ParseFQN(field.Name)
 					if err != nil {
 						return nil, err
 					}
@@ -149,7 +155,7 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch
 						}
 						if !found {
 							arrays = append(arrays, record.Column(i).(*array.String))
-							fields = append(fields, field)
+							groupingFields = append(groupingFields, field)
 						}
 					}
 				}
@@ -173,20 +179,19 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch
 						return nil, fmt.Errorf("invalid column expression type %T", columnExpr)
 					}
 					ident := semconv.NewIdentifier(colExpr.Ref.Column, colExpr.Ref.Type, types.Loki.String)
-					fields = append(fields, semconv.FieldFromIdent(ident, true))
+					groupingFields = append(groupingFields, semconv.FieldFromIdent(ident, true))
 				}
 			}
 
-			v.aggregator.AddLabels(fields)
-
-			labelsCache := newLabelsCache()
+			v.aggregator.AddLabels(groupingFields)
 
 			for row := range int(record.NumRows()) {
 				if valueArr.IsNull(row) {
 					continue
 				}
 
-				labels, labelValues := labelsCache.getLabels(arrays, fields, row)
+				labelValues := labelValuesCache.getLabelValues(arrays, row)
+				labels := fieldsCache.getFields(arrays, groupingFields, row)
 
 				v.aggregator.Add(tsCol.Value(row).ToTime(arrow.Nanosecond), valueArr.Value(row), labels, labelValues)
 			}
