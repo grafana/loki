@@ -833,6 +833,8 @@ lokiCanary:
     digest: null
     # -- Docker image pull policy
     pullPolicy: IfNotPresent
+  # -- Liveness probe
+  livenessProbe:
   # -- Readiness probe
   readinessProbe:
     httpGet:
@@ -840,6 +842,8 @@ lokiCanary:
       port: http-metrics
     initialDelaySeconds: 15
     timeoutSeconds: 1
+  # -- Startup probe
+  startupProbe:
   # -- Update strategy for the `loki-canary` Daemonset pods
   updateStrategy:
     type: RollingUpdate
@@ -2777,9 +2781,9 @@ compactor:
   extraVolumeMounts: []
   # -- Volumes to add to the compactor pods
   extraVolumes: []
-  # -- readiness probe settings for ingester pods. If empty, use `loki.readinessProbe`
+  # -- readiness probe settings for compactor pods. If empty, use `loki.readinessProbe`
   readinessProbe: {}
-  # -- liveness probe settings for ingester pods. If empty use `loki.livenessProbe`
+  # -- liveness probe settings for compactor pods. If empty use `loki.livenessProbe`
   livenessProbe: {}
   # -- liveness probe settings for ingester pods. If empty use `loki.livenessProbe`
   startupProbe: {}
@@ -2895,11 +2899,11 @@ bloomGateway:
   extraVolumeMounts: []
   # -- Volumes to add to the bloom-gateway pods
   extraVolumes: []
-  # -- readiness probe settings for ingester pods. If empty, use `loki.readinessProbe`
+  # -- readiness probe settings for bloom-gateway pods. If empty, use `loki.readinessProbe`
   readinessProbe: {}
-  # -- liveness probe settings for ingester pods. If empty use `loki.livenessProbe`
+  # -- liveness probe settings for bloom-gateway pods. If empty use `loki.livenessProbe`
   livenessProbe: {}
-  # -- startup probe settings for ingester pods. If empty, use `loki.startupProbe`
+  # -- startup probe settings for bloom-gateway pods. If empty, use `loki.startupProbe`
   startupProbe: {}
   # -- Resource requests and limits for the bloom-gateway
   resources: {}
@@ -3013,11 +3017,11 @@ bloomPlanner:
   extraVolumeMounts: []
   # -- Volumes to add to the bloom-planner pods
   extraVolumes: []
-  # -- readiness probe settings for ingester pods. If empty, use `loki.readinessProbe`
+  # -- readiness probe settings for bloom-planner pods. If empty, use `loki.readinessProbe`
   readinessProbe: {}
-  # -- liveness probe settings for ingester pods. If empty use `loki.livenessProbe`
+  # -- liveness probe settings for bloom-planner pods. If empty use `loki.livenessProbe`
   livenessProbe: {}
-  # -- startup probe settings for ingester pods. If empty use `loki.startupProbe`
+  # -- startup probe settings for bloom-planner pods. If empty use `loki.startupProbe`
   startupProbe: {}
   # -- Resource requests and limits for the bloom-planner
   resources: {}

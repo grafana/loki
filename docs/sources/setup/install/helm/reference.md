@@ -1481,7 +1481,7 @@ null
 		<tr>
 			<td>bloomGateway.livenessProbe</td>
 			<td>object</td>
-			<td>liveness probe settings for ingester pods. If empty use `loki.livenessProbe`</td>
+			<td>liveness probe settings for bloom-gateway pods. If empty use `loki.livenessProbe`</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -1600,7 +1600,7 @@ null
 		<tr>
 			<td>bloomGateway.readinessProbe</td>
 			<td>object</td>
-			<td>readiness probe settings for ingester pods. If empty, use `loki.readinessProbe`</td>
+			<td>readiness probe settings for bloom-gateway pods. If empty, use `loki.readinessProbe`</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -1681,7 +1681,7 @@ null
 		<tr>
 			<td>bloomGateway.startupProbe</td>
 			<td>object</td>
-			<td>startup probe settings for ingester pods. If empty, use `loki.startupProbe`</td>
+			<td>startup probe settings for bloom-gateway pods. If empty, use `loki.startupProbe`</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -1938,7 +1938,7 @@ null
 		<tr>
 			<td>bloomPlanner.livenessProbe</td>
 			<td>object</td>
-			<td>liveness probe settings for ingester pods. If empty use `loki.livenessProbe`</td>
+			<td>liveness probe settings for bloom-planner pods. If empty use `loki.livenessProbe`</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -2057,7 +2057,7 @@ null
 		<tr>
 			<td>bloomPlanner.readinessProbe</td>
 			<td>object</td>
-			<td>readiness probe settings for ingester pods. If empty, use `loki.readinessProbe`</td>
+			<td>readiness probe settings for bloom-planner pods. If empty, use `loki.readinessProbe`</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -2138,7 +2138,7 @@ null
 		<tr>
 			<td>bloomPlanner.startupProbe</td>
 			<td>object</td>
-			<td>startup probe settings for ingester pods. If empty use `loki.startupProbe`</td>
+			<td>startup probe settings for bloom-planner pods. If empty use `loki.startupProbe`</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -3273,7 +3273,7 @@ null
 		<tr>
 			<td>compactor.livenessProbe</td>
 			<td>object</td>
-			<td>liveness probe settings for ingester pods. If empty use `loki.livenessProbe`</td>
+			<td>liveness probe settings for compactor pods. If empty use `loki.livenessProbe`</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -3383,7 +3383,7 @@ null
 		<tr>
 			<td>compactor.readinessProbe</td>
 			<td>object</td>
-			<td>readiness probe settings for ingester pods. If empty, use `loki.readinessProbe`</td>
+			<td>readiness probe settings for compactor pods. If empty, use `loki.readinessProbe`</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -7708,6 +7708,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>lokiCanary.livenessProbe</td>
+			<td>string</td>
+			<td>Liveness probe</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>lokiCanary.lokiurl</td>
 			<td>string</td>
 			<td>If set overwrites the default value set by loki.host helper function. Use this if gateway not enabled.</td>
@@ -7801,6 +7810,15 @@ true
 			<td>Additional labels for loki-canary Service</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>lokiCanary.startupProbe</td>
+			<td>string</td>
+			<td>Startup probe</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>
