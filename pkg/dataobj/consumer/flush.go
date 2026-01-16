@@ -135,12 +135,7 @@ func (f *flusherImpl) Run(ctx context.Context) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		case job := <-f.jobs:
-			if err := f.jobFunc(ctx, job); err != nil {
-				level.Error(f.logger).Log("msg", "failed to flush", "err", err)
-				job.done(err)
-			} else {
-				job.done(nil)
-			}
+			job.done(f.jobFunc(ctx, job))
 		}
 	}
 }
@@ -162,23 +157,19 @@ func (f *flusherImpl) doJob(ctx context.Context, job flushJob) error {
 func (f *flusherImpl) flush(ctx context.Context, job flushJob) error {
 	obj, closer, err := job.builder.Flush()
 	if err != nil {
-		level.Error(f.logger).Log("msg", "failed to flush builder", "err", err)
-		return err
+		return fmt.Errorf("failed to flush data object builder: %w", err)
 	}
 	obj, closer, err = f.sort(ctx, job.builder, obj, closer)
 	if err != nil {
-		level.Error(f.logger).Log("msg", "failed to sort dataobj", "err", err)
-		return err
+		return fmt.Errorf("failed to sort data object: %w", err)
 	}
 	defer closer.Close()
 	objectPath, err := f.uploader.Upload(ctx, obj)
 	if err != nil {
-		level.Error(f.logger).Log("msg", "failed to upload object", "err", err)
-		return err
+		return fmt.Errorf("failed to upload object: %w", err)
 	}
 	if err := f.produceMetastoreEvent(ctx, job.startTime, objectPath); err != nil {
-		level.Error(f.logger).Log("msg", "failed to emit metastore event", "err", err)
-		return err
+		return fmt.Errorf("failed to produce metastore event: %w", err)
 	}
 	return nil
 }
