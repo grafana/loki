@@ -389,7 +389,7 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 			cfg.KafkaIngestion.KafkaConfig,
 			i.ingestPartitionID,
 			cfg.LifecyclerConfig.ID,
-			NewKafkaConsumerFactory(i, registerer, cfg.KafkaIngestion.KafkaConfig.MaxConsumerWorkers),
+			NewKafkaConsumerFactory(i, registerer, cfg.KafkaIngestion.KafkaConfig.MaxConsumerWorkers, cfg.KafkaIngestion.KafkaConfig.MaxConsumerSuccessBuffer),
 			logger,
 			registerer,
 			i.partitionRingLifecycler,

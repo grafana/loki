@@ -84,10 +84,11 @@ func TestConsumer(t *testing.T) {
 		offset     = int64(0)
 		pusher     = &fakePusher{t: t}
 		numWorkers = 1
+		numBuffferNumers = 1000
 	)
 
 	// Set the number of workers to 1 to test the consumer
-	consumer, err := NewKafkaConsumerFactory(pusher, prometheus.NewRegistry(), numWorkers)(&noopCommitter{}, log.NewLogfmtLogger(os.Stdout))
+	consumer, err := NewKafkaConsumerFactory(pusher, prometheus.NewRegistry(), numWorkers, numBuffferNumers)(&noopCommitter{}, log.NewLogfmtLogger(os.Stdout))
 	require.NoError(t, err)
 
 	records, err := kafka.Encode(0, tenantID, streamBar, 10000)
