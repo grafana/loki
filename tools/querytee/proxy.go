@@ -9,6 +9,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -29,10 +30,68 @@ import (
 
 var errMinBackends = errors.New("at least 1 backend is required")
 
+type RoutingMode string
+
+const (
+	RoutingModeRace        RoutingMode = "race"
+	RoutingModeV1Preferred RoutingMode = "v1-preferred"
+	RoutingModeV2Preferred RoutingMode = "v2-preferred"
+)
+
+type RoutingConfig struct {
+	Mode          RoutingMode
+	V1Preferred   string
+	V2Preferred   string
+	RaceTolerance time.Duration
+
+	// SplitStart is the start date of data available in v2 (dataobjs) storage.
+	// Queries for data before this date will only go to the v1 backend.
+	// If not set, assume v2 data is always available.
+	//
+	// When splitting ueries will be split into up to three parts:
+	// 1. Data before SplitStart -> split goes to the v1 backend only
+	// 2. Data between SplitStart and (now - SplitLag) -> split goes to both v1 and v2 backends
+	// 3. Data after (now - SplitLag) -> split goes to the v1 backend only
+	SplitStart flagext.Time
+
+	// SplitLag is the minimum age of data to route to v2.
+	// Data newer than (now - SplitLag) will only go to the v1 backend.
+	// When set to 0, query splitting is disabled.
+	SplitLag time.Duration
+
+	// AddRoutingDecisionsToWarnings controls whether routing decisions are added
+	// as warnings to query responses. When enabled, responses will include
+	// warnings indicating which backend handled the query and how it was routed.
+	AddRoutingDecisionsToWarnings bool
+}
+
+func (cfg *RoutingConfig) RegisterFlags(f *flag.FlagSet) {
+	f.StringVar((*string)(&cfg.Mode), "routing.mode", string(RoutingModeV1Preferred), "Routing mode: race, v1-preferred, or v2-preferred")
+	f.StringVar(&cfg.V1Preferred, "routing.v1-preferred", "", "The hostname of the preferred v1 (chunks) backend")
+	f.StringVar(&cfg.V2Preferred, "routing.v2-preferred", "", "The hostname of the preferred v2 (dataobjs) backend")
+	f.DurationVar(&cfg.RaceTolerance, "routing.race-tolerance", 100*time.Millisecond, "Race handicap for v2 in race mode")
+	f.Var(&cfg.SplitStart, "routing.split-start", "Start date when v2 data became available. Format YYYY-MM-DD. Queries before this date go only to v1.")
+	f.DurationVar(&cfg.SplitLag, "routing.split-lag", 0, "Minimum age of data to route to v2. Data newer than this goes only to v1. When 0 (default), splitting is disabled.")
+	f.BoolVar(&cfg.AddRoutingDecisionsToWarnings, "routing.add-routing-decisions-to-warnings", false, "Add routing decisions as warnings to query responses.")
+}
+
+func (cfg *RoutingConfig) Validate() error {
+	switch cfg.Mode {
+	case RoutingModeRace, RoutingModeV1Preferred, RoutingModeV2Preferred:
+	default:
+		return fmt.Errorf("invalid routing mode: %s", cfg.Mode)
+	}
+
+	if cfg.SplitLag < 0 {
+		return fmt.Errorf("split lag must be >= 0")
+	}
+
+	return nil
+}
+
 type ProxyConfig struct {
 	ServerServicePort              int
 	BackendEndpoints               string
-	PreferredBackend               string
 	BackendReadTimeout             time.Duration
 	CompareResponses               bool
 	DisableBackendReadProxy        string
@@ -43,16 +102,18 @@ type ProxyConfig struct {
 	SkipSamplesBefore              flagext.Time
 	RequestURLFilter               *regexp.Regexp
 	InstrumentCompares             bool
-	EnableRace                     bool
-	RaceTolerance                  time.Duration
 	SkipFanOutWhenNotSampling      bool
 	Goldfish                       goldfish.Config
+
+	Routing RoutingConfig
 }
 
 func (cfg *ProxyConfig) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.ServerServicePort, "server.service-port", 80, "The port where the query-tee service listens to.")
 	f.StringVar(&cfg.BackendEndpoints, "backend.endpoints", "", "Comma separated list of backend endpoints to query.")
-	f.StringVar(&cfg.PreferredBackend, "backend.preferred", "", "The hostname of the preferred backend when selecting the response to send back to the client. If no preferred backend is configured then the query-tee will send back to the client the first successful response received without waiting for other backends.")
+
+	cfg.Routing.RegisterFlags(f)
+
 	f.DurationVar(&cfg.BackendReadTimeout, "backend.read-timeout", 90*time.Second, "The timeout when reading the response from a backend.")
 	f.BoolVar(&cfg.CompareResponses, "proxy.compare-responses", false, "Compare responses between preferred and secondary endpoints for supported routes.")
 	f.StringVar(&cfg.DisableBackendReadProxy, "proxy.disable-backend-read", "", "Comma separated list of non-primary backend hostnames to disable their read proxy. Typically used for temporarily not passing any read requests to specified backends.")
@@ -67,11 +128,8 @@ func (cfg *ProxyConfig) RegisterFlags(f *flag.FlagSet) {
 		return err
 	})
 	f.BoolVar(&cfg.InstrumentCompares, "proxy.compare-instrument", false, "Reports metrics on comparisons of responses between preferred and non-preferred endpoints for supported routes.")
-	f.BoolVar(&cfg.EnableRace, "proxy.enable-race", false, "When enabled, return the first successful response from any backend instead of waiting for the preferred backend.")
-	f.DurationVar(&cfg.RaceTolerance, "proxy.race-tolerance", 100*time.Millisecond, "The tolerance for handicapping races in favor of non-preferred backends. If the preferred backend finishes first but a non-preferred backend completes within this tolerance, the non-preferred backend is declared the winner.")
 	f.BoolVar(&cfg.SkipFanOutWhenNotSampling, "proxy.skip-fanout-when-not-sampling", false, "When enabled, skip fanning out requests to secondary backends when goldfish sampling is disabled (default_rate=0 and no tenant rules). This reduces load on secondary backends when not doing comparisons.")
 
-	// Register Goldfish configuration flags
 	cfg.Goldfish.RegisterFlags(f)
 }
 
@@ -107,12 +165,16 @@ func NewProxy(
 	readRoutes, writeRoutes []Route,
 	registerer prometheus.Registerer,
 ) (*Proxy, error) {
-	if cfg.CompareResponses && cfg.PreferredBackend == "" {
-		return nil, fmt.Errorf("when enabling comparison of results -backend.preferred flag must be set to hostname of preferred backend")
+	if err := cfg.Routing.Validate(); err != nil {
+		return nil, err
 	}
 
-	if cfg.PassThroughNonRegisteredRoutes && cfg.PreferredBackend == "" {
-		return nil, fmt.Errorf("when enabling passthrough for non-registered routes -backend.preferred flag must be set to hostname of backend where those requests needs to be passed")
+	if cfg.CompareResponses && cfg.Routing.V1Preferred == "" {
+		return nil, fmt.Errorf("when enabling comparison of results -routing.v1-backend flag must be set")
+	}
+
+	if cfg.PassThroughNonRegisteredRoutes && cfg.Routing.V1Preferred == "" {
+		return nil, fmt.Errorf("when enabling passthrough for non-registered routes -routing.v1-backend flag must be set")
 	}
 
 	if cfg.InstrumentCompares && !cfg.CompareResponses {
@@ -147,18 +209,26 @@ func NewProxy(
 			return nil, errors.Wrapf(err, "invalid backend endpoint %s", part)
 		}
 
-		// The backend name is hardcoded as the backend hostname.
 		name := u.Hostname()
-		preferred := name == cfg.PreferredBackend
+		v1Preferred := name == cfg.Routing.V1Preferred
+		v2Preferred := name == cfg.Routing.V2Preferred
 
 		// In tests we have the same hostname for all backends, so we also
 		// support a numeric preferred backend which is the index in the list
 		// of backends.
-		if preferredIdx, err := strconv.Atoi(cfg.PreferredBackend); err == nil {
-			preferred = preferredIdx == idx
+		if preferredIdx, err := strconv.Atoi(cfg.Routing.V1Preferred); err == nil {
+			v1Preferred = preferredIdx == idx
+		}
+		if preferredIdx, err := strconv.Atoi(cfg.Routing.V2Preferred); err == nil {
+			v2Preferred = preferredIdx == idx
 		}
 
-		p.backends = append(p.backends, NewProxyBackend(name, u, cfg.BackendReadTimeout, preferred))
+		level.Debug(logger).Log("msg", "backend added", "name", name, "v1Preferred", v1Preferred, "v2Preferred", v2Preferred)
+		backend, err := NewProxyBackend(name, u, cfg.BackendReadTimeout, v1Preferred, v2Preferred)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to create backend %s", name)
+		}
+		p.backends = append(p.backends, backend)
 	}
 
 	// At least 1 backend is required
@@ -167,17 +237,29 @@ func NewProxy(
 	}
 
 	// If the preferred backend is configured, then it must exists among the actual backends.
-	if cfg.PreferredBackend != "" {
+	if cfg.Routing.V1Preferred != "" {
 		exists := false
 		for _, b := range p.backends {
-			if b.preferred {
+			if b.v1Preferred {
 				exists = true
 				break
 			}
 		}
-
 		if !exists {
-			return nil, fmt.Errorf("the preferred backend (hostname) has not been found among the list of configured backends")
+			return nil, fmt.Errorf("the v1 backend (hostname) has not been found among the list of configured backends")
+		}
+	}
+
+	if cfg.Routing.V2Preferred != "" {
+		exists := false
+		for _, b := range p.backends {
+			if b.v2Preferred {
+				exists = true
+				break
+			}
+		}
+		if !exists {
+			return nil, fmt.Errorf("the v2 backend (hostname) has not been found among the list of configured backends")
 		}
 	}
 
@@ -192,15 +274,13 @@ func NewProxy(
 
 	if cfg.DisableBackendReadProxy != "" {
 		readDisabledBackendHosts := strings.Split(p.cfg.DisableBackendReadProxy, ",")
-		for _, host := range readDisabledBackendHosts {
-			if host == cfg.PreferredBackend {
-				return nil, fmt.Errorf("the preferred backend cannot be disabled for reading")
-			}
+		if slices.Contains(readDisabledBackendHosts, cfg.Routing.V1Preferred) {
+			return nil, fmt.Errorf("the v1 backend cannot be disabled for reading")
 		}
 	}
 
 	// Pre-initialize raceWins metric for all backend/route combinations
-	if cfg.EnableRace {
+	if cfg.Routing.Mode == RoutingModeRace {
 		for _, backend := range p.backends {
 			for _, route := range p.readRoutes {
 				p.metrics.raceWins.WithLabelValues(backend.name, route.RouteName)
@@ -290,21 +370,24 @@ func (p *Proxy) Start() error {
 				"msg", "Goldfish attached to route",
 				"path", route.Path,
 				"methods", strings.Join(route.Methods, ","),
-				"comparison_min_age", p.goldfishManager.ComparisonMinAge(),
+				"split_lag", p.cfg.Routing.SplitLag,
 			)
 		}
 
 		// Create a route-specific handler factory with the filtered backends
 		routeHandlerFactory := NewHandlerFactory(HandlerFactoryConfig{
-			Backends:                  filteredBackends,
-			Codec:                     queryrange.DefaultCodec,
-			GoldfishManager:           p.goldfishManager,
-			Logger:                    p.logger,
-			Metrics:                   p.metrics,
-			InstrumentCompares:        p.cfg.InstrumentCompares,
-			EnableRace:                p.cfg.EnableRace,
-			RaceTolerance:             p.cfg.RaceTolerance,
-			SkipFanOutWhenNotSampling: p.cfg.SkipFanOutWhenNotSampling,
+			Backends:                      filteredBackends,
+			Codec:                         queryrange.DefaultCodec,
+			GoldfishManager:               p.goldfishManager,
+			Logger:                        p.logger,
+			Metrics:                       p.metrics,
+			InstrumentCompares:            p.cfg.InstrumentCompares,
+			RoutingMode:                   p.cfg.Routing.Mode,
+			RaceTolerance:                 p.cfg.Routing.RaceTolerance,
+			SkipFanOutWhenNotSampling:     p.cfg.SkipFanOutWhenNotSampling,
+			SplitStart:                    p.cfg.Routing.SplitStart,
+			SplitLag:                      p.cfg.Routing.SplitLag,
+			AddRoutingDecisionsToWarnings: p.cfg.Routing.AddRoutingDecisionsToWarnings,
 		})
 		queryHandler, err := routeHandlerFactory.CreateHandler(route.RouteName, comp)
 		if err != nil {
@@ -340,7 +423,7 @@ func (p *Proxy) Start() error {
 
 	if p.cfg.PassThroughNonRegisteredRoutes {
 		for _, backend := range p.backends {
-			if backend.preferred {
+			if backend.v1Preferred {
 				router.PathPrefix("/").Handler(httputil.NewSingleHostReverseProxy(backend.endpoint))
 				break
 			}
@@ -408,7 +491,7 @@ func filterReadDisabledBackends(backends []*ProxyBackend, disableReadProxyCfg st
 	readEnabledBackends := make([]*ProxyBackend, 0, len(backends))
 	readDisabledBackendNames := strings.Split(disableReadProxyCfg, ",")
 	for _, b := range backends {
-		if !b.preferred {
+		if !b.v1Preferred {
 			readDisabled := false
 			for _, h := range readDisabledBackendNames {
 				if strings.TrimSpace(h) == b.name {

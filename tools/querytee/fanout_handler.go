@@ -23,45 +23,48 @@ import (
 // It returns the preferred backend's response as soon as ready, while capturing remaining
 // responses for goldfish comparison in the background.
 type FanOutHandler struct {
-	backends           []*ProxyBackend
-	codec              queryrangebase.Codec
-	goldfishManager    goldfish.Manager
-	logger             log.Logger
-	metrics            *ProxyMetrics
-	routeName          string
-	comparator         comparator.ResponsesComparator
-	instrumentCompares bool
-	enableRace         bool
-	raceTolerance      time.Duration
+	backends                      []*ProxyBackend
+	codec                         queryrangebase.Codec
+	goldfishManager               goldfish.Manager
+	logger                        log.Logger
+	metrics                       *ProxyMetrics
+	routeName                     string
+	comparator                    comparator.ResponsesComparator
+	instrumentCompares            bool
+	routingMode                   RoutingMode
+	raceTolerance                 time.Duration
+	addRoutingDecisionsToWarnings bool
 }
 
 // FanOutHandlerConfig holds configuration for creating a FanOutHandler.
 type FanOutHandlerConfig struct {
-	Backends           []*ProxyBackend
-	Codec              queryrangebase.Codec
-	GoldfishManager    goldfish.Manager
-	Logger             log.Logger
-	Metrics            *ProxyMetrics
-	RouteName          string
-	Comparator         comparator.ResponsesComparator
-	InstrumentCompares bool
-	EnableRace         bool
-	RaceTolerance      time.Duration
+	Backends                      []*ProxyBackend
+	Codec                         queryrangebase.Codec
+	GoldfishManager               goldfish.Manager
+	Logger                        log.Logger
+	Metrics                       *ProxyMetrics
+	RouteName                     string
+	Comparator                    comparator.ResponsesComparator
+	InstrumentCompares            bool
+	RoutingMode                   RoutingMode
+	RaceTolerance                 time.Duration
+	AddRoutingDecisionsToWarnings bool
 }
 
 // NewFanOutHandler creates a new FanOutHandler.
 func NewFanOutHandler(cfg FanOutHandlerConfig) *FanOutHandler {
 	return &FanOutHandler{
-		backends:           cfg.Backends,
-		codec:              cfg.Codec,
-		goldfishManager:    cfg.GoldfishManager,
-		logger:             cfg.Logger,
-		metrics:            cfg.Metrics,
-		routeName:          cfg.RouteName,
-		comparator:         cfg.Comparator,
-		instrumentCompares: cfg.InstrumentCompares,
-		enableRace:         cfg.EnableRace,
-		raceTolerance:      cfg.RaceTolerance,
+		backends:                      cfg.Backends,
+		codec:                         cfg.Codec,
+		goldfishManager:               cfg.GoldfishManager,
+		logger:                        cfg.Logger,
+		metrics:                       cfg.Metrics,
+		routeName:                     cfg.RouteName,
+		comparator:                    cfg.Comparator,
+		instrumentCompares:            cfg.InstrumentCompares,
+		routingMode:                   cfg.RoutingMode,
+		raceTolerance:                 cfg.RaceTolerance,
+		addRoutingDecisionsToWarnings: cfg.AddRoutingDecisionsToWarnings,
 	}
 }
 
@@ -71,6 +74,23 @@ type backendResult struct {
 	backendResp *BackendResponse
 	response    queryrangebase.Response
 	err         error
+}
+
+// shouldCompare returns true if the given backend result should be compared against the preferred result.
+func (h *FanOutHandler) shouldCompare(r *backendResult, preferV1 bool) bool {
+	if h.comparator == nil {
+		return false
+	}
+
+	if r.backend.v1Preferred && preferV1 {
+		return true
+	}
+
+	if r.backend.v2Preferred && !preferV1 {
+		return true
+	}
+
+	return false
 }
 
 // Do implements queryrangebase.Handler. It fans out the request to all backends, returns the preferred backend's
@@ -116,68 +136,89 @@ func (h *FanOutHandler) Do(ctx context.Context, req queryrangebase.Request) (que
 	results := h.makeBackendRequests(ctx, httpReq, body, req, issuer)
 	collected := make([]*backendResult, 0, len(h.backends))
 
+	switch h.routingMode {
+	case RoutingModeRace:
+		return h.doWithRacing(results, collected, httpReq, shouldSample)
+	case RoutingModeV2Preferred:
+		return h.doWithPreferred(results, collected, httpReq, shouldSample, false)
+	default:
+		return h.doWithPreferred(results, collected, httpReq, shouldSample, true)
+	}
+}
+
+func (h *FanOutHandler) doWithRacing(results <-chan *backendResult, collected []*backendResult, httpReq *http.Request, shouldSample bool) (queryrangebase.Response, error) {
 	for i := 0; i < len(h.backends); i++ {
 		result := <-results
 		collected = append(collected, result)
 
-		// Race mode: return first successful response from ANY backend
-		if h.enableRace {
-			if result.err == nil && result.backendResp.succeeded() {
-				winner := result
-				remaining := len(h.backends) - i - 1
+		//TODO(twhitney): 404s are treated as successful responses, but v2 is missing some metdata endpoints that we should fallback to v1 for
+		if result.err == nil && result.backendResp.succeeded() {
+			winner := result
+			remaining := len(h.backends) - i - 1
 
-				// If the preferred (v1) backend wins, then apply the handicap to give v2 a
-				// chance to "win" by finishing within the race tolerance of v1.
-				if result.backend.preferred && h.raceTolerance > 0 {
-					select {
-					case r2 := <-results:
-						collected = append(collected, r2)
-						if r2.err == nil && r2.backendResp.succeeded() {
-							winner = r2
-							remaining = len(h.backends) - i - 2
-						}
-					case <-time.After(h.raceTolerance):
-						// tolerance expired, fall back to original winner
+			if result.backend.v1Preferred && h.raceTolerance > 0 {
+				select {
+				case r2 := <-results:
+					collected = append(collected, r2)
+					if r2.err == nil && r2.backendResp.succeeded() {
+						winner = r2
+						remaining = len(h.backends) - i - 2
 					}
+				case <-time.After(h.raceTolerance):
 				}
-
-				return h.finishRace(
-					winner,
-					remaining,
-					httpReq,
-					results,
-					collected,
-					shouldSample)
 			}
-		} else {
-			// Non-race mode: legacy logic (wait for preferred)
-			if result.backend.preferred {
-				// when the preferred backend fails return any successful response
-				if !result.backendResp.succeeded() {
-					continue
-				}
 
-				// spawn goroutine to capture remaining and do goldfish comparison
-				remaining := len(h.backends) - i - 1
-				go func() {
-					h.collectRemainingAndCompare(remaining, httpReq, results, collected, shouldSample)
-				}()
+			return h.finishRace(winner, remaining, httpReq, results, collected, shouldSample)
+		}
+	}
 
-				// when the preferred backends succeeds, but with error, that indicates an invalid request
-				// return the error to the client
-				if result.err != nil {
-					return &NonDecodableResponse{
-						StatusCode: result.backendResp.status,
-						Body:       result.backendResp.body,
-					}, result.err
-				}
-				return result.response, nil
+	return h.returnFallback(collected)
+}
+
+func (h *FanOutHandler) doWithPreferred(results <-chan *backendResult, collected []*backendResult, httpReq *http.Request, shouldSample bool, preferV1 bool) (queryrangebase.Response, error) {
+	for i := 0; i < len(h.backends); i++ {
+		result := <-results
+		collected = append(collected, result)
+
+		isPreferred := (preferV1 && result.backend.v1Preferred) || (!preferV1 && result.backend.v2Preferred)
+		if isPreferred {
+			if !result.backendResp.succeeded() {
+				continue
 			}
+
+			// 404s are treated as successful, but v2 does not implement all metadata endpoints, so in that case fall back to v1
+			if !preferV1 && result.backendResp.status == 404 {
+				continue
+			}
+
+			remaining := len(h.backends) - i - 1
+			go func() {
+				h.collectRemainingAndCompare(remaining, httpReq, results, collected, shouldSample, preferV1)
+			}()
+
+			// when the preferred backends succeeds, but with error, that indicates an invalid request
+			// return the error to the client
+			if result.err != nil {
+				return &NonDecodableResponse{
+					StatusCode: result.backendResp.status,
+					Body:       result.backendResp.body,
+				}, result.err
+			}
+
+			if result.response != nil && h.addRoutingDecisionsToWarnings {
+				addWarningToResponse(result.response, fmt.Sprintf("used response from preferred backend %s", result.backend.name))
+			}
+
+			return result.response, nil
 		}
 	}
 
 	// if we get here, no preferred backend was found or the preferred backend
 	// failed. in this case, return any successful response or an error if all failed
+	return h.returnFallback(collected)
+}
+
+func (h *FanOutHandler) returnFallback(collected []*backendResult) (queryrangebase.Response, error) {
 	for _, result := range collected {
 		if result.err == nil && result.backendResp.succeeded() {
 			return result.response, nil
@@ -202,15 +243,19 @@ func (h *FanOutHandler) finishRace(winner *backendResult, remaining int, httpReq
 	).Inc()
 
 	go func() {
-		h.collectRemainingAndCompare(remaining, httpReq, results, collected, shouldSample)
+		h.collectRemainingAndCompare(remaining, httpReq, results, collected, shouldSample, true)
 	}()
+
+	if winner.response != nil && h.addRoutingDecisionsToWarnings {
+		addWarningToResponse(winner.response, fmt.Sprintf("%s backend won the race", winner.backend.name))
+	}
 
 	return winner.response, nil
 }
 
 // collectRemainingAndCompare collects remaining backend results, performs comparisons,
 // and processes goldfish sampling. Should be called asynchronously to not block preferred response from returning.
-func (h *FanOutHandler) collectRemainingAndCompare(remaining int, httpReq *http.Request, results <-chan *backendResult, collected []*backendResult, shouldSample bool) {
+func (h *FanOutHandler) collectRemainingAndCompare(remaining int, httpReq *http.Request, results <-chan *backendResult, collected []*backendResult, shouldSample bool, preferV1 bool) {
 	issuer := detectIssuer(httpReq)
 	for range remaining {
 		r := <-results
@@ -219,14 +264,19 @@ func (h *FanOutHandler) collectRemainingAndCompare(remaining int, httpReq *http.
 
 	var preferredResult *backendResult
 	for _, r := range collected {
-		if r.backend.preferred {
+		if r.backend.v1Preferred && preferV1 {
+			preferredResult = r
+			break
+		}
+
+		if r.backend.v2Preferred && !preferV1 {
 			preferredResult = r
 			break
 		}
 	}
 
 	for _, r := range collected {
-		if h.comparator != nil && !r.backend.preferred {
+		if h.shouldCompare(r, preferV1) {
 			result := comparisonSuccess
 			summary, err := h.compareResponses(preferredResult.backendResp, r.backendResp, time.Now().UTC())
 			if err != nil {
@@ -252,7 +302,7 @@ func (h *FanOutHandler) collectRemainingAndCompare(remaining int, httpReq *http.
 	}
 
 	if shouldSample {
-		h.processGoldfishComparison(httpReq, preferredResult, collected)
+		h.processGoldfishComparison(httpReq, preferredResult, collected, preferV1)
 	}
 }
 
@@ -366,7 +416,7 @@ func (h *FanOutHandler) recordMetrics(result *backendResult, method, issuer stri
 }
 
 // processGoldfishComparison processes responses for goldfish comparison.
-func (h *FanOutHandler) processGoldfishComparison(httpReq *http.Request, preferredResult *backendResult, results []*backendResult) {
+func (h *FanOutHandler) processGoldfishComparison(httpReq *http.Request, preferredResult *backendResult, results []*backendResult, preferV1 bool) {
 	if h.goldfishManager == nil || len(results) < 2 || preferredResult == nil {
 		return
 	}
@@ -374,7 +424,7 @@ func (h *FanOutHandler) processGoldfishComparison(httpReq *http.Request, preferr
 
 	// Find preferred and non-preferred responses
 	for _, r := range results {
-		if r.err != nil || r.backend.preferred {
+		if r.err != nil || (preferV1 && r.backend.v1Preferred) || (!preferV1 && r.backend.v2Preferred) {
 			continue
 		}
 		level.Info(h.logger).Log("msg", "processing responses with Goldfish",

@@ -1,11 +1,8 @@
-// Package buffer provides a memory buffer for storing a set of typed elements
-// contiguously in a [memory.Memory]-backed region.
-package buffer
+package memory
 
 import (
 	"unsafe"
 
-	"github.com/grafana/loki/v3/pkg/memory"
 	"github.com/grafana/loki/v3/pkg/memory/internal/memalign"
 	"github.com/grafana/loki/v3/pkg/memory/internal/unsafecast"
 )
@@ -13,31 +10,26 @@ import (
 // Buffer is a low-level memory buffer for storing a set of elements
 // contiguously in memory.
 //
-// Buffers must be created using [Make].
+// Buffers must be created using [MakeBuffer].
 type Buffer[T any] struct {
 	// To avoid double indirection (mem.data) for every operation, we cache the
 	// casted representation of mem.
 
-	alloc *memory.Allocator
-	mem   *memory.Memory
+	alloc *Allocator
+	mem   *Region
 	data  []T
 }
 
-// Make creates a Buffer managed by the provided allocator. The returned Buffer
-// will have an initial length and capacity of zero.
+// MakeBuffer creates a Buffer managed by the provided allocator. The returned Buffer
+// will have an initial length of zero and a capacity of at least n (which may
+// be 0).
 //
 // The lifetime of the returned Buffer must not exceed the lifetime of alloc.
-func Make[T any](alloc *memory.Allocator) Buffer[T] {
-	return Buffer[T]{alloc: alloc}
-}
-
-// WithCapacity creates a Buffer managed by the provided allocator. The returned
-// Buffer will have an initial length of zero and a capacity of at least n.
-//
-// The lifetime of the returned Buffer must not exceed the lifetime of alloc.
-func WithCapacity[T any](alloc *memory.Allocator, n int) Buffer[T] {
-	buf := Make[T](alloc)
-	buf.Grow(n)
+func MakeBuffer[T any](alloc *Allocator, n int) Buffer[T] {
+	buf := Buffer[T]{alloc: alloc}
+	if n > 0 {
+		buf.Grow(n)
+	}
 	return buf
 }
 
@@ -137,7 +129,7 @@ func (buf *Buffer[T]) Serialize() []byte {
 }
 
 // castMemory converts a memory region to a slice of type To.
-func castMemory[To any](mem *memory.Memory) []To {
+func castMemory[To any](mem *Region) []To {
 	orig := mem.Data()
 
 	var (
