@@ -1,11 +1,8 @@
-// Package bitmap provides a bitmap implementation for storing and manipulating
-// bit-packed boolean values.
-package bitmap
+package memory
 
 import (
 	"github.com/apache/arrow-go/v18/arrow/bitutil"
 
-	"github.com/grafana/loki/v3/pkg/memory"
 	"github.com/grafana/loki/v3/pkg/memory/internal/memalign"
 )
 
@@ -14,11 +11,11 @@ import (
 // Arrow.
 //
 // The zero value is ready for use, unassociated with a memory allocator. Use
-// [WithAllocator] to create an allocator-associated bitmap.
+// [MakeBitmap] to create an allocator-associated bitmap.
 type Bitmap struct {
 	// alloc is an optional Allocator to use for retrieving memory. If nil,
 	// memory is created using Go's built-in memory allocation.
-	alloc *memory.Allocator
+	alloc *Allocator
 
 	// The data slice below is always synchronized so that len(data) ==
 	// cap(data). This avoids the need for re-slicing every 8 values, which is
@@ -28,18 +25,18 @@ type Bitmap struct {
 	len  int     // Number of bits in the bitmap.
 }
 
-// WithAllocator creates a new Bitmap that uses the given [memory.Allocator] for
-// its underlying memory. When creating a Bitmap with an Allocator, the Bitmap
-// is only valid as long as alloc hasn't reclaimed memory.
-func WithAllocator(alloc *memory.Allocator) Bitmap {
-	return Bitmap{alloc: alloc}
-}
-
-// FromValues returns a bitmap from a slice of values with an optional
-// allocator.
-func FromValues(alloc *memory.Allocator, values ...bool) Bitmap {
-	bmap := WithAllocator(alloc)
-	bmap.AppendValues(values...)
+// MakeBitmap creates a Bitmap managed by the provided allocator. The returned
+// Bitmap will have an initial length of zero and a capacity of at least n
+// (which may be 0).
+//
+// If alloc is nil, memory is created using Go's built-in memory allocation.
+// Otherwise, the lifetime of the returned Bitmap must not exceed the lifetime
+// of alloc.
+func MakeBitmap(alloc *Allocator, n int) Bitmap {
+	bmap := Bitmap{alloc: alloc}
+	if n > 0 {
+		bmap.Grow(n)
+	}
 	return bmap
 }
 
