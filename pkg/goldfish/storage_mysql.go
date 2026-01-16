@@ -73,25 +73,8 @@ func NewMySQLStorage(config StorageConfig, logger log.Logger) (*MySQLStorage, er
 	}, nil
 }
 
-// computeComparisonStatus determines the comparison status based on response codes and hashes
-func computeComparisonStatus(sample *QuerySample) ComparisonStatus {
-	// If either cell has a non-2xx status code, it's an error
-	if sample.CellAStatusCode < 200 || sample.CellAStatusCode >= 300 ||
-		sample.CellBStatusCode < 200 || sample.CellBStatusCode >= 300 {
-		return ComparisonStatusError
-	}
-
-	// If response hashes match, queries produced identical results
-	if sample.CellAResponseHash == sample.CellBResponseHash {
-		return ComparisonStatusMatch
-	}
-
-	// Otherwise, responses differ
-	return ComparisonStatusMismatch
-}
-
 // StoreQuerySample stores a sampled query with performance statistics
-func (s *MySQLStorage) StoreQuerySample(ctx context.Context, sample *QuerySample) error {
+func (s *MySQLStorage) StoreQuerySample(ctx context.Context, sample *QuerySample, comparison *ComparisonResult) error {
 	query := `
 		INSERT INTO sampled_queries (
 			correlation_id, tenant_id, user, is_logs_drilldown, query, query_type,
@@ -147,9 +130,6 @@ func (s *MySQLStorage) StoreQuerySample(ctx context.Context, sample *QuerySample
 		}
 	}
 
-	// Compute the comparison status before storing
-	comparisonStatus := computeComparisonStatus(sample)
-
 	_, err := s.db.ExecContext(ctx, query,
 		sample.CorrelationID,
 		sample.TenantID,
@@ -197,7 +177,7 @@ func (s *MySQLStorage) StoreQuerySample(ctx context.Context, sample *QuerySample
 		sample.CellAUsedNewEngine,
 		sample.CellBUsedNewEngine,
 		sample.SampledAt,
-		comparisonStatus,
+		comparison.ComparisonStatus,
 	)
 
 	return err

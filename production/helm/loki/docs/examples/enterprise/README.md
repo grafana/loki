@@ -18,14 +18,15 @@ Open [overrides-enterprise-gcs.yaml](./overrides-enterprise-gcs.yaml) and replac
 
 ### Create Admin Token Secret (Required for Provisioner)
 
-If you are using the enterprise provisioner to automatically create tenant tokens, you must first create an admin token secret:
+If you are using the enterprise provisioner to automatically create tenants, you must first create an admin token secret:
 
 1. Generate an admin token using the Loki CLI:
    ```bash
-   docker run grafana/loki:latest -target=tokengen -tokengen.token-file=/tmp/token
+   docker run grafana/enterprise-logs:latest -target=tokengen -tokengen.token-file=/tmp/token
    # Copy the generated token from the container
    docker cp <container-id>:/tmp/token ./admin-token
    ```
+   > Alternatively see [batchjob.yaml](batchjob.yaml) for an example that uses a configmap in k8s to retreive the bucket configuration. Note that this requires GEL to be already in place with a `helm install` command beforehand to access the data
 
 2. Create the admin token secret:
    ```bash
@@ -45,26 +46,29 @@ If you are using the enterprise provisioner to automatically create tenant token
 
 `helm upgrade --install --values {PATH_TO_YOUR_OVERRIDES_YAML_FILE} {YOUR_RELEASE_NAME} grafana/loki-simple-scalable --namespace {KUBERNETES_NAMESPACE}`
 
-### Get Tenant Tokens from Provisioner
+### Create tenants automatically via the provisioner
 
-If you enabled the provisioner, retrieve the generated tenant tokens from the provisioner logs:
+If you enabled the provisioner, additional tenants will be automatically created based on your configuration. For example, the below will create a tenant named `loki-a`:
+
+```yaml
+enterprise:  
+  adminToken:  
+    secret: loki-admin-token  
+  provisioner:  
+    enabled: true
+    additionalTenants:
+      - name: loki-a
+        secretNamespace: loki
+```
+
+An additional tenant for monitoring will also be created based on the value of `.Values.monitoring.selfMonitoring.tenant`
 
 ```bash
 # Get provisioner job logs
 kubectl logs -l job-name=loki-provisioner --namespace {KUBERNETES_NAMESPACE}
 ```
 
-The provisioner outputs tokens for each configured tenant. You must manually create Kubernetes secrets for each tenant using these tokens:
-
-```bash
-# Example for creating a tenant secret
-kubectl create secret generic <tenant-name> \
-  --from-literal=token-write=<write-token-from-logs> \
-  --from-literal=token-read=<read-token-from-logs> \
-  --namespace <tenant-namespace>
-```
-
-### Manual Token Generation (Without Provisioner)
+### Manual Token Generation
 
 If you're not using the provisioner, you can manually generate tokens:
 

@@ -1,6 +1,6 @@
 package parquet
 
-import "sync"
+import "github.com/parquet-go/parquet-go/internal/memory"
 
 type bitmap struct {
 	bits []uint64
@@ -23,21 +23,16 @@ func (m *bitmap) clear() {
 }
 
 var (
-	bitmapPool sync.Pool // *bitmap
+	bitmapPool memory.Pool[bitmap]
 )
 
 func acquireBitmap(n int) *bitmap {
-	b, _ := bitmapPool.Get().(*bitmap)
-	if b == nil {
-		b = &bitmap{bits: make([]uint64, n, 2*n)}
-	} else {
-		b.reset(n)
-	}
-	return b
+	return bitmapPool.Get(
+		func() *bitmap { return &bitmap{bits: make([]uint64, n, 2*n)} },
+		func(b *bitmap) { b.reset(n) },
+	)
 }
 
 func releaseBitmap(b *bitmap) {
-	if b != nil {
-		bitmapPool.Put(b)
-	}
+	bitmapPool.Put(b)
 }

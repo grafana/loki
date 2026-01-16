@@ -154,10 +154,8 @@ func (et *errorTracker) recordError(rowIndex int, err error) {
 		et.errorBuilder = array.NewStringBuilder(memory.DefaultAllocator)
 		et.detailsBuilder = array.NewStringBuilder(memory.DefaultAllocator)
 		// Backfill nulls for previous rows
-		for range rowIndex {
-			et.errorBuilder.AppendNull()
-			et.detailsBuilder.AppendNull()
-		}
+		et.errorBuilder.AppendNulls(rowIndex)
+		et.detailsBuilder.AppendNulls(rowIndex)
 		et.hasErrors = true
 	}
 	et.errorBuilder.Append(types.SampleExtractionErrorType)
