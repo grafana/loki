@@ -142,10 +142,6 @@ func (t *DataObjTee) Duplicate(ctx context.Context, tenant string, streams []Key
 
 	for _, s := range segmentationKeyStreams {
 		go func(stream SegmentedStream) {
-			if s.SegmentationKeyHash%10 == 0 {
-				pushTracker.doneWithResult(fmt.Errorf("forced error"))
-				return
-			}
 			t.duplicate(ctx, tenant, stream, fastRates[stream.SegmentationKeyHash], tenantRateBytesLimit, pushTracker)
 		}(s)
 	}
