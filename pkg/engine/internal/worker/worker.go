@@ -1,4 +1,4 @@
-// Package worker provides a mechanism to to connect to the [scheduler] for
+// Package worker provides a mechanism to connect to the [scheduler] for
 // executing tasks.
 package worker
 
