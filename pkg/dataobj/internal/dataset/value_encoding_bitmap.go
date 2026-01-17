@@ -6,6 +6,7 @@ import (
 	"io"
 	"math/bits"
 
+	"github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
 	"github.com/grafana/loki/v3/pkg/memory"
@@ -555,6 +556,8 @@ type bitmapDecoder struct {
 	set     byte // Current bitpacked set byte (8 values, LSB-first).
 }
 
+var _ valueDecoder = (*bitmapDecoder)(nil)
+
 // newBitmapDecoder creates a new bitmap decoder that reads encoded bools from data.
 func newBitmapDecoder(data []byte) *bitmapDecoder {
 	return &bitmapDecoder{data: data}
@@ -573,7 +576,7 @@ func (dec *bitmapDecoder) EncodingType() datasetmd.EncodingType {
 // Decode decodes up to count values and returns them as a bitmap. The number
 // of decoded values is bm.Len(). At the end of the stream, Decode returns
 // any decoded values along with [io.EOF].
-func (dec *bitmapDecoder) Decode(alloc *memory.Allocator, count int) (any, error) {
+func (dec *bitmapDecoder) Decode(alloc *memory.Allocator, count int) (columnar.Array, error) {
 	var (
 		runLength    = dec.runLength
 		sets         = dec.sets
@@ -601,11 +604,11 @@ func (dec *bitmapDecoder) Decode(alloc *memory.Allocator, count int) (any, error
 		switch {
 		case runLength == 0 && sets == 0 && setSize == 0: // READY
 			if off >= len(data) {
-				return bm, io.EOF
+				return columnar.MakeBool(bm, memory.Bitmap{}), io.EOF
 			}
 			header, uvarintSize := binary.Uvarint(data[off:])
 			if uvarintSize <= 0 {
-				return bm, io.EOF
+				return columnar.MakeBool(bm, memory.Bitmap{}), io.EOF
 			}
 			off += uvarintSize
 
@@ -617,23 +620,23 @@ func (dec *bitmapDecoder) Decode(alloc *memory.Allocator, count int) (any, error
 				setWidth := int((header>>1)&0x3f) + 1
 				// only support bool values encoded as ints
 				if setWidth != 1 {
-					return bm, fmt.Errorf("set width is supposed to be 1, got %d", setWidth)
+					return columnar.MakeBool(bm, memory.Bitmap{}), fmt.Errorf("set width is supposed to be 1, got %d", setWidth)
 				}
 			} else {
 				// RLE run.
 				runLength = header >> 1
 
 				if off >= len(data) {
-					return bm, io.EOF
+					return columnar.MakeBool(bm, memory.Bitmap{}), io.EOF
 				}
 				val, uvarintSize := binary.Uvarint(data[off:])
 				if uvarintSize <= 0 {
-					return bm, io.EOF
+					return columnar.MakeBool(bm, memory.Bitmap{}), io.EOF
 				}
 				off += uvarintSize
 				// only support bool values encoded as ints
 				if val != 0 && val != 1 {
-					return bm, fmt.Errorf("unsupported RLE value %d", val)
+					return columnar.MakeBool(bm, memory.Bitmap{}), fmt.Errorf("unsupported RLE value %d", val)
 				}
 				runValue = val > 0
 			}
@@ -648,7 +651,7 @@ func (dec *bitmapDecoder) Decode(alloc *memory.Allocator, count int) (any, error
 
 		case sets > 0 && setSize == 0: // BITPACK-READY
 			if off >= len(dec.data) {
-				return bm, io.EOF
+				return columnar.MakeBool(bm, memory.Bitmap{}), io.EOF
 			}
 			set = data[off]
 			off++
@@ -668,7 +671,7 @@ func (dec *bitmapDecoder) Decode(alloc *memory.Allocator, count int) (any, error
 		}
 	}
 
-	return bm, nil
+	return columnar.MakeBool(bm, memory.Bitmap{}), nil
 }
 
 // Reset resets dec to read from data.

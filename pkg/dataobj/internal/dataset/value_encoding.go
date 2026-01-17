@@ -3,6 +3,7 @@ package dataset
 import (
 	"fmt"
 
+	"github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
 	"github.com/grafana/loki/v3/pkg/memory"
@@ -62,14 +63,9 @@ type valueDecoder interface {
 	// EncodingType returns the encoding type used by the decoder.
 	EncodingType() datasetmd.EncodingType
 
-	// Decode up to count values using the provided allocator. An opaque return
-	// variable represents the decoded values. Callers are responsible for
-	// understanding which concrete type the return value is based on the
-	// encoding type.
-	//
-	// TODO(rfratto): Replace the any return type with a more general "array"
-	// type.
-	Decode(alloc *memory.Allocator, count int) (any, error)
+	// Decode decodes an array up to count values using the provided allocator.
+	// At the end of the stream, Decode returns nil, [io.EOF].
+	Decode(alloc *memory.Allocator, count int) (columnar.Array, error)
 
 	// Reset discards any state and resets the decoder to read from data.
 	// This permits reusing a decoder rather than allocating a new one.

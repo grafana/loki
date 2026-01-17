@@ -3,29 +3,11 @@ package dataset
 import (
 	"fmt"
 
+	"github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
 	"github.com/grafana/loki/v3/pkg/memory"
 )
-
-// stringArray is an Arrow-compatible representation of multiple strings.
-type stringArray struct {
-	offsets []int32
-	data    []byte
-}
-
-func (sa *stringArray) Len() int {
-	return max(0, len(sa.offsets)-1) // Account for first offset
-}
-
-func (sa *stringArray) Get(i int) []byte {
-	var (
-		start = sa.offsets[i]
-		end   = sa.offsets[i+1]
-	)
-
-	return sa.data[start:end]
-}
 
 // valueDecoderAdapter implements [legacyValueDecoder] for a newer
 // [valueDecoder] implementation.
@@ -48,23 +30,23 @@ func (a *valueDecoderAdapter) EncodingType() datasetmd.EncodingType { return a.I
 func (a *valueDecoderAdapter) Decode(s []Value) (n int, err error) {
 	result, err := a.Inner.Decode(a.Alloc, len(s))
 	if result != nil {
-		n = a.unpackResult(s, result)
+		n = a.unpackArray(s, result)
 	}
 	return n, err
 }
 
-func (a *valueDecoderAdapter) unpackResult(dst []Value, result any) int {
+func (a *valueDecoderAdapter) unpackArray(dst []Value, result columnar.Array) int {
 	switch result := result.(type) {
-	case stringArray:
-		return a.unpackStringArray(dst, result)
-	case []int64:
-		return a.unpackInt64Array(dst, result)
+	case *columnar.UTF8:
+		return a.unpackUTF8(dst, result)
+	case *columnar.Int64:
+		return a.unpackInt64(dst, result.Values())
 	default:
 		panic(fmt.Sprintf("legacy decoder adapter found unexpected type %T", result))
 	}
 }
 
-func (a *valueDecoderAdapter) unpackStringArray(dst []Value, result stringArray) int {
+func (a *valueDecoderAdapter) unpackUTF8(dst []Value, result *columnar.UTF8) int {
 	if result.Len() > len(dst) {
 		panic(fmt.Sprintf("invariant broken: larger src len (%d) than dst (%d)", result.Len(), len(dst)))
 	}
@@ -82,7 +64,7 @@ func (a *valueDecoderAdapter) unpackStringArray(dst []Value, result stringArray)
 	return result.Len()
 }
 
-func (a *valueDecoderAdapter) unpackInt64Array(dst []Value, result []int64) int {
+func (a *valueDecoderAdapter) unpackInt64(dst []Value, result []int64) int {
 	for i := range result {
 		dst[i] = Int64Value(result[i])
 	}
