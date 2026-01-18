@@ -67,8 +67,8 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 ### Generic placeholders
 
 - `<boolean>` : a boolean that can take the values `true` or `false`
-- `<int>` : any integer matching the regular expression `[1-9]+[0-9]*`
-- `<duration>` : a duration matching the regular expression `[0-9]+(ns|us|µs|ms|[smh])`
+- `<int>` : an integer or a size in bytes with optional unit suffix (e.g., `1024`, `0`, `256KB`, `64MiB`, `4GB`). Supported units: `B`, `KB`, `KiB`, `MB`, `MiB`, `GB`, `GiB`, `TB`, `TiB`.
+- `<duration>` : a duration with required unit suffix. Supported units: `ns`, `us` (or `µs`), `ms`, `s`, `m`, `h`, `d`, `w`, `y` (e.g., `30s`, `5m`, `1h`, `1d`, `1w`).
 - `<labelname>` : a string matching the regular expression `[a-zA-Z_][a-zA-Z0-9_]*`
 - `<labelvalue>` : a string of unicode characters
 - `<filename>` : a valid path relative to current working directory or an absolute path.
