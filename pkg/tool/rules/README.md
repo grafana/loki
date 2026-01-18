@@ -115,9 +115,9 @@ group_eval_order:
 tests:
   - name: "Test Name"
     interval: 1m                # Time between consecutive log entries
-    external_labels:            # Optional: external labels
+    external_labels:            # Optional: external labels added to all alerts
       cluster: prod
-    external_url: "https://..."  # Optional: external URL
+    external_url: "https://..."  # Optional: external URL (for compatibility, not used in tests)
     input_streams:
       # Test data streams
     alert_rule_test:
@@ -193,26 +193,24 @@ Each string in the `lines` array becomes a log entry at successive time interval
 - Pattern extraction (`| pattern`)
 - Regex parsing (`| regexp`)
 
-### Label Selectors
+### Stream Labels
 
-Use LogQL label selector syntax with equality matchers:
+Define labels for your input streams using LogQL label syntax with equality matchers:
 
 ```yaml
-# Valid
+# Valid - multiple labels
 - labels: '{job="app", environment="prod", level="error"}'
 
 # Valid - empty label set
 - labels: '{}'
 
-# Invalid - regex matchers not supported in stream selectors
+# Invalid - regex matchers not supported when defining stream labels
 - labels: '{job=~"app.*"}'  # ❌
 ```
 
 ### Structured Metadata
 
-Structured metadata allows you to attach high-cardinality key-value pairs to log streams.
-
-#### Syntax
+Structured metadata allows you to attach high-cardinality key-value pairs to log streams. Unlike labels, structured metadata is designed for high-cardinality data like trace IDs, request IDs, user IDs, and pod names. The metadata applies to all log lines in the stream and can be queried in LogQL expressions.
 
 ```yaml
 input_streams:
@@ -225,13 +223,6 @@ input_streams:
       - 'INFO: API request started'
       - 'ERROR: Request failed'
 ```
-
-#### Key Points
-
-- **Stream-level**: Structured metadata applies to ALL log lines in the stream
-- **High-cardinality**: Use for values like trace IDs, request IDs, user IDs
-- **Queryable**: Can filter logs using structured metadata in LogQL queries
-- **Optional**: If not specified, entries have no structured metadata
 
 #### Example Queries
 
@@ -351,9 +342,23 @@ The framework supports all LogQL features through Loki's MockQuerier:
 
 ## Time and Intervals
 
-All streams start at Unix epoch (1970-01-01T00:00:00Z) and increment by the specified interval.
+There are three time-related settings that control different aspects of test execution:
 
-### Example
+### 1. `evaluation_interval` (top-level, optional)
+
+Sets the default evaluation frequency for rule groups. Defaults to `1m` if not specified.
+
+```yaml
+rule_files:
+  - rules.yml
+evaluation_interval: 1m    # Rule groups evaluate every 1 minute (unless they specify their own interval)
+```
+
+This controls how often rules are evaluated and affects `for` clauses in alerts. An alert with `for: 2m` and `evaluation_interval: 1m` requires the condition to be true for 2 consecutive evaluation cycles.
+
+### 2. `interval` (per test, required)
+
+Controls the time spacing between consecutive log entries in your test data.
 
 ```yaml
 tests:
@@ -369,18 +374,22 @@ tests:
           - 'log entry 5'    # 1970-01-01T00:02:00Z
 ```
 
-### Evaluation Time
+All streams start at Unix epoch (1970-01-01T00:00:00Z) and increment by the specified interval.
 
-Use `eval_time` to specify when to evaluate rules or queries:
+### 3. `eval_time` (per test case, required)
+
+Specifies the simulation time at which to evaluate a specific test case. This is independent of `evaluation_interval` - while `evaluation_interval` controls how frequently rules are evaluated during the simulation, `eval_time` specifies the single moment in time when you want to check the test's expected outcome.
 
 ```yaml
 logql_expr_test:
   - expr: 'count_over_time({job="test"} [2m])'
-    eval_time: 3m           # Evaluate at 3 minutes
+    eval_time: 3m           # Check results at the 3-minute mark
     exp_samples:
       - labels: '{job="test"}'
         value: 5            # Counts entries from 1m to 3m
 ```
+
+**Key difference:** `evaluation_interval` affects how rules behave (especially `for` clauses), while `eval_time` is just when you observe the result for testing purposes.
 
 ## Command-Line Usage
 
@@ -563,26 +572,18 @@ FAILED:
    eval_time: 4m
    ```
 
-2. **Label mismatch**: Verify that expected labels match exactly
+2. **Label mismatch**: Verify that expected labels match the actual labels
+
+   Labels can be specified in any order in your expected values - the comparison automatically normalizes label order.
 
    ```yaml
-   # Labels are sorted alphabetically in output
+   # ✅ Both of these work correctly
    exp_samples:
-     - labels: '{environment="prod", job="api"}'  # ✅ Sorted
-     # Not: '{job="api", environment="prod"}'     # ❌ Wrong order
+     - labels: '{environment="prod", job="api"}'
+     - labels: '{job="api", environment="prod"}'
    ```
 
-3. **Empty results**: Check that your LogQL filter is not too restrictive
-
-   ```yaml
-   # ❌ Too restrictive if no entries match
-   expr: '{job="app"} | json | level="debug" | status="failed"'
-
-   # ✅ Test simpler queries first
-   expr: '{job="app"} | json | level="debug"'
-   ```
-
-4. **Range query timing**: Range queries `[5m]` look back from eval_time
+3. **Range query timing**: Range queries `[5m]` look back from eval_time
 
    ```yaml
    # With 1m interval and eval_time: 3m
@@ -611,23 +612,6 @@ logql_expr_test:
     exp_samples:
       - labels: '{job="app"}'
         value: 5  # 3 + 2
-```
-
-### External Labels and URL
-
-Set external labels and URL for alert evaluation:
-
-```yaml
-tests:
-  - name: "Test with external labels"
-    external_labels:
-      cluster: prod
-      region: us-west
-    external_url: "https://loki.example.com"
-    input_streams:
-      - labels: '{job="app"}'
-        lines: ['log 1', 'log 2']
-    alert_rule_test: [...]
 ```
 
 ## Differences from Promtool
