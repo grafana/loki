@@ -312,7 +312,7 @@ func (r *ringLimitsClient) allZones(ctx context.Context) (iter.Seq2[string, map[
 // If ZoneAwarenessEnabled is false, it returns all partition consumers under
 // a pseudo-zone ("").
 func (r *ringLimitsClient) getZoneAwarePartitionConsumers(ctx context.Context, instances []ring.InstanceDesc) (map[string]map[int32]string, error) {
-	zoneDescs := make(map[string][]ring.InstanceDesc)
+	zoneDescs := make(map[string][]ring.InstanceDesc, len(instances))
 	for _, instance := range instances {
 		zoneDescs[instance.Zone] = append(zoneDescs[instance.Zone], instance)
 	}
@@ -402,8 +402,8 @@ func (r *ringLimitsClient) getPartitionConsumers(ctx context.Context, instances 
 	}
 	_ = errg.Wait()
 	close(responseCh)
-	highestTimestamp := make(map[int32]int64)
-	partitionConsumers := make(map[int32]string)
+	highestTimestamp := make(map[int32]int64, 64)
+	partitionConsumers := make(map[int32]string, 64)
 	for resp := range responseCh {
 		for partition, assignedAt := range resp.response.AssignedPartitions {
 			if t := highestTimestamp[partition]; t < assignedAt {
@@ -417,7 +417,7 @@ func (r *ringLimitsClient) getPartitionConsumers(ctx context.Context, instances 
 
 func (r *ringLimitsClient) instancesForStreams(streams []*proto.StreamMetadata, zone string, instances map[int32]string) map[string][]*proto.StreamMetadata {
 	// For each stream, figure out which instance consume its partition.
-	instancesForStreams := make(map[string][]*proto.StreamMetadata)
+	instancesForStreams := make(map[string][]*proto.StreamMetadata, len(instances))
 	for _, stream := range streams {
 		partition := int32(stream.StreamHash % uint64(r.numPartitions))
 		addr, ok := instances[partition]
