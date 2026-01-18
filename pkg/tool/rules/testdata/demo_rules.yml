@@ -40,6 +40,16 @@ groups:
         annotations:
           summary: High rate of authentication failures
 
+      # Alert with 'for' clause - must be true for 2 minutes before firing
+      - alert: SustainedHighErrorRate
+        expr: 'count_over_time({job="app"} |= "ERROR" [5m]) > 5'
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: Sustained high error rate detected
+          description: Error rate has been high for more than 2 minutes
+
       # Alert using logfmt parsing
       - alert: HighLatency
         expr: 'sum(rate({job="api"} | logfmt | unwrap duration [5m])) > 1000'

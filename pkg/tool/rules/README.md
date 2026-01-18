@@ -14,7 +14,6 @@ This guide explains how to use `lokitool rules test` to unit test your Loki aler
 - [Time and Intervals](#time-and-intervals)
 - [Command-Line Usage](#command-line-usage)
 - [Examples](#examples)
-- [Best Practices](#best-practices)
 - [Troubleshooting](#troubleshooting)
 - [Advanced Features](#advanced-features)
 
@@ -530,33 +529,11 @@ tests:
             value: 2
 ```
 
-## Best Practices
-
-1. **Test One Condition at a Time**: Each test group should focus on a specific scenario
-
-2. **Use Descriptive Names**: Name your tests clearly to understand what they're verifying
-
-3. **Test Edge Cases**: Include tests for boundary conditions and expected failures
-
-4. **Use Realistic Log Lines**: Use actual log formats from your system for more realistic testing
-
-5. **Test LogQL Pipelines**: Test complex LogQL expressions with multiple stages (parsing, filtering, aggregation)
-
-6. **Group Related Tests**: Use multiple test groups to organize related test cases
-
-7. **Document Expected Behavior**: Add comments explaining what each test is verifying
-
-8. **Test Time Ranges**: Ensure your `eval_time` and range intervals make sense with your data intervals
-
-9. **Organize tests by feature**: Group related tests in the same file or directory
-
-10. **Use glob patterns**: Load multiple rule files with patterns like `alerts/*.yml`
-
 ## Troubleshooting
 
 ### Test Failures
 
-When a test fails, the output shows detailed differences between expected and actual results:
+When a test fails, the output shows detailed differences between expected and actual results, this is the same output format as Promtool:
 
 ```
 FAILED:
