@@ -100,7 +100,8 @@ tests:
     interval: 30s
     input_streams:
       # Stream 1: API logs with trace_id and user_id
-      # Structured metadata fields can be filtered like labels
+      # Structured metadata is automatically extracted and added to result labels in queries
+      # This allows filtering but increases cardinality (use keep/drop stages to control)
       - labels: '{job="api", environment="prod"}'
         structured_metadata:
           trace_id: "trace-001"
@@ -133,6 +134,7 @@ tests:
       # Only Stream 1 has trace_id="trace-001"
       # With interval: 30s and eval_time: 3m, [3m] window includes entries from 30s to 3m
       # Stream 1: 4 entries at 30s, 1m, 1m30s, 2m
+      # Structured metadata appears in the result labels (trace_id and user_id)
       - expr: 'count_over_time({job="api"} | trace_id="trace-001" [3m])'
         eval_time: 3m
         exp_samples:
@@ -142,6 +144,7 @@ tests:
       # Filter by structured metadata field user_id
       # Only Stream 2 has user_id="user-456"
       # Stream 2: 2 entries at 30s, 1m
+      # Structured metadata appears in the result labels
       - expr: 'count_over_time({job="api"} | user_id="user-456" [3m])'
         eval_time: 3m
         exp_samples:
@@ -150,6 +153,7 @@ tests:
 
       # Filter by line content AND structured metadata
       # Stream 1 with trace_id="trace-001" has 2 ERRORs at 1m30s, 2m
+      # Structured metadata appears in the result labels
       - expr: 'count_over_time({job="api"} |= "ERROR" | trace_id="trace-001" [3m])'
         eval_time: 3m
         exp_samples:

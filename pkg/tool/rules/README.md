@@ -193,7 +193,9 @@ Each string in the `lines` array becomes a log entry at successive time interval
 
 ### Structured Metadata
 
-Attach structured metadata to log entries for testing high-cardinality fields like trace IDs, user IDs, or request IDs. Structured metadata is specified as a key-value map at the stream level, and all entries in a stream share the same structured metadata. These fields can be filtered in LogQL using `| field="value"` syntax, and are automatically added to the result labels.
+Attach structured metadata to log entries for testing high-cardinality fields like trace IDs, user IDs, or request IDs. Structured metadata is specified as a key-value map at the stream level, and all entries in a stream share the same structured metadata. These fields can be filtered in LogQL using `| field="value"` syntax.
+
+**Important:** Structured metadata is automatically extracted and added to the result labels in metric queries. When writing test expectations, include structured metadata fields in the expected labels. See the [Loki structured metadata documentation](https://grafana.com/docs/loki/latest/get-started/labels/structured-metadata/) for more details.
 
 ```yaml
 input_streams:
@@ -217,11 +219,12 @@ input_streams:
       - 'ERROR: Connection failed'
 ```
 
-Use structured metadata in queries to filter log entries:
+Use structured metadata in queries to filter log entries. Note that structured metadata fields (`trace_id`, `user_id`) are included in the expected labels:
 
 ```yaml
 logql_expr_test:
   # Filter by structured metadata field
+  # Expected labels include BOTH stream labels AND structured metadata
   - expr: 'count_over_time({job="api"} | trace_id="trace-001" [5m])'
     eval_time: 3m
     exp_samples:
@@ -229,11 +232,19 @@ logql_expr_test:
         value: 3
 
   # Combine line filter with structured metadata filter
+  # Structured metadata appears in expected labels
   - expr: 'count_over_time({job="api"} |= "ERROR" | trace_id="trace-001" [5m])'
     eval_time: 3m
     exp_samples:
       - labels: '{environment="prod", job="api", trace_id="trace-001", user_id="user-123"}'
         value: 1
+
+  # Use 'keep' or 'drop' stages to control which labels appear in results
+  - expr: 'count_over_time({job="api"} | trace_id="trace-001" | keep job, environment [5m])'
+    eval_time: 3m
+    exp_samples:
+      - labels: '{environment="prod", job="api"}'  # Only kept labels, no structured metadata
+        value: 3
 ```
 
 ### Stream Labels
