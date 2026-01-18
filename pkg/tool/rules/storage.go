@@ -14,7 +14,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/push"
 )
 
 // testStorage is an in-memory storage backend for unit tests.
@@ -64,30 +63,13 @@ func (ts *testStorage) parseStream(s stream, interval model.Duration) (logproto.
 	var entries []logproto.Entry
 	baseTime := time.Unix(0, 0).UTC()
 
-	// Convert structured metadata map to push.LabelAdapter format
-	var structuredMetadata []push.LabelAdapter
-	if len(s.StructuredMetadata) > 0 {
-		structuredMetadata = make([]push.LabelAdapter, 0, len(s.StructuredMetadata))
-		for key, value := range s.StructuredMetadata {
-			structuredMetadata = append(structuredMetadata, push.LabelAdapter{
-				Name:  key,
-				Value: value,
-			})
-		}
-		// Sort for consistent ordering
-		sort.Slice(structuredMetadata, func(i, j int) bool {
-			return structuredMetadata[i].Name < structuredMetadata[j].Name
-		})
-	}
-
-	// Create log entries from explicit log lines with structured metadata
+	// Create log entries from explicit log lines
 	entries = make([]logproto.Entry, len(s.Lines))
 	for i, line := range s.Lines {
 		timestamp := baseTime.Add(time.Duration(interval) * time.Duration(i))
 		entries[i] = logproto.Entry{
-			Timestamp:          timestamp,
-			Line:               line,
-			StructuredMetadata: structuredMetadata, // Apply to all lines in stream
+			Timestamp: timestamp,
+			Line:      line,
 		}
 	}
 

@@ -10,7 +10,6 @@ This guide explains how to use `lokitool rules test` to unit test your Loki aler
 - [Input Streams](#input-streams)
 - [Alert Rule Tests](#alert-rule-tests)
 - [LogQL Expression Tests](#logql-expression-tests)
-- [Structured Metadata](#structured-metadata)
 - [Time and Intervals](#time-and-intervals)
 - [Command-Line Usage](#command-line-usage)
 - [Examples](#examples)
@@ -25,7 +24,6 @@ Lokitool provides a unit testing framework for LogQL alerting and recording rule
 - Testing recording rules and LogQL expressions
 - Testing LogQL parsing, filtering, and pattern extraction
 - Explicit log line content for realistic testing
-- Structured metadata support
 - Detailed error messages with expected vs actual comparisons
 
 ## Quick Start
@@ -206,35 +204,6 @@ Define labels for your input streams using LogQL label syntax with equality matc
 
 # Invalid - regex matchers not supported when defining stream labels
 - labels: '{job=~"app.*"}'  # ❌
-```
-
-### Structured Metadata
-
-Structured metadata allows you to attach high-cardinality key-value pairs to log streams. Unlike labels, structured metadata is designed for high-cardinality data like trace IDs, request IDs, user IDs, and pod names. The metadata applies to all log lines in the stream and can be queried in LogQL expressions.
-
-```yaml
-input_streams:
-  - labels: '{job="api", environment="prod"}'
-    structured_metadata:
-      trace_id: "trace-001"
-      request_id: "req-456"
-      user_id: "user-789"
-    lines:
-      - 'INFO: API request started'
-      - 'ERROR: Request failed'
-```
-
-#### Example Queries
-
-```logql
-# Filter by trace_id
-{job="api"} | trace_id="trace-001"
-
-# Filter by multiple metadata fields
-{job="api"} | trace_id="trace-001" | user_id="user-789"
-
-# Count logs for specific user
-count_over_time({job="api"} | user_id="user-789" [5m])
 ```
 
 ## Alert Rule Tests
@@ -500,44 +469,6 @@ tests:
             value: 3
 ```
 
-### Example 4: Structured Metadata Test
-
-```yaml
-rule_files:
-  - rules.yml
-
-evaluation_interval: 1m
-
-tests:
-  - name: "Test structured metadata"
-    interval: 30s
-    input_streams:
-      - labels: '{job="api", environment="prod"}'
-        structured_metadata:
-          trace_id: "trace-001"
-          user_id: "user-123"
-        lines:
-          - 'INFO: API request started'
-          - 'INFO: Processing request'
-          - 'ERROR: Database timeout'
-          - 'ERROR: Failed to process request'
-
-    logql_expr_test:
-      # Test basic counting
-      - expr: 'count_over_time({job="api"} [3m])'
-        eval_time: 3m
-        exp_samples:
-          - labels: '{environment="prod", job="api"}'
-            value: 7
-
-      # Test filtering errors
-      - expr: 'count_over_time({job="api"} |= "ERROR" [3m])'
-        eval_time: 3m
-        exp_samples:
-          - labels: '{environment="prod", job="api"}'
-            value: 2
-```
-
 ## Troubleshooting
 
 ### Test Failures
@@ -622,9 +553,12 @@ While inspired by promtool, lokitool's test format is designed for Loki:
 - **LogQL expressions**: Write LogQL queries instead of PromQL
 - **Log stream results**: Use `exp_logs` for log stream query results
 - **Stream terminology**: Uses `input_streams` and `stream` (not `series`)
-- **Structured metadata**: Support for high-cardinality metadata
 
 ## Example Files
 
 - [testdata/demo_test.yml](testdata/demo_test.yml) - Complete working examples of all test modes
 - [testdata/demo_rules.yml](testdata/demo_rules.yml) - Example rule file with LogQL rules
+
+## TODO
+
+- Add support for structured metadata
