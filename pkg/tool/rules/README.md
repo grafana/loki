@@ -191,6 +191,51 @@ Each string in the `lines` array becomes a log entry at successive time interval
 - Pattern extraction (`| pattern`)
 - Regex parsing (`| regexp`)
 
+### Structured Metadata
+
+Attach structured metadata to log entries for testing high-cardinality fields like trace IDs, user IDs, or request IDs. Structured metadata is specified as a key-value map at the stream level, and all entries in a stream share the same structured metadata. These fields can be filtered in LogQL using `| field="value"` syntax, and are automatically added to the result labels.
+
+```yaml
+input_streams:
+  # Stream with structured metadata attached to all entries
+  - labels: '{job="api", environment="prod"}'
+    structured_metadata:
+      trace_id: "trace-001"
+      user_id: "user-123"
+    lines:
+      - 'INFO: API request started'
+      - 'ERROR: Database timeout'
+      - 'INFO: Request completed'
+
+  # Another stream with different structured metadata
+  - labels: '{job="api", environment="prod"}'
+    structured_metadata:
+      trace_id: "trace-002"
+      user_id: "user-456"
+    lines:
+      - 'INFO: Another request'
+      - 'ERROR: Connection failed'
+```
+
+Use structured metadata in queries to filter log entries:
+
+```yaml
+logql_expr_test:
+  # Filter by structured metadata field
+  - expr: 'count_over_time({job="api"} | trace_id="trace-001" [5m])'
+    eval_time: 3m
+    exp_samples:
+      - labels: '{environment="prod", job="api", trace_id="trace-001", user_id="user-123"}'
+        value: 3
+
+  # Combine line filter with structured metadata filter
+  - expr: 'count_over_time({job="api"} |= "ERROR" | trace_id="trace-001" [5m])'
+    eval_time: 3m
+    exp_samples:
+      - labels: '{environment="prod", job="api", trace_id="trace-001", user_id="user-123"}'
+        value: 1
+```
+
 ### Stream Labels
 
 Define labels for your input streams using LogQL label syntax with equality matchers:
@@ -304,6 +349,7 @@ The framework supports all LogQL features through Loki's MockQuerier:
 - **Logfmt parsing**: `| logfmt`
 - **Line filters**: `|=`, `|~`, `!=`, `!~`
 - **Label filters**: `| label="value"`
+- **Structured metadata filters**: `| field="value"` (filters by structured metadata fields)
 - **Pattern extraction**: `| pattern '<pattern>'`
 - **Regex parsing**: `| regexp '<regex>'`
 - **Unwrap operations**: `| unwrap field`
