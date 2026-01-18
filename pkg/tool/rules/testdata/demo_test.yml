@@ -1,0 +1,131 @@
+# Demo unit test file for lokitool rules test
+# This demonstrates how to test Loki alerting and recording rules
+
+# Specify the rule files to test
+rule_files:
+  - demo_rules.yml
+
+# Default evaluation interval for all tests
+evaluation_interval: 1m
+
+# Test cases
+tests:
+  # Tests using explicit log line content
+  # These tests demonstrate how to use the 'lines' field for testing LogQL parsing and filtering
+
+  - name: "Test JSON Parsing with Explicit Lines"
+    interval: 1m
+    input_streams:
+      # Explicit JSON log lines for testing | json parsing
+      - labels: '{job="app"}'
+        lines:
+          - '{"level":"info","duration":100,"status":"success"}'
+          - '{"level":"error","duration":500,"status":"failed"}'
+          - '{"invalid json'  # Intentionally malformed
+          - '{"level":"info","duration":200,"status":"success"}'
+          - '{"level":"error","duration":800,"status":"failed"}'
+
+    logql_expr_test:
+      # Count log lines with status="failed" - need to sum by job to aggregate
+      - expr: 'sum by (job) (count_over_time({job="app"} | json | status="failed" [5m]))'
+        eval_time: 4m
+        exp_samples:
+          - labels: '{job="app"}'
+            value: 2
+
+  - name: "Test Line Filters with Explicit Lines"
+    interval: 30s
+    input_streams:
+      # Explicit log lines for testing line filters
+      - labels: '{job="auth"}'
+        lines:
+          - 'ERROR: authentication failed for user bob'
+          - 'ERROR: authentication failed for user charlie'
+          - 'ERROR: authentication failed for user dave'
+          - 'ERROR: authentication failed for user eve'
+          - 'ERROR: authentication failed for user frank'
+          - 'ERROR: authentication failed for user grace'
+          - 'ERROR: authentication failed for user henry'
+          - 'ERROR: authentication failed for user iris'
+          - 'ERROR: authentication failed for user jack'
+          - 'ERROR: authentication failed for user kelly'
+          - 'ERROR: authentication failed for user mike'
+          - 'ERROR: authentication failed for user nancy'
+          - 'ERROR: authentication failed for user oscar'
+          - 'ERROR: authentication failed for user paul'
+          - 'ERROR: authentication failed for user quinn'
+          - 'INFO: user alice logged out'
+
+    alert_rule_test:
+      # Test AuthenticationFailures alert - should fire when > 2 failures
+      - alertname: AuthenticationFailures
+        eval_time: 5m30s
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: auth
+            exp_annotations:
+              summary: High rate of authentication failures
+
+    logql_expr_test:
+      # Count authentication failures using line filter
+      - expr: 'count_over_time({job="auth"} |= "authentication failed" [5m])'
+        eval_time: 5m30s
+        exp_samples:
+          - labels: '{job="auth"}'
+            value: 10
+
+  - name: "Test Regex Filters with Explicit Lines"
+    interval: 1m
+    input_streams:
+      # Explicit HTTP log lines for testing regex filters
+      - labels: '{job="nginx"}'
+        lines:
+          - 'GET / HTTP/1.1 200'
+          - 'GET /api HTTP/1.1 500'
+          - 'POST /api HTTP/1.1 503'
+          - 'GET /health HTTP/1.1 200'
+          - 'GET /api HTTP/1.1 502'
+          - 'GET / HTTP/1.1 200'
+
+    logql_expr_test:
+      # Count 5xx HTTP errors using regex filter
+      - expr: 'count_over_time({job="nginx"} |~ "5[0-9]{2}$" [5m])'
+        eval_time: 5m
+        exp_samples:
+          - labels: '{job="nginx"}'
+            value: 3
+
+  - name: "Test Structured Metadata"
+    interval: 30s
+    input_streams:
+      # Stream with structured metadata - trace_id and user_id
+      # Note: Structured metadata is attached to all log entries in the stream
+      # and can be queried in production Loki, but filtering by structured metadata
+      # (e.g., | trace_id="xyz") requires full LogQL engine support
+      - labels: '{job="api", environment="prod"}'
+        structured_metadata:
+          trace_id: "trace-001"
+          user_id: "user-123"
+        lines:
+          - 'INFO: API request started'
+          - 'INFO: Processing request'
+          - 'INFO: Request completed'
+          - 'ERROR: Database timeout'
+          - 'ERROR: Failed to process request'
+
+    logql_expr_test:
+      # Test basic counting - structured metadata is attached to entries
+      - expr: 'count_over_time({job="api"} [3m])'
+        eval_time: 3m
+        exp_samples:
+          - labels: '{environment="prod", job="api"}'
+            value: 4
+
+      # Test counting errors with line filter
+      - expr: 'count_over_time({job="api"} |= "ERROR" [3m])'
+        eval_time: 3m
+        exp_samples:
+          - labels: '{environment="prod", job="api"}'
+            value: 2
+

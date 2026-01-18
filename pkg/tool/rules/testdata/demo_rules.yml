@@ -1,0 +1,70 @@
+# Demo rule file for testing
+groups:
+  - name: error_rate_alerts
+    interval: 1m
+    rules:
+      - alert: HighErrorRate
+        expr: 'count_over_time({level="error"}[5m]) > 3'
+        labels:
+          severity: warning
+        annotations:
+          summary: High error rate detected
+
+      - record: error_rate_5m
+        expr: 'count_over_time({level="error"}[5m])'
+        labels:
+          team: platform
+
+  # NOTE: The rules below demonstrate LogQL-specific syntax features like
+  # JSON parsing, logfmt, line filters (|=), regex filters (|~), and pattern extraction.
+  # These features require actual log line content and are not currently testable
+  # with the metric-based unit testing framework (which uses numeric values only).
+  # They are included here for reference and syntax demonstration.
+
+  - name: logql_parsing_rules
+    interval: 1m
+    rules:
+      # Alert on JSON parsing errors
+      - alert: JSONParseErrors
+        expr: 'sum(count_over_time({job="app"} | json | __error__="JSONParserErr" [5m])) > 5'
+        labels:
+          severity: warning
+        annotations:
+          summary: High rate of JSON parsing errors
+
+      # Alert on specific log patterns
+      - alert: AuthenticationFailures
+        expr: 'count_over_time({job="auth"} |= "authentication failed" [5m]) > 2'
+        labels:
+          severity: critical
+        annotations:
+          summary: High rate of authentication failures
+
+      # Alert using logfmt parsing
+      - alert: HighLatency
+        expr: 'sum(rate({job="api"} | logfmt | unwrap duration [5m])) > 1000'
+        labels:
+          severity: warning
+        annotations:
+          summary: API latency is high
+
+  - name: logql_filtering_rules
+    interval: 1m
+    rules:
+      # Recording rule with line filter
+      - record: error_logs_per_service
+        expr: 'sum by (service) (count_over_time({job="production"} |= "error" [5m]))'
+        labels:
+          environment: production
+
+      # Recording rule with regex filter
+      - record: http_5xx_count
+        expr: 'count_over_time({job="nginx"} |~ "HTTP/[0-9.]+ 5[0-9]{2}" [5m])'
+        labels:
+          type: server_errors
+
+      # Recording rule with label filter and pattern
+      - record: slow_queries
+        expr: 'count_over_time({job="database"} | pattern `<_> duration=<duration>ms` | duration > 1000 [5m])'
+        labels:
+          severity: warning
