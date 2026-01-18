@@ -57,6 +57,11 @@ type stream struct {
 	// Only equality matchers (=) are supported, not regex matchers (=~, !=, !~)
 	Labels string `yaml:"labels"`
 
+	// StructuredMetadata contains key-value pairs attached to all log entries in this stream
+	// Use for high-cardinality data like trace IDs, user IDs, request IDs
+	// Optional: if not specified, entries will have no structured metadata
+	StructuredMetadata map[string]string `yaml:"structured_metadata,omitempty"`
+
 	// Lines contains explicit log line content for testing log parsing and filtering
 	// Use for testing LogQL features like | json, |=, |~, etc.
 	Lines []string `yaml:"lines,omitempty"`

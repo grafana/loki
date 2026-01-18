@@ -263,6 +263,65 @@ func TestParseStream_Lines(t *testing.T) {
 	require.Equal(t, `{"level":"info","duration":100}`, parsedStream.Entries[0].Line)
 	require.Equal(t, `{"level":"error","duration":500}`, parsedStream.Entries[1].Line)
 	require.Equal(t, `{"invalid json`, parsedStream.Entries[2].Line)
+
+	// Verify no structured metadata
+	require.Nil(t, parsedStream.Entries[0].StructuredMetadata)
+	require.Nil(t, parsedStream.Entries[1].StructuredMetadata)
+	require.Nil(t, parsedStream.Entries[2].StructuredMetadata)
+}
+
+func TestParseStream_StructuredMetadata(t *testing.T) {
+	storage := newTestStorage()
+
+	stream := stream{
+		Labels: `{job="test"}`,
+		StructuredMetadata: map[string]string{
+			"trace_id": "abc123",
+			"user_id":  "user-456",
+		},
+		Lines: []string{
+			"log line 1",
+			"log line 2",
+		},
+	}
+
+	result, err := storage.parseStream(stream, model.Duration(1*time.Minute))
+	require.NoError(t, err)
+
+	// Verify labels
+	require.Equal(t, `{job="test"}`, result.Labels)
+
+	// Verify entries
+	require.Len(t, result.Entries, 2)
+
+	// Verify structured metadata is attached to all entries
+	for _, entry := range result.Entries {
+		require.Len(t, entry.StructuredMetadata, 2)
+
+		// Check sorted order and values
+		require.Equal(t, "trace_id", entry.StructuredMetadata[0].Name)
+		require.Equal(t, "abc123", entry.StructuredMetadata[0].Value)
+		require.Equal(t, "user_id", entry.StructuredMetadata[1].Name)
+		require.Equal(t, "user-456", entry.StructuredMetadata[1].Value)
+	}
+}
+
+func TestParseStream_NoStructuredMetadata(t *testing.T) {
+	storage := newTestStorage()
+
+	stream := stream{
+		Labels: `{job="test"}`,
+		Lines: []string{
+			"log line 1",
+		},
+	}
+
+	result, err := storage.parseStream(stream, model.Duration(1*time.Minute))
+	require.NoError(t, err)
+
+	// Verify no structured metadata
+	require.Len(t, result.Entries, 1)
+	require.Empty(t, result.Entries[0].StructuredMetadata)
 }
 
 func TestParseStream_LinesWithSpecialCharacters(t *testing.T) {

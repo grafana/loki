@@ -99,10 +99,8 @@ tests:
   - name: "Test Structured Metadata"
     interval: 30s
     input_streams:
-      # Stream with structured metadata - trace_id and user_id
-      # Note: Structured metadata is attached to all log entries in the stream
-      # and can be queried in production Loki, but filtering by structured metadata
-      # (e.g., | trace_id="xyz") requires full LogQL engine support
+      # Stream 1: API logs with trace_id and user_id
+      # Structured metadata fields can be filtered like labels
       - labels: '{job="api", environment="prod"}'
         structured_metadata:
           trace_id: "trace-001"
@@ -114,19 +112,48 @@ tests:
           - 'ERROR: Database timeout'
           - 'ERROR: Failed to process request'
 
+      # Stream 2: Same labels but different structured metadata
+      - labels: '{job="api", environment="prod"}'
+        structured_metadata:
+          trace_id: "trace-002"
+          user_id: "user-456"
+        lines:
+          - 'INFO: Another request'
+          - 'ERROR: Connection failed'
+          - 'INFO: Retry successful'
+
+      # Stream 3: No structured metadata
+      - labels: '{job="api", environment="staging"}'
+        lines:
+          - 'INFO: Staging request'
+          - 'ERROR: Staging error'
+
     logql_expr_test:
-      # Test basic counting - structured metadata is attached to entries
-      - expr: 'count_over_time({job="api"} [3m])'
+      # Filter by structured metadata field trace_id
+      # Only Stream 1 has trace_id="trace-001"
+      # With interval: 30s and eval_time: 3m, [3m] window includes entries from 30s to 3m
+      # Stream 1: 4 entries at 30s, 1m, 1m30s, 2m
+      - expr: 'count_over_time({job="api"} | trace_id="trace-001" [3m])'
         eval_time: 3m
         exp_samples:
-          - labels: '{environment="prod", job="api"}'
+          - labels: '{environment="prod", job="api", trace_id="trace-001", user_id="user-123"}'
             value: 4
 
-      # Test counting errors with line filter
-      - expr: 'count_over_time({job="api"} |= "ERROR" [3m])'
+      # Filter by structured metadata field user_id
+      # Only Stream 2 has user_id="user-456"
+      # Stream 2: 2 entries at 30s, 1m
+      - expr: 'count_over_time({job="api"} | user_id="user-456" [3m])'
         eval_time: 3m
         exp_samples:
-          - labels: '{environment="prod", job="api"}'
+          - labels: '{environment="prod", job="api", trace_id="trace-002", user_id="user-456"}'
+            value: 2
+
+      # Filter by line content AND structured metadata
+      # Stream 1 with trace_id="trace-001" has 2 ERRORs at 1m30s, 2m
+      - expr: 'count_over_time({job="api"} |= "ERROR" | trace_id="trace-001" [3m])'
+        eval_time: 3m
+        exp_samples:
+          - labels: '{environment="prod", job="api", trace_id="trace-001", user_id="user-123"}'
             value: 2
 
   - name: "Test Alert with For Clause"

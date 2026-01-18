@@ -558,7 +558,3 @@ While inspired by promtool, lokitool's test format is designed for Loki:
 
 - [testdata/demo_test.yml](testdata/demo_test.yml) - Complete working examples of all test modes
 - [testdata/demo_rules.yml](testdata/demo_rules.yml) - Example rule file with LogQL rules
-
-## TODO
-
-- Add support for structured metadata
