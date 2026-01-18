@@ -6,6 +6,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -40,6 +41,7 @@ type ringLimitsClient struct {
 	pool                    *ring_client.Pool
 	numPartitions           int
 	assignedPartitionsCache cache[string, *proto.GetAssignedPartitionsResponse]
+	zonesPartitionsCache    cache[int, map[string]map[int32]string]
 	zoneCmp                 func(a, b string) int
 
 	// Metrics.
@@ -61,6 +63,7 @@ func newRingLimitsClient(
 		pool:                    pool,
 		numPartitions:           numPartitions,
 		assignedPartitionsCache: assignedPartitionsCache,
+		zonesPartitionsCache:    newTTLCache[int, map[string]map[int32]string](15 * time.Second),
 		zoneCmp:                 defaultZoneCmp,
 		partitionsMissing: promauto.With(reg).NewCounterVec(
 			prometheus.CounterOpts{
@@ -279,14 +282,22 @@ func (r *ringLimitsClient) exhaustAllZones(ctx context.Context, tenant string, s
 // If ZoneAwarenessEnabled is false, it returns all partition consumers under
 // a pseudo-zone ("").
 func (r *ringLimitsClient) allZones(ctx context.Context) (iter.Seq2[string, map[int32]string], error) {
-	rs, err := r.ring.GetAllHealthy(limitsRead)
-	if err != nil {
-		return nil, err
-	}
-	// Get the partition consumers for each zone.
-	zonesPartitions, err := r.getZoneAwarePartitionConsumers(ctx, rs.Instances)
-	if err != nil {
-		return nil, err
+	var (
+		zonesPartitions map[string]map[int32]string
+		ok              bool
+	)
+	if zonesPartitions, ok = r.zonesPartitionsCache.Get(1); !ok {
+		rs, err := r.ring.GetAllHealthy(limitsRead)
+		if err != nil {
+			return nil, err
+		}
+		// Get the partition consumers for each zone.
+		zonesPartitionsResp, err := r.getZoneAwarePartitionConsumers(ctx, rs.Instances)
+		if err != nil {
+			return nil, err
+		}
+		r.zonesPartitionsCache.Set(1, zonesPartitionsResp)
+		zonesPartitions = zonesPartitionsResp
 	}
 	// In practice we want zones to be queried in random order to spread
 	// reads. However, in tests we want a deterministic order so test cases
