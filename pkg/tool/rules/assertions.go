@@ -40,10 +40,9 @@ func (ta *testAssertion) compareAlerts(testCase alertTestCase, actualAlerts []*a
 	// Compare each alert
 	for i := range sortedExpected {
 		if err := ta.compareAlert(testCase.Alertname, sortedExpected[i], sortedActual[i]); err != nil {
-			return fmt.Errorf("\n  alertname: %s, time: %s,\n    %v%s",
+			return fmt.Errorf("\n  alertname: %s, time: %s,%s",
 				testCase.Alertname,
 				testCase.EvalTime,
-				err,
 				ta.formatAlertDiff(sortedExpected, sortedActual))
 		}
 	}
@@ -56,19 +55,13 @@ func (ta *testAssertion) compareAlert(alertName string, expected alert, actual *
 	// Compare labels
 	expectedLabels := convertMapToLabels(expected.ExpLabels)
 	if !labels.Equal(expectedLabels, actual.Labels) {
-		return fmt.Errorf("alert %s label mismatch:\n  expected: %s\n  got: %s",
-			alertName,
-			expectedLabels.String(),
-			actual.Labels.String())
+		return fmt.Errorf("label mismatch")
 	}
 
 	// Compare annotations
 	expectedAnnotations := convertMapToLabels(expected.ExpAnnotations)
 	if !labels.Equal(expectedAnnotations, actual.Annotations) {
-		return fmt.Errorf("alert %s annotation mismatch:\n  expected: %s\n  got: %s",
-			alertName,
-			expectedAnnotations.String(),
-			actual.Annotations.String())
+		return fmt.Errorf("annotation mismatch")
 	}
 
 	return nil
@@ -124,19 +117,17 @@ func (ta *testAssertion) compareVector(testCase logqlTestCase, vector promql.Vec
 
 		// Compare labels
 		if !labels.Equal(expLabels, actual.Metric) {
-			return fmt.Errorf("\n  expr: %s, time: %s,\n    sample %d label mismatch%s",
+			return fmt.Errorf("\n  expr: %s, time: %s,%s",
 				testCase.Expr,
 				testCase.EvalTime,
-				i,
 				ta.formatVectorDiff(expected, sortedVector))
 		}
 
 		// Compare value
 		if err := ta.compareFloat(exp.Value, actual.F); err != nil {
-			return fmt.Errorf("\n  expr: %s, time: %s,\n    sample %d value mismatch%s",
+			return fmt.Errorf("\n  expr: %s, time: %s,%s",
 				testCase.Expr,
 				testCase.EvalTime,
-				i,
 				ta.formatVectorDiff(expected, sortedVector))
 		}
 	}
