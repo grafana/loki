@@ -155,7 +155,7 @@ func (f *flusherImpl) doJob(ctx context.Context, job flushJob) error {
 // flush builds a complete data object from the builder, uploads it, records
 // it in the metastore, and emits an object written event to the events topic.
 func (f *flusherImpl) flush(ctx context.Context, job flushJob) error {
-	obj, closer, err := job.builder.Flush()
+	obj, closer, err := job.Flush()
 	if err != nil {
 		return fmt.Errorf("failed to flush data object builder: %w", err)
 	}

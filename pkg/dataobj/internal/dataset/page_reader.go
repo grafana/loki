@@ -25,7 +25,7 @@ type pageReader struct {
 	presenceDec *bitmapDecoder
 	valuesDec   legacyValueDecoder
 
-	presenceBuf []Value
+	presenceBuf memory.Bitmap
 	valuesBuf   []Value
 
 	pageRow int64
@@ -84,9 +84,6 @@ func (pr *pageReader) read(v []Value) (n int, err error) {
 	// need to find a new mechanism to prevent over-allocating.
 	pr.alloc.Reset()
 
-	pr.presenceBuf = slicegrow.GrowToCap(pr.presenceBuf, len(v))
-	pr.presenceBuf = pr.presenceBuf[:len(v)]
-
 	// We want to allow decoders to reuse memory of [Value]s in v while allowing
 	// the caller to retain ownership over that memory; to do this safely, we
 	// copy memory from v into pr.valuesBuf for our decoders to use.
@@ -96,7 +93,9 @@ func (pr *pageReader) read(v []Value) (n int, err error) {
 	pr.valuesBuf = reuseValuesBuffer(pr.valuesBuf, v)
 
 	// First read presence values for the next len(v) rows.
-	count, err := pr.presenceDec.Decode(pr.presenceBuf)
+	presenceBuf, err := pr.presenceDec.Decode(&pr.alloc, len(v))
+	pr.presenceBuf = presenceBuf.(memory.Bitmap)
+	count := pr.presenceBuf.Len()
 	if err != nil && !errors.Is(err, io.EOF) {
 		return n, err
 	} else if count == 0 && errors.Is(err, io.EOF) {
@@ -110,19 +109,15 @@ func (pr *pageReader) read(v []Value) (n int, err error) {
 		return 0, nil
 	}
 
-	// The number of values in pr.presenceBuf[:count] which are set to 1
-	// determines how many values we need to read from the inner page.
+	// The number of 1-s in pr.presenceBuf determines how many values we need to read from the inner page.
 	var presentCount int
-	for _, p := range pr.presenceBuf[:count] {
-		if p.Type() != datasetmd.PHYSICAL_TYPE_UINT64 {
-			return n, fmt.Errorf("unexpected presence type: %s", p.Type())
-		}
-		if p.Uint64() == 1 {
+	for i := range count {
+		if pr.presenceBuf.Get(i) {
 			presentCount++
 		}
 	}
 
-	// Now fill up to prescentCount values of concrete values.
+	// Now fill up to presentCount values of concrete values.
 	var valuesCount int
 	if presentCount > 0 {
 		valuesCount, err = pr.valuesDec.Decode(pr.valuesBuf[:presentCount])
@@ -136,17 +131,14 @@ func (pr *pageReader) read(v []Value) (n int, err error) {
 	// Finally, copy over count values into v, setting NULL where appropriate and
 	// copying from pr.valuesBuf where appropriate.
 	var valuesIndex int
-	for i, p := range pr.presenceBuf[:count] {
-		// Type checking on presence values was already done above; we can call
-		// [Value.Uint64] here safely.
-		switch p.Uint64() {
-		case 1:
+	for i := range count {
+		if pr.presenceBuf.Get(i) {
 			if valuesIndex >= valuesCount {
 				return n, fmt.Errorf("unexpected end of values")
 			}
 			v[i] = pr.valuesBuf[valuesIndex]
 			valuesIndex++
-		default:
+		} else {
 			v[i] = Value{}
 		}
 	}

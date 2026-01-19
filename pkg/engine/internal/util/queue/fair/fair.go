@@ -123,7 +123,7 @@ func scopeItems[T any](n *node[T]) int {
 
 	var total int
 	for _, c := range pq.children {
-		switch v := c.node.value.(type) {
+		switch v := c.value.(type) {
 		case T:
 			total++
 		case *pqueue[T]:
