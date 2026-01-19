@@ -76,7 +76,7 @@ func extractLogs(r *http.Request, maxRecvMsgSize int, maxDecompressedSize int64,
 			_ = reader.Close()
 		}(r)
 		if maxDecompressedSize > 0 {
-			body = io.LimitReader(body, int64(maxDecompressedSize)+1)
+			body = io.LimitReader(body, maxDecompressedSize+1)
 		}
 
 	case zstdContentEncoding:
@@ -86,12 +86,12 @@ func extractLogs(r *http.Request, maxRecvMsgSize int, maxDecompressedSize int64,
 			return plog.NewLogs(), err
 		}
 		if maxDecompressedSize > 0 {
-			body = io.LimitReader(body, int64(maxDecompressedSize)+1)
+			body = io.LimitReader(body, maxDecompressedSize+1)
 		}
 	case lz4ContentEncoding:
 		body = io.NopCloser(lz4.NewReader(body))
 		if maxDecompressedSize > 0 {
-			body = io.LimitReader(body, int64(maxDecompressedSize)+1)
+			body = io.LimitReader(body, maxDecompressedSize+1)
 		}
 	case "":
 		// no content encoding, use the body as is
