@@ -109,13 +109,10 @@ func (pr *pageReader) read(v []Value) (n int, err error) {
 		return 0, nil
 	}
 
-	// The number of 1-s in pr.presenceBuf determines how many values we need to read from the inner page.
-	var presentCount int
-	for i := range count {
-		if presenceBuf.Get(i) {
-			presentCount++
-		}
-	}
+	// The number of bits set to 1 in presenceBuf determines how many values we
+	// need to read from the inner page.
+	presenceValues := presenceBuf.Values()
+	presentCount := presenceValues.SetCount()
 
 	// Now fill up to presentCount values of concrete values.
 	var valuesCount int
