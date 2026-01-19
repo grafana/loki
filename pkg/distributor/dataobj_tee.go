@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"flag"
-	"net/http"
+	"fmt"
 	"strconv"
 
 	"github.com/go-kit/log"
@@ -13,7 +13,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/twmb/franz-go/pkg/kgo"
 
-	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/loki/v3/pkg/kafka"
 )
 
@@ -166,7 +165,7 @@ func (t *DataObjTee) duplicate(ctx context.Context, tenant string, stream Segmen
 	if err != nil {
 		level.Error(t.logger).Log("msg", "failed to resolve partition", "err", err)
 		t.failures.Inc()
-		pushTracker.doneWithResult(httpgrpc.Errorf(http.StatusInternalServerError, "couldn't process request internally due to tee error: %d", TeeCouldntSolvePartitionError))
+		pushTracker.doneWithResult(fmt.Errorf("couldn't process request internally due to tee error: %d", TeeCouldntSolvePartitionError))
 		return
 	}
 
@@ -174,7 +173,7 @@ func (t *DataObjTee) duplicate(ctx context.Context, tenant string, stream Segmen
 	if err != nil {
 		level.Error(t.logger).Log("msg", "failed to encode stream", "err", err)
 		t.failures.Inc()
-		pushTracker.doneWithResult(httpgrpc.Errorf(http.StatusInternalServerError, "couldn't process request internally due to tee error: %d", TeeCouldntEncodeStreamError))
+		pushTracker.doneWithResult(fmt.Errorf("couldn't process request internally due to tee error: %d", TeeCouldntEncodeStreamError))
 		return
 	}
 
@@ -182,7 +181,7 @@ func (t *DataObjTee) duplicate(ctx context.Context, tenant string, stream Segmen
 	if err := results.FirstErr(); err != nil {
 		level.Error(t.logger).Log("msg", "failed to produce records", "err", err)
 		t.failures.Inc()
-		pushTracker.doneWithResult(httpgrpc.Errorf(http.StatusInternalServerError, "couldn't process request internally due to tee error: %d", TeeCouldntProduceRecordsError))
+		pushTracker.doneWithResult(fmt.Errorf("couldn't process request internally due to tee error: %d", TeeCouldntProduceRecordsError))
 		return
 	}
 
