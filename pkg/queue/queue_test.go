@@ -524,10 +524,14 @@ func TestDequeueAfterEnqueueFails(t *testing.T) {
 	require.Error(t, err, "expected enqueue to fail with maxOutstandingPerTenant=0")
 	require.Equal(t, ErrTooManyRequests, err)
 
-	req, _, err := queue.Dequeue(context.Background(), StartIndex, consumerID)
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
 
-	require.Nil(t, err)
-	require.NotNil(t, req, "Dequeue() returned nil request without an error")
+	// Should block until context deadline is reached.
+	req, _, err := queue.Dequeue(ctx, StartIndex, consumerID)
+
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.Nil(t, req)
 }
 
 func enqueueTasksAsync(tenantsCount int, tasksPerTenant int, senderDelay time.Duration, wg *errgroup.Group, queue *RequestQueue) {
