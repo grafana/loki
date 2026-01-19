@@ -447,3 +447,7 @@ func (ts *TeeService) Duplicate(_ context.Context, tenant string, streams []dist
 		ts.buffersMutex.Unlock()
 	}
 }
+
+func (ts *TeeService) Register(ctx context.Context, tenant string, streams []distributor.KeyedStream, pushTracker *distributor.PushTracker) {
+	// we don't register pending streams to avoid blocking the distributor due to pattern ingesters.
+}
