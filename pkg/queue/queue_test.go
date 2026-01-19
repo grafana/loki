@@ -524,7 +524,7 @@ func TestDequeueAfterEnqueueFails(t *testing.T) {
 	require.Error(t, err, "expected enqueue to fail with maxOutstandingPerTenant=0")
 	require.Equal(t, ErrTooManyRequests, err)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 
 	// Should block until context deadline is reached.
