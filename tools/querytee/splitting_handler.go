@@ -160,10 +160,6 @@ func (f *SplittingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// The codec decode/encode cycle loses custom headers, so we preserve them for downstream
-	headersCopy := r.Header.Clone()
-	ctx = context.WithValue(ctx, originalHTTPHeadersKey, headersCopy)
-
 	req, err := f.codec.DecodeRequest(ctx, r, nil)
 	if err != nil {
 		query := r.Form.Get("query")
