@@ -38,6 +38,12 @@ func parseFn(op types.VariadicOp) VariadicFunction {
 				panic(err)
 			}
 			headers, parsedColumns = buildRegexpColumns(sourceCol, pattern)
+		case types.VariadicOpParsePattern:
+			sourceCol, expression, err := extractPatternParseFnParameters(args)
+			if err != nil {
+				panic(err)
+			}
+			headers, parsedColumns = buildPatternColumns(sourceCol, expression)
 		default:
 			return nil, fmt.Errorf("unsupported parser kind: %v", op)
 		}
@@ -90,6 +96,38 @@ func extractRegexpParseFnParameters(args []arrow.Array) (*array.String, string, 
 	}
 
 	return sourceCol, pattern, nil
+}
+
+// TODO(meher): Try refactor the different extract*FnParameters functions
+func extractPatternParseFnParameters(args []arrow.Array) (*array.String, string, error) {
+	// Valid signature: parsePattern(sourceColVec, expression)
+	if len(args) != 2 {
+		return nil, "", fmt.Errorf("pattern parse function expected 2 arguments, got %d", len(args))
+	}
+
+	sourceColArr := args[0]
+	expressionArr := args[1]
+
+	if sourceColArr == nil {
+		return nil, "", fmt.Errorf("pattern parse function arguments did not include a source ColumnVector")
+	}
+
+	sourceCol, ok := sourceColArr.(*array.String)
+	if !ok {
+		return nil, "", fmt.Errorf("pattern parse can only operate on string column types, got %T", sourceColArr)
+	}
+
+	// Extract expression (scalar string)
+	var expression string
+	if expressionArr != nil && expressionArr.Len() > 0 {
+		strArr, ok := expressionArr.(*array.String)
+		if !ok {
+			return nil, "", fmt.Errorf("expression must be a string, got %T", expressionArr)
+		}
+		expression = strArr.Value(0)
+	}
+
+	return sourceCol, expression, nil
 }
 
 func buildErrorColumns(input *array.String, errType, errDetails string) ([]string, []arrow.Array) {

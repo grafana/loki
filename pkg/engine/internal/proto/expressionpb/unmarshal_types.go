@@ -42,10 +42,11 @@ var (
 	}
 
 	protoVariadicOpLookup = map[types.VariadicOp]VariadicOp{
-		types.VariadicOpInvalid:     VARIADIC_OP_INVALID,
-		types.VariadicOpParseLogfmt: VARIADIC_OP_PARSE_LOGFMT,
-		types.VariadicOpParseJSON:   VARIADIC_OP_PARSE_JSON,
-		types.VariadicOpParseRegexp: VARIADIC_OP_PARSE_REGEXP,
+		types.VariadicOpInvalid:      VARIADIC_OP_INVALID,
+		types.VariadicOpParseLogfmt:  VARIADIC_OP_PARSE_LOGFMT,
+		types.VariadicOpParseJSON:    VARIADIC_OP_PARSE_JSON,
+		types.VariadicOpParseRegexp:  VARIADIC_OP_PARSE_REGEXP,
+		types.VariadicOpParsePattern: VARIADIC_OP_PARSE_PATTERN,
 	}
 
 	protoColumnTypeLookup = map[types.ColumnType]ColumnType{
