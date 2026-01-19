@@ -8,18 +8,18 @@ import (
 	"github.com/grafana/dskit/ring"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
+	dataobj_uploader "github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/kafka/partitionring"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 type Config struct {
 	logsobj.BuilderConfig
-	LifecyclerConfig    ring.LifecyclerConfig `yaml:"lifecycler,omitempty"`
-	PartitionRingConfig partitionring.Config  `yaml:"partition_ring" category:"experimental"`
-	UploaderConfig      uploader.Config       `yaml:"uploader"`
-	IdleFlushTimeout    time.Duration         `yaml:"idle_flush_timeout"`
-	MaxBuilderAge       time.Duration         `yaml:"max_builder_age"`
+	LifecyclerConfig    ring.LifecyclerConfig   `yaml:"lifecycler,omitempty"`
+	PartitionRingConfig partitionring.Config    `yaml:"partition_ring" category:"experimental"`
+	UploaderConfig      dataobj_uploader.Config `yaml:"uploader"`
+	IdleFlushTimeout    time.Duration           `yaml:"idle_flush_timeout"`
+	MaxBuilderAge       time.Duration           `yaml:"max_builder_age"`
 
 	// This is temporary until we move to kafkav2.
 	Topic string `yaml:"topic"`

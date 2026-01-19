@@ -64,7 +64,8 @@ func Test_ProxyBackend_createBackendRequest_HTTPBasicAuthentication(t *testing.T
 			orig := httptest.NewRequest("GET", "/test", nil)
 			orig.SetBasicAuth(testData.clientUser, testData.clientPass)
 
-			b := NewProxyBackend("test", u, time.Second, false)
+			b, err := NewProxyBackend("test", u, time.Second, false)
+			require.NoError(t, err)
 			r, span := b.createBackendRequest(orig, nil)
 			defer span.Finish()
 
@@ -86,7 +87,8 @@ func Test_ProxyBackend_ForwardRequest_extractsTraceID(t *testing.T) {
 	u, err := url.Parse(server.URL)
 	require.NoError(t, err)
 
-	backend := NewProxyBackend("test", u, time.Second, false)
+	backend, err := NewProxyBackend("test", u, time.Second, false)
+	require.NoError(t, err)
 
 	// Test case 1: Request with trace context
 	t.Run("extracts trace ID when present", func(t *testing.T) {
@@ -130,4 +132,62 @@ func Test_ProxyBackend_ForwardRequest_extractsTraceID(t *testing.T) {
 		// for observability purposes, so TraceID should not be empty
 		assert.NotEmpty(t, response.traceID, "should have a trace ID even without parent context")
 	})
+}
+
+func Test_NewProxyBackend_PreferredLogic(t *testing.T) {
+	u, err := url.Parse("http://test")
+	require.NoError(t, err)
+
+	tests := map[string]struct {
+		preferred      []bool
+		expectedV1Pref bool
+		expectedV2Pref bool
+		errorExpected  bool
+	}{
+		"no preferred args defaults to false": {
+			preferred:      []bool{},
+			expectedV1Pref: false,
+			expectedV2Pref: false,
+		},
+		"v1Preferred=true": {
+			preferred:      []bool{true},
+			expectedV1Pref: true,
+			expectedV2Pref: false,
+		},
+		"v1Preferred=false": {
+			preferred:      []bool{false},
+			expectedV1Pref: false,
+			expectedV2Pref: false,
+		},
+		"v1Preferred=true, v2Preferred=false": {
+			preferred:      []bool{true, false},
+			expectedV1Pref: true,
+			expectedV2Pref: false,
+		},
+		"v1Preferred=false, v2Preferred=true": {
+			preferred:      []bool{false, true},
+			expectedV1Pref: false,
+			expectedV2Pref: true,
+		},
+		"both v1 and v2 preferred": {
+			preferred:      []bool{true, true},
+			expectedV1Pref: true,
+			expectedV2Pref: true,
+			errorExpected:  true,
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			b, err := NewProxyBackend("test", u, time.Second, testData.preferred...)
+			if testData.errorExpected {
+				require.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, testData.expectedV1Pref, b.v1Preferred, "v1Preferred mismatch")
+			assert.Equal(t, testData.expectedV2Pref, b.v2Preferred, "v2Preferred mismatch")
+		})
+	}
 }

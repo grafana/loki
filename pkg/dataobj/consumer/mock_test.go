@@ -145,6 +145,15 @@ func (m *mockCommitter) Commit(_ context.Context, _ int32, offset int64) error {
 	return nil
 }
 
+type mockFlusher struct {
+	flushes int
+}
+
+func (m *mockFlusher) FlushAsync(_ context.Context, _ builder, _ time.Time, _ int64, done func(error)) {
+	m.flushes++
+	done(nil)
+}
+
 // mockKafka mocks a [kgo.Client]. The zero value is usable.
 type mockKafka struct {
 	fetches  []kgo.Fetches
@@ -198,6 +207,15 @@ func (m *mockKafka) Produce(
 func (m *mockKafka) ProduceSync(_ context.Context, rs ...*kgo.Record) kgo.ProduceResults {
 	m.produced = append(m.produced, rs...)
 	return kgo.ProduceResults{{Err: nil}}
+}
+
+type mockUploader struct {
+	uploaded []*dataobj.Object
+}
+
+func (m *mockUploader) Upload(_ context.Context, obj *dataobj.Object) (string, error) {
+	m.uploaded = append(m.uploaded, obj)
+	return "", nil
 }
 
 type recordedTocEntry struct {

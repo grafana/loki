@@ -1,6 +1,7 @@
 package dataset
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -15,8 +16,10 @@ func init() {
 	registerValueEncoding(
 		datasetmd.PHYSICAL_TYPE_UINT64,
 		datasetmd.ENCODING_TYPE_BITMAP,
-		func(w streamio.Writer) valueEncoder { return newBitmapEncoder(w) },
-		func(r streamio.Reader) valueDecoder { return newBitmapDecoder(r) },
+		registryEntry{
+			NewEncoder:       func(w streamio.Writer) valueEncoder { return newBitmapEncoder(w) },
+			NewLegacyDecoder: func(data []byte) legacyValueDecoder { return newBitmapDecoder(data) },
+		},
 	)
 }
 
@@ -552,9 +555,9 @@ type bitmapDecoder struct {
 }
 
 // newBitmapDecoder creates a new bitmap decoder that reads encoded numbers
-// from r.
-func newBitmapDecoder(r streamio.Reader) *bitmapDecoder {
-	return &bitmapDecoder{r: r}
+// from data.
+func newBitmapDecoder(data []byte) *bitmapDecoder {
+	return &bitmapDecoder{r: bytes.NewReader(data)}
 }
 
 // PhysicalType returns [datasetmd.PHYSICAL_TYPE_UINT64].
@@ -686,9 +689,9 @@ func (dec *bitmapDecoder) nextBitpackSet() error {
 	return nil
 }
 
-// Reset resets dec to read from r.
-func (dec *bitmapDecoder) Reset(r streamio.Reader) {
-	dec.r = r
+// Reset resets dec to read from data.
+func (dec *bitmapDecoder) Reset(data []byte) {
+	dec.r = bytes.NewReader(data)
 	dec.runValue = 0
 	dec.runLength = 0
 	dec.sets = 0

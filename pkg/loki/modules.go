@@ -590,7 +590,8 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	toMerge := []middleware.Interface{
 		httpreq.ExtractQueryMetricsMiddleware(),
 		httpreq.ExtractQueryTagsMiddleware(),
-		httpreq.PropagateHeadersMiddleware(httpreq.LokiEncodingFlagsHeader, httpreq.LokiDisablePipelineWrappersHeader),
+		// Propagate all headers but the authorization header to avoid security issues.
+		httpreq.PropagateAllHeadersMiddleware(httpreq.AuthorizationHeader),
 		serverutil.RecoveryHTTPMiddleware,
 		t.HTTPAuthMiddleware,
 		serverutil.NewPrepopulateMiddleware(),
@@ -1317,7 +1318,8 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	// TODO: add SerializeHTTPHandler
 	toMerge := []middleware.Interface{
 		httpreq.ExtractQueryTagsMiddleware(),
-		httpreq.PropagateHeadersMiddleware(httpreq.LokiActorPathHeader, httpreq.LokiEncodingFlagsHeader, httpreq.LokiDisablePipelineWrappersHeader),
+		// Propagate all headers but the authorization header to avoid security issues.
+		httpreq.PropagateAllHeadersMiddleware(httpreq.AuthorizationHeader),
 		serverutil.RecoveryHTTPMiddleware,
 		t.HTTPAuthMiddleware,
 		queryrange.StatsHTTPMiddleware,
@@ -1453,7 +1455,8 @@ func (t *Loki) initV2QueryEngine() (services.Service, error) {
 		toMerge := []middleware.Interface{
 			httpreq.ExtractQueryMetricsMiddleware(),
 			httpreq.ExtractQueryTagsMiddleware(),
-			httpreq.PropagateHeadersMiddleware(httpreq.LokiActorPathHeader, httpreq.LokiEncodingFlagsHeader, httpreq.LokiDisablePipelineWrappersHeader),
+			// Propagate all headers but the authorization header to avoid security issues.
+			httpreq.PropagateAllHeadersMiddleware(httpreq.AuthorizationHeader),
 			serverutil.RecoveryHTTPMiddleware,
 			t.HTTPAuthMiddleware,
 			serverutil.NewPrepopulateMiddleware(),

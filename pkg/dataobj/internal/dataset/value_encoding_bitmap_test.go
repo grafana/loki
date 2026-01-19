@@ -17,7 +17,7 @@ func Test_bitmap(t *testing.T) {
 
 	var (
 		enc = newBitmapEncoder(&buf)
-		dec = newBitmapDecoder(&buf)
+		dec = newBitmapDecoder(nil)
 	)
 
 	count := 1500
@@ -25,6 +25,7 @@ func Test_bitmap(t *testing.T) {
 		require.NoError(t, enc.Encode(Uint64Value(uint64(1))))
 	}
 	require.NoError(t, enc.Flush())
+	dec.Reset(buf.Bytes())
 
 	t.Logf("Buffer size: %d", buf.Len())
 
@@ -41,12 +42,13 @@ func Test_bitmap_encodeN(t *testing.T) {
 
 	var (
 		enc = newBitmapEncoder(&buf)
-		dec = newBitmapDecoder(&buf)
+		dec = newBitmapDecoder(nil)
 	)
 
 	count := 1500
 	require.NoError(t, enc.EncodeN(Uint64Value(1), uint64(count)))
 	require.NoError(t, enc.Flush())
+	dec.Reset(buf.Bytes())
 
 	t.Logf("Buffer size: %d", buf.Len())
 
@@ -59,7 +61,6 @@ func Test_bitmap_encodeN(t *testing.T) {
 
 	buf.Reset()
 	enc.Reset(&buf)
-	dec.Reset(&buf)
 
 	require.NoError(t, enc.Encode(Uint64Value(2)))      // start a new RLE run
 	require.NoError(t, enc.EncodeN(Uint64Value(2), 99)) // append to the run
@@ -75,6 +76,7 @@ func Test_bitmap_encodeN(t *testing.T) {
 	require.Equal(t, enc.setSize, byte(7))
 
 	require.NoError(t, enc.Flush())
+	dec.Reset(buf.Bytes())
 
 	t.Logf("Buffer size: %d", buf.Len())
 
@@ -102,7 +104,7 @@ func Test_bitmap_bitpacking(t *testing.T) {
 
 	var (
 		enc    = newBitmapEncoder(&buf)
-		dec    = newBitmapDecoder(&buf)
+		dec    = newBitmapDecoder(nil)
 		decBuf = make([]Value, batchSize)
 	)
 
@@ -111,6 +113,7 @@ func Test_bitmap_bitpacking(t *testing.T) {
 		require.NoError(t, enc.Encode(Uint64Value(v)))
 	}
 	require.NoError(t, enc.Flush())
+	dec.Reset(buf.Bytes())
 
 	var actual []uint64
 	for {
@@ -133,7 +136,7 @@ func Test_bitmap_bitpacking_partial(t *testing.T) {
 
 	var (
 		enc    = newBitmapEncoder(&buf)
-		dec    = newBitmapDecoder(&buf)
+		dec    = newBitmapDecoder(nil)
 		decBuf = make([]Value, batchSize)
 	)
 
@@ -142,6 +145,7 @@ func Test_bitmap_bitpacking_partial(t *testing.T) {
 		require.NoError(t, enc.Encode(Uint64Value(v)))
 	}
 	require.NoError(t, enc.Flush())
+	dec.Reset(buf.Bytes())
 
 	var actual []uint64
 	for {
@@ -177,7 +181,7 @@ func Fuzz_bitmap(f *testing.F) {
 
 		var (
 			enc = newBitmapEncoder(&buf)
-			dec = newBitmapDecoder(&buf)
+			dec = newBitmapDecoder(nil)
 		)
 
 		var numbers []uint64
@@ -192,6 +196,7 @@ func Fuzz_bitmap(f *testing.F) {
 			require.NoError(t, enc.Encode(Uint64Value(v)))
 		}
 		require.NoError(t, enc.Flush())
+		dec.Reset(buf.Bytes())
 
 		actual, err := decodeValues(dec)
 		require.NoError(t, err)
@@ -221,7 +226,7 @@ func Fuzz_bitmap_EncodeN(f *testing.F) {
 
 			rnd = rand.New(rand.NewSource(seed))
 			enc = newBitmapEncoder(&buf)
-			dec = newBitmapDecoder(&buf)
+			dec = newBitmapDecoder(nil)
 		)
 
 		var runLength int
@@ -252,6 +257,7 @@ func Fuzz_bitmap_EncodeN(f *testing.F) {
 		}
 
 		require.NoError(t, enc.Flush())
+		dec.Reset(buf.Bytes())
 
 		actual, err := decodeValues(dec)
 		require.NoError(t, err)
@@ -364,15 +370,13 @@ func Benchmark_bitmapDecoder_DecodeBatches(b *testing.B) {
 					b.Run(fmt.Sprintf("batch_size=%d", batchSize), func(b *testing.B) {
 						page := make([]Value, batchSize)
 						dec := newBitmapDecoder(nil)
-						var br bytes.Reader
 
 						b.ReportAllocs()
 						decodedBytesPerOp := int64(sc.valueCount) * 8 // uint64 output
 						b.SetBytes(decodedBytesPerOp)
 
 						for b.Loop() {
-							br.Reset(sc.encoded)
-							dec.Reset(&br)
+							dec.Reset(sc.encoded)
 
 							decoded := 0
 							for {
