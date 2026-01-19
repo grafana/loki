@@ -1,4 +1,4 @@
-// Copyright 2024 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -424,9 +424,10 @@ func (ev *evaluator) combineWithInfoVector(base, info Vector, ignoreSeries map[u
 		}
 
 		infoLbls := enh.lb.Labels()
-		if infoLbls.Len() == 0 {
-			// If there's at least one data label matcher not matching the empty string,
-			// we have to ignore this series as there are no matching info series.
+		if len(seenInfoMetrics) == 0 {
+			// No info series matched this base series. If there's at least one data
+			// label matcher not matching the empty string, we have to ignore this
+			// series as there are no matching info series.
 			allMatchersMatchEmpty := true
 			for _, ms := range dataLabelMatchers {
 				for _, m := range ms {

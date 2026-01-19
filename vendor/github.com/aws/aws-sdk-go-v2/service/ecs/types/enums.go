@@ -234,6 +234,25 @@ func (BurstablePerformance) Values() []BurstablePerformance {
 	}
 }
 
+type CapacityOptionType string
+
+// Enum values for CapacityOptionType
+const (
+	CapacityOptionTypeOnDemand CapacityOptionType = "ON_DEMAND"
+	CapacityOptionTypeSpot     CapacityOptionType = "SPOT"
+)
+
+// Values returns all known values for CapacityOptionType. Note that this can be
+// expanded in the future, and so it is only as up to date as the client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (CapacityOptionType) Values() []CapacityOptionType {
+	return []CapacityOptionType{
+		"ON_DEMAND",
+		"SPOT",
+	}
+}
+
 type CapacityProviderField string
 
 // Enum values for CapacityProviderField
@@ -1596,6 +1615,7 @@ const (
 	SettingNameFargateTaskRetirementWaitPeriod SettingName = "fargateTaskRetirementWaitPeriod"
 	SettingNameGuardDutyActivate               SettingName = "guardDutyActivate"
 	SettingNameDefaultLogDriverMode            SettingName = "defaultLogDriverMode"
+	SettingNameFargateEventWindows             SettingName = "fargateEventWindows"
 )
 
 // Values returns all known values for SettingName. Note that this can be expanded
@@ -1614,6 +1634,7 @@ func (SettingName) Values() []SettingName {
 		"fargateTaskRetirementWaitPeriod",
 		"guardDutyActivate",
 		"defaultLogDriverMode",
+		"fargateEventWindows",
 	}
 }
 

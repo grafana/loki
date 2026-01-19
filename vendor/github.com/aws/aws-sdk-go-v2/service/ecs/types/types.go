@@ -3370,6 +3370,26 @@ type InstanceLaunchTemplate struct {
 	// This member is required.
 	NetworkConfiguration *ManagedInstancesNetworkConfiguration
 
+	// The capacity option type. This determines whether Amazon ECS launches On-Demand
+	// or Spot Instances for your managed instance capacity provider.
+	//
+	// Valid values are:
+	//
+	//   - ON_DEMAND - Launches standard On-Demand Instances. On-Demand Instances
+	//   provide predictable pricing and availability.
+	//
+	//   - SPOT - Launches Spot Instances that use spare Amazon EC2 capacity at reduced
+	//   cost. Spot Instances can be interrupted by Amazon EC2 with a two-minute
+	//   notification when the capacity is needed back.
+	//
+	// The default is On-Demand
+	//
+	// For more information about Amazon EC2 capacity options, see [Instance purchasing options] in the Amazon EC2
+	// User Guide.
+	//
+	// [Instance purchasing options]: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/instance-purchasing-options.html
+	CapacityOptionType CapacityOptionType
+
 	// The instance requirements. You can specify:
 	//
 	//   - The instance types

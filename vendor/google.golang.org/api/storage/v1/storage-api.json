@@ -253,7 +253,7 @@
       "location": "northamerica-south1"
     }
   ],
-  "etag": "\"3131343633323936333034313936343439353533\"",
+  "etag": "\"39373339343838363630393031393634343537\"",
   "icons": {
     "x16": "https://www.google.com/images/icons/product/cloud_storage-16.png",
     "x32": "https://www.google.com/images/icons/product/cloud_storage-32.png"
@@ -4549,7 +4549,7 @@
       }
     }
   },
-  "revision": "20250925",
+  "revision": "20251118",
   "rootUrl": "https://storage.googleapis.com/",
   "schemas": {
     "AdvanceRelocateBucketOperationRequest": {
@@ -5500,6 +5500,10 @@
       "description": "A Compose request.",
       "id": "ComposeRequest",
       "properties": {
+        "deleteSourceObjects": {
+          "description": "If true, the source objects will be deleted.",
+          "type": "boolean"
+        },
         "destination": {
           "$ref": "Object",
           "description": "Properties of the resulting object."

@@ -1,4 +1,4 @@
-// Copyright 2013 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -4057,7 +4057,7 @@ func unwrapStepInvariantExpr(e parser.Expr) parser.Expr {
 func PreprocessExpr(expr parser.Expr, start, end time.Time, step time.Duration) (parser.Expr, error) {
 	detectHistogramStatsDecoding(expr)
 
-	if err := parser.Walk(&durationVisitor{step: step}, expr, nil); err != nil {
+	if err := parser.Walk(&durationVisitor{step: step, queryRange: end.Sub(start)}, expr, nil); err != nil {
 		return nil, err
 	}
 
@@ -4418,9 +4418,9 @@ func extendFloats(floats []FPoint, mint, maxt int64, smoothed bool) []FPoint {
 		lastSampleIndex--
 	}
 
-	// TODO: Preallocate the length of the new list.
-	out := make([]FPoint, 0)
-	// Create the new floats list with the boundary samples and the inner samples.
+	count := max(lastSampleIndex-firstSampleIndex+1, 0)
+	out := make([]FPoint, 0, count+2)
+
 	out = append(out, FPoint{T: mint, F: left})
 	out = append(out, floats[firstSampleIndex:lastSampleIndex+1]...)
 	out = append(out, FPoint{T: maxt, F: right})

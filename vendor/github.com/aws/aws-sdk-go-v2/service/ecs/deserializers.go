@@ -15116,6 +15116,15 @@ func awsAwsjson11_deserializeDocumentInstanceLaunchTemplate(v **types.InstanceLa
 
 	for key, value := range shape {
 		switch key {
+		case "capacityOptionType":
+			if value != nil {
+				jtv, ok := value.(string)
+				if !ok {
+					return fmt.Errorf("expected CapacityOptionType to be of type string, got %T instead", value)
+				}
+				sv.CapacityOptionType = types.CapacityOptionType(jtv)
+			}
+
 		case "ec2InstanceProfileArn":
 			if value != nil {
 				jtv, ok := value.(string)

@@ -497,12 +497,12 @@ github.com/aws/aws-sdk-go-v2/service/dynamodb
 github.com/aws/aws-sdk-go-v2/service/dynamodb/internal/customizations
 github.com/aws/aws-sdk-go-v2/service/dynamodb/internal/endpoints
 github.com/aws/aws-sdk-go-v2/service/dynamodb/types
-# github.com/aws/aws-sdk-go-v2/service/ec2 v1.277.0
+# github.com/aws/aws-sdk-go-v2/service/ec2 v1.279.0
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/service/ec2
 github.com/aws/aws-sdk-go-v2/service/ec2/internal/endpoints
 github.com/aws/aws-sdk-go-v2/service/ec2/types
-# github.com/aws/aws-sdk-go-v2/service/ecs v1.69.5
+# github.com/aws/aws-sdk-go-v2/service/ecs v1.70.0
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/service/ecs
 github.com/aws/aws-sdk-go-v2/service/ecs/document
@@ -1125,8 +1125,8 @@ github.com/google/go-cmp/cmp/internal/value
 # github.com/google/go-querystring v1.1.0
 ## explicit; go 1.10
 github.com/google/go-querystring/query
-# github.com/google/pprof v0.0.0-20251213031049-b05bdaca462f
-## explicit; go 1.24.9
+# github.com/google/pprof v0.0.0-20260111202518-71be6bfdd440
+## explicit; go 1.24.0
 github.com/google/pprof/profile
 # github.com/google/renameio/v2 v2.0.2
 ## explicit; go 1.25
@@ -1771,7 +1771,7 @@ github.com/prometheus/client_golang/prometheus/push
 github.com/prometheus/client_golang/prometheus/testutil
 github.com/prometheus/client_golang/prometheus/testutil/promlint
 github.com/prometheus/client_golang/prometheus/testutil/promlint/validations
-# github.com/prometheus/client_golang/exp v0.0.0-20251212205219-7ba246a648ca
+# github.com/prometheus/client_golang/exp v0.0.0-20260101091701-2cd067eb23c9
 ## explicit; go 1.24.0
 github.com/prometheus/client_golang/exp/api/remote
 github.com/prometheus/client_golang/exp/internal/github.com/efficientgo/core/backoff
@@ -1801,8 +1801,8 @@ github.com/prometheus/otlptranslator
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
-# github.com/prometheus/prometheus v0.309.1
-## explicit; go 1.24.9
+# github.com/prometheus/prometheus v0.309.2-0.20260116093253-ef350b2b543b
+## explicit; go 1.24.0
 github.com/prometheus/prometheus/config
 github.com/prometheus/prometheus/discovery
 github.com/prometheus/prometheus/discovery/aws
@@ -2541,7 +2541,7 @@ golang.org/x/tools/txtar
 ## explicit; go 1.18
 golang.org/x/xerrors
 golang.org/x/xerrors/internal
-# google.golang.org/api v0.257.0
+# google.golang.org/api v0.258.0
 ## explicit; go 1.24.0
 google.golang.org/api/cloudresourcemanager/v1
 google.golang.org/api/compute/v1
@@ -2550,6 +2550,7 @@ google.golang.org/api/googleapi/transport
 google.golang.org/api/iamcredentials/v1
 google.golang.org/api/internal
 google.golang.org/api/internal/cert
+google.golang.org/api/internal/credentialstype
 google.golang.org/api/internal/gensupport
 google.golang.org/api/internal/impersonate
 google.golang.org/api/internal/third_party/uritemplates
@@ -2568,7 +2569,7 @@ google.golang.org/genproto/googleapis/type/date
 google.golang.org/genproto/googleapis/type/expr
 google.golang.org/genproto/googleapis/type/timeofday
 google.golang.org/genproto/protobuf/api
-# google.golang.org/genproto/googleapis/api v0.0.0-20251213004720-97cd9d5aeac2
+# google.golang.org/genproto/googleapis/api v0.0.0-20251222181119-0a764e51fe1b
 ## explicit; go 1.24.0
 google.golang.org/genproto/googleapis/api
 google.golang.org/genproto/googleapis/api/annotations
@@ -2578,7 +2579,7 @@ google.golang.org/genproto/googleapis/api/httpbody
 google.golang.org/genproto/googleapis/api/label
 google.golang.org/genproto/googleapis/api/metric
 google.golang.org/genproto/googleapis/api/monitoredres
-# google.golang.org/genproto/googleapis/rpc v0.0.0-20251202230838-ff82c1b0f217
+# google.golang.org/genproto/googleapis/rpc v0.0.0-20251213004720-97cd9d5aeac2
 ## explicit; go 1.24.0
 google.golang.org/genproto/googleapis/rpc/code
 google.golang.org/genproto/googleapis/rpc/errdetails

@@ -220,6 +220,8 @@ func dialPoolNewAuth(ctx context.Context, secure bool, poolSize int, ds *interna
 		defaultEndpointTemplate = ds.DefaultEndpoint
 	}
 
+	credsJSON, _ := ds.GetAuthCredentialsJSON()
+	credsFile, _ := ds.GetAuthCredentialsFile()
 	pool, err := dialContextNewAuth(ctx, secure, &grpctransport.Options{
 		DisableTelemetry:      ds.TelemetryDisabled,
 		DisableAuthentication: ds.NoAuth,
@@ -233,8 +235,8 @@ func dialPoolNewAuth(ctx context.Context, secure bool, poolSize int, ds *interna
 		DetectOpts: &credentials.DetectOptions{
 			Scopes:          ds.Scopes,
 			Audience:        aud,
-			CredentialsFile: ds.CredentialsFile,
-			CredentialsJSON: ds.CredentialsJSON,
+			CredentialsFile: credsFile,
+			CredentialsJSON: credsJSON,
 			Logger:          ds.Logger,
 		},
 		InternalOptions: &grpctransport.InternalOptions{

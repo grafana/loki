@@ -5748,6 +5748,11 @@ func awsAwsjson11_serializeDocumentInstanceLaunchTemplate(v *types.InstanceLaunc
 	object := value.Object()
 	defer object.Close()
 
+	if len(v.CapacityOptionType) > 0 {
+		ok := object.Key("capacityOptionType")
+		ok.String(string(v.CapacityOptionType))
+	}
+
 	if v.Ec2InstanceProfileArn != nil {
 		ok := object.Key("ec2InstanceProfileArn")
 		ok.String(*v.Ec2InstanceProfileArn)

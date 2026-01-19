@@ -1,4 +1,4 @@
-// Copyright 2014 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -473,9 +473,10 @@ type Series interface {
 }
 
 type mockSeries struct {
-	timestamps []int64
-	values     []float64
-	labelSet   []string
+	startTimestamps []int64
+	timestamps      []int64
+	values          []float64
+	labelSet        []string
 }
 
 func (s mockSeries) Labels() labels.Labels {
@@ -483,15 +484,19 @@ func (s mockSeries) Labels() labels.Labels {
 }
 
 func (s mockSeries) Iterator(chunkenc.Iterator) chunkenc.Iterator {
-	return chunkenc.MockSeriesIterator(s.timestamps, s.values)
+	return chunkenc.MockSeriesIterator(s.startTimestamps, s.timestamps, s.values)
 }
 
-// MockSeries returns a series with custom timestamps, values and labelSet.
-func MockSeries(timestamps []int64, values []float64, labelSet []string) Series {
+// MockSeries returns a series with custom start timestamp, timestamps, values,
+// and labelSet.
+// Start timestamps is optional, pass nil or empty slice to indicate no start
+// timestamps.
+func MockSeries(startTimestamps, timestamps []int64, values []float64, labelSet []string) Series {
 	return mockSeries{
-		timestamps: timestamps,
-		values:     values,
-		labelSet:   labelSet,
+		startTimestamps: startTimestamps,
+		timestamps:      timestamps,
+		values:          values,
+		labelSet:        labelSet,
 	}
 }
 
