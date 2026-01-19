@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"flag"
-	"fmt"
+	"net/http"
 	"strconv"
 
 	"github.com/go-kit/log"
@@ -13,7 +13,17 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/twmb/franz-go/pkg/kgo"
 
+	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/loki/v3/pkg/kafka"
+)
+
+type TeeErrorCodes int
+
+const (
+	// Since Tee is such a specific part of our write path its error codes start at 1000.
+	TeeCouldntSolvePartitionError TeeErrorCodes = 1000
+	TeeCouldntEncodeStreamError   TeeErrorCodes = 1001
+	TeeCouldntProduceRecordsError TeeErrorCodes = 1002
 )
 
 type DataObjTeeConfig struct {
@@ -156,7 +166,7 @@ func (t *DataObjTee) duplicate(ctx context.Context, tenant string, stream Segmen
 	if err != nil {
 		level.Error(t.logger).Log("msg", "failed to resolve partition", "err", err)
 		t.failures.Inc()
-		pushTracker.doneWithResult(fmt.Errorf("failed to resolve partition: %w", err))
+		pushTracker.doneWithResult(httpgrpc.Errorf(http.StatusInternalServerError, "couldn't process request internally due to tee error: %d", TeeCouldntSolvePartitionError))
 		return
 	}
 
@@ -164,7 +174,7 @@ func (t *DataObjTee) duplicate(ctx context.Context, tenant string, stream Segmen
 	if err != nil {
 		level.Error(t.logger).Log("msg", "failed to encode stream", "err", err)
 		t.failures.Inc()
-		pushTracker.doneWithResult(fmt.Errorf("failed to encode stream: %w", err))
+		pushTracker.doneWithResult(httpgrpc.Errorf(http.StatusInternalServerError, "couldn't process request internally due to tee error: %d", TeeCouldntEncodeStreamError))
 		return
 	}
 
@@ -172,7 +182,7 @@ func (t *DataObjTee) duplicate(ctx context.Context, tenant string, stream Segmen
 	if err := results.FirstErr(); err != nil {
 		level.Error(t.logger).Log("msg", "failed to produce records", "err", err)
 		t.failures.Inc()
-		pushTracker.doneWithResult(fmt.Errorf("failed to produce records: %w", err))
+		pushTracker.doneWithResult(httpgrpc.Errorf(http.StatusInternalServerError, "couldn't process request internally due to tee error: %d", TeeCouldntProduceRecordsError))
 		return
 	}
 

@@ -837,7 +837,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	// We must correctly set streamsPending before beginning any writes to ensure we don't have a race between finishing all of one path before starting the other.
 	if d.tee != nil {
 		// Call register for the tee to allow them to register their pending streams.
-		d.tee.Register(context.WithoutCancel(ctx), tenantID, streams, &tracker)
+		d.tee.Register(ctx, tenantID, streams, &tracker)
 	}
 	tracker.streamsPending.Add(int32(streamsToWrite))
 
