@@ -9,6 +9,8 @@ import (
 
 	"github.com/coder/quartz"
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/user"
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -19,6 +21,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 func TestEngineRouter_split(t *testing.T) {
@@ -397,4 +400,105 @@ func newEntrySuffixTestMiddleware(suffix string) queryrangebase.Middleware {
 			return resp, nil
 		})
 	})
+}
+
+type fakeRetentionLimits struct {
+	retentionPeriods map[string]time.Duration
+	streamRetentions map[string][]validation.StreamRetention
+}
+
+func (f fakeRetentionLimits) RetentionPeriod(userID string) time.Duration {
+	return f.retentionPeriods[userID]
+}
+
+func (f fakeRetentionLimits) StreamRetention(userID string) []validation.StreamRetention {
+	return f.streamRetentions[userID]
+}
+
+func TestEngineRouter_adjustV2RangeForRetention(t *testing.T) {
+	clock := quartz.NewMock(t)
+	now := time.Date(2026, 1, 19, 12, 06, 15, 55, time.UTC)
+	clock.Set(now)
+
+	v2Start := now.Truncate(time.Hour * 24).Add(-15 * 24 * time.Hour) // 15 days ago, 2026-01-04 00:00:00
+	v2End := now.Add(-24 * time.Hour)                                 // 1 day ago, 2026-01-18 12:06:15
+
+	tests := []struct {
+		name             string
+		retentionPeriod  time.Duration
+		streamRetentions []validation.StreamRetention
+		expectedV2Start  time.Time
+		expectedUseV2    bool
+	}{
+		{
+			// v2 range is completely within retention period
+			// split as usual using the orig v2 range.
+			name:            "global retention before v2 start",
+			retentionPeriod: 30 * 24 * time.Hour, // 30 days
+			expectedV2Start: v2Start,
+			expectedUseV2:   true,
+		},
+		{
+			// retention period aligns exactly with v2 start,
+			// split as usual using the orig v2 range.
+			name:            "global retention aligns with v2 start",
+			retentionPeriod: 15 * 24 * time.Hour, // 15 days
+			expectedV2Start: v2Start,
+			expectedUseV2:   true,
+		},
+		{
+			// retention period cuts into v2 range,
+			// adjust v2 start to retention boundary.
+			name:            "global retention within v2 range",
+			retentionPeriod: 7 * 24 * time.Hour, // 7 days
+			expectedV2Start: now.Truncate(24 * time.Hour).Add(-7 * 24 * time.Hour),
+			expectedUseV2:   true,
+		},
+		{
+			// v2 range is completely outside retention period,
+			// force all to v1.
+			name:            "global retention after v2 end",
+			retentionPeriod: 10 * time.Hour, // 2026-01-18 14:00:00 is after v2 end
+			expectedV2Start: v2Start,
+			expectedUseV2:   false,
+		},
+		{
+			name:            "stream retention forces v1",
+			retentionPeriod: 30 * 24 * time.Hour, // 30 days
+			streamRetentions: []validation.StreamRetention{
+				{Period: model.Duration(7 * 24 * time.Hour)},  // 7 days, forces v1
+				{Period: model.Duration(60 * 24 * time.Hour)}, // 60 days
+			},
+			expectedV2Start: v2Start,
+			expectedUseV2:   false,
+		},
+		{
+			name:            "stream retention allows split when boundaries are before v2 start",
+			retentionPeriod: 30 * 24 * time.Hour, // 30 days
+			streamRetentions: []validation.StreamRetention{
+				{Period: model.Duration(36 * 24 * time.Hour)}, // 36 days
+			},
+			expectedV2Start: v2Start,
+			expectedUseV2:   true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			router := &engineRouter{
+				retentionLimits: fakeRetentionLimits{
+					retentionPeriods: map[string]time.Duration{"tenant-a": tt.retentionPeriod},
+					streamRetentions: map[string][]validation.StreamRetention{"tenant-a": tt.streamRetentions},
+				},
+				clock: clock,
+			}
+
+			ctx := user.InjectOrgID(context.Background(), "tenant-a")
+			gotStart, gotEnd, useV2, err := router.adjustV2RangeForRetention(ctx, v2Start, v2End)
+			require.NoError(t, err)
+			require.Equal(t, tt.expectedUseV2, useV2)
+			require.Equal(t, v2End, gotEnd)
+			require.Equal(t, tt.expectedV2Start, gotStart)
+		})
+	}
 }

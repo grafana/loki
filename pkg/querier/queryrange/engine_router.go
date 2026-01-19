@@ -13,11 +13,19 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/grafana/dskit/httpgrpc"
+	"github.com/grafana/dskit/tenant"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
+
+// RetentionLimits provides access to tenant retention settings.
+type RetentionLimits interface {
+	RetentionPeriod(userID string) time.Duration
+	StreamRetention(userID string) []validation.StreamRetention
+}
 
 // RouterConfig configures sending queries to a separate engine.
 type RouterConfig struct {
@@ -25,6 +33,8 @@ type RouterConfig struct {
 
 	Start time.Time     // Start time of the v2 engine
 	Lag   time.Duration // Lag after which v2 engine has data
+
+	RetentionLimits RetentionLimits
 
 	// Validate function to check if the query is supported by the engine.
 	Validate func(params logql.Params) bool
@@ -55,6 +65,8 @@ type engineRouter struct {
 
 	logger log.Logger
 
+	retentionLimits RetentionLimits
+
 	// Used for tests.
 	clock quartz.Clock
 }
@@ -74,15 +86,16 @@ func NewEngineRouterMiddleware(
 
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 		return &engineRouter{
-			v2Start:        v2RouterConfig.Start,
-			v2Lag:          v2RouterConfig.Lag,
-			v1Next:         queryrangebase.MergeMiddlewares(v1Chain...).Wrap(next),
-			v2Next:         v2RouterConfig.Handler,
-			checkV2:        v2RouterConfig.Validate,
-			merger:         merger,
-			logger:         logger,
-			forMetricQuery: metricQuery,
-			clock:          quartz.NewReal(),
+			v2Start:         v2RouterConfig.Start,
+			v2Lag:           v2RouterConfig.Lag,
+			v1Next:          queryrangebase.MergeMiddlewares(v1Chain...).Wrap(next),
+			v2Next:          v2RouterConfig.Handler,
+			checkV2:         v2RouterConfig.Validate,
+			merger:          merger,
+			logger:          logger,
+			forMetricQuery:  metricQuery,
+			retentionLimits: v2RouterConfig.RetentionLimits,
+			clock:           quartz.NewReal(),
 		}
 	})
 }
@@ -105,7 +118,17 @@ func (e *engineRouter) Do(ctx context.Context, r queryrangebase.Request) (queryr
 		return e.v1Next.Do(ctx, r)
 	}
 
-	inputs := e.splitOverlapping(r, start, end)
+	v2Start, v2End, useV2, err := e.adjustV2RangeForRetention(ctx, start, end)
+	if err != nil {
+		return nil, err
+	}
+
+	// do not use v2 engine as it fails to guarantee retention enforcement for this tenant.
+	if !useV2 {
+		return e.v1Next.Do(ctx, r)
+	}
+
+	inputs := e.splitOverlapping(r, v2Start, v2End)
 
 	// for log queries, order the splits to return early on hitting limits.
 	var limit uint32
@@ -370,4 +393,101 @@ func alignV2Range(step time.Duration, v2Start, v2End time.Time) (v2AlignedStart,
 	}
 
 	return v2AlignedStart, v2AlignedEnd
+}
+
+// v2 engine does not support retention enforcement. The following table outlines how to handle retention period:
+//
+// Only global retention_period configured (no stream retention):
+//   - retentionBoundary = now - retentionPeriod (data older than this is expired)
+//
+// ┌─────────────────────────────────────┬──────────────────────────────────────────────────────────────┐
+// │ Retention Boundary Position         │ Handling Strategy                                            │
+// ├─────────────────────────────────────┼──────────────────────────────────────────────────────────────┤
+// │ retentionBoundary <= v2Start        │ Use split logic. All data in v2 range is within retention.   │
+// ├─────────────────────────────────────┼──────────────────────────────────────────────────────────────┤
+// │ v2Start < retentionBoundary < v2End │ Use split logic. Snap v2 engine start to retention boundary  │
+// │                                     │ so the data out of retention is handled by v1 engine.        │
+// ├─────────────────────────────────────┼──────────────────────────────────────────────────────────────┤
+// │ retentionBoundary >= v2End          │ Route entirely to v1 as data in v2 range is out of retention │
+// └─────────────────────────────────────┴──────────────────────────────────────────────────────────────┘
+//
+// Both global retention_period and per-stream retention configured:
+//
+//   - globalBoundary = now - globalRetentionPeriod
+//   - streamBoundaryWorst = latest possible per-stream cutoff time
+//     (i.e. the most restrictive stream retention boundary)
+//
+// Conservative routing rule when *any* stream retention is configured:
+//
+//   - If globalBoundary > v2Start OR streamBoundaryWorst > v2Start:
+//     route the entire query to v1 (avoid returning expired data or dropping valid data).
+//
+//   - Else (globalBoundary <= v2Start AND streamBoundaryWorst <= v2Start):
+//     split as usual; v2 can execute its split as if there is no retention configured,
+//     since the entire v2 range is guaranteed in-retention for all streams.
+func (e *engineRouter) adjustV2RangeForRetention(ctx context.Context, v2Start, v2End time.Time) (time.Time, time.Time, bool, error) {
+	if e.retentionLimits == nil {
+		return v2Start, v2End, true, nil
+	}
+
+	// TODO: support for multi-tenant queries.
+	tenantID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return v2Start, v2End, false, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
+	}
+
+	var (
+		smallestStreamRetention time.Duration
+		hasStreamRetention      bool
+
+		today           = e.clock.Now().UTC().Truncate(24 * time.Hour) // calculate retention boundary at day granularity.
+		globalRetention = e.retentionLimits.RetentionPeriod(tenantID)
+	)
+
+	if sr := e.retentionLimits.StreamRetention(tenantID); len(sr) > 0 {
+		hasStreamRetention = true
+		for _, streamRetention := range sr {
+			if smallestStreamRetention == 0 || time.Duration(streamRetention.Period) < smallestStreamRetention {
+				smallestStreamRetention = time.Duration(streamRetention.Period)
+			}
+		}
+	}
+
+	globalBoundary := today.Add(-globalRetention)
+	if hasStreamRetention {
+		streamBoundary := today.Add(-smallestStreamRetention)
+
+		// if either global or the most restrictive stream retention boundary is after v2 start,
+		// conservatively route entirely to v1.
+		if globalBoundary.After(v2Start) || streamBoundary.After(v2Start) {
+			// TODO: consider more aggressive approach:
+			//
+			//	If streamBoundaryWorst falls inside the v2 range, we could still use v2 by extending the v1 portion:
+			//	  v1 executes [queryStart, streamBoundaryWorst) to enforce retention,
+			//	  v2 executes [max(v2Start, streamBoundaryWorst), v2End].
+			return v2Start, v2End, false, nil
+		}
+
+		// if the most restrictive stream retention boundary & global boundary are before v2 start,
+		// split as usual; the whole v2 split is expected to be in-retention.
+		return v2Start, v2End, true, nil
+	}
+
+	if globalRetention <= 0 {
+		return v2Start, v2End, true, nil
+	}
+
+	// retention bounday is not before v2 end, route entirely to v1.
+	if !globalBoundary.Before(v2End) {
+		return v2Start, v2End, false, nil
+	}
+
+	// retention boundary is inside v2 range, snap v2 start to retention boundary.
+	// data outside of retention will be handled by v1 engine.
+	if globalBoundary.After(v2Start) {
+		v2Start = globalBoundary
+	}
+
+	// split as usual, the whole v2 split is expected to be in-retention.
+	return v2Start, v2End, true, nil
 }

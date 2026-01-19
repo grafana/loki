@@ -1169,7 +1169,8 @@ func (t *Loki) initQueryFrontendMiddleware() (_ services.Service, err error) {
 	level.Debug(util_log.Logger).Log("msg", "initializing query frontend tripperware")
 
 	v2Router := queryrange.RouterConfig{
-		Enabled: t.Cfg.QueryEngine.EnableEngineRouter,
+		Enabled:         t.Cfg.QueryEngine.EnableEngineRouter,
+		RetentionLimits: t.Overrides,
 	}
 
 	if t.Cfg.QueryEngine.EnableEngineRouter {
@@ -1193,8 +1194,9 @@ func (t *Loki) initQueryFrontendMiddleware() (_ services.Service, err error) {
 			Start: start,
 			Lag:   t.Cfg.QueryEngine.StorageLag,
 
-			Validate: engine_v2.IsQuerySupported,
-			Handler:  handler,
+			RetentionLimits: t.Overrides,
+			Validate:        engine_v2.IsQuerySupported,
+			Handler:         handler,
 		}
 	}
 
