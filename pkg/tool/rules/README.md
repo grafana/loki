@@ -393,14 +393,16 @@ tests:
     input_streams:
       - labels: '{job="test"}'
         lines:
-          - 'log entry 1'    # 1970-01-01T00:00:00Z
-          - 'log entry 2'    # 1970-01-01T00:00:30Z
-          - 'log entry 3'    # 1970-01-01T00:01:00Z
-          - 'log entry 4'    # 1970-01-01T00:01:30Z
-          - 'log entry 5'    # 1970-01-01T00:02:00Z
+          - 'log entry 1'    # 1970-01-01T00:00:00Z (timestamp: 0s)
+          - 'log entry 2'    # 1970-01-01T00:00:30Z (timestamp: 30s)
+          - 'log entry 3'    # 1970-01-01T00:01:00Z (timestamp: 1m)
+          - 'log entry 4'    # 1970-01-01T00:01:30Z (timestamp: 1m30s)
+          - 'log entry 5'    # 1970-01-01T00:02:00Z (timestamp: 2m)
 ```
 
 All streams start at Unix epoch (1970-01-01T00:00:00Z) and increment by the specified interval.
+
+**Important:** The timestamp for each line is calculated as `interval × line_index`. The first line (index 0) has timestamp 0s (Unix epoch).
 
 ### 3. `eval_time` (per test case, required)
 
@@ -416,6 +418,36 @@ logql_expr_test:
 ```
 
 **Key difference:** `evaluation_interval` affects how rules behave (especially `for` clauses), while `eval_time` is just when you observe the result for testing purposes.
+
+### Time Range Boundary Semantics
+
+When a range query like `[3m]` is evaluated at `eval_time: 3m`, it creates a lookback window from `0s` to `3m`. However, **entries at the exact start boundary (timestamp 0s) are excluded** from the range. This is standard time range behavior in Loki.
+
+**Example:**
+
+```yaml
+tests:
+  - name: "Time range boundary example"
+    interval: 30s
+    input_streams:
+      - labels: '{job="test"}'
+        lines:
+          - 'log 1'    # timestamp: 0s - excluded from [3m] range at eval_time: 3m
+          - 'log 2'    # timestamp: 30s - included
+          - 'log 3'    # timestamp: 1m - included
+          - 'log 4'    # timestamp: 1m30s - included
+          - 'log 5'    # timestamp: 2m - included
+
+    logql_expr_test:
+      # With [3m] range at eval_time: 3m, the lookback starts just after 0s
+      - expr: 'count_over_time({job="test"} [3m])'
+        eval_time: 3m
+        exp_samples:
+          - labels: '{job="test"}'
+            value: 4    # Only entries at 30s, 1m, 1m30s, 2m are counted (0s excluded)
+```
+
+This means if you have 5 lines with `interval: 30s` (at timestamps 0s, 30s, 1m, 1m30s, 2m), a query with `[3m]` range at `eval_time: 3m` will count **4 entries**, not 5.
 
 ## Command-Line Usage
 

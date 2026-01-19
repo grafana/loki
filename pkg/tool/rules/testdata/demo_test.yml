@@ -133,7 +133,8 @@ tests:
       # Filter by structured metadata field trace_id
       # Only Stream 1 has trace_id="trace-001"
       # With interval: 30s and eval_time: 3m, [3m] window includes entries from 30s to 3m
-      # Stream 1: 4 entries at 30s, 1m, 1m30s, 2m
+      # Stream 1 has 5 lines (at 0s, 30s, 1m, 1m30s, 2m) but the entry at 0s is excluded
+      # due to time range boundary semantics, resulting in 4 entries at 30s, 1m, 1m30s, 2m
       # Structured metadata appears in the result labels (trace_id and user_id)
       - expr: 'count_over_time({job="api"} | trace_id="trace-001" [3m])'
         eval_time: 3m
@@ -143,7 +144,8 @@ tests:
 
       # Filter by structured metadata field user_id
       # Only Stream 2 has user_id="user-456"
-      # Stream 2: 2 entries at 30s, 1m
+      # Stream 2 has 3 lines (at 0s, 30s, 1m) but the entry at 0s is excluded
+      # due to time range boundary semantics, resulting in 2 entries at 30s, 1m
       # Structured metadata appears in the result labels
       - expr: 'count_over_time({job="api"} | user_id="user-456" [3m])'
         eval_time: 3m
@@ -152,7 +154,8 @@ tests:
             value: 2
 
       # Filter by line content AND structured metadata
-      # Stream 1 with trace_id="trace-001" has 2 ERRORs at 1m30s, 2m
+      # Stream 1 with trace_id="trace-001" has 2 ERRORs (at 1m30s, 2m)
+      # The entry at 0s is excluded by time range boundaries regardless
       # Structured metadata appears in the result labels
       - expr: 'count_over_time({job="api"} |= "ERROR" | trace_id="trace-001" [3m])'
         eval_time: 3m
