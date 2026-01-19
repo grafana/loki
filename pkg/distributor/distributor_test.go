@@ -2656,7 +2656,7 @@ func TestConfig_Validate(t *testing.T) {
 	tests := []struct {
 		name                        string
 		cfg                         Config
-		expectedMaxDecompressedSize int
+		expectedMaxDecompressedSize int64
 		expectedError               string
 	}{
 		{
