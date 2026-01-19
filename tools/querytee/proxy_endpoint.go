@@ -20,14 +20,6 @@ import (
 	"github.com/grafana/loki/v3/tools/querytee/goldfish"
 )
 
-// contextKey is used for storing values in context
-type contextKey int
-
-const (
-	// originalHTTPHeadersKey stores the original HTTP headers in context
-	originalHTTPHeadersKey contextKey = iota
-)
-
 type ResponsesComparator interface {
 	Compare(expected, actual []byte, queryEvaluationTime time.Time) (*ComparisonSummary, error)
 }
