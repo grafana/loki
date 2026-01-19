@@ -9,7 +9,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
 	"github.com/grafana/loki/v3/pkg/memory"
-	"github.com/grafana/loki/v3/pkg/memory/bitmap"
 )
 
 type pageReader struct {
@@ -26,7 +25,7 @@ type pageReader struct {
 	presenceDec *bitmapDecoder
 	valuesDec   legacyValueDecoder
 
-	presenceBuf bitmap.Bitmap
+	presenceBuf memory.Bitmap
 	valuesBuf   []Value
 
 	pageRow int64
@@ -95,7 +94,7 @@ func (pr *pageReader) read(v []Value) (n int, err error) {
 
 	// First read presence values for the next len(v) rows.
 	presenceBuf, err := pr.presenceDec.Decode(&pr.alloc, len(v))
-	pr.presenceBuf = presenceBuf.(bitmap.Bitmap)
+	pr.presenceBuf = presenceBuf.(memory.Bitmap)
 	count := pr.presenceBuf.Len()
 	if err != nil && !errors.Is(err, io.EOF) {
 		return n, err

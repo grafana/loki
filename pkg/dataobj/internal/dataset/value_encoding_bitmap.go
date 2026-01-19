@@ -9,7 +9,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
 	"github.com/grafana/loki/v3/pkg/memory"
-	"github.com/grafana/loki/v3/pkg/memory/bitmap"
 )
 
 const maxRunLength uint64 = 1<<63 - 1 // 2^63-1
@@ -119,6 +118,8 @@ func (enc *bitmapEncoder) Encode(v Value) error {
 	}
 	uv := v.Uint64()
 	if uv != 0 && uv != 1 {
+		// Both decoder and encoder specialize on boolean values for now as this encoding is used only for presence
+		// bitmap at the moment. We can add support for larger values later if required.
 		return fmt.Errorf("invalid value %d of %s", uv, v.Type())
 	}
 
@@ -180,6 +181,8 @@ func (enc *bitmapEncoder) EncodeN(v Value, n uint64) error {
 	uv := v.Uint64()
 
 	if uv != 0 && uv != 1 {
+		// Both decoder and encoder specialize on boolean values for now as this encoding is used only for presence
+		// bitmap at the moment. We can add support for larger values later if required.
 		return fmt.Errorf("invalid value %d of %s", uv, v.Type())
 	}
 
@@ -591,7 +594,7 @@ func (dec *bitmapDecoder) Decode(alloc *memory.Allocator, count int) (any, error
 		dec.runValue = runValue
 	}()
 
-	bm := bitmap.WithAllocator(alloc)
+	bm := memory.MakeBitmap(alloc, count)
 	bm.Grow(count)
 
 	for leftToDecode > 0 {
@@ -611,6 +614,11 @@ func (dec *bitmapDecoder) Decode(alloc *memory.Allocator, count int) (any, error
 				sets = int(header >> 7)
 				setSize = 0 // Sets will be loaded in [bitmapDecoder.nextBitpackSet].
 				set = 0
+				setWidth := int((header>>1)&0x3f) + 1
+				// only support bool values encoded as ints
+				if setWidth != 1 {
+					return bm, fmt.Errorf("set width is supposed to be 1, got %d", setWidth)
+				}
 			} else {
 				// RLE run.
 				runLength = header >> 1
@@ -623,15 +631,16 @@ func (dec *bitmapDecoder) Decode(alloc *memory.Allocator, count int) (any, error
 					return bm, io.EOF
 				}
 				off += uvarintSize
-				runValue = val > 0 // support only 0 and 1
+				// only support bool values encoded as ints
+				if val != 0 && val != 1 {
+					return bm, fmt.Errorf("unsupported RLE value %d", val)
+				}
+				runValue = val > 0
 			}
 			continue
 
 		case runLength > 0: // RLE
-			decoded := runLength
-			if runLength > leftToDecode {
-				decoded = leftToDecode
-			}
+			decoded := min(runLength, leftToDecode)
 			bm.AppendCountUnsafe(runValue, int(decoded))
 			runLength -= decoded
 			leftToDecode -= decoded
@@ -648,6 +657,7 @@ func (dec *bitmapDecoder) Decode(alloc *memory.Allocator, count int) (any, error
 			continue
 
 		case setSize > 0: // BITPACK-SET
+			// we expect setWidth to be 1 because we currently support only boolean values encode as ints (0/1).
 			elem := 8 - setSize
 			bm.AppendUnsafe((set>>elem)&1 == 1)
 			setSize--

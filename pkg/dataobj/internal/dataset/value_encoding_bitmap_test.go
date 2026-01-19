@@ -12,7 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/memory"
-	"github.com/grafana/loki/v3/pkg/memory/bitmap"
 )
 
 func Test_bitmap(t *testing.T) {
@@ -45,21 +44,7 @@ func Test_bitmap(t *testing.T) {
 			require.NoError(t, enc.Flush())
 			dec.Reset(buf.Bytes())
 			a := memory.Allocator{}
-
-			var actual []bool
-			for {
-				v, err := dec.Decode(&a, 64)
-				bm, ok := v.(bitmap.Bitmap)
-				require.True(t, ok)
-				for i := range bm.Len() {
-					actual = append(actual, bm.Get(i))
-				}
-				if err != nil && errors.Is(err, io.EOF) {
-					break
-				} else if err != nil {
-					t.Fatal(err)
-				}
-			}
+			actual := decodeBitmapValues(t, dec, &a, 64)
 
 			sb := strings.Builder{}
 			for _, b := range actual {
@@ -103,12 +88,125 @@ func Test_bitmapDecoder_TruncatedData(t *testing.T) {
 				res, err = dec.Decode(&alloc, 8)
 			})
 
-			bm, ok := res.(bitmap.Bitmap)
+			bm, ok := res.(memory.Bitmap)
 			require.True(t, ok)
 			require.ErrorIs(t, err, io.EOF)
 			require.Zero(t, bm.Len())
 		})
 	}
+}
+
+func decodeBitmapValues(t *testing.T, dec *bitmapDecoder, alloc *memory.Allocator, batchSize int) []bool {
+	t.Helper()
+
+	var actual []bool
+	for {
+		res, err := dec.Decode(alloc, batchSize)
+		bm, ok := res.(memory.Bitmap)
+		require.True(t, ok)
+		for i := range bm.Len() {
+			actual = append(actual, bm.Get(i))
+		}
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		require.NoError(t, err)
+	}
+
+	return actual
+}
+
+func Fuzz_bitmap(f *testing.F) {
+	f.Add(int64(775972800), 10)
+	f.Add(int64(758350800), 25)
+	f.Add(int64(1718425412), 50)
+	f.Add(int64(1734130411), 75)
+
+	f.Fuzz(func(t *testing.T, seed int64, count int) {
+		if count <= 0 {
+			t.Skip()
+		}
+
+		rnd := rand.New(rand.NewSource(seed))
+
+		var buf bytes.Buffer
+
+		var (
+			enc = newBitmapEncoder(&buf)
+			dec = newBitmapDecoder(nil)
+		)
+
+		expected := make([]bool, 0, count)
+		for range count {
+			v := rnd.Intn(2) == 0
+			expected = append(expected, v)
+			uv := uint64(0)
+			if v {
+				uv = 1
+			}
+			require.NoError(t, enc.Encode(Uint64Value(uv)))
+		}
+		require.NoError(t, enc.Flush())
+		dec.Reset(buf.Bytes())
+
+		var alloc memory.Allocator
+		actual := decodeBitmapValues(t, dec, &alloc, 64)
+		require.Len(t, actual, count)
+		require.Equal(t, expected, actual)
+	})
+}
+
+func Fuzz_bitmap_EncodeN(f *testing.F) {
+	f.Add(int64(775972800), 1000, 10)
+	f.Add(int64(758350800), 500, 25)
+	f.Add(int64(1734130411), 10000, 1000)
+
+	f.Fuzz(func(t *testing.T, seed int64, count int, distinct int) {
+		if count < 1 {
+			t.Skip()
+		} else if distinct < 1 || distinct*10 > count {
+			// at most 10% of the values can be true
+			t.Skip()
+		}
+
+		var (
+			buf bytes.Buffer
+
+			rnd = rand.New(rand.NewSource(seed))
+			enc = newBitmapEncoder(&buf)
+			dec = newBitmapDecoder(nil)
+		)
+
+		expected := make([]bool, 0, count)
+
+		var runLength int
+		for range count {
+			if rnd.Intn(count) < distinct {
+				if runLength > 0 {
+					require.NoError(t, enc.EncodeN(Uint64Value(0), uint64(runLength)))
+					runLength = 0
+				}
+
+				require.NoError(t, enc.Encode(Uint64Value(1)))
+				expected = append(expected, true)
+			} else {
+				expected = append(expected, false)
+				runLength++
+			}
+		}
+
+		if runLength > 0 {
+			require.NoError(t, enc.EncodeN(Uint64Value(0), uint64(runLength)))
+		}
+
+		require.NoError(t, enc.Flush())
+		dec.Reset(buf.Bytes())
+
+		var alloc memory.Allocator
+		actual := decodeBitmapValues(t, dec, &alloc, 64)
+		require.Len(t, actual, count)
+		require.Equal(t, expected, actual)
+	})
 }
 
 func Benchmark_bitmapEncoder(b *testing.B) {
@@ -164,7 +262,7 @@ func benchmarkBitmapEncoder(b *testing.B, width int) {
 	})
 }
 
-var bitmapDecoderSink bitmap.Bitmap
+var bitmapDecoderSink memory.Bitmap
 
 func Benchmark_bitmapDecoder_DecodeBatches(b *testing.B) {
 	const valuesPerPage = 1 << 16
@@ -225,7 +323,7 @@ func Benchmark_bitmapDecoder_DecodeBatches(b *testing.B) {
 							decoded := 0
 							for {
 								res, err := dec.Decode(&alloc, batchSize)
-								bm := res.(bitmap.Bitmap)
+								bm := res.(memory.Bitmap)
 								bitmapDecoderSink = bm
 								decoded += bm.Len()
 
