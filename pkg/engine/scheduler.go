@@ -13,10 +13,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 )
 
-// MetadataPropagator injects/extracts context values to/from task metadata.
-// This allows passing context values (e.g., authorization rules) from schedulers to workers.
-type MetadataPropagator = scheduler.MetadataPropagator
-
 type SchedulerParams struct {
 	Logger log.Logger // Logger for optional log messages.
 
@@ -29,11 +25,6 @@ type SchedulerParams struct {
 	// Absolute path of the endpoint where the frame handler is registered.
 	// Used for connecting to scheduler and other workers.
 	Endpoint string
-
-	// MetadataPropagator propagates context values through task metadata.
-	// Used to pass values like authorization rules from frontend to workers.
-	// Optional; if nil, no custom context propagation is performed.
-	MetadataPropagator scheduler.MetadataPropagator
 }
 
 // Scheduler is a service that can schedule tasks to connected [Worker]
@@ -74,9 +65,8 @@ func NewScheduler(params SchedulerParams) (*Scheduler, error) {
 	}
 
 	inner, err := scheduler.New(scheduler.Config{
-		Logger:             params.Logger,
-		Listener:           listener,
-		MetadataPropagator: params.MetadataPropagator,
+		Logger:   params.Logger,
+		Listener: listener,
 	})
 	if err != nil {
 		return nil, err
