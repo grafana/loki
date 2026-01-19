@@ -135,7 +135,7 @@ func (c *concreteSeriesIterator) AtT() (t int64) {
 }
 
 func (c *concreteSeriesIterator) AtST() int64 {
-	// TODO(krajorama): implement AtST if needed.
+	// TODO: implement AtST if needed.
 	// See https://github.com/prometheus/prometheus/pull/17840.
 	return 0
 }
@@ -187,8 +187,6 @@ func (errIterator) AtT() (t int64) {
 }
 
 func (errIterator) AtST() int64 {
-	// TODO(krajorama): implement AtST if needed.
-	// See https://github.com/prometheus/prometheus/pull/17840.
 	return 0
 }
 
@@ -271,7 +269,7 @@ func (d DeletedSeriesIterator) AtT() (t int64) {
 }
 
 func (d DeletedSeriesIterator) AtST() int64 {
-	// TODO(krajorama): implement AtST if needed.
+	// TODO: implement AtST if needed.
 	// See https://github.com/prometheus/prometheus/pull/17840.
 	return 0
 }
@@ -359,8 +357,6 @@ func (emptySeriesIterator) AtT() (t int64) {
 }
 
 func (emptySeriesIterator) AtST() int64 {
-	// TODO(krajorama): implement AtST if needed.
-	// See https://github.com/prometheus/prometheus/pull/17840.
 	return 0
 }
 
