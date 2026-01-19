@@ -2146,7 +2146,7 @@ func (mt *mockTee) Duplicate(_ context.Context, tenant string, streams []KeyedSt
 	mt.tenant = tenant
 }
 
-func (mt *mockTee) Register(_ context.Context, _ string, streams []KeyedStream, pushTracker *PushTracker) {
+func (mt *mockTee) Register(_ context.Context, _ string, _ []KeyedStream, _ *PushTracker) {
 }
 
 // mockFailingTee is a mock tee that always fails with an error.

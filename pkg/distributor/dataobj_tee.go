@@ -106,7 +106,7 @@ type SegmentedStream struct {
 	SegmentationKeyHash uint64
 }
 
-func (t *DataObjTee) Register(ctx context.Context, tenant string, streams []KeyedStream, pushTracker *PushTracker) {
+func (t *DataObjTee) Register(_ context.Context, _ string, streams []KeyedStream, pushTracker *PushTracker) {
 	// Add our streams to the pending count so the distributor waits for them.
 	pushTracker.streamsPending.Add(int32(len(streams)))
 }
