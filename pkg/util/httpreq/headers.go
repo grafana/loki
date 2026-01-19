@@ -19,6 +19,13 @@ var (
 	LokiActorPathDelimiter = "|"
 )
 
+const (
+	// Headers to ignore in PropagateAllHeadersMiddleware to avoid security or encoding issues.
+	AuthorizationHeader  = "Authorization"
+	AcceptHeader         = "Accept"
+	AcceptEncodingHeader = "Accept-Encoding"
+)
+
 // PropagateAllHeadersMiddleware stores all HTTP headers in context for downstream restoration.
 // This is useful when requests go through a codec decode/encode cycle that loses headers.
 // Headers in the ignoreList will not be propagated.
