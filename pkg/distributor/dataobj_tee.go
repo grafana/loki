@@ -106,12 +106,6 @@ type SegmentedStream struct {
 	SegmentationKeyHash uint64
 }
 
-// Register implements the [Tee] interface.
-func (t *DataObjTee) Register(tenant string, streams []KeyedStream, pushTracker *PushTracker) {
-	// Add our streams to the pending count so the distributor waits for them.
-	pushTracker.streamsPending.Add(int32(len(streams)))
-}
-
 // Duplicate implements the [Tee] interface.
 func (t *DataObjTee) Duplicate(ctx context.Context, tenant string, streams []KeyedStream, pushTracker *PushTracker) {
 	segmentationKeyStreams := make([]SegmentedStream, 0, len(streams))
@@ -142,6 +136,9 @@ func (t *DataObjTee) Duplicate(ctx context.Context, tenant string, streams []Key
 	// We use max to prevent negative values becoming large positive values
 	// when converting from float64 to uint64.
 	tenantRateBytesLimit := uint64(max(t.limits.IngestionRateBytes(tenant), 0))
+
+	// Add our streams to the pending count so the distributor waits for them.
+	pushTracker.streamsPending.Add(int32(len(segmentationKeyStreams)))
 
 	for _, s := range segmentationKeyStreams {
 		go func(stream SegmentedStream) {

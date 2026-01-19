@@ -834,14 +834,9 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 		streamsToWrite += len(streams)
 	}
 
-	// We must correctly set streamsPending before beginning any writes to ensure we don't have a race between finishing all of one path before starting the other.
-	// We use Add instead of Store since the Tees could have already added to the count.
-	d.tee.Register(tenantID, streams, &tracker)
 	tracker.streamsPending.Add(int32(streamsToWrite))
 
 	if d.tee != nil {
-		// Nil check for performance reasons, to avoid dynamic lookup and/or no-op
-		// function calls that cannot be inlined.
 		d.tee.Duplicate(context.WithoutCancel(ctx), tenantID, streams, &tracker)
 	}
 
