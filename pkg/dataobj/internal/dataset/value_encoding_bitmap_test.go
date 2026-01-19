@@ -11,6 +11,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/memory"
 )
 
@@ -88,7 +89,7 @@ func Test_bitmapDecoder_TruncatedData(t *testing.T) {
 				res, err = dec.Decode(&alloc, 8)
 			})
 
-			bm, ok := res.(memory.Bitmap)
+			bm, ok := res.(*columnar.Bool)
 			require.True(t, ok)
 			require.ErrorIs(t, err, io.EOF)
 			require.Zero(t, bm.Len())
@@ -102,7 +103,7 @@ func decodeBitmapValues(t *testing.T, dec *bitmapDecoder, alloc *memory.Allocato
 	var actual []bool
 	for {
 		res, err := dec.Decode(alloc, batchSize)
-		bm, ok := res.(memory.Bitmap)
+		bm, ok := res.(*columnar.Bool)
 		require.True(t, ok)
 		for i := range bm.Len() {
 			actual = append(actual, bm.Get(i))
@@ -262,8 +263,6 @@ func benchmarkBitmapEncoder(b *testing.B, width int) {
 	})
 }
 
-var bitmapDecoderSink memory.Bitmap
-
 func Benchmark_bitmapDecoder_DecodeBatches(b *testing.B) {
 	const valuesPerPage = 1 << 16
 
@@ -313,7 +312,7 @@ func Benchmark_bitmapDecoder_DecodeBatches(b *testing.B) {
 						dec := newBitmapDecoder(nil)
 
 						b.ReportAllocs()
-						decodedBytesPerOp := int64(sc.valueCount) * 8 // uint64 output
+						decodedBytesPerOp := int64(sc.valueCount) / 8 // Each value is one bit
 						b.SetBytes(decodedBytesPerOp)
 
 						for b.Loop() {
@@ -323,8 +322,7 @@ func Benchmark_bitmapDecoder_DecodeBatches(b *testing.B) {
 							decoded := 0
 							for {
 								res, err := dec.Decode(&alloc, batchSize)
-								bm := res.(memory.Bitmap)
-								bitmapDecoderSink = bm
+								bm := res.(*columnar.Bool)
 								decoded += bm.Len()
 
 								if errors.Is(err, io.EOF) {

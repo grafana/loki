@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
 	"github.com/grafana/loki/v3/pkg/memory"
@@ -25,8 +26,7 @@ type pageReader struct {
 	presenceDec *bitmapDecoder
 	valuesDec   legacyValueDecoder
 
-	presenceBuf memory.Bitmap
-	valuesBuf   []Value
+	valuesBuf []Value
 
 	pageRow int64
 	nextRow int64
@@ -93,9 +93,9 @@ func (pr *pageReader) read(v []Value) (n int, err error) {
 	pr.valuesBuf = reuseValuesBuffer(pr.valuesBuf, v)
 
 	// First read presence values for the next len(v) rows.
-	presenceBuf, err := pr.presenceDec.Decode(&pr.alloc, len(v))
-	pr.presenceBuf = presenceBuf.(memory.Bitmap)
-	count := pr.presenceBuf.Len()
+	presenceArr, err := pr.presenceDec.Decode(&pr.alloc, len(v))
+	presenceBuf := presenceArr.(*columnar.Bool)
+	count := presenceBuf.Len()
 	if err != nil && !errors.Is(err, io.EOF) {
 		return n, err
 	} else if count == 0 && errors.Is(err, io.EOF) {
@@ -109,13 +109,10 @@ func (pr *pageReader) read(v []Value) (n int, err error) {
 		return 0, nil
 	}
 
-	// The number of 1-s in pr.presenceBuf determines how many values we need to read from the inner page.
-	var presentCount int
-	for i := range count {
-		if pr.presenceBuf.Get(i) {
-			presentCount++
-		}
-	}
+	// The number of bits set to 1 in presenceBuf determines how many values we
+	// need to read from the inner page.
+	presenceValues := presenceBuf.Values()
+	presentCount := presenceValues.SetCount()
 
 	// Now fill up to presentCount values of concrete values.
 	var valuesCount int
@@ -132,7 +129,7 @@ func (pr *pageReader) read(v []Value) (n int, err error) {
 	// copying from pr.valuesBuf where appropriate.
 	var valuesIndex int
 	for i := range count {
-		if pr.presenceBuf.Get(i) {
+		if presenceBuf.Get(i) {
 			if valuesIndex >= valuesCount {
 				return n, fmt.Errorf("unexpected end of values")
 			}
