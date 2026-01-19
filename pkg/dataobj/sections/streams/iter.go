@@ -58,7 +58,7 @@ func IterSection(ctx context.Context, section *Section) result.Seq[Stream] {
 		})
 		defer r.Close()
 
-		var rows [1]dataset.Row
+		var rows [1024]dataset.Row
 		for {
 			n, err := r.Read(ctx, rows[:])
 			if err != nil && !errors.Is(err, io.EOF) {
