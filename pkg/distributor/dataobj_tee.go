@@ -64,6 +64,7 @@ type DataObjTee struct {
 	// High cardinality metrics which are only emitted when debug metrics
 	// are enabled.
 	produced *prometheus.CounterVec
+	rate     *prometheus.GaugeVec
 }
 
 // NewDataObjTee returns a new DataObjTee.
@@ -95,6 +96,10 @@ func NewDataObjTee(
 			Name: "loki_distributor_dataobj_tee_produced_bytes_total",
 			Help: "Total number of bytes produced to each partition.",
 		}, []string{"tenant", "partition", "segmentation_key"}),
+		rate: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
+			Name: "loki_distributor_dataobj_tee_segmentation_key_rate_bytes",
+			Help: "Current estimate rate for the segemntation key in bytes.",
+		}, []string{"tenant", "segmentation_key"}),
 	}, nil
 }
 
@@ -135,6 +140,12 @@ func (t *DataObjTee) Duplicate(ctx context.Context, tenant string, streams []Key
 	// when converting from float64 to uint64.
 	tenantRateBytesLimit := uint64(max(t.limits.IngestionRateBytes(tenant), 0))
 	for _, s := range segmentationKeyStreams {
+		if t.cfg.DebugMetricsEnabled {
+			t.rate.WithLabelValues(
+				tenant,
+				string(s.SegmentationKey),
+			).Set(float64(fastRates[s.SegmentationKeyHash]))
+		}
 		go t.duplicate(ctx, tenant, s, fastRates[s.SegmentationKeyHash], tenantRateBytesLimit)
 	}
 }
