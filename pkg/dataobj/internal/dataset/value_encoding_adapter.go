@@ -65,6 +65,10 @@ func (a *valueDecoderAdapter) unpackUTF8(dst []Value, result *columnar.UTF8) int
 }
 
 func (a *valueDecoderAdapter) unpackInt64(dst []Value, result []int64) int {
+	if len(result) > len(dst) {
+		panic(fmt.Sprintf("invariant broken: larger src len (%d) than dst (%d)", len(result), len(dst)))
+	}
+
 	for i := range result {
 		dst[i] = Int64Value(result[i])
 	}
