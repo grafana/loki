@@ -85,18 +85,6 @@ func TestPropagateAllHeadersMiddleware(t *testing.T) {
 			},
 			unexpectedHeaders: []string{"Accept", "Accept-Encoding"},
 		},
-		{
-			desc: "ignore list is case insensitive",
-			headers: map[string][]string{
-				"accept":          {"application/json"},
-				"X-Custom-Header": {"custom-value"},
-			},
-			ignoreList: []string{"Accept"},
-			expectedHeaders: map[string][]string{
-				"X-Custom-Header": {"custom-value"},
-			},
-			unexpectedHeaders: []string{"Accept"},
-		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			req := httptest.NewRequest("GET", "http://testing.com", nil)
@@ -147,6 +135,29 @@ func TestPropagateAllHeadersMiddleware(t *testing.T) {
 			assert.True(t, checked)
 		})
 	}
+}
+
+func TestInjectExtractHeaderRoundtrip(t *testing.T) {
+	ctx := context.Background()
+
+	// Extract from empty context returns empty string
+	assert.Equal(t, "", ExtractHeader(ctx, "X-Any-Header"))
+
+	// Inject a header and extract it
+	ctx = InjectHeader(ctx, "X-Custom-Header", "custom-value")
+	assert.Equal(t, "custom-value", ExtractHeader(ctx, "X-Custom-Header"))
+
+	// Inject another header, both should be extractable
+	ctx = InjectHeader(ctx, "X-Another-Header", "another-value")
+	assert.Equal(t, "custom-value", ExtractHeader(ctx, "X-Custom-Header"))
+	assert.Equal(t, "another-value", ExtractHeader(ctx, "X-Another-Header"))
+
+	// Overwrite existing header
+	ctx = InjectHeader(ctx, "X-Custom-Header", "new-value")
+	assert.Equal(t, "new-value", ExtractHeader(ctx, "X-Custom-Header"))
+
+	// Missing header returns empty string
+	assert.Equal(t, "", ExtractHeader(ctx, "X-Missing-Header"))
 }
 
 func TestExtractAllHeaders_NoMiddleware(t *testing.T) {

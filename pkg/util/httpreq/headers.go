@@ -8,7 +8,7 @@ import (
 	"github.com/grafana/dskit/middleware"
 )
 
-type headerContextKey string
+type headerContextKey struct{}
 
 var (
 	// LokiActorPathHeader is the name of the header e.g. used to enqueue requests in hierarchical queues.
@@ -18,46 +18,6 @@ var (
 	// LokiActorPathDelimiter is the delimiter used to serialise the hierarchy of the actor.
 	LokiActorPathDelimiter = "|"
 )
-
-func PropagateHeadersMiddleware(headers ...string) middleware.Interface {
-	return middleware.Func(func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-			for _, h := range headers {
-				value := req.Header.Get(h)
-				if value != "" {
-					ctx := req.Context()
-					ctx = context.WithValue(ctx, headerContextKey(h), value)
-					req = req.WithContext(ctx)
-				}
-			}
-			next.ServeHTTP(w, req)
-		})
-	})
-}
-
-func ExtractHeader(ctx context.Context, name string) string {
-	s, _ := ctx.Value(headerContextKey(name)).(string)
-	return s
-}
-
-func ExtractActorPath(ctx context.Context) []string {
-	value := ExtractHeader(ctx, LokiActorPathHeader)
-	if value == "" {
-		return nil
-	}
-	return strings.Split(value, LokiActorPathDelimiter)
-}
-
-func InjectActorPath(ctx context.Context, value string) context.Context {
-	return context.WithValue(ctx, headerContextKey(LokiActorPathHeader), value)
-}
-
-func InjectHeader(ctx context.Context, key, value string) context.Context {
-	return context.WithValue(ctx, headerContextKey(key), value)
-}
-
-// allHeadersContextKey is used to store all HTTP headers in context for downstream restoration.
-type allHeadersContextKey struct{}
 
 // PropagateAllHeadersMiddleware stores all HTTP headers in context for downstream restoration.
 // This is useful when requests go through a codec decode/encode cycle that loses headers.
@@ -71,15 +31,14 @@ func PropagateAllHeadersMiddleware(ignoreList ...string) middleware.Interface {
 	return middleware.Func(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 			ctx := req.Context()
-			ctxHeaders, ok := ctx.Value(allHeadersContextKey{}).(http.Header)
+			ctxHeaders, ok := ctx.Value(headerContextKey{}).(http.Header)
 			if !ok {
 				ctxHeaders = make(http.Header)
-				ctx = context.WithValue(ctx, allHeadersContextKey{}, ctxHeaders)
+				ctx = context.WithValue(ctx, headerContextKey{}, ctxHeaders)
 				req = req.WithContext(ctx)
 			}
 
 			for k, v := range req.Header {
-				// Skip headers in the ignore list
 				if _, ignored := ignoreSet[http.CanonicalHeaderKey(k)]; ignored {
 					continue
 				}
@@ -95,9 +54,39 @@ func PropagateAllHeadersMiddleware(ignoreList ...string) middleware.Interface {
 
 // ExtractAllHeaders retrieves all headers stored in context by PropagateAllHeadersMiddleware.
 func ExtractAllHeaders(ctx context.Context) http.Header {
-	ctxHeaders, ok := ctx.Value(allHeadersContextKey{}).(http.Header)
-	if !ok {
+	ctxHeaders, _ := ctx.Value(headerContextKey{}).(http.Header)
+	return ctxHeaders
+}
+
+// ExtractHeader retrieves a single header value from context.
+func ExtractHeader(ctx context.Context, name string) string {
+	if headers := ExtractAllHeaders(ctx); headers != nil {
+		return headers.Get(name)
+	}
+	return ""
+}
+
+// ExtractActorPath retrieves the actor path from context.
+func ExtractActorPath(ctx context.Context) []string {
+	value := ExtractHeader(ctx, LokiActorPathHeader)
+	if value == "" {
 		return nil
 	}
-	return ctxHeaders
+	return strings.Split(value, LokiActorPathDelimiter)
+}
+
+// InjectHeader adds a header to the context's header map.
+func InjectHeader(ctx context.Context, key, value string) context.Context {
+	headers, ok := ctx.Value(headerContextKey{}).(http.Header)
+	if !ok {
+		headers = make(http.Header)
+		ctx = context.WithValue(ctx, headerContextKey{}, headers)
+	}
+	headers.Set(key, value)
+	return ctx
+}
+
+// InjectActorPath adds the actor path header to context.
+func InjectActorPath(ctx context.Context, value string) context.Context {
+	return InjectHeader(ctx, LokiActorPathHeader, value)
 }

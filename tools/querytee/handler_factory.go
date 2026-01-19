@@ -96,7 +96,6 @@ func (f *HandlerFactory) CreateHandler(routeName string, comp comparator.Respons
 		// expectations about response format and we don't want to cause mismatches.
 		httpreq.PropagateAllHeadersMiddleware("Accept", "Accept-Encoding"),
 		httpreq.ExtractQueryTagsMiddleware(),
-		httpreq.PropagateHeadersMiddleware(httpreq.LokiActorPathHeader, httpreq.LokiEncodingFlagsHeader, httpreq.LokiDisablePipelineWrappersHeader),
 		server.NewPrepopulateMiddleware(),
 	}
 

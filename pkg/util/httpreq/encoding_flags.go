@@ -66,7 +66,7 @@ func AddEncodingFlagsToContext(ctx context.Context, flags EncodingFlags) context
 		return ctx
 	}
 
-	return context.WithValue(ctx, headerContextKey(LokiEncodingFlagsHeader), flags.String())
+	return InjectHeader(ctx, LokiEncodingFlagsHeader, flags.String())
 }
 
 func ExtractEncodingFlags(req *http.Request) EncodingFlags {
