@@ -991,6 +991,22 @@ type dictBuilder[T arrow.ValueType] struct {
 }
 
 func (b *dictBuilder[T]) Append(v T) error {
+	switch val := any(v).(type) {
+	case arrow.Duration:
+		return b.appendValue(int64(val))
+	case arrow.Timestamp:
+		return b.appendValue(int64(val))
+	case arrow.Time32:
+		return b.appendValue(int32(val))
+	case arrow.Time64:
+		return b.appendValue(int64(val))
+	case arrow.Date32:
+		return b.appendValue(int32(val))
+	case arrow.Date64:
+		return b.appendValue(int64(val))
+	case arrow.MonthInterval:
+		return b.appendValue(int32(val))
+	}
 	return b.appendValue(v)
 }
 

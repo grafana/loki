@@ -1,0 +1,9 @@
+Concatenations against literal alternates with a literal suffix are currently
+not supported. This matches the existing optimization behavior, though the
+expressions could be simplified.
+
+-- column --
+utf8.builtin.message
+
+-- regex --
+(hello|hi|greetings) world

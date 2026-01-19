@@ -37,10 +37,8 @@ func validToken(tok *Tokenizer, token string) bool {
 		return validArray(tok)
 	case '{':
 		return validObject(tok)
-	case '-', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
-		return validNumber(token)
 	default:
-		return false
+		return validNumber(token)
 	}
 }
 

@@ -278,6 +278,12 @@ func (e *Engine) buildLogicalPlan(ctx context.Context, logger log.Logger, params
 		return nil, 0, ErrNotSupported
 	}
 
+	if err := logical.Optimize(logicalPlan); err != nil {
+		level.Warn(logger).Log("msg", "failed to optimize logical plan", "err", err)
+		region.RecordError(err)
+		return nil, 0, ErrNotSupported
+	}
+
 	duration := timer.ObserveDuration()
 	level.Info(logger).Log(
 		"msg", "finished logical planning",
@@ -383,13 +389,16 @@ func (e *Engine) buildWorkflow(ctx context.Context, logger log.Logger, physicalP
 	timer := prometheus.NewTimer(e.metrics.workflowPlanning)
 
 	opts := workflow.Options{
+		Tenant: tenantID,
+		Actor:  httpreq.ExtractActorPath(ctx),
+
 		MaxRunningScanTasks:  e.limits.MaxScanTaskParallelism(tenantID),
 		MaxRunningOtherTasks: 0,
 
 		DebugTasks:   e.limits.DebugEngineTasks(tenantID),
 		DebugStreams: e.limits.DebugEngineStreams(tenantID),
 	}
-	wf, err := workflow.New(opts, logger, tenantID, e.scheduler.inner, physicalPlan)
+	wf, err := workflow.New(opts, logger, e.scheduler.inner, physicalPlan)
 	if err != nil {
 		level.Warn(logger).Log("msg", "failed to create workflow", "err", err)
 		region.RecordError(err)
@@ -407,6 +416,7 @@ func (e *Engine) buildWorkflow(ctx context.Context, logger log.Logger, physicalP
 	level.Info(logger).Log(
 		"msg", "finished execution planning",
 		"duration", duration.String(),
+		"tasks", wf.Len(),
 	)
 
 	region.AddEvent("finished execution planning", attribute.Stringer("duration", duration))

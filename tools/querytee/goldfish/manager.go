@@ -30,10 +30,6 @@ const (
 
 // Manager defines the interface for Goldfish manager operations.
 type Manager interface {
-	// ComparisonMinAge returns the minimum age of data to send to goldfish for comparison.
-	ComparisonMinAge() time.Duration
-	// ComparisonStartDate returns the configured start date for comparisons.
-	ComparisonStartDate() time.Time
 	// ShouldSample determines if a query should be sampled based on tenant configuration.
 	ShouldSample(tenantID string) bool
 	// SendToGoldfish sends backend responses to Goldfish for comparison.
@@ -102,15 +98,6 @@ func NewManager(config Config, comparator comparator.ResponsesComparator, storag
 	}
 
 	return m, nil
-}
-
-// ComparsionMinAge returns the minimum age of data to send to goldfish for comparison.
-func (m *manager) ComparisonMinAge() time.Duration {
-	return m.config.ComparisonMinAge
-}
-
-func (m *manager) ComparisonStartDate() time.Time {
-	return time.Time(m.config.ComparisonStartDate)
 }
 
 // ShouldSample determines if a query should be sampled based on tenant configuration.

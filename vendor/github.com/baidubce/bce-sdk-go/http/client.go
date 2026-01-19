@@ -22,6 +22,7 @@ package http
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"net"
 	"net/http"
 	"net/url"
@@ -41,6 +42,7 @@ var (
 	defaultTLSHandshakeTimeout   = 10 * time.Second
 	defaultIdleConnTimeout       = 90 * time.Second
 	defaultHTTPClientTimeout     = 1200 * time.Second
+	NilHTTPClient                = fmt.Errorf("custom HTTP Client is nil")
 )
 
 // The httpClient is the global variable to send the request and get response
@@ -306,6 +308,21 @@ func NewTransportCustom(config *ClientConfig) *http.Transport {
 	return transport
 }
 
+func InitWithSpecifiedClient(customHTTPClient *http.Client) error {
+	if customHTTPClient == nil {
+		log.Warnf("customized HTTP Client is nil")
+		return NilHTTPClient
+	}
+	if customHTTPClient.Transport == nil {
+		log.Infof("transport is nil")
+		return nil
+	}
+	if customTransport, ok := customHTTPClient.Transport.(*http.Transport); ok {
+		transport = customTransport
+	}
+	return nil
+}
+
 func InitExclusiveHTTPClient(config *ClientConfig) *http.Client {
 	config = MergeWithDefaultConfig(config)
 	transport = NewTransportCustom(config)
@@ -401,7 +418,7 @@ func Execute(request *Request) (*Response, error) {
 	}
 
 	// Set the proxy setting if needed
-	if len(request.ProxyUrl()) != 0 {
+	if len(request.ProxyUrl()) != 0 && transport != nil {
 		transport.Proxy = func(_ *http.Request) (*url.URL, error) {
 			return url.Parse(request.ProxyUrl())
 		}
@@ -413,13 +430,14 @@ func Execute(request *Request) (*Response, error) {
 	start := time.Now()
 
 	httpResponse, err := curHTTPClient.Do(httpRequest)
-
 	end := time.Now()
 	if err != nil {
-		transport.CloseIdleConnections()
+		if transport != nil {
+			transport.CloseIdleConnections()
+		}
 		return nil, err
 	}
-	if httpResponse.StatusCode >= 400 &&
+	if transport != nil && httpResponse.StatusCode >= 400 &&
 		(httpRequest.Method == PUT || httpRequest.Method == POST) {
 		transport.CloseIdleConnections()
 	}

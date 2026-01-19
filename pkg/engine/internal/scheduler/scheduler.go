@@ -21,7 +21,9 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
+	"github.com/grafana/loki/v3/pkg/engine/internal/util/queue/fair"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 // Config holds configuration options for [Scheduler].
@@ -52,7 +54,7 @@ type Scheduler struct {
 	tasks        map[ulid.ULID]*task   // All known tasks (regardless of state)
 
 	assignMut    sync.RWMutex
-	taskQueue    []*task
+	taskQueue    fair.Queue[*task]
 	readyWorkers map[*workerConn]struct{}
 
 	assignSema chan struct{} // assignSema signals that task assignment is ready.
@@ -414,13 +416,57 @@ func (s *Scheduler) assignTasks(ctx context.Context) {
 			continue
 		}
 
-		// remove from queue on successful assignment.
+		// Remove from queue on successful assignment, and apply a cost to the
+		// scope.
 		s.assignMut.Lock()
-		s.taskQueue = s.taskQueue[1:]
+		{
+			// TODO(rfratto): It's currently possible for other goroutines to
+			// have modified taskQueue in between calling prepareAssignment and
+			// Pop.
+			//
+			// For example, if the only running query gets canceled in between
+			// the two operations, unregistering the scope will drain the
+			// remainder of the queue, causing Pop to return nil.
+			//
+			// This should be fixed by removing the race condition, but for now
+			// we'll log an error to track it.
+			popped, scope := s.taskQueue.Pop()
+			s.validatePop(t, popped)
+
+			if scope != nil {
+				// For now, we will treat every task as having an equal cost of 1.
+				//
+				// This provides some level of fairness, but not all tasks need the
+				// same amount of time to complete, so tenants running heavy queries
+				// do not get properly penalized.
+				//
+				// TODO(rfratto): Introduce a better cost estimate for tasks, which
+				// may need to include re-adjusting the scope after task completion
+				// if the cost estimate was wrong.
+				_ = s.taskQueue.AdjustScope(scope, 1)
+			}
+		}
 		s.assignMut.Unlock()
 
 		s.finalizeAssignment(ctx, t, worker, msg.StreamStates)
 	}
+}
+
+// validatePop logs an error if the expected task does not match the actual task.
+func (s *Scheduler) validatePop(expect, actual *task) {
+	if expect == actual {
+		return
+	}
+
+	var expectedULID, actualULID ulid.ULID
+	if expect != nil && expect.inner != nil {
+		expectedULID = expect.inner.ULID
+	}
+	if actual != nil && actual.inner != nil {
+		actualULID = actual.inner.ULID
+	}
+
+	level.Error(s.logger).Log("msg", "unexpected task removed from queue", "expected", expectedULID, "actual", actualULID)
 }
 
 // prepareAssignment builds a TaskAssignMessage for the next task and worker.
@@ -434,15 +480,15 @@ func (s *Scheduler) prepareAssignment() (*task, *workerConn, wire.TaskAssignMess
 	defer s.assignMut.Unlock()
 
 	// clean up any terminal tasks at the front of the queue.
-	for len(s.taskQueue) > 0 && s.taskQueue[0].status.State.Terminal() {
-		s.taskQueue = s.taskQueue[1:]
+	for s.taskQueue.Len() > 0 && s.peekTask().status.State.Terminal() {
+		s.taskQueue.Pop()
 	}
 
-	if len(s.taskQueue) == 0 || len(s.readyWorkers) == 0 {
+	if s.taskQueue.Len() == 0 || len(s.readyWorkers) == 0 {
 		return nil, nil, wire.TaskAssignMessage{}, false
 	}
 
-	task := s.taskQueue[0]
+	task := s.peekTask()
 	worker := nextWorker(s.readyWorkers)
 
 	msg := wire.TaskAssignMessage{
@@ -467,6 +513,11 @@ func (s *Scheduler) prepareAssignment() (*task, *workerConn, wire.TaskAssignMess
 	}
 
 	return task, worker, msg, true
+}
+
+func (s *Scheduler) peekTask() *task {
+	t, _ := s.taskQueue.Peek()
+	return t
 }
 
 // pendingMessage represents a message to send to a worker after releasing locks.
@@ -496,7 +547,13 @@ func (s *Scheduler) finalizeAssignment(ctx context.Context, t *task, worker *wor
 
 		worker.Assign(t)
 		t.assignTime = time.Now()
-		s.metrics.taskQueueSeconds.Observe(t.assignTime.Sub(t.queueTime).Seconds())
+		queueDuration := t.assignTime.Sub(t.queueTime).Seconds()
+		s.metrics.taskQueueSeconds.Observe(queueDuration)
+
+		// Record queue duration to the task region if available.
+		if t.wfRegion != nil {
+			t.wfRegion.Record(xcap.StatTaskQueueDuration.Observe(queueDuration))
+		}
 
 		// Reconcile stream states: send updates for any that changed while sending.
 		for streamID, sentState := range sentStates {
@@ -618,6 +675,11 @@ func (s *Scheduler) DialFrom(ctx context.Context, from net.Addr) (wire.Conn, err
 // RegisterManifest registers a manifest to use with the scheduler, recording
 // all streams and task inside of it for use.
 func (s *Scheduler) RegisterManifest(_ context.Context, manifest *workflow.Manifest) error {
+	scope, err := s.registerManifestScope(manifest)
+	if err != nil {
+		return err
+	}
+
 	s.resourcesMut.Lock()
 	defer s.resourcesMut.Unlock()
 
@@ -684,6 +746,7 @@ NextTask:
 		}
 
 		manifestTasks[taskToAdd.ULID] = &task{
+			scope:   scope,
 			inner:   taskToAdd,
 			handler: manifest.TaskEventHandler,
 		}
@@ -715,10 +778,45 @@ NextTask:
 	return nil
 }
 
+// registerManifestScope generates and registers a [fair.Scope] for the given
+// manifest.
+func (s *Scheduler) registerManifestScope(manifest *workflow.Manifest) (fair.Scope, error) {
+	scope := manifestScope(manifest)
+
+	s.assignMut.Lock()
+	defer s.assignMut.Unlock()
+
+	if err := s.taskQueue.RegisterScope(scope); err != nil {
+		return nil, err
+	}
+
+	level.Debug(s.logger).Log("msg", "registered queue scope", "scope", scope)
+	return scope, nil
+}
+
+func manifestScope(manifest *workflow.Manifest) fair.Scope {
+	scope := make(fair.Scope, 0, 1 /* tenant */ +len(manifest.Actor)+1 /* ID */)
+
+	if manifest.Tenant != "" {
+		scope = append(scope, manifest.Tenant)
+	} else {
+		scope = append(scope, "unknown-tenant")
+	}
+
+	scope = append(scope, manifest.Actor...)
+	scope = append(scope, manifest.ID.String())
+
+	return scope
+}
+
 // UnregisterManifest removes a manifest from the scheduler.
 func (s *Scheduler) UnregisterManifest(ctx context.Context, manifest *workflow.Manifest) error {
 	var n notifier
 	defer n.Notify(ctx)
+
+	if err := s.unregisterManifestScope(manifest); err != nil {
+		level.Warn(s.logger).Log("msg", "failed unregistering queue scope", "id", manifest.ID, "err", err)
+	}
 
 	s.resourcesMut.Lock()
 	defer s.resourcesMut.Unlock()
@@ -791,6 +889,22 @@ func (s *Scheduler) UnregisterManifest(ctx context.Context, manifest *workflow.M
 	return nil
 }
 
+// unregisterManifestScope unregisters a [fair.Scope] for the given
+// manifest.
+func (s *Scheduler) unregisterManifestScope(manifest *workflow.Manifest) error {
+	scope := manifestScope(manifest)
+
+	s.assignMut.Lock()
+	defer s.assignMut.Unlock()
+
+	if err := s.taskQueue.UnregisterScope(scope); err != nil {
+		return err
+	}
+
+	level.Debug(s.logger).Log("msg", "unregistered queue scope", "scope", scope)
+	return nil
+}
+
 func (s *Scheduler) deleteTask(t *task) {
 	delete(s.tasks, t.inner.ULID)
 
@@ -853,12 +967,17 @@ func (s *Scheduler) Start(ctx context.Context, tasks ...*workflow.Task) error {
 	metadata := make(http.Header)
 	tc.Inject(ctx, propagation.HeaderCarrier(metadata))
 
+	wfRegion := xcap.RegionFromContext(ctx)
+
 	for _, t := range trackedTasks {
 		if t.metadata == nil {
 			t.metadata = make(http.Header)
 		}
 
 		maps.Copy(t.metadata, metadata)
+
+		// Assign the workflow region to the task for metrics recording.
+		t.wfRegion = wfRegion
 	}
 
 	// We set markPending *after* enqueueTasks to give tasks an opportunity to
@@ -905,10 +1024,12 @@ func (s *Scheduler) enqueueTasks(tasks []*task) {
 		}
 
 		task.queueTime = time.Now()
-		s.taskQueue = append(s.taskQueue, task)
+		if err := s.taskQueue.Push(task.scope, task); err != nil {
+			level.Error(s.logger).Log("msg", "failed to enqueue task; task will not be executed", "id", task.inner.ULID, "err", err)
+		}
 	}
 
-	if len(s.readyWorkers) > 0 && len(s.taskQueue) > 0 {
+	if len(s.readyWorkers) > 0 && s.taskQueue.Len() > 0 {
 		nudgeSemaphore(s.assignSema)
 	}
 }

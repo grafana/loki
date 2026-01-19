@@ -39,12 +39,19 @@ type Column struct {
 	// when the repetition level in the column data equals this value, it indicates
 	// additional elements in the innermost list.
 	maxRepLvl int16
+	// cached path string to avoid repeated string building
+	path string
 }
 
 // NewColumn returns a new column object for the given node with the provided
 // maximum definition and repetition levels.
 func NewColumn(n *PrimitiveNode, maxDefinitionLvl, maxRepetitionLvl int16) *Column {
-	return &Column{n, maxDefinitionLvl, maxRepetitionLvl}
+	return &Column{
+		pnode:     n,
+		maxDefLvl: maxDefinitionLvl,
+		maxRepLvl: maxRepetitionLvl,
+		path:      n.Path(),
+	}
 }
 
 // Name is the column's name
@@ -54,7 +61,7 @@ func (c *Column) Name() string { return c.pnode.Name() }
 func (c *Column) ColumnPath() parquet.ColumnPath { return c.pnode.columnPath() }
 
 // Path is equivalent to ColumnPath().String() returning the dot-string version of the path
-func (c *Column) Path() string { return c.pnode.Path() }
+func (c *Column) Path() string { return c.path }
 
 // TypeLength is -1 if not a FixedLenByteArray, otherwise it is the length of elements in the column
 func (c *Column) TypeLength() int { return c.pnode.TypeLength() }

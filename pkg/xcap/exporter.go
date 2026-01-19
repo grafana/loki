@@ -195,5 +195,11 @@ func summarizeObservations(capture *Capture) *observations {
 			normalizeKeys(),
 	)
 
+	// workflow runner stats
+	result.merge(
+		collect.fromRegions("wf.runner", true).
+			normalizeKeys(),
+	)
+
 	return result
 }

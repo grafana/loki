@@ -4,11 +4,12 @@ import (
 	"io"
 
 	"github.com/parquet-go/parquet-go/encoding"
+	"github.com/parquet-go/parquet-go/internal/memory"
 )
 
 type fixedLenByteArrayPage struct {
 	typ         Type
-	data        []byte
+	data        memory.SliceBuffer[byte]
 	size        int
 	columnIndex int16
 }
@@ -17,7 +18,7 @@ func newFixedLenByteArrayPage(typ Type, columnIndex int16, numValues int32, valu
 	data, size := values.FixedLenByteArray()
 	return &fixedLenByteArrayPage{
 		typ:         typ,
-		data:        data[:int(numValues)*size],
+		data:        memory.SliceBufferFrom(data[:int(numValues)*size]),
 		size:        size,
 		columnIndex: ^columnIndex,
 	}
@@ -29,36 +30,40 @@ func (page *fixedLenByteArrayPage) Column() int { return int(^page.columnIndex) 
 
 func (page *fixedLenByteArrayPage) Dictionary() Dictionary { return nil }
 
-func (page *fixedLenByteArrayPage) NumRows() int64 { return int64(len(page.data) / page.size) }
+func (page *fixedLenByteArrayPage) NumRows() int64 { return int64(page.data.Len() / page.size) }
 
-func (page *fixedLenByteArrayPage) NumValues() int64 { return int64(len(page.data) / page.size) }
+func (page *fixedLenByteArrayPage) NumValues() int64 { return int64(page.data.Len() / page.size) }
 
 func (page *fixedLenByteArrayPage) NumNulls() int64 { return 0 }
 
-func (page *fixedLenByteArrayPage) Size() int64 { return int64(len(page.data)) }
+func (page *fixedLenByteArrayPage) Size() int64 { return int64(page.data.Len()) }
 
 func (page *fixedLenByteArrayPage) RepetitionLevels() []byte { return nil }
 
 func (page *fixedLenByteArrayPage) DefinitionLevels() []byte { return nil }
 
 func (page *fixedLenByteArrayPage) Data() encoding.Values {
-	return encoding.FixedLenByteArrayValues(page.data, page.size)
+	return encoding.FixedLenByteArrayValues(page.data.Slice(), page.size)
 }
 
 func (page *fixedLenByteArrayPage) Values() ValueReader {
 	return &fixedLenByteArrayPageValues{page: page}
 }
 
-func (page *fixedLenByteArrayPage) min() []byte { return minFixedLenByteArray(page.data, page.size) }
+func (page *fixedLenByteArrayPage) min() []byte {
+	return minFixedLenByteArray(page.data.Slice(), page.size)
+}
 
-func (page *fixedLenByteArrayPage) max() []byte { return maxFixedLenByteArray(page.data, page.size) }
+func (page *fixedLenByteArrayPage) max() []byte {
+	return maxFixedLenByteArray(page.data.Slice(), page.size)
+}
 
 func (page *fixedLenByteArrayPage) bounds() (min, max []byte) {
-	return boundsFixedLenByteArray(page.data, page.size)
+	return boundsFixedLenByteArray(page.data.Slice(), page.size)
 }
 
 func (page *fixedLenByteArrayPage) Bounds() (min, max Value, ok bool) {
-	if ok = len(page.data) > 0; ok {
+	if ok = page.data.Len() > 0; ok {
 		minBytes, maxBytes := page.bounds()
 		min = page.makeValueBytes(minBytes)
 		max = page.makeValueBytes(maxBytes)
@@ -67,9 +72,10 @@ func (page *fixedLenByteArrayPage) Bounds() (min, max Value, ok bool) {
 }
 
 func (page *fixedLenByteArrayPage) Slice(i, j int64) Page {
+	data := page.data.Slice()
 	return &fixedLenByteArrayPage{
 		typ:         page.typ,
-		data:        page.data[i*int64(page.size) : j*int64(page.size)],
+		data:        memory.SliceBufferFrom(data[i*int64(page.size) : j*int64(page.size)]),
 		size:        page.size,
 		columnIndex: page.columnIndex,
 	}
@@ -102,9 +108,10 @@ func (r *fixedLenByteArrayPageValues) ReadRequired(values []byte) (int, error) {
 }
 
 func (r *fixedLenByteArrayPageValues) ReadFixedLenByteArrays(values []byte) (n int, err error) {
-	n = copy(values, r.page.data[r.offset:]) / r.page.size
+	data := r.page.data.Slice()
+	n = copy(values, data[r.offset:]) / r.page.size
 	r.offset += n * r.page.size
-	if r.offset == len(r.page.data) {
+	if r.offset == len(data) {
 		err = io.EOF
 	} else if n == 0 && len(values) > 0 {
 		err = io.ErrShortBuffer
@@ -113,12 +120,13 @@ func (r *fixedLenByteArrayPageValues) ReadFixedLenByteArrays(values []byte) (n i
 }
 
 func (r *fixedLenByteArrayPageValues) ReadValues(values []Value) (n int, err error) {
-	for n < len(values) && r.offset < len(r.page.data) {
-		values[n] = r.page.makeValueBytes(r.page.data[r.offset : r.offset+r.page.size])
+	data := r.page.data.Slice()
+	for n < len(values) && r.offset < len(data) {
+		values[n] = r.page.makeValueBytes(data[r.offset : r.offset+r.page.size])
 		r.offset += r.page.size
 		n++
 	}
-	if r.offset == len(r.page.data) {
+	if r.offset == len(data) {
 		err = io.EOF
 	}
 	return n, err

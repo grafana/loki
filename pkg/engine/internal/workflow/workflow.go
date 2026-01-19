@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/go-kit/log"
@@ -13,6 +14,7 @@ import (
 	"github.com/oklog/ulid/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
@@ -28,6 +30,9 @@ var shortCircuitsTotal = promauto.NewCounter(prometheus.CounterOpts{
 
 // Options configures a [Workflow].
 type Options struct {
+	Tenant string   // Tenant ID associated with the workflow.
+	Actor  []string // Optional path to the actor that is generating the workflow.
+
 	// MaxRunningScanTasks specifies the maximum number of scan tasks that may
 	// run concurrently within a single workflow. 0 means no limit.
 	MaxRunningScanTasks int
@@ -79,14 +84,14 @@ type Workflow struct {
 // cannot be partitioned into a Workflow.
 //
 // The provided Runner will be used for Workflow execution.
-func New(opts Options, logger log.Logger, tenantID string, runner Runner, plan *physical.Plan) (*Workflow, error) {
-	graph, err := planWorkflow(tenantID, plan)
+func New(opts Options, logger log.Logger, runner Runner, plan *physical.Plan) (*Workflow, error) {
+	graph, err := planWorkflow(opts.Tenant, plan)
 	if err != nil {
 		return nil, err
 	}
 
 	// Inject a stream for final task results.
-	results, err := injectResultsStream(tenantID, &graph)
+	results, err := injectResultsStream(opts.Tenant, &graph)
 	if err != nil {
 		return nil, err
 	}
@@ -132,6 +137,10 @@ func injectResultsStream(tenantID string, graph *dag.Graph[*Task]) (*Stream, err
 // init initializes the workflow.
 func (wf *Workflow) init(ctx context.Context) error {
 	wf.manifest = &Manifest{
+		ID:     ulid.Make(),
+		Tenant: wf.opts.Tenant,
+		Actor:  wf.opts.Actor,
+
 		Streams: wf.allStreams(),
 		Tasks:   wf.allTasks(),
 
@@ -143,6 +152,9 @@ func (wf *Workflow) init(ctx context.Context) error {
 	}
 	return wf.runner.Listen(ctx, wf.resultsPipeline, wf.resultsStream)
 }
+
+// Len returns the total number of tasks in the workflow.
+func (wf *Workflow) Len() int { return len(wf.manifest.Tasks) }
 
 // Close releases resources associated with the workflow.
 func (wf *Workflow) Close() {
@@ -191,6 +203,14 @@ func (wf *Workflow) dispatchTasks(ctx context.Context, tasks []*Task) error {
 		int64(wf.opts.MaxRunningOtherTasks),
 	)
 
+	// Start runner region once per workflow for capturing runner-level observations.
+	// Not calling defer region.End() here, as we want to allow observations to be recorded
+	// until the workflow is Closed.
+	ctx, region := xcap.StartRegion(ctx, "wf.runner",
+		xcap.WithRegionAttributes(
+			attribute.Int("tasks.total", len(tasks)),
+		))
+
 	groups := wf.admissionControl.groupByType(tasks)
 	for _, taskType := range []taskType{
 		taskTypeOther,
@@ -204,9 +224,14 @@ func (wf *Workflow) dispatchTasks(ctx context.Context, tasks []*Task) error {
 
 		for ; offset < total; offset += batchSize {
 			batchSize = int64(1)
+
+			start := time.Now()
 			if err := lane.Acquire(ctx, batchSize); err != nil {
 				return fmt.Errorf("failed to acquire tokens from admission lane %s: %w", taskType, err)
 			}
+
+			region.Record(xcap.StatTaskAdmissionWaitDuration.Observe(time.Since(start).Seconds()))
+
 			if err := wf.runner.Start(ctx, tasks[offset:offset+batchSize]...); err != nil {
 				return fmt.Errorf("failed to start tasks: %w", err)
 			}

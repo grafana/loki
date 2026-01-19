@@ -391,6 +391,38 @@ Class      | Meaning
 `[^class]` | matches any single character which does *not* match the class
 `[!class]` | same as `^`: negates the class
 
+#### Globs Are Not Regular Expressions
+
+Occasionally I get bug reports that some regular-expression-style syntax
+doesn't work, or feature requests to add some regular-expression-inspired
+syntax. Globs are not regular expressions. However, if globs are not
+sufficiently expressive for your filtering needs, I recommend a two stage
+approach using `GlobWalk`. Something like the following will get you started:
+
+```go
+var matches []string
+err := doublestar.GlobWalk(fsys, pattern, func(p string, d fs.DirEntry) error {
+  if (customFilter(p, d)) {
+    matches = append(matches, p)
+  } else if (d.isDir()) {
+    return doublestar.SkipDir
+  }
+  return nil
+})
+return matches, err
+```
+
+In this example, `pattern` should be a glob that does a first pass at fetching
+the files you might be interested in; `customFilter` is a function that does a
+second pass. This second pass could be anything, including regular expressions.
+Try to fashion a `pattern` that reduces the number of files you need to
+consider in your second pass `customFilter`.
+
+One final note: empty alternatives can be used to build some more complicated
+globs. For example, `some{thing,}` will match both "something" and "some".
+Alternatives can also be nested, like `some{thing{new,},}`, which would match
+"somethingnew", "something", and "some".
+
 ## Performance
 
 ```

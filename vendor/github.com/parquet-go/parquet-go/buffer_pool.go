@@ -1,11 +1,11 @@
 package parquet
 
 import (
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
-	"sync"
+
+	"github.com/parquet-go/parquet-go/internal/memory"
 )
 
 // BufferPool is an interface abstracting the underlying implementation of
@@ -35,282 +35,38 @@ type BufferPool interface {
 	PutBuffer(io.ReadWriteSeeker)
 }
 
+const defaultChunkSize = 32 * 1024 // 32 KiB
+
 // NewBufferPool creates a new in-memory page buffer pool.
 //
 // The implementation is backed by sync.Pool and allocates memory buffers on the
 // Go heap.
-func NewBufferPool() BufferPool { return new(memoryBufferPool) }
-
-type memoryBuffer struct {
-	data []byte
-	off  int
-}
-
-func (p *memoryBuffer) Reset() {
-	p.data, p.off = p.data[:0], 0
-}
-
-func (p *memoryBuffer) Read(b []byte) (n int, err error) {
-	n = copy(b, p.data[p.off:])
-	p.off += n
-	if p.off == len(p.data) {
-		err = io.EOF
-	}
-	return n, err
-}
-
-func (p *memoryBuffer) Write(b []byte) (int, error) {
-	// Calculate the end position after writing
-	end := p.off + len(b)
-
-	// If writing beyond current length, we need to extend
-	if end > len(p.data) {
-		// First, copy what fits in existing capacity
-		n := copy(p.data[p.off:cap(p.data)], b)
-		p.data = p.data[:p.off+n]
-
-		// Then append any remaining data
-		if n < len(b) {
-			p.data = append(p.data, b[n:]...)
-		}
-	} else {
-		// Writing within existing data - just overwrite, don't truncate
-		copy(p.data[p.off:], b)
-	}
-
-	p.off = end
-	return len(b), nil
-}
-
-func (p *memoryBuffer) WriteTo(w io.Writer) (int64, error) {
-	n, err := w.Write(p.data[p.off:])
-	p.off += n
-	return int64(n), err
-}
-
-func (p *memoryBuffer) Seek(offset int64, whence int) (int64, error) {
-	switch whence {
-	case io.SeekCurrent:
-		offset += int64(p.off)
-	case io.SeekEnd:
-		offset += int64(len(p.data))
-	}
-	if offset < 0 {
-		return 0, fmt.Errorf("seek: negative offset: %d<0", offset)
-	}
-	if offset > int64(len(p.data)) {
-		offset = int64(len(p.data))
-	}
-	p.off = int(offset)
-	return offset, nil
-}
-
-type memoryBufferPool struct{ sync.Pool }
-
-func (pool *memoryBufferPool) GetBuffer() io.ReadWriteSeeker {
-	b, _ := pool.Get().(*memoryBuffer)
-	if b == nil {
-		b = new(memoryBuffer)
-	} else {
-		b.Reset()
-	}
-	return b
-}
-
-func (pool *memoryBufferPool) PutBuffer(buf io.ReadWriteSeeker) {
-	if b, _ := buf.(*memoryBuffer); b != nil {
-		pool.Put(b)
-	}
-}
+func NewBufferPool() BufferPool { return NewChunkBufferPool(defaultChunkSize) }
 
 // NewChunkBufferPool creates a new in-memory page buffer pool.
 //
 // The implementation is backed by sync.Pool and allocates memory buffers on the
 // Go heap in fixed-size chunks.
 func NewChunkBufferPool(chunkSize int) BufferPool {
-	return newChunkMemoryBufferPool(chunkSize)
+	return &memoryBufferPool{size: chunkSize}
 }
 
-func newChunkMemoryBufferPool(chunkSize int) *chunkMemoryBufferPool {
-	pool := &chunkMemoryBufferPool{}
-	pool.bytesPool.New = func() any {
-		return make([]byte, chunkSize)
-	}
-	return pool
+type memoryBufferPool struct {
+	pool memory.Pool[memory.Buffer]
+	size int
 }
 
-// chunkMemoryBuffer implements an io.ReadWriteSeeker by storing a slice of fixed-size
-// buffers into which it copies data. (It uses a sync.Pool to reuse buffers across
-// instances.)
-type chunkMemoryBuffer struct {
-	bytesPool *sync.Pool
-
-	data [][]byte
-	idx  int
-	off  int
+func (m *memoryBufferPool) GetBuffer() io.ReadWriteSeeker {
+	return m.pool.Get(
+		func() *memory.Buffer { return memory.NewBuffer(m.size) },
+		(*memory.Buffer).Reset,
+	)
 }
 
-func (c *chunkMemoryBuffer) Reset() {
-	for i := range c.data {
-		c.bytesPool.Put(c.data[i])
-	}
-	for i := range c.data {
-		c.data[i] = nil
-	}
-	c.data, c.idx, c.off = c.data[:0], 0, 0
-}
-
-func (c *chunkMemoryBuffer) Read(b []byte) (n int, err error) {
-	if len(b) == 0 {
-		return 0, nil
-	}
-
-	if c.idx >= len(c.data) {
-		return 0, io.EOF
-	}
-
-	curData := c.data[c.idx]
-
-	if c.idx == len(c.data)-1 && c.off == len(curData) {
-		return 0, io.EOF
-	}
-
-	n = copy(b, curData[c.off:])
-	c.off += n
-
-	if c.off == cap(curData) {
-		c.idx++
-		c.off = 0
-	}
-
-	return n, err
-}
-
-func (c *chunkMemoryBuffer) Write(b []byte) (int, error) {
-	lenB := len(b)
-
-	if lenB == 0 {
-		return 0, nil
-	}
-
-	for len(b) > 0 {
-		if c.idx == len(c.data) {
-			c.data = append(c.data, c.bytesPool.Get().([]byte)[:0])
-		}
-		curData := c.data[c.idx]
-		n := copy(curData[c.off:cap(curData)], b)
-
-		// Only extend the slice if writing beyond current length
-		newLen := c.off + n
-		if newLen > len(curData) {
-			c.data[c.idx] = curData[:newLen]
-		}
-
-		c.off += n
-		b = b[n:]
-		if c.off >= cap(curData) {
-			c.idx++
-			c.off = 0
-		}
-	}
-
-	return lenB, nil
-}
-
-func (c *chunkMemoryBuffer) WriteTo(w io.Writer) (int64, error) {
-	var numWritten int64
-	var err error
-	for err == nil {
-		curData := c.data[c.idx]
-		n, e := w.Write(curData[c.off:])
-		numWritten += int64(n)
-		c.off += n
-		err = e
-		if c.idx == len(c.data)-1 {
-			break
-		}
-		c.idx++
-		c.off = 0
-	}
-	return numWritten, err
-}
-
-func (c *chunkMemoryBuffer) Seek(offset int64, whence int) (int64, error) {
-	// Because this is the common case, we check it first to avoid computing endOff.
-	if offset == 0 && whence == io.SeekStart {
-		c.idx = 0
-		c.off = 0
-		return offset, nil
-	}
-	endOff := c.endOff()
-	switch whence {
-	case io.SeekCurrent:
-		offset += c.currentOff()
-	case io.SeekEnd:
-		offset += endOff
-	}
-	if offset < 0 {
-		return 0, fmt.Errorf("seek: negative offset: %d<0", offset)
-	}
-	if offset > endOff {
-		offset = endOff
-	}
-	// Repeat this case now that we know the absolute offset. This is a bit faster, but
-	// mainly protects us from an out-of-bounds if c.data is empty. (If the buffer is
-	// empty and the absolute offset isn't zero, we'd have errored (if negative) or
-	// clamped to zero (if positive) above.
-	if offset == 0 {
-		c.idx = 0
-		c.off = 0
-	} else {
-		stride := cap(c.data[0])
-		c.idx = int(offset) / stride
-		c.off = int(offset) % stride
-	}
-	return offset, nil
-}
-
-func (c *chunkMemoryBuffer) currentOff() int64 {
-	if c.idx == 0 {
-		return int64(c.off)
-	}
-	return int64(c.idx*cap(c.data[0]) + c.off)
-}
-
-func (c *chunkMemoryBuffer) endOff() int64 {
-	if len(c.data) == 0 {
-		return 0
-	}
-	l := len(c.data)
-	last := c.data[l-1]
-	return int64(cap(last)*(l-1) + len(last))
-}
-
-type chunkMemoryBufferPool struct {
-	sync.Pool
-	bytesPool sync.Pool
-}
-
-func (pool *chunkMemoryBufferPool) GetBuffer() io.ReadWriteSeeker {
-	b, _ := pool.Get().(*chunkMemoryBuffer)
-	if b == nil {
-		b = &chunkMemoryBuffer{bytesPool: &pool.bytesPool}
-	} else {
-		b.Reset()
-	}
-	return b
-}
-
-func (pool *chunkMemoryBufferPool) PutBuffer(buf io.ReadWriteSeeker) {
-	if b, _ := buf.(*chunkMemoryBuffer); b != nil {
-		for _, bytes := range b.data {
-			b.bytesPool.Put(bytes)
-		}
-		for i := range b.data {
-			b.data[i] = nil
-		}
-		b.data = b.data[:0]
-		pool.Put(b)
+func (m *memoryBufferPool) PutBuffer(buf io.ReadWriteSeeker) {
+	if b, _ := buf.(*memory.Buffer); b != nil {
+		b.Reset() // release internal buffers
+		m.pool.Put(b)
 	}
 }
 
@@ -357,15 +113,11 @@ func (buf *errorBuffer) WriteTo(io.Writer) (int64, error)  { return 0, buf.err }
 func (buf *errorBuffer) Seek(int64, int) (int64, error)    { return 0, buf.err }
 
 var (
-	defaultColumnBufferPool  = *newChunkMemoryBufferPool(256 * 1024)
-	defaultSortingBufferPool memoryBufferPool
+	defaultColumnBufferPool  = memoryBufferPool{size: defaultChunkSize}
+	defaultSortingBufferPool = memoryBufferPool{size: defaultChunkSize}
 
-	_ io.ReaderFrom      = (*errorBuffer)(nil)
-	_ io.WriterTo        = (*errorBuffer)(nil)
-	_ io.ReadWriteSeeker = (*memoryBuffer)(nil)
-	_ io.WriterTo        = (*memoryBuffer)(nil)
-	_ io.ReadWriteSeeker = (*chunkMemoryBuffer)(nil)
-	_ io.WriterTo        = (*chunkMemoryBuffer)(nil)
+	_ io.ReaderFrom = (*errorBuffer)(nil)
+	_ io.WriterTo   = (*errorBuffer)(nil)
 )
 
 type readerAt struct {
