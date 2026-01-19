@@ -447,3 +447,7 @@ func (ts *TeeService) Duplicate(_ context.Context, tenant string, streams []dist
 		ts.buffersMutex.Unlock()
 	}
 }
+
+// Register implements the [Tee] interface.
+func (ts *TeeService) Register(tenant string, streams []distributor.KeyedStream, pushTracker *distributor.PushTracker) {
+}

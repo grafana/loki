@@ -2146,18 +2146,24 @@ func (mt *mockTee) Duplicate(_ context.Context, tenant string, streams []KeyedSt
 	mt.tenant = tenant
 }
 
+func (mt *mockTee) Register(tenant string, streams []KeyedStream, pushTracker *PushTracker) {
+}
+
 // mockFailingTee is a mock tee that always fails with an error.
 type mockFailingTee struct {
 	err error
 }
 
 func (mt *mockFailingTee) Duplicate(_ context.Context, _ string, streams []KeyedStream, pushTracker *PushTracker) {
-	// Add streams to pending count like a real tee would
-	pushTracker.streamsPending.Add(int32(len(streams)))
 	// Report failure for each stream
 	for range streams {
 		pushTracker.doneWithResult(mt.err)
 	}
+}
+
+func (mt *mockFailingTee) Register(tenant string, streams []KeyedStream, pushTracker *PushTracker) {
+	// Add streams to pending count like a real tee would
+	pushTracker.streamsPending.Add(int32(len(streams)))
 }
 
 func TestDistributorTee(t *testing.T) {

@@ -17,6 +17,9 @@ func (m *mockedTee) Duplicate(ctx context.Context, tenant string, streams []Keye
 	m.Called(ctx, tenant, streams, pushTracker)
 }
 
+func (m *mockedTee) Register(tenant string, streams []KeyedStream, pushTracker *PushTracker) {
+	m.Called(tenant, streams, pushTracker)
+}
 func TestWrapTee(t *testing.T) {
 	ctx := t.Context()
 	tee1 := new(mockedTee)
