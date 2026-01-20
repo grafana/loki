@@ -8,6 +8,7 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/deletion"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
@@ -27,7 +28,7 @@ func BuildPlan(ctx context.Context, params logql.Params) (*Plan, error) {
 	return BuildPlanWithDeletes(ctx, params, nil)
 }
 
-func BuildPlanWithDeletes(ctx context.Context, params logql.Params, deletes []*logproto.Delete) (*Plan, error) {
+func BuildPlanWithDeletes(ctx context.Context, params logql.Params, deletes []*deletion.Request) (*Plan, error) {
 	var (
 		value Value
 		err   error
@@ -63,7 +64,7 @@ func buildPlanForLogQuery(
 	params logql.Params,
 	isMetricQuery bool,
 	rangeInterval time.Duration,
-	deletes []*logproto.Delete,
+	deletes []*deletion.Request,
 ) (Value, error) {
 	var (
 		err      error
@@ -414,7 +415,7 @@ func walkLiteral(e *syntax.LiteralExpr, _ *walkContext) (Value, error) {
 type walkContext struct {
 	ctx     context.Context
 	params  logql.Params
-	deletes []*logproto.Delete
+	deletes []*deletion.Request
 }
 
 func walk(e syntax.Expr, wc *walkContext) (Value, error) {
@@ -432,7 +433,7 @@ func walk(e syntax.Expr, wc *walkContext) (Value, error) {
 	return nil, errUnimplemented
 }
 
-func buildPlanForSampleQuery(ctx context.Context, e syntax.SampleExpr, params logql.Params, deletes []*logproto.Delete) (Value, error) {
+func buildPlanForSampleQuery(ctx context.Context, e syntax.SampleExpr, params logql.Params, deletes []*deletion.Request) (Value, error) {
 	val, err := walk(e, &walkContext{
 		ctx:     ctx,
 		params:  params,
@@ -705,7 +706,7 @@ func parseShards(shards []string) (*ShardInfo, error) {
 //
 // There is not need to explicitly signal the optimizer to not push these predicates down,
 // canApplyPredicate already correctly handles this by returning an error if there is a label column ref.
-func buildDeletePredicates(ctx context.Context, deletes []*logproto.Delete, params logql.Params, rangeInterval time.Duration) ([]Value, error) {
+func buildDeletePredicates(ctx context.Context, deletes []*deletion.Request, params logql.Params, rangeInterval time.Duration) ([]Value, error) {
 	_, region := xcap.StartRegion(ctx, "buildDeletePredicates")
 	defer region.End()
 

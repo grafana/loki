@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/deletion"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
@@ -415,7 +416,7 @@ func TestConvertAST_WithDeletes(t *testing.T) {
 			limit:     1000,
 		}
 
-		deletes := []*logproto.Delete{
+		deletes := []*deletion.Request{
 			{
 				Selector: `{job="test"}`,
 				Start:    4000 * 1e9, // 4000 seconds in nanoseconds
@@ -460,7 +461,7 @@ RETURN %17
 			limit:     1000,
 		}
 
-		deletes := []*logproto.Delete{
+		deletes := []*deletion.Request{
 			{
 				Selector: `{job="test"} | json`, // Parser is not supported in delete requests
 				Start:    4000 * 1e9,
@@ -860,8 +861,8 @@ func TestBuildDeletePredicates(t *testing.T) {
 	}
 
 	// helper to create delete requests
-	createDeleteRequest := func(selector string, startSec, endSec int64) *logproto.Delete {
-		return &logproto.Delete{
+	createDeleteRequest := func(selector string, startSec, endSec int64) *deletion.Request {
+		return &deletion.Request{
 			Selector: selector,
 			Start:    startSec * 1e9, // Convert to nanoseconds
 			End:      endSec * 1e9,
@@ -870,14 +871,14 @@ func TestBuildDeletePredicates(t *testing.T) {
 
 	tests := []struct {
 		name          string
-		deletes       []*logproto.Delete
+		deletes       []*deletion.Request
 		rangeInterval time.Duration
 		wantLen       int
 		expectedPlan  string // Expected SSA plan string
 	}{
 		{
 			name:          "simple selector",
-			deletes:       []*logproto.Delete{createDeleteRequest(`{job="test"}`, 1200, 1800)},
+			deletes:       []*deletion.Request{createDeleteRequest(`{job="test"}`, 1200, 1800)},
 			rangeInterval: 0,
 			wantLen:       1,
 			expectedPlan: `%1 = EQ label.env "prod"
@@ -894,7 +895,7 @@ RETURN %9
 		},
 		{
 			name: "selector with multiple matchers including regex",
-			deletes: []*logproto.Delete{
+			deletes: []*deletion.Request{
 				createDeleteRequest(`{job="test", namespace=~"loki-.*", env!="dev"}`, 1200, 1800),
 			},
 			wantLen: 1,
@@ -916,7 +917,7 @@ RETURN %13
 		},
 		{
 			name: "delete request with line filter regex",
-			deletes: []*logproto.Delete{
+			deletes: []*deletion.Request{
 				createDeleteRequest(`{job="test"} |~ "error.*"`, 1200, 1800),
 			},
 			wantLen: 1,
@@ -937,7 +938,7 @@ RETURN %12
 		},
 		{
 			name: "simple selector with multiple filters",
-			deletes: []*logproto.Delete{
+			deletes: []*deletion.Request{
 				createDeleteRequest(`{job="test"} |= "error" | level="error" | env="prod"`, 1200, 1800),
 			},
 			wantLen: 1,
@@ -962,7 +963,7 @@ RETURN %16
 		},
 		{
 			name: "multiple delete requests",
-			deletes: []*logproto.Delete{
+			deletes: []*deletion.Request{
 				createDeleteRequest(`{job="test1"}`, 200, 800), // outside range - no predicate
 				createDeleteRequest(`{job="test1"}`, 1200, 1500),
 				createDeleteRequest(`{job="test2"} |= "error"`, 1500, 1800),
@@ -1003,7 +1004,7 @@ RETURN %29
 		},
 		{
 			name: "multiple delete requests with time range optimizations",
-			deletes: []*logproto.Delete{
+			deletes: []*deletion.Request{
 				createDeleteRequest(`{job="covers"}`, 500, 2500),  // Covers entire range - no time predicate
 				createDeleteRequest(`{job="before"}`, 500, 1500),  // Starts before - only end check
 				createDeleteRequest(`{job="after"}`, 1500, 2500),  // Ends after - only start check
@@ -1038,7 +1039,7 @@ RETURN %22
 		{
 			name:          "time range optimizations with non-zero range interval",
 			rangeInterval: 300 * time.Second, // 5 minutes - extends query start from 1000 to 700
-			deletes: []*logproto.Delete{
+			deletes: []*deletion.Request{
 				createDeleteRequest(`{job="covers"}`, 500, 2500), // Covers entire range (700-2000) - no time predicate
 				createDeleteRequest(`{job="before"}`, 500, 1500), // Starts before qStart (700) - only end check
 				createDeleteRequest(`{job="after"}`, 1500, 2500), // Ends after qEnd (2000) - only start check
@@ -1075,7 +1076,6 @@ RETURN %22
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			predicates, err := buildDeletePredicates(context.Background(), tt.deletes, queryParams, tt.rangeInterval)
-
 			require.NoError(t, err)
 			require.Len(t, predicates, tt.wantLen)
 

@@ -41,7 +41,7 @@ func (cfg *HTTPConfig) RegisterFlags(f *flag.FlagSet) {
 type compactorHTTPClient struct {
 	httpClient *http.Client
 
-	deleteRequestsURL string
+	deleteRequestsURL *url.URL
 	cacheGenURL       string
 }
 
@@ -54,14 +54,11 @@ func NewHTTPClient(addr string, cfg HTTPConfig) (CompactorClient, error) {
 		return nil, err
 	}
 
-	u.Path = getDeletePath
-	q := u.Query()
-	q.Set(deletion.ForQuerytimeFilteringQueryParam, "true")
-	u.RawQuery = q.Encode()
-	deleteRequestsURL := u.String()
+	deleteRequestsURL := *u
+	deleteRequestsURL.Path = getDeletePath
 
-	u.Path = cacheGenNumPath
-	cacheGenURL := u.String()
+	cacheGenURL := *u
+	cacheGenURL.Path = cacheGenNumPath
 
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.MaxIdleConns = 250
@@ -78,8 +75,8 @@ func NewHTTPClient(addr string, cfg HTTPConfig) (CompactorClient, error) {
 
 	return &compactorHTTPClient{
 		httpClient:        &http.Client{Timeout: 5 * time.Second, Transport: transport},
-		deleteRequestsURL: deleteRequestsURL,
-		cacheGenURL:       cacheGenURL,
+		deleteRequestsURL: &deleteRequestsURL,
+		cacheGenURL:       cacheGenURL.String(),
 	}, nil
 }
 
@@ -89,8 +86,22 @@ func (c *compactorHTTPClient) Name() string {
 
 func (c *compactorHTTPClient) Stop() {}
 
-func (c *compactorHTTPClient) GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]deletionproto.DeleteRequest, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.deleteRequestsURL, nil)
+func (c *compactorHTTPClient) GetAllDeleteRequestsForUser(ctx context.Context, userID string, forQuerytimeFiltering bool, timeRange *deletion.TimeRange) ([]deletionproto.DeleteRequest, error) {
+	u := *c.deleteRequestsURL
+	q := u.Query()
+
+	if forQuerytimeFiltering {
+		q.Set(deletion.ForQuerytimeFilteringQueryParam, "true")
+	}
+
+	if timeRange != nil {
+		q.Set("start", fmt.Sprintf("%d", timeRange.Start.Unix()))
+		q.Set("end", fmt.Sprintf("%d", timeRange.End.Unix()))
+	}
+
+	u.RawQuery = q.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
 		level.Error(log.Logger).Log("msg", "error getting delete requests from the store", "err", err)
 		return nil, err
