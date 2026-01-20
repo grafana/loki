@@ -156,15 +156,14 @@ func (a *aggregator) Add(ts time.Time, value float64, labels []arrow.Field, labe
 }
 
 func (a *aggregator) BuildRecord() (arrow.RecordBatch, error) {
-	fields := append(a.labels,
+	fields := make([]arrow.Field, 0, len(a.labels)+2)
+	fields = append(fields,
 		semconv.FieldFromIdent(semconv.ColumnIdentTimestamp, false),
 		semconv.FieldFromIdent(semconv.ColumnIdentValue, false),
 	)
+	fields = append(fields, a.labels...)
 	schema := arrow.NewSchema(fields, nil)
 	rb := array.NewRecordBuilder(memory.NewGoAllocator(), schema)
-
-	tsColIdx := len(fields) - 2
-	valColIdx := len(fields) - 1
 
 	// emit aggregated results in sorted order of timestamp
 	sortedTimestamps := a.getSortedTimestamps()
@@ -190,11 +189,11 @@ func (a *aggregator) BuildRecord() (arrow.RecordBatch, error) {
 				value = entry.value
 			}
 
-			rb.Field(tsColIdx).(*array.TimestampBuilder).Append(tsValue)
-			rb.Field(valColIdx).(*array.Float64Builder).Append(value)
+			rb.Field(0).(*array.TimestampBuilder).Append(tsValue)
+			rb.Field(1).(*array.Float64Builder).Append(value)
 
 			for i, label := range a.labels {
-				builder := rb.Field(i)
+				builder := rb.Field(2 + i) // offset by 2 as the first 2 fields are timestamp and value
 
 				j := slices.IndexFunc(entry.labels, func(l arrow.Field) bool {
 					return l.Name == label.Name

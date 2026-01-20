@@ -12,7 +12,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
-func NewFilterPipeline(filter *physical.Filter, input Pipeline, evaluator expressionEvaluator, region *xcap.Region) *GenericPipeline {
+func NewFilterPipeline(filter *physical.Filter, input Pipeline, evaluator *expressionEvaluator, region *xcap.Region) *GenericPipeline {
 	return newGenericPipelineWithRegion(func(ctx context.Context, inputs []Pipeline) (arrow.RecordBatch, error) {
 		// Pull the next item from the input pipeline
 		input := inputs[0]

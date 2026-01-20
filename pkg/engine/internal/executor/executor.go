@@ -63,7 +63,7 @@ type Context struct {
 
 	logger    log.Logger
 	plan      *physical.Plan
-	evaluator expressionEvaluator
+	evaluator *expressionEvaluator
 	bucket    objstore.Bucket
 	metastore metastore.Metastore
 
@@ -298,7 +298,7 @@ func (c *Context) executeProjection(ctx context.Context, proj *physical.Projecti
 		return errorPipelineWithRegion(ctx, fmt.Errorf("projection expects at least one expression, got 0"), region)
 	}
 
-	p, err := NewProjectPipeline(inputs[0], proj, &c.evaluator, region)
+	p, err := NewProjectPipeline(inputs[0], proj, c.evaluator, region)
 	if err != nil {
 		return errorPipelineWithRegion(ctx, err, region)
 	}

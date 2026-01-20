@@ -24,7 +24,7 @@ type vectorAggregationPipeline struct {
 	inputsExhausted bool // indicates if all inputs are exhausted
 
 	aggregator *aggregator
-	evaluator  expressionEvaluator
+	evaluator  *expressionEvaluator
 	grouping   physical.Grouping
 	region     *xcap.Region
 
@@ -44,7 +44,7 @@ var (
 	}
 )
 
-func newVectorAggregationPipeline(inputs []Pipeline, grouping physical.Grouping, evaluator expressionEvaluator, operation types.VectorAggregationType, region *xcap.Region) (*vectorAggregationPipeline, error) {
+func newVectorAggregationPipeline(inputs []Pipeline, grouping physical.Grouping, evaluator *expressionEvaluator, operation types.VectorAggregationType, region *xcap.Region) (*vectorAggregationPipeline, error) {
 	if len(inputs) == 0 {
 		return nil, fmt.Errorf("vector aggregation expects at least one input")
 	}

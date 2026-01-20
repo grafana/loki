@@ -68,13 +68,13 @@ type rangeAggregationPipeline struct {
 
 	aggregator          *aggregator
 	windowsForTimestamp timestampMatchingWindowsFunc // function to find matching time windows for a given timestamp
-	evaluator           expressionEvaluator          // used to evaluate column expressions
+	evaluator           *expressionEvaluator         // used to evaluate column expressions
 	opts                rangeAggregationOptions
 	region              *xcap.Region
 	identCache          *semconv.IdentifierCache
 }
 
-func newRangeAggregationPipeline(inputs []Pipeline, evaluator expressionEvaluator, opts rangeAggregationOptions, region *xcap.Region) (*rangeAggregationPipeline, error) {
+func newRangeAggregationPipeline(inputs []Pipeline, evaluator *expressionEvaluator, opts rangeAggregationOptions, region *xcap.Region) (*rangeAggregationPipeline, error) {
 	r := &rangeAggregationPipeline{
 		inputs:     inputs,
 		evaluator:  evaluator,

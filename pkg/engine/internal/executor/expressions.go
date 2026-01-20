@@ -14,8 +14,8 @@ type expressionEvaluator struct {
 	identCache *semconv.IdentifierCache
 }
 
-func newExpressionEvaluator() expressionEvaluator {
-	return expressionEvaluator{
+func newExpressionEvaluator() *expressionEvaluator {
+	return &expressionEvaluator{
 		identCache: semconv.NewIdentifierCache(),
 	}
 }
