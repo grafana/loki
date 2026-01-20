@@ -127,8 +127,7 @@ func (alloc *Allocator) Trim() {
 func (alloc *Allocator) returnRegion(region *Region) {
 	for i := range alloc.regions {
 		if alloc.regions[i] == region {
-			alloc.regions[i] = nil
-			alloc.empty.Set(i, true)
+			alloc.free.Set(i, true)
 			break
 		}
 	}

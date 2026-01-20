@@ -76,7 +76,9 @@ func TestAllocator_AllocateFromParent(t *testing.T) {
 	child.Reclaim()
 	child.Trim()
 	require.Equal(t, 0, child.AllocatedBytes(), "all memory should have been trimmed")
-	require.Equal(t, parentAllocated-childAllocated, parent.AllocatedBytes(), "should have trimmed parent memory by the amount of the child's allocated memory")
+	require.Equal(t, parentAllocated, parent.AllocatedBytes(), "parent allocated memory should not have been changed because the parent was not Trimmed.")
+	require.Equal(t, 0, child.FreeBytes(), "all child memory should have been freed")
+	require.Equal(t, 5, parent.FreeBytes(), "parent memory should have the child's bytes available for allocation")
 
 	// Creating a new buffer should allocate new memory from the parent.
 	_ = child.Allocate(5)
