@@ -1191,7 +1191,7 @@ func Test_detectLevelFromLogLine(t *testing.T) {
 				expected: level.level,
 			},
 			{
-				name:     fmt.Sprintf("nginx like log with %s", level),
+				name:     fmt.Sprintf("nginx like log with %s", level.word),
 				log:      fmt.Sprintf("2024-01-01T10:00:00Z %s: connection failed", level.word),
 				expected: level.level,
 			},

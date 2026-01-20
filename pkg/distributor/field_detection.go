@@ -344,7 +344,7 @@ func logHasBoundedLevel(log, level string) bool {
 		return false
 	}
 
-	// make sure the word occurs on it's own, with boundaries on both sides
+	// make sure the word occurs on its own, with boundaries on both sides
 	if isWordBoundary(log, pos-1) && isWordBoundary(log, pos+len(level)) {
 		return true
 	}
