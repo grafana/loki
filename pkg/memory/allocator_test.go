@@ -49,8 +49,8 @@ func TestAllocator_Trim(t *testing.T) {
 }
 
 func TestAllocator_AllocateFromParent(t *testing.T) {
-	var parent memory.Allocator
-	child := memory.FromParent(&parent)
+	parent := memory.MakeAllocator(nil)
+	child := memory.MakeAllocator(parent)
 
 	defer child.Reset()
 	defer parent.Reset()

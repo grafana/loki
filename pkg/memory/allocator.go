@@ -25,14 +25,14 @@ type Allocator struct {
 	empty   Bitmap // Tracks nil elements of regions. 1=nil, 0=not-nil
 }
 
-// FromParent creates a new Allocator that is a child of the given parent.
+// MakeAllocator creates a new Allocator with the given parent. If parent is
+// nil, the returned allocator is a root allocator.
 //
-// The child allocator will obtain memory from the parent allocator and can manage it's own Trim & Reclaim lifecycle.
-// All memory allocated from a child will be trimmed/reclaimed when the parent is trimmed/reclaimed.
-func FromParent(parent *Allocator) *Allocator {
-	return &Allocator{
-		parent: parent,
-	}
+// Child allocators will obtain memory from their parent and can manage its own
+// Trim and Reclaim lifecycle. All memory allocated from a child is invalidated
+// when any of its parents (up to the root) reclaims memory.
+func MakeAllocator(parent *Allocator) *Allocator {
+	return &Allocator{parent: parent}
 }
 
 // Allocate retrieves the next free Memory region that can hold at least size
