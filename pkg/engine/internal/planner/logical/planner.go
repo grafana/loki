@@ -1,6 +1,7 @@
 package logical
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 var (
@@ -21,11 +23,11 @@ var (
 
 // BuildPlan converts a LogQL query represented as [logql.Params] into a logical [Plan].
 // It may return an error as second argument in case the traversal of the AST of the query fails.
-func BuildPlan(params logql.Params) (*Plan, error) {
-	return BuildPlanWithDeletes(params, nil)
+func BuildPlan(ctx context.Context, params logql.Params) (*Plan, error) {
+	return BuildPlanWithDeletes(ctx, params, nil)
 }
 
-func BuildPlanWithDeletes(params logql.Params, deletes []*logproto.Delete) (*Plan, error) {
+func BuildPlanWithDeletes(ctx context.Context, params logql.Params, deletes []*logproto.Delete) (*Plan, error) {
 	var (
 		value Value
 		err   error
@@ -33,9 +35,9 @@ func BuildPlanWithDeletes(params logql.Params, deletes []*logproto.Delete) (*Pla
 
 	switch e := params.GetExpression().(type) {
 	case syntax.LogSelectorExpr:
-		value, err = buildPlanForLogQuery(e, params, false, 0, deletes)
+		value, err = buildPlanForLogQuery(ctx, e, params, false, 0, deletes)
 	case syntax.SampleExpr:
-		value, err = buildPlanForSampleQuery(e, params, deletes)
+		value, err = buildPlanForSampleQuery(ctx, e, params, deletes)
 	default:
 		err = fmt.Errorf("unexpected expression type (%T)", e)
 	}
@@ -56,6 +58,7 @@ func BuildPlanWithDeletes(params logql.Params, deletes []*logproto.Delete) (*Pla
 // isMetricQuery should be set to true if this expr is encountered when processing a [syntax.SampleExpr].
 // rangeInterval should be set to a non-zero value if the query contains [$range].
 func buildPlanForLogQuery(
+	ctx context.Context,
 	expr syntax.LogSelectorExpr,
 	params logql.Params,
 	isMetricQuery bool,
@@ -166,7 +169,7 @@ func buildPlanForLogQuery(
 	}
 
 	// it should be safe to append this to MakeTable predicates?
-	deletePredicates, err = buildDeletePredicates(deletes, params, rangeInterval)
+	deletePredicates, err = buildDeletePredicates(ctx, deletes, params, rangeInterval)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build delete predicates: %w", err)
 	}
@@ -252,7 +255,7 @@ func walkRangeAggregation(e *syntax.RangeAggregationExpr, wc *walkContext) (Valu
 
 	rangeInterval := e.Left.Interval
 
-	logQuery, err := buildPlanForLogQuery(logSelectorExpr, wc.params, true, rangeInterval, wc.deletes)
+	logQuery, err := buildPlanForLogQuery(wc.ctx, logSelectorExpr, wc.params, true, rangeInterval, wc.deletes)
 	if err != nil {
 		return nil, err
 	}
@@ -409,6 +412,7 @@ func walkLiteral(e *syntax.LiteralExpr, _ *walkContext) (Value, error) {
 }
 
 type walkContext struct {
+	ctx     context.Context
 	params  logql.Params
 	deletes []*logproto.Delete
 }
@@ -428,8 +432,9 @@ func walk(e syntax.Expr, wc *walkContext) (Value, error) {
 	return nil, errUnimplemented
 }
 
-func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params, deletes []*logproto.Delete) (Value, error) {
+func buildPlanForSampleQuery(ctx context.Context, e syntax.SampleExpr, params logql.Params, deletes []*logproto.Delete) (Value, error) {
 	val, err := walk(e, &walkContext{
+		ctx:     ctx,
 		params:  params,
 		deletes: deletes,
 	})
@@ -700,7 +705,10 @@ func parseShards(shards []string) (*ShardInfo, error) {
 //
 // There is not need to explicitly signal the optimizer to not push these predicates down,
 // canApplyPredicate already correctly handles this by returning an error if there is a label column ref.
-func buildDeletePredicates(deletes []*logproto.Delete, params logql.Params, rangeInterval time.Duration) ([]Value, error) {
+func buildDeletePredicates(ctx context.Context, deletes []*logproto.Delete, params logql.Params, rangeInterval time.Duration) ([]Value, error) {
+	_, region := xcap.StartRegion(ctx, "buildDeletePredicates")
+	defer region.End()
+
 	var predicates []Value
 
 	// TODO: consider offset in time range calculations when its supported.
@@ -741,7 +749,6 @@ func buildDeletePredicates(deletes []*logproto.Delete, params logql.Params, rang
 			if filters == nil {
 				filters = f
 			} else {
-
 				filters = &BinOp{
 					Left:  filters,
 					Right: f,
@@ -847,5 +854,6 @@ func buildDeletePredicates(deletes []*logproto.Delete, params logql.Params, rang
 		predicates = append(predicates, p)
 	}
 
+	region.Record(xcap.StatDeletePredicates.Observe(int64(len(predicates))))
 	return predicates, nil
 }

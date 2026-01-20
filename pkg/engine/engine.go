@@ -285,7 +285,7 @@ func (e *Engine) buildLogicalPlan(ctx context.Context, logger log.Logger, params
 		}
 	}
 
-	logicalPlan, err := logical.BuildPlanWithDeletes(params, deleteReqs)
+	logicalPlan, err := logical.BuildPlanWithDeletes(ctx, params, deleteReqs)
 	if err != nil {
 		level.Warn(logger).Log("msg", "failed to create logical plan", "err", err)
 		region.RecordError(err)

@@ -371,7 +371,9 @@ query_engine:
   # CLI flag: -query-engine.downstream-address
   [downstream_address: <string> | default = ""]
 
-  # Enable filtering of log lines matching delete requests.
+  # When enabled, query results exclude log lines that match overlapping delete
+  # requests (not just pending requests). Disable to return all logs without
+  # considering delete requests.
   # CLI flag: -query-engine.enable-delete-req-filtering
   [enable_delete_req_filtering: <boolean> | default = true]
 

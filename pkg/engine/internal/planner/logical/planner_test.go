@@ -1,6 +1,7 @@
 package logical
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -88,7 +89,7 @@ func TestConvertAST_Success(t *testing.T) {
 		direction: logproto.BACKWARD, // ASC is not supported
 		limit:     1000,
 	}
-	logicalPlan, err := BuildPlan(q)
+	logicalPlan, err := BuildPlan(context.Background(), q)
 	require.NoError(t, err)
 	t.Logf("\n%s\n", logicalPlan.String())
 
@@ -132,7 +133,7 @@ func TestConvertAST_MetricQuery_Success(t *testing.T) {
 			interval:  5 * time.Minute,
 		}
 
-		logicalPlan, err := BuildPlan(q)
+		logicalPlan, err := BuildPlan(context.Background(), q)
 		require.NoError(t, err)
 		t.Logf("\n%s\n", logicalPlan.String())
 
@@ -172,7 +173,7 @@ RETURN %17
 			interval:  5 * time.Minute,
 		}
 
-		logicalPlan, err := BuildPlan(q)
+		logicalPlan, err := BuildPlan(context.Background(), q)
 		require.NoError(t, err)
 		t.Logf("\n%s\n", logicalPlan.String())
 
@@ -211,7 +212,7 @@ RETURN %16
 			interval:  5 * time.Minute,
 		}
 
-		logicalPlan, err := BuildPlan(q)
+		logicalPlan, err := BuildPlan(context.Background(), q)
 		require.NoError(t, err)
 		t.Logf("\n%s\n", logicalPlan.String())
 
@@ -392,7 +393,7 @@ func TestCanExecuteQuery(t *testing.T) {
 				limit:     1000,
 			}
 
-			logicalPlan, err := BuildPlan(q)
+			logicalPlan, err := BuildPlan(context.Background(), q)
 			if tt.expected {
 				require.NoError(t, err)
 				t.Logf("\n%s\n", logicalPlan.String())
@@ -422,7 +423,7 @@ func TestConvertAST_WithDeletes(t *testing.T) {
 			},
 		}
 
-		logicalPlan, err := BuildPlanWithDeletes(q, deletes)
+		logicalPlan, err := BuildPlanWithDeletes(context.Background(), q, deletes)
 		require.NoError(t, err)
 
 		// Delete request is within query range (3600-7200), it should generate:
@@ -467,7 +468,7 @@ RETURN %17
 			},
 		}
 
-		logicalPlan, err := BuildPlanWithDeletes(q, deletes)
+		logicalPlan, err := BuildPlanWithDeletes(context.Background(), q, deletes)
 		require.Nil(t, logicalPlan)
 
 		require.Error(t, err)
@@ -487,7 +488,7 @@ func TestPlannerCreatesCastOperationForUnwrap(t *testing.T) {
 			interval:  5 * time.Minute,
 		}
 
-		plan, err := BuildPlan(q)
+		plan, err := BuildPlan(context.Background(), q)
 		require.NoError(t, err)
 		t.Logf("\n%s\n", plan.String())
 
@@ -525,7 +526,7 @@ func TestPlannerCreatesProjectionWithParseOperation(t *testing.T) {
 			interval:  5 * time.Minute,
 		}
 
-		plan, err := BuildPlan(q)
+		plan, err := BuildPlan(context.Background(), q)
 		require.NoError(t, err)
 		t.Logf("\n%s\n", plan.String())
 
@@ -562,7 +563,7 @@ RETURN %17
 			limit:     1000,
 		}
 
-		plan, err := BuildPlan(q)
+		plan, err := BuildPlan(context.Background(), q)
 		require.NoError(t, err)
 		t.Logf("\n%s\n", plan.String())
 
@@ -593,7 +594,7 @@ RETURN %12
 			interval:  5 * time.Minute,
 		}
 
-		plan, err := BuildPlan(q)
+		plan, err := BuildPlan(context.Background(), q)
 		require.NoError(t, err)
 
 		// Assert against the correct SSA representation
@@ -629,7 +630,7 @@ RETURN %17
 			limit:     1000,
 		}
 
-		plan, err := BuildPlan(q)
+		plan, err := BuildPlan(context.Background(), q)
 		require.NoError(t, err)
 
 		// Assert against the SSA representation for log query
@@ -659,7 +660,7 @@ RETURN %12
 			interval:  5 * time.Minute,
 		}
 
-		plan, err := BuildPlan(q)
+		plan, err := BuildPlan(context.Background(), q)
 		require.NoError(t, err)
 		t.Logf("\n%s\n", plan.String())
 
@@ -696,7 +697,7 @@ RETURN %17
 			limit:     1000,
 		}
 
-		plan, err := BuildPlan(q)
+		plan, err := BuildPlan(context.Background(), q)
 		require.NoError(t, err)
 		t.Logf("\n%s\n", plan.String())
 
@@ -740,7 +741,7 @@ RETURN %12
 				limit:     1000,
 			}
 
-			plan, err := BuildPlan(q)
+			plan, err := BuildPlan(context.Background(), q)
 			require.NoError(t, err)
 			t.Logf("\n%s\n", plan.String())
 
@@ -785,7 +786,7 @@ RETURN %16
 				interval:  5 * time.Minute,
 			}
 
-			plan, err := BuildPlan(q)
+			plan, err := BuildPlan(context.Background(), q)
 			require.NoError(t, err)
 			t.Logf("\n%s\n", plan.String())
 
@@ -831,7 +832,7 @@ func TestPlannerCreatesProjection(t *testing.T) {
 			direction: logproto.BACKWARD,
 		}
 
-		plan, err := BuildPlan(q)
+		plan, err := BuildPlan(context.Background(), q)
 		require.NoError(t, err)
 		t.Logf("\n%s\n", plan.String())
 
@@ -1073,7 +1074,7 @@ RETURN %22
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			predicates, err := buildDeletePredicates(tt.deletes, queryParams, tt.rangeInterval)
+			predicates, err := buildDeletePredicates(context.Background(), tt.deletes, queryParams, tt.rangeInterval)
 
 			require.NoError(t, err)
 			require.Len(t, predicates, tt.wantLen)
