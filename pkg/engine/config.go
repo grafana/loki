@@ -33,6 +33,8 @@ type Config struct {
 
 	EnableEngineRouter bool   `yaml:"enable_engine_router" category:"experimental"`
 	DownstreamAddress  string `yaml:"downstream_address" category:"experimental"`
+
+	EnableDeleteReqFiltering bool `yaml:"enable_delete_req_filtering" category:"experimental"`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
@@ -54,6 +56,8 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 
 	f.BoolVar(&cfg.EnableEngineRouter, prefix+"enable-engine-router", false, "Enable routing of query splits in the query frontend to the next generation engine when they fall within the configured time range.")
 	f.StringVar(&cfg.DownstreamAddress, prefix+"downstream-address", "", "Downstream address to send query splits to. This is the HTTP handler address of the query engine scheduler.")
+
+	f.BoolVar(&cfg.EnableDeleteReqFiltering, prefix+"enable-delete-req-filtering", true, "When enabled, query results exclude log lines that match overlapping delete requests (not just pending requests). Disable to return all logs without considering delete requests.")
 }
 
 func (cfg *Config) ValidQueryRange() (time.Time, time.Time) {

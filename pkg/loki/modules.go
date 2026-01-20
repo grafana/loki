@@ -1429,10 +1429,9 @@ func (t *Loki) initV2QueryEngine() (services.Service, error) {
 	}
 
 	logger := log.With(util_log.Logger, "component", "query-engine")
-
 	ms := metastore.NewObjectMetastore(store, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics)
 
-	engine, err := engine_v2.New(engine_v2.Params{
+	params := engine_v2.Params{
 		Logger:     logger,
 		Registerer: prometheus.DefaultRegisterer,
 
@@ -1442,7 +1441,18 @@ func (t *Loki) initV2QueryEngine() (services.Service, error) {
 		Limits:    t.Overrides,
 
 		Metastore: ms,
-	})
+	}
+
+	if t.Cfg.QueryEngine.EnableDeleteReqFiltering {
+		client, err := t.deleteRequestsClient("query-engine", t.Overrides)
+		if err != nil {
+			return nil, err
+		}
+
+		params.DeleteGetter = client
+	}
+
+	engine, err := engine_v2.New(params)
 	if err != nil {
 		return nil, err
 	}
