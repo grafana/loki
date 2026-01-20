@@ -1,0 +1,45 @@
+# Test workflow to verify Loki binary compiles successfully for multiple Linux architectures.
+# This ensures PRs don't break cross-platform builds.
+name: Test Build Loki Binary
+
+on:
+  pull_request: {}
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: "1.25.5"
+
+jobs:
+  build-loki-binary:
+    name: Build Loki (${{ matrix.goos }}/${{ matrix.goarch }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: linux
+            goarch: arm
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Build Loki binary
+        env:
+          CGO_ENABLED: "0"
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          echo "Building Loki for $GOOS/$GOARCH"
+          go build -v -o loki-${{ matrix.goos }}-${{ matrix.goarch }} ./cmd/loki
