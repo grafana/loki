@@ -10,10 +10,13 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/tenant"
+	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
 	querier_limits "github.com/grafana/loki/v3/pkg/querier/limits"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
@@ -21,9 +24,15 @@ import (
 	util_validation "github.com/grafana/loki/v3/pkg/util/validation"
 )
 
+// combinedLimits combines querier limits with retention limits.
+type combinedLimits interface {
+	querier_limits.Limits
+	retentionLimits
+}
+
 // Handler returns an [http.Handler] for serving queries. Unsupported queries
 // will result in an error.
-func Handler(cfg Config, logger log.Logger, engine *Engine, limits querier_limits.Limits) http.Handler {
+func Handler(cfg Config, logger log.Logger, engine *Engine, limits combinedLimits) http.Handler {
 	return executorHandler(cfg, logger, engine, limits)
 }
 
@@ -32,21 +41,27 @@ type queryExecutor interface {
 	Execute(ctx context.Context, params logql.Params) (logqlmodel.Result, error)
 }
 
-func executorHandler(cfg Config, logger log.Logger, exec queryExecutor, limits querier_limits.Limits) http.Handler {
+func executorHandler(cfg Config, logger log.Logger, exec queryExecutor, limits combinedLimits) http.Handler {
 	h := &queryHandler{
 		cfg:    cfg,
 		logger: logger,
 		exec:   exec,
 		limits: limits,
 	}
+
+	if cfg.EnforceRetentionPeriod {
+		h.retentionChecker = newRetentionChecker(limits, logger)
+	}
+
 	return queryrange.NewSerializeHTTPHandler(h, queryrange.DefaultCodec)
 }
 
 type queryHandler struct {
-	cfg    Config
-	logger log.Logger
-	exec   queryExecutor
-	limits querier_limits.Limits
+	cfg              Config
+	logger           log.Logger
+	exec             queryExecutor
+	limits           querier_limits.Limits
+	retentionChecker *retentionChecker
 }
 
 var _ queryrangebase.Handler = (*queryHandler)(nil)
@@ -123,6 +138,20 @@ func (h *queryHandler) execute(ctx context.Context, logger log.Logger, params lo
 		return logqlmodel.Result{}, httpgrpc.Error(http.StatusNotImplemented, err.Error())
 	}
 
+	if h.retentionChecker != nil {
+		result := h.retentionChecker.Validate(ctx, params)
+		if result.Error != nil {
+			return logqlmodel.Result{}, result.Error
+		}
+
+		if result.EmptyResponse {
+			return emptyResult(ctx, params)
+		}
+
+		// continue with adjusted params
+		params = result.Params
+	}
+
 	res, err := h.exec.Execute(ctx, params)
 	if err != nil && errors.Is(err, ErrNotSupported) {
 		level.Warn(logger).Log("msg", "unsupported query", "err", err)
@@ -168,4 +197,29 @@ func (h *queryHandler) doInstantRequest(ctx context.Context, req *queryrange.Lok
 		return logqlmodel.Result{}, err
 	}
 	return h.execute(ctx, logger, params)
+}
+
+func emptyResult(ctx context.Context, params logql.Params) (logqlmodel.Result, error) {
+	var data parser.Value
+	switch params.GetExpression().(type) {
+	case syntax.SampleExpr:
+		if params.Step() > 0 {
+			data = promql.Matrix{}
+		} else {
+			data = promql.Vector{}
+		}
+	case syntax.LogSelectorExpr:
+		data = logqlmodel.Streams{}
+	default:
+		return logqlmodel.Result{}, httpgrpc.Errorf(http.StatusInternalServerError, "unsupported expression type %T", params.GetExpression())
+	}
+
+	md := metadata.FromContext(ctx)
+	md.AddWarning("Query was executed using the new experimental query engine.")
+
+	return logqlmodel.Result{
+		Data:     data,
+		Headers:  md.Headers(),
+		Warnings: md.Warnings(),
+	}, nil
 }
