@@ -532,11 +532,7 @@ func (w *Worker) newJob(ctx context.Context, scheduler *wire.Peer, logger log.Lo
 	// Inject all headers from task metadata into context.
 	// This restores headers that were stored by PropagateAllHeadersMiddleware
 	// and copied to task metadata by the scheduler.
-	for k, values := range msg.Metadata {
-		for _, v := range values {
-			ctx = httpreq.InjectHeader(ctx, k, v)
-		}
-	}
+	ctx = httpreq.InjectAllHeaders(ctx, msg.Metadata)
 
 	ctx, cancel := context.WithCancel(ctx)
 
