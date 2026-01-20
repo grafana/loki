@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/apache/arrow-go/v18/arrow/scalar"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -69,7 +71,7 @@ func NewSectionDescriptor(pointer pointers.SectionPointer) *DataobjSectionDescri
 }
 
 func NewSectionDescriptorWithLabels(pointer pointers.SectionPointer, lbls []string) *DataobjSectionDescriptor {
-	return &DataobjSectionDescriptor{
+	obj := &DataobjSectionDescriptor{
 		SectionKey: SectionKey{
 			ObjectPath: pointer.Path,
 			SectionIdx: pointer.Section,
@@ -79,10 +81,13 @@ func NewSectionDescriptorWithLabels(pointer pointers.SectionPointer, lbls []stri
 		Size:      pointer.UncompressedSize,
 		Start:     pointer.StartTs,
 		End:       pointer.EndTs,
-		LabelsByStreamID: map[int64][]string{
-			pointer.StreamIDRef: lbls,
-		},
 	}
+	if len(lbls) > 0 {
+		obj.LabelsByStreamID = map[int64][]string{
+			pointer.StreamIDRef: lbls,
+		}
+	}
+	return obj
 }
 
 func (d *DataobjSectionDescriptor) Merge(pointer pointers.SectionPointer) {
@@ -413,6 +418,84 @@ func (m *ObjectMetastore) listObjects(ctx context.Context, path string, sStart, 
 	}
 
 	return objectPaths, nil
+}
+
+// forEachStreamWithColumns iterates over the streams in the object and calls the callback function for each stream that matches the matchers and includes the requested columns
+// requestedColumnValues is a slice of values for the requested columns in the order they were requested. Columns without values  be empty strings.
+// The requestedColumnValues slice is only valid for the duration of the callback function.
+func forEachStreamWithColumns(ctx context.Context, object *dataobj.Object, matchers []*labels.Matcher, sStart, sEnd *scalar.Timestamp, includeColumns func(*streams.Column) bool, f func(streamID int64, requestedColumnValues []string)) error {
+	targetTenant, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return fmt.Errorf("extracting org ID: %w", err)
+	}
+	var reader streams.Reader
+	defer reader.Close()
+
+	for _, section := range object.Sections().Filter(streams.CheckSection) {
+		if section.Tenant != targetTenant {
+			continue
+		}
+
+		sec, err := streams.Open(ctx, section)
+		if err != nil {
+			return fmt.Errorf("opening section: %w", err)
+		}
+
+		predicates, err := buildStreamReaderPredicate(sec, sStart, sEnd, matchers)
+		if err != nil {
+			return err
+		}
+
+		// All columns to read
+		targetColumns := make([]*streams.Column, 0, 1)
+
+		// Additional requested columns
+		requestedColumns := make([]*streams.Column, 0, 2)
+		requestedColumnIndexes := make(map[string]int, 2)
+
+		for _, column := range sec.Columns() {
+			if column.Type == streams.ColumnTypeStreamID {
+				targetColumns = append(targetColumns, column)
+			} else if includeColumns(column) {
+				targetColumns = append(targetColumns, column)
+				requestedColumns = append(requestedColumns, column)
+				requestedColumnIndexes[column.Name] = len(requestedColumns)
+			}
+		}
+
+		readerOpts := streams.ReaderOptions{
+			Columns:    targetColumns,
+			Predicates: predicates,
+			Allocator:  memory.DefaultAllocator,
+		}
+		reader.Reset(readerOpts)
+		requestedColumnValues := make([]string, len(requestedColumns))
+		for {
+			rec, err := reader.Read(ctx, 8192)
+			if err != nil && !errors.Is(err, io.EOF) {
+				return err
+			} else if err != nil {
+				// EOF
+				break
+			}
+
+			for i := range rec.NumRows() {
+				streamID := rec.Column(0).(*array.Int64).Value(int(i))
+				// This doesn't differentiate between null and empty columns. But neither does LogQL, so that's fine.
+				for _, column := range requestedColumns {
+					targetColumnIndex, ok := requestedColumnIndexes[column.Name]
+					requestedColumnIndex := targetColumnIndex - 1 // Exclude the stream ID column
+					if ok {
+						requestedColumnValues[requestedColumnIndex] = rec.Column(targetColumnIndex).(*array.String).Value(int(i))
+					} else {
+						requestedColumnValues[requestedColumnIndex] = ""
+					}
+				}
+				f(streamID, requestedColumnValues)
+			}
+		}
+	}
+	return nil
 }
 
 func forEachStream(ctx context.Context, object *dataobj.Object, predicate streams.RowPredicate, f func(streams.Stream)) error {
