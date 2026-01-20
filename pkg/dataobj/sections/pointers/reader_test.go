@@ -77,8 +77,8 @@ func TestReader(t *testing.T) {
 			name:    "basic reads with predicate",
 			columns: []*pointers.Column{pathCol, sectionCol, pointerKindCol, streamIDCol, streamIDRefCol},
 			expected: arrowtest.Rows{
-				{"path.path.utf8": "path1", "section.int64": int64(1), "pointer_kind.int64": int64(pointers.PointerKindStreamIndex), "stream_id.int64": int64(10), "stream_id_ref.int64": int64(100)},
-				{"path.path.utf8": "path2", "section.int64": int64(2), "pointer_kind.int64": int64(pointers.PointerKindStreamIndex), "stream_id.int64": int64(20), "stream_id_ref.int64": int64(200)},
+				{"path.path.utf8": "path1", "section.int64": int64(1), "pointer_kind.int64": int64(pointers.PointerKindStreamIndex), "stream_id.int64": int64(10), "stream_id_ref.int64": int64(100), "__internal__.streamLabelNames": nil},
+				{"path.path.utf8": "path2", "section.int64": int64(2), "pointer_kind.int64": int64(pointers.PointerKindStreamIndex), "stream_id.int64": int64(20), "stream_id_ref.int64": int64(200), "__internal__.streamLabelNames": nil},
 			},
 		},
 		// tests that the reader evaluates predicates correctly even when only some columns are selected for output
@@ -86,8 +86,8 @@ func TestReader(t *testing.T) {
 			name:    "reads with subset of columns",
 			columns: []*pointers.Column{pathCol, sectionCol, pointerKindCol, streamIDCol},
 			expected: arrowtest.Rows{
-				{"path.path.utf8": "path1", "section.int64": int64(1), "pointer_kind.int64": int64(pointers.PointerKindStreamIndex), "stream_id.int64": int64(10)},
-				{"path.path.utf8": "path2", "section.int64": int64(2), "pointer_kind.int64": int64(pointers.PointerKindStreamIndex), "stream_id.int64": int64(20)},
+				{"path.path.utf8": "path1", "section.int64": int64(1), "pointer_kind.int64": int64(pointers.PointerKindStreamIndex), "stream_id.int64": int64(10), "__internal__.streamLabelNames": nil},
+				{"path.path.utf8": "path2", "section.int64": int64(2), "pointer_kind.int64": int64(pointers.PointerKindStreamIndex), "stream_id.int64": int64(20), "__internal__.streamLabelNames": nil},
 			},
 		},
 		// tests reading all columns
@@ -99,26 +99,28 @@ func TestReader(t *testing.T) {
 			},
 			expected: arrowtest.Rows{
 				{
-					"path.path.utf8":          "path1",
-					"section.int64":           int64(1),
-					"pointer_kind.int64":      int64(pointers.PointerKindStreamIndex),
-					"stream_id.int64":         int64(10),
-					"stream_id_ref.int64":     int64(100),
-					"min_timestamp.timestamp": unixTime(10).UTC(),
-					"max_timestamp.timestamp": unixTime(20).UTC(),
-					"row_count.int64":         int64(2),
-					"uncompressed_size.int64": int64(1024),
+					"path.path.utf8":                "path1",
+					"section.int64":                 int64(1),
+					"pointer_kind.int64":            int64(pointers.PointerKindStreamIndex),
+					"stream_id.int64":               int64(10),
+					"stream_id_ref.int64":           int64(100),
+					"min_timestamp.timestamp":       unixTime(10).UTC(),
+					"max_timestamp.timestamp":       unixTime(20).UTC(),
+					"row_count.int64":               int64(2),
+					"uncompressed_size.int64":       int64(1024),
+					"__internal__.streamLabelNames": nil,
 				},
 				{
-					"path.path.utf8":          "path2",
-					"section.int64":           int64(2),
-					"pointer_kind.int64":      int64(pointers.PointerKindStreamIndex),
-					"stream_id.int64":         int64(20),
-					"stream_id_ref.int64":     int64(200),
-					"min_timestamp.timestamp": unixTime(30).UTC(),
-					"max_timestamp.timestamp": unixTime(40).UTC(),
-					"row_count.int64":         int64(2),
-					"uncompressed_size.int64": int64(2048),
+					"path.path.utf8":                "path2",
+					"section.int64":                 int64(2),
+					"pointer_kind.int64":            int64(pointers.PointerKindStreamIndex),
+					"stream_id.int64":               int64(20),
+					"stream_id_ref.int64":           int64(200),
+					"min_timestamp.timestamp":       unixTime(30).UTC(),
+					"max_timestamp.timestamp":       unixTime(40).UTC(),
+					"row_count.int64":               int64(2),
+					"uncompressed_size.int64":       int64(2048),
+					"__internal__.streamLabelNames": nil,
 				},
 			},
 		},
@@ -184,7 +186,7 @@ func TestReaderWithEqualPredicate(t *testing.T) {
 	require.NoError(t, err)
 
 	expected := arrowtest.Rows{
-		{"path.path.utf8": "path2", "section.int64": int64(2), "stream_id.int64": int64(20)},
+		{"path.path.utf8": "path2", "section.int64": int64(2), "stream_id.int64": int64(20), "__internal__.streamLabelNames": nil},
 	}
 	require.Equal(t, expected, actual)
 }
@@ -225,8 +227,8 @@ func TestReaderWithInPredicate(t *testing.T) {
 	require.NoError(t, err)
 
 	expected := arrowtest.Rows{
-		{"path.path.utf8": "path1", "section.int64": int64(1), "stream_id.int64": int64(10)},
-		{"path.path.utf8": "path3", "section.int64": int64(3), "stream_id.int64": int64(30)},
+		{"path.path.utf8": "path1", "section.int64": int64(1), "stream_id.int64": int64(10), "__internal__.streamLabelNames": nil},
+		{"path.path.utf8": "path3", "section.int64": int64(3), "stream_id.int64": int64(30), "__internal__.streamLabelNames": nil},
 	}
 	require.Equal(t, expected, actual)
 }
@@ -263,8 +265,8 @@ func TestReaderWithGreaterThanPredicate(t *testing.T) {
 	require.NoError(t, err)
 
 	expected := arrowtest.Rows{
-		{"path.path.utf8": "path2", "section.int64": int64(2), "stream_id.int64": int64(20)},
-		{"path.path.utf8": "path3", "section.int64": int64(3), "stream_id.int64": int64(30)},
+		{"path.path.utf8": "path2", "section.int64": int64(2), "stream_id.int64": int64(20), "__internal__.streamLabelNames": nil},
+		{"path.path.utf8": "path3", "section.int64": int64(3), "stream_id.int64": int64(30), "__internal__.streamLabelNames": nil},
 	}
 	require.Equal(t, expected, actual)
 }
@@ -301,8 +303,8 @@ func TestReaderWithLessThanPredicate(t *testing.T) {
 	require.NoError(t, err)
 
 	expected := arrowtest.Rows{
-		{"path.path.utf8": "path1", "section.int64": int64(1), "stream_id.int64": int64(10)},
-		{"path.path.utf8": "path2", "section.int64": int64(2), "stream_id.int64": int64(20)},
+		{"path.path.utf8": "path1", "section.int64": int64(1), "stream_id.int64": int64(10), "__internal__.streamLabelNames": nil},
+		{"path.path.utf8": "path2", "section.int64": int64(2), "stream_id.int64": int64(20), "__internal__.streamLabelNames": nil},
 	}
 	require.Equal(t, expected, actual)
 }
@@ -350,16 +352,18 @@ func TestReaderWithTimestampPredicates(t *testing.T) {
 
 	expected := arrowtest.Rows{
 		{
-			"path.path.utf8":          "path2",
-			"section.int64":           int64(2),
-			"min_timestamp.timestamp": t30.UTC(),
-			"max_timestamp.timestamp": t40.UTC(),
+			"path.path.utf8":                "path2",
+			"section.int64":                 int64(2),
+			"min_timestamp.timestamp":       t30.UTC(),
+			"max_timestamp.timestamp":       t40.UTC(),
+			"__internal__.streamLabelNames": nil,
 		},
 		{
-			"path.path.utf8":          "path3",
-			"section.int64":           int64(3),
-			"min_timestamp.timestamp": t50.UTC(),
-			"max_timestamp.timestamp": t60.UTC(),
+			"path.path.utf8":                "path3",
+			"section.int64":                 int64(3),
+			"min_timestamp.timestamp":       t50.UTC(),
+			"max_timestamp.timestamp":       t60.UTC(),
+			"__internal__.streamLabelNames": nil,
 		},
 	}
 	require.Equal(t, expected, actual)
@@ -403,8 +407,8 @@ func TestReaderWithFuncPredicate(t *testing.T) {
 	require.NoError(t, err)
 
 	expected := arrowtest.Rows{
-		{"path.path.utf8": "path1", "section.int64": int64(1)},
-		{"path.path.utf8": "path3", "section.int64": int64(3)},
+		{"path.path.utf8": "path1", "section.int64": int64(1), "__internal__.streamLabelNames": nil},
+		{"path.path.utf8": "path3", "section.int64": int64(3), "__internal__.streamLabelNames": nil},
 	}
 	require.Equal(t, expected, actual)
 }
@@ -447,8 +451,8 @@ func TestReaderWithAndPredicate(t *testing.T) {
 	require.NoError(t, err)
 
 	expected := arrowtest.Rows{
-		{"path.path.utf8": "path1", "section.int64": int64(1), "stream_id.int64": int64(10)},
-		{"path.path.utf8": "path2", "section.int64": int64(2), "stream_id.int64": int64(20)},
+		{"path.path.utf8": "path1", "section.int64": int64(1), "stream_id.int64": int64(10), "__internal__.streamLabelNames": nil},
+		{"path.path.utf8": "path2", "section.int64": int64(2), "stream_id.int64": int64(20), "__internal__.streamLabelNames": nil},
 	}
 	require.Equal(t, expected, actual)
 }
@@ -491,8 +495,8 @@ func TestReaderWithOrPredicate(t *testing.T) {
 	require.NoError(t, err)
 
 	expected := arrowtest.Rows{
-		{"path.path.utf8": "path1", "section.int64": int64(1), "stream_id.int64": int64(10)},
-		{"path.path.utf8": "path3", "section.int64": int64(3), "stream_id.int64": int64(30)},
+		{"path.path.utf8": "path1", "section.int64": int64(1), "stream_id.int64": int64(10), "__internal__.streamLabelNames": nil},
+		{"path.path.utf8": "path3", "section.int64": int64(3), "stream_id.int64": int64(30), "__internal__.streamLabelNames": nil},
 	}
 	require.Equal(t, expected, actual)
 }
@@ -531,8 +535,8 @@ func TestReaderWithNotPredicate(t *testing.T) {
 	require.NoError(t, err)
 
 	expected := arrowtest.Rows{
-		{"path.path.utf8": "path1", "section.int64": int64(1), "stream_id.int64": int64(10)},
-		{"path.path.utf8": "path3", "section.int64": int64(3), "stream_id.int64": int64(30)},
+		{"path.path.utf8": "path1", "section.int64": int64(1), "stream_id.int64": int64(10), "__internal__.streamLabelNames": nil},
+		{"path.path.utf8": "path3", "section.int64": int64(3), "stream_id.int64": int64(30), "__internal__.streamLabelNames": nil},
 	}
 	require.Equal(t, expected, actual)
 }
@@ -584,6 +588,7 @@ func TestReaderWithColumnIndexPointers(t *testing.T) {
 			"column_name.column_name.utf8":                   "col1",
 			"column_index.int64":                             int64(0),
 			"values_bloom_filter.values_bloom_filter.binary": []byte{1, 2, 3},
+			"__internal__.streamLabelNames":                  nil,
 		},
 		{
 			"path.path.utf8":                                 "path2",
@@ -592,6 +597,7 @@ func TestReaderWithColumnIndexPointers(t *testing.T) {
 			"column_name.column_name.utf8":                   "col2",
 			"column_index.int64":                             int64(1),
 			"values_bloom_filter.values_bloom_filter.binary": []byte{4, 5, 6},
+			"__internal__.streamLabelNames":                  nil,
 		},
 		{
 			"path.path.utf8":                                 "path3",
@@ -600,6 +606,7 @@ func TestReaderWithColumnIndexPointers(t *testing.T) {
 			"column_name.column_name.utf8":                   "col3",
 			"column_index.int64":                             int64(2),
 			"values_bloom_filter.values_bloom_filter.binary": []byte{7, 8, 9},
+			"__internal__.streamLabelNames":                  nil,
 		},
 	}
 	require.Equal(t, expected, actual)
@@ -633,9 +640,9 @@ func TestReaderWithMixedPointers(t *testing.T) {
 	require.NoError(t, err)
 
 	expected := arrowtest.Rows{
-		{"path.path.utf8": "path1", "section.int64": int64(1), "pointer_kind.int64": int64(pointers.PointerKindStreamIndex)},
-		{"path.path.utf8": "path3", "section.int64": int64(3), "pointer_kind.int64": int64(pointers.PointerKindStreamIndex)},
-		{"path.path.utf8": "path2", "section.int64": int64(2), "pointer_kind.int64": int64(pointers.PointerKindColumnIndex)},
+		{"path.path.utf8": "path1", "section.int64": int64(1), "pointer_kind.int64": int64(pointers.PointerKindStreamIndex), "__internal__.streamLabelNames": nil},
+		{"path.path.utf8": "path3", "section.int64": int64(3), "pointer_kind.int64": int64(pointers.PointerKindStreamIndex), "__internal__.streamLabelNames": nil},
+		{"path.path.utf8": "path2", "section.int64": int64(2), "pointer_kind.int64": int64(pointers.PointerKindColumnIndex), "__internal__.streamLabelNames": nil},
 	}
 	require.Equal(t, expected, actual)
 }

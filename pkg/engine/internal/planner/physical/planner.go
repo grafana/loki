@@ -224,19 +224,19 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) (Node, e
 	p.plan.graph.Add(scanSet)
 
 	for _, dataObj := range dataObjs {
-		//TODO: Labels are tracked per stream in the dataObj so that this can eventually be smarter.
+		// TODO: Labels are tracked per stream in the dataObj so that this can eventually be smarter.
 		// If we track labels per stream in the ScanTarget, and disambiguate per streamID when
 		// actually scanning, we can be more precise. For now we just disambiguate columns as metadata
 		// when they aren't in any of the label sets seen for this query.
-		allLblNames := map[string]struct{}{}
-		for _, lbls := range dataObj.LabelsByStreamID {
+		ambiguousLbls := map[string]struct{}{}
+		for _, lbls := range dataObj.PredicatesInStreams {
 			for _, lbl := range lbls {
-				allLblNames[lbl] = struct{}{}
+				ambiguousLbls[lbl] = struct{}{}
 			}
 		}
 
-		lblNames := make([]string, 0, len(allLblNames))
-		for lblName := range allLblNames {
+		lblNames := make([]string, 0, len(ambiguousLbls))
+		for lblName := range ambiguousLbls {
 			lblNames = append(lblNames, lblName)
 		}
 
@@ -688,15 +688,15 @@ func (p *Planner) wrapNodeWith(node Node, wrapper Node) (Node, error) {
 
 // disambiguateExpression recursively updates ColumnTypeAmbiguous references
 // to ColumnTypeMetadata if the column name does not exist in the provided label set
-func disambiguateExpression(expr Expression, allLbls []string) (Expression, bool) {
+func disambiguateExpression(expr Expression, conflictingLabels []string) (Expression, bool) {
 	if expr == nil {
 		return nil, false
 	}
 
 	switch e := expr.(type) {
 	case *BinaryExpr:
-		leftExpr, leftChanged := disambiguateExpression(e.Left, allLbls)
-		rightExpr, rightChanged := disambiguateExpression(e.Right, allLbls)
+		leftExpr, leftChanged := disambiguateExpression(e.Left, conflictingLabels)
+		rightExpr, rightChanged := disambiguateExpression(e.Right, conflictingLabels)
 		if !leftChanged && !rightChanged {
 			return e, false
 		}
@@ -707,7 +707,7 @@ func disambiguateExpression(expr Expression, allLbls []string) (Expression, bool
 			Op:    e.Op,
 		}, true
 	case *ColumnExpr:
-		if e.Ref.Type == types.ColumnTypeAmbiguous && !slices.Contains(allLbls, e.Ref.Column) {
+		if e.Ref.Type == types.ColumnTypeAmbiguous && !slices.Contains(conflictingLabels, e.Ref.Column) {
 			return &ColumnExpr{
 				Ref: types.ColumnRef{
 					Column: e.Ref.Column,
@@ -717,7 +717,7 @@ func disambiguateExpression(expr Expression, allLbls []string) (Expression, bool
 		}
 		return e, false
 	case *UnaryExpr:
-		leftExpr, leftChanged := disambiguateExpression(e.Left, allLbls)
+		leftExpr, leftChanged := disambiguateExpression(e.Left, conflictingLabels)
 		if !leftChanged {
 			return e, false
 		}
@@ -730,7 +730,7 @@ func disambiguateExpression(expr Expression, allLbls []string) (Expression, bool
 		anyChanged := false
 		newExprs := make([]Expression, len(e.Expressions))
 		for i, subExpr := range e.Expressions {
-			exp, changed := disambiguateExpression(subExpr, allLbls)
+			exp, changed := disambiguateExpression(subExpr, conflictingLabels)
 			newExprs[i] = exp
 			anyChanged = anyChanged || changed
 		}

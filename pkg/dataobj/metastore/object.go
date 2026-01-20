@@ -43,6 +43,7 @@ const (
 	metastoreWindowSize = 12 * time.Hour
 )
 
+// ObjectMetastore is a metastore that stores data objects in object storage.
 type ObjectMetastore struct {
 	bucket      objstore.Bucket
 	parallelism int
@@ -50,26 +51,32 @@ type ObjectMetastore struct {
 	metrics     *ObjectMetastoreMetrics
 }
 
+// SectionKey is a unique identifier for a section of a data object.
 type SectionKey struct {
 	ObjectPath string
 	SectionIdx int64
 }
 
+// DataobjSectionDescriptor is a descriptor for single section of a data object, containing some useful information about that section.
 type DataobjSectionDescriptor struct {
 	SectionKey
 
-	StreamIDs        []int64
-	RowCount         int
-	Size             int64
-	Start            time.Time
-	End              time.Time
-	LabelsByStreamID map[int64][]string
+	StreamIDs []int64
+	RowCount  int
+	Size      int64
+	Start     time.Time
+	End       time.Time
+
+	// Ambiguous predicates are predicates which are present in the stream's labels as well as the LogQL query, and are therefore ambiguous.
+	AmbiguousPredicatesByStream map[int64][]string
 }
 
+// NewSectionDescriptor creates a new section descriptor with the given pointer.
 func NewSectionDescriptor(pointer pointers.SectionPointer) *DataobjSectionDescriptor {
 	return NewSectionDescriptorWithLabels(pointer, nil)
 }
 
+// NewSectionDescriptorWithLabels creates a new section descriptor with the given pointer and labels.
 func NewSectionDescriptorWithLabels(pointer pointers.SectionPointer, lbls []string) *DataobjSectionDescriptor {
 	obj := &DataobjSectionDescriptor{
 		SectionKey: SectionKey{
@@ -83,13 +90,14 @@ func NewSectionDescriptorWithLabels(pointer pointers.SectionPointer, lbls []stri
 		End:       pointer.EndTs,
 	}
 	if len(lbls) > 0 {
-		obj.LabelsByStreamID = map[int64][]string{
+		obj.AmbiguousPredicatesByStream = map[int64][]string{
 			pointer.StreamIDRef: lbls,
 		}
 	}
 	return obj
 }
 
+// Merge merges the given pointer into an existing section's descriptor.
 func (d *DataobjSectionDescriptor) Merge(pointer pointers.SectionPointer) {
 	d.StreamIDs = append(d.StreamIDs, pointer.StreamIDRef)
 	d.RowCount += int(pointer.LineCount)
@@ -102,15 +110,16 @@ func (d *DataobjSectionDescriptor) Merge(pointer pointers.SectionPointer) {
 	}
 }
 
+// MergeWithLabels merges the given pointer and labels into an existing section's descriptor.
 func (d *DataobjSectionDescriptor) MergeWithLabels(pointer pointers.SectionPointer, lbls []string) {
-	curLbls, exists := d.LabelsByStreamID[pointer.StreamIDRef]
+	curLbls, exists := d.AmbiguousPredicatesByStream[pointer.StreamIDRef]
 	if !exists {
-		d.LabelsByStreamID[pointer.StreamIDRef] = lbls
+		d.AmbiguousPredicatesByStream[pointer.StreamIDRef] = lbls
 		return
 	}
 
 	curLbls = append(curLbls, lbls...)
-	d.LabelsByStreamID[pointer.StreamIDRef] = curLbls
+	d.AmbiguousPredicatesByStream[pointer.StreamIDRef] = curLbls
 
 	d.Merge(pointer)
 }
@@ -421,8 +430,8 @@ func (m *ObjectMetastore) listObjects(ctx context.Context, path string, sStart, 
 }
 
 // forEachStreamWithColumns iterates over the streams in the object and calls the callback function for each stream that matches the matchers and includes the requested columns
-// requestedColumnValues is a slice of values for the requested columns in the order they were requested. Columns without values  be empty strings.
-// The requestedColumnValues slice is only valid for the duration of the callback function.
+// requestedColumnValues is a map of key-value pairs for the requested columns. Columns that are not present for this stream will not have an entry in the map.
+// The requestedColumnValues map is only valid for the duration of the callback function.
 func forEachStreamWithColumns(ctx context.Context, object *dataobj.Object, matchers []*labels.Matcher, sStart, sEnd *scalar.Timestamp, includeColumns func(*streams.Column) bool, f func(streamID int64, requestedColumnValues map[string]string)) error {
 	targetTenant, err := user.ExtractOrgID(ctx)
 	if err != nil {
