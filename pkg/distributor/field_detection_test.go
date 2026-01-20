@@ -1375,6 +1375,31 @@ func Test_detectLevelFromLogLine(t *testing.T) {
 			log:      `msg="[error] occurred"`,
 			expected: constants.LogLevelError,
 		},
+		{
+			name:     "error_code should not match error",
+			log:      "error_code is 500",
+			expected: constants.LogLevelUnknown,
+		},
+		{
+			name:     "log_error should not match error",
+			log:      "log_error function called",
+			expected: constants.LogLevelUnknown,
+		},
+		{
+			name:     "trace_id should not match trace",
+			log:      "trace_id is abc123",
+			expected: constants.LogLevelUnknown,
+		},
+		{
+			name:     "stack_trace should not match trace",
+			log:      "stack_trace printed",
+			expected: constants.LogLevelUnknown,
+		},
+		{
+			name:     "error surrounded by underscores should not match",
+			log:      "some_error_code is invalid",
+			expected: constants.LogLevelUnknown,
+		},
 	}
 	for _, tt := range additionalTestCases {
 		t.Run(tt.name, func(t *testing.T) {

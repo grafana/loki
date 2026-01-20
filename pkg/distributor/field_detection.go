@@ -335,7 +335,7 @@ func isWordBoundary(s string, pos int) bool {
 		return true // Start/end of string is a boundary
 	}
 	r := rune(s[pos])
-	return !unicode.IsLetter(r) && !unicode.IsDigit(r)
+	return !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '_'
 }
 
 func logHasBoundedLevel(log, level string) bool {
