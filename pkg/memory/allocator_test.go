@@ -1,7 +1,6 @@
 package memory_test
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -111,10 +110,6 @@ func TestAllocator_reuse_returned_child_memory(t *testing.T) {
 
 	child = memory.MakeAllocator(parent)
 	actual := child.Allocate(64)
-
-	if child == parent {
-		fmt.Println("???")
-	}
 
 	// NOTE(rfratto): We can't use require.Equal here since that doesn't care
 	// about pointer equality.
