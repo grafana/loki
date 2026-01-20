@@ -26,7 +26,7 @@ func validateTLSConfig(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStac
 	}
 
 	tls := stack.Spec.Tenants.Gateway.TLS
-	if tls.Certificate == nil || tls.Key == nil {
+	if tls.Certificate == nil || tls.PrivateKey == nil {
 		return &status.DegradedError{
 			Message: "Missing certificate or key in gateway TLS configuration. Please provide both certificate and key.",
 			Reason:  lokiv1.ReasonInvalidGatewayTLSConfig,
@@ -35,19 +35,19 @@ func validateTLSConfig(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStac
 	}
 
 	if tls.CA != nil {
-		if err := validateValueRef(ctx, k, stack.Namespace, tls.CA, fieldNameCA); err != nil {
+		if err := validateValueRef(ctx, k, fieldNameCA, stack.Namespace, tls.CA); err != nil {
 			return err
 		}
 	}
 
 	if tls.Certificate != nil {
-		if err := validateValueRef(ctx, k, stack.Namespace, tls.Certificate, fieldNameCertificate); err != nil {
+		if err := validateValueRef(ctx, k, fieldNameCertificate, stack.Namespace, tls.Certificate); err != nil {
 			return err
 		}
 	}
 
-	if tls.Key != nil {
-		if err := validateSecretRef(ctx, k, stack.Namespace, tls.Key.SecretName, tls.Key.Key, fieldNameKey); err != nil {
+	if tls.PrivateKey != nil {
+		if err := validateSecretRef(ctx, k, fieldNameKey, stack.Namespace, tls.PrivateKey.SecretName, tls.PrivateKey.Key); err != nil {
 			return err
 		}
 	}
@@ -55,18 +55,18 @@ func validateTLSConfig(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStac
 	return nil
 }
 
-func validateValueRef(ctx context.Context, k k8s.Client, namespace string, ref *lokiv1.ValueReference, fieldName string) error {
+func validateValueRef(ctx context.Context, k k8s.Client, fieldName, namespace string, ref *lokiv1.ValueReference) error {
 	if ref.ConfigMapName != "" {
-		return validateConfigRef(ctx, k, namespace, ref.ConfigMapName, ref.Key, fieldName)
+		return validateConfigRef(ctx, k, fieldName, namespace, ref.ConfigMapName, ref.Key)
 	}
 	if ref.SecretName != "" {
-		return validateSecretRef(ctx, k, namespace, ref.SecretName, ref.Key, fieldName)
+		return validateSecretRef(ctx, k, fieldName, namespace, ref.SecretName, ref.Key)
 	}
 
 	return kverrors.New("invalid call to validateValueRef configmap and secret not set", "field", fieldName, "ref", ref)
 }
 
-func validateConfigRef(ctx context.Context, k k8s.Client, namespace, name, key, fieldName string) error {
+func validateConfigRef(ctx context.Context, k k8s.Client, fieldName, namespace, name, key string) error {
 	var cm corev1.ConfigMap
 
 	objKey := client.ObjectKey{Name: name, Namespace: namespace}
@@ -92,7 +92,7 @@ func validateConfigRef(ctx context.Context, k k8s.Client, namespace, name, key, 
 	return nil
 }
 
-func validateSecretRef(ctx context.Context, k k8s.Client, namespace, name, key, fieldName string) error {
+func validateSecretRef(ctx context.Context, k k8s.Client, fieldName, namespace, name, key string) error {
 	var secret corev1.Secret
 
 	objKey := client.ObjectKey{Name: name, Namespace: namespace}

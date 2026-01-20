@@ -77,14 +77,30 @@ func BuildGateway(opts Options) ([]client.Object, error) {
 	}
 
 	if opts.Gates.HTTPEncryption {
-		var gatewayTLS *lokiv1.TLSSpec
-		if opts.Stack.Tenants != nil && opts.Stack.Tenants.Gateway != nil && opts.Stack.Tenants.Gateway.TLS != nil {
-			gatewayTLS = opts.Stack.Tenants.Gateway.TLS
-		}
 		serviceName := serviceNameGatewayHTTP(opts.Name)
 		serverCAName := gatewaySigningCABundleName(GatewayName(opts.Name))
 		upstreamCAName := signingCABundleName(opts.Name)
 		upstreamClientName := gatewayClientSecretName(opts.Name)
+
+		// Default: OpenShift auto-generated secrets
+		gatewayTLS := &lokiv1.TLSSpec{
+			CA: &lokiv1.ValueReference{
+				ConfigMapName: serverCAName,
+				Key:           "service-ca.crt",
+			},
+			Certificate: &lokiv1.ValueReference{
+				SecretName: serviceName,
+				Key:        "tls.crt",
+			},
+			PrivateKey: &lokiv1.SecretReference{
+				SecretName: serviceName,
+				Key:        "tls.key",
+			},
+		}
+		if opts.Stack.Tenants != nil && opts.Stack.Tenants.Gateway != nil && opts.Stack.Tenants.Gateway.TLS != nil {
+			gatewayTLS = opts.Stack.Tenants.Gateway.TLS
+		}
+
 		if err := configureGatewayServerPKI(&dpl.Spec.Template.Spec, opts.Namespace, serviceName, serverCAName, upstreamCAName, upstreamClientName, minTLSVersion, ciphers, gatewayTLS); err != nil {
 			return nil, err
 		}
@@ -542,7 +558,7 @@ func configureGatewayServerPKI(
 		fmt.Sprintf("--logs.tls.key-file=%s", gatewayUpstreamHTTPTLSKey()),
 	)
 
-	if tlsOptions == nil || tlsOptions.CA != nil {
+	if tlsOptions.CA != nil {
 		gwArgs = append(gwArgs, fmt.Sprintf("--tls.healthchecks.server-ca-file=%s", gatewaySigningCAPath()))
 	}
 
@@ -572,31 +588,7 @@ func configureGatewayServerPKI(
 		},
 	)
 
-	// Default: OpenShift auto-generated secret
-	serverTLSVolumes := []corev1.Volume{
-		{
-			Name: serverCAName,
-			VolumeSource: corev1.VolumeSource{
-				ConfigMap: &corev1.ConfigMapVolumeSource{
-					DefaultMode: &defaultConfigMapMode,
-					LocalObjectReference: corev1.LocalObjectReference{
-						Name: serverCAName,
-					},
-				},
-			},
-		},
-		{
-			Name: tlsSecretVolume,
-			VolumeSource: corev1.VolumeSource{
-				Secret: &corev1.SecretVolumeSource{
-					SecretName: serviceName,
-				},
-			},
-		},
-	}
-	if tlsOptions != nil && tlsOptions.Certificate != nil && tlsOptions.Key != nil {
-		serverTLSVolumes = buildCustomTLSVolumes(tlsOptions, serverCAName)
-	}
+	serverTLSVolumes := buildCustomTLSVolumes(tlsOptions, serverCAName)
 
 	gwVolumes = append(gwVolumes, serverTLSVolumes...)
 
@@ -619,7 +611,7 @@ func configureGatewayServerPKI(
 		},
 	)
 
-	if tlsOptions == nil || tlsOptions.CA != nil {
+	if tlsOptions.CA != nil {
 		gwContainer.VolumeMounts = append(gwContainer.VolumeMounts, corev1.VolumeMount{
 			Name:      serverCAName,
 			ReadOnly:  true,
@@ -721,10 +713,10 @@ func buildCustomTLSVolumes(tlsOptions *lokiv1.TLSSpec, serverCAName string) []co
 					{
 						Secret: &corev1.SecretProjection{
 							LocalObjectReference: corev1.LocalObjectReference{
-								Name: tlsOptions.Key.SecretName,
+								Name: tlsOptions.PrivateKey.SecretName,
 							},
 							Items: []corev1.KeyToPath{{
-								Key:  tlsOptions.Key.Key,
+								Key:  tlsOptions.PrivateKey.Key,
 								Path: "tls.key",
 							}},
 						},

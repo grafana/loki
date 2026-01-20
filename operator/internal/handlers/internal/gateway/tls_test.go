@@ -100,7 +100,7 @@ func TestValidateTLSConfig(t *testing.T) {
 					Key:           "tls.crt",
 					ConfigMapName: validCertConfigMap.Name,
 				},
-				Key: &lokiv1.SecretReference{
+				PrivateKey: &lokiv1.SecretReference{
 					Key:        "tls.key",
 					SecretName: validKeySecret.Name,
 				},
@@ -114,7 +114,7 @@ func TestValidateTLSConfig(t *testing.T) {
 					Key:        "tls.crt",
 					SecretName: validCertSecret.Name,
 				},
-				Key: &lokiv1.SecretReference{
+				PrivateKey: &lokiv1.SecretReference{
 					Key:        "tls.key",
 					SecretName: validKeySecret.Name,
 				},
@@ -132,7 +132,7 @@ func TestValidateTLSConfig(t *testing.T) {
 					Key:           "tls.crt",
 					ConfigMapName: validCertConfigMap.Name,
 				},
-				Key: &lokiv1.SecretReference{
+				PrivateKey: &lokiv1.SecretReference{
 					Key:        "tls.key",
 					SecretName: validKeySecret.Name,
 				},
@@ -150,7 +150,7 @@ func TestValidateTLSConfig(t *testing.T) {
 					Key:           "ca.crt",
 					ConfigMapName: validCAConfigMap.Name,
 				},
-				Key: &lokiv1.SecretReference{
+				PrivateKey: &lokiv1.SecretReference{
 					Key:        "tls.key",
 					SecretName: validKeySecret.Name,
 				},
@@ -168,7 +168,7 @@ func TestValidateTLSConfig(t *testing.T) {
 					Key:           "tls.crt",
 					ConfigMapName: "non-existent-configmap",
 				},
-				Key: &lokiv1.SecretReference{
+				PrivateKey: &lokiv1.SecretReference{
 					Key:        "tls.key",
 					SecretName: validKeySecret.Name,
 				},
@@ -186,7 +186,7 @@ func TestValidateTLSConfig(t *testing.T) {
 					Key:        "tls.crt",
 					SecretName: "non-existent-secret",
 				},
-				Key: &lokiv1.SecretReference{
+				PrivateKey: &lokiv1.SecretReference{
 					Key:        "tls.key",
 					SecretName: validKeySecret.Name,
 				},
@@ -204,7 +204,7 @@ func TestValidateTLSConfig(t *testing.T) {
 					Key:           "tls.crt",
 					ConfigMapName: validCertConfigMap.Name,
 				},
-				Key: &lokiv1.SecretReference{
+				PrivateKey: &lokiv1.SecretReference{
 					Key:        "tls.key",
 					SecretName: "non-existent-key-secret",
 				},
@@ -222,13 +222,13 @@ func TestValidateTLSConfig(t *testing.T) {
 					Key:           "tls.crt",
 					ConfigMapName: invalidCertConfigMap.Name,
 				},
-				Key: &lokiv1.SecretReference{
+				PrivateKey: &lokiv1.SecretReference{
 					Key:        "tls.key",
 					SecretName: validKeySecret.Name,
 				},
 			},
 			expError: &status.DegradedError{
-				Message: `Invalid configmap tls-cert-configmap-invalid for field "certificate" in gateway TLS configuration, missing key: "tls.crt"`,
+				Message: `Invalid configmap tls-cert-configmap-invalid for field "certificate" in gateway TLS configuration, missing key: tls.crt`,
 				Reason:  lokiv1.ReasonInvalidGatewayTLSConfig,
 				Requeue: false,
 			},
@@ -240,13 +240,13 @@ func TestValidateTLSConfig(t *testing.T) {
 					Key:           "tls.crt",
 					ConfigMapName: validCertConfigMap.Name,
 				},
-				Key: &lokiv1.SecretReference{
+				PrivateKey: &lokiv1.SecretReference{
 					Key:        "tls.key",
 					SecretName: invalidKeySecret.Name,
 				},
 			},
 			expError: &status.DegradedError{
-				Message: `Invalid secret tls-key-secret-invalid for field "key" in gateway TLS configuration, missing key: "tls.key"`,
+				Message: `Invalid secret tls-key-secret-invalid for field "key" in gateway TLS configuration, missing key: tls.key`,
 				Reason:  lokiv1.ReasonInvalidGatewayTLSConfig,
 				Requeue: false,
 			},

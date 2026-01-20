@@ -3910,9 +3910,9 @@ spec:
                             - message: Only one of configMapName and secretName can
                                 be set
                               rule: '!(has(self.configMapName) && has(self.secretName))'
-                          key:
-                            description: Key points to the private key of the server
-                              certificate.
+                          privateKey:
+                            description: PrivateKey points to the private key of the
+                              server certificate.
                             properties:
                               key:
                                 description: Key contains the name of the key inside

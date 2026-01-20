@@ -325,7 +325,7 @@ func TestServiceMonitorEndpoints_ForGatewayServiceMonitor(t *testing.T) {
 									Key:           "tls.crt",
 									ConfigMapName: "my-custom-cert",
 								},
-								Key: &lokiv1.SecretReference{
+								PrivateKey: &lokiv1.SecretReference{
 									Key:        "tls.key",
 									SecretName: "my-custom-key",
 								},
@@ -396,7 +396,7 @@ func TestServiceMonitorEndpoints_ForGatewayServiceMonitor(t *testing.T) {
 									Key:           "tls.crt",
 									ConfigMapName: "my-custom-cert",
 								},
-								Key: &lokiv1.SecretReference{
+								PrivateKey: &lokiv1.SecretReference{
 									Key:        "tls.key",
 									SecretName: "my-custom-key",
 								},

@@ -970,18 +970,18 @@ spec:
         path: tenants.gateway.tls.certificate.secretName
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:text
-      - description: Key points to the private key of the server certificate.
-        displayName: Certificate Key
-        path: tenants.gateway.tls.key
+      - description: PrivateKey points to the private key of the server certificate.
+        displayName: Private Key
+        path: tenants.gateway.tls.privateKey
       - description: Key contains the name of the key inside the referenced Secret.
         displayName: Key Name
-        path: tenants.gateway.tls.key.key
+        path: tenants.gateway.tls.privateKey.key
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:text
       - description: SecretName contains the name of the Secret containing the referenced
           value.
         displayName: Secret Name
-        path: tenants.gateway.tls.key.secretName
+        path: tenants.gateway.tls.privateKey.secretName
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:text
       - description: Mode defines the mode in which lokistack-gateway component will

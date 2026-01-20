@@ -4979,7 +4979,7 @@ ValueReference
 </tr>
 <tr>
 <td>
-<code>key</code><br/>
+<code>privateKey</code><br/>
 <em>
 <a href="#loki-grafana-com-v1-SecretReference">
 SecretReference
@@ -4987,7 +4987,7 @@ SecretReference
 </em>
 </td>
 <td>
-<p>Key points to the private key of the server certificate.</p>
+<p>PrivateKey points to the private key of the server certificate.</p>
 </td>
 </tr>
 </tbody>

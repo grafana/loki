@@ -1303,11 +1303,11 @@ type TLSSpec struct {
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Certificate"
 	Certificate *ValueReference `json:"certificate,omitempty"`
 
-	// Key points to the private key of the server certificate.
+	// PrivateKey points to the private key of the server certificate.
 	//
 	// +kubebuilder:validation:Optional
-	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Certificate Key"
-	Key *SecretReference `json:"key,omitempty"`
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Private Key"
+	PrivateKey *SecretReference `json:"privateKey,omitempty"`
 }
 
 // LokiStackConditionType deifnes the type of condition types of a Loki deployment.

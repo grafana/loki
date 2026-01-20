@@ -102,6 +102,12 @@ spec:
           key: ca.crt
 ```
 
+The CA Certificate is necessary for:
+
+1. **Internal Healthcheck Verification**: The Gateway performs periodic self-checks by making HTTP requests to itself. When `httpEncryption` is enabled the gateway is running with TLS enabled, the healthcheck client needs to be able to verify the gateway TLS certificate.
+
+2. **Metrics Scraping**: When `serviceMonitorTlsEndpoints` is enabled the CA is used in the Prometheus ServiceMonitor to allow secure scraping of Gateway metrics over HTTPS.
+
 **Important:** When custom TLS is configured, OpenShift Routes automatically change to **passthrough** termination mode.
 
 ## Resource Cleanup Behavior

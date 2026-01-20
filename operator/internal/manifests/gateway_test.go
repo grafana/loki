@@ -948,10 +948,19 @@ func TestBuildGateway_WithHTTPEncryption(t *testing.T) {
 		{
 			Name: "abcd-gateway-ca-bundle",
 			VolumeSource: corev1.VolumeSource{
-				ConfigMap: &corev1.ConfigMapVolumeSource{
-					DefaultMode: &defaultConfigMapMode,
-					LocalObjectReference: corev1.LocalObjectReference{
-						Name: "abcd-gateway-ca-bundle",
+				Projected: &corev1.ProjectedVolumeSource{
+					Sources: []corev1.VolumeProjection{
+						{
+							ConfigMap: &corev1.ConfigMapProjection{
+								LocalObjectReference: corev1.LocalObjectReference{
+									Name: "abcd-gateway-ca-bundle",
+								},
+								Items: []corev1.KeyToPath{{
+									Key:  "service-ca.crt",
+									Path: "service-ca.crt",
+								}},
+							},
+						},
 					},
 				},
 			},
@@ -959,8 +968,31 @@ func TestBuildGateway_WithHTTPEncryption(t *testing.T) {
 		{
 			Name: "tls-secret",
 			VolumeSource: corev1.VolumeSource{
-				Secret: &corev1.SecretVolumeSource{
-					SecretName: "abcd-gateway-http",
+				Projected: &corev1.ProjectedVolumeSource{
+					Sources: []corev1.VolumeProjection{
+						{
+							Secret: &corev1.SecretProjection{
+								LocalObjectReference: corev1.LocalObjectReference{
+									Name: "abcd-gateway-http",
+								},
+								Items: []corev1.KeyToPath{{
+									Key:  "tls.crt",
+									Path: "tls.crt",
+								}},
+							},
+						},
+						{
+							Secret: &corev1.SecretProjection{
+								LocalObjectReference: corev1.LocalObjectReference{
+									Name: "abcd-gateway-http",
+								},
+								Items: []corev1.KeyToPath{{
+									Key:  "tls.key",
+									Path: "tls.key",
+								}},
+							},
+						},
+					},
 				},
 			},
 		},
@@ -983,7 +1015,7 @@ func TestBuildGateway_WithHTTPEncryption_WithCustomTLS(t *testing.T) {
 					Key:           "tls.crt",
 					ConfigMapName: "my-custom-cert",
 				},
-				Key: &lokiv1.SecretReference{
+				PrivateKey: &lokiv1.SecretReference{
 					Key:        "tls.key",
 					SecretName: "my-custom-key",
 				},
@@ -1148,7 +1180,7 @@ func TestBuildGateway_WithHTTPEncryption_WithCustomTLS(t *testing.T) {
 					Key:           "tls.crt",
 					ConfigMapName: "my-custom-cert",
 				},
-				Key: &lokiv1.SecretReference{
+				PrivateKey: &lokiv1.SecretReference{
 					Key:        "tls.key",
 					SecretName: "my-custom-key",
 				},

@@ -1968,8 +1968,8 @@ func (in *TLSSpec) DeepCopyInto(out *TLSSpec) {
 		*out = new(ValueReference)
 		**out = **in
 	}
-	if in.Key != nil {
-		in, out := &in.Key, &out.Key
+	if in.PrivateKey != nil {
+		in, out := &in.PrivateKey, &out.PrivateKey
 		*out = new(SecretReference)
 		**out = **in
 	}
