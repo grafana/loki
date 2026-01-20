@@ -18,9 +18,21 @@ import (
 //
 // The zero value of Allocator is ready for use.
 type Allocator struct {
+	parent *Allocator
+
 	regions []*Region
 	free    Bitmap // Tracks free regions. 1=free, 0=used
 	empty   Bitmap // Tracks nil elements of regions. 1=nil, 0=not-nil
+}
+
+// FromParent creates a new Allocator that is a child of the given parent.
+//
+// The child allocator will obtain memory from the parent allocator and can manage it's own Trim & Reclaim lifecycle.
+// All memory allocated from a child will be trimmed/reclaimed when the parent is trimmed/reclaimed.
+func FromParent(parent *Allocator) *Allocator {
+	return &Allocator{
+		parent: parent,
+	}
 }
 
 // Allocate retrieves the next free Memory region that can hold at least size
@@ -37,6 +49,14 @@ func (alloc *Allocator) Allocate(size int) *Region {
 		}
 	}
 
+	if alloc.parent != nil {
+		// No memory in our pool, ask the parent allocator for a region, if we have one.
+		region := alloc.parent.Allocate(size)
+		alloc.addRegion(region, false)
+		return region
+	}
+
+	// Otherwise, allocate a new region from the runtime.
 	region := &Region{data: allocBytes(size)}
 	alloc.addRegion(region, false) // Track the new region.
 	return region
@@ -82,8 +102,9 @@ func (alloc *Allocator) Reset() {
 	alloc.Reclaim()
 }
 
-// Trim releases unused memory regions. Released memory regions can be reclaimed
-// by the Go runtime for garbage collection.
+// Trim releases unused memory regions.
+// If the allocator has a prent, released memory regions are returned to the parent allocator.
+// Otherwise, released memory regions may be returned to the Go runtime for garbage collection.
 //
 // If Trim is called after Reclaim, all memory regions will be released.
 func (alloc *Allocator) Trim() {
@@ -95,11 +116,25 @@ func (alloc *Allocator) Trim() {
 
 		alloc.regions[i] = nil
 		alloc.empty.Set(i, true)
+
+		if alloc.parent != nil {
+			// Return the region to the parent allocator, if there is one.
+			alloc.parent.returnRegion(region)
+		}
+	}
+}
+
+func (alloc *Allocator) returnRegion(region *Region) {
+	for i := range alloc.regions {
+		if alloc.regions[i] == region {
+			alloc.free.Set(i, true)
+			break
+		}
 	}
 }
 
 // Reclaim all memory regions back to the Allocator for reuse. After calling
-// Reclaim, any [Region] returned by the Allocator must no longer be used.
+// Reclaim, any [Region] returned by the Allocator or any child allocators must no longer be used.
 func (alloc *Allocator) Reclaim() {
 	alloc.free.SetRange(0, len(alloc.regions), true)
 }
