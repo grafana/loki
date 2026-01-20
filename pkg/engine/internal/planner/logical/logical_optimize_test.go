@@ -1,6 +1,7 @@
 package logical
 
 import (
+	"context"
 	"embed"
 	"io/fs"
 	"strings"
@@ -18,7 +19,7 @@ import (
 
 func Test_simplifyRegexPass(t *testing.T) {
 	params, err := logql.NewLiteralParams(
-		`{job="loki"} |~ "foo|bar"`,
+		`{job="loki"} !~ "debug|DEBUG|info|INFO" |~ "error|ERROR|fatal|FATAL"`,
 		time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC),
 		time.Date(2025, time.January, 2, 0, 0, 0, 0, time.UTC),
 		0 /* step */, 0, /* duration */
@@ -31,21 +32,34 @@ func Test_simplifyRegexPass(t *testing.T) {
 
 	expect := strings.TrimSpace(`
 %1 = EQ label.job "loki"
-%2 = MATCH_STR builtin.message "foo"
-%3 = MATCH_STR builtin.message "bar"
+%2 = MATCH_STR builtin.message "debug"
+%3 = MATCH_STR builtin.message "DEBUG"
 %4 = OR %2 %3
-%5 = MAKETABLE [selector=%1, predicates=[%4], shard=0_of_1]
-%6 = GTE builtin.timestamp 2025-01-01T00:00:00Z
-%7 = SELECT %5 [predicate=%6]
-%8 = LT builtin.timestamp 2025-01-02T00:00:00Z
-%9 = SELECT %7 [predicate=%8]
-%10 = SELECT %9 [predicate=%4]
-%11 = TOPK %10 [sort_by=builtin.timestamp, k=1000, asc=false, nulls_first=false]
-%12 = LOGQL_COMPAT %11
-RETURN %12
+%5 = MATCH_STR builtin.message "info"
+%6 = OR %4 %5
+%7 = MATCH_STR builtin.message "INFO"
+%8 = OR %6 %7
+%9 = NOT(%8)
+%10 = MATCH_STR builtin.message "error"
+%11 = MATCH_STR builtin.message "ERROR"
+%12 = OR %10 %11
+%13 = MATCH_STR builtin.message "fatal"
+%14 = OR %12 %13
+%15 = MATCH_STR builtin.message "FATAL"
+%16 = OR %14 %15
+%17 = AND %9 %16
+%18 = MAKETABLE [selector=%1, predicates=[%17], shard=0_of_1]
+%19 = GTE builtin.timestamp 2025-01-01T00:00:00Z
+%20 = SELECT %18 [predicate=%19]
+%21 = LT builtin.timestamp 2025-01-02T00:00:00Z
+%22 = SELECT %20 [predicate=%21]
+%23 = SELECT %22 [predicate=%17]
+%24 = TOPK %23 [sort_by=builtin.timestamp, k=1000, asc=false, nulls_first=false]
+%25 = LOGQL_COMPAT %24
+RETURN %25
 `)
 
-	p, err := BuildPlan(params)
+	p, err := BuildPlan(context.Background(), params)
 	require.NoError(t, err)
 	require.NoError(t, Optimize(p), "optimization should not fail")
 
@@ -86,7 +100,7 @@ func Test_simplifyRegexPass_IgnoreStreamSelector(t *testing.T) {
 RETURN %14
 `)
 
-	p, err := BuildPlan(params)
+	p, err := BuildPlan(context.Background(), params)
 	require.NoError(t, err)
 	require.NoError(t, Optimize(p), "optimization should not fail")
 
@@ -124,7 +138,7 @@ func Test_simplifyRegexPass_Negate(t *testing.T) {
 RETURN %13
 `)
 
-	p, err := BuildPlan(params)
+	p, err := BuildPlan(context.Background(), params)
 	require.NoError(t, err)
 	require.NoError(t, Optimize(p), "optimization should not fail")
 

@@ -170,6 +170,16 @@ func (bmap *Bitmap) Len() int { return bmap.len }
 // Cap returns how many values bmap can hold without needing a new allocation.
 func (bmap *Bitmap) Cap() int { return bmap.capValues() }
 
+// SetCount returns the number of bits set in the bitmap.
+func (bmap *Bitmap) SetCount() int {
+	return bitutil.CountSetBits(bmap.data, 0, bmap.len)
+}
+
+// ClearCount returns the number of bits unset in the bitmap.
+func (bmap *Bitmap) ClearCount() int {
+	return bmap.Len() - bmap.SetCount()
+}
+
 // Clone returns a copy of bmap. If bmap is associated with an allocator, the
 // returned bitmap uses the same allocator.
 func (bmap *Bitmap) Clone() *Bitmap {

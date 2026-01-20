@@ -16,6 +16,7 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	dataobj_uploader "github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/kafka/client"
 	"github.com/grafana/loki/v3/pkg/kafka/partitionring"
@@ -38,6 +39,7 @@ type Service struct {
 	partitionInstanceLifecycler *ring.PartitionInstanceLifecycler
 	consumer                    *kafkav2.SinglePartitionConsumer
 	processor                   *partitionProcessor
+	flusher                     *flusherImpl
 	downscalePermitted          downscalePermittedFunc
 	watcher                     *services.FailureWatcher
 	logger                      log.Logger
@@ -146,21 +148,30 @@ func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, bucket objsto
 		logger,
 		prometheus.WrapRegistererWithPrefix("loki_dataobj_consumer_", reg),
 	)
-	s.processor = newPartitionProcessor(
+	uploader := dataobj_uploader.New(cfg.UploaderConfig, bucket, logger)
+	if err := uploader.RegisterMetrics(reg); err != nil {
+		level.Error(logger).Log("msg", "failed to register uploader metrics", "err", err)
+	}
+	s.flusher = newFlusher(
+		uploader,
 		committer,
-		cfg.BuilderConfig,
-		cfg.UploaderConfig,
-		mCfg,
-		bucket,
-		scratchStore,
+		metastoreEvents,
+		partitionID,
+		int32(mCfg.PartitionRatio),
 		logger,
 		reg,
+	)
+	s.processor = newPartitionProcessor(
+		cfg.BuilderConfig,
+		scratchStore,
 		cfg.IdleFlushTimeout,
 		cfg.MaxBuilderAge,
-		metastoreEvents,
 		cfg.Topic,
 		partitionID,
 		records,
+		s.flusher,
+		logger,
+		reg,
 	)
 	s.downscalePermitted = newOffsetCommittedDownscaleFunc(offsetReader, partitionID, logger)
 
@@ -182,16 +193,20 @@ func (s *Service) starting(ctx context.Context) error {
 	if err := services.StartAndAwaitRunning(ctx, s.partitionInstanceLifecycler); err != nil {
 		return fmt.Errorf("failed to start partition instance lifecycler: %w", err)
 	}
+	if err := services.StartAndAwaitRunning(ctx, s.processor); err != nil {
+		return fmt.Errorf("failed to start partition processor: %w", err)
+	}
 	if err := services.StartAndAwaitRunning(ctx, s.consumer); err != nil {
 		return fmt.Errorf("failed to start consumer: %w", err)
+	}
+	if err := services.StartAndAwaitRunning(ctx, s.flusher); err != nil {
+		return fmt.Errorf("failed to start flusher: %w", err)
 	}
 	return nil
 }
 
 // running implements the Service interface's running method.
 func (s *Service) running(ctx context.Context) error {
-	// TODO(grobinson): Turn this into a [services.Service] instead.
-	s.processor.Start(ctx)
 	<-ctx.Done()
 	return nil
 }
@@ -200,8 +215,14 @@ func (s *Service) running(ctx context.Context) error {
 func (s *Service) stopping(failureCase error) error {
 	level.Info(s.logger).Log("msg", "stopping")
 	ctx := context.TODO()
+	if err := services.StopAndAwaitTerminated(ctx, s.flusher); err != nil {
+		level.Warn(s.logger).Log("msg", "failed to stop flusher", "err", err)
+	}
 	if err := services.StopAndAwaitTerminated(ctx, s.consumer); err != nil {
-		level.Warn(s.logger).Log("msg", "failed to stop partition reader", "err", err)
+		level.Warn(s.logger).Log("msg", "failed to stop consumer", "err", err)
+	}
+	if err := services.StopAndAwaitTerminated(ctx, s.processor); err != nil {
+		level.Warn(s.logger).Log("msg", "failed to stop partition processor", "err", err)
 	}
 	if err := services.StopAndAwaitTerminated(ctx, s.partitionInstanceLifecycler); err != nil {
 		level.Warn(s.logger).Log("msg", "failed to stop partition instance lifecycler", "err", err)

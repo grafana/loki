@@ -1417,7 +1417,7 @@ func (sm *OverwriteMarshalingStringMap) Map() map[string]string {
 	return sm.m
 }
 
-// MarshalJSON explicitly uses the the type receiver and not pointer receiver
+// MarshalJSON explicitly uses the type receiver and not pointer receiver
 // or it won't be called
 func (sm OverwriteMarshalingStringMap) MarshalJSON() ([]byte, error) {
 	return json.Marshal(sm.m)
@@ -1433,7 +1433,7 @@ func (sm *OverwriteMarshalingStringMap) UnmarshalJSON(val []byte) error {
 	return nil
 }
 
-// MarshalYAML explicitly uses the the type receiver and not pointer receiver
+// MarshalYAML explicitly uses the type receiver and not pointer receiver
 // or it won't be called
 func (sm OverwriteMarshalingStringMap) MarshalYAML() (interface{}, error) {
 	return sm.m, nil
