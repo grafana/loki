@@ -47,3 +47,45 @@ func TestAllocator_Trim(t *testing.T) {
 	_ = alloc.Allocate(5)
 	require.Equal(t, origAllocated, alloc.AllocatedBytes())
 }
+
+func TestAllocator_AllocateFromParent(t *testing.T) {
+	var parent memory.Allocator
+	child := memory.FromParent(&parent)
+
+	defer child.Reset()
+	defer parent.Reset()
+
+	_ = child.Allocate(5)
+	_ = parent.Allocate(3)
+
+	require.Equal(t, 5, child.AllocatedBytes())
+	require.Equal(t, 8, parent.AllocatedBytes())
+
+	// An initial trim should not change the number of allocated bytes, as
+	// the buffer is still in use.
+	childAllocated := child.AllocatedBytes()
+	parentAllocated := parent.AllocatedBytes()
+	child.Trim()
+	require.Equal(t, childAllocated, child.AllocatedBytes(), "should not have trimmed in-use memory")
+	require.Equal(t, parentAllocated, parent.AllocatedBytes(), "should not have trimmed in-use memory")
+	parent.Trim()
+	require.Equal(t, childAllocated, child.AllocatedBytes(), "should not have trimmed in-use memory")
+	require.Equal(t, parentAllocated, parent.AllocatedBytes(), "should not have trimmed in-use memory")
+
+	// Reclaiming & trimming memory from the child should also trim child's memory from the parent.
+	child.Reclaim()
+	child.Trim()
+	require.Equal(t, 0, child.AllocatedBytes(), "all memory should have been trimmed")
+	require.Equal(t, parentAllocated-childAllocated, parent.AllocatedBytes(), "should have trimmed parent memory by the amount of the child's allocated memory")
+
+	// Creating a new buffer should allocate new memory from the parent.
+	_ = child.Allocate(5)
+	require.Equal(t, childAllocated, child.AllocatedBytes())
+	require.Equal(t, parentAllocated, parent.AllocatedBytes(), "parent memory should have been reassigned to the child")
+
+	// Reclaiming & trimming memory from the parent should also trim all children.
+	parent.Reclaim()
+	parent.Trim()
+	require.Equal(t, 0, parent.AllocatedBytes(), "all memory should have been trimmed")
+	require.Equal(t, 0, child.AllocatedBytes(), "child memory should also have been trimmed")
+}
