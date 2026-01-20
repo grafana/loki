@@ -780,7 +780,7 @@ interval: 15s
 			err:    errors.New("invalid rules config: rule group 'rg_name' has no rules"),
 		},
 		{
-			name:   "with a a valid rules file",
+			name:   "with a valid rules file",
 			status: 202,
 			input: `
 name: test
@@ -799,7 +799,7 @@ rules:
 			output: "name: test\ninterval: 15s\nrules:\n    - record: up_rule\n      expr: up{}\n    - alert: up_alert\n      expr: sum(up{}) > 1\n      for: 30s\n      labels:\n        test: test\n      annotations:\n        test: test\n",
 		},
 		{
-			name:   "with a a valid rules file with limit parameter",
+			name:   "with a valid rules file with limit parameter",
 			status: 202,
 			input: `
 name: test
