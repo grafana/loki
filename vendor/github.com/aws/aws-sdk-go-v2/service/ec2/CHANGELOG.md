@@ -1,3 +1,16 @@
+# v1.277.0 (2025-12-15)
+
+* **Feature**: EC2 Capacity Manager now supports SpotTotalCount, SpotTotalInterruptions and SpotInterruptionRate metrics for both vCPU and instance units.
+
+# v1.276.1 (2025-12-09)
+
+* No change notes available for this release.
+
+# v1.276.0 (2025-12-08)
+
+* **Feature**: Amazon EC2 P6-B300 instances provide 8x NVIDIA Blackwell Ultra GPUs with 2.1 TB high bandwidth GPU memory, 6.4 Tbps EFA networking, 300 Gbps dedicated ENA throughput, and 4 TB of system memory. Amazon EC2 C8a instances are powered by 5th Gen AMD EPYC processors with a maximum frequency of 4.5 GHz.
+* **Dependency Update**: Updated to the latest SDK module versions
+
 # v1.275.1 (2025-12-02)
 
 * **Dependency Update**: Updated to the latest SDK module versions

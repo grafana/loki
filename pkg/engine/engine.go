@@ -284,7 +284,7 @@ func (e *Engine) buildLogicalPlan(ctx context.Context, logger log.Logger, params
 		}
 	}
 
-	logicalPlan, err := logical.BuildPlanWithDeletes(params, deleteReqs)
+	logicalPlan, err := logical.BuildPlanWithDeletes(ctx, params, deleteReqs)
 	if err != nil {
 		level.Warn(logger).Log("msg", "failed to create logical plan", "err", err)
 		region.RecordError(err)
@@ -402,13 +402,16 @@ func (e *Engine) buildWorkflow(ctx context.Context, logger log.Logger, physicalP
 	timer := prometheus.NewTimer(e.metrics.workflowPlanning)
 
 	opts := workflow.Options{
+		Tenant: tenantID,
+		Actor:  httpreq.ExtractActorPath(ctx),
+
 		MaxRunningScanTasks:  e.limits.MaxScanTaskParallelism(tenantID),
 		MaxRunningOtherTasks: 0,
 
 		DebugTasks:   e.limits.DebugEngineTasks(tenantID),
 		DebugStreams: e.limits.DebugEngineStreams(tenantID),
 	}
-	wf, err := workflow.New(opts, logger, tenantID, e.scheduler.inner, physicalPlan)
+	wf, err := workflow.New(opts, logger, e.scheduler.inner, physicalPlan)
 	if err != nil {
 		level.Warn(logger).Log("msg", "failed to create workflow", "err", err)
 		region.RecordError(err)

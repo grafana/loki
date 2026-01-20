@@ -22,6 +22,9 @@ func PutUserQuota(cli bce.Client, args *UserQuotaArgs, ctx *BosContext, options 
 	req := &BosRequest{}
 	req.SetMethod(http.PUT)
 	req.SetParam("userQuota", "")
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	resp := &BosResponse{}
 	// handle options to set the header/params of request
 	if err := handleOptions(req, options); err != nil {
@@ -56,6 +59,9 @@ func GetUserQuota(cli bce.Client, ctx *BosContext, options ...Option) (*UserQuot
 	req := &BosRequest{}
 	req.SetMethod(http.GET)
 	req.SetParam("userQuota", "")
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	// handle options to set the header/params of request
 	if err := handleOptions(req, options); err != nil {
 		return nil, bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
@@ -63,6 +69,9 @@ func GetUserQuota(cli bce.Client, ctx *BosContext, options ...Option) (*UserQuot
 	resp := &BosResponse{}
 	if err := SendRequest(cli, req, resp, ctx); err != nil {
 		return nil, err
+	}
+	if resp.IsFail() {
+		return nil, resp.ServiceError()
 	}
 	result := &UserQuotaArgs{}
 	if err := resp.ParseJsonBody(result); err != nil {
@@ -85,6 +94,9 @@ func DeleteUserQuota(cli bce.Client, ctx *BosContext, options ...Option) error {
 	req := &BosRequest{}
 	req.SetMethod(http.DELETE)
 	req.SetParam("userQuota", "")
+	if ctx == nil {
+		ctx = newDefaultBosContext()
+	}
 	// handle options to set the header/params of request
 	if err := handleOptions(req, options); err != nil {
 		return bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))

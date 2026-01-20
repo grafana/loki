@@ -75,8 +75,10 @@ func TestProxyEndpoint_GoldfishQueriesContinueAfterNonGoldfishComplete(t *testin
 	require.NoError(t, err)
 
 	// Create backends
-	backendA := NewProxyBackend("cell-a", urlA, 5*time.Second, true)
-	backendB := NewProxyBackend("cell-b", urlB, 5*time.Second, false)
+	backendA, err := NewProxyBackend("cell-a", urlA, 5*time.Second, true)
+	require.NoError(t, err)
+	backendB, err := NewProxyBackend("cell-b", urlB, 5*time.Second, false)
+	require.NoError(t, err)
 
 	// Create proxy endpoint
 	endpoint := NewProxyEndpoint(

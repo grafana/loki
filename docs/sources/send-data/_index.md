@@ -19,7 +19,6 @@ While all clients can be used simultaneously to cover multiple use cases, which 
 The following clients are developed and supported (for those customers who have purchased a support contract) by Grafana Labs for sending logs to Loki:
 
 - [Grafana Alloy](https://grafana.com/docs/alloy/latest/) - Grafana Alloy is a vendor-neutral distribution of the OpenTelemetry (OTel) Collector. Alloy offers native pipelines for OTel, Prometheus, Pyroscope, Loki, and many other metrics, logs, traces, and profile tools. In addition, you can use Alloy pipelines to do different tasks, such as configure alert rules in Loki and Mimir. Alloy is fully compatible with the OTel Collector, Prometheus Agent, and Promtail. You can use Alloy as an alternative to either of these solutions or combine it into a hybrid system of multiple collectors and agents. You can deploy Alloy anywhere within your IT infrastructure and pair it with your Grafana LGTM stack, a telemetry backend from Grafana Cloud, or any other compatible backend from any other vendor.
- {{< docs/shared source="alloy" lookup="agent-deprecation.md" version="next" >}}
 - [xk6-loki extension](https://github.com/grafana/xk6-loki) - The k6-loki extension lets you perform [load testing on Loki](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/k6/).
 - [Promtail](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/promtail/) (DEPRECATED) - Promtail can be configured to automatically scrape logs from Kubernetes pods running on the same node that Promtail runs on. 
 {{< admonition type="caution" >}}

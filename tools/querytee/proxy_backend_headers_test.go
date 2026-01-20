@@ -52,7 +52,8 @@ func TestProxyBackend_InjectsTraceHeaders(t *testing.T) {
 	serverURL, err := url.Parse(server.URL)
 	require.NoError(t, err)
 
-	backend := NewProxyBackend("test", serverURL, 5*time.Second, false)
+	backend, err := NewProxyBackend("test", serverURL, 5*time.Second, false)
+	require.NoError(t, err)
 
 	// Create a parent span using dskit tracing
 	parentSpan, parentCtx := tracing.StartSpanFromContext(context.Background(), "test-parent")
@@ -123,8 +124,10 @@ func TestProxyBackend_ContextIsolationWithTracing(t *testing.T) {
 	u2, err := url.Parse(server2.URL)
 	require.NoError(t, err)
 
-	backend1 := NewProxyBackend("backend1", u1, 5*time.Second, true)
-	backend2 := NewProxyBackend("backend2", u2, 5*time.Second, false)
+	backend1, err := NewProxyBackend("backend1", u1, 5*time.Second, true)
+	require.NoError(t, err)
+	backend2, err := NewProxyBackend("backend2", u2, 5*time.Second, false)
+	require.NoError(t, err)
 
 	// Create a parent span
 	parentSpan, parentCtx := tracing.StartSpanFromContext(context.Background(), "test-parent")

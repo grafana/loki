@@ -1,14 +1,15 @@
 package dataset
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 
+	"github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
+	"github.com/grafana/loki/v3/pkg/memory"
 )
 
 type pageReader struct {
@@ -16,22 +17,19 @@ type pageReader struct {
 	physicalType datasetmd.PhysicalType
 	compression  datasetmd.CompressionType
 	ready        bool // Whether the pageReader is initialized for page.
+	alloc        memory.Allocator
 
 	lastPhysicalType datasetmd.PhysicalType
 	lastEncoding     datasetmd.EncodingType
 
 	closer      io.Closer
 	presenceDec *bitmapDecoder
-	valuesDec   valueDecoder
+	valuesDec   legacyValueDecoder
 
-	presenceBuf []Value
-	valuesBuf   []Value
+	valuesBuf []Value
 
 	pageRow int64
 	nextRow int64
-
-	presenceReader *bufio.Reader
-	valuesReader   *bufio.Reader
 }
 
 // newPageReader returns a new pageReader that reads from the provided page.
@@ -79,8 +77,12 @@ func (pr *pageReader) Read(ctx context.Context, v []Value) (n int, err error) {
 //
 // read advances pr.pageRow but not pr.nextRow.
 func (pr *pageReader) read(v []Value) (n int, err error) {
-	pr.presenceBuf = slicegrow.GrowToCap(pr.presenceBuf, len(v))
-	pr.presenceBuf = pr.presenceBuf[:len(v)]
+	// Reclaim any memory allocated since the previous read call.
+	//
+	// NOTE(rfratto): This is only safe as the pageReader owns the allocator and
+	// copies memory into v. Once we return allocated memory directly, we will
+	// need to find a new mechanism to prevent over-allocating.
+	pr.alloc.Reset()
 
 	// We want to allow decoders to reuse memory of [Value]s in v while allowing
 	// the caller to retain ownership over that memory; to do this safely, we
@@ -91,7 +93,9 @@ func (pr *pageReader) read(v []Value) (n int, err error) {
 	pr.valuesBuf = reuseValuesBuffer(pr.valuesBuf, v)
 
 	// First read presence values for the next len(v) rows.
-	count, err := pr.presenceDec.Decode(pr.presenceBuf)
+	presenceArr, err := pr.presenceDec.Decode(&pr.alloc, len(v))
+	presenceBuf := presenceArr.(*columnar.Bool)
+	count := presenceBuf.Len()
 	if err != nil && !errors.Is(err, io.EOF) {
 		return n, err
 	} else if count == 0 && errors.Is(err, io.EOF) {
@@ -105,23 +109,16 @@ func (pr *pageReader) read(v []Value) (n int, err error) {
 		return 0, nil
 	}
 
-	// The number of values in pr.presenceBuf[:count] which are set to 1
-	// determines how many values we need to read from the inner page.
-	var presentCount int
-	for _, p := range pr.presenceBuf[:count] {
-		if p.Type() != datasetmd.PHYSICAL_TYPE_UINT64 {
-			return n, fmt.Errorf("unexpected presence type: %s", p.Type())
-		}
-		if p.Uint64() == 1 {
-			presentCount++
-		}
-	}
+	// The number of bits set to 1 in presenceBuf determines how many values we
+	// need to read from the inner page.
+	presenceValues := presenceBuf.Values()
+	presentCount := presenceValues.SetCount()
 
-	// Now fill up to prescentCount values of concrete values.
+	// Now fill up to presentCount values of concrete values.
 	var valuesCount int
 	if presentCount > 0 {
 		valuesCount, err = pr.valuesDec.Decode(pr.valuesBuf[:presentCount])
-		if err != nil {
+		if err != nil && !errors.Is(err, io.EOF) {
 			return n, err
 		} else if valuesCount != presentCount {
 			return n, fmt.Errorf("unexpected number of values: %d, expected: %d", valuesCount, presentCount)
@@ -131,17 +128,14 @@ func (pr *pageReader) read(v []Value) (n int, err error) {
 	// Finally, copy over count values into v, setting NULL where appropriate and
 	// copying from pr.valuesBuf where appropriate.
 	var valuesIndex int
-	for i, p := range pr.presenceBuf[:count] {
-		// Type checking on presence values was already done above; we can call
-		// [Value.Uint64] here safely.
-		switch p.Uint64() {
-		case 1:
+	for i := range count {
+		if presenceBuf.Get(i) {
 			if valuesIndex >= valuesCount {
 				return n, fmt.Errorf("unexpected end of values")
 			}
 			v[i] = pr.valuesBuf[valuesIndex]
 			valuesIndex++
-		default:
+		} else {
 			v[i] = Value{}
 		}
 	}
@@ -188,30 +182,26 @@ func (pr *pageReader) init(ctx context.Context) error {
 		Data: data,
 	}
 
-	presenceReader, valuesReader, err := memPage.reader(pr.compression)
+	openedPage, pageCloser, err := memPage.open(pr.compression)
 	if err != nil {
 		return fmt.Errorf("opening page for reading: %w", err)
 	}
 
-	pr.presenceReader = pr.getPresenceReader()
-	pr.presenceReader.Reset(presenceReader)
 	pr.presenceDec = pr.getPresenceDecoder()
-	pr.presenceDec.Reset(pr.presenceReader)
+	pr.presenceDec.Reset(openedPage.PresenceData)
 
-	pr.valuesReader = pr.getValuesReader()
-	pr.valuesReader.Reset(valuesReader)
 	if pr.valuesDec == nil || pr.lastPhysicalType != pr.physicalType || pr.lastEncoding != memPage.Desc.Encoding {
 		var ok bool
-		pr.valuesDec, ok = newValueDecoder(pr.physicalType, memPage.Desc.Encoding, pr.valuesReader)
+		pr.valuesDec, ok = newValueDecoder(&pr.alloc, pr.physicalType, memPage.Desc.Encoding, openedPage.ValueData)
 		if !ok {
 			return fmt.Errorf("unsupported value encoding %s/%s", pr.physicalType, memPage.Desc.Encoding)
 		}
 	} else {
-		pr.valuesDec.Reset(pr.valuesReader)
+		pr.valuesDec.Reset(openedPage.ValueData)
 	}
 
 	pr.ready = true
-	pr.closer = valuesReader
+	pr.closer = pageCloser
 	pr.lastPhysicalType = pr.physicalType
 	pr.lastEncoding = memPage.Desc.Encoding
 	pr.pageRow = 0
@@ -297,20 +287,7 @@ func (pr *pageReader) Close() error {
 		return err
 	}
 
-	// After closing the reader, we reset the valuesReader to make sure it isn't
-	// holding onto the reference to pr.closer.
-	if pr.valuesReader != nil {
-		pr.valuesReader.Reset(nil)
-	}
-
 	return nil
-}
-
-func (pr *pageReader) getPresenceReader() *bufio.Reader {
-	if pr.presenceReader == nil {
-		return bufio.NewReader(nil)
-	}
-	return pr.presenceReader
 }
 
 func (pr *pageReader) getPresenceDecoder() *bitmapDecoder {
@@ -318,11 +295,4 @@ func (pr *pageReader) getPresenceDecoder() *bitmapDecoder {
 		return newBitmapDecoder(nil)
 	}
 	return pr.presenceDec
-}
-
-func (pr *pageReader) getValuesReader() *bufio.Reader {
-	if pr.valuesReader == nil {
-		return bufio.NewReader(nil)
-	}
-	return pr.valuesReader
 }
