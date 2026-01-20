@@ -139,7 +139,7 @@ func (p *partitionProcessor) running(ctx context.Context) error {
 	return p.Run(ctx)
 }
 
-// running implements [services.StoppingFn].
+// stopping implements [services.StoppingFn].
 func (p *partitionProcessor) stopping(_ error) error {
 	return nil
 }
@@ -153,7 +153,9 @@ func (p *partitionProcessor) Run(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			level.Info(p.logger).Log("msg", "stopping partition processor, context canceled")
-			return ctx.Err()
+			// We don't return ctx.Err() here as it manifests as a service failure
+			// when shutting down.
+			return nil
 		case record, ok := <-p.recordsChan:
 			if !ok {
 				level.Info(p.logger).Log("msg", "stopping partition processor, channel closed")
