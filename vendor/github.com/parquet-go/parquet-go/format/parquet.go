@@ -2,6 +2,7 @@ package format
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/parquet-go/parquet-go/deprecated"
 )
@@ -300,22 +301,53 @@ const (
 	Karney    EdgeInterpolationAlgorithm = 4
 )
 
+const (
+	SphericalName = "SPHERICAL"
+	VincentyName  = "VINCENTY"
+	ThomasName    = "THOMAS"
+	AndoyerName   = "ANDOYER"
+	KarneyName    = "KARNEY"
+)
+
 func (e EdgeInterpolationAlgorithm) String() string {
 	switch e {
 	case Spherical:
-		return "SPHERICAL"
+		return SphericalName
 	case Vincenty:
-		return "VINCENTY"
+		return VincentyName
 	case Thomas:
-		return "THOMAS"
+		return ThomasName
 	case Andoyer:
-		return "ANDOYER"
+		return AndoyerName
 	case Karney:
-		return "KARNEY"
+		return KarneyName
 	default:
 		return "EdgeInterpolationAlgorithm(?)"
 	}
 }
+
+func (e *EdgeInterpolationAlgorithm) FromString(s string) error {
+	switch strings.ToUpper(s) {
+	case SphericalName:
+		*e = Spherical
+	case VincentyName:
+		*e = Vincenty
+	case ThomasName:
+		*e = Thomas
+	case AndoyerName:
+		*e = Andoyer
+	case KarneyName:
+		*e = Karney
+	default:
+		return fmt.Errorf("invalid EdgeInterpolationAlgorithm: %q", s)
+	}
+	return nil
+}
+
+const (
+	defaultCRS         = "OGC:CRS84"
+	GeometryDefaultCRS = defaultCRS
+)
 
 // Embedded Geometry logical type annotation
 //
@@ -336,10 +368,12 @@ type GeometryType struct {
 func (t *GeometryType) String() string {
 	crs := t.CRS
 	if crs == "" {
-		crs = "OGC:CRS84"
+		crs = GeometryDefaultCRS
 	}
 	return fmt.Sprintf("GEOMETRY(%q)", crs)
 }
+
+const GeographyDefaultCRS = defaultCRS
 
 // Embedded Geography logical type annotation
 //
@@ -364,7 +398,7 @@ type GeographyType struct {
 func (t *GeographyType) String() string {
 	crs := t.CRS
 	if crs == "" {
-		crs = "OGC:CRS84"
+		crs = GeographyDefaultCRS
 	}
 	return fmt.Sprintf("GEOGRAPHY(%q, %s)", crs, t.Algorithm)
 }

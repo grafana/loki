@@ -20,14 +20,6 @@ import (
 	"github.com/grafana/loki/v3/tools/querytee/goldfish"
 )
 
-// contextKey is used for storing values in context
-type contextKey int
-
-const (
-	// originalHTTPHeadersKey stores the original HTTP headers in context
-	originalHTTPHeadersKey contextKey = iota
-)
-
 type ResponsesComparator interface {
 	Compare(expected, actual []byte, queryEvaluationTime time.Time) (*ComparisonSummary, error)
 }
@@ -69,7 +61,7 @@ func NewProxyEndpoint(
 ) *ProxyEndpoint {
 	hasPreferredBackend := false
 	for _, backend := range backends {
-		if backend.preferred {
+		if backend.v1Preferred {
 			hasPreferredBackend = true
 			break
 		}
@@ -221,7 +213,7 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *Back
 
 			// Keep track of the response if required.
 			if p.comparator != nil {
-				if backend.preferred {
+				if backend.v1Preferred {
 					expectedResponseIdx = idx
 				}
 				responses[idx] = res
@@ -270,7 +262,7 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *Back
 
 		// Find preferred backend response
 		for _, resp := range responses {
-			if resp != nil && resp.backend.preferred {
+			if resp != nil && resp.backend.v1Preferred {
 				cellAResp = resp
 				break
 			}
@@ -278,7 +270,7 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *Back
 
 		// Find first non-preferred backend response
 		for _, resp := range responses {
-			if resp != nil && !resp.backend.preferred {
+			if resp != nil && !resp.backend.v1Preferred {
 				cellBResp = resp
 				break
 			}
@@ -311,13 +303,13 @@ func (p *ProxyEndpoint) waitBackendResponseForDownstream(resCh chan *BackendResp
 		// - There's no preferred backend configured
 		// - Or this response is from the preferred backend
 		// - Or the preferred backend response has already been received and wasn't successful
-		if res.succeeded() && (!p.hasPreferredBackend || res.backend.preferred || preferredResponseReceived) {
+		if res.succeeded() && (!p.hasPreferredBackend || res.backend.v1Preferred || preferredResponseReceived) {
 			return res
 		}
 
 		// If we received a non successful response from the preferred backend, then we can
 		// return the first successful response received so far (if any).
-		if res.backend.preferred && !res.succeeded() {
+		if res.backend.v1Preferred && !res.succeeded() {
 			preferredResponseReceived = true
 
 			for _, prevRes := range responses {

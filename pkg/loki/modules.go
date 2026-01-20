@@ -584,7 +584,8 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	toMerge := []middleware.Interface{
 		httpreq.ExtractQueryMetricsMiddleware(),
 		httpreq.ExtractQueryTagsMiddleware(),
-		httpreq.PropagateHeadersMiddleware(httpreq.LokiEncodingFlagsHeader, httpreq.LokiDisablePipelineWrappersHeader),
+		// Propagate all headers but the authorization header to avoid security issues.
+		httpreq.PropagateAllHeadersMiddleware(httpreq.AuthorizationHeader),
 		serverutil.RecoveryHTTPMiddleware,
 		t.HTTPAuthMiddleware,
 		serverutil.NewPrepopulateMiddleware(),
@@ -1311,7 +1312,8 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	// TODO: add SerializeHTTPHandler
 	toMerge := []middleware.Interface{
 		httpreq.ExtractQueryTagsMiddleware(),
-		httpreq.PropagateHeadersMiddleware(httpreq.LokiActorPathHeader, httpreq.LokiEncodingFlagsHeader, httpreq.LokiDisablePipelineWrappersHeader),
+		// Propagate all headers but the authorization header to avoid security issues.
+		httpreq.PropagateAllHeadersMiddleware(httpreq.AuthorizationHeader),
 		serverutil.RecoveryHTTPMiddleware,
 		t.HTTPAuthMiddleware,
 		queryrange.StatsHTTPMiddleware,
@@ -1423,10 +1425,9 @@ func (t *Loki) initV2QueryEngine() (services.Service, error) {
 	}
 
 	logger := log.With(util_log.Logger, "component", "query-engine")
-
 	ms := metastore.NewObjectMetastore(store, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics)
 
-	engine, err := engine_v2.New(engine_v2.Params{
+	params := engine_v2.Params{
 		Logger:     logger,
 		Registerer: prometheus.DefaultRegisterer,
 
@@ -1436,7 +1437,18 @@ func (t *Loki) initV2QueryEngine() (services.Service, error) {
 		Limits:    t.Overrides,
 
 		Metastore: ms,
-	})
+	}
+
+	if t.Cfg.QueryEngine.EnableDeleteReqFiltering {
+		client, err := t.deleteRequestsClient("query-engine", t.Overrides)
+		if err != nil {
+			return nil, err
+		}
+
+		params.DeleteGetter = client
+	}
+
+	engine, err := engine_v2.New(params)
 	if err != nil {
 		return nil, err
 	}
@@ -1447,7 +1459,8 @@ func (t *Loki) initV2QueryEngine() (services.Service, error) {
 		toMerge := []middleware.Interface{
 			httpreq.ExtractQueryMetricsMiddleware(),
 			httpreq.ExtractQueryTagsMiddleware(),
-			httpreq.PropagateHeadersMiddleware(httpreq.LokiEncodingFlagsHeader, httpreq.LokiDisablePipelineWrappersHeader),
+			// Propagate all headers but the authorization header to avoid security issues.
+			httpreq.PropagateAllHeadersMiddleware(httpreq.AuthorizationHeader),
 			serverutil.RecoveryHTTPMiddleware,
 			t.HTTPAuthMiddleware,
 			serverutil.NewPrepopulateMiddleware(),

@@ -184,7 +184,7 @@ func GetRangeType(q Params) QueryRangeType {
 }
 
 // ParamsWithExpressionOverride overrides the query expression so that the query
-// string and the expression can differ. This is useful for for query planning
+// string and the expression can differ. This is useful for query planning
 // when plan my not match externally available logql syntax
 type ParamsWithExpressionOverride struct {
 	Params

@@ -23,6 +23,7 @@ type partitionOffsetMetrics struct {
 	commitFailures prometheus.Counter
 	appendFailures prometheus.Counter
 	flushesTotal   *prometheus.CounterVec
+	flushFailures  prometheus.Counter
 
 	// Request counters
 	commitsTotal prometheus.Counter
@@ -36,17 +37,9 @@ type partitionOffsetMetrics struct {
 
 func newPartitionOffsetMetrics() *partitionOffsetMetrics {
 	p := &partitionOffsetMetrics{
-		commitFailures: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "loki_dataobj_consumer_commit_failures_total",
-			Help: "Total number of commit failures",
-		}),
 		appendFailures: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "loki_dataobj_consumer_append_failures_total",
 			Help: "Total number of append failures",
-		}),
-		commitsTotal: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "loki_dataobj_consumer_commits_total",
-			Help: "Total number of commits",
 		}),
 		latestDelay: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "loki_dataobj_consumer_latest_processing_delay_seconds",
@@ -73,6 +66,10 @@ func newPartitionOffsetMetrics() *partitionOffsetMetrics {
 			Name: "loki_dataobj_consumer_flushes_total",
 			Help: "Total number of data objects flushed.",
 		}, []string{"reason"}),
+		flushFailures: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "loki_dataobj_consumer_flush_failures_total",
+			Help: "Total number of flush failures.",
+		}),
 	}
 
 	p.currentOffset = prometheus.NewGaugeFunc(
@@ -92,7 +89,6 @@ func (p *partitionOffsetMetrics) getCurrentOffset() float64 {
 
 func (p *partitionOffsetMetrics) register(reg prometheus.Registerer) error {
 	collectors := []prometheus.Collector{
-		p.commitFailures,
 		p.appendFailures,
 		p.flushesTotal,
 		p.latestDelay,
@@ -100,6 +96,7 @@ func (p *partitionOffsetMetrics) register(reg prometheus.Registerer) error {
 		p.processedBytes,
 		p.currentOffset,
 		p.flushDuration,
+		p.flushFailures,
 	}
 
 	for _, collector := range collectors {
@@ -114,7 +111,6 @@ func (p *partitionOffsetMetrics) register(reg prometheus.Registerer) error {
 
 func (p *partitionOffsetMetrics) unregister(reg prometheus.Registerer) {
 	collectors := []prometheus.Collector{
-		p.commitFailures,
 		p.appendFailures,
 		p.flushesTotal,
 		p.latestDelay,
@@ -122,6 +118,7 @@ func (p *partitionOffsetMetrics) unregister(reg prometheus.Registerer) {
 		p.processedBytes,
 		p.currentOffset,
 		p.flushDuration,
+		p.flushFailures,
 	}
 
 	for _, collector := range collectors {
@@ -133,16 +130,8 @@ func (p *partitionOffsetMetrics) updateOffset(offset int64) {
 	p.lastOffset.Store(offset)
 }
 
-func (p *partitionOffsetMetrics) incCommitFailures() {
-	p.commitFailures.Inc()
-}
-
 func (p *partitionOffsetMetrics) incAppendFailures() {
 	p.appendFailures.Inc()
-}
-
-func (p *partitionOffsetMetrics) incCommitsTotal() {
-	p.commitsTotal.Inc()
 }
 
 func (p *partitionOffsetMetrics) incFlushesTotal(reason string) {

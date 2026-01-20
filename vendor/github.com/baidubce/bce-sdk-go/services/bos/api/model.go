@@ -218,7 +218,7 @@ type BucketReplicationType struct {
 	Destination        *BucketReplicationDescriptor `json:"destination,omitempty"`
 	ReplicateHistory   *BucketReplicationDescriptor `json:"replicateHistory,omitempty"`
 	CreateTime         int64                        `json:"createTime"`
-	DestRegion         string                       `json:"destRegion"`
+	DestRegion         string                       `json:"destRegion"` 
 }
 
 type PutBucketReplicationArgs BucketReplicationType
@@ -311,6 +311,8 @@ type PutObjectArgs struct {
 	ForbidOverwrite    bool
 	Encryption         SSEHeaders
 	ContentCrc64ECMA   string
+	IfMatch            string
+	IfNoneMatch        string
 	// please set other header/params of http request By Option
 	// alternative Options please refer to service/bos/api/option.go
 }
@@ -427,13 +429,22 @@ type ObjectMeta struct {
 	RetentionDate      string
 	objectTagCount     int64
 	ContentCrc64ECMA   string
+	ContentLanguage    string
+}
+
+type GetObjectArgs struct {
+	Params            map[string]string // responseXXX query/ bce header
+	Ranges            []int64
+	IfMatch           string
+	IfNoneMatch       string
+	IfModifiedSince   string // example: Fri, 25 Dec 2025 17:11:53 GMT
+	IfUnModifiedSince string // example: Fri, 25 Dec 2025 17:11:53 GMT
 }
 
 // GetObjectResult defines the result data of the get object api.
 type GetObjectResult struct {
 	ObjectMeta
-	ContentLanguage string
-	Body            io.ReadCloser
+	Body io.ReadCloser
 }
 
 // GetObjectMetaResult defines the result data of the get object meta api.
@@ -581,6 +592,8 @@ type InitiateMultipartUploadArgs struct {
 	GrantFullControl   []string
 	ObjectExpires      int
 	ContentEncoding    string
+	IfMatch            string
+	IfNoneMatch        string
 }
 
 // InitiateMultipartUploadResult defines the result structure to initiate a multipart upload.
@@ -637,6 +650,8 @@ type CompleteMultipartUploadArgs struct {
 	ContentCrc32cFlag bool              `json:"-"`
 	ObjectExpires     int               `json:"-"`
 	ContentCrc64ECMA  string            `json:"-"`
+	IfMatch           string            `json:"-"`
+	IfNoneMatch       string            `json:"-"`
 }
 
 // CompleteMultipartUploadResult defines the result structure of CompleteMultipartUpload.
@@ -807,6 +822,17 @@ type BucketTag struct {
 type BosContext struct {
 	PathStyleEnable bool
 	Ctx             context.Context // for each request
+	ApiVersion      string          // "v1", "v2"
+	EnableCalcMd5   bool
+}
+
+func newDefaultBosContext() *BosContext {
+	return &BosContext{
+		PathStyleEnable: false,
+		Ctx:             context.Background(),
+		ApiVersion:      API_VERSION_V1,
+		EnableCalcMd5:   true,
+	}
 }
 
 type PutObjectTagArgs struct {

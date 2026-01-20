@@ -371,6 +371,12 @@ query_engine:
   # CLI flag: -query-engine.downstream-address
   [downstream_address: <string> | default = ""]
 
+  # When enabled, query results exclude log lines that match overlapping delete
+  # requests (not just pending requests). Disable to return all logs without
+  # considering delete requests.
+  # CLI flag: -query-engine.enable-delete-req-filtering
+  [enable_delete_req_filtering: <boolean> | default = true]
+
 # The query_scheduler block configures the Loki query scheduler. When configured
 # it separates the tenant query queues from the query-frontend.
 [query_scheduler: <query_scheduler>]
@@ -3211,6 +3217,10 @@ ring:
 # The maximum size of a received message.
 # CLI flag: -distributor.max-recv-msg-size
 [max_recv_msg_size: <int> | default = 104857600]
+
+# The maximum size of a decompressed message. Defaults to 50x max-recv-msg-size.
+# CLI flag: -distributor.max-decompressed-size
+[max_decompressed_size: <int> | default = 5242880000]
 
 rate_store:
   # The max number of concurrent requests to make to ingester stream apis

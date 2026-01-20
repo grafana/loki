@@ -115,8 +115,8 @@ func (m *mockBuilder) GetEstimatedSize() int {
 	return m.builder.GetEstimatedSize()
 }
 
-func (m *mockBuilder) CopyAndSort(obj *dataobj.Object) (*dataobj.Object, io.Closer, error) {
-	return m.builder.CopyAndSort(obj)
+func (m *mockBuilder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataobj.Object, io.Closer, error) {
+	return m.builder.CopyAndSort(ctx, obj)
 }
 
 func (m *mockBuilder) Flush() (*dataobj.Object, io.Closer, error) {
@@ -143,6 +143,15 @@ type mockCommitter struct {
 func (m *mockCommitter) Commit(_ context.Context, _ int32, offset int64) error {
 	m.offsets = append(m.offsets, offset)
 	return nil
+}
+
+type mockFlusher struct {
+	flushes int
+}
+
+func (m *mockFlusher) FlushAsync(_ context.Context, _ builder, _ time.Time, _ int64, done func(error)) {
+	m.flushes++
+	done(nil)
 }
 
 // mockKafka mocks a [kgo.Client]. The zero value is usable.
@@ -198,6 +207,15 @@ func (m *mockKafka) Produce(
 func (m *mockKafka) ProduceSync(_ context.Context, rs ...*kgo.Record) kgo.ProduceResults {
 	m.produced = append(m.produced, rs...)
 	return kgo.ProduceResults{{Err: nil}}
+}
+
+type mockUploader struct {
+	uploaded []*dataobj.Object
+}
+
+func (m *mockUploader) Upload(_ context.Context, obj *dataobj.Object) (string, error) {
+	m.uploaded = append(m.uploaded, obj)
+	return "", nil
 }
 
 type recordedTocEntry struct {
