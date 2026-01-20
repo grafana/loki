@@ -44,7 +44,7 @@ const (
 	messageSizeLargerErrFmt = "%w than max (%d vs %d)"
 )
 
-func ParseOTLPRequest(userID string, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, maxRecvMsgSize, maxDecompressedSize int, tracker UsageTracker, streamResolver StreamResolver, logger log.Logger) (*logproto.PushRequest, *Stats, error) {
+func ParseOTLPRequest(userID string, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, maxRecvMsgSize int, maxDecompressedSize int64, tracker UsageTracker, streamResolver StreamResolver, logger log.Logger) (*logproto.PushRequest, *Stats, error) {
 	stats := NewPushStats()
 	otlpLogs, err := extractLogs(r, maxRecvMsgSize, maxDecompressedSize, stats)
 	if err != nil {
@@ -55,7 +55,7 @@ func ParseOTLPRequest(userID string, r *http.Request, limits Limits, tenantConfi
 	return req, stats, err
 }
 
-func extractLogs(r *http.Request, maxRecvMsgSize, maxDecompressedSize int, pushStats *Stats) (plog.Logs, error) {
+func extractLogs(r *http.Request, maxRecvMsgSize int, maxDecompressedSize int64, pushStats *Stats) (plog.Logs, error) {
 	pushStats.ContentEncoding = r.Header.Get(contentEnc)
 	// bodySize should always reflect the compressed size of the request body
 	bodySize := loki_util.NewSizeReader(r.Body)
@@ -108,7 +108,7 @@ func extractLogs(r *http.Request, maxRecvMsgSize, maxDecompressedSize int, pushS
 		return plog.NewLogs(), fmt.Errorf(messageSizeLargerErrFmt, loki_util.ErrMessageSizeTooLarge, size, maxRecvMsgSize)
 	}
 	// Check the size of the decompressed body
-	if len(buf) > maxDecompressedSize && maxDecompressedSize > 0 {
+	if int64(len(buf)) > maxDecompressedSize && maxDecompressedSize > 0 {
 		return plog.NewLogs(), fmt.Errorf(messageSizeLargerErrFmt, loki_util.ErrMessageDecompressedSizeTooLarge, len(buf), maxDecompressedSize)
 	}
 

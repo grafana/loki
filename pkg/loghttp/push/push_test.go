@@ -732,7 +732,7 @@ func TestParseRequestWithZeroMaxDecompressedSize(t *testing.T) {
 		contentType          string
 		contentEncoding      string
 		maxRecvMsgSize       int
-		maxDecompressedSize  int
+		maxDecompressedSize  int64
 		expectedError        bool
 		expectedErrorMessage string
 	}{
