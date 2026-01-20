@@ -10,71 +10,103 @@ import (
 	"github.com/grafana/loki/v3/pkg/util"
 )
 
-// Copied from pkg/ingester/downscale.go.
+// PrepareDownscaleHandler is a special handler called by the rollout operator
+// immediately before the pod is downscaled. It can stop a downscale by
+// responding with a non 2xx status code.
+func (s *Service) PrepareDownscaleHandler(w http.ResponseWriter, r *http.Request) {
+	isDownscalePermitted, err := s.downscalePermitted(r.Context())
+	if err != nil {
+		level.Error(s.logger).Log("msg", "failed to check if downscale is permitted", "err", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	if !isDownscalePermitted {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	s.partitionInstanceLifecycler.SetRemoveOwnerOnShutdown(true)
+}
+
+// PrepareDelayedDownscaleHandler is a special handler called by the rollout
+// operator to prepare for a delayed downscale. This allows the service to
+// perform any number of actions in preparation of being scaled down at the
+// end of the delayed downscale window.
+//
+// A delayed downscale is prepared via a POST request to this handler. The
+// handler prepares the service to be downscaled and responds with the number
+// of seconds since it first prepared for the delayed downscale. The handler
+// should be idempotent if it has previously prepared for a delayed downscale.
+//
+// A delayed downscale can also be canceled via a DELETE request to the same
+// handler. The handler restores the service to its running state and then
+// responds with a zero timestamp. The handler should be idempotent if it has
+// previously canceled a delayed downscale.
 func (s *Service) PrepareDelayedDownscaleHandler(w http.ResponseWriter, r *http.Request) {
-	// Don't allow callers to change the shutdown configuration while we're in the middle
-	// of starting or shutting down.
+	// We don't allow changes while we are starting or shutting down.
 	if s.State() != services.Running {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
-
 	switch r.Method {
+	case http.MethodGet:
+		s.respondWithCurrentPartitionState(w, r)
 	case http.MethodPost:
-		// It's not allowed to prepare the downscale while in PENDING state. Why? Because if the downscale
-		// will be later cancelled, we don't know if it was requested in PENDING or ACTIVE state, so we
-		// don't know to which state reverting back. Given a partition is expected to stay in PENDING state
-		// for a short period, we simply don't allow this case.
-		state, _, err := s.partitionInstanceLifecycler.GetPartitionState(r.Context())
-		if err != nil {
-			level.Error(s.logger).Log("msg", "failed to check partition state in the ring", "err", err)
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
+		s.prepareDelayedDownscale(w, r)
+	case http.MethodDelete:
+		s.cancelDelayedDownscale(w, r)
+	}
+}
 
-		if state == ring.PartitionPending {
-			level.Warn(s.logger).Log("msg", "received a request to prepare partition for shutdown, but the request can't be satisfied because the partition is in PENDING state")
-			w.WriteHeader(http.StatusConflict)
-			return
-		}
+func (s *Service) prepareDelayedDownscale(w http.ResponseWriter, r *http.Request) {
+	// We don't accept prepare downscale requests while in PENDING state because
+	// if the downscale is canceled we don't know what the original state was.
+	// Given a partition is expected to stay in PENDING state for a short period
+	// of time we choose to reject this case.
+	state, _, err := s.partitionInstanceLifecycler.GetPartitionState(r.Context())
+	if err != nil {
+		level.Error(s.logger).Log("msg", "failed to check partition state in the ring", "err", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	if state == ring.PartitionPending {
+		level.Warn(s.logger).Log("msg", "received a request to prepare partition for shutdown, but the request can't be satisfied because the partition is in PENDING state")
+		w.WriteHeader(http.StatusConflict)
+		return
+	}
+	if err := s.partitionInstanceLifecycler.ChangePartitionState(r.Context(), ring.PartitionInactive); err != nil {
+		level.Error(s.logger).Log("msg", "failed to change partition state to inactive", "err", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	s.respondWithCurrentPartitionState(w, r)
+}
 
-		if err := s.partitionInstanceLifecycler.ChangePartitionState(r.Context(), ring.PartitionInactive); err != nil {
-			level.Error(s.logger).Log("msg", "failed to change partition state to inactive", "err", err)
+func (s *Service) cancelDelayedDownscale(w http.ResponseWriter, r *http.Request) {
+	state, _, err := s.partitionInstanceLifecycler.GetPartitionState(r.Context())
+	if err != nil {
+		level.Error(s.logger).Log("msg", "failed to check partition state in the ring", "err", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	// If the partition is inactive, we must have prepared it for delayed
+	// downscale in the past. Mark it as active again.
+	if state == ring.PartitionInactive {
+		if err := s.partitionInstanceLifecycler.ChangePartitionState(r.Context(), ring.PartitionActive); err != nil {
+			level.Error(s.logger).Log("msg", "failed to change partition state to active", "err", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-
-	case http.MethodDelete:
-		state, _, err := s.partitionInstanceLifecycler.GetPartitionState(r.Context())
-		if err != nil {
-			level.Error(s.logger).Log("msg", "failed to check partition state in the ring", "err", err)
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-
-		// If partition is inactive, make it active. We ignore other states Active and especially Pending.
-		if state == ring.PartitionInactive {
-			// We don't switch it back to PENDING state if there are not enough owners because we want to guarantee consistency
-			// in the read path. If the partition is within the lookback period we need to guarantee that partition will be queried.
-			// Moving back to PENDING will cause us loosing consistency, because PENDING partitions are not queried by design.
-			// We could move back to PENDING if there are not enough owners and the partition moved to INACTIVE more than
-			// "lookback period" ago, but since we delete inactive partitions with no owners that moved to inactive since longer
-			// than "lookback period" ago, it looks to be an edge case not worth to address.
-			if err := s.partitionInstanceLifecycler.ChangePartitionState(r.Context(), ring.PartitionActive); err != nil {
-				level.Error(s.logger).Log("msg", "failed to change partition state to active", "err", err)
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-		}
 	}
+	s.respondWithCurrentPartitionState(w, r)
+}
 
+func (s *Service) respondWithCurrentPartitionState(w http.ResponseWriter, r *http.Request) {
 	state, stateTimestamp, err := s.partitionInstanceLifecycler.GetPartitionState(r.Context())
 	if err != nil {
 		level.Error(s.logger).Log("msg", "failed to check partition state in the ring", "err", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-
 	if state == ring.PartitionInactive {
 		util.WriteJSONResponse(w, map[string]any{"timestamp": stateTimestamp.Unix()})
 	} else {

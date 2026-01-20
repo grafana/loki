@@ -4,21 +4,23 @@ import (
 	"fmt"
 
 	"go.opentelemetry.io/otel/attribute"
+
+	"github.com/grafana/loki/v3/pkg/xcap/internal/proto"
 )
 
-// ToProtoCapture converts a Capture to its protobuf representation.
-func ToProtoCapture(c *Capture) (*ProtoCapture, error) {
+// toProtoCapture converts a Capture to its protobuf representation.
+func toProtoCapture(c *Capture) (*proto.Capture, error) {
 	if c == nil {
 		return nil, nil
 	}
 
 	statistics := c.getAllStatistics()
 	statsIndex := make(map[StatisticKey]uint32)
-	protoStats := make([]*ProtoStatistic, 0, len(statistics))
+	protoStats := make([]*proto.Statistic, 0, len(statistics))
 
 	for _, stat := range statistics {
 		statsIndex[stat.Key()] = uint32(len(protoStats))
-		protoStats = append(protoStats, &ProtoStatistic{
+		protoStats = append(protoStats, &proto.Statistic{
 			Name:            stat.Name(),
 			DataType:        marshalDataType(stat.DataType()),
 			AggregationType: marshalAggregationType(stat.Aggregation()),
@@ -26,7 +28,7 @@ func ToProtoCapture(c *Capture) (*ProtoCapture, error) {
 	}
 
 	// Convert regions to proto regions
-	protoRegions := make([]*ProtoRegion, 0, len(c.regions))
+	protoRegions := make([]*proto.Region, 0, len(c.regions))
 	for _, region := range c.regions {
 		protoRegion, err := toProtoRegion(region, statsIndex)
 		if err != nil {
@@ -38,15 +40,15 @@ func ToProtoCapture(c *Capture) (*ProtoCapture, error) {
 		}
 	}
 
-	return &ProtoCapture{
+	return &proto.Capture{
 		Regions:    protoRegions,
 		Statistics: protoStats,
 	}, nil
 }
 
 // toProtoRegion converts a Region to its protobuf representation.
-func toProtoRegion(region *Region, statsIndex map[StatisticKey]uint32) (*ProtoRegion, error) {
-	protoObservations := make([]*ProtoObservation, 0, len(region.observations))
+func toProtoRegion(region *Region, statsIndex map[StatisticKey]uint32) (*proto.Region, error) {
+	protoObservations := make([]*proto.Observation, 0, len(region.observations))
 	for key, observation := range region.observations {
 		statIndex, exists := statsIndex[key]
 		if !exists {
@@ -58,7 +60,7 @@ func toProtoRegion(region *Region, statsIndex map[StatisticKey]uint32) (*ProtoRe
 			return nil, fmt.Errorf("failed to marshal observation: %w", err)
 		}
 
-		protoObservations = append(protoObservations, &ProtoObservation{
+		protoObservations = append(protoObservations, &proto.Observation{
 			StatisticId: statIndex,
 			Value:       protoValue,
 			Count:       uint32(observation.Count),
@@ -66,7 +68,7 @@ func toProtoRegion(region *Region, statsIndex map[StatisticKey]uint32) (*ProtoRe
 	}
 
 	// Convert attributes to proto attributes
-	protoAttributes := make([]*ProtoAttribute, 0, len(region.attributes))
+	protoAttributes := make([]*proto.Attribute, 0, len(region.attributes))
 	for _, attr := range region.attributes {
 		protoAttr, err := marshalAttribute(attr)
 		if err != nil {
@@ -75,7 +77,17 @@ func toProtoRegion(region *Region, statsIndex map[StatisticKey]uint32) (*ProtoRe
 		protoAttributes = append(protoAttributes, protoAttr)
 	}
 
-	return &ProtoRegion{
+	// Convert events to proto events
+	protoEvents := make([]*proto.Event, 0, len(region.events))
+	for _, event := range region.events {
+		protoEvent, err := marshalEvent(event)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal event %s: %w", event.Name, err)
+		}
+		protoEvents = append(protoEvents, protoEvent)
+	}
+
+	protoRegion := &proto.Region{
 		Name:         region.name,
 		StartTime:    region.startTime,
 		EndTime:      region.endTime,
@@ -83,23 +95,53 @@ func toProtoRegion(region *Region, statsIndex map[StatisticKey]uint32) (*ProtoRe
 		Id:           region.id[:],
 		ParentId:     region.parentID[:],
 		Attributes:   protoAttributes,
+		Events:       protoEvents,
+		Status:       marshalStatus(region.status),
+	}
+
+	return protoRegion, nil
+}
+
+// marshalEvent converts an Event to its protobuf representation.
+func marshalEvent(event Event) (*proto.Event, error) {
+	protoAttributes := make([]*proto.Attribute, 0, len(event.Attributes))
+	for _, attr := range event.Attributes {
+		protoAttr, err := marshalAttribute(attr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal event attribute %s: %w", attr.Key, err)
+		}
+		protoAttributes = append(protoAttributes, protoAttr)
+	}
+
+	return &proto.Event{
+		Name:       event.Name,
+		Timestamp:  event.Timestamp,
+		Attributes: protoAttributes,
 	}, nil
 }
 
+// marshalStatus converts a Status to its protobuf representation.
+func marshalStatus(status Status) *proto.Status {
+	return &proto.Status{
+		Code:    uint32(status.Code),
+		Message: status.Message,
+	}
+}
+
 // marshalObservationValue converts an observation value to proto ObservationValue.
-func marshalObservationValue(value any) (*ProtoObservationValue, error) {
+func marshalObservationValue(value any) (*proto.ObservationValue, error) {
 	switch v := value.(type) {
 	case int64:
-		return &ProtoObservationValue{
-			Kind: &ProtoObservationValue_IntValue{IntValue: v},
+		return &proto.ObservationValue{
+			Kind: &proto.ObservationValue_IntValue{IntValue: v},
 		}, nil
 	case float64:
-		return &ProtoObservationValue{
-			Kind: &ProtoObservationValue_FloatValue{FloatValue: v},
+		return &proto.ObservationValue{
+			Kind: &proto.ObservationValue_FloatValue{FloatValue: v},
 		}, nil
 	case bool:
-		return &ProtoObservationValue{
-			Kind: &ProtoObservationValue_BoolValue{BoolValue: v},
+		return &proto.ObservationValue{
+			Kind: &proto.ObservationValue_BoolValue{BoolValue: v},
 		}, nil
 	default:
 		return nil, fmt.Errorf("unsupported observation value type: %T", value)
@@ -107,63 +149,63 @@ func marshalObservationValue(value any) (*ProtoObservationValue, error) {
 }
 
 // marshalDataType converts a DataType to proto DataType.
-func marshalDataType(dt DataType) ProtoDataType {
+func marshalDataType(dt DataType) proto.DataType {
 	switch dt {
 	case DataTypeInvalid:
-		return PROTO_DATA_TYPE_INVALID
+		return proto.DATA_TYPE_INVALID
 	case DataTypeInt64:
-		return PROTO_DATA_TYPE_INT64
+		return proto.DATA_TYPE_INT64
 	case DataTypeFloat64:
-		return PROTO_DATA_TYPE_FLOAT64
+		return proto.DATA_TYPE_FLOAT64
 	case DataTypeBool:
-		return PROTO_DATA_TYPE_BOOL
+		return proto.DATA_TYPE_BOOL
 	default:
-		return PROTO_DATA_TYPE_INVALID
+		return proto.DATA_TYPE_INVALID
 	}
 }
 
 // marshalAggregationType converts an AggregationType to proto AggregationType.
-func marshalAggregationType(agg AggregationType) ProtoAggregationType {
+func marshalAggregationType(agg AggregationType) proto.AggregationType {
 	switch agg {
 	case AggregationTypeInvalid:
-		return PROTO_AGGREGATION_TYPE_INVALID
+		return proto.AGGREGATION_TYPE_INVALID
 	case AggregationTypeSum:
-		return PROTO_AGGREGATION_TYPE_SUM
+		return proto.AGGREGATION_TYPE_SUM
 	case AggregationTypeMin:
-		return PROTO_AGGREGATION_TYPE_MIN
+		return proto.AGGREGATION_TYPE_MIN
 	case AggregationTypeMax:
-		return PROTO_AGGREGATION_TYPE_MAX
+		return proto.AGGREGATION_TYPE_MAX
 	case AggregationTypeLast:
-		return PROTO_AGGREGATION_TYPE_LAST
+		return proto.AGGREGATION_TYPE_LAST
 	case AggregationTypeFirst:
-		return PROTO_AGGREGATION_TYPE_FIRST
+		return proto.AGGREGATION_TYPE_FIRST
 	default:
-		return PROTO_AGGREGATION_TYPE_INVALID
+		return proto.AGGREGATION_TYPE_INVALID
 	}
 }
 
 // marshalAttribute converts an OpenTelemetry attribute to its protobuf representation.
-func marshalAttribute(attr attribute.KeyValue) (*ProtoAttribute, error) {
+func marshalAttribute(attr attribute.KeyValue) (*proto.Attribute, error) {
 	if !attr.Valid() {
 		return nil, fmt.Errorf("invalid attribute")
 	}
 
-	protoValue := &ProtoAttributeValue{}
+	protoValue := &proto.AttributeValue{}
 	switch attr.Value.Type() {
 	case attribute.STRING:
-		protoValue.Kind = &ProtoAttributeValue_StringValue{StringValue: attr.Value.AsString()}
+		protoValue.Kind = &proto.AttributeValue_StringValue{StringValue: attr.Value.AsString()}
 	case attribute.INT64:
-		protoValue.Kind = &ProtoAttributeValue_IntValue{IntValue: attr.Value.AsInt64()}
+		protoValue.Kind = &proto.AttributeValue_IntValue{IntValue: attr.Value.AsInt64()}
 	case attribute.FLOAT64:
-		protoValue.Kind = &ProtoAttributeValue_FloatValue{FloatValue: attr.Value.AsFloat64()}
+		protoValue.Kind = &proto.AttributeValue_FloatValue{FloatValue: attr.Value.AsFloat64()}
 	case attribute.BOOL:
-		protoValue.Kind = &ProtoAttributeValue_BoolValue{BoolValue: attr.Value.AsBool()}
+		protoValue.Kind = &proto.AttributeValue_BoolValue{BoolValue: attr.Value.AsBool()}
 	default:
 		// For unsupported types (like slices), convert to string
-		protoValue.Kind = &ProtoAttributeValue_StringValue{StringValue: attr.Value.Emit()}
+		protoValue.Kind = &proto.AttributeValue_StringValue{StringValue: attr.Value.Emit()}
 	}
 
-	return &ProtoAttribute{
+	return &proto.Attribute{
 		Key:   string(attr.Key),
 		Value: protoValue,
 	}, nil

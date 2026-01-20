@@ -93,7 +93,7 @@ jobs:
           ref: ${{ inputs.ref }}
 
       - name: Download test data
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v4.1.3
         with:
           name: logql-bench-testdata-${{ steps.checkout.outputs.commit }}
           path: ./pkg/logql/bench

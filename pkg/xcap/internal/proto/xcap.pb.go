@@ -32,90 +32,90 @@ var _ = time.Kitchen
 // proto package needs to be updated.
 const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
 
-// ProtoDataType specifies the data type of a statistic's values.
-type ProtoDataType int32
+// DataType specifies the data type of a statistic's values.
+type DataType int32
 
 const (
-	PROTO_DATA_TYPE_INVALID ProtoDataType = 0
-	PROTO_DATA_TYPE_INT64   ProtoDataType = 1
-	PROTO_DATA_TYPE_FLOAT64 ProtoDataType = 2
-	PROTO_DATA_TYPE_BOOL    ProtoDataType = 3
+	DATA_TYPE_INVALID DataType = 0
+	DATA_TYPE_INT64   DataType = 1
+	DATA_TYPE_FLOAT64 DataType = 2
+	DATA_TYPE_BOOL    DataType = 3
 )
 
-var ProtoDataType_name = map[int32]string{
-	0: "PROTO_DATA_TYPE_INVALID",
-	1: "PROTO_DATA_TYPE_INT64",
-	2: "PROTO_DATA_TYPE_FLOAT64",
-	3: "PROTO_DATA_TYPE_BOOL",
+var DataType_name = map[int32]string{
+	0: "DATA_TYPE_INVALID",
+	1: "DATA_TYPE_INT64",
+	2: "DATA_TYPE_FLOAT64",
+	3: "DATA_TYPE_BOOL",
 }
 
-var ProtoDataType_value = map[string]int32{
-	"PROTO_DATA_TYPE_INVALID": 0,
-	"PROTO_DATA_TYPE_INT64":   1,
-	"PROTO_DATA_TYPE_FLOAT64": 2,
-	"PROTO_DATA_TYPE_BOOL":    3,
+var DataType_value = map[string]int32{
+	"DATA_TYPE_INVALID": 0,
+	"DATA_TYPE_INT64":   1,
+	"DATA_TYPE_FLOAT64": 2,
+	"DATA_TYPE_BOOL":    3,
 }
 
-func (ProtoDataType) EnumDescriptor() ([]byte, []int) {
+func (DataType) EnumDescriptor() ([]byte, []int) {
 	return fileDescriptor_cfc78bf5da060d84, []int{0}
 }
 
-// ProtoAggregationType specifies how to combine multiple observations of the
+// AggregationType specifies how to combine multiple observations of the
 // same statistic.
-type ProtoAggregationType int32
+type AggregationType int32
 
 const (
-	PROTO_AGGREGATION_TYPE_INVALID ProtoAggregationType = 0
-	PROTO_AGGREGATION_TYPE_SUM     ProtoAggregationType = 1
-	PROTO_AGGREGATION_TYPE_MIN     ProtoAggregationType = 2
-	PROTO_AGGREGATION_TYPE_MAX     ProtoAggregationType = 3
-	PROTO_AGGREGATION_TYPE_LAST    ProtoAggregationType = 4
-	PROTO_AGGREGATION_TYPE_FIRST   ProtoAggregationType = 5
+	AGGREGATION_TYPE_INVALID AggregationType = 0
+	AGGREGATION_TYPE_SUM     AggregationType = 1
+	AGGREGATION_TYPE_MIN     AggregationType = 2
+	AGGREGATION_TYPE_MAX     AggregationType = 3
+	AGGREGATION_TYPE_LAST    AggregationType = 4
+	AGGREGATION_TYPE_FIRST   AggregationType = 5
 )
 
-var ProtoAggregationType_name = map[int32]string{
-	0: "PROTO_AGGREGATION_TYPE_INVALID",
-	1: "PROTO_AGGREGATION_TYPE_SUM",
-	2: "PROTO_AGGREGATION_TYPE_MIN",
-	3: "PROTO_AGGREGATION_TYPE_MAX",
-	4: "PROTO_AGGREGATION_TYPE_LAST",
-	5: "PROTO_AGGREGATION_TYPE_FIRST",
+var AggregationType_name = map[int32]string{
+	0: "AGGREGATION_TYPE_INVALID",
+	1: "AGGREGATION_TYPE_SUM",
+	2: "AGGREGATION_TYPE_MIN",
+	3: "AGGREGATION_TYPE_MAX",
+	4: "AGGREGATION_TYPE_LAST",
+	5: "AGGREGATION_TYPE_FIRST",
 }
 
-var ProtoAggregationType_value = map[string]int32{
-	"PROTO_AGGREGATION_TYPE_INVALID": 0,
-	"PROTO_AGGREGATION_TYPE_SUM":     1,
-	"PROTO_AGGREGATION_TYPE_MIN":     2,
-	"PROTO_AGGREGATION_TYPE_MAX":     3,
-	"PROTO_AGGREGATION_TYPE_LAST":    4,
-	"PROTO_AGGREGATION_TYPE_FIRST":   5,
+var AggregationType_value = map[string]int32{
+	"AGGREGATION_TYPE_INVALID": 0,
+	"AGGREGATION_TYPE_SUM":     1,
+	"AGGREGATION_TYPE_MIN":     2,
+	"AGGREGATION_TYPE_MAX":     3,
+	"AGGREGATION_TYPE_LAST":    4,
+	"AGGREGATION_TYPE_FIRST":   5,
 }
 
-func (ProtoAggregationType) EnumDescriptor() ([]byte, []int) {
+func (AggregationType) EnumDescriptor() ([]byte, []int) {
 	return fileDescriptor_cfc78bf5da060d84, []int{1}
 }
 
-// ProtoCapture is protobuf representation of a Capture.
-type ProtoCapture struct {
+// Capture is protobuf representation of a Capture.
+type Capture struct {
 	// A list of Regions recorded in the Capture.
-	Regions []*ProtoRegion `protobuf:"bytes,1,rep,name=regions,proto3" json:"regions,omitempty"`
+	Regions []*Region `protobuf:"bytes,1,rep,name=regions,proto3" json:"regions,omitempty"`
 	// A list of statistic definitions used in the Capture across all
 	// Regions. The index into this list is used as the statistic_id field
 	// in Observation.
-	Statistics []*ProtoStatistic `protobuf:"bytes,2,rep,name=statistics,proto3" json:"statistics,omitempty"`
+	Statistics []*Statistic `protobuf:"bytes,2,rep,name=statistics,proto3" json:"statistics,omitempty"`
 }
 
-func (m *ProtoCapture) Reset()      { *m = ProtoCapture{} }
-func (*ProtoCapture) ProtoMessage() {}
-func (*ProtoCapture) Descriptor() ([]byte, []int) {
+func (m *Capture) Reset()      { *m = Capture{} }
+func (*Capture) ProtoMessage() {}
+func (*Capture) Descriptor() ([]byte, []int) {
 	return fileDescriptor_cfc78bf5da060d84, []int{0}
 }
-func (m *ProtoCapture) XXX_Unmarshal(b []byte) error {
+func (m *Capture) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *ProtoCapture) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *Capture) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_ProtoCapture.Marshal(b, m, deterministic)
+		return xxx_messageInfo_Capture.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -125,34 +125,34 @@ func (m *ProtoCapture) XXX_Marshal(b []byte, deterministic bool) ([]byte, error)
 		return b[:n], nil
 	}
 }
-func (m *ProtoCapture) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_ProtoCapture.Merge(m, src)
+func (m *Capture) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_Capture.Merge(m, src)
 }
-func (m *ProtoCapture) XXX_Size() int {
+func (m *Capture) XXX_Size() int {
 	return m.Size()
 }
-func (m *ProtoCapture) XXX_DiscardUnknown() {
-	xxx_messageInfo_ProtoCapture.DiscardUnknown(m)
+func (m *Capture) XXX_DiscardUnknown() {
+	xxx_messageInfo_Capture.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_ProtoCapture proto.InternalMessageInfo
+var xxx_messageInfo_Capture proto.InternalMessageInfo
 
-func (m *ProtoCapture) GetRegions() []*ProtoRegion {
+func (m *Capture) GetRegions() []*Region {
 	if m != nil {
 		return m.Regions
 	}
 	return nil
 }
 
-func (m *ProtoCapture) GetStatistics() []*ProtoStatistic {
+func (m *Capture) GetStatistics() []*Statistic {
 	if m != nil {
 		return m.Statistics
 	}
 	return nil
 }
 
-// ProtoRegion is protobuf representation of a Region.
-type ProtoRegion struct {
+// Region is protobuf representation of a Region.
+type Region struct {
 	// Name is the name of the region.
 	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	// StartTime is when the region was created.
@@ -160,26 +160,30 @@ type ProtoRegion struct {
 	// EndTime is when the region ended. Zero if not ended.
 	EndTime time.Time `protobuf:"bytes,3,opt,name=end_time,json=endTime,proto3,stdtime" json:"end_time"`
 	// Observations are all observations recorded in this region.
-	Observations []*ProtoObservation `protobuf:"bytes,4,rep,name=observations,proto3" json:"observations,omitempty"`
+	Observations []*Observation `protobuf:"bytes,4,rep,name=observations,proto3" json:"observations,omitempty"`
 	// Id is a unique identifier for this region (8 bytes).
 	Id []byte `protobuf:"bytes,5,opt,name=id,proto3" json:"id,omitempty"`
 	// ParentId is the ID of the parent region, or empty if this is a root region (8 bytes).
 	ParentId []byte `protobuf:"bytes,6,opt,name=parent_id,json=parentId,proto3" json:"parent_id,omitempty"`
 	// Attributes are the attributes associated with this region.
-	Attributes []*ProtoAttribute `protobuf:"bytes,7,rep,name=attributes,proto3" json:"attributes,omitempty"`
+	Attributes []*Attribute `protobuf:"bytes,7,rep,name=attributes,proto3" json:"attributes,omitempty"`
+	// Events are timestamped events recorded in this region.
+	Events []*Event `protobuf:"bytes,8,rep,name=events,proto3" json:"events,omitempty"`
+	// Status is the status of the region's operation.
+	Status *Status `protobuf:"bytes,9,opt,name=status,proto3" json:"status,omitempty"`
 }
 
-func (m *ProtoRegion) Reset()      { *m = ProtoRegion{} }
-func (*ProtoRegion) ProtoMessage() {}
-func (*ProtoRegion) Descriptor() ([]byte, []int) {
+func (m *Region) Reset()      { *m = Region{} }
+func (*Region) ProtoMessage() {}
+func (*Region) Descriptor() ([]byte, []int) {
 	return fileDescriptor_cfc78bf5da060d84, []int{1}
 }
-func (m *ProtoRegion) XXX_Unmarshal(b []byte) error {
+func (m *Region) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *ProtoRegion) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *Region) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_ProtoRegion.Marshal(b, m, deterministic)
+		return xxx_messageInfo_Region.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -189,86 +193,102 @@ func (m *ProtoRegion) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) 
 		return b[:n], nil
 	}
 }
-func (m *ProtoRegion) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_ProtoRegion.Merge(m, src)
+func (m *Region) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_Region.Merge(m, src)
 }
-func (m *ProtoRegion) XXX_Size() int {
+func (m *Region) XXX_Size() int {
 	return m.Size()
 }
-func (m *ProtoRegion) XXX_DiscardUnknown() {
-	xxx_messageInfo_ProtoRegion.DiscardUnknown(m)
+func (m *Region) XXX_DiscardUnknown() {
+	xxx_messageInfo_Region.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_ProtoRegion proto.InternalMessageInfo
+var xxx_messageInfo_Region proto.InternalMessageInfo
 
-func (m *ProtoRegion) GetName() string {
+func (m *Region) GetName() string {
 	if m != nil {
 		return m.Name
 	}
 	return ""
 }
 
-func (m *ProtoRegion) GetStartTime() time.Time {
+func (m *Region) GetStartTime() time.Time {
 	if m != nil {
 		return m.StartTime
 	}
 	return time.Time{}
 }
 
-func (m *ProtoRegion) GetEndTime() time.Time {
+func (m *Region) GetEndTime() time.Time {
 	if m != nil {
 		return m.EndTime
 	}
 	return time.Time{}
 }
 
-func (m *ProtoRegion) GetObservations() []*ProtoObservation {
+func (m *Region) GetObservations() []*Observation {
 	if m != nil {
 		return m.Observations
 	}
 	return nil
 }
 
-func (m *ProtoRegion) GetId() []byte {
+func (m *Region) GetId() []byte {
 	if m != nil {
 		return m.Id
 	}
 	return nil
 }
 
-func (m *ProtoRegion) GetParentId() []byte {
+func (m *Region) GetParentId() []byte {
 	if m != nil {
 		return m.ParentId
 	}
 	return nil
 }
 
-func (m *ProtoRegion) GetAttributes() []*ProtoAttribute {
+func (m *Region) GetAttributes() []*Attribute {
 	if m != nil {
 		return m.Attributes
 	}
 	return nil
 }
 
-// ProtoAttribute represents a single attribute key-value pair.
-type ProtoAttribute struct {
-	// Key is the attribute key.
-	Key string `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
-	// Value is the attribute value.
-	Value *ProtoAttributeValue `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
+func (m *Region) GetEvents() []*Event {
+	if m != nil {
+		return m.Events
+	}
+	return nil
 }
 
-func (m *ProtoAttribute) Reset()      { *m = ProtoAttribute{} }
-func (*ProtoAttribute) ProtoMessage() {}
-func (*ProtoAttribute) Descriptor() ([]byte, []int) {
+func (m *Region) GetStatus() *Status {
+	if m != nil {
+		return m.Status
+	}
+	return nil
+}
+
+// Event represents a timestamped event within a region.
+type Event struct {
+	// Name is the name of the event.
+	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	// Timestamp is when the event occurred.
+	Timestamp time.Time `protobuf:"bytes,2,opt,name=timestamp,proto3,stdtime" json:"timestamp"`
+	// Attributes are the attributes associated with this event.
+	Attributes []*Attribute `protobuf:"bytes,3,rep,name=attributes,proto3" json:"attributes,omitempty"`
+}
+
+func (m *Event) Reset()      { *m = Event{} }
+func (*Event) ProtoMessage() {}
+func (*Event) Descriptor() ([]byte, []int) {
 	return fileDescriptor_cfc78bf5da060d84, []int{2}
 }
-func (m *ProtoAttribute) XXX_Unmarshal(b []byte) error {
+func (m *Event) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *ProtoAttribute) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *Event) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_ProtoAttribute.Marshal(b, m, deterministic)
+		return xxx_messageInfo_Event.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -278,229 +298,58 @@ func (m *ProtoAttribute) XXX_Marshal(b []byte, deterministic bool) ([]byte, erro
 		return b[:n], nil
 	}
 }
-func (m *ProtoAttribute) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_ProtoAttribute.Merge(m, src)
+func (m *Event) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_Event.Merge(m, src)
 }
-func (m *ProtoAttribute) XXX_Size() int {
+func (m *Event) XXX_Size() int {
 	return m.Size()
 }
-func (m *ProtoAttribute) XXX_DiscardUnknown() {
-	xxx_messageInfo_ProtoAttribute.DiscardUnknown(m)
+func (m *Event) XXX_DiscardUnknown() {
+	xxx_messageInfo_Event.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_ProtoAttribute proto.InternalMessageInfo
+var xxx_messageInfo_Event proto.InternalMessageInfo
 
-func (m *ProtoAttribute) GetKey() string {
-	if m != nil {
-		return m.Key
-	}
-	return ""
-}
-
-func (m *ProtoAttribute) GetValue() *ProtoAttributeValue {
-	if m != nil {
-		return m.Value
-	}
-	return nil
-}
-
-// ProtoAttributeValue represents an attribute value.
-type ProtoAttributeValue struct {
-	// Types that are valid to be assigned to Kind:
-	//
-	//	*ProtoAttributeValue_StringValue
-	//	*ProtoAttributeValue_IntValue
-	//	*ProtoAttributeValue_FloatValue
-	//	*ProtoAttributeValue_BoolValue
-	Kind isProtoAttributeValue_Kind `protobuf_oneof:"kind"`
-}
-
-func (m *ProtoAttributeValue) Reset()      { *m = ProtoAttributeValue{} }
-func (*ProtoAttributeValue) ProtoMessage() {}
-func (*ProtoAttributeValue) Descriptor() ([]byte, []int) {
-	return fileDescriptor_cfc78bf5da060d84, []int{3}
-}
-func (m *ProtoAttributeValue) XXX_Unmarshal(b []byte) error {
-	return m.Unmarshal(b)
-}
-func (m *ProtoAttributeValue) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	if deterministic {
-		return xxx_messageInfo_ProtoAttributeValue.Marshal(b, m, deterministic)
-	} else {
-		b = b[:cap(b)]
-		n, err := m.MarshalToSizedBuffer(b)
-		if err != nil {
-			return nil, err
-		}
-		return b[:n], nil
-	}
-}
-func (m *ProtoAttributeValue) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_ProtoAttributeValue.Merge(m, src)
-}
-func (m *ProtoAttributeValue) XXX_Size() int {
-	return m.Size()
-}
-func (m *ProtoAttributeValue) XXX_DiscardUnknown() {
-	xxx_messageInfo_ProtoAttributeValue.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_ProtoAttributeValue proto.InternalMessageInfo
-
-type isProtoAttributeValue_Kind interface {
-	isProtoAttributeValue_Kind()
-	Equal(interface{}) bool
-	MarshalTo([]byte) (int, error)
-	Size() int
-}
-
-type ProtoAttributeValue_StringValue struct {
-	StringValue string `protobuf:"bytes,1,opt,name=string_value,json=stringValue,proto3,oneof"`
-}
-type ProtoAttributeValue_IntValue struct {
-	IntValue int64 `protobuf:"varint,2,opt,name=int_value,json=intValue,proto3,oneof"`
-}
-type ProtoAttributeValue_FloatValue struct {
-	FloatValue float64 `protobuf:"fixed64,3,opt,name=float_value,json=floatValue,proto3,oneof"`
-}
-type ProtoAttributeValue_BoolValue struct {
-	BoolValue bool `protobuf:"varint,4,opt,name=bool_value,json=boolValue,proto3,oneof"`
-}
-
-func (*ProtoAttributeValue_StringValue) isProtoAttributeValue_Kind() {}
-func (*ProtoAttributeValue_IntValue) isProtoAttributeValue_Kind()    {}
-func (*ProtoAttributeValue_FloatValue) isProtoAttributeValue_Kind()  {}
-func (*ProtoAttributeValue_BoolValue) isProtoAttributeValue_Kind()   {}
-
-func (m *ProtoAttributeValue) GetKind() isProtoAttributeValue_Kind {
-	if m != nil {
-		return m.Kind
-	}
-	return nil
-}
-
-func (m *ProtoAttributeValue) GetStringValue() string {
-	if x, ok := m.GetKind().(*ProtoAttributeValue_StringValue); ok {
-		return x.StringValue
-	}
-	return ""
-}
-
-func (m *ProtoAttributeValue) GetIntValue() int64 {
-	if x, ok := m.GetKind().(*ProtoAttributeValue_IntValue); ok {
-		return x.IntValue
-	}
-	return 0
-}
-
-func (m *ProtoAttributeValue) GetFloatValue() float64 {
-	if x, ok := m.GetKind().(*ProtoAttributeValue_FloatValue); ok {
-		return x.FloatValue
-	}
-	return 0
-}
-
-func (m *ProtoAttributeValue) GetBoolValue() bool {
-	if x, ok := m.GetKind().(*ProtoAttributeValue_BoolValue); ok {
-		return x.BoolValue
-	}
-	return false
-}
-
-// XXX_OneofWrappers is for the internal use of the proto package.
-func (*ProtoAttributeValue) XXX_OneofWrappers() []interface{} {
-	return []interface{}{
-		(*ProtoAttributeValue_StringValue)(nil),
-		(*ProtoAttributeValue_IntValue)(nil),
-		(*ProtoAttributeValue_FloatValue)(nil),
-		(*ProtoAttributeValue_BoolValue)(nil),
-	}
-}
-
-// ProtoStatistic represents a statistic definition.
-type ProtoStatistic struct {
-	// Name is the name of the statistic.
-	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	// DataType is the data type of the statistic's values.
-	DataType ProtoDataType `protobuf:"varint,2,opt,name=data_type,json=dataType,proto3,enum=loki.xcap.ProtoDataType" json:"data_type,omitempty"`
-	// AggregationType is how multiple observations are aggregated.
-	AggregationType ProtoAggregationType `protobuf:"varint,3,opt,name=aggregation_type,json=aggregationType,proto3,enum=loki.xcap.ProtoAggregationType" json:"aggregation_type,omitempty"`
-}
-
-func (m *ProtoStatistic) Reset()      { *m = ProtoStatistic{} }
-func (*ProtoStatistic) ProtoMessage() {}
-func (*ProtoStatistic) Descriptor() ([]byte, []int) {
-	return fileDescriptor_cfc78bf5da060d84, []int{4}
-}
-func (m *ProtoStatistic) XXX_Unmarshal(b []byte) error {
-	return m.Unmarshal(b)
-}
-func (m *ProtoStatistic) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	if deterministic {
-		return xxx_messageInfo_ProtoStatistic.Marshal(b, m, deterministic)
-	} else {
-		b = b[:cap(b)]
-		n, err := m.MarshalToSizedBuffer(b)
-		if err != nil {
-			return nil, err
-		}
-		return b[:n], nil
-	}
-}
-func (m *ProtoStatistic) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_ProtoStatistic.Merge(m, src)
-}
-func (m *ProtoStatistic) XXX_Size() int {
-	return m.Size()
-}
-func (m *ProtoStatistic) XXX_DiscardUnknown() {
-	xxx_messageInfo_ProtoStatistic.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_ProtoStatistic proto.InternalMessageInfo
-
-func (m *ProtoStatistic) GetName() string {
+func (m *Event) GetName() string {
 	if m != nil {
 		return m.Name
 	}
 	return ""
 }
 
-func (m *ProtoStatistic) GetDataType() ProtoDataType {
+func (m *Event) GetTimestamp() time.Time {
 	if m != nil {
-		return m.DataType
+		return m.Timestamp
 	}
-	return PROTO_DATA_TYPE_INVALID
+	return time.Time{}
 }
 
-func (m *ProtoStatistic) GetAggregationType() ProtoAggregationType {
+func (m *Event) GetAttributes() []*Attribute {
 	if m != nil {
-		return m.AggregationType
+		return m.Attributes
 	}
-	return PROTO_AGGREGATION_TYPE_INVALID
+	return nil
 }
 
-// ProtoObservation represents an aggregated observation value for a statistic.
-type ProtoObservation struct {
-	// StatisticId is the index into the statistics list in Capture.
-	StatisticId uint32 `protobuf:"varint,1,opt,name=statistic_id,json=statisticId,proto3" json:"statistic_id,omitempty"`
-	// Value is the aggregated observation value.
-	Value *ProtoObservationValue `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
-	// Count is the number of observations aggregated.
-	Count uint32 `protobuf:"varint,3,opt,name=count,proto3" json:"count,omitempty"`
+// Status represents the status of a region's operation.
+type Status struct {
+	// Code is the status code (0=Unset, 1=Error, 2=Ok).
+	Code uint32 `protobuf:"varint,1,opt,name=code,proto3" json:"code,omitempty"`
+	// Message is an optional status message.
+	Message string `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
 }
 
-func (m *ProtoObservation) Reset()      { *m = ProtoObservation{} }
-func (*ProtoObservation) ProtoMessage() {}
-func (*ProtoObservation) Descriptor() ([]byte, []int) {
-	return fileDescriptor_cfc78bf5da060d84, []int{5}
+func (m *Status) Reset()      { *m = Status{} }
+func (*Status) ProtoMessage() {}
+func (*Status) Descriptor() ([]byte, []int) {
+	return fileDescriptor_cfc78bf5da060d84, []int{3}
 }
-func (m *ProtoObservation) XXX_Unmarshal(b []byte) error {
+func (m *Status) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *ProtoObservation) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *Status) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_ProtoObservation.Marshal(b, m, deterministic)
+		return xxx_messageInfo_Status.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -510,60 +359,108 @@ func (m *ProtoObservation) XXX_Marshal(b []byte, deterministic bool) ([]byte, er
 		return b[:n], nil
 	}
 }
-func (m *ProtoObservation) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_ProtoObservation.Merge(m, src)
+func (m *Status) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_Status.Merge(m, src)
 }
-func (m *ProtoObservation) XXX_Size() int {
+func (m *Status) XXX_Size() int {
 	return m.Size()
 }
-func (m *ProtoObservation) XXX_DiscardUnknown() {
-	xxx_messageInfo_ProtoObservation.DiscardUnknown(m)
+func (m *Status) XXX_DiscardUnknown() {
+	xxx_messageInfo_Status.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_ProtoObservation proto.InternalMessageInfo
+var xxx_messageInfo_Status proto.InternalMessageInfo
 
-func (m *ProtoObservation) GetStatisticId() uint32 {
+func (m *Status) GetCode() uint32 {
 	if m != nil {
-		return m.StatisticId
+		return m.Code
 	}
 	return 0
 }
 
-func (m *ProtoObservation) GetValue() *ProtoObservationValue {
+func (m *Status) GetMessage() string {
+	if m != nil {
+		return m.Message
+	}
+	return ""
+}
+
+// Attribute represents a single attribute key-value pair.
+type Attribute struct {
+	// Key is the attribute key.
+	Key string `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	// Value is the attribute value.
+	Value *AttributeValue `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
+}
+
+func (m *Attribute) Reset()      { *m = Attribute{} }
+func (*Attribute) ProtoMessage() {}
+func (*Attribute) Descriptor() ([]byte, []int) {
+	return fileDescriptor_cfc78bf5da060d84, []int{4}
+}
+func (m *Attribute) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *Attribute) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_Attribute.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *Attribute) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_Attribute.Merge(m, src)
+}
+func (m *Attribute) XXX_Size() int {
+	return m.Size()
+}
+func (m *Attribute) XXX_DiscardUnknown() {
+	xxx_messageInfo_Attribute.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_Attribute proto.InternalMessageInfo
+
+func (m *Attribute) GetKey() string {
+	if m != nil {
+		return m.Key
+	}
+	return ""
+}
+
+func (m *Attribute) GetValue() *AttributeValue {
 	if m != nil {
 		return m.Value
 	}
 	return nil
 }
 
-func (m *ProtoObservation) GetCount() uint32 {
-	if m != nil {
-		return m.Count
-	}
-	return 0
-}
-
-// ProtoObservationValue represents a single observation value.
-type ProtoObservationValue struct {
+// AttributeValue represents an attribute value.
+type AttributeValue struct {
 	// Types that are valid to be assigned to Kind:
 	//
-	//	*ProtoObservationValue_IntValue
-	//	*ProtoObservationValue_FloatValue
-	//	*ProtoObservationValue_BoolValue
-	Kind isProtoObservationValue_Kind `protobuf_oneof:"kind"`
+	//	*AttributeValue_StringValue
+	//	*AttributeValue_IntValue
+	//	*AttributeValue_FloatValue
+	//	*AttributeValue_BoolValue
+	Kind isAttributeValue_Kind `protobuf_oneof:"kind"`
 }
 
-func (m *ProtoObservationValue) Reset()      { *m = ProtoObservationValue{} }
-func (*ProtoObservationValue) ProtoMessage() {}
-func (*ProtoObservationValue) Descriptor() ([]byte, []int) {
-	return fileDescriptor_cfc78bf5da060d84, []int{6}
+func (m *AttributeValue) Reset()      { *m = AttributeValue{} }
+func (*AttributeValue) ProtoMessage() {}
+func (*AttributeValue) Descriptor() ([]byte, []int) {
+	return fileDescriptor_cfc78bf5da060d84, []int{5}
 }
-func (m *ProtoObservationValue) XXX_Unmarshal(b []byte) error {
+func (m *AttributeValue) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *ProtoObservationValue) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *AttributeValue) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_ProtoObservationValue.Marshal(b, m, deterministic)
+		return xxx_messageInfo_AttributeValue.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -573,86 +470,326 @@ func (m *ProtoObservationValue) XXX_Marshal(b []byte, deterministic bool) ([]byt
 		return b[:n], nil
 	}
 }
-func (m *ProtoObservationValue) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_ProtoObservationValue.Merge(m, src)
+func (m *AttributeValue) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_AttributeValue.Merge(m, src)
 }
-func (m *ProtoObservationValue) XXX_Size() int {
+func (m *AttributeValue) XXX_Size() int {
 	return m.Size()
 }
-func (m *ProtoObservationValue) XXX_DiscardUnknown() {
-	xxx_messageInfo_ProtoObservationValue.DiscardUnknown(m)
+func (m *AttributeValue) XXX_DiscardUnknown() {
+	xxx_messageInfo_AttributeValue.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_ProtoObservationValue proto.InternalMessageInfo
+var xxx_messageInfo_AttributeValue proto.InternalMessageInfo
 
-type isProtoObservationValue_Kind interface {
-	isProtoObservationValue_Kind()
+type isAttributeValue_Kind interface {
+	isAttributeValue_Kind()
 	Equal(interface{}) bool
 	MarshalTo([]byte) (int, error)
 	Size() int
 }
 
-type ProtoObservationValue_IntValue struct {
-	IntValue int64 `protobuf:"varint,1,opt,name=int_value,json=intValue,proto3,oneof"`
+type AttributeValue_StringValue struct {
+	StringValue string `protobuf:"bytes,1,opt,name=string_value,json=stringValue,proto3,oneof"`
 }
-type ProtoObservationValue_FloatValue struct {
-	FloatValue float64 `protobuf:"fixed64,2,opt,name=float_value,json=floatValue,proto3,oneof"`
+type AttributeValue_IntValue struct {
+	IntValue int64 `protobuf:"varint,2,opt,name=int_value,json=intValue,proto3,oneof"`
 }
-type ProtoObservationValue_BoolValue struct {
-	BoolValue bool `protobuf:"varint,3,opt,name=bool_value,json=boolValue,proto3,oneof"`
+type AttributeValue_FloatValue struct {
+	FloatValue float64 `protobuf:"fixed64,3,opt,name=float_value,json=floatValue,proto3,oneof"`
+}
+type AttributeValue_BoolValue struct {
+	BoolValue bool `protobuf:"varint,4,opt,name=bool_value,json=boolValue,proto3,oneof"`
 }
 
-func (*ProtoObservationValue_IntValue) isProtoObservationValue_Kind()   {}
-func (*ProtoObservationValue_FloatValue) isProtoObservationValue_Kind() {}
-func (*ProtoObservationValue_BoolValue) isProtoObservationValue_Kind()  {}
+func (*AttributeValue_StringValue) isAttributeValue_Kind() {}
+func (*AttributeValue_IntValue) isAttributeValue_Kind()    {}
+func (*AttributeValue_FloatValue) isAttributeValue_Kind()  {}
+func (*AttributeValue_BoolValue) isAttributeValue_Kind()   {}
 
-func (m *ProtoObservationValue) GetKind() isProtoObservationValue_Kind {
+func (m *AttributeValue) GetKind() isAttributeValue_Kind {
 	if m != nil {
 		return m.Kind
 	}
 	return nil
 }
 
-func (m *ProtoObservationValue) GetIntValue() int64 {
-	if x, ok := m.GetKind().(*ProtoObservationValue_IntValue); ok {
+func (m *AttributeValue) GetStringValue() string {
+	if x, ok := m.GetKind().(*AttributeValue_StringValue); ok {
+		return x.StringValue
+	}
+	return ""
+}
+
+func (m *AttributeValue) GetIntValue() int64 {
+	if x, ok := m.GetKind().(*AttributeValue_IntValue); ok {
 		return x.IntValue
 	}
 	return 0
 }
 
-func (m *ProtoObservationValue) GetFloatValue() float64 {
-	if x, ok := m.GetKind().(*ProtoObservationValue_FloatValue); ok {
+func (m *AttributeValue) GetFloatValue() float64 {
+	if x, ok := m.GetKind().(*AttributeValue_FloatValue); ok {
 		return x.FloatValue
 	}
 	return 0
 }
 
-func (m *ProtoObservationValue) GetBoolValue() bool {
-	if x, ok := m.GetKind().(*ProtoObservationValue_BoolValue); ok {
+func (m *AttributeValue) GetBoolValue() bool {
+	if x, ok := m.GetKind().(*AttributeValue_BoolValue); ok {
 		return x.BoolValue
 	}
 	return false
 }
 
 // XXX_OneofWrappers is for the internal use of the proto package.
-func (*ProtoObservationValue) XXX_OneofWrappers() []interface{} {
+func (*AttributeValue) XXX_OneofWrappers() []interface{} {
 	return []interface{}{
-		(*ProtoObservationValue_IntValue)(nil),
-		(*ProtoObservationValue_FloatValue)(nil),
-		(*ProtoObservationValue_BoolValue)(nil),
+		(*AttributeValue_StringValue)(nil),
+		(*AttributeValue_IntValue)(nil),
+		(*AttributeValue_FloatValue)(nil),
+		(*AttributeValue_BoolValue)(nil),
+	}
+}
+
+// Statistic represents a statistic definition.
+type Statistic struct {
+	// Name is the name of the statistic.
+	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	// DataType is the data type of the statistic's values.
+	DataType DataType `protobuf:"varint,2,opt,name=data_type,json=dataType,proto3,enum=loki.xcap.DataType" json:"data_type,omitempty"`
+	// AggregationType is how multiple observations are aggregated.
+	AggregationType AggregationType `protobuf:"varint,3,opt,name=aggregation_type,json=aggregationType,proto3,enum=loki.xcap.AggregationType" json:"aggregation_type,omitempty"`
+}
+
+func (m *Statistic) Reset()      { *m = Statistic{} }
+func (*Statistic) ProtoMessage() {}
+func (*Statistic) Descriptor() ([]byte, []int) {
+	return fileDescriptor_cfc78bf5da060d84, []int{6}
+}
+func (m *Statistic) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *Statistic) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_Statistic.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *Statistic) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_Statistic.Merge(m, src)
+}
+func (m *Statistic) XXX_Size() int {
+	return m.Size()
+}
+func (m *Statistic) XXX_DiscardUnknown() {
+	xxx_messageInfo_Statistic.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_Statistic proto.InternalMessageInfo
+
+func (m *Statistic) GetName() string {
+	if m != nil {
+		return m.Name
+	}
+	return ""
+}
+
+func (m *Statistic) GetDataType() DataType {
+	if m != nil {
+		return m.DataType
+	}
+	return DATA_TYPE_INVALID
+}
+
+func (m *Statistic) GetAggregationType() AggregationType {
+	if m != nil {
+		return m.AggregationType
+	}
+	return AGGREGATION_TYPE_INVALID
+}
+
+// Observation represents an aggregated observation value for a statistic.
+type Observation struct {
+	// StatisticId is the index into the statistics list in Capture.
+	StatisticId uint32 `protobuf:"varint,1,opt,name=statistic_id,json=statisticId,proto3" json:"statistic_id,omitempty"`
+	// Value is the aggregated observation value.
+	Value *ObservationValue `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
+	// Count is the number of observations aggregated.
+	Count uint32 `protobuf:"varint,3,opt,name=count,proto3" json:"count,omitempty"`
+}
+
+func (m *Observation) Reset()      { *m = Observation{} }
+func (*Observation) ProtoMessage() {}
+func (*Observation) Descriptor() ([]byte, []int) {
+	return fileDescriptor_cfc78bf5da060d84, []int{7}
+}
+func (m *Observation) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *Observation) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_Observation.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *Observation) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_Observation.Merge(m, src)
+}
+func (m *Observation) XXX_Size() int {
+	return m.Size()
+}
+func (m *Observation) XXX_DiscardUnknown() {
+	xxx_messageInfo_Observation.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_Observation proto.InternalMessageInfo
+
+func (m *Observation) GetStatisticId() uint32 {
+	if m != nil {
+		return m.StatisticId
+	}
+	return 0
+}
+
+func (m *Observation) GetValue() *ObservationValue {
+	if m != nil {
+		return m.Value
+	}
+	return nil
+}
+
+func (m *Observation) GetCount() uint32 {
+	if m != nil {
+		return m.Count
+	}
+	return 0
+}
+
+// ObservationValue represents a single observation value.
+type ObservationValue struct {
+	// Types that are valid to be assigned to Kind:
+	//
+	//	*ObservationValue_IntValue
+	//	*ObservationValue_FloatValue
+	//	*ObservationValue_BoolValue
+	Kind isObservationValue_Kind `protobuf_oneof:"kind"`
+}
+
+func (m *ObservationValue) Reset()      { *m = ObservationValue{} }
+func (*ObservationValue) ProtoMessage() {}
+func (*ObservationValue) Descriptor() ([]byte, []int) {
+	return fileDescriptor_cfc78bf5da060d84, []int{8}
+}
+func (m *ObservationValue) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *ObservationValue) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_ObservationValue.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *ObservationValue) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_ObservationValue.Merge(m, src)
+}
+func (m *ObservationValue) XXX_Size() int {
+	return m.Size()
+}
+func (m *ObservationValue) XXX_DiscardUnknown() {
+	xxx_messageInfo_ObservationValue.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_ObservationValue proto.InternalMessageInfo
+
+type isObservationValue_Kind interface {
+	isObservationValue_Kind()
+	Equal(interface{}) bool
+	MarshalTo([]byte) (int, error)
+	Size() int
+}
+
+type ObservationValue_IntValue struct {
+	IntValue int64 `protobuf:"varint,1,opt,name=int_value,json=intValue,proto3,oneof"`
+}
+type ObservationValue_FloatValue struct {
+	FloatValue float64 `protobuf:"fixed64,2,opt,name=float_value,json=floatValue,proto3,oneof"`
+}
+type ObservationValue_BoolValue struct {
+	BoolValue bool `protobuf:"varint,3,opt,name=bool_value,json=boolValue,proto3,oneof"`
+}
+
+func (*ObservationValue_IntValue) isObservationValue_Kind()   {}
+func (*ObservationValue_FloatValue) isObservationValue_Kind() {}
+func (*ObservationValue_BoolValue) isObservationValue_Kind()  {}
+
+func (m *ObservationValue) GetKind() isObservationValue_Kind {
+	if m != nil {
+		return m.Kind
+	}
+	return nil
+}
+
+func (m *ObservationValue) GetIntValue() int64 {
+	if x, ok := m.GetKind().(*ObservationValue_IntValue); ok {
+		return x.IntValue
+	}
+	return 0
+}
+
+func (m *ObservationValue) GetFloatValue() float64 {
+	if x, ok := m.GetKind().(*ObservationValue_FloatValue); ok {
+		return x.FloatValue
+	}
+	return 0
+}
+
+func (m *ObservationValue) GetBoolValue() bool {
+	if x, ok := m.GetKind().(*ObservationValue_BoolValue); ok {
+		return x.BoolValue
+	}
+	return false
+}
+
+// XXX_OneofWrappers is for the internal use of the proto package.
+func (*ObservationValue) XXX_OneofWrappers() []interface{} {
+	return []interface{}{
+		(*ObservationValue_IntValue)(nil),
+		(*ObservationValue_FloatValue)(nil),
+		(*ObservationValue_BoolValue)(nil),
 	}
 }
 
 func init() {
-	proto.RegisterEnum("loki.xcap.ProtoDataType", ProtoDataType_name, ProtoDataType_value)
-	proto.RegisterEnum("loki.xcap.ProtoAggregationType", ProtoAggregationType_name, ProtoAggregationType_value)
-	proto.RegisterType((*ProtoCapture)(nil), "loki.xcap.ProtoCapture")
-	proto.RegisterType((*ProtoRegion)(nil), "loki.xcap.ProtoRegion")
-	proto.RegisterType((*ProtoAttribute)(nil), "loki.xcap.ProtoAttribute")
-	proto.RegisterType((*ProtoAttributeValue)(nil), "loki.xcap.ProtoAttributeValue")
-	proto.RegisterType((*ProtoStatistic)(nil), "loki.xcap.ProtoStatistic")
-	proto.RegisterType((*ProtoObservation)(nil), "loki.xcap.ProtoObservation")
-	proto.RegisterType((*ProtoObservationValue)(nil), "loki.xcap.ProtoObservationValue")
+	proto.RegisterEnum("loki.xcap.DataType", DataType_name, DataType_value)
+	proto.RegisterEnum("loki.xcap.AggregationType", AggregationType_name, AggregationType_value)
+	proto.RegisterType((*Capture)(nil), "loki.xcap.Capture")
+	proto.RegisterType((*Region)(nil), "loki.xcap.Region")
+	proto.RegisterType((*Event)(nil), "loki.xcap.Event")
+	proto.RegisterType((*Status)(nil), "loki.xcap.Status")
+	proto.RegisterType((*Attribute)(nil), "loki.xcap.Attribute")
+	proto.RegisterType((*AttributeValue)(nil), "loki.xcap.AttributeValue")
+	proto.RegisterType((*Statistic)(nil), "loki.xcap.Statistic")
+	proto.RegisterType((*Observation)(nil), "loki.xcap.Observation")
+	proto.RegisterType((*ObservationValue)(nil), "loki.xcap.ObservationValue")
 }
 
 func init() {
@@ -660,82 +797,86 @@ func init() {
 }
 
 var fileDescriptor_cfc78bf5da060d84 = []byte{
-	// 803 bytes of a gzipped FileDescriptorProto
+	// 874 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x94, 0x55, 0xcd, 0x6e, 0xdb, 0x46,
-	0x10, 0xe6, 0x92, 0xb2, 0x2d, 0x8d, 0x6c, 0x97, 0xd8, 0x3a, 0x2d, 0x63, 0xb7, 0x2b, 0x85, 0xbd,
-	0x08, 0x39, 0x90, 0x85, 0x93, 0x06, 0xe8, 0xa9, 0xa0, 0xe3, 0xc4, 0x56, 0xe1, 0x58, 0xc6, 0x9a,
-	0x0d, 0xd2, 0x5e, 0x88, 0x95, 0x49, 0x33, 0x84, 0x65, 0x52, 0x20, 0x57, 0x46, 0x8d, 0x02, 0x45,
-	0xd1, 0xbe, 0x40, 0x5e, 0xa2, 0x68, 0x1f, 0x25, 0x47, 0x1f, 0x73, 0xe9, 0x8f, 0xe5, 0x4b, 0x8f,
-	0x79, 0x84, 0x62, 0x77, 0xa9, 0x58, 0x52, 0x24, 0x1b, 0x39, 0x69, 0x34, 0xdf, 0xf7, 0xcd, 0xce,
-	0x7c, 0x33, 0x00, 0xc1, 0xee, 0x9f, 0xc4, 0xee, 0x8f, 0x47, 0xac, 0xef, 0x26, 0x29, 0x8f, 0xf2,
-	0x94, 0xf5, 0xdc, 0x7e, 0x9e, 0xf1, 0x4c, 0xe6, 0x1c, 0x19, 0xe2, 0x5a, 0x2f, 0x3b, 0x49, 0x1c,
-	0x91, 0x58, 0x5f, 0x8b, 0xb3, 0x38, 0x53, 0x04, 0x11, 0x29, 0xc2, 0x7a, 0x23, 0xce, 0xb2, 0xb8,
-	0x17, 0x29, 0x65, 0x77, 0x70, 0xec, 0xf2, 0xe4, 0x34, 0x2a, 0x38, 0x3b, 0x2d, 0x2b, 0xd8, 0x3f,
-	0xc1, 0xf2, 0x81, 0x08, 0x1e, 0xb3, 0x3e, 0x1f, 0xe4, 0x11, 0xfe, 0x12, 0x96, 0xf2, 0x28, 0x4e,
-	0xb2, 0xb4, 0xb0, 0x50, 0xd3, 0x68, 0xd5, 0x37, 0x3f, 0x71, 0xde, 0xbd, 0xe1, 0x48, 0x26, 0x95,
-	0x30, 0x1d, 0xd1, 0xf0, 0xd7, 0x00, 0x05, 0x67, 0x3c, 0x29, 0x78, 0x72, 0x54, 0x58, 0xba, 0x14,
-	0xdd, 0x9d, 0x16, 0x1d, 0x8e, 0x18, 0x74, 0x8c, 0x6c, 0x5f, 0xe8, 0x50, 0x1f, 0xab, 0x89, 0x31,
-	0x54, 0x52, 0x76, 0x1a, 0x59, 0xa8, 0x89, 0x5a, 0x35, 0x2a, 0x63, 0xfc, 0x58, 0x96, 0xcf, 0x79,
-	0x20, 0x3a, 0xb7, 0xf4, 0x26, 0x6a, 0xd5, 0x37, 0xd7, 0x1d, 0x35, 0x96, 0x33, 0x1a, 0xcb, 0xf1,
-	0x47, 0x63, 0x6d, 0x55, 0x5f, 0xff, 0xdd, 0xd0, 0x5e, 0xfd, 0xd3, 0x40, 0xb4, 0x26, 0x75, 0x02,
-	0xc1, 0xdf, 0x40, 0x35, 0x4a, 0x43, 0x55, 0xc2, 0xf8, 0x80, 0x12, 0x4b, 0x51, 0x1a, 0x96, 0x05,
-	0x96, 0xb3, 0x6e, 0x11, 0xe5, 0x67, 0x8c, 0x4b, 0x6f, 0x2a, 0x72, 0xcc, 0x8d, 0xe9, 0x31, 0x3b,
-	0xd7, 0x1c, 0x3a, 0x21, 0xc0, 0xab, 0xa0, 0x27, 0xa1, 0xb5, 0xd0, 0x44, 0xad, 0x65, 0xaa, 0x27,
-	0x21, 0xde, 0x80, 0x5a, 0x9f, 0xe5, 0x51, 0xca, 0x83, 0x24, 0xb4, 0x16, 0x65, 0xba, 0xaa, 0x12,
-	0xed, 0x50, 0x58, 0xca, 0x38, 0xcf, 0x93, 0xee, 0x80, 0x47, 0x85, 0xb5, 0x34, 0xdb, 0x52, 0x6f,
-	0xc4, 0xa0, 0x63, 0x64, 0xfb, 0x05, 0xac, 0x4e, 0xa2, 0xd8, 0x04, 0xe3, 0x24, 0x3a, 0x2f, 0x3d,
-	0x15, 0x21, 0x7e, 0x08, 0x0b, 0x67, 0xac, 0x37, 0x18, 0xb9, 0x49, 0xe6, 0x56, 0x7e, 0x2e, 0x58,
-	0x54, 0x91, 0xed, 0xdf, 0x11, 0x7c, 0x3c, 0x03, 0xc6, 0x5f, 0xc0, 0x72, 0xc1, 0xf3, 0x24, 0x8d,
-	0x03, 0x55, 0x54, 0x3e, 0xb4, 0xab, 0xd1, 0xba, 0xca, 0x2a, 0xd2, 0xe7, 0x50, 0x4b, 0x52, 0x1e,
-	0x5c, 0x3f, 0x6b, 0xec, 0x6a, 0xb4, 0x9a, 0xa4, 0x5c, 0xc1, 0xf7, 0xa0, 0x7e, 0xdc, 0xcb, 0xd8,
-	0x88, 0x20, 0x56, 0x84, 0x76, 0x35, 0x0a, 0x32, 0xa9, 0x28, 0x0d, 0x80, 0x6e, 0x96, 0xf5, 0x4a,
-	0x46, 0xa5, 0x89, 0x5a, 0xd5, 0x5d, 0x8d, 0xd6, 0x44, 0x4e, 0x12, 0xb6, 0x16, 0xa1, 0x72, 0x92,
-	0xa4, 0xa1, 0xfd, 0x07, 0x2a, 0x2d, 0x78, 0x77, 0x73, 0x33, 0xef, 0xea, 0x2b, 0xa8, 0x85, 0x8c,
-	0xb3, 0x80, 0x9f, 0xf7, 0x55, 0x47, 0xab, 0x9b, 0xd6, 0xb4, 0x11, 0xdb, 0x8c, 0x33, 0xff, 0xbc,
-	0x1f, 0xd1, 0x6a, 0x58, 0x46, 0xf8, 0x5b, 0x30, 0x59, 0x1c, 0xe7, 0x51, 0x2c, 0xf7, 0xaa, 0xd4,
-	0x86, 0x54, 0x37, 0xde, 0xb3, 0xf1, 0x9a, 0x27, 0x8b, 0x7c, 0xc4, 0x26, 0x13, 0xf6, 0x6f, 0x08,
-	0xcc, 0xe9, 0xb3, 0xc1, 0xf7, 0x84, 0x9d, 0x65, 0xe3, 0xe2, 0x36, 0x44, 0xcf, 0x2b, 0xc2, 0xcc,
-	0x32, 0xd7, 0x0e, 0xf1, 0xa3, 0xc9, 0xfd, 0x35, 0x6f, 0xb8, 0xc2, 0xf1, 0x0d, 0xe2, 0x35, 0x58,
-	0x38, 0xca, 0x06, 0x29, 0x97, 0x0d, 0xaf, 0x50, 0xf5, 0xc7, 0xfe, 0x15, 0xc1, 0x9d, 0x99, 0xb2,
-	0xc9, 0xa5, 0xa1, 0xdb, 0x96, 0xa6, 0xdf, 0xba, 0x34, 0x63, 0xee, 0xd2, 0xee, 0xff, 0x0c, 0x2b,
-	0x13, 0x8e, 0xe3, 0x0d, 0xf8, 0xf4, 0x80, 0x76, 0xfc, 0x4e, 0xb0, 0xed, 0xf9, 0x5e, 0xe0, 0x7f,
-	0x7f, 0xf0, 0x24, 0x68, 0xef, 0x3f, 0xf7, 0xf6, 0xda, 0xdb, 0xa6, 0x86, 0xef, 0xc2, 0x9d, 0xf7,
-	0x41, 0xff, 0xd1, 0x43, 0x13, 0xcd, 0xd2, 0x3d, 0xdd, 0xeb, 0x78, 0x02, 0xd4, 0xb1, 0x05, 0x6b,
-	0xd3, 0xe0, 0x56, 0xa7, 0xb3, 0x67, 0x1a, 0xf7, 0xff, 0x42, 0xb0, 0x36, 0x6b, 0x69, 0xd8, 0x06,
-	0xa2, 0x24, 0xde, 0xce, 0x0e, 0x7d, 0xb2, 0xe3, 0xf9, 0xed, 0xce, 0xfe, 0x74, 0x3b, 0x04, 0xd6,
-	0xe7, 0x70, 0x0e, 0xbf, 0x7b, 0x66, 0xa2, 0x1b, 0xf0, 0x67, 0xed, 0x7d, 0x53, 0xbf, 0x09, 0xf7,
-	0x5e, 0x98, 0x06, 0x6e, 0xc0, 0xc6, 0x1c, 0x7c, 0xcf, 0x3b, 0xf4, 0xcd, 0x0a, 0x6e, 0xc2, 0x67,
-	0x73, 0x08, 0x4f, 0xdb, 0xf4, 0xd0, 0x37, 0x17, 0xb6, 0x5e, 0x5e, 0x5c, 0x12, 0xed, 0xcd, 0x25,
-	0xd1, 0xde, 0x5e, 0x12, 0xf4, 0xcb, 0x90, 0xa0, 0x3f, 0x87, 0x04, 0xbd, 0x1e, 0x12, 0x74, 0x31,
-	0x24, 0xe8, 0xdf, 0x21, 0x41, 0xff, 0x0d, 0x89, 0xf6, 0x76, 0x48, 0xd0, 0xab, 0x2b, 0xa2, 0x5d,
-	0x5c, 0x11, 0xed, 0xcd, 0x15, 0xd1, 0x7e, 0xd8, 0x8c, 0x13, 0xfe, 0x72, 0xd0, 0x75, 0x8e, 0xb2,
-	0x53, 0x37, 0xce, 0xd9, 0x31, 0x4b, 0x99, 0x2b, 0x6e, 0xcd, 0x3d, 0x7b, 0xe0, 0xce, 0xf9, 0x3a,
-	0x75, 0x17, 0xe5, 0xcf, 0x83, 0xff, 0x03, 0x00, 0x00, 0xff, 0xff, 0xaa, 0xf7, 0x8d, 0x78, 0xbf,
-	0x06, 0x00, 0x00,
+	0x10, 0xe6, 0x8a, 0xfa, 0xe3, 0xc8, 0xb1, 0xe9, 0x8d, 0x13, 0x30, 0x4a, 0x4b, 0x2b, 0xec, 0x45,
+	0x4d, 0x01, 0xb1, 0x75, 0x82, 0x1c, 0x7a, 0x29, 0xa8, 0xd8, 0xb1, 0x05, 0x38, 0x56, 0xb1, 0x56,
+	0x83, 0xb6, 0x17, 0x61, 0x25, 0xae, 0x19, 0xc2, 0x12, 0x29, 0x90, 0x4b, 0xa3, 0x3e, 0x14, 0xe8,
+	0x23, 0xe4, 0xd2, 0xa2, 0xc7, 0x1e, 0xfb, 0x00, 0x7d, 0x88, 0x1c, 0x7d, 0xcc, 0xa9, 0xad, 0xe5,
+	0x4b, 0x8f, 0x79, 0x84, 0x82, 0xbb, 0xa2, 0x4c, 0xc9, 0x0a, 0x92, 0x9c, 0x3c, 0xfa, 0xbe, 0x6f,
+	0x86, 0x33, 0xf3, 0xcd, 0xc2, 0x60, 0x4d, 0x4e, 0x3d, 0xfb, 0xa7, 0x21, 0x9d, 0xd8, 0x7e, 0xc0,
+	0x59, 0x14, 0xd0, 0x91, 0x3d, 0x89, 0x42, 0x1e, 0x0a, 0xac, 0x25, 0x42, 0xac, 0x8d, 0xc2, 0x53,
+	0xbf, 0x95, 0x02, 0xf5, 0x2d, 0x2f, 0xf4, 0x42, 0x29, 0x48, 0x23, 0x29, 0xa8, 0x6f, 0x7b, 0x61,
+	0xe8, 0x8d, 0x98, 0xcc, 0x1c, 0x24, 0x27, 0x36, 0xf7, 0xc7, 0x2c, 0xe6, 0x74, 0x3c, 0xab, 0x60,
+	0x8d, 0xa0, 0xf2, 0x94, 0x4e, 0x78, 0x12, 0x31, 0xfc, 0x05, 0x54, 0x22, 0xe6, 0xf9, 0x61, 0x10,
+	0x1b, 0xa8, 0xa1, 0x36, 0x6b, 0x3b, 0x9b, 0xad, 0x79, 0xf9, 0x16, 0x11, 0x0c, 0xc9, 0x14, 0xf8,
+	0x31, 0x40, 0xcc, 0x29, 0xf7, 0x63, 0xee, 0x0f, 0x63, 0xa3, 0x20, 0xf4, 0x5b, 0x39, 0xfd, 0x71,
+	0x46, 0x92, 0x9c, 0xce, 0xfa, 0x4d, 0x85, 0xb2, 0xac, 0x84, 0x31, 0x14, 0x03, 0x3a, 0x66, 0x06,
+	0x6a, 0xa0, 0xa6, 0x46, 0x44, 0x8c, 0x9f, 0x8a, 0xa2, 0x11, 0xef, 0xa7, 0x5d, 0x1a, 0x85, 0x06,
+	0x6a, 0xd6, 0x76, 0xea, 0x2d, 0x39, 0x42, 0x2b, 0x1b, 0xa1, 0xd5, 0xcb, 0x46, 0x68, 0x57, 0x5f,
+	0xff, 0xbd, 0xad, 0xbc, 0xfa, 0x67, 0x1b, 0x11, 0x4d, 0xe4, 0xa5, 0x0c, 0xfe, 0x06, 0xaa, 0x2c,
+	0x70, 0x65, 0x09, 0xf5, 0x23, 0x4a, 0x54, 0x58, 0xe0, 0x8a, 0x02, 0x5f, 0xc3, 0x5a, 0x38, 0x88,
+	0x59, 0x74, 0x46, 0xb9, 0x58, 0x46, 0x51, 0x0c, 0x77, 0x37, 0x37, 0x5c, 0xf7, 0x9a, 0x26, 0x0b,
+	0x5a, 0xbc, 0x0e, 0x05, 0xdf, 0x35, 0x4a, 0x0d, 0xd4, 0x5c, 0x23, 0x05, 0xdf, 0xc5, 0xf7, 0x41,
+	0x9b, 0xd0, 0x88, 0x05, 0xbc, 0xef, 0xbb, 0x46, 0x59, 0xc0, 0x55, 0x09, 0x74, 0xdc, 0x74, 0x87,
+	0x94, 0xf3, 0xc8, 0x1f, 0x24, 0x9c, 0xc5, 0x46, 0xe5, 0xc6, 0x0e, 0x9d, 0x8c, 0x24, 0x39, 0x1d,
+	0x6e, 0x42, 0x99, 0x9d, 0xb1, 0x80, 0xc7, 0x46, 0x55, 0x64, 0xe8, 0xb9, 0x8c, 0xbd, 0x94, 0x20,
+	0x33, 0x1e, 0x7f, 0x0e, 0xe5, 0x74, 0xf7, 0x49, 0x6c, 0x68, 0x62, 0x0f, 0x9b, 0x4b, 0xfe, 0x24,
+	0x31, 0x99, 0x09, 0xac, 0x5f, 0x11, 0x94, 0x44, 0xf2, 0x4a, 0x5f, 0xda, 0xa0, 0xcd, 0xef, 0xe6,
+	0xe3, 0x6c, 0x99, 0xa7, 0x2d, 0x0d, 0xab, 0x7e, 0xd8, 0xb0, 0xd6, 0x13, 0x28, 0xcb, 0x4e, 0xd3,
+	0xbe, 0x86, 0xa1, 0x2b, 0xfb, 0xba, 0x45, 0x44, 0x8c, 0x0d, 0xa8, 0x8c, 0x59, 0x1c, 0x53, 0x4f,
+	0x1e, 0x8b, 0x46, 0xb2, 0x9f, 0xd6, 0x11, 0x68, 0xf3, 0x82, 0x58, 0x07, 0xf5, 0x94, 0x9d, 0xcf,
+	0x26, 0x4a, 0x43, 0x6c, 0x43, 0xe9, 0x8c, 0x8e, 0x92, 0xec, 0xc6, 0xee, 0xad, 0xea, 0xe3, 0x45,
+	0x2a, 0x20, 0x52, 0x67, 0xfd, 0x81, 0x60, 0x7d, 0x91, 0xc1, 0x9f, 0xc1, 0x5a, 0xcc, 0x23, 0x3f,
+	0xf0, 0xfa, 0xb2, 0x94, 0x28, 0x7f, 0xa0, 0x90, 0x9a, 0x44, 0xa5, 0xe8, 0x53, 0xd0, 0xfc, 0x80,
+	0xf7, 0xaf, 0x3f, 0xa6, 0x1e, 0x28, 0xa4, 0xea, 0x07, 0x5c, 0xd2, 0x0f, 0xa0, 0x76, 0x32, 0x0a,
+	0x69, 0x26, 0x48, 0xcf, 0x15, 0x1d, 0x28, 0x04, 0x04, 0x28, 0x25, 0xdb, 0x00, 0x83, 0x30, 0x1c,
+	0xcd, 0x14, 0xc5, 0x06, 0x6a, 0x56, 0x0f, 0x14, 0xa2, 0xa5, 0x98, 0x10, 0xb4, 0xcb, 0x50, 0x3c,
+	0xf5, 0x03, 0xd7, 0xfa, 0x1d, 0x81, 0x36, 0x7f, 0x75, 0x2b, 0x6d, 0xfc, 0x12, 0x34, 0x97, 0x72,
+	0xda, 0xe7, 0xe7, 0x13, 0xd9, 0xcc, 0xfa, 0xce, 0xed, 0xdc, 0xe4, 0xbb, 0x94, 0xd3, 0xde, 0xf9,
+	0x84, 0x91, 0xaa, 0x3b, 0x8b, 0xf0, 0x1e, 0xe8, 0xd4, 0xf3, 0x22, 0xe6, 0x89, 0xf3, 0x96, 0x89,
+	0xaa, 0x48, 0xac, 0xe7, 0x57, 0x76, 0x2d, 0x11, 0xf9, 0x1b, 0x74, 0x11, 0xb0, 0xce, 0xa1, 0x96,
+	0x7b, 0x32, 0xf8, 0x41, 0xba, 0xb9, 0x59, 0xa3, 0xe9, 0xbb, 0x90, 0x96, 0xd6, 0xe6, 0x58, 0xc7,
+	0xc5, 0x5f, 0x2d, 0x1a, 0x74, 0x7f, 0xf5, 0xe3, 0xcb, 0x5b, 0x84, 0xb7, 0xa0, 0x34, 0x0c, 0x93,
+	0x80, 0x8b, 0x06, 0x6f, 0x11, 0xf9, 0xc3, 0xfa, 0x19, 0xf4, 0xe5, 0x84, 0x45, 0x53, 0xd0, 0xfb,
+	0x4c, 0x29, 0xbc, 0xd7, 0x14, 0xf5, 0x9d, 0xa6, 0x3c, 0xa4, 0x50, 0xcd, 0xd6, 0x8a, 0xef, 0xc0,
+	0xe6, 0xae, 0xd3, 0x73, 0xfa, 0xbd, 0x1f, 0xbe, 0xdd, 0xeb, 0x77, 0x8e, 0x5e, 0x38, 0x87, 0x9d,
+	0x5d, 0x5d, 0xc1, 0xb7, 0x61, 0x23, 0x0f, 0xf7, 0x9e, 0x3c, 0xd6, 0xd1, 0xa2, 0xf6, 0xd9, 0x61,
+	0xd7, 0x49, 0xe1, 0x02, 0xc6, 0xb0, 0x7e, 0x0d, 0xb7, 0xbb, 0xdd, 0x43, 0x5d, 0x7d, 0xf8, 0x17,
+	0x82, 0x8d, 0x25, 0x07, 0xf0, 0x27, 0x60, 0x38, 0xfb, 0xfb, 0x64, 0x6f, 0xdf, 0xe9, 0x75, 0xba,
+	0x47, 0xcb, 0x5f, 0x34, 0x60, 0xeb, 0x06, 0x7b, 0xfc, 0xdd, 0x73, 0x1d, 0xad, 0x64, 0x9e, 0x77,
+	0x8e, 0xf4, 0xc2, 0x6a, 0xc6, 0xf9, 0x5e, 0x57, 0xf1, 0x3d, 0xb8, 0x73, 0x83, 0x39, 0x74, 0x8e,
+	0x7b, 0x7a, 0x11, 0xd7, 0xe1, 0xee, 0x0d, 0xea, 0x59, 0x87, 0x1c, 0xf7, 0xf4, 0x52, 0xfb, 0xe5,
+	0xc5, 0xa5, 0xa9, 0xbc, 0xb9, 0x34, 0x95, 0xb7, 0x97, 0x26, 0xfa, 0x65, 0x6a, 0xa2, 0x3f, 0xa7,
+	0x26, 0x7a, 0x3d, 0x35, 0xd1, 0xc5, 0xd4, 0x44, 0xff, 0x4e, 0x4d, 0xf4, 0xdf, 0xd4, 0x54, 0xde,
+	0x4e, 0x4d, 0xf4, 0xea, 0xca, 0x54, 0x2e, 0xae, 0x4c, 0xe5, 0xcd, 0x95, 0xa9, 0xfc, 0xb8, 0xe3,
+	0xf9, 0xfc, 0x65, 0x32, 0x68, 0x0d, 0xc3, 0xb1, 0xed, 0x45, 0xf4, 0x84, 0x06, 0xd4, 0x4e, 0x4f,
+	0xc3, 0x3e, 0x7b, 0x64, 0xbf, 0xe3, 0xff, 0xe5, 0xa0, 0x2c, 0xfe, 0x3c, 0xfa, 0x3f, 0x00, 0x00,
+	0xff, 0xff, 0xc8, 0x06, 0x72, 0xfe, 0x51, 0x07, 0x00, 0x00,
 }
 
-func (x ProtoDataType) String() string {
-	s, ok := ProtoDataType_name[int32(x)]
+func (x DataType) String() string {
+	s, ok := DataType_name[int32(x)]
 	if ok {
 		return s
 	}
 	return strconv.Itoa(int(x))
 }
-func (x ProtoAggregationType) String() string {
-	s, ok := ProtoAggregationType_name[int32(x)]
+func (x AggregationType) String() string {
+	s, ok := AggregationType_name[int32(x)]
 	if ok {
 		return s
 	}
 	return strconv.Itoa(int(x))
 }
-func (this *ProtoCapture) Equal(that interface{}) bool {
+func (this *Capture) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
 	}
 
-	that1, ok := that.(*ProtoCapture)
+	that1, ok := that.(*Capture)
 	if !ok {
-		that2, ok := that.(ProtoCapture)
+		that2, ok := that.(Capture)
 		if ok {
 			that1 = &that2
 		} else {
@@ -765,14 +906,14 @@ func (this *ProtoCapture) Equal(that interface{}) bool {
 	}
 	return true
 }
-func (this *ProtoRegion) Equal(that interface{}) bool {
+func (this *Region) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
 	}
 
-	that1, ok := that.(*ProtoRegion)
+	that1, ok := that.(*Region)
 	if !ok {
-		that2, ok := that.(ProtoRegion)
+		that2, ok := that.(Region)
 		if ok {
 			that1 = &that2
 		} else {
@@ -815,16 +956,89 @@ func (this *ProtoRegion) Equal(that interface{}) bool {
 			return false
 		}
 	}
+	if len(this.Events) != len(that1.Events) {
+		return false
+	}
+	for i := range this.Events {
+		if !this.Events[i].Equal(that1.Events[i]) {
+			return false
+		}
+	}
+	if !this.Status.Equal(that1.Status) {
+		return false
+	}
 	return true
 }
-func (this *ProtoAttribute) Equal(that interface{}) bool {
+func (this *Event) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
 	}
 
-	that1, ok := that.(*ProtoAttribute)
+	that1, ok := that.(*Event)
 	if !ok {
-		that2, ok := that.(ProtoAttribute)
+		that2, ok := that.(Event)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Name != that1.Name {
+		return false
+	}
+	if !this.Timestamp.Equal(that1.Timestamp) {
+		return false
+	}
+	if len(this.Attributes) != len(that1.Attributes) {
+		return false
+	}
+	for i := range this.Attributes {
+		if !this.Attributes[i].Equal(that1.Attributes[i]) {
+			return false
+		}
+	}
+	return true
+}
+func (this *Status) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*Status)
+	if !ok {
+		that2, ok := that.(Status)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Code != that1.Code {
+		return false
+	}
+	if this.Message != that1.Message {
+		return false
+	}
+	return true
+}
+func (this *Attribute) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*Attribute)
+	if !ok {
+		that2, ok := that.(Attribute)
 		if ok {
 			that1 = &that2
 		} else {
@@ -844,14 +1058,14 @@ func (this *ProtoAttribute) Equal(that interface{}) bool {
 	}
 	return true
 }
-func (this *ProtoAttributeValue) Equal(that interface{}) bool {
+func (this *AttributeValue) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
 	}
 
-	that1, ok := that.(*ProtoAttributeValue)
+	that1, ok := that.(*AttributeValue)
 	if !ok {
-		that2, ok := that.(ProtoAttributeValue)
+		that2, ok := that.(AttributeValue)
 		if ok {
 			that1 = &that2
 		} else {
@@ -874,14 +1088,14 @@ func (this *ProtoAttributeValue) Equal(that interface{}) bool {
 	}
 	return true
 }
-func (this *ProtoAttributeValue_StringValue) Equal(that interface{}) bool {
+func (this *AttributeValue_StringValue) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
 	}
 
-	that1, ok := that.(*ProtoAttributeValue_StringValue)
+	that1, ok := that.(*AttributeValue_StringValue)
 	if !ok {
-		that2, ok := that.(ProtoAttributeValue_StringValue)
+		that2, ok := that.(AttributeValue_StringValue)
 		if ok {
 			that1 = &that2
 		} else {
@@ -898,14 +1112,14 @@ func (this *ProtoAttributeValue_StringValue) Equal(that interface{}) bool {
 	}
 	return true
 }
-func (this *ProtoAttributeValue_IntValue) Equal(that interface{}) bool {
+func (this *AttributeValue_IntValue) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
 	}
 
-	that1, ok := that.(*ProtoAttributeValue_IntValue)
+	that1, ok := that.(*AttributeValue_IntValue)
 	if !ok {
-		that2, ok := that.(ProtoAttributeValue_IntValue)
+		that2, ok := that.(AttributeValue_IntValue)
 		if ok {
 			that1 = &that2
 		} else {
@@ -922,14 +1136,14 @@ func (this *ProtoAttributeValue_IntValue) Equal(that interface{}) bool {
 	}
 	return true
 }
-func (this *ProtoAttributeValue_FloatValue) Equal(that interface{}) bool {
+func (this *AttributeValue_FloatValue) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
 	}
 
-	that1, ok := that.(*ProtoAttributeValue_FloatValue)
+	that1, ok := that.(*AttributeValue_FloatValue)
 	if !ok {
-		that2, ok := that.(ProtoAttributeValue_FloatValue)
+		that2, ok := that.(AttributeValue_FloatValue)
 		if ok {
 			that1 = &that2
 		} else {
@@ -946,14 +1160,14 @@ func (this *ProtoAttributeValue_FloatValue) Equal(that interface{}) bool {
 	}
 	return true
 }
-func (this *ProtoAttributeValue_BoolValue) Equal(that interface{}) bool {
+func (this *AttributeValue_BoolValue) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
 	}
 
-	that1, ok := that.(*ProtoAttributeValue_BoolValue)
+	that1, ok := that.(*AttributeValue_BoolValue)
 	if !ok {
-		that2, ok := that.(ProtoAttributeValue_BoolValue)
+		that2, ok := that.(AttributeValue_BoolValue)
 		if ok {
 			that1 = &that2
 		} else {
@@ -970,14 +1184,14 @@ func (this *ProtoAttributeValue_BoolValue) Equal(that interface{}) bool {
 	}
 	return true
 }
-func (this *ProtoStatistic) Equal(that interface{}) bool {
+func (this *Statistic) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
 	}
 
-	that1, ok := that.(*ProtoStatistic)
+	that1, ok := that.(*Statistic)
 	if !ok {
-		that2, ok := that.(ProtoStatistic)
+		that2, ok := that.(Statistic)
 		if ok {
 			that1 = &that2
 		} else {
@@ -1000,14 +1214,14 @@ func (this *ProtoStatistic) Equal(that interface{}) bool {
 	}
 	return true
 }
-func (this *ProtoObservation) Equal(that interface{}) bool {
+func (this *Observation) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
 	}
 
-	that1, ok := that.(*ProtoObservation)
+	that1, ok := that.(*Observation)
 	if !ok {
-		that2, ok := that.(ProtoObservation)
+		that2, ok := that.(Observation)
 		if ok {
 			that1 = &that2
 		} else {
@@ -1030,14 +1244,14 @@ func (this *ProtoObservation) Equal(that interface{}) bool {
 	}
 	return true
 }
-func (this *ProtoObservationValue) Equal(that interface{}) bool {
+func (this *ObservationValue) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
 	}
 
-	that1, ok := that.(*ProtoObservationValue)
+	that1, ok := that.(*ObservationValue)
 	if !ok {
-		that2, ok := that.(ProtoObservationValue)
+		that2, ok := that.(ObservationValue)
 		if ok {
 			that1 = &that2
 		} else {
@@ -1060,14 +1274,14 @@ func (this *ProtoObservationValue) Equal(that interface{}) bool {
 	}
 	return true
 }
-func (this *ProtoObservationValue_IntValue) Equal(that interface{}) bool {
+func (this *ObservationValue_IntValue) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
 	}
 
-	that1, ok := that.(*ProtoObservationValue_IntValue)
+	that1, ok := that.(*ObservationValue_IntValue)
 	if !ok {
-		that2, ok := that.(ProtoObservationValue_IntValue)
+		that2, ok := that.(ObservationValue_IntValue)
 		if ok {
 			that1 = &that2
 		} else {
@@ -1084,14 +1298,14 @@ func (this *ProtoObservationValue_IntValue) Equal(that interface{}) bool {
 	}
 	return true
 }
-func (this *ProtoObservationValue_FloatValue) Equal(that interface{}) bool {
+func (this *ObservationValue_FloatValue) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
 	}
 
-	that1, ok := that.(*ProtoObservationValue_FloatValue)
+	that1, ok := that.(*ObservationValue_FloatValue)
 	if !ok {
-		that2, ok := that.(ProtoObservationValue_FloatValue)
+		that2, ok := that.(ObservationValue_FloatValue)
 		if ok {
 			that1 = &that2
 		} else {
@@ -1108,14 +1322,14 @@ func (this *ProtoObservationValue_FloatValue) Equal(that interface{}) bool {
 	}
 	return true
 }
-func (this *ProtoObservationValue_BoolValue) Equal(that interface{}) bool {
+func (this *ObservationValue_BoolValue) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
 	}
 
-	that1, ok := that.(*ProtoObservationValue_BoolValue)
+	that1, ok := that.(*ObservationValue_BoolValue)
 	if !ok {
-		that2, ok := that.(ProtoObservationValue_BoolValue)
+		that2, ok := that.(ObservationValue_BoolValue)
 		if ok {
 			that1 = &that2
 		} else {
@@ -1132,12 +1346,12 @@ func (this *ProtoObservationValue_BoolValue) Equal(that interface{}) bool {
 	}
 	return true
 }
-func (this *ProtoCapture) GoString() string {
+func (this *Capture) GoString() string {
 	if this == nil {
 		return "nil"
 	}
 	s := make([]string, 0, 6)
-	s = append(s, "&proto.ProtoCapture{")
+	s = append(s, "&proto.Capture{")
 	if this.Regions != nil {
 		s = append(s, "Regions: "+fmt.Sprintf("%#v", this.Regions)+",\n")
 	}
@@ -1147,12 +1361,12 @@ func (this *ProtoCapture) GoString() string {
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
-func (this *ProtoRegion) GoString() string {
+func (this *Region) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := make([]string, 0, 11)
-	s = append(s, "&proto.ProtoRegion{")
+	s := make([]string, 0, 13)
+	s = append(s, "&proto.Region{")
 	s = append(s, "Name: "+fmt.Sprintf("%#v", this.Name)+",\n")
 	s = append(s, "StartTime: "+fmt.Sprintf("%#v", this.StartTime)+",\n")
 	s = append(s, "EndTime: "+fmt.Sprintf("%#v", this.EndTime)+",\n")
@@ -1164,15 +1378,46 @@ func (this *ProtoRegion) GoString() string {
 	if this.Attributes != nil {
 		s = append(s, "Attributes: "+fmt.Sprintf("%#v", this.Attributes)+",\n")
 	}
+	if this.Events != nil {
+		s = append(s, "Events: "+fmt.Sprintf("%#v", this.Events)+",\n")
+	}
+	if this.Status != nil {
+		s = append(s, "Status: "+fmt.Sprintf("%#v", this.Status)+",\n")
+	}
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
-func (this *ProtoAttribute) GoString() string {
+func (this *Event) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 7)
+	s = append(s, "&proto.Event{")
+	s = append(s, "Name: "+fmt.Sprintf("%#v", this.Name)+",\n")
+	s = append(s, "Timestamp: "+fmt.Sprintf("%#v", this.Timestamp)+",\n")
+	if this.Attributes != nil {
+		s = append(s, "Attributes: "+fmt.Sprintf("%#v", this.Attributes)+",\n")
+	}
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *Status) GoString() string {
 	if this == nil {
 		return "nil"
 	}
 	s := make([]string, 0, 6)
-	s = append(s, "&proto.ProtoAttribute{")
+	s = append(s, "&proto.Status{")
+	s = append(s, "Code: "+fmt.Sprintf("%#v", this.Code)+",\n")
+	s = append(s, "Message: "+fmt.Sprintf("%#v", this.Message)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *Attribute) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 6)
+	s = append(s, "&proto.Attribute{")
 	s = append(s, "Key: "+fmt.Sprintf("%#v", this.Key)+",\n")
 	if this.Value != nil {
 		s = append(s, "Value: "+fmt.Sprintf("%#v", this.Value)+",\n")
@@ -1180,68 +1425,68 @@ func (this *ProtoAttribute) GoString() string {
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
-func (this *ProtoAttributeValue) GoString() string {
+func (this *AttributeValue) GoString() string {
 	if this == nil {
 		return "nil"
 	}
 	s := make([]string, 0, 8)
-	s = append(s, "&proto.ProtoAttributeValue{")
+	s = append(s, "&proto.AttributeValue{")
 	if this.Kind != nil {
 		s = append(s, "Kind: "+fmt.Sprintf("%#v", this.Kind)+",\n")
 	}
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
-func (this *ProtoAttributeValue_StringValue) GoString() string {
+func (this *AttributeValue_StringValue) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := strings.Join([]string{`&proto.ProtoAttributeValue_StringValue{` +
+	s := strings.Join([]string{`&proto.AttributeValue_StringValue{` +
 		`StringValue:` + fmt.Sprintf("%#v", this.StringValue) + `}`}, ", ")
 	return s
 }
-func (this *ProtoAttributeValue_IntValue) GoString() string {
+func (this *AttributeValue_IntValue) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := strings.Join([]string{`&proto.ProtoAttributeValue_IntValue{` +
+	s := strings.Join([]string{`&proto.AttributeValue_IntValue{` +
 		`IntValue:` + fmt.Sprintf("%#v", this.IntValue) + `}`}, ", ")
 	return s
 }
-func (this *ProtoAttributeValue_FloatValue) GoString() string {
+func (this *AttributeValue_FloatValue) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := strings.Join([]string{`&proto.ProtoAttributeValue_FloatValue{` +
+	s := strings.Join([]string{`&proto.AttributeValue_FloatValue{` +
 		`FloatValue:` + fmt.Sprintf("%#v", this.FloatValue) + `}`}, ", ")
 	return s
 }
-func (this *ProtoAttributeValue_BoolValue) GoString() string {
+func (this *AttributeValue_BoolValue) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := strings.Join([]string{`&proto.ProtoAttributeValue_BoolValue{` +
+	s := strings.Join([]string{`&proto.AttributeValue_BoolValue{` +
 		`BoolValue:` + fmt.Sprintf("%#v", this.BoolValue) + `}`}, ", ")
 	return s
 }
-func (this *ProtoStatistic) GoString() string {
+func (this *Statistic) GoString() string {
 	if this == nil {
 		return "nil"
 	}
 	s := make([]string, 0, 7)
-	s = append(s, "&proto.ProtoStatistic{")
+	s = append(s, "&proto.Statistic{")
 	s = append(s, "Name: "+fmt.Sprintf("%#v", this.Name)+",\n")
 	s = append(s, "DataType: "+fmt.Sprintf("%#v", this.DataType)+",\n")
 	s = append(s, "AggregationType: "+fmt.Sprintf("%#v", this.AggregationType)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
-func (this *ProtoObservation) GoString() string {
+func (this *Observation) GoString() string {
 	if this == nil {
 		return "nil"
 	}
 	s := make([]string, 0, 7)
-	s = append(s, "&proto.ProtoObservation{")
+	s = append(s, "&proto.Observation{")
 	s = append(s, "StatisticId: "+fmt.Sprintf("%#v", this.StatisticId)+",\n")
 	if this.Value != nil {
 		s = append(s, "Value: "+fmt.Sprintf("%#v", this.Value)+",\n")
@@ -1250,39 +1495,39 @@ func (this *ProtoObservation) GoString() string {
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
-func (this *ProtoObservationValue) GoString() string {
+func (this *ObservationValue) GoString() string {
 	if this == nil {
 		return "nil"
 	}
 	s := make([]string, 0, 7)
-	s = append(s, "&proto.ProtoObservationValue{")
+	s = append(s, "&proto.ObservationValue{")
 	if this.Kind != nil {
 		s = append(s, "Kind: "+fmt.Sprintf("%#v", this.Kind)+",\n")
 	}
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
-func (this *ProtoObservationValue_IntValue) GoString() string {
+func (this *ObservationValue_IntValue) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := strings.Join([]string{`&proto.ProtoObservationValue_IntValue{` +
+	s := strings.Join([]string{`&proto.ObservationValue_IntValue{` +
 		`IntValue:` + fmt.Sprintf("%#v", this.IntValue) + `}`}, ", ")
 	return s
 }
-func (this *ProtoObservationValue_FloatValue) GoString() string {
+func (this *ObservationValue_FloatValue) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := strings.Join([]string{`&proto.ProtoObservationValue_FloatValue{` +
+	s := strings.Join([]string{`&proto.ObservationValue_FloatValue{` +
 		`FloatValue:` + fmt.Sprintf("%#v", this.FloatValue) + `}`}, ", ")
 	return s
 }
-func (this *ProtoObservationValue_BoolValue) GoString() string {
+func (this *ObservationValue_BoolValue) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := strings.Join([]string{`&proto.ProtoObservationValue_BoolValue{` +
+	s := strings.Join([]string{`&proto.ObservationValue_BoolValue{` +
 		`BoolValue:` + fmt.Sprintf("%#v", this.BoolValue) + `}`}, ", ")
 	return s
 }
@@ -1294,7 +1539,7 @@ func valueToGoStringXcap(v interface{}, typ string) string {
 	pv := reflect.Indirect(rv).Interface()
 	return fmt.Sprintf("func(v %v) *%v { return &v } ( %#v )", typ, typ, pv)
 }
-func (m *ProtoCapture) Marshal() (dAtA []byte, err error) {
+func (m *Capture) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -1304,12 +1549,12 @@ func (m *ProtoCapture) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *ProtoCapture) MarshalTo(dAtA []byte) (int, error) {
+func (m *Capture) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *ProtoCapture) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *Capture) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -1345,7 +1590,7 @@ func (m *ProtoCapture) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *ProtoRegion) Marshal() (dAtA []byte, err error) {
+func (m *Region) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -1355,16 +1600,42 @@ func (m *ProtoRegion) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *ProtoRegion) MarshalTo(dAtA []byte) (int, error) {
+func (m *Region) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *ProtoRegion) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *Region) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
+	if m.Status != nil {
+		{
+			size, err := m.Status.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintXcap(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0x4a
+	}
+	if len(m.Events) > 0 {
+		for iNdEx := len(m.Events) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.Events[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintXcap(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x42
+		}
+	}
 	if len(m.Attributes) > 0 {
 		for iNdEx := len(m.Attributes) - 1; iNdEx >= 0; iNdEx-- {
 			{
@@ -1407,20 +1678,20 @@ func (m *ProtoRegion) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			dAtA[i] = 0x22
 		}
 	}
-	n1, err1 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.EndTime, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.EndTime):])
-	if err1 != nil {
-		return 0, err1
-	}
-	i -= n1
-	i = encodeVarintXcap(dAtA, i, uint64(n1))
-	i--
-	dAtA[i] = 0x1a
-	n2, err2 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.StartTime, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.StartTime):])
+	n2, err2 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.EndTime, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.EndTime):])
 	if err2 != nil {
 		return 0, err2
 	}
 	i -= n2
 	i = encodeVarintXcap(dAtA, i, uint64(n2))
+	i--
+	dAtA[i] = 0x1a
+	n3, err3 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.StartTime, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.StartTime):])
+	if err3 != nil {
+		return 0, err3
+	}
+	i -= n3
+	i = encodeVarintXcap(dAtA, i, uint64(n3))
 	i--
 	dAtA[i] = 0x12
 	if len(m.Name) > 0 {
@@ -1433,7 +1704,7 @@ func (m *ProtoRegion) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *ProtoAttribute) Marshal() (dAtA []byte, err error) {
+func (m *Event) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -1443,12 +1714,99 @@ func (m *ProtoAttribute) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *ProtoAttribute) MarshalTo(dAtA []byte) (int, error) {
+func (m *Event) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *ProtoAttribute) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *Event) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.Attributes) > 0 {
+		for iNdEx := len(m.Attributes) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.Attributes[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintXcap(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x1a
+		}
+	}
+	n4, err4 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.Timestamp, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.Timestamp):])
+	if err4 != nil {
+		return 0, err4
+	}
+	i -= n4
+	i = encodeVarintXcap(dAtA, i, uint64(n4))
+	i--
+	dAtA[i] = 0x12
+	if len(m.Name) > 0 {
+		i -= len(m.Name)
+		copy(dAtA[i:], m.Name)
+		i = encodeVarintXcap(dAtA, i, uint64(len(m.Name)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *Status) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *Status) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *Status) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.Message) > 0 {
+		i -= len(m.Message)
+		copy(dAtA[i:], m.Message)
+		i = encodeVarintXcap(dAtA, i, uint64(len(m.Message)))
+		i--
+		dAtA[i] = 0x12
+	}
+	if m.Code != 0 {
+		i = encodeVarintXcap(dAtA, i, uint64(m.Code))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *Attribute) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *Attribute) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *Attribute) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -1475,7 +1833,7 @@ func (m *ProtoAttribute) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *ProtoAttributeValue) Marshal() (dAtA []byte, err error) {
+func (m *AttributeValue) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -1485,12 +1843,12 @@ func (m *ProtoAttributeValue) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *ProtoAttributeValue) MarshalTo(dAtA []byte) (int, error) {
+func (m *AttributeValue) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *ProtoAttributeValue) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *AttributeValue) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -1507,11 +1865,11 @@ func (m *ProtoAttributeValue) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *ProtoAttributeValue_StringValue) MarshalTo(dAtA []byte) (int, error) {
+func (m *AttributeValue_StringValue) MarshalTo(dAtA []byte) (int, error) {
 	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
 }
 
-func (m *ProtoAttributeValue_StringValue) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *AttributeValue_StringValue) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	i -= len(m.StringValue)
 	copy(dAtA[i:], m.StringValue)
@@ -1520,22 +1878,22 @@ func (m *ProtoAttributeValue_StringValue) MarshalToSizedBuffer(dAtA []byte) (int
 	dAtA[i] = 0xa
 	return len(dAtA) - i, nil
 }
-func (m *ProtoAttributeValue_IntValue) MarshalTo(dAtA []byte) (int, error) {
+func (m *AttributeValue_IntValue) MarshalTo(dAtA []byte) (int, error) {
 	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
 }
 
-func (m *ProtoAttributeValue_IntValue) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *AttributeValue_IntValue) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	i = encodeVarintXcap(dAtA, i, uint64(m.IntValue))
 	i--
 	dAtA[i] = 0x10
 	return len(dAtA) - i, nil
 }
-func (m *ProtoAttributeValue_FloatValue) MarshalTo(dAtA []byte) (int, error) {
+func (m *AttributeValue_FloatValue) MarshalTo(dAtA []byte) (int, error) {
 	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
 }
 
-func (m *ProtoAttributeValue_FloatValue) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *AttributeValue_FloatValue) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	i -= 8
 	encoding_binary.LittleEndian.PutUint64(dAtA[i:], uint64(math.Float64bits(float64(m.FloatValue))))
@@ -1543,11 +1901,11 @@ func (m *ProtoAttributeValue_FloatValue) MarshalToSizedBuffer(dAtA []byte) (int,
 	dAtA[i] = 0x19
 	return len(dAtA) - i, nil
 }
-func (m *ProtoAttributeValue_BoolValue) MarshalTo(dAtA []byte) (int, error) {
+func (m *AttributeValue_BoolValue) MarshalTo(dAtA []byte) (int, error) {
 	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
 }
 
-func (m *ProtoAttributeValue_BoolValue) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *AttributeValue_BoolValue) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	i--
 	if m.BoolValue {
@@ -1559,7 +1917,7 @@ func (m *ProtoAttributeValue_BoolValue) MarshalToSizedBuffer(dAtA []byte) (int, 
 	dAtA[i] = 0x20
 	return len(dAtA) - i, nil
 }
-func (m *ProtoStatistic) Marshal() (dAtA []byte, err error) {
+func (m *Statistic) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -1569,12 +1927,12 @@ func (m *ProtoStatistic) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *ProtoStatistic) MarshalTo(dAtA []byte) (int, error) {
+func (m *Statistic) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *ProtoStatistic) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *Statistic) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -1599,7 +1957,7 @@ func (m *ProtoStatistic) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *ProtoObservation) Marshal() (dAtA []byte, err error) {
+func (m *Observation) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -1609,12 +1967,12 @@ func (m *ProtoObservation) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *ProtoObservation) MarshalTo(dAtA []byte) (int, error) {
+func (m *Observation) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *ProtoObservation) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *Observation) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -1644,7 +2002,7 @@ func (m *ProtoObservation) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *ProtoObservationValue) Marshal() (dAtA []byte, err error) {
+func (m *ObservationValue) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -1654,12 +2012,12 @@ func (m *ProtoObservationValue) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *ProtoObservationValue) MarshalTo(dAtA []byte) (int, error) {
+func (m *ObservationValue) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *ProtoObservationValue) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *ObservationValue) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -1676,22 +2034,22 @@ func (m *ProtoObservationValue) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *ProtoObservationValue_IntValue) MarshalTo(dAtA []byte) (int, error) {
+func (m *ObservationValue_IntValue) MarshalTo(dAtA []byte) (int, error) {
 	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
 }
 
-func (m *ProtoObservationValue_IntValue) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *ObservationValue_IntValue) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	i = encodeVarintXcap(dAtA, i, uint64(m.IntValue))
 	i--
 	dAtA[i] = 0x8
 	return len(dAtA) - i, nil
 }
-func (m *ProtoObservationValue_FloatValue) MarshalTo(dAtA []byte) (int, error) {
+func (m *ObservationValue_FloatValue) MarshalTo(dAtA []byte) (int, error) {
 	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
 }
 
-func (m *ProtoObservationValue_FloatValue) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *ObservationValue_FloatValue) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	i -= 8
 	encoding_binary.LittleEndian.PutUint64(dAtA[i:], uint64(math.Float64bits(float64(m.FloatValue))))
@@ -1699,11 +2057,11 @@ func (m *ProtoObservationValue_FloatValue) MarshalToSizedBuffer(dAtA []byte) (in
 	dAtA[i] = 0x11
 	return len(dAtA) - i, nil
 }
-func (m *ProtoObservationValue_BoolValue) MarshalTo(dAtA []byte) (int, error) {
+func (m *ObservationValue_BoolValue) MarshalTo(dAtA []byte) (int, error) {
 	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
 }
 
-func (m *ProtoObservationValue_BoolValue) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *ObservationValue_BoolValue) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	i--
 	if m.BoolValue {
@@ -1726,7 +2084,7 @@ func encodeVarintXcap(dAtA []byte, offset int, v uint64) int {
 	dAtA[offset] = uint8(v)
 	return base
 }
-func (m *ProtoCapture) Size() (n int) {
+func (m *Capture) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -1747,7 +2105,7 @@ func (m *ProtoCapture) Size() (n int) {
 	return n
 }
 
-func (m *ProtoRegion) Size() (n int) {
+func (m *Region) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -1781,10 +2139,57 @@ func (m *ProtoRegion) Size() (n int) {
 			n += 1 + l + sovXcap(uint64(l))
 		}
 	}
+	if len(m.Events) > 0 {
+		for _, e := range m.Events {
+			l = e.Size()
+			n += 1 + l + sovXcap(uint64(l))
+		}
+	}
+	if m.Status != nil {
+		l = m.Status.Size()
+		n += 1 + l + sovXcap(uint64(l))
+	}
 	return n
 }
 
-func (m *ProtoAttribute) Size() (n int) {
+func (m *Event) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.Name)
+	if l > 0 {
+		n += 1 + l + sovXcap(uint64(l))
+	}
+	l = github_com_gogo_protobuf_types.SizeOfStdTime(m.Timestamp)
+	n += 1 + l + sovXcap(uint64(l))
+	if len(m.Attributes) > 0 {
+		for _, e := range m.Attributes {
+			l = e.Size()
+			n += 1 + l + sovXcap(uint64(l))
+		}
+	}
+	return n
+}
+
+func (m *Status) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Code != 0 {
+		n += 1 + sovXcap(uint64(m.Code))
+	}
+	l = len(m.Message)
+	if l > 0 {
+		n += 1 + l + sovXcap(uint64(l))
+	}
+	return n
+}
+
+func (m *Attribute) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -1801,7 +2206,7 @@ func (m *ProtoAttribute) Size() (n int) {
 	return n
 }
 
-func (m *ProtoAttributeValue) Size() (n int) {
+func (m *AttributeValue) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -1813,7 +2218,7 @@ func (m *ProtoAttributeValue) Size() (n int) {
 	return n
 }
 
-func (m *ProtoAttributeValue_StringValue) Size() (n int) {
+func (m *AttributeValue_StringValue) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -1823,7 +2228,7 @@ func (m *ProtoAttributeValue_StringValue) Size() (n int) {
 	n += 1 + l + sovXcap(uint64(l))
 	return n
 }
-func (m *ProtoAttributeValue_IntValue) Size() (n int) {
+func (m *AttributeValue_IntValue) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -1832,7 +2237,7 @@ func (m *ProtoAttributeValue_IntValue) Size() (n int) {
 	n += 1 + sovXcap(uint64(m.IntValue))
 	return n
 }
-func (m *ProtoAttributeValue_FloatValue) Size() (n int) {
+func (m *AttributeValue_FloatValue) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -1841,7 +2246,7 @@ func (m *ProtoAttributeValue_FloatValue) Size() (n int) {
 	n += 9
 	return n
 }
-func (m *ProtoAttributeValue_BoolValue) Size() (n int) {
+func (m *AttributeValue_BoolValue) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -1850,7 +2255,7 @@ func (m *ProtoAttributeValue_BoolValue) Size() (n int) {
 	n += 2
 	return n
 }
-func (m *ProtoStatistic) Size() (n int) {
+func (m *Statistic) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -1869,7 +2274,7 @@ func (m *ProtoStatistic) Size() (n int) {
 	return n
 }
 
-func (m *ProtoObservation) Size() (n int) {
+func (m *Observation) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -1888,7 +2293,7 @@ func (m *ProtoObservation) Size() (n int) {
 	return n
 }
 
-func (m *ProtoObservationValue) Size() (n int) {
+func (m *ObservationValue) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -1900,7 +2305,7 @@ func (m *ProtoObservationValue) Size() (n int) {
 	return n
 }
 
-func (m *ProtoObservationValue_IntValue) Size() (n int) {
+func (m *ObservationValue_IntValue) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -1909,7 +2314,7 @@ func (m *ProtoObservationValue_IntValue) Size() (n int) {
 	n += 1 + sovXcap(uint64(m.IntValue))
 	return n
 }
-func (m *ProtoObservationValue_FloatValue) Size() (n int) {
+func (m *ObservationValue_FloatValue) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -1918,7 +2323,7 @@ func (m *ProtoObservationValue_FloatValue) Size() (n int) {
 	n += 9
 	return n
 }
-func (m *ProtoObservationValue_BoolValue) Size() (n int) {
+func (m *ObservationValue_BoolValue) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -1934,42 +2339,47 @@ func sovXcap(x uint64) (n int) {
 func sozXcap(x uint64) (n int) {
 	return sovXcap(uint64((x << 1) ^ uint64((int64(x) >> 63))))
 }
-func (this *ProtoCapture) String() string {
+func (this *Capture) String() string {
 	if this == nil {
 		return "nil"
 	}
-	repeatedStringForRegions := "[]*ProtoRegion{"
+	repeatedStringForRegions := "[]*Region{"
 	for _, f := range this.Regions {
-		repeatedStringForRegions += strings.Replace(f.String(), "ProtoRegion", "ProtoRegion", 1) + ","
+		repeatedStringForRegions += strings.Replace(f.String(), "Region", "Region", 1) + ","
 	}
 	repeatedStringForRegions += "}"
-	repeatedStringForStatistics := "[]*ProtoStatistic{"
+	repeatedStringForStatistics := "[]*Statistic{"
 	for _, f := range this.Statistics {
-		repeatedStringForStatistics += strings.Replace(f.String(), "ProtoStatistic", "ProtoStatistic", 1) + ","
+		repeatedStringForStatistics += strings.Replace(f.String(), "Statistic", "Statistic", 1) + ","
 	}
 	repeatedStringForStatistics += "}"
-	s := strings.Join([]string{`&ProtoCapture{`,
+	s := strings.Join([]string{`&Capture{`,
 		`Regions:` + repeatedStringForRegions + `,`,
 		`Statistics:` + repeatedStringForStatistics + `,`,
 		`}`,
 	}, "")
 	return s
 }
-func (this *ProtoRegion) String() string {
+func (this *Region) String() string {
 	if this == nil {
 		return "nil"
 	}
-	repeatedStringForObservations := "[]*ProtoObservation{"
+	repeatedStringForObservations := "[]*Observation{"
 	for _, f := range this.Observations {
-		repeatedStringForObservations += strings.Replace(f.String(), "ProtoObservation", "ProtoObservation", 1) + ","
+		repeatedStringForObservations += strings.Replace(f.String(), "Observation", "Observation", 1) + ","
 	}
 	repeatedStringForObservations += "}"
-	repeatedStringForAttributes := "[]*ProtoAttribute{"
+	repeatedStringForAttributes := "[]*Attribute{"
 	for _, f := range this.Attributes {
-		repeatedStringForAttributes += strings.Replace(f.String(), "ProtoAttribute", "ProtoAttribute", 1) + ","
+		repeatedStringForAttributes += strings.Replace(f.String(), "Attribute", "Attribute", 1) + ","
 	}
 	repeatedStringForAttributes += "}"
-	s := strings.Join([]string{`&ProtoRegion{`,
+	repeatedStringForEvents := "[]*Event{"
+	for _, f := range this.Events {
+		repeatedStringForEvents += strings.Replace(f.String(), "Event", "Event", 1) + ","
+	}
+	repeatedStringForEvents += "}"
+	s := strings.Join([]string{`&Region{`,
 		`Name:` + fmt.Sprintf("%v", this.Name) + `,`,
 		`StartTime:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.StartTime), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
 		`EndTime:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.EndTime), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
@@ -1977,76 +2387,106 @@ func (this *ProtoRegion) String() string {
 		`Id:` + fmt.Sprintf("%v", this.Id) + `,`,
 		`ParentId:` + fmt.Sprintf("%v", this.ParentId) + `,`,
 		`Attributes:` + repeatedStringForAttributes + `,`,
+		`Events:` + repeatedStringForEvents + `,`,
+		`Status:` + strings.Replace(this.Status.String(), "Status", "Status", 1) + `,`,
 		`}`,
 	}, "")
 	return s
 }
-func (this *ProtoAttribute) String() string {
+func (this *Event) String() string {
 	if this == nil {
 		return "nil"
 	}
-	s := strings.Join([]string{`&ProtoAttribute{`,
+	repeatedStringForAttributes := "[]*Attribute{"
+	for _, f := range this.Attributes {
+		repeatedStringForAttributes += strings.Replace(f.String(), "Attribute", "Attribute", 1) + ","
+	}
+	repeatedStringForAttributes += "}"
+	s := strings.Join([]string{`&Event{`,
+		`Name:` + fmt.Sprintf("%v", this.Name) + `,`,
+		`Timestamp:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Timestamp), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
+		`Attributes:` + repeatedStringForAttributes + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *Status) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&Status{`,
+		`Code:` + fmt.Sprintf("%v", this.Code) + `,`,
+		`Message:` + fmt.Sprintf("%v", this.Message) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *Attribute) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&Attribute{`,
 		`Key:` + fmt.Sprintf("%v", this.Key) + `,`,
-		`Value:` + strings.Replace(this.Value.String(), "ProtoAttributeValue", "ProtoAttributeValue", 1) + `,`,
+		`Value:` + strings.Replace(this.Value.String(), "AttributeValue", "AttributeValue", 1) + `,`,
 		`}`,
 	}, "")
 	return s
 }
-func (this *ProtoAttributeValue) String() string {
+func (this *AttributeValue) String() string {
 	if this == nil {
 		return "nil"
 	}
-	s := strings.Join([]string{`&ProtoAttributeValue{`,
+	s := strings.Join([]string{`&AttributeValue{`,
 		`Kind:` + fmt.Sprintf("%v", this.Kind) + `,`,
 		`}`,
 	}, "")
 	return s
 }
-func (this *ProtoAttributeValue_StringValue) String() string {
+func (this *AttributeValue_StringValue) String() string {
 	if this == nil {
 		return "nil"
 	}
-	s := strings.Join([]string{`&ProtoAttributeValue_StringValue{`,
+	s := strings.Join([]string{`&AttributeValue_StringValue{`,
 		`StringValue:` + fmt.Sprintf("%v", this.StringValue) + `,`,
 		`}`,
 	}, "")
 	return s
 }
-func (this *ProtoAttributeValue_IntValue) String() string {
+func (this *AttributeValue_IntValue) String() string {
 	if this == nil {
 		return "nil"
 	}
-	s := strings.Join([]string{`&ProtoAttributeValue_IntValue{`,
+	s := strings.Join([]string{`&AttributeValue_IntValue{`,
 		`IntValue:` + fmt.Sprintf("%v", this.IntValue) + `,`,
 		`}`,
 	}, "")
 	return s
 }
-func (this *ProtoAttributeValue_FloatValue) String() string {
+func (this *AttributeValue_FloatValue) String() string {
 	if this == nil {
 		return "nil"
 	}
-	s := strings.Join([]string{`&ProtoAttributeValue_FloatValue{`,
+	s := strings.Join([]string{`&AttributeValue_FloatValue{`,
 		`FloatValue:` + fmt.Sprintf("%v", this.FloatValue) + `,`,
 		`}`,
 	}, "")
 	return s
 }
-func (this *ProtoAttributeValue_BoolValue) String() string {
+func (this *AttributeValue_BoolValue) String() string {
 	if this == nil {
 		return "nil"
 	}
-	s := strings.Join([]string{`&ProtoAttributeValue_BoolValue{`,
+	s := strings.Join([]string{`&AttributeValue_BoolValue{`,
 		`BoolValue:` + fmt.Sprintf("%v", this.BoolValue) + `,`,
 		`}`,
 	}, "")
 	return s
 }
-func (this *ProtoStatistic) String() string {
+func (this *Statistic) String() string {
 	if this == nil {
 		return "nil"
 	}
-	s := strings.Join([]string{`&ProtoStatistic{`,
+	s := strings.Join([]string{`&Statistic{`,
 		`Name:` + fmt.Sprintf("%v", this.Name) + `,`,
 		`DataType:` + fmt.Sprintf("%v", this.DataType) + `,`,
 		`AggregationType:` + fmt.Sprintf("%v", this.AggregationType) + `,`,
@@ -2054,53 +2494,53 @@ func (this *ProtoStatistic) String() string {
 	}, "")
 	return s
 }
-func (this *ProtoObservation) String() string {
+func (this *Observation) String() string {
 	if this == nil {
 		return "nil"
 	}
-	s := strings.Join([]string{`&ProtoObservation{`,
+	s := strings.Join([]string{`&Observation{`,
 		`StatisticId:` + fmt.Sprintf("%v", this.StatisticId) + `,`,
-		`Value:` + strings.Replace(this.Value.String(), "ProtoObservationValue", "ProtoObservationValue", 1) + `,`,
+		`Value:` + strings.Replace(this.Value.String(), "ObservationValue", "ObservationValue", 1) + `,`,
 		`Count:` + fmt.Sprintf("%v", this.Count) + `,`,
 		`}`,
 	}, "")
 	return s
 }
-func (this *ProtoObservationValue) String() string {
+func (this *ObservationValue) String() string {
 	if this == nil {
 		return "nil"
 	}
-	s := strings.Join([]string{`&ProtoObservationValue{`,
+	s := strings.Join([]string{`&ObservationValue{`,
 		`Kind:` + fmt.Sprintf("%v", this.Kind) + `,`,
 		`}`,
 	}, "")
 	return s
 }
-func (this *ProtoObservationValue_IntValue) String() string {
+func (this *ObservationValue_IntValue) String() string {
 	if this == nil {
 		return "nil"
 	}
-	s := strings.Join([]string{`&ProtoObservationValue_IntValue{`,
+	s := strings.Join([]string{`&ObservationValue_IntValue{`,
 		`IntValue:` + fmt.Sprintf("%v", this.IntValue) + `,`,
 		`}`,
 	}, "")
 	return s
 }
-func (this *ProtoObservationValue_FloatValue) String() string {
+func (this *ObservationValue_FloatValue) String() string {
 	if this == nil {
 		return "nil"
 	}
-	s := strings.Join([]string{`&ProtoObservationValue_FloatValue{`,
+	s := strings.Join([]string{`&ObservationValue_FloatValue{`,
 		`FloatValue:` + fmt.Sprintf("%v", this.FloatValue) + `,`,
 		`}`,
 	}, "")
 	return s
 }
-func (this *ProtoObservationValue_BoolValue) String() string {
+func (this *ObservationValue_BoolValue) String() string {
 	if this == nil {
 		return "nil"
 	}
-	s := strings.Join([]string{`&ProtoObservationValue_BoolValue{`,
+	s := strings.Join([]string{`&ObservationValue_BoolValue{`,
 		`BoolValue:` + fmt.Sprintf("%v", this.BoolValue) + `,`,
 		`}`,
 	}, "")
@@ -2114,7 +2554,7 @@ func valueToStringXcap(v interface{}) string {
 	pv := reflect.Indirect(rv).Interface()
 	return fmt.Sprintf("*%v", pv)
 }
-func (m *ProtoCapture) Unmarshal(dAtA []byte) error {
+func (m *Capture) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -2137,10 +2577,10 @@ func (m *ProtoCapture) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: ProtoCapture: wiretype end group for non-group")
+			return fmt.Errorf("proto: Capture: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: ProtoCapture: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: Capture: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -2172,7 +2612,7 @@ func (m *ProtoCapture) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Regions = append(m.Regions, &ProtoRegion{})
+			m.Regions = append(m.Regions, &Region{})
 			if err := m.Regions[len(m.Regions)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
@@ -2206,7 +2646,7 @@ func (m *ProtoCapture) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Statistics = append(m.Statistics, &ProtoStatistic{})
+			m.Statistics = append(m.Statistics, &Statistic{})
 			if err := m.Statistics[len(m.Statistics)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
@@ -2235,7 +2675,7 @@ func (m *ProtoCapture) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *ProtoRegion) Unmarshal(dAtA []byte) error {
+func (m *Region) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -2258,10 +2698,10 @@ func (m *ProtoRegion) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: ProtoRegion: wiretype end group for non-group")
+			return fmt.Errorf("proto: Region: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: ProtoRegion: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: Region: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -2391,7 +2831,7 @@ func (m *ProtoRegion) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Observations = append(m.Observations, &ProtoObservation{})
+			m.Observations = append(m.Observations, &Observation{})
 			if err := m.Observations[len(m.Observations)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
@@ -2493,7 +2933,229 @@ func (m *ProtoRegion) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Attributes = append(m.Attributes, &ProtoAttribute{})
+			m.Attributes = append(m.Attributes, &Attribute{})
+			if err := m.Attributes[len(m.Attributes)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 8:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Events", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowXcap
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthXcap
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthXcap
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Events = append(m.Events, &Event{})
+			if err := m.Events[len(m.Events)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 9:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Status", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowXcap
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthXcap
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthXcap
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Status == nil {
+				m.Status = &Status{}
+			}
+			if err := m.Status.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipXcap(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthXcap
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthXcap
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *Event) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowXcap
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: Event: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: Event: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Name", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowXcap
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthXcap
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthXcap
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Name = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Timestamp", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowXcap
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthXcap
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthXcap
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if err := github_com_gogo_protobuf_types.StdTimeUnmarshal(&m.Timestamp, dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Attributes", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowXcap
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthXcap
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthXcap
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Attributes = append(m.Attributes, &Attribute{})
 			if err := m.Attributes[len(m.Attributes)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
@@ -2522,7 +3184,7 @@ func (m *ProtoRegion) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *ProtoAttribute) Unmarshal(dAtA []byte) error {
+func (m *Status) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -2545,10 +3207,114 @@ func (m *ProtoAttribute) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: ProtoAttribute: wiretype end group for non-group")
+			return fmt.Errorf("proto: Status: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: ProtoAttribute: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: Status: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Code", wireType)
+			}
+			m.Code = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowXcap
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Code |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Message", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowXcap
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthXcap
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthXcap
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Message = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipXcap(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthXcap
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthXcap
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *Attribute) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowXcap
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: Attribute: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: Attribute: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -2613,7 +3379,7 @@ func (m *ProtoAttribute) Unmarshal(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.Value == nil {
-				m.Value = &ProtoAttributeValue{}
+				m.Value = &AttributeValue{}
 			}
 			if err := m.Value.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
@@ -2643,7 +3409,7 @@ func (m *ProtoAttribute) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *ProtoAttributeValue) Unmarshal(dAtA []byte) error {
+func (m *AttributeValue) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -2666,10 +3432,10 @@ func (m *ProtoAttributeValue) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: ProtoAttributeValue: wiretype end group for non-group")
+			return fmt.Errorf("proto: AttributeValue: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: ProtoAttributeValue: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: AttributeValue: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -2702,7 +3468,7 @@ func (m *ProtoAttributeValue) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Kind = &ProtoAttributeValue_StringValue{string(dAtA[iNdEx:postIndex])}
+			m.Kind = &AttributeValue_StringValue{string(dAtA[iNdEx:postIndex])}
 			iNdEx = postIndex
 		case 2:
 			if wireType != 0 {
@@ -2723,7 +3489,7 @@ func (m *ProtoAttributeValue) Unmarshal(dAtA []byte) error {
 					break
 				}
 			}
-			m.Kind = &ProtoAttributeValue_IntValue{v}
+			m.Kind = &AttributeValue_IntValue{v}
 		case 3:
 			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field FloatValue", wireType)
@@ -2734,7 +3500,7 @@ func (m *ProtoAttributeValue) Unmarshal(dAtA []byte) error {
 			}
 			v = uint64(encoding_binary.LittleEndian.Uint64(dAtA[iNdEx:]))
 			iNdEx += 8
-			m.Kind = &ProtoAttributeValue_FloatValue{float64(math.Float64frombits(v))}
+			m.Kind = &AttributeValue_FloatValue{float64(math.Float64frombits(v))}
 		case 4:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field BoolValue", wireType)
@@ -2755,7 +3521,7 @@ func (m *ProtoAttributeValue) Unmarshal(dAtA []byte) error {
 				}
 			}
 			b := bool(v != 0)
-			m.Kind = &ProtoAttributeValue_BoolValue{b}
+			m.Kind = &AttributeValue_BoolValue{b}
 		default:
 			iNdEx = preIndex
 			skippy, err := skipXcap(dAtA[iNdEx:])
@@ -2780,7 +3546,7 @@ func (m *ProtoAttributeValue) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *ProtoStatistic) Unmarshal(dAtA []byte) error {
+func (m *Statistic) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -2803,10 +3569,10 @@ func (m *ProtoStatistic) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: ProtoStatistic: wiretype end group for non-group")
+			return fmt.Errorf("proto: Statistic: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: ProtoStatistic: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: Statistic: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -2855,7 +3621,7 @@ func (m *ProtoStatistic) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.DataType |= ProtoDataType(b&0x7F) << shift
+				m.DataType |= DataType(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -2874,7 +3640,7 @@ func (m *ProtoStatistic) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.AggregationType |= ProtoAggregationType(b&0x7F) << shift
+				m.AggregationType |= AggregationType(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -2903,7 +3669,7 @@ func (m *ProtoStatistic) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *ProtoObservation) Unmarshal(dAtA []byte) error {
+func (m *Observation) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -2926,10 +3692,10 @@ func (m *ProtoObservation) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: ProtoObservation: wiretype end group for non-group")
+			return fmt.Errorf("proto: Observation: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: ProtoObservation: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: Observation: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -2981,7 +3747,7 @@ func (m *ProtoObservation) Unmarshal(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.Value == nil {
-				m.Value = &ProtoObservationValue{}
+				m.Value = &ObservationValue{}
 			}
 			if err := m.Value.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
@@ -3030,7 +3796,7 @@ func (m *ProtoObservation) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *ProtoObservationValue) Unmarshal(dAtA []byte) error {
+func (m *ObservationValue) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -3053,10 +3819,10 @@ func (m *ProtoObservationValue) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: ProtoObservationValue: wiretype end group for non-group")
+			return fmt.Errorf("proto: ObservationValue: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: ProtoObservationValue: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: ObservationValue: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -3078,7 +3844,7 @@ func (m *ProtoObservationValue) Unmarshal(dAtA []byte) error {
 					break
 				}
 			}
-			m.Kind = &ProtoObservationValue_IntValue{v}
+			m.Kind = &ObservationValue_IntValue{v}
 		case 2:
 			if wireType != 1 {
 				return fmt.Errorf("proto: wrong wireType = %d for field FloatValue", wireType)
@@ -3089,7 +3855,7 @@ func (m *ProtoObservationValue) Unmarshal(dAtA []byte) error {
 			}
 			v = uint64(encoding_binary.LittleEndian.Uint64(dAtA[iNdEx:]))
 			iNdEx += 8
-			m.Kind = &ProtoObservationValue_FloatValue{float64(math.Float64frombits(v))}
+			m.Kind = &ObservationValue_FloatValue{float64(math.Float64frombits(v))}
 		case 3:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field BoolValue", wireType)
@@ -3110,7 +3876,7 @@ func (m *ProtoObservationValue) Unmarshal(dAtA []byte) error {
 				}
 			}
 			b := bool(v != 0)
-			m.Kind = &ProtoObservationValue_BoolValue{b}
+			m.Kind = &ObservationValue_BoolValue{b}
 		default:
 			iNdEx = preIndex
 			skippy, err := skipXcap(dAtA[iNdEx:])

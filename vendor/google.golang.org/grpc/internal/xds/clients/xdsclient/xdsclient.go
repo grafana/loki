@@ -319,7 +319,7 @@ func (c *XDSClient) releaseChannel(serverConfig *ServerConfig, state *channelSta
 		c.channelsMu.Lock()
 
 		if c.logger.V(2) {
-			c.logger.Infof("Received request to release a reference to an xdsChannel for server config %q", serverConfig)
+			c.logger.Infof("Received request to release a reference to an xdsChannel for server config %+v", serverConfig)
 		}
 		deInitLocked(state)
 

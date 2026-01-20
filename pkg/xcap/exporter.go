@@ -8,6 +8,7 @@ import (
 	"github.com/go-kit/log/level"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -19,9 +20,9 @@ var tracer = otel.Tracer("xcap")
 // the parent-child relationships defined by the regions.
 //
 // Observations within a region are added as attributes to the corresponding span.
-func ExportTrace(ctx context.Context, capture *Capture, logger log.Logger) error {
+func ExportTrace(ctx context.Context, capture *Capture, logger log.Logger) {
 	if capture == nil {
-		return nil
+		return
 	}
 
 	regions := capture.regions
@@ -43,8 +44,6 @@ func ExportTrace(ctx context.Context, capture *Capture, logger log.Logger) error
 			continue
 		}
 	}
-
-	return nil
 }
 
 // createSpans creates a span for the given region and recursively creates spans for its children.
@@ -63,8 +62,21 @@ func createSpans(ctx context.Context, region *Region, parentToChildren map[ident
 	// Create the span
 	ctx, span := tracer.Start(ctx, region.name, opts...)
 
-	children := parentToChildren[region.id]
+	// Add events to the span
+	for _, event := range region.events {
+		span.AddEvent(event.Name,
+			trace.WithTimestamp(event.Timestamp),
+			trace.WithAttributes(event.Attributes...),
+		)
+	}
+
+	// Set status if not unset
+	if region.status.Code != codes.Unset {
+		span.SetStatus(region.status.Code, region.status.Message)
+	}
+
 	// Recursively create spans for children
+	children := parentToChildren[region.id]
 	for _, child := range children {
 		if err := createSpans(ctx, child, parentToChildren); err != nil {
 			return err
@@ -100,4 +112,101 @@ func observationToAttribute(key StatisticKey, obs *AggregatedObservation) attrib
 
 	// Fallback: convert to string
 	return attrKey.String(fmt.Sprintf("%v", obs.Value))
+}
+
+// SummaryLogValues exports a Capture as a structured log line with aggregated statistics.
+func SummaryLogValues(capture *Capture) []any {
+	if capture == nil {
+		return nil
+	}
+
+	return summarizeObservations(capture).toLogValues()
+}
+
+// summarizeObservations collects and summarizes observations from the capture.
+func summarizeObservations(capture *Capture) *observations {
+	if capture == nil {
+		return nil
+	}
+
+	collect := newObservationCollector(capture)
+	result := newObservations()
+
+	// collect observations from all DataObjScan regions. observations from
+	// child regions are rolled-up to include dataset reader and bucket stats.
+	// streamView is excluded as it is handled separately below.
+	result.merge(
+		collect.fromRegions("DataObjScan", true, "streamsView.init").
+			filter(
+				// object store calls
+				StatBucketGet.Key(), StatBucketGetRange.Key(), StatBucketAttributes.Key(),
+				// dataset reader stats
+				StatDatasetMaxRows.Key(), StatDatasetRowsAfterPruning.Key(), StatDatasetReadCalls.Key(),
+				StatDatasetPrimaryPagesDownloaded.Key(), StatDatasetSecondaryPagesDownloaded.Key(),
+				StatDatasetPrimaryColumnBytes.Key(), StatDatasetSecondaryColumnBytes.Key(),
+				StatDatasetPrimaryRowsRead.Key(), StatDatasetSecondaryRowsRead.Key(),
+				StatDatasetPrimaryRowBytes.Key(), StatDatasetSecondaryRowBytes.Key(),
+				StatDatasetPagesScanned.Key(), StatDatasetPagesFoundInCache.Key(),
+				StatDatasetPageDownloadRequests.Key(), StatDatasetPageDownloadTime.Key(),
+			).
+			prefix("logs_dataset_").
+			normalizeKeys(),
+	)
+
+	// metastore index and resolved section stats
+	result.merge(
+		collect.fromRegions("ObjectMetastore.Sections", true).
+			filter(StatMetastoreIndexObjects.Key(), StatMetastoreSectionsResolved.Key()).
+			normalizeKeys(),
+	)
+
+	result.merge(
+		collect.fromRegions("PointersScan", true).
+			filter(
+				StatMetastoreStreamsRead.Key(),
+				StatMetastoreStreamsReadTime.Key(),
+				StatMetastoreSectionPointersRead.Key(),
+				StatMetastoreSectionPointersReadTime.Key(),
+			).
+			normalizeKeys(),
+	)
+
+	// metastore bucket and dataset reader stats
+	result.merge(
+		collect.fromRegions("ObjectMetastore.Sections", true).
+			filter(
+				StatBucketGet.Key(), StatBucketGetRange.Key(), StatBucketAttributes.Key(),
+				StatDatasetPrimaryPagesDownloaded.Key(), StatDatasetSecondaryPagesDownloaded.Key(),
+				StatDatasetPrimaryColumnBytes.Key(), StatDatasetSecondaryColumnBytes.Key(),
+			).
+			prefix("metastore_").
+			normalizeKeys(),
+	)
+
+	// streamsView bucket and dataset reader stats
+	result.merge(
+		collect.fromRegions("streamsView.init", true).
+			filter(
+				StatBucketGet.Key(), StatBucketGetRange.Key(), StatBucketAttributes.Key(),
+				StatDatasetPrimaryPagesDownloaded.Key(), StatDatasetSecondaryPagesDownloaded.Key(),
+				StatDatasetPrimaryColumnBytes.Key(), StatDatasetSecondaryColumnBytes.Key(),
+			).
+			prefix("streams_").
+			normalizeKeys(),
+	)
+
+	// workflow runner stats
+	result.merge(
+		collect.fromRegions("wf.runner", true).
+			normalizeKeys(),
+	)
+
+	// task stats
+	result.merge(
+		collect.fromRegions("thread.runJob", true).
+			filter(TaskRecvDuration.Key(), TaskSendDuration.Key()).
+			normalizeKeys(),
+	)
+
+	return result
 }

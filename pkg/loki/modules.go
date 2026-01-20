@@ -37,6 +37,8 @@ import (
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/bloombuild/builder"
 	"github.com/grafana/loki/v3/pkg/bloombuild/planner"
@@ -588,22 +590,27 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	toMerge := []middleware.Interface{
 		httpreq.ExtractQueryMetricsMiddleware(),
 		httpreq.ExtractQueryTagsMiddleware(),
-		httpreq.PropagateHeadersMiddleware(httpreq.LokiEncodingFlagsHeader, httpreq.LokiDisablePipelineWrappersHeader),
+		// Propagate all headers but the authorization header to avoid security issues.
+		httpreq.PropagateAllHeadersMiddleware(httpreq.AuthorizationHeader),
 		serverutil.RecoveryHTTPMiddleware,
 		t.HTTPAuthMiddleware,
 		serverutil.NewPrepopulateMiddleware(),
 		serverutil.ResponseJSONMiddleware(),
 	}
 
-	var store objstore.Bucket
-	if t.Cfg.Querier.EngineV2.Enable {
+	var (
+		store objstore.Bucket
+		ms    metastore.Metastore
+	)
+	if t.Cfg.QueryEngine.Enable {
 		store, err = t.getDataObjBucket("dataobj-querier")
 		if err != nil {
 			return nil, err
 		}
+		ms = metastore.NewObjectMetastore(store, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics)
 	}
 
-	t.querierAPI = querier.NewQuerierAPI(t.Cfg.Querier, t.Cfg.DataObj.Metastore, t.Querier, t.Overrides, store, prometheus.DefaultRegisterer, logger)
+	t.querierAPI = querier.NewQuerierAPI(t.Cfg.Querier, t.Cfg.QueryEngine, ms, t.Querier, t.Overrides, store, prometheus.DefaultRegisterer, logger)
 
 	indexStatsHTTPMiddleware := querier.WrapQuerySpanAndTimeout("query.IndexStats", t.Overrides)
 	indexShardsHTTPMiddleware := querier.WrapQuerySpanAndTimeout("query.IndexShards", t.Overrides)
@@ -1162,26 +1169,30 @@ func (i ingesterQueryOptions) QueryIngestersWithin() time.Duration {
 func (t *Loki) initQueryFrontendMiddleware() (_ services.Service, err error) {
 	level.Debug(util_log.Logger).Log("msg", "initializing query frontend tripperware")
 
-	var v2Router queryrange.RouterConfig
+	v2Router := queryrange.RouterConfig{
+		Enabled: t.Cfg.QueryEngine.EnableEngineRouter,
+	}
 
-	if t.Cfg.QueryRange.EnableV2EngineRouter {
-		start, end := t.Cfg.Querier.EngineV2.Executor.ValidQueryRange()
+	if t.Cfg.QueryEngine.EnableEngineRouter {
+		start, end := t.Cfg.QueryEngine.ValidQueryRange()
 
 		level.Debug(util_log.Logger).Log(
 			"msg", "initializing v2 engine router",
 			"start_time", start,
 			"end_time", end,
-			"destination", t.Cfg.QueryRange.V2EngineAddress,
+			"destination", t.Cfg.QueryEngine.DownstreamAddress,
 		)
 
-		handler, err := frontend.NewDownstreamRoundTripper(t.Cfg.QueryRange.V2EngineAddress, http.DefaultTransport, queryrange.DefaultCodec)
+		handler, err := frontend.NewDownstreamRoundTripper(t.Cfg.QueryEngine.DownstreamAddress, http.DefaultTransport, queryrange.DefaultCodec)
 		if err != nil {
 			return nil, fmt.Errorf("creating downstream round tripper for v2 engine: %w", err)
 		}
 
 		v2Router = queryrange.RouterConfig{
+			Enabled: true,
+
 			Start: start,
-			Lag:   t.Cfg.Querier.DataobjStorageLag,
+			Lag:   t.Cfg.QueryEngine.StorageLag,
 
 			Validate: engine_v2.IsQuerySupported,
 			Handler:  handler,
@@ -1307,7 +1318,8 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	// TODO: add SerializeHTTPHandler
 	toMerge := []middleware.Interface{
 		httpreq.ExtractQueryTagsMiddleware(),
-		httpreq.PropagateHeadersMiddleware(httpreq.LokiActorPathHeader, httpreq.LokiEncodingFlagsHeader, httpreq.LokiDisablePipelineWrappersHeader),
+		// Propagate all headers but the authorization header to avoid security issues.
+		httpreq.PropagateAllHeadersMiddleware(httpreq.AuthorizationHeader),
 		serverutil.RecoveryHTTPMiddleware,
 		t.HTTPAuthMiddleware,
 		queryrange.StatsHTTPMiddleware,
@@ -1409,7 +1421,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 }
 
 func (t *Loki) initV2QueryEngine() (services.Service, error) {
-	if !t.Cfg.Querier.EngineV2.Enable {
+	if !t.Cfg.QueryEngine.Enable {
 		return nil, nil
 	}
 
@@ -1419,28 +1431,42 @@ func (t *Loki) initV2QueryEngine() (services.Service, error) {
 	}
 
 	logger := log.With(util_log.Logger, "component", "query-engine")
-	engine, err := engine_v2.New(engine_v2.Params{
+	ms := metastore.NewObjectMetastore(store, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics)
+
+	params := engine_v2.Params{
 		Logger:     logger,
 		Registerer: prometheus.DefaultRegisterer,
 
-		Config:          t.Cfg.Querier.EngineV2.Executor,
-		MetastoreConfig: t.Cfg.DataObj.Metastore,
+		Config: t.Cfg.QueryEngine.Executor,
 
 		Scheduler: t.queryEngineV2Scheduler,
-		Bucket:    store,
 		Limits:    t.Overrides,
-	})
+
+		Metastore: ms,
+	}
+
+	if t.Cfg.QueryEngine.EnableDeleteReqFiltering {
+		client, err := t.deleteRequestsClient("query-engine", t.Overrides)
+		if err != nil {
+			return nil, err
+		}
+
+		params.DeleteGetter = client
+	}
+
+	engine, err := engine_v2.New(params)
 	if err != nil {
 		return nil, err
 	}
 
 	// TODO(rfratto): Validate that no other module which responds to these
 	// paths is enabled.
-	if t.Cfg.Querier.EngineV2.Distributed {
+	if t.Cfg.QueryEngine.Distributed {
 		toMerge := []middleware.Interface{
 			httpreq.ExtractQueryMetricsMiddleware(),
 			httpreq.ExtractQueryTagsMiddleware(),
-			httpreq.PropagateHeadersMiddleware(httpreq.LokiEncodingFlagsHeader, httpreq.LokiDisablePipelineWrappersHeader),
+			// Propagate all headers but the authorization header to avoid security issues.
+			httpreq.PropagateAllHeadersMiddleware(httpreq.AuthorizationHeader),
 			serverutil.RecoveryHTTPMiddleware,
 			t.HTTPAuthMiddleware,
 			serverutil.NewPrepopulateMiddleware(),
@@ -1448,7 +1474,7 @@ func (t *Loki) initV2QueryEngine() (services.Service, error) {
 		}
 
 		httpMiddleware := middleware.Merge(toMerge...)
-		handler := httpMiddleware.Wrap(engine_v2.Handler(t.Cfg.Querier.EngineV2.Executor, logger, engine, t.Overrides))
+		handler := httpMiddleware.Wrap(engine_v2.Handler(t.Cfg.QueryEngine, logger, engine, t.Overrides))
 
 		t.Server.HTTP.Path("/loki/api/v1/query_range").Methods("GET", "POST").Handler(handler)
 		t.Server.HTTP.Path("/loki/api/v1/query").Methods("GET", "POST").Handler(handler)
@@ -1459,14 +1485,14 @@ func (t *Loki) initV2QueryEngine() (services.Service, error) {
 }
 
 func (t *Loki) initV2QueryEngineScheduler() (services.Service, error) {
-	if !t.Cfg.Querier.EngineV2.Enable {
+	if !t.Cfg.QueryEngine.Enable {
 		return nil, nil
 	}
 
 	// Determine the advertise address. Results in nil if not running
 	// distributed execution.
 	listenPort := uint16(t.Cfg.Server.HTTPListenPort)
-	advertiseAddr, err := t.Cfg.Querier.EngineV2.AdvertiseAddr(listenPort)
+	advertiseAddr, err := t.Cfg.QueryEngine.AdvertiseAddr(listenPort)
 	if err != nil {
 		return nil, err
 	}
@@ -1491,7 +1517,7 @@ func (t *Loki) initV2QueryEngineScheduler() (services.Service, error) {
 	))
 
 	// Only register HTTP handler when running distributed query execution
-	if t.Cfg.Querier.EngineV2.Distributed {
+	if t.Cfg.QueryEngine.Distributed {
 		sched.RegisterSchedulerServer(t.Server.HTTP)
 	}
 
@@ -1500,14 +1526,14 @@ func (t *Loki) initV2QueryEngineScheduler() (services.Service, error) {
 }
 
 func (t *Loki) initV2QueryEngineWorker() (services.Service, error) {
-	if !t.Cfg.Querier.EngineV2.Enable {
+	if !t.Cfg.QueryEngine.Enable {
 		return nil, nil
 	}
 
 	// Determine the advertise address. Results in nil if not running
 	// distributed execution.
 	listenPort := uint16(t.Cfg.Server.HTTPListenPort)
-	advertiseAddr, err := t.Cfg.Querier.EngineV2.AdvertiseAddr(listenPort)
+	advertiseAddr, err := t.Cfg.QueryEngine.AdvertiseAddr(listenPort)
 	if err != nil {
 		return nil, err
 	}
@@ -1517,24 +1543,37 @@ func (t *Loki) initV2QueryEngineWorker() (services.Service, error) {
 		return nil, err
 	}
 
+	logger := log.With(util_log.Logger, "component", "query-engine-worker")
+
 	worker, err := engine_v2.NewWorker(engine_v2.WorkerParams{
-		Logger: log.With(util_log.Logger, "component", "query-engine-worker"),
+		Logger: logger,
 		Bucket: store,
 
-		Config:   t.Cfg.Querier.EngineV2.Worker,
-		Executor: t.Cfg.Querier.EngineV2.Executor,
+		Config:   t.Cfg.QueryEngine.Worker,
+		Executor: t.Cfg.QueryEngine.Executor,
 
 		LocalScheduler: t.queryEngineV2Scheduler,
 
 		AdvertiseAddr: advertiseAddr,
 		Endpoint:      "/api/v2/frame",
+
+		Metastore: metastore.NewObjectMetastore(store, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics),
 	})
 	if err != nil {
 		return nil, err
 	}
 
+	if err := worker.RegisterMetrics(prometheus.DefaultRegisterer); err != nil {
+		return nil, err
+	}
+	worker.Service().AddListener(services.NewListener(
+		nil, nil, nil,
+		func(_ services.State) { worker.UnregisterMetrics(prometheus.DefaultRegisterer) },
+		func(_ services.State, _ error) { worker.UnregisterMetrics(prometheus.DefaultRegisterer) },
+	))
+
 	// Only register HTTP handler when running distributed query execution
-	if t.Cfg.Querier.EngineV2.Distributed {
+	if t.Cfg.QueryEngine.Distributed {
 		worker.RegisterWorkerServer(t.Server.HTTP)
 	}
 
@@ -2403,9 +2442,14 @@ func (t *Loki) initDataObjConsumer() (services.Service, error) {
 	httpMiddleware := middleware.Merge(
 		serverutil.RecoveryHTTPMiddleware,
 	)
-	t.Server.HTTP.Methods("POST", "GET", "DELETE").Path("/dataobj-consumer/prepare-delayed-downscale").Handler(
-		httpMiddleware.Wrap(http.HandlerFunc(t.dataObjConsumer.PrepareDelayedDownscaleHandler)),
-	)
+	t.Server.HTTP.
+		Methods(http.MethodGet, http.MethodPost, http.MethodDelete).
+		Path("/dataobj-consumer/prepare-downscale").
+		Handler(httpMiddleware.Wrap(http.HandlerFunc(t.dataObjConsumer.PrepareDownscaleHandler)))
+	t.Server.HTTP.
+		Methods(http.MethodGet, http.MethodPost, http.MethodDelete).
+		Path("/dataobj-consumer/prepare-delayed-downscale").
+		Handler(httpMiddleware.Wrap(http.HandlerFunc(t.dataObjConsumer.PrepareDelayedDownscaleHandler)))
 
 	return t.dataObjConsumer, nil
 }

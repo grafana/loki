@@ -16,10 +16,10 @@ import (
 
 // Location describes function and line table debug information.
 type Location struct {
-	MappingIndex     int32
-	Address          uint64
-	Line             []*Line
+	Lines            []*Line
 	AttributeIndices []int32
+	Address          uint64
+	MappingIndex     int32
 }
 
 var (
@@ -47,8 +47,8 @@ func DeleteLocation(orig *Location, nullable bool) {
 		return
 	}
 
-	for i := range orig.Line {
-		DeleteLine(orig.Line[i], true)
+	for i := range orig.Lines {
+		DeleteLine(orig.Lines[i], true)
 	}
 
 	orig.Reset()
@@ -71,10 +71,8 @@ func CopyLocation(dest, src *Location) *Location {
 		dest = NewLocation()
 	}
 	dest.MappingIndex = src.MappingIndex
-
 	dest.Address = src.Address
-
-	dest.Line = CopyLinePtrSlice(dest.Line, src.Line)
+	dest.Lines = CopyLinePtrSlice(dest.Lines, src.Lines)
 
 	dest.AttributeIndices = append(dest.AttributeIndices[:0], src.AttributeIndices...)
 
@@ -144,13 +142,13 @@ func (orig *Location) MarshalJSON(dest *json.Stream) {
 		dest.WriteObjectField("address")
 		dest.WriteUint64(orig.Address)
 	}
-	if len(orig.Line) > 0 {
-		dest.WriteObjectField("line")
+	if len(orig.Lines) > 0 {
+		dest.WriteObjectField("lines")
 		dest.WriteArrayStart()
-		orig.Line[0].MarshalJSON(dest)
-		for i := 1; i < len(orig.Line); i++ {
+		orig.Lines[0].MarshalJSON(dest)
+		for i := 1; i < len(orig.Lines); i++ {
 			dest.WriteMore()
-			orig.Line[i].MarshalJSON(dest)
+			orig.Lines[i].MarshalJSON(dest)
 		}
 		dest.WriteArrayEnd()
 	}
@@ -164,6 +162,7 @@ func (orig *Location) MarshalJSON(dest *json.Stream) {
 		}
 		dest.WriteArrayEnd()
 	}
+
 	dest.WriteObjectEnd()
 }
 
@@ -175,10 +174,10 @@ func (orig *Location) UnmarshalJSON(iter *json.Iterator) {
 			orig.MappingIndex = iter.ReadInt32()
 		case "address":
 			orig.Address = iter.ReadUint64()
-		case "line":
+		case "lines":
 			for iter.ReadArray() {
-				orig.Line = append(orig.Line, NewLine())
-				orig.Line[len(orig.Line)-1].UnmarshalJSON(iter)
+				orig.Lines = append(orig.Lines, NewLine())
+				orig.Lines[len(orig.Lines)-1].UnmarshalJSON(iter)
 			}
 
 		case "attributeIndices", "attribute_indices":
@@ -196,16 +195,17 @@ func (orig *Location) SizeProto() int {
 	var n int
 	var l int
 	_ = l
-	if orig.MappingIndex != 0 {
+	if orig.MappingIndex != int32(0) {
 		n += 1 + proto.Sov(uint64(orig.MappingIndex))
 	}
-	if orig.Address != 0 {
+	if orig.Address != uint64(0) {
 		n += 1 + proto.Sov(uint64(orig.Address))
 	}
-	for i := range orig.Line {
-		l = orig.Line[i].SizeProto()
+	for i := range orig.Lines {
+		l = orig.Lines[i].SizeProto()
 		n += 1 + proto.Sov(uint64(l)) + l
 	}
+
 	if len(orig.AttributeIndices) > 0 {
 		l = 0
 		for _, e := range orig.AttributeIndices {
@@ -220,18 +220,18 @@ func (orig *Location) MarshalProto(buf []byte) int {
 	pos := len(buf)
 	var l int
 	_ = l
-	if orig.MappingIndex != 0 {
+	if orig.MappingIndex != int32(0) {
 		pos = proto.EncodeVarint(buf, pos, uint64(orig.MappingIndex))
 		pos--
 		buf[pos] = 0x8
 	}
-	if orig.Address != 0 {
+	if orig.Address != uint64(0) {
 		pos = proto.EncodeVarint(buf, pos, uint64(orig.Address))
 		pos--
 		buf[pos] = 0x10
 	}
-	for i := len(orig.Line) - 1; i >= 0; i-- {
-		l = orig.Line[i].MarshalProto(buf[:pos])
+	for i := len(orig.Lines) - 1; i >= 0; i-- {
+		l = orig.Lines[i].MarshalProto(buf[:pos])
 		pos -= l
 		pos = proto.EncodeVarint(buf, pos, uint64(l))
 		pos--
@@ -274,7 +274,6 @@ func (orig *Location) UnmarshalProto(buf []byte) error {
 			if err != nil {
 				return err
 			}
-
 			orig.MappingIndex = int32(num)
 
 		case 2:
@@ -286,12 +285,11 @@ func (orig *Location) UnmarshalProto(buf []byte) error {
 			if err != nil {
 				return err
 			}
-
 			orig.Address = uint64(num)
 
 		case 3:
 			if wireType != proto.WireTypeLen {
-				return fmt.Errorf("proto: wrong wireType = %d for field Line", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Lines", wireType)
 			}
 			var length int
 			length, pos, err = proto.ConsumeLen(buf, pos)
@@ -299,8 +297,8 @@ func (orig *Location) UnmarshalProto(buf []byte) error {
 				return err
 			}
 			startPos := pos - length
-			orig.Line = append(orig.Line, NewLine())
-			err = orig.Line[len(orig.Line)-1].UnmarshalProto(buf[startPos:pos])
+			orig.Lines = append(orig.Lines, NewLine())
+			err = orig.Lines[len(orig.Lines)-1].UnmarshalProto(buf[startPos:pos])
 			if err != nil {
 				return err
 			}
@@ -348,7 +346,7 @@ func GenTestLocation() *Location {
 	orig := NewLocation()
 	orig.MappingIndex = int32(13)
 	orig.Address = uint64(13)
-	orig.Line = []*Line{{}, GenTestLine()}
+	orig.Lines = []*Line{{}, GenTestLine()}
 	orig.AttributeIndices = []int32{int32(0), int32(13)}
 	return orig
 }

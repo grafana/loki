@@ -236,6 +236,10 @@ func (cn *conn) extendDeadline() {
 	_ = cn.nc.SetDeadline(time.Now().Add(cn.c.netTimeout()))
 }
 
+func (cn *conn) extendDeadlineLong() {
+	_ = cn.nc.SetDeadline(time.Now().Add(5 * cn.c.netTimeout()))
+}
+
 // condRelease releases this connection if the error pointed to by err
 // is nil (not an error) or is only a protocol level error (e.g. a
 // cache miss).  The purpose is to not recycle TCP connections that
@@ -630,24 +634,19 @@ func (c *Client) GetMulti(ctx context.Context, keys []string, opts ...Option) (m
 	ch := make(chan error, buffered)
 	for addr, keys := range keyMap {
 		go func(addr net.Addr, keys []string) {
-			err := c.getFromAddr(ctx, addr, keys, options, addItemToMap)
-			select {
-			case ch <- err:
-			case <-ctx.Done():
-			}
+			ch <- c.getFromAddr(ctx, addr, keys, options, addItemToMap)
 		}(addr, keys)
 	}
 
 	var err error
 	for i := 0; i < len(keyMap); i++ {
-		select {
-		case ge := <-ch:
-			if ge != nil {
-				err = ge
-			}
-		case <-ctx.Done():
-			return nil, fmt.Errorf("memcache GetMulti: %w", ctx.Err())
+		ge := <-ch
+		if ge != nil {
+			err = ge
 		}
+	}
+	if ctx.Err() != nil {
+		return nil, fmt.Errorf("memcache GetMulti: %w", ctx.Err())
 	}
 	return m, err
 }
@@ -655,49 +654,32 @@ func (c *Client) GetMulti(ctx context.Context, keys []string, opts ...Option) (m
 // parseGetResponse reads a GET response from r and calls cb for each
 // read and allocated Item
 func (c *Client) parseGetResponse(ctx context.Context, r *bufio.Reader, conn *conn, opts *Options, cb func(*Item)) error {
+	lineReader := allocatingLineReader{
+		allocator: opts.Alloc,
+	}
 	for {
-		// extend deadline before each additional call, otherwise all cumulative calls use the same overall deadline
-		conn.extendDeadline()
-		line, err := r.ReadSlice('\n')
-
-		if err != nil {
-			return err
-		}
-		if bytes.Equal(line, resultEnd) {
-			return nil
-		}
-		it := new(Item)
-		size, err := scanGetResponseLine(line, it)
-		if err != nil {
-			return err
-		}
-		buffSize := size + 2
-
 		// Check if context is cancelled before allocating memory
 		select {
 		case <-ctx.Done():
-			// Still need to read the data to keep connection in valid state
-			_, err = io.CopyN(io.Discard, r, int64(buffSize))
+			// Try to discard the rest of the response to keep the connection in a good state
+			// We don't want to block forever here, so use a longer deadline than usual, but don't renew it on every item read.
+			conn.extendDeadlineLong()
+			err := tryDiscardLines(r)
 			if err != nil {
-				return err
+				return fmt.Errorf("memcache GetMulti: %w %w", ctx.Err(), err)
 			}
-			// Continue reading without processing to maintain connection state
-			continue
+			return nil
 		default:
 		}
 
-		buff := opts.Alloc.Get(buffSize)
-		it.Value = (*buff)[:buffSize]
-		_, err = io.ReadFull(r, it.Value)
-		if err != nil {
-			opts.Alloc.Put(buff)
+		// extend deadline before each additional call, otherwise all cumulative calls use the same overall deadline
+		conn.extendDeadline()
+		it, err := readLine(r, lineReader)
+		if errors.Is(err, io.EOF) {
+			return nil
+		} else if err != nil {
 			return err
 		}
-		if !bytes.HasSuffix(it.Value, crlf) {
-			opts.Alloc.Put(buff)
-			return fmt.Errorf("memcache: corrupt get result read")
-		}
-		it.Value = it.Value[:size]
 		cb(it)
 	}
 }

@@ -71,9 +71,7 @@ func CopyInstrumentationScope(dest, src *InstrumentationScope) *InstrumentationS
 		dest = NewInstrumentationScope()
 	}
 	dest.Name = src.Name
-
 	dest.Version = src.Version
-
 	dest.Attributes = CopyKeyValueSlice(dest.Attributes, src.Attributes)
 
 	dest.DroppedAttributesCount = src.DroppedAttributesCount
@@ -187,10 +185,12 @@ func (orig *InstrumentationScope) SizeProto() int {
 	var n int
 	var l int
 	_ = l
+
 	l = len(orig.Name)
 	if l > 0 {
 		n += 1 + proto.Sov(uint64(l)) + l
 	}
+
 	l = len(orig.Version)
 	if l > 0 {
 		n += 1 + proto.Sov(uint64(l)) + l
@@ -199,7 +199,7 @@ func (orig *InstrumentationScope) SizeProto() int {
 		l = orig.Attributes[i].SizeProto()
 		n += 1 + proto.Sov(uint64(l)) + l
 	}
-	if orig.DroppedAttributesCount != 0 {
+	if orig.DroppedAttributesCount != uint32(0) {
 		n += 1 + proto.Sov(uint64(orig.DroppedAttributesCount))
 	}
 	return n
@@ -232,7 +232,7 @@ func (orig *InstrumentationScope) MarshalProto(buf []byte) int {
 		pos--
 		buf[pos] = 0x1a
 	}
-	if orig.DroppedAttributesCount != 0 {
+	if orig.DroppedAttributesCount != uint32(0) {
 		pos = proto.EncodeVarint(buf, pos, uint64(orig.DroppedAttributesCount))
 		pos--
 		buf[pos] = 0x20
@@ -304,7 +304,6 @@ func (orig *InstrumentationScope) UnmarshalProto(buf []byte) error {
 			if err != nil {
 				return err
 			}
-
 			orig.DroppedAttributesCount = uint32(num)
 		default:
 			pos, err = proto.ConsumeUnknown(buf, pos, wireType)

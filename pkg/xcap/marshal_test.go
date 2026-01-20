@@ -53,12 +53,12 @@ func TestMarshalUnmarshal(t *testing.T) {
 	capture.End()
 
 	// Marshal to proto
-	proto, err := ToProtoCapture(capture)
+	proto, err := toProtoCapture(capture)
 	require.NoError(t, err)
 
 	// Unmarshal from proto
 	unmarshaled := &Capture{}
-	require.NoError(t, FromProtoCapture(proto, unmarshaled))
+	require.NoError(t, fromProtoCapture(proto, unmarshaled))
 
 	require.True(t, capturesEqual(capture, unmarshaled), "captures should be equal after marshal/unmarshal")
 }

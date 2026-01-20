@@ -93,7 +93,7 @@ Now that you have prepared your environment and collected the necessary credenti
 1. Download the `values.yaml` file from the Kubernetes Monitoring Helm chart repository:
 
    ```bash
-   curl -O https://raw.githubusercontent.com/grafana/loki/main/production/meta-monitoring/values.yaml
+   curl -O https://raw.githubusercontent.com/grafana/loki/main/production/helm/meta-monitoring/values.yaml
    ```
 
 1. Open the `values.yaml` file in a text editor of your choosing and add the Prometheus and Loki endpoints.

@@ -263,6 +263,7 @@ type XReadGroupArgs struct {
 	Count    int64
 	Block    time.Duration
 	NoAck    bool
+	Claim    time.Duration // Claim idle pending entries older than this duration
 }
 
 func (c cmdable) XReadGroup(ctx context.Context, a *XReadGroupArgs) *XStreamSliceCmd {
@@ -281,6 +282,10 @@ func (c cmdable) XReadGroup(ctx context.Context, a *XReadGroupArgs) *XStreamSlic
 	if a.NoAck {
 		args = append(args, "noack")
 		keyPos++
+	}
+	if a.Claim > 0 {
+		args = append(args, "claim", int64(a.Claim/time.Millisecond))
+		keyPos += 2
 	}
 	args = append(args, "streams")
 	keyPos++

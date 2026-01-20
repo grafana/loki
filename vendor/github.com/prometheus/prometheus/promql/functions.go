@@ -368,13 +368,14 @@ func histogramRate(points []HPoint, isCounter bool, metricName string, pos posra
 	// This subtraction may deliberately include conflicting counter resets.
 	// Counter resets are treated explicitly in this function, so the
 	// information about conflicting counter resets is ignored here.
-	_, _, err := h.Sub(prev)
+	_, _, nhcbBoundsReconciled, err := h.Sub(prev)
 	if err != nil {
 		if errors.Is(err, histogram.ErrHistogramsIncompatibleSchema) {
 			return nil, annotations.New().Add(annotations.NewMixedExponentialCustomHistogramsWarning(metricName, pos))
-		} else if errors.Is(err, histogram.ErrHistogramsIncompatibleBounds) {
-			return nil, annotations.New().Add(annotations.NewIncompatibleCustomBucketsHistogramsWarning(metricName, pos))
 		}
+	}
+	if nhcbBoundsReconciled {
+		annos.Add(annotations.NewMismatchedCustomBucketsHistogramsInfo(pos, annotations.HistogramSub))
 	}
 
 	if isCounter {
@@ -383,13 +384,14 @@ func histogramRate(points []HPoint, isCounter bool, metricName string, pos posra
 			curr := currPoint.H
 			if curr.DetectReset(prev) {
 				// Counter reset conflict ignored here for the same reason as above.
-				_, _, err := h.Add(prev)
+				_, _, nhcbBoundsReconciled, err := h.Add(prev)
 				if err != nil {
 					if errors.Is(err, histogram.ErrHistogramsIncompatibleSchema) {
 						return nil, annotations.New().Add(annotations.NewMixedExponentialCustomHistogramsWarning(metricName, pos))
-					} else if errors.Is(err, histogram.ErrHistogramsIncompatibleBounds) {
-						return nil, annotations.New().Add(annotations.NewIncompatibleCustomBucketsHistogramsWarning(metricName, pos))
 					}
+				}
+				if nhcbBoundsReconciled {
+					annos.Add(annotations.NewMismatchedCustomBucketsHistogramsInfo(pos, annotations.HistogramAdd))
 				}
 			}
 			prev = curr
@@ -398,6 +400,7 @@ func histogramRate(points []HPoint, isCounter bool, metricName string, pos posra
 		annos.Add(annotations.NewNativeHistogramNotGaugeWarning(metricName, pos))
 	}
 
+	h.CounterResetHint = histogram.GaugeType
 	return h.Compact(0), annos
 }
 
@@ -508,11 +511,12 @@ func instantValue(vals Matrix, args parser.Expressions, out Vector, isRate bool)
 			// counter resets. Counter resets are treated explicitly
 			// in this function, so the information about
 			// conflicting counter resets is ignored here.
-			_, _, err := resultSample.H.Sub(ss[0].H)
+			_, _, nhcbBoundsReconciled, err := resultSample.H.Sub(ss[0].H)
 			if errors.Is(err, histogram.ErrHistogramsIncompatibleSchema) {
 				return out, annos.Add(annotations.NewMixedExponentialCustomHistogramsWarning(metricName, args.PositionRange()))
-			} else if errors.Is(err, histogram.ErrHistogramsIncompatibleBounds) {
-				return out, annos.Add(annotations.NewIncompatibleCustomBucketsHistogramsWarning(metricName, args.PositionRange()))
+			}
+			if nhcbBoundsReconciled {
+				annos.Add(annotations.NewMismatchedCustomBucketsHistogramsInfo(args.PositionRange(), annotations.HistogramSub))
 			}
 		}
 		resultSample.H.CounterResetHint = histogram.GaugeType
@@ -820,24 +824,48 @@ func funcAvgOverTime(_ []Vector, matrixVal Matrix, args parser.Expressions, enh 
 		// The passed values only contain histograms.
 		var annos annotations.Annotations
 		vec, err := aggrHistOverTime(matrixVal, enh, func(s Series) (*histogram.FloatHistogram, error) {
+			var counterResetSeen, notCounterResetSeen, nhcbBoundsReconciledSeen bool
+
+			trackCounterReset := func(h *histogram.FloatHistogram) {
+				switch h.CounterResetHint {
+				case histogram.CounterReset:
+					counterResetSeen = true
+				case histogram.NotCounterReset:
+					notCounterResetSeen = true
+				}
+			}
+
+			defer func() {
+				if counterResetSeen && notCounterResetSeen {
+					annos.Add(annotations.NewHistogramCounterResetCollisionWarning(args[0].PositionRange(), annotations.HistogramAgg))
+				}
+				if nhcbBoundsReconciledSeen {
+					annos.Add(annotations.NewMismatchedCustomBucketsHistogramsInfo(args[0].PositionRange(), annotations.HistogramAgg))
+				}
+			}()
+
 			mean := s.Histograms[0].H.Copy()
+			trackCounterReset(mean)
 			for i, h := range s.Histograms[1:] {
+				trackCounterReset(h.H)
 				count := float64(i + 2)
 				left := h.H.Copy().Div(count)
 				right := mean.Copy().Div(count)
-				toAdd, counterResetCollision, err := left.Sub(right)
+
+				toAdd, _, nhcbBoundsReconciled, err := left.Sub(right)
 				if err != nil {
 					return mean, err
 				}
-				if counterResetCollision {
-					annos.Add(annotations.NewHistogramCounterResetCollisionWarning(args[0].PositionRange(), annotations.HistogramSub))
+				if nhcbBoundsReconciled {
+					nhcbBoundsReconciledSeen = true
 				}
-				_, counterResetCollision, err = mean.Add(toAdd)
+
+				_, _, nhcbBoundsReconciled, err = mean.Add(toAdd)
 				if err != nil {
 					return mean, err
 				}
-				if counterResetCollision {
-					annos.Add(annotations.NewHistogramCounterResetCollisionWarning(args[0].PositionRange(), annotations.HistogramAdd))
+				if nhcbBoundsReconciled {
+					nhcbBoundsReconciledSeen = true
 				}
 			}
 			return mean, nil
@@ -846,8 +874,6 @@ func funcAvgOverTime(_ []Vector, matrixVal Matrix, args parser.Expressions, enh 
 			metricName := firstSeries.Metric.Get(labels.MetricName)
 			if errors.Is(err, histogram.ErrHistogramsIncompatibleSchema) {
 				return enh.Out, annotations.New().Add(annotations.NewMixedExponentialCustomHistogramsWarning(metricName, args[0].PositionRange()))
-			} else if errors.Is(err, histogram.ErrHistogramsIncompatibleBounds) {
-				return enh.Out, annotations.New().Add(annotations.NewIncompatibleCustomBucketsHistogramsWarning(metricName, args[0].PositionRange()))
 			}
 		}
 		return vec, annos
@@ -1077,14 +1103,36 @@ func funcSumOverTime(_ []Vector, matrixVal Matrix, args parser.Expressions, enh 
 		// The passed values only contain histograms.
 		var annos annotations.Annotations
 		vec, err := aggrHistOverTime(matrixVal, enh, func(s Series) (*histogram.FloatHistogram, error) {
+			var counterResetSeen, notCounterResetSeen, nhcbBoundsReconciledSeen bool
+
+			trackCounterReset := func(h *histogram.FloatHistogram) {
+				switch h.CounterResetHint {
+				case histogram.CounterReset:
+					counterResetSeen = true
+				case histogram.NotCounterReset:
+					notCounterResetSeen = true
+				}
+			}
+
+			defer func() {
+				if counterResetSeen && notCounterResetSeen {
+					annos.Add(annotations.NewHistogramCounterResetCollisionWarning(args[0].PositionRange(), annotations.HistogramAgg))
+				}
+				if nhcbBoundsReconciledSeen {
+					annos.Add(annotations.NewMismatchedCustomBucketsHistogramsInfo(args[0].PositionRange(), annotations.HistogramAgg))
+				}
+			}()
+
 			sum := s.Histograms[0].H.Copy()
+			trackCounterReset(sum)
 			for _, h := range s.Histograms[1:] {
-				_, counterResetCollision, err := sum.Add(h.H)
+				trackCounterReset(h.H)
+				_, _, nhcbBoundsReconciled, err := sum.Add(h.H)
 				if err != nil {
 					return sum, err
 				}
-				if counterResetCollision {
-					annos.Add(annotations.NewHistogramCounterResetCollisionWarning(args[0].PositionRange(), annotations.HistogramAdd))
+				if nhcbBoundsReconciled {
+					nhcbBoundsReconciledSeen = true
 				}
 			}
 			return sum, nil
@@ -1093,8 +1141,6 @@ func funcSumOverTime(_ []Vector, matrixVal Matrix, args parser.Expressions, enh 
 			metricName := firstSeries.Metric.Get(labels.MetricName)
 			if errors.Is(err, histogram.ErrHistogramsIncompatibleSchema) {
 				return enh.Out, annotations.New().Add(annotations.NewMixedExponentialCustomHistogramsWarning(metricName, args[0].PositionRange()))
-			} else if errors.Is(err, histogram.ErrHistogramsIncompatibleBounds) {
-				return enh.Out, annotations.New().Add(annotations.NewIncompatibleCustomBucketsHistogramsWarning(metricName, args[0].PositionRange()))
 			}
 		}
 		return vec, annos
@@ -1481,7 +1527,7 @@ func simpleHistogramFunc(vectorVals []Vector, enh *EvalNodeHelper, f func(h *his
 	for _, el := range vectorVals[0] {
 		if el.H != nil { // Process only histogram samples.
 			if !enh.enableDelayedNameRemoval {
-				el.Metric = el.Metric.DropMetricName()
+				el.Metric = el.Metric.DropReserved(func(n string) bool { return n == labels.MetricName })
 			}
 			enh.Out = append(enh.Out, Sample{
 				Metric:   el.Metric,
@@ -1664,15 +1710,19 @@ func funcHistogramQuantile(vectorVals []Vector, _ Matrix, args parser.Expression
 
 // pickFirstSampleIndex returns the index of the last sample before
 // or at the range start, or 0 if none exist before the range start.
-// If the vector selector is not anchored, it always returns 0.
-func pickFirstSampleIndex(floats []FPoint, args parser.Expressions, enh *EvalNodeHelper) int {
+// If the vector selector is not anchored, it always returns 0, true.
+// The second return value is false if there are no samples in range (for anchored selectors).
+func pickFirstSampleIndex(floats []FPoint, args parser.Expressions, enh *EvalNodeHelper) (int, bool) {
 	ms := args[0].(*parser.MatrixSelector)
 	vs := ms.VectorSelector.(*parser.VectorSelector)
 	if !vs.Anchored {
-		return 0
+		return 0, true
 	}
 	rangeStart := enh.Ts - durationMilliseconds(ms.Range+vs.Offset)
-	return max(0, sort.Search(len(floats)-1, func(i int) bool { return floats[i].T > rangeStart })-1)
+	if len(floats) == 0 || floats[len(floats)-1].T <= rangeStart {
+		return 0, false
+	}
+	return max(0, sort.Search(len(floats)-1, func(i int) bool { return floats[i].T > rangeStart })-1), true
 }
 
 // === resets(Matrix parser.ValueTypeMatrix) (Vector, Annotations) ===
@@ -1685,7 +1735,10 @@ func funcResets(_ []Vector, matrixVal Matrix, args parser.Expressions, enh *Eval
 	}
 
 	var prevSample, curSample Sample
-	firstSampleIndex := pickFirstSampleIndex(floats, args, enh)
+	firstSampleIndex, found := pickFirstSampleIndex(floats, args, enh)
+	if !found {
+		return enh.Out, nil
+	}
 	for iFloat, iHistogram := firstSampleIndex, 0; iFloat < len(floats) || iHistogram < len(histograms); {
 		switch {
 		// Process a float sample if no histogram sample remains or its timestamp is earlier.
@@ -1731,7 +1784,10 @@ func funcChanges(_ []Vector, matrixVal Matrix, args parser.Expressions, enh *Eva
 	}
 
 	var prevSample, curSample Sample
-	firstSampleIndex := pickFirstSampleIndex(floats, args, enh)
+	firstSampleIndex, found := pickFirstSampleIndex(floats, args, enh)
+	if !found {
+		return enh.Out, nil
+	}
 	for iFloat, iHistogram := firstSampleIndex, 0; iFloat < len(floats) || iHistogram < len(histograms); {
 		switch {
 		// Process a float sample if no histogram sample remains or its timestamp is earlier.
@@ -1803,11 +1859,8 @@ func (ev *evaluator) evalLabelReplace(ctx context.Context, args parser.Expressio
 			}
 		}
 	}
-	if matrix.ContainsSameLabelset() {
-		ev.errorf("vector cannot contain metrics with the same labelset")
-	}
 
-	return matrix, ws
+	return ev.mergeSeriesWithSameLabelset(matrix), ws
 }
 
 // === Vector(s Scalar) (Vector, Annotations) ===
@@ -1857,11 +1910,8 @@ func (ev *evaluator) evalLabelJoin(ctx context.Context, args parser.Expressions)
 			matrix[i].DropName = el.DropName
 		}
 	}
-	if matrix.ContainsSameLabelset() {
-		ev.errorf("vector cannot contain metrics with the same labelset")
-	}
 
-	return matrix, ws
+	return ev.mergeSeriesWithSameLabelset(matrix), ws
 }
 
 // Common code for date related functions.

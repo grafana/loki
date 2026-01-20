@@ -20,6 +20,7 @@ package clusterimpl
 
 import (
 	"context"
+	"maps"
 
 	v3orcapb "github.com/cncf/xds/go/xds/data/orca/v3"
 	"google.golang.org/grpc/balancer"
@@ -87,6 +88,7 @@ type picker struct {
 	counter         *xdsclient.ClusterRequestsCounter
 	countMax        uint32
 	telemetryLabels map[string]string
+	clusterName     string
 }
 
 func telemetryLabels(ctx context.Context) map[string]string {
@@ -103,10 +105,9 @@ func telemetryLabels(ctx context.Context) map[string]string {
 func (d *picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 	// Unconditionally set labels if present, even dropped or queued RPC's can
 	// use these labels.
-	if labels := telemetryLabels(info.Ctx); labels != nil {
-		for key, value := range d.telemetryLabels {
-			labels[key] = value
-		}
+	labels := telemetryLabels(info.Ctx)
+	if labels != nil {
+		maps.Copy(labels, d.telemetryLabels)
 	}
 
 	// Don't drop unless the inner picker is READY. Similar to
@@ -154,8 +155,9 @@ func (d *picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 		return pr, err
 	}
 
-	if labels := telemetryLabels(info.Ctx); labels != nil {
+	if labels != nil {
 		labels["grpc.lb.locality"] = xdsinternal.LocalityString(lID)
+		labels["grpc.lb.backend_service"] = d.clusterName
 	}
 
 	if d.loadStore != nil {
@@ -191,4 +193,26 @@ func (d *picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 	}
 
 	return pr, err
+}
+
+// autoHostRewriteKey is the context key used to store the value of
+// route's autoHostRewrite in the RPC context.
+type autoHostRewriteKey struct{}
+
+// autoHostRewrite retrieves the autoHostRewrite value from the provided context.
+func autoHostRewrite(ctx context.Context) bool {
+	v, _ := ctx.Value(autoHostRewriteKey{}).(bool)
+	return v
+}
+
+// AutoHostRewriteForTesting returns the value of autoHostRewrite field;
+// to be used for testing only.
+func AutoHostRewriteForTesting(ctx context.Context) bool {
+	return autoHostRewrite(ctx)
+}
+
+// SetAutoHostRewrite adds the autoHostRewrite value to the context for
+// the xds_cluster_impl LB policy to pick.
+func SetAutoHostRewrite(ctx context.Context, autohostRewrite bool) context.Context {
+	return context.WithValue(ctx, autoHostRewriteKey{}, autohostRewrite)
 }

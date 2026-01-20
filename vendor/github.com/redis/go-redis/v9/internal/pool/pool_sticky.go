@@ -123,6 +123,12 @@ func (p *StickyConnPool) Remove(ctx context.Context, cn *Conn, reason error) {
 	p.ch <- cn
 }
 
+// RemoveWithoutTurn has the same behavior as Remove for StickyConnPool
+// since StickyConnPool doesn't use a turn-based queue system.
+func (p *StickyConnPool) RemoveWithoutTurn(ctx context.Context, cn *Conn, reason error) {
+	p.Remove(ctx, cn, reason)
+}
+
 func (p *StickyConnPool) Close() error {
 	if shared := atomic.AddInt32(&p.shared, -1); shared > 0 {
 		return nil

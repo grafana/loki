@@ -24,7 +24,7 @@ type PubSubPool struct {
 	stats       PubSubStats
 }
 
-// PubSubPool implements a pool for PubSub connections.
+// NewPubSubPool implements a pool for PubSub connections.
 // It intentionally does not implement the Pooler interface
 func NewPubSubPool(opt *Options, netDialer func(ctx context.Context, network, addr string) (net.Conn, error)) *PubSubPool {
 	return &PubSubPool{

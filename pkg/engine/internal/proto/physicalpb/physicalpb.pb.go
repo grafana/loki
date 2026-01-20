@@ -304,6 +304,8 @@ type Node struct {
 	//	*Node_TopK
 	//	*Node_Parallelize
 	//	*Node_Join
+	//	*Node_Merge
+	//	*Node_PointersScan
 	Kind isNode_Kind `protobuf_oneof:"kind"`
 }
 
@@ -379,6 +381,12 @@ type Node_Parallelize struct {
 type Node_Join struct {
 	Join *Join `protobuf:"bytes,12,opt,name=join,proto3,oneof"`
 }
+type Node_Merge struct {
+	Merge *Merge `protobuf:"bytes,13,opt,name=merge,proto3,oneof"`
+}
+type Node_PointersScan struct {
+	PointersScan *PointersScan `protobuf:"bytes,14,opt,name=pointers_scan,json=pointersScan,proto3,oneof"`
+}
 
 func (*Node_AggregateRange) isNode_Kind()  {}
 func (*Node_AggregateVector) isNode_Kind() {}
@@ -391,6 +399,8 @@ func (*Node_ScanSet) isNode_Kind()         {}
 func (*Node_TopK) isNode_Kind()            {}
 func (*Node_Parallelize) isNode_Kind()     {}
 func (*Node_Join) isNode_Kind()            {}
+func (*Node_Merge) isNode_Kind()           {}
+func (*Node_PointersScan) isNode_Kind()    {}
 
 func (m *Node) GetKind() isNode_Kind {
 	if m != nil {
@@ -483,6 +493,20 @@ func (m *Node) GetJoin() *Join {
 	return nil
 }
 
+func (m *Node) GetMerge() *Merge {
+	if x, ok := m.GetKind().(*Node_Merge); ok {
+		return x.Merge
+	}
+	return nil
+}
+
+func (m *Node) GetPointersScan() *PointersScan {
+	if x, ok := m.GetKind().(*Node_PointersScan); ok {
+		return x.PointersScan
+	}
+	return nil
+}
+
 // XXX_OneofWrappers is for the internal use of the proto package.
 func (*Node) XXX_OneofWrappers() []interface{} {
 	return []interface{}{
@@ -497,18 +521,20 @@ func (*Node) XXX_OneofWrappers() []interface{} {
 		(*Node_TopK)(nil),
 		(*Node_Parallelize)(nil),
 		(*Node_Join)(nil),
+		(*Node_Merge)(nil),
+		(*Node_PointersScan)(nil),
 	}
 }
 
 // AggregateRange aggregates samples into windowed ranges.
 type AggregateRange struct {
-	// Columns to partition the data by.
-	PartitionBy []*expressionpb.ColumnExpression `protobuf:"bytes,1,rep,name=partition_by,json=partitionBy,proto3" json:"partition_by,omitempty"`
-	Operation   AggregateRangeOp                 `protobuf:"varint,2,opt,name=operation,proto3,enum=loki.physical.AggregateRangeOp" json:"operation,omitempty"`
-	Start       time.Time                        `protobuf:"bytes,3,opt,name=start,proto3,stdtime" json:"start"`
-	End         time.Time                        `protobuf:"bytes,4,opt,name=end,proto3,stdtime" json:"end"`
-	Step        time.Duration                    `protobuf:"bytes,5,opt,name=step,proto3,stdduration" json:"step"`
-	Range       time.Duration                    `protobuf:"bytes,6,opt,name=range,proto3,stdduration" json:"range"`
+	// Grouping for the data.
+	Grouping  *Grouping        `protobuf:"bytes,7,opt,name=grouping,proto3" json:"grouping,omitempty"`
+	Operation AggregateRangeOp `protobuf:"varint,2,opt,name=operation,proto3,enum=loki.physical.AggregateRangeOp" json:"operation,omitempty"`
+	Start     time.Time        `protobuf:"bytes,3,opt,name=start,proto3,stdtime" json:"start"`
+	End       time.Time        `protobuf:"bytes,4,opt,name=end,proto3,stdtime" json:"end"`
+	Step      time.Duration    `protobuf:"bytes,5,opt,name=step,proto3,stdduration" json:"step"`
+	Range     time.Duration    `protobuf:"bytes,6,opt,name=range,proto3,stdduration" json:"range"`
 }
 
 func (m *AggregateRange) Reset()      { *m = AggregateRange{} }
@@ -543,9 +569,9 @@ func (m *AggregateRange) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_AggregateRange proto.InternalMessageInfo
 
-func (m *AggregateRange) GetPartitionBy() []*expressionpb.ColumnExpression {
+func (m *AggregateRange) GetGrouping() *Grouping {
 	if m != nil {
-		return m.PartitionBy
+		return m.Grouping
 	}
 	return nil
 }
@@ -585,11 +611,64 @@ func (m *AggregateRange) GetRange() time.Duration {
 	return 0
 }
 
+// Grouping represents the grouping by/without label(s) for vector aggregators
+// and range vector aggregators.
+type Grouping struct {
+	Columns []*expressionpb.ColumnExpression `protobuf:"bytes,1,rep,name=columns,proto3" json:"columns,omitempty"`
+	Without bool                             `protobuf:"varint,2,opt,name=without,proto3" json:"without,omitempty"`
+}
+
+func (m *Grouping) Reset()      { *m = Grouping{} }
+func (*Grouping) ProtoMessage() {}
+func (*Grouping) Descriptor() ([]byte, []int) {
+	return fileDescriptor_d1fdbb44b95b211f, []int{5}
+}
+func (m *Grouping) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *Grouping) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_Grouping.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *Grouping) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_Grouping.Merge(m, src)
+}
+func (m *Grouping) XXX_Size() int {
+	return m.Size()
+}
+func (m *Grouping) XXX_DiscardUnknown() {
+	xxx_messageInfo_Grouping.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_Grouping proto.InternalMessageInfo
+
+func (m *Grouping) GetColumns() []*expressionpb.ColumnExpression {
+	if m != nil {
+		return m.Columns
+	}
+	return nil
+}
+
+func (m *Grouping) GetWithout() bool {
+	if m != nil {
+		return m.Without
+	}
+	return false
+}
+
 // AggregateVector represents an operation to aggregate a range vector into an
 // instant vector, with optional grouping on specified dimensions.
 type AggregateVector struct {
-	// Columns to group the data by. If empty, all rows are aggregated into a single result.
-	GroupBy []*expressionpb.ColumnExpression `protobuf:"bytes,1,rep,name=group_by,json=groupBy,proto3" json:"group_by,omitempty"`
+	// Grouping for the data.
+	Grouping *Grouping `protobuf:"bytes,3,opt,name=grouping,proto3" json:"grouping,omitempty"`
 	// Aggregation operation to perform over the underlying range vector.
 	Operation AggregateVectorOp `protobuf:"varint,2,opt,name=operation,proto3,enum=loki.physical.AggregateVectorOp" json:"operation,omitempty"`
 }
@@ -597,7 +676,7 @@ type AggregateVector struct {
 func (m *AggregateVector) Reset()      { *m = AggregateVector{} }
 func (*AggregateVector) ProtoMessage() {}
 func (*AggregateVector) Descriptor() ([]byte, []int) {
-	return fileDescriptor_d1fdbb44b95b211f, []int{5}
+	return fileDescriptor_d1fdbb44b95b211f, []int{6}
 }
 func (m *AggregateVector) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -626,9 +705,9 @@ func (m *AggregateVector) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_AggregateVector proto.InternalMessageInfo
 
-func (m *AggregateVector) GetGroupBy() []*expressionpb.ColumnExpression {
+func (m *AggregateVector) GetGrouping() *Grouping {
 	if m != nil {
-		return m.GroupBy
+		return m.Grouping
 	}
 	return nil
 }
@@ -660,7 +739,7 @@ type DataObjScan struct {
 func (m *DataObjScan) Reset()      { *m = DataObjScan{} }
 func (*DataObjScan) ProtoMessage() {}
 func (*DataObjScan) Descriptor() ([]byte, []int) {
-	return fileDescriptor_d1fdbb44b95b211f, []int{6}
+	return fileDescriptor_d1fdbb44b95b211f, []int{7}
 }
 func (m *DataObjScan) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -739,7 +818,7 @@ type TimeRange struct {
 func (m *TimeRange) Reset()      { *m = TimeRange{} }
 func (*TimeRange) ProtoMessage() {}
 func (*TimeRange) Descriptor() ([]byte, []int) {
-	return fileDescriptor_d1fdbb44b95b211f, []int{7}
+	return fileDescriptor_d1fdbb44b95b211f, []int{8}
 }
 func (m *TimeRange) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -791,7 +870,7 @@ type Filter struct {
 func (m *Filter) Reset()      { *m = Filter{} }
 func (*Filter) ProtoMessage() {}
 func (*Filter) Descriptor() ([]byte, []int) {
-	return fileDescriptor_d1fdbb44b95b211f, []int{8}
+	return fileDescriptor_d1fdbb44b95b211f, []int{9}
 }
 func (m *Filter) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -839,7 +918,7 @@ type Limit struct {
 func (m *Limit) Reset()      { *m = Limit{} }
 func (*Limit) ProtoMessage() {}
 func (*Limit) Descriptor() ([]byte, []int) {
-	return fileDescriptor_d1fdbb44b95b211f, []int{9}
+	return fileDescriptor_d1fdbb44b95b211f, []int{10}
 }
 func (m *Limit) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -897,7 +976,7 @@ type Projection struct {
 func (m *Projection) Reset()      { *m = Projection{} }
 func (*Projection) ProtoMessage() {}
 func (*Projection) Descriptor() ([]byte, []int) {
-	return fileDescriptor_d1fdbb44b95b211f, []int{10}
+	return fileDescriptor_d1fdbb44b95b211f, []int{11}
 }
 func (m *Projection) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -957,15 +1036,15 @@ func (m *Projection) GetDrop() bool {
 // ColumnCompat represents a compactibilty operation in the physical plan that
 // moves a values from a conflicting metadata column with a label column into a new column suffixed with `_extracted`.
 type ColumnCompat struct {
-	Source      expressionpb.ColumnType `protobuf:"varint,1,opt,name=source,proto3,enum=loki.expression.ColumnType" json:"source,omitempty"`
-	Destination expressionpb.ColumnType `protobuf:"varint,2,opt,name=destination,proto3,enum=loki.expression.ColumnType" json:"destination,omitempty"`
-	Collision   expressionpb.ColumnType `protobuf:"varint,3,opt,name=collision,proto3,enum=loki.expression.ColumnType" json:"collision,omitempty"`
+	Source      expressionpb.ColumnType   `protobuf:"varint,1,opt,name=source,proto3,enum=loki.expression.ColumnType" json:"source,omitempty"`
+	Destination expressionpb.ColumnType   `protobuf:"varint,2,opt,name=destination,proto3,enum=loki.expression.ColumnType" json:"destination,omitempty"`
+	Collisions  []expressionpb.ColumnType `protobuf:"varint,3,rep,packed,name=collisions,proto3,enum=loki.expression.ColumnType" json:"collisions,omitempty"`
 }
 
 func (m *ColumnCompat) Reset()      { *m = ColumnCompat{} }
 func (*ColumnCompat) ProtoMessage() {}
 func (*ColumnCompat) Descriptor() ([]byte, []int) {
-	return fileDescriptor_d1fdbb44b95b211f, []int{11}
+	return fileDescriptor_d1fdbb44b95b211f, []int{12}
 }
 func (m *ColumnCompat) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -1008,11 +1087,11 @@ func (m *ColumnCompat) GetDestination() expressionpb.ColumnType {
 	return expressionpb.COLUMN_TYPE_INVALID
 }
 
-func (m *ColumnCompat) GetCollision() expressionpb.ColumnType {
+func (m *ColumnCompat) GetCollisions() []expressionpb.ColumnType {
 	if m != nil {
-		return m.Collision
+		return m.Collisions
 	}
-	return expressionpb.COLUMN_TYPE_INVALID
+	return nil
 }
 
 // TopK represents a physical plan node that performs topK operation.
@@ -1028,7 +1107,7 @@ type TopK struct {
 func (m *TopK) Reset()      { *m = TopK{} }
 func (*TopK) ProtoMessage() {}
 func (*TopK) Descriptor() ([]byte, []int) {
-	return fileDescriptor_d1fdbb44b95b211f, []int{12}
+	return fileDescriptor_d1fdbb44b95b211f, []int{13}
 }
 func (m *TopK) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -1102,7 +1181,7 @@ type ScanSet struct {
 func (m *ScanSet) Reset()      { *m = ScanSet{} }
 func (*ScanSet) ProtoMessage() {}
 func (*ScanSet) Descriptor() ([]byte, []int) {
-	return fileDescriptor_d1fdbb44b95b211f, []int{13}
+	return fileDescriptor_d1fdbb44b95b211f, []int{14}
 }
 func (m *ScanSet) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -1157,13 +1236,14 @@ type ScanTarget struct {
 	// Types that are valid to be assigned to Kind:
 	//
 	//	*ScanTarget_DataObject
+	//	*ScanTarget_Pointers
 	Kind isScanTarget_Kind `protobuf_oneof:"kind"`
 }
 
 func (m *ScanTarget) Reset()      { *m = ScanTarget{} }
 func (*ScanTarget) ProtoMessage() {}
 func (*ScanTarget) Descriptor() ([]byte, []int) {
-	return fileDescriptor_d1fdbb44b95b211f, []int{14}
+	return fileDescriptor_d1fdbb44b95b211f, []int{15}
 }
 func (m *ScanTarget) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -1202,8 +1282,12 @@ type isScanTarget_Kind interface {
 type ScanTarget_DataObject struct {
 	DataObject *DataObjScan `protobuf:"bytes,1,opt,name=data_object,json=dataObject,proto3,oneof"`
 }
+type ScanTarget_Pointers struct {
+	Pointers *PointersScan `protobuf:"bytes,2,opt,name=pointers,proto3,oneof"`
+}
 
 func (*ScanTarget_DataObject) isScanTarget_Kind() {}
+func (*ScanTarget_Pointers) isScanTarget_Kind()   {}
 
 func (m *ScanTarget) GetKind() isScanTarget_Kind {
 	if m != nil {
@@ -1219,12 +1303,57 @@ func (m *ScanTarget) GetDataObject() *DataObjScan {
 	return nil
 }
 
+func (m *ScanTarget) GetPointers() *PointersScan {
+	if x, ok := m.GetKind().(*ScanTarget_Pointers); ok {
+		return x.Pointers
+	}
+	return nil
+}
+
 // XXX_OneofWrappers is for the internal use of the proto package.
 func (*ScanTarget) XXX_OneofWrappers() []interface{} {
 	return []interface{}{
 		(*ScanTarget_DataObject)(nil),
+		(*ScanTarget_Pointers)(nil),
 	}
 }
+
+// Merge combines multiple input streams into a single stream with no
+// guaranteed ordering.
+type Merge struct {
+}
+
+func (m *Merge) Reset()      { *m = Merge{} }
+func (*Merge) ProtoMessage() {}
+func (*Merge) Descriptor() ([]byte, []int) {
+	return fileDescriptor_d1fdbb44b95b211f, []int{16}
+}
+func (m *Merge) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *Merge) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_Merge.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *Merge) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_Merge.Merge(m, src)
+}
+func (m *Merge) XXX_Size() int {
+	return m.Size()
+}
+func (m *Merge) XXX_DiscardUnknown() {
+	xxx_messageInfo_Merge.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_Merge proto.InternalMessageInfo
 
 // Parallelize represents a hint to the engine to partition and parallelize the
 // children branches of the Parallelize and emit results as a single sequence
@@ -1235,7 +1364,7 @@ type Parallelize struct {
 func (m *Parallelize) Reset()      { *m = Parallelize{} }
 func (*Parallelize) ProtoMessage() {}
 func (*Parallelize) Descriptor() ([]byte, []int) {
-	return fileDescriptor_d1fdbb44b95b211f, []int{15}
+	return fileDescriptor_d1fdbb44b95b211f, []int{17}
 }
 func (m *Parallelize) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -1264,6 +1393,85 @@ func (m *Parallelize) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_Parallelize proto.InternalMessageInfo
 
+// PointersScan represents an operation to read pointers from an index file.
+type PointersScan struct {
+	// Stored location of the index to read.
+	Location string `protobuf:"bytes,1,opt,name=location,proto3" json:"location,omitempty"`
+	// Selector expression for the scan.
+	Selector *expressionpb.Expression `protobuf:"bytes,2,opt,name=selector,proto3" json:"selector,omitempty"`
+	// Predicates for the scan.
+	Predicates []*expressionpb.Expression `protobuf:"bytes,3,rep,name=predicates,proto3" json:"predicates,omitempty"`
+	Start      time.Time                  `protobuf:"bytes,4,opt,name=start,proto3,stdtime" json:"start"`
+	End        time.Time                  `protobuf:"bytes,5,opt,name=end,proto3,stdtime" json:"end"`
+}
+
+func (m *PointersScan) Reset()      { *m = PointersScan{} }
+func (*PointersScan) ProtoMessage() {}
+func (*PointersScan) Descriptor() ([]byte, []int) {
+	return fileDescriptor_d1fdbb44b95b211f, []int{18}
+}
+func (m *PointersScan) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *PointersScan) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_PointersScan.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *PointersScan) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_PointersScan.Merge(m, src)
+}
+func (m *PointersScan) XXX_Size() int {
+	return m.Size()
+}
+func (m *PointersScan) XXX_DiscardUnknown() {
+	xxx_messageInfo_PointersScan.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_PointersScan proto.InternalMessageInfo
+
+func (m *PointersScan) GetLocation() string {
+	if m != nil {
+		return m.Location
+	}
+	return ""
+}
+
+func (m *PointersScan) GetSelector() *expressionpb.Expression {
+	if m != nil {
+		return m.Selector
+	}
+	return nil
+}
+
+func (m *PointersScan) GetPredicates() []*expressionpb.Expression {
+	if m != nil {
+		return m.Predicates
+	}
+	return nil
+}
+
+func (m *PointersScan) GetStart() time.Time {
+	if m != nil {
+		return m.Start
+	}
+	return time.Time{}
+}
+
+func (m *PointersScan) GetEnd() time.Time {
+	if m != nil {
+		return m.End
+	}
+	return time.Time{}
+}
+
 // Join represents a join operation in the physical plan.
 // For now it is only an inner join on `timestamp`. Will be expanded later.
 type Join struct {
@@ -1272,7 +1480,7 @@ type Join struct {
 func (m *Join) Reset()      { *m = Join{} }
 func (*Join) ProtoMessage() {}
 func (*Join) Descriptor() ([]byte, []int) {
-	return fileDescriptor_d1fdbb44b95b211f, []int{16}
+	return fileDescriptor_d1fdbb44b95b211f, []int{19}
 }
 func (m *Join) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -1310,6 +1518,7 @@ func init() {
 	proto.RegisterType((*NodeID)(nil), "loki.physical.NodeID")
 	proto.RegisterType((*Node)(nil), "loki.physical.Node")
 	proto.RegisterType((*AggregateRange)(nil), "loki.physical.AggregateRange")
+	proto.RegisterType((*Grouping)(nil), "loki.physical.Grouping")
 	proto.RegisterType((*AggregateVector)(nil), "loki.physical.AggregateVector")
 	proto.RegisterType((*DataObjScan)(nil), "loki.physical.DataObjScan")
 	proto.RegisterType((*TimeRange)(nil), "loki.physical.TimeRange")
@@ -1320,7 +1529,9 @@ func init() {
 	proto.RegisterType((*TopK)(nil), "loki.physical.TopK")
 	proto.RegisterType((*ScanSet)(nil), "loki.physical.ScanSet")
 	proto.RegisterType((*ScanTarget)(nil), "loki.physical.ScanTarget")
+	proto.RegisterType((*Merge)(nil), "loki.physical.Merge")
 	proto.RegisterType((*Parallelize)(nil), "loki.physical.Parallelize")
+	proto.RegisterType((*PointersScan)(nil), "loki.physical.PointersScan")
 	proto.RegisterType((*Join)(nil), "loki.physical.Join")
 }
 
@@ -1329,102 +1540,110 @@ func init() {
 }
 
 var fileDescriptor_d1fdbb44b95b211f = []byte{
-	// 1516 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xac, 0x57, 0x4f, 0x6f, 0xdb, 0xc8,
-	0x15, 0x27, 0xf5, 0x5f, 0x4f, 0xb6, 0x97, 0x9d, 0x66, 0x13, 0xda, 0xd9, 0xd0, 0x59, 0x9d, 0x12,
-	0xb7, 0x95, 0x9a, 0x18, 0x6d, 0x91, 0x6d, 0xd7, 0x85, 0xfe, 0xc5, 0x52, 0x9d, 0x48, 0xc6, 0x48,
-	0x31, 0xb6, 0xbd, 0xa8, 0x23, 0x72, 0x4c, 0x33, 0xa6, 0x48, 0x82, 0xa4, 0x0c, 0xbb, 0x97, 0xed,
-	0xad, 0xe8, 0xa9, 0x7b, 0xec, 0x07, 0xe8, 0xa1, 0xc7, 0x7e, 0x81, 0x02, 0x45, 0x4f, 0x7b, 0xcc,
-	0x71, 0xd1, 0xc3, 0xb6, 0x71, 0x2e, 0x3d, 0xee, 0x17, 0x28, 0x50, 0xcc, 0x0c, 0x25, 0x52, 0xb2,
-	0xe4, 0xb5, 0x83, 0xbd, 0x18, 0x33, 0xef, 0xfd, 0x7e, 0x6f, 0xde, 0x7b, 0x7c, 0x7f, 0x2c, 0xf8,
-	0x89, 0x77, 0x6a, 0x56, 0xa9, 0x63, 0x5a, 0x0e, 0xad, 0x5a, 0x4e, 0x48, 0x7d, 0x87, 0xd8, 0x55,
-	0xcf, 0x77, 0x43, 0xb7, 0xea, 0x9d, 0x5c, 0x04, 0x96, 0x4e, 0x6c, 0x6f, 0x94, 0x38, 0x56, 0xb8,
-	0x0e, 0xad, 0xdb, 0xee, 0xa9, 0x55, 0x99, 0x8a, 0xb7, 0xee, 0x98, 0xae, 0xe9, 0x0a, 0x16, 0x3b,
-	0x09, 0xd0, 0x96, 0x66, 0xba, 0xae, 0x69, 0x53, 0x61, 0x6e, 0x34, 0x39, 0xae, 0x1a, 0x13, 0x9f,
-	0x84, 0x96, 0xeb, 0x44, 0xfa, 0xed, 0x45, 0x7d, 0x68, 0x8d, 0x69, 0x10, 0x92, 0xb1, 0x17, 0x01,
-	0x9e, 0xad, 0x76, 0x8e, 0x9e, 0x7b, 0x3e, 0x0d, 0x02, 0xcb, 0x75, 0xbc, 0xd1, 0xdc, 0x25, 0xa2,
-	0x3e, 0x5e, 0x4d, 0x9d, 0xd8, 0x96, 0xc1, 0xff, 0x08, 0x68, 0xf9, 0xb7, 0x90, 0x39, 0xb4, 0x89,
-	0x83, 0x1e, 0x43, 0xd6, 0x71, 0x0d, 0x1a, 0xa8, 0xf2, 0xc3, 0xf4, 0xa3, 0xd2, 0xd3, 0xef, 0x57,
-	0xe6, 0x62, 0xac, 0x74, 0x5d, 0x83, 0x62, 0x81, 0x40, 0x3f, 0x82, 0x2c, 0x35, 0x4c, 0x1a, 0xa8,
-	0x29, 0x0e, 0xbd, 0xb7, 0x00, 0x65, 0xe6, 0x5a, 0x86, 0x49, 0xb1, 0x40, 0x95, 0x7d, 0x28, 0x4c,
-	0x45, 0x68, 0x17, 0x72, 0x1e, 0xf1, 0xa9, 0x13, 0xaa, 0xf2, 0x43, 0xf9, 0x51, 0xe9, 0xe9, 0x87,
-	0x4b, 0x9e, 0xe9, 0x34, 0xeb, 0x99, 0x2f, 0xbf, 0xde, 0x96, 0x70, 0x04, 0x45, 0x4f, 0x20, 0xab,
-	0x9f, 0x58, 0xb6, 0xa1, 0xa6, 0xbe, 0x9d, 0x23, 0x90, 0xe5, 0xcf, 0x21, 0x27, 0xc4, 0x68, 0x02,
-	0xd9, 0x33, 0x62, 0x4f, 0x68, 0xf4, 0xe0, 0xbd, 0x0a, 0x8f, 0x9d, 0x5b, 0x38, 0x7b, 0x52, 0x39,
-	0x64, 0x39, 0x78, 0xf5, 0xa2, 0xd3, 0xac, 0x3f, 0x67, 0xf4, 0x7f, 0x7d, 0xbd, 0xbd, 0x67, 0x5a,
-	0xe1, 0xc9, 0x64, 0x54, 0xd1, 0xdd, 0x71, 0xd5, 0xf4, 0xc9, 0x31, 0x71, 0x48, 0x95, 0xa1, 0xab,
-	0x67, 0xbb, 0xd5, 0xeb, 0xb3, 0x5a, 0x61, 0x76, 0xb0, 0x78, 0xad, 0xfc, 0xb7, 0x2c, 0x64, 0x98,
-	0x07, 0xe8, 0x07, 0x90, 0xb2, 0x8c, 0x9b, 0x44, 0x9b, 0xb2, 0x0c, 0xd4, 0x86, 0x0f, 0x88, 0x69,
-	0xfa, 0xd4, 0x24, 0x21, 0x1d, 0xfa, 0xc4, 0x31, 0x69, 0x14, 0xf3, 0x83, 0x05, 0x66, 0x6d, 0x8a,
-	0xc2, 0x0c, 0xd4, 0x96, 0xf0, 0x06, 0x99, 0x93, 0xa0, 0x03, 0x50, 0x62, 0x4b, 0x67, 0x54, 0x0f,
-	0x5d, 0x5f, 0x4d, 0x73, 0x53, 0xda, 0x2a, 0x53, 0x47, 0x1c, 0xd5, 0x96, 0x70, 0xec, 0x83, 0x10,
-	0xa1, 0x1f, 0x43, 0x26, 0xd0, 0x89, 0xa3, 0x66, 0xb8, 0x81, 0xad, 0x05, 0x03, 0x4d, 0x12, 0x92,
-	0xde, 0xe8, 0x75, 0x5f, 0x27, 0x4e, 0x5b, 0xc2, 0x1c, 0x89, 0xaa, 0x90, 0x3b, 0xb6, 0xec, 0x90,
-	0xfa, 0x6a, 0x76, 0x69, 0xe4, 0xcf, 0xb9, 0xb2, 0x2d, 0xe1, 0x08, 0x86, 0x7e, 0x08, 0x59, 0xdb,
-	0x1a, 0x5b, 0xa1, 0x9a, 0xe3, 0xf8, 0x3b, 0x0b, 0xf8, 0x17, 0x4c, 0xd7, 0x96, 0xb0, 0x00, 0xa1,
-	0x9f, 0x03, 0x78, 0xbe, 0xfb, 0x9a, 0xea, 0xac, 0x9f, 0xd4, 0x3c, 0xa7, 0x6c, 0x2e, 0x96, 0xe1,
-	0x0c, 0xd0, 0x96, 0x70, 0x02, 0x8e, 0xea, 0xb0, 0xae, 0xbb, 0xf6, 0x64, 0xec, 0x0c, 0x75, 0x77,
-	0xec, 0x91, 0x50, 0x2d, 0x70, 0xfe, 0xfd, 0x05, 0x7e, 0x83, 0x63, 0x1a, 0x1c, 0xd2, 0x96, 0xf0,
-	0x9a, 0x9e, 0xb8, 0xa3, 0x5d, 0x28, 0xb0, 0x38, 0x87, 0x01, 0x0d, 0xd5, 0x22, 0xa7, 0xdf, 0x5d,
-	0xa0, 0xb3, 0x74, 0xf4, 0x29, 0x63, 0xe6, 0x03, 0x71, 0x44, 0x3b, 0x90, 0x0d, 0x5d, 0x6f, 0x78,
-	0xaa, 0x02, 0x67, 0x2c, 0xb6, 0xd8, 0xc0, 0xf5, 0x0e, 0x58, 0x02, 0x43, 0xd7, 0x3b, 0x40, 0x7b,
-	0x50, 0xf2, 0x88, 0x4f, 0x6c, 0x9b, 0xda, 0xd6, 0xef, 0xa8, 0x5a, 0x5a, 0x9a, 0xf9, 0xc3, 0x18,
-	0xd1, 0x96, 0x70, 0x92, 0x80, 0x1e, 0x43, 0xe6, 0xb5, 0x6b, 0x39, 0xea, 0xda, 0xd2, 0xa7, 0x7e,
-	0xe5, 0x5a, 0xfc, 0x5b, 0x31, 0x48, 0x3d, 0x07, 0x99, 0x53, 0xcb, 0x31, 0xca, 0xff, 0x4b, 0xc1,
-	0xc6, 0x7c, 0x5d, 0xa1, 0x26, 0xac, 0x79, 0xc4, 0x0f, 0x2d, 0x96, 0xb7, 0xe1, 0xe8, 0x22, 0x9a,
-	0x0d, 0x1f, 0x0b, 0x6b, 0xf1, 0xdc, 0x89, 0x72, 0xd5, 0x9a, 0x09, 0xb8, 0x2f, 0x82, 0x56, 0xbf,
-	0x40, 0x9f, 0x42, 0xd1, 0xf5, 0xa8, 0x18, 0x7e, 0xbc, 0x9e, 0x37, 0x9e, 0x6e, 0x5f, 0x5b, 0xcf,
-	0x3d, 0x0f, 0xc7, 0x0c, 0xf4, 0x09, 0x64, 0x83, 0x90, 0xf8, 0x61, 0x54, 0xbf, 0x5b, 0x15, 0x31,
-	0x38, 0x2b, 0xd3, 0xc1, 0x59, 0x19, 0x4c, 0x07, 0x67, 0xbd, 0xc0, 0x3a, 0xe9, 0x8b, 0x7f, 0x6f,
-	0xcb, 0x58, 0x50, 0xd0, 0x4f, 0x21, 0x4d, 0x1d, 0x63, 0x56, 0xb8, 0x37, 0x61, 0x32, 0x02, 0xfa,
-	0x19, 0x64, 0x82, 0x90, 0x7a, 0x51, 0xf5, 0x6e, 0x5e, 0x21, 0x36, 0xa3, 0x59, 0x2e, 0x78, 0x7f,
-	0x66, 0x3c, 0x4e, 0x40, 0xcf, 0x20, 0x2b, 0xfa, 0x36, 0x77, 0x73, 0xa6, 0x60, 0x94, 0xff, 0x24,
-	0xc3, 0x07, 0x0b, 0xcd, 0x88, 0x7e, 0x01, 0x05, 0xd3, 0x77, 0x27, 0xde, 0xad, 0x92, 0x9f, 0xe7,
-	0x94, 0xfa, 0x05, 0xda, 0xbb, 0x9a, 0xf8, 0x87, 0xd7, 0x77, 0xff, 0x5c, 0xe6, 0xcb, 0x7f, 0x49,
-	0x41, 0x29, 0xd1, 0xdd, 0x68, 0x0b, 0x0a, 0xb6, 0xab, 0x0b, 0x73, 0x6c, 0xa2, 0x15, 0xf1, 0xec,
-	0x8e, 0x54, 0xc8, 0x07, 0x51, 0x3f, 0xb2, 0x97, 0xd2, 0x78, 0x7a, 0x45, 0x0f, 0x00, 0x82, 0xd0,
-	0xa7, 0x64, 0x3c, 0xb4, 0x8c, 0x40, 0x4d, 0x3f, 0x4c, 0x3f, 0x4a, 0xe3, 0xa2, 0x90, 0x74, 0x8c,
-	0x00, 0x35, 0xa0, 0x14, 0x37, 0x67, 0xa0, 0x66, 0x6e, 0x5e, 0x62, 0x31, 0x4b, 0x0c, 0x04, 0x6a,
-	0x58, 0x3a, 0x09, 0x69, 0xa0, 0x66, 0xb9, 0x8d, 0xfb, 0x57, 0x6c, 0x24, 0xd8, 0x09, 0x38, 0xda,
-	0x83, 0x8d, 0x31, 0x39, 0x1f, 0xb2, 0xfd, 0x3b, 0x4c, 0x7e, 0x3c, 0x75, 0xb1, 0x41, 0xad, 0xb1,
-	0xa8, 0x4f, 0xbc, 0x36, 0x26, 0xe7, 0xb3, 0x5b, 0xf9, 0x73, 0x28, 0xce, 0x2e, 0x71, 0xb5, 0xca,
-	0xef, 0x5d, 0xad, 0xa9, 0x5b, 0x56, 0x6b, 0xb9, 0x05, 0x39, 0x31, 0x50, 0x17, 0xf2, 0x20, 0xdf,
-	0x2a, 0x0f, 0xe5, 0x27, 0x90, 0xe5, 0x73, 0x16, 0x21, 0xc8, 0x04, 0xa7, 0x96, 0xc7, 0x43, 0x58,
-	0xc7, 0xfc, 0x8c, 0xee, 0x40, 0xf6, 0x98, 0x86, 0xfa, 0x09, 0xf7, 0x6e, 0x1d, 0x8b, 0x4b, 0xf9,
-	0x8f, 0x32, 0x40, 0x3c, 0x68, 0xd1, 0xa7, 0x50, 0x8a, 0x9f, 0xb9, 0xd1, 0xfb, 0x49, 0x3c, 0x52,
-	0x20, 0x4d, 0x6c, 0x9b, 0xf7, 0x79, 0x01, 0xb3, 0x23, 0xba, 0x0b, 0x39, 0x7a, 0xee, 0x91, 0xa8,
-	0x85, 0x0b, 0x38, 0xba, 0x31, 0x0f, 0x0d, 0xdf, 0x15, 0xfd, 0x59, 0xc0, 0xfc, 0x5c, 0xfe, 0xbb,
-	0x0c, 0x6b, 0x8d, 0xf9, 0x21, 0x9d, 0x0b, 0xdc, 0x89, 0xaf, 0x8b, 0xdd, 0xbf, 0xb1, 0xc4, 0x11,
-	0x01, 0x1f, 0x5c, 0x78, 0x14, 0x47, 0x50, 0x16, 0x82, 0x41, 0x83, 0xd0, 0x72, 0x92, 0x5d, 0x73,
-	0x2d, 0x33, 0x89, 0x47, 0xcf, 0xa0, 0xa8, 0xbb, 0xb6, 0x6d, 0x31, 0x10, 0x0f, 0xe4, 0x5b, 0xc8,
-	0x31, 0x9a, 0xf5, 0x7f, 0x86, 0xed, 0x00, 0xf4, 0x09, 0xe4, 0x03, 0xd7, 0x0f, 0x45, 0xcf, 0xcb,
-	0x37, 0xeb, 0x86, 0x1c, 0x63, 0xd4, 0x2f, 0xd0, 0x47, 0x50, 0x24, 0x81, 0x4e, 0x1d, 0xc3, 0x72,
-	0x4c, 0xee, 0x7c, 0x01, 0xc7, 0x02, 0xb4, 0x0d, 0x25, 0x67, 0x62, 0xdb, 0xc1, 0xf0, 0xd8, 0xf2,
-	0x83, 0x30, 0x4a, 0x34, 0x70, 0xd1, 0x73, 0x26, 0x41, 0x6b, 0x20, 0x9f, 0xf2, 0x54, 0xa7, 0xb1,
-	0x7c, 0x5a, 0xfe, 0x87, 0x0c, 0xf9, 0x68, 0x8f, 0xa1, 0x5d, 0xc8, 0x87, 0xc4, 0x37, 0x69, 0x38,
-	0xfd, 0xac, 0x9b, 0x4b, 0x16, 0xde, 0x80, 0x23, 0xf0, 0x14, 0xb9, 0xd8, 0xdb, 0xa9, 0xef, 0xa0,
-	0xb7, 0xd3, 0xb7, 0xab, 0xe9, 0x3e, 0x40, 0xec, 0x18, 0xff, 0xb8, 0x24, 0x24, 0x43, 0x77, 0xc4,
-	0xac, 0xcf, 0x5a, 0xf4, 0xba, 0xff, 0x67, 0xc0, 0x10, 0x57, 0xaa, 0x87, 0xb3, 0x4d, 0xb9, 0x0e,
-	0xa5, 0xc4, 0xea, 0x2d, 0xe7, 0x20, 0xc3, 0x16, 0xea, 0xce, 0x3f, 0x65, 0x50, 0x16, 0x17, 0x19,
-	0xd2, 0x60, 0xab, 0xb6, 0xbf, 0x8f, 0x5b, 0xfb, 0xb5, 0x41, 0x6b, 0x88, 0x6b, 0xdd, 0xfd, 0xd6,
-	0xb0, 0x77, 0x38, 0xec, 0x74, 0x8f, 0x6a, 0x2f, 0x3a, 0x4d, 0x45, 0x42, 0x1f, 0x81, 0xba, 0x44,
-	0xdf, 0xe8, 0xbd, 0xea, 0x0e, 0x14, 0x19, 0x6d, 0xc1, 0xdd, 0x25, 0xda, 0xfe, 0xab, 0x97, 0x4a,
-	0x6a, 0x85, 0xee, 0x65, 0xed, 0x33, 0x25, 0xbd, 0x4a, 0xd7, 0xe9, 0x2a, 0x99, 0x15, 0x2f, 0xd6,
-	0x7f, 0x3d, 0x68, 0xf5, 0x95, 0xec, 0xce, 0x1f, 0xd2, 0xf0, 0xbd, 0x2b, 0x4b, 0x01, 0x6d, 0xc3,
-	0xfd, 0x98, 0x73, 0xd4, 0x6a, 0x0c, 0x7a, 0x78, 0x3e, 0x8c, 0xfb, 0x70, 0x6f, 0x19, 0x80, 0x79,
-	0x2a, 0xaf, 0x52, 0x32, 0x57, 0x53, 0x2b, 0x95, 0x9d, 0xae, 0x92, 0x46, 0x0f, 0x60, 0x73, 0x99,
-	0x52, 0xa4, 0x27, 0xb3, 0x8a, 0x5b, 0x3b, 0xda, 0x57, 0xb2, 0xf3, 0x99, 0x4f, 0xb8, 0x34, 0x68,
-	0x36, 0x5b, 0x47, 0x4a, 0xee, 0x1a, 0xfd, 0x51, 0x0d, 0x2b, 0xf9, 0x55, 0x31, 0xd7, 0x7b, 0x83,
-	0x41, 0xef, 0xe5, 0x81, 0x52, 0x98, 0x4f, 0x64, 0x0c, 0x18, 0xf4, 0x0e, 0x0f, 0x94, 0xe2, 0x2a,
-	0x6d, 0xbf, 0x87, 0x07, 0x0a, 0xa0, 0x8f, 0xe1, 0xc1, 0x2a, 0xed, 0xb0, 0xd9, 0xea, 0x37, 0x94,
-	0xd2, 0xce, 0x67, 0x50, 0xec, 0xbb, 0x7e, 0xd8, 0xf3, 0x0d, 0xea, 0xa3, 0xbb, 0x80, 0xb8, 0xae,
-	0x87, 0x9b, 0x2d, 0x9c, 0xc8, 0xbb, 0x0a, 0x77, 0x12, 0xf2, 0x5a, 0xbf, 0xd1, 0xea, 0x36, 0x3b,
-	0xdd, 0x7d, 0x45, 0x46, 0x9b, 0xf0, 0x61, 0x42, 0xc3, 0x6c, 0x46, 0xaa, 0x54, 0x7d, 0xf2, 0xe6,
-	0xad, 0x26, 0x7d, 0xf5, 0x56, 0x93, 0xbe, 0x79, 0xab, 0xc9, 0xbf, 0xbf, 0xd4, 0xe4, 0xbf, 0x5e,
-	0x6a, 0xf2, 0x97, 0x97, 0x9a, 0xfc, 0xe6, 0x52, 0x93, 0xff, 0x73, 0xa9, 0xc9, 0xff, 0xbd, 0xd4,
-	0xa4, 0x6f, 0x2e, 0x35, 0xf9, 0x8b, 0x77, 0x9a, 0xf4, 0xe6, 0x9d, 0x26, 0x7d, 0xf5, 0x4e, 0x93,
-	0x7e, 0xf3, 0xcb, 0xf7, 0xfa, 0x65, 0x14, 0xff, 0x78, 0x1e, 0xe5, 0xb8, 0x64, 0xf7, 0xff, 0x01,
-	0x00, 0x00, 0xff, 0xff, 0xd1, 0xf5, 0x32, 0xc4, 0x76, 0x0f, 0x00, 0x00,
+	// 1643 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xac, 0x58, 0x41, 0x73, 0x1b, 0x49,
+	0x15, 0xd6, 0x48, 0x1a, 0x49, 0x7e, 0xb2, 0xbd, 0x43, 0x93, 0x4d, 0xc6, 0xce, 0x66, 0x9c, 0x9d,
+	0x53, 0x12, 0x40, 0x22, 0x71, 0xc1, 0x56, 0x76, 0x6b, 0x43, 0x49, 0x96, 0x62, 0x79, 0x9d, 0x58,
+	0xae, 0xb6, 0xe2, 0x5a, 0xb8, 0x88, 0xf6, 0x4c, 0x7b, 0x3c, 0xf1, 0x68, 0x7a, 0x6a, 0xa6, 0x15,
+	0x12, 0x2e, 0xcb, 0x8d, 0xa2, 0x8a, 0x82, 0x3d, 0x70, 0xe0, 0x4c, 0x71, 0xe0, 0x5f, 0x40, 0x71,
+	0xda, 0x63, 0x8e, 0x5b, 0x1c, 0x16, 0xe2, 0x5c, 0x38, 0x6e, 0xf1, 0x0b, 0xa8, 0xee, 0x1e, 0x49,
+	0x23, 0x45, 0x72, 0xec, 0xc0, 0xc5, 0x35, 0xdd, 0xef, 0xfb, 0x5e, 0xf7, 0xfb, 0xba, 0xdf, 0x7b,
+	0x6d, 0xc1, 0x8f, 0xa2, 0x53, 0xaf, 0x4e, 0x43, 0xcf, 0x0f, 0x69, 0xdd, 0x0f, 0x39, 0x8d, 0x43,
+	0x12, 0xd4, 0xa3, 0x98, 0x71, 0x56, 0x8f, 0x4e, 0x5e, 0x24, 0xbe, 0x43, 0x82, 0xe8, 0x28, 0xf3,
+	0x59, 0x93, 0x36, 0xb4, 0x12, 0xb0, 0x53, 0xbf, 0x36, 0x9a, 0x5e, 0xbf, 0xe2, 0x31, 0x8f, 0x29,
+	0x96, 0xf8, 0x52, 0xa0, 0x75, 0xcb, 0x63, 0xcc, 0x0b, 0xa8, 0x72, 0x77, 0x34, 0x3c, 0xae, 0xbb,
+	0xc3, 0x98, 0x70, 0x9f, 0x85, 0xa9, 0x7d, 0x63, 0xd6, 0xce, 0xfd, 0x01, 0x4d, 0x38, 0x19, 0x44,
+	0x29, 0xe0, 0xfe, 0xe2, 0xcd, 0xd1, 0xe7, 0x51, 0x4c, 0x93, 0xc4, 0x67, 0x61, 0x74, 0x34, 0x35,
+	0x48, 0xa9, 0xb7, 0x17, 0x53, 0x87, 0x81, 0xef, 0xca, 0x3f, 0x0a, 0x6a, 0xff, 0x1c, 0x8a, 0xfb,
+	0x01, 0x09, 0xd1, 0x6d, 0xd0, 0x43, 0xe6, 0xd2, 0xc4, 0xd4, 0x6e, 0x16, 0x6e, 0x55, 0xef, 0x7d,
+	0xb7, 0x36, 0x15, 0x63, 0x6d, 0x8f, 0xb9, 0x14, 0x2b, 0x04, 0xfa, 0x01, 0xe8, 0xd4, 0xf5, 0x68,
+	0x62, 0xe6, 0x25, 0xf4, 0xda, 0x0c, 0x54, 0xb8, 0x6b, 0xbb, 0x1e, 0xc5, 0x0a, 0x65, 0xc7, 0x50,
+	0x19, 0x4d, 0xa1, 0x4d, 0x28, 0x45, 0x24, 0xa6, 0x21, 0x37, 0xb5, 0x9b, 0xda, 0xad, 0xea, 0xbd,
+	0xf7, 0xe7, 0x2c, 0xb3, 0xd3, 0x6a, 0x16, 0xbf, 0xfa, 0x66, 0x23, 0x87, 0x53, 0x28, 0xba, 0x0b,
+	0xba, 0x73, 0xe2, 0x07, 0xae, 0x99, 0x7f, 0x3b, 0x47, 0x21, 0xed, 0x2f, 0xa0, 0xa4, 0xa6, 0xd1,
+	0x10, 0xf4, 0x67, 0x24, 0x18, 0xd2, 0x74, 0xc1, 0x6b, 0x35, 0x19, 0xbb, 0xf4, 0xf0, 0xec, 0x6e,
+	0x6d, 0x5f, 0x68, 0xf0, 0xe4, 0xd1, 0x4e, 0xab, 0xf9, 0x50, 0xd0, 0xff, 0xf1, 0xcd, 0xc6, 0x03,
+	0xcf, 0xe7, 0x27, 0xc3, 0xa3, 0x9a, 0xc3, 0x06, 0x75, 0x2f, 0x26, 0xc7, 0x24, 0x24, 0x75, 0x81,
+	0xae, 0x3f, 0xdb, 0xac, 0x9f, 0xaf, 0x6a, 0x4d, 0xf8, 0xc1, 0x6a, 0x35, 0xfb, 0x4f, 0x25, 0x28,
+	0x8a, 0x1d, 0xa0, 0xef, 0x41, 0xde, 0x77, 0x2f, 0x12, 0x6d, 0xde, 0x77, 0x51, 0x07, 0xde, 0x23,
+	0x9e, 0x17, 0x53, 0x8f, 0x70, 0xda, 0x8f, 0x49, 0xe8, 0xd1, 0x34, 0xe6, 0x1b, 0x33, 0xcc, 0xc6,
+	0x08, 0x85, 0x05, 0xa8, 0x93, 0xc3, 0xab, 0x64, 0x6a, 0x06, 0xed, 0x82, 0x31, 0xf1, 0xf4, 0x8c,
+	0x3a, 0x9c, 0xc5, 0x66, 0x41, 0xba, 0xb2, 0x16, 0xb9, 0x3a, 0x94, 0xa8, 0x4e, 0x0e, 0x4f, 0xf6,
+	0xa0, 0xa6, 0xd0, 0x0f, 0xa1, 0x98, 0x38, 0x24, 0x34, 0x8b, 0xd2, 0xc1, 0xfa, 0x8c, 0x83, 0x16,
+	0xe1, 0xa4, 0x7b, 0xf4, 0xf4, 0xc0, 0x21, 0x61, 0x27, 0x87, 0x25, 0x12, 0xd5, 0xa1, 0x74, 0xec,
+	0x07, 0x9c, 0xc6, 0xa6, 0x3e, 0x37, 0xf2, 0x87, 0xd2, 0xd8, 0xc9, 0xe1, 0x14, 0x86, 0xbe, 0x0f,
+	0x7a, 0xe0, 0x0f, 0x7c, 0x6e, 0x96, 0x24, 0xfe, 0xca, 0x0c, 0xfe, 0x91, 0xb0, 0x75, 0x72, 0x58,
+	0x81, 0xd0, 0x27, 0x00, 0x51, 0xcc, 0x9e, 0x52, 0x47, 0xe4, 0x93, 0x59, 0x96, 0x94, 0xb5, 0xd9,
+	0x6b, 0x38, 0x06, 0x74, 0x72, 0x38, 0x03, 0x47, 0x4d, 0x58, 0x71, 0x58, 0x30, 0x1c, 0x84, 0x7d,
+	0x87, 0x0d, 0x22, 0xc2, 0xcd, 0x8a, 0xe4, 0x5f, 0x9f, 0xe1, 0x6f, 0x49, 0xcc, 0x96, 0x84, 0x74,
+	0x72, 0x78, 0xd9, 0xc9, 0x8c, 0xd1, 0x26, 0x54, 0x44, 0x9c, 0xfd, 0x84, 0x72, 0x73, 0x49, 0xd2,
+	0xaf, 0xce, 0xd0, 0x85, 0x1c, 0x07, 0x54, 0x30, 0xcb, 0x89, 0xfa, 0x44, 0x77, 0x40, 0xe7, 0x2c,
+	0xea, 0x9f, 0x9a, 0x20, 0x19, 0xb3, 0x29, 0xd6, 0x63, 0xd1, 0xae, 0x10, 0x90, 0xb3, 0x68, 0x17,
+	0x3d, 0x80, 0x6a, 0x44, 0x62, 0x12, 0x04, 0x34, 0xf0, 0x7f, 0x49, 0xcd, 0xea, 0x5c, 0xe5, 0xf7,
+	0x27, 0x88, 0x4e, 0x0e, 0x67, 0x09, 0xe8, 0x36, 0x14, 0x9f, 0x32, 0x3f, 0x34, 0x97, 0xe7, 0x2e,
+	0xf5, 0x19, 0xf3, 0xe5, 0x59, 0x09, 0x88, 0x90, 0x7e, 0x40, 0x63, 0x8f, 0x9a, 0x2b, 0x73, 0xa5,
+	0x7f, 0x2c, 0x6c, 0x42, 0x7a, 0x09, 0x12, 0xea, 0x45, 0x4c, 0xde, 0xfe, 0xa4, 0x2f, 0x2f, 0xc5,
+	0xea, 0x5c, 0xf5, 0xf6, 0x53, 0x4c, 0x7a, 0x2b, 0x96, 0xa3, 0xcc, 0xb8, 0x59, 0x82, 0xe2, 0xa9,
+	0x1f, 0xba, 0xf6, 0x7f, 0xf2, 0xb0, 0x3a, 0x7d, 0x93, 0x85, 0xb0, 0x5e, 0xcc, 0x86, 0x91, 0x1f,
+	0x7a, 0xe9, 0xb9, 0xce, 0x96, 0x97, 0xed, 0xd4, 0x8c, 0xc7, 0x40, 0xf4, 0x29, 0x2c, 0xb1, 0x88,
+	0xaa, 0xea, 0x2a, 0x13, 0x66, 0xf5, 0xde, 0xc6, 0xb9, 0x09, 0xd3, 0x8d, 0xf0, 0x84, 0x81, 0x3e,
+	0x06, 0x3d, 0xe1, 0x24, 0xe6, 0x69, 0x82, 0xac, 0xd7, 0x54, 0x65, 0xae, 0x8d, 0x2a, 0x73, 0xad,
+	0x37, 0xaa, 0xcc, 0xcd, 0x8a, 0x48, 0xd5, 0x2f, 0xff, 0xb9, 0xa1, 0x61, 0x45, 0x41, 0x3f, 0x86,
+	0x02, 0x0d, 0xdd, 0x71, 0x66, 0x5c, 0x84, 0x29, 0x08, 0xe8, 0x23, 0x28, 0x26, 0x9c, 0x46, 0x69,
+	0x7a, 0xac, 0xbd, 0x41, 0x6c, 0xa5, 0xcd, 0x42, 0xf1, 0xfe, 0x28, 0x78, 0x92, 0x80, 0xee, 0x83,
+	0xae, 0x0a, 0x43, 0xe9, 0xe2, 0x4c, 0xc5, 0xf8, 0xac, 0x58, 0xd1, 0x8c, 0xbc, 0x4d, 0xa0, 0x32,
+	0x92, 0x10, 0x7d, 0x02, 0x65, 0x75, 0xad, 0x47, 0x65, 0xff, 0x43, 0x25, 0xdb, 0xa4, 0xa5, 0xa4,
+	0x69, 0xd0, 0x1e, 0x4f, 0xe0, 0x11, 0x03, 0x99, 0x50, 0xfe, 0x85, 0xcf, 0x4f, 0xd8, 0x90, 0x4b,
+	0xcd, 0x2b, 0x78, 0x34, 0xb4, 0x7f, 0xab, 0xc1, 0x7b, 0x33, 0x65, 0x65, 0xea, 0x60, 0x0b, 0x17,
+	0x3d, 0xd8, 0x07, 0x6f, 0x1e, 0xec, 0xcd, 0xf3, 0xcb, 0xd7, 0xd4, 0xc9, 0xa6, 0x11, 0xff, 0x39,
+	0x0f, 0xd5, 0x4c, 0x91, 0x42, 0xeb, 0x50, 0x09, 0x98, 0xa3, 0x9c, 0x8a, 0xc2, 0xbc, 0x84, 0xc7,
+	0x63, 0x11, 0x54, 0x92, 0x96, 0x15, 0xb1, 0x5e, 0x01, 0x8f, 0x86, 0xe8, 0x06, 0x40, 0xc2, 0x63,
+	0x4a, 0x06, 0x7d, 0xdf, 0x4d, 0xcc, 0xc2, 0xcd, 0xc2, 0xad, 0x02, 0x5e, 0x52, 0x33, 0x3b, 0x6e,
+	0x82, 0xb6, 0xa0, 0x3a, 0xa9, 0x31, 0x89, 0x59, 0xbc, 0xa8, 0x9c, 0x59, 0x96, 0xaa, 0x6b, 0xd4,
+	0xf5, 0x1d, 0xc2, 0x69, 0x62, 0xea, 0xd2, 0xc7, 0xf5, 0x37, 0x7c, 0x64, 0xd8, 0x19, 0x38, 0x7a,
+	0x00, 0xab, 0x03, 0xf2, 0xbc, 0x2f, 0x9e, 0x11, 0xfd, 0xec, 0x15, 0x31, 0x67, 0xeb, 0x8c, 0x3f,
+	0x50, 0x59, 0x80, 0x97, 0x07, 0xe4, 0xf9, 0x78, 0x64, 0x7f, 0x01, 0x4b, 0xe3, 0xc1, 0x24, 0x27,
+	0xb4, 0x77, 0xce, 0x89, 0xfc, 0x25, 0x73, 0xc2, 0x6e, 0x43, 0x49, 0xf5, 0x85, 0x19, 0x1d, 0xb4,
+	0x4b, 0xe9, 0x60, 0xdf, 0x05, 0x5d, 0xb6, 0x0b, 0x84, 0xa0, 0x98, 0x9c, 0xfa, 0x91, 0x0c, 0x61,
+	0x05, 0xcb, 0x6f, 0x74, 0x05, 0xf4, 0x63, 0xca, 0x9d, 0x13, 0xb9, 0xbb, 0x15, 0xac, 0x06, 0xf6,
+	0x6f, 0x34, 0x80, 0x49, 0xbf, 0x40, 0x9f, 0x42, 0x75, 0xb2, 0xcc, 0x85, 0xd6, 0xcf, 0xe2, 0x91,
+	0x01, 0x05, 0x12, 0x04, 0xf2, 0x96, 0x57, 0xb0, 0xf8, 0x44, 0x57, 0xa1, 0x44, 0x9f, 0x47, 0x24,
+	0x2d, 0x14, 0x15, 0x9c, 0x8e, 0xc4, 0x0e, 0xdd, 0x98, 0xa9, 0x2a, 0x50, 0xc1, 0xf2, 0xdb, 0xfe,
+	0xab, 0x06, 0xcb, 0x5b, 0xd3, 0xbd, 0xa6, 0x94, 0xb0, 0x61, 0xec, 0xa8, 0x27, 0xcc, 0xea, 0x9c,
+	0x8d, 0x28, 0x78, 0xef, 0x45, 0x44, 0x71, 0x0a, 0x15, 0x21, 0xb8, 0x34, 0xe1, 0x7e, 0x98, 0xcd,
+	0x9d, 0x73, 0x99, 0x59, 0xbc, 0x38, 0x00, 0x87, 0x05, 0x81, 0xaf, 0x04, 0x10, 0x97, 0xfd, 0x2d,
+	0xec, 0x0c, 0xdc, 0xfe, 0xbd, 0x06, 0x45, 0xd1, 0xcc, 0xd0, 0xc7, 0x50, 0x4e, 0x58, 0xcc, 0xfb,
+	0x47, 0x2f, 0xd2, 0x6b, 0x74, 0x81, 0x7c, 0x28, 0x09, 0x46, 0xf3, 0x05, 0xfa, 0x00, 0x96, 0x48,
+	0xe2, 0xd0, 0xd0, 0x15, 0x05, 0x43, 0xd5, 0x97, 0xc9, 0x04, 0xda, 0x80, 0x6a, 0x38, 0x0c, 0x82,
+	0xa4, 0x7f, 0xec, 0xc7, 0x09, 0x4f, 0xa5, 0x06, 0x39, 0xf5, 0x50, 0xcc, 0xa0, 0x65, 0xd0, 0x4e,
+	0xa5, 0xd8, 0x05, 0xac, 0x9d, 0xda, 0x7f, 0xd3, 0xa0, 0x9c, 0x36, 0x64, 0xb4, 0x09, 0x65, 0x4e,
+	0x62, 0x8f, 0xf2, 0xd1, 0xc1, 0xae, 0xcd, 0xe9, 0xdc, 0x3d, 0x89, 0xc0, 0x23, 0xe4, 0x6c, 0x76,
+	0xe7, 0xff, 0x0f, 0xd9, 0x5d, 0xb8, 0xdc, 0xad, 0xfe, 0x9d, 0x06, 0x30, 0xd9, 0x99, 0x3c, 0x5f,
+	0xc2, 0x49, 0x9f, 0x1d, 0x09, 0xf7, 0xe3, 0x2c, 0x3d, 0xef, 0x65, 0x06, 0xae, 0x1a, 0x52, 0x87,
+	0xa3, 0xfb, 0x50, 0x19, 0x75, 0xe4, 0x34, 0x4f, 0xdf, 0xd2, 0xc0, 0xc7, 0xf0, 0x71, 0xf3, 0x2e,
+	0x83, 0x2e, 0x9f, 0x06, 0xf6, 0x0a, 0x54, 0x33, 0x0f, 0x11, 0xfb, 0x0f, 0x79, 0x58, 0xce, 0x92,
+	0xcf, 0x2d, 0xb7, 0x1f, 0x41, 0x25, 0xa1, 0x81, 0x7a, 0x9e, 0x4e, 0xed, 0x63, 0xbe, 0x20, 0x63,
+	0xf0, 0xff, 0xa4, 0xe5, 0xa4, 0xb8, 0x15, 0xdf, 0xb9, 0xb8, 0xe9, 0x97, 0x2d, 0x6e, 0x25, 0x28,
+	0x8a, 0x57, 0xd7, 0x9d, 0xbf, 0x6b, 0x60, 0xcc, 0x3e, 0x46, 0x90, 0x05, 0xeb, 0x8d, 0xed, 0x6d,
+	0xdc, 0xde, 0x6e, 0xf4, 0xda, 0x7d, 0xdc, 0xd8, 0xdb, 0x6e, 0xf7, 0xbb, 0xfb, 0xfd, 0x9d, 0xbd,
+	0xc3, 0xc6, 0xa3, 0x9d, 0x96, 0x91, 0x43, 0x1f, 0x80, 0x39, 0xc7, 0xbe, 0xd5, 0x7d, 0xb2, 0xd7,
+	0x33, 0x34, 0xb4, 0x0e, 0x57, 0xe7, 0x58, 0x0f, 0x9e, 0x3c, 0x36, 0xf2, 0x0b, 0x6c, 0x8f, 0x1b,
+	0x9f, 0x1b, 0x85, 0x45, 0xb6, 0x9d, 0x3d, 0xa3, 0xb8, 0x60, 0xc5, 0xe6, 0x4f, 0x7b, 0xed, 0x03,
+	0x43, 0xbf, 0xf3, 0xeb, 0x02, 0x7c, 0xe7, 0x8d, 0xc6, 0x8b, 0x36, 0xe0, 0xfa, 0x84, 0x73, 0xd8,
+	0xde, 0xea, 0x75, 0xf1, 0x74, 0x18, 0xd7, 0xe1, 0xda, 0x3c, 0x80, 0xd8, 0xa9, 0xb6, 0xc8, 0x28,
+	0xb6, 0x9a, 0x5f, 0x68, 0xdc, 0xd9, 0x33, 0x0a, 0xe8, 0x06, 0xac, 0xcd, 0x33, 0x2a, 0x79, 0x8a,
+	0x8b, 0xb8, 0x8d, 0xc3, 0x6d, 0x43, 0x9f, 0x56, 0x3e, 0xb3, 0xa5, 0x5e, 0xab, 0xd5, 0x3e, 0x34,
+	0x4a, 0xe7, 0xd8, 0x0f, 0x1b, 0xd8, 0x28, 0x2f, 0x8a, 0xb9, 0xd9, 0xed, 0xf5, 0xba, 0x8f, 0x77,
+	0x8d, 0xca, 0xb4, 0x90, 0x13, 0x40, 0xaf, 0xbb, 0xbf, 0x6b, 0x2c, 0x2d, 0xb2, 0x1e, 0x74, 0x71,
+	0xcf, 0x00, 0xf4, 0x21, 0xdc, 0x58, 0x64, 0xed, 0xb7, 0xda, 0x07, 0x5b, 0x46, 0xf5, 0xce, 0xe7,
+	0xb0, 0x74, 0xc0, 0x62, 0xde, 0x8d, 0x5d, 0x1a, 0xa3, 0xab, 0x80, 0xa4, 0xad, 0x8b, 0x5b, 0x6d,
+	0x9c, 0xd1, 0xdd, 0x84, 0x2b, 0x99, 0xf9, 0xc6, 0xc1, 0x56, 0x7b, 0xaf, 0xb5, 0xb3, 0xb7, 0x6d,
+	0x68, 0x68, 0x0d, 0xde, 0xcf, 0x58, 0x84, 0xcf, 0xd4, 0x94, 0x6f, 0x0e, 0x5f, 0xbe, 0xb2, 0x72,
+	0x5f, 0xbf, 0xb2, 0x72, 0xdf, 0xbe, 0xb2, 0xb4, 0x5f, 0x9d, 0x59, 0xda, 0x5f, 0xce, 0x2c, 0xed,
+	0xab, 0x33, 0x4b, 0x7b, 0x79, 0x66, 0x69, 0xff, 0x3a, 0xb3, 0xb4, 0x7f, 0x9f, 0x59, 0xb9, 0x6f,
+	0xcf, 0x2c, 0xed, 0xcb, 0xd7, 0x56, 0xee, 0xe5, 0x6b, 0x2b, 0xf7, 0xf5, 0x6b, 0x2b, 0xf7, 0xb3,
+	0x9f, 0xbc, 0xd3, 0xbf, 0xcf, 0x93, 0x5f, 0x58, 0x8e, 0x4a, 0x72, 0x66, 0xf3, 0xbf, 0x01, 0x00,
+	0x00, 0xff, 0xff, 0x18, 0xb0, 0x81, 0x9f, 0x9b, 0x11, 0x00, 0x00,
 }
 
 func (x AggregateRangeOp) String() string {
@@ -1833,6 +2052,54 @@ func (this *Node_Join) Equal(that interface{}) bool {
 	}
 	return true
 }
+func (this *Node_Merge) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*Node_Merge)
+	if !ok {
+		that2, ok := that.(Node_Merge)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if !this.Merge.Equal(that1.Merge) {
+		return false
+	}
+	return true
+}
+func (this *Node_PointersScan) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*Node_PointersScan)
+	if !ok {
+		that2, ok := that.(Node_PointersScan)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if !this.PointersScan.Equal(that1.PointersScan) {
+		return false
+	}
+	return true
+}
 func (this *AggregateRange) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
@@ -1852,13 +2119,8 @@ func (this *AggregateRange) Equal(that interface{}) bool {
 	} else if this == nil {
 		return false
 	}
-	if len(this.PartitionBy) != len(that1.PartitionBy) {
+	if !this.Grouping.Equal(that1.Grouping) {
 		return false
-	}
-	for i := range this.PartitionBy {
-		if !this.PartitionBy[i].Equal(that1.PartitionBy[i]) {
-			return false
-		}
 	}
 	if this.Operation != that1.Operation {
 		return false
@@ -1873,6 +2135,38 @@ func (this *AggregateRange) Equal(that interface{}) bool {
 		return false
 	}
 	if this.Range != that1.Range {
+		return false
+	}
+	return true
+}
+func (this *Grouping) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*Grouping)
+	if !ok {
+		that2, ok := that.(Grouping)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if len(this.Columns) != len(that1.Columns) {
+		return false
+	}
+	for i := range this.Columns {
+		if !this.Columns[i].Equal(that1.Columns[i]) {
+			return false
+		}
+	}
+	if this.Without != that1.Without {
 		return false
 	}
 	return true
@@ -1896,13 +2190,8 @@ func (this *AggregateVector) Equal(that interface{}) bool {
 	} else if this == nil {
 		return false
 	}
-	if len(this.GroupBy) != len(that1.GroupBy) {
+	if !this.Grouping.Equal(that1.Grouping) {
 		return false
-	}
-	for i := range this.GroupBy {
-		if !this.GroupBy[i].Equal(that1.GroupBy[i]) {
-			return false
-		}
 	}
 	if this.Operation != that1.Operation {
 		return false
@@ -2109,8 +2398,13 @@ func (this *ColumnCompat) Equal(that interface{}) bool {
 	if this.Destination != that1.Destination {
 		return false
 	}
-	if this.Collision != that1.Collision {
+	if len(this.Collisions) != len(that1.Collisions) {
 		return false
+	}
+	for i := range this.Collisions {
+		if this.Collisions[i] != that1.Collisions[i] {
+			return false
+		}
 	}
 	return true
 }
@@ -2246,6 +2540,51 @@ func (this *ScanTarget_DataObject) Equal(that interface{}) bool {
 	}
 	return true
 }
+func (this *ScanTarget_Pointers) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*ScanTarget_Pointers)
+	if !ok {
+		that2, ok := that.(ScanTarget_Pointers)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if !this.Pointers.Equal(that1.Pointers) {
+		return false
+	}
+	return true
+}
+func (this *Merge) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*Merge)
+	if !ok {
+		that2, ok := that.(Merge)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	return true
+}
 func (this *Parallelize) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
@@ -2263,6 +2602,47 @@ func (this *Parallelize) Equal(that interface{}) bool {
 	if that1 == nil {
 		return this == nil
 	} else if this == nil {
+		return false
+	}
+	return true
+}
+func (this *PointersScan) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*PointersScan)
+	if !ok {
+		that2, ok := that.(PointersScan)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Location != that1.Location {
+		return false
+	}
+	if !this.Selector.Equal(that1.Selector) {
+		return false
+	}
+	if len(this.Predicates) != len(that1.Predicates) {
+		return false
+	}
+	for i := range this.Predicates {
+		if !this.Predicates[i].Equal(that1.Predicates[i]) {
+			return false
+		}
+	}
+	if !this.Start.Equal(that1.Start) {
+		return false
+	}
+	if !this.End.Equal(that1.End) {
 		return false
 	}
 	return true
@@ -2328,7 +2708,7 @@ func (this *Node) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := make([]string, 0, 16)
+	s := make([]string, 0, 18)
 	s = append(s, "&physicalpb.Node{")
 	s = append(s, "Id: "+strings.Replace(this.Id.GoString(), `&`, ``, 1)+",\n")
 	if this.Kind != nil {
@@ -2425,14 +2805,30 @@ func (this *Node_Join) GoString() string {
 		`Join:` + fmt.Sprintf("%#v", this.Join) + `}`}, ", ")
 	return s
 }
+func (this *Node_Merge) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&physicalpb.Node_Merge{` +
+		`Merge:` + fmt.Sprintf("%#v", this.Merge) + `}`}, ", ")
+	return s
+}
+func (this *Node_PointersScan) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&physicalpb.Node_PointersScan{` +
+		`PointersScan:` + fmt.Sprintf("%#v", this.PointersScan) + `}`}, ", ")
+	return s
+}
 func (this *AggregateRange) GoString() string {
 	if this == nil {
 		return "nil"
 	}
 	s := make([]string, 0, 10)
 	s = append(s, "&physicalpb.AggregateRange{")
-	if this.PartitionBy != nil {
-		s = append(s, "PartitionBy: "+fmt.Sprintf("%#v", this.PartitionBy)+",\n")
+	if this.Grouping != nil {
+		s = append(s, "Grouping: "+fmt.Sprintf("%#v", this.Grouping)+",\n")
 	}
 	s = append(s, "Operation: "+fmt.Sprintf("%#v", this.Operation)+",\n")
 	s = append(s, "Start: "+fmt.Sprintf("%#v", this.Start)+",\n")
@@ -2442,14 +2838,27 @@ func (this *AggregateRange) GoString() string {
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
+func (this *Grouping) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 6)
+	s = append(s, "&physicalpb.Grouping{")
+	if this.Columns != nil {
+		s = append(s, "Columns: "+fmt.Sprintf("%#v", this.Columns)+",\n")
+	}
+	s = append(s, "Without: "+fmt.Sprintf("%#v", this.Without)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
 func (this *AggregateVector) GoString() string {
 	if this == nil {
 		return "nil"
 	}
 	s := make([]string, 0, 6)
 	s = append(s, "&physicalpb.AggregateVector{")
-	if this.GroupBy != nil {
-		s = append(s, "GroupBy: "+fmt.Sprintf("%#v", this.GroupBy)+",\n")
+	if this.Grouping != nil {
+		s = append(s, "Grouping: "+fmt.Sprintf("%#v", this.Grouping)+",\n")
 	}
 	s = append(s, "Operation: "+fmt.Sprintf("%#v", this.Operation)+",\n")
 	s = append(s, "}")
@@ -2533,7 +2942,7 @@ func (this *ColumnCompat) GoString() string {
 	s = append(s, "&physicalpb.ColumnCompat{")
 	s = append(s, "Source: "+fmt.Sprintf("%#v", this.Source)+",\n")
 	s = append(s, "Destination: "+fmt.Sprintf("%#v", this.Destination)+",\n")
-	s = append(s, "Collision: "+fmt.Sprintf("%#v", this.Collision)+",\n")
+	s = append(s, "Collisions: "+fmt.Sprintf("%#v", this.Collisions)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -2574,7 +2983,7 @@ func (this *ScanTarget) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := make([]string, 0, 5)
+	s := make([]string, 0, 6)
 	s = append(s, "&physicalpb.ScanTarget{")
 	if this.Kind != nil {
 		s = append(s, "Kind: "+fmt.Sprintf("%#v", this.Kind)+",\n")
@@ -2590,12 +2999,47 @@ func (this *ScanTarget_DataObject) GoString() string {
 		`DataObject:` + fmt.Sprintf("%#v", this.DataObject) + `}`}, ", ")
 	return s
 }
+func (this *ScanTarget_Pointers) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&physicalpb.ScanTarget_Pointers{` +
+		`Pointers:` + fmt.Sprintf("%#v", this.Pointers) + `}`}, ", ")
+	return s
+}
+func (this *Merge) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 4)
+	s = append(s, "&physicalpb.Merge{")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
 func (this *Parallelize) GoString() string {
 	if this == nil {
 		return "nil"
 	}
 	s := make([]string, 0, 4)
 	s = append(s, "&physicalpb.Parallelize{")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *PointersScan) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 9)
+	s = append(s, "&physicalpb.PointersScan{")
+	s = append(s, "Location: "+fmt.Sprintf("%#v", this.Location)+",\n")
+	if this.Selector != nil {
+		s = append(s, "Selector: "+fmt.Sprintf("%#v", this.Selector)+",\n")
+	}
+	if this.Predicates != nil {
+		s = append(s, "Predicates: "+fmt.Sprintf("%#v", this.Predicates)+",\n")
+	}
+	s = append(s, "Start: "+fmt.Sprintf("%#v", this.Start)+",\n")
+	s = append(s, "End: "+fmt.Sprintf("%#v", this.End)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -3005,6 +3449,46 @@ func (m *Node_Join) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	}
 	return len(dAtA) - i, nil
 }
+func (m *Node_Merge) MarshalTo(dAtA []byte) (int, error) {
+	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
+}
+
+func (m *Node_Merge) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.Merge != nil {
+		{
+			size, err := m.Merge.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintPhysicalpb(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0x6a
+	}
+	return len(dAtA) - i, nil
+}
+func (m *Node_PointersScan) MarshalTo(dAtA []byte) (int, error) {
+	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
+}
+
+func (m *Node_PointersScan) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.PointersScan != nil {
+		{
+			size, err := m.PointersScan.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintPhysicalpb(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0x72
+	}
+	return len(dAtA) - i, nil
+}
 func (m *AggregateRange) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
@@ -3025,36 +3509,48 @@ func (m *AggregateRange) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	n16, err16 := github_com_gogo_protobuf_types.StdDurationMarshalTo(m.Range, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdDuration(m.Range):])
-	if err16 != nil {
-		return 0, err16
+	if m.Grouping != nil {
+		{
+			size, err := m.Grouping.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintPhysicalpb(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0x3a
 	}
-	i -= n16
-	i = encodeVarintPhysicalpb(dAtA, i, uint64(n16))
-	i--
-	dAtA[i] = 0x32
-	n17, err17 := github_com_gogo_protobuf_types.StdDurationMarshalTo(m.Step, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdDuration(m.Step):])
-	if err17 != nil {
-		return 0, err17
-	}
-	i -= n17
-	i = encodeVarintPhysicalpb(dAtA, i, uint64(n17))
-	i--
-	dAtA[i] = 0x2a
-	n18, err18 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.End, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.End):])
-	if err18 != nil {
-		return 0, err18
-	}
-	i -= n18
-	i = encodeVarintPhysicalpb(dAtA, i, uint64(n18))
-	i--
-	dAtA[i] = 0x22
-	n19, err19 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.Start, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.Start):])
+	n19, err19 := github_com_gogo_protobuf_types.StdDurationMarshalTo(m.Range, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdDuration(m.Range):])
 	if err19 != nil {
 		return 0, err19
 	}
 	i -= n19
 	i = encodeVarintPhysicalpb(dAtA, i, uint64(n19))
+	i--
+	dAtA[i] = 0x32
+	n20, err20 := github_com_gogo_protobuf_types.StdDurationMarshalTo(m.Step, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdDuration(m.Step):])
+	if err20 != nil {
+		return 0, err20
+	}
+	i -= n20
+	i = encodeVarintPhysicalpb(dAtA, i, uint64(n20))
+	i--
+	dAtA[i] = 0x2a
+	n21, err21 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.End, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.End):])
+	if err21 != nil {
+		return 0, err21
+	}
+	i -= n21
+	i = encodeVarintPhysicalpb(dAtA, i, uint64(n21))
+	i--
+	dAtA[i] = 0x22
+	n22, err22 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.Start, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.Start):])
+	if err22 != nil {
+		return 0, err22
+	}
+	i -= n22
+	i = encodeVarintPhysicalpb(dAtA, i, uint64(n22))
 	i--
 	dAtA[i] = 0x1a
 	if m.Operation != 0 {
@@ -3062,10 +3558,43 @@ func (m *AggregateRange) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x10
 	}
-	if len(m.PartitionBy) > 0 {
-		for iNdEx := len(m.PartitionBy) - 1; iNdEx >= 0; iNdEx-- {
+	return len(dAtA) - i, nil
+}
+
+func (m *Grouping) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *Grouping) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *Grouping) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.Without {
+		i--
+		if m.Without {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x10
+	}
+	if len(m.Columns) > 0 {
+		for iNdEx := len(m.Columns) - 1; iNdEx >= 0; iNdEx-- {
 			{
-				size, err := m.PartitionBy[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				size, err := m.Columns[iNdEx].MarshalToSizedBuffer(dAtA[:i])
 				if err != nil {
 					return 0, err
 				}
@@ -3099,24 +3628,22 @@ func (m *AggregateVector) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if m.Grouping != nil {
+		{
+			size, err := m.Grouping.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintPhysicalpb(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0x1a
+	}
 	if m.Operation != 0 {
 		i = encodeVarintPhysicalpb(dAtA, i, uint64(m.Operation))
 		i--
 		dAtA[i] = 0x10
-	}
-	if len(m.GroupBy) > 0 {
-		for iNdEx := len(m.GroupBy) - 1; iNdEx >= 0; iNdEx-- {
-			{
-				size, err := m.GroupBy[iNdEx].MarshalToSizedBuffer(dAtA[:i])
-				if err != nil {
-					return 0, err
-				}
-				i -= size
-				i = encodeVarintPhysicalpb(dAtA, i, uint64(size))
-			}
-			i--
-			dAtA[i] = 0xa
-		}
 	}
 	return len(dAtA) - i, nil
 }
@@ -3182,21 +3709,21 @@ func (m *DataObjScan) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		}
 	}
 	if len(m.StreamIds) > 0 {
-		dAtA22 := make([]byte, len(m.StreamIds)*10)
-		var j21 int
+		dAtA26 := make([]byte, len(m.StreamIds)*10)
+		var j25 int
 		for _, num1 := range m.StreamIds {
 			num := uint64(num1)
 			for num >= 1<<7 {
-				dAtA22[j21] = uint8(uint64(num)&0x7f | 0x80)
+				dAtA26[j25] = uint8(uint64(num)&0x7f | 0x80)
 				num >>= 7
-				j21++
+				j25++
 			}
-			dAtA22[j21] = uint8(num)
-			j21++
+			dAtA26[j25] = uint8(num)
+			j25++
 		}
-		i -= j21
-		copy(dAtA[i:], dAtA22[:j21])
-		i = encodeVarintPhysicalpb(dAtA, i, uint64(j21))
+		i -= j25
+		copy(dAtA[i:], dAtA26[:j25])
+		i = encodeVarintPhysicalpb(dAtA, i, uint64(j25))
 		i--
 		dAtA[i] = 0x1a
 	}
@@ -3235,20 +3762,20 @@ func (m *TimeRange) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	n23, err23 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.End, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.End):])
-	if err23 != nil {
-		return 0, err23
+	n27, err27 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.End, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.End):])
+	if err27 != nil {
+		return 0, err27
 	}
-	i -= n23
-	i = encodeVarintPhysicalpb(dAtA, i, uint64(n23))
+	i -= n27
+	i = encodeVarintPhysicalpb(dAtA, i, uint64(n27))
 	i--
 	dAtA[i] = 0x12
-	n24, err24 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.Start, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.Start):])
-	if err24 != nil {
-		return 0, err24
+	n28, err28 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.Start, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.Start):])
+	if err28 != nil {
+		return 0, err28
 	}
-	i -= n24
-	i = encodeVarintPhysicalpb(dAtA, i, uint64(n24))
+	i -= n28
+	i = encodeVarintPhysicalpb(dAtA, i, uint64(n28))
 	i--
 	dAtA[i] = 0xa
 	return len(dAtA) - i, nil
@@ -3411,10 +3938,23 @@ func (m *ColumnCompat) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	if m.Collision != 0 {
-		i = encodeVarintPhysicalpb(dAtA, i, uint64(m.Collision))
+	if len(m.Collisions) > 0 {
+		dAtA30 := make([]byte, len(m.Collisions)*10)
+		var j29 int
+		for _, num := range m.Collisions {
+			for num >= 1<<7 {
+				dAtA30[j29] = uint8(uint64(num)&0x7f | 0x80)
+				num >>= 7
+				j29++
+			}
+			dAtA30[j29] = uint8(num)
+			j29++
+		}
+		i -= j29
+		copy(dAtA[i:], dAtA30[:j29])
+		i = encodeVarintPhysicalpb(dAtA, i, uint64(j29))
 		i--
-		dAtA[i] = 0x18
+		dAtA[i] = 0x1a
 	}
 	if m.Destination != 0 {
 		i = encodeVarintPhysicalpb(dAtA, i, uint64(m.Destination))
@@ -3606,6 +4146,49 @@ func (m *ScanTarget_DataObject) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	}
 	return len(dAtA) - i, nil
 }
+func (m *ScanTarget_Pointers) MarshalTo(dAtA []byte) (int, error) {
+	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
+}
+
+func (m *ScanTarget_Pointers) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.Pointers != nil {
+		{
+			size, err := m.Pointers.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintPhysicalpb(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0x12
+	}
+	return len(dAtA) - i, nil
+}
+func (m *Merge) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *Merge) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *Merge) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	return len(dAtA) - i, nil
+}
+
 func (m *Parallelize) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
@@ -3626,6 +4209,78 @@ func (m *Parallelize) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	return len(dAtA) - i, nil
+}
+
+func (m *PointersScan) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *PointersScan) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *PointersScan) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	n34, err34 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.End, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.End):])
+	if err34 != nil {
+		return 0, err34
+	}
+	i -= n34
+	i = encodeVarintPhysicalpb(dAtA, i, uint64(n34))
+	i--
+	dAtA[i] = 0x2a
+	n35, err35 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.Start, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.Start):])
+	if err35 != nil {
+		return 0, err35
+	}
+	i -= n35
+	i = encodeVarintPhysicalpb(dAtA, i, uint64(n35))
+	i--
+	dAtA[i] = 0x22
+	if len(m.Predicates) > 0 {
+		for iNdEx := len(m.Predicates) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.Predicates[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintPhysicalpb(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x1a
+		}
+	}
+	if m.Selector != nil {
+		{
+			size, err := m.Selector.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintPhysicalpb(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0x12
+	}
+	if len(m.Location) > 0 {
+		i -= len(m.Location)
+		copy(dAtA[i:], m.Location)
+		i = encodeVarintPhysicalpb(dAtA, i, uint64(len(m.Location)))
+		i--
+		dAtA[i] = 0xa
+	}
 	return len(dAtA) - i, nil
 }
 
@@ -3854,18 +4509,36 @@ func (m *Node_Join) Size() (n int) {
 	}
 	return n
 }
+func (m *Node_Merge) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Merge != nil {
+		l = m.Merge.Size()
+		n += 1 + l + sovPhysicalpb(uint64(l))
+	}
+	return n
+}
+func (m *Node_PointersScan) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.PointersScan != nil {
+		l = m.PointersScan.Size()
+		n += 1 + l + sovPhysicalpb(uint64(l))
+	}
+	return n
+}
 func (m *AggregateRange) Size() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
-	if len(m.PartitionBy) > 0 {
-		for _, e := range m.PartitionBy {
-			l = e.Size()
-			n += 1 + l + sovPhysicalpb(uint64(l))
-		}
-	}
 	if m.Operation != 0 {
 		n += 1 + sovPhysicalpb(uint64(m.Operation))
 	}
@@ -3877,6 +4550,28 @@ func (m *AggregateRange) Size() (n int) {
 	n += 1 + l + sovPhysicalpb(uint64(l))
 	l = github_com_gogo_protobuf_types.SizeOfStdDuration(m.Range)
 	n += 1 + l + sovPhysicalpb(uint64(l))
+	if m.Grouping != nil {
+		l = m.Grouping.Size()
+		n += 1 + l + sovPhysicalpb(uint64(l))
+	}
+	return n
+}
+
+func (m *Grouping) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if len(m.Columns) > 0 {
+		for _, e := range m.Columns {
+			l = e.Size()
+			n += 1 + l + sovPhysicalpb(uint64(l))
+		}
+	}
+	if m.Without {
+		n += 2
+	}
 	return n
 }
 
@@ -3886,14 +4581,12 @@ func (m *AggregateVector) Size() (n int) {
 	}
 	var l int
 	_ = l
-	if len(m.GroupBy) > 0 {
-		for _, e := range m.GroupBy {
-			l = e.Size()
-			n += 1 + l + sovPhysicalpb(uint64(l))
-		}
-	}
 	if m.Operation != 0 {
 		n += 1 + sovPhysicalpb(uint64(m.Operation))
+	}
+	if m.Grouping != nil {
+		l = m.Grouping.Size()
+		n += 1 + l + sovPhysicalpb(uint64(l))
 	}
 	return n
 }
@@ -4016,8 +4709,12 @@ func (m *ColumnCompat) Size() (n int) {
 	if m.Destination != 0 {
 		n += 1 + sovPhysicalpb(uint64(m.Destination))
 	}
-	if m.Collision != 0 {
-		n += 1 + sovPhysicalpb(uint64(m.Collision))
+	if len(m.Collisions) > 0 {
+		l = 0
+		for _, e := range m.Collisions {
+			l += sovPhysicalpb(uint64(e))
+		}
+		n += 1 + sovPhysicalpb(uint64(l)) + l
 	}
 	return n
 }
@@ -4095,12 +4792,60 @@ func (m *ScanTarget_DataObject) Size() (n int) {
 	}
 	return n
 }
+func (m *ScanTarget_Pointers) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Pointers != nil {
+		l = m.Pointers.Size()
+		n += 1 + l + sovPhysicalpb(uint64(l))
+	}
+	return n
+}
+func (m *Merge) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	return n
+}
+
 func (m *Parallelize) Size() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
+	return n
+}
+
+func (m *PointersScan) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.Location)
+	if l > 0 {
+		n += 1 + l + sovPhysicalpb(uint64(l))
+	}
+	if m.Selector != nil {
+		l = m.Selector.Size()
+		n += 1 + l + sovPhysicalpb(uint64(l))
+	}
+	if len(m.Predicates) > 0 {
+		for _, e := range m.Predicates {
+			l = e.Size()
+			n += 1 + l + sovPhysicalpb(uint64(l))
+		}
+	}
+	l = github_com_gogo_protobuf_types.SizeOfStdTime(m.Start)
+	n += 1 + l + sovPhysicalpb(uint64(l))
+	l = github_com_gogo_protobuf_types.SizeOfStdTime(m.End)
+	n += 1 + l + sovPhysicalpb(uint64(l))
 	return n
 }
 
@@ -4282,22 +5027,53 @@ func (this *Node_Join) String() string {
 	}, "")
 	return s
 }
+func (this *Node_Merge) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&Node_Merge{`,
+		`Merge:` + strings.Replace(fmt.Sprintf("%v", this.Merge), "Merge", "Merge", 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *Node_PointersScan) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&Node_PointersScan{`,
+		`PointersScan:` + strings.Replace(fmt.Sprintf("%v", this.PointersScan), "PointersScan", "PointersScan", 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
 func (this *AggregateRange) String() string {
 	if this == nil {
 		return "nil"
 	}
-	repeatedStringForPartitionBy := "[]*ColumnExpression{"
-	for _, f := range this.PartitionBy {
-		repeatedStringForPartitionBy += strings.Replace(fmt.Sprintf("%v", f), "ColumnExpression", "expressionpb.ColumnExpression", 1) + ","
-	}
-	repeatedStringForPartitionBy += "}"
 	s := strings.Join([]string{`&AggregateRange{`,
-		`PartitionBy:` + repeatedStringForPartitionBy + `,`,
 		`Operation:` + fmt.Sprintf("%v", this.Operation) + `,`,
 		`Start:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Start), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
 		`End:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.End), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
 		`Step:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Step), "Duration", "durationpb.Duration", 1), `&`, ``, 1) + `,`,
 		`Range:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Range), "Duration", "durationpb.Duration", 1), `&`, ``, 1) + `,`,
+		`Grouping:` + strings.Replace(this.Grouping.String(), "Grouping", "Grouping", 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *Grouping) String() string {
+	if this == nil {
+		return "nil"
+	}
+	repeatedStringForColumns := "[]*ColumnExpression{"
+	for _, f := range this.Columns {
+		repeatedStringForColumns += strings.Replace(fmt.Sprintf("%v", f), "ColumnExpression", "expressionpb.ColumnExpression", 1) + ","
+	}
+	repeatedStringForColumns += "}"
+	s := strings.Join([]string{`&Grouping{`,
+		`Columns:` + repeatedStringForColumns + `,`,
+		`Without:` + fmt.Sprintf("%v", this.Without) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -4306,14 +5082,9 @@ func (this *AggregateVector) String() string {
 	if this == nil {
 		return "nil"
 	}
-	repeatedStringForGroupBy := "[]*ColumnExpression{"
-	for _, f := range this.GroupBy {
-		repeatedStringForGroupBy += strings.Replace(fmt.Sprintf("%v", f), "ColumnExpression", "expressionpb.ColumnExpression", 1) + ","
-	}
-	repeatedStringForGroupBy += "}"
 	s := strings.Join([]string{`&AggregateVector{`,
-		`GroupBy:` + repeatedStringForGroupBy + `,`,
 		`Operation:` + fmt.Sprintf("%v", this.Operation) + `,`,
+		`Grouping:` + strings.Replace(this.Grouping.String(), "Grouping", "Grouping", 1) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -4405,7 +5176,7 @@ func (this *ColumnCompat) String() string {
 	s := strings.Join([]string{`&ColumnCompat{`,
 		`Source:` + fmt.Sprintf("%v", this.Source) + `,`,
 		`Destination:` + fmt.Sprintf("%v", this.Destination) + `,`,
-		`Collision:` + fmt.Sprintf("%v", this.Collision) + `,`,
+		`Collisions:` + fmt.Sprintf("%v", this.Collisions) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -4470,11 +5241,49 @@ func (this *ScanTarget_DataObject) String() string {
 	}, "")
 	return s
 }
+func (this *ScanTarget_Pointers) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&ScanTarget_Pointers{`,
+		`Pointers:` + strings.Replace(fmt.Sprintf("%v", this.Pointers), "PointersScan", "PointersScan", 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *Merge) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&Merge{`,
+		`}`,
+	}, "")
+	return s
+}
 func (this *Parallelize) String() string {
 	if this == nil {
 		return "nil"
 	}
 	s := strings.Join([]string{`&Parallelize{`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *PointersScan) String() string {
+	if this == nil {
+		return "nil"
+	}
+	repeatedStringForPredicates := "[]*Expression{"
+	for _, f := range this.Predicates {
+		repeatedStringForPredicates += strings.Replace(fmt.Sprintf("%v", f), "Expression", "expressionpb.Expression", 1) + ","
+	}
+	repeatedStringForPredicates += "}"
+	s := strings.Join([]string{`&PointersScan{`,
+		`Location:` + fmt.Sprintf("%v", this.Location) + `,`,
+		`Selector:` + strings.Replace(fmt.Sprintf("%v", this.Selector), "Expression", "expressionpb.Expression", 1) + `,`,
+		`Predicates:` + repeatedStringForPredicates + `,`,
+		`Start:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Start), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
+		`End:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.End), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -5269,6 +6078,76 @@ func (m *Node) Unmarshal(dAtA []byte) error {
 			}
 			m.Kind = &Node_Join{v}
 			iNdEx = postIndex
+		case 13:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Merge", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPhysicalpb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthPhysicalpb
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthPhysicalpb
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			v := &Merge{}
+			if err := v.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			m.Kind = &Node_Merge{v}
+			iNdEx = postIndex
+		case 14:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field PointersScan", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPhysicalpb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthPhysicalpb
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthPhysicalpb
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			v := &PointersScan{}
+			if err := v.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			m.Kind = &Node_PointersScan{v}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := skipPhysicalpb(dAtA[iNdEx:])
@@ -5322,40 +6201,6 @@ func (m *AggregateRange) Unmarshal(dAtA []byte) error {
 			return fmt.Errorf("proto: AggregateRange: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field PartitionBy", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowPhysicalpb
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return ErrInvalidLengthPhysicalpb
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return ErrInvalidLengthPhysicalpb
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.PartitionBy = append(m.PartitionBy, &expressionpb.ColumnExpression{})
-			if err := m.PartitionBy[len(m.PartitionBy)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
 		case 2:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Operation", wireType)
@@ -5507,6 +6352,149 @@ func (m *AggregateRange) Unmarshal(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 7:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Grouping", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPhysicalpb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthPhysicalpb
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthPhysicalpb
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Grouping == nil {
+				m.Grouping = &Grouping{}
+			}
+			if err := m.Grouping.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipPhysicalpb(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthPhysicalpb
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthPhysicalpb
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *Grouping) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowPhysicalpb
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: Grouping: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: Grouping: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Columns", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPhysicalpb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthPhysicalpb
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthPhysicalpb
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Columns = append(m.Columns, &expressionpb.ColumnExpression{})
+			if err := m.Columns[len(m.Columns)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Without", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPhysicalpb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Without = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := skipPhysicalpb(dAtA[iNdEx:])
@@ -5560,9 +6548,28 @@ func (m *AggregateVector) Unmarshal(dAtA []byte) error {
 			return fmt.Errorf("proto: AggregateVector: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Operation", wireType)
+			}
+			m.Operation = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPhysicalpb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Operation |= AggregateVectorOp(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 3:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field GroupBy", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Grouping", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -5589,30 +6596,13 @@ func (m *AggregateVector) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.GroupBy = append(m.GroupBy, &expressionpb.ColumnExpression{})
-			if err := m.GroupBy[len(m.GroupBy)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+			if m.Grouping == nil {
+				m.Grouping = &Grouping{}
+			}
+			if err := m.Grouping.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
-		case 2:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Operation", wireType)
-			}
-			m.Operation = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowPhysicalpb
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.Operation |= AggregateVectorOp(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
 		default:
 			iNdEx = preIndex
 			skippy, err := skipPhysicalpb(dAtA[iNdEx:])
@@ -6433,23 +7423,73 @@ func (m *ColumnCompat) Unmarshal(dAtA []byte) error {
 				}
 			}
 		case 3:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Collision", wireType)
-			}
-			m.Collision = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowPhysicalpb
+			if wireType == 0 {
+				var v expressionpb.ColumnType
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return ErrIntOverflowPhysicalpb
+					}
+					if iNdEx >= l {
+						return io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					v |= expressionpb.ColumnType(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
 				}
-				if iNdEx >= l {
+				m.Collisions = append(m.Collisions, v)
+			} else if wireType == 2 {
+				var packedLen int
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return ErrIntOverflowPhysicalpb
+					}
+					if iNdEx >= l {
+						return io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					packedLen |= int(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				if packedLen < 0 {
+					return ErrInvalidLengthPhysicalpb
+				}
+				postIndex := iNdEx + packedLen
+				if postIndex < 0 {
+					return ErrInvalidLengthPhysicalpb
+				}
+				if postIndex > l {
 					return io.ErrUnexpectedEOF
 				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.Collision |= expressionpb.ColumnType(b&0x7F) << shift
-				if b < 0x80 {
-					break
+				var elementCount int
+				if elementCount != 0 && len(m.Collisions) == 0 {
+					m.Collisions = make([]expressionpb.ColumnType, 0, elementCount)
 				}
+				for iNdEx < postIndex {
+					var v expressionpb.ColumnType
+					for shift := uint(0); ; shift += 7 {
+						if shift >= 64 {
+							return ErrIntOverflowPhysicalpb
+						}
+						if iNdEx >= l {
+							return io.ErrUnexpectedEOF
+						}
+						b := dAtA[iNdEx]
+						iNdEx++
+						v |= expressionpb.ColumnType(b&0x7F) << shift
+						if b < 0x80 {
+							break
+						}
+					}
+					m.Collisions = append(m.Collisions, v)
+				}
+			} else {
+				return fmt.Errorf("proto: wrong wireType = %d for field Collisions", wireType)
 			}
 		default:
 			iNdEx = preIndex
@@ -6842,6 +7882,94 @@ func (m *ScanTarget) Unmarshal(dAtA []byte) error {
 			}
 			m.Kind = &ScanTarget_DataObject{v}
 			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Pointers", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPhysicalpb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthPhysicalpb
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthPhysicalpb
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			v := &PointersScan{}
+			if err := v.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			m.Kind = &ScanTarget_Pointers{v}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipPhysicalpb(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthPhysicalpb
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthPhysicalpb
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *Merge) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowPhysicalpb
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: Merge: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: Merge: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
 		default:
 			iNdEx = preIndex
 			skippy, err := skipPhysicalpb(dAtA[iNdEx:])
@@ -6895,6 +8023,227 @@ func (m *Parallelize) Unmarshal(dAtA []byte) error {
 			return fmt.Errorf("proto: Parallelize: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
+		default:
+			iNdEx = preIndex
+			skippy, err := skipPhysicalpb(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthPhysicalpb
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthPhysicalpb
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *PointersScan) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowPhysicalpb
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: PointersScan: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: PointersScan: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Location", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPhysicalpb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthPhysicalpb
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthPhysicalpb
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Location = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Selector", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPhysicalpb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthPhysicalpb
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthPhysicalpb
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Selector == nil {
+				m.Selector = &expressionpb.Expression{}
+			}
+			if err := m.Selector.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Predicates", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPhysicalpb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthPhysicalpb
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthPhysicalpb
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Predicates = append(m.Predicates, &expressionpb.Expression{})
+			if err := m.Predicates[len(m.Predicates)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Start", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPhysicalpb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthPhysicalpb
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthPhysicalpb
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if err := github_com_gogo_protobuf_types.StdTimeUnmarshal(&m.Start, dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 5:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field End", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPhysicalpb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthPhysicalpb
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthPhysicalpb
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if err := github_com_gogo_protobuf_types.StdTimeUnmarshal(&m.End, dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := skipPhysicalpb(dAtA[iNdEx:])

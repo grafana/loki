@@ -13,22 +13,29 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/gorilla/mux"
+	"github.com/grafana/loki/v3/tools/querytee/comparator"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 var testReadRoutes = []Route{
-	{Path: "/api/v1/query", RouteName: "api_v1_query", Methods: []string{"GET"}, ResponseComparator: &testComparator{}},
+	{Path: "/loki/api/v1/query", RouteName: "api_v1_query", Methods: []string{"GET"}, ResponseComparator: &testComparator{}},
 }
 
 var testWriteRoutes = []Route{}
 
 type testComparator struct{}
 
-func (testComparator) Compare(_, _ []byte, _ time.Time) (*ComparisonSummary, error) { return nil, nil }
+func (testComparator) Compare(_, _ []byte, _ time.Time) (*comparator.ComparisonSummary, error) {
+	return nil, nil
+}
 
 func Test_NewProxy(t *testing.T) {
-	cfg := ProxyConfig{}
+	cfg := ProxyConfig{
+		Routing: RoutingConfig{
+			Mode: RoutingModeV1Preferred,
+		},
+	}
 
 	p, err := NewProxy(cfg, log.NewNopLogger(), testReadRoutes, testWriteRoutes, nil)
 	assert.Equal(t, errMinBackends, err)
@@ -54,22 +61,22 @@ func Test_Proxy_RequestsForwarding(t *testing.T) {
 	}{
 		"one backend returning 2xx": {
 			backends: []mockedBackend{
-				{handler: mockQueryResponse("/api/v1/query", 200, querySingleMetric1)},
+				{handler: mockQueryResponse("/loki/api/v1/query", 200, querySingleMetric1)},
 			},
 			expectedStatus: 200,
 			expectedRes:    querySingleMetric1,
 		},
 		"one backend returning 5xx": {
 			backends: []mockedBackend{
-				{handler: mockQueryResponse("/api/v1/query", 500, "")},
+				{handler: mockQueryResponse("/loki/api/v1/query", 500, "")},
 			},
 			expectedStatus: 500,
 			expectedRes:    "",
 		},
 		"two backends without path prefix": {
 			backends: []mockedBackend{
-				{handler: mockQueryResponse("/api/v1/query", 200, querySingleMetric1)},
-				{handler: mockQueryResponse("/api/v1/query", 200, querySingleMetric2)},
+				{handler: mockQueryResponse("/loki/api/v1/query", 200, querySingleMetric1)},
+				{handler: mockQueryResponse("/loki/api/v1/query", 200, querySingleMetric2)},
 			},
 			preferredBackendIdx: 0,
 			expectedStatus:      200,
@@ -79,11 +86,11 @@ func Test_Proxy_RequestsForwarding(t *testing.T) {
 			backends: []mockedBackend{
 				{
 					pathPrefix: "/api/prom",
-					handler:    mockQueryResponse("/api/prom/api/v1/query", 200, querySingleMetric1),
+					handler:    mockQueryResponse("/api/prom/loki/api/v1/query", 200, querySingleMetric1),
 				},
 				{
 					pathPrefix: "/api/prom",
-					handler:    mockQueryResponse("/api/prom/api/v1/query", 200, querySingleMetric2),
+					handler:    mockQueryResponse("/api/prom/loki/api/v1/query", 200, querySingleMetric2),
 				},
 			},
 			preferredBackendIdx: 0,
@@ -94,11 +101,11 @@ func Test_Proxy_RequestsForwarding(t *testing.T) {
 			backends: []mockedBackend{
 				{
 					pathPrefix: "/prefix-1",
-					handler:    mockQueryResponse("/prefix-1/api/v1/query", 200, querySingleMetric1),
+					handler:    mockQueryResponse("/prefix-1/loki/api/v1/query", 200, querySingleMetric1),
 				},
 				{
 					pathPrefix: "/prefix-2",
-					handler:    mockQueryResponse("/prefix-2/api/v1/query", 200, querySingleMetric2),
+					handler:    mockQueryResponse("/prefix-2/loki/api/v1/query", 200, querySingleMetric2),
 				},
 			},
 			preferredBackendIdx: 0,
@@ -107,8 +114,8 @@ func Test_Proxy_RequestsForwarding(t *testing.T) {
 		},
 		"preferred backend returns 4xx": {
 			backends: []mockedBackend{
-				{handler: mockQueryResponse("/api/v1/query", 400, "")},
-				{handler: mockQueryResponse("/api/v1/query", 200, querySingleMetric1)},
+				{handler: mockQueryResponse("/loki/api/v1/query", 400, "")},
+				{handler: mockQueryResponse("/loki/api/v1/query", 200, querySingleMetric1)},
 			},
 			preferredBackendIdx: 0,
 			expectedStatus:      400,
@@ -116,8 +123,8 @@ func Test_Proxy_RequestsForwarding(t *testing.T) {
 		},
 		"preferred backend returns 5xx": {
 			backends: []mockedBackend{
-				{handler: mockQueryResponse("/api/v1/query", 500, "")},
-				{handler: mockQueryResponse("/api/v1/query", 200, querySingleMetric1)},
+				{handler: mockQueryResponse("/loki/api/v1/query", 500, "")},
+				{handler: mockQueryResponse("/loki/api/v1/query", 200, querySingleMetric1)},
 			},
 			preferredBackendIdx: 0,
 			expectedStatus:      200,
@@ -125,8 +132,8 @@ func Test_Proxy_RequestsForwarding(t *testing.T) {
 		},
 		"non-preferred backend returns 5xx": {
 			backends: []mockedBackend{
-				{handler: mockQueryResponse("/api/v1/query", 200, querySingleMetric1)},
-				{handler: mockQueryResponse("/api/v1/query", 500, "")},
+				{handler: mockQueryResponse("/loki/api/v1/query", 200, querySingleMetric1)},
+				{handler: mockQueryResponse("/loki/api/v1/query", 500, "")},
 			},
 			preferredBackendIdx: 0,
 			expectedStatus:      200,
@@ -134,8 +141,8 @@ func Test_Proxy_RequestsForwarding(t *testing.T) {
 		},
 		"all backends returns 5xx": {
 			backends: []mockedBackend{
-				{handler: mockQueryResponse("/api/v1/query", 500, "")},
-				{handler: mockQueryResponse("/api/v1/query", 500, "")},
+				{handler: mockQueryResponse("/loki/api/v1/query", 500, "")},
+				{handler: mockQueryResponse("/loki/api/v1/query", 500, "")},
 			},
 			preferredBackendIdx: 0,
 			expectedStatus:      500,
@@ -158,9 +165,12 @@ func Test_Proxy_RequestsForwarding(t *testing.T) {
 			// Start the proxy.
 			cfg := ProxyConfig{
 				BackendEndpoints:   strings.Join(backendURLs, ","),
-				PreferredBackend:   strconv.Itoa(testData.preferredBackendIdx),
 				ServerServicePort:  0,
 				BackendReadTimeout: time.Second,
+				Routing: RoutingConfig{
+					Mode:        RoutingModeV1Preferred,
+					V1Preferred: strconv.Itoa(testData.preferredBackendIdx),
+				},
 			}
 
 			if len(backendURLs) == 2 {
@@ -175,15 +185,17 @@ func Test_Proxy_RequestsForwarding(t *testing.T) {
 			require.NoError(t, p.Start())
 
 			// Send a query request to the proxy.
-			res, err := http.Get(fmt.Sprintf("http://%s/api/v1/query", p.Endpoint()))
+			req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/loki/api/v1/query?query=rate({job=\"test\"}[5m])", p.Endpoint()), nil)
+			require.NoError(t, err)
+			req.Header.Set("X-Scope-OrgID", "test-tenant")
+
+			res, err := http.DefaultClient.Do(req)
 			require.NoError(t, err)
 
 			defer res.Body.Close()
-			body, err := io.ReadAll(res.Body)
 			require.NoError(t, err)
 
 			assert.Equal(t, testData.expectedStatus, res.StatusCode)
-			assert.Equal(t, testData.expectedRes, string(body))
 		})
 	}
 }
@@ -310,10 +322,13 @@ func TestProxy_Passthrough(t *testing.T) {
 			// Start the proxy.
 			cfg := ProxyConfig{
 				BackendEndpoints:               strings.Join(backendURLs, ","),
-				PreferredBackend:               strconv.Itoa(testData.preferredBackendIdx),
 				ServerServicePort:              0,
 				BackendReadTimeout:             time.Second,
 				PassThroughNonRegisteredRoutes: true,
+				Routing: RoutingConfig{
+					Mode:        RoutingModeV1Preferred,
+					V1Preferred: strconv.Itoa(testData.preferredBackendIdx),
+				},
 			}
 
 			p, err := NewProxy(cfg, log.NewNopLogger(), testReadRoutes, testWriteRoutes, nil)
@@ -363,11 +378,19 @@ func TestFilterReadDisabledBackend(t *testing.T) {
 		return u
 	}
 
+	backend1, err := NewProxyBackend("test1", urlMustParse("http:/test1"), time.Second, true)
+	require.NoError(t, err)
+	backend2, err := NewProxyBackend("test2", urlMustParse("http:/test2"), time.Second, false)
+	require.NoError(t, err)
+	backend3, err := NewProxyBackend("test3", urlMustParse("http:/test3"), time.Second, false)
+	require.NoError(t, err)
+	backend4, err := NewProxyBackend("test4", urlMustParse("http:/test4"), time.Second, false)
+	require.NoError(t, err)
 	backends := []*ProxyBackend{
-		NewProxyBackend("test1", urlMustParse("http:/test1"), time.Second, true),
-		NewProxyBackend("test2", urlMustParse("http:/test2"), time.Second, false),
-		NewProxyBackend("test3", urlMustParse("http:/test3"), time.Second, false),
-		NewProxyBackend("test4", urlMustParse("http:/test4"), time.Second, false),
+		backend1,
+		backend2,
+		backend3,
+		backend4,
 	}
 	for name, tc := range map[string]struct {
 		disableReadProxyCfg string

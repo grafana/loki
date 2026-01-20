@@ -164,7 +164,7 @@ func (b *BlockDirectory) resolveSize() error {
 }
 
 // BlockQuerier returns a new block querier from the directory.
-// The passed function `close` is called when the the returned querier is closed.
+// The passed function `close` is called when the returned querier is closed.
 func (b BlockDirectory) BlockQuerier(
 	alloc mempool.Allocator,
 	closeFunc func() error,

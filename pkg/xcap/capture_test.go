@@ -257,14 +257,14 @@ func TestCapture_GetAllStatistics(t *testing.T) {
 func TestCapture_LinkRegions(t *testing.T) {
 	tests := []struct {
 		name            string
-		setup           func() *Capture
+		setup           func() (*Capture, *Region)
 		linkAttribute   string
 		resolveParent   func(string) (string, bool)
 		expectedParents map[string]string // child -> parent mapping
 	}{
 		{
 			name: "link regions without parent using link attribute",
-			setup: func() *Capture {
+			setup: func() (*Capture, *Region) {
 				ctx, capture := NewCapture(context.Background(), nil)
 				// Create root regions with link attributes
 				_, _ = StartRegion(ctx, "region1", WithRegionAttributes(
@@ -276,7 +276,7 @@ func TestCapture_LinkRegions(t *testing.T) {
 				_, _ = StartRegion(ctx, "region3", WithRegionAttributes(
 					attribute.String("link.id", "id3"),
 				))
-				return capture
+				return capture, nil
 			},
 			linkAttribute: "link.id",
 			resolveParent: func(id string) (string, bool) {
@@ -293,7 +293,7 @@ func TestCapture_LinkRegions(t *testing.T) {
 		},
 		{
 			name: "do not change parent if region already has one",
-			setup: func() *Capture {
+			setup: func() (*Capture, *Region) {
 				ctx, capture := NewCapture(context.Background(), nil)
 				// Create a root region first
 				_, _ = StartRegion(ctx, "root", WithRegionAttributes(
@@ -307,7 +307,7 @@ func TestCapture_LinkRegions(t *testing.T) {
 				_, _ = StartRegion(ctx, "child", WithRegionAttributes(
 					attribute.String("link.id", "child-id"),
 				))
-				return capture
+				return capture, nil
 			},
 			linkAttribute: "link.id",
 			resolveParent: func(id string) (string, bool) {
@@ -321,12 +321,80 @@ func TestCapture_LinkRegions(t *testing.T) {
 				"child": "parent", // Should remain unchanged
 			},
 		},
+		{
+			name: "skip not existent parent",
+			setup: func() (*Capture, *Region) {
+				ctx, capture := NewCapture(context.Background(), nil)
+				_, _ = StartRegion(ctx, "n1", WithRegionAttributes(
+					attribute.String("link.id", "1"),
+				))
+				ctx, _ = StartRegion(ctx, "n2", WithRegionAttributes(
+					attribute.String("link.id", "2"),
+				))
+
+				// n3 does not have a related region but will have a parent in resolveParent
+
+				_, _ = StartRegion(ctx, "n4", WithRegionAttributes(
+					attribute.String("link.id", "4"),
+				))
+				return capture, nil
+			},
+			linkAttribute: "link.id",
+			resolveParent: func(id string) (string, bool) {
+				childToParent := map[string]string{
+					"4": "3",
+					"3": "2",
+					"2": "1",
+				}
+				parentID, ok := childToParent[id]
+				return parentID, ok
+			},
+			expectedParents: map[string]string{
+				// n3 is skipped due to a non-existent region, n4 parent region is set to n2
+				"n4": "n2",
+				"n2": "n1",
+			},
+		},
+		{
+			name: "fallback to root",
+			setup: func() (*Capture, *Region) {
+				ctx, capture := NewCapture(context.Background(), nil)
+				// root region does not have any attributes but still should be assigned as parent
+				_, defaultRootRegion := StartRegion(ctx, "root")
+
+				_, _ = StartRegion(ctx, "n11", WithRegionAttributes(
+					attribute.String("link.id", "1.1"),
+				))
+
+				_, _ = StartRegion(ctx, "n12", WithRegionAttributes(
+					attribute.String("link.id", "1.2"),
+				))
+
+				_, _ = StartRegion(ctx, "n21", WithRegionAttributes(
+					attribute.String("link.id", "2.1"),
+				))
+				return capture, defaultRootRegion
+			},
+			linkAttribute: "link.id",
+			resolveParent: func(id string) (string, bool) {
+				childToParent := map[string]string{
+					"1.2": "1.1",
+				}
+				parentID, ok := childToParent[id]
+				return parentID, ok
+			},
+			expectedParents: map[string]string{
+				"n21": "root",
+				"n12": "n11",
+				"n11": "root",
+			},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			capture := tt.setup()
-			capture.LinkRegions(tt.linkAttribute, tt.resolveParent)
+			capture, defaultRootRegion := tt.setup()
+			capture.LinkRegions(tt.linkAttribute, tt.resolveParent, defaultRootRegion)
 
 			regions := capture.Regions()
 			gotRegions := make(map[string]*Region)

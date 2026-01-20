@@ -26,19 +26,35 @@ type ProxyBackend struct {
 
 	// Whether this is the preferred backend from which picking up
 	// the response and sending it back to the client.
-	preferred bool
+	v1Preferred bool
+	v2Preferred bool
 
 	// Only process requests that match the filter.
 	filter *regexp.Regexp
 }
 
 // NewProxyBackend makes a new ProxyBackend
-func NewProxyBackend(name string, endpoint *url.URL, timeout time.Duration, preferred bool) *ProxyBackend {
+// It accepts preferred booleans in the following order [v1, v2].
+// A backend can be v1Preferred, v2Preferred, or neither, but not both.
+func NewProxyBackend(name string, endpoint *url.URL, timeout time.Duration, preferred ...bool) (*ProxyBackend, error) {
+	var v1Preferred, v2Preferred bool
+	if len(preferred) > 0 {
+		v1Preferred = preferred[0]
+	}
+	if len(preferred) > 1 {
+		v2Preferred = preferred[1]
+	}
+
+	if v1Preferred && v2Preferred {
+		return nil, errors.New("cannot be both v1Preferred and v2Preferred")
+	}
+
 	return &ProxyBackend{
-		name:      name,
-		endpoint:  endpoint,
-		timeout:   timeout,
-		preferred: preferred,
+		name:        name,
+		endpoint:    endpoint,
+		timeout:     timeout,
+		v1Preferred: v1Preferred,
+		v2Preferred: v2Preferred,
 		client: &http.Client{
 			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
 				return errors.New("the query-tee proxy does not follow redirects")
@@ -55,7 +71,7 @@ func NewProxyBackend(name string, endpoint *url.URL, timeout time.Duration, pref
 				DisableCompression:  true,
 			},
 		},
-	}
+	}, nil
 }
 
 func (b *ProxyBackend) WithFilter(f *regexp.Regexp) *ProxyBackend {
@@ -71,7 +87,7 @@ func (b *ProxyBackend) ForwardRequest(orig *http.Request, body io.ReadCloser) *B
 	// Extract trace ID and span ID from the context
 	traceID, spanID, _ := tracing.ExtractTraceSpanID(req.Context())
 
-	status, responseBody, err := b.doBackendRequest(req)
+	status, responseBody, responseHeaders, err := b.doBackendRequest(req)
 	duration := time.Since(start)
 
 	// Set span status based on response
@@ -85,6 +101,7 @@ func (b *ProxyBackend) ForwardRequest(orig *http.Request, body io.ReadCloser) *B
 		backend:  b,
 		status:   status,
 		body:     responseBody,
+		headers:  responseHeaders,
 		err:      err,
 		duration: duration,
 		traceID:  traceID,
@@ -96,7 +113,8 @@ func (b *ProxyBackend) createBackendRequest(orig *http.Request, body io.ReadClos
 	// Create a child span directly from the original context to preserve parent-child relationship
 	span, spanCtx := tracing.StartSpanFromContext(orig.Context(), "querytee.backend.request")
 	span.SetTag("backend.name", b.name)
-	span.SetTag("backend.preferred", b.preferred)
+	span.SetTag("backend.preferred.v1", b.v1Preferred)
+	span.SetTag("backend.preferred.v2", b.v2Preferred)
 	span.SetTag("backend.endpoint", b.endpoint.String())
 
 	req := orig.Clone(spanCtx)
@@ -136,7 +154,7 @@ func (b *ProxyBackend) createBackendRequest(orig *http.Request, body io.ReadClos
 	return req, span
 }
 
-func (b *ProxyBackend) doBackendRequest(req *http.Request) (int, []byte, error) {
+func (b *ProxyBackend) doBackendRequest(req *http.Request) (int, []byte, http.Header, error) {
 	// Explicitly inject trace context into HTTP headers before creating isolated context.
 	// This ensures trace propagation works even with context isolation.
 	b.injectTraceHeaders(req)
@@ -151,17 +169,17 @@ func (b *ProxyBackend) doBackendRequest(req *http.Request) (int, []byte, error) 
 	// Execute the request.
 	res, err := b.client.Do(req.WithContext(ctx))
 	if err != nil {
-		return 0, nil, errors.Wrap(err, "executing backend request")
+		return 0, nil, nil, errors.Wrap(err, "executing backend request")
 	}
 
 	// Read the entire response body.
 	defer res.Body.Close()
 	body, err := io.ReadAll(res.Body)
 	if err != nil {
-		return 0, nil, errors.Wrap(err, "reading backend response")
+		return 0, nil, res.Header, errors.Wrap(err, "reading backend response")
 	}
 
-	return res.StatusCode, body, nil
+	return res.StatusCode, body, res.Header, nil
 }
 
 // injectTraceHeaders explicitly injects trace context into HTTP headers.

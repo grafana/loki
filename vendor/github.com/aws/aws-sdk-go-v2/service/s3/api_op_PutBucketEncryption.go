@@ -16,7 +16,7 @@ import (
 )
 
 // This operation configures default encryption and Amazon S3 Bucket Keys for an
-// existing bucket.
+// existing bucket. You can also [block encryption types]using this operation.
 //
 // Directory buckets - For directory buckets, you must make requests for this API
 // operation to the Regional endpoint. These endpoints support path-style requests
@@ -125,6 +125,7 @@ import (
 // [GetBucketEncryption]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketEncryption.html
 // [DeleteBucketEncryption]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucketEncryption.html
 // [customer managed key]: https://docs.aws.amazon.com/kms/latest/developerguide/concepts.html#customer-cmk
+// [block encryption types]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_BlockedEncryptionTypes.html
 // [default bucket encryption]: https://docs.aws.amazon.com/AmazonS3/latest/dev/bucket-encryption.html
 // [the import jobs]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/create-import-job
 // [the Copy operation in Batch Operations]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/directory-buckets-objects-Batch-Ops

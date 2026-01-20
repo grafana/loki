@@ -117,17 +117,15 @@ func (ph *PoolHook) ResetCircuitBreakers() {
 
 // OnGet is called when a connection is retrieved from the pool
 func (ph *PoolHook) OnGet(_ context.Context, conn *pool.Conn, _ bool) (accept bool, err error) {
-	// NOTE: There are two conditions to make sure we don't return a connection that should be handed off or is
-	// in a handoff state at the moment.
-
-	// Check if connection is usable (not in a handoff state)
-	// Should not happen since the pool will not return a connection that is not usable.
-	if !conn.IsUsable() {
-		return false, ErrConnectionMarkedForHandoff
+	// Check if connection is marked for handoff
+	// This prevents using connections that have received MOVING notifications
+	if conn.ShouldHandoff() {
+		return false, ErrConnectionMarkedForHandoffWithState
 	}
 
-	// Check if connection is marked for handoff, which means it will be queued for handoff on put.
-	if conn.ShouldHandoff() {
+	// Check if connection is usable (not in UNUSABLE or CLOSED state)
+	// This ensures we don't return connections that are currently being handed off or re-authenticated.
+	if !conn.IsUsable() {
 		return false, ErrConnectionMarkedForHandoff
 	}
 

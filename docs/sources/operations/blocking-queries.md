@@ -38,7 +38,7 @@ overrides:
       # Keys and values are matched case-insensitively.
       - pattern: '.*'             # optional; if pattern and regex are omittied they will default to '.*' and true
         regex: true
-        tags:
+        query_tags:
           source: grafana
           feature: beta
 ```
@@ -104,12 +104,12 @@ overrides:
     blocked_queries:
       # Block only metric queries from a beta feature flag
       - types: metric
-        tags:
+        query_tags:
           feature: beta
 
       # Combine with regex to narrow scope further
       - pattern: '.*rate\\(.*\\).*'
         regex: true
-        tags:
+        query_tags:
           source: grafana
 ```

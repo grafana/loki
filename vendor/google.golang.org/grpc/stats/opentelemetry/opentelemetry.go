@@ -280,6 +280,18 @@ func createInt64Counter(setOfMetrics map[string]bool, metricName string, meter o
 	return ret
 }
 
+func createInt64UpDownCounter(setOfMetrics map[string]bool, metricName string, meter otelmetric.Meter, options ...otelmetric.Int64UpDownCounterOption) otelmetric.Int64UpDownCounter {
+	if _, ok := setOfMetrics[metricName]; !ok {
+		return noop.Int64UpDownCounter{}
+	}
+	ret, err := meter.Int64UpDownCounter(string(metricName), options...)
+	if err != nil {
+		logger.Errorf("Failed to register metric \"%v\", will not record: %v", metricName, err)
+		return noop.Int64UpDownCounter{}
+	}
+	return ret
+}
+
 func createFloat64Counter(setOfMetrics map[string]bool, metricName string, meter otelmetric.Meter, options ...otelmetric.Float64CounterOption) otelmetric.Float64Counter {
 	if _, ok := setOfMetrics[metricName]; !ok {
 		return noop.Float64Counter{}
@@ -350,11 +362,12 @@ func optionFromLabels(labelKeys []string, optionalLabelKeys []string, optionalLa
 // registryMetrics implements MetricsRecorder for the client and server stats
 // handlers.
 type registryMetrics struct {
-	intCounts   map[*estats.MetricDescriptor]otelmetric.Int64Counter
-	floatCounts map[*estats.MetricDescriptor]otelmetric.Float64Counter
-	intHistos   map[*estats.MetricDescriptor]otelmetric.Int64Histogram
-	floatHistos map[*estats.MetricDescriptor]otelmetric.Float64Histogram
-	intGauges   map[*estats.MetricDescriptor]otelmetric.Int64Gauge
+	intCounts       map[*estats.MetricDescriptor]otelmetric.Int64Counter
+	floatCounts     map[*estats.MetricDescriptor]otelmetric.Float64Counter
+	intHistos       map[*estats.MetricDescriptor]otelmetric.Int64Histogram
+	floatHistos     map[*estats.MetricDescriptor]otelmetric.Float64Histogram
+	intGauges       map[*estats.MetricDescriptor]otelmetric.Int64Gauge
+	intUpDownCounts map[*estats.MetricDescriptor]otelmetric.Int64UpDownCounter
 
 	optionalLabels []string
 }
@@ -365,6 +378,7 @@ func (rm *registryMetrics) registerMetrics(metrics *stats.MetricSet, meter otelm
 	rm.intHistos = make(map[*estats.MetricDescriptor]otelmetric.Int64Histogram)
 	rm.floatHistos = make(map[*estats.MetricDescriptor]otelmetric.Float64Histogram)
 	rm.intGauges = make(map[*estats.MetricDescriptor]otelmetric.Int64Gauge)
+	rm.intUpDownCounts = make(map[*estats.MetricDescriptor]otelmetric.Int64UpDownCounter)
 
 	for metric := range metrics.Metrics() {
 		desc := estats.DescriptorForMetric(metric)
@@ -385,6 +399,8 @@ func (rm *registryMetrics) registerMetrics(metrics *stats.MetricSet, meter otelm
 			rm.floatHistos[desc] = createFloat64Histogram(metrics.Metrics(), desc.Name, meter, otelmetric.WithUnit(desc.Unit), otelmetric.WithDescription(desc.Description), otelmetric.WithExplicitBucketBoundaries(desc.Bounds...))
 		case estats.MetricTypeIntGauge:
 			rm.intGauges[desc] = createInt64Gauge(metrics.Metrics(), desc.Name, meter, otelmetric.WithUnit(desc.Unit), otelmetric.WithDescription(desc.Description))
+		case estats.MetricTypeIntUpDownCount:
+			rm.intUpDownCounts[desc] = createInt64UpDownCounter(metrics.Metrics(), desc.Name, meter, otelmetric.WithUnit(desc.Unit), otelmetric.WithDescription(desc.Description))
 		}
 	}
 }
@@ -392,6 +408,14 @@ func (rm *registryMetrics) registerMetrics(metrics *stats.MetricSet, meter otelm
 func (rm *registryMetrics) RecordInt64Count(handle *estats.Int64CountHandle, incr int64, labels ...string) {
 	desc := handle.Descriptor()
 	if ic, ok := rm.intCounts[desc]; ok {
+		ao := optionFromLabels(desc.Labels, desc.OptionalLabels, rm.optionalLabels, labels...)
+		ic.Add(context.TODO(), incr, ao)
+	}
+}
+
+func (rm *registryMetrics) RecordInt64UpDownCount(handle *estats.Int64UpDownCountHandle, incr int64, labels ...string) {
+	desc := handle.Descriptor()
+	if ic, ok := rm.intUpDownCounts[desc]; ok {
 		ao := optionFromLabels(desc.Labels, desc.OptionalLabels, rm.optionalLabels, labels...)
 		ic.Add(context.TODO(), incr, ao)
 	}

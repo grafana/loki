@@ -84,27 +84,28 @@ var (
 
 // BlobStorageConfig defines the configurable flags that can be defined when using azure blob storage.
 type BlobStorageConfig struct {
-	Environment         string         `yaml:"environment"`
-	StorageAccountName  string         `yaml:"account_name"`
-	StorageAccountKey   flagext.Secret `yaml:"account_key"`
-	ConnectionString    string         `yaml:"connection_string"`
-	ContainerName       string         `yaml:"container_name"`
-	EndpointSuffix      string         `yaml:"endpoint_suffix"`
-	UseManagedIdentity  bool           `yaml:"use_managed_identity"`
-	UseFederatedToken   bool           `yaml:"use_federated_token"`
-	UserAssignedID      string         `yaml:"user_assigned_id"`
-	UseServicePrincipal bool           `yaml:"use_service_principal"`
-	ClientID            string         `yaml:"client_id"`
-	ClientSecret        flagext.Secret `yaml:"client_secret"`
-	TenantID            string         `yaml:"tenant_id"`
-	ChunkDelimiter      string         `yaml:"chunk_delimiter"`
-	DownloadBufferSize  int            `yaml:"download_buffer_size"`
-	UploadBufferSize    int            `yaml:"upload_buffer_size"`
-	UploadBufferCount   int            `yaml:"upload_buffer_count"`
-	RequestTimeout      time.Duration  `yaml:"request_timeout"`
-	MaxRetries          int            `yaml:"max_retries"`
-	MinRetryDelay       time.Duration  `yaml:"min_retry_delay"`
-	MaxRetryDelay       time.Duration  `yaml:"max_retry_delay"`
+	Environment             string         `yaml:"environment"`
+	StorageAccountName      string         `yaml:"account_name"`
+	StorageAccountKey       flagext.Secret `yaml:"account_key"`
+	ConnectionString        string         `yaml:"connection_string"`
+	ContainerName           string         `yaml:"container_name"`
+	ActiveDirectoryEndpoint string         `yaml:"active_directory_endpoint"`
+	EndpointSuffix          string         `yaml:"endpoint_suffix"`
+	UseManagedIdentity      bool           `yaml:"use_managed_identity"`
+	UseFederatedToken       bool           `yaml:"use_federated_token"`
+	UserAssignedID          string         `yaml:"user_assigned_id"`
+	UseServicePrincipal     bool           `yaml:"use_service_principal"`
+	ClientID                string         `yaml:"client_id"`
+	ClientSecret            flagext.Secret `yaml:"client_secret"`
+	TenantID                string         `yaml:"tenant_id"`
+	ChunkDelimiter          string         `yaml:"chunk_delimiter"`
+	DownloadBufferSize      int            `yaml:"download_buffer_size"`
+	UploadBufferSize        int            `yaml:"upload_buffer_size"`
+	UploadBufferCount       int            `yaml:"upload_buffer_count"`
+	RequestTimeout          time.Duration  `yaml:"request_timeout"`
+	MaxRetries              int            `yaml:"max_retries"`
+	MinRetryDelay           time.Duration  `yaml:"min_retry_delay"`
+	MaxRetryDelay           time.Duration  `yaml:"max_retry_delay"`
 }
 
 type authFunctions struct {
@@ -125,6 +126,7 @@ func (c *BlobStorageConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagS
 	f.StringVar(&c.ConnectionString, prefix+"azure.connection-string", "", "If `connection-string` is set, the values of `account-name` and `endpoint-suffix` values will not be used. Use this method over `account-key` if you need to authenticate via a SAS token. Or if you use the Azurite emulator.")
 	f.StringVar(&c.ContainerName, prefix+"azure.container-name", constants.Loki, "Name of the storage account blob container used to store chunks. This container must be created before running cortex.")
 	f.StringVar(&c.EndpointSuffix, prefix+"azure.endpoint-suffix", "", "Azure storage endpoint suffix without schema. The storage account name will be prefixed to this value to create the FQDN.")
+	f.StringVar(&c.ActiveDirectoryEndpoint, prefix+"azure.active-directory-endpoint", "", "Azure active directory endpoint override. Use when the Azure SDK does not support your environment.")
 	f.BoolVar(&c.UseManagedIdentity, prefix+"azure.use-managed-identity", false, "Use Managed Identity to authenticate to the Azure storage account.")
 	f.BoolVar(&c.UseFederatedToken, prefix+"azure.use-federated-token", false, "Use Federated Token to authenticate to the Azure storage account.")
 	f.StringVar(&c.UserAssignedID, prefix+"azure.user-assigned-id", "", "User assigned identity ID to authenticate to the Azure storage account.")
@@ -516,14 +518,20 @@ func (b *BlobStorage) getServicePrincipalToken(authFunctions authFunctions) (*ad
 }
 
 func (b *BlobStorage) servicePrincipalTokenFromFederatedToken(resource string, newOAuthConfigFunc func(activeDirectoryEndpoint, tenantID string) (*adal.OAuthConfig, error), newServicePrincipalTokenFromFederatedTokenFunc func(oauthConfig adal.OAuthConfig, clientID string, jwt string, resource string, callbacks ...adal.TokenRefreshCallback) (*adal.ServicePrincipalToken, error)) (*adal.ServicePrincipalToken, error) {
-	environmentName := azurePublicCloud
-	if b.cfg.Environment != azureGlobal {
-		environmentName = b.cfg.Environment
-	}
+	activeDirectoryEndpoint := b.cfg.ActiveDirectoryEndpoint
 
-	env, err := azure.EnvironmentFromName(environmentName)
-	if err != nil {
-		return nil, err
+	if activeDirectoryEndpoint == "" {
+		environmentName := azurePublicCloud
+		if b.cfg.Environment != azureGlobal {
+			environmentName = b.cfg.Environment
+		}
+
+		// Azure SDK does NOT ship with endpoints for certain environments, e.g. IL6
+		env, err := azure.EnvironmentFromName(environmentName)
+		if err != nil {
+			return nil, err
+		}
+		activeDirectoryEndpoint = env.ActiveDirectoryEndpoint
 	}
 
 	azClientID := os.Getenv("AZURE_CLIENT_ID")
@@ -536,7 +544,7 @@ func (b *BlobStorage) servicePrincipalTokenFromFederatedToken(resource string, n
 
 	jwt := string(jwtBytes)
 
-	oauthConfig, err := newOAuthConfigFunc(env.ActiveDirectoryEndpoint, azTenantID)
+	oauthConfig, err := newOAuthConfigFunc(activeDirectoryEndpoint, azTenantID)
 	if err != nil {
 		return nil, err
 	}

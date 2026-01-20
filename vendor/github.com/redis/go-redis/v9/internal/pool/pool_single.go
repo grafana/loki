@@ -44,6 +44,13 @@ func (p *SingleConnPool) Get(_ context.Context) (*Conn, error) {
 	if p.cn == nil {
 		return nil, ErrClosed
 	}
+
+	// NOTE: SingleConnPool is NOT thread-safe by design and is used in special scenarios:
+	// - During initialization (connection is in INITIALIZING state)
+	// - During re-authentication (connection is in UNUSABLE state)
+	// - For transactions (connection might be in various states)
+	// We use SetUsed() which forces the transition, rather than TryTransition() which
+	// would fail if the connection is not in IDLE/CREATED state.
 	p.cn.SetUsed(true)
 	p.cn.SetUsedAt(time.Now())
 	return p.cn, nil
@@ -63,6 +70,12 @@ func (p *SingleConnPool) Remove(_ context.Context, cn *Conn, reason error) {
 	cn.SetUsed(false)
 	p.cn = nil
 	p.stickyErr = reason
+}
+
+// RemoveWithoutTurn has the same behavior as Remove for SingleConnPool
+// since SingleConnPool doesn't use a turn-based queue system.
+func (p *SingleConnPool) RemoveWithoutTurn(ctx context.Context, cn *Conn, reason error) {
+	p.Remove(ctx, cn, reason)
 }
 
 func (p *SingleConnPool) Close() error {

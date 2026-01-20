@@ -137,10 +137,7 @@ func (f *Frontend) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRe
 	return &proto.ExceedsLimitsResponse{Results: results}, nil
 }
 
-func (f *Frontend) UpdateRates(
-	ctx context.Context,
-	req *proto.UpdateRatesRequest,
-) (*proto.UpdateRatesResponse, error) {
+func (f *Frontend) UpdateRates(ctx context.Context, req *proto.UpdateRatesRequest) (*proto.UpdateRatesResponse, error) {
 	results := make([]*proto.UpdateRatesResult, 0, len(req.Streams))
 	resps, err := f.limitsClient.UpdateRates(ctx, req)
 	if err != nil {

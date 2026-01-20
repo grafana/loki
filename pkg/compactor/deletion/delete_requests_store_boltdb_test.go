@@ -50,11 +50,11 @@ func TestDeleteRequestsStoreBoltDB(t *testing.T) {
 	compareRequests(t, append(tc.user1Requests, tc.user2Requests...), deleteRequests)
 
 	// get user specific requests and see if they have expected values
-	user1Requests, err := tc.store.GetAllDeleteRequestsForUser(context.Background(), user1, false)
+	user1Requests, err := tc.store.GetAllDeleteRequestsForUser(context.Background(), user1, false, nil)
 	require.NoError(t, err)
 	compareRequests(t, tc.user1Requests, user1Requests)
 
-	user2Requests, err := tc.store.GetAllDeleteRequestsForUser(context.Background(), user2, false)
+	user2Requests, err := tc.store.GetAllDeleteRequestsForUser(context.Background(), user2, false, nil)
 	require.NoError(t, err)
 	compareRequests(t, tc.user2Requests, user2Requests)
 
@@ -92,11 +92,11 @@ func TestDeleteRequestsStoreBoltDB(t *testing.T) {
 	}
 
 	// see if requests in the store have right values
-	user1Requests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), user1, false)
+	user1Requests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), user1, false, nil)
 	require.NoError(t, err)
 	compareRequests(t, tc.user1Requests, user1Requests)
 
-	user2Requests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), user2, false)
+	user2Requests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), user2, false, nil)
 	require.NoError(t, err)
 	compareRequests(t, tc.user2Requests, user2Requests)
 
@@ -307,11 +307,11 @@ func TestDeleteRequestsStore_MergeShardedRequests(t *testing.T) {
 				require.NoError(t, ds.MarkShardAsProcessed(context.Background(), req))
 			}
 
-			inStoreReqs, err := ds.GetAllDeleteRequestsForUser(context.Background(), user1, false)
+			inStoreReqs, err := ds.GetAllDeleteRequestsForUser(context.Background(), user1, false, nil)
 			require.NoError(t, err)
 
 			require.NoError(t, ds.MergeShardedRequests(context.Background()))
-			inStoreReqsAfterMerging, err := ds.GetAllDeleteRequestsForUser(context.Background(), user1, false)
+			inStoreReqsAfterMerging, err := ds.GetAllDeleteRequestsForUser(context.Background(), user1, false, nil)
 			require.NoError(t, err)
 
 			if tc.requestsShouldBeMerged {
@@ -372,7 +372,7 @@ func TestGetAllDeleteRequestsForUser_ExactMatch(t *testing.T) {
 	require.NoError(t, err)
 
 	// fetch delete requests for "user1"
-	deleteRequests, err := tc.store.GetAllDeleteRequestsForUser(context.Background(), "user1", false)
+	deleteRequests, err := tc.store.GetAllDeleteRequestsForUser(context.Background(), "user1", false, nil)
 	require.NoError(t, err)
 
 	// ensure only the request for "user1" is returned
@@ -381,11 +381,53 @@ func TestGetAllDeleteRequestsForUser_ExactMatch(t *testing.T) {
 	require.Equal(t, resp, deleteRequests[0].RequestID)
 
 	// fetch delete requests for "user123"
-	deleteRequests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), "user123", false)
+	deleteRequests, err = tc.store.GetAllDeleteRequestsForUser(context.Background(), "user123", false, nil)
 	require.NoError(t, err)
 
 	// ensure only the request for "user123" is returned
 	require.Len(t, deleteRequests, 1)
 	require.Equal(t, "user123", deleteRequests[0].UserID)
 	require.Equal(t, resp2, deleteRequests[0].RequestID)
+}
+
+func TestDeleteRequestsStoreBoltDB_TimeRangeFiltering(t *testing.T) {
+	tc := setupStoreType(t, DeleteRequestsStoreDBTypeBoltDB)
+	defer tc.store.Stop()
+
+	// add requests for user1 to the store
+	for i := 0; i < len(tc.user1Requests); i++ {
+		resp, err := tc.store.AddDeleteRequest(
+			context.Background(),
+			tc.user1Requests[i].UserID,
+			tc.user1Requests[i].Query,
+			tc.user1Requests[i].StartTime,
+			tc.user1Requests[i].EndTime,
+			0,
+		)
+		require.NoError(t, err)
+		tc.user1Requests[i].RequestID = resp
+	}
+
+	// Test time range filtering: query range should pick fully overlapping reqs, 1 left overlap, 1 right overlap
+	// Query range: -3.25h to -0.5h
+	// Should match:
+	//   - Request at -3h (index 2): left overlap
+	//   - Request at -2h (index 1): fully overlapping
+	//   - Request at -1h (index 0): right overlap
+	timeRange := &TimeRange{
+		Start: now.Add(-3*time.Hour - 15*time.Minute),
+		End:   now.Add(-30 * time.Minute),
+	}
+
+	requests, err := tc.store.GetAllDeleteRequestsForUser(context.Background(), user1, false, timeRange)
+	require.NoError(t, err)
+
+	require.Len(t, requests, 3)
+	requestIDs := make(map[string]bool)
+	for _, req := range requests {
+		requestIDs[req.RequestID] = true
+	}
+	require.True(t, requestIDs[tc.user1Requests[2].RequestID]) // -3h request
+	require.True(t, requestIDs[tc.user1Requests[1].RequestID]) // -2h request
+	require.True(t, requestIDs[tc.user1Requests[0].RequestID]) // -1h request
 }

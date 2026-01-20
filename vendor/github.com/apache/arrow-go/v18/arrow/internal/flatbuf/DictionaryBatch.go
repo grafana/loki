@@ -22,12 +22,12 @@ import (
 	flatbuffers "github.com/google/flatbuffers/go"
 )
 
-// / For sending dictionary encoding information. Any Field can be
-// / dictionary-encoded, but in this case none of its children may be
-// / dictionary-encoded.
-// / There is one vector / column per dictionary, but that vector / column
-// / may be spread across multiple dictionary batches by using the isDelta
-// / flag
+/// For sending dictionary encoding information. Any Field can be
+/// dictionary-encoded, but in this case none of its children may be
+/// dictionary-encoded.
+/// There is one vector / column per dictionary, but that vector / column
+/// may be spread across multiple dictionary batches by using the isDelta
+/// flag
 type DictionaryBatch struct {
 	_tab flatbuffers.Table
 }
@@ -37,6 +37,21 @@ func GetRootAsDictionaryBatch(buf []byte, offset flatbuffers.UOffsetT) *Dictiona
 	x := &DictionaryBatch{}
 	x.Init(buf, n+offset)
 	return x
+}
+
+func FinishDictionaryBatchBuffer(builder *flatbuffers.Builder, offset flatbuffers.UOffsetT) {
+	builder.Finish(offset)
+}
+
+func GetSizePrefixedRootAsDictionaryBatch(buf []byte, offset flatbuffers.UOffsetT) *DictionaryBatch {
+	n := flatbuffers.GetUOffsetT(buf[offset+flatbuffers.SizeUint32:])
+	x := &DictionaryBatch{}
+	x.Init(buf, n+offset+flatbuffers.SizeUint32)
+	return x
+}
+
+func FinishSizePrefixedDictionaryBatchBuffer(builder *flatbuffers.Builder, offset flatbuffers.UOffsetT) {
+	builder.FinishSizePrefixed(offset)
 }
 
 func (rcv *DictionaryBatch) Init(buf []byte, i flatbuffers.UOffsetT) {
@@ -73,9 +88,9 @@ func (rcv *DictionaryBatch) Data(obj *RecordBatch) *RecordBatch {
 	return nil
 }
 
-// / If isDelta is true the values in the dictionary are to be appended to a
-// / dictionary with the indicated id. If isDelta is false this dictionary
-// / should replace the existing dictionary.
+/// If isDelta is true the values in the dictionary are to be appended to a
+/// dictionary with the indicated id. If isDelta is false this dictionary
+/// should replace the existing dictionary.
 func (rcv *DictionaryBatch) IsDelta() bool {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(8))
 	if o != 0 {
@@ -84,9 +99,9 @@ func (rcv *DictionaryBatch) IsDelta() bool {
 	return false
 }
 
-// / If isDelta is true the values in the dictionary are to be appended to a
-// / dictionary with the indicated id. If isDelta is false this dictionary
-// / should replace the existing dictionary.
+/// If isDelta is true the values in the dictionary are to be appended to a
+/// dictionary with the indicated id. If isDelta is false this dictionary
+/// should replace the existing dictionary.
 func (rcv *DictionaryBatch) MutateIsDelta(n bool) bool {
 	return rcv._tab.MutateBoolSlot(8, n)
 }

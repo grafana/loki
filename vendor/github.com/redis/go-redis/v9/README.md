@@ -2,7 +2,7 @@
 
 [![build workflow](https://github.com/redis/go-redis/actions/workflows/build.yml/badge.svg)](https://github.com/redis/go-redis/actions)
 [![PkgGoDev](https://pkg.go.dev/badge/github.com/redis/go-redis/v9)](https://pkg.go.dev/github.com/redis/go-redis/v9?tab=doc)
-[![Documentation](https://img.shields.io/badge/redis-documentation-informational)](https://redis.uptrace.dev/)
+[![Documentation](https://img.shields.io/badge/redis-documentation-informational)](https://redis.io/docs/latest/develop/clients/go/)
 [![Go Report Card](https://goreportcard.com/badge/github.com/redis/go-redis/v9)](https://goreportcard.com/report/github.com/redis/go-redis/v9)
 [![codecov](https://codecov.io/github/redis/go-redis/graph/badge.svg?token=tsrCZKuSSw)](https://codecov.io/github/redis/go-redis)
 
@@ -17,15 +17,15 @@
 ## Supported versions
 
 In `go-redis` we are aiming to support the last three releases of Redis. Currently, this means we do support:
-- [Redis 7.2](https://raw.githubusercontent.com/redis/redis/7.2/00-RELEASENOTES) - using Redis Stack 7.2 for modules support
-- [Redis 7.4](https://raw.githubusercontent.com/redis/redis/7.4/00-RELEASENOTES) - using Redis Stack 7.4 for modules support
-- [Redis 8.0](https://raw.githubusercontent.com/redis/redis/8.0/00-RELEASENOTES) - using Redis CE 8.0 where modules are included
-- [Redis 8.2](https://raw.githubusercontent.com/redis/redis/8.2/00-RELEASENOTES) - using Redis CE 8.2 where modules are included
+- [Redis 8.0](https://raw.githubusercontent.com/redis/redis/8.0/00-RELEASENOTES) - using Redis CE 8.0
+- [Redis 8.2](https://raw.githubusercontent.com/redis/redis/8.2/00-RELEASENOTES) - using Redis CE 8.2 
+- [Redis 8.4](https://raw.githubusercontent.com/redis/redis/8.4/00-RELEASENOTES) - using Redis CE 8.4
 
 Although the `go.mod` states it requires at minimum `go 1.18`, our CI is configured to run the tests against all three
 versions of Redis and latest two versions of Go ([1.23](https://go.dev/doc/devel/release#go1.23.0),
 [1.24](https://go.dev/doc/devel/release#go1.24.0)). We observe that some modules related test may not pass with
 Redis Stack 7.2 and some commands are changed with Redis CE 8.0.
+Although it is not officially supported, `go-redis/v9`  should be able to work with any Redis 7.0+.
 Please do refer to the documentation and the tests if you experience any issues. We do plan to update the go version
 in the `go.mod` to `go 1.24` in one of the next releases.
 
@@ -43,10 +43,6 @@ in the `go.mod` to `go 1.24` in one of the next releases.
 
 [Work at Redis](https://redis.com/company/careers/jobs/)
 
-## Documentation
-
-- [English](https://redis.uptrace.dev)
-- [简体中文](https://redis.uptrace.dev/zh/)
 
 ## Resources
 
@@ -55,15 +51,17 @@ in the `go.mod` to `go 1.24` in one of the next releases.
 - [Reference](https://pkg.go.dev/github.com/redis/go-redis/v9)
 - [Examples](https://pkg.go.dev/github.com/redis/go-redis/v9#pkg-examples)
 
+## old documentation
+
+- [English](https://redis.uptrace.dev)
+- [简体中文](https://redis.uptrace.dev/zh/)
+
 ## Ecosystem
 
-- [Redis Mock](https://github.com/go-redis/redismock)
+- [Entra ID (Azure AD)](https://github.com/redis/go-redis-entraid)
 - [Distributed Locks](https://github.com/bsm/redislock)
 - [Redis Cache](https://github.com/go-redis/cache)
 - [Rate limiting](https://github.com/go-redis/redis_rate)
-
-This client also works with [Kvrocks](https://github.com/apache/incubator-kvrocks), a distributed
-key value NoSQL database that uses RocksDB as storage engine and is compatible with Redis protocol.
 
 ## Features
 
@@ -75,7 +73,6 @@ key value NoSQL database that uses RocksDB as storage engine and is compatible w
 - [Scripting](https://redis.uptrace.dev/guide/lua-scripting.html).
 - [Redis Sentinel](https://redis.uptrace.dev/guide/go-redis-sentinel.html).
 - [Redis Cluster](https://redis.uptrace.dev/guide/go-redis-cluster.html).
-- [Redis Ring](https://redis.uptrace.dev/guide/ring.html).
 - [Redis Performance Monitoring](https://redis.uptrace.dev/guide/redis-performance-monitoring.html).
 - [Redis Probabilistic [RedisStack]](https://redis.io/docs/data-types/probabilistic/)
 - [Customizable read and write buffers size.](#custom-buffer-sizes)
@@ -429,6 +426,144 @@ vals, err := rdb.Eval(ctx, "return {KEYS[1],ARGV[1]}", []string{"key"}, "hello")
 res, err := rdb.Do(ctx, "set", "key", "value").Result()
 ```
 
+## Typed Errors
+
+go-redis provides typed error checking functions for common Redis errors:
+
+```go
+// Cluster and replication errors
+redis.IsLoadingError(err)        // Redis is loading the dataset
+redis.IsReadOnlyError(err)       // Write to read-only replica
+redis.IsClusterDownError(err)    // Cluster is down
+redis.IsTryAgainError(err)       // Command should be retried
+redis.IsMasterDownError(err)     // Master is down
+redis.IsMovedError(err)          // Returns (address, true) if key moved
+redis.IsAskError(err)            // Returns (address, true) if key being migrated
+
+// Connection and resource errors
+redis.IsMaxClientsError(err)     // Maximum clients reached
+redis.IsAuthError(err)           // Authentication failed (NOAUTH, WRONGPASS, unauthenticated)
+redis.IsPermissionError(err)     // Permission denied (NOPERM)
+redis.IsOOMError(err)            // Out of memory (OOM)
+
+// Transaction errors
+redis.IsExecAbortError(err)      // Transaction aborted (EXECABORT)
+```
+
+### Error Wrapping in Hooks
+
+When wrapping errors in hooks, use custom error types with `Unwrap()` method (preferred) or `fmt.Errorf` with `%w`. Always call `cmd.SetErr()` to preserve error type information:
+
+```go
+// Custom error type (preferred)
+type AppError struct {
+    Code      string
+    RequestID string
+    Err       error
+}
+
+func (e *AppError) Error() string {
+    return fmt.Sprintf("[%s] request_id=%s: %v", e.Code, e.RequestID, e.Err)
+}
+
+func (e *AppError) Unwrap() error {
+    return e.Err
+}
+
+// Hook implementation
+func (h MyHook) ProcessHook(next redis.ProcessHook) redis.ProcessHook {
+    return func(ctx context.Context, cmd redis.Cmder) error {
+        err := next(ctx, cmd)
+        if err != nil {
+            // Wrap with custom error type
+            wrappedErr := &AppError{
+                Code:      "REDIS_ERROR",
+                RequestID: getRequestID(ctx),
+                Err:       err,
+            }
+            cmd.SetErr(wrappedErr)
+            return wrappedErr  // Return wrapped error to preserve it
+        }
+        return nil
+    }
+}
+
+// Typed error detection works through wrappers
+if redis.IsLoadingError(err) {
+    // Retry logic
+}
+
+// Extract custom error if needed
+var appErr *AppError
+if errors.As(err, &appErr) {
+    log.Printf("Request: %s", appErr.RequestID)
+}
+```
+
+Alternatively, use `fmt.Errorf` with `%w`:
+```go
+wrappedErr := fmt.Errorf("context: %w", err)
+cmd.SetErr(wrappedErr)
+```
+
+### Pipeline Hook Example
+
+For pipeline operations, use `ProcessPipelineHook`:
+
+```go
+type PipelineLoggingHook struct{}
+
+func (h PipelineLoggingHook) DialHook(next redis.DialHook) redis.DialHook {
+    return next
+}
+
+func (h PipelineLoggingHook) ProcessHook(next redis.ProcessHook) redis.ProcessHook {
+    return next
+}
+
+func (h PipelineLoggingHook) ProcessPipelineHook(next redis.ProcessPipelineHook) redis.ProcessPipelineHook {
+    return func(ctx context.Context, cmds []redis.Cmder) error {
+        start := time.Now()
+
+        // Execute the pipeline
+        err := next(ctx, cmds)
+
+        duration := time.Since(start)
+        log.Printf("Pipeline executed %d commands in %v", len(cmds), duration)
+
+        // Process individual command errors
+        // Note: Individual command errors are already set on each cmd by the pipeline execution
+        for _, cmd := range cmds {
+            if cmdErr := cmd.Err(); cmdErr != nil {
+                // Check for specific error types using typed error functions
+                if redis.IsAuthError(cmdErr) {
+                    log.Printf("Auth error in pipeline command %s: %v", cmd.Name(), cmdErr)
+                } else if redis.IsPermissionError(cmdErr) {
+                    log.Printf("Permission error in pipeline command %s: %v", cmd.Name(), cmdErr)
+                }
+
+                // Optionally wrap individual command errors to add context
+                // The wrapped error preserves type information through errors.As()
+                wrappedErr := fmt.Errorf("pipeline cmd %s failed: %w", cmd.Name(), cmdErr)
+                cmd.SetErr(wrappedErr)
+            }
+        }
+
+        // Return the pipeline-level error (connection errors, etc.)
+        // You can wrap it if needed, or return it as-is
+        return err
+    }
+}
+
+// Register the hook
+rdb.AddHook(PipelineLoggingHook{})
+
+// Use pipeline - errors are still properly typed
+pipe := rdb.Pipeline()
+pipe.Set(ctx, "key1", "value1", 0)
+pipe.Get(ctx, "key2")
+_, err := pipe.Exec(ctx)
+```
 
 ## Run the test
 

@@ -19,6 +19,8 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 	"go.opentelemetry.io/otel/attribute"
+
+	internal "github.com/grafana/loki/v3/pkg/xcap/internal/proto"
 )
 
 // Capture captures statistical information about the lifetime of a query.
@@ -110,15 +112,17 @@ func (c *Capture) getAllStatistics() []Statistic {
 //   - It extracts the value of the linkByAttribute (must be a string attribute)
 //   - Calls resolveParent() with that value to determine the parent's attribute value
 //   - It finds the region with the matching attribute value and sets it as the parent
+//   - It accepts an optional defaultRootRegion to attach orphaned regions to it.
 //
 // Use a linkByAttribute that is unique for each region.
-func (c *Capture) LinkRegions(linkByAttribute string, resolveParent func(string) (string, bool)) {
+func (c *Capture) LinkRegions(
+	linkByAttribute string,
+	resolveParent func(string) (string, bool),
+	defaultRootRegion *Region,
+) {
 	if linkByAttribute == "" {
 		return
 	}
-
-	// Call End() to finalise the capture. This is a no-op if already ended.
-	c.End()
 
 	getAttributeValue := func(r *Region) (string, bool) {
 		if attr := r.getAttribute(linkByAttribute); attr.Valid() && attr.Value.Type() == attribute.STRING {
@@ -147,17 +151,27 @@ func (c *Capture) LinkRegions(linkByAttribute string, resolveParent func(string)
 			continue
 		}
 
-		parentAttrVal, ok := resolveParent(attrVal)
-		if !ok {
-			continue
-		}
+		// iterate over the parents to find the first that has a linked region (or falling back to default root)
+		for {
+			parentAttrVal, ok := resolveParent(attrVal)
+			if !ok {
+				if defaultRootRegion != nil {
+					r.parentID = defaultRootRegion.id
+				}
+				break
+			}
 
-		parentRegion, ok := attrToRegion[parentAttrVal]
-		if !ok {
-			continue
-		}
+			parentRegion, ok := attrToRegion[parentAttrVal]
+			if !ok {
+				// it might be that the parent does not have a region
+				// let's skip it and attach to the parent of the parent
+				attrVal = parentAttrVal
+				continue
+			}
 
-		r.parentID = parentRegion.id
+			r.parentID = parentRegion.id
+			break
+		}
 	}
 }
 
@@ -168,7 +182,7 @@ func (c *Capture) MarshalBinary() ([]byte, error) {
 		return nil, nil
 	}
 
-	protoCapture, err := ToProtoCapture(c)
+	protoCapture, err := toProtoCapture(c)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert capture to proto: %w", err)
 	}
@@ -192,12 +206,12 @@ func (c *Capture) UnmarshalBinary(data []byte) error {
 		return nil
 	}
 
-	protoCapture := &ProtoCapture{}
+	protoCapture := &internal.Capture{}
 	if err := proto.Unmarshal(data, protoCapture); err != nil {
 		return fmt.Errorf("failed to unmarshal proto capture: %w", err)
 	}
 
-	err := FromProtoCapture(protoCapture, c)
+	err := fromProtoCapture(protoCapture, c)
 	if err != nil {
 		return fmt.Errorf("failed to convert proto to capture: %w", err)
 	}

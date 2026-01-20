@@ -8,15 +8,15 @@ import (
 	"math"
 	"math/big"
 	"strconv"
-	"sync"
 	"time"
 
+	"github.com/parquet-go/parquet-go/internal/memory"
 	"golang.org/x/sys/cpu"
 
+	"github.com/parquet-go/bitpack/unsafecast"
 	"github.com/parquet-go/parquet-go/deprecated"
 	"github.com/parquet-go/parquet-go/encoding"
 	"github.com/parquet-go/parquet-go/format"
-	"github.com/parquet-go/parquet-go/internal/unsafecast"
 )
 
 // ConvertError is an error type returned by calls to Convert when the conversion
@@ -63,8 +63,8 @@ type Conversion interface {
 type conversion struct {
 	columns []conversionColumn
 	schema  *Schema
-	buffers sync.Pool
-	// This field is used to size the column buffers held in the sync.Pool since
+	buffers memory.Pool[conversionBuffer]
+	// This field is used to size the column buffers held in the memory.Pool since
 	// they are intended to store the source rows being converted from.
 	numberOfSourceColumns int
 }
@@ -76,13 +76,14 @@ type conversionBuffer struct {
 type conversionColumn struct {
 	sourceIndex   int
 	convertValues conversionFunc
+	targetKind    Kind // Target column kind for creating proper null values
+	isOptional    bool // Whether the target column is optional (for null handling)
 }
 
 type conversionFunc func([]Value) error
 
 func convertToSelf(column []Value) error { return nil }
 
-//go:noinline
 func convertToType(targetType, sourceType Type) conversionFunc {
 	return func(column []Value) error {
 		for i, v := range column {
@@ -98,29 +99,91 @@ func convertToType(targetType, sourceType Type) conversionFunc {
 	}
 }
 
-//go:noinline
-func convertToValue(value Value) conversionFunc {
-	return func(column []Value) error {
-		for i := range column {
-			column[i] = value
-		}
-		return nil
+func convertToZero(kind Kind) conversionFunc {
+	switch kind {
+	case Boolean:
+		return convertToZeroBoolean
+	case Int32:
+		return convertToZeroInt32
+	case Int64:
+		return convertToZeroInt64
+	case Int96:
+		return convertToZeroInt96
+	case Float:
+		return convertToZeroFloat
+	case Double:
+		return convertToZeroDouble
+	case ByteArray:
+		return convertToZeroByteArray
+	case FixedLenByteArray:
+		return convertToZeroFixedLenByteArray
+	default:
+		return convertToSelf
 	}
 }
 
-//go:noinline
-func convertToZero(kind Kind) conversionFunc {
+func convertToZeroKind(column []Value, kind int8) error {
+	for i := range column {
+		column[i].ptr = nil
+		column[i].u64 = 0
+		column[i].kind = kind
+	}
+	return nil
+}
+
+func convertToZeroBoolean(column []Value) error {
+	return convertToZeroKind(column, ^int8(Boolean))
+}
+
+func convertToZeroInt32(column []Value) error {
+	return convertToZeroKind(column, ^int8(Int32))
+}
+
+func convertToZeroInt64(column []Value) error {
+	return convertToZeroKind(column, ^int8(Int64))
+}
+
+func convertToZeroInt96(column []Value) error {
+	return convertToZeroKind(column, ^int8(Int96))
+}
+
+func convertToZeroFloat(column []Value) error {
+	return convertToZeroKind(column, ^int8(Float))
+}
+
+func convertToZeroDouble(column []Value) error {
+	return convertToZeroKind(column, ^int8(Double))
+}
+
+func convertToZeroByteArray(column []Value) error {
+	return convertToZeroKind(column, ^int8(ByteArray))
+}
+
+func convertToZeroFixedLenByteArray(column []Value) error {
+	return convertToZeroKind(column, ^int8(FixedLenByteArray))
+}
+
+func convertToNull(column []Value) error {
+	return convertToZeroKind(column, 0) // kind = 0 indicates null
+}
+
+func convertToNullOptional(maxDefinitionLevel byte) conversionFunc {
 	return func(column []Value) error {
 		for i := range column {
 			column[i].ptr = nil
 			column[i].u64 = 0
-			column[i].kind = ^int8(kind)
+			column[i].kind = 0 // kind = 0 indicates null
+			// For optional fields, if the source value is present (defLevel == max),
+			// we need to set defLevel to max-1 to indicate null at the leaf level
+			if column[i].definitionLevel == maxDefinitionLevel {
+				column[i].definitionLevel--
+			}
+			// If source is already null (defLevel < max), keep the same defLevel
 		}
 		return nil
 	}
 }
 
-//go:noinline
 func convertToLevels(repetitionLevels, definitionLevels []byte) conversionFunc {
 	return func(column []Value) error {
 		for i := range column {
@@ -133,7 +196,6 @@ func convertToLevels(repetitionLevels, definitionLevels []byte) conversionFunc {
 	}
 }
 
-//go:noinline
 func multiConversionFunc(conversions []conversionFunc) conversionFunc {
 	switch len(conversions) {
 	case 0:
@@ -153,17 +215,19 @@ func multiConversionFunc(conversions []conversionFunc) conversionFunc {
 }
 
 func (c *conversion) getBuffer() *conversionBuffer {
-	b, _ := c.buffers.Get().(*conversionBuffer)
-	if b == nil {
-		b = &conversionBuffer{
-			columns: make([][]Value, c.numberOfSourceColumns),
-		}
-		values := make([]Value, c.numberOfSourceColumns)
-		for i := range b.columns {
-			b.columns[i] = values[i : i : i+1]
-		}
-	}
-	return b
+	return c.buffers.Get(
+		func() *conversionBuffer {
+			b := &conversionBuffer{
+				columns: make([][]Value, c.numberOfSourceColumns),
+			}
+			values := make([]Value, c.numberOfSourceColumns)
+			for i := range b.columns {
+				b.columns[i] = values[i : i : i+1]
+			}
+			return b
+		},
+		func(b *conversionBuffer) {},
+	)
 }
 
 func (c *conversion) putBuffer(b *conversionBuffer) {
@@ -188,17 +252,23 @@ func (c *conversion) Convert(rows []Row) (int, error) {
 
 		for columnIndex, conv := range c.columns {
 			columnOffset := len(row)
-			if conv.sourceIndex < 0 {
-				// When there is no source column, we put a single value as
-				// placeholder in the column. This is a condition where the
-				// target contained a column which did not exist at had not
-				// other columns existing at that same level.
-				row = append(row, Value{})
+
+			// Get source values if available
+			var sourceValues []Value
+			if conv.sourceIndex >= 0 {
+				sourceValues = source.columns[conv.sourceIndex]
+			}
+
+			if len(sourceValues) > 0 {
+				row = append(row, sourceValues...)
 			} else {
-				// We must copy to the output row first and not mutate the
-				// source columns because multiple target columns may map to
-				// the same source column.
-				row = append(row, source.columns[conv.sourceIndex]...)
+				// No source values - add placeholder to maintain sequential column order.
+				// This happens when the column doesn't exist in source or has no values for this row.
+				if conv.isOptional {
+					row = append(row, NullValue())
+				} else {
+					row = append(row, ZeroValue(conv.targetKind))
+				}
 			}
 			columnValues := row[columnOffset:]
 
@@ -210,6 +280,13 @@ func (c *conversion) Convert(rows []Row) (int, error) {
 			// taget columns we ensure that the right value is always written
 			// to the output row.
 			for i := range columnValues {
+				// Fix: If we have a zero Value{}, convert it to a properly typed value
+				// For optional fields, keep as null (kind = 0)
+				// For required fields, convert to typed zero value
+				if columnValues[i].Kind() == Kind(0) && !conv.isOptional {
+					columnValues[i] = ZeroValue(conv.targetKind)
+				}
+
 				columnValues[i].columnIndex = ^int16(columnIndex)
 			}
 		}
@@ -257,18 +334,36 @@ func Convert(to, from Node) (conv Conversion, err error) {
 	sourceMapping, sourceColumns := columnMappingOf(from)
 	columns := make([]conversionColumn, len(targetColumns))
 
+	targetFieldCache := make(map[Node]map[string]Field)
+	sourceFieldCache := make(map[Node]map[string]Field)
+
+	// Helper function to get or build field map for a node
+	getFieldMap := func(cache map[Node]map[string]Field, node Node) map[string]Field {
+		if fieldMap, ok := cache[node]; ok {
+			return fieldMap
+		}
+		fields := node.Fields()
+		fieldMap := make(map[string]Field, len(fields))
+		for _, f := range fields {
+			fieldMap[f.Name()] = f
+		}
+		cache[node] = fieldMap
+		return fieldMap
+	}
+
 	for i, path := range targetColumns {
 		targetColumn := targetMapping.lookup(path)
 		sourceColumn := sourceMapping.lookup(path)
+
+		// Track whether this column exists in source BEFORE any closestColumn lookup
+		isMissingColumn := sourceColumn.node == nil
 
 		conversions := []conversionFunc{}
 		if sourceColumn.node != nil {
 			targetType := targetColumn.node.Type()
 			sourceType := sourceColumn.node.Type()
-			if !typesAreEqual(targetType, sourceType) {
-				conversions = append(conversions,
-					convertToType(targetType, sourceType),
-				)
+			if !EqualTypes(targetType, sourceType) {
+				conversions = append(conversions, convertToType(targetType, sourceType))
 			}
 
 			repetitionLevels := make([]byte, len(path)+1)
@@ -281,8 +376,8 @@ func Convert(to, from Node) (conv Conversion, err error) {
 			sourceNode := from
 
 			for j := range path {
-				targetNode = fieldByName(targetNode, path[j])
-				sourceNode = fieldByName(sourceNode, path[j])
+				targetNode = getFieldMap(targetFieldCache, targetNode)[path[j]]
+				sourceNode = getFieldMap(sourceFieldCache, sourceNode)[path[j]]
 
 				targetRepetitionLevel, targetDefinitionLevel = applyFieldRepetitionType(
 					fieldRepetitionTypeOf(targetNode),
@@ -303,29 +398,63 @@ func Convert(to, from Node) (conv Conversion, err error) {
 			definitionLevels = definitionLevels[:sourceDefinitionLevel+1]
 
 			if !isDirectLevelMapping(repetitionLevels) || !isDirectLevelMapping(definitionLevels) {
-				conversions = append(conversions,
-					convertToLevels(repetitionLevels, definitionLevels),
-				)
+				conversions = append(conversions, convertToLevels(repetitionLevels, definitionLevels))
 			}
 
 		} else {
+			// Column doesn't exist in source - this is a missing column
 			targetType := targetColumn.node.Type()
 			targetKind := targetType.Kind()
-			sourceColumn = sourceMapping.lookupClosest(path)
-			if sourceColumn.node != nil {
-				conversions = append(conversions,
-					convertToZero(targetKind),
-				)
+
+			// Check if the leaf field itself is optional (not just nested in optional/repeated structure)
+			isOptionalField := targetColumn.node.Optional()
+
+			closestColumn := sourceMapping.lookupClosest(path)
+			if closestColumn.node != nil {
+				// There's a sibling column we can use as a template for structure.
+				// The sibling's values provide the repetition count for repeated groups.
+				// The conversion functions transform them to typed zeros or nulls.
+				if isOptionalField {
+					// Optional field: convert to null values while mirroring structure
+					conversions = append(conversions, convertToNullOptional(targetColumn.maxDefinitionLevel))
+				} else {
+					// Required field: convert to typed zero values
+					conversions = append(conversions, convertToZero(targetKind))
+				}
+				// Use the sibling column as the source for structural information
+				sourceColumn = closestColumn
 			} else {
-				conversions = append(conversions,
-					convertToValue(ZeroValue(targetKind)),
-				)
+				// No sibling columns exist
+				if !isOptionalField {
+					// Required field: create typed zero value
+					conversions = append(conversions, convertToZero(targetKind))
+				}
+				// Keep sourceColumn with columnIndex -1
+				// For optional fields without siblings, we'll create a single null value per row
 			}
 		}
 
+		// Store target column type for creating proper null values
+		targetType := targetColumn.node.Type()
+
+		// Determine sourceIndex: use the source column index (which may be a
+		// sibling's index if the column is missing but has a sibling).
+		// For missing columns without siblings, sourceColumn.columnIndex will
+		// be -1 (from the initial lookup returning an empty leafColumn).
+		sourceIndex := int(sourceColumn.columnIndex)
+		// Only set to -1 if truly missing AND no sibling was found
+		if isMissingColumn && sourceColumn.node == nil {
+			sourceIndex = -1
+		}
+
+		// Determine if target column is optional
+		isOptional := targetColumn.maxDefinitionLevel > 0
+
 		columns[i] = conversionColumn{
-			sourceIndex:   int(sourceColumn.columnIndex),
+			sourceIndex:   sourceIndex,
 			convertValues: multiConversionFunc(conversions),
+			targetKind:    targetType.Kind(), // Store target kind for null value creation
+			isOptional:    isOptional,
 		}
 	}
 
@@ -346,31 +475,117 @@ func isDirectLevelMapping(levels []byte) bool {
 	return true
 }
 
+// findAdjacentColumnChunk finds a sibling column at the same repetition depth
+// Returns nil if no suitable adjacent column exists
+func findAdjacentColumnChunk(schema *Schema, targetColumnIndex int16, columns []ColumnChunk, sourceMapping columnMapping) ColumnChunk {
+	var targetLeaf leafColumn
+	targetFound := false
+
+	forEachLeafColumnOf(schema, func(leaf leafColumn) {
+		if leaf.columnIndex == targetColumnIndex {
+			targetLeaf = leaf
+			targetFound = true
+		}
+	})
+
+	if !targetFound {
+		return nil
+	}
+
+	// Find a sibling: same parent path and same max repetition level
+	targetParentPath := targetLeaf.path
+	if len(targetParentPath) > 0 {
+		targetParentPath = targetParentPath[:len(targetParentPath)-1]
+	}
+
+	var adjacentChunk ColumnChunk
+	forEachLeafColumnOf(schema, func(leaf leafColumn) {
+		if leaf.columnIndex == targetColumnIndex {
+			return // Skip self
+		}
+
+		// Check if this is a sibling
+		if len(leaf.path) > 0 {
+			leafParentPath := leaf.path[:len(leaf.path)-1]
+			if targetParentPath.equal(leafParentPath) &&
+				leaf.maxRepetitionLevel == targetLeaf.maxRepetitionLevel {
+				// Check if this column exists in the converted row group
+				if int(leaf.columnIndex) < len(columns) && columns[leaf.columnIndex] != nil {
+					// Make sure it's not another missing column
+					if _, ok := columns[leaf.columnIndex].(*missingColumnChunk); !ok {
+						adjacentChunk = columns[leaf.columnIndex]
+						return // Found a suitable adjacent column
+					}
+				}
+			}
+		}
+	})
+
+	return adjacentChunk
+}
+
 // ConvertRowGroup constructs a wrapper of the given row group which applies
 // the given schema conversion to its rows.
 func ConvertRowGroup(rowGroup RowGroup, conv Conversion) RowGroup {
+	if EqualNodes(rowGroup.Schema(), conv.Schema()) {
+		return rowGroup
+	}
 	schema := conv.Schema()
 	numRows := rowGroup.NumRows()
 	rowGroupColumns := rowGroup.ColumnChunks()
+	sourceSchema := rowGroup.Schema()
+
+	// Build a mapping to detect missing columns
+	sourceMapping, _ := columnMappingOf(sourceSchema)
 
 	columns := make([]ColumnChunk, numLeafColumnsOf(schema))
+
+	// First pass: create all non-missing columns
 	forEachLeafColumnOf(schema, func(leaf leafColumn) {
 		i := leaf.columnIndex
 		j := conv.Column(int(leaf.columnIndex))
-		if j < 0 {
-			columns[i] = &missingColumnChunk{
-				typ:    leaf.node.Type(),
-				column: i,
-				// TODO: we assume the number of values is the same as the
-				// number of rows, which may not be accurate when the column is
-				// part of a repeated group; neighbor columns may be repeated in
-				// which case it would be impossible for this chunk not to be.
-				numRows:   numRows,
-				numValues: numRows,
-				numNulls:  numRows,
+
+		// Check if this column actually exists in the source schema
+		sourceColumn := sourceMapping.lookup(leaf.path)
+		isMissing := sourceColumn.node == nil
+
+		if !isMissing {
+			if i == int16(j) {
+				columns[i] = rowGroupColumns[j]
+			} else {
+				columns[i] = &convertedColumnChunk{
+					chunk:             rowGroupColumns[j],
+					targetColumnIndex: ^int16(i),
+				}
 			}
-		} else {
-			columns[i] = rowGroupColumns[j]
+		}
+	})
+
+	// Second pass: create missing columns with references to adjacent columns
+	forEachLeafColumnOf(schema, func(leaf leafColumn) {
+		i := leaf.columnIndex
+
+		// Check if this column actually exists in the source schema
+		sourceColumn := sourceMapping.lookup(leaf.path)
+		isMissing := sourceColumn.node == nil
+
+		if isMissing {
+			var adjacentChunk ColumnChunk
+			if leaf.maxRepetitionLevel > 0 {
+				// Find adjacent column for mirroring levels
+				adjacentChunk = findAdjacentColumnChunk(schema, i, columns, sourceMapping)
+			}
+
+			columns[i] = &missingColumnChunk{
+				typ:                leaf.node.Type(),
+				column:             i,
+				numRows:            numRows,
+				numValues:          numRows, // May be adjusted when reading
+				numNulls:           numRows, // Depends on required vs optional
+				maxRepetitionLevel: leaf.maxRepetitionLevel,
+				maxDefinitionLevel: leaf.maxDefinitionLevel,
+				adjacentChunk:      adjacentChunk,
+			}
 		}
 	})
 
@@ -391,17 +606,6 @@ func ConvertRowGroup(rowGroup RowGroup, conv Conversion) RowGroup {
 		// it allows proper reconstruction of the repetition and definition
 		// levels.
 		//
-		// TODO: can we figure out how to set the repetition and definition
-		// levels when reading values from missing column pages? At first sight
-		// it appears complex to do, however:
-		//
-		// * It is possible that having these levels when reading values of
-		//   missing column pages is not necessary in some scenarios (e.g. when
-		//   merging row groups).
-		//
-		// * We may be able to assume the repetition and definition levels at
-		//   the call site (e.g. in the functions reading rows from columns).
-		//
 		// Columns of the source row group which do not exist in the target are
 		// masked to prevent loading unneeded pages when reading rows from the
 		// converted row group.
@@ -418,15 +622,20 @@ func maskMissingRowGroupColumns(r RowGroup, numColumns int, conv Conversion) Row
 	missing := make([]missingColumnChunk, len(columns))
 	numRows := r.NumRows()
 
-	for i := range missing {
+	// Compute max levels for each column in the source schema
+	sourceSchema := r.Schema()
+	forEachLeafColumnOf(sourceSchema, func(leaf leafColumn) {
+		i := leaf.columnIndex
 		missing[i] = missingColumnChunk{
-			typ:       rowGroupColumns[i].Type(),
-			column:    int16(i),
-			numRows:   numRows,
-			numValues: numRows,
-			numNulls:  numRows,
+			typ:                rowGroupColumns[i].Type(),
+			column:             int16(i),
+			numRows:            numRows,
+			numValues:          numRows,
+			numNulls:           numRows,
+			maxRepetitionLevel: leaf.maxRepetitionLevel,
+			maxDefinitionLevel: leaf.maxDefinitionLevel,
 		}
-	}
+	})
 
 	for i := range columns {
 		columns[i] = &missing[i]
@@ -447,16 +656,28 @@ func maskMissingRowGroupColumns(r RowGroup, numColumns int, conv Conversion) Row
 }
 
 type missingColumnChunk struct {
-	typ       Type
-	column    int16
-	numRows   int64
-	numValues int64
-	numNulls  int64
+	typ                Type
+	column             int16
+	numRows            int64
+	numValues          int64
+	numNulls           int64
+	maxRepetitionLevel byte        // Maximum repetition level for this column
+	maxDefinitionLevel byte        // Maximum definition level for this column
+	adjacentChunk      ColumnChunk // Adjacent column chunk to mirror levels from (nil if none)
 }
 
-func (c *missingColumnChunk) Type() Type                        { return c.typ }
-func (c *missingColumnChunk) Column() int                       { return int(c.column) }
-func (c *missingColumnChunk) Pages() Pages                      { return onePage(missingPage{c}) }
+func (c *missingColumnChunk) Type() Type  { return c.typ }
+func (c *missingColumnChunk) Column() int { return int(c.column) }
+func (c *missingColumnChunk) Pages() Pages {
+	var adjacentPages Pages
+	if c.adjacentChunk != nil {
+		adjacentPages = c.adjacentChunk.Pages()
+	}
+	return onePage(missingPage{
+		missingColumnChunk: c,
+		adjacentPages:      adjacentPages,
+	})
+}
 func (c *missingColumnChunk) ColumnIndex() (ColumnIndex, error) { return missingColumnIndex{c}, nil }
 func (c *missingColumnChunk) OffsetIndex() (OffsetIndex, error) { return missingOffsetIndex{}, nil }
 func (c *missingColumnChunk) BloomFilter() BloomFilter          { return missingBloomFilter{} }
@@ -485,7 +706,10 @@ func (missingBloomFilter) ReadAt([]byte, int64) (int, error) { return 0, io.EOF 
 func (missingBloomFilter) Size() int64                       { return 0 }
 func (missingBloomFilter) Check(Value) (bool, error)         { return false, nil }
 
-type missingPage struct{ *missingColumnChunk }
+type missingPage struct {
+	*missingColumnChunk
+	adjacentPages Pages // Pages from adjacent column for level mirroring
+}
 
 func (p missingPage) Column() int                       { return int(p.column) }
 func (p missingPage) Dictionary() Dictionary            { return nil }
@@ -495,43 +719,179 @@ func (p missingPage) NumNulls() int64                   { return p.numNulls }
 func (p missingPage) Bounds() (min, max Value, ok bool) { return }
 func (p missingPage) Slice(i, j int64) Page {
 	return missingPage{
-		&missingColumnChunk{
-			typ:       p.typ,
-			column:    p.column,
-			numRows:   j - i,
-			numValues: j - i,
-			numNulls:  j - i,
+		missingColumnChunk: &missingColumnChunk{
+			typ:                p.typ,
+			column:             p.column,
+			numRows:            j - i,
+			numValues:          j - i,
+			numNulls:           j - i,
+			maxRepetitionLevel: p.maxRepetitionLevel,
+			maxDefinitionLevel: p.maxDefinitionLevel,
+			adjacentChunk:      p.adjacentChunk,
 		},
+		adjacentPages: p.adjacentPages,
 	}
 }
 func (p missingPage) Size() int64              { return 0 }
 func (p missingPage) RepetitionLevels() []byte { return nil }
 func (p missingPage) DefinitionLevels() []byte { return nil }
 func (p missingPage) Data() encoding.Values    { return p.typ.NewValues(nil, nil) }
-func (p missingPage) Values() ValueReader      { return &missingPageValues{page: p} }
+func (p missingPage) Values() ValueReader {
+	return &missingPageValues{
+		page:           p,
+		adjacentPages:  p.adjacentPages,     // Store the Pages reader to read multiple pages
+		adjacentBuffer: make([]Value, 1024), // Reasonable buffer size
+	}
+}
 
 type missingPageValues struct {
-	page missingPage
-	read int64
+	page           missingPage
+	read           int64
+	adjacentPages  Pages       // Pages reader for adjacent column (to read multiple pages)
+	adjacentReader ValueReader // Current page's reader for adjacent column to mirror levels
+	adjacentBuffer []Value     // Buffer for reading adjacent values
 }
 
 func (r *missingPageValues) ReadValues(values []Value) (int, error) {
 	remain := r.page.numValues - r.read
+	if remain == 0 {
+		return 0, io.EOF
+	}
 	if int64(len(values)) > remain {
 		values = values[:remain]
 	}
-	for i := range values {
-		// TODO: how do we set the repetition and definition levels here?
-		values[i] = Value{columnIndex: ^r.page.column}
+
+	typ := r.page.typ
+	columnIndex := ^r.page.column
+
+	var n int
+	var err error
+	// Case 1: No adjacent column (root-level field, no siblings)
+	if r.adjacentPages == nil {
+		n, err = r.readWithoutAdjacent(values, typ, columnIndex)
+	} else {
+		// Case 2: Has adjacent column - mirror its repetition/definition levels
+		n, err = r.readWithAdjacent(values, typ, columnIndex)
 	}
-	if r.read += int64(len(values)); r.read == r.page.numValues {
+
+	return n, err
+}
+
+func (r *missingPageValues) readWithoutAdjacent(values []Value, typ Type, columnIndex int16) (int, error) {
+	// For fields without siblings, assume one value per row
+	// Definition level depends on whether field is required or optional
+	isRequired := r.page.maxDefinitionLevel == 0
+
+	if isRequired {
+		// Required field: produce zero/default values
+		for i := range values {
+			values[i] = ZeroValue(typ.Kind())
+			values[i].repetitionLevel = 0
+			values[i].definitionLevel = r.page.maxDefinitionLevel // Present value
+			values[i].columnIndex = columnIndex
+		}
+	} else {
+		// Optional field: produce nulls
+		definitionLevel := byte(0)
+		if r.page.maxDefinitionLevel > 0 {
+			definitionLevel = r.page.maxDefinitionLevel - 1
+		}
+
+		for i := range values {
+			values[i] = Value{
+				repetitionLevel: 0,
+				definitionLevel: definitionLevel,
+				columnIndex:     columnIndex,
+			}
+		}
+	}
+
+	r.read += int64(len(values))
+	if r.read == r.page.numValues {
 		return len(values), io.EOF
 	}
 	return len(values), nil
 }
 
+func (r *missingPageValues) readWithAdjacent(values []Value, typ Type, columnIndex int16) (int, error) {
+	// Determine if this missing column is required or optional
+	isRequired := r.page.maxDefinitionLevel == 0
+	totalRead := 0
+
+	for totalRead < len(values) {
+		// Initialize or get next page from adjacent column if needed
+		if r.adjacentReader == nil {
+			adjacentPage, err := r.adjacentPages.ReadPage()
+			if err == io.EOF {
+				// No more adjacent pages - we're done
+				if totalRead > 0 {
+					r.read += int64(totalRead)
+					return totalRead, nil
+				}
+				r.read += int64(totalRead)
+				return totalRead, io.EOF
+			}
+			if err != nil {
+				return totalRead, err
+			}
+			r.adjacentReader = adjacentPage.Values()
+		}
+
+		// Read values from adjacent column to get its levels
+		remaining := values[totalRead:]
+		n, err := r.adjacentReader.ReadValues(r.adjacentBuffer[:len(remaining)])
+
+		for i := range n {
+			repLevel := r.adjacentBuffer[i].repetitionLevel
+			adjacentDefLevel := r.adjacentBuffer[i].definitionLevel
+
+			var defLevel byte
+			var value Value
+
+			if isRequired {
+				// Required field: produce zero/default values
+				value = ZeroValue(typ.Kind())
+				// Mirror adjacent definition level structure
+				defLevel = adjacentDefLevel
+			} else {
+				// Optional field: produce nulls
+				// Definition level indicates null at appropriate nesting
+				if adjacentDefLevel < r.page.maxDefinitionLevel {
+					// Adjacent is null at some level, follow its definition
+					defLevel = adjacentDefLevel
+				} else {
+					// Adjacent is present, but we are null at leaf level
+					defLevel = r.page.maxDefinitionLevel - 1
+				}
+			}
+
+			value.repetitionLevel = repLevel
+			value.definitionLevel = defLevel
+			value.columnIndex = columnIndex
+			remaining[i] = value
+		}
+
+		totalRead += n
+
+		if err == io.EOF {
+			// Current adjacent page exhausted, try next page
+			r.adjacentReader = nil
+			continue
+		}
+		if err != nil {
+			return totalRead, err
+		}
+	}
+
+	r.read += int64(totalRead)
+	return totalRead, nil
+}
+
 func (r *missingPageValues) Close() error {
 	r.read = r.page.numValues
+	if r.adjacentPages != nil {
+		return r.adjacentPages.Close()
+	}
 	return nil
 }
 
@@ -585,6 +945,168 @@ func (c *convertedRows) Schema() *Schema {
 
 func (c *convertedRows) SeekToRow(rowIndex int64) error {
 	return c.rows.SeekToRow(rowIndex)
+}
+
+// convertedColumnChunk wraps a ColumnChunk to fix the column index after reordering.
+// When ConvertRowGroup reorders columns, the underlying chunk's Column() method
+// returns the original position. This wrapper fixes both Column() and the
+// columnIndex in values read from the chunk.
+type convertedColumnChunk struct {
+	chunk             ColumnChunk
+	targetColumnIndex int16 // XOR-encoded column index (^int16(columnIndex))
+}
+
+func (c *convertedColumnChunk) Type() Type {
+	return c.chunk.Type()
+}
+
+func (c *convertedColumnChunk) Column() int {
+	return int(^c.targetColumnIndex)
+}
+
+func (c *convertedColumnChunk) NumValues() int64 {
+	return c.chunk.NumValues()
+}
+
+func (c *convertedColumnChunk) Pages() Pages {
+	return &convertedPages{
+		pages:             c.chunk.Pages(),
+		targetColumnIndex: c.targetColumnIndex,
+	}
+}
+
+func (c *convertedColumnChunk) ColumnIndex() (ColumnIndex, error) {
+	return c.chunk.ColumnIndex()
+}
+
+func (c *convertedColumnChunk) OffsetIndex() (OffsetIndex, error) {
+	return c.chunk.OffsetIndex()
+}
+
+func (c *convertedColumnChunk) BloomFilter() BloomFilter {
+	return c.chunk.BloomFilter()
+}
+
+// convertedPages wraps Pages to return convertedPage instances.
+type convertedPages struct {
+	pages             Pages
+	targetColumnIndex int16
+}
+
+func (p *convertedPages) ReadPage() (Page, error) {
+	page, err := p.pages.ReadPage()
+	if err != nil {
+		return nil, err
+	}
+	return &convertedPage{
+		page:              page,
+		targetColumnIndex: p.targetColumnIndex,
+	}, nil
+}
+
+func (p *convertedPages) SeekToRow(rowIndex int64) error {
+	return p.pages.SeekToRow(rowIndex)
+}
+
+func (p *convertedPages) Close() error {
+	return p.pages.Close()
+}
+
+// convertedPage wraps a Page to return a convertedValueReader.
+type convertedPage struct {
+	page              Page
+	targetColumnIndex int16
+}
+
+func (p *convertedPage) Type() Type {
+	return p.page.Type()
+}
+
+func (p *convertedPage) Column() int {
+	return int(^p.targetColumnIndex)
+}
+
+func (p *convertedPage) Dictionary() Dictionary {
+	return p.page.Dictionary()
+}
+
+func (p *convertedPage) NumRows() int64 {
+	return p.page.NumRows()
+}
+
+func (p *convertedPage) NumValues() int64 {
+	return p.page.NumValues()
+}
+
+func (p *convertedPage) NumNulls() int64 {
+	return p.page.NumNulls()
+}
+
+func (p *convertedPage) Bounds() (min, max Value, ok bool) {
+	return p.page.Bounds()
+}
+
+func (p *convertedPage) Size() int64 {
+	return p.page.Size()
+}
+
+func (p *convertedPage) RepetitionLevels() []byte {
+	return p.page.RepetitionLevels()
+}
+
+func (p *convertedPage) DefinitionLevels() []byte {
+	return p.page.DefinitionLevels()
+}
+
+func (p *convertedPage) Data() encoding.Values {
+	return p.page.Data()
+}
+
+func (p *convertedPage) Values() ValueReader {
+	return &convertedValueReader{
+		reader:            p.page.Values(),
+		targetColumnIndex: p.targetColumnIndex,
+	}
+}
+
+func (p *convertedPage) Slice(i, j int64) Page {
+	return &convertedPage{
+		page:              p.page.Slice(i, j),
+		targetColumnIndex: p.targetColumnIndex,
+	}
+}
+
+func (p *convertedPage) Retain() {
+	Retain(p.page)
+}
+
+func (p *convertedPage) Release() {
+	Release(p.page)
+}
+
+func (p *convertedPage) ReleaseAndDetachValues() {
+	releaseAndDetachValues(p.page)
+}
+
+var (
+	_ retainable = (*convertedPage)(nil)
+	_ releasable = (*convertedPage)(nil)
+	_ detachable = (*convertedPage)(nil)
+)
+
+// convertedValueReader wraps a ValueReader to rewrite columnIndex in values.
+type convertedValueReader struct {
+	reader            ValueReader
+	targetColumnIndex int16
+}
+
+func (r *convertedValueReader) ReadValues(values []Value) (int, error) {
+	n, err := r.reader.ReadValues(values)
+	// Rewrite columnIndex for all values to match the target column position
+	for i := range n {
+		values[i].columnIndex = r.targetColumnIndex
+	}
+	return n, err
 }
 
 var (

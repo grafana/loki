@@ -62,6 +62,7 @@ type databaseType int
 
 const (
 	isAnonymousIP = 1 << iota
+	isAnonymousPlus
 	isASN
 	isCity
 	isConnectionType
@@ -146,6 +147,8 @@ func OpenBytes(bytes []byte, options ...Option) (*Reader, error) {
 
 func getDBType(reader *maxminddb.Reader) (databaseType, error) {
 	switch reader.Metadata.DatabaseType {
+	case "GeoIP-Anonymous-Plus":
+		return isAnonymousPlus, nil
 	case "GeoIP2-Anonymous-IP":
 		return isAnonymousIP, nil
 	case "DBIP-ASN-Lite (compat=GeoLite2-ASN)",
@@ -254,6 +257,24 @@ func (r *Reader) AnonymousIP(ipAddress netip.Addr) (*AnonymousIP, error) {
 	anonIP.IPAddress = ipAddress
 	anonIP.Network = result.Prefix()
 	return &anonIP, nil
+}
+
+// AnonymousPlus takes an IP address as a netip.Addr and returns an
+// AnonymousPlus struct and/or an error. This is intended to be used with
+// the GeoIP Anonymous Plus database.
+func (r *Reader) AnonymousPlus(ipAddress netip.Addr) (*AnonymousPlus, error) {
+	if isAnonymousPlus&r.databaseType == 0 {
+		return nil, InvalidMethodError{"AnonymousPlus", r.Metadata().DatabaseType}
+	}
+	result := r.mmdbReader.Lookup(ipAddress)
+	var anonPlus AnonymousPlus
+	err := result.Decode(&anonPlus)
+	if err != nil {
+		return &anonPlus, err
+	}
+	anonPlus.IPAddress = ipAddress
+	anonPlus.Network = result.Prefix()
+	return &anonPlus, nil
 }
 
 // ASN takes an IP address as a netip.Addr and returns a ASN struct and/or

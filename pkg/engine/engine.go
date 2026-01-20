@@ -12,16 +12,14 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/thanos-io/objstore"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
-	"go.opentelemetry.io/otel/trace"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/engine/internal/deletion"
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/logical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
@@ -31,7 +29,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/rangeio"
@@ -52,9 +49,6 @@ var tracer = otel.Tracer("pkg/engine")
 
 // ExecutorConfig configures engine execution.
 type ExecutorConfig struct {
-	DataobjStorageLag   time.Duration `yaml:"dataobj_storage_lag" category:"experimental"`
-	DataobjStorageStart flagext.Time  `yaml:"dataobj_storage_start" category:"experimental"`
-
 	// Batch size of the v2 execution engine.
 	BatchSize int `yaml:"batch_size" category:"experimental"`
 
@@ -69,13 +63,6 @@ func (cfg *ExecutorConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSe
 	f.IntVar(&cfg.BatchSize, prefix+"batch-size", 100, "Experimental: Batch size of the next generation query engine.")
 	f.IntVar(&cfg.MergePrefetchCount, prefix+"merge-prefetch-count", 0, "Experimental: The number of inputs that are prefetched simultaneously by any Merge node. A value of 0 means that only the currently processed input is prefetched, 1 means that only the next input is prefetched, and so on. A negative value means that all inputs are be prefetched in parallel.")
 	cfg.RangeConfig.RegisterFlags(prefix+"range-reads.", f)
-
-	f.DurationVar(&cfg.DataobjStorageLag, prefix+"dataobj-storage-lag", 1*time.Hour, "Amount of time until data objects are available.")
-	f.Var(&cfg.DataobjStorageStart, prefix+"dataobj-storage-start", "Initial date when data objects became available. Format YYYY-MM-DD. If not set, assume data objects are always available no matter how far back.")
-}
-
-func (cfg *ExecutorConfig) ValidQueryRange() (time.Time, time.Time) {
-	return time.Time(cfg.DataobjStorageStart).UTC(), time.Now().UTC().Add(-cfg.DataobjStorageLag)
 }
 
 // Params holds parameters for constructing a new [Engine].
@@ -83,12 +70,12 @@ type Params struct {
 	Logger     log.Logger            // Logger for optional log messages.
 	Registerer prometheus.Registerer // Registerer for optional metrics.
 
-	Config          ExecutorConfig   // Config for the Engine.
-	MetastoreConfig metastore.Config // Config for the Metastore.
+	Config ExecutorConfig // Config for the Engine.
 
-	Scheduler *Scheduler      // Scheduler to manage the execution of tasks.
-	Bucket    objstore.Bucket // Bucket to read stored data from.
-	Limits    logql.Limits    // Limits to apply to engine queries.
+	Scheduler    *Scheduler          // Scheduler to manage the execution of tasks.
+	Metastore    metastore.Metastore // Metastore to access the indexes
+	Limits       logql.Limits        // Limits to apply to engine queries.
+	DeleteGetter deletion.Getter     // DeleteGetter to fetch delete requests for query-time filtering.
 }
 
 // validate validates p and applies defaults.
@@ -102,6 +89,9 @@ func (p *Params) validate() error {
 	if p.Scheduler == nil {
 		return errors.New("scheduler is required")
 	}
+	if p.Metastore == nil {
+		return errors.New("metastore is required")
+	}
 	if p.Config.BatchSize <= 0 {
 		return fmt.Errorf("invalid batch size for query engine. must be greater than 0, got %d", p.Config.BatchSize)
 	}
@@ -114,9 +104,9 @@ type Engine struct {
 	metrics     *metrics
 	rangeConfig rangeio.Config
 
-	scheduler *Scheduler      // Scheduler to manage the execution of tasks.
-	bucket    objstore.Bucket // Bucket to read stored data from.
-	limits    logql.Limits    // Limits to apply to engine queries.
+	scheduler    *Scheduler      // Scheduler to manage the execution of tasks.
+	limits       logql.Limits    // Limits to apply to engine queries.
+	deleteGetter deletion.Getter // DeleteGetter to fetch delete requests for query-time filtering.
 
 	metastore metastore.Metastore
 }
@@ -132,17 +122,11 @@ func New(params Params) (*Engine, error) {
 		metrics:     newMetrics(params.Registerer),
 		rangeConfig: params.Config.RangeConfig,
 
-		scheduler: params.Scheduler,
-		bucket:    params.Bucket,
-		limits:    params.Limits,
-	}
+		scheduler:    params.Scheduler,
+		limits:       params.Limits,
+		deleteGetter: params.DeleteGetter,
 
-	if e.bucket != nil {
-		indexBucket := e.bucket
-		if params.MetastoreConfig.IndexStoragePrefix != "" {
-			indexBucket = objstore.NewPrefixedBucket(e.bucket, params.MetastoreConfig.IndexStoragePrefix)
-		}
-		e.metastore = metastore.NewObjectMetastore(indexBucket, e.logger, params.Registerer)
+		metastore: params.Metastore,
 	}
 
 	return e, nil
@@ -160,9 +144,10 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	// [logql.Engine] disappear.
 
 	ctx, capture := xcap.NewCapture(ctx, nil)
+	defer capture.End()
 	startTime := time.Now()
 
-	ctx, span := tracer.Start(ctx, "Engine.Engine", trace.WithAttributes(
+	ctx, region := xcap.StartRegion(ctx, "Engine.Execute", xcap.WithRegionAttributes(
 		attribute.String("type", string(logql.GetRangeType(params))),
 		attribute.String("query", params.QueryString()),
 		attribute.Stringer("start", params.Start()),
@@ -171,32 +156,33 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 		attribute.Stringer("length", params.End().Sub(params.Start())),
 		attribute.StringSlice("shards", params.Shards()),
 	))
-	defer span.End()
+	defer region.End()
 
 	ctx = e.buildContext(ctx)
 	logger := util_log.WithContext(ctx, e.logger)
 	logger = log.With(logger, "engine", "v2")
+	logger = injectQueryTags(ctx, logger)
 
 	level.Info(logger).Log("msg", "starting query", "query", params.QueryString(), "shard", strings.Join(params.Shards(), ","))
 
 	logicalPlan, durLogicalPlanning, err := e.buildLogicalPlan(ctx, logger, params)
 	if err != nil {
 		e.metrics.subqueries.WithLabelValues(statusNotImplemented).Inc()
-		span.SetStatus(codes.Error, "failed to create logical plan")
+		region.SetStatus(codes.Error, "failed to create logical plan")
 		return logqlmodel.Result{}, ErrNotSupported
 	}
 
 	physicalPlan, durPhysicalPlanning, err := e.buildPhysicalPlan(ctx, logger, params, logicalPlan)
 	if err != nil {
 		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
-		span.SetStatus(codes.Error, "failed to create physical plan")
+		region.SetStatus(codes.Error, "failed to create physical plan")
 		return logqlmodel.Result{}, ErrPlanningFailed
 	}
 
 	wf, durWorkflowPlanning, err := e.buildWorkflow(ctx, logger, physicalPlan)
 	if err != nil {
 		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
-		span.SetStatus(codes.Error, "failed to create execution plan")
+		region.SetStatus(codes.Error, "failed to create execution plan")
 		return logqlmodel.Result{}, ErrPlanningFailed
 	}
 	defer wf.Close()
@@ -206,7 +192,7 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 		level.Error(logger).Log("msg", "failed to execute query", "err", err)
 
 		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
-		span.SetStatus(codes.Error, "failed to execute query")
+		region.SetStatus(codes.Error, "failed to execute query")
 		return logqlmodel.Result{}, ErrSchedulingFailed
 	}
 	defer pipeline.Close()
@@ -214,31 +200,47 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	builder, durExecution, err := e.collectResult(ctx, logger, params, pipeline)
 	if err != nil {
 		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
-		span.SetStatus(codes.Error, "error during query execution")
+		region.SetStatus(codes.Error, "error during query execution")
 		return logqlmodel.Result{}, err
 	}
 
 	durFull := time.Since(startTime)
-	level.Info(logger).Log(
+	logValues := []any{
 		"msg", "finished executing",
+		"query", params.QueryString(),
+		"length", params.End().Sub(params.Start()).String(),
+		"step", params.Step().String(),
 		"duration_logical_planning", durLogicalPlanning,
 		"duration_physical_planning", durPhysicalPlanning,
 		"duration_workflow_planning", durWorkflowPlanning,
 		"duration_execution", durExecution,
 		"duration_full", durFull,
-	)
-
-	if err := exportCapture(ctx, capture, physicalPlan, logger); err != nil {
-		level.Error(logger).Log("msg", "failed to export capture as trace", "err", err)
 	}
 
-	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
-	statsCtx := stats.FromContext(ctx)
-	statsCtx.AddQuerierExecTime(durFull)
-	stats := statsCtx.Result(durFull, queueTime, builder.Len())
-	md := metadata.FromContext(ctx)
+	// Close the pipeline to calculate the stats.
+	pipeline.Close()
 
-	span.SetStatus(codes.Ok, "")
+	region.SetStatus(codes.Ok, "")
+
+	// explicitly call End() before exporting even though we have a defer above.
+	// It is safe to call End() multiple times.
+	region.End()
+	capture.End()
+	if err := mergeCapture(capture, physicalPlan, region); err != nil {
+		level.Warn(logger).Log("msg", "failed to merge capture", "err", err)
+		// continue export even if merging fails. Spans from the tasks
+		// would still appear as siblings in the trace right below the Engine.Execute.
+	}
+
+	xcap.ExportTrace(ctx, capture, logger)
+	logValues = append(logValues, xcap.SummaryLogValues(capture)...)
+	level.Info(logger).Log(
+		logValues...,
+	)
+
+	// TODO: capture and report queue time
+	md := metadata.FromContext(ctx)
+	stats := capture.ToStatsSummary(durFull, 0, builder.Len())
 	result := builder.Build(stats, md)
 
 	logql.RecordRangeAndInstantQueryMetrics(ctx, logger, params, strconv.Itoa(http.StatusOK), stats, result.Data)
@@ -247,27 +249,51 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 
 // buildContext initializes a request-scoped context prior to execution.
 func (e *Engine) buildContext(ctx context.Context) context.Context {
-	statsContext, ctx := stats.NewContext(ctx)
 	metadataContext, ctx := metadata.NewContext(ctx)
 
 	// Inject the range config into the context for any calls to
 	// [rangeio.ReadRanges] to make use of.
 	ctx = rangeio.WithConfig(ctx, &e.rangeConfig)
 
-	statsContext.SetQueryUsedV2Engine()
 	metadataContext.AddWarning("Query was executed using the new experimental query engine and dataobj storage.")
 	return ctx
 }
 
+// injectQueryTags adds query tags as key-value pairs from the context into the
+// given logger, if they have been defined via [httpreq.InjectQueryTags].
+// Otherwise, the original logger is returned unmodified.
+func injectQueryTags(ctx context.Context, logger log.Logger) log.Logger {
+	tags := httpreq.ExtractQueryTagsFromContext(ctx)
+	if len(tags) == 0 {
+		return logger
+	}
+	return log.With(logger, httpreq.TagsToKeyValues(tags)...)
+}
+
 // buildLogicalPlan builds a logical plan from the given params.
 func (e *Engine) buildLogicalPlan(ctx context.Context, logger log.Logger, params logql.Params) (*logical.Plan, time.Duration, error) {
-	span := trace.SpanFromContext(ctx)
+	region := xcap.RegionFromContext(ctx)
 	timer := prometheus.NewTimer(e.metrics.logicalPlanning)
 
-	logicalPlan, err := logical.BuildPlan(params)
+	var deleteReqs []*deletion.Request
+	if e.deleteGetter != nil {
+		var err error
+		deleteReqs, err = deletion.DeletesForUser(ctx, params.Start(), params.End(), e.deleteGetter)
+		if err != nil {
+			return nil, 0, fmt.Errorf("failed to get delete requests: %w", err)
+		}
+	}
+
+	logicalPlan, err := logical.BuildPlanWithDeletes(ctx, params, deleteReqs)
 	if err != nil {
 		level.Warn(logger).Log("msg", "failed to create logical plan", "err", err)
-		span.RecordError(err)
+		region.RecordError(err)
+		return nil, 0, ErrNotSupported
+	}
+
+	if err := logical.Optimize(logicalPlan); err != nil {
+		level.Warn(logger).Log("msg", "failed to optimize logical plan", "err", err)
+		region.RecordError(err)
 		return nil, 0, ErrNotSupported
 	}
 
@@ -278,21 +304,19 @@ func (e *Engine) buildLogicalPlan(ctx context.Context, logger log.Logger, params
 		"duration", duration.String(),
 	)
 
-	span.AddEvent("finished logical planning", trace.WithAttributes(
+	region.AddEvent("finished logical planning",
 		attribute.Stringer("plan", logicalPlan),
 		attribute.Stringer("duration", duration),
-	))
+	)
 	return logicalPlan, duration, nil
 }
 
 // buildPhysicalPlan builds a physical plan from the given logical plan.
 func (e *Engine) buildPhysicalPlan(ctx context.Context, logger log.Logger, params logql.Params, logicalPlan *logical.Plan) (*physical.Plan, time.Duration, error) {
-	span := trace.SpanFromContext(ctx)
+	region := xcap.RegionFromContext(ctx)
 	timer := prometheus.NewTimer(e.metrics.physicalPlanning)
 
-	// TODO(rfratto): To improve the performance of the physical planner, we
-	// may want to parallelize metastore lookups across scheduled tasks as well.
-	catalog := physical.NewMetastoreCatalog(ctx, e.metastore)
+	catalog := physical.NewMetastoreCatalog(e.metastoreSectionsResolver(ctx))
 
 	// TODO(rfratto): It feels strange that we need to past the start/end time
 	// to the physical planner. Isn't it already represented by the logical
@@ -301,14 +325,14 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, logger log.Logger, param
 	physicalPlan, err := planner.Build(logicalPlan)
 	if err != nil {
 		level.Warn(logger).Log("msg", "failed to create physical plan", "err", err)
-		span.RecordError(err)
+		region.RecordError(err)
 		return nil, 0, ErrNotSupported
 	}
 
 	physicalPlan, err = planner.Optimize(physicalPlan)
 	if err != nil {
 		level.Warn(logger).Log("msg", "failed to optimize physical plan", "err", err)
-		span.RecordError(err)
+		region.RecordError(err)
 		return nil, 0, ErrNotSupported
 	}
 
@@ -319,11 +343,52 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, logger log.Logger, param
 		"duration", duration.String(),
 	)
 
-	span.AddEvent("finished physical planning", trace.WithAttributes(
-		attribute.String("plan", physical.PrintAsTree(physicalPlan)),
-		attribute.Stringer("duration", duration),
-	))
+	region.AddEvent("finished physical planning", attribute.Stringer("duration", duration))
 	return physicalPlan, duration, nil
+}
+
+func (e *Engine) metastoreSectionsResolver(ctx context.Context) physical.MetastoreSectionsResolver {
+	planner := physical.NewMetastorePlanner(e.metastore)
+	return func(selector physical.Expression, predicates []physical.Expression, start time.Time, end time.Time) ([]*metastore.DataobjSectionDescriptor, error) {
+		ctx, region := xcap.StartRegion(ctx, "ObjectMetastore.Sections")
+		defer region.End()
+
+		plan, err := planner.Plan(ctx, selector, predicates, start, end)
+		if err != nil {
+			return nil, fmt.Errorf("metastore: build plan: %w", err)
+		}
+
+		wf, _, err := e.buildWorkflow(ctx, e.logger, plan)
+		if err != nil {
+			return nil, fmt.Errorf("metastore: build workflow: %w", err)
+		}
+		defer wf.Close()
+
+		pipeline, err := wf.Run(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("metastore: run workflow: %w", err)
+		}
+		reader := executor.TranslateEOF(pipeline)
+		defer reader.Close()
+
+		resp, err := e.metastore.CollectSections(ctx, metastore.CollectSectionsRequest{
+			// externalize EOFs returned by executor pipelines (executor.EOF -> io.EOF)
+			// because metastore is not aware about executor implementation details
+			Reader: reader,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("metastore: collect sections: %w", err)
+		}
+
+		// close to report the stats
+		reader.Close()
+
+		if err := mergeCapture(xcap.CaptureFromContext(ctx), plan, region); err != nil {
+			level.Warn(e.logger).Log("msg", "failed to merge capture", "err", err)
+		}
+
+		return resp.SectionsResponse.Sections, nil
+	}
 }
 
 // buildWorkflow builds a workflow from the given physical plan.
@@ -333,20 +398,23 @@ func (e *Engine) buildWorkflow(ctx context.Context, logger log.Logger, physicalP
 		return nil, 0, fmt.Errorf("extracting tenant ID: %w", err)
 	}
 
-	span := trace.SpanFromContext(ctx)
+	region := xcap.RegionFromContext(ctx)
 	timer := prometheus.NewTimer(e.metrics.workflowPlanning)
 
 	opts := workflow.Options{
+		Tenant: tenantID,
+		Actor:  httpreq.ExtractActorPath(ctx),
+
 		MaxRunningScanTasks:  e.limits.MaxScanTaskParallelism(tenantID),
 		MaxRunningOtherTasks: 0,
 
 		DebugTasks:   e.limits.DebugEngineTasks(tenantID),
 		DebugStreams: e.limits.DebugEngineStreams(tenantID),
 	}
-	wf, err := workflow.New(opts, logger, tenantID, e.scheduler.inner, physicalPlan)
+	wf, err := workflow.New(opts, logger, e.scheduler.inner, physicalPlan)
 	if err != nil {
 		level.Warn(logger).Log("msg", "failed to create workflow", "err", err)
-		span.RecordError(err)
+		region.RecordError(err)
 		return nil, 0, ErrNotSupported
 	}
 
@@ -361,24 +429,23 @@ func (e *Engine) buildWorkflow(ctx context.Context, logger log.Logger, physicalP
 	level.Info(logger).Log(
 		"msg", "finished execution planning",
 		"duration", duration.String(),
+		"tasks", wf.Len(),
 	)
 
-	span.AddEvent("finished execution planning", trace.WithAttributes(
-		attribute.String("plan", workflow.Sprint(wf)),
-		attribute.Stringer("duration", duration),
-	))
+	region.AddEvent("finished execution planning", attribute.Stringer("duration", duration))
 	return wf, duration, nil
 }
 
 // collectResult processes the results of the execution plan.
 func (e *Engine) collectResult(ctx context.Context, logger log.Logger, params logql.Params, pipeline executor.Pipeline) (ResultBuilder, time.Duration, error) {
-	span := trace.SpanFromContext(ctx)
+	region := xcap.RegionFromContext(ctx)
 	timer := prometheus.NewTimer(e.metrics.execution)
+	encodingFlags := httpreq.ExtractEncodingFlagsFromCtx(ctx)
 
 	var builder ResultBuilder
 	switch params.GetExpression().(type) {
 	case syntax.LogSelectorExpr:
-		builder = newStreamsResultBuilder(params.Direction())
+		builder = newStreamsResultBuilder(params.Direction(), encodingFlags.Has(httpreq.FlagCategorizeLabels))
 	case syntax.SampleExpr:
 		if params.Step() > 0 {
 			builder = newMatrixResultBuilder()
@@ -413,13 +480,13 @@ func (e *Engine) collectResult(ctx context.Context, logger log.Logger, params lo
 
 	// We don't log an event here because a final event will be logged by the
 	// caller noting that execution completed.
-	span.AddEvent("finished execution", trace.WithAttributes(
+	region.AddEvent("finished execution",
 		attribute.Stringer("duration", duration),
-	))
+	)
 	return builder, duration, nil
 }
 
-func exportCapture(ctx context.Context, capture *xcap.Capture, plan *physical.Plan, logger log.Logger) error {
+func mergeCapture(capture *xcap.Capture, plan *physical.Plan, root *xcap.Region) error {
 	if capture == nil {
 		return nil
 	}
@@ -433,13 +500,18 @@ func exportCapture(ctx context.Context, capture *xcap.Capture, plan *physical.Pl
 				// TODO: This is assuming a single parent which is not always true.
 				// Fix this when we have plans with multiple parents.
 
-				if parents[0].Type() == physical.NodeTypeParallelize {
-					// Skip Parallelize nodes as they are not execution nodes.
-					pp := plan.Graph().Parents(parents[0])
-					if len(pp) > 0 {
-						parents = pp
-					} else {
-						return nil
+				if n.Type() == physical.NodeTypeScanSet {
+					ss := n.(*physical.ScanSet)
+					for _, t := range ss.Targets {
+						switch t.Type {
+						case physical.ScanTypePointers:
+							idToParentID[t.Pointers.NodeID.String()] = n.ID().String()
+						case physical.ScanTypeDataObject:
+							// dataobj scans are correctly mapped to parents without extra mapping
+							continue
+						default:
+							panic("unsupported scan type")
+						}
 					}
 				}
 
@@ -455,7 +527,7 @@ func exportCapture(ctx context.Context, capture *xcap.Capture, plan *physical.Pl
 	capture.LinkRegions("node_id", func(nodeID string) (string, bool) {
 		parentID, ok := idToParentID[nodeID]
 		return parentID, ok
-	})
+	}, root)
 
-	return xcap.ExportTrace(ctx, capture, logger)
+	return nil
 }

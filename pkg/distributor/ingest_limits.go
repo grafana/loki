@@ -2,6 +2,7 @@ package distributor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand/v2"
 
@@ -64,6 +65,9 @@ func (c *ingestLimitsFrontendRingClient) withRandomShuffle(ctx context.Context, 
 	if err != nil {
 		return fmt.Errorf("failed to get limits-frontend instances from ring: %w", err)
 	}
+	if len(rs.Instances) == 0 {
+		return errors.New("no healthy instances found")
+	}
 	// Randomly shuffle instances to evenly distribute requests.
 	rand.Shuffle(len(rs.Instances), func(i, j int) {
 		rs.Instances[i], rs.Instances[j] = rs.Instances[j], rs.Instances[i]
@@ -113,23 +117,24 @@ func newIngestLimits(client ingestLimitsFrontendClient, r prometheus.Registerer)
 }
 
 // EnforceLimits checks all streams against the per-tenant limits and returns
-// a slice containing the streams that are accepted (within the per-tenant
-// limits). Any streams that could not have their limits checked are also
-// accepted.
-func (l *ingestLimits) EnforceLimits(ctx context.Context, tenant string, streams []KeyedStream) ([]KeyedStream, error) {
+// two slices: one containing the streams that are accepted (within the per-tenant
+// limits) and one containing the streams that are rejected. Any streams that
+// could not have their limits checked are also accepted.
+func (l *ingestLimits) EnforceLimits(ctx context.Context, tenant string, streams []KeyedStream) ([]KeyedStream, []KeyedStream, error) {
 	results, err := l.ExceedsLimits(ctx, tenant, streams)
 	if err != nil {
-		return streams, err
+		return streams, []KeyedStream{}, err
 	}
 	// Fast path. No results means all streams were accepted and there were
 	// no failures, so we can return the input streams.
 	if len(results) == 0 {
-		return streams, nil
+		return streams, []KeyedStream{}, nil
 	}
 	// We can do this without allocation if needed, but doing so will modify
 	// the original backing array. See "Filtering without allocation" from
 	// https://go.dev/wiki/SliceTricks.
 	accepted := make([]KeyedStream, 0, len(streams))
+	rejected := make([]KeyedStream, 0, len(streams))
 	for _, s := range streams {
 		// Check each stream to see if it failed.
 		// TODO(grobinson): We have an O(N*M) loop here. Need to benchmark if
@@ -147,9 +152,11 @@ func (l *ingestLimits) EnforceLimits(ctx context.Context, tenant string, streams
 		}
 		if !found || reason == uint32(limits.ReasonFailed) {
 			accepted = append(accepted, s)
+		} else {
+			rejected = append(rejected, s)
 		}
 	}
-	return accepted, nil
+	return accepted, rejected, nil
 }
 
 // ExceedsLimits checks all streams against the per-tenant limits. It returns
@@ -194,7 +201,7 @@ func newExceedsLimitsRequest(tenant string, streams []KeyedStream) (*proto.Excee
 // UpdateRates updates the rates for the streams and returns a slice of the
 // updated rates for all streams. Any streams that could not have rates updated
 // have a rate of zero.
-func (l *ingestLimits) UpdateRates(ctx context.Context, tenant string, streams []KeyedStream) ([]*proto.UpdateRatesResult, error) {
+func (l *ingestLimits) UpdateRates(ctx context.Context, tenant string, streams []SegmentedStream) ([]*proto.UpdateRatesResult, error) {
 	l.requests.WithLabelValues("UpdateRates").Inc()
 	req, err := newUpdateRatesRequest(tenant, streams)
 	if err != nil {
@@ -209,7 +216,7 @@ func (l *ingestLimits) UpdateRates(ctx context.Context, tenant string, streams [
 	return resp.Results, nil
 }
 
-func newUpdateRatesRequest(tenant string, streams []KeyedStream) (*proto.UpdateRatesRequest, error) {
+func newUpdateRatesRequest(tenant string, streams []SegmentedStream) (*proto.UpdateRatesRequest, error) {
 	// The distributor sends the hashes of all streams in the request to the
 	// limits-frontend. The limits-frontend is responsible for deciding if
 	// the request would exceed the tenants limits, and if so, which streams
@@ -218,7 +225,7 @@ func newUpdateRatesRequest(tenant string, streams []KeyedStream) (*proto.UpdateR
 	for _, stream := range streams {
 		entriesSize, structuredMetadataSize := calculateStreamSizes(stream.Stream)
 		streamMetadata = append(streamMetadata, &proto.StreamMetadata{
-			StreamHash:      stream.HashKeyNoShard,
+			StreamHash:      stream.SegmentationKeyHash,
 			TotalSize:       entriesSize + structuredMetadataSize,
 			IngestionPolicy: stream.Policy,
 		})
