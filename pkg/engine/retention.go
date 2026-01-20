@@ -118,7 +118,7 @@ func (r *retentionChecker) Validate(ctx context.Context, params logql.Params) Re
 
 	globalBoundary := today.Add(-globalRetention)
 	if len(streamRetention) > 0 {
-		return r.handleStreamRetention(params, tenantID, queryStart, queryEnd, globalRetention, globalBoundary, streamRetention, today)
+		return r.handleStreamRetention(params, tenantID, queryStart, globalRetention, globalBoundary, streamRetention, today)
 	}
 
 	// Only global retention configured.
@@ -161,7 +161,7 @@ func (r *retentionChecker) handleGlobalRetention(params logql.Params, tenantID s
 }
 
 // handleStreamRetention handles the case where stream retention is also configured.
-func (r *retentionChecker) handleStreamRetention(params logql.Params, tenantID string, queryStart, queryEnd time.Time, globalRetention time.Duration, globalBoundary time.Time, streamRetention []validation.StreamRetention, today time.Time) RetentionCheckResult {
+func (r *retentionChecker) handleStreamRetention(params logql.Params, tenantID string, queryStart time.Time, globalRetention time.Duration, globalBoundary time.Time, streamRetention []validation.StreamRetention, today time.Time) RetentionCheckResult {
 	// Find the smallest stream retention period (most restrictive).
 	var smallestStreamRetention time.Duration
 	for _, sr := range streamRetention {
