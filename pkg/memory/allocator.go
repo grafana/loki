@@ -21,7 +21,8 @@ type Allocator struct {
 	parent *Allocator
 
 	regions []*Region
-	free    Bitmap // Tracks free regions. 1=free, 0=used
+	avail   Bitmap // Tracks available regions. 1=available, 0=in-use
+	used    Bitmap // Tracks regions used since the previous Reclaim. 1=used, 0=unused
 	empty   Bitmap // Tracks nil elements of regions. 1=nil, 0=not-nil
 }
 
@@ -41,10 +42,11 @@ func MakeAllocator(parent *Allocator) *Allocator {
 func (alloc *Allocator) Allocate(size int) *Region {
 	// Iterate over the set bits in the freelist. Each set bit indicates an
 	// available memory region.
-	for i := range alloc.free.IterValues(true) {
+	for i := range alloc.avail.IterValues(true) {
 		region := alloc.regions[i]
 		if region != nil && cap(region.data) >= size {
-			alloc.free.Set(i, false)
+			alloc.avail.Set(i, false)
+			alloc.used.Set(i, true)
 			return region
 		}
 	}
@@ -80,16 +82,13 @@ func (alloc *Allocator) addRegion(region *Region, free bool) {
 		alloc.regions[freeSlot] = region
 	}
 
-	alloc.free.Resize(len(alloc.regions))
+	alloc.avail.Resize(len(alloc.regions))
+	alloc.used.Resize(len(alloc.regions))
 	alloc.empty.Resize(len(alloc.regions))
 
-	if free {
-		alloc.free.Set(freeSlot, true)
-	} else {
-		alloc.free.Set(freeSlot, false)
-	}
-
-	alloc.empty.Set(freeSlot, false)
+	alloc.avail.Set(freeSlot, free)
+	alloc.used.Set(freeSlot, !free)  // Region is in-use if it's not free.
+	alloc.empty.Set(freeSlot, false) // We just filled the slot.
 }
 
 // Reset resets the Allocator for reuse. It is a convenience wrapper for calling
@@ -102,13 +101,13 @@ func (alloc *Allocator) Reset() {
 	alloc.Reclaim()
 }
 
-// Trim releases unused memory regions.
-// If the allocator has a prent, released memory regions are returned to the parent allocator.
-// Otherwise, released memory regions may be returned to the Go runtime for garbage collection.
+// Trim releases unused memory regions. If the allocator has a parent, released
+// memory regions are returned to the parent allocator. Otherwise, released
+// memory regions may be returned to the Go runtime for garbage collection.
 //
 // If Trim is called after Reclaim, all memory regions will be released.
 func (alloc *Allocator) Trim() {
-	for i := range alloc.free.IterValues(true) {
+	for i := range alloc.used.IterValues(false) {
 		region := alloc.regions[i]
 		if region == nil {
 			continue
@@ -127,16 +126,28 @@ func (alloc *Allocator) Trim() {
 func (alloc *Allocator) returnRegion(region *Region) {
 	for i := range alloc.regions {
 		if alloc.regions[i] == region {
-			alloc.free.Set(i, true)
+			alloc.avail.Set(i, true)
 			break
 		}
 	}
 }
 
+// Free returns all memory regions back to the parent allocator, if there is
+// one. Otherwise, released memory regions are returned to the Go runtime for
+// garbage collection.
+//
+// It is a convenience wrapper for calling [Allocator.Reclaim] and
+// [Allocator.Trim] (in that order).
+func (alloc *Allocator) Free() {
+	alloc.Reclaim()
+	alloc.Trim()
+}
+
 // Reclaim all memory regions back to the Allocator for reuse. After calling
 // Reclaim, any [Region] returned by the Allocator or any child allocators must no longer be used.
 func (alloc *Allocator) Reclaim() {
-	alloc.free.SetRange(0, len(alloc.regions), true)
+	alloc.avail.SetRange(0, len(alloc.regions), true)
+	alloc.used.SetRange(0, len(alloc.regions), false)
 }
 
 // AllocatedBytes returns the total amount of bytes owned by the Allocator.
@@ -155,7 +166,7 @@ func (alloc *Allocator) AllocatedBytes() int {
 // without requiring additional allocations.
 func (alloc *Allocator) FreeBytes() int {
 	var sum int
-	for i := range alloc.free.IterValues(true) {
+	for i := range alloc.avail.IterValues(true) {
 		region := alloc.regions[i]
 		if region != nil {
 			sum += cap(region.data)

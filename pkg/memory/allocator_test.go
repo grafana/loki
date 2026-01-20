@@ -1,6 +1,7 @@
 package memory_test
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -91,4 +92,31 @@ func TestAllocator_AllocateFromParent(t *testing.T) {
 	parent.Trim()
 	require.Equal(t, 0, parent.AllocatedBytes(), "all memory should have been trimmed")
 	require.Equal(t, 5, child.AllocatedBytes(), "child memory should not have been trimmed")
+}
+
+func TestAllocator_reuse_returned_child_memory(t *testing.T) {
+	var (
+		parent = memory.MakeAllocator(nil)
+		child  = memory.MakeAllocator(parent)
+	)
+
+	// Have the child allocator pull some memory from its parent and immediately
+	// give it back.
+	expect := child.Allocate(64)
+	child.Free()
+
+	// Reset memory on the parent; this should keep reg alive since it was just
+	// used by the child since the previous reset.
+	parent.Reset()
+
+	child = memory.MakeAllocator(parent)
+	actual := child.Allocate(64)
+
+	if child == parent {
+		fmt.Println("???")
+	}
+
+	// NOTE(rfratto): We can't use require.Equal here since that doesn't care
+	// about pointer equality.
+	require.True(t, expect == actual, "Parent should have returned original memory region (%p), got %p", expect, actual)
 }
