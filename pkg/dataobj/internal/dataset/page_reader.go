@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
 	"github.com/grafana/loki/v3/pkg/memory"
@@ -77,12 +76,15 @@ func (pr *pageReader) Read(ctx context.Context, v []Value) (n int, err error) {
 //
 // read advances pr.pageRow but not pr.nextRow.
 func (pr *pageReader) read(v []Value) (n int, err error) {
-	// Reclaim any memory allocated since the previous read call.
+	// Reclaim any memory allocated since the previous read call. We don't use
+	// Reset here, otherwise a call to [pageReader.read] that only retrieve
+	// NULLs will cause allocated memory for non-NULL data to be prematurely
+	// released.
 	//
 	// NOTE(rfratto): This is only safe as the pageReader owns the allocator and
 	// copies memory into v. Once we return allocated memory directly, we will
 	// need to find a new mechanism to prevent over-allocating.
-	pr.alloc.Reset()
+	pr.alloc.Reclaim()
 
 	// We want to allow decoders to reuse memory of [Value]s in v while allowing
 	// the caller to retain ownership over that memory; to do this safely, we
@@ -93,9 +95,9 @@ func (pr *pageReader) read(v []Value) (n int, err error) {
 	pr.valuesBuf = reuseValuesBuffer(pr.valuesBuf, v)
 
 	// First read presence values for the next len(v) rows.
-	presenceArr, err := pr.presenceDec.Decode(&pr.alloc, len(v))
-	presenceBuf := presenceArr.(*columnar.Bool)
-	count := presenceBuf.Len()
+	bm := memory.MakeBitmap(&pr.alloc, len(v))
+	err = pr.presenceDec.DecodeTo(&bm, len(v))
+	count := bm.Len()
 	if err != nil && !errors.Is(err, io.EOF) {
 		return n, err
 	} else if count == 0 && errors.Is(err, io.EOF) {
@@ -111,8 +113,7 @@ func (pr *pageReader) read(v []Value) (n int, err error) {
 
 	// The number of bits set to 1 in presenceBuf determines how many values we
 	// need to read from the inner page.
-	presenceValues := presenceBuf.Values()
-	presentCount := presenceValues.SetCount()
+	presentCount := bm.SetCount()
 
 	// Now fill up to presentCount values of concrete values.
 	var valuesCount int
@@ -129,7 +130,7 @@ func (pr *pageReader) read(v []Value) (n int, err error) {
 	// copying from pr.valuesBuf where appropriate.
 	var valuesIndex int
 	for i := range count {
-		if presenceBuf.Get(i) {
+		if bm.Get(i) {
 			if valuesIndex >= valuesCount {
 				return n, fmt.Errorf("unexpected end of values")
 			}
@@ -263,6 +264,8 @@ func (pr *pageReader) Reset(page Page, physicalType datasetmd.PhysicalType, comp
 	pr.compression = compression
 	pr.ready = false
 
+	pr.alloc.Reset()
+
 	if pr.presenceDec != nil {
 		pr.presenceDec.Reset(nil)
 	}
@@ -286,7 +289,6 @@ func (pr *pageReader) Close() error {
 		pr.closer = nil
 		return err
 	}
-
 	return nil
 }
 
