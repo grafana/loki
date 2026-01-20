@@ -24,10 +24,12 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
+	"github.com/grafana/loki/v3/pkg/querier/deletion"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/rangeio"
@@ -71,9 +73,10 @@ type Params struct {
 
 	Config ExecutorConfig // Config for the Engine.
 
-	Scheduler *Scheduler          // Scheduler to manage the execution of tasks.
-	Metastore metastore.Metastore // Metastore to access the indexes
-	Limits    logql.Limits        // Limits to apply to engine queries.
+	Scheduler    *Scheduler            // Scheduler to manage the execution of tasks.
+	Metastore    metastore.Metastore   // Metastore to access the indexes
+	Limits       logql.Limits          // Limits to apply to engine queries.
+	DeleteGetter deletion.DeleteGetter // DeleteGetter to fetch delete requests for query-time filtering.
 }
 
 // validate validates p and applies defaults.
@@ -102,8 +105,9 @@ type Engine struct {
 	metrics     *metrics
 	rangeConfig rangeio.Config
 
-	scheduler *Scheduler   // Scheduler to manage the execution of tasks.
-	limits    logql.Limits // Limits to apply to engine queries.
+	scheduler    *Scheduler            // Scheduler to manage the execution of tasks.
+	limits       logql.Limits          // Limits to apply to engine queries.
+	deleteGetter deletion.DeleteGetter // DeleteGetter to fetch delete requests for query-time filtering.
 
 	metastore metastore.Metastore
 }
@@ -119,8 +123,9 @@ func New(params Params) (*Engine, error) {
 		metrics:     newMetrics(params.Registerer),
 		rangeConfig: params.Config.RangeConfig,
 
-		scheduler: params.Scheduler,
-		limits:    params.Limits,
+		scheduler:    params.Scheduler,
+		limits:       params.Limits,
+		deleteGetter: params.DeleteGetter,
 
 		metastore: params.Metastore,
 	}
@@ -271,7 +276,16 @@ func (e *Engine) buildLogicalPlan(ctx context.Context, logger log.Logger, params
 	region := xcap.RegionFromContext(ctx)
 	timer := prometheus.NewTimer(e.metrics.logicalPlanning)
 
-	logicalPlan, err := logical.BuildPlan(params)
+	var deleteReqs []*logproto.Delete
+	if e.deleteGetter != nil {
+		var err error
+		deleteReqs, err = deletion.DeletesForUserQuery(ctx, params.Start(), params.End(), e.deleteGetter)
+		if err != nil {
+			return nil, 0, fmt.Errorf("failed to get delete requests: %w", err)
+		}
+	}
+
+	logicalPlan, err := logical.BuildPlanWithDeletes(ctx, params, deleteReqs)
 	if err != nil {
 		level.Warn(logger).Log("msg", "failed to create logical plan", "err", err)
 		region.RecordError(err)

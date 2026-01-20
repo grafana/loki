@@ -1,6 +1,7 @@
 package logical
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 var (
@@ -21,7 +23,11 @@ var (
 
 // BuildPlan converts a LogQL query represented as [logql.Params] into a logical [Plan].
 // It may return an error as second argument in case the traversal of the AST of the query fails.
-func BuildPlan(params logql.Params) (*Plan, error) {
+func BuildPlan(ctx context.Context, params logql.Params) (*Plan, error) {
+	return BuildPlanWithDeletes(ctx, params, nil)
+}
+
+func BuildPlanWithDeletes(ctx context.Context, params logql.Params, deletes []*logproto.Delete) (*Plan, error) {
 	var (
 		value Value
 		err   error
@@ -29,9 +35,9 @@ func BuildPlan(params logql.Params) (*Plan, error) {
 
 	switch e := params.GetExpression().(type) {
 	case syntax.LogSelectorExpr:
-		value, err = buildPlanForLogQuery(e, params, false, 0)
+		value, err = buildPlanForLogQuery(ctx, e, params, false, 0, deletes)
 	case syntax.SampleExpr:
-		value, err = buildPlanForSampleQuery(e, params)
+		value, err = buildPlanForSampleQuery(ctx, e, params, deletes)
 	default:
 		err = fmt.Errorf("unexpected expression type (%T)", e)
 	}
@@ -52,10 +58,12 @@ func BuildPlan(params logql.Params) (*Plan, error) {
 // isMetricQuery should be set to true if this expr is encountered when processing a [syntax.SampleExpr].
 // rangeInterval should be set to a non-zero value if the query contains [$range].
 func buildPlanForLogQuery(
+	ctx context.Context,
 	expr syntax.LogSelectorExpr,
 	params logql.Params,
 	isMetricQuery bool,
 	rangeInterval time.Duration,
+	deletes []*logproto.Delete,
 ) (Value, error) {
 	var (
 		err      error
@@ -66,6 +74,7 @@ func buildPlanForLogQuery(
 		// parse statements in LogQL introduce additional ambiguouity, requiring post
 		// parse filters to be tracked separately, and not included in maketable predicates
 		predicates          []Value
+		deletePredicates    []Value
 		postParsePredicates []Value
 		hasLogfmtParser     bool
 		logfmtStrict        bool
@@ -159,6 +168,12 @@ func buildPlanForLogQuery(
 		return nil, fmt.Errorf("failed to parse shard: %w", err)
 	}
 
+	// it should be safe to append this to MakeTable predicates?
+	deletePredicates, err = buildDeletePredicates(ctx, deletes, params, rangeInterval)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build delete predicates: %w", err)
+	}
+
 	// MAKETABLE -> DataObjScan
 	builder := NewBuilder(
 		&MakeTable{
@@ -185,6 +200,11 @@ func buildPlanForLogQuery(
 	}
 
 	for _, value := range predicates {
+		builder = builder.Select(value)
+	}
+
+	// adding this earlier in the pipeline to avoid expensive operations on lines that will be deleted anyway.
+	for _, value := range deletePredicates {
 		builder = builder.Select(value)
 	}
 
@@ -222,7 +242,7 @@ func buildPlanForLogQuery(
 	return builder.Value(), nil
 }
 
-func walkRangeAggregation(e *syntax.RangeAggregationExpr, params logql.Params) (Value, error) {
+func walkRangeAggregation(e *syntax.RangeAggregationExpr, wc *walkContext) (Value, error) {
 	// offsets are not yet supported.
 	if e.Left.Offset != 0 {
 		return nil, errUnimplemented
@@ -235,7 +255,7 @@ func walkRangeAggregation(e *syntax.RangeAggregationExpr, params logql.Params) (
 
 	rangeInterval := e.Left.Interval
 
-	logQuery, err := buildPlanForLogQuery(logSelectorExpr, params, true, rangeInterval)
+	logQuery, err := buildPlanForLogQuery(wc.ctx, logSelectorExpr, wc.params, true, rangeInterval, wc.deletes)
 	if err != nil {
 		return nil, err
 	}
@@ -310,7 +330,7 @@ func walkRangeAggregation(e *syntax.RangeAggregationExpr, params logql.Params) (
 	)
 
 	builder = builder.RangeAggregation(
-		convertGrouping(e.Grouping), rangeAggType, params.Start(), params.End(), params.Step(), rangeInterval,
+		convertGrouping(e.Grouping), rangeAggType, wc.params.Start(), wc.params.End(), wc.params.Step(), rangeInterval,
 	)
 
 	switch e.Operation {
@@ -325,8 +345,8 @@ func walkRangeAggregation(e *syntax.RangeAggregationExpr, params logql.Params) (
 	return builder.Value(), nil
 }
 
-func walkVectorAggregation(e *syntax.VectorAggregationExpr, params logql.Params) (Value, error) {
-	left, err := walk(e.Left, params)
+func walkVectorAggregation(e *syntax.VectorAggregationExpr, wc *walkContext) (Value, error) {
+	left, err := walk(e.Left, wc)
 	if err != nil {
 		return nil, err
 	}
@@ -359,12 +379,12 @@ func hasNonMathExpressionChild(n Value) bool {
 	return false
 }
 
-func walkBinOp(e *syntax.BinOpExpr, params logql.Params) (Value, error) {
-	left, err := walk(e.SampleExpr, params)
+func walkBinOp(e *syntax.BinOpExpr, wc *walkContext) (Value, error) {
+	left, err := walk(e.SampleExpr, wc)
 	if err != nil {
 		return nil, err
 	}
-	right, err := walk(e.RHS, params)
+	right, err := walk(e.RHS, wc)
 	if err != nil {
 		return nil, err
 	}
@@ -387,27 +407,37 @@ func walkBinOp(e *syntax.BinOpExpr, params logql.Params) (Value, error) {
 	}, nil
 }
 
-func walkLiteral(e *syntax.LiteralExpr, _ logql.Params) (Value, error) {
+func walkLiteral(e *syntax.LiteralExpr, _ *walkContext) (Value, error) {
 	return NewLiteral(e.Val), nil
 }
 
-func walk(e syntax.Expr, params logql.Params) (Value, error) {
+type walkContext struct {
+	ctx     context.Context
+	params  logql.Params
+	deletes []*logproto.Delete
+}
+
+func walk(e syntax.Expr, wc *walkContext) (Value, error) {
 	switch e := e.(type) {
 	case *syntax.RangeAggregationExpr:
-		return walkRangeAggregation(e, params)
+		return walkRangeAggregation(e, wc)
 	case *syntax.VectorAggregationExpr:
-		return walkVectorAggregation(e, params)
+		return walkVectorAggregation(e, wc)
 	case *syntax.BinOpExpr:
-		return walkBinOp(e, params)
+		return walkBinOp(e, wc)
 	case *syntax.LiteralExpr:
-		return walkLiteral(e, params)
+		return walkLiteral(e, wc)
 	}
 
 	return nil, errUnimplemented
 }
 
-func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (Value, error) {
-	val, err := walk(e, params)
+func buildPlanForSampleQuery(ctx context.Context, e syntax.SampleExpr, params logql.Params, deletes []*logproto.Delete) (Value, error) {
+	val, err := walk(e, &walkContext{
+		ctx:     ctx,
+		params:  params,
+		deletes: deletes,
+	})
 
 	// this is to check that there are both range and vector aggregations, otherwise it is not implemented yet.
 	// TODO remove when all permutations of vector aggregations and range aggregations are implemented.
@@ -662,4 +692,168 @@ func parseShards(shards []string) (*ShardInfo, error) {
 		return noShard, fmt.Errorf("unsupported shard variant: %s", variant)
 	}
 	return NewShard(parsed[0].PowerOfTwo.Shard, parsed[0].PowerOfTwo.Of), nil
+}
+
+// buildDeletePredicates builds predicates to drop log lines matching delete requests.
+// Each delete request maps to a single predicate.
+//
+// Predicates built here will not be pushed down during optimization, because the predicate
+// contains column refs to:
+// - (timestamp & label columns) from streams section
+// - (timestamp, message & optionally metadata columns) from logs section
+// which cannot be evaluated as a single predicate at the storage level.
+//
+// There is not need to explicitly signal the optimizer to not push these predicates down,
+// canApplyPredicate already correctly handles this by returning an error if there is a label column ref.
+func buildDeletePredicates(ctx context.Context, deletes []*logproto.Delete, params logql.Params, rangeInterval time.Duration) ([]Value, error) {
+	_, region := xcap.StartRegion(ctx, "buildDeletePredicates")
+	defer region.End()
+
+	var predicates []Value
+
+	// TODO: consider offset in time range calculations when its supported.
+	qStart := params.Start().Add(-rangeInterval).UnixNano()
+	qEnd := params.End().UnixNano()
+
+	for _, d := range deletes {
+		if qStart > d.End || qEnd < d.Start {
+			// delete request does not overlap with query time range. Skip.
+			continue
+		}
+
+		// Each predicate composed from a delete request will have:
+		// - time range predicate
+		// - stream selector
+		// - options line, label filters
+		//
+		// any line matching all of them should be dropped.
+		// keep lines matching: !( time_range AND selector AND filters )
+		// equivalent to: !(time_range) OR !(selector) OR !(filters)
+		// equivalent to: ts < start OR ts > end OR !(selector) OR !(filters)
+
+		expr, err := syntax.ParseLogSelector(d.Selector, true)
+		if err != nil {
+			return nil, err
+		}
+
+		var (
+			selector Value
+			filters  Value
+		)
+
+		// TODO: selector & filters expressions can be further optimized:
+		// they are of the form  NOT ( F1 AND F2 AND ... )
+		// equivalent to: NOT F1 OR NOT F2 OR ...
+		// individual filters can be negated to consume the NOT operator.
+		addFilter := func(f Value) {
+			if filters == nil {
+				filters = f
+			} else {
+				filters = &BinOp{
+					Left:  filters,
+					Right: f,
+					Op:    types.BinaryOpAnd,
+				}
+			}
+		}
+
+		expr.Walk(func(e syntax.Expr) bool {
+			switch e := e.(type) {
+			case *syntax.PipelineExpr:
+				// [PipelineExpr] is a container for other expressions, nothing to do here.
+				return true
+			case *syntax.MatchersExpr:
+				selector = convertLabelMatchers(e.Matchers())
+				return true
+			case *syntax.LineFilterExpr:
+				addFilter(convertLineFilterExpr(e))
+				return true
+			case *syntax.LabelFilterExpr:
+				val, innerErr := convertLabelFilter(e.LabelFilterer)
+				if innerErr != nil {
+					err = innerErr
+					return false
+				}
+
+				addFilter(val)
+				return true
+			default:
+				// TODO: not all expressions are supported in delete selectors yet.
+				// e.g: parsers, formatters, keep/drop labels, etc.
+				err = unimplementedFeature("delete request with unsupported stages")
+				return false
+			}
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		var timeRangePredicate *BinOp
+		switch {
+		case d.Start <= qStart && d.End >= qEnd:
+			// delete request entirely covers query time range.
+			// keep line if other conditions do not match.
+		case d.Start >= qStart && d.End <= qEnd:
+			// delete request is entirely within query time range.
+			// keep line if ts < del_req_start OR ts > del_req_end
+			timeRangePredicate = &BinOp{
+				Left: &BinOp{
+					Left:  timestampColumnRef(),
+					Right: NewLiteral(types.Timestamp(d.Start)),
+					Op:    types.BinaryOpLt,
+				},
+				Right: &BinOp{
+					Left:  timestampColumnRef(),
+					Right: NewLiteral(types.Timestamp(d.End)),
+					Op:    types.BinaryOpGt,
+				},
+				Op: types.BinaryOpOr,
+			}
+		case d.Start <= qStart:
+			// keep line if ts > del_req_end
+			timeRangePredicate = &BinOp{
+				Left:  timestampColumnRef(),
+				Right: NewLiteral(types.Timestamp(d.End)),
+				Op:    types.BinaryOpGt,
+			}
+		case d.End >= qEnd:
+			// keep line if ts < del_req_start
+			timeRangePredicate = &BinOp{
+				Left:  timestampColumnRef(),
+				Right: NewLiteral(types.Timestamp(d.Start)),
+				Op:    types.BinaryOpLt,
+			}
+		}
+
+		// Keep if not matching selector
+		var p Value = &UnaryOp{
+			Op:    types.UnaryOpNot,
+			Value: selector,
+		}
+
+		if timeRangePredicate != nil {
+			p = &BinOp{
+				Left:  timeRangePredicate,
+				Right: p,
+				Op:    types.BinaryOpOr,
+			}
+		}
+
+		if filters != nil {
+			// OR not matching filters
+			p = &BinOp{
+				Left: p,
+				Right: &UnaryOp{
+					Op:    types.UnaryOpNot,
+					Value: filters,
+				},
+				Op: types.BinaryOpOr,
+			}
+		}
+
+		predicates = append(predicates, p)
+	}
+
+	region.Record(xcap.StatDeletePredicates.Observe(int64(len(predicates))))
+	return predicates, nil
 }
