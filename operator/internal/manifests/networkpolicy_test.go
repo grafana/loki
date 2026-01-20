@@ -447,7 +447,7 @@ func TestBuildLokiAllowBucketEgress(t *testing.T) {
 			require.Empty(t, egressRule.To, "Egress should allow to any destination")
 
 			// Verify the port
-			require.Len(t, egressRule.Ports, len(tc.expectedPorts), "Should have exactly one port")
+			require.Len(t, egressRule.Ports, len(tc.expectedPorts), "Ports array should have the expected length")
 			for i, port := range egressRule.Ports {
 				require.Equal(t, tc.expectedPorts[i], port.Port.IntVal, "Port should match expected value")
 			}
