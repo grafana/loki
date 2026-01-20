@@ -11,6 +11,7 @@ import (
 	"github.com/coder/quartz"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/twmb/franz-go/pkg/kgo"
 
@@ -38,6 +39,8 @@ type flusher interface {
 }
 
 type partitionProcessor struct {
+	*services.BasicService
+
 	// Kafka client and topic/partition info
 	topic     string
 	partition int32
@@ -70,7 +73,6 @@ type partitionProcessor struct {
 	metrics *partitionOffsetMetrics
 
 	// Control and coordination
-	wg     sync.WaitGroup
 	reg    prometheus.Registerer
 	logger log.Logger
 
@@ -108,7 +110,7 @@ func newPartitionProcessor(
 		level.Error(logger).Log("msg", "failed to register partition metrics", "err", err)
 	}
 
-	return &partitionProcessor{
+	p := &partitionProcessor{
 		topic:            topic,
 		partition:        partition,
 		logger:           logger,
@@ -123,41 +125,48 @@ func newPartitionProcessor(
 		recordsChan:      recordsChan,
 		flusher:          flusher,
 	}
+	p.BasicService = services.NewBasicService(p.starting, p.running, p.stopping)
+	return p
 }
 
-func (p *partitionProcessor) Run(ctx context.Context) func() {
-	// This is a hack to avoid duplicate metrics registration panics. The
-	// problem occurs because [kafka.ReaderService] creates a consumer to
-	// process lag on startup, tears it down, and then creates another one
-	// once the lag threshold has been met. The new [kafkav2] package will
-	// solve this by de-coupling the consumer from processing consumer lag.
-	p.wg.Add(1)
-	go func() {
-		defer func() {
-			level.Info(p.logger).Log("msg", "stopped partition processor")
-			p.wg.Done()
-		}()
-		level.Info(p.logger).Log("msg", "started partition processor")
-		for {
-			select {
-			case <-ctx.Done():
-				level.Info(p.logger).Log("msg", "stopping partition processor, context canceled")
-				return
-			case record, ok := <-p.recordsChan:
-				if !ok {
-					level.Info(p.logger).Log("msg", "stopping partition processor, channel closed")
-					return
-				}
-				p.processRecord(ctx, record)
-			// This partition is idle, flush it.
-			case <-time.After(p.idleFlushTimeout):
-				if _, err := p.idleFlush(ctx); err != nil {
-					level.Error(p.logger).Log("msg", "failed to idle flush", "err", err)
-				}
+// starting implements [services.StartingFn].
+func (p *partitionProcessor) starting(_ context.Context) error {
+	return nil
+}
+
+// running implements [services.RunningFn].
+func (p *partitionProcessor) running(ctx context.Context) error {
+	return p.Run(ctx)
+}
+
+// running implements [services.StoppingFn].
+func (p *partitionProcessor) stopping(_ error) error {
+	return nil
+}
+
+func (p *partitionProcessor) Run(ctx context.Context) error {
+	defer func() {
+		level.Info(p.logger).Log("msg", "stopped partition processor")
+	}()
+	level.Info(p.logger).Log("msg", "started partition processor")
+	for {
+		select {
+		case <-ctx.Done():
+			level.Info(p.logger).Log("msg", "stopping partition processor, context canceled")
+			return ctx.Err()
+		case record, ok := <-p.recordsChan:
+			if !ok {
+				level.Info(p.logger).Log("msg", "stopping partition processor, channel closed")
+				return nil
+			}
+			p.processRecord(ctx, record)
+		// This partition is idle, flush it.
+		case <-time.After(p.idleFlushTimeout):
+			if _, err := p.idleFlush(ctx); err != nil {
+				level.Error(p.logger).Log("msg", "failed to idle flush", "err", err)
 			}
 		}
-	}()
-	return p.wg.Wait
+	}
 }
 
 func (p *partitionProcessor) initBuilder() error {
