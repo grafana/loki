@@ -164,7 +164,7 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 		attribute.String("type", string(logql.GetRangeType(params))),
 		attribute.String("query", params.QueryString()),
 		attribute.Stringer("start", params.Start()),
-		attribute.Stringer("end", params.Start()),
+		attribute.Stringer("end", params.End()),
 		attribute.Stringer("step", params.Step()),
 		attribute.Stringer("length", params.End().Sub(params.Start())),
 		attribute.StringSlice("shards", params.Shards()),
