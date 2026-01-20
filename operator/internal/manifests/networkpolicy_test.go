@@ -421,7 +421,7 @@ func TestBuildLokiAllowBucketEgress(t *testing.T) {
 					},
 				},
 			},
-			expectedPorts: []int32{8080, 6443},
+			expectedPorts: []int32{443, 8080, 6443},
 		},
 	}
 

@@ -2,6 +2,7 @@ package manifests
 
 import (
 	"fmt"
+	"net"
 	"net/url"
 	"strconv"
 	"strings"
@@ -325,8 +326,12 @@ func buildLokiAllowGatewayIngress(opts Options) *networkingv1.NetworkPolicy {
 // components that need to access object storage to object storage
 func buildLokiAllowBucketEgress(opts Options) *networkingv1.NetworkPolicy {
 	objstorePort := []int32{443} // Default HTTPS port
-	switch {
-	case opts.Stack.Proxy != nil:
+
+	if port := getEndpointPort(opts.ObjectStorage); port != 0 {
+		objstorePort = []int32{port}
+	}
+
+	if opts.Stack.Proxy != nil {
 		proxyPorts := make([]int32, 0, 2)
 		if opts.Stack.Proxy.HTTPProxy != "" {
 			if port := extractPort(opts.Stack.Proxy.HTTPProxy); port != 0 {
@@ -338,11 +343,9 @@ func buildLokiAllowBucketEgress(opts Options) *networkingv1.NetworkPolicy {
 				proxyPorts = append(proxyPorts, port)
 			}
 		}
-		objstorePort = proxyPorts
-	default:
-		if port := getEndpointPort(opts.ObjectStorage); port != 0 {
-			objstorePort = []int32{port}
-		}
+		// For proxies we always include the ports from getEndpointPort in case the
+		// objstore endpoints have been white listed
+		objstorePort = append(objstorePort, proxyPorts...)
 	}
 
 	networkPorts := make([]networkingv1.NetworkPolicyPort, 0, len(objstorePort))
@@ -678,16 +681,13 @@ func extractPort(endpoint string) int32 {
 		return 0
 	}
 
-	if strings.Contains(endpoint, ":") {
-		if epParts := strings.Split(endpoint, ":"); len(epParts) >= 2 {
-			portStr := epParts[len(epParts)-1] // last position should be the port
-			if idx := strings.Index(portStr, "/"); idx != -1 {
-				portStr = portStr[:idx] // remove the path if present
-			}
-			if port, err := strconv.Atoi(portStr); err == nil {
-				return int32(port)
-			}
-		}
+	_, portStr, err := net.SplitHostPort(endpoint)
+	if err != nil {
+		return 0
+	}
+
+	if port, err := strconv.Atoi(portStr); err == nil {
+		return int32(port)
 	}
 
 	return 0
