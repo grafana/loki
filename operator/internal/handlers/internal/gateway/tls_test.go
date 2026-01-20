@@ -138,7 +138,7 @@ func TestValidateTLSConfig(t *testing.T) {
 				},
 			},
 			expError: &status.DegradedError{
-				Message: "Missing configmap for field \"ca\" in gateway TLS configuration: non-existent-configmap",
+				Message: `Missing configmap for field "ca" in gateway TLS configuration: non-existent-configmap`,
 				Reason:  lokiv1.ReasonMissingGatewayTLSConfig,
 				Requeue: false,
 			},
@@ -174,7 +174,7 @@ func TestValidateTLSConfig(t *testing.T) {
 				},
 			},
 			expError: &status.DegradedError{
-				Message: "Missing configmap for field \"certificate\" in gateway TLS configuration: non-existent-configmap",
+				Message: `Missing configmap for field "certificate" in gateway TLS configuration: non-existent-configmap`,
 				Reason:  lokiv1.ReasonMissingGatewayTLSConfig,
 				Requeue: false,
 			},
@@ -192,7 +192,7 @@ func TestValidateTLSConfig(t *testing.T) {
 				},
 			},
 			expError: &status.DegradedError{
-				Message: "Missing secret for field \"certificate\" in gateway TLS configuration: non-existent-secret",
+				Message: `Missing secret for field "certificate" in gateway TLS configuration: non-existent-secret`,
 				Reason:  lokiv1.ReasonMissingGatewayTLSConfig,
 				Requeue: false,
 			},
@@ -210,7 +210,7 @@ func TestValidateTLSConfig(t *testing.T) {
 				},
 			},
 			expError: &status.DegradedError{
-				Message: "Missing secret for field \"key\" in gateway TLS configuration: non-existent-key-secret",
+				Message: `Missing secret for field "key" in gateway TLS configuration: non-existent-key-secret`,
 				Reason:  lokiv1.ReasonMissingGatewayTLSConfig,
 				Requeue: false,
 			},
@@ -228,7 +228,7 @@ func TestValidateTLSConfig(t *testing.T) {
 				},
 			},
 			expError: &status.DegradedError{
-				Message: "Invalid configmap tls-cert-configmap-invalid for field \"certificate\" in gateway TLS configuration, missing key: \"tls.crt\"",
+				Message: `Invalid configmap tls-cert-configmap-invalid for field "certificate" in gateway TLS configuration, missing key: "tls.crt"`,
 				Reason:  lokiv1.ReasonInvalidGatewayTLSConfig,
 				Requeue: false,
 			},
@@ -246,7 +246,7 @@ func TestValidateTLSConfig(t *testing.T) {
 				},
 			},
 			expError: &status.DegradedError{
-				Message: "Invalid secret tls-key-secret-invalid for field \"key\" in gateway TLS configuration, missing key: \"tls.key\"",
+				Message: `Invalid secret tls-key-secret-invalid for field "key" in gateway TLS configuration, missing key: "tls.key"`,
 				Reason:  lokiv1.ReasonInvalidGatewayTLSConfig,
 				Requeue: false,
 			},
@@ -300,7 +300,7 @@ func TestValidateTLSConfig(t *testing.T) {
 				return apierrors.NewNotFound(schema.GroupResource{}, name.Name)
 			}
 
-			err := validateTLSConfig(context.TODO(), k, stack)
+			err := validateTLSConfig(context.Background(), k, stack)
 
 			if tc.expError != nil {
 				require.Equal(t, tc.expError, err)

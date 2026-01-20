@@ -73,17 +73,17 @@ func validateConfigRef(ctx context.Context, k k8s.Client, namespace, name, key, 
 	if err := k.Get(ctx, objKey, &cm); err != nil {
 		if apierrors.IsNotFound(err) {
 			return &status.DegradedError{
-				Message: fmt.Sprintf("Missing configmap for field \"%s\" in gateway TLS configuration: %s", fieldName, name),
+				Message: fmt.Sprintf("Missing configmap for field %q in gateway TLS configuration: %s", fieldName, name),
 				Reason:  lokiv1.ReasonMissingGatewayTLSConfig,
 				Requeue: false,
 			}
 		}
-		return kverrors.Wrap(err, fmt.Sprintf("failed to lookup configmap for field \"%s\" in gateway TLS configuration", fieldName), "key", objKey.String())
+		return kverrors.Wrap(err, fmt.Sprintf("failed to lookup configmap for field %q in gateway TLS configuration", fieldName), "key", objKey.String())
 	}
 
 	if cm.Data[key] == "" && len(cm.BinaryData[key]) == 0 {
 		return &status.DegradedError{
-			Message: fmt.Sprintf("Invalid configmap %s for field \"%s\" in gateway TLS configuration, missing key: %q", name, fieldName, key),
+			Message: fmt.Sprintf("Invalid configmap %s for field %q in gateway TLS configuration, missing key: %s", name, fieldName, key),
 			Reason:  lokiv1.ReasonInvalidGatewayTLSConfig,
 			Requeue: false,
 		}
@@ -99,17 +99,17 @@ func validateSecretRef(ctx context.Context, k k8s.Client, namespace, name, key, 
 	if err := k.Get(ctx, objKey, &secret); err != nil {
 		if apierrors.IsNotFound(err) {
 			return &status.DegradedError{
-				Message: fmt.Sprintf("Missing secret for field \"%s\" in gateway TLS configuration: %s", fieldName, name),
+				Message: fmt.Sprintf("Missing secret for field %q in gateway TLS configuration: %s", fieldName, name),
 				Reason:  lokiv1.ReasonMissingGatewayTLSConfig,
 				Requeue: false,
 			}
 		}
-		return kverrors.Wrap(err, fmt.Sprintf("failed to lookup secret for field \"%s\" in gateway TLS configuration", fieldName), "key", objKey.String())
+		return kverrors.Wrap(err, fmt.Sprintf("failed to lookup secret for field %q in gateway TLS configuration", fieldName), "key", objKey.String())
 	}
 
 	if len(secret.Data[key]) == 0 {
 		return &status.DegradedError{
-			Message: fmt.Sprintf("Invalid secret %s for field \"%s\" in gateway TLS configuration, missing key: %q", name, fieldName, key),
+			Message: fmt.Sprintf("Invalid secret %s for field %q in gateway TLS configuration, missing key: %s", name, fieldName, key),
 			Reason:  lokiv1.ReasonInvalidGatewayTLSConfig,
 			Requeue: false,
 		}
