@@ -201,5 +201,12 @@ func summarizeObservations(capture *Capture) *observations {
 			normalizeKeys(),
 	)
 
+	// task stats
+	result.merge(
+		collect.fromRegions("thread.runJob", true).
+			filter(TaskRecvDuration.Key(), TaskSendDuration.Key()).
+			normalizeKeys(),
+	)
+
 	return result
 }
