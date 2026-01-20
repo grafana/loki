@@ -94,7 +94,7 @@ var mockedMetastoreSections = []*metastore.DataobjSectionDescriptor{
 		Size:      1 << 10,
 		Start:     time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC),
 		End:       time.Date(2025, time.January, 1, 0, 30, 0, 0, time.UTC),
-		LabelsByStreamID: map[int64][]string{
+		AmbiguousPredicatesByStream: map[int64][]string{
 			1: {"app", "one", "foo", "bar"},
 			2: {"app", "two", "foo", "bar"},
 		},
@@ -109,7 +109,7 @@ var mockedMetastoreSections = []*metastore.DataobjSectionDescriptor{
 		Size:      1 << 10,
 		Start:     time.Date(2025, time.January, 1, 0, 30, 0, 0, time.UTC),
 		End:       time.Date(2025, time.January, 1, 1, 0, 0, 0, time.UTC),
-		LabelsByStreamID: map[int64][]string{
+		AmbiguousPredicatesByStream: map[int64][]string{
 			1: {"app", "one", "foo", "bar"},
 			2: {"app", "two", "foo", "bar"},
 		},

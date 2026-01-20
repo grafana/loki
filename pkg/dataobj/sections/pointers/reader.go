@@ -17,6 +17,8 @@ import (
 	memoryv2 "github.com/grafana/loki/v3/pkg/memory"
 )
 
+const InternalLabelsFieldName = "__internal__.streamLabelNames"
+
 // ReaderOptions customizes the behavior of a [Reader].
 type ReaderOptions struct {
 	// Columns to read. Each column must belong to the same [Section].
@@ -29,6 +31,9 @@ type ReaderOptions struct {
 	// Allocator to use for allocating Arrow records. If nil,
 	// [memory.DefaultAllocator] is used.
 	Allocator memory.Allocator
+
+	// An existing Stream ID to label names for the reader to decorate responses with.
+	StreamIDToLabelNames map[int64][]string
 }
 
 // Validate returns an error if the opts is not valid. ReaderOptions are only
@@ -169,6 +174,11 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.RecordBatch, er
 			return nil, fmt.Errorf("initializing Reader: %w", err)
 		}
 	}
+
+	/* 	internalLabelsFieldIdx := r.schema.FieldIndices(InternalLabelsFieldName)
+	   	if len(internalLabelsFieldIdx) != 1 {
+	   		panic("expected 1 internal labels field, got " + strconv.Itoa(len(internalLabelsFieldIdx)))
+	   	} */
 
 	defer r.alloc.Reclaim()
 	rb, readErr := r.inner.Read(ctx, r.alloc, batchSize)
@@ -399,6 +409,9 @@ func columnsSchema(cols []*Column) *arrow.Schema {
 	for _, col := range cols {
 		fields = append(fields, columnToField(col))
 	}
+
+	// Append an internal field used to store label names for each stream ID in the result set
+	fields = append(fields, arrow.Field{Name: InternalLabelsFieldName, Type: arrow.BinaryTypes.String, Nullable: true})
 	return arrow.NewSchema(fields, nil)
 }
 
