@@ -83,9 +83,10 @@ func TestAllocator_AllocateFromParent(t *testing.T) {
 	require.Equal(t, childAllocated, child.AllocatedBytes())
 	require.Equal(t, parentAllocated, parent.AllocatedBytes(), "parent memory should have been reassigned to the child")
 
-	// Reclaiming & trimming memory from the parent should also trim all children.
+	// Reclaiming & trimming memory from the parent should reclaim all memory, but the child is not notified to avoid tracking children in the parent.
+	// Child memory is also invalidated, however, so this scenario a memory re-use bug. All children should be reclaimed before the parent.
 	parent.Reclaim()
 	parent.Trim()
 	require.Equal(t, 0, parent.AllocatedBytes(), "all memory should have been trimmed")
-	require.Equal(t, 0, child.AllocatedBytes(), "child memory should also have been trimmed")
+	require.Equal(t, 5, child.AllocatedBytes(), "child memory should not have been trimmed")
 }

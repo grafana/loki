@@ -18,8 +18,7 @@ import (
 //
 // The zero value of Allocator is ready for use.
 type Allocator struct {
-	parent   *Allocator
-	children []*Allocator
+	parent *Allocator
 
 	regions []*Region
 	free    Bitmap // Tracks free regions. 1=free, 0=used
@@ -27,14 +26,13 @@ type Allocator struct {
 }
 
 // FromParent creates a new Allocator that is a child of the given parent.
+//
 // The child allocator will obtain memory from the parent allocator and can manage it's own Trim & Reclaim lifecycle.
 // All memory allocated from a child will be trimmed/reclaimed when the parent is trimmed/reclaimed.
 func FromParent(parent *Allocator) *Allocator {
-	child := &Allocator{
+	return &Allocator{
 		parent: parent,
 	}
-	parent.children = append(parent.children, child)
-	return child
 }
 
 // Allocate retrieves the next free Memory region that can hold at least size
@@ -110,10 +108,6 @@ func (alloc *Allocator) Reset() {
 //
 // If Trim is called after Reclaim, all memory regions will be released.
 func (alloc *Allocator) Trim() {
-	for _, child := range alloc.children {
-		child.Trim()
-	}
-
 	for i := range alloc.free.IterValues(true) {
 		region := alloc.regions[i]
 		if region == nil {
@@ -141,11 +135,8 @@ func (alloc *Allocator) returnRegion(region *Region) {
 }
 
 // Reclaim all memory regions back to the Allocator for reuse. After calling
-// Reclaim, any [Region] returned by the Allocator must no longer be used.
+// Reclaim, any [Region] returned by the Allocator or any child allocators must no longer be used.
 func (alloc *Allocator) Reclaim() {
-	for _, child := range alloc.children {
-		child.Reclaim()
-	}
 	alloc.free.SetRange(0, len(alloc.regions), true)
 }
 
