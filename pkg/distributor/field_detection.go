@@ -339,9 +339,6 @@ func isWordBoundary(s string, pos int) bool {
 }
 
 func logHasBoundedLevel(log, level string) bool {
-	log = strings.ToLower(log)
-	level = strings.ToLower(level)
-
 	pos := strings.Index(log, level)
 	if pos == -1 {
 		return false
@@ -370,8 +367,9 @@ func detectLevelFromLogLine(log string) string {
 		{"warn", constants.LogLevelWarn},
 		{"info", constants.LogLevelInfo},
 	}
+	lowerLog := strings.ToLower(log)
 	for _, level := range levelPatterns {
-		if logHasBoundedLevel(log, level.word) {
+		if logHasBoundedLevel(lowerLog, level.word) {
 			return level.level
 		}
 	}
