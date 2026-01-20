@@ -130,7 +130,28 @@ func newValueEncoder(physicalType datasetmd.PhysicalType, encodingType datasetmd
 // newValueDecoder creates a new decoder for the specified physicalType and
 // encodingType. If no encoding is registered for the specified combination of
 // physicalType and encodingType, newValueDecoder returns nil and false.
-func newValueDecoder(alloc *memory.Allocator, physicalType datasetmd.PhysicalType, encodingType datasetmd.EncodingType, data []byte) (legacyValueDecoder, bool) {
+func newValueDecoder(physicalType datasetmd.PhysicalType, encodingType datasetmd.EncodingType, data []byte) (valueDecoder, bool) {
+	key := registryKey{
+		Physical: physicalType,
+		Encoding: encodingType,
+	}
+	entry, exist := registry[key]
+	if !exist {
+		return nil, false
+	}
+
+	switch {
+	case entry.NewDecoder != nil:
+		return entry.NewDecoder(data), true
+	default:
+		return nil, false
+	}
+}
+
+// newLegacyValueDecoder creates a new decoder for the specified physicalType and
+// encodingType. If no encoding is registered for the specified combination of
+// physicalType and encodingType, newLegacyValueDecoder returns nil and false.
+func newLegacyValueDecoder(alloc *memory.Allocator, physicalType datasetmd.PhysicalType, encodingType datasetmd.EncodingType, data []byte) (legacyValueDecoder, bool) {
 	key := registryKey{
 		Physical: physicalType,
 		Encoding: encodingType,
