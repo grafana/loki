@@ -204,25 +204,6 @@ func materializeNulls(dst []Value, validity memory.Bitmap) error {
 	return nil
 }
 
-// reuseValuesBuffer prepares dst for reading up to len(src) values. Non-NULL
-// values are appended to dst, with the remainder of the slice set to NULL.
-//
-// The resulting slice is len(src).
-func reuseValuesBuffer(dst []Value, src []Value) []Value {
-	dst = slicegrow.GrowToCap(dst, len(src))
-	dst = dst[:0]
-
-	// We must maintain ordering against the caller slice here.
-	// Otherwise we can move pointers around which can get reused within a read call.
-	dst = append(dst, src...)
-
-	filledLength := len(dst)
-
-	dst = dst[:len(src)]
-	clear(dst[filledLength:])
-	return dst
-}
-
 func (pr *pageReader) init(ctx context.Context) error {
 	// Close any existing reader from a previous pageReader init. Even though
 	// this also happens in [pageReader.Close], we want to do it here as well in

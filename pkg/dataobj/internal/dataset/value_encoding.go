@@ -32,30 +32,8 @@ type valueEncoder interface {
 	Reset(w streamio.Writer)
 }
 
-// A legacyValueDecoder decodes sequences of [Value] from an underlying
-// byte slice. Implementations of encoding types must call registerValueEncoding
-// to register themselves.
-type legacyValueDecoder interface {
-	// PhysicalType returns the type of values supported by the decoder.
-	PhysicalType() datasetmd.PhysicalType
-
-	// EncodingType returns the encoding type used by the decoder.
-	EncodingType() datasetmd.EncodingType
-
-	// Decode decodes up to len(s) values, storing the results into s. The
-	// number of decoded values is returned, followed by an error (if any).
-	// At the end of the stream, Decode returns 0, [io.EOF].
-	Decode(s []Value) (int, error)
-
-	// Reset discards any state and resets the decoder to read from data.
-	// This permits reusing a decoder rather than allocating a new one.
-	Reset(data []byte)
-}
-
 // A valueDecoder reads values from an underlying byte slice. Implementations of
 // encoding types must call registerValueEncoding to register themselves.
-//
-// valueDecoder supersedes [legacyValueDecoder].
 type valueDecoder interface {
 	// PhysicalType returns the type of values supported by the decoder.
 	PhysicalType() datasetmd.PhysicalType
@@ -84,9 +62,8 @@ type (
 	}
 
 	registryEntry struct {
-		NewEncoder       func(streamio.Writer) valueEncoder
-		NewDecoder       func([]byte) valueDecoder
-		NewLegacyDecoder func([]byte) legacyValueDecoder
+		NewEncoder func(streamio.Writer) valueEncoder
+		NewDecoder func([]byte) valueDecoder
 	}
 )
 
@@ -143,35 +120,6 @@ func newValueDecoder(physicalType datasetmd.PhysicalType, encodingType datasetmd
 	switch {
 	case entry.NewDecoder != nil:
 		return entry.NewDecoder(data), true
-	default:
-		return nil, false
-	}
-}
-
-// newLegacyValueDecoder creates a new decoder for the specified physicalType and
-// encodingType. If no encoding is registered for the specified combination of
-// physicalType and encodingType, newLegacyValueDecoder returns nil and false.
-func newLegacyValueDecoder(alloc *memory.Allocator, physicalType datasetmd.PhysicalType, encodingType datasetmd.EncodingType, data []byte) (legacyValueDecoder, bool) {
-	key := registryKey{
-		Physical: physicalType,
-		Encoding: encodingType,
-	}
-	entry, exist := registry[key]
-	if !exist {
-		return nil, false
-	}
-
-	switch {
-	case entry.NewDecoder != nil:
-		dec := &valueDecoderAdapter{
-			Alloc: alloc,
-			Inner: entry.NewDecoder(data),
-		}
-		return dec, true
-
-	case entry.NewLegacyDecoder != nil:
-		return entry.NewLegacyDecoder(data), true
-
 	default:
 		return nil, false
 	}
