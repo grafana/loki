@@ -45,7 +45,7 @@ func newTestHandler(cfg Config, exec queryExecutor, limits querier_limits.Limits
 
 type mockLimits struct {
 	querier_limits.Limits
-	retentionLimits
+	RetentionLimits
 }
 
 func TestHandler(t *testing.T) {

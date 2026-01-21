@@ -1,7 +1,6 @@
 package engine
 
 import (
-	"context"
 	"net/http"
 	"testing"
 	"time"
@@ -148,7 +147,7 @@ func TestRetentionChecker(t *testing.T) {
 				clock:  clock,
 			}
 
-			ctx := user.InjectOrgID(context.Background(), "test-tenant")
+			ctx := user.InjectOrgID(t.Context(), "test-tenant")
 			params := fakeParams{
 				start: tt.queryStart,
 				end:   tt.queryEnd,

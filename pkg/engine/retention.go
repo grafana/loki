@@ -15,8 +15,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
-// retentionLimits provides access to tenant retention settings.
-type retentionLimits interface {
+// RetentionLimits provides access to tenant retention settings.
+type RetentionLimits interface {
 	RetentionPeriod(userID string) time.Duration
 	StreamRetention(userID string) []validation.StreamRetention
 }
@@ -58,13 +58,13 @@ type retentionLimits interface {
 // │  queryStart < streamBoundary)       │                                                              │
 // └─────────────────────────────────────┴──────────────────────────────────────────────────────────────┘
 type retentionChecker struct {
-	limits retentionLimits
+	limits RetentionLimits
 	logger log.Logger
 	clock  quartz.Clock
 }
 
 // newRetentionChecker creates a retention checker to validate queries against retention limits.
-func newRetentionChecker(limits retentionLimits, logger log.Logger) *retentionChecker {
+func newRetentionChecker(limits RetentionLimits, logger log.Logger) *retentionChecker {
 	return &retentionChecker{
 		limits: limits,
 		logger: logger,

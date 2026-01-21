@@ -24,15 +24,14 @@ import (
 	util_validation "github.com/grafana/loki/v3/pkg/util/validation"
 )
 
-// combinedLimits combines querier limits with retention limits.
-type combinedLimits interface {
+type Limits interface {
 	querier_limits.Limits
-	retentionLimits
+	RetentionLimits
 }
 
 // Handler returns an [http.Handler] for serving queries. Unsupported queries
 // will result in an error.
-func Handler(cfg Config, logger log.Logger, engine *Engine, limits combinedLimits) http.Handler {
+func Handler(cfg Config, logger log.Logger, engine *Engine, limits Limits) http.Handler {
 	return executorHandler(cfg, logger, engine, limits)
 }
 
@@ -41,7 +40,7 @@ type queryExecutor interface {
 	Execute(ctx context.Context, params logql.Params) (logqlmodel.Result, error)
 }
 
-func executorHandler(cfg Config, logger log.Logger, exec queryExecutor, limits combinedLimits) http.Handler {
+func executorHandler(cfg Config, logger log.Logger, exec queryExecutor, limits Limits) http.Handler {
 	h := &queryHandler{
 		cfg:    cfg,
 		logger: logger,
@@ -139,17 +138,17 @@ func (h *queryHandler) execute(ctx context.Context, logger log.Logger, params lo
 	}
 
 	if h.retentionChecker != nil {
-		result := h.retentionChecker.Validate(ctx, params)
-		if result.Error != nil {
-			return logqlmodel.Result{}, result.Error
+		checkResult := h.retentionChecker.Validate(ctx, params)
+		if checkResult.Error != nil {
+			return logqlmodel.Result{}, checkResult.Error
 		}
 
-		if result.EmptyResponse {
+		if checkResult.EmptyResponse {
 			return emptyResult(ctx, params)
 		}
 
 		// continue with adjusted params
-		params = result.Params
+		params = checkResult.Params
 	}
 
 	res, err := h.exec.Execute(ctx, params)
