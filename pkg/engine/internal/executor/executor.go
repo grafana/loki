@@ -7,7 +7,9 @@ import (
 	"strings"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/user"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/thanos-io/objstore"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -22,6 +24,17 @@ import (
 
 var tracer = otel.Tracer("pkg/engine/internal/executor")
 
+// RequestStreamFilterer creates a StreamFilterer for a given request context.
+type RequestStreamFilterer interface {
+	ForRequest(ctx context.Context) StreamFilterer
+}
+
+// StreamFilterer filters streams based on their labels.
+type StreamFilterer interface {
+	// ShouldFilter returns true if the stream should be filtered out.
+	ShouldFilter(labels labels.Labels) bool
+}
+
 type Config struct {
 	BatchSize int64
 	Bucket    objstore.Bucket
@@ -33,6 +46,10 @@ type Config struct {
 	// plan. If GetExternalInputs returns a non-nil slice of Pipelines, they
 	// will be used as inputs to the pipeline of node.
 	GetExternalInputs func(ctx context.Context, node physical.Node) []Pipeline
+
+	// StreamFilterer is an optional filterer that can filter streams based on their labels.
+	// When set, streams are filtered before scanning.
+	StreamFilterer RequestStreamFilterer `yaml:"-"`
 }
 
 func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger) Pipeline {
@@ -45,6 +62,7 @@ func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger
 		logger:             logger,
 		evaluator:          newExpressionEvaluator(),
 		getExternalInputs:  cfg.GetExternalInputs,
+		streamFilterer:     cfg.StreamFilterer,
 	}
 	if plan == nil {
 		return errorPipeline(ctx, errors.New("plan is nil"))
@@ -70,6 +88,8 @@ type Context struct {
 	getExternalInputs func(ctx context.Context, node physical.Node) []Pipeline
 
 	mergePrefetchCount int
+
+	streamFilterer RequestStreamFilterer
 }
 
 func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
@@ -183,6 +203,14 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 		return errorPipelineWithRegion(ctx, fmt.Errorf("logs section %d not found in data object %q", node.Section, node.Location), region)
 	}
 
+	// Filter streams if a filterer is configured
+	streamsToMatch := node.StreamIDs
+	if c.streamFilterer != nil {
+		if filterer := c.streamFilterer.ForRequest(ctx); filterer != nil {
+			streamsToMatch = c.filterStreamsByLabels(ctx, node.StreamIDs, streamsSection, filterer, region)
+		}
+	}
+
 	predicates := make([]logs.Predicate, 0, len(node.Predicates))
 
 	for _, p := range node.Predicates {
@@ -205,7 +233,7 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 		StreamsSection: streamsSection,
 
 		LogsSection: logsSection,
-		StreamIDs:   node.StreamIDs,
+		StreamIDs:   streamsToMatch,
 		Predicates:  predicates,
 		Projections: node.Projections,
 
@@ -213,6 +241,41 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 	}, log.With(c.logger, "location", string(node.Location), "section", node.Section), region)
 
 	return pipeline
+}
+
+// filterStreamsByLabels filters stream IDs based on the StreamFilterer.
+func (c *Context) filterStreamsByLabels(ctx context.Context, streamIDs []int64, streamsSection *streams.Section, filterer StreamFilterer, region *xcap.Region) []int64 {
+	if len(streamIDs) == 0 {
+		return streamIDs
+	}
+
+	view := newStreamsView(streamsSection, &streamsViewOptions{
+		StreamIDs: streamIDs,
+		BatchSize: int(c.batchSize),
+	})
+
+	filtered := make([]int64, 0, len(streamIDs))
+	for _, id := range streamIDs {
+		lbls, err := view.Labels(ctx, id)
+		if err != nil {
+			level.Error(c.logger).Log("msg", "failed to get labels for stream, skipping", "stream_id", id, "err", err)
+			continue
+		}
+
+		// Skip stream if it should be filtered out.
+		if filterer.ShouldFilter(labels.New(lbls...)) {
+			continue
+		}
+
+		filtered = append(filtered, id)
+	}
+
+	region.AddEvent(
+		"filtered streams",
+		attribute.Int("original", len(streamIDs)),
+		attribute.Int("remaining", len(filtered)),
+	)
+	return filtered
 }
 
 func (c *Context) executePointersScan(ctx context.Context, node *physical.PointersScan, region *xcap.Region) Pipeline {

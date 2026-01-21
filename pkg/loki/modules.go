@@ -1558,6 +1558,8 @@ func (t *Loki) initV2QueryEngineWorker() (services.Service, error) {
 		Endpoint:      "/api/v2/frame",
 
 		Metastore: metastore.NewObjectMetastore(store, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics),
+
+		StreamFilterer: t.Cfg.QueryEngine.Executor.StreamFilterer,
 	})
 	if err != nil {
 		return nil, err

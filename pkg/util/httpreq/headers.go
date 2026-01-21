@@ -37,24 +37,17 @@ func PropagateAllHeadersMiddleware(ignoreList ...string) middleware.Interface {
 
 	return middleware.Func(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-			ctx := req.Context()
-			ctxHeaders, ok := ctx.Value(headerContextKey{}).(http.Header)
-			if !ok {
-				ctxHeaders = make(http.Header)
-				ctx = context.WithValue(ctx, headerContextKey{}, ctxHeaders)
-				req = req.WithContext(ctx)
-			}
-
+			// Filter out ignored headers
+			filtered := make(http.Header, len(req.Header))
 			for k, v := range req.Header {
 				if _, ignored := ignoreSet[http.CanonicalHeaderKey(k)]; ignored {
 					continue
 				}
-				for _, vv := range v {
-					ctxHeaders.Add(k, vv)
-				}
+				filtered[k] = v
 			}
 
-			next.ServeHTTP(w, req)
+			ctx := InjectAllHeaders(req.Context(), filtered)
+			next.ServeHTTP(w, req.WithContext(ctx))
 		})
 	})
 }
@@ -90,6 +83,24 @@ func InjectHeader(ctx context.Context, key, value string) context.Context {
 		ctx = context.WithValue(ctx, headerContextKey{}, headers)
 	}
 	headers.Set(key, value)
+	return ctx
+}
+
+// InjectAllHeaders adds all headers from the provided http.Header to the context's header map.
+func InjectAllHeaders(ctx context.Context, h http.Header) context.Context {
+	if len(h) == 0 {
+		return ctx
+	}
+	headers, ok := ctx.Value(headerContextKey{}).(http.Header)
+	if !ok {
+		headers = make(http.Header, len(h))
+		ctx = context.WithValue(ctx, headerContextKey{}, headers)
+	}
+	for k, values := range h {
+		for _, v := range values {
+			headers.Add(k, v)
+		}
+	}
 	return ctx
 }
 
