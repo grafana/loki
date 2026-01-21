@@ -73,6 +73,14 @@ func queryFunc(evaluator Evaluator, checker readyChecker, userID string, logger 
 			return nil, errNotReady
 		}
 
+		cur_minute := time.Now().UTC().Round(1 * time.Minute).Minute()
+		if cur_minute <= 4 {
+			level.Warn(detailLog).Log("msg", fmt.Sprintf("SOPHIE About to panic, time = %v", time.Now().UTC().Format(time.RFC3339)))
+			panic("SOPHIE Testing ruler response to panic")
+		} else {
+			level.Warn(detailLog).Log("msg", fmt.Sprintf("SOPHIE Evaluating rule at minute %v but not yet time to panic", cur_minute))
+		}
+
 		// Extract rule details
 		ruleName := detail.Name
 		ruleType := detail.Kind
