@@ -129,6 +129,50 @@ func (pr *pageReader) read(v []Value) (n int, err error) {
 	return n, nil
 }
 
+func (pr *pageReader) init(ctx context.Context) error {
+	// Close any existing reader from a previous pageReader init. Even though
+	// this also happens in [pageReader.Close], we want to do it here as well in
+	// case we seeked backwards in a file.
+	if err := pr.Close(); err != nil {
+		return fmt.Errorf("closing previous page: %w", err)
+	}
+
+	data, err := pr.page.ReadPage(ctx)
+	if err != nil {
+		return err
+	}
+
+	memPage := &MemPage{
+		Desc: *pr.page.PageDesc(),
+		Data: data,
+	}
+
+	openedPage, pageCloser, err := memPage.open(pr.compression)
+	if err != nil {
+		return fmt.Errorf("opening page for reading: %w", err)
+	}
+
+	pr.presenceDec = pr.getPresenceDecoder()
+	pr.presenceDec.Reset(openedPage.PresenceData)
+
+	if pr.valuesDec == nil || pr.lastPhysicalType != pr.physicalType || pr.lastEncoding != memPage.Desc.Encoding {
+		var ok bool
+		pr.valuesDec, ok = newValueDecoder(pr.physicalType, memPage.Desc.Encoding, openedPage.ValueData)
+		if !ok {
+			return fmt.Errorf("unsupported value encoding %s/%s", pr.physicalType, memPage.Desc.Encoding)
+		}
+	} else {
+		pr.valuesDec.Reset(openedPage.ValueData)
+	}
+
+	pr.ready = true
+	pr.closer = pageCloser
+	pr.lastPhysicalType = pr.physicalType
+	pr.lastEncoding = memPage.Desc.Encoding
+	pr.pageRow = 0
+	return nil
+}
+
 // materializeSparseArray materializes a dense array into a sparse [Value] slice
 // based on a presence bitmap.
 //
@@ -201,50 +245,6 @@ func materializeNulls(dst []Value, validity memory.Bitmap) error {
 	for i := range validity.Len() {
 		dst[i].Zero()
 	}
-	return nil
-}
-
-func (pr *pageReader) init(ctx context.Context) error {
-	// Close any existing reader from a previous pageReader init. Even though
-	// this also happens in [pageReader.Close], we want to do it here as well in
-	// case we seeked backwards in a file.
-	if err := pr.Close(); err != nil {
-		return fmt.Errorf("closing previous page: %w", err)
-	}
-
-	data, err := pr.page.ReadPage(ctx)
-	if err != nil {
-		return err
-	}
-
-	memPage := &MemPage{
-		Desc: *pr.page.PageDesc(),
-		Data: data,
-	}
-
-	openedPage, pageCloser, err := memPage.open(pr.compression)
-	if err != nil {
-		return fmt.Errorf("opening page for reading: %w", err)
-	}
-
-	pr.presenceDec = pr.getPresenceDecoder()
-	pr.presenceDec.Reset(openedPage.PresenceData)
-
-	if pr.valuesDec == nil || pr.lastPhysicalType != pr.physicalType || pr.lastEncoding != memPage.Desc.Encoding {
-		var ok bool
-		pr.valuesDec, ok = newValueDecoder(pr.physicalType, memPage.Desc.Encoding, openedPage.ValueData)
-		if !ok {
-			return fmt.Errorf("unsupported value encoding %s/%s", pr.physicalType, memPage.Desc.Encoding)
-		}
-	} else {
-		pr.valuesDec.Reset(openedPage.ValueData)
-	}
-
-	pr.ready = true
-	pr.closer = pageCloser
-	pr.lastPhysicalType = pr.physicalType
-	pr.lastEncoding = memPage.Desc.Encoding
-	pr.pageRow = 0
 	return nil
 }
 
