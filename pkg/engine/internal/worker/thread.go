@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"runtime/pprof"
 	"sync"
 	"time"
 
@@ -102,6 +103,15 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	logger := log.With(t.Logger, "task_id", job.Task.ULID)
 	logger = utillog.WithContext(ctx, logger) // Extract trace ID
 
+	root, err := job.Task.Fragment.Root()
+	if err != nil {
+		level.Error(logger).Log("msg", "failed to get root node", "err", err)
+		return
+	}
+	defer pprof.SetGoroutineLabels(ctx)
+	ctx = pprof.WithLabels(ctx, pprof.Labels("node_type", root.Type().String()))
+	pprof.SetGoroutineLabels(ctx)
+
 	startTime := time.Now()
 	level.Info(logger).Log(
 		"msg", "starting task",
@@ -192,7 +202,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 		})
 	}
 
-	err := job.Scheduler.SendMessageAsync(ctx, wire.TaskStatusMessage{
+	err = job.Scheduler.SendMessageAsync(ctx, wire.TaskStatusMessage{
 		ID:     job.Task.ULID,
 		Status: workflow.TaskStatus{State: workflow.TaskStateRunning},
 	})
