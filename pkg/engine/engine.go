@@ -46,6 +46,15 @@ var (
 
 var tracer = otel.Tracer("pkg/engine")
 
+// Re-export internal types for external use.
+type (
+	// RequestStreamFilterer creates a StreamFilterer for a given request context.
+	RequestStreamFilterer = executor.RequestStreamFilterer
+
+	// StreamFilterer filters streams based on their labels.
+	StreamFilterer = executor.StreamFilterer
+)
+
 // ExecutorConfig configures engine execution.
 type ExecutorConfig struct {
 	// Batch size of the v2 execution engine.
@@ -56,6 +65,10 @@ type ExecutorConfig struct {
 
 	// RangeConfig determines how to optimize range reads in the V2 engine.
 	RangeConfig rangeio.Config `yaml:"range_reads" category:"experimental" doc:"description=Configures how to read byte ranges from object storage when using the V2 engine."`
+
+	// StreamFilterer is an optional filterer that can filter streams based on their labels.
+	// When set, streams are filtered before scanning.
+	StreamFilterer executor.RequestStreamFilterer `yaml:"-"`
 }
 
 func (cfg *ExecutorConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {

@@ -17,13 +17,15 @@ func TestPropagateAllHeadersMiddleware(t *testing.T) {
 		desc                 string
 		headers              map[string][]string
 		ignoreList           []string
-		expectedHeaders      map[string][]string // if nil, expects all headers to be propagated
-		unexpectedHeaders    []string
+		expectedHeaders      map[string][]string
 		existingContextValue string
 	}{
 		{
 			desc: "propagate single header",
 			headers: map[string][]string{
+				"X-Custom-Header": {"custom-value"},
+			},
+			expectedHeaders: map[string][]string{
 				"X-Custom-Header": {"custom-value"},
 			},
 		},
@@ -34,10 +36,18 @@ func TestPropagateAllHeadersMiddleware(t *testing.T) {
 				"X-Header-Two":   {"value-two"},
 				"X-Header-Three": {"value-three"},
 			},
+			expectedHeaders: map[string][]string{
+				"X-Header-One":   {"value-one"},
+				"X-Header-Two":   {"value-two"},
+				"X-Header-Three": {"value-three"},
+			},
 		},
 		{
 			desc: "propagate headers with multiple values",
 			headers: map[string][]string{
+				"X-Multi-Value": {"value-one", "value-two", "value-three"},
+			},
+			expectedHeaders: map[string][]string{
 				"X-Multi-Value": {"value-one", "value-two", "value-three"},
 			},
 		},
@@ -48,14 +58,23 @@ func TestPropagateAllHeadersMiddleware(t *testing.T) {
 				"X-Multi-Value": {"value-one", "value-two"},
 				"Content-Type":  {"application/json"},
 			},
+			expectedHeaders: map[string][]string{
+				"X-Single":      {"single-value"},
+				"X-Multi-Value": {"value-one", "value-two"},
+				"Content-Type":  {"application/json"},
+			},
 		},
 		{
-			desc:    "empty headers",
-			headers: map[string][]string{},
+			desc:            "empty headers",
+			headers:         map[string][]string{},
+			expectedHeaders: map[string][]string{},
 		},
 		{
 			desc: "preserves existing context values",
 			headers: map[string][]string{
+				"X-Test-Header": {"test-value"},
+			},
+			expectedHeaders: map[string][]string{
 				"X-Test-Header": {"test-value"},
 			},
 			existingContextValue: "custom-context-value",
@@ -70,7 +89,6 @@ func TestPropagateAllHeadersMiddleware(t *testing.T) {
 			expectedHeaders: map[string][]string{
 				"X-Custom-Header": {"custom-value"},
 			},
-			unexpectedHeaders: []string{"Accept"},
 		},
 		{
 			desc: "ignore multiple headers",
@@ -83,7 +101,6 @@ func TestPropagateAllHeadersMiddleware(t *testing.T) {
 			expectedHeaders: map[string][]string{
 				"X-Custom-Header": {"custom-value"},
 			},
-			unexpectedHeaders: []string{"Accept", "Accept-Encoding"},
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
@@ -104,23 +121,14 @@ func TestPropagateAllHeadersMiddleware(t *testing.T) {
 			checked := false
 			mware := PropagateAllHeadersMiddleware(tc.ignoreList...).Wrap(http.HandlerFunc(func(_ http.ResponseWriter, req *http.Request) {
 				extractedHeaders := ExtractAllHeaders(req.Context())
-				require.NotNil(t, extractedHeaders)
 
-				// Determine which headers to check
-				expected := tc.expectedHeaders
-				if expected == nil {
-					expected = tc.headers
-				}
+				// Verify only expected headers are present
+				require.Equal(t, len(tc.expectedHeaders), len(extractedHeaders))
 
 				// Verify expected headers were propagated
-				for k, expectedValues := range expected {
+				for k, expectedValues := range tc.expectedHeaders {
 					actualValues := extractedHeaders.Values(k)
 					require.ElementsMatch(t, expectedValues, actualValues, "header %s should match", k)
-				}
-
-				// Verify ignored headers were not propagated
-				for _, h := range tc.unexpectedHeaders {
-					require.Empty(t, extractedHeaders.Get(h), "header %s should not be propagated", h)
 				}
 
 				// Verify existing context value is preserved
