@@ -392,16 +392,28 @@ query_engine:
 [ruler: <ruler>]
 
 ruler_storage:
+  # Configure ruler storage when thanos client is enabled, replacing
+  # the .ruler.storage block.
+  #
   # The thanos_object_store_config block configures the connection to object
   # storage backend using thanos-io/objstore clients. This will become the
   # default way of configuring object store clients in future releases.
-  # Currently this is opt-in and takes effect only when `-use-thanos-objstore`
-  # is set to true.
+  #
+  # Currently this is opt-in and takes effect only when object_store.use_thanos_objstore
+  # (flag `-use-thanos-objstore`) is set to true. The .ruler.storage block's
+  # contents will then be ignored by Ruler, but due to bug #16543 it must still
+  # be present and have a valid configuration if ruler is being started as part of
+  # combined target.
+  #
+  # Named stores are NOT supported here.
+  #
   # The CLI flags prefix for this block configuration is: ruler-storage
   [<thanos_object_store_config>]
 
   # Backend storage to use. Supported backends are: local, s3, gcs, azure,
-  # swift, filesystem, alibabacloud, bos
+  # swift, filesystem, alibabacloud, bos.
+  # This does NOT support named stores from the storage_config.object_store
+  # block, it can only refer to provider names.
   # CLI flag: -ruler-storage.backend
   [backend: <string> | default = "filesystem"]
 
@@ -1922,6 +1934,8 @@ The `alibabacloud_storage_config` block configures the connection to Alibaba Clo
 - `common.storage`
 - `ruler.storage`
 
+*Ignored* when `storage_config.use_thanos_objstore` is true.
+
 &nbsp;
 
 ```yaml
@@ -1993,6 +2007,8 @@ Define actions for matching OpenTelemetry (OTEL) attributes.
 ### aws_storage_config
 
 The `aws_storage_config` block configures the connection to dynamoDB and S3 object storage. Either one of them or both can be configured.
+
+*Ignored* when `storage_config.use_thanos_objstore` is true.
 
 ```yaml
 # Deprecated: Configures storing indexes in DynamoDB.
@@ -2085,6 +2101,8 @@ The `azure_storage_config` block configures the connection to Azure object stora
 
 - `common.storage`
 - `ruler.storage`
+
+*Ignored* when `storage_config.use_thanos_objstore` is true.
 
 &nbsp;
 
@@ -2314,6 +2332,8 @@ The `bos_storage_config` block configures the connection to Baidu Object Storage
 
 - `common.storage`
 - `ruler.storage`
+
+*Ignored* when `storage_config.use_thanos_objstore` is true.
 
 &nbsp;
 
@@ -2563,6 +2583,11 @@ The `chunk_store_config` block configures how chunks will be cached and how long
 
 Common configuration to be shared between multiple modules. If a more specific configuration is given in other sections, the related configuration within this section will be ignored.
 
+See [#storage_config](#storage_config) for important notes on the behaviour of this configuration
+with respect to the Thanos object store client. In particular, when `use_thanos_objstore=true` in
+`storage_config`, all the provider specific fields are ignored and `common.storage.object_store`
+is used instead.
+
 ```yaml
 # prefix for the path
 # CLI flag: -common.path-prefix
@@ -2572,31 +2597,37 @@ storage:
   # The s3_storage_config block configures the connection to Amazon S3 object
   # storage backend.
   # The CLI flags prefix for this block configuration is: common.storage
+  # Ignored if use_thanos_objstore=true in storage_config.
   [s3: <s3_storage_config>]
 
   # The gcs_storage_config block configures the connection to Google Cloud
   # Storage object storage backend.
   # The CLI flags prefix for this block configuration is: common.storage
+  # Ignored if use_thanos_objstore=true in storage_config.
   [gcs: <gcs_storage_config>]
 
   # The azure_storage_config block configures the connection to Azure object
   # storage backend.
   # The CLI flags prefix for this block configuration is: common.storage
+  # Ignored if use_thanos_objstore=true in storage_config.
   [azure: <azure_storage_config>]
 
   # The alibabacloud_storage_config block configures the connection to Alibaba
   # Cloud Storage object storage backend.
   # The CLI flags prefix for this block configuration is: common.storage
+  # Ignored if use_thanos_objstore=true in storage_config.
   [alibabacloud: <alibabacloud_storage_config>]
 
   # The bos_storage_config block configures the connection to Baidu Object
   # Storage (BOS) object storage backend.
   # The CLI flags prefix for this block configuration is: common.storage
+  # Ignored if use_thanos_objstore=true in storage_config.
   [bos: <bos_storage_config>]
 
   # The swift_storage_config block configures the connection to OpenStack Object
   # Storage (Swift) object storage backend.
   # The CLI flags prefix for this block configuration is: common.storage
+  # Ignored if use_thanos_objstore=true in storage_config.
   [swift: <swift_storage_config>]
 
   filesystem:
@@ -2625,6 +2656,7 @@ storage:
   # The cos_storage_config block configures the connection to IBM Cloud Object
   # Storage (COS) backend.
   # The CLI flags prefix for this block configuration is: common.storage
+  # Ignored if use_thanos_objstore=true in storage_config.
   [cos: <cos_storage_config>]
 
   congestion_control:
@@ -2680,7 +2712,7 @@ storage:
   # storage backend using thanos-io/objstore clients. This will become the
   # default way of configuring object store clients in future releases.
   # Currently this is opt-in and takes effect only when `-use-thanos-objstore`
-  # is set to true.
+  # (object_store.use_thanos_objstore) is set to true.
   # The CLI flags prefix for this block configuration is:
   # common.storage.object-store
   [object_store: <thanos_object_store_config>]
@@ -3083,6 +3115,8 @@ The `cos_storage_config` block configures the connection to IBM Cloud Object Sto
 
 - `common.storage`
 - `ruler.storage`
+
+*Ignored* when `storage_config.use_thanos_objstore` is true.
 
 &nbsp;
 
@@ -3510,6 +3544,8 @@ The `gcs_storage_config` block configures the connection to Google Cloud Storage
 
 - `common.storage`
 - `ruler.storage`
+
+*Ignored* when `storage_config.use_thanos_objstore` is true.
 
 &nbsp;
 
@@ -5129,7 +5165,15 @@ zone_aware_routing:
 ### named_stores_config
 
 Configures additional object stores for a given storage provider.
-Supported stores: aws, azure, bos, filesystem, gcs, swift.
+Supported stores: aws, azure, bos, filesystem, gcs, swift. The name
+is the key under the store type.
+
+The store name is referred to by using its name in the `period_config` block's
+`object_store` field, instead of using a storage backend name like `s3`.
+
+**Warning** This block is ignored if the Thanos object store is enabled;
+use `storage_config.object_store.named_storage` instead. See [`storage_config`](#storage_config).
+
 Example:
 ```yaml
     storage_config:
@@ -5138,8 +5182,21 @@ Example:
           store-1:
             endpoint: s3://foo-bucket
             region: us-west1
+
+    schema_config:
+      configs:
+      - from: 2020-05-15   # whenever your Loki switched to v13
+        store: tsdb
+        # Use the store named store-1
+        object_store: store-1
+        schema: v13
+        index:
+          prefix: index_
+          period: 24h
 ```
-Named store from this example can be used by setting object_store to store-1 in period_config.
+
+The configuration entries are the same as the corresponding `storage_config`
+block for that provider, keyed by the name to assign to the store:
 
 ```yaml
 [aws: <map of string to aws_storage_config>]
@@ -5229,6 +5286,11 @@ The `period_config` block configures what index schemas should be used for from 
 # alibabacloud, bos, cos, swift, filesystem, or a named_store (refer to
 # named_stores_config). Following stores are deprecated: aws-dynamo, gcp,
 # gcp-columnkey, bigtable, bigtable-hashed, cassandra, grpc.
+#
+# If the thanos client is enabled, only storage in the thanos client
+# configuration under storage_config.object_store and named stores
+# under storage_config.object_store.named_stores can be used here.
+#
 [object_store: <string> | default = ""]
 
 # The schema version to use, current recommended schema is v13.
@@ -5625,11 +5687,21 @@ external_labels:
 # CLI flag: -ruler.poll-interval
 [poll_interval: <duration> | default = 1m]
 
-# Deprecated: Use -ruler-storage. CLI flags and their respective YAML config
-# options instead.
+# Configure ruler storage when the legacy (non-Thanos) object storage client is
+# in use. This configuration is ignored if the Thanos object store is enabled,
+# and should be omitted from the configuration. When -use-thanos-objstore=true,
+# use -ruler-storage CLI flags and their respective YAML config options under
+# the top-level `ruler_storage` key instead.
+#
+# A bug in 3.3.x+ releases means that this stanza may need to be present
+# and have a storage type set, even when thanos storage is enabled. The storage
+# will not get used, but must be configured. See
+# https://github.com/grafana/loki/issues/16543
+#
 storage:
   # Method to use for backend rule storage (configdb, azure, gcs, s3, swift,
-  # local, bos, cos)
+  # local, bos, cos). Does NOT support named stores defined in
+  # storage_config.named_stores or any Thanos object store client stores.
   # CLI flag: -ruler.storage.type
   [type: <string> | default = ""]
 
@@ -5956,6 +6028,8 @@ The `s3_storage_config` block configures the connection to Amazon S3 object stor
 - `common.storage`
 - `ruler.storage`
 
+*Ignored* when `storage_config.use_thanos_objstore` is true.
+
 &nbsp;
 
 ```yaml
@@ -6078,6 +6152,8 @@ Configures the chunk index schema and where it is stored.
 ```yaml
 [configs: <list of period_configs>]
 ```
+
+See [`period_config`](#period_config)
 
 ### server
 
@@ -6394,27 +6470,32 @@ cluster_validation:
 
 ### storage_config
 
-The `storage_config` block configures one of many possible stores for both the index and chunks. Which configuration to be picked should be defined in schema_config block.
+The `storage_config` block configures one of many possible stores for both the index and chunks. Which configuration to be picked should be defined in `schema_config`, in the `object_store` field for each configuration.
+
+**Note**: The `storage_config` block is a union of multiple storage configurations. Only one of the following storage configurations can be defined at a time, unless using `storage_config.named_stores` or `storage_config.object_store.named_stores`.
+
+**Warning**: When the Thanos object store client is enabled with `-use_thanos_objstore=true` or setting `storage_config.use_thanos_objstore` to `true`, the object-store specific parts of the `storage_config` block are ignored, and only `storage_config.object_store` is respected. `storage_config.named_stores` will be ignored, and only `storage_config.object_store.named_stores` will be read. Additionally, `ruler.storage` will be ignored, and only `ruler_storage` is used, even when the Ruler is only configured to use local storage. The reverse is true when the Thanos object store client is disabled; the Thanos client related blocks are just ignored. No warning will be logged when configuration is found and ignored.
 
 ```yaml
 # The alibabacloud_storage_config block configures the connection to Alibaba
-# Cloud Storage object storage backend.
+# Cloud Storage object storage backend. Ignored if use_thanos_objstore=true.
 [alibabacloud: <alibabacloud_storage_config>]
 
 # The aws_storage_config block configures the connection to dynamoDB and S3
-# object storage. Either one of them or both can be configured.
+# object storage. Either one of them or both can be configured. Ignored if
+# use_thanos_objstore=true.
 [aws: <aws_storage_config>]
 
 # The azure_storage_config block configures the connection to Azure object
-# storage backend.
+# storage backend. Ignored if use_thanos_objstore=true.
 [azure: <azure_storage_config>]
 
 # The bos_storage_config block configures the connection to Baidu Object Storage
-# (BOS) object storage backend.
+# (BOS) object storage backend. Ignored if use_thanos_objstore=true.
 [bos: <bos_storage_config>]
 
 # Deprecated: Configures storing indexes in Bigtable. Required fields only
-# required when bigtable is defined in config.
+# required when bigtable is defined in config. Ignored if use_thanos_objstore=true.
 bigtable:
   # Bigtable project ID.
   # CLI flag: -bigtable.project
@@ -6440,10 +6521,11 @@ bigtable:
   [table_cache_expiration: <duration> | default = 30m]
 
 # Configures storing chunks in GCS. Required fields only required when gcs is
-# defined in config.
+# defined in config. Ignored if use_thanos_objstore=true.
 [gcs: <gcs_storage_config>]
 
 # Deprecated: Configures storing chunks and/or the index in Cassandra.
+# Ignored if use_thanos_objstore=true.
 cassandra:
   # Comma-separated hostnames or IPs of Cassandra instances.
   # CLI flag: -cassandra.addresses
@@ -6562,7 +6644,7 @@ cassandra:
   [table_options: <string> | default = ""]
 
 # Deprecated: Configures storing index in BoltDB. Required fields only required
-# when boltdb is present in the configuration.
+# when boltdb is present in the configuration. Ignored if use_thanos_objstore=true.
 boltdb:
   # Location of BoltDB index files.
   # CLI flag: -boltdb.dir
@@ -6573,10 +6655,10 @@ boltdb:
 [filesystem: <local_storage_config>]
 
 # The swift_storage_config block configures the connection to OpenStack Object
-# Storage (Swift) object storage backend.
+# Storage (Swift) object storage backend. Ignored if use_thanos_objstore=true.
 [swift: <swift_storage_config>]
 
-# Deprecated:
+# Deprecated. Ignored if use_thanos_objstore=true.
 grpc_store:
   # Hostname or IP of the gRPC store instance.
   # CLI flag: -grpc-store.server-address
@@ -6596,8 +6678,10 @@ hedging:
   # CLI flag: -store.hedge-max-per-second
   [max_per_second: <int> | default = 5]
 
-# Configures additional object stores for a given storage provider.
+# Configures additional object stores for a given storage provider
+# when using the legacy (non-Thanos) storage client.
 # Supported stores: aws, azure, bos, filesystem, gcs, swift.
+# Ignored if use_thanos_objstore=true.
 # Example:
 # ```yaml
 #     storage_config:
@@ -6612,7 +6696,7 @@ hedging:
 [named_stores: <named_stores_config>]
 
 # The cos_storage_config block configures the connection to IBM Cloud Object
-# Storage (COS) backend.
+# Storage (COS) backend. Ignored if use_thanos_objstore=true.
 [cos: <cos_storage_config>]
 
 # Cache validity for active index entries. Should be no higher than
@@ -6691,7 +6775,10 @@ congestion_control:
 # Enables the use of thanos-io/objstore clients for connecting to object
 # storage. When set to true, the configuration inside
 # `storage_config.object_store` or `common.storage.object_store` block takes
-# effect.
+# effect, as does the `ruler_storage` block. When enabled, this switches OFF
+# the legacy storage client and its configuration, so `storage_config.azure`,
+# `storage_config.aws`, `storage_config.gcs`, `storage_config.named_stores`,
+# etc will be ignored, as will `ruler.storage`.
 # CLI flag: -use-thanos-objstore
 [use_thanos_objstore: <boolean> | default = false]
 
@@ -6704,6 +6791,10 @@ object_store:
   # The CLI flags prefix for this block configuration is: object-store
   [<thanos_object_store_config>]
 
+  # The thanos object store named storage block configures named stores
+  # when the thanos client is enabled, replacing the object_store.named_stores
+  # block used by the legacy client. Its entries use the Thanos client
+  # types, not the legacy types.
   named_stores:
     [azure: <map of string to NamedAzureStorageConfig>]
 
@@ -6908,6 +6999,8 @@ The `swift_storage_config` block configures the connection to OpenStack Object S
 
 - `common.storage`
 - `ruler.storage`
+
+*Ignored* when `storage_config.use_thanos_objstore` is true.
 
 &nbsp;
 
@@ -7337,12 +7430,18 @@ chunk_tables_provisioning:
 ### thanos_object_store_config
 
 The `thanos_object_store_config` block configures the connection to object storage backend using thanos-io/objstore clients. This will become the default way of configuring object store clients in future releases.
-Currently this is opt-in and takes effect only when `-use-thanos-objstore` is set to true. The supported CLI flags `<prefix>` used to reference this configuration block are:
+
+Currently this is opt-in and takes effect only when `-use-thanos-objstore` is set to true.
+
+The supported CLI flags `<prefix>` used to reference this configuration block are:
 
 - `common.storage.object-store`
 - `object-store`
 - `ruler-storage`
 - `ui.goldfish.results`
+
+**Note**: the Thanos client uses different data types for the storage configurations for each provider
+than the legacy client. Many keys are the same, but not all.
 
 &nbsp;
 
