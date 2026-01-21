@@ -2386,7 +2386,7 @@ func (t *Loki) initDataObjConsumerPartitionRing() (services.Service, error) {
 		return nil, fmt.Errorf("failed to create KV store for dataobj ring watcher: %w", err)
 	}
 	ringOptions := ring.DefaultPartitionRingOptions()
-	ringOptions.ShuffleShardCacheSize = t.Cfg.DataObj.Consumer.PartitionRingConfig.ShuffleShardCacheSize
+	ringOptions.ShuffleShardCacheSize = 1000
 
 	t.DataObjConsumerPartitionRingWatcher = ring.NewPartitionRingWatcherWithOptions(
 		consumer.PartitionRingName,
