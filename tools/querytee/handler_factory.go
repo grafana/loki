@@ -28,6 +28,7 @@ type HandlerFactory struct {
 	skipFanOutWhenNotSampling     bool
 	splitStart                    time.Time
 	splitLag                      time.Duration
+	splitRetentionDays            int64
 	addRoutingDecisionsToWarnings bool
 }
 
@@ -44,6 +45,7 @@ type HandlerFactoryConfig struct {
 	SkipFanOutWhenNotSampling     bool
 	SplitStart                    flagext.Time
 	SplitLag                      time.Duration
+	SplitRetentionDays            int64
 	AddRoutingDecisionsToWarnings bool
 }
 
@@ -61,6 +63,7 @@ func NewHandlerFactory(cfg HandlerFactoryConfig) *HandlerFactory {
 		skipFanOutWhenNotSampling:     cfg.SkipFanOutWhenNotSampling,
 		splitStart:                    time.Time(cfg.SplitStart),
 		splitLag:                      cfg.SplitLag,
+		splitRetentionDays:            cfg.SplitRetentionDays,
 		addRoutingDecisionsToWarnings: cfg.AddRoutingDecisionsToWarnings,
 	}
 }
@@ -103,6 +106,7 @@ func (f *HandlerFactory) CreateHandler(routeName string, comp comparator.Respons
 		RoutingMode:                   f.routingMode,
 		SplitStart:                    f.splitStart,
 		SplitLag:                      f.splitLag,
+		SplitRetentionDays:             f.splitRetentionDays,
 		AddRoutingDecisionsToWarnings: f.addRoutingDecisionsToWarnings,
 	}, f.logger)
 
