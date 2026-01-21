@@ -39,6 +39,8 @@ Entries should include a reference to the pull request that introduced the chang
 - [CHANGE] Updated version of Grafana Loki to 3.6.3
 - [CHANGE] Updated version of Rollout Operator to 0.38.2
 
+## 6.49.0
+
 ## 6.48.0
 
 - [CHANGE] Changed version of Grafana Loki to 3.6.2
