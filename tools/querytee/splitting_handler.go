@@ -47,6 +47,11 @@ type SplittingHandler struct {
 	addRoutingDecisionsToWarnings bool
 }
 
+// isMultiTenant returns true if the request contains multiple tenant IDs.
+func isMultiTenant(tenants []string) bool {
+	return len(tenants) > 1
+}
+
 func NewSplittingHandler(cfg SplittingHandlerConfig, logger log.Logger) (http.Handler, error) {
 	if cfg.V1Backend == nil {
 		return tenantHandler(queryrange.NewSerializeHTTPHandler(cfg.FanOutHandler, cfg.Codec), logger), nil
@@ -149,7 +154,7 @@ func (f *splitHandlerFactory) createSplittingHandler(forMetricQuery bool, v1Hand
 //   - v2-preferred/race: Always split when splitLag > 0 (sampling only affects goldfish comparison).
 //   - v1-preferred: Skip fanout when not sampling, only split for goldfish comparison.
 func (f *SplittingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	_, ctx, err := tenant.ExtractTenantIDFromHTTPRequest(r)
+	_, ctx, err := user.ExtractOrgIDFromHTTPRequest(r)
 	if err != nil {
 		level.Warn(f.logger).Log(
 			"msg", "failed to extract tenant ID",
@@ -186,6 +191,17 @@ func (f *SplittingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		shouldSample = f.shouldSample(tenants, r)
 	}
 
+	// Multi-tenant queries must always go to v1 only (v2 doesn't support them)
+	if isMultiTenant(tenants) {
+		level.Info(f.logger).Log("msg", "multi-tenant query detected, routing to v1 only", "tenants", len(tenants))
+		resp, err = f.v1Handler.Do(ctx, req)
+		if resp != nil && f.addRoutingDecisionsToWarnings {
+			addWarningToResponse(resp, "multi-tenant query routed to v1 backend only (v2 does not support multi-tenant)")
+		}
+		f.writeResponse(ctx, r, w, resp, err)
+		return
+	}
+
 	// Routing decision logic:
 	// - v2-preferred/race: Always split when splitLag > 0 (sampling only affects goldfish comparison)
 	// - v1-preferred: Skip fanout when not sampling, only split for goldfish comparison
@@ -210,10 +226,15 @@ func (f *SplittingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	f.writeResponse(ctx, r, w, resp, err)
+}
+
+// writeResponse handles encoding and writing the response back to the HTTP response writer.
+func (f *SplittingHandler) writeResponse(ctx context.Context, r *http.Request, w http.ResponseWriter, resp queryrangebase.Response, err error) {
 	if err != nil {
-		switch r := resp.(type) {
+		switch typedResp := resp.(type) {
 		case *NonDecodableResponse:
-			http.Error(w, string(r.Body), r.StatusCode)
+			http.Error(w, string(typedResp.Body), typedResp.StatusCode)
 		default:
 			level.Warn(f.logger).Log("msg", "handler failed", "err", err)
 			server.WriteError(err, w)
