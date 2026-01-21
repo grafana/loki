@@ -48,8 +48,7 @@ func TestFileTargetSync(t *testing.T) {
 
 	metrics := NewMetrics(nil)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	fakeHandler := make(chan fileTargetEvent)
 	receivedStartWatch := atomic.NewInt32(0)
 	receivedStopWatch := atomic.NewInt32(0)
@@ -365,8 +364,7 @@ func TestFileTargetPathExclusion(t *testing.T) {
 
 	metrics := NewMetrics(nil)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	fakeHandler := make(chan fileTargetEvent)
 	receivedStartWatch := atomic.NewInt32(0)
 	receivedStopWatch := atomic.NewInt32(0)
@@ -500,8 +498,7 @@ func TestHandleFileCreationEvent(t *testing.T) {
 
 	metrics := NewMetrics(nil)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	fakeFileHandler := make(chan fsnotify.Event)
 	fakeTargetHandler := make(chan fileTargetEvent)
 	path := logDir + "/*.log"

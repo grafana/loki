@@ -131,8 +131,7 @@ func TestWorker_ProcessJob(t *testing.T) {
 	require.Equal(t, int32(0), mockJobBuilder.jobsSentCount.Load())
 
 	// build a worker and start it
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	go newWorker(mockCompactorClient{conn: conn}, map[compactor_grpc.JobType]JobRunner{
 		compactor_grpc.JOB_TYPE_DELETION: jobRunner,
