@@ -2597,3 +2597,64 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 		})
 	}
 }
+
+func TestConfig_Validate(t *testing.T) {
+	tests := []struct {
+		name                        string
+		cfg                         Config
+		expectedMaxDecompressedSize int64
+		expectedError               string
+	}{
+		{
+			name: "sets default maxDecompressedSize when zero and maxRecvMsgSize is set",
+			cfg: Config{
+				MaxRecvMsgSize:      100 << 20, // 100 MB
+				MaxDecompressedSize: 0,
+				KafkaEnabled:        false,
+				IngesterEnabled:     true,
+			},
+			expectedMaxDecompressedSize: 5000 << 20, // 5000 MB (50x)
+		},
+		{
+			name: "does not override explicit maxDecompressedSize",
+			cfg: Config{
+				MaxRecvMsgSize:      100 << 20, // 100 MB
+				MaxDecompressedSize: 500 << 20, // 500 MB
+				KafkaEnabled:        false,
+				IngesterEnabled:     true,
+			},
+			expectedMaxDecompressedSize: 500 << 20, // 500 MB (unchanged)
+		},
+		{
+			name: "does not set default when maxRecvMsgSize is zero",
+			cfg: Config{
+				MaxRecvMsgSize:      0,
+				MaxDecompressedSize: 0,
+				KafkaEnabled:        false,
+				IngesterEnabled:     true,
+			},
+			expectedMaxDecompressedSize: 0, // Should remain 0
+		},
+		{
+			name: "validates kafka and ingester enabled",
+			cfg: Config{
+				KafkaEnabled:    false,
+				IngesterEnabled: false,
+			},
+			expectedError: "at least one of kafka and ingestor writes must be enabled",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.cfg.Validate()
+			if tt.expectedError != "" {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.expectedError)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.expectedMaxDecompressedSize, tt.cfg.MaxDecompressedSize)
+			}
+		})
+	}
+}

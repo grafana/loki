@@ -2842,6 +2842,10 @@ ring:
 # CLI flag: -distributor.max-recv-msg-size
 [max_recv_msg_size: <int> | default = 104857600]
 
+# The maximum size of a decompressed message. Defaults to 50x max-recv-msg-size.
+# CLI flag: -distributor.max-decompressed-size
+[max_decompressed_size: <int> | default = 5242880000]
+
 rate_store:
   # The max number of concurrent requests to make to ingester stream apis
   # CLI flag: -distributor.rate-store.max-request-parallelism
