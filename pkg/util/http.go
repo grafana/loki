@@ -169,12 +169,12 @@ const (
 // ParseProtoReader parses a compressed proto from an io.Reader.
 // Deprecated: Use ParseProtoReaderWithLimits for separate compressed/decompressed limits.
 func ParseProtoReader(ctx context.Context, reader io.Reader, expectedSize, maxSize int, req proto.Message, compression CompressionType) error {
-	return ParseProtoReaderWithLimits(ctx, reader, expectedSize, maxSize, maxSize, req, compression)
+	return ParseProtoReaderWithLimits(ctx, reader, expectedSize, maxSize, int64(maxSize), req, compression)
 }
 
 // ParseProtoReaderWithLimits parses a compressed proto from an io.Reader with separate size limits.
 // maxCompressedSize limits the compressed input size, maxDecompressedSize limits the decompressed output size.
-func ParseProtoReaderWithLimits(ctx context.Context, reader io.Reader, expectedSize, maxCompressedSize, maxDecompressedSize int, req proto.Message, compression CompressionType) error {
+func ParseProtoReaderWithLimits(ctx context.Context, reader io.Reader, expectedSize, maxCompressedSize int, maxDecompressedSize int64, req proto.Message, compression CompressionType) error {
 	sp := trace.SpanFromContext(ctx)
 	sp.AddEvent("util.ParseProtoRequest[start reading]")
 	body, err := decompressRequest(reader, expectedSize, maxCompressedSize, maxDecompressedSize, compression, sp)
@@ -199,9 +199,9 @@ func ParseProtoReaderWithLimits(ctx context.Context, reader io.Reader, expectedS
 	return nil
 }
 
-func decompressRequest(reader io.Reader, expectedSize, maxCompressedSize, maxDecompressedSize int, compression CompressionType, sp trace.Span) (body []byte, err error) {
+func decompressRequest(reader io.Reader, expectedSize, maxCompressedSize int, maxDecompressedSize int64, compression CompressionType, sp trace.Span) (body []byte, err error) {
 	defer func() {
-		if err != nil && maxDecompressedSize > 0 && len(body) > maxDecompressedSize {
+		if err != nil && maxDecompressedSize > 0 && int64(len(body)) > maxDecompressedSize {
 			err = fmt.Errorf(messageSizeLargerErrFmt, ErrMessageDecompressedSizeTooLarge, len(body), maxDecompressedSize)
 		}
 	}()
@@ -217,7 +217,7 @@ func decompressRequest(reader io.Reader, expectedSize, maxCompressedSize, maxDec
 	return
 }
 
-func decompressFromReader(reader io.Reader, expectedSize, maxCompressedSize, maxDecompressedSize int, compression CompressionType, sp trace.Span) ([]byte, error) {
+func decompressFromReader(reader io.Reader, expectedSize, maxCompressedSize int, maxDecompressedSize int64, compression CompressionType, sp trace.Span) ([]byte, error) {
 	var (
 		buf  bytes.Buffer
 		body []byte
@@ -243,7 +243,7 @@ func decompressFromReader(reader io.Reader, expectedSize, maxCompressedSize, max
 	return body, err
 }
 
-func decompressFromBuffer(buffer *bytes.Buffer, maxCompressedSize, maxDecompressedSize int, compression CompressionType, sp trace.Span) ([]byte, error) {
+func decompressFromBuffer(buffer *bytes.Buffer, maxCompressedSize int, maxDecompressedSize int64, compression CompressionType, sp trace.Span) ([]byte, error) {
 	bufBytes := buffer.Bytes()
 	// Check compressed size
 	if len(bufBytes) > maxCompressedSize {
@@ -261,7 +261,7 @@ func decompressFromBuffer(buffer *bytes.Buffer, maxCompressedSize, maxDecompress
 			return nil, err
 		}
 		// Check decompressed size (only if limit is set)
-		if maxDecompressedSize > 0 && size > maxDecompressedSize {
+		if maxDecompressedSize > 0 && int64(size) > maxDecompressedSize {
 			return nil, fmt.Errorf(messageSizeLargerErrFmt, ErrMessageDecompressedSizeTooLarge, size, maxDecompressedSize)
 		}
 		body, err := snappy.Decode(nil, bufBytes)
