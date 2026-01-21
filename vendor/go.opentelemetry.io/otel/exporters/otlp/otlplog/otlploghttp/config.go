@@ -36,7 +36,10 @@ var (
 		"OTEL_EXPORTER_OTLP_LOGS_ENDPOINT",
 		"OTEL_EXPORTER_OTLP_ENDPOINT",
 	}
-	envInsecure = envEndpoint
+	envInsecure = []string{
+		"OTEL_EXPORTER_OTLP_LOGS_INSECURE",
+		"OTEL_EXPORTER_OTLP_INSECURE",
+	}
 
 	// Split because these are parsed differently.
 	envPathSignal = []string{"OTEL_EXPORTER_OTLP_LOGS_ENDPOINT"}
@@ -114,6 +117,7 @@ func newConfig(options []Option) config {
 		fallback[string](defaultPath),
 	)
 	c.insecure = c.insecure.Resolve(
+		loadInsecureFromEnvEndpoint(envEndpoint),
 		getenv[bool](envInsecure, convInsecure),
 	)
 	c.tlsCfg = c.tlsCfg.Resolve(
@@ -185,7 +189,7 @@ func WithEndpointURL(rawURL string) Option {
 	return fnOpt(func(c config) config {
 		c.endpoint = newSetting(u.Host)
 		c.path = newSetting(u.Path)
-		c.insecure = newSetting(u.Scheme != "https")
+		c.insecure = insecureFromScheme(c.insecure, u.Scheme)
 		return c
 	})
 }
@@ -541,15 +545,52 @@ func convPath(s string) (string, error) {
 	return u.Path + "/v1/logs", nil
 }
 
-// convInsecure parses s as a URL string and returns if the connection should
-// use client transport security or not. If s is an invalid URL, false and an
-// error are returned.
+// convInsecure converts s from string to bool without case sensitivity.
+// If s is not valid returns error.
 func convInsecure(s string) (bool, error) {
-	u, err := url.Parse(s)
-	if err != nil {
-		return false, err
+	s = strings.ToLower(s)
+	if s != "true" && s != "false" {
+		return false, fmt.Errorf("can't convert %q to bool", s)
 	}
-	return u.Scheme != "https", nil
+
+	return s == "true", nil
+}
+
+// loadInsecureFromEnvEndpoint returns a resolver that fetches
+// insecure setting from envEndpoint is it possible.
+func loadInsecureFromEnvEndpoint(envEndpoint []string) resolver[bool] {
+	return func(s setting[bool]) setting[bool] {
+		if s.Set {
+			// Passed, valid, options have precedence.
+			return s
+		}
+
+		for _, key := range envEndpoint {
+			if vStr := os.Getenv(key); vStr != "" {
+				u, err := url.Parse(vStr)
+				if err != nil {
+					otel.Handle(fmt.Errorf("invalid %s value %s: %w", key, vStr, err))
+					continue
+				}
+
+				return insecureFromScheme(s, u.Scheme)
+			}
+		}
+		return s
+	}
+}
+
+// insecureFromScheme return setting if the connection should
+// use client transport security or not.
+// Empty scheme doesn't force insecure setting.
+func insecureFromScheme(prev setting[bool], scheme string) setting[bool] {
+	if scheme == "https" {
+		return newSetting(false)
+	} else if scheme != "" {
+		return newSetting(true)
+	}
+
+	return prev
 }
 
 // convHeaders converts the OTel environment variable header value s into a

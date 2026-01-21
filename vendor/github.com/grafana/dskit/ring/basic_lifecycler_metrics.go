@@ -9,6 +9,7 @@ type BasicLifecyclerMetrics struct {
 	heartbeats  prometheus.Counter
 	tokensOwned prometheus.Gauge
 	tokensToOwn prometheus.Gauge
+	readOnly    prometheus.Gauge
 }
 
 func NewBasicLifecyclerMetrics(ringName string, reg prometheus.Registerer) *BasicLifecyclerMetrics {
@@ -26,6 +27,11 @@ func NewBasicLifecyclerMetrics(ringName string, reg prometheus.Registerer) *Basi
 		tokensToOwn: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 			Name:        "ring_member_tokens_to_own",
 			Help:        "The number of tokens to own in the ring.",
+			ConstLabels: prometheus.Labels{"name": ringName},
+		}),
+		readOnly: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+			Name:        "lifecycler_read_only",
+			Help:        "Set to 1 if this lifecycler's instance entry is in read-only state.",
 			ConstLabels: prometheus.Labels{"name": ringName},
 		}),
 	}
