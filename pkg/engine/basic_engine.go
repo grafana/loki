@@ -201,6 +201,7 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 			MergePrefetchCount: e.cfg.MergePrefetchCount,
 			Bucket:             e.bucket,
 			Metastore:          e.metastore,
+			StreamFilterer:     e.cfg.StreamFilterer,
 		}
 
 		pipeline := executor.Run(ctx, cfg, physicalPlan, logger)

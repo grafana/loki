@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
 	"github.com/grafana/loki/v3/pkg/memory"
@@ -23,9 +24,7 @@ type pageReader struct {
 
 	closer      io.Closer
 	presenceDec *bitmapDecoder
-	valuesDec   legacyValueDecoder
-
-	valuesBuf []Value
+	valuesDec   valueDecoder
 
 	pageRow int64
 	nextRow int64
@@ -86,14 +85,6 @@ func (pr *pageReader) read(v []Value) (n int, err error) {
 	// need to find a new mechanism to prevent over-allocating.
 	pr.alloc.Reclaim()
 
-	// We want to allow decoders to reuse memory of [Value]s in v while allowing
-	// the caller to retain ownership over that memory; to do this safely, we
-	// copy memory from v into pr.valuesBuf for our decoders to use.
-	//
-	// If we didn't do this, then memory backing [Value]s are owned by both
-	// pageReader and the caller, which can lead to memory reuse bugs.
-	pr.valuesBuf = reuseValuesBuffer(pr.valuesBuf, v)
-
 	// First read presence values for the next len(v) rows.
 	bm := memory.MakeBitmap(&pr.alloc, len(v))
 	err = pr.presenceDec.DecodeTo(&bm, len(v))
@@ -115,54 +106,27 @@ func (pr *pageReader) read(v []Value) (n int, err error) {
 	// need to read from the inner page.
 	presentCount := bm.SetCount()
 
+	var values columnar.Array
+
 	// Now fill up to presentCount values of concrete values.
-	var valuesCount int
 	if presentCount > 0 {
-		valuesCount, err = pr.valuesDec.Decode(pr.valuesBuf[:presentCount])
+		values, err = pr.valuesDec.Decode(&pr.alloc, presentCount)
 		if err != nil && !errors.Is(err, io.EOF) {
 			return n, err
-		} else if valuesCount != presentCount {
-			return n, fmt.Errorf("unexpected number of values: %d, expected: %d", valuesCount, presentCount)
+		} else if values == nil {
+			return n, fmt.Errorf("unexpected nil values")
+		} else if values.Len() != presentCount {
+			return n, fmt.Errorf("unexpected number of values: %d, expected: %d", values.Len(), presentCount)
 		}
 	}
 
-	// Finally, copy over count values into v, setting NULL where appropriate and
-	// copying from pr.valuesBuf where appropriate.
-	var valuesIndex int
-	for i := range count {
-		if bm.Get(i) {
-			if valuesIndex >= valuesCount {
-				return n, fmt.Errorf("unexpected end of values")
-			}
-			v[i] = pr.valuesBuf[valuesIndex]
-			valuesIndex++
-		} else {
-			v[i] = Value{}
-		}
+	if err := materializeSparseArray(v, bm, values); err != nil {
+		return n, err
 	}
 
 	n += count
 	pr.pageRow += int64(count)
 	return n, nil
-}
-
-// reuseValuesBuffer prepares dst for reading up to len(src) values. Non-NULL
-// values are appended to dst, with the remainder of the slice set to NULL.
-//
-// The resulting slice is len(src).
-func reuseValuesBuffer(dst []Value, src []Value) []Value {
-	dst = slicegrow.GrowToCap(dst, len(src))
-	dst = dst[:0]
-
-	// We must maintain ordering against the caller slice here.
-	// Otherwise we can move pointers around which can get reused within a read call.
-	dst = append(dst, src...)
-
-	filledLength := len(dst)
-
-	dst = dst[:len(src)]
-	clear(dst[filledLength:])
-	return dst
 }
 
 func (pr *pageReader) init(ctx context.Context) error {
@@ -193,7 +157,7 @@ func (pr *pageReader) init(ctx context.Context) error {
 
 	if pr.valuesDec == nil || pr.lastPhysicalType != pr.physicalType || pr.lastEncoding != memPage.Desc.Encoding {
 		var ok bool
-		pr.valuesDec, ok = newValueDecoder(&pr.alloc, pr.physicalType, memPage.Desc.Encoding, openedPage.ValueData)
+		pr.valuesDec, ok = newValueDecoder(pr.physicalType, memPage.Desc.Encoding, openedPage.ValueData)
 		if !ok {
 			return fmt.Errorf("unsupported value encoding %s/%s", pr.physicalType, memPage.Desc.Encoding)
 		}
@@ -206,6 +170,81 @@ func (pr *pageReader) init(ctx context.Context) error {
 	pr.lastPhysicalType = pr.physicalType
 	pr.lastEncoding = memPage.Desc.Encoding
 	pr.pageRow = 0
+	return nil
+}
+
+// materializeSparseArray materializes a dense array into a sparse [Value] slice
+// based on a presence bitmap.
+//
+// len(dst) must be at least validity.Len().
+func materializeSparseArray(dst []Value, validity memory.Bitmap, denseValues columnar.Array) error {
+	if len(dst) < validity.Len() {
+		panic(fmt.Sprintf("invariant broken: dst len (%d) is less than validity len (%d)", len(dst), validity.Len()))
+	}
+
+	switch arr := denseValues.(type) {
+	case *columnar.UTF8:
+		return materializeSparseUTF8(dst, validity, arr)
+	case *columnar.Int64:
+		return materializeSparseInt64(dst, validity, arr)
+	case nil:
+		return materializeNulls(dst, validity)
+	default:
+		panic(fmt.Sprintf("found unexpected type %T", arr))
+	}
+}
+
+func materializeSparseUTF8(dst []Value, validity memory.Bitmap, denseValues *columnar.UTF8) error {
+	var denseIndex int
+
+	for i := range validity.Len() {
+		if !validity.Get(i) {
+			dst[i].Zero()
+			continue
+		} else if denseIndex >= denseValues.Len() {
+			return fmt.Errorf("unexpected end of values")
+		}
+
+		srcBuf := denseValues.Get(denseIndex)
+		denseIndex++
+
+		dstBuf := slicegrow.GrowToCap(dst[i].Buffer(), len(srcBuf))
+		dstBuf = dstBuf[:len(srcBuf)]
+		copy(dstBuf, srcBuf)
+
+		dst[i] = BinaryValue(dstBuf)
+	}
+
+	return nil
+}
+
+func materializeSparseInt64(dst []Value, validity memory.Bitmap, denseValues *columnar.Int64) error {
+	srcValues := denseValues.Values()
+
+	var srcIndex int
+	for i := range validity.Len() {
+		if !validity.Get(i) {
+			dst[i].Zero()
+			continue
+		} else if srcIndex >= len(srcValues) {
+			return fmt.Errorf("unexpected end of values")
+		}
+
+		dst[i] = Int64Value(srcValues[srcIndex])
+		srcIndex++
+	}
+
+	return nil
+}
+
+func materializeNulls(dst []Value, validity memory.Bitmap) error {
+	if validity.SetCount() > 0 {
+		return fmt.Errorf("unexpected non-null values")
+	}
+
+	for i := range validity.Len() {
+		dst[i].Zero()
+	}
 	return nil
 }
 

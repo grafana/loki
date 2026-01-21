@@ -1419,6 +1419,12 @@ dataobj:
       # CLI flag: -dataobj-consumer.partition-ring.delete-inactive-partition-after
       [delete_inactive_partition_after: <duration> | default = 13h]
 
+      # The size of the cache used for shuffle sharding. If zero or negative, an
+      # unbounded cache is used. If positive, an LRU cache with the specified
+      # size is used.
+      # CLI flag: -dataobj-consumer.partition-ring.shuffle-shard-cache-size
+      [shuffle_shard_cache_size: <int> | default = 0]
+
     uploader:
       # The size of the SHA prefix to use for generating object storage keys for
       # data objects.
@@ -4111,6 +4117,12 @@ kafka_ingestion:
     # 0 disables partitions deletion.
     # CLI flag: -ingester.partition-ring.delete-inactive-partition-after
     [delete_inactive_partition_after: <duration> | default = 13h]
+
+    # The size of the cache used for shuffle sharding. If zero or negative, an
+    # unbounded cache is used. If positive, an LRU cache with the specified size
+    # is used.
+    # CLI flag: -ingester.partition-ring.shuffle-shard-cache-size
+    [shuffle_shard_cache_size: <int> | default = 0]
 ```
 
 ### ingester_client

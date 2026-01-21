@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/coder/quartz"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/services"
@@ -78,9 +77,6 @@ type partitionProcessor struct {
 
 	recordsChan chan *kgo.Record
 	flusher     flusher
-
-	// Used for tests.
-	clock quartz.Clock
 }
 
 func newPartitionProcessor(
@@ -121,7 +117,6 @@ func newPartitionProcessor(
 		metrics:          metrics,
 		idleFlushTimeout: idleFlushTimeout,
 		maxBuilderAge:    maxBuilderAge,
-		clock:            quartz.NewReal(),
 		recordsChan:      recordsChan,
 		flusher:          flusher,
 	}
@@ -139,7 +134,7 @@ func (p *partitionProcessor) running(ctx context.Context) error {
 	return p.Run(ctx)
 }
 
-// running implements [services.StoppingFn].
+// stopping implements [services.StoppingFn].
 func (p *partitionProcessor) stopping(_ error) error {
 	return nil
 }
@@ -153,7 +148,9 @@ func (p *partitionProcessor) Run(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			level.Info(p.logger).Log("msg", "stopping partition processor, context canceled")
-			return ctx.Err()
+			// We don't return ctx.Err() here as it manifests as a service failure
+			// when shutting down.
+			return nil
 		case record, ok := <-p.recordsChan:
 			if !ok {
 				level.Info(p.logger).Log("msg", "stopping partition processor, channel closed")
@@ -245,18 +242,18 @@ func (p *partitionProcessor) processRecord(ctx context.Context, record *kgo.Reco
 	}
 
 	if p.firstAppendTime.IsZero() {
-		p.firstAppendTime = p.clock.Now()
+		p.firstAppendTime = time.Now()
 	}
 
 	p.lastRecord = record
-	p.lastModified = p.clock.Now()
+	p.lastModified = time.Now()
 }
 
 func (p *partitionProcessor) shouldFlushDueToMaxAge() bool {
 	return p.maxBuilderAge > 0 &&
 		p.builder.GetEstimatedSize() > 0 &&
 		!p.firstAppendTime.IsZero() &&
-		p.clock.Since(p.firstAppendTime) > p.maxBuilderAge
+		time.Since(p.firstAppendTime) > p.maxBuilderAge
 }
 
 // idleFlush flushes the partition if it has exceeded the idle flush timeout.
@@ -287,7 +284,7 @@ func (p *partitionProcessor) needsIdleFlush() bool {
 	if p.lastModified.IsZero() {
 		return false
 	}
-	return p.clock.Since(p.lastModified) > p.idleFlushTimeout
+	return time.Since(p.lastModified) > p.idleFlushTimeout
 }
 
 func (p *partitionProcessor) flush(ctx context.Context) error {
