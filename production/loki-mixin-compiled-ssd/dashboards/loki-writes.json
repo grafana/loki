@@ -385,7 +385,7 @@
                            "mode": "absolute",
                            "steps": [ ]
                         },
-                        "unit": "short"
+                        "unit": "percentunit"
                      },
                      "overrides": [ ]
                   },
@@ -400,16 +400,89 @@
                         "sort": "none"
                      }
                   },
-                  "span": 6,
+                  "span": 4,
+                  "stack": true,
                   "targets": [
                      {
-                        "expr": "sum (rate(loki_distributor_structured_metadata_bytes_received_total{cluster=~\"$cluster\",job=~\"($namespace)/(loki.*|enterprise-logs)-write\",}[$__rate_interval])) / sum(rate(loki_distributor_bytes_received_total{cluster=~\"$cluster\",job=~\"($namespace)/(loki.*|enterprise-logs)-write\",}[$__rate_interval]))",
+                        "expr": "(sum(rate(loki_distributor_bytes_received_total{cluster=~\"$cluster\",job=~\"($namespace)/(loki.*|enterprise-logs)-write\",}[$__rate_interval])) - (sum(rate(loki_discarded_bytes_total{cluster=~\"$cluster\",job=~\"($namespace)/(loki.*|enterprise-logs)-write\",}[$__rate_interval])) or vector(0))) / sum(rate(loki_distributor_bytes_received_total{cluster=~\"$cluster\",job=~\"($namespace)/(loki.*|enterprise-logs)-write\",}[$__rate_interval])) * 100",
                         "format": "time_series",
-                        "legendFormat": "bytes",
+                        "legendFormat": "acceptance rate",
                         "legendLink": null
                      }
                   ],
-                  "title": "Per Total Received Bytes",
+                  "title": "Data Acceptance Rate",
+                  "type": "timeseries",
+                  "yAxes": [
+                     {
+                        "format": "percent",
+                        "label": null,
+                        "logBase": 1,
+                        "max": 100,
+                        "min": 0,
+                        "show": true
+                     },
+                     {
+                        "format": "short",
+                        "label": null,
+                        "logBase": 1,
+                        "max": null,
+                        "min": null,
+                        "show": false
+                     }
+                  ]
+               },
+               {
+                  "datasource": "$datasource",
+                  "fieldConfig": {
+                     "defaults": {
+                        "custom": {
+                           "drawStyle": "line",
+                           "fillOpacity": 10,
+                           "lineWidth": 1,
+                           "pointSize": 5,
+                           "showPoints": "never",
+                           "spanNulls": false,
+                           "stacking": {
+                              "group": "A",
+                              "mode": "none"
+                           }
+                        },
+                        "thresholds": {
+                           "mode": "absolute",
+                           "steps": [ ]
+                        },
+                        "unit": "short"
+                     },
+                     "overrides": [ ]
+                  },
+                  "format": "Bps",
+                  "id": 5,
+                  "links": [ ],
+                  "options": {
+                     "legend": {
+                        "showLegend": true
+                     },
+                     "tooltip": {
+                        "mode": "single",
+                        "sort": "none"
+                     }
+                  },
+                  "span": 4,
+                  "stack": true,
+                  "targets": [
+                     {
+                        "expr": "sum(rate(loki_distributor_bytes_received_total{cluster=~\"$cluster\",job=~\"($namespace)/(loki.*|enterprise-logs)-write\",}[$__rate_interval]))",
+                        "format": "time_series",
+                        "legendFormat": "Bytes Received/sec",
+                        "legendLink": null
+                     },
+                     {
+                        "expr": "sum(rate(loki_discarded_bytes_total{cluster=~\"$cluster\",job=~\"($namespace)/(loki.*|enterprise-logs)-write\",}[$__rate_interval]))",
+                        "legendFormat": "Bytes Discarded (Rate Limited)/sec",
+                        "refId": "B"
+                     }
+                  ],
+                  "title": "Bytes/sec",
                   "type": "timeseries"
                },
                {
@@ -436,7 +509,132 @@
                      },
                      "overrides": [ ]
                   },
-                  "id": 5,
+                  "id": 6,
+                  "links": [ ],
+                  "options": {
+                     "legend": {
+                        "showLegend": true
+                     },
+                     "tooltip": {
+                        "mode": "single",
+                        "sort": "none"
+                     }
+                  },
+                  "span": 4,
+                  "stack": true,
+                  "targets": [
+                     {
+                        "expr": "sum by (reason) (rate(loki_discarded_bytes_total{cluster=~\"$cluster\",job=~\"($namespace)/(loki.*|enterprise-logs)-write\",}[$__rate_interval]))",
+                        "format": "time_series",
+                        "legendFormat": "{{reason}}",
+                        "legendLink": null
+                     }
+                  ],
+                  "title": "Data discarded reason",
+                  "type": "timeseries",
+                  "yaxes": [
+                     {
+                        "format": "short",
+                        "label": null,
+                        "logBase": 1,
+                        "max": 1,
+                        "min": 0,
+                        "show": true
+                     },
+                     {
+                        "format": "short",
+                        "label": null,
+                        "logBase": 1,
+                        "max": 1,
+                        "min": null,
+                        "show": false
+                     }
+                  ]
+               }
+            ],
+            "repeat": null,
+            "repeatIteration": null,
+            "repeatRowId": null,
+            "showTitle": true,
+            "title": "Write Path - Data Ingestion",
+            "titleSize": "h6"
+         },
+         {
+            "collapse": false,
+            "height": "250px",
+            "panels": [
+               {
+                  "datasource": "$datasource",
+                  "fieldConfig": {
+                     "defaults": {
+                        "custom": {
+                           "drawStyle": "line",
+                           "fillOpacity": 10,
+                           "lineWidth": 1,
+                           "pointSize": 5,
+                           "showPoints": "never",
+                           "spanNulls": false,
+                           "stacking": {
+                              "group": "A",
+                              "mode": "none"
+                           }
+                        },
+                        "thresholds": {
+                           "mode": "absolute",
+                           "steps": [ ]
+                        },
+                        "unit": "short"
+                     },
+                     "overrides": [ ]
+                  },
+                  "id": 7,
+                  "links": [ ],
+                  "options": {
+                     "legend": {
+                        "showLegend": true
+                     },
+                     "tooltip": {
+                        "mode": "single",
+                        "sort": "none"
+                     }
+                  },
+                  "span": 6,
+                  "targets": [
+                     {
+                        "expr": "sum (rate(loki_distributor_structured_metadata_bytes_received_total{cluster=~\"$cluster\",job=~\"($namespace)/(loki.*|enterprise-logs)-write\",}[$__rate_interval])) / sum(rate(loki_distributor_bytes_received_total{cluster=~\"$cluster\",job=~\"($namespace)/(loki.*|enterprise-logs)-write\",}[$__rate_interval]))",
+                        "format": "time_series",
+                        "legendFormat": "bytes",
+                        "legendLink": null
+                     }
+                  ],
+                  "title": "Total Received Bytes",
+                  "type": "timeseries"
+               },
+               {
+                  "datasource": "$datasource",
+                  "fieldConfig": {
+                     "defaults": {
+                        "custom": {
+                           "drawStyle": "line",
+                           "fillOpacity": 10,
+                           "lineWidth": 1,
+                           "pointSize": 5,
+                           "showPoints": "never",
+                           "spanNulls": false,
+                           "stacking": {
+                              "group": "A",
+                              "mode": "none"
+                           }
+                        },
+                        "thresholds": {
+                           "mode": "absolute",
+                           "steps": [ ]
+                        },
+                        "unit": "short"
+                     },
+                     "overrides": [ ]
+                  },
+                  "id": 8,
                   "links": [ ],
                   "options": {
                      "legend": {
