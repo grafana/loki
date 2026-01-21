@@ -23,8 +23,9 @@ const _Kind_name = "EmptyBoolFloat64Int64StringBytesSliceMap"
 var _Kind_index = [...]uint8{0, 5, 9, 16, 21, 27, 32, 37, 40}
 
 func (i Kind) String() string {
-	if i < 0 || i >= Kind(len(_Kind_index)-1) {
+	idx := int(i) - 0
+	if i < 0 || idx >= len(_Kind_index)-1 {
 		return "Kind(" + strconv.FormatInt(int64(i), 10) + ")"
 	}
-	return _Kind_name[_Kind_index[i]:_Kind_index[i+1]]
+	return _Kind_name[_Kind_index[idx]:_Kind_index[idx+1]]
 }

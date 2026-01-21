@@ -196,6 +196,11 @@ func (f *fakeRing) WritableInstancesWithTokensInZoneCount(zone string) int {
 	return args.Int(0)
 }
 
+// WritableInstancesWithTokensInZoneCount returns the number of writable instances in the ring that are registered in given zone and have tokens.
+func (f *fakeRing) Zones() []string {
+	return []string{"zone1"}
+}
+
 func (f *fakeRing) Get(
 	key uint32,
 	op ring.Operation,

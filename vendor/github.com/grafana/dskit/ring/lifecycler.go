@@ -541,7 +541,7 @@ func (i *Lifecycler) Zones() []string {
 func (i *Lifecycler) loop(ctx context.Context) error {
 	// First, see if we exist in the cluster, update our state to match if we do,
 	// and add ourselves (without tokens) if we don't.
-	if err := i.initRing(context.Background()); err != nil {
+	if err := i.initRing(ctx); err != nil {
 		return errors.Wrapf(err, "failed to join the ring %s", i.RingName)
 	}
 
@@ -564,14 +564,14 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 				if i.cfg.ObservePeriod > 0 {
 					// let's observe the ring. By using JOINING state, this ingester will be ignored by LEAVING
 					// ingesters, but we also signal that it is not fully functional yet.
-					if err := i.autoJoin(context.Background(), JOINING); err != nil {
+					if err := i.autoJoin(ctx, JOINING); err != nil {
 						return errors.Wrapf(err, "failed to pick tokens in the KV store, ring: %s", i.RingName)
 					}
 
 					level.Info(i.logger).Log("msg", "observing tokens before going ACTIVE", "ring", i.RingName)
 					observeChan = time.After(i.cfg.ObservePeriod)
 				} else {
-					if err := i.autoJoin(context.Background(), ACTIVE); err != nil {
+					if err := i.autoJoin(ctx, ACTIVE); err != nil {
 						return errors.Wrapf(err, "failed to pick tokens in the KV store, ring: %s", i.RingName)
 					}
 				}
@@ -586,10 +586,10 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 				level.Error(i.logger).Log("msg", "unexpected state while observing tokens", "state", s, "ring", i.RingName)
 			}
 
-			if i.verifyTokens(context.Background()) {
+			if i.verifyTokens(ctx) {
 				level.Info(i.logger).Log("msg", "token verification successful", "ring", i.RingName)
 
-				err := i.changeState(context.Background(), ACTIVE)
+				err := i.changeState(ctx, ACTIVE)
 				if err != nil {
 					level.Error(i.logger).Log("msg", "failed to set state to ACTIVE", "ring", i.RingName, "err", err)
 				}
@@ -601,7 +601,7 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 
 		case <-heartbeatTickerChan:
 			i.lifecyclerMetrics.consulHeartbeats.Inc()
-			if err := i.updateConsul(context.Background()); err != nil {
+			if err := i.updateConsul(ctx); err != nil {
 				level.Error(i.logger).Log("msg", "failed to write to the KV store, sleeping", "ring", i.RingName, "err", err)
 			}
 
