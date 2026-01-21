@@ -1,5 +1,18 @@
 # Changelog
 
+## [3.6.4](https://github.com/grafana/loki/compare/v3.6.3...v3.6.4) (2026-01-21)
+
+
+### Features
+
+* add rules check for namespace and group ([#20437](https://github.com/grafana/loki/issues/20437)) ([#20463](https://github.com/grafana/loki/issues/20463)) ([7733ab1](https://github.com/grafana/loki/commit/7733ab110ab9dc02704fec30f6afdeaa3b4180fb))
+
+
+### Bug Fixes
+
+* Backport gzip fix release 3.6.x ([#20514](https://github.com/grafana/loki/issues/20514)) ([d805266](https://github.com/grafana/loki/commit/d80526692af3bf28c35622a59a3231933b193bc2))
+* **deps:** [Release 3.6.x] Update dskit to resolve Otel conflict ([#20368](https://github.com/grafana/loki/issues/20368)) ([fb05a36](https://github.com/grafana/loki/commit/fb05a368466e6b16ac70105f69e460871c0aa42e))
+
 ## [3.6.3](https://github.com/grafana/loki/compare/v3.6.2...v3.6.3) (2025-12-11)
 
 
