@@ -86,27 +86,28 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 		region.Record(xcap.StatCompatCollisionFound.Observe(true))
 
 		// Next, update the schema with the new columns that have the _extracted suffix.
-		newSchema := batch.Schema()
+		oldSchema := batch.Schema()
+		newFields := make([]arrow.Field, 0, oldSchema.NumFields()+len(duplicates))
+		newFields = append(newFields, oldSchema.Fields()...)
 		r := int(batch.NumCols())
 		for i := range duplicates {
 			sourceFieldIdx := duplicates[i].sourceIdx
-			sourceField := newSchema.Field(sourceFieldIdx)
+			sourceField := oldSchema.Field(sourceFieldIdx)
 			sourceIdent, err := identCache.ParseFQN(sourceField.Name)
 			if err != nil {
 				return nil, err
 			}
 
 			destinationIdent := semconv.NewIdentifier(sourceIdent.ShortName()+extracted, compat.Destination, sourceIdent.DataType())
-			newSchema, err = newSchema.AddField(len(newSchema.Fields()), semconv.FieldFromIdent(destinationIdent, true))
-			if err != nil {
-				return nil, err
-			}
+			newFields = append(newFields, semconv.FieldFromIdent(destinationIdent, true))
 			duplicates[i].destinationIdx = r + i
 		}
 
 		// Create a new builder with the updated schema.
 		// The per-field builders are only used for columns where row values are modified,
 		// otherwise the full column from the input record is copied into the new record.
+		md := oldSchema.Metadata()
+		newSchema := arrow.NewSchema(newFields, &md)
 		builder := array.NewRecordBuilder(memory.DefaultAllocator, newSchema)
 		builder.Reserve(int(batch.NumRows()))
 

@@ -134,11 +134,10 @@ func filterBatch(batch arrow.RecordBatch, include func(int) bool) arrow.RecordBa
 		ct++
 	}
 
-	schema := arrow.NewSchema(fields, nil)
 	arrays := make([]arrow.Array, len(fields))
 	for i, builder := range builders {
 		arrays[i] = builder.NewArray()
 	}
 
-	return array.NewRecordBatch(schema, arrays, ct)
+	return array.NewRecordBatch(batch.Schema(), arrays, ct)
 }
