@@ -144,6 +144,7 @@ type RulesLimits interface {
 	RulerMaxRulesPerRuleGroup(userID string) int
 	RulerAlertManagerConfig(userID string) *config.AlertManagerConfig
 	RulerEnableWALReplay(userID string) bool
+	RulerGrafanaDatasourceUID(userID string) string
 }
 
 func MetricsQueryFunc(qf rules.QueryFunc, queries, failedQueries prometheus.Counter) rules.QueryFunc {
@@ -223,7 +224,7 @@ type RulesManager interface {
 // ManagerFactory is a function that creates new RulesManager for given user and notifier.Manager.
 type ManagerFactory func(ctx context.Context, userID string, notifier *notifier.Manager, logger log.Logger, reg prometheus.Registerer) RulesManager
 
-func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engine *promql.Engine, reg prometheus.Registerer, metricsNamespace string) ManagerFactory {
+func DefaultTenantManagerFactory(cfg Config, limits RulesLimits, p Pusher, q storage.Queryable, engine *promql.Engine, reg prometheus.Registerer, metricsNamespace string) ManagerFactory {
 	totalWrites := promauto.With(reg).NewCounter(prometheus.CounterOpts{
 		Namespace: metricsNamespace,
 		Name:      "ruler_write_requests_total",
@@ -265,13 +266,18 @@ func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engi
 			queryTime = rulerQuerySeconds.WithLabelValues(userID)
 		}
 
+		datasourceUID := limits.RulerGrafanaDatasourceUID(userID)
+		if datasourceUID == "" {
+			datasourceUID = cfg.DatasourceUID
+		}
+
 		return rules.NewManager(&rules.ManagerOptions{
 			Appendable:      NewPusherAppendable(p, userID, totalWrites, failedWrites),
 			Queryable:       q,
 			QueryFunc:       RecordAndReportRuleQueryMetrics(MetricsQueryFunc(rules.EngineQueryFunc(engine, q), totalQueries, failedQueries), queryTime, logger),
 			Context:         user.InjectOrgID(ctx, userID),
 			ExternalURL:     cfg.ExternalURL.URL,
-			NotifyFunc:      SendAlerts(notifier, cfg.ExternalURL.URL.String(), cfg.DatasourceUID),
+			NotifyFunc:      SendAlerts(notifier, cfg.ExternalURL.URL.String(), datasourceUID),
 			Logger:          util_log.SlogFromGoKit(log.With(logger, "user", userID)),
 			Registerer:      reg,
 			OutageTolerance: cfg.OutageTolerance,

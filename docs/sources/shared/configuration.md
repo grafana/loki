@@ -4607,6 +4607,10 @@ ruler_remote_write_sigv4_config:
 # evaluation. Set to 0 to allow any response size (default).
 [ruler_remote_evaluation_max_response_size: <int>]
 
+# Configures per-tenant datasource uid for grafana dashboard.
+# CLI flag: -ruler.grafana-datasource-uid
+[ruler_grafana_datasource_uid: <string> | default = ""]
+
 # Deletion mode. Can be one of 'disabled', 'filter-only', or
 # 'filter-and-delete'. When set to 'filter-only' or 'filter-and-delete', and if
 # retention_enabled is true, then the log entry deletion API endpoints are
@@ -5605,6 +5609,7 @@ The `ruler` block configures the Loki ruler.
 # CLI flag: -ruler.external.url
 [external_url: <url>]
 
+# Deprecated: Use -ruler.grafana-datasource-uid. CLI flags and their respective YAML config
 # Datasource UID for the dashboard.
 # CLI flag: -ruler.datasource-uid
 [datasource_uid: <string> | default = ""]

@@ -43,6 +43,10 @@ The next Loki release introduces a new configuration option (i.e. `-distibutor.m
 
 Supported clients should check the configuration options for max send message size if applicable.
 
+#### Ruler grafana datasource uid new per-tenant and global configuration option
+
+The next Loki release introduces a new configuration option (i.e. `-ruler.grafana-datasource-uid`) for the definition of the datasource to use when generating the url for the source of alert queries. This key now precedes the previous `-ruler.datasource-uid`.
+
 ## Helm Chart Upgrades
 
 ### Helm Chart 6.46.1 - Respect the global registry in the sidecar image
