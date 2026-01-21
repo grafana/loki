@@ -228,6 +228,8 @@ Before upgrading to v0.32.0, make sure that the CustomResourceDefinitions (CRDs)
 - [BUGFIX] Add missing flush=true to preStop hook [#16063](https://github.com/grafana/loki/pull/16063)
 - [BUGFIX] Fix setting X-Scope-OrgID header [#18414](https://github.com/grafana/loki/pull/18414)
 
+- [BUGFIX] Fix that `priorityClassName` of Loki Canary had lower precedence than the global setting [#18366](https://github.com/grafana/loki/pull/18366)
+
 ## 6.31.0
 
 - [FEATURE] Added readiness probe for memcached [#15609](https://github.com/grafana/loki/pull/15609)
