@@ -49,7 +49,7 @@ type MockIndexStreamReader struct {
 	Err error
 }
 
-func (m *MockIndexStreamReader) ReadStreams(ctx context.Context, indexPath, tenant string, windowStart, windowEnd time.Time) (*IndexStreamResult, error) {
+func (m *MockIndexStreamReader) ReadStreams(_ context.Context, indexPath, _ string, _, _ time.Time) (*IndexStreamResult, error) {
 	if m.Err != nil {
 		return nil, m.Err
 	}
@@ -994,13 +994,13 @@ func TestCollectStreamsBySegmentKey(t *testing.T) {
 		require.Len(t, hash100Group.Streams, 2) // One from each index
 
 		// Verify stream identifiers - both have StreamID 1 but different indexes
-		indexes_found := make(map[string]bool)
+		indexesFound := make(map[string]bool)
 		for _, s := range hash100Group.Streams {
 			require.Equal(t, int64(1), s.StreamID)
-			indexes_found[s.Index] = true
+			indexesFound[s.Index] = true
 		}
-		require.True(t, indexes_found["index1"])
-		require.True(t, indexes_found["index2"])
+		require.True(t, indexesFound["index1"])
+		require.True(t, indexesFound["index2"])
 
 		svc2Group := result.SegmentGroups["svc2"]
 		require.NotNil(t, svc2Group)

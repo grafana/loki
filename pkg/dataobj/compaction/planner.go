@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/thanos-io/objstore"
 	"golang.org/x/sync/errgroup"
@@ -21,6 +20,7 @@ import (
 	compactionpb "github.com/grafana/loki/v3/pkg/dataobj/compaction/proto"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 const (
