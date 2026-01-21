@@ -624,7 +624,7 @@ storage_config:
           {{- if .STS }}
           bucket_name: {{.Buckets}}
           region: {{.Region}}
-          insecure: false
+          s3forcepathstyle: false
           {{- else }}
           endpoint: {{ .Endpoint }}
           bucket_name: {{ .Buckets }}
@@ -632,7 +632,7 @@ storage_config:
           access_key_id: ${AWS_ACCESS_KEY_ID}
           secret_access_key: ${AWS_ACCESS_KEY_SECRET}
           {{- if .ForcePathStyle  }}
-          insecure: true
+          s3forcepathstyle: true
           {{- end}}
           {{- end }}
           {{- with .SSE }}
