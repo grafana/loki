@@ -578,3 +578,88 @@ func TestSplittingHandler_SkipFanoutDisabled_AlwaysSplits(t *testing.T) {
 		})
 	}
 }
+
+// TestSplittingHandler_MultiTenantQuery_RoutesToV1Only tests that multi-tenant queries
+// (X-Scope-OrgID: tenant1|tenant2) are routed exclusively to v1, regardless of routing mode.
+// This is because v2 does not support multi-tenant queries.
+func TestSplittingHandler_MultiTenantQuery_RoutesToV1Only(t *testing.T) {
+	for _, routingMode := range []RoutingMode{RoutingModeV1Preferred, RoutingModeV2Preferred, RoutingModeRace} {
+		t.Run(string(routingMode), func(t *testing.T) {
+			v1BackendCalled := false
+			fanOutHandlerCalled := false
+			var capturedTenantID string
+
+			// Mock v1 backend that tracks calls
+			v1Backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				v1BackendCalled = true
+				capturedTenantID = r.Header.Get("X-Scope-OrgID")
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{"status":"success","data":{"resultType":"streams","result":[]}}`))
+			}))
+			defer v1Backend.Close()
+
+			v1BackendURL, err := url.Parse(v1Backend.URL)
+			require.NoError(t, err)
+
+			v1ProxyBackend, err := NewProxyBackend("v1", v1BackendURL, 5*time.Second, true, false)
+			require.NoError(t, err)
+
+			// Mock fanout handler that should NOT be called for multi-tenant queries
+			mockFanOutHandler := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+				fanOutHandlerCalled = true
+				return &queryrange.LokiResponse{
+					Status: "success",
+					Data:   queryrange.LokiData{ResultType: "streams"},
+				}, nil
+			})
+
+			goldfishManager := &mockGoldfishManager{
+				shouldSampleResult: true, // Enable sampling to ensure we're not skipping due to that
+			}
+
+			handler, err := NewSplittingHandler(SplittingHandlerConfig{
+				Codec:                     queryrange.DefaultCodec,
+				FanOutHandler:             mockFanOutHandler,
+				GoldfishManager:           goldfishManager,
+				V1Backend:                 v1ProxyBackend,
+				SkipFanoutWhenNotSampling: false,
+				RoutingMode:               routingMode,
+				SplitStart:                time.Time{},
+				SplitLag:                  1 * time.Hour, // Enable splitting
+			}, log.NewNopLogger())
+			require.NoError(t, err)
+
+			// Use a LokiRequest that would normally go through splitting/fanout
+			now := time.Now()
+			query := `sum(rate({app="test"}[5m]))`
+			expr, err := syntax.ParseExpr(query)
+			require.NoError(t, err)
+
+			lokiReq := &queryrange.LokiRequest{
+				Query:   query,
+				StartTs: now.Add(-2 * time.Hour),
+				EndTs:   now,
+				Step:    60000,
+				Limit:   100,
+				Path:    "/loki/api/v1/query_range",
+				Plan: &plan.QueryPlan{
+					AST: expr,
+				},
+			}
+
+			// Inject multi-tenant org ID (pipe-separated)
+			ctx := user.InjectOrgID(context.Background(), "tenant1|tenant2")
+			httpReq, err := queryrange.DefaultCodec.EncodeRequest(ctx, lokiReq)
+			require.NoError(t, err)
+
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, httpReq)
+
+			require.Equal(t, http.StatusOK, recorder.Code)
+			require.True(t, v1BackendCalled, "multi-tenant query should be routed to v1 backend in %s mode", routingMode)
+			require.False(t, fanOutHandlerCalled, "multi-tenant query should NOT use fanout handler in %s mode (would route to v2)", routingMode)
+			require.Equal(t, "tenant1|tenant2", capturedTenantID, "tenant ID should be preserved when routing to v1")
+		})
+	}
+}
