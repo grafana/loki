@@ -13,6 +13,10 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+## 6.51.0
+
+- [CHANGE] Changed version of Grafana Loki to 3.6.4
+
 ## 6.50.0
 
 - [ENHANCEMENT] Add configurable `startupProbe` to compactor [#20072](https://github.com/grafana/loki/pull/20072).
