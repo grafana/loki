@@ -217,6 +217,14 @@ func (r *RemoteEvaluator) Query(ctx context.Context, ch chan<- queryResponse, or
 }
 
 func (r *RemoteEvaluator) query(ctx context.Context, orgID, query string, ts time.Time, logger log.Logger) (*logqlmodel.Result, error) {
+	cur_minute := time.Now().UTC().Round(1 * time.Minute).Minute()
+	if cur_minute <= 4 {
+		level.Warn(logger).Log("msg", fmt.Sprintf("SOPHIE About to panic, org_id = %v time = %v\nquery=%v", orgID, time.Now().UTC().Format(time.RFC3339), query))
+		panic("SOPHIE Testing ruler response to panic")
+	} else {
+		level.Warn(logger).Log("msg", fmt.Sprintf("SOPHIE Evaluating rule for org %v at minute %v with but not yet time to panic\nquery=%v", orgID, cur_minute, query))
+	}
+
 	args := make(url.Values)
 	args.Set("query", query)
 	args.Set("direction", "forward")
