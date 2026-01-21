@@ -13,6 +13,8 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+## 6.50.0
+
 - [ENHANCEMENT] Add configurable `startupProbe` to compactor [#20072](https://github.com/grafana/loki/pull/20072).
 - [ENHANCEMENT] Add configurable `startupProbe` to distributor [#20073](https://github.com/grafana/loki/pull/20073).
 - [ENHANCEMENT] Add guards to the `readinessProbe` of the `gateway` container in the `enterprise-gateway` pods, in case the value is empty. Makes it possible to configure livenessProbe and startupProbe in the gateway container in the enterprise-gateway pods [#20074](https://github.com/grafana/loki/pull/20074)

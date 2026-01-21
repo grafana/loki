@@ -87,8 +87,8 @@ type Config struct {
 	PushWorkerCount int        `yaml:"push_worker_count"`
 
 	// Request parser
-	MaxRecvMsgSize      int `yaml:"max_recv_msg_size"`
-	MaxDecompressedSize int `yaml:"max_decompressed_size"`
+	MaxRecvMsgSize      int   `yaml:"max_recv_msg_size"`
+	MaxDecompressedSize int64 `yaml:"max_decompressed_size"`
 
 	// For testing.
 	factory ring_client.PoolFactory `yaml:"-"`
@@ -122,7 +122,7 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	cfg.RateStore.RegisterFlagsWithPrefix("distributor.rate-store", fs)
 	cfg.WriteFailuresLogging.RegisterFlagsWithPrefix("distributor.write-failures-logging", fs)
 	fs.IntVar(&cfg.MaxRecvMsgSize, "distributor.max-recv-msg-size", 100<<20, "The maximum size of a received message.")
-	fs.IntVar(&cfg.MaxDecompressedSize, "distributor.max-decompressed-size", 5000<<20, "The maximum size of a decompressed message. Defaults to 50x max-recv-msg-size.")
+	fs.Int64Var(&cfg.MaxDecompressedSize, "distributor.max-decompressed-size", 5000<<20, "The maximum size of a decompressed message. Defaults to 50x max-recv-msg-size.")
 	fs.IntVar(&cfg.PushWorkerCount, "distributor.push-worker-count", 256, "Number of workers to push batches to ingesters.")
 	fs.BoolVar(&cfg.KafkaEnabled, "distributor.kafka-writes-enabled", false, "Enable writes to Kafka during Push requests.")
 	fs.BoolVar(&cfg.IngesterEnabled, "distributor.ingester-writes-enabled", true, "Enable writes to Ingesters during Push requests. Defaults to true.")
@@ -139,7 +139,7 @@ func (cfg *Config) Validate() error {
 	}
 	// Set default maxDecompressedSize if not configured (50x maxRecvMsgSize)
 	if cfg.MaxDecompressedSize == 0 && cfg.MaxRecvMsgSize > 0 {
-		cfg.MaxDecompressedSize = cfg.MaxRecvMsgSize * 50
+		cfg.MaxDecompressedSize = int64(cfg.MaxRecvMsgSize) * 50
 	}
 	return nil
 }
