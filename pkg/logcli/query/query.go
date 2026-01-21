@@ -84,16 +84,16 @@ type Query struct {
 }
 
 // DoQuery executes the query and prints out the results
-func (q *Query) DoQuery(c client.Client, out output.LogOutput, statistics bool) {
+func (q *Query) DoQuery(c client.Client, out output.LogOutput, statistics bool) error {
 	if q.LocalConfig != "" {
 		orgID := c.GetOrgID()
 		if orgID == "" {
 			orgID = "fake"
 		}
 		if err := q.DoLocalQuery(out, statistics, orgID, q.FetchSchemaFromStorage); err != nil {
-			log.Fatalf("Query failed: %+v", err)
+			return fmt.Errorf("query failed: %w", err)
 		}
-		return
+		return nil
 	}
 
 	d := q.resultsDirection()
@@ -104,13 +104,16 @@ func (q *Query) DoQuery(c client.Client, out output.LogOutput, statistics bool) 
 	var partFile *PartFile
 	if q.PartPathPrefix != "" {
 		var shouldSkip bool
-		partFile, shouldSkip = q.createPartFile()
+		partFile, shouldSkip, err = q.createPartFile()
+		if err != nil {
+			return fmt.Errorf("query failed: %w", err)
+		}
 
 		// createPartFile will return true if the part file exists and
 		// OverwriteCompleted is false, therefor, we should exit the function
 		// here because we have nothing to do.
 		if shouldSkip {
-			return
+			return nil
 		}
 	}
 
@@ -124,12 +127,14 @@ func (q *Query) DoQuery(c client.Client, out output.LogOutput, statistics bool) 
 	if q.isInstant() {
 		resp, err = c.Query(q.QueryString, q.Limit, q.Start, d, q.Quiet)
 		if err != nil {
-			log.Fatalf("Query failed: %+v", err)
+			return fmt.Errorf("query failed: %w", err)
 		}
 		if statistics {
 			result.PrintStats(resp.Data.Statistics)
 		}
-		_, _ = result.PrintResult(resp.Data.Result, out, nil)
+		if _, _, err := result.PrintResult(resp.Data.Result, out, nil); err != nil {
+			return err
+		}
 	} else {
 		unlimited := q.Limit == 0
 
@@ -154,14 +159,18 @@ func (q *Query) DoQuery(c client.Client, out output.LogOutput, statistics bool) 
 			}
 			resp, err = c.QueryRange(q.QueryString, bs, start, end, d, q.Step, q.Interval, q.Quiet)
 			if err != nil {
-				log.Fatalf("Query failed: %+v", err)
+				return fmt.Errorf("query failed: %w", err)
 			}
 
 			if statistics {
 				result.PrintStats(resp.Data.Statistics)
 			}
 
-			resultLength, lastEntry = result.PrintResult(resp.Data.Result, out, lastEntry)
+			var prErr error
+			resultLength, lastEntry, prErr = result.PrintResult(resp.Data.Result, out, lastEntry)
+			if prErr != nil {
+				return prErr
+			}
 			// Was not a log stream query, or no results, no more batching
 			if resultLength <= 0 {
 				break
@@ -175,11 +184,11 @@ func (q *Query) DoQuery(c client.Client, out output.LogOutput, statistics bool) 
 				break
 			}
 			if len(lastEntry) >= q.BatchSize {
-				log.Fatalf("Invalid batch size %v, the next query will have %v overlapping entries "+
+				return fmt.Errorf("invalid batch size %v, the next query will have %v overlapping entries "+
 					"(there will always be 1 overlapping entry but Loki allows multiple entries to have "+
 					"the same timestamp, so when a batch ends in this scenario the next query will include "+
 					"all the overlapping entries again).  Please increase your batch size to at least %v to account "+
-					"for overlapping entryes\n", q.BatchSize, len(lastEntry), len(lastEntry)+1)
+					"for overlapping entryes", q.BatchSize, len(lastEntry), len(lastEntry)+1)
 			}
 
 			// Batching works by taking the timestamp of the last query and using it in the next query,
@@ -204,9 +213,10 @@ func (q *Query) DoQuery(c client.Client, out output.LogOutput, statistics bool) 
 
 	if partFile != nil {
 		if err := partFile.Finalize(); err != nil {
-			log.Fatalln(err)
+			return err
 		}
 	}
+	return nil
 }
 
 func (q *Query) outputFilename() string {
@@ -220,7 +230,7 @@ func (q *Query) outputFilename() string {
 
 // createPartFile returns a PartFile.
 // The bool value shows if the part file already exists, and this range should be skipped.
-func (q *Query) createPartFile() (*PartFile, bool) {
+func (q *Query) createPartFile() (*PartFile, bool, error) {
 	partFile := NewPartFile(q.outputFilename())
 
 	if !q.OverwriteCompleted {
@@ -228,19 +238,19 @@ func (q *Query) createPartFile() (*PartFile, bool) {
 		// The user can delete the files if they want to download parts again.
 		exists, err := partFile.Exists()
 		if err != nil {
-			log.Fatalf("Query failed: %s\n", err)
+			return nil, false, fmt.Errorf("query failed: %w", err)
 		}
 		if exists {
 			log.Printf("Skip range: %s - %s: already downloaded\n", q.Start, q.End)
-			return nil, true
+			return nil, true, nil
 		}
 	}
 
 	if err := partFile.CreateTempFile(); err != nil {
-		log.Fatalf("Query failed: %s\n", err)
+		return nil, false, fmt.Errorf("query failed: %w", err)
 	}
 
-	return partFile, false
+	return partFile, false, nil
 }
 
 // rounds up duration d by the multiple m, and then divides by m.
@@ -262,6 +272,7 @@ func (q *Query) nextJob(start, end time.Time) (time.Time, time.Time) {
 type parallelJob struct {
 	q    *Query
 	done chan struct{}
+	err  error
 }
 
 func newParallelJob(q *Query) *parallelJob {
@@ -272,7 +283,7 @@ func newParallelJob(q *Query) *parallelJob {
 }
 
 func (j *parallelJob) run(c client.Client, out output.LogOutput, statistics bool) {
-	j.q.DoQuery(c, out, statistics)
+	j.err = j.q.DoQuery(c, out, statistics)
 	j.done <- struct{}{}
 }
 
@@ -366,9 +377,9 @@ func (q *Query) startWorkers(
 	return &wg
 }
 
-func (q *Query) DoQueryParallel(c client.Client, out output.LogOutput, statistics bool) {
+func (q *Query) DoQueryParallel(c client.Client, out output.LogOutput, statistics bool) error {
 	if q.ParallelDuration < 1 {
-		log.Fatalf("Parallel duration has to be a positive value\n")
+		return fmt.Errorf("parallel duration has to be a positive value")
 	}
 
 	jobs := q.parallelJobs()
@@ -376,10 +387,17 @@ func (q *Query) DoQueryParallel(c client.Client, out output.LogOutput, statistic
 	wg := q.startWorkers(jobs, c, out, statistics)
 
 	if err := q.mergeJobs(jobs); err != nil {
-		log.Fatalf("Merging part files error: %s\n", err)
+		return fmt.Errorf("merging part files error: %w", err)
 	}
 
 	wg.Wait()
+
+	for _, job := range jobs {
+		if job.err != nil {
+			return job.err
+		}
+	}
+	return nil
 }
 
 func minTime(t1, t2 time.Time) time.Time {
@@ -534,7 +552,9 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 		return err
 	}
 
-	resPrinter.PrintResult(value, out, nil)
+	if _, _, err := resPrinter.PrintResult(value, out, nil); err != nil {
+		return err
+	}
 	return nil
 }
 
