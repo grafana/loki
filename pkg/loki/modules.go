@@ -2260,7 +2260,10 @@ func (t *Loki) initPartitionRing() (services.Service, error) {
 		return nil, fmt.Errorf("creating KV store for partitions ring watcher: %w", err)
 	}
 
-	t.PartitionRingWatcher = ring.NewPartitionRingWatcher(ingester.PartitionRingName, ingester.PartitionRingKey, kvClient, util_log.Logger, prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer))
+	ringOptions := ring.DefaultPartitionRingOptions()
+	ringOptions.ShuffleShardCacheSize = 1000
+
+	t.PartitionRingWatcher = ring.NewPartitionRingWatcherWithOptions(ingester.PartitionRingName, ingester.PartitionRingKey, kvClient, ringOptions, util_log.Logger, prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer))
 	t.partitionRing = ring.NewPartitionInstanceRing(t.PartitionRingWatcher, t.ring, t.Cfg.Ingester.LifecyclerConfig.RingConfig.HeartbeatTimeout)
 
 	// Expose a web page to view the partitions ring state.
@@ -2388,10 +2391,14 @@ func (t *Loki) initDataObjConsumerPartitionRing() (services.Service, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create KV store for dataobj ring watcher: %w", err)
 	}
-	t.DataObjConsumerPartitionRingWatcher = ring.NewPartitionRingWatcher(
+	ringOptions := ring.DefaultPartitionRingOptions()
+	ringOptions.ShuffleShardCacheSize = 1000
+
+	t.DataObjConsumerPartitionRingWatcher = ring.NewPartitionRingWatcherWithOptions(
 		consumer.PartitionRingName,
 		consumer.PartitionRingKey,
 		kvClient,
+		ringOptions,
 		util_log.Logger,
 		prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer),
 	)
