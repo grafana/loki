@@ -28,6 +28,7 @@ type mockStorage struct {
 
 func (m *mockStorage) StoreQuerySample(_ context.Context, sample *goldfish.QuerySample, comparison *goldfish.ComparisonResult) error {
 	sample.ComparisonStatus = comparison.ComparisonStatus
+	sample.MatchWithinTolerance = comparison.MatchWithinTolerance
 	m.samples = append(m.samples, *sample)
 	return nil
 }
@@ -627,25 +628,28 @@ func (m *mockResponseComparator) Compare(_, _ []byte, _ time.Time) (*comparator.
 
 func TestManager_StoreQuerySample_UsesComparatorResult(t *testing.T) {
 	tests := []struct {
-		name            string
-		cellAHash       string
-		cellBHash       string
-		comparatorMatch bool
-		expectedStatus  goldfish.ComparisonStatus
+		name                         string
+		cellAHash                    string
+		cellBHash                    string
+		comparatorMatch              bool
+		expectedStatus               goldfish.ComparisonStatus
+		expectedMatchWithinTolerance bool
 	}{
 		{
-			name:            "hash mismatch with tolerance match",
-			cellAHash:       "hash1",
-			cellBHash:       "hash2",
-			comparatorMatch: true,
-			expectedStatus:  goldfish.ComparisonStatusMatch,
+			name:                         "hash mismatch with tolerance match",
+			cellAHash:                    "hash1",
+			cellBHash:                    "hash2",
+			comparatorMatch:              true,
+			expectedStatus:               goldfish.ComparisonStatusMismatch,
+			expectedMatchWithinTolerance: true,
 		},
 		{
-			name:            "hash mismatch without tolerance match",
-			cellAHash:       "hash1",
-			cellBHash:       "hash2",
-			comparatorMatch: false,
-			expectedStatus:  goldfish.ComparisonStatusMismatch,
+			name:                         "hash mismatch without tolerance match",
+			cellAHash:                    "hash1",
+			cellBHash:                    "hash2",
+			comparatorMatch:              false,
+			expectedStatus:               goldfish.ComparisonStatusMismatch,
+			expectedMatchWithinTolerance: false,
 		},
 	}
 
@@ -699,8 +703,8 @@ func TestManager_StoreQuerySample_UsesComparatorResult(t *testing.T) {
 
 			// Verify the stored sample has the correct comparison status from the comparator
 			require.Len(t, storage.samples, 1)
-			assert.Equal(t, tt.expectedStatus, storage.samples[0].ComparisonStatus,
-				"comparison status should match what the comparator returned")
+			assert.Equal(t, tt.expectedStatus, storage.samples[0].ComparisonStatus)
+			assert.Equal(t, tt.expectedMatchWithinTolerance, storage.samples[0].MatchWithinTolerance)
 		})
 	}
 }

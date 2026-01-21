@@ -48,8 +48,13 @@ type Config struct {
 	// Performance comparison tolerance (0.0-1.0, where 0.1 = 10%)
 	PerformanceTolerance float64 `yaml:"performance_tolerance"`
 
-	// Tolerance for comparing samples values (for metric query responses).
-	// When set to 0, we expect an exact response hash match.
+	// Tolerance for comparing metric query samples when response hashes don't match.
+	//
+	// When > 0, enables value-by-value comparison of metric samples to handle floating-point
+	// precision differences. If the comparator determines responses are within tolerance,
+	// MatchWithinTolerance is set to true even though the hashes differ.
+	//
+	// When set to 0 (default), only exact response hash matches are considered matches.
 	CompareValuesTolerance float64 `yaml:"compare_values_tolerance"`
 }
 

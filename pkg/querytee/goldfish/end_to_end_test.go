@@ -336,8 +336,9 @@ func TestGoldfishFloatingPointMismatchDetection(t *testing.T) {
 	assert.Len(t, storage.results, 1)
 	result := storage.results[0]
 
-	// Verify that floating-point difference within tolerance is considered a match
-	assert.Equal(t, goldfish.ComparisonStatusMatch, result.ComparisonStatus, "Floating-point difference within tolerance should be a match")
+	assert.Equal(t, goldfish.ComparisonStatusMismatch, result.ComparisonStatus)
+	// Verify that the mismatch is due to floating point variance within tolerance
+	assert.True(t, result.MatchWithinTolerance, "Result should indicate match within tolerance")
 
 	// Verify that we recorded the compareQueryStats
 	assert.Contains(t, result.DifferenceDetails, "exec_time_variance")
