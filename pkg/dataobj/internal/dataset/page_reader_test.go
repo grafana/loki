@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"io"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
+	"github.com/grafana/loki/v3/pkg/memory"
 )
 
 var pageReaderTestStrings = []string{
@@ -149,26 +151,28 @@ func buildPage(t *testing.T, opts BuilderOptions, in []string) *MemPage {
 }
 
 func readPage(pr *pageReader, batchSize int) ([]Value, error) {
-	var (
-		all []Value
+	// TODO(rfratto): This function should entirely move over to columnar.Array,
+	// but that would require implementing some kind of array concatenation
+	// first, as readPage is expected to read the entire page.
 
-		batch = make([]Value, batchSize)
+	var (
+		alloc memory.Allocator // Temporary allocator for copying into all
+		all   []Value
 	)
 
 	for {
-		// Clear the batch for each read; this is required to ensure that any
-		// memory inside of Value doesn't get reused.
-		//
-		// This requires any Value provided by pr.Read is owned by the caller and
-		// is not retained by the reader; if a test fails and appears to have
-		// memory reuse, it's likely because code in pageReader changed and broke
-		// ownership semantics.
-		clear(batch)
+		alloc.Reclaim()
 
-		n, err := pr.Read(context.Background(), batch)
-		if n > 0 {
-			all = append(all, batch[:n]...)
+		arr, err := pr.Read(context.Background(), &alloc, batchSize)
+		if arr != nil {
+			prevLen := len(all)
+
+			all = slices.Grow(all, arr.Len())
+			all = all[:prevLen+arr.Len()]
+
+			copyArray(all[prevLen:], arr)
 		}
+
 		if errors.Is(err, io.EOF) {
 			return all, nil
 		} else if err != nil {

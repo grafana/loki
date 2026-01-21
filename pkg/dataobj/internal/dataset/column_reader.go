@@ -82,7 +82,7 @@ func (cr *columnReader) Read(ctx context.Context, v []Value) (n int, err error) 
 		// of rows, potentially across multiple page boundaries. This means that
 		// only the first call to cr.reader.Read will use the scratch space in v to
 		// skip rows, where the scratch space is the entirety of len(v).
-		count, err := cr.reader.Read(ctx, v[n:])
+		count, err := cr.reader.ReadLegacy(ctx, v[n:])
 		cr.nextRow += int64(count)
 		n += count
 
