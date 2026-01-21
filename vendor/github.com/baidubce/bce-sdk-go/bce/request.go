@@ -106,6 +106,23 @@ func NewBodyFromBytes(stream []byte) (*Body, error) {
 	return &Body{stream: ioutil.NopCloser(buf), size: size, contentMD5: contentMD5}, nil
 }
 
+func NewBodyFromBytesV2(stream []byte, calcMd5 bool) (*Body, error) {
+	contentMD5 := ""
+	size := int64(len(stream))
+	if calcMd5 {
+		md5Str, err := util.CalculateContentMD5(bytes.NewBuffer(stream), size)
+		if err != nil {
+			return nil, err
+		}
+		contentMD5 = md5Str
+	}
+	return &Body{
+		stream:     NewTeeReadNopCloser(bytes.NewReader(stream)),
+		size:       size,
+		contentMD5: contentMD5,
+	}, nil
+}
+
 // NewBodyFromString - build a Body object from the string to be used in the http request, it
 // calculates the content-md5 of the byte stream and store the size as well as the stream.
 //
@@ -124,6 +141,23 @@ func NewBodyFromString(str string) (*Body, error) {
 	}
 	buf = bytes.NewBufferString(str)
 	return &Body{stream: ioutil.NopCloser(buf), size: size, contentMD5: contentMD5}, nil
+}
+
+func NewBodyFromStringV2(str string, calcMd5 bool) (*Body, error) {
+	contentMD5 := ""
+	size := int64(len(str))
+	if calcMd5 {
+		md5Str, err := util.CalculateContentMD5(bytes.NewBufferString(str), size)
+		if err != nil {
+			return nil, err
+		}
+		contentMD5 = md5Str
+	}
+	return &Body{
+		stream:     NewTeeReadNopCloser(bytes.NewReader([]byte(str))),
+		size:       size,
+		contentMD5: contentMD5,
+	}, nil
 }
 
 // NewBodyFromFile - build a Body object from the given file name to be used in the http request,
@@ -154,6 +188,33 @@ func NewBodyFromFile(fname string) (*Body, error) {
 	return &Body{stream: file, size: fileInfo.Size(), contentMD5: contentMD5}, nil
 }
 
+func NewBodyFromFileV2(fname string, calcMd5 bool) (*Body, error) {
+	file, err := os.Open(fname)
+	if err != nil {
+		return nil, err
+	}
+	fileInfo, infoErr := file.Stat()
+	if infoErr != nil {
+		return nil, infoErr
+	}
+	contentMD5 := ""
+	if calcMd5 {
+		md5Str, md5Err := util.CalculateContentMD5(file, fileInfo.Size())
+		if md5Err != nil {
+			return nil, md5Err
+		}
+		contentMD5 = md5Str
+		if _, err = file.Seek(0, io.SeekStart); err != nil {
+			return nil, err
+		}
+	}
+	return &Body{
+		stream:     NewTeeReadNopCloser(file),
+		size:       fileInfo.Size(),
+		contentMD5: contentMD5,
+	}, nil
+}
+
 // NewBodyFromSectionFile - build a Body object from the given file pointer with offset and size.
 // It calculates the content-md5 of the given content and store the size as well as the stream.
 //
@@ -178,6 +239,29 @@ func NewBodyFromSectionFile(file *os.File, off, size int64) (*Body, error) {
 	}
 	section := io.NewSectionReader(file, off, size)
 	return &Body{stream: ioutil.NopCloser(section), size: size, contentMD5: contentMD5}, nil
+}
+
+func NewBodyFromSectionFileV2(file *os.File, off, size int64, calcMd5 bool) (*Body, error) {
+	contentMD5 := ""
+	if calcMd5 {
+		if _, err := file.Seek(off, io.SeekStart); err != nil {
+			return nil, err
+		}
+		md5Str, md5Err := util.CalculateContentMD5(file, size)
+		if md5Err != nil {
+			return nil, md5Err
+		}
+		if _, err := file.Seek(0, 0); err != nil {
+			return nil, err
+		}
+		contentMD5 = md5Str
+	}
+	section := io.NewSectionReader(file, off, size)
+	return &Body{
+		stream:     NewTeeReadNopCloser(section),
+		size:       size,
+		contentMD5: contentMD5,
+	}, nil
 }
 
 // NewBodyFromSizedReader - build a Body object from the given reader with size.
@@ -222,6 +306,44 @@ func NewBodyFromSizedReader(r io.Reader, size int64) (*Body, error) {
 	return body, nil
 }
 
+func NewBodyFromSizedReaderV2(r io.Reader, size int64, calcMd5 bool) (*Body, error) {
+	var buffer bytes.Buffer
+	var rlen int64
+	var err error
+	if size >= 0 {
+		rlen, err = io.CopyN(&buffer, r, size)
+	} else {
+		rlen, err = io.Copy(&buffer, r)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if rlen != int64(buffer.Len()) { // must be equal
+		return nil, NewBceClientError("unexpected reader")
+	}
+	if size >= 0 {
+		if rlen < size {
+			return nil, NewBceClientError("size is great than reader actual size")
+		}
+	}
+
+	contentMD5 := ""
+	if calcMd5 {
+		md5Str, err := util.CalculateContentMD5(bytes.NewBuffer(buffer.Bytes()), rlen)
+		if err != nil {
+			return nil, err
+		}
+		contentMD5 = md5Str
+	}
+
+	body := &Body{
+		stream:     NewTeeReadNopCloser(bytes.NewReader(buffer.Bytes())),
+		size:       rlen,
+		contentMD5: contentMD5,
+	}
+	return body, nil
+}
+
 // BceRequest defines the request structure for accessing BCE services
 type BceRequest struct {
 	http.Request
@@ -238,7 +360,11 @@ func (b *BceRequest) ClientError() *BceClientError { return b.clientError }
 func (b *BceRequest) SetClientError(err *BceClientError) { b.clientError = err }
 
 func (b *BceRequest) SetBody(body *Body) { // override SetBody derived from http.Request
-	b.Request.SetBody(body)
+	if _, ok := body.Stream().(*TeeReadNopCloser); ok {
+		b.Request.SetBody(body.Stream())
+	} else {
+		b.Request.SetBody(body)
+	}
 	b.SetLength(body.Size()) // set field of "net/http.Request.ContentLength"
 	if body.ContentMD5() != "" {
 		b.SetHeader(http.CONTENT_MD5, body.ContentMD5())

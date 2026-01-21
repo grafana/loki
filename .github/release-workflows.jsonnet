@@ -39,6 +39,7 @@ local weeklyImageJobs = {
   'loki-canary': build.weeklyImage('loki-canary', 'cmd/loki-canary', platform=platforms.all),
   'loki-canary-boringcrypto': build.weeklyImage('loki-canary-boringcrypto', 'cmd/loki-canary-boringcrypto', platform=platforms.all),
   promtail: build.weeklyImage('promtail', 'clients/cmd/promtail', platform=platforms.all),
+  querytee: build.weeklyImage('loki-query-tee', 'cmd/querytee'),
 };
 
 {

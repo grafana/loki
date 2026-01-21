@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
 	"github.com/grafana/loki/v3/pkg/memory"
-	"github.com/grafana/loki/v3/pkg/memory/buffer"
 )
 
 func init() {
@@ -99,8 +99,8 @@ func (dec *plainBytesDecoder) EncodingType() datasetmd.EncodingType {
 // Decode decodes up to count values using the provided allocator to store the
 // At the end of the stream, Decode returns nil, [io.EOF].
 //
-// The return value is a [stringArray].
-func (dec *plainBytesDecoder) Decode(alloc *memory.Allocator, count int) (any, error) {
+// The return value is a [columnar.UTF8].
+func (dec *plainBytesDecoder) Decode(alloc *memory.Allocator, count int) (columnar.Array, error) {
 	var (
 		// Strings need a an offsets and a value buffer.
 		//
@@ -112,8 +112,8 @@ func (dec *plainBytesDecoder) Decode(alloc *memory.Allocator, count int) (any, e
 		// exactly one allocated reusable memory region than to have it grow a few
 		// times as we try to discover the true size.
 
-		offsetsBuf = buffer.WithCapacity[int32](alloc, count+1)
-		valuesBuf  = buffer.WithCapacity[byte](alloc, len(dec.data))
+		offsetsBuf = memory.MakeBuffer[int32](alloc, count+1)
+		valuesBuf  = memory.MakeBuffer[byte](alloc, len(dec.data))
 
 		// It's going to be far more efficient for us to manipulate the output
 		// slices ourselves, so we'll do that here.
@@ -141,10 +141,11 @@ func (dec *plainBytesDecoder) Decode(alloc *memory.Allocator, count int) (any, e
 				return nil, io.EOF
 			}
 
-			return stringArray{
-				offsets: offsets[:i+1],
-				data:    values[:totalBytes],
-			}, io.EOF
+			return columnar.MakeUTF8(
+				values[:totalBytes],
+				offsets[:i+1],
+				memory.Bitmap{},
+			), io.EOF
 		}
 
 		copied := copy(values[totalBytes:], data[off+uvarintSize:off+uvarintSize+int(stringSize)])
@@ -154,10 +155,11 @@ func (dec *plainBytesDecoder) Decode(alloc *memory.Allocator, count int) (any, e
 		offsets[i+1] = int32(totalBytes)
 	}
 
-	return stringArray{
-		offsets: offsets[:count+1],
-		data:    values[:totalBytes],
-	}, nil
+	return columnar.MakeUTF8(
+		values[:totalBytes],
+		offsets[:count+1],
+		memory.Bitmap{},
+	), nil
 }
 
 // Reset implements [valueDecoder]. It resets the decoder to read from data.

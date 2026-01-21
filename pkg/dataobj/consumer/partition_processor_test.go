@@ -1,418 +1,226 @@
 package consumer
 
 import (
+	"context"
+	"errors"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
-	"github.com/coder/quartz"
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
-	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/scratch"
 
 	"github.com/grafana/loki/pkg/push"
 )
 
-var testBuilderConfig = logsobj.BuilderConfig{
-	BuilderBaseConfig: logsobj.BuilderBaseConfig{
-		TargetPageSize:          2048,
-		MaxPageRows:             10,
-		TargetObjectSize:        1 << 22, // 4 MiB
-		TargetSectionSize:       1 << 22, // 4 MiB
-		BufferSize:              2048 * 8,
-		SectionStripeMergeLimit: 2,
-	},
-}
+var (
+	// A builder configuration to be used in tests.
+	testBuilderCfg = logsobj.BuilderConfig{
+		BuilderBaseConfig: logsobj.BuilderBaseConfig{
+			TargetPageSize:          2048,
+			MaxPageRows:             10,
+			TargetObjectSize:        1 << 22, // 4 MiB
+			TargetSectionSize:       1 << 22, // 4 MiB
+			BufferSize:              2048 * 8,
+			SectionStripeMergeLimit: 2,
+		},
+	}
+)
 
-func TestPartitionProcessor_Flush(t *testing.T) {
-	t.Run("reset happens after flush", func(t *testing.T) {
-		ctx := t.Context()
-		clock := quartz.NewMock(t)
-		p := newTestPartitionProcessor(t, clock)
+func TestPartitionProcessor_BuilderMaxAge(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		var (
+			ctx     = t.Context()
+			reg     = prometheus.NewRegistry()
+			flusher = &mockFlusher{}
+			proc    *partitionProcessor
+		)
+		proc = newPartitionProcessor(testBuilderCfg, scratch.NewMemory(), 5*time.Minute, 30*time.Minute, "topic", 1, nil, flusher, log.NewNopLogger(), reg)
 
-		// All timestamps should be zero.
-		require.True(t, p.lastFlushed.IsZero())
-		require.True(t, p.lastModified.IsZero())
+		// Since no records have been pushed, the first append time should be zero,
+		// and no flush should have occurred.
+		require.True(t, proc.firstAppendTime.IsZero())
+		require.Equal(t, 0, flusher.flushes)
 
-		// Push a stream.
-		now := clock.Now()
-		s := logproto.Stream{
-			Labels: `{service="test"}`,
-			Entries: []push.Entry{{
-				Timestamp: now,
-				Line:      "abc",
-			}},
-		}
-		b, err := s.Marshal()
-		require.NoError(t, err)
-		p.processRecord(ctx, &kgo.Record{
-			Key:       []byte("test-tenant"),
-			Value:     b,
-			Timestamp: now,
-		})
+		// Process a record containing some log lines. No flush should occur because
+		// the builder has not reached the maximum age.
+		proc.processRecord(ctx, newTestRecord(t, "tenant1", time.Now()))
 
-		// No flush should have occurred, we will flush ourselves instead.
-		require.True(t, p.lastFlushed.IsZero())
+		// The first append time should be set to the current time, but no flush
+		// should have occurred.
+		require.Equal(t, time.Now(), proc.firstAppendTime)
+		require.Equal(t, time.Now(), proc.lastModified)
+		require.Equal(t, 0, flusher.flushes)
 
-		// The last modified timestamp should be the time of the last append.
-		require.Equal(t, now, p.lastModified)
+		// Advance time past the maximum age. A flush should occur, and the
+		// the log lines from the record should be appended to the next data
+		// object, not the one that was just flushed.
+		time.Sleep(31 * time.Minute)
+		proc.processRecord(ctx, newTestRecord(t, "tenant1", time.Now()))
 
-		// Flush the data object. The last modified time should also be reset.
-		require.NoError(t, p.flush(ctx))
-		require.Equal(t, now, p.lastFlushed)
-		require.True(t, p.lastModified.IsZero())
-	})
+		// The last flushed time should be updated to the current time, and so should
+		// the first append time to reflect the start of the new data object.
+		require.Equal(t, time.Now(), proc.firstAppendTime)
+		require.Equal(t, time.Now(), proc.lastModified)
+		require.NotEqual(t, proc.builder.GetEstimatedSize(), 0)
+		require.Equal(t, 1, flusher.flushes)
 
-	t.Run("has emitted metastore event", func(t *testing.T) {
-		ctx := t.Context()
-		clock := quartz.NewMock(t)
-		p := newTestPartitionProcessor(t, clock)
+		// Advance time one last time and push some more logs. No flush should
+		// occur because the next builder has not reached the maximum age.
+		expectedLastFlushed := time.Now()
+		time.Sleep(time.Minute)
+		proc.processRecord(ctx, newTestRecord(t, "tenant1", time.Now()))
+		require.Equal(t, expectedLastFlushed, proc.firstAppendTime)
+		require.Equal(t, time.Now(), proc.lastModified)
+		require.Equal(t, 1, flusher.flushes)
 
-		client := &mockKafka{}
-		p.eventsProducerClient = client
-		p.partition = 23
-
-		// All timestamps should be zero.
-		require.True(t, p.lastFlushed.IsZero())
-		require.True(t, p.lastModified.IsZero())
-
-		// Push a stream.
-		now := clock.Now()
-		s := logproto.Stream{
-			Labels: `{service="test"}`,
-			Entries: []push.Entry{{
-				Timestamp: now,
-				Line:      "abc",
-			}},
-		}
-		b, err := s.Marshal()
-		require.NoError(t, err)
-		p.processRecord(ctx, &kgo.Record{
-			Key:       []byte("test-tenant"),
-			Value:     b,
-			Timestamp: now,
-		})
-
-		// No flush should have occurred, we will flush ourselves instead.
-		require.True(t, p.lastFlushed.IsZero())
-
-		// Flush the data object. The last modified time should also be reset.
-		require.NoError(t, p.flush(ctx))
-
-		// Check that the metastore event was emitted.
-		require.Len(t, client.produced, 1)
-		// Partition should be the processor's partition divided by the partition ratio, in integer division.
-		require.Equal(t, int32(2), client.produced[0].Partition)
+		// Check the metrics.
+		require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
+	# HELP loki_dataobj_consumer_flushes_total Total number of data objects flushed.
+	# TYPE loki_dataobj_consumer_flushes_total counter
+	loki_dataobj_consumer_flushes_total{partition="1",reason="max_age",topic="topic"} 1
+	`), "loki_dataobj_consumer_flushes_total"))
 	})
 }
 
 func TestPartitionProcessor_IdleFlush(t *testing.T) {
-	ctx := t.Context()
-	clock := quartz.NewMock(t)
-	p := newTestPartitionProcessor(t, clock)
-	p.idleFlushTimeout = 60 * time.Minute
-	// Use a mock committer as we don't have a real Kafka client that can
-	// commit offsets.
-	committer := &mockCommitter{}
-	p.committer = committer
+	synctest.Test(t, func(t *testing.T) {
+		var (
+			ctx     = t.Context()
+			reg     = prometheus.NewRegistry()
+			flusher = &mockFlusher{}
+			proc    *partitionProcessor
+		)
+		proc = newPartitionProcessor(testBuilderCfg, scratch.NewMemory(), 5*time.Minute, 30*time.Minute, "topic", 1, nil, flusher, log.NewNopLogger(), reg)
 
-	// Last flush time should be initialized to the zero time.
-	require.True(t, p.lastFlushed.IsZero())
-
-	// Should not flush when builder is un-initialized.
-	flushed, err := p.idleFlush(ctx)
-	require.NoError(t, err)
-	require.False(t, flushed)
-	require.True(t, p.lastFlushed.IsZero())
-
-	// Should not flush if no records have been consumed.
-	require.NoError(t, p.initBuilder())
-	flushed, err = p.idleFlush(ctx)
-	require.NoError(t, err)
-	require.False(t, flushed)
-	require.True(t, p.lastFlushed.IsZero())
-
-	// Should not flush if idle timeout is not reached.
-	s := logproto.Stream{
-		Labels: `{service="test"}`,
-		Entries: []push.Entry{{
-			Timestamp: time.Now().UTC(),
-			Line:      "abc",
-		}},
-	}
-	b, err := s.Marshal()
-	require.NoError(t, err)
-	p.processRecord(ctx, &kgo.Record{
-		Key:       []byte("test-tenant"),
-		Value:     b,
-		Timestamp: clock.Now(),
-	})
-	// A modification should have happened.
-	require.False(t, p.lastModified.IsZero())
-	// But the idle timeout should not have been reached.
-	flushed, err = p.idleFlush(ctx)
-	require.NoError(t, err)
-	require.False(t, flushed)
-	require.True(t, p.lastFlushed.IsZero())
-
-	// Advance the clock. The idle timeout should have been reached.
-	clock.Advance((60 * time.Minute) + 1)
-	flushed, err = p.idleFlush(ctx)
-	require.NoError(t, err)
-	require.True(t, flushed)
-	require.Equal(t, clock.Now(), p.lastFlushed)
-}
-
-func TestPartitionProcessor_OffsetsCommitted(t *testing.T) {
-	t.Run("when builder is full", func(t *testing.T) {
-		ctx := t.Context()
-		clock := quartz.NewMock(t)
-		p := newTestPartitionProcessor(t, clock)
-		// Use our own builder instead of initBuilder.
-		builder, err := logsobj.NewBuilder(testBuilderConfig, scratch.NewMemory())
+		// The builder is uninitialized, which means its size is also zero. No flush
+		// should occur.
+		flushed, err := proc.idleFlush(ctx)
 		require.NoError(t, err)
-		wrappedBuilder := &mockBuilder{builder: builder}
-		p.builderOnce.Do(func() { p.builder = wrappedBuilder })
-		// Use a mock committer so we can assert when offsets are committed.
-		committer := &mockCommitter{}
-		p.committer = committer
+		require.False(t, flushed)
+		require.Equal(t, 0, flusher.flushes)
 
-		// Push a record.
-		now1 := clock.Now()
-		s := logproto.Stream{
-			Labels: `{service="test"}`,
-			Entries: []push.Entry{{
-				Timestamp: now1,
-				Line:      strings.Repeat("a", 1024),
-			}},
-		}
-		b, err := s.Marshal()
+		// Advance time past the idle flush time. No flush should occur because
+		// the builder is still unitialized.
+		time.Sleep(6 * time.Minute)
+		flushed, err = proc.idleFlush(ctx)
 		require.NoError(t, err)
-		p.processRecord(ctx, &kgo.Record{
-			Key:       []byte("test-tenant"),
-			Value:     b,
-			Timestamp: now1,
-			Offset:    1,
-		})
+		require.False(t, flushed)
+		require.Equal(t, 0, flusher.flushes)
 
-		// No flush should have occurred and no offsets should be committed.
-		require.True(t, p.lastFlushed.IsZero())
-		require.Nil(t, committer.offsets)
-
-		// Mark the builder as full.
-		wrappedBuilder.nextErr = logsobj.ErrBuilderFull
-
-		// Append another record.
-		clock.Advance(time.Minute)
-		now2 := clock.Now()
-		p.processRecord(ctx, &kgo.Record{
-			Key:       []byte("test-tenant"),
-			Value:     b,
-			Timestamp: now2,
-			Offset:    2,
-		})
-
-		// A flush should have occurred and offsets should be committed.
-		require.Equal(t, now2, p.lastFlushed)
-		require.Len(t, committer.offsets, 1)
-		// The offset committed should be the offset of the first record, as that
-		// was the record that was flushed.
-		require.Equal(t, int64(1), committer.offsets[0])
-	})
-
-	t.Run("when idle timeout is exceeded", func(t *testing.T) {
-		ctx := t.Context()
-		clock := quartz.NewMock(t)
-		p := newTestPartitionProcessor(t, clock)
-		p.idleFlushTimeout = 60 * time.Minute
-		// Use a mock committer so we can assert when offsets are committed.
-		committer := &mockCommitter{}
-		p.committer = committer
-
-		// Push a record.
-		now1 := clock.Now()
-		s := logproto.Stream{
-			Labels: `{service="test"}`,
-			Entries: []push.Entry{{
-				Timestamp: now1,
-				Line:      strings.Repeat("a", 1024),
-			}},
-		}
-		b, err := s.Marshal()
+		// Initialize the builder. However, no flush should occur because the builder
+		// is still empty.
+		require.NoError(t, proc.initBuilder())
+		flushed, err = proc.idleFlush(ctx)
 		require.NoError(t, err)
-		p.processRecord(ctx, &kgo.Record{
-			Key:       []byte("test-tenant"),
-			Value:     b,
-			Timestamp: now1,
-			Offset:    1,
-		})
+		require.False(t, flushed)
+		require.Equal(t, 0, flusher.flushes)
 
-		// No flush should have occurred and no offsets should be committed.
-		require.True(t, p.lastFlushed.IsZero())
-		require.Nil(t, committer.offsets)
+		// Process a record containing some log lines. No flush should occur because
+		// when log lines are appended to the builder it resets the idle timeout.
+		proc.processRecord(ctx, newTestRecord(t, "tenant1", time.Now()))
+		require.False(t, proc.lastModified.IsZero())
+		flushed, err = proc.idleFlush(ctx)
+		require.NoError(t, err)
+		require.False(t, flushed)
+		require.Equal(t, 0, flusher.flushes)
 
-		// Advance the clock past the idle timeout.
-		clock.Advance(61 * time.Minute)
-		now2 := clock.Now()
-		flushed, err := p.idleFlush(ctx)
+		// Advance time past the idle timeout. A flush should occur.
+		time.Sleep(6 * time.Minute)
+		flushed, err = proc.idleFlush(ctx)
 		require.NoError(t, err)
 		require.True(t, flushed)
+		require.Equal(t, 1, flusher.flushes)
 
-		// A flush should have occurred and offsets should be committed.
-		require.Equal(t, now2, p.lastFlushed)
-		require.Len(t, committer.offsets, 1)
-
-		// The offset committed should be the offset of the first record, as that
-		// was the record that was flushed.
-		require.Equal(t, int64(1), committer.offsets[0])
+		// Check the metrics.
+		require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
+	# HELP loki_dataobj_consumer_flushes_total Total number of data objects flushed.
+	# TYPE loki_dataobj_consumer_flushes_total counter
+	loki_dataobj_consumer_flushes_total{partition="1",reason="idle",topic="topic"} 1
+	`), "loki_dataobj_consumer_flushes_total"))
 	})
 }
 
-func TestPartitionProcessor_ProcessRecord(t *testing.T) {
-	ctx := t.Context()
-	clock := quartz.NewMock(t)
-	p := newTestPartitionProcessor(t, clock)
+// failureFlusher is a special flusher that always fails.
+type failureFlusher struct{}
 
-	// The builder is initialized to nil until the first record.
-	require.Nil(t, p.builder)
-	require.True(t, p.lastModified.IsZero())
+func (f *failureFlusher) FlushAsync(_ context.Context, _ builder, _ time.Time, _ int64, done func(error)) {
+	done(errors.New("failed to flush"))
+}
 
-	// Push a record.
-	s := logproto.Stream{
-		Labels: `{service="test"}`,
+func TestPartitionProcessor_Flush(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		var (
+			ctx         = t.Context()
+			reg         = prometheus.NewRegistry()
+			mockFlusher = &mockFlusher{}
+			_           = &failureFlusher{}
+			proc        *partitionProcessor
+		)
+		proc = newPartitionProcessor(testBuilderCfg, scratch.NewMemory(), 5*time.Minute, 30*time.Minute, "topic", 1, nil, mockFlusher, log.NewNopLogger(), reg)
+		// No flush should have occurred.
+		require.Equal(t, 0, mockFlusher.flushes)
+
+		// Process a record containing some log lines. No flush should occur.
+		rec1 := newTestRecord(t, "tenant", time.Now())
+		proc.processRecord(ctx, rec1)
+		require.Equal(t, time.Now(), proc.firstAppendTime)
+		require.Equal(t, time.Now(), proc.lastModified)
+		require.Equal(t, rec1, proc.lastRecord)
+
+		// Advance time and force a flush.
+		time.Sleep(time.Second)
+		require.NoError(t, proc.flush(ctx))
+		require.Equal(t, 1, mockFlusher.flushes)
+		// The following fields should be reset at the end of every flush.
+		require.True(t, proc.firstAppendTime.IsZero())
+		require.True(t, proc.earliestRecordTime.IsZero())
+		require.True(t, proc.lastModified.IsZero())
+		require.Nil(t, proc.lastRecord)
+
+		// Process another record containing some log lines. No flush should occur.
+		proc.flusher = &failureFlusher{}
+		rec2 := newTestRecord(t, "tenant", time.Now())
+		proc.processRecord(ctx, rec2)
+		require.Equal(t, time.Now(), proc.firstAppendTime)
+		require.Equal(t, time.Now(), proc.lastModified)
+		require.Equal(t, rec2, proc.lastRecord)
+
+		// Advance time and force a flush. This flush should fail.
+		time.Sleep(time.Second)
+		require.EqualError(t, proc.flush(ctx), "failed to flush")
+		require.Equal(t, 1, mockFlusher.flushes)
+		// Despite the failure, the following fields should still be reset.
+		require.True(t, proc.firstAppendTime.IsZero())
+		require.True(t, proc.earliestRecordTime.IsZero())
+		require.True(t, proc.lastModified.IsZero())
+		require.Nil(t, proc.lastRecord)
+	})
+}
+
+// newTestRecord returns a new record containing the stream.
+func newTestRecord(t *testing.T, tenant string, now time.Time) *kgo.Record {
+	rec := kgo.Record{
+		Key:       []byte(tenant),
+		Timestamp: now,
+	}
+	stream := logproto.Stream{
+		Labels: `{foo="bar"}`,
 		Entries: []push.Entry{{
-			Timestamp: time.Now().UTC(),
-			Line:      "abc",
+			Timestamp: now,
+			Line:      "baz",
 		}},
 	}
-	b, err := s.Marshal()
+	var err error
+	rec.Value, err = stream.Marshal()
 	require.NoError(t, err)
-	p.processRecord(ctx, &kgo.Record{
-		Key:       []byte("test-tenant"),
-		Value:     b,
-		Timestamp: clock.Now(),
-	})
-
-	// The builder should be initialized and last modified timestamp updated.
-	require.NotNil(t, p.builder)
-	require.Equal(t, clock.Now(), p.lastModified)
-}
-
-func TestPartitionProcessor_FlushDueToMaxAge(t *testing.T) {
-	ctx := t.Context()
-	laggingClock := quartz.NewMock(t)
-	recentClock := quartz.NewMock(t)
-
-	p := newTestPartitionProcessor(t, recentClock)
-
-	// Simulate Kafka lag: record timestamp is much older than maxDataObjAge.
-	oldTimestamp := laggingClock.Now().Add(-6 * time.Hour)
-	s := logproto.Stream{
-		Labels: `{service="test"}`,
-		Entries: []push.Entry{{
-			Timestamp: oldTimestamp,
-			Line:      "abc",
-		}},
-	}
-	b, err := s.Marshal()
-	require.NoError(t, err)
-
-	// Process the record with an old timestamp.
-	p.processRecord(ctx, &kgo.Record{
-		Key:       []byte("test-tenant"),
-		Value:     b,
-		Timestamp: oldTimestamp,
-	})
-
-	// No flush should have occurred since firstAppendTime was zero.
-	require.True(t, p.lastFlushed.IsZero())
-
-	// The record should still have been appended.
-	require.NotNil(t, p.builder)
-	require.Greater(t, p.builder.GetEstimatedSize(), 0)
-	require.Equal(t, recentClock.Now(), p.lastModified)
-
-	// firstAppendTime should be updated to the current time.
-	require.NotZero(t, p.firstAppendTime)
-	require.Equal(t, p.firstAppendTime, recentClock.Now())
-
-	// Process another record.
-	recentClock.Advance(time.Minute)
-	p.processRecord(ctx, &kgo.Record{
-		Key:       []byte("test-tenant"),
-		Value:     b,
-		Timestamp: recentClock.Now(),
-	})
-
-	// No flush should have occurred since firstAppendTime is still recent even though the builder is not empty.
-	require.True(t, p.lastFlushed.IsZero())
-	require.NotNil(t, p.builder)
-	require.Greater(t, p.builder.GetEstimatedSize(), 0)
-	require.Equal(t, recentClock.Now(), p.lastModified)
-	// firstAppendTime should not have been updated.
-	require.NotEqual(t, p.firstAppendTime, recentClock.Now())
-
-	// Advance the clock past maxDataObjAge.
-	recentClock.Advance(6 * time.Hour)
-	p.processRecord(ctx, &kgo.Record{
-		Key:       []byte("test-tenant"),
-		Value:     b,
-		Timestamp: laggingClock.Now(),
-	})
-
-	// A flush should have occurred since firstAppendTime is now old enough.
-	firstFlushTime := recentClock.Now()
-	require.Equal(t, p.lastFlushed, firstFlushTime)
-
-	// After the flush, the current record was appended to the fresh builder,
-	// so firstAppendTime is set to the current time (not zero).
-	require.Equal(t, p.firstAppendTime, firstFlushTime)
-
-	// Process another record immediately after the flush.
-	recentClock.Advance(time.Second)
-	p.processRecord(ctx, &kgo.Record{
-		Key:       []byte("test-tenant"),
-		Value:     b,
-		Timestamp: recentClock.Now(),
-	})
-
-	// No additional flush should have occurred since firstAppendTime was just set.
-	// If firstAppendTime wasn't reset during flush, this would trigger another flush
-	// because Since(oldFirstAppendTime) would still be > maxDataObjAge.
-	require.Equal(t, p.lastFlushed, firstFlushTime)
-	// firstAppendTime should still be from the first append after the flush.
-	require.Equal(t, p.firstAppendTime, firstFlushTime)
-}
-
-func newTestPartitionProcessor(t *testing.T, clock quartz.Clock) *partitionProcessor {
-	t.Helper()
-	p := newPartitionProcessor(
-		&mockCommitter{},
-		testBuilderConfig,
-		uploader.Config{},
-		metastore.Config{
-			PartitionRatio: 10,
-		},
-		newMockBucket(),
-		nil,
-		log.NewNopLogger(),
-		prometheus.NewRegistry(),
-		60*time.Minute,
-		time.Hour,
-		nil,
-		"test-topic",
-		1,
-		nil,
-	)
-	p.clock = clock
-	p.eventsProducerClient = &mockKafka{}
-	require.NotZero(t, p.partition)
-	return p
+	return &rec
 }

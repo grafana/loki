@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	grpc_metadata "google.golang.org/grpc/metadata"
 
+	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -122,7 +123,7 @@ func newMockDeleteGettter(user string, results []deletionproto.DeleteRequest) *m
 	}
 }
 
-func (d *mockDeleteGettter) GetAllDeleteRequestsForUser(_ context.Context, userID string) ([]deletionproto.DeleteRequest, error) {
+func (d *mockDeleteGettter) GetAllDeleteRequestsForUser(_ context.Context, userID string, _ bool, _ *deletion.TimeRange) ([]deletionproto.DeleteRequest, error) {
 	d.user = userID
 	return d.results, nil
 }

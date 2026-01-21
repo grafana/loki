@@ -39,7 +39,7 @@ type (
 	// A LabelFilterRowPredicate is a RowPredicate that requires that labels with
 	// the provided name pass a Keep function.
 	//
-	// The name is is provided to the keep function to allow the same function to
+	// The name is provided to the keep function to allow the same function to
 	// be used for multiple filter predicates.
 	//
 	// Uses of LabelFilterRowPredicate are not eligible for page filtering and

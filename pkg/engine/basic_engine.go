@@ -115,7 +115,7 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 		defer span.End()
 
 		timer := prometheus.NewTimer(e.metrics.logicalPlanning)
-		logicalPlan, err := logical.BuildPlan(params)
+		logicalPlan, err := logical.BuildPlan(ctx, params)
 		if err != nil {
 			level.Warn(logger).Log("msg", "failed to create logical plan", "err", err)
 			e.metrics.subqueries.WithLabelValues(statusNotImplemented).Inc()
@@ -258,7 +258,7 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 }
 
 func IsQuerySupported(params logql.Params) bool {
-	_, err := logical.BuildPlan(params)
+	_, err := logical.BuildPlan(context.Background(), params)
 	return err == nil
 }
 

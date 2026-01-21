@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
 	"github.com/grafana/loki/v3/pkg/memory"
-	"github.com/grafana/loki/v3/pkg/memory/buffer"
 )
 
 func init() {
@@ -99,14 +99,14 @@ func (dec *deltaDecoder) EncodingType() datasetmd.EncodingType {
 	return datasetmd.ENCODING_TYPE_DELTA
 }
 
-// Decode decodes up to count values, storing the results into a new int64 slice obtained from the provided allocator. The
-// decoded values are returned as an any type, which must be cast to []int64.
-// At the end of the stream, Decode returns an [io.EOF].
-func (dec *deltaDecoder) Decode(alloc *memory.Allocator, count int) (any, error) {
+// Decode decodes up to count values, storing the results into a new
+// [columnar.Int64] array obtained from the provided allocator. At the end of
+// the stream, Decode returns an [io.EOF].
+func (dec *deltaDecoder) Decode(alloc *memory.Allocator, count int) (columnar.Array, error) {
 	// Obtain a buffer from the allocator with enough capacity for an optimistic `count` values.
 	// Resize the buffer explicitly in order to use the Set API which avoids a reslice compared to Push.
 	// Resize must be used again before returning any data if the slice is not completely filled.
-	valuesBuf := buffer.WithCapacity[int64](alloc, count)
+	valuesBuf := memory.MakeBuffer[int64](alloc, count)
 	valuesBuf.Resize(count)
 	values := valuesBuf.Data()
 
@@ -130,14 +130,14 @@ func (dec *deltaDecoder) Decode(alloc *memory.Allocator, count int) (any, error)
 		delta, n := binary.Varint(buf[off:])
 		if n <= 0 {
 			valuesBuf.Resize(i)
-			return values[:i], io.EOF
+			return columnar.MakeInt64(values[:i], memory.Bitmap{}), io.EOF
 		}
 
 		off += n
 		prev += delta
 		values[i] = prev
 	}
-	return values, nil
+	return columnar.MakeInt64(values, memory.Bitmap{}), nil
 }
 
 // Reset resets the deltaDecoder to its initial state.

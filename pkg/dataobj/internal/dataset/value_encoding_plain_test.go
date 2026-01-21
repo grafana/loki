@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
 	"github.com/grafana/loki/v3/pkg/memory"
 )
@@ -41,7 +42,7 @@ func Test_plainBytesEncoder(t *testing.T) {
 
 		// Handle potential value before checking errors.
 		if v != nil {
-			strArr := v.(stringArray)
+			strArr := v.(*columnar.UTF8)
 			for i := range strArr.Len() {
 				out = append(out, string(strArr.Get(i)))
 			}
@@ -184,10 +185,9 @@ func Benchmark_plainBytesDecoder_Decode(b *testing.B) {
 				dec.Reset(buf.Bytes())
 
 				for {
-					n, err := dec.Decode(&alloc, totalCount)
-					if n != nil {
-						sa := n.(stringArray)
-						totalRows += sa.Len()
+					arr, err := dec.Decode(&alloc, totalCount)
+					if arr != nil {
+						totalRows += arr.Len()
 					}
 					if err != nil && errors.Is(err, io.EOF) {
 						break
