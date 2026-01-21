@@ -111,22 +111,106 @@ func TestCachedObjectClient_List(t *testing.T) {
 		require.Equal(t, objectsFromListCall, objects)
 	})
 
+	t.Run("supports path prefixed clients", func(t *testing.T) {
+		ctx := context.Background()
+
+		path_prefix := "my/long/path/prefix/"
+		objectsInStorage := []string{
+			path_prefix + "table1/db.gz",
+			path_prefix + "table2/db1.gz",
+			path_prefix + "table2/db2.gz",
+			path_prefix + "table3/user1/db.gz",
+			path_prefix + "table3/user2/db.gz",
+		}
+		objectClient := newMockObjectClient(t, objectsInStorage)
+		prefixedClient := client.NewPrefixedObjectClient(objectClient, path_prefix)
+		cachedObjectClient := newCachedObjectClient(prefixedClient)
+
+		objects, _, err := cachedObjectClient.List(ctx, "table1/", "/", false)
+		require.Nil(t, err)
+		require.Equal(t, []string{"table1/db.gz"}, objectKeys(objects))
+
+		objects, _, err = cachedObjectClient.List(ctx, "table2/", "/", false)
+		require.Nil(t, err)
+		require.Equal(t, []string{"table2/db1.gz", "table2/db2.gz"}, objectKeys(objects))
+
+		objects, _, err = cachedObjectClient.List(ctx, "table3/user1", "/", false)
+		require.Nil(t, err)
+		require.Equal(t, []string{"table3/user1/db.gz"}, objectKeys(objects))
+	})
+
 	t.Run("supports prefixed clients", func(t *testing.T) {
 		ctx := context.Background()
 
-		prefix := "my/amazing/prefix/"
+		path_prefix := "/"
+		prefix := "prefix_term_"
 		objectsInStorage := []string{
-			prefix + "table1/db.gz",
-			prefix + "table2/db.gz",
-			prefix + "table2/db2.gz",
+			path_prefix + prefix + "table1/db.gz",
+			path_prefix + prefix + "table2/db1.gz",
+			path_prefix + prefix + "table2/db2.gz",
+			path_prefix + prefix + "table3/user1/db.gz",
+			path_prefix + prefix + "table3/user2/db.gz",
 		}
 		objectClient := newMockObjectClient(t, objectsInStorage)
-		prefixedClient := client.NewPrefixedObjectClient(objectClient, prefix)
+		prefixedClient := client.NewPrefixedObjectClient(objectClient, path_prefix)
 		cachedObjectClient := newCachedObjectClient(prefixedClient)
 
-		objects, _, err := cachedObjectClient.List(ctx, "table2/", "/", false)
+		objects, _, err := cachedObjectClient.List(ctx, "prefix_term_table1/", "/", false)
 		require.Nil(t, err)
-		require.Equal(t, []string{"table2/db.gz", "table2/db2.gz"}, objectKeys(objects))
+		require.Equal(t, []string{"prefix_term_table1/db.gz"}, objectKeys(objects))
+
+		objects, _, err = cachedObjectClient.List(ctx, "prefix_term_table2/", "/", false)
+		require.Nil(t, err)
+		require.Equal(t, []string{"prefix_term_table2/db1.gz", "prefix_term_table2/db2.gz"}, objectKeys(objects))
+
+		objects, _, err = cachedObjectClient.List(ctx, "prefix_term_table3/user1/", "/", false)
+		require.Nil(t, err)
+		require.Equal(t, []string{"prefix_term_table3/user1/db.gz"}, objectKeys(objects))
+	})
+
+	t.Run("supports both path prefixed and prefix clients", func(t *testing.T) {
+		ctx := context.Background()
+
+		path_prefix := "my/long/path/prefix/"
+		prefix := "prefix_term_"
+		objectsInStorage := []string{
+			path_prefix + prefix + "table1/db.gz",
+			path_prefix + prefix + "table2/db1.gz",
+			path_prefix + prefix + "table2/db2.gz",
+			path_prefix + prefix + "table3/user1/db.gz",
+			path_prefix + prefix + "table3/user2/db.gz",
+		}
+		objectClient := newMockObjectClient(t, objectsInStorage)
+		prefixedClient := client.NewPrefixedObjectClient(objectClient, path_prefix)
+		cachedObjectClient := newCachedObjectClient(prefixedClient)
+
+		objects, _, err := cachedObjectClient.List(ctx, "prefix_term_table1/", "/", false)
+		require.Nil(t, err)
+		require.Equal(t, []string{"prefix_term_table1/db.gz"}, objectKeys(objects))
+
+		objects, _, err = cachedObjectClient.List(ctx, "prefix_term_table2/", "/", false)
+		require.Nil(t, err)
+		require.Equal(t, []string{"prefix_term_table2/db1.gz", "prefix_term_table2/db2.gz"}, objectKeys(objects))
+
+		objects, _, err = cachedObjectClient.List(ctx, "prefix_term_table3/user1/", "/", false)
+		require.Nil(t, err)
+		require.Equal(t, []string{"prefix_term_table3/user1/db.gz"}, objectKeys(objects))
+	})
+
+	t.Run("does not support prefix with delimiter", func(t *testing.T) {
+		ctx := context.Background()
+
+		path_prefix := "my/long/path/prefix/"
+		prefix := "prefix/term/with/delimiter_"
+		objectsInStorage := []string{
+			path_prefix + prefix + "table1/db.gz",
+		}
+		objectClient := newMockObjectClient(t, objectsInStorage)
+		prefixedClient := client.NewPrefixedObjectClient(objectClient, path_prefix)
+		cachedObjectClient := newCachedObjectClient(prefixedClient)
+
+		_, _, err := cachedObjectClient.List(ctx, "prefix/term/with/delimiter_table1/", "/", false)
+		require.Error(t, err)
 	})
 }
 
