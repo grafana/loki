@@ -199,7 +199,7 @@ func materializeSparseUTF8(dst []Value, validity memory.Bitmap, denseValues *col
 
 	for i := range validity.Len() {
 		if !validity.Get(i) {
-			dst[i] = Value{}
+			dst[i].Zero()
 			continue
 		} else if denseIndex >= denseValues.Len() {
 			return fmt.Errorf("unexpected end of values")
