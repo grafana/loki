@@ -16,7 +16,6 @@ type pageReader struct {
 	physicalType datasetmd.PhysicalType
 	compression  datasetmd.CompressionType
 	ready        bool // Whether the pageReader is initialized for page.
-	alloc        memory.Allocator
 
 	lastPhysicalType datasetmd.PhysicalType
 	lastEncoding     datasetmd.EncodingType
@@ -36,19 +35,6 @@ func newPageReader(p Page, physicalType datasetmd.PhysicalType, compression data
 	var pr pageReader
 	pr.Reset(p, physicalType, compression)
 	return &pr
-}
-
-// ReadLegacy reads up to the next len(v) values from the page into v. It returns the
-// number of values read and any error encountered. At the end of the page,
-// ReadLegacy returns 0, io.EOF.
-//
-// ReadLegacy is deprecated in favor of [Read].
-func (pr *pageReader) ReadLegacy(ctx context.Context, v []Value) (n int, err error) {
-	// If we're using the legacy API, we can reclaim memory now.
-	pr.alloc.Reclaim()
-
-	arr, err := pr.Read(ctx, &pr.alloc, len(v))
-	return copyArray(v, arr), err
 }
 
 // Read returns an array of up to the next count values from the page.
@@ -330,8 +316,6 @@ func (pr *pageReader) Reset(page Page, physicalType datasetmd.PhysicalType, comp
 	pr.physicalType = physicalType
 	pr.compression = compression
 	pr.ready = false
-
-	pr.alloc.Reset()
 
 	if pr.presenceDec != nil {
 		pr.presenceDec.Reset(nil)
