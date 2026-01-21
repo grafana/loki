@@ -145,6 +145,10 @@ type ReadRing interface {
 
 	// ZonesCount returns the number of zones for which there's at least 1 instance registered in the ring.
 	ZonesCount() int
+
+	// Zones returns the list of zones for which there's at least 1 instance registered in the ring.
+	// The returned slice is sorted alphabetically.
+	Zones() []string
 }
 
 var (
@@ -1474,6 +1478,15 @@ func (r *Ring) ZonesCount() int {
 	defer r.mtx.RUnlock()
 
 	return len(r.ringZones)
+}
+
+// Zones returns the list of zones for which there's at least 1 instance registered in the ring.
+// The returned slice is sorted alphabetically.
+func (r *Ring) Zones() []string {
+	r.mtx.RLock()
+	defer r.mtx.RUnlock()
+
+	return slices.Clone(r.ringZones)
 }
 
 // readOnlyInstanceCount returns the number of read only instances in the ring.
