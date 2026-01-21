@@ -14,6 +14,7 @@ Entries should include a reference to the pull request that introduced the chang
 ## Unreleased
 
 ## 6.50.0
+## 6.45.0
 
 - [ENHANCEMENT] Add configurable `startupProbe` to compactor [#20072](https://github.com/grafana/loki/pull/20072).
 - [ENHANCEMENT] Add configurable `startupProbe` to distributor [#20073](https://github.com/grafana/loki/pull/20073).
