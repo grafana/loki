@@ -94,18 +94,34 @@ func (rn *rulerNotifier) stop() {
 	rn.wg.Wait()
 }
 
-func applyAlertmanagerDefaults(config ruler_config.AlertManagerConfig) ruler_config.AlertManagerConfig {
+func applyAlertmanagerDefaults(config ruler_config.AlertManagerConfig, defaultconfig ruler_config.AlertManagerConfig) ruler_config.AlertManagerConfig {
 	// Use default value if the override values are zero
-	if config.AlertmanagerRefreshInterval == 0 {
-		config.AlertmanagerRefreshInterval = alertmanagerRefreshIntervalDefault
+	if config.AlertmanagerRefreshInterval != nil {
+		config.AlertmanagerRefreshInterval = defaultconfig.AlertmanagerRefreshInterval
 	}
 
-	if config.NotificationQueueCapacity <= 0 {
-		config.NotificationQueueCapacity = alertmanagerNotificationQueueCapacityDefault
+	if config.NotificationQueueCapacity != nil {
+		config.NotificationQueueCapacity = defaultconfig.NotificationQueueCapacity
 	}
 
-	if config.NotificationTimeout == 0 {
-		config.NotificationTimeout = alertmanagerNotificationTimeoutDefault
+	if config.NotificationTimeout != nil {
+		config.NotificationTimeout = defaultconfig.NotificationTimeout
+	}
+
+	if config.AlertmanagerURL != nil {
+		config.AlertmanagerURL = defaultconfig.AlertmanagerURL
+	}
+
+	if config.AlertmanagerDiscovery != nil {
+		config.AlertmanagerDiscovery = defaultconfig.AlertmanagerDiscovery
+	}
+
+	if config.AlertmanangerEnableV2API != nil {
+		config.AlertmanangerEnableV2API = defaultconfig.AlertmanangerEnableV2API
+	}
+
+	if config.AlertRelabelConfigs != nil {
+		config.AlertRelabelConfigs = defaultconfig.AlertRelabelConfigs
 	}
 
 	return config
