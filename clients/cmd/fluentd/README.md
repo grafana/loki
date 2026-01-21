@@ -20,50 +20,22 @@ ruby -S gem install rubocop
 
 ## Testing
 
-Start Loki using:
+You can test out your changes using the `docker-compose` setup found in the `docker` directory, simply start things up using the following command:
 
 ```bash
-docker run -it -p 3100:3100 grafana/loki:latest
+cd docker
+docker compose up
 ```
 
-Verify that Loki accept and stores logs:
+This will start up instances of `loki` (storing logs), `fluentd` (shipping logs to loki), and `fluent-bit` (tailing `/varlog/syslog` and sending that to loki via fluentd).
 
-```bash
-curl -H "Content-Type: application/json" -XPOST -s "http://localhost:3100/loki/api/v1/push" --data-raw "{\"streams\": [{\"stream\": {\"job\": \"test\"}, \"values\": [[\"$(date +%s)000000000\", \"fizzbuzz\"]]}]}"
-curl "http://localhost:3100/loki/api/v1/query_range" --data-urlencode 'query={job="test"}' --data-urlencode 'step=300' | jq .data.result
-```
-
-The expected output is:
-
-```json
-[
-  {
-    "stream": {
-      "job": "test"
-    },
-    "values": [
-      [
-        "1588337198000000000",
-        "fizzbuzz"
-      ]
-    ]
-  }
-]
-```
-
-Start and send test logs with Fluentd using:
-
-```bash
-LOKI_URL=http://{{ IP }}:3100 make fluentd-test
-```
-
-Verify that syslogs are being feeded into Loki:
+Give things about 20 seconds to settle then run the following command in a separate terminal to verify logs are being stored in Loki:
 
 ```bash
 curl "http://localhost:3100/loki/api/v1/query_range" --data-urlencode 'query={job="fluentd"}' --data-urlencode 'step=300' | jq .data.result
 ```
 
-The expected output is:
+The expected output is something like this:
 
 ```json
 [
@@ -73,13 +45,31 @@ The expected output is:
     },
     "values": [
       [
-        "1588336950379591919",
-        "log=\"May  1 14:42:30 ibuprofen avahi-daemon[859]: New relevant interface vethb503225.IPv6 for mDNS.\""
+        "1751021592790139275",
+        "log=\"Jun 27 11:53:12 a-2wbuz1yvo5lhz dockerd: time=\\\"2025-06-27T11:53:12.789500251+01:00\\\" level=debug msg=\\\"Name To resolve: loki.\\\"\""
       ],
-      ...
+      ... lots more log entries
     ]
   }
 ]
+```
+
+To send custom log messages directly to fluentd, issue a command like so:
+
+```bash
+curl -v -X POST -H "Content-Type: application/json" -d "{ \"log\": \"hello there\" }" http://localhost:8080/loki.output
+```
+
+If you're finding it hard to test your custom messages this way (and see the resulting log output), you can stop the fluent-bit container:
+
+```bash
+docker compose stop fluent-bit
+```
+
+**NOTE:** Code changes are not reflected live, you'll need to restart the fluentd container in order for them to take effect:
+
+```bash
+docker compose restart fluentd
 ```
 
 ## Build and publish gem
@@ -93,6 +83,6 @@ fluentd-plugin-push` from the root of the project once the PR has been merged.
 
 ## Copyright
 
-* Copyright(c) 2018- Grafana Labs
-* License
-  * Apache License, Version 2.0
+- Copyright(c) 2018- Grafana Labs
+- License
+  - Apache License, Version 2.0
