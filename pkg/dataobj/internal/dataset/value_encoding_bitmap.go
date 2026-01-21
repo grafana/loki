@@ -577,6 +577,14 @@ func (dec *bitmapDecoder) EncodingType() datasetmd.EncodingType {
 // of decoded values is bm.Len(). At the end of the stream, Decode returns
 // any decoded values along with [io.EOF].
 func (dec *bitmapDecoder) Decode(alloc *memory.Allocator, count int) (columnar.Array, error) {
+	bm := memory.MakeBitmap(alloc, count)
+	bm.Grow(count)
+
+	err := dec.DecodeTo(&bm, count)
+	return columnar.MakeBool(bm, memory.Bitmap{}), err
+}
+
+func (dec *bitmapDecoder) DecodeTo(bm *memory.Bitmap, count int) error {
 	var (
 		runLength    = dec.runLength
 		sets         = dec.sets
@@ -597,18 +605,18 @@ func (dec *bitmapDecoder) Decode(alloc *memory.Allocator, count int) (columnar.A
 		dec.runValue = runValue
 	}()
 
-	bm := memory.MakeBitmap(alloc, count)
 	bm.Grow(count)
+	bm.Resize(0)
 
 	for leftToDecode > 0 {
 		switch {
 		case runLength == 0 && sets == 0 && setSize == 0: // READY
 			if off >= len(data) {
-				return columnar.MakeBool(bm, memory.Bitmap{}), io.EOF
+				return io.EOF
 			}
 			header, uvarintSize := binary.Uvarint(data[off:])
 			if uvarintSize <= 0 {
-				return columnar.MakeBool(bm, memory.Bitmap{}), io.EOF
+				return io.EOF
 			}
 			off += uvarintSize
 
@@ -620,23 +628,23 @@ func (dec *bitmapDecoder) Decode(alloc *memory.Allocator, count int) (columnar.A
 				setWidth := int((header>>1)&0x3f) + 1
 				// only support bool values encoded as ints
 				if setWidth != 1 {
-					return columnar.MakeBool(bm, memory.Bitmap{}), fmt.Errorf("set width is supposed to be 1, got %d", setWidth)
+					return fmt.Errorf("set width is supposed to be 1, got %d", setWidth)
 				}
 			} else {
 				// RLE run.
 				runLength = header >> 1
 
 				if off >= len(data) {
-					return columnar.MakeBool(bm, memory.Bitmap{}), io.EOF
+					return io.EOF
 				}
 				val, uvarintSize := binary.Uvarint(data[off:])
 				if uvarintSize <= 0 {
-					return columnar.MakeBool(bm, memory.Bitmap{}), io.EOF
+					return io.EOF
 				}
 				off += uvarintSize
 				// only support bool values encoded as ints
 				if val != 0 && val != 1 {
-					return columnar.MakeBool(bm, memory.Bitmap{}), fmt.Errorf("unsupported RLE value %d", val)
+					return fmt.Errorf("unsupported RLE value %d", val)
 				}
 				runValue = val > 0
 			}
@@ -651,7 +659,7 @@ func (dec *bitmapDecoder) Decode(alloc *memory.Allocator, count int) (columnar.A
 
 		case sets > 0 && setSize == 0: // BITPACK-READY
 			if off >= len(dec.data) {
-				return columnar.MakeBool(bm, memory.Bitmap{}), io.EOF
+				return io.EOF
 			}
 			set = data[off]
 			off++
@@ -671,7 +679,7 @@ func (dec *bitmapDecoder) Decode(alloc *memory.Allocator, count int) (columnar.A
 		}
 	}
 
-	return columnar.MakeBool(bm, memory.Bitmap{}), nil
+	return nil
 }
 
 // Reset resets dec to read from data.

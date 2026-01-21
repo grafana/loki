@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/queue/fair"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
@@ -966,6 +967,12 @@ func (s *Scheduler) Start(ctx context.Context, tasks ...*workflow.Task) error {
 	var tc propagation.TraceContext
 	metadata := make(http.Header)
 	tc.Inject(ctx, propagation.HeaderCarrier(metadata))
+
+	// Copy all headers from context to task metadata.
+	// Headers are stored in context by PropagateAllHeadersMiddleware.
+	if headers := httpreq.ExtractAllHeaders(ctx); headers != nil {
+		maps.Copy(metadata, headers)
+	}
 
 	wfRegion := xcap.RegionFromContext(ctx)
 

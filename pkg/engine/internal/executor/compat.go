@@ -18,6 +18,8 @@ import (
 func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipeline, region *xcap.Region) Pipeline {
 	const extracted = "_extracted"
 
+	identCache := semconv.NewIdentifierCache()
+
 	return newGenericPipelineWithRegion(func(ctx context.Context, inputs []Pipeline) (arrow.RecordBatch, error) {
 		input := inputs[0]
 		batch, err := input.Read(ctx)
@@ -45,7 +47,7 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 		}
 
 		for idx := range schema.NumFields() {
-			ident, err := semconv.ParseFQN(schema.Field(idx).Name)
+			ident, err := identCache.ParseFQN(schema.Field(idx).Name)
 			if err != nil {
 				return nil, err
 			}
@@ -89,7 +91,7 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 		for i := range duplicates {
 			sourceFieldIdx := duplicates[i].sourceIdx
 			sourceField := newSchema.Field(sourceFieldIdx)
-			sourceIdent, err := semconv.ParseFQN(sourceField.Name)
+			sourceIdent, err := identCache.ParseFQN(sourceField.Name)
 			if err != nil {
 				return nil, err
 			}
