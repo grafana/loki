@@ -84,6 +84,9 @@ Entries should include a reference to the pull request that introduced the chang
 - [FEATURE] Allow auto-resizing the volume by recreating the StatefulSet. [#19217](https://github.com/grafana/loki/pull/19217).
 - [BUGFIX] Add single-binary component to the podSelector. [#19229](https://github.com/grafana/loki/pull/19229).
 - [ENHANCEMENT] Added `trafficDistribution` configuration option to backend, compactor, distributor, gateway, index-gateway, ingester, querier, query-frontend, query-scheduler,read and write services to enable same-zone traffic routing. #19557
+## 6.44.0
+
+- [CHANGE] Changed version of Grafana Loki to 3.6.4
 
 ## 6.43.0
 
