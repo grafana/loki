@@ -161,15 +161,7 @@ func (a *aggregator) BuildRecord() (arrow.RecordBatch, error) {
 		semconv.FieldFromIdent(semconv.ColumnIdentTimestamp, false),
 		semconv.FieldFromIdent(semconv.ColumnIdentValue, false),
 	)
-	for _, label := range a.labels {
-		fields = append(fields, arrow.Field{
-			Name:     label.Name,
-			Type:     label.Type,
-			Nullable: true,
-			Metadata: label.Metadata,
-		})
-	}
-
+	fields = append(fields, a.labels...)
 	schema := arrow.NewSchema(fields, nil)
 	rb := array.NewRecordBuilder(memory.NewGoAllocator(), schema)
 
@@ -181,11 +173,7 @@ func (a *aggregator) BuildRecord() (arrow.RecordBatch, error) {
 	for _, ts := range sortedTimestamps {
 		total += len(a.points[ts])
 	}
-	rb.Field(0).Reserve(total)
-	rb.Field(1).Reserve(total)
-	for i := range a.labels {
-		rb.Field(2 + i).Reserve(total)
-	}
+	rb.Reserve(total)
 
 	for _, ts := range sortedTimestamps {
 		tsValue, _ := arrow.TimestampFromTime(ts, arrow.Nanosecond)
