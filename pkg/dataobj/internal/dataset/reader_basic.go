@@ -8,6 +8,7 @@ import (
 	"iter"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
+	"github.com/grafana/loki/v3/pkg/memory"
 )
 
 // basicReader is a low-level reader that reads rows from a set of columns.
@@ -20,7 +21,8 @@ type basicReader struct {
 	readers      []*columnReader
 	columnLookup map[Column]int // Index into columns and readers
 
-	buf []Value // Buffer for reading values from columns
+	alloc memory.Allocator
+	buf   []Value // Buffer for reading values from columns
 
 	nextRow int64
 }
@@ -181,7 +183,16 @@ func (pr *basicReader) fill(ctx context.Context, columns []Column, s []Row) (n i
 				return n, fmt.Errorf("seeking to row %d in column %d: %w", startRow, columnIndex, err)
 			}
 
-			cn, err := r.ReadValues(ctx, pr.buf[:len(s)-n])
+			// Allocated memory isn't used past this loop iteration, so we can
+			// eagerly reclaim it now.
+			pr.alloc.Reclaim()
+
+			var cn int
+			rem := pr.buf[:len(s)-n]
+			arr, err := r.Read(ctx, &pr.alloc, len(rem))
+			if arr != nil {
+				cn = copyArray(rem, arr)
+			}
 			if err != nil && !errors.Is(err, io.EOF) {
 				// If reading a column fails, we return immediately without advancing
 				// our row offset for this batch. This retains the state of the reader
@@ -366,6 +377,7 @@ func (pr *basicReader) Reset(columns []Column) {
 	pr.readers = pr.readers[:len(columns)]
 	closeAndClear(pr.readers[len(columns):cap(pr.readers)])
 	pr.nextRow = 0
+	pr.alloc.Reset()
 }
 
 func closeAndClear(r []*columnReader) {

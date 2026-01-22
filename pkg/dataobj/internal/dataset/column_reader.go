@@ -22,7 +22,6 @@ type columnReader struct {
 	ranges []rowRange // Ranges of each page.
 
 	reader *pageReader
-	alloc  memory.Allocator
 
 	nextRow int64
 }
@@ -32,21 +31,6 @@ func newColumnReader(column Column) *columnReader {
 	var cr columnReader
 	cr.Reset(column)
 	return &cr
-}
-
-// ReadValues reads up to the next len(v) values from the column into v. It returns
-// the number of values read and any error encountered. At the end of the
-// column, ReadValues returns 0, io.EOF.
-//
-// ReadValues is deprecated in favor of [columnReader.Read].
-func (cr *columnReader) ReadValues(ctx context.Context, v []Value) (n int, err error) {
-	// allocator is tied to this iteration; we can reclaim memory eagerly.
-	cr.alloc.Reclaim()
-	arr, err := cr.Read(ctx, &cr.alloc, len(v))
-	if arr != nil {
-		n = copyArray(v, arr)
-	}
-	return n, err
 }
 
 // Read returns an array of up to the next count values from the column. At the
@@ -232,8 +216,6 @@ func (cr *columnReader) Reset(column Column) {
 		// Resetting takes the place of calling Close here.
 		cr.reader.Reset(nil, column.ColumnDesc().Type.Physical, column.ColumnDesc().Compression)
 	}
-
-	cr.alloc.Reset()
 
 	cr.nextRow = 0
 }
