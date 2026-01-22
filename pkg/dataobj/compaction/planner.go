@@ -18,6 +18,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	compactionpb "github.com/grafana/loki/v3/pkg/dataobj/compaction/proto"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/symbolizer"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -666,6 +667,7 @@ func (s *Planner) collectStreamsBySegmentKey(ctx context.Context, tenant string,
 // Also collects leftover stream info (data before/after the compaction window).
 func readStreamsFromIndexObject(ctx context.Context, obj *dataobj.Object, indexPath string, tenant string, windowStart, windowEnd time.Time) (*IndexStreamResult, error) {
 	result := &IndexStreamResult{}
+	labelSymbolizer := symbolizer.New(128, 100_000)
 
 	for _, section := range obj.Sections().Filter(streams.CheckSection) {
 		// Filter by tenant - each section belongs to a specific tenant
@@ -678,7 +680,7 @@ func readStreamsFromIndexObject(ctx context.Context, obj *dataobj.Object, indexP
 			return nil, fmt.Errorf("failed to open streams section: %w", err)
 		}
 
-		for streamVal := range streams.IterSection(ctx, sec) {
+		for streamVal := range streams.IterSection(ctx, sec, streams.WithSymbolizer(labelSymbolizer), streams.WithReuseLabelsBuffer()) {
 			stream, err := streamVal.Value()
 			if err != nil {
 				return nil, fmt.Errorf("failed to read stream: %w", err)
