@@ -43,6 +43,11 @@ func newTestHandler(cfg Config, exec queryExecutor, limits querier_limits.Limits
 	}
 }
 
+type mockLimits struct {
+	querier_limits.Limits
+	RetentionLimits
+}
+
 func TestHandler(t *testing.T) {
 	cfg := Config{
 		Executor: ExecutorConfig{
@@ -52,7 +57,7 @@ func TestHandler(t *testing.T) {
 	}
 	logger := log.NewNopLogger()
 	eng := &mockEngine{}
-	limits := &querytest.MockLimits{}
+	limits := &mockLimits{}
 
 	handler := executorHandler(cfg, logger, eng, limits)
 	require.NotNil(t, handler)
