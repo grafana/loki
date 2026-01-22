@@ -224,7 +224,6 @@ func CreateOrUpdateLokiStack(
 	return &status.LokiStackStatusInfo{
 		Storage:         objStore.CredentialMode,
 		NetworkPolicies: networkPolicyRuleSet,
-		// Warnings:        generatePDBWarning(&opts),
 	}, nil
 }
 
@@ -255,27 +254,3 @@ func isNamespacedResource(obj client.Object) bool {
 		return true
 	}
 }
-
-/*
-func generatePDBWarning(opts *manifests.Options) []metav1.Condition {
-	warnings := make([]metav1.Condition, 0, 1)
-
-	// Check if ingester PDB minimum available pods is less than the replication factor
-	if opts.Stack.Template != nil && opts.Stack.Template.Ingester != nil && opts.Stack.Replication != nil {
-		replicas := opts.Stack.Template.Ingester.Replicas
-		rf := opts.Stack.Replication.Factor
-		minAvailable := replicas - 1
-
-		if opts.Stack.Size == lokiv1.SizeOneXExtraSmall || opts.Stack.Size == lokiv1.SizeOneXSmall {
-			if minAvailable < rf {
-				warnings = append(warnings, metav1.Condition{
-					Type:    string(lokiv1.ConditionWarning),
-					Reason:  string(lokiv1.ReasonIngesterPDBMinAvailableBelowReplicationFactor),
-					Message: "The ingester minimum available pods are less than the replication factor. This may cause ingestion unavailability during voluntary disruptions",
-				})
-			}
-		}
-	}
-	return warnings
-}
-*/
