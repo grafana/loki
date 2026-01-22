@@ -40,6 +40,19 @@ func TestBitmap_AppendCount(t *testing.T) {
 	}
 }
 
+func TestBitmap_AppendBitmap(t *testing.T) {
+	var src, dst memory.Bitmap
+
+	dst.AppendValues(false, true, false, false)
+	src.AppendValues(true, true, false, true, true)
+	dst.AppendBitmap(src)
+
+	expect := []bool{false, true, false, false, true, true, false, true, true}
+	for i := range expect {
+		require.Equal(t, expect[i], dst.Get(i), "unexpected value at index %d", i)
+	}
+}
+
 func TestBitmap_Set(t *testing.T) {
 	var bmap memory.Bitmap
 	bmap.Resize(16) // Make room for at least 10 elements.

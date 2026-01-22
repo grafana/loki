@@ -70,6 +70,15 @@ func (bmap *Bitmap) AppendCount(value bool, count int) {
 	bmap.AppendCountUnsafe(value, count)
 }
 
+// AppendBitmap appends the contents of another bitmap into bmap.
+func (bmap *Bitmap) AppendBitmap(from Bitmap) {
+	if bmap.needGrow(from.Len()) {
+		bmap.getNewData(from.Len())
+	}
+	bitutil.CopyBitmap(from.data, 0, from.len, bmap.data, bmap.len)
+	bmap.len += from.Len()
+}
+
 // AppendCountUnsafe appends value count times to bmap without checking for
 // capacity.
 func (bmap *Bitmap) AppendCountUnsafe(value bool, count int) {
