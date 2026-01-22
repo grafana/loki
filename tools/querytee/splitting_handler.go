@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/tenant"
 	"github.com/grafana/dskit/user"
 	"github.com/grafana/loki/v3/pkg/engine"
@@ -30,6 +31,7 @@ type SplittingHandlerConfig struct {
 	RoutingMode                   RoutingMode
 	SplitStart                    time.Time
 	SplitLag                      time.Duration
+	SplitRetentionDays            int64
 	AddRoutingDecisionsToWarnings bool
 }
 
@@ -58,11 +60,12 @@ func NewSplittingHandler(cfg SplittingHandlerConfig, logger log.Logger) (http.Ha
 	}
 
 	splitHandlerFactory := &splitHandlerFactory{
-		codec:         cfg.Codec,
-		fanOutHandler: cfg.FanOutHandler,
-		logger:        logger,
-		splitStart:    cfg.SplitStart,
-		splitLag:      cfg.SplitLag,
+		codec:              cfg.Codec,
+		fanOutHandler:      cfg.FanOutHandler,
+		logger:             logger,
+		splitStart:         cfg.SplitStart,
+		splitLag:           cfg.SplitLag,
+		splitRetentionDays: cfg.SplitRetentionDays,
 	}
 	v1RoundTrip, err := frontend.NewDownstreamRoundTripper(
 		cfg.V1Backend.endpoint.String(),
@@ -113,20 +116,26 @@ func tenantHandler(next http.Handler, logger log.Logger) http.Handler {
 }
 
 type splitHandlerFactory struct {
-	codec         queryrangebase.Codec
-	fanOutHandler queryrangebase.Handler
-	logger        log.Logger
-	splitStart    time.Time
-	splitLag      time.Duration
+	codec              queryrangebase.Codec
+	fanOutHandler      queryrangebase.Handler
+	logger             log.Logger
+	splitStart         time.Time
+	splitLag           time.Duration
+	splitRetentionDays int64
 }
 
 func (f *splitHandlerFactory) createSplittingHandler(forMetricQuery bool, v1Handler queryrangebase.Handler) queryrangebase.Handler {
+	v2Cfg := engine.Config{
+		StorageLag:           f.splitLag,
+		StorageStartDate:     flagext.Time(f.splitStart),
+		StorageRetentionDays: f.splitRetentionDays,
+	}
+
 	routerConfig := queryrange.RouterConfig{
 		Enabled:  true,
 		Validate: engine.IsQuerySupported,
 		Handler:  f.fanOutHandler, // v2Next: fan-out to all backends for comparison
-		Start:    f.splitStart,
-		Lag:      f.splitLag,
+		V2Range:  v2Cfg.ValidQueryRange,
 	}
 
 	middleware := []queryrangebase.Middleware{}
