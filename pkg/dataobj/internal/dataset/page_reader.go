@@ -56,39 +56,38 @@ func (pr *pageReader) Read(ctx context.Context, alloc *memory.Allocator, count i
 	}
 
 	// "Skip" rows until we reach the starting row we want to read.
-	if err := pr.skipUnwantedRows(alloc, count); err != nil {
+	if err := pr.skipUnwantedRows(alloc); err != nil {
 		return nil, err
 	}
 
 	// Do the real read now.
-	arr, err := pr.readColumnar(alloc, count)
+	arr, err := pr.readColumnar(alloc, count, false)
 	if arr != nil {
 		pr.nextRow += int64(arr.Len())
 	}
 	return arr, err
 }
 
-func (pr *pageReader) skipUnwantedRows(alloc *memory.Allocator, count int) error {
+func (pr *pageReader) skipUnwantedRows(alloc *memory.Allocator) error {
+	if pr.pageRow >= pr.nextRow {
+		// Nothing to skip.
+		return nil
+	}
+
 	// Since we don't need the values to live beyond this read call, we can
 	// create a short-lived allocator. This will also allow the "real" read to
 	// reuse any memory that was created during this step.
 	tempAlloc := memory.MakeAllocator(alloc)
 	defer tempAlloc.Free()
 
-	for pr.pageRow < pr.nextRow {
-		tempAlloc.Reclaim()
-
-		maxCount := min(count, int(pr.nextRow-pr.pageRow))
-		_, err := pr.readColumnar(alloc, maxCount)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
+	readCount := int(pr.nextRow - pr.pageRow)
+	_, err := pr.readColumnar(alloc, readCount, true)
+	return err
 }
 
-func (pr *pageReader) readColumnar(alloc *memory.Allocator, count int) (columnar.Array, error) {
+// readColumnar implements the actual Read operation for count rows. If skip is
+// true, no array values are returned, permitting for skipping expensive work.
+func (pr *pageReader) readColumnar(alloc *memory.Allocator, count int, skip bool) (columnar.Array, error) {
 	// First read presence values for the next count rows.
 	bm := memory.MakeBitmap(alloc, count)
 	err := pr.presenceDec.DecodeTo(&bm, count)
@@ -115,6 +114,8 @@ func (pr *pageReader) readColumnar(alloc *memory.Allocator, count int) (columnar
 
 	// Now fill up to presentCount values of concrete values.
 	if presentCount > 0 {
+		// TODO(rfratto): Add a "skip" mode to decoders to allow them to bypass
+		// building an array if it's not going to be used.
 		values, err = pr.valuesDec.Decode(alloc, presentCount)
 		if err != nil && !errors.Is(err, io.EOF) {
 			return nil, err
@@ -126,6 +127,10 @@ func (pr *pageReader) readColumnar(alloc *memory.Allocator, count int) (columnar
 	}
 
 	pr.pageRow += int64(gotCount)
+
+	if skip {
+		return nil, nil
+	}
 	return materializeSparseArray(alloc, bm, values)
 }
 
