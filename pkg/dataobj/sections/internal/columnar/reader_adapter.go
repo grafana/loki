@@ -11,8 +11,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/memory"
 )
 
-// ReaderAdapter is a temporary translation layer that allows the caller to read [columnar.RecordBatch] from a reader
-// that only supports reads through a slice of [dataset.Row].
+// ReaderAdapter is a temporary translation layer that allows the caller to read
+// [columnar.RecordBatch] values from a reader that only supports reads through
+// a slice of [dataset.Row].
 type ReaderAdapter struct {
 	inner    *dataset.Reader
 	colTypes []datasetmd.PhysicalType
@@ -20,12 +21,14 @@ type ReaderAdapter struct {
 	buf []dataset.Row
 }
 
+// NewReaderAdapter creates a ReaderAdapter with the provided dataset reader options.
 func NewReaderAdapter(innerOpts dataset.ReaderOptions) *ReaderAdapter {
 	r := &ReaderAdapter{inner: dataset.NewReader(innerOpts)}
 	r.Reset(innerOpts)
 	return r
 }
 
+// Reset reinitializes the adapter with new reader options.
 func (r *ReaderAdapter) Reset(opts dataset.ReaderOptions) {
 	r.inner.Reset(opts)
 
@@ -36,10 +39,13 @@ func (r *ReaderAdapter) Reset(opts dataset.ReaderOptions) {
 	}
 }
 
+// Close closes the underlying reader.
 func (r *ReaderAdapter) Close() error {
 	return r.inner.Close()
 }
 
+// Read reads up to batchSize rows from the underlying dataset reader and
+// returns them as a [columnar.RecordBatch].
 func (r *ReaderAdapter) Read(ctx context.Context, alloc *memory.Allocator, batchSize int) (columnar.RecordBatch, error) {
 	r.buf = slicegrow.GrowToCap(r.buf, batchSize)
 	r.buf = r.buf[:batchSize]
