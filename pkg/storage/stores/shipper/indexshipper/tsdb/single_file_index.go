@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -22,6 +23,41 @@ import (
 	"github.com/grafana/loki/v3/pkg/util"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
+
+// Experiment logging configuration for volume debugging
+const (
+	volumeDebugOrgID       = "1370052"
+	volumeDebugMinDuration = 30 * time.Minute
+	volumeExperimentName   = "volume-tsdb"
+)
+
+// formatMatchersForVolume converts a slice of matchers to a human-readable string
+func formatMatchersForVolume(matchers []*labels.Matcher) string {
+	if len(matchers) == 0 {
+		return "[]"
+	}
+	parts := make([]string, len(matchers))
+	for i, m := range matchers {
+		if m != nil {
+			parts[i] = m.String()
+		} else {
+			parts[i] = "<nil>"
+		}
+	}
+	return "[" + strings.Join(parts, ", ") + "]"
+}
+
+// formatVolumesForLog formats volume response for logging
+func formatVolumesForLog(volumes []logproto.Volume) string {
+	if len(volumes) == 0 {
+		return "[]"
+	}
+	parts := make([]string, len(volumes))
+	for i, v := range volumes {
+		parts[i] = fmt.Sprintf("{name=%s, volume=%d}", v.Name, v.Volume)
+	}
+	return "[" + strings.Join(parts, ", ") + "]"
+}
 
 var ErrAlreadyOnDesiredVersion = errors.New("tsdb file already on desired version")
 
@@ -360,7 +396,7 @@ func (i *TSDBIndex) Stats(ctx context.Context, _ string, from, through model.Tim
 // {foo="b"} which would be the sum of {foo="b", fizz="a"} and {foo="b", fizz="b"}
 func (i *TSDBIndex) Volume(
 	ctx context.Context,
-	_ string,
+	orgID string,
 	from, through model.Time,
 	acc VolumeAccumulator,
 	fpFilter index.FingerprintFilter,
@@ -371,6 +407,28 @@ func (i *TSDBIndex) Volume(
 ) error {
 	ctx, sp := tracer.Start(ctx, "Index.Volume")
 	defer sp.End()
+
+	// Experiment logging: logs only if orgID matches and duration >= 30min
+	duration := through.Time().Sub(from.Time())
+	shouldLog := orgID == volumeDebugOrgID && duration >= volumeDebugMinDuration
+	traceID := sp.SpanContext().TraceID().String()
+	experimentLogger := log.With(util_log.Logger, "experiment", volumeExperimentName, "org_id", orgID, "source", "index_file", "traceID", traceID)
+	logExperiment := func(keyvals ...interface{}) {
+		if !shouldLog {
+			return
+		}
+		_ = level.Info(experimentLogger).Log(keyvals...)
+	}
+
+	logExperiment(
+		"msg", "DEBUG Volume request received",
+		"from", from.Time().String(),
+		"through", through.Time().String(),
+		"duration", duration.String(),
+		"target_labels", strings.Join(targetLabels, ","),
+		"aggregate_by", aggregateBy,
+		"request_matchers", formatMatchersForVolume(matchers),
+	)
 
 	labelsToMatch, matchers, includeAll := util.PrepareLabelsAndMatchers(targetLabels, matchers, TenantLabel)
 
@@ -397,7 +455,7 @@ func (i *TSDBIndex) Volume(
 		}
 	}
 
-	return i.forPostings(ctx, fpFilter, from, through, matchers, func(p index.Postings) error {
+	err := i.forPostings(ctx, fpFilter, from, through, matchers, func(p index.Postings) error {
 		var ls labels.Labels
 		for p.Next() {
 			fp, stats, err := i.reader.ChunkStats(p.At(), int64(from), int64(through), &ls, by)
@@ -466,6 +524,28 @@ func (i *TSDBIndex) Volume(
 		}
 		return p.Err()
 	})
+
+	if err != nil {
+		logExperiment(
+			"msg", "DEBUG Volume request failed",
+			"error", err.Error(),
+		)
+	} else {
+		volumes := acc.Volumes()
+		volumeCount := 0
+		volumesStr := "[]"
+		if volumes != nil {
+			volumeCount = len(volumes.Volumes)
+			volumesStr = formatVolumesForLog(volumes.Volumes)
+		}
+		logExperiment(
+			"msg", "DEBUG Volume request completed",
+			"volume_count", volumeCount,
+			"volumes", volumesStr,
+		)
+	}
+
+	return err
 }
 
 func cloneStringList(strs []string) []string {
