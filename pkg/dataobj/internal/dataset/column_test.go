@@ -67,7 +67,7 @@ func TestColumnBuilder_ReadWrite(t *testing.T) {
 	r := newColumnReader(col)
 	for {
 		var values [1]Value
-		n, err := r.Read(context.Background(), values[:])
+		n, err := r.ReadValues(context.Background(), values[:])
 		if err != nil && !errors.Is(err, io.EOF) {
 			require.NoError(t, err)
 		} else if n == 0 && errors.Is(err, io.EOF) {
