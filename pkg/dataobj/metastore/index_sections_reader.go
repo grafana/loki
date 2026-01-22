@@ -198,29 +198,23 @@ func (r *indexSectionsReader) populateMatchingStreamsAndLabels(ctx context.Conte
 		r.streamsReadDuration = time.Since(start)
 	}(time.Now())
 
-	sStart := scalar.NewTimestampScalar(arrow.Timestamp(r.start.UnixNano()), arrow.FixedWidthTypes.Timestamp_ns)
-	sEnd := scalar.NewTimestampScalar(arrow.Timestamp(r.end.UnixNano()), arrow.FixedWidthTypes.Timestamp_ns)
+	sStart, sEnd := r.scalarTimestamps()
 
-	requestedColumnNames := make([]string, 0, 2)
 	requestedColumnsFn := func(column *streams.Column) bool {
-		request := column.Type == streams.ColumnTypeLabel
-		if request {
-			requestedColumnNames = append(requestedColumnNames, column.Name)
-		}
-		return request
+		return column.Type == streams.ColumnTypeLabel
 	}
 
-	err := forEachStreamWithColumns(ctx, r.obj, r.matchers, sStart, sEnd, requestedColumnsFn, func(streamID int64, columnValues []string) {
-		columns := make([]string, 0)
-		for i, column := range columnValues {
-			if column != "" {
-				columns = append(columns, requestedColumnNames[i])
-			}
-		}
-		if len(columns) > 0 {
-			r.labelNamesByStream[streamID] = columns
-		}
+	err := forEachStreamWithColumns(ctx, r.obj, r.matchers, sStart, sEnd, requestedColumnsFn, func(streamID int64, columnValues map[string]string) {
 		r.matchingStreamIDs = append(r.matchingStreamIDs, scalar.NewInt64Scalar(streamID))
+		if len(columnValues) == 0 {
+			return
+		}
+
+		columns := make([]string, 0, len(columnValues))
+		for columnName := range columnValues {
+			columns = append(columns, columnName)
+		}
+		r.labelNamesByStream[streamID] = columns
 	})
 	if err != nil {
 		return fmt.Errorf("error iterating streams: %v", err)

@@ -423,7 +423,7 @@ func (m *ObjectMetastore) listObjects(ctx context.Context, path string, sStart, 
 // forEachStreamWithColumns iterates over the streams in the object and calls the callback function for each stream that matches the matchers and includes the requested columns
 // requestedColumnValues is a slice of values for the requested columns in the order they were requested. Columns without values  be empty strings.
 // The requestedColumnValues slice is only valid for the duration of the callback function.
-func forEachStreamWithColumns(ctx context.Context, object *dataobj.Object, matchers []*labels.Matcher, sStart, sEnd *scalar.Timestamp, includeColumns func(*streams.Column) bool, f func(streamID int64, requestedColumnValues []string)) error {
+func forEachStreamWithColumns(ctx context.Context, object *dataobj.Object, matchers []*labels.Matcher, sStart, sEnd *scalar.Timestamp, includeColumns func(*streams.Column) bool, f func(streamID int64, requestedColumnValues map[string]string)) error {
 	targetTenant, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return fmt.Errorf("extracting org ID: %w", err)
@@ -469,7 +469,7 @@ func forEachStreamWithColumns(ctx context.Context, object *dataobj.Object, match
 			Allocator:  memory.DefaultAllocator,
 		}
 		reader.Reset(readerOpts)
-		requestedColumnValues := make([]string, len(requestedColumns))
+		requestedColumnValues := make(map[string]string, len(requestedColumns))
 		for {
 			rec, err := reader.Read(ctx, 8192)
 			if err != nil && !errors.Is(err, io.EOF) {
@@ -483,15 +483,12 @@ func forEachStreamWithColumns(ctx context.Context, object *dataobj.Object, match
 				streamID := rec.Column(0).(*array.Int64).Value(int(i))
 				// This doesn't differentiate between null and empty columns. But neither does LogQL, so that's fine.
 				for _, column := range requestedColumns {
-					targetColumnIndex, ok := requestedColumnIndexes[column.Name]
-					requestedColumnIndex := targetColumnIndex - 1 // Exclude the stream ID column
-					if ok {
-						requestedColumnValues[requestedColumnIndex] = rec.Column(targetColumnIndex).(*array.String).Value(int(i))
-					} else {
-						requestedColumnValues[requestedColumnIndex] = ""
+					if targetColumnIndex, ok := requestedColumnIndexes[column.Name]; ok {
+						requestedColumnValues[column.Name] = rec.Column(targetColumnIndex).(*array.String).Value(int(i))
 					}
 				}
 				f(streamID, requestedColumnValues)
+				clear(requestedColumnValues)
 			}
 		}
 	}
