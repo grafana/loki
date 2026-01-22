@@ -31,7 +31,7 @@ func Refresh(ctx context.Context, k k8s.Client, req ctrl.Request, now time.Time,
 		return err
 	}
 
-	activeConditions, err := generateConditions(ctx, cs, k, &stack, statusInfo.DegradedError, statusInfo.Warnings)
+	activeConditions, err := generateConditions(ctx, cs, k, &stack, statusInfo.DegradedError)
 	if err != nil {
 		return err
 	}

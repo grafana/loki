@@ -1782,8 +1782,8 @@ PodStatusMap
 </tr><tr><td><p>&#34;FailedComponents&#34;</p></td>
 <td><p>ReasonFailedComponents when all/some LokiStack components fail to roll out.</p>
 </td>
-</tr><tr><td><p>&#34;ReasonIngesterPDBMinAvailableBelowReplicationFactor&#34;</p></td>
-<td><p>ReasonIngesterPDBMinAvailableBelowReplicationFactor when the ingester PDB minimum available pods is less than the replication factor which may cause log ingestion to be unavailable during updates</p>
+</tr><tr><td><p>&#34;ReasonIngesterReplicasBelowReplicationFactor&#34;</p></td>
+<td><p>ReasonIngesterReplicasBelowReplicationFactor when the ingester PDB minimum available pods is less than the replication factor which may cause log ingestion to be unavailable during updates</p>
 </td>
 </tr><tr><td><p>&#34;InvalidGatewayTenantConfigMap&#34;</p></td>
 <td><p>ReasonInvalidGatewayTenantConfigMap when the format of the configmap is invalid.</p>

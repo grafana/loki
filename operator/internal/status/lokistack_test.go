@@ -274,7 +274,17 @@ func TestGenerateWarningCondition_WhenStorageSchemaIsOld(t *testing.T) {
 	for _, tc := range tt {
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
-			condition := generateWarnings(tc.schemas)
+			lokiStack := &lokiv1.LokiStack{
+				Spec: lokiv1.LokiStackSpec{
+					Size: lokiv1.SizeOneXPico,
+					Storage: lokiv1.ObjectStorageSpec{
+						Schemas: tc.schemas,
+					},
+				},
+			}
+			k, _ := setupFakesNoError(t, lokiStack)
+			condition, err := generateWarnings(context.TODO(), k, lokiStack)
+			require.NoError(t, err)
 			require.Equal(t, condition, tc.wantCondition)
 		})
 	}

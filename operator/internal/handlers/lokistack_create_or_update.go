@@ -10,7 +10,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -153,11 +152,6 @@ func CreateOrUpdateLokiStack(
 		return nil, optErr
 	}
 
-	if err = setPDBMinAvailable(&opts); err != nil {
-		ll.Error(err, "failed to set ingester PDB minimum available pods")
-		return nil, err
-	}
-
 	objects, err := manifests.BuildAll(opts)
 	if err != nil {
 		ll.Error(err, "failed to build manifests")
@@ -230,7 +224,7 @@ func CreateOrUpdateLokiStack(
 	return &status.LokiStackStatusInfo{
 		Storage:         objStore.CredentialMode,
 		NetworkPolicies: networkPolicyRuleSet,
-		Warnings:        generatePDBWarning(&opts),
+		// Warnings:        generatePDBWarning(&opts),
 	}, nil
 }
 
@@ -262,34 +256,7 @@ func isNamespacedResource(obj client.Object) bool {
 	}
 }
 
-func setPDBMinAvailable(opts *manifests.Options) error {
-	// Set the ingester's PDB minimum available pods to replicas - 1
-
-	if opts.Stack.Template.Ingester == nil || opts.Stack.Replication == nil {
-		return nil
-	}
-
-	if opts.Stack.Size != lokiv1.SizeOneXDemo {
-		if opts.Stack.Template.Ingester.Replicas < opts.Stack.Replication.Factor {
-			return &status.DegradedError{
-				Message: fmt.Sprintf("Invalid configuration: ingester replicas (%d) should be more than the replication factor (%d)", opts.Stack.Template.Ingester.Replicas, opts.Stack.Replication.Factor),
-				Reason:  lokiv1.ReasonInvalidReplicationFactor,
-				Requeue: true,
-			}
-		}
-	}
-	replicas := opts.Stack.Template.Ingester.Replicas
-
-	// 1x.demo
-	if opts.Stack.Size == lokiv1.SizeOneXDemo {
-		opts.ResourceRequirements.Ingester.PDBMinAvailable = 1
-	} else {
-		opts.ResourceRequirements.Ingester.PDBMinAvailable = int(replicas - 1)
-	}
-
-	return nil
-}
-
+/*
 func generatePDBWarning(opts *manifests.Options) []metav1.Condition {
 	warnings := make([]metav1.Condition, 0, 1)
 
@@ -311,3 +278,4 @@ func generatePDBWarning(opts *manifests.Options) []metav1.Condition {
 	}
 	return warnings
 }
+*/

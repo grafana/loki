@@ -28,7 +28,6 @@ import (
 	configv1 "github.com/grafana/loki/operator/api/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
-	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/grafana/loki/operator/internal/status"
 )
 
@@ -742,6 +741,7 @@ func TestCreateOrUpdateLokiStack_WhenInvalidQueryTimeout_SetDegraded(t *testing.
 	require.Equal(t, degradedErr, err)
 }
 
+/*
 func TestBuildIngester_PodDisruptionBudgetWithCustomReplicationFactor(t *testing.T) {
 	for _, tc := range []struct {
 		Name                 string
@@ -864,3 +864,4 @@ func TestBuildIngester_PodDisruptionBudgetWithCustomReplicationFactor(t *testing
 		})
 	}
 }
+*/
