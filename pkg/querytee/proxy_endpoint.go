@@ -15,9 +15,9 @@ import (
 
 	"github.com/grafana/dskit/tenant"
 
+	"github.com/grafana/loki/v3/pkg/querytee/comparator"
+	"github.com/grafana/loki/v3/pkg/querytee/goldfish"
 	"github.com/grafana/loki/v3/pkg/util/server"
-	"github.com/grafana/loki/v3/tools/querytee/comparator"
-	"github.com/grafana/loki/v3/tools/querytee/goldfish"
 )
 
 type ResponsesComparator interface {

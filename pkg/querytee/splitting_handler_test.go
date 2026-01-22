@@ -16,7 +16,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/v3/tools/querytee/goldfish"
+	"github.com/grafana/loki/v3/pkg/querytee/goldfish"
 )
 
 // mockGoldfishManager is a mock implementation of goldfish.ManagerInterface for testing

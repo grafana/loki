@@ -14,10 +14,11 @@ import (
 	"github.com/go-kit/log/level"
 
 	"github.com/grafana/dskit/tenant"
+
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/querytee/comparator"
+	"github.com/grafana/loki/v3/pkg/querytee/goldfish"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
-	"github.com/grafana/loki/v3/tools/querytee/comparator"
-	"github.com/grafana/loki/v3/tools/querytee/goldfish"
 )
 
 // FanOutHandler implements queryrangebase.Handler and fans out requests to multiple backends.

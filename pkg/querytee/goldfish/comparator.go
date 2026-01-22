@@ -6,8 +6,9 @@ import (
 
 	logger "github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+
 	"github.com/grafana/loki/v3/pkg/goldfish"
-	"github.com/grafana/loki/v3/tools/querytee/comparator"
+	"github.com/grafana/loki/v3/pkg/querytee/comparator"
 )
 
 // CompareResponses compares performance statistics and hashes from QuerySample
