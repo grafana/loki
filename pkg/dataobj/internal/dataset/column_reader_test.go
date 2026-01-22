@@ -57,7 +57,7 @@ func Test_columnReader_SeekAcrossPages(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 4, n)
 
-	actual := convertToStrings(t, batch[:n])
+	actual := convertValuesToStrings(t, batch[:n])
 	expected := columnReaderTestStrings[endFirstPage : endFirstPage+4]
 	require.Equal(t, expected, actual)
 }
@@ -132,7 +132,7 @@ func readColumn(t *testing.T, cr *columnReader, batchSize int) ([]string, error)
 	for {
 		n, err := cr.Read(context.Background(), batch)
 		if n > 0 {
-			all = append(all, convertToStrings(t, batch[:n])...)
+			all = append(all, convertValuesToStrings(t, batch[:n])...)
 		}
 		if errors.Is(err, io.EOF) {
 			return all, nil
@@ -140,4 +140,21 @@ func readColumn(t *testing.T, cr *columnReader, batchSize int) ([]string, error)
 			return all, err
 		}
 	}
+}
+
+func convertValuesToStrings(t *testing.T, values []Value) []string {
+	t.Helper()
+
+	out := make([]string, 0, len(values))
+
+	for _, v := range values {
+		if v.IsNil() {
+			out = append(out, "")
+		} else {
+			require.Equal(t, datasetmd.PHYSICAL_TYPE_BINARY, v.Type())
+			out = append(out, string(v.Binary()))
+		}
+	}
+
+	return out
 }
