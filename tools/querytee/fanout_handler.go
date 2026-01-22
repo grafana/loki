@@ -15,6 +15,7 @@ import (
 
 	"github.com/grafana/dskit/tenant"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	"github.com/grafana/loki/v3/tools/querytee/comparator"
 	"github.com/grafana/loki/v3/tools/querytee/goldfish"
 )
@@ -101,9 +102,16 @@ func (h *FanOutHandler) Do(ctx context.Context, req queryrangebase.Request) (que
 		return nil, fmt.Errorf("failed to encode request: %w", err)
 	}
 
-	// Preserve original headers lost during codec decode/encode cycle
-	if origHeaders := extractOriginalHeaders(ctx); origHeaders != nil {
-		copyHeaders(origHeaders, httpReq.Header)
+	// Preserve original headers lost during codec decode/encode cycle.
+	// Only add headers that weren't already set by the codec to avoid duplication.
+	if origHeaders := httpreq.ExtractAllHeaders(ctx); origHeaders != nil {
+		for k, values := range origHeaders {
+			if httpReq.Header.Get(k) == "" {
+				for _, v := range values {
+					httpReq.Header.Add(k, v)
+				}
+			}
+		}
 	}
 
 	issuer := detectIssuer(httpReq)
@@ -523,21 +531,6 @@ func (h *FanOutHandler) makeBackendRequests(
 	}
 
 	return results
-}
-
-func extractOriginalHeaders(ctx context.Context) http.Header {
-	if headers, ok := ctx.Value(originalHTTPHeadersKey).(http.Header); ok {
-		return headers
-	}
-	return nil
-}
-
-func copyHeaders(from, to http.Header) {
-	for key, values := range from {
-		for _, value := range values {
-			to.Add(key, value)
-		}
-	}
 }
 
 // statusCodeFromError determines the appropriate HTTP status code when a backend request fails.

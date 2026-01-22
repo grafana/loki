@@ -115,8 +115,9 @@ func (f *HandlerFactory) CreateHandler(routeName string, comp comparator.Respons
 	}
 
 	httpMiddlewares := []middleware.Interface{
+		// Propagate all headers except those that affect response encoding or security.
+		httpreq.PropagateAllHeadersMiddleware(httpreq.AuthorizationHeader, httpreq.AcceptHeader, httpreq.AcceptEncodingHeader),
 		httpreq.ExtractQueryTagsMiddleware(),
-		httpreq.PropagateHeadersMiddleware(httpreq.LokiActorPathHeader, httpreq.LokiEncodingFlagsHeader, httpreq.LokiDisablePipelineWrappersHeader),
 		server.NewPrepopulateMiddleware(),
 	}
 
