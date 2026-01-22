@@ -132,7 +132,7 @@ func dataobjV2StoreWithOpts(dataDir string, tenantID string, cfg engine.Executor
 		LocalScheduler: sched,
 		Config: engine.WorkerConfig{
 			SchedulerLookupAddress:  schedLookupAddr,
-			SchedulerLookupInterval: 60,
+			SchedulerLookupInterval: time.Minute,
 			// Try to create one thread per host CPU core. However, we always
 			// create at least 8 threads. This prevents situations where
 			// no task can make progress because a parent task hasn't been
