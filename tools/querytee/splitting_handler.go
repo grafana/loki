@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/tenant"
 	"github.com/grafana/dskit/user"
 	"github.com/grafana/loki/v3/pkg/engine"
@@ -30,6 +31,7 @@ type SplittingHandlerConfig struct {
 	RoutingMode                   RoutingMode
 	SplitStart                    time.Time
 	SplitLag                      time.Duration
+	SplitRetentionDays            int64
 	AddRoutingDecisionsToWarnings bool
 }
 
@@ -47,17 +49,23 @@ type SplittingHandler struct {
 	addRoutingDecisionsToWarnings bool
 }
 
+// isMultiTenant returns true if the request contains multiple tenant IDs.
+func isMultiTenant(tenants []string) bool {
+	return len(tenants) > 1
+}
+
 func NewSplittingHandler(cfg SplittingHandlerConfig, logger log.Logger) (http.Handler, error) {
 	if cfg.V1Backend == nil {
 		return tenantHandler(queryrange.NewSerializeHTTPHandler(cfg.FanOutHandler, cfg.Codec), logger), nil
 	}
 
 	splitHandlerFactory := &splitHandlerFactory{
-		codec:         cfg.Codec,
-		fanOutHandler: cfg.FanOutHandler,
-		logger:        logger,
-		splitStart:    cfg.SplitStart,
-		splitLag:      cfg.SplitLag,
+		codec:              cfg.Codec,
+		fanOutHandler:      cfg.FanOutHandler,
+		logger:             logger,
+		splitStart:         cfg.SplitStart,
+		splitLag:           cfg.SplitLag,
+		splitRetentionDays: cfg.SplitRetentionDays,
 	}
 	v1RoundTrip, err := frontend.NewDownstreamRoundTripper(
 		cfg.V1Backend.endpoint.String(),
@@ -108,20 +116,26 @@ func tenantHandler(next http.Handler, logger log.Logger) http.Handler {
 }
 
 type splitHandlerFactory struct {
-	codec         queryrangebase.Codec
-	fanOutHandler queryrangebase.Handler
-	logger        log.Logger
-	splitStart    time.Time
-	splitLag      time.Duration
+	codec              queryrangebase.Codec
+	fanOutHandler      queryrangebase.Handler
+	logger             log.Logger
+	splitStart         time.Time
+	splitLag           time.Duration
+	splitRetentionDays int64
 }
 
 func (f *splitHandlerFactory) createSplittingHandler(forMetricQuery bool, v1Handler queryrangebase.Handler) queryrangebase.Handler {
+	v2Cfg := engine.Config{
+		StorageLag:           f.splitLag,
+		StorageStartDate:     flagext.Time(f.splitStart),
+		StorageRetentionDays: f.splitRetentionDays,
+	}
+
 	routerConfig := queryrange.RouterConfig{
 		Enabled:  true,
 		Validate: engine.IsQuerySupported,
 		Handler:  f.fanOutHandler, // v2Next: fan-out to all backends for comparison
-		Start:    f.splitStart,
-		Lag:      f.splitLag,
+		V2Range:  v2Cfg.ValidQueryRange,
 	}
 
 	middleware := []queryrangebase.Middleware{}
@@ -149,7 +163,7 @@ func (f *splitHandlerFactory) createSplittingHandler(forMetricQuery bool, v1Hand
 //   - v2-preferred/race: Always split when splitLag > 0 (sampling only affects goldfish comparison).
 //   - v1-preferred: Skip fanout when not sampling, only split for goldfish comparison.
 func (f *SplittingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	_, ctx, err := tenant.ExtractTenantIDFromHTTPRequest(r)
+	_, ctx, err := user.ExtractOrgIDFromHTTPRequest(r)
 	if err != nil {
 		level.Warn(f.logger).Log(
 			"msg", "failed to extract tenant ID",
@@ -182,6 +196,17 @@ func (f *SplittingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		shouldSample = f.shouldSample(tenants, r)
 	}
 
+	// Multi-tenant queries must always go to v1 only (v2 doesn't support them)
+	if isMultiTenant(tenants) {
+		level.Info(f.logger).Log("msg", "multi-tenant query detected, routing to v1 only", "tenants", len(tenants))
+		resp, err = f.v1Handler.Do(ctx, req)
+		if resp != nil && f.addRoutingDecisionsToWarnings {
+			addWarningToResponse(resp, "multi-tenant query routed to v1 backend only (v2 does not support multi-tenant)")
+		}
+		f.writeResponse(ctx, r, w, resp, err)
+		return
+	}
+
 	// Routing decision logic:
 	// - v2-preferred/race: Always split when splitLag > 0 (sampling only affects goldfish comparison)
 	// - v1-preferred: Skip fanout when not sampling, only split for goldfish comparison
@@ -206,10 +231,15 @@ func (f *SplittingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	f.writeResponse(ctx, r, w, resp, err)
+}
+
+// writeResponse handles encoding and writing the response back to the HTTP response writer.
+func (f *SplittingHandler) writeResponse(ctx context.Context, r *http.Request, w http.ResponseWriter, resp queryrangebase.Response, err error) {
 	if err != nil {
-		switch r := resp.(type) {
+		switch typedResp := resp.(type) {
 		case *NonDecodableResponse:
-			http.Error(w, string(r.Body), r.StatusCode)
+			http.Error(w, string(typedResp.Body), typedResp.StatusCode)
 		default:
 			level.Warn(f.logger).Log("msg", "handler failed", "err", err)
 			server.WriteError(err, w)

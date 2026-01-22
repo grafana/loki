@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"runtime/pprof"
 	"sync"
 	"time"
 
@@ -51,10 +52,11 @@ func (s threadState) String() string {
 
 // thread represents a worker thread that executes one task at a time.
 type thread struct {
-	BatchSize int64
-	Bucket    objstore.Bucket
-	Metastore metastore.Metastore
-	Logger    log.Logger
+	BatchSize      int64
+	Bucket         objstore.Bucket
+	Metastore      metastore.Metastore
+	Logger         log.Logger
+	StreamFilterer executor.RequestStreamFilterer
 
 	Metrics    *metrics
 	JobManager *jobManager
@@ -101,6 +103,15 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	logger := log.With(t.Logger, "task_id", job.Task.ULID)
 	logger = utillog.WithContext(ctx, logger) // Extract trace ID
 
+	root, err := job.Task.Fragment.Root()
+	if err != nil {
+		level.Error(logger).Log("msg", "failed to get root node", "err", err)
+		return
+	}
+	defer pprof.SetGoroutineLabels(ctx)
+	ctx = pprof.WithLabels(ctx, pprof.Labels("node_type", root.Type().String()))
+	pprof.SetGoroutineLabels(ctx)
+
 	startTime := time.Now()
 	level.Info(logger).Log(
 		"msg", "starting task",
@@ -108,9 +119,10 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	)
 
 	cfg := executor.Config{
-		BatchSize: t.BatchSize,
-		Bucket:    bucket.NewXCapBucket(t.Bucket),
-		Metastore: t.Metastore,
+		BatchSize:      t.BatchSize,
+		Bucket:         bucket.NewXCapBucket(t.Bucket),
+		Metastore:      t.Metastore,
+		StreamFilterer: t.StreamFilterer,
 
 		GetExternalInputs: func(_ context.Context, node physical.Node) []executor.Pipeline {
 			streams := job.Task.Sources[node]
@@ -190,7 +202,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 		})
 	}
 
-	err := job.Scheduler.SendMessageAsync(ctx, wire.TaskStatusMessage{
+	err = job.Scheduler.SendMessageAsync(ctx, wire.TaskStatusMessage{
 		ID:     job.Task.ULID,
 		Status: workflow.TaskStatus{State: workflow.TaskStateRunning},
 	})

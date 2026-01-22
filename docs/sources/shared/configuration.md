@@ -361,6 +361,12 @@ query_engine:
   # CLI flag: -query-engine.storage-start-date
   [storage_start_date: <time> | default = 0]
 
+  # Lifecycle of data objects in days. If set, queries falling outside of the
+  # retention period will not be supported. When both storage-start-date and
+  # storage-retention-days are set, the more restrictive of the two will apply.
+  # CLI flag: -query-engine.storage-retention-days
+  [storage_retention_days: <int> | default = 0]
+
   # Enable routing of query splits in the query frontend to the next generation
   # engine when they fall within the configured time range.
   # CLI flag: -query-engine.enable-engine-router
@@ -376,6 +382,11 @@ query_engine:
   # considering delete requests.
   # CLI flag: -query-engine.enable-delete-req-filtering
   [enable_delete_req_filtering: <boolean> | default = true]
+
+  # Enforce tenant retention limits. Queries falling outside tenant's retention
+  # period are either adjusted or rejected.
+  # CLI flag: -query-engine.enforce-retention-period
+  [enforce_retention_period: <boolean> | default = false]
 
 # The query_scheduler block configures the Loki query scheduler. When configured
 # it separates the tenant query queues from the query-frontend.
@@ -1418,6 +1429,12 @@ dataobj:
       # of 0 disables partitions deletion.
       # CLI flag: -dataobj-consumer.partition-ring.delete-inactive-partition-after
       [delete_inactive_partition_after: <duration> | default = 13h]
+
+      # Experimental: The size of the cache used for shuffle sharding. If zero
+      # or negative, an unbounded cache is used. If positive, an LRU cache with
+      # the specified size is used.
+      # CLI flag: -dataobj-consumer.partition-ring.shuffle-shard-cache-size
+      [shuffle_shard_cache_size: <int> | default = 0]
 
     uploader:
       # The size of the SHA prefix to use for generating object storage keys for
@@ -4111,6 +4128,12 @@ kafka_ingestion:
     # 0 disables partitions deletion.
     # CLI flag: -ingester.partition-ring.delete-inactive-partition-after
     [delete_inactive_partition_after: <duration> | default = 13h]
+
+    # Experimental: The size of the cache used for shuffle sharding. If zero or
+    # negative, an unbounded cache is used. If positive, an LRU cache with the
+    # specified size is used.
+    # CLI flag: -ingester.partition-ring.shuffle-shard-cache-size
+    [shuffle_shard_cache_size: <int> | default = 0]
 ```
 
 ### ingester_client

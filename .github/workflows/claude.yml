@@ -1,6 +1,8 @@
 name: Claude Code
 
 on:
+  # NOTE: These events will run without approval for external contributors.
+  #   Therefore, do not change the action to an action that does not impose restrictions on who can run it.
   issue_comment:
     types: [created]
   pull_request_review_comment:
@@ -37,35 +39,37 @@ jobs:
           repo_secrets: |
             ANTHROPIC_API_KEY=anthropic:api-key
 
+      # SECURITY: The action will not do anything for non-Write permission users.
+      # That is, if the user is not added to the repository nor in any Write team, they cannot invoke it.
+      # This includes forks and non-Grafanistas. If you want to change the action, ensure this behaviour is maintained.
       - name: Run Claude Code
         id: claude
-        uses: anthropics/claude-code-action@8b2bd6d04f7b6ac4ba5523a3a573f7843ab4b4ba  # beta
+        uses: anthropics/claude-code-action@8b2bd6d04f7b6ac4ba5523a3a573f7843ab4b4ba # beta
         with:
           anthropic_api_key: ${{ env.ANTHROPIC_API_KEY }}
 
           # This is an optional setting that allows Claude to read CI results on PRs
           additional_permissions: |
             actions: read
-          
+
           # Optional: Specify model (defaults to Claude Sonnet 4, uncomment for Claude Opus 4.1)
           # model: "claude-opus-4-1-20250805"
-          
+
           # Optional: Customize the trigger phrase (default: @claude)
           # trigger_phrase: "/claude"
-          
+
           # Optional: Trigger when specific user is assigned to an issue
           # assignee_trigger: "claude-bot"
-          
+
           # Optional: Allow Claude to run specific commands
           allowed_tools: "Bash(awk:*),Bash(chmod:*),Bash(curl:*),Bash(docker:*),Bash(docker-compose:*),Bash(env:*),Bash(find:*),Bash(git:*),Bash(go build:*),Bash(go get:*),Bash(go run:*),Bash(go test:*),Bash(go vet:*),Bash(gofmt:*),Bash(grep:*),Bash(head:*),Bash(ls:*),Bash(make:*),Bash(mkdir:*),Bash(nix:*),Bash(npm install:*),Bash(npm run:*),Bash(npm test:*),Bash(npx:*),Bash(rg:*),Bash(sed:*),Bash(tail:*),Bash(yarn:*),WebFetch(domain:github.com),WebFetch(domain:google.com),WebFetch(domain:localhost),WebFetch(domain:raw.githubusercontent.com)"
-          
+
           # Optional: Add custom instructions for Claude to customize its behavior for your project
           # custom_instructions: |
           #   Follow our coding standards
           #   Ensure all new code has tests
           #   Use TypeScript for new files
-          
+
           # Optional: Custom environment variables for Claude
           # claude_env: |
           #   NODE_ENV: test
-
