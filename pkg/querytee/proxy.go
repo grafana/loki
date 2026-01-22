@@ -287,11 +287,13 @@ func NewProxy(
 		}
 	}
 
-	// Pre-initialize raceWins metric for all backend/route combinations
+	// Pre-initialize raceWins metric for all backend/route/issuer combinations
 	if cfg.Routing.Mode == RoutingModeRace {
 		for _, backend := range p.backends {
 			for _, route := range p.readRoutes {
-				p.metrics.raceWins.WithLabelValues(backend.name, route.RouteName)
+				for _, issuer := range []string{unknownIssuer, canaryIssuer} {
+					p.metrics.raceWins.WithLabelValues(backend.name, backend.Alias(), route.RouteName, issuer)
+				}
 			}
 		}
 	}

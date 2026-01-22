@@ -145,7 +145,7 @@ func (p *ProxyEndpoint) serveWrites(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	p.metrics.responsesTotal.WithLabelValues(downstreamRes.backend.name, r.Method, p.routeName, detectIssuer(r)).Inc()
+	p.metrics.responsesTotal.WithLabelValues(downstreamRes.backend.name, downstreamRes.backend.Alias(), r.Method, p.routeName, detectIssuer(r)).Inc()
 }
 
 func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *BackendResponse, goldfishSample bool) {
@@ -205,6 +205,7 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *Back
 			lvl(p.logger).Log("msg", "Backend response", "path", r.URL.Path, "query", query, "backend", backend.name, "status", res.status, "elapsed", res.duration)
 			p.metrics.requestDuration.WithLabelValues(
 				res.backend.name,
+				res.backend.Alias(),
 				r.Method,
 				p.routeName,
 				strconv.FormatInt(int64(res.statusCode()), 10),
@@ -249,9 +250,9 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *Back
 			}
 
 			if p.instrumentCompares && summary != nil {
-				p.metrics.missingMetrics.WithLabelValues(p.backends[i].name, p.routeName, result, issuer).Observe(float64(summary.MissingMetrics))
+				p.metrics.missingMetrics.WithLabelValues(p.backends[i].name, p.backends[i].Alias(), p.routeName, result, issuer).Observe(float64(summary.MissingMetrics))
 			}
-			p.metrics.responsesComparedTotal.WithLabelValues(p.backends[i].name, p.routeName, result, issuer).Inc()
+			p.metrics.responsesComparedTotal.WithLabelValues(p.backends[i].name, p.backends[i].Alias(), p.routeName, result, issuer).Inc()
 		}
 	}
 

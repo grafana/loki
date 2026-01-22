@@ -248,7 +248,9 @@ func (h *FanOutHandler) returnFallback(collected []*backendResult) (queryrangeba
 func (h *FanOutHandler) finishRace(winner *backendResult, remaining int, httpReq *http.Request, results <-chan *backendResult, collected []*backendResult, shouldSample bool) (queryrangebase.Response, error) {
 	h.metrics.raceWins.WithLabelValues(
 		winner.backend.name,
+		winner.backend.Alias(),
 		h.routeName,
+		detectIssuer(httpReq),
 	).Inc()
 
 	go func() {
@@ -301,11 +303,11 @@ func (h *FanOutHandler) collectRemainingAndCompare(remaining int, httpReq *http.
 
 			if h.instrumentCompares && summary != nil {
 				h.metrics.missingMetrics.WithLabelValues(
-					r.backend.name, h.routeName, result, issuer,
+					r.backend.name, r.backend.Alias(), h.routeName, result, issuer,
 				).Observe(float64(summary.MissingMetrics))
 			}
 			h.metrics.responsesComparedTotal.WithLabelValues(
-				r.backend.name, h.routeName, result, issuer,
+				r.backend.name, r.backend.Alias(), h.routeName, result, issuer,
 			).Inc()
 		}
 	}
@@ -410,6 +412,7 @@ func (h *FanOutHandler) recordMetrics(result *backendResult, method, issuer stri
 
 	h.metrics.responsesTotal.WithLabelValues(
 		result.backend.name,
+		result.backend.Alias(),
 		method,
 		h.routeName,
 		issuer,
@@ -417,6 +420,7 @@ func (h *FanOutHandler) recordMetrics(result *backendResult, method, issuer stri
 
 	h.metrics.requestDuration.WithLabelValues(
 		result.backend.name,
+		result.backend.Alias(),
 		method,
 		h.routeName,
 		strconv.FormatInt(int64(result.backendResp.status), 10),
