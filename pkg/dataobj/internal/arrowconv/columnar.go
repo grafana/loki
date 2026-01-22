@@ -10,6 +10,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/columnar"
 )
 
+// ToRecordBatch converts a columnar RecordBatch into an Arrow RecordBatch using
+// the provided schema for the output types.
 func ToRecordBatch(src columnar.RecordBatch, schema *arrow.Schema) (arrow.RecordBatch, error) {
 	nrows := src.NumRows()
 	var arrs []arrow.Array
@@ -114,9 +116,4 @@ func ToRecordBatch(src columnar.RecordBatch, schema *arrow.Schema) (arrow.Record
 	}
 
 	return array.NewRecordBatch(schema, arrs, nrows), nil
-}
-
-type RecordBatchBuilder struct {
-	alloc  arrowmemory.Allocator
-	schema *arrow.Schema
 }
