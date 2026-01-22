@@ -601,7 +601,6 @@ storage_config:
       {{- with .ObjectStorage.Azure }}
       azure:
         store-1:
-          environment: {{ .Env }}
           container_name: {{ .Container }}
           account_name: ${AZURE_STORAGE_ACCOUNT_NAME}
           {{- if .WorkloadIdentity }}
@@ -610,7 +609,7 @@ storage_config:
           account_key: ${AZURE_STORAGE_ACCOUNT_KEY}
           {{- end }}
           {{- with .EndpointSuffix }}
-          endpoint_suffix: {{ . }}
+          endpoint {{ . }}
           {{- end }}
       {{- end }}
       {{- with .ObjectStorage.GCS }}
