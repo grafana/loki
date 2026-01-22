@@ -1,6 +1,7 @@
 package logical
 
 import (
+	"context"
 	"embed"
 	"io/fs"
 	"strings"
@@ -58,7 +59,7 @@ func Test_simplifyRegexPass(t *testing.T) {
 RETURN %25
 `)
 
-	p, err := BuildPlan(params)
+	p, err := BuildPlan(context.Background(), params)
 	require.NoError(t, err)
 	require.NoError(t, Optimize(p), "optimization should not fail")
 
@@ -99,7 +100,7 @@ func Test_simplifyRegexPass_IgnoreStreamSelector(t *testing.T) {
 RETURN %14
 `)
 
-	p, err := BuildPlan(params)
+	p, err := BuildPlan(context.Background(), params)
 	require.NoError(t, err)
 	require.NoError(t, Optimize(p), "optimization should not fail")
 
@@ -137,7 +138,7 @@ func Test_simplifyRegexPass_Negate(t *testing.T) {
 RETURN %13
 `)
 
-	p, err := BuildPlan(params)
+	p, err := BuildPlan(context.Background(), params)
 	require.NoError(t, err)
 	require.NoError(t, Optimize(p), "optimization should not fail")
 

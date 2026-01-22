@@ -80,3 +80,8 @@ var (
 	// Time spent waiting for task admission (before being queued) in seconds.
 	StatTaskAdmissionWaitDuration = NewStatisticFloat64("task.admission.wait.duration", AggregationTypeSum)
 )
+
+var (
+	// Track number of predicates applied to enforce delete request filtering.
+	StatDeletePredicates = NewStatisticInt64("delete.request.predicates", AggregationTypeFirst)
+)
