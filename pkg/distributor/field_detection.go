@@ -2,6 +2,7 @@ package distributor
 
 import (
 	"bytes"
+	"encoding/xml"
 	"errors"
 	"strconv"
 	"strings"
@@ -375,4 +376,96 @@ func detectLevelFromLogLine(log string) string {
 	}
 
 	return constants.LogLevelUnknown
+}
+
+// getValueUsingXMLParser extracts a value from an XML line using field hints
+func getValueUsingXMLParser(line []byte, hints []string) []byte {
+	if !isXML(line) {
+		return []byte{}
+	}
+
+	for _, hint := range hints {
+		// Try to parse as XML expression path
+		values, err := log.ExtractXMLValues(line, hint)
+		if err != nil || len(values) == 0 {
+			continue
+		}
+		return []byte(values[0])
+	}
+	return []byte{}
+}
+
+// getLevelUsingXMLParser extracts log level from XML using allowed level field names
+func getLevelUsingXMLParser(line []byte, allowedLevelFields map[string]struct{}, maxDepth int) []byte {
+	if !isXML(line) {
+		return []byte{}
+	}
+
+	var result []byte
+	var depth int
+
+	decoder := xml.NewDecoder(bytes.NewReader(line))
+	decoder.CharsetReader = nil
+
+	for {
+		token, err := decoder.Token()
+		if err != nil {
+			break
+		}
+
+		switch elem := token.(type) {
+		case xml.StartElement:
+			// Respect depth limit
+			if maxDepth > 0 && depth >= maxDepth {
+				continue
+			}
+
+			// Check element name (strip namespace if present)
+			elemName := stripXMLNamespace(elem.Name.Local)
+			if _, ok := allowedLevelFields[elemName]; ok {
+				// Try to decode the text content
+				var data string
+				if err := decoder.DecodeElement(&data, &elem); err == nil && data != "" {
+					result = []byte(strings.TrimSpace(data))
+					return result // Return first match
+				}
+			}
+
+			// Check attributes for level value
+			for _, attr := range elem.Attr {
+				attrName := stripXMLNamespace(attr.Name.Local)
+				if _, ok := allowedLevelFields[attrName]; ok {
+					if attr.Value != "" {
+						result = []byte(strings.TrimSpace(attr.Value))
+						return result
+					}
+				}
+			}
+
+			depth++
+
+		case xml.EndElement:
+			depth--
+		}
+	}
+
+	return result
+}
+
+// stripXMLNamespace removes the namespace prefix from an XML element/attribute name
+func stripXMLNamespace(name string) string {
+	if idx := strings.IndexByte(name, ':'); idx != -1 {
+		return name[idx+1:]
+	}
+	return name
+}
+
+// isXML checks if a line appears to be XML format
+func isXML(line []byte) bool {
+	trimmed := bytes.TrimSpace(line)
+	if len(trimmed) == 0 {
+		return false
+	}
+	// XML starts with < and likely has >
+	return trimmed[0] == '<' && bytes.Contains(trimmed, []byte(">"))
 }
