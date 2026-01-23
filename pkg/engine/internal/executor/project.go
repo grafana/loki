@@ -96,6 +96,11 @@ func newKeepPipeline(colRefs []types.ColumnRef, keepFunc func([]types.ColumnRef,
 			return nil, err
 		}
 
+		if batch.NumRows() == 0 {
+			// Nothing to process, return an empty record with the same schema
+			return batch, nil
+		}
+
 		columns := make([]arrow.Array, 0, batch.NumCols())
 		fields := make([]arrow.Field, 0, batch.NumCols())
 
@@ -127,6 +132,11 @@ func newExpandPipeline(expr physical.Expression, evaluator *expressionEvaluator,
 		batch, err := input.Read(ctx)
 		if err != nil {
 			return nil, err
+		}
+
+		if batch.NumRows() == 0 {
+			// Nothing to process, return an empty record with the same schema
+			return batch, nil
 		}
 
 		outputFields := make([]arrow.Field, 0)
