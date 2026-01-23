@@ -122,6 +122,11 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch
 				return nil, err
 			}
 
+			if record.NumRows() == 0 {
+				// Nothing to process
+				continue
+			}
+
 			inputsExhausted = false
 
 			// extract timestamp column
