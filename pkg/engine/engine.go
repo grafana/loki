@@ -12,7 +12,8 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/dskit/user"
+	"github.com/grafana/dskit/httpgrpc"
+	"github.com/grafana/dskit/tenant"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -160,6 +161,11 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	defer capture.End()
 	startTime := time.Now()
 
+	tenantID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return logqlmodel.Result{}, httpgrpc.Error(http.StatusBadRequest, err.Error())
+	}
+
 	ctx, region := xcap.StartRegion(ctx, "Engine.Execute", xcap.WithRegionAttributes(
 		attribute.String("type", string(logql.GetRangeType(params))),
 		attribute.String("query", params.QueryString()),
@@ -185,14 +191,14 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 		return logqlmodel.Result{}, ErrNotSupported
 	}
 
-	physicalPlan, durPhysicalPlanning, err := e.buildPhysicalPlan(ctx, logger, params, logicalPlan)
+	physicalPlan, durPhysicalPlanning, err := e.buildPhysicalPlan(ctx, tenantID, logger, params, logicalPlan)
 	if err != nil {
 		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
 		region.SetStatus(codes.Error, "failed to create physical plan")
 		return logqlmodel.Result{}, ErrPlanningFailed
 	}
 
-	wf, durWorkflowPlanning, err := e.buildWorkflow(ctx, logger, physicalPlan)
+	wf, durWorkflowPlanning, err := e.buildWorkflow(ctx, tenantID, logger, physicalPlan)
 	if err != nil {
 		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
 		region.SetStatus(codes.Error, "failed to create execution plan")
@@ -325,11 +331,11 @@ func (e *Engine) buildLogicalPlan(ctx context.Context, logger log.Logger, params
 }
 
 // buildPhysicalPlan builds a physical plan from the given logical plan.
-func (e *Engine) buildPhysicalPlan(ctx context.Context, logger log.Logger, params logql.Params, logicalPlan *logical.Plan) (*physical.Plan, time.Duration, error) {
+func (e *Engine) buildPhysicalPlan(ctx context.Context, tenantID string, logger log.Logger, params logql.Params, logicalPlan *logical.Plan) (*physical.Plan, time.Duration, error) {
 	region := xcap.RegionFromContext(ctx)
 	timer := prometheus.NewTimer(e.metrics.physicalPlanning)
 
-	catalog := physical.NewMetastoreCatalog(e.metastoreSectionsResolver(ctx))
+	catalog := physical.NewMetastoreCatalog(e.metastoreSectionsResolver(ctx, tenantID))
 
 	// TODO(rfratto): It feels strange that we need to past the start/end time
 	// to the physical planner. Isn't it already represented by the logical
@@ -338,9 +344,7 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, logger log.Logger, param
 
 	// Get the tenant's MaxQuerySeries limit and pass it to the planner context if enforcement is enabled
 	if e.cfg.EnforceQuerySeriesLimit {
-		if tenantID, err := user.ExtractOrgID(ctx); err == nil {
-			plannerCtx = plannerCtx.WithMaxQuerySeries(e.limits.MaxQuerySeries(ctx, tenantID))
-		}
+		plannerCtx = plannerCtx.WithMaxQuerySeries(e.limits.MaxQuerySeries(ctx, tenantID))
 	}
 
 	planner := physical.NewPlanner(plannerCtx, catalog)
@@ -369,7 +373,7 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, logger log.Logger, param
 	return physicalPlan, duration, nil
 }
 
-func (e *Engine) metastoreSectionsResolver(ctx context.Context) physical.MetastoreSectionsResolver {
+func (e *Engine) metastoreSectionsResolver(ctx context.Context, tenantID string) physical.MetastoreSectionsResolver {
 	planner := physical.NewMetastorePlanner(e.metastore)
 	return func(selector physical.Expression, predicates []physical.Expression, start time.Time, end time.Time) ([]*metastore.DataobjSectionDescriptor, error) {
 		ctx, region := xcap.StartRegion(ctx, "ObjectMetastore.Sections")
@@ -380,7 +384,7 @@ func (e *Engine) metastoreSectionsResolver(ctx context.Context) physical.Metasto
 			return nil, fmt.Errorf("metastore: build plan: %w", err)
 		}
 
-		wf, _, err := e.buildWorkflow(ctx, e.logger, plan)
+		wf, _, err := e.buildWorkflow(ctx, tenantID, e.logger, plan)
 		if err != nil {
 			return nil, fmt.Errorf("metastore: build workflow: %w", err)
 		}
@@ -414,12 +418,7 @@ func (e *Engine) metastoreSectionsResolver(ctx context.Context) physical.Metasto
 }
 
 // buildWorkflow builds a workflow from the given physical plan.
-func (e *Engine) buildWorkflow(ctx context.Context, logger log.Logger, physicalPlan *physical.Plan) (*workflow.Workflow, time.Duration, error) {
-	tenantID, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return nil, 0, fmt.Errorf("extracting tenant ID: %w", err)
-	}
-
+func (e *Engine) buildWorkflow(ctx context.Context, tenantID string, logger log.Logger, physicalPlan *physical.Plan) (*workflow.Workflow, time.Duration, error) {
 	region := xcap.RegionFromContext(ctx)
 	timer := prometheus.NewTimer(e.metrics.workflowPlanning)
 
