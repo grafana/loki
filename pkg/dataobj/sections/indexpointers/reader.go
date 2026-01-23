@@ -365,10 +365,14 @@ func mustConvertType(dtype arrow.DataType) datasetmd.PhysicalType {
 	return toType
 }
 
-// Reset discards any state and resets r with a new set of optiosn. This
+// Reset discards any state and resets r with a new set of options. This
 // permits reusing a Reader rather than allocating a new one.
 func (r *Reader) Reset(opts ReaderOptions) {
-	r.alloc.Reset()
+	if r.alloc == nil {
+		r.alloc = memoryv2.MakeAllocator(nil)
+	} else {
+		r.alloc.Reset()
+	}
 	r.opts = opts
 	r.schema = columnsSchema(opts.Columns)
 

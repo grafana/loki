@@ -107,7 +107,7 @@ func (f *HandlerFactory) CreateHandler(routeName string, comp comparator.Respons
 		RoutingMode:                   f.routingMode,
 		SplitStart:                    f.splitStart,
 		SplitLag:                      f.splitLag,
-		SplitRetentionDays:             f.splitRetentionDays,
+		SplitRetentionDays:            f.splitRetentionDays,
 		AddRoutingDecisionsToWarnings: f.addRoutingDecisionsToWarnings,
 	}, f.logger)
 
