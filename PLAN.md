@@ -345,5 +345,55 @@ docs/sources/
 
 ---
 
-**Status**: Iteration 1 - Plan Created
-**Next Steps**: Implement XMLParser and build tests
+## Iteration 1 - Core XML Parser Implementation
+
+### Completed
+- [x] Created comprehensive PLAN.md based on JSON capabilities
+- [x] Implemented XMLParser (pkg/logql/log/xmlparser.go)
+  - Nested element flattening with underscore separators
+  - Attribute extraction with element prefixes
+  - Configurable namespace stripping
+  - XML path tracking for label origin
+- [x] Comprehensive XMLParser unit tests with 11 passing tests
+  - Simple elements
+  - Multiple elements
+  - Nested elements
+  - Element attributes
+  - Numeric values
+  - Duplicate handling
+  - Empty elements
+  - Whitespace trimming
+  - CDATA sections
+  - Mixed attributes and elements
+  - Error handling
+- [x] Implemented XMLExpr parser (pkg/logql/log/xmlexpr/parser.go)
+  - XPath-like expression parser
+  - Dot notation support (pod.uuid)
+  - Slash separator support
+  - Nested path extraction
+- [x] XML expression parser tests (7 passing tests)
+- [x] All tests passing (no regressions)
+
+### Status Summary
+**Iteration 1**: Core XML parsing foundation complete
+- XMLParser provides feature parity with JSON parsing for basic use cases
+- XML attributes properly extracted as labels
+- Nested elements flattened with underscore separators
+- XML path tracking implemented
+- Expression parser for extracting specific fields
+
+### Next Steps (Future Iterations)
+- Integrate XML filter into LogQL parser
+- Engine integration for columnar processing
+- LogQL `xml` filter operator
+- XML output formatting
+- Field detection for XML
+- Performance benchmarking and optimization
+- Integration tests
+- Documentation
+
+---
+
+**Status**: Iteration 1 - Core Implementation Complete
+**Tests Passing**: 18/18 XML-specific tests + all existing log tests
+**Git Commits**: 2 commits with feature implementations
