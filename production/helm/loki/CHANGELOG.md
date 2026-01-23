@@ -13,6 +13,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+- [BUGFIX] Correctly pass arguments for kubectl in statefulset/pvc-recreation job. [#20556](https://github.com/grafana/loki/pull/20556)
 
 ## 6.53.0
 
