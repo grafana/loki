@@ -269,6 +269,27 @@ func (h *queryHandler) validateRequiredLabels(ctx context.Context, expr syntax.E
 		return httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 
+	// Collect required labels per tenant and compute the minimum required number of labels.
+	// This avoids repeated calls to limits methods when validating each matcher group.
+	requiredLabelsByTenant := make(map[string][]string, len(tenantIDs))
+	var requiredNumberLabels int
+	for _, tenantID := range tenantIDs {
+		required := h.limits.RequiredLabels(ctx, tenantID)
+		if len(required) > 0 {
+			requiredLabelsByTenant[tenantID] = required
+		}
+		if n := h.limits.RequiredNumberLabels(ctx, tenantID); n > 0 {
+			if requiredNumberLabels == 0 || n < requiredNumberLabels {
+				requiredNumberLabels = n
+			}
+		}
+	}
+
+	// Early return if no tenant has any requirements configured.
+	if len(requiredLabelsByTenant) == 0 && requiredNumberLabels == 0 {
+		return nil
+	}
+
 	// Get matcher groups from the expression
 	matcherGroups, err := syntax.MatcherGroups(expr)
 	if err != nil {
@@ -278,7 +299,7 @@ func (h *queryHandler) validateRequiredLabels(ctx context.Context, expr syntax.E
 
 	// Validate each matcher group
 	for _, group := range matcherGroups {
-		if err := h.validateMatcherGroup(ctx, tenantIDs, group.Matchers); err != nil {
+		if err := h.validateMatcherGroup(group.Matchers, requiredLabelsByTenant, requiredNumberLabels); err != nil {
 			return err
 		}
 	}
@@ -287,7 +308,7 @@ func (h *queryHandler) validateRequiredLabels(ctx context.Context, expr syntax.E
 }
 
 // validateMatcherGroup validates a single group of matchers against required labels limits.
-func (h *queryHandler) validateMatcherGroup(ctx context.Context, tenantIDs []string, matchers []*labels.Matcher) error {
+func (h *queryHandler) validateMatcherGroup(matchers []*labels.Matcher, requiredLabelsByTenant map[string][]string, requiredNumberLabels int) error {
 	actual := make(map[string]struct{}, len(matchers))
 	var present []string
 	for _, m := range matchers {
@@ -295,9 +316,8 @@ func (h *queryHandler) validateMatcherGroup(ctx context.Context, tenantIDs []str
 		present = append(present, m.Name)
 	}
 
-	// Enforce RequiredLabels limit
-	for _, tenantID := range tenantIDs {
-		required := h.limits.RequiredLabels(ctx, tenantID)
+	// Enforce RequiredLabels limit per tenant.
+	for _, required := range requiredLabelsByTenant {
 		var missing []string
 		for _, label := range required {
 			if _, found := actual[label]; !found {
@@ -313,8 +333,6 @@ func (h *queryHandler) validateMatcherGroup(ctx context.Context, tenantIDs []str
 	}
 
 	// Enforce RequiredNumberLabels limit.
-	requiredNumberLabelsCapture := func(id string) int { return h.limits.RequiredNumberLabels(ctx, id) }
-	requiredNumberLabels := util_validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, requiredNumberLabelsCapture)
 	if requiredNumberLabels > 0 && len(present) < requiredNumberLabels {
 		return httpgrpc.Errorf(http.StatusBadRequest,
 			"stream selector has less label matchers than required: (present: [%s], number_present: %d, required_number_label_matchers: %d)",
@@ -392,10 +410,6 @@ func (h *queryHandler) doInstantRequest(ctx context.Context, req *queryrange.Lok
 
 // validateInstantRequest validates all limits for an instant query request.
 func (h *queryHandler) validateInstantRequest(ctx context.Context, req *queryrange.LokiInstantRequest) error {
-	if err := h.validateMaxEntriesLimits(ctx, req.Plan.AST, req.Limit); err != nil {
-		return err
-	}
-
 	if err := h.validateRequiredLabels(ctx, req.Plan.AST); err != nil {
 		return err
 	}
