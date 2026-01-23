@@ -128,7 +128,7 @@ func update(crc uint64, p []byte) uint64 {
 		if hasAsm512 && runs >= 8 {
 			// Use 512-bit wide instructions for >= 1KB.
 			crc = updateAsm512(crc, p[:128*runs])
-		} else {
+		} else if runs > 0 {
 			crc = updateAsm(crc, p[:128*runs])
 		}
 		return update(crc, p[128*runs:])

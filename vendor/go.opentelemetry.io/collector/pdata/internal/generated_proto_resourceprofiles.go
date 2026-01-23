@@ -16,9 +16,9 @@ import (
 
 // ResourceProfiles is a collection of profiles from a Resource.
 type ResourceProfiles struct {
+	SchemaUrl     string
 	Resource      Resource
 	ScopeProfiles []*ScopeProfiles
-	SchemaUrl     string
 }
 
 var (
@@ -45,7 +45,6 @@ func DeleteResourceProfiles(orig *ResourceProfiles, nullable bool) {
 		orig.Reset()
 		return
 	}
-
 	DeleteResource(&orig.Resource, false)
 	for i := range orig.ScopeProfiles {
 		DeleteScopeProfiles(orig.ScopeProfiles[i], true)
@@ -184,6 +183,7 @@ func (orig *ResourceProfiles) SizeProto() int {
 		l = orig.ScopeProfiles[i].SizeProto()
 		n += 1 + proto.Sov(uint64(l)) + l
 	}
+
 	l = len(orig.SchemaUrl)
 	if l > 0 {
 		n += 1 + proto.Sov(uint64(l)) + l

@@ -2,7 +2,6 @@ package dataset
 
 import (
 	"compress/gzip"
-	"context"
 	"errors"
 	"io"
 	"math/rand"
@@ -14,7 +13,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
+	"github.com/grafana/loki/v3/pkg/memory"
 )
 
 func Benchmark_page_Decode(b *testing.B) {
@@ -163,23 +164,21 @@ func Test_pageBuilder_WriteRead(t *testing.T) {
 	var actual []string
 
 	r := newPageReader(page, opts.Type.Physical, opts.Compression)
+
+	var alloc memory.Allocator
 	for {
-		var values [1]Value
-		n, err := r.Read(context.Background(), values[:])
+		arr, err := r.Read(t.Context(), &alloc, 1)
 		if err != nil && !errors.Is(err, io.EOF) {
 			require.NoError(t, err)
-		} else if n == 0 && errors.Is(err, io.EOF) {
+		} else if arr == nil && errors.Is(err, io.EOF) {
 			break
-		} else if n == 0 {
-			continue
 		}
 
-		val := values[0]
-		if val.IsNil() || val.IsZero() {
+		if arr.IsNull(0) {
 			actual = append(actual, "")
 		} else {
-			require.Equal(t, datasetmd.PHYSICAL_TYPE_BINARY, val.Type())
-			actual = append(actual, string(val.Binary()))
+			val := arr.(*columnar.UTF8).Get(0)
+			actual = append(actual, string(val))
 		}
 	}
 	require.Equal(t, in, actual)

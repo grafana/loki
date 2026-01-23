@@ -239,8 +239,10 @@ func (c *consumer) waitAndAddPoller() {
 	}
 	c.pollWaitMu.Lock()
 	defer c.pollWaitMu.Unlock()
-	for c.pollWaitState>>32 != 0 {
-		c.pollWaitC.Wait()
+	if c.pollWaitState&math.MaxUint32 == 0 {
+		for c.pollWaitState>>32 != 0 {
+			c.pollWaitC.Wait()
+		}
 	}
 	// Rebalance always takes priority, but if there are no active
 	// rebalances, our poll blocks rebalances.

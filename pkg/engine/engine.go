@@ -19,6 +19,7 @@ import (
 	"go.opentelemetry.io/otel/codes"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/engine/internal/deletion"
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/logical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
@@ -46,6 +47,15 @@ var (
 
 var tracer = otel.Tracer("pkg/engine")
 
+// Re-export internal types for external use.
+type (
+	// RequestStreamFilterer creates a StreamFilterer for a given request context.
+	RequestStreamFilterer = executor.RequestStreamFilterer
+
+	// StreamFilterer filters streams based on their labels.
+	StreamFilterer = executor.StreamFilterer
+)
+
 // ExecutorConfig configures engine execution.
 type ExecutorConfig struct {
 	// Batch size of the v2 execution engine.
@@ -56,6 +66,10 @@ type ExecutorConfig struct {
 
 	// RangeConfig determines how to optimize range reads in the V2 engine.
 	RangeConfig rangeio.Config `yaml:"range_reads" category:"experimental" doc:"description=Configures how to read byte ranges from object storage when using the V2 engine."`
+
+	// StreamFilterer is an optional filterer that can filter streams based on their labels.
+	// When set, streams are filtered before scanning.
+	StreamFilterer executor.RequestStreamFilterer `yaml:"-"`
 }
 
 func (cfg *ExecutorConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
@@ -71,9 +85,10 @@ type Params struct {
 
 	Config ExecutorConfig // Config for the Engine.
 
-	Scheduler *Scheduler          // Scheduler to manage the execution of tasks.
-	Metastore metastore.Metastore // Metastore to access the indexes
-	Limits    logql.Limits        // Limits to apply to engine queries.
+	Scheduler    *Scheduler          // Scheduler to manage the execution of tasks.
+	Metastore    metastore.Metastore // Metastore to access the indexes
+	Limits       logql.Limits        // Limits to apply to engine queries.
+	DeleteGetter deletion.Getter     // DeleteGetter to fetch delete requests for query-time filtering.
 }
 
 // validate validates p and applies defaults.
@@ -102,8 +117,9 @@ type Engine struct {
 	metrics     *metrics
 	rangeConfig rangeio.Config
 
-	scheduler *Scheduler   // Scheduler to manage the execution of tasks.
-	limits    logql.Limits // Limits to apply to engine queries.
+	scheduler    *Scheduler      // Scheduler to manage the execution of tasks.
+	limits       logql.Limits    // Limits to apply to engine queries.
+	deleteGetter deletion.Getter // DeleteGetter to fetch delete requests for query-time filtering.
 
 	metastore metastore.Metastore
 }
@@ -119,8 +135,9 @@ func New(params Params) (*Engine, error) {
 		metrics:     newMetrics(params.Registerer),
 		rangeConfig: params.Config.RangeConfig,
 
-		scheduler: params.Scheduler,
-		limits:    params.Limits,
+		scheduler:    params.Scheduler,
+		limits:       params.Limits,
+		deleteGetter: params.DeleteGetter,
 
 		metastore: params.Metastore,
 	}
@@ -147,7 +164,7 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 		attribute.String("type", string(logql.GetRangeType(params))),
 		attribute.String("query", params.QueryString()),
 		attribute.Stringer("start", params.Start()),
-		attribute.Stringer("end", params.Start()),
+		attribute.Stringer("end", params.End()),
 		attribute.Stringer("step", params.Step()),
 		attribute.Stringer("length", params.End().Sub(params.Start())),
 		attribute.StringSlice("shards", params.Shards()),
@@ -271,9 +288,24 @@ func (e *Engine) buildLogicalPlan(ctx context.Context, logger log.Logger, params
 	region := xcap.RegionFromContext(ctx)
 	timer := prometheus.NewTimer(e.metrics.logicalPlanning)
 
-	logicalPlan, err := logical.BuildPlan(params)
+	var deleteReqs []*deletion.Request
+	if e.deleteGetter != nil {
+		var err error
+		deleteReqs, err = deletion.DeletesForUser(ctx, params.Start(), params.End(), e.deleteGetter)
+		if err != nil {
+			return nil, 0, fmt.Errorf("failed to get delete requests: %w", err)
+		}
+	}
+
+	logicalPlan, err := logical.BuildPlanWithDeletes(ctx, params, deleteReqs)
 	if err != nil {
 		level.Warn(logger).Log("msg", "failed to create logical plan", "err", err)
+		region.RecordError(err)
+		return nil, 0, ErrNotSupported
+	}
+
+	if err := logical.Optimize(logicalPlan); err != nil {
+		level.Warn(logger).Log("msg", "failed to optimize logical plan", "err", err)
 		region.RecordError(err)
 		return nil, 0, ErrNotSupported
 	}
@@ -383,13 +415,16 @@ func (e *Engine) buildWorkflow(ctx context.Context, logger log.Logger, physicalP
 	timer := prometheus.NewTimer(e.metrics.workflowPlanning)
 
 	opts := workflow.Options{
+		Tenant: tenantID,
+		Actor:  httpreq.ExtractActorPath(ctx),
+
 		MaxRunningScanTasks:  e.limits.MaxScanTaskParallelism(tenantID),
 		MaxRunningOtherTasks: 0,
 
 		DebugTasks:   e.limits.DebugEngineTasks(tenantID),
 		DebugStreams: e.limits.DebugEngineStreams(tenantID),
 	}
-	wf, err := workflow.New(opts, logger, tenantID, e.scheduler.inner, physicalPlan)
+	wf, err := workflow.New(opts, logger, e.scheduler.inner, physicalPlan)
 	if err != nil {
 		level.Warn(logger).Log("msg", "failed to create workflow", "err", err)
 		region.RecordError(err)
@@ -407,6 +442,7 @@ func (e *Engine) buildWorkflow(ctx context.Context, logger log.Logger, physicalP
 	level.Info(logger).Log(
 		"msg", "finished execution planning",
 		"duration", duration.String(),
+		"tasks", wf.Len(),
 	)
 
 	region.AddEvent("finished execution planning", attribute.Stringer("duration", duration))

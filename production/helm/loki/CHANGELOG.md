@@ -13,6 +13,31 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+## 6.51.0
+
+- [CHANGE] Changed version of Grafana Loki to 3.6.4
+
+## 6.50.0
+
+- [ENHANCEMENT] Add configurable `startupProbe` to compactor [#20072](https://github.com/grafana/loki/pull/20072).
+- [ENHANCEMENT] Add configurable `startupProbe` to distributor [#20073](https://github.com/grafana/loki/pull/20073).
+- [ENHANCEMENT] Add guards to the `readinessProbe` of the `gateway` container in the `enterprise-gateway` pods, in case the value is empty. Makes it possible to configure livenessProbe and startupProbe in the gateway container in the enterprise-gateway pods [#20074](https://github.com/grafana/loki/pull/20074)
+- [ENHANCEMENT] Add a configurable `startupProbe` to the index-gateway container in the index-gateway pods [#20075](https://github.com/grafana/loki/pull/20075)
+- [ENHANCEMENT] Add configurable `startupProbe` to ingester [#20076](https://github.com/grafana/loki/pull/20076)
+- [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` to loki-canary [#20079](https://github.com/grafana/loki/pull/20079)
+- [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` to pattern-ingester [#20080](https://github.com/grafana/loki/pull/20080)
+- [ENHANCEMENT] Add configurable `startupProbe` to querier [#20081](https://github.com/grafana/loki/pull/20081) 
+- [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` to query-frontend [#20082](https://github.com/grafana/loki/pull/20082) 
+- [ENHANCEMENT] Add configurable `startupProbe` to query-scheduler [#20083](https://github.com/grafana/loki/pull/20083) 
+- [ENHANCEMENT] Add configurable `startupProbe` to table-manager [#20084](https://github.com/grafana/loki/pull/20084)
+- [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` to ruler [#20085](https://github.com/grafana/loki/pull/20085) 
+- [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` to the loki container in the write pods [#20087](https://github.com/grafana/loki/pull/20087) 
+- [BUGFIX] Fix rendering of `dnsConfig` for `backend`, `read`, `write`, `single-binary` and `table-manager`. [#20013](https://github.com/grafana/loki/pull/20013)
+- [BUGFIX] Respect global registry in sidecar image [#19347](https://github.com/grafana/loki/pull/19347).
+- [BUGFIX] Fix typos in comments in Values for health probes [#20078](https://github.com/grafana/loki/pull/20078)
+- [BUGFIX] Fix ingester-b volumeAttributesClassName templating [#20188] (https://github.com/grafana/loki/pull/20188)
+- [BUGFIX] Apply quotation marks to schema date in single-binary-values.yaml example.   [#20252](https://github.com/grafana/loki/pull/20252)
+
 ## 6.49.0
 
 - [CHANGE] Updated version of Grafana Loki to 3.6.3

@@ -5,11 +5,12 @@ import (
 
 	"github.com/parquet-go/bitpack"
 	"github.com/parquet-go/parquet-go/encoding"
+	"github.com/parquet-go/parquet-go/internal/memory"
 )
 
 type booleanPage struct {
 	typ         Type
-	bits        []byte
+	bits        memory.SliceBuffer[byte]
 	offset      int32
 	numValues   int32
 	columnIndex int16
@@ -18,7 +19,7 @@ type booleanPage struct {
 func newBooleanPage(typ Type, columnIndex int16, numValues int32, values encoding.Values) *booleanPage {
 	return &booleanPage{
 		typ:         typ,
-		bits:        values.Boolean()[:bitpack.ByteCount(uint(numValues))],
+		bits:        memory.SliceBufferFrom(values.Boolean()[:bitpack.ByteCount(uint(numValues))]),
 		numValues:   numValues,
 		columnIndex: ^columnIndex,
 	}
@@ -36,20 +37,21 @@ func (page *booleanPage) NumValues() int64 { return int64(page.numValues) }
 
 func (page *booleanPage) NumNulls() int64 { return 0 }
 
-func (page *booleanPage) Size() int64 { return int64(len(page.bits)) }
+func (page *booleanPage) Size() int64 { return int64(page.bits.Len()) }
 
 func (page *booleanPage) RepetitionLevels() []byte { return nil }
 
 func (page *booleanPage) DefinitionLevels() []byte { return nil }
 
-func (page *booleanPage) Data() encoding.Values { return encoding.BooleanValues(page.bits) }
+func (page *booleanPage) Data() encoding.Values { return encoding.BooleanValues(page.bits.Slice()) }
 
 func (page *booleanPage) Values() ValueReader { return &booleanPageValues{page: page} }
 
 func (page *booleanPage) valueAt(i int) bool {
+	bits := page.bits.Slice()
 	j := uint32(int(page.offset)+i) / 8
 	k := uint32(int(page.offset)+i) % 8
-	return ((page.bits[j] >> k) & 1) != 0
+	return ((bits[j] >> k) & 1) != 0
 }
 
 func (page *booleanPage) min() bool {
@@ -112,7 +114,7 @@ func (page *booleanPage) Slice(i, j int64) Page {
 
 	return &booleanPage{
 		typ:         page.typ,
-		bits:        page.bits[off:end],
+		bits:        memory.SliceBufferFrom(page.bits.Slice()[off:end]),
 		offset:      int32(lowWithOffset % 8),
 		numValues:   int32(j - i),
 		columnIndex: page.columnIndex,

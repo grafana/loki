@@ -2,27 +2,45 @@ package jsonlite
 
 import (
 	"fmt"
-	"iter"
+	"math"
+	"strconv"
+	"time"
 )
 
 // Iterator provides a streaming interface for traversing JSON values.
 // It automatically handles control tokens (braces, brackets, colons, commas)
 // and presents only the logical JSON values to the caller.
 type Iterator struct {
-	tokens Tokenizer
-	token  string
-	kind   Kind
-	key    string
-	err    error
-	state  []byte // stack of states: 'a' for array, 'o' for object (expecting key), 'v' for object (expecting value)
-	bytes  [16]byte
+	tokens   Tokenizer
+	json     string // Original JSON for computing pre-token positions
+	token    string
+	kind     Kind
+	key      string
+	err      error
+	state    []byte // stack of states: 'a' for array, 'o' for object (expecting key), 'v' for object (expecting value)
+	bytes    [16]byte
+	consumed bool // whether the current value has been consumed
 }
 
 // Iterate creates a new Iterator for the given JSON string.
 func Iterate(json string) *Iterator {
-	it := &Iterator{tokens: Tokenizer{json: json}}
+	it := &Iterator{
+		tokens: Tokenizer{json: json},
+		json:   json, // Store original JSON
+	}
 	it.state = it.bytes[:0]
 	return it
+}
+
+// Reset resets the iterator to parse a new JSON string.
+func (it *Iterator) Reset(json string) {
+	it.tokens = Tokenizer{json: json}
+	it.json = json
+	it.token = ""
+	it.kind = 0
+	it.key = ""
+	it.err = nil
+	it.consumed = false
 }
 
 // Next advances the iterator to the next JSON value.
@@ -121,6 +139,7 @@ func (it *Iterator) setToken(token string) bool {
 	it.token = token
 	it.kind = kind
 	it.err = err
+	it.consumed = false
 
 	if err != nil {
 		return false
@@ -134,6 +153,42 @@ func (it *Iterator) setToken(token string) bool {
 	}
 
 	return true
+}
+
+func (it *Iterator) skipArray() {
+	depth := 1
+	for depth > 0 {
+		token, ok := it.tokens.Next()
+		if !ok {
+			it.setError(errUnexpectedEndOfArray)
+			return
+		}
+		switch token {
+		case "[":
+			depth++
+		case "]":
+			depth--
+		}
+	}
+	it.pop()
+}
+
+func (it *Iterator) skipObject() {
+	depth := 1
+	for depth > 0 {
+		token, ok := it.tokens.Next()
+		if !ok {
+			it.setError(errUnexpectedEndOfObject)
+			return
+		}
+		switch token {
+		case "{":
+			depth++
+		case "}":
+			depth--
+		}
+	}
+	it.pop()
 }
 
 func tokenKind(token string) (Kind, error) {
@@ -185,37 +240,40 @@ func (it *Iterator) Depth() int { return len(it.state) }
 // Value parses and returns the current value.
 // For arrays and objects, this consumes all nested tokens and returns the
 // complete parsed structure.
-func (it *Iterator) Value() (Value, error) {
+func (it *Iterator) Value() (*Value, error) {
+	val, err := it.value()
+	return &val, err
+}
+
+func (it *Iterator) value() (Value, error) {
 	if it.err != nil {
 		return Value{}, it.err
 	}
 
 	switch it.kind {
-	case Null:
-		return makeNullValue(), nil
-	case True:
-		return makeTrueValue(), nil
-	case False:
-		return makeFalseValue(), nil
-	case Number:
-		return makeNumberValue(it.token), nil
+	case Null, True, False, Number:
+		return makeValue(it.kind, it.token), nil
 	case String:
-		s, err := Unquote(it.token)
-		if err != nil {
+		// Validate the quoted string but store the quoted token
+		if !validString(it.token) {
 			return Value{}, fmt.Errorf("invalid string: %q", it.token)
 		}
-		return makeStringValue(s), nil
+		return makeStringValue(it.token), nil
 	case Array:
-		val, rest, err := parseArray(it.tokens.json)
-		it.tokens.json = rest
+		delimi := len(it.token)
+		offset := len(it.json) - len(it.tokens.json) - delimi
+		val, rest, err := parseArray(it.json[offset:], it.tokens.json, DefaultMaxDepth)
+		it.tokens.json, it.consumed = rest, true
 		if err != nil {
 			it.setError(err)
 		}
 		it.pop()
 		return val, err
 	case Object:
-		val, rest, err := parseObject(it.tokens.json)
-		it.tokens.json = rest
+		delimi := len(it.token)
+		offset := len(it.json) - len(it.tokens.json) - delimi
+		val, rest, err := parseObject(it.json[offset:], it.tokens.json, DefaultMaxDepth)
+		it.tokens.json, it.consumed = rest, true
 		if err != nil {
 			it.setError(err)
 		}
@@ -226,117 +284,279 @@ func (it *Iterator) Value() (Value, error) {
 	}
 }
 
-// Object returns an iterator over the key-value pairs of the current object.
+// Null returns true if the current value is null.
+func (it *Iterator) Null() bool { return it.kind == Null }
+
+// Bool returns the current value as a boolean.
+// Returns false for null values.
+// Returns an error if the value is not a boolean, null, or a string that can be parsed as a boolean.
+func (it *Iterator) Bool() (bool, error) {
+	switch it.kind {
+	case Null, False:
+		return false, nil
+	case True:
+		return true, nil
+	case String:
+		s, err := Unquote(it.token)
+		if err != nil {
+			return false, fmt.Errorf("invalid string: %q", it.token)
+		}
+		return strconv.ParseBool(s)
+	default:
+		return false, fmt.Errorf("cannot convert %v to bool", it.kind)
+	}
+}
+
+// Int returns the current value as a signed 64-bit integer.
+// Returns 0 for null values.
+// Returns an error if the value is not a number, null, or a string that can be parsed as an integer.
+func (it *Iterator) Int() (int64, error) {
+	switch it.kind {
+	case Null:
+		return 0, nil
+	case Number:
+		return strconv.ParseInt(it.token, 10, 64)
+	case String:
+		s, err := Unquote(it.token)
+		if err != nil {
+			return 0, fmt.Errorf("invalid string: %q", it.token)
+		}
+		return strconv.ParseInt(s, 10, 64)
+	default:
+		return 0, fmt.Errorf("cannot convert %v to int", it.kind)
+	}
+}
+
+// Float returns the current value as a 64-bit floating point number.
+// Returns 0 for null values.
+// Returns an error if the value is not a number, null, or a string that can be parsed as a float.
+func (it *Iterator) Float() (float64, error) {
+	switch it.kind {
+	case Null:
+		return 0, nil
+	case Number:
+		return strconv.ParseFloat(it.token, 64)
+	case String:
+		s, err := Unquote(it.token)
+		if err != nil {
+			return 0, fmt.Errorf("invalid string: %q", it.token)
+		}
+		return strconv.ParseFloat(s, 64)
+	default:
+		return 0, fmt.Errorf("cannot convert %v to float", it.kind)
+	}
+}
+
+// String returns the current value as a string.
+// Returns "" for null values.
+// Returns an error if the value is not a string or null.
+func (it *Iterator) String() (string, error) {
+	switch it.kind {
+	case Null:
+		return "", nil
+	case String:
+		return Unquote(it.token)
+	default:
+		return "", fmt.Errorf("cannot convert %v to string", it.kind)
+	}
+}
+
+// Duration returns the current value as a time.Duration.
+// Returns 0 for null values.
+// For numbers, the value is interpreted as seconds.
+// For strings, the value is parsed using time.ParseDuration.
+// Returns an error if the value cannot be converted to a duration.
+func (it *Iterator) Duration() (time.Duration, error) {
+	switch it.kind {
+	case Null:
+		return 0, nil
+	case Number:
+		f, err := strconv.ParseFloat(it.token, 64)
+		if err != nil {
+			return 0, err
+		}
+		return time.Duration(f * float64(time.Second)), nil
+	case String:
+		s, err := Unquote(it.token)
+		if err != nil {
+			return 0, fmt.Errorf("invalid string: %q", it.token)
+		}
+		return time.ParseDuration(s)
+	default:
+		return 0, fmt.Errorf("cannot convert %v to duration", it.kind)
+	}
+}
+
+// Time returns the current value as a time.Time.
+// Returns the zero time for null values.
+// For numbers, the value is interpreted as seconds since Unix epoch.
+// For strings, the value is parsed using RFC3339 format.
+// Returns an error if the value cannot be converted to a time.
+func (it *Iterator) Time() (time.Time, error) {
+	switch it.kind {
+	case Null:
+		return time.Time{}, nil
+	case Number:
+		f, err := strconv.ParseFloat(it.token, 64)
+		if err != nil {
+			return time.Time{}, err
+		}
+		sec, frac := math.Modf(f)
+		return time.Unix(int64(sec), int64(frac*1e9)).UTC(), nil
+	case String:
+		s, err := Unquote(it.token)
+		if err != nil {
+			return time.Time{}, fmt.Errorf("invalid string: %q", it.token)
+		}
+		return time.Parse(time.RFC3339, s)
+	default:
+		return time.Time{}, fmt.Errorf("cannot convert %v to time", it.kind)
+	}
+}
+
+// Object iterates over the key-value pairs of the current object.
 // The iterator yields the key for each field, and the Iterator is positioned
 // on the field's value. Call Kind(), Value(), Object(), or Array() to process
-// the value.
+// the value. If the value is not consumed before the next iteration, it will
+// be automatically skipped.
+// For null values, no iterations occur.
 //
-// Must only be called when Kind() == Object.
-func (it *Iterator) Object() iter.Seq2[string, error] {
-	return func(yield func(string, error) bool) {
-		for i := 0; ; i++ {
-			token, ok := it.tokens.Next()
+// Must only be called when Kind() == Object or Kind() == Null.
+func (it *Iterator) Object(yield func(string, error) bool) {
+	if it.kind == Null {
+		return // null is treated as empty object
+	}
+	it.consumed = true // mark the object itself as consumed
+	for i := 0; ; i++ {
+		// Auto-consume the previous value if it wasn't consumed
+		if !it.consumed {
+			switch it.kind {
+			case Array:
+				it.consumed = true
+				it.skipArray()
+			case Object:
+				it.consumed = true
+				it.skipObject()
+			}
+		}
+
+		token, ok := it.tokens.Next()
+		if !ok {
+			it.setError(errUnexpectedEndOfObject)
+			yield("", it.err)
+			return
+		}
+
+		if token == "}" {
+			it.pop()
+			return
+		}
+
+		if i != 0 {
+			if token != "," {
+				it.setErrorf("expected ',', got %q", token)
+				yield("", it.err)
+				return
+			}
+			token, ok = it.tokens.Next()
 			if !ok {
 				it.setError(errUnexpectedEndOfObject)
 				yield("", it.err)
 				return
 			}
+		}
 
-			if token == "}" {
-				it.pop()
-				return
-			}
+		key, err := Unquote(token)
+		if err != nil {
+			it.setErrorf("invalid key: %q: %w", token, err)
+			yield("", it.err)
+			return
+		}
 
-			if i != 0 {
-				if token != "," {
-					it.setErrorf("expected ',', got %q", token)
-					yield("", it.err)
-					return
-				}
-				token, ok = it.tokens.Next()
-				if !ok {
-					it.setError(errUnexpectedEndOfObject)
-					yield("", it.err)
-					return
-				}
-			}
+		colon, ok := it.tokens.Next()
+		if !ok {
+			it.setError(errUnexpectedEndOfObject)
+			yield("", it.err)
+			return
+		}
+		if colon != ":" {
+			it.setErrorf("expected ':', got %q", colon)
+			yield("", it.err)
+			return
+		}
 
-			key, err := Unquote(token)
-			if err != nil {
-				it.setErrorf("invalid key: %q: %w", token, err)
-				yield("", it.err)
-				return
-			}
+		value, ok := it.tokens.Next()
+		if !ok {
+			it.setError(errUnexpectedEndOfObject)
+			yield("", it.err)
+			return
+		}
 
-			colon, ok := it.tokens.Next()
-			if !ok {
-				it.setError(errUnexpectedEndOfObject)
-				yield("", it.err)
-				return
-			}
-			if colon != ":" {
-				it.setErrorf("expected ':', got %q", colon)
-				yield("", it.err)
-				return
-			}
+		it.setKey(key)
+		it.setToken(value)
 
-			value, ok := it.tokens.Next()
-			if !ok {
-				it.setError(errUnexpectedEndOfObject)
-				yield("", it.err)
-				return
-			}
-
-			it.setKey(key)
-			it.setToken(value)
-
-			if !yield(key, nil) {
-				return
-			}
+		if !yield(key, nil) {
+			return
 		}
 	}
 }
 
-// Array returns an iterator over the elements of the current array.
+// Array iterates over the elements of the current array.
 // The iterator yields the index for each element, and the Iterator is
 // positioned on the element's value. Call Kind(), Value(), Object(), or
-// Array() to process the value.
+// Array() to process the value. If the value is not consumed before the
+// next iteration, it will be automatically skipped.
+// For null values, no iterations occur.
 //
-// Must only be called when Kind() == Array.
-func (it *Iterator) Array() iter.Seq2[int, error] {
-	return func(yield func(int, error) bool) {
-		for i := 0; ; i++ {
-			token, ok := it.tokens.Next()
+// Must only be called when Kind() == Array or Kind() == Null.
+func (it *Iterator) Array(yield func(int, error) bool) {
+	if it.kind == Null {
+		return // null is treated as empty array
+	}
+	it.consumed = true // mark the array itself as consumed
+	for i := 0; ; i++ {
+		// Auto-consume the previous value if it wasn't consumed
+		if !it.consumed {
+			switch it.kind {
+			case Array:
+				it.consumed = true
+				it.skipArray()
+			case Object:
+				it.consumed = true
+				it.skipObject()
+			}
+		}
+
+		token, ok := it.tokens.Next()
+		if !ok {
+			it.setError(errUnexpectedEndOfArray)
+			yield(i, it.err)
+			return
+		}
+
+		if token == "]" {
+			it.pop()
+			return
+		}
+
+		if i != 0 {
+			if token != "," {
+				it.setErrorf("expected ',', got %q", token)
+				yield(i, it.err)
+				return
+			}
+			token, ok = it.tokens.Next()
 			if !ok {
 				it.setError(errUnexpectedEndOfArray)
 				yield(i, it.err)
 				return
 			}
+		}
 
-			if token == "]" {
-				it.pop()
-				return
-			}
+		it.setToken(token)
 
-			if i != 0 {
-				if token != "," {
-					it.setErrorf("expected ',', got %q", token)
-					yield(i, it.err)
-					return
-				}
-				token, ok = it.tokens.Next()
-				if !ok {
-					it.setError(errUnexpectedEndOfArray)
-					yield(i, it.err)
-					return
-				}
-			}
-
-			it.setToken(token)
-
-			if !yield(i, nil) {
-				return
-			}
+		if !yield(i, nil) {
+			return
 		}
 	}
 }

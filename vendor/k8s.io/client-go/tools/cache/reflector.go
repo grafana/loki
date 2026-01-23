@@ -41,6 +41,7 @@ import (
 	"k8s.io/apimachinery/pkg/watch"
 	clientfeatures "k8s.io/client-go/features"
 	"k8s.io/client-go/tools/pager"
+	"k8s.io/client-go/util/watchlist"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/clock"
 	"k8s.io/utils/ptr"
@@ -49,11 +50,9 @@ import (
 
 const defaultExpectedTypeName = "<unspecified>"
 
-var (
-	// We try to spread the load on apiserver by setting timeouts for
-	// watch requests - it is random in [minWatchTimeout, 2*minWatchTimeout].
-	defaultMinWatchTimeout = 5 * time.Minute
-)
+// We try to spread the load on apiserver by setting timeouts for
+// watch requests - it is random in [minWatchTimeout, 2*minWatchTimeout].
+var defaultMinWatchTimeout = 5 * time.Minute
 
 // ReflectorStore is the subset of cache.Store that the reflector uses
 type ReflectorStore interface {
@@ -80,7 +79,7 @@ type ReflectorStore interface {
 // TransformingStore is an optional interface that can be implemented by the provided store.
 // If implemented on the provided store reflector will use the same transformer in its internal stores.
 type TransformingStore interface {
-	Store
+	ReflectorStore
 	Transformer() TransformFunc
 }
 
@@ -299,6 +298,16 @@ func NewReflectorWithOptions(lw ListerWatcher, expectedType interface{}, store R
 	}
 
 	r.useWatchList = clientfeatures.FeatureGates().Enabled(clientfeatures.WatchListClient)
+	if r.useWatchList && watchlist.DoesClientNotSupportWatchListSemantics(lw) {
+		// Using klog.TODO() here because switching to a caller-provided contextual logger
+		// would require an API change and updating all existing call sites.
+		klog.TODO().V(2).Info(
+			"The provided ListWatcher doesn't support WatchList semantics. The feature will be disabled. If you are using a custom client, check the documentation of watchlist.DoesClientNotSupportWatchListSemantics() method",
+			"listWatcherType", fmt.Sprintf("%T", lw),
+			"feature", clientfeatures.WatchListClient,
+		)
+		r.useWatchList = false
+	}
 
 	return r
 }
@@ -365,9 +374,6 @@ func (r *Reflector) RunWithContext(ctx context.Context) {
 }
 
 var (
-	// nothing will ever be sent down this channel
-	neverExitWatch <-chan time.Time = make(chan time.Time)
-
 	// Used to indicate that watching stopped because of a signal from the stop
 	// channel passed in from a client of the reflector.
 	errorStopRequested = errors.New("stop requested")
@@ -377,7 +383,8 @@ var (
 // required, and a cleanup function.
 func (r *Reflector) resyncChan() (<-chan time.Time, func() bool) {
 	if r.resyncPeriod == 0 {
-		return neverExitWatch, func() bool { return false }
+		// nothing will ever be sent down this channel
+		return nil, func() bool { return false }
 	}
 	// The cleanup function is required: imagine the scenario where watches
 	// always fail so we end up listing frequently. Then, if we don't
@@ -419,7 +426,10 @@ func (r *Reflector) ListAndWatchWithContext(ctx context.Context) error {
 			return nil
 		}
 		if err != nil {
-			logger.Error(err, "The watchlist request ended with an error, falling back to the standard LIST/WATCH semantics because making progress is better than deadlocking")
+			logger.V(4).Info(
+				"Data couldn't be fetched in watchlist mode. Falling back to regular list. This is expected if watchlist is not supported or disabled in kube-apiserver.",
+				"err", err,
+			)
 			fallbackToList = true
 			// ensure that we won't accidentally pass some garbage down the watch.
 			w = nil
@@ -726,9 +736,11 @@ func (r *Reflector) watchList(ctx context.Context) (watch.Interface, error) {
 		return false
 	}
 
+	var transformer TransformFunc
 	storeOpts := []StoreOption{}
 	if tr, ok := r.store.(TransformingStore); ok && tr.Transformer() != nil {
-		storeOpts = append(storeOpts, WithTransformer(tr.Transformer()))
+		transformer = tr.Transformer()
+		storeOpts = append(storeOpts, WithTransformer(transformer))
 	}
 
 	initTrace := trace.New("Reflector WatchList", trace.Field{Key: "name", Value: r.name})
@@ -788,7 +800,7 @@ func (r *Reflector) watchList(ctx context.Context) (watch.Interface, error) {
 	// we utilize the temporaryStore to ensure independence from the current store implementation.
 	// as of today, the store is implemented as a queue and will be drained by the higher-level
 	// component as soon as it finishes replacing the content.
-	checkWatchListDataConsistencyIfRequested(ctx, r.name, resourceVersion, r.listerWatcher.ListWithContext, temporaryStore.List)
+	checkWatchListDataConsistencyIfRequested(ctx, r.name, resourceVersion, r.listerWatcher.ListWithContext, transformer, temporaryStore.List)
 
 	if err := r.store.Replace(temporaryStore.List(), resourceVersion); err != nil {
 		return nil, fmt.Errorf("unable to sync watch-list result: %w", err)

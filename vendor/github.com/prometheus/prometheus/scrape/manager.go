@@ -33,6 +33,7 @@ import (
 	"github.com/prometheus/prometheus/discovery/targetgroup"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/util/features"
 	"github.com/prometheus/prometheus/util/logging"
 	"github.com/prometheus/prometheus/util/osutil"
 	"github.com/prometheus/prometheus/util/pool"
@@ -67,6 +68,13 @@ func NewManager(o *Options, logger *slog.Logger, newScrapeFailureLogger func(str
 
 	m.metrics.setTargetMetadataCacheGatherer(m)
 
+	// Register scrape features.
+	if r := o.FeatureRegistry; r != nil {
+		r.Set(features.Scrape, "extra_scrape_metrics", o.ExtraMetrics)
+		r.Set(features.Scrape, "start_timestamp_zero_ingestion", o.EnableStartTimestampZeroIngestion)
+		r.Set(features.Scrape, "type_and_unit_labels", o.EnableTypeAndUnitLabels)
+	}
+
 	return m, nil
 }
 
@@ -85,13 +93,16 @@ type Options struct {
 	DiscoveryReloadInterval model.Duration
 	// Option to enable the ingestion of the created timestamp as a synthetic zero sample.
 	// See: https://github.com/prometheus/proposals/blob/main/proposals/2023-06-13_created-timestamp.md
-	EnableCreatedTimestampZeroIngestion bool
+	EnableStartTimestampZeroIngestion bool
 
 	// EnableTypeAndUnitLabels
 	EnableTypeAndUnitLabels bool
 
 	// Optional HTTP client options to use when scraping.
 	HTTPClientOptions []config_util.HTTPClientOption
+
+	// FeatureRegistry is the registry for tracking enabled/disabled features.
+	FeatureRegistry features.Collector
 
 	// private option for testability.
 	skipOffsetting bool

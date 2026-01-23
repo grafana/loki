@@ -528,6 +528,7 @@ func (f *Formatter) styleToCSS(style *chroma.Style) map[chroma.TokenType]string 
 	}
 	classes[chroma.Background] += `;` + f.tabWidthStyle()
 	classes[chroma.PreWrapper] += classes[chroma.Background]
+	classes[chroma.PreWrapper] += ` -webkit-text-size-adjust: none;`
 	// Make PreWrapper a grid to show highlight style with full width.
 	if len(f.highlightRanges) > 0 && f.customCSS[chroma.PreWrapper] == `` {
 		classes[chroma.PreWrapper] += `display: grid;`

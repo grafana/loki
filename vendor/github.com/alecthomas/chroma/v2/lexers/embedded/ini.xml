@@ -9,6 +9,13 @@
     <filename>*.inf</filename>
     <filename>*.service</filename>
     <filename>*.socket</filename>
+    <filename>*.container</filename>
+    <filename>*.network</filename>
+    <filename>*.build</filename>
+    <filename>*.pod</filename>
+    <filename>*.kube</filename>
+    <filename>*.volume</filename>
+    <filename>*.image</filename>
     <filename>.gitconfig</filename>
     <filename>.editorconfig</filename>
     <filename>pylintrc</filename>

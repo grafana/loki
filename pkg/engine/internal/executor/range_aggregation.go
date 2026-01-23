@@ -68,17 +68,19 @@ type rangeAggregationPipeline struct {
 
 	aggregator          *aggregator
 	windowsForTimestamp timestampMatchingWindowsFunc // function to find matching time windows for a given timestamp
-	evaluator           expressionEvaluator          // used to evaluate column expressions
+	evaluator           *expressionEvaluator         // used to evaluate column expressions
 	opts                rangeAggregationOptions
 	region              *xcap.Region
+	identCache          *semconv.IdentifierCache
 }
 
-func newRangeAggregationPipeline(inputs []Pipeline, evaluator expressionEvaluator, opts rangeAggregationOptions, region *xcap.Region) (*rangeAggregationPipeline, error) {
+func newRangeAggregationPipeline(inputs []Pipeline, evaluator *expressionEvaluator, opts rangeAggregationOptions, region *xcap.Region) (*rangeAggregationPipeline, error) {
 	r := &rangeAggregationPipeline{
-		inputs:    inputs,
-		evaluator: evaluator,
-		opts:      opts,
-		region:    region,
+		inputs:     inputs,
+		evaluator:  evaluator,
+		opts:       opts,
+		region:     region,
+		identCache: semconv.NewIdentifierCache(),
 	}
 	r.init()
 	return r, nil
@@ -143,6 +145,9 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 		inputReadTime time.Duration
 	)
 
+	labelValuesCache := newLabelValuesCache()
+	fieldsCache := newFieldsCache()
+
 	r.aggregator.Reset() // reset before reading new inputs
 	inputsExhausted := false
 	for !inputsExhausted {
@@ -164,12 +169,12 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 
 			// extract all the columns that are used for grouping
 			var arrays []*array.String
-			var fields []arrow.Field
+			var groupingFields []arrow.Field
 			if r.opts.grouping.Without {
 				// Grouping without a lable set. Exclude lables from that set.
 				schema := record.Schema()
 				for i, field := range schema.Fields() {
-					ident, err := semconv.ParseFQN(field.Name)
+					ident, err := r.identCache.ParseFQN(field.Name)
 					if err != nil {
 						return nil, err
 					}
@@ -198,11 +203,13 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 						}
 						if !found {
 							arrays = append(arrays, record.Column(i).(*array.String))
-							fields = append(fields, field)
+							groupingFields = append(groupingFields, field)
 						}
 					}
 				}
 			} else {
+				groupingFields = make([]arrow.Field, 0, len(r.opts.grouping.Columns))
+
 				// Gouping by a label set. Take only labels from that set.
 				for _, columnExpr := range r.opts.grouping.Columns {
 					vec, err := r.evaluator.eval(columnExpr, record)
@@ -222,11 +229,11 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 						return nil, fmt.Errorf("invalid column expression type %T", columnExpr)
 					}
 					ident := semconv.NewIdentifier(colExpr.Ref.Column, colExpr.Ref.Type, types.Loki.String)
-					fields = append(fields, semconv.FieldFromIdent(ident, true))
+					groupingFields = append(groupingFields, semconv.FieldFromIdent(ident, true))
 				}
 			}
 
-			r.aggregator.AddLabels(fields)
+			r.aggregator.AddLabels(groupingFields)
 
 			// extract timestamp column to check if the entry is in range
 			tsVec, err := r.evaluator.eval(tsColumnExpr, record)
@@ -260,15 +267,8 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 					continue // out of range, skip this row
 				}
 
-				labelValues := make([]string, 0, len(arrays))
-				labels := make([]arrow.Field, 0, len(arrays))
-				for i, arr := range arrays {
-					val := arr.Value(row)
-					if val != "" {
-						labelValues = append(labelValues, val)
-						labels = append(labels, fields[i])
-					}
-				}
+				labelValues := labelValuesCache.getLabelValues(arrays, row)
+				labels := fieldsCache.getFields(arrays, groupingFields, row)
 
 				for _, w := range windows {
 					r.aggregator.Add(w.end, value, labels, labelValues)
@@ -356,7 +356,7 @@ func (f *matcherFactory) createExactMatcher(windows []window) timestampMatchingW
 		if len(windows) == 0 {
 			return nil
 		}
-		return []window{windows[0]}
+		return windows[0:1]
 	}
 }
 
@@ -379,7 +379,7 @@ func (f *matcherFactory) createAlignedMatcher(windows []window) timestampMatchin
 		tNs := t.UnixNano()
 		// valid timestamps for window i: t > startNs + (i-1) * intervalNs && t <= startNs + i * intervalNs
 		windowIndex := (tNs - startNs + stepNs - 1) / stepNs // subtract 1ns because we are calculating 0-based indexes
-		return []window{windows[windowIndex]}
+		return windows[windowIndex : windowIndex+1]
 	}
 }
 
@@ -403,11 +403,14 @@ func (f *matcherFactory) createGappedMatcher(windows []window) timestampMatching
 		tNs := t.UnixNano()
 		// For gapped windows, window i covers: (start + i*step - interval, start + i*step]
 		windowIndex := (tNs - startNs + stepNs - 1) / stepNs // subtract 1ns because we are calculating 0-based indexes
-		matchingWindow := windows[windowIndex]
+
+		if windowIndex >= int64(len(windows)) {
+			return nil // out of range when bounds do not fit exact number of steps
+		}
 
 		// Verify the timestamp is within the window (not in a gap)
-		if tNs > matchingWindow.start.UnixNano() {
-			return []window{matchingWindow}
+		if tNs > windows[windowIndex].start.UnixNano() {
+			return windows[windowIndex : windowIndex+1]
 		}
 
 		return nil // timestamp is in a gap

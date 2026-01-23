@@ -7,7 +7,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 
-	"github.com/grafana/loki/v3/pkg/kafka/partition"
+	"github.com/grafana/loki/v3/pkg/kafkav2"
 )
 
 type downscalePermittedFunc func(context.Context) (bool, error)
@@ -27,23 +27,23 @@ func newChainedDownscalePermittedFunc(funcs ...downscalePermittedFunc) downscale
 
 // newOffsetCommittedDownscaleFunc returns a downscalePermittedFunc that checks
 // if the consumer has committed all records up to the end offset.
-func newOffsetCommittedDownscaleFunc(offsetManager *partition.KafkaOffsetManager, partitionID int32, logger log.Logger) downscalePermittedFunc {
+func newOffsetCommittedDownscaleFunc(offsetReader *kafkav2.OffsetReader, partitionID int32, logger log.Logger) downscalePermittedFunc {
 	return func(ctx context.Context) (bool, error) {
-		endOffset, err := offsetManager.PartitionOffset(ctx, partitionID, partition.KafkaEndOffset)
+		endOffset, err := offsetReader.EndOffset(ctx, partitionID)
 		if err != nil {
 			return false, fmt.Errorf("failed to get end offset: %w", err)
 		}
-		// The end offset is the offset of the next record to be produced.
-		// That means if the end offset is zero no records have been produced
-		// for this partition, which in turn means we can downscale.
+		// The end offset is the offset of the next record to be produced. If the
+		// end offset is zero this means no records have been produced for this
+		// partition, which in turn means we can downscale.
 		if endOffset == 0 {
 			level.Debug(logger).Log("msg", "no records produced for partition")
 			return true, nil
 		}
-		// If some records have been produced for this partition we need to
-		// make sure the consumer has processed and committed all of them
-		// otherwise we risk data loss.
-		lastCommittedOffset, err := offsetManager.LastCommittedOffset(ctx, partitionID)
+		// If some records have been produced for this partition we need to make sure
+		// the consumer has processed and committed all of them otherwise we risk data
+		// loss. If no offsets have been committed, the last committed offset is -1.
+		lastCommittedOffset, err := offsetReader.LastCommittedOffset(ctx, partitionID)
 		if err != nil {
 			return false, fmt.Errorf("failed to get last committed offset: %w", err)
 		}

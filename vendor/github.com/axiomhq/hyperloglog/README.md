@@ -6,7 +6,7 @@ An improved version of [HyperLogLog](https://en.wikipedia.org/wiki/HyperLogLog) 
 
 ## Note on Implementation History
 
-The initial version of this work (tagged as v0.1.0) was based on ["Better with fewer bits: Improving the performance of cardinality estimation of large data streams - Qingjun Xiao, You Zhou, Shigang Chen"](http://cse.seu.edu.cn/PersonalPage/csqjxiao/csqjxiao_files/papers/INFOCOM17.pdf). However, the current implementation has evolved significantly from this original basis, notably moving away from the tailcut method.
+The initial version of this work (tagged as v0.1.0) was based on ["Better with fewer bits: Improving the performance of cardinality estimation of large data streams - Qingjun Xiao, You Zhou, Shigang Chen"](https://www.cise.ufl.edu/~sgchen/Publications/XZC17.pdf). However, the current implementation has evolved significantly from this original basis, notably moving away from the tailcut method.
 
 ## Current Implementation
 

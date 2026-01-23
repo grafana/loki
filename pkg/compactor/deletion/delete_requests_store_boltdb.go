@@ -182,7 +182,7 @@ func (ds *deleteRequestsStoreBoltDB) GetAllRequests(ctx context.Context) ([]dele
 }
 
 // GetAllDeleteRequestsForUser returns all delete requests for a user.
-func (ds *deleteRequestsStoreBoltDB) GetAllDeleteRequestsForUser(ctx context.Context, userID string, _ bool) ([]deletionproto.DeleteRequest, error) {
+func (ds *deleteRequestsStoreBoltDB) GetAllDeleteRequestsForUser(ctx context.Context, userID string, _ bool, timeRange *TimeRange) ([]deletionproto.DeleteRequest, error) {
 	deleteGroups, err := ds.queryDeleteRequests(ctx, index.Query{
 		TableName:        DeleteRequestsTableName,
 		HashValue:        string(deleteRequestID),
@@ -193,6 +193,19 @@ func (ds *deleteRequestsStoreBoltDB) GetAllDeleteRequestsForUser(ctx context.Con
 	}
 
 	deleteRequests := mergeDeletes(deleteGroups)
+
+	// If time range is provided, filter by overlap
+	if timeRange != nil {
+		filtered := make([]deletionproto.DeleteRequest, 0, len(deleteRequests))
+		for _, req := range deleteRequests {
+			if req.StartTime <= timeRange.End && req.EndTime >= timeRange.Start {
+				filtered = append(filtered, req)
+			}
+		}
+
+		return filtered, nil
+	}
+
 	return deleteRequests, nil
 }
 

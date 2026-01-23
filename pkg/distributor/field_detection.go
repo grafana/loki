@@ -330,31 +330,49 @@ func isJSON(line string) bool {
 	return firstNonSpaceChar == '{' && lastNonSpaceChar == '}'
 }
 
+func isWordBoundary(s string, pos int) bool {
+	if pos < 0 || pos >= len(s) {
+		return true // Start/end of string is a boundary
+	}
+	r := rune(s[pos])
+	return !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '_'
+}
+
+func logHasBoundedLevel(log, level string) bool {
+	pos := strings.Index(log, level)
+	if pos == -1 {
+		return false
+	}
+
+	// make sure the word occurs on its own, with boundaries on both sides
+	if isWordBoundary(log, pos-1) && isWordBoundary(log, pos+len(level)) {
+		return true
+	}
+
+	return false
+}
+
 func detectLevelFromLogLine(log string) string {
-	if strings.Contains(log, "info:") || strings.Contains(log, "INFO:") ||
-		strings.Contains(log, "[info]") || strings.Contains(log, "[INFO]") ||
-		strings.Contains(log, "info") || strings.Contains(log, "INFO") {
-		return constants.LogLevelInfo
+	levelPatterns := []struct {
+		word  string
+		level string
+	}{
+		{"trace", constants.LogLevelTrace},
+		{"debug", constants.LogLevelDebug},
+		{"fatal", constants.LogLevelFatal},
+		{"critical", constants.LogLevelCritical},
+		{"error", constants.LogLevelError},
+		{"err", constants.LogLevelError},
+		{"warning", constants.LogLevelWarn},
+		{"warn", constants.LogLevelWarn},
+		{"info", constants.LogLevelInfo},
 	}
-	if strings.Contains(log, "err:") || strings.Contains(log, "ERR:") ||
-		strings.Contains(log, "[err]") || strings.Contains(log, "[ERR]") ||
-		strings.Contains(log, "[error]") || strings.Contains(log, "[ERROR]") {
-		return constants.LogLevelError
+	lowerLog := strings.ToLower(log)
+	for _, level := range levelPatterns {
+		if logHasBoundedLevel(lowerLog, level.word) {
+			return level.level
+		}
 	}
-	if strings.Contains(log, "warn:") || strings.Contains(log, "WARN:") ||
-		strings.Contains(log, "[warn]") || strings.Contains(log, "[WARN]") ||
-		strings.Contains(log, "[warning]") || strings.Contains(log, "[WARNING]") ||
-		strings.Contains(log, "warning") || strings.Contains(log, "WARNING") {
-		return constants.LogLevelWarn
-	}
-	if strings.Contains(log, "critical:") || strings.Contains(log, "CRITICAL:") ||
-		strings.Contains(log, "[critical]") || strings.Contains(log, "[CRITICAL]") {
-		return constants.LogLevelCritical
-	}
-	if strings.Contains(log, "debug:") || strings.Contains(log, "DEBUG:") ||
-		strings.Contains(log, "[debug]") || strings.Contains(log, "[DEBUG]") ||
-		strings.Contains(log, "debug") || strings.Contains(log, "DEBUG") {
-		return constants.LogLevelDebug
-	}
+
 	return constants.LogLevelUnknown
 }

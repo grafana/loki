@@ -52,7 +52,7 @@ spec:
       serviceAccountName: {{ $newStatefulSet.metadata.name }}-recreate
       containers:
         - name: recreate-statefulset
-          image: {{ include "loki.baseImage" (dict "service" (dict "registry" "docker.io" "repository" "rancher/kubectl" "tag" (.Capabilities.KubeVersion.Version | default "v1.33.0")) "global" .Values.global.image) }}
+          image: {{ include "loki.baseImage" (dict "service" (dict "registry" "docker.io" "repository" "rancher/kubectl" "tag" (.Capabilities.KubeVersion.Version | default "v1.33.0")) "global" .Values.global) }}
           command:
             - delete
             - statefulset
@@ -62,7 +62,7 @@ spec:
         {{- range $index := until (int $currentStatefulset.spec.replicas) }}
           {{- range $template, $size := $templates }}
         - name: patch-pvc-{{ $template }}-{{ $index }}
-          image: {{ include "loki.baseImage" (dict "service" (dict "registry" "docker.io" "repository" "rancher/kubectl" "tag" ($.Capabilities.KubeVersion.Version | default "v1.33.0")) "global" $.Values.global.image) }}
+          image: {{ include "loki.baseImage" (dict "service" (dict "registry" "docker.io" "repository" "rancher/kubectl" "tag" ($.Capabilities.KubeVersion.Version | default "v1.33.0")) "global" $.Values.global) }}
           command:
             - patch
             - pvc

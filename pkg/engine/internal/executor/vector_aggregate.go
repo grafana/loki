@@ -25,12 +25,14 @@ type vectorAggregationPipeline struct {
 	inputsExhausted bool // indicates if all inputs are exhausted
 
 	aggregator *aggregator
-	evaluator  expressionEvaluator
+	evaluator  *expressionEvaluator
 	grouping   physical.Grouping
 	region     *xcap.Region
 
 	tsEval    evalFunc // used to evaluate the timestamp column
 	valueEval evalFunc // used to evaluate the value column
+
+	identCache *semconv.IdentifierCache
 }
 
 var (
@@ -43,7 +45,7 @@ var (
 	}
 )
 
-func newVectorAggregationPipeline(inputs []Pipeline, grouping physical.Grouping, evaluator expressionEvaluator, operation types.VectorAggregationType, region *xcap.Region) (*vectorAggregationPipeline, error) {
+func newVectorAggregationPipeline(inputs []Pipeline, grouping physical.Grouping, evaluator *expressionEvaluator, operation types.VectorAggregationType, region *xcap.Region) (*vectorAggregationPipeline, error) {
 	if len(inputs) == 0 {
 		return nil, fmt.Errorf("vector aggregation expects at least one input")
 	}
@@ -71,6 +73,7 @@ func newVectorAggregationPipeline(inputs []Pipeline, grouping physical.Grouping,
 				Type:   types.ColumnTypeGenerated,
 			},
 		}),
+		identCache: semconv.NewIdentifierCache(),
 	}, nil
 }
 
@@ -84,8 +87,11 @@ func (v *vectorAggregationPipeline) Read(ctx context.Context) (arrow.RecordBatch
 
 func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch, error) {
 	var (
-		startedAt     = time.Now()
 		inputReadTime time.Duration
+		startedAt     = time.Now()
+
+		labelValuesCache = newLabelValuesCache()
+		fieldsCache      = newFieldsCache()
 	)
 
 	v.aggregator.Reset() // reset before reading new inputs
@@ -123,13 +129,13 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch
 
 			// extract all the columns that are used for grouping
 			var arrays []*array.String
-			var fields []arrow.Field
+			var groupingFields []arrow.Field
 
 			if v.grouping.Without {
 				// Grouping without a lable set. Exclude lables from that set.
 				schema := record.Schema()
 				for i, field := range schema.Fields() {
-					ident, err := semconv.ParseFQN(field.Name)
+					ident, err := v.identCache.ParseFQN(field.Name)
 					if err != nil {
 						return nil, err
 					}
@@ -158,7 +164,7 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch
 						}
 						if !found {
 							arrays = append(arrays, record.Column(i).(*array.String))
-							fields = append(fields, field)
+							groupingFields = append(groupingFields, field)
 						}
 					}
 				}
@@ -182,26 +188,19 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch
 						return nil, fmt.Errorf("invalid column expression type %T", columnExpr)
 					}
 					ident := semconv.NewIdentifier(colExpr.Ref.Column, colExpr.Ref.Type, types.Loki.String)
-					fields = append(fields, semconv.FieldFromIdent(ident, true))
+					groupingFields = append(groupingFields, semconv.FieldFromIdent(ident, true))
 				}
 			}
 
-			v.aggregator.AddLabels(fields)
+			v.aggregator.AddLabels(groupingFields)
 
 			for row := range int(record.NumRows()) {
 				if valueArr.IsNull(row) {
 					continue
 				}
 
-				labelValues := make([]string, 0, len(arrays))
-				labels := make([]arrow.Field, 0, len(arrays))
-				for i, arr := range arrays {
-					val := arr.Value(row)
-					if val != "" {
-						labelValues = append(labelValues, val)
-						labels = append(labels, fields[i])
-					}
-				}
+				labelValues := labelValuesCache.getLabelValues(arrays, row)
+				labels := fieldsCache.getFields(arrays, groupingFields, row)
 
 				v.aggregator.Add(tsCol.Value(row).ToTime(arrow.Nanosecond), valueArr.Value(row), labels, labelValues)
 			}
