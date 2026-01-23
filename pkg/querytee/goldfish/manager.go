@@ -17,6 +17,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
+	"github.com/grafana/loki/v3/pkg/loghttp"
+
 	"github.com/grafana/loki/v3/pkg/goldfish"
 	"github.com/grafana/loki/v3/pkg/querytee/comparator"
 
@@ -42,13 +44,13 @@ type Manager interface {
 // Manager coordinates Goldfish sampling and comparison operations.
 // It handles query sampling decisions, response comparison, persistence, and storage of results.
 type manager struct {
-	config      Config
-	sampler     *Sampler
-	storage     goldfish.Storage
-	resultStore ResultStore
-	logger      log.Logger
-	metrics     *metrics
-	comparator  comparator.ResponsesComparator
+	config             Config
+	sampler            *Sampler
+	storage            goldfish.Storage
+	resultStore        ResultStore
+	logger             log.Logger
+	metrics            *metrics
+	responseComparator comparator.ResponsesComparator
 }
 
 type metrics struct {
@@ -61,7 +63,7 @@ type metrics struct {
 
 // NewManager creates a new Goldfish manager with the provided configuration.
 // Returns an error if the configuration is invalid.
-func NewManager(config Config, comparator comparator.ResponsesComparator, storage goldfish.Storage, resultStore ResultStore, logger log.Logger, registerer prometheus.Registerer) (Manager, error) {
+func NewManager(config Config, storage goldfish.Storage, resultStore ResultStore, logger log.Logger, registerer prometheus.Registerer) (Manager, error) {
 	if err := config.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid config: %w", err)
 	}
@@ -95,7 +97,14 @@ func NewManager(config Config, comparator comparator.ResponsesComparator, storag
 				Buckets: prometheus.DefBuckets,
 			}),
 		},
-		comparator: comparator,
+	}
+
+	// Create comparator if values should be compared with tolerance
+	if config.CompareValuesTolerance > 0 {
+		m.responseComparator = comparator.NewSamplesComparator(comparator.SampleComparisonOptions{
+			Tolerance: config.CompareValuesTolerance,
+			// zero value for SkipRecentSamples, SkipSamplesBefore ensures all samples are compared.
+		})
 	}
 
 	return m, nil
@@ -210,7 +219,8 @@ func (m *manager) processQueryPair(req *http.Request, cellAResp, cellBResp *Resp
 	m.metrics.sampledQueries.Inc()
 
 	comparisonStart := time.Now()
-	result := CompareResponses(sample, cellAResp, cellBResp, m.config.PerformanceTolerance, m.comparator, m.logger)
+	result := CompareResponses(sample, cellAResp, cellBResp, m.config.PerformanceTolerance, m.responseComparator, m.logger)
+
 	m.metrics.comparisonDuration.Observe(time.Since(comparisonStart).Seconds())
 	m.metrics.comparisonResults.WithLabelValues(string(result.ComparisonStatus)).Inc()
 
@@ -379,6 +389,7 @@ func (m *manager) shouldPersistResults(result goldfish.ComparisonResult) bool {
 	case ResultsPersistenceModeAll:
 		return true
 	case ResultsPersistenceModeMismatchOnly:
+		// TODO: consider skipping if result.MatchWithinTolerance is true
 		return result.ComparisonStatus != goldfish.ComparisonStatusMatch
 	default:
 		return false
@@ -416,6 +427,7 @@ func (m *manager) Close() error {
 // Used to pass response information from QueryTee to Goldfish for comparison.
 type ResponseData struct {
 	Body          []byte
+	ResultType    loghttp.ResultType
 	StatusCode    int
 	Duration      time.Duration
 	Stats         goldfish.QueryStats
@@ -441,11 +453,12 @@ func CaptureResponse(resp *http.Response, duration time.Duration, traceID, spanI
 	var stats goldfish.QueryStats
 	var hash string
 	var size int64
+	var resultType loghttp.ResultType
 	var usedNewEngine bool
 
 	if resp.StatusCode == 200 {
 		extractor := NewStatsExtractor()
-		stats, hash, size, usedNewEngine, err = extractor.ExtractResponseData(body, duration.Milliseconds())
+		stats, hash, size, usedNewEngine, resultType, err = extractor.ExtractResponseData(body, duration.Milliseconds())
 		if err != nil {
 			// Log error but don't fail the capture
 			level.Warn(logger).Log("msg", "failed to extract response statistics", "err", err)
@@ -456,6 +469,7 @@ func CaptureResponse(resp *http.Response, duration time.Duration, traceID, spanI
 
 	return &ResponseData{
 		Body:          body,
+		ResultType:    resultType,
 		StatusCode:    resp.StatusCode,
 		Duration:      duration,
 		Stats:         stats,

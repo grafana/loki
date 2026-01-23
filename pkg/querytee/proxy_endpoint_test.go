@@ -672,9 +672,8 @@ func Test_endToEnd_traceIDFlow(t *testing.T) {
 			DefaultRate: 1.0, // Always sample for testing
 		},
 	}
-	samplesComparator := comparator.NewSamplesComparator(comparator.SampleComparisonOptions{Tolerance: 0.000001})
 
-	goldfishManager, err := querytee_goldfish.NewManager(goldfishConfig, samplesComparator, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
+	goldfishManager, err := querytee_goldfish.NewManager(goldfishConfig, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	endpoint := createTestEndpointWithGoldfish(t, backends, "test", goldfishManager)
@@ -817,7 +816,6 @@ func TestProxyEndpoint_QuerySplitting(t *testing.T) {
 	}
 	goldfishManager, err := querytee_goldfish.NewManager(
 		goldfishConfig,
-		&testComparator{},
 		storage,
 		nil,
 		log.NewNopLogger(),

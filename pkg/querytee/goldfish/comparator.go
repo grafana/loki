@@ -8,6 +8,7 @@ import (
 	"github.com/go-kit/log/level"
 
 	"github.com/grafana/loki/v3/pkg/goldfish"
+	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/querytee/comparator"
 )
 
@@ -60,31 +61,25 @@ func CompareResponses(sample *goldfish.QuerySample, cellAResp, cellBResp *Respon
 
 		result.ComparisonStatus = goldfish.ComparisonStatusMismatch
 
-		if cellAResp != nil && cellBResp != nil && comparator != nil {
-			// we don't know the structure of the data, or the datatype.
-			// there is a chance the data is floating point numbers that differ within tolerance
-			// and so have different hashes but are "equivalent" within tolerance.
-			// it is also possible we match some other unexpected cases
-			// where the hashes differ but the data is equivalent within tolerance (empty matrix?)
-
-			_, err := comparator.Compare(cellAResp.Body, cellBResp.Body, sample.SampledAt)
-			if err == nil {
-				result.ComparisonStatus = goldfish.ComparisonStatusMatch
-				result.DifferenceDetails["tolerance_match"] = true
-			} else {
-				result.DifferenceDetails["tolerance_match"] = false
-				result.DifferenceDetails["tolerance_match_error"] = err.Error()
+		// compare metric query responses with tolerance if comparator is provided
+		if comparator != nil {
+			if cellAResp == nil || cellBResp == nil {
+				_ = level.Warn(logger).Log(
+					"msg", "unable to perform tolerance comparison due to missing responses",
+					"correlation_id", sample.CorrelationID,
+				)
+			} else if rt := cellAResp.ResultType; rt != loghttp.ResultTypeStream { // skip stream result.
+				_, err := comparator.Compare(cellAResp.Body, cellBResp.Body, sample.SampledAt)
+				if err == nil {
+					result.MatchWithinTolerance = true
+				}
 			}
-		} else {
-			_ = level.Warn(logger).Log(
-				"msg", "unable to perform tolerance comparison due to missing response data or comparator",
-				"correlation_id", sample.CorrelationID,
-			)
 		}
-		if result.ComparisonStatus == goldfish.ComparisonStatusMismatch {
+
+		// compare performance statistics if its a match within tolerance.
+		if !result.MatchWithinTolerance {
 			return result
 		}
-
 	default:
 		// Both returned 200 with identical content
 		result.ComparisonStatus = goldfish.ComparisonStatusMatch

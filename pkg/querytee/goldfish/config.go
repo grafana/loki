@@ -47,6 +47,10 @@ type Config struct {
 
 	// Performance comparison tolerance (0.0-1.0, where 0.1 = 10%)
 	PerformanceTolerance float64 `yaml:"performance_tolerance"`
+
+	// Tolerance for comparing samples values (for metric query responses).
+	// When set to 0, we expect an exact response hash match.
+	CompareValuesTolerance float64 `yaml:"compare_values_tolerance"`
 }
 
 // SamplingConfig defines how queries are sampled
@@ -131,6 +135,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	// Performance comparison flags
 	f.Float64Var(&cfg.PerformanceTolerance, "goldfish.performance-tolerance", 0.1, "Performance comparison tolerance (0.0-1.0, where 0.1 = 10%)")
+
+	// Compare response values with tolerance
+	f.Float64Var(&cfg.CompareValuesTolerance, "goldfish.compare-values-tolerance", 0.0, "Tolerance for comparing sample values in metric query responses. When set to 0, we expect an exact response hash match.")
 }
 
 // Validate validates the configuration
@@ -151,6 +158,10 @@ func (cfg *Config) Validate() error {
 
 	if cfg.PerformanceTolerance < 0 || cfg.PerformanceTolerance > 1 {
 		return errors.New("performance tolerance must be between 0 and 1")
+	}
+
+	if cfg.CompareValuesTolerance < 0 {
+		return errors.New("compare values tolerance must be >= 0")
 	}
 
 	// Validate SQL storage if configured
