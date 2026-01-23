@@ -51,7 +51,7 @@ import (
 %type <logExpr> logExpr
 %type <metricExpr> metricExpr rangeAggregationExpr vectorAggregationExpr binOpExpr labelReplaceExpr vectorExpr
 %type <variantsExpr> variantsExpr
-%type <stage> pipelineStage logfmtParser labelParser jsonExpressionParser logfmtExpressionParser lineFormatExpr decolorizeExpr labelFormatExpr dropLabelsExpr keepLabelsExpr
+%type <stage> pipelineStage logfmtParser labelParser jsonExpressionParser logfmtExpressionParser xmlExpressionParser lineFormatExpr decolorizeExpr labelFormatExpr dropLabelsExpr keepLabelsExpr
 %type <stages> pipelineExpr
 %type <lineFilterExpr> lineFilter lineFilters orFilter
 %type <op> rangeOp convOp vectorOp filterOp
@@ -217,6 +217,7 @@ pipelineStage:
   | PIPE logfmtParser            { $$ = $2 }
   | PIPE labelParser             { $$ = $2 }
   | PIPE jsonExpressionParser    { $$ = $2 }
+  | PIPE xmlExpressionParser     { $$ = $2 }
   | PIPE logfmtExpressionParser  { $$ = $2 }
   | PIPE labelFilter             { $$ = &LabelFilterExpr{LabelFilterer: $2 }}
   | PIPE lineFormatExpr          { $$ = $2 }
@@ -276,6 +277,9 @@ labelParser:
 
 jsonExpressionParser:
     JSON labelExtractionExpressionList { $$ = newJSONExpressionParser($2) }
+
+xmlExpressionParser:
+    XML labelExtractionExpressionList { $$ = newXMLExpressionParser($2) }
 
 logfmtExpressionParser:
     LOGFMT parserFlags labelExtractionExpressionList  { $$ = newLogfmtExpressionParser($3, $2)}

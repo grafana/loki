@@ -62,6 +62,7 @@ func (KeepLabelsExpr) isExpr()             {}
 func (LineFmtExpr) isExpr()                {}
 func (LabelFmtExpr) isExpr()               {}
 func (JSONExpressionParserExpr) isExpr()   {}
+func (XMLExpressionParserExpr) isExpr()    {}
 func (LogfmtExpressionParserExpr) isExpr() {}
 func (LogRangeExpr) isExpr()               {}
 func (OffsetExpr) isExpr()                 {}
@@ -122,6 +123,7 @@ func (KeepLabelsExpr) isStageExpr()             {}
 func (LineFmtExpr) isStageExpr()                {}
 func (LabelFmtExpr) isStageExpr()               {}
 func (JSONExpressionParserExpr) isStageExpr()   {}
+func (XMLExpressionParserExpr) isStageExpr()    {}
 func (LogfmtExpressionParserExpr) isStageExpr() {}
 
 func Clone[T Expr](e T) (T, error) {
@@ -186,6 +188,7 @@ func ExtractLabelFiltersBeforeParser(e Expr) []*LabelFilterExpr {
 		VisitLogfmtParserFn:           func(_ RootVisitor, _ *LogfmtParserExpr) { foundParseStage = true },
 		VisitLabelParserFn:            func(_ RootVisitor, _ *LineParserExpr) { foundParseStage = true },
 		VisitJSONExpressionParserFn:   func(_ RootVisitor, _ *JSONExpressionParserExpr) { foundParseStage = true },
+		VisitXMLExpressionParserFn:    func(_ RootVisitor, _ *XMLExpressionParserExpr) { foundParseStage = true },
 		VisitLogfmtExpressionParserFn: func(_ RootVisitor, _ *LogfmtExpressionParserExpr) { foundParseStage = true },
 		VisitLabelFmtFn:               func(_ RootVisitor, _ *LabelFmtExpr) { foundParseStage = true },
 		VisitKeepLabelFn:              func(_ RootVisitor, _ *KeepLabelsExpr) { foundParseStage = true },
@@ -1033,6 +1036,41 @@ func (j *JSONExpressionParserExpr) String() string {
 		sb.WriteString(strconv.Quote(exp.Expression))
 
 		if i+1 != len(j.Expressions) {
+			sb.WriteString(",")
+		}
+	}
+	return sb.String()
+}
+
+type XMLExpressionParserExpr struct {
+	Expressions []log.LabelExtractionExpr
+}
+
+func newXMLExpressionParser(expressions []log.LabelExtractionExpr) *XMLExpressionParserExpr {
+	return &XMLExpressionParserExpr{
+		Expressions: expressions,
+	}
+}
+
+func (x *XMLExpressionParserExpr) Shardable(_ bool) bool { return true }
+
+func (x *XMLExpressionParserExpr) Walk(f WalkFn) { f(x) }
+
+func (x *XMLExpressionParserExpr) Accept(v RootVisitor) { v.VisitXMLExpressionParser(x) }
+
+func (x *XMLExpressionParserExpr) Stage() (log.Stage, error) {
+	return log.NewXMLExpressionParser(x.Expressions)
+}
+
+func (x *XMLExpressionParserExpr) String() string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("%s %s ", OpPipe, OpParserTypeXML))
+	for i, exp := range x.Expressions {
+		sb.WriteString(exp.Identifier)
+		sb.WriteString("=")
+		sb.WriteString(strconv.Quote(exp.Expression))
+
+		if i+1 != len(x.Expressions) {
 			sb.WriteString(",")
 		}
 	}

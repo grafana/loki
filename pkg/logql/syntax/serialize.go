@@ -340,6 +340,7 @@ func (v *JSONSerializer) VisitVariants(e *MultiVariantExpr) {
 func (*JSONSerializer) VisitDecolorize(*DecolorizeExpr)                         {}
 func (*JSONSerializer) VisitDropLabels(*DropLabelsExpr)                         {}
 func (*JSONSerializer) VisitJSONExpressionParser(*JSONExpressionParserExpr)     {}
+func (*JSONSerializer) VisitXMLExpressionParser(*XMLExpressionParserExpr)       {}
 func (*JSONSerializer) VisitKeepLabel(*KeepLabelsExpr)                          {}
 func (*JSONSerializer) VisitLabelFilter(*LabelFilterExpr)                       {}
 func (*JSONSerializer) VisitLabelFmt(*LabelFmtExpr)                             {}
