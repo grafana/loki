@@ -16,6 +16,12 @@ import (
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
+type vectorAggregationOptions struct {
+	grouping       physical.Grouping
+	operation      types.VectorAggregationType
+	maxQuerySeries int // maximum number of unique series allowed (0 means no limit)
+}
+
 // vectorAggregationPipeline is a pipeline that performs vector aggregations.
 //
 // It reads from the input pipeline, groups the data by specified columns,
@@ -27,6 +33,7 @@ type vectorAggregationPipeline struct {
 	aggregator *aggregator
 	evaluator  *expressionEvaluator
 	grouping   physical.Grouping
+	opts       vectorAggregationOptions
 	region     *xcap.Region
 
 	tsEval    evalFunc // used to evaluate the timestamp column
@@ -45,21 +52,25 @@ var (
 	}
 )
 
-func newVectorAggregationPipeline(inputs []Pipeline, grouping physical.Grouping, evaluator *expressionEvaluator, operation types.VectorAggregationType, region *xcap.Region) (*vectorAggregationPipeline, error) {
+func newVectorAggregationPipeline(inputs []Pipeline, evaluator *expressionEvaluator, opts vectorAggregationOptions, region *xcap.Region) (*vectorAggregationPipeline, error) {
 	if len(inputs) == 0 {
 		return nil, fmt.Errorf("vector aggregation expects at least one input")
 	}
 
-	op, ok := vectorAggregationOperations[operation]
+	op, ok := vectorAggregationOperations[opts.operation]
 	if !ok {
-		panic(fmt.Sprintf("unknown vector aggregation operation: %v", operation))
+		panic(fmt.Sprintf("unknown vector aggregation operation: %v", opts.operation))
 	}
+
+	agg := newAggregator(0, op)
+	agg.SetMaxSeries(opts.maxQuerySeries)
 
 	return &vectorAggregationPipeline{
 		inputs:     inputs,
 		evaluator:  evaluator,
-		grouping:   grouping,
-		aggregator: newAggregator(0, op),
+		grouping:   opts.grouping,
+		opts:       opts,
+		aggregator: agg,
 		region:     region,
 		tsEval: evaluator.newFunc(&physical.ColumnExpr{
 			Ref: types.ColumnRef{
@@ -202,7 +213,9 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch
 				labelValues := labelValuesCache.getLabelValues(arrays, row)
 				labels := fieldsCache.getFields(arrays, groupingFields, row)
 
-				v.aggregator.Add(tsCol.Value(row).ToTime(arrow.Nanosecond), valueArr.Value(row), labels, labelValues)
+				if err := v.aggregator.Add(tsCol.Value(row).ToTime(arrow.Nanosecond), valueArr.Value(row), labels, labelValues); err != nil {
+					return nil, err
+				}
 			}
 		}
 	}
@@ -219,6 +232,7 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch
 
 // Close closes the resources of the pipeline.
 func (v *vectorAggregationPipeline) Close() {
+	v.aggregator.Reset()
 	if v.region != nil {
 		v.region.End()
 	}

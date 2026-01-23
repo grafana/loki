@@ -78,6 +78,9 @@ message AggregateRange {
     (gogoproto.stdduration) = true,
     (gogoproto.nullable) = false
   ];
+
+  // Maximum number of unique series allowed (0 means no limit).
+  int32 max_query_series = 8;
 }
 
 // Grouping represents the grouping by/without label(s) for vector aggregators
@@ -109,6 +112,9 @@ message AggregateVector {
 
   // Aggregation operation to perform over the underlying range vector.
   AggregateVectorOp operation = 2;
+
+  // Maximum number of unique series allowed (0 means no limit).
+  int32 max_query_series = 4;
 }
 
 // AggregateVectorOp represents the different aggregation operations that can
