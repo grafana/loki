@@ -203,7 +203,7 @@ func generateWarnings(stack *lokiv1.LokiStack) ([]metav1.Condition, error) {
 		})
 	}
 
-	// Check if the ingester's replicas are less than or equal the replication factor
+	// Check if the ingester's replicas are less than or equal to the replication factor
 	rf := manifests.DefaultLokiStackSpec(stack.Spec.Size).Replication.Factor
 	if stack.Spec.Replication != nil && stack.Spec.Replication.Factor > 0 {
 		rf = stack.Spec.Replication.Factor
