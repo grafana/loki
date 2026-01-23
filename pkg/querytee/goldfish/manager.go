@@ -14,10 +14,11 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/google/uuid"
-	"github.com/grafana/loki/v3/pkg/goldfish"
-	"github.com/grafana/loki/v3/tools/querytee/comparator"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+
+	"github.com/grafana/loki/v3/pkg/goldfish"
+	"github.com/grafana/loki/v3/pkg/querytee/comparator"
 
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"

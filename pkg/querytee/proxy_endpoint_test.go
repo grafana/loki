@@ -15,9 +15,6 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/loki/v3/pkg/goldfish"
-	"github.com/grafana/loki/v3/tools/querytee/comparator"
-	querytee_goldfish "github.com/grafana/loki/v3/tools/querytee/goldfish"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	prom_testutil "github.com/prometheus/client_golang/prometheus/testutil"
@@ -26,6 +23,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
 	"go.uber.org/atomic"
+
+	"github.com/grafana/loki/v3/pkg/goldfish"
+	"github.com/grafana/loki/v3/pkg/querytee/comparator"
+	querytee_goldfish "github.com/grafana/loki/v3/pkg/querytee/goldfish"
 
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
