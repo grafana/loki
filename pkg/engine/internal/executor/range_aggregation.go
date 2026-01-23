@@ -36,6 +36,7 @@ var (
 		types.RangeAggregationTypeCount: aggregationOperationCount,
 		types.RangeAggregationTypeMax:   aggregationOperationMax,
 		types.RangeAggregationTypeMin:   aggregationOperationMin,
+		types.RangeAggregationTypeAvg:   aggregationOperationAvg,
 	}
 )
 

@@ -7,6 +7,7 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/apache/arrow-go/v18/arrow/memory"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
@@ -161,8 +162,19 @@ func newExpandPipeline(expr physical.Expression, evaluator *expressionEvaluator,
 				return nil, fmt.Errorf("unexpected type returned from evaluation, expected *arrow.StructType, got %T", arrCasted.DataType())
 			}
 			for i := range arrCasted.NumField() {
-				outputCols = append(outputCols, arrCasted.Field(i))
-				outputFields = append(outputFields, structSchema.Field(i))
+				newField := structSchema.Field(i)
+				if idx := slices.IndexFunc(outputFields, func(f arrow.Field) bool {
+					return f.Name == newField.Name
+				}); idx != -1 {
+					if newField.Name == semconv.ColumnIdentError.FQN() || newField.Name == semconv.ColumnIdentErrorDetails.FQN() {
+						outputCols[idx] = mergeErrors(outputCols[idx].(*array.String), arrCasted.Field(i).(*array.String))
+					} else {
+						panic(fmt.Sprintf("column duplicates %s", newField.Name))
+					}
+				} else {
+					outputCols = append(outputCols, arrCasted.Field(i))
+					outputFields = append(outputFields, newField)
+				}
 			}
 		case *array.Float64:
 			outputFields = append(outputFields, semconv.FieldFromIdent(semconv.ColumnIdentValue, false))
@@ -175,4 +187,22 @@ func newExpandPipeline(expr physical.Expression, evaluator *expressionEvaluator,
 		outputSchema := arrow.NewSchema(outputFields, &metadata)
 		return array.NewRecordBatch(outputSchema, outputCols, batch.NumRows()), nil
 	}, region, input), nil
+}
+
+// mergeErrors merges string columns from right to left. If there is a non-empty value on the right,
+// it will always overwrite a value on the left.
+func mergeErrors(to, from *array.String) *array.String {
+	builder := array.NewStringBuilder(memory.DefaultAllocator)
+	builder.Reserve(to.Len())
+
+	for i := range to.Len() {
+		fromVal := from.Value(i)
+		if fromVal != "" {
+			builder.Append(fromVal)
+		} else {
+			builder.Append(to.Value(i))
+		}
+	}
+
+	return builder.NewStringArray()
 }

@@ -301,6 +301,8 @@ func walkRangeAggregation(e *syntax.RangeAggregationExpr, wc *walkContext) (Valu
 		rangeAggType = types.RangeAggregationTypeMax
 	case syntax.OpRangeTypeMin:
 		rangeAggType = types.RangeAggregationTypeMin
+	case syntax.OpRangeTypeAvg:
+		rangeAggType = types.RangeAggregationTypeAvg
 	// case syntax.OpRangeTypeBytesRate:
 	//	rangeAggType = types.RangeAggregationTypeBytes // bytes_rate is implemented as bytes_over_time/$interval
 	case syntax.OpRangeTypeRate:
@@ -434,31 +436,11 @@ func walk(e syntax.Expr, wc *walkContext) (Value, error) {
 }
 
 func buildPlanForSampleQuery(ctx context.Context, e syntax.SampleExpr, params logql.Params, deletes []*deletion.Request) (Value, error) {
-	val, err := walk(e, &walkContext{
+	return walk(e, &walkContext{
 		ctx:     ctx,
 		params:  params,
 		deletes: deletes,
 	})
-
-	// this is to check that there are both range and vector aggregations, otherwise it is not implemented yet.
-	// TODO remove when all permutations of vector aggregations and range aggregations are implemented.
-	hasRangeAgg := false
-	hasVecAgg := false
-	e.Walk(func(e syntax.Expr) bool {
-		switch e.(type) {
-		case *syntax.RangeAggregationExpr:
-			hasRangeAgg = true
-			return false
-		case *syntax.VectorAggregationExpr:
-			hasVecAgg = true
-		}
-		return true
-	})
-	if !hasRangeAgg || !hasVecAgg {
-		return nil, errUnimplemented
-	}
-
-	return val, err
 }
 
 func convertLabelMatchers(matchers []*labels.Matcher) Value {
@@ -488,12 +470,14 @@ func convertVectorAggregationType(op string) types.VectorAggregationType {
 	switch op {
 	case syntax.OpTypeSum:
 		return types.VectorAggregationTypeSum
-	//case syntax.OpTypeCount:
-	//	return types.VectorAggregationTypeCount
+	case syntax.OpTypeCount:
+		return types.VectorAggregationTypeCount
 	case syntax.OpTypeMax:
 		return types.VectorAggregationTypeMax
 	case syntax.OpTypeMin:
 		return types.VectorAggregationTypeMin
+	case syntax.OpTypeAvg:
+		return types.VectorAggregationTypeAvg
 	default:
 		return types.VectorAggregationTypeInvalid
 	}
