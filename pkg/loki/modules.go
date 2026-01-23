@@ -1434,7 +1434,7 @@ func (t *Loki) initV2QueryEngine() (services.Service, error) {
 		Logger:     logger,
 		Registerer: prometheus.DefaultRegisterer,
 
-		Config: t.Cfg.QueryEngine.Executor,
+		Config: t.Cfg.QueryEngine,
 
 		Scheduler: t.queryEngineV2Scheduler,
 		Limits:    t.Overrides,

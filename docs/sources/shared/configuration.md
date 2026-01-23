@@ -388,6 +388,11 @@ query_engine:
   # CLI flag: -query-engine.enforce-retention-period
   [enforce_retention_period: <boolean> | default = false]
 
+  # Experimental: When enabled, the tenant's MaxQuerySeries limit is applied.
+  # Otherwise, no limit is enforced.
+  # CLI flag: -query-engine.enforce-max-query-series-limit
+  [enforce_max_query_series_limit: <boolean> | default = false]
+
 # The query_scheduler block configures the Loki query scheduler. When configured
 # it separates the tenant query queues from the query-frontend.
 [query_scheduler: <query_scheduler>]

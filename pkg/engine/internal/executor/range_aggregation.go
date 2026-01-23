@@ -22,11 +22,12 @@ type rangeAggregationOptions struct {
 	grouping physical.Grouping
 
 	// start and end timestamps are equal for instant queries.
-	startTs       time.Time     // start timestamp of the query
-	endTs         time.Time     // end timestamp of the query
-	rangeInterval time.Duration // range interval
-	step          time.Duration // step used for range queries
-	operation     types.RangeAggregationType
+	startTs        time.Time     // start timestamp of the query
+	endTs          time.Time     // end timestamp of the query
+	rangeInterval  time.Duration // range interval
+	step           time.Duration // step used for range queries
+	operation      types.RangeAggregationType
+	maxQuerySeries int // maximum number of unique series allowed
 }
 
 var (
@@ -107,6 +108,7 @@ func (r *rangeAggregationPipeline) init() {
 	}
 
 	r.aggregator = newAggregator(len(windows), op)
+	r.aggregator.SetMaxSeries(r.opts.maxQuerySeries)
 }
 
 // Read reads the next value into its state.
@@ -259,7 +261,9 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 				labels, labelValues := labelsCache.getLabels(arrays, fields, row)
 
 				for _, w := range windows {
-					r.aggregator.Add(w.end, value, labels, labelValues)
+					if err := r.aggregator.Add(w.end, value, labels, labelValues); err != nil {
+						return nil, err
+					}
 				}
 			}
 		}
@@ -272,6 +276,8 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 // Close closes the resources of the pipeline.
 // The implementation must close all the of the pipeline's inputs.
 func (r *rangeAggregationPipeline) Close() {
+	r.aggregator.Reset()
+
 	if r.region != nil {
 		r.region.End()
 	}
