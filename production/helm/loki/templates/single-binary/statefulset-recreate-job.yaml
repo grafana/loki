@@ -54,6 +54,7 @@ spec:
         - name: recreate-statefulset
           image: {{ include "loki.baseImage" (dict "service" (dict "registry" "docker.io" "repository" "rancher/kubectl" "tag" (.Capabilities.KubeVersion.Version | default "v1.33.0")) "global" .Values.global) }}
           command:
+            - kubectl
             - delete
             - statefulset
             - --namespace={{ $newStatefulSet.metadata.namespace }}
@@ -64,6 +65,7 @@ spec:
         - name: patch-pvc-{{ $template }}-{{ $index }}
           image: {{ include "loki.baseImage" (dict "service" (dict "registry" "docker.io" "repository" "rancher/kubectl" "tag" ($.Capabilities.KubeVersion.Version | default "v1.33.0")) "global" $.Values.global) }}
           command:
+            - kubectl
             - patch
             - pvc
             - --namespace={{ $newStatefulSet.metadata.namespace }}
