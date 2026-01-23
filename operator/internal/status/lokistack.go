@@ -23,9 +23,6 @@ type LokiStackStatusInfo struct {
 
 	// NetworkPolicies indicates which set of network policies has been deployed, if any
 	NetworkPolicies lokiv1.NetworkPolicyRuleSet
-
-	// Warnings contain the warning conditions generated for the LokiStack
-	Warnings []metav1.Condition
 }
 
 const (
@@ -83,7 +80,7 @@ func (e *DegradedError) Error() string {
 }
 
 func generateConditions(ctx context.Context, cs *lokiv1.LokiStackComponentStatus, k k8s.Client, stack *lokiv1.LokiStack, degradedErr *DegradedError) ([]metav1.Condition, error) {
-	conditions, err := generateWarnings(ctx, k, stack)
+	conditions, err := generateWarnings(stack)
 	if err != nil {
 		return nil, err
 	}
@@ -194,7 +191,7 @@ func checkForZoneawareNodes(ctx context.Context, k client.Client, zones []lokiv1
 	return true, true, nil
 }
 
-func generateWarnings(ctx context.Context, k client.Client, stack *lokiv1.LokiStack) ([]metav1.Condition, error) {
+func generateWarnings(stack *lokiv1.LokiStack) ([]metav1.Condition, error) {
 	warnings := make([]metav1.Condition, 0, 2)
 	schemas := stack.Spec.Storage.Schemas
 

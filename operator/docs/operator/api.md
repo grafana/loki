@@ -1804,9 +1804,6 @@ PodStatusMap
 <td><p>ReasonInvalidReplicationConfiguration when the configurated replication factor is not valid
 with the select cluster size.</p>
 </td>
-</tr><tr><td><p>&#34;ReasonInvalidReplicationFactor&#34;</p></td>
-<td><p>ReasonInvalidReplicationFactor when the replication factor is equal to or more than the ingester replicas</p>
-</td>
 </tr><tr><td><p>&#34;InvalidRulerSecret&#34;</p></td>
 <td><p>ReasonInvalidRulerSecret when the format of the ruler remote write authorization secret is invalid.</p>
 </td>

@@ -282,8 +282,7 @@ func TestGenerateWarningCondition_WhenStorageSchemaIsOld(t *testing.T) {
 					},
 				},
 			}
-			k, _ := setupFakesNoError(t, lokiStack)
-			condition, err := generateWarnings(context.TODO(), k, lokiStack)
+			condition, err := generateWarnings(lokiStack)
 			require.NoError(t, err)
 			require.Equal(t, condition, tc.wantCondition)
 		})
