@@ -162,10 +162,12 @@ func dataobjV2StoreWithOpts(dataDir string, tenantID string, cfg engine.Executor
 	newEngine, err := engine.New(engine.Params{
 		Logger:     logger,
 		Registerer: registerer,
-		Config:     cfg,
-		Scheduler:  sched,
-		Limits:     logql.NoLimits,
-		Metastore:  ms,
+		Config: engine.Config{
+			Executor: cfg,
+		},
+		Scheduler: sched,
+		Limits:    logql.NoLimits,
+		Metastore: ms,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("creating engine: %w", err)
