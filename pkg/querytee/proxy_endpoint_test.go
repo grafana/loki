@@ -501,27 +501,27 @@ func Test_ProxyEndpoint_SummaryMetrics(t *testing.T) {
 			expectedMetrics: `
 			    # HELP cortex_querytee_missing_metrics_series Number of missing metrics (series) in a vector response.
 				# TYPE cortex_querytee_missing_metrics_series histogram
-				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",issuer="unknown",route="test",status_code="success",le="0.005"} 0
-				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",issuer="unknown",route="test",status_code="success",le="0.01"} 0
-				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",issuer="unknown",route="test",status_code="success",le="0.025"} 0
-				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",issuer="unknown",route="test",status_code="success",le="0.05"} 0
-				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",issuer="unknown",route="test",status_code="success",le="0.1"} 0
-				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",issuer="unknown",route="test",status_code="success",le="0.25"} 0
-				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",issuer="unknown",route="test",status_code="success",le="0.5"} 0
-				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",issuer="unknown",route="test",status_code="success",le="0.75"} 0
-				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",issuer="unknown",route="test",status_code="success",le="1"} 0
-				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",issuer="unknown",route="test",status_code="success",le="1.5"} 0
-				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",issuer="unknown",route="test",status_code="success",le="2"} 0
-				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",issuer="unknown",route="test",status_code="success",le="3"} 0
-				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",issuer="unknown",route="test",status_code="success",le="4"} 0
-				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",issuer="unknown",route="test",status_code="success",le="5"} 0
-				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",issuer="unknown",route="test",status_code="success",le="10"} 0
-				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",issuer="unknown",route="test",status_code="success",le="25"} 1
-				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",issuer="unknown",route="test",status_code="success",le="50"} 1
-				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",issuer="unknown",route="test",status_code="success",le="100"} 1
-				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",issuer="unknown",route="test",status_code="success",le="+Inf"} 1
-				cortex_querytee_missing_metrics_series_sum{backend="backend-2",issuer="unknown",route="test",status_code="success"} 12
-				cortex_querytee_missing_metrics_series_count{backend="backend-2",issuer="unknown",route="test",status_code="success"} 1
+				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",backend_alias="other",issuer="unknown",route="test",status_code="success",le="0.005"} 0
+				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",backend_alias="other",issuer="unknown",route="test",status_code="success",le="0.01"} 0
+				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",backend_alias="other",issuer="unknown",route="test",status_code="success",le="0.025"} 0
+				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",backend_alias="other",issuer="unknown",route="test",status_code="success",le="0.05"} 0
+				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",backend_alias="other",issuer="unknown",route="test",status_code="success",le="0.1"} 0
+				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",backend_alias="other",issuer="unknown",route="test",status_code="success",le="0.25"} 0
+				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",backend_alias="other",issuer="unknown",route="test",status_code="success",le="0.5"} 0
+				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",backend_alias="other",issuer="unknown",route="test",status_code="success",le="0.75"} 0
+				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",backend_alias="other",issuer="unknown",route="test",status_code="success",le="1"} 0
+				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",backend_alias="other",issuer="unknown",route="test",status_code="success",le="1.5"} 0
+				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",backend_alias="other",issuer="unknown",route="test",status_code="success",le="2"} 0
+				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",backend_alias="other",issuer="unknown",route="test",status_code="success",le="3"} 0
+				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",backend_alias="other",issuer="unknown",route="test",status_code="success",le="4"} 0
+				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",backend_alias="other",issuer="unknown",route="test",status_code="success",le="5"} 0
+				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",backend_alias="other",issuer="unknown",route="test",status_code="success",le="10"} 0
+				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",backend_alias="other",issuer="unknown",route="test",status_code="success",le="25"} 1
+				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",backend_alias="other",issuer="unknown",route="test",status_code="success",le="50"} 1
+				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",backend_alias="other",issuer="unknown",route="test",status_code="success",le="100"} 1
+				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",backend_alias="other",issuer="unknown",route="test",status_code="success",le="+Inf"} 1
+				cortex_querytee_missing_metrics_series_sum{backend="backend-2",backend_alias="other",issuer="unknown",route="test",status_code="success"} 12
+				cortex_querytee_missing_metrics_series_count{backend="backend-2",backend_alias="other",issuer="unknown",route="test",status_code="success"} 1
 			`,
 		},
 	} {
