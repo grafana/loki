@@ -83,7 +83,7 @@ type Params struct {
 	Logger     log.Logger            // Logger for optional log messages.
 	Registerer prometheus.Registerer // Registerer for optional metrics.
 
-	Config ExecutorConfig // Config for the Engine.
+	Config Config // Config for the Engine.
 
 	Scheduler    *Scheduler          // Scheduler to manage the execution of tasks.
 	Metastore    metastore.Metastore // Metastore to access the indexes
@@ -105,17 +105,17 @@ func (p *Params) validate() error {
 	if p.Metastore == nil {
 		return errors.New("metastore is required")
 	}
-	if p.Config.BatchSize <= 0 {
-		return fmt.Errorf("invalid batch size for query engine. must be greater than 0, got %d", p.Config.BatchSize)
+	if p.Config.Executor.BatchSize <= 0 {
+		return fmt.Errorf("invalid batch size for query engine. must be greater than 0, got %d", p.Config.Executor.BatchSize)
 	}
 	return nil
 }
 
 // Engine defines parameters for executing queries.
 type Engine struct {
-	logger      log.Logger
-	metrics     *metrics
-	rangeConfig rangeio.Config
+	logger  log.Logger
+	metrics *metrics
+	cfg     Config
 
 	scheduler    *Scheduler      // Scheduler to manage the execution of tasks.
 	limits       logql.Limits    // Limits to apply to engine queries.
@@ -131,9 +131,9 @@ func New(params Params) (*Engine, error) {
 	}
 
 	e := &Engine{
-		logger:      params.Logger,
-		metrics:     newMetrics(params.Registerer),
-		rangeConfig: params.Config.RangeConfig,
+		logger:  params.Logger,
+		metrics: newMetrics(params.Registerer),
+		cfg:     params.Config,
 
 		scheduler:    params.Scheduler,
 		limits:       params.Limits,
@@ -266,7 +266,7 @@ func (e *Engine) buildContext(ctx context.Context) context.Context {
 
 	// Inject the range config into the context for any calls to
 	// [rangeio.ReadRanges] to make use of.
-	ctx = rangeio.WithConfig(ctx, &e.rangeConfig)
+	ctx = rangeio.WithConfig(ctx, &e.cfg.Executor.RangeConfig)
 
 	metadataContext.AddWarning("Query was executed using the new experimental query engine and dataobj storage.")
 	return ctx
@@ -334,7 +334,16 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, logger log.Logger, param
 	// TODO(rfratto): It feels strange that we need to past the start/end time
 	// to the physical planner. Isn't it already represented by the logical
 	// plan?
-	planner := physical.NewPlanner(physical.NewContext(params.Start(), params.End()), catalog)
+	plannerCtx := physical.NewContext(params.Start(), params.End())
+
+	// Get the tenant's MaxQuerySeries limit and pass it to the planner context if enforcement is enabled
+	if e.cfg.EnforceQuerySeriesLimit {
+		if tenantID, err := user.ExtractOrgID(ctx); err == nil {
+			plannerCtx = plannerCtx.WithMaxQuerySeries(e.limits.MaxQuerySeries(ctx, tenantID))
+		}
+	}
+
+	planner := physical.NewPlanner(plannerCtx, catalog)
 	physicalPlan, err := planner.Build(logicalPlan)
 	if err != nil {
 		level.Warn(logger).Log("msg", "failed to create physical plan", "err", err)

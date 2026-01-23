@@ -27,6 +27,9 @@ type Context struct {
 	rangeInterval time.Duration
 	direction     SortOrder
 	v1Compatible  bool
+
+	// maxQuerySeries is the maximum number of unique series allowed for metric queries.
+	maxQuerySeries int
 }
 
 func NewContext(from, through time.Time) *Context {
@@ -38,10 +41,11 @@ func NewContext(from, through time.Time) *Context {
 
 func (pc *Context) Clone() *Context {
 	return &Context{
-		from:          pc.from,
-		through:       pc.through,
-		rangeInterval: pc.rangeInterval,
-		direction:     pc.direction,
+		from:           pc.from,
+		through:        pc.through,
+		rangeInterval:  pc.rangeInterval,
+		direction:      pc.direction,
+		maxQuerySeries: pc.maxQuerySeries,
 	}
 }
 
@@ -61,6 +65,13 @@ func (pc *Context) WithTimeRange(from, through time.Time) *Context {
 	cloned := pc.Clone()
 	cloned.from = from
 	cloned.through = through
+	return cloned
+}
+
+// WithMaxQuerySeries sets the maximum number of unique series allowed for metric queries.
+func (pc *Context) WithMaxQuerySeries(maxQuerySeries int) *Context {
+	cloned := pc.Clone()
+	cloned.maxQuerySeries = maxQuerySeries
 	return cloned
 }
 
@@ -442,11 +453,12 @@ func (p *Planner) processRangeAggregation(r *logical.RangeAggregation, ctx *Cont
 			Columns: grouping,
 			Without: r.Grouping.Without,
 		},
-		Operation: r.Operation,
-		Start:     r.Start,
-		End:       r.End,
-		Range:     r.RangeInterval,
-		Step:      r.Step,
+		Operation:      r.Operation,
+		Start:          r.Start,
+		End:            r.End,
+		Range:          r.RangeInterval,
+		Step:           r.Step,
+		MaxQuerySeries: ctx.maxQuerySeries,
 	}
 	p.plan.graph.Add(node)
 
@@ -475,7 +487,8 @@ func (p *Planner) processVectorAggregation(lp *logical.VectorAggregation, ctx *C
 			Columns: grouping,
 			Without: lp.Grouping.Without,
 		},
-		Operation: lp.Operation,
+		Operation:      lp.Operation,
+		MaxQuerySeries: ctx.maxQuerySeries,
 	}
 	p.plan.graph.Add(node)
 	child, err := p.process(lp.Table, ctx)

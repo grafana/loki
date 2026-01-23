@@ -1,6 +1,7 @@
 package executor
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -333,6 +334,34 @@ func TestAggregator(t *testing.T) {
 		require.NoError(t, err, "should be able to convert record back to rows")
 		require.Equal(t, len(expect), len(rows), "number of rows should match")
 		require.ElementsMatch(t, expect, rows)
+	})
+
+	t.Run("series limit enforcement", func(t *testing.T) {
+		agg := newAggregator(10, aggregationOperationSum)
+		agg.AddLabels(groupBy)
+		agg.SetMaxSeries(3) // Limit to 3 series
+
+		ts1 := time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC)
+		ts2 := time.Date(2024, 1, 1, 10, 1, 0, 0, time.UTC)
+
+		// Add first 3 series at ts1 - should succeed
+		err := agg.Add(ts1, 10, groupBy, []string{"prod", "app1"})
+		require.NoError(t, err)
+
+		err = agg.Add(ts1, 20, groupBy, []string{"prod", "app2"})
+		require.NoError(t, err)
+
+		err = agg.Add(ts1, 30, groupBy, []string{"dev", "app1"})
+		require.NoError(t, err)
+
+		// Try to add 4th unique series should fail
+		err = agg.Add(ts2, 10, groupBy, []string{"dev", "app2"})
+		require.Error(t, err)
+		require.True(t, errors.Is(err, ErrSeriesLimitExceeded))
+
+		// Adding same series again at different timestamp should succeed (not a new unique series)
+		err = agg.Add(ts2, 15, groupBy, []string{"prod", "app1"})
+		require.NoError(t, err)
 	})
 }
 
