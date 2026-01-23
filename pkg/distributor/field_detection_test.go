@@ -1119,6 +1119,161 @@ func TestGetLevelUsingJsonParser(t *testing.T) {
 	}
 }
 
+func TestGetLevelUsingXMLParser(t *testing.T) {
+	tests := []struct {
+		name               string
+		xml                string
+		allowedLevelFields map[string]struct{}
+		maxDepth           int
+		want               string
+	}{
+		{
+			name:               "simple top level element",
+			xml:                `<root><level>error</level></root>`,
+			allowedLevelFields: map[string]struct{}{"level": {}},
+			want:               "error",
+		},
+		{
+			name:               "nested element one level deep",
+			xml:                `<root><log><level>info</level></log></root>`,
+			allowedLevelFields: map[string]struct{}{"level": {}},
+			want:               "info",
+		},
+		{
+			name:               "element attribute",
+			xml:                `<root><log level="warn"></log></root>`,
+			allowedLevelFields: map[string]struct{}{"level": {}},
+			want:               "warn",
+		},
+		{
+			name:               "multiple allowed fields picks first",
+			xml:                `<root><severity>error</severity><level>info</level></root>`,
+			allowedLevelFields: map[string]struct{}{"level": {}, "severity": {}},
+			want:               "error",
+		},
+		{
+			name:               "deeply nested element",
+			xml:                `<root><a><b><level>debug</level></b></a></root>`,
+			allowedLevelFields: map[string]struct{}{"level": {}},
+			want:               "debug",
+		},
+		{
+			name:               "empty when no match",
+			xml:                `<root><foo>bar</foo></root>`,
+			allowedLevelFields: map[string]struct{}{"level": {}},
+			want:               "",
+		},
+		{
+			name:               "depth limited - only top level",
+			xml:                `<root><a><level>debug</level></a><level>info</level></root>`,
+			allowedLevelFields: map[string]struct{}{"level": {}},
+			maxDepth:           1,
+			want:               "info",
+		},
+		{
+			name:               "depth limited - no match",
+			xml:                `<root><a><level>debug</level></a></root>`,
+			allowedLevelFields: map[string]struct{}{"level": {}},
+			maxDepth:           1,
+			want:               "",
+		},
+		{
+			name:               "namespace stripping",
+			xml:                `<root><ns:level>warn</ns:level></root>`,
+			allowedLevelFields: map[string]struct{}{"level": {}},
+			want:               "warn",
+		},
+		{
+			name:               "custom field names",
+			xml:                `<root><custom_level>error</custom_level></root>`,
+			allowedLevelFields: map[string]struct{}{"custom_level": {}},
+			want:               "error",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := getLevelUsingXMLParser([]byte(tt.xml), tt.allowedLevelFields, tt.maxDepth)
+			if string(got) != tt.want {
+				t.Errorf("getLevelUsingXMLParser() = %v, want %v", string(got), tt.want)
+			}
+		})
+	}
+}
+
+func TestGetValueUsingXMLParser(t *testing.T) {
+	tests := []struct {
+		name  string
+		xml   string
+		hints []string
+		want  string
+	}{
+		{
+			name:  "simple element extraction",
+			xml:   `<root><app>myapp</app></root>`,
+			hints: []string{"app"},
+			want:  "myapp",
+		},
+		{
+			name:  "nested element extraction",
+			xml:   `<root><pod><uuid>abc123</uuid></pod></root>`,
+			hints: []string{"pod/uuid"},
+			want:  "abc123",
+		},
+		{
+			name:  "attribute extraction",
+			xml:   `<root><pod id="pod-1"></pod></root>`,
+			hints: []string{"pod@id"},
+			want:  "pod-1",
+		},
+		{
+			name:  "multiple hints - first match",
+			xml:   `<root><trace_id>xyz789</trace_id><id>abc123</id></root>`,
+			hints: []string{"trace_id", "id"},
+			want:  "xyz789",
+		},
+		{
+			name:  "no match returns empty",
+			xml:   `<root><foo>bar</foo></root>`,
+			hints: []string{"notfound"},
+			want:  "",
+		},
+		{
+			name:  "non-xml input",
+			xml:   `not xml at all`,
+			hints: []string{"foo"},
+			want:  "",
+		},
+		{
+			name:  "namespace stripping in element",
+			xml:   `<root><ns:app>myapp</ns:app></root>`,
+			hints: []string{"app"},
+			want:  "myapp",
+		},
+		{
+			name:  "namespace stripping in attribute",
+			xml:   `<root><pod ns:id="pod-1"></pod></root>`,
+			hints: []string{"pod@id"},
+			want:  "pod-1",
+		},
+		{
+			name:  "deeply nested path",
+			xml:   `<root><a><b><c>deep</c></b></a></root>`,
+			hints: []string{"a/b/c"},
+			want:  "deep",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := getValueUsingXMLParser([]byte(tt.xml), tt.hints)
+			if string(got) != tt.want {
+				t.Errorf("getValueUsingXMLParser() = %v, want %v", string(got), tt.want)
+			}
+		})
+	}
+}
+
 func Test_detectLevelFromLogLine(t *testing.T) {
 	for _, level := range []struct {
 		word  string
