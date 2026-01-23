@@ -45,7 +45,8 @@ type QuerySample struct {
 	CellBUsedNewEngine bool `json:"cellBUsedNewEngine"`
 
 	// Comparison outcome
-	ComparisonStatus ComparisonStatus `json:"comparisonStatus"`
+	ComparisonStatus     ComparisonStatus `json:"comparisonStatus"`
+	MatchWithinTolerance bool             `json:"matchWithinTolerance"`
 
 	SampledAt time.Time `json:"sampledAt"`
 }
@@ -65,11 +66,12 @@ type QueryStats struct {
 
 // ComparisonResult represents the outcome of comparing two responses
 type ComparisonResult struct {
-	CorrelationID      string
-	ComparisonStatus   ComparisonStatus
-	DifferenceDetails  map[string]any
-	PerformanceMetrics PerformanceMetrics
-	ComparedAt         time.Time
+	CorrelationID        string
+	ComparisonStatus     ComparisonStatus
+	MatchWithinTolerance bool
+	DifferenceDetails    map[string]any
+	PerformanceMetrics   PerformanceMetrics
+	ComparedAt           time.Time
 }
 
 // ComparisonStatus represents the outcome of a comparison
