@@ -217,7 +217,7 @@ func generateWarnings(stack *lokiv1.LokiStack) ([]metav1.Condition, error) {
 		warnings = append(warnings, metav1.Condition{
 			Type:    string(lokiv1.ConditionWarning),
 			Reason:  string(lokiv1.ReasonIngesterReplicasBelowReplicationFactor),
-			Message: fmt.Sprintf("The ingester replicas (%d) are less than or equal to the replication factor (%d). This may cause ingestion unavailability during voluntary disruptions", replicas, rf),
+			Message: fmt.Sprintf("The ingester replicas (%d) are less than or equal to the replication factor (%d). Which causes log ingestion to stop when ingester pods get restarted.", replicas, rf),
 		})
 	}
 
