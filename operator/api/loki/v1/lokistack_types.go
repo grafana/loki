@@ -1317,7 +1317,7 @@ const (
 	ReasonZoneAwareEmptyLabel LokiStackConditionReason = "ReasonZoneAwareEmptyLabel"
 	// ReasonStorageNeedsSchemaUpdate when the object storage schema version is older than V13
 	ReasonStorageNeedsSchemaUpdate LokiStackConditionReason = "StorageNeedsSchemaUpdate"
-	// ReasonIngesterReplicasBelowReplicationFactor when the ingester PDB minimum available pods is less than the replication factor which may cause log ingestion to be unavailable during updates
+	// ReasonIngesterReplicasBelowReplicationFactor when the ingester replicas are less than or equal to the replication factor. Which causes log ingestion to stop when ingester pods get restarted.
 	ReasonIngesterReplicasBelowReplicationFactor LokiStackConditionReason = "ReasonIngesterReplicasBelowReplicationFactor"
 )
 
