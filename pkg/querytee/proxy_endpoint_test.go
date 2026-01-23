@@ -15,9 +15,6 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/loki/v3/pkg/goldfish"
-	"github.com/grafana/loki/v3/tools/querytee/comparator"
-	querytee_goldfish "github.com/grafana/loki/v3/tools/querytee/goldfish"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	prom_testutil "github.com/prometheus/client_golang/prometheus/testutil"
@@ -26,6 +23,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
 	"go.uber.org/atomic"
+
+	"github.com/grafana/loki/v3/pkg/goldfish"
+	"github.com/grafana/loki/v3/pkg/querytee/comparator"
+	querytee_goldfish "github.com/grafana/loki/v3/pkg/querytee/goldfish"
 
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
@@ -500,27 +501,27 @@ func Test_ProxyEndpoint_SummaryMetrics(t *testing.T) {
 			expectedMetrics: `
 			    # HELP cortex_querytee_missing_metrics_series Number of missing metrics (series) in a vector response.
 				# TYPE cortex_querytee_missing_metrics_series histogram
-				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",issuer="unknown",route="test",status_code="success",le="0.005"} 0
-				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",issuer="unknown",route="test",status_code="success",le="0.01"} 0
-				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",issuer="unknown",route="test",status_code="success",le="0.025"} 0
-				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",issuer="unknown",route="test",status_code="success",le="0.05"} 0
-				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",issuer="unknown",route="test",status_code="success",le="0.1"} 0
-				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",issuer="unknown",route="test",status_code="success",le="0.25"} 0
-				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",issuer="unknown",route="test",status_code="success",le="0.5"} 0
-				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",issuer="unknown",route="test",status_code="success",le="0.75"} 0
-				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",issuer="unknown",route="test",status_code="success",le="1"} 0
-				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",issuer="unknown",route="test",status_code="success",le="1.5"} 0
-				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",issuer="unknown",route="test",status_code="success",le="2"} 0
-				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",issuer="unknown",route="test",status_code="success",le="3"} 0
-				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",issuer="unknown",route="test",status_code="success",le="4"} 0
-				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",issuer="unknown",route="test",status_code="success",le="5"} 0
-				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",issuer="unknown",route="test",status_code="success",le="10"} 0
-				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",issuer="unknown",route="test",status_code="success",le="25"} 1
-				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",issuer="unknown",route="test",status_code="success",le="50"} 1
-				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",issuer="unknown",route="test",status_code="success",le="100"} 1
-				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",issuer="unknown",route="test",status_code="success",le="+Inf"} 1
-				cortex_querytee_missing_metrics_series_sum{backend="backend-2",issuer="unknown",route="test",status_code="success"} 12
-				cortex_querytee_missing_metrics_series_count{backend="backend-2",issuer="unknown",route="test",status_code="success"} 1
+				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",backend_alias="other",issuer="unknown",route="test",status_code="success",le="0.005"} 0
+				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",backend_alias="other",issuer="unknown",route="test",status_code="success",le="0.01"} 0
+				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",backend_alias="other",issuer="unknown",route="test",status_code="success",le="0.025"} 0
+				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",backend_alias="other",issuer="unknown",route="test",status_code="success",le="0.05"} 0
+				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",backend_alias="other",issuer="unknown",route="test",status_code="success",le="0.1"} 0
+				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",backend_alias="other",issuer="unknown",route="test",status_code="success",le="0.25"} 0
+				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",backend_alias="other",issuer="unknown",route="test",status_code="success",le="0.5"} 0
+				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",backend_alias="other",issuer="unknown",route="test",status_code="success",le="0.75"} 0
+				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",backend_alias="other",issuer="unknown",route="test",status_code="success",le="1"} 0
+				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",backend_alias="other",issuer="unknown",route="test",status_code="success",le="1.5"} 0
+				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",backend_alias="other",issuer="unknown",route="test",status_code="success",le="2"} 0
+				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",backend_alias="other",issuer="unknown",route="test",status_code="success",le="3"} 0
+				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",backend_alias="other",issuer="unknown",route="test",status_code="success",le="4"} 0
+				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",backend_alias="other",issuer="unknown",route="test",status_code="success",le="5"} 0
+				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",backend_alias="other",issuer="unknown",route="test",status_code="success",le="10"} 0
+				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",backend_alias="other",issuer="unknown",route="test",status_code="success",le="25"} 1
+				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",backend_alias="other",issuer="unknown",route="test",status_code="success",le="50"} 1
+				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",backend_alias="other",issuer="unknown",route="test",status_code="success",le="100"} 1
+				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",backend_alias="other",issuer="unknown",route="test",status_code="success",le="+Inf"} 1
+				cortex_querytee_missing_metrics_series_sum{backend="backend-2",backend_alias="other",issuer="unknown",route="test",status_code="success"} 12
+				cortex_querytee_missing_metrics_series_count{backend="backend-2",backend_alias="other",issuer="unknown",route="test",status_code="success"} 1
 			`,
 		},
 	} {
@@ -671,9 +672,8 @@ func Test_endToEnd_traceIDFlow(t *testing.T) {
 			DefaultRate: 1.0, // Always sample for testing
 		},
 	}
-	samplesComparator := comparator.NewSamplesComparator(comparator.SampleComparisonOptions{Tolerance: 0.000001})
 
-	goldfishManager, err := querytee_goldfish.NewManager(goldfishConfig, samplesComparator, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
+	goldfishManager, err := querytee_goldfish.NewManager(goldfishConfig, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	endpoint := createTestEndpointWithGoldfish(t, backends, "test", goldfishManager)
@@ -816,7 +816,6 @@ func TestProxyEndpoint_QuerySplitting(t *testing.T) {
 	}
 	goldfishManager, err := querytee_goldfish.NewManager(
 		goldfishConfig,
-		&testComparator{},
 		storage,
 		nil,
 		log.NewNopLogger(),

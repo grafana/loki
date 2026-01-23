@@ -166,12 +166,13 @@ func (n *AggregateRange) UnmarshalPhysical(from physical.Node) error {
 	}
 
 	*n = AggregateRange{
-		Grouping:  grouping,
-		Operation: op,
-		Start:     rangeAgg.Start,
-		End:       rangeAgg.End,
-		Step:      rangeAgg.Step,
-		Range:     rangeAgg.Range,
+		Grouping:       grouping,
+		Operation:      op,
+		Start:          rangeAgg.Start,
+		End:            rangeAgg.End,
+		Step:           rangeAgg.Step,
+		Range:          rangeAgg.Range,
+		MaxQuerySeries: int32(rangeAgg.MaxQuerySeries),
 	}
 
 	return nil
@@ -223,8 +224,9 @@ func (n *AggregateVector) UnmarshalPhysical(from physical.Node) error {
 	}
 
 	*n = AggregateVector{
-		Grouping:  grouping,
-		Operation: op,
+		Grouping:       grouping,
+		Operation:      op,
+		MaxQuerySeries: int32(vectorAgg.MaxQuerySeries),
 	}
 	return nil
 }

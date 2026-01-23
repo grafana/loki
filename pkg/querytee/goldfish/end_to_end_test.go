@@ -6,17 +6,12 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/loki/v3/pkg/goldfish"
-	"github.com/grafana/loki/v3/tools/querytee/comparator"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-)
 
-// add a helper function to create a SamplesComparator with default tolerance for tests
-func testComparator() comparator.ResponsesComparator {
-	return comparator.NewSamplesComparator(comparator.SampleComparisonOptions{Tolerance: 0.000001})
-}
+	"github.com/grafana/loki/v3/pkg/goldfish"
+)
 
 func TestGoldfishEndToEnd(t *testing.T) {
 	// This test demonstrates the full flow of Goldfish functionality
@@ -37,7 +32,7 @@ func TestGoldfishEndToEnd(t *testing.T) {
 	storage := &mockStorage{}
 
 	// Create manager
-	manager, err := NewManager(config, testComparator(), storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
+	manager, err := NewManager(config, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 	defer manager.Close()
 
@@ -170,7 +165,7 @@ func TestGoldfishMismatchDetection(t *testing.T) {
 	}
 
 	storage := &mockStorage{}
-	manager, err := NewManager(config, testComparator(), storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
+	manager, err := NewManager(config, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 	defer manager.Close()
 
@@ -262,10 +257,11 @@ func TestGoldfishFloatingPointMismatchDetection(t *testing.T) {
 		SamplingConfig: SamplingConfig{
 			DefaultRate: 1.0,
 		},
+		CompareValuesTolerance: 0.000001, // Enable tolerance comparison for tests
 	}
 
 	storage := &mockStorage{}
-	manager, err := NewManager(config, testComparator(), storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
+	manager, err := NewManager(config, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 	defer manager.Close()
 
@@ -340,9 +336,9 @@ func TestGoldfishFloatingPointMismatchDetection(t *testing.T) {
 	assert.Len(t, storage.results, 1)
 	result := storage.results[0]
 
-	// Verify that floating-point difference within tolerance is considered a match
-	assert.Equal(t, goldfish.ComparisonStatusMatch, result.ComparisonStatus, "Floating-point difference within tolerance should be a match")
-	assert.Equal(t, result.DifferenceDetails["tolerance_match"], true, "A flag indicating this was a tolerance based match should be present")
+	assert.Equal(t, goldfish.ComparisonStatusMismatch, result.ComparisonStatus)
+	// Verify that the mismatch is due to floating point variance within tolerance
+	assert.True(t, result.MatchWithinTolerance, "Result should indicate match within tolerance")
 
 	// Verify that we recorded the compareQueryStats
 	assert.Contains(t, result.DifferenceDetails, "exec_time_variance")
@@ -357,7 +353,7 @@ func TestGoldfishNewEngineDetection(t *testing.T) {
 	}
 
 	storage := &mockStorage{}
-	manager, err := NewManager(config, testComparator(), storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
+	manager, err := NewManager(config, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 	defer manager.Close()
 

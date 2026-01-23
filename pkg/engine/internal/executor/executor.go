@@ -374,12 +374,13 @@ func (c *Context) executeRangeAggregation(ctx context.Context, plan *physical.Ra
 	}
 
 	pipeline, err := newRangeAggregationPipeline(inputs, c.evaluator, rangeAggregationOptions{
-		grouping:      plan.Grouping,
-		startTs:       plan.Start,
-		endTs:         plan.End,
-		rangeInterval: plan.Range,
-		step:          plan.Step,
-		operation:     plan.Operation,
+		grouping:       plan.Grouping,
+		startTs:        plan.Start,
+		endTs:          plan.End,
+		rangeInterval:  plan.Range,
+		step:           plan.Step,
+		operation:      plan.Operation,
+		maxQuerySeries: plan.MaxQuerySeries,
 	}, region)
 	if err != nil {
 		return errorPipelineWithRegion(ctx, err, region)
@@ -393,7 +394,11 @@ func (c *Context) executeVectorAggregation(ctx context.Context, plan *physical.V
 		return emptyPipelineWithRegion(region)
 	}
 
-	pipeline, err := newVectorAggregationPipeline(inputs, plan.Grouping, c.evaluator, plan.Operation, region)
+	pipeline, err := newVectorAggregationPipeline(inputs, c.evaluator, vectorAggregationOptions{
+		grouping:       plan.Grouping,
+		operation:      plan.Operation,
+		maxQuerySeries: plan.MaxQuerySeries,
+	}, region)
 	if err != nil {
 		return errorPipelineWithRegion(ctx, err, region)
 	}

@@ -13,9 +13,10 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/gorilla/mux"
-	"github.com/grafana/loki/v3/tools/querytee/comparator"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/querytee/comparator"
 )
 
 var testReadRoutes = []Route{

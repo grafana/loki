@@ -25,10 +25,10 @@ func NewStatsExtractor() *StatsExtractor {
 // ExtractResponseData extracts performance statistics and metadata from a Loki response.
 // Returns QueryStats, content hash (FNV32), response size, whether new engine was used, and any parsing errors.
 // The content hash excludes performance statistics to ensure identical content produces identical hashes.
-func (e *StatsExtractor) ExtractResponseData(responseBody []byte, duration int64) (goldfish.QueryStats, string, int64, bool, error) {
+func (e *StatsExtractor) ExtractResponseData(responseBody []byte, duration int64) (goldfish.QueryStats, string, int64, bool, loghttp.ResultType, error) {
 	var queryResp loghttp.QueryResponse
 	if err := json.Unmarshal(responseBody, &queryResp); err != nil {
-		return goldfish.QueryStats{}, "", 0, false, fmt.Errorf("failed to parse query response: %w", err)
+		return goldfish.QueryStats{}, "", 0, false, "", fmt.Errorf("failed to parse query response: %w", err)
 	}
 
 	// Extract statistics from the response
@@ -43,7 +43,7 @@ func (e *StatsExtractor) ExtractResponseData(responseBody []byte, duration int64
 	// Check if new engine was used by looking for the specific warning
 	usedNewEngine := e.checkForNewEngineWarning(queryResp.Warnings)
 
-	return queryStats, responseHash, responseSize, usedNewEngine, nil
+	return queryStats, responseHash, responseSize, usedNewEngine, queryResp.Data.ResultType, nil
 }
 
 // extractQueryStats converts stats.Result to our QueryStats format

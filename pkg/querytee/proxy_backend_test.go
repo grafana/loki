@@ -191,3 +191,38 @@ func Test_NewProxyBackend_PreferredLogic(t *testing.T) {
 		})
 	}
 }
+
+func Test_ProxyBackend_Alias(t *testing.T) {
+	u, err := url.Parse("http://test")
+	require.NoError(t, err)
+
+	tests := map[string]struct {
+		v1Preferred   bool
+		v2Preferred   bool
+		expectedAlias string
+	}{
+		"v1 preferred backend": {
+			v1Preferred:   true,
+			v2Preferred:   false,
+			expectedAlias: "v1",
+		},
+		"v2 preferred backend": {
+			v1Preferred:   false,
+			v2Preferred:   true,
+			expectedAlias: "v2",
+		},
+		"neither preferred": {
+			v1Preferred:   false,
+			v2Preferred:   false,
+			expectedAlias: "other",
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			b, err := NewProxyBackend("test", u, time.Second, testData.v1Preferred, testData.v2Preferred)
+			require.NoError(t, err)
+			assert.Equal(t, testData.expectedAlias, b.Alias())
+		})
+	}
+}

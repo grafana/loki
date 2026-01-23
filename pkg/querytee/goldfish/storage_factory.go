@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/go-kit/log"
+
 	"github.com/grafana/loki/v3/pkg/goldfish"
 )
 
