@@ -99,7 +99,8 @@ type SampledQuery struct {
 	CreatedAt time.Time `json:"createdAt" db:"created_at"`
 
 	// Comparison outcome - computed by backend logic
-	ComparisonStatus string `json:"comparisonStatus" db:"comparison_status"`
+	ComparisonStatus     string `json:"comparisonStatus" db:"comparison_status"`
+	MatchWithinTolerance bool   `json:"matchWithinTolerance" db:"match_within_tolerance"`
 
 	// UI-only fields - generated based on configuration, not stored in database
 	CellATraceLink *string `json:"cellATraceLink,omitempty"`
@@ -254,8 +255,9 @@ func (s *Service) GetSampledQueriesWithContext(ctx context.Context, page, pageSi
 			}
 		}
 
-		// Use comparison status from database
+		// Use comparison status and match within tolerance from database
 		uiQuery.ComparisonStatus = string(q.ComparisonStatus)
+		uiQuery.MatchWithinTolerance = q.MatchWithinTolerance
 
 		// Add trace ID explore links if explore is configured
 		if s.cfg.Goldfish.GrafanaURL != "" && s.cfg.Goldfish.TracesDatasourceUID != "" {

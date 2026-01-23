@@ -1,3 +1,11 @@
+# v1.279.0 (2025-12-22)
+
+* **Feature**: Adds support for linkedGroupId on the CreatePlacementGroup and DescribePlacementGroups APIs. The linkedGroupId parameter is reserved for future use.
+
+# v1.278.0 (2025-12-18)
+
+* **Feature**: This release adds AvailabilityZoneId support for CreateFleet, ModifyFleet, DescribeFleets, RequestSpotFleet, ModifySpotFleetRequests and DescribeSpotFleetRequests APIs.
+
 # v1.277.0 (2025-12-15)
 
 * **Feature**: EC2 Capacity Manager now supports SpotTotalCount, SpotTotalInterruptions and SpotInterruptionRate metrics for both vCPU and instance units.

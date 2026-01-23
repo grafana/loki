@@ -774,7 +774,7 @@ func ruleMetric(rule rulefmt.Rule) string {
 
 // End taken from https://github.com/prometheus/prometheus/blob/8c8de46003d1800c9d40121b4a5e5de8582ef6e1/cmd/promtool/main.go#L403
 
-// save saves a set of rule files to to disk. You can specify whenever you want the
+// save saves a set of rule files to disk. You can specify whenever you want the
 // file(s) to be edited in-place.
 func save(nss map[string]rules.RuleNamespace, i bool) error {
 	for _, ns := range nss {

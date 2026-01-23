@@ -1,6 +1,14 @@
 # Changes
 
 
+## [1.59.1](https://github.com/googleapis/google-cloud-go/releases/tag/storage%2Fv1.59.1) (2026-01-14)
+
+### Bug Fixes
+
+* close attrsReady channel when metadata is missing (#13574) ([712f562](https://github.com/googleapis/google-cloud-go/commit/712f56272ac5a219bac1b20894e4825f3682c920))
+* don't update global object's readhandle in MRD (#13575) ([bc92500](https://github.com/googleapis/google-cloud-go/commit/bc925001a2f5b186c231c2885f9162713bb4b1bf))
+* remove mandatory attrs response in MRD (#13585) ([6752a49](https://github.com/googleapis/google-cloud-go/commit/6752a496e756c214faf345c302b58ed7593c6017))
+
 ## [1.59.0](https://github.com/googleapis/google-cloud-go/releases/tag/storage%2Fv1.59.0) (2026-01-09)
 
 ### Features

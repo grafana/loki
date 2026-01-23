@@ -323,7 +323,7 @@ func (i *blockLoadingIter) Close() error {
 }
 
 // Reset implements v1.ResettableIterator.
-// TODO(chaudum) Cache already fetched blocks to to avoid the overhead of
+// TODO(chaudum) Cache already fetched blocks to avoid the overhead of
 // creating the reader.
 func (i *blockLoadingIter) Reset() error {
 	if !i.initialized {

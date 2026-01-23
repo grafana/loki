@@ -1,6 +1,7 @@
 package planner
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
@@ -282,7 +283,7 @@ VectorAggregation operation=sum group_by=(ambiguous.bar)
 				direction: logproto.BACKWARD,
 			}
 
-			logicalPlan, err := logical.BuildPlan(q)
+			logicalPlan, err := logical.BuildPlan(context.Background(), q)
 			require.NoError(t, err)
 
 			catalog := physical.NewMetastoreCatalog(func(_ physical.Expression, _ []physical.Expression, _ time.Time, _ time.Time) ([]*metastore.DataobjSectionDescriptor, error) {

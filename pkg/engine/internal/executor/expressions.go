@@ -10,10 +10,14 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
-type expressionEvaluator struct{}
+type expressionEvaluator struct {
+	identCache *semconv.IdentifierCache
+}
 
-func newExpressionEvaluator() expressionEvaluator {
-	return expressionEvaluator{}
+func newExpressionEvaluator() *expressionEvaluator {
+	return &expressionEvaluator{
+		identCache: semconv.NewIdentifierCache(),
+	}
 }
 
 func (e expressionEvaluator) eval(expr physical.Expression, input arrow.RecordBatch) (arrow.Array, error) {
@@ -28,7 +32,7 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.RecordBa
 		// For non-ambiguous columns, we can look up the column in the schema by its fully qualified name.
 		if expr.Ref.Type != types.ColumnTypeAmbiguous {
 			for idx, field := range input.Schema().Fields() {
-				ident, err := semconv.ParseFQN(field.Name)
+				ident, err := e.identCache.ParseFQN(field.Name)
 				if err != nil {
 					return nil, fmt.Errorf("failed to parse column %s: %w", field.Name, err)
 				}
@@ -44,7 +48,7 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.RecordBa
 			var fieldIdents []*semconv.Identifier
 
 			for idx, field := range input.Schema().Fields() {
-				ident, err := semconv.ParseFQN(field.Name)
+				ident, err := e.identCache.ParseFQN(field.Name)
 				if err != nil {
 					return nil, fmt.Errorf("failed to parse column %s: %w", field.Name, err)
 				}
@@ -101,6 +105,7 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.RecordBa
 			return nil, err
 		}
 
+		// TODO: implement short circuiting. we currently evaluate both sides always.
 		rhs, err := e.eval(expr.Right, input)
 		if err != nil {
 			return nil, err

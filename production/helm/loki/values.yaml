@@ -86,7 +86,7 @@ loki:
     # -- Docker image repository
     repository: grafana/loki
     # -- Overrides the image tag whose default is the chart's appVersion
-    tag: 3.6.3
+    tag: 3.6.4
     # -- Overrides the image tag with an image digest
     digest: null
     # -- Docker image pull policy
@@ -630,7 +630,7 @@ enterprise:
   # Enable enterprise features, license must be provided
   enabled: false
   # Default version of GEL to deploy
-  version: 3.6.1
+  version: 3.6.3
   # -- Optional name of the GEL cluster, otherwise will use .Release.Name
   # The cluster name must match what is in your GEL license
   cluster_name: null
@@ -672,7 +672,7 @@ enterprise:
     # -- Docker image repository
     repository: grafana/enterprise-logs
     # -- Docker image tag
-    tag: 3.6.3
+    tag: 3.6.4
     # -- Overrides the image tag with an image digest
     digest: null
     # -- Docker image pull policy

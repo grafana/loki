@@ -12,13 +12,15 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/dskit/user"
+	"github.com/grafana/dskit/httpgrpc"
+	"github.com/grafana/dskit/tenant"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/engine/internal/deletion"
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/logical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
@@ -46,6 +48,15 @@ var (
 
 var tracer = otel.Tracer("pkg/engine")
 
+// Re-export internal types for external use.
+type (
+	// RequestStreamFilterer creates a StreamFilterer for a given request context.
+	RequestStreamFilterer = executor.RequestStreamFilterer
+
+	// StreamFilterer filters streams based on their labels.
+	StreamFilterer = executor.StreamFilterer
+)
+
 // ExecutorConfig configures engine execution.
 type ExecutorConfig struct {
 	// Batch size of the v2 execution engine.
@@ -56,6 +67,10 @@ type ExecutorConfig struct {
 
 	// RangeConfig determines how to optimize range reads in the V2 engine.
 	RangeConfig rangeio.Config `yaml:"range_reads" category:"experimental" doc:"description=Configures how to read byte ranges from object storage when using the V2 engine."`
+
+	// StreamFilterer is an optional filterer that can filter streams based on their labels.
+	// When set, streams are filtered before scanning.
+	StreamFilterer executor.RequestStreamFilterer `yaml:"-"`
 }
 
 func (cfg *ExecutorConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
@@ -69,11 +84,12 @@ type Params struct {
 	Logger     log.Logger            // Logger for optional log messages.
 	Registerer prometheus.Registerer // Registerer for optional metrics.
 
-	Config ExecutorConfig // Config for the Engine.
+	Config Config // Config for the Engine.
 
-	Scheduler *Scheduler          // Scheduler to manage the execution of tasks.
-	Metastore metastore.Metastore // Metastore to access the indexes
-	Limits    logql.Limits        // Limits to apply to engine queries.
+	Scheduler    *Scheduler          // Scheduler to manage the execution of tasks.
+	Metastore    metastore.Metastore // Metastore to access the indexes
+	Limits       logql.Limits        // Limits to apply to engine queries.
+	DeleteGetter deletion.Getter     // DeleteGetter to fetch delete requests for query-time filtering.
 }
 
 // validate validates p and applies defaults.
@@ -90,20 +106,21 @@ func (p *Params) validate() error {
 	if p.Metastore == nil {
 		return errors.New("metastore is required")
 	}
-	if p.Config.BatchSize <= 0 {
-		return fmt.Errorf("invalid batch size for query engine. must be greater than 0, got %d", p.Config.BatchSize)
+	if p.Config.Executor.BatchSize <= 0 {
+		return fmt.Errorf("invalid batch size for query engine. must be greater than 0, got %d", p.Config.Executor.BatchSize)
 	}
 	return nil
 }
 
 // Engine defines parameters for executing queries.
 type Engine struct {
-	logger      log.Logger
-	metrics     *metrics
-	rangeConfig rangeio.Config
+	logger  log.Logger
+	metrics *metrics
+	cfg     Config
 
-	scheduler *Scheduler   // Scheduler to manage the execution of tasks.
-	limits    logql.Limits // Limits to apply to engine queries.
+	scheduler    *Scheduler      // Scheduler to manage the execution of tasks.
+	limits       logql.Limits    // Limits to apply to engine queries.
+	deleteGetter deletion.Getter // DeleteGetter to fetch delete requests for query-time filtering.
 
 	metastore metastore.Metastore
 }
@@ -115,12 +132,13 @@ func New(params Params) (*Engine, error) {
 	}
 
 	e := &Engine{
-		logger:      params.Logger,
-		metrics:     newMetrics(params.Registerer),
-		rangeConfig: params.Config.RangeConfig,
+		logger:  params.Logger,
+		metrics: newMetrics(params.Registerer),
+		cfg:     params.Config,
 
-		scheduler: params.Scheduler,
-		limits:    params.Limits,
+		scheduler:    params.Scheduler,
+		limits:       params.Limits,
+		deleteGetter: params.DeleteGetter,
 
 		metastore: params.Metastore,
 	}
@@ -143,11 +161,16 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	defer capture.End()
 	startTime := time.Now()
 
+	tenantID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return logqlmodel.Result{}, httpgrpc.Error(http.StatusBadRequest, err.Error())
+	}
+
 	ctx, region := xcap.StartRegion(ctx, "Engine.Execute", xcap.WithRegionAttributes(
 		attribute.String("type", string(logql.GetRangeType(params))),
 		attribute.String("query", params.QueryString()),
 		attribute.Stringer("start", params.Start()),
-		attribute.Stringer("end", params.Start()),
+		attribute.Stringer("end", params.End()),
 		attribute.Stringer("step", params.Step()),
 		attribute.Stringer("length", params.End().Sub(params.Start())),
 		attribute.StringSlice("shards", params.Shards()),
@@ -168,14 +191,14 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 		return logqlmodel.Result{}, ErrNotSupported
 	}
 
-	physicalPlan, durPhysicalPlanning, err := e.buildPhysicalPlan(ctx, logger, params, logicalPlan)
+	physicalPlan, durPhysicalPlanning, err := e.buildPhysicalPlan(ctx, tenantID, logger, params, logicalPlan)
 	if err != nil {
 		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
 		region.SetStatus(codes.Error, "failed to create physical plan")
 		return logqlmodel.Result{}, ErrPlanningFailed
 	}
 
-	wf, durWorkflowPlanning, err := e.buildWorkflow(ctx, logger, physicalPlan)
+	wf, durWorkflowPlanning, err := e.buildWorkflow(ctx, tenantID, logger, physicalPlan)
 	if err != nil {
 		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
 		region.SetStatus(codes.Error, "failed to create execution plan")
@@ -249,7 +272,7 @@ func (e *Engine) buildContext(ctx context.Context) context.Context {
 
 	// Inject the range config into the context for any calls to
 	// [rangeio.ReadRanges] to make use of.
-	ctx = rangeio.WithConfig(ctx, &e.rangeConfig)
+	ctx = rangeio.WithConfig(ctx, &e.cfg.Executor.RangeConfig)
 
 	metadataContext.AddWarning("Query was executed using the new experimental query engine and dataobj storage.")
 	return ctx
@@ -271,7 +294,16 @@ func (e *Engine) buildLogicalPlan(ctx context.Context, logger log.Logger, params
 	region := xcap.RegionFromContext(ctx)
 	timer := prometheus.NewTimer(e.metrics.logicalPlanning)
 
-	logicalPlan, err := logical.BuildPlan(params)
+	var deleteReqs []*deletion.Request
+	if e.deleteGetter != nil {
+		var err error
+		deleteReqs, err = deletion.DeletesForUser(ctx, params.Start(), params.End(), e.deleteGetter)
+		if err != nil {
+			return nil, 0, fmt.Errorf("failed to get delete requests: %w", err)
+		}
+	}
+
+	logicalPlan, err := logical.BuildPlanWithDeletes(ctx, params, deleteReqs)
 	if err != nil {
 		level.Warn(logger).Log("msg", "failed to create logical plan", "err", err)
 		region.RecordError(err)
@@ -299,16 +331,23 @@ func (e *Engine) buildLogicalPlan(ctx context.Context, logger log.Logger, params
 }
 
 // buildPhysicalPlan builds a physical plan from the given logical plan.
-func (e *Engine) buildPhysicalPlan(ctx context.Context, logger log.Logger, params logql.Params, logicalPlan *logical.Plan) (*physical.Plan, time.Duration, error) {
+func (e *Engine) buildPhysicalPlan(ctx context.Context, tenantID string, logger log.Logger, params logql.Params, logicalPlan *logical.Plan) (*physical.Plan, time.Duration, error) {
 	region := xcap.RegionFromContext(ctx)
 	timer := prometheus.NewTimer(e.metrics.physicalPlanning)
 
-	catalog := physical.NewMetastoreCatalog(e.metastoreSectionsResolver(ctx))
+	catalog := physical.NewMetastoreCatalog(e.metastoreSectionsResolver(ctx, tenantID))
 
 	// TODO(rfratto): It feels strange that we need to past the start/end time
 	// to the physical planner. Isn't it already represented by the logical
 	// plan?
-	planner := physical.NewPlanner(physical.NewContext(params.Start(), params.End()), catalog)
+	plannerCtx := physical.NewContext(params.Start(), params.End())
+
+	// Get the tenant's MaxQuerySeries limit and pass it to the planner context if enforcement is enabled
+	if e.cfg.EnforceQuerySeriesLimit {
+		plannerCtx = plannerCtx.WithMaxQuerySeries(e.limits.MaxQuerySeries(ctx, tenantID))
+	}
+
+	planner := physical.NewPlanner(plannerCtx, catalog)
 	physicalPlan, err := planner.Build(logicalPlan)
 	if err != nil {
 		level.Warn(logger).Log("msg", "failed to create physical plan", "err", err)
@@ -334,7 +373,7 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, logger log.Logger, param
 	return physicalPlan, duration, nil
 }
 
-func (e *Engine) metastoreSectionsResolver(ctx context.Context) physical.MetastoreSectionsResolver {
+func (e *Engine) metastoreSectionsResolver(ctx context.Context, tenantID string) physical.MetastoreSectionsResolver {
 	planner := physical.NewMetastorePlanner(e.metastore)
 	return func(selector physical.Expression, predicates []physical.Expression, start time.Time, end time.Time) ([]*metastore.DataobjSectionDescriptor, error) {
 		ctx, region := xcap.StartRegion(ctx, "ObjectMetastore.Sections")
@@ -345,7 +384,7 @@ func (e *Engine) metastoreSectionsResolver(ctx context.Context) physical.Metasto
 			return nil, fmt.Errorf("metastore: build plan: %w", err)
 		}
 
-		wf, _, err := e.buildWorkflow(ctx, e.logger, plan)
+		wf, _, err := e.buildWorkflow(ctx, tenantID, e.logger, plan)
 		if err != nil {
 			return nil, fmt.Errorf("metastore: build workflow: %w", err)
 		}
@@ -379,12 +418,7 @@ func (e *Engine) metastoreSectionsResolver(ctx context.Context) physical.Metasto
 }
 
 // buildWorkflow builds a workflow from the given physical plan.
-func (e *Engine) buildWorkflow(ctx context.Context, logger log.Logger, physicalPlan *physical.Plan) (*workflow.Workflow, time.Duration, error) {
-	tenantID, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return nil, 0, fmt.Errorf("extracting tenant ID: %w", err)
-	}
-
+func (e *Engine) buildWorkflow(ctx context.Context, tenantID string, logger log.Logger, physicalPlan *physical.Plan) (*workflow.Workflow, time.Duration, error) {
 	region := xcap.RegionFromContext(ctx)
 	timer := prometheus.NewTimer(e.metrics.workflowPlanning)
 

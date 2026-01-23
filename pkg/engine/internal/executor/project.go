@@ -84,6 +84,8 @@ func NewProjectPipeline(input Pipeline, proj *physical.Projection, evaluator *ex
 }
 
 func newKeepPipeline(colRefs []types.ColumnRef, keepFunc func([]types.ColumnRef, *semconv.Identifier) bool, input Pipeline, region *xcap.Region) (*GenericPipeline, error) {
+	identCache := semconv.NewIdentifierCache()
+
 	return newGenericPipelineWithRegion(func(ctx context.Context, inputs []Pipeline) (arrow.RecordBatch, error) {
 		if len(inputs) != 1 {
 			return nil, fmt.Errorf("expected 1 input, got %d", len(inputs))
@@ -94,11 +96,16 @@ func newKeepPipeline(colRefs []types.ColumnRef, keepFunc func([]types.ColumnRef,
 			return nil, err
 		}
 
+		if batch.NumRows() == 0 {
+			// Nothing to process, return an empty record with the same schema
+			return batch, nil
+		}
+
 		columns := make([]arrow.Array, 0, batch.NumCols())
 		fields := make([]arrow.Field, 0, batch.NumCols())
 
 		for i, field := range batch.Schema().Fields() {
-			ident, err := semconv.ParseFQN(field.Name)
+			ident, err := identCache.ParseFQN(field.Name)
 			if err != nil {
 				return nil, err
 			}
@@ -115,6 +122,8 @@ func newKeepPipeline(colRefs []types.ColumnRef, keepFunc func([]types.ColumnRef,
 }
 
 func newExpandPipeline(expr physical.Expression, evaluator *expressionEvaluator, input Pipeline, region *xcap.Region) (*GenericPipeline, error) {
+	identCache := semconv.NewIdentifierCache()
+
 	return newGenericPipelineWithRegion(func(ctx context.Context, inputs []Pipeline) (arrow.RecordBatch, error) {
 		if len(inputs) != 1 {
 			return nil, fmt.Errorf("expected 1 input, got %d", len(inputs))
@@ -125,13 +134,18 @@ func newExpandPipeline(expr physical.Expression, evaluator *expressionEvaluator,
 			return nil, err
 		}
 
+		if batch.NumRows() == 0 {
+			// Nothing to process, return an empty record with the same schema
+			return batch, nil
+		}
+
 		outputFields := make([]arrow.Field, 0)
 		outputCols := make([]arrow.Array, 0)
 		schema := batch.Schema()
 
 		// move all columns into the output except `value`
 		for i, field := range batch.Schema().Fields() {
-			ident, err := semconv.ParseFQN(schema.Field(i).Name)
+			ident, err := identCache.ParseFQN(schema.Field(i).Name)
 			if err != nil {
 				return nil, err
 			}

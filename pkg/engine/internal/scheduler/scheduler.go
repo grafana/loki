@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/queue/fair"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
@@ -550,9 +551,12 @@ func (s *Scheduler) finalizeAssignment(ctx context.Context, t *task, worker *wor
 		queueDuration := t.assignTime.Sub(t.queueTime).Seconds()
 		s.metrics.taskQueueSeconds.Observe(queueDuration)
 
-		// Record queue duration to the task region if available.
 		if t.wfRegion != nil {
-			t.wfRegion.Record(xcap.StatTaskQueueDuration.Observe(queueDuration))
+			t.wfRegion.Record(xcap.StatTaskMaxQueueDuration.Observe(queueDuration))
+
+			// Record time from workflow start until this task assignment.
+			assignmentTailDuration := t.assignTime.Sub(t.wfRegion.StartTime()).Seconds()
+			t.wfRegion.Record(xcap.StatTaskAssignmentTailDuration.Observe(assignmentTailDuration))
 		}
 
 		// Reconcile stream states: send updates for any that changed while sending.
@@ -966,6 +970,12 @@ func (s *Scheduler) Start(ctx context.Context, tasks ...*workflow.Task) error {
 	var tc propagation.TraceContext
 	metadata := make(http.Header)
 	tc.Inject(ctx, propagation.HeaderCarrier(metadata))
+
+	// Copy all headers from context to task metadata.
+	// Headers are stored in context by PropagateAllHeadersMiddleware.
+	if headers := httpreq.ExtractAllHeaders(ctx); headers != nil {
+		maps.Copy(metadata, headers)
+	}
 
 	wfRegion := xcap.RegionFromContext(ctx)
 

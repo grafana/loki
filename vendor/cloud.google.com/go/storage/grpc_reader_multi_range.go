@@ -115,7 +115,9 @@ func (c *grpcStorageClient) NewMultiRangeDownloader(ctx context.Context, params 
 			manager.wg.Wait()
 			return nil, manager.permanentErr
 		}
-		mrd.Attrs = manager.attrs
+		if manager.attrs != nil {
+			mrd.Attrs = *manager.attrs
+		}
 		return mrd, nil
 	case <-ctx.Done():
 		cancel()
@@ -220,7 +222,7 @@ type multiRangeDownloaderManager struct {
 	waiters        []chan struct{}
 	readSpec       *storagepb.BidiReadObjectSpec
 	lastReadHandle []byte
-	attrs          ReaderObjectAttrs
+	attrs          *ReaderObjectAttrs
 	attrsReady     chan struct{}
 	attrsOnce      sync.Once
 	spanCtx        context.Context
@@ -487,8 +489,8 @@ func (m *multiRangeDownloaderManager) handleAddCmd(ctx context.Context, cmd *mrd
 	}
 	m.readIDCounter++
 
-	// Attributes should be ready if we are processing Add commands
-	if req.offset < 0 {
+	// Convert to positive offset only if attributes are available.
+	if m.attrs != nil && req.offset < 0 {
 		err := m.convertToPositiveOffset(req)
 		if err != nil {
 			return
@@ -517,23 +519,20 @@ func (m *multiRangeDownloaderManager) convertToPositiveOffset(req *rangeRequest)
 	if req.offset >= 0 {
 		return nil
 	}
-	objSize := m.attrs.Size
+	var objSize int64
+	if m.attrs != nil {
+		objSize = m.attrs.Size
+	}
 	if objSize <= 0 {
-		err := errors.New("storage: cannot resolve negative offset without object size")
+		err := errors.New("storage: cannot resolve negative offset with object size as 0")
 		m.failRange(req, err)
 		return err
 	}
-	if req.length != 0 {
-		err := fmt.Errorf("storage: negative offset with non-zero length is not supported (offset: %d, length: %d)", req.origOffset, req.origLength)
-		m.failRange(req, err)
-		return err
-	}
-	start := objSize + req.offset
-	if start < 0 {
-		start = 0
-	}
+	start := max(objSize+req.offset, 0)
 	req.offset = start
-	req.length = objSize - start
+	if req.length == 0 {
+		req.length = objSize - start
+	}
 	return nil
 }
 
@@ -566,25 +565,19 @@ func (m *multiRangeDownloaderManager) processSessionResult(result mrdSessionResu
 	resp := result.decoder.msg
 	if handle := resp.GetReadHandle().GetHandle(); len(handle) > 0 {
 		m.lastReadHandle = handle
-		if m.params.handle != nil {
-			*m.params.handle = handle
-		}
 	}
 
 	m.attrsOnce.Do(func() {
+		defer close(m.attrsReady)
 		if meta := resp.GetMetadata(); meta != nil {
 			obj := newObjectFromProto(meta)
 			attrs := readerAttrsFromObject(obj)
-			m.attrs = attrs
-			close(m.attrsReady)
-
+			m.attrs = &attrs
 			for _, req := range m.pendingRanges {
 				if req.offset < 0 {
 					_ = m.convertToPositiveOffset(req)
 				}
 			}
-		} else {
-			m.handleStreamEnd(mrdSessionResult{err: errors.New("storage: first response from BidiReadObject stream missing metadata")})
 		}
 	})
 

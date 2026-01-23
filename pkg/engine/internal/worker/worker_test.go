@@ -362,7 +362,7 @@ func newTestWorkerWithContext(t *testing.T, logger log.Logger, loc objtest.Locat
 }
 
 func buildWorkflow(ctx context.Context, t *testing.T, logger log.Logger, loc objtest.Location, sched *scheduler.Scheduler, params logql.Params) *workflow.Workflow {
-	logicalPlan, err := logical.BuildPlan(params)
+	logicalPlan, err := logical.BuildPlan(ctx, params)
 	require.NoError(t, err, "expected to create logical plan")
 
 	ms := metastore.NewObjectMetastore(

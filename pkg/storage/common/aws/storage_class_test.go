@@ -17,7 +17,7 @@ func TestValidateStorageClass(t *testing.T) {
 			"foo",
 			fmt.Errorf("unsupported S3 storage class: foo. Supported values: %s", strings.Join(SupportedStorageClasses, ", ")),
 		},
-		"should not return error if storage class is is within supported values": {
+		"should not return error if storage class is within supported values": {
 			StorageClassStandardInfrequentAccess,
 			nil,
 		},

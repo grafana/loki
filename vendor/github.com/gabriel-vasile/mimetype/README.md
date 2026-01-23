@@ -70,13 +70,13 @@ If increasing the limit does not help, please
 ## Tests
 In addition to unit tests,
 [mimetype_tests](https://github.com/gabriel-vasile/mimetype_tests) compares the
-library with the [Unix file utility](https://en.wikipedia.org/wiki/File_(command))
+library with [libmagic](https://en.wikipedia.org/wiki/File_(command))
 for around 50 000 sample files. Check the latest comparison results
 [here](https://github.com/gabriel-vasile/mimetype_tests/actions).
 
 ## Benchmarks
-Benchmarks for each file format are performed when a PR is open. The results can
-be seen on the [workflows page](https://github.com/gabriel-vasile/mimetype/actions/workflows/benchmark.yml).
+Benchmarks are performed when a PR is open. The results can be seen on the
+[workflows page](https://github.com/gabriel-vasile/mimetype/actions/workflows/benchmark.yml).
 Performance improvements are welcome but correctness is prioritized.
 
 ## Structure

@@ -414,7 +414,7 @@ func (f *Frontend) QueryResult(ctx context.Context, qrReq *frontendv2pb.QueryRes
 			level.Warn(f.log).Log("msg", "failed to write query result to the response channel", "queryID", qrReq.QueryID, "user", userID)
 		}
 	}
-	// TODO(chaudum): In case the the userIDs do not match, we do not send a
+	// TODO(chaudum): In case the userIDs do not match, we do not send a
 	// response to the req.response channel.
 	// In that case, the RoundTripGRPC method waits until the request context deadline exceeds.
 	// Only then the function finished and the request is removed from the
