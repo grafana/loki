@@ -280,6 +280,7 @@ jsonExpressionParser:
 
 xmlExpressionParser:
     XML labelExtractionExpressionList { $$ = newXMLExpressionParser($2) }
+  ;
 
 logfmtExpressionParser:
     LOGFMT parserFlags labelExtractionExpressionList  { $$ = newLogfmtExpressionParser($3, $2)}
