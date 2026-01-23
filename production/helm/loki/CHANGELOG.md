@@ -100,6 +100,7 @@ Entries should include a reference to the pull request that introduced the chang
 - [ENHANCEMENT] Add configurable `startupProbe` to `startupProbethe memcached container in the memcached pods [#19166](https://github.com/grafana/loki/pull/19166)
 - [BUGFIX] Update loki-helm-test image tag to latest commit [#19227](https://github.com/grafana/loki/pull/19227)
 - [BUGFIX] Update querier, read, and single binary target definitions for UI enablement. [#19461](https://github.com/grafana/loki/pull/19461)
+- [BUGFIX] Updated the DNS Egress CiliumNetworkPolicy to correctly allow DNS traffic. [#12729](https://github.com/grafana/loki/pull/12729)
 
 ## 6.42.0
 
