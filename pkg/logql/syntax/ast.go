@@ -756,6 +756,8 @@ func (e *LineParserExpr) Stage() (log.Stage, error) {
 	switch e.Op {
 	case OpParserTypeJSON:
 		return log.NewJSONParser(false), nil
+	case OpParserTypeXML:
+		return log.NewXMLParser(true, false), nil
 	case OpParserTypeRegexp:
 		return log.NewRegexpParser(e.Param)
 	case OpParserTypeUnpack:
@@ -1296,6 +1298,7 @@ const (
 
 	// parsers
 	OpParserTypeJSON    = "json"
+	OpParserTypeXML     = "xml"
 	OpParserTypeLogfmt  = "logfmt"
 	OpParserTypeRegexp  = "regexp"
 	OpParserTypeUnpack  = "unpack"
