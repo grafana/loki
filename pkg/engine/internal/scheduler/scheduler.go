@@ -551,9 +551,12 @@ func (s *Scheduler) finalizeAssignment(ctx context.Context, t *task, worker *wor
 		queueDuration := t.assignTime.Sub(t.queueTime).Seconds()
 		s.metrics.taskQueueSeconds.Observe(queueDuration)
 
-		// Record queue duration to the task region if available.
 		if t.wfRegion != nil {
-			t.wfRegion.Record(xcap.StatTaskQueueDuration.Observe(queueDuration))
+			t.wfRegion.Record(xcap.StatTaskMaxQueueDuration.Observe(queueDuration))
+
+			// Record time from workflow start until this task assignment.
+			assignmentTailDuration := t.assignTime.Sub(t.wfRegion.StartTime()).Seconds()
+			t.wfRegion.Record(xcap.StatTaskAssignmentTailDuration.Observe(assignmentTailDuration))
 		}
 
 		// Reconcile stream states: send updates for any that changed while sending.

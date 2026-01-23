@@ -118,12 +118,13 @@ func (n *AggregateRange) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error
 	return &physical.RangeAggregation{
 		NodeID: nodeID,
 
-		Grouping:  grouping,
-		Operation: operation,
-		Start:     n.Start,
-		End:       n.End,
-		Step:      n.Step,
-		Range:     n.Range,
+		Grouping:       grouping,
+		Operation:      operation,
+		Start:          n.Start,
+		End:            n.End,
+		Step:           n.Step,
+		Range:          n.Range,
+		MaxQuerySeries: int(n.MaxQuerySeries),
 	}, nil
 }
 
@@ -170,8 +171,9 @@ func (n *AggregateVector) MarshalPhysical(nodeID ulid.ULID) (physical.Node, erro
 	return &physical.VectorAggregation{
 		NodeID: nodeID,
 
-		Grouping:  grouping,
-		Operation: operation,
+		Grouping:       grouping,
+		Operation:      operation,
+		MaxQuerySeries: int(n.MaxQuerySeries),
 	}, nil
 }
 

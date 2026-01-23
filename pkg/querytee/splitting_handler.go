@@ -11,14 +11,15 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/tenant"
 	"github.com/grafana/dskit/user"
+	"github.com/pkg/errors"
+
 	"github.com/grafana/loki/v3/pkg/engine"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/lokifrontend/frontend"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/querytee/goldfish"
 	"github.com/grafana/loki/v3/pkg/util/server"
-	"github.com/grafana/loki/v3/tools/querytee/goldfish"
-	"github.com/pkg/errors"
 )
 
 // SplittingHandlerConfig holds configuration for creating a SplittingHandler.

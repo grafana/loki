@@ -132,7 +132,7 @@ func dataobjV2StoreWithOpts(dataDir string, tenantID string, cfg engine.Executor
 		LocalScheduler: sched,
 		Config: engine.WorkerConfig{
 			SchedulerLookupAddress:  schedLookupAddr,
-			SchedulerLookupInterval: 60,
+			SchedulerLookupInterval: time.Minute,
 			// Try to create one thread per host CPU core. However, we always
 			// create at least 8 threads. This prevents situations where
 			// no task can make progress because a parent task hasn't been
@@ -162,10 +162,12 @@ func dataobjV2StoreWithOpts(dataDir string, tenantID string, cfg engine.Executor
 	newEngine, err := engine.New(engine.Params{
 		Logger:     logger,
 		Registerer: registerer,
-		Config:     cfg,
-		Scheduler:  sched,
-		Limits:     logql.NoLimits,
-		Metastore:  ms,
+		Config: engine.Config{
+			Executor: cfg,
+		},
+		Scheduler: sched,
+		Limits:    logql.NoLimits,
+		Metastore: ms,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("creating engine: %w", err)

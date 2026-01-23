@@ -253,3 +253,13 @@ func (r *Region) getAttribute(key string) attribute.KeyValue {
 
 	return attribute.KeyValue{}
 }
+
+// StartTime returns the time when the region was created.
+func (r *Region) StartTime() time.Time {
+	if r == nil {
+		return time.Time{}
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.startTime
+}

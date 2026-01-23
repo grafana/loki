@@ -8,6 +8,7 @@ import (
 	"sort"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/sliceclear"
+	"github.com/grafana/loki/v3/pkg/memory"
 )
 
 type columnReader struct {
@@ -20,6 +21,7 @@ type columnReader struct {
 	ranges []rowRange // Ranges of each page.
 
 	reader *pageReader
+	alloc  memory.Allocator
 
 	nextRow int64
 }
@@ -35,6 +37,7 @@ func newColumnReader(column Column) *columnReader {
 // the number of values read and any error encountered. At the end of the
 // column, Read returns 0, io.EOF.
 func (cr *columnReader) Read(ctx context.Context, v []Value) (n int, err error) {
+
 	if !cr.initialized {
 		err := cr.init(ctx)
 		if err != nil {
@@ -74,17 +77,29 @@ func (cr *columnReader) Read(ctx context.Context, v []Value) (n int, err error) 
 			return n, err
 		}
 
-		// Because len(v[n:]) shrinks with every iteration of our loop, one may be
-		// concerned that future iterations of the loop have less scratch space to
-		// work with, where scratch space is used to "skip" rows in the page.
+		// TODO(rfratto): read new pages to completion.
 		//
-		// However, each call to [columnReader.Read] always reads a continguous set
-		// of rows, potentially across multiple page boundaries. This means that
-		// only the first call to cr.reader.Read will use the scratch space in v to
-		// skip rows, where the scratch space is the entirety of len(v).
-		count, err := cr.reader.Read(ctx, v[n:])
-		cr.nextRow += int64(count)
-		n += count
+		// We loop over pages until we've read all len(v) rows, leading
+		// len(v[n:]) to shrink each time; this means that the last iteration of
+		// this loop typically covers a partial page.
+		//
+		// As it's likely we're going to eventually read that entire page
+		// anyway, this ends up being inefficient.
+		//
+		// Because len(v[n:]) shrinks with every iteration of our loop (one loop
+		// per page), we end up only partially reading into the final page. This
+		// is less efficient than reading the entire page due to re-entering the
+		// page reader + decoder, especially since we typically end up reading
+		// the entire page anyway.
+		cr.alloc.Reclaim() // allocator is tied to this iteration; we can reclaim memory eagerly.
+
+		rem := v[n:]
+		arr, err := cr.reader.Read(ctx, &cr.alloc, len(rem))
+		if arr != nil {
+			count := copyArray(rem, arr)
+			cr.nextRow += int64(count)
+			n += count
+		}
 
 		// We ignore io.EOF errors from the page; the next loop will detect and
 		// report EOF on the call to [columnReader.nextPage].
@@ -191,6 +206,8 @@ func (cr *columnReader) Reset(column Column) {
 		// Resetting takes the place of calling Close here.
 		cr.reader.Reset(nil, column.ColumnDesc().Type.Physical, column.ColumnDesc().Compression)
 	}
+
+	cr.alloc.Reset()
 
 	cr.nextRow = 0
 }

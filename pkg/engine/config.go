@@ -36,6 +36,10 @@ type Config struct {
 	DownstreamAddress        string `yaml:"downstream_address" category:"experimental"`
 	EnableDeleteReqFiltering bool   `yaml:"enable_delete_req_filtering" category:"experimental"`
 	EnforceRetentionPeriod   bool   `yaml:"enforce_retention_period" category:"experimental"`
+
+	// EnforceQuerySeriesLimit enables enforcement of the max_query_series limit.
+	// When enabled, the tenant's MaxQuerySeries limit is applied; otherwise, no limit is enforced.
+	EnforceQuerySeriesLimit bool `yaml:"enforce_max_query_series_limit" category:"experimental"`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
@@ -60,6 +64,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.DownstreamAddress, prefix+"downstream-address", "", "Downstream address to send query splits to. This is the HTTP handler address of the query engine scheduler.")
 	f.BoolVar(&cfg.EnforceRetentionPeriod, prefix+"enforce-retention-period", false, "Enforce tenant retention limits. Queries falling outside tenant's retention period are either adjusted or rejected.")
 	f.BoolVar(&cfg.EnableDeleteReqFiltering, prefix+"enable-delete-req-filtering", true, "When enabled, query results exclude log lines that match overlapping delete requests (not just pending requests). Disable to return all logs without considering delete requests.")
+	f.BoolVar(&cfg.EnforceQuerySeriesLimit, prefix+"enforce-max-query-series-limit", false, "Experimental: When enabled, the tenant's MaxQuerySeries limit is applied. Otherwise, no limit is enforced.")
 }
 
 func (cfg *Config) ValidQueryRange() (time.Time, time.Time) {

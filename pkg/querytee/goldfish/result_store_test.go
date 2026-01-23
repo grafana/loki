@@ -10,11 +10,12 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
-	"github.com/grafana/loki/v3/pkg/storage/bucket"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 	"gopkg.in/yaml.v2"
+
+	"github.com/grafana/loki/v3/pkg/storage/bucket"
 )
 
 func TestBucketResultStoreStoresCompressedPayload(t *testing.T) {
