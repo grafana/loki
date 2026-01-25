@@ -9,11 +9,11 @@ import (
 
 func TestXMLExpressionParser(t *testing.T) {
 	tests := []struct {
-		name            string
-		line            []byte
-		expressions     []LabelExtractionExpr
-		expectedLabels  map[string]string
-		shouldFail      bool
+		name           string
+		line           []byte
+		expressions    []LabelExtractionExpr
+		expectedLabels map[string]string
+		shouldFail     bool
 	}{
 		{
 			"single field extraction",

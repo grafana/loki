@@ -7,6 +7,10 @@ import (
 	"unicode/utf8"
 )
 
+var (
+	_ Stage = &FastXMLParser{}
+)
+
 // FastXMLParser is an optimized XML parser that minimizes allocations
 // It uses a simpler state machine instead of xml.Decoder to avoid unnecessary allocations
 type FastXMLParser struct {

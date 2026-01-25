@@ -8,6 +8,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
+var (
+	_ Stage = &XMLUnpackParser{}
+)
+
 type XMLUnpackParser struct {
 	lbsBuffer []string // Buffer for label key-value pairs
 	keys      internedStringSet

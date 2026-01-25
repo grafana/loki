@@ -6,6 +6,10 @@ import (
 	"unicode/utf8"
 )
 
+var (
+	_ Stage = &UltraFastXMLParser{}
+)
+
 // UltraFastXMLParser is an ultra-optimized XML parser designed for absolute speed
 // It bypasses some of the generic infrastructure for maximum performance
 type UltraFastXMLParser struct {
@@ -18,9 +22,9 @@ type UltraFastXMLParser struct {
 	parserHints           ParserHint
 	sanitizedPrefixBuffer []byte
 	// Pre-allocated buffers for hot paths
-	elementNameBuf        []byte
-	attrNameBuf           []byte
-	attrValueBuf          []byte
+	elementNameBuf []byte
+	attrNameBuf    []byte
+	attrValueBuf   []byte
 }
 
 // NewUltraFastXMLParser creates an ultra-optimized XML parser

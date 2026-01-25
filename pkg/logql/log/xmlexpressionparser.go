@@ -8,11 +8,15 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/log/xmlexpr"
 )
 
+var (
+	_ Stage = &XMLExpressionParser{}
+)
+
 // XMLExpressionParser extracts specified fields from XML logs and creates labels for them
 type XMLExpressionParser struct {
-	ids    []string      // Label names to create
-	exprs  []*xmlexpr.Expr // Parsed XML expressions
-	keys   internedStringSet
+	ids   []string        // Label names to create
+	exprs []*xmlexpr.Expr // Parsed XML expressions
+	keys  internedStringSet
 }
 
 // NewXMLExpressionParser creates a new XML expression parser

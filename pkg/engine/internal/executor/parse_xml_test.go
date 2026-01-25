@@ -12,11 +12,11 @@ func TestParseXMLLine(t *testing.T) {
 	parser := newXMLParser(false)
 
 	tests := []struct {
-		name        string
-		line        string
-		requested   map[string]struct{}
-		stripNS     bool
-		expected    map[string]string
+		name      string
+		line      string
+		requested map[string]struct{}
+		stripNS   bool
+		expected  map[string]string
 	}{
 		{
 			"simple element",

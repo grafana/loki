@@ -296,7 +296,7 @@ In case of errors, for instance if the line is not in the expected format, the l
 
 If an extracted label key name already exists in the original log stream, the extracted label key will be suffixed with the `_extracted` keyword to make the distinction between the two labels. You can forcefully override the original label using a [label formatter expression](#labels-format-expression). However, if an extracted key appears twice, only the first label value will be kept.
 
-Loki supports  [JSON](#json), [logfmt](#logfmt), [pattern](#pattern), [regexp](#regular-expression) and [unpack](#unpack) parsers.
+Loki supports [JSON](#json), [logfmt](#logfmt), [pattern](#pattern), [regexp](#regular-expression), [unpack](#unpack), and [XML](#xml) parsers.
 
 It's easier to use the predefined parsers `json` and `logfmt` when you can. If you can't, the `pattern` and `regexp` parsers can be used for log lines with an unusual structure. The `pattern` parser is easier and faster to write; it also outperforms the `regexp` parser.
 Multiple parsers can be used by a single log pipeline. This is useful for parsing complex logs. There are examples in [Multiple parsers](../query_examples/#examples-that-use-multiple-parsers).
@@ -575,6 +575,63 @@ For example, using `| unpack` with the log line:
 extracts the `container` and `pod` labels; it sets `original log message` as the new log line.
 
 You can combine the `unpack` and `json` parsers (or any other parsers) if the original embedded log line is of a specific format.
+
+#### XML
+
+The **xml** parser can parse XML log lines and extract element text content and attributes as labels. Like the JSON parser, it operates in two modes:
+
+1. **without** parameters:
+
+   Adding `| xml` to your pipeline will extract all XML elements and attributes as labels if the log line is a valid XML document.
+   Nested elements are flattened into label keys using the `_` separator.
+
+   For example, the XML parser will extract from the following document:
+
+   ```xml
+   <log>
+       <level>info</level>
+       <request method="GET" path="/api/users">
+           <host>grafana.net</host>
+           <duration>6.032</duration>
+       </request>
+       <response status="200" size="228"/>
+   </log>
+   ```
+
+   The following list of labels:
+
+   ```kv
+   "log_level" => "info"
+   "log_request_method" => "GET"
+   "log_request_path" => "/api/users"
+   "log_request_host" => "grafana.net"
+   "log_request_duration" => "6.032"
+   "log_response_status" => "200"
+   "log_response_size" => "228"
+   ```
+
+2. **with** parameters:
+
+   Using `| xml label="expression"` in your pipeline will extract only the specified XML fields to labels.
+
+   The expression syntax supports:
+   - Element names: `level`, `request`
+   - Nested elements using `/`: `request/host`, `log/request/duration`
+   - Attributes using `@`: `request@method`, `response@status`
+
+   For example, `| xml method="request@method", host="request/host", status="response@status"` will extract from the XML above:
+
+   ```kv
+   "method" => "GET"
+   "host" => "grafana.net"
+   "status" => "200"
+   ```
+
+   If the label to be extracted has the same name as the element, the expression can be simplified to just `| xml <label>`.
+
+   For example, `| xml level` is equivalent to `| xml level="level"`.
+
+The XML parser also supports an **unpack** variant using `| unpack xml` which works similarly to the JSON unpack parser, treating XML elements as key-value pairs. A special element `_entry` can be used to replace the original log line.
 
 ### Line format expression
 
