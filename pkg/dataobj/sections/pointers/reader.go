@@ -17,7 +17,7 @@ import (
 	memoryv2 "github.com/grafana/loki/v3/pkg/memory"
 )
 
-const InternalLabelsFieldName = "__internal__.streamLabelNames"
+const InternalLabelsFieldName = "__streamLabelNames__"
 
 // ReaderOptions customizes the behavior of a [Reader].
 type ReaderOptions struct {
