@@ -21,7 +21,7 @@ Configuration limits in Loki serve multiple essential purposes:
 
 * **Fair resource allocation:** In multi-tenant environments, limits ensure that no single tenant can monopolize shared resources. Query workers, ingester memory, and storage I/O must be distributed fairly across all users.
 
-* **Operational predictability:**  Limits allow operators to capacity plan and scale infrastructure appropriately. By understanding the boundaries of expected workloads, operators can provision resources that meet SLA requirements.
+* **Operational predictability:** Limits allow operators to capacity plan and scale infrastructure appropriately. By understanding the boundaries of expected workloads, operators can provision resources that meet SLA requirements.
 
 The common theme is that exceeding limits doesn't just affect the user exceeding them—it impacts overall system performance and stability, often affecting all tenants in shared environments.
 
@@ -127,53 +127,16 @@ Unlike the global rate limit, per-stream limits cannot be solved by adding more 
 **What to do instead**:
 
 - First try adjusting automatic stream sharding by setting a lower `desired_rate` (not less than 128kb/s).
-- Split high-volume streams by adding appropriate labels (such as instance)
-- Use client-side rate limiting with Promtail's limit stage
-- Sample verbose logs at the application level
+- Additionally the `per_stream_rate_limit` and `associated per_stream_rate_limit_burst` can be increased. This might require more memory headroom on ingesters, and we recommend increasing the burst limit more aggressively than the sustained limit.
+
+To give an example when dealing with "bursty" streams, you could have these settings:
+
+- `per_stream_rate_limit: 5MB/s`
+- `per_stream_rate_limit_burst: 30MB/s`
+
+What this would mean is you have a bucket with 30MB in it, and if you got a 30MB push it would drain the entire bucket, The bucket would then refill at 5MB/s up to the 30MB again. So you could increase the burst to 60MB/s to handle some spikey streams, but you don't want to change the refill rate because that's helpful to keep overall memory reasonable. Also the auto stream sharding is always working to keep stream volumes at the desired_rate it just can't always react fast enough for very sudden changes.
 
 ## Out-of-order ingestion limits
-
-### Out-of-order ingestion window
-
-- **Default window**: 1 hour (controlled by `max_chunk_age / 2`)
-- **Default `max_chunk_age`**: 2 hours
-- **Configuration**: Global, not adjustable per tenant
-
-Loki accepts out-of-order writes within a window of `max_chunk_age / 2` (typically 1 hour). Logs arriving outside this window are rejected.
-
-**Why this limit exists**:
-
-Loki optimizes for ordered, sequential log ingestion:
-
-- Chunks are built sequentially in memory
-- Out-of-order logs require complex chunk management
-- Wide out-of-order windows increase memory pressure
-- Index performance degrades with large time ranges per stream
-
-The 1-hour window is calculated to balance accepting delayed logs while maintaining optimal chunk sizes and indexing performance.
-
-**Why you should not increase `max_chunk_age`**:
-
-`max_chunk_age` is a global configuration affecting all tenants:
-
-- Increasing it increases memory usage on all ingesters
-- Larger chunks take longer to flush
-- Query performance degrades with larger chunks
-- Higher risk of data loss on ingester failure
-- Cannot be tuned per tenant
-
-**Consequences of exceeding the window**:
-
-- Log lines rejected with `too_far_behind` error
-- Data loss if not handled by retry logic
-- Gaps in log data
-
-**What to do instead**:
-
-- Configure log shippers to forward logs promptly
-- Use proper buffering and retry logic in forwarding agents
-- Ensure time synchronization across log sources
-- For historical data ingestion, use time sharding feature temporarily
 
 ### reject_old_samples_max_age
 
