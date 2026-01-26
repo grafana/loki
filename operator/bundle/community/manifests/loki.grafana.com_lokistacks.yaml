@@ -3878,6 +3878,7 @@ spec:
                     - dynamic
                     - openshift-logging
                     - openshift-network
+                    - passthrough
                     type: string
                   openshift:
                     description: Openshift defines the configuration specific to Openshift
@@ -3927,6 +3928,44 @@ spec:
                               See also: https://github.com/rhobs/observability-data-model/blob/main/cluster-logging.md#attributes
                             type: boolean
                         type: object
+                    type: object
+                  passthrough:
+                    description: Passthrough defines the configuration specific to
+                      Passthrough mode.
+                    properties:
+                      ca:
+                        description: |-
+                          CA can be used to specify a custom list of trusted certificate authorities.
+                          That will be used to validate the certificates of the clients that interact
+                          with the gateway
+                        properties:
+                          configMapName:
+                            description: ConfigMapName contains the name of the ConfigMap
+                              containing the referenced value.
+                            type: string
+                          key:
+                            description: Name of the key used to get the value in
+                              either the referenced ConfigMap or Secret.
+                            type: string
+                          secretName:
+                            description: SecretName contains the name of the Secret
+                              containing the referenced value.
+                            type: string
+                        required:
+                        - key
+                        type: object
+                        x-kubernetes-validations:
+                        - message: Either configMapName or secretName needs to be
+                            set
+                          rule: has(self.configMapName) || has(self.secretName)
+                        - message: Only one of configMapName and secretName can be
+                            set
+                          rule: '!(has(self.configMapName) && has(self.secretName))'
+                      defaultTenant:
+                        description: |-
+                          DefaultTenant defines the default tenant ID to use when X-Scope-OrgID header is not set.
+                          If not set, requests without X-Scope-OrgID are rejected.
+                        type: string
                     type: object
                 required:
                 - mode

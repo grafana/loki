@@ -541,3 +541,134 @@ func TestValidateModes_OpenshiftLoggingMode(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateModes_PassthroughMode(t *testing.T) {
+	type test struct {
+		name    string
+		wantErr string
+		stack   *lokiv1.LokiStack
+	}
+	table := []test{
+		{
+			name:    "incompatible authentication spec provided",
+			wantErr: "incompatible configuration - custom tenants configuration not required",
+			stack: &lokiv1.LokiStack{
+				TypeMeta: metav1.TypeMeta{
+					Kind: "LokiStack",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "my-stack",
+					Namespace: "some-ns",
+					UID:       "b23f9a38-9672-499f-8c29-15ede74d3ece",
+				},
+				Spec: lokiv1.LokiStackSpec{
+					Size: lokiv1.SizeOneXExtraSmall,
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.Passthrough,
+						Authentication: []lokiv1.AuthenticationSpec{
+							{
+								TenantName: "test",
+								TenantID:   "1234",
+								OIDC: &lokiv1.OIDCSpec{
+									IssuerURL:     "some-url",
+									RedirectURL:   "some-other-url",
+									GroupClaim:    "test",
+									UsernameClaim: "test",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:    "incompatible authorization spec provided",
+			wantErr: "incompatible configuration - custom tenants configuration not required",
+			stack: &lokiv1.LokiStack{
+				TypeMeta: metav1.TypeMeta{
+					Kind: "LokiStack",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "my-stack",
+					Namespace: "some-ns",
+					UID:       "b23f9a38-9672-499f-8c29-15ede74d3ece",
+				},
+				Spec: lokiv1.LokiStackSpec{
+					Size: lokiv1.SizeOneXExtraSmall,
+					Tenants: &lokiv1.TenantsSpec{
+						Mode:           lokiv1.Passthrough,
+						Authentication: nil,
+						Authorization: &lokiv1.AuthorizationSpec{
+							OPA: &lokiv1.OPASpec{
+								URL: "some-url",
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:    "incompatible roles spec provided",
+			wantErr: "incompatible configuration - custom tenants configuration not required",
+			stack: &lokiv1.LokiStack{
+				TypeMeta: metav1.TypeMeta{
+					Kind: "LokiStack",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "my-stack",
+					Namespace: "some-ns",
+					UID:       "b23f9a38-9672-499f-8c29-15ede74d3ece",
+				},
+				Spec: lokiv1.LokiStackSpec{
+					Size: lokiv1.SizeOneXExtraSmall,
+					Tenants: &lokiv1.TenantsSpec{
+						Mode:           lokiv1.Passthrough,
+						Authentication: nil,
+						Authorization: &lokiv1.AuthorizationSpec{
+							Roles: []lokiv1.RoleSpec{
+								{
+									Name:        "some-name",
+									Resources:   []string{"test"},
+									Tenants:     []string{"test"},
+									Permissions: []lokiv1.PermissionType{"read"},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:    "all set - minimal valid configuration",
+			wantErr: "",
+			stack: &lokiv1.LokiStack{
+				TypeMeta: metav1.TypeMeta{
+					Kind: "LokiStack",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "my-stack",
+					Namespace: "some-ns",
+					UID:       "b23f9a38-9672-499f-8c29-15ede74d3ece",
+				},
+				Spec: lokiv1.LokiStackSpec{
+					Size: lokiv1.SizeOneXExtraSmall,
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.Passthrough,
+					},
+				},
+			},
+		},
+	}
+	for _, tst := range table {
+		t.Run(tst.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := validateModes(tst.stack)
+			if tst.wantErr != "" {
+				require.EqualError(t, err, tst.wantErr)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}

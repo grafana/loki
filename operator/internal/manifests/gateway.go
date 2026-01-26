@@ -18,6 +18,7 @@ import (
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/gateway"
 )
 
@@ -26,8 +27,9 @@ const (
 )
 
 var (
-	logsEndpointRe     = regexp.MustCompile(`^--logs\.(?:read|tail|write|rules)\.endpoint=http://.+`)
-	defaultAdminGroups = []string{
+	logsEndpointRe        = regexp.MustCompile(`^--logs\.(?:read|tail|write|rules)\.endpoint=http://.+`)
+	passthroughUpstreamRe = regexp.MustCompile(`^--(?:read|write)-upstream-endpoint=http://.+`)
+	defaultAdminGroups    = []string{
 		"system:cluster-admins",
 		"cluster-admin",
 		"dedicated-admin",
@@ -36,19 +38,26 @@ var (
 
 // BuildGateway returns a list of k8s objects for Loki Stack Gateway
 func BuildGateway(opts Options) ([]client.Object, error) {
-	cm, tenantSecret, sha1C, err := gatewayConfigObjs(opts)
-	if err != nil {
-		return nil, err
+	var objs []client.Object
+	var dpl *appsv1.Deployment
+
+	if opts.Stack.Tenants != nil && opts.Stack.Tenants.Mode == lokiv1.Passthrough {
+		dpl = NewPassthroughGatewayDeployment(opts)
+	} else {
+		cm, tenantSecret, sha1C, err := gatewayConfigObjs(opts)
+		if err != nil {
+			return nil, err
+		}
+		dpl = NewGatewayDeployment(opts, sha1C)
+		objs = append(objs, cm, tenantSecret)
 	}
 
-	dpl := NewGatewayDeployment(opts, sha1C)
 	sa := NewServiceAccount(opts)
 	saToken := NewServiceAccountTokenSecret(opts)
 	svc := NewGatewayHTTPService(opts)
 	pdb := NewGatewayPodDisruptionBudget(opts)
 
-	var objs []client.Object
-	objs = append(objs, cm, tenantSecret, dpl, sa, saToken, svc, pdb)
+	objs = append(objs, dpl, sa, saToken, svc, pdb)
 
 	if opts.Stack.Tenants == nil || !opts.Stack.Tenants.DisableIngress {
 		ing, err := NewGatewayIngress(opts)
@@ -58,12 +67,8 @@ func BuildGateway(opts Options) ([]client.Object, error) {
 		objs = append(objs, ing)
 	}
 
-	minTLSVersion := opts.TLSProfile.MinTLSVersion
-	ciphersList := opts.TLSProfile.Ciphers
-	ciphers := strings.Join(ciphersList, `,`)
-
 	if opts.Stack.Rules != nil && opts.Stack.Rules.Enabled {
-		if err := configureGatewayRulesAPI(&dpl.Spec.Template.Spec, opts.Name, opts.Namespace); err != nil {
+		if err := configureGatewayRulesAPIForMode(opts.Stack, &dpl.Spec.Template.Spec, opts.Name, opts.Namespace); err != nil {
 			return nil, err
 		}
 
@@ -75,12 +80,12 @@ func BuildGateway(opts Options) ([]client.Object, error) {
 		}
 	}
 
+	minTLSVersion := opts.TLSProfile.MinTLSVersion
+	ciphersList := opts.TLSProfile.Ciphers
+	ciphers := strings.Join(ciphersList, `,`)
+
 	if opts.Gates.HTTPEncryption {
-		serviceName := serviceNameGatewayHTTP(opts.Name)
-		serverCAName := gatewaySigningCABundleName(GatewayName(opts.Name))
-		upstreamCAName := signingCABundleName(opts.Name)
-		upstreamClientName := gatewayClientSecretName(opts.Name)
-		if err := configureGatewayServerPKI(&dpl.Spec.Template.Spec, opts.Namespace, serviceName, serverCAName, upstreamCAName, upstreamClientName, minTLSVersion, ciphers); err != nil {
+		if err := configureGatewayServerPKI(&dpl.Spec.Template.Spec, &opts.Stack, opts.Name, opts.Namespace, minTLSVersion, ciphers); err != nil {
 			return nil, err
 		}
 	}
@@ -99,7 +104,7 @@ func BuildGateway(opts Options) ([]client.Object, error) {
 			return nil, err
 		}
 
-		objs = configureGatewayObjsForMode(objs, opts)
+		objs = configureGatewayObjectsForOpenShift(objs, opts)
 	}
 
 	if opts.Gates.RestrictedPodSecurityStandard {
@@ -203,6 +208,106 @@ func NewGatewayDeployment(opts Options, sha1C string) *appsv1.Deployment {
 						ReadOnly:  true,
 						MountPath: path.Join(gateway.LokiGatewayMountDir, gateway.LokiGatewayRegoFileName),
 						SubPath:   "lokistack-gateway.rego",
+					},
+				},
+				LivenessProbe: &corev1.Probe{
+					ProbeHandler: corev1.ProbeHandler{
+						HTTPGet: &corev1.HTTPGetAction{
+							Path:   "/live",
+							Port:   intstr.FromInt(gatewayInternalPort),
+							Scheme: corev1.URISchemeHTTP,
+						},
+					},
+					TimeoutSeconds:   2,
+					PeriodSeconds:    30,
+					FailureThreshold: 10,
+				},
+				ReadinessProbe: &corev1.Probe{
+					ProbeHandler: corev1.ProbeHandler{
+						HTTPGet: &corev1.HTTPGetAction{
+							Path:   "/ready",
+							Port:   intstr.FromInt(gatewayInternalPort),
+							Scheme: corev1.URISchemeHTTP,
+						},
+					},
+					TimeoutSeconds:   1,
+					PeriodSeconds:    5,
+					FailureThreshold: 12,
+				},
+			},
+		},
+	}
+
+	if opts.Stack.Template != nil && opts.Stack.Template.Gateway != nil {
+		podSpec.Tolerations = opts.Stack.Template.Gateway.Tolerations
+		podSpec.NodeSelector = opts.Stack.Template.Gateway.NodeSelector
+	}
+
+	return &appsv1.Deployment{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Deployment",
+			APIVersion: appsv1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   GatewayName(opts.Name),
+			Labels: l,
+		},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: ptr.To(opts.Stack.Template.Gateway.Replicas),
+			Selector: &metav1.LabelSelector{
+				MatchLabels: l,
+			},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        GatewayName(opts.Name),
+					Labels:      l,
+					Annotations: a,
+				},
+				Spec: podSpec,
+			},
+			Strategy: appsv1.DeploymentStrategy{
+				Type: appsv1.RollingUpdateDeploymentStrategyType,
+			},
+		},
+	}
+}
+
+// NewPassthroughGatewayDeployment creates a deployment object for the passthrough gateway.
+func NewPassthroughGatewayDeployment(opts Options) *appsv1.Deployment {
+	l := ComponentLabels(LabelGatewayComponent, opts.Name)
+	a := gatewayAnnotations("", opts.CertRotationRequiredAt)
+
+	args := []string{
+		fmt.Sprintf("--listen-addr=:%d", gatewayHTTPPort),
+		fmt.Sprintf("--metrics-addr=:%d", gatewayInternalPort),
+		fmt.Sprintf("--write-upstream-endpoint=http://%s:%d", fqdn(serviceNameDistributorHTTP(opts.Name), opts.Namespace), httpPort),
+		fmt.Sprintf("--read-upstream-endpoint=http://%s:%d", fqdn(serviceNameQueryFrontendHTTP(opts.Name), opts.Namespace), httpPort),
+	}
+
+	if opts.Stack.Tenants != nil && opts.Stack.Tenants.Passthrough != nil && opts.Stack.Tenants.Passthrough.DefaultTenant != "" {
+		args = append(args, fmt.Sprintf("--default-tenant=%s", opts.Stack.Tenants.Passthrough.DefaultTenant))
+	}
+
+	podSpec := corev1.PodSpec{
+		ServiceAccountName: GatewayName(opts.Name),
+		Affinity:           configureAffinity(LabelGatewayComponent, opts.Name, opts.Gates.DefaultNodeAffinity, opts.Stack.Template.Gateway),
+		Containers: []corev1.Container{
+			{
+				Name:  gatewayContainerName,
+				Image: opts.GatewayImage,
+				Resources: corev1.ResourceRequirements{
+					Limits:   opts.ResourceRequirements.Gateway.Limits,
+					Requests: opts.ResourceRequirements.Gateway.Requests,
+				},
+				Args: args,
+				Ports: []corev1.ContainerPort{
+					{
+						Name:          gatewayInternalPortName,
+						ContainerPort: gatewayInternalPort,
+					},
+					{
+						Name:          gatewayHTTPPortName,
+						ContainerPort: gatewayHTTPPort,
 					},
 				},
 				LivenessProbe: &corev1.Probe{
@@ -487,7 +592,30 @@ func gatewayConfigOptions(opt Options) gateway.Options {
 	}
 }
 
+// configureGatewayServerPKI is a wrapper that dispatches to the appropriate PKI configuration
+// based on the gateway mode (observatorium vs passthrough).
 func configureGatewayServerPKI(
+	podSpec *corev1.PodSpec,
+	stack *lokiv1.LokiStackSpec,
+	name, namespace string,
+	minTLSVersion, ciphers string,
+) error {
+	serviceName := serviceNameGatewayHTTP(name)
+	serverCAName := gatewaySigningCABundleName(GatewayName(name))
+	upstreamCAName := signingCABundleName(name)
+	upstreamClientName := gatewayClientSecretName(name)
+
+	if stack.Tenants != nil && stack.Tenants.Mode == lokiv1.Passthrough {
+		if stack.Tenants.Passthrough == nil || stack.Tenants.Passthrough.CA == nil {
+			return kverrors.New("client CA not provided")
+		}
+		return configurePassGatewayServerPKI(podSpec, stack.Tenants.Passthrough.CA, serviceName, upstreamCAName, upstreamClientName, minTLSVersion, ciphers)
+	}
+	return configureObsGatewayServerPKI(podSpec, namespace, serviceName, serverCAName, upstreamCAName, upstreamClientName, minTLSVersion, ciphers)
+}
+
+// configureObsGatewayServerPKI configures PKI for the observatorium gateway.
+func configureObsGatewayServerPKI(
 	podSpec *corev1.PodSpec,
 	namespace, serviceName, serverCAName string,
 	upstreamCAName, upstreamClientName string,
@@ -609,13 +737,152 @@ func configureGatewayServerPKI(
 	}
 
 	if err := mergo.Merge(podSpec, p, mergo.WithOverride); err != nil {
-		return kverrors.Wrap(err, "failed to merge server pki into container spec ")
+		return kverrors.Wrap(err, "failed to merge server pki into container spec")
 	}
 
 	return nil
 }
 
-func configureGatewayRulesAPI(podSpec *corev1.PodSpec, stackName, stackNs string) error {
+// configurePassGatewayServerPKI configures PKI for the passthrough gateway.
+func configurePassGatewayServerPKI(
+	podSpec *corev1.PodSpec,
+	clientCAs *lokiv1.ValueReference,
+	serviceName string,
+	upstreamCAName, upstreamClientName string,
+	minTLSVersion, ciphers string,
+) error {
+	var gwIndex int
+	for i, c := range podSpec.Containers {
+		if c.Name == gatewayContainerName {
+			gwIndex = i
+			break
+		}
+	}
+
+	gwContainer := podSpec.Containers[gwIndex].DeepCopy()
+	gwArgs := gwContainer.Args
+	gwVolumes := podSpec.Volumes
+
+	for i, a := range gwArgs {
+		if passthroughUpstreamRe.MatchString(a) {
+			gwArgs[i] = strings.Replace(a, "http", "https", 1)
+		}
+	}
+
+	const clientCAVolume = "client-ca"
+	clientCADir := path.Join(caBundleDir, "client")
+
+	gwArgs = append(gwArgs,
+		fmt.Sprintf("--tls-cert-file=%s", gatewayServerHTTPTLSCert()),
+		fmt.Sprintf("--tls-key-file=%s", gatewayServerHTTPTLSKey()),
+		fmt.Sprintf("--upstream-ca-file=%s", gatewayUpstreamCAPath()),
+		fmt.Sprintf("--upstream-cert-file=%s", gatewayUpstreamHTTPTLSCert()),
+		fmt.Sprintf("--upstream-key-file=%s", gatewayUpstreamHTTPTLSKey()),
+		"--tls-client-auth=RequireAndVerifyClientCert",
+		fmt.Sprintf("--tls-client-ca-file=%s/%s", clientCADir, clientCAs.Key),
+		fmt.Sprintf("--tls-min-version=%s", minTLSVersion),
+		fmt.Sprintf("--tls-cipher-suites=%s", ciphers),
+	)
+
+	gwContainer.ReadinessProbe.HTTPGet.Scheme = corev1.URISchemeHTTPS
+	gwContainer.LivenessProbe.HTTPGet.Scheme = corev1.URISchemeHTTPS
+	gwContainer.Args = gwArgs
+
+	gwVolumes = append(gwVolumes,
+		corev1.Volume{
+			Name: tlsSecretVolume,
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					SecretName: serviceName,
+				},
+			},
+		},
+		corev1.Volume{
+			Name: upstreamCAName,
+			VolumeSource: corev1.VolumeSource{
+				ConfigMap: &corev1.ConfigMapVolumeSource{
+					DefaultMode: &defaultConfigMapMode,
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: upstreamCAName,
+					},
+				},
+			},
+		},
+		corev1.Volume{
+			Name: upstreamClientName,
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					SecretName: upstreamClientName,
+				},
+			},
+		},
+	)
+
+	var clientCAVolumeSource corev1.VolumeSource
+	if clientCAs.ConfigMapName != "" {
+		clientCAVolumeSource = corev1.VolumeSource{
+			ConfigMap: &corev1.ConfigMapVolumeSource{
+				DefaultMode: &defaultConfigMapMode,
+				LocalObjectReference: corev1.LocalObjectReference{
+					Name: clientCAs.ConfigMapName,
+				},
+			},
+		}
+	} else {
+		clientCAVolumeSource = corev1.VolumeSource{
+			Secret: &corev1.SecretVolumeSource{
+				SecretName: clientCAs.SecretName,
+			},
+		}
+	}
+	gwVolumes = append(gwVolumes, corev1.Volume{
+		Name:         clientCAVolume,
+		VolumeSource: clientCAVolumeSource,
+	})
+
+	// Add volume mounts
+	gwContainer.VolumeMounts = append(gwContainer.VolumeMounts,
+		corev1.VolumeMount{
+			Name:      tlsSecretVolume,
+			ReadOnly:  true,
+			MountPath: gatewayServerHTTPTLSDir(),
+		},
+		corev1.VolumeMount{
+			Name:      upstreamCAName,
+			ReadOnly:  true,
+			MountPath: gatewayUpstreamCADir(),
+		},
+		corev1.VolumeMount{
+			Name:      upstreamClientName,
+			ReadOnly:  true,
+			MountPath: gatewayUpstreamHTTPTLSDir(),
+		},
+		corev1.VolumeMount{
+			Name:      clientCAVolume,
+			ReadOnly:  true,
+			MountPath: clientCADir,
+		},
+	)
+
+	p := corev1.PodSpec{
+		Containers: []corev1.Container{
+			*gwContainer,
+		},
+		Volumes: gwVolumes,
+	}
+
+	if err := mergo.Merge(podSpec, p, mergo.WithOverride); err != nil {
+		return kverrors.Wrap(err, "failed to merge passthrough server pki into container spec")
+	}
+
+	return nil
+}
+
+func configureGatewayRulesAPIForMode(spec lokiv1.LokiStackSpec, podSpec *corev1.PodSpec, stackName, stackNs string) error {
+	if spec.Tenants != nil && spec.Tenants.Mode == lokiv1.Passthrough {
+		return nil // Passthrough gateway doesn't need specific rules API configuration
+	}
+
 	var gwIndex int
 	for i, c := range podSpec.Containers {
 		if c.Name == gatewayContainerName {
