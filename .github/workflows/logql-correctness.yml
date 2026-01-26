@@ -8,6 +8,7 @@ on:
       - "pkg/dataobj/**"
       - "pkg/memory/**"
       - "pkg/columnar/**"
+      - "pkg/compute/**"
   workflow_dispatch:
     inputs:
       ref:
