@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/go-logr/logr"
 
 	configv1 "github.com/grafana/loki/operator/api/config/v1"
@@ -65,6 +66,14 @@ func BuildOptions(ctx context.Context, log logr.Logger, k k8s.Client, stack *lok
 
 			stack.Spec.Proxy = ocpProxy
 		}
+	case lokiv1.Passthrough:
+		if err = validatePassthroughCA(stack); err != nil {
+			return "", tenants, &status.DegradedError{
+				Message: fmt.Sprintf("Invalid passthrough configuration: %s", err),
+				Reason:  lokiv1.ReasonInvalidPassthroughConfiguration,
+				Requeue: false,
+			}
+		}
 	default:
 		secrets, err = getTenantSecrets(ctx, k, stack)
 		if err != nil {
@@ -84,4 +93,12 @@ func BuildOptions(ctx context.Context, log logr.Logger, k k8s.Client, stack *lok
 	}
 
 	return baseDomain, tenants, nil
+}
+
+func validatePassthroughCA(stack *lokiv1.LokiStack) error {
+	if stack.Spec.Tenants.Passthrough == nil || stack.Spec.Tenants.Passthrough.CA == nil {
+		return kverrors.New("missing CA configuration")
+	}
+
+	return nil // CEL rules on ValueReference handle the rest
 }
