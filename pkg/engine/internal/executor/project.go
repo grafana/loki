@@ -199,18 +199,22 @@ func newExpandPipeline(expr physical.Expression, evaluator *expressionEvaluator,
 	}, region, input), nil
 }
 
-// mergeErrors merges string columns from right to left. If there is a non-empty value on the right,
-// it will always overwrite a value on the left.
-func mergeErrors(to, from *array.String) *array.String {
+// mergeErrors merges string columns into a semicolon separated list of values.
+func mergeErrors(a, b *array.String) *array.String {
 	builder := array.NewStringBuilder(memory.DefaultAllocator)
-	builder.Reserve(to.Len())
+	builder.Reserve(a.Len())
 
-	for i := range to.Len() {
-		fromVal := from.Value(i)
-		if fromVal != "" {
-			builder.Append(fromVal)
+	for i := range a.Len() {
+		aVal := a.Value(i)
+		bVal := b.Value(i)
+		if bVal != "" {
+			if aVal != "" {
+				builder.Append(fmt.Sprintf("%s; %s", aVal, bVal))
+			} else {
+				builder.Append(bVal)
+			}
 		} else {
-			builder.Append(to.Value(i))
+			builder.Append(aVal)
 		}
 	}
 

@@ -393,6 +393,36 @@ func TestNewProjectPipeline_ProjectionFunction_ExpandWithCast(t *testing.T) {
 			},
 		},
 		{
+			name: "existing error columns",
+			schema: arrow.NewSchema([]arrow.Field{
+				semconv.FieldFromIdent(semconv.ColumnIdentMessage, false),
+				semconv.FieldFromFQN("utf8.parsed.mixed_values", true),
+				semconv.FieldFromIdent(semconv.ColumnIdentError, false),
+				semconv.FieldFromIdent(semconv.ColumnIdentErrorDetails, false),
+			}, nil),
+			input: arrowtest.Rows{
+				{"utf8.builtin.message": "valid numeric", "utf8.parsed.mixed_values": "42.5", "utf8.generated.__error__": "", "utf8.generated.__error_details__": ""},
+				{"utf8.builtin.message": "invalid numeric", "utf8.parsed.mixed_values": "not_a_number", "utf8.generated.__error__": "My error", "utf8.generated.__error_details__": "Some error"},
+			},
+			columnExprs: []physical.Expression{
+				&physical.UnaryExpr{
+					Op:   types.UnaryOpCastFloat,
+					Left: &physical.ColumnExpr{Ref: createAmbiguousColumnRef("mixed_values")},
+				},
+			},
+			expectedFields: 5,
+			expectedOutput: arrowtest.Rows{
+				{"utf8.builtin.message": "valid numeric", "utf8.parsed.mixed_values": "42.5",
+					"float64.generated.value":          42.5,
+					"utf8.generated.__error__":         "",
+					"utf8.generated.__error_details__": ""},
+				{"utf8.builtin.message": "invalid numeric", "utf8.parsed.mixed_values": "not_a_number",
+					"float64.generated.value":          0.0,
+					"utf8.generated.__error__":         "My error; SampleExtractionErr",
+					"utf8.generated.__error_details__": `Some error; strconv.ParseFloat: parsing "not_a_number": invalid syntax`},
+			},
+		},
+		{
 			name: "edge cases for numeric parsing",
 			schema: arrow.NewSchema([]arrow.Field{
 				semconv.FieldFromIdent(semconv.ColumnIdentMessage, false),
