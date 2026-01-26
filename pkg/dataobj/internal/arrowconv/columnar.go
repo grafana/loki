@@ -65,6 +65,30 @@ func ToRecordBatch(src columnar.RecordBatch, schema *arrow.Schema) (arrow.Record
 			)
 			arr = array.NewUint64Data(data)
 
+		case arrow.BINARY:
+			srcBinary := srcCol.(*columnar.UTF8)
+			srcBytes := srcBinary.Data()
+			dstBytes := make([]byte, len(srcBytes))
+			copy(dstBytes, srcBytes)
+
+			srcOffsetsBytes := arrow.GetBytes(srcBinary.Offsets())
+			dstOffsetsBytes := make([]byte, len(srcOffsetsBytes))
+			copy(dstOffsetsBytes, srcOffsetsBytes)
+
+			data := array.NewData(
+				field.Type,
+				int(nrows),
+				[]*arrowmemory.Buffer{
+					arrowmemory.NewBufferBytes(dstValidity),
+					arrowmemory.NewBufferBytes(dstOffsetsBytes),
+					arrowmemory.NewBufferBytes(dstBytes),
+				},
+				nil,
+				srcBinary.Nulls(),
+				0,
+			)
+			arr = array.NewBinaryData(data)
+
 		case arrow.STRING:
 			srcUTF8 := srcCol.(*columnar.UTF8)
 			srcBytes := srcUTF8.Data()
