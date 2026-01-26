@@ -109,6 +109,11 @@ func (buf *Buffer[T]) Cap() int { return cap(buf.data) }
 // modified directly.
 func (buf *Buffer[T]) Data() []T { return buf.data }
 
+// Clear zeroes out all memory in buf.
+func (buf *Buffer[T]) Clear() {
+	clear(buf.data)
+}
+
 // Serialize returns the serializable form of the underlying byte array
 // representing buf, padded to 64-bytes. Padded bytes will be set to zero.
 //
