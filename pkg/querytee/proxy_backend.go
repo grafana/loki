@@ -79,6 +79,19 @@ func (b *ProxyBackend) WithFilter(f *regexp.Regexp) *ProxyBackend {
 	return b
 }
 
+// Alias returns the backend alias label value for metrics.
+// Returns "v1" for v1-preferred backends, "v2" for v2-preferred backends,
+// or "other" for non-preferred backends.
+func (b *ProxyBackend) Alias() string {
+	if b.v1Preferred {
+		return "v1"
+	}
+	if b.v2Preferred {
+		return "v2"
+	}
+	return "other"
+}
+
 func (b *ProxyBackend) ForwardRequest(orig *http.Request, body io.ReadCloser) *BackendResponse {
 	start := time.Now()
 	req, span := b.createBackendRequest(orig, body)

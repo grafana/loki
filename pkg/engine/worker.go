@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/gorilla/mux"
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
@@ -76,6 +77,11 @@ type Worker struct {
 func NewWorker(params WorkerParams) (*Worker, error) {
 	if params.Config.SchedulerLookupAddress != "" && params.Config.SchedulerLookupInterval == 0 {
 		return nil, errors.New("scheduler lookup interval must be non-zero when a scheduler lookup address is provided")
+	}
+
+	if params.Config.SchedulerLookupInterval < time.Second {
+		level.Warn(params.Logger).Log("msg", "scheduler lookup interval is configured to be less than 1 second, overriding to 1 second")
+		params.Config.SchedulerLookupInterval = time.Second
 	}
 
 	if params.Endpoint == "" {

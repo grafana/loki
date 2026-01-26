@@ -11,10 +11,11 @@ func TestStatsExtractor_NewEngineWarningDetection(t *testing.T) {
 	extractor := NewStatsExtractor()
 
 	tests := []struct {
-		name          string
-		responseBody  string
-		expectedUsed  bool
-		expectedError bool
+		name               string
+		responseBody       string
+		expectedUsed       bool
+		expectedResultType string
+		expectedError      bool
 	}{
 		{
 			name: "response with new engine warning",
@@ -44,8 +45,9 @@ func TestStatsExtractor_NewEngineWarningDetection(t *testing.T) {
 					"Query was executed using the new experimental query engine and dataobj storage."
 				]
 			}`,
-			expectedUsed:  true,
-			expectedError: false,
+			expectedUsed:       true,
+			expectedResultType: "streams",
+			expectedError:      false,
 		},
 		{
 			name: "response without warnings",
@@ -72,8 +74,9 @@ func TestStatsExtractor_NewEngineWarningDetection(t *testing.T) {
 					}
 				}
 			}`,
-			expectedUsed:  false,
-			expectedError: false,
+			expectedUsed:       false,
+			expectedResultType: "streams",
+			expectedError:      false,
 		},
 		{
 			name: "response with different warning",
@@ -104,8 +107,9 @@ func TestStatsExtractor_NewEngineWarningDetection(t *testing.T) {
 					"Query processing took longer than expected"
 				]
 			}`,
-			expectedUsed:  false,
-			expectedError: false,
+			expectedUsed:       false,
+			expectedResultType: "streams",
+			expectedError:      false,
 		},
 		{
 			name: "response with new engine warning among others",
@@ -137,8 +141,9 @@ func TestStatsExtractor_NewEngineWarningDetection(t *testing.T) {
 					"Large dataset detected"
 				]
 			}`,
-			expectedUsed:  true,
-			expectedError: false,
+			expectedUsed:       true,
+			expectedResultType: "streams",
+			expectedError:      false,
 		},
 		{
 			name: "empty warnings array",
@@ -166,31 +171,29 @@ func TestStatsExtractor_NewEngineWarningDetection(t *testing.T) {
 				},
 				"warnings": []
 			}`,
-			expectedUsed:  false,
-			expectedError: false,
+			expectedUsed:       false,
+			expectedResultType: "streams",
+			expectedError:      false,
 		},
 		{
-			name: "invalid JSON",
-			responseBody: `{
-				"status": "success",
-				"data": {
-					invalid json
-				}
-			}`,
-			expectedUsed:  false,
-			expectedError: true,
+			name:               "invalid JSON",
+			responseBody:       `{invalid json}`,
+			expectedUsed:       false,
+			expectedResultType: "",
+			expectedError:      true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			stats, hash, size, usedNewEngine, err := extractor.ExtractResponseData([]byte(tt.responseBody), 50)
+			stats, hash, size, usedNewEngine, resultType, err := extractor.ExtractResponseData([]byte(tt.responseBody), 50)
 
 			if tt.expectedError {
 				assert.Error(t, err)
 			} else {
 				require.NoError(t, err)
 				assert.Equal(t, tt.expectedUsed, usedNewEngine, "usedNewEngine mismatch")
+				assert.Equal(t, tt.expectedResultType, string(resultType), "resultType mismatch")
 
 				// Verify other fields are still extracted correctly
 				if stats.ExecTimeMs > 0 {

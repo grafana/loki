@@ -8,11 +8,12 @@ import (
 	"github.com/grafana/dskit/flagext"
 
 	"github.com/grafana/dskit/middleware"
+
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/querytee/comparator"
+	"github.com/grafana/loki/v3/pkg/querytee/goldfish"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	"github.com/grafana/loki/v3/pkg/util/server"
-	"github.com/grafana/loki/v3/tools/querytee/comparator"
-	"github.com/grafana/loki/v3/tools/querytee/goldfish"
 )
 
 // HandlerFactory creates the appropriate handler based on configuration.
@@ -106,7 +107,7 @@ func (f *HandlerFactory) CreateHandler(routeName string, comp comparator.Respons
 		RoutingMode:                   f.routingMode,
 		SplitStart:                    f.splitStart,
 		SplitLag:                      f.splitLag,
-		SplitRetentionDays:             f.splitRetentionDays,
+		SplitRetentionDays:            f.splitRetentionDays,
 		AddRoutingDecisionsToWarnings: f.addRoutingDecisionsToWarnings,
 	}, f.logger)
 

@@ -22,11 +22,12 @@ type rangeAggregationOptions struct {
 	grouping physical.Grouping
 
 	// start and end timestamps are equal for instant queries.
-	startTs       time.Time     // start timestamp of the query
-	endTs         time.Time     // end timestamp of the query
-	rangeInterval time.Duration // range interval
-	step          time.Duration // step used for range queries
-	operation     types.RangeAggregationType
+	startTs        time.Time     // start timestamp of the query
+	endTs          time.Time     // end timestamp of the query
+	rangeInterval  time.Duration // range interval
+	step           time.Duration // step used for range queries
+	operation      types.RangeAggregationType
+	maxQuerySeries int // maximum number of unique series allowed
 }
 
 var (
@@ -36,6 +37,7 @@ var (
 		types.RangeAggregationTypeCount: aggregationOperationCount,
 		types.RangeAggregationTypeMax:   aggregationOperationMax,
 		types.RangeAggregationTypeMin:   aggregationOperationMin,
+		types.RangeAggregationTypeAvg:   aggregationOperationAvg,
 	}
 )
 
@@ -109,6 +111,7 @@ func (r *rangeAggregationPipeline) init() {
 	}
 
 	r.aggregator = newAggregator(len(windows), op)
+	r.aggregator.SetMaxSeries(r.opts.maxQuerySeries)
 }
 
 // Read reads the next value into its state.
@@ -140,6 +143,9 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 				Type:   types.ColumnTypeGenerated,
 			},
 		} // value column expression
+
+		startedAt     = time.Now()
+		inputReadTime time.Duration
 	)
 
 	labelValuesCache := newLabelValuesCache()
@@ -151,12 +157,20 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 		inputsExhausted = true
 
 		for _, input := range r.inputs {
+			inputStart := time.Now()
 			record, err := input.Read(ctx)
+			inputReadTime += time.Since(inputStart)
+
 			if err != nil {
 				if errors.Is(err, EOF) {
 					continue
 				}
 				return nil, err
+			}
+
+			if record.NumRows() == 0 {
+				// Nothing to process
+				continue
 			}
 
 			inputsExhausted = false
@@ -265,19 +279,29 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 				labels := fieldsCache.getFields(arrays, groupingFields, row)
 
 				for _, w := range windows {
-					r.aggregator.Add(w.end, value, labels, labelValues)
+					if err := r.aggregator.Add(w.end, value, labels, labelValues); err != nil {
+						return nil, err
+					}
 				}
 			}
 		}
 	}
 
 	r.inputsExhausted = true
+
+	if r.region != nil {
+		computeTime := time.Since(startedAt) - inputReadTime
+		r.region.Record(xcap.StatPipelineExecDuration.Observe(computeTime.Seconds()))
+	}
+
 	return r.aggregator.BuildRecord()
 }
 
 // Close closes the resources of the pipeline.
 // The implementation must close all the of the pipeline's inputs.
 func (r *rangeAggregationPipeline) Close() {
+	r.aggregator.Reset()
+
 	if r.region != nil {
 		r.region.End()
 	}

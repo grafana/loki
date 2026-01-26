@@ -13,6 +13,9 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+- [BREAKING] DEPRECATION NOTICE - The simple scalable mode (SSD) is deprecated and will be removed in a future version of the Loki Helm charts.  
+- [BUGFIX] Updated Loki and GEL versions in values.yaml file. [#20548](https://github.com/grafana/loki/pull/20548).
+
 ## 6.51.0
 
 - [CHANGE] Changed version of Grafana Loki to 3.6.4

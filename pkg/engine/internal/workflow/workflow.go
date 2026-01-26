@@ -14,7 +14,6 @@ import (
 	"github.com/oklog/ulid/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
@@ -206,10 +205,8 @@ func (wf *Workflow) dispatchTasks(ctx context.Context, tasks []*Task) error {
 	// Start runner region once per workflow for capturing runner-level observations.
 	// Not calling defer region.End() here, as we want to allow observations to be recorded
 	// until the workflow is Closed.
-	ctx, region := xcap.StartRegion(ctx, "wf.runner",
-		xcap.WithRegionAttributes(
-			attribute.Int("tasks.total", len(tasks)),
-		))
+	ctx, region := xcap.StartRegion(ctx, "wf.runner")
+	region.Record(xcap.StatTaskCount.Observe(int64(len(tasks))))
 
 	groups := wf.admissionControl.groupByType(tasks)
 	for _, taskType := range []taskType{

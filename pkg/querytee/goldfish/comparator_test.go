@@ -3,9 +3,10 @@ package goldfish
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/grafana/loki/v3/pkg/goldfish"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
-	"github.com/stretchr/testify/assert"
 )
 
 func TestComparator_CompareResponses(t *testing.T) {

@@ -10,12 +10,13 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/loki/v3/pkg/goldfish"
-	"github.com/grafana/loki/v3/pkg/storage/bucket"
-	"github.com/grafana/loki/v3/tools/querytee/comparator"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/goldfish"
+	"github.com/grafana/loki/v3/pkg/querytee/comparator"
+	"github.com/grafana/loki/v3/pkg/storage/bucket"
 )
 
 // mockStorage implements Storage interface for testing
@@ -27,6 +28,7 @@ type mockStorage struct {
 
 func (m *mockStorage) StoreQuerySample(_ context.Context, sample *goldfish.QuerySample, comparison *goldfish.ComparisonResult) error {
 	sample.ComparisonStatus = comparison.ComparisonStatus
+	sample.MatchWithinTolerance = comparison.MatchWithinTolerance
 	m.samples = append(m.samples, *sample)
 	return nil
 }
@@ -116,7 +118,7 @@ func TestManager_ShouldSample(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			storage := &mockStorage{}
-			manager, err := NewManager(tt.config, testComparator(), storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
+			manager, err := NewManager(tt.config, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
 			require.NoError(t, err)
 
 			got := manager.ShouldSample(tt.tenantID)
@@ -134,7 +136,7 @@ func TestManager_ProcessQueryPair(t *testing.T) {
 	}
 
 	storage := &mockStorage{}
-	manager, err := NewManager(config, testComparator(), storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
+	manager, err := NewManager(config, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	req, _ := http.NewRequest("GET", "/loki/api/v1/query_range?query=count_over_time({job=\"test\"}[5m])&start=1700000000&end=1700001000&step=60s", nil)
@@ -231,7 +233,7 @@ func Test_ProcessQueryPair_populatesTraceIDs(t *testing.T) {
 	}
 
 	storage := &mockStorage{}
-	manager, err := NewManager(config, testComparator(), storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
+	manager, err := NewManager(config, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	req, _ := http.NewRequest("GET", "/loki/api/v1/query_range?query=count_over_time({job=\"test\"}[5m])&start=1700000000&end=1700001000&step=60s", nil)
@@ -269,7 +271,7 @@ func Test_ProcessQueryPair_populatesTraceIDs(t *testing.T) {
 
 func TestManager_Close(t *testing.T) {
 	storage := &mockStorage{}
-	manager, err := NewManager(Config{Enabled: true}, testComparator(), storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
+	manager, err := NewManager(Config{Enabled: true}, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	err = manager.Close()
@@ -310,7 +312,7 @@ func TestProcessQueryPairCapturesUser(t *testing.T) {
 			}
 
 			storage := &mockStorage{}
-			manager, err := NewManager(config, testComparator(), storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
+			manager, err := NewManager(config, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
 			require.NoError(t, err)
 
 			req, _ := http.NewRequest("GET", "/loki/api/v1/query_range?query=count_over_time({job=\"test\"}[5m])&start=1700000000&end=1700001000&step=60s", nil)
@@ -444,7 +446,7 @@ func TestProcessQueryPair_CapturesLogsDrilldown(t *testing.T) {
 			}
 
 			storage := &mockStorage{}
-			manager, err := NewManager(config, testComparator(), storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
+			manager, err := NewManager(config, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
 			require.NoError(t, err)
 
 			req, _ := http.NewRequest("GET", "/loki/api/v1/query_range?query=count_over_time({job=\"test\"}[5m])&start=1700000000&end=1700001000&step=60s", nil)
@@ -541,7 +543,7 @@ func TestManagerResultPersistenceModes(t *testing.T) {
 
 			storage := &mockStorage{}
 			results := &mockResultStore{}
-			manager, err := NewManager(config, testComparator(), storage, results, log.NewNopLogger(), prometheus.NewRegistry())
+			manager, err := NewManager(config, storage, results, log.NewNopLogger(), prometheus.NewRegistry())
 			require.NoError(t, err)
 
 			req, _ := http.NewRequest("GET", "/loki/api/v1/query_range?query=sum(rate({job=\"app\"}[1m]))", nil)
@@ -626,25 +628,28 @@ func (m *mockResponseComparator) Compare(_, _ []byte, _ time.Time) (*comparator.
 
 func TestManager_StoreQuerySample_UsesComparatorResult(t *testing.T) {
 	tests := []struct {
-		name            string
-		cellAHash       string
-		cellBHash       string
-		comparatorMatch bool
-		expectedStatus  goldfish.ComparisonStatus
+		name                         string
+		cellAHash                    string
+		cellBHash                    string
+		comparatorMatch              bool
+		expectedStatus               goldfish.ComparisonStatus
+		expectedMatchWithinTolerance bool
 	}{
 		{
-			name:            "hash mismatch with tolerance match",
-			cellAHash:       "hash1",
-			cellBHash:       "hash2",
-			comparatorMatch: true,
-			expectedStatus:  goldfish.ComparisonStatusMatch,
+			name:                         "hash mismatch with tolerance match",
+			cellAHash:                    "hash1",
+			cellBHash:                    "hash2",
+			comparatorMatch:              true,
+			expectedStatus:               goldfish.ComparisonStatusMismatch,
+			expectedMatchWithinTolerance: true,
 		},
 		{
-			name:            "hash mismatch without tolerance match",
-			cellAHash:       "hash1",
-			cellBHash:       "hash2",
-			comparatorMatch: false,
-			expectedStatus:  goldfish.ComparisonStatusMismatch,
+			name:                         "hash mismatch without tolerance match",
+			cellAHash:                    "hash1",
+			cellBHash:                    "hash2",
+			comparatorMatch:              false,
+			expectedStatus:               goldfish.ComparisonStatusMismatch,
+			expectedMatchWithinTolerance: false,
 		},
 	}
 
@@ -664,7 +669,9 @@ func TestManager_StoreQuerySample_UsesComparatorResult(t *testing.T) {
 				PerformanceTolerance: 0.1,
 			}
 
-			manager, err := NewManager(config, mockComparator, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
+			m, err := NewManager(config, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
+			m.(*manager).responseComparator = mockComparator // Inject mock comparator
+
 			require.NoError(t, err)
 
 			// Create responses with different status values to ensure different hashes
@@ -689,15 +696,15 @@ func TestManager_StoreQuerySample_UsesComparatorResult(t *testing.T) {
 			req, _ := http.NewRequest("GET", "/loki/api/v1/query_range?query=test", nil)
 
 			// Process the query pair
-			manager.SendToGoldfish(req, cellAResp, cellBResp)
+			m.SendToGoldfish(req, cellAResp, cellBResp)
 
 			// Give async processing time to complete
 			time.Sleep(100 * time.Millisecond)
 
 			// Verify the stored sample has the correct comparison status from the comparator
 			require.Len(t, storage.samples, 1)
-			assert.Equal(t, tt.expectedStatus, storage.samples[0].ComparisonStatus,
-				"comparison status should match what the comparator returned")
+			assert.Equal(t, tt.expectedStatus, storage.samples[0].ComparisonStatus)
+			assert.Equal(t, tt.expectedMatchWithinTolerance, storage.samples[0].MatchWithinTolerance)
 		})
 	}
 }

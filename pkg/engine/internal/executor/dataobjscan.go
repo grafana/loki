@@ -357,6 +357,10 @@ func (s *dataobjScan) read(ctx context.Context) (arrow.RecordBatch, error) {
 		return nil, EOF
 	}
 
+	if rec.NumRows() == 0 {
+		return rec, nil
+	}
+
 	// Update the schema of the record to match the schema the engine expects.
 	rec, err = changeSchema(rec, s.desiredSchema)
 	if err != nil {

@@ -153,6 +153,26 @@ func summarizeObservations(capture *Capture) *observations {
 			normalizeKeys(),
 	)
 
+	result.merge(
+		collect.fromRegions("RangeAggregation", false).
+			filter(
+				StatPipelineReadDuration.Key(),
+				StatPipelineExecDuration.Key(),
+			).
+			prefix("range_aggregation_").
+			normalizeKeys(),
+	)
+
+	result.merge(
+		collect.fromRegions("VectorAggregation", false).
+			filter(
+				StatPipelineReadDuration.Key(),
+				StatPipelineExecDuration.Key(),
+			).
+			prefix("vector_aggregation_").
+			normalizeKeys(),
+	)
+
 	// metastore index and resolved section stats
 	result.merge(
 		collect.fromRegions("ObjectMetastore.Sections", true).

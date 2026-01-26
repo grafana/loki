@@ -24,8 +24,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
-	"github.com/grafana/loki/v3/tools/querytee/comparator"
-	"github.com/grafana/loki/v3/tools/querytee/goldfish"
+	"github.com/grafana/loki/v3/pkg/querytee/comparator"
+	"github.com/grafana/loki/v3/pkg/querytee/goldfish"
 )
 
 var errMinBackends = errors.New("at least 1 backend is required")
@@ -287,11 +287,13 @@ func NewProxy(
 		}
 	}
 
-	// Pre-initialize raceWins metric for all backend/route combinations
+	// Pre-initialize raceWins metric for all backend/route/issuer combinations
 	if cfg.Routing.Mode == RoutingModeRace {
 		for _, backend := range p.backends {
 			for _, route := range p.readRoutes {
-				p.metrics.raceWins.WithLabelValues(backend.name, route.RouteName)
+				for _, issuer := range []string{unknownIssuer, canaryIssuer} {
+					p.metrics.raceWins.WithLabelValues(backend.name, backend.Alias(), route.RouteName, issuer)
+				}
 			}
 		}
 	}
@@ -314,14 +316,7 @@ func NewProxy(
 		}
 
 		// Create Goldfish manager
-		samplesComparator := comparator.NewSamplesComparator(comparator.SampleComparisonOptions{
-			Tolerance:         cfg.ValueComparisonTolerance,
-			UseRelativeError:  cfg.UseRelativeError,
-			SkipRecentSamples: cfg.SkipRecentSamples,
-			SkipSamplesBefore: time.Time(cfg.SkipSamplesBefore),
-		})
-
-		goldfishManager, err := goldfish.NewManager(cfg.Goldfish, samplesComparator, storage, resultStore, logger, registerer)
+		goldfishManager, err := goldfish.NewManager(cfg.Goldfish, storage, resultStore, logger, registerer)
 		if err != nil {
 			if resultStore != nil {
 				_ = resultStore.Close(context.Background())
