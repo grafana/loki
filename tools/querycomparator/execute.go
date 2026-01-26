@@ -269,8 +269,10 @@ func doLocalQueryWithV2EngineScheduler(params logql.LiteralParams) (logqlmodel.R
 	e, err := engine.New(engine.Params{
 		Logger:     engineLogger,
 		Registerer: prometheus.NewRegistry(),
-		Config: engine.ExecutorConfig{
-			BatchSize: 128,
+		Config: engine.Config{
+			Executor: engine.ExecutorConfig{
+				BatchSize: 128,
+			},
 		},
 		Metastore: metastore.NewObjectMetastore(b, msConfig, engineLogger, metastoreMetrics),
 		Scheduler: sched,
@@ -341,8 +343,10 @@ func doLocalQueryWithV2EngineSchedulerRemote(params logql.LiteralParams) (logqlm
 	e, err := engine.New(engine.Params{
 		Logger:     engineLogger,
 		Registerer: prometheus.NewRegistry(),
-		Config: engine.ExecutorConfig{
-			BatchSize: 128,
+		Config: engine.Config{
+			Executor: engine.ExecutorConfig{
+				BatchSize: 128,
+			},
 		},
 		Metastore: metastore.NewObjectMetastore(b, msConfig, engineLogger, metastoreMetrics),
 		Scheduler: sched,
