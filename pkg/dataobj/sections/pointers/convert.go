@@ -16,6 +16,7 @@ func PopulateSectionKey(_ arrow.Field, columnType ColumnType) bool {
 var sectionPointerColumns = map[ColumnType]struct{}{
 	ColumnTypePath:             {},
 	ColumnTypeSection:          {},
+	ColumnTypePointerKind:      {},
 	ColumnTypeStreamID:         {},
 	ColumnTypeStreamIDRef:      {},
 	ColumnTypeMinTimestamp:     {},
@@ -65,6 +66,14 @@ func FromRecordBatch(
 					continue
 				}
 				dest[rIdx].Section = values.Value(rIdx)
+			}
+		case ColumnTypePointerKind:
+			values := col.(*array.Int64)
+			for rIdx := range numRows {
+				if col.IsNull(rIdx) {
+					continue
+				}
+				dest[rIdx].PointerKind = PointerKind(values.Value(rIdx))
 			}
 		case ColumnTypeStreamID:
 			values := col.(*array.Int64)

@@ -200,8 +200,14 @@ func (r *indexSectionsReader) populateMatchingStreamsAndLabels(ctx context.Conte
 
 	sStart, sEnd := r.scalarTimestamps()
 
+	predicateKeys := map[string]struct{}{}
+	for _, predicate := range r.predicates {
+		predicateKeys[predicate.Name] = struct{}{}
+	}
+
 	requestedColumnsFn := func(column *streams.Column) bool {
-		return column.Type == streams.ColumnTypeLabel
+		_, presentInPredicates := predicateKeys[column.Name]
+		return column.Type == streams.ColumnTypeLabel && presentInPredicates
 	}
 
 	err := forEachStreamWithColumns(ctx, r.obj, r.matchers, sStart, sEnd, requestedColumnsFn, func(streamID int64, columnValues map[string]string) {

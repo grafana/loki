@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	_ "io" // Used for documenting io.EOF.
+	"strconv"
+	"strings"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
@@ -18,6 +20,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 )
 
+const InternalLabelsFieldName = "__streamLabelNames__"
+
 // ReaderOptions customizes the behavior of a [Reader].
 type ReaderOptions struct {
 	// Columns to read. Each column must belong to the same [Section].
@@ -30,6 +34,9 @@ type ReaderOptions struct {
 	// Allocator to use for allocating Arrow records. If nil,
 	// [memory.DefaultAllocator] is used.
 	Allocator memory.Allocator
+
+	// An existing Stream ID to label names for the reader to decorate responses with.
+	StreamIDToLabelNames map[int64][]string
 }
 
 // Validate returns an error if the opts is not valid. ReaderOptions are only
@@ -175,6 +182,12 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.RecordBatch, er
 	r.buf = slicegrow.GrowToCap(r.buf, batchSize)
 	r.buf = r.buf[:batchSize]
 
+	internalLabelsFieldIdx := r.schema.FieldIndices(InternalLabelsFieldName)
+	if len(internalLabelsFieldIdx) != 1 {
+		panic("expected 1 internal labels field, got " + strconv.Itoa(len(internalLabelsFieldIdx)))
+	}
+	internalLabelsBuilder := r.builder.Field(internalLabelsFieldIdx[0])
+
 	n, readErr := r.inner.Read(ctx, r.buf)
 	r.builder.Reserve(n)
 	for rowIndex := range n {
@@ -206,9 +219,16 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.RecordBatch, er
 				columnBuilder.(*array.Int64Builder).Append(val.Int64())
 			case ColumnTypePointerKind:
 				columnBuilder.(*array.Int64Builder).Append(val.Int64())
-
 			case ColumnTypeStreamID: // Appends IDs as int64
-				columnBuilder.(*array.Int64Builder).Append(val.Int64())
+				val := val.Int64()
+				columnBuilder.(*array.Int64Builder).Append(val)
+				// Append the labels (TODO: Improve how this is encoded)
+				if r.opts.StreamIDToLabelNames != nil {
+					labelNames, ok := r.opts.StreamIDToLabelNames[val]
+					if ok {
+						internalLabelsBuilder.AppendValueFromString(strings.Join(labelNames, ","))
+					}
+				}
 			case ColumnTypeStreamIDRef:
 				columnBuilder.(*array.Int64Builder).Append(val.Int64())
 			case ColumnTypeMinTimestamp, ColumnTypeMaxTimestamp: // Values are nanosecond timestamps as int64
@@ -230,6 +250,9 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.RecordBatch, er
 				// support reading it.
 				return nil, fmt.Errorf("unsupported column type %s for column %d", columnType, columnIndex)
 			}
+		}
+		if internalLabelsBuilder.IsNull(rowIndex) {
+			internalLabelsBuilder.AppendNull()
 		}
 	}
 
@@ -460,6 +483,9 @@ func columnsSchema(cols []*Column) *arrow.Schema {
 	for _, col := range cols {
 		fields = append(fields, columnToField(col))
 	}
+
+	// Append an internal field used to store label names for each stream ID in the result set
+	fields = append(fields, arrow.Field{Name: InternalLabelsFieldName, Type: arrow.BinaryTypes.String, Nullable: true})
 	return arrow.NewSchema(fields, nil)
 }
 
