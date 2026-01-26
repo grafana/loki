@@ -131,7 +131,7 @@ func (pr *pageReader) readColumnar(alloc *memory.Allocator, count int, skip bool
 	if skip {
 		return nil, nil
 	}
-	return materializeSparseArray(alloc, bm, values)
+	return materializeSparseArray(alloc, pr.lastPhysicalType, bm, values)
 }
 
 func (pr *pageReader) init(ctx context.Context) error {
@@ -189,7 +189,7 @@ func (pr *pageReader) init(ctx context.Context) error {
 //
 // Memory from validity and denseValues may be moved to the returned array.
 // These values must have been allocated with alloc to prevent use-after-free.
-func materializeSparseArray(alloc *memory.Allocator, validity memory.Bitmap, denseValues columnar.Array) (columnar.Array, error) {
+func materializeSparseArray(alloc *memory.Allocator, typ datasetmd.PhysicalType, validity memory.Bitmap, denseValues columnar.Array) (columnar.Array, error) {
 	if denseValues != nil && validity.SetCount() != denseValues.Len() {
 		panic(fmt.Sprintf("invariant broken: validity set count (%d) is not array length (%d)", validity.SetCount(), denseValues.Len()))
 	}
@@ -200,7 +200,7 @@ func materializeSparseArray(alloc *memory.Allocator, validity memory.Bitmap, den
 	case *columnar.Int64:
 		return materializeSparseInt64(alloc, validity, arr)
 	case nil:
-		return materializeNulls(alloc, validity)
+		return materializeNulls(alloc, typ, validity)
 	default:
 		panic(fmt.Sprintf("found unexpected type %T", arr))
 	}
@@ -260,11 +260,42 @@ func materializeSparseInt64(alloc *memory.Allocator, validity memory.Bitmap, den
 	return columnar.MakeInt64(values, validity), nil
 }
 
-func materializeNulls(_ *memory.Allocator, validity memory.Bitmap) (columnar.Array, error) {
+func materializeNulls(alloc *memory.Allocator, typ datasetmd.PhysicalType, validity memory.Bitmap) (columnar.Array, error) {
 	if validity.SetCount() > 0 {
 		panic(fmt.Sprintf("unexpected non-null values: %d", validity.SetCount()))
 	}
-	return columnar.MakeNull(validity), nil
+
+	// NOTE(rfratto): we need to return an array of the expected type here,
+	// since other operations will require all arrays to be of the same type.
+	//
+	// TODO(rfratto): Should we update functions like [columnar.Concat] to
+	// accept some of the arrays being Null? Would that slow things down too
+	// much?
+	switch typ {
+	case datasetmd.PHYSICAL_TYPE_INT64:
+		valuesBuffer := memory.MakeBuffer[int64](alloc, validity.Len())
+		valuesBuffer.Resize(validity.Len())
+		valuesBuffer.Clear()
+
+		return columnar.MakeInt64(valuesBuffer.Data(), validity), nil
+
+	case datasetmd.PHYSICAL_TYPE_UINT64:
+		valuesBuffer := memory.MakeBuffer[uint64](alloc, validity.Len())
+		valuesBuffer.Resize(validity.Len())
+		valuesBuffer.Clear()
+
+		return columnar.MakeUint64(valuesBuffer.Data(), validity), nil
+
+	case datasetmd.PHYSICAL_TYPE_BINARY:
+		offsetsBuffer := memory.MakeBuffer[int32](alloc, validity.Len()+1)
+		offsetsBuffer.Resize(validity.Len() + 1)
+		offsetsBuffer.Clear()
+
+		return columnar.MakeUTF8(nil, offsetsBuffer.Data(), validity), nil
+
+	default:
+		return columnar.MakeNull(validity), nil
+	}
 }
 
 // Seek sets the row offset for the next Read call, interpreted according to
