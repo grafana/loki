@@ -73,7 +73,7 @@ func (bmap *Bitmap) AppendCount(value bool, count int) {
 // AppendBitmap appends the contents of another bitmap into bmap.
 func (bmap *Bitmap) AppendBitmap(from Bitmap) {
 	if bmap.needGrow(from.Len()) {
-		bmap.getNewData(from.Len())
+		bmap.Grow(from.Len())
 	}
 	bitutil.CopyBitmap(from.data, 0, from.len, bmap.data, bmap.len)
 	bmap.len += from.Len()
