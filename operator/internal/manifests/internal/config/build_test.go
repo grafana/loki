@@ -178,7 +178,7 @@ storage_config:
           region: us-east
           access_key_id: ${AWS_ACCESS_KEY_ID}
           secret_access_key: ${AWS_ACCESS_KEY_SECRET}
-          s3forcepathstyle: true
+          bucket_lookup_type: path
   boltdb_shipper:
     active_index_directory: /tmp/loki/index
     cache_location: /tmp/loki/index_cache
@@ -452,7 +452,7 @@ storage_config:
           region: us-east
           access_key_id: ${AWS_ACCESS_KEY_ID}
           secret_access_key: ${AWS_ACCESS_KEY_SECRET}
-          s3forcepathstyle: true
+          bucket_lookup_type: path
   boltdb_shipper:
     active_index_directory: /tmp/loki/index
     cache_location: /tmp/loki/index_cache
@@ -948,7 +948,7 @@ storage_config:
           region: us-east
           access_key_id: ${AWS_ACCESS_KEY_ID}
           secret_access_key: ${AWS_ACCESS_KEY_SECRET}
-          s3forcepathstyle: true
+          bucket_lookup_type: path
   boltdb_shipper:
     active_index_directory: /tmp/loki/index
     cache_location: /tmp/loki/index_cache
@@ -1322,7 +1322,7 @@ storage_config:
           region: us-east
           access_key_id: ${AWS_ACCESS_KEY_ID}
           secret_access_key: ${AWS_ACCESS_KEY_SECRET}
-          s3forcepathstyle: true
+          bucket_lookup_type: path
   boltdb_shipper:
     active_index_directory: /tmp/loki/index
     cache_location: /tmp/loki/index_cache
@@ -1710,7 +1710,7 @@ storage_config:
           region: us-east
           access_key_id: ${AWS_ACCESS_KEY_ID}
           secret_access_key: ${AWS_ACCESS_KEY_SECRET}
-          s3forcepathstyle: true
+          bucket_lookup_type: path
   boltdb_shipper:
     active_index_directory: /tmp/loki/index
     cache_location: /tmp/loki/index_cache
@@ -2057,7 +2057,7 @@ storage_config:
           region: us-east
           access_key_id: ${AWS_ACCESS_KEY_ID}
           secret_access_key: ${AWS_ACCESS_KEY_SECRET}
-          s3forcepathstyle: true
+          bucket_lookup_type: path
   boltdb_shipper:
     active_index_directory: /tmp/loki/index
     cache_location: /tmp/loki/index_cache
@@ -2483,7 +2483,7 @@ storage_config:
           region: us-east
           access_key_id: ${AWS_ACCESS_KEY_ID}
           secret_access_key: ${AWS_ACCESS_KEY_SECRET}
-          s3forcepathstyle: true
+          bucket_lookup_type: path
   boltdb_shipper:
     active_index_directory: /tmp/loki/index
     cache_location: /tmp/loki/index_cache
@@ -3277,7 +3277,7 @@ storage_config:
           region: us-east
           access_key_id: ${AWS_ACCESS_KEY_ID}
           secret_access_key: ${AWS_ACCESS_KEY_SECRET}
-          s3forcepathstyle: true
+          bucket_lookup_type: path
   boltdb_shipper:
     active_index_directory: /tmp/loki/index
     cache_location: /tmp/loki/index_cache
@@ -3711,7 +3711,7 @@ storage_config:
           region: us-east
           access_key_id: ${AWS_ACCESS_KEY_ID}
           secret_access_key: ${AWS_ACCESS_KEY_SECRET}
-          s3forcepathstyle: true
+          bucket_lookup_type: path
   boltdb_shipper:
     active_index_directory: /tmp/loki/index
     cache_location: /tmp/loki/index_cache
@@ -3988,7 +3988,7 @@ storage_config:
           region: us-east
           access_key_id: ${AWS_ACCESS_KEY_ID}
           secret_access_key: ${AWS_ACCESS_KEY_SECRET}
-          s3forcepathstyle: true
+          bucket_lookup_type: path
   boltdb_shipper:
     active_index_directory: /tmp/loki/index
     cache_location: /tmp/loki/index_cache
@@ -4265,7 +4265,7 @@ storage_config:
           region: us-east
           access_key_id: ${AWS_ACCESS_KEY_ID}
           secret_access_key: ${AWS_ACCESS_KEY_SECRET}
-          s3forcepathstyle: true
+          bucket_lookup_type: path
   boltdb_shipper:
     active_index_directory: /tmp/loki/index
     cache_location: /tmp/loki/index_cache
@@ -4544,8 +4544,8 @@ storage_config:
           region: us-east
           access_key_id: ${AWS_ACCESS_KEY_ID}
           secret_access_key: ${AWS_ACCESS_KEY_SECRET}
-          s3forcepathstyle: true
-          sse_config:
+          bucket_lookup_type: path
+          sse:
             type: SSE-KMS
             kms_key_id: test
             kms_encryption_context: ${AWS_SSE_KMS_ENCRYPTION_CONTEXT}
@@ -4863,8 +4863,8 @@ storage_config:
           region: us-east
           access_key_id: ${AWS_ACCESS_KEY_ID}
           secret_access_key: ${AWS_ACCESS_KEY_SECRET}
-          s3forcepathstyle: true
-          sse_config:
+          bucket_lookup_type: path
+          sse:
             type: SSE-S3
   boltdb_shipper:
     active_index_directory: /tmp/loki/index
@@ -5174,7 +5174,7 @@ storage_config:
           region: us-east
           access_key_id: ${AWS_ACCESS_KEY_ID}
           secret_access_key: ${AWS_ACCESS_KEY_SECRET}
-          s3forcepathstyle: true
+          bucket_lookup_type: path
   boltdb_shipper:
     active_index_directory: /tmp/loki/index
     cache_location: /tmp/loki/index_cache
@@ -5407,7 +5407,7 @@ func TestBuild_ConfigAndRuntimeConfig_Schemas(t *testing.T) {
           region: us-east
           access_key_id: ${AWS_ACCESS_KEY_ID}
           secret_access_key: ${AWS_ACCESS_KEY_SECRET}
-          s3forcepathstyle: true
+          bucket_lookup_type: path
   boltdb_shipper:
     active_index_directory: /tmp/loki/index
     cache_location: /tmp/loki/index_cache
@@ -5447,7 +5447,7 @@ func TestBuild_ConfigAndRuntimeConfig_Schemas(t *testing.T) {
           region: us-east
           access_key_id: ${AWS_ACCESS_KEY_ID}
           secret_access_key: ${AWS_ACCESS_KEY_SECRET}
-          s3forcepathstyle: true
+          bucket_lookup_type: path
   boltdb_shipper:
     active_index_directory: /tmp/loki/index
     cache_location: /tmp/loki/index_cache
@@ -5488,7 +5488,7 @@ func TestBuild_ConfigAndRuntimeConfig_Schemas(t *testing.T) {
           region: us-east
           access_key_id: ${AWS_ACCESS_KEY_ID}
           secret_access_key: ${AWS_ACCESS_KEY_SECRET}
-          s3forcepathstyle: true
+          bucket_lookup_type: path
   tsdb_shipper:
     active_index_directory: /tmp/loki/tsdb-index
     cache_location: /tmp/loki/tsdb-cache
@@ -5551,7 +5551,7 @@ func TestBuild_ConfigAndRuntimeConfig_Schemas(t *testing.T) {
           region: us-east
           access_key_id: ${AWS_ACCESS_KEY_ID}
           secret_access_key: ${AWS_ACCESS_KEY_SECRET}
-          s3forcepathstyle: true
+          bucket_lookup_type: path
   boltdb_shipper:
     active_index_directory: /tmp/loki/index
     cache_location: /tmp/loki/index_cache
@@ -5908,7 +5908,6 @@ storage_config:
         store-1:
           bucket_name: my-bucket
           region: my-region
-          s3forcepathstyle: false
   boltdb_shipper:
     active_index_directory: /tmp/loki/index
     cache_location: /tmp/loki/index_cache
@@ -6161,7 +6160,7 @@ storage_config:
           region: us-east
           access_key_id: ${AWS_ACCESS_KEY_ID}
           secret_access_key: ${AWS_ACCESS_KEY_SECRET}
-          s3forcepathstyle: true
+          bucket_lookup_type: path
   boltdb_shipper:
     active_index_directory: /tmp/loki/index
     cache_location: /tmp/loki/index_cache
@@ -6587,7 +6586,7 @@ storage_config:
           region: us-east
           access_key_id: ${AWS_ACCESS_KEY_ID}
           secret_access_key: ${AWS_ACCESS_KEY_SECRET}
-          s3forcepathstyle: true
+          bucket_lookup_type: path
   tsdb_shipper:
     active_index_directory: /tmp/loki/tsdb-index
     cache_location: /tmp/loki/tsdb-cache

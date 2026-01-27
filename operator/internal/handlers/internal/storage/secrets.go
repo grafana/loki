@@ -457,20 +457,17 @@ func extractS3ConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMod
 		}
 		return cfg, nil
 	case lokiv1.CredentialModeStatic:
+		if err := validateS3Endpoint(string(endpoint), string(region)); err != nil {
+			return nil, err
+		}
 		host, err := extractHost(endpoint)
 		if err != nil {
 			return nil, err
 		}
-		// If endpoint is AWS
-		if strings.HasSuffix(host, awsEndpointSuffix) {
-			cfg.Endpoint = host
-		} else {
-			cfg.Endpoint = string(endpoint)
-		}
 
-		if err := validateS3Endpoint(string(endpoint), string(region)); err != nil {
-			return nil, err
-		}
+		cfg.Endpoint = host
+		cfg.Insecure = strings.HasPrefix(string(endpoint), "http://")
+
 		if len(id) == 0 {
 			return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSAccessKeyID)
 		}
