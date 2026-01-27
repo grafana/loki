@@ -241,6 +241,24 @@ func (r *Reader) readAndFilterPrimaryColumns(ctx context.Context, readSize int, 
 			count = readSize // required columns are already filled
 		}
 
+		for _, v := range s[:count] {
+			width := len(v.Values)
+			tsVal := v.Values[width-2]
+			msgVal := v.Values[width-1]
+			if tsVal.Type() == datasetmd.PHYSICAL_TYPE_INT64 && tsVal.Int64() == 1704153575337310967 {
+				fmt.Println(tsVal.Int64())
+				fmt.Println(string(msgVal.Binary()))
+				fmt.Println("--------------------------------")
+			}
+			if v.Index == 47777 {
+				if msgVal.IsNil() {
+					continue
+				}
+				fmt.Println(string(msgVal.Binary()))
+				fmt.Println("--------------------------------")
+			}
+		}
+
 		passCount = 0
 		for i := range count {
 			size := s[i].SizeOfColumns(idxs)
