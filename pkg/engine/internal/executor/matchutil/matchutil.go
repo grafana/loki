@@ -7,6 +7,15 @@ import (
 	"unicode/utf8"
 )
 
+// toUpperASCII converts an ASCII lowercase letter to uppercase.
+// If the byte is not a lowercase ASCII letter, it returns the byte unchanged.
+func toUpperASCII(c byte) byte {
+	if c >= 'a' && c <= 'z' {
+		return c - ('a' - 'A')
+	}
+	return c
+}
+
 // ContainsUpper checks if line contains substr using case-insensitive comparison.
 // substr MUST already be uppercased by the caller.
 //
@@ -30,9 +39,7 @@ func ContainsUpper(line, substr []byte) bool {
 		// Find potential first byte match
 		c := line[i]
 		// Fast path for ASCII - if c is lowercase letter, convert to uppercase
-		if c >= 'a' && c <= 'z' {
-			c -= 'a' - 'A'
-		}
+		c = toUpperASCII(c)
 		if c != firstByte {
 			i++
 			continue
@@ -50,9 +57,7 @@ func ContainsUpper(line, substr []byte) bool {
 			// Fast path for ASCII
 			if c < utf8.RuneSelf && s < utf8.RuneSelf {
 				// Convert line char to uppercase if needed
-				if c >= 'a' && c <= 'z' {
-					c -= 'a' - 'A'
-				}
+				c = toUpperASCII(c)
 				if c != s {
 					matched = false
 					break
@@ -66,11 +71,7 @@ func ContainsUpper(line, substr []byte) bool {
 			lr, lineSize := utf8.DecodeRune(line[linePos:])
 			if lr == utf8.RuneError && lineSize == 1 {
 				// Invalid UTF-8, treat as raw bytes
-				// TODO: the uppercase check is used in 3 places, extract to a function.
-				if c >= 'a' && c <= 'z' {
-					c -= 'a' - 'A'
-				}
-				//TODO: next 6 lines are duplicated above, refactor?
+				c = toUpperASCII(c)
 				if c != s {
 					matched = false
 					break
