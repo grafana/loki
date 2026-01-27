@@ -94,6 +94,38 @@ func TestToRecordBatch_string(t *testing.T) {
 	}
 }
 
+func TestToRecordBatch_binary(t *testing.T) {
+	alloc := memory.MakeAllocator(nil)
+	srcValues := [][]byte{
+		{0x00, 0x01},
+		nil,
+		{0xff},
+	}
+
+	validity := memory.MakeBitmap(alloc, len(srcValues))
+	validity.Resize(len(srcValues))
+	validity.SetRange(0, len(srcValues), true)
+	validity.Set(1, false)
+
+	data := []byte{0x00, 0x01, 0xff}
+	offsets := []int32{0, 2, 2, 3}
+	utf8Arr := columnar.MakeUTF8(data, offsets, validity)
+	src := columnar.NewRecordBatch(int64(len(srcValues)), []columnar.Array{utf8Arr})
+
+	schema := arrow.NewSchema([]arrow.Field{
+		{Name: "mybinary", Type: arrow.BinaryTypes.Binary},
+	}, nil)
+	res, err := arrowconv.ToRecordBatch(src, schema)
+
+	require.NoError(t, err)
+	col := res.Column(0).(*array.Binary)
+	require.False(t, col.IsNull(0))
+	require.True(t, col.IsNull(1))
+	require.False(t, col.IsNull(2))
+	require.Equal(t, srcValues[0], col.Value(0))
+	require.Equal(t, srcValues[2], col.Value(2))
+}
+
 func TestToRecordBatch_timestamp(t *testing.T) {
 	alloc := memory.MakeAllocator(nil)
 	now := time.Now().UTC()
@@ -150,6 +182,11 @@ func BenchmarkToRecordBatch_string(b *testing.B) {
 
 func BenchmarkToRecordBatch_timestamp(b *testing.B) {
 	src, schema := makeTimestampBenchmarkBatch(b, benchmarkRows)
+	benchmarkToRecordBatch(b, src, schema)
+}
+
+func BenchmarkToRecordBatch_binary(b *testing.B) {
+	src, schema := makeBinaryBenchmarkBatch(b, benchmarkRows)
 	benchmarkToRecordBatch(b, src, schema)
 }
 
@@ -226,6 +263,15 @@ func makeStringBenchmarkBatch(b *testing.B, n int) (columnar.RecordBatch, *arrow
 		{Name: "mystring", Type: arrow.BinaryTypes.String},
 	}, nil)
 	return src, schema
+}
+
+func makeBinaryBenchmarkBatch(b *testing.B, n int) (columnar.RecordBatch, *arrow.Schema) {
+	b.Helper()
+
+	batch, _ := makeStringBenchmarkBatch(b, n)
+	return batch, arrow.NewSchema([]arrow.Field{
+		{Name: "mybinary", Type: arrow.BinaryTypes.Binary},
+	}, nil)
 }
 
 func makeTimestampBenchmarkBatch(b *testing.B, n int) (columnar.RecordBatch, *arrow.Schema) {
