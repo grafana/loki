@@ -30,6 +30,17 @@ func PopulateSection(_ arrow.Field, columnType ColumnType) bool {
 	return ok
 }
 
+func InternalLabelsColumn(rec arrow.RecordBatch) *array.String {
+	schema := rec.Schema()
+	for fIdx := range schema.Fields() {
+		field := schema.Field(fIdx)
+		if field.Name == InternalLabelsFieldName {
+			return rec.Column(fIdx).(*array.String)
+		}
+	}
+	return nil
+}
+
 func FromRecordBatch(
 	rec arrow.RecordBatch,
 	dest []SectionPointer,
