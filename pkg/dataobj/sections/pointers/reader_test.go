@@ -352,18 +352,16 @@ func TestReaderWithTimestampPredicates(t *testing.T) {
 
 	expected := arrowtest.Rows{
 		{
-			"path.path.utf8":                 "path2",
-			"section.int64":                  int64(2),
-			"min_timestamp.timestamp":        t30.UTC(),
-			"max_timestamp.timestamp":        t40.UTC(),
-			pointers.InternalLabelsFieldName: nil,
+			"path.path.utf8":          "path2",
+			"section.int64":           int64(2),
+			"min_timestamp.timestamp": t30.UTC(),
+			"max_timestamp.timestamp": t40.UTC(),
 		},
 		{
-			"path.path.utf8":                 "path3",
-			"section.int64":                  int64(3),
-			"min_timestamp.timestamp":        t50.UTC(),
-			"max_timestamp.timestamp":        t60.UTC(),
-			pointers.InternalLabelsFieldName: nil,
+			"path.path.utf8":          "path3",
+			"section.int64":           int64(3),
+			"min_timestamp.timestamp": t50.UTC(),
+			"max_timestamp.timestamp": t60.UTC(),
 		},
 	}
 	require.Equal(t, expected, actual)
@@ -407,8 +405,8 @@ func TestReaderWithFuncPredicate(t *testing.T) {
 	require.NoError(t, err)
 
 	expected := arrowtest.Rows{
-		{"path.path.utf8": "path1", "section.int64": int64(1), pointers.InternalLabelsFieldName: nil},
-		{"path.path.utf8": "path3", "section.int64": int64(3), pointers.InternalLabelsFieldName: nil},
+		{"path.path.utf8": "path1", "section.int64": int64(1)},
+		{"path.path.utf8": "path3", "section.int64": int64(3)},
 	}
 	require.Equal(t, expected, actual)
 }
@@ -588,7 +586,6 @@ func TestReaderWithColumnIndexPointers(t *testing.T) {
 			"column_name.column_name.utf8":                   "col1",
 			"column_index.int64":                             int64(0),
 			"values_bloom_filter.values_bloom_filter.binary": []byte{1, 2, 3},
-			pointers.InternalLabelsFieldName:                 nil,
 		},
 		{
 			"path.path.utf8":                                 "path2",
@@ -597,7 +594,6 @@ func TestReaderWithColumnIndexPointers(t *testing.T) {
 			"column_name.column_name.utf8":                   "col2",
 			"column_index.int64":                             int64(1),
 			"values_bloom_filter.values_bloom_filter.binary": []byte{4, 5, 6},
-			pointers.InternalLabelsFieldName:                 nil,
 		},
 		{
 			"path.path.utf8":                                 "path3",
@@ -606,7 +602,6 @@ func TestReaderWithColumnIndexPointers(t *testing.T) {
 			"column_name.column_name.utf8":                   "col3",
 			"column_index.int64":                             int64(2),
 			"values_bloom_filter.values_bloom_filter.binary": []byte{7, 8, 9},
-			pointers.InternalLabelsFieldName:                 nil,
 		},
 	}
 	require.Equal(t, expected, actual)
@@ -640,9 +635,9 @@ func TestReaderWithMixedPointers(t *testing.T) {
 	require.NoError(t, err)
 
 	expected := arrowtest.Rows{
-		{"path.path.utf8": "path1", "section.int64": int64(1), "pointer_kind.int64": int64(pointers.PointerKindStreamIndex), pointers.InternalLabelsFieldName: nil},
-		{"path.path.utf8": "path3", "section.int64": int64(3), "pointer_kind.int64": int64(pointers.PointerKindStreamIndex), pointers.InternalLabelsFieldName: nil},
-		{"path.path.utf8": "path2", "section.int64": int64(2), "pointer_kind.int64": int64(pointers.PointerKindColumnIndex), pointers.InternalLabelsFieldName: nil},
+		{"path.path.utf8": "path1", "section.int64": int64(1), "pointer_kind.int64": int64(pointers.PointerKindStreamIndex)},
+		{"path.path.utf8": "path3", "section.int64": int64(3), "pointer_kind.int64": int64(pointers.PointerKindStreamIndex)},
+		{"path.path.utf8": "path2", "section.int64": int64(2), "pointer_kind.int64": int64(pointers.PointerKindColumnIndex)},
 	}
 	require.Equal(t, expected, actual)
 }

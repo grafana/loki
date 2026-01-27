@@ -609,6 +609,7 @@ func forEachMatchedPointerSectionKey(
 					},
 					pointers.WhereBloomFilterMatches(colColumnName, colBloom, columnName, matchColumnValue),
 				},
+				Allocator: memory.DefaultAllocator,
 			},
 		)
 
