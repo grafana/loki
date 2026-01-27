@@ -58,9 +58,9 @@ func (r *ReaderAdapter) Read(ctx context.Context, alloc *memory.Allocator, batch
 		case datasetmd.PHYSICAL_TYPE_UNSPECIFIED:
 			return columnar.RecordBatch{}, fmt.Errorf("undefined physical type: %v", colType)
 		case datasetmd.PHYSICAL_TYPE_INT64:
-			arrBuilders = append(arrBuilders, newInt64ArrayBuilder(alloc, n))
+			arrBuilders = append(arrBuilders, newNumberArrayBuilder[int64](alloc, n))
 		case datasetmd.PHYSICAL_TYPE_UINT64:
-			arrBuilders = append(arrBuilders, newUint64ArrayBuilder(alloc, n))
+			arrBuilders = append(arrBuilders, newNumberArrayBuilder[uint64](alloc, n))
 		case datasetmd.PHYSICAL_TYPE_BINARY:
 			arrBuilders = append(arrBuilders, newUTF8ArrayBuilder(alloc, n))
 		}
@@ -82,9 +82,9 @@ func (r *ReaderAdapter) Read(ctx context.Context, alloc *memory.Allocator, batch
 			case datasetmd.PHYSICAL_TYPE_UNSPECIFIED:
 				return columnar.RecordBatch{}, fmt.Errorf("unsupported column type: %s", colType)
 			case datasetmd.PHYSICAL_TYPE_INT64:
-				builder.(*int64ArrayBuilder).Append(val.Int64())
+				builder.(*numberArrayBuilder[int64]).Append(val.Int64())
 			case datasetmd.PHYSICAL_TYPE_UINT64:
-				builder.(*uint64ArrayBuilder).Append(val.Uint64())
+				builder.(*numberArrayBuilder[uint64]).Append(val.Uint64())
 			case datasetmd.PHYSICAL_TYPE_BINARY:
 				builder.(*utf8ArrayBuilder).Append(val.Binary())
 			}
@@ -106,62 +106,33 @@ type arrayBuilder interface {
 	AppendNull()
 }
 
-type int64ArrayBuilder struct {
-	buf      memory.Buffer[int64]
+type numberArrayBuilder[T columnar.Numeric] struct {
+	buf      memory.Buffer[T]
 	validity memory.Bitmap
 	alloc    *memory.Allocator
 }
 
-func newInt64ArrayBuilder(alloc *memory.Allocator, size int) *int64ArrayBuilder {
-	return &int64ArrayBuilder{
+func newNumberArrayBuilder[T columnar.Numeric](alloc *memory.Allocator, size int) *numberArrayBuilder[T] {
+	return &numberArrayBuilder[T]{
 		alloc:    alloc,
-		buf:      memory.MakeBuffer[int64](alloc, size),
+		buf:      memory.MakeBuffer[T](alloc, size),
 		validity: memory.MakeBitmap(alloc, size),
 	}
 }
 
-func (b *int64ArrayBuilder) AppendNull() {
+func (b *numberArrayBuilder[T]) AppendNull() {
 	// the value does not matter in this case
 	b.buf.Append(0)
 	b.validity.Append(false)
 }
 
-func (b *int64ArrayBuilder) Append(v int64) {
+func (b *numberArrayBuilder[T]) Append(v T) {
 	b.buf.Append(v)
 	b.validity.Append(true)
 }
 
-func (b *int64ArrayBuilder) Build() columnar.Array {
-	return columnar.MakeInt64(b.buf.Data(), b.validity)
-}
-
-type uint64ArrayBuilder struct {
-	buf      memory.Buffer[uint64]
-	validity memory.Bitmap
-	alloc    *memory.Allocator
-}
-
-func newUint64ArrayBuilder(alloc *memory.Allocator, size int) *uint64ArrayBuilder {
-	return &uint64ArrayBuilder{
-		alloc:    alloc,
-		buf:      memory.MakeBuffer[uint64](alloc, size),
-		validity: memory.MakeBitmap(alloc, size),
-	}
-}
-
-func (b *uint64ArrayBuilder) AppendNull() {
-	// the value does not matter in this case
-	b.buf.Append(0)
-	b.validity.Append(false)
-}
-
-func (b *uint64ArrayBuilder) Append(v uint64) {
-	b.buf.Append(v)
-	b.validity.Append(true)
-}
-
-func (b *uint64ArrayBuilder) Build() columnar.Array {
-	return columnar.MakeUint64(b.buf.Data(), b.validity)
+func (b *numberArrayBuilder[T]) Build() columnar.Array {
+	return columnar.MakeNumber[T](b.buf.Data(), b.validity)
 }
 
 type utf8ArrayBuilder struct {

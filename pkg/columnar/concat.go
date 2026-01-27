@@ -27,7 +27,9 @@ func Concat(alloc *memory.Allocator, in []Array) (Array, error) {
 	case KindBool:
 		return concatBool(alloc, in)
 	case KindInt64:
-		return concatInt64(alloc, in)
+		return concatNumber[int64](alloc, in)
+	case KindUint64:
+		return concatNumber[uint64](alloc, in)
 	case KindUTF8:
 		return concatUTF8(alloc, in)
 	default:
@@ -91,12 +93,12 @@ func cleanValidity(validity *memory.Bitmap) {
 	}
 }
 
-func concatInt64(alloc *memory.Allocator, in []Array) (Array, error) {
+func concatNumber[T Numeric](alloc *memory.Allocator, in []Array) (Array, error) {
 	totalLen := getTotalLen(in)
 
 	var (
 		validity = memory.MakeBitmap(alloc, totalLen)
-		values   = memory.MakeBuffer[int64](alloc, totalLen)
+		values   = memory.MakeBuffer[T](alloc, totalLen)
 	)
 
 	for _, arr := range in {
@@ -105,11 +107,11 @@ func concatInt64(alloc *memory.Allocator, in []Array) (Array, error) {
 		}
 
 		appendValidityBitmap(&validity, arr)
-		values.Append(arr.(*Int64).Values()...)
+		values.Append(arr.(*Number[T]).Values()...)
 	}
 
 	cleanValidity(&validity)
-	return MakeInt64(values.Data(), validity), nil
+	return MakeNumber[T](values.Data(), validity), nil
 }
 
 func concatUTF8(alloc *memory.Allocator, in []Array) (Array, error) {
