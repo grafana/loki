@@ -91,3 +91,6 @@ func (arr *Number[T]) Validity() memory.Bitmap { return arr.validity }
 
 // Kind returns the kind of Array being represented.
 func (arr *Number[T]) Kind() Kind { return arr.kind }
+
+func (arr *Number[T]) isDatum() {}
+func (arr *Number[T]) isArray() {}

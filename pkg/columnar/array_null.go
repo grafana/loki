@@ -42,3 +42,6 @@ func (arr *Null) Kind() Kind { return KindNull }
 
 // Validity returns arr's validity bitmap.
 func (arr *Null) Validity() memory.Bitmap { return arr.validity }
+
+func (arr *Null) isDatum() {}
+func (arr *Null) isArray() {}

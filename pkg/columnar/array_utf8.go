@@ -92,3 +92,6 @@ func (arr *UTF8) Validity() memory.Bitmap { return arr.validity }
 
 // Kind returns the kind of Array being represented.
 func (arr *UTF8) Kind() Kind { return KindUTF8 }
+
+func (arr *UTF8) isDatum() {}
+func (arr *UTF8) isArray() {}
