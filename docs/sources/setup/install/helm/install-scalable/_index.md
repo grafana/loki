@@ -163,6 +163,22 @@ loki:
       insecure: false
       # HTTP configuration settings
       http_config: {}
+      # SSE configuration
+      #
+      # Examples
+      # 
+      # sse:
+      #   type: SSE-S3
+      #
+      # sse:
+      #   type: SSE-KMS
+      #   kms_key_id: <YOUR-KMS-KEY-ID>
+      #   kms_encryption_context: <YOUR-KMS-ENCRYPTION-CONTEXT>
+      #
+      # sse:
+      #   type: SSE-C
+      #   encryption_key: <YOUR-CUSTOMER-ENCRYPTION-KEY>
+      sse: {}
 
 deploymentMode: SimpleScalable
 
