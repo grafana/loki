@@ -51,3 +51,17 @@ type Scalar interface {
 	// for non-null data types.
 	IsNull() bool
 }
+
+// A Builder assists with constructing arrays. Builder implementations typically
+// have more methods.
+type Builder interface {
+	// AppendNull adds a new null element to the Builder.
+	AppendNull()
+
+	// AppendNulls appends the given number of null elements to the Builder.
+	AppendNulls(count int)
+
+	// Build returns the constructed Array. After calling Build, the builder is
+	// reset to an initial state and can be reused.
+	BuildArray() Array
+}

@@ -77,3 +77,99 @@ func (arr *Bool) Kind() Kind { return KindBool }
 
 func (arr *Bool) isDatum() {}
 func (arr *Bool) isArray() {}
+
+// A BoolBuilder assists with constructing a [Bool] array. A BoolBuilder must be
+// constructed by calling [NewBoolBuilder].
+type BoolBuilder struct {
+	alloc *memory.Allocator
+
+	validity memory.Bitmap
+	values   memory.Bitmap
+}
+
+var _ Builder = (*BoolBuilder)(nil)
+
+// NewBoolBuilder creates a new BoolBuilder for constructing a [Bool] array.
+func NewBoolBuilder(alloc *memory.Allocator) *BoolBuilder {
+	return &BoolBuilder{
+		alloc:    alloc,
+		validity: memory.MakeBitmap(alloc, 0),
+		values:   memory.MakeBitmap(alloc, 0),
+	}
+}
+
+// Grow increases b's capacity, if necessary, to guarantee space for another n
+// elements. After Grow(n), at least n elements can be appended to b without
+// another allocation. If n is negative or too large to allocate the memory,
+// Grow panics.
+func (b *BoolBuilder) Grow(n int) {
+	if !b.needGrow(n) {
+		return
+	}
+
+	b.validity.Grow(n)
+	b.values.Grow(n)
+}
+
+func (b *BoolBuilder) needGrow(n int) bool {
+	return b.values.Len()+n > b.values.Cap()
+}
+
+// AppendNull adds a new null element to b.
+func (b *BoolBuilder) AppendNull() {
+	if b.needGrow(1) {
+		b.Grow(1)
+	}
+
+	b.validity.AppendUnsafe(false)
+	b.values.AppendUnsafe(false)
+}
+
+// AppendNulls appends the given number of null elements to b.
+func (b *BoolBuilder) AppendNulls(count int) {
+	if b.needGrow(count) {
+		b.Grow(count)
+	}
+
+	b.validity.AppendCount(false, count)
+	b.values.AppendCount(false, count)
+}
+
+// AppendValue adds a new element to b.
+func (b *BoolBuilder) AppendValue(v bool) {
+	if b.needGrow(1) {
+		b.Grow(1)
+	}
+
+	// We can use unsafe appends here because we guarantee in the check above
+	// that there's enough capacity. This saves 40% of CPU time.
+	b.validity.AppendUnsafe(true)
+	b.values.AppendUnsafe(v)
+}
+
+// AppendValue adds a new element to b.
+func (b *BoolBuilder) AppendValueCount(v bool, count int) {
+	if b.needGrow(count) {
+		b.Grow(count)
+	}
+
+	// We can use unsafe appends here because we guarantee in the check above
+	// that there's enough capacity. This saves 40% of CPU time.
+	b.validity.AppendCountUnsafe(true, count)
+	b.values.AppendCountUnsafe(v, count)
+}
+
+// Build returns the constructed array. After calling Build, the builder
+// is reset to an initial state.
+func (b *BoolBuilder) BuildArray() Array { return b.Build() }
+
+// Build returns the constructed [Bool] array. After calling Build, the builder
+// is reset to an initial state.
+func (b *BoolBuilder) Build() *Bool {
+	// Move the original bitmaps to the constructed array, then reset the
+	// builder's bitmaps since they've been moved.
+	arr := MakeBool(b.values, b.validity)
+	b.validity = memory.MakeBitmap(b.alloc, 0)
+	b.values = memory.MakeBitmap(b.alloc, 0)
+	return arr
+}

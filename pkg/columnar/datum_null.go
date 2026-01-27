@@ -45,3 +45,65 @@ func (arr *Null) Validity() memory.Bitmap { return arr.validity }
 
 func (arr *Null) isDatum() {}
 func (arr *Null) isArray() {}
+
+// A NullBuilder assists with constructing a [Null] array. A NullBuilder must be
+// constructed by calling [NewNullBuilder].
+type NullBuilder struct {
+	alloc    *memory.Allocator
+	validity memory.Bitmap
+}
+
+var _ Builder = (*NullBuilder)(nil)
+
+// NewNullBuilder creates a new NullBuilder for constructing a [Null] array.
+func NewNullBuilder(alloc *memory.Allocator) *NullBuilder {
+	return &NullBuilder{
+		alloc:    alloc,
+		validity: memory.MakeBitmap(alloc, 0),
+	}
+}
+
+// Grow increases b's capacity, if necessary, to guarantee space for another n
+// elements. After Grow(n), at least n elements can be appended to b without
+// another allocation. If n is negative or too large to allocate the memory,
+// Grow panics.
+func (b *NullBuilder) Grow(n int) {
+	if !b.needGrow(n) {
+		return
+	}
+	b.validity.Grow(n)
+}
+
+func (b *NullBuilder) needGrow(n int) bool {
+	return b.validity.Len()+n > b.validity.Cap()
+}
+
+// AppendNull adds a new null element to b.
+func (b *NullBuilder) AppendNull() {
+	if b.needGrow(1) {
+		b.Grow(1)
+	}
+	b.validity.AppendUnsafe(false)
+}
+
+// AppendNulls appends the given number of null elements to b.
+func (b *NullBuilder) AppendNulls(count int) {
+	if b.needGrow(count) {
+		b.Grow(count)
+	}
+	b.validity.AppendCount(false, count)
+}
+
+// Build returns the constructed array. After calling Build, the builder
+// is reset to an initial state.
+func (b *NullBuilder) BuildArray() Array { return b.Build() }
+
+// Build returns the constructed [Null] array. After calling Build, the builder
+// is reset to an initial state.
+func (b *NullBuilder) Build() *Null {
+	// Move the original bitmap to the constructed array, then reset the
+	// builder's bitmap since it's been moved.
+	arr := MakeNull(b.validity)
+	b.validity = memory.MakeBitmap(b.alloc, 0)
+	return arr
+}

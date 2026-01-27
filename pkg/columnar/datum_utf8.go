@@ -95,3 +95,132 @@ func (arr *UTF8) Kind() Kind { return KindUTF8 }
 
 func (arr *UTF8) isDatum() {}
 func (arr *UTF8) isArray() {}
+
+// A UTF8Builder assists with constructing a [UTF8] array. A UTF8Builder must be
+// constructed by calling [NewUTF8Builder].
+type UTF8Builder struct {
+	alloc *memory.Allocator
+
+	validity memory.Bitmap
+	offsets  memory.Buffer[int32]
+	data     memory.Buffer[byte]
+
+	lastOffset int32
+}
+
+var _ Builder = (*UTF8Builder)(nil)
+
+// NewUTF8Builder creates a new UTF8Builder for constructing a [UTF8] array.
+func NewUTF8Builder(alloc *memory.Allocator) *UTF8Builder {
+	return &UTF8Builder{
+		alloc:    alloc,
+		validity: memory.MakeBitmap(alloc, 0),
+		offsets:  memory.MakeBuffer[int32](alloc, 0),
+		data:     memory.MakeBuffer[byte](alloc, 0),
+	}
+}
+
+// Grow increases b's capacity, if necessary, to guarantee space for another n
+// elements. After Grow(n), at least n elements can be appended to b without
+// another allocation. If n is negative or too large to allocate the memory,
+// Grow panics.
+func (b *UTF8Builder) Grow(n int) {
+	// b.offsets has an extra element for the starting offset.
+	if !b.needGrow(n + 1) {
+		return
+	}
+
+	b.validity.Grow(n)
+	b.offsets.Grow(n + 1)
+}
+
+func (b *UTF8Builder) needGrow(n int) bool {
+	return b.offsets.Len()+n > b.offsets.Cap()
+}
+
+// GrowData increases b's bytes capacity, if necessary, to guarantee space
+// for another n bytes of data. After GrowData(n), at least n bytes can be
+// appended to b (across all UTF8 values) without another allocation. If n is
+// negative or too large to allocate the memory, GrowData panics.
+//
+// GrowData only impacts capacity of string data. Use [UTF8Builder.Grow] to
+// reserve space for more elements.
+func (b *UTF8Builder) GrowData(n int) {
+	if !b.needGrowData(n) {
+		return
+	}
+	b.data.Grow(n)
+}
+
+func (b *UTF8Builder) needGrowData(n int) bool {
+	return b.data.Len()+n > b.data.Cap()
+}
+
+// AppendNull adds a new null element to b.
+func (b *UTF8Builder) AppendNull() {
+	if b.needGrow(1) {
+		b.Grow(1)
+	}
+	b.initOffsets()
+
+	b.validity.AppendUnsafe(false)
+	b.offsets.Push(b.lastOffset)
+}
+
+func (b *UTF8Builder) initOffsets() {
+	// For the first element, we need to push an initial offset of 0. All
+	// elements after that will push the offset where that string ends (the
+	// length).
+	if b.offsets.Len() == 0 {
+		b.offsets.Push(0)
+	}
+}
+
+// AppendNulls appends the given number of null elements to b.
+func (b *UTF8Builder) AppendNulls(count int) {
+	if b.needGrow(count) {
+		b.Grow(count)
+	}
+	b.initOffsets()
+
+	b.validity.AppendCount(false, count)
+	b.offsets.AppendCount(b.lastOffset, count)
+}
+
+// AppendValue adds a new non-null element to b.
+func (b *UTF8Builder) AppendValue(v []byte) {
+	dataSize := len(v)
+
+	if b.needGrow(1) {
+		b.Grow(1)
+	}
+	if b.needGrowData(dataSize) {
+		b.GrowData(dataSize)
+	}
+	b.initOffsets()
+
+	b.lastOffset += int32(dataSize)
+
+	// We can use unsafe appends here because we guarantee in the check above
+	// that there's enough capacity. This saves 40% of CPU time.
+	b.validity.AppendUnsafe(true)
+	b.data.Append(v...)
+	b.offsets.Push(b.lastOffset)
+}
+
+// BuildArray returns the constructed array. After calling Build, the builder
+// is reset to an initial state.
+func (b *UTF8Builder) BuildArray() Array { return b.Build() }
+
+// Build returns the constructed [UTF8] array. After calling Build, the builder
+// is reset to an initial state.
+func (b *UTF8Builder) Build() *UTF8 {
+	// Move the original bitmaps to the constructed array, then reset the
+	// builder's bitmaps since they've been moved.
+	arr := MakeUTF8(b.data.Data(), b.offsets.Data(), b.validity)
+	b.validity = memory.MakeBitmap(b.alloc, 0)
+	b.offsets = memory.MakeBuffer[int32](b.alloc, 0)
+	b.data = memory.MakeBuffer[byte](b.alloc, 0)
+	b.lastOffset = 0
+	return arr
+}

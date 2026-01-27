@@ -94,3 +94,102 @@ func (arr *Number[T]) Kind() Kind { return arr.kind }
 
 func (arr *Number[T]) isDatum() {}
 func (arr *Number[T]) isArray() {}
+
+// A NumberBuilder assists with constructing a [Number] array. A NumberBuilder
+// must be constructed by calling [NewNumberBuilder].
+type NumberBuilder[T Numeric] struct {
+	alloc *memory.Allocator
+
+	validity memory.Bitmap
+	values   memory.Buffer[T]
+}
+
+var _ Builder = (*NumberBuilder[int64])(nil)
+
+// NewNumberBuilder creates a new NumberBuilder for constructing a [Number]
+// array.
+func NewNumberBuilder[T Numeric](alloc *memory.Allocator) *NumberBuilder[T] {
+	return &NumberBuilder[T]{
+		alloc:    alloc,
+		validity: memory.MakeBitmap(alloc, 0),
+		values:   memory.MakeBuffer[T](alloc, 0),
+	}
+}
+
+// Grow increases b's capacity, if necessary, to guarantee space for another n
+// elements. After Grow(n), at least n elements can be appended to b without
+// another allocation. If n is negative or too large to allocate the memory,
+// Grow panics.
+func (b *NumberBuilder[T]) Grow(n int) {
+	if !b.needGrow(n) {
+		return
+	}
+
+	b.validity.Grow(n)
+	b.values.Grow(n)
+}
+
+func (b *NumberBuilder[T]) needGrow(n int) bool {
+	return b.values.Len()+n > b.values.Cap()
+}
+
+// AppendNull adds a new null element to b.
+func (b *NumberBuilder[T]) AppendNull() {
+	if b.needGrow(1) {
+		b.Grow(1)
+	}
+
+	var zero T
+	b.validity.AppendUnsafe(false)
+	b.values.Push(zero)
+}
+
+// AppendNulls appends the given number of null elements to b.
+func (b *NumberBuilder[T]) AppendNulls(count int) {
+	if b.needGrow(count) {
+		b.Grow(count)
+	}
+
+	var zero T
+	b.validity.AppendCount(false, count)
+	b.values.AppendCount(zero, count)
+}
+
+// AppendValue adds a new element to b.
+func (b *NumberBuilder[T]) AppendValue(v T) {
+	if b.needGrow(1) {
+		b.Grow(1)
+	}
+
+	// We can use unsafe appends here because we guarantee in the check above
+	// that there's enough capacity. This saves 40% of CPU time.
+	b.validity.AppendUnsafe(true)
+	b.values.Push(v)
+}
+
+// AppendValue adds a new element to b.
+func (b *NumberBuilder[T]) AppendValueCount(v T, count int) {
+	if b.needGrow(count) {
+		b.Grow(count)
+	}
+
+	// We can use unsafe appends here because we guarantee in the check above
+	// that there's enough capacity. This saves 40% of CPU time.
+	b.validity.AppendCountUnsafe(true, count)
+	b.values.AppendCount(v, count)
+}
+
+// BuildArray returns the constructed array. After calling Build, the builder
+// is reset to an initial state.
+func (b *NumberBuilder[T]) BuildArray() Array { return b.Build() }
+
+// Build returns the constructed [Number] array. After calling Build, the builder
+// is reset to an initial state.
+func (b *NumberBuilder[T]) Build() *Number[T] {
+	// Move the original bitmaps to the constructed array, then reset the
+	// builder's bitmaps since they've been moved.
+	arr := MakeNumber[T](b.values.Data(), b.validity)
+	b.validity = memory.MakeBitmap(b.alloc, 0)
+	b.values = memory.MakeBuffer[T](b.alloc, 0)
+	return arr
+}
