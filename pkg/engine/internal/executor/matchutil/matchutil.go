@@ -114,17 +114,16 @@ func EqualUpper(line, match []byte) bool {
 	return ContainsUpper(line, match)
 }
 
-// ContainsUpper is currently only used by binary expressions created in
-// the logical optimizer, which uses Go's regex parser. Go's regex
-// parser upcases literals, as it relies on the "lowest" code point in
-// the string's "fold cycle", which is the uppercase version, as A < a.
-// ContainsUpper assumes that the match argument is already uppercased,
-// and it should be because of the logical optimizer's use of Go's regex
-// parser. However, just to be safe, we defensively check that the
-// string is already uppercased (and for performance, assume if the
-// first character is, the rest is too). This is defensive, to
-// hopefully catch bugs if these functions are used outside of the regex
-// simplification pass.
+// ContainsUpper is currently only used for regex simplification.
+// Go's regex parser upcases literals, as it relies on the "lowest"
+// code point in the string's "fold cycle", which is the uppercase
+// version, as A < a. ContainsUpper assumes that the match argument is
+// already uppercased, and it should be because of the logical
+// optimizer's use of Go's regex parser. However, just to be safe, we
+// defensively check that the string is already uppercased (and for
+// performance, assume if the first character is, the rest is too).
+// This is defensive, to hopefully catch bugs if these functions are
+// used outside of the regex simplification pass.
 func defensivelyMakeUpper(s []byte) []byte {
 	if len(s) == 0 {
 		return s
