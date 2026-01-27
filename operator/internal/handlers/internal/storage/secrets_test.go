@@ -721,7 +721,7 @@ func TestS3Extract_ForcePathStyle(t *testing.T) {
 				},
 			},
 			wantOptions: &storage.S3StorageConfig{
-				Endpoint:       "http://minio:9000",
+				Endpoint:       "minio:9000",
 				Region:         "",
 				Buckets:        "this,that",
 				ForcePathStyle: true, // defaults to path style for non-AWS endpoints

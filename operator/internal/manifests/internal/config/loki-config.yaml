@@ -609,7 +609,7 @@ storage_config:
           account_key: ${AZURE_STORAGE_ACCOUNT_KEY}
           {{- end }}
           {{- with .EndpointSuffix }}
-          endpoint {{ . }}
+          endpoint: {{ . }}
           {{- end }}
       {{- end }}
       {{- with .ObjectStorage.GCS }}
@@ -623,20 +623,22 @@ storage_config:
           {{- if .STS }}
           bucket_name: {{.Buckets}}
           region: {{.Region}}
-          s3forcepathstyle: false
           {{- else }}
           endpoint: {{ .Endpoint }}
           bucket_name: {{ .Buckets }}
           region: {{ .Region }}
           access_key_id: ${AWS_ACCESS_KEY_ID}
           secret_access_key: ${AWS_ACCESS_KEY_SECRET}
+          {{- if .Insecure }}
+          insecure: true
+          {{- end}}
           {{- if .ForcePathStyle  }}
-          s3forcepathstyle: true
+          bucket_lookup_type: path
           {{- end}}
           {{- end }}
           {{- with .SSE }}
           {{- if .Type }}
-          sse_config:
+          sse:
             type: {{ .Type }}
             {{- if eq .Type "SSE-KMS" }}
             kms_key_id: {{ .KMSKeyID }}

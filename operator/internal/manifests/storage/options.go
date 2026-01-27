@@ -50,6 +50,7 @@ type S3StorageConfig struct {
 	STS            bool
 	SSE            S3SSEConfig
 	ForcePathStyle bool
+	Insecure       bool
 }
 
 type S3SSEType string

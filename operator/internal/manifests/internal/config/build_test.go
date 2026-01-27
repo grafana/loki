@@ -37,7 +37,191 @@ func loadTestDataFile(t *testing.T, fileName ...string) string {
 }
 
 func TestBuild_ConfigAndRuntimeConfig_NoRuntimeConfigGenerated(t *testing.T) {
+<<<<<<< HEAD
 	expCfg, expRCfg := loadTestData(t, "no-runtime-config")
+=======
+	expCfg := `
+---
+auth_enabled: true
+chunk_store_config:
+  chunk_cache_config:
+    embedded_cache:
+      enabled: true
+      max_size_mb: 500
+common:
+  storage:
+    s3:
+      endpoint: http://test.default.svc.cluster.local.:9000
+      bucketnames: loki
+      region: us-east
+      access_key_id: ${AWS_ACCESS_KEY_ID}
+      secret_access_key: ${AWS_ACCESS_KEY_SECRET}
+      s3forcepathstyle: true
+  compactor_grpc_address: loki-compactor-grpc-lokistack-dev.default.svc.cluster.local:9095
+  ring:
+    kvstore:
+      store: memberlist
+    heartbeat_period: 5s
+    heartbeat_timeout: 1m
+    instance_port: 9095
+compactor:
+  compaction_interval: 2h
+  working_directory: /tmp/loki/compactor
+frontend:
+  tail_proxy_url: http://loki-querier-http-lokistack-dev.default.svc.cluster.local:3100
+  compress_responses: true
+  max_outstanding_per_tenant: 4096
+  log_queries_longer_than: 5s
+frontend_worker:
+  frontend_address: loki-query-frontend-grpc-lokistack-dev.default.svc.cluster.local:9095
+  grpc_client_config:
+    max_send_msg_size: 104857600
+ingester:
+  chunk_block_size: 262144
+  chunk_encoding: snappy
+  chunk_idle_period: 1h
+  chunk_retain_period: 5m
+  chunk_target_size: 2097152
+  flush_op_timeout: 10m
+  lifecycler:
+    final_sleep: 0s
+    join_after: 30s
+    num_tokens: 512
+    ring:
+      replication_factor: 1
+  max_chunk_age: 2h
+  autoforget_unhealthy: true
+  wal:
+    enabled: true
+    dir: /tmp/wal
+    replay_memory_ceiling: 536870912
+ingester_client:
+  grpc_client_config:
+    max_recv_msg_size: 67108864
+  remote_timeout: 1s
+# NOTE: Keep the order of keys as in Loki docs
+# to enable easy diffs when vendoring newer
+# Loki releases.
+# (See https://grafana.com/docs/loki/latest/configuration/#limits_config)
+#
+# Values for not exposed fields are taken from the grafana/loki production
+# configuration manifests.
+# (See https://github.com/grafana/loki/blob/main/production/ksonnet/loki/config.libsonnet)
+limits_config:
+  ingestion_rate_strategy: global
+  ingestion_rate_mb: 4
+  ingestion_burst_size_mb: 6
+  max_label_name_length: 1024
+  max_label_value_length: 2048
+  max_label_names_per_series: 30
+  reject_old_samples: true
+  reject_old_samples_max_age: 168h
+  creation_grace_period: 10m
+  # Keep max_streams_per_user always to 0 to default
+  # using max_global_streams_per_user always.
+  # (See https://github.com/grafana/loki/blob/main/pkg/ingester/limiter.go#L73)
+  max_streams_per_user: 0
+  max_line_size: 256000
+  max_entries_limit_per_query: 5000
+  discover_service_name: []
+  discover_log_levels: true
+  max_global_streams_per_user: 0
+  max_chunks_per_query: 2000000
+  max_query_length: 721h
+  max_query_parallelism: 32
+  tsdb_max_query_parallelism: 512
+  max_query_series: 500
+  cardinality_limit: 100000
+  max_streams_matchers_per_query: 1000
+  max_cache_freshness_per_query: 10m
+  split_queries_by_interval: 30m
+  query_timeout: 1m
+  volume_enabled: true
+  volume_max_series: 1000
+  per_stream_rate_limit: 5MB
+  per_stream_rate_limit_burst: 15MB
+  shard_streams:
+    enabled: true
+    desired_rate: 3MB
+    time_sharding_enabled: true
+  allow_structured_metadata: false
+memberlist:
+  abort_if_cluster_join_fails: true
+  advertise_port: 7946
+  bind_port: 7946
+  join_members:
+    - loki-gossip-ring-lokistack-dev.default.svc.cluster.local:7946
+  max_join_backoff: 1m
+  max_join_retries: 10
+  min_join_backoff: 1s
+  rejoin_interval: 90s
+querier:
+  engine:
+    max_look_back_period: 30s
+  extra_query_delay: 0s
+  max_concurrent: 2
+  query_ingesters_within: 3h
+  tail_max_duration: 1h
+query_range:
+  align_queries_with_step: true
+  cache_results: true
+  max_retries: 5
+  results_cache:
+    cache:
+      embedded_cache:
+        enabled: true
+        max_size_mb: 500
+  parallelise_shardable_queries: true
+schema_config:
+  configs:
+    - from: "2020-10-01"
+      index:
+        period: 24h
+        prefix: index_
+      object_store: store-1
+      schema: v11
+      store: boltdb-shipper
+server:
+  graceful_shutdown_timeout: 5s
+  grpc_server_min_time_between_pings: '10s'
+  grpc_server_ping_without_stream_allowed: true
+  grpc_server_max_concurrent_streams: 1000
+  grpc_server_max_recv_msg_size: 104857600
+  grpc_server_max_send_msg_size: 104857600
+  http_listen_port: 3100
+  http_server_idle_timeout: 30s
+  http_server_read_timeout: 30s
+  http_server_write_timeout: 10m0s
+  log_level: info
+storage_config:
+  use_thanos_objstore: true
+  object_store:
+    named_stores:
+      s3:
+        store-1:
+          endpoint: http://test.default.svc.cluster.local.:9000
+          bucket_name: loki
+          region: us-east
+          access_key_id: ${AWS_ACCESS_KEY_ID}
+          secret_access_key: ${AWS_ACCESS_KEY_SECRET}
+          bucket_lookup_type: path
+  boltdb_shipper:
+    active_index_directory: /tmp/loki/index
+    cache_location: /tmp/loki/index_cache
+    cache_ttl: 24h
+    resync_interval: 5m
+    index_gateway_client:
+      server_address: dns:///loki-index-gateway-grpc-lokistack-dev.default.svc.cluster.local:9095
+tracing:
+  enabled: false
+analytics:
+  reporting_enabled: true
+`
+	expRCfg := `
+---
+overrides:
+`
+>>>>>>> ccfe4b0442 (modify s3forcepathstyle)
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
 			Replication: &lokiv1.ReplicationSpec{
@@ -131,7 +315,207 @@ func TestBuild_ConfigAndRuntimeConfig_NoRuntimeConfigGenerated(t *testing.T) {
 }
 
 func TestBuild_ConfigAndRuntimeConfig_BothGenerated(t *testing.T) {
+<<<<<<< HEAD
 	expCfg, expRCfg := loadTestData(t, "both-generated")
+=======
+	expCfg := `
+---
+auth_enabled: true
+chunk_store_config:
+  chunk_cache_config:
+    embedded_cache:
+      enabled: true
+      max_size_mb: 500
+common:
+  storage:
+    s3:
+      endpoint: http://test.default.svc.cluster.local.:9000
+      bucketnames: loki
+      region: us-east
+      access_key_id: ${AWS_ACCESS_KEY_ID}
+      secret_access_key: ${AWS_ACCESS_KEY_SECRET}
+      s3forcepathstyle: true
+  compactor_grpc_address: loki-compactor-grpc-lokistack-dev.default.svc.cluster.local:9095
+  ring:
+    kvstore:
+      store: memberlist
+    heartbeat_period: 5s
+    heartbeat_timeout: 1m
+    instance_port: 9095
+compactor:
+  compaction_interval: 2h
+  working_directory: /tmp/loki/compactor
+frontend:
+  tail_proxy_url: http://loki-querier-http-lokistack-dev.default.svc.cluster.local:3100
+  compress_responses: true
+  max_outstanding_per_tenant: 4096
+  log_queries_longer_than: 5s
+frontend_worker:
+  frontend_address: loki-query-frontend-grpc-lokistack-dev.default.svc.cluster.local:9095
+  grpc_client_config:
+    max_send_msg_size: 104857600
+ingester:
+  chunk_block_size: 262144
+  chunk_encoding: snappy
+  chunk_idle_period: 1h
+  chunk_retain_period: 5m
+  chunk_target_size: 2097152
+  flush_op_timeout: 10m
+  lifecycler:
+    final_sleep: 0s
+    join_after: 30s
+    num_tokens: 512
+    ring:
+      replication_factor: 1
+  max_chunk_age: 2h
+  autoforget_unhealthy: true
+  wal:
+    enabled: true
+    dir: /tmp/wal
+    replay_memory_ceiling: 2147483648
+ingester_client:
+  grpc_client_config:
+    max_recv_msg_size: 67108864
+  remote_timeout: 1s
+# NOTE: Keep the order of keys as in Loki docs
+# to enable easy diffs when vendoring newer
+# Loki releases.
+# (See https://grafana.com/docs/loki/latest/configuration/#limits_config)
+#
+# Values for not exposed fields are taken from the grafana/loki production
+# configuration manifests.
+# (See https://github.com/grafana/loki/blob/main/production/ksonnet/loki/config.libsonnet)
+limits_config:
+  ingestion_rate_strategy: global
+  ingestion_rate_mb: 4
+  ingestion_burst_size_mb: 6
+  max_label_name_length: 1024
+  max_label_value_length: 2048
+  max_label_names_per_series: 30
+  reject_old_samples: true
+  reject_old_samples_max_age: 168h
+  creation_grace_period: 10m
+  # Keep max_streams_per_user always to 0 to default
+  # using max_global_streams_per_user always.
+  # (See https://github.com/grafana/loki/blob/main/pkg/ingester/limiter.go#L73)
+  max_streams_per_user: 0
+  max_line_size: 256000
+  max_entries_limit_per_query: 5000
+  discover_service_name: []
+  discover_log_levels: false
+  max_global_streams_per_user: 0
+  max_chunks_per_query: 2000000
+  max_query_length: 721h
+  max_query_parallelism: 32
+  tsdb_max_query_parallelism: 512
+  max_query_series: 500
+  cardinality_limit: 100000
+  max_streams_matchers_per_query: 1000
+  max_cache_freshness_per_query: 10m
+  split_queries_by_interval: 30m
+  query_timeout: 1m
+  volume_enabled: true
+  volume_max_series: 1000
+  per_stream_rate_limit: 5MB
+  per_stream_rate_limit_burst: 15MB
+  shard_streams:
+    enabled: true
+    desired_rate: 3MB
+    time_sharding_enabled: true
+  allow_structured_metadata: false
+memberlist:
+  abort_if_cluster_join_fails: true
+  advertise_port: 7946
+  bind_port: 7946
+  join_members:
+    - loki-gossip-ring-lokistack-dev.default.svc.cluster.local:7946
+  max_join_backoff: 1m
+  max_join_retries: 10
+  min_join_backoff: 1s
+  rejoin_interval: 90s
+querier:
+  engine:
+    max_look_back_period: 30s
+  extra_query_delay: 0s
+  max_concurrent: 2
+  query_ingesters_within: 3h
+  tail_max_duration: 1h
+query_range:
+  align_queries_with_step: true
+  cache_results: true
+  max_retries: 5
+  results_cache:
+    cache:
+      embedded_cache:
+        enabled: true
+        max_size_mb: 500
+  parallelise_shardable_queries: true
+schema_config:
+  configs:
+    - from: "2020-10-01"
+      index:
+        period: 24h
+        prefix: index_
+      object_store: store-1
+      schema: v11
+      store: boltdb-shipper
+server:
+  graceful_shutdown_timeout: 5s
+  grpc_server_min_time_between_pings: '10s'
+  grpc_server_ping_without_stream_allowed: true
+  grpc_server_max_concurrent_streams: 1000
+  grpc_server_max_recv_msg_size: 104857600
+  grpc_server_max_send_msg_size: 104857600
+  http_listen_port: 3100
+  http_server_idle_timeout: 30s
+  http_server_read_timeout: 30s
+  http_server_write_timeout: 10m0s
+  log_level: info
+storage_config:
+  use_thanos_objstore: true
+  object_store:
+    named_stores:
+      s3:
+        store-1:
+          endpoint: http://test.default.svc.cluster.local.:9000
+          bucket_name: loki
+          region: us-east
+          access_key_id: ${AWS_ACCESS_KEY_ID}
+          secret_access_key: ${AWS_ACCESS_KEY_SECRET}
+          bucket_lookup_type: path
+  boltdb_shipper:
+    active_index_directory: /tmp/loki/index
+    cache_location: /tmp/loki/index_cache
+    cache_ttl: 24h
+    resync_interval: 5m
+    index_gateway_client:
+      server_address: dns:///loki-index-gateway-grpc-lokistack-dev.default.svc.cluster.local:9095
+tracing:
+  enabled: false
+analytics:
+  reporting_enabled: false
+`
+	expRCfg := `
+---
+overrides:
+  test-a:
+    ingestion_rate_mb: 2
+    ingestion_burst_size_mb: 5
+    max_global_streams_per_user: 1
+    max_chunks_per_query: 1000000
+    blocked_queries:
+    - pattern: ""
+      hash: 12345
+      types: metric,limited
+    - pattern: .*prod.*
+      regex: true
+    - pattern: ""
+      types: metric
+    - pattern: sum(rate({env="prod"}[1m]))
+    - pattern: '{kubernetes_namespace_name="my-app"}'
+    - pattern: ""
+`
+>>>>>>> ccfe4b0442 (modify s3forcepathstyle)
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
 			Replication: &lokiv1.ReplicationSpec{
@@ -377,7 +761,245 @@ func TestBuild_ConfigAndRuntimeConfig_CreateLokiConfigFailed(t *testing.T) {
 }
 
 func TestBuild_ConfigAndRuntimeConfig_RulerConfigGenerated_WithHeaderAuthorization(t *testing.T) {
+<<<<<<< HEAD
 	expCfg, expRCfg := loadTestData(t, "ruler-with-auth-header")
+=======
+	expCfg := `
+---
+auth_enabled: true
+chunk_store_config:
+  chunk_cache_config:
+    embedded_cache:
+      enabled: true
+      max_size_mb: 500
+common:
+  storage:
+    s3:
+      endpoint: http://test.default.svc.cluster.local.:9000
+      bucketnames: loki
+      region: us-east
+      access_key_id: ${AWS_ACCESS_KEY_ID}
+      secret_access_key: ${AWS_ACCESS_KEY_SECRET}
+      s3forcepathstyle: true
+  compactor_grpc_address: loki-compactor-grpc-lokistack-dev.default.svc.cluster.local:9095
+  ring:
+    kvstore:
+      store: memberlist
+    heartbeat_period: 5s
+    heartbeat_timeout: 1m
+    instance_port: 9095
+compactor:
+  compaction_interval: 2h
+  working_directory: /tmp/loki/compactor
+frontend:
+  tail_proxy_url: http://loki-querier-http-lokistack-dev.default.svc.cluster.local:3100
+  compress_responses: true
+  max_outstanding_per_tenant: 4096
+  log_queries_longer_than: 5s
+frontend_worker:
+  frontend_address: loki-query-frontend-grpc-lokistack-dev.default.svc.cluster.local:9095
+  grpc_client_config:
+    max_send_msg_size: 104857600
+ingester:
+  chunk_block_size: 262144
+  chunk_encoding: snappy
+  chunk_idle_period: 1h
+  chunk_retain_period: 5m
+  chunk_target_size: 2097152
+  flush_op_timeout: 10m
+  lifecycler:
+    final_sleep: 0s
+    join_after: 30s
+    num_tokens: 512
+    ring:
+      replication_factor: 1
+  max_chunk_age: 2h
+  autoforget_unhealthy: true
+  wal:
+    enabled: true
+    dir: /tmp/wal
+    replay_memory_ceiling: 2147483648
+ingester_client:
+  grpc_client_config:
+    max_recv_msg_size: 67108864
+  remote_timeout: 1s
+# NOTE: Keep the order of keys as in Loki docs
+# to enable easy diffs when vendoring newer
+# Loki releases.
+# (See https://grafana.com/docs/loki/latest/configuration/#limits_config)
+#
+# Values for not exposed fields are taken from the grafana/loki production
+# configuration manifests.
+# (See https://github.com/grafana/loki/blob/main/production/ksonnet/loki/config.libsonnet)
+limits_config:
+  ingestion_rate_strategy: global
+  ingestion_rate_mb: 4
+  ingestion_burst_size_mb: 6
+  max_label_name_length: 1024
+  max_label_value_length: 2048
+  max_label_names_per_series: 30
+  reject_old_samples: true
+  reject_old_samples_max_age: 168h
+  creation_grace_period: 10m
+  # Keep max_streams_per_user always to 0 to default
+  # using max_global_streams_per_user always.
+  # (See https://github.com/grafana/loki/blob/main/pkg/ingester/limiter.go#L73)
+  max_streams_per_user: 0
+  max_line_size: 256000
+  max_entries_limit_per_query: 5000
+  discover_service_name: []
+  discover_log_levels: false
+  max_global_streams_per_user: 0
+  max_chunks_per_query: 2000000
+  max_query_length: 721h
+  max_query_parallelism: 32
+  tsdb_max_query_parallelism: 512
+  max_query_series: 500
+  cardinality_limit: 100000
+  max_streams_matchers_per_query: 1000
+  max_cache_freshness_per_query: 10m
+  split_queries_by_interval: 30m
+  query_timeout: 1m
+  volume_enabled: true
+  volume_max_series: 1000
+  per_stream_rate_limit: 5MB
+  per_stream_rate_limit_burst: 15MB
+  shard_streams:
+    enabled: true
+    desired_rate: 3MB
+    time_sharding_enabled: true
+  allow_structured_metadata: false
+memberlist:
+  abort_if_cluster_join_fails: true
+  advertise_port: 7946
+  bind_port: 7946
+  join_members:
+    - loki-gossip-ring-lokistack-dev.default.svc.cluster.local:7946
+  max_join_backoff: 1m
+  max_join_retries: 10
+  min_join_backoff: 1s
+  rejoin_interval: 90s
+querier:
+  engine:
+    max_look_back_period: 30s
+  extra_query_delay: 0s
+  max_concurrent: 2
+  query_ingesters_within: 3h
+  tail_max_duration: 1h
+query_range:
+  align_queries_with_step: true
+  cache_results: true
+  max_retries: 5
+  results_cache:
+    cache:
+      embedded_cache:
+        enabled: true
+        max_size_mb: 500
+  parallelise_shardable_queries: true
+schema_config:
+  configs:
+    - from: "2020-10-01"
+      index:
+        period: 24h
+        prefix: index_
+      object_store: store-1
+      schema: v11
+      store: boltdb-shipper
+ruler:
+  enable_api: true
+  enable_sharding: true
+  evaluation_interval: 1m
+  poll_interval: 1m
+  external_url: http://alert.me/now
+  external_labels:
+    key1: val1
+    key2: val2
+  alertmanager_url: http://alerthost1,http://alerthost2
+  enable_alertmanager_v2: true
+  enable_alertmanager_discovery: true
+  alertmanager_refresh_interval: 1m
+  notification_queue_capacity: 1000
+  notification_timeout: 1m
+  for_outage_tolerance: 10m
+  for_grace_period: 5m
+  resend_delay: 2m
+  remote_write:
+    enabled: true
+    config_refresh_period: 1m
+    client:
+      name: remote-write-me
+      url: http://remote.write.me
+      remote_timeout: 10s
+      proxy_url: http://proxy.through.me
+      follow_redirects: true
+      headers:
+        more: foryou
+        less: forme
+      authorization:
+        type: bearer
+        credentials: supersecret
+      queue_config:
+        capacity: 1000
+        max_shards: 100
+        min_shards: 50
+        max_samples_per_send: 1000
+        batch_send_deadline: 10s
+        min_backoff: 30ms
+        max_backoff: 100ms
+  wal:
+    dir: /tmp/wal
+    truncate_frequency: 60m
+    min_age: 5m
+    max_age: 4h
+  rule_path: /tmp/loki
+  storage:
+    type: local
+    local:
+      directory: /tmp/rules
+  ring:
+    kvstore:
+      store: memberlist
+server:
+  graceful_shutdown_timeout: 5s
+  grpc_server_min_time_between_pings: '10s'
+  grpc_server_ping_without_stream_allowed: true
+  grpc_server_max_concurrent_streams: 1000
+  grpc_server_max_recv_msg_size: 104857600
+  grpc_server_max_send_msg_size: 104857600
+  http_listen_port: 3100
+  http_server_idle_timeout: 30s
+  http_server_read_timeout: 30s
+  http_server_write_timeout: 10m0s
+  log_level: info
+storage_config:
+  use_thanos_objstore: true
+  object_store:
+    named_stores:
+      s3:
+        store-1:
+          endpoint: http://test.default.svc.cluster.local.:9000
+          bucket_name: loki
+          region: us-east
+          access_key_id: ${AWS_ACCESS_KEY_ID}
+          secret_access_key: ${AWS_ACCESS_KEY_SECRET}
+          bucket_lookup_type: path
+  boltdb_shipper:
+    active_index_directory: /tmp/loki/index
+    cache_location: /tmp/loki/index_cache
+    cache_ttl: 24h
+    resync_interval: 5m
+    index_gateway_client:
+      server_address: dns:///loki-index-gateway-grpc-lokistack-dev.default.svc.cluster.local:9095
+tracing:
+  enabled: false
+analytics:
+  reporting_enabled: true
+`
+	expRCfg := `
+---
+overrides:
+`
+>>>>>>> ccfe4b0442 (modify s3forcepathstyle)
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
 			Replication: &lokiv1.ReplicationSpec{
@@ -517,7 +1139,245 @@ func TestBuild_ConfigAndRuntimeConfig_RulerConfigGenerated_WithHeaderAuthorizati
 }
 
 func TestBuild_ConfigAndRuntimeConfig_RulerConfigGenerated_WithBasicAuthorization(t *testing.T) {
+<<<<<<< HEAD
 	expCfg, expRCfg := loadTestData(t, "ruler-with-auth-basic")
+=======
+	expCfg := `
+---
+auth_enabled: true
+chunk_store_config:
+  chunk_cache_config:
+    embedded_cache:
+      enabled: true
+      max_size_mb: 500
+common:
+  storage:
+    s3:
+      endpoint: http://test.default.svc.cluster.local.:9000
+      bucketnames: loki
+      region: us-east
+      access_key_id: ${AWS_ACCESS_KEY_ID}
+      secret_access_key: ${AWS_ACCESS_KEY_SECRET}
+      s3forcepathstyle: true
+  compactor_grpc_address: loki-compactor-grpc-lokistack-dev.default.svc.cluster.local:9095
+  ring:
+    kvstore:
+      store: memberlist
+    heartbeat_period: 5s
+    heartbeat_timeout: 1m
+    instance_port: 9095
+compactor:
+  compaction_interval: 2h
+  working_directory: /tmp/loki/compactor
+frontend:
+  tail_proxy_url: http://loki-querier-http-lokistack-dev.default.svc.cluster.local:3100
+  compress_responses: true
+  max_outstanding_per_tenant: 4096
+  log_queries_longer_than: 5s
+frontend_worker:
+  frontend_address: loki-query-frontend-grpc-lokistack-dev.default.svc.cluster.local:9095
+  grpc_client_config:
+    max_send_msg_size: 104857600
+ingester:
+  chunk_block_size: 262144
+  chunk_encoding: snappy
+  chunk_idle_period: 1h
+  chunk_retain_period: 5m
+  chunk_target_size: 2097152
+  flush_op_timeout: 10m
+  lifecycler:
+    final_sleep: 0s
+    join_after: 30s
+    num_tokens: 512
+    ring:
+      replication_factor: 1
+  max_chunk_age: 2h
+  autoforget_unhealthy: true
+  wal:
+    enabled: true
+    dir: /tmp/wal
+    replay_memory_ceiling: 2147483648
+ingester_client:
+  grpc_client_config:
+    max_recv_msg_size: 67108864
+  remote_timeout: 1s
+# NOTE: Keep the order of keys as in Loki docs
+# to enable easy diffs when vendoring newer
+# Loki releases.
+# (See https://grafana.com/docs/loki/latest/configuration/#limits_config)
+#
+# Values for not exposed fields are taken from the grafana/loki production
+# configuration manifests.
+# (See https://github.com/grafana/loki/blob/main/production/ksonnet/loki/config.libsonnet)
+limits_config:
+  ingestion_rate_strategy: global
+  ingestion_rate_mb: 4
+  ingestion_burst_size_mb: 6
+  max_label_name_length: 1024
+  max_label_value_length: 2048
+  max_label_names_per_series: 30
+  reject_old_samples: true
+  reject_old_samples_max_age: 168h
+  creation_grace_period: 10m
+  # Keep max_streams_per_user always to 0 to default
+  # using max_global_streams_per_user always.
+  # (See https://github.com/grafana/loki/blob/main/pkg/ingester/limiter.go#L73)
+  max_streams_per_user: 0
+  max_line_size: 256000
+  max_entries_limit_per_query: 5000
+  discover_service_name: []
+  discover_log_levels: false
+  max_global_streams_per_user: 0
+  max_chunks_per_query: 2000000
+  max_query_length: 721h
+  max_query_parallelism: 32
+  tsdb_max_query_parallelism: 512
+  max_query_series: 500
+  cardinality_limit: 100000
+  max_streams_matchers_per_query: 1000
+  max_cache_freshness_per_query: 10m
+  split_queries_by_interval: 30m
+  query_timeout: 1m
+  volume_enabled: true
+  volume_max_series: 1000
+  per_stream_rate_limit: 5MB
+  per_stream_rate_limit_burst: 15MB
+  shard_streams:
+    enabled: true
+    desired_rate: 3MB
+    time_sharding_enabled: true
+  allow_structured_metadata: false
+memberlist:
+  abort_if_cluster_join_fails: true
+  advertise_port: 7946
+  bind_port: 7946
+  join_members:
+    - loki-gossip-ring-lokistack-dev.default.svc.cluster.local:7946
+  max_join_backoff: 1m
+  max_join_retries: 10
+  min_join_backoff: 1s
+  rejoin_interval: 90s
+querier:
+  engine:
+    max_look_back_period: 30s
+  extra_query_delay: 0s
+  max_concurrent: 2
+  query_ingesters_within: 3h
+  tail_max_duration: 1h
+query_range:
+  align_queries_with_step: true
+  cache_results: true
+  max_retries: 5
+  results_cache:
+    cache:
+      embedded_cache:
+        enabled: true
+        max_size_mb: 500
+  parallelise_shardable_queries: true
+schema_config:
+  configs:
+    - from: "2020-10-01"
+      index:
+        period: 24h
+        prefix: index_
+      object_store: store-1
+      schema: v11
+      store: boltdb-shipper
+ruler:
+  enable_api: true
+  enable_sharding: true
+  evaluation_interval: 1m
+  poll_interval: 1m
+  external_url: http://alert.me/now
+  external_labels:
+    key1: val1
+    key2: val2
+  alertmanager_url: http://alerthost1,http://alerthost2
+  enable_alertmanager_v2: true
+  enable_alertmanager_discovery: true
+  alertmanager_refresh_interval: 1m
+  notification_queue_capacity: 1000
+  notification_timeout: 1m
+  for_outage_tolerance: 10m
+  for_grace_period: 5m
+  resend_delay: 2m
+  remote_write:
+    enabled: true
+    config_refresh_period: 1m
+    client:
+      name: remote-write-me
+      url: http://remote.write.me
+      remote_timeout: 10s
+      proxy_url: http://proxy.through.me
+      follow_redirects: true
+      headers:
+        more: foryou
+        less: forme
+      basic_auth:
+        username: user
+        password: passwd
+      queue_config:
+        capacity: 1000
+        max_shards: 100
+        min_shards: 50
+        max_samples_per_send: 1000
+        batch_send_deadline: 10s
+        min_backoff: 30ms
+        max_backoff: 100ms
+  wal:
+    dir: /tmp/wal
+    truncate_frequency: 60m
+    min_age: 5m
+    max_age: 4h
+  rule_path: /tmp/loki
+  storage:
+    type: local
+    local:
+      directory: /tmp/rules
+  ring:
+    kvstore:
+      store: memberlist
+server:
+  graceful_shutdown_timeout: 5s
+  grpc_server_min_time_between_pings: '10s'
+  grpc_server_ping_without_stream_allowed: true
+  grpc_server_max_concurrent_streams: 1000
+  grpc_server_max_recv_msg_size: 104857600
+  grpc_server_max_send_msg_size: 104857600
+  http_listen_port: 3100
+  http_server_idle_timeout: 30s
+  http_server_read_timeout: 30s
+  http_server_write_timeout: 10m0s
+  log_level: info
+storage_config:
+  use_thanos_objstore: true
+  object_store:
+    named_stores:
+      s3:
+        store-1:
+          endpoint: http://test.default.svc.cluster.local.:9000
+          bucket_name: loki
+          region: us-east
+          access_key_id: ${AWS_ACCESS_KEY_ID}
+          secret_access_key: ${AWS_ACCESS_KEY_SECRET}
+          bucket_lookup_type: path
+  boltdb_shipper:
+    active_index_directory: /tmp/loki/index
+    cache_location: /tmp/loki/index_cache
+    cache_ttl: 24h
+    resync_interval: 5m
+    index_gateway_client:
+      server_address: dns:///loki-index-gateway-grpc-lokistack-dev.default.svc.cluster.local:9095
+tracing:
+  enabled: false
+analytics:
+  reporting_enabled: true
+`
+	expRCfg := `
+---
+overrides:
+`
+>>>>>>> ccfe4b0442 (modify s3forcepathstyle)
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
 			Replication: &lokiv1.ReplicationSpec{
@@ -658,7 +1518,258 @@ func TestBuild_ConfigAndRuntimeConfig_RulerConfigGenerated_WithBasicAuthorizatio
 }
 
 func TestBuild_ConfigAndRuntimeConfig_RulerConfigGenerated_WithRelabelConfigs(t *testing.T) {
+<<<<<<< HEAD
 	expCfg, expRCfg := loadTestData(t, "ruler-with-relabel-configs")
+=======
+	expCfg := `
+---
+auth_enabled: true
+chunk_store_config:
+  chunk_cache_config:
+    embedded_cache:
+      enabled: true
+      max_size_mb: 500
+common:
+  storage:
+    s3:
+      endpoint: http://test.default.svc.cluster.local.:9000
+      bucketnames: loki
+      region: us-east
+      access_key_id: ${AWS_ACCESS_KEY_ID}
+      secret_access_key: ${AWS_ACCESS_KEY_SECRET}
+      s3forcepathstyle: true
+  compactor_grpc_address: loki-compactor-grpc-lokistack-dev.default.svc.cluster.local:9095
+  ring:
+    kvstore:
+      store: memberlist
+    heartbeat_period: 5s
+    heartbeat_timeout: 1m
+    instance_port: 9095
+compactor:
+  compaction_interval: 2h
+  working_directory: /tmp/loki/compactor
+frontend:
+  tail_proxy_url: http://loki-querier-http-lokistack-dev.default.svc.cluster.local:3100
+  compress_responses: true
+  max_outstanding_per_tenant: 4096
+  log_queries_longer_than: 5s
+frontend_worker:
+  frontend_address: loki-query-frontend-grpc-lokistack-dev.default.svc.cluster.local:9095
+  grpc_client_config:
+    max_send_msg_size: 104857600
+ingester:
+  chunk_block_size: 262144
+  chunk_encoding: snappy
+  chunk_idle_period: 1h
+  chunk_retain_period: 5m
+  chunk_target_size: 2097152
+  flush_op_timeout: 10m
+  lifecycler:
+    final_sleep: 0s
+    join_after: 30s
+    num_tokens: 512
+    ring:
+      replication_factor: 1
+  max_chunk_age: 2h
+  autoforget_unhealthy: true
+  wal:
+    enabled: true
+    dir: /tmp/wal
+    replay_memory_ceiling: 2147483648
+ingester_client:
+  grpc_client_config:
+    max_recv_msg_size: 67108864
+  remote_timeout: 1s
+# NOTE: Keep the order of keys as in Loki docs
+# to enable easy diffs when vendoring newer
+# Loki releases.
+# (See https://grafana.com/docs/loki/latest/configuration/#limits_config)
+#
+# Values for not exposed fields are taken from the grafana/loki production
+# configuration manifests.
+# (See https://github.com/grafana/loki/blob/main/production/ksonnet/loki/config.libsonnet)
+limits_config:
+  ingestion_rate_strategy: global
+  ingestion_rate_mb: 4
+  ingestion_burst_size_mb: 6
+  max_label_name_length: 1024
+  max_label_value_length: 2048
+  max_label_names_per_series: 30
+  reject_old_samples: true
+  reject_old_samples_max_age: 168h
+  creation_grace_period: 10m
+  # Keep max_streams_per_user always to 0 to default
+  # using max_global_streams_per_user always.
+  # (See https://github.com/grafana/loki/blob/main/pkg/ingester/limiter.go#L73)
+  max_streams_per_user: 0
+  max_line_size: 256000
+  max_entries_limit_per_query: 5000
+  discover_service_name: []
+  discover_log_levels: false
+  max_global_streams_per_user: 0
+  max_chunks_per_query: 2000000
+  max_query_length: 721h
+  max_query_parallelism: 32
+  tsdb_max_query_parallelism: 512
+  max_query_series: 500
+  cardinality_limit: 100000
+  max_streams_matchers_per_query: 1000
+  max_cache_freshness_per_query: 10m
+  split_queries_by_interval: 30m
+  query_timeout: 1m
+  volume_enabled: true
+  volume_max_series: 1000
+  per_stream_rate_limit: 5MB
+  per_stream_rate_limit_burst: 15MB
+  shard_streams:
+    enabled: true
+    desired_rate: 3MB
+    time_sharding_enabled: true
+  allow_structured_metadata: false
+memberlist:
+  abort_if_cluster_join_fails: true
+  advertise_port: 7946
+  bind_port: 7946
+  join_members:
+    - loki-gossip-ring-lokistack-dev.default.svc.cluster.local:7946
+  max_join_backoff: 1m
+  max_join_retries: 10
+  min_join_backoff: 1s
+  rejoin_interval: 90s
+querier:
+  engine:
+    max_look_back_period: 30s
+  extra_query_delay: 0s
+  max_concurrent: 2
+  query_ingesters_within: 3h
+  tail_max_duration: 1h
+query_range:
+  align_queries_with_step: true
+  cache_results: true
+  max_retries: 5
+  results_cache:
+    cache:
+      embedded_cache:
+        enabled: true
+        max_size_mb: 500
+  parallelise_shardable_queries: true
+schema_config:
+  configs:
+    - from: "2020-10-01"
+      index:
+        period: 24h
+        prefix: index_
+      object_store: store-1
+      schema: v11
+      store: boltdb-shipper
+ruler:
+  enable_api: true
+  enable_sharding: true
+  evaluation_interval: 1m
+  poll_interval: 1m
+  external_url: http://alert.me/now
+  external_labels:
+    key1: val1
+    key2: val2
+  alertmanager_url: http://alerthost1,http://alerthost2
+  enable_alertmanager_v2: true
+  enable_alertmanager_discovery: true
+  alertmanager_refresh_interval: 1m
+  notification_queue_capacity: 1000
+  notification_timeout: 1m
+  for_outage_tolerance: 10m
+  for_grace_period: 5m
+  resend_delay: 2m
+  remote_write:
+    enabled: true
+    config_refresh_period: 1m
+    client:
+      name: remote-write-me
+      url: http://remote.write.me
+      remote_timeout: 10s
+      proxy_url: http://proxy.through.me
+      follow_redirects: true
+      headers:
+        more: foryou
+        less: forme
+      write_relabel_configs:
+      - source_labels: ["labela","labelb"]
+        regex: "ALERTS.*"
+        action: "drop"
+        separator: "\\"
+        replacement: "$1"
+      - source_labels: ["labelc","labeld"]
+        regex: "ALERTS.*"
+        action: "drop"
+        separator: ""
+        replacement: "$1"
+        target_label: "labeld"
+        modulus: 123
+      basic_auth:
+        username: user
+        password: passwd
+      queue_config:
+        capacity: 1000
+        max_shards: 100
+        min_shards: 50
+        max_samples_per_send: 1000
+        batch_send_deadline: 10s
+        min_backoff: 30ms
+        max_backoff: 100ms
+  wal:
+    dir: /tmp/wal
+    truncate_frequency: 60m
+    min_age: 5m
+    max_age: 4h
+  rule_path: /tmp/loki
+  storage:
+    type: local
+    local:
+      directory: /tmp/rules
+  ring:
+    kvstore:
+      store: memberlist
+server:
+  graceful_shutdown_timeout: 5s
+  grpc_server_min_time_between_pings: '10s'
+  grpc_server_ping_without_stream_allowed: true
+  grpc_server_max_concurrent_streams: 1000
+  grpc_server_max_recv_msg_size: 104857600
+  grpc_server_max_send_msg_size: 104857600
+  http_listen_port: 3100
+  http_server_idle_timeout: 30s
+  http_server_read_timeout: 30s
+  http_server_write_timeout: 10m0s
+  log_level: info
+storage_config:
+  use_thanos_objstore: true
+  object_store:
+    named_stores:
+      s3:
+        store-1:
+          endpoint: http://test.default.svc.cluster.local.:9000
+          bucket_name: loki
+          region: us-east
+          access_key_id: ${AWS_ACCESS_KEY_ID}
+          secret_access_key: ${AWS_ACCESS_KEY_SECRET}
+          bucket_lookup_type: path
+  boltdb_shipper:
+    active_index_directory: /tmp/loki/index
+    cache_location: /tmp/loki/index_cache
+    cache_ttl: 24h
+    resync_interval: 5m
+    index_gateway_client:
+      server_address: dns:///loki-index-gateway-grpc-lokistack-dev.default.svc.cluster.local:9095
+tracing:
+  enabled: false
+analytics:
+  reporting_enabled: true
+`
+	expRCfg := `
+---
+overrides:
+`
+>>>>>>> ccfe4b0442 (modify s3forcepathstyle)
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
 			Replication: &lokiv1.ReplicationSpec{
@@ -816,7 +1927,210 @@ func TestBuild_ConfigAndRuntimeConfig_RulerConfigGenerated_WithRelabelConfigs(t 
 }
 
 func TestBuild_ConfigAndRuntimeConfig_WithRetention(t *testing.T) {
+<<<<<<< HEAD
 	expCfg, expRCfg := loadTestData(t, "with-retention")
+=======
+	expCfg := `
+---
+auth_enabled: true
+chunk_store_config:
+  chunk_cache_config:
+    embedded_cache:
+      enabled: true
+      max_size_mb: 500
+common:
+  storage:
+    s3:
+      endpoint: http://test.default.svc.cluster.local.:9000
+      bucketnames: loki
+      region: us-east
+      access_key_id: ${AWS_ACCESS_KEY_ID}
+      secret_access_key: ${AWS_ACCESS_KEY_SECRET}
+      s3forcepathstyle: true
+  compactor_grpc_address: loki-compactor-grpc-lokistack-dev.default.svc.cluster.local:9095
+  ring:
+    kvstore:
+      store: memberlist
+    heartbeat_period: 5s
+    heartbeat_timeout: 1m
+    instance_port: 9095
+compactor:
+  compaction_interval: 2h
+  working_directory: /tmp/loki/compactor
+  retention_enabled: true
+  retention_delete_delay: 4h
+  retention_delete_worker_count: 50
+  delete_request_store: store-1
+frontend:
+  tail_proxy_url: http://loki-querier-http-lokistack-dev.default.svc.cluster.local:3100
+  compress_responses: true
+  max_outstanding_per_tenant: 4096
+  log_queries_longer_than: 5s
+frontend_worker:
+  frontend_address: loki-query-frontend-grpc-lokistack-dev.default.svc.cluster.local:9095
+  grpc_client_config:
+    max_send_msg_size: 104857600
+ingester:
+  chunk_block_size: 262144
+  chunk_encoding: snappy
+  chunk_idle_period: 1h
+  chunk_retain_period: 5m
+  chunk_target_size: 2097152
+  flush_op_timeout: 10m
+  lifecycler:
+    final_sleep: 0s
+    join_after: 30s
+    num_tokens: 512
+    ring:
+      replication_factor: 1
+  max_chunk_age: 2h
+  autoforget_unhealthy: true
+  wal:
+    enabled: true
+    dir: /tmp/wal
+    replay_memory_ceiling: 2147483648
+ingester_client:
+  grpc_client_config:
+    max_recv_msg_size: 67108864
+  remote_timeout: 1s
+# NOTE: Keep the order of keys as in Loki docs
+# to enable easy diffs when vendoring newer
+# Loki releases.
+# (See https://grafana.com/docs/loki/latest/configuration/#limits_config)
+#
+# Values for not exposed fields are taken from the grafana/loki production
+# configuration manifests.
+# (See https://github.com/grafana/loki/blob/main/production/ksonnet/loki/config.libsonnet)
+limits_config:
+  ingestion_rate_strategy: global
+  ingestion_rate_mb: 4
+  ingestion_burst_size_mb: 6
+  max_label_name_length: 1024
+  max_label_value_length: 2048
+  max_label_names_per_series: 30
+  reject_old_samples: true
+  reject_old_samples_max_age: 168h
+  creation_grace_period: 10m
+  # Keep max_streams_per_user always to 0 to default
+  # using max_global_streams_per_user always.
+  # (See https://github.com/grafana/loki/blob/main/pkg/ingester/limiter.go#L73)
+  max_streams_per_user: 0
+  max_line_size: 256000
+  max_entries_limit_per_query: 5000
+  discover_service_name: []
+  discover_log_levels: false
+  max_global_streams_per_user: 0
+  max_chunks_per_query: 2000000
+  max_query_length: 721h
+  max_query_parallelism: 32
+  tsdb_max_query_parallelism: 512
+  max_query_series: 500
+  cardinality_limit: 100000
+  max_streams_matchers_per_query: 1000
+  retention_period: 15d
+  retention_stream:
+  - selector: '{environment="development"}'
+    priority: 1
+    period: 3d
+  max_cache_freshness_per_query: 10m
+  split_queries_by_interval: 30m
+  query_timeout: 1m
+  volume_enabled: true
+  volume_max_series: 1000
+  per_stream_rate_limit: 5MB
+  per_stream_rate_limit_burst: 15MB
+  shard_streams:
+    enabled: true
+    desired_rate: 3MB
+    time_sharding_enabled: true
+  allow_structured_metadata: false
+memberlist:
+  abort_if_cluster_join_fails: true
+  advertise_port: 7946
+  bind_port: 7946
+  join_members:
+    - loki-gossip-ring-lokistack-dev.default.svc.cluster.local:7946
+  max_join_backoff: 1m
+  max_join_retries: 10
+  min_join_backoff: 1s
+  rejoin_interval: 90s
+querier:
+  engine:
+    max_look_back_period: 30s
+  extra_query_delay: 0s
+  max_concurrent: 2
+  query_ingesters_within: 3h
+  tail_max_duration: 1h
+query_range:
+  align_queries_with_step: true
+  cache_results: true
+  max_retries: 5
+  results_cache:
+    cache:
+      embedded_cache:
+        enabled: true
+        max_size_mb: 500
+  parallelise_shardable_queries: true
+schema_config:
+  configs:
+    - from: "2020-10-01"
+      index:
+        period: 24h
+        prefix: index_
+      object_store: store-1
+      schema: v11
+      store: boltdb-shipper
+server:
+  graceful_shutdown_timeout: 5s
+  grpc_server_min_time_between_pings: '10s'
+  grpc_server_ping_without_stream_allowed: true
+  grpc_server_max_concurrent_streams: 1000
+  grpc_server_max_recv_msg_size: 104857600
+  grpc_server_max_send_msg_size: 104857600
+  http_listen_port: 3100
+  http_server_idle_timeout: 30s
+  http_server_read_timeout: 30s
+  http_server_write_timeout: 10m0s
+  log_level: info
+storage_config:
+  use_thanos_objstore: true
+  object_store:
+    named_stores:
+      s3:
+        store-1:
+          endpoint: http://test.default.svc.cluster.local.:9000
+          bucket_name: loki
+          region: us-east
+          access_key_id: ${AWS_ACCESS_KEY_ID}
+          secret_access_key: ${AWS_ACCESS_KEY_SECRET}
+          bucket_lookup_type: path
+  boltdb_shipper:
+    active_index_directory: /tmp/loki/index
+    cache_location: /tmp/loki/index_cache
+    cache_ttl: 24h
+    resync_interval: 5m
+    index_gateway_client:
+      server_address: dns:///loki-index-gateway-grpc-lokistack-dev.default.svc.cluster.local:9095
+tracing:
+  enabled: false
+analytics:
+  reporting_enabled: false
+`
+	expRCfg := `
+---
+overrides:
+  test-a:
+    ingestion_rate_mb: 2
+    ingestion_burst_size_mb: 5
+    max_global_streams_per_user: 1
+    max_chunks_per_query: 1000000
+    retention_period: 7d
+    retention_stream:
+    - period: 15d
+      priority: 1
+      selector: "{environment=\"production\"}"
+`
+>>>>>>> ccfe4b0442 (modify s3forcepathstyle)
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
 			Replication: &lokiv1.ReplicationSpec{
@@ -972,7 +2286,271 @@ func TestBuild_ConfigAndRuntimeConfig_WithRetention(t *testing.T) {
 }
 
 func TestBuild_ConfigAndRuntimeConfig_RulerConfigGenerated_WithAlertRelabelConfigs(t *testing.T) {
+<<<<<<< HEAD
 	expCfg, expRCfg := loadTestData(t, "ruler-with-alert-relabel-configs")
+=======
+	expCfg := `
+---
+auth_enabled: true
+chunk_store_config:
+  chunk_cache_config:
+    embedded_cache:
+      enabled: true
+      max_size_mb: 500
+common:
+  storage:
+    s3:
+      endpoint: http://test.default.svc.cluster.local.:9000
+      bucketnames: loki
+      region: us-east
+      access_key_id: ${AWS_ACCESS_KEY_ID}
+      secret_access_key: ${AWS_ACCESS_KEY_SECRET}
+      s3forcepathstyle: true
+  compactor_grpc_address: loki-compactor-grpc-lokistack-dev.default.svc.cluster.local:9095
+  ring:
+    kvstore:
+      store: memberlist
+    heartbeat_period: 5s
+    heartbeat_timeout: 1m
+    instance_port: 9095
+compactor:
+  compaction_interval: 2h
+  working_directory: /tmp/loki/compactor
+frontend:
+  tail_proxy_url: http://loki-querier-http-lokistack-dev.default.svc.cluster.local:3100
+  compress_responses: true
+  max_outstanding_per_tenant: 4096
+  log_queries_longer_than: 5s
+frontend_worker:
+  frontend_address: loki-query-frontend-grpc-lokistack-dev.default.svc.cluster.local:9095
+  grpc_client_config:
+    max_send_msg_size: 104857600
+ingester:
+  chunk_block_size: 262144
+  chunk_encoding: snappy
+  chunk_idle_period: 1h
+  chunk_retain_period: 5m
+  chunk_target_size: 2097152
+  flush_op_timeout: 10m
+  lifecycler:
+    final_sleep: 0s
+    join_after: 30s
+    num_tokens: 512
+    ring:
+      replication_factor: 1
+  max_chunk_age: 2h
+  autoforget_unhealthy: true
+  wal:
+    enabled: true
+    dir: /tmp/wal
+    replay_memory_ceiling: 2147483648
+ingester_client:
+  grpc_client_config:
+    max_recv_msg_size: 67108864
+  remote_timeout: 1s
+# NOTE: Keep the order of keys as in Loki docs
+# to enable easy diffs when vendoring newer
+# Loki releases.
+# (See https://grafana.com/docs/loki/latest/configuration/#limits_config)
+#
+# Values for not exposed fields are taken from the grafana/loki production
+# configuration manifests.
+# (See https://github.com/grafana/loki/blob/main/production/ksonnet/loki/config.libsonnet)
+limits_config:
+  ingestion_rate_strategy: global
+  ingestion_rate_mb: 4
+  ingestion_burst_size_mb: 6
+  max_label_name_length: 1024
+  max_label_value_length: 2048
+  max_label_names_per_series: 30
+  reject_old_samples: true
+  reject_old_samples_max_age: 168h
+  creation_grace_period: 10m
+  # Keep max_streams_per_user always to 0 to default
+  # using max_global_streams_per_user always.
+  # (See https://github.com/grafana/loki/blob/main/pkg/ingester/limiter.go#L73)
+  max_streams_per_user: 0
+  max_line_size: 256000
+  max_entries_limit_per_query: 5000
+  discover_service_name: []
+  discover_log_levels: false
+  max_global_streams_per_user: 0
+  max_chunks_per_query: 2000000
+  max_query_length: 721h
+  max_query_parallelism: 32
+  tsdb_max_query_parallelism: 512
+  max_query_series: 500
+  cardinality_limit: 100000
+  max_streams_matchers_per_query: 1000
+  max_cache_freshness_per_query: 10m
+  split_queries_by_interval: 30m
+  query_timeout: 2m
+  volume_enabled: true
+  volume_max_series: 1000
+  per_stream_rate_limit: 5MB
+  per_stream_rate_limit_burst: 15MB
+  shard_streams:
+    enabled: true
+    desired_rate: 3MB
+    time_sharding_enabled: true
+  allow_structured_metadata: false
+memberlist:
+  abort_if_cluster_join_fails: true
+  advertise_port: 7946
+  bind_port: 7946
+  join_members:
+    - loki-gossip-ring-lokistack-dev.default.svc.cluster.local:7946
+  max_join_backoff: 1m
+  max_join_retries: 10
+  min_join_backoff: 1s
+  rejoin_interval: 90s
+querier:
+  engine:
+    max_look_back_period: 30s
+  extra_query_delay: 0s
+  max_concurrent: 2
+  query_ingesters_within: 3h
+  tail_max_duration: 1h
+query_range:
+  align_queries_with_step: true
+  cache_results: true
+  max_retries: 5
+  results_cache:
+    cache:
+      embedded_cache:
+        enabled: true
+        max_size_mb: 500
+  parallelise_shardable_queries: true
+schema_config:
+  configs:
+    - from: "2020-10-01"
+      index:
+        period: 24h
+        prefix: index_
+      object_store: store-1
+      schema: v11
+      store: boltdb-shipper
+ruler:
+  enable_api: true
+  enable_sharding: true
+  evaluation_interval: 1m
+  poll_interval: 1m
+  external_url: http://alert.me/now
+  external_labels:
+    key1: val1
+    key2: val2
+  alertmanager_url: http://alerthost1,http://alerthost2
+  enable_alertmanager_v2: true
+  enable_alertmanager_discovery: true
+  alertmanager_refresh_interval: 1m
+  notification_queue_capacity: 1000
+  notification_timeout: 1m
+  alert_relabel_configs:
+  - source_labels: ["source1", "source2"]
+    regex: "ALERTS.*"
+    action: "drop"
+    separator: "\\"
+    replacement: "$1"
+  - source_labels: ["source3", "source4"]
+    regex: "ALERTS.*"
+    action: "keep"
+    separator: ""
+    replacement: "$1"
+    target_label: "target"
+    modulus: 42
+  for_outage_tolerance: 10m
+  for_grace_period: 5m
+  resend_delay: 2m
+  remote_write:
+    enabled: true
+    config_refresh_period: 1m
+    client:
+      name: remote-write-me
+      url: http://remote.write.me
+      remote_timeout: 10s
+      proxy_url: http://proxy.through.me
+      follow_redirects: true
+      headers:
+        more: foryou
+        less: forme
+      write_relabel_configs:
+      - source_labels: ["labela","labelb"]
+        regex: "ALERTS.*"
+        action: "drop"
+        separator: "\\"
+        replacement: "$1"
+      - source_labels: ["labelc","labeld"]
+        regex: "ALERTS.*"
+        action: "drop"
+        separator: ""
+        replacement: "$1"
+        target_label: "labeld"
+        modulus: 123
+      basic_auth:
+        username: user
+        password: passwd
+      queue_config:
+        capacity: 1000
+        max_shards: 100
+        min_shards: 50
+        max_samples_per_send: 1000
+        batch_send_deadline: 10s
+        min_backoff: 30ms
+        max_backoff: 100ms
+  wal:
+    dir: /tmp/wal
+    truncate_frequency: 60m
+    min_age: 5m
+    max_age: 4h
+  rule_path: /tmp/loki
+  storage:
+    type: local
+    local:
+      directory: /tmp/rules
+  ring:
+    kvstore:
+      store: memberlist
+server:
+  graceful_shutdown_timeout: 5s
+  grpc_server_min_time_between_pings: '10s'
+  grpc_server_ping_without_stream_allowed: true
+  grpc_server_max_concurrent_streams: 1000
+  grpc_server_max_recv_msg_size: 104857600
+  grpc_server_max_send_msg_size: 104857600
+  http_listen_port: 3100
+  http_server_idle_timeout: 30s
+  http_server_read_timeout: 30s
+  http_server_write_timeout: 10m0s
+  log_level: info
+storage_config:
+  use_thanos_objstore: true
+  object_store:
+    named_stores:
+      s3:
+        store-1:
+          endpoint: http://test.default.svc.cluster.local.:9000
+          bucket_name: loki
+          region: us-east
+          access_key_id: ${AWS_ACCESS_KEY_ID}
+          secret_access_key: ${AWS_ACCESS_KEY_SECRET}
+          bucket_lookup_type: path
+  boltdb_shipper:
+    active_index_directory: /tmp/loki/index
+    cache_location: /tmp/loki/index_cache
+    cache_ttl: 24h
+    resync_interval: 5m
+    index_gateway_client:
+      server_address: dns:///loki-index-gateway-grpc-lokistack-dev.default.svc.cluster.local:9095
+tracing:
+  enabled: false
+analytics:
+  reporting_enabled: true
+`
+	expRCfg := `
+---
+overrides:
+`
+>>>>>>> ccfe4b0442 (modify s3forcepathstyle)
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
 			Replication: &lokiv1.ReplicationSpec{
@@ -1270,7 +2848,299 @@ func TestBuild_ConfigAndRuntimeConfig_WithTLS(t *testing.T) {
 }
 
 func TestBuild_ConfigAndRuntimeConfig_RulerConfigGenerated_WithAlertmanagerOverrides(t *testing.T) {
+<<<<<<< HEAD
 	expCfg, expRCfg := loadTestData(t, "ruler-with-alertmanager-overrides")
+=======
+	expCfg := `
+---
+auth_enabled: true
+chunk_store_config:
+  chunk_cache_config:
+    embedded_cache:
+      enabled: true
+      max_size_mb: 500
+common:
+  storage:
+    s3:
+      endpoint: http://test.default.svc.cluster.local.:9000
+      bucketnames: loki
+      region: us-east
+      access_key_id: ${AWS_ACCESS_KEY_ID}
+      secret_access_key: ${AWS_ACCESS_KEY_SECRET}
+      s3forcepathstyle: true
+  compactor_grpc_address: loki-compactor-grpc-lokistack-dev.default.svc.cluster.local:9095
+  ring:
+    kvstore:
+      store: memberlist
+    heartbeat_period: 5s
+    heartbeat_timeout: 1m
+    instance_port: 9095
+compactor:
+  compaction_interval: 2h
+  working_directory: /tmp/loki/compactor
+frontend:
+  tail_proxy_url: http://loki-querier-http-lokistack-dev.default.svc.cluster.local:3100
+  compress_responses: true
+  max_outstanding_per_tenant: 4096
+  log_queries_longer_than: 5s
+frontend_worker:
+  frontend_address: loki-query-frontend-grpc-lokistack-dev.default.svc.cluster.local:9095
+  grpc_client_config:
+    max_send_msg_size: 104857600
+ingester:
+  chunk_block_size: 262144
+  chunk_encoding: snappy
+  chunk_idle_period: 1h
+  chunk_retain_period: 5m
+  chunk_target_size: 2097152
+  flush_op_timeout: 10m
+  lifecycler:
+    final_sleep: 0s
+    join_after: 30s
+    num_tokens: 512
+    ring:
+      replication_factor: 1
+  max_chunk_age: 2h
+  autoforget_unhealthy: true
+  wal:
+    enabled: true
+    dir: /tmp/wal
+    replay_memory_ceiling: 2147483648
+ingester_client:
+  grpc_client_config:
+    max_recv_msg_size: 67108864
+  remote_timeout: 1s
+# NOTE: Keep the order of keys as in Loki docs
+# to enable easy diffs when vendoring newer
+# Loki releases.
+# (See https://grafana.com/docs/loki/latest/configuration/#limits_config)
+#
+# Values for not exposed fields are taken from the grafana/loki production
+# configuration manifests.
+# (See https://github.com/grafana/loki/blob/main/production/ksonnet/loki/config.libsonnet)
+limits_config:
+  ingestion_rate_strategy: global
+  ingestion_rate_mb: 4
+  ingestion_burst_size_mb: 6
+  max_label_name_length: 1024
+  max_label_value_length: 2048
+  max_label_names_per_series: 30
+  reject_old_samples: true
+  reject_old_samples_max_age: 168h
+  creation_grace_period: 10m
+  # Keep max_streams_per_user always to 0 to default
+  # using max_global_streams_per_user always.
+  # (See https://github.com/grafana/loki/blob/main/pkg/ingester/limiter.go#L73)
+  max_streams_per_user: 0
+  max_line_size: 256000
+  max_entries_limit_per_query: 5000
+  discover_service_name: []
+  discover_log_levels: false
+  max_global_streams_per_user: 0
+  max_chunks_per_query: 2000000
+  max_query_length: 721h
+  max_query_parallelism: 32
+  tsdb_max_query_parallelism: 512
+  max_query_series: 500
+  cardinality_limit: 100000
+  max_streams_matchers_per_query: 1000
+  max_cache_freshness_per_query: 10m
+  split_queries_by_interval: 30m
+  query_timeout: 2m
+  volume_enabled: true
+  volume_max_series: 1000
+  per_stream_rate_limit: 5MB
+  per_stream_rate_limit_burst: 15MB
+  shard_streams:
+    enabled: true
+    desired_rate: 3MB
+    time_sharding_enabled: true
+  allow_structured_metadata: false
+memberlist:
+  abort_if_cluster_join_fails: true
+  advertise_port: 7946
+  bind_port: 7946
+  join_members:
+    - loki-gossip-ring-lokistack-dev.default.svc.cluster.local:7946
+  max_join_backoff: 1m
+  max_join_retries: 10
+  min_join_backoff: 1s
+  rejoin_interval: 90s
+querier:
+  engine:
+    max_look_back_period: 30s
+  extra_query_delay: 0s
+  max_concurrent: 2
+  query_ingesters_within: 3h
+  tail_max_duration: 1h
+query_range:
+  align_queries_with_step: true
+  cache_results: true
+  max_retries: 5
+  results_cache:
+    cache:
+      embedded_cache:
+        enabled: true
+        max_size_mb: 500
+  parallelise_shardable_queries: true
+schema_config:
+  configs:
+    - from: "2020-10-01"
+      index:
+        period: 24h
+        prefix: index_
+      object_store: store-1
+      schema: v11
+      store: boltdb-shipper
+ruler:
+  enable_api: true
+  enable_sharding: true
+  evaluation_interval: 1m
+  poll_interval: 1m
+  external_url: http://alert.me/now
+  external_labels:
+    key1: val1
+    key2: val2
+  alertmanager_url: http://alerthost1,http://alerthost2
+  enable_alertmanager_v2: true
+  enable_alertmanager_discovery: true
+  alertmanager_refresh_interval: 1m
+  notification_queue_capacity: 1000
+  notification_timeout: 1m
+  alert_relabel_configs:
+  - source_labels: ["source1", "source2"]
+    regex: "ALERTS.*"
+    action: "drop"
+    separator: "\\"
+    replacement: "$1"
+  - source_labels: ["source3", "source4"]
+    regex: "ALERTS.*"
+    action: "keep"
+    separator: ""
+    replacement: "$1"
+    target_label: "target"
+    modulus: 42
+  for_outage_tolerance: 10m
+  for_grace_period: 5m
+  resend_delay: 2m
+  remote_write:
+    enabled: true
+    config_refresh_period: 1m
+    client:
+      name: remote-write-me
+      url: http://remote.write.me
+      remote_timeout: 10s
+      proxy_url: http://proxy.through.me
+      follow_redirects: true
+      headers:
+        more: foryou
+        less: forme
+      write_relabel_configs:
+      - source_labels: ["labela","labelb"]
+        regex: "ALERTS.*"
+        action: "drop"
+        separator: "\\"
+        replacement: "$1"
+      - source_labels: ["labelc","labeld"]
+        regex: "ALERTS.*"
+        action: "drop"
+        separator: ""
+        replacement: "$1"
+        target_label: "labeld"
+        modulus: 123
+      basic_auth:
+        username: user
+        password: passwd
+      queue_config:
+        capacity: 1000
+        max_shards: 100
+        min_shards: 50
+        max_samples_per_send: 1000
+        batch_send_deadline: 10s
+        min_backoff: 30ms
+        max_backoff: 100ms
+  wal:
+    dir: /tmp/wal
+    truncate_frequency: 60m
+    min_age: 5m
+    max_age: 4h
+  rule_path: /tmp/loki
+  storage:
+    type: local
+    local:
+      directory: /tmp/rules
+  ring:
+    kvstore:
+      store: memberlist
+server:
+  graceful_shutdown_timeout: 5s
+  grpc_server_min_time_between_pings: '10s'
+  grpc_server_ping_without_stream_allowed: true
+  grpc_server_max_concurrent_streams: 1000
+  grpc_server_max_recv_msg_size: 104857600
+  grpc_server_max_send_msg_size: 104857600
+  http_listen_port: 3100
+  http_server_idle_timeout: 30s
+  http_server_read_timeout: 30s
+  http_server_write_timeout: 10m0s
+  log_level: info
+storage_config:
+  use_thanos_objstore: true
+  object_store:
+    named_stores:
+      s3:
+        store-1:
+          endpoint: http://test.default.svc.cluster.local.:9000
+          bucket_name: loki
+          region: us-east
+          access_key_id: ${AWS_ACCESS_KEY_ID}
+          secret_access_key: ${AWS_ACCESS_KEY_SECRET}
+          bucket_lookup_type: path
+  boltdb_shipper:
+    active_index_directory: /tmp/loki/index
+    cache_location: /tmp/loki/index_cache
+    cache_ttl: 24h
+    resync_interval: 5m
+    index_gateway_client:
+      server_address: dns:///loki-index-gateway-grpc-lokistack-dev.default.svc.cluster.local:9095
+tracing:
+  enabled: false
+analytics:
+  reporting_enabled: true
+`
+	expRCfg := `
+---
+overrides:
+  test-a:
+    ruler_alertmanager_config:
+      external_url: http://alert.you/later
+      external_labels:
+        specialkey: specialvalue
+      alertmanager_url: http://specialhost
+      enable_alertmanager_v2: true
+      enable_alertmanager_discovery: true
+      alertmanager_refresh_interval: 2m
+      notification_queue_capacity: 2000
+      notification_timeout: 2m
+      alertmanager_client:
+        tls_cert_path: "custom/path"
+        tls_key_path: "custom/key"
+        tls_ca_path: "custom/CA"
+        tls_server_name: "custom-servername"
+        tls_insecure_skip_verify: false
+        basic_auth_password: "pass"
+        basic_auth_username: "user"
+        credentials: "creds"
+        credentials_file: "cred/file"
+        type: "auth"
+      alert_relabel_configs:
+      - source_labels: ["specialsource"]
+        regex: "ALERTS.*"
+        action: "drop"
+        separator: "\\"
+        replacement: "$2"
+`
+>>>>>>> ccfe4b0442 (modify s3forcepathstyle)
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
 			Replication: &lokiv1.ReplicationSpec{
@@ -1494,7 +3364,193 @@ func TestBuild_ConfigAndRuntimeConfig_RulerConfigGenerated_WithAlertmanagerOverr
 }
 
 func TestBuild_ConfigAndRuntimeConfig_WithHashRingSpec(t *testing.T) {
+<<<<<<< HEAD
 	expCfg, expRCfg := loadTestData(t, "with-hashring-spec")
+=======
+	expCfg := `
+---
+auth_enabled: true
+chunk_store_config:
+  chunk_cache_config:
+    embedded_cache:
+      enabled: true
+      max_size_mb: 500
+common:
+  storage:
+    s3:
+      endpoint: http://test.default.svc.cluster.local.:9000
+      bucketnames: loki
+      region: us-east
+      access_key_id: ${AWS_ACCESS_KEY_ID}
+      secret_access_key: ${AWS_ACCESS_KEY_SECRET}
+      s3forcepathstyle: true
+  compactor_grpc_address: loki-compactor-grpc-lokistack-dev.default.svc.cluster.local:9095
+  ring:
+    kvstore:
+      store: memberlist
+    heartbeat_period: 5s
+    heartbeat_timeout: 1m
+    instance_addr: ${HASH_RING_INSTANCE_ADDR}
+    instance_port: 9095
+compactor:
+  compaction_interval: 2h
+  working_directory: /tmp/loki/compactor
+frontend:
+  tail_proxy_url: http://loki-querier-http-lokistack-dev.default.svc.cluster.local:3100
+  compress_responses: true
+  max_outstanding_per_tenant: 4096
+  log_queries_longer_than: 5s
+frontend_worker:
+  frontend_address: loki-query-frontend-grpc-lokistack-dev.default.svc.cluster.local:9095
+  grpc_client_config:
+    max_send_msg_size: 104857600
+ingester:
+  chunk_block_size: 262144
+  chunk_encoding: snappy
+  chunk_idle_period: 1h
+  chunk_retain_period: 5m
+  chunk_target_size: 2097152
+  flush_op_timeout: 10m
+  lifecycler:
+    final_sleep: 0s
+    join_after: 30s
+    num_tokens: 512
+    ring:
+      replication_factor: 1
+  max_chunk_age: 2h
+  autoforget_unhealthy: true
+  wal:
+    enabled: true
+    dir: /tmp/wal
+    replay_memory_ceiling: 2147483648
+ingester_client:
+  grpc_client_config:
+    max_recv_msg_size: 67108864
+  remote_timeout: 1s
+# NOTE: Keep the order of keys as in Loki docs
+# to enable easy diffs when vendoring newer
+# Loki releases.
+# (See https://grafana.com/docs/loki/latest/configuration/#limits_config)
+#
+# Values for not exposed fields are taken from the grafana/loki production
+# configuration manifests.
+# (See https://github.com/grafana/loki/blob/main/production/ksonnet/loki/config.libsonnet)
+limits_config:
+  ingestion_rate_strategy: global
+  ingestion_rate_mb: 4
+  ingestion_burst_size_mb: 6
+  max_label_name_length: 1024
+  max_label_value_length: 2048
+  max_label_names_per_series: 30
+  reject_old_samples: true
+  reject_old_samples_max_age: 168h
+  creation_grace_period: 10m
+  # Keep max_streams_per_user always to 0 to default
+  # using max_global_streams_per_user always.
+  # (See https://github.com/grafana/loki/blob/main/pkg/ingester/limiter.go#L73)
+  max_streams_per_user: 0
+  max_line_size: 256000
+  max_entries_limit_per_query: 5000
+  discover_service_name: []
+  discover_log_levels: false
+  max_global_streams_per_user: 0
+  max_chunks_per_query: 2000000
+  max_query_length: 721h
+  max_query_parallelism: 32
+  tsdb_max_query_parallelism: 512
+  max_query_series: 500
+  cardinality_limit: 100000
+  max_streams_matchers_per_query: 1000
+  max_cache_freshness_per_query: 10m
+  split_queries_by_interval: 30m
+  query_timeout: 1m
+  volume_enabled: true
+  volume_max_series: 1000
+  per_stream_rate_limit: 5MB
+  per_stream_rate_limit_burst: 15MB
+  shard_streams:
+    enabled: true
+    desired_rate: 3MB
+    time_sharding_enabled: true
+  allow_structured_metadata: false
+memberlist:
+  abort_if_cluster_join_fails: true
+  advertise_addr: ${HASH_RING_INSTANCE_ADDR}
+  advertise_port: 7946
+  bind_port: 7946
+  join_members:
+    - loki-gossip-ring-lokistack-dev.default.svc.cluster.local:7946
+  max_join_backoff: 1m
+  max_join_retries: 10
+  min_join_backoff: 1s
+  rejoin_interval: 90s
+querier:
+  engine:
+    max_look_back_period: 30s
+  extra_query_delay: 0s
+  max_concurrent: 2
+  query_ingesters_within: 3h
+  tail_max_duration: 1h
+query_range:
+  align_queries_with_step: true
+  cache_results: true
+  max_retries: 5
+  results_cache:
+    cache:
+      embedded_cache:
+        enabled: true
+        max_size_mb: 500
+  parallelise_shardable_queries: true
+schema_config:
+  configs:
+    - from: "2020-10-01"
+      index:
+        period: 24h
+        prefix: index_
+      object_store: store-1
+      schema: v11
+      store: boltdb-shipper
+server:
+  graceful_shutdown_timeout: 5s
+  grpc_server_min_time_between_pings: '10s'
+  grpc_server_ping_without_stream_allowed: true
+  grpc_server_max_concurrent_streams: 1000
+  grpc_server_max_recv_msg_size: 104857600
+  grpc_server_max_send_msg_size: 104857600
+  http_listen_port: 3100
+  http_server_idle_timeout: 30s
+  http_server_read_timeout: 30s
+  http_server_write_timeout: 10m0s
+  log_level: info
+storage_config:
+  use_thanos_objstore: true
+  object_store:
+    named_stores:
+      s3:
+        store-1:
+          endpoint: http://test.default.svc.cluster.local.:9000
+          bucket_name: loki
+          region: us-east
+          access_key_id: ${AWS_ACCESS_KEY_ID}
+          secret_access_key: ${AWS_ACCESS_KEY_SECRET}
+          bucket_lookup_type: path
+  boltdb_shipper:
+    active_index_directory: /tmp/loki/index
+    cache_location: /tmp/loki/index_cache
+    cache_ttl: 24h
+    resync_interval: 5m
+    index_gateway_client:
+      server_address: dns:///loki-index-gateway-grpc-lokistack-dev.default.svc.cluster.local:9095
+tracing:
+  enabled: false
+analytics:
+  reporting_enabled: true
+`
+	expRCfg := `
+---
+overrides:
+`
+>>>>>>> ccfe4b0442 (modify s3forcepathstyle)
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
 			Replication: &lokiv1.ReplicationSpec{
@@ -1745,6 +3801,20 @@ server:
   http_server_write_timeout: 10m0s
   log_level: info
 storage_config:
+<<<<<<< HEAD
+=======
+  use_thanos_objstore: true
+  object_store:
+    named_stores:
+      s3:
+        store-1:
+          endpoint: http://test.default.svc.cluster.local.:9000
+          bucket_name: loki
+          region: us-east
+          access_key_id: ${AWS_ACCESS_KEY_ID}
+          secret_access_key: ${AWS_ACCESS_KEY_SECRET}
+          bucket_lookup_type: path
+>>>>>>> ccfe4b0442 (modify s3forcepathstyle)
   boltdb_shipper:
     active_index_directory: /tmp/loki/index
     cache_location: /tmp/loki/index_cache
@@ -2011,6 +4081,20 @@ server:
   http_server_write_timeout: 10m0s
   log_level: info
 storage_config:
+<<<<<<< HEAD
+=======
+  use_thanos_objstore: true
+  object_store:
+    named_stores:
+      s3:
+        store-1:
+          endpoint: http://test.default.svc.cluster.local.:9000
+          bucket_name: loki
+          region: us-east
+          access_key_id: ${AWS_ACCESS_KEY_ID}
+          secret_access_key: ${AWS_ACCESS_KEY_SECRET}
+          bucket_lookup_type: path
+>>>>>>> ccfe4b0442 (modify s3forcepathstyle)
   boltdb_shipper:
     active_index_directory: /tmp/loki/index
     cache_location: /tmp/loki/index_cache
@@ -2279,6 +4363,24 @@ server:
   http_server_write_timeout: 10m0s
   log_level: info
 storage_config:
+<<<<<<< HEAD
+=======
+  use_thanos_objstore: true
+  object_store:
+    named_stores:
+      s3:
+        store-1:
+          endpoint: http://test.default.svc.cluster.local.:9000
+          bucket_name: loki
+          region: us-east
+          access_key_id: ${AWS_ACCESS_KEY_ID}
+          secret_access_key: ${AWS_ACCESS_KEY_SECRET}
+          bucket_lookup_type: path
+          sse:
+            type: SSE-KMS
+            kms_key_id: test
+            kms_encryption_context: ${AWS_SSE_KMS_ENCRYPTION_CONTEXT}
+>>>>>>> ccfe4b0442 (modify s3forcepathstyle)
   boltdb_shipper:
     active_index_directory: /tmp/loki/index
     cache_location: /tmp/loki/index_cache
@@ -2583,6 +4685,22 @@ server:
   http_server_write_timeout: 10m0s
   log_level: info
 storage_config:
+<<<<<<< HEAD
+=======
+  use_thanos_objstore: true
+  object_store:
+    named_stores:
+      s3:
+        store-1:
+          endpoint: http://test.default.svc.cluster.local.:9000
+          bucket_name: loki
+          region: us-east
+          access_key_id: ${AWS_ACCESS_KEY_ID}
+          secret_access_key: ${AWS_ACCESS_KEY_SECRET}
+          bucket_lookup_type: path
+          sse:
+            type: SSE-S3
+>>>>>>> ccfe4b0442 (modify s3forcepathstyle)
   boltdb_shipper:
     active_index_directory: /tmp/loki/index
     cache_location: /tmp/loki/index_cache
@@ -2881,6 +4999,20 @@ server:
   http_server_write_timeout: 10m0s
   log_level: info
 storage_config:
+<<<<<<< HEAD
+=======
+  use_thanos_objstore: true
+  object_store:
+    named_stores:
+      s3:
+        store-1:
+          endpoint: http://test.default.svc.cluster.local.:9000
+          bucket_name: loki
+          region: us-east
+          access_key_id: ${AWS_ACCESS_KEY_ID}
+          secret_access_key: ${AWS_ACCESS_KEY_SECRET}
+          bucket_lookup_type: path
+>>>>>>> ccfe4b0442 (modify s3forcepathstyle)
   boltdb_shipper:
     active_index_directory: /tmp/loki/index
     cache_location: /tmp/loki/index_cache
@@ -3113,7 +5245,7 @@ func TestBuild_ConfigAndRuntimeConfig_Schemas(t *testing.T) {
           region: us-east
           access_key_id: ${AWS_ACCESS_KEY_ID}
           secret_access_key: ${AWS_ACCESS_KEY_SECRET}
-          s3forcepathstyle: true
+          bucket_lookup_type: path
   boltdb_shipper:
     active_index_directory: /tmp/loki/index
     cache_location: /tmp/loki/index_cache
@@ -3153,7 +5285,7 @@ func TestBuild_ConfigAndRuntimeConfig_Schemas(t *testing.T) {
           region: us-east
           access_key_id: ${AWS_ACCESS_KEY_ID}
           secret_access_key: ${AWS_ACCESS_KEY_SECRET}
-          s3forcepathstyle: true
+          bucket_lookup_type: path
   boltdb_shipper:
     active_index_directory: /tmp/loki/index
     cache_location: /tmp/loki/index_cache
@@ -3194,7 +5326,7 @@ func TestBuild_ConfigAndRuntimeConfig_Schemas(t *testing.T) {
           region: us-east
           access_key_id: ${AWS_ACCESS_KEY_ID}
           secret_access_key: ${AWS_ACCESS_KEY_SECRET}
-          s3forcepathstyle: true
+          bucket_lookup_type: path
   tsdb_shipper:
     active_index_directory: /tmp/loki/tsdb-index
     cache_location: /tmp/loki/tsdb-cache
@@ -3257,7 +5389,7 @@ func TestBuild_ConfigAndRuntimeConfig_Schemas(t *testing.T) {
           region: us-east
           access_key_id: ${AWS_ACCESS_KEY_ID}
           secret_access_key: ${AWS_ACCESS_KEY_SECRET}
-          s3forcepathstyle: true
+          bucket_lookup_type: path
   boltdb_shipper:
     active_index_directory: /tmp/loki/index
     cache_location: /tmp/loki/index_cache
@@ -3459,6 +5591,16 @@ server:
   http_server_write_timeout: 10m0s
   log_level: info
 storage_config:
+<<<<<<< HEAD
+=======
+  use_thanos_objstore: true
+  object_store:
+    named_stores:
+      s3:
+        store-1:
+          bucket_name: my-bucket
+          region: my-region
+>>>>>>> ccfe4b0442 (modify s3forcepathstyle)
   boltdb_shipper:
     active_index_directory: /tmp/loki/index
     cache_location: /tmp/loki/index_cache
@@ -3701,6 +5843,20 @@ server:
   http_server_write_timeout: 10m0s
   log_level: info
 storage_config:
+<<<<<<< HEAD
+=======
+  use_thanos_objstore: true
+  object_store:
+    named_stores:
+      s3:
+        store-1:
+          endpoint: http://test.default.svc.cluster.local.:9000
+          bucket_name: loki
+          region: us-east
+          access_key_id: ${AWS_ACCESS_KEY_ID}
+          secret_access_key: ${AWS_ACCESS_KEY_SECRET}
+          bucket_lookup_type: path
+>>>>>>> ccfe4b0442 (modify s3forcepathstyle)
   boltdb_shipper:
     active_index_directory: /tmp/loki/index
     cache_location: /tmp/loki/index_cache
@@ -4116,6 +6272,20 @@ server:
   http_server_write_timeout: 10m0s
   log_level: info
 storage_config:
+<<<<<<< HEAD
+=======
+  use_thanos_objstore: true
+  object_store:
+    named_stores:
+      s3:
+        store-1:
+          endpoint: http://test.default.svc.cluster.local.:9000
+          bucket_name: loki
+          region: us-east
+          access_key_id: ${AWS_ACCESS_KEY_ID}
+          secret_access_key: ${AWS_ACCESS_KEY_SECRET}
+          bucket_lookup_type: path
+>>>>>>> ccfe4b0442 (modify s3forcepathstyle)
   tsdb_shipper:
     active_index_directory: /tmp/loki/tsdb-index
     cache_location: /tmp/loki/tsdb-cache
