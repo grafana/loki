@@ -197,8 +197,10 @@ func materializeSparseArray(alloc *memory.Allocator, typ datasetmd.PhysicalType,
 	switch arr := denseValues.(type) {
 	case *columnar.UTF8:
 		return materializeSparseUTF8(alloc, validity, arr)
-	case *columnar.Int64:
-		return materializeSparseInt64(alloc, validity, arr)
+	case *columnar.Number[int64]:
+		return materializeSparseNumber[int64](alloc, validity, arr)
+	case *columnar.Number[uint64]:
+		return materializeSparseNumber[uint64](alloc, validity, arr)
 	case nil:
 		return materializeNulls(alloc, typ, validity)
 	default:
@@ -242,8 +244,8 @@ func materializeSparseUTF8(alloc *memory.Allocator, validity memory.Bitmap, dens
 	return columnar.MakeUTF8(denseValues.Data(), offsets, validity), nil
 }
 
-func materializeSparseInt64(alloc *memory.Allocator, validity memory.Bitmap, denseValues *columnar.Int64) (columnar.Array, error) {
-	valuesBuf := memory.MakeBuffer[int64](alloc, validity.Len())
+func materializeSparseNumber[T columnar.Numeric](alloc *memory.Allocator, validity memory.Bitmap, denseValues *columnar.Number[T]) (columnar.Array, error) {
+	valuesBuf := memory.MakeBuffer[T](alloc, validity.Len())
 	valuesBuf.Resize(validity.Len())
 	values := valuesBuf.Data()
 
@@ -257,7 +259,7 @@ func materializeSparseInt64(alloc *memory.Allocator, validity memory.Bitmap, den
 		values[i] = srcValues[srcIndex]
 		srcIndex++
 	}
-	return columnar.MakeInt64(values, validity), nil
+	return columnar.MakeNumber[T](values, validity), nil
 }
 
 func materializeNulls(alloc *memory.Allocator, typ datasetmd.PhysicalType, validity memory.Bitmap) (columnar.Array, error) {
@@ -277,14 +279,14 @@ func materializeNulls(alloc *memory.Allocator, typ datasetmd.PhysicalType, valid
 		valuesBuffer.Resize(validity.Len())
 		valuesBuffer.Clear()
 
-		return columnar.MakeInt64(valuesBuffer.Data(), validity), nil
+		return columnar.MakeNumber[int64](valuesBuffer.Data(), validity), nil
 
 	case datasetmd.PHYSICAL_TYPE_UINT64:
 		valuesBuffer := memory.MakeBuffer[uint64](alloc, validity.Len())
 		valuesBuffer.Resize(validity.Len())
 		valuesBuffer.Clear()
 
-		return columnar.MakeUint64(valuesBuffer.Data(), validity), nil
+		return columnar.MakeNumber[uint64](valuesBuffer.Data(), validity), nil
 
 	case datasetmd.PHYSICAL_TYPE_BINARY:
 		offsetsBuffer := memory.MakeBuffer[int32](alloc, validity.Len()+1)

@@ -23,7 +23,7 @@ func copyArrayToRow(dst []Row, columnIndex int, src columnar.Array) int {
 	switch src := src.(type) {
 	case *columnar.UTF8:
 		return copyUTF8Array(dst, columnIndex, src)
-	case *columnar.Int64:
+	case *columnar.Number[int64]:
 		return copyInt64Array(dst, columnIndex, src)
 	case *columnar.Null:
 		return copyNullArray(dst, columnIndex, src)
@@ -58,7 +58,7 @@ func copyUTF8Array(dst []Row, columnIndex int, src *columnar.UTF8) int {
 // rows.
 //
 // Should only be called from [copyArray].
-func copyInt64Array(dst []Row, columnIndex int, src *columnar.Int64) int {
+func copyInt64Array(dst []Row, columnIndex int, src *columnar.Number[int64]) int {
 	for i := range src.Len() {
 		if src.IsNull(i) {
 			dst[i].Values[columnIndex].Zero()

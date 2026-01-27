@@ -1,27 +1,36 @@
 package columnar
 
-import "github.com/grafana/loki/v3/pkg/memory"
+import (
+	"fmt"
+	"reflect"
 
-// Int64 is an [Array] of 64-bit signed integer values.
-type Int64 struct {
+	"github.com/grafana/loki/v3/pkg/memory"
+)
+
+// Numeric is a constraint for recognized numeric types.
+type Numeric interface{ int64 | uint64 }
+
+// Number is an [Array] of 64-bit unsigned [Numeric] values.
+type Number[T Numeric] struct {
 	validity  memory.Bitmap // Empty when there's no nulls.
-	values    []int64
+	values    []T
 	nullCount int
+	kind      Kind // Determined in [Number.init] based on T.
 }
 
-var _ Array = (*Int64)(nil)
+var _ Array = (*Number[int64])(nil)
 
-// MakeInt64 creates a new Int64 array from the given values and optional validity
-// bitmap.
+// MakeNumber creates a new Number array from the given values and optional
+// validity bitmap.
 //
-// Int64 arrays made from memory owned by a [memory.Allocator] are invalidated
+// Number arrays made from memory owned by a [memory.Allocator] are invalidated
 // when the allocator reclaims memory.
 //
 // If validity is of length zero, all elements are considered valid. Otherwise,
-// MakeInt64 panics if the number of elements does not match the length of
+// MakeNumber panics if the number of elements does not match the length of
 // validity.
-func MakeInt64(values []int64, validity memory.Bitmap) *Int64 {
-	arr := &Int64{
+func MakeNumber[T Numeric](values []T, validity memory.Bitmap) *Number[T] {
+	arr := &Number[T]{
 		validity: validity,
 		values:   values,
 	}
@@ -30,30 +39,40 @@ func MakeInt64(values []int64, validity memory.Bitmap) *Int64 {
 }
 
 //go:noinline
-func (arr *Int64) init() {
+func (arr *Number[T]) init() {
 	if arr.validity.Len() > 0 && arr.validity.Len() != len(arr.values) {
 		panic("length mismatch between values and validity")
 	}
 	arr.nullCount = arr.validity.ClearCount()
+
+	var zero T
+	switch reflect.TypeOf(zero).Kind() {
+	case reflect.Int64:
+		arr.kind = KindInt64
+	case reflect.Uint64:
+		arr.kind = KindUint64
+	default:
+		panic(fmt.Sprintf("unsupported type %T", zero))
+	}
 }
 
 // Len returns the total number of elements in the array.
-func (arr *Int64) Len() int { return len(arr.values) }
+func (arr *Number[T]) Len() int { return len(arr.values) }
 
 // Nulls returns the number of null elements in the array. The number of
 // non-null elements can be calculated from Len() - Nulls().
-func (arr *Int64) Nulls() int { return arr.nullCount }
+func (arr *Number[T]) Nulls() int { return arr.nullCount }
 
 // Get returns the value at index i. If the element at index i is null, Get
 // returns an undefined value.
 //
 // Get panics if i is out of range.
-func (arr *Int64) Get(i int) int64 {
+func (arr *Number[T]) Get(i int) T {
 	return arr.values[i]
 }
 
 // IsNull returns true if the element at index i is null.
-func (arr *Int64) IsNull(i int) bool {
+func (arr *Number[T]) IsNull(i int) bool {
 	if arr.nullCount == 0 {
 		return false
 	}
@@ -61,14 +80,14 @@ func (arr *Int64) IsNull(i int) bool {
 }
 
 // Values returns the underlying array of values.
-func (arr *Int64) Values() []int64 { return arr.values }
+func (arr *Number[T]) Values() []T { return arr.values }
 
 // Validity returns the validity bitmap of the array. The returned bitmap
 // may be of length 0 if there are no nulls.
 //
 // A value of 1 in the Validity bitmap indicates that the corresponding
 // element at that position is valid (not null).
-func (arr *Int64) Validity() memory.Bitmap { return arr.validity }
+func (arr *Number[T]) Validity() memory.Bitmap { return arr.validity }
 
 // Kind returns the kind of Array being represented.
-func (arr *Int64) Kind() Kind { return KindInt64 }
+func (arr *Number[T]) Kind() Kind { return arr.kind }
