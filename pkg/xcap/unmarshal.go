@@ -98,16 +98,17 @@ func fromProtoRegion(protoRegion *proto.Region, statIndexToStat map[uint32]Stati
 	status := unmarshalStatus(protoRegion.Status)
 
 	region := &Region{
-		id:           regionID,
-		parentID:     parentID,
-		name:         protoRegion.Name,
-		startTime:    protoRegion.StartTime,
-		endTime:      protoRegion.EndTime,
-		observations: observations,
-		attributes:   attributes,
-		events:       events,
-		status:       status,
-		ended:        true, // Regions from proto are always ended
+		id:             regionID,
+		parentID:       parentID,
+		name:           protoRegion.Name,
+		startTime:      protoRegion.StartTime,
+		endTime:        protoRegion.EndTime,
+		observations:   observations,
+		attributes:     attributes,
+		events:         events,
+		status:         status,
+		ended:          true, // Regions from proto are always ended
+		droppedRegions: protoRegion.DroppedRegions,
 	}
 
 	return region, nil

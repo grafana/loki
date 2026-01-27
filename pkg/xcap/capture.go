@@ -50,15 +50,17 @@ func NewCapture(ctx context.Context, attributes []attribute.KeyValue) (context.C
 
 // End marks the end of the capture. After End is called, no new
 // Regions can be created from this Capture.
+//
+// End also applies any filtering if configured.
 func (c *Capture) End() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-
 	if c.ended {
 		return
 	}
-
 	c.ended = true
+
+	globalFilterer.applyFiltering(c)
 }
 
 // AddRegion adds a region to this capture. This is called by Region

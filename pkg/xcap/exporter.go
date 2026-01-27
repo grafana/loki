@@ -54,6 +54,10 @@ func createSpans(ctx context.Context, region *Region, parentToChildren map[ident
 		trace.WithAttributes(region.attributes...),
 	}
 
+	if dropped := region.DroppedRegions(); dropped > 0 {
+		opts = append(opts, trace.WithAttributes(attribute.Int("xcap.dropped_regions", int(dropped))))
+	}
+
 	// Add observations as attributes
 	for key, obs := range region.observations {
 		opts = append(opts, trace.WithAttributes(observationToAttribute(key, obs)))
