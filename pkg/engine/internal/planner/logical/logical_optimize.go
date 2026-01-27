@@ -304,7 +304,7 @@ func (pass simplifyRegexPass) simplifyRegex(from Value, isMessage bool, reg *syn
 // The baseLiteral argument holds the in-progress concatenation to test. It is
 // used in recursive calls to simplifyRegexConcat, and initial callers may pass
 // nil.
-func (pass simplifyRegexPass) simplifyRegexConcat(from Value, reg *syntax.Regexp, baseLiteral []byte, caseInsensitive bool) ([]Node, bool) {
+func (pass simplifyRegexPass) simplifyRegexConcat(from Value, reg *syntax.Regexp, baseLiteral []byte, parentCaseInsensitive bool) ([]Node, bool) {
 	util.ClearCapture(reg.Sub...)
 
 	// Remove empty matches.
@@ -329,6 +329,9 @@ func (pass simplifyRegexPass) simplifyRegexConcat(from Value, reg *syntax.Regexp
 	if len(reg.Sub) > 3 {
 		return nil, false
 	}
+
+	// Accumulate case-insensitive flag from parent and current node.
+	caseInsensitive := parentCaseInsensitive
 
 	var result []Node
 	var totalLiterals int
@@ -390,7 +393,10 @@ func (pass simplifyRegexPass) simplifyRegexConcat(from Value, reg *syntax.Regexp
 	return nil, false
 }
 
-func (pass simplifyRegexPass) simplifyRegexConcatAlternates(from Value, reg *syntax.Regexp, literal []byte, caseInsensitive bool, curr []Node) ([]Node, bool) {
+func (pass simplifyRegexPass) simplifyRegexConcatAlternates(from Value, reg *syntax.Regexp, literal []byte, parentCaseInsensitive bool, curr []Node) ([]Node, bool) {
+	// Accumulate case-insensitive flag from parent and current node.
+	caseInsensitive := parentCaseInsensitive || util.IsCaseInsensitive(reg)
+
 	for _, alt := range reg.Sub {
 		switch alt.Op {
 		case syntax.OpEmptyMatch:
