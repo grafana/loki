@@ -643,7 +643,8 @@ storage_config:
             {{- if eq .Type "SSE-KMS" }}
             kms_key_id: {{ .KMSKeyID }}
             {{- with .KMSEncryptionContext }}
-            kms_encryption_context: ${AWS_SSE_KMS_ENCRYPTION_CONTEXT}
+            kms_encryption_context: |
+              ${AWS_SSE_KMS_ENCRYPTION_CONTEXT}
             {{- end }}
             {{- end}}
           {{- end }}
