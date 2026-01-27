@@ -240,7 +240,7 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 		BatchSize: c.batchSize,
 	}, log.With(c.logger, "location", string(node.Location), "section", node.Section), region)
 
-	return pipeline
+	return newDataObjScanLoggingPipeline(pipeline, node, tenant, c.logger)
 }
 
 // filterStreamsByLabels filters stream IDs based on the StreamFilterer.
