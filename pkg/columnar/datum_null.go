@@ -2,6 +2,20 @@ package columnar
 
 import "github.com/grafana/loki/v3/pkg/memory"
 
+// NullScalar is a [Scalar] representing an untyped null value.
+type NullScalar struct{}
+
+var _ Scalar = (*NullScalar)(nil)
+
+// Kind implements [Datum] and returns [KindNull].
+func (s *NullScalar) Kind() Kind { return KindNull }
+
+// IsNull implements [Scalar] and returns true.
+func (s *NullScalar) IsNull() bool { return true }
+
+func (s *NullScalar) isDatum()  {}
+func (s *NullScalar) isScalar() {}
+
 // Null is an [Array] of null values.
 type Null struct {
 	validity  memory.Bitmap

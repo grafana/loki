@@ -4,6 +4,21 @@ import (
 	"github.com/grafana/loki/v3/pkg/memory"
 )
 
+// BoolScalar is a [Scalar] representing a boolean value.
+type BoolScalar struct {
+	Value bool // Value of the scalar.
+	Null  bool // True if the scalar is null.
+}
+
+// Kind implements [Datum] and returns [KindBool].
+func (s *BoolScalar) Kind() Kind { return KindBool }
+
+// IsNull implements [Scalar] and returns bs.Null.
+func (s *BoolScalar) IsNull() bool { return s.Null }
+
+func (s *BoolScalar) isDatum()  {}
+func (s *BoolScalar) isScalar() {}
+
 // Bool is an [Array] of bit-packed boolean values.
 type Bool struct {
 	validity  memory.Bitmap // Empty when there's no nulls.

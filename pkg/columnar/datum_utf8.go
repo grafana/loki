@@ -2,6 +2,23 @@ package columnar
 
 import "github.com/grafana/loki/v3/pkg/memory"
 
+// UTF8Scalar is a [Scalar] representing a [UTF8] value.
+type UTF8Scalar struct {
+	Value []byte // Value of the scalar.
+	Null  bool   // True if the scalar is null.
+}
+
+var _ Scalar = (*UTF8Scalar)(nil)
+
+// Kind implements [Datum] and returns [KindUTF8].
+func (s *UTF8Scalar) Kind() Kind { return KindUTF8 }
+
+// IsNull implements [Scalar] and returns s.Null.
+func (s *UTF8Scalar) IsNull() bool { return s.Null }
+
+func (s *UTF8Scalar) isDatum()  {}
+func (s *UTF8Scalar) isScalar() {}
+
 // UTF8 is an [Array] of UTF-8 encoded strings.
 type UTF8 struct {
 	validity  memory.Bitmap // Empty when there's no nulls.

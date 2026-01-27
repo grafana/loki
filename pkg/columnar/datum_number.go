@@ -10,6 +10,43 @@ import (
 // Numeric is a constraint for recognized numeric types.
 type Numeric interface{ int64 | uint64 }
 
+// NumberScalar is a [Scalar] representing a [Numeric] value.
+type NumberScalar[T Numeric] struct {
+	Value T    // Value of the scalar.
+	Null  bool // True if the scalar is null.
+
+	kind Kind // Cached kind.
+}
+
+var _ Scalar = (*NumberScalar[int64])(nil)
+
+// Kind implements [Datum] and returns the kind matching T.
+func (s *NumberScalar[T]) Kind() Kind {
+	if s.kind == KindNull {
+		s.init()
+	}
+	return s.kind
+}
+
+//go:noinline
+func (s *NumberScalar[T]) init() {
+	var zero T
+	switch reflect.TypeOf(zero).Kind() {
+	case reflect.Int64:
+		s.kind = KindInt64
+	case reflect.Uint64:
+		s.kind = KindUint64
+	default:
+		panic(fmt.Sprintf("unsupported type %T", zero))
+	}
+}
+
+// IsNull implements [Scalar] and returns s.Null.
+func (s *NumberScalar[T]) IsNull() bool { return s.Null }
+
+func (s *NumberScalar[T]) isDatum()  {}
+func (s *NumberScalar[T]) isScalar() {}
+
 // Number is an [Array] of 64-bit unsigned [Numeric] values.
 type Number[T Numeric] struct {
 	validity  memory.Bitmap // Empty when there's no nulls.
