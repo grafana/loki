@@ -65,7 +65,7 @@ func TestConcat_Bool(t *testing.T) {
 func TestConcat_Int64(t *testing.T) {
 	var alloc memory.Allocator
 
-	inputs := []int64Builder{
+	inputs := []numberBuilder[int64]{
 		{values: []int64{1, 2, 3, 4}, validity: nil},
 		{values: nil, validity: nil},
 		{values: []int64{5, 6}, validity: []bool{true, false}},
@@ -92,7 +92,7 @@ func TestConcat_Int64(t *testing.T) {
 			require.True(t, out.IsNull(i), "expected null at index %d", i)
 		} else {
 			require.False(t, out.IsNull(i), "expected non-null at index %d", i)
-			require.Equal(t, expectValues[i], out.(*columnar.Int64).Get(i), "expected %d at index %d", expectValues[i], i)
+			require.Equal(t, expectValues[i], out.(*columnar.Number[int64]).Get(i), "expected %d at index %d", expectValues[i], i)
 		}
 	}
 }
@@ -204,7 +204,7 @@ func BenchmarkConcat(b *testing.B) {
 				validity.Append(j%10 != 0) // Every 10th element is null
 			}
 
-			in = append(in, columnar.MakeInt64(values, validity))
+			in = append(in, columnar.MakeNumber[int64](values, validity))
 		}
 
 		var loopAlloc memory.Allocator
@@ -293,19 +293,19 @@ func (b *boolBuilder) Build(alloc *memory.Allocator) columnar.Array {
 	return columnar.MakeBool(values, validity)
 }
 
-type int64Builder struct {
-	values   []int64
+type numberBuilder[T columnar.Numeric] struct {
+	values   []T
 	validity []bool
 }
 
-func (b *int64Builder) Build(alloc *memory.Allocator) columnar.Array {
+func (b *numberBuilder[T]) Build(alloc *memory.Allocator) columnar.Array {
 	var validity memory.Bitmap
 	if len(b.validity) > 0 {
 		validity = memory.MakeBitmap(alloc, len(b.validity))
 		validity.AppendValues(b.validity...)
 	}
 
-	return columnar.MakeInt64(b.values, validity)
+	return columnar.MakeNumber[T](b.values, validity)
 }
 
 type utf8Builder struct {
