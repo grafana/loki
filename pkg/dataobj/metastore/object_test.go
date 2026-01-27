@@ -548,8 +548,6 @@ func TestSectionsForLabelsByStreamID(t *testing.T) {
 
 	mstore := newTestObjectMetastore(bucket)
 
-	streamLabels := []string{"app", "env"}
-
 	tests := []struct {
 		name                 string
 		matchers             []*labels.Matcher
@@ -559,73 +557,30 @@ func TestSectionsForLabelsByStreamID(t *testing.T) {
 		wantLabelsByStreamID map[int64][]string // Expected stream ID -> labels mapping
 	}{
 		{
-			name: "exact match on app=foo returns sections with correct labels per stream",
+			name: "no predicates doesn't return any labels",
 			matchers: []*labels.Matcher{
 				labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),
-			},
-			predicates: nil,
-			start:      now.Add(-4 * time.Hour),
-			end:        now.Add(time.Hour),
-			wantCount:  2,
-			wantLabelsByStreamID: map[int64][]string{
-				1: streamLabels,
-				3: streamLabels,
-			},
-		},
-		{
-			name: "exact match on env=dev returns sections with correct labels per stream",
-			matchers: []*labels.Matcher{
-				labels.MustNewMatcher(labels.MatchEqual, "env", "dev"),
-			},
-			predicates: nil,
-			start:      now.Add(-4 * time.Hour),
-			end:        now.Add(time.Hour),
-			wantCount:  2,
-			wantLabelsByStreamID: map[int64][]string{
-				2: streamLabels,
-				3: streamLabels,
-			},
-		},
-		{
-			name: "combined matchers return only matching section with correct stream labels",
-			matchers: []*labels.Matcher{
-				labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),
-				labels.MustNewMatcher(labels.MatchEqual, "env", "prod"),
-			},
-			predicates: nil,
-			start:      now.Add(-4 * time.Hour),
-			end:        now.Add(time.Hour),
-			wantCount:  1,
-			wantLabelsByStreamID: map[int64][]string{
-				1: streamLabels,
-			},
-		},
-		{
-			name: "regex matcher returns multiple matching sections with correct labels per stream",
-			matchers: []*labels.Matcher{
-				labels.MustNewMatcher(labels.MatchRegexp, "app", "foo|bar"),
-			},
-			predicates: nil,
-			start:      now.Add(-4 * time.Hour),
-			end:        now.Add(time.Hour),
-			wantCount:  3,
-			wantLabelsByStreamID: map[int64][]string{
-				1: streamLabels,
-				2: streamLabels,
-				3: streamLabels,
-			},
-		},
-		{
-			name: "non-matching combined matchers return no sections",
-			matchers: []*labels.Matcher{
-				labels.MustNewMatcher(labels.MatchEqual, "app", "bar"),
-				labels.MustNewMatcher(labels.MatchEqual, "env", "prod"),
 			},
 			predicates:           nil,
 			start:                now.Add(-4 * time.Hour),
 			end:                  now.Add(time.Hour),
-			wantCount:            0,
+			wantCount:            2,
 			wantLabelsByStreamID: nil,
+		},
+		{
+			name: "ambiguous predicates returns predicate label names for the stream",
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, "app", "bar"),
+			},
+			predicates: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, "env", "prod"),
+			},
+			start:     now.Add(-4 * time.Hour),
+			end:       now.Add(time.Hour),
+			wantCount: 1,
+			wantLabelsByStreamID: map[int64][]string{
+				2: {"env"},
+			},
 		},
 	}
 

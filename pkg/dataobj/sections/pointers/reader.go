@@ -5,11 +5,13 @@ import (
 	"errors"
 	"fmt"
 	_ "io" // Used for documenting io.EOF.
+	"strings"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/apache/arrow-go/v18/arrow/scalar"
 
+	columnarv2 "github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/arrowconv"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
@@ -128,7 +130,7 @@ type Reader struct {
 	schema *arrow.Schema // Set on [Reader.Reset].
 
 	ready bool
-	inner *columnar.ReaderAdapter
+	inner *recordBatchLabelDecorator
 
 	alloc *memoryv2.Allocator
 }
@@ -174,11 +176,6 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.RecordBatch, er
 			return nil, fmt.Errorf("initializing Reader: %w", err)
 		}
 	}
-
-	/* 	internalLabelsFieldIdx := r.schema.FieldIndices(InternalLabelsFieldName)
-	   	if len(internalLabelsFieldIdx) != 1 {
-	   		panic("expected 1 internal labels field, got " + strconv.Itoa(len(internalLabelsFieldIdx)))
-	   	} */
 
 	defer r.alloc.Reclaim()
 	rb, readErr := r.inner.Read(ctx, r.alloc, batchSize)
@@ -232,9 +229,9 @@ func (r *Reader) init() error {
 		Prefetch:   true,
 	}
 	if r.inner == nil {
-		r.inner = columnar.NewReaderAdapter(innerOptions)
+		r.inner = NewRecordBatchLabelDecorator(columnar.NewReaderAdapter(innerOptions), innerOptions, r.opts)
 	} else {
-		r.inner.Reset(innerOptions)
+		r.inner.Reset(innerOptions, r.opts)
 	}
 
 	r.ready = true
@@ -406,12 +403,19 @@ func (r *Reader) Close() error {
 
 func columnsSchema(cols []*Column) *arrow.Schema {
 	fields := make([]arrow.Field, 0, len(cols))
+	streamIDPresent := false
 	for _, col := range cols {
 		fields = append(fields, columnToField(col))
+		if col.Type == ColumnTypeStreamID {
+			streamIDPresent = true
+		}
 	}
 
-	// Append an internal field used to store label names for each stream ID in the result set
-	fields = append(fields, arrow.Field{Name: InternalLabelsFieldName, Type: arrow.BinaryTypes.String, Nullable: true})
+	if streamIDPresent {
+		// Append an internal field used to store label names for each stream ID in the result set
+		// This field isn't used or appended when reading non-StreamID Kind pointers.
+		fields = append(fields, arrow.Field{Name: InternalLabelsFieldName, Type: arrow.BinaryTypes.String, Nullable: true})
+	}
 	return arrow.NewSchema(fields, nil)
 }
 
@@ -462,4 +466,67 @@ func makeColumnName(label string, name string, dty arrow.DataType) string {
 		}
 		return label + "." + name + "." + dty.Name()
 	}
+}
+
+type recordBatchLabelDecorator struct {
+	inner                *columnar.ReaderAdapter
+	streamIDToLabelNames map[int64][]string
+	streamIDColumnIndex  int
+}
+
+func NewRecordBatchLabelDecorator(inner *columnar.ReaderAdapter, innerOpts dataset.ReaderOptions, opts ReaderOptions) *recordBatchLabelDecorator {
+	d := &recordBatchLabelDecorator{inner: inner}
+	d.Reset(innerOpts, opts)
+	return d
+}
+
+func (d *recordBatchLabelDecorator) Close() error {
+	return d.inner.Close()
+}
+
+func (d *recordBatchLabelDecorator) Reset(innerOpts dataset.ReaderOptions, opts ReaderOptions) {
+	d.inner.Reset(innerOpts)
+
+	d.streamIDColumnIndex = -1
+	for i, col := range opts.Columns {
+		if col.Type == ColumnTypeStreamID {
+			d.streamIDColumnIndex = i
+			break
+		}
+	}
+	d.streamIDToLabelNames = opts.StreamIDToLabelNames
+}
+
+func (d *recordBatchLabelDecorator) Read(ctx context.Context, alloc *memoryv2.Allocator, batchSize int) (columnarv2.RecordBatch, error) {
+	rb, err := d.inner.Read(ctx, alloc, batchSize)
+	if err != nil {
+		return columnarv2.RecordBatch{}, err
+	}
+
+	if d.streamIDColumnIndex == -1 {
+		// We aren't reading any stream IDs this time
+		return rb, nil
+	}
+
+	var arrs []columnarv2.Array
+	for i := range rb.NumCols() {
+		arrs = append(arrs, rb.Column(int64(i)))
+	}
+
+	labelsArr := columnarv2.NewUTF8Builder(alloc)
+
+	streamIDCol := arrs[d.streamIDColumnIndex].(*columnarv2.Number[int64])
+	for i := range streamIDCol.Len() {
+		streamID := streamIDCol.Get(i)
+		labelNames, ok := d.streamIDToLabelNames[streamID]
+		if !ok {
+			labelsArr.AppendNull()
+			continue
+		}
+		labelsArr.AppendValue([]byte(strings.Join(labelNames, ",")))
+	}
+	arrs = append(arrs, labelsArr.BuildArray())
+
+	rb = columnarv2.NewRecordBatch(rb.NumRows(), arrs)
+	return rb, nil
 }
