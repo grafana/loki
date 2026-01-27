@@ -6,13 +6,14 @@ package expressionpb
 import (
 	encoding_binary "encoding/binary"
 	fmt "fmt"
-	proto "github.com/gogo/protobuf/proto"
 	io "io"
 	math "math"
 	math_bits "math/bits"
 	reflect "reflect"
 	strconv "strconv"
 	strings "strings"
+
+	proto "github.com/gogo/protobuf/proto"
 )
 
 // Reference imports to suppress errors if they are not otherwise used.
@@ -64,28 +65,32 @@ func (UnaryOp) EnumDescriptor() ([]byte, []int) {
 type BinaryOp int32
 
 const (
-	BINARY_OP_INVALID           BinaryOp = 0
-	BINARY_OP_EQ                BinaryOp = 1
-	BINARY_OP_NEQ               BinaryOp = 2
-	BINARY_OP_GT                BinaryOp = 3
-	BINARY_OP_GTE               BinaryOp = 4
-	BINARY_OP_LT                BinaryOp = 5
-	BINARY_OP_LTE               BinaryOp = 6
-	BINARY_OP_AND               BinaryOp = 7
-	BINARY_OP_OR                BinaryOp = 8
-	BINARY_OP_XOR               BinaryOp = 9
-	BINARY_OP_ADD               BinaryOp = 10
-	BINARY_OP_SUB               BinaryOp = 11
-	BINARY_OP_MUL               BinaryOp = 12
-	BINARY_OP_DIV               BinaryOp = 13
-	BINARY_OP_MOD               BinaryOp = 14
-	BINARY_OP_POW               BinaryOp = 15
-	BINARY_OP_MATCH_SUBSTR      BinaryOp = 16
-	BINARY_OP_NOT_MATCH_SUBSTR  BinaryOp = 17
-	BINARY_OP_MATCH_RE          BinaryOp = 18
-	BINARY_OP_NOT_MATCH_RE      BinaryOp = 19
-	BINARY_OP_MATCH_PATTERN     BinaryOp = 20
-	BINARY_OP_NOT_MATCH_PATTERN BinaryOp = 21
+	BINARY_OP_INVALID                           BinaryOp = 0
+	BINARY_OP_EQ                                BinaryOp = 1
+	BINARY_OP_NEQ                               BinaryOp = 2
+	BINARY_OP_GT                                BinaryOp = 3
+	BINARY_OP_GTE                               BinaryOp = 4
+	BINARY_OP_LT                                BinaryOp = 5
+	BINARY_OP_LTE                               BinaryOp = 6
+	BINARY_OP_AND                               BinaryOp = 7
+	BINARY_OP_OR                                BinaryOp = 8
+	BINARY_OP_XOR                               BinaryOp = 9
+	BINARY_OP_ADD                               BinaryOp = 10
+	BINARY_OP_SUB                               BinaryOp = 11
+	BINARY_OP_MUL                               BinaryOp = 12
+	BINARY_OP_DIV                               BinaryOp = 13
+	BINARY_OP_MOD                               BinaryOp = 14
+	BINARY_OP_POW                               BinaryOp = 15
+	BINARY_OP_MATCH_SUBSTR                      BinaryOp = 16
+	BINARY_OP_NOT_MATCH_SUBSTR                  BinaryOp = 17
+	BINARY_OP_MATCH_RE                          BinaryOp = 18
+	BINARY_OP_NOT_MATCH_RE                      BinaryOp = 19
+	BINARY_OP_MATCH_PATTERN                     BinaryOp = 20
+	BINARY_OP_NOT_MATCH_PATTERN                 BinaryOp = 21
+	BINARY_OP_EQ_CASE_INSENSITIVE               BinaryOp = 22
+	BINARY_OP_NEQ_CASE_INSENSITIVE              BinaryOp = 23
+	BINARY_OP_MATCH_SUBSTR_CASE_INSENSITIVE     BinaryOp = 24
+	BINARY_OP_NOT_MATCH_SUBSTR_CASE_INSENSITIVE BinaryOp = 25
 )
 
 var BinaryOp_name = map[int32]string{
@@ -111,31 +116,39 @@ var BinaryOp_name = map[int32]string{
 	19: "BINARY_OP_NOT_MATCH_RE",
 	20: "BINARY_OP_MATCH_PATTERN",
 	21: "BINARY_OP_NOT_MATCH_PATTERN",
+	22: "BINARY_OP_EQ_CASE_INSENSITIVE",
+	23: "BINARY_OP_NEQ_CASE_INSENSITIVE",
+	24: "BINARY_OP_MATCH_SUBSTR_CASE_INSENSITIVE",
+	25: "BINARY_OP_NOT_MATCH_SUBSTR_CASE_INSENSITIVE",
 }
 
 var BinaryOp_value = map[string]int32{
-	"BINARY_OP_INVALID":           0,
-	"BINARY_OP_EQ":                1,
-	"BINARY_OP_NEQ":               2,
-	"BINARY_OP_GT":                3,
-	"BINARY_OP_GTE":               4,
-	"BINARY_OP_LT":                5,
-	"BINARY_OP_LTE":               6,
-	"BINARY_OP_AND":               7,
-	"BINARY_OP_OR":                8,
-	"BINARY_OP_XOR":               9,
-	"BINARY_OP_ADD":               10,
-	"BINARY_OP_SUB":               11,
-	"BINARY_OP_MUL":               12,
-	"BINARY_OP_DIV":               13,
-	"BINARY_OP_MOD":               14,
-	"BINARY_OP_POW":               15,
-	"BINARY_OP_MATCH_SUBSTR":      16,
-	"BINARY_OP_NOT_MATCH_SUBSTR":  17,
-	"BINARY_OP_MATCH_RE":          18,
-	"BINARY_OP_NOT_MATCH_RE":      19,
-	"BINARY_OP_MATCH_PATTERN":     20,
-	"BINARY_OP_NOT_MATCH_PATTERN": 21,
+	"BINARY_OP_INVALID":                           0,
+	"BINARY_OP_EQ":                                1,
+	"BINARY_OP_NEQ":                               2,
+	"BINARY_OP_GT":                                3,
+	"BINARY_OP_GTE":                               4,
+	"BINARY_OP_LT":                                5,
+	"BINARY_OP_LTE":                               6,
+	"BINARY_OP_AND":                               7,
+	"BINARY_OP_OR":                                8,
+	"BINARY_OP_XOR":                               9,
+	"BINARY_OP_ADD":                               10,
+	"BINARY_OP_SUB":                               11,
+	"BINARY_OP_MUL":                               12,
+	"BINARY_OP_DIV":                               13,
+	"BINARY_OP_MOD":                               14,
+	"BINARY_OP_POW":                               15,
+	"BINARY_OP_MATCH_SUBSTR":                      16,
+	"BINARY_OP_NOT_MATCH_SUBSTR":                  17,
+	"BINARY_OP_MATCH_RE":                          18,
+	"BINARY_OP_NOT_MATCH_RE":                      19,
+	"BINARY_OP_MATCH_PATTERN":                     20,
+	"BINARY_OP_NOT_MATCH_PATTERN":                 21,
+	"BINARY_OP_EQ_CASE_INSENSITIVE":               22,
+	"BINARY_OP_NEQ_CASE_INSENSITIVE":              23,
+	"BINARY_OP_MATCH_SUBSTR_CASE_INSENSITIVE":     24,
+	"BINARY_OP_NOT_MATCH_SUBSTR_CASE_INSENSITIVE": 25,
 }
 
 func (BinaryOp) EnumDescriptor() ([]byte, []int) {
