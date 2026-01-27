@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/columnar"
+	"github.com/grafana/loki/v3/pkg/columnar/columnartest"
 	"github.com/grafana/loki/v3/pkg/memory"
 )
 
@@ -15,121 +16,63 @@ func TestConcat_Null(t *testing.T) {
 
 	var in []columnar.Array
 	for _, l := range []int{10, 5, 32} {
-		validity := memory.MakeBitmap(&alloc, l)
-		validity.AppendCount(false, l)
-		in = append(in, columnar.MakeNull(validity))
+		values := make([]any, l)
+		in = append(in, columnartest.Array(t, columnar.KindNull, &alloc, values...))
 	}
 
-	out, err := columnar.Concat(&alloc, in)
+	expect := columnartest.Array(t, columnar.KindNull, &alloc, make([]any, 10+5+32)...)
+	actual, err := columnar.Concat(&alloc, in)
 	require.NoError(t, err)
-	require.Equal(t, columnar.KindNull, out.Kind())
-	require.Equal(t, 10+5+32, out.Len())
-	require.Equal(t, 10+5+32, out.Nulls())
+	columnartest.RequireArraysEqual(t, expect, actual)
 }
 
 func TestConcat_Bool(t *testing.T) {
 	var alloc memory.Allocator
 
-	inputs := []boolBuilder{
-		{values: []bool{true, false, false, true}, validity: nil},
-		{values: nil, validity: nil},
-		{values: []bool{false, true}, validity: []bool{true, false}},
+	in := []columnar.Array{
+		columnartest.Array(t, columnar.KindBool, &alloc, true, false, false, true),
+		columnartest.Array(t, columnar.KindBool, &alloc),
+		columnartest.Array(t, columnar.KindBool, &alloc, false, nil),
 	}
 
-	var (
-		expectValues   = []bool{true, false, false, true, false, true}
-		expectValidity = []bool{true, true, true, true, true, false}
-	)
-
-	var in []columnar.Array
-	for _, inputArray := range inputs {
-		in = append(in, inputArray.Build(&alloc))
-	}
-
-	out, err := columnar.Concat(&alloc, in)
+	expect := columnartest.Array(t, columnar.KindBool, &alloc, true, false, false, true, false, nil)
+	actual, err := columnar.Concat(&alloc, in)
 	require.NoError(t, err)
-	require.Equal(t, columnar.KindBool, out.Kind())
-	require.Equal(t, len(expectValues), out.Len())
-	require.Equal(t, 1, out.Nulls())
-
-	for i := range len(expectValues) {
-		if !expectValidity[i] {
-			require.True(t, out.IsNull(i), "expected null at index %d", i)
-		} else {
-			require.False(t, out.IsNull(i), "expected non-null at index %d", i)
-			require.Equal(t, expectValues[i], out.(*columnar.Bool).Get(i), "expected %t at index %d", expectValues[i], i)
-		}
-	}
+	columnartest.RequireArraysEqual(t, expect, actual)
 }
 
 func TestConcat_Int64(t *testing.T) {
 	var alloc memory.Allocator
 
-	inputs := []numberBuilder[int64]{
-		{values: []int64{1, 2, 3, 4}, validity: nil},
-		{values: nil, validity: nil},
-		{values: []int64{5, 6}, validity: []bool{true, false}},
+	in := []columnar.Array{
+		columnartest.Array(t, columnar.KindInt64, &alloc, 1, 2, 3, 4),
+		columnartest.Array(t, columnar.KindInt64, &alloc),
+		columnartest.Array(t, columnar.KindInt64, &alloc, 5, nil),
 	}
 
-	var (
-		expectValues   = []int64{1, 2, 3, 4, 5, 6}
-		expectValidity = []bool{true, true, true, true, true, false}
-	)
-
-	var in []columnar.Array
-	for _, inputArray := range inputs {
-		in = append(in, inputArray.Build(&alloc))
-	}
-
-	out, err := columnar.Concat(&alloc, in)
+	expect := columnartest.Array(t, columnar.KindInt64, &alloc, 1, 2, 3, 4, 5, nil)
+	actual, err := columnar.Concat(&alloc, in)
 	require.NoError(t, err)
-	require.Equal(t, columnar.KindInt64, out.Kind())
-	require.Equal(t, len(expectValues), out.Len())
-	require.Equal(t, 1, out.Nulls())
-
-	for i := range len(expectValues) {
-		if !expectValidity[i] {
-			require.True(t, out.IsNull(i), "expected null at index %d", i)
-		} else {
-			require.False(t, out.IsNull(i), "expected non-null at index %d", i)
-			require.Equal(t, expectValues[i], out.(*columnar.Number[int64]).Get(i), "expected %d at index %d", expectValues[i], i)
-		}
-	}
+	columnartest.RequireArraysEqual(t, expect, actual)
 }
 
 func TestConcat_UTF8(t *testing.T) {
 	var alloc memory.Allocator
 
-	inputs := []utf8Builder{
-		{values: []string{"hello", "world", "foo", "bar"}, validity: nil},
-		{values: nil, validity: nil},
-		{values: []string{"baz", "qux"}, validity: []bool{true, false}},
+	in := []columnar.Array{
+		columnartest.Array(t, columnar.KindUTF8, &alloc, "hello", "world", "foo", "bar"),
+		columnartest.Array(t, columnar.KindUTF8, &alloc),
+		columnartest.Array(t, columnar.KindUTF8, &alloc, "baz", nil),
 	}
 
-	var (
-		expectValues   = []string{"hello", "world", "foo", "bar", "baz", "qux"}
-		expectValidity = []bool{true, true, true, true, true, false}
+	expect := columnartest.Array(
+		t, columnar.KindUTF8, &alloc,
+		"hello", "world", "foo", "bar", "baz", nil,
 	)
 
-	var in []columnar.Array
-	for _, inputArray := range inputs {
-		in = append(in, inputArray.Build(&alloc))
-	}
-
-	out, err := columnar.Concat(&alloc, in)
+	actual, err := columnar.Concat(&alloc, in)
 	require.NoError(t, err)
-	require.Equal(t, columnar.KindUTF8, out.Kind())
-	require.Equal(t, len(expectValues), out.Len())
-	require.Equal(t, 1, out.Nulls())
-
-	for i := range len(expectValues) {
-		if !expectValidity[i] {
-			require.True(t, out.IsNull(i), "expected null at index %d", i)
-		} else {
-			require.False(t, out.IsNull(i), "expected non-null at index %d", i)
-			require.Equal(t, expectValues[i], string(out.(*columnar.UTF8).Get(i)), "expected %s at index %d", expectValues[i], i)
-		}
-	}
+	columnartest.RequireArraysEqual(t, expect, actual)
 }
 
 func BenchmarkConcat(b *testing.B) {
@@ -227,14 +170,20 @@ func BenchmarkConcat(b *testing.B) {
 
 		rng := rand.New(rand.NewSource(42))
 
-		var builders []utf8Builder
+		var builders []*columnar.UTF8Builder
 		var totalDataBytes int64
 
 		for range 128 {
-			var builder utf8Builder
+			builder := columnar.NewUTF8Builder(&alloc)
 
 			// Generate 128 strings that total ~26KB
 			for j := range 128 {
+				// Every 10th element is null.
+				if j%10 == 0 {
+					builder.AppendNull()
+					continue
+				}
+
 				// Random string length between 100-300 bytes (avg ~200 bytes)
 				length := 100 + rng.Intn(201)
 				str := make([]byte, length)
@@ -242,8 +191,8 @@ func BenchmarkConcat(b *testing.B) {
 					// Generate printable ASCII characters (space to ~)
 					str[i] = byte(32 + rng.Intn(95))
 				}
-				builder.values = append(builder.values, string(str))
-				builder.validity = append(builder.validity, j%10 != 0) // Every 10th element is null
+
+				builder.AppendValue(str)
 				totalDataBytes += int64(length)
 			}
 
@@ -252,7 +201,7 @@ func BenchmarkConcat(b *testing.B) {
 
 		var in []columnar.Array
 		for _, builder := range builders {
-			in = append(in, builder.Build(&alloc))
+			in = append(in, builder.Build())
 		}
 
 		var loopAlloc memory.Allocator
@@ -273,67 +222,4 @@ func BenchmarkConcat(b *testing.B) {
 		b.SetBytes(totalDataBytes + int64(128*129*4) + int64(128*128/8))
 		b.ReportMetric(float64(b.N*128*128)/b.Elapsed().Seconds(), "values/s")
 	})
-}
-
-type boolBuilder struct {
-	values   []bool
-	validity []bool
-}
-
-func (b *boolBuilder) Build(alloc *memory.Allocator) columnar.Array {
-	values := memory.MakeBitmap(alloc, len(b.values))
-	values.AppendValues(b.values...)
-
-	var validity memory.Bitmap
-	if len(b.validity) > 0 {
-		validity = memory.MakeBitmap(alloc, len(b.validity))
-		validity.AppendValues(b.validity...)
-	}
-
-	return columnar.MakeBool(values, validity)
-}
-
-type numberBuilder[T columnar.Numeric] struct {
-	values   []T
-	validity []bool
-}
-
-func (b *numberBuilder[T]) Build(alloc *memory.Allocator) columnar.Array {
-	var validity memory.Bitmap
-	if len(b.validity) > 0 {
-		validity = memory.MakeBitmap(alloc, len(b.validity))
-		validity.AppendValues(b.validity...)
-	}
-
-	return columnar.MakeNumber[T](b.values, validity)
-}
-
-type utf8Builder struct {
-	values   []string
-	validity []bool
-}
-
-func (b *utf8Builder) Build(alloc *memory.Allocator) columnar.Array {
-	// Build data and offsets for UTF8 array
-	var totalBytes int
-	for _, s := range b.values {
-		totalBytes += len(s)
-	}
-
-	data := memory.MakeBuffer[byte](alloc, totalBytes)
-	offsets := memory.MakeBuffer[int32](alloc, len(b.values)+1)
-
-	offsets.Append(0)
-	for _, s := range b.values {
-		data.Append([]byte(s)...)
-		offsets.Append(int32(data.Len()))
-	}
-
-	var validity memory.Bitmap
-	if len(b.validity) > 0 {
-		validity = memory.MakeBitmap(alloc, len(b.validity))
-		validity.AppendValues(b.validity...)
-	}
-
-	return columnar.MakeUTF8(data.Data(), offsets.Data(), validity)
 }
