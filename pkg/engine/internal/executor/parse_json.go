@@ -238,7 +238,10 @@ func appendSanitized(to, key []byte) []byte {
 		to = append(to, '_')
 	}
 
-	for _, r := range bytes.Runes(key) {
+	for i := 0; i < len(key); {
+		r, size := utf8.DecodeRune(key[i:])
+		i += size
+
 		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && r != '_' && (r < '0' || r > '9') {
 			to = append(to, jsonSpacer)
 			continue
