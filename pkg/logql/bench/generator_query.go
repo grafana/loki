@@ -69,6 +69,23 @@ func (c *GeneratorConfig) buildLabelSelector(matchers []labelMatcher) string {
 	return "{" + strings.Join(parts, ", ") + "}"
 }
 
+func (c *GeneratorConfig) buildRegexLabelSelector(matchers []labelMatcher, caseInsensitive bool) string {
+	var parts []string
+	for i, m := range matchers {
+		if i == 0 {
+			if caseInsensitive {
+				parts = append(parts, fmt.Sprintf(`%s=~"(?i)%s"`, m.name, m.value))
+			} else {
+				parts = append(parts, fmt.Sprintf(`%s=~"%s"`, m.name, m.value))
+			}
+			continue
+		}
+
+		parts = append(parts, fmt.Sprintf(`%s="%s"`, m.name, m.value))
+	}
+	return "{" + strings.Join(parts, ", ") + "}"
+}
+
 func (c *GeneratorConfig) generateLabelCombinations() [][]labelMatcher {
 	rnd := c.NewRand()
 
@@ -185,8 +202,14 @@ func (g *TestCaseGenerator) Generate() []TestCase {
 
 	// Basic label selector queries with line filters and structured metadata
 	if g.cfg.RangeType != "instant" { // log queries only support range type
-		for _, combo := range labelCombos {
+		for i, combo := range labelCombos {
 			selector := g.logGenCfg.buildLabelSelector(combo)
+			if i%2 == 0 {
+				selector = g.logGenCfg.buildRegexLabelSelector(combo, false)
+			}
+			if i%3 == 0 {
+				selector = g.logGenCfg.buildRegexLabelSelector(combo, true)
+			}
 
 			// Basic selector
 			addBidirectional(selector, g.logGenCfg.StartTime, end)
@@ -202,20 +225,17 @@ func (g *TestCaseGenerator) Generate() []TestCase {
 			addBidirectional(selector+` |~ "error|exception" | detected_level="error"`, g.logGenCfg.StartTime, end)
 			addBidirectional(selector+` | json | duration_seconds > 0.1 | detected_level!="debug"`, g.logGenCfg.StartTime, end)
 			addBidirectional(selector+` | logfmt | level="error" | detected_level="error"`, g.logGenCfg.StartTime, end)
+
+			// Logs Drilldown queries -- common patterns seen from drilldown
+			addBidirectional(selector+` |~ "(?i)error"`, g.logGenCfg.StartTime, end)
+			addBidirectional(selector+` !~ "(?i)debug"`, g.logGenCfg.StartTime, end)
+			addBidirectional(selector+` | json | logfmt | drop __error__, __error_details__`, g.logGenCfg.StartTime, end)
+			addBidirectional(selector+` | json | logfmt | drop __error__, __error_details__ | level="error"`, g.logGenCfg.StartTime, end)
+			addBidirectional(selector+` | json | level="error" or level="warn"`, g.logGenCfg.StartTime, end)
+			addBidirectional(selector+` |~ "(?i)error" | json | drop __error__, __error_details__ | status_code >= 500`, g.logGenCfg.StartTime, end)
+			addBidirectional(selector+` | detected_level="error" |~ "(?i).*timeout.*"`, g.logGenCfg.StartTime, end)
+			addBidirectional(selector+` | detected_level=~"error|warn" |~ "(?i)exception"`, g.logGenCfg.StartTime, end)
 		}
-
-		// Case-insensitive label matcher
-		addBidirectional(`{service_name=~"(?i)web-server"}`, g.logGenCfg.StartTime, end)
-
-		// Logs Drilldown queries -- common patterns seen from drilldown
-		addBidirectional(`{service_name="web-server"} |~ "(?i)error"`, g.logGenCfg.StartTime, end)
-		addBidirectional(`{region="us-east-1"} !~ "(?i)debug"`, g.logGenCfg.StartTime, end)
-		addBidirectional(`{service_name="web-server"} | json | logfmt | drop __error__, __error_details__`, g.logGenCfg.StartTime, end)
-		addBidirectional(`{service_name="database"} | json | logfmt | drop __error__, __error_details__ | level="error"`, g.logGenCfg.StartTime, end)
-		addBidirectional(`{service_name="web-server"} | json | level="error" or level="warn"`, g.logGenCfg.StartTime, end)
-		addBidirectional(`{service_name="web-server"} |~ "(?i)error" | json | drop __error__, __error_details__ | status_code >= 500`, g.logGenCfg.StartTime, end)
-		addBidirectional(`{region="us-east-1", env="prod"} | detected_level="error" |~ "(?i).*timeout.*"`, g.logGenCfg.StartTime, end)
-		addBidirectional(`{service_name="web-server"} | detected_level=~"error|warn" |~ "(?i)exception" `, g.logGenCfg.StartTime, end)
 	}
 
 	for _, combo := range labelCombos {
