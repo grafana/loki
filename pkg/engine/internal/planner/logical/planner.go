@@ -107,7 +107,7 @@ func buildPlanForLogQuery(
 			// Collect following filters only before we met any parse stage.
 			if !hasLogfmtParser && !hasJSONParser && !hasRegexParser {
 				val, innerErr := convertLabelFilter(e.LabelFilterer)
-				if innerErr == nil {
+				if innerErr != nil {
 					err = innerErr
 					return false
 				}
