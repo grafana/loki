@@ -4,11 +4,12 @@ import "strings"
 
 // glob is an internal type to store options during globbing.
 type glob struct {
-	caseInsensitive  bool
+	caseInsensitive       bool
 	failOnIOErrors        bool
 	failOnPatternNotExist bool
 	filesOnly             bool
 	noFollow              bool
+	noHidden              bool
 }
 
 // GlobOption represents a setting that can be passed to Glob, GlobWalk, and
@@ -90,6 +91,30 @@ func WithNoFollow() GlobOption {
 	}
 }
 
+// WithNoHidden is an option that can be passed to Glob, GlobWalk, or
+// FilepathGlob. If passed, doublestar will not match hidden files and
+// directories (those starting with a dot) when using wildcards. This follows
+// traditional shell glob behavior where `*` or a `?` at the start will not
+// match dotfiles by default.
+//
+// Hidden files can still be matched by explicitly including them in the
+// pattern. For example, `.*` will match hidden files, and `.config/**` will
+// match files inside the .config directory.
+//
+// The rule is:
+//   - For `**`: do not descend into hidden directories
+//   - For `*` or a pattern starting with `?`: do not match dotfiles or
+//     directories
+//
+// On Windows, doublestar will check the file attributes and avoid hidden files
+// and directories this way, instead of matching the filename. Therefore, any
+// pattern with a `*` or `?` could potentially match a hidden file/directory.
+func WithNoHidden() GlobOption {
+	return func(g *glob) {
+		g.noHidden = true
+	}
+}
+
 // forwardErrIfFailOnIOErrors is used to wrap the return values of I/O
 // functions. When failOnIOErrors is enabled, it will return err; otherwise, it
 // always returns nil.
@@ -146,6 +171,13 @@ func (g *glob) GoString() string {
 			b.WriteString(", ")
 		}
 		b.WriteString("WithNoFollow")
+		hasOpts = true
+	}
+	if g.noHidden {
+		if hasOpts {
+			b.WriteString(", ")
+		}
+		b.WriteString("WithNoHidden")
 		hasOpts = true
 	}
 
