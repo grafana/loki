@@ -111,6 +111,8 @@ func (b *Builder) getIndexPointerBuilderForTenant(tenantID string) *indexpointer
 	tenantIndexPointers = indexpointers.NewBuilder(b.metrics.indexPointers, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows)
 	tenantIndexPointers.SetTenant(tenantID)
 
+	b.indexPointers[tenantID] = tenantIndexPointers
+
 	return tenantIndexPointers
 }
 
@@ -153,6 +155,7 @@ func (b *Builder) getStreamsBuilderForTenant(tenantID string) *streams.Builder {
 
 	tenantStreams = streams.NewBuilder(b.metrics.streams, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows)
 	tenantStreams.SetTenant(tenantID)
+
 	b.streams[tenantID] = tenantStreams
 
 	return tenantStreams
@@ -213,6 +216,7 @@ func (b *Builder) getPointersBuilderForTenant(tenantID string) *pointers.Builder
 
 	tenantPointers = pointers.NewBuilder(b.metrics.pointers, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows)
 	tenantPointers.SetTenant(tenantID)
+
 	b.pointers[tenantID] = tenantPointers
 
 	return tenantPointers
