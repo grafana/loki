@@ -91,7 +91,6 @@ var resourceRequirementsTable = map[lokiv1.LokiStackSizeType]ComponentResources{
 				corev1.ResourceCPU:    resource.MustParse("500m"),
 				corev1.ResourceMemory: resource.MustParse("3Gi"),
 			},
-			PDBMinAvailable: 2,
 		},
 		Distributor: corev1.ResourceRequirements{
 			Requests: map[corev1.ResourceName]resource.Quantity{
@@ -149,7 +148,6 @@ var resourceRequirementsTable = map[lokiv1.LokiStackSizeType]ComponentResources{
 				corev1.ResourceCPU:    resource.MustParse("2"),
 				corev1.ResourceMemory: resource.MustParse("8Gi"),
 			},
-			PDBMinAvailable: 1,
 		},
 		Distributor: corev1.ResourceRequirements{
 			Requests: map[corev1.ResourceName]resource.Quantity{
@@ -207,7 +205,6 @@ var resourceRequirementsTable = map[lokiv1.LokiStackSizeType]ComponentResources{
 				corev1.ResourceCPU:    resource.MustParse("4"),
 				corev1.ResourceMemory: resource.MustParse("20Gi"),
 			},
-			PDBMinAvailable: 1,
 		},
 		Distributor: corev1.ResourceRequirements{
 			Requests: map[corev1.ResourceName]resource.Quantity{
@@ -265,7 +262,6 @@ var resourceRequirementsTable = map[lokiv1.LokiStackSizeType]ComponentResources{
 				corev1.ResourceCPU:    resource.MustParse("6"),
 				corev1.ResourceMemory: resource.MustParse("30Gi"),
 			},
-			PDBMinAvailable: 2,
 		},
 		Distributor: corev1.ResourceRequirements{
 			Requests: map[corev1.ResourceName]resource.Quantity{
