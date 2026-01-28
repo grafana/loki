@@ -43,7 +43,7 @@ func TestPartitionProcessor_BuilderMaxAge(t *testing.T) {
 			flusher = &mockFlusher{}
 			proc    *processor
 		)
-		proc = newProcessor(testBuilderCfg, scratch.NewMemory(), 5*time.Minute, 30*time.Minute, "topic", 1, nil, flusher, log.NewNopLogger(), reg)
+		proc = newProcessor(newTestBuilder(t, reg), 5*time.Minute, 30*time.Minute, "topic", 1, nil, flusher, log.NewNopLogger(), reg)
 
 		// Since no records have been pushed, the first append time should be zero,
 		// and no flush should have occurred.
@@ -99,26 +99,17 @@ func TestPartitionProcessor_IdleFlush(t *testing.T) {
 			flusher = &mockFlusher{}
 			proc    *processor
 		)
-		proc = newProcessor(testBuilderCfg, scratch.NewMemory(), 5*time.Minute, 30*time.Minute, "topic", 1, nil, flusher, log.NewNopLogger(), reg)
+		proc = newProcessor(newTestBuilder(t, reg), 5*time.Minute, 30*time.Minute, "topic", 1, nil, flusher, log.NewNopLogger(), reg)
 
-		// The builder is uninitialized, which means its size is also zero. No flush
-		// should occur.
+		// The idle flush timeout has not been exceeded, no flush should occur.
 		flushed, err := proc.idleFlush(ctx)
 		require.NoError(t, err)
 		require.False(t, flushed)
 		require.Equal(t, 0, flusher.flushes)
 
 		// Advance time past the idle flush time. No flush should occur because
-		// the builder is still unitialized.
+		// the builder is empty.
 		time.Sleep(6 * time.Minute)
-		flushed, err = proc.idleFlush(ctx)
-		require.NoError(t, err)
-		require.False(t, flushed)
-		require.Equal(t, 0, flusher.flushes)
-
-		// Initialize the builder. However, no flush should occur because the builder
-		// is still empty.
-		require.NoError(t, proc.initBuilder())
 		flushed, err = proc.idleFlush(ctx)
 		require.NoError(t, err)
 		require.False(t, flushed)
@@ -165,7 +156,7 @@ func TestPartitionProcessor_Flush(t *testing.T) {
 			_           = &failureFlusher{}
 			proc        *processor
 		)
-		proc = newProcessor(testBuilderCfg, scratch.NewMemory(), 5*time.Minute, 30*time.Minute, "topic", 1, nil, mockFlusher, log.NewNopLogger(), reg)
+		proc = newProcessor(newTestBuilder(t, reg), 5*time.Minute, 30*time.Minute, "topic", 1, nil, mockFlusher, log.NewNopLogger(), reg)
 		// No flush should have occurred.
 		require.Equal(t, 0, mockFlusher.flushes)
 
@@ -221,4 +212,12 @@ func newTestRecord(t *testing.T, tenant string, now time.Time) *kgo.Record {
 	rec.Value, err = stream.Marshal()
 	require.NoError(t, err)
 	return &rec
+}
+
+// newTestBuilder returns a new logsobj.Builder with registered metrics.
+func newTestBuilder(t *testing.T, reg prometheus.Registerer) *logsobj.Builder {
+	b, err := logsobj.NewBuilder(testBuilderCfg, scratch.NewMemory())
+	require.NoError(t, err)
+	require.NoError(t, b.RegisterMetrics(reg))
+	return b
 }
