@@ -5,43 +5,42 @@ import (
 	"testing"
 
 	"github.com/grafana/loki/v3/pkg/columnar"
+	"github.com/grafana/loki/v3/pkg/columnar/columnartest"
 	"github.com/grafana/loki/v3/pkg/memory"
 	"github.com/stretchr/testify/require"
 )
 
 func TestSubstrInsensitive(t *testing.T) {
 	alloc := memory.MakeAllocator(nil)
-	validity1 := memory.MakeBitmap(alloc, 1)
-	validity1.Append(true)
 
-	trueBitmap := memory.MakeBitmap(alloc, 1)
-	trueBitmap.Append(true)
-	true1 := columnar.MakeBool(trueBitmap, validity1)
-	falseBitmap := memory.MakeBitmap(alloc, 1)
-	falseBitmap.Append(false)
-	false1 := columnar.MakeBool(falseBitmap, validity1)
+	singleValueHaystack := columnartest.Array(t, columnar.KindUTF8, alloc, "test")
+
+	emptyNeedle := columnartest.Scalar(t, columnar.KindUTF8, "")
+	singleValueNeedle := columnartest.Scalar(t, columnar.KindUTF8, "test")
+	singleUnknownValueNeedle := columnartest.Scalar(t, columnar.KindUTF8, "notest")
+	singleUpperCaseValueNeedle := columnartest.Scalar(t, columnar.KindUTF8, "TEST")
+
+	singleTrue := columnartest.Array(t, columnar.KindBool, alloc, true)
+	singleFalse := columnartest.Array(t, columnar.KindBool, alloc, false)
 
 	cases := []struct {
 		name     string
-		haystack *columnar.UTF8
-		needle   string
-		expected *columnar.Bool
+		haystack columnar.Datum
+		needle   columnar.Datum
+		expected columnar.Datum
 	}{
-		{name: "empty_haystack", haystack: columnar.MakeUTF8([]byte{}, []int32{}, memory.MakeBitmap(alloc, 0)), needle: "", expected: columnar.MakeBool(memory.MakeBitmap(alloc, 0), memory.MakeBitmap(alloc, 0))},
-		{name: "empty_needle", haystack: columnar.MakeUTF8([]byte("test"), []int32{0, 4}, validity1), needle: "", expected: true1},
-		{name: "match", haystack: columnar.MakeUTF8([]byte("test"), []int32{0, 4}, validity1), needle: "test", expected: true1},
-		{name: "not match", haystack: columnar.MakeUTF8([]byte("test"), []int32{0, 4}, validity1), needle: "notest", expected: false1},
-		{name: "case insensitive match", haystack: columnar.MakeUTF8([]byte("test"), []int32{0, 4}, validity1), needle: "Test", expected: true1},
+		{name: "empty_haystack", haystack: columnartest.Array(t, columnar.KindUTF8, alloc), needle: columnartest.Scalar(t, columnar.KindUTF8, "test"), expected: columnartest.Array(t, columnar.KindBool, alloc)},
+		{name: "empty_needle", haystack: singleValueHaystack, needle: emptyNeedle, expected: singleTrue},
+		{name: "match", haystack: singleValueHaystack, needle: singleValueNeedle, expected: singleTrue},
+		{name: "not match", haystack: singleValueHaystack, needle: singleUnknownValueNeedle, expected: singleFalse},
+		{name: "case insensitive match", haystack: singleValueHaystack, needle: singleUpperCaseValueNeedle, expected: singleTrue},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			alloc.Reclaim()
-			results, err := SubstrInsensitiveAS(alloc, c.haystack, columnar.UTF8Scalar{Value: []byte(c.needle), Null: false})
+			results, err := SubstrInsensitive(alloc, c.haystack, c.needle)
 			require.NoError(t, err)
-			require.Equal(t, results.Len(), c.haystack.Len())
-			if results.Len() > 0 {
-				require.Equal(t, c.expected.Get(0), results.Get(0))
-			}
+			require.Equal(t, c.expected, results)
 		})
 	}
 }
@@ -50,7 +49,7 @@ func BenchmarkSubstrInsensitive(b *testing.B) {
 	alloc := memory.MakeAllocator(nil)
 	line := strings.Repeat("A", 100) + "target" + strings.Repeat("B", 100)
 	haystack := columnar.MakeUTF8([]byte(line), []int32{0, int32(len(line))}, memory.MakeBitmap(alloc, 1))
-	needle := columnar.UTF8Scalar{Value: []byte("TaRgEt"), Null: false}
+	needle := columnartest.Scalar(b, columnar.KindUTF8, "TaRgEt")
 
 	var totalSize int
 	for i := range haystack.Len() {
@@ -59,7 +58,7 @@ func BenchmarkSubstrInsensitive(b *testing.B) {
 
 	for b.Loop() {
 		alloc.Reclaim()
-		SubstrInsensitiveAS(alloc, haystack, needle)
+		SubstrInsensitive(alloc, haystack, needle)
 	}
-	b.SetBytes(int64(totalSize) * int64(b.N))
+	b.SetBytes(int64(totalSize))
 }
