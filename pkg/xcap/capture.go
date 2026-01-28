@@ -86,9 +86,11 @@ func (c *Capture) Regions() []*Region {
 // to all root regions of the capture.
 func (c *Capture) LinkParent(parent *Region) {
 	c.mu.RLock()
-	defer c.mu.RUnlock()
+	regions := make([]*Region, len(c.regions))
+	copy(regions, c.regions)
+	c.mu.RUnlock()
 
-	for _, region := range c.regions {
+	for _, region := range regions {
 		region.mu.Lock()
 		if region.parentID.IsZero() {
 			region.parentID = parent.id
