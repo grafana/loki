@@ -18,7 +18,7 @@ require (
 	github.com/NYTimes/gziphandler v1.1.1
 	github.com/Workiva/go-datastructures v1.1.7
 	github.com/alecthomas/kingpin/v2 v2.4.0
-	github.com/alicebob/miniredis/v2 v2.35.0
+	github.com/alicebob/miniredis/v2 v2.36.1
 	github.com/aliyun/aliyun-oss-go-sdk v3.0.2+incompatible
 	github.com/apache/cassandra-gocql-driver/v2 v2.0.0
 	github.com/aws/aws-sdk-go-v2 v1.41.1

@@ -822,3 +822,41 @@ func (db *RedisDB) HllMerge(destKey string, sourceKeys ...string) error {
 func (m *Miniredis) Copy(srcDB int, src string, destDB int, dest string) error {
 	return m.copy(m.DB(srcDB), src, m.DB(destDB), dest)
 }
+
+func (m *Miniredis) SCard(key string) (int, error) {
+	return m.DB(m.selectedDB).SCard(key)
+}
+
+func (db *RedisDB) SCard(key string) (int, error) {
+	db.master.Lock()
+	defer db.master.Unlock()
+	if !db.exists(key) {
+		return 0, nil
+	}
+	if db.t(key) != "set" {
+		return 0, ErrWrongType
+	}
+	return len(db.setMembers(key)), nil
+}
+
+// return "" if there were no members
+func (m *Miniredis) SRandMember(key string) (string, error) {
+	return m.DB(m.selectedDB).SRandMember(key)
+}
+
+func (db *RedisDB) SRandMember(key string) (string, error) {
+	db.master.Lock()
+	defer db.master.Unlock()
+	if !db.exists(key) {
+		return "", nil
+	}
+	if db.t(key) != "set" {
+		return "", ErrWrongType
+	}
+	members := db.setMembers(key)
+	if len(members) == 0 {
+		return "", nil
+	}
+	db.master.shuffle(members)
+	return members[0], nil
+}
