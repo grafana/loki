@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
 	"github.com/twmb/franz-go/pkg/kgo"
 
@@ -129,10 +128,6 @@ func (m *mockBuilder) Flush() (*dataobj.Object, io.Closer, error) {
 
 func (m *mockBuilder) TimeRanges() []multitenancy.TimeRange {
 	return m.builder.TimeRanges()
-}
-
-func (m *mockBuilder) UnregisterMetrics(r prometheus.Registerer) {
-	m.builder.UnregisterMetrics(r)
 }
 
 // A mockCommitter implements the committer interface for tests.

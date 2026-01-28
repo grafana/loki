@@ -22,64 +22,71 @@ import (
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
-// builder allows mocking of [logsobj.Builder] in tests.
+// A builder allows mocking of [logsobj.Builder] in tests.
 type builder interface {
 	Append(tenant string, stream logproto.Stream) error
 	GetEstimatedSize() int
 	Flush() (*dataobj.Object, io.Closer, error)
 	TimeRanges() []multitenancy.TimeRange
-	UnregisterMetrics(prometheus.Registerer)
 	CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataobj.Object, io.Closer, error)
 }
 
-// flusher allows mocking of flushes in tests.
+// A flusher allows mocking of flushes in tests.
 type flusher interface {
 	FlushAsync(ctx context.Context, builder builder, startTime time.Time, offset int64, done func(error))
 }
 
-type partitionProcessor struct {
+// A processor receives records and builds data objects from them.
+type processor struct {
 	*services.BasicService
+	builder     builder
+	decoder     *kafka.Decoder
+	recordsChan chan *kgo.Record
+	flusher     flusher
 
-	// Kafka client and topic/partition info
-	topic     string
-	partition int32
-	// lastRecord contains the last record appended to the builder. It is used
-	// to commit the correct offset after a flush.
-	lastRecord *kgo.Record
-	builder    builder
-	decoder    *kafka.Decoder
+	// offset contains the offset of the last record appended to the data object
+	// builder. It is used to commit the correct offset after a flush.
+	offset int64
 
-	// Builder initialization
-	builderOnce  sync.Once
-	builderCfg   logsobj.BuilderConfig
-	scratchStore scratch.Store
-
-	// Idle stream handling
+	// idleFlushTimeout is the maximum amount of time to wait for more data. If no
+	// records are received within this timeout, the current data object builder
+	// is flushed. Most of the time, this timeout occurs when a partition is
+	// marked as inactive in preparation for a scale down.
 	idleFlushTimeout time.Duration
-	// Handling flushing dataobjs even if they are not full or idle for too long.
+
+	// maxBuilderAge is the maximum age a data object builder can reach before it
+	// must be flushed. This happens if a partition does not receive enough data
+	// to reach the target size within the allocated time. We would rather flush
+	// a small data object and compact it later then wait for more data to arrive
+	// and delay querying.
 	maxBuilderAge time.Duration
 
-	// lastModified is used to know when the idle is exceeded.
-	// The initial value is zero and must be reset to zero after each flush.
-	lastModified time.Time
+	// firstAppend tracks the wall clock time of the first append to the data
+	// object builder. It is used to know if the builder has exceeded the
+	// maximum age. It must be reset after each flush.
+	firstAppend time.Time
 
-	// earliestRecordTime tracks the earliest timestamp all the records Appended to the builder for each object.
+	// lastAppend tracks the wall clock time of the last append to the data
+	// object builder. It is used to know if the builder has exceeded the
+	// idle timeout. It must be reset after each flush.
+	lastAppend time.Time
+
+	// earliestRecordTime tracks the timestamp of the earliest record appended
+	// to the data object builder. It is required for the metastore index.
 	earliestRecordTime time.Time
-	// firstAppendTime tracks the time of the first append to the builder, as `earliestRecordTime` is highly influenced by scenarios of severe lagging.
-	firstAppendTime time.Time
 
 	// Metrics
 	metrics *partitionOffsetMetrics
+	logger  log.Logger
+	reg     prometheus.Registerer
 
-	// Control and coordination
-	reg    prometheus.Registerer
-	logger log.Logger
-
-	recordsChan chan *kgo.Record
-	flusher     flusher
+	// TODO(grobinson): Will replace with a builder factory.
+	builderCfg   logsobj.BuilderConfig
+	scratchStore scratch.Store
+	builderOnce  sync.Once
 }
 
-func newPartitionProcessor(
+func newProcessor(
 	builderCfg logsobj.BuilderConfig,
 	scratchStore scratch.Store,
 	idleFlushTimeout time.Duration,
@@ -90,7 +97,7 @@ func newPartitionProcessor(
 	flusher flusher,
 	logger log.Logger,
 	reg prometheus.Registerer,
-) *partitionProcessor {
+) *processor {
 	decoder, err := kafka.NewDecoder()
 	if err != nil {
 		panic(err)
@@ -106,12 +113,9 @@ func newPartitionProcessor(
 		level.Error(logger).Log("msg", "failed to register partition metrics", "err", err)
 	}
 
-	p := &partitionProcessor{
-		topic:            topic,
-		partition:        partition,
+	p := &processor{
 		logger:           logger,
 		decoder:          decoder,
-		reg:              reg,
 		builderCfg:       builderCfg,
 		scratchStore:     scratchStore,
 		metrics:          metrics,
@@ -119,27 +123,28 @@ func newPartitionProcessor(
 		maxBuilderAge:    maxBuilderAge,
 		recordsChan:      recordsChan,
 		flusher:          flusher,
+		reg:              reg,
 	}
 	p.BasicService = services.NewBasicService(p.starting, p.running, p.stopping)
 	return p
 }
 
 // starting implements [services.StartingFn].
-func (p *partitionProcessor) starting(_ context.Context) error {
+func (p *processor) starting(_ context.Context) error {
 	return nil
 }
 
 // running implements [services.RunningFn].
-func (p *partitionProcessor) running(ctx context.Context) error {
+func (p *processor) running(ctx context.Context) error {
 	return p.Run(ctx)
 }
 
 // stopping implements [services.StoppingFn].
-func (p *partitionProcessor) stopping(_ error) error {
+func (p *processor) stopping(_ error) error {
 	return nil
 }
 
-func (p *partitionProcessor) Run(ctx context.Context) error {
+func (p *processor) Run(ctx context.Context) error {
 	defer func() {
 		level.Info(p.logger).Log("msg", "stopped partition processor")
 	}()
@@ -166,7 +171,7 @@ func (p *partitionProcessor) Run(ctx context.Context) error {
 	}
 }
 
-func (p *partitionProcessor) initBuilder() error {
+func (p *processor) initBuilder() error {
 	var initErr error
 	p.builderOnce.Do(func() {
 		// Dataobj builder
@@ -184,7 +189,8 @@ func (p *partitionProcessor) initBuilder() error {
 	return initErr
 }
 
-func (p *partitionProcessor) processRecord(ctx context.Context, record *kgo.Record) {
+func (p *processor) processRecord(ctx context.Context, record *kgo.Record) {
+	now := time.Now()
 	p.metrics.processedRecords.Inc()
 
 	// Update offset metric at the end of processing
@@ -241,26 +247,25 @@ func (p *partitionProcessor) processRecord(ctx context.Context, record *kgo.Reco
 		}
 	}
 
-	if p.firstAppendTime.IsZero() {
-		p.firstAppendTime = time.Now()
+	if p.firstAppend.IsZero() {
+		p.firstAppend = now
 	}
-
-	p.lastRecord = record
-	p.lastModified = time.Now()
+	p.lastAppend = now
+	p.offset = record.Offset
 }
 
-func (p *partitionProcessor) shouldFlushDueToMaxAge() bool {
+func (p *processor) shouldFlushDueToMaxAge() bool {
 	return p.maxBuilderAge > 0 &&
 		p.builder.GetEstimatedSize() > 0 &&
-		!p.firstAppendTime.IsZero() &&
-		time.Since(p.firstAppendTime) > p.maxBuilderAge
+		!p.firstAppend.IsZero() &&
+		time.Since(p.firstAppend) > p.maxBuilderAge
 }
 
 // idleFlush flushes the partition if it has exceeded the idle flush timeout.
 // It returns true if the partition was flushed, false with a non-nil error
 // if the partition could not be flushed, and false with a nil error if
 // the partition has not exceeded the timeout.
-func (p *partitionProcessor) idleFlush(ctx context.Context) (bool, error) {
+func (p *processor) idleFlush(ctx context.Context) (bool, error) {
 	if !p.needsIdleFlush() {
 		return false, nil
 	}
@@ -274,20 +279,20 @@ func (p *partitionProcessor) idleFlush(ctx context.Context) (bool, error) {
 
 // needsIdleFlush returns true if the partition has exceeded the idle timeout
 // and the builder has some data buffered.
-func (p *partitionProcessor) needsIdleFlush() bool {
+func (p *processor) needsIdleFlush() bool {
 	// This is a safety check to make sure we never flush empty data objects.
 	// It should never happen that lastModified is non-zero while the builder
 	// is either uninitialized or empty.
 	if p.builder == nil || p.builder.GetEstimatedSize() == 0 {
 		return false
 	}
-	if p.lastModified.IsZero() {
+	if p.lastAppend.IsZero() {
 		return false
 	}
-	return time.Since(p.lastModified) > p.idleFlushTimeout
+	return time.Since(p.lastAppend) > p.idleFlushTimeout
 }
 
-func (p *partitionProcessor) flush(ctx context.Context) error {
+func (p *processor) flush(ctx context.Context) error {
 	var (
 		err  error
 		done = make(chan struct{})
@@ -295,11 +300,10 @@ func (p *partitionProcessor) flush(ctx context.Context) error {
 	defer func() {
 		// Reset the state to prepare for building the next data object.
 		p.earliestRecordTime = time.Time{}
-		p.firstAppendTime = time.Time{}
-		p.lastModified = time.Time{}
-		p.lastRecord = nil
+		p.firstAppend = time.Time{}
+		p.lastAppend = time.Time{}
 	}()
-	p.flusher.FlushAsync(ctx, p.builder, p.earliestRecordTime, p.lastRecord.Offset, func(flushErr error) {
+	p.flusher.FlushAsync(ctx, p.builder, p.earliestRecordTime, p.offset, func(flushErr error) {
 		err = flushErr
 		close(done)
 	})
