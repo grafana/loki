@@ -1,5 +1,23 @@
 # Release Notes
 
+# 9.17.3 (2026-01-25)
+
+## 🐛 Bug Fixes
+
+- **Connection Pool**: Fixed zombie `wantConn` elements accumulation in `wantConnQueue` that could cause resource leaks in high concurrency scenarios with dial failures ([#3680](https://github.com/redis/go-redis/pull/3680)) by [@cyningsun](https://github.com/cyningsun)
+- **Stream Commands**: Fixed `XADD` and `XTRIM` commands to use exact threshold (`=`) when `Approx` is false, ensuring precise stream trimming behavior ([#3684](https://github.com/redis/go-redis/pull/3684)) by [@ndyakov](https://github.com/ndyakov)
+- **Connection Pool**: Added `ConnMaxLifetimeJitter` configuration to distribute connection expiration times and prevent the thundering herd problem when many connections expire simultaneously ([#3666](https://github.com/redis/go-redis/pull/3666)) by [@cyningsun](https://github.com/cyningsun)
+- **Client Options**: Added `DialerRetries` and `DialerRetryTimeout` fields to `ClusterOptions`, `RingOptions`, and `FailoverOptions` to allow configuring connection retry behavior for cluster, ring, and sentinel clients ([#3686](https://github.com/redis/go-redis/pull/3686)) by [@naveenchander30](https://github.com/naveenchander30)
+
+## Contributors
+We'd like to thank all the contributors who worked on this release!
+
+[@cyningsun](https://github.com/cyningsun), [@naveenchander30](https://github.com/naveenchander30), and [@ndyakov](https://github.com/ndyakov)
+
+---
+
+**Full Changelog**: https://github.com/redis/go-redis/compare/v9.17.2...v9.17.3
+
 # 9.17.2 (2025-12-01)
 
 ## 🐛 Bug Fixes

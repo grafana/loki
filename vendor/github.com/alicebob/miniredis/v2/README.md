@@ -36,6 +36,7 @@ Implemented commands:
  - Key
    - COPY
    - DEL
+   - DUMP -- partly, only handles string keys
    - EXISTS
    - EXPIRE
    - EXPIREAT
@@ -50,11 +51,13 @@ Implemented commands:
    - RANDOMKEY -- see m.Seed(...)
    - RENAME
    - RENAMENX
+   - RESTORE -- partly, only handles string keys
    - SCAN
    - TOUCH
    - TTL
    - TYPE
    - UNLINK
+   - WAIT -- no-op
  - Transactions (complete)
    - DISCARD
    - EXEC
@@ -222,6 +225,7 @@ Implemented commands:
    - CLUSTER SLOTS
    - CLUSTER KEYSLOT
    - CLUSTER NODES
+   - CLUSTER SHARDS
  - HyperLogLog (complete)
    - PFADD
    - PFCOUNT
@@ -301,11 +305,8 @@ Commands which will probably not be implemented:
     - ~~READONLY~~
     - ~~READWRITE~~
  - Key
-    - ~~DUMP~~
     - ~~MIGRATE~~
     - ~~OBJECT~~
-    - ~~RESTORE~~
-    - ~~WAIT~~
  - Scripting
     - ~~FCALL / FCALL_RO *~~
     - ~~FUNCTION *~~
@@ -329,7 +330,7 @@ Commands which will probably not be implemented:
 
 ## &c.
 
-Integration tests are run against Redis 7.2.4. The [./integration](./integration/) subdir
+Integration tests are run against Redis 8.4.0. The [./integration](./integration/) subdir
 compares miniredis against a real redis instance.
 
 The Redis 6 RESP3 protocol is supported. If there are problems, please open
