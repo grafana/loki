@@ -1,0 +1,204 @@
+# Demo unit test file for lokitool rules test
+# This demonstrates how to test Loki alerting and recording rules
+
+# Specify the rule files to test
+rule_files:
+  - demo_rules.yml
+
+# Default evaluation interval for all tests
+evaluation_interval: 1m
+
+# Test cases
+tests:
+  # Tests using explicit log line content
+  # These tests demonstrate how to use the 'lines' field for testing LogQL parsing and filtering
+
+  - name: "Test JSON Parsing with Explicit Lines"
+    interval: 1m
+    input_streams:
+      # Explicit JSON log lines for testing | json parsing
+      - labels: '{job="app"}'
+        lines:
+          - '{"level":"info","duration":100,"status":"success"}'
+          - '{"level":"error","duration":500,"status":"failed"}'
+          - '{"invalid json'  # Intentionally malformed
+          - '{"level":"info","duration":200,"status":"success"}'
+          - '{"level":"error","duration":800,"status":"failed"}'
+
+    logql_expr_test:
+      # Count log lines with status="failed" - need to sum by job to aggregate
+      - expr: 'sum by (job) (count_over_time({job="app"} | json | status="failed" [5m]))'
+        eval_time: 4m
+        exp_samples:
+          - labels: '{job="app"}'
+            value: 2
+
+  - name: "Test Line Filters with Explicit Lines"
+    interval: 30s
+    input_streams:
+      # Explicit log lines for testing line filters
+      - labels: '{job="auth"}'
+        lines:
+          - 'ERROR: authentication failed for user bob'
+          - 'ERROR: authentication failed for user charlie'
+          - 'ERROR: authentication failed for user dave'
+          - 'ERROR: authentication failed for user eve'
+          - 'ERROR: authentication failed for user frank'
+          - 'ERROR: authentication failed for user grace'
+          - 'ERROR: authentication failed for user henry'
+          - 'ERROR: authentication failed for user iris'
+          - 'ERROR: authentication failed for user jack'
+          - 'ERROR: authentication failed for user kelly'
+          - 'ERROR: authentication failed for user mike'
+          - 'ERROR: authentication failed for user nancy'
+          - 'ERROR: authentication failed for user oscar'
+          - 'ERROR: authentication failed for user paul'
+          - 'ERROR: authentication failed for user quinn'
+          - 'INFO: user alice logged out'
+
+    alert_rule_test:
+      # Test AuthenticationFailures alert - should fire when > 2 failures
+      - alertname: AuthenticationFailures
+        eval_time: 5m30s
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: auth
+            exp_annotations:
+              summary: High rate of authentication failures
+
+    logql_expr_test:
+      # Count authentication failures using line filter
+      - expr: 'count_over_time({job="auth"} |= "authentication failed" [5m])'
+        eval_time: 5m30s
+        exp_samples:
+          - labels: '{job="auth"}'
+            value: 10
+
+  - name: "Test Regex Filters with Explicit Lines"
+    interval: 1m
+    input_streams:
+      # Explicit HTTP log lines for testing regex filters
+      - labels: '{job="nginx"}'
+        lines:
+          - 'GET / HTTP/1.1 200'
+          - 'GET /api HTTP/1.1 500'
+          - 'POST /api HTTP/1.1 503'
+          - 'GET /health HTTP/1.1 200'
+          - 'GET /api HTTP/1.1 502'
+          - 'GET / HTTP/1.1 200'
+
+    logql_expr_test:
+      # Count 5xx HTTP errors using regex filter
+      - expr: 'count_over_time({job="nginx"} |~ "5[0-9]{2}$" [5m])'
+        eval_time: 5m
+        exp_samples:
+          - labels: '{job="nginx"}'
+            value: 3
+
+  - name: "Test Structured Metadata"
+    interval: 30s
+    input_streams:
+      # Stream 1: API logs with trace_id and user_id
+      # Structured metadata is automatically extracted and added to result labels in queries
+      # This allows filtering but increases cardinality (use keep/drop stages to control)
+      - labels: '{job="api", environment="prod"}'
+        structured_metadata:
+          trace_id: "trace-001"
+          user_id: "user-123"
+        lines:
+          - 'INFO: API request started'
+          - 'INFO: Processing request'
+          - 'INFO: Request completed'
+          - 'ERROR: Database timeout'
+          - 'ERROR: Failed to process request'
+
+      # Stream 2: Same labels but different structured metadata
+      - labels: '{job="api", environment="prod"}'
+        structured_metadata:
+          trace_id: "trace-002"
+          user_id: "user-456"
+        lines:
+          - 'INFO: Another request'
+          - 'ERROR: Connection failed'
+          - 'INFO: Retry successful'
+
+      # Stream 3: No structured metadata
+      - labels: '{job="api", environment="staging"}'
+        lines:
+          - 'INFO: Staging request'
+          - 'ERROR: Staging error'
+
+    logql_expr_test:
+      # Filter by structured metadata field trace_id
+      # Only Stream 1 has trace_id="trace-001"
+      # With interval: 30s and eval_time: 3m, [3m] window includes entries from 30s to 3m
+      # Stream 1 has 5 lines (at 0s, 30s, 1m, 1m30s, 2m) but the entry at 0s is excluded
+      # due to time range boundary semantics, resulting in 4 entries at 30s, 1m, 1m30s, 2m
+      # Structured metadata appears in the result labels (trace_id and user_id)
+      - expr: 'count_over_time({job="api"} | trace_id="trace-001" [3m])'
+        eval_time: 3m
+        exp_samples:
+          - labels: '{environment="prod", job="api", trace_id="trace-001", user_id="user-123"}'
+            value: 4
+
+      # Filter by structured metadata field user_id
+      # Only Stream 2 has user_id="user-456"
+      # Stream 2 has 3 lines (at 0s, 30s, 1m) but the entry at 0s is excluded
+      # due to time range boundary semantics, resulting in 2 entries at 30s, 1m
+      # Structured metadata appears in the result labels
+      - expr: 'count_over_time({job="api"} | user_id="user-456" [3m])'
+        eval_time: 3m
+        exp_samples:
+          - labels: '{environment="prod", job="api", trace_id="trace-002", user_id="user-456"}'
+            value: 2
+
+      # Filter by line content AND structured metadata
+      # Stream 1 with trace_id="trace-001" has 2 ERRORs (at 1m30s, 2m)
+      # The entry at 0s is excluded by time range boundaries regardless
+      # Structured metadata appears in the result labels
+      - expr: 'count_over_time({job="api"} |= "ERROR" | trace_id="trace-001" [3m])'
+        eval_time: 3m
+        exp_samples:
+          - labels: '{environment="prod", job="api", trace_id="trace-001", user_id="user-123"}'
+            value: 2
+
+  - name: "Test Alert with For Clause"
+    interval: 30s
+    input_streams:
+      # Generate enough ERROR logs to trigger the alert condition
+      # With interval: 30s, logs at: 0s, 30s, 1m, 1m30s, 2m, 2m30s, 3m, 3m30s, 4m, 4m30s
+      - labels: '{job="app"}'
+        lines:
+          - 'ERROR: database connection failed'
+          - 'ERROR: timeout occurred'
+          - 'ERROR: invalid request'
+          - 'ERROR: service unavailable'
+          - 'ERROR: internal error'
+          - 'ERROR: authentication failed'
+          - 'ERROR: connection reset'
+          - 'ERROR: request timeout'
+          - 'ERROR: server error'
+          - 'ERROR: bad gateway'
+
+    alert_rule_test:
+      # Test 1: Alert should NOT fire at 3m (condition just became true, for: 2m not satisfied)
+      # At 3m, the [5m] window includes all 7 entries at times 0-3m = 7 ERROR logs > 5
+      # Condition is TRUE but it's the first time, so for: 2m hasn't elapsed
+      - alertname: SustainedHighErrorRate
+        eval_time: 3m
+        exp_alerts: []
+
+      # Test 2: Alert should fire at 5m (condition true and for: 2m duration exceeded)
+      # At 5m, the [5m] window includes entries from 0-5m = all 10 ERROR logs > 5
+      # The condition was true at 3m, and 5m - 3m = 2m >= for: 2m, so alert fires
+      - alertname: SustainedHighErrorRate
+        eval_time: 5m
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: app
+            exp_annotations:
+              summary: Sustained high error rate detected
+              description: Error rate has been high for more than 2 minutes
+

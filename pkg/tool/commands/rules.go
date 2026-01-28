@@ -126,6 +126,9 @@ func (r *RuleCommand) Register(app *kingpin.Application) {
 	checkCmd := rulesCmd.
 		Command("check", "runs various best practice checks against rules.").
 		Action(r.checkRecordingRuleNames)
+	testCmd := rulesCmd.
+		Command("test", "Unit test rules by running queries against test data.").
+		Action(r.testRules)
 
 	// Require Loki cluster address and tentant ID on all these commands
 	for _, c := range []*kingpin.CmdClause{listCmd, printRulesCmd, getRuleGroupCmd, deleteRuleGroupCmd, loadRulesCmd, diffRulesCmd, syncRulesCmd} {
@@ -233,6 +236,9 @@ func (r *RuleCommand) Register(app *kingpin.Application) {
 		"Comma separated list of paths to directories containing rules yaml files. Each file in a directory with a .yml or .yaml suffix will be parsed.",
 	).StringVar(&r.RuleFilesPath)
 	checkCmd.Flag("strict", "fails rules checks that do not match best practices exactly").BoolVar(&r.Strict)
+
+	// Test Command
+	testCmd.Arg("test-files", "The unit test files to run.").Required().ExistingFilesVar(&r.RuleFilesList)
 
 	// List Command
 	listCmd.Flag("format", "Backend type to interact with: <json|yaml|table>").Default("table").EnumVar(&r.Format, formats...)
@@ -791,6 +797,17 @@ func save(nss map[string]rules.RuleNamespace, i bool) error {
 		if err := os.WriteFile(filepath, payload, 0640); err != nil { // #nosec G306 -- this is fencing off the "other" permissions -- nosemgrep: incorrect-default-permissions
 			return err
 		}
+	}
+
+	return nil
+}
+
+func (r *RuleCommand) testRules(_ *kingpin.ParseContext) error {
+	// Run unit tests using the test files specified
+	// Pass nil logger to use NopLogger internally
+	err := rules.RunUnitTests(r.RuleFilesList, nil)
+	if err != nil {
+		return errors.Wrap(err, "unit tests failed")
 	}
 
 	return nil
