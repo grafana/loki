@@ -29,8 +29,8 @@ type DataobjDeletionManager struct {
 }
 
 type DataObjDeletionConfig struct {
-	DeletionProcessInterval time.Duration
-	SweepInterval           time.Duration
+	DeletionProcessInterval time.Duration `yaml:"deletion_process_interval"`
+	SweepInterval           time.Duration `yaml:"sweep_interval"`
 }
 
 type dataObjDeletionMetrics struct {

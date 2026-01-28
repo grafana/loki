@@ -88,8 +88,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.JobsConfig.RegisterFlagsWithPrefix("compactor.jobs.", f)
 	f.StringVar(&cfg.DeletionMarkerObjectStorePrefix, "compactor.deletion-marker-object-store-prefix", "", "Object storage path prefix for storing deletion markers. The prefix must end with a forward slash(/). Leave empty to continue to store deletion markers on the local disk.")
 	f.BoolVar(&cfg.DataObjDeletionEnabled, "compactor.dataobj-deletion-enabled", false, "Enable dataobj deletion processing. When enabled, the compactor will create tombstone markers and rewrite dataobjects to remove deleted sections.")
-	f.DurationVar(&cfg.DataObjDeletion.DeletionProcessInterval, "compactor.dataobj-deletion-interval", 10*time.Minute, "Interval at which to process delete requests for dataobjects and create tombstones.")
-	f.DurationVar(&cfg.DataObjDeletion.SweepInterval, "compactor.dataobj-sweep-interval", 1*time.Hour, "Interval at which to sweep (rewrite) dataobjects to remove tombstoned sections.")
+	f.DurationVar(&cfg.DataObjDeletion.DeletionProcessInterval, "compactor.dataobj-deletion.deletion-interval", 10*time.Minute, "Interval at which to process delete requests for dataobjects and create tombstones.")
+	f.DurationVar(&cfg.DataObjDeletion.SweepInterval, "compactor.dataobj-deletion.sweep-interval", 1*time.Hour, "Interval at which to sweep (rewrite) dataobjects to remove tombstoned sections.")
 }
 
 // Validate verifies the config does not contain inappropriate values
