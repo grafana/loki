@@ -12,6 +12,7 @@
     <filename>*.ebuild</filename>
     <filename>*.eclass</filename>
     <filename>.env</filename>
+    <filename>.env.*</filename>
     <filename>*.env</filename>
     <filename>*.exheres-0</filename>
     <filename>*.exlib</filename>
