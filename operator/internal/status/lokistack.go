@@ -80,10 +80,7 @@ func (e *DegradedError) Error() string {
 }
 
 func generateConditions(ctx context.Context, cs *lokiv1.LokiStackComponentStatus, k k8s.Client, stack *lokiv1.LokiStack, degradedErr *DegradedError) ([]metav1.Condition, error) {
-	conditions, err := generateWarnings(stack)
-	if err != nil {
-		return nil, err
-	}
+	conditions := generateWarnings(stack)
 
 	mainCondition, err := generateCondition(ctx, cs, k, stack, degradedErr)
 	if err != nil {
@@ -191,7 +188,7 @@ func checkForZoneawareNodes(ctx context.Context, k client.Client, zones []lokiv1
 	return true, true, nil
 }
 
-func generateWarnings(stack *lokiv1.LokiStack) ([]metav1.Condition, error) {
+func generateWarnings(stack *lokiv1.LokiStack) []metav1.Condition {
 	warnings := make([]metav1.Condition, 0, 2)
 	schemas := stack.Spec.Storage.Schemas
 
@@ -221,5 +218,5 @@ func generateWarnings(stack *lokiv1.LokiStack) ([]metav1.Condition, error) {
 		})
 	}
 
-	return warnings, nil
+	return warnings
 }

@@ -106,7 +106,6 @@ func TestNewIngesterStatefulSet_SelectorMatchesLabels(t *testing.T) {
 func TestBuildIngester_PodDisruptionBudget(t *testing.T) {
 	for _, tc := range []struct {
 		Name                 string
-		Size                 lokiv1.LokiStackSizeType
 		ExpectedMinAvailable int
 		Replicas             int
 	}{
@@ -137,7 +136,6 @@ func TestBuildIngester_PodDisruptionBudget(t *testing.T) {
 				Namespace: "efgh",
 				Gates:     v1.FeatureGates{},
 				Stack: lokiv1.LokiStackSpec{
-					Size: tc.Size,
 					Replication: &lokiv1.ReplicationSpec{
 						Factor: 2,
 					},
