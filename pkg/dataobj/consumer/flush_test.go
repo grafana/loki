@@ -3,11 +3,13 @@ package consumer
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
@@ -16,42 +18,65 @@ import (
 )
 
 func TestFlusher_Flush(t *testing.T) {
-	var (
-		testCtx       = t.Context()
-		testBuilder   *mockBuilder
-		testKafka     = &mockKafka{}
-		testUploader  = &mockUploader{}
-		testCommitter = &mockCommitter{}
-		now           = time.Now()
-	)
-	// Init the builder and append some logs so it can be flushed.
-	realBuilder, err := logsobj.NewBuilder(testBuilderCfg, scratch.NewMemory())
-	require.NoError(t, err)
-	testBuilder = &mockBuilder{builder: realBuilder}
-	require.NoError(t, testBuilder.Append("test", logproto.Stream{
-		Labels: `{foo="bar"}`,
-		Entries: []logproto.Entry{
-			{Timestamp: now, Line: "baz"},
-		},
-	}))
-	// Create a flusher with mocks.
-	f := newFlusher(testUploader, testCommitter, testKafka, 23, 10, log.NewNopLogger(), prometheus.NewRegistry())
-	// Flush the builder we created earlier.
-	require.NoError(t, f.doJob(testCtx, flushJob{
-		builder:   testBuilder,
-		startTime: now,
-		offset:    1,
-	}))
-	// Check that the dataobj was flushed and uploaded.
-	require.Len(t, testUploader.uploaded, 1)
-	// Check that the correct offset was committed.
-	require.Len(t, testCommitter.offsets, 1)
-	require.Equal(t, int64(1), testCommitter.offsets[0])
-	// Check that a metastore event was produced.
-	require.Len(t, testKafka.produced, 1)
-	// The produced partition should equal the flushers partition divided by the
-	// partition ratio, using integer division rules.
-	require.Equal(t, int32(2), testKafka.produced[0].Partition)
+	t.Run("should succeed", func(t *testing.T) {
+		var (
+			reg          = prometheus.NewRegistry()
+			testCtx      = t.Context()
+			testBuilder  *mockBuilder
+			testUploader = &mockUploader{}
+			now          = time.Now()
+		)
+		// Init the builder and append some logs so it can be flushed.
+		realBuilder, err := logsobj.NewBuilder(testBuilderCfg, scratch.NewMemory())
+		require.NoError(t, err)
+		testBuilder = &mockBuilder{builder: realBuilder}
+		require.NoError(t, testBuilder.Append("test", logproto.Stream{
+			Labels: `{foo="bar"}`,
+			Entries: []logproto.Entry{
+				{Timestamp: now, Line: "baz"},
+			},
+		}))
+		f := newFlusher(testUploader, log.NewNopLogger(), reg)
+		// Flush the builder we created earlier.
+		objectPath, err := f.Flush(testCtx, testBuilder, "test_sync")
+		require.NoError(t, err)
+		require.Equal(t, "object_001", objectPath)
+		// Check that the dataobj was flushed and uploaded.
+		require.Len(t, testUploader.uploaded, 1)
+		require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
+	# HELP loki_dataobj_consumer_flushes_total Total number of flushes.
+	# TYPE loki_dataobj_consumer_flushes_total counter
+	loki_dataobj_consumer_flushes_total{reason="test_sync"} 1
+	# HELP loki_dataobj_consumer_flush_failures_total Total number of failed flushes.
+	# TYPE loki_dataobj_consumer_flush_failures_total counter
+	loki_dataobj_consumer_flush_failures_total 0
+	`), "loki_dataobj_consumer_flushes_total", "loki_dataobj_consumer_flush_failures_total"))
+	})
+
+	t.Run("should fail", func(t *testing.T) {
+		var (
+			reg         = prometheus.NewRegistry()
+			testCtx     = t.Context()
+			testBuilder *mockBuilder
+		)
+		f := newFlusher(nil, log.NewNopLogger(), reg)
+		// Override the flush func to force a failure.
+		f.flushFunc = func(_ context.Context, _ flushJob) (string, error) {
+			return "", errors.New("mock error")
+		}
+		// Flush the builder we created earlier.
+		objectPath, err := f.Flush(testCtx, testBuilder, "test_sync")
+		require.EqualError(t, err, "mock error")
+		require.Equal(t, "", objectPath)
+		require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
+		# HELP loki_dataobj_consumer_flushes_total Total number of flushes.
+		# TYPE loki_dataobj_consumer_flushes_total counter
+		loki_dataobj_consumer_flushes_total{reason="test_sync"} 1
+		# HELP loki_dataobj_consumer_flush_failures_total Total number of failed flushes.
+		# TYPE loki_dataobj_consumer_flush_failures_total counter
+		loki_dataobj_consumer_flush_failures_total 1
+		`), "loki_dataobj_consumer_flushes_total", "loki_dataobj_consumer_flush_failures_total"))
+	})
 }
 
 func TestFlusher_FlushAsync(t *testing.T) {
@@ -61,19 +86,13 @@ func TestFlusher_FlushAsync(t *testing.T) {
 			done    = make(chan struct{})
 			invoked bool
 		)
-		f := flusherImpl{
-			jobs: make(chan flushJob, 1),
-			jobFunc: func(_ context.Context, _ flushJob) error {
-				// Mock success so promise is invoked.
-				return nil
-			},
-			logger: log.NewNopLogger(),
+		f := newFlusher(nil, log.NewNopLogger(), prometheus.NewRegistry())
+		f.flushFunc = func(_ context.Context, _ flushJob) (string, error) {
+			// Mock success so promise is invoked.
+			return "", nil
 		}
-		// Start the flusher. It will stop at the end of the test as testCtx
-		// is canceled.
-		go func() { _ = f.Run(testCtx) }()
-		f.FlushAsync(testCtx, &mockBuilder{}, time.Now(), 0, func(err error) {
-			require.NoError(t, err)
+		f.FlushAsync(testCtx, &mockBuilder{}, "flush_async", func(res flushJobResult) {
+			require.NoError(t, res.err)
 			invoked = true
 			close(done)
 		})
@@ -91,16 +110,12 @@ func TestFlusher_FlushAsync(t *testing.T) {
 			done    = make(chan struct{})
 			invoked bool
 		)
-		f := flusherImpl{
-			jobs: make(chan flushJob, 1),
-			jobFunc: func(_ context.Context, _ flushJob) error {
-				return errors.New("mock error")
-			},
-			logger: log.NewNopLogger(),
+		f := newFlusher(nil, log.NewNopLogger(), prometheus.NewRegistry())
+		f.flushFunc = func(_ context.Context, _ flushJob) (string, error) {
+			return "", errors.New("mock error")
 		}
-		go func() { _ = f.Run(testCtx) }()
-		f.FlushAsync(testCtx, &mockBuilder{}, time.Now(), 0, func(err error) {
-			require.EqualError(t, err, "mock error")
+		f.FlushAsync(testCtx, &mockBuilder{}, "flush_async", func(res flushJobResult) {
+			require.EqualError(t, res.err, "mock error")
 			invoked = true
 			close(done)
 		})
@@ -119,16 +134,15 @@ func TestFlusher_FlushAsync(t *testing.T) {
 			done              = make(chan struct{})
 			invoked           bool
 		)
-		f := flusherImpl{
-			// Use a buffered chan so select inside [FlushAsync] chooses the
-			// [ctx.Done()] case.
-			jobs:   make(chan flushJob),
-			logger: log.NewNopLogger(),
+		f := newFlusher(nil, log.NewNopLogger(), prometheus.NewRegistry())
+		f.flushFunc = func(ctx context.Context, _ flushJob) (string, error) {
+			<-ctx.Done()
+			return "", ctx.Err()
 		}
 		// Cancel the context so FlushAsync calls the promise.
 		cancel()
-		f.FlushAsync(cancelCtx, &mockBuilder{}, time.Now(), 0, func(err error) {
-			require.EqualError(t, err, "context canceled")
+		f.FlushAsync(cancelCtx, &mockBuilder{}, "flush_async", func(res flushJobResult) {
+			require.EqualError(t, res.err, "context canceled")
 			invoked = true
 			close(done)
 		})
