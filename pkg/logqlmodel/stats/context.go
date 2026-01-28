@@ -71,6 +71,7 @@ const (
 	ChunkCache                CacheType = "chunk"                 //nolint:staticcheck
 	IndexCache                CacheType = "index"                 //nolint:staticcheck
 	ResultCache               CacheType = "result"                //nolint:staticcheck
+	PositiveResultCache       CacheType = "positive-result"       //nolint:staticcheck
 	StatsResultCache          CacheType = "stats-result"          //nolint:staticcheck
 	VolumeResultCache         CacheType = "volume-result"         //nolint:staticcheck
 	InstantMetricResultsCache CacheType = "instant-metric-result" // nolint:staticcheck
@@ -306,6 +307,7 @@ func (c *Caches) Merge(m Caches) {
 	c.Chunk.Merge(m.Chunk)
 	c.Index.Merge(m.Index)
 	c.Result.Merge(m.Result)
+	c.PositiveResult.Merge(m.PositiveResult)
 	c.StatsResult.Merge(m.StatsResult)
 	c.VolumeResult.Merge(m.VolumeResult)
 	c.SeriesResult.Merge(m.SeriesResult)
@@ -644,6 +646,8 @@ func (c *Context) getCacheStatsByType(t CacheType) *Cache {
 		stats = &c.caches.Index
 	case ResultCache:
 		stats = &c.caches.Result
+	case PositiveResultCache:
+		stats = &c.caches.PositiveResult
 	case StatsResultCache:
 		stats = &c.caches.StatsResult
 	case VolumeResultCache:
@@ -766,6 +770,13 @@ func (c Caches) kvList() []any {
 		"Cache.Result.EntriesStored", c.Result.EntriesStored,
 		"Cache.Result.BytesSent", humanize.Bytes(uint64(c.Result.BytesSent)),
 		"Cache.Result.BytesReceived", humanize.Bytes(uint64(c.Result.BytesReceived)),
+		"Cache.PositiveResult.Requests", c.PositiveResult.Requests,
+		"Cache.PositiveResult.EntriesRequested", c.PositiveResult.EntriesRequested,
+		"Cache.PositiveResult.EntriesFound", c.PositiveResult.EntriesFound,
+		"Cache.PositiveResult.EntriesStored", c.PositiveResult.EntriesStored,
+		"Cache.PositiveResult.BytesSent", humanize.Bytes(uint64(c.PositiveResult.BytesSent)),
+		"Cache.PositiveResult.BytesReceived", humanize.Bytes(uint64(c.PositiveResult.BytesReceived)),
+		"Cache.PositiveResult.DownloadTime", c.PositiveResult.CacheDownloadTime(),
 		"Cache.InstantMetricResult.Requests", c.InstantMetricResult.Requests,
 		"Cache.InstantMetricResult.EntriesRequested", c.InstantMetricResult.EntriesRequested,
 		"Cache.InstantMetricResult.EntriesFound", c.InstantMetricResult.EntriesFound,
