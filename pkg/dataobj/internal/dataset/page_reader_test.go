@@ -143,6 +143,35 @@ func Test_pageReader_SkipRows(t *testing.T) {
 	require.Equal(t, pageReaderTestStrings[4:], actual)
 }
 
+func Test_pageReader_statsStability(t *testing.T) {
+	opts := BuilderOptions{
+		PageSizeHint: 1024,
+		Type:         ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"},
+		Compression:  datasetmd.COMPRESSION_TYPE_SNAPPY,
+		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
+		Statistics:   StatisticsOptions{StoreRangeStats: true},
+	}
+	testStrings := []Value{
+		BinaryValue([]byte("a")),
+		BinaryValue([]byte("b")),
+		BinaryValue([]byte("c")),
+		BinaryValue([]byte("d")),
+	}
+	b, err := newPageBuilder(opts)
+	require.NoError(t, err)
+
+	for _, s := range testStrings {
+		require.True(t, b.Append(s))
+	}
+	require.Equal(t, BinaryValue([]byte("a")), b.minValue)
+	require.Equal(t, BinaryValue([]byte("d")), b.maxValue)
+
+	// Simulate a Value being re-used and mutated by another read before it is flushed.
+	testStrings[0].Buffer()[0] = 'Z'
+	require.Equal(t, BinaryValue([]byte("a")), b.minValue)
+	require.Equal(t, BinaryValue([]byte("d")), b.maxValue)
+}
+
 func buildPage(t *testing.T, opts BuilderOptions, in []string) *MemPage {
 	t.Helper()
 
