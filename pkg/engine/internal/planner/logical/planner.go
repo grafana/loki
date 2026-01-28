@@ -106,12 +106,13 @@ func buildPlanForLogQuery(
 		case *syntax.LabelFilterExpr:
 			// Collect following filters only before we met any parse stage.
 			if !hasLogfmtParser && !hasJSONParser && !hasRegexParser {
-				if val, innerErr := convertLabelFilter(e.LabelFilterer); innerErr != nil {
+				val, innerErr := convertLabelFilter(e.LabelFilterer)
+				if innerErr == nil {
 					err = innerErr
 					return false
-				} else {
-					predicates = append(predicates, val)
 				}
+
+				predicates = append(predicates, val)
 			}
 
 			return true
@@ -215,12 +216,13 @@ func buildPlanForLogQuery(
 		case *syntax.LabelFilterExpr:
 			// Add following filters only after we met any parse stage.
 			if hasLogfmtParser || hasJSONParser || hasRegexParser {
-				if val, innerErr := convertLabelFilter(e.LabelFilterer); innerErr != nil {
+				val, innerErr := convertLabelFilter(e.LabelFilterer)
+				if innerErr != nil {
 					err = innerErr
 					return false
-				} else {
-					builder = builder.Select(val)
 				}
+
+				builder = builder.Select(val)
 			}
 			return true
 		case *syntax.LogfmtExpressionParserExpr, *syntax.JSONExpressionParserExpr:
