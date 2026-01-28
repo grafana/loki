@@ -38,7 +38,7 @@ type Service struct {
 	lifecycler                  *ring.Lifecycler
 	partitionInstanceLifecycler *ring.PartitionInstanceLifecycler
 	consumer                    *kafkav2.SinglePartitionConsumer
-	processor                   *partitionProcessor
+	processor                   *processor
 	flusher                     *flusherImpl
 	downscalePermitted          downscalePermittedFunc
 	watcher                     *services.FailureWatcher
@@ -161,7 +161,7 @@ func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, bucket objsto
 		logger,
 		reg,
 	)
-	s.processor = newPartitionProcessor(
+	s.processor = newProcessor(
 		cfg.BuilderConfig,
 		scratchStore,
 		cfg.IdleFlushTimeout,
