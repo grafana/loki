@@ -595,6 +595,82 @@ server:
 {{- end }}
   log_level: info
 storage_config:
+  use_thanos_objstore: true
+  object_store:
+    {{- with .ObjectStorage.Azure }}
+    azure:
+      container_name: {{ .Container }}
+      account_name: ${AZURE_STORAGE_ACCOUNT_NAME}
+      {{- if .WorkloadIdentity }}
+      use_federated_token: true
+      {{- else }}
+      account_key: ${AZURE_STORAGE_ACCOUNT_KEY}
+      {{- end }}
+      {{- with .EndpointSuffix }}
+      endpoint: {{ . }}
+      {{- end }}
+    {{- end }}
+    {{- with .ObjectStorage.GCS }}
+    gcs:
+      bucket_name: {{ .Bucket }}
+    {{- end }}
+    {{- with .ObjectStorage.S3 }}
+    s3:
+      {{- if .STS }}
+      bucket_name: {{.Buckets}}
+      region: {{.Region}}
+      endpoint: s3.{{.Region}}.amazonaws.com
+      {{- else }}
+      endpoint: {{ .Endpoint }}
+      bucket_name: {{ .Buckets }}
+      region: {{ .Region }}
+      access_key_id: ${AWS_ACCESS_KEY_ID}
+      secret_access_key: ${AWS_ACCESS_KEY_SECRET}
+      {{- if .Insecure }}
+      insecure: true
+      {{- end}}
+      {{- if .ForcePathStyle  }}
+      bucket_lookup_type: path
+      {{- end}}
+      {{- end }}
+      {{- with .SSE }}
+      {{- if .Type }}
+      sse:
+        type: {{ .Type }}
+        {{- if eq .Type "SSE-KMS" }}
+        kms_key_id: {{ .KMSKeyID }}
+        {{- with .KMSEncryptionContext }}
+        kms_encryption_context: |
+          ${AWS_SSE_KMS_ENCRYPTION_CONTEXT}
+        {{- end }}
+        {{- end}}
+      {{- end }}
+      {{- end }}
+    {{- end }}
+    {{- with .ObjectStorage.Swift }}
+    swift:
+      auth_url: {{ .AuthURL }}
+      username: ${SWIFT_USERNAME}
+      user_domain_name: {{ .UserDomainName }}
+      user_domain_id: {{ .UserDomainID }}
+      user_id: {{ .UserID }}
+      password: ${SWIFT_PASSWORD}
+      domain_id: {{ .DomainID }}
+      domain_name: {{ .DomainName }}
+      project_id: {{ .ProjectID }}
+      project_name: {{ .ProjectName }}
+      project_domain_id: {{ .ProjectDomainID }}
+      project_domain_name: {{ .ProjectDomainName }}
+      region_name: {{ .Region }}
+      container_name: {{ .Container }}
+    {{- end }}
+    {{- with .ObjectStorage.AlibabaCloud}}
+    alibabacloud:
+      bucket: {{ .Bucket }}
+      endpoint: {{ .Endpoint }}
+      access_key_id: ${ALIBABA_CLOUD_ACCESS_KEY_ID}
+      secret_access_key: ${ALIBABA_CLOUD_ACCESS_KEY_SECRET}
+    {{- end }}
 {{- range $_, $ship := .Shippers }}
 {{- if eq $ship "boltdb" }}
   boltdb_shipper:

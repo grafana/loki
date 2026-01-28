@@ -702,7 +702,7 @@ func TestS3Extract_ForcePathStyle(t *testing.T) {
 				},
 			},
 			wantOptions: &storage.S3StorageConfig{
-				Endpoint:       "https://s3.region.amazonaws.com",
+				Endpoint:       "s3.region.amazonaws.com",
 				Region:         "region",
 				Buckets:        "this,that",
 				ForcePathStyle: false, // defaults to virtual style for AWS endpoints
@@ -721,7 +721,7 @@ func TestS3Extract_ForcePathStyle(t *testing.T) {
 				},
 			},
 			wantOptions: &storage.S3StorageConfig{
-				Endpoint:       "http://minio:9000",
+				Endpoint:       "minio:9000",
 				Region:         "",
 				Buckets:        "this,that",
 				ForcePathStyle: true, // defaults to path style for non-AWS endpoints
@@ -741,7 +741,7 @@ func TestS3Extract_ForcePathStyle(t *testing.T) {
 				},
 			},
 			wantOptions: &storage.S3StorageConfig{
-				Endpoint:       "https://s3.region.amazonaws.com",
+				Endpoint:       "s3.region.amazonaws.com",
 				Region:         "region",
 				Buckets:        "this,that",
 				ForcePathStyle: true,
@@ -752,7 +752,7 @@ func TestS3Extract_ForcePathStyle(t *testing.T) {
 			secret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
-					"endpoint":          []byte("https://s3.region.amazonaws.com"),
+					"endpoint":          []byte("s3.region.amazonaws.com"),
 					"region":            []byte("region"),
 					"bucketnames":       []byte("this,that"),
 					"access_key_id":     []byte("id"),
