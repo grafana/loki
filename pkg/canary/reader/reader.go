@@ -56,6 +56,7 @@ type Reader struct {
 	addr            string
 	user            string
 	pass            string
+	bearerToken     string
 	tenantID        string
 	httpClient      *http.Client
 	queryTimeout    time.Duration
@@ -103,6 +104,7 @@ func NewReader(writer io.Writer,
 	address string,
 	user string,
 	pass string,
+	bearerToken string,
 	tenantID string,
 	queryTimeout time.Duration,
 	labelName string,
@@ -114,6 +116,10 @@ func NewReader(writer io.Writer,
 	labels string,
 ) (*Reader, error) {
 	h := http.Header{}
+
+	if (user != "" || pass != "") && bearerToken != "" {
+		return nil, fmt.Errorf("cannot provide both user/pass and bearerToken")
+	}
 
 	// http.DefaultClient will be used in the case that the connection to Loki is http or TLS without client certs.
 	httpClient := http.DefaultClient
@@ -137,6 +143,9 @@ func NewReader(writer io.Writer,
 	}
 	if user != "" {
 		h.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(user+":"+pass)))
+	}
+	if bearerToken != "" {
+		h.Set("Authorization", "Bearer "+bearerToken)
 	}
 	if tenantID != "" {
 		h.Set("X-Scope-OrgID", tenantID)
@@ -163,6 +172,7 @@ func NewReader(writer io.Writer,
 		addr:            address,
 		user:            user,
 		pass:            pass,
+		bearerToken:     bearerToken,
 		tenantID:        tenantID,
 		queryTimeout:    queryTimeout,
 		httpClient:      httpClient,
@@ -238,6 +248,9 @@ func (r *Reader) QueryCountOverTime(queryRange string, now time.Time, cache bool
 
 	if r.user != "" {
 		req.SetBasicAuth(r.user, r.pass)
+	}
+	if r.bearerToken != "" {
+		req.Header.Set("Authorization", "Bearer "+r.bearerToken)
 	}
 	if r.tenantID != "" {
 		req.Header.Set("X-Scope-OrgID", r.tenantID)
@@ -332,6 +345,9 @@ func (r *Reader) Query(start time.Time, end time.Time) ([]time.Time, error) {
 
 	if r.user != "" {
 		req.SetBasicAuth(r.user, r.pass)
+	}
+	if r.bearerToken != "" {
+		req.Header.Set("Authorization", "Bearer "+r.bearerToken)
 	}
 	if r.tenantID != "" {
 		req.Header.Set("X-Scope-OrgID", r.tenantID)

@@ -23,9 +23,10 @@ import (
 )
 
 const (
-	testTenant   = "test1"
-	testUsername = "canary"
-	testPassword = "secret"
+	testTenant      = "test1"
+	testUsername    = "canary"
+	testPassword    = "secret"
+	testBearerToken = "bearerToken-nkM7UFbFdE2a"
 )
 
 type testConfig struct {
@@ -35,11 +36,11 @@ type testConfig struct {
 }
 
 type response struct {
-	tenantID           string
-	pushReq            logproto.PushRequest
-	contentType        string
-	userAgent          string
-	username, password string
+	tenantID                        string
+	pushReq                         logproto.PushRequest
+	contentType                     string
+	userAgent                       string
+	username, password, bearerToken string
 }
 
 // basic testing to make sure we create the correct pusher or buffered pusher
@@ -86,23 +87,31 @@ func Test_Push(t *testing.T) {
 	ts, payload := testPayload()
 	push.WriteEntry(ts, payload)
 	resp := <-testCfg.responses
-	assertResponse(t, resp, false, labelSet("name", "loki-canary", "stream", "stdout"), ts, payload, 1)
+	assertResponse(t, resp, false, false, labelSet("name", "loki-canary", "stream", "stdout"), ts, payload, 1)
 
 	// with basic Auth
-	push, err = newPushWithCredentials(testCfg, testUsername, testPassword, 1)
+	push, err = newPushWithBasicAuthCredentials(testCfg, testUsername, testPassword, 1)
 	require.NoError(t, err)
 	ts, payload = testPayload()
 	push.WriteEntry(ts, payload)
 	resp = <-testCfg.responses
-	assertResponse(t, resp, true, labelSet("name", "loki-canary", "stream", "stdout"), ts, payload, 1)
+	assertResponse(t, resp, true, false, labelSet("name", "loki-canary", "stream", "stdout"), ts, payload, 1)
+
+	// with bearerToken Auth
+	push, err = newPushWithBearerTokenCredentials(testCfg, testBearerToken, 1)
+	require.NoError(t, err)
+	ts, payload = testPayload()
+	push.WriteEntry(ts, payload)
+	resp = <-testCfg.responses
+	assertResponse(t, resp, false, true, labelSet("name", "loki-canary", "stream", "stdout"), ts, payload, 1)
 
 	// with custom labels
-	push, err = newPushWithCredentialsAndStreamNameValue(testCfg, testUsername, testPassword, "pod", "abc", 1)
+	push, err = newPushWithCredentialsAndStreamNameValue(testCfg, testUsername, testPassword, "", "pod", "abc", 1)
 	require.NoError(t, err)
 	ts, payload = testPayload()
 	push.WriteEntry(ts, payload)
 	resp = <-testCfg.responses
-	assertResponse(t, resp, true, labelSet("name", "loki-canary", "pod", "abc"), ts, payload, 1)
+	assertResponse(t, resp, true, false, labelSet("name", "loki-canary", "pod", "abc"), ts, payload, 1)
 }
 
 // test batching log lines and ensure the testing resp contains exactly 10 unique entries
@@ -122,7 +131,7 @@ func Test_BatchedPush(t *testing.T) {
 		push.WriteEntry(ts, payload)
 	}
 	resp := <-testCfg.responses
-	assertResponse(t, resp, false, labelSet("name", "loki-canary", "stream", "stdout"), ts, payload, 10)
+	assertResponse(t, resp, false, false, labelSet("name", "loki-canary", "stream", "stdout"), ts, payload, 10)
 }
 
 // test sending 25 log lines in batches of 5
@@ -250,21 +259,26 @@ func logbatchMonitor(t *testing.T, testCfg testConfig, logsSent map[string]int, 
 	require.Len(t, logsSent, expectedCount)
 }
 
-func assertResponse(t *testing.T, resp response, testAuth bool, labels model.LabelSet, ts time.Time, payload string, streamCount int) {
+func assertResponse(t *testing.T, resp response, testBasicAuth bool, testBearerAuth bool, labels model.LabelSet, ts time.Time, payload string, streamCount int) {
 	t.Helper()
 
 	// assert metadata
 	assert.Equal(t, testTenant, resp.tenantID)
 
-	var expUser, expPass string
+	var expUser, expPass, expBearerToken string
 
-	if testAuth {
+	if testBasicAuth {
 		expUser = testUsername
 		expPass = testPassword
 	}
 
+	if testBearerAuth {
+		expBearerToken = testBearerToken
+	}
+
 	assert.Equal(t, expUser, resp.username)
 	assert.Equal(t, expPass, resp.password)
+	assert.Equal(t, expBearerToken, resp.bearerToken)
 	assert.Equal(t, defaultContentType, resp.contentType)
 	assert.Equal(t, defaultUserAgent, resp.userAgent)
 
@@ -292,11 +306,11 @@ func createServerHandler(responses chan response) http.HandlerFunc {
 			return
 		}
 
-		var username, password string
+		var username, password, bearerToken string
 
-		basicAuth := req.Header.Get("Authorization")
-		if basicAuth != "" {
-			encoded := strings.TrimPrefix(basicAuth, "Basic ") // now we have just encoded `username:password`
+		authHeader := req.Header.Get("Authorization")
+		if strings.HasPrefix(authHeader, "Basic") {
+			encoded := strings.TrimPrefix(authHeader, "Basic ") // now we have just encoded `username:password`
 			decoded, err := base64.StdEncoding.DecodeString(encoded)
 			if err != nil {
 				rw.WriteHeader(500)
@@ -306,6 +320,9 @@ func createServerHandler(responses chan response) http.HandlerFunc {
 				return r == ':'
 			})
 			username, password = toks[0], toks[1]
+		} else if strings.HasPrefix(authHeader, "Bearer") {
+			token := strings.TrimPrefix(authHeader, "Bearer ")
+			username, password, bearerToken = "", "", token
 		}
 
 		responses <- response{
@@ -314,6 +331,7 @@ func createServerHandler(responses chan response) http.HandlerFunc {
 			userAgent:   req.Header.Get("User-Agent"),
 			username:    username,
 			password:    password,
+			bearerToken: bearerToken,
 			pushReq:     pushReq,
 		}
 
@@ -395,16 +413,21 @@ func newTestConfig(t *testing.T) testConfig {
 
 // create a new `EventWriter` with standard everything...
 func newPush(testCfg testConfig, logBatchSize int) (EntryWriter, error) {
-	return newPushWithCredentials(testCfg, "", "", logBatchSize)
+	return newPushWithBasicAuthCredentials(testCfg, "", "", logBatchSize)
 }
 
-// create a new `EventWriter` with credentials
-func newPushWithCredentials(testCfg testConfig, username, password string, logBatchSize int) (EntryWriter, error) {
-	return newPushWithCredentialsAndStreamNameValue(testCfg, username, password, "stream", "stdout", logBatchSize)
+// create a new `EventWriter` with basic auth credentials
+func newPushWithBasicAuthCredentials(testCfg testConfig, username, password string, logBatchSize int) (EntryWriter, error) {
+	return newPushWithCredentialsAndStreamNameValue(testCfg, username, password, "", "stream", "stdout", logBatchSize)
+}
+
+// create a new `EventWriter` with bearer token credentials
+func newPushWithBearerTokenCredentials(testCfg testConfig, token string, logBatchSize int) (EntryWriter, error) {
+	return newPushWithCredentialsAndStreamNameValue(testCfg, "", "", token, "stream", "stdout", logBatchSize)
 }
 
 // create a new `EventWriter` with custom credentials and labels
-func newPushWithCredentialsAndStreamNameValue(testCfg testConfig, username, password, streamName, streamValue string, logBatchSize int) (EntryWriter, error) {
+func newPushWithCredentialsAndStreamNameValue(testCfg testConfig, username, password, bearerToken, streamName, streamValue string, logBatchSize int) (EntryWriter, error) {
 	return NewPush(
 		testCfg.mock.Listener.Addr().String(),
 		"test1",
@@ -421,6 +444,7 @@ func newPushWithCredentialsAndStreamNameValue(testCfg testConfig, username, pass
 		"",
 		username,
 		password,
+		bearerToken,
 		&testCfg.backoff,
 		logBatchSize,
 		log.NewNopLogger(),

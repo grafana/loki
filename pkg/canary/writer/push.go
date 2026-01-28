@@ -51,6 +51,7 @@ type Push struct {
 
 	// auth
 	username, password string
+	bearerToken        string
 
 	// Will add these label to the logs pushed to loki
 	labelName, labelValue, streamName, streamValue string
@@ -74,6 +75,7 @@ func NewPush(
 	tlsCfg *tls.Config,
 	caFile, certFile, keyFile string,
 	username, password string,
+	bearerToken string,
 	backoffCfg *backoff.Config,
 	logBatchSize int,
 	logger log.Logger,
@@ -85,6 +87,10 @@ func NewPush(
 
 	if logBatchSize < 0 {
 		return nil, fmt.Errorf("logBatchSize must be >= 0")
+	}
+
+	if (username != "" || password != "") && bearerToken != "" {
+		return nil, fmt.Errorf("cannot provide both username/password and bearerToken")
 	}
 
 	client.Timeout = timeout
@@ -132,6 +138,7 @@ func NewPush(
 		streamName:  streamName,
 		streamValue: streamValue,
 		username:    username,
+		bearerToken: bearerToken,
 		password:    password,
 		backoff:     backoffCfg,
 	}
@@ -279,6 +286,10 @@ func (p *Push) send(ctx context.Context, payload []byte) (int, error) {
 	// basic auth if provided
 	if p.username != "" {
 		req.SetBasicAuth(p.username, p.password)
+	}
+
+	if p.bearerToken != "" {
+		req.Header.Set("Authorization", "Bearer "+p.bearerToken)
 	}
 
 	resp, err = p.httpClient.Do(req)
