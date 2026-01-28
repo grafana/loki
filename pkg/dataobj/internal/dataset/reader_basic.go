@@ -8,6 +8,7 @@ import (
 	"iter"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
+	"github.com/grafana/loki/v3/pkg/memory"
 )
 
 // basicReader is a low-level reader that reads rows from a set of columns.
@@ -20,7 +21,7 @@ type basicReader struct {
 	readers      []*columnReader
 	columnLookup map[Column]int // Index into columns and readers
 
-	buf []Value // Buffer for reading values from columns
+	alloc memory.Allocator
 
 	nextRow int64
 }
@@ -137,8 +138,6 @@ func (pr *basicReader) fill(ctx context.Context, columns []Column, s []Row) (n i
 		return 0, nil
 	}
 
-	pr.buf = slicegrow.GrowToCap(pr.buf, len(s))
-	pr.buf = pr.buf[:len(s)]
 	startRow := int64(s[0].Index)
 
 	// Ensure that each Row.Values slice has enough capacity to store all values.
@@ -166,22 +165,21 @@ func (pr *basicReader) fill(ctx context.Context, columns []Column, s []Row) (n i
 				return n, fmt.Errorf("column %v is not owned by basicReader", column)
 			}
 
-			// We want to allow readers to reuse memory of [Value]s in s while
-			// allowing the caller to retain ownership over that memory; to do this
-			// safely, we copy memory from s into pr.buf (for the given column index)
-			// for our decoders to use.
-			//
-			// If we didn't do this, then memory backing [Value]s are owned by both
-			// basicReader and the caller, which can lead to memory reuse bugs.
-			pr.buf = reuseRowsBuffer(pr.buf, s[n:], columnIndex)
-
 			r := pr.readers[columnIndex]
 			_, err := r.Seek(startRow, io.SeekStart)
 			if err != nil {
 				return n, fmt.Errorf("seeking to row %d in column %d: %w", startRow, columnIndex, err)
 			}
 
-			cn, err := r.Read(ctx, pr.buf[:len(s)-n])
+			// Allocated memory isn't used past this loop iteration, so we can
+			// eagerly reclaim it now.
+			pr.alloc.Reclaim()
+
+			var cn int
+			arr, err := r.Read(ctx, &pr.alloc, len(s)-n)
+			if arr != nil {
+				cn = copyArrayToRow(s[n:], columnIndex, arr)
+			}
 			if err != nil && !errors.Is(err, io.EOF) {
 				// If reading a column fails, we return immediately without advancing
 				// our row offset for this batch. This retains the state of the reader
@@ -196,9 +194,6 @@ func (pr *basicReader) fill(ctx context.Context, columns []Column, s []Row) (n i
 				atEOF = false
 			}
 			maxRead = max(maxRead, cn)
-			for i := range cn {
-				s[n+i].Values[columnIndex] = pr.buf[i]
-			}
 		}
 
 		// We check for atEOF here instead of maxRead == 0 to preserve the pattern
@@ -238,48 +233,6 @@ func (pr *basicReader) fill(ctx context.Context, columns []Column, s []Row) (n i
 	}
 
 	return n, nil
-}
-
-// reuseRowsBuffer prepares dst for reading up to len(src) values. Non-NULL
-// values of a column are appended to dst, with the remainder of the slice set to NULL.
-//
-// The resulting slice is len(src).
-func reuseRowsBuffer(dst []Value, src []Row, columnIndex int) []Value {
-	dst = slicegrow.GrowToCap(dst, len(src))
-	dst = dst[:0]
-
-	filledLength := 0
-	for i, row := range src {
-		if columnIndex >= len(row.Values) {
-			continue
-		}
-
-		value := row.Values[columnIndex]
-		if value.IsNil() {
-			continue
-		}
-
-		// Only appending the values to dst without swapping could result in sublte bugs:
-		// Assume the column is sparsely polulated with non-null values
-		// 1. A non-null value from src[500] could be copied to dst[5].
-		// 2. When the reader writes back dst[5] to src[5], we now have the same value at both src[5] and src[500]
-		//    This also assumes fewer than requested values are read.
-		// 3. This creates memory aliasing - changes to one position would affect the other
-		//
-		// Swapping ensures that the values being reused are in the same position in src and dst.
-		// This way when we write back to src, we do not risk referring to the same location twice.
-		if i != filledLength {
-			src[filledLength].Values[columnIndex], src[i].Values[columnIndex] =
-				value, src[filledLength].Values[columnIndex]
-		}
-
-		dst = append(dst, value)
-		filledLength++
-	}
-
-	dst = dst[:len(src)]
-	clear(dst[filledLength:])
-	return dst
 }
 
 // Seek sets the row offset for the next Read call, interpreted according to
@@ -366,6 +319,7 @@ func (pr *basicReader) Reset(columns []Column) {
 	pr.readers = pr.readers[:len(columns)]
 	closeAndClear(pr.readers[len(columns):cap(pr.readers)])
 	pr.nextRow = 0
+	pr.alloc.Reset()
 }
 
 func closeAndClear(r []*columnReader) {

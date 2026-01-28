@@ -4,11 +4,11 @@ import (
 	"context"
 	"errors"
 	"io"
-	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/memory"
 )
@@ -27,6 +27,8 @@ var pageReaderTestStrings = []string{
 }
 
 func Test_pageReader(t *testing.T) {
+	var alloc memory.Allocator
+
 	opts := BuilderOptions{
 		PageSizeHint: 1024,
 		Type:         ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"},
@@ -42,7 +44,7 @@ func Test_pageReader(t *testing.T) {
 	t.Log("Compressed size: ", page.Desc.CompressedSize)
 
 	pr := newPageReader(page, opts.Type.Physical, opts.Compression)
-	actualValues, err := readPage(pr, 4)
+	actualValues, err := readPage(&alloc, pr, 4)
 	require.NoError(t, err)
 
 	actual := convertToStrings(t, actualValues)
@@ -50,6 +52,8 @@ func Test_pageReader(t *testing.T) {
 }
 
 func Test_pageReader_SeekToStart(t *testing.T) {
+	var alloc memory.Allocator
+
 	opts := BuilderOptions{
 		PageSizeHint: 1024,
 		Type:         ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"},
@@ -65,14 +69,14 @@ func Test_pageReader_SeekToStart(t *testing.T) {
 	t.Log("Compressed size: ", page.Desc.CompressedSize)
 
 	pr := newPageReader(page, opts.Type.Physical, opts.Compression)
-	_, err := readPage(pr, 4)
+	_, err := readPage(&alloc, pr, 4)
 	require.NoError(t, err)
 
 	// Seek back to the start of the page and read all values again.
 	_, err = pr.Seek(0, io.SeekStart)
 	require.NoError(t, err)
 
-	actualValues, err := readPage(pr, 4)
+	actualValues, err := readPage(&alloc, pr, 4)
 	require.NoError(t, err)
 
 	actual := convertToStrings(t, actualValues)
@@ -80,6 +84,8 @@ func Test_pageReader_SeekToStart(t *testing.T) {
 }
 
 func Test_pageReader_Reset(t *testing.T) {
+	var alloc memory.Allocator
+
 	opts := BuilderOptions{
 		PageSizeHint: 1024,
 		Type:         ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"},
@@ -95,13 +101,13 @@ func Test_pageReader_Reset(t *testing.T) {
 	t.Log("Compressed size: ", page.Desc.CompressedSize)
 
 	pr := newPageReader(page, opts.Type.Physical, opts.Compression)
-	_, err := readPage(pr, 4)
+	_, err := readPage(&alloc, pr, 4)
 	require.NoError(t, err)
 
 	// Reset and read all values again.
 	pr.Reset(page, opts.Type.Physical, opts.Compression)
 
-	actualValues, err := readPage(pr, 4)
+	actualValues, err := readPage(&alloc, pr, 4)
 	require.NoError(t, err)
 
 	actual := convertToStrings(t, actualValues)
@@ -109,6 +115,8 @@ func Test_pageReader_Reset(t *testing.T) {
 }
 
 func Test_pageReader_SkipRows(t *testing.T) {
+	var alloc memory.Allocator
+
 	opts := BuilderOptions{
 		PageSizeHint: 1024,
 		Type:         ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"},
@@ -128,7 +136,7 @@ func Test_pageReader_SkipRows(t *testing.T) {
 	_, err := pr.Seek(4, io.SeekStart)
 	require.NoError(t, err)
 
-	actualValues, err := readPage(pr, 4)
+	actualValues, err := readPage(&alloc, pr, 4)
 	require.NoError(t, err)
 
 	actual := convertToStrings(t, actualValues)
@@ -150,50 +158,40 @@ func buildPage(t *testing.T, opts BuilderOptions, in []string) *MemPage {
 	return page
 }
 
-func readPage(pr *pageReader, batchSize int) ([]Value, error) {
-	// TODO(rfratto): This function should entirely move over to columnar.Array,
-	// but that would require implementing some kind of array concatenation
-	// first, as readPage is expected to read the entire page.
+func readPage(alloc *memory.Allocator, pr *pageReader, batchSize int) (columnar.Array, error) {
+	// Temporary allocator for the intermediate arrays.
+	tempAlloc := memory.MakeAllocator(alloc)
+	defer tempAlloc.Free()
 
-	var (
-		alloc memory.Allocator // Temporary allocator for copying into all
-		all   []Value
-	)
-
+	var arrs []columnar.Array
 	for {
-		alloc.Reclaim()
-
-		arr, err := pr.Read(context.Background(), &alloc, batchSize)
+		arr, err := pr.Read(context.Background(), tempAlloc, batchSize)
 		if arr != nil {
-			prevLen := len(all)
-
-			all = slices.Grow(all, arr.Len())
-			all = all[:prevLen+arr.Len()]
-
-			copyArray(all[prevLen:], arr)
+			arrs = append(arrs, arr)
 		}
 
 		if errors.Is(err, io.EOF) {
-			return all, nil
+			return columnar.Concat(alloc, arrs)
 		} else if err != nil {
-			return all, err
+			return nil, err
 		}
 	}
 }
 
-func convertToStrings(t *testing.T, values []Value) []string {
+func convertToStrings(t *testing.T, arr columnar.Array) []string {
 	t.Helper()
 
-	out := make([]string, 0, len(values))
-
-	for _, v := range values {
-		if v.IsNil() {
-			out = append(out, "")
-		} else {
-			require.Equal(t, datasetmd.PHYSICAL_TYPE_BINARY, v.Type())
-			out = append(out, string(v.Binary()))
-		}
+	if arr == nil {
+		return nil
 	}
 
+	utf8Arr := arr.(*columnar.UTF8)
+	out := make([]string, 0, utf8Arr.Len())
+
+	for i := range utf8Arr.Len() {
+		// No need to check for null here; Get will return an empty byte slice
+		// for null values.
+		out = append(out, string(utf8Arr.Get(i)))
+	}
 	return out
 }

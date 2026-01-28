@@ -11,8 +11,19 @@ package columnar
 
 import "github.com/grafana/loki/v3/pkg/memory"
 
+// A Datum is a piece of data which either represents an [Array] or a [Scalar].
+type Datum interface {
+	isDatum() // Type marker method.
+
+	// Kind returns the Kind of value represented by the Datum.
+	Kind() Kind
+}
+
 // An Array is a sequence of elements of the same data type.
 type Array interface {
+	Datum
+	isArray() // Type marker method.
+
 	// Len returns the total number of elements in the array.
 	Len() int
 
@@ -29,7 +40,28 @@ type Array interface {
 	// A value of 1 in the Validity bitmap indicates that the corresponding
 	// element at that position is valid (not null).
 	Validity() memory.Bitmap
+}
 
-	// Kind returns the kind of Array being represented.
-	Kind() Kind
+// A Scalar is a single element of a specific data type.
+type Scalar interface {
+	Datum
+	isScalar() // Type marker method.
+
+	// IsNull returns true if the scalar is a null value. IsNull can return true
+	// for non-null data types.
+	IsNull() bool
+}
+
+// A Builder assists with constructing arrays. Builder implementations typically
+// have more methods.
+type Builder interface {
+	// AppendNull adds a new null element to the Builder.
+	AppendNull()
+
+	// AppendNulls appends the given number of null elements to the Builder.
+	AppendNulls(count int)
+
+	// Build returns the constructed Array. After calling Build, the builder is
+	// reset to an initial state and can be reused.
+	BuildArray() Array
 }
