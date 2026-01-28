@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.6.5](https://github.com/grafana/loki/compare/v3.6.4...v3.6.5) (2026-01-28)
+
+
+### Features
+
+* add loki health command (backport release-3.6.x) ([#20590](https://github.com/grafana/loki/issues/20590)) ([dfdbe2a](https://github.com/grafana/loki/commit/dfdbe2a351dd0a203513ee66b6dd0b6b983332b0))
+
 ## [3.6.4](https://github.com/grafana/loki/compare/v3.6.3...v3.6.4) (2026-01-21)
 
 
