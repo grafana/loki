@@ -43,8 +43,8 @@ type Config struct {
 	WorkerConfig                    jobqueue.WorkerConfig          `yaml:"worker_config"`
 	JobsConfig                      JobsConfig                     `yaml:"jobs_config"`
 	DeletionMarkerObjectStorePrefix string                         `yaml:"deletion_marker_object_store_prefix"`
-	DataObjDeletion                 deletion.DataObjDeletionConfig `yaml:"dataobj_deletion"`
-	DataObjDeletionEnabled          bool                           `yaml:"dataobj_deletion_enabled"`
+	DataObjDeletion                 deletion.DataObjDeletionConfig `yaml:"dataobj_deletion" category:"experimental"`
+	DataObjDeletionEnabled          bool                           `yaml:"dataobj_deletion_enabled" category:"experimental"`
 }
 
 // RegisterFlags registers flags.

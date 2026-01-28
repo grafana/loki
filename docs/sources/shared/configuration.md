@@ -3040,6 +3040,22 @@ jobs_config:
 # the local disk.
 # CLI flag: -compactor.deletion-marker-object-store-prefix
 [deletion_marker_object_store_prefix: <string> | default = ""]
+
+dataobj_deletion:
+  # Interval at which to process delete requests for dataobjects and create
+  # tombstones.
+  # CLI flag: -compactor.dataobj-deletion.deletion-interval
+  [deletion_process_interval: <duration> | default = 10m]
+
+  # Interval at which to sweep (rewrite) dataobjects to remove tombstoned
+  # sections.
+  # CLI flag: -compactor.dataobj-deletion.sweep-interval
+  [sweep_interval: <duration> | default = 1h]
+
+# Enable dataobj deletion processing. When enabled, the compactor will create
+# tombstone markers and rewrite dataobjects to remove deleted sections.
+# CLI flag: -compactor.dataobj-deletion-enabled
+[dataobj_deletion_enabled: <boolean> | default = false]
 ```
 
 ### consul

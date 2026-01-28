@@ -99,7 +99,7 @@ func (s *DataobjDeletionSweeper) Start(ctx context.Context) {
 }
 
 // sweep performs a single sweep run.
-func (s *DataobjDeletionSweeper) sweep(ctx context.Context) error {
+func (s *DataobjDeletionSweeper) sweep(_ context.Context) error {
 	level.Debug(s.logger).Log("msg", "starting sweep run")
 
 	// TODO: Implement actual sweep logic
