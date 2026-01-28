@@ -2025,7 +2025,7 @@ github.com/twmb/franz-go/pkg/kgo/internal/sticky
 github.com/twmb/franz-go/pkg/kversion
 github.com/twmb/franz-go/pkg/sasl
 github.com/twmb/franz-go/pkg/sasl/plain
-# github.com/twmb/franz-go/pkg/kadm v1.17.1
+# github.com/twmb/franz-go/pkg/kadm v1.17.2
 ## explicit; go 1.24.0
 github.com/twmb/franz-go/pkg/kadm
 # github.com/twmb/franz-go/pkg/kfake v0.0.0-20250603004440-37eecbb8927f
