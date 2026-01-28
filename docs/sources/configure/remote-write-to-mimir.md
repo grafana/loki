@@ -1,28 +1,53 @@
----
-title: Remote Write to Grafana Mimir
-menuTitle: Remote Write
-description: How to configure Loki to remote write metrics to Grafana Mimir
-aliases: ["remote-write-mimir"]
-weight: 510
----
+# Remote Write Metrics to Grafana Mimir
 
-# Remote Write to Grafana Mimir
+This guide explains how to send metrics to Grafana Mimir using **Prometheus** or **Grafana Agent**.
 
-This guide explains how to configure Loki to send metrics to Grafana Mimir using the **remote_write** configuration.
+> Note: Loki itself does not support `remote_write`.  
+> To push metrics to Mimir, you configure `remote_write` on Prometheus or Grafana Agent.
+
+---
 
 ## Prerequisites
 
-- A running Loki instance
-- Access to a Grafana Mimir endpoint
-- API token or credentials for Mimir
-- Familiarity with Loki configuration files ([see Loki Configuration](../configure/))
+- Running Grafana Mimir instance  
+- HTTP endpoint for pushing metrics  
+- Tenant ID and authentication token (if applicable)
 
-## Loki Configuration
+---
 
-Edit your Loki configuration file (e.g., `loki-local-config.yaml`) and add a `remote_write` section:
+## Using Prometheus remote_write
+
+If you are using **Prometheus**, add the following to your `prometheus.yml`:
 
 ```yaml
 remote_write:
-  - url: https://<MIMIR_ENDPOINT>/api/prom/push
-    bearer_token: <YOUR_MIMIR_API_TOKEN>
-    tenant_id: <YOUR_TENANT_ID> # Optional: only if using multi-tenancy
+  - url: https://mimir.example.com/api/v1/push
+    basic_auth:
+      username: <tenant-id>
+      password: <token>
+```
+
+## Using Grafana Agent remote_write
+
+If you are using **Grafana Agent**, add the following to your Agent configuration file:
+
+```yaml
+metrics:
+  wal_directory: /tmp/grafana-agent-wal
+
+  global:
+    scrape_interval: 15s
+
+  configs:
+    - name: agent
+      scrape_configs:
+        - job_name: 'agent'
+          static_configs:
+            - targets: ['localhost:9090']
+
+      remote_write:
+        - url: https://mimir.example.com/api/v1/push
+          basic_auth:
+            username: <tenant-id>
+            password: <token>
+```
