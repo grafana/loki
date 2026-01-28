@@ -57,6 +57,9 @@ func (arr *Null) Kind() Kind { return KindNull }
 // Validity returns arr's validity bitmap.
 func (arr *Null) Validity() memory.Bitmap { return arr.validity }
 
+// Size returns the size in bytes of the array's buffers.
+func (arr *Null) Size() int { return arr.validity.Len() / 8 }
+
 func (arr *Null) isDatum() {}
 func (arr *Null) isArray() {}
 
