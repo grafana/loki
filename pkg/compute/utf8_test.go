@@ -11,17 +11,19 @@ import (
 )
 
 func TestSubstrInsensitive(t *testing.T) {
-	alloc := memory.MakeAllocator(nil)
+	setupAlloc := memory.MakeAllocator(nil)
 
-	singleValueHaystack := columnartest.Array(t, columnar.KindUTF8, alloc, "test")
+	singleValueHaystack := columnartest.Array(t, columnar.KindUTF8, setupAlloc, "test")
+	emptyHaystack := columnartest.Array(t, columnar.KindUTF8, setupAlloc)
 
 	emptyNeedle := columnartest.Scalar(t, columnar.KindUTF8, "")
 	singleValueNeedle := columnartest.Scalar(t, columnar.KindUTF8, "test")
 	singleUnknownValueNeedle := columnartest.Scalar(t, columnar.KindUTF8, "notest")
 	singleUpperCaseValueNeedle := columnartest.Scalar(t, columnar.KindUTF8, "TEST")
 
-	singleTrue := columnartest.Array(t, columnar.KindBool, alloc, true)
-	singleFalse := columnartest.Array(t, columnar.KindBool, alloc, false)
+	singleTrue := columnartest.Array(t, columnar.KindBool, setupAlloc, true)
+	singleFalse := columnartest.Array(t, columnar.KindBool, setupAlloc, false)
+	emptyResult := columnartest.Array(t, columnar.KindBool, setupAlloc)
 
 	cases := []struct {
 		name     string
@@ -29,18 +31,43 @@ func TestSubstrInsensitive(t *testing.T) {
 		needle   columnar.Datum
 		expected columnar.Datum
 	}{
-		{name: "empty_haystack", haystack: columnartest.Array(t, columnar.KindUTF8, alloc), needle: columnartest.Scalar(t, columnar.KindUTF8, "test"), expected: columnartest.Array(t, columnar.KindBool, alloc)},
-		{name: "empty_needle", haystack: singleValueHaystack, needle: emptyNeedle, expected: singleTrue},
-		{name: "match", haystack: singleValueHaystack, needle: singleValueNeedle, expected: singleTrue},
-		{name: "not match", haystack: singleValueHaystack, needle: singleUnknownValueNeedle, expected: singleFalse},
-		{name: "case insensitive match", haystack: singleValueHaystack, needle: singleUpperCaseValueNeedle, expected: singleTrue},
+		{
+			name:     "empty_haystack",
+			haystack: emptyHaystack,
+			needle:   singleValueNeedle,
+			expected: emptyResult,
+		},
+		{
+			name:     "empty_needle",
+			haystack: singleValueHaystack,
+			needle:   emptyNeedle,
+			expected: singleTrue,
+		},
+		{
+			name:     "match",
+			haystack: singleValueHaystack,
+			needle:   singleValueNeedle,
+			expected: singleTrue,
+		},
+		{
+			name:     "not match",
+			haystack: singleValueHaystack,
+			needle:   singleUnknownValueNeedle,
+			expected: singleFalse,
+		},
+		{
+			name:     "case insensitive match",
+			haystack: singleValueHaystack,
+			needle:   singleUpperCaseValueNeedle,
+			expected: singleTrue,
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			alloc.Reclaim()
+			alloc := memory.MakeAllocator(nil)
 			results, err := SubstrInsensitive(alloc, c.haystack, c.needle)
 			require.NoError(t, err)
-			require.Equal(t, c.expected, results)
+			columnartest.RequireDatumsEqual(t, c.expected, results)
 		})
 	}
 }

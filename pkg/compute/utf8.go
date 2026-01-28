@@ -45,8 +45,8 @@ func SubstrInsensitiveAS(alloc *memory.Allocator, haystack *columnar.UTF8, needl
 
 	for i := range haystack.Len() {
 		haystackValue := haystack.Get(i)
-		haystackValueLower := bytes.ToUpper(haystackValue)
-		results.AppendValue(bytes.Contains(haystackValueLower, needleLower))
+		haystackValueUpper := bytes.ToUpper(haystackValue)
+		results.AppendValue(bytes.Contains(haystackValueUpper, needleLower))
 	}
 	return results.Build(), nil
 }
