@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-kit/log/level"
@@ -290,6 +291,8 @@ type Limits struct {
 	MaxScanTaskParallelism int  `yaml:"max_scan_task_parallelism" json:"max_scan_task_parallelism"`
 	DebugEngineTasks       bool `yaml:"debug_engine_tasks" json:"debug_engine_tasks"`
 	DebugEngineStreams     bool `yaml:"debug_engine_streams" json:"debug_engine_streams"`
+
+	SegmentationRules []string `yaml:"segmentation_rules" json:"segmentation_rules" category:"experimental" doc:"description=List of segmentation rules for partitioning when writing to the segment topic. Supports both simple keys ('key') and key=value rules with additional keys ('key=value,additional_key1,additional_key2'). Experimental."`
 }
 
 type FieldDetectorConfig struct {
@@ -532,9 +535,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 		"Enable experimental support for running multiple query variants over the same underlying data. For example, running both a rate() and count_over_time() query over the same range selector.",
 	)
 
-	f.IntVar(&l.MaxScanTaskParallelism, "limits.max-scan-task-parallelism", 0, "Experimental: Controls the amount of scan tasks that can be running in parallel in the new query engine. The default of 0 means unlimited parallelism and all tasks will be scheduled at once.")
-	f.BoolVar(&l.DebugEngineTasks, "limits.debug-engine-tasks", false, "Experimental: Toggles verbose debug logging of tasks in the new query engine.")
-	f.BoolVar(&l.DebugEngineStreams, "limits.debug-engine-streams", false, "Experimental: Toggles verbose debug logging of data streams in the new query engine.")
+	f.Var((*dskit_flagext.StringSlice)(&l.SegmentationRules), "distributor.segmentation-rules", "Comma-separated list of segmentation rules for partitioning when writing to the segment topic. Supports both simple keys ('key') and key=value rules with additional keys ('key=value,additional_key1,additional_key2'). Experimental.")
 }
 
 // SetGlobalOTLPConfig set GlobalOTLPConfig which is used while unmarshaling per-tenant otlp config to use the default list of resource attributes picked as index labels.
@@ -647,6 +648,11 @@ func (l *Limits) Validate() error {
 
 	if l.TSDBMaxBytesPerShard <= 0 {
 		return errors.New("querier.tsdb-max-bytes-per-shard must be greater than 0")
+	}
+
+	// Validate segmentation rules
+	if err := l.validateSegmentationRules(); err != nil {
+		return err
 	}
 
 	return nil
@@ -1453,4 +1459,70 @@ func (sm *OverwriteMarshalingStringMap) UnmarshalYAML(unmarshal func(interface{}
 
 func (o *Overrides) SimulatedPushLatency(userID string) time.Duration {
 	return o.getOverridesForUser(userID).SimulatedPushLatency
+}
+
+func (o *Overrides) SegmentationRules(userID string) []string {
+	return o.getOverridesForUser(userID).SegmentationRules
+}
+
+// validateSegmentationRules validates the segmentation rules configuration
+func (l *Limits) validateSegmentationRules() error {
+	for _, ruleStr := range l.SegmentationRules {
+		if err := validateSegmentationRule(ruleStr); err != nil {
+			return fmt.Errorf("invalid segmentation rule '%s': %w", ruleStr, err)
+		}
+	}
+	return nil
+}
+
+// validateSegmentationRule validates a single segmentation rule string
+func validateSegmentationRule(ruleStr string) error {
+	ruleStr = strings.TrimSpace(ruleStr)
+	if ruleStr == "" {
+		return fmt.Errorf("empty segmentation rule")
+	}
+
+	// Check if this is a key=value rule
+	if strings.Contains(ruleStr, "=") {
+		parts := strings.Split(ruleStr, ",")
+		if len(parts) < 2 {
+			return fmt.Errorf("invalid key=value rule format: %s", ruleStr)
+		}
+
+		// First part should be key=value
+		keyValue := strings.TrimSpace(parts[0])
+		if !strings.Contains(keyValue, "=") {
+			return fmt.Errorf("first part must be key=value: %s", keyValue)
+		}
+
+		keyValueParts := strings.SplitN(keyValue, "=", 2)
+		if len(keyValueParts) != 2 {
+			return fmt.Errorf("invalid key=value format: %s", keyValue)
+		}
+
+		key := strings.TrimSpace(keyValueParts[0])
+		value := strings.TrimSpace(keyValueParts[1])
+		if key == "" || value == "" {
+			return fmt.Errorf("key and value cannot be empty: %s", keyValue)
+		}
+
+		// Additional keys are the rest of the parts
+		additionalKeys := make([]string, 0, len(parts)-1)
+		for i := 1; i < len(parts); i++ {
+			additionalKey := strings.TrimSpace(parts[i])
+			if additionalKey == "" {
+				continue
+			}
+			additionalKeys = append(additionalKeys, additionalKey)
+		}
+
+		if len(additionalKeys) == 0 {
+			return fmt.Errorf("key=value rule must have at least one additional key: %s", ruleStr)
+		}
+
+		// Additional keys can be either simple keys or key=value pairs
+		// No additional validation needed as both formats are supported
+	}
+
+	return nil
 }
