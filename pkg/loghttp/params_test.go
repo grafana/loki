@@ -200,10 +200,14 @@ func Test_parseTimestamp(t *testing.T) {
 		{"default", "", now, now, false},
 		{"unix timestamp", "1571332130", now, time.Unix(1571332130, 0), false},
 		{"unix nano timestamp", "1571334162051000000", now, time.Unix(0, 1571334162051000000), false},
-		{"unix timestamp with subseconds", "1571332130.934", now, time.Unix(1571332130, 934*1e6), false},
+		{"floating point timestamp", "1571332130.934", now, time.Unix(1571332130, 934*1e6), false},
+		{"floating point nano timestamp", "1571332130934000000.123", now, time.Unix(1571332130, 934000128), false},
 		{"RFC3339 format", "2002-10-02T15:00:00Z", now, time.Date(2002, 10, 02, 15, 0, 0, 0, time.UTC), false},
 		{"RFC3339nano format", "2009-11-10T23:00:00.000000001Z", now, time.Date(2009, 11, 10, 23, 0, 0, 1, time.UTC), false},
+		{"invalid RFC3339 format", "12999-10-02T15:00:00Z", now, time.Time{}, true},
 		{"invalid", "we", now, time.Time{}, true},
+		{"scientific timestamp", "1.57133416201e+9", now, time.Unix(1571334162, 10000000), false},
+		{"scientific nano timestamp", "1.57133416201e+18", now, time.Unix(0, 1571334162009999872), false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
