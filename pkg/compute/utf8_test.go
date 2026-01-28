@@ -11,19 +11,19 @@ import (
 )
 
 func TestSubstrInsensitive(t *testing.T) {
-	setupAlloc := memory.MakeAllocator(nil)
+	alloc := memory.MakeAllocator(nil)
 
-	singleValueHaystack := columnartest.Array(t, columnar.KindUTF8, setupAlloc, "test")
-	emptyHaystack := columnartest.Array(t, columnar.KindUTF8, setupAlloc)
+	singleValueHaystack := columnartest.Array(t, columnar.KindUTF8, alloc, "test")
+	emptyHaystack := columnartest.Array(t, columnar.KindUTF8, alloc)
 
 	emptyNeedle := columnartest.Scalar(t, columnar.KindUTF8, "")
 	singleValueNeedle := columnartest.Scalar(t, columnar.KindUTF8, "test")
 	singleUnknownValueNeedle := columnartest.Scalar(t, columnar.KindUTF8, "notest")
 	singleUpperCaseValueNeedle := columnartest.Scalar(t, columnar.KindUTF8, "TEST")
 
-	singleTrue := columnartest.Array(t, columnar.KindBool, setupAlloc, true)
-	singleFalse := columnartest.Array(t, columnar.KindBool, setupAlloc, false)
-	emptyResult := columnartest.Array(t, columnar.KindBool, setupAlloc)
+	singleTrue := columnartest.Array(t, columnar.KindBool, alloc, true)
+	singleFalse := columnartest.Array(t, columnar.KindBool, alloc, false)
+	emptyResult := columnartest.Array(t, columnar.KindBool, alloc)
 
 	cases := []struct {
 		name     string
@@ -64,7 +64,6 @@ func TestSubstrInsensitive(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			alloc := memory.MakeAllocator(nil)
 			results, err := SubstrInsensitive(alloc, c.haystack, c.needle)
 			require.NoError(t, err)
 			columnartest.RequireDatumsEqual(t, c.expected, results)
