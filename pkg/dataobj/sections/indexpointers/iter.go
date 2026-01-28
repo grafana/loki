@@ -18,8 +18,8 @@ import (
 
 // Iter iterates over indexpointers in the provided decoder. All indexpointers sections are
 // iterated over in order.
-func Iter(ctx context.Context, obj *dataobj.Object) result.Seq[IndexPointer] {
-	return result.Iter(func(yield func(IndexPointer) bool) error {
+func Iter(ctx context.Context, obj *dataobj.Object) result.Seq[TenantIndexPointer] {
+	return result.Iter(func(yield func(pointer TenantIndexPointer) bool) error {
 		for i, section := range obj.Sections().Filter(CheckSection) {
 			pointersSection, err := Open(ctx, section)
 			if err != nil {
@@ -27,7 +27,7 @@ func Iter(ctx context.Context, obj *dataobj.Object) result.Seq[IndexPointer] {
 			}
 
 			for result := range IterSection(ctx, pointersSection) {
-				if result.Err() != nil || !yield(result.MustValue()) {
+				if result.Err() != nil || !yield(TenantIndexPointer{Tenant: section.Tenant, IndexPointer: result.MustValue()}) {
 					return result.Err()
 				}
 			}
@@ -59,7 +59,7 @@ func IterSection(ctx context.Context, section *Section) result.Seq[IndexPointer]
 
 		sym := symbolizer.New(128, 1024)
 
-		var rows [1]dataset.Row
+		var rows [1024]dataset.Row
 		for {
 			n, err := r.Read(ctx, rows[:])
 			if err != nil && !errors.Is(err, io.EOF) {

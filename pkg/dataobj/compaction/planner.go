@@ -3,7 +3,6 @@ package planner
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"sort"
@@ -19,15 +18,13 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	compactionpb "github.com/grafana/loki/v3/pkg/dataobj/compaction/proto"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/symbolizer"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 const (
-	// tocPrefix is the directory where ToC files are stored.
-	tocPrefix = "tocs/"
-
 	// targetUncompressedSize is the target uncompressed size for output data objects (6GB).
 	targetUncompressedSize int64 = 6 << 30
 
@@ -265,8 +262,11 @@ func (s *Planner) findIndexesToCompact(ctx context.Context, windowStart, windowE
 		return tocs[i] > tocs[j]
 	})
 
+	type tenantIndex struct {
+		tenant, path string
+	}
+	seen := make(map[tenantIndex]struct{}) // tenant/path -> seen
 	var indexes []IndexInfo
-	seen := make(map[string]bool) // tenant/path -> seen
 
 	for _, toc := range tocs {
 		level.Info(util_log.Logger).Log("msg", "Processing ToC", "toc", toc)
@@ -276,57 +276,33 @@ func (s *Planner) findIndexesToCompact(ctx context.Context, windowStart, windowE
 			return nil, fmt.Errorf("failed to read ToC %s: %w", toc, err)
 		}
 
-		for _, section := range obj.Sections().Filter(indexpointers.CheckSection) {
-			err := func() error {
-				sec, err := indexpointers.Open(ctx, section)
-				if err != nil {
-					return fmt.Errorf("failed to open index pointers section in %s: %w", toc, err)
-				}
-
-				reader := indexpointers.NewRowReader(sec)
-				defer reader.Close()
-
-				buf := make([]indexpointers.IndexPointer, 256)
-				for {
-					n, err := reader.Read(ctx, buf)
-					if err != nil && !errors.Is(err, io.EOF) {
-						return err
-					}
-					if n == 0 && errors.Is(err, io.EOF) {
-						break
-					}
-
-					for _, ptr := range buf[:n] {
-						key := fmt.Sprintf("%s/%s", section.Tenant, ptr.Path)
-						if seen[key] {
-							continue
-						}
-
-						minTime := ptr.StartTs.UTC()
-						maxTime := ptr.EndTs.UTC()
-
-						// Skip indexes outside the compaction window
-						if maxTime.Before(windowStart) || minTime.After(windowEnd) {
-							continue
-						}
-
-						indexes = append(indexes, IndexInfo{
-							Path:   ptr.Path,
-							Tenant: section.Tenant,
-						})
-						seen[key] = true
-					}
-
-					if errors.Is(err, io.EOF) {
-						break
-					}
-				}
-
-				return nil
-			}()
+		for result := range indexpointers.Iter(ctx, obj) {
+			ptr, err := result.Value()
 			if err != nil {
-				return nil, fmt.Errorf("failed to process toc %s: %w", toc, err)
+				return nil, fmt.Errorf("failed to iterate ToC %s: %w", toc, err)
 			}
+
+			key := tenantIndex{
+				tenant: ptr.Tenant,
+				path:   ptr.Path,
+			}
+			if _, ok := seen[key]; ok {
+				continue
+			}
+
+			minTime := ptr.StartTs.UTC()
+			maxTime := ptr.EndTs.UTC()
+
+			// Skip indexes outside the compaction window
+			if maxTime.Before(windowStart) || minTime.After(windowEnd) {
+				continue
+			}
+
+			indexes = append(indexes, IndexInfo{
+				Path:   ptr.Path,
+				Tenant: ptr.Tenant,
+			})
+			seen[key] = struct{}{}
 		}
 	}
 
@@ -577,6 +553,8 @@ func (s *Planner) collectStreamsBySegmentKey(ctx context.Context, tenant string,
 			}
 
 			mu.Lock()
+			defer mu.Unlock()
+
 			// Group leftover before streams by labels hash
 			for _, info := range result.LeftoverBeforeStreams {
 				group, ok := leftoverBeforeMap[info.LabelsHash]
@@ -614,7 +592,6 @@ func (s *Planner) collectStreamsBySegmentKey(ctx context.Context, tenant string,
 				group.Streams = append(group.Streams, &info.Stream)
 				group.TotalUncompressedSize += info.UncompressedSize
 			}
-			mu.Unlock()
 
 			return nil
 		})
@@ -788,7 +765,7 @@ func (s *Planner) planLeftovers(beforeStreams, afterStreams []*LeftoverStreamGro
 func (s *Planner) listToCs(ctx context.Context) ([]string, error) {
 	var tocs []string
 
-	err := s.bucket.Iter(ctx, tocPrefix, func(name string) error {
+	err := s.bucket.Iter(ctx, metastore.TocPrefix, func(name string) error {
 		if !strings.HasSuffix(name, ".toc") {
 			return nil
 		}

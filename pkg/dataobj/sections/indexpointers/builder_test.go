@@ -11,6 +11,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 )
 
+const tenantID = "tenantID"
+
 func TestBuilder(t *testing.T) {
 	type pointers struct {
 		path  string
@@ -24,6 +26,7 @@ func TestBuilder(t *testing.T) {
 	}
 
 	ib := indexpointers.NewBuilder(nil, 1024, 0)
+	ib.SetTenant(tenantID)
 	for _, p := range pp {
 		ib.Append(p.path, p.start, p.end)
 	}
@@ -35,20 +38,26 @@ func TestBuilder(t *testing.T) {
 	require.NoError(t, err)
 	defer closer.Close()
 
-	expect := []indexpointers.IndexPointer{
+	expect := []indexpointers.TenantIndexPointer{
 		{
-			Path:    "foo",
-			StartTs: unixTime(10),
-			EndTs:   unixTime(20),
+			Tenant: tenantID,
+			IndexPointer: indexpointers.IndexPointer{
+				Path:    "foo",
+				StartTs: unixTime(10),
+				EndTs:   unixTime(20),
+			},
 		},
 		{
-			Path:    "bar",
-			StartTs: unixTime(10),
-			EndTs:   unixTime(20),
+			Tenant: tenantID,
+			IndexPointer: indexpointers.IndexPointer{
+				Path:    "bar",
+				StartTs: unixTime(10),
+				EndTs:   unixTime(20),
+			},
 		},
 	}
 
-	var actual []indexpointers.IndexPointer
+	var actual []indexpointers.TenantIndexPointer
 	for result := range indexpointers.Iter(context.Background(), obj) {
 		pointer, err := result.Value()
 		require.NoError(t, err)
