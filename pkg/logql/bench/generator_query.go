@@ -203,6 +203,19 @@ func (g *TestCaseGenerator) Generate() []TestCase {
 			addBidirectional(selector+` | json | duration_seconds > 0.1 | detected_level!="debug"`, g.logGenCfg.StartTime, end)
 			addBidirectional(selector+` | logfmt | level="error" | detected_level="error"`, g.logGenCfg.StartTime, end)
 		}
+
+		// Case-insensitive label matcher
+		addBidirectional(`{service_name=~"(?i)web-server"}`, g.logGenCfg.StartTime, end)
+
+		// Logs Drilldown queries -- common patterns seen from drilldown
+		addBidirectional(`{service_name="web-server"} |~ "(?i)error"`, g.logGenCfg.StartTime, end)
+		addBidirectional(`{region="us-east-1"} !~ "(?i)debug"`, g.logGenCfg.StartTime, end)
+		addBidirectional(`{service_name="web-server"} | json | logfmt | drop __error__, __error_details__`, g.logGenCfg.StartTime, end)
+		addBidirectional(`{service_name="database"} | json | logfmt | drop __error__, __error_details__ | level="error"`, g.logGenCfg.StartTime, end)
+		addBidirectional(`{service_name="web-server"} | json | level="error" or level="warn"`, g.logGenCfg.StartTime, end)
+		addBidirectional(`{service_name="web-server"} |~ "(?i)error" | json | drop __error__, __error_details__ | status_code >= 500`, g.logGenCfg.StartTime, end)
+		addBidirectional(`{region="us-east-1", env="prod"} | detected_level="error" |~ "(?i).*timeout.*"`, g.logGenCfg.StartTime, end)
+		addBidirectional(`{service_name="web-server"} | detected_level=~"error|warn" |~ "(?i)exception" `, g.logGenCfg.StartTime, end)
 	}
 
 	for _, combo := range labelCombos {
@@ -257,6 +270,9 @@ func (g *TestCaseGenerator) Generate() []TestCase {
 	addMetricQuery(fmt.Sprintf(`max without () (sum_over_time({service_name="loki"} | logfmt | duration != "" | unwrap duration_seconds(duration) [%s]))`, rangeInterval), start, end, step)
 	addMetricQuery(fmt.Sprintf(`avg_over_time({service_name="loki"} | logfmt | duration != "" | unwrap duration_seconds(duration) [%s])`, rangeInterval), start, end, step)
 	addMetricQuery(fmt.Sprintf(`sum_over_time({service_name="database"} | json | unwrap rows_affected [%s])`, rangeInterval), start, end, step)
+
+	// Logs Drilldown sytle unwrap query (from fields tab)
+	addMetricQuery(fmt.Sprintf(`sum by (detected_level) (avg_over_time({service_name="loki"} | logfmt | duration != "" | drop __error__, __error_details__ | unwrap duration_seconds(duration) [%s]))`, rangeInterval), start, end, step)
 
 	// Dense period queries
 	for _, interval := range g.logGenCfg.DenseIntervals {
