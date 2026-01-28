@@ -9,7 +9,11 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	internalEndpointDiscovery "github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery"
 	"github.com/aws/smithy-go/middleware"
+	smithytime "github.com/aws/smithy-go/time"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
+	smithywaiter "github.com/aws/smithy-go/waiter"
+	"strconv"
+	"time"
 )
 
 // Returns information about the status of Kinesis streaming.
@@ -171,6 +175,231 @@ func (c *Client) addOperationDescribeKinesisStreamingDestinationMiddlewares(stac
 	return nil
 }
 
+// KinesisStreamingDestinationActiveWaiterOptions are waiter options for
+// KinesisStreamingDestinationActiveWaiter
+type KinesisStreamingDestinationActiveWaiterOptions struct {
+
+	// Set of options to modify how an operation is invoked. These apply to all
+	// operations invoked for this client. Use functional options on operation call to
+	// modify this list for per operation behavior.
+	//
+	// Passing options here is functionally equivalent to passing values to this
+	// config's ClientOptions field that extend the inner client's APIOptions directly.
+	APIOptions []func(*middleware.Stack) error
+
+	// Functional options to be passed to all operations invoked by this client.
+	//
+	// Function values that modify the inner APIOptions are applied after the waiter
+	// config's own APIOptions modifiers.
+	ClientOptions []func(*Options)
+
+	// MinDelay is the minimum amount of time to delay between retries. If unset,
+	// KinesisStreamingDestinationActiveWaiter will use default minimum delay of 20
+	// seconds. Note that MinDelay must resolve to a value lesser than or equal to the
+	// MaxDelay.
+	MinDelay time.Duration
+
+	// MaxDelay is the maximum amount of time to delay between retries. If unset or
+	// set to zero, KinesisStreamingDestinationActiveWaiter will use default max delay
+	// of 120 seconds. Note that MaxDelay must resolve to value greater than or equal
+	// to the MinDelay.
+	MaxDelay time.Duration
+
+	// LogWaitAttempts is used to enable logging for waiter retry attempts
+	LogWaitAttempts bool
+
+	// Retryable is function that can be used to override the service defined
+	// waiter-behavior based on operation output, or returned error. This function is
+	// used by the waiter to decide if a state is retryable or a terminal state.
+	//
+	// By default service-modeled logic will populate this option. This option can
+	// thus be used to define a custom waiter state with fall-back to service-modeled
+	// waiter state mutators.The function returns an error in case of a failure state.
+	// In case of retry state, this function returns a bool value of true and nil
+	// error, while in case of success it returns a bool value of false and nil error.
+	Retryable func(context.Context, *DescribeKinesisStreamingDestinationInput, *DescribeKinesisStreamingDestinationOutput, error) (bool, error)
+}
+
+// KinesisStreamingDestinationActiveWaiter defines the waiters for
+// KinesisStreamingDestinationActive
+type KinesisStreamingDestinationActiveWaiter struct {
+	client DescribeKinesisStreamingDestinationAPIClient
+
+	options KinesisStreamingDestinationActiveWaiterOptions
+}
+
+// NewKinesisStreamingDestinationActiveWaiter constructs a
+// KinesisStreamingDestinationActiveWaiter.
+func NewKinesisStreamingDestinationActiveWaiter(client DescribeKinesisStreamingDestinationAPIClient, optFns ...func(*KinesisStreamingDestinationActiveWaiterOptions)) *KinesisStreamingDestinationActiveWaiter {
+	options := KinesisStreamingDestinationActiveWaiterOptions{}
+	options.MinDelay = 20 * time.Second
+	options.MaxDelay = 120 * time.Second
+	options.Retryable = kinesisStreamingDestinationActiveStateRetryable
+
+	for _, fn := range optFns {
+		fn(&options)
+	}
+	return &KinesisStreamingDestinationActiveWaiter{
+		client:  client,
+		options: options,
+	}
+}
+
+// Wait calls the waiter function for KinesisStreamingDestinationActive waiter.
+// The maxWaitDur is the maximum wait duration the waiter will wait. The maxWaitDur
+// is required and must be greater than zero.
+func (w *KinesisStreamingDestinationActiveWaiter) Wait(ctx context.Context, params *DescribeKinesisStreamingDestinationInput, maxWaitDur time.Duration, optFns ...func(*KinesisStreamingDestinationActiveWaiterOptions)) error {
+	_, err := w.WaitForOutput(ctx, params, maxWaitDur, optFns...)
+	return err
+}
+
+// WaitForOutput calls the waiter function for KinesisStreamingDestinationActive
+// waiter and returns the output of the successful operation. The maxWaitDur is the
+// maximum wait duration the waiter will wait. The maxWaitDur is required and must
+// be greater than zero.
+func (w *KinesisStreamingDestinationActiveWaiter) WaitForOutput(ctx context.Context, params *DescribeKinesisStreamingDestinationInput, maxWaitDur time.Duration, optFns ...func(*KinesisStreamingDestinationActiveWaiterOptions)) (*DescribeKinesisStreamingDestinationOutput, error) {
+	if maxWaitDur <= 0 {
+		return nil, fmt.Errorf("maximum wait time for waiter must be greater than zero")
+	}
+
+	options := w.options
+	for _, fn := range optFns {
+		fn(&options)
+	}
+
+	if options.MaxDelay <= 0 {
+		options.MaxDelay = 120 * time.Second
+	}
+
+	if options.MinDelay > options.MaxDelay {
+		return nil, fmt.Errorf("minimum waiter delay %v must be lesser than or equal to maximum waiter delay of %v.", options.MinDelay, options.MaxDelay)
+	}
+
+	ctx, cancelFn := context.WithTimeout(ctx, maxWaitDur)
+	defer cancelFn()
+
+	logger := smithywaiter.Logger{}
+	remainingTime := maxWaitDur
+
+	var attempt int64
+	for {
+
+		attempt++
+		apiOptions := options.APIOptions
+		start := time.Now()
+
+		if options.LogWaitAttempts {
+			logger.Attempt = attempt
+			apiOptions = append([]func(*middleware.Stack) error{}, options.APIOptions...)
+			apiOptions = append(apiOptions, logger.AddLogger)
+		}
+
+		out, err := w.client.DescribeKinesisStreamingDestination(ctx, params, func(o *Options) {
+			baseOpts := []func(*Options){
+				addIsWaiterUserAgent,
+			}
+			o.APIOptions = append(o.APIOptions, apiOptions...)
+			for _, opt := range baseOpts {
+				opt(o)
+			}
+			for _, opt := range options.ClientOptions {
+				opt(o)
+			}
+		})
+
+		retryable, err := options.Retryable(ctx, params, out, err)
+		if err != nil {
+			return nil, err
+		}
+		if !retryable {
+			return out, nil
+		}
+
+		remainingTime -= time.Since(start)
+		if remainingTime < options.MinDelay || remainingTime <= 0 {
+			break
+		}
+
+		// compute exponential backoff between waiter retries
+		delay, err := smithywaiter.ComputeDelay(
+			attempt, options.MinDelay, options.MaxDelay, remainingTime,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("error computing waiter delay, %w", err)
+		}
+
+		remainingTime -= delay
+		// sleep for the delay amount before invoking a request
+		if err := smithytime.SleepWithContext(ctx, delay); err != nil {
+			return nil, fmt.Errorf("request cancelled while waiting, %w", err)
+		}
+	}
+	return nil, fmt.Errorf("exceeded max wait time for KinesisStreamingDestinationActive waiter")
+}
+
+func kinesisStreamingDestinationActiveStateRetryable(ctx context.Context, input *DescribeKinesisStreamingDestinationInput, output *DescribeKinesisStreamingDestinationOutput, err error) (bool, error) {
+
+	if err == nil {
+		v1 := output.KinesisDataStreamDestinations
+		var v2 []types.DestinationStatus
+		for _, v := range v1 {
+			v3 := v.DestinationStatus
+			v2 = append(v2, v3)
+		}
+		expectedValue := "ACTIVE"
+		var match bool
+		for _, v := range v2 {
+			if string(v) == expectedValue {
+				match = true
+				break
+			}
+		}
+
+		if match {
+			return false, nil
+		}
+	}
+
+	if err == nil {
+		v1 := output.KinesisDataStreamDestinations
+		v2 := len(v1)
+		v3 := 0
+		v4 := int64(v2) > int64(v3)
+		v5 := output.KinesisDataStreamDestinations
+		var v6 []types.KinesisDataStreamDestination
+		for _, v := range v5 {
+			v7 := v.DestinationStatus
+			v8 := "DISABLED"
+			v9 := string(v7) == string(v8)
+			v10 := v.DestinationStatus
+			v11 := "ENABLE_FAILED"
+			v12 := string(v10) == string(v11)
+			v13 := v9 || v12
+			if v13 {
+				v6 = append(v6, v)
+			}
+		}
+		v14 := len(v6)
+		v15 := output.KinesisDataStreamDestinations
+		v16 := len(v15)
+		v17 := int64(v14) == int64(v16)
+		v18 := v4 && v17
+		expectedValue := "true"
+		bv, err := strconv.ParseBool(expectedValue)
+		if err != nil {
+			return false, fmt.Errorf("error parsing boolean from string %w", err)
+		}
+		if v18 == bv {
+			return false, fmt.Errorf("waiter state transitioned to Failure")
+		}
+	}
+
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 func addOpDescribeKinesisStreamingDestinationDiscoverEndpointMiddleware(stack *middleware.Stack, o Options, c *Client) error {
 	return stack.Finalize.Insert(&internalEndpointDiscovery.DiscoverEndpoint{
 		Options: []func(*internalEndpointDiscovery.DiscoverEndpointOptions){
@@ -213,6 +442,14 @@ func (c *Client) fetchOpDescribeKinesisStreamingDestinationDiscoverEndpoint(ctx 
 	go c.handleEndpointDiscoveryFromService(ctx, discoveryOperationInput, region, key, opt)
 	return internalEndpointDiscovery.WeightedAddress{}, nil
 }
+
+// DescribeKinesisStreamingDestinationAPIClient is a client that implements the
+// DescribeKinesisStreamingDestination operation.
+type DescribeKinesisStreamingDestinationAPIClient interface {
+	DescribeKinesisStreamingDestination(context.Context, *DescribeKinesisStreamingDestinationInput, ...func(*Options)) (*DescribeKinesisStreamingDestinationOutput, error)
+}
+
+var _ DescribeKinesisStreamingDestinationAPIClient = (*Client)(nil)
 
 func newServiceMetadataMiddleware_opDescribeKinesisStreamingDestination(region string) *awsmiddleware.RegisterServiceMetadata {
 	return &awsmiddleware.RegisterServiceMetadata{
