@@ -53,6 +53,7 @@ func main() {
 	insecureSkipVerify := flag.Bool("insecure", false, "Allow insecure TLS connections")
 	user := flag.String("user", "", "Loki username.")
 	pass := flag.String("pass", "", "Loki password. This credential should have both read and write permissions to Loki endpoints")
+	bearerToken := flag.String("bearer-token", "", "Bearer token to use for authentication to Loki. This credential should have both read and write permissions to Loki endpoints")
 	tenantID := flag.String("tenant-id", "", "Tenant ID to be set in X-Scope-OrgID header.")
 	writeTimeout := flag.Duration("write-timeout", 10*time.Second, "How long to wait write response from Loki")
 	writeMinBackoff := flag.Duration("write-min-backoff", defaultMinBackoff, "Initial backoff time before first retry ")
@@ -192,6 +193,7 @@ func main() {
 				tlsConfig,
 				*caFile, *certFile, *keyFile,
 				*user, *pass,
+				*bearerToken,
 				&backoffCfg,
 				*logBatchSize,
 				log.NewLogfmtLogger(os.Stderr),
@@ -208,7 +210,7 @@ func main() {
 
 		c.writer = writer.NewWriter(entryWriter, sentChan, *interval, *outOfOrderMin, *outOfOrderMax, *outOfOrderPercentage, *size, logger)
 		var err error
-		c.reader, err = reader.NewReader(os.Stderr, receivedChan, *useTLS, tlsConfig, *caFile, *certFile, *keyFile, *addr, *user, *pass, *tenantID, *queryTimeout, *lName, *lVal, *sName, *sValue, *interval, *queryAppend, *labels)
+		c.reader, err = reader.NewReader(os.Stderr, receivedChan, *useTLS, tlsConfig, *caFile, *certFile, *keyFile, *addr, *user, *pass, *bearerToken, *tenantID, *queryTimeout, *lName, *lVal, *sName, *sValue, *interval, *queryAppend, *labels)
 		if err != nil {
 			_, _ = fmt.Fprintf(os.Stderr, "Unable to create reader for Loki querier, check config: %s", err)
 			os.Exit(1)
