@@ -21,6 +21,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/crypto/tls"
+	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/instrument"
 	"github.com/grafana/dskit/middleware"
@@ -174,26 +175,34 @@ func (r *RemoteEvaluator) Eval(ctx context.Context, qs string, now time.Time) (*
 
 // DialQueryFrontend creates and initializes a new httpgrpc.HTTPClient taking a QueryFrontendConfig configuration.
 func DialQueryFrontend(cfg *QueryFrontendConfig) (httpgrpc.HTTPClient, error) {
-	tlsDialOptions, err := cfg.TLS.GetGRPCDialOptions(cfg.TLSEnabled)
+	grpcClientOpts, err := cfg.GRPCClientConfig.DialOption(
+		[]grpc.UnaryClientInterceptor{middleware.ClientUserHeaderInterceptor},
+		nil,
+		middleware.NoOpInvalidClusterValidationReporter,
+	)
 	if err != nil {
 		return nil, err
 	}
+
+	if cfg.TLSEnabled && !cfg.GRPCClientConfig.TLSEnabled {
+		tlsDialOptions, err := cfg.TLS.GetGRPCDialOptions(cfg.TLSEnabled)
+		if err != nil {
+			return nil, err
+		}
+		grpcClientOpts = append(grpcClientOpts, tlsDialOptions...)
+	}
+
 	dialOptions := append(
-		[]grpc.DialOption{
-			grpc.WithKeepaliveParams(
-				keepalive.ClientParameters{
-					Time:                keepAlive,
-					Timeout:             keepAliveTimeout,
-					PermitWithoutStream: true,
-				},
-			),
-			grpc.WithChainUnaryInterceptor(
-				middleware.ClientUserHeaderInterceptor,
-			),
-			grpc.WithDefaultServiceConfig(serviceConfig),
-			grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
-		},
-		tlsDialOptions...,
+		grpcClientOpts,
+		grpc.WithKeepaliveParams(
+			keepalive.ClientParameters{
+				Time:                keepAlive,
+				Timeout:             keepAliveTimeout,
+				PermitWithoutStream: true,
+			},
+		),
+		grpc.WithDefaultServiceConfig(serviceConfig),
+		grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
 	)
 
 	// nolint:staticcheck // grpc.Dial() has been deprecated; we'll address it before upgrading to gRPC 2.
@@ -361,15 +370,24 @@ type QueryFrontendConfig struct {
 	Address string `yaml:"address"`
 
 	// TLSEnabled tells whether TLS should be used to establish remote connection.
+	// Deprecated: use GRPCClientConfig.TLSEnabled instead.
 	TLSEnabled bool `yaml:"tls_enabled"`
 
 	// TLS is the config for client TLS.
+	// Deprecated: use GRPCClientConfig.TLS instead.
 	TLS tls.ClientConfig `yaml:",inline"`
+
+	// GRPCClientConfig configures the gRPC client used to communicate with the query-frontend.
+	GRPCClientConfig grpcclient.Config `yaml:"grpc_client_config" doc:"description=Configures the gRPC client used to communicate with the query-frontend for remote rule evaluation."`
 }
 
 func (c *QueryFrontendConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&c.Address, "ruler.evaluation.query-frontend.address", "", "GRPC listen address of the query-frontend(s). Must be a DNS address (prefixed with dns:///) to enable client side load balancing.")
-	f.BoolVar(&c.TLSEnabled, "ruler.evaluation.query-frontend.tls-enabled", false, "Set to true if query-frontend connection requires TLS.")
-
+	f.BoolVar(&c.TLSEnabled, "ruler.evaluation.query-frontend.tls-enabled", false, "Deprecated: use -ruler.evaluation.query-frontend.grpc-client-config.tls-enabled instead. Set to true if query-frontend connection requires TLS.")
 	c.TLS.RegisterFlagsWithPrefix("ruler.evaluation.query-frontend", f)
+	c.GRPCClientConfig.RegisterFlagsWithPrefix("ruler.evaluation.query-frontend.grpc-client-config", f)
+}
+
+func (c *QueryFrontendConfig) Validate() error {
+	return c.GRPCClientConfig.Validate()
 }

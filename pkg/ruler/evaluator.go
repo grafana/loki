@@ -34,5 +34,11 @@ func (c *EvaluationConfig) Validate() error {
 		return fmt.Errorf("invalid evaluation mode: %s. Acceptable modes are: %s", c.Mode, strings.Join([]string{EvalModeLocal, EvalModeRemote}, ", "))
 	}
 
+	if c.Mode == EvalModeRemote {
+		if err := c.QueryFrontend.Validate(); err != nil {
+			return fmt.Errorf("invalid query frontend config: %w", err)
+		}
+	}
+
 	return nil
 }
