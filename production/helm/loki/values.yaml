@@ -223,6 +223,9 @@ loki:
     {{- if .Values.chunksCache.enabled }}
     {{- with .Values.chunksCache }}
     chunk_store_config:
+      {{- with .chunkStoreConfig }}
+      {{- toYaml . | nindent 2 }}
+      {{- end }}
       chunk_cache_config:
         default_validity: {{ .defaultValidity }}
         background:
@@ -3757,6 +3760,8 @@ resultsCache:
     # -- PVC additional labels
     labels: {}
 chunksCache:
+  # -- Renders chunk_store_config block
+  chunkStoreConfig: {}
   # -- Append to the name of the resources to make names different for l1 and l2
   suffix: ""
   # -- Specifies whether memcached based chunks-cache should be enabled
