@@ -78,6 +78,7 @@ import (
 	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
 	serverutil "github.com/grafana/loki/v3/pkg/util/server"
 	"github.com/grafana/loki/v3/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 // Config is the root config for Loki.
@@ -124,6 +125,7 @@ type Config struct {
 	RuntimeConfig     runtimeconfig.Config `yaml:"runtime_config,omitempty"`
 	OperationalConfig runtime.Config       `yaml:"operational_config,omitempty"`
 	Tracing           tracing.Config       `yaml:"tracing"`
+	XCap              xcap.Config          `yaml:"xcap,omitempty"`
 	Analytics         analytics.Config     `yaml:"analytics"`
 	Profiling         ProfilingConfig      `yaml:"profiling,omitempty"`
 

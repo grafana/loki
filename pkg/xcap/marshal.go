@@ -88,15 +88,16 @@ func toProtoRegion(region *Region, statsIndex map[StatisticKey]uint32) (*proto.R
 	}
 
 	protoRegion := &proto.Region{
-		Name:         region.name,
-		StartTime:    region.startTime,
-		EndTime:      region.endTime,
-		Observations: protoObservations,
-		Id:           region.id[:],
-		ParentId:     region.parentID[:],
-		Attributes:   protoAttributes,
-		Events:       protoEvents,
-		Status:       marshalStatus(region.status),
+		Name:           region.name,
+		StartTime:      region.startTime,
+		EndTime:        region.endTime,
+		Observations:   protoObservations,
+		Id:             region.id[:],
+		ParentId:       region.parentID[:],
+		Attributes:     protoAttributes,
+		Events:         protoEvents,
+		Status:         marshalStatus(region.status),
+		DroppedRegions: uint32(region.droppedRegions),
 	}
 
 	return protoRegion, nil

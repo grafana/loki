@@ -1903,6 +1903,12 @@ ingest_limits_frontend_client:
 # Configuration for tracing.
 [tracing: <tracing>]
 
+xcap:
+  filtering:
+    [min_region_duration: <duration>]
+
+    [drop_strategy: <string> | default = ""]
+
 # Configuration for analytics.
 [analytics: <analytics>]
 
