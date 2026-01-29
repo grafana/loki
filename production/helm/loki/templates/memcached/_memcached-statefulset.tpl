@@ -32,6 +32,7 @@ spec:
   updateStrategy:
     {{- toYaml .statefulStrategy | nindent 4 }}
   serviceName: {{ template "loki.fullname" $.ctx }}-{{ $.component }}{{ include "loki.memcached.suffix" .suffix }}
+  revisionHistoryLimit: {{ .Values.loki.revisionHistoryLimit }}
   template:
     metadata:
       labels:
