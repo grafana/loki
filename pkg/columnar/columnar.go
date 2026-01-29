@@ -34,6 +34,12 @@ type Array interface {
 	// IsNull returns true if the element at index i is null.
 	IsNull(i int) bool
 
+	// Size returns the total consumed size of the array's buffers in bytes.
+	//
+	// It doesn't account for the size of the Array type itself, or any unused
+	// bytes (such as padding past the length up to the capacity of buffers).
+	Size() int
+
 	// Validity returns the validity bitmap of the array. The returned bitmap
 	// may be of length 0 if there are no nulls.
 	//

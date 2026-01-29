@@ -3,6 +3,7 @@ package columnar
 import (
 	"fmt"
 	"reflect"
+	"unsafe"
 
 	"github.com/grafana/loki/v3/pkg/memory"
 )
@@ -125,6 +126,17 @@ func (arr *Number[T]) Values() []T { return arr.values }
 // A value of 1 in the Validity bitmap indicates that the corresponding
 // element at that position is valid (not null).
 func (arr *Number[T]) Validity() memory.Bitmap { return arr.validity }
+
+// Size returns the size in bytes of the array's buffers.
+func (arr *Number[T]) Size() int {
+	var zero T
+
+	var (
+		validitySize = arr.validity.Len() / 8
+		valuesSize   = len(arr.values) * int(unsafe.Sizeof(zero))
+	)
+	return validitySize + valuesSize
+}
 
 // Kind returns the kind of Array being represented.
 func (arr *Number[T]) Kind() Kind { return arr.kind }

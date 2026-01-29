@@ -90,6 +90,15 @@ func (arr *Bool) Validity() memory.Bitmap { return arr.validity }
 // Kind returns the kind of Array being represented.
 func (arr *Bool) Kind() Kind { return KindBool }
 
+// Size returns the size in bytes of arr's buffers.
+func (arr *Bool) Size() int {
+	var (
+		validitySize = arr.validity.Len() / 8
+		valuesSize   = arr.values.Len() / 8
+	)
+	return validitySize + valuesSize
+}
+
 func (arr *Bool) isDatum() {}
 func (arr *Bool) isArray() {}
 
