@@ -229,7 +229,7 @@ func (r *Reader) init() error {
 		Prefetch:   true,
 	}
 	if r.inner == nil {
-		r.inner = NewRecordBatchLabelDecorator(columnar.NewReaderAdapter(innerOptions), innerOptions, r.opts)
+		r.inner = newRecordBatchLabelDecorator(columnar.NewReaderAdapter(innerOptions), innerOptions, r.opts)
 	} else {
 		r.inner.Reset(innerOptions, r.opts)
 	}
@@ -474,7 +474,7 @@ type recordBatchLabelDecorator struct {
 	streamIDColumnIndex  int
 }
 
-func NewRecordBatchLabelDecorator(inner *columnar.ReaderAdapter, innerOpts dataset.ReaderOptions, opts ReaderOptions) *recordBatchLabelDecorator {
+func newRecordBatchLabelDecorator(inner *columnar.ReaderAdapter, innerOpts dataset.ReaderOptions, opts ReaderOptions) *recordBatchLabelDecorator {
 	d := &recordBatchLabelDecorator{inner: inner}
 	d.Reset(innerOpts, opts)
 	return d
