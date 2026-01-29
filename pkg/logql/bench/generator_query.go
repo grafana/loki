@@ -290,7 +290,7 @@ func (g *TestCaseGenerator) Generate() []TestCase {
 	addMetricQuery(fmt.Sprintf(`avg_over_time({service_name="loki"} | logfmt | duration != "" | unwrap duration_seconds(duration) [%s])`, rangeInterval), start, end, step)
 	addMetricQuery(fmt.Sprintf(`sum_over_time({service_name="database"} | json | unwrap rows_affected [%s])`, rangeInterval), start, end, step)
 
-	// Logs Drilldown sytle unwrap query (from fields tab)
+	// Logs Drilldown style unwrap query (from fields tab)
 	addMetricQuery(fmt.Sprintf(`sum by (detected_level) (avg_over_time({service_name="loki"} | logfmt | duration != "" | drop __error__, __error_details__ | unwrap duration_seconds(duration) [%s]))`, rangeInterval), start, end, step)
 
 	// Dense period queries
