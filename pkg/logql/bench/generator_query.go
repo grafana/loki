@@ -230,8 +230,8 @@ func (g *TestCaseGenerator) Generate() []TestCase {
 			addBidirectional(selector+` !~ "(?i)debug"`, g.logGenCfg.StartTime, end)
 			addBidirectional(selector+` | json | logfmt | drop __error__, __error_details__`, g.logGenCfg.StartTime, end)
 			addBidirectional(selector+` | json | logfmt | drop __error__, __error_details__ | level="error"`, g.logGenCfg.StartTime, end)
-			addBidirectional(selector+` | json | level="error" or level="warn"`, g.logGenCfg.StartTime, end)
-			addBidirectional(selector+` |~ "(?i)error" | json | drop __error__, __error_details__ | status_code >= 500`, g.logGenCfg.StartTime, end)
+			addBidirectional(selector+` | json | logfmt | drop __error__, __error_details__ | level="error" or level="warn"`, g.logGenCfg.StartTime, end)
+			addBidirectional(selector+` |~ "(?i)error" | json | logfmt | drop __error__, __error_details__ | status_code >= 500`, g.logGenCfg.StartTime, end)
 			addBidirectional(selector+` | detected_level="error" |~ "(?i).*timeout.*"`, g.logGenCfg.StartTime, end)
 			addBidirectional(selector+` | detected_level=~"error|warn" |~ "(?i)exception"`, g.logGenCfg.StartTime, end)
 		}
@@ -291,7 +291,7 @@ func (g *TestCaseGenerator) Generate() []TestCase {
 	addMetricQuery(fmt.Sprintf(`sum_over_time({service_name="database"} | json | unwrap rows_affected [%s])`, rangeInterval), start, end, step)
 
 	// Logs Drilldown style unwrap query (from fields tab)
-	addMetricQuery(fmt.Sprintf(`sum by (detected_level) (avg_over_time({service_name="loki"} | logfmt | duration != "" | drop __error__, __error_details__ | unwrap duration_seconds(duration) [%s]))`, rangeInterval), start, end, step)
+	addMetricQuery(fmt.Sprintf(`sum by (detected_level) (avg_over_time({service_name="loki"} | json | logfmt | duration != "" | drop __error__, __error_details__ | unwrap duration_seconds(duration) [%s]))`, rangeInterval), start, end, step)
 
 	// Dense period queries
 	for _, interval := range g.logGenCfg.DenseIntervals {
