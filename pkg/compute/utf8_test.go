@@ -107,7 +107,7 @@ func BenchmarkSubstrInsensitive(b *testing.B) {
 	benchAlloc := memory.MakeAllocator(nil)
 	for b.Loop() {
 		benchAlloc.Reclaim()
-		SubstrInsensitive(benchAlloc, haystack, needle)
+		_, _ = SubstrInsensitive(benchAlloc, haystack, needle)
 	}
 	b.SetBytes(int64(totalSize))
 }
