@@ -153,6 +153,7 @@ func summarizeObservations(capture *Capture) *observations {
 			normalizeKeys(),
 	)
 
+	// range aggregation stats
 	result.merge(
 		collect.fromRegions("RangeAggregation", false).
 			filter(
@@ -163,6 +164,7 @@ func summarizeObservations(capture *Capture) *observations {
 			normalizeKeys(),
 	)
 
+	// vector aggregation stats
 	result.merge(
 		collect.fromRegions("VectorAggregation", false).
 			filter(
@@ -180,6 +182,7 @@ func summarizeObservations(capture *Capture) *observations {
 			normalizeKeys(),
 	)
 
+	// metastore streams and pointers scan stats
 	result.merge(
 		collect.fromRegions("PointersScan", true).
 			filter(
@@ -191,13 +194,20 @@ func summarizeObservations(capture *Capture) *observations {
 			normalizeKeys(),
 	)
 
-	// metastore bucket and dataset reader stats
+	// metastore dataset reader and task stats
 	result.merge(
 		collect.fromRegions("ObjectMetastore.Sections", true).
 			filter(
 				StatBucketGet.Key(), StatBucketGetRange.Key(), StatBucketAttributes.Key(),
 				StatDatasetPrimaryPagesDownloaded.Key(), StatDatasetSecondaryPagesDownloaded.Key(),
 				StatDatasetPrimaryColumnBytes.Key(), StatDatasetSecondaryColumnBytes.Key(),
+				// physical planning task information
+				StatTaskCount.Key(),
+				StatTaskAdmissionWaitDuration.Key(), StatTaskAssignmentTailDuration.Key(),
+				StatTaskMaxQueueDuration.Key(),
+				// task send/recv durations
+				TaskRecvDuration.Key(),
+				TaskSendDuration.Key(),
 			).
 			prefix("metastore_").
 			normalizeKeys(),
@@ -215,16 +225,16 @@ func summarizeObservations(capture *Capture) *observations {
 			normalizeKeys(),
 	)
 
-	// workflow runner stats
+	// task scheduling and recv/send stats
+	// exclude `ObjectMetastore.Sections` to only get execution specific stats.
 	result.merge(
-		collect.fromRegions("wf.runner", true).
-			normalizeKeys(),
-	)
-
-	// task stats
-	result.merge(
-		collect.fromRegions("thread.runJob", true).
-			filter(TaskRecvDuration.Key(), TaskSendDuration.Key()).
+		collect.fromRegions("Engine.Execute", true, "ObjectMetastore.Sections").
+			filter(
+				StatTaskCount.Key(),
+				StatTaskAdmissionWaitDuration.Key(), StatTaskAssignmentTailDuration.Key(),
+				StatTaskMaxQueueDuration.Key(),
+				TaskRecvDuration.Key(), TaskSendDuration.Key(),
+			).
 			normalizeKeys(),
 	)
 
