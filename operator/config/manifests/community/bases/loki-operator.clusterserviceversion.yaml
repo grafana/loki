@@ -921,6 +921,69 @@ spec:
         path: tenants.disableIngress
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
+      - description: Gateway defines the configuration specific to Gateway server
+        displayName: Gateway
+        path: tenants.gateway
+      - description: TLS defines the TLS configuration for the Gateway server.
+        displayName: TLS
+        path: tenants.gateway.tls
+      - description: CA can be used to specify a custom list of trusted certificate
+          authorities.
+        displayName: Certificate Authority Bundle
+        path: tenants.gateway.tls.ca
+      - description: ConfigMapName contains the name of the ConfigMap containing the
+          referenced value.
+        displayName: ConfigMap Name
+        path: tenants.gateway.tls.ca.configMapName
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:text
+      - description: Name of the key used to get the value in either the referenced
+          ConfigMap or Secret.
+        displayName: Key Name
+        path: tenants.gateway.tls.ca.key
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:text
+      - description: SecretName contains the name of the Secret containing the referenced
+          value.
+        displayName: Secret Name
+        path: tenants.gateway.tls.ca.secretName
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:text
+      - description: Certificate points to the server certificate to use.
+        displayName: Certificate
+        path: tenants.gateway.tls.certificate
+      - description: ConfigMapName contains the name of the ConfigMap containing the
+          referenced value.
+        displayName: ConfigMap Name
+        path: tenants.gateway.tls.certificate.configMapName
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:text
+      - description: Name of the key used to get the value in either the referenced
+          ConfigMap or Secret.
+        displayName: Key Name
+        path: tenants.gateway.tls.certificate.key
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:text
+      - description: SecretName contains the name of the Secret containing the referenced
+          value.
+        displayName: Secret Name
+        path: tenants.gateway.tls.certificate.secretName
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:text
+      - description: PrivateKey points to the private key of the server certificate.
+        displayName: Private Key
+        path: tenants.gateway.tls.privateKey
+      - description: Key contains the name of the key inside the referenced Secret.
+        displayName: Key Name
+        path: tenants.gateway.tls.privateKey.key
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:text
+      - description: SecretName contains the name of the Secret containing the referenced
+          value.
+        displayName: Secret Name
+        path: tenants.gateway.tls.privateKey.secretName
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:text
       - description: Mode defines the mode in which lokistack-gateway component will
           be configured.
         displayName: Mode
