@@ -3771,7 +3771,7 @@ chunksCache:
   timeout: 2000ms
   # -- Specify how long cached chunks should be stored in the chunks-cache before being expired
   defaultValidity: 0s
-  # -- Specify how long cached chunks should be stored in the chunks-cache before being expired
+  # -- Total number of chunks-cache replicas
   replicas: 1
   # -- Port of the chunks-cache service
   port: 11211
@@ -3889,7 +3889,7 @@ chunksCache:
     timeout: 2000ms
     # -- Specify how long cached chunks should be stored in the chunks-cache-l2 before being expired
     defaultValidity: 0s
-    # -- Specify how long cached chunks should be stored in the chunks-cache-l2 before being expired
+    # -- Total number of chunks-cache-l2 replicas
     replicas: 1
     # -- Port of the chunks-cache-l2 service
     port: 11211
