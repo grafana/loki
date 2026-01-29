@@ -3,15 +3,17 @@ package executor
 import (
 	"testing"
 
+	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/stretchr/testify/require"
 )
 
 func TestJSONParser_Process(t *testing.T) {
 	tests := []struct {
-		name          string
-		line          []byte
-		requestedKeys []string
-		want          map[string]string
+		name               string
+		line               []byte
+		requestedKeyLookup map[string]struct{}
+		want               map[string]string
 	}{
 		{
 			"multi depth",
@@ -172,7 +174,7 @@ func TestJSONParser_Process(t *testing.T) {
 		{
 			"requested keys filtering - top level",
 			[]byte(`{"app":"foo","namespace":"prod","level":"info"}`),
-			[]string{"app", "level"},
+			map[string]struct{}{"app": {}, "level": {}},
 			map[string]string{
 				"app":   "foo",
 				"level": "info",
@@ -181,7 +183,7 @@ func TestJSONParser_Process(t *testing.T) {
 		{
 			"requested keys filtering - nested",
 			[]byte(`{"app":"foo","pod":{"uuid":"foo","deployment":{"ref":"foobar"}}}`),
-			[]string{"app", "pod_uuid"},
+			map[string]struct{}{"app": {}, "pod_uuid": {}},
 			map[string]string{
 				"app":      "foo",
 				"pod_uuid": "foo",
@@ -213,7 +215,7 @@ func TestJSONParser_Process(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			j := newJSONParser()
-			result, err := j.process(tt.line, tt.requestedKeys)
+			result, err := j.process(tt.line, tt.requestedKeyLookup)
 			require.NoError(t, err)
 			require.Equal(t, tt.want, result)
 		})
@@ -240,6 +242,92 @@ func TestJSONParser_Process_Malformed(t *testing.T) {
 			require.Empty(t, result)
 		})
 	}
+}
+
+func TestBuildJSONColumns(t *testing.T) {
+	t.Run("reuses parser and lookup map across multiple lines", func(t *testing.T) {
+		// Create input with multiple lines to ensure reuse
+		builder := array.NewStringBuilder(memory.DefaultAllocator)
+		builder.Append(`{"app":"foo","level":"info","msg":"first"}`)
+		builder.Append(`{"app":"bar","level":"debug","msg":"second","extra":"data"}`)
+		builder.Append(`{"app":"baz","level":"warn","msg":"third","nested":{"key":"value"}}`)
+		input := builder.NewStringArray()
+		defer input.Release()
+
+		requestedKeys := []string{"app", "level", "nested_key"}
+
+		headers, columns := buildJSONColumns(input, requestedKeys)
+
+		// Verify we got the expected columns
+		require.Contains(t, headers, "app")
+		require.Contains(t, headers, "level")
+		require.Contains(t, headers, "nested_key")
+		require.Len(t, headers, 3)
+		require.Len(t, columns, 3)
+
+		// Defer releasing columns until after all checks
+		defer func() {
+			for _, col := range columns {
+				col.Release()
+			}
+		}()
+
+		// Verify each column has the right number of rows
+		for _, col := range columns {
+			require.Equal(t, 3, col.Len())
+		}
+
+		// Verify specific values
+		var appCol, levelCol, nestedCol *array.String
+		for i, h := range headers {
+			switch h {
+			case "app":
+				appCol = columns[i].(*array.String)
+			case "level":
+				levelCol = columns[i].(*array.String)
+			case "nested_key":
+				nestedCol = columns[i].(*array.String)
+			}
+		}
+
+		require.NotNil(t, appCol)
+		require.Equal(t, "foo", appCol.Value(0))
+		require.Equal(t, "bar", appCol.Value(1))
+		require.Equal(t, "baz", appCol.Value(2))
+
+		require.NotNil(t, levelCol)
+		require.Equal(t, "info", levelCol.Value(0))
+		require.Equal(t, "debug", levelCol.Value(1))
+		require.Equal(t, "warn", levelCol.Value(2))
+
+		require.NotNil(t, nestedCol)
+		require.True(t, nestedCol.IsNull(0))
+		require.True(t, nestedCol.IsNull(1))
+		require.Equal(t, "value", nestedCol.Value(2))
+	})
+
+	t.Run("handles all lines without requested keys", func(t *testing.T) {
+		builder := array.NewStringBuilder(memory.DefaultAllocator)
+		builder.Append(`{"a":"1","b":"2"}`)
+		builder.Append(`{"c":"3","d":"4"}`)
+		input := builder.NewStringArray()
+		defer input.Release()
+
+		headers, columns := buildJSONColumns(input, nil)
+		defer func() {
+			for _, col := range columns {
+				col.Release()
+			}
+		}()
+
+		// Should extract all keys across all lines
+		require.ElementsMatch(t, []string{"a", "b", "c", "d"}, headers)
+		require.Len(t, columns, 4)
+
+		for _, col := range columns {
+			require.Equal(t, 2, col.Len())
+		}
+	})
 }
 
 func BenchmarkJSONParser_Process(b *testing.B) {
