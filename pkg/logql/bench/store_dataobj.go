@@ -77,8 +77,8 @@ func NewDataObjStore(dir, tenant string) (*DataObjStore, error) {
 		BuilderBaseConfig: logsobj.BuilderBaseConfig{
 			TargetPageSize:          2 * 1024 * 1024, // 2MB
 			MaxPageRows:             1000,
-			TargetObjectSize:        128 * 1024 * 1024, // 128MB
-			TargetSectionSize:       16 * 1024 * 1024,  // 16MB
+			TargetObjectSize:        256 * 1024 * 1024, // 256MB
+			TargetSectionSize:       64 * 1024 * 1024,  // 64MB
 			BufferSize:              16 * 1024 * 1024,  // 16MB
 			SectionStripeMergeLimit: 2,
 		},
