@@ -37,18 +37,16 @@ func (c ComponentResources) DeepCopy() ComponentResources {
 
 // ResourceRequirements sets CPU, Memory, and PVC requirements for a component
 type ResourceRequirements struct {
-	Limits          corev1.ResourceList
-	Requests        corev1.ResourceList
-	PVCSize         resource.Quantity
-	PDBMinAvailable int
+	Limits   corev1.ResourceList
+	Requests corev1.ResourceList
+	PVCSize  resource.Quantity
 }
 
 func (r *ResourceRequirements) DeepCopy() *ResourceRequirements {
 	return &ResourceRequirements{
-		Limits:          r.Limits.DeepCopy(),
-		Requests:        r.Requests.DeepCopy(),
-		PVCSize:         r.PVCSize.DeepCopy(),
-		PDBMinAvailable: r.PDBMinAvailable,
+		Limits:   r.Limits.DeepCopy(),
+		Requests: r.Requests.DeepCopy(),
+		PVCSize:  r.PVCSize.DeepCopy(),
 	}
 }
 

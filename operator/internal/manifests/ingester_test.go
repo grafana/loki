@@ -106,28 +106,23 @@ func TestNewIngesterStatefulSet_SelectorMatchesLabels(t *testing.T) {
 func TestBuildIngester_PodDisruptionBudget(t *testing.T) {
 	for _, tc := range []struct {
 		Name                 string
-		ExpectedMinAvailable int
 		Replicas             int
+		ExpectedMinAvailable int
 	}{
 		{
-			Name:                 "Pico stack",
-			ExpectedMinAvailable: 2,
-			Replicas:             3,
-		},
-		{
-			Name:                 "Extra-small stack",
-			ExpectedMinAvailable: 1,
+			Name:                 "replication factor = replicas",
 			Replicas:             2,
-		},
-		{
-			Name:                 "Small stack",
 			ExpectedMinAvailable: 1,
-			Replicas:             2,
 		},
 		{
-			Name:                 "Medium stack",
-			ExpectedMinAvailable: 2,
+			Name:                 "replication factor < replicas",
 			Replicas:             3,
+			ExpectedMinAvailable: 2,
+		},
+		{
+			Name:                 "replication factor > replicas",
+			Replicas:             1,
+			ExpectedMinAvailable: 1,
 		},
 	} {
 		t.Run(tc.Name, func(t *testing.T) {
