@@ -76,7 +76,7 @@ func NewDataObjStore(dir, tenant string) (*DataObjStore, error) {
 	builder, err := logsobj.NewBuilder(logsobj.BuilderConfig{
 		BuilderBaseConfig: logsobj.BuilderBaseConfig{
 			TargetPageSize:          2 * 1024 * 1024, // 2MB
-			MaxPageRows:             1000,
+			MaxPageRows:             8192,
 			TargetObjectSize:        256 * 1024 * 1024, // 256MB
 			TargetSectionSize:       64 * 1024 * 1024,  // 64MB
 			BufferSize:              16 * 1024 * 1024,  // 16MB
