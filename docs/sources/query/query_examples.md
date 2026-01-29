@@ -110,6 +110,34 @@ with a value greater than 30 sections,
 While every query will have a stream selector,
 not all queries will have line and label filters.
 
+## Examples that parse XML logs
+
+- Extract status and method from XML logs:
+
+    ```logql
+    {job="myapp"} | xml status="response@status", method="request@method"
+    ```
+
+- Parse full XML logs and filter by status:
+
+    ```logql
+    {job="myapp"} | xml | log_response_status = "200"
+    ```
+
+- Calculate error rates from XML application logs:
+
+    ```logql
+    sum(rate({job="myapp"} | xml | log_level = "error" [5m])) by (service)
+    ```
+
+- Extract nested XML fields for latency analysis:
+
+    ```logql
+    {job="myapp"}
+        | xml duration="request/duration", path="request@path"
+        | duration > 1s
+    ```
+
 ## Examples that use multiple parsers
 
 Consider this logfmt log line.

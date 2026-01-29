@@ -146,6 +146,11 @@ func (e *JSONExpressionParserExpr) Pretty(level int) string {
 	return commonPrefixIndent(level, e)
 }
 
+// e.g: | xml label="expression", another="expression"
+func (e *XMLExpressionParserExpr) Pretty(level int) string {
+	return commonPrefixIndent(level, e)
+}
+
 // e.g: | logfmt label="expression", another="expression"
 func (e *LogfmtExpressionParserExpr) Pretty(level int) string {
 	return commonPrefixIndent(level, e)
