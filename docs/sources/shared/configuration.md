@@ -286,6 +286,15 @@ ui:
     # CLI flag: -ui.ring.instance-enable-ipv6
     [instance_enable_ipv6: <boolean> | default = false]
 
+  proxy:
+    # Enable TLS when proxying requests between UI nodes.
+    # CLI flag: -ui.proxy.tls-enabled
+    [tls_enabled: <boolean> | default = false]
+
+    # The TLS configuration.
+    # The CLI flags prefix for this block configuration is: ui.proxy
+    [<tls_config>]
+
 # Configures the distributor.
 [distributor: <distributor>]
 
@@ -7832,6 +7841,7 @@ The TLS configuration. The supported CLI flags `<prefix>` used to reference this
 - `store.index-cache-read.memcached`
 - `store.index-cache-write.memcached`
 - `tsdb.shipper.index-gateway-client.grpc`
+- `ui.proxy`
 - `ui.ring.etcd`
 
 &nbsp;
