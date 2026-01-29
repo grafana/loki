@@ -541,15 +541,27 @@ func (r *streamRangeVectorIterator) Error() error {
 
 // load the next sample range window.
 func (r *streamRangeVectorIterator) load(start, end int64) {
+	// For counter metrics (rate_counter), include samples at the range boundary
+	// to ensure accurate starting counter values. For other metrics, exclude
+	// the lower bound (not inclusive).
+	isCounter := r.r.Operation == syntax.OpRangeTypeRateCounter
+
 	for lbs, sample, hasNext := r.iter.Peek(); hasNext; lbs, sample, hasNext = r.iter.Peek() {
 		if sample.Timestamp > end {
 			// not consuming the iterator as this belong to another range.
 			return
 		}
-		// the lower bound of the range is not inclusive
-		if sample.Timestamp <= start {
-			_ = r.iter.Next()
-			continue
+		// the lower bound of the range is not inclusive (except for counters)
+		if isCounter {
+			if sample.Timestamp < start {
+				_ = r.iter.Next()
+				continue
+			}
+		} else {
+			if sample.Timestamp <= start {
+				_ = r.iter.Next()
+				continue
+			}
 		}
 		// adds the sample.
 		var rangeAgg RangeStreamingAgg
