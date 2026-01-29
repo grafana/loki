@@ -325,7 +325,7 @@ func buildLokiAllowGatewayIngress(opts Options) *networkingv1.NetworkPolicy {
 // components that need to access object storage to object storage
 func buildLokiAllowBucketEgress(opts Options) *networkingv1.NetworkPolicy {
 	objstorePort := int32(443) // Default HTTPS port
-	if port := getEndpointPort(opts.ObjectStorage); port != 0 {
+	if port := getEndpointPort(opts.ObjectStorage, opts.Gates.OpenShift.Enabled); port != 0 {
 		objstorePort = port
 	}
 
@@ -629,7 +629,7 @@ func buildLokiAllowQueryFrontend(opts Options) *networkingv1.NetworkPolicy {
 	}
 }
 
-func getEndpointPort(storageOpts storage.Options) int32 {
+func getEndpointPort(storageOpts storage.Options, openShiftEnabled bool) int32 {
 	extractPort := func(endpoint string) int32 {
 		if strings.HasPrefix(endpoint, "http://") || strings.HasPrefix(endpoint, "https://") {
 			if u, err := url.Parse(endpoint); err == nil && u.Port() != "" {
@@ -667,7 +667,12 @@ func getEndpointPort(storageOpts storage.Options) int32 {
 
 	// Swift AuthURL might includes ports
 	if storageOpts.Swift != nil && storageOpts.Swift.AuthURL != "" {
-		return extractPort(storageOpts.Swift.AuthURL)
+		swiftObjectPort := int32(443)
+		if openShiftEnabled {
+			// Swift Proxy SSL (Red Hat OpenStack deployments)
+			swiftObjectPort = int32(13808)
+		}
+		return swiftObjectPort
 	}
 
 	return 0
