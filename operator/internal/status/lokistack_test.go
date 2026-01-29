@@ -305,7 +305,7 @@ func TestGenerateWarningCondition_WhenIngesterReplicasLessThanReplicationFactor(
 			wantCondition: []metav1.Condition{
 				{
 					Type:    string(lokiv1.ConditionWarning),
-					Reason:  string(lokiv1.ReasonIngesterReplicasBelowReplicationFactor),
+					Reason:  string(lokiv1.ReasonInsufficientIngesterReplicas),
 					Message: "The ingester replicas (1) are less than or equal to the replication factor (2). Which causes log ingestion to stop when ingester pods get restarted.",
 				},
 			},
