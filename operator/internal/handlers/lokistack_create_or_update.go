@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/loki/operator/internal/external/k8s"
 	"github.com/grafana/loki/operator/internal/handlers/internal/gateway"
 	"github.com/grafana/loki/operator/internal/handlers/internal/networkpolicy"
+	"github.com/grafana/loki/operator/internal/handlers/internal/patterns"
 	"github.com/grafana/loki/operator/internal/handlers/internal/rules"
 	"github.com/grafana/loki/operator/internal/handlers/internal/serviceaccounts"
 	"github.com/grafana/loki/operator/internal/handlers/internal/storage"
@@ -70,6 +71,10 @@ func CreateOrUpdateLokiStack(
 	}
 
 	if err = rules.Cleanup(ctx, ll, k, &stack); err != nil {
+		return nil, err
+	}
+
+	if err = patterns.Cleanup(ctx, ll, k, &stack); err != nil {
 		return nil, err
 	}
 

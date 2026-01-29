@@ -56,6 +56,11 @@ func generateComponentStatus(ctx context.Context, k k8s.Client, s *lokiv1.LokiSt
 		return nil, kverrors.Wrap(err, "failed lookup LokiStack component pods status", "name", manifests.LabelRulerComponent)
 	}
 
+	result.PatternIngester, err = appendPodStatus(ctx, k, manifests.LabelPatternIngesterComponent, s.Name, s.Namespace)
+	if err != nil {
+		return nil, kverrors.Wrap(err, "failed lookup LokiStack component pods status", "name", manifests.LabelPatternIngesterComponent)
+	}
+
 	return result, nil
 }
 

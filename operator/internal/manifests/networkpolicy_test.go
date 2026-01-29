@@ -417,7 +417,7 @@ func TestBuildLokiAllowBucketEgress(t *testing.T) {
 			require.Len(t, policy.Spec.PodSelector.MatchExpressions, 2)
 			componentExpr := policy.Spec.PodSelector.MatchExpressions[1]
 			require.Equal(t, "app.kubernetes.io/component", componentExpr.Key)
-			require.ElementsMatch(t, []string{"ingester", "querier", "index-gateway", "compactor", "ruler"}, componentExpr.Values)
+			require.ElementsMatch(t, []string{"ingester", "querier", "index-gateway", "compactor", "ruler", "pattern-ingester"}, componentExpr.Values)
 
 			// Verify egress rules
 			require.Len(t, policy.Spec.Egress, 1, "Should have exactly one egress rule")

@@ -108,6 +108,14 @@ func BuildAll(opts Options) ([]client.Object, error) {
 		res = append(res, networkPolicyObjs...)
 	}
 
+	if opts.Stack.PatternIngester != nil && opts.Stack.PatternIngester.Enabled {
+		patternIngesterObj, err := BuildPatternIngester(opts)
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, patternIngesterObj...)
+	}
+
 	return res, nil
 }
 

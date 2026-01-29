@@ -152,7 +152,7 @@ metadata:
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
     containerImage: quay.io/openshift-logging/loki-operator:0.1.0
-    createdAt: "2025-12-15T18:59:57Z"
+    createdAt: "2025-12-09T09:29:17Z"
     description: |
       The Loki Operator for OCP provides a means for configuring and managing a Loki stack for cluster logging.
       ## Prerequisites and Requirements
@@ -680,6 +680,15 @@ spec:
         path: networkPolicies.ruleSet
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:text
+      - description: PatternIngester defines the pattern-ingester configuration.
+        displayName: Pattern-Ingester
+        path: patternIngester
+      - description: Enabled defines a flag to enable/disable the pattern-ingester
+          component
+        displayName: Enable
+        path: patternIngester.enabled
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
       - description: Proxy defines the spec for the object proxy to configure cluster
           proxy information.
         displayName: Cluster Proxy
@@ -878,6 +887,21 @@ spec:
       - description: Replicas defines the number of replica pods of the component.
         displayName: Replicas
         path: template.ingester.replicas
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:hidden
+      - description: PatternIngester defines the pattern-ingester component spec.
+        displayName: Pattern-Ingester pods
+        path: template.patternIngester
+      - description: |-
+          PodAntiAffinity defines the pod anti affinity scheduling rules to schedule pods
+          of a component.
+        displayName: PodAntiAffinity
+        path: template.patternIngester.podAntiAffinity
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podAntiAffinity
+      - description: Replicas defines the number of replica pods of the component.
+        displayName: Replicas
+        path: template.patternIngester.replicas
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:hidden
       - description: Querier defines the querier component spec.
@@ -1125,6 +1149,12 @@ spec:
           statefulset
         displayName: IndexGateway
         path: components.indexGateway
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podStatuses
+      - description: PatternIngester is a map to the per pod status of the lokistack
+          pattern ingester deployment.
+        displayName: Pattern Ingester
+        path: components.patternIngester
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:podStatuses
       - description: Ruler is a map to the per pod status of the lokistack ruler statefulset.
@@ -1888,10 +1918,10 @@ spec:
                 - name: RELATED_IMAGE_LOKI
                   value: quay.io/openshift-logging/loki:v3.5.5
                 - name: RELATED_IMAGE_GATEWAY
-                  value: quay.io/observatorium/api:latest
+                  value: quay.io/btaani/api:latest
                 - name: RELATED_IMAGE_OPA
                   value: quay.io/observatorium/opa-openshift:latest
-                image: quay.io/openshift-logging/loki-operator:0.1.0
+                image: quay.io/btaani/loki-operator:amd64
                 imagePullPolicy: IfNotPresent
                 livenessProbe:
                   httpGet:
@@ -2012,7 +2042,7 @@ spec:
   relatedImages:
   - image: quay.io/openshift-logging/loki:v3.5.5
     name: loki
-  - image: quay.io/observatorium/api:latest
+  - image: quay.io/btaani/api:latest
     name: gateway
   - image: quay.io/observatorium/opa-openshift:latest
     name: opa
