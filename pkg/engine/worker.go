@@ -136,8 +136,9 @@ func NewWorker(params WorkerParams) (*Worker, error) {
 		SchedulerLookupAddress:  params.Config.SchedulerLookupAddress,
 		SchedulerLookupInterval: params.Config.SchedulerLookupInterval,
 
-		BatchSize:  int64(params.Executor.BatchSize),
-		NumThreads: params.Config.WorkerThreads,
+		BatchSize:          int64(params.Executor.BatchSize),
+		MergePrefetchCount: params.Executor.MergePrefetchCount,
+		NumThreads:         params.Config.WorkerThreads,
 
 		Endpoint: params.Endpoint,
 
