@@ -61,7 +61,7 @@ func substrInsensitiveAS(alloc *memory.Allocator, haystack *columnar.UTF8, needl
 	return results.Build(), nil
 }
 
-func substrInsensitiveSS(alloc *memory.Allocator, haystack *columnar.UTF8Scalar, needle *columnar.UTF8Scalar) (*columnar.BoolScalar, error) {
+func substrInsensitiveSS(_ *memory.Allocator, haystack *columnar.UTF8Scalar, needle *columnar.UTF8Scalar) (*columnar.BoolScalar, error) {
 	if needle.IsNull() || haystack.IsNull() {
 		return &columnar.BoolScalar{Null: true}, nil
 	}
