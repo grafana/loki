@@ -20,7 +20,7 @@ cleanInstall() {
     # even if you want your service to run as non root.
     if [ "${systemd_version}" -lt 231 ]; then
         printf "\033[31m systemd version %s is less then 231, fixing the service file \033[0m\n" "${systemd_version}"
-        sed -i "s/=+/=/g" /etc/systemd/system/loki.service
+        sed -i "s/=+/=/g" /usr/lib/systemd/system/loki.service
     fi
     printf "\033[32m Reload the service unit from disk\033[0m\n"
     systemctl daemon-reload ||:
