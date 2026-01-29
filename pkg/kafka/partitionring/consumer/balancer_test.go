@@ -3,6 +3,7 @@ package consumer
 import (
 	"context"
 	"sort"
+	"sync"
 	"testing"
 	"time"
 
@@ -14,19 +15,24 @@ import (
 	"github.com/twmb/franz-go/pkg/kmsg"
 )
 
-// Helper types for testing
-type memberUpdate struct {
-	memberID string
-	topics   map[string][]int32
-}
-
 type mockPartitionRing struct {
+	mutex        sync.RWMutex
 	partitionIDs []int32
 }
 
 // Mock implementation of PartitionRing interface
 func (m *mockPartitionRing) PartitionIDs() []int32 {
+	m.mutex.RLock()
+	defer m.mutex.RUnlock()
+
 	return m.partitionIDs
+}
+
+func (m *mockPartitionRing) UpdatePartitionIDs(ids []int32) {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+
+	m.partitionIDs = ids
 }
 
 type mockPartitionRingReader struct {
@@ -37,7 +43,7 @@ func (m *mockPartitionRingReader) PartitionRing() *ring.PartitionRing {
 	desc := ring.PartitionRingDesc{
 		Partitions: make(map[int32]ring.PartitionDesc),
 	}
-	for _, id := range m.ring.partitionIDs {
+	for _, id := range m.ring.PartitionIDs() {
 		desc.Partitions[id] = ring.PartitionDesc{
 			Id:     id,
 			State:  ring.PartitionActive,
