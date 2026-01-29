@@ -134,9 +134,7 @@ func (p *processor) stopping(_ error) error {
 }
 
 func (p *processor) Run(ctx context.Context) error {
-	defer func() {
-		level.Info(p.logger).Log("msg", "stopped partition processor")
-	}()
+	defer level.Info(p.logger).Log("msg", "stopped partition processor")
 	level.Info(p.logger).Log("msg", "started partition processor")
 	for {
 		select {
