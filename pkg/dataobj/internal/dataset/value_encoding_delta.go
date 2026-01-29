@@ -130,14 +130,14 @@ func (dec *deltaDecoder) Decode(alloc *memory.Allocator, count int) (columnar.Ar
 		delta, n := binary.Varint(buf[off:])
 		if n <= 0 {
 			valuesBuf.Resize(i)
-			return columnar.MakeInt64(values[:i], memory.Bitmap{}), io.EOF
+			return columnar.MakeNumber[int64](values[:i], memory.Bitmap{}), io.EOF
 		}
 
 		off += n
 		prev += delta
 		values[i] = prev
 	}
-	return columnar.MakeInt64(values, memory.Bitmap{}), nil
+	return columnar.MakeNumber[int64](values, memory.Bitmap{}), nil
 }
 
 // Reset resets the deltaDecoder to its initial state.

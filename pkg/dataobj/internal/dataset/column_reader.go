@@ -7,6 +7,7 @@ import (
 	"io"
 	"sort"
 
+	"github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/sliceclear"
 	"github.com/grafana/loki/v3/pkg/memory"
 )
@@ -21,7 +22,6 @@ type columnReader struct {
 	ranges []rowRange // Ranges of each page.
 
 	reader *pageReader
-	alloc  memory.Allocator
 
 	nextRow int64
 }
@@ -33,19 +33,33 @@ func newColumnReader(column Column) *columnReader {
 	return &cr
 }
 
-// Read reads up to the next len(v) values from the column into v. It returns
-// the number of values read and any error encountered. At the end of the
-// column, Read returns 0, io.EOF.
-func (cr *columnReader) Read(ctx context.Context, v []Value) (n int, err error) {
-
+// Read returns an array of up to the next count values from the column. At the
+// end of the column, Read returns nil, io.EOF.
+//
+// If there was an error reading the column, Read returns the error with no
+// array.
+func (cr *columnReader) Read(ctx context.Context, alloc *memory.Allocator, count int) (columnar.Array, error) {
 	if !cr.initialized {
 		err := cr.init(ctx)
 		if err != nil {
-			return 0, err
+			return nil, err
 		}
 	}
 
-	for n < len(v) {
+	// Create a temporary allocator for intermediate arrays.
+	tempAlloc := memory.MakeAllocator(alloc)
+	defer tempAlloc.Free()
+
+	var arrs []columnar.Array
+	buildResult := func() (columnar.Array, error) {
+		if len(arrs) == 0 {
+			return nil, nil
+		}
+		return columnar.Concat(alloc, arrs)
+	}
+
+	var totalRead int
+	for totalRead < count {
 		// Make sure our reader is initialized to the right page for the row we
 		// wish to read.
 		//
@@ -53,7 +67,8 @@ func (cr *columnReader) Read(ctx context.Context, v []Value) (n int, err error) 
 		if cr.pageIndex == -1 || !cr.ranges[cr.pageIndex].Contains(uint64(cr.nextRow)) {
 			page, pageIndex, err := cr.nextPage()
 			if err != nil {
-				return n, err
+				res, _ := buildResult()
+				return res, err
 			}
 
 			switch cr.reader {
@@ -74,41 +89,36 @@ func (cr *columnReader) Read(ctx context.Context, v []Value) (n int, err error) 
 		if _, err := cr.reader.Seek(pageRow, io.SeekStart); err != nil {
 			// This should only return an error if pageRow < 0, shouldn't happen:
 			// cr.nextRow will always be >= cr.ranges[cr.pageIndex].Start.
-			return n, err
+			res, _ := buildResult()
+			return res, err
 		}
 
 		// TODO(rfratto): read new pages to completion.
 		//
-		// We loop over pages until we've read all len(v) rows, leading
-		// len(v[n:]) to shrink each time; this means that the last iteration of
-		// this loop typically covers a partial page.
+		// Because rem shrinks with every iteration of our loop (one loop
+		// per page), we end up only partially reading into the final page on
+		// the final iteration.
 		//
-		// As it's likely we're going to eventually read that entire page
-		// anyway, this ends up being inefficient.
-		//
-		// Because len(v[n:]) shrinks with every iteration of our loop (one loop
-		// per page), we end up only partially reading into the final page. This
-		// is less efficient than reading the entire page due to re-entering the
-		// page reader + decoder, especially since we typically end up reading
-		// the entire page anyway.
-		cr.alloc.Reclaim() // allocator is tied to this iteration; we can reclaim memory eagerly.
-
-		rem := v[n:]
-		arr, err := cr.reader.Read(ctx, &cr.alloc, len(rem))
+		// This is less efficient than reading the entire page due to
+		// re-entering the page reader + decoder, especially since we typically
+		// end up reading the rest of the page later on anyway.
+		rem := count - totalRead
+		arr, err := cr.reader.Read(ctx, tempAlloc, rem)
 		if arr != nil {
-			count := copyArray(rem, arr)
-			cr.nextRow += int64(count)
-			n += count
+			arrs = append(arrs, arr)
+			cr.nextRow += int64(arr.Len())
+			totalRead += arr.Len()
 		}
 
 		// We ignore io.EOF errors from the page; the next loop will detect and
 		// report EOF on the call to [columnReader.nextPage].
 		if err != nil && !errors.Is(err, io.EOF) {
-			return n, err
+			res, _ := buildResult()
+			return res, err
 		}
 	}
 
-	return n, nil
+	return buildResult()
 }
 
 // nextPage returns the page where cr.nextRow is contained. If cr.nextRow is
@@ -206,8 +216,6 @@ func (cr *columnReader) Reset(column Column) {
 		// Resetting takes the place of calling Close here.
 		cr.reader.Reset(nil, column.ColumnDesc().Type.Physical, column.ColumnDesc().Compression)
 	}
-
-	cr.alloc.Reset()
 
 	cr.nextRow = 0
 }

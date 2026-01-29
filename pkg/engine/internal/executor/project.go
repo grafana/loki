@@ -7,6 +7,7 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/apache/arrow-go/v18/arrow/memory"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
@@ -171,8 +172,19 @@ func newExpandPipeline(expr physical.Expression, evaluator *expressionEvaluator,
 				return nil, fmt.Errorf("unexpected type returned from evaluation, expected *arrow.StructType, got %T", arrCasted.DataType())
 			}
 			for i := range arrCasted.NumField() {
-				outputCols = append(outputCols, arrCasted.Field(i))
-				outputFields = append(outputFields, structSchema.Field(i))
+				newField := structSchema.Field(i)
+				if idx := slices.IndexFunc(outputFields, func(f arrow.Field) bool {
+					return f.Name == newField.Name
+				}); idx != -1 {
+					if newField.Name == semconv.ColumnIdentError.FQN() || newField.Name == semconv.ColumnIdentErrorDetails.FQN() {
+						outputCols[idx] = mergeErrors(outputCols[idx].(*array.String), arrCasted.Field(i).(*array.String))
+					} else {
+						panic(fmt.Sprintf("column duplicates %s", newField.Name))
+					}
+				} else {
+					outputCols = append(outputCols, arrCasted.Field(i))
+					outputFields = append(outputFields, newField)
+				}
 			}
 		case *array.Float64:
 			outputFields = append(outputFields, semconv.FieldFromIdent(semconv.ColumnIdentValue, false))
@@ -185,4 +197,26 @@ func newExpandPipeline(expr physical.Expression, evaluator *expressionEvaluator,
 		outputSchema := arrow.NewSchema(outputFields, &metadata)
 		return array.NewRecordBatch(outputSchema, outputCols, batch.NumRows()), nil
 	}, region, input), nil
+}
+
+// mergeErrors merges string columns into a semicolon separated list of values.
+func mergeErrors(a, b *array.String) *array.String {
+	builder := array.NewStringBuilder(memory.DefaultAllocator)
+	builder.Reserve(a.Len())
+
+	for i := range a.Len() {
+		aVal := a.Value(i)
+		bVal := b.Value(i)
+		if bVal != "" {
+			if aVal != "" {
+				builder.Append(fmt.Sprintf("%s; %s", aVal, bVal))
+			} else {
+				builder.Append(bVal)
+			}
+		} else {
+			builder.Append(aVal)
+		}
+	}
+
+	return builder.NewStringArray()
 }

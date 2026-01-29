@@ -7,15 +7,15 @@ import (
 	_ "io" // Used for documenting io.EOF.
 
 	"github.com/apache/arrow-go/v18/arrow"
-	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/apache/arrow-go/v18/arrow/scalar"
 
+	columnarv2 "github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/arrowconv"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
+	memoryv2 "github.com/grafana/loki/v3/pkg/memory"
 )
 
 // ReaderOptions customizes the behavior of a [Reader].
@@ -114,8 +114,9 @@ type Reader struct {
 	schema *arrow.Schema // Set on [Reader.Reset].
 
 	ready bool
-	inner *dataset.Reader
-	buf   []dataset.Row
+	inner *columnar.ReaderAdapter
+
+	alloc *memoryv2.Allocator
 }
 
 // NewReader creates a new Reader from the provided options. Options are not
@@ -160,61 +161,24 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.RecordBatch, er
 		}
 	}
 
-	r.buf = slicegrow.GrowToCap(r.buf, batchSize)
-	r.buf = r.buf[:batchSize]
-
-	builder := array.NewRecordBuilder(r.opts.Allocator, r.schema)
-
-	n, readErr := r.inner.Read(ctx, r.buf)
-	for rowIndex := range n {
-		row := r.buf[rowIndex]
-
-		for columnIndex, val := range row.Values {
-			if columnIndex >= len(r.opts.Columns) {
-				// Ignore columns that are not in projection list.
-				continue
-			}
-
-			columnBuilder := builder.Field(columnIndex)
-
-			if val.IsNil() {
-				columnBuilder.AppendNull()
-				continue
-			}
-
-			// Append non-null values. We switch on [ColumnType] here so it's easier
-			// to follow the mapping of ColumnType to Arrow type. The mappings here
-			// should align with both [columnToField] (for Arrow type) and
-			// [Builder.encodeTo] (for dataset type).
-			//
-			// Passing our byte slices to [array.StringBuilder.BinaryBuilder.Append] are safe; it
-			// will copy the contents of the value and we can reuse the buffer on the
-			// next call to [dataset.Reader.Read].
-			columnType := r.opts.Columns[columnIndex].Type
-			switch columnType {
-			case ColumnTypeInvalid:
-				columnBuilder.AppendNull() // Unsupported column
-			case ColumnTypeStreamID: // Appends IDs as int64
-				columnBuilder.(*array.Int64Builder).Append(val.Int64())
-			case ColumnTypeMinTimestamp, ColumnTypeMaxTimestamp: // Values are nanosecond timestamps as int64
-				columnBuilder.(*array.TimestampBuilder).Append(arrow.Timestamp(val.Int64()))
-			case ColumnTypeLabel: // Appends labels as byte arrays
-				columnBuilder.(*array.StringBuilder).BinaryBuilder.Append(val.Binary())
-			case ColumnTypeRows: // Appends rows as int64
-				columnBuilder.(*array.Int64Builder).Append(val.Int64())
-			case ColumnTypeUncompressedSize: // Appends uncompressed size as int64
-				columnBuilder.(*array.Int64Builder).Append(val.Int64())
-			default:
-				// We'll only hit this if we added a new column type but forgot to
-				// support reading it.
-				return nil, fmt.Errorf("unsupported column type %s for column %d", columnType, columnIndex)
-			}
+	defer r.alloc.Reclaim()
+	rb, readErr := r.inner.Read(ctx, r.alloc, batchSize)
+	if len(r.opts.Columns) < int(rb.NumCols()) {
+		// Ignore columns that are not in projection list.
+		arrs := make([]columnarv2.Array, len(r.opts.Columns))
+		for i := range arrs {
+			arrs[i] = rb.Column(int64(i))
 		}
+		rb = columnarv2.NewRecordBatch(rb.NumRows(), arrs)
+	}
+	result, err := arrowconv.ToRecordBatch(rb, r.schema)
+	if err != nil {
+		return nil, fmt.Errorf("convert columnar.RecordBatch to arrow.RecordBatch: %w", err)
 	}
 
 	// We only return readErr after processing n so that we properly handle n>0
 	// while also getting an error such as io.EOF.
-	return builder.NewRecordBatch(), readErr
+	return result, readErr
 }
 
 func (r *Reader) init() error {
@@ -264,7 +228,7 @@ func (r *Reader) init() error {
 		Prefetch:   true,
 	}
 	if r.inner == nil {
-		r.inner = dataset.NewReader(innerOptions)
+		r.inner = columnar.NewReaderAdapter(innerOptions)
 	} else {
 		r.inner.Reset(innerOptions)
 	}
@@ -410,6 +374,11 @@ func mustConvertType(dtype arrow.DataType) datasetmd.PhysicalType {
 // Reset discards any state and resets r with a new set of optiosn. This
 // permits reusing a Reader rather than allocating a new one.
 func (r *Reader) Reset(opts ReaderOptions) {
+	if r.alloc == nil {
+		r.alloc = memoryv2.MakeAllocator(nil)
+	} else {
+		r.alloc.Reset()
+	}
 	r.opts = opts
 	r.schema = columnsSchema(opts.Columns)
 

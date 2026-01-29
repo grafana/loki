@@ -454,10 +454,10 @@ func (r *resolver) ResolveEndpoint(
 								SchemeID: "aws.auth#sigv4",
 								SignerProperties: func() smithy.Properties {
 									var sp smithy.Properties
+									smithyhttp.SetSigV4SigningRegion(&sp, "us-east-1")
+
 									smithyhttp.SetSigV4SigningName(&sp, "dynamodb")
 									smithyhttp.SetSigV4ASigningName(&sp, "dynamodb")
-
-									smithyhttp.SetSigV4SigningRegion(&sp, "us-east-1")
 									return sp
 								}(),
 							},

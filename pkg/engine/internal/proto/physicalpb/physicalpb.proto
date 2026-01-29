@@ -100,6 +100,7 @@ enum AggregateRangeOp {
   AGGREGATE_RANGE_OP_MAX = 3; // Represents LogQL's max_over_time aggregation.
   AGGREGATE_RANGE_OP_MIN = 4; // Represents LogQL's min_over_time aggregation.
   AGGREGATE_RANGE_OP_BYTES = 5; // Represents LogQL's bytes_over_time aggregation.
+  AGGREGATE_RANGE_OP_AVG = 6; // Represents LogQL's avg_over_time aggregation.
 }
 
 // AggregateVector represents an operation to aggregate a range vector into an

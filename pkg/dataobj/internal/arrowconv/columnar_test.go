@@ -22,7 +22,7 @@ func TestToRecordBatch_int64(t *testing.T) {
 	validity.SetRange(0, len(srcInt64), true)
 	validity.Set(4, false)
 	validity.Set(5, false)
-	int64Arr := columnar.MakeInt64(srcInt64, validity)
+	int64Arr := columnar.MakeNumber[int64](srcInt64, validity)
 	src := columnar.NewRecordBatch(int64(len(srcInt64)), []columnar.Array{int64Arr})
 
 	schema := arrow.NewSchema([]arrow.Field{
@@ -47,7 +47,7 @@ func TestToRecordBatch_uint64(t *testing.T) {
 	validity.SetRange(0, len(srcUint64), true)
 	validity.Set(4, false)
 	validity.Set(5, false)
-	uint64Arr := columnar.MakeUint64(srcUint64, validity)
+	uint64Arr := columnar.MakeNumber[uint64](srcUint64, validity)
 	src := columnar.NewRecordBatch(int64(len(srcUint64)), []columnar.Array{uint64Arr})
 
 	schema := arrow.NewSchema([]arrow.Field{
@@ -94,6 +94,38 @@ func TestToRecordBatch_string(t *testing.T) {
 	}
 }
 
+func TestToRecordBatch_binary(t *testing.T) {
+	alloc := memory.MakeAllocator(nil)
+	srcValues := [][]byte{
+		{0x00, 0x01},
+		nil,
+		{0xff},
+	}
+
+	validity := memory.MakeBitmap(alloc, len(srcValues))
+	validity.Resize(len(srcValues))
+	validity.SetRange(0, len(srcValues), true)
+	validity.Set(1, false)
+
+	data := []byte{0x00, 0x01, 0xff}
+	offsets := []int32{0, 2, 2, 3}
+	utf8Arr := columnar.MakeUTF8(data, offsets, validity)
+	src := columnar.NewRecordBatch(int64(len(srcValues)), []columnar.Array{utf8Arr})
+
+	schema := arrow.NewSchema([]arrow.Field{
+		{Name: "mybinary", Type: arrow.BinaryTypes.Binary},
+	}, nil)
+	res, err := arrowconv.ToRecordBatch(src, schema)
+
+	require.NoError(t, err)
+	col := res.Column(0).(*array.Binary)
+	require.False(t, col.IsNull(0))
+	require.True(t, col.IsNull(1))
+	require.False(t, col.IsNull(2))
+	require.Equal(t, srcValues[0], col.Value(0))
+	require.Equal(t, srcValues[2], col.Value(2))
+}
+
 func TestToRecordBatch_timestamp(t *testing.T) {
 	alloc := memory.MakeAllocator(nil)
 	now := time.Now().UTC()
@@ -112,7 +144,7 @@ func TestToRecordBatch_timestamp(t *testing.T) {
 	validity.Resize(len(srcTimestamps))
 	validity.SetRange(0, len(srcTimestamps), true)
 	validity.Set(2, false)
-	int64Arr := columnar.MakeInt64(srcNanos, validity)
+	int64Arr := columnar.MakeNumber[int64](srcNanos, validity)
 	src := columnar.NewRecordBatch(int64(len(srcTimestamps)), []columnar.Array{int64Arr})
 
 	schema := arrow.NewSchema([]arrow.Field{
@@ -153,6 +185,11 @@ func BenchmarkToRecordBatch_timestamp(b *testing.B) {
 	benchmarkToRecordBatch(b, src, schema)
 }
 
+func BenchmarkToRecordBatch_binary(b *testing.B) {
+	src, schema := makeBinaryBenchmarkBatch(b, benchmarkRows)
+	benchmarkToRecordBatch(b, src, schema)
+}
+
 const benchmarkRows = 4096
 
 func benchmarkToRecordBatch(b *testing.B, src columnar.RecordBatch, schema *arrow.Schema) {
@@ -176,7 +213,7 @@ func makeInt64BenchmarkBatch(b *testing.B, n int) (columnar.RecordBatch, *arrow.
 		values[i] = int64(i * 3)
 	}
 	validity := makeValidity(alloc, n, 10)
-	int64Arr := columnar.MakeInt64(values, validity)
+	int64Arr := columnar.MakeNumber[int64](values, validity)
 	src := columnar.NewRecordBatch(int64(n), []columnar.Array{int64Arr})
 	schema := arrow.NewSchema([]arrow.Field{
 		{Name: "myint64", Type: arrow.PrimitiveTypes.Int64},
@@ -192,7 +229,7 @@ func makeUint64BenchmarkBatch(b *testing.B, n int) (columnar.RecordBatch, *arrow
 		values[i] = uint64(i * 7)
 	}
 	validity := makeValidity(alloc, n, 10)
-	uint64Arr := columnar.MakeUint64(values, validity)
+	uint64Arr := columnar.MakeNumber[uint64](values, validity)
 	src := columnar.NewRecordBatch(int64(n), []columnar.Array{uint64Arr})
 	schema := arrow.NewSchema([]arrow.Field{
 		{Name: "myuint64", Type: arrow.PrimitiveTypes.Uint64},
@@ -228,6 +265,15 @@ func makeStringBenchmarkBatch(b *testing.B, n int) (columnar.RecordBatch, *arrow
 	return src, schema
 }
 
+func makeBinaryBenchmarkBatch(b *testing.B, n int) (columnar.RecordBatch, *arrow.Schema) {
+	b.Helper()
+
+	batch, _ := makeStringBenchmarkBatch(b, n)
+	return batch, arrow.NewSchema([]arrow.Field{
+		{Name: "mybinary", Type: arrow.BinaryTypes.Binary},
+	}, nil)
+}
+
 func makeTimestampBenchmarkBatch(b *testing.B, n int) (columnar.RecordBatch, *arrow.Schema) {
 	b.Helper()
 	alloc := memory.MakeAllocator(nil)
@@ -237,7 +283,7 @@ func makeTimestampBenchmarkBatch(b *testing.B, n int) (columnar.RecordBatch, *ar
 		values[i] = start.Add(time.Duration(i) * time.Millisecond).UnixNano()
 	}
 	validity := makeValidity(alloc, n, 10)
-	int64Arr := columnar.MakeInt64(values, validity)
+	int64Arr := columnar.MakeNumber[int64](values, validity)
 	src := columnar.NewRecordBatch(int64(n), []columnar.Array{int64Arr})
 	schema := arrow.NewSchema([]arrow.Field{
 		{Name: "mytimestamp", Type: arrow.FixedWidthTypes.Timestamp_ns},
