@@ -38,6 +38,11 @@ Grafana Loki does not come with any included authentication layer. You must run 
       apt-get install loki promtail
       ```
 
+Note: In rare cases the APT repository might temporarily lag behind the latest GitHub releases (for example, when versions such as 3.5.4 or 3.5.5 are not yet visible on https://apt.grafana.com). If you need a version that is not available via APT, use one of the following workarounds:
+- Install the desired version manually from the [GitHub Releases page](https://github.com/grafana/loki/releases) (download the appropriate Loki and Promtail assets for your platform).
+- Use container images from Docker Hub or ghcr.io for the required version.
+- If you prefer RPM-based distributions, check https://rpm.grafana.com where the latest packages may be available sooner.
+
 ## Install manually
 
 1. Browse to the [release page](https://github.com/grafana/loki/releases/).

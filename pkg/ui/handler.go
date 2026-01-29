@@ -263,7 +263,10 @@ func (s *Service) analyzeLabelsHandler() http.Handler {
 // redirectToNotFound updates the request URL to redirect to the not found handler
 func (s *Service) redirectToNotFound(r *http.Request, nodeName string) {
 	r.URL.Path = notFoundPath
-	r.URL.RawQuery = "?node=" + nodeName
+
+	// RawQuery should not include a leading '?' per net/url expectations.
+	// Using it here was causing malformed query strings in some cases.
+	r.URL.RawQuery = "node=" + nodeName
 }
 
 // writeJSONError writes a JSON error response with the given status code and message
