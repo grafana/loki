@@ -740,3 +740,93 @@ func TestCreateOrUpdateLokiStack_WhenInvalidQueryTimeout_SetDegraded(t *testing.
 	require.Error(t, err)
 	require.Equal(t, degradedErr, err)
 }
+
+func TestGetGatewayImage(t *testing.T) {
+	tt := []struct {
+		desc           string
+		stack          *lokiv1.LokiStack
+		envGateway     string
+		envPassthrough string
+		wantImage      string
+	}{
+		{
+			desc: "nil tenants returns default gateway image",
+			stack: &lokiv1.LokiStack{
+				Spec: lokiv1.LokiStackSpec{
+					Tenants: nil,
+				},
+			},
+			envGateway: "",
+			wantImage:  "quay.io/observatorium/api:latest",
+		},
+		{
+			desc: "nil tenants with env set",
+			stack: &lokiv1.LokiStack{
+				Spec: lokiv1.LokiStackSpec{
+					Tenants: nil,
+				},
+			},
+			envGateway: "custom-gateway:v3",
+			wantImage:  "custom-gateway:v3",
+		},
+		{
+			desc: "openshift-logging mode without env set",
+			stack: &lokiv1.LokiStack{
+				Spec: lokiv1.LokiStackSpec{
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.OpenshiftLogging,
+					},
+				},
+			},
+			envGateway: "",
+			wantImage:  "quay.io/observatorium/api:latest",
+		},
+		{
+			desc: "passthrough mode with env set",
+			stack: &lokiv1.LokiStack{
+				Spec: lokiv1.LokiStackSpec{
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.Passthrough,
+					},
+				},
+			},
+			envPassthrough: "custom-passthrough-gateway:v1",
+			wantImage:      "custom-passthrough-gateway:v1",
+		},
+		{
+			desc: "passthrough mode without env set",
+			stack: &lokiv1.LokiStack{
+				Spec: lokiv1.LokiStackSpec{
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.Passthrough,
+					},
+				},
+			},
+			envPassthrough: "",
+			wantImage:      "quay.io/jmarcal/passthrough-gateway:latest",
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.desc, func(t *testing.T) {
+			// Save and restore env vars
+			origGateway := os.Getenv("RELATED_IMAGE_GATEWAY")
+			origPassthrough := os.Getenv("RELATED_IMAGE_PASSTHROUGH_GATEWAY")
+			defer func() {
+				err := os.Setenv("RELATED_IMAGE_GATEWAY", origGateway)
+				require.NoError(t, err)
+				err = os.Setenv("RELATED_IMAGE_PASSTHROUGH_GATEWAY", origPassthrough)
+				require.NoError(t, err)
+			}()
+
+			// Set test env vars
+			err := os.Setenv("RELATED_IMAGE_GATEWAY", tc.envGateway)
+			require.NoError(t, err)
+			err = os.Setenv("RELATED_IMAGE_PASSTHROUGH_GATEWAY", tc.envPassthrough)
+			require.NoError(t, err)
+
+			result := getGatewayImage(tc.stack)
+			require.Equal(t, tc.wantImage, result)
+		})
+	}
+}
