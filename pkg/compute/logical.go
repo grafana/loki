@@ -64,7 +64,7 @@ func notArray(alloc *memory.Allocator, input *columnar.Bool) *columnar.Bool {
 //
 //   - If either side of the AND is null, the result is null.
 func And(alloc *memory.Allocator, left, right columnar.Datum) (columnar.Datum, error) {
-	return dispatchLogical(alloc, logicalAndKernel{}, left, right)
+	return dispatchLogical(alloc, logicalAndKernel, left, right)
 }
 
 // Or computes the logical OR of two input boolean datums. Or returns an error
@@ -75,7 +75,7 @@ func And(alloc *memory.Allocator, left, right columnar.Datum) (columnar.Datum, e
 //
 //   - If either side of the OR is null, the result is null.
 func Or(alloc *memory.Allocator, left, right columnar.Datum) (columnar.Datum, error) {
-	return dispatchLogical(alloc, logicalOrKernel{}, left, right)
+	return dispatchLogical(alloc, logicalOrKernel, left, right)
 }
 
 func dispatchLogical(alloc *memory.Allocator, kernel logicalKernel, left, right columnar.Datum) (columnar.Datum, error) {

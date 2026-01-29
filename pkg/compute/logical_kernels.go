@@ -20,11 +20,16 @@ type logicalKernel interface {
 	DoAA(out *memory.Bitmap, left, right memory.Bitmap)
 }
 
-type logicalAndKernel struct{}
+var (
+	logicalAndKernel logicalKernel = logicalAndKernelImpl{}
+	logicalOrKernel  logicalKernel = logicalOrKernelImpl{}
+)
 
-func (logicalAndKernel) DoSS(left, right bool) bool { return left && right }
+type logicalAndKernelImpl struct{}
 
-func (logicalAndKernel) DoSA(out *memory.Bitmap, left bool, right memory.Bitmap) {
+func (logicalAndKernelImpl) DoSS(left, right bool) bool { return left && right }
+
+func (logicalAndKernelImpl) DoSA(out *memory.Bitmap, left bool, right memory.Bitmap) {
 	// For safety, make sure the length is set to 0 so we can call append
 	// functions.
 	out.Resize(0)
@@ -38,7 +43,7 @@ func (logicalAndKernel) DoSA(out *memory.Bitmap, left bool, right memory.Bitmap)
 	}
 }
 
-func (logicalAndKernel) DoAS(out *memory.Bitmap, left memory.Bitmap, right bool) {
+func (logicalAndKernelImpl) DoAS(out *memory.Bitmap, left memory.Bitmap, right bool) {
 	// For safety, make sure the length is set to 0 so we can call append
 	// functions.
 	out.Resize(0)
@@ -52,7 +57,7 @@ func (logicalAndKernel) DoAS(out *memory.Bitmap, left memory.Bitmap, right bool)
 	}
 }
 
-func (logicalAndKernel) DoAA(out *memory.Bitmap, left memory.Bitmap, right memory.Bitmap) {
+func (logicalAndKernelImpl) DoAA(out *memory.Bitmap, left memory.Bitmap, right memory.Bitmap) {
 	if left.Len() != right.Len() {
 		panic("unexpected length mismatch")
 	}
@@ -69,11 +74,11 @@ func (logicalAndKernel) DoAA(out *memory.Bitmap, left memory.Bitmap, right memor
 	)
 }
 
-type logicalOrKernel struct{}
+type logicalOrKernelImpl struct{}
 
-func (logicalOrKernel) DoSS(left, right bool) bool { return left || right }
+func (logicalOrKernelImpl) DoSS(left, right bool) bool { return left || right }
 
-func (logicalOrKernel) DoSA(out *memory.Bitmap, left bool, right memory.Bitmap) {
+func (logicalOrKernelImpl) DoSA(out *memory.Bitmap, left bool, right memory.Bitmap) {
 	// For safety, make sure the length is set to 0 so we can call append
 	// functions.
 	out.Resize(0)
@@ -87,7 +92,7 @@ func (logicalOrKernel) DoSA(out *memory.Bitmap, left bool, right memory.Bitmap) 
 	}
 }
 
-func (logicalOrKernel) DoAS(out *memory.Bitmap, left memory.Bitmap, right bool) {
+func (logicalOrKernelImpl) DoAS(out *memory.Bitmap, left memory.Bitmap, right bool) {
 	// For safety, make sure the length is set to 0 so we can call append
 	// functions.
 	out.Resize(0)
@@ -101,7 +106,7 @@ func (logicalOrKernel) DoAS(out *memory.Bitmap, left memory.Bitmap, right bool) 
 	}
 }
 
-func (logicalOrKernel) DoAA(out *memory.Bitmap, left memory.Bitmap, right memory.Bitmap) {
+func (logicalOrKernelImpl) DoAA(out *memory.Bitmap, left memory.Bitmap, right memory.Bitmap) {
 	if left.Len() != right.Len() {
 		panic("unexpected length mismatch")
 	}
