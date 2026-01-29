@@ -97,7 +97,7 @@ func toProtoRegion(region *Region, statsIndex map[StatisticKey]uint32) (*proto.R
 		Attributes:     protoAttributes,
 		Events:         protoEvents,
 		Status:         marshalStatus(region.status),
-		DroppedRegions: uint32(region.droppedRegions),
+		DroppedRegions: region.droppedRegions.Load(),
 	}
 
 	return protoRegion, nil
