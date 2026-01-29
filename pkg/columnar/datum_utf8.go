@@ -1,6 +1,8 @@
 package columnar
 
-import "github.com/grafana/loki/v3/pkg/memory"
+import (
+	"github.com/grafana/loki/v3/pkg/memory"
+)
 
 // UTF8Scalar is a [Scalar] representing a [UTF8] value.
 type UTF8Scalar struct {
@@ -99,6 +101,16 @@ func (arr *UTF8) Data() []byte { return arr.data }
 
 // Offsets returns the underlying offsets array.
 func (arr *UTF8) Offsets() []int32 { return arr.offsets }
+
+// Size returns the size in bytes of the array's buffers.
+func (arr *UTF8) Size() int {
+	var (
+		validitySize = arr.validity.Len() / 8
+		dataSize     = len(arr.data)
+		offsetsSize  = len(arr.offsets) * 4 // *4 for int32
+	)
+	return validitySize + dataSize + offsetsSize
+}
 
 // Validity returns the validity bitmap of the array. The returned bitmap
 // may be of length 0 if there are no nulls.
