@@ -66,8 +66,9 @@ type Workflow struct {
 	statsMut sync.Mutex
 	stats    stats.Result
 
-	captureMut sync.Mutex
-	capture    *xcap.Capture
+	captureMut   sync.Mutex
+	capture      *xcap.Capture
+	parentRegion *xcap.Region
 
 	tasksMut   sync.RWMutex
 	taskStates map[*Task]TaskState
@@ -169,6 +170,7 @@ func (wf *Workflow) Close() {
 // resources.
 func (wf *Workflow) Run(ctx context.Context) (pipeline executor.Pipeline, err error) {
 	wf.capture = xcap.CaptureFromContext(ctx)
+	wf.parentRegion = xcap.RegionFromContext(ctx)
 
 	wrapped := &wrappedPipeline{
 		inner: wf.resultsPipeline,
@@ -431,6 +433,11 @@ func (wf *Workflow) mergeCapture(capture *xcap.Capture) {
 
 	if wf.capture == nil || capture == nil {
 		return
+	}
+
+	if wf.parentRegion != nil {
+		// Assign wf.parentRegion as the parent to all root regions of the task's capture.
+		capture.LinkParent(wf.parentRegion)
 	}
 
 	// Merge all regions from the task's capture into the workflow's capture.
