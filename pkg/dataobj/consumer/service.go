@@ -15,6 +15,7 @@ import (
 	"github.com/twmb/franz-go/pkg/kadm"
 	"github.com/twmb/franz-go/pkg/kgo"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	dataobj_uploader "github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/kafka"
@@ -161,9 +162,15 @@ func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, bucket objsto
 		logger,
 		reg,
 	)
+	builder, err := logsobj.NewBuilder(cfg.BuilderConfig, scratchStore)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize data object builder: %w", err)
+	}
+	if err := builder.RegisterMetrics(reg); err != nil {
+		level.Error(logger).Log("msg", "failed to register builder metrics", "err", err)
+	}
 	s.processor = newProcessor(
-		cfg.BuilderConfig,
-		scratchStore,
+		builder,
 		cfg.IdleFlushTimeout,
 		cfg.MaxBuilderAge,
 		cfg.Topic,

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"io"
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/go-kit/log"
@@ -19,7 +18,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
 // A builder allows mocking of [logsobj.Builder] in tests.
@@ -78,17 +76,10 @@ type processor struct {
 	// Metrics
 	metrics *partitionOffsetMetrics
 	logger  log.Logger
-	reg     prometheus.Registerer
-
-	// TODO(grobinson): Will replace with a builder factory.
-	builderCfg   logsobj.BuilderConfig
-	scratchStore scratch.Store
-	builderOnce  sync.Once
 }
 
 func newProcessor(
-	builderCfg logsobj.BuilderConfig,
-	scratchStore scratch.Store,
+	builder builder,
 	idleFlushTimeout time.Duration,
 	maxBuilderAge time.Duration,
 	topic string,
@@ -114,16 +105,14 @@ func newProcessor(
 	}
 
 	p := &processor{
+		builder:          builder,
 		logger:           logger,
 		decoder:          decoder,
-		builderCfg:       builderCfg,
-		scratchStore:     scratchStore,
 		metrics:          metrics,
 		idleFlushTimeout: idleFlushTimeout,
 		maxBuilderAge:    maxBuilderAge,
 		recordsChan:      recordsChan,
 		flusher:          flusher,
-		reg:              reg,
 	}
 	p.BasicService = services.NewBasicService(p.starting, p.running, p.stopping)
 	return p
@@ -171,24 +160,6 @@ func (p *processor) Run(ctx context.Context) error {
 	}
 }
 
-func (p *processor) initBuilder() error {
-	var initErr error
-	p.builderOnce.Do(func() {
-		// Dataobj builder
-		builder, err := logsobj.NewBuilder(p.builderCfg, p.scratchStore)
-		if err != nil {
-			initErr = err
-			return
-		}
-		if err := builder.RegisterMetrics(p.reg); err != nil {
-			initErr = err
-			return
-		}
-		p.builder = builder
-	})
-	return initErr
-}
-
 func (p *processor) processRecord(ctx context.Context, record *kgo.Record) {
 	now := time.Now()
 	p.metrics.processedRecords.Inc()
@@ -202,12 +173,6 @@ func (p *processor) processRecord(ctx context.Context, record *kgo.Record) {
 
 	// Observe processing delay
 	p.metrics.observeProcessingDelay(record.Timestamp)
-
-	// Initialize builder if this is the first record
-	if err := p.initBuilder(); err != nil {
-		level.Error(p.logger).Log("msg", "failed to initialize builder", "err", err)
-		return
-	}
 
 	tenant := string(record.Key)
 	stream, err := p.decoder.DecodeWithoutLabels(record.Value)
