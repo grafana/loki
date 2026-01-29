@@ -301,6 +301,16 @@ func (*DefaultMultiTenantManager) ValidateRuleGroup(g rulefmt.RuleGroup) []error
 		return errs
 	}
 
+	for k, v := range g.Labels {
+		if !model.LabelName(k).IsValid() || k == model.MetricNameLabel {
+			errs = append(errs, errors.Errorf("invalid label name: %s", k))
+		}
+
+		if !model.LabelValue(v).IsValid() {
+			errs = append(errs, errors.Errorf("invalid label value: %s", v))
+		}
+	}
+
 	for i, r := range g.Rules {
 		ruleNode := rulefmt.RuleNode{
 			Record: yaml.Node{Value: r.Record},
