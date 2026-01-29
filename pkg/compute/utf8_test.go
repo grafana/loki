@@ -4,10 +4,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/columnar/columnartest"
 	"github.com/grafana/loki/v3/pkg/memory"
-	"github.com/stretchr/testify/require"
 )
 
 func TestSubstrInsensitive(t *testing.T) {
@@ -103,9 +104,10 @@ func BenchmarkSubstrInsensitive(b *testing.B) {
 		totalSize += len(haystack.Get(i))
 	}
 
+	benchAlloc := memory.MakeAllocator(nil)
 	for b.Loop() {
-		alloc.Reclaim()
-		SubstrInsensitive(alloc, haystack, needle)
+		benchAlloc.Reclaim()
+		SubstrInsensitive(benchAlloc, haystack, needle)
 	}
 	b.SetBytes(int64(totalSize))
 }

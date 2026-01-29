@@ -3,6 +3,7 @@ package compute
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"unicode/utf8"
 
 	"github.com/grafana/loki/v3/pkg/columnar"
@@ -18,7 +19,7 @@ import (
 //   - If the needle is null, the result is a boolean array with all values set to false.
 func SubstrInsensitive(alloc *memory.Allocator, haystack columnar.Datum, needle columnar.Datum) (columnar.Datum, error) {
 	if haystack.Kind() != columnar.KindUTF8 || needle.Kind() != columnar.KindUTF8 {
-		return nil, errors.New("haystack and needle must be UTF-8")
+		return nil, fmt.Errorf("haystack and needle must both be UTF-8; got %s and %s", haystack.Kind(), needle.Kind())
 	}
 
 	_, haystackArray := haystack.(columnar.Array)
