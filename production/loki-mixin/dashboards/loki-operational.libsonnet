@@ -23,7 +23,9 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                  if !$._config.operational.gcs then 'GCS',
                                  if !$._config.operational.s3 then 'S3',
                                  if !$._config.operational.azureBlob then 'Azure Blob',
-                                 if !$._config.operational.boltDB then 'BoltDB Shipper',
+                                 // Hide BoltDB when using TSDB, and vice versa
+                                 if $._config.tsdb then 'BoltDB Shipper',
+                                 if !$._config.tsdb then 'TSDB Shipper',
                                ],
 
                                hiddenPanels:: if $._config.promtail.enabled then [] else [
