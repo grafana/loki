@@ -598,13 +598,11 @@ func TestBuildPlanFromIndexes(t *testing.T) {
 						{
 							Stream:           compactionpb.Stream{StreamID: 1, Index: "index1"},
 							LabelsHash:       100,
-							SegmentKey:       "svc1",
 							UncompressedSize: 1000,
 						},
 						{
 							Stream:           compactionpb.Stream{StreamID: 2, Index: "index1"},
 							LabelsHash:       200,
-							SegmentKey:       "svc1",
 							UncompressedSize: 2000,
 						},
 					},
@@ -646,7 +644,6 @@ func TestBuildPlanFromIndexes(t *testing.T) {
 						{
 							Stream:           compactionpb.Stream{StreamID: 1, Index: "index1"},
 							LabelsHash:       100, // Same labels hash
-							SegmentKey:       "svc1",
 							UncompressedSize: 1000,
 						},
 					},
@@ -656,7 +653,6 @@ func TestBuildPlanFromIndexes(t *testing.T) {
 						{
 							Stream:           compactionpb.Stream{StreamID: 1, Index: "index2"},
 							LabelsHash:       100, // Same labels hash - should be grouped together
-							SegmentKey:       "svc1",
 							UncompressedSize: 1500,
 						},
 					},
@@ -701,7 +697,6 @@ func TestBuildPlanFromIndexes(t *testing.T) {
 						{
 							Stream:           compactionpb.Stream{StreamID: 1, Index: "index1"},
 							LabelsHash:       100,
-							SegmentKey:       "svc1",
 							UncompressedSize: 1000,
 						},
 					},
@@ -711,7 +706,6 @@ func TestBuildPlanFromIndexes(t *testing.T) {
 						{
 							Stream:           compactionpb.Stream{StreamID: 2, Index: "index2"},
 							LabelsHash:       200,
-							SegmentKey:       "svc2",
 							UncompressedSize: 2000,
 						},
 					},
@@ -756,7 +750,6 @@ func TestBuildPlanFromIndexes(t *testing.T) {
 						{
 							Stream:           compactionpb.Stream{StreamID: 1, Index: "index1"},
 							LabelsHash:       100,
-							SegmentKey:       "svc1",
 							UncompressedSize: 1000,
 						},
 					},
@@ -801,7 +794,6 @@ func TestBuildPlanFromIndexes(t *testing.T) {
 						{
 							Stream:           compactionpb.Stream{StreamID: 1, Index: "index1"},
 							LabelsHash:       100,
-							SegmentKey:       "svc1",
 							UncompressedSize: 1000,
 						},
 					},
@@ -818,7 +810,6 @@ func TestBuildPlanFromIndexes(t *testing.T) {
 						{
 							Stream:           compactionpb.Stream{StreamID: 2, Index: "index2"},
 							LabelsHash:       200,
-							SegmentKey:       "svc1",
 							UncompressedSize: 2000,
 						},
 					},
@@ -863,13 +854,11 @@ func TestBuildTenantPlan(t *testing.T) {
 						{
 							Stream:           compactionpb.Stream{StreamID: 1, Index: "index1"},
 							LabelsHash:       100,
-							SegmentKey:       "svc1",
 							UncompressedSize: 1000,
 						},
 						{
 							Stream:           compactionpb.Stream{StreamID: 2, Index: "index1"},
 							LabelsHash:       200,
-							SegmentKey:       "svc2",
 							UncompressedSize: 2000,
 						},
 					},
@@ -899,64 +888,26 @@ func TestBuildTenantPlan(t *testing.T) {
 		require.Equal(t, "index1", streamIDs[1])
 		require.Equal(t, "index1", streamIDs[2])
 	})
-
-	t.Run("streams grouped by segment key", func(t *testing.T) {
-		// Create streams with different segment keys
-		mockReader := &MockIndexStreamReader{
-			Results: map[string]*IndexStreamResult{
-				"index1": {
-					Streams: []StreamInfo{
-						{
-							Stream:           compactionpb.Stream{StreamID: 1, Index: "index1"},
-							LabelsHash:       100,
-							SegmentKey:       "svc1",
-							UncompressedSize: 1000,
-						},
-						{
-							Stream:           compactionpb.Stream{StreamID: 2, Index: "index1"},
-							LabelsHash:       200,
-							SegmentKey:       "svc2",
-							UncompressedSize: 2000,
-						},
-						{
-							Stream:           compactionpb.Stream{StreamID: 3, Index: "index1"},
-							LabelsHash:       300,
-							SegmentKey:       "svc1", // Same segment as stream 1
-							UncompressedSize: 1500,
-						},
-					},
-				},
-			},
-		}
-
-		planner := newTestPlanner(mockReader)
-		indexes := []IndexInfo{{Path: "index1", Tenant: "tenant1"}}
-
-		plan, err := planner.buildTenantPlan(ctx, "tenant1", indexes, windowStart, windowEnd)
-
-		require.NoError(t, err)
-		require.Equal(t, int64(4500), plan.TotalUncompressedSize)
-	})
 }
 
-func TestCollectStreamsBySegmentKey(t *testing.T) {
+func TestCollectStreams(t *testing.T) {
 	ctx := context.Background()
 	windowStart := time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC)
 	windowEnd := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
 
-	t.Run("groups streams by segment key and labels hash", func(t *testing.T) {
+	t.Run("groups streams by labels hash", func(t *testing.T) {
 		mockReader := &MockIndexStreamReader{
 			Results: map[string]*IndexStreamResult{
 				"index1": {
 					Streams: []StreamInfo{
-						{Stream: compactionpb.Stream{StreamID: 1, Index: "index1"}, LabelsHash: 100, SegmentKey: "svc1", UncompressedSize: 1000},
-						{Stream: compactionpb.Stream{StreamID: 2, Index: "index1"}, LabelsHash: 200, SegmentKey: "svc1", UncompressedSize: 2000},
-						{Stream: compactionpb.Stream{StreamID: 3, Index: "index1"}, LabelsHash: 300, SegmentKey: "svc2", UncompressedSize: 3000},
+						{Stream: compactionpb.Stream{StreamID: 1, Index: "index1"}, LabelsHash: 100, UncompressedSize: 1000},
+						{Stream: compactionpb.Stream{StreamID: 2, Index: "index1"}, LabelsHash: 200, UncompressedSize: 2000},
+						{Stream: compactionpb.Stream{StreamID: 3, Index: "index1"}, LabelsHash: 300, UncompressedSize: 3000},
 					},
 				},
 				"index2": {
 					Streams: []StreamInfo{
-						{Stream: compactionpb.Stream{StreamID: 1, Index: "index2"}, LabelsHash: 100, SegmentKey: "svc1", UncompressedSize: 1500}, // Same labels as index1 stream 1
+						{Stream: compactionpb.Stream{StreamID: 1, Index: "index2"}, LabelsHash: 100, UncompressedSize: 1500}, // Same labels as index1 stream 1
 					},
 				},
 			},
@@ -968,23 +919,18 @@ func TestCollectStreamsBySegmentKey(t *testing.T) {
 			{Path: "index2", Tenant: "tenant1"},
 		}
 
-		result, err := planner.collectStreamsBySegmentKey(ctx, "tenant1", indexes, windowStart, windowEnd)
+		result, err := planner.collectStreams(ctx, "tenant1", indexes, windowStart, windowEnd)
 
 		require.NoError(t, err)
 
-		// Should have 2 segment groups: svc1 and svc2
-		require.Len(t, result.SegmentGroups, 2)
-
-		svc1Group := result.SegmentGroups["svc1"]
-		require.NotNil(t, svc1Group)
-		// svc1 should have 2 stream groups (LabelsHash 100 and 200)
-		require.Len(t, svc1Group.StreamGroups, 2)
-		// Total size: 1000 + 2000 + 1500 = 4500
-		require.Equal(t, int64(4500), svc1Group.TotalUncompressedSize)
+		// Should have 3 stream groups (LabelsHash 100, 200, 300)
+		require.Len(t, result.StreamGroups, 3)
+		// Total size: 1000 + 2000 + 3000 + 1500 = 7500
+		require.Equal(t, int64(7500), result.TotalUncompressedSize)
 
 		// Find the stream group with LabelsHash 100 (has streams from both indexes)
 		var hash100Group *StreamGroup
-		for _, sg := range svc1Group.StreamGroups {
+		for _, sg := range result.StreamGroups {
 			if sg.LabelsHash == 100 {
 				hash100Group = sg
 				break
@@ -1001,46 +947,6 @@ func TestCollectStreamsBySegmentKey(t *testing.T) {
 		}
 		require.True(t, indexesFound["index1"])
 		require.True(t, indexesFound["index2"])
-
-		svc2Group := result.SegmentGroups["svc2"]
-		require.NotNil(t, svc2Group)
-		require.Len(t, svc2Group.StreamGroups, 1)
-		require.Equal(t, int64(3000), svc2Group.TotalUncompressedSize)
-
-		// Verify svc2 stream identifier
-		require.Len(t, svc2Group.StreamGroups[0].Streams, 1)
-		require.Equal(t, int64(3), svc2Group.StreamGroups[0].Streams[0].StreamID)
-		require.Equal(t, "index1", svc2Group.StreamGroups[0].Streams[0].Index)
-	})
-
-	t.Run("streams without segment key grouped under empty string", func(t *testing.T) {
-		mockReader := &MockIndexStreamReader{
-			Results: map[string]*IndexStreamResult{
-				"index1": {
-					Streams: []StreamInfo{
-						{Stream: compactionpb.Stream{StreamID: 1, Index: "index1"}, LabelsHash: 100, SegmentKey: "", UncompressedSize: 1000},
-					},
-				},
-			},
-		}
-
-		planner := newTestPlanner(mockReader)
-		indexes := []IndexInfo{{Path: "index1", Tenant: "tenant1"}}
-
-		result, err := planner.collectStreamsBySegmentKey(ctx, "tenant1", indexes, windowStart, windowEnd)
-
-		require.NoError(t, err)
-		require.Len(t, result.SegmentGroups, 1)
-
-		// Empty segment key
-		emptyGroup := result.SegmentGroups[""]
-		require.NotNil(t, emptyGroup)
-		require.Len(t, emptyGroup.StreamGroups, 1)
-
-		// Verify stream identifier
-		require.Len(t, emptyGroup.StreamGroups[0].Streams, 1)
-		require.Equal(t, int64(1), emptyGroup.StreamGroups[0].Streams[0].StreamID)
-		require.Equal(t, "index1", emptyGroup.StreamGroups[0].Streams[0].Index)
 	})
 
 	t.Run("collects leftover streams", func(t *testing.T) {
@@ -1048,7 +954,7 @@ func TestCollectStreamsBySegmentKey(t *testing.T) {
 			Results: map[string]*IndexStreamResult{
 				"index1": {
 					Streams: []StreamInfo{
-						{Stream: compactionpb.Stream{StreamID: 1, Index: "index1"}, LabelsHash: 100, SegmentKey: "svc1", UncompressedSize: 1000},
+						{Stream: compactionpb.Stream{StreamID: 1, Index: "index1"}, LabelsHash: 100, UncompressedSize: 1000},
 					},
 					LeftoverBeforeStreams: []LeftoverStreamInfo{
 						{TenantStream: compactionpb.TenantStream{Tenant: "tenant1"}, LabelsHash: 100, UncompressedSize: 500},
@@ -1064,7 +970,7 @@ func TestCollectStreamsBySegmentKey(t *testing.T) {
 		planner := newTestPlanner(mockReader)
 		indexes := []IndexInfo{{Path: "index1", Tenant: "tenant1"}}
 
-		result, err := planner.collectStreamsBySegmentKey(ctx, "tenant1", indexes, windowStart, windowEnd)
+		result, err := planner.collectStreams(ctx, "tenant1", indexes, windowStart, windowEnd)
 
 		require.NoError(t, err)
 

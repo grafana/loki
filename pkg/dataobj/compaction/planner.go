@@ -40,11 +40,6 @@ const (
 	// compactionWindowDuration is the duration of each compaction window.
 	compactionWindowDuration = 2 * time.Hour
 
-	// SegmentationKey is the label key used to segment streams during compaction.
-	// Streams with the same segmentation key value are grouped together to improve
-	// query performance for that label. This will be made configurable in the future.
-	SegmentationKey = "service_name"
-
 	// maxParallelIndexReads is the maximum number of indexes to read in parallel.
 	maxParallelIndexReads = 8
 )
@@ -137,18 +132,8 @@ type StreamInfo struct {
 	compactionpb.Stream
 	// LabelsHash is the stable hash of the stream labels.
 	LabelsHash uint64
-	// SegmentKey is the value of the segmentation key label (used for grouping).
-	SegmentKey string
 	// UncompressedSize is the total uncompressed size of this stream.
 	UncompressedSize int64
-}
-
-// SegmentGroup holds all streams with the same segmentation key value.
-type SegmentGroup struct {
-	// StreamGroups contains streams grouped by labels hash within this segment.
-	StreamGroups []*StreamGroup
-	// TotalUncompressedSize is the sum of uncompressed sizes across all stream groups.
-	TotalUncompressedSize int64
 }
 
 // LeftoverPlan represents the plan for collecting leftover data outside the compaction window.
@@ -185,8 +170,10 @@ type LeftoverStreamInfo struct {
 
 // StreamCollectionResult holds the result of collecting streams from indexes.
 type StreamCollectionResult struct {
-	// SegmentGroups maps segmentation key values to their stream groups.
-	SegmentGroups map[string]*SegmentGroup
+	// StreamGroups contains streams grouped by labels hash.
+	StreamGroups []*StreamGroup
+	// TotalUncompressedSize is the sum of uncompressed sizes across all stream groups.
+	TotalUncompressedSize int64
 	// LeftoverBeforeStreams contains streams with data before the compaction window.
 	LeftoverBeforeStreams []*LeftoverStreamGroup
 	// LeftoverAfterStreams contains streams with data after the compaction window.
@@ -406,9 +393,7 @@ func collectLeftoverGroups(groups map[uint64]*LeftoverStreamGroup) []*LeftoverSt
 }
 
 // buildTenantPlan creates a compaction plan for merging data objects for a single tenant.
-// It reads stream metadata from indexes, groups them by segmentation key first,
-// then by stream labels within each segment group.
-// Streams without the segmentation key label are processed last.
+// It reads stream metadata from indexes and groups them by stream labels.
 //
 // For small tenants (total size < target), bin packing is skipped since all
 // streams will fit in a single output object anyway.
@@ -421,37 +406,29 @@ func (s *Planner) buildTenantPlan(ctx context.Context, tenant string, indexes []
 		return nil, fmt.Errorf("tenant is required")
 	}
 
-	// Step 1: Collect streams grouped by segmentation key in a single scan
-	// Also collects leftover stats for each index
-	collectionResult, err := s.collectStreamsBySegmentKey(ctx, tenant, indexes, compactionWindowStart, compactionWindowEnd)
+	// Step 1: Collect streams grouped by labels hash
+	collectionResult, err := s.collectStreams(ctx, tenant, indexes, compactionWindowStart, compactionWindowEnd)
 	if err != nil {
-		return nil, fmt.Errorf("failed to collect streams by segment key: %w", err)
+		return nil, fmt.Errorf("failed to collect streams: %w", err)
 	}
 
-	segmentGroups := collectionResult.SegmentGroups
+	streamGroups := collectionResult.StreamGroups
 	leftoverBeforeStreams := collectionResult.LeftoverBeforeStreams
 	leftoverAfterStreams := collectionResult.LeftoverAfterStreams
+	totalUncompressedSize := collectionResult.TotalUncompressedSize
 
-	if len(segmentGroups) == 0 {
+	if len(streamGroups) == 0 {
 		return nil, fmt.Errorf("no streams found within compaction window for tenant %s", tenant)
 	}
 
-	// Step 2: Calculate total size across all segment groups
-	var totalUncompressedSize int64
-	for _, segmentGroup := range segmentGroups {
-		totalUncompressedSize += segmentGroup.TotalUncompressedSize
-	}
-
-	// Step 3: For small tenants, skip bin packing - all streams fit in one object
+	// Step 2: For small tenants, skip bin packing - all streams fit in one object
 	if totalUncompressedSize < targetUncompressedSize {
 		level.Info(util_log.Logger).Log("msg", "tenant is small, skipping bin packing", "tenant", tenant, "size", totalUncompressedSize)
 
-		// Collect all streams from all segment groups into one output object
+		// Collect all streams into one output object
 		var allStreams []*compactionpb.Stream
-		for _, segmentGroup := range segmentGroups {
-			for _, group := range segmentGroup.StreamGroups {
-				allStreams = append(allStreams, group.Streams...)
-			}
+		for _, group := range streamGroups {
+			allStreams = append(allStreams, group.Streams...)
 		}
 
 		return &CompactionPlan{
@@ -465,42 +442,13 @@ func (s *Planner) buildTenantPlan(ctx context.Context, tenant string, indexes []
 		}, nil
 	}
 
-	// Step 4: Large tenant - process each segment group with bin packing
-
-	var allBins []BinPackResult[*StreamGroup]
-
-	// Get sorted segment keys (but "" comes last)
-	segmentKeys := make([]string, 0, len(segmentGroups))
-	for sk := range segmentGroups {
-		if sk != "" {
-			segmentKeys = append(segmentKeys, sk)
-		}
-	}
-	sort.Strings(segmentKeys)
-	// Add empty string (no segmentation key) at the end
-	if _, hasEmpty := segmentGroups[""]; hasEmpty {
-		segmentKeys = append(segmentKeys, "")
-	}
-
-	for _, segmentKey := range segmentKeys {
-		segmentGroup := segmentGroups[segmentKey]
-
-		// Run bin packing for this segment group
-		bins := BinPack(segmentGroup.StreamGroups)
-		allBins = append(allBins, bins...)
-
-		// Clear the segment group to release memory
-		delete(segmentGroups, segmentKey)
-	}
-
-	// Final optimization: merge under-filled bins across segments
-	// This preserves segment locality within each bin while improving fill rates
-	allBins = mergeUnderfilledBins(allBins)
+	// Step 3: Large tenant - run bin packing
+	bins := BinPack(streamGroups)
 
 	// Convert bins to proto OutputObjects
-	outputObjects := make([]*compactionpb.SingleTenantObjectSource, len(allBins))
+	outputObjects := make([]*compactionpb.SingleTenantObjectSource, len(bins))
 	var totalSize int64
-	for i, bin := range allBins {
+	for i, bin := range bins {
 		totalSize += bin.Size
 		var allStreams []*compactionpb.Stream
 		for _, group := range bin.Groups {
@@ -520,20 +468,11 @@ func (s *Planner) buildTenantPlan(ctx context.Context, tenant string, indexes []
 	}, nil
 }
 
-// collectStreamsBySegmentKey reads stream metadata from all indexes and groups them first
-// by segmentation key label value, then by stream labels within each segment group.
+// collectStreams reads stream metadata from all indexes and groups them by labels hash.
 // Only streams for the specified tenant within the compaction window are included.
-//
-// The result is a map from segmentation key value to SegmentGroup. Streams without
-// the segmentation key label will be grouped under the empty string key "".
-func (s *Planner) collectStreamsBySegmentKey(ctx context.Context, tenant string, indexes []IndexInfo, windowStart, windowEnd time.Time) (*StreamCollectionResult, error) {
-	// Map from segment_key -> labels_hash -> stream group
-	// Using nested maps for efficient grouping
-	type streamGroupKey struct {
-		segmentKey string
-		labelsHash uint64
-	}
-	streamGroupMap := make(map[streamGroupKey]*StreamGroup)
+func (s *Planner) collectStreams(ctx context.Context, tenant string, indexes []IndexInfo, windowStart, windowEnd time.Time) (*StreamCollectionResult, error) {
+	// Map from labels_hash -> stream group
+	streamGroupMap := make(map[uint64]*StreamGroup)
 
 	// Maps for leftover streams grouped by labels hash
 	leftoverBeforeMap := make(map[uint64]*LeftoverStreamGroup)
@@ -577,17 +516,12 @@ func (s *Planner) collectStreamsBySegmentKey(ctx context.Context, tenant string,
 				group.TotalUncompressedSize += info.UncompressedSize
 			}
 
-			// Group streams by segment key and labels hash
+			// Group streams by labels hash
 			for _, info := range result.Streams {
-				key := streamGroupKey{
-					segmentKey: info.SegmentKey,
-					labelsHash: info.LabelsHash,
-				}
-
-				group, ok := streamGroupMap[key]
+				group, ok := streamGroupMap[info.LabelsHash]
 				if !ok {
 					group = &StreamGroup{LabelsHash: info.LabelsHash}
-					streamGroupMap[key] = group
+					streamGroupMap[info.LabelsHash] = group
 				}
 				group.Streams = append(group.Streams, &info.Stream)
 				group.TotalUncompressedSize += info.UncompressedSize
@@ -601,20 +535,14 @@ func (s *Planner) collectStreamsBySegmentKey(ctx context.Context, tenant string,
 		return nil, err
 	}
 
-	// Organize stream groups by segment key
-	segmentGroups := make(map[string]*SegmentGroup)
-	for key, group := range streamGroupMap {
-		if len(group.Streams) == 0 {
-			continue
+	// Convert stream group map to slice
+	var totalUncompressedSize int64
+	streamGroups := make([]*StreamGroup, 0, len(streamGroupMap))
+	for _, group := range streamGroupMap {
+		if len(group.Streams) > 0 {
+			streamGroups = append(streamGroups, group)
+			totalUncompressedSize += group.TotalUncompressedSize
 		}
-
-		segmentGroup, ok := segmentGroups[key.segmentKey]
-		if !ok {
-			segmentGroup = &SegmentGroup{}
-			segmentGroups[key.segmentKey] = segmentGroup
-		}
-		segmentGroup.StreamGroups = append(segmentGroup.StreamGroups, group)
-		segmentGroup.TotalUncompressedSize += group.TotalUncompressedSize
 	}
 
 	// Convert leftover maps to slices
@@ -632,7 +560,8 @@ func (s *Planner) collectStreamsBySegmentKey(ctx context.Context, tenant string,
 	}
 
 	return &StreamCollectionResult{
-		SegmentGroups:         segmentGroups,
+		StreamGroups:          streamGroups,
+		TotalUncompressedSize: totalUncompressedSize,
 		LeftoverBeforeStreams: leftoverBeforeStreams,
 		LeftoverAfterStreams:  leftoverAfterStreams,
 	}, nil
@@ -730,7 +659,6 @@ func readStreamsFromIndexObject(ctx context.Context, obj *dataobj.Object, indexP
 					Index:    indexPath,
 				},
 				LabelsHash:       labelsHash,
-				SegmentKey:       strings.Clone(stream.Labels.Get(SegmentationKey)),
 				UncompressedSize: prorateSize(stream.UncompressedSize, clampedDuration, originalDuration),
 			})
 		}
