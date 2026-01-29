@@ -9,7 +9,7 @@ option go_package = "github.com/grafana/loki/v3/pkg/dataobj/compaction/proto";
 // Stream identifies a single stream from an index.
 // It does not include Tenant ID to let us store group of streams for same Tenant without repeating the ID.
 message Stream {
-  int64 StreamID = 1 [(gogoproto.jsontag) = "stream_id"];
+  int64 ID = 1 [(gogoproto.jsontag) = "id"];
   string Index = 2 [(gogoproto.jsontag) = "index"];
 }
 

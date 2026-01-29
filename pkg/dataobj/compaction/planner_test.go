@@ -446,70 +446,6 @@ func TestMergeUnderfilledBins(t *testing.T) {
 	})
 }
 
-func TestAggregateLeftovers(t *testing.T) {
-	t.Run("empty groups does nothing", func(t *testing.T) {
-		dest := make(map[uint64]*LeftoverStreamGroup)
-		aggregateLeftovers([]*LeftoverStreamGroup{}, dest)
-		require.Empty(t, dest)
-	})
-
-	t.Run("new group is added", func(t *testing.T) {
-		dest := make(map[uint64]*LeftoverStreamGroup)
-		groups := []*LeftoverStreamGroup{
-			{
-				LabelsHash:            123,
-				Streams:               []LeftoverStreamInfo{{UncompressedSize: 100}},
-				TotalUncompressedSize: 100,
-			},
-		}
-
-		aggregateLeftovers(groups, dest)
-
-		require.Len(t, dest, 1)
-		require.Equal(t, uint64(123), dest[123].LabelsHash)
-		require.Equal(t, int64(100), dest[123].TotalUncompressedSize)
-	})
-
-	t.Run("existing group is merged", func(t *testing.T) {
-		dest := make(map[uint64]*LeftoverStreamGroup)
-		dest[123] = &LeftoverStreamGroup{
-			LabelsHash:            123,
-			Streams:               []LeftoverStreamInfo{{UncompressedSize: 100}},
-			TotalUncompressedSize: 100,
-		}
-
-		groups := []*LeftoverStreamGroup{
-			{
-				LabelsHash:            123,
-				Streams:               []LeftoverStreamInfo{{UncompressedSize: 200}},
-				TotalUncompressedSize: 200,
-			},
-		}
-
-		aggregateLeftovers(groups, dest)
-
-		require.Len(t, dest, 1)
-		require.Equal(t, int64(300), dest[123].TotalUncompressedSize)
-		require.Len(t, dest[123].Streams, 2)
-	})
-
-	t.Run("multiple groups with different hashes", func(t *testing.T) {
-		dest := make(map[uint64]*LeftoverStreamGroup)
-		groups := []*LeftoverStreamGroup{
-			{LabelsHash: 1, Streams: []LeftoverStreamInfo{{UncompressedSize: 100}}, TotalUncompressedSize: 100},
-			{LabelsHash: 2, Streams: []LeftoverStreamInfo{{UncompressedSize: 200}}, TotalUncompressedSize: 200},
-			{LabelsHash: 3, Streams: []LeftoverStreamInfo{{UncompressedSize: 300}}, TotalUncompressedSize: 300},
-		}
-
-		aggregateLeftovers(groups, dest)
-
-		require.Len(t, dest, 3)
-		require.Equal(t, int64(100), dest[1].TotalUncompressedSize)
-		require.Equal(t, int64(200), dest[2].TotalUncompressedSize)
-		require.Equal(t, int64(300), dest[3].TotalUncompressedSize)
-	})
-}
-
 func TestPlanLeftovers(t *testing.T) {
 	planner := &Planner{}
 
@@ -526,8 +462,7 @@ func TestPlanLeftovers(t *testing.T) {
 	t.Run("only before streams", func(t *testing.T) {
 		beforeStreams := []*LeftoverStreamGroup{
 			{
-				LabelsHash:            1,
-				Streams:               []LeftoverStreamInfo{{UncompressedSize: 100}},
+				Streams:               []*compactionpb.TenantStream{{Tenant: "t1"}},
 				TotalUncompressedSize: 100,
 			},
 		}
@@ -544,8 +479,7 @@ func TestPlanLeftovers(t *testing.T) {
 	t.Run("only after streams", func(t *testing.T) {
 		afterStreams := []*LeftoverStreamGroup{
 			{
-				LabelsHash:            2,
-				Streams:               []LeftoverStreamInfo{{UncompressedSize: 200}},
+				Streams:               []*compactionpb.TenantStream{{Tenant: "t1"}},
 				TotalUncompressedSize: 200,
 			},
 		}
@@ -562,15 +496,13 @@ func TestPlanLeftovers(t *testing.T) {
 	t.Run("both before and after streams", func(t *testing.T) {
 		beforeStreams := []*LeftoverStreamGroup{
 			{
-				LabelsHash:            1,
-				Streams:               []LeftoverStreamInfo{{UncompressedSize: 100}},
+				Streams:               []*compactionpb.TenantStream{{Tenant: "t1"}},
 				TotalUncompressedSize: 100,
 			},
 		}
 		afterStreams := []*LeftoverStreamGroup{
 			{
-				LabelsHash:            2,
-				Streams:               []LeftoverStreamInfo{{UncompressedSize: 200}},
+				Streams:               []*compactionpb.TenantStream{{Tenant: "t2"}},
 				TotalUncompressedSize: 200,
 			},
 		}
@@ -596,12 +528,12 @@ func TestBuildPlanFromIndexes(t *testing.T) {
 				"index1": {
 					Streams: []StreamInfo{
 						{
-							Stream:           compactionpb.Stream{StreamID: 1, Index: "index1"},
+							Stream:           compactionpb.Stream{ID: 1, Index: "index1"},
 							LabelsHash:       100,
 							UncompressedSize: 1000,
 						},
 						{
-							Stream:           compactionpb.Stream{StreamID: 2, Index: "index1"},
+							Stream:           compactionpb.Stream{ID: 2, Index: "index1"},
 							LabelsHash:       200,
 							UncompressedSize: 2000,
 						},
@@ -629,7 +561,7 @@ func TestBuildPlanFromIndexes(t *testing.T) {
 		require.Len(t, streams, 2)
 		streamIDs := map[int64]string{}
 		for _, s := range streams {
-			streamIDs[s.StreamID] = s.Index
+			streamIDs[s.ID] = s.Index
 		}
 		require.Equal(t, "index1", streamIDs[1])
 		require.Equal(t, "index1", streamIDs[2])
@@ -642,7 +574,7 @@ func TestBuildPlanFromIndexes(t *testing.T) {
 				"index1": {
 					Streams: []StreamInfo{
 						{
-							Stream:           compactionpb.Stream{StreamID: 1, Index: "index1"},
+							Stream:           compactionpb.Stream{ID: 1, Index: "index1"},
 							LabelsHash:       100, // Same labels hash
 							UncompressedSize: 1000,
 						},
@@ -651,7 +583,7 @@ func TestBuildPlanFromIndexes(t *testing.T) {
 				"index2": {
 					Streams: []StreamInfo{
 						{
-							Stream:           compactionpb.Stream{StreamID: 1, Index: "index2"},
+							Stream:           compactionpb.Stream{ID: 1, Index: "index2"},
 							LabelsHash:       100, // Same labels hash - should be grouped together
 							UncompressedSize: 1500,
 						},
@@ -682,7 +614,7 @@ func TestBuildPlanFromIndexes(t *testing.T) {
 		// Verify both indexes are represented (same StreamID but different Index paths)
 		indexesFound := make(map[string]bool)
 		for _, s := range streams {
-			require.Equal(t, int64(1), s.StreamID) // Same stream ID
+			require.Equal(t, int64(1), s.ID) // Same stream ID
 			indexesFound[s.Index] = true
 		}
 		require.True(t, indexesFound["index1"], "index1 should be present")
@@ -695,7 +627,7 @@ func TestBuildPlanFromIndexes(t *testing.T) {
 				"index1": {
 					Streams: []StreamInfo{
 						{
-							Stream:           compactionpb.Stream{StreamID: 1, Index: "index1"},
+							Stream:           compactionpb.Stream{ID: 1, Index: "index1"},
 							LabelsHash:       100,
 							UncompressedSize: 1000,
 						},
@@ -704,7 +636,7 @@ func TestBuildPlanFromIndexes(t *testing.T) {
 				"index2": {
 					Streams: []StreamInfo{
 						{
-							Stream:           compactionpb.Stream{StreamID: 2, Index: "index2"},
+							Stream:           compactionpb.Stream{ID: 2, Index: "index2"},
 							LabelsHash:       200,
 							UncompressedSize: 2000,
 						},
@@ -732,13 +664,13 @@ func TestBuildPlanFromIndexes(t *testing.T) {
 		// Verify tenant1 has the correct stream identifier
 		require.Len(t, plans["tenant1"].OutputObjects, 1)
 		require.Len(t, plans["tenant1"].OutputObjects[0].Streams, 1)
-		require.Equal(t, int64(1), plans["tenant1"].OutputObjects[0].Streams[0].StreamID)
+		require.Equal(t, int64(1), plans["tenant1"].OutputObjects[0].Streams[0].ID)
 		require.Equal(t, "index1", plans["tenant1"].OutputObjects[0].Streams[0].Index)
 
 		// Verify tenant2 has the correct stream identifier
 		require.Len(t, plans["tenant2"].OutputObjects, 1)
 		require.Len(t, plans["tenant2"].OutputObjects[0].Streams, 1)
-		require.Equal(t, int64(2), plans["tenant2"].OutputObjects[0].Streams[0].StreamID)
+		require.Equal(t, int64(2), plans["tenant2"].OutputObjects[0].Streams[0].ID)
 		require.Equal(t, "index2", plans["tenant2"].OutputObjects[0].Streams[0].Index)
 	})
 
@@ -748,7 +680,7 @@ func TestBuildPlanFromIndexes(t *testing.T) {
 				"index1": {
 					Streams: []StreamInfo{
 						{
-							Stream:           compactionpb.Stream{StreamID: 1, Index: "index1"},
+							Stream:           compactionpb.Stream{ID: 1, Index: "index1"},
 							LabelsHash:       100,
 							UncompressedSize: 1000,
 						},
@@ -785,14 +717,13 @@ func TestBuildPlanFromIndexes(t *testing.T) {
 		require.Equal(t, int64(300), leftoverPlan.AfterWindowSize)
 	})
 
-	t.Run("leftover streams aggregated across tenants", func(t *testing.T) {
-		// Same stream (same LabelsHash) has leftover data from two tenants
+	t.Run("leftover streams collected from multiple tenants", func(t *testing.T) {
 		mockReader := &MockIndexStreamReader{
 			Results: map[string]*IndexStreamResult{
 				"index1": {
 					Streams: []StreamInfo{
 						{
-							Stream:           compactionpb.Stream{StreamID: 1, Index: "index1"},
+							Stream:           compactionpb.Stream{ID: 1, Index: "index1"},
 							LabelsHash:       100,
 							UncompressedSize: 1000,
 						},
@@ -808,15 +739,15 @@ func TestBuildPlanFromIndexes(t *testing.T) {
 				"index2": {
 					Streams: []StreamInfo{
 						{
-							Stream:           compactionpb.Stream{StreamID: 2, Index: "index2"},
+							Stream:           compactionpb.Stream{ID: 2, Index: "index2"},
 							LabelsHash:       200,
 							UncompressedSize: 2000,
 						},
 					},
 					LeftoverBeforeStreams: []LeftoverStreamInfo{
 						{
-							TenantStream:     compactionpb.TenantStream{Tenant: "tenant2"},
-							LabelsHash:       100, // Same labels hash as tenant1's leftover
+							TenantStream:     compactionpb.TenantStream{Tenant: "tenant2", Stream: &compactionpb.Stream{ID: 2}},
+							LabelsHash:       100,
 							UncompressedSize: 700,
 						},
 					},
@@ -835,7 +766,7 @@ func TestBuildPlanFromIndexes(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, leftoverPlan)
 
-		// Leftover data with same LabelsHash should be aggregated
+		// Leftover streams from all tenants are collected
 		require.Equal(t, int64(1200), leftoverPlan.BeforeWindowSize) // 500 + 700
 	})
 }
@@ -852,12 +783,12 @@ func TestBuildTenantPlan(t *testing.T) {
 				"index1": {
 					Streams: []StreamInfo{
 						{
-							Stream:           compactionpb.Stream{StreamID: 1, Index: "index1"},
+							Stream:           compactionpb.Stream{ID: 1, Index: "index1"},
 							LabelsHash:       100,
 							UncompressedSize: 1000,
 						},
 						{
-							Stream:           compactionpb.Stream{StreamID: 2, Index: "index1"},
+							Stream:           compactionpb.Stream{ID: 2, Index: "index1"},
 							LabelsHash:       200,
 							UncompressedSize: 2000,
 						},
@@ -883,7 +814,7 @@ func TestBuildTenantPlan(t *testing.T) {
 		// Verify stream identifiers
 		streamIDs := map[int64]string{}
 		for _, s := range streams {
-			streamIDs[s.StreamID] = s.Index
+			streamIDs[s.ID] = s.Index
 		}
 		require.Equal(t, "index1", streamIDs[1])
 		require.Equal(t, "index1", streamIDs[2])
@@ -900,14 +831,14 @@ func TestCollectStreams(t *testing.T) {
 			Results: map[string]*IndexStreamResult{
 				"index1": {
 					Streams: []StreamInfo{
-						{Stream: compactionpb.Stream{StreamID: 1, Index: "index1"}, LabelsHash: 100, UncompressedSize: 1000},
-						{Stream: compactionpb.Stream{StreamID: 2, Index: "index1"}, LabelsHash: 200, UncompressedSize: 2000},
-						{Stream: compactionpb.Stream{StreamID: 3, Index: "index1"}, LabelsHash: 300, UncompressedSize: 3000},
+						{Stream: compactionpb.Stream{ID: 1, Index: "index1"}, LabelsHash: 100, UncompressedSize: 1000},
+						{Stream: compactionpb.Stream{ID: 2, Index: "index1"}, LabelsHash: 200, UncompressedSize: 2000},
+						{Stream: compactionpb.Stream{ID: 3, Index: "index1"}, LabelsHash: 300, UncompressedSize: 3000},
 					},
 				},
 				"index2": {
 					Streams: []StreamInfo{
-						{Stream: compactionpb.Stream{StreamID: 1, Index: "index2"}, LabelsHash: 100, UncompressedSize: 1500}, // Same labels as index1 stream 1
+						{Stream: compactionpb.Stream{ID: 1, Index: "index2"}, LabelsHash: 100, UncompressedSize: 1500}, // Same labels as index1 stream 1
 					},
 				},
 			},
@@ -928,21 +859,20 @@ func TestCollectStreams(t *testing.T) {
 		// Total size: 1000 + 2000 + 3000 + 1500 = 7500
 		require.Equal(t, int64(7500), result.TotalUncompressedSize)
 
-		// Find the stream group with LabelsHash 100 (has streams from both indexes)
+		// Find the stream group with 2 streams (has streams from both indexes - LabelsHash 100)
 		var hash100Group *StreamGroup
 		for _, sg := range result.StreamGroups {
-			if sg.LabelsHash == 100 {
+			if len(sg.Streams) == 2 {
 				hash100Group = sg
 				break
 			}
 		}
-		require.NotNil(t, hash100Group, "should have stream group with LabelsHash 100")
-		require.Len(t, hash100Group.Streams, 2) // One from each index
+		require.NotNil(t, hash100Group, "should have stream group with 2 streams")
 
 		// Verify stream identifiers - both have StreamID 1 but different indexes
 		indexesFound := make(map[string]bool)
 		for _, s := range hash100Group.Streams {
-			require.Equal(t, int64(1), s.StreamID)
+			require.Equal(t, int64(1), s.ID)
 			indexesFound[s.Index] = true
 		}
 		require.True(t, indexesFound["index1"])
@@ -954,14 +884,14 @@ func TestCollectStreams(t *testing.T) {
 			Results: map[string]*IndexStreamResult{
 				"index1": {
 					Streams: []StreamInfo{
-						{Stream: compactionpb.Stream{StreamID: 1, Index: "index1"}, LabelsHash: 100, UncompressedSize: 1000},
+						{Stream: compactionpb.Stream{ID: 1, Index: "index1"}, LabelsHash: 100, UncompressedSize: 1000},
 					},
 					LeftoverBeforeStreams: []LeftoverStreamInfo{
-						{TenantStream: compactionpb.TenantStream{Tenant: "tenant1"}, LabelsHash: 100, UncompressedSize: 500},
-						{TenantStream: compactionpb.TenantStream{Tenant: "tenant1"}, LabelsHash: 200, UncompressedSize: 300},
+						{TenantStream: compactionpb.TenantStream{Tenant: "tenant1", Stream: &compactionpb.Stream{ID: 1}}, LabelsHash: 100, UncompressedSize: 500},
+						{TenantStream: compactionpb.TenantStream{Tenant: "tenant1", Stream: &compactionpb.Stream{ID: 2}}, LabelsHash: 200, UncompressedSize: 300},
 					},
 					LeftoverAfterStreams: []LeftoverStreamInfo{
-						{TenantStream: compactionpb.TenantStream{Tenant: "tenant1"}, LabelsHash: 100, UncompressedSize: 400},
+						{TenantStream: compactionpb.TenantStream{Tenant: "tenant1", Stream: &compactionpb.Stream{ID: 1}}, LabelsHash: 100, UncompressedSize: 400},
 					},
 				},
 			},

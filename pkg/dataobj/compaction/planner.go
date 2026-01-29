@@ -112,8 +112,6 @@ type CompactionPlan struct {
 // StreamGroup represents a group of stream entries that belong to the same stream
 // (identified by labels hash) across multiple index objects.
 type StreamGroup struct {
-	// LabelsHash is the stable hash of the stream labels.
-	LabelsHash uint64
 	// Streams contains all the stream entries for this stream (from different indexes).
 	Streams []*compactionpb.Stream
 	// TotalUncompressedSize is the sum of uncompressed sizes across all streams.
@@ -124,11 +122,7 @@ type StreamGroup struct {
 func (g *StreamGroup) GetSize() int64 { return g.TotalUncompressedSize }
 
 // StreamInfo represents aggregated stream information from an index object.
-// This is derived from the streams section which already aggregates all
-// stream metadata across all data objects that the index covers.
-// Embeds compactionpb.Stream for StreamID and Index fields.
 type StreamInfo struct {
-	// Embedded proto Stream (provides StreamID and Index fields)
 	compactionpb.Stream
 	// LabelsHash is the stable hash of the stream labels.
 	LabelsHash uint64
@@ -151,8 +145,7 @@ type LeftoverPlan struct {
 
 // LeftoverStreamGroup represents streams with the same labels that have leftover data.
 type LeftoverStreamGroup struct {
-	LabelsHash            uint64
-	Streams               []LeftoverStreamInfo
+	Streams               []*compactionpb.TenantStream
 	TotalUncompressedSize int64
 }
 
@@ -160,9 +153,7 @@ type LeftoverStreamGroup struct {
 func (g *LeftoverStreamGroup) GetSize() int64 { return g.TotalUncompressedSize }
 
 // LeftoverStreamInfo represents a stream's leftover data outside the compaction window.
-// Embeds compactionpb.TenantStream since leftover data is aggregated across tenants.
 type LeftoverStreamInfo struct {
-	// Embedded proto TenantStream (provides Tenant, StreamID, and Index fields)
 	compactionpb.TenantStream
 	LabelsHash       uint64
 	UncompressedSize int64
@@ -346,10 +337,9 @@ func (s *Planner) buildPlanFromIndexes(ctx context.Context, indexes []IndexInfo,
 		indexesByTenant[index.Tenant] = append(indexesByTenant[index.Tenant], index)
 	}
 
-	// Build plans and aggregate leftovers
+	// Build plans and collect leftovers
 	tenantPlans := make(map[string]*CompactionPlan)
-	leftoverBeforeMap := make(map[uint64]*LeftoverStreamGroup)
-	leftoverAfterMap := make(map[uint64]*LeftoverStreamGroup)
+	var allLeftoverBefore, allLeftoverAfter []*LeftoverStreamGroup
 
 	for tenant, tenantIndexes := range indexesByTenant {
 		level.Info(util_log.Logger).Log("msg", "Building plan for tenant", "tenant", tenant, "num_indexes", len(tenantIndexes))
@@ -360,36 +350,14 @@ func (s *Planner) buildPlanFromIndexes(ctx context.Context, indexes []IndexInfo,
 		}
 		tenantPlans[tenant] = plan
 
-		// Aggregate leftover streams by labels hash
-		aggregateLeftovers(plan.LeftoverBeforeStreams, leftoverBeforeMap)
-		aggregateLeftovers(plan.LeftoverAfterStreams, leftoverAfterMap)
+		// Collect leftover streams from all tenants
+		allLeftoverBefore = append(allLeftoverBefore, plan.LeftoverBeforeStreams...)
+		allLeftoverAfter = append(allLeftoverAfter, plan.LeftoverAfterStreams...)
 	}
 
-	leftoverPlan := s.planLeftovers(collectLeftoverGroups(leftoverBeforeMap), collectLeftoverGroups(leftoverAfterMap))
+	leftoverPlan := s.planLeftovers(allLeftoverBefore, allLeftoverAfter)
 
 	return tenantPlans, leftoverPlan, nil
-}
-
-// aggregateLeftovers merges leftover stream groups into the aggregation map by labels hash.
-func aggregateLeftovers(groups []*LeftoverStreamGroup, dest map[uint64]*LeftoverStreamGroup) {
-	for _, group := range groups {
-		existing, ok := dest[group.LabelsHash]
-		if !ok {
-			existing = &LeftoverStreamGroup{LabelsHash: group.LabelsHash}
-			dest[group.LabelsHash] = existing
-		}
-		existing.Streams = append(existing.Streams, group.Streams...)
-		existing.TotalUncompressedSize += group.TotalUncompressedSize
-	}
-}
-
-// collectLeftoverGroups extracts all LeftoverStreamGroups from the map into a slice.
-func collectLeftoverGroups(groups map[uint64]*LeftoverStreamGroup) []*LeftoverStreamGroup {
-	result := make([]*LeftoverStreamGroup, 0, len(groups))
-	for _, group := range groups {
-		result = append(result, group)
-	}
-	return result
 }
 
 // buildTenantPlan creates a compaction plan for merging data objects for a single tenant.
@@ -498,10 +466,10 @@ func (s *Planner) collectStreams(ctx context.Context, tenant string, indexes []I
 			for _, info := range result.LeftoverBeforeStreams {
 				group, ok := leftoverBeforeMap[info.LabelsHash]
 				if !ok {
-					group = &LeftoverStreamGroup{LabelsHash: info.LabelsHash}
+					group = &LeftoverStreamGroup{}
 					leftoverBeforeMap[info.LabelsHash] = group
 				}
-				group.Streams = append(group.Streams, info)
+				group.Streams = append(group.Streams, &info.TenantStream)
 				group.TotalUncompressedSize += info.UncompressedSize
 			}
 
@@ -509,10 +477,10 @@ func (s *Planner) collectStreams(ctx context.Context, tenant string, indexes []I
 			for _, info := range result.LeftoverAfterStreams {
 				group, ok := leftoverAfterMap[info.LabelsHash]
 				if !ok {
-					group = &LeftoverStreamGroup{LabelsHash: info.LabelsHash}
+					group = &LeftoverStreamGroup{}
 					leftoverAfterMap[info.LabelsHash] = group
 				}
-				group.Streams = append(group.Streams, info)
+				group.Streams = append(group.Streams, &info.TenantStream)
 				group.TotalUncompressedSize += info.UncompressedSize
 			}
 
@@ -520,7 +488,7 @@ func (s *Planner) collectStreams(ctx context.Context, tenant string, indexes []I
 			for _, info := range result.Streams {
 				group, ok := streamGroupMap[info.LabelsHash]
 				if !ok {
-					group = &StreamGroup{LabelsHash: info.LabelsHash}
+					group = &StreamGroup{}
 					streamGroupMap[info.LabelsHash] = group
 				}
 				group.Streams = append(group.Streams, &info.Stream)
@@ -607,8 +575,8 @@ func readStreamsFromIndexObject(ctx context.Context, obj *dataobj.Object, indexP
 					TenantStream: compactionpb.TenantStream{
 						Tenant: tenant,
 						Stream: &compactionpb.Stream{
-							StreamID: stream.ID,
-							Index:    indexPath,
+							ID:    stream.ID,
+							Index: indexPath,
 						},
 					},
 					LabelsHash:       labelsHash,
@@ -628,8 +596,8 @@ func readStreamsFromIndexObject(ctx context.Context, obj *dataobj.Object, indexP
 					TenantStream: compactionpb.TenantStream{
 						Tenant: tenant,
 						Stream: &compactionpb.Stream{
-							StreamID: stream.ID,
-							Index:    indexPath,
+							ID:    stream.ID,
+							Index: indexPath,
 						},
 					},
 					LabelsHash:       labelsHash,
@@ -655,8 +623,8 @@ func readStreamsFromIndexObject(ctx context.Context, obj *dataobj.Object, indexP
 
 			result.Streams = append(result.Streams, StreamInfo{
 				Stream: compactionpb.Stream{
-					StreamID: stream.ID,
-					Index:    indexPath,
+					ID:    stream.ID,
+					Index: indexPath,
 				},
 				LabelsHash:       labelsHash,
 				UncompressedSize: prorateSize(stream.UncompressedSize, clampedDuration, originalDuration),
@@ -958,10 +926,7 @@ func convertLeftoverBinsToMultiTenantObjectSource(bins []BinPackResult[*Leftover
 
 		var tenantStreams []*compactionpb.TenantStream
 		for _, group := range bin.Groups {
-			for j := range group.Streams {
-				stream := &group.Streams[j]
-				tenantStreams = append(tenantStreams, &stream.TenantStream)
-			}
+			tenantStreams = append(tenantStreams, group.Streams...)
 		}
 
 		objects[i] = &compactionpb.MultiTenantObjectSource{
