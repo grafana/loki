@@ -328,8 +328,8 @@ func TestCanExecuteQuery(t *testing.T) {
 			expected:  true,
 		},
 		{
-			// both vector and range aggregation are required
 			statement: `count_over_time({env="prod"}[1m])`,
+			expected:  true,
 		},
 		{
 			statement: `sum(count_over_time({env="prod"}[1m]))`,
@@ -337,6 +337,7 @@ func TestCanExecuteQuery(t *testing.T) {
 		},
 		{
 			statement: `max(avg_over_time({env="prod"} | unwrap size [1m]))`,
+			expected:  true,
 		},
 		{
 			statement: `sum by (level) (rate({env="prod"}[1m]))`,
@@ -344,6 +345,7 @@ func TestCanExecuteQuery(t *testing.T) {
 		},
 		{
 			statement: `avg by (level) (rate({env="prod"}[1m]))`,
+			expected:  true,
 		},
 		{
 			statement: `max by (level) (count_over_time({env="prod"}[1m]))`,
@@ -358,8 +360,8 @@ func TestCanExecuteQuery(t *testing.T) {
 			expected:  true,
 		},
 		{
-			// both vector and range aggregation are required
 			statement: `sum_over_time({env="prod"} | unwrap size [1m])`,
+			expected:  true,
 		},
 		{
 			statement: `sum(sum_over_time({env="prod"} | unwrap size [1m]))`,
@@ -374,8 +376,8 @@ func TestCanExecuteQuery(t *testing.T) {
 			statement: `sum by (level) (sum_over_time({env="prod"} | unwrap size [1m] offset 5m))`,
 		},
 		{
-			// both vector and range aggregation are required
 			statement: `max_over_time({env="prod"} | unwrap size [1m])`,
+			expected:  true,
 		},
 		{
 			statement: `sum(count_over_time({env="prod"} | logfmt | drop __error__ [1m]))`,

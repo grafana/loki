@@ -28,7 +28,7 @@ func ToRecordBatch(src columnar.RecordBatch, schema *arrow.Schema) (arrow.Record
 
 		switch field.Type.ID() {
 		case arrow.INT64:
-			srcInt64 := srcCol.(*columnar.Int64)
+			srcInt64 := srcCol.(*columnar.Number[int64])
 			srcBytes := arrow.GetBytes(srcInt64.Values())
 			dstBytes := make([]byte, len(srcBytes))
 			copy(dstBytes, srcBytes)
@@ -47,7 +47,7 @@ func ToRecordBatch(src columnar.RecordBatch, schema *arrow.Schema) (arrow.Record
 			arr = array.NewInt64Data(data)
 
 		case arrow.UINT64:
-			srcUint64 := srcCol.(*columnar.Uint64)
+			srcUint64 := srcCol.(*columnar.Number[uint64])
 			srcBytes := arrow.GetBytes(srcUint64.Values())
 			dstBytes := make([]byte, len(srcBytes))
 			copy(dstBytes, srcBytes)
@@ -64,6 +64,30 @@ func ToRecordBatch(src columnar.RecordBatch, schema *arrow.Schema) (arrow.Record
 				0,
 			)
 			arr = array.NewUint64Data(data)
+
+		case arrow.BINARY:
+			srcBinary := srcCol.(*columnar.UTF8)
+			srcBytes := srcBinary.Data()
+			dstBytes := make([]byte, len(srcBytes))
+			copy(dstBytes, srcBytes)
+
+			srcOffsetsBytes := arrow.GetBytes(srcBinary.Offsets())
+			dstOffsetsBytes := make([]byte, len(srcOffsetsBytes))
+			copy(dstOffsetsBytes, srcOffsetsBytes)
+
+			data := array.NewData(
+				field.Type,
+				int(nrows),
+				[]*arrowmemory.Buffer{
+					arrowmemory.NewBufferBytes(dstValidity),
+					arrowmemory.NewBufferBytes(dstOffsetsBytes),
+					arrowmemory.NewBufferBytes(dstBytes),
+				},
+				nil,
+				srcBinary.Nulls(),
+				0,
+			)
+			arr = array.NewBinaryData(data)
 
 		case arrow.STRING:
 			srcUTF8 := srcCol.(*columnar.UTF8)
@@ -90,7 +114,7 @@ func ToRecordBatch(src columnar.RecordBatch, schema *arrow.Schema) (arrow.Record
 			arr = array.NewStringData(data)
 
 		case arrow.TIMESTAMP:
-			srcInt64 := srcCol.(*columnar.Int64)
+			srcInt64 := srcCol.(*columnar.Number[int64])
 			srcBytes := arrow.GetBytes(srcInt64.Values())
 			dstBytes := make([]byte, len(srcBytes))
 			copy(dstBytes, srcBytes)

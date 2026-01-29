@@ -49,7 +49,7 @@ type indexSectionsReader struct {
 	pointersSectionIdx int
 	pointersReader     *pointers.Reader
 	cols               []*pointers.Column
-	labelsByStream     map[int64]labels.Labels
+	labelNamesByStream map[int64][]string
 
 	// Stats
 	sectionPointersRead         int64
@@ -74,13 +74,13 @@ func newIndexSectionsReader(
 	}
 
 	return &indexSectionsReader{
-		obj:            obj,
-		matchers:       matchers,
-		predicates:     equalPredicates,
-		start:          start,
-		end:            end,
-		region:         region,
-		labelsByStream: make(map[int64]labels.Labels),
+		obj:                obj,
+		matchers:           matchers,
+		predicates:         equalPredicates,
+		start:              start,
+		end:                end,
+		region:             region,
+		labelNamesByStream: make(map[int64][]string),
 	}
 }
 
@@ -123,10 +123,10 @@ func (r *indexSectionsReader) filterLabelPredicates() {
 	}
 	r.predicatesFiltered = true
 
-	allLabels := r.allLabels()
+	allLabelNames := r.allLabelNames()
 	filtered := make([]*labels.Matcher, 0, len(r.predicates))
 	for _, predicate := range r.predicates {
-		isStreamLabel := slices.Contains(allLabels, predicate.Name)
+		isStreamLabel := slices.Contains(allLabelNames, predicate.Name)
 		if !isStreamLabel {
 			filtered = append(filtered, predicate)
 		}
@@ -134,20 +134,20 @@ func (r *indexSectionsReader) filterLabelPredicates() {
 	r.predicates = filtered
 }
 
-func (r *indexSectionsReader) allLabels() []string {
-	allLabelsMap := map[string]struct{}{}
-	for _, lbls := range r.labelsByStream {
-		lbls.Range(func(l labels.Label) {
-			allLabelsMap[l.Name] = struct{}{}
-		})
+func (r *indexSectionsReader) allLabelNames() []string {
+	allLabelNamesMap := map[string]struct{}{}
+	for _, names := range r.labelNamesByStream {
+		for _, name := range names {
+			allLabelNamesMap[name] = struct{}{}
+		}
 	}
 
-	allLabels := make([]string, 0, len(allLabelsMap))
-	for label := range allLabelsMap {
-		allLabels = append(allLabels, label)
+	allLabelNames := make([]string, 0, len(allLabelNamesMap))
+	for labelName := range allLabelNamesMap {
+		allLabelNames = append(allLabelNames, labelName)
 	}
 
-	return allLabels
+	return allLabelNames
 }
 
 func (r *indexSectionsReader) init(ctx context.Context) error {
@@ -198,15 +198,24 @@ func (r *indexSectionsReader) populateMatchingStreamsAndLabels(ctx context.Conte
 		r.streamsReadDuration = time.Since(start)
 	}(time.Now())
 
-	predicate := streamPredicateFromMatchers(r.start, r.end, r.matchers...)
-	err := forEachStream(ctx, r.obj, predicate, func(stream streams.Stream) {
-		r.labelsByStream[stream.ID] = stream.Labels
-	})
+	sStart, sEnd := r.scalarTimestamps()
 
-	for streamID := range r.labelsByStream {
-		r.matchingStreamIDs = append(r.matchingStreamIDs, scalar.NewInt64Scalar(streamID))
+	requestedColumnsFn := func(column *streams.Column) bool {
+		return column.Type == streams.ColumnTypeLabel
 	}
 
+	err := forEachStreamWithColumns(ctx, r.obj, r.matchers, sStart, sEnd, requestedColumnsFn, func(streamID int64, columnValues map[string]string) {
+		r.matchingStreamIDs = append(r.matchingStreamIDs, scalar.NewInt64Scalar(streamID))
+		if len(columnValues) == 0 {
+			return
+		}
+
+		columns := make([]string, 0, len(columnValues))
+		for columnName := range columnValues {
+			columns = append(columns, columnName)
+		}
+		r.labelNamesByStream[streamID] = columns
+	})
 	if err != nil {
 		return fmt.Errorf("error iterating streams: %v", err)
 	}
@@ -441,6 +450,7 @@ func (r *indexSectionsReader) prepareForNextSectionOrSkip(ctx context.Context) (
 		sec.Columns(),
 		pointers.ColumnTypePath,
 		pointers.ColumnTypeSection,
+		pointers.ColumnTypePointerKind,
 		pointers.ColumnTypeStreamID,
 		pointers.ColumnTypeStreamIDRef,
 		pointers.ColumnTypeMinTimestamp,
@@ -456,6 +466,7 @@ func (r *indexSectionsReader) prepareForNextSectionOrSkip(ctx context.Context) (
 		colStreamID     *pointers.Column
 		colMinTimestamp *pointers.Column
 		colMaxTimestamp *pointers.Column
+		colPointerKind  *pointers.Column
 	)
 
 	for _, c := range cols {
@@ -468,12 +479,15 @@ func (r *indexSectionsReader) prepareForNextSectionOrSkip(ctx context.Context) (
 		if c.Type == pointers.ColumnTypeMaxTimestamp {
 			colMaxTimestamp = c
 		}
-		if colStreamID != nil && colMinTimestamp != nil && colMaxTimestamp != nil {
+		if c.Type == pointers.ColumnTypePointerKind {
+			colPointerKind = c
+		}
+		if colStreamID != nil && colMinTimestamp != nil && colMaxTimestamp != nil && colPointerKind != nil {
 			break
 		}
 	}
 
-	if colStreamID == nil || colMinTimestamp == nil || colMaxTimestamp == nil {
+	if colStreamID == nil || colMinTimestamp == nil || colMaxTimestamp == nil || colPointerKind == nil {
 		// Section has no rows with stream-based indices, skip it
 		return true, nil
 	}
@@ -484,6 +498,10 @@ func (r *indexSectionsReader) prepareForNextSectionOrSkip(ctx context.Context) (
 	r.pointersReader = pointers.NewReader(pointers.ReaderOptions{
 		Columns: r.cols,
 		Predicates: []pointers.Predicate{
+			pointers.EqualPredicate{
+				Column: colPointerKind,
+				Value:  scalar.NewInt64Scalar(int64(pointers.PointerKindStreamIndex)),
+			},
 			pointers.WhereTimeRangeOverlapsWith(colMinTimestamp, colMaxTimestamp, sStart, sEnd),
 			pointers.InPredicate{
 				Column: colStreamID,
@@ -502,8 +520,10 @@ func (r *indexSectionsReader) scalarTimestamps() (*scalar.Timestamp, *scalar.Tim
 	return sStart, sEnd
 }
 
-var _ ArrowRecordBatchReader = (*indexSectionsReader)(nil)
-var _ bloomStatsProvider = (*indexSectionsReader)(nil)
+var (
+	_ ArrowRecordBatchReader = (*indexSectionsReader)(nil)
+	_ bloomStatsProvider     = (*indexSectionsReader)(nil)
+)
 
 type bloomStatsProvider interface {
 	totalReadRows() uint64
@@ -541,6 +561,7 @@ func forEachMatchedPointerSectionKey(
 			sec.Columns(),
 			pointers.ColumnTypePath,
 			pointers.ColumnTypeSection,
+			pointers.ColumnTypePointerKind,
 			pointers.ColumnTypeColumnName,
 			pointers.ColumnTypeValuesBloomFilter,
 		)
@@ -549,8 +570,9 @@ func forEachMatchedPointerSectionKey(
 		}
 
 		var (
-			colColumnName *pointers.Column
-			colBloom      *pointers.Column
+			colColumnName  *pointers.Column
+			colBloom       *pointers.Column
+			colPointerKind *pointers.Column
 		)
 
 		for _, c := range pointerCols {
@@ -560,12 +582,15 @@ func forEachMatchedPointerSectionKey(
 			if c.Type == pointers.ColumnTypeValuesBloomFilter {
 				colBloom = c
 			}
-			if colColumnName != nil && colBloom != nil {
+			if c.Type == pointers.ColumnTypePointerKind {
+				colPointerKind = c
+			}
+			if colColumnName != nil && colBloom != nil && colPointerKind != nil {
 				break
 			}
 		}
 
-		if colColumnName == nil || colBloom == nil {
+		if colColumnName == nil || colBloom == nil || colPointerKind == nil {
 			// the section has no rows for blooms and can be ignored completely
 			continue
 		}
@@ -574,6 +599,10 @@ func forEachMatchedPointerSectionKey(
 			pointers.ReaderOptions{
 				Columns: pointerCols,
 				Predicates: []pointers.Predicate{
+					pointers.EqualPredicate{
+						Column: colPointerKind,
+						Value:  scalar.NewInt64Scalar(int64(pointers.PointerKindColumnIndex)),
+					},
 					pointers.WhereBloomFilterMatches(colColumnName, colBloom, columnName, matchColumnValue),
 				},
 			},

@@ -561,8 +561,8 @@ func TestEvaluateUnaryCastExpression(t *testing.T) {
 		expected := arrowtest.Rows{
 			{
 				semconv.ColumnIdentValue.FQN():        42.5,
-				semconv.ColumnIdentError.FQN():        nil,
-				semconv.ColumnIdentErrorDetails.FQN(): nil,
+				semconv.ColumnIdentError.FQN():        "",
+				semconv.ColumnIdentErrorDetails.FQN(): "",
 			},
 			{
 				semconv.ColumnIdentValue.FQN():        0.0,
@@ -695,8 +695,8 @@ func TestLogfmtParser(t *testing.T) {
 				{
 					"utf8.parsed.level":                   "info",
 					"utf8.parsed.status":                  "200",
-					semconv.ColumnIdentError.FQN():        nil,
-					semconv.ColumnIdentErrorDetails.FQN(): nil,
+					semconv.ColumnIdentError.FQN():        "",
+					semconv.ColumnIdentErrorDetails.FQN(): "",
 				},
 				{
 					"utf8.parsed.level":                   nil,
@@ -770,8 +770,8 @@ func TestLogfmtParser(t *testing.T) {
 					"utf8.parsed.level":                   "info",
 					"utf8.parsed.method":                  "GET",
 					"utf8.parsed.status":                  "200",
-					semconv.ColumnIdentError.FQN():        nil,
-					semconv.ColumnIdentErrorDetails.FQN(): nil,
+					semconv.ColumnIdentError.FQN():        "",
+					semconv.ColumnIdentErrorDetails.FQN(): "",
 				},
 				{
 					"utf8.parsed.level":                   nil,
@@ -791,8 +791,8 @@ func TestLogfmtParser(t *testing.T) {
 					"utf8.parsed.level":                   "debug",
 					"utf8.parsed.method":                  "POST",
 					"utf8.parsed.status":                  nil,
-					semconv.ColumnIdentError.FQN():        nil,
-					semconv.ColumnIdentErrorDetails.FQN(): nil,
+					semconv.ColumnIdentError.FQN():        "",
+					semconv.ColumnIdentErrorDetails.FQN(): "",
 				},
 			},
 		},
@@ -815,8 +815,8 @@ func TestLogfmtParser(t *testing.T) {
 					"utf8.parsed.level":                "info",
 					"utf8.parsed.method":               "GET",
 					"utf8.parsed.status":               "200",
-					"utf8.generated.__error__":         nil,
-					"utf8.generated.__error_details__": nil,
+					"utf8.generated.__error__":         "",
+					"utf8.generated.__error_details__": "",
 				},
 				{
 					"utf8.parsed.level":                nil,
@@ -829,8 +829,8 @@ func TestLogfmtParser(t *testing.T) {
 					"utf8.parsed.level":                "debug",
 					"utf8.parsed.method":               "POST",
 					"utf8.parsed.status":               nil,
-					"utf8.generated.__error__":         nil,
-					"utf8.generated.__error_details__": nil,
+					"utf8.generated.__error__":         "",
+					"utf8.generated.__error_details__": "",
 				},
 			},
 		},
@@ -941,8 +941,8 @@ func TestLogfmtParser(t *testing.T) {
 				{
 					"utf8.parsed.level":                "",
 					"utf8.parsed.status":               "200",
-					"utf8.generated.__error__":         nil,
-					"utf8.generated.__error_details__": nil,
+					"utf8.generated.__error__":         "",
+					"utf8.generated.__error_details__": "",
 				},
 				{
 					"utf8.parsed.level":                nil,
@@ -970,8 +970,8 @@ func TestLogfmtParser(t *testing.T) {
 				{
 					"utf8.parsed.level":                "info",
 					"utf8.parsed.status":               "200",
-					"utf8.generated.__error__":         nil,
-					"utf8.generated.__error_details__": nil,
+					"utf8.generated.__error__":         "",
+					"utf8.generated.__error_details__": "",
 				},
 				{
 					"utf8.parsed.level":                nil,
@@ -982,8 +982,8 @@ func TestLogfmtParser(t *testing.T) {
 				{
 					"utf8.parsed.level":                "debug",
 					"utf8.parsed.status":               "201",
-					"utf8.generated.__error__":         nil,
-					"utf8.generated.__error_details__": nil,
+					"utf8.generated.__error__":         "",
+					"utf8.generated.__error_details__": "",
 				},
 			},
 		},
@@ -1063,14 +1063,14 @@ func TestLogfmtParser(t *testing.T) {
 				{
 					"utf8.parsed.level":                "",
 					"utf8.parsed.status":               "200",
-					"utf8.generated.__error__":         nil,
-					"utf8.generated.__error_details__": nil,
+					"utf8.generated.__error__":         "",
+					"utf8.generated.__error_details__": "",
 				},
 				{
 					"utf8.parsed.level":                "info",
 					"utf8.parsed.status":               "",
-					"utf8.generated.__error__":         nil,
-					"utf8.generated.__error_details__": nil,
+					"utf8.generated.__error__":         "",
+					"utf8.generated.__error_details__": "",
 				},
 				{
 					"utf8.parsed.level":                nil,
@@ -1103,8 +1103,8 @@ func TestLogfmtParser(t *testing.T) {
 				{
 					"utf8.parsed.level":                "warn",
 					"utf8.parsed.status":               "404",
-					"utf8.generated.__error__":         nil,
-					"utf8.generated.__error_details__": nil,
+					"utf8.generated.__error__":         "",
+					"utf8.generated.__error_details__": "",
 				},
 			},
 		},
@@ -1265,8 +1265,8 @@ func TestEvaluateParseExpression_JSON(t *testing.T) {
 				{
 					"utf8.parsed.level":                   "info",
 					"utf8.parsed.status":                  "200",
-					semconv.ColumnIdentError.FQN():        nil,
-					semconv.ColumnIdentErrorDetails.FQN(): nil,
+					semconv.ColumnIdentError.FQN():        "",
+					semconv.ColumnIdentErrorDetails.FQN(): "",
 				},
 				{
 					"utf8.parsed.level":                   nil,
@@ -1277,8 +1277,8 @@ func TestEvaluateParseExpression_JSON(t *testing.T) {
 				{
 					"utf8.parsed.level":                   "info",
 					"utf8.parsed.status":                  "200",
-					semconv.ColumnIdentError.FQN():        nil,
-					semconv.ColumnIdentErrorDetails.FQN(): nil,
+					semconv.ColumnIdentError.FQN():        "",
+					semconv.ColumnIdentErrorDetails.FQN(): "",
 				},
 			},
 		},
@@ -1337,16 +1337,16 @@ func TestEvaluateParseExpression_JSON(t *testing.T) {
 					"utf8.parsed.method":                  "GET",
 					"utf8.parsed.status":                  "200",
 					"utf8.parsed.code":                    nil,
-					semconv.ColumnIdentError.FQN():        nil,
-					semconv.ColumnIdentErrorDetails.FQN(): nil,
+					semconv.ColumnIdentError.FQN():        "",
+					semconv.ColumnIdentErrorDetails.FQN(): "",
 				},
 				{
 					"utf8.parsed.level":                   "error",
 					"utf8.parsed.method":                  nil,
 					"utf8.parsed.status":                  nil,
 					"utf8.parsed.code":                    "500",
-					semconv.ColumnIdentError.FQN():        nil,
-					semconv.ColumnIdentErrorDetails.FQN(): nil,
+					semconv.ColumnIdentError.FQN():        "",
+					semconv.ColumnIdentErrorDetails.FQN(): "",
 				},
 				{
 					"utf8.parsed.level":                   nil,
@@ -1361,8 +1361,8 @@ func TestEvaluateParseExpression_JSON(t *testing.T) {
 					"utf8.parsed.method":                  "POST",
 					"utf8.parsed.status":                  nil,
 					"utf8.parsed.code":                    nil,
-					semconv.ColumnIdentError.FQN():        nil,
-					semconv.ColumnIdentErrorDetails.FQN(): nil,
+					semconv.ColumnIdentError.FQN():        "",
+					semconv.ColumnIdentErrorDetails.FQN(): "",
 				},
 			},
 		},
