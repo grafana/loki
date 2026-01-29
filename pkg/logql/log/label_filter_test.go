@@ -416,6 +416,102 @@ func TestStringLabelFilter(t *testing.T) {
 	}
 }
 
+func TestStringLabelFilter_FullyAnchored_Regexp(t *testing.T) {
+	// NOTE: https://github.com/grafana/loki/issues/14433
+	lbs := labels.FromStrings("foo", "bar", "test", "1234")
+
+	cases := []struct {
+		name        string
+		pat         string
+		shouldMatch bool
+	}{
+		{"exact", `1234`, true},
+		{"substring_prefix", `23.*`, false},
+		{"substring_suffix", `.*23`, false},
+		{"explicit_anchors", `^1234$`, true},
+		{"wildcard_around", `.*234.*`, true},
+		{"special_char_dot", `1234[.]`, false},
+		{"dotstar_all", `.*`, true},
+		{"half_anchor_caret_only", `^12`, false},
+		{"half_anchor_dollar_only", `34$`, false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := labels.MustNewMatcher(labels.MatchRegexp, "test", tc.pat)
+			f := NewStringLabelFilter(m)
+
+			b := NewBaseLabelsBuilder().ForLabels(lbs, labels.StableHash(lbs))
+			b.Reset()
+			_, ok := f.Process(0, []byte("line"), b)
+			assert.Equal(t, tc.shouldMatch, ok)
+		})
+	}
+}
+
+func TestStringLabelFilter_FullyAnchored_NotRegexp(t *testing.T) {
+	lbs := labels.FromStrings("foo", "bar", "test", "1234")
+
+	cases := []struct {
+		name        string
+		pat         string
+		shouldMatch bool
+	}{
+		{"not_exact_1234", `1234`, false},
+		{"not_substring_prefix", `23.*`, true},
+		{"not_substring_suffix", `.*23`, true},
+		{"not_explicit_anchors", `^1234$`, false},
+		{"not_wildcard_around", `.*234.*`, false},
+		{"not_dotstar_all", `.*`, false},
+		{"not_half_anchor_caret_only", `^12`, true},
+		{"not_half_anchor_dollar_only", `34$`, true},
+		{"not_special_char_dot", `1234[.]`, true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := labels.MustNewMatcher(labels.MatchNotRegexp, "test", tc.pat)
+			f := NewStringLabelFilter(m)
+
+			b := NewBaseLabelsBuilder().ForLabels(lbs, labels.StableHash(lbs))
+			b.Reset()
+			_, ok := f.Process(0, []byte("line"), b)
+			assert.Equal(t, tc.shouldMatch, ok)
+		})
+	}
+}
+
+func TestStringLabelFilter_MissingLabel_AnchoredSemantics(t *testing.T) {
+	lbs := labels.FromStrings("foo", "bar")
+
+	cases := []struct {
+		name        string
+		mt          labels.MatchType
+		pat         string
+		shouldMatch bool
+	}{
+		{"re_empty_matches_empty", labels.MatchRegexp, ``, true},
+		{"re_dotstar_matches_empty", labels.MatchRegexp, `.*`, true},
+		{"re_literal_1234_not_empty", labels.MatchRegexp, `1234`, false},
+		{"not_re_empty_on_empty", labels.MatchNotRegexp, ``, false},
+		{"not_re_dotstar_on_empty", labels.MatchNotRegexp, `.*`, false},
+		{"re_explicit_empty_anchors", labels.MatchRegexp, `^$`, true},
+		{"not_re_explicit_empty_anchors", labels.MatchNotRegexp, `^$`, false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := labels.MustNewMatcher(tc.mt, "test", tc.pat)
+			f := NewStringLabelFilter(m)
+
+			b := NewBaseLabelsBuilder().ForLabels(lbs, labels.StableHash(lbs))
+			b.Reset()
+			_, ok := f.Process(0, []byte("line"), b)
+			assert.Equal(t, tc.shouldMatch, ok)
+		})
+	}
+}
+
 var result bool
 
 func BenchmarkLineLabelFilters(b *testing.B) {

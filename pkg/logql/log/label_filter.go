@@ -358,18 +358,28 @@ type StringLabelFilter struct {
 // This is the only LabelFilterer that can filter out the __error__ label.
 // Unlike other LabelFilterer which apply conversion, if the label name doesn't exist it is compared with an empty value.
 func NewStringLabelFilter(m *labels.Matcher) LabelFilterer {
-	f, err := NewLabelFilter(m.Value, m.Type)
-	if err != nil {
+	switch m.Type {
+	case labels.MatchRegexp, labels.MatchNotRegexp:
+		// Label regex uses Prometheus labels.Matcher, which is fully anchored.
+		// Keeps Loki label semantics aligned with Prometheus spec. (Ref: loki#14433)
+
+		if m.Type == labels.MatchRegexp && m.Value == ".*" {
+			return &NoopLabelFilter{}
+		}
+
+		// Fallback to Prometheus fully-anchored matcher
 		return &StringLabelFilter{Matcher: m}
-	}
 
-	if f == TrueFilter {
-		return &NoopLabelFilter{m}
-	}
+	default:
+		// Non-regex matchers: try the specialized fast path.
+		if f, err := NewLabelFilter(m.Value, m.Type); err == nil {
+			if f == TrueFilter {
+				return &NoopLabelFilter{}
+			}
+			return &LineFilterLabelFilter{Matcher: m, Filter: f}
+		}
 
-	return &LineFilterLabelFilter{
-		Matcher: m,
-		Filter:  f,
+		return &StringLabelFilter{Matcher: m}
 	}
 }
 
