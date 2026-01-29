@@ -3,9 +3,12 @@ package executor
 import (
 	"testing"
 
+	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
 
 func TestJSONParser_Process(t *testing.T) {
@@ -245,88 +248,75 @@ func TestJSONParser_Process_Malformed(t *testing.T) {
 }
 
 func TestBuildJSONColumns(t *testing.T) {
-	t.Run("reuses parser and lookup map across multiple lines", func(t *testing.T) {
+	t.Run("with requested keys", func(t *testing.T) {
 		// Create input with multiple lines to ensure reuse
-		builder := array.NewStringBuilder(memory.DefaultAllocator)
-		builder.Append(`{"app":"foo","level":"info","msg":"first"}`)
-		builder.Append(`{"app":"bar","level":"debug","msg":"second","extra":"data"}`)
-		builder.Append(`{"app":"baz","level":"warn","msg":"third","nested":{"key":"value"}}`)
-		input := builder.NewStringArray()
-		defer input.Release()
+		input := arrowtest.Rows{
+			{"line": `{"app":"foo","level":"info","msg":"first"}`},
+			{"line": `{"app":"bar","level":"debug","msg":"second","extra":"data"}`},
+			{"line": `{"app":"baz","level":"warn","msg":"third","nested":{"key":"value"}}`},
+		}
+		inputRecord := input.Record(memory.DefaultAllocator, input.Schema())
+		defer inputRecord.Release()
 
+		lineCol := inputRecord.Column(0).(*array.String)
 		requestedKeys := []string{"app", "level", "nested_key"}
 
-		headers, columns := buildJSONColumns(input, requestedKeys)
+		headers, columns := buildJSONColumns(lineCol, requestedKeys)
 
-		// Verify we got the expected columns
-		require.Contains(t, headers, "app")
-		require.Contains(t, headers, "level")
-		require.Contains(t, headers, "nested_key")
-		require.Len(t, headers, 3)
-		require.Len(t, columns, 3)
-
-		// Defer releasing columns until after all checks
-		defer func() {
-			for _, col := range columns {
-				col.Release()
-			}
-		}()
-
-		// Verify each column has the right number of rows
-		for _, col := range columns {
-			require.Equal(t, 3, col.Len())
-		}
-
-		// Verify specific values
-		var appCol, levelCol, nestedCol *array.String
+		// Create a record from the parsed columns for easy comparison
+		fields := make([]arrow.Field, len(headers))
 		for i, h := range headers {
-			switch h {
-			case "app":
-				appCol = columns[i].(*array.String)
-			case "level":
-				levelCol = columns[i].(*array.String)
-			case "nested_key":
-				nestedCol = columns[i].(*array.String)
-			}
+			fields[i] = arrow.Field{Name: h, Type: arrow.BinaryTypes.String, Nullable: true}
+		}
+		schema := arrow.NewSchema(fields, nil)
+		outputRecord := array.NewRecordBatch(schema, columns, int64(lineCol.Len()))
+		defer outputRecord.Release()
+
+		actual, err := arrowtest.RecordRows(outputRecord)
+		require.NoError(t, err)
+
+		expect := arrowtest.Rows{
+			{"app": "foo", "level": "info", "nested_key": nil},
+			{"app": "bar", "level": "debug", "nested_key": nil},
+			{"app": "baz", "level": "warn", "nested_key": "value"},
 		}
 
-		require.NotNil(t, appCol)
-		require.Equal(t, "foo", appCol.Value(0))
-		require.Equal(t, "bar", appCol.Value(1))
-		require.Equal(t, "baz", appCol.Value(2))
-
-		require.NotNil(t, levelCol)
-		require.Equal(t, "info", levelCol.Value(0))
-		require.Equal(t, "debug", levelCol.Value(1))
-		require.Equal(t, "warn", levelCol.Value(2))
-
-		require.NotNil(t, nestedCol)
-		require.True(t, nestedCol.IsNull(0))
-		require.True(t, nestedCol.IsNull(1))
-		require.Equal(t, "value", nestedCol.Value(2))
+		require.Equal(t, expect, actual)
 	})
 
-	t.Run("handles all lines without requested keys", func(t *testing.T) {
-		builder := array.NewStringBuilder(memory.DefaultAllocator)
-		builder.Append(`{"a":"1","b":"2"}`)
-		builder.Append(`{"c":"3","d":"4"}`)
-		input := builder.NewStringArray()
-		defer input.Release()
+	t.Run("without requested keys", func(t *testing.T) {
+		input := arrowtest.Rows{
+			{"line": `{"a":"1","b":"2"}`},
+			{"line": `{"c":"3","d":"4"}`},
+		}
+		inputRecord := input.Record(memory.DefaultAllocator, input.Schema())
+		defer inputRecord.Release()
 
-		headers, columns := buildJSONColumns(input, nil)
-		defer func() {
-			for _, col := range columns {
-				col.Release()
-			}
-		}()
+		lineCol := inputRecord.Column(0).(*array.String)
+
+		headers, columns := buildJSONColumns(lineCol, nil)
+
+		// Create a record from the parsed columns
+		fields := make([]arrow.Field, len(headers))
+		for i, h := range headers {
+			fields[i] = arrow.Field{Name: h, Type: arrow.BinaryTypes.String, Nullable: true}
+		}
+		schema := arrow.NewSchema(fields, nil)
+		outputRecord := array.NewRecordBatch(schema, columns, int64(lineCol.Len()))
+		defer outputRecord.Release()
+
+		actual, err := arrowtest.RecordRows(outputRecord)
+		require.NoError(t, err)
 
 		// Should extract all keys across all lines
-		require.ElementsMatch(t, []string{"a", "b", "c", "d"}, headers)
-		require.Len(t, columns, 4)
+		require.ElementsMatch(t, headers, []string{"a", "b", "c", "d"})
 
-		for _, col := range columns {
-			require.Equal(t, 2, col.Len())
+		expect := arrowtest.Rows{
+			{"a": "1", "b": "2", "c": nil, "d": nil},
+			{"a": nil, "b": nil, "c": "3", "d": "4"},
 		}
+
+		require.Equal(t, expect, actual)
 	})
 }
 
