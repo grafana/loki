@@ -204,11 +204,10 @@ func (g *TestCaseGenerator) Generate() []TestCase {
 	if g.cfg.RangeType != "instant" { // log queries only support range type
 		for i, combo := range labelCombos {
 			selector := g.logGenCfg.buildLabelSelector(combo)
-			if i%2 == 0 {
-				selector = g.logGenCfg.buildRegexLabelSelector(combo, false)
-			}
 			if i%3 == 0 {
 				selector = g.logGenCfg.buildRegexLabelSelector(combo, true)
+			} else if i%2 == 0 {
+				selector = g.logGenCfg.buildRegexLabelSelector(combo, false)
 			}
 
 			// Basic selector
