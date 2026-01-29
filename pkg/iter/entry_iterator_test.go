@@ -14,6 +14,8 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+
+	"github.com/grafana/loki/pkg/push"
 )
 
 const (
@@ -921,4 +923,57 @@ func TestDedupeMergeEntryIterator(t *testing.T) {
 	} else {
 		require.Equal(t, []string{"0", "2", "1", "3"}, lines)
 	}
+}
+
+func TestMergeIteratorDoesNotDedupeDifferentStructuredMetadata(t *testing.T) {
+	labels := `{app="foo"}`
+	streamHash := hashLabels(labels)
+	commonTS := time.Unix(10, 0)
+
+	line1 := logproto.Stream{
+		Labels: labels,
+		Hash:   streamHash,
+		Entries: []logproto.Entry{
+			{Timestamp: commonTS, Line: "same", StructuredMetadata: push.LabelsAdapter{
+				push.LabelAdapter{Name: "k", Value: "a"},
+			}},
+		},
+	}
+	line2 := logproto.Stream{
+		Labels: labels,
+		Hash:   streamHash,
+		Entries: []logproto.Entry{
+			{Timestamp: commonTS, Line: "same", StructuredMetadata: push.LabelsAdapter{
+				push.LabelAdapter{Name: "k", Value: "b"},
+			}},
+		},
+	}
+
+	it := NewMergeEntryIterator(context.Background(), []EntryIterator{
+		NewStreamIterator(line1),
+		NewStreamIterator(line2),
+	}, logproto.FORWARD)
+	defer it.Close()
+
+	var got []logproto.Entry
+	for it.Next() {
+		got = append(got, it.At())
+	}
+	require.NoError(t, it.Err())
+
+	// Expect both entries, not deduped
+	require.Equal(t, 2, len(got))
+	require.Equal(t, got[0].Timestamp, commonTS)
+	require.Equal(t, got[1].Timestamp, commonTS)
+	require.Equal(t, "same", got[0].Line)
+	require.Equal(t, "same", got[1].Line)
+
+	vals := map[string]struct{}{}
+	for _, e := range got {
+		if len(e.StructuredMetadata) == 1 && e.StructuredMetadata[0].Name == "k" {
+			vals[e.StructuredMetadata[0].Value] = struct{}{}
+		}
+	}
+	require.Contains(t, vals, "a")
+	require.Contains(t, vals, "b")
 }

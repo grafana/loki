@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cespare/xxhash/v2"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/prometheus/common/model"
@@ -34,8 +35,9 @@ import (
 var ErrEntriesExist = errors.New("duplicate push - entries already exist")
 
 type line struct {
-	ts      time.Time
-	content string
+	ts                     time.Time
+	content                string
+	structuredMetadataHash uint64
 }
 
 type stream struct {
@@ -369,6 +371,7 @@ func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, usa
 		s.entryCt++
 		s.lastLine.ts = entries[i].Timestamp
 		s.lastLine.content = entries[i].Line
+		s.lastLine.structuredMetadataHash = s.metadataHash(&entries[i])
 		if s.highestTs.Before(entries[i].Timestamp) {
 			s.highestTs = entries[i].Timestamp
 		}
@@ -409,6 +412,7 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 	)
 
 	for i := range entries {
+		entryMetaHash := s.metadataHash(&entries[i])
 		// If this entry matches our last appended line's timestamp and contents,
 		// ignore it.
 		//
@@ -417,7 +421,7 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 		//
 		// NOTE: it's still possible for duplicates to be appended if a stream is
 		// deleted from inactivity.
-		if entries[i].Timestamp.Equal(lastLine.ts) && entries[i].Line == lastLine.content {
+		if entries[i].Timestamp.Equal(lastLine.ts) && entries[i].Line == lastLine.content && entryMetaHash == lastLine.structuredMetadataHash {
 			continue
 		}
 
@@ -447,6 +451,7 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 
 		lastLine.ts = entries[i].Timestamp
 		lastLine.content = entries[i].Line
+		lastLine.structuredMetadataHash = entryMetaHash
 		if highestTs.Before(entries[i].Timestamp) {
 			highestTs = entries[i].Timestamp
 		}
@@ -668,4 +673,23 @@ func headBlockType(chunkfmt byte, unorderedWrites bool) chunkenc.HeadBlockFmt {
 		}
 	}
 	return chunkenc.OrderedHeadBlockFmt
+}
+
+// metadataHash returns a stable hash for the entry's structured metadata when supported by the
+// configured chunk format. For older formats (< V4), structured metadata is ignored and 0 is returned.
+func (s *stream) metadataHash(e *logproto.Entry) uint64 {
+	if s.chunkFormat < chunkenc.ChunkFormatV4 {
+		return 0
+	}
+	if len(e.StructuredMetadata) == 0 {
+		return 0
+	}
+	h := xxhash.New()
+	for _, l := range e.StructuredMetadata {
+		_, _ = h.WriteString(l.Name)
+		_, _ = h.WriteString("=")
+		_, _ = h.WriteString(l.Value)
+		_, _ = h.WriteString("\x1f")
+	}
+	return h.Sum64()
 }
