@@ -36,6 +36,7 @@ var defaultUserAgent = fmt.Sprintf("canary-push/%s", build.GetVersion().Version)
 // directly to the given loki server URL. Each `Push` instance handles for a single tenant.
 type Push struct {
 	lokiURL     string
+	pathPrefix  string
 	tenantID    string
 	httpClient  *http.Client
 	userAgent   string
@@ -69,7 +70,7 @@ type Push struct {
 // is either a `Push` instance (which sends each log line immediately to Loki), or a `BatchedPush`
 // instance which sends log lines to Loki in batches.
 func NewPush(
-	lokiAddr, tenantID string,
+	lokiAddr, pathPrefix, tenantID string,
 	timeout time.Duration,
 	cfg config.HTTPClientConfig,
 	labelName, labelValue string,
@@ -123,7 +124,12 @@ func NewPush(
 	u := url.URL{
 		Scheme: scheme,
 		Host:   lokiAddr,
-		Path:   pushEndpoint,
+	}
+
+	if pathPrefix != "" {
+		u.Path = pathPrefix + pushEndpoint
+	} else {
+		u.Path = pushEndpoint
 	}
 
 	p := &Push{

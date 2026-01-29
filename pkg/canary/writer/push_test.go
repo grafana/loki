@@ -430,6 +430,7 @@ func newPushWithBearerTokenCredentials(testCfg testConfig, token string, logBatc
 func newPushWithCredentialsAndStreamNameValue(testCfg testConfig, username, password, bearerToken, streamName, streamValue string, logBatchSize int) (EntryWriter, error) {
 	return NewPush(
 		testCfg.mock.Listener.Addr().String(),
+		"",
 		"test1",
 		2*time.Second,
 		config.DefaultHTTPClientConfig,
