@@ -78,6 +78,14 @@ rules:
   - get
   - update
 - apiGroups:
+  - discovery.k8s.io
+  resources:
+  - endpointslices
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
   - loki.grafana.com
   resources:
   - alertingrules

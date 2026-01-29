@@ -133,6 +133,14 @@ func CreateOrUpdateLokiStack(
 	networkPolicyRuleSet := lokiv1.NetworkPolicyRuleSetNone
 	if stack.Spec.NetworkPolicies != nil {
 		networkPolicyRuleSet = stack.Spec.NetworkPolicies.RuleSet
+
+		ports, optErr := networkpolicy.ServicePortToPodPort(ctx, ll, k, objStore)
+		if optErr != nil {
+			return nil, optErr
+		}
+		if len(ports) > 0 {
+			opts.NetworkPolicyObjStorePorts = ports
+		}
 	}
 
 	tlsProfileType := configv1.TLSProfileType(fg.TLSProfile)
