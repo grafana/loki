@@ -1318,7 +1318,7 @@ const (
 	// ReasonStorageNeedsSchemaUpdate when the object storage schema version is older than V13
 	ReasonStorageNeedsSchemaUpdate LokiStackConditionReason = "StorageNeedsSchemaUpdate"
 	// ReasonIngesterReplicasBelowReplicationFactor when the ingester replicas are less than or equal to the replication factor. Which causes log ingestion to stop when ingester pods get restarted.
-	ReasonIngesterReplicasBelowReplicationFactor LokiStackConditionReason = "ReasonIngesterReplicasBelowReplicationFactor"
+	ReasonIngesterReplicasBelowReplicationFactor LokiStackConditionReason = "IngesterReplicasBelowReplicationFactor"
 )
 
 // PodStatus is a short description of the status a Pod can be in.

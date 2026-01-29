@@ -210,7 +210,7 @@ func generateWarnings(stack *lokiv1.LokiStack) []metav1.Condition {
 		replicas = stack.Spec.Template.Ingester.Replicas
 	}
 
-	if replicas <= int32(rf) {
+	if replicas <= rf {
 		warnings = append(warnings, metav1.Condition{
 			Type:    string(lokiv1.ConditionWarning),
 			Reason:  string(lokiv1.ReasonIngesterReplicasBelowReplicationFactor),
