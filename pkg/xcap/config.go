@@ -51,13 +51,8 @@ type Config struct {
 
 // Validate checks the configuration for errors.
 // Returns an error if DropStrategyName is set to an unknown value.
-// When filtering is enabled but no strategy is specified, prune_leaves is used as default.
+// When no strategy is specified, prune_leaves is used as default.
 func (c *FilteringConfig) Validate() error {
-	// If filtering is disabled (MinRegionDuration <= 0), no validation needed
-	if c.MinRegionDuration <= 0 {
-		return nil
-	}
-
 	// Validate strategy name (empty string defaults to prune_leaves)
 	switch c.DropStrategyName {
 	case DropStrategyPruneLeaves, DropStrategyPromoteChildren, DropStrategyDropSubtree, "":
@@ -67,13 +62,20 @@ func (c *FilteringConfig) Validate() error {
 	}
 }
 
+// noopStrategy is a no-op drop strategy that keeps all regions unchanged.
+type noopStrategy struct{}
+
+func (s *noopStrategy) Name() string { return "noop" }
+
+func (s *noopStrategy) Filter(_ *Capture, _ time.Duration) {}
+
 // resolveStrategy returns the DropStrategy to use based on configuration.
-// Returns nil if filtering is disabled.
+// Returns noopStrategy if filtering is disabled.
 // Defaults to prune_leaves if no strategy is specified.
 // Returns an error if validation would fail.
 func (c *FilteringConfig) resolveStrategy() (DropStrategy, error) {
 	if c.MinRegionDuration <= 0 {
-		return nil, nil
+		return &noopStrategy{}, nil
 	}
 
 	switch c.DropStrategyName {
