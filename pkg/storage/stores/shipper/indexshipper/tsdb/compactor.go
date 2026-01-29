@@ -116,21 +116,26 @@ func (t *tableCompactor) CompactTable() error {
 
 		return nil
 	})
-	if err != nil {
-		return err
-	}
 
 	defer func() {
 		for i, idx := range multiTenantIndices {
-			if err := idx.Close(); err != nil {
-				level.Error(t.commonIndexSet.GetLogger()).Log("msg", "failed to close multi-tenant source index file", "path", downloadPaths[i], "err", err)
+			// indices or paths may not be set in case of partially failed download and open
+			if idx != nil {
+				if err := idx.Close(); err != nil {
+					level.Error(t.commonIndexSet.GetLogger()).Log("msg", "failed to close multi-tenant source index file", "path", downloadPaths[i], "err", err)
+				}
 			}
-
-			if err := os.Remove(downloadPaths[i]); err != nil {
-				level.Error(t.commonIndexSet.GetLogger()).Log("msg", "failed to remove downloaded index file", "path", downloadPaths[i], "err", err)
+			if downloadPaths[i] != "" {
+				if err := os.Remove(downloadPaths[i]); err != nil {
+					level.Error(t.commonIndexSet.GetLogger()).Log("msg", "failed to remove downloaded index file", "path", downloadPaths[i], "err", err)
+				}
 			}
 		}
 	}()
+
+	if err != nil {
+		return err
+	}
 
 	var multiTenantIndex Index = NoopIndex{}
 	if len(multiTenantIndices) > 0 {
