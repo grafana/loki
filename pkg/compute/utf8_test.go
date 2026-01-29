@@ -14,9 +14,11 @@ func TestSubstrInsensitive(t *testing.T) {
 	alloc := memory.MakeAllocator(nil)
 
 	singleValueHaystack := columnartest.Array(t, columnar.KindUTF8, alloc, "test")
+	nulllValueHaystack := columnartest.Array(t, columnar.KindUTF8, alloc, nil)
 	emptyHaystack := columnartest.Array(t, columnar.KindUTF8, alloc)
 
 	emptyNeedle := columnartest.Scalar(t, columnar.KindUTF8, "")
+	nullValueNeedle := columnartest.Scalar(t, columnar.KindUTF8, nil)
 	singleValueNeedle := columnartest.Scalar(t, columnar.KindUTF8, "test")
 	singleUnknownValueNeedle := columnartest.Scalar(t, columnar.KindUTF8, "notest")
 	singleUpperCaseValueNeedle := columnartest.Scalar(t, columnar.KindUTF8, "TEST")
@@ -24,6 +26,7 @@ func TestSubstrInsensitive(t *testing.T) {
 	singleTrue := columnartest.Array(t, columnar.KindBool, alloc, true)
 	singleFalse := columnartest.Array(t, columnar.KindBool, alloc, false)
 	emptyResult := columnartest.Array(t, columnar.KindBool, alloc)
+	nullResult := columnartest.Array(t, columnar.KindBool, alloc, nil)
 
 	cases := []struct {
 		name     string
@@ -60,6 +63,24 @@ func TestSubstrInsensitive(t *testing.T) {
 			haystack: singleValueHaystack,
 			needle:   singleUpperCaseValueNeedle,
 			expected: singleTrue,
+		},
+		{
+			name:     "nil_haystack",
+			haystack: nulllValueHaystack,
+			needle:   singleValueNeedle,
+			expected: nullResult,
+		},
+		{
+			name:     "nil_needle",
+			haystack: singleValueHaystack,
+			needle:   nullValueNeedle,
+			expected: nullResult,
+		},
+		{
+			name:     "nil_haystack_and_needle",
+			haystack: nulllValueHaystack,
+			needle:   nullValueNeedle,
+			expected: nullResult,
 		},
 	}
 	for _, c := range cases {
