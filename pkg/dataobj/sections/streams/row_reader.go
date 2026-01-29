@@ -79,7 +79,7 @@ func (r *RowReader) Read(ctx context.Context, s []Stream) (int, error) {
 	}
 
 	for i := range r.buf[:n] {
-		if err := decodeRow(r.sec.Columns(), r.buf[i], &s[i], r.symbols); err != nil {
+		if err := decodeRow(r.sec.Columns(), r.buf[i], &s[i], r.symbols, nil, false); err != nil {
 			return i, fmt.Errorf("decoding stream: %w", err)
 		}
 	}
