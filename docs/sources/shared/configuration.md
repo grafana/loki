@@ -3424,6 +3424,11 @@ The `frontend` block configures the Loki query-frontend.
 # CLI flag: -frontend.scheduler-worker-concurrency
 [scheduler_worker_concurrency: <int> | default = 5]
 
+# Time to wait for a worker to initialize connection to query-scheduler.
+# If left empty, no timeout is applied.
+# If the timeout is reached, the worker init fails, backoffs and tries again.
+[scheduler_worker_init_timeout: <duration> | default = 0s]
+
 # The grpc_client block configures the gRPC client used to communicate between a
 # client and server component in Loki.
 # The CLI flags prefix for this block configuration is:
