@@ -8,12 +8,23 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"runtime"
+	"sync"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/util/loser"
 )
+
+// A pool for valueBatch objects, with a pre-allocated row buffer.
+var valueBatchPool = &sync.Pool{
+	New: func() any {
+		return &valueBatch{
+			rows: make([]rowValue, 1024),
+		}
+	},
+}
 
 // mergeTablesIncremental incrementally merges the provides sorted tables into
 // a single table. Incremental merging limits memory overhead as only mergeSize
@@ -49,6 +60,12 @@ func mergeTablesIncremental(buf *tableBuffer, pageSize, pageRowCount int, compre
 	}
 
 	return in[0], nil
+}
+
+type rowValue struct {
+	builder *dataset.ColumnBuilder
+	row     int
+	value   dataset.Value
 }
 
 // mergeTables merges the provided sorted tables into a new single sorted table
@@ -93,6 +110,14 @@ func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *
 
 	var rows int
 
+	// Start async workers in order to improve throughput
+	wg := &sync.WaitGroup{}
+	appenderCount := max(2, runtime.GOMAXPROCS(0))
+	appenders := make([]*columnAppender, 0, appenderCount)
+	for range appenderCount {
+		appenders = append(appenders, newColumnAppender(wg))
+	}
+
 	tree := loser.New(tableSequences, maxValue, tableSequenceAt, CompareForSortOrder(sort), tableSequenceClose)
 	defer tree.Close()
 
@@ -121,14 +146,15 @@ func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *
 
 			switch column.Type {
 			case ColumnTypeStreamID:
-				_ = streamIDBuilder.Append(rows, value)
+				appenders[0].appendValue(streamIDBuilder, rows, value)
 			case ColumnTypeTimestamp:
-				_ = timestampBuilder.Append(rows, value)
+				appenders[0].appendValue(timestampBuilder, rows, value)
 			case ColumnTypeMetadata:
-				columnBuilder := buf.Metadata(column.Desc.Tag, pageSize, pageRowCount, compressionOpts)
-				_ = columnBuilder.Append(rows, value)
+				index, columnBuilder := buf.Metadata(column.Desc.Tag, pageSize, pageRowCount, compressionOpts)
+				appenders[index%len(appenders)].appendValue(columnBuilder, rows, value)
 			case ColumnTypeMessage:
-				_ = messageBuilder.Append(rows, value)
+				// The message, stream ID and timestamp columns are written on every row. We choose to send message to a separate appender to ensure basic work is also distributed.
+				appenders[1].appendValue(messageBuilder, rows, value)
 			default:
 				return nil, fmt.Errorf("unknown column type %s", column.Type)
 			}
@@ -137,7 +163,72 @@ func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *
 		rows++
 	}
 
+	for _, appender := range appenders {
+		appender.close()
+	}
+	wg.Wait()
+
 	return buf.Flush()
+}
+
+// valueBatch references a batch of rowValues.
+type valueBatch struct {
+	rows []rowValue
+	size int
+}
+
+// columnAppender writes column values to columns.
+// They are thread-safe via the appendValue method and will apply values in the order they are received.
+// When using multiple appenders, each distinct column should only be written to a single appender in order to maintain ordering.
+type columnAppender struct {
+	waitGroup *sync.WaitGroup
+	workChan  chan *valueBatch
+	batch     *valueBatch
+}
+
+func newColumnAppender(wg *sync.WaitGroup) *columnAppender {
+	appender := &columnAppender{
+		workChan:  make(chan *valueBatch),
+		waitGroup: wg,
+		batch:     valueBatchPool.Get().(*valueBatch),
+	}
+	go appender.loop()
+
+	return appender
+}
+
+func (ca *columnAppender) loop() {
+	ca.waitGroup.Add(1)
+	for batch := range ca.workChan {
+		for _, rowValue := range batch.rows[:batch.size] {
+			err := rowValue.builder.Append(rowValue.row, rowValue.value)
+			if err != nil {
+				panic(err)
+			}
+		}
+
+		batch.size = 0
+		valueBatchPool.Put(batch)
+	}
+	ca.waitGroup.Done()
+}
+
+// appendValue adds a value to the current batch. If the batch is full, it is sent to the worker and a new batch is started.
+func (ca *columnAppender) appendValue(builder *dataset.ColumnBuilder, row int, value dataset.Value) {
+	ca.batch.rows[ca.batch.size].builder = builder
+	ca.batch.rows[ca.batch.size].row = row
+	ca.batch.rows[ca.batch.size].value = value
+	ca.batch.size++
+
+	if ca.batch.size >= len(ca.batch.rows) {
+		ca.workChan <- ca.batch
+		ca.batch = valueBatchPool.Get().(*valueBatch)
+	}
+}
+
+func (ca *columnAppender) close() {
+	ca.workChan <- ca.batch
+	close(ca.workChan)
 }
 
 type tableSequence struct {
@@ -152,13 +243,14 @@ func tableSequenceClose(seq *tableSequence)                         { seq.Close(
 
 func NewDatasetSequence(r *dataset.Reader, bufferSize int) DatasetSequence {
 	return DatasetSequence{
-		r:   r,
-		buf: make([]dataset.Row, bufferSize),
+		r:          r,
+		bufferSize: bufferSize,
 	}
 }
 
 type DatasetSequence struct {
-	curValue result.Result[dataset.Row]
+	bufferSize int
+	curValue   result.Result[dataset.Row]
 
 	r *dataset.Reader
 
@@ -174,6 +266,7 @@ func (seq *DatasetSequence) Next() bool {
 		return true
 	}
 
+	seq.buf = make([]dataset.Row, seq.bufferSize)
 ReadBatch:
 	n, err := seq.r.Read(context.Background(), seq.buf)
 	if err != nil && !errors.Is(err, io.EOF) {

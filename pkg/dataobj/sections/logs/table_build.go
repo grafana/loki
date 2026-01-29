@@ -43,7 +43,7 @@ func buildTable(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *d
 		record.Metadata.Range(func(md labels.Label) {
 			// Passing around md.Value as an unsafe slice is safe here: appending
 			// values is always read-only and the byte slice will never be mutated.
-			metadataBuilder := buf.Metadata(md.Name, pageSize, pageRowCount, compressionOpts)
+			_, metadataBuilder := buf.Metadata(md.Name, pageSize, pageRowCount, compressionOpts)
 			_ = metadataBuilder.Append(row, dataset.BinaryValue(unsafeSlice(md.Value, 0)))
 		})
 		row++
