@@ -2,6 +2,7 @@ package manifests
 
 import (
 	"fmt"
+	"net"
 	"net/url"
 	"strconv"
 	"strings"
@@ -324,9 +325,35 @@ func buildLokiAllowGatewayIngress(opts Options) *networkingv1.NetworkPolicy {
 // buildLokiAllowBucketEgress NetworkPolicy to allow egress traffic from
 // components that need to access object storage to object storage
 func buildLokiAllowBucketEgress(opts Options) *networkingv1.NetworkPolicy {
-	objstorePort := int32(443) // Default HTTPS port
+	objstorePort := []int32{443} // Default HTTPS port
+
 	if port := getEndpointPort(opts.ObjectStorage); port != 0 {
-		objstorePort = port
+		objstorePort = []int32{port}
+	}
+
+	if opts.Stack.Proxy != nil {
+		proxyPorts := make([]int32, 0, 2)
+		if opts.Stack.Proxy.HTTPProxy != "" {
+			if port := extractPort(opts.Stack.Proxy.HTTPProxy); port != 0 {
+				proxyPorts = append(proxyPorts, port)
+			}
+		}
+		if opts.Stack.Proxy.HTTPSProxy != "" {
+			if port := extractPort(opts.Stack.Proxy.HTTPSProxy); port != 0 {
+				proxyPorts = append(proxyPorts, port)
+			}
+		}
+		// For proxies we always include the ports from getEndpointPort in case the
+		// objstore endpoints have been white listed
+		objstorePort = append(objstorePort, proxyPorts...)
+	}
+
+	networkPorts := make([]networkingv1.NetworkPolicyPort, 0, len(objstorePort))
+	for _, port := range objstorePort {
+		networkPorts = append(networkPorts, networkingv1.NetworkPolicyPort{
+			Protocol: ptr.To(corev1.ProtocolTCP),
+			Port:     &intstr.IntOrString{Type: intstr.Int, IntVal: port},
+		})
 	}
 
 	return &networkingv1.NetworkPolicy{
@@ -356,13 +383,8 @@ func buildLokiAllowBucketEgress(opts Options) *networkingv1.NetworkPolicy {
 			Egress: []networkingv1.NetworkPolicyEgressRule{
 				// Allow egress to object storage
 				{
-					To: []networkingv1.NetworkPolicyPeer{},
-					Ports: []networkingv1.NetworkPolicyPort{
-						{
-							Protocol: ptr.To(corev1.ProtocolTCP),
-							Port:     &intstr.IntOrString{Type: intstr.Int, IntVal: objstorePort},
-						},
-					},
+					To:    []networkingv1.NetworkPolicyPeer{},
+					Ports: networkPorts,
 				},
 			},
 		},
@@ -630,30 +652,6 @@ func buildLokiAllowQueryFrontend(opts Options) *networkingv1.NetworkPolicy {
 }
 
 func getEndpointPort(storageOpts storage.Options) int32 {
-	extractPort := func(endpoint string) int32 {
-		if strings.HasPrefix(endpoint, "http://") || strings.HasPrefix(endpoint, "https://") {
-			if u, err := url.Parse(endpoint); err == nil && u.Port() != "" {
-				if port, err := strconv.Atoi(u.Port()); err == nil {
-					return int32(port)
-				}
-			}
-			return 0
-		}
-
-		if strings.Contains(endpoint, ":") {
-			if epParts := strings.Split(endpoint, ":"); len(epParts) >= 2 {
-				portStr := epParts[len(epParts)-1] // last position should be the port
-				if idx := strings.Index(portStr, "/"); idx != -1 {
-					portStr = portStr[:idx] // remove the path if present
-				}
-				if port, err := strconv.Atoi(portStr); err == nil {
-					return int32(port)
-				}
-			}
-		}
-
-		return 0
-	}
 	// Many self-hosted object storage solutions use S3 API endpoints
 	// so we have to check for a port
 	if storageOpts.S3 != nil && storageOpts.S3.Endpoint != "" {
@@ -668,6 +666,28 @@ func getEndpointPort(storageOpts storage.Options) int32 {
 	// Swift AuthURL might includes ports
 	if storageOpts.Swift != nil && storageOpts.Swift.AuthURL != "" {
 		return extractPort(storageOpts.Swift.AuthURL)
+	}
+
+	return 0
+}
+
+func extractPort(endpoint string) int32 {
+	if strings.HasPrefix(endpoint, "http://") || strings.HasPrefix(endpoint, "https://") {
+		if u, err := url.Parse(endpoint); err == nil && u.Port() != "" {
+			if port, err := strconv.Atoi(u.Port()); err == nil {
+				return int32(port)
+			}
+		}
+		return 0
+	}
+
+	_, portStr, err := net.SplitHostPort(endpoint)
+	if err != nil {
+		return 0
+	}
+
+	if port, err := strconv.Atoi(portStr); err == nil {
+		return int32(port)
 	}
 
 	return 0
