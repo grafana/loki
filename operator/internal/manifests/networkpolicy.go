@@ -63,7 +63,7 @@ var (
 			{
 				Key:      "app.kubernetes.io/component",
 				Operator: metav1.LabelSelectorOpIn,
-				Values:   []string{"distributor", "ingester", "query-frontend", "querier", "ruler", "index-gateway", "compactor"},
+				Values:   []string{"distributor", "ingester", "query-frontend", "querier", "ruler", "index-gateway", "compactor", "pattern-ingester"},
 			},
 		},
 	}
@@ -346,7 +346,7 @@ func buildLokiAllowBucketEgress(opts Options) *networkingv1.NetworkPolicy {
 					{
 						Key:      "app.kubernetes.io/component",
 						Operator: metav1.LabelSelectorOpIn,
-						Values:   []string{"ingester", "querier", "index-gateway", "compactor", "ruler"},
+						Values:   []string{"ingester", "querier", "index-gateway", "compactor", "ruler", "pattern-ingester"},
 					},
 				},
 			},

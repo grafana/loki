@@ -182,6 +182,23 @@ ingester_client:
 # Values for not exposed fields are taken from the grafana/loki production
 # configuration manifests.
 # (See https://github.com/grafana/loki/blob/main/production/ksonnet/loki/config.libsonnet)
+{{- if and .Stack.PatternIngester .Stack.PatternIngester.Enabled }}
+pattern_ingester:
+  enabled: true
+  client_config:
+    grpc_client_config:
+      max_recv_msg_size: 67108864
+{{- if .Gates.GRPCEncryption }}
+      tls_enabled: true
+      tls_cert_path: {{ .TLS.Paths.GRPC.Certificate }}
+      tls_key_path: {{ .TLS.Paths.GRPC.Key }}
+      tls_ca_path: {{ .TLS.Paths.CA }}
+      tls_server_name: {{ .TLS.ServerNames.GRPC.PatternIngester }}
+      tls_cipher_suites: {{ .TLS.CipherSuitesString }}
+      tls_min_version: {{ .TLS.MinTLSVersion }}
+{{- end }}
+    remote_timeout: 1s
+{{- end }}
 limits_config:
   ingestion_rate_strategy: global
   ingestion_rate_mb: {{ .Stack.Limits.Global.IngestionLimits.IngestionRate }}
