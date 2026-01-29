@@ -145,22 +145,22 @@ func TestToStatsSummary(t *testing.T) {
 
 		// Create DataObjScan regions with observations using registry stats
 		_, region1 := StartRegion(ctx, "DataObjScan")
-		region1.Record(StatDatasetPrimaryColumnUncompressedBytes.Observe(1000))
-		region1.Record(StatDatasetSecondaryColumnUncompressedBytes.Observe(500))
+		region1.Record(StatDatasetPrimaryRowBytes.Observe(1000))
+		region1.Record(StatDatasetSecondaryRowBytes.Observe(500))
 		region1.Record(StatDatasetPrimaryRowsRead.Observe(100))
 		region1.Record(StatPipelineRowsOut.Observe(80))
 		region1.End()
 
 		_, region2 := StartRegion(ctx, "DataObjScan")
-		region2.Record(StatDatasetPrimaryColumnUncompressedBytes.Observe(2000))
-		region2.Record(StatDatasetSecondaryColumnUncompressedBytes.Observe(1000))
+		region2.Record(StatDatasetPrimaryRowBytes.Observe(2000))
+		region2.Record(StatDatasetSecondaryRowBytes.Observe(1000))
 		region2.Record(StatDatasetPrimaryRowsRead.Observe(200))
 		region2.Record(StatPipelineRowsOut.Observe(150))
 		region2.End()
 
 		// Other region - should be ignored
 		_, otherRegion := StartRegion(ctx, "OtherRegion")
-		otherRegion.Record(StatDatasetPrimaryColumnUncompressedBytes.Observe(5000))
+		otherRegion.Record(StatDatasetPrimaryRowBytes.Observe(5000))
 		otherRegion.End()
 
 		capture.End()
@@ -186,7 +186,7 @@ func TestToStatsSummary(t *testing.T) {
 
 		// Only record some statistics
 		_, region := StartRegion(ctx, "DataObjScan")
-		region.Record(StatDatasetPrimaryColumnUncompressedBytes.Observe(1000))
+		region.Record(StatDatasetPrimaryRowBytes.Observe(1000))
 		region.End()
 		capture.End()
 
@@ -205,11 +205,11 @@ func TestToStatsSummary(t *testing.T) {
 
 		// Parent DataObjScan region
 		ctx, parent := StartRegion(ctx, "DataObjScan")
-		parent.Record(StatDatasetPrimaryColumnUncompressedBytes.Observe(500))
+		parent.Record(StatDatasetPrimaryRowBytes.Observe(500))
 
 		// Child region (should be rolled up into parent)
 		_, child := StartRegion(ctx, "child_operation")
-		child.Record(StatDatasetPrimaryColumnUncompressedBytes.Observe(300))
+		child.Record(StatDatasetPrimaryRowBytes.Observe(300))
 		child.End()
 
 		parent.End()

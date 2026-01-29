@@ -24,7 +24,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/logical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
-	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -245,11 +244,6 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	// It is safe to call End() multiple times.
 	region.End()
 	capture.End()
-	if err := mergeCapture(capture, physicalPlan, region); err != nil {
-		level.Warn(logger).Log("msg", "failed to merge capture", "err", err)
-		// continue export even if merging fails. Spans from the tasks
-		// would still appear as siblings in the trace right below the Engine.Execute.
-	}
 
 	xcap.ExportTrace(ctx, capture, logger)
 	logValues = append(logValues, xcap.SummaryLogValues(capture)...)
@@ -408,11 +402,6 @@ func (e *Engine) metastoreSectionsResolver(ctx context.Context, tenantID string)
 
 		// close to report the stats
 		reader.Close()
-
-		if err := mergeCapture(xcap.CaptureFromContext(ctx), plan, region); err != nil {
-			level.Warn(e.logger).Log("msg", "failed to merge capture", "err", err)
-		}
-
 		return resp.SectionsResponse.Sections, nil
 	}
 }
@@ -505,50 +494,4 @@ func (e *Engine) collectResult(ctx context.Context, logger log.Logger, params lo
 		attribute.Stringer("duration", duration),
 	)
 	return builder, duration, nil
-}
-
-func mergeCapture(capture *xcap.Capture, plan *physical.Plan, root *xcap.Region) error {
-	if capture == nil {
-		return nil
-	}
-
-	// nodeID to parentNodeID mapping.
-	idToParentID := make(map[string]string, plan.Len())
-	for _, root := range plan.Roots() {
-		if err := plan.DFSWalk(root, func(n physical.Node) error {
-			parents := plan.Graph().Parents(n)
-			if len(parents) > 0 {
-				// TODO: This is assuming a single parent which is not always true.
-				// Fix this when we have plans with multiple parents.
-
-				if n.Type() == physical.NodeTypeScanSet {
-					ss := n.(*physical.ScanSet)
-					for _, t := range ss.Targets {
-						switch t.Type {
-						case physical.ScanTypePointers:
-							idToParentID[t.Pointers.NodeID.String()] = n.ID().String()
-						case physical.ScanTypeDataObject:
-							// dataobj scans are correctly mapped to parents without extra mapping
-							continue
-						default:
-							panic("unsupported scan type")
-						}
-					}
-				}
-
-				idToParentID[n.ID().String()] = parents[0].ID().String()
-			}
-			return nil
-		}, dag.PreOrderWalk); err != nil {
-			return err
-		}
-	}
-
-	// Link region by using node_id for finding parent regions.
-	capture.LinkRegions("node_id", func(nodeID string) (string, bool) {
-		parentID, ok := idToParentID[nodeID]
-		return parentID, ok
-	}, root)
-
-	return nil
 }

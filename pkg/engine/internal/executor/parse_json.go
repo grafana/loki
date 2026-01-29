@@ -32,18 +32,21 @@ var (
 )
 
 func buildJSONColumns(input *array.String, requestedKeys []string) ([]string, []arrow.Array) {
+	parser := newJSONParser()
+
+	// Build requestedKeyLookup once instead of for every line
+	var requestedKeyLookup map[string]struct{}
+	if len(requestedKeys) > 0 {
+		requestedKeyLookup = make(map[string]struct{}, len(requestedKeys))
+		for _, key := range requestedKeys {
+			requestedKeyLookup[key] = struct{}{}
+		}
+	}
+
 	parseFunc := func(line string) (map[string]string, error) {
-		return parseJSONLine(line, requestedKeys)
+		return parser.process(unsafeBytes(line), requestedKeyLookup)
 	}
 	return buildColumns(input, requestedKeys, parseFunc, types.JSONParserErrorType)
-}
-
-// parseJSONLine parses a single JSON line and extracts key-value pairs
-// implements ParseFunc
-func parseJSONLine(line string, requestedKeys []string) (map[string]string, error) {
-	// Use the refactored JSONParser for nested object handling and number conversion
-	parser := newJSONParser()
-	return parser.process(unsafeBytes(line), requestedKeys)
 }
 
 type jsonParser struct {
@@ -60,17 +63,8 @@ func newJSONParser() *jsonParser {
 }
 
 // process parses a JSON line and returns key-value pairs with nested object flattening
-func (j *jsonParser) process(line []byte, requestedKeys []string) (map[string]string, error) {
+func (j *jsonParser) process(line []byte, requestedKeyLookup map[string]struct{}) (map[string]string, error) {
 	result := make(map[string]string)
-
-	// Create a set for faster requestedKeys lookup
-	var requestedKeyLookup map[string]struct{}
-	if len(requestedKeys) > 0 {
-		requestedKeyLookup = make(map[string]struct{}, len(requestedKeys))
-		for _, key := range requestedKeys {
-			requestedKeyLookup[key] = struct{}{}
-		}
-	}
 
 	// reset the state
 	j.prefixBuffer = j.prefixBuffer[:0]
@@ -94,12 +88,14 @@ func (j *jsonParser) parseObject(key, value []byte, dataType jsonparser.ValueTyp
 	case jsonparser.Object:
 		// Handle nested objects by adding to prefix buffer
 		prefixLen := len(j.prefixBuffer)
-		j.prefixBuffer = append(j.prefixBuffer, key)
 
-		// Recursively parse nested object
-		err := jsonparser.ObjectEach(value, func(nestedKey []byte, nestedValue []byte, nestedType jsonparser.ValueType, _ int) error {
-			return j.parseObject(nestedKey, nestedValue, nestedType, result, requestedKeyLookup)
-		})
+		var err error
+		if j.shouldProcessNextKey(key, requestedKeyLookup) {
+			// Recursively parse nested object
+			err = jsonparser.ObjectEach(value, func(nestedKey []byte, nestedValue []byte, nestedType jsonparser.ValueType, _ int) error {
+				return j.parseObject(nestedKey, nestedValue, nestedType, result, requestedKeyLookup)
+			})
+		}
 
 		// rollback the prefix as we exit the current object
 		j.prefixBuffer = j.prefixBuffer[:prefixLen]
@@ -172,6 +168,14 @@ func (j *jsonParser) buildSanitizedPrefixFromBuffer() []byte {
 	return j.sanitizedPrefixBuffer
 }
 
+// shouldProcessNextKey loads the next prefix in the buffer and tells if it should be processed based on hints.
+func (j *jsonParser) shouldProcessNextKey(key []byte, requestedKeyLookup map[string]struct{}) bool {
+	j.prefixBuffer = append(j.prefixBuffer, key)
+
+	sanitized := j.buildSanitizedPrefixFromBuffer()
+	return shouldExtractPrefix(sanitized, requestedKeyLookup)
+}
+
 func parseValue(v []byte, dataType jsonparser.ValueType) string {
 	switch dataType {
 	case jsonparser.String:
@@ -238,7 +242,10 @@ func appendSanitized(to, key []byte) []byte {
 		to = append(to, '_')
 	}
 
-	for _, r := range bytes.Runes(key) {
+	for i := 0; i < len(key); {
+		r, size := utf8.DecodeRune(key[i:])
+		i += size
+
 		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && r != '_' && (r < '0' || r > '9') {
 			to = append(to, jsonSpacer)
 			continue
@@ -246,4 +253,17 @@ func appendSanitized(to, key []byte) []byte {
 		to = append(to, byte(r))
 	}
 	return to
+}
+
+func shouldExtractPrefix(prefix []byte, requestedKeyLookup map[string]struct{}) bool {
+	if len(requestedKeyLookup) == 0 {
+		return true
+	}
+	for l := range requestedKeyLookup {
+		if strings.HasPrefix(l, string(prefix)) { // []byte -> string should not alloc b/c it doesn't escape
+			return true
+		}
+	}
+
+	return false
 }
