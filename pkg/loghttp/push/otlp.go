@@ -564,6 +564,14 @@ func otlpLogToPushEntry(log plog.LogRecord, otlpConfig OTLPConfig, logServiceNam
 		})
 	}
 
+	// Add EventName as structured metadata if present
+	if eventName := log.EventName(); eventName != "" {
+		structuredMetadata = append(structuredMetadata, push.LabelAdapter{
+			Name:  "event_name",
+			Value: eventName,
+		})
+	}
+
 	return logLabels, push.Entry{
 		Timestamp:          timestampFromLogRecord(log),
 		Line:               log.Body().AsString(),
