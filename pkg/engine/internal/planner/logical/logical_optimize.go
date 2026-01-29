@@ -194,7 +194,7 @@ func (pass simplifyRegexPass) simplifyBinop(b *BinOp) (simplified []Node, change
 
 	nodes, changed := pass.simplifyRegex(b.Left, isMessage, reg.Simplify())
 
-	if b.Op == types.BinaryOpNotMatchRe {
+	if changed && b.Op == types.BinaryOpNotMatchRe {
 		// Add a final instruction to invert the match.
 		nodes = append(nodes, &UnaryOp{
 			Op:    types.UnaryOpNot,
