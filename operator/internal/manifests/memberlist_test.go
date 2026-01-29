@@ -16,9 +16,6 @@ func TestConfigureHashRingEnv_UseDefaults_NoHashRingSpec(t *testing.T) {
 		Image:     "test",
 		Stack: lokiv1.LokiStackSpec{
 			Size: lokiv1.SizeOneXExtraSmall,
-			Replication: &lokiv1.ReplicationSpec{
-				Factor: 2,
-			},
 			Template: &lokiv1.LokiTemplateSpec{
 				Compactor: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
@@ -71,9 +68,6 @@ func TestConfigureHashRingEnv_UseDefaults_WithCustomHashRingSpec(t *testing.T) {
 		Image:     "test",
 		Stack: lokiv1.LokiStackSpec{
 			Size: lokiv1.SizeOneXExtraSmall,
-			Replication: &lokiv1.ReplicationSpec{
-				Factor: 2,
-			},
 			HashRing: &lokiv1.HashRingSpec{
 				Type: lokiv1.HashRingMemberList,
 				MemberList: &lokiv1.MemberListSpec{
@@ -132,9 +126,6 @@ func TestConfigureHashRingEnv_UseInstanceAddrPodIP(t *testing.T) {
 		Image:     "test",
 		Stack: lokiv1.LokiStackSpec{
 			Size: lokiv1.SizeOneXExtraSmall,
-			Replication: &lokiv1.ReplicationSpec{
-				Factor: 2,
-			},
 			HashRing: &lokiv1.HashRingSpec{
 				Type: lokiv1.HashRingMemberList,
 				MemberList: &lokiv1.MemberListSpec{

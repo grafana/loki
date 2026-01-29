@@ -18,9 +18,6 @@ func TestContainerEnvVars_ReadVarsFromCustomResource(t *testing.T) {
 		Image:     "test",
 		Stack: lokiv1.LokiStackSpec{
 			Size: lokiv1.SizeOneXExtraSmall,
-			Replication: &lokiv1.ReplicationSpec{
-				Factor: 2,
-			},
 			Proxy: &lokiv1.ClusterProxy{
 				HTTPProxy:  "http-test",
 				HTTPSProxy: "https-test",

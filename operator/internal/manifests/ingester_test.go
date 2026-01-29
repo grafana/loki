@@ -108,19 +108,23 @@ func TestBuildIngester_PodDisruptionBudget(t *testing.T) {
 		Name                 string
 		Replicas             int
 		ExpectedMinAvailable int
+		Size                 lokiv1.LokiStackSizeType
 	}{
 		{
 			Name:                 "replication factor = replicas",
+			Size:                 lokiv1.SizeOneXExtraSmall,
 			Replicas:             2,
 			ExpectedMinAvailable: 1,
 		},
 		{
 			Name:                 "replication factor < replicas",
+			Size:                 lokiv1.SizeOneXMedium,
 			Replicas:             3,
 			ExpectedMinAvailable: 2,
 		},
 		{
 			Name:                 "replication factor > replicas",
+			Size:                 lokiv1.SizeOneXDemo,
 			Replicas:             1,
 			ExpectedMinAvailable: 1,
 		},
@@ -131,9 +135,7 @@ func TestBuildIngester_PodDisruptionBudget(t *testing.T) {
 				Namespace: "efgh",
 				Gates:     v1.FeatureGates{},
 				Stack: lokiv1.LokiStackSpec{
-					Replication: &lokiv1.ReplicationSpec{
-						Factor: 2,
-					},
+					Size: tc.Size,
 					Template: &lokiv1.LokiTemplateSpec{
 						Ingester: &lokiv1.LokiComponentSpec{
 							Replicas: int32(tc.Replicas),
