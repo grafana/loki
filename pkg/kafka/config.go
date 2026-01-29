@@ -25,6 +25,8 @@ const (
 	// in the worst case scenario, which is expected to be way above the actual one.
 	MaxProducerRecordDataBytesLimit = ProducerBatchMaxBytes - 16384
 	minProducerRecordDataBytesLimit = 1024 * 1024
+
+	MaxConsumerSuccessBuffer = 1000
 )
 
 var (
@@ -59,8 +61,9 @@ type Config struct {
 	ProducerMaxRecordSizeBytes int   `yaml:"producer_max_record_size_bytes"`
 	ProducerMaxBufferedBytes   int64 `yaml:"producer_max_buffered_bytes"`
 
-	MaxConsumerLagAtStartup time.Duration `yaml:"max_consumer_lag_at_startup"`
-	MaxConsumerWorkers      int           `yaml:"max_consumer_workers"`
+	MaxConsumerLagAtStartup  time.Duration `yaml:"max_consumer_lag_at_startup"`
+	MaxConsumerWorkers       int           `yaml:"max_consumer_workers"`
+	MaxConsumerSuccessBuffer int           `yaml:"max_consumer_success_buffer"`
 
 	EnableKafkaHistograms bool `yaml:"enable_kafka_histograms"`
 }
@@ -106,10 +109,14 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 
 	f.BoolVar(&cfg.EnableKafkaHistograms, prefix+".enable-kafka-histograms", false, "Enable collection of the following kafka latency histograms: read-wait, read-timing, write-wait, write-timing")
 	f.IntVar(&cfg.MaxConsumerWorkers, prefix+".max-consumer-workers", 1, "The maximum number of workers to use for processing records from Kafka.")
+	f.IntVar(&cfg.MaxConsumerSuccessBuffer, prefix+".max-consumer-success-buffer", 1000, "The max buffer numbers of workers to use for processing records from Kafka.")
 
 	// If the number of workers is set to 0, use the number of available CPUs
 	if cfg.MaxConsumerWorkers == 0 {
 		cfg.MaxConsumerWorkers = runtime.GOMAXPROCS(0)
+	}
+	if cfg.MaxConsumerSuccessBuffer == 0 {
+		cfg.MaxConsumerSuccessBuffer = MaxConsumerSuccessBuffer
 	}
 }
 
