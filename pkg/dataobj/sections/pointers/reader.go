@@ -510,7 +510,7 @@ func (d *recordBatchLabelDecorator) Read(ctx context.Context, alloc *memoryv2.Al
 
 	var arrs []columnarv2.Array
 	for i := range rb.NumCols() {
-		arrs = append(arrs, rb.Column(int64(i)))
+		arrs = append(arrs, rb.Column(i))
 	}
 
 	labelsArr := columnarv2.NewUTF8Builder(alloc)
