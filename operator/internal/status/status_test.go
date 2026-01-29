@@ -19,8 +19,15 @@ import (
 	"github.com/grafana/loki/operator/internal/manifests"
 )
 
-var (
-	stack = lokiv1.LokiStack{
+func TestRefreshSuccess(t *testing.T) {
+	now := time.Now()
+	req := ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "my-stack",
+			Namespace: "some-ns",
+		},
+	}
+	stack := lokiv1.LokiStack{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-stack",
 			Namespace: "test-ns",
@@ -37,22 +44,12 @@ var (
 			},
 		},
 	}
-	testIngesterSts = appsv1.StatefulSet{
+	testIngesterSts := appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      manifests.IngesterName(stack.Name),
 			Namespace: stack.Namespace,
 		},
 	}
-	req = ctrl.Request{
-		NamespacedName: types.NamespacedName{
-			Name:      "my-stack",
-			Namespace: "some-ns",
-		},
-	}
-)
-
-func TestRefreshSuccess(t *testing.T) {
-	now := time.Now()
 
 	componentPods := map[string]*corev1.PodList{
 		manifests.LabelCompactorComponent:     createPodList(manifests.LabelCompactorComponent, true, corev1.PodRunning),
@@ -128,7 +125,35 @@ func TestRefreshSuccess(t *testing.T) {
 
 func TestRefreshSuccess_ZoneAwarePendingPod(t *testing.T) {
 	now := time.Now()
-
+	req := ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "my-stack",
+			Namespace: "some-ns",
+		},
+	}
+	stack := lokiv1.LokiStack{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-stack",
+			Namespace: "test-ns",
+		},
+		Spec: lokiv1.LokiStackSpec{
+			Size: lokiv1.SizeOneXPico,
+			Replication: &lokiv1.ReplicationSpec{
+				Factor: 2,
+				Zones: []lokiv1.ZoneSpec{
+					{
+						TopologyKey: corev1.LabelTopologyZone,
+					},
+				},
+			},
+		},
+	}
+	testIngesterSts := appsv1.StatefulSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      manifests.IngesterName(stack.Name),
+			Namespace: stack.Namespace,
+		},
+	}
 	testPod := corev1.Pod{
 		Status: corev1.PodStatus{
 			Phase: corev1.PodPending,
