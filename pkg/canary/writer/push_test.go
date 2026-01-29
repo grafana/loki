@@ -407,6 +407,7 @@ func newPushWithCredentials(testCfg testConfig, username, password string, logBa
 func newPushWithCredentialsAndStreamNameValue(testCfg testConfig, username, password, streamName, streamValue string, logBatchSize int) (EntryWriter, error) {
 	return NewPush(
 		testCfg.mock.Listener.Addr().String(),
+		"",
 		"test1",
 		2*time.Second,
 		config.DefaultHTTPClientConfig,
