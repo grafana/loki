@@ -180,6 +180,9 @@ func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, bucket objsto
 		logger,
 		reg,
 	)
+	lagCollector := kafkav2.NewLagCollector(readerClient, cfg.Topic, partitionID, instanceID, logger)
+	prometheus.WrapRegistererWithPrefix("loki_dataobj_consumer_", reg).MustRegister(lagCollector)
+
 	s.downscalePermitted = newOffsetCommittedDownscaleFunc(offsetReader, partitionID, logger)
 
 	watcher := services.NewFailureWatcher()
