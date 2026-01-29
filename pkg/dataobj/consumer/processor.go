@@ -139,20 +139,26 @@ func (p *processor) Run(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			level.Info(p.logger).Log("msg", "stopping partition processor, context canceled")
+			level.Debug(p.logger).Log("msg", "context canceled")
 			// We don't return ctx.Err() here as it manifests as a service failure
 			// when shutting down.
 			return nil
 		case record, ok := <-p.recordsChan:
 			if !ok {
-				level.Info(p.logger).Log("msg", "stopping partition processor, channel closed")
+				// The channel is been closed, no more records can be processed.
+				level.Debug(p.logger).Log("msg", "channel closed")
 				return nil
 			}
 			p.processRecord(ctx, record)
-		// This partition is idle, flush it.
 		case <-time.After(p.idleFlushTimeout):
+			// The partition is idle, flush it.
 			if _, err := p.idleFlush(ctx); err != nil {
 				level.Error(p.logger).Log("msg", "failed to idle flush", "err", err)
+			}
+		case <-time.After(time.Minute):
+			// Reset certain metrics if we haven't processed records in a while.
+			if time.Since(p.lastAppend) > time.Minute {
+				p.metrics.observeProcessingDelay(time.Now())
 			}
 		}
 	}
