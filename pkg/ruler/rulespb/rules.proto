@@ -28,6 +28,10 @@ message RuleGroupDesc {
   // to the Prometheus Manager.
   repeated google.protobuf.Any options = 9;
   int64 limit = 10;
+  repeated logproto.LegacyLabelPair labels = 11 [
+    (gogoproto.nullable) = false,
+    (gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/logproto.LabelAdapter"
+  ];
 }
 
 // RuleDesc is a proto representation of a Prometheus Rule

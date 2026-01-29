@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/prometheus/prometheus/model/rulefmt"
+	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/tool/rules/rwrulefmt"
 )
@@ -160,4 +161,43 @@ func compareNamespace(g, w RuleNamespace) error {
 	}
 
 	return nil
+}
+
+func TestParseBytes_GroupLabels(t *testing.T) {
+	content := []byte(`
+groups:
+- name: labeled
+  labels:
+    foo: bar
+    shared: group
+  rules:
+  - alert: TestAlert
+    expr: vector(1)
+    labels:
+      shared: rule
+`)
+
+	namespaces, errs := ParseBytes(content)
+	require.Empty(t, errs)
+	require.Len(t, namespaces, 1)
+	require.Len(t, namespaces[0].Groups, 1)
+
+	group := namespaces[0].Groups[0]
+	require.Equal(t, map[string]string{"foo": "bar", "shared": "group"}, group.Labels)
+	require.Equal(t, "rule", group.Rules[0].Labels["shared"])
+}
+
+func TestParseBytes_InvalidGroupLabels(t *testing.T) {
+	content := []byte(`
+groups:
+- name: labeled
+  labels:
+    __name__: invalid
+  rules:
+  - alert: TestAlert
+    expr: vector(1)
+`)
+
+	_, errs := ParseBytes(content)
+	require.NotEmpty(t, errs)
 }
