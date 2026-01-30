@@ -111,7 +111,10 @@ message ObjectSectionTombstone {
 // This creates one tombstone file per delete request.
 // Used for query-time filtering and eventual sweep phase cleanup.
 message DataObjectTombstone {
-  repeated ObjectSectionTombstone tombstones = 1 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "tombstones"];
+  repeated ObjectSectionTombstone tombstones = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "tombstones"
+  ];
   string deleteRequestID = 2 [(gogoproto.jsontag) = "delete_request_id"];
   int64 createdAt = 3 [(gogoproto.jsontag) = "created_at"]; // Unix timestamp in milliseconds
   string tenantID = 4 [(gogoproto.jsontag) = "tenant_id"];
