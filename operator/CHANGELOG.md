@@ -1,5 +1,19 @@
 ## Main
 
+## [0.9.1](https://github.com/grafana/loki/compare/operator/v0.9.0...operator/v0.9.1) (2026-01-29)
+
+
+### Features
+
+* **operator:** add option to disable ingress ([#19382](https://github.com/grafana/loki/issues/19382)) ([9dc71a6](https://github.com/grafana/loki/commit/9dc71a642569b64b6c21b23f23671b0f18f6285d))
+
+
+### Bug Fixes
+
+* **operator:** change leader-election parameters ([#19707](https://github.com/grafana/loki/issues/19707)) ([86068cf](https://github.com/grafana/loki/commit/86068cfb6c9c221dbb3878bdd5e86a53b6ce2caa))
+* **operator:** Increase distributor-ingester timeout from 1s to 5s ([#20471](https://github.com/grafana/loki/issues/20471)) ([7056ec4](https://github.com/grafana/loki/commit/7056ec41ce2ce2bf23241715e8a0f20e307ddcdc))
+* **operator:** Update maximum OpenShift version ([#20600](https://github.com/grafana/loki/issues/20600)) ([fce93a8](https://github.com/grafana/loki/commit/fce93a8ad59182ae8e6a13c59f69be5ca2fae808))
+
 ## [0.9.0](https://github.com/grafana/loki/compare/operator/v0.8.0...operator/v0.9.0) (2025-12-04)
 
 
