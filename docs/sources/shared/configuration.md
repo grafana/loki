@@ -4517,6 +4517,17 @@ discover_generic_fields:
 # CLI flag: -frontend.max-querier-bytes-read
 [max_querier_bytes_read: <int> | default = 150GB]
 
+# Experimental. Maximum size of log query responses that can be cached.
+# Responses larger than this will not be cached. 0 means unlimited (all
+# responses will be cached regardless of size).
+# CLI flag: -querier.log-result-cache-max-response-size
+[log_result_cache_max_response_size: <int> | default = 0B]
+
+# Experimental. Enable caching of non-empty log query responses. When disabled,
+# only empty responses will be cached.
+# CLI flag: -querier.log-result-cache-store-non-empty-response
+[log_result_cache_store_non_empty_response: <boolean> | default = false]
+
 # Enable log-volume endpoints.
 # CLI flag: -limits.volume-enabled
 [volume_enabled: <boolean> | default = true]

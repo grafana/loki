@@ -148,17 +148,19 @@ type Limits struct {
 	QueryTimeout               model.Duration   `yaml:"query_timeout" json:"query_timeout"`
 
 	// Query frontend enforced limits. The default is actually parameterized by the queryrange config.
-	QuerySplitDuration               model.Duration   `yaml:"split_queries_by_interval" json:"split_queries_by_interval"`
-	MetadataQuerySplitDuration       model.Duration   `yaml:"split_metadata_queries_by_interval" json:"split_metadata_queries_by_interval"`
-	RecentMetadataQuerySplitDuration model.Duration   `yaml:"split_recent_metadata_queries_by_interval" json:"split_recent_metadata_queries_by_interval"`
-	RecentMetadataQueryWindow        model.Duration   `yaml:"recent_metadata_query_window" json:"recent_metadata_query_window"`
-	InstantMetricQuerySplitDuration  model.Duration   `yaml:"split_instant_metric_queries_by_interval" json:"split_instant_metric_queries_by_interval"`
-	IngesterQuerySplitDuration       model.Duration   `yaml:"split_ingester_queries_by_interval" json:"split_ingester_queries_by_interval"`
-	MinShardingLookback              model.Duration   `yaml:"min_sharding_lookback" json:"min_sharding_lookback"`
-	MaxQueryBytesRead                flagext.ByteSize `yaml:"max_query_bytes_read" json:"max_query_bytes_read"`
-	MaxQuerierBytesRead              flagext.ByteSize `yaml:"max_querier_bytes_read" json:"max_querier_bytes_read"`
-	VolumeEnabled                    bool             `yaml:"volume_enabled" json:"volume_enabled" doc:"description=Enable log-volume endpoints."`
-	VolumeMaxSeries                  int              `yaml:"volume_max_series" json:"volume_max_series" doc:"description=The maximum number of aggregated series in a log-volume response"`
+	QuerySplitDuration                  model.Duration   `yaml:"split_queries_by_interval" json:"split_queries_by_interval"`
+	MetadataQuerySplitDuration          model.Duration   `yaml:"split_metadata_queries_by_interval" json:"split_metadata_queries_by_interval"`
+	RecentMetadataQuerySplitDuration    model.Duration   `yaml:"split_recent_metadata_queries_by_interval" json:"split_recent_metadata_queries_by_interval"`
+	RecentMetadataQueryWindow           model.Duration   `yaml:"recent_metadata_query_window" json:"recent_metadata_query_window"`
+	InstantMetricQuerySplitDuration     model.Duration   `yaml:"split_instant_metric_queries_by_interval" json:"split_instant_metric_queries_by_interval"`
+	IngesterQuerySplitDuration          model.Duration   `yaml:"split_ingester_queries_by_interval" json:"split_ingester_queries_by_interval"`
+	MinShardingLookback                 model.Duration   `yaml:"min_sharding_lookback" json:"min_sharding_lookback"`
+	MaxQueryBytesRead                   flagext.ByteSize `yaml:"max_query_bytes_read" json:"max_query_bytes_read"`
+	MaxQuerierBytesRead                 flagext.ByteSize `yaml:"max_querier_bytes_read" json:"max_querier_bytes_read"`
+	LogResultCacheMaxResponseSize       flagext.ByteSize `yaml:"log_result_cache_max_response_size" json:"log_result_cache_max_response_size" category:"experimental" doc:"description=Experimental. Maximum size of log query responses that can be cached. Responses larger than this will not be cached. 0 means unlimited (all responses will be cached regardless of size)."`
+	LogResultCacheStoreNonEmptyResponse bool             `yaml:"log_result_cache_store_non_empty_response" json:"log_result_cache_store_non_empty_response" category:"experimental" doc:"description=Experimental. Enable caching of non-empty log query responses. When disabled, only empty responses will be cached."`
+	VolumeEnabled                       bool             `yaml:"volume_enabled" json:"volume_enabled" doc:"description=Enable log-volume endpoints."`
+	VolumeMaxSeries                     int              `yaml:"volume_max_series" json:"volume_max_series" doc:"description=The maximum number of aggregated series in a log-volume response"`
 
 	// Ruler defaults and limits.
 	RulerMaxRulesPerRuleGroup   int                              `yaml:"ruler_max_rules_per_rule_group" json:"ruler_max_rules_per_rule_group"`
@@ -443,6 +445,11 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	_ = l.IngesterQuerySplitDuration.Set("0s")
 	f.Var(&l.IngesterQuerySplitDuration, "querier.split-ingester-queries-by-interval", "Interval to use for time-based splitting when a request is within the `query_ingesters_within` window; defaults to `split-queries-by-interval` by setting to 0.")
+
+	_ = l.LogResultCacheMaxResponseSize.Set("0")
+	f.Var(&l.LogResultCacheMaxResponseSize, "querier.log-result-cache-max-response-size", "Experimental. Maximum size of log query responses that can be cached. Responses larger than this will not be cached. 0 means unlimited (all responses will be cached regardless of size).")
+
+	f.BoolVar(&l.LogResultCacheStoreNonEmptyResponse, "querier.log-result-cache-store-non-empty-response", false, "Experimental. Enable caching of non-empty log query responses. When disabled, only empty responses will be cached.")
 
 	f.StringVar(&l.DeletionMode, "compactor.deletion-mode", "filter-and-delete", "Deletion mode. Can be one of 'disabled', 'filter-only', or 'filter-and-delete'. When set to 'filter-only' or 'filter-and-delete', and if retention_enabled is true, then the log entry deletion API endpoints are available.")
 
@@ -949,6 +956,14 @@ func (o *Overrides) QueryTimeout(_ context.Context, userID string) time.Duration
 
 func (o *Overrides) MaxCacheFreshness(_ context.Context, userID string) time.Duration {
 	return time.Duration(o.getOverridesForUser(userID).MaxCacheFreshness)
+}
+
+func (o *Overrides) LogResultCacheMaxResponseSize(_ context.Context, userID string) int {
+	return o.getOverridesForUser(userID).LogResultCacheMaxResponseSize.Val()
+}
+
+func (o *Overrides) LogResultCacheStoreNonEmptyResponse(_ context.Context, userID string) bool {
+	return o.getOverridesForUser(userID).LogResultCacheStoreNonEmptyResponse
 }
 
 func (o *Overrides) MaxMetadataCacheFreshness(_ context.Context, userID string) time.Duration {

@@ -2215,6 +2215,16 @@ func mergeLokiResponse(responses ...queryrangebase.Response) *LokiResponse {
 	if len(responses) == 0 {
 		return nil
 	}
+	lokiRes := responses[0].(*LokiResponse)
+	return mergeLokiResponseWithLimit(lokiRes.Limit, responses...)
+}
+
+// mergeLokiResponseWithLimit merges multiple LokiResponses with a specified limit.
+// If limit is 0, no limit is applied and all entries are included.
+func mergeLokiResponseWithLimit(limit uint32, responses ...queryrangebase.Response) *LokiResponse {
+	if len(responses) == 0 {
+		return nil
+	}
 	var (
 		lokiRes       = responses[0].(*LokiResponse)
 		mergedStats   stats.Result
@@ -2240,6 +2250,12 @@ func mergeLokiResponse(responses ...queryrangebase.Response) *LokiResponse {
 		warnings = nil
 	}
 
+	// If limit is 0, use max uint32 to effectively disable limiting
+	effectiveLimit := limit
+	if limit == 0 {
+		effectiveLimit = ^uint32(0) // max uint32
+	}
+
 	return &LokiResponse{
 		Status:     loghttp.QueryStatusSuccess,
 		Direction:  lokiRes.Direction,
@@ -2251,7 +2267,7 @@ func mergeLokiResponse(responses ...queryrangebase.Response) *LokiResponse {
 		Warnings:   warnings,
 		Data: LokiData{
 			ResultType: loghttp.ResultTypeStream,
-			Result:     mergeOrderedNonOverlappingStreams(lokiResponses, lokiRes.Limit, lokiRes.Direction),
+			Result:     mergeOrderedNonOverlappingStreams(lokiResponses, effectiveLimit, lokiRes.Direction),
 		},
 	}
 }
