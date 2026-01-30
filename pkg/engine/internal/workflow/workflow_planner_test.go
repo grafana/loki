@@ -251,6 +251,97 @@ func Test_planWorkflow(t *testing.T) {
 		actualOutput := Sprint(&Workflow{graph: graph})
 		require.Equal(t, strings.TrimSpace(expectOuptut), strings.TrimSpace(actualOutput))
 	})
+
+	t.Run("split on parallelize with vector aggregation parallelism", func(t *testing.T) {
+		// This test demonstrates the workflow plan when vector aggregation is parallelized.
+		// The physical plan structure after optimization looks like:
+		//   VectorAgg (global) -> Parallelize -> VectorAgg (local) -> RangeAgg -> ScanSet
+		//
+		// This results in:
+		// - Task 1: Global VectorAgg (reads from streams)
+		// - Task 2: Local VectorAgg + RangeAgg (per partition, writes to streams)
+		ulidGen := ulidGenerator{}
+
+		var physicalGraph dag.Graph[physical.Node]
+
+		var (
+			globalVecAgg = physicalGraph.Add(&physical.VectorAggregation{
+				Operation: types.VectorAggregationTypeSum,
+			})
+			parallelize = physicalGraph.Add(&physical.Parallelize{})
+			localVecAgg = physicalGraph.Add(&physical.VectorAggregation{
+				Operation: types.VectorAggregationTypeSum,
+			})
+			rangeAgg = physicalGraph.Add(&physical.RangeAggregation{
+				Operation: types.RangeAggregationTypeCount,
+				Start:     time.Unix(5, 0).UTC(),
+				End:       time.Unix(45, 0).UTC(),
+			})
+			scanSet = physicalGraph.Add(&physical.ScanSet{
+				Targets: []*physical.ScanTarget{
+					{Type: physical.ScanTypeDataObject, DataObject: &physical.DataObjScan{
+						Location:     "a",
+						MaxTimeRange: physical.TimeRange{Start: time.Unix(10, 0).UTC(), End: time.Unix(50, 0).UTC()}},
+					},
+					{Type: physical.ScanTypeDataObject, DataObject: &physical.DataObjScan{
+						Location:     "b",
+						MaxTimeRange: physical.TimeRange{Start: time.Unix(20, 0).UTC(), End: time.Unix(60, 0).UTC()}},
+					},
+				},
+			})
+		)
+
+		_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: globalVecAgg, Child: parallelize})
+		_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: parallelize, Child: localVecAgg})
+		_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: localVecAgg, Child: rangeAgg})
+		_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: rangeAgg, Child: scanSet})
+
+		physicalPlan := physical.FromGraph(physicalGraph)
+
+		graph, err := planWorkflow("", physicalPlan)
+		require.NoError(t, err)
+		require.Equal(t, 3, graph.Len()) // 1 global + 2 local (one per scan target)
+		requireUniqueStreams(t, graph)
+		generateConsistentULIDs(&ulidGen, graph)
+
+		// The workflow should have:
+		// - Task 1: Global VectorAgg reading from 2 streams (one per partition)
+		// - Task 2: Local VectorAgg + RangeAgg + Scan for partition "a"
+		// - Task 3: Local VectorAgg + RangeAgg + Scan for partition "b"
+		//
+		// Note: max_time_range is calculated from the RangeAggregation node's time range,
+		// not from the underlying DataObjScan's time range.
+		expectOuptut := strings.TrimSpace(`
+┌ Task 00000000000000000000000001
+│ @max_time_range start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z
+│
+│ VectorAggregation operation=sum group_by=()
+│     ├── @source stream=00000000000000000000000004
+│     └── @source stream=00000000000000000000000005
+└
+┌ Task 00000000000000000000000002
+│ @max_time_range start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z
+│
+│ VectorAggregation operation=sum group_by=()
+│ │   └── @sink stream=00000000000000000000000004
+│ └── RangeAggregation operation=count start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
+│     └── DataObjScan location=a streams=0 section_id=0 projections=()
+│             └── @max_time_range start=1970-01-01T00:00:10Z end=1970-01-01T00:00:50Z
+└
+┌ Task 00000000000000000000000003
+│ @max_time_range start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z
+│
+│ VectorAggregation operation=sum group_by=()
+│ │   └── @sink stream=00000000000000000000000005
+│ └── RangeAggregation operation=count start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
+│     └── DataObjScan location=b streams=0 section_id=0 projections=()
+│             └── @max_time_range start=1970-01-01T00:00:20Z end=1970-01-01T00:01:00Z
+└
+`)
+
+		actualOutput := Sprint(&Workflow{graph: graph})
+		require.Equal(t, strings.TrimSpace(expectOuptut), strings.TrimSpace(actualOutput))
+	})
 }
 
 // requireUniqueStreams asserts that for each stream found in g, that stream has

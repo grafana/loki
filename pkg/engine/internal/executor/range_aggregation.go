@@ -160,19 +160,21 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 			record, err := input.Read(ctx)
 			inputReadTime += time.Since(inputStart)
 
-			if err != nil {
-				if errors.Is(err, EOF) {
-					continue
-				}
-				return nil, err
-			}
-
-			if record.NumRows() == 0 {
-				// Nothing to process
+		if err != nil {
+			if errors.Is(err, EOF) {
 				continue
 			}
+			return nil, err
+		}
 
-			inputsExhausted = false
+		// Got a valid record from this input, so keep reading
+		// (even if the record is empty, there may be more records coming)
+		inputsExhausted = false
+
+		if record.NumRows() == 0 {
+			// Nothing to process, but keep reading
+			continue
+		}
 
 			// extract all the columns that are used for grouping
 			var arrays []*array.String

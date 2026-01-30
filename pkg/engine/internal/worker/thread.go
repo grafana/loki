@@ -142,6 +142,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 			input := new(nodeSource)
 
 			var errs []error
+			boundCount := 0
 
 			for _, stream := range streams {
 				source, found := job.Sources[stream.ULID]
@@ -153,6 +154,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 					errs = append(errs, fmt.Errorf("binding source %s: %w", stream.ULID, err))
 					continue
 				}
+				boundCount++
 			}
 
 			if len(errs) > 0 {
@@ -176,6 +178,12 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 		attribute.Stringer("task_id", job.Task.ULID),
 	))
 	defer region.End()
+
+	// TODO: track task start delay in comparison to query start time.
+	// this helps understand scheduling delays.
+
+	// TODO: summarise task send duration per sink.
+	// This helps understand if sink is slow in comparison to execution time.
 
 	pipeline := executor.Run(ctx, cfg, job.Task.Fragment, logger)
 

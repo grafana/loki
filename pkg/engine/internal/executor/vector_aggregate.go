@@ -122,12 +122,14 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch
 				return nil, err
 			}
 
+			// Got a valid record from this input, so keep reading
+			// (even if the record is empty, there may be more records coming)
+			inputsExhausted = false
+
 			if record.NumRows() == 0 {
-				// Nothing to process
+				// Nothing to process, but keep reading
 				continue
 			}
-
-			inputsExhausted = false
 
 			// extract timestamp column
 			tsVec, err := v.tsEval(record)

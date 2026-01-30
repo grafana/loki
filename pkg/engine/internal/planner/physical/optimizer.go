@@ -583,7 +583,7 @@ func (p *parallelPushdown) applyParallelization(node Node) bool {
 	//
 	// There can be additional special cases, such as parallelizing an `avg` by
 	// pushing down a `sum` and `count` into the Parallelize.
-	switch node.(type) {
+	switch n := node.(type) {
 	case *Projection, *Filter, *ColumnCompat: // Catchall for shifting nodes
 		for _, parallelize := range p.plan.Children(node) {
 			p.plan.graph.Inject(parallelize, node.Clone())
@@ -593,11 +593,60 @@ func (p *parallelPushdown) applyParallelization(node Node) bool {
 		return true
 
 	case *TopK: // Catchall for sharding nodes
-		// TODO: Add Range aggregation as a sharding node
-
 		for _, parallelize := range p.plan.Children(node) {
 			p.plan.graph.Inject(parallelize, node.Clone())
 		}
+		p.pushed[node] = struct{}{}
+		return true
+
+	case *VectorAggregation:
+		// Vector aggregations can be parallelized (sharded) when they sit directly
+		// above a Parallelize node. The RangeAggregation must have been shifted into
+		// the Parallelize first (see RangeAggregation case below).
+		//
+		// We also validate that the (VectorAgg, RangeAgg) combination is valid for
+		// parallelization. This is necessary because when a series spans multiple
+		// partitions, only certain combinations produce correct results.
+		rangeAgg := p.findChildRangeAggregation(node)
+		if rangeAgg == nil {
+			return false
+		}
+
+		if !canParallelizeVectorOverRange(n.Operation, rangeAgg.Operation) {
+			return false
+		}
+
+		// Shard: clone VectorAgg into each Parallelize child
+		for _, parallelize := range p.plan.Children(node) {
+			p.plan.graph.Inject(parallelize, node.Clone())
+		}
+		p.pushed[node] = struct{}{}
+		return true
+
+	case *RangeAggregation:
+		// RangeAggregation can be shifted into Parallelize only when there's a valid
+		// VectorAggregation parent. Without a parent, shifting would leave Parallelize
+		// as the root with no node to collect results, creating an invalid plan.
+		//
+		// Valid combinations (VectorAgg over RangeAgg):
+		// - sum + sum_over_time: sums are additive across partitions
+		// - sum + count_over_time: counts are additive across partitions
+		// - max + max_over_time: max of maxes equals global max
+		// - min + min_over_time: min of mins equals global min
+		vecAgg := p.findParentVectorAggregation(node)
+		if vecAgg == nil {
+			return false // No VectorAgg parent - don't shift
+		}
+
+		if !canParallelizeVectorOverRange(vecAgg.Operation, n.Operation) {
+			return false
+		}
+
+		// Shift: move RangeAgg into Parallelize, eliminate original
+		for _, parallelize := range p.plan.Children(node) {
+			p.plan.graph.Inject(parallelize, node.Clone())
+		}
+		p.plan.graph.Eliminate(node)
 		p.pushed[node] = struct{}{}
 		return true
 	}
@@ -622,6 +671,65 @@ func (p *parallelPushdown) canPushdown(node Node) bool {
 	return !foundNonParallelize
 }
 
+// findChildRangeAggregation traverses the plan from the given node to find
+// a RangeAggregation node. It traverses through Parallelize nodes and other
+// intermediate nodes like Filter and Projection.
+func (p *parallelPushdown) findChildRangeAggregation(node Node) *RangeAggregation {
+	for _, child := range p.plan.Children(node) {
+		if result := p.findRangeAggregationRecursive(child); result != nil {
+			return result
+		}
+	}
+	return nil
+}
+
+func (p *parallelPushdown) findRangeAggregationRecursive(node Node) *RangeAggregation {
+	if rangeAgg, ok := node.(*RangeAggregation); ok {
+		return rangeAgg
+	}
+
+	// Continue traversing through intermediate nodes
+	for _, child := range p.plan.Children(node) {
+		if result := p.findRangeAggregationRecursive(child); result != nil {
+			return result
+		}
+	}
+	return nil
+}
+
+// findParentVectorAggregation finds the VectorAggregation node that is a parent
+// of the given node (typically a RangeAggregation). Returns nil if no parent
+// VectorAggregation exists.
+func (p *parallelPushdown) findParentVectorAggregation(node Node) *VectorAggregation {
+	for _, parent := range p.plan.Parent(node) {
+		if vecAgg, ok := parent.(*VectorAggregation); ok {
+			return vecAgg
+		}
+	}
+	return nil
+}
+
+// canParallelizeVectorOverRange returns true if the combination of vector and
+// range aggregation operations can be safely parallelized.
+//
+// When a series spans multiple partitions, only certain combinations produce
+// correct results:
+//   - sum over sum/count: additive operations can be summed across partitions
+//   - max over max: max of partition maxes equals global max
+//   - min over min: min of partition mins equals global min
+func canParallelizeVectorOverRange(vec types.VectorAggregationType, rng types.RangeAggregationType) bool {
+	switch vec {
+	case types.VectorAggregationTypeSum:
+		// Sum is only safe over additive range aggregations (sum, count)
+		return rng == types.RangeAggregationTypeSum || rng == types.RangeAggregationTypeCount
+	case types.VectorAggregationTypeMax:
+		return rng == types.RangeAggregationTypeMax
+	case types.VectorAggregationTypeMin:
+		return rng == types.RangeAggregationTypeMin
+	}
+	return false
+}
+
 // optimization represents a single optimization pass and can hold multiple rules.
 type optimization struct {
 	plan  *Plan
@@ -642,7 +750,7 @@ func (o *optimization) withRules(rules ...rule) *optimization {
 }
 
 func (o *optimization) optimize(node Node) {
-	iterations, maxIterations := 0, 10
+	iterations, maxIterations := 0, 100
 
 	for iterations < maxIterations {
 		iterations++

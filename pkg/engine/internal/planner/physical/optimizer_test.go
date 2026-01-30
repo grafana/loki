@@ -1054,4 +1054,373 @@ func Test_parallelPushdown(t *testing.T) {
 		expected := PrintAsTree(&expectedPlan)
 		require.Equal(t, expected, PrintAsTree(&plan))
 	})
+
+}
+
+// Test_vectorAggregationParallelism tests parallel pushdown for vector aggregations
+// using realistic plan structures where Parallelize is above ScanSet.
+func Test_vectorAggregationParallelism(t *testing.T) {
+	t.Run("Parallelizes sum over sum_over_time", func(t *testing.T) {
+		// Realistic input plan: VectorAgg -> RangeAgg -> Parallelize -> Scan
+		// Expected output: VectorAgg -> Parallelize -> VectorAgg -> RangeAgg -> Scan
+		//
+		// The optimization:
+		// 1. Shifts RangeAgg into Parallelize (because valid VectorAgg parent exists)
+		// 2. Shards VectorAgg into Parallelize
+		var plan Plan
+		{
+			vecAgg := plan.graph.Add(&VectorAggregation{Operation: types.VectorAggregationTypeSum})
+			rangeAgg := plan.graph.Add(&RangeAggregation{Operation: types.RangeAggregationTypeSum})
+			parallelize := plan.graph.Add(&Parallelize{})
+			scan := plan.graph.Add(&DataObjScan{})
+
+			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: vecAgg, Child: rangeAgg}))
+			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: parallelize}))
+			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: scan}))
+		}
+
+		opt := newOptimizer(&plan, []*optimization{
+			newOptimization("ParallelPushdown", &plan).withRules(&parallelPushdown{plan: &plan}),
+		})
+		root, _ := plan.graph.Root()
+		opt.optimize(root)
+
+		var expectedPlan Plan
+		{
+			globalVecAgg := expectedPlan.graph.Add(&VectorAggregation{Operation: types.VectorAggregationTypeSum})
+			parallelize := expectedPlan.graph.Add(&Parallelize{})
+			localVecAgg := expectedPlan.graph.Add(&VectorAggregation{Operation: types.VectorAggregationTypeSum})
+			rangeAgg := expectedPlan.graph.Add(&RangeAggregation{Operation: types.RangeAggregationTypeSum})
+			scan := expectedPlan.graph.Add(&DataObjScan{})
+
+			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: globalVecAgg, Child: parallelize}))
+			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: localVecAgg}))
+			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: localVecAgg, Child: rangeAgg}))
+			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scan}))
+		}
+
+		expected := PrintAsTree(&expectedPlan)
+		require.Equal(t, expected, PrintAsTree(&plan))
+	})
+
+	t.Run("Parallelizes sum over count_over_time", func(t *testing.T) {
+		// sum(count_over_time(...)) - counts are additive across partitions
+		var plan Plan
+		{
+			vecAgg := plan.graph.Add(&VectorAggregation{Operation: types.VectorAggregationTypeSum})
+			rangeAgg := plan.graph.Add(&RangeAggregation{Operation: types.RangeAggregationTypeCount})
+			parallelize := plan.graph.Add(&Parallelize{})
+			scan := plan.graph.Add(&DataObjScan{})
+
+			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: vecAgg, Child: rangeAgg}))
+			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: parallelize}))
+			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: scan}))
+		}
+
+		opt := newOptimizer(&plan, []*optimization{
+			newOptimization("ParallelPushdown", &plan).withRules(&parallelPushdown{plan: &plan}),
+		})
+		root, _ := plan.graph.Root()
+		opt.optimize(root)
+
+		var expectedPlan Plan
+		{
+			globalVecAgg := expectedPlan.graph.Add(&VectorAggregation{Operation: types.VectorAggregationTypeSum})
+			parallelize := expectedPlan.graph.Add(&Parallelize{})
+			localVecAgg := expectedPlan.graph.Add(&VectorAggregation{Operation: types.VectorAggregationTypeSum})
+			rangeAgg := expectedPlan.graph.Add(&RangeAggregation{Operation: types.RangeAggregationTypeCount})
+			scan := expectedPlan.graph.Add(&DataObjScan{})
+
+			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: globalVecAgg, Child: parallelize}))
+			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: localVecAgg}))
+			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: localVecAgg, Child: rangeAgg}))
+			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scan}))
+		}
+
+		expected := PrintAsTree(&expectedPlan)
+		require.Equal(t, expected, PrintAsTree(&plan))
+	})
+
+	t.Run("Parallelizes max over max_over_time", func(t *testing.T) {
+		// max(max_over_time(...)) - max of maxes equals global max
+		var plan Plan
+		{
+			vecAgg := plan.graph.Add(&VectorAggregation{Operation: types.VectorAggregationTypeMax})
+			rangeAgg := plan.graph.Add(&RangeAggregation{Operation: types.RangeAggregationTypeMax})
+			parallelize := plan.graph.Add(&Parallelize{})
+			scan := plan.graph.Add(&DataObjScan{})
+
+			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: vecAgg, Child: rangeAgg}))
+			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: parallelize}))
+			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: scan}))
+		}
+
+		opt := newOptimizer(&plan, []*optimization{
+			newOptimization("ParallelPushdown", &plan).withRules(&parallelPushdown{plan: &plan}),
+		})
+		root, _ := plan.graph.Root()
+		opt.optimize(root)
+
+		var expectedPlan Plan
+		{
+			globalVecAgg := expectedPlan.graph.Add(&VectorAggregation{Operation: types.VectorAggregationTypeMax})
+			parallelize := expectedPlan.graph.Add(&Parallelize{})
+			localVecAgg := expectedPlan.graph.Add(&VectorAggregation{Operation: types.VectorAggregationTypeMax})
+			rangeAgg := expectedPlan.graph.Add(&RangeAggregation{Operation: types.RangeAggregationTypeMax})
+			scan := expectedPlan.graph.Add(&DataObjScan{})
+
+			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: globalVecAgg, Child: parallelize}))
+			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: localVecAgg}))
+			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: localVecAgg, Child: rangeAgg}))
+			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scan}))
+		}
+
+		expected := PrintAsTree(&expectedPlan)
+		require.Equal(t, expected, PrintAsTree(&plan))
+	})
+
+	t.Run("Parallelizes min over min_over_time", func(t *testing.T) {
+		// min(min_over_time(...)) - min of mins equals global min
+		var plan Plan
+		{
+			vecAgg := plan.graph.Add(&VectorAggregation{Operation: types.VectorAggregationTypeMin})
+			rangeAgg := plan.graph.Add(&RangeAggregation{Operation: types.RangeAggregationTypeMin})
+			parallelize := plan.graph.Add(&Parallelize{})
+			scan := plan.graph.Add(&DataObjScan{})
+
+			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: vecAgg, Child: rangeAgg}))
+			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: parallelize}))
+			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: scan}))
+		}
+
+		opt := newOptimizer(&plan, []*optimization{
+			newOptimization("ParallelPushdown", &plan).withRules(&parallelPushdown{plan: &plan}),
+		})
+		root, _ := plan.graph.Root()
+		opt.optimize(root)
+
+		var expectedPlan Plan
+		{
+			globalVecAgg := expectedPlan.graph.Add(&VectorAggregation{Operation: types.VectorAggregationTypeMin})
+			parallelize := expectedPlan.graph.Add(&Parallelize{})
+			localVecAgg := expectedPlan.graph.Add(&VectorAggregation{Operation: types.VectorAggregationTypeMin})
+			rangeAgg := expectedPlan.graph.Add(&RangeAggregation{Operation: types.RangeAggregationTypeMin})
+			scan := expectedPlan.graph.Add(&DataObjScan{})
+
+			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: globalVecAgg, Child: parallelize}))
+			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: localVecAgg}))
+			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: localVecAgg, Child: rangeAgg}))
+			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scan}))
+		}
+
+		expected := PrintAsTree(&expectedPlan)
+		require.Equal(t, expected, PrintAsTree(&plan))
+	})
+
+	t.Run("Does not parallelize avg", func(t *testing.T) {
+		// avg is not directly parallelizable - plan should remain unchanged
+		var plan Plan
+		{
+			vecAgg := plan.graph.Add(&VectorAggregation{Operation: types.VectorAggregationTypeAvg})
+			rangeAgg := plan.graph.Add(&RangeAggregation{Operation: types.RangeAggregationTypeSum})
+			parallelize := plan.graph.Add(&Parallelize{})
+			scan := plan.graph.Add(&DataObjScan{})
+
+			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: vecAgg, Child: rangeAgg}))
+			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: parallelize}))
+			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: scan}))
+		}
+
+		opt := newOptimizer(&plan, []*optimization{
+			newOptimization("ParallelPushdown", &plan).withRules(&parallelPushdown{plan: &plan}),
+		})
+		root, _ := plan.graph.Root()
+		opt.optimize(root)
+
+		// Expected: plan remains unchanged
+		var expectedPlan Plan
+		{
+			vecAgg := expectedPlan.graph.Add(&VectorAggregation{Operation: types.VectorAggregationTypeAvg})
+			rangeAgg := expectedPlan.graph.Add(&RangeAggregation{Operation: types.RangeAggregationTypeSum})
+			parallelize := expectedPlan.graph.Add(&Parallelize{})
+			scan := expectedPlan.graph.Add(&DataObjScan{})
+
+			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: vecAgg, Child: rangeAgg}))
+			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: parallelize}))
+			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: scan}))
+		}
+
+		expected := PrintAsTree(&expectedPlan)
+		require.Equal(t, expected, PrintAsTree(&plan))
+	})
+
+	t.Run("Does not parallelize sum over max_over_time", func(t *testing.T) {
+		// sum(max_over_time(...)) is NOT safe - max values are not additive
+		var plan Plan
+		{
+			vecAgg := plan.graph.Add(&VectorAggregation{Operation: types.VectorAggregationTypeSum})
+			rangeAgg := plan.graph.Add(&RangeAggregation{Operation: types.RangeAggregationTypeMax})
+			parallelize := plan.graph.Add(&Parallelize{})
+			scan := plan.graph.Add(&DataObjScan{})
+
+			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: vecAgg, Child: rangeAgg}))
+			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: parallelize}))
+			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: scan}))
+		}
+
+		opt := newOptimizer(&plan, []*optimization{
+			newOptimization("ParallelPushdown", &plan).withRules(&parallelPushdown{plan: &plan}),
+		})
+		root, _ := plan.graph.Root()
+		opt.optimize(root)
+
+		// Expected: plan remains unchanged
+		var expectedPlan Plan
+		{
+			vecAgg := expectedPlan.graph.Add(&VectorAggregation{Operation: types.VectorAggregationTypeSum})
+			rangeAgg := expectedPlan.graph.Add(&RangeAggregation{Operation: types.RangeAggregationTypeMax})
+			parallelize := expectedPlan.graph.Add(&Parallelize{})
+			scan := expectedPlan.graph.Add(&DataObjScan{})
+
+			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: vecAgg, Child: rangeAgg}))
+			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: parallelize}))
+			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: scan}))
+		}
+
+		expected := PrintAsTree(&expectedPlan)
+		require.Equal(t, expected, PrintAsTree(&plan))
+	})
+
+	t.Run("Does not parallelize range agg without vector agg parent", func(t *testing.T) {
+		// Pure count_over_time(...) without VectorAgg - should NOT shift RangeAgg
+		// because it would leave Parallelize as root with nothing to collect results
+		var plan Plan
+		{
+			rangeAgg := plan.graph.Add(&RangeAggregation{Operation: types.RangeAggregationTypeCount})
+			parallelize := plan.graph.Add(&Parallelize{})
+			scan := plan.graph.Add(&DataObjScan{})
+
+			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: parallelize}))
+			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: scan}))
+		}
+
+		opt := newOptimizer(&plan, []*optimization{
+			newOptimization("ParallelPushdown", &plan).withRules(&parallelPushdown{plan: &plan}),
+		})
+		root, _ := plan.graph.Root()
+		opt.optimize(root)
+
+		// Expected: plan remains unchanged - RangeAgg stays above Parallelize
+		var expectedPlan Plan
+		{
+			rangeAgg := expectedPlan.graph.Add(&RangeAggregation{Operation: types.RangeAggregationTypeCount})
+			parallelize := expectedPlan.graph.Add(&Parallelize{})
+			scan := expectedPlan.graph.Add(&DataObjScan{})
+
+			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: parallelize}))
+			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: scan}))
+		}
+
+		expected := PrintAsTree(&expectedPlan)
+		require.Equal(t, expected, PrintAsTree(&plan))
+	})
+
+	t.Run("Parallelizes sum over count_over_time with intermediate Filter", func(t *testing.T) {
+		// Test with Filter node between Parallelize and ScanSet to mimic full planner structure
+		// VectorAgg -> RangeAgg -> Parallelize -> Filter -> ScanSet
+		var plan Plan
+		{
+			vecAgg := plan.graph.Add(&VectorAggregation{Operation: types.VectorAggregationTypeSum})
+			rangeAgg := plan.graph.Add(&RangeAggregation{Operation: types.RangeAggregationTypeCount})
+			parallelize := plan.graph.Add(&Parallelize{})
+			filter := plan.graph.Add(&Filter{})
+			scan := plan.graph.Add(&DataObjScan{})
+
+			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: vecAgg, Child: rangeAgg}))
+			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: parallelize}))
+			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: filter}))
+			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: filter, Child: scan}))
+		}
+
+		opt := newOptimizer(&plan, []*optimization{
+			newOptimization("ParallelPushdown", &plan).withRules(&parallelPushdown{plan: &plan}),
+		})
+		root, _ := plan.graph.Root()
+		opt.optimize(root)
+
+		// Expected: VectorAgg sharded, RangeAgg and Filter shifted into Parallelize
+		// VectorAgg -> Parallelize -> VectorAgg -> RangeAgg -> Filter -> ScanSet
+		var expectedPlan Plan
+		{
+			globalVecAgg := expectedPlan.graph.Add(&VectorAggregation{Operation: types.VectorAggregationTypeSum})
+			parallelize := expectedPlan.graph.Add(&Parallelize{})
+			localVecAgg := expectedPlan.graph.Add(&VectorAggregation{Operation: types.VectorAggregationTypeSum})
+			rangeAgg := expectedPlan.graph.Add(&RangeAggregation{Operation: types.RangeAggregationTypeCount})
+			filter := expectedPlan.graph.Add(&Filter{})
+			scan := expectedPlan.graph.Add(&DataObjScan{})
+
+			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: globalVecAgg, Child: parallelize}))
+			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: localVecAgg}))
+			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: localVecAgg, Child: rangeAgg}))
+			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: filter}))
+			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: filter, Child: scan}))
+		}
+
+		expected := PrintAsTree(&expectedPlan)
+		actual := PrintAsTree(&plan)
+		t.Logf("Expected:\n%s", expected)
+		t.Logf("Actual:\n%s", actual)
+		require.Equal(t, expected, actual)
+	})
+
+	t.Run("Parallelizes with all optimization rules like full planner", func(t *testing.T) {
+		// Test with all optimization rules in the same order as the full planner
+		// This should mimic exactly what happens in planner.Optimize()
+		var plan Plan
+		{
+			vecAgg := plan.graph.Add(&VectorAggregation{Operation: types.VectorAggregationTypeSum})
+			rangeAgg := plan.graph.Add(&RangeAggregation{Operation: types.RangeAggregationTypeCount})
+			parallelize := plan.graph.Add(&Parallelize{})
+			filter := plan.graph.Add(&Filter{})
+			scan := plan.graph.Add(&DataObjScan{})
+
+			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: vecAgg, Child: rangeAgg}))
+			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: parallelize}))
+			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: filter}))
+			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: filter, Child: scan}))
+		}
+
+		// Run all optimizations in the same order as full planner
+		optimizations := []*optimization{
+			newOptimization("PredicatePushdown", &plan).withRules(&predicatePushdown{plan: &plan}),
+			newOptimization("LimitPushdown", &plan).withRules(&limitPushdown{plan: &plan}),
+			newOptimization("groupByPushdown", &plan).withRules(&groupByPushdown{plan: &plan}),
+			newOptimization("ProjectionPushdown", &plan).withRules(&projectionPushdown{plan: &plan}),
+			newOptimization("ParallelPushdown", &plan).withRules(&parallelPushdown{plan: &plan}),
+			newOptimization("Cleanup", &plan).withRules(&removeNoopFilter{plan: &plan}),
+		}
+		opt := newOptimizer(&plan, optimizations)
+		root, _ := plan.graph.Root()
+		opt.optimize(root)
+
+		// Expected: VectorAgg sharded, RangeAgg shifted into Parallelize, empty Filter removed
+		// VectorAgg -> Parallelize -> VectorAgg -> RangeAgg -> ScanSet
+		var expectedPlan Plan
+		{
+			globalVecAgg := expectedPlan.graph.Add(&VectorAggregation{Operation: types.VectorAggregationTypeSum})
+			parallelize := expectedPlan.graph.Add(&Parallelize{})
+			localVecAgg := expectedPlan.graph.Add(&VectorAggregation{Operation: types.VectorAggregationTypeSum})
+			rangeAgg := expectedPlan.graph.Add(&RangeAggregation{Operation: types.RangeAggregationTypeCount})
+			scan := expectedPlan.graph.Add(&DataObjScan{})
+
+			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: globalVecAgg, Child: parallelize}))
+			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: localVecAgg}))
+			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: localVecAgg, Child: rangeAgg}))
+			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scan}))
+		}
+
+		expected := PrintAsTree(&expectedPlan)
+		actual := PrintAsTree(&plan)
+		require.Equal(t, expected, actual)
+	})
 }
