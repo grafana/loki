@@ -169,7 +169,7 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.RecordBatch, er
 		for i := range arrs {
 			arrs[i] = rb.Column(int64(i))
 		}
-		rb = columnarv2.NewRecordBatch(rb.NumRows(), arrs)
+		rb = columnarv2.NewRecordBatch(nil, rb.NumRows(), arrs)
 	}
 	result, err := arrowconv.ToRecordBatch(rb, r.schema)
 	if err != nil {

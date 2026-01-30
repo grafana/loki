@@ -107,5 +107,5 @@ func (r *ReaderAdapter) Read(ctx context.Context, alloc *memory.Allocator, batch
 
 	// We only return readErr after processing n so that we properly handle n>0
 	// while also getting an error such as io.EOF.
-	return columnar.NewRecordBatch(int64(n), arrs), readErr
+	return columnar.NewRecordBatch(nil, int64(n), arrs), readErr
 }
