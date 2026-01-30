@@ -190,10 +190,8 @@ func (si *serialIndexer) submitBuild(ctx context.Context, events []bufferedEvent
 }
 
 // downloadWorker handles object downloads asynchronously.
+// In order to avoid deadlocks, every download request sent to the worker will receive a response and must be read from the downloadedObjects channel.
 func (si *serialIndexer) downloadWorker(ctx context.Context) {
-	// The download worker will exit only once the downloadQueue channel is closed.
-	// Every download request sent to the worker will receive a response and must be read to avoid deadlocks.
-
 	defer si.downloadWorkerWg.Done()
 
 	level.Debug(si.logger).Log("msg", "download worker started")
