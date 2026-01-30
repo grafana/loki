@@ -33,7 +33,7 @@ module Fluent
 
       helpers :compat_parameters, :record_accessor
 
-      attr_accessor :record_accessors
+      attr_accessor :record_accessors, :structured_metadata_accessors, :structured_metadata_map_accessors
 
       DEFAULT_BUFFER_TYPE = 'memory'
 
@@ -78,6 +78,9 @@ module Fluent
       desc 'format to use when flattening the record to a log line'
       config_param :line_format, :enum, list: %i[json key_value], default: :key_value
 
+      desc 'Comma separated list of record accessors pointing to maps whose key/value pairs will be copied into structured metadata'
+      config_param :structured_metadata_map_keys, :array, default: [], value_type: :string
+
       desc 'extract kubernetes labels as loki labels'
       config_param :extract_kubernetes_labels, :bool, default: false
 
@@ -111,6 +114,21 @@ module Fluent
             v = k if v.empty?
             @record_accessors[k] = record_accessor_create(v)
           end
+        end
+        @structured_metadata_accessors = {}
+        conf.elements.select { |element| element.name == 'structured_metadata' }.each do |element|
+          element.each_pair do |k, v|
+            v = k if v.empty?
+            @structured_metadata_accessors[k] = record_accessor_create(v)
+          end
+        end
+        @structured_metadata_map_accessors = []
+        @structured_metadata_map_keys.each do |expr|
+          next if expr.nil? || expr.strip.empty?
+          unless expr.start_with?('$')
+            raise "structured_metadata_map_keys entry '#{expr}' must start with '$'"
+          end
+          @structured_metadata_map_accessors << record_accessor_create(expr)
         end
         @remove_keys_accessors = []
         @remove_keys.each do |key|
@@ -282,6 +300,12 @@ module Fluent
         formatted_labels
       end
 
+      def format_structured_metadata(metadata)
+        metadata.each_with_object({}) do |(key, value), memo|
+          memo[key] = value.is_a?(String) ? value : value.to_s
+        end
+      end
+
       def payload_builder(streams)
         payload = []
         streams.each do |k, v|
@@ -289,9 +313,18 @@ module Fluent
           # Additionally sort the entries by timestamp just in case we
           # got them out of order.
           entries = v.sort_by.with_index { |hsh, i| [hsh['ts'], i] }
+          values = entries.map do |entry|
+            record = [entry['ts'].to_s, entry['line']]
+            metadata = entry['structured_metadata']
+            unless metadata.nil? || metadata.empty?
+              record << format_structured_metadata(metadata)
+            end
+            record
+          end
+
           payload.push(
             'stream' => format_labels(k),
-            'values' => entries.map { |e| [e['ts'].to_s, e['line']] }
+            'values' => values
           )
         end
         payload
@@ -340,18 +373,41 @@ module Fluent
       # rubocop:disable Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
       def line_to_loki(record)
         chunk_labels = {}
+        structured_metadata = {}
         line = ''
         if record.is_a?(Hash)
           @record_accessors&.each do |name, accessor|
-            new_key = name.gsub(%r{[.\-/]}, '_')
+            new_key = sanitize_record_key(name)
             chunk_labels[new_key] = accessor.call(record)
             accessor.delete(record)
+          end
+
+          @structured_metadata_map_accessors&.each do |accessor|
+            map_value = accessor.call(record)
+            next unless map_value.is_a?(Hash)
+
+            map_value.each do |map_key, map_entry|
+              next unless map_key.respond_to?(:to_s)
+              next if map_entry.nil?
+
+              metadata_key = sanitize_record_key(map_key)
+              structured_metadata[metadata_key] = normalize_structured_metadata_value(map_entry)
+            end
+          end
+
+          @structured_metadata_accessors&.each do |name, accessor|
+            value = accessor.call(record)
+            accessor.delete(record)
+            next if value.nil?
+
+            sanitized_name = sanitize_record_key(name)
+            structured_metadata[sanitized_name] = normalize_structured_metadata_value(value)
           end
 
           if @extract_kubernetes_labels && record.key?('kubernetes')
             kubernetes_labels = record['kubernetes']['labels']
             kubernetes_labels&.each_key do |l|
-              new_key = l.gsub(%r{[.\-/]}, '_')
+              new_key = sanitize_record_key(l)
               chunk_labels[new_key] = kubernetes_labels[l]
             end
           end
@@ -378,7 +434,8 @@ module Fluent
         # return both the line content plus the labels found in the record
         {
           line: line,
-          labels: chunk_labels
+          labels: chunk_labels,
+          structured_metadata: structured_metadata
         }
       end
       # rubocop:enable Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
@@ -394,12 +451,36 @@ module Fluent
           streams[chunk_labels] = [] if streams[chunk_labels].nil?
           # NOTE: timestamp must include nanoseconds
           # append to matching chunk_labels key
-          streams[chunk_labels].push(
+          entry = {
             'ts' => to_nano(time),
             'line' => result[:line]
-          )
+          }
+          structured_metadata = result[:structured_metadata]
+          unless structured_metadata.nil? || structured_metadata.empty?
+            entry['structured_metadata'] = structured_metadata
+          end
+          streams[chunk_labels].push(entry)
         end
         streams
+      end
+
+      def normalize_structured_metadata_value(value)
+        case value
+        when String
+          value.encode('utf-8', invalid: :replace, undef: :replace, replace: '?')
+        when TrueClass, FalseClass, Numeric
+          value.to_s
+        else
+          begin
+            Yajl.dump(value)
+          rescue StandardError
+            value.to_s
+          end
+        end
+      end
+
+      def sanitize_record_key(name)
+        name.to_s.gsub(%r{[.\-/]}, '_')
       end
     end
   end
