@@ -30,7 +30,7 @@ var (
 	errSecretUnknownType     = errors.New("unknown secret type")
 	errSecretMissingField    = errors.New("missing secret field")
 	errSecretFieldNotAllowed = errors.New("secret field not allowed")
-	errSecretUnknownSSEType  = errors.New("unsupported SSE type (supported: SSE-KMS, SSE-S3)")
+	errSecretUnknownSSEType  = errors.New("unsupported SSE type (supported: SSE-KMS, SSE-S3, SSE-C)")
 	errSecretHashError       = errors.New("error calculating hash for secret")
 
 	errSecretUnknownCredentialMode = errors.New("unknown credential mode")
@@ -521,8 +521,8 @@ func validateS3Endpoint(endpoint string, region string) error {
 
 func extractS3SSEConfig(d map[string][]byte) (storage.S3SSEConfig, error) {
 	var (
-		sseType                    storage.S3SSEType
-		kmsKeyId, kmsEncryptionCtx string
+		sseType                                   storage.S3SSEType
+		kmsKeyId, kmsEncryptionCtx, encryptionKey string
 	)
 
 	switch sseType = storage.S3SSEType(d[storage.KeyAWSSSEType]); sseType {
@@ -532,7 +532,11 @@ func extractS3SSEConfig(d map[string][]byte) (storage.S3SSEConfig, error) {
 		if kmsKeyId == "" {
 			return storage.S3SSEConfig{}, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSSseKmsKeyID)
 		}
-
+	case storage.SSECType:
+		encryptionKey = string(d[storage.KeyAWSSseCEncryptionKey])
+		if encryptionKey == "" {
+			return storage.S3SSEConfig{}, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSSseCEncryptionKey)
+		}
 	case storage.SSES3Type:
 	case "":
 		return storage.S3SSEConfig{}, nil
@@ -542,9 +546,12 @@ func extractS3SSEConfig(d map[string][]byte) (storage.S3SSEConfig, error) {
 	}
 
 	return storage.S3SSEConfig{
-		Type:                 sseType,
+		Type: sseType,
+		// sse-kms
 		KMSKeyID:             kmsKeyId,
 		KMSEncryptionContext: kmsEncryptionCtx,
+		// see-c
+		CustomerEncryptionKey: encryptionKey,
 	}, nil
 }
 

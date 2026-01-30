@@ -53,6 +53,11 @@ common:
           ${AWS_SSE_KMS_ENCRYPTION_CONTEXT}
         {{- end }}
         {{- end}}
+        {{- if eq .Type "SSE-C" }}
+        {{- with .CustomerEncryptionKey }}
+        encryption_key: ${AWS_SSE_C_ENCRYPTION_KEY}
+        {{- end }}
+        {{- end }}
       {{- end }}
       {{- end }}
     {{- end }}
