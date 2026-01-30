@@ -197,44 +197,36 @@ func (si *serialIndexer) downloadWorker(ctx context.Context) {
 	level.Debug(si.logger).Log("msg", "download worker started")
 	defer level.Debug(si.logger).Log("msg", "download worker stopped")
 
-	for {
-		select {
-		case event, ok := <-si.downloadQueue:
-			if !ok {
-				// Channel closed, worker should exit
-				return
-			}
+	for event := range si.downloadQueue {
+		objLogger := log.With(si.logger, "object_path", event.ObjectPath)
+		downloadStart := time.Now()
 
-			objLogger := log.With(si.logger, "object_path", event.ObjectPath)
-			downloadStart := time.Now()
-
-			objectReader, err := si.objectBucket.Get(ctx, event.ObjectPath)
-			if err != nil {
-				si.downloadedObjects <- downloadedObject{
-					event: event,
-					err:   fmt.Errorf("failed to fetch object from storage: %w", err),
-				}
-				continue
-			}
-
-			object, err := io.ReadAll(objectReader)
-			_ = objectReader.Close()
-			if err != nil {
-				si.downloadedObjects <- downloadedObject{
-					event: event,
-					err:   fmt.Errorf("failed to read object: %w", err),
-				}
-				continue
-			}
-
-			level.Info(objLogger).Log("msg", "downloaded object", "duration", time.Since(downloadStart),
-				"size_mb", float64(len(object))/1024/1024,
-				"avg_speed_mbps", float64(len(object))/time.Since(downloadStart).Seconds()/1024/1024)
-
+		objectReader, err := si.objectBucket.Get(ctx, event.ObjectPath)
+		if err != nil {
 			si.downloadedObjects <- downloadedObject{
-				event:       event,
-				objectBytes: &object,
+				event: event,
+				err:   fmt.Errorf("failed to fetch object from storage: %w", err),
 			}
+			continue
+		}
+
+		object, err := io.ReadAll(objectReader)
+		_ = objectReader.Close()
+		if err != nil {
+			si.downloadedObjects <- downloadedObject{
+				event: event,
+				err:   fmt.Errorf("failed to read object: %w", err),
+			}
+			continue
+		}
+
+		level.Info(objLogger).Log("msg", "downloaded object", "duration", time.Since(downloadStart),
+			"size_mb", float64(len(object))/1024/1024,
+			"avg_speed_mbps", float64(len(object))/time.Since(downloadStart).Seconds()/1024/1024)
+
+		si.downloadedObjects <- downloadedObject{
+			event:       event,
+			objectBytes: &object,
 		}
 	}
 }
