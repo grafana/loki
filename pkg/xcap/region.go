@@ -7,6 +7,7 @@ import (
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+	"go.uber.org/atomic"
 )
 
 // RegionOption applies options to a Region.
@@ -79,6 +80,10 @@ type Region struct {
 
 	// ended indicates whether End() has been called.
 	ended bool
+
+	// droppedRegions counts the number of descendant regions that were
+	// dropped during filtering.
+	droppedRegions atomic.Uint32
 }
 
 // StartRegion creates a new Region to record observations for a specific operation.
@@ -262,4 +267,35 @@ func (r *Region) StartTime() time.Time {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.startTime
+}
+
+// DroppedRegions returns the count of descendant regions that were
+// dropped during filtering.
+func (r *Region) DroppedRegions() uint32 {
+	if r == nil {
+		return 0
+	}
+	return r.droppedRegions.Load()
+}
+
+// addDroppedRegions increments the dropped regions counter by the given count.
+func (r *Region) addDroppedRegions(count int) {
+	if r == nil {
+		return
+	}
+	r.droppedRegions.Add(uint32(count))
+}
+
+// Duration returns the duration of the region. Returns 0 if the region
+// has not ended yet.
+func (r *Region) Duration() time.Duration {
+	if r == nil {
+		return 0
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if r.endTime.IsZero() {
+		return 0
+	}
+	return r.endTime.Sub(r.startTime)
 }

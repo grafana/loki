@@ -34,6 +34,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/cfg"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 func exit(code int) {
@@ -124,6 +125,11 @@ func main() {
 				}
 			}
 		}()
+	}
+
+	if err := xcap.ConfigureGlobal(config.XCap); err != nil {
+		level.Error(util_log.Logger).Log("msg", "error initializing xcap", "err", err)
+		exit(1)
 	}
 
 	setProfilingOptions(config.Profiling)

@@ -109,6 +109,7 @@ func fromProtoRegion(protoRegion *proto.Region, statIndexToStat map[uint32]Stati
 		status:       status,
 		ended:        true, // Regions from proto are always ended
 	}
+	region.droppedRegions.Store(protoRegion.DroppedRegions)
 
 	return region, nil
 }

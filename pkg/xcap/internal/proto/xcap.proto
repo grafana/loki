@@ -53,6 +53,9 @@ message Region {
 
   // Status is the status of the region's operation.
   Status status = 9;
+
+  // DroppedRegions is the count of descendant regions that were dropped due to filtering.
+  uint32 dropped_regions = 10;
 }
 
 // Event represents a timestamped event within a region.
