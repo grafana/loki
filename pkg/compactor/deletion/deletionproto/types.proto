@@ -101,17 +101,21 @@ message StorageUpdatesCollection {
   map<string, StorageUpdates> storageUpdates = 3 [(gogoproto.nullable) = false]; // labels -> storageUpdates mapping
 }
 
-// DataObjectTombstone marks specific sections in a dataobject as deleted.
-// Tombstones are created during the compaction phase and used during query-time filtering.
-// The sweep phase physically removes the tombstoned sections from storage.
-message DataObjectTombstone {
+// ObjectSectionTombstone represents tombstoned sections in a single object.
+message ObjectSectionTombstone {
   string objectPath = 1 [(gogoproto.jsontag) = "object_path"];
-  repeated uint32 deletedSectionIndices = 2 [(gogoproto.jsontag) = "deleted_section_indices"];
-  string deleteRequestID = 3 [(gogoproto.jsontag) = "delete_request_id"];
-  int64 createdAt = 4 [
-    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
-    (gogoproto.nullable) = false,
-    (gogoproto.jsontag) = "created_at"
-  ];
-  string tenantID = 5 [(gogoproto.jsontag) = "tenant_id"];
+  repeated uint32 tombstonedSectionIndices = 2 [(gogoproto.jsontag) = "tombstoned_section_indices"];
+}
+
+// DataObjectTombstone marks sections as deleted across multiple objects from a single delete request.
+// This creates one tombstone file per delete request.
+// Used for query-time filtering and eventual sweep phase cleanup.
+message DataObjectTombstone {
+  repeated ObjectSectionTombstone tombstones = 1 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "tombstones"];
+  string deleteRequestID = 2 [(gogoproto.jsontag) = "delete_request_id"];
+  int64 createdAt = 3 [(gogoproto.jsontag) = "created_at"]; // Unix timestamp in milliseconds
+  string tenantID = 4 [(gogoproto.jsontag) = "tenant_id"];
+  string query = 5 [(gogoproto.jsontag) = "query"]; // Original query for debugging
+  int64 startTime = 6 [(gogoproto.jsontag) = "start_time"]; // Unix timestamp in milliseconds
+  int64 endTime = 7 [(gogoproto.jsontag) = "end_time"]; // Unix timestamp in milliseconds
 }

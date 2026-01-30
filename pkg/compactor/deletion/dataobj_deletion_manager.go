@@ -122,7 +122,7 @@ func (m *DataobjDeletionManager) processDeleteRequests(ctx context.Context) erro
 	level.Info(m.logger).Log("msg", "processing dataobj delete requests", "count", len(requests))
 
 	for _, req := range requests {
-		if err := m.processDeleteRequest(ctx, req); err != nil {
+		if err := m.ProcessDeleteRequest(ctx, req); err != nil {
 			level.Error(m.logger).Log("msg", "failed to process delete request", "request_id", req.RequestID,
 				"user_id", req.UserID, "err", err)
 			// Continue processing other requests even if one fails
@@ -141,8 +141,8 @@ func (m *DataobjDeletionManager) processDeleteRequests(ctx context.Context) erro
 	return nil
 }
 
-// processDeleteRequest handles a single delete request by finding matching sections and creating tombstones.
-func (m *DataobjDeletionManager) processDeleteRequest(ctx context.Context, req deletionproto.DeleteRequest) error {
+// ProcessDeleteRequest handles a single delete request by finding matching sections and creating tombstones.
+func (m *DataobjDeletionManager) ProcessDeleteRequest(ctx context.Context, req deletionproto.DeleteRequest) error {
 	tenantCtx := user.InjectOrgID(ctx, req.UserID)
 	logSelector, err := parseDeletionQuery(req.Query)
 	if err != nil {
@@ -196,35 +196,36 @@ func (m *DataobjDeletionManager) processDeleteRequest(ctx context.Context, req d
 		)
 	}
 
-	createdAt := model.Now()
+	// Build per-object tombstones
+	tombstones := make([]deletionproto.ObjectSectionTombstone, 0, len(sectionsByObject))
 	for objectPath, sectionIndices := range sectionsByObject {
-		tombstone := &deletionproto.DataObjectTombstone{
-			ObjectPath:            objectPath,
-			DeletedSectionIndices: sectionIndices,
-			DeleteRequestID:       req.RequestID,
-			CreatedAt:             createdAt,
-			TenantID:              req.UserID,
-		}
-
-		if err := WriteTombstone(ctx, m.objStoreClient, tombstone); err != nil {
-			return fmt.Errorf("failed to write tombstone for object %s: %w", objectPath, err)
-		}
-
-		m.metrics.tombstonesCreated.Inc()
-		level.Info(m.logger).Log(
-			"msg", "created tombstone",
-			"request_id", req.RequestID,
-			"user_id", req.UserID,
-			"object", objectPath,
-			"sections", fmt.Sprintf("%v", sectionIndices),
-		)
+		tombstones = append(tombstones, deletionproto.ObjectSectionTombstone{
+			ObjectPath:               objectPath,
+			TombstonedSectionIndices: sectionIndices,
+		})
 	}
 
+	// Create single tombstone marker containing all objects
+	tombstone := &deletionproto.DataObjectTombstone{
+		Tombstones:      tombstones,
+		DeleteRequestID: req.RequestID,
+		CreatedAt:       int64(model.Now()),
+		TenantID:        req.UserID,
+		Query:           req.Query,
+		StartTime:       int64(req.StartTime),
+		EndTime:         int64(req.EndTime),
+	}
+
+	if err := WriteTombstone(ctx, m.objStoreClient, tombstone); err != nil {
+		return fmt.Errorf("failed to write tombstone: %w", err)
+	}
+
+	m.metrics.tombstonesCreated.Inc()
 	level.Info(m.logger).Log(
-		"msg", "completed delete request processing",
+		"msg", "created tombstone marker",
 		"request_id", req.RequestID,
 		"user_id", req.UserID,
-		"tombstones_created", len(sectionsByObject),
+		"objects_count", len(tombstones),
 		"total_sections", len(sectionsResp.Sections),
 	)
 

@@ -2,15 +2,12 @@ package deletion
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"path"
 	"strings"
 
 	"github.com/gogo/protobuf/proto"
-	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
@@ -22,14 +19,15 @@ const (
 )
 
 // WriteTombstone writes a tombstone marker to object storage.
-// Path: markers/dataobj-tombstones/<tenant>/<hash>.tomb
+// This contains all objects and sections tombstoned from a single delete request.
+// Path: markers/dataobj-tombstones/<tenant>/<request-id>.tomb
 func WriteTombstone(ctx context.Context, objectClient client.ObjectClient, tombstone *deletionproto.DataObjectTombstone) error {
 	data, err := proto.Marshal(tombstone)
 	if err != nil {
 		return fmt.Errorf("failed to marshal tombstone: %w", err)
 	}
 
-	key := buildTombstoneKey(tombstone.TenantID, tombstone.ObjectPath, tombstone.CreatedAt)
+	key := buildTombstoneKey(tombstone.TenantID, tombstone.DeleteRequestID)
 	if err := objectClient.PutObject(ctx, key, strings.NewReader(unsafeGetString(data))); err != nil {
 		return fmt.Errorf("failed to write tombstone to %s: %w", key, err)
 	}
@@ -58,8 +56,7 @@ func ReadTombstone(ctx context.Context, objectClient client.ObjectClient, key st
 	return &tombstone, nil
 }
 
-// ListTombstones lists all tombstones for a tenant.
-// NOTE: If this becomes slow (>1000 tombstones/tenant), add window partitioning to the path.
+// ListTombstones lists all tombstone markers for a tenant.
 func ListTombstones(ctx context.Context, objectClient client.ObjectClient, tenantID string) ([]*deletionproto.DataObjectTombstone, error) {
 	prefix := path.Join(tombstonePrefix, tenantID) + "/"
 
@@ -85,12 +82,8 @@ func ListTombstones(ctx context.Context, objectClient client.ObjectClient, tenan
 	return tombstones, nil
 }
 
-// buildTombstoneKey creates the storage key for a tombstone.
-// Format: markers/dataobj-tombstones/<tenant>/<hash>.tomb
-func buildTombstoneKey(tenantID, objectPath string, createdAt model.Time) string {
-	// Use object path + timestamp for hash to ensure uniqueness
-	hash := sha256.Sum256([]byte(fmt.Sprintf("%s-%d", objectPath, createdAt)))
-	hashStr := hex.EncodeToString(hash[:8]) // Use first 8 bytes for shorter names
-
-	return path.Join(tombstonePrefix, tenantID, hashStr+tombstoneSuffix)
+// buildTombstoneKey creates the storage key for a tombstone marker.
+// Format: markers/dataobj-tombstones/<tenant>/<request-id>.tomb
+func buildTombstoneKey(tenantID, requestID string) string {
+	return path.Join(tombstonePrefix, tenantID, requestID+tombstoneSuffix)
 }
