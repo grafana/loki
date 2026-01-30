@@ -56,9 +56,9 @@ type processor struct {
 	committer       committer
 	partition       int32
 
-	// offset contains the offset of the last record appended to the data object
+	// lastOffset contains the offset of the last record appended to the data object
 	// builder. It is used to commit the correct offset after a flush.
-	offset int64
+	lastOffset int64
 
 	// idleFlushTimeout is the maximum amount of time to wait for more data. If no
 	// records are received within this timeout, the current data object builder
@@ -87,8 +87,7 @@ type processor struct {
 	// to the data object builder. It is required for the metastore index.
 	earliestRecordTime time.Time
 
-	// Metrics
-	metrics *partitionOffsetMetrics
+	metrics *metrics
 	logger  log.Logger
 }
 
@@ -108,10 +107,6 @@ func newProcessor(
 	if err != nil {
 		panic(err)
 	}
-	metrics := newPartitionOffsetMetrics()
-	if err := metrics.register(reg); err != nil {
-		level.Error(logger).Log("msg", "failed to register partition metrics", "err", err)
-	}
 	p := &processor{
 		builder:          builder,
 		decoder:          decoder,
@@ -122,7 +117,7 @@ func newProcessor(
 		partition:        partition,
 		idleFlushTimeout: idleFlushTimeout,
 		maxBuilderAge:    maxBuilderAge,
-		metrics:          metrics,
+		metrics:          newMetrics(reg),
 		logger:           logger,
 	}
 	p.BasicService = services.NewBasicService(p.starting, p.running, p.stopping)
@@ -159,8 +154,11 @@ func (p *processor) Run(ctx context.Context) error {
 				level.Info(p.logger).Log("msg", "channel closed")
 				return nil
 			}
-			p.processRecord(ctx, record)
-
+			if err := p.processRecord(ctx, record); err != nil {
+				level.Error(p.logger).Log("msg", "failed to process record", "err", err)
+				p.metrics.discardedBytes.Add(float64(len(record.Value)))
+				p.metrics.recordFailures.Inc()
+			}
 		case <-time.After(p.idleFlushTimeout):
 			// This partition is idle, flush it.
 			if _, err := p.idleFlush(ctx); err != nil {
@@ -170,59 +168,48 @@ func (p *processor) Run(ctx context.Context) error {
 	}
 }
 
-func (p *processor) processRecord(ctx context.Context, record *kgo.Record) {
+func (p *processor) processRecord(ctx context.Context, rec *kgo.Record) error {
+	// We use the current time to calculate a number of metrics, such as
+	// consumption lag, the age of the data object builder, etc.
 	now := time.Now()
-	p.metrics.processedRecords.Inc()
+	p.observeRecord(rec, now)
 
-	// Update offset metric at the end of processing
-	defer p.metrics.updateOffset(record.Offset)
-
-	if record.Timestamp.Before(p.earliestRecordTime) || p.earliestRecordTime.IsZero() {
-		p.earliestRecordTime = record.Timestamp
-	}
-
-	// Observe processing delay
-	p.metrics.observeProcessingDelay(record.Timestamp)
-
-	tenant := string(record.Key)
-	stream, err := p.decoder.DecodeWithoutLabels(record.Value)
+	// Try to decode the stream in the record.
+	tenant := string(rec.Key)
+	stream, err := p.decoder.DecodeWithoutLabels(rec.Value)
 	if err != nil {
-		level.Error(p.logger).Log("msg", "failed to decode record", "err", err)
-		return
+		// This is an unrecoverable error and no amount of retries will fix it.
+		return fmt.Errorf("failed to decode stream: %w", err)
 	}
-
-	p.metrics.processedBytes.Add(float64(stream.Size()))
 
 	if p.shouldFlushDueToMaxAge() {
 		if err := p.flush(ctx, flushReasonMaxAge); err != nil {
-			level.Error(p.logger).Log("msg", "failed to flush and commit dataobj that reached max age", "err", err)
-			return
+			return fmt.Errorf("failed to flush: %w", err)
 		}
 	}
 
 	if err := p.builder.Append(tenant, stream); err != nil {
 		if !errors.Is(err, logsobj.ErrBuilderFull) {
-			level.Error(p.logger).Log("msg", "failed to append stream", "err", err)
-			p.metrics.incAppendFailures()
-			return
+			return fmt.Errorf("failed to append stream: %w", err)
 		}
-
 		if err := p.flush(ctx, flushReasonBuilderFull); err != nil {
-			level.Error(p.logger).Log("msg", "failed to flush and commit", "err", err)
-			return
+			return fmt.Errorf("failed to flush and commit: %w", err)
 		}
-
 		if err := p.builder.Append(tenant, stream); err != nil {
-			level.Error(p.logger).Log("msg", "failed to append stream after flushing", "err", err)
-			p.metrics.incAppendFailures()
+			return fmt.Errorf("failed to append stream after flushing: %w", err)
 		}
 	}
 
+	if p.earliestRecordTime.IsZero() || rec.Timestamp.Before(p.earliestRecordTime) {
+		p.earliestRecordTime = rec.Timestamp
+	}
 	if p.firstAppend.IsZero() {
 		p.firstAppend = now
 	}
 	p.lastAppend = now
-	p.offset = record.Offset
+	p.lastOffset = rec.Offset
+
+	return nil
 }
 
 func (p *processor) shouldFlushDueToMaxAge() bool {
@@ -249,13 +236,13 @@ func (p *processor) idleFlush(ctx context.Context) (bool, error) {
 // needsIdleFlush returns true if the partition has exceeded the idle timeout
 // and the builder has some data buffered.
 func (p *processor) needsIdleFlush() bool {
-	// This is a safety check to make sure we never flush empty data objects.
-	// It should never happen that lastModified is non-zero while the builder
-	// is either uninitialized or empty.
-	if p.builder == nil || p.builder.GetEstimatedSize() == 0 {
+	if p.lastAppend.IsZero() {
 		return false
 	}
-	if p.lastAppend.IsZero() {
+	// This is a safety check to make sure we never flush empty data objects.
+	// It should never happen that lastAppend is non-zero while the builder
+	// is empty.
+	if p.builder.GetEstimatedSize() == 0 {
 		return false
 	}
 	return time.Since(p.lastAppend) > p.idleFlushTimeout
@@ -275,7 +262,7 @@ func (p *processor) flush(ctx context.Context, reason string) error {
 	if err := p.metastoreEvents.Emit(ctx, objectPath, p.firstAppend); err != nil {
 		return fmt.Errorf("failed to produce metastore event: %w", err)
 	}
-	if err := p.commit(ctx, p.offset); err != nil {
+	if err := p.commit(ctx, p.lastOffset); err != nil {
 		return fmt.Errorf("failed to commit data object: %w", err)
 	}
 	return nil
@@ -290,7 +277,7 @@ func (p *processor) commit(ctx context.Context, offset int64) error {
 	var lastErr error
 	backoff.Reset()
 	for backoff.Ongoing() {
-		p.metrics.commitsTotal.Inc()
+		p.metrics.commits.Inc()
 		err := p.committer.Commit(ctx, p.partition, offset)
 		if err == nil {
 			level.Debug(p.logger).Log("msg", "committed offset", "partition", p.partition, "offset", offset)
@@ -302,4 +289,14 @@ func (p *processor) commit(ctx context.Context, offset int64) error {
 		backoff.Wait()
 	}
 	return lastErr
+}
+
+func (p *processor) observeRecord(rec *kgo.Record, now time.Time) {
+	p.metrics.records.Inc()
+	p.metrics.receivedBytes.Add(float64(len(rec.Value)))
+	p.metrics.setLastOffset(rec.Offset)
+	p.metrics.setConsumptionLag(now.Sub(rec.Timestamp))
+	// Deprecated metrics.
+	p.metrics.processedBytes.Add(float64(len(rec.Value)))
+	p.metrics.processedRecords.Inc()
 }
