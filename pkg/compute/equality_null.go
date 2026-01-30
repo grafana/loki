@@ -32,19 +32,19 @@ func nullEqualitySS(_, _ *columnar.NullScalar) *columnar.BoolScalar {
 func nullEqualitySA(alloc *memory.Allocator, _ *columnar.NullScalar, right *columnar.Null) *columnar.Bool {
 	validity := computeValiditySA(alloc, true, right.Validity())
 
-	values := memory.MakeBitmap(alloc, right.Len())
+	values := memory.NewBitmap(alloc, right.Len())
 	values.AppendCount(false, right.Len())
 
-	return columnar.MakeBool(values, validity)
+	return columnar.NewBool(values, validity)
 }
 
 func nullEqualityAS(alloc *memory.Allocator, left *columnar.Null, _ *columnar.NullScalar) *columnar.Bool {
 	validity := computeValidityAS(alloc, left.Validity(), true)
 
-	values := memory.MakeBitmap(alloc, left.Len())
+	values := memory.NewBitmap(alloc, left.Len())
 	values.AppendCount(false, left.Len())
 
-	return columnar.MakeBool(values, validity)
+	return columnar.NewBool(values, validity)
 }
 
 func nullEqualityAA(alloc *memory.Allocator, left, right *columnar.Null) (*columnar.Bool, error) {
@@ -57,8 +57,8 @@ func nullEqualityAA(alloc *memory.Allocator, left, right *columnar.Null) (*colum
 		return nil, err
 	}
 
-	values := memory.MakeBitmap(alloc, left.Len())
+	values := memory.NewBitmap(alloc, left.Len())
 	values.AppendCount(false, left.Len())
 
-	return columnar.MakeBool(values, validity), nil
+	return columnar.NewBool(values, validity), nil
 }

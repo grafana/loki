@@ -77,7 +77,7 @@ func (pr *pageReader) skipUnwantedRows(alloc *memory.Allocator) error {
 	// Since we don't need the values to live beyond this read call, we can
 	// create a short-lived allocator. This will also allow the "real" read to
 	// reuse any memory that was created during this step.
-	tempAlloc := memory.MakeAllocator(alloc)
+	tempAlloc := memory.NewAllocator(alloc)
 	defer tempAlloc.Free()
 
 	readCount := int(pr.nextRow - pr.pageRow)
@@ -89,7 +89,7 @@ func (pr *pageReader) skipUnwantedRows(alloc *memory.Allocator) error {
 // true, no array values are returned, permitting for skipping expensive work.
 func (pr *pageReader) readColumnar(alloc *memory.Allocator, count int, skip bool) (columnar.Array, error) {
 	// First read presence values for the next count rows.
-	bm := memory.MakeBitmap(alloc, count)
+	bm := memory.NewBitmap(alloc, count)
 	err := pr.presenceDec.DecodeTo(&bm, count)
 
 	gotCount := bm.Len()
@@ -211,7 +211,7 @@ func materializeSparseArray(alloc *memory.Allocator, typ datasetmd.PhysicalType,
 func materializeSparseUTF8(alloc *memory.Allocator, validity memory.Bitmap, denseValues *columnar.UTF8) (columnar.Array, error) {
 	// The data buffer can remain the same, but we need to make a new offsets
 	// buffer to account for all the nulls.
-	offsetsBuf := memory.MakeBuffer[int32](alloc, validity.Len()+1)
+	offsetsBuf := memory.NewBuffer[int32](alloc, validity.Len()+1)
 	offsetsBuf.Resize(validity.Len() + 1)
 	offsets := offsetsBuf.Data()
 
@@ -241,11 +241,11 @@ func materializeSparseUTF8(alloc *memory.Allocator, validity memory.Bitmap, dens
 		lastOffset = srcEnd
 	}
 
-	return columnar.MakeUTF8(denseValues.Data(), offsets, validity), nil
+	return columnar.NewUTF8(denseValues.Data(), offsets, validity), nil
 }
 
 func materializeSparseNumber[T columnar.Numeric](alloc *memory.Allocator, validity memory.Bitmap, denseValues *columnar.Number[T]) (columnar.Array, error) {
-	valuesBuf := memory.MakeBuffer[T](alloc, validity.Len())
+	valuesBuf := memory.NewBuffer[T](alloc, validity.Len())
 	valuesBuf.Resize(validity.Len())
 	values := valuesBuf.Data()
 
@@ -259,7 +259,7 @@ func materializeSparseNumber[T columnar.Numeric](alloc *memory.Allocator, validi
 		values[i] = srcValues[srcIndex]
 		srcIndex++
 	}
-	return columnar.MakeNumber[T](values, validity), nil
+	return columnar.NewNumber[T](values, validity), nil
 }
 
 func materializeNulls(alloc *memory.Allocator, typ datasetmd.PhysicalType, validity memory.Bitmap) (columnar.Array, error) {
@@ -275,28 +275,28 @@ func materializeNulls(alloc *memory.Allocator, typ datasetmd.PhysicalType, valid
 	// much?
 	switch typ {
 	case datasetmd.PHYSICAL_TYPE_INT64:
-		valuesBuffer := memory.MakeBuffer[int64](alloc, validity.Len())
+		valuesBuffer := memory.NewBuffer[int64](alloc, validity.Len())
 		valuesBuffer.Resize(validity.Len())
 		valuesBuffer.Clear()
 
-		return columnar.MakeNumber[int64](valuesBuffer.Data(), validity), nil
+		return columnar.NewNumber[int64](valuesBuffer.Data(), validity), nil
 
 	case datasetmd.PHYSICAL_TYPE_UINT64:
-		valuesBuffer := memory.MakeBuffer[uint64](alloc, validity.Len())
+		valuesBuffer := memory.NewBuffer[uint64](alloc, validity.Len())
 		valuesBuffer.Resize(validity.Len())
 		valuesBuffer.Clear()
 
-		return columnar.MakeNumber[uint64](valuesBuffer.Data(), validity), nil
+		return columnar.NewNumber[uint64](valuesBuffer.Data(), validity), nil
 
 	case datasetmd.PHYSICAL_TYPE_BINARY:
-		offsetsBuffer := memory.MakeBuffer[int32](alloc, validity.Len()+1)
+		offsetsBuffer := memory.NewBuffer[int32](alloc, validity.Len()+1)
 		offsetsBuffer.Resize(validity.Len() + 1)
 		offsetsBuffer.Clear()
 
-		return columnar.MakeUTF8(nil, offsetsBuffer.Data(), validity), nil
+		return columnar.NewUTF8(nil, offsetsBuffer.Data(), validity), nil
 
 	default:
-		return columnar.MakeNull(validity), nil
+		return columnar.NewNull(validity), nil
 	}
 }
 

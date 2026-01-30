@@ -58,16 +58,16 @@ type Number[T Numeric] struct {
 
 var _ Array = (*Number[int64])(nil)
 
-// MakeNumber creates a new Number array from the given values and optional
+// NewNumber creates a new Number array from the given values and optional
 // validity bitmap.
 //
 // Number arrays made from memory owned by a [memory.Allocator] are invalidated
 // when the allocator reclaims memory.
 //
 // If validity is of length zero, all elements are considered valid. Otherwise,
-// MakeNumber panics if the number of elements does not match the length of
+// NewNumber panics if the number of elements does not match the length of
 // validity.
-func MakeNumber[T Numeric](values []T, validity memory.Bitmap) *Number[T] {
+func NewNumber[T Numeric](values []T, validity memory.Bitmap) *Number[T] {
 	arr := &Number[T]{
 		validity: validity,
 		values:   values,
@@ -160,8 +160,8 @@ var _ Builder = (*NumberBuilder[int64])(nil)
 func NewNumberBuilder[T Numeric](alloc *memory.Allocator) *NumberBuilder[T] {
 	return &NumberBuilder[T]{
 		alloc:    alloc,
-		validity: memory.MakeBitmap(alloc, 0),
-		values:   memory.MakeBuffer[T](alloc, 0),
+		validity: memory.NewBitmap(alloc, 0),
+		values:   memory.NewBuffer[T](alloc, 0),
 	}
 }
 
@@ -237,8 +237,8 @@ func (b *NumberBuilder[T]) BuildArray() Array { return b.Build() }
 func (b *NumberBuilder[T]) Build() *Number[T] {
 	// Move the original bitmaps to the constructed array, then reset the
 	// builder's bitmaps since they've been moved.
-	arr := MakeNumber[T](b.values.Data(), b.validity)
-	b.validity = memory.MakeBitmap(b.alloc, 0)
-	b.values = memory.MakeBuffer[T](b.alloc, 0)
+	arr := NewNumber[T](b.values.Data(), b.validity)
+	b.validity = memory.NewBitmap(b.alloc, 0)
+	b.values = memory.NewBuffer[T](b.alloc, 0)
 	return arr
 }

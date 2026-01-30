@@ -1786,7 +1786,7 @@ func BenchmarkEqualityFunctions(b *testing.B) {
 
 	for _, s := range scenarios {
 		b.Run(s.name, func(b *testing.B) {
-			tempAlloc := memory.MakeAllocator(&alloc)
+			tempAlloc := memory.NewAllocator(&alloc)
 			for b.Loop() {
 				tempAlloc.Reclaim()
 

@@ -10,7 +10,7 @@ import (
 // Buffer is a low-level memory buffer for storing a set of elements
 // contiguously in memory.
 //
-// Buffers must be created using [MakeBuffer].
+// Buffers must be created using [NewBuffer].
 type Buffer[T any] struct {
 	// To avoid double indirection (mem.data) for every operation, we cache the
 	// casted representation of mem.
@@ -20,12 +20,12 @@ type Buffer[T any] struct {
 	data  []T
 }
 
-// MakeBuffer creates a Buffer managed by the provided allocator. The returned Buffer
+// NewBuffer creates a Buffer managed by the provided allocator. The returned Buffer
 // will have an initial length of zero and a capacity of at least n (which may
 // be 0).
 //
 // The lifetime of the returned Buffer must not exceed the lifetime of alloc.
-func MakeBuffer[T any](alloc *Allocator, n int) Buffer[T] {
+func NewBuffer[T any](alloc *Allocator, n int) Buffer[T] {
 	buf := Buffer[T]{alloc: alloc}
 	if n > 0 {
 		buf.Grow(n)
