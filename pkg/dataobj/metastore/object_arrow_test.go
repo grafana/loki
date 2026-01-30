@@ -8,6 +8,8 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 )
 
 func TestAddSectionDescriptors_Merge(t *testing.T) {
@@ -22,6 +24,7 @@ func TestAddSectionDescriptors_Merge(t *testing.T) {
 		{Name: "max_timestamp.timestamp", Type: arrow.FixedWidthTypes.Timestamp_ns},
 		{Name: "row_count.int64", Type: arrow.PrimitiveTypes.Int64},
 		{Name: "uncompressed_size.int64", Type: arrow.PrimitiveTypes.Int64},
+		{Name: pointers.InternalLabelsFieldName, Type: arrow.BinaryTypes.String},
 	}, nil)
 
 	pathB := array.NewStringBuilder(memory.DefaultAllocator)
@@ -32,6 +35,7 @@ func TestAddSectionDescriptors_Merge(t *testing.T) {
 	maxTsB := array.NewTimestampBuilder(memory.DefaultAllocator, arrow.FixedWidthTypes.Timestamp_ns.(*arrow.TimestampType))
 	rowCountB := array.NewInt64Builder(memory.DefaultAllocator)
 	sizeB := array.NewInt64Builder(memory.DefaultAllocator)
+	internalLabelsB := array.NewStringBuilder(memory.DefaultAllocator)
 
 	// Two rows pointing to the same (path,section) but different stream_id_ref and different ranges.
 	t0 := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -47,6 +51,7 @@ func TestAddSectionDescriptors_Merge(t *testing.T) {
 	maxTsB.AppendValues([]arrow.Timestamp{arrow.Timestamp(t2.UnixNano()), arrow.Timestamp(t3.UnixNano())}, nil)
 	rowCountB.AppendValues([]int64{3, 5}, nil)
 	sizeB.AppendValues([]int64{100, 250}, nil)
+	internalLabelsB.AppendValues([]string{"label1,label2", "label1,label2"}, nil)
 
 	cols := []arrow.Array{
 		pathB.NewArray(),
@@ -57,12 +62,13 @@ func TestAddSectionDescriptors_Merge(t *testing.T) {
 		maxTsB.NewArray(),
 		rowCountB.NewArray(),
 		sizeB.NewArray(),
+		internalLabelsB.NewArray(),
 	}
 
 	rec := array.NewRecordBatch(schema, cols, 2)
 
 	got := map[SectionKey]*DataobjSectionDescriptor{}
-	require.NoError(t, addSectionDescriptors(rec, got, nil))
+	require.NoError(t, addSectionDescriptors(rec, got))
 	require.Len(t, got, 1)
 
 	desc := got[SectionKey{ObjectPath: "obj-A", SectionIdx: 7}]
@@ -72,4 +78,5 @@ func TestAddSectionDescriptors_Merge(t *testing.T) {
 	require.Equal(t, int64(350), desc.Size)
 	require.Equal(t, t0.UnixNano(), desc.Start.UnixNano())
 	require.Equal(t, t3.UnixNano(), desc.End.UnixNano())
+	require.ElementsMatch(t, []string{"label1", "label2"}, desc.AmbiguousPredicatesByStream[11])
 }

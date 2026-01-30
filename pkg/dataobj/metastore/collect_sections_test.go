@@ -11,6 +11,8 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
+
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 )
 
 func TestCollectSections_StopsOnEOFAndAggregates(t *testing.T) {
@@ -25,6 +27,7 @@ func TestCollectSections_StopsOnEOFAndAggregates(t *testing.T) {
 		{Name: "max_timestamp.timestamp", Type: arrow.FixedWidthTypes.Timestamp_ns},
 		{Name: "row_count.int64", Type: arrow.PrimitiveTypes.Int64},
 		{Name: "uncompressed_size.int64", Type: arrow.PrimitiveTypes.Int64},
+		{Name: pointers.InternalLabelsFieldName, Type: arrow.BinaryTypes.String},
 	}, nil)
 
 	makeRec := func(path string, section int64, streamIDRef int64, start, end time.Time, rows, size int64) arrow.RecordBatch {
@@ -36,6 +39,7 @@ func TestCollectSections_StopsOnEOFAndAggregates(t *testing.T) {
 		maxTsB := array.NewTimestampBuilder(memory.DefaultAllocator, arrow.FixedWidthTypes.Timestamp_ns.(*arrow.TimestampType))
 		rowCountB := array.NewInt64Builder(memory.DefaultAllocator)
 		sizeB := array.NewInt64Builder(memory.DefaultAllocator)
+		internalLabelsB := array.NewStringBuilder(memory.DefaultAllocator)
 
 		pathB.AppendValues([]string{path}, nil)
 		sectionB.AppendValues([]int64{section}, nil)
@@ -45,6 +49,7 @@ func TestCollectSections_StopsOnEOFAndAggregates(t *testing.T) {
 		maxTsB.AppendValues([]arrow.Timestamp{arrow.Timestamp(end.UnixNano())}, nil)
 		rowCountB.AppendValues([]int64{rows}, nil)
 		sizeB.AppendValues([]int64{size}, nil)
+		internalLabelsB.AppendValues([]string{"label1,label2"}, nil)
 
 		cols := []arrow.Array{
 			pathB.NewArray(),
@@ -55,6 +60,7 @@ func TestCollectSections_StopsOnEOFAndAggregates(t *testing.T) {
 			maxTsB.NewArray(),
 			rowCountB.NewArray(),
 			sizeB.NewArray(),
+			internalLabelsB.NewArray(),
 		}
 
 		rec := array.NewRecordBatch(schema, cols, 1)
@@ -73,6 +79,7 @@ func TestCollectSections_StopsOnEOFAndAggregates(t *testing.T) {
 		array.NewTimestampBuilder(memory.DefaultAllocator, arrow.FixedWidthTypes.Timestamp_ns.(*arrow.TimestampType)).NewArray(),
 		array.NewInt64Builder(memory.DefaultAllocator).NewArray(),
 		array.NewInt64Builder(memory.DefaultAllocator).NewArray(),
+		array.NewStringBuilder(memory.DefaultAllocator).NewArray(),
 	}, 0)
 
 	reader := &sliceRecordBatchReader{recs: []arrow.RecordBatch{empty, rec1, rec2}}
@@ -87,6 +94,7 @@ func TestCollectSections_StopsOnEOFAndAggregates(t *testing.T) {
 	require.ElementsMatch(t, []int64{10, 11}, desc.StreamIDs)
 	require.Equal(t, 8, desc.RowCount)
 	require.Equal(t, int64(350), desc.Size)
+	require.ElementsMatch(t, []string{"label1", "label2"}, desc.AmbiguousPredicatesByStream[11])
 }
 
 func TestCollectSections_PropagatesReaderError(t *testing.T) {
