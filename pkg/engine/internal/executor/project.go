@@ -179,7 +179,9 @@ func newExpandPipeline(expr physical.Expression, evaluator *expressionEvaluator,
 					if newField.Name == semconv.ColumnIdentError.FQN() || newField.Name == semconv.ColumnIdentErrorDetails.FQN() {
 						outputCols[idx] = mergeErrors(outputCols[idx].(*array.String), arrCasted.Field(i).(*array.String))
 					} else {
-						panic(fmt.Sprintf("column duplicates %s", newField.Name))
+						// For all other columns: merge, preferring non-null values from the new field
+						outputCols[idx] = mergeColumns(outputCols[idx], arrCasted.Field(i))
+						outputFields[idx] = newField
 					}
 				} else {
 					outputCols = append(outputCols, arrCasted.Field(i))
@@ -215,6 +217,39 @@ func mergeErrors(a, b *array.String) *array.String {
 			}
 		} else {
 			builder.Append(aVal)
+		}
+	}
+
+	return builder.NewStringArray()
+}
+
+// mergeColumns merges two columns by preferring non-null values from the new column (b).
+// If b has a null value at index i, keep the value from a at that index.
+// If b has a non-null value at index i, use the value from b.
+func mergeColumns(a, b arrow.Array) arrow.Array {
+	// Only handle string arrays for now (which is what parsers produce)
+	aStr, aOk := a.(*array.String)
+	bStr, bOk := b.(*array.String)
+
+	if !aOk || !bOk {
+		// If not both strings, just return b (overwrite behavior)
+		return b
+	}
+
+	builder := array.NewStringBuilder(memory.DefaultAllocator)
+	builder.Reserve(aStr.Len())
+
+	for i := range aStr.Len() {
+		if bStr.IsNull(i) {
+			// New value is null, keep old value
+			if aStr.IsNull(i) {
+				builder.AppendNull()
+			} else {
+				builder.Append(aStr.Value(i))
+			}
+		} else {
+			// New value is not null, use it
+			builder.Append(bStr.Value(i))
 		}
 	}
 
