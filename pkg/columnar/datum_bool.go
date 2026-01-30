@@ -28,16 +28,16 @@ type Bool struct {
 
 var _ Array = (*Bool)(nil)
 
-// MakeBool creates a new Bool array from the given values and optional validity
+// NewBool creates a new Bool array from the given values and optional validity
 // bitmap.
 //
 // Bool arrays made from memory owned by a [memory.Allocator] are invalidated
 // when the allocator reclaims memory.
 //
 // If validity is of length zero, all elements are considered valid. Otherwise,
-// MakeBool panics if the number of elements does not match the length of
+// NewBool panics if the number of elements does not match the length of
 // validity.
-func MakeBool(values, validity memory.Bitmap) *Bool {
+func NewBool(values, validity memory.Bitmap) *Bool {
 	arr := &Bool{
 		validity: validity,
 		values:   values,
@@ -90,6 +90,15 @@ func (arr *Bool) Validity() memory.Bitmap { return arr.validity }
 // Kind returns the kind of Array being represented.
 func (arr *Bool) Kind() Kind { return KindBool }
 
+// Size returns the size in bytes of arr's buffers.
+func (arr *Bool) Size() int {
+	var (
+		validitySize = arr.validity.Len() / 8
+		valuesSize   = arr.values.Len() / 8
+	)
+	return validitySize + valuesSize
+}
+
 func (arr *Bool) isDatum() {}
 func (arr *Bool) isArray() {}
 
@@ -108,8 +117,8 @@ var _ Builder = (*BoolBuilder)(nil)
 func NewBoolBuilder(alloc *memory.Allocator) *BoolBuilder {
 	return &BoolBuilder{
 		alloc:    alloc,
-		validity: memory.MakeBitmap(alloc, 0),
-		values:   memory.MakeBitmap(alloc, 0),
+		validity: memory.NewBitmap(alloc, 0),
+		values:   memory.NewBitmap(alloc, 0),
 	}
 }
 
@@ -183,8 +192,8 @@ func (b *BoolBuilder) BuildArray() Array { return b.Build() }
 func (b *BoolBuilder) Build() *Bool {
 	// Move the original bitmaps to the constructed array, then reset the
 	// builder's bitmaps since they've been moved.
-	arr := MakeBool(b.values, b.validity)
-	b.validity = memory.MakeBitmap(b.alloc, 0)
-	b.values = memory.MakeBitmap(b.alloc, 0)
+	arr := NewBool(b.values, b.validity)
+	b.validity = memory.NewBitmap(b.alloc, 0)
+	b.values = memory.NewBitmap(b.alloc, 0)
 	return arr
 }

@@ -366,6 +366,7 @@ func (w *recordEncoder) shouldCompress(uncompressed, compressed int) bool {
 func (w *recordEncoder) reset() {
 	w.start = 0
 	w.fields = make([]fieldMetadata, 0)
+	w.variadicCounts = nil
 }
 
 func (w *recordEncoder) getCompressor(id int) compressor {

@@ -25,7 +25,7 @@ func GetByte(buf []byte) byte {
 
 // GetBool decodes a little-endian bool from a byte slice.
 func GetBool(buf []byte) bool {
-	return buf[0] == 1
+	return buf[0] != 0
 }
 
 // GetUint8 decodes a little-endian uint8 from a byte slice.

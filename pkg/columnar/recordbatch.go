@@ -11,24 +11,24 @@ type RecordBatch struct {
 
 // NewRecordBatch returns a new RecordBatch created from the provided arrays.
 // nrows specifies the total number of rows in the batch.
-func NewRecordBatch(nrows int64, arrs []Array) RecordBatch {
-	return RecordBatch{
+func NewRecordBatch(nrows int64, arrs []Array) *RecordBatch {
+	return &RecordBatch{
 		nrows: nrows,
 		arrs:  arrs,
 	}
 }
 
 // NumRows returns the number of rows in the batch.
-func (rb RecordBatch) NumRows() int64 {
+func (rb *RecordBatch) NumRows() int64 {
 	return rb.nrows
 }
 
 // NumCols returns the number of columns in the batch.
-func (rb RecordBatch) NumCols() int64 {
+func (rb *RecordBatch) NumCols() int64 {
 	return int64(len(rb.arrs))
 }
 
 // Column returns the column array at index i.
-func (rb RecordBatch) Column(i int64) Array {
+func (rb *RecordBatch) Column(i int64) Array {
 	return rb.arrs[i]
 }

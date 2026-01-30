@@ -3,146 +3,88 @@ package consumer
 import (
 	"time"
 
-	"go.uber.org/atomic"
-
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
-// Flush reason constants
-const (
-	FlushReasonMaxAge      = "max_age"
-	FlushReasonBuilderFull = "builder_full"
-	FlushReasonIdle        = "idle"
-)
-
-type partitionOffsetMetrics struct {
-	currentOffset prometheus.GaugeFunc
-	lastOffset    atomic.Int64
-
-	// Error counters
+type metrics struct {
+	lastOffset     prometheus.Gauge
+	consumptionLag prometheus.Gauge
+	receivedBytes  prometheus.Counter
+	discardedBytes prometheus.Counter
+	records        prometheus.Counter
+	recordFailures prometheus.Counter
+	commits        prometheus.Counter
 	commitFailures prometheus.Counter
-	appendFailures prometheus.Counter
-	flushesTotal   *prometheus.CounterVec
-	flushFailures  prometheus.Counter
 
-	// Request counters
-	commitsTotal prometheus.Counter
-
-	latestDelay      prometheus.Gauge // Latest delta between record timestamp and current time
-	processedRecords prometheus.Counter
+	// Deprecated, will be removed in two weeklies.
+	latestDelay      prometheus.Gauge
+	currentOffset    prometheus.Gauge
 	processedBytes   prometheus.Counter
-
-	flushDuration prometheus.Histogram
+	processedRecords prometheus.Counter
 }
 
-func newPartitionOffsetMetrics() *partitionOffsetMetrics {
-	p := &partitionOffsetMetrics{
-		appendFailures: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "loki_dataobj_consumer_append_failures_total",
-			Help: "Total number of append failures",
+func newMetrics(r prometheus.Registerer) *metrics {
+	return &metrics{
+		lastOffset: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Name: "loki_dataobj_consumer_last_offset",
+			Help: "The last consumed offset.",
 		}),
-		latestDelay: prometheus.NewGauge(prometheus.GaugeOpts{
+		consumptionLag: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Name: "loki_dataobj_consumer_consumption_lag_seconds",
+			Help: "The time difference between the last consumed offset and the current time in seconds.",
+		}),
+		receivedBytes: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "loki_dataobj_consumer_received_bytes_total",
+			Help: "The sum of bytes in all Kafka records.",
+		}),
+		discardedBytes: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "loki_dataobj_consumer_discarded_bytes_total",
+			Help: "The sum of discarded bytes from corrupted or unprocessable Kafka records.",
+		}),
+		records: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "loki_dataobj_consumer_records_total",
+			Help: "Total number of records received.",
+		}),
+		recordFailures: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "loki_dataobj_consumer_record_failures_total",
+			Help: "Total number of records that failed to be processed.",
+		}),
+		commits: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "loki_dataobj_consumer_commits_total",
+			Help: "Total number of commits",
+		}),
+		commitFailures: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "loki_dataobj_consumer_commit_failures_total",
+			Help: "Total number of commit failures",
+		}),
+		// TODO(grobinson): Remove after two minor releases.
+		latestDelay: promauto.With(r).NewGauge(prometheus.GaugeOpts{
 			Name: "loki_dataobj_consumer_latest_processing_delay_seconds",
 			Help: "Latest time difference bweteen record timestamp and processing time in seconds",
 		}),
-		processedRecords: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "loki_dataobj_consumer_processed_records_total",
-			Help: "Total number of records processed.",
-		}),
-		processedBytes: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "loki_dataobj_consumer_processed_bytes_total",
-			Help: "Total number of bytes processed.",
-		}),
-		flushDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Name: "loki_dataobj_consumer_flush_duration_seconds",
-			Help: "Time taken to flush a data object (build, sort, upload, etc).",
-
-			Buckets:                         prometheus.DefBuckets,
-			NativeHistogramBucketFactor:     1.1,
-			NativeHistogramMaxBucketNumber:  100,
-			NativeHistogramMinResetDuration: 0,
-		}),
-		flushesTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Name: "loki_dataobj_consumer_flushes_total",
-			Help: "Total number of data objects flushed.",
-		}, []string{"reason"}),
-		flushFailures: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "loki_dataobj_consumer_flush_failures_total",
-			Help: "Total number of flush failures.",
-		}),
-	}
-
-	p.currentOffset = prometheus.NewGaugeFunc(
-		prometheus.GaugeOpts{
+		currentOffset: promauto.With(r).NewGauge(prometheus.GaugeOpts{
 			Name: "loki_dataobj_consumer_current_offset",
-			Help: "The last consumed offset for this partition",
-		},
-		p.getCurrentOffset,
-	)
-
-	return p
-}
-
-func (p *partitionOffsetMetrics) getCurrentOffset() float64 {
-	return float64(p.lastOffset.Load())
-}
-
-func (p *partitionOffsetMetrics) register(reg prometheus.Registerer) error {
-	collectors := []prometheus.Collector{
-		p.appendFailures,
-		p.flushesTotal,
-		p.latestDelay,
-		p.processedRecords,
-		p.processedBytes,
-		p.currentOffset,
-		p.flushDuration,
-		p.flushFailures,
-	}
-
-	for _, collector := range collectors {
-		if err := reg.Register(collector); err != nil {
-			if _, ok := err.(prometheus.AlreadyRegisteredError); !ok {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-func (p *partitionOffsetMetrics) unregister(reg prometheus.Registerer) {
-	collectors := []prometheus.Collector{
-		p.appendFailures,
-		p.flushesTotal,
-		p.latestDelay,
-		p.processedRecords,
-		p.processedBytes,
-		p.currentOffset,
-		p.flushDuration,
-		p.flushFailures,
-	}
-
-	for _, collector := range collectors {
-		reg.Unregister(collector)
+			Help: "The last consumed offset.",
+		}),
+		processedBytes: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "loki_dataobj_consumer_processed_bytes_total",
+			Help: "The sum of bytes in all Kafka records.",
+		}),
+		processedRecords: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "loki_dataobj_consumer_processed_records_total",
+			Help: "The total number of Kafka records.",
+		}),
 	}
 }
 
-func (p *partitionOffsetMetrics) updateOffset(offset int64) {
-	p.lastOffset.Store(offset)
+func (m *metrics) setLastOffset(offset int64) {
+	m.lastOffset.Set(float64(offset))
+	m.currentOffset.Set(float64(offset))
 }
 
-func (p *partitionOffsetMetrics) incAppendFailures() {
-	p.appendFailures.Inc()
-}
-
-func (p *partitionOffsetMetrics) incFlushesTotal(reason string) {
-	p.flushesTotal.WithLabelValues(reason).Inc()
-}
-
-func (p *partitionOffsetMetrics) observeProcessingDelay(recordTimestamp time.Time) {
-	// Convert milliseconds to seconds and calculate delay
-	if !recordTimestamp.IsZero() { // Only observe if timestamp is valid
-		delay := time.Since(recordTimestamp).Seconds()
-
-		p.latestDelay.Set(delay)
-	}
+func (m *metrics) setConsumptionLag(d time.Duration) {
+	secs := float64(d.Seconds())
+	m.consumptionLag.Set(secs)
+	m.latestDelay.Set(secs)
 }
