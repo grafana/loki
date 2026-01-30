@@ -192,7 +192,7 @@ func BenchmarkToRecordBatch_binary(b *testing.B) {
 
 const benchmarkRows = 4096
 
-func benchmarkToRecordBatch(b *testing.B, src columnar.RecordBatch, schema *arrow.Schema) {
+func benchmarkToRecordBatch(b *testing.B, src *columnar.RecordBatch, schema *arrow.Schema) {
 	b.Helper()
 	b.ReportAllocs()
 
@@ -205,7 +205,7 @@ func benchmarkToRecordBatch(b *testing.B, src columnar.RecordBatch, schema *arro
 	}
 }
 
-func makeInt64BenchmarkBatch(b *testing.B, n int) (columnar.RecordBatch, *arrow.Schema) {
+func makeInt64BenchmarkBatch(b *testing.B, n int) (*columnar.RecordBatch, *arrow.Schema) {
 	b.Helper()
 	alloc := memory.NewAllocator(nil)
 	values := make([]int64, n)
@@ -221,7 +221,7 @@ func makeInt64BenchmarkBatch(b *testing.B, n int) (columnar.RecordBatch, *arrow.
 	return src, schema
 }
 
-func makeUint64BenchmarkBatch(b *testing.B, n int) (columnar.RecordBatch, *arrow.Schema) {
+func makeUint64BenchmarkBatch(b *testing.B, n int) (*columnar.RecordBatch, *arrow.Schema) {
 	b.Helper()
 	alloc := memory.NewAllocator(nil)
 	values := make([]uint64, n)
@@ -237,7 +237,7 @@ func makeUint64BenchmarkBatch(b *testing.B, n int) (columnar.RecordBatch, *arrow
 	return src, schema
 }
 
-func makeStringBenchmarkBatch(b *testing.B, n int) (columnar.RecordBatch, *arrow.Schema) {
+func makeStringBenchmarkBatch(b *testing.B, n int) (*columnar.RecordBatch, *arrow.Schema) {
 	b.Helper()
 	alloc := memory.NewAllocator(nil)
 	validity := makeValidity(alloc, n, 10)
@@ -265,7 +265,7 @@ func makeStringBenchmarkBatch(b *testing.B, n int) (columnar.RecordBatch, *arrow
 	return src, schema
 }
 
-func makeBinaryBenchmarkBatch(b *testing.B, n int) (columnar.RecordBatch, *arrow.Schema) {
+func makeBinaryBenchmarkBatch(b *testing.B, n int) (*columnar.RecordBatch, *arrow.Schema) {
 	b.Helper()
 
 	batch, _ := makeStringBenchmarkBatch(b, n)
@@ -274,7 +274,7 @@ func makeBinaryBenchmarkBatch(b *testing.B, n int) (columnar.RecordBatch, *arrow
 	}, nil)
 }
 
-func makeTimestampBenchmarkBatch(b *testing.B, n int) (columnar.RecordBatch, *arrow.Schema) {
+func makeTimestampBenchmarkBatch(b *testing.B, n int) (*columnar.RecordBatch, *arrow.Schema) {
 	b.Helper()
 	alloc := memory.NewAllocator(nil)
 	values := make([]int64, n)

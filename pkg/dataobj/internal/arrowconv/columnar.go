@@ -12,7 +12,7 @@ import (
 
 // ToRecordBatch converts a columnar RecordBatch into an Arrow RecordBatch using
 // the provided schema for the output types.
-func ToRecordBatch(src columnar.RecordBatch, schema *arrow.Schema) (arrow.RecordBatch, error) {
+func ToRecordBatch(src *columnar.RecordBatch, schema *arrow.Schema) (arrow.RecordBatch, error) {
 	nrows := src.NumRows()
 	var arrs []arrow.Array
 
