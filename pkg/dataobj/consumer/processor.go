@@ -272,11 +272,11 @@ func (p *processor) flush(ctx context.Context, reason string) error {
 	if err != nil {
 		return fmt.Errorf("failed to flush data object: %w", err)
 	}
-	if emitErr := p.metastoreEvents.Emit(ctx, objectPath, p.firstAppend); emitErr != nil {
+	if err := p.metastoreEvents.Emit(ctx, objectPath, p.firstAppend); err != nil {
 		return fmt.Errorf("failed to produce metastore event: %w", err)
 	}
-	if commitErr := p.commit(ctx, p.offset); commitErr != nil {
-		return fmt.Errorf("failed to commit data object: %w", commitErr)
+	if err := p.commit(ctx, p.offset); err != nil {
+		return fmt.Errorf("failed to commit data object: %w", err)
 	}
 	return nil
 }
