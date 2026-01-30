@@ -3,22 +3,19 @@ package consumer
 import (
 	"context"
 	"errors"
-	"strings"
 	"testing"
 	"testing/synctest"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 	"github.com/twmb/franz-go/pkg/kgo"
 
+	"github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/scratch"
-
-	"github.com/grafana/loki/pkg/push"
 )
 
 var (
@@ -38,12 +35,13 @@ var (
 func TestPartitionProcessor_BuilderMaxAge(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		var (
-			ctx     = t.Context()
-			reg     = prometheus.NewRegistry()
-			flusher = &mockFlusher{}
-			proc    *processor
+			ctx             = t.Context()
+			reg             = prometheus.NewRegistry()
+			flusher         = &mockFlusher{}
+			metastoreEvents = newMetastoreEvents(1, 10, &mockKafka{})
+			committer       = &mockCommitter{}
+			proc            = newProcessor(newTestBuilder(t, reg), nil, flusher, metastoreEvents, committer, 1, 5*time.Minute, 30*time.Minute, log.NewNopLogger(), reg)
 		)
-		proc = newProcessor(newTestBuilder(t, reg), 5*time.Minute, 30*time.Minute, "topic", 1, nil, flusher, log.NewNopLogger(), reg)
 
 		// Since no records have been pushed, the first append time should be zero,
 		// and no flush should have occurred.
@@ -81,25 +79,19 @@ func TestPartitionProcessor_BuilderMaxAge(t *testing.T) {
 		require.Equal(t, expectedLastFlushed, proc.firstAppend)
 		require.Equal(t, time.Now(), proc.lastAppend)
 		require.Equal(t, 1, flusher.flushes)
-
-		// Check the metrics.
-		require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
-	# HELP loki_dataobj_consumer_flushes_total Total number of data objects flushed.
-	# TYPE loki_dataobj_consumer_flushes_total counter
-	loki_dataobj_consumer_flushes_total{partition="1",reason="max_age",topic="topic"} 1
-	`), "loki_dataobj_consumer_flushes_total"))
 	})
 }
 
 func TestPartitionProcessor_IdleFlush(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		var (
-			ctx     = t.Context()
-			reg     = prometheus.NewRegistry()
-			flusher = &mockFlusher{}
-			proc    *processor
+			ctx             = t.Context()
+			reg             = prometheus.NewRegistry()
+			flusher         = &mockFlusher{}
+			metastoreEvents = newMetastoreEvents(1, 10, &mockKafka{})
+			committer       = &mockCommitter{}
+			proc            = newProcessor(newTestBuilder(t, reg), nil, flusher, metastoreEvents, committer, 1, 5*time.Minute, 30*time.Minute, log.NewNopLogger(), reg)
 		)
-		proc = newProcessor(newTestBuilder(t, reg), 5*time.Minute, 30*time.Minute, "topic", 1, nil, flusher, log.NewNopLogger(), reg)
 
 		// The idle flush timeout has not been exceeded, no flush should occur.
 		flushed, err := proc.idleFlush(ctx)
@@ -130,69 +122,96 @@ func TestPartitionProcessor_IdleFlush(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, flushed)
 		require.Equal(t, 1, flusher.flushes)
-
-		// Check the metrics.
-		require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
-	# HELP loki_dataobj_consumer_flushes_total Total number of data objects flushed.
-	# TYPE loki_dataobj_consumer_flushes_total counter
-	loki_dataobj_consumer_flushes_total{partition="1",reason="idle",topic="topic"} 1
-	`), "loki_dataobj_consumer_flushes_total"))
 	})
 }
 
 // failureFlusher is a special flusher that always fails.
 type failureFlusher struct{}
 
-func (f *failureFlusher) FlushAsync(_ context.Context, _ builder, _ time.Time, _ int64, done func(error)) {
-	done(errors.New("failed to flush"))
+func (f *failureFlusher) Flush(_ context.Context, _ builder, _ string) (string, error) {
+	return "", errors.New("failed to flush")
 }
 
 func TestPartitionProcessor_Flush(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		var (
-			ctx         = t.Context()
-			reg         = prometheus.NewRegistry()
-			mockFlusher = &mockFlusher{}
-			_           = &failureFlusher{}
-			proc        *processor
-		)
-		proc = newProcessor(newTestBuilder(t, reg), 5*time.Minute, 30*time.Minute, "topic", 1, nil, mockFlusher, log.NewNopLogger(), reg)
-		// No flush should have occurred.
-		require.Equal(t, 0, mockFlusher.flushes)
+	t.Run("should succeed", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			var (
+				ctx             = t.Context()
+				reg             = prometheus.NewRegistry()
+				flusher         = &mockFlusher{}
+				metastoreKafka  = &mockKafka{}
+				metastoreEvents = newMetastoreEvents(1, 10, metastoreKafka)
+				committer       = &mockCommitter{}
+				proc            = newProcessor(newTestBuilder(t, reg), nil, flusher, metastoreEvents, committer, 1, 5*time.Minute, 30*time.Minute, log.NewNopLogger(), reg)
+			)
 
-		// Process a record containing some log lines. No flush should occur.
-		rec1 := newTestRecord(t, "tenant", time.Now())
-		proc.processRecord(ctx, rec1)
-		require.Equal(t, time.Now(), proc.firstAppend)
-		require.Equal(t, time.Now(), proc.lastAppend)
-		require.Equal(t, rec1.Offset, proc.offset)
+			// No flush should have occurred.
+			require.Equal(t, 0, flusher.flushes)
 
-		// Advance time and force a flush.
-		time.Sleep(time.Second)
-		require.NoError(t, proc.flush(ctx))
-		require.Equal(t, 1, mockFlusher.flushes)
-		// The following fields should be reset at the end of every flush.
-		require.True(t, proc.firstAppend.IsZero())
-		require.True(t, proc.earliestRecordTime.IsZero())
-		require.True(t, proc.lastAppend.IsZero())
+			// Process a record containing some log lines. No flush should occur.
+			rec1 := newTestRecord(t, "tenant", time.Now())
+			proc.processRecord(ctx, rec1)
+			require.Equal(t, time.Now(), proc.firstAppend)
+			require.Equal(t, time.Now(), proc.lastAppend)
+			require.Equal(t, rec1.Offset, proc.offset)
 
-		// Process another record containing some log lines. No flush should occur.
-		proc.flusher = &failureFlusher{}
-		rec2 := newTestRecord(t, "tenant", time.Now())
-		proc.processRecord(ctx, rec2)
-		require.Equal(t, time.Now(), proc.firstAppend)
-		require.Equal(t, time.Now(), proc.lastAppend)
-		require.Equal(t, rec2.Offset, proc.offset)
+			// Advance time and force a flush.
+			time.Sleep(time.Second)
+			require.NoError(t, proc.flush(ctx, "test"))
+			require.Equal(t, 1, flusher.flushes)
 
-		// Advance time and force a flush. This flush should fail.
-		time.Sleep(time.Second)
-		require.EqualError(t, proc.flush(ctx), "failed to flush")
-		require.Equal(t, 1, mockFlusher.flushes)
-		// Despite the failure, the following fields should still be reset.
-		require.True(t, proc.firstAppend.IsZero())
-		require.True(t, proc.earliestRecordTime.IsZero())
-		require.True(t, proc.lastAppend.IsZero())
+			// A metastore event should have been emitted and offsets committed.
+			require.Len(t, metastoreKafka.produced, 1)
+			require.Len(t, committer.offsets, 1)
+
+			// The following fields should be reset at the end of every flush.
+			require.True(t, proc.firstAppend.IsZero())
+			require.True(t, proc.earliestRecordTime.IsZero())
+			require.True(t, proc.lastAppend.IsZero())
+		})
 	})
+
+	t.Run("should fail", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			var (
+				ctx             = t.Context()
+				reg             = prometheus.NewRegistry()
+				flusher         = &failureFlusher{}
+				metastoreKafka  = &mockKafka{}
+				metastoreEvents = newMetastoreEvents(1, 10, metastoreKafka)
+				committer       = &mockCommitter{}
+				proc            = newProcessor(newTestBuilder(t, reg), nil, flusher, metastoreEvents, committer, 1, 5*time.Minute, 30*time.Minute, log.NewNopLogger(), reg)
+			)
+
+			// Process a record containing some log lines. No flush should occur.
+			rec := newTestRecord(t, "tenant", time.Now())
+			proc.processRecord(ctx, rec)
+			require.Equal(t, time.Now(), proc.firstAppend)
+			require.Equal(t, time.Now(), proc.lastAppend)
+			require.Equal(t, rec.Offset, proc.offset)
+
+			// Advance time and force a flush. This flush should fail.
+			time.Sleep(time.Second)
+			require.EqualError(t, proc.flush(ctx, "forced"), "failed to flush data object: failed to flush")
+
+			// No metastore event should be emitted and no offsets committed.
+			require.Len(t, metastoreKafka.produced, 0)
+			require.Len(t, committer.offsets, 0)
+
+			// Despite the failure, the following fields should still be reset.
+			require.True(t, proc.firstAppend.IsZero())
+			require.True(t, proc.earliestRecordTime.IsZero())
+			require.True(t, proc.lastAppend.IsZero())
+		})
+	})
+}
+
+// newTestBuilder returns a new logsobj.Builder with registered metrics.
+func newTestBuilder(t *testing.T, reg prometheus.Registerer) *logsobj.Builder {
+	b, err := logsobj.NewBuilder(testBuilderCfg, scratch.NewMemory())
+	require.NoError(t, err)
+	require.NoError(t, b.RegisterMetrics(reg))
+	return b
 }
 
 // newTestRecord returns a new record containing the stream.
@@ -212,12 +231,4 @@ func newTestRecord(t *testing.T, tenant string, now time.Time) *kgo.Record {
 	rec.Value, err = stream.Marshal()
 	require.NoError(t, err)
 	return &rec
-}
-
-// newTestBuilder returns a new logsobj.Builder with registered metrics.
-func newTestBuilder(t *testing.T, reg prometheus.Registerer) *logsobj.Builder {
-	b, err := logsobj.NewBuilder(testBuilderCfg, scratch.NewMemory())
-	require.NoError(t, err)
-	require.NoError(t, b.RegisterMetrics(reg))
-	return b
 }
