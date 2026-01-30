@@ -1,6 +1,7 @@
 package logical
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -8,6 +9,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/deletion"
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -87,7 +90,7 @@ func TestConvertAST_Success(t *testing.T) {
 		direction: logproto.BACKWARD, // ASC is not supported
 		limit:     1000,
 	}
-	logicalPlan, err := BuildPlan(q)
+	logicalPlan, err := BuildPlan(context.Background(), q)
 	require.NoError(t, err)
 	t.Logf("\n%s\n", logicalPlan.String())
 
@@ -131,7 +134,7 @@ func TestConvertAST_MetricQuery_Success(t *testing.T) {
 			interval:  5 * time.Minute,
 		}
 
-		logicalPlan, err := BuildPlan(q)
+		logicalPlan, err := BuildPlan(context.Background(), q)
 		require.NoError(t, err)
 		t.Logf("\n%s\n", logicalPlan.String())
 
@@ -171,7 +174,7 @@ RETURN %17
 			interval:  5 * time.Minute,
 		}
 
-		logicalPlan, err := BuildPlan(q)
+		logicalPlan, err := BuildPlan(context.Background(), q)
 		require.NoError(t, err)
 		t.Logf("\n%s\n", logicalPlan.String())
 
@@ -210,7 +213,7 @@ RETURN %16
 			interval:  5 * time.Minute,
 		}
 
-		logicalPlan, err := BuildPlan(q)
+		logicalPlan, err := BuildPlan(context.Background(), q)
 		require.NoError(t, err)
 		t.Logf("\n%s\n", logicalPlan.String())
 
@@ -325,8 +328,8 @@ func TestCanExecuteQuery(t *testing.T) {
 			expected:  true,
 		},
 		{
-			// both vector and range aggregation are required
 			statement: `count_over_time({env="prod"}[1m])`,
+			expected:  true,
 		},
 		{
 			statement: `sum(count_over_time({env="prod"}[1m]))`,
@@ -334,6 +337,7 @@ func TestCanExecuteQuery(t *testing.T) {
 		},
 		{
 			statement: `max(avg_over_time({env="prod"} | unwrap size [1m]))`,
+			expected:  true,
 		},
 		{
 			statement: `sum by (level) (rate({env="prod"}[1m]))`,
@@ -341,6 +345,7 @@ func TestCanExecuteQuery(t *testing.T) {
 		},
 		{
 			statement: `avg by (level) (rate({env="prod"}[1m]))`,
+			expected:  true,
 		},
 		{
 			statement: `max by (level) (count_over_time({env="prod"}[1m]))`,
@@ -355,8 +360,8 @@ func TestCanExecuteQuery(t *testing.T) {
 			expected:  true,
 		},
 		{
-			// both vector and range aggregation are required
 			statement: `sum_over_time({env="prod"} | unwrap size [1m])`,
+			expected:  true,
 		},
 		{
 			statement: `sum(sum_over_time({env="prod"} | unwrap size [1m]))`,
@@ -371,8 +376,8 @@ func TestCanExecuteQuery(t *testing.T) {
 			statement: `sum by (level) (sum_over_time({env="prod"} | unwrap size [1m] offset 5m))`,
 		},
 		{
-			// both vector and range aggregation are required
 			statement: `max_over_time({env="prod"} | unwrap size [1m])`,
+			expected:  true,
 		},
 		{
 			statement: `sum(count_over_time({env="prod"} | logfmt | drop __error__ [1m]))`,
@@ -391,7 +396,7 @@ func TestCanExecuteQuery(t *testing.T) {
 				limit:     1000,
 			}
 
-			logicalPlan, err := BuildPlan(q)
+			logicalPlan, err := BuildPlan(context.Background(), q)
 			if tt.expected {
 				require.NoError(t, err)
 				t.Logf("\n%s\n", logicalPlan.String())
@@ -401,6 +406,79 @@ func TestCanExecuteQuery(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestConvertAST_WithDeletes(t *testing.T) {
+	t.Run("query with simple delete request - success", func(t *testing.T) {
+		q := &query{
+			statement: `{cluster="prod"} |= "error"`,
+			start:     3600,
+			end:       7200,
+			direction: logproto.BACKWARD,
+			limit:     1000,
+		}
+
+		deletes := []*deletion.Request{
+			{
+				Selector: `{job="test"}`,
+				Start:    4000 * 1e9, // 4000 seconds in nanoseconds
+				End:      5000 * 1e9, // 5000 seconds in nanoseconds
+			},
+		}
+
+		logicalPlan, err := BuildPlanWithDeletes(context.Background(), q, deletes)
+		require.NoError(t, err)
+
+		// Delete request is within query range (3600-7200), it should generate:
+		// ts < 4000 OR ts > 5000 OR NOT(job="test")
+		expected := `%1 = EQ label.cluster "prod"
+%2 = MATCH_STR builtin.message "error"
+%3 = MAKETABLE [selector=%1, predicates=[%2], shard=0_of_1]
+%4 = GTE builtin.timestamp 1970-01-01T01:00:00Z
+%5 = SELECT %3 [predicate=%4]
+%6 = LT builtin.timestamp 1970-01-01T02:00:00Z
+%7 = SELECT %5 [predicate=%6]
+%8 = SELECT %7 [predicate=%2]
+%9 = LT builtin.timestamp 1970-01-01T01:06:40Z
+%10 = GT builtin.timestamp 1970-01-01T01:23:20Z
+%11 = OR %9 %10
+%12 = EQ label.job "test"
+%13 = NOT(%12)
+%14 = OR %11 %13
+%15 = SELECT %8 [predicate=%14]
+%16 = TOPK %15 [sort_by=builtin.timestamp, k=1000, asc=false, nulls_first=false]
+%17 = LOGQL_COMPAT %16
+RETURN %17
+`
+
+		require.Equal(t, expected, logicalPlan.String())
+	})
+
+	t.Run("delete request containing parser should fail", func(t *testing.T) {
+		q := &query{
+			statement: `{cluster="prod"} |= "error"`,
+			start:     3600,
+			end:       7200,
+			direction: logproto.BACKWARD,
+			limit:     1000,
+		}
+
+		deletes := []*deletion.Request{
+			{
+				Selector: `{job="test"} | json`, // Parser is not supported in delete requests
+				Start:    4000 * 1e9,
+				End:      5000 * 1e9,
+			},
+		}
+
+		logicalPlan, err := BuildPlanWithDeletes(context.Background(), q, deletes)
+		require.Nil(t, logicalPlan)
+
+		require.Error(t, err)
+		require.ErrorIs(t, err, errUnimplemented)
+
+		require.ErrorContains(t, err, "delete request with unsupported stages")
+	})
 }
 
 func TestPlannerCreatesCastOperationForUnwrap(t *testing.T) {
@@ -413,7 +491,7 @@ func TestPlannerCreatesCastOperationForUnwrap(t *testing.T) {
 			interval:  5 * time.Minute,
 		}
 
-		plan, err := BuildPlan(q)
+		plan, err := BuildPlan(context.Background(), q)
 		require.NoError(t, err)
 		t.Logf("\n%s\n", plan.String())
 
@@ -451,7 +529,7 @@ func TestPlannerCreatesProjectionWithParseOperation(t *testing.T) {
 			interval:  5 * time.Minute,
 		}
 
-		plan, err := BuildPlan(q)
+		plan, err := BuildPlan(context.Background(), q)
 		require.NoError(t, err)
 		t.Logf("\n%s\n", plan.String())
 
@@ -488,7 +566,7 @@ RETURN %17
 			limit:     1000,
 		}
 
-		plan, err := BuildPlan(q)
+		plan, err := BuildPlan(context.Background(), q)
 		require.NoError(t, err)
 		t.Logf("\n%s\n", plan.String())
 
@@ -519,7 +597,7 @@ RETURN %12
 			interval:  5 * time.Minute,
 		}
 
-		plan, err := BuildPlan(q)
+		plan, err := BuildPlan(context.Background(), q)
 		require.NoError(t, err)
 
 		// Assert against the correct SSA representation
@@ -555,7 +633,7 @@ RETURN %17
 			limit:     1000,
 		}
 
-		plan, err := BuildPlan(q)
+		plan, err := BuildPlan(context.Background(), q)
 		require.NoError(t, err)
 
 		// Assert against the SSA representation for log query
@@ -585,7 +663,7 @@ RETURN %12
 			interval:  5 * time.Minute,
 		}
 
-		plan, err := BuildPlan(q)
+		plan, err := BuildPlan(context.Background(), q)
 		require.NoError(t, err)
 		t.Logf("\n%s\n", plan.String())
 
@@ -622,7 +700,7 @@ RETURN %17
 			limit:     1000,
 		}
 
-		plan, err := BuildPlan(q)
+		plan, err := BuildPlan(context.Background(), q)
 		require.NoError(t, err)
 		t.Logf("\n%s\n", plan.String())
 
@@ -666,7 +744,7 @@ RETURN %12
 				limit:     1000,
 			}
 
-			plan, err := BuildPlan(q)
+			plan, err := BuildPlan(context.Background(), q)
 			require.NoError(t, err)
 			t.Logf("\n%s\n", plan.String())
 
@@ -711,7 +789,7 @@ RETURN %16
 				interval:  5 * time.Minute,
 			}
 
-			plan, err := BuildPlan(q)
+			plan, err := BuildPlan(context.Background(), q)
 			require.NoError(t, err)
 			t.Logf("\n%s\n", plan.String())
 
@@ -757,7 +835,7 @@ func TestPlannerCreatesProjection(t *testing.T) {
 			direction: logproto.BACKWARD,
 		}
 
-		plan, err := BuildPlan(q)
+		plan, err := BuildPlan(context.Background(), q)
 		require.NoError(t, err)
 		t.Logf("\n%s\n", plan.String())
 
@@ -776,4 +854,265 @@ RETURN %9
 `
 		require.Equal(t, expected, plan.String())
 	})
+}
+
+func TestBuildDeletePredicates(t *testing.T) {
+	queryParams := &query{
+		start: 1000, // Unix timestamp
+		end:   2000,
+	}
+
+	// helper to create delete requests
+	createDeleteRequest := func(selector string, startSec, endSec int64) *deletion.Request {
+		return &deletion.Request{
+			Selector: selector,
+			Start:    startSec * 1e9, // Convert to nanoseconds
+			End:      endSec * 1e9,
+		}
+	}
+
+	tests := []struct {
+		name          string
+		deletes       []*deletion.Request
+		rangeInterval time.Duration
+		wantLen       int
+		expectedPlan  string // Expected SSA plan string
+	}{
+		{
+			name:          "simple selector",
+			deletes:       []*deletion.Request{createDeleteRequest(`{job="test"}`, 1200, 1800)},
+			rangeInterval: 0,
+			wantLen:       1,
+			expectedPlan: `%1 = EQ label.env "prod"
+%2 = MAKETABLE [selector=%1, predicates=[], shard=0_of_1]
+%3 = LT builtin.timestamp 1970-01-01T00:20:00Z
+%4 = GT builtin.timestamp 1970-01-01T00:30:00Z
+%5 = OR %3 %4
+%6 = EQ label.job "test"
+%7 = NOT(%6)
+%8 = OR %5 %7
+%9 = SELECT %2 [predicate=%8]
+RETURN %9
+`,
+		},
+		{
+			name: "selector with multiple matchers including regex",
+			deletes: []*deletion.Request{
+				createDeleteRequest(`{job="test", namespace=~"loki-.*", env!="dev"}`, 1200, 1800),
+			},
+			wantLen: 1,
+			expectedPlan: `%1 = EQ label.env "prod"
+%2 = MAKETABLE [selector=%1, predicates=[], shard=0_of_1]
+%3 = LT builtin.timestamp 1970-01-01T00:20:00Z
+%4 = GT builtin.timestamp 1970-01-01T00:30:00Z
+%5 = OR %3 %4
+%6 = EQ label.job "test"
+%7 = MATCH_RE label.namespace "loki-.*"
+%8 = AND %6 %7
+%9 = NEQ label.env "dev"
+%10 = AND %8 %9
+%11 = NOT(%10)
+%12 = OR %5 %11
+%13 = SELECT %2 [predicate=%12]
+RETURN %13
+`,
+		},
+		{
+			name: "delete request with line filter regex",
+			deletes: []*deletion.Request{
+				createDeleteRequest(`{job="test"} |~ "error.*"`, 1200, 1800),
+			},
+			wantLen: 1,
+			expectedPlan: `%1 = EQ label.env "prod"
+%2 = MAKETABLE [selector=%1, predicates=[], shard=0_of_1]
+%3 = LT builtin.timestamp 1970-01-01T00:20:00Z
+%4 = GT builtin.timestamp 1970-01-01T00:30:00Z
+%5 = OR %3 %4
+%6 = EQ label.job "test"
+%7 = NOT(%6)
+%8 = OR %5 %7
+%9 = MATCH_RE builtin.message "error.*"
+%10 = NOT(%9)
+%11 = OR %8 %10
+%12 = SELECT %2 [predicate=%11]
+RETURN %12
+`,
+		},
+		{
+			name: "simple selector with multiple filters",
+			deletes: []*deletion.Request{
+				createDeleteRequest(`{job="test"} |= "error" | level="error" | env="prod"`, 1200, 1800),
+			},
+			wantLen: 1,
+			expectedPlan: `%1 = EQ label.env "prod"
+%2 = MAKETABLE [selector=%1, predicates=[], shard=0_of_1]
+%3 = LT builtin.timestamp 1970-01-01T00:20:00Z
+%4 = GT builtin.timestamp 1970-01-01T00:30:00Z
+%5 = OR %3 %4
+%6 = EQ label.job "test"
+%7 = NOT(%6)
+%8 = OR %5 %7
+%9 = MATCH_STR builtin.message "error"
+%10 = EQ ambiguous.level "error"
+%11 = AND %9 %10
+%12 = EQ ambiguous.env "prod"
+%13 = AND %11 %12
+%14 = NOT(%13)
+%15 = OR %8 %14
+%16 = SELECT %2 [predicate=%15]
+RETURN %16
+`,
+		},
+		{
+			name: "multiple delete requests",
+			deletes: []*deletion.Request{
+				createDeleteRequest(`{job="test1"}`, 200, 800), // outside range - no predicate
+				createDeleteRequest(`{job="test1"}`, 1200, 1500),
+				createDeleteRequest(`{job="test2"} |= "error"`, 1500, 1800),
+				createDeleteRequest(`{job="test3"} | level="debug"`, 1300, 1700),
+			},
+			wantLen: 3,
+			expectedPlan: `%1 = EQ label.env "prod"
+%2 = MAKETABLE [selector=%1, predicates=[], shard=0_of_1]
+%3 = LT builtin.timestamp 1970-01-01T00:20:00Z
+%4 = GT builtin.timestamp 1970-01-01T00:25:00Z
+%5 = OR %3 %4
+%6 = EQ label.job "test1"
+%7 = NOT(%6)
+%8 = OR %5 %7
+%9 = SELECT %2 [predicate=%8]
+%10 = LT builtin.timestamp 1970-01-01T00:25:00Z
+%11 = GT builtin.timestamp 1970-01-01T00:30:00Z
+%12 = OR %10 %11
+%13 = EQ label.job "test2"
+%14 = NOT(%13)
+%15 = OR %12 %14
+%16 = MATCH_STR builtin.message "error"
+%17 = NOT(%16)
+%18 = OR %15 %17
+%19 = SELECT %9 [predicate=%18]
+%20 = LT builtin.timestamp 1970-01-01T00:21:40Z
+%21 = GT builtin.timestamp 1970-01-01T00:28:20Z
+%22 = OR %20 %21
+%23 = EQ label.job "test3"
+%24 = NOT(%23)
+%25 = OR %22 %24
+%26 = EQ ambiguous.level "debug"
+%27 = NOT(%26)
+%28 = OR %25 %27
+%29 = SELECT %19 [predicate=%28]
+RETURN %29
+`,
+		},
+		{
+			name: "multiple delete requests with time range optimizations",
+			deletes: []*deletion.Request{
+				createDeleteRequest(`{job="covers"}`, 500, 2500),  // Covers entire range - no time predicate
+				createDeleteRequest(`{job="before"}`, 500, 1500),  // Starts before - only end check
+				createDeleteRequest(`{job="after"}`, 1500, 2500),  // Ends after - only start check
+				createDeleteRequest(`{job="within"}`, 1200, 1800), // Within range - both checks
+			},
+			wantLen: 4,
+			expectedPlan: `%1 = EQ label.env "prod"
+%2 = MAKETABLE [selector=%1, predicates=[], shard=0_of_1]
+%3 = EQ label.job "covers"
+%4 = NOT(%3)
+%5 = SELECT %2 [predicate=%4]
+%6 = GT builtin.timestamp 1970-01-01T00:25:00Z
+%7 = EQ label.job "before"
+%8 = NOT(%7)
+%9 = OR %6 %8
+%10 = SELECT %5 [predicate=%9]
+%11 = LT builtin.timestamp 1970-01-01T00:25:00Z
+%12 = EQ label.job "after"
+%13 = NOT(%12)
+%14 = OR %11 %13
+%15 = SELECT %10 [predicate=%14]
+%16 = LT builtin.timestamp 1970-01-01T00:20:00Z
+%17 = GT builtin.timestamp 1970-01-01T00:30:00Z
+%18 = OR %16 %17
+%19 = EQ label.job "within"
+%20 = NOT(%19)
+%21 = OR %18 %20
+%22 = SELECT %15 [predicate=%21]
+RETURN %22
+`,
+		},
+		{
+			name:          "time range optimizations with non-zero range interval",
+			rangeInterval: 300 * time.Second, // 5 minutes - extends query start from 1000 to 700
+			deletes: []*deletion.Request{
+				createDeleteRequest(`{job="covers"}`, 500, 2500), // Covers entire range (700-2000) - no time predicate
+				createDeleteRequest(`{job="before"}`, 500, 1500), // Starts before qStart (700) - only end check
+				createDeleteRequest(`{job="after"}`, 1500, 2500), // Ends after qEnd (2000) - only start check
+				createDeleteRequest(`{job="within"}`, 800, 900),  // not skipped, this is within range
+			},
+			wantLen: 4,
+			expectedPlan: `%1 = EQ label.env "prod"
+%2 = MAKETABLE [selector=%1, predicates=[], shard=0_of_1]
+%3 = EQ label.job "covers"
+%4 = NOT(%3)
+%5 = SELECT %2 [predicate=%4]
+%6 = GT builtin.timestamp 1970-01-01T00:25:00Z
+%7 = EQ label.job "before"
+%8 = NOT(%7)
+%9 = OR %6 %8
+%10 = SELECT %5 [predicate=%9]
+%11 = LT builtin.timestamp 1970-01-01T00:25:00Z
+%12 = EQ label.job "after"
+%13 = NOT(%12)
+%14 = OR %11 %13
+%15 = SELECT %10 [predicate=%14]
+%16 = LT builtin.timestamp 1970-01-01T00:13:20Z
+%17 = GT builtin.timestamp 1970-01-01T00:15:00Z
+%18 = OR %16 %17
+%19 = EQ label.job "within"
+%20 = NOT(%19)
+%21 = OR %18 %20
+%22 = SELECT %15 [predicate=%21]
+RETURN %22
+`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			predicates, err := buildDeletePredicates(context.Background(), tt.deletes, queryParams, tt.rangeInterval)
+			require.NoError(t, err)
+			require.Len(t, predicates, tt.wantLen)
+
+			actualPlan := buildPlanFromPredicates(t, predicates, nil)
+			require.Equal(t, strings.TrimSpace(tt.expectedPlan), strings.TrimSpace(actualPlan))
+		})
+	}
+}
+
+// Helper to build a plan from predicates and return the SSA string
+func buildPlanFromPredicates(t *testing.T, predicates []Value, selector Value) string {
+	t.Helper()
+
+	// Use default selector if not provided
+	if selector == nil {
+		selector = &BinOp{
+			Left:  NewColumnRef("env", types.ColumnTypeLabel),
+			Right: NewLiteral("prod"),
+			Op:    types.BinaryOpEq,
+		}
+	}
+
+	makeTable := &MakeTable{
+		Selector: selector,
+		Shard:    noShard,
+	}
+
+	builder := NewBuilder(makeTable)
+	for _, p := range predicates {
+		builder = builder.Select(p)
+	}
+
+	plan, err := builder.ToPlan()
+	require.NoError(t, err, "predicates should be valid for plan construction")
+	require.NotNil(t, plan)
+
+	return plan.String()
 }

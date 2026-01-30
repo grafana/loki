@@ -14,7 +14,6 @@ import (
 	"github.com/oklog/ulid/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
@@ -67,8 +66,9 @@ type Workflow struct {
 	statsMut sync.Mutex
 	stats    stats.Result
 
-	captureMut sync.Mutex
-	capture    *xcap.Capture
+	captureMut   sync.Mutex
+	capture      *xcap.Capture
+	parentRegion *xcap.Region
 
 	tasksMut   sync.RWMutex
 	taskStates map[*Task]TaskState
@@ -170,6 +170,7 @@ func (wf *Workflow) Close() {
 // resources.
 func (wf *Workflow) Run(ctx context.Context) (pipeline executor.Pipeline, err error) {
 	wf.capture = xcap.CaptureFromContext(ctx)
+	wf.parentRegion = xcap.RegionFromContext(ctx)
 
 	wrapped := &wrappedPipeline{
 		inner: wf.resultsPipeline,
@@ -206,10 +207,8 @@ func (wf *Workflow) dispatchTasks(ctx context.Context, tasks []*Task) error {
 	// Start runner region once per workflow for capturing runner-level observations.
 	// Not calling defer region.End() here, as we want to allow observations to be recorded
 	// until the workflow is Closed.
-	ctx, region := xcap.StartRegion(ctx, "wf.runner",
-		xcap.WithRegionAttributes(
-			attribute.Int("tasks.total", len(tasks)),
-		))
+	ctx, region := xcap.StartRegion(ctx, "wf.runner")
+	region.Record(xcap.StatTaskCount.Observe(int64(len(tasks))))
 
 	groups := wf.admissionControl.groupByType(tasks)
 	for _, taskType := range []taskType{
@@ -434,6 +433,11 @@ func (wf *Workflow) mergeCapture(capture *xcap.Capture) {
 
 	if wf.capture == nil || capture == nil {
 		return
+	}
+
+	if wf.parentRegion != nil {
+		// Assign wf.parentRegion as the parent to all root regions of the task's capture.
+		capture.LinkParent(wf.parentRegion)
 	}
 
 	// Merge all regions from the task's capture into the workflow's capture.

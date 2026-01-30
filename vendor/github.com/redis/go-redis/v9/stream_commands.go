@@ -76,13 +76,13 @@ func (c cmdable) XAdd(ctx context.Context, a *XAddArgs) *StringCmd {
 		if a.Approx {
 			args = append(args, "maxlen", "~", a.MaxLen)
 		} else {
-			args = append(args, "maxlen", a.MaxLen)
+			args = append(args, "maxlen", "=", a.MaxLen)
 		}
 	case a.MinID != "":
 		if a.Approx {
 			args = append(args, "minid", "~", a.MinID)
 		} else {
-			args = append(args, "minid", a.MinID)
+			args = append(args, "minid", "=", a.MinID)
 		}
 	}
 	if a.Limit > 0 {
@@ -429,6 +429,8 @@ func (c cmdable) xTrim(
 	args = append(args, "xtrim", key, strategy)
 	if approx {
 		args = append(args, "~")
+	} else {
+		args = append(args, "=")
 	}
 	args = append(args, threshold)
 	if limit > 0 {
@@ -466,6 +468,8 @@ func (c cmdable) xTrimMode(
 	args = append(args, "xtrim", key, strategy)
 	if approx {
 		args = append(args, "~")
+	} else {
+		args = append(args, "=")
 	}
 	args = append(args, threshold)
 	if limit > 0 {

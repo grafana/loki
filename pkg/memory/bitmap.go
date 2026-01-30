@@ -70,6 +70,15 @@ func (bmap *Bitmap) AppendCount(value bool, count int) {
 	bmap.AppendCountUnsafe(value, count)
 }
 
+// AppendBitmap appends the contents of another bitmap into bmap.
+func (bmap *Bitmap) AppendBitmap(from Bitmap) {
+	if bmap.needGrow(from.Len()) {
+		bmap.Grow(from.Len())
+	}
+	bitutil.CopyBitmap(from.data, 0, from.len, bmap.data, bmap.len)
+	bmap.len += from.Len()
+}
+
 // AppendCountUnsafe appends value count times to bmap without checking for
 // capacity.
 func (bmap *Bitmap) AppendCountUnsafe(value bool, count int) {
@@ -169,6 +178,16 @@ func (bmap *Bitmap) Len() int { return bmap.len }
 
 // Cap returns how many values bmap can hold without needing a new allocation.
 func (bmap *Bitmap) Cap() int { return bmap.capValues() }
+
+// SetCount returns the number of bits set in the bitmap.
+func (bmap *Bitmap) SetCount() int {
+	return bitutil.CountSetBits(bmap.data, 0, bmap.len)
+}
+
+// ClearCount returns the number of bits unset in the bitmap.
+func (bmap *Bitmap) ClearCount() int {
+	return bmap.Len() - bmap.SetCount()
+}
 
 // Clone returns a copy of bmap. If bmap is associated with an allocator, the
 // returned bitmap uses the same allocator.

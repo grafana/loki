@@ -2139,11 +2139,30 @@ type mockTee struct {
 	tenant     string
 }
 
-func (mt *mockTee) Duplicate(_ context.Context, tenant string, streams []KeyedStream) {
+func (mt *mockTee) Duplicate(_ context.Context, tenant string, streams []KeyedStream, _ *PushTracker) {
 	mt.mu.Lock()
 	defer mt.mu.Unlock()
 	mt.duplicated = append(mt.duplicated, streams)
 	mt.tenant = tenant
+}
+
+func (mt *mockTee) Register(_ context.Context, _ string, _ []KeyedStream, _ *PushTracker) {
+}
+
+// mockFailingTee is a mock tee that always fails with an error.
+type mockFailingTee struct {
+	err error
+}
+
+func (mt *mockFailingTee) Duplicate(_ context.Context, _ string, streams []KeyedStream, pushTracker *PushTracker) {
+	// Report failure for each stream
+	for range streams {
+		pushTracker.doneWithResult(mt.err)
+	}
+}
+
+func (mt *mockFailingTee) Register(_ context.Context, _ string, streams []KeyedStream, pushTracker *PushTracker) {
+	pushTracker.streamsPending.Add(int32(len(streams)))
 }
 
 func TestDistributorTee(t *testing.T) {
@@ -2197,6 +2216,32 @@ func TestDistributorTee(t *testing.T) {
 
 		require.Equal(t, "test", tee.tenant)
 	}
+}
+
+func TestDistributorTeeFailure(t *testing.T) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	limits.RejectOldSamples = false
+	distributors, _ := prepare(t, 1, 3, limits, nil)
+
+	expectedErr := errors.New("tee failure")
+	tee := &mockFailingTee{err: expectedErr}
+	distributors[0].tee = tee
+
+	req := &logproto.PushRequest{
+		Streams: []logproto.Stream{
+			{
+				Labels: "{job=\"foo\"}",
+				Entries: []logproto.Entry{
+					{Timestamp: time.Unix(123456, 0), Line: "line 1"},
+				},
+			},
+		},
+	}
+
+	_, err := distributors[0].Push(ctx, req)
+	require.Error(t, err)
+	require.ErrorIs(t, err, expectedErr)
 }
 
 func TestDistributor_StructuredMetadataSanitization(t *testing.T) {
@@ -2647,6 +2692,67 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 
 				assert.Equal(t, test.expectedDiscardedSamples, discardedSamples, "DiscardedSamples should match expected value")
 				assert.Equal(t, test.expectedDiscardedBytes, discardedBytes, "DiscardedBytes should match expected value")
+			}
+		})
+	}
+}
+
+func TestConfig_Validate(t *testing.T) {
+	tests := []struct {
+		name                        string
+		cfg                         Config
+		expectedMaxDecompressedSize int64
+		expectedError               string
+	}{
+		{
+			name: "sets default maxDecompressedSize when zero and maxRecvMsgSize is set",
+			cfg: Config{
+				MaxRecvMsgSize:      100 << 20, // 100 MB
+				MaxDecompressedSize: 0,
+				KafkaEnabled:        false,
+				IngesterEnabled:     true,
+			},
+			expectedMaxDecompressedSize: 5000 << 20, // 5000 MB (50x)
+		},
+		{
+			name: "does not override explicit maxDecompressedSize",
+			cfg: Config{
+				MaxRecvMsgSize:      100 << 20, // 100 MB
+				MaxDecompressedSize: 500 << 20, // 500 MB
+				KafkaEnabled:        false,
+				IngesterEnabled:     true,
+			},
+			expectedMaxDecompressedSize: 500 << 20, // 500 MB (unchanged)
+		},
+		{
+			name: "does not set default when maxRecvMsgSize is zero",
+			cfg: Config{
+				MaxRecvMsgSize:      0,
+				MaxDecompressedSize: 0,
+				KafkaEnabled:        false,
+				IngesterEnabled:     true,
+			},
+			expectedMaxDecompressedSize: 0, // Should remain 0
+		},
+		{
+			name: "validates kafka and ingester enabled",
+			cfg: Config{
+				KafkaEnabled:    false,
+				IngesterEnabled: false,
+			},
+			expectedError: "at least one of kafka and ingestor writes must be enabled",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.cfg.Validate()
+			if tt.expectedError != "" {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.expectedError)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.expectedMaxDecompressedSize, tt.cfg.MaxDecompressedSize)
 			}
 		})
 	}

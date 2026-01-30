@@ -44,7 +44,7 @@ func TestFlusher_Flush(t *testing.T) {
 	}))
 	// Check that the dataobj was flushed and uploaded.
 	require.Len(t, testUploader.uploaded, 1)
-	// Check that the correct offset was comitted.
+	// Check that the correct offset was committed.
 	require.Len(t, testCommitter.offsets, 1)
 	require.Equal(t, int64(1), testCommitter.offsets[0])
 	// Check that a metastore event was produced.

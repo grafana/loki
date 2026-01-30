@@ -36,17 +36,17 @@ type uploader interface {
 // A flushJob contains all information needed to flush a data object builder.
 type flushJob struct {
 	builder
-	// startTime is the time of the oldest log line.
+	// startTime is the time of the oldest log line appended to the builder.
 	startTime time.Time
-	// offset contains the offset to commit on success. Typically, it is the
-	// offset of the last record appended to the data object builder.
+	// offset contains the offset to commit. It should be the offset of the
+	// last record appended to the builder.
 	offset int64
 	// done is called when the job has finished. If err is non-nil then the
 	// job failed.
 	done func(error)
 }
 
-// A flusherImpl is responsible for flushing of data object builders to data
+// A flusherImpl is responsible for flushing data object builders to data
 // objects.
 type flusherImpl struct {
 	*services.BasicService
@@ -106,7 +106,7 @@ func (f *flusherImpl) running(ctx context.Context) error {
 	return f.Run(ctx)
 }
 
-// running implements [services.StoppingFn].
+// stopping implements [services.StoppingFn].
 func (f *flusherImpl) stopping(_ error) error {
 	return nil
 }
@@ -133,7 +133,9 @@ func (f *flusherImpl) Run(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			// We don't return ctx.Err() here as it manifests as a service failure
+			// when shutting down.
+			return nil
 		case job := <-f.jobs:
 			job.done(f.jobFunc(ctx, job))
 		}
@@ -155,7 +157,7 @@ func (f *flusherImpl) doJob(ctx context.Context, job flushJob) error {
 // flush builds a complete data object from the builder, uploads it, records
 // it in the metastore, and emits an object written event to the events topic.
 func (f *flusherImpl) flush(ctx context.Context, job flushJob) error {
-	obj, closer, err := job.builder.Flush()
+	obj, closer, err := job.Flush()
 	if err != nil {
 		return fmt.Errorf("failed to flush data object builder: %w", err)
 	}

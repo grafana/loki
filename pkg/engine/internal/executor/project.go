@@ -7,6 +7,7 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/apache/arrow-go/v18/arrow/memory"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
@@ -84,6 +85,8 @@ func NewProjectPipeline(input Pipeline, proj *physical.Projection, evaluator *ex
 }
 
 func newKeepPipeline(colRefs []types.ColumnRef, keepFunc func([]types.ColumnRef, *semconv.Identifier) bool, input Pipeline, region *xcap.Region) (*GenericPipeline, error) {
+	identCache := semconv.NewIdentifierCache()
+
 	return newGenericPipelineWithRegion(func(ctx context.Context, inputs []Pipeline) (arrow.RecordBatch, error) {
 		if len(inputs) != 1 {
 			return nil, fmt.Errorf("expected 1 input, got %d", len(inputs))
@@ -94,11 +97,16 @@ func newKeepPipeline(colRefs []types.ColumnRef, keepFunc func([]types.ColumnRef,
 			return nil, err
 		}
 
+		if batch.NumRows() == 0 {
+			// Nothing to process, return an empty record with the same schema
+			return batch, nil
+		}
+
 		columns := make([]arrow.Array, 0, batch.NumCols())
 		fields := make([]arrow.Field, 0, batch.NumCols())
 
 		for i, field := range batch.Schema().Fields() {
-			ident, err := semconv.ParseFQN(field.Name)
+			ident, err := identCache.ParseFQN(field.Name)
 			if err != nil {
 				return nil, err
 			}
@@ -115,6 +123,8 @@ func newKeepPipeline(colRefs []types.ColumnRef, keepFunc func([]types.ColumnRef,
 }
 
 func newExpandPipeline(expr physical.Expression, evaluator *expressionEvaluator, input Pipeline, region *xcap.Region) (*GenericPipeline, error) {
+	identCache := semconv.NewIdentifierCache()
+
 	return newGenericPipelineWithRegion(func(ctx context.Context, inputs []Pipeline) (arrow.RecordBatch, error) {
 		if len(inputs) != 1 {
 			return nil, fmt.Errorf("expected 1 input, got %d", len(inputs))
@@ -125,13 +135,18 @@ func newExpandPipeline(expr physical.Expression, evaluator *expressionEvaluator,
 			return nil, err
 		}
 
+		if batch.NumRows() == 0 {
+			// Nothing to process, return an empty record with the same schema
+			return batch, nil
+		}
+
 		outputFields := make([]arrow.Field, 0)
 		outputCols := make([]arrow.Array, 0)
 		schema := batch.Schema()
 
 		// move all columns into the output except `value`
 		for i, field := range batch.Schema().Fields() {
-			ident, err := semconv.ParseFQN(schema.Field(i).Name)
+			ident, err := identCache.ParseFQN(schema.Field(i).Name)
 			if err != nil {
 				return nil, err
 			}
@@ -157,8 +172,19 @@ func newExpandPipeline(expr physical.Expression, evaluator *expressionEvaluator,
 				return nil, fmt.Errorf("unexpected type returned from evaluation, expected *arrow.StructType, got %T", arrCasted.DataType())
 			}
 			for i := range arrCasted.NumField() {
-				outputCols = append(outputCols, arrCasted.Field(i))
-				outputFields = append(outputFields, structSchema.Field(i))
+				newField := structSchema.Field(i)
+				if idx := slices.IndexFunc(outputFields, func(f arrow.Field) bool {
+					return f.Name == newField.Name
+				}); idx != -1 {
+					if newField.Name == semconv.ColumnIdentError.FQN() || newField.Name == semconv.ColumnIdentErrorDetails.FQN() {
+						outputCols[idx] = mergeErrors(outputCols[idx].(*array.String), arrCasted.Field(i).(*array.String))
+					} else {
+						panic(fmt.Sprintf("column duplicates %s", newField.Name))
+					}
+				} else {
+					outputCols = append(outputCols, arrCasted.Field(i))
+					outputFields = append(outputFields, newField)
+				}
 			}
 		case *array.Float64:
 			outputFields = append(outputFields, semconv.FieldFromIdent(semconv.ColumnIdentValue, false))
@@ -171,4 +197,26 @@ func newExpandPipeline(expr physical.Expression, evaluator *expressionEvaluator,
 		outputSchema := arrow.NewSchema(outputFields, &metadata)
 		return array.NewRecordBatch(outputSchema, outputCols, batch.NumRows()), nil
 	}, region, input), nil
+}
+
+// mergeErrors merges string columns into a semicolon separated list of values.
+func mergeErrors(a, b *array.String) *array.String {
+	builder := array.NewStringBuilder(memory.DefaultAllocator)
+	builder.Reserve(a.Len())
+
+	for i := range a.Len() {
+		aVal := a.Value(i)
+		bVal := b.Value(i)
+		if bVal != "" {
+			if aVal != "" {
+				builder.Append(fmt.Sprintf("%s; %s", aVal, bVal))
+			} else {
+				builder.Append(bVal)
+			}
+		} else {
+			builder.Append(aVal)
+		}
+	}
+
+	return builder.NewStringArray()
 }

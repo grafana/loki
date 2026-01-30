@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"io/ioutil"
 
 	"github.com/pierrec/lz4/v4/internal/lz4block"
 	"github.com/pierrec/lz4/v4/internal/lz4errors"
@@ -96,7 +95,7 @@ newFrame:
 		if err != nil {
 			return err
 		}
-		if _, err := io.CopyN(ioutil.Discard, src, int64(skip)); err != nil {
+		if _, err := io.CopyN(io.Discard, src, int64(skip)); err != nil {
 			return err
 		}
 		goto newFrame

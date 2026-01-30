@@ -1009,6 +1009,62 @@ func (m *Reader) ReadBytes(scratch []byte) (b []byte, err error) {
 	return
 }
 
+// ReadBytesLimit reads a MessagePack 'bin' object
+// from the reader and returns its value. It may
+// use 'scratch' for storage if it is non-nil.
+// If n >= 0 this will be the maximum bytes read.
+// If n < 0, the cap(scratch) will be the limit.
+// If SetMaxElements has been used on the Reader,
+// that will only be checked if the scratch is too small.
+func (m *Reader) ReadBytesLimit(scratch []byte, n int64) (b []byte, err error) {
+	var p []byte
+	var lead byte
+	p, err = m.R.Peek(2)
+	if err != nil {
+		return
+	}
+	lead = p[0]
+	var read int64
+	switch lead {
+	case mbin8:
+		read = int64(p[1])
+		m.R.Skip(2)
+	case mbin16:
+		p, err = m.R.Next(3)
+		if err != nil {
+			return
+		}
+		read = int64(big.Uint16(p[1:]))
+	case mbin32:
+		p, err = m.R.Next(5)
+		if err != nil {
+			return
+		}
+		read = int64(big.Uint32(p[1:]))
+	default:
+		err = badPrefix(BinType, lead)
+		return
+	}
+	if n < 0 {
+		n = int64(cap(scratch))
+	}
+	if read > n {
+		err = ErrLimitExceeded
+		return
+	}
+	if int64(cap(scratch)) < read {
+		b = make([]byte, read)
+		if read > int64(m.GetMaxElements()) {
+			err = ErrLimitExceeded
+			return
+		}
+	} else {
+		b = scratch[0:read]
+	}
+	_, err = m.R.ReadFull(b)
+	return
+}
+
 // ReadBytesHeader reads the size header
 // of a MessagePack 'bin' object. The user
 // is responsible for dealing with the next
