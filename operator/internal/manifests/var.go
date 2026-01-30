@@ -59,12 +59,18 @@ const (
 	EnvRelatedImageLoki = "RELATED_IMAGE_LOKI"
 	// EnvRelatedImageGateway is the environment variable to fetch the Gateway image pullspec.
 	EnvRelatedImageGateway = "RELATED_IMAGE_GATEWAY"
+	// EnvRelatedImagePassthroughGateway is the environment variable to fetch the Passthrough Gateway image pullspec.
+	EnvRelatedImagePassthroughGateway = "RELATED_IMAGE_PASSTHROUGH_GATEWAY"
 
 	// DefaultContainerImage declares the default fallback for loki image.
 	DefaultContainerImage = "docker.io/grafana/loki:3.5.5"
 
 	// DefaultLokiStackGatewayImage declares the default image for lokiStack-gateway.
 	DefaultLokiStackGatewayImage = "quay.io/observatorium/api:latest"
+
+	// DefaultPassthroughGatewayImage declares the default image for passthrough gateway.
+	// TODO(JoaoBraveCoding) Update to openshift-logging image
+	DefaultPassthroughGatewayImage = "quay.io/jmarcal/passthrough-gateway:latest"
 
 	// PrometheusCAFile declares the path for prometheus CA file for service monitors.
 	PrometheusCAFile string = "/etc/prometheus/configmaps/serving-certs-ca-bundle/service-ca.crt"

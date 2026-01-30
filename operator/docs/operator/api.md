@@ -1797,6 +1797,9 @@ PodStatusMap
 </tr><tr><td><p>&#34;InvalidObjectStorageSecret&#34;</p></td>
 <td><p>ReasonInvalidObjectStorageSecret when the format of the secret is invalid.</p>
 </td>
+</tr><tr><td><p>&#34;InvalidPassthroughConfiguration&#34;</p></td>
+<td><p>ReasonInvalidPassthroughConfiguration when the passthrough configuration is invalid.</p>
+</td>
 </tr><tr><td><p>&#34;InvalidReplicationConfiguration&#34;</p></td>
 <td><p>ReasonInvalidReplicationConfiguration when the configurated replication factor is not valid
 with the select cluster size.</p>
@@ -2542,6 +2545,9 @@ for the memberlist.</p>
 </tr><tr><td><p>&#34;openshift-network&#34;</p></td>
 <td><p>OpenshiftNetwork mode provides fully automatic OpenShift in-cluster authentication and authorization support for network logs only.</p>
 </td>
+</tr><tr><td><p>&#34;passthrough&#34;</p></td>
+<td><p>Passthrough mode uses a gateway that validates clients using mTLS and passes through the X-Scope-OrgID tenancy header.</p>
+</td>
 </tr><tr><td><p>&#34;static&#34;</p></td>
 <td><p>Static mode asserts the Authorization Spec&rsquo;s Roles and RoleBindings
 using an in-process OpenPolicyAgent Rego authorizer.</p>
@@ -3276,6 +3282,53 @@ OpenshiftOTLPConfig
 <td>
 <em>(Optional)</em>
 <p>OTLP contains settings for ingesting data using OTLP in the OpenShift tenancy mode.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## PassthroughTenantSpec { #loki-grafana-com-v1-PassthroughTenantSpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-TenantsSpec">TenantsSpec</a>)
+</p>
+<div>
+<p>PassthroughTenantSpec defines the configuration specific to Passthrough mode.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>ca</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-ValueReference">
+ValueReference
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>CA can be used to specify a custom list of trusted certificate authorities.
+That will be used to validate the certificates of the clients that interact
+with the gateway</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>defaultTenant</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>DefaultTenant defines the default tenant ID to use when X-Scope-OrgID header is not set.
+If not set, requests without X-Scope-OrgID are rejected.</p>
 </td>
 </tr>
 </tbody>
@@ -4961,6 +5014,20 @@ OpenshiftTenantSpec
 </tr>
 <tr>
 <td>
+<code>passthrough</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-PassthroughTenantSpec">
+PassthroughTenantSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Passthrough defines the configuration specific to Passthrough mode.</p>
+</td>
+</tr>
+<tr>
+<td>
 <code>disableIngress</code><br/>
 <em>
 bool
@@ -4970,6 +5037,57 @@ bool
 <em>(Optional)</em>
 <p>DisableIngress disables automatic creation of external access resources (Route / Ingress).
 When true, no Route or Ingress will be created for the gateway.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## ValueReference { #loki-grafana-com-v1-ValueReference }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-PassthroughTenantSpec">PassthroughTenantSpec</a>)
+</p>
+<div>
+<p>ValueReference encodes a reference to a single field in either a ConfigMap or Secret in the same namespace.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>key</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<p>Name of the key used to get the value in either the referenced ConfigMap or Secret.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>configMapName</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<p>ConfigMapName contains the name of the ConfigMap containing the referenced value.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>secretName</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<p>SecretName contains the name of the Secret containing the referenced value.</p>
 </td>
 </tr>
 </tbody>

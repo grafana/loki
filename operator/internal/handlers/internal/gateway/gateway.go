@@ -65,6 +65,10 @@ func BuildOptions(ctx context.Context, log logr.Logger, k k8s.Client, stack *lok
 
 			stack.Spec.Proxy = ocpProxy
 		}
+	case lokiv1.Passthrough:
+		if degradedErr := validatePassthroughCA(fg.HTTPEncryption, stack); degradedErr != nil {
+			return "", tenants, degradedErr
+		}
 	default:
 		secrets, err = getTenantSecrets(ctx, k, stack)
 		if err != nil {
@@ -84,4 +88,24 @@ func BuildOptions(ctx context.Context, log logr.Logger, k k8s.Client, stack *lok
 	}
 
 	return baseDomain, tenants, nil
+}
+
+func validatePassthroughCA(httpEncryption bool, stack *lokiv1.LokiStack) *status.DegradedError {
+	if !httpEncryption {
+		// TODO(JoaoBraveCoding): Discuss with @xperimental if this makes sense or if we should always require
+		// mTLS with the client
+		return nil // If HTTP encryption is not enabled, we do not require clients to provide a certificate
+	}
+
+	if stack.Spec.Tenants.Passthrough == nil || stack.Spec.Tenants.Passthrough.CA == nil {
+		return &status.DegradedError{
+			Message: "Invalid passthrough configuration: missing CA configuration",
+			Reason:  lokiv1.ReasonInvalidPassthroughConfiguration,
+			Requeue: false,
+		}
+	}
+
+	// TODO(JoaoBraveCoding): Once we merge https://github.com/grafana/loki/pull/20325 we should rebase
+	// and add a call to validateConfigRef to validate that the CA actually exists in the cluster
+	return nil // CEL rules on ValueReference handle the rest
 }
