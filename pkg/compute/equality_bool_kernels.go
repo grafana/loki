@@ -23,26 +23,22 @@ type boolEqualKernelImpl struct{}
 func (boolEqualKernelImpl) DoSS(left, right bool) bool { return left == right }
 
 func (boolEqualKernelImpl) DoSA(out *memory.Bitmap, left bool, right memory.Bitmap) {
-	// For safety, make sure the length is set to 0 so we can call append
-	// functions.
-	out.Resize(0)
+	out.Resize(right.Len())
 
 	// TODO(rfratto): This would be way faster by doing an xnor over the words,
 	// and projecting left to the word size.
 	for i := range right.Len() {
-		out.Append(right.Get(i) == left)
+		out.Set(i, right.Get(i) == left)
 	}
 }
 
 func (boolEqualKernelImpl) DoAS(out *memory.Bitmap, left memory.Bitmap, right bool) {
-	// For safety, make sure the length is set to 0 so we can call append
-	// functions.
-	out.Resize(0)
+	out.Resize(left.Len())
 
 	// TODO(rfratto): This would be way faster by doing an xnor over the words,
 	// and projecting right to the word size.
 	for i := range left.Len() {
-		out.Append(left.Get(i) == right)
+		out.Set(i, left.Get(i) == right)
 	}
 }
 
@@ -68,26 +64,22 @@ type boolNotEqualKernelImpl struct{}
 func (boolNotEqualKernelImpl) DoSS(left, right bool) bool { return left != right }
 
 func (boolNotEqualKernelImpl) DoSA(out *memory.Bitmap, left bool, right memory.Bitmap) {
-	// For safety, make sure the length is set to 0 so we can call append
-	// functions.
-	out.Resize(0)
+	out.Resize(right.Len())
 
 	// TODO(rfratto): This would be way faster by doing an xor over the words,
 	// and projecting left to the word size.
 	for i := range right.Len() {
-		out.Append(right.Get(i) != left)
+		out.Set(i, right.Get(i) != left)
 	}
 }
 
 func (boolNotEqualKernelImpl) DoAS(out *memory.Bitmap, left memory.Bitmap, right bool) {
-	// For safety, make sure the length is set to 0 so we can call append
-	// functions.
-	out.Resize(0)
+	out.Resize(left.Len())
 
 	// TODO(rfratto): This would be way faster by doing an xor over the words,
 	// and projecting right to the word size.
 	for i := range left.Len() {
-		out.Append(left.Get(i) != right)
+		out.Set(i, left.Get(i) != right)
 	}
 }
 
