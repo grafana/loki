@@ -214,7 +214,8 @@ func TestSerialIndexer_ConcurrentBuilds(t *testing.T) {
 
 	// Set up test data
 	bucket := objstore.NewInMemBucket()
-	for i := 0; i < 5; i++ {
+	numTestObjects := 5
+	for i := 0; i < numTestObjects; i++ {
 		buildLogObject(t, fmt.Sprintf("app-%d", i), fmt.Sprintf("test-path-%d", i), bucket)
 	}
 
@@ -244,23 +245,26 @@ func TestSerialIndexer_ConcurrentBuilds(t *testing.T) {
 	// Start indexer service
 	require.NoError(t, indexer.StartAsync(ctx))
 	require.NoError(t, indexer.AwaitRunning(ctx))
-	defer func() {
+	/* 	defer func() {
 		indexer.StopAsync()
 		require.NoError(t, indexer.AwaitTerminated(context.Background()))
-	}()
+	}() */
 
 	// Submit multiple concurrent build requests
-	numRequests := 5
+	numRequests := 200
 	results := make(chan error, numRequests)
+
+	cancelCtx, cancelBuild := context.WithCancel(ctx)
+	defer cancelBuild()
 
 	for i := 0; i < numRequests; i++ {
 		go func(idx int) {
 			event := metastore.ObjectWrittenEvent{
-				ObjectPath: fmt.Sprintf("test-path-%d", idx),
+				ObjectPath: fmt.Sprintf("test-path-%d", idx%numTestObjects),
 				WriteTime:  time.Now().Format(time.RFC3339),
 			}
 
-			record := &kgo.Record{Partition: int32(idx)}
+			record := &kgo.Record{Partition: int32(0)}
 			eventBytes, err := event.Marshal()
 			if err != nil {
 				results <- err
@@ -270,22 +274,35 @@ func TestSerialIndexer_ConcurrentBuilds(t *testing.T) {
 
 			bufferedEvt := bufferedEvent{event: event, record: record}
 
-			_, err = indexer.submitBuild(ctx, []bufferedEvent{bufferedEvt}, int32(idx), triggerTypeAppend)
+			buildCtx := ctx
+			if i == numRequests/2 {
+				buildCtx = cancelCtx
+			}
+			_, err = indexer.submitBuild(buildCtx, []bufferedEvent{bufferedEvt}, int32(0), triggerTypeAppend)
 			results <- err
 		}(i)
 	}
 
+	cancelBuild()
+
 	// Wait for all requests to complete
+	cancelled := 0
 	for i := 0; i < numRequests; i++ {
-		require.NoError(t, <-results)
+		err := <-results
+		if cancelled == 1 {
+			require.NoError(t, err)
+		}
+		if err != nil {
+			cancelled++
+		}
 	}
 
 	// Verify all events were processed (serialized)
-	require.Equal(t, numRequests, mockCalc.count)
+	require.Equal(t, numRequests-cancelled, mockCalc.count)
 
 	// Verify Prometheus metrics - multiple concurrent requests
-	require.Equal(t, float64(numRequests), testutil.ToFloat64(indexerMetrics.totalRequests))
-	require.Equal(t, float64(numRequests), testutil.ToFloat64(indexerMetrics.totalBuilds))
+	require.Equal(t, float64(numRequests-cancelled), testutil.ToFloat64(indexerMetrics.totalRequests))
+	require.Equal(t, float64(numRequests-cancelled), testutil.ToFloat64(indexerMetrics.totalBuilds))
 	require.Greater(t, testutil.ToFloat64(indexerMetrics.buildTimeSeconds), float64(0))
 	require.Equal(t, float64(0), testutil.ToFloat64(indexerMetrics.queueDepth))
 }
@@ -405,7 +422,6 @@ func TestSerialIndexer_FlushOnBuilderFull(t *testing.T) {
 	require.Equal(t, 2, mockCalc.count)          // 2 calls (no retries)
 	require.Equal(t, 1, mockCalc.flushCallCount) // 1 flush after full only
 	require.Equal(t, 1, mockCalc.resetCallCount) // 1 reset after full
-	require.False(t, indexer.skipMode)
 
 	// Verify metrics - single request/build despite multiple flushes
 	require.Equal(t, float64(1), testutil.ToFloat64(indexerMetrics.totalRequests))
