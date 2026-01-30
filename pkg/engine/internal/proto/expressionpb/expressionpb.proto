@@ -66,6 +66,10 @@ enum BinaryOp {
   BINARY_OP_NOT_MATCH_RE = 19; // Regular expression non-matching operation (!~). Used for regex match filter and label matcher.
   BINARY_OP_MATCH_PATTERN = 20; // Pattern matching operation (|>). Used for pattern match filter.
   BINARY_OP_NOT_MATCH_PATTERN = 21; // Pattern non-matching operation (!>). Use for pattern match filter.
+  BINARY_OP_EQ_CASE_INSENSITIVE = 22; // Case-insensitive equality comparison (=~ (?i)). Used for case-insensitive string match filter.
+  BINARY_OP_NEQ_CASE_INSENSITIVE = 23; // Case-insensitive inequality comparison (!~ (?i)). Used for case-insensitive string match filter.
+  BINARY_OP_MATCH_SUBSTR_CASE_INSENSITIVE = 24; // Case-insensitive substring matching operation (|= (?i)). Used for case-insensitive string match filter.
+  BINARY_OP_NOT_MATCH_SUBSTR_CASE_INSENSITIVE = 25; // Case-insensitive substring non-matching operation (!= (?i)). Used for case-insensitive string match filter.
 }
 
 // VariadicExpression is an expression that executes a function with a variable

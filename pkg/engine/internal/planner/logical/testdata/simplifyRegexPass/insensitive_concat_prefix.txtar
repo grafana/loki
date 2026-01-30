@@ -1,0 +1,11 @@
+Case-insensitive prefix pattern should simplify to case-insensitive substring match.
+
+-- column --
+utf8.builtin.message
+
+-- regex --
+(?i)error.*
+
+-- expect --
+%1 = MATCH_STR_CASE_INSENSITIVE builtin.message "ERROR"
+RETURN %1

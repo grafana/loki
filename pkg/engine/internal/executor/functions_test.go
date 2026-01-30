@@ -661,6 +661,124 @@ func TestStringMatchingFunctions(t *testing.T) {
 	}
 }
 
+func TestCaseInsensitiveStringFunctions(t *testing.T) {
+	tests := []struct {
+		name     string
+		op       types.BinaryOp
+		lhs      []string
+		rhs      []string
+		expected []bool
+	}{
+		{
+			name:     "case insensitive equality - lowercase pattern",
+			op:       types.BinaryOpEqCaseInsensitive,
+			lhs:      []string{"Hello", "WORLD", "TeSt", ""},
+			rhs:      []string{"HELLO", "WORLD", "TEST", ""},
+			expected: []bool{true, true, true, true},
+		},
+		{
+			name:     "case insensitive equality - mixed case pattern",
+			op:       types.BinaryOpEqCaseInsensitive,
+			lhs:      []string{"ERROR", "Warning", "info"},
+			rhs:      []string{"ERROR", "WARNING", "INFO"},
+			expected: []bool{true, true, true},
+		},
+		{
+			name:     "case insensitive equality - no match",
+			op:       types.BinaryOpEqCaseInsensitive,
+			lhs:      []string{"HELLO", "WORLD", "TEST"},
+			rhs:      []string{"GOODBYE", "EARTH", "EXAM"},
+			expected: []bool{false, false, false},
+		},
+		{
+			name:     "case insensitive inequality - match",
+			op:       types.BinaryOpNotEqCaseInsensitive,
+			lhs:      []string{"Hello", "WORLD"},
+			rhs:      []string{"HELLO", "WORLD"},
+			expected: []bool{false, false},
+		},
+		{
+			name:     "case insensitive inequality - no match",
+			op:       types.BinaryOpNotEqCaseInsensitive,
+			lhs:      []string{"HELLO", "WORLD"},
+			rhs:      []string{"GOODBYE", "EARTH"},
+			expected: []bool{true, true},
+		},
+		{
+			name:     "case insensitive substring - basic",
+			op:       types.BinaryOpMatchSubstrCaseInsensitive,
+			lhs:      []string{"Hello World", "TEST STRING", "FooBar"},
+			rhs:      []string{"WORLD", "STRING", "FOOBAR"},
+			expected: []bool{true, true, true},
+		},
+		{
+			name:     "case insensitive substring - mixed case lhs and rhs",
+			op:       types.BinaryOpMatchSubstrCaseInsensitive,
+			lhs:      []string{"Error Occurred", "WARNING message", "Info: log"},
+			rhs:      []string{"ERROR", "WARNING", "INFO"},
+			expected: []bool{true, true, true},
+		},
+		{
+			name:     "case insensitive substring - no match",
+			op:       types.BinaryOpMatchSubstrCaseInsensitive,
+			lhs:      []string{"hello world", "test string"},
+			rhs:      []string{"GOODBYE", "EXAM"},
+			expected: []bool{false, false},
+		},
+		{
+			name:     "case insensitive substring - empty string",
+			op:       types.BinaryOpMatchSubstrCaseInsensitive,
+			lhs:      []string{"anything", ""},
+			rhs:      []string{"", ""},
+			expected: []bool{true, true},
+		},
+		{
+			name:     "case insensitive not substring - match",
+			op:       types.BinaryOpNotMatchSubstrCaseInsensitive,
+			lhs:      []string{"Hello World", "TEST"},
+			rhs:      []string{"WORLD", "TEST"},
+			expected: []bool{false, false},
+		},
+		{
+			name:     "case insensitive not substring - no match",
+			op:       types.BinaryOpNotMatchSubstrCaseInsensitive,
+			lhs:      []string{"hello world", "test string"},
+			rhs:      []string{"GOODBYE", "EXAM"},
+			expected: []bool{true, true},
+		},
+		{
+			name:     "case insensitive with unicode",
+			op:       types.BinaryOpMatchSubstrCaseInsensitive,
+			lhs:      []string{"Error in MÜNCHEN", "ΑΒΓΔ test"},
+			rhs:      []string{"MÜNCHEN", "ΑΒΓΔ"},
+			expected: []bool{true, true},
+		},
+		{
+			name:     "case insensitive with numbers and special chars",
+			op:       types.BinaryOpEqCaseInsensitive,
+			lhs:      []string{"Error123!", "Test@456"},
+			rhs:      []string{"ERROR123!", "TEST@456"},
+			expected: []bool{true, true},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			lhsArray := createStringArray(tt.lhs, nil)
+			rhsArray := createStringArray(tt.rhs, nil)
+
+			fn, err := binaryFunctions.GetForSignature(tt.op, arrow.BinaryTypes.String)
+			require.NoError(t, err)
+
+			result, err := fn.Evaluate(lhsArray, rhsArray, false, false)
+			require.NoError(t, err)
+
+			actual, _ := extractBoolValues(result)
+			assert.Equal(t, tt.expected, actual)
+		})
+	}
+}
+
 func TestCompileRegexMatchFunctions(t *testing.T) {
 	tests := []struct {
 		name     string
