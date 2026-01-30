@@ -70,27 +70,19 @@ func buildPlanForLogQuery(
 		err      error
 		selector Value
 
-		dropCols []Value
-
 		// parse statements in LogQL introduce additional ambiguouity, requiring post
 		// parse filters to be tracked separately, and not included in maketable predicates
-		predicates          []Value
-		deletePredicates    []Value
-		postParsePredicates []Value
-		hasLogfmtParser     bool
-		logfmtStrict        bool
-		logfmtKeepEmpty     bool
-		hasJSONParser       bool
-		hasRegexParser      bool
-		regexpPattern       string
+		predicates       []Value
+		deletePredicates []Value
+		hasLogfmtParser  bool
+		hasJSONParser    bool
+		hasRegexParser   bool
 	)
 
-	// TODO(chaudum): Implement a Walk function that can return an error
+	// Do the first pass to collect the stream selector, line filters, and predicates. Only predicates listed
+	// before any parse node are considered here. Position of line filters does not matter, they are all collected.
 	expr.Walk(func(e syntax.Expr) bool {
 		switch e := e.(type) {
-		case *syntax.PipelineExpr:
-			// [PipelineExpr] is a container for other expressions, nothing to do here.
-			return true
 		case *syntax.MatchersExpr:
 			selector = convertLabelMatchers(e.Matchers())
 			return true
@@ -101,9 +93,7 @@ func buildPlanForLogQuery(
 			return false // do not traverse children
 		case *syntax.LogfmtParserExpr:
 			hasLogfmtParser = true
-			logfmtStrict = e.Strict
-			logfmtKeepEmpty = e.KeepEmpty
-			return true // continue traversing to find label filters
+			return true
 		case *syntax.LineParserExpr:
 			switch e.Op {
 			case syntax.OpParserTypeJSON:
@@ -111,54 +101,23 @@ func buildPlanForLogQuery(
 				return true
 			case syntax.OpParserTypeRegexp:
 				hasRegexParser = true
-				regexpPattern = e.Param
 				return true
-			case syntax.OpParserTypeUnpack, syntax.OpParserTypePattern:
-				// keeping these as a distinct cases so we remember to implement them later
-				err = errUnimplemented
-				return false
-			default:
-				err = errUnimplemented
-				return false
 			}
 		case *syntax.LabelFilterExpr:
-			if val, innerErr := convertLabelFilter(e.LabelFilterer); innerErr != nil {
-				err = innerErr
-			} else {
-				if !hasLogfmtParser && !hasJSONParser && !hasRegexParser {
-					predicates = append(predicates, val)
-				} else {
-					postParsePredicates = append(postParsePredicates, val)
+			// Collect following filters only before we met any parse stage.
+			if !hasLogfmtParser && !hasJSONParser && !hasRegexParser {
+				val, innerErr := convertLabelFilter(e.LabelFilterer)
+				if innerErr != nil {
+					err = innerErr
+					return false
 				}
+
+				predicates = append(predicates, val)
 			}
+
 			return true
-		case *syntax.LogfmtExpressionParserExpr, *syntax.JSONExpressionParserExpr:
-			err = errUnimplemented
-			return false // do not traverse children
-		case *syntax.LineFmtExpr:
-			err = unimplementedFeature("line_format")
-			return false // do not traverse children
-		case *syntax.LabelFmtExpr:
-			err = unimplementedFeature("label_format")
-			return false // do not traverse children
-		case *syntax.KeepLabelsExpr:
-			err = unimplementedFeature("keep")
-			return false // do not traverse children
-		case *syntax.DropLabelsExpr:
-			if e.HasNamedMatchers() {
-				// Example: `| drop __error__=~"Unknown Error: .*"`
-				err = unimplementedFeature("drop with named matchers")
-				return false // do not traverse children
-			}
-			for _, name := range e.Names() {
-				value := NewColumnRef(name, types.ColumnTypeAmbiguous)
-				dropCols = append(dropCols, value)
-			}
-			return true
-		default:
-			err = errUnimplemented
-			return false // do not traverse children
 		}
+		return true
 	})
 	if err != nil {
 		return nil, err
@@ -167,12 +126,6 @@ func buildPlanForLogQuery(
 	shard, err := parseShards(params.Shards())
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse shard: %w", err)
-	}
-
-	// it should be safe to append this to MakeTable predicates?
-	deletePredicates, err = buildDeletePredicates(ctx, deletes, params, rangeInterval)
-	if err != nil {
-		return nil, fmt.Errorf("failed to build delete predicates: %w", err)
 	}
 
 	// MAKETABLE -> DataObjScan
@@ -200,37 +153,113 @@ func buildPlanForLogQuery(
 		builder = builder.Select(value)
 	}
 
+	// Add all predicates as Select nodes.
 	for _, value := range predicates {
 		builder = builder.Select(value)
 	}
 
-	// adding this earlier in the pipeline to avoid expensive operations on lines that will be deleted anyway.
+	// It should be safe to append this to MakeTable predicates?
+	deletePredicates, err = buildDeletePredicates(ctx, deletes, params, rangeInterval)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build delete predicates: %w", err)
+	}
+
+	// Adding this earlier in the pipeline to avoid expensive operations on lines that will be deleted anyway.
 	for _, value := range deletePredicates {
 		builder = builder.Select(value)
 	}
 
-	// TODO: there's a subtle bug here, as it is actually possible to have both a logfmt parser and a json parser
-	// for example, the query `{app="foo"} | json | line_format "{{.nested_json}}" | json ` is valid, and will need
-	// multiple parse stages. We will handle this in a future PR.
-	if hasLogfmtParser {
-		builder = builder.Parse(types.VariadicOpParseLogfmt, logfmtStrict, logfmtKeepEmpty)
-	}
-	if hasJSONParser {
-		// JSON has no parameters
-		builder = builder.Parse(types.VariadicOpParseJSON, false, false)
-	}
-	if hasRegexParser {
-		_ = regexpPattern
-		builder = builder.ParseRegexp(regexpPattern)
-	}
+	// Reset flags before the second pass
+	hasLogfmtParser = false
+	hasJSONParser = false
+	hasRegexParser = false
 
-	for _, value := range postParsePredicates {
-		builder = builder.Select(value)
-	}
+	// TODO(chaudum): Implement a Walk function that can return an error
+	expr.Walk(func(e syntax.Expr) bool {
+		switch e := e.(type) {
+		case *syntax.PipelineExpr:
+			// [PipelineExpr] is a container for other expressions, nothing to do here.
+			return true
+		case *syntax.MatchersExpr:
+			return true
+		case *syntax.LineFilterExpr:
+			return false // do not traverse children
+		case *syntax.LogfmtParserExpr:
+			hasLogfmtParser = true
 
-	// TODO(chaudum): Drop stages can happen throughout the pipeline
-	if len(dropCols) > 0 {
-		builder = builder.ProjectDrop(dropCols...)
+			builder = builder.Parse(types.VariadicOpParseLogfmt, e.Strict, e.KeepEmpty)
+
+			return true // continue traversing to find label filters
+		case *syntax.LineParserExpr:
+			switch e.Op {
+			case syntax.OpParserTypeJSON:
+				hasJSONParser = true
+
+				// JSON has no parameters
+				builder = builder.Parse(types.VariadicOpParseJSON, false, false)
+
+				return true
+			case syntax.OpParserTypeRegexp:
+				hasRegexParser = true
+
+				builder = builder.ParseRegexp(e.Param)
+
+				return true
+			case syntax.OpParserTypeUnpack, syntax.OpParserTypePattern:
+				// keeping these as a distinct cases so we remember to implement them later
+				err = errUnimplemented
+				return false
+			default:
+				err = errUnimplemented
+				return false
+			}
+		case *syntax.LabelFilterExpr:
+			// Add following filters only after we met any parse stage.
+			if hasLogfmtParser || hasJSONParser || hasRegexParser {
+				val, innerErr := convertLabelFilter(e.LabelFilterer)
+				if innerErr != nil {
+					err = innerErr
+					return false
+				}
+
+				builder = builder.Select(val)
+			}
+			return true
+		case *syntax.LogfmtExpressionParserExpr, *syntax.JSONExpressionParserExpr:
+			err = errUnimplemented
+			return false // do not traverse children
+		case *syntax.LineFmtExpr:
+			err = unimplementedFeature("line_format")
+			return false // do not traverse children
+		case *syntax.LabelFmtExpr:
+			err = unimplementedFeature("label_format")
+			return false // do not traverse children
+		case *syntax.KeepLabelsExpr:
+			err = unimplementedFeature("keep")
+			return false // do not traverse children
+		case *syntax.DropLabelsExpr:
+			if e.HasNamedMatchers() {
+				// Example: `| drop __error__=~"Unknown Error: .*"`
+				err = unimplementedFeature("drop with named matchers")
+				return false // do not traverse children
+			}
+
+			dropCols := make([]Value, 0, len(e.Names()))
+			for _, name := range e.Names() {
+				value := NewColumnRef(name, types.ColumnTypeAmbiguous)
+				dropCols = append(dropCols, value)
+			}
+
+			builder = builder.ProjectDrop(dropCols...)
+
+			return true
+		default:
+			err = errUnimplemented
+			return false // do not traverse children
+		}
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	// Metric queries do not apply a limit.
