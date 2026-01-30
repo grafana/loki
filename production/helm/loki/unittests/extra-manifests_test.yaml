@@ -1,0 +1,141 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+suite: test extraObjects
+templates:
+  - extra-manifests.yaml
+tests:
+  - it: should handle empty manifests gracefully
+    set:
+      extraObjects: []
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should process a single string manifest
+    set:
+      extraObjects:
+        - |
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: test-cm
+    asserts:
+      - isKind:
+          of: ConfigMap
+      - equal:
+          path: metadata.name
+          value: test-cm
+
+  - it: should process string manifest with tpl values
+    set:
+      name: myapp
+      extraObjects:
+        - |
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: {{ .Values.name }}-cm
+    asserts:
+      - equal:
+          path: metadata.name
+          value: myapp-cm
+
+  - it: should process string manifest with tpl function
+    set:
+      name: MyApp
+      extraObjects:
+        - |
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: {{ lower .Values.name }}-cm
+    asserts:
+      - equal:
+          path: metadata.name
+          value: myapp-cm
+
+  - it: should process a single map manifest
+    set:
+      extraObjects:
+        - apiVersion: v1
+          kind: Secret
+          metadata:
+            name: test-secret
+    asserts:
+      - equal:
+          path: kind
+          value: Secret
+      - equal:
+          path: metadata.name
+          value: test-secret
+
+  - it: should process map manifest with tpl values
+    set:
+      env: prod
+      extraObjects:
+        - apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: config-{{ .Values.env }}
+    asserts:
+      - equal:
+          path: metadata.name
+          value: config-prod
+
+  - it: should process multiple slice-based manifests with tpl
+    set:
+      version: v1
+      extraObjects:
+        - |
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: cm-{{ .Values.version }}
+        - apiVersion: v1
+          kind: Secret
+          metadata:
+            name: secret-{{ .Values.version }}
+    asserts:
+      - hasDocuments:
+          count: 2
+      - equal:
+          path: metadata.name
+          value: cm-v1
+        documentSelector:
+          path: kind
+          value: ConfigMap
+      - equal:
+          path: metadata.name
+          value: secret-v1
+        documentSelector:
+          path: kind
+          value: Secret
+
+  - it: should handle multiple map-based manifests with tpl
+    set:
+      app: myapp
+      extraObjects:
+        cm1:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: "{{ .Values.app }}-cm1"
+        secret1:
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: "{{ .Values.app }}-secret1"
+    asserts:
+      - hasDocuments:
+          count: 2
+      - equal:
+          path: metadata.name
+          value: myapp-cm1
+        documentSelector:
+          path: kind
+          value: ConfigMap
+      - equal:
+          path: metadata.name
+          value: myapp-secret1
+        documentSelector:
+          path: kind
+          value: Secret
