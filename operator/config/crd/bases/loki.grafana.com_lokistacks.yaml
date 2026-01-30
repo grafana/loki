@@ -3850,6 +3850,84 @@ spec:
                       DisableIngress disables automatic creation of external access resources (Route / Ingress).
                       When true, no Route or Ingress will be created for the gateway.
                     type: boolean
+                  gateway:
+                    description: Gateway defines the configuration specific to Gateway
+                      server
+                    properties:
+                      tls:
+                        description: TLS defines the TLS configuration for the Gateway
+                          server.
+                        properties:
+                          ca:
+                            description: CA can be used to specify a custom list of
+                              trusted certificate authorities.
+                            properties:
+                              configMapName:
+                                description: ConfigMapName contains the name of the
+                                  ConfigMap containing the referenced value.
+                                type: string
+                              key:
+                                description: Name of the key used to get the value
+                                  in either the referenced ConfigMap or Secret.
+                                type: string
+                              secretName:
+                                description: SecretName contains the name of the Secret
+                                  containing the referenced value.
+                                type: string
+                            required:
+                            - key
+                            type: object
+                            x-kubernetes-validations:
+                            - message: Either configMapName or secretName needs to
+                                be set
+                              rule: has(self.configMapName) || has(self.secretName)
+                            - message: Only one of configMapName and secretName can
+                                be set
+                              rule: '!(has(self.configMapName) && has(self.secretName))'
+                          certificate:
+                            description: Certificate points to the server certificate
+                              to use.
+                            properties:
+                              configMapName:
+                                description: ConfigMapName contains the name of the
+                                  ConfigMap containing the referenced value.
+                                type: string
+                              key:
+                                description: Name of the key used to get the value
+                                  in either the referenced ConfigMap or Secret.
+                                type: string
+                              secretName:
+                                description: SecretName contains the name of the Secret
+                                  containing the referenced value.
+                                type: string
+                            required:
+                            - key
+                            type: object
+                            x-kubernetes-validations:
+                            - message: Either configMapName or secretName needs to
+                                be set
+                              rule: has(self.configMapName) || has(self.secretName)
+                            - message: Only one of configMapName and secretName can
+                                be set
+                              rule: '!(has(self.configMapName) && has(self.secretName))'
+                          privateKey:
+                            description: PrivateKey points to the private key of the
+                              server certificate.
+                            properties:
+                              key:
+                                description: Key contains the name of the key inside
+                                  the referenced Secret.
+                                type: string
+                              secretName:
+                                description: SecretName contains the name of the Secret
+                                  containing the referenced value.
+                                type: string
+                            required:
+                            - key
+                            - secretName
+                            type: object
+                        type: object
+                    type: object
                   mode:
                     default: openshift-logging
                     description: Mode defines the mode in which lokistack-gateway

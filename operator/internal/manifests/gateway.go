@@ -18,6 +18,7 @@ import (
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/gateway"
 )
 
@@ -80,7 +81,27 @@ func BuildGateway(opts Options) ([]client.Object, error) {
 		serverCAName := gatewaySigningCABundleName(GatewayName(opts.Name))
 		upstreamCAName := signingCABundleName(opts.Name)
 		upstreamClientName := gatewayClientSecretName(opts.Name)
-		if err := configureGatewayServerPKI(&dpl.Spec.Template.Spec, opts.Namespace, serviceName, serverCAName, upstreamCAName, upstreamClientName, minTLSVersion, ciphers); err != nil {
+
+		// Default: OpenShift auto-generated secrets
+		gatewayTLS := &lokiv1.TLSSpec{
+			CA: &lokiv1.ValueReference{
+				ConfigMapName: serverCAName,
+				Key:           "service-ca.crt",
+			},
+			Certificate: &lokiv1.ValueReference{
+				SecretName: serviceName,
+				Key:        "tls.crt",
+			},
+			PrivateKey: &lokiv1.SecretReference{
+				SecretName: serviceName,
+				Key:        "tls.key",
+			},
+		}
+		if opts.Stack.Tenants != nil && opts.Stack.Tenants.Gateway != nil && opts.Stack.Tenants.Gateway.TLS != nil {
+			gatewayTLS = opts.Stack.Tenants.Gateway.TLS
+		}
+
+		if err := configureGatewayServerPKI(&dpl.Spec.Template.Spec, opts.Namespace, serviceName, serverCAName, upstreamCAName, upstreamClientName, minTLSVersion, ciphers, gatewayTLS); err != nil {
 			return nil, err
 		}
 	}
@@ -272,6 +293,11 @@ func NewGatewayHTTPService(opts Options) *corev1.Service {
 	serviceName := serviceNameGatewayHTTP(opts.Name)
 	labels := ComponentLabels(LabelGatewayComponent, opts.Name)
 
+	enableSASigningService := opts.Gates.OpenShift.ServingCertsService
+	if opts.Stack.Tenants != nil && opts.Stack.Tenants.Gateway != nil && opts.Stack.Tenants.Gateway.TLS != nil {
+		enableSASigningService = false
+	}
+
 	return &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Service",
@@ -280,7 +306,7 @@ func NewGatewayHTTPService(opts Options) *corev1.Service {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        serviceName,
 			Labels:      labels,
-			Annotations: serviceAnnotations(serviceName, opts.Gates.OpenShift.ServingCertsService),
+			Annotations: serviceAnnotations(serviceName, enableSASigningService),
 		},
 		Spec: corev1.ServiceSpec{
 			Ports: []corev1.ServicePort{
@@ -492,6 +518,7 @@ func configureGatewayServerPKI(
 	namespace, serviceName, serverCAName string,
 	upstreamCAName, upstreamClientName string,
 	minTLSVersion, ciphers string,
+	tlsOptions *lokiv1.TLSSpec,
 ) error {
 	var gwIndex int
 	for i, c := range podSpec.Containers {
@@ -521,7 +548,6 @@ func configureGatewayServerPKI(
 		"--tls.min-version=VersionTLS12",
 		fmt.Sprintf("--tls.server.cert-file=%s", gatewayServerHTTPTLSCert()),
 		fmt.Sprintf("--tls.server.key-file=%s", gatewayServerHTTPTLSKey()),
-		fmt.Sprintf("--tls.healthchecks.server-ca-file=%s", gatewaySigningCAPath()),
 		fmt.Sprintf("--tls.healthchecks.server-name=%s", serverName),
 		fmt.Sprintf("--tls.internal.server.cert-file=%s", gatewayServerHTTPTLSCert()),
 		fmt.Sprintf("--tls.internal.server.key-file=%s", gatewayServerHTTPTLSKey()),
@@ -532,19 +558,15 @@ func configureGatewayServerPKI(
 		fmt.Sprintf("--logs.tls.key-file=%s", gatewayUpstreamHTTPTLSKey()),
 	)
 
+	if tlsOptions.CA != nil {
+		gwArgs = append(gwArgs, fmt.Sprintf("--tls.healthchecks.server-ca-file=%s", gatewaySigningCAPath()))
+	}
+
 	gwContainer.ReadinessProbe.HTTPGet.Scheme = corev1.URISchemeHTTPS
 	gwContainer.LivenessProbe.HTTPGet.Scheme = corev1.URISchemeHTTPS
 	gwContainer.Args = gwArgs
 
 	gwVolumes = append(gwVolumes,
-		corev1.Volume{
-			Name: tlsSecretVolume,
-			VolumeSource: corev1.VolumeSource{
-				Secret: &corev1.SecretVolumeSource{
-					SecretName: serviceName,
-				},
-			},
-		},
 		corev1.Volume{
 			Name: upstreamClientName,
 			VolumeSource: corev1.VolumeSource{
@@ -564,18 +586,11 @@ func configureGatewayServerPKI(
 				},
 			},
 		},
-		corev1.Volume{
-			Name: serverCAName,
-			VolumeSource: corev1.VolumeSource{
-				ConfigMap: &corev1.ConfigMapVolumeSource{
-					DefaultMode: &defaultConfigMapMode,
-					LocalObjectReference: corev1.LocalObjectReference{
-						Name: serverCAName,
-					},
-				},
-			},
-		},
 	)
+
+	serverTLSVolumes := buildCustomTLSVolumes(tlsOptions, serverCAName)
+
+	gwVolumes = append(gwVolumes, serverTLSVolumes...)
 
 	gwContainer.VolumeMounts = append(
 		gwContainer.VolumeMounts,
@@ -594,12 +609,15 @@ func configureGatewayServerPKI(
 			ReadOnly:  true,
 			MountPath: gatewayUpstreamCADir(),
 		},
-		corev1.VolumeMount{
+	)
+
+	if tlsOptions.CA != nil {
+		gwContainer.VolumeMounts = append(gwContainer.VolumeMounts, corev1.VolumeMount{
 			Name:      serverCAName,
 			ReadOnly:  true,
 			MountPath: gatewaySigningCADir(),
-		},
-	)
+		})
+	}
 
 	p := corev1.PodSpec{
 		Containers: []corev1.Container{
@@ -636,4 +654,77 @@ func configureGatewayRulesAPI(podSpec *corev1.PodSpec, stackName, stackNs string
 	}
 
 	return nil
+}
+
+func buildCustomTLSVolumes(tlsOptions *lokiv1.TLSSpec, serverCAName string) []corev1.Volume {
+	valueRefToVolumeProjection := func(ref *lokiv1.ValueReference, path string) corev1.VolumeProjection {
+		switch {
+		case ref.ConfigMapName != "":
+			return corev1.VolumeProjection{
+				ConfigMap: &corev1.ConfigMapProjection{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: ref.ConfigMapName,
+					},
+					Items: []corev1.KeyToPath{{
+						Key:  ref.Key,
+						Path: path,
+					}},
+				},
+			}
+		case ref.SecretName != "":
+			return corev1.VolumeProjection{
+				Secret: &corev1.SecretProjection{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: ref.SecretName,
+					},
+					Items: []corev1.KeyToPath{{
+						Key:  ref.Key,
+						Path: path,
+					}},
+				},
+			}
+		}
+		return corev1.VolumeProjection{}
+	}
+
+	volumes := make([]corev1.Volume, 0, 2)
+
+	// CA volume (optional)
+	if tlsOptions.CA != nil {
+		volumes = append(volumes, corev1.Volume{
+			Name: serverCAName,
+			VolumeSource: corev1.VolumeSource{
+				Projected: &corev1.ProjectedVolumeSource{
+					Sources: []corev1.VolumeProjection{
+						valueRefToVolumeProjection(tlsOptions.CA, "service-ca.crt"),
+					},
+				},
+			},
+		})
+	}
+
+	// Certificate + Key volume
+	volumes = append(volumes, corev1.Volume{
+		Name: tlsSecretVolume,
+		VolumeSource: corev1.VolumeSource{
+			Projected: &corev1.ProjectedVolumeSource{
+				Sources: []corev1.VolumeProjection{
+					valueRefToVolumeProjection(tlsOptions.Certificate, "tls.crt"),
+					{
+						Secret: &corev1.SecretProjection{
+							LocalObjectReference: corev1.LocalObjectReference{
+								Name: tlsOptions.PrivateKey.SecretName,
+							},
+							Items: []corev1.KeyToPath{{
+								Key:  tlsOptions.PrivateKey.Key,
+								Path: "tls.key",
+							}},
+						},
+					},
+				},
+			},
+		},
+	})
+
+	return volumes
 }

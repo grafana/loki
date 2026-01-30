@@ -289,6 +289,23 @@ type TenantsSpec struct {
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:booleanSwitch",displayName="Disable Ingress"
 	DisableIngress bool `json:"disableIngress,omitempty"`
+
+	// Gateway defines the configuration specific to Gateway server
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Gateway"
+	Gateway *GatewaySpec `json:"gateway,omitempty"`
+}
+
+// GatewaySpec defines the configuration specific to Gateway server
+type GatewaySpec struct {
+	// TLS defines the TLS configuration for the Gateway server.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="TLS"
+	TLS *TLSSpec `json:"tls,omitempty"`
 }
 
 // OpenshiftTenantSpec defines the configuration specific to Openshift modes.
@@ -1235,6 +1252,64 @@ type ZoneSpec struct {
 	TopologyKey string `json:"topologyKey"`
 }
 
+// ValueReference encodes a reference to a single field in either a ConfigMap or Secret in the same namespace.
+//
+// +kubebuilder:validation:XValidation:rule="has(self.configMapName) || has(self.secretName)", message="Either configMapName or secretName needs to be set"
+// +kubebuilder:validation:XValidation:rule="!(has(self.configMapName) && has(self.secretName))", message="Only one of configMapName and secretName can be set"
+type ValueReference struct {
+	// Name of the key used to get the value in either the referenced ConfigMap or Secret.
+	//
+	// +kubebuilder:validation:Required
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Key Name",xDescriptors={"urn:alm:descriptor:com.tectonic.ui:text"}
+	Key string `json:"key"`
+
+	// ConfigMapName contains the name of the ConfigMap containing the referenced value.
+	//
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="ConfigMap Name",xDescriptors={"urn:alm:descriptor:com.tectonic.ui:text"}
+	ConfigMapName string `json:"configMapName,omitempty"`
+
+	// SecretName contains the name of the Secret containing the referenced value.
+	//
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Secret Name",xDescriptors={"urn:alm:descriptor:com.tectonic.ui:text"}
+	SecretName string `json:"secretName,omitempty"`
+}
+
+// SecretReference encodes a reference to a single key in a Secret in the same namespace.
+type SecretReference struct {
+	// Key contains the name of the key inside the referenced Secret.
+	//
+	// +kubebuilder:validation:Required
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Key Name",xDescriptors={"urn:alm:descriptor:com.tectonic.ui:text"}
+	Key string `json:"key"`
+
+	// SecretName contains the name of the Secret containing the referenced value.
+	//
+	// +kubebuilder:validation:Required
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Secret Name",xDescriptors={"urn:alm:descriptor:com.tectonic.ui:text"}
+	SecretName string `json:"secretName"`
+}
+
+// TLSSpec contains options for TLS connections.
+type TLSSpec struct {
+	// CA can be used to specify a custom list of trusted certificate authorities.
+	//
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Certificate Authority Bundle"
+	CA *ValueReference `json:"ca,omitempty"`
+
+	// Certificate points to the server certificate to use.
+	//
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Certificate"
+	Certificate *ValueReference `json:"certificate,omitempty"`
+
+	// PrivateKey points to the private key of the server certificate.
+	//
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Private Key"
+	PrivateKey *SecretReference `json:"privateKey,omitempty"`
+}
+
 // LokiStackConditionType deifnes the type of condition types of a Loki deployment.
 type LokiStackConditionType string
 
@@ -1305,6 +1380,10 @@ const (
 	ReasonMissingGatewayAuthenticationConfig LokiStackConditionReason = "MissingGatewayTenantAuthenticationConfig"
 	// ReasonInvalidTenantsConfiguration when the tenant configuration provided is invalid.
 	ReasonInvalidTenantsConfiguration LokiStackConditionReason = "InvalidTenantsConfiguration"
+	// ReasonMissingGatewayTLSConfig when the referenced TLS Secret or ConfigMap for the gateway is missing.
+	ReasonMissingGatewayTLSConfig LokiStackConditionReason = "MissingGatewayTLSConfig"
+	// ReasonInvalidGatewayTLSConfig when the referenced TLS Secret or ConfigMap is invalid or missing required keys.
+	ReasonInvalidGatewayTLSConfig LokiStackConditionReason = "InvalidGatewayTLSConfig"
 	// ReasonMissingGatewayOpenShiftBaseDomain when the reconciler cannot lookup the OpenShift DNS base domain.
 	ReasonMissingGatewayOpenShiftBaseDomain LokiStackConditionReason = "MissingGatewayOpenShiftBaseDomain"
 	// ReasonFailedCertificateRotation when the reconciler cannot rotate any of the required TLS certificates.

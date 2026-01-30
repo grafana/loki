@@ -300,6 +300,148 @@ func TestServiceMonitorEndpoints_ForGatewayServiceMonitor(t *testing.T) {
 			},
 		},
 		{
+			desc: "with http encryption and custom TLS CA from ConfigMap",
+			opts: Options{
+				Name:      "test",
+				Namespace: "test",
+				Image:     "test",
+				Gates: configv1.FeatureGates{
+					LokiStackGateway:           true,
+					BuiltInCertManagement:      configv1.BuiltInCertManagement{Enabled: true},
+					ServiceMonitors:            true,
+					ServiceMonitorTLSEndpoints: true,
+				},
+				Stack: lokiv1.LokiStackSpec{
+					Size: lokiv1.SizeOneXExtraSmall,
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.Static,
+						Gateway: &lokiv1.GatewaySpec{
+							TLS: &lokiv1.TLSSpec{
+								CA: &lokiv1.ValueReference{
+									Key:           "ca.crt",
+									ConfigMapName: "my-custom-ca",
+								},
+								Certificate: &lokiv1.ValueReference{
+									Key:           "tls.crt",
+									ConfigMapName: "my-custom-cert",
+								},
+								PrivateKey: &lokiv1.SecretReference{
+									Key:        "tls.key",
+									SecretName: "my-custom-key",
+								},
+							},
+						},
+					},
+					Template: &lokiv1.LokiTemplateSpec{
+						Gateway: &lokiv1.LokiComponentSpec{
+							Replicas: 1,
+						},
+					},
+				},
+			},
+			total: 1,
+			want: []monitoringv1.Endpoint{
+				{
+					Port:   gatewayInternalPortName,
+					Path:   "/metrics",
+					Scheme: "https",
+					Authorization: &monitoringv1.SafeAuthorization{
+						Type: "Bearer",
+						Credentials: &corev1.SecretKeySelector{
+							LocalObjectReference: corev1.LocalObjectReference{
+								Name: "test-gateway-token",
+							},
+							Key: corev1.ServiceAccountTokenKey,
+						},
+					},
+					TLSConfig: &monitoringv1.TLSConfig{
+						SafeTLSConfig: monitoringv1.SafeTLSConfig{
+							CA: monitoringv1.SecretOrConfigMap{
+								ConfigMap: &corev1.ConfigMapKeySelector{
+									LocalObjectReference: corev1.LocalObjectReference{
+										Name: "my-custom-ca",
+									},
+									Key: caFile,
+								},
+							},
+							ServerName: ptr.To("test-gateway-http.test.svc.cluster.local"),
+						},
+					},
+				},
+			},
+		},
+		{
+			desc: "with http encryption and custom TLS CA from Secret",
+			opts: Options{
+				Name:      "test",
+				Namespace: "test",
+				Image:     "test",
+				Gates: configv1.FeatureGates{
+					LokiStackGateway:           true,
+					BuiltInCertManagement:      configv1.BuiltInCertManagement{Enabled: true},
+					ServiceMonitors:            true,
+					ServiceMonitorTLSEndpoints: true,
+				},
+				Stack: lokiv1.LokiStackSpec{
+					Size: lokiv1.SizeOneXExtraSmall,
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.Static,
+						Gateway: &lokiv1.GatewaySpec{
+							TLS: &lokiv1.TLSSpec{
+								CA: &lokiv1.ValueReference{
+									Key:        "ca.crt",
+									SecretName: "my-custom-ca-secret",
+								},
+								Certificate: &lokiv1.ValueReference{
+									Key:           "tls.crt",
+									ConfigMapName: "my-custom-cert",
+								},
+								PrivateKey: &lokiv1.SecretReference{
+									Key:        "tls.key",
+									SecretName: "my-custom-key",
+								},
+							},
+						},
+					},
+					Template: &lokiv1.LokiTemplateSpec{
+						Gateway: &lokiv1.LokiComponentSpec{
+							Replicas: 1,
+						},
+					},
+				},
+			},
+			total: 1,
+			want: []monitoringv1.Endpoint{
+				{
+					Port:   gatewayInternalPortName,
+					Path:   "/metrics",
+					Scheme: "https",
+					Authorization: &monitoringv1.SafeAuthorization{
+						Type: "Bearer",
+						Credentials: &corev1.SecretKeySelector{
+							LocalObjectReference: corev1.LocalObjectReference{
+								Name: "test-gateway-token",
+							},
+							Key: corev1.ServiceAccountTokenKey,
+						},
+					},
+					TLSConfig: &monitoringv1.TLSConfig{
+						SafeTLSConfig: monitoringv1.SafeTLSConfig{
+							CA: monitoringv1.SecretOrConfigMap{
+								Secret: &corev1.SecretKeySelector{
+									LocalObjectReference: corev1.LocalObjectReference{
+										Name: "my-custom-ca-secret",
+									},
+									Key: caFile,
+								},
+							},
+							ServerName: ptr.To("test-gateway-http.test.svc.cluster.local"),
+						},
+					},
+				},
+			},
+		},
+		{
 			desc: "openshift-logging",
 			opts: Options{
 				Name:      "test",
