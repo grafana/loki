@@ -64,6 +64,10 @@ type Config struct {
 	// read call of a task pipeline.
 	BatchSize int64
 
+	// MergePrefetchCount controls how many Merge inputs are prefetched simultaneously
+	// (same semantics as executor.MergePrefetchCount).
+	MergePrefetchCount int
+
 	// NumThreads is the number of worker threads to spawn. The number of
 	// threads corresponds to the number of tasks that can be executed
 	// concurrently.
@@ -185,11 +189,12 @@ func (w *Worker) run(ctx context.Context) error {
 	var threads []*thread
 	for i := range w.numThreads {
 		t := &thread{
-			BatchSize:      w.config.BatchSize,
-			Logger:         log.With(w.logger, "thread", i),
-			Bucket:         w.config.Bucket,
-			Metastore:      w.config.Metastore,
-			StreamFilterer: w.config.StreamFilterer,
+			BatchSize:         w.config.BatchSize,
+			MergePrefetchCount: w.config.MergePrefetchCount,
+			Logger:            log.With(w.logger, "thread", i),
+			Bucket:            w.config.Bucket,
+			Metastore:         w.config.Metastore,
+			StreamFilterer:    w.config.StreamFilterer,
 
 			Metrics:    w.metrics,
 			JobManager: w.jobManager,
