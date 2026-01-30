@@ -11,7 +11,7 @@ cloud.google.com/go/internal/optional
 cloud.google.com/go/internal/pubsub
 cloud.google.com/go/internal/trace
 cloud.google.com/go/internal/version
-# cloud.google.com/go/auth v0.18.0
+# cloud.google.com/go/auth v0.18.1
 ## explicit; go 1.24.0
 cloud.google.com/go/auth
 cloud.google.com/go/auth/credentials
@@ -1157,12 +1157,12 @@ github.com/google/s2a-go/stream
 # github.com/google/uuid v1.6.0
 ## explicit
 github.com/google/uuid
-# github.com/googleapis/enterprise-certificate-proxy v0.3.7
-## explicit; go 1.23.0
+# github.com/googleapis/enterprise-certificate-proxy v0.3.11
+## explicit; go 1.24.0
 github.com/googleapis/enterprise-certificate-proxy/client
 github.com/googleapis/enterprise-certificate-proxy/client/util
-# github.com/googleapis/gax-go/v2 v2.15.0
-## explicit; go 1.23.0
+# github.com/googleapis/gax-go/v2 v2.16.0
+## explicit; go 1.24.0
 github.com/googleapis/gax-go/v2
 github.com/googleapis/gax-go/v2/apierror
 github.com/googleapis/gax-go/v2/apierror/internal/proto
@@ -2554,7 +2554,7 @@ golang.org/x/tools/txtar
 ## explicit; go 1.18
 golang.org/x/xerrors
 golang.org/x/xerrors/internal
-# google.golang.org/api v0.257.0
+# google.golang.org/api v0.263.0
 ## explicit; go 1.24.0
 google.golang.org/api/cloudresourcemanager/v1
 google.golang.org/api/compute/v1
@@ -2563,6 +2563,7 @@ google.golang.org/api/googleapi/transport
 google.golang.org/api/iamcredentials/v1
 google.golang.org/api/internal
 google.golang.org/api/internal/cert
+google.golang.org/api/internal/credentialstype
 google.golang.org/api/internal/gensupport
 google.golang.org/api/internal/impersonate
 google.golang.org/api/internal/third_party/uritemplates
@@ -2574,7 +2575,7 @@ google.golang.org/api/support/bundler
 google.golang.org/api/transport
 google.golang.org/api/transport/grpc
 google.golang.org/api/transport/http
-# google.golang.org/genproto v0.0.0-20250922171735-9219d122eba9
+# google.golang.org/genproto v0.0.0-20251202230838-ff82c1b0f217
 ## explicit; go 1.24.0
 google.golang.org/genproto/googleapis/type/calendarperiod
 google.golang.org/genproto/googleapis/type/date
@@ -2591,7 +2592,7 @@ google.golang.org/genproto/googleapis/api/httpbody
 google.golang.org/genproto/googleapis/api/label
 google.golang.org/genproto/googleapis/api/metric
 google.golang.org/genproto/googleapis/api/monitoredres
-# google.golang.org/genproto/googleapis/rpc v0.0.0-20251222181119-0a764e51fe1b
+# google.golang.org/genproto/googleapis/rpc v0.0.0-20260122232226-8e98ce8d340d
 ## explicit; go 1.24.0
 google.golang.org/genproto/googleapis/rpc/code
 google.golang.org/genproto/googleapis/rpc/errdetails
