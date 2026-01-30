@@ -253,7 +253,7 @@
       "location": "northamerica-south1"
     }
   ],
-  "etag": "\"3131343633323936333034313936343439353533\"",
+  "etag": "\"38343338383939303739323735363535323137\"",
   "icons": {
     "x16": "https://www.google.com/images/icons/product/cloud_storage-16.png",
     "x32": "https://www.google.com/images/icons/product/cloud_storage-32.png"
@@ -4549,7 +4549,7 @@
       }
     }
   },
-  "revision": "20250925",
+  "revision": "20260111",
   "rootUrl": "https://storage.googleapis.com/",
   "schemas": {
     "AdvanceRelocateBucketOperationRequest": {
@@ -5500,6 +5500,10 @@
       "description": "A Compose request.",
       "id": "ComposeRequest",
       "properties": {
+        "deleteSourceObjects": {
+          "description": "If true, the source objects will be deleted.",
+          "type": "boolean"
+        },
         "destination": {
           "$ref": "Object",
           "description": "Properties of the resulting object."
@@ -6449,6 +6453,10 @@
             }
           },
           "type": "object"
+        },
+        "destinationKmsKeyName": {
+          "description": "Resource name of a Cloud KMS key, of the form projects/my-project/locations/global/keyRings/my-kr/cryptoKeys/my-key. If set, is used to encrypt all objects in the destination bucket.",
+          "type": "string"
         },
         "destinationLocation": {
           "description": "The new location the bucket will be relocated to.",
