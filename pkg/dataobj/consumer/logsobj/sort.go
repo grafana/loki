@@ -32,7 +32,7 @@ func sortMergeIterator(ctx context.Context, sections []*dataobj.Section, sort lo
 			return nil, err
 		}
 
-		r := dataset.NewReader(dataset.ReaderOptions{
+		r := dataset.NewRowReader(dataset.ReaderOptions{
 			Dataset:  ds,
 			Columns:  columns,
 			Prefetch: true,

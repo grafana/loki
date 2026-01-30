@@ -36,10 +36,10 @@ func Test_basicReader_ReadAll(t *testing.T) {
 	columns := buildTestColumns(t)
 	require.Len(t, columns, 4)
 
-	br := newBasicReader(columns)
+	br := newBasicRowReader(columns)
 	defer br.Close()
 
-	actualRows, err := readBasicReader(br, 3)
+	actualRows, err := readBasicRowReader(br, 3)
 	require.NoError(t, err)
 	require.Equal(t, basicReaderTestData, convertToTestPersons(actualRows))
 }
@@ -48,14 +48,14 @@ func Test_basicReader_ReadFromOffset(t *testing.T) {
 	columns := buildTestColumns(t)
 	require.Len(t, columns, 4)
 
-	br := newBasicReader(columns)
+	br := newBasicRowReader(columns)
 	defer br.Close()
 
 	// Seek to row 4
 	_, err := br.Seek(4, io.SeekStart)
 	require.NoError(t, err)
 
-	actualRows, err := readBasicReader(br, 3)
+	actualRows, err := readBasicRowReader(br, 3)
 	require.NoError(t, err)
 	require.Equal(t, basicReaderTestData[4:], convertToTestPersons(actualRows))
 }
@@ -64,18 +64,18 @@ func Test_basicReader_SeekToStart(t *testing.T) {
 	columns := buildTestColumns(t)
 	require.Len(t, columns, 4)
 
-	br := newBasicReader(columns)
+	br := newBasicRowReader(columns)
 	defer br.Close()
 
 	// First read everything
-	_, err := readBasicReader(br, 3)
+	_, err := readBasicRowReader(br, 3)
 	require.NoError(t, err)
 
 	// Seek back to start and read again
 	_, err = br.Seek(0, io.SeekStart)
 	require.NoError(t, err)
 
-	actualRows, err := readBasicReader(br, 3)
+	actualRows, err := readBasicRowReader(br, 3)
 	require.NoError(t, err)
 	require.Equal(t, basicReaderTestData, convertToTestPersons(actualRows))
 }
@@ -84,7 +84,7 @@ func Test_basicReader_ReadColumns(t *testing.T) {
 	columns := buildTestColumns(t)
 	require.Len(t, columns, 4)
 
-	br := newBasicReader(columns)
+	br := newBasicRowReader(columns)
 	defer br.Close()
 
 	// Read only birth_year and middle_name columns (indices 3 and 1)
@@ -133,7 +133,7 @@ func Test_basicReader_Fill(t *testing.T) {
 	columns := buildTestColumns(t)
 	require.Len(t, columns, 4)
 
-	br := newBasicReader(columns)
+	br := newBasicRowReader(columns)
 	defer br.Close()
 
 	// Create rows with specific indices we want to fill
@@ -218,17 +218,17 @@ func Test_basicReader_Reset(t *testing.T) {
 	columns := buildTestColumns(t)
 	require.Len(t, columns, 4)
 
-	br := newBasicReader(columns)
+	br := newBasicRowReader(columns)
 	defer br.Close()
 
 	// First read everything
-	_, err := readBasicReader(br, 3)
+	_, err := readBasicRowReader(br, 3)
 	require.NoError(t, err)
 
 	// Reset and read again
 	br.Reset(columns)
 
-	actualRows, err := readBasicReader(br, 3)
+	actualRows, err := readBasicRowReader(br, 3)
 	require.NoError(t, err)
 	require.Equal(t, basicReaderTestData, convertToTestPersons(actualRows))
 }
@@ -307,8 +307,8 @@ func buildInt64Column(t *testing.T, name string) *ColumnBuilder {
 	return builder
 }
 
-// readBasicReader reads all rows from a basicReader using the given batch size.
-func readBasicReader(br *basicReader, batchSize int) ([]Row, error) {
+// readBasicRowReader reads all rows from a basicRowReader using the given batch size.
+func readBasicRowReader(br *basicRowReader, batchSize int) ([]Row, error) {
 	var (
 		all []Row
 
@@ -321,8 +321,8 @@ func readBasicReader(br *basicReader, batchSize int) ([]Row, error) {
 		//
 		// This requires any Row/Value provided by br.Read is owned by the caller
 		// and is not retained by the reader; if a test fails and appears to have
-		// memory reuse, it's likely because code in basicReader changed and broke
-		// ownership semantics.
+		// memory reuse, it's likely because code in basicRowReader changed and
+		// broke ownership semantics.
 		clear(batch)
 
 		n, err := br.Read(context.Background(), batch)

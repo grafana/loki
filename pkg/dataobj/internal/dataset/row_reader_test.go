@@ -21,7 +21,7 @@ import (
 
 func Test_Reader_ReadAll(t *testing.T) {
 	dset, columns := buildTestDataset(t)
-	r := NewReader(ReaderOptions{Dataset: dset, Columns: columns})
+	r := NewRowReader(ReaderOptions{Dataset: dset, Columns: columns})
 	defer r.Close()
 
 	actualRows, err := readDataset(r, 3)
@@ -33,7 +33,7 @@ func Test_Reader_ReadWithPredicate(t *testing.T) {
 	dset, columns := buildTestDataset(t)
 
 	// Create a predicate that only returns people born after 1985
-	r := NewReader(ReaderOptions{
+	r := NewRowReader(ReaderOptions{
 		Dataset: dset,
 		Columns: columns,
 		Predicates: []Predicate{
@@ -58,12 +58,12 @@ func Test_Reader_ReadWithPredicate(t *testing.T) {
 	require.Equal(t, expected, convertToTestPersons(actualRows))
 }
 
-// Test_Reader_ReadWithPageFiltering tests that a Reader can filter rows based
+// TestRowReader_ReadWithPageFiltering tests that a RowReader can filter rows based
 // on a predicate that has filtered pages out.
-func Test_Reader_ReadWithPageFiltering(t *testing.T) {
+func TestRowReader_ReadWithPageFiltering(t *testing.T) {
 	dset, columns := buildTestDataset(t)
 
-	r := NewReader(ReaderOptions{
+	r := NewRowReader(ReaderOptions{
 		Dataset: dset,
 		Columns: columns,
 
@@ -94,9 +94,9 @@ func Test_Reader_ReadWithPageFiltering(t *testing.T) {
 	require.Equal(t, expected, convertToTestPersons(actualRows))
 }
 
-// Test_Reader_ReadWithPageFilteringOnEmptyPredicate tests that a Reader filters rows with empty predicate values.
+// TestRowReader_ReadWithPageFilteringOnEmptyPredicate tests that a RowReader filters rows with empty predicate values.
 // Filtering for an explicitly empty value also includes Null values and these rows should not be excluded by page skipping.
-func Test_Reader_ReadWithPageFilteringOnEmptyPredicate(t *testing.T) {
+func TestRowReader_ReadWithPageFilteringOnEmptyPredicate(t *testing.T) {
 	// Create builders for each column
 	firstNameBuilder := buildStringColumn(t, "first_name")
 	lastNameBuilder := buildStringColumn(t, "middle_name")
@@ -118,7 +118,7 @@ func Test_Reader_ReadWithPageFilteringOnEmptyPredicate(t *testing.T) {
 	cols, err := result.Collect(dset.ListColumns(context.Background()))
 	require.NoError(t, err)
 
-	r := NewReader(ReaderOptions{
+	r := NewRowReader(ReaderOptions{
 		Dataset: dset,
 		Columns: cols,
 
@@ -160,7 +160,7 @@ func Test_Reader_ReadWithPredicate_NoSecondary(t *testing.T) {
 	dset, columns := buildTestDataset(t)
 
 	// Create a predicate that only returns people born after 1985
-	r := NewReader(ReaderOptions{
+	r := NewRowReader(ReaderOptions{
 		Dataset: dset,
 		Columns: []Column{columns[3]},
 		Predicates: []Predicate{
@@ -192,7 +192,7 @@ func Test_Reader_ReadWithPredicate_NoSecondary(t *testing.T) {
 
 func Test_Reader_Reset(t *testing.T) {
 	dset, columns := buildTestDataset(t)
-	r := NewReader(ReaderOptions{Dataset: dset, Columns: columns})
+	r := NewRowReader(ReaderOptions{Dataset: dset, Columns: columns})
 	defer r.Close()
 
 	// First read everything
@@ -282,13 +282,13 @@ func mergeRows(rows ...[]Row) []Row {
 	return res
 }
 
-// readDataset reads all rows from a Reader using the given batch size.
-func readDataset(br *Reader, batchSize int) ([]Row, error) {
+// readDataset reads all rows from a RowReader using the given batch size.
+func readDataset(br *RowReader, batchSize int) ([]Row, error) {
 	return readDatasetWithContext(context.Background(), br, batchSize)
 }
 
-// readDatasetWithContext reads all rows from a Reader using the given batch size and context.
-func readDatasetWithContext(ctx context.Context, br *Reader, batchSize int) ([]Row, error) {
+// readDatasetWithContext reads all rows from a RowReader using the given batch size and context.
+func readDatasetWithContext(ctx context.Context, br *RowReader, batchSize int) ([]Row, error) {
 	var (
 		all []Row
 
@@ -391,7 +391,7 @@ func Test_BuildPredicateRanges(t *testing.T) {
 	ctx := context.Background()
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			r := NewReader(ReaderOptions{
+			r := NewRowReader(ReaderOptions{
 				Dataset:    ds,
 				Columns:    cols,
 				Predicates: []Predicate{tc.predicate},
@@ -552,7 +552,7 @@ func BenchmarkReader(b *testing.B) {
 
 			batch := make([]Row, rp.batchSize)
 			for b.Loop() {
-				reader := NewReader(opts)
+				reader := NewRowReader(opts)
 				var rowsRead int
 				for {
 					n, err := reader.Read(context.Background(), batch)
@@ -606,7 +606,7 @@ func BenchmarkPredicateExecution(b *testing.B) {
 	currentPos := 0
 	batch := make([]Row, 1000)
 	// read the dataset once to pick a random row for predicate generation
-	reader := NewReader(ReaderOptions{
+	reader := NewRowReader(ReaderOptions{
 		Dataset: ds,
 		Columns: cols,
 	})
@@ -685,7 +685,7 @@ func BenchmarkPredicateExecution(b *testing.B) {
 			b.ReportAllocs()
 
 			for b.Loop() {
-				reader := NewReader(ReaderOptions{
+				reader := NewRowReader(ReaderOptions{
 					Dataset:    ds,
 					Columns:    cols,
 					Predicates: pp.predicates,
@@ -889,7 +889,7 @@ func Test_DatasetGenerator(t *testing.T) {
 func Test_Reader_Stats(t *testing.T) {
 	dset, columns := buildTestDataset(t)
 
-	r := NewReader(ReaderOptions{
+	r := NewRowReader(ReaderOptions{
 		Dataset: dset,
 		Columns: columns,
 		Predicates: []Predicate{
