@@ -166,6 +166,7 @@ func TestNewIngesterStatefulSet_TopologySpreadConstraints(t *testing.T) {
 		Name:      "abcd",
 		Namespace: "efgh",
 		Stack: lokiv1.LokiStackSpec{
+			Size: lokiv1.SizeOneXDemo,
 			Template: &lokiv1.LokiTemplateSpec{
 				Ingester: &lokiv1.LokiComponentSpec{
 					Replicas: 1,

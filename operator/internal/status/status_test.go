@@ -6,11 +6,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -21,33 +18,20 @@ import (
 
 func TestRefreshSuccess(t *testing.T) {
 	now := time.Now()
-	req := ctrl.Request{
-		NamespacedName: types.NamespacedName{
+	stack := &lokiv1.LokiStack{
+		Spec: lokiv1.LokiStackSpec{
+			Size: lokiv1.SizeOneXMedium,
+		},
+		ObjectMeta: metav1.ObjectMeta{
 			Name:      "my-stack",
 			Namespace: "some-ns",
 		},
 	}
-	stack := lokiv1.LokiStack{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-stack",
-			Namespace: "test-ns",
-		},
-		Spec: lokiv1.LokiStackSpec{
-			Size: lokiv1.SizeOneXPico,
-			Replication: &lokiv1.ReplicationSpec{
-				Factor: 2,
-				Zones: []lokiv1.ZoneSpec{
-					{
-						TopologyKey: corev1.LabelTopologyZone,
-					},
-				},
-			},
-		},
-	}
-	testIngesterSts := appsv1.StatefulSet{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      manifests.IngesterName(stack.Name),
-			Namespace: stack.Namespace,
+
+	req := ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "my-stack",
+			Namespace: "some-ns",
 		},
 	}
 
@@ -88,20 +72,7 @@ func TestRefreshSuccess(t *testing.T) {
 		},
 	}
 
-	k, sw := setupListClient(t, &stack, componentPods)
-
-	k.GetStub = func(_ context.Context, name types.NamespacedName, out client.Object, _ ...client.GetOption) error {
-		_, isLokiStack := out.(*lokiv1.LokiStack)
-		if req.Name == name.Name && req.Namespace == name.Namespace && isLokiStack {
-			k.SetClientObject(out, &stack)
-			return nil
-		}
-		if testIngesterSts.Name == name.Name {
-			k.SetClientObject(out, &testIngesterSts)
-			return nil
-		}
-		return apierrors.NewNotFound(schema.GroupResource{}, "something wasn't found")
-	}
+	k, sw := setupListClient(t, stack, componentPods)
 
 	statusInfo := &LokiStackStatusInfo{
 		Storage:         lokiv1.CredentialModeStatic,
@@ -127,8 +98,8 @@ func TestRefreshSuccess_ZoneAwarePendingPod(t *testing.T) {
 	now := time.Now()
 	req := ctrl.Request{
 		NamespacedName: types.NamespacedName{
-			Name:      "my-stack",
-			Namespace: "some-ns",
+			Name:      "test-stack",
+			Namespace: "test-ns",
 		},
 	}
 	stack := lokiv1.LokiStack{
@@ -137,21 +108,14 @@ func TestRefreshSuccess_ZoneAwarePendingPod(t *testing.T) {
 			Namespace: "test-ns",
 		},
 		Spec: lokiv1.LokiStackSpec{
-			Size: lokiv1.SizeOneXPico,
+			Size: lokiv1.SizeOneXMedium,
 			Replication: &lokiv1.ReplicationSpec{
-				Factor: 2,
 				Zones: []lokiv1.ZoneSpec{
 					{
 						TopologyKey: corev1.LabelTopologyZone,
 					},
 				},
 			},
-		},
-	}
-	testIngesterSts := appsv1.StatefulSet{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      manifests.IngesterName(stack.Name),
-			Namespace: stack.Namespace,
 		},
 	}
 	testPod := corev1.Pod{
@@ -174,20 +138,7 @@ func TestRefreshSuccess_ZoneAwarePendingPod(t *testing.T) {
 				Items: []corev1.Node{},
 			})
 		}
-
 		return nil
-	}
-	k.GetStub = func(_ context.Context, name types.NamespacedName, out client.Object, _ ...client.GetOption) error {
-		_, isLokiStack := out.(*lokiv1.LokiStack)
-		if req.Name == name.Name && req.Namespace == name.Namespace && isLokiStack {
-			k.SetClientObject(out, &stack)
-			return nil
-		}
-		if testIngesterSts.Name == name.Name {
-			k.SetClientObject(out, &testIngesterSts)
-			return nil
-		}
-		return apierrors.NewNotFound(schema.GroupResource{}, "something wasn't found")
 	}
 
 	statusInfo := &LokiStackStatusInfo{
