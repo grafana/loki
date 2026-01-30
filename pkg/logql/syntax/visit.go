@@ -33,6 +33,7 @@ type StageExprVisitor interface {
 	VisitDecolorize(*DecolorizeExpr)
 	VisitDropLabels(*DropLabelsExpr)
 	VisitJSONExpressionParser(*JSONExpressionParserExpr)
+	VisitXMLExpressionParser(*XMLExpressionParserExpr)
 	VisitKeepLabel(*KeepLabelsExpr)
 	VisitLabelFilter(*LabelFilterExpr)
 	VisitLabelFmt(*LabelFmtExpr)
@@ -54,6 +55,7 @@ type DepthFirstTraversal struct {
 	VisitDecolorizeFn             func(v RootVisitor, e *DecolorizeExpr)
 	VisitDropLabelsFn             func(v RootVisitor, e *DropLabelsExpr)
 	VisitJSONExpressionParserFn   func(v RootVisitor, e *JSONExpressionParserExpr)
+	VisitXMLExpressionParserFn    func(v RootVisitor, e *XMLExpressionParserExpr)
 	VisitKeepLabelFn              func(v RootVisitor, e *KeepLabelsExpr)
 	VisitLabelFilterFn            func(v RootVisitor, e *LabelFilterExpr)
 	VisitLabelFmtFn               func(v RootVisitor, e *LabelFmtExpr)
@@ -113,6 +115,16 @@ func (v *DepthFirstTraversal) VisitJSONExpressionParser(e *JSONExpressionParserE
 	}
 	if v.VisitJSONExpressionParserFn != nil {
 		v.VisitJSONExpressionParserFn(v, e)
+	}
+}
+
+// VisitXMLExpressionParser implements RootVisitor.
+func (v *DepthFirstTraversal) VisitXMLExpressionParser(e *XMLExpressionParserExpr) {
+	if e == nil {
+		return
+	}
+	if v.VisitXMLExpressionParserFn != nil {
+		v.VisitXMLExpressionParserFn(v, e)
 	}
 }
 

@@ -3374,6 +3374,96 @@ var ParseTestCases = []struct {
 		},
 		err: nil,
 	},
+	// XML expression parser tests
+	{
+		in: `{app="foo"} |= "bar" | xml | status == 200`,
+		exp: &PipelineExpr{
+			Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+			MultiStages: MultiStageExpr{
+				newLineFilterExpr(log.LineMatchEqual, "", "bar"),
+				newLabelParserExpr(OpParserTypeXML, ""),
+				&LabelFilterExpr{
+					LabelFilterer: log.NewNumericLabelFilter(log.LabelFilterEqual, "status", 200),
+				},
+			},
+		},
+	},
+	{
+		in: `{app="foo"} |= "bar" | xml | latency >= 250ms or ( status < 500 and status > 200)`,
+		exp: &PipelineExpr{
+			Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+			MultiStages: MultiStageExpr{
+				newLineFilterExpr(log.LineMatchEqual, "", "bar"),
+				newLabelParserExpr(OpParserTypeXML, ""),
+				&LabelFilterExpr{
+					LabelFilterer: log.NewOrLabelFilter(
+						log.NewDurationLabelFilter(log.LabelFilterGreaterThanOrEqual, "latency", 250*time.Millisecond),
+						log.NewAndLabelFilter(
+							log.NewNumericLabelFilter(log.LabelFilterLesserThan, "status", 500.0),
+							log.NewNumericLabelFilter(log.LabelFilterGreaterThan, "status", 200.0),
+						),
+					),
+				},
+			},
+		},
+	},
+	{
+		in: `{app="foo"} |= "bar" | xml | (duration > 1s or status!= 200) and method!="POST"`,
+		exp: &PipelineExpr{
+			Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+			MultiStages: MultiStageExpr{
+				newLineFilterExpr(log.LineMatchEqual, "", "bar"),
+				newLabelParserExpr(OpParserTypeXML, ""),
+				&LabelFilterExpr{
+					LabelFilterer: log.NewAndLabelFilter(
+						log.NewOrLabelFilter(
+							log.NewDurationLabelFilter(log.LabelFilterGreaterThan, "duration", 1*time.Second),
+							log.NewNumericLabelFilter(log.LabelFilterNotEqual, "status", 200.0),
+						),
+						log.NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotEqual, "method", "POST")),
+					),
+				},
+			},
+		},
+	},
+	{
+		in: `{app="foo"} |= "bar" | xml | payload > 1000`,
+		exp: &PipelineExpr{
+			Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+			MultiStages: MultiStageExpr{
+				newLineFilterExpr(log.LineMatchEqual, "", "bar"),
+				newLabelParserExpr(OpParserTypeXML, ""),
+				&LabelFilterExpr{
+					LabelFilterer: log.NewNumericLabelFilter(log.LabelFilterGreaterThan, "payload", 1000.0),
+				},
+			},
+		},
+	},
+	{
+		in: `count_over_time({app="foo"} |= "bar" | xml | latency >= 250ms or ( status < 500 and status > 200)[5m])`,
+		exp: &RangeAggregationExpr{
+			Operation: "count_over_time",
+			Left: &LogRangeExpr{
+				Left: &PipelineExpr{
+					Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+					MultiStages: MultiStageExpr{
+						newLineFilterExpr(log.LineMatchEqual, "", "bar"),
+						newLabelParserExpr(OpParserTypeXML, ""),
+						&LabelFilterExpr{
+							LabelFilterer: log.NewOrLabelFilter(
+								log.NewDurationLabelFilter(log.LabelFilterGreaterThanOrEqual, "latency", 250*time.Millisecond),
+								log.NewAndLabelFilter(
+									log.NewNumericLabelFilter(log.LabelFilterLesserThan, "status", 500.0),
+									log.NewNumericLabelFilter(log.LabelFilterGreaterThan, "status", 200.0),
+								),
+							),
+						},
+					},
+				},
+				Interval: 5 * time.Minute,
+			},
+		},
+	},
 }
 
 func TestParse(t *testing.T) {

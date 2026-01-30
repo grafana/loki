@@ -62,6 +62,11 @@ func NewLogOutput(w io.Writer, mode string, options *LogOutputOptions) (LogOutpu
 			w:       w,
 			options: options,
 		}, nil
+	case "xmll":
+		return &XMLLOutput{
+			w:       w,
+			options: options,
+		}, nil
 	case "raw":
 		return &RawOutput{
 			w:       w,

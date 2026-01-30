@@ -51,7 +51,7 @@ import (
 %type <logExpr> logExpr
 %type <metricExpr> metricExpr rangeAggregationExpr vectorAggregationExpr binOpExpr labelReplaceExpr vectorExpr
 %type <variantsExpr> variantsExpr
-%type <stage> pipelineStage logfmtParser labelParser jsonExpressionParser logfmtExpressionParser lineFormatExpr decolorizeExpr labelFormatExpr dropLabelsExpr keepLabelsExpr
+%type <stage> pipelineStage logfmtParser labelParser jsonExpressionParser logfmtExpressionParser xmlExpressionParser lineFormatExpr decolorizeExpr labelFormatExpr dropLabelsExpr keepLabelsExpr
 %type <stages> pipelineExpr
 %type <lineFilterExpr> lineFilter lineFilters orFilter
 %type <op> rangeOp convOp vectorOp filterOp
@@ -81,7 +81,7 @@ import (
 %token <val> MATCHERS LABELS EQ RE NRE NPA OPEN_BRACE CLOSE_BRACE OPEN_BRACKET CLOSE_BRACKET COMMA DOT PIPE_MATCH PIPE_EXACT PIPE_PATTERN
              OPEN_PARENTHESIS CLOSE_PARENTHESIS BY WITHOUT COUNT_OVER_TIME RATE RATE_COUNTER SUM SORT SORT_DESC AVG
              MAX MIN COUNT STDDEV STDVAR BOTTOMK TOPK APPROX_TOPK
-             BYTES_OVER_TIME BYTES_RATE BOOL JSON REGEXP LOGFMT PIPE LINE_FMT LABEL_FMT UNWRAP AVG_OVER_TIME SUM_OVER_TIME MIN_OVER_TIME
+             BYTES_OVER_TIME BYTES_RATE BOOL JSON XML REGEXP LOGFMT PIPE LINE_FMT LABEL_FMT UNWRAP AVG_OVER_TIME SUM_OVER_TIME MIN_OVER_TIME
              MAX_OVER_TIME STDVAR_OVER_TIME STDDEV_OVER_TIME QUANTILE_OVER_TIME BYTES_CONV DURATION_CONV DURATION_SECONDS_CONV
              FIRST_OVER_TIME LAST_OVER_TIME ABSENT_OVER_TIME VECTOR LABEL_REPLACE UNPACK OFFSET PATTERN IP ON IGNORING GROUP_LEFT GROUP_RIGHT
              DECOLORIZE DROP KEEP VARIANTS OF
@@ -217,6 +217,7 @@ pipelineStage:
   | PIPE logfmtParser            { $$ = $2 }
   | PIPE labelParser             { $$ = $2 }
   | PIPE jsonExpressionParser    { $$ = $2 }
+  | PIPE xmlExpressionParser     { $$ = $2 }
   | PIPE logfmtExpressionParser  { $$ = $2 }
   | PIPE labelFilter             { $$ = &LabelFilterExpr{LabelFilterer: $2 }}
   | PIPE lineFormatExpr          { $$ = $2 }
@@ -268,6 +269,7 @@ logfmtParser:
 
 labelParser:
     JSON                { $$ = newLabelParserExpr(OpParserTypeJSON, "") }
+  | XML                 { $$ = newLabelParserExpr(OpParserTypeXML, "") }
   | REGEXP STRING       { $$ = newLabelParserExpr(OpParserTypeRegexp, $2) }
   | UNPACK              { $$ = newLabelParserExpr(OpParserTypeUnpack, "") }
   | PATTERN STRING      { $$ = newLabelParserExpr(OpParserTypePattern, $2) }
@@ -275,6 +277,10 @@ labelParser:
 
 jsonExpressionParser:
     JSON labelExtractionExpressionList { $$ = newJSONExpressionParser($2) }
+
+xmlExpressionParser:
+    XML labelExtractionExpressionList { $$ = newXMLExpressionParser($2) }
+  ;
 
 logfmtExpressionParser:
     LOGFMT parserFlags labelExtractionExpressionList  { $$ = newLogfmtExpressionParser($3, $2)}

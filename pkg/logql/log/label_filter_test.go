@@ -522,3 +522,181 @@ func TestLineFilterLabelFilter_String(t *testing.T) {
 		})
 	}
 }
+
+// TestXMLLabelFiltering tests label filtering applied to XML-extracted labels
+func TestXMLLabelFiltering(t *testing.T) {
+	tests := []struct {
+		name    string
+		filter  LabelFilterer
+		labels  labels.Labels
+		want    bool
+		wantErr bool
+	}{
+		// Numeric filtering on XML-extracted labels
+		{
+			name:   "xml numeric filter: status == 200",
+			filter: NewNumericLabelFilter(LabelFilterEqual, "status", 200),
+			labels: labels.FromStrings("status", "200", "app", "myapp"),
+			want:   true,
+		},
+		{
+			name:   "xml numeric filter: status != 200",
+			filter: NewNumericLabelFilter(LabelFilterNotEqual, "status", 200),
+			labels: labels.FromStrings("status", "500", "app", "myapp"),
+			want:   true,
+		},
+		{
+			name:   "xml numeric filter: response_time > 100",
+			filter: NewNumericLabelFilter(LabelFilterGreaterThan, "response_time", 100),
+			labels: labels.FromStrings("response_time", "250.5", "endpoint", "/api"),
+			want:   true,
+		},
+		{
+			name:   "xml numeric filter: response_time <= 100",
+			filter: NewNumericLabelFilter(LabelFilterLesserThanOrEqual, "response_time", 100),
+			labels: labels.FromStrings("response_time", "50.0", "endpoint", "/api"),
+			want:   true,
+		},
+		{
+			name:   "xml numeric filter: missing label",
+			filter: NewNumericLabelFilter(LabelFilterEqual, "nonexistent", 100),
+			labels: labels.FromStrings("status", "200"),
+			want:   false,
+		},
+
+		// Duration filtering on XML-extracted labels
+		{
+			name:   "xml duration filter: latency == 500ms",
+			filter: NewDurationLabelFilter(LabelFilterEqual, "latency", 500*time.Millisecond),
+			labels: labels.FromStrings("latency", "500ms", "service", "api"),
+			want:   true,
+		},
+		{
+			name:   "xml duration filter: latency > 1s",
+			filter: NewDurationLabelFilter(LabelFilterGreaterThan, "latency", 1*time.Second),
+			labels: labels.FromStrings("latency", "2s", "service", "api"),
+			want:   true,
+		},
+		{
+			name:   "xml duration filter: request_duration >= 100ms",
+			filter: NewDurationLabelFilter(LabelFilterGreaterThanOrEqual, "request_duration", 100*time.Millisecond),
+			labels: labels.FromStrings("request_duration", "100ms"),
+			want:   true,
+		},
+		{
+			name:   "xml duration filter: timeout < 30s",
+			filter: NewDurationLabelFilter(LabelFilterLesserThan, "timeout", 30*time.Second),
+			labels: labels.FromStrings("timeout", "5s"),
+			want:   true,
+		},
+		{
+			name:   "xml duration filter: missing label",
+			filter: NewDurationLabelFilter(LabelFilterEqual, "duration", 1*time.Second),
+			labels: labels.FromStrings("status", "200"),
+			want:   false,
+		},
+		{
+			name:    "xml duration filter: malformed duration",
+			filter:  NewDurationLabelFilter(LabelFilterEqual, "latency", 1*time.Second),
+			labels:  labels.FromStrings("latency", "invalid_duration"),
+			want:    true,
+			wantErr: true,
+		},
+
+		// Bytes filtering on XML-extracted labels (note: humanize uses decimal: 1KB = 1000, not 1024)
+		{
+			name:   "xml bytes filter: payload == 1KB",
+			filter: NewBytesLabelFilter(LabelFilterEqual, "payload", 1000),
+			labels: labels.FromStrings("payload", "1KB"),
+			want:   true,
+		},
+		{
+			name:   "xml bytes filter: body_size > 1MB",
+			filter: NewBytesLabelFilter(LabelFilterGreaterThan, "body_size", 1000*1000),
+			labels: labels.FromStrings("body_size", "2MB"),
+			want:   true,
+		},
+		{
+			name:   "xml bytes filter: memory <= 256MB",
+			filter: NewBytesLabelFilter(LabelFilterLesserThanOrEqual, "memory", 256*1000*1000),
+			labels: labels.FromStrings("memory", "128MB"),
+			want:   true,
+		},
+		{
+			name:   "xml bytes filter: missing label",
+			filter: NewBytesLabelFilter(LabelFilterEqual, "size", 1000),
+			labels: labels.FromStrings("status", "200"),
+			want:   false,
+		},
+		{
+			name:    "xml bytes filter: malformed bytes",
+			filter:  NewBytesLabelFilter(LabelFilterEqual, "payload", 1000),
+			labels:  labels.FromStrings("payload", "invalid_bytes"),
+			want:    true,
+			wantErr: true,
+		},
+
+		// Combined filters (AND logic)
+		{
+			name: "xml combined: status == 200 AND response_time > 100",
+			filter: NewAndLabelFilter(
+				NewNumericLabelFilter(LabelFilterEqual, "status", 200),
+				NewNumericLabelFilter(LabelFilterGreaterThan, "response_time", 100),
+			),
+			labels: labels.FromStrings("status", "200", "response_time", "250"),
+			want:   true,
+		},
+		{
+			name: "xml combined: status == 200 AND latency >= 500ms",
+			filter: NewAndLabelFilter(
+				NewNumericLabelFilter(LabelFilterEqual, "status", 200),
+				NewDurationLabelFilter(LabelFilterGreaterThanOrEqual, "latency", 500*time.Millisecond),
+			),
+			labels: labels.FromStrings("status", "200", "latency", "600ms"),
+			want:   true,
+		},
+		{
+			name: "xml combined: payload > 1KB AND method == GET",
+			filter: NewAndLabelFilter(
+				NewBytesLabelFilter(LabelFilterGreaterThan, "payload", 1024),
+				NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "method", "GET")),
+			),
+			labels: labels.FromStrings("payload", "2KB", "method", "GET"),
+			want:   true,
+		},
+
+		// Combined filters (OR logic)
+		{
+			name: "xml or filter: status == 200 OR status == 201",
+			filter: NewOrLabelFilter(
+				NewNumericLabelFilter(LabelFilterEqual, "status", 200),
+				NewNumericLabelFilter(LabelFilterEqual, "status", 201),
+			),
+			labels: labels.FromStrings("status", "201"),
+			want:   true,
+		},
+		{
+			name: "xml or filter: latency > 1s OR error_count > 0",
+			filter: NewOrLabelFilter(
+				NewDurationLabelFilter(LabelFilterGreaterThan, "latency", 1*time.Second),
+				NewNumericLabelFilter(LabelFilterGreaterThan, "error_count", 0),
+			),
+			labels: labels.FromStrings("latency", "500ms", "error_count", "1"),
+			want:   true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			lbs := NewBaseLabelsBuilder().ForLabels(tc.labels, labels.StableHash(tc.labels))
+
+			_, result := tc.filter.Process(0, []byte("test"), lbs)
+
+			if tc.wantErr {
+				require.True(t, lbs.HasErr(), "expected error but got none")
+			} else {
+				require.Equal(t, tc.want, result, "filter result mismatch")
+			}
+		})
+	}
+}
