@@ -12,6 +12,7 @@ Entries should be ordered as follows:
 Entries should include a reference to the pull request that introduced the change.
 
 ## Unreleased
+- [BUGFIX] Set `FOLDER_ANNOTATION` in Distributed and SingleBinary deployments. [#19593](https://github.com/grafana/loki/pull/19593)
 
 - [BREAKING] DEPRECATION NOTICE - The simple scalable mode (SSD) is deprecated and will be removed in a future version of the Loki Helm charts.  
 - [BUGFIX] Updated Loki and GEL versions in values.yaml file. [#20548](https://github.com/grafana/loki/pull/20548).
