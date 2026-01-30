@@ -4922,20 +4922,17 @@ otlp_config:
 # the SSE type override is not set.
 [s3_sse_kms_encryption_context: <string> | default = ""]
 
-# Experimental: Controls the amount of scan tasks that can be running in
-# parallel in the new query engine. The default of 0 means unlimited parallelism
-# and all tasks will be scheduled at once.
-# CLI flag: -limits.max-scan-task-parallelism
-[max_scan_task_parallelism: <int> | default = 0]
+[max_scan_task_parallelism: <int>]
 
-# Experimental: Toggles verbose debug logging of tasks in the new query engine.
-# CLI flag: -limits.debug-engine-tasks
-[debug_engine_tasks: <boolean> | default = false]
+[debug_engine_tasks: <boolean>]
 
-# Experimental: Toggles verbose debug logging of data streams in the new query
-# engine.
-# CLI flag: -limits.debug-engine-streams
-[debug_engine_streams: <boolean> | default = false]
+[debug_engine_streams: <boolean>]
+
+# List of segmentation rules for partitioning when writing to the segment topic.
+# Supports both simple keys ('key') and key=value rules with additional keys
+# ('key=value,additional_key1,additional_key2'). Experimental.
+# CLI flag: -distributor.segmentation-rules
+[segmentation_rules: <list of strings> | default = []]
 ```
 
 ### local_storage_config
