@@ -41,6 +41,9 @@ import (
 
 const (
 	metastoreWindowSize = 12 * time.Hour
+
+	// TocPrefix is the prefix under which ToC files are stored in the object storage.
+	TocPrefix = "tocs/"
 )
 
 type ObjectMetastore struct {
@@ -117,7 +120,7 @@ func (d *DataobjSectionDescriptor) MergeWithLabels(pointer pointers.SectionPoint
 
 // Table of Content files are stored in well-known locations that can be computed from a known time.
 func tableOfContentsPath(window time.Time) string {
-	return fmt.Sprintf("tocs/%s.toc", strings.ReplaceAll(window.Format(time.RFC3339), ":", "_"))
+	return fmt.Sprintf("%s%s.toc", TocPrefix, strings.ReplaceAll(window.Format(time.RFC3339), ":", "_"))
 }
 
 func iterTableOfContentsPaths(start, end time.Time) iter.Seq2[string, multitenancy.TimeRange] {
