@@ -38,16 +38,16 @@ func boolEqualitySA(alloc *memory.Allocator, kernel boolEqualityKernel, left *co
 	if left.Null {
 		// When left is null, the result is all nulls (set to the length of
 		// right).
-		values := memory.MakeBitmap(alloc, right.Len())
+		values := memory.NewBitmap(alloc, right.Len())
 		values.AppendCount(false, right.Len()) // Append all false to avoid garbage data in results.
 
-		return columnar.MakeBool(values, validity)
+		return columnar.NewBool(values, validity)
 	}
 
-	values := memory.MakeBitmap(alloc, right.Len())
+	values := memory.NewBitmap(alloc, right.Len())
 	kernel.DoSA(&values, left.Value, right.Values())
 
-	return columnar.MakeBool(values, validity)
+	return columnar.NewBool(values, validity)
 }
 
 func boolEqualityAS(alloc *memory.Allocator, kernel boolEqualityKernel, left *columnar.Bool, right *columnar.BoolScalar) *columnar.Bool {
@@ -56,16 +56,16 @@ func boolEqualityAS(alloc *memory.Allocator, kernel boolEqualityKernel, left *co
 	if right.Null {
 		// When right is null, the result is all nulls (set to the length of
 		// left).
-		values := memory.MakeBitmap(alloc, left.Len())
+		values := memory.NewBitmap(alloc, left.Len())
 		values.AppendCount(false, left.Len()) // Append all false to avoid garbage data in results.
 
-		return columnar.MakeBool(values, validity)
+		return columnar.NewBool(values, validity)
 	}
 
-	values := memory.MakeBitmap(alloc, left.Len())
+	values := memory.NewBitmap(alloc, left.Len())
 	kernel.DoAS(&values, left.Values(), right.Value)
 
-	return columnar.MakeBool(values, validity)
+	return columnar.NewBool(values, validity)
 }
 
 func boolEqualityAA(alloc *memory.Allocator, kernel boolEqualityKernel, left, right *columnar.Bool) (*columnar.Bool, error) {
@@ -78,8 +78,8 @@ func boolEqualityAA(alloc *memory.Allocator, kernel boolEqualityKernel, left, ri
 		return nil, err
 	}
 
-	values := memory.MakeBitmap(alloc, left.Len())
+	values := memory.NewBitmap(alloc, left.Len())
 	kernel.DoAA(&values, left.Values(), right.Values())
 
-	return columnar.MakeBool(values, validity), nil
+	return columnar.NewBool(values, validity), nil
 }

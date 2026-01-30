@@ -8,7 +8,7 @@ import (
 
 func BenchmarkBitmap_Appends(b *testing.B) {
 	b.Run("type=AppendCount", func(b *testing.B) {
-		dst := memory.MakeBitmap(nil, 100_000)
+		dst := memory.NewBitmap(nil, 100_000)
 
 		for b.Loop() {
 			dst.AppendCount(true, 100_00)
@@ -17,7 +17,7 @@ func BenchmarkBitmap_Appends(b *testing.B) {
 	})
 
 	b.Run("type=Append", func(b *testing.B) {
-		dst := memory.MakeBitmap(nil, 100_000)
+		dst := memory.NewBitmap(nil, 100_000)
 
 		for b.Loop() {
 			for range 100_000 {
@@ -33,7 +33,7 @@ func BenchmarkBitmap_Appends(b *testing.B) {
 			values[i] = true
 		}
 
-		dst := memory.MakeBitmap(nil, 100_000)
+		dst := memory.NewBitmap(nil, 100_000)
 
 		for b.Loop() {
 			dst.AppendValues(values...)

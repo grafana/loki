@@ -38,16 +38,16 @@ func numericEqualitySA[T columnar.Numeric](alloc *memory.Allocator, kernel numer
 	if left.Null {
 		// When left is null, the result is all nulls (set to the length of
 		// right).
-		values := memory.MakeBitmap(alloc, right.Len())
+		values := memory.NewBitmap(alloc, right.Len())
 		values.AppendCount(false, right.Len()) // Append all false to avoid garbage data in results.
 
-		return columnar.MakeBool(values, validity)
+		return columnar.NewBool(values, validity)
 	}
 
-	values := memory.MakeBitmap(alloc, right.Len())
+	values := memory.NewBitmap(alloc, right.Len())
 	kernel.DoSA(&values, left.Value, right.Values())
 
-	return columnar.MakeBool(values, validity)
+	return columnar.NewBool(values, validity)
 }
 
 func numericEqualityAS[T columnar.Numeric](alloc *memory.Allocator, kernel numericEqualityKernel[T], left *columnar.Number[T], right *columnar.NumberScalar[T]) *columnar.Bool {
@@ -56,16 +56,16 @@ func numericEqualityAS[T columnar.Numeric](alloc *memory.Allocator, kernel numer
 	if right.Null {
 		// When right is null, the result is all nulls (set to the length of
 		// left).
-		values := memory.MakeBitmap(alloc, left.Len())
+		values := memory.NewBitmap(alloc, left.Len())
 		values.AppendCount(false, left.Len()) // Append all false to avoid garbage data in results.
 
-		return columnar.MakeBool(values, validity)
+		return columnar.NewBool(values, validity)
 	}
 
-	values := memory.MakeBitmap(alloc, left.Len())
+	values := memory.NewBitmap(alloc, left.Len())
 	kernel.DoAS(&values, left.Values(), right.Value)
 
-	return columnar.MakeBool(values, validity)
+	return columnar.NewBool(values, validity)
 }
 
 func numericEqualityAA[T columnar.Numeric](alloc *memory.Allocator, kernel numericEqualityKernel[T], left, right *columnar.Number[T]) (*columnar.Bool, error) {
@@ -78,8 +78,8 @@ func numericEqualityAA[T columnar.Numeric](alloc *memory.Allocator, kernel numer
 		return nil, err
 	}
 
-	values := memory.MakeBitmap(alloc, left.Len())
+	values := memory.NewBitmap(alloc, left.Len())
 	kernel.DoAA(&values, left.Values(), right.Values())
 
-	return columnar.MakeBool(values, validity), nil
+	return columnar.NewBool(values, validity), nil
 }

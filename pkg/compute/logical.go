@@ -43,17 +43,17 @@ func notArray(alloc *memory.Allocator, input *columnar.Bool) *columnar.Bool {
 	var validity memory.Bitmap
 	if input.Nulls() > 0 {
 		// Only copy the validity bitmap from input if it has any nulls.
-		validity = memory.MakeBitmap(alloc, count)
+		validity = memory.NewBitmap(alloc, count)
 		validity.AppendBitmap(input.Validity())
 	}
 
-	valuesBitmap := memory.MakeBitmap(alloc, count)
+	valuesBitmap := memory.NewBitmap(alloc, count)
 	valuesBitmap.Resize(count)
 
 	inputBitmap := input.Values()
 	bitutil.InvertBitmap(inputBitmap.Bytes(), 0, count, valuesBitmap.Bytes(), 0)
 
-	return columnar.MakeBool(valuesBitmap, validity)
+	return columnar.NewBool(valuesBitmap, validity)
 }
 
 // And computes the logical AND of two input boolean datums. And returns an
@@ -115,16 +115,16 @@ func logicalSA(alloc *memory.Allocator, kernel logicalKernel, left *columnar.Boo
 	if left.Null {
 		// When left is null, the result is all nulls (set to the length of
 		// right).
-		values := memory.MakeBitmap(alloc, right.Len())
+		values := memory.NewBitmap(alloc, right.Len())
 		values.AppendCount(false, right.Len()) // Append all false to avoid garbage data in results.
 
-		return columnar.MakeBool(values, validity)
+		return columnar.NewBool(values, validity)
 	}
 
-	values := memory.MakeBitmap(alloc, right.Len())
+	values := memory.NewBitmap(alloc, right.Len())
 	kernel.DoSA(&values, left.Value, right.Values())
 
-	return columnar.MakeBool(values, validity)
+	return columnar.NewBool(values, validity)
 }
 
 func logicalAS(alloc *memory.Allocator, kernel logicalKernel, left *columnar.Bool, right *columnar.BoolScalar) *columnar.Bool {
@@ -133,16 +133,16 @@ func logicalAS(alloc *memory.Allocator, kernel logicalKernel, left *columnar.Boo
 	if right.Null {
 		// When right is null, the result is all nulls (set to the length of
 		// left).
-		values := memory.MakeBitmap(alloc, left.Len())
+		values := memory.NewBitmap(alloc, left.Len())
 		values.AppendCount(false, left.Len()) // Append all false to avoid garbage data in results.
 
-		return columnar.MakeBool(values, validity)
+		return columnar.NewBool(values, validity)
 	}
 
-	values := memory.MakeBitmap(alloc, left.Len())
+	values := memory.NewBitmap(alloc, left.Len())
 	kernel.DoAS(&values, left.Values(), right.Value)
 
-	return columnar.MakeBool(values, validity)
+	return columnar.NewBool(values, validity)
 }
 
 func logicalAA(alloc *memory.Allocator, kernel logicalKernel, left, right *columnar.Bool) (*columnar.Bool, error) {
@@ -155,8 +155,8 @@ func logicalAA(alloc *memory.Allocator, kernel logicalKernel, left, right *colum
 		return nil, err
 	}
 
-	values := memory.MakeBitmap(alloc, left.Len())
+	values := memory.NewBitmap(alloc, left.Len())
 	kernel.DoAA(&values, left.Values(), right.Values())
 
-	return columnar.MakeBool(values, validity), nil
+	return columnar.NewBool(values, validity), nil
 }

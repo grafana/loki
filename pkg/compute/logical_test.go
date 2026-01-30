@@ -330,7 +330,7 @@ func BenchmarkNot_Array(b *testing.B) {
 
 	input := builder.Build()
 
-	tempAlloc := memory.MakeAllocator(&alloc)
+	tempAlloc := memory.NewAllocator(&alloc)
 	for b.Loop() {
 		tempAlloc.Reclaim()
 
@@ -367,7 +367,7 @@ func BenchmarkAnd_Array(b *testing.B) {
 		right = rightBuilder.Build()
 	)
 
-	tempAlloc := memory.MakeAllocator(&alloc)
+	tempAlloc := memory.NewAllocator(&alloc)
 	for b.Loop() {
 		tempAlloc.Reclaim()
 
@@ -405,7 +405,7 @@ func BenchmarkOr_Array(b *testing.B) {
 		right = rightBuilder.Build()
 	)
 
-	tempAlloc := memory.MakeAllocator(&alloc)
+	tempAlloc := memory.NewAllocator(&alloc)
 	for b.Loop() {
 		tempAlloc.Reclaim()
 

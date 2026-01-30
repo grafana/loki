@@ -47,7 +47,7 @@ func (cr *columnReader) Read(ctx context.Context, alloc *memory.Allocator, count
 	}
 
 	// Create a temporary allocator for intermediate arrays.
-	tempAlloc := memory.MakeAllocator(alloc)
+	tempAlloc := memory.NewAllocator(alloc)
 	defer tempAlloc.Free()
 
 	var arrs []columnar.Array

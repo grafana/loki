@@ -92,7 +92,7 @@ func TestBitmap_Set(t *testing.T) {
 }
 
 func TestBitmap_SetRange(t *testing.T) {
-	bmap := memory.MakeBitmap(nil, 64)
+	bmap := memory.NewBitmap(nil, 64)
 	bmap.Resize(64)
 	bmap.SetRange(0, 5, true)
 	bmap.SetRange(7, 10, true)
@@ -112,7 +112,7 @@ func TestBitmap_SetRange(t *testing.T) {
 }
 
 func TestBitmap_IterValue_true(t *testing.T) {
-	bmap := memory.MakeBitmap(nil, 128)
+	bmap := memory.NewBitmap(nil, 128)
 	bmap.Resize(128) // 16 words, 8 bits each
 
 	bitsToSet := []int{1, 3, 5, 65, 70, 127}
@@ -130,7 +130,7 @@ func TestBitmap_IterValue_true(t *testing.T) {
 }
 
 func TestBitmap_IterValue_false(t *testing.T) {
-	bmap := memory.MakeBitmap(nil, 128)
+	bmap := memory.NewBitmap(nil, 128)
 	bmap.Resize(128) // 16 words, 8 bits each
 
 	// Set all bits first

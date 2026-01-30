@@ -12,7 +12,7 @@ import (
 )
 
 func TestSubstrInsensitive(t *testing.T) {
-	alloc := memory.MakeAllocator(nil)
+	alloc := memory.NewAllocator(nil)
 
 	singleValueHaystack := columnartest.Array(t, columnar.KindUTF8, alloc, "test")
 	nulllValueHaystack := columnartest.Array(t, columnar.KindUTF8, alloc, nil)
@@ -94,9 +94,9 @@ func TestSubstrInsensitive(t *testing.T) {
 }
 
 func BenchmarkSubstrInsensitive(b *testing.B) {
-	alloc := memory.MakeAllocator(nil)
+	alloc := memory.NewAllocator(nil)
 	line := strings.Repeat("A", 100) + "target" + strings.Repeat("B", 100)
-	haystack := columnar.MakeUTF8([]byte(line), []int32{0, int32(len(line))}, memory.MakeBitmap(alloc, 1))
+	haystack := columnar.NewUTF8([]byte(line), []int32{0, int32(len(line))}, memory.NewBitmap(alloc, 1))
 	needle := columnartest.Scalar(b, columnar.KindUTF8, "TaRgEt")
 
 	var totalSize int
@@ -104,7 +104,7 @@ func BenchmarkSubstrInsensitive(b *testing.B) {
 		totalSize += len(haystack.Get(i))
 	}
 
-	benchAlloc := memory.MakeAllocator(nil)
+	benchAlloc := memory.NewAllocator(nil)
 	for b.Loop() {
 		benchAlloc.Reclaim()
 		_, _ = SubstrInsensitive(benchAlloc, haystack, needle)

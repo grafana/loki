@@ -375,7 +375,7 @@ func mustConvertType(dtype arrow.DataType) datasetmd.PhysicalType {
 // permits reusing a Reader rather than allocating a new one.
 func (r *Reader) Reset(opts ReaderOptions) {
 	if r.alloc == nil {
-		r.alloc = memoryv2.MakeAllocator(nil)
+		r.alloc = memoryv2.NewAllocator(nil)
 	} else {
 		r.alloc.Reset()
 	}

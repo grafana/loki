@@ -21,7 +21,7 @@ func Array(t testing.TB, kind columnar.Kind, alloc *memory.Allocator, values ...
 	t.Helper()
 
 	if alloc == nil {
-		alloc = memory.MakeAllocator(nil)
+		alloc = memory.NewAllocator(nil)
 	}
 
 	switch kind {
