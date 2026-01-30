@@ -50,7 +50,7 @@ func TestPartitionProcessor_BuilderMaxAge(t *testing.T) {
 
 		// Process a record containing some log lines. No flush should occur because
 		// the builder has not reached the maximum age.
-		proc.processRecord(ctx, newTestRecord(t, "tenant1", time.Now()))
+		require.NoError(t, proc.processRecord(ctx, newTestRecord(t, "tenant1", time.Now())))
 
 		// The first append time should be set to the current time, but no flush
 		// should have occurred.
@@ -62,7 +62,7 @@ func TestPartitionProcessor_BuilderMaxAge(t *testing.T) {
 		// the log lines from the record should be appended to the next data
 		// object, not the one that was just flushed.
 		time.Sleep(31 * time.Minute)
-		proc.processRecord(ctx, newTestRecord(t, "tenant1", time.Now()))
+		require.NoError(t, proc.processRecord(ctx, newTestRecord(t, "tenant1", time.Now())))
 
 		// The last flushed time should be updated to the current time, and so should
 		// the first append time to reflect the start of the new data object.
@@ -75,7 +75,7 @@ func TestPartitionProcessor_BuilderMaxAge(t *testing.T) {
 		// occur because the next builder has not reached the maximum age.
 		expectedLastFlushed := time.Now()
 		time.Sleep(time.Minute)
-		proc.processRecord(ctx, newTestRecord(t, "tenant1", time.Now()))
+		require.NoError(t, proc.processRecord(ctx, newTestRecord(t, "tenant1", time.Now())))
 		require.Equal(t, expectedLastFlushed, proc.firstAppend)
 		require.Equal(t, time.Now(), proc.lastAppend)
 		require.Equal(t, 1, flusher.flushes)
@@ -109,7 +109,7 @@ func TestPartitionProcessor_IdleFlush(t *testing.T) {
 
 		// Process a record containing some log lines. No flush should occur because
 		// when log lines are appended to the builder it resets the idle timeout.
-		proc.processRecord(ctx, newTestRecord(t, "tenant1", time.Now()))
+		require.NoError(t, proc.processRecord(ctx, newTestRecord(t, "tenant1", time.Now())))
 		require.False(t, proc.lastAppend.IsZero())
 		flushed, err = proc.idleFlush(ctx)
 		require.NoError(t, err)
@@ -150,10 +150,10 @@ func TestPartitionProcessor_Flush(t *testing.T) {
 
 			// Process a record containing some log lines. No flush should occur.
 			rec1 := newTestRecord(t, "tenant", time.Now())
-			proc.processRecord(ctx, rec1)
+			require.NoError(t, proc.processRecord(ctx, rec1))
 			require.Equal(t, time.Now(), proc.firstAppend)
 			require.Equal(t, time.Now(), proc.lastAppend)
-			require.Equal(t, rec1.Offset, proc.offset)
+			require.Equal(t, rec1.Offset, proc.lastOffset)
 
 			// Advance time and force a flush.
 			time.Sleep(time.Second)
@@ -185,10 +185,10 @@ func TestPartitionProcessor_Flush(t *testing.T) {
 
 			// Process a record containing some log lines. No flush should occur.
 			rec := newTestRecord(t, "tenant", time.Now())
-			proc.processRecord(ctx, rec)
+			require.NoError(t, proc.processRecord(ctx, rec))
 			require.Equal(t, time.Now(), proc.firstAppend)
 			require.Equal(t, time.Now(), proc.lastAppend)
-			require.Equal(t, rec.Offset, proc.offset)
+			require.Equal(t, rec.Offset, proc.lastOffset)
 
 			// Advance time and force a flush. This flush should fail.
 			time.Sleep(time.Second)
