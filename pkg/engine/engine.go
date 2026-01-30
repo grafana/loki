@@ -64,6 +64,11 @@ type ExecutorConfig struct {
 	// MergePrefetchCount controls the number of inputs that are prefetched simultaneously by any Merge node.
 	MergePrefetchCount int `yaml:"merge_prefetch_count" category:"experimental"`
 
+	// MetastorePointersScansPerInnerMerge is the number of PointersScan targets per inner Merge in the metastore workflow.
+	// When 0, the metastore plan is a single Merge → Parallelize → ScanSet with all targets.
+	// When > 0, the plan is a two-level tree: Top Merge → K Inner Merges, each Inner Merge → Parallelize → ScanSet(chunk).
+	MetastorePointersScansPerInnerMerge int `yaml:"metastore_pointers_scans_per_inner_merge" category:"experimental"`
+
 	// RangeConfig determines how to optimize range reads in the V2 engine.
 	RangeConfig rangeio.Config `yaml:"range_reads" category:"experimental" doc:"description=Configures how to read byte ranges from object storage when using the V2 engine."`
 
@@ -75,6 +80,7 @@ type ExecutorConfig struct {
 func (cfg *ExecutorConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.IntVar(&cfg.BatchSize, prefix+"batch-size", 100, "Experimental: Batch size of the next generation query engine.")
 	f.IntVar(&cfg.MergePrefetchCount, prefix+"merge-prefetch-count", 0, "Experimental: The number of inputs that are prefetched simultaneously by any Merge node. A value of 0 means that only the currently processed input is prefetched, 1 means that only the next input is prefetched, and so on. A negative value means that all inputs are be prefetched in parallel.")
+	f.IntVar(&cfg.MetastorePointersScansPerInnerMerge, prefix+"metastore-pointers-scans-per-inner-merge", 0, "Experimental: Number of PointersScan targets per inner Merge in the metastore workflow. When 0, use a single Merge; when > 0, build a two-level merge tree (e.g. 500 scans with 50 yields 10 inner merges and 1 top merge).")
 	cfg.RangeConfig.RegisterFlags(prefix+"range-reads.", f)
 }
 
@@ -368,7 +374,7 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, tenantID string, logger 
 }
 
 func (e *Engine) metastoreSectionsResolver(ctx context.Context, tenantID string) physical.MetastoreSectionsResolver {
-	planner := physical.NewMetastorePlanner(e.metastore)
+	planner := physical.NewMetastorePlanner(e.metastore, e.cfg.Executor.MetastorePointersScansPerInnerMerge)
 	return func(selector physical.Expression, predicates []physical.Expression, start time.Time, end time.Time) ([]*metastore.DataobjSectionDescriptor, error) {
 		ctx, region := xcap.StartRegion(ctx, "ObjectMetastore.Sections")
 		defer region.End()
