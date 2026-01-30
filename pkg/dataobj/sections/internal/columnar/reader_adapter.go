@@ -15,7 +15,7 @@ import (
 // [columnar.RecordBatch] values from a reader that only supports reads through
 // a slice of [dataset.Row].
 type ReaderAdapter struct {
-	inner    *dataset.Reader
+	inner    *dataset.RowReader
 	colTypes []datasetmd.PhysicalType
 
 	buf []dataset.Row
@@ -23,7 +23,7 @@ type ReaderAdapter struct {
 
 // NewReaderAdapter creates a ReaderAdapter with the provided dataset reader options.
 func NewReaderAdapter(innerOpts dataset.ReaderOptions) *ReaderAdapter {
-	r := &ReaderAdapter{inner: dataset.NewReader(innerOpts)}
+	r := &ReaderAdapter{inner: dataset.NewRowReader(innerOpts)}
 	r.Reset(innerOpts)
 	return r
 }

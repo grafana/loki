@@ -8,7 +8,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
-// readerDownloader is a utility for downloading pages in bulk from a
+// rowReaderDownloader is a utility for downloading pages in bulk from a
 // [Dataset]. It works by caching page data from an inner dataset, and
 // downloading pages in bulk any time an uncached page is requested.
 //
@@ -16,7 +16,7 @@ import (
 //
 // Downloading pages in bulk is important to minimize round trips to the
 // backend storage. The proper behavior of bulk downloads is tied to
-// [Reader.Read] operating in two phases:
+// [RowReader.Read] operating in two phases:
 //
 //  1. Rows from primary columns are read and filtered by a predicate
 //  2. Rows from secondary columns are read into the filtered rows
@@ -28,8 +28,8 @@ import (
 // of page, assigning other pages a priority level:
 //
 //   - P1: Other pages of the same phase that overlap with the current read
-//     range from [readerDownloader.SetReadRange] and are not masked by
-//     [readerDownloader.SetMask].
+//     range from [rowReaderDownloader.SetReadRange] and are not masked by
+//     [rowReaderDownloader.SetMask].
 //
 //   - P2: Secondary pages that overlap with the current read range and are not
 //     masked.
@@ -41,9 +41,9 @@ import (
 //   - P3: All pages that include rows after the end of the read range.
 //
 //     This excludes any page that is outside of the dataset ranges passed to
-//     [newReaderDownloader] and [readerDownloader.Reset].
+//     [newReaderDownloader] and [rowReaderDownloader.Reset].
 //
-// The readerDownloader targets a configurable batch size, which is the target
+// The rowReaderDownloader targets a configurable batch size, which is the target
 // size of pages to cache in memory at once.
 //
 // Batches of pages to download are built in four steps:
@@ -68,13 +68,13 @@ import (
 //   - The minimum number of pages needed to download an entire dataset is one,
 //     if every page in that dataset is less than the target size.
 //
-//   - The minimum number of pages needed to download a single [Reader.Read] call
+//   - The minimum number of pages needed to download a single [RowReader.Read] call
 //     is zero, if all pages have been downloaded in a previous call.
 //
-//   - The maximum number of pages needed to download a single [Reader.Read] call
+//   - The maximum number of pages needed to download a single [RowReader.Read] call
 //     is two: one for the primary phase, and another for the secondary phase.
 //
-//   - The separation of phases allows for the [Reader] to mask additional ranges
+//   - The separation of phases allows for the [RowReader] to mask additional ranges
 //     before the secondary phase. This helps reduce the number of P1 pages
 //     that are downloaded during the secondary phase.
 //
@@ -83,7 +83,7 @@ import (
 //
 // Cached pages before the read range are cleared when a new uncached page is
 // requested.
-type readerDownloader struct {
+type rowReaderDownloader struct {
 	inner Dataset
 
 	origColumns, origPrimary, origSecondary []Column
@@ -99,42 +99,42 @@ type readerDownloader struct {
 // Dataset. The resulting Dataset only wraps around the provided columns.
 //
 // All uncached pages that have not been pruned by
-// [readerDownloader.SetDatasetRanges] will be downloaded in bulk when an
+// [rowReaderDownloader.SetDatasetRanges] will be downloaded in bulk when an
 // uncached page is requested.
 //
 // # Initialization
 //
-// After a readerDownloader is created, it must be initialized by calling:
+// After a rowReaderDownloader is created, it must be initialized by calling:
 //
-//  1. [readerDownloader.AddColumn] with each column that will be read, and
-//  2. [readerDownloader.SetDatasetRanges] to define the valid ranges acrsos
+//  1. [rowReaderDownloader.AddColumn] with each column that will be read, and
+//  2. [rowReaderDownloader.SetDatasetRanges] to define the valid ranges acrsos
 //     the entire dataset.
 //
 // # Usage
 //
-// Use [readerDownloader.AllColumns], [readerDownloader.PrimaryColumns], and
-// [readerDownloader.SecondaryColumns] to enable page batching; any pages
+// Use [rowReaderDownloader.AllColumns], [rowReaderDownloader.PrimaryColumns], and
+// [rowReaderDownloader.SecondaryColumns] to enable page batching; any pages
 // loaded from these columns will trigger a bulk download.
 //
 // Before each usage of the columns, users should call
-// [readerDownloader.SetReadRange] to define the range of rows that will be
+// [rowReaderDownloader.SetReadRange] to define the range of rows that will be
 // read next.
 //
-// If applicable, users should additionally call [readerDownloader.Mask] to
+// If applicable, users should additionally call [rowReaderDownloader.Mask] to
 // exclude any ranges of rows that should not be read; pages that are entirely
 // within the mask will not be downloaded.
-func newReaderDownloader(dset Dataset) *readerDownloader {
-	var rd readerDownloader
+func newRowReaderDownloader(dset Dataset) *rowReaderDownloader {
+	var rd rowReaderDownloader
 	rd.Reset(dset)
 	return &rd
 }
 
-// AddColumn adds a column to the readerDownloader. This should be called
+// AddColumn adds a column to the rowReaderDownloader. This should be called
 // before the downloader is used.
 //
 // AddColumn must be called matching the order of columns in
 // [ReaderOptions.Columns].
-func (dl *readerDownloader) AddColumn(col Column, primary bool) {
+func (dl *rowReaderDownloader) AddColumn(col Column, primary bool) {
 	wrappedCol := newReaderColumn(dl, col, primary)
 
 	dl.origColumns = append(dl.origColumns, col)
@@ -151,7 +151,7 @@ func (dl *readerDownloader) AddColumn(col Column, primary bool) {
 
 // SetDatasetRanges sets the valid ranges of rows that will be read. Pages
 // which do not overlap with these ranges will never be downloaded.
-func (dl *readerDownloader) SetDatasetRanges(r rowRanges) {
+func (dl *rowReaderDownloader) SetDatasetRanges(r rowRanges) {
 	dl.dsetRanges = r
 }
 
@@ -160,7 +160,7 @@ func (dl *readerDownloader) SetDatasetRanges(r rowRanges) {
 // range are never included in a batch.
 //
 // This method clears any previously set mask.
-func (dl *readerDownloader) SetReadRange(r rowRange) {
+func (dl *rowReaderDownloader) SetReadRange(r rowRange) {
 	dl.readRange = r
 	dl.rangeMask = sliceclear.Clear(dl.rangeMask)
 }
@@ -168,36 +168,36 @@ func (dl *readerDownloader) SetReadRange(r rowRange) {
 // Mask marks a subset of the current read range as excluded. Mask may be
 // called multiple times to exclude multiple ranges. Any page that is entirely
 // within the combined mask will not be downloaded.
-func (dl *readerDownloader) Mask(r rowRange) {
+func (dl *rowReaderDownloader) Mask(r rowRange) {
 	dl.rangeMask.Add(r)
 }
 
-// OrigColumns returns the original columns of the readerDownloader in the order
+// OrigColumns returns the original columns of the rowReaderDownloader in the order
 // they were added.
-func (dl *readerDownloader) OrigColumns() []Column { return dl.origColumns }
+func (dl *rowReaderDownloader) OrigColumns() []Column { return dl.origColumns }
 
 // OrigPrimaryColumns returns the original primary columns of the
-// readerDownloader in the order they were added.
-func (dl *readerDownloader) OrigPrimaryColumns() []Column { return dl.origPrimary }
+// rowReaderDownloader in the order they were added.
+func (dl *rowReaderDownloader) OrigPrimaryColumns() []Column { return dl.origPrimary }
 
 // OrigSecondaryColumns returns the original secondary columns of the
-// readerDownloader in the order they were added.
-func (dl *readerDownloader) OrigSecondaryColumns() []Column { return dl.origSecondary }
+// rowReaderDownloader in the order they were added.
+func (dl *rowReaderDownloader) OrigSecondaryColumns() []Column { return dl.origSecondary }
 
-// AllColumns returns the wrapped columns of the readerDownloader in the order
+// AllColumns returns the wrapped columns of the rowReaderDownloader in the order
 // they were added.
-func (dl *readerDownloader) AllColumns() []Column { return dl.allColumns }
+func (dl *rowReaderDownloader) AllColumns() []Column { return dl.allColumns }
 
-// PrimaryColumns returns the wrapped primary columns of the readerDownloader
+// PrimaryColumns returns the wrapped primary columns of the rowReaderDownloader
 // in the order they were added.
-func (dl *readerDownloader) PrimaryColumns() []Column { return dl.primary }
+func (dl *rowReaderDownloader) PrimaryColumns() []Column { return dl.primary }
 
 // SecondaryColumns returns the wrapped secondary columns of the
-// readerDownloader in the order they were added.
-func (dl *readerDownloader) SecondaryColumns() []Column { return dl.secondary }
+// rowReaderDownloader in the order they were added.
+func (dl *rowReaderDownloader) SecondaryColumns() []Column { return dl.secondary }
 
 // initColumnPages populates the pages of all columns in the downloader.
-func (dl *readerDownloader) initColumnPages(ctx context.Context) error {
+func (dl *rowReaderDownloader) initColumnPages(ctx context.Context) error {
 	columns := dl.allColumns
 
 	var idx int
@@ -216,7 +216,7 @@ func (dl *readerDownloader) initColumnPages(ctx context.Context) error {
 }
 
 // downloadBatch downloads a batch of pages from the inner dataset.
-func (dl *readerDownloader) downloadBatch(ctx context.Context, requestor *readerPage) error {
+func (dl *rowReaderDownloader) downloadBatch(ctx context.Context, requestor *readerPage) error {
 	for _, col := range dl.allColumns {
 		// Garbage collect any unused pages; this prevents them from being included
 		// in the batchSize calculation and also allows them to be freed by the GC.
@@ -265,7 +265,7 @@ func (dl *readerDownloader) downloadBatch(ctx context.Context, requestor *reader
 	return nil
 }
 
-func (dl *readerDownloader) buildDownloadBatch(ctx context.Context, requestor *readerPage) ([]*readerPage, error) {
+func (dl *rowReaderDownloader) buildDownloadBatch(ctx context.Context, requestor *readerPage) ([]*readerPage, error) {
 	var pageBatch []*readerPage
 
 	// Figure out how large our batch already is based on cache pages.
@@ -339,7 +339,7 @@ func (dl *readerDownloader) buildDownloadBatch(ctx context.Context, requestor *r
 
 // iterP1Pages returns an iterator over P1 pages in round-robin column order,
 // with one page per column.
-func (dl *readerDownloader) iterP1Pages(ctx context.Context, primary bool) result.Seq[*readerPage] {
+func (dl *rowReaderDownloader) iterP1Pages(ctx context.Context, primary bool) result.Seq[*readerPage] {
 	return result.Iter(func(yield func(*readerPage) bool) error {
 		for result := range dl.iterColumnPages(ctx, primary) {
 			page, err := result.Value()
@@ -372,7 +372,7 @@ func (dl *readerDownloader) iterP1Pages(ctx context.Context, primary bool) resul
 // iterColumnPages returns an iterator over pages in columns in round-robin
 // order across all columns (first page from each column, then second page from
 // each column, etc.).
-func (dl *readerDownloader) iterColumnPages(ctx context.Context, primary bool) result.Seq[*readerPage] {
+func (dl *rowReaderDownloader) iterColumnPages(ctx context.Context, primary bool) result.Seq[*readerPage] {
 	phaseColumns := dl.primary
 	if !primary {
 		phaseColumns = dl.secondary
@@ -411,7 +411,7 @@ func (dl *readerDownloader) iterColumnPages(ctx context.Context, primary bool) r
 
 // iterP2Pages returns an iterator over P2 pages in round-robin column order,
 // with one page per column.
-func (dl *readerDownloader) iterP2Pages(ctx context.Context, primary bool) result.Seq[*readerPage] {
+func (dl *rowReaderDownloader) iterP2Pages(ctx context.Context, primary bool) result.Seq[*readerPage] {
 	// For the primary phase, P2 pages are pages that would be P1 for the
 	// secondary phase. This means we can express it as iterP1Pages(ctx, !primary).
 	//
@@ -427,7 +427,7 @@ func (dl *readerDownloader) iterP2Pages(ctx context.Context, primary bool) resul
 
 // iterP3Pages returns an iterator over P3 pages in round-robin column order,
 // with one page per column.
-func (dl *readerDownloader) iterP3Pages(ctx context.Context, primary bool) result.Seq[*readerPage] {
+func (dl *rowReaderDownloader) iterP3Pages(ctx context.Context, primary bool) result.Seq[*readerPage] {
 	return result.Iter(func(yield func(*readerPage) bool) error {
 		for result := range dl.iterColumnPages(ctx, primary) {
 			page, err := result.Value()
@@ -457,7 +457,7 @@ func (dl *readerDownloader) iterP3Pages(ctx context.Context, primary bool) resul
 	})
 }
 
-func (dl *readerDownloader) Reset(dset Dataset) {
+func (dl *rowReaderDownloader) Reset(dset Dataset) {
 	dl.inner = dset
 
 	dl.readRange = rowRange{}
@@ -478,7 +478,7 @@ func (dl *readerDownloader) Reset(dset Dataset) {
 }
 
 type readerColumn struct {
-	dl      *readerDownloader
+	dl      *rowReaderDownloader
 	inner   Column
 	primary bool // Whether this column is a primary column.
 
@@ -487,7 +487,7 @@ type readerColumn struct {
 
 var _ Column = (*readerColumn)(nil)
 
-func newReaderColumn(dl *readerDownloader, col Column, primary bool) *readerColumn {
+func newReaderColumn(dl *rowReaderDownloader, col Column, primary bool) *readerColumn {
 	return &readerColumn{
 		dl:      dl,
 		inner:   col,
@@ -537,7 +537,7 @@ func (col *readerColumn) processPages(pages Pages) {
 // GC garbage collects cached data from pages which will no longer be read: any
 // page which ends before the read row range of the downloader.
 //
-// Using the minimum read row range permits failed calls to [Reader.Read] to be
+// Using the minimum read row range permits failed calls to [RowReader.Read] to be
 // retried without needing to redownload the pages involved in that call.
 func (col *readerColumn) GC() {
 	for _, page := range col.pages {

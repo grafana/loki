@@ -11,12 +11,12 @@ import (
 	"github.com/grafana/loki/v3/pkg/memory"
 )
 
-// basicReader is a low-level reader that reads rows from a set of columns.
+// basicRowReader is a low-level reader that reads rows from a set of columns.
 //
-// basicReader lazily reads pages from columns as they are iterated over; see
-// [Reader] for a higher-level implementation that supports predicates and
+// basicRowReader lazily reads pages from columns as they are iterated over; see
+// [RowReader] for a higher-level implementation that supports predicates and
 // batching page downloads.
-type basicReader struct {
+type basicRowReader struct {
 	columns      []Column
 	readers      []*columnReader
 	columnLookup map[Column]int // Index into columns and readers
@@ -26,31 +26,31 @@ type basicReader struct {
 	nextRow int64
 }
 
-// newBasicReader returns a new basicReader that reads rows from the given set
+// newBasicRowReader returns a new basicRowReader that reads rows from the given set
 // of columns.
-func newBasicReader(set []Column) *basicReader {
-	var br basicReader
+func newBasicRowReader(set []Column) *basicRowReader {
+	var br basicRowReader
 	br.Reset(set)
 	return &br
 }
 
-// Read is a convenience wrapper around [basicReader.ReadColumns] that reads up
-// to the next len(s) rows across the entire column set owned by [basicReader].
-func (pr *basicReader) Read(ctx context.Context, s []Row) (n int, err error) {
+// Read is a convenience wrapper around [basicRowReader.ReadColumns] that reads up
+// to the next len(s) rows across the entire column set owned by [basicRowReader].
+func (pr *basicRowReader) Read(ctx context.Context, s []Row) (n int, err error) {
 	return pr.ReadColumns(ctx, pr.columns, s)
 }
 
 // ReadColumns reads up to the next len(s) rows from a subset of columns and
 // stores them into s. It returns the number of rows read and any error
-// encountered. At the end of the column set used by basicReader, ReadColumns
+// encountered. At the end of the column set used by basicRowReader, ReadColumns
 // returns 0, [io.EOF].
 //
 // Row.Values will be populated with one element per column in the order of the
-// overall column set owned by basicReader.
+// overall column set owned by basicRowReader.
 //
 // After calling ReadColumns, additional columns in s can be filled using
-// [basicReader.Fill].
-func (pr *basicReader) ReadColumns(ctx context.Context, columns []Column, s []Row) (n int, err error) {
+// [basicRowReader.Fill].
+func (pr *basicRowReader) ReadColumns(ctx context.Context, columns []Column, s []Row) (n int, err error) {
 	if len(columns) == 0 {
 		return 0, fmt.Errorf("no columns to read")
 	}
@@ -76,7 +76,7 @@ func (pr *basicReader) ReadColumns(ctx context.Context, columns []Column, s []Ro
 // values for.
 //
 // s[i].Values will be populated with one element per column in the order of
-// the column set provided to [newBasicReader] or [basicReader.Reset].
+// the column set provided to [newBasicRowReader] or [basicRowReader.Reset].
 //
 // This allows callers to use Fill to implement efficient filtering:
 //
@@ -89,8 +89,8 @@ func (pr *basicReader) ReadColumns(ctx context.Context, columns []Column, s []Ro
 // forward: that is, each filled row is in sorted order with no repeats across
 // calls.
 //
-// Fill does not advance the offset of the basicReader.
-func (pr *basicReader) Fill(ctx context.Context, columns []Column, s []Row) (n int, err error) {
+// Fill does not advance the offset of the basicRowReader.
+func (pr *basicRowReader) Fill(ctx context.Context, columns []Column, s []Row) (n int, err error) {
 	if len(columns) == 0 {
 		return 0, fmt.Errorf("no columns to fill")
 	}
@@ -133,7 +133,7 @@ func partitionRows(s []Row) iter.Seq[[]Row] {
 
 // fill implements fill for a single slice of rows that are consecutive and
 // have no gaps between them.
-func (pr *basicReader) fill(ctx context.Context, columns []Column, s []Row) (n int, err error) {
+func (pr *basicRowReader) fill(ctx context.Context, columns []Column, s []Row) (n int, err error) {
 	if len(s) == 0 {
 		return 0, nil
 	}
@@ -162,7 +162,7 @@ func (pr *basicReader) fill(ctx context.Context, columns []Column, s []Row) (n i
 		for _, column := range columns {
 			columnIndex, ok := pr.columnLookup[column]
 			if !ok {
-				return n, fmt.Errorf("column %v is not owned by basicReader", column)
+				return n, fmt.Errorf("column %v is not owned by basicRowReader", column)
 			}
 
 			r := pr.readers[columnIndex]
@@ -252,7 +252,7 @@ func (pr *basicReader) fill(ctx context.Context, columns []Column, s []Row) (n i
 // Seeking to an offset before the start of the column set is an error. Seeking
 // to beyond the end of the column set will cause the next Read or ReadColumns
 // to return io.EOF.
-func (pr *basicReader) Seek(offset int64, whence int) (int64, error) {
+func (pr *basicRowReader) Seek(offset int64, whence int) (int64, error) {
 	switch whence {
 	case io.SeekStart:
 		if offset < 0 {
@@ -282,7 +282,7 @@ func (pr *basicReader) Seek(offset int64, whence int) (int64, error) {
 
 // maxRows returns the total number of rows across the column set, determined
 // by the column with the most rows.
-func (pr *basicReader) maxRows() int {
+func (pr *basicRowReader) maxRows() int {
 	var rows int
 	for _, c := range pr.columns {
 		rows = max(rows, c.ColumnDesc().RowsCount)
@@ -290,9 +290,9 @@ func (pr *basicReader) maxRows() int {
 	return rows
 }
 
-// Reset resets the basicReader to read from the start of the provided columns.
-// This permits reusing a basicReader rather than allocating a new one.
-func (pr *basicReader) Reset(columns []Column) {
+// Reset resets the basicRowReader to read from the start of the provided columns.
+// This permits reusing a basicRowReader rather than allocating a new one.
+func (pr *basicRowReader) Reset(columns []Column) {
 	if pr.columnLookup == nil {
 		pr.columnLookup = make(map[Column]int, len(columns))
 	} else {
@@ -331,9 +331,9 @@ func closeAndClear(r []*columnReader) {
 	clear(r)
 }
 
-// Close closes the basicReader. Closed basicReaders can be reused by calling
-// [basicReader.Reset].
-func (pr *basicReader) Close() error {
+// Close closes the basicRowReader. Closed basicRowReaders can be reused by calling
+// [basicRowReader.Reset].
+func (pr *basicRowReader) Close() error {
 	for _, r := range pr.readers {
 		if err := r.Close(); err != nil {
 			return err

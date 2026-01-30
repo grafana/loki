@@ -28,7 +28,7 @@ type RowReader struct {
 
 	buf []dataset.Row
 
-	reader  *dataset.Reader
+	reader  *dataset.RowReader
 	columns []dataset.Column
 
 	symbols *symbolizer.Symbolizer
@@ -137,7 +137,7 @@ func (r *RowReader) initReader() error {
 	}
 
 	if r.reader == nil {
-		r.reader = dataset.NewReader(readerOpts)
+		r.reader = dataset.NewRowReader(readerOpts)
 	} else {
 		r.reader.Reset(readerOpts)
 	}
