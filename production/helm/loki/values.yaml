@@ -1613,6 +1613,15 @@ write:
   # -- Annotations for write pods
   podAnnotations: {}
   # -- Additional labels for each `write` pod
+  podDisruptionBudget:
+  # -- Enable or disable the PodDisruptionBudget resource.
+    enabled: false
+  # -- This property configures the maximum unavailable pods for disruptions.
+    # maxUnavailable: 1
+  # -- This property configures the minimum available pods for disruptions
+    # minAvailable: 1
+  # -- (string) Unhealthy pod eviction policy for the PDB.
+    # unhealthyPodEvictionPolicy: AlwaysAllow
   podLabels: {}
   # -- Additional selector labels for each `write` pod
   selectorLabels: {}
@@ -1753,6 +1762,15 @@ read:
   # -- Annotations for read pods
   podAnnotations: {}
   # -- Additional labels for each `read` pod
+  podDisruptionBudget:
+  # -- Enable or disable the PodDisruptionBudget resource.
+    enabled: false
+  # -- This property configures the maximum unavailable pods for disruptions.
+    # maxUnavailable: 1
+  # -- This property configures the minimum available pods for disruptions
+    # minAvailable: 1
+  # -- (string) Unhealthy pod eviction policy for the PDB.
+    # unhealthyPodEvictionPolicy: AlwaysAllow
   podLabels: {}
   # -- Additional selector labels for each `read` pod
   selectorLabels: {}
@@ -1887,6 +1905,15 @@ backend:
   annotations: {}
   # -- Annotations for backend pods
   podAnnotations: {}
+  podDisruptionBudget:
+  # -- Enable or disable the PodDisruptionBudget resource.
+    enabled: false
+  # -- This property configures the maximum unavailable pods for disruptions.
+    # maxUnavailable: 1
+  # -- This property configures the minimum available pods for disruptions
+    # minAvailable: 1
+  # -- (string) Unhealthy pod eviction policy for the PDB.
+    # unhealthyPodEvictionPolicy: AlwaysAllow
   # -- Additional labels for each `backend` pod
   podLabels: {}
   # -- Additional selector labels for each `backend` pod
