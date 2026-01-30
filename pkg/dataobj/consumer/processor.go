@@ -149,15 +149,14 @@ func (p *processor) Run(ctx context.Context) error {
 			// We don't return ctx.Err() here as it manifests as a service failure
 			// when shutting down.
 			return nil
-		case record, ok := <-p.records:
+		case rec, ok := <-p.records:
 			if !ok {
 				level.Info(p.logger).Log("msg", "channel closed")
 				return nil
 			}
-			if err := p.processRecord(ctx, record); err != nil {
+			if err := p.processRecord(ctx, rec); err != nil {
 				level.Error(p.logger).Log("msg", "failed to process record", "err", err)
-				p.metrics.discardedBytes.Add(float64(len(record.Value)))
-				p.metrics.recordFailures.Inc()
+				p.observeRecordErr(rec)
 			}
 		case <-time.After(p.idleFlushTimeout):
 			// This partition is idle, flush it.
@@ -300,4 +299,9 @@ func (p *processor) observeRecord(rec *kgo.Record, now time.Time) {
 	// Deprecated metrics.
 	p.metrics.processedBytes.Add(float64(len(rec.Value)))
 	p.metrics.processedRecords.Inc()
+}
+
+func (p *processor) observeRecordErr(rec *kgo.Record) {
+	p.metrics.recordFailures.Inc()
+	p.metrics.discardedBytes.Add(float64(len(rec.Value)))
 }
