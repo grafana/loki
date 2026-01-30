@@ -161,6 +161,7 @@ func (p *processor) Run(ctx context.Context) error {
 			}
 		case <-time.After(p.idleFlushTimeout):
 			// This partition is idle, flush it.
+			p.metrics.setConsumptionLag(0)
 			if _, err := p.idleFlush(ctx); err != nil {
 				level.Error(p.logger).Log("msg", "failed to idle flush", "err", err)
 			}
