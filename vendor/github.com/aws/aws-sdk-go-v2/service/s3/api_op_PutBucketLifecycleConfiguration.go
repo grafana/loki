@@ -28,10 +28,10 @@ import (
 // prefix, which is supported for backward compatibility. For the related API
 // description, see [PutBucketLifecycle].
 //
-// Rules Permissions HTTP Host header syntax You specify the lifecycle
-// configuration in your request body. The lifecycle configuration is specified as
-// XML consisting of one or more rules. An Amazon S3 Lifecycle configuration can
-// have up to 1,000 rules. This limit is not adjustable.
+// Rules You specify the lifecycle configuration in your request body. The
+// lifecycle configuration is specified as XML consisting of one or more rules. An
+// Amazon S3 Lifecycle configuration can have up to 1,000 rules. This limit is not
+// adjustable.
 //
 // Bucket lifecycle configuration supports specifying a lifecycle rule using an
 // object key name prefix, one or more object tags, object size, or any combination
@@ -61,6 +61,7 @@ import (
 //
 // For more information, see [Object Lifecycle Management] and [Lifecycle Configuration Elements].
 //
+// Permissions
 //   - General purpose bucket permissions - By default, all Amazon S3 resources
 //     are private, including buckets, objects, and related subresources (for example,
 //     lifecycle configuration and website configuration). Only the resource owner
@@ -102,7 +103,7 @@ import (
 //	endpoints in Availability Zones, see [Regional and Zonal endpoints for directory buckets in Availability Zones]in the Amazon S3 User Guide. For more
 //	information about endpoints in Local Zones, see [Concepts for directory buckets in Local Zones]in the Amazon S3 User Guide.
 //
-// Directory buckets - The HTTP Host header syntax is
+// HTTP Host header syntax  Directory buckets - The HTTP Host header syntax is
 // s3express-control.region.amazonaws.com .
 //
 // The following operations are related to PutBucketLifecycleConfiguration :
