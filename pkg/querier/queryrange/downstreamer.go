@@ -195,9 +195,12 @@ func (in instance) For(
 			return nil
 		})
 		if err != nil {
-			ch <- logql.Resp{
+			select {
+			case <-ctx.Done():
+			case ch <- logql.Resp{
 				I:   -1,
 				Err: err,
+			}:
 			}
 		}
 		close(ch)
