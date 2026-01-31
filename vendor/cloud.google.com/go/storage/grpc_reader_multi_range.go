@@ -15,6 +15,7 @@
 package storage
 
 import (
+	"container/list"
 	"context"
 	"errors"
 	"fmt"
@@ -34,6 +35,10 @@ import (
 const (
 	mrdCommandChannelSize  = 1
 	mrdResponseChannelSize = 100
+	// This should never be hit in practice, but is a safety valve to prevent
+	// unbounded memory usage if the user is adding ranges faster than they
+	// can be processed.
+	mrdAddInternalQueueMaxSize = 50000
 )
 
 // --- internalMultiRangeDownloader Interface ---
@@ -83,18 +88,19 @@ func (c *grpcStorageClient) NewMultiRangeDownloader(ctx context.Context, params 
 
 	// Create the manager
 	manager := &multiRangeDownloaderManager{
-		ctx:           mCtx,
-		cancel:        cancel,
-		client:        c,
-		settings:      s,
-		params:        params,
-		cmds:          make(chan mrdCommand, mrdCommandChannelSize),
-		sessionResps:  make(chan mrdSessionResult, mrdResponseChannelSize),
-		pendingRanges: make(map[int64]*rangeRequest),
-		readIDCounter: 1,
-		readSpec:      readSpec,
-		attrsReady:    make(chan struct{}),
-		spanCtx:       ctx,
+		ctx:            mCtx,
+		cancel:         cancel,
+		client:         c,
+		settings:       s,
+		params:         params,
+		cmds:           make(chan mrdCommand, mrdCommandChannelSize),
+		sessionResps:   make(chan mrdSessionResult, mrdResponseChannelSize),
+		pendingRanges:  make(map[int64]*rangeRequest),
+		readIDCounter:  1,
+		readSpec:       readSpec,
+		attrsReady:     make(chan struct{}),
+		spanCtx:        ctx,
+		unsentRequests: newRequestQueue(),
 	}
 
 	mrd := &MultiRangeDownloader{
@@ -227,6 +233,7 @@ type multiRangeDownloaderManager struct {
 	attrsOnce      sync.Once
 	spanCtx        context.Context
 	callbackWg     sync.WaitGroup
+	unsentRequests *requestQueue
 }
 
 type rangeRequest struct {
@@ -374,10 +381,29 @@ func (m *multiRangeDownloaderManager) eventLoop() {
 	}
 
 	for {
+		var nextReq *storagepb.BidiReadObjectRequest
+		var targetChan chan<- *storagepb.BidiReadObjectRequest
+
+		// Only try to send if we have queued requests
+		if m.unsentRequests.Len() > 0 && m.currentSession != nil {
+			nextReq = m.unsentRequests.Front()
+			if nextReq != nil {
+				targetChan = m.currentSession.reqC
+			}
+		}
+		// Only read from cmds if we have space in the unsentRequests queue.
+		var cmdsChan chan mrdCommand
+		if m.unsentRequests.Len() < mrdAddInternalQueueMaxSize {
+			cmdsChan = m.cmds
+		}
 		select {
 		case <-m.ctx.Done():
 			return
-		case cmd := <-m.cmds:
+		// This path only triggers if space is available in the channel.
+		// It never blocks the eventLoop.
+		case targetChan <- nextReq:
+			m.unsentRequests.RemoveFront()
+		case cmd := <-cmdsChan:
 			cmd.apply(m.ctx, m)
 			if _, ok := cmd.(*mrdCloseCmd); ok {
 				return
@@ -386,7 +412,7 @@ func (m *multiRangeDownloaderManager) eventLoop() {
 			m.processSessionResult(result)
 		}
 
-		if len(m.pendingRanges) == 0 {
+		if len(m.pendingRanges) == 0 && m.unsentRequests.Len() == 0 {
 			for _, waiter := range m.waiters {
 				close(waiter)
 			}
@@ -512,7 +538,7 @@ func (m *multiRangeDownloaderManager) handleAddCmd(ctx context.Context, cmd *mrd
 			ReadId:     req.readID,
 		}},
 	}
-	m.currentSession.SendRequest(protoReq)
+	m.unsentRequests.PushBack(protoReq)
 }
 
 func (m *multiRangeDownloaderManager) convertToPositiveOffset(req *rangeRequest) error {
@@ -655,7 +681,8 @@ func (m *multiRangeDownloaderManager) ensureSession(ctx context.Context) error {
 			}
 		}
 		if len(rangesToResend) > 0 {
-			m.currentSession.SendRequest(&storagepb.BidiReadObjectRequest{ReadRanges: rangesToResend})
+			retryReq := &storagepb.BidiReadObjectRequest{ReadRanges: rangesToResend}
+			m.unsentRequests.PushFront(retryReq)
 		}
 		return nil
 	}, m.settings.retry, true)
@@ -898,5 +925,30 @@ func readerAttrsFromObject(o *ObjectAttrs) ReaderObjectAttrs {
 		Generation:      o.Generation,
 		Metageneration:  o.Metageneration,
 		CRC32C:          o.CRC32C,
+	}
+}
+
+type requestQueue struct {
+	l *list.List
+}
+
+func newRequestQueue() *requestQueue {
+	return &requestQueue{l: list.New()}
+}
+
+func (q *requestQueue) PushBack(r *storagepb.BidiReadObjectRequest)  { q.l.PushBack(r) }
+func (q *requestQueue) PushFront(r *storagepb.BidiReadObjectRequest) { q.l.PushFront(r) }
+func (q *requestQueue) Len() int                                     { return q.l.Len() }
+
+func (q *requestQueue) Front() *storagepb.BidiReadObjectRequest {
+	if f := q.l.Front(); f != nil {
+		return f.Value.(*storagepb.BidiReadObjectRequest)
+	}
+	return nil
+}
+
+func (q *requestQueue) RemoveFront() {
+	if f := q.l.Front(); f != nil {
+		q.l.Remove(f)
 	}
 }
