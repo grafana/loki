@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 	"github.com/grafana/loki/v3/pkg/compactor/jobqueue"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 	chunk_util "github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
@@ -112,6 +113,9 @@ type Compactor struct {
 
 	// one for each period
 	storeContainers map[config.DayTime]storeContainer
+
+	dataobjDeletionManager *deletion.DataobjDeletionManager
+	dataobjDeletionSweeper *deletion.DataobjDeletionSweeper
 }
 
 type storeContainer struct {
@@ -135,6 +139,7 @@ func NewCompactor(
 	indexUpdatePropagationMaxDelay time.Duration,
 	r prometheus.Registerer,
 	metricsNamespace string,
+	metastore metastore.Metastore,
 ) (*Compactor, error) {
 	retentionEnabledStats.Set("false")
 	if cfg.RetentionEnabled {
@@ -191,7 +196,7 @@ func NewCompactor(
 	compactor.subservicesWatcher = services.NewFailureWatcher()
 	compactor.subservicesWatcher.WatchManager(compactor.subservices)
 
-	if err := compactor.init(objectStoreClients, deleteStoreClient, schemaConfig, indexUpdatePropagationMaxDelay, limits, r); err != nil {
+	if err := compactor.init(objectStoreClients, deleteStoreClient, schemaConfig, indexUpdatePropagationMaxDelay, limits, r, metastore); err != nil {
 		return nil, fmt.Errorf("init compactor: %w", err)
 	}
 
@@ -206,6 +211,7 @@ func (c *Compactor) init(
 	indexUpdatePropagationMaxDelay time.Duration,
 	limits Limits,
 	r prometheus.Registerer,
+	metastore metastore.Metastore,
 ) error {
 	err := chunk_util.EnsureDirectory(c.cfg.WorkingDirectory)
 	if err != nil {
@@ -217,7 +223,7 @@ func (c *Compactor) init(
 			return fmt.Errorf("delete store client not initialised when retention is enabled")
 		}
 
-		if err := c.initDeletes(deleteStoreClient, indexUpdatePropagationMaxDelay, r, limits); err != nil {
+		if err := c.initDeletes(deleteStoreClient, indexUpdatePropagationMaxDelay, r, limits, metastore); err != nil {
 			return fmt.Errorf("failed to init delete store: %w", err)
 		}
 	} else {
@@ -341,7 +347,7 @@ func (c *Compactor) init(
 	return nil
 }
 
-func (c *Compactor) initDeletes(objectClient client.ObjectClient, indexUpdatePropagationMaxDelay time.Duration, r prometheus.Registerer, limits Limits) error {
+func (c *Compactor) initDeletes(objectClient client.ObjectClient, indexUpdatePropagationMaxDelay time.Duration, r prometheus.Registerer, limits Limits, metastore metastore.Metastore) error {
 	deletionWorkDir := filepath.Join(c.cfg.WorkingDirectory, "deletion")
 	indexStorageClient := storage.NewIndexStorageClient(objectClient, c.cfg.DeleteRequestStoreKeyPrefix)
 	store, err := deletion.NewDeleteRequestsStore(
@@ -381,6 +387,30 @@ func (c *Compactor) initDeletes(objectClient client.ObjectClient, indexUpdatePro
 	}
 
 	c.expirationChecker = newExpirationChecker(retention.NewExpirationChecker(limits), c.deleteRequestsManager)
+
+	// Initialize dataobj deletion manager and sweeper if enabled
+	if c.cfg.DataObjDeletionEnabled {
+		if metastore == nil {
+			return fmt.Errorf("metastore is required when dataobj deletion is enabled")
+		}
+		level.Info(util_log.Logger).Log("msg", "dataobj deletion enabled, initializing deletion manager and sweeper")
+		c.dataobjDeletionManager = deletion.NewDataobjDeletionManager(
+			c.cfg.DataObjDeletion,
+			metastore,
+			objectClient,
+			c.deleteRequestsStore,
+			util_log.Logger,
+			r,
+		)
+		c.dataobjDeletionSweeper = deletion.NewDataobjDeletionSweeper(
+			c.cfg.DataObjDeletion,
+			metastore,
+			objectClient,
+			util_log.Logger,
+			r,
+		)
+	}
+
 	return nil
 }
 
@@ -500,6 +530,22 @@ func (c *Compactor) loop(ctx context.Context) error {
 						go func() {
 							defer wg.Done()
 							c.deleteRequestsManager.Start(runningCtx)
+						}()
+					}
+
+					if c.dataobjDeletionManager != nil {
+						wg.Add(1)
+						go func() {
+							defer wg.Done()
+							c.dataobjDeletionManager.Start(runningCtx)
+						}()
+					}
+
+					if c.dataobjDeletionSweeper != nil {
+						wg.Add(1)
+						go func() {
+							defer wg.Done()
+							c.dataobjDeletionSweeper.Start(runningCtx)
 						}()
 					}
 
