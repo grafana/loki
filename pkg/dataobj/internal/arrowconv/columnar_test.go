@@ -23,7 +23,7 @@ func TestToRecordBatch_int64(t *testing.T) {
 	validity.Set(4, false)
 	validity.Set(5, false)
 	int64Arr := columnar.NewNumber[int64](srcInt64, validity)
-	src := columnar.NewRecordBatch(int64(len(srcInt64)), []columnar.Array{int64Arr})
+	src := columnar.NewRecordBatch(nil, int64(len(srcInt64)), []columnar.Array{int64Arr})
 
 	schema := arrow.NewSchema([]arrow.Field{
 		{Name: "myint64", Type: arrow.PrimitiveTypes.Int64},
@@ -48,7 +48,7 @@ func TestToRecordBatch_uint64(t *testing.T) {
 	validity.Set(4, false)
 	validity.Set(5, false)
 	uint64Arr := columnar.NewNumber[uint64](srcUint64, validity)
-	src := columnar.NewRecordBatch(int64(len(srcUint64)), []columnar.Array{uint64Arr})
+	src := columnar.NewRecordBatch(nil, int64(len(srcUint64)), []columnar.Array{uint64Arr})
 
 	schema := arrow.NewSchema([]arrow.Field{
 		{Name: "myuint64", Type: arrow.PrimitiveTypes.Uint64},
@@ -74,7 +74,7 @@ func TestToRecordBatch_string(t *testing.T) {
 	validity.Set(2, false)
 
 	utf8Arr := columnar.NewUTF8([]byte(strings.Join(srcStrings, "")), []int32{0, 1, 2, 2, 4}, validity)
-	src := columnar.NewRecordBatch(int64(len(srcStrings)), []columnar.Array{utf8Arr})
+	src := columnar.NewRecordBatch(nil, int64(len(srcStrings)), []columnar.Array{utf8Arr})
 
 	schema := arrow.NewSchema([]arrow.Field{
 		{Name: "mystring", Type: arrow.BinaryTypes.String},
@@ -110,7 +110,7 @@ func TestToRecordBatch_binary(t *testing.T) {
 	data := []byte{0x00, 0x01, 0xff}
 	offsets := []int32{0, 2, 2, 3}
 	utf8Arr := columnar.NewUTF8(data, offsets, validity)
-	src := columnar.NewRecordBatch(int64(len(srcValues)), []columnar.Array{utf8Arr})
+	src := columnar.NewRecordBatch(nil, int64(len(srcValues)), []columnar.Array{utf8Arr})
 
 	schema := arrow.NewSchema([]arrow.Field{
 		{Name: "mybinary", Type: arrow.BinaryTypes.Binary},
@@ -145,7 +145,7 @@ func TestToRecordBatch_timestamp(t *testing.T) {
 	validity.SetRange(0, len(srcTimestamps), true)
 	validity.Set(2, false)
 	int64Arr := columnar.NewNumber[int64](srcNanos, validity)
-	src := columnar.NewRecordBatch(int64(len(srcTimestamps)), []columnar.Array{int64Arr})
+	src := columnar.NewRecordBatch(nil, int64(len(srcTimestamps)), []columnar.Array{int64Arr})
 
 	schema := arrow.NewSchema([]arrow.Field{
 		{Name: "mytimestamp", Type: arrow.FixedWidthTypes.Timestamp_ns},
@@ -214,7 +214,7 @@ func makeInt64BenchmarkBatch(b *testing.B, n int) (*columnar.RecordBatch, *arrow
 	}
 	validity := makeValidity(alloc, n, 10)
 	int64Arr := columnar.NewNumber[int64](values, validity)
-	src := columnar.NewRecordBatch(int64(n), []columnar.Array{int64Arr})
+	src := columnar.NewRecordBatch(nil, int64(n), []columnar.Array{int64Arr})
 	schema := arrow.NewSchema([]arrow.Field{
 		{Name: "myint64", Type: arrow.PrimitiveTypes.Int64},
 	}, nil)
@@ -230,7 +230,7 @@ func makeUint64BenchmarkBatch(b *testing.B, n int) (*columnar.RecordBatch, *arro
 	}
 	validity := makeValidity(alloc, n, 10)
 	uint64Arr := columnar.NewNumber[uint64](values, validity)
-	src := columnar.NewRecordBatch(int64(n), []columnar.Array{uint64Arr})
+	src := columnar.NewRecordBatch(nil, int64(n), []columnar.Array{uint64Arr})
 	schema := arrow.NewSchema([]arrow.Field{
 		{Name: "myuint64", Type: arrow.PrimitiveTypes.Uint64},
 	}, nil)
@@ -258,7 +258,7 @@ func makeStringBenchmarkBatch(b *testing.B, n int) (*columnar.RecordBatch, *arro
 	}
 
 	utf8Arr := columnar.NewUTF8(data, offsets, validity)
-	src := columnar.NewRecordBatch(int64(n), []columnar.Array{utf8Arr})
+	src := columnar.NewRecordBatch(nil, int64(n), []columnar.Array{utf8Arr})
 	schema := arrow.NewSchema([]arrow.Field{
 		{Name: "mystring", Type: arrow.BinaryTypes.String},
 	}, nil)
@@ -284,7 +284,7 @@ func makeTimestampBenchmarkBatch(b *testing.B, n int) (*columnar.RecordBatch, *a
 	}
 	validity := makeValidity(alloc, n, 10)
 	int64Arr := columnar.NewNumber[int64](values, validity)
-	src := columnar.NewRecordBatch(int64(n), []columnar.Array{int64Arr})
+	src := columnar.NewRecordBatch(nil, int64(n), []columnar.Array{int64Arr})
 	schema := arrow.NewSchema([]arrow.Field{
 		{Name: "mytimestamp", Type: arrow.FixedWidthTypes.Timestamp_ns},
 	}, nil)
