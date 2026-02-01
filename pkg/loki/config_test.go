@@ -110,3 +110,63 @@ func TestCrossComponentValidation(t *testing.T) {
 		}
 	}
 }
+
+func TestShouldWarnQueryIngestersWithin(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name                 string
+		queryIngestersWithin time.Duration
+		maxChunkAge          time.Duration
+		maxChunkIdle         time.Duration
+		wantWarn             bool
+		wantMaxRetention     time.Duration
+	}{
+		{
+			name:                 "warn when query window shorter than max retention",
+			queryIngestersWithin: 3 * time.Hour,
+			maxChunkAge:          6 * time.Hour,
+			maxChunkIdle:         2 * time.Hour,
+			wantWarn:             true,
+			wantMaxRetention:     6 * time.Hour,
+		},
+		{
+			name:                 "no warn when query window covers retention",
+			queryIngestersWithin: 6 * time.Hour,
+			maxChunkAge:          3 * time.Hour,
+			maxChunkIdle:         2 * time.Hour,
+			wantWarn:             false,
+			wantMaxRetention:     3 * time.Hour,
+		},
+		{
+			name:                 "no warn when query window disabled",
+			queryIngestersWithin: 0,
+			maxChunkAge:          6 * time.Hour,
+			maxChunkIdle:         2 * time.Hour,
+			wantWarn:             false,
+			wantMaxRetention:     6 * time.Hour,
+		},
+		{
+			name:                 "no warn when no retention configured",
+			queryIngestersWithin: 3 * time.Hour,
+			maxChunkAge:          0,
+			maxChunkIdle:         0,
+			wantWarn:             false,
+			wantMaxRetention:     0,
+		},
+	} {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			gotWarn, gotMaxRetention := shouldWarnQueryIngestersWithin(
+				tc.queryIngestersWithin,
+				tc.maxChunkAge,
+				tc.maxChunkIdle,
+			)
+
+			require.Equal(t, tc.wantWarn, gotWarn)
+			require.Equal(t, tc.wantMaxRetention, gotMaxRetention)
+		})
+	}
+}
