@@ -236,6 +236,7 @@ Before upgrading to v0.32.0, make sure that the CustomResourceDefinitions (CRDs)
 - [BUGFIX] Gateway Ingester endpoints points to inexistent service when zone aware replication are enabled [#17362](https://github.com/grafana/loki/pull/17362)
 - [BUGFIX] Add missing flush=true to preStop hook [#16063](https://github.com/grafana/loki/pull/16063)
 - [BUGFIX] Fix setting X-Scope-OrgID header [#18414](https://github.com/grafana/loki/pull/18414)
+- [BUGFIX] Dashboard fixes for changed metrics with Loki 3.0 ([#13217](https://github.com/grafana/loki/pull/13217))
 
 ## 6.31.0
 
