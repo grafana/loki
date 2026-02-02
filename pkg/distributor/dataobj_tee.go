@@ -189,18 +189,21 @@ func (t *DataObjTee) duplicate(ctx context.Context, tenant string, stream Segmen
 		return
 	}
 
-	var (
-		partitionLabelValue       = strconv.FormatInt(int64(partition), 10)
-		tenantLabelValue          string
-		segmentationKeyLabelValue string
-		size                      int64
-	)
+	var size int64
 	for _, rec := range records {
 		size += int64(len(rec.Value))
 	}
+	t.observeDuplicate(partition, tenant, string(stream.SegmentationKey), size)
+
+	pushTracker.doneWithResult(nil)
+}
+
+func (t *DataObjTee) observeDuplicate(partition int32, tenant, segmentationKey string, size int64) {
+	partitionLabelValue := strconv.FormatInt(int64(partition), 10)
+	var tenantLabelValue, segmentationKeyLabelValue string
 	if t.cfg.DebugMetricsEnabled {
 		tenantLabelValue = tenant
-		segmentationKeyLabelValue = string(stream.SegmentationKey)
+		segmentationKeyLabelValue = segmentationKey
 	}
 	t.producedBytes.WithLabelValues(
 		partitionLabelValue,
@@ -212,6 +215,4 @@ func (t *DataObjTee) duplicate(ctx context.Context, tenant string, stream Segmen
 		tenantLabelValue,
 		segmentationKeyLabelValue,
 	).Inc()
-
-	pushTracker.doneWithResult(nil)
 }
