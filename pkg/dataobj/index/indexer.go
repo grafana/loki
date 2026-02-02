@@ -288,32 +288,32 @@ func (si *serialIndexer) buildIndex(ctx context.Context, events []metastore.Obje
 	}
 	si.builderMetrics.setProcessingDelay(writeTime)
 
-	downloadQueue := make(chan metastore.ObjectWrittenEvent, 2)
-	downloadedObjects := make(chan downloadedObject, 1)
+	// downloadQueue is closed when all events are submitted, or the context is canceled.
+	downloadQueue := make(chan metastore.ObjectWrittenEvent)
+	// downloadedObjects is closed from the worker, which owns the lifetime of the chan.
+	downloadedObjects := make(chan downloadedObject)
+
 	go downloadWorker(ctx, si.logger, downloadQueue, si.objectBucket, downloadedObjects)
-	defer close(downloadQueue)
+	go func() {
+		// Submit jobs to the worker. Close downloadQueue when all jobs are submitted,
+		// or the context is canceled, so the download worker knows to terminate.
+		defer close(downloadQueue)
+		for _, event := range events {
+			select {
+			case downloadQueue <- event:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
 
-	// start downloading the first object
-	downloadQueue <- events[0]
-	nextEventIdx := 1
-
-	// Process downloaded objects, handling ErrBuilderFull
 	processingErrors := multierror.New()
 	processed := 0
-	for processed < len(events) {
-		var obj downloadedObject
-		select {
-		case <-ctx.Done():
-			return "", processed, ctx.Err()
-		case obj = <-downloadedObjects:
-		}
-
-		// Start downloading the next object in the background while we're working on this one
-		if nextEventIdx < len(events) {
-			downloadQueue <- events[nextEventIdx]
-			nextEventIdx++
-		}
-
+	// Process all downloaded objects, terminating if ErrBuilderFull. The range
+	// terminates when either all objects are downloaded, or the context is canceled
+	// and the download worker closes downloadedObjects to mark its termination.
+	// We check for context cancelation after the loop.
+	for obj := range downloadedObjects {
 		processed++
 		objLogger := log.With(si.logger, "object_path", obj.event.ObjectPath)
 		level.Debug(objLogger).Log("msg", "processing object")
@@ -333,6 +333,14 @@ func (si *serialIndexer) buildIndex(ctx context.Context, events []metastore.Obje
 		if si.calculator.IsFull() {
 			break
 		}
+	}
+
+	// Check if the context was canceled. We must do this because range doesn't know
+	// the reason the channel was closed.
+	select {
+	case <-ctx.Done():
+		return "", processed, ctx.Err()
+	default:
 	}
 
 	if processingErrors.Err() != nil {
@@ -358,7 +366,10 @@ func (si *serialIndexer) buildIndex(ctx context.Context, events []metastore.Obje
 // It exits when downloadQueue is closed.
 func downloadWorker(ctx context.Context, logger log.Logger, downloadQueue chan metastore.ObjectWrittenEvent, objectBucket objstore.Bucket, downloadedObjects chan downloadedObject) {
 	level.Debug(logger).Log("msg", "download worker started")
-	defer level.Debug(logger).Log("msg", "download worker stopped")
+	defer func() {
+		close(downloadedObjects)
+		level.Debug(logger).Log("msg", "download worker stopped")
+	}()
 
 	for event := range downloadQueue {
 		objLogger := log.With(logger, "object_path", event.ObjectPath)
@@ -392,7 +403,6 @@ func downloadWorker(ctx context.Context, logger log.Logger, downloadQueue chan m
 			objectBytes: &object,
 		}
 	}
-	close(downloadedObjects)
 }
 
 // processObject handles processing a single downloaded object
