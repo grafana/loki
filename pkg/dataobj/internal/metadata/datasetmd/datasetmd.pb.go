@@ -71,6 +71,8 @@ const (
 	COMPRESSION_TYPE_SNAPPY CompressionType = 2
 	// Zstd compression.
 	COMPRESSION_TYPE_ZSTD CompressionType = 3
+	// S2 compression.
+	COMPRESSION_TYPE_S2 CompressionType = 4
 )
 
 var CompressionType_name = map[int32]string{
@@ -78,6 +80,7 @@ var CompressionType_name = map[int32]string{
 	1: "COMPRESSION_TYPE_NONE",
 	2: "COMPRESSION_TYPE_SNAPPY",
 	3: "COMPRESSION_TYPE_ZSTD",
+	4: "COMPRESSION_TYPE_S2",
 }
 
 var CompressionType_value = map[string]int32{
@@ -85,6 +88,7 @@ var CompressionType_value = map[string]int32{
 	"COMPRESSION_TYPE_NONE":        1,
 	"COMPRESSION_TYPE_SNAPPY":      2,
 	"COMPRESSION_TYPE_ZSTD":        3,
+	"COMPRESSION_TYPE_S2":          4,
 }
 
 func (CompressionType) EnumDescriptor() ([]byte, []int) {
