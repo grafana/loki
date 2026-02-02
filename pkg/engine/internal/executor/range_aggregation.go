@@ -68,7 +68,7 @@ type rangeAggregationPipeline struct {
 	inputs          []Pipeline
 	inputsExhausted bool // indicates if all inputs are exhausted
 
-	aggregator          *aggregator
+	aggregator          *columnarAggregator
 	windowsForTimestamp timestampMatchingWindowsFunc // function to find matching time windows for a given timestamp
 	evaluator           *expressionEvaluator         // used to evaluate column expressions
 	opts                rangeAggregationOptions
@@ -110,7 +110,7 @@ func (r *rangeAggregationPipeline) init() {
 		panic(fmt.Sprintf("unknown range aggregation operation: %v", r.opts.operation))
 	}
 
-	r.aggregator = newAggregator(len(windows), op)
+	r.aggregator = newColumnarAggregator(len(windows), op, r.windowsForTimestamp)
 	r.aggregator.SetMaxSeries(r.opts.maxQuerySeries)
 }
 
@@ -126,7 +126,6 @@ func (r *rangeAggregationPipeline) Read(ctx context.Context) (arrow.RecordBatch,
 }
 
 // TODOs:
-// - Use columnar access pattern. Current approach is row-based which does not benefit from the storage format.
 // - Add toggle to return partial results on Read() call instead of returning only after exhausting all inputs.
 func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch, error) {
 	var (
@@ -147,9 +146,6 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 		startedAt     = time.Now()
 		inputReadTime time.Duration
 	)
-
-	labelValuesCache := newLabelValuesCache()
-	fieldsCache := newFieldsCache()
 
 	r.aggregator.Reset() // reset before reading new inputs
 	inputsExhausted := false
@@ -240,7 +236,7 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 				}
 			}
 
-			r.aggregator.AddLabels(groupingFields)
+			r.aggregator.SetGroupByLabels(groupingFields)
 
 			// extract timestamp column to check if the entry is in range
 			tsVec, err := r.evaluator.eval(tsColumnExpr, record)
@@ -259,29 +255,9 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 				valArr = valVec.(*array.Float64)
 			}
 
-			for row := range int(record.NumRows()) {
-				var value float64
-				if r.opts.operation != types.RangeAggregationTypeCount {
-					if valArr.IsNull(row) {
-						continue
-					}
-
-					value = valArr.Value(row)
-				}
-
-				windows := r.windowsForTimestamp(tsCol.Value(row).ToTime(arrow.Nanosecond))
-				if len(windows) == 0 {
-					continue // out of range, skip this row
-				}
-
-				labelValues := labelValuesCache.getLabelValues(arrays, row)
-				labels := fieldsCache.getFields(arrays, groupingFields, row)
-
-				for _, w := range windows {
-					if err := r.aggregator.Add(w.end, value, labels, labelValues); err != nil {
-						return nil, err
-					}
-				}
+			// Use columnar batch processing instead of row-by-row
+			if err := r.aggregator.AddBatch(tsCol, valArr, arrays); err != nil {
+				return nil, err
 			}
 		}
 	}

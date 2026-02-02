@@ -30,7 +30,7 @@ type vectorAggregationPipeline struct {
 	inputs          []Pipeline
 	inputsExhausted bool // indicates if all inputs are exhausted
 
-	aggregator *aggregator
+	aggregator *columnarAggregator
 	evaluator  *expressionEvaluator
 	grouping   physical.Grouping
 	opts       vectorAggregationOptions
@@ -62,7 +62,8 @@ func newVectorAggregationPipeline(inputs []Pipeline, evaluator *expressionEvalua
 		panic(fmt.Sprintf("unknown vector aggregation operation: %v", opts.operation))
 	}
 
-	agg := newAggregator(0, op)
+	// nil window function means timestamps are used directly (no windowing)
+	agg := newColumnarAggregator(0, op, nil)
 	agg.SetMaxSeries(opts.maxQuerySeries)
 
 	return &vectorAggregationPipeline{
@@ -100,9 +101,6 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch
 	var (
 		inputReadTime time.Duration
 		startedAt     = time.Now()
-
-		labelValuesCache = newLabelValuesCache()
-		fieldsCache      = newFieldsCache()
 	)
 
 	v.aggregator.Reset() // reset before reading new inputs
@@ -207,19 +205,11 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch
 				}
 			}
 
-			v.aggregator.AddLabels(groupingFields)
+			v.aggregator.SetGroupByLabels(groupingFields)
 
-			for row := range int(record.NumRows()) {
-				if valueArr.IsNull(row) {
-					continue
-				}
-
-				labelValues := labelValuesCache.getLabelValues(arrays, row)
-				labels := fieldsCache.getFields(arrays, groupingFields, row)
-
-				if err := v.aggregator.Add(tsCol.Value(row).ToTime(arrow.Nanosecond), valueArr.Value(row), labels, labelValues); err != nil {
-					return nil, err
-				}
+			// Use columnar batch processing instead of row-by-row
+			if err := v.aggregator.AddBatch(tsCol, valueArr, arrays); err != nil {
+				return nil, err
 			}
 		}
 	}
