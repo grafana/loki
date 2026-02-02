@@ -15,7 +15,7 @@ import (
 // Special cases:
 //
 //   - If a value in the haystack is null, the result for that value is null.
-//   - If the needle is null, the result is null.
+//   - If the regexp is null, the result is null.
 func RegexpMatch(alloc *memory.Allocator, haystack columnar.Datum, regexp columnar.Datum) (columnar.Datum, error) {
 	if haystack.Kind() != columnar.KindUTF8 || regexp.Kind() != columnar.KindRegexp {
 		return nil, fmt.Errorf("haystack and regexp must both be UTF-8; got %s and %s", haystack.Kind(), regexp.Kind())
