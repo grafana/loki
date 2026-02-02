@@ -505,7 +505,7 @@ func TestPlannerCreatesCastOperationForUnwrap(t *testing.T) {
 %6 = SELECT %4 [predicate=%5]
 %7 = CAST_DURATION(ambiguous.response_time)
 %8 = PROJECT %6 [mode=*E, expr=%7]
-%9 = PROJECT %8 [mode=*D, expr=ambiguous.response_time]
+%9 = PROJECT %8 [mode=*ED, expr=ambiguous.response_time]
 %10 = EQ generated.__error__ ""
 %11 = EQ generated.__error_details__ ""
 %12 = AND %10 %11
@@ -844,7 +844,7 @@ func TestPlannerCreatesProjection(t *testing.T) {
 %4 = SELECT %2 [predicate=%3]
 %5 = LT builtin.timestamp 1970-01-01T01:00:00Z
 %6 = SELECT %4 [predicate=%5]
-%7 = PROJECT %6 [mode=*D, expr=ambiguous.level, expr=ambiguous.detected_level]
+%7 = PROJECT %6 [mode=*ED, expr=ambiguous.level, expr=ambiguous.detected_level]
 %8 = TOPK %7 [sort_by=builtin.timestamp, k=0, asc=false, nulls_first=false]
 %9 = LOGQL_COMPAT %8
 RETURN %9
