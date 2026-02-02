@@ -1,6 +1,8 @@
 package workflow
 
 import (
+	"fmt"
+
 	"github.com/oklog/ulid/v2"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
@@ -37,6 +39,27 @@ type Task struct {
 // ID returns the Task's ULID.
 func (t *Task) ID() ulid.ULID { return t.ULID }
 
+// String returns a human-readable representation of the Task.
+func (t *Task) String() string {
+	sourcesCount := 0
+	for _, streams := range t.Sources {
+		sourcesCount += len(streams)
+	}
+	sinksCount := 0
+	for _, streams := range t.Sinks {
+		sinksCount += len(streams)
+	}
+
+	fragmentInfo := "empty"
+	if t.Fragment != nil && t.Fragment.Len() > 0 {
+		fragmentInfo = fmt.Sprintf("%d nodes", t.Fragment.Len())
+	}
+
+	return fmt.Sprintf("Task[%s](tenant=%s, fragment=%s, sources=%d, sinks=%d, timeRange=%s-%s)",
+		t.ULID, t.TenantID, fragmentInfo, sourcesCount, sinksCount,
+		t.MaxTimeRange.Start.Format("15:04:05"), t.MaxTimeRange.End.Format("15:04:05"))
+}
+
 // A Stream is an abstract representation of how data flows across Task
 // boundaries. Each Stream has exactly one sender (a Task), and one receiver
 // (either another Task or the owning [Workflow]).
@@ -46,4 +69,9 @@ type Stream struct {
 
 	// TenantID is a tenant associated with this stream.
 	TenantID string
+}
+
+// String returns a human-readable representation of the Stream.
+func (s *Stream) String() string {
+	return fmt.Sprintf("Stream[%s](tenant=%s)", s.ULID, s.TenantID)
 }

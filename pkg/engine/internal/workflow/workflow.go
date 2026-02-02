@@ -453,6 +453,76 @@ func (wf *Workflow) mergeResults(results stats.Result) {
 	wf.stats.Merge(results)
 }
 
+// String returns a human-readable representation of the workflow as a tree structure.
+func (wf *Workflow) String() string {
+	if wf.Len() == 0 {
+		return "Workflow (empty)"
+	}
+
+	var result string
+	result += fmt.Sprintf("Workflow (%d tasks, %d streams):\n", len(wf.manifest.Tasks), len(wf.manifest.Streams))
+
+	// Track visited tasks to handle shared tasks in the DAG
+	visited := make(map[ulid.ULID]bool)
+
+	// Process each root task
+	roots := wf.graph.Roots()
+	for i, root := range roots {
+		isLastRoot := i == len(roots)-1
+		wf.formatTask(root, "", isLastRoot, visited, &result)
+	}
+
+	return result
+}
+
+// formatTask formats a single task and its children recursively
+func (wf *Workflow) formatTask(t *Task, prefix string, isLast bool, visited map[ulid.ULID]bool, result *string) {
+	taskID := t.ULID
+
+	// Draw the tree connector
+	connector := "├─"
+	if isLast {
+		connector = "└─"
+	}
+	if prefix == "" {
+		connector = ""
+	}
+
+	// Check if this task was already visited
+	revisit := ""
+	if visited[taskID] {
+		revisit = " (revisit)"
+	}
+	visited[taskID] = true
+
+	// Format the task using its String() method
+	*result += fmt.Sprintf("%s%s %s%s\n", prefix, connector, t.String(), revisit)
+
+	// Don't traverse children of revisited tasks to avoid cycles
+	if revisit != "" {
+		return
+	}
+
+	// Get children and format them
+	children := wf.graph.Children(t)
+	for i, child := range children {
+		isLastChild := i == len(children)-1
+
+		// Calculate prefix for children
+		var childPrefix string
+		if prefix == "" {
+			// Root tasks: children should have no extra prefix but will get connectors
+			childPrefix = "  "
+		} else if isLast {
+			childPrefix = prefix + "  "
+		} else {
+			childPrefix = prefix + "│ "
+		}
+
+		wf.formatTask(child, childPrefix, isLastChild, visited, result)
+	}
+}
+
 type wrappedPipeline struct {
 	initOnce sync.Once
 
