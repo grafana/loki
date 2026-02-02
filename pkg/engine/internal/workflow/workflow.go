@@ -460,20 +460,76 @@ func (wf *Workflow) String() string {
 	}
 
 	var result string
-	result += fmt.Sprintf("Workflow (%d tasks, %d streams):\n", len(wf.manifest.Tasks), len(wf.manifest.Streams))
+	result += fmt.Sprintf("Workflow (%d tasks, %d streams):\n\n", len(wf.manifest.Tasks), len(wf.manifest.Streams))
+
+	// Build fragment dictionary: assign IDs to fragments (assuming all unique)
+	taskToFragmentID := make(map[*Task]string)     // task -> fragment ID
+	var fragmentOrder []*physical.Plan             // maintain order for consistent output
+
+	for i, task := range wf.manifest.Tasks {
+		if task.Fragment == nil {
+			continue
+		}
+
+		fragmentID := fmt.Sprintf("F%d", i+1)
+		taskToFragmentID[task] = fragmentID
+		fragmentOrder = append(fragmentOrder, task.Fragment)
+	}
+
+	// Print Tasks section
+	result += "Tasks:\n"
 
 	// Process each root task
 	roots := wf.graph.Roots()
 	for i, root := range roots {
 		isLastRoot := i == len(roots)-1
-		wf.formatTask(root, "", isLastRoot, &result)
+		wf.formatTaskWithFragment(root, "", isLastRoot, taskToFragmentID, &result)
+	}
+
+	// Print Fragments section
+	if len(fragmentOrder) > 0 {
+		result += "\nFragments:\n"
+		for i, fragment := range fragmentOrder {
+			fragmentID := fmt.Sprintf("F%d", i+1)
+			result += fmt.Sprintf("  [%s] ", fragmentID)
+
+			// Indent each line of the fragment's string representation
+			fragmentStr := fragment.String()
+			lines := splitLines(fragmentStr)
+			for j, line := range lines {
+				if j == 0 {
+					result += line + "\n"
+				} else {
+					result += "      " + line + "\n"
+				}
+			}
+		}
 	}
 
 	return result
 }
 
-// formatTask formats a single task and its children recursively
-func (wf *Workflow) formatTask(t *Task, prefix string, isLast bool, result *string) {
+// splitLines splits a string into lines
+func splitLines(s string) []string {
+	if s == "" {
+		return []string{}
+	}
+	var lines []string
+	start := 0
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\n' {
+			lines = append(lines, s[start:i])
+			start = i + 1
+		}
+	}
+	if start < len(s) {
+		lines = append(lines, s[start:])
+	}
+	return lines
+}
+
+// formatTaskWithFragment formats a single task with its fragment ID and children recursively
+func (wf *Workflow) formatTaskWithFragment(t *Task, prefix string, isLast bool, taskToFragmentID map[*Task]string, result *string) {
 	// Draw the tree connector
 	connector := "├─"
 	if isLast {
@@ -483,8 +539,24 @@ func (wf *Workflow) formatTask(t *Task, prefix string, isLast bool, result *stri
 		connector = ""
 	}
 
-	// Format the task using its String() method
-	*result += fmt.Sprintf("%s%s %s\n", prefix, connector, t.String())
+	// Format the task with fragment ID
+	fragmentID := taskToFragmentID[t]
+	if fragmentID == "" {
+		fragmentID = "none"
+	}
+
+	sourcesCount := 0
+	for _, streams := range t.Sources {
+		sourcesCount += len(streams)
+	}
+	sinksCount := 0
+	for _, streams := range t.Sinks {
+		sinksCount += len(streams)
+	}
+
+	*result += fmt.Sprintf("%s%s Task[%s](fragment=%s, sources=%d, sinks=%d, timeRange=%s-%s)\n",
+		prefix, connector, t.ULID, fragmentID, sourcesCount, sinksCount,
+		t.MaxTimeRange.Start.Format("15:04:05"), t.MaxTimeRange.End.Format("15:04:05"))
 
 	// Get children and format them
 	children := wf.graph.Children(t)
@@ -502,7 +574,7 @@ func (wf *Workflow) formatTask(t *Task, prefix string, isLast bool, result *stri
 			childPrefix = prefix + "│ "
 		}
 
-		wf.formatTask(child, childPrefix, isLastChild, result)
+		wf.formatTaskWithFragment(child, childPrefix, isLastChild, taskToFragmentID, result)
 	}
 }
 
