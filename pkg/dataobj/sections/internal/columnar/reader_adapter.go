@@ -15,7 +15,7 @@ import (
 // [columnar.RecordBatch] values from a reader that only supports reads through
 // a slice of [dataset.Row].
 type ReaderAdapter struct {
-	inner    *dataset.Reader
+	inner    *dataset.RowReader
 	colTypes []datasetmd.PhysicalType
 
 	buf []dataset.Row
@@ -23,7 +23,7 @@ type ReaderAdapter struct {
 
 // NewReaderAdapter creates a ReaderAdapter with the provided dataset reader options.
 func NewReaderAdapter(innerOpts dataset.ReaderOptions) *ReaderAdapter {
-	r := &ReaderAdapter{inner: dataset.NewReader(innerOpts)}
+	r := &ReaderAdapter{inner: dataset.NewRowReader(innerOpts)}
 	r.Reset(innerOpts)
 	return r
 }
@@ -46,7 +46,7 @@ func (r *ReaderAdapter) Close() error {
 
 // Read reads up to batchSize rows from the underlying dataset reader and
 // returns them as a [columnar.RecordBatch].
-func (r *ReaderAdapter) Read(ctx context.Context, alloc *memory.Allocator, batchSize int) (columnar.RecordBatch, error) {
+func (r *ReaderAdapter) Read(ctx context.Context, alloc *memory.Allocator, batchSize int) (*columnar.RecordBatch, error) {
 	r.buf = slicegrow.GrowToCap(r.buf, batchSize)
 	r.buf = r.buf[:batchSize]
 
@@ -56,7 +56,7 @@ func (r *ReaderAdapter) Read(ctx context.Context, alloc *memory.Allocator, batch
 	for _, colType := range r.colTypes {
 		switch colType {
 		case datasetmd.PHYSICAL_TYPE_UNSPECIFIED:
-			return columnar.RecordBatch{}, fmt.Errorf("undefined physical type: %v", colType)
+			return nil, fmt.Errorf("undefined physical type: %v", colType)
 
 		case datasetmd.PHYSICAL_TYPE_INT64:
 			builder := columnar.NewNumberBuilder[int64](alloc)
@@ -89,7 +89,7 @@ func (r *ReaderAdapter) Read(ctx context.Context, alloc *memory.Allocator, batch
 
 			switch colType {
 			case datasetmd.PHYSICAL_TYPE_UNSPECIFIED:
-				return columnar.RecordBatch{}, fmt.Errorf("unsupported column type: %s", colType)
+				return nil, fmt.Errorf("unsupported column type: %s", colType)
 			case datasetmd.PHYSICAL_TYPE_INT64:
 				builder.(*columnar.NumberBuilder[int64]).AppendValue(val.Int64())
 			case datasetmd.PHYSICAL_TYPE_UINT64:

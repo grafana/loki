@@ -14,7 +14,7 @@ import (
 // Arrow.
 //
 // The zero value is ready for use, unassociated with a memory allocator. Use
-// [MakeBitmap] to create an allocator-associated bitmap.
+// [NewBitmap] to create an allocator-associated bitmap.
 type Bitmap struct {
 	// alloc is an optional Allocator to use for retrieving memory. If nil,
 	// memory is created using Go's built-in memory allocation.
@@ -28,14 +28,14 @@ type Bitmap struct {
 	len  int     // Number of bits in the bitmap.
 }
 
-// MakeBitmap creates a Bitmap managed by the provided allocator. The returned
+// NewBitmap creates a Bitmap managed by the provided allocator. The returned
 // Bitmap will have an initial length of zero and a capacity of at least n
 // (which may be 0).
 //
 // If alloc is nil, memory is created using Go's built-in memory allocation.
 // Otherwise, the lifetime of the returned Bitmap must not exceed the lifetime
 // of alloc.
-func MakeBitmap(alloc *Allocator, n int) Bitmap {
+func NewBitmap(alloc *Allocator, n int) Bitmap {
 	bmap := Bitmap{alloc: alloc}
 	if n > 0 {
 		bmap.Grow(n)

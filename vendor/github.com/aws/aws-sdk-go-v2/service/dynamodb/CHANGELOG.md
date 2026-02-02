@@ -1,3 +1,7 @@
+# v1.54.0 (2026-01-22)
+
+* **Feature**: Adds additional waiters to Amazon DynamoDB.
+
 # v1.53.6 (2026-01-09)
 
 * **Dependency Update**: Updated to the latest SDK module versions

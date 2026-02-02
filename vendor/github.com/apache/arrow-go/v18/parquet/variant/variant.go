@@ -685,7 +685,7 @@ func (v Value) Value() any {
 	case BasicArray:
 		valueHdr := (v.value[0] >> basicTypeBits)
 		fieldOffsetSz := (valueHdr & 0b11) + 1
-		isLarge := (valueHdr & 0b1) == 1
+		isLarge := ((valueHdr >> 2) & 0b1) == 1
 
 		var (
 			sz                     int

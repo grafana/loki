@@ -18,14 +18,14 @@ require (
 	github.com/NYTimes/gziphandler v1.1.1
 	github.com/Workiva/go-datastructures v1.1.7
 	github.com/alecthomas/kingpin/v2 v2.4.0
-	github.com/alicebob/miniredis/v2 v2.35.0
+	github.com/alicebob/miniredis/v2 v2.36.1
 	github.com/aliyun/aliyun-oss-go-sdk v3.0.2+incompatible
 	github.com/apache/cassandra-gocql-driver/v2 v2.0.0
 	github.com/aws/aws-sdk-go-v2 v1.41.1
 	github.com/aws/aws-sdk-go-v2/config v1.32.7
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.7
 	github.com/baidubce/bce-sdk-go v0.9.258
-	github.com/bmatcuk/doublestar/v4 v4.9.2
+	github.com/bmatcuk/doublestar/v4 v4.10.0
 	github.com/c2h5oh/datasize v0.0.0-20231215233829-aa82cc1e6500
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/containerd/fifo v1.1.0
@@ -87,7 +87,7 @@ require (
 	github.com/prometheus/client_model v0.6.2
 	github.com/prometheus/common v0.67.5
 	github.com/prometheus/prometheus v0.309.1
-	github.com/redis/go-redis/v9 v9.17.2
+	github.com/redis/go-redis/v9 v9.17.3
 	github.com/segmentio/fasthash v1.0.3
 	github.com/shurcooL/httpfs v0.0.0-20230704072500-f1e31cf0ba5c
 	github.com/shurcooL/vfsgen v0.0.0-20230704071429-0000e147ea92
@@ -117,8 +117,8 @@ require (
 	github.com/DmitriyVTitov/size v1.5.0
 	github.com/IBM/go-sdk-core/v5 v5.21.2
 	github.com/IBM/ibm-cos-sdk-go v1.13.0
-	github.com/apache/arrow-go/v18 v18.5.0
-	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.53.6
+	github.com/apache/arrow-go/v18 v18.5.1
+	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.54.0
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.95.1
 	github.com/axiomhq/hyperloglog v0.2.6
 	github.com/bits-and-blooms/bloom/v3 v3.7.1
@@ -152,12 +152,12 @@ require (
 	github.com/thanos-io/objstore v0.0.0-20250115091151-a54d0f04b42a
 	github.com/tjhop/slog-gokit v0.1.5
 	github.com/twmb/franz-go v1.20.6
-	github.com/twmb/franz-go/pkg/kadm v1.17.1
+	github.com/twmb/franz-go/pkg/kadm v1.17.2
 	github.com/twmb/franz-go/pkg/kfake v0.0.0-20250603004440-37eecbb8927f
 	github.com/twmb/franz-go/pkg/kmsg v1.12.0
 	github.com/twmb/franz-go/plugin/kotel v1.6.0
 	github.com/twmb/franz-go/plugin/kprom v1.2.1
-	go.opentelemetry.io/collector/pdata v1.49.0
+	go.opentelemetry.io/collector/pdata v1.50.0
 	go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace v0.64.0
 	go.opentelemetry.io/otel/sdk v1.39.0
 	go4.org/netipx v0.0.0-20230125063823-8449b0a6169f
@@ -229,7 +229,7 @@ require (
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
 	github.com/gobwas/glob v0.2.3 // indirect
 	github.com/goccy/go-json v0.10.5 // indirect
-	github.com/google/flatbuffers v25.9.23+incompatible // indirect
+	github.com/google/flatbuffers v25.12.19+incompatible // indirect
 	github.com/gophercloud/gophercloud/v2 v2.10.0 // indirect
 	github.com/gorilla/handlers v1.5.2 // indirect
 	github.com/grafana/otel-profiling-go v0.5.1 // indirect
@@ -297,7 +297,7 @@ require (
 	go.opentelemetry.io/collector/confmap v1.48.0 // indirect
 	go.opentelemetry.io/collector/confmap/xconfmap v0.142.0 // indirect
 	go.opentelemetry.io/collector/consumer v1.48.0 // indirect
-	go.opentelemetry.io/collector/featuregate v1.49.0 // indirect
+	go.opentelemetry.io/collector/featuregate v1.50.0 // indirect
 	go.opentelemetry.io/collector/pipeline v1.48.0 // indirect
 	go.opentelemetry.io/collector/processor v1.48.0 // indirect
 	go.opentelemetry.io/contrib/bridges/prometheus v0.64.0 // indirect
@@ -357,7 +357,7 @@ require (
 	github.com/Masterminds/goutils v1.1.1 // indirect
 	github.com/Masterminds/semver/v3 v3.4.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
-	github.com/alecthomas/chroma/v2 v2.23.0
+	github.com/alecthomas/chroma/v2 v2.23.1
 	github.com/alecthomas/units v0.0.0-20240927000941-0f3dac36c52b // indirect
 	github.com/armon/go-metrics v0.4.1 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.17 // indirect
@@ -488,7 +488,7 @@ require (
 	golang.org/x/tools v0.41.0
 	google.golang.org/genproto v0.0.0-20250922171735-9219d122eba9 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20251213004720-97cd9d5aeac2 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20251213004720-97cd9d5aeac2
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20251222181119-0a764e51fe1b
 	gopkg.in/fsnotify/fsnotify.v1 v1.4.7 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
