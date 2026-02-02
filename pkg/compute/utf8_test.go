@@ -93,17 +93,13 @@ func BenchmarkRegexpMatch(b *testing.B) {
 	haystack := columnar.NewUTF8([]byte(line), []int32{0, int32(len(line))}, memory.NewBitmap(alloc, 1))
 	regexp := regexp.MustCompile("A{100}targetB{100}")
 
-	var totalSize int
-	for i := range haystack.Len() {
-		totalSize += len(haystack.Get(i))
-	}
-
 	benchAlloc := memory.NewAllocator(nil)
 	for b.Loop() {
 		benchAlloc.Reclaim()
 		_, _ = RegexpMatch(benchAlloc, haystack, regexp)
 	}
-	b.SetBytes(int64(totalSize))
+	b.ReportMetric((float64(haystack.Len())*float64(b.N))/b.Elapsed().Seconds(), "values/s")
+	b.SetBytes(int64(haystack.Size()))
 }
 
 func TestSubstrInsensitive(t *testing.T) {
@@ -194,14 +190,12 @@ func BenchmarkSubstrInsensitive(b *testing.B) {
 	haystack := columnar.NewUTF8([]byte(line), []int32{0, int32(len(line))}, memory.NewBitmap(alloc, 1))
 	needle := columnartest.Scalar(b, columnar.KindUTF8, "target")
 
-	iterations := 0
 	benchAlloc := memory.NewAllocator(nil)
 	for b.Loop() {
 		benchAlloc.Reclaim()
 		_, _ = SubstrInsensitive(benchAlloc, haystack, needle)
-		iterations++
 	}
-	b.ReportMetric(float64(iterations)/b.Elapsed().Seconds(), "values/s")
+	b.ReportMetric((float64(haystack.Len())*float64(b.N))/b.Elapsed().Seconds(), "values/s")
 	b.SetBytes(int64(haystack.Size()))
 }
 
@@ -293,18 +287,11 @@ func BenchmarkSubstr(b *testing.B) {
 	haystack := columnar.NewUTF8([]byte(line), []int32{0, int32(len(line))}, memory.NewBitmap(alloc, 1))
 	needle := columnartest.Scalar(b, columnar.KindUTF8, "TaRgEt")
 
-	var totalSize int
-	for i := range haystack.Len() {
-		totalSize += len(haystack.Get(i))
-	}
-
-	iterations := 0
 	benchAlloc := memory.NewAllocator(nil)
 	for b.Loop() {
 		benchAlloc.Reclaim()
 		_, _ = Substr(benchAlloc, haystack, needle)
-		iterations++
 	}
-	b.ReportMetric(float64(iterations)/b.Elapsed().Seconds(), "values/s")
-	b.SetBytes(int64(totalSize))
+	b.ReportMetric((float64(haystack.Len())*float64(b.N))/b.Elapsed().Seconds(), "values/s")
+	b.SetBytes(int64(haystack.Size()))
 }

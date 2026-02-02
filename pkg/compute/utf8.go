@@ -10,8 +10,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/memory"
 )
 
-// RegexpMatch computes the regular expression match of a regular expression within an array of strings.
-// It returns a boolean array indicating whether the regular expression matched the haystack value.
+// RegexpMatch computes the regular expression match against a datum.
+// It returns a boolean datum indicating whether the regular expression matched the haystack datum.
 //
 // Special cases:
 //
@@ -62,8 +62,8 @@ func regexpMatchSS(_ *memory.Allocator, haystack *columnar.UTF8Scalar, regexp *r
 	return &columnar.BoolScalar{Value: regexp.Match(haystack.Value)}, nil
 }
 
-// SubstrInsensitive computes the case insensitive substring match of a string within an array of strings.
-// It returns a boolean array indicating whether the substring was found in the haystack.
+// SubstrInsensitive computes the case insensitive match of a needle datum against haystack datum
+// It returns a boolean datum indicating whether the needle was found in the haystack.
 //
 // Special cases:
 //
@@ -124,8 +124,8 @@ func substrInsensitiveSS(_ *memory.Allocator, haystack *columnar.UTF8Scalar, nee
 	return &columnar.BoolScalar{Value: bytes.Contains(haystackValueUpper, needleUpper)}, nil
 }
 
-// Substr computes the case sensitive substring match of a string within an array of strings.
-// It returns a boolean array indicating whether the substring was found in the haystack.
+// Substr computes the case sensitive match of a needle datum against haystack datum
+// It returns a boolean datum indicating whether the needle was found in the haystack.
 //
 // Special cases:
 //
