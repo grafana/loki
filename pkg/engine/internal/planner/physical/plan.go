@@ -73,6 +73,8 @@ func (t NodeType) String() string {
 // Nodes can be connected to form a directed acyclic graph (DAG) representing
 // the complete execution plan.
 type Node interface {
+	fmt.Stringer
+
 	// ID returns the ULID that uniquely identifies a node in the plan.
 	ID() ulid.ULID
 	// Type returns the node type
@@ -208,4 +210,54 @@ func (p *Plan) CalculateMaxTimeRange() TimeRange {
 	}
 
 	return timeRange
+}
+
+// String returns a human-readable representation of the plan as a tree structure.
+func (p *Plan) String() string {
+	if p.Len() == 0 {
+		return "Plan (empty)"
+	}
+
+	result := fmt.Sprintf("Plan (%d nodes):\n", p.Len())
+
+	roots := p.Roots()
+	for i, root := range roots {
+		isLastRoot := i == len(roots)-1
+		p.formatNode(root, "", isLastRoot, &result)
+	}
+
+	return result
+}
+
+// formatNode formats a single node and its children recursively
+func (p *Plan) formatNode(n Node, prefix string, isLast bool, result *string) {
+	// Draw the tree connector
+	connector := "├─"
+	if isLast {
+		connector = "└─"
+	}
+	if prefix == "" {
+		connector = ""
+	}
+
+	*result += fmt.Sprintf("%s%s [%s] %s\n", prefix, connector, n.ID(), n.String())
+
+	// Get children and format them
+	children := p.Children(n)
+	for i, child := range children {
+		isLastChild := i == len(children)-1
+
+		// Calculate prefix for children
+		var childPrefix string
+		if prefix == "" {
+			// Root nodes: children should have no extra prefix but will get connectors
+			childPrefix = "  "
+		} else if isLast {
+			childPrefix = prefix + "  "
+		} else {
+			childPrefix = prefix + "│ "
+		}
+
+		p.formatNode(child, childPrefix, isLastChild, result)
+	}
 }

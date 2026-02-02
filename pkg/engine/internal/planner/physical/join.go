@@ -24,3 +24,8 @@ func (f *Join) Clone() Node {
 func (*Join) Type() NodeType {
 	return NodeTypeJoin
 }
+
+// String returns a human-readable representation of the Join node.
+func (j *Join) String() string {
+	return "Join(timestamp)"
+}

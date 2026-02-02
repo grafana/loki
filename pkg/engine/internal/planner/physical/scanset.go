@@ -95,6 +95,11 @@ func (s *ScanSet) Type() NodeType {
 	return NodeTypeScanSet
 }
 
+// String returns a human-readable representation of the ScanSet node.
+func (s *ScanSet) String() string {
+	return fmt.Sprintf("ScanSet(targets=%d)", len(s.Targets))
+}
+
 // Shards returns an iterator over the shards of the scan. Each emitted shard
 // will be a clone. Projections and predicates on the ScanSet are cloned and
 // applied to each shard.

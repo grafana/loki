@@ -20,3 +20,8 @@ func (m *Merge) Clone() Node {
 }
 
 func (m *Merge) Type() NodeType { return NodeTypeMerge }
+
+// String returns a human-readable representation of the Merge node.
+func (m *Merge) String() string {
+	return "Merge()"
+}

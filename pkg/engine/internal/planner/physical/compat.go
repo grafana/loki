@@ -1,6 +1,7 @@
 package physical
 
 import (
+	"fmt"
 	"slices"
 
 	"github.com/oklog/ulid/v2"
@@ -38,4 +39,9 @@ func (m *ColumnCompat) Clone() Node {
 // Returns the type of the node.
 func (m *ColumnCompat) Type() NodeType {
 	return NodeTypeCompat
+}
+
+// String returns a human-readable representation of the ColumnCompat node.
+func (m *ColumnCompat) String() string {
+	return fmt.Sprintf("ColumnCompat(source=%s, dest=%s)", m.Source, m.Destination)
 }

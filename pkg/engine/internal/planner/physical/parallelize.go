@@ -21,3 +21,8 @@ func (p *Parallelize) Clone() Node {
 
 // Type returns [NodeTypeParallelize].
 func (p *Parallelize) Type() NodeType { return NodeTypeParallelize }
+
+// String returns a human-readable representation of the Parallelize node.
+func (p *Parallelize) String() string {
+	return "Parallelize()"
+}

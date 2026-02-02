@@ -1,6 +1,7 @@
 package physical
 
 import (
+	"fmt"
 	"slices"
 
 	"github.com/oklog/ulid/v2"
@@ -62,4 +63,10 @@ func (s *DataObjScan) Clone() Node {
 // Returns the type of the node.
 func (*DataObjScan) Type() NodeType {
 	return NodeTypeDataObjScan
+}
+
+// String returns a human-readable representation of the DataObjScan node.
+func (s *DataObjScan) String() string {
+	return fmt.Sprintf("DataObjScan(location=%s, section=%d, streams=%d)",
+		s.Location, s.Section, len(s.StreamIDs))
 }

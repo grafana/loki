@@ -1,6 +1,7 @@
 package physical
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/oklog/ulid/v2"
@@ -41,4 +42,9 @@ func (s *PointersScan) Clone() Node {
 
 func (s *PointersScan) Type() NodeType {
 	return NodeTypePointersScan
+}
+
+// String returns a human-readable representation of the PointersScan node.
+func (s *PointersScan) String() string {
+	return fmt.Sprintf("PointersScan(location=%s)", s.Location)
 }

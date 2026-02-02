@@ -1,6 +1,10 @@
 package physical
 
-import "github.com/oklog/ulid/v2"
+import (
+	"fmt"
+
+	"github.com/oklog/ulid/v2"
+)
 
 // Limit represents a limiting operation in the physical plan that applies
 // offset and limit to the result set. The offset specifies how many rows to
@@ -33,4 +37,9 @@ func (l *Limit) Clone() Node {
 // Returns the type of the node.
 func (*Limit) Type() NodeType {
 	return NodeTypeLimit
+}
+
+// String returns a human-readable representation of the Limit node.
+func (l *Limit) String() string {
+	return fmt.Sprintf("Limit(skip=%d, fetch=%d)", l.Skip, l.Fetch)
 }

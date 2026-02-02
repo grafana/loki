@@ -1,6 +1,7 @@
 package physical
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/oklog/ulid/v2"
@@ -44,4 +45,10 @@ func (r *RangeAggregation) Clone() Node {
 
 func (r *RangeAggregation) Type() NodeType {
 	return NodeTypeRangeAggregation
+}
+
+// String returns a human-readable representation of the RangeAggregation node.
+func (r *RangeAggregation) String() string {
+	return fmt.Sprintf("RangeAggregation(op=%s, range=%s, step=%s)",
+		r.Operation, r.Range, r.Step)
 }

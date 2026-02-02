@@ -190,12 +190,16 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 		return logqlmodel.Result{}, ErrNotSupported
 	}
 
+	fmt.Println("logical plan:", logicalPlan.String())
+
 	physicalPlan, durPhysicalPlanning, err := e.buildPhysicalPlan(ctx, tenantID, logger, params, logicalPlan)
 	if err != nil {
 		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
 		region.SetStatus(codes.Error, "failed to create physical plan")
 		return logqlmodel.Result{}, ErrPlanningFailed
 	}
+
+	fmt.Println("physical plan:\n", physicalPlan.String())
 
 	wf, durWorkflowPlanning, err := e.buildWorkflow(ctx, tenantID, logger, physicalPlan)
 	if err != nil {

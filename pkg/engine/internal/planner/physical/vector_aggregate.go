@@ -1,6 +1,8 @@
 package physical
 
 import (
+	"fmt"
+
 	"github.com/oklog/ulid/v2"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
@@ -43,4 +45,9 @@ func (v *VectorAggregation) Clone() Node {
 // Returns the type of the node.
 func (*VectorAggregation) Type() NodeType {
 	return NodeTypeVectorAggregation
+}
+
+// String returns a human-readable representation of the VectorAggregation node.
+func (v *VectorAggregation) String() string {
+	return fmt.Sprintf("VectorAggregation(op=%s)", v.Operation)
 }

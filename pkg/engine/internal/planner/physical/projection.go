@@ -1,6 +1,11 @@
 package physical
 
-import "github.com/oklog/ulid/v2"
+import (
+	"fmt"
+	"strings"
+
+	"github.com/oklog/ulid/v2"
+)
 
 // Projection represents a column selection operation in the physical plan.
 // It contains a list of columns (column expressions) that are later
@@ -39,4 +44,22 @@ func (p *Projection) Clone() Node {
 // Returns the type of the node.
 func (*Projection) Type() NodeType {
 	return NodeTypeProjection
+}
+
+// String returns a human-readable representation of the Projection node.
+func (p *Projection) String() string {
+	mode := "select"
+	if p.All {
+		mode = "all"
+	} else if p.Expand {
+		mode = "expand"
+	} else if p.Drop {
+		mode = "drop"
+	}
+
+	exprStrs := make([]string, len(p.Expressions))
+	for i, expr := range p.Expressions {
+		exprStrs[i] = expr.String()
+	}
+	return fmt.Sprintf("Projection(mode=%s, exprs=%s)", mode, strings.Join(exprStrs, " AND "))
 }
