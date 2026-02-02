@@ -427,3 +427,33 @@ func TestSerialIndexer_FlushOnBuilderFull(t *testing.T) {
 	require.Equal(t, float64(1), testutil.ToFloat64(indexerMetrics.totalRequests))
 	require.Equal(t, float64(1), testutil.ToFloat64(indexerMetrics.totalBuilds))
 }
+
+func TestDownloadObject_Success(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	bucket := objstore.NewInMemBucket()
+	testData := []byte("test data content for download")
+	objectPath := "test-object"
+
+	// Upload test object
+	require.NoError(t, bucket.Upload(ctx, objectPath, bytes.NewReader(testData)))
+
+	// Download with pre-allocation
+	result, err := downloadObject(ctx, bucket, objectPath)
+	require.NoError(t, err)
+	require.Equal(t, testData, result)
+}
+
+func TestDownloadObject_ObjectNotFound(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	bucket := objstore.NewInMemBucket()
+	objectPath := "non-existent-object"
+
+	// Try to download non-existent object
+	_, err := downloadObject(ctx, bucket, objectPath)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "failed to fetch object from storage")
+}
