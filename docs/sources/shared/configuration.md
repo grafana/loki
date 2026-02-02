@@ -312,13 +312,6 @@ query_engine:
   # CLI flag: -query-engine.batch-size
   [batch_size: <int> | default = 100]
 
-  # Experimental: The number of inputs that are prefetched simultaneously by any
-  # Merge node. A value of 0 means that only the currently processed input is
-  # prefetched, 1 means that only the next input is prefetched, and so on. A
-  # negative value means that all inputs are be prefetched in parallel.
-  # CLI flag: -query-engine.merge-prefetch-count
-  [merge_prefetch_count: <int> | default = 0]
-
   # Configures how to read byte ranges from object storage when using the V2
   # engine.
   range_reads:
@@ -4936,6 +4929,16 @@ otlp_config:
 # engine.
 # CLI flag: -limits.debug-engine-streams
 [debug_engine_streams: <boolean> | default = false]
+
+# Experimental: Number of PointersScan targets to batch per task at the workflow
+# level. 0 = one task per path.
+# CLI flag: -limits.metastore-pointers-scans-per-task
+[metastore_pointers_scans_per_task: <int> | default = 0]
+
+# Experimental: Number of RecordBatches to buffer in the Merge (e.g. for
+# PointersScan ScanSets). 0 = no buffering.
+# CLI flag: -limits.merge-batch-size
+[merge_batch_size: <int> | default = 0]
 ```
 
 ### local_storage_config

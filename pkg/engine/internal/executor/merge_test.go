@@ -12,6 +12,13 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
 
+// testContext returns a context for merge tests that drain the merge until EOF.
+// We use Background() so draining is not interrupted by test context cancellation.
+func testContext(t *testing.T) context.Context {
+	t.Helper()
+	return context.Background()
+}
+
 func TestMerge(t *testing.T) {
 	schema := arrow.NewSchema([]arrow.Field{
 		{Name: "timestamp", Type: arrow.PrimitiveTypes.Int64, Nullable: true},
@@ -47,79 +54,140 @@ func TestMerge(t *testing.T) {
 		inputRows[i] = rows
 	}
 
-	// Test different concurrency settings
-	//  0 ... no prefetching of next input / only current input is prefetched
-	//  1 ... next input is prefetched
-	//  3 ... number of prefetched inputs is equal to the number of inputs
-	//  5 ... number of prefetched inputs is greater than the number of inputs
-	// -1 ... unlimited/all inputs are prefetched
-	for _, maxPrefetch := range []int{0, 1, n, 5, -1} {
+	t.Run("context=full", func(t *testing.T) {
+		// Create fresh inputs using the pre-generated data
+		inputs := make([]Pipeline, n)
+		for i := range len(inputs) {
+			inputs[i] = NewArrowtestPipeline(schema, inputRows[i]...)
+		}
 
-		t.Run(fmt.Sprintf("context=full/maxPrefetch=%d", maxPrefetch), func(t *testing.T) {
-			// Create fresh inputs using the pre-generated data
-			inputs := make([]Pipeline, n)
-			for i := range len(inputs) {
-				inputs[i] = NewArrowtestPipeline(schema, inputRows[i]...)
+		m, err := newMergePipeline(inputs, 0, nil)
+		require.NoError(t, err)
+		defer m.Close()
+
+		ctx := t.Context()
+		var actualRows []arrowtest.Rows
+
+		// Read all records from the merge pipeline
+		for {
+			rec, err := m.Read(ctx)
+			if errors.Is(err, EOF) {
+				t.Log("stop reading from pipeline:", err)
+				break
+			}
+			require.NoError(t, err, "Unexpected error during read")
+
+			rows, err := arrowtest.RecordRows(rec)
+			require.NoError(t, err)
+
+			actualRows = append(actualRows, rows)
+		}
+
+		// Compare actual vs expected rows
+		// Order of processed inputs must stay the same
+		require.Equal(t, expectedRows, actualRows)
+	})
+
+	t.Run("context=canceled", func(t *testing.T) {
+		// Create fresh inputs using the pre-generated data
+		inputs := make([]Pipeline, n)
+		for i := range len(inputs) {
+			inputs[i] = NewArrowtestPipeline(schema, inputRows[i]...)
+		}
+
+		m, err := newMergePipeline(inputs, 0, nil)
+		require.NoError(t, err)
+		defer m.Close()
+
+		ctx := t.Context()
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+
+		var gotRows int64
+		for {
+			// Cancel the context once half of the expected/generated rows was consumed
+			if gotRows > int64(len(expectedRows)/2) {
+				cancel()
 			}
 
-			m, err := newMergePipeline(inputs, maxPrefetch, nil)
+			rec, err := m.Read(ctx)
+			if errors.Is(err, EOF) || errors.Is(err, context.Canceled) {
+				t.Log("stop reading from pipeline:", err)
+				break
+			}
+			require.NoError(t, err, "Unexpected error during read")
+
+			gotRows += rec.NumRows()
+		}
+	})
+}
+
+// TestMerge_Buffering verifies that with bufferBatchCount > 0 the merge returns
+// equally sized batches (except the last), regardless of the number of inputs.
+func TestMerge_Buffering(t *testing.T) {
+	schema := arrow.NewSchema([]arrow.Field{
+		{Name: "timestamp", Type: arrow.PrimitiveTypes.Int64, Nullable: true},
+		{Name: "message", Type: arrow.BinaryTypes.String, Nullable: true},
+	}, nil)
+
+	tests := []struct {
+		name               string
+		batchesPerInput    []int // each input has this many 1-row batches
+		bufferBatchCount   int
+		expectedBatchSizes []int64 // expected NumRows() per Read() until EOF
+	}{
+		{
+			name:               "single input buffer 3",
+			batchesPerInput:    []int{5},
+			bufferBatchCount:   3,
+			expectedBatchSizes: []int64{3, 2},
+		},
+		{
+			name:               "three inputs buffer 2",
+			batchesPerInput:    []int{5, 3, 4},
+			bufferBatchCount:   2,
+			expectedBatchSizes: []int64{2, 2, 2, 2, 2, 2},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			inputs := make([]Pipeline, len(tt.batchesPerInput))
+			for i, numBatches := range tt.batchesPerInput {
+				rows := make([]arrowtest.Rows, numBatches)
+				for j := range rows {
+					rows[j] = arrowtest.Rows{
+						map[string]any{"timestamp": int64(i*100 + j), "message": fmt.Sprintf("input%d-batch%d", i, j)},
+					}
+				}
+				inputs[i] = NewArrowtestPipeline(schema, rows...)
+			}
+
+			m, err := newMergePipeline(inputs, tt.bufferBatchCount, nil)
 			require.NoError(t, err)
 			defer m.Close()
 
-			ctx := t.Context()
-			require.NoError(t, m.Open(ctx))
-
-			// Read all records from the merge pipeline
-			var actualRows []arrowtest.Rows
+			ctx := testContext(t)
+			var actualBatchSizes []int64
 			for {
-				rec, err := m.Read(ctx)
-				if errors.Is(err, EOF) {
-					t.Log("stop reading from pipeline:", err)
-					break
-				}
-				require.NoError(t, err, "Unexpected error during read")
-
-				rows, err := arrowtest.RecordRows(rec)
-				require.NoError(t, err)
-
-				actualRows = append(actualRows, rows)
-			}
-
-			// Compare actual vs expected rows
-			// Order of processed inputs must stay the same
-			require.Equal(t, expectedRows, actualRows)
-		})
-
-		t.Run(fmt.Sprintf("context=canceled/maxPrefetch=%d", maxPrefetch), func(t *testing.T) {
-			// Create fresh inputs using the pre-generated data
-			inputs := make([]Pipeline, n)
-			for i := range len(inputs) {
-				inputs[i] = NewArrowtestPipeline(schema, inputRows[i]...)
-			}
-
-			m, err := newMergePipeline(inputs, maxPrefetch, nil)
-			require.NoError(t, err)
-			defer m.Close()
-
-			ctx := t.Context()
-			ctx, cancel := context.WithCancel(ctx)
-			defer cancel()
-
-			var gotRows int64
-			for {
-				// Cancel the context once half of the expected/generated rows was consumed
-				if gotRows > int64(len(expectedRows)/2) {
-					cancel()
-				}
-
 				rec, err := m.Read(ctx)
 				if errors.Is(err, EOF) || errors.Is(err, context.Canceled) {
-					t.Log("stop reading from pipeline:", err)
 					break
 				}
-				require.NoError(t, err, "Unexpected error during read")
+				require.NoError(t, err)
+				require.NotNil(t, rec)
+				actualBatchSizes = append(actualBatchSizes, rec.NumRows())
+				rec.Release()
+			}
 
-				gotRows += rec.NumRows()
+			require.Equal(t, tt.expectedBatchSizes, actualBatchSizes, "batch sizes should match regardless of number of inputs")
+
+			// All but the last batch should have the same size (bufferBatchCount when each input batch has 1 row)
+			if tt.bufferBatchCount > 0 && len(actualBatchSizes) > 1 {
+				expectedFullSize := int64(tt.bufferBatchCount)
+				for i := 0; i < len(actualBatchSizes)-1; i++ {
+					require.Equal(t, expectedFullSize, actualBatchSizes[i], "batch %d should be full size", i)
+				}
 			}
 		})
 	}

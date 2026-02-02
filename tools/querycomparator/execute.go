@@ -258,6 +258,7 @@ func doLocalQueryWithV2EngineScheduler(params logql.LiteralParams) (logqlmodel.R
 		Executor: engine.ExecutorConfig{
 			BatchSize: 128,
 		},
+		Limits: nil,
 	})
 	if err != nil {
 		return logqlmodel.Result{}, fmt.Errorf("creating worker: %w", err)
@@ -331,6 +332,7 @@ func doLocalQueryWithV2EngineSchedulerRemote(params logql.LiteralParams) (logqlm
 		Executor: engine.ExecutorConfig{
 			BatchSize: 128,
 		},
+		Limits: nil,
 	})
 	if err != nil {
 		return logqlmodel.Result{}, fmt.Errorf("creating worker: %w", err)

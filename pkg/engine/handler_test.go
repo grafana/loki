@@ -51,8 +51,7 @@ type mockLimits struct {
 func TestHandler(t *testing.T) {
 	cfg := Config{
 		Executor: ExecutorConfig{
-			BatchSize:          100,
-			MergePrefetchCount: 0,
+			BatchSize: 100,
 		},
 	}
 	logger := log.NewNopLogger()
@@ -69,8 +68,7 @@ func TestQueryHandler_Do_LokiRequest(t *testing.T) {
 
 	cfg := Config{
 		Executor: ExecutorConfig{
-			BatchSize:          100,
-			MergePrefetchCount: 0,
+			BatchSize: 100,
 		},
 	}
 
@@ -252,8 +250,7 @@ func TestQueryHandler_Do_LokiInstantRequest(t *testing.T) {
 
 	cfg := Config{
 		Executor: ExecutorConfig{
-			BatchSize:          100,
-			MergePrefetchCount: 0,
+			BatchSize: 100,
 		},
 	}
 
@@ -434,8 +431,7 @@ func TestQueryHandler_ValidateMaxEntriesLimits(t *testing.T) {
 
 	cfg := Config{
 		Executor: ExecutorConfig{
-			BatchSize:          100,
-			MergePrefetchCount: 0,
+			BatchSize: 100,
 		},
 	}
 
@@ -535,8 +531,7 @@ func TestQueryHandler_ValidateRequest(t *testing.T) {
 
 	cfg := Config{
 		Executor: ExecutorConfig{
-			BatchSize:          100,
-			MergePrefetchCount: 0,
+			BatchSize: 100,
 		},
 	}
 
@@ -844,8 +839,7 @@ func TestQueryHandler_ValidateInstantRequest(t *testing.T) {
 
 	cfg := Config{
 		Executor: ExecutorConfig{
-			BatchSize:          100,
-			MergePrefetchCount: 0,
+			BatchSize: 100,
 		},
 	}
 

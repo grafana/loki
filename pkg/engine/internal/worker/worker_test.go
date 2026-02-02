@@ -349,7 +349,7 @@ func newTestWorkerWithContext(t *testing.T, logger log.Logger, loc objtest.Locat
 		// Create enough threads to guarantee all tasks can be scheduled without
 		// blocking.
 		NumThreads: 2,
-	})
+	}, nil)
 	require.NoError(t, err, "expected to create worker")
 	require.NoError(t, services.StartAndAwaitRunning(runCtx, w.Service()))
 

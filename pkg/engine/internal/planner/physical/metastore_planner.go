@@ -13,11 +13,17 @@ import (
 
 type MetastorePlanner struct {
 	metastore metastore.Metastore
+
+	// PointersScansPerTask is the batch size for workflow-level sharding: when > 0,
+	// the ScanSet gets ShardBatchSize set so each task runs up to this many PointersScan targets.
+	// 0 means one task per path (current behavior).
+	PointersScansPerTask int
 }
 
-func NewMetastorePlanner(metastore metastore.Metastore) MetastorePlanner {
+func NewMetastorePlanner(metastore metastore.Metastore, pointersScansPerTask int) MetastorePlanner {
 	return MetastorePlanner{
-		metastore: metastore,
+		metastore:            metastore,
+		PointersScansPerTask: pointersScansPerTask,
 	}
 }
 
@@ -45,7 +51,8 @@ func (p MetastorePlanner) Plan(ctx context.Context, selector Expression, predica
 	plan.graph.Add(parallelize)
 
 	scanSet := &ScanSet{
-		NodeID: ulid.Make(),
+		NodeID:         ulid.Make(),
+		ShardBatchSize: p.PointersScansPerTask,
 	}
 	plan.graph.Add(scanSet)
 

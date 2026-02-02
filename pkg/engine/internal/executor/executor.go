@@ -40,7 +40,8 @@ type Config struct {
 	Bucket    objstore.Bucket
 	Metastore metastore.Metastore
 
-	MergePrefetchCount int
+	// MergeBatchSize is the number of record batches to buffer in the Merge (e.g. for PointersScan ScanSets). 0 = no buffering.
+	MergeBatchSize int
 
 	// GetExternalInputs is an optional function called for each node in the
 	// plan. If GetExternalInputs returns a non-nil slice of Pipelines, they
@@ -54,15 +55,15 @@ type Config struct {
 
 func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger) Pipeline {
 	c := &Context{
-		plan:               plan,
-		batchSize:          cfg.BatchSize,
-		mergePrefetchCount: cfg.MergePrefetchCount,
-		bucket:             cfg.Bucket,
-		metastore:          cfg.Metastore,
-		logger:             logger,
-		evaluator:          newExpressionEvaluator(),
-		getExternalInputs:  cfg.GetExternalInputs,
-		streamFilterer:     cfg.StreamFilterer,
+		plan:              plan,
+		batchSize:         cfg.BatchSize,
+		mergeBatchSize:    cfg.MergeBatchSize,
+		bucket:            cfg.Bucket,
+		metastore:         cfg.Metastore,
+		logger:            logger,
+		evaluator:         newExpressionEvaluator(),
+		getExternalInputs: cfg.GetExternalInputs,
+		streamFilterer:    cfg.StreamFilterer,
 	}
 	if plan == nil {
 		return errorPipeline(ctx, errors.New("plan is nil"))
@@ -87,7 +88,7 @@ type Context struct {
 
 	getExternalInputs func(ctx context.Context, node physical.Node) []Pipeline
 
-	mergePrefetchCount int
+	mergeBatchSize int
 
 	streamFilterer RequestStreamFilterer
 }
@@ -423,7 +424,7 @@ func (c *Context) executeMerge(ctx context.Context, _ *physical.Merge, inputs []
 		return emptyPipelineWithRegion(region)
 	}
 
-	pipeline, err := newMergePipeline(inputs, c.mergePrefetchCount, region)
+	pipeline, err := newMergePipeline(inputs, c.mergeBatchSize, region)
 	if err != nil {
 		return errorPipelineWithRegion(ctx, err, region)
 	}
@@ -482,7 +483,7 @@ func (c *Context) executeScanSet(ctx context.Context, set *physical.ScanSet, reg
 		return emptyPipelineWithRegion(region)
 	}
 
-	pipeline, err := newMergePipeline(targets, c.mergePrefetchCount, region)
+	pipeline, err := newMergePipeline(targets, c.mergeBatchSize, region)
 	if err != nil {
 		return errorPipelineWithRegion(ctx, err, region)
 	}

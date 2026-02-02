@@ -19,6 +19,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
+	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/storage/bucket"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/xcap"
@@ -53,6 +54,7 @@ func (s threadState) String() string {
 // thread represents a worker thread that executes one task at a time.
 type thread struct {
 	BatchSize      int64
+	Limits         logql.Limits
 	Bucket         objstore.Bucket
 	Metastore      metastore.Metastore
 	Logger         log.Logger
@@ -112,14 +114,32 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	ctx = pprof.WithLabels(ctx, pprof.Labels("node_type", root.Type().String()))
 	pprof.SetGoroutineLabels(ctx)
 
+	// Count external sources and sinks for observability.
+	// This is useful to know which tasks are scan tasks (no sources)
+	var countSources, countSinks int
+	for _, streams := range job.Task.Sources {
+		countSources += len(streams)
+	}
+	for _, streams := range job.Task.Sinks {
+		countSinks += len(streams)
+	}
+
 	startTime := time.Now()
 	level.Info(logger).Log(
 		"msg", "starting task",
 		"plan", physical.PrintAsTree(job.Task.Fragment),
+		"external_sources", countSources,
+		"external_sinks", countSinks,
 	)
+
+	mergeBatchSize := 0
+	if t.Limits != nil {
+		mergeBatchSize = t.Limits.MergeBatchSize(job.Task.TenantID)
+	}
 
 	cfg := executor.Config{
 		BatchSize:      t.BatchSize,
+		MergeBatchSize: mergeBatchSize,
 		Bucket:         bucket.NewXCapBucket(t.Bucket),
 		Metastore:      t.Metastore,
 		StreamFilterer: t.StreamFilterer,
@@ -176,6 +196,9 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 		attribute.Stringer("task_id", job.Task.ULID),
 	))
 	defer region.End()
+
+	region.Record(xcap.TaskExternalSourcesCount.Observe(int64(countSources)))
+	region.Record(xcap.TaskExternalSinksCount.Observe(int64(countSinks)))
 
 	pipeline := executor.Run(ctx, cfg, job.Task.Fragment, logger)
 
@@ -300,6 +323,8 @@ func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, 
 				continue
 			}
 		}
+		region.Record(xcap.TaskRecordsSent.Observe(1))
+		region.Record(xcap.TaskRowsSent.Observe(rec.NumRows()))
 		region.Record(xcap.TaskSendDuration.Observe(time.Since(startSend).Seconds()))
 	}
 
