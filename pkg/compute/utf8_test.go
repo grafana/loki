@@ -19,10 +19,10 @@ func TestRegexpMatch(t *testing.T) {
 	nulllValueHaystack := columnartest.Array(t, columnar.KindUTF8, alloc, nil)
 	emptyHaystack := columnartest.Array(t, columnar.KindUTF8, alloc)
 
-	emptyRegexp := columnartest.Scalar(t, columnar.KindRegexp, regexp.MustCompile(""))
-	nullValueRegexp := columnartest.Scalar(t, columnar.KindRegexp, nil)
-	singleMatchingRegexp := columnartest.Scalar(t, columnar.KindRegexp, regexp.MustCompile("test"))
-	singleNonMatchingRegexp := columnartest.Scalar(t, columnar.KindRegexp, regexp.MustCompile("NOTtest"))
+	emptyRegexp := regexp.MustCompile("")
+	nullValueRegexp := (*regexp.Regexp)(nil)
+	matchingRegexp := regexp.MustCompile("test")
+	nonMatchingRegexp := regexp.MustCompile("NOTtest")
 
 	singleTrue := columnartest.Array(t, columnar.KindBool, alloc, true)
 	singleFalse := columnartest.Array(t, columnar.KindBool, alloc, false)
@@ -32,13 +32,13 @@ func TestRegexpMatch(t *testing.T) {
 	cases := []struct {
 		name     string
 		haystack columnar.Datum
-		regexp   columnar.Datum
+		regexp   *regexp.Regexp
 		expected columnar.Datum
 	}{
 		{
 			name:     "empty_haystack",
 			haystack: emptyHaystack,
-			regexp:   singleMatchingRegexp,
+			regexp:   matchingRegexp,
 			expected: emptyResult,
 		},
 		{
@@ -50,19 +50,19 @@ func TestRegexpMatch(t *testing.T) {
 		{
 			name:     "match",
 			haystack: singleValueHaystack,
-			regexp:   singleMatchingRegexp,
+			regexp:   matchingRegexp,
 			expected: singleTrue,
 		},
 		{
 			name:     "not match",
 			haystack: singleValueHaystack,
-			regexp:   singleNonMatchingRegexp,
+			regexp:   nonMatchingRegexp,
 			expected: singleFalse,
 		},
 		{
 			name:     "nil_haystack",
 			haystack: nulllValueHaystack,
-			regexp:   singleMatchingRegexp,
+			regexp:   matchingRegexp,
 			expected: nullResult,
 		},
 		{
@@ -91,7 +91,7 @@ func BenchmarkRegexpMatch(b *testing.B) {
 	alloc := memory.NewAllocator(nil)
 	line := strings.Repeat("A", 100) + "target" + strings.Repeat("B", 100)
 	haystack := columnar.NewUTF8([]byte(line), []int32{0, int32(len(line))}, memory.NewBitmap(alloc, 1))
-	regexp := columnartest.Scalar(b, columnar.KindRegexp, regexp.MustCompile("A{100}targetB{100}"))
+	regexp := regexp.MustCompile("A{100}targetB{100}")
 
 	var totalSize int
 	for i := range haystack.Len() {

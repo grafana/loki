@@ -1,7 +1,6 @@
 package columnartest
 
 import (
-	"regexp"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -35,8 +34,6 @@ func Scalar(t testing.TB, kind columnar.Kind, value any) columnar.Scalar {
 		return scalarNumber[uint64](t, value)
 	case columnar.KindUTF8:
 		return scalarUTF8(t, value)
-	case columnar.KindRegexp:
-		return scalarRegexp(t, value)
 	default:
 		require.FailNow(t, "unsupported kind", "kind %s is currently not supported", kind)
 		panic("unreachable")
@@ -95,21 +92,5 @@ func scalarUTF8(t testing.TB, value any) *columnar.UTF8Scalar {
 	}
 
 	require.FailNow(t, "unexpected value type", "value must be nil, []byte, or string for UTF8 scalar, got %T", value)
-	panic("unreachable")
-}
-
-func scalarRegexp(t testing.TB, value any) *columnar.RegexpScalar {
-	t.Helper()
-
-	if value == nil {
-		return &columnar.RegexpScalar{Null: true}
-	}
-
-	switch value := value.(type) {
-	case *regexp.Regexp:
-		return &columnar.RegexpScalar{Value: value}
-	}
-
-	require.FailNow(t, "unexpected value type", "value must be nil, []byte, or *regexp.Regexp for Regexp scalar, got %T", value)
 	panic("unreachable")
 }

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"regexp"
 
 	"github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/memory"
@@ -16,32 +17,28 @@ import (
 //
 //   - If a value in the haystack is null, the result for that value is null.
 //   - If the regexp is null, the result is null.
-func RegexpMatch(alloc *memory.Allocator, haystack columnar.Datum, regexp columnar.Datum) (columnar.Datum, error) {
-	if haystack.Kind() != columnar.KindUTF8 || regexp.Kind() != columnar.KindRegexp {
-		return nil, fmt.Errorf("haystack and regexp must both be UTF-8; got %s and %s", haystack.Kind(), regexp.Kind())
-	}
-
-	if _, ok := regexp.(*columnar.RegexpScalar); !ok {
-		return nil, fmt.Errorf("regexp must be a RegexpScalar; got %T", regexp)
+func RegexpMatch(alloc *memory.Allocator, haystack columnar.Datum, regexp *regexp.Regexp) (columnar.Datum, error) {
+	if haystack.Kind() != columnar.KindUTF8 {
+		return nil, fmt.Errorf("haystack must be UTF-8; got %s", haystack.Kind())
 	}
 
 	_, haystackArray := haystack.(columnar.Array)
 
 	switch {
 	case haystackArray:
-		return regexpMatchAS(alloc, haystack.(*columnar.UTF8), regexp.(*columnar.RegexpScalar))
+		return regexpMatchAS(alloc, haystack.(*columnar.UTF8), regexp)
 	case !haystackArray:
-		return regexpMatchSS(alloc, haystack.(*columnar.UTF8Scalar), regexp.(*columnar.RegexpScalar))
+		return regexpMatchSS(alloc, haystack.(*columnar.UTF8Scalar), regexp)
 	default:
 		return nil, errors.New("unsupported haystack and regexp types")
 	}
 }
 
-func regexpMatchAS(alloc *memory.Allocator, haystack *columnar.UTF8, regexp *columnar.RegexpScalar) (*columnar.Bool, error) {
+func regexpMatchAS(alloc *memory.Allocator, haystack *columnar.UTF8, regexp *regexp.Regexp) (*columnar.Bool, error) {
 	results := columnar.NewBoolBuilder(alloc)
 	results.Grow(haystack.Len())
 
-	if regexp.IsNull() {
+	if regexp == nil {
 		results.AppendNulls(haystack.Len())
 		return results.Build(), nil
 	}
@@ -52,17 +49,17 @@ func regexpMatchAS(alloc *memory.Allocator, haystack *columnar.UTF8, regexp *col
 			continue
 		}
 
-		results.AppendValue(regexp.Value.Match(haystack.Get(i)))
+		results.AppendValue(regexp.Match(haystack.Get(i)))
 	}
 	return results.Build(), nil
 }
 
-func regexpMatchSS(_ *memory.Allocator, haystack *columnar.UTF8Scalar, regexp *columnar.RegexpScalar) (*columnar.BoolScalar, error) {
-	if regexp.IsNull() || haystack.IsNull() {
+func regexpMatchSS(_ *memory.Allocator, haystack *columnar.UTF8Scalar, regexp *regexp.Regexp) (*columnar.BoolScalar, error) {
+	if regexp == nil || haystack.IsNull() {
 		return &columnar.BoolScalar{Null: true}, nil
 	}
 
-	return &columnar.BoolScalar{Value: regexp.Value.Match(haystack.Value)}, nil
+	return &columnar.BoolScalar{Value: regexp.Match(haystack.Value)}, nil
 }
 
 // SubstrInsensitive computes the case insensitive substring match of a string within an array of strings.

@@ -12,7 +12,6 @@ const (
 	KindInt64              // KindInt64 represents a 64-bit integer value.
 	KindUint64             // KindUint64 represents a 64-bit unsigned integer value.
 	KindUTF8               // KindUTF8 represents a UTF-8 encoded string value.
-	KindRegexp             // KindRegexp represents a regular expression value.
 )
 
 var kindNames = [...]string{
@@ -21,7 +20,6 @@ var kindNames = [...]string{
 	KindInt64:  "int64",
 	KindUint64: "uint64",
 	KindUTF8:   "utf8",
-	KindRegexp: "regexp",
 }
 
 // String returns the string representation of k.
