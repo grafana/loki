@@ -3701,6 +3701,22 @@ func TestParseLogSelectorExpr_equalityMatcher(t *testing.T) {
 	}
 }
 
+func TestParseLabels_StringTooLong(t *testing.T) {
+	// Create a label value that exceeds 16MB (2^24 = 16777216 bytes)
+	const maxLabelSize = 1 << 24 // 16MB
+	longValue := make([]byte, maxLabelSize+1)
+	for i := range longValue {
+		longValue[i] = 'a'
+	}
+
+	// Construct a labels string with the oversized value
+	input := `{job="` + string(longValue) + `"}`
+
+	_, err := ParseLabels(input)
+
+	require.Error(t, err, "ParseLabels should return an error for labels exceeding 16MB, not panic")
+}
+
 func TestParseLabels(t *testing.T) {
 	for _, tc := range []struct {
 		desc   string

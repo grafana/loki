@@ -273,8 +273,24 @@ func ParseLogSelector(input string, validate bool) (LogSelectorExpr, error) {
 }
 
 // ParseLabels parses labels from a string using logql parser.
-func ParseLabels(lbs string) (labels.Labels, error) {
-	ls, err := promql_parser.ParseMetric(lbs)
+func ParseLabels(lbs string) (ls labels.Labels, err error) {
+	// Prometheus' parser panics when a label exceeds 16MB.
+	// We handle panics here instead of pre-checking the limit to avoid coupling to Prometheus' internal limits.
+	// Remove this block when https://github.com/prometheus/prometheus/issues/17993 is fixed.
+	defer func() {
+		if r := recover(); r != nil {
+			switch v := r.(type) {
+			case error:
+				err = fmt.Errorf("parse error: %w", v)
+			case string:
+				err = fmt.Errorf("parse error: %s", v)
+			default:
+				err = fmt.Errorf("parse error: %v", r)
+			}
+		}
+	}()
+
+	ls, err = promql_parser.ParseMetric(lbs)
 	if err != nil {
 		return labels.EmptyLabels(), err
 	}
