@@ -81,9 +81,9 @@ func BenchmarkConcat(b *testing.B) {
 
 		var in []columnar.Array
 		for range 128 {
-			validity := memory.MakeBitmap(&alloc, 128)
+			validity := memory.NewBitmap(&alloc, 128)
 			validity.AppendCount(false, 128)
-			in = append(in, columnar.MakeNull(validity))
+			in = append(in, columnar.NewNull(validity))
 		}
 
 		var loopAlloc memory.Allocator
@@ -106,8 +106,8 @@ func BenchmarkConcat(b *testing.B) {
 
 		var in []columnar.Array
 		for i := range 128 {
-			values := memory.MakeBitmap(&alloc, 128)
-			validity := memory.MakeBitmap(&alloc, 128)
+			values := memory.NewBitmap(&alloc, 128)
+			validity := memory.NewBitmap(&alloc, 128)
 
 			// Alternate values and validity for variety
 			for j := range 128 {
@@ -115,7 +115,7 @@ func BenchmarkConcat(b *testing.B) {
 				validity.Append(j%10 != 0) // Every 10th element is null
 			}
 
-			in = append(in, columnar.MakeBool(values, validity))
+			in = append(in, columnar.NewBool(values, validity))
 		}
 
 		var loopAlloc memory.Allocator
@@ -139,7 +139,7 @@ func BenchmarkConcat(b *testing.B) {
 		var in []columnar.Array
 		for i := range 128 {
 			values := make([]int64, 128)
-			validity := memory.MakeBitmap(&alloc, 128)
+			validity := memory.NewBitmap(&alloc, 128)
 
 			// Alternate values and validity for variety
 			for j := range 128 {
@@ -147,7 +147,7 @@ func BenchmarkConcat(b *testing.B) {
 				validity.Append(j%10 != 0) // Every 10th element is null
 			}
 
-			in = append(in, columnar.MakeNumber[int64](values, validity))
+			in = append(in, columnar.NewNumber[int64](values, validity))
 		}
 
 		var loopAlloc memory.Allocator

@@ -62,12 +62,6 @@ type serialIndexer struct {
 	indexerMetrics     *indexerMetrics
 	logger             log.Logger
 
-	// Download pipeline
-	downloadQueue     chan metastore.ObjectWrittenEvent
-	downloadedObjects chan downloadedObject
-	skipDownloads     chan struct{} // Signal to skip downloading new objects
-	skipMode          bool          // Track whether we're in skip mode
-
 	// Worker management
 	buildRequestChan chan buildRequest
 	buildWorkerWg    sync.WaitGroup
@@ -96,9 +90,6 @@ func newSerialIndexer(
 		indexerMetrics:     indexerMetrics,
 		logger:             logger,
 		buildRequestChan:   make(chan buildRequest, cfg.QueueSize),
-		downloadQueue:      make(chan metastore.ObjectWrittenEvent, 32),
-		downloadedObjects:  make(chan downloadedObject, 1),
-		skipDownloads:      make(chan struct{}),
 	}
 
 	// Initialize dskit Service
@@ -117,10 +108,6 @@ func (si *serialIndexer) starting(_ context.Context) error {
 func (si *serialIndexer) running(ctx context.Context) error {
 	level.Info(si.logger).Log("msg", "serial indexer running")
 
-	// Start download worker
-	si.downloadWorkerWg.Add(1)
-	go si.downloadWorker(ctx)
-
 	// Start build worker
 	si.buildWorkerWg.Add(1)
 	go si.buildWorker(ctx)
@@ -135,18 +122,11 @@ func (si *serialIndexer) stopping(_ error) error {
 	level.Info(si.logger).Log("msg", "stopping serial indexer")
 
 	// Close channels to signal workers to stop
-	close(si.downloadQueue)
 	close(si.buildRequestChan)
-
-	// Close the skip downloads channel to signal any waiting download workers
-	close(si.skipDownloads)
 
 	// Wait for workers to finish
 	si.downloadWorkerWg.Wait()
 	si.buildWorkerWg.Wait()
-
-	// Close the downloaded objects channel after workers are done
-	close(si.downloadedObjects)
 
 	level.Info(si.logger).Log("msg", "stopped serial indexer")
 	return nil
@@ -192,83 +172,6 @@ func (si *serialIndexer) submitBuild(ctx context.Context, events []bufferedEvent
 		return result.records, result.err
 	case <-ctx.Done():
 		return nil, ctx.Err()
-	}
-}
-
-// downloadWorker handles object downloads
-func (si *serialIndexer) downloadWorker(ctx context.Context) {
-	defer si.downloadWorkerWg.Done()
-
-	level.Debug(si.logger).Log("msg", "download worker started")
-	defer level.Debug(si.logger).Log("msg", "download worker stopped")
-
-	si.skipMode = false // Track whether we're in skip mode
-
-	for {
-		select {
-		case event, ok := <-si.downloadQueue:
-			if !ok {
-				// Channel closed, worker should exit
-				return
-			}
-
-			if si.skipMode {
-				// Skip downloading, just drain the queue
-				level.Debug(si.logger).Log("msg", "skipping download due to skip signal", "object_path", event.ObjectPath)
-				continue
-			}
-
-			objLogger := log.With(si.logger, "object_path", event.ObjectPath)
-			downloadStart := time.Now()
-
-			objectReader, err := si.objectBucket.Get(ctx, event.ObjectPath)
-			if err != nil {
-				select {
-				case si.downloadedObjects <- downloadedObject{
-					event: event,
-					err:   fmt.Errorf("failed to fetch object from storage: %w", err),
-				}:
-				case <-ctx.Done():
-					return
-				}
-				continue
-			}
-
-			object, err := io.ReadAll(objectReader)
-			_ = objectReader.Close()
-			if err != nil {
-				select {
-				case si.downloadedObjects <- downloadedObject{
-					event: event,
-					err:   fmt.Errorf("failed to read object: %w", err),
-				}:
-				case <-ctx.Done():
-					return
-				}
-				continue
-			}
-
-			level.Info(objLogger).Log("msg", "downloaded object", "duration", time.Since(downloadStart),
-				"size_mb", float64(len(object))/1024/1024,
-				"avg_speed_mbps", float64(len(object))/time.Since(downloadStart).Seconds()/1024/1024)
-
-			select {
-			case si.downloadedObjects <- downloadedObject{
-				event:       event,
-				objectBytes: &object,
-			}:
-			case <-ctx.Done():
-				return
-			}
-
-		case <-si.skipDownloads:
-			level.Debug(si.logger).Log("msg", "download worker received skip signal, entering skip mode")
-			si.skipMode = true
-			// Continue in the loop to drain the downloadQueue
-
-		case <-ctx.Done():
-			return
-		}
 	}
 }
 
@@ -370,6 +273,10 @@ func getEarliestIndexedRecord(logger log.Logger, events []metastore.ObjectWritte
 // The number of events processed can be less than the number of events if the builder becomes full
 // when the trigger is triggerTypeAppend.
 func (si *serialIndexer) buildIndex(ctx context.Context, events []metastore.ObjectWrittenEvent, partition int32) (string, int, error) {
+	if len(events) == 0 {
+		return "", 0, nil
+	}
+
 	level.Debug(si.logger).Log("msg", "building index", "events", len(events), "partition", partition)
 	start := time.Now()
 
@@ -381,25 +288,30 @@ func (si *serialIndexer) buildIndex(ctx context.Context, events []metastore.Obje
 	}
 	si.builderMetrics.setProcessingDelay(writeTime)
 
-	for _, event := range events {
-		select {
-		case si.downloadQueue <- event:
-			// Successfully sent event for download
-		case <-ctx.Done():
-			return "", 0, ctx.Err()
-		}
-	}
+	downloadQueue := make(chan metastore.ObjectWrittenEvent, 2)
+	downloadedObjects := make(chan downloadedObject, 1)
+	go downloadWorker(ctx, si.logger, downloadQueue, si.objectBucket, downloadedObjects)
+	defer close(downloadQueue)
+
+	// start downloading the first object
+	downloadQueue <- events[0]
+	nextEventIdx := 1
 
 	// Process downloaded objects, handling ErrBuilderFull
 	processingErrors := multierror.New()
-
 	processed := 0
 	for processed < len(events) {
 		var obj downloadedObject
 		select {
-		case obj = <-si.downloadedObjects:
 		case <-ctx.Done():
 			return "", processed, ctx.Err()
+		case obj = <-downloadedObjects:
+		}
+
+		// Start downloading the next object in the background while we're working on this one
+		if nextEventIdx < len(events) {
+			downloadQueue <- events[nextEventIdx]
+			nextEventIdx++
 		}
 
 		processed++
@@ -419,27 +331,6 @@ func (si *serialIndexer) buildIndex(ctx context.Context, events []metastore.Obje
 
 		// Check if builder became full during processing
 		if si.calculator.IsFull() {
-			// Signal download worker to skip downloading new objects
-			select {
-			case si.skipDownloads <- struct{}{}:
-				level.Debug(si.logger).Log("msg", "sent skip signal to download worker")
-			default:
-				// Channel might be full or already closed, continue anyway
-				level.Debug(si.logger).Log("msg", "failed to send skip signal to download worker, channel full or closed")
-			}
-
-			// Drain any remaining downloaded objects to prevent goroutine leaks
-		drainLoop:
-			for {
-				select {
-				case <-si.downloadedObjects:
-					// Drain the channel, continue draining
-				case <-ctx.Done():
-					break drainLoop
-				default:
-					break drainLoop // No more objects to drain
-				}
-			}
 			break
 		}
 	}
@@ -461,6 +352,47 @@ func (si *serialIndexer) buildIndex(ctx context.Context, events []metastore.Obje
 		"events", len(events), "processed", processed, "index_path", indexPath, "duration", time.Since(start))
 
 	return indexPath, processed, nil
+}
+
+// downloadWorker processes downloads from the input downloadQueue and writes the resulting buffer to the downloadedObjects output channel.
+// It exits when downloadQueue is closed.
+func downloadWorker(ctx context.Context, logger log.Logger, downloadQueue chan metastore.ObjectWrittenEvent, objectBucket objstore.Bucket, downloadedObjects chan downloadedObject) {
+	level.Debug(logger).Log("msg", "download worker started")
+	defer level.Debug(logger).Log("msg", "download worker stopped")
+
+	for event := range downloadQueue {
+		objLogger := log.With(logger, "object_path", event.ObjectPath)
+		downloadStart := time.Now()
+
+		objectReader, err := objectBucket.Get(ctx, event.ObjectPath)
+		if err != nil {
+			downloadedObjects <- downloadedObject{
+				event: event,
+				err:   fmt.Errorf("failed to fetch object from storage: %w", err),
+			}
+			continue
+		}
+
+		object, err := io.ReadAll(objectReader)
+		_ = objectReader.Close()
+		if err != nil {
+			downloadedObjects <- downloadedObject{
+				event: event,
+				err:   fmt.Errorf("failed to read object: %w", err),
+			}
+			continue
+		}
+
+		level.Info(objLogger).Log("msg", "downloaded object", "duration", time.Since(downloadStart),
+			"size_mb", float64(len(object))/1024/1024,
+			"avg_speed_mbps", float64(len(object))/time.Since(downloadStart).Seconds()/1024/1024)
+
+		downloadedObjects <- downloadedObject{
+			event:       event,
+			objectBytes: &object,
+		}
+	}
+	close(downloadedObjects)
 }
 
 // processObject handles processing a single downloaded object
@@ -507,7 +439,6 @@ func (si *serialIndexer) flushIndex(ctx context.Context, partition int32) (strin
 	}
 
 	si.calculator.Reset()
-	si.skipMode = false // Reset skip mode
 
 	level.Debug(si.logger).Log("msg", "flushed index object", "partition", partition,
 		"path", key, "size", obj.Size(), "tenants", len(tenantTimeRanges))

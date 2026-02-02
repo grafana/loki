@@ -106,7 +106,7 @@ func (dec *deltaDecoder) Decode(alloc *memory.Allocator, count int) (columnar.Ar
 	// Obtain a buffer from the allocator with enough capacity for an optimistic `count` values.
 	// Resize the buffer explicitly in order to use the Set API which avoids a reslice compared to Push.
 	// Resize must be used again before returning any data if the slice is not completely filled.
-	valuesBuf := memory.MakeBuffer[int64](alloc, count)
+	valuesBuf := memory.NewBuffer[int64](alloc, count)
 	valuesBuf.Resize(count)
 	values := valuesBuf.Data()
 
@@ -130,14 +130,14 @@ func (dec *deltaDecoder) Decode(alloc *memory.Allocator, count int) (columnar.Ar
 		delta, n := binary.Varint(buf[off:])
 		if n <= 0 {
 			valuesBuf.Resize(i)
-			return columnar.MakeNumber[int64](values[:i], memory.Bitmap{}), io.EOF
+			return columnar.NewNumber[int64](values[:i], memory.Bitmap{}), io.EOF
 		}
 
 		off += n
 		prev += delta
 		values[i] = prev
 	}
-	return columnar.MakeNumber[int64](values, memory.Bitmap{}), nil
+	return columnar.NewNumber[int64](values, memory.Bitmap{}), nil
 }
 
 // Reset resets the deltaDecoder to its initial state.

@@ -36,7 +36,7 @@ func TestReaderAdapter_ReadPreservesUTF8Nulls(t *testing.T) {
 	})
 	t.Cleanup(func() { require.NoError(t, reader.Close()) })
 
-	alloc := memory.MakeAllocator(nil)
+	alloc := memory.NewAllocator(nil)
 	defer alloc.Reclaim()
 
 	rb, err := reader.Read(context.Background(), alloc, 3)

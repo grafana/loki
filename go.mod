@@ -25,7 +25,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.32.7
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.7
 	github.com/baidubce/bce-sdk-go v0.9.258
-	github.com/bmatcuk/doublestar/v4 v4.9.2
+	github.com/bmatcuk/doublestar/v4 v4.10.0
 	github.com/c2h5oh/datasize v0.0.0-20231215233829-aa82cc1e6500
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/containerd/fifo v1.1.0
@@ -117,7 +117,7 @@ require (
 	github.com/DmitriyVTitov/size v1.5.0
 	github.com/IBM/go-sdk-core/v5 v5.21.2
 	github.com/IBM/ibm-cos-sdk-go v1.13.0
-	github.com/apache/arrow-go/v18 v18.5.0
+	github.com/apache/arrow-go/v18 v18.5.1
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.54.0
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.95.1
 	github.com/axiomhq/hyperloglog v0.2.6
@@ -229,7 +229,7 @@ require (
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
 	github.com/gobwas/glob v0.2.3 // indirect
 	github.com/goccy/go-json v0.10.5 // indirect
-	github.com/google/flatbuffers v25.9.23+incompatible // indirect
+	github.com/google/flatbuffers v25.12.19+incompatible // indirect
 	github.com/gophercloud/gophercloud/v2 v2.10.0 // indirect
 	github.com/gorilla/handlers v1.5.2 // indirect
 	github.com/grafana/otel-profiling-go v0.5.1 // indirect
