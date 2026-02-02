@@ -126,6 +126,8 @@ func (*Join) isNode()              {}
 func (*PointersScan) isNode()      {}
 func (*Merge) isNode()             {}
 
+var _ fmt.Stringer = (*Plan)(nil)
+
 // Plan represents a physical execution plan as a directed acyclic graph (DAG).
 // It maintains the relationships between nodes, tracking parent-child connections
 // and providing methods for graph traversal and manipulation.
@@ -140,6 +142,10 @@ type Plan struct {
 // FromGraph constructs a Plan from a given DAG.
 func FromGraph(graph dag.Graph[Node]) *Plan {
 	return &Plan{graph: graph}
+}
+
+func (p *Plan) String() string {
+	return PrintAsTree(p)
 }
 
 // Graph returns the underlying graph of the plan. Modifications to the returned
