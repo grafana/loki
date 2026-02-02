@@ -273,7 +273,7 @@ func getEarliestIndexedRecord(logger log.Logger, events []metastore.ObjectWritte
 // The number of events processed can be less than the number of events if the builder becomes full
 // when the trigger is triggerTypeAppend.
 func (si *serialIndexer) buildIndex(ctx context.Context, events []metastore.ObjectWrittenEvent, partition int32) (string, int, error) {
-	if len(events) < 0 {
+	if len(events) == 0 {
 		return "", 0, nil
 	}
 
