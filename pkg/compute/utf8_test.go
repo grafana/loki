@@ -1,6 +1,7 @@
 package compute
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 
@@ -10,6 +11,100 @@ import (
 	"github.com/grafana/loki/v3/pkg/columnar/columnartest"
 	"github.com/grafana/loki/v3/pkg/memory"
 )
+
+func TestRegexpMatch(t *testing.T) {
+	alloc := memory.NewAllocator(nil)
+
+	singleValueHaystack := columnartest.Array(t, columnar.KindUTF8, alloc, "test")
+	nulllValueHaystack := columnartest.Array(t, columnar.KindUTF8, alloc, nil)
+	emptyHaystack := columnartest.Array(t, columnar.KindUTF8, alloc)
+
+	emptyRegexp := columnartest.Scalar(t, columnar.KindRegexp, regexp.MustCompile(""))
+	nullValueRegexp := columnartest.Scalar(t, columnar.KindRegexp, nil)
+	singleMatchingRegexp := columnartest.Scalar(t, columnar.KindRegexp, regexp.MustCompile("test"))
+	singleNonMatchingRegexp := columnartest.Scalar(t, columnar.KindRegexp, regexp.MustCompile("NOTtest"))
+
+	singleTrue := columnartest.Array(t, columnar.KindBool, alloc, true)
+	singleFalse := columnartest.Array(t, columnar.KindBool, alloc, false)
+	emptyResult := columnartest.Array(t, columnar.KindBool, alloc)
+	nullResult := columnartest.Array(t, columnar.KindBool, alloc, nil)
+
+	cases := []struct {
+		name     string
+		haystack columnar.Datum
+		regexp   columnar.Datum
+		expected columnar.Datum
+	}{
+		{
+			name:     "empty_haystack",
+			haystack: emptyHaystack,
+			regexp:   singleMatchingRegexp,
+			expected: emptyResult,
+		},
+		{
+			name:     "empty_regexp",
+			haystack: singleValueHaystack,
+			regexp:   emptyRegexp,
+			expected: singleTrue,
+		},
+		{
+			name:     "match",
+			haystack: singleValueHaystack,
+			regexp:   singleMatchingRegexp,
+			expected: singleTrue,
+		},
+		{
+			name:     "not match",
+			haystack: singleValueHaystack,
+			regexp:   singleNonMatchingRegexp,
+			expected: singleFalse,
+		},
+		{
+			name:     "nil_haystack",
+			haystack: nulllValueHaystack,
+			regexp:   singleMatchingRegexp,
+			expected: nullResult,
+		},
+		{
+			name:     "nil_needle",
+			haystack: singleValueHaystack,
+			regexp:   nullValueRegexp,
+			expected: nullResult,
+		},
+		{
+			name:     "nil_haystack_and_needle",
+			haystack: nulllValueHaystack,
+			regexp:   nullValueRegexp,
+			expected: nullResult,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			results, err := RegexpMatch(alloc, c.haystack, c.regexp)
+			require.NoError(t, err)
+			columnartest.RequireDatumsEqual(t, c.expected, results)
+		})
+	}
+}
+
+func BenchmarkRegexpMatch(b *testing.B) {
+	alloc := memory.NewAllocator(nil)
+	line := strings.Repeat("A", 100) + "target" + strings.Repeat("B", 100)
+	haystack := columnar.NewUTF8([]byte(line), []int32{0, int32(len(line))}, memory.NewBitmap(alloc, 1))
+	regexp := columnartest.Scalar(b, columnar.KindRegexp, regexp.MustCompile("A{100}targetB{100}"))
+
+	var totalSize int
+	for i := range haystack.Len() {
+		totalSize += len(haystack.Get(i))
+	}
+
+	benchAlloc := memory.NewAllocator(nil)
+	for b.Loop() {
+		benchAlloc.Reclaim()
+		_, _ = RegexpMatch(benchAlloc, haystack, regexp)
+	}
+	b.SetBytes(int64(totalSize))
+}
 
 func TestSubstrInsensitive(t *testing.T) {
 	alloc := memory.NewAllocator(nil)
