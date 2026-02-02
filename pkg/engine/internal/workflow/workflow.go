@@ -462,23 +462,18 @@ func (wf *Workflow) String() string {
 	var result string
 	result += fmt.Sprintf("Workflow (%d tasks, %d streams):\n", len(wf.manifest.Tasks), len(wf.manifest.Streams))
 
-	// Track visited tasks to handle shared tasks in the DAG
-	visited := make(map[ulid.ULID]bool)
-
 	// Process each root task
 	roots := wf.graph.Roots()
 	for i, root := range roots {
 		isLastRoot := i == len(roots)-1
-		wf.formatTask(root, "", isLastRoot, visited, &result)
+		wf.formatTask(root, "", isLastRoot, &result)
 	}
 
 	return result
 }
 
 // formatTask formats a single task and its children recursively
-func (wf *Workflow) formatTask(t *Task, prefix string, isLast bool, visited map[ulid.ULID]bool, result *string) {
-	taskID := t.ULID
-
+func (wf *Workflow) formatTask(t *Task, prefix string, isLast bool, result *string) {
 	// Draw the tree connector
 	connector := "├─"
 	if isLast {
@@ -488,20 +483,8 @@ func (wf *Workflow) formatTask(t *Task, prefix string, isLast bool, visited map[
 		connector = ""
 	}
 
-	// Check if this task was already visited
-	revisit := ""
-	if visited[taskID] {
-		revisit = " (revisit)"
-	}
-	visited[taskID] = true
-
 	// Format the task using its String() method
-	*result += fmt.Sprintf("%s%s %s%s\n", prefix, connector, t.String(), revisit)
-
-	// Don't traverse children of revisited tasks to avoid cycles
-	if revisit != "" {
-		return
-	}
+	*result += fmt.Sprintf("%s%s %s\n", prefix, connector, t.String())
 
 	// Get children and format them
 	children := wf.graph.Children(t)
@@ -519,7 +502,7 @@ func (wf *Workflow) formatTask(t *Task, prefix string, isLast bool, visited map[
 			childPrefix = prefix + "│ "
 		}
 
-		wf.formatTask(child, childPrefix, isLastChild, visited, result)
+		wf.formatTask(child, childPrefix, isLastChild, result)
 	}
 }
 
