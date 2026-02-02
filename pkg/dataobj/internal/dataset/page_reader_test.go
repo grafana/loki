@@ -189,7 +189,7 @@ func buildPage(t *testing.T, opts BuilderOptions, in []string) *MemPage {
 
 func readPage(alloc *memory.Allocator, pr *pageReader, batchSize int) (columnar.Array, error) {
 	// Temporary allocator for the intermediate arrays.
-	tempAlloc := memory.MakeAllocator(alloc)
+	tempAlloc := memory.NewAllocator(alloc)
 	defer tempAlloc.Free()
 
 	var arrs []columnar.Array

@@ -167,9 +167,16 @@ type LifecycleConditionTimeType struct {
 	DateGreaterThan string `json:"dateGreaterThan"`
 }
 
+type LifecycleObjectSizeType struct {
+	MinSize int64 `json:"minSize,omitempty"`
+	MaxSize int64 `json:"maxSize,omitempty"`
+}
+
 // LifecycleConditionType defines the structure of condition
 type LifecycleConditionType struct {
-	Time LifecycleConditionTimeType `json:"time"`
+	Time       LifecycleConditionTimeType `json:"time,omitempty"`
+	ObjectSize LifecycleObjectSizeType    `json:"objectSize,omitempty"`
+	Tag        map[string]string          `json:"tag,omitempty"`
 }
 
 // LifecycleActionType defines the structure of lifecycle action
@@ -178,13 +185,20 @@ type LifecycleActionType struct {
 	StorageClass string `json:"storageClass,omitempty"`
 }
 
+type lifecycleNotRule struct {
+	Resource string            `json:"resource,omitempty"`
+	Tag      map[string]string `json:"tag,omitempty"`
+}
+
 // LifecycleRuleType defines the structure of a single lifecycle rule
 type LifecycleRuleType struct {
-	Id        string                 `json:"id"`
-	Status    string                 `json:"status"`
-	Resource  []string               `json:"resource"`
-	Condition LifecycleConditionType `json:"condition"`
-	Action    LifecycleActionType    `json:"action"`
+	Id                        string                 `json:"id"`
+	Status                    string                 `json:"status"`
+	Resource                  []string               `json:"resource"`
+	Condition                 LifecycleConditionType `json:"condition"`
+	Action                    LifecycleActionType    `json:"action"`
+	ExpiredObjectDeleteMarker string                 `json:"ExpiredObjectDeleteMarker,omitempty"`
+	Not                       lifecycleNotRule       `json:"not,omitempty"`
 }
 
 // GetBucketLifecycleResult defines the lifecycle argument structure for putting
@@ -218,7 +232,7 @@ type BucketReplicationType struct {
 	Destination        *BucketReplicationDescriptor `json:"destination,omitempty"`
 	ReplicateHistory   *BucketReplicationDescriptor `json:"replicateHistory,omitempty"`
 	CreateTime         int64                        `json:"createTime"`
-	DestRegion         string                       `json:"destRegion"` 
+	DestRegion         string                       `json:"destRegion"`
 }
 
 type PutBucketReplicationArgs BucketReplicationType
@@ -632,6 +646,7 @@ type PutSymlinkArgs struct {
 	StorageClass    string
 	UserMeta        map[string]string
 	SymlinkBucket   string
+	ContentType     string
 }
 
 // UploadInfoType defines an uploaded part info structure.

@@ -112,8 +112,8 @@ func (dec *plainBytesDecoder) Decode(alloc *memory.Allocator, count int) (column
 		// exactly one allocated reusable memory region than to have it grow a few
 		// times as we try to discover the true size.
 
-		offsetsBuf = memory.MakeBuffer[int32](alloc, count+1)
-		valuesBuf  = memory.MakeBuffer[byte](alloc, len(dec.data))
+		offsetsBuf = memory.NewBuffer[int32](alloc, count+1)
+		valuesBuf  = memory.NewBuffer[byte](alloc, len(dec.data))
 
 		// It's going to be far more efficient for us to manipulate the output
 		// slices ourselves, so we'll do that here.
@@ -141,7 +141,7 @@ func (dec *plainBytesDecoder) Decode(alloc *memory.Allocator, count int) (column
 				return nil, io.EOF
 			}
 
-			return columnar.MakeUTF8(
+			return columnar.NewUTF8(
 				values[:totalBytes],
 				offsets[:i+1],
 				memory.Bitmap{},
@@ -155,7 +155,7 @@ func (dec *plainBytesDecoder) Decode(alloc *memory.Allocator, count int) (column
 		offsets[i+1] = int32(totalBytes)
 	}
 
-	return columnar.MakeUTF8(
+	return columnar.NewUTF8(
 		values[:totalBytes],
 		offsets[:count+1],
 		memory.Bitmap{},
