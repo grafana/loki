@@ -21,17 +21,16 @@ func SubstrInsensitive(alloc *memory.Allocator, haystack columnar.Datum, needle 
 		return nil, fmt.Errorf("haystack and needle must both be UTF-8; got %s and %s", haystack.Kind(), needle.Kind())
 	}
 
+	if _, needleArray := needle.(columnar.Array); needleArray {
+		return nil, errors.New("needle array unsupported")
+	}
+
 	_, haystackArray := haystack.(columnar.Array)
-	_, needleArray := needle.(columnar.Array)
 
 	switch {
-	case haystackArray && needleArray:
-		return nil, errors.New("unsupported haystack and needle types")
-	case haystackArray && !needleArray:
+	case haystackArray:
 		return substrInsensitiveAS(alloc, haystack.(*columnar.UTF8), needle.(*columnar.UTF8Scalar))
-	case !haystackArray && needleArray:
-		return nil, errors.New("unsupported haystack and needle types")
-	case !haystackArray && !needleArray:
+	case !haystackArray:
 		return substrInsensitiveSS(alloc, haystack.(*columnar.UTF8Scalar), needle.(*columnar.UTF8Scalar))
 	default:
 		return nil, errors.New("unsupported haystack and needle types")
@@ -84,17 +83,16 @@ func Substr(alloc *memory.Allocator, haystack columnar.Datum, needle columnar.Da
 		return nil, fmt.Errorf("haystack and needle must both be UTF-8; got %s and %s", haystack.Kind(), needle.Kind())
 	}
 
+	if _, needleArray := needle.(columnar.Array); needleArray {
+		return nil, errors.New("needle array unsupported")
+	}
+
 	_, haystackArray := haystack.(columnar.Array)
-	_, needleArray := needle.(columnar.Array)
 
 	switch {
-	case haystackArray && needleArray:
-		return nil, errors.New("unsupported haystack and needle types")
-	case haystackArray && !needleArray:
+	case haystackArray:
 		return substrAS(alloc, haystack.(*columnar.UTF8), needle.(*columnar.UTF8Scalar))
-	case !haystackArray && needleArray:
-		return nil, errors.New("unsupported haystack and needle types")
-	case !haystackArray && !needleArray:
+	case !haystackArray:
 		return substrSS(alloc, haystack.(*columnar.UTF8Scalar), needle.(*columnar.UTF8Scalar))
 	default:
 		return nil, errors.New("unsupported haystack and needle types")
