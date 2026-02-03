@@ -103,8 +103,9 @@ func (si *serialIndexer) starting(ctx context.Context) error {
 	level.Info(si.logger).Log("msg", "starting serial indexer")
 
 	// Start build worker
-	si.buildWorkerWg.Add(1)
-	go si.buildWorker(ctx)
+	si.buildWorkerWg.Go(func() {
+		si.buildWorker(ctx)
+	})
 	return nil
 }
 
@@ -177,8 +178,6 @@ func (si *serialIndexer) submitBuild(ctx context.Context, events []bufferedEvent
 
 // buildWorker is the main worker goroutine that processes build requests
 func (si *serialIndexer) buildWorker(ctx context.Context) {
-	defer si.buildWorkerWg.Done()
-
 	level.Info(si.logger).Log("msg", "build worker started")
 	defer level.Info(si.logger).Log("msg", "build worker stopped")
 

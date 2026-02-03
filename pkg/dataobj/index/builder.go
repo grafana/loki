@@ -243,9 +243,7 @@ func (p *Builder) starting(ctx context.Context) error {
 	// Start flush worker if configured
 	if p.cfg.FlushInterval > 0 {
 		p.flushTicker = time.NewTicker(p.cfg.FlushInterval)
-		p.wg.Add(1)
-		go func() {
-			defer p.wg.Done()
+		p.wg.Go(func() {
 			defer p.flushTicker.Stop()
 
 			for {
@@ -256,7 +254,7 @@ func (p *Builder) starting(ctx context.Context) error {
 					return
 				}
 			}
-		}()
+		})
 	}
 
 	level.Info(p.logger).Log("msg", "started index builder service")
