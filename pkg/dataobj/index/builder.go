@@ -337,6 +337,7 @@ func (p *Builder) processRecord(ctx context.Context, record *kgo.Record) {
 		level.Error(p.logger).Log("msg", "failed to commit records", "err", err, "partition", record.Partition)
 		return
 	}
+	p.markEventsCompleted(record.Partition, len(records))
 }
 
 // Appends a record and returns a slice of buffered events to index. The slice will be empty if no indexing is required.
@@ -367,10 +368,20 @@ func (p *Builder) cleanupPartition(partition int32) {
 
 	if state, ok := p.partitionStates[partition]; ok {
 		// Clear processed events and reset processing flag
-		state.events = state.events[:0]
 		state.isProcessing = false
 		state.lastActivity = time.Now()
 	}
+}
+
+func (p *Builder) markEventsCompleted(partition int32, eventsProcessed int) {
+	p.partitionsMutex.Lock()
+	defer p.partitionsMutex.Unlock()
+
+	state, ok := p.partitionStates[partition]
+	if !ok {
+		return
+	}
+	state.events = state.events[eventsProcessed:]
 }
 
 func (p *Builder) checkAndFlushStalePartitions(ctx context.Context) {
