@@ -155,6 +155,8 @@ func (wf *Workflow) init(ctx context.Context) error {
 	return wf.runner.Listen(ctx, wf.resultsPipeline, wf.resultsStream)
 }
 
+// String returns a string representation of the workflow. It is a convenience
+// method for calling [Sprint].
 func (wf *Workflow) String() string {
 	return Sprint(wf)
 }
