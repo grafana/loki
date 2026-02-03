@@ -708,13 +708,13 @@ func (c *Checkpointer) Run() {
 	defer c.iter.Stop()
 
 	for {
+		level.Info(util_log.Logger).Log("msg", "starting checkpoint")
+		if err := c.PerformCheckpoint(); err != nil {
+			level.Error(util_log.Logger).Log("msg", "error checkpointing series", "err", err)
+		}
+
 		select {
 		case <-ticker.C:
-			level.Info(util_log.Logger).Log("msg", "starting checkpoint")
-			if err := c.PerformCheckpoint(); err != nil {
-				level.Error(util_log.Logger).Log("msg", "error checkpointing series", "err", err)
-				continue
-			}
 		case <-c.quit:
 			return
 		}
