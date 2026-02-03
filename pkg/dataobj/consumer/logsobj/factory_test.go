@@ -21,7 +21,7 @@ func TestBuilderFactory(t *testing.T) {
 	b, err = bf.NewBuilder(reg)
 	require.NoError(t, err)
 	require.NotNil(t, b)
-
+	// Should be able to gather registered metrics.
 	n, err := testutil.GatherAndCount(reg)
 	require.NoError(t, err)
 	require.Greater(t, n, 0)
