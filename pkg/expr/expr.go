@@ -6,6 +6,8 @@
 package expr
 
 import (
+	"github.com/grafana/regexp"
+
 	"github.com/grafana/loki/v3/pkg/columnar"
 )
 
@@ -44,9 +46,16 @@ type (
 		Op    BinaryOp
 		Right Expression
 	}
+
+	// Regexp is an [Expression] used as the right-hand side of a
+	// [BinaryOpMatchRegex].
+	//
+	// Regexp cannot be evaluated directly into a datum.
+	Regexp struct{ Expression *regexp.Regexp }
 )
 
 func (*Constant) isExpr() {}
 func (*Column) isExpr()   {}
 func (*Unary) isExpr()    {}
 func (*Binary) isExpr()   {}
+func (*Regexp) isExpr()   {}

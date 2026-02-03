@@ -5,12 +5,66 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/grafana/regexp"
+
 	"github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/memory"
 )
 
-// SubstrInsensitive computes the case insensitive substring match of a string within an array of strings.
-// It returns a boolean array indicating whether the substring was found in the haystack.
+// RegexpMatch computes the regular expression match against a datum.
+// It returns a boolean datum indicating whether the regular expression matched the haystack datum.
+//
+// Special cases:
+//
+//   - If a value in the haystack is null, the result for that value is null.
+//   - If the regexp is null, the result is null.
+func RegexpMatch(alloc *memory.Allocator, haystack columnar.Datum, regexp *regexp.Regexp) (columnar.Datum, error) {
+	if haystack.Kind() != columnar.KindUTF8 {
+		return nil, fmt.Errorf("haystack must be UTF-8; got %s", haystack.Kind())
+	}
+
+	_, haystackArray := haystack.(columnar.Array)
+
+	switch {
+	case haystackArray:
+		return regexpMatchAS(alloc, haystack.(*columnar.UTF8), regexp)
+	case !haystackArray:
+		return regexpMatchSS(alloc, haystack.(*columnar.UTF8Scalar), regexp)
+	default:
+		return nil, errors.New("unsupported haystack and regexp types")
+	}
+}
+
+func regexpMatchAS(alloc *memory.Allocator, haystack *columnar.UTF8, regexp *regexp.Regexp) (*columnar.Bool, error) {
+	results := columnar.NewBoolBuilder(alloc)
+	results.Grow(haystack.Len())
+
+	if regexp == nil {
+		results.AppendNulls(haystack.Len())
+		return results.Build(), nil
+	}
+
+	for i := range haystack.Len() {
+		if haystack.IsNull(i) {
+			results.AppendNull()
+			continue
+		}
+
+		results.AppendValue(regexp.Match(haystack.Get(i)))
+	}
+	return results.Build(), nil
+}
+
+func regexpMatchSS(_ *memory.Allocator, haystack *columnar.UTF8Scalar, regexp *regexp.Regexp) (*columnar.BoolScalar, error) {
+	if regexp == nil || haystack.IsNull() {
+		return &columnar.BoolScalar{Null: true}, nil
+	}
+
+	return &columnar.BoolScalar{Value: regexp.Match(haystack.Value)}, nil
+}
+
+// SubstrInsensitive computes the case insensitive match of a needle datum against haystack datum
+// It returns a boolean datum indicating whether the needle was found in the haystack.
 //
 // Special cases:
 //
@@ -71,8 +125,8 @@ func substrInsensitiveSS(_ *memory.Allocator, haystack *columnar.UTF8Scalar, nee
 	return &columnar.BoolScalar{Value: bytes.Contains(haystackValueUpper, needleUpper)}, nil
 }
 
-// Substr computes the case sensitive substring match of a string within an array of strings.
-// It returns a boolean array indicating whether the substring was found in the haystack.
+// Substr computes the case sensitive match of a needle datum against haystack datum
+// It returns a boolean datum indicating whether the needle was found in the haystack.
 //
 // Special cases:
 //
