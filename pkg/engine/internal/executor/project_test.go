@@ -779,8 +779,10 @@ func TestNewProjectPipeline_DuplicateColumnPanic(t *testing.T) {
 			},
 			// Row 2: Logfmt line that will also parse and extract "status"
 			{
-				"utf8.builtin.message": `level=info status=404 method=GET`,
-				"utf8.parsed.status":   nil,
+				"utf8.builtin.message":                `level=info status=404 method=GET`,
+				"utf8.parsed.status":                  nil,
+				semconv.ColumnIdentError.FQN():        "error message",
+				semconv.ColumnIdentErrorDetails.FQN(): "error details",
 			},
 			// Row 3: Another JSON line with status
 			{
@@ -789,8 +791,10 @@ func TestNewProjectPipeline_DuplicateColumnPanic(t *testing.T) {
 			},
 			// Row 4: Logfmt line that will not parse and extract "status"
 			{
-				"utf8.builtin.message": `level=info method=GET`,
-				"utf8.parsed.status":   nil,
+				"utf8.builtin.message":                `level=info method=GET`,
+				"utf8.parsed.status":                  nil,
+				semconv.ColumnIdentError.FQN():        "error message",
+				semconv.ColumnIdentErrorDetails.FQN(): "error details",
 			},
 		}
 
