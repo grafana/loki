@@ -18,6 +18,11 @@ const (
 	flushReasonIdle        = "idle"
 )
 
+// A sorter allows mocking of [logsobj.Sorter] in tests.
+type sorter interface {
+	Sort(ctx context.Context, obj *dataobj.Object) (*dataobj.Object, io.Closer, error)
+}
+
 // An uploader allows mocking of [uploader.Uploader] in tests.
 type uploader interface {
 	Upload(ctx context.Context, obj *dataobj.Object) (string, error)
@@ -39,6 +44,7 @@ type flushJobResult struct {
 
 // A flusherImpl is responsible for flushing data object builders to data objects.
 type flusherImpl struct {
+	sorter   sorter
 	uploader uploader
 	logger   log.Logger
 
@@ -51,8 +57,9 @@ type flusherImpl struct {
 	flushFunc func(context.Context, flushJob) (string, error)
 }
 
-func newFlusher(uploader uploader, logger log.Logger, r prometheus.Registerer) *flusherImpl {
+func newFlusher(sorter sorter, uploader uploader, logger log.Logger, r prometheus.Registerer) *flusherImpl {
 	f := &flusherImpl{
+		sorter:   sorter,
 		uploader: uploader,
 		logger:   logger,
 		flushes: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
@@ -122,7 +129,8 @@ func (f *flusherImpl) flush(ctx context.Context, job flushJob) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to flush data object builder: %w", err)
 	}
-	obj, closer, err = f.sort(ctx, job.builder, obj, closer)
+	defer closer.Close()
+	obj, closer, err = f.sorter.Sort(ctx, obj)
 	if err != nil {
 		return "", fmt.Errorf("failed to sort data object: %w", err)
 	}
@@ -132,9 +140,4 @@ func (f *flusherImpl) flush(ctx context.Context, job flushJob) (string, error) {
 		return "", fmt.Errorf("failed to upload object: %w", err)
 	}
 	return objectPath, nil
-}
-
-func (f *flusherImpl) sort(ctx context.Context, builder builder, obj *dataobj.Object, closer io.Closer) (*dataobj.Object, io.Closer, error) {
-	defer closer.Close()
-	return builder.CopyAndSort(ctx, obj)
 }
