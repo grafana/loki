@@ -292,6 +292,7 @@ func (g *TestCaseGenerator) Generate() []TestCase {
 
 	// Logs Drilldown style unwrap query (from fields tab)
 	addMetricQuery(fmt.Sprintf(`sum by (detected_level) (avg_over_time({service_name="loki"} | json | logfmt | duration != "" | drop __error__, __error_details__ | unwrap duration_seconds(duration) [%s]))`, rangeInterval), start, end, step)
+	addMetricQuery(fmt.Sprintf(`sum by (detected_level) (count_over_time({service_name=~"(?i)loki"} | detected_level="debug" or detected_level="info" or detected_level="warn"   |~ "(?i)(?i)duration" | json  | logfmt | drop __error__, __error_details__ | level=~"(?i)INFO" [%s]))`, rangeInterval), start, end, step)
 
 	// Dense period queries
 	for _, interval := range g.logGenCfg.DenseIntervals {
