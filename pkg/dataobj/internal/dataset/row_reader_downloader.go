@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/rangeset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/sliceclear"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
@@ -89,10 +90,10 @@ type rowReaderDownloader struct {
 	origColumns, origPrimary, origSecondary []Column
 	allColumns, primary, secondary          []Column
 
-	dsetRanges rowRanges // Ranges of rows to _include_ in the download.
+	dsetRanges rangeset.Set // Ranges of rows to _include_ in the download.
 
-	readRange rowRange  // Current range being read.
-	rangeMask rowRanges // Inverse of dsetRanges: ranges to _exclude_ from download.
+	readRange rangeset.Range // Current range being read.
+	rangeMask rangeset.Set   // Inverse of dsetRanges: ranges to _exclude_ from download.
 }
 
 // newReaderDataset creates a new readerDataset wrapping around an inner
@@ -151,7 +152,7 @@ func (dl *rowReaderDownloader) AddColumn(col Column, primary bool) {
 
 // SetDatasetRanges sets the valid ranges of rows that will be read. Pages
 // which do not overlap with these ranges will never be downloaded.
-func (dl *rowReaderDownloader) SetDatasetRanges(r rowRanges) {
+func (dl *rowReaderDownloader) SetDatasetRanges(r rangeset.Set) {
 	dl.dsetRanges = r
 }
 
@@ -160,15 +161,15 @@ func (dl *rowReaderDownloader) SetDatasetRanges(r rowRanges) {
 // range are never included in a batch.
 //
 // This method clears any previously set mask.
-func (dl *rowReaderDownloader) SetReadRange(r rowRange) {
+func (dl *rowReaderDownloader) SetReadRange(r rangeset.Range) {
 	dl.readRange = r
-	dl.rangeMask = sliceclear.Clear(dl.rangeMask)
+	dl.rangeMask.Reset()
 }
 
 // Mask marks a subset of the current read range as excluded. Mask may be
 // called multiple times to exclude multiple ranges. Any page that is entirely
 // within the combined mask will not be downloaded.
-func (dl *rowReaderDownloader) Mask(r rowRange) {
+func (dl *rowReaderDownloader) Mask(r rangeset.Range) {
 	dl.rangeMask.Add(r)
 }
 
@@ -440,7 +441,7 @@ func (dl *rowReaderDownloader) iterP3Pages(ctx context.Context, primary bool) re
 			//  1. Start *after* the end of the current read range
 			//  2. Be included in the set of valid dataset ranges.
 			//  3. Not be masked by the range mask.
-			if page.rows.Start <= dl.readRange.End {
+			if page.rows.Start < dl.readRange.End {
 				continue
 			} else if !dl.dsetRanges.Overlaps(page.rows) {
 				continue
@@ -460,7 +461,7 @@ func (dl *rowReaderDownloader) iterP3Pages(ctx context.Context, primary bool) re
 func (dl *rowReaderDownloader) Reset(dset Dataset) {
 	dl.inner = dset
 
-	dl.readRange = rowRange{}
+	dl.readRange = rangeset.Range{}
 
 	dl.origColumns = sliceclear.Clear(dl.origColumns)
 	dl.origPrimary = sliceclear.Clear(dl.origPrimary)
@@ -470,11 +471,11 @@ func (dl *rowReaderDownloader) Reset(dset Dataset) {
 	dl.primary = sliceclear.Clear(dl.primary)
 	dl.secondary = sliceclear.Clear(dl.secondary)
 
-	dl.rangeMask = sliceclear.Clear(dl.rangeMask)
+	dl.rangeMask = rangeset.Set{}
 
 	// dl.dsetRanges isn't owned by the downloader, so we don't use
 	// sliceclear.Clear.
-	dl.dsetRanges = nil
+	dl.dsetRanges = rangeset.Set{}
 }
 
 type readerColumn struct {
@@ -524,11 +525,11 @@ func (col *readerColumn) processPages(pages Pages) {
 	var startRow uint64
 
 	for _, innerPage := range pages {
-		pageRange := rowRange{
+		pageRange := rangeset.Range{
 			Start: startRow,
-			End:   startRow + uint64(innerPage.PageDesc().RowCount) - 1,
+			End:   startRow + uint64(innerPage.PageDesc().RowCount),
 		}
-		startRow = pageRange.End + 1
+		startRow = pageRange.End
 
 		col.pages = append(col.pages, newReaderPage(col, innerPage, pageRange))
 	}
@@ -541,7 +542,7 @@ func (col *readerColumn) processPages(pages Pages) {
 // retried without needing to redownload the pages involved in that call.
 func (col *readerColumn) GC() {
 	for _, page := range col.pages {
-		if page.rows.End < col.dl.readRange.Start {
+		if page.rows.End <= col.dl.readRange.Start {
 			// This page is entirely before the read range. We can clear it.
 			//
 			// TODO(rfratto): should this be released back to some kind of pool that
@@ -566,14 +567,14 @@ func (col *readerColumn) Size() int {
 type readerPage struct {
 	column *readerColumn
 	inner  Page
-	rows   rowRange
+	rows   rangeset.Range
 
 	data PageData // data holds cached PageData.
 }
 
 var _ Page = (*readerPage)(nil)
 
-func newReaderPage(col *readerColumn, inner Page, rows rowRange) *readerPage {
+func newReaderPage(col *readerColumn, inner Page, rows rangeset.Range) *readerPage {
 	return &readerPage{
 		column: col,
 		inner:  inner,
