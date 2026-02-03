@@ -505,7 +505,7 @@ func TestPlannerCreatesCastOperationForUnwrap(t *testing.T) {
 %6 = SELECT %4 [predicate=%5]
 %7 = CAST_DURATION(ambiguous.response_time)
 %8 = PROJECT %6 [mode=*E, expr=%7]
-%9 = PROJECT %8 [mode=*ED, expr=ambiguous.response_time]
+%9 = PROJECT %8 [mode=*D, expr=ambiguous.response_time]
 %10 = EQ generated.__error__ ""
 %11 = EQ generated.__error_details__ ""
 %12 = AND %10 %11
