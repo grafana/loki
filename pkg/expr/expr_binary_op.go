@@ -72,7 +72,7 @@ const (
 	//
 	// The left expression denotes the datum to search, and must be a UTF8
 	// scalar or array. The right expression denotes the regular expression to
-	// match with, and must be a [Regexp]. If the expression matches the UF8
+	// match with, and must be a [Regexp]. If the expression matches the UTF8
 	// value, the result is true.
 	//
 	// The result is a bool datum, which is either a bool scalar if both
