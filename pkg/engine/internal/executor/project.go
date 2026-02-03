@@ -176,7 +176,11 @@ func newExpandPipeline(expr physical.Expression, evaluator *expressionEvaluator,
 				if idx := slices.IndexFunc(outputFields, func(f arrow.Field) bool {
 					return f.Name == newField.Name
 				}); idx != -1 {
-					outputCols[idx] = mergeColumns(outputCols[idx], arrCasted.Field(i))
+					concatenate := false
+					if newField.Name == semconv.ColumnIdentError.FQN() || newField.Name == semconv.ColumnIdentErrorDetails.FQN() {
+						concatenate = false
+					}
+					outputCols[idx] = mergeColumns(outputCols[idx], arrCasted.Field(i), concatenate)
 					outputFields[idx] = newField
 				} else {
 					outputCols = append(outputCols, arrCasted.Field(i))
@@ -199,7 +203,7 @@ func newExpandPipeline(expr physical.Expression, evaluator *expressionEvaluator,
 // mergeColumns merges two columns by preferring non-null and non-empty values from the new column (b).
 // If b has a null or empty value at index i, keep the value from a at that index.
 // If b has a non-null and non-empty value at index i, use the value from b.
-func mergeColumns(a, b arrow.Array) arrow.Array {
+func mergeColumns(a, b arrow.Array, concatenate bool) arrow.Array {
 	// Only handle string arrays for now (which is what parsers produce)
 	aStr, aOk := a.(*array.String)
 	bStr, bOk := b.(*array.String)
@@ -222,7 +226,11 @@ func mergeColumns(a, b arrow.Array) arrow.Array {
 			}
 		} else {
 			// New value is not null and not empty, use it
-			builder.Append(bStr.Value(i))
+			newValue := bStr.Value(i)
+			if concatenate {
+				newValue = aStr.Value(i) + "; " + bStr.Value(i)
+			}
+			builder.Append(newValue)
 		}
 	}
 

@@ -202,7 +202,7 @@ func (b *Builder) ProjectAll(expand, drop bool, expr ...Value) *Builder {
 }
 
 func (b *Builder) ProjectDrop(expr ...Value) *Builder {
-	return b.ProjectAll(true, true, expr...)
+	return b.ProjectAll(false, true, expr...)
 }
 
 func (b *Builder) ProjectExpand(expr ...Value) *Builder {
