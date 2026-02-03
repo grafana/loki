@@ -456,8 +456,8 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 
 	sort := parseSortOrder(b.cfg.DataobjSortOrder)
 
-	sb := streams.NewBuilder(b.metrics.streams, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows)
-	lb := logs.NewBuilder(b.metrics.logs, logs.BuilderOptions{
+	sb := streams.NewBuilder(b.metrics.sortStreams, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows)
+	lb := logs.NewBuilder(b.metrics.sortLogs, logs.BuilderOptions{
 		PageSizeHint:     int(b.cfg.TargetPageSize),
 		PageMaxRowCount:  b.cfg.MaxPageRows,
 		BufferSize:       int(b.cfg.BufferSize),

@@ -16,6 +16,9 @@ type builderMetrics struct {
 	streams *streams.Metrics
 	dataobj *dataobj.Metrics
 
+	sortLogs    *logs.Metrics
+	sortStreams *streams.Metrics
+
 	targetPageSize   prometheus.Gauge
 	targetObjectSize prometheus.Gauge
 
@@ -34,9 +37,11 @@ type builderMetrics struct {
 // logs objects.
 func newBuilderMetrics() *builderMetrics {
 	return &builderMetrics{
-		logs:    logs.NewMetrics(),
-		streams: streams.NewMetrics(),
-		dataobj: dataobj.NewMetrics(),
+		logs:        logs.NewMetrics(),
+		streams:     streams.NewMetrics(),
+		sortLogs:    logs.NewMetrics(),
+		sortStreams: streams.NewMetrics(),
+		dataobj:     dataobj.NewMetrics(),
 		targetPageSize: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "loki_dataobj_config_target_page_size_bytes",
 			Help: "Configured target page size in bytes.",
@@ -104,8 +109,14 @@ func (m *builderMetrics) ObserveConfig(cfg BuilderConfig) {
 func (m *builderMetrics) Register(reg prometheus.Registerer) error {
 	var errs []error
 
-	errs = append(errs, m.logs.Register(reg))
-	errs = append(errs, m.streams.Register(reg))
+	appendReg := prometheus.WrapRegistererWith(prometheus.Labels{"operation": "append"}, reg)
+	errs = append(errs, m.logs.Register(appendReg))
+	errs = append(errs, m.streams.Register(appendReg))
+
+	sortReg := prometheus.WrapRegistererWith(prometheus.Labels{"operation": "sort"}, reg)
+	errs = append(errs, m.sortLogs.Register(sortReg))
+	errs = append(errs, m.sortStreams.Register(sortReg))
+
 	errs = append(errs, m.dataobj.Register(reg))
 
 	errs = append(errs, reg.Register(m.targetPageSize))
@@ -126,8 +137,14 @@ func (m *builderMetrics) Register(reg prometheus.Registerer) error {
 
 // Unregister unregisters metrics from the provided Registerer.
 func (m *builderMetrics) Unregister(reg prometheus.Registerer) {
-	m.logs.Unregister(reg)
-	m.streams.Unregister(reg)
+	appendReg := prometheus.WrapRegistererWith(prometheus.Labels{"operation": "append"}, reg)
+	m.logs.Unregister(appendReg)
+	m.streams.Unregister(appendReg)
+
+	sortReg := prometheus.WrapRegistererWith(prometheus.Labels{"operation": "sort"}, reg)
+	m.sortLogs.Unregister(sortReg)
+	m.sortStreams.Unregister(sortReg)
+
 	m.dataobj.Unregister(reg)
 
 	reg.Unregister(m.targetPageSize)
