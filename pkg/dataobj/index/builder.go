@@ -193,7 +193,7 @@ func NewIndexBuilder(
 	}
 	s.client = eventConsumerClient
 
-	s.Service = services.NewBasicService(nil, s.running, s.stopping)
+	s.Service = services.NewBasicService(s.starting, s.running, s.stopping)
 
 	return s, nil
 }
@@ -231,7 +231,7 @@ func (p *Builder) handlePartitionsRevoked(_ context.Context, _ *kgo.Client, topi
 	}
 }
 
-func (p *Builder) running(ctx context.Context) error {
+func (p *Builder) starting(ctx context.Context) error {
 	// Start indexer service first
 	if err := p.indexer.StartAsync(ctx); err != nil {
 		return fmt.Errorf("failed to start indexer service: %w", err)
@@ -260,7 +260,10 @@ func (p *Builder) running(ctx context.Context) error {
 	}
 
 	level.Info(p.logger).Log("msg", "started index builder service")
+	return nil
+}
 
+func (p *Builder) running(ctx context.Context) error {
 	// Main Kafka processing loop
 	for {
 		select {

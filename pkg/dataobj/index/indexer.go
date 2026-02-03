@@ -99,18 +99,18 @@ func newSerialIndexer(
 }
 
 // starting is called when the service is starting
-func (si *serialIndexer) starting(_ context.Context) error {
+func (si *serialIndexer) starting(ctx context.Context) error {
 	level.Info(si.logger).Log("msg", "starting serial indexer")
+
+	// Start build worker
+	si.buildWorkerWg.Add(1)
+	go si.buildWorker(ctx)
 	return nil
 }
 
 // running is the main service loop
 func (si *serialIndexer) running(ctx context.Context) error {
 	level.Info(si.logger).Log("msg", "serial indexer running")
-
-	// Start build worker
-	si.buildWorkerWg.Add(1)
-	go si.buildWorker(ctx)
 
 	// Wait for context cancellation
 	<-ctx.Done()

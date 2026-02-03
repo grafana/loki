@@ -155,7 +155,6 @@ func TestIndexBuilder_PartialCompletion(t *testing.T) {
 	builder.handlePartitionsAssigned(ctx, nil, map[string][]int32{
 		"loki.metastore-events": {0},
 	})
-	time.Sleep(1 * time.Second)
 
 	// Trigger the revocation of a partition, but only after we've processed a couple of records.
 	for range 2 {
