@@ -50,6 +50,12 @@ type indexer interface {
 	submitBuild(ctx context.Context, events []bufferedEvent, partition int32, trigger triggerType) ([]*kgo.Record, error)
 }
 
+type downloadedObject struct {
+	event       metastore.ObjectWrittenEvent
+	objectBytes []byte
+	err         error
+}
+
 // serialIndexer implements Indexer with a single worker goroutine using dskit Service
 type serialIndexer struct {
 	services.Service
@@ -406,7 +412,7 @@ func downloadWorker(ctx context.Context, logger log.Logger, downloadQueue chan m
 
 		downloadedObjects <- downloadedObject{
 			event:       event,
-			objectBytes: &object,
+			objectBytes: object,
 		}
 	}
 	close(downloadedObjects)
@@ -414,7 +420,7 @@ func downloadWorker(ctx context.Context, logger log.Logger, downloadQueue chan m
 
 // processObject handles processing a single downloaded object
 func (si *serialIndexer) processObject(ctx context.Context, objLogger log.Logger, obj downloadedObject) error {
-	reader, err := dataobj.FromReaderAt(bytes.NewReader(*obj.objectBytes), int64(len(*obj.objectBytes)))
+	reader, err := dataobj.FromReaderAt(bytes.NewReader(obj.objectBytes), int64(len(obj.objectBytes)))
 	if err != nil {
 		return fmt.Errorf("failed to read object: %w", err)
 	}

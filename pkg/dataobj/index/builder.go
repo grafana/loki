@@ -56,12 +56,6 @@ type partitionState struct {
 	isProcessing bool
 }
 
-type downloadedObject struct {
-	event       metastore.ObjectWrittenEvent
-	objectBytes *[]byte
-	err         error
-}
-
 const (
 	defaultIndexConsumerGroup = "index-builder"
 )
