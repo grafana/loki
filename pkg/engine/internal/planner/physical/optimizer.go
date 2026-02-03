@@ -583,7 +583,7 @@ func (p *parallelPushdown) applyParallelization(node Node) bool {
 	//
 	// There can be additional special cases, such as parallelizing an `avg` by
 	// pushing down a `sum` and `count` into the Parallelize.
-	switch n := node.(type) {
+	switch node := node.(type) {
 	case *Projection, *Filter, *ColumnCompat: // Catchall for shifting nodes
 		for _, parallelize := range p.plan.Children(node) {
 			p.plan.graph.Inject(parallelize, node.Clone())
@@ -600,15 +600,14 @@ func (p *parallelPushdown) applyParallelization(node Node) bool {
 		return true
 
 	case *RangeAggregation:
-		// RangeAggregation can be parallelized only when the operation
-		// is associative and commutative with the parent vector aggregation.
-		// The RangeAgg is shifted into the Parallelize (eliminated from original position).
 		vecAgg := p.findParentVectorAggregation(node)
 		if vecAgg == nil {
 			return false // No VectorAgg parent - don't shift
 		}
 
-		if !canShardAggregation(vecAgg, n) {
+		// RangeAggregation can be parallelized only when the operation
+		// is associative and commutative with the parent vector aggregation.
+		if !canShardAggregation(vecAgg, node) {
 			return false
 		}
 
