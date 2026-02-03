@@ -6,7 +6,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"hash"
 	"io"
+	"sort"
 	"sync"
 	"time"
 
@@ -304,12 +306,12 @@ func (si *serialIndexer) buildIndex(ctx context.Context, events []metastore.Obje
 
 	// Process downloaded objects, handling ErrBuilderFull
 	processingErrors := multierror.New()
-	processed := 0
-	for processed < len(events) {
+	processed := make([]downloadedObject, 0, len(events))
+	for len(processed) < len(events) {
 		var obj downloadedObject
 		select {
 		case <-ctx.Done():
-			return "", processed, ctx.Err()
+			return "", len(processed), ctx.Err()
 		case obj = <-downloadedObjects:
 		}
 
@@ -319,7 +321,7 @@ func (si *serialIndexer) buildIndex(ctx context.Context, events []metastore.Obje
 			nextEventIdx++
 		}
 
-		processed++
+		processed = append(processed, obj)
 		objLogger := log.With(si.logger, "object_path", obj.event.ObjectPath)
 		level.Debug(objLogger).Log("msg", "processing object")
 
@@ -341,22 +343,27 @@ func (si *serialIndexer) buildIndex(ctx context.Context, events []metastore.Obje
 	}
 
 	if processingErrors.Err() != nil {
-		return "", processed, processingErrors.Err()
+		return "", len(processed), processingErrors.Err()
+	}
+
+	key, err := objectKey(processed)
+	if err != nil {
+		return "", len(processed), fmt.Errorf("failed to generate object key: %w", err)
 	}
 
 	// Flush current index and start fresh for each trigger type means:
 	// - append: Either the calculator became full and the remaining events will be processed by the next trigger
 	//           or all events have been processed, so we flush the current index and start fresh
 	// - max-idle: All events have been processed, so we flush the current index and start fresh
-	indexPath, flushErr := si.flushIndex(ctx, partition)
+	indexPath, flushErr := si.flushIndex(ctx, key, partition)
 	if flushErr != nil {
-		return "", processed, fmt.Errorf("failed to flush index after processing full object: %w", flushErr)
+		return "", len(processed), fmt.Errorf("failed to flush index after processing full object: %w", flushErr)
 	}
 
 	level.Debug(si.logger).Log("msg", "finished building index files", "partition", partition,
 		"events", len(events), "processed", processed, "index_path", indexPath, "duration", time.Since(start))
 
-	return indexPath, processed, nil
+	return indexPath, len(processed), nil
 }
 
 // downloadObject downloads an object from the bucket, attempting to pre-allocate
@@ -429,7 +436,7 @@ func (si *serialIndexer) processObject(ctx context.Context, objLogger log.Logger
 }
 
 // flushIndex flushes the current calculator state to an index object
-func (si *serialIndexer) flushIndex(ctx context.Context, partition int32) (string, error) {
+func (si *serialIndexer) flushIndex(ctx context.Context, key string, partition int32) (string, error) {
 	tenantTimeRanges := si.calculator.TimeRanges()
 	if len(tenantTimeRanges) == 0 {
 		return "", nil // Nothing to flush
@@ -440,11 +447,6 @@ func (si *serialIndexer) flushIndex(ctx context.Context, partition int32) (strin
 		return "", fmt.Errorf("failed to flush calculator: %w", err)
 	}
 	defer closer.Close()
-
-	key, err := ObjectKey(ctx, obj)
-	if err != nil {
-		return "", fmt.Errorf("failed to generate object key: %w", err)
-	}
 
 	reader, err := obj.Reader(ctx)
 	if err != nil {
@@ -479,24 +481,42 @@ func (si *serialIndexer) updateMetrics(buildTime time.Duration, earliestIndexedR
 	}
 }
 
-// ObjectKey generates the object key for storing an index object in object storage.
-// This is a public wrapper around the generateObjectKey functionality.
-func ObjectKey(ctx context.Context, object *dataobj.Object) (string, error) {
+// ObjectKeyForTest generates a random object key for testing purposes.
+func ObjectKeyForTest() string {
 	h := sha256.New224()
+	timestamp := fmt.Sprintf("%d", time.Now().UnixNano())
+	h.Write([]byte(timestamp))
 
-	reader, err := object.Reader(ctx)
-	if err != nil {
-		return "", err
+	return objectKeyFromHash(h)
+}
+
+// objectKey generates the object key for storing an index object in object storage.
+// It creates a consistent hash based on the object paths of the processed objects.
+// The paths are sorted before hashing to ensure the same key is generated regardless
+// of the order in which objects were processed.
+func objectKey(processedObjects []downloadedObject) (string, error) {
+	if len(processedObjects) == 0 {
+		return "", fmt.Errorf("no processed objects to generate key from")
 	}
-	defer reader.Close()
 
-	if _, err := io.Copy(h, reader); err != nil {
-		return "", err
+	h := sha256.New224()
+	sort.Slice(processedObjects, func(i, j int) bool {
+		return processedObjects[i].event.ObjectPath < processedObjects[j].event.ObjectPath
+	})
+
+	for _, obj := range processedObjects {
+		if _, err := h.Write([]byte(obj.event.ObjectPath)); err != nil {
+			return "", err
+		}
 	}
 
+	return objectKeyFromHash(h), nil
+}
+
+func objectKeyFromHash(h hash.Hash) string {
 	var sumBytes [sha256.Size224]byte
 	sum := h.Sum(sumBytes[:0])
 	sumStr := hex.EncodeToString(sum[:])
 
-	return fmt.Sprintf("indexes/%s/%s", sumStr[:2], sumStr[2:]), nil
+	return fmt.Sprintf("indexes/%s/%s", sumStr[:2], sumStr[2:])
 }

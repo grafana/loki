@@ -224,7 +224,8 @@ func TestIndexBuilder(t *testing.T) {
 		})
 	}
 
-	_, err = p.indexer.(*serialIndexer).flushIndex(ctx, 0)
+	key := ObjectKeyForTest()
+	_, err = p.indexer.(*serialIndexer).flushIndex(ctx, key, 0)
 	require.NoError(t, err)
 
 	indexes := readAllSectionPointers(t, bucket)

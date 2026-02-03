@@ -457,3 +457,76 @@ func TestDownloadObject_ObjectNotFound(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "failed to fetch object from storage")
 }
+
+func TestObjectKey_OrderIndependent(t *testing.T) {
+	t.Parallel()
+
+	// Create test objects with different paths
+	objects1 := []downloadedObject{
+		{event: metastore.ObjectWrittenEvent{ObjectPath: "path/to/object1"}},
+		{event: metastore.ObjectWrittenEvent{ObjectPath: "path/to/object2"}},
+		{event: metastore.ObjectWrittenEvent{ObjectPath: "path/to/object3"}},
+	}
+
+	// Same objects in different order
+	objects2 := []downloadedObject{
+		{event: metastore.ObjectWrittenEvent{ObjectPath: "path/to/object3"}},
+		{event: metastore.ObjectWrittenEvent{ObjectPath: "path/to/object1"}},
+		{event: metastore.ObjectWrittenEvent{ObjectPath: "path/to/object2"}},
+	}
+
+	// Another different order
+	objects3 := []downloadedObject{
+		{event: metastore.ObjectWrittenEvent{ObjectPath: "path/to/object2"}},
+		{event: metastore.ObjectWrittenEvent{ObjectPath: "path/to/object3"}},
+		{event: metastore.ObjectWrittenEvent{ObjectPath: "path/to/object1"}},
+	}
+
+	// Generate keys
+	key1, err := objectKey(objects1)
+	require.NoError(t, err)
+
+	key2, err := objectKey(objects2)
+	require.NoError(t, err)
+
+	key3, err := objectKey(objects3)
+	require.NoError(t, err)
+
+	// All keys should be identical regardless of order
+	require.Equal(t, key1, key2, "keys should be equal regardless of order")
+	require.Equal(t, key1, key3, "keys should be equal regardless of order")
+	require.Equal(t, key2, key3, "keys should be equal regardless of order")
+}
+
+func TestObjectKey_DifferentObjects(t *testing.T) {
+	t.Parallel()
+
+	objects1 := []downloadedObject{
+		{event: metastore.ObjectWrittenEvent{ObjectPath: "path/to/object1"}},
+		{event: metastore.ObjectWrittenEvent{ObjectPath: "path/to/object2"}},
+	}
+
+	objects2 := []downloadedObject{
+		{event: metastore.ObjectWrittenEvent{ObjectPath: "path/to/object1"}},
+		{event: metastore.ObjectWrittenEvent{ObjectPath: "path/to/object3"}},
+	}
+
+	key1, err := objectKey(objects1)
+	require.NoError(t, err)
+
+	key2, err := objectKey(objects2)
+	require.NoError(t, err)
+
+	// Different sets of objects should produce different keys
+	require.NotEqual(t, key1, key2, "different objects should generate different keys")
+}
+
+func TestObjectKey_FailsWithNoProcessedObjects(t *testing.T) {
+	t.Parallel()
+
+	_, err := objectKey(nil)
+	require.Error(t, err)
+
+	_, err = objectKey([]downloadedObject{})
+	require.Error(t, err)
+}

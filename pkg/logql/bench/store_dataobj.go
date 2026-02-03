@@ -181,11 +181,7 @@ func (s *DataObjStore) buildIndex() error {
 		}
 		defer closer.Close()
 
-		key, err := index.ObjectKey(context.Background(), obj)
-		if err != nil {
-			return fmt.Errorf("failed to create object key: %w", err)
-		}
-
+		key := index.ObjectKeyForTest()
 		reader, err := obj.Reader(context.Background())
 		if err != nil {
 			return fmt.Errorf("failed to create reader for index object: %w", err)

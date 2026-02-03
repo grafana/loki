@@ -193,11 +193,7 @@ func (b *Builder) flushAndUpload(ctx context.Context, calculator *index.Calculat
 	}
 	defer closer.Close()
 
-	key, err := index.ObjectKey(ctx, obj)
-	if err != nil {
-		return fmt.Errorf("failed to create object key: %w", err)
-	}
-
+	key := index.ObjectKeyForTest()
 	reader, err := obj.Reader(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to create reader for index object: %w", err)
