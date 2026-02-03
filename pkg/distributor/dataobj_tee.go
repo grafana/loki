@@ -68,12 +68,10 @@ type DataObjTee struct {
 	logger       log.Logger
 
 	// Metrics.
-	failures prometheus.Counter
-	total    prometheus.Counter
-
-	// High cardinality metrics which are only emitted when debug metrics
-	// are enabled.
-	produced *prometheus.CounterVec
+	streams         prometheus.Counter
+	streamFailures  prometheus.Counter
+	producedBytes   *prometheus.CounterVec
+	producedRecords *prometheus.CounterVec
 }
 
 // NewDataObjTee returns a new DataObjTee.
@@ -84,7 +82,7 @@ func NewDataObjTee(
 	limits Limits,
 	kafkaClient *kgo.Client,
 	logger log.Logger,
-	reg prometheus.Registerer,
+	r prometheus.Registerer,
 ) (*DataObjTee, error) {
 	return &DataObjTee{
 		cfg:          cfg,
@@ -93,18 +91,24 @@ func NewDataObjTee(
 		limitsClient: limitsClient,
 		limits:       limits,
 		logger:       logger,
-		failures: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Name: "loki_distributor_dataobj_tee_duplicate_stream_failures_total",
-			Help: "Total number of streams that could not be duplicated.",
-		}),
-		total: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+		streams: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Name: "loki_distributor_dataobj_tee_duplicate_streams_total",
 			Help: "Total number of streams duplicated.",
 		}),
-		produced: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+		streamFailures: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "loki_distributor_dataobj_tee_duplicate_stream_failures_total",
+			Help: "Total number of streams that could not be duplicated.",
+		}),
+		// The tenant and segmentation key labels are not emitted unless debug metrics
+		// are enabled.
+		producedBytes: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_distributor_dataobj_tee_produced_bytes_total",
 			Help: "Total number of bytes produced to each partition.",
-		}, []string{"tenant", "partition", "segmentation_key"}),
+		}, []string{"partition", "tenant", "segmentation_key"}),
+		producedRecords: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_distributor_dataobj_tee_produced_records_total",
+			Help: "Total number of records produced to each partition.",
+		}, []string{"partition", "tenant", "segmentation_key"}),
 	}, nil
 }
 
@@ -127,7 +131,7 @@ func (t *DataObjTee) Duplicate(ctx context.Context, tenant string, streams []Key
 		segmentationKey, err := GetSegmentationKey(stream)
 		if err != nil {
 			level.Error(t.logger).Log("msg", "failed to get segmentation key", "err", err)
-			t.failures.Inc()
+			t.streamFailures.Inc()
 			return
 		}
 		segmentationKeyStreams = append(segmentationKeyStreams, SegmentedStream{
@@ -159,12 +163,12 @@ func (t *DataObjTee) Duplicate(ctx context.Context, tenant string, streams []Key
 }
 
 func (t *DataObjTee) duplicate(ctx context.Context, tenant string, stream SegmentedStream, rateBytes, tenantRateBytes uint64, pushTracker *PushTracker) {
-	t.total.Inc()
+	t.streams.Inc()
 
 	partition, err := t.resolver.Resolve(ctx, tenant, stream.SegmentationKey, rateBytes, tenantRateBytes)
 	if err != nil {
 		level.Error(t.logger).Log("msg", "failed to resolve partition", "err", err)
-		t.failures.Inc()
+		t.streamFailures.Inc()
 		pushTracker.doneWithResult(fmt.Errorf("couldn't process request internally due to tee error: %d", TeeCouldntSolvePartitionError))
 		return
 	}
@@ -172,7 +176,7 @@ func (t *DataObjTee) duplicate(ctx context.Context, tenant string, stream Segmen
 	records, err := kafka.EncodeWithTopic(t.cfg.Topic, partition, tenant, stream.Stream, t.cfg.MaxBufferedBytes)
 	if err != nil {
 		level.Error(t.logger).Log("msg", "failed to encode stream", "err", err)
-		t.failures.Inc()
+		t.streamFailures.Inc()
 		pushTracker.doneWithResult(fmt.Errorf("couldn't process request internally due to tee error: %d", TeeCouldntEncodeStreamError))
 		return
 	}
@@ -180,18 +184,34 @@ func (t *DataObjTee) duplicate(ctx context.Context, tenant string, stream Segmen
 	results := t.kafkaClient.ProduceSync(ctx, records...)
 	if err := results.FirstErr(); err != nil {
 		level.Error(t.logger).Log("msg", "failed to produce records", "err", err)
-		t.failures.Inc()
+		t.streamFailures.Inc()
 		pushTracker.doneWithResult(fmt.Errorf("couldn't process request internally due to tee error: %d", TeeCouldntProduceRecordsError))
 		return
 	}
 
-	if t.cfg.DebugMetricsEnabled {
-		t.produced.WithLabelValues(
-			tenant,
-			strconv.FormatInt(int64(partition), 10),
-			string(stream.SegmentationKey),
-		).Add(float64(stream.Stream.Size()))
+	var (
+		partitionLabelValue       = strconv.FormatInt(int64(partition), 10)
+		tenantLabelValue          string
+		segmentationKeyLabelValue string
+		size                      int64
+	)
+	for _, rec := range records {
+		size += int64(len(rec.Value))
 	}
+	if t.cfg.DebugMetricsEnabled {
+		tenantLabelValue = tenant
+		segmentationKeyLabelValue = string(stream.SegmentationKey)
+	}
+	t.producedBytes.WithLabelValues(
+		partitionLabelValue,
+		tenantLabelValue,
+		segmentationKeyLabelValue,
+	).Add(float64(size))
+	t.producedRecords.WithLabelValues(
+		partitionLabelValue,
+		tenantLabelValue,
+		segmentationKeyLabelValue,
+	).Inc()
 
 	pushTracker.doneWithResult(nil)
 }

@@ -32,7 +32,7 @@ type UTF8 struct {
 
 var _ Array = (*UTF8)(nil)
 
-// MakeUTF8 creates a new UTF8 array from the given data, offsets, and
+// NewUTF8 creates a new UTF8 array from the given data, offsets, and
 // optional validity bitmap.
 //
 // UTF8 arrays made from memory owned by a [memory.Allocator] are invalidated
@@ -43,9 +43,9 @@ var _ Array = (*UTF8)(nil)
 // validated for correctness.
 //
 // If validity is of length zero, all elements are considered valid. Otherwise,
-// MakeUTF8 panics if the number of elements does not match the length of
+// NewUTF8 panics if the number of elements does not match the length of
 // validity.
-func MakeUTF8(data []byte, offsets []int32, validity memory.Bitmap) *UTF8 {
+func NewUTF8(data []byte, offsets []int32, validity memory.Bitmap) *UTF8 {
 	arr := &UTF8{
 		validity: validity,
 		offsets:  offsets,
@@ -143,9 +143,9 @@ var _ Builder = (*UTF8Builder)(nil)
 func NewUTF8Builder(alloc *memory.Allocator) *UTF8Builder {
 	return &UTF8Builder{
 		alloc:    alloc,
-		validity: memory.MakeBitmap(alloc, 0),
-		offsets:  memory.MakeBuffer[int32](alloc, 0),
-		data:     memory.MakeBuffer[byte](alloc, 0),
+		validity: memory.NewBitmap(alloc, 0),
+		offsets:  memory.NewBuffer[int32](alloc, 0),
+		data:     memory.NewBuffer[byte](alloc, 0),
 	}
 }
 
@@ -246,10 +246,10 @@ func (b *UTF8Builder) BuildArray() Array { return b.Build() }
 func (b *UTF8Builder) Build() *UTF8 {
 	// Move the original bitmaps to the constructed array, then reset the
 	// builder's bitmaps since they've been moved.
-	arr := MakeUTF8(b.data.Data(), b.offsets.Data(), b.validity)
-	b.validity = memory.MakeBitmap(b.alloc, 0)
-	b.offsets = memory.MakeBuffer[int32](b.alloc, 0)
-	b.data = memory.MakeBuffer[byte](b.alloc, 0)
+	arr := NewUTF8(b.data.Data(), b.offsets.Data(), b.validity)
+	b.validity = memory.NewBitmap(b.alloc, 0)
+	b.offsets = memory.NewBuffer[int32](b.alloc, 0)
+	b.data = memory.NewBuffer[byte](b.alloc, 0)
 	b.lastOffset = 0
 	return arr
 }

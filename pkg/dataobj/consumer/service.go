@@ -3,6 +3,7 @@ package consumer
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/go-kit/log"
@@ -153,32 +154,28 @@ func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, bucket objsto
 	if err := uploader.RegisterMetrics(reg); err != nil {
 		level.Error(logger).Log("msg", "failed to register uploader metrics", "err", err)
 	}
-	s.flusher = newFlusher(
-		uploader,
-		committer,
-		metastoreEvents,
-		partitionID,
-		int32(mCfg.PartitionRatio),
-		logger,
-		reg,
-	)
+	s.flusher = newFlusher(uploader, logger, reg)
 	builder, err := logsobj.NewBuilder(cfg.BuilderConfig, scratchStore)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize data object builder: %w", err)
 	}
-	if err := builder.RegisterMetrics(reg); err != nil {
+	wrapped := prometheus.WrapRegistererWith(prometheus.Labels{
+		"partition": strconv.Itoa(int(partitionID)),
+	}, reg)
+	if err := builder.RegisterMetrics(wrapped); err != nil {
 		level.Error(logger).Log("msg", "failed to register builder metrics", "err", err)
 	}
 	s.processor = newProcessor(
 		builder,
-		cfg.IdleFlushTimeout,
-		cfg.MaxBuilderAge,
-		cfg.Topic,
-		partitionID,
 		records,
 		s.flusher,
+		newMetastoreEvents(partitionID, int32(mCfg.PartitionRatio), metastoreEvents),
+		committer,
+		partitionID,
+		cfg.IdleFlushTimeout,
+		cfg.MaxBuilderAge,
 		logger,
-		reg,
+		wrapped,
 	)
 	s.downscalePermitted = newOffsetCommittedDownscaleFunc(offsetReader, partitionID, logger)
 
@@ -206,9 +203,6 @@ func (s *Service) starting(ctx context.Context) error {
 	if err := services.StartAndAwaitRunning(ctx, s.consumer); err != nil {
 		return fmt.Errorf("failed to start consumer: %w", err)
 	}
-	if err := services.StartAndAwaitRunning(ctx, s.flusher); err != nil {
-		return fmt.Errorf("failed to start flusher: %w", err)
-	}
 	return nil
 }
 
@@ -222,9 +216,6 @@ func (s *Service) running(ctx context.Context) error {
 func (s *Service) stopping(failureCase error) error {
 	level.Info(s.logger).Log("msg", "stopping")
 	ctx := context.TODO()
-	if err := services.StopAndAwaitTerminated(ctx, s.flusher); err != nil {
-		level.Warn(s.logger).Log("msg", "failed to stop flusher", "err", err)
-	}
 	if err := services.StopAndAwaitTerminated(ctx, s.consumer); err != nil {
 		level.Warn(s.logger).Log("msg", "failed to stop consumer", "err", err)
 	}

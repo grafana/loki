@@ -24,9 +24,9 @@ type Null struct {
 
 var _ Array = (*Null)(nil)
 
-// MakeNull creates a new Null array with the given validity bitmap. MakeNull
+// NewNull creates a new Null array with the given validity bitmap. NewNull
 // panics if validity contains any bit set to true.
-func MakeNull(validity memory.Bitmap) *Null {
+func NewNull(validity memory.Bitmap) *Null {
 	arr := &Null{
 		validity: validity,
 	}
@@ -76,7 +76,7 @@ var _ Builder = (*NullBuilder)(nil)
 func NewNullBuilder(alloc *memory.Allocator) *NullBuilder {
 	return &NullBuilder{
 		alloc:    alloc,
-		validity: memory.MakeBitmap(alloc, 0),
+		validity: memory.NewBitmap(alloc, 0),
 	}
 }
 
@@ -120,7 +120,7 @@ func (b *NullBuilder) BuildArray() Array { return b.Build() }
 func (b *NullBuilder) Build() *Null {
 	// Move the original bitmap to the constructed array, then reset the
 	// builder's bitmap since it's been moved.
-	arr := MakeNull(b.validity)
-	b.validity = memory.MakeBitmap(b.alloc, 0)
+	arr := NewNull(b.validity)
+	b.validity = memory.NewBitmap(b.alloc, 0)
 	return arr
 }

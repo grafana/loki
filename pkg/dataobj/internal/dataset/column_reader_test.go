@@ -134,7 +134,7 @@ func readColumn(t *testing.T, alloc *memory.Allocator, cr *columnReader, batchSi
 	t.Helper()
 
 	// Temporary allocator for the intermediate arrays.
-	tempAlloc := memory.MakeAllocator(alloc)
+	tempAlloc := memory.NewAllocator(alloc)
 	defer tempAlloc.Free()
 
 	var all []string
