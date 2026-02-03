@@ -1,10 +1,10 @@
 package compute
 
 import (
-	"regexp"
 	"strings"
 	"testing"
 
+	"github.com/grafana/regexp"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/columnar"
