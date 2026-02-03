@@ -178,7 +178,7 @@ func newExpandPipeline(expr physical.Expression, evaluator *expressionEvaluator,
 				}); idx != -1 {
 					concatenate := false
 					if newField.Name == semconv.ColumnIdentError.FQN() || newField.Name == semconv.ColumnIdentErrorDetails.FQN() {
-						concatenate = false
+						concatenate = true
 					}
 					outputCols[idx] = mergeColumns(outputCols[idx], arrCasted.Field(i), concatenate)
 					outputFields[idx] = newField
