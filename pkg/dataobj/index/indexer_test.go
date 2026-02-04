@@ -245,10 +245,10 @@ func TestSerialIndexer_ConcurrentBuilds(t *testing.T) {
 	// Start indexer service
 	require.NoError(t, indexer.StartAsync(ctx))
 	require.NoError(t, indexer.AwaitRunning(ctx))
-	/* 	defer func() {
+	defer func() {
 		indexer.StopAsync()
 		require.NoError(t, indexer.AwaitTerminated(context.Background()))
-	}() */
+	}()
 
 	// Submit multiple concurrent build requests
 	numRequests := 200
@@ -283,26 +283,18 @@ func TestSerialIndexer_ConcurrentBuilds(t *testing.T) {
 		}(i)
 	}
 
-	cancelBuild()
-
 	// Wait for all requests to complete
-	cancelled := 0
 	for i := 0; i < numRequests; i++ {
 		err := <-results
-		if cancelled == 1 {
-			require.NoError(t, err)
-		}
-		if err != nil {
-			cancelled++
-		}
+		require.NoError(t, err)
 	}
 
 	// Verify all events were processed (serialized)
-	require.Equal(t, numRequests-cancelled, mockCalc.count)
+	require.Equal(t, numRequests, mockCalc.count)
 
 	// Verify Prometheus metrics - multiple concurrent requests
-	require.Equal(t, float64(numRequests-cancelled), testutil.ToFloat64(indexerMetrics.totalRequests))
-	require.Equal(t, float64(numRequests-cancelled), testutil.ToFloat64(indexerMetrics.totalBuilds))
+	require.Equal(t, float64(numRequests), testutil.ToFloat64(indexerMetrics.totalRequests))
+	require.Equal(t, float64(numRequests), testutil.ToFloat64(indexerMetrics.totalBuilds))
 	require.Greater(t, testutil.ToFloat64(indexerMetrics.buildTimeSeconds), float64(0))
 	require.Equal(t, float64(0), testutil.ToFloat64(indexerMetrics.queueDepth))
 }

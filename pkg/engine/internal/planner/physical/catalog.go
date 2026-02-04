@@ -66,12 +66,13 @@ func (t *TimeRange) Merge(secondRange TimeRange) TimeRange {
 	return out
 }
 
+// DataObjSections is a collection of sections from single data object.
 type DataObjSections struct {
-	Location         DataObjLocation
-	Streams          []int64
-	Sections         []int
-	TimeRange        TimeRange
-	LabelsByStreamID map[int64][]string
+	Location            DataObjLocation
+	Streams             []int64
+	Sections            []int
+	TimeRange           TimeRange
+	PredicatesInStreams map[int64][]string
 }
 
 // Catalog is an interface that provides methods for interacting with
@@ -123,7 +124,7 @@ func filterForShard(shard ShardInfo, sections []*metastore.DataobjSectionDescrip
 	for _, s := range sections {
 		ds := DataObjSections{}
 		ds.Location = DataObjLocation(s.ObjectPath)
-		ds.LabelsByStreamID = s.LabelsByStreamID
+		ds.PredicatesInStreams = s.AmbiguousPredicatesByStream
 
 		if int(s.SectionIdx)%int(shard.Of) == int(shard.Shard) {
 			ds.Streams = s.StreamIDs
