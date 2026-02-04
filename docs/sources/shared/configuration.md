@@ -1448,7 +1448,7 @@ dataobj:
       [shaprefixsize: <int> | default = 2]
 
     # The maximum amount of time to wait in seconds before flushing an object
-    # that is no longer receiving new writes
+    # that is no longer receiving new writes.
     # CLI flag: -dataobj-consumer.idle-flush-timeout
     [idle_flush_timeout: <duration> | default = 1h]
 
@@ -1457,7 +1457,7 @@ dataobj:
     # CLI flag: -dataobj-consumer.max-builder-age
     [max_builder_age: <duration> | default = 1h]
 
-    # The name of the Kafka topic
+    # The name of the Kafka topic.
     # CLI flag: -dataobj-consumer.topic
     [topic: <string> | default = ""]
 
