@@ -393,7 +393,7 @@ func TestNewProjectPipeline_ProjectionFunction_ExpandWithCast(t *testing.T) {
 			},
 		},
 		{
-			name: "existing error columns",
+			name: "existing error columns - last error wins",
 			schema: arrow.NewSchema([]arrow.Field{
 				semconv.FieldFromIdent(semconv.ColumnIdentMessage, false),
 				semconv.FieldFromFQN("utf8.parsed.mixed_values", true),
@@ -418,8 +418,8 @@ func TestNewProjectPipeline_ProjectionFunction_ExpandWithCast(t *testing.T) {
 					"utf8.generated.__error_details__": ""},
 				{"utf8.builtin.message": "invalid numeric", "utf8.parsed.mixed_values": "not_a_number",
 					"float64.generated.value":          0.0,
-					"utf8.generated.__error__":         "My error; SampleExtractionErr",
-					"utf8.generated.__error_details__": `Some error; strconv.ParseFloat: parsing "not_a_number": invalid syntax`},
+					"utf8.generated.__error__":         types.SampleExtractionErrorType,
+					"utf8.generated.__error_details__": `strconv.ParseFloat: parsing "not_a_number": invalid syntax`},
 			},
 		},
 		{

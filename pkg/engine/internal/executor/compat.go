@@ -141,7 +141,7 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 		newSchemaColumns := make([]arrow.Array, newSchema.NumFields())
 
 		// Now, go through all fields of the old schema and append the rows to the new builder.
-		for oldIdx := range schema.NumFields() {
+		for oldIdx := range oldSchema.NumFields() {
 			col := batch.Column(oldIdx)
 
 			duplicateIdx := slices.IndexFunc(duplicates, func(d duplicateColumn) bool { return d.sourceIdx == oldIdx })
