@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	_ "io" // Used for documenting io.EOF.
 	"strings"
 
 	"github.com/apache/arrow-go/v18/arrow"
