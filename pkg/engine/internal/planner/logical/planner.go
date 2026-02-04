@@ -77,9 +77,7 @@ func buildPlanForLogQuery(
 		hasLogfmtParser  bool
 		hasJSONParser    bool
 		hasRegexParser   bool
-
-		hasPatternParser  bool
-		patternExpression string
+		hasPatternParser bool
 	)
 
 	// Do the first pass to collect the stream selector, line filters, and predicates. Only predicates listed
@@ -107,15 +105,7 @@ func buildPlanForLogQuery(
 				return true
 			case syntax.OpParserTypePattern:
 				hasPatternParser = true
-				patternExpression = e.Param
 				return true
-			case syntax.OpParserTypeUnpack:
-				// keeping these as a distinct cases so we remember to implement them later
-				err = errUnimplemented
-				return false
-			default:
-				err = errUnimplemented
-				return false
 			}
 		case *syntax.LabelFilterExpr:
 			// Collect following filters only before we met any parse stage.
@@ -177,15 +167,6 @@ func buildPlanForLogQuery(
 	if err != nil {
 		return nil, fmt.Errorf("failed to build delete predicates: %w", err)
 	}
-	if hasPatternParser {
-		builder = builder.ParsePattern(patternExpression)
-	}
-	if hasPatternParser {
-		builder = builder.ParsePattern(patternExpression)
-	}
-	if hasPatternParser {
-		builder = builder.ParsePattern(patternExpression)
-	}
 
 	// Adding this earlier in the pipeline to avoid expensive operations on lines that will be deleted anyway.
 	for _, value := range deletePredicates {
@@ -196,6 +177,7 @@ func buildPlanForLogQuery(
 	hasLogfmtParser = false
 	hasJSONParser = false
 	hasRegexParser = false
+	hasPatternParser = false
 
 	// TODO(chaudum): Implement a Walk function that can return an error
 	expr.Walk(func(e syntax.Expr) bool {
@@ -228,7 +210,13 @@ func buildPlanForLogQuery(
 				builder = builder.ParseRegexp(e.Param)
 
 				return true
-			case syntax.OpParserTypeUnpack, syntax.OpParserTypePattern:
+			case syntax.OpParserTypePattern:
+				hasPatternParser = true
+
+				builder = builder.ParsePattern(e.Param)
+
+				return true
+			case syntax.OpParserTypeUnpack:
 				// keeping these as a distinct cases so we remember to implement them later
 				err = errUnimplemented
 				return false
@@ -238,7 +226,7 @@ func buildPlanForLogQuery(
 			}
 		case *syntax.LabelFilterExpr:
 			// Add following filters only after we met any parse stage.
-			if hasLogfmtParser || hasJSONParser || hasRegexParser {
+			if hasLogfmtParser || hasJSONParser || hasRegexParser || hasPatternParser {
 				val, innerErr := convertLabelFilter(e.LabelFilterer)
 				if innerErr != nil {
 					err = innerErr

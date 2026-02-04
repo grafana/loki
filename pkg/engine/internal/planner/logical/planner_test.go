@@ -533,7 +533,7 @@ func TestPlannerCreatesProjectionWithParseOperation(t *testing.T) {
 		for parser, statement := range parsers {
 			// Query with regexp parser followed by label filter in an instant metric query
 			q := &query{
-				statement: fmt.Sprintf(`sum by (foo) (count_over_time({app="test"} | %s | foo="bar" [5m]))`, parser),
+				statement: fmt.Sprintf(`sum by (level) (count_over_time({app="test"} | %s | level="bar" [5m]))`, parser),
 				start:     3600,
 				end:       7200,
 				interval:  5 * time.Minute,
@@ -553,14 +553,14 @@ func TestPlannerCreatesProjectionWithParseOperation(t *testing.T) {
 %6 = SELECT %4 [predicate=%5]
 %7 = {PARSE_STATEMENT}
 %8 = PROJECT %6 [mode=*E, expr=%7]
-%9 = EQ ambiguous.foo "bar"
+%9 = EQ ambiguous.level "bar"
 %10 = SELECT %8 [predicate=%9]
 %11 = EQ generated.__error__ ""
 %12 = EQ generated.__error_details__ ""
 %13 = AND %11 %12
 %14 = SELECT %10 [predicate=%13]
 %15 = RANGE_AGGREGATION %14 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
-%16 = VECTOR_AGGREGATION %15 [operation=sum, group_by=(ambiguous.foo)]
+%16 = VECTOR_AGGREGATION %15 [operation=sum, group_by=(ambiguous.level)]
 %17 = LOGQL_COMPAT %16
 RETURN %17
 `, "{PARSE_STATEMENT}", statement, 1)
