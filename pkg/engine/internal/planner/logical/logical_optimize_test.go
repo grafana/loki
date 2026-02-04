@@ -161,16 +161,17 @@ func Test_simplifyRegexPass_CaseInsensitiveNegate(t *testing.T) {
 
 	expect := strings.TrimSpace(`
 %1 = EQ label.region "ap-southeast-1"
-%2 = NOT_MATCH_RE builtin.message "(?i)debug"
-%3 = MAKETABLE [selector=%1, predicates=[%2], shard=0_of_1]
-%4 = GTE builtin.timestamp 2025-01-01T00:00:00Z
-%5 = SELECT %3 [predicate=%4]
-%6 = LT builtin.timestamp 2025-01-02T00:00:00Z
-%7 = SELECT %5 [predicate=%6]
-%8 = SELECT %7 [predicate=%2]
-%9 = TOPK %8 [sort_by=builtin.timestamp, k=1000, asc=false, nulls_first=false]
-%10 = LOGQL_COMPAT %9
-RETURN %10
+%2 = MATCH_STR_CASE_INSENSITIVE builtin.message "DEBUG"
+%3 = NOT(%2)
+%4 = MAKETABLE [selector=%1, predicates=[%3], shard=0_of_1]
+%5 = GTE builtin.timestamp 2025-01-01T00:00:00Z
+%6 = SELECT %4 [predicate=%5]
+%7 = LT builtin.timestamp 2025-01-02T00:00:00Z
+%8 = SELECT %6 [predicate=%7]
+%9 = SELECT %8 [predicate=%3]
+%10 = TOPK %9 [sort_by=builtin.timestamp, k=1000, asc=false, nulls_first=false]
+%11 = LOGQL_COMPAT %10
+RETURN %11
 `)
 
 	p, err := BuildPlan(context.Background(), params)

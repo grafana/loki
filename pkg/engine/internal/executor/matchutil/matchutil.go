@@ -2,7 +2,6 @@
 package matchutil
 
 import (
-	"bytes"
 	"unicode"
 	"unicode/utf8"
 )
@@ -28,13 +27,23 @@ func ContainsUpper(line, substr []byte) bool {
 		return false
 	}
 
-	substr = defensivelyMakeUpper(substr)
+	firstByte := substr[0]
+
+	// ContainsUpper is currently only used for regex simplification.
+	// Go's regex parser upcases literals when processing a
+	// case-insensitive regex, as it relies on the "lowest" code point in
+	// the string's "fold cycle", which is the uppercase version, as A < a.
+	// ContainsUpper assumes that the match argument is already uppercased,
+	// and it should be because of the logical optimizer's use of Go's
+	// regex parser.
+	if firstByte >= 'a' && firstByte <= 'z' {
+		panic("substr argument to ContainsUpper must be uppercased")
+	}
+
+	maxIndex := len(line) - len(substr)
+	i := 0
 
 	// Fast path - try to find first byte of substr
-	firstByte := substr[0]
-	maxIndex := len(line) - len(substr)
-
-	i := 0
 	for i <= maxIndex {
 		// Find potential first byte match
 		c := line[i]
@@ -113,26 +122,4 @@ func EqualUpper(line, match []byte) bool {
 		return false
 	}
 	return ContainsUpper(line, match)
-}
-
-// ContainsUpper is currently only used for regex simplification.
-// Go's regex parser upcases literals, as it relies on the "lowest"
-// code point in the string's "fold cycle", which is the uppercase
-// version, as A < a. ContainsUpper assumes that the match argument is
-// already uppercased, and it should be because of the logical
-// optimizer's use of Go's regex parser. However, just to be safe, we
-// defensively check that the string is already uppercased (and for
-// performance, assume if the first character is, the rest is too).
-// This is defensive, to hopefully catch bugs if these functions are
-// used outside of the regex simplification pass.
-func defensivelyMakeUpper(s []byte) []byte {
-	if len(s) == 0 {
-		return s
-	}
-
-	if s[0] >= 'A' && s[0] <= 'Z' {
-		return s
-	}
-
-	return bytes.ToUpper(s)
 }

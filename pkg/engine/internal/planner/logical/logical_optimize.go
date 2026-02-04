@@ -235,7 +235,7 @@ func (pass simplifyRegexPass) simplifyRegex(from Value, isMessage bool, reg *syn
 		return result, true
 
 	case syntax.OpConcat:
-		return pass.simplifyRegexConcat(from, reg, nil, caseInsensitive)
+		return pass.simplifyRegexConcat(from, reg, nil)
 
 	case syntax.OpCapture:
 		// Remove capture groups.
@@ -304,7 +304,7 @@ func (pass simplifyRegexPass) simplifyRegex(from Value, isMessage bool, reg *syn
 // The baseLiteral argument holds the in-progress concatenation to test. It is
 // used in recursive calls to simplifyRegexConcat, and initial callers may pass
 // nil.
-func (pass simplifyRegexPass) simplifyRegexConcat(from Value, reg *syntax.Regexp, baseLiteral []byte, parentCaseInsensitive bool) ([]Node, bool) {
+func (pass simplifyRegexPass) simplifyRegexConcat(from Value, reg *syntax.Regexp, baseLiteral []byte) ([]Node, bool) {
 	util.ClearCapture(reg.Sub...)
 
 	// Remove empty matches.
@@ -330,17 +330,11 @@ func (pass simplifyRegexPass) simplifyRegexConcat(from Value, reg *syntax.Regexp
 		return nil, false
 	}
 
-	// Accumulate case-insensitive flag from parent and current node.
-	caseInsensitive := parentCaseInsensitive
-
 	var result []Node
 	var totalLiterals int
+	var baseLiteralIsCaseInsensitive bool
 
 	for _, sub := range reg.Sub {
-		if util.IsCaseInsensitive(sub) {
-			caseInsensitive = true
-		}
-
 		switch {
 		case sub.Op == syntax.OpLiteral:
 			if totalLiterals != 0 {
@@ -353,11 +347,12 @@ func (pass simplifyRegexPass) simplifyRegexConcat(from Value, reg *syntax.Regexp
 
 			totalLiterals++
 			baseLiteral = append(baseLiteral, []byte(string(sub.Rune))...)
+			baseLiteralIsCaseInsensitive = util.IsCaseInsensitive(sub)
 			continue
 
 		case sub.Op == syntax.OpAlternate && len(baseLiteral) != 0:
 			var changed bool
-			result, changed = pass.simplifyRegexConcatAlternates(from, sub, baseLiteral, caseInsensitive, result)
+			result, changed = pass.simplifyRegexConcatAlternates(from, sub, baseLiteral, baseLiteralIsCaseInsensitive, result)
 			if !changed {
 				return nil, false
 			}
@@ -378,7 +373,7 @@ func (pass simplifyRegexPass) simplifyRegexConcat(from Value, reg *syntax.Regexp
 	// We found a concat across literals.
 	if len(baseLiteral) > 0 {
 		op := types.BinaryOpMatchSubstr
-		if caseInsensitive {
+		if baseLiteralIsCaseInsensitive {
 			op = types.BinaryOpMatchSubstrCaseInsensitive
 		}
 		return []Node{
@@ -393,15 +388,23 @@ func (pass simplifyRegexPass) simplifyRegexConcat(from Value, reg *syntax.Regexp
 	return nil, false
 }
 
-func (pass simplifyRegexPass) simplifyRegexConcatAlternates(from Value, reg *syntax.Regexp, literal []byte, parentCaseInsensitive bool, curr []Node) ([]Node, bool) {
-	// Accumulate case-insensitive flag from parent and current node.
-	caseInsensitive := parentCaseInsensitive || util.IsCaseInsensitive(reg)
-
+func (pass simplifyRegexPass) simplifyRegexConcatAlternates(from Value, reg *syntax.Regexp, literal []byte, baseLiteralIsCaseInsensitive bool, curr []Node) ([]Node, bool) {
 	for _, alt := range reg.Sub {
+		// Reject simplification when baseLiteral is not case-insensitive
+		// but alternate expression is case-insensitive. For example, for
+		// the expression f|f(?i)oo, the extracted expression would be
+		// "f (?:)|(?i:OO)" (i.e., f with empty match and fOO). We can't
+		// initialize the filter with a case-insensitive flag that works
+		// for both cases.
+		isAltCaseInsensitive := util.IsCaseInsensitive(alt)
+		if !baseLiteralIsCaseInsensitive && isAltCaseInsensitive {
+			return nil, false
+		}
+
 		switch alt.Op {
 		case syntax.OpEmptyMatch:
 			op := types.BinaryOpMatchSubstr
-			if caseInsensitive {
+			if baseLiteralIsCaseInsensitive {
 				op = types.BinaryOpMatchSubstrCaseInsensitive
 			}
 			curr = chainOr(curr, &BinOp{
@@ -415,7 +418,7 @@ func (pass simplifyRegexPass) simplifyRegexConcatAlternates(from Value, reg *syn
 			checkLiteral := string(literal) + string(alt.Rune)
 
 			op := types.BinaryOpMatchSubstr
-			if caseInsensitive || util.IsCaseInsensitive(alt) {
+			if baseLiteralIsCaseInsensitive {
 				op = types.BinaryOpMatchSubstrCaseInsensitive
 			}
 			curr = chainOr(curr, &BinOp{
@@ -425,7 +428,7 @@ func (pass simplifyRegexPass) simplifyRegexConcatAlternates(from Value, reg *syn
 			})
 
 		case syntax.OpConcat:
-			f, ok := pass.simplifyRegexConcat(from, alt, literal, caseInsensitive)
+			f, ok := pass.simplifyRegexConcat(from, alt, literal)
 			if !ok {
 				return nil, false
 			}
@@ -437,7 +440,7 @@ func (pass simplifyRegexPass) simplifyRegexConcatAlternates(from Value, reg *syn
 				return nil, false
 			}
 			op := types.BinaryOpMatchSubstr
-			if caseInsensitive {
+			if baseLiteralIsCaseInsensitive {
 				op = types.BinaryOpMatchSubstrCaseInsensitive
 			}
 			curr = chainOr(curr, &BinOp{
