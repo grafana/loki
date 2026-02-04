@@ -52,6 +52,8 @@ type Options struct {
 	DebugStreams bool
 }
 
+var _ fmt.Stringer = (*Workflow)(nil)
+
 // Workflow represents a physical plan that has been partitioned into
 // parallelizable tasks.
 type Workflow struct {
@@ -66,8 +68,9 @@ type Workflow struct {
 	statsMut sync.Mutex
 	stats    stats.Result
 
-	captureMut sync.Mutex
-	capture    *xcap.Capture
+	captureMut   sync.Mutex
+	capture      *xcap.Capture
+	parentRegion *xcap.Region
 
 	tasksMut   sync.RWMutex
 	taskStates map[*Task]TaskState
@@ -152,6 +155,12 @@ func (wf *Workflow) init(ctx context.Context) error {
 	return wf.runner.Listen(ctx, wf.resultsPipeline, wf.resultsStream)
 }
 
+// String returns a string representation of the workflow. It is a convenience
+// method for calling [Sprint].
+func (wf *Workflow) String() string {
+	return Sprint(wf)
+}
+
 // Len returns the total number of tasks in the workflow.
 func (wf *Workflow) Len() int { return len(wf.manifest.Tasks) }
 
@@ -169,6 +178,7 @@ func (wf *Workflow) Close() {
 // resources.
 func (wf *Workflow) Run(ctx context.Context) (pipeline executor.Pipeline, err error) {
 	wf.capture = xcap.CaptureFromContext(ctx)
+	wf.parentRegion = xcap.RegionFromContext(ctx)
 
 	wrapped := &wrappedPipeline{
 		inner: wf.resultsPipeline,
@@ -431,6 +441,11 @@ func (wf *Workflow) mergeCapture(capture *xcap.Capture) {
 
 	if wf.capture == nil || capture == nil {
 		return
+	}
+
+	if wf.parentRegion != nil {
+		// Assign wf.parentRegion as the parent to all root regions of the task's capture.
+		capture.LinkParent(wf.parentRegion)
 	}
 
 	// Merge all regions from the task's capture into the workflow's capture.

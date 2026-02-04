@@ -60,7 +60,17 @@ func Test(t *testing.T) {
 	for result := range streams.Iter(context.Background(), obj) {
 		stream, err := result.Value()
 		require.NoError(t, err)
-		stream.Labels = copyLabels(stream.Labels)
+		actual = append(actual, stream)
+	}
+
+	require.Equal(t, expect, actual)
+
+	// test with reuse labels buffer
+	actual = actual[:0]
+	for result := range streams.Iter(context.Background(), obj, streams.WithReuseLabelsBuffer()) {
+		stream, err := result.Value()
+		require.NoError(t, err)
+		stream.Labels = copyLabels(stream.Labels) // copy labels since the underlying labels buffer is reused
 		actual = append(actual, stream)
 	}
 

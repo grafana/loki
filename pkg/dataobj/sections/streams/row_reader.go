@@ -23,7 +23,7 @@ type RowReader struct {
 
 	buf []dataset.Row
 
-	reader  *dataset.Reader
+	reader  *dataset.RowReader
 	columns []dataset.Column
 
 	symbols *symbolizer.Symbolizer
@@ -79,7 +79,7 @@ func (r *RowReader) Read(ctx context.Context, s []Stream) (int, error) {
 	}
 
 	for i := range r.buf[:n] {
-		if err := decodeRow(r.sec.Columns(), r.buf[i], &s[i], r.symbols); err != nil {
+		if err := decodeRow(r.sec.Columns(), r.buf[i], &s[i], r.symbols, nil, false); err != nil {
 			return i, fmt.Errorf("decoding stream: %w", err)
 		}
 	}
@@ -107,7 +107,7 @@ func (r *RowReader) initReader() error {
 	}
 
 	if r.reader == nil {
-		r.reader = dataset.NewReader(readerOpts)
+		r.reader = dataset.NewRowReader(readerOpts)
 	} else {
 		r.reader.Reset(readerOpts)
 	}
