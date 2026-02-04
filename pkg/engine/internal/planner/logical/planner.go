@@ -77,6 +77,9 @@ func buildPlanForLogQuery(
 		hasLogfmtParser  bool
 		hasJSONParser    bool
 		hasRegexParser   bool
+
+		hasPatternParser  bool
+		patternExpression string
 	)
 
 	// Do the first pass to collect the stream selector, line filters, and predicates. Only predicates listed
@@ -102,10 +105,21 @@ func buildPlanForLogQuery(
 			case syntax.OpParserTypeRegexp:
 				hasRegexParser = true
 				return true
+			case syntax.OpParserTypePattern:
+				hasPatternParser = true
+				patternExpression = e.Param
+				return true
+			case syntax.OpParserTypeUnpack:
+				// keeping these as a distinct cases so we remember to implement them later
+				err = errUnimplemented
+				return false
+			default:
+				err = errUnimplemented
+				return false
 			}
 		case *syntax.LabelFilterExpr:
 			// Collect following filters only before we met any parse stage.
-			if !hasLogfmtParser && !hasJSONParser && !hasRegexParser {
+			if !hasLogfmtParser && !hasJSONParser && !hasRegexParser && !hasPatternParser {
 				val, innerErr := convertLabelFilter(e.LabelFilterer)
 				if innerErr != nil {
 					err = innerErr
@@ -162,6 +176,15 @@ func buildPlanForLogQuery(
 	deletePredicates, err = buildDeletePredicates(ctx, deletes, params, rangeInterval)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build delete predicates: %w", err)
+	}
+	if hasPatternParser {
+		builder = builder.ParsePattern(patternExpression)
+	}
+	if hasPatternParser {
+		builder = builder.ParsePattern(patternExpression)
+	}
+	if hasPatternParser {
+		builder = builder.ParsePattern(patternExpression)
 	}
 
 	// Adding this earlier in the pipeline to avoid expensive operations on lines that will be deleted anyway.

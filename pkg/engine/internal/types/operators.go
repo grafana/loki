@@ -129,12 +129,13 @@ const (
 	// VariadicOpKindInvalid indicates an invalid unary operation.
 	VariadicOpInvalid VariadicOp = iota
 
-	VariadicOpParseLogfmt // Parse logfmt line to set of columns operation (logfmt).
-	VariadicOpParseJSON   // Parse JSON line to set of columns operation (json).
-	VariadicOpParseRegexp // Parse line with regex capture groups operation (regexp).
+	VariadicOpParseLogfmt  // Parse logfmt line to set of columns operation (logfmt).
+	VariadicOpParseJSON    // Parse JSON line to set of columns operation (json).
+	VariadicOpParseRegexp  // Parse line with regex capture groups operation (regexp).
+	VariadicOpParsePattern // Parse line with pattern expression operation (pattern).
 )
 
-// String returns the string representation of the UnaryOp.
+// String returns the string representation of the VariadicOp.
 func (t VariadicOp) String() string {
 	switch t {
 	case VariadicOpParseLogfmt:
@@ -143,6 +144,8 @@ func (t VariadicOp) String() string {
 		return "PARSE_JSON"
 	case VariadicOpParseRegexp:
 		return "PARSE_REGEXP"
+	case VariadicOpParsePattern:
+		return "PARSE_PATTERN"
 	default:
 		panic(fmt.Sprintf("unknown variadic operator %d", t))
 	}
