@@ -87,7 +87,7 @@ func TestPruneLeaves_DropsOnlyLeaves(t *testing.T) {
 	assert.Len(t, capture.Regions(), 1)
 	root := findRegionByName(capture, "root")
 	require.NotNil(t, root)
-	assert.Equal(t, uint32(1), root.DroppedRegions())
+	assert.Equal(t, uint32(1), root.droppedRegionsCount())
 }
 
 func TestPruneLeaves_DoesNotDropNonLeaves(t *testing.T) {
@@ -131,7 +131,7 @@ func TestPruneLeaves_CascadesUpward(t *testing.T) {
 	assert.Len(t, capture.Regions(), 1)
 	root := findRegionByName(capture, "root")
 	require.NotNil(t, root)
-	assert.Equal(t, uint32(2), root.DroppedRegions()) // Both A and B dropped
+	assert.Equal(t, uint32(2), root.droppedRegionsCount()) // Both A and B dropped
 }
 
 // PromoteChildren Strategy Tests
@@ -159,7 +159,7 @@ func TestPromoteChildren_ReparentsCorrectly(t *testing.T) {
 
 	root := findRegionByName(capture, "root")
 	require.NotNil(t, root)
-	assert.Equal(t, uint32(1), root.DroppedRegions())
+	assert.Equal(t, uint32(1), root.droppedRegionsCount())
 
 	B := findRegionByName(capture, "B")
 	require.NotNil(t, B)
@@ -193,7 +193,7 @@ func TestPromoteChildren_MultiLevelReparenting(t *testing.T) {
 
 	root := findRegionByName(capture, "root")
 	require.NotNil(t, root)
-	assert.Equal(t, uint32(2), root.DroppedRegions()) // A and B dropped
+	assert.Equal(t, uint32(2), root.droppedRegionsCount()) // A and B dropped
 
 	C := findRegionByName(capture, "C")
 	require.NotNil(t, C)
@@ -225,7 +225,7 @@ func TestDropSubtree_DropsEntireSubtree(t *testing.T) {
 
 	root := findRegionByName(capture, "root")
 	require.NotNil(t, root)
-	assert.Equal(t, uint32(3), root.DroppedRegions()) // A, B, C all dropped
+	assert.Equal(t, uint32(3), root.droppedRegionsCount()) // A, B, C all dropped
 }
 
 func TestDropSubtree_KeepsParallelSubtrees(t *testing.T) {
@@ -253,7 +253,7 @@ func TestDropSubtree_KeepsParallelSubtrees(t *testing.T) {
 
 	root := findRegionByName(capture, "root")
 	require.NotNil(t, root)
-	assert.Equal(t, uint32(2), root.DroppedRegions()) // A and B dropped
+	assert.Equal(t, uint32(2), root.droppedRegionsCount()) // A and B dropped
 
 	D := findRegionByName(capture, "D")
 	require.NotNil(t, D)
@@ -354,7 +354,7 @@ func TestFilter_NoRegionsDropped(t *testing.T) {
 
 	root := findRegionByName(capture, "root")
 	require.NotNil(t, root)
-	assert.Equal(t, uint32(0), root.DroppedRegions())
+	assert.Equal(t, uint32(0), root.droppedRegionsCount())
 }
 
 func TestFilter_SingleRegion(t *testing.T) {
@@ -408,9 +408,9 @@ func TestDroppedRegions_CountsAccurately(t *testing.T) {
 
 	root := findRegionByName(capture, "root")
 	require.NotNil(t, root)
-	assert.Equal(t, uint32(2), root.DroppedRegions()) // A and B
+	assert.Equal(t, uint32(2), root.droppedRegionsCount()) // A and B
 
 	C := findRegionByName(capture, "C")
 	require.NotNil(t, C)
-	assert.Equal(t, uint32(1), C.DroppedRegions()) // D
+	assert.Equal(t, uint32(1), C.droppedRegionsCount()) // D
 }

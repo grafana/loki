@@ -28,13 +28,13 @@ var (
 	globalFilterer = nopFilterer
 )
 
-// ConfigureGlobal configures the global xcap filtering settings.
+// ConfigureFilterer configures the global xcap filtering settings.
 // This should be called once at application startup.
 // Returns an error if the configuration is invalid (e.g., unknown strategy name).
 //
 // Example:
 //
-//	err := xcap.ConfigureGlobal(xcap.Config{
+//	err := xcap.ConfigureFilterer(xcap.Config{
 //	    Filtering: xcap.FilteringConfig{
 //	        MinRegionDuration: 1 * time.Millisecond,
 //	        DropStrategyName:  xcap.DropStrategyPromoteChildren,
@@ -43,7 +43,7 @@ var (
 //	if err != nil {
 //	    log.Fatal(err)
 //	}
-func ConfigureGlobal(cfg Config) error {
+func ConfigureFilterer(cfg Config) error {
 	if err := cfg.Filtering.Validate(); err != nil {
 		return err
 	}
@@ -140,8 +140,8 @@ func (ctx *filterContext) findNearestKeptAncestor(startID identifier) identifier
 		if ctx.toKeep[current] {
 			return current
 		}
-		if parent, ok := ctx.regionByID[current]; ok {
-			current = parent.parentID
+		if region, ok := ctx.regionByID[current]; ok {
+			current = region.parentID
 		} else {
 			break
 		}

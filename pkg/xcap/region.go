@@ -269,9 +269,9 @@ func (r *Region) StartTime() time.Time {
 	return r.startTime
 }
 
-// DroppedRegions returns the count of descendant regions that were
+// droppedRegionsCount returns the count of descendant regions that were
 // dropped during filtering.
-func (r *Region) DroppedRegions() uint32 {
+func (r *Region) droppedRegionsCount() uint32 {
 	if r == nil {
 		return 0
 	}
@@ -284,18 +284,4 @@ func (r *Region) addDroppedRegions(count int) {
 		return
 	}
 	r.droppedRegions.Add(uint32(count))
-}
-
-// Duration returns the duration of the region. Returns 0 if the region
-// has not ended yet.
-func (r *Region) Duration() time.Duration {
-	if r == nil {
-		return 0
-	}
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	if r.endTime.IsZero() {
-		return 0
-	}
-	return r.endTime.Sub(r.startTime)
 }

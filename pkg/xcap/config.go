@@ -1,6 +1,7 @@
 package xcap
 
 import (
+	"flag"
 	"fmt"
 	"time"
 )
@@ -12,6 +13,7 @@ const (
 	// DropStrategyPruneLeaves only drops leaf regions that are below the
 	// duration threshold. After dropping a leaf, if its parent becomes a
 	// leaf and is also below threshold, it will be dropped too (cascading upward).
+	// This is the default strategy when no strategy is specified.
 	DropStrategyPruneLeaves DropStrategyName = "prune_leaves"
 
 	// DropStrategyPromoteChildren drops regions below the duration threshold
@@ -37,9 +39,42 @@ type FilteringConfig struct {
 
 	// DropStrategyName selects a built-in drop strategy by name.
 	// Valid values: "prune_leaves", "promote_children", "drop_subtree".
+	// Defaults to "prune_leaves" if not specified.
 	//
 	// If an unknown name is provided, NewProvider will return an error.
 	DropStrategyName DropStrategyName `yaml:"drop_strategy"`
+}
+
+// RegisterFlags adds the flags required to config this to the given FlagSet.
+func (c *FilteringConfig) RegisterFlags(f *flag.FlagSet) {
+	c.RegisterFlagsWithPrefix("xcap.filtering.", f)
+}
+
+// RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet with a prefix.
+func (c *FilteringConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	f.DurationVar(&c.MinRegionDuration, prefix+"min-region-duration", 0, "Minimum duration a region must have to be retained. Regions shorter than this threshold are dropped. A value of 0 disables filtering.")
+	f.Var(newDropStrategyValue(&c.DropStrategyName), prefix+"drop-strategy", "Strategy for dropping regions below the duration threshold. Valid values: prune_leaves (default), promote_children, drop_subtree.")
+}
+
+// dropStrategyValue implements flag.Value for DropStrategyName.
+type dropStrategyValue struct {
+	val *DropStrategyName
+}
+
+func newDropStrategyValue(p *DropStrategyName) *dropStrategyValue {
+	return &dropStrategyValue{val: p}
+}
+
+func (v *dropStrategyValue) String() string {
+	if v.val == nil {
+		return string(DropStrategyPruneLeaves)
+	}
+	return string(*v.val)
+}
+
+func (v *dropStrategyValue) Set(s string) error {
+	*v.val = DropStrategyName(s)
+	return nil
 }
 
 // Config holds configuration for the xcap Provider.

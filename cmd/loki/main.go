@@ -127,7 +127,7 @@ func main() {
 		}()
 	}
 
-	if err := xcap.ConfigureGlobal(config.XCap); err != nil {
+	if err := xcap.ConfigureFilterer(config.XCap); err != nil {
 		level.Error(util_log.Logger).Log("msg", "error initializing xcap", "err", err)
 		exit(1)
 	}
