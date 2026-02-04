@@ -4,8 +4,11 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/backoff"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
@@ -127,17 +130,38 @@ func (f *flusherImpl) doJob(ctx context.Context, job flushJob) {
 func (f *flusherImpl) flush(ctx context.Context, job flushJob) (string, error) {
 	obj, closer, err := job.Flush()
 	if err != nil {
+		// Flush cannot be retried as the operation is non-idempotent.
 		return "", fmt.Errorf("failed to flush data object builder: %w", err)
 	}
 	defer closer.Close()
+	// Sort the sections object-wide.
 	obj, closer, err = f.sorter.Sort(ctx, obj)
 	if err != nil {
 		return "", fmt.Errorf("failed to sort data object: %w", err)
 	}
 	defer closer.Close()
-	objectPath, err := f.uploader.Upload(ctx, obj)
-	if err != nil {
-		return "", fmt.Errorf("failed to upload object: %w", err)
+	// Upload the data object. We use an exponential backoff to retry uploads
+	// until the context is canceled.
+	b := backoff.New(ctx, backoff.Config{
+		MinBackoff: 100 * time.Millisecond,
+		MaxBackoff: 10 * time.Second,
+		MaxRetries: 0,
+	})
+	var (
+		objectPath    string
+		lastUploadErr error
+	)
+	for b.Ongoing() {
+		objectPath, lastUploadErr = f.uploader.Upload(ctx, obj)
+		if lastUploadErr == nil {
+			break
+		}
+		level.Warn(f.logger).Log("msg", "failed to upload data object", "err", lastUploadErr, "attempt", b.NumRetries())
+		b.Wait()
 	}
+	if lastUploadErr != nil {
+		return "", fmt.Errorf("failed to upload data object: %w", lastUploadErr)
+	}
+
 	return objectPath, nil
 }
