@@ -221,7 +221,7 @@ func (r *Reader) init() error {
 		return fmt.Errorf("mapping predicates: %w", err)
 	}
 
-	innerOptions := dataset.ReaderOptions{
+	innerOptions := dataset.RowReaderOptions{
 		Dataset:    dset,
 		Columns:    dset.Columns(),
 		Predicates: preds,

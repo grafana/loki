@@ -129,7 +129,7 @@ func (r *RowReader) initReader() error {
 		predicates = append(predicates, p)
 	}
 
-	readerOpts := dataset.ReaderOptions{
+	readerOpts := dataset.RowReaderOptions{
 		Dataset:    dset,
 		Columns:    columns,
 		Predicates: predicates,

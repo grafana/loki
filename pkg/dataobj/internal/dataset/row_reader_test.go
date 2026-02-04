@@ -22,7 +22,7 @@ import (
 
 func Test_Reader_ReadAll(t *testing.T) {
 	dset, columns := buildTestDataset(t)
-	r := NewRowReader(ReaderOptions{Dataset: dset, Columns: columns})
+	r := NewRowReader(RowReaderOptions{Dataset: dset, Columns: columns})
 	defer r.Close()
 
 	actualRows, err := readDataset(r, 3)
@@ -34,7 +34,7 @@ func Test_Reader_ReadWithPredicate(t *testing.T) {
 	dset, columns := buildTestDataset(t)
 
 	// Create a predicate that only returns people born after 1985
-	r := NewRowReader(ReaderOptions{
+	r := NewRowReader(RowReaderOptions{
 		Dataset: dset,
 		Columns: columns,
 		Predicates: []Predicate{
@@ -64,7 +64,7 @@ func Test_Reader_ReadWithPredicate(t *testing.T) {
 func TestRowReader_ReadWithPageFiltering(t *testing.T) {
 	dset, columns := buildTestDataset(t)
 
-	r := NewRowReader(ReaderOptions{
+	r := NewRowReader(RowReaderOptions{
 		Dataset: dset,
 		Columns: columns,
 
@@ -119,7 +119,7 @@ func TestRowReader_ReadWithPageFilteringOnEmptyPredicate(t *testing.T) {
 	cols, err := result.Collect(dset.ListColumns(context.Background()))
 	require.NoError(t, err)
 
-	r := NewRowReader(ReaderOptions{
+	r := NewRowReader(RowReaderOptions{
 		Dataset: dset,
 		Columns: cols,
 
@@ -161,7 +161,7 @@ func Test_Reader_ReadWithPredicate_NoSecondary(t *testing.T) {
 	dset, columns := buildTestDataset(t)
 
 	// Create a predicate that only returns people born after 1985
-	r := NewRowReader(ReaderOptions{
+	r := NewRowReader(RowReaderOptions{
 		Dataset: dset,
 		Columns: []Column{columns[3]},
 		Predicates: []Predicate{
@@ -193,7 +193,7 @@ func Test_Reader_ReadWithPredicate_NoSecondary(t *testing.T) {
 
 func Test_Reader_Reset(t *testing.T) {
 	dset, columns := buildTestDataset(t)
-	r := NewRowReader(ReaderOptions{Dataset: dset, Columns: columns})
+	r := NewRowReader(RowReaderOptions{Dataset: dset, Columns: columns})
 	defer r.Close()
 
 	// First read everything
@@ -201,7 +201,7 @@ func Test_Reader_Reset(t *testing.T) {
 	require.NoError(t, err)
 
 	// Reset and read again
-	r.Reset(ReaderOptions{Dataset: dset, Columns: columns})
+	r.Reset(RowReaderOptions{Dataset: dset, Columns: columns})
 
 	actualRows, err := readDataset(r, 3)
 	require.NoError(t, err)
@@ -394,7 +394,7 @@ func Test_BuildPredicateRanges(t *testing.T) {
 	ctx := context.Background()
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			r := NewRowReader(ReaderOptions{
+			r := NewRowReader(RowReaderOptions{
 				Dataset:    ds,
 				Columns:    cols,
 				Predicates: []Predicate{tc.predicate},
@@ -543,7 +543,7 @@ func BenchmarkReader(b *testing.B) {
 
 	// Generate dataset once per case
 	ds, cols := generator.Build(b, rand.Int63())
-	opts := ReaderOptions{
+	opts := RowReaderOptions{
 		Dataset: ds,
 		Columns: cols,
 	}
@@ -609,7 +609,7 @@ func BenchmarkPredicateExecution(b *testing.B) {
 	currentPos := 0
 	batch := make([]Row, 1000)
 	// read the dataset once to pick a random row for predicate generation
-	reader := NewRowReader(ReaderOptions{
+	reader := NewRowReader(RowReaderOptions{
 		Dataset: ds,
 		Columns: cols,
 	})
@@ -688,7 +688,7 @@ func BenchmarkPredicateExecution(b *testing.B) {
 			b.ReportAllocs()
 
 			for b.Loop() {
-				reader := NewRowReader(ReaderOptions{
+				reader := NewRowReader(RowReaderOptions{
 					Dataset:    ds,
 					Columns:    cols,
 					Predicates: pp.predicates,
@@ -892,7 +892,7 @@ func Test_DatasetGenerator(t *testing.T) {
 func Test_Reader_Stats(t *testing.T) {
 	dset, columns := buildTestDataset(t)
 
-	r := NewRowReader(ReaderOptions{
+	r := NewRowReader(RowReaderOptions{
 		Dataset: dset,
 		Columns: columns,
 		Predicates: []Predicate{

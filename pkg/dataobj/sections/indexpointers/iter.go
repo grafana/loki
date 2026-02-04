@@ -50,7 +50,7 @@ func IterSection(ctx context.Context, section *Section) result.Seq[IndexPointer]
 			return err
 		}
 
-		r := dataset.NewRowReader(dataset.ReaderOptions{
+		r := dataset.NewRowReader(dataset.RowReaderOptions{
 			Dataset:  dset,
 			Columns:  columns,
 			Prefetch: true,
