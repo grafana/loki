@@ -362,7 +362,7 @@ func newTestWorkerWithContext(t *testing.T, logger log.Logger, loc objtest.Locat
 }
 
 func buildWorkflow(ctx context.Context, t *testing.T, logger log.Logger, loc objtest.Location, sched *scheduler.Scheduler, params logql.Params) *workflow.Workflow {
-	logicalPlan, err := logical.BuildPlan(params)
+	logicalPlan, err := logical.BuildPlan(ctx, params)
 	require.NoError(t, err, "expected to create logical plan")
 
 	ms := metastore.NewObjectMetastore(
@@ -391,10 +391,12 @@ func buildWorkflow(ctx context.Context, t *testing.T, logger log.Logger, loc obj
 	}
 
 	opts := workflow.Options{
+		Tenant: objtest.Tenant,
+
 		MaxRunningScanTasks:  32,
 		MaxRunningOtherTasks: 0, // unlimited
 	}
-	wf, err := workflow.New(opts, logger, objtest.Tenant, sched, plan)
+	wf, err := workflow.New(opts, logger, sched, plan)
 	require.NoError(t, err)
 
 	if testing.Verbose() {

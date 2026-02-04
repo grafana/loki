@@ -3,11 +3,13 @@ package worker
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 // nodeSource exposes data for a receiver of a stream as an [executor.Pipeline].
@@ -31,6 +33,12 @@ var _ executor.Pipeline = (*nodeSource)(nil)
 // Read returns the next record of the node data. Blocks until results are
 // available or until the provided ctx is canceled.
 func (src *nodeSource) Read(ctx context.Context) (arrow.RecordBatch, error) {
+	region := xcap.RegionFromContext(ctx)
+	startRecv := time.Now()
+	defer func() {
+		region.Record(xcap.TaskRecvDuration.Observe(time.Since(startRecv).Seconds()))
+	}()
+
 	src.lazyInit()
 
 	select {

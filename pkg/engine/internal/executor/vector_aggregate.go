@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
@@ -15,6 +16,12 @@ import (
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
+type vectorAggregationOptions struct {
+	grouping       physical.Grouping
+	operation      types.VectorAggregationType
+	maxQuerySeries int // maximum number of unique series allowed (0 means no limit)
+}
+
 // vectorAggregationPipeline is a pipeline that performs vector aggregations.
 //
 // It reads from the input pipeline, groups the data by specified columns,
@@ -24,12 +31,15 @@ type vectorAggregationPipeline struct {
 	inputsExhausted bool // indicates if all inputs are exhausted
 
 	aggregator *aggregator
-	evaluator  expressionEvaluator
+	evaluator  *expressionEvaluator
 	grouping   physical.Grouping
+	opts       vectorAggregationOptions
 	region     *xcap.Region
 
 	tsEval    evalFunc // used to evaluate the timestamp column
 	valueEval evalFunc // used to evaluate the value column
+
+	identCache *semconv.IdentifierCache
 }
 
 var (
@@ -42,21 +52,25 @@ var (
 	}
 )
 
-func newVectorAggregationPipeline(inputs []Pipeline, grouping physical.Grouping, evaluator expressionEvaluator, operation types.VectorAggregationType, region *xcap.Region) (*vectorAggregationPipeline, error) {
+func newVectorAggregationPipeline(inputs []Pipeline, evaluator *expressionEvaluator, opts vectorAggregationOptions, region *xcap.Region) (*vectorAggregationPipeline, error) {
 	if len(inputs) == 0 {
 		return nil, fmt.Errorf("vector aggregation expects at least one input")
 	}
 
-	op, ok := vectorAggregationOperations[operation]
+	op, ok := vectorAggregationOperations[opts.operation]
 	if !ok {
-		panic(fmt.Sprintf("unknown vector aggregation operation: %v", operation))
+		panic(fmt.Sprintf("unknown vector aggregation operation: %v", opts.operation))
 	}
+
+	agg := newAggregator(0, op)
+	agg.SetMaxSeries(opts.maxQuerySeries)
 
 	return &vectorAggregationPipeline{
 		inputs:     inputs,
 		evaluator:  evaluator,
-		grouping:   grouping,
-		aggregator: newAggregator(0, op),
+		grouping:   opts.grouping,
+		opts:       opts,
+		aggregator: agg,
 		region:     region,
 		tsEval: evaluator.newFunc(&physical.ColumnExpr{
 			Ref: types.ColumnRef{
@@ -70,6 +84,7 @@ func newVectorAggregationPipeline(inputs []Pipeline, grouping physical.Grouping,
 				Type:   types.ColumnTypeGenerated,
 			},
 		}),
+		identCache: semconv.NewIdentifierCache(),
 	}, nil
 }
 
@@ -82,18 +97,34 @@ func (v *vectorAggregationPipeline) Read(ctx context.Context) (arrow.RecordBatch
 }
 
 func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch, error) {
+	var (
+		inputReadTime time.Duration
+		startedAt     = time.Now()
+
+		labelValuesCache = newLabelValuesCache()
+		fieldsCache      = newFieldsCache()
+	)
+
 	v.aggregator.Reset() // reset before reading new inputs
 	inputsExhausted := false
 	for !inputsExhausted {
 		inputsExhausted = true
 
 		for _, input := range v.inputs {
+			inputStart := time.Now()
 			record, err := input.Read(ctx)
+			inputReadTime += time.Since(inputStart)
+
 			if err != nil {
 				if errors.Is(err, EOF) {
 					continue
 				}
 				return nil, err
+			}
+
+			if record.NumRows() == 0 {
+				// Nothing to process
+				continue
 			}
 
 			inputsExhausted = false
@@ -114,13 +145,13 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch
 
 			// extract all the columns that are used for grouping
 			var arrays []*array.String
-			var fields []arrow.Field
+			var groupingFields []arrow.Field
 
 			if v.grouping.Without {
 				// Grouping without a lable set. Exclude lables from that set.
 				schema := record.Schema()
 				for i, field := range schema.Fields() {
-					ident, err := semconv.ParseFQN(field.Name)
+					ident, err := v.identCache.ParseFQN(field.Name)
 					if err != nil {
 						return nil, err
 					}
@@ -149,7 +180,7 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch
 						}
 						if !found {
 							arrays = append(arrays, record.Column(i).(*array.String))
-							fields = append(fields, field)
+							groupingFields = append(groupingFields, field)
 						}
 					}
 				}
@@ -173,33 +204,40 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch
 						return nil, fmt.Errorf("invalid column expression type %T", columnExpr)
 					}
 					ident := semconv.NewIdentifier(colExpr.Ref.Column, colExpr.Ref.Type, types.Loki.String)
-					fields = append(fields, semconv.FieldFromIdent(ident, true))
+					groupingFields = append(groupingFields, semconv.FieldFromIdent(ident, true))
 				}
 			}
 
-			v.aggregator.AddLabels(fields)
-
-			labelsCache := newLabelsCache()
+			v.aggregator.AddLabels(groupingFields)
 
 			for row := range int(record.NumRows()) {
 				if valueArr.IsNull(row) {
 					continue
 				}
 
-				labels, labelValues := labelsCache.getLabels(arrays, fields, row)
+				labelValues := labelValuesCache.getLabelValues(arrays, row)
+				labels := fieldsCache.getFields(arrays, groupingFields, row)
 
-				v.aggregator.Add(tsCol.Value(row).ToTime(arrow.Nanosecond), valueArr.Value(row), labels, labelValues)
+				if err := v.aggregator.Add(tsCol.Value(row).ToTime(arrow.Nanosecond), valueArr.Value(row), labels, labelValues); err != nil {
+					return nil, err
+				}
 			}
 		}
 	}
 
 	v.inputsExhausted = true
 
+	if v.region != nil {
+		computeTime := time.Since(startedAt) - inputReadTime
+		v.region.Record(xcap.StatPipelineExecDuration.Observe(computeTime.Seconds()))
+	}
+
 	return v.aggregator.BuildRecord()
 }
 
 // Close closes the resources of the pipeline.
 func (v *vectorAggregationPipeline) Close() {
+	v.aggregator.Reset()
 	if v.region != nil {
 		v.region.End()
 	}

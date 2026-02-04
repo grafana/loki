@@ -30,7 +30,7 @@ func (p *BufferedPipeline) Read(_ context.Context) (arrow.RecordBatch, error) {
 		return nil, EOF
 	}
 
-	// Get the next record. The caller is responsible for releasing it it.
+	// Get the next record. The caller is responsible for releasing it.
 	return p.records[p.current], nil
 }
 

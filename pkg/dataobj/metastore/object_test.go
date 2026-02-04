@@ -478,6 +478,312 @@ func TestSectionsForPredicateMatchers(t *testing.T) {
 	}
 }
 
+func TestSectionsForLabelsByStreamID(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), tenantID)
+
+	builder, err := indexobj.NewBuilder(logsobj.BuilderBaseConfig{
+		TargetPageSize:          1024 * 1024,
+		TargetObjectSize:        10 * 1024 * 1024,
+		TargetSectionSize:       128,
+		BufferSize:              1024 * 1024,
+		SectionStripeMergeLimit: 2,
+	}, nil)
+	require.NoError(t, err)
+
+	// Stream 1: app=foo, env=prod
+	_, err = builder.AppendStream(tenantID, streams.Stream{
+		ID:               1,
+		Labels:           labels.New(labels.Label{Name: "app", Value: "foo"}, labels.Label{Name: "env", Value: "prod"}),
+		MinTimestamp:     now.Add(-3 * time.Hour),
+		MaxTimestamp:     now.Add(-2 * time.Hour),
+		UncompressedSize: 5,
+	})
+	require.NoError(t, err)
+	err = builder.ObserveLogLine(tenantID, "test-path", 0, 1, 1, now.Add(-3*time.Hour), 5)
+	require.NoError(t, err)
+
+	// Stream 2: app=bar, env=dev
+	_, err = builder.AppendStream(tenantID, streams.Stream{
+		ID:               2,
+		Labels:           labels.New(labels.Label{Name: "app", Value: "bar"}, labels.Label{Name: "env", Value: "dev"}),
+		MinTimestamp:     now.Add(-1 * time.Hour),
+		MaxTimestamp:     now,
+		UncompressedSize: 10,
+	})
+	require.NoError(t, err)
+	err = builder.ObserveLogLine(tenantID, "test-path", 1, 2, 2, now.Add(-1*time.Hour), 10)
+	require.NoError(t, err)
+
+	// Stream 3: app=foo, env=dev (shares app label with stream 1, env with stream 2)
+	_, err = builder.AppendStream(tenantID, streams.Stream{
+		ID:               3,
+		Labels:           labels.New(labels.Label{Name: "app", Value: "foo"}, labels.Label{Name: "env", Value: "dev"}),
+		MinTimestamp:     now.Add(-30 * time.Minute),
+		MaxTimestamp:     now.Add(-15 * time.Minute),
+		UncompressedSize: 7,
+	})
+	require.NoError(t, err)
+	err = builder.ObserveLogLine(tenantID, "test-path", 2, 3, 3, now.Add(-30*time.Minute), 7)
+	require.NoError(t, err)
+
+	// Build and store the object
+	timeRanges := builder.TimeRanges()
+	require.Len(t, timeRanges, 1)
+
+	obj, closer, err := builder.Flush()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = closer.Close() })
+
+	bucket := objstore.NewInMemBucket()
+
+	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, log.NewNopLogger())
+	require.NoError(t, uploader.RegisterMetrics(prometheus.NewPedanticRegistry()))
+
+	path, err := uploader.Upload(context.Background(), obj)
+	require.NoError(t, err)
+
+	metastoreTocWriter := NewTableOfContentsWriter(bucket, log.NewNopLogger())
+	err = metastoreTocWriter.WriteEntry(context.Background(), path, timeRanges)
+	require.NoError(t, err)
+
+	mstore := newTestObjectMetastore(bucket)
+
+	streamLabels := []string{"app", "env"}
+
+	tests := []struct {
+		name                 string
+		matchers             []*labels.Matcher
+		predicates           []*labels.Matcher
+		start, end           time.Time
+		wantCount            int
+		wantLabelsByStreamID map[int64][]string // Expected stream ID -> labels mapping
+	}{
+		{
+			name: "exact match on app=foo returns sections with correct labels per stream",
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			predicates: nil,
+			start:      now.Add(-4 * time.Hour),
+			end:        now.Add(time.Hour),
+			wantCount:  2,
+			wantLabelsByStreamID: map[int64][]string{
+				1: streamLabels,
+				3: streamLabels,
+			},
+		},
+		{
+			name: "exact match on env=dev returns sections with correct labels per stream",
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, "env", "dev"),
+			},
+			predicates: nil,
+			start:      now.Add(-4 * time.Hour),
+			end:        now.Add(time.Hour),
+			wantCount:  2,
+			wantLabelsByStreamID: map[int64][]string{
+				2: streamLabels,
+				3: streamLabels,
+			},
+		},
+		{
+			name: "combined matchers return only matching section with correct stream labels",
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),
+				labels.MustNewMatcher(labels.MatchEqual, "env", "prod"),
+			},
+			predicates: nil,
+			start:      now.Add(-4 * time.Hour),
+			end:        now.Add(time.Hour),
+			wantCount:  1,
+			wantLabelsByStreamID: map[int64][]string{
+				1: streamLabels,
+			},
+		},
+		{
+			name: "regex matcher returns multiple matching sections with correct labels per stream",
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchRegexp, "app", "foo|bar"),
+			},
+			predicates: nil,
+			start:      now.Add(-4 * time.Hour),
+			end:        now.Add(time.Hour),
+			wantCount:  3,
+			wantLabelsByStreamID: map[int64][]string{
+				1: streamLabels,
+				2: streamLabels,
+				3: streamLabels,
+			},
+		},
+		{
+			name: "non-matching combined matchers return no sections",
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, "app", "bar"),
+				labels.MustNewMatcher(labels.MatchEqual, "env", "prod"),
+			},
+			predicates:           nil,
+			start:                now.Add(-4 * time.Hour),
+			end:                  now.Add(time.Hour),
+			wantCount:            0,
+			wantLabelsByStreamID: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sectionsResp, err := mstore.Sections(ctx, SectionsRequest{tt.start, tt.end, tt.matchers, tt.predicates})
+			require.NoError(t, err)
+			require.Len(t, sectionsResp.Sections, tt.wantCount)
+
+			if tt.wantLabelsByStreamID != nil {
+				// Collect all stream ID -> labels mappings across all sections
+				gotLabelsByStreamID := make(map[int64][]string)
+				for _, section := range sectionsResp.Sections {
+					for streamID, lbls := range section.LabelsByStreamID {
+						gotLabelsByStreamID[streamID] = lbls
+					}
+				}
+
+				// Verify each expected stream ID has the correct labels
+				require.Len(t, gotLabelsByStreamID, len(tt.wantLabelsByStreamID), "unexpected number of streams")
+				for streamID, wantLabels := range tt.wantLabelsByStreamID {
+					gotLabels, ok := gotLabelsByStreamID[streamID]
+					require.True(t, ok, "missing labels for stream ID %d", streamID)
+					require.Equal(t, wantLabels, gotLabels, "labels mismatch for stream ID %d", streamID)
+				}
+			}
+		})
+	}
+}
+
+// TestIndexSectionsReader_LabelPredicatesNotFilteredByBlooms tests that predicates on known
+// stream labels are not incorrectly filtered out by bloom filters. Before this change, label filters
+// after stream selectors (e.g. `{app="foo"} | app="foo"`) would incorrectly return no results
+// because the bloom filter lookup would fail for labels that only exist as indexed stream labels,
+// not as structured metadata.
+func TestIndexSectionsReader_LabelPredicatesNotFilteredByBlooms(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), tenantID)
+
+	builder, err := indexobj.NewBuilder(logsobj.BuilderBaseConfig{
+		TargetPageSize:          1024 * 1024,
+		TargetObjectSize:        10 * 1024 * 1024,
+		TargetSectionSize:       128,
+		BufferSize:              1024 * 1024,
+		SectionStripeMergeLimit: 2,
+	}, nil)
+	require.NoError(t, err)
+
+	// Create a stream with label app=foo
+	_, err = builder.AppendStream(tenantID, streams.Stream{
+		ID:               1,
+		Labels:           labels.New(labels.Label{Name: "app", Value: "foo"}),
+		MinTimestamp:     now.Add(-3 * time.Hour),
+		MaxTimestamp:     now.Add(-2 * time.Hour),
+		UncompressedSize: 5,
+	})
+	require.NoError(t, err)
+	err = builder.ObserveLogLine(tenantID, "test-path", 0, 1, 1, now.Add(-3*time.Hour), 5)
+	require.NoError(t, err)
+	err = builder.ObserveLogLine(tenantID, "test-path", 0, 1, 1, now.Add(-2*time.Hour), 0)
+	require.NoError(t, err)
+
+	// Add a bloom filter for a metadata column (traceID), NOT for the stream label (app)
+	traceIDBloom := bloom.NewWithEstimates(10, 0.01)
+	traceIDBloom.AddString("abcd")
+	traceIDBloomBytes, err := traceIDBloom.MarshalBinary()
+	require.NoError(t, err)
+	err = builder.AppendColumnIndex(tenantID, "test-path", 0, "traceID", 0, traceIDBloomBytes)
+	require.NoError(t, err)
+
+	// Build and store the object
+	timeRanges := builder.TimeRanges()
+	require.Len(t, timeRanges, 1)
+
+	obj, closer, err := builder.Flush()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = closer.Close() })
+
+	bucket := objstore.NewInMemBucket()
+
+	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, log.NewNopLogger())
+	require.NoError(t, uploader.RegisterMetrics(prometheus.NewPedanticRegistry()))
+
+	path, err := uploader.Upload(context.Background(), obj)
+	require.NoError(t, err)
+
+	mstore := newTestObjectMetastore(bucket)
+
+	tests := []struct {
+		name          string
+		matchers      []*labels.Matcher
+		predicates    []*labels.Matcher
+		expectResults bool
+	}{
+		{
+			name: "predicate on stream label should not be filtered by blooms",
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			predicates: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			expectResults: true,
+		},
+		{
+			name: "predicate on metadata column still works",
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			predicates: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, "traceID", "abcd"),
+			},
+			expectResults: true,
+		},
+		{
+			name: "predicate on metadata column with non-matching value returns no results",
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			predicates: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, "traceID", "not-in-bloom"),
+			},
+			expectResults: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp, err := mstore.IndexSectionsReader(ctx, IndexSectionsReaderRequest{
+				IndexPath: path,
+				SectionsRequest: SectionsRequest{
+					Start:      now.Add(-4 * time.Hour),
+					End:        now.Add(time.Hour),
+					Matchers:   tt.matchers,
+					Predicates: tt.predicates,
+				},
+			})
+			require.NoError(t, err)
+			t.Cleanup(resp.Reader.Close)
+
+			// Read all records from the reader
+			var totalRows int64
+			for {
+				rec, err := resp.Reader.Read(ctx)
+				if err != nil {
+					break
+				}
+				totalRows += rec.NumRows()
+			}
+
+			if !tt.expectResults {
+				require.Equal(t, int64(0), totalRows, "expected no results")
+			} else {
+				require.NotEmpty(t, totalRows, "expected results to be returned")
+			}
+		})
+	}
+}
+
 func queryMetastore(t *testing.T, tenant string, mfunc func(context.Context, time.Time, time.Time, Metastore)) {
 	now := time.Now().UTC()
 	start := now.Add(-time.Hour * 5)

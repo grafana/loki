@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/gorilla/mux"
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
@@ -14,6 +15,7 @@ import (
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/worker"
 )
@@ -54,6 +56,10 @@ type WorkerParams struct {
 	// Absolute path of the endpoint where the frame handler is registered.
 	// Used for connecting to scheduler and other workers.
 	Endpoint string
+
+	// StreamFilterer is an optional filterer that can filter streams based on their labels.
+	// When set, streams are filtered before scanning.
+	StreamFilterer executor.RequestStreamFilterer
 }
 
 // Worker requests tasks from a [Scheduler] and executes them. Task results are
@@ -71,6 +77,11 @@ type Worker struct {
 func NewWorker(params WorkerParams) (*Worker, error) {
 	if params.Config.SchedulerLookupAddress != "" && params.Config.SchedulerLookupInterval == 0 {
 		return nil, errors.New("scheduler lookup interval must be non-zero when a scheduler lookup address is provided")
+	}
+
+	if params.Config.SchedulerLookupInterval < time.Second {
+		level.Warn(params.Logger).Log("msg", "scheduler lookup interval is configured to be less than 1 second, overriding to 1 second")
+		params.Config.SchedulerLookupInterval = time.Second
 	}
 
 	if params.Endpoint == "" {
@@ -129,6 +140,8 @@ func NewWorker(params WorkerParams) (*Worker, error) {
 		NumThreads: params.Config.WorkerThreads,
 
 		Endpoint: params.Endpoint,
+
+		StreamFilterer: params.StreamFilterer,
 	})
 	if err != nil {
 		return nil, err

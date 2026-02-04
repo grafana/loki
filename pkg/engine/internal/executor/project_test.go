@@ -38,7 +38,7 @@ func TestNewProjectPipeline(t *testing.T) {
 
 		// Create project pipeline
 		e := newExpressionEvaluator()
-		projectPipeline, err := NewProjectPipeline(inputPipeline, &physical.Projection{Expressions: columns}, &e, nil)
+		projectPipeline, err := NewProjectPipeline(inputPipeline, &physical.Projection{Expressions: columns}, e, nil)
 		require.NoError(t, err)
 
 		// Create expected output
@@ -76,7 +76,7 @@ func TestNewProjectPipeline(t *testing.T) {
 
 		// Create project pipeline
 		e := newExpressionEvaluator()
-		projectPipeline, err := NewProjectPipeline(inputPipeline, &physical.Projection{Expressions: columns}, &e, nil)
+		projectPipeline, err := NewProjectPipeline(inputPipeline, &physical.Projection{Expressions: columns}, e, nil)
 		require.NoError(t, err)
 
 		// Create expected output
@@ -120,7 +120,7 @@ func TestNewProjectPipeline(t *testing.T) {
 
 		// Create project pipeline
 		e := newExpressionEvaluator()
-		projectPipeline, err := NewProjectPipeline(inputPipeline, &physical.Projection{Expressions: columns}, &e, nil)
+		projectPipeline, err := NewProjectPipeline(inputPipeline, &physical.Projection{Expressions: columns}, e, nil)
 		require.NoError(t, err)
 
 		// Create expected output also split across multiple records
@@ -225,7 +225,7 @@ Dave,40
 					All:         true,
 					Drop:        true,
 				}
-				pipeline, err := NewProjectPipeline(input, proj, &expressionEvaluator{}, nil)
+				pipeline, err := NewProjectPipeline(input, proj, newExpressionEvaluator(), nil)
 				require.NoError(t, err)
 
 				ctx := t.Context()
@@ -372,8 +372,8 @@ func TestNewProjectPipeline_ProjectionFunction_ExpandWithCast(t *testing.T) {
 			expectedOutput: arrowtest.Rows{
 				{"utf8.builtin.message": "valid numeric", "utf8.parsed.mixed_values": "42.5",
 					"float64.generated.value":          42.5,
-					"utf8.generated.__error__":         nil,
-					"utf8.generated.__error_details__": nil},
+					"utf8.generated.__error__":         "",
+					"utf8.generated.__error_details__": ""},
 				{"utf8.builtin.message": "invalid numeric", "utf8.parsed.mixed_values": "not_a_number",
 					"float64.generated.value":          0.0,
 					"utf8.generated.__error__":         types.SampleExtractionErrorType,
@@ -390,6 +390,36 @@ func TestNewProjectPipeline_ProjectionFunction_ExpandWithCast(t *testing.T) {
 					"float64.generated.value":          0.0,
 					"utf8.generated.__error__":         types.SampleExtractionErrorType,
 					"utf8.generated.__error_details__": `strconv.ParseFloat: parsing "": invalid syntax`}, // empty string gets error from previous parsing
+			},
+		},
+		{
+			name: "existing error columns",
+			schema: arrow.NewSchema([]arrow.Field{
+				semconv.FieldFromIdent(semconv.ColumnIdentMessage, false),
+				semconv.FieldFromFQN("utf8.parsed.mixed_values", true),
+				semconv.FieldFromIdent(semconv.ColumnIdentError, false),
+				semconv.FieldFromIdent(semconv.ColumnIdentErrorDetails, false),
+			}, nil),
+			input: arrowtest.Rows{
+				{"utf8.builtin.message": "valid numeric", "utf8.parsed.mixed_values": "42.5", "utf8.generated.__error__": "", "utf8.generated.__error_details__": ""},
+				{"utf8.builtin.message": "invalid numeric", "utf8.parsed.mixed_values": "not_a_number", "utf8.generated.__error__": "My error", "utf8.generated.__error_details__": "Some error"},
+			},
+			columnExprs: []physical.Expression{
+				&physical.UnaryExpr{
+					Op:   types.UnaryOpCastFloat,
+					Left: &physical.ColumnExpr{Ref: createAmbiguousColumnRef("mixed_values")},
+				},
+			},
+			expectedFields: 5,
+			expectedOutput: arrowtest.Rows{
+				{"utf8.builtin.message": "valid numeric", "utf8.parsed.mixed_values": "42.5",
+					"float64.generated.value":          42.5,
+					"utf8.generated.__error__":         "",
+					"utf8.generated.__error_details__": ""},
+				{"utf8.builtin.message": "invalid numeric", "utf8.parsed.mixed_values": "not_a_number",
+					"float64.generated.value":          0.0,
+					"utf8.generated.__error__":         "My error; SampleExtractionErr",
+					"utf8.generated.__error_details__": `Some error; strconv.ParseFloat: parsing "not_a_number": invalid syntax`},
 			},
 		},
 		{
@@ -415,13 +445,13 @@ func TestNewProjectPipeline_ProjectionFunction_ExpandWithCast(t *testing.T) {
 				{"utf8.builtin.message": "scientific notation",
 					"utf8.parsed.edge_values":          "1.23e+02",
 					"float64.generated.value":          123.0,
-					"utf8.generated.__error__":         nil,
-					"utf8.generated.__error_details__": nil}, // empty string gets error from previous parsing
+					"utf8.generated.__error__":         "",
+					"utf8.generated.__error_details__": ""}, // empty string gets error from previous parsing
 				{"utf8.builtin.message": "negative number",
 					"utf8.parsed.edge_values":          "-456.78",
 					"float64.generated.value":          -456.78,
-					"utf8.generated.__error__":         nil,
-					"utf8.generated.__error_details__": nil}, // empty string gets error from previous parsing
+					"utf8.generated.__error__":         "",
+					"utf8.generated.__error_details__": ""}, // empty string gets error from previous parsing
 				{"utf8.builtin.message": "only whitespace", "utf8.parsed.edge_values": "   ",
 					"float64.generated.value":          0.0,
 					"utf8.generated.__error__":         types.SampleExtractionErrorType,
@@ -456,18 +486,18 @@ func TestNewProjectPipeline_ProjectionFunction_ExpandWithCast(t *testing.T) {
 				{"utf8.builtin.message": "negative duration",
 					"utf8.parsed.duration_values":      "-5s",
 					"float64.generated.value":          -5.0,
-					"utf8.generated.__error__":         nil,
-					"utf8.generated.__error_details__": nil},
+					"utf8.generated.__error__":         "",
+					"utf8.generated.__error_details__": ""},
 				{"utf8.builtin.message": "zero duration",
 					"utf8.parsed.duration_values":      "0s",
 					"float64.generated.value":          0.0,
-					"utf8.generated.__error__":         nil,
-					"utf8.generated.__error_details__": nil},
+					"utf8.generated.__error__":         "",
+					"utf8.generated.__error_details__": ""},
 				{"utf8.builtin.message": "fractional duration",
 					"utf8.parsed.duration_values":      "1.5s",
 					"float64.generated.value":          1.5,
-					"utf8.generated.__error__":         nil,
-					"utf8.generated.__error_details__": nil},
+					"utf8.generated.__error__":         "",
+					"utf8.generated.__error_details__": ""},
 				{"utf8.builtin.message": "invalid duration",
 					"utf8.parsed.duration_values":      "5 seconds",
 					"float64.generated.value":          0.0,
@@ -491,7 +521,7 @@ func TestNewProjectPipeline_ProjectionFunction_ExpandWithCast(t *testing.T) {
 					Expand:      true,
 					All:         true,
 				},
-				&e,
+				e,
 				nil)
 			require.NoError(t, err)
 			defer pipeline.Close()
@@ -555,7 +585,7 @@ func TestNewProjectPipeline_ProjectionFunction_ExpandWithBinOn(t *testing.T) {
 			Expand: true,
 		}
 
-		pipeline, err := NewProjectPipeline(input1, projection, &expressionEvaluator{}, nil)
+		pipeline, err := NewProjectPipeline(input1, projection, newExpressionEvaluator(), nil)
 		require.NoError(t, err)
 		defer pipeline.Close()
 
@@ -625,7 +655,7 @@ func TestNewProjectPipeline_ProjectionFunction_ExpandWithBinOn(t *testing.T) {
 			Expand: true,
 		}
 
-		pipeline, err := NewProjectPipeline(input1, projection, &expressionEvaluator{}, nil)
+		pipeline, err := NewProjectPipeline(input1, projection, newExpressionEvaluator(), nil)
 		require.NoError(t, err)
 		defer pipeline.Close()
 
@@ -695,7 +725,7 @@ func TestNewProjectPipeline_ProjectionFunction_ExpandWithBinOn(t *testing.T) {
 			Expand: true,
 		}
 
-		pipeline, err := NewProjectPipeline(input1, projection, &expressionEvaluator{}, nil)
+		pipeline, err := NewProjectPipeline(input1, projection, newExpressionEvaluator(), nil)
 		require.NoError(t, err)
 		defer pipeline.Close()
 

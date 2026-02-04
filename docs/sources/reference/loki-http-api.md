@@ -1434,6 +1434,11 @@ GET /loki/api/v1/delete
 
 This endpoint returns both processed and unprocessed deletion requests. It does not list canceled requests, as those requests will have been removed from storage.
 
+Query parameters:
+
+- `start=<rfc3339 | unix_seconds_timestamp>`: Optional. A timestamp that identifies the start of the time range. Only deletion requests that overlap with this time range will be returned. Must be provided together with `end`.
+- `end=<rfc3339 | unix_seconds_timestamp>`: Optional. A timestamp that identifies the end of the time range. Only deletion requests that overlap with this time range will be returned. Must be provided together with `start`.
+
 #### Examples
 
 Example cURL command:

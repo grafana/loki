@@ -20,7 +20,7 @@ services:
       - loki
 
   grafana:
-    image: grafana/grafana:12.3.0@sha256:70d9599b186ce287be0d2c5ba9a78acb2e86c1a68c9c41449454d0fc3eeb84e8
+    image: grafana/grafana:12.3.2@sha256:ba93c9d192e58b23e064c7f501d453426ccf4a85065bf25b705ab1e98602bfb1
     ports:
       - "3000:3000"
     environment:
@@ -34,7 +34,7 @@ services:
       - loki
 
   prometheus:
-    image: prom/prometheus:v3.8.0@sha256:d936808bdea528155c0154a922cd42fd75716b8bb7ba302641350f9f3eaeba09
+    image: prom/prometheus:v3.9.1@sha256:1f0f50f06acaceb0f5670d2c8a658a599affe7b0d8e78b898c1035653849a702
     ports:
       - 9090
     volumes:
@@ -198,7 +198,7 @@ services:
 
   # alertmanager to enable receiving alerts
   alertmanager:
-    image: prom/alertmanager:v0.29.0@sha256:88743b63b3e09ea6e31e140ced5bf45f4a8e82c617c2a963f78841f4995ad1d7
+    image: prom/alertmanager:v0.30.1@sha256:286ad8838533a5a01d89bd09643f43d2b68b65203123b5700e54a8f80ff9c1f4
     restart: unless-stopped
     ports:
       - "9093:9093"

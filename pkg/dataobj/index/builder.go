@@ -193,7 +193,7 @@ func NewIndexBuilder(
 	}
 	s.client = eventConsumerClient
 
-	s.Service = services.NewBasicService(nil, s.running, s.stopping)
+	s.Service = services.NewBasicService(s.starting, s.running, s.stopping)
 
 	return s, nil
 }
@@ -231,7 +231,7 @@ func (p *Builder) handlePartitionsRevoked(_ context.Context, _ *kgo.Client, topi
 	}
 }
 
-func (p *Builder) running(ctx context.Context) error {
+func (p *Builder) starting(ctx context.Context) error {
 	// Start indexer service first
 	if err := p.indexer.StartAsync(ctx); err != nil {
 		return fmt.Errorf("failed to start indexer service: %w", err)
@@ -243,9 +243,7 @@ func (p *Builder) running(ctx context.Context) error {
 	// Start flush worker if configured
 	if p.cfg.FlushInterval > 0 {
 		p.flushTicker = time.NewTicker(p.cfg.FlushInterval)
-		p.wg.Add(1)
-		go func() {
-			defer p.wg.Done()
+		p.wg.Go(func() {
 			defer p.flushTicker.Stop()
 
 			for {
@@ -256,11 +254,14 @@ func (p *Builder) running(ctx context.Context) error {
 					return
 				}
 			}
-		}()
+		})
 	}
 
 	level.Info(p.logger).Log("msg", "started index builder service")
+	return nil
+}
 
+func (p *Builder) running(ctx context.Context) error {
 	// Main Kafka processing loop
 	for {
 		select {
@@ -337,6 +338,7 @@ func (p *Builder) processRecord(ctx context.Context, record *kgo.Record) {
 		level.Error(p.logger).Log("msg", "failed to commit records", "err", err, "partition", record.Partition)
 		return
 	}
+	p.markEventsCompleted(record.Partition, len(records))
 }
 
 // Appends a record and returns a slice of buffered events to index. The slice will be empty if no indexing is required.
@@ -367,10 +369,20 @@ func (p *Builder) cleanupPartition(partition int32) {
 
 	if state, ok := p.partitionStates[partition]; ok {
 		// Clear processed events and reset processing flag
-		state.events = state.events[:0]
 		state.isProcessing = false
 		state.lastActivity = time.Now()
 	}
+}
+
+func (p *Builder) markEventsCompleted(partition int32, eventsProcessed int) {
+	p.partitionsMutex.Lock()
+	defer p.partitionsMutex.Unlock()
+
+	state, ok := p.partitionStates[partition]
+	if !ok {
+		return
+	}
+	state.events = state.events[eventsProcessed:]
 }
 
 func (p *Builder) checkAndFlushStalePartitions(ctx context.Context) {

@@ -45,6 +45,7 @@ var (
 		types.VariadicOpInvalid:     VARIADIC_OP_INVALID,
 		types.VariadicOpParseLogfmt: VARIADIC_OP_PARSE_LOGFMT,
 		types.VariadicOpParseJSON:   VARIADIC_OP_PARSE_JSON,
+		types.VariadicOpParseRegexp: VARIADIC_OP_PARSE_REGEXP,
 	}
 
 	protoColumnTypeLookup = map[types.ColumnType]ColumnType{

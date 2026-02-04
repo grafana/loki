@@ -16,18 +16,28 @@ import (
 
 func parseFn(op types.VariadicOp) VariadicFunction {
 	return VariadicFunctionFunc(func(args ...arrow.Array) (arrow.Array, error) {
-		sourceCol, requestedKeys, strict, keepEmpty, err := extractParseFnParameters(args)
-		if err != nil {
-			panic(err)
-		}
-
 		var headers []string
 		var parsedColumns []arrow.Array
+
 		switch op {
 		case types.VariadicOpParseLogfmt:
+			sourceCol, requestedKeys, strict, keepEmpty, err := extractParseFnParameters(args)
+			if err != nil {
+				panic(err)
+			}
 			headers, parsedColumns = buildLogfmtColumns(sourceCol, requestedKeys, strict, keepEmpty)
 		case types.VariadicOpParseJSON:
+			sourceCol, requestedKeys, _, _, err := extractParseFnParameters(args)
+			if err != nil {
+				panic(err)
+			}
 			headers, parsedColumns = buildJSONColumns(sourceCol, requestedKeys)
+		case types.VariadicOpParseRegexp:
+			sourceCol, pattern, err := extractRegexpParseFnParameters(args)
+			if err != nil {
+				panic(err)
+			}
+			headers, parsedColumns = buildRegexpColumns(sourceCol, pattern)
 		default:
 			return nil, fmt.Errorf("unsupported parser kind: %v", op)
 		}
@@ -49,6 +59,55 @@ func parseFn(op types.VariadicOp) VariadicFunction {
 
 		return array.NewStructArrayWithFields(parsedColumns, newFields)
 	})
+}
+
+func extractRegexpParseFnParameters(args []arrow.Array) (*array.String, string, error) {
+	// Valid signature: parseRegexp(sourceColVec, pattern)
+	if len(args) != 2 {
+		return nil, "", fmt.Errorf("regexp parse function expected 2 arguments, got %d", len(args))
+	}
+
+	sourceColArr := args[0]
+	patternArr := args[1]
+
+	if sourceColArr == nil {
+		return nil, "", fmt.Errorf("regexp parse function arguments did not include a source ColumnVector")
+	}
+
+	sourceCol, ok := sourceColArr.(*array.String)
+	if !ok {
+		return nil, "", fmt.Errorf("regexp parse can only operate on string column types, got %T", sourceColArr)
+	}
+
+	// Extract pattern (scalar string)
+	var pattern string
+	if patternArr != nil && patternArr.Len() > 0 {
+		strArr, ok := patternArr.(*array.String)
+		if !ok {
+			return nil, "", fmt.Errorf("pattern must be a string, got %T", patternArr)
+		}
+		pattern = strArr.Value(0)
+	}
+
+	return sourceCol, pattern, nil
+}
+
+func buildErrorColumns(input *array.String, errType, errDetails string) ([]string, []arrow.Array) {
+	errBuilder := array.NewStringBuilder(memory.DefaultAllocator)
+	errDetailsBuilder := array.NewStringBuilder(memory.DefaultAllocator)
+
+	for i := 0; i < input.Len(); i++ {
+		errBuilder.Append(errType)
+		errDetailsBuilder.Append(errDetails)
+	}
+
+	return []string{
+			semconv.ColumnIdentError.ShortName(),
+			semconv.ColumnIdentErrorDetails.ShortName(),
+		}, []arrow.Array{
+			errBuilder.NewArray(),
+			errDetailsBuilder.NewArray(),
+		}
 }
 
 func extractParseFnParameters(args []arrow.Array) (*array.String, []string, bool, bool, error) {
@@ -140,7 +199,7 @@ func parseLines(input *array.String, columnBuilders map[string]*array.StringBuil
 	var errorBuilder, errorDetailsBuilder *array.StringBuilder
 	hasErrorColumns := false
 
-	for i := 0; i < input.Len(); i++ {
+	for i := range input.Len() {
 		line := input.Value(i)
 		parsed, err := parseFunc(line)
 
@@ -161,8 +220,8 @@ func parseLines(input *array.String, columnBuilders map[string]*array.StringBuil
 
 				// Backfill NULLs for previous rows
 				for j := 0; j < i; j++ {
-					errorBuilder.AppendNull()
-					errorDetailsBuilder.AppendNull()
+					errorBuilder.Append("")
+					errorDetailsBuilder.Append("")
 				}
 			}
 			// Append error values
@@ -173,8 +232,8 @@ func parseLines(input *array.String, columnBuilders map[string]*array.StringBuil
 			// Only add NULLs for columns that already exist
 		} else if hasErrorColumns {
 			// No error on this row, but we have error columns
-			errorBuilder.AppendNull()
-			errorDetailsBuilder.AppendNull()
+			errorBuilder.Append("")
+			errorDetailsBuilder.Append("")
 		}
 
 		// Track which keys we've seen this row

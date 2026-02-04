@@ -255,6 +255,8 @@ func (g *TestCaseGenerator) Generate() []TestCase {
 	addMetricQuery(fmt.Sprintf(`max by () (avg_over_time({service_name="loki"} | logfmt | duration != "" | unwrap duration_seconds(duration) [%s]))`, rangeInterval), start, end, step)
 	addMetricQuery(fmt.Sprintf(`max by (level) (avg_over_time({service_name="loki"} | logfmt | duration != "" | unwrap duration_seconds(duration) [%s]) without (service_name))`, rangeInterval), start, end, step)
 	addMetricQuery(fmt.Sprintf(`max without () (sum_over_time({service_name="loki"} | logfmt | duration != "" | unwrap duration_seconds(duration) [%s]))`, rangeInterval), start, end, step)
+	addMetricQuery(fmt.Sprintf(`avg_over_time({service_name="loki"} | logfmt | duration != "" | unwrap duration_seconds(duration) [%s])`, rangeInterval), start, end, step)
+	addMetricQuery(fmt.Sprintf(`sum_over_time({service_name="database"} | json | unwrap rows_affected [%s])`, rangeInterval), start, end, step)
 
 	// Dense period queries
 	for _, interval := range g.logGenCfg.DenseIntervals {

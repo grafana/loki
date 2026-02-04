@@ -1814,6 +1814,9 @@ PodStatusMap
 </tr><tr><td><p>&#34;FailedComponents&#34;</p></td>
 <td><p>ReasonFailedComponents when all/some LokiStack components fail to roll out.</p>
 </td>
+</tr><tr><td><p>&#34;InsufficientIngesterReplicas&#34;</p></td>
+<td><p>ReasonInsufficientIngesterReplicas when the ingester replicas are less than or equal to the replication factor. Which causes log ingestion to stop when ingester pods get restarted.</p>
+</td>
 </tr><tr><td><p>&#34;InvalidGatewayTLSConfig&#34;</p></td>
 <td><p>ReasonInvalidGatewayTLSConfig when the referenced TLS Secret or ConfigMap is invalid or missing required keys.</p>
 </td>

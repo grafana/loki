@@ -194,6 +194,7 @@
   },
   osvVulnerabilityAlerts: true,
   prConcurrentLimit: 0,
+  branchConcurrentLimit: 0,
   rebaseWhen: 'auto',
   branchPrefix: 'deps-update/',
   postUpdateOptions: [

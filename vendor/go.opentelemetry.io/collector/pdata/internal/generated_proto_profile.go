@@ -18,17 +18,17 @@ import (
 // Profile are an implementation of the pprofextended data model.
 
 type Profile struct {
-	SampleType             ValueType
-	Samples                []*Sample
-	TimeUnixNano           uint64
-	DurationNano           uint64
-	PeriodType             ValueType
-	Period                 int64
-	ProfileId              ProfileID
-	DroppedAttributesCount uint32
 	OriginalPayloadFormat  string
+	Samples                []*Sample
 	OriginalPayload        []byte
 	AttributeIndices       []int32
+	TimeUnixNano           uint64
+	DurationNano           uint64
+	Period                 int64
+	SampleType             ValueType
+	PeriodType             ValueType
+	DroppedAttributesCount uint32
+	ProfileId              ProfileID
 }
 
 var (
@@ -55,12 +55,13 @@ func DeleteProfile(orig *Profile, nullable bool) {
 		orig.Reset()
 		return
 	}
-
 	DeleteValueType(&orig.SampleType, false)
 	for i := range orig.Samples {
 		DeleteSample(orig.Samples[i], true)
 	}
+
 	DeleteValueType(&orig.PeriodType, false)
+
 	DeleteProfileID(&orig.ProfileId, false)
 
 	orig.Reset()
@@ -87,21 +88,15 @@ func CopyProfile(dest, src *Profile) *Profile {
 	dest.Samples = CopySamplePtrSlice(dest.Samples, src.Samples)
 
 	dest.TimeUnixNano = src.TimeUnixNano
-
 	dest.DurationNano = src.DurationNano
-
 	CopyValueType(&dest.PeriodType, &src.PeriodType)
 
 	dest.Period = src.Period
-
 	CopyProfileID(&dest.ProfileId, &src.ProfileId)
 
 	dest.DroppedAttributesCount = src.DroppedAttributesCount
-
 	dest.OriginalPayloadFormat = src.OriginalPayloadFormat
-
 	dest.OriginalPayload = src.OriginalPayload
-
 	dest.AttributeIndices = append(dest.AttributeIndices[:0], src.AttributeIndices...)
 
 	return dest
@@ -215,6 +210,7 @@ func (orig *Profile) MarshalJSON(dest *json.Stream) {
 		}
 		dest.WriteArrayEnd()
 	}
+
 	dest.WriteObjectEnd()
 }
 
@@ -270,30 +266,33 @@ func (orig *Profile) SizeProto() int {
 		l = orig.Samples[i].SizeProto()
 		n += 1 + proto.Sov(uint64(l)) + l
 	}
-	if orig.TimeUnixNano != 0 {
+	if orig.TimeUnixNano != uint64(0) {
 		n += 9
 	}
-	if orig.DurationNano != 0 {
+	if orig.DurationNano != uint64(0) {
 		n += 1 + proto.Sov(uint64(orig.DurationNano))
 	}
 	l = orig.PeriodType.SizeProto()
 	n += 1 + proto.Sov(uint64(l)) + l
-	if orig.Period != 0 {
+	if orig.Period != int64(0) {
 		n += 1 + proto.Sov(uint64(orig.Period))
 	}
 	l = orig.ProfileId.SizeProto()
 	n += 1 + proto.Sov(uint64(l)) + l
-	if orig.DroppedAttributesCount != 0 {
+	if orig.DroppedAttributesCount != uint32(0) {
 		n += 1 + proto.Sov(uint64(orig.DroppedAttributesCount))
 	}
+
 	l = len(orig.OriginalPayloadFormat)
 	if l > 0 {
 		n += 1 + proto.Sov(uint64(l)) + l
 	}
+
 	l = len(orig.OriginalPayload)
 	if l > 0 {
 		n += 1 + proto.Sov(uint64(l)) + l
 	}
+
 	if len(orig.AttributeIndices) > 0 {
 		l = 0
 		for _, e := range orig.AttributeIndices {
@@ -321,13 +320,13 @@ func (orig *Profile) MarshalProto(buf []byte) int {
 		pos--
 		buf[pos] = 0x12
 	}
-	if orig.TimeUnixNano != 0 {
+	if orig.TimeUnixNano != uint64(0) {
 		pos -= 8
 		binary.LittleEndian.PutUint64(buf[pos:], uint64(orig.TimeUnixNano))
 		pos--
 		buf[pos] = 0x19
 	}
-	if orig.DurationNano != 0 {
+	if orig.DurationNano != uint64(0) {
 		pos = proto.EncodeVarint(buf, pos, uint64(orig.DurationNano))
 		pos--
 		buf[pos] = 0x20
@@ -338,7 +337,7 @@ func (orig *Profile) MarshalProto(buf []byte) int {
 	pos--
 	buf[pos] = 0x2a
 
-	if orig.Period != 0 {
+	if orig.Period != int64(0) {
 		pos = proto.EncodeVarint(buf, pos, uint64(orig.Period))
 		pos--
 		buf[pos] = 0x30
@@ -349,7 +348,7 @@ func (orig *Profile) MarshalProto(buf []byte) int {
 	pos--
 	buf[pos] = 0x3a
 
-	if orig.DroppedAttributesCount != 0 {
+	if orig.DroppedAttributesCount != uint32(0) {
 		pos = proto.EncodeVarint(buf, pos, uint64(orig.DroppedAttributesCount))
 		pos--
 		buf[pos] = 0x40
@@ -451,7 +450,6 @@ func (orig *Profile) UnmarshalProto(buf []byte) error {
 			if err != nil {
 				return err
 			}
-
 			orig.DurationNano = uint64(num)
 
 		case 5:
@@ -479,7 +477,6 @@ func (orig *Profile) UnmarshalProto(buf []byte) error {
 			if err != nil {
 				return err
 			}
-
 			orig.Period = int64(num)
 
 		case 7:
@@ -507,7 +504,6 @@ func (orig *Profile) UnmarshalProto(buf []byte) error {
 			if err != nil {
 				return err
 			}
-
 			orig.DroppedAttributesCount = uint32(num)
 
 		case 9:

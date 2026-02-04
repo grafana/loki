@@ -6,7 +6,7 @@ on:
       - main
     paths:
       - "cmd/querytee/**"
-      - "tools/querytee/**"
+      - "pkg/querytee/**"
       - ".github/workflows/querytee-images.yml"
   workflow_dispatch:
 

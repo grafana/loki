@@ -6,6 +6,9 @@ on:
     paths:
       - "pkg/engine/**"
       - "pkg/dataobj/**"
+      - "pkg/memory/**"
+      - "pkg/columnar/**"
+      - "pkg/compute/**"
   workflow_dispatch:
     inputs:
       ref:
@@ -90,7 +93,9 @@ jobs:
         shell: bash # Use bash shell to propagate pipe failures
         run: |
           go test \
+            -o results/bench.test \
             -v -slow-tests -remote-transport=${{ matrix.remote_transport }} -timeout=60m \
+            -cpuprofile=results/cpu.pprof -memprofile=results/mem.pprof \
             -run=TestStorageEquality/query=.+/kind=.+/store=${{ matrix.store }}$ \
             ${{ matrix.range_type == 'instant' && '-range-type=instant' || '' }} \
             ${{ inputs.failfast == true && '-failfast' || '' }} \

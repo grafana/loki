@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/apache/arrow-go/v18/arrow/scalar"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -39,6 +41,9 @@ import (
 
 const (
 	metastoreWindowSize = 12 * time.Hour
+
+	// TocPrefix is the prefix under which ToC files are stored in the object storage.
+	TocPrefix = "tocs/"
 )
 
 type ObjectMetastore struct {
@@ -56,15 +61,20 @@ type SectionKey struct {
 type DataobjSectionDescriptor struct {
 	SectionKey
 
-	StreamIDs []int64
-	RowCount  int
-	Size      int64
-	Start     time.Time
-	End       time.Time
+	StreamIDs        []int64
+	RowCount         int
+	Size             int64
+	Start            time.Time
+	End              time.Time
+	LabelsByStreamID map[int64][]string
 }
 
 func NewSectionDescriptor(pointer pointers.SectionPointer) *DataobjSectionDescriptor {
-	return &DataobjSectionDescriptor{
+	return NewSectionDescriptorWithLabels(pointer, nil)
+}
+
+func NewSectionDescriptorWithLabels(pointer pointers.SectionPointer, lbls []string) *DataobjSectionDescriptor {
+	obj := &DataobjSectionDescriptor{
 		SectionKey: SectionKey{
 			ObjectPath: pointer.Path,
 			SectionIdx: pointer.Section,
@@ -75,6 +85,12 @@ func NewSectionDescriptor(pointer pointers.SectionPointer) *DataobjSectionDescri
 		Start:     pointer.StartTs,
 		End:       pointer.EndTs,
 	}
+	if len(lbls) > 0 {
+		obj.LabelsByStreamID = map[int64][]string{
+			pointer.StreamIDRef: lbls,
+		}
+	}
+	return obj
 }
 
 func (d *DataobjSectionDescriptor) Merge(pointer pointers.SectionPointer) {
@@ -89,9 +105,22 @@ func (d *DataobjSectionDescriptor) Merge(pointer pointers.SectionPointer) {
 	}
 }
 
+func (d *DataobjSectionDescriptor) MergeWithLabels(pointer pointers.SectionPointer, lbls []string) {
+	curLbls, exists := d.LabelsByStreamID[pointer.StreamIDRef]
+	if !exists {
+		d.LabelsByStreamID[pointer.StreamIDRef] = lbls
+		return
+	}
+
+	curLbls = append(curLbls, lbls...)
+	d.LabelsByStreamID[pointer.StreamIDRef] = curLbls
+
+	d.Merge(pointer)
+}
+
 // Table of Content files are stored in well-known locations that can be computed from a known time.
 func tableOfContentsPath(window time.Time) string {
-	return fmt.Sprintf("tocs/%s.toc", strings.ReplaceAll(window.Format(time.RFC3339), ":", "_"))
+	return fmt.Sprintf("%s%s.toc", TocPrefix, strings.ReplaceAll(window.Format(time.RFC3339), ":", "_"))
 }
 
 func iterTableOfContentsPaths(start, end time.Time) iter.Seq2[string, multitenancy.TimeRange] {
@@ -394,6 +423,81 @@ func (m *ObjectMetastore) listObjects(ctx context.Context, path string, sStart, 
 	return objectPaths, nil
 }
 
+// forEachStreamWithColumns iterates over the streams in the object and calls the callback function for each stream that matches the matchers and includes the requested columns
+// requestedColumnValues is a slice of values for the requested columns in the order they were requested. Columns without values  be empty strings.
+// The requestedColumnValues slice is only valid for the duration of the callback function.
+func forEachStreamWithColumns(ctx context.Context, object *dataobj.Object, matchers []*labels.Matcher, sStart, sEnd *scalar.Timestamp, includeColumns func(*streams.Column) bool, f func(streamID int64, requestedColumnValues map[string]string)) error {
+	targetTenant, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return fmt.Errorf("extracting org ID: %w", err)
+	}
+	var reader streams.Reader
+	defer reader.Close()
+
+	for _, section := range object.Sections().Filter(streams.CheckSection) {
+		if section.Tenant != targetTenant {
+			continue
+		}
+
+		sec, err := streams.Open(ctx, section)
+		if err != nil {
+			return fmt.Errorf("opening section: %w", err)
+		}
+
+		predicates, err := buildStreamReaderPredicate(sec, sStart, sEnd, matchers)
+		if err != nil {
+			return err
+		}
+
+		// All columns to read
+		targetColumns := make([]*streams.Column, 0, 1)
+
+		// Additional requested columns
+		requestedColumns := make([]*streams.Column, 0, 2)
+		requestedColumnIndexes := make(map[string]int, 2)
+
+		for _, column := range sec.Columns() {
+			if column.Type == streams.ColumnTypeStreamID {
+				targetColumns = append(targetColumns, column)
+			} else if includeColumns(column) {
+				targetColumns = append(targetColumns, column)
+				requestedColumns = append(requestedColumns, column)
+				requestedColumnIndexes[column.Name] = len(requestedColumns)
+			}
+		}
+
+		readerOpts := streams.ReaderOptions{
+			Columns:    targetColumns,
+			Predicates: predicates,
+			Allocator:  memory.DefaultAllocator,
+		}
+		reader.Reset(readerOpts)
+		requestedColumnValues := make(map[string]string, len(requestedColumns))
+		for {
+			rec, err := reader.Read(ctx, 8192)
+			if err != nil && !errors.Is(err, io.EOF) {
+				return err
+			} else if err != nil {
+				// EOF
+				break
+			}
+
+			for i := range rec.NumRows() {
+				streamID := rec.Column(0).(*array.Int64).Value(int(i))
+				// This doesn't differentiate between null and empty columns. But neither does LogQL, so that's fine.
+				for _, column := range requestedColumns {
+					if targetColumnIndex, ok := requestedColumnIndexes[column.Name]; ok {
+						requestedColumnValues[column.Name] = rec.Column(targetColumnIndex).(*array.String).Value(int(i))
+					}
+				}
+				f(streamID, requestedColumnValues)
+				clear(requestedColumnValues)
+			}
+		}
+	}
+	return nil
+}
+
 func forEachStream(ctx context.Context, object *dataobj.Object, predicate streams.RowPredicate, f func(streams.Stream)) error {
 	targetTenant, err := user.ExtractOrgID(ctx)
 	if err != nil {
@@ -496,7 +600,30 @@ func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (Se
 			}
 			reader := readerResp.Reader
 			defer reader.Close()
-			sectionsResp, err := m.CollectSections(ctx, CollectSectionsRequest{reader})
+
+			object, err := dataobj.FromBucket(ctx, m.bucket, indexPath)
+			if err != nil {
+				return fmt.Errorf("getting object from bucket: %w", err)
+			}
+			labelsByStreamID := map[int64][]string{}
+			predicate := streamPredicateFromMatchers(req.Start, req.End, req.Matchers...)
+			err = forEachStream(ctx, object, predicate, func(s streams.Stream) {
+				lbls, exists := labelsByStreamID[s.ID]
+				if !exists {
+					lbls = make([]string, 0, s.Labels.Len())
+				}
+
+				s.Labels.Range(func(l labels.Label) {
+					lbls = append(lbls, l.Name)
+				})
+
+				labelsByStreamID[s.ID] = lbls
+			})
+			if err != nil {
+				level.Warn(m.logger).Log("msg", "failed to get labels for streams", "err", err)
+			}
+
+			sectionsResp, err := m.CollectSections(ctx, CollectSectionsRequest{reader, labelsByStreamID})
 			if err != nil {
 				return fmt.Errorf("collect sections: %w", err)
 			}
@@ -552,13 +679,16 @@ func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSect
 		return IndexSectionsReaderResponse{}, fmt.Errorf("prepare obj %s: %w", req.IndexPath, err)
 	}
 
-	sStart := scalar.NewTimestampScalar(arrow.Timestamp(req.SectionsRequest.Start.UnixNano()), arrow.FixedWidthTypes.Timestamp_ns)
-	sEnd := scalar.NewTimestampScalar(arrow.Timestamp(req.SectionsRequest.End.UnixNano()), arrow.FixedWidthTypes.Timestamp_ns)
+	reader := newIndexSectionsReader(
+		idxObj,
+		req.SectionsRequest.Start,
+		req.SectionsRequest.End,
+		req.SectionsRequest.Matchers,
+		req.SectionsRequest.Predicates,
+		req.Region,
+	)
 
-	scanner := newScanPointers(idxObj, sStart, sEnd, req.SectionsRequest.Matchers, req.Region)
-	blooms := newApplyBlooms(idxObj, req.SectionsRequest.Predicates, scanner, req.Region)
-
-	return IndexSectionsReaderResponse{Reader: blooms}, nil
+	return IndexSectionsReaderResponse{Reader: reader}, nil
 }
 
 func (m *ObjectMetastore) GetIndexes(ctx context.Context, req GetIndexesRequest) (GetIndexesResponse, error) {
@@ -612,7 +742,7 @@ func (m *ObjectMetastore) CollectSections(ctx context.Context, req CollectSectio
 		}
 
 		if rec != nil && rec.NumRows() > 0 {
-			if err := addSectionDescriptors(rec, objectSectionDescriptors); err != nil {
+			if err := addSectionDescriptors(rec, objectSectionDescriptors, req.LabelsByStreamID); err != nil {
 				return CollectSectionsResponse{}, err
 			}
 		}
@@ -637,7 +767,7 @@ func (m *ObjectMetastore) CollectSections(ctx context.Context, req CollectSectio
 	}, nil
 }
 
-func addSectionDescriptors(rec arrow.RecordBatch, result map[SectionKey]*DataobjSectionDescriptor) error {
+func addSectionDescriptors(rec arrow.RecordBatch, result map[SectionKey]*DataobjSectionDescriptor, labels map[int64][]string) error {
 	numRows := int(rec.NumRows())
 	buf := make([]pointers.SectionPointer, numRows)
 	num, err := pointers.FromRecordBatch(rec, buf, pointers.PopulateSection)
@@ -648,12 +778,21 @@ func addSectionDescriptors(rec arrow.RecordBatch, result map[SectionKey]*Dataobj
 	for i := range num {
 		ptr := buf[i]
 		key := SectionKey{ObjectPath: ptr.Path, SectionIdx: ptr.Section}
+		lbls, lblsOk := labels[ptr.StreamIDRef]
 		existing, ok := result[key]
 		if !ok {
-			result[key] = NewSectionDescriptor(ptr)
+			if lblsOk && len(lbls) > 0 {
+				result[key] = NewSectionDescriptorWithLabels(ptr, lbls)
+			} else {
+				result[key] = NewSectionDescriptor(ptr)
+			}
 			continue
 		}
-		existing.Merge(ptr)
+		if lblsOk && len(lbls) > 0 {
+			existing.MergeWithLabels(ptr, lbls)
+		} else {
+			existing.Merge(ptr)
+		}
 	}
 	return nil
 }

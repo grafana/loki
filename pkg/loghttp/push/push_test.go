@@ -363,6 +363,7 @@ func TestParseRequest(t *testing.T) {
 				util_log.Logger,
 				"fake",
 				100<<20,
+				100<<20,
 				request,
 				test.fakeLimits,
 				nil,
@@ -510,7 +511,7 @@ func Test_ServiceDetection(t *testing.T) {
 
 		limits := &fakeLimits{enabled: true, labels: []string{"foo"}}
 		streamResolver := newMockStreamResolver("fake", limits)
-		data, _, err := ParseRequest(util_log.Logger, "fake", 100<<20, request, limits, nil, ParseLokiRequest, tracker, streamResolver, "", "loki")
+		data, _, err := ParseRequest(util_log.Logger, "fake", 100<<20, 100<<20, request, limits, nil, ParseLokiRequest, tracker, streamResolver, "", "loki")
 
 		require.NoError(t, err)
 		require.Equal(t, labels.FromStrings("foo", "bar", LabelServiceName, "bar").String(), data.Streams[0].Labels)
@@ -522,7 +523,7 @@ func Test_ServiceDetection(t *testing.T) {
 
 		limits := &fakeLimits{enabled: true}
 		streamResolver := newMockStreamResolver("fake", limits)
-		data, _, err := ParseRequest(util_log.Logger, "fake", 100<<20, request, limits, nil, ParseOTLPRequest, tracker, streamResolver, "", "loki")
+		data, _, err := ParseRequest(util_log.Logger, "fake", 100<<20, 100<<20, request, limits, nil, ParseOTLPRequest, tracker, streamResolver, "", "loki")
 		require.NoError(t, err)
 		require.Equal(t, labels.FromStrings("k8s_job_name", "bar", LabelServiceName, "bar").String(), data.Streams[0].Labels)
 	})
@@ -537,7 +538,7 @@ func Test_ServiceDetection(t *testing.T) {
 			indexAttributes: []string{"special"},
 		}
 		streamResolver := newMockStreamResolver("fake", limits)
-		data, _, err := ParseRequest(util_log.Logger, "fake", 100<<20, request, limits, nil, ParseOTLPRequest, tracker, streamResolver, "", "loki")
+		data, _, err := ParseRequest(util_log.Logger, "fake", 100<<20, 100<<20, request, limits, nil, ParseOTLPRequest, tracker, streamResolver, "", "loki")
 		require.NoError(t, err)
 		require.Equal(t, labels.FromStrings("special", "sauce", LabelServiceName, "sauce").String(), data.Streams[0].Labels)
 	})
@@ -552,7 +553,7 @@ func Test_ServiceDetection(t *testing.T) {
 			indexAttributes: []string{},
 		}
 		streamResolver := newMockStreamResolver("fake", limits)
-		data, _, err := ParseRequest(util_log.Logger, "fake", 100<<20, request, limits, nil, ParseOTLPRequest, tracker, streamResolver, "", "loki")
+		data, _, err := ParseRequest(util_log.Logger, "fake", 100<<20, 100<<20, request, limits, nil, ParseOTLPRequest, tracker, streamResolver, "", "loki")
 		require.NoError(t, err)
 		require.Equal(t, labels.FromStrings(LabelServiceName, ServiceUnknown).String(), data.Streams[0].Labels)
 	})
@@ -654,7 +655,7 @@ func TestNegativeSizeHandling(t *testing.T) {
 	linesIngested.Reset()
 
 	// Create a custom request parser that will generate negative sizes
-	var mockParser RequestParser = func(_ string, _ *http.Request, _ Limits, _ *runtime.TenantConfigs, _ int, _ UsageTracker, _ StreamResolver, _ kitlog.Logger) (*logproto.PushRequest, *Stats, error) {
+	var mockParser RequestParser = func(_ string, _ *http.Request, _ Limits, _ *runtime.TenantConfigs, _ int, _ int64, _ UsageTracker, _ StreamResolver, _ kitlog.Logger) (*logproto.PushRequest, *Stats, error) {
 		// Create a minimal valid request
 		req := &logproto.PushRequest{
 			Streams: []logproto.Stream{
@@ -697,6 +698,7 @@ func TestNegativeSizeHandling(t *testing.T) {
 		util_log.Logger,
 		"fake",
 		100<<20,
+		100<<20,
 		request,
 		&fakeLimits{},
 		nil,
@@ -719,6 +721,108 @@ func TestNegativeSizeHandling(t *testing.T) {
 	// This test passes if no panic occurred and the counters remain at 0
 	require.Equal(t, float64(0), testutil.ToFloat64(bytesIngested.WithLabelValues(userID, "1", isAggregatedMetric, policy, "loki")))
 	require.Equal(t, float64(0), testutil.ToFloat64(structuredMetadataBytesIngested.WithLabelValues(userID, "1", isAggregatedMetric, policy, "loki")))
+}
+
+func TestParseRequestWithZeroMaxDecompressedSize(t *testing.T) {
+	streamResolver := newMockStreamResolver("fake", &fakeLimits{})
+
+	testCases := []struct {
+		name                 string
+		body                 string
+		contentType          string
+		contentEncoding      string
+		maxRecvMsgSize       int
+		maxDecompressedSize  int64
+		expectedError        bool
+		expectedErrorMessage string
+	}{
+		{
+			name:                "gzip_with_zero_maxDecompressedSize",
+			body:                gzipString(`{"streams": [{ "stream": { "foo": "bar" }, "values": [ [ "1570818238000000000", "test message" ] ] }]}`),
+			contentType:         "application/json",
+			contentEncoding:     "gzip",
+			maxRecvMsgSize:      100 << 20, // 100 MB
+			maxDecompressedSize: 0,         // 0 means no limit
+			expectedError:       false,
+		},
+		{
+			name:                "deflate_with_zero_maxDecompressedSize",
+			body:                deflateString(`{"streams": [{ "stream": { "foo": "bar" }, "values": [ [ "1570818238000000000", "test message" ] ] }]}`),
+			contentType:         "application/json",
+			contentEncoding:     "deflate",
+			maxRecvMsgSize:      100 << 20, // 100 MB
+			maxDecompressedSize: 0,         // 0 means no limit
+			expectedError:       false,
+		},
+		{
+			name:                "snappy_with_zero_maxDecompressedSize",
+			body:                "", // Will be set below
+			contentType:         "application/x-protobuf",
+			contentEncoding:     "",
+			maxRecvMsgSize:      100 << 20, // 100 MB
+			maxDecompressedSize: 0,         // 0 means no limit
+			expectedError:       false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			var body []byte
+			var err error
+
+			if tc.name == "snappy_with_zero_maxDecompressedSize" {
+				// Create a snappy-compressed protobuf request
+				req := &logproto.PushRequest{
+					Streams: []logproto.Stream{
+						{
+							Labels: `{foo="bar"}`,
+							Entries: []logproto.Entry{
+								{
+									Timestamp: time.Now(),
+									Line:      "test message",
+								},
+							},
+						},
+					},
+				}
+				protoBytes, err := proto.Marshal(req)
+				require.NoError(t, err)
+				body = snappy.Encode(nil, protoBytes)
+			} else {
+				body = []byte(tc.body)
+			}
+
+			request := httptest.NewRequest("POST", "/loki/api/v1/push", bytes.NewReader(body))
+			request.Header.Set("Content-Type", tc.contentType)
+			if tc.contentEncoding != "" {
+				request.Header.Set("Content-Encoding", tc.contentEncoding)
+			}
+
+			_, _, err = ParseRequest(
+				util_log.Logger,
+				"fake",
+				tc.maxRecvMsgSize,
+				tc.maxDecompressedSize,
+				request,
+				&fakeLimits{},
+				nil,
+				ParseLokiRequest,
+				NewMockTracker(),
+				streamResolver,
+				"",
+				"loki",
+			)
+
+			if tc.expectedError {
+				require.Error(t, err)
+				if tc.expectedErrorMessage != "" {
+					require.Contains(t, err.Error(), tc.expectedErrorMessage)
+				}
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
 }
 
 type fakeLimits struct {
