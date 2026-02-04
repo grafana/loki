@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	_ "io" // Used for documenting io.EOF.
 	"strings"
 
@@ -497,15 +498,15 @@ func (d *recordBatchLabelDecorator) Reset(innerOpts dataset.ReaderOptions, opts 
 	d.streamIDToLabelNames = opts.StreamIDToLabelNames
 }
 
-func (d *recordBatchLabelDecorator) Read(ctx context.Context, alloc *memoryv2.Allocator, batchSize int) (columnarv2.RecordBatch, error) {
+func (d *recordBatchLabelDecorator) Read(ctx context.Context, alloc *memoryv2.Allocator, batchSize int) (*columnarv2.RecordBatch, error) {
 	rb, err := d.inner.Read(ctx, alloc, batchSize)
-	if err != nil {
-		return columnarv2.RecordBatch{}, err
+	if err != nil && !errors.Is(err, io.EOF) {
+		return rb, err
 	}
 
 	if d.streamIDColumnIndex == -1 {
 		// We aren't reading any stream IDs this time
-		return rb, nil
+		return rb, err
 	}
 
 	var arrs []columnarv2.Array
@@ -513,8 +514,8 @@ func (d *recordBatchLabelDecorator) Read(ctx context.Context, alloc *memoryv2.Al
 		arrs = append(arrs, rb.Column(i))
 	}
 
+	// Build our new column
 	labelsArr := columnarv2.NewUTF8Builder(alloc)
-
 	streamIDCol := arrs[d.streamIDColumnIndex].(*columnarv2.Number[int64])
 	for i := range streamIDCol.Len() {
 		streamID := streamIDCol.Get(i)
@@ -525,8 +526,20 @@ func (d *recordBatchLabelDecorator) Read(ctx context.Context, alloc *memoryv2.Al
 		}
 		labelsArr.AppendValue([]byte(strings.Join(labelNames, ",")))
 	}
+
+	// Add our new column to the record batch & schema
 	arrs = append(arrs, labelsArr.BuildArray())
 
-	rb = columnarv2.NewRecordBatch(rb.NumRows(), arrs)
-	return rb, nil
+	var schema *columnarv2.Schema
+	if rb.Schema() != nil {
+		var columns []columnarv2.Column
+		for i := range rb.Schema().NumColumns() {
+			columns = append(columns, rb.Schema().Column(i))
+		}
+		columns = append(columns, columnarv2.Column{Name: InternalLabelsFieldName})
+		schema = columnarv2.NewSchema(columns)
+	}
+
+	rb = columnarv2.NewRecordBatch(schema, rb.NumRows(), arrs)
+	return rb, err
 }
