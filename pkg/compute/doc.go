@@ -99,12 +99,37 @@
 // unselected rows. Equality and logical operations use Pattern B because
 // checking selection per-row adds more overhead than computing all rows.
 //
+// ## Selection Combination for Short-Circuit Optimization
+//
+// The compute package provides selection combination functions
+// ([CombineSelectionsAnd] and [CombineSelectionsOr]) that enable short-circuit
+// evaluation of logical expressions in the expr package.
+//
+// These functions refine selection bitmaps based on intermediate results,
+// allowing the evaluation engine to skip expensive operations on rows where
+// the result is already determined:
+//
+//   - CombineSelectionsAnd: Creates refined selection excluding rows where
+//     left is false/null (for AND expressions: false AND x = false)
+//
+//   - CombineSelectionsOr: Creates refined selection excluding rows where
+//     left is true (for OR expressions: true OR x = true)
+//
+// Example: For "(cheap_check) AND (expensive_regex)", if cheap_check is false
+// for 80% of rows, CombineSelectionsAnd creates a selection bitmap marking
+// only the 20% of rows as selected, and the expensive_regex is only evaluated
+// for those 20% of rows.
+//
 // ## Expression Evaluation
 //
 // Selection vectors are propagated through expression evaluation in the
 // [github.com/grafana/loki/v3/pkg/expr] package. When evaluating an
 // expression tree, the selection is threaded through all compute function
 // calls, ensuring consistent filtering semantics across nested operations.
+//
+// For AND and OR operations, selection vectors are refined between evaluating
+// the left and right sides to implement short-circuit evaluation. See
+// [CombineSelectionsAnd] and [CombineSelectionsOr] for details.
 //
 // Package compute is EXPERIMENTAL and currently only intended to be used by
 // [github.com/grafana/loki/v3/pkg/dataobj].
