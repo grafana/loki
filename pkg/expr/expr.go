@@ -1,5 +1,5 @@
 // Package expr provides utilities for evaluating expressions against a
-// [columnar.RecordBatch].
+// [columnar.RecordBatch] with a selection vector.
 //
 // Package expr is EXPERIMENTAL and currently only intended to be used by
 // [github.com/grafana/loki/v3/pkg/dataobj].

@@ -16,7 +16,7 @@ func TestNot(t *testing.T) {
 	t.Run("invalid scalar kind", func(t *testing.T) {
 		var alloc memory.Allocator
 
-		res, err := compute.Not(&alloc, new(columnar.NullScalar))
+		res, err := compute.Not(&alloc, new(columnar.NullScalar), memory.Bitmap{})
 		require.Error(t, err, "invalid function call should result in an error")
 		require.Nil(t, res, "invalid function call should not result in a datum")
 	})
@@ -24,7 +24,7 @@ func TestNot(t *testing.T) {
 	t.Run("invalid array kind", func(t *testing.T) {
 		var alloc memory.Allocator
 
-		res, err := compute.Not(&alloc, new(columnar.UTF8))
+		res, err := compute.Not(&alloc, new(columnar.UTF8), memory.Bitmap{})
 		require.Error(t, err, "invalid function call should result in an error")
 		require.Nil(t, res, "invalid function call should not result in a datum")
 	})
@@ -56,7 +56,7 @@ func TestNot(t *testing.T) {
 			t.Run(tc.name, func(t *testing.T) {
 				var alloc memory.Allocator
 
-				actual, err := compute.Not(&alloc, tc.input)
+				actual, err := compute.Not(&alloc, tc.input, memory.Bitmap{})
 				require.NoError(t, err)
 				columnartest.RequireDatumsEqual(t, tc.expect, actual)
 			})
@@ -71,7 +71,7 @@ func TestNot(t *testing.T) {
 			expect = columnartest.Array(t, columnar.KindBool, &alloc, false, nil, true)
 		)
 
-		actual, err := compute.Not(&alloc, input)
+		actual, err := compute.Not(&alloc, input, memory.Bitmap{})
 		require.NoError(t, err)
 		columnartest.RequireDatumsEqual(t, expect, actual)
 	})
@@ -84,7 +84,7 @@ func TestNot(t *testing.T) {
 			expect = columnartest.Array(t, columnar.KindBool, &alloc, false, true, false, true)
 		)
 
-		actual, err := compute.Not(&alloc, input)
+		actual, err := compute.Not(&alloc, input, memory.Bitmap{})
 		require.NoError(t, err)
 		columnartest.RequireDatumsEqual(t, expect, actual)
 	})
@@ -189,7 +189,7 @@ func TestAnd(t *testing.T) {
 
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			actual, err := compute.And(&alloc, tc.left, tc.right)
+			actual, err := compute.And(&alloc, tc.left, tc.right, memory.Bitmap{})
 			if tc.expectError {
 				require.Error(t, err, "invalid function call should result in an error")
 				return
@@ -300,7 +300,7 @@ func TestOr(t *testing.T) {
 
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			actual, err := compute.Or(&alloc, tc.left, tc.right)
+			actual, err := compute.Or(&alloc, tc.left, tc.right, memory.Bitmap{})
 			if tc.expectError {
 				require.Error(t, err, "invalid function call should result in an error")
 				return
@@ -334,7 +334,7 @@ func BenchmarkNot_Array(b *testing.B) {
 	for b.Loop() {
 		tempAlloc.Reclaim()
 
-		_, _ = compute.Not(tempAlloc, input)
+		_, _ = compute.Not(tempAlloc, input, memory.Bitmap{})
 	}
 
 	b.SetBytes(int64(input.Size()))
@@ -371,7 +371,7 @@ func BenchmarkAnd_Array(b *testing.B) {
 	for b.Loop() {
 		tempAlloc.Reclaim()
 
-		_, _ = compute.And(tempAlloc, left, right)
+		_, _ = compute.And(tempAlloc, left, right, memory.Bitmap{})
 	}
 
 	totalValues := left.Len() + right.Len()
@@ -409,10 +409,237 @@ func BenchmarkOr_Array(b *testing.B) {
 	for b.Loop() {
 		tempAlloc.Reclaim()
 
-		_, _ = compute.Or(tempAlloc, left, right)
+		_, _ = compute.Or(tempAlloc, left, right, memory.Bitmap{})
 	}
 
 	totalValues := left.Len() + right.Len()
 	b.SetBytes(int64(left.Size() + right.Size()))
 	b.ReportMetric(float64(totalValues*b.N)/b.Elapsed().Seconds(), "values/s")
+}
+
+// TestNot_Selection tests the Not operation with various selection patterns
+func TestNot_Selection(t *testing.T) {
+	var alloc memory.Allocator
+
+	t.Run("all rows selected", func(t *testing.T) {
+		input := columnartest.Array(t, columnar.KindBool, &alloc, true, false, nil, true)
+		expect := columnartest.Array(t, columnar.KindBool, &alloc, false, true, nil, false)
+
+		actual, err := compute.Not(&alloc, input, memory.Bitmap{})
+		require.NoError(t, err)
+		columnartest.RequireDatumsEqual(t, expect, actual)
+	})
+
+	t.Run("partial selection - some rows selected", func(t *testing.T) {
+		input := columnartest.Array(t, columnar.KindBool, &alloc, true, false, true, false)
+		selection := selectionMask(&alloc, true, false, true, false)
+		// Expected: [false, null, false, null] - unselected rows become null
+		expect := columnartest.Array(t, columnar.KindBool, &alloc, false, nil, false, nil)
+
+		actual, err := compute.Not(&alloc, input, selection)
+		require.NoError(t, err)
+		columnartest.RequireDatumsEqual(t, expect, actual)
+	})
+
+	t.Run("full selection - all true", func(t *testing.T) {
+		input := columnartest.Array(t, columnar.KindBool, &alloc, true, false, nil)
+		selection := selectionMask(&alloc, true, true, true)
+		expect := columnartest.Array(t, columnar.KindBool, &alloc, false, true, nil)
+
+		actual, err := compute.Not(&alloc, input, selection)
+		require.NoError(t, err)
+		columnartest.RequireDatumsEqual(t, expect, actual)
+	})
+
+	t.Run("single element selection", func(t *testing.T) {
+		input := columnartest.Array(t, columnar.KindBool, &alloc, true, false, true)
+		selection := selectionMask(&alloc, false, true, false)
+		// Expected: [null, true, null]
+		expect := columnartest.Array(t, columnar.KindBool, &alloc, nil, true, nil)
+
+		actual, err := compute.Not(&alloc, input, selection)
+		require.NoError(t, err)
+		columnartest.RequireDatumsEqual(t, expect, actual)
+	})
+
+	t.Run("selection with null values", func(t *testing.T) {
+		input := columnartest.Array(t, columnar.KindBool, &alloc, true, nil, false, nil)
+		selection := selectionMask(&alloc, true, true, false, false)
+		// Expected: [false, nil, nil, nil] - unselected rows and input nulls both result in null
+		expect := columnartest.Array(t, columnar.KindBool, &alloc, false, nil, nil, nil)
+
+		actual, err := compute.Not(&alloc, input, selection)
+		require.NoError(t, err)
+		columnartest.RequireDatumsEqual(t, expect, actual)
+	})
+}
+
+// TestAnd_Selection tests the And operation with various selection patterns
+func TestAnd_Selection(t *testing.T) {
+	var alloc memory.Allocator
+
+	t.Run("all rows selected", func(t *testing.T) {
+		left := columnartest.Array(t, columnar.KindBool, &alloc, true, false, true, false)
+		right := columnartest.Array(t, columnar.KindBool, &alloc, true, true, false, false)
+		expect := columnartest.Array(t, columnar.KindBool, &alloc, true, false, false, false)
+
+		actual, err := compute.And(&alloc, left, right, memory.Bitmap{})
+		require.NoError(t, err)
+		columnartest.RequireDatumsEqual(t, expect, actual)
+	})
+
+	t.Run("partial selection - some rows selected", func(t *testing.T) {
+		left := columnartest.Array(t, columnar.KindBool, &alloc, true, false, true, false)
+		right := columnartest.Array(t, columnar.KindBool, &alloc, true, true, false, false)
+		selection := selectionMask(&alloc, true, false, true, false)
+		// Expected: [true, null, false, null]
+		expect := columnartest.Array(t, columnar.KindBool, &alloc, true, nil, false, nil)
+
+		actual, err := compute.And(&alloc, left, right, selection)
+		require.NoError(t, err)
+		columnartest.RequireDatumsEqual(t, expect, actual)
+	})
+
+	t.Run("selection with all false bits - no rows selected", func(t *testing.T) {
+		left := columnartest.Array(t, columnar.KindBool, &alloc, true, false, true, false)
+		right := columnartest.Array(t, columnar.KindBool, &alloc, true, true, false, false)
+		selection := selectionMask(&alloc, false, false, false, false)
+		expect := columnartest.Array(t, columnar.KindBool, &alloc, nil, nil, nil, nil)
+
+		actual, err := compute.And(&alloc, left, right, selection)
+		require.NoError(t, err)
+		columnartest.RequireDatumsEqual(t, expect, actual)
+	})
+
+	t.Run("full selection - all true", func(t *testing.T) {
+		left := columnartest.Array(t, columnar.KindBool, &alloc, true, false, true)
+		right := columnartest.Array(t, columnar.KindBool, &alloc, false, true, true)
+		selection := selectionMask(&alloc, true, true, true)
+		expect := columnartest.Array(t, columnar.KindBool, &alloc, false, false, true)
+
+		actual, err := compute.And(&alloc, left, right, selection)
+		require.NoError(t, err)
+		columnartest.RequireDatumsEqual(t, expect, actual)
+	})
+
+	t.Run("selection with scalar-array combination", func(t *testing.T) {
+		left := columnartest.Scalar(t, columnar.KindBool, true)
+		right := columnartest.Array(t, columnar.KindBool, &alloc, true, false, true, false)
+		selection := selectionMask(&alloc, true, false, true, false)
+		// Expected: [true, null, true, null]
+		expect := columnartest.Array(t, columnar.KindBool, &alloc, true, nil, true, nil)
+
+		actual, err := compute.And(&alloc, left, right, selection)
+		require.NoError(t, err)
+		columnartest.RequireDatumsEqual(t, expect, actual)
+	})
+
+	t.Run("selection with array-scalar combination", func(t *testing.T) {
+		left := columnartest.Array(t, columnar.KindBool, &alloc, true, false, true, false)
+		right := columnartest.Scalar(t, columnar.KindBool, true)
+		selection := selectionMask(&alloc, false, true, false, true)
+		// Expected: [null, false, null, false]
+		expect := columnartest.Array(t, columnar.KindBool, &alloc, nil, false, nil, false)
+
+		actual, err := compute.And(&alloc, left, right, selection)
+		require.NoError(t, err)
+		columnartest.RequireDatumsEqual(t, expect, actual)
+	})
+
+	t.Run("selection with null values in array", func(t *testing.T) {
+		left := columnartest.Array(t, columnar.KindBool, &alloc, true, nil, true, false)
+		right := columnartest.Array(t, columnar.KindBool, &alloc, true, true, false, nil)
+		selection := selectionMask(&alloc, true, true, false, false)
+		// Expected: [true, nil, nil, nil]
+		expect := columnartest.Array(t, columnar.KindBool, &alloc, true, nil, nil, nil)
+
+		actual, err := compute.And(&alloc, left, right, selection)
+		require.NoError(t, err)
+		columnartest.RequireDatumsEqual(t, expect, actual)
+	})
+}
+
+// TestOr_Selection tests the Or operation with various selection patterns
+func TestOr_Selection(t *testing.T) {
+	var alloc memory.Allocator
+
+	t.Run("all rows selected", func(t *testing.T) {
+		left := columnartest.Array(t, columnar.KindBool, &alloc, true, false, true, false)
+		right := columnartest.Array(t, columnar.KindBool, &alloc, false, false, true, true)
+		expect := columnartest.Array(t, columnar.KindBool, &alloc, true, false, true, true)
+
+		actual, err := compute.Or(&alloc, left, right, memory.Bitmap{})
+		require.NoError(t, err)
+		columnartest.RequireDatumsEqual(t, expect, actual)
+	})
+
+	t.Run("partial selection - some rows selected", func(t *testing.T) {
+		left := columnartest.Array(t, columnar.KindBool, &alloc, true, false, true, false)
+		right := columnartest.Array(t, columnar.KindBool, &alloc, false, false, true, true)
+		selection := selectionMask(&alloc, true, false, true, false)
+		// Expected: [true, null, true, null]
+		expect := columnartest.Array(t, columnar.KindBool, &alloc, true, nil, true, nil)
+
+		actual, err := compute.Or(&alloc, left, right, selection)
+		require.NoError(t, err)
+		columnartest.RequireDatumsEqual(t, expect, actual)
+	})
+
+	t.Run("selection with all false bits - no rows selected", func(t *testing.T) {
+		left := columnartest.Array(t, columnar.KindBool, &alloc, true, false, true, false)
+		right := columnartest.Array(t, columnar.KindBool, &alloc, false, false, true, true)
+		selection := selectionMask(&alloc, false, false, false, false)
+		expect := columnartest.Array(t, columnar.KindBool, &alloc, nil, nil, nil, nil)
+
+		actual, err := compute.Or(&alloc, left, right, selection)
+		require.NoError(t, err)
+		columnartest.RequireDatumsEqual(t, expect, actual)
+	})
+
+	t.Run("full selection - all true", func(t *testing.T) {
+		left := columnartest.Array(t, columnar.KindBool, &alloc, true, false, false)
+		right := columnartest.Array(t, columnar.KindBool, &alloc, false, true, false)
+		selection := selectionMask(&alloc, true, true, true)
+		expect := columnartest.Array(t, columnar.KindBool, &alloc, true, true, false)
+
+		actual, err := compute.Or(&alloc, left, right, selection)
+		require.NoError(t, err)
+		columnartest.RequireDatumsEqual(t, expect, actual)
+	})
+
+	t.Run("selection with scalar-array combination", func(t *testing.T) {
+		left := columnartest.Scalar(t, columnar.KindBool, false)
+		right := columnartest.Array(t, columnar.KindBool, &alloc, true, false, true, false)
+		selection := selectionMask(&alloc, true, false, true, false)
+		// Expected: [true, null, true, null]
+		expect := columnartest.Array(t, columnar.KindBool, &alloc, true, nil, true, nil)
+
+		actual, err := compute.Or(&alloc, left, right, selection)
+		require.NoError(t, err)
+		columnartest.RequireDatumsEqual(t, expect, actual)
+	})
+
+	t.Run("selection with array-scalar combination", func(t *testing.T) {
+		left := columnartest.Array(t, columnar.KindBool, &alloc, true, false, true, false)
+		right := columnartest.Scalar(t, columnar.KindBool, false)
+		selection := selectionMask(&alloc, false, true, false, true)
+		// Expected: [null, false, null, false]
+		expect := columnartest.Array(t, columnar.KindBool, &alloc, nil, false, nil, false)
+
+		actual, err := compute.Or(&alloc, left, right, selection)
+		require.NoError(t, err)
+		columnartest.RequireDatumsEqual(t, expect, actual)
+	})
+
+	t.Run("selection with null values in array", func(t *testing.T) {
+		left := columnartest.Array(t, columnar.KindBool, &alloc, true, nil, false, false)
+		right := columnartest.Array(t, columnar.KindBool, &alloc, false, true, true, nil)
+		selection := selectionMask(&alloc, true, true, false, false)
+		// Expected: [true, nil, nil, nil]
+		expect := columnartest.Array(t, columnar.KindBool, &alloc, true, nil, nil, nil)
+
+		actual, err := compute.Or(&alloc, left, right, selection)
+		require.NoError(t, err)
+		columnartest.RequireDatumsEqual(t, expect, actual)
+	})
 }

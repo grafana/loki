@@ -321,7 +321,7 @@ func TestEquals(t *testing.T) {
 
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			actual, err := compute.Equals(&alloc, tc.left, tc.right)
+			actual, err := compute.Equals(&alloc, tc.left, tc.right, memory.Bitmap{})
 			if tc.expectError {
 				require.Error(t, err, "invalid function call should result in an error")
 				return
@@ -642,7 +642,7 @@ func TestNotEquals(t *testing.T) {
 
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			actual, err := compute.NotEquals(&alloc, tc.left, tc.right)
+			actual, err := compute.NotEquals(&alloc, tc.left, tc.right, memory.Bitmap{})
 			if tc.expectError {
 				require.Error(t, err, "invalid function call should result in an error")
 				return
@@ -889,7 +889,7 @@ func TestLessThan(t *testing.T) {
 
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			actual, err := compute.LessThan(&alloc, tc.left, tc.right)
+			actual, err := compute.LessThan(&alloc, tc.left, tc.right, memory.Bitmap{})
 			if tc.expectError {
 				require.Error(t, err, "invalid function call should result in an error")
 				return
@@ -1136,7 +1136,7 @@ func TestLessOrEqual(t *testing.T) {
 
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			actual, err := compute.LessOrEqual(&alloc, tc.left, tc.right)
+			actual, err := compute.LessOrEqual(&alloc, tc.left, tc.right, memory.Bitmap{})
 			if tc.expectError {
 				require.Error(t, err, "invalid function call should result in an error")
 				return
@@ -1383,7 +1383,7 @@ func TestGreaterThan(t *testing.T) {
 
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			actual, err := compute.GreaterThan(&alloc, tc.left, tc.right)
+			actual, err := compute.GreaterThan(&alloc, tc.left, tc.right, memory.Bitmap{})
 			if tc.expectError {
 				require.Error(t, err, "invalid function call should result in an error")
 				return
@@ -1630,7 +1630,7 @@ func TestGreaterOrEqual(t *testing.T) {
 
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			actual, err := compute.GreaterOrEqual(&alloc, tc.left, tc.right)
+			actual, err := compute.GreaterOrEqual(&alloc, tc.left, tc.right, memory.Bitmap{})
 			if tc.expectError {
 				require.Error(t, err, "invalid function call should result in an error")
 				return
@@ -1642,7 +1642,7 @@ func TestGreaterOrEqual(t *testing.T) {
 	}
 }
 
-type equalityFunction func(alloc *memory.Allocator, left, right columnar.Datum) (columnar.Datum, error)
+type equalityFunction func(alloc *memory.Allocator, left, right columnar.Datum, selection memory.Bitmap) (columnar.Datum, error)
 
 func BenchmarkEqualityFunctions(b *testing.B) {
 	var alloc memory.Allocator
@@ -1790,7 +1790,7 @@ func BenchmarkEqualityFunctions(b *testing.B) {
 			for b.Loop() {
 				tempAlloc.Reclaim()
 
-				_, _ = s.fn(tempAlloc, s.left, s.right)
+				_, _ = s.fn(tempAlloc, s.left, s.right, memory.Bitmap{})
 			}
 
 			totalValues := s.left.Len() + s.right.Len()
@@ -1884,4 +1884,263 @@ func makeBenchUTF8Arrays(alloc *memory.Allocator) (left, right *columnar.UTF8) {
 	}
 
 	return leftBuilder.Build(), rightBuilder.Build()
+}
+
+func TestEqualityOperationsWithSelection(t *testing.T) {
+	var alloc memory.Allocator
+
+	// Test helper: creates a selection bitmap from boolean values
+	makeSelection := func(values ...bool) memory.Bitmap {
+		bmap := memory.NewBitmap(&alloc, len(values))
+		for _, v := range values {
+			bmap.Append(v)
+		}
+		return bmap
+	}
+
+	tests := []struct {
+		name        string
+		fn          func(alloc *memory.Allocator, left, right columnar.Datum, selection memory.Bitmap) (columnar.Datum, error)
+		left        columnar.Datum
+		right       columnar.Datum
+		selection   memory.Bitmap
+		expect      columnar.Datum
+		expectError bool
+	}{
+		// Equals with various selection patterns - Bool arrays
+		{
+			name:      "Equals/bool/partial-selection",
+			fn:        compute.Equals,
+			left:      columnartest.Array(t, columnar.KindBool, &alloc, true, false, true, false),
+			right:     columnartest.Array(t, columnar.KindBool, &alloc, true, true, true, true),
+			selection: makeSelection(true, false, true, false),
+			expect:    columnartest.Array(t, columnar.KindBool, &alloc, true, nil, true, nil),
+		},
+		{
+			name:      "Equals/bool/no-rows-selected",
+			fn:        compute.Equals,
+			left:      columnartest.Array(t, columnar.KindBool, &alloc, true, false, true),
+			right:     columnartest.Array(t, columnar.KindBool, &alloc, true, true, false),
+			selection: makeSelection(false, false, false),
+			expect:    columnartest.Array(t, columnar.KindBool, &alloc, nil, nil, nil),
+		},
+		{
+			name:      "Equals/bool/single-row-selection",
+			fn:        compute.Equals,
+			left:      columnartest.Array(t, columnar.KindBool, &alloc, true, false, true),
+			right:     columnartest.Array(t, columnar.KindBool, &alloc, true, false, false),
+			selection: makeSelection(false, true, false),
+			expect:    columnartest.Array(t, columnar.KindBool, &alloc, nil, true, nil),
+		},
+		{
+			name:      "Equals/bool/full-selection",
+			fn:        compute.Equals,
+			left:      columnartest.Array(t, columnar.KindBool, &alloc, true, false),
+			right:     columnartest.Array(t, columnar.KindBool, &alloc, true, true),
+			selection: makeSelection(true, true),
+			expect:    columnartest.Array(t, columnar.KindBool, &alloc, true, false),
+		},
+
+		// Equals with numeric arrays
+		{
+			name:      "Equals/int64/partial-selection",
+			fn:        compute.Equals,
+			left:      columnartest.Array(t, columnar.KindInt64, &alloc, int64(10), int64(20), int64(30), int64(40)),
+			right:     columnartest.Array(t, columnar.KindInt64, &alloc, int64(10), int64(21), int64(30), int64(41)),
+			selection: makeSelection(true, false, true, false),
+			expect:    columnartest.Array(t, columnar.KindBool, &alloc, true, nil, true, nil),
+		},
+		{
+			name:      "Equals/int64/no-rows-selected",
+			fn:        compute.Equals,
+			left:      columnartest.Array(t, columnar.KindInt64, &alloc, int64(1), int64(2)),
+			right:     columnartest.Array(t, columnar.KindInt64, &alloc, int64(1), int64(3)),
+			selection: makeSelection(false, false),
+			expect:    columnartest.Array(t, columnar.KindBool, &alloc, nil, nil),
+		},
+		{
+			name:      "Equals/uint64/50pct-selection",
+			fn:        compute.Equals,
+			left:      columnartest.Array(t, columnar.KindUint64, &alloc, uint64(10), uint64(20), uint64(30), uint64(40)),
+			right:     columnartest.Array(t, columnar.KindUint64, &alloc, uint64(10), uint64(21), uint64(30), uint64(41)),
+			selection: makeSelection(true, false, true, false),
+			expect:    columnartest.Array(t, columnar.KindBool, &alloc, true, nil, true, nil),
+		},
+
+		// Equals with UTF8 arrays
+		{
+			name:      "Equals/utf8/partial-selection",
+			fn:        compute.Equals,
+			left:      columnartest.Array(t, columnar.KindUTF8, &alloc, "foo", "bar", "baz", "qux"),
+			right:     columnartest.Array(t, columnar.KindUTF8, &alloc, "foo", "BAR", "baz", "QUX"),
+			selection: makeSelection(true, false, true, false),
+			expect:    columnartest.Array(t, columnar.KindBool, &alloc, true, nil, true, nil),
+		},
+		{
+			name:      "Equals/utf8/no-rows-selected",
+			fn:        compute.Equals,
+			left:      columnartest.Array(t, columnar.KindUTF8, &alloc, "a", "b", "c"),
+			right:     columnartest.Array(t, columnar.KindUTF8, &alloc, "a", "x", "c"),
+			selection: makeSelection(false, false, false),
+			expect:    columnartest.Array(t, columnar.KindBool, &alloc, nil, nil, nil),
+		},
+
+		// Equals with Null arrays
+		{
+			name:      "Equals/null/partial-selection",
+			fn:        compute.Equals,
+			left:      columnartest.Array(t, columnar.KindNull, &alloc, nil, nil, nil),
+			right:     columnartest.Array(t, columnar.KindNull, &alloc, nil, nil, nil),
+			selection: makeSelection(true, false, true),
+			expect:    columnartest.Array(t, columnar.KindBool, &alloc, nil, nil, nil),
+		},
+
+		// Equals Scalar-Array with selection
+		{
+			name:      "Equals/int64-scalar-array/partial-selection",
+			fn:        compute.Equals,
+			left:      columnartest.Scalar(t, columnar.KindInt64, int64(10)),
+			right:     columnartest.Array(t, columnar.KindInt64, &alloc, int64(10), int64(20), int64(10), int64(30)),
+			selection: makeSelection(true, false, true, false),
+			expect:    columnartest.Array(t, columnar.KindBool, &alloc, true, nil, true, nil),
+		},
+		{
+			name:      "Equals/utf8-scalar-array/no-rows-selected",
+			fn:        compute.Equals,
+			left:      columnartest.Scalar(t, columnar.KindUTF8, "test"),
+			right:     columnartest.Array(t, columnar.KindUTF8, &alloc, "test", "foo", "test"),
+			selection: makeSelection(false, false, false),
+			expect:    columnartest.Array(t, columnar.KindBool, &alloc, nil, nil, nil),
+		},
+
+		// Equals Array-Scalar with selection
+		{
+			name:      "Equals/array-int64-scalar/partial-selection",
+			fn:        compute.Equals,
+			left:      columnartest.Array(t, columnar.KindInt64, &alloc, int64(5), int64(10), int64(5), int64(15)),
+			right:     columnartest.Scalar(t, columnar.KindInt64, int64(5)),
+			selection: makeSelection(true, false, true, false),
+			expect:    columnartest.Array(t, columnar.KindBool, &alloc, true, nil, true, nil),
+		},
+
+		// NotEquals with selection
+		{
+			name:      "NotEquals/int64/partial-selection",
+			fn:        compute.NotEquals,
+			left:      columnartest.Array(t, columnar.KindInt64, &alloc, int64(10), int64(20), int64(30)),
+			right:     columnartest.Array(t, columnar.KindInt64, &alloc, int64(10), int64(21), int64(30)),
+			selection: makeSelection(true, false, true),
+			expect:    columnartest.Array(t, columnar.KindBool, &alloc, false, nil, false),
+		},
+		{
+			name:      "NotEquals/bool/single-row-selection",
+			fn:        compute.NotEquals,
+			left:      columnartest.Array(t, columnar.KindBool, &alloc, true, false, true),
+			right:     columnartest.Array(t, columnar.KindBool, &alloc, false, false, false),
+			selection: makeSelection(false, true, false),
+			expect:    columnartest.Array(t, columnar.KindBool, &alloc, nil, false, nil),
+		},
+
+		// LessThan with selection
+		{
+			name:      "LessThan/int64/partial-selection",
+			fn:        compute.LessThan,
+			left:      columnartest.Array(t, columnar.KindInt64, &alloc, int64(5), int64(10), int64(15), int64(20)),
+			right:     columnartest.Array(t, columnar.KindInt64, &alloc, int64(10), int64(10), int64(10), int64(10)),
+			selection: makeSelection(true, false, true, false),
+			expect:    columnartest.Array(t, columnar.KindBool, &alloc, true, nil, false, nil),
+		},
+		{
+			name:      "LessThan/uint64/no-rows-selected",
+			fn:        compute.LessThan,
+			left:      columnartest.Array(t, columnar.KindUint64, &alloc, uint64(15), uint64(25)),
+			right:     columnartest.Array(t, columnar.KindUint64, &alloc, uint64(20), uint64(20)),
+			selection: makeSelection(false, false),
+			expect:    columnartest.Array(t, columnar.KindBool, &alloc, nil, nil),
+		},
+		{
+			name:      "LessThan/utf8/partial-selection",
+			fn:        compute.LessThan,
+			left:      columnartest.Array(t, columnar.KindUTF8, &alloc, "a", "b", "c", "d"),
+			right:     columnartest.Array(t, columnar.KindUTF8, &alloc, "b", "b", "b", "b"),
+			selection: makeSelection(true, false, true, false),
+			expect:    columnartest.Array(t, columnar.KindBool, &alloc, true, nil, false, nil),
+		},
+
+		// LessOrEqual with selection
+		{
+			name:      "LessOrEqual/int64/partial-selection",
+			fn:        compute.LessOrEqual,
+			left:      columnartest.Array(t, columnar.KindInt64, &alloc, int64(10), int64(20), int64(10)),
+			right:     columnartest.Array(t, columnar.KindInt64, &alloc, int64(10), int64(15), int64(10)),
+			selection: makeSelection(true, false, true),
+			expect:    columnartest.Array(t, columnar.KindBool, &alloc, true, nil, true),
+		},
+		{
+			name:      "LessOrEqual/uint64/full-selection",
+			fn:        compute.LessOrEqual,
+			left:      columnartest.Array(t, columnar.KindUint64, &alloc, uint64(10), uint64(20)),
+			right:     columnartest.Array(t, columnar.KindUint64, &alloc, uint64(10), uint64(30)),
+			selection: makeSelection(true, true),
+			expect:    columnartest.Array(t, columnar.KindBool, &alloc, true, true),
+		},
+
+		// GreaterThan with selection
+		{
+			name:      "GreaterThan/int64/partial-selection",
+			fn:        compute.GreaterThan,
+			left:      columnartest.Array(t, columnar.KindInt64, &alloc, int64(15), int64(5), int64(20)),
+			right:     columnartest.Array(t, columnar.KindInt64, &alloc, int64(10), int64(10), int64(10)),
+			selection: makeSelection(true, false, true),
+			expect:    columnartest.Array(t, columnar.KindBool, &alloc, true, nil, true),
+		},
+		{
+			name:      "GreaterThan/utf8/single-row-selection",
+			fn:        compute.GreaterThan,
+			left:      columnartest.Array(t, columnar.KindUTF8, &alloc, "x", "y", "z"),
+			right:     columnartest.Array(t, columnar.KindUTF8, &alloc, "y", "y", "y"),
+			selection: makeSelection(false, true, false),
+			expect:    columnartest.Array(t, columnar.KindBool, &alloc, nil, false, nil),
+		},
+
+		// GreaterOrEqual with selection
+		{
+			name:      "GreaterOrEqual/int64/partial-selection",
+			fn:        compute.GreaterOrEqual,
+			left:      columnartest.Array(t, columnar.KindInt64, &alloc, int64(10), int64(5), int64(10)),
+			right:     columnartest.Array(t, columnar.KindInt64, &alloc, int64(10), int64(10), int64(5)),
+			selection: makeSelection(true, false, true),
+			expect:    columnartest.Array(t, columnar.KindBool, &alloc, true, nil, true),
+		},
+		{
+			name:      "GreaterOrEqual/uint64/no-rows-selected",
+			fn:        compute.GreaterOrEqual,
+			left:      columnartest.Array(t, columnar.KindUint64, &alloc, uint64(10), uint64(5)),
+			right:     columnartest.Array(t, columnar.KindUint64, &alloc, uint64(5), uint64(5)),
+			selection: makeSelection(false, false),
+			expect:    columnartest.Array(t, columnar.KindBool, &alloc, nil, nil),
+		},
+
+		// Edge case: selection length mismatch (should error)
+		{
+			name:        "Equals/selection-length-mismatch",
+			fn:          compute.Equals,
+			left:        columnartest.Array(t, columnar.KindInt64, &alloc, int64(1), int64(2), int64(3)),
+			right:       columnartest.Array(t, columnar.KindInt64, &alloc, int64(1), int64(2), int64(3)),
+			selection:   makeSelection(true, false), // wrong length
+			expectError: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			actual, err := tc.fn(&alloc, tc.left, tc.right, tc.selection)
+			if tc.expectError {
+				require.Error(t, err, "expected error for invalid operation")
+				return
+			}
+			require.NoError(t, err)
+			columnartest.RequireDatumsEqual(t, tc.expect, actual)
+		})
+	}
 }
