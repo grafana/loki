@@ -57,6 +57,14 @@ var (
 		"AzureGermanCloud":  true,
 		"AzureUSGovernment": true,
 	}
+	azureEnvironmentEndpointSuffix = map[string]string{
+		"AzureGlobal":       "blob.core.windows.net",
+		"AzureCloud":        "blob.core.windows.net",
+		"AzurePublic":       "blob.core.windows.net",
+		"AzureChinaCloud":   "blob.core.chinacloudapi.cn",
+		"AzureGermanCloud":  "blob.core.cloudapi.de",
+		"AzureUSGovernment": "blob.core.usgovcloudapi.net",
+	}
 )
 
 const (
@@ -248,6 +256,15 @@ func extractAzureConfigSecret(s *corev1.Secret, credentialMode lokiv1.Credential
 		return nil, fmt.Errorf("%w: %s", errAzureInvalidEnvironment, env)
 	}
 
+	endpointSuffix := string(s.Data[storage.KeyAzureStorageEndpointSuffix])
+	if endpointSuffix == "" {
+		es, ok := azureEnvironmentEndpointSuffix[env]
+		if !ok {
+			return nil, fmt.Errorf("%w: %s", errAzureInvalidEnvironment, endpointSuffix)
+		}
+		endpointSuffix = es
+	}
+
 	accountName := s.Data[storage.KeyAzureStorageAccountName]
 	if len(accountName) == 0 {
 		return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAzureStorageAccountName)
@@ -264,7 +281,6 @@ func extractAzureConfigSecret(s *corev1.Secret, credentialMode lokiv1.Credential
 	}
 
 	// Extract and validate optional fields
-	endpointSuffix := s.Data[storage.KeyAzureStorageEndpointSuffix]
 	audience := s.Data[storage.KeyAzureAudience]
 
 	if !workloadIdentity && len(audience) > 0 {
