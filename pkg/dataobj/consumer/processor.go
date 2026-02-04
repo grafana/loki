@@ -147,7 +147,7 @@ func (p *processor) Run(ctx context.Context) error {
 		case <-ctx.Done():
 			level.Info(p.logger).Log("msg", "context canceled")
 			// We don't return ctx.Err() here as it manifests as a service failure
-			// when shutting down.
+			// when stopping the service.
 			return nil
 		case rec, ok := <-p.records:
 			if !ok {

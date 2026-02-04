@@ -98,7 +98,9 @@ func (c *SinglePartitionConsumer) Run(ctx context.Context) error {
 	for b.Ongoing() {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			// We don't return ctx.Err() here as it manifests as a service failure
+			// when stopping the service.
+			return nil
 		default:
 		}
 		c.polls.Inc()
