@@ -48,17 +48,17 @@ func (r Range) Overlaps(other Range) bool {
 // for use.
 type Set struct{ ranges []Range }
 
-// From creates a new Set from a slice of ranges. From panics if any of the
-// individual ranges are invalid.
+// From creates a new Set from a slice of ranges. Invalid ranges (those of
+// length zero or negative length) are ignored.
 func From(ranges ...Range) Set {
+	s := Set{ranges: make([]Range, 0, len(ranges))}
+
 	for _, r := range ranges {
 		if !r.IsValid() {
-			panic(fmt.Sprintf("invalid range %v", r))
+			continue
 		}
+		s.ranges = append(s.ranges, r)
 	}
-
-	s := Set{ranges: make([]Range, 0, len(ranges))}
-	s.ranges = append(s.ranges, ranges...)
 
 	// We need to sort the ranges before normalizing them.
 	slices.SortFunc(s.ranges, func(a, b Range) int {
