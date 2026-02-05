@@ -160,7 +160,11 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *Back
 	)
 
 	// Extract tenant ID for metrics labeling
-	tenantID, _, _ := tenant.ExtractTenantIDFromHTTPRequest(r)
+	tenantID, _, err := tenant.ExtractTenantIDFromHTTPRequest(r)
+	if err != nil || tenantID == "" {
+		level.Warn(p.logger).Log("msg", "Failed to extract tenant ID from HTTP request for metrics", "err", err)
+		tenantID = "unknown"
+	}
 
 	if r.Body != nil {
 		body, err = io.ReadAll(r.Body)
