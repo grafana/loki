@@ -295,7 +295,7 @@ func TestBitmap_Slice(t *testing.T) {
 		bmap.AppendValues(false, false, false, true, true, false, true, true, false, false, true, true, false, false, false, false)
 
 		slice := bmap.Slice(3, 11)
-		cloned := slice.Clone()
+		cloned := slice.Clone(nil)
 
 		require.Equal(t, slice.Len(), cloned.Len(), "cloned bitmap should have same length")
 

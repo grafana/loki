@@ -5,7 +5,6 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
-	"github.com/apache/arrow-go/v18/arrow/bitutil"
 	arrowmemory "github.com/apache/arrow-go/v18/arrow/memory"
 
 	"github.com/grafana/loki/v3/pkg/columnar"
@@ -23,15 +22,13 @@ func ToRecordBatch(src *columnar.RecordBatch, schema *arrow.Schema) (arrow.Recor
 
 		srcCol := src.Column(colIdx)
 
+		// Clone the source validity bitmap. We use Clone rather than copying
+		// Bytes directly so that Clone can normalize offsets.
 		srcValidity := src.Column(colIdx).Validity()
-
-		srcBytes, srcOffset := srcValidity.Bytes()
-		dstValidity := make([]byte, len(srcBytes))
-		if srcOffset != 0 {
-			// Normalize the bitmap so it's aligned again.
-			bitutil.CopyBitmap(srcBytes, srcOffset, srcValidity.Len(), dstValidity, 0)
-		} else {
-			copy(dstValidity, srcBytes)
+		clonedValidity := srcValidity.Clone(nil)
+		dstValidity, dstOffset := clonedValidity.Bytes()
+		if dstOffset != 0 {
+			panic("cloned bitmap should be aligned")
 		}
 
 		switch field.Type.ID() {
