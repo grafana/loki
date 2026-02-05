@@ -1,6 +1,7 @@
 package matchutil
 
 import (
+	"bytes"
 	"testing"
 )
 
