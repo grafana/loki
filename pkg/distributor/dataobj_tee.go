@@ -72,6 +72,7 @@ type DataObjTee struct {
 	streamFailures  prometheus.Counter
 	producedBytes   *prometheus.CounterVec
 	producedRecords *prometheus.CounterVec
+	estimatedRate   *prometheus.GaugeVec
 }
 
 // NewDataObjTee returns a new DataObjTee.
@@ -109,6 +110,10 @@ func NewDataObjTee(
 			Name: "loki_distributor_dataobj_tee_produced_records_total",
 			Help: "Total number of records produced to each partition.",
 		}, []string{"partition", "tenant", "segmentation_key"}),
+		estimatedRate: promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
+			Name: "loki_distributor_dataobj_tee_estimated_rate_bytes",
+			Help: "Estimated rate in bytes by tenant and segmentation key.",
+		}, []string{"tenant", "segmentation_key"}),
 	}, nil
 }
 
@@ -149,6 +154,14 @@ func (t *DataObjTee) Duplicate(ctx context.Context, tenant string, streams []Key
 	fastRates := make(map[uint64]uint64, len(rates))
 	for _, rate := range rates {
 		fastRates[rate.StreamHash] = rate.Rate
+	}
+
+	if t.cfg.DebugMetricsEnabled {
+		// Set the estimated rate for each segmentation key.
+		for _, s := range segmentationKeyStreams {
+			rate := fastRates[s.SegmentationKeyHash]
+			t.estimatedRate.WithLabelValues(tenant, string(s.SegmentationKey)).Set(float64(rate))
+		}
 	}
 
 	// We use max to prevent negative values becoming large positive values
