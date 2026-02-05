@@ -271,9 +271,9 @@ func (h *FanOutHandler) collectRemainingAndCompare(remaining int, httpReq *http.
 	tenantID, _, err := tenant.ExtractTenantIDFromHTTPRequest(httpReq)
 	if err != nil {
 		level.Warn(h.logger).Log(
-			"msg",        "failed to extract tenant id from http request",
+			"msg", "failed to extract tenant id from http request",
 			"route-name", h.routeName,
-			"err",        err,
+			"err", err,
 		)
 		tenantID = "unknown"
 	}
