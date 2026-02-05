@@ -9,6 +9,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bitmask"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/rangeset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/sliceclear"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
@@ -48,7 +49,7 @@ type RowReader struct {
 	dl     *rowReaderDownloader // Bulk page download manager.
 	row    int64                // The current row being read.
 	inner  *basicRowReader      // Underlying reader that reads from columns.
-	ranges rowRanges            // Valid ranges to read across the entire dataset.
+	ranges rangeset.Set         // Valid ranges to read across the entire dataset.
 
 	region *xcap.Region // Region for recording statistics.
 }
@@ -112,18 +113,18 @@ func (r *RowReader) Read(ctx context.Context, s []Row) (int, error) {
 		return 0, fmt.Errorf("failed to seek to row %d: %w", row, err)
 	}
 
-	currentRange, ok := r.ranges.Range(row)
-	if !ok {
+	currentRange := r.ranges.RangeFor(row)
+	if !currentRange.IsValid() {
 		// This should be unreachable; alignToRange already ensures that we're in a
 		// range, or it returns io.EOF.
 		return 0, fmt.Errorf("failed to find range for row %d", row)
 	}
 
-	readSize := min(len(s), int(currentRange.End-row+1))
+	readSize := min(len(s), int(currentRange.End-row))
 
-	readRange := rowRange{
+	readRange := rangeset.Range{
 		Start: row,
-		End:   row + uint64(readSize) - 1,
+		End:   row + uint64(readSize),
 	}
 	r.dl.SetReadRange(readRange)
 
@@ -277,7 +278,7 @@ func (r *RowReader) readAndFilterPrimaryColumns(ctx context.Context, readSize in
 // alignRow returns r.row if it is a valid row in ranges, or adjusts r.row to
 // the next valid row in ranges.
 func (r *RowReader) alignRow() (uint64, error) {
-	if r.ranges.Includes(uint64(r.row)) {
+	if r.ranges.IncludesValue(uint64(r.row)) {
 		return uint64(r.row), nil
 	}
 
@@ -359,8 +360,8 @@ func checkPredicate(p Predicate, lookup map[Column]int, row Row) bool {
 // present in s.
 //
 // buildMask will panic if any index in s is outside the range of full.
-func buildMask(full rowRange, s []Row) iter.Seq[rowRange] {
-	return func(yield func(rowRange) bool) {
+func buildMask(full rangeset.Range, s []Row) iter.Seq[rangeset.Range] {
+	return func(yield func(rangeset.Range) bool) {
 		// Rows in s are in ascending order, but there may be gaps between rows. We
 		// need to return ranges of rows in full that are not in s.
 		if len(s) == 0 {
@@ -376,10 +377,7 @@ func buildMask(full rowRange, s []Row) iter.Seq[rowRange] {
 			}
 
 			if uint64(row.Index) != start {
-				// If start is 1 and row.Index is 5, then the excluded range is (1, 4):
-				//
-				// (start, row.Index - 1).
-				if !yield(rowRange{Start: start, End: uint64(row.Index) - 1}) {
+				if !yield(rangeset.Range{Start: start, End: uint64(row.Index)}) {
 					return
 				}
 			}
@@ -387,8 +385,8 @@ func buildMask(full rowRange, s []Row) iter.Seq[rowRange] {
 			start = uint64(row.Index) + 1
 		}
 
-		if start <= full.End {
-			if !yield(rowRange{Start: start, End: full.End}) {
+		if start < full.End {
+			if !yield(rangeset.Range{Start: start, End: full.End}) {
 				return
 			}
 		}
@@ -425,7 +423,7 @@ func (r *RowReader) Reset(opts ReaderOptions) {
 	}
 
 	r.row = 0
-	r.ranges = sliceclear.Clear(r.ranges)
+	r.ranges.Reset()
 	r.primaryColumnIndexes = sliceclear.Clear(r.primaryColumnIndexes)
 	r.ready = false
 	r.region = nil
@@ -563,7 +561,7 @@ func (r *RowReader) initDownloader(ctx context.Context) error {
 		}
 	}
 
-	var ranges rowRanges
+	var ranges rangeset.Set
 	var err error
 	if len(r.opts.Predicates) == 0 { // no predicates, build full range
 		ranges, err = r.buildPredicateRanges(ctx, nil)
@@ -571,16 +569,16 @@ func (r *RowReader) initDownloader(ctx context.Context) error {
 			return err
 		}
 	} else {
-		for _, p := range r.opts.Predicates {
+		for i, p := range r.opts.Predicates {
 			rr, err := r.buildPredicateRanges(ctx, p)
 			if err != nil {
 				return err
 			}
 
-			if ranges == nil {
+			if i == 0 {
 				ranges = rr
 			} else {
-				ranges = intersectRanges(nil, ranges, rr)
+				ranges = rangeset.Intersect(ranges, rr)
 			}
 		}
 	}
@@ -594,7 +592,7 @@ func (r *RowReader) initDownloader(ctx context.Context) error {
 	}
 
 	r.region.Record(xcap.StatDatasetMaxRows.Observe(int64(rowsCount)))
-	r.region.Record(xcap.StatDatasetRowsAfterPruning.Observe(int64(ranges.TotalRowCount())))
+	r.region.Record(xcap.StatDatasetRowsAfterPruning.Observe(int64(ranges.Len())))
 
 	return nil
 }
@@ -648,31 +646,29 @@ func (r *RowReader) fillPrimaryMask(mask *bitmask.Mask) {
 // entire dataset range is valid.
 //
 // r.dl must be initialized before calling buildPredicateRanges.
-func (r *RowReader) buildPredicateRanges(ctx context.Context, p Predicate) (rowRanges, error) {
-	// TODO(rfratto): We could be reusing memory for building ranges here.
-
+func (r *RowReader) buildPredicateRanges(ctx context.Context, p Predicate) (rangeset.Set, error) {
 	switch p := p.(type) {
 	case AndPredicate:
 		left, err := r.buildPredicateRanges(ctx, p.Left)
 		if err != nil {
-			return nil, err
+			return rangeset.Set{}, err
 		}
 		right, err := r.buildPredicateRanges(ctx, p.Right)
 		if err != nil {
-			return nil, err
+			return rangeset.Set{}, err
 		}
-		return intersectRanges(nil, left, right), nil
+		return rangeset.Intersect(left, right), nil
 
 	case OrPredicate:
 		left, err := r.buildPredicateRanges(ctx, p.Left)
 		if err != nil {
-			return nil, err
+			return rangeset.Set{}, err
 		}
 		right, err := r.buildPredicateRanges(ctx, p.Right)
 		if err != nil {
-			return nil, err
+			return rangeset.Set{}, err
 		}
-		return unionRanges(nil, left, right), nil
+		return rangeset.Union(left, right), nil
 
 	case NotPredicate:
 		// De Morgan's laws must be applied to reduce the NotPredicate to a set of
@@ -686,12 +682,12 @@ func (r *RowReader) buildPredicateRanges(ctx context.Context, p Predicate) (rowR
 			for _, column := range r.allColumns() {
 				rowsCount = max(rowsCount, uint64(column.ColumnDesc().RowsCount))
 			}
-			return rowRanges{{Start: 0, End: rowsCount - 1}}, nil
+			return rangeset.From(rangeset.Range{Start: 0, End: rowsCount}), nil
 		}
 		return r.buildPredicateRanges(ctx, simplified)
 
 	case FalsePredicate:
-		return nil, nil // No valid ranges.
+		return rangeset.Set{}, nil // No valid ranges.
 
 	case EqualPredicate:
 		return r.buildColumnPredicateRanges(ctx, p.Column, p)
@@ -715,7 +711,7 @@ func (r *RowReader) buildPredicateRanges(ctx context.Context, p Predicate) (rowR
 		for _, column := range r.allColumns() {
 			rowsCount = max(rowsCount, uint64(column.ColumnDesc().RowsCount))
 		}
-		return rowRanges{{Start: 0, End: rowsCount - 1}}, nil
+		return rangeset.From(rangeset.Range{Start: 0, End: rowsCount}), nil
 
 	default:
 		panic(fmt.Sprintf("unsupported predicate type %T", p))
@@ -790,15 +786,15 @@ func simplifyNotPredicate(p NotPredicate) (Predicate, error) {
 // buildColumnPredicateRanges returns a set of rowRanges that are valid based
 // on whether EqualPredicate, InPredicate, GreaterThanPredicate, or LessThanPredicate may be
 // true for each page in a column.
-func (r *RowReader) buildColumnPredicateRanges(ctx context.Context, c Column, p Predicate) (rowRanges, error) {
+func (r *RowReader) buildColumnPredicateRanges(ctx context.Context, c Column, p Predicate) (rangeset.Set, error) {
 	// Get the wrapped column so that the result of c.ListPages can be cached.
 	if idx, ok := r.origColumnLookup[c]; ok {
 		c = r.allColumns()[idx]
 	} else {
-		return nil, fmt.Errorf("column %v not found in RowReader columns", c)
+		return rangeset.Set{}, fmt.Errorf("column %v not found in RowReader columns", c)
 	}
 
-	var ranges rowRanges
+	var ranges rangeset.Set
 
 	var (
 		pageStart    int
@@ -810,19 +806,19 @@ func (r *RowReader) buildColumnPredicateRanges(ctx context.Context, c Column, p 
 
 		page, err := result.Value()
 		if err != nil {
-			return nil, err
+			return rangeset.Set{}, err
 		}
 		pageInfo := page.PageDesc()
 		lastPageSize = pageInfo.RowCount
 
-		pageRange := rowRange{
+		pageRange := rangeset.Range{
 			Start: uint64(pageStart),
-			End:   uint64(pageStart + pageInfo.RowCount - 1),
+			End:   uint64(pageStart + pageInfo.RowCount),
 		}
 
 		minValue, maxValue, err := readMinMax(pageInfo.Stats)
 		if err != nil {
-			return nil, fmt.Errorf("failed to read page stats: %w", err)
+			return rangeset.Set{}, fmt.Errorf("failed to read page stats: %w", err)
 		} else if minValue.IsNil() || maxValue.IsNil() {
 			// No stats, so we add the whole range.
 			ranges.Add(pageRange)

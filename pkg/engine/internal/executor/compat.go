@@ -87,9 +87,36 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 
 		// Next, update the schema with the new columns that have the _extracted suffix.
 		oldSchema := batch.Schema()
+
+		destinationNames := make(map[string]bool, len(duplicates))
+		for i := range duplicates {
+			destinationNames[duplicates[i].name+extracted] = true
+		}
+		// Copy old fields, but skip any existing _extracted columns that we're about to recreate
 		newFields := make([]arrow.Field, 0, oldSchema.NumFields()+len(duplicates))
-		newFields = append(newFields, oldSchema.Fields()...)
-		r := int(batch.NumCols())
+		oldFieldToNewIdx := make(map[int]int, oldSchema.NumFields())
+		existingDestCols := make(map[string]*array.String, len(duplicates))
+
+		for oldIdx, field := range oldSchema.Fields() {
+			ident, err := identCache.ParseFQN(field.Name)
+			if err != nil {
+				oldFieldToNewIdx[oldIdx] = len(newFields)
+				newFields = append(newFields, field)
+				continue
+			}
+
+			// Skip existing _extracted columns that we're going to recreate
+			// But save a reference to their data so we can preserve values
+			if ident.ColumnType() == compat.Destination && destinationNames[ident.ShortName()] {
+				existingDestCols[ident.ShortName()] = batch.Column(oldIdx).(*array.String)
+				continue
+			}
+
+			oldFieldToNewIdx[oldIdx] = len(newFields)
+			newFields = append(newFields, field)
+		}
+
+		// Now add the new _extracted columns
 		for i := range duplicates {
 			sourceFieldIdx := duplicates[i].sourceIdx
 			sourceField := oldSchema.Field(sourceFieldIdx)
@@ -100,7 +127,7 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 
 			destinationIdent := semconv.NewIdentifier(sourceIdent.ShortName()+extracted, compat.Destination, sourceIdent.DataType())
 			newFields = append(newFields, semconv.FieldFromIdent(destinationIdent, true))
-			duplicates[i].destinationIdx = r + i
+			duplicates[i].destinationIdx = len(newFields) - 1
 		}
 
 		// Create a new builder with the updated schema.
@@ -114,14 +141,18 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 		newSchemaColumns := make([]arrow.Array, newSchema.NumFields())
 
 		// Now, go through all fields of the old schema and append the rows to the new builder.
-		for idx := range schema.NumFields() {
-			col := batch.Column(idx)
+		for oldIdx := range oldSchema.NumFields() {
+			col := batch.Column(oldIdx)
 
-			duplicateIdx := slices.IndexFunc(duplicates, func(d duplicateColumn) bool { return d.sourceIdx == idx })
+			duplicateIdx := slices.IndexFunc(duplicates, func(d duplicateColumn) bool { return d.sourceIdx == oldIdx })
 
 			// If not a colliding column, just copy over the column data of the original record.
 			if duplicateIdx < 0 {
-				newSchemaColumns[idx] = col
+				// Check if this column should be copied (not a skipped _extracted column)
+				if newIdx, ok := oldFieldToNewIdx[oldIdx]; ok {
+					newSchemaColumns[newIdx] = col
+				}
+				// If not in the map, it was skipped (existing _extracted column)
 				continue
 			}
 
@@ -134,11 +165,33 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 				collisionCols[i] = batch.Column(collIdx)
 			}
 
-			switch sourceFieldBuilder := builder.Field(idx).(type) {
+			// Get the new index for this source field
+			sourceNewIdx, ok := oldFieldToNewIdx[oldIdx]
+			if !ok {
+				// This shouldn't happen, but handle it gracefully
+				continue
+			}
+
+			switch sourceFieldBuilder := builder.Field(sourceNewIdx).(type) {
 			case *array.StringBuilder:
 				destinationFieldBuilder := builder.Field(duplicate.destinationIdx).(*array.StringBuilder)
+
+				// Check if there's an existing destination column (_extracted) in the input batch
+				// This happens when multiple ColumnCompat nodes run sequentially (e.g., | json | logfmt |)
+				existingDestCol := existingDestCols[duplicate.name+extracted]
+
 				for i := range int(batch.NumRows()) {
-					if col.IsNull(i) || !col.IsValid(i) {
+					// Preserve existing values over adding null
+					if existingDestCol != nil && !existingDestCol.IsNull(i) && existingDestCol.Value(i) != "" {
+						if col.IsNull(i) || !col.IsValid(i) {
+							sourceFieldBuilder.AppendNull() // append NULL to original column
+						} else {
+							sourceFieldBuilder.Append(col.(*array.String).Value(i)) // append value to original column
+						}
+
+						existingVal := existingDestCol.Value(i)
+						destinationFieldBuilder.Append(existingVal) // append value to _extracted column
+					} else if col.IsNull(i) || !col.IsValid(i) {
 						sourceFieldBuilder.AppendNull()      // append NULL to original column
 						destinationFieldBuilder.AppendNull() // append NULL to _extracted column
 					} else if allColumnsNull(collisionCols, i) {
@@ -154,7 +207,7 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 				}
 
 				sourceCol := sourceFieldBuilder.NewArray()
-				newSchemaColumns[duplicate.sourceIdx] = sourceCol
+				newSchemaColumns[sourceNewIdx] = sourceCol
 
 				destinationCol := destinationFieldBuilder.NewArray()
 				newSchemaColumns[duplicate.destinationIdx] = destinationCol

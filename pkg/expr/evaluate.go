@@ -38,6 +38,9 @@ func Evaluate(alloc *memory.Allocator, expr Expression, batch *columnar.RecordBa
 	case *Binary:
 		return evaluateBinary(alloc, expr, batch)
 
+	case *Regexp:
+		return nil, fmt.Errorf("regexp can only be evaluated as the right-hand side of regex match operations")
+
 	default:
 		panic(fmt.Sprintf("unexpected expression type %T", expr))
 	}
@@ -57,6 +60,12 @@ func evaluateUnary(alloc *memory.Allocator, expr *Unary, batch *columnar.RecordB
 }
 
 func evaluateBinary(alloc *memory.Allocator, expr *Binary, batch *columnar.RecordBatch) (columnar.Datum, error) {
+	// Check for special operators that need different handling of their arguments.
+	switch expr.Op {
+	case BinaryOpMatchRegex:
+		return evaluateSpecialBinary(alloc, expr, batch)
+	}
+
 	// TODO(rfratto): If expr.Op is [BinaryOpAND] or [BinaryOpOR], we can
 	// propagate selection vectors to avoid unnecessary evaluations.
 	left, err := Evaluate(alloc, expr.Left, batch)
@@ -86,8 +95,31 @@ func evaluateBinary(alloc *memory.Allocator, expr *Binary, batch *columnar.Recor
 		return compute.And(alloc, left, right)
 	case BinaryOpOR:
 		return compute.Or(alloc, left, right)
+	case BinaryOpHasSubstr:
+		return compute.Substr(alloc, left, right)
 	case BinaryOpHasSubstrIgnoreCase:
 		return compute.SubstrInsensitive(alloc, left, right)
+	}
+
+	return nil, fmt.Errorf("unexpected binary operator %s", expr.Op)
+}
+
+// evaluateSpecialBinary evaluates binary expressions for which one of the
+// arguments does not evaluate into an expression of its own.
+func evaluateSpecialBinary(alloc *memory.Allocator, expr *Binary, batch *columnar.RecordBatch) (columnar.Datum, error) {
+	switch expr.Op {
+	case BinaryOpMatchRegex:
+		left, err := Evaluate(alloc, expr.Left, batch)
+		if err != nil {
+			return nil, err
+		}
+
+		right, ok := expr.Right.(*Regexp)
+		if !ok {
+			return nil, fmt.Errorf("right-hand side of regex match operation must be a regexp, got %T", expr.Right)
+		}
+
+		return compute.RegexpMatch(alloc, left, right.Expression)
 	}
 
 	return nil, fmt.Errorf("unexpected binary operator %s", expr.Op)

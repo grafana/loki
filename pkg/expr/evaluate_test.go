@@ -3,6 +3,7 @@ package expr_test
 import (
 	"testing"
 
+	"github.com/grafana/regexp"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/columnar"
@@ -196,9 +197,21 @@ func TestEvaluate_Binary(t *testing.T) {
 			expect: columnartest.Array(t, columnar.KindBool, &alloc, true, false, true),
 		},
 		{
-			op:     expr.BinaryOpHasSubstrIgnoreCase,
+			op:     expr.BinaryOpMatchRegex,
+			left:   &expr.Column{Name: "name"},
+			right:  &expr.Regexp{Expression: regexp.MustCompile("(?i)((al|ch).*)")},
+			expect: columnartest.Array(t, columnar.KindBool, &alloc, true, false, true),
+		},
+		{
+			op:     expr.BinaryOpHasSubstr,
 			left:   &expr.Column{Name: "name"},
 			right:  &expr.Constant{Value: columnartest.Scalar(t, columnar.KindUTF8, "li")},
+			expect: columnartest.Array(t, columnar.KindBool, &alloc, true, false, true),
+		},
+		{
+			op:     expr.BinaryOpHasSubstrIgnoreCase,
+			left:   &expr.Column{Name: "name"},
+			right:  &expr.Constant{Value: columnartest.Scalar(t, columnar.KindUTF8, "LI")},
 			expect: columnartest.Array(t, columnar.KindBool, &alloc, true, false, true),
 		},
 	}
