@@ -245,7 +245,7 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	region.End()
 	capture.End()
 
-	xcap.ExportTrace(ctx, capture, logger)
+	xcap.ExportTrace(ctx, capture, e.cfg.XCap, logger)
 	logValues = append(logValues, xcap.SummaryLogValues(capture)...)
 	level.Info(logger).Log(
 		logValues...,

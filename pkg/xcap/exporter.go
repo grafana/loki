@@ -3,6 +3,7 @@ package xcap
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -16,16 +17,28 @@ var tracer = otel.Tracer("xcap")
 
 // ExportTrace exports a Capture as OpenTelemetry traces.
 //
-// Each region in the capture becomes a span. Spans are linked using
-// the parent-child relationships defined by the regions.
+// When cfg.SeparateDetailedTrace is enabled (default), the export creates two traces:
+//  1. A summary span in the global trace (connected to the parent context) that
+//     represents the entire xcap execution with aggregated statistics.
+//  2. A separate detailed trace where xcap is the root span, containing all
+//     individual region spans with their full hierarchy.
+//
+// The summary span includes a span link pointing to the detailed trace root,
+// allowing users to navigate from the high-level view to the detailed breakdown.
+//
+// When cfg.SeparateDetailedTrace is disabled, all spans are created directly under
+// the parent context, resulting in a single trace with nested xcap spans.
 //
 // Observations within a region are added as attributes to the corresponding span.
-func ExportTrace(ctx context.Context, capture *Capture, logger log.Logger) {
+func ExportTrace(ctx context.Context, capture *Capture, cfg Config, logger log.Logger) {
 	if capture == nil {
 		return
 	}
 
 	regions := capture.regions
+	if len(regions) == 0 {
+		return
+	}
 
 	// Build a map from region id to list of child regions
 	idToChildren := make(map[identifier][]*Region)
@@ -38,12 +51,110 @@ func ExportTrace(ctx context.Context, capture *Capture, logger log.Logger) {
 
 	// Find all root regions (regions with zero parentID)
 	rootRegions := idToChildren[zeroID]
+	if len(rootRegions) == 0 {
+		return
+	}
+
+	if cfg.SeparateDetailedTrace {
+		exportSeparateTraces(ctx, capture, regions, rootRegions, idToChildren, logger)
+	} else {
+		exportNestedTrace(ctx, rootRegions, idToChildren, logger)
+	}
+}
+
+// exportSeparateTraces exports xcap as two separate traces:
+// 1. A summary span in the global trace with a link to the detailed trace
+// 2. A separate detailed trace where xcap is the root span
+func exportSeparateTraces(ctx context.Context, capture *Capture, regions []*Region, rootRegions []*Region, idToChildren map[identifier][]*Region, logger log.Logger) {
+	// Calculate the time bounds for the entire capture
+	startTime, endTime := calculateCaptureBounds(regions)
+
+	// Step 1: Create the detailed trace with xcap as root (new trace, no parent)
+	// We use a fresh context to start a new trace
+	detailedCtx, detailedRootSpan := tracer.Start(
+		context.Background(),
+		"xcap",
+		trace.WithTimestamp(startTime),
+		trace.WithNewRoot(), // Ensures this is a new trace
+		trace.WithAttributes(
+			attribute.Int("xcap.region_count", len(regions)),
+			attribute.Int("xcap.root_region_count", len(rootRegions)),
+		),
+	)
+
+	// Create all child spans under the detailed root
+	for _, rootRegion := range rootRegions {
+		if err := createSpans(detailedCtx, rootRegion, idToChildren); err != nil {
+			level.Error(logger).Log("msg", "failed to create spans for root region", "id", rootRegion.id.String(), "err", err)
+			continue
+		}
+	}
+
+	// End the detailed root span
+	detailedRootSpan.End(trace.WithTimestamp(endTime))
+
+	// Step 2: Create a summary span in the global trace with a link to the detailed trace
+	detailedSpanCtx := detailedRootSpan.SpanContext()
+	summaryOpts := []trace.SpanStartOption{
+		trace.WithTimestamp(startTime),
+		trace.WithLinks(trace.Link{
+			SpanContext: detailedSpanCtx,
+			Attributes: []attribute.KeyValue{
+				attribute.String("link.type", "detailed_trace"),
+				attribute.String("link.description", "Link to detailed xcap trace"),
+			},
+		}),
+	}
+
+	// Add summary statistics as attributes
+	summaryObs := summarizeObservations(capture)
+	if summaryObs != nil {
+		for key, obs := range summaryObs.data {
+			summaryOpts = append(summaryOpts, trace.WithAttributes(observationToAttribute(key, obs)))
+		}
+	}
+
+	_, summarySpan := tracer.Start(ctx, "xcap", summaryOpts...)
+	summarySpan.End(trace.WithTimestamp(endTime))
+}
+
+// exportNestedTrace exports xcap spans directly under the parent context.
+// This results in all xcap spans being nested within the global trace hierarchy.
+func exportNestedTrace(ctx context.Context, rootRegions []*Region, idToChildren map[identifier][]*Region, logger log.Logger) {
 	for _, rootRegion := range rootRegions {
 		if err := createSpans(ctx, rootRegion, idToChildren); err != nil {
 			level.Error(logger).Log("msg", "failed to create spans for root region", "id", rootRegion.id.String(), "err", err)
 			continue
 		}
 	}
+}
+
+// calculateCaptureBounds returns the earliest start time and latest end time
+// across all regions in the capture.
+func calculateCaptureBounds(regions []*Region) (start, end time.Time) {
+	if len(regions) == 0 {
+		now := time.Now()
+		return now, now
+	}
+
+	start = regions[0].startTime
+	end = regions[0].endTime
+
+	for _, r := range regions[1:] {
+		if r.startTime.Before(start) {
+			start = r.startTime
+		}
+		if r.endTime.After(end) {
+			end = r.endTime
+		}
+	}
+
+	// Handle case where end time is zero (region not ended)
+	if end.IsZero() {
+		end = time.Now()
+	}
+
+	return start, end
 }
 
 // createSpans creates a span for the given region and recursively creates spans for its children.
