@@ -1,5 +1,7 @@
 package columnar
 
+import "fmt"
+
 type Set struct {
 	kind   Kind
 	lookup map[any]struct{}
@@ -13,16 +15,19 @@ func NewUTF8Set(values ...string) *Set {
 	return set
 }
 
-func NewInt64Set(values ...int64) *Set {
-	set := &Set{kind: KindInt64, lookup: make(map[any]struct{}, len(values))}
-	for _, value := range values {
-		set.lookup[value] = struct{}{}
+func NewNumberSet[T Numeric](values ...T) *Set {
+	var kind Kind
+	var zero T
+	switch any(zero).(type) {
+	case int64:
+		kind = KindInt64
+	case uint64:
+		kind = KindUint64
+	default:
+		panic(fmt.Sprintf("unsupported type %T", zero))
 	}
-	return set
-}
 
-func NewUint64Set(values ...uint64) *Set {
-	set := &Set{kind: KindUint64, lookup: make(map[any]struct{}, len(values))}
+	set := &Set{kind: kind, lookup: make(map[any]struct{}, len(values))}
 	for _, value := range values {
 		set.lookup[value] = struct{}{}
 	}
