@@ -1427,15 +1427,6 @@ func calculateShards(rate int64, pushSize, desiredRate int) int {
 	return int(math.Ceil(shards))
 }
 
-func calculateStreamSizes(stream logproto.Stream) (uint64, uint64) {
-	var entriesSize, structuredMetadataSize uint64
-	for _, entry := range stream.Entries {
-		entriesSize += uint64(len(entry.Line))
-		structuredMetadataSize += uint64(util.StructuredMetadataSize(entry.StructuredMetadata))
-	}
-	return entriesSize, structuredMetadataSize
-}
-
 // newRingAndLifecycler creates a new distributor ring and lifecycler with all required lifecycler delegates
 func newRingAndLifecycler(cfg RingConfig, instanceCount *atomic.Uint32, logger log.Logger, reg prometheus.Registerer, metricsNamespace string) (*ring.Ring, *ring.BasicLifecycler, error) {
 	kvStore, err := kv.NewClient(cfg.KVStore, ring.GetCodec(), kv.RegistererWithKVName(reg, "distributor-lifecycler"), logger)
