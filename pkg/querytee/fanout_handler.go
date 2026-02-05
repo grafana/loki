@@ -268,7 +268,15 @@ func (h *FanOutHandler) finishRace(winner *backendResult, remaining int, httpReq
 // and processes goldfish sampling. Should be called asynchronously to not block preferred response from returning.
 func (h *FanOutHandler) collectRemainingAndCompare(remaining int, httpReq *http.Request, results <-chan *backendResult, collected []*backendResult, shouldSample bool, preferV1 bool) {
 	issuer := detectIssuer(httpReq)
-	tenantID, _, _ := tenant.ExtractTenantIDFromHTTPRequest(httpReq)
+	tenantID, _, err := tenant.ExtractTenantIDFromHTTPRequest(httpReq)
+	if err != nil {
+		level.Warn(h.logger).Log(
+			"msg",        "failed to extract tenant id from http request",
+			"route-name", h.routeName,
+			"err",        err,
+		)
+		tenantID = "unknown"
+	}
 	for range remaining {
 		r := <-results
 		collected = append(collected, r)
