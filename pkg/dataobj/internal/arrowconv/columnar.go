@@ -5,6 +5,7 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/apache/arrow-go/v18/arrow/bitutil"
 	arrowmemory "github.com/apache/arrow-go/v18/arrow/memory"
 
 	"github.com/grafana/loki/v3/pkg/columnar"
@@ -23,8 +24,15 @@ func ToRecordBatch(src *columnar.RecordBatch, schema *arrow.Schema) (arrow.Recor
 		srcCol := src.Column(colIdx)
 
 		srcValidity := src.Column(colIdx).Validity()
-		dstValidity := make([]byte, len(srcValidity.Bytes()))
-		copy(dstValidity, srcValidity.Bytes())
+
+		srcBytes, srcOffset := srcValidity.Bytes()
+		dstValidity := make([]byte, len(srcBytes))
+		if srcOffset != 0 {
+			// Normalize the bitmap so it's aligned again.
+			bitutil.CopyBitmap(srcBytes, srcOffset, srcValidity.Len(), dstValidity, 0)
+		} else {
+			copy(dstValidity, srcBytes)
+		}
 
 		switch field.Type.ID() {
 		case arrow.INT64:

@@ -51,8 +51,13 @@ func notArray(alloc *memory.Allocator, input *columnar.Bool) *columnar.Bool {
 	valuesBitmap.Resize(count)
 
 	inputBitmap := input.Values()
-	bitutil.InvertBitmap(inputBitmap.Bytes(), 0, count, valuesBitmap.Bytes(), 0)
 
+	var (
+		inputBytes, inputOffset   = inputBitmap.Bytes()
+		valuesBytes, valuesOffset = valuesBitmap.Bytes()
+	)
+
+	bitutil.InvertBitmap(inputBytes, inputOffset, count, valuesBytes, valuesOffset)
 	return columnar.NewBool(valuesBitmap, validity)
 }
 
