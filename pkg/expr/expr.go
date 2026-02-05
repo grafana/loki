@@ -52,6 +52,11 @@ type (
 	//
 	// Regexp cannot be evaluated directly into a datum.
 	Regexp struct{ Expression *regexp.Regexp }
+
+	// ValueSet is an [Expression] used as the right-hand side of a [BinaryOpIn].
+	//
+	// ValueSet cannot be evaluated directly into a datum.
+	ValueSet struct{ Values *columnar.Set }
 )
 
 func (*Constant) isExpr() {}
@@ -59,3 +64,4 @@ func (*Column) isExpr()   {}
 func (*Unary) isExpr()    {}
 func (*Binary) isExpr()   {}
 func (*Regexp) isExpr()   {}
+func (*ValueSet) isExpr() {}
