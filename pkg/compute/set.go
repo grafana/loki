@@ -11,7 +11,7 @@ import (
 func IsMember(alloc *memory.Allocator, datum columnar.Datum, valueSet map[any]struct{}) (columnar.Datum, error) {
 	// Inspect the first key in the valueSet to determine the type of the valueSet. This function will panic if the valueSet is not all the same type.
 	for k := range valueSet {
-		switch any(k).(type) {
+		switch k.(type) {
 		case string:
 			if datum.Kind() != columnar.KindUTF8 {
 				return nil, fmt.Errorf("both inputs must be the same type, got %T and %s", k, datum.Kind())
