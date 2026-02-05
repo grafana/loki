@@ -11,99 +11,65 @@ import (
 	"github.com/grafana/loki/v3/pkg/memory"
 )
 
-// Benchmark RegexpMatch with various selection patterns
+var selections = map[string]func(*testing.B, *memory.Allocator) memory.Bitmap{
+	"selection_pct=100": func(b *testing.B, _ *memory.Allocator) memory.Bitmap { return memory.Bitmap{} },
+	"selection_pct=99": func(b *testing.B, alloc *memory.Allocator) memory.Bitmap {
+		return makeSparseSelection(b, alloc, benchmarkSize, 0.99)
+	},
+	"selection_pct=50": func(b *testing.B, alloc *memory.Allocator) memory.Bitmap {
+		return makeAlternatingSelection(b, alloc, benchmarkSize)
+	},
+	"selection_pct=05": func(b *testing.B, alloc *memory.Allocator) memory.Bitmap {
+		return makeSparseSelection(b, alloc, benchmarkSize, 0.05)
+	},
+}
 
-func BenchmarkRegexpMatch_FullSelection(b *testing.B) {
-	var alloc memory.Allocator
-	haystack := makeUTF8ArrayForRegexp(b, &alloc, benchmarkSize)
-	pattern := regexp.MustCompile(`ba[rz]`)
+func BenchmarkRegexpMatch(b *testing.B) {
+	for selectionName, selectionFunc := range selections {
+		b.Run(selectionName, func(b *testing.B) {
+			var alloc memory.Allocator
+			haystack := makeUTF8ArrayForRegexp(b, &alloc, benchmarkSize)
+			pattern := regexp.MustCompile(`ba[rz]`)
+			selection := selectionFunc(b, &alloc)
 
-	for b.Loop() {
-		result, err := compute.RegexpMatch(&alloc, haystack, pattern, memory.Bitmap{})
-		if err != nil {
-			b.Fatal(err)
-		}
-		_ = result
+			for b.Loop() {
+				result, err := compute.RegexpMatch(&alloc, haystack, pattern, selection)
+				if err != nil {
+					b.Fatal(err)
+				}
+				_ = result
+			}
+
+			utf8 := haystack.(*columnar.UTF8)
+			b.SetBytes(int64(utf8.Size()))
+			b.ReportMetric(float64(b.N*utf8.Len()), "values/s")
+		})
 	}
 }
 
-func BenchmarkRegexpMatch_50PercentSelection(b *testing.B) {
-	var alloc memory.Allocator
-	haystack := makeUTF8ArrayForRegexp(b, &alloc, benchmarkSize)
-	pattern := regexp.MustCompile(`ba[rz]`)
-	selection := makeAlternatingSelection(b, &alloc, benchmarkSize)
+func BenchmarkSubstrInsensitive(b *testing.B) {
+	for selectionName, selectionFunc := range selections {
+		b.Run(selectionName, func(b *testing.B) {
+			var alloc memory.Allocator
+			haystack := makeUTF8ArrayForSubstr(b, &alloc, benchmarkSize)
+			needle := &columnar.UTF8Scalar{Value: []byte("TEST")}
+			selection := selectionFunc(b, &alloc)
 
-	for b.Loop() {
-		result, err := compute.RegexpMatch(&alloc, haystack, pattern, selection)
-		if err != nil {
-			b.Fatal(err)
-		}
-		_ = result
+			for b.Loop() {
+				result, err := compute.SubstrInsensitive(&alloc, haystack, needle, selection)
+				if err != nil {
+					b.Fatal(err)
+				}
+				_ = result
+			}
+
+			utf8 := haystack.(*columnar.UTF8)
+			b.SetBytes(int64(utf8.Size()))
+			b.ReportMetric(float64(b.N*utf8.Len()), "values/s")
+		})
 	}
+
 }
-
-func BenchmarkRegexpMatch_5PercentSelection(b *testing.B) {
-	var alloc memory.Allocator
-	haystack := makeUTF8ArrayForRegexp(b, &alloc, benchmarkSize)
-	pattern := regexp.MustCompile(`ba[rz]`)
-	selection := makeSparseSelection(b, &alloc, benchmarkSize, 0.05)
-
-	for b.Loop() {
-		result, err := compute.RegexpMatch(&alloc, haystack, pattern, selection)
-		if err != nil {
-			b.Fatal(err)
-		}
-		_ = result
-	}
-}
-
-// Benchmark SubstrInsensitive with various selection patterns
-
-func BenchmarkSubstrInsensitive_FullSelection(b *testing.B) {
-	var alloc memory.Allocator
-	haystack := makeUTF8ArrayForSubstr(b, &alloc, benchmarkSize)
-	needle := &columnar.UTF8Scalar{Value: []byte("TEST")}
-
-	for b.Loop() {
-		result, err := compute.SubstrInsensitive(&alloc, haystack, needle, memory.Bitmap{})
-		if err != nil {
-			b.Fatal(err)
-		}
-		_ = result
-	}
-}
-
-func BenchmarkSubstrInsensitive_50PercentSelection(b *testing.B) {
-	var alloc memory.Allocator
-	haystack := makeUTF8ArrayForSubstr(b, &alloc, benchmarkSize)
-	needle := &columnar.UTF8Scalar{Value: []byte("TEST")}
-	selection := makeAlternatingSelection(b, &alloc, benchmarkSize)
-
-	for b.Loop() {
-		result, err := compute.SubstrInsensitive(&alloc, haystack, needle, selection)
-		if err != nil {
-			b.Fatal(err)
-		}
-		_ = result
-	}
-}
-
-func BenchmarkSubstrInsensitive_5PercentSelection(b *testing.B) {
-	var alloc memory.Allocator
-	haystack := makeUTF8ArrayForSubstr(b, &alloc, benchmarkSize)
-	needle := &columnar.UTF8Scalar{Value: []byte("TEST")}
-	selection := makeSparseSelection(b, &alloc, benchmarkSize, 0.05)
-
-	for b.Loop() {
-		result, err := compute.SubstrInsensitive(&alloc, haystack, needle, selection)
-		if err != nil {
-			b.Fatal(err)
-		}
-		_ = result
-	}
-}
-
-// Helper functions to create UTF8 test data for benchmarks
 
 func makeUTF8ArrayForRegexp(tb testing.TB, alloc *memory.Allocator, size int) columnar.Datum {
 	values := make([]interface{}, size)

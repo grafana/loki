@@ -45,16 +45,47 @@ func regexpMatchAS(alloc *memory.Allocator, haystack *columnar.UTF8, regexp *reg
 	}
 
 	allSelected := selection.Len() == 0
+	if allSelected {
+		for i := range haystack.Len() {
+			if haystack.IsNull(i) {
+				results.AppendNull()
+				continue
+			}
 
-	for i := range haystack.Len() {
-		selected := allSelected || selection.Get(i)
-		if !selected || haystack.IsNull(i) {
-			results.AppendNull()
+			results.AppendValue(regexp.Match(haystack.Get(i)))
+		}
+
+		return results.Build(), nil
+	}
+
+	// Only a subset of the rows is selected, iterate over selected and append them (backfilling the results with nulls for
+	// non-selected)
+	prev := -1
+	for curr := range selection.IterValues(true) {
+		// insert nulls for all elements (prev, curr) or (prev, curr] depending on haystack.IsNull
+		numNulls := curr - (prev + 1)
+		currIsNull := haystack.IsNull(curr)
+		if currIsNull {
+			numNulls++
+		}
+		if numNulls > 0 {
+			results.AppendNulls(numNulls)
+		}
+		prev = curr
+		if currIsNull {
 			continue
 		}
 
-		results.AppendValue(regexp.Match(haystack.Get(i)))
+		results.AppendValue(regexp.Match(haystack.Get(curr)))
 	}
+
+	// Adding trailing nulls:
+	// - len=10, 0 iterated  => prev=-1 => need to append 10-(-1+1) = 10 nulls
+	// - len=10, 9 iterated  => prev=8  => need to append 10-(8+1)  = 1 nulls
+	// - len=10, 10 iterated => prev=9 => need to append 10-(9+1)  = 0 nulls
+	trailingNulls := haystack.Len() - (prev + 1)
+	results.AppendNulls(trailingNulls)
+
 	return results.Build(), nil
 }
 
@@ -106,17 +137,49 @@ func substrInsensitiveAS(alloc *memory.Allocator, haystack *columnar.UTF8, needl
 	needleUpper := bytes.ToUpper(needle.Value)
 
 	allSelected := selection.Len() == 0
+	if allSelected {
+		for i := range haystack.Len() {
+			if haystack.IsNull(i) {
+				results.AppendNull()
+				continue
+			}
 
-	for i := range haystack.Len() {
-		selected := allSelected || selection.Get(i)
-		if !selected || haystack.IsNull(i) {
-			results.AppendNull()
+			haystackValueUpper := bytes.ToUpper(haystack.Get(i))
+			results.AppendValue(bytes.Contains(haystackValueUpper, needleUpper))
+		}
+
+		return results.Build(), nil
+	}
+
+	// Only a subset of the rows is selected, iterate over selected and append them (backfilling the results with nulls for
+	// non-selected)
+	prev := -1
+	for curr := range selection.IterValues(true) {
+		// insert nulls for all elements (prev, curr) or (prev, curr] depending on haystack.IsNull
+		numNulls := curr - (prev + 1)
+		currIsNull := haystack.IsNull(curr)
+		if currIsNull {
+			numNulls++
+		}
+		if numNulls > 0 {
+			results.AppendNulls(numNulls)
+		}
+		prev = curr
+		if currIsNull {
 			continue
 		}
 
-		haystackValueUpper := bytes.ToUpper(haystack.Get(i))
+		haystackValueUpper := bytes.ToUpper(haystack.Get(curr))
 		results.AppendValue(bytes.Contains(haystackValueUpper, needleUpper))
 	}
+
+	// Adding trailing nulls:
+	// - len=10, 0 iterated  => prev=-1 => need to append 10-(-1+1) = 10 nulls
+	// - len=10, 9 iterated  => prev=8  => need to append 10-(8+1)  = 1 nulls
+	// - len=10, 10 iterated => prev=9 => need to append 10-(9+1)  = 0 nulls
+	trailingNulls := haystack.Len() - (prev + 1)
+	results.AppendNulls(trailingNulls)
+
 	return results.Build(), nil
 }
 
@@ -169,16 +232,47 @@ func substrAS(alloc *memory.Allocator, haystack *columnar.UTF8, needle *columnar
 	}
 
 	allSelected := selection.Len() == 0
+	if allSelected {
+		for i := range haystack.Len() {
+			if haystack.IsNull(i) {
+				results.AppendNull()
+				continue
+			}
 
-	for i := range haystack.Len() {
-		selected := allSelected || selection.Get(i)
-		if !selected || haystack.IsNull(i) {
-			results.AppendNull()
+			results.AppendValue(bytes.Contains(haystack.Get(i), needle.Value))
+		}
+
+		return results.Build(), nil
+	}
+
+	// Only a subset of the rows is selected, iterate over selected and append them (backfilling the results with nulls for
+	// non-selected)
+	prev := -1
+	for curr := range selection.IterValues(true) {
+		// insert nulls for all elements (prev, curr) or (prev, curr] depending on haystack.IsNull
+		numNulls := curr - (prev + 1)
+		currIsNull := haystack.IsNull(curr)
+		if currIsNull {
+			numNulls++
+		}
+		if numNulls > 0 {
+			results.AppendNulls(numNulls)
+		}
+		prev = curr
+		if currIsNull {
 			continue
 		}
 
-		results.AppendValue(bytes.Contains(haystack.Get(i), needle.Value))
+		results.AppendValue(bytes.Contains(haystack.Get(curr), needle.Value))
 	}
+
+	// Adding trailing nulls:
+	// - len=10, 0 iterated  => prev=-1 => need to append 10-(-1+1) = 10 nulls
+	// - len=10, 9 iterated  => prev=8  => need to append 10-(8+1)  = 1 nulls
+	// - len=10, 10 iterated => prev=9 => need to append 10-(9+1)  = 0 nulls
+	trailingNulls := haystack.Len() - (prev + 1)
+	results.AppendNulls(trailingNulls)
+
 	return results.Build(), nil
 }
 
