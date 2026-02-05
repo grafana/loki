@@ -53,6 +53,34 @@ func (s *usageStore) getPolicyBucketAndStreamsLimit(tenant, policy string) (poli
 	return noPolicy, defaultMaxStreams // Use default bucket (noPolicy)
 }
 
+func (s *usageStore) averageRate(buckets []rateBucket, now time.Time) uint64 {
+	var (
+		totalBytes   uint64
+		totalSeconds float64
+		windowStart  = now.Add(-s.rateWindow)
+	)
+	for _, bucket := range buckets {
+		bucketTime := time.Unix(0, bucket.timestamp)
+		bucketEnd := bucketTime.Add(s.bucketSize)
+		// Ignore buckets that are outside the window.
+		if bucketTime.IsZero() || bucketEnd.Before(windowStart) {
+			continue
+		}
+		totalBytes += bucket.size
+		// If this is the current bucket, count the number of seconds start
+		// the start of the bucket, otherwise count the full duration.
+		if now.Before(bucketEnd) {
+			totalSeconds += now.Sub(bucketTime).Seconds()
+		} else {
+			totalSeconds += s.bucketSize.Seconds()
+		}
+	}
+	if totalSeconds == 0 {
+		return 0
+	}
+	return uint64(float64(totalBytes) / totalSeconds)
+}
+
 // usageStore stores per-tenant stream usage data.
 type usageStore struct {
 	activeWindow  time.Duration
