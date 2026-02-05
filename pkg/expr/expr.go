@@ -56,7 +56,7 @@ type (
 	// ValueSet is an [Expression] used as the right-hand side of a [BinaryOpIn].
 	//
 	// ValueSet cannot be evaluated directly into a datum.
-	ValueSet struct{ Values map[any]struct{} }
+	ValueSet struct{ Values *columnar.Set }
 )
 
 func (*Constant) isExpr() {}
