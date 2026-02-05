@@ -14,7 +14,7 @@ type Metrics struct {
 	framesReceivedTotal *prometheus.CounterVec
 	messagesQueued      prometheus.Gauge
 	messagesSentTotal   prometheus.Counter
-	MessageRTTSeconds   prometheus.Histogram
+	messageRTTSeconds   prometheus.Histogram
 }
 
 func NewMetrics() *Metrics {
@@ -34,7 +34,7 @@ func NewMetrics() *Metrics {
 			Name: "loki_engine_scheduler_wire_messages_sent_total",
 			Help: "Number of messages sent by a peer",
 		}),
-		MessageRTTSeconds: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
+		messageRTTSeconds: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
 			Name:                            "loki_engine_scheduler_wire_message_rtt_seconds",
 			Help:                            "Round-trip time to synchronously send a message to another peer",
 			NativeHistogramBucketFactor:     1.1,
@@ -64,5 +64,5 @@ func (m *Metrics) incMessageSent() {
 }
 
 func (m *Metrics) newMessageRTTTimer() *prometheus.Timer {
-	return prometheus.NewTimer(m.MessageRTTSeconds)
+	return prometheus.NewTimer(m.messageRTTSeconds)
 }
