@@ -234,3 +234,49 @@ func BenchmarkEqualUpper(b *testing.B) {
 		EqualUpper(line, match)
 	}
 }
+
+// naiveContainsUpper is a naive implementation that converts the entire line to uppercase
+// before checking if it contains the substring. This is used for comparison benchmarking.
+func naiveContainsUpper(line, substr []byte) bool {
+	upperLine := bytes.ToUpper(line)
+	return bytes.Contains(upperLine, substr)
+}
+
+// Benchmark comparison tests to measure the performance benefit of the optimized approach
+// versus a naive bytes.ToUpper + bytes.Contains implementation.
+func BenchmarkContainsUpperNaive(b *testing.B) {
+	line := []byte("This is a test error message with some content")
+	substr := []byte("ERROR")
+
+	for i := 0; i < b.N; i++ {
+		naiveContainsUpper(line, substr)
+	}
+}
+
+func BenchmarkContainsUpperUnicodeNaive(b *testing.B) {
+	line := []byte("This is a test MÜNCHEN message with some content")
+	substr := []byte("MÜNCHEN")
+
+	for i := 0; i < b.N; i++ {
+		naiveContainsUpper(line, substr)
+	}
+}
+
+// Benchmark with longer lines to amplify the difference
+func BenchmarkContainsUpperLongLine(b *testing.B) {
+	line := []byte("This is a much longer log line with many words and characters that will test the performance of our case-insensitive matching algorithm. We want to see how well it scales with longer input. The error keyword appears somewhere in the middle of this very long line.")
+	substr := []byte("ERROR")
+
+	for i := 0; i < b.N; i++ {
+		ContainsUpper(line, substr)
+	}
+}
+
+func BenchmarkContainsUpperLongLineNaive(b *testing.B) {
+	line := []byte("This is a much longer log line with many words and characters that will test the performance of our case-insensitive matching algorithm. We want to see how well it scales with longer input. The error keyword appears somewhere in the middle of this very long line.")
+	substr := []byte("ERROR")
+
+	for i := 0; i < b.N; i++ {
+		naiveContainsUpper(line, substr)
+	}
+}
