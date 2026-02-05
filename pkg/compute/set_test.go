@@ -4,10 +4,11 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/columnar/columnartest"
 	"github.com/grafana/loki/v3/pkg/memory"
-	"github.com/stretchr/testify/require"
 )
 
 func BenchmarkIsMember(b *testing.B) {
