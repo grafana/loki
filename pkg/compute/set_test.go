@@ -57,7 +57,7 @@ func TestIsMember(t *testing.T) {
 			{name: "mismatched types", searchData: columnartest.Array(t, columnar.KindInt64, alloc, 1, 2, 3), values: defaultSearchValues, expect: nil, expectError: true},
 		}
 
-		runIsMemberTests(t, alloc, tt)
+		runIsMemberTests(t, tt)
 	})
 
 	t.Run("Int64", func(t *testing.T) {
@@ -78,7 +78,7 @@ func TestIsMember(t *testing.T) {
 			{name: "mismatched types", searchData: columnartest.Array(t, columnar.KindUTF8, alloc, "test1", "test2", "test3"), values: defaultSearchValues, expect: nil, expectError: true},
 		}
 
-		runIsMemberTests(t, alloc, tt)
+		runIsMemberTests(t, tt)
 	})
 
 	t.Run("Uint64", func(t *testing.T) {
@@ -99,7 +99,7 @@ func TestIsMember(t *testing.T) {
 			{name: "mismatched types", searchData: columnartest.Array(t, columnar.KindUTF8, alloc, "test1", "test2", "test3"), values: defaultSearchValues, expect: nil, expectError: true},
 		}
 
-		runIsMemberTests(t, alloc, tt)
+		runIsMemberTests(t, tt)
 	})
 }
 
@@ -111,11 +111,12 @@ type isMemberTestCase struct {
 	expectError bool
 }
 
-func runIsMemberTests(t *testing.T, alloc *memory.Allocator, tt []isMemberTestCase) {
+func runIsMemberTests(t *testing.T, tt []isMemberTestCase) {
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
+			alloc := memory.NewAllocator(nil)
 			result, err := IsMember(alloc, tc.searchData, tc.values)
 			if tc.expectError {
 				require.Error(t, err)
