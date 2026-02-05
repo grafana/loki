@@ -391,6 +391,32 @@ func parsePushRequestBody(r *http.Request, maxRecvMsgSize int, maxDecompressedSi
 	return &req, nil
 }
 
+// safeParseLabelsWith16MBLimit wraps syntax.ParseLabels with panic recovery to catch
+// the panic that occurs when label names or values exceed 16MB (Prometheus encoding limit).
+// This prevents the distributor from crashing and instead returns a proper error to the client.
+func safeParseLabelsWith16MBLimit(labelString string, userID string) (labels.Labels, error) {
+	var result labels.Labels
+	var parseErr error
+
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				// Check if this is the specific panic we're looking for from Prometheus label encoding
+				if str, ok := r.(string); ok && strings.Contains(str, "String too long") {
+					parseErr = fmt.Errorf("label name or value exceeds maximum size of 16MB (Prometheus encoding limit) for org_id=%s", userID)
+					return
+				}
+				// For any other panic, re-panic to let it be handled by the standard panic recovery
+				panic(r)
+			}
+		}()
+
+		result, parseErr = syntax.ParseLabels(labelString)
+	}()
+
+	return result, parseErr
+}
+
 func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, maxRecvMsgSize int, maxDecompressedSize int64, tracker UsageTracker, streamResolver StreamResolver, logger log.Logger) (*logproto.PushRequest, *Stats, error) {
 	pushStats := NewPushStats()
 
@@ -409,7 +435,7 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 	for i := range req.Streams {
 		s := req.Streams[i]
 
-		lbs, err := syntax.ParseLabels(s.Labels)
+		lbs, err := safeParseLabelsWith16MBLimit(s.Labels, userID)
 		if err != nil {
 			return nil, nil, fmt.Errorf("couldn't parse labels: %w", err)
 		}
