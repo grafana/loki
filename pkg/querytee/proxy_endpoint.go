@@ -2,6 +2,7 @@ package querytee
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -251,7 +252,10 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *Back
 					"backend-name", p.backends[i].name,
 					"route-name", p.routeName,
 					"query", r.URL.RawQuery, "err", err)
-				result = comparisonMismatch
+				result = comparisonFailed
+				if errors.Is(err, comparator.ErrComparisonMismatch) {
+					result = comparisonMismatch
+				}
 			} else if summary != nil && summary.Skipped {
 				result = comparisonSkipped
 			}

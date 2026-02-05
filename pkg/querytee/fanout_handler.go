@@ -305,7 +305,10 @@ func (h *FanOutHandler) collectRemainingAndCompare(remaining int, httpReq *http.
 					"route-name", h.routeName,
 					"query", httpReq.URL.RawQuery,
 					"err", err)
-				result = comparisonMismatch
+				result = comparisonFailed
+				if errors.Is(err, comparator.ErrComparisonMismatch) {
+					result = comparisonMismatch
+				}
 			} else if summary != nil && summary.Skipped {
 				result = comparisonSkipped
 			}
