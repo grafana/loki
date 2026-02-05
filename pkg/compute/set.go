@@ -17,9 +17,9 @@ func IsMember(alloc *memory.Allocator, datum columnar.Datum, values *columnar.Se
 	case columnar.KindUTF8:
 		return isMemberUTF8(alloc, datum, values)
 	case columnar.KindInt64:
-		return isMemberInt64(alloc, datum, values)
+		return isMemberNumber[int64](alloc, datum, values)
 	case columnar.KindUint64:
-		return isMemberUint64(alloc, datum, values)
+		return isMemberNumber[uint64](alloc, datum, values)
 	default:
 		return nil, fmt.Errorf("unsupported datum type %s", datum.Kind())
 	}
@@ -64,20 +64,20 @@ func isMemberUTF8S(_ *memory.Allocator, datum *columnar.UTF8Scalar, values *colu
 	return &columnar.BoolScalar{Value: found}, nil
 }
 
-func isMemberInt64(alloc *memory.Allocator, datum columnar.Datum, values *columnar.Set) (columnar.Datum, error) {
+func isMemberNumber[T columnar.Numeric](alloc *memory.Allocator, datum columnar.Datum, values *columnar.Set) (columnar.Datum, error) {
 	_, isArray := datum.(columnar.Array)
 
 	switch {
 	case isArray:
-		return isMemberInt64A(alloc, datum.(*columnar.Number[int64]), values)
+		return isMemberNumberA(alloc, datum.(*columnar.Number[T]), values)
 	case !isArray:
-		return isMemberInt64S(alloc, datum.(*columnar.NumberScalar[int64]), values)
+		return isMemberNumberS(alloc, datum.(*columnar.NumberScalar[T]), values)
 	default:
 		return nil, fmt.Errorf("unsupported datum type %s", datum.Kind())
 	}
 }
 
-func isMemberInt64A(alloc *memory.Allocator, datum *columnar.Number[int64], values *columnar.Set) (columnar.Datum, error) {
+func isMemberNumberA[T columnar.Numeric](alloc *memory.Allocator, datum *columnar.Number[T], values *columnar.Set) (columnar.Datum, error) {
 	boolBuilder := columnar.NewBoolBuilder(alloc)
 	boolBuilder.Grow(datum.Len())
 
@@ -94,45 +94,7 @@ func isMemberInt64A(alloc *memory.Allocator, datum *columnar.Number[int64], valu
 	return boolBuilder.Build(), nil
 }
 
-func isMemberInt64S(_ *memory.Allocator, datum *columnar.NumberScalar[int64], values *columnar.Set) (columnar.Datum, error) {
-	if datum.IsNull() {
-		return &columnar.BoolScalar{Null: true}, nil
-	}
-	found := values.Has(datum.Value)
-	return &columnar.BoolScalar{Value: found}, nil
-}
-
-func isMemberUint64(alloc *memory.Allocator, datum columnar.Datum, values *columnar.Set) (columnar.Datum, error) {
-	_, isArray := datum.(columnar.Array)
-
-	switch {
-	case isArray:
-		return isMemberUint64A(alloc, datum.(*columnar.Number[uint64]), values)
-	case !isArray:
-		return isMemberUint64S(alloc, datum.(*columnar.NumberScalar[uint64]), values)
-	default:
-		return nil, fmt.Errorf("unsupported datum type %s", datum.Kind())
-	}
-}
-
-func isMemberUint64A(alloc *memory.Allocator, datum *columnar.Number[uint64], values *columnar.Set) (columnar.Datum, error) {
-	boolBuilder := columnar.NewBoolBuilder(alloc)
-	boolBuilder.Grow(datum.Len())
-
-	for i := range datum.Len() {
-		if datum.IsNull(i) {
-			boolBuilder.AppendNull()
-			continue
-		}
-
-		found := values.Has(datum.Get(i))
-		boolBuilder.AppendValue(found)
-	}
-
-	return boolBuilder.Build(), nil
-}
-
-func isMemberUint64S(_ *memory.Allocator, datum *columnar.NumberScalar[uint64], values *columnar.Set) (columnar.Datum, error) {
+func isMemberNumberS[T columnar.Numeric](_ *memory.Allocator, datum *columnar.NumberScalar[T], values *columnar.Set) (columnar.Datum, error) {
 	if datum.IsNull() {
 		return &columnar.BoolScalar{Null: true}, nil
 	}
