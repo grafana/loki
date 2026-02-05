@@ -159,6 +159,9 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *Back
 		issuer              = detectIssuer(r)
 	)
 
+	// Extract tenant ID for metrics labeling
+	tenantID, _, _ := tenant.ExtractTenantIDFromHTTPRequest(r)
+
 	if r.Body != nil {
 		body, err = io.ReadAll(r.Body)
 		if err != nil {
@@ -237,14 +240,14 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *Back
 			}
 			actualResponse := responses[i]
 
-			result := comparisonSuccess
+			result := comparisonMatch
 			summary, err := p.compareResponses(expectedResponse, actualResponse, time.Now().UTC())
 			if err != nil {
 				level.Error(p.logger).Log("msg", "response comparison failed",
 					"backend-name", p.backends[i].name,
 					"route-name", p.routeName,
 					"query", r.URL.RawQuery, "err", err)
-				result = comparisonFailed
+				result = comparisonMismatch
 			} else if summary != nil && summary.Skipped {
 				result = comparisonSkipped
 			}
@@ -252,7 +255,7 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *Back
 			if p.instrumentCompares && summary != nil {
 				p.metrics.missingMetrics.WithLabelValues(p.backends[i].name, p.backends[i].Alias(), p.routeName, result, issuer).Observe(float64(summary.MissingMetrics))
 			}
-			p.metrics.responsesComparedTotal.WithLabelValues(p.backends[i].name, p.backends[i].Alias(), p.routeName, result, issuer).Inc()
+			p.metrics.responsesComparedTotal.WithLabelValues(p.backends[i].name, p.backends[i].Alias(), p.routeName, result, issuer, tenantID).Inc()
 		}
 	}
 

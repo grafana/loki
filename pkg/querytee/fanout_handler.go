@@ -268,6 +268,7 @@ func (h *FanOutHandler) finishRace(winner *backendResult, remaining int, httpReq
 // and processes goldfish sampling. Should be called asynchronously to not block preferred response from returning.
 func (h *FanOutHandler) collectRemainingAndCompare(remaining int, httpReq *http.Request, results <-chan *backendResult, collected []*backendResult, shouldSample bool, preferV1 bool) {
 	issuer := detectIssuer(httpReq)
+	tenantID, _, _ := tenant.ExtractTenantIDFromHTTPRequest(httpReq)
 	for range remaining {
 		r := <-results
 		collected = append(collected, r)
@@ -288,7 +289,7 @@ func (h *FanOutHandler) collectRemainingAndCompare(remaining int, httpReq *http.
 
 	for _, r := range collected {
 		if h.shouldCompare(r, preferV1) {
-			result := comparisonSuccess
+			result := comparisonMatch
 			summary, err := h.compareResponses(preferredResult.backendResp, r.backendResp, time.Now().UTC())
 			if err != nil {
 				level.Error(h.logger).Log("msg", "response comparison failed",
@@ -296,7 +297,7 @@ func (h *FanOutHandler) collectRemainingAndCompare(remaining int, httpReq *http.
 					"route-name", h.routeName,
 					"query", httpReq.URL.RawQuery,
 					"err", err)
-				result = comparisonFailed
+				result = comparisonMismatch
 			} else if summary != nil && summary.Skipped {
 				result = comparisonSkipped
 			}
@@ -307,7 +308,7 @@ func (h *FanOutHandler) collectRemainingAndCompare(remaining int, httpReq *http.
 				).Observe(float64(summary.MissingMetrics))
 			}
 			h.metrics.responsesComparedTotal.WithLabelValues(
-				r.backend.name, r.backend.Alias(), h.routeName, result, issuer,
+				r.backend.name, r.backend.Alias(), h.routeName, result, issuer, tenantID,
 			).Inc()
 		}
 	}
