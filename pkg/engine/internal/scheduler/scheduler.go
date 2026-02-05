@@ -59,6 +59,8 @@ type Scheduler struct {
 	readyWorkers map[*workerConn]struct{}
 
 	assignSema chan struct{} // assignSema signals that task assignment is ready.
+
+	wireMetrics *wire.Metrics
 }
 
 var _ workflow.Runner = (*Scheduler)(nil)
@@ -85,6 +87,8 @@ func New(config Config) (*Scheduler, error) {
 		readyWorkers: make(map[*workerConn]struct{}),
 
 		assignSema: make(chan struct{}, 1),
+
+		wireMetrics: wire.NewMetrics(),
 	}
 
 	s.metrics = newMetrics()
@@ -138,8 +142,9 @@ func (s *Scheduler) handleConn(ctx context.Context, conn wire.Conn) {
 	s.metrics.connsTotal.Inc()
 
 	peer := &wire.Peer{
-		Logger: logger,
-		Conn:   conn,
+		Logger:  logger,
+		Metrics: s.wireMetrics,
+		Conn:    conn,
 
 		// Allow for a backlog of 128 frames before backpressure is applied.
 		Buffer: 128,
@@ -940,7 +945,6 @@ func (s *Scheduler) Listen(ctx context.Context, writer workflow.RecordWriter, st
 		pending = s.prepareBindMessage(registered)
 		return nil
 	}()
-
 	if err != nil {
 		return err
 	}
@@ -1129,6 +1133,7 @@ func (s *Scheduler) RegisterMetrics(reg prometheus.Registerer) error {
 
 	errs = append(errs, reg.Register(s.collector))
 	errs = append(errs, s.metrics.Register(reg))
+	errs = append(errs, s.wireMetrics.Register(reg))
 
 	return errors.Join(errs...)
 }
@@ -1137,4 +1142,5 @@ func (s *Scheduler) RegisterMetrics(reg prometheus.Registerer) error {
 func (s *Scheduler) UnregisterMetrics(reg prometheus.Registerer) {
 	reg.Unregister(s.collector)
 	s.metrics.Unregister(reg)
+	s.wireMetrics.Unregister(reg)
 }

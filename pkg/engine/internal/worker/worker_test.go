@@ -209,8 +209,9 @@ func TestWorkerGracefulShutdown(t *testing.T) {
 		defer workerConn.Close()
 
 		workerPeer := &wire.Peer{
-			Logger: logger,
-			Conn:   workerConn,
+			Logger:  logger,
+			Metrics: wire.NewMetrics(),
+			Conn:    workerConn,
 			Handler: func(_ context.Context, _ *wire.Peer, _ wire.Message) error {
 				return nil
 			},
@@ -229,8 +230,9 @@ func TestWorkerGracefulShutdown(t *testing.T) {
 		defer schedulerConn.Close()
 
 		schedulerPeer := &wire.Peer{
-			Logger: logger,
-			Conn:   schedulerConn,
+			Logger:  logger,
+			Metrics: wire.NewMetrics(),
+			Conn:    schedulerConn,
 			Handler: func(_ context.Context, _ *wire.Peer, _ wire.Message) error {
 				return nil
 			},
