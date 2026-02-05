@@ -79,6 +79,16 @@ const (
 	// arguments are scalars, otherwise the result is a bool array.
 	BinaryOpMatchRegex
 
+	// BinaryOpIn performs a membership check of the left and right expressions.
+	//
+	// The left expression denotes the datum to search, and must be a UTF8
+	// scalar or array. The right expression denotes the set of values to search
+	// for, and must be a map[any]struct{}. All keys in the map must be of the same type as the left datum.
+	// If the value is found in the set, the result is true.
+	//
+	// The result is a bool datum, which is either a bool scalar if the left datum is a scalar, otherwise the result is a bool array.
+	BinaryOpIn
+
 	// BinaryOpHasSubstr performs a case-sensitive substring check of the left
 	// and right expressions.
 	//
