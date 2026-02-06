@@ -128,7 +128,7 @@ func (bmap *Bitmap) Grow(n int) {
 	}
 
 	newValuesCap := max(bmap.len+n, 2*valuesCap)
-	newData := bmap.getNewData(words(newValuesCap))
+	newData := allocBitmapData(bmap.alloc, words(newValuesCap))
 
 	if bmap.off != 0 {
 		// Normalize the bitmap so it's aligned again.
@@ -142,14 +142,10 @@ func (bmap *Bitmap) Grow(n int) {
 	bmap.data = newData
 }
 
-// getNewData gets a new data slice with the specified minimum size. The
-// returned data is padded to 64 bytes for compatibility with Arrow buffer
-// requirements.
-func (bmap *Bitmap) getNewData(minSize int) []uint8 {
-	return getNewData(bmap.alloc, minSize)
-}
-
-func getNewData(alloc *Allocator, minSize int) []uint8 {
+// allocBitmapData allocates a new data slice with the specified minimum size.
+// The returned data is padded to 64 bytes for compatibility with Arrow buffer
+// recommendations.
+func allocBitmapData(alloc *Allocator, minSize int) []uint8 {
 	size := memalign.Align(minSize)
 
 	if alloc != nil {
@@ -209,7 +205,7 @@ func (bmap *Bitmap) ClearCount() int {
 // If bmap is an unaligned slice, the cloned bitmap will be normalized to remove
 // offsets. See [Bitmap.Bytes] for more information on aligned slices.
 func (bmap *Bitmap) Clone(alloc *Allocator) *Bitmap {
-	newData := getNewData(alloc, words(bmap.len))
+	newData := allocBitmapData(alloc, words(bmap.len))
 
 	if bmap.off != 0 {
 		// Normalize the bitmap so it's aligned again.
