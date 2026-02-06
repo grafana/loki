@@ -1,5 +1,19 @@
 # Changelog
 
+## [3.6.5](https://github.com/grafana/loki/compare/v3.6.4...v3.6.5) (2026-02-06)
+
+
+### Features
+
+* add loki health command (backport release-3.6.x) ([#20590](https://github.com/grafana/loki/issues/20590)) ([dfdbe2a](https://github.com/grafana/loki/commit/dfdbe2a351dd0a203513ee66b6dd0b6b983332b0))
+* Update to go 1.25.7 ([#20694](https://github.com/grafana/loki/issues/20694)) ([#20717](https://github.com/grafana/loki/issues/20717)) ([1967a6a](https://github.com/grafana/loki/commit/1967a6a3fd5589f0f1e9be14cdd5637ecf0b65d3))
+
+
+### Bug Fixes
+
+* bump go version for 3.6.x ([#20667](https://github.com/grafana/loki/issues/20667)) ([b06b508](https://github.com/grafana/loki/commit/b06b508e821a22e7913d3caefb6a61f56ad69089))
+* LineFilterLabelFilter.String() regexp correct delimiters (backport release-3.6.x) ([#20649](https://github.com/grafana/loki/issues/20649)) ([9d5fb5f](https://github.com/grafana/loki/commit/9d5fb5fa5eceacec96be55c36c3091d5aba552ba))
+
 ## [3.6.4](https://github.com/grafana/loki/compare/v3.6.3...v3.6.4) (2026-01-21)
 
 
