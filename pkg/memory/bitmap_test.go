@@ -149,3 +149,168 @@ func TestBitmap_IterValue_false(t *testing.T) {
 	expected := []int{0, 2, 4, 64, 69, 126}
 	require.Equal(t, expected, indices)
 }
+
+func TestBitmap_Slice(t *testing.T) {
+	t.Run("Get", func(t *testing.T) {
+		var bmap memory.Bitmap
+		bmap.AppendValues(false, false, false, true, true, false, true, true, false, false, true, true, false, false, false, false)
+
+		slice := bmap.Slice(3, 11)
+		require.Equal(t, 8, slice.Len(), "slice length should be 8")
+
+		for i := range slice.Len() {
+			require.Equal(t, bmap.Get(i+3), slice.Get(i), "unexpected value at index %d", i)
+		}
+	})
+
+	t.Run("Set", func(t *testing.T) {
+		var bmap memory.Bitmap
+		bmap.AppendCount(false, 20)
+		bmap.Set(5, true)
+		bmap.Set(8, true)
+		bmap.Set(12, true)
+
+		off := 3
+		slice := bmap.Slice(off, 15)
+
+		// Modify the slice
+		slice.Set(4, true)
+		require.True(t, slice.Get(4), "set should update bitmap")
+		require.Equal(t, bmap.Get(off+4), slice.Get(4), "updating slice should update original bitmap")
+	})
+
+	t.Run("SetRange", func(t *testing.T) {
+		var bmap memory.Bitmap
+		bmap.AppendCount(false, 24)
+
+		slice := bmap.Slice(3, 19)
+		slice.SetRange(2, 8, true)
+
+		for i := range slice.Len() {
+			if i >= 2 && i < 8 {
+				require.True(t, slice.Get(i), "slice bit %d should be true", i)
+			} else {
+				require.False(t, slice.Get(i), "slice bit %d should be false", i)
+			}
+		}
+
+		// Ensure consistency with unsliced bitmap
+		for i := range slice.Len() {
+			require.Equal(t, bmap.Get(i+3), slice.Get(i), "unexpected value at index %d", i)
+		}
+	})
+
+	t.Run("SetCount", func(t *testing.T) {
+		var bmap memory.Bitmap
+		bmap.AppendCount(false, 24)
+		bmap.SetRange(5, 15, true)
+
+		slice := bmap.Slice(3, 19)
+
+		var (
+			count      = slice.SetCount()
+			clearCount = slice.ClearCount()
+		)
+
+		require.Equal(t, 10, count, "slice should have 10 set bits")
+		require.Equal(t, 6, clearCount, "slice should have 6 clear bits")
+	})
+
+	t.Run("IterValues/value=true", func(t *testing.T) {
+		var bmap memory.Bitmap
+		bmap.AppendCount(false, 24)
+		bmap.Set(5, true)
+		bmap.Set(8, true)
+		bmap.Set(12, true)
+		bmap.Set(15, true)
+
+		off := 3
+		slice := bmap.Slice(off, bmap.Len())
+
+		var indices []int
+		for index := range slice.IterValues(true) {
+			indices = append(indices, off+index)
+		}
+
+		expected := []int{5, 8, 12, 15} // These are all adjusted for off for easier reading
+		require.Equal(t, expected, indices)
+	})
+
+	t.Run("IterValues/value=false", func(t *testing.T) {
+		var bmap memory.Bitmap
+		bmap.AppendCount(true, 24)
+		bmap.Set(5, false)
+		bmap.Set(8, false)
+		bmap.Set(12, false)
+		bmap.Set(15, false)
+
+		off := 3
+		slice := bmap.Slice(off, bmap.Len())
+
+		var indices []int
+		for index := range slice.IterValues(false) {
+			indices = append(indices, off+index)
+		}
+
+		expected := []int{5, 8, 12, 15} // These are all adjusted for off for easier reading
+		require.Equal(t, expected, indices)
+	})
+
+	t.Run("AppendBitmap", func(t *testing.T) {
+		var bmap memory.Bitmap
+		bmap.AppendValues(false, false, false, true, true, false, true, true, false, false, true, true, false, false, false, false)
+
+		off := 3
+		slice := bmap.Slice(off, bmap.Len())
+
+		var dst memory.Bitmap
+		dst.AppendBitmap(*slice)
+
+		require.Equal(t, bmap.Len()-off, dst.Len(), "mismatch in lengths")
+
+		// Verify the appended values match the slice
+		for i := range dst.Len() {
+			require.Equal(t, slice.Get(i), dst.Get(i), "bit %d should match", i)
+		}
+	})
+
+	t.Run("Sub-slice", func(t *testing.T) {
+		var bmap memory.Bitmap
+		bmap.AppendCount(false, 32)
+		bmap.Set(7, true)
+		bmap.Set(12, true)
+		bmap.Set(18, true)
+
+		slice1 := bmap.Slice(3, 23)
+		slice2 := slice1.Slice(2, 14)
+
+		totalOff := 3 + 2
+		require.True(t, slice2.Get(7-totalOff))
+		require.True(t, slice2.Get(12-totalOff))
+		require.False(t, slice2.Get(15-totalOff))
+	})
+
+	t.Run("Clone", func(t *testing.T) {
+		var bmap memory.Bitmap
+		bmap.AppendValues(false, false, false, true, true, false, true, true, false, false, true, true, false, false, false, false)
+
+		slice := bmap.Slice(3, 11)
+		cloned := slice.Clone(nil)
+
+		require.Equal(t, slice.Len(), cloned.Len(), "cloned bitmap should have same length")
+
+		// Verify all values match
+		for i := range slice.Len() {
+			require.Equal(t, slice.Get(i), cloned.Get(i), "bit %d should match", i)
+		}
+
+		// Flip index 2 in the clone, and make sure it doesn't affect the original slice.
+		before := bmap.Get(2 + 3 /* slice offset */)
+		require.Equal(t, before, slice.Get(2), "slice bit 2 should match original bmap")
+		require.Equal(t, before, cloned.Get(2), "slice bit 2 should match original bmap")
+
+		cloned.Set(2, !before)
+		require.Equal(t, before, slice.Get(2), "original slice bit 2 should remain unchanged")
+		require.Equal(t, !before, cloned.Get(2), "cloned bit 2 should be flipped")
+	})
+}

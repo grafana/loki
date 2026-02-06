@@ -64,12 +64,19 @@ func (logicalAndKernelImpl) DoAA(out *memory.Bitmap, left memory.Bitmap, right m
 
 	out.Resize(left.Len())
 
+	var (
+		leftBytes, leftOffset   = left.Bytes()
+		rightBytes, rightOffset = right.Bytes()
+		outBytes, outOffset     = out.Bytes()
+	)
+
 	bitutil.BitmapAnd(
-		left.Bytes(),
-		right.Bytes(),
-		0 /* left offset */, 0, /* right offset */
-		out.Bytes(),
-		0,                 /* out offset */
+		leftBytes,
+		rightBytes,
+		int64(leftOffset),
+		int64(rightOffset),
+		outBytes,
+		int64(outOffset),
 		int64(left.Len()), /* num values */
 	)
 }
@@ -113,12 +120,19 @@ func (logicalOrKernelImpl) DoAA(out *memory.Bitmap, left memory.Bitmap, right me
 
 	out.Resize(left.Len())
 
+	var (
+		leftBytes, leftOffset   = left.Bytes()
+		rightBytes, rightOffset = right.Bytes()
+		outBytes, outOffset     = out.Bytes()
+	)
+
 	bitutil.BitmapOr(
-		left.Bytes(),
-		right.Bytes(),
-		0 /* left offset */, 0, /* right offset */
-		out.Bytes(),
-		0,                 /* out offset */
+		leftBytes,
+		rightBytes,
+		int64(leftOffset),
+		int64(rightOffset),
+		outBytes,
+		int64(outOffset),
 		int64(left.Len()), /* num values */
 	)
 }

@@ -30,7 +30,7 @@ type uploader interface {
 
 // A flushJob contains all information needed to flush a data object builder.
 type flushJob struct {
-	builder
+	builder builder
 	// done is called when the job has finished.
 	done func(flushJobResult)
 }
@@ -125,7 +125,7 @@ func (f *flusherImpl) doJob(ctx context.Context, job flushJob) {
 // it in the metastore, and emits an object written event to the events topic.
 // It can be overidden in tests by replacing [jobFunc].
 func (f *flusherImpl) flush(ctx context.Context, job flushJob) (string, error) {
-	obj, closer, err := job.Flush()
+	obj, closer, err := job.builder.Flush()
 	if err != nil {
 		return "", fmt.Errorf("failed to flush data object builder: %w", err)
 	}

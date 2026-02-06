@@ -89,12 +89,19 @@ func computeValidityAA(alloc *memory.Allocator, left, right memory.Bitmap) (memo
 		validity := memory.NewBitmap(alloc, outLen)
 		validity.Resize(outLen)
 
+		var (
+			leftBytes, leftOffset   = left.Bytes()
+			rightBytes, rightOffset = right.Bytes()
+			outBytes, outOffset     = validity.Bytes()
+		)
+
 		bitutil.BitmapAnd(
-			left.Bytes(),
-			right.Bytes(),
-			0 /* left offset */, 0, /* right offset */
-			validity.Bytes(),
-			0,             /* out offset */
+			leftBytes,
+			rightBytes,
+			int64(leftOffset),
+			int64(rightOffset),
+			outBytes,
+			int64(outOffset),
 			int64(outLen), /* num values */
 		)
 
