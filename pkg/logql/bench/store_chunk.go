@@ -3,6 +3,7 @@ package bench
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
@@ -20,6 +21,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/storage"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	objectclient "github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
@@ -64,6 +66,11 @@ func NewChunkStore(dir, tenantID string) (*ChunkStore, error) {
 			CacheTTL:             24 * time.Hour,
 		},
 		FSConfig: local.FSConfig{Directory: storageDir},
+	}
+	if *storageLatency > 0 {
+		storeConfig.ObjectClientDecorator = func(c objectclient.ObjectClient) objectclient.ObjectClient {
+			return newLatencyObjectClient(c, *storageLatency)
+		}
 	}
 	period := config.PeriodConfig{
 		From:       config.DayTime{Time: model.Earliest},
@@ -171,4 +178,44 @@ func (s *ChunkStore) Close() error {
 	clear(s.chunks)
 	s.store.Stop()
 	return nil
+}
+
+// latencyObjectClient wraps an ObjectClient and injects a configurable delay
+// before each read operation to simulate object storage latency (e.g. S3/GCS).
+type latencyObjectClient struct {
+	objectclient.ObjectClient
+	latency time.Duration
+}
+
+func newLatencyObjectClient(c objectclient.ObjectClient, latency time.Duration) *latencyObjectClient {
+	return &latencyObjectClient{ObjectClient: c, latency: latency}
+}
+
+func (c *latencyObjectClient) delay() {
+	time.Sleep(c.latency)
+}
+
+func (c *latencyObjectClient) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, int64, error) {
+	c.delay()
+	return c.ObjectClient.GetObject(ctx, objectKey)
+}
+
+func (c *latencyObjectClient) GetObjectRange(ctx context.Context, objectKey string, off, length int64) (io.ReadCloser, error) {
+	c.delay()
+	return c.ObjectClient.GetObjectRange(ctx, objectKey, off, length)
+}
+
+func (c *latencyObjectClient) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
+	c.delay()
+	return c.ObjectClient.ObjectExists(ctx, objectKey)
+}
+
+func (c *latencyObjectClient) GetAttributes(ctx context.Context, objectKey string) (objectclient.ObjectAttributes, error) {
+	c.delay()
+	return c.ObjectClient.GetAttributes(ctx, objectKey)
+}
+
+func (c *latencyObjectClient) List(ctx context.Context, prefix string, delimiter string) ([]objectclient.StorageObject, []objectclient.StorageCommonPrefix, error) {
+	c.delay()
+	return c.ObjectClient.List(ctx, prefix, delimiter)
 }
