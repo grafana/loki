@@ -16,16 +16,16 @@ func dispatchUTF8Equality(alloc *memory.Allocator, kernel utf8EqualityKernel, le
 		return utf8EqualitySS(kernel, left.(*columnar.UTF8Scalar), right.(*columnar.UTF8Scalar)), nil
 	case leftScalar && !rightScalar:
 		out := utf8EqualitySA(alloc, kernel, left.(*columnar.UTF8Scalar), right.(*columnar.UTF8))
-		return ApplySelectionToBoolArray(alloc, out, selection)
+		return applySelectionToBoolArray(alloc, out, selection)
 	case !leftScalar && rightScalar:
 		out := utf8EqualityAS(alloc, kernel, left.(*columnar.UTF8), right.(*columnar.UTF8Scalar))
-		return ApplySelectionToBoolArray(alloc, out, selection)
+		return applySelectionToBoolArray(alloc, out, selection)
 	case !leftScalar && !rightScalar:
 		out, err := utf8EqualityAA(alloc, kernel, left.(*columnar.UTF8), right.(*columnar.UTF8))
 		if err != nil {
 			return nil, err
 		}
-		return ApplySelectionToBoolArray(alloc, out, selection)
+		return applySelectionToBoolArray(alloc, out, selection)
 	}
 
 	panic("unreachable")

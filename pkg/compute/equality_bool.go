@@ -16,16 +16,16 @@ func dispatchBoolEquality(alloc *memory.Allocator, kernel boolEqualityKernel, le
 		return boolEqualitySS(kernel, left.(*columnar.BoolScalar), right.(*columnar.BoolScalar)), nil
 	case leftScalar && !rightScalar:
 		out := boolEqualitySA(alloc, kernel, left.(*columnar.BoolScalar), right.(*columnar.Bool))
-		return ApplySelectionToBoolArray(alloc, out, selection)
+		return applySelectionToBoolArray(alloc, out, selection)
 	case !leftScalar && rightScalar:
 		out := boolEqualityAS(alloc, kernel, left.(*columnar.Bool), right.(*columnar.BoolScalar))
-		return ApplySelectionToBoolArray(alloc, out, selection)
+		return applySelectionToBoolArray(alloc, out, selection)
 	case !leftScalar && !rightScalar:
 		out, err := boolEqualityAA(alloc, kernel, left.(*columnar.Bool), right.(*columnar.Bool))
 		if err != nil {
 			return nil, err
 		}
-		return ApplySelectionToBoolArray(alloc, out, selection)
+		return applySelectionToBoolArray(alloc, out, selection)
 	}
 
 	panic("unreachable")

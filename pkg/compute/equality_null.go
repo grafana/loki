@@ -16,16 +16,16 @@ func dispatchNullEquality(alloc *memory.Allocator, left, right columnar.Datum, s
 		return nullEqualitySS(left.(*columnar.NullScalar), right.(*columnar.NullScalar)), nil
 	case leftScalar && !rightScalar:
 		out := nullEqualitySA(alloc, left.(*columnar.NullScalar), right.(*columnar.Null))
-		return ApplySelectionToBoolArray(alloc, out, selection)
+		return applySelectionToBoolArray(alloc, out, selection)
 	case !leftScalar && rightScalar:
 		out := nullEqualityAS(alloc, left.(*columnar.Null), right.(*columnar.NullScalar))
-		return ApplySelectionToBoolArray(alloc, out, selection)
+		return applySelectionToBoolArray(alloc, out, selection)
 	case !leftScalar && !rightScalar:
 		out, err := nullEqualityAA(alloc, left.(*columnar.Null), right.(*columnar.Null))
 		if err != nil {
 			return nil, err
 		}
-		return ApplySelectionToBoolArray(alloc, out, selection)
+		return applySelectionToBoolArray(alloc, out, selection)
 	}
 
 	panic("unreachable")

@@ -11,15 +11,25 @@ import (
 // Evaluate processes expr against the provided batch, producing a datum as a
 // result using alloc.
 //
-// Selection defines which rows are evaluated. Selected rows have a true value
-// in the selection vector. When selection has Len() == 0, all rows are selected.
-// When selection has Len() > 0, only rows with a true bit are selected. Rows that
-// are not selected are treated as null in array results.
-//
 // The return type of Evaluate depends on the expression provided. See the
 // documentation for implementations of Expression for what they produce when
 // evaluated.
-func Evaluate(alloc *memory.Allocator, expr Expression, batch *columnar.RecordBatch, selection memory.Bitmap) (columnar.Datum, error) {
+func Evaluate(alloc *memory.Allocator, expr Expression, batch *columnar.RecordBatch) (columnar.Datum, error) {
+	// Selection defines which rows are evaluated. Selected rows have a true value
+	// in the selection vector. When selection has Len() == 0, all rows are selected.
+	// When selection has Len() > 0, only rows with a true bit are selected. Rows that
+	// are not selected are treated as null in array results.
+	//
+	// We hide selection vector from the caller because we don't support selection on expressions that are columns.
+	// E.g., evaluateWithSelection(alloc, &expr.Column{...}, batch, onlyFirstAndThirdRows) will return all the rows.
+	// This is not a problem though as selection vector can be not "allSelected" only when the expression contains a
+	// BinOp that can be short-circuited.
+	allSelected := memory.Bitmap{}
+
+	return evaluateWithSelection(alloc, expr, batch, allSelected)
+}
+
+func evaluateWithSelection(alloc *memory.Allocator, expr Expression, batch *columnar.RecordBatch, selection memory.Bitmap) (columnar.Datum, error) {
 	nrows := 0
 	if batch != nil {
 		nrows = int(batch.NumRows())
@@ -43,10 +53,8 @@ func Evaluate(alloc *memory.Allocator, expr Expression, batch *columnar.RecordBa
 			validity.AppendCount(false, int(batch.NumRows()))
 			return columnar.NewNull(validity), nil
 		}
-		col := batch.Column(int64(columnIndex))
-		// Apply selection to column data. Note: compute functions also apply
-		// selection, resulting in idempotent double application which is safe.
-		return applySelectionToColumn(alloc, col, selection)
+
+		return batch.Column(int64(columnIndex)), nil
 
 	case *Unary:
 		return evaluateUnary(alloc, expr, batch, selection)
@@ -65,7 +73,7 @@ func Evaluate(alloc *memory.Allocator, expr Expression, batch *columnar.RecordBa
 func evaluateUnary(alloc *memory.Allocator, expr *Unary, batch *columnar.RecordBatch, selection memory.Bitmap) (columnar.Datum, error) {
 	switch expr.Op {
 	case UnaryOpNOT:
-		value, err := Evaluate(alloc, expr.Value, batch, selection)
+		value, err := evaluateWithSelection(alloc, expr.Value, batch, selection)
 		if err != nil {
 			return nil, err
 		}
@@ -84,12 +92,12 @@ func evaluateBinary(alloc *memory.Allocator, expr *Binary, batch *columnar.Recor
 
 	// TODO(rfratto): If expr.Op is [BinaryOpAND] or [BinaryOpOR], we can
 	// propagate selection vectors to avoid unnecessary evaluations.
-	left, err := Evaluate(alloc, expr.Left, batch, selection)
+	left, err := evaluateWithSelection(alloc, expr.Left, batch, selection)
 	if err != nil {
 		return nil, err
 	}
 
-	right, err := Evaluate(alloc, expr.Right, batch, selection)
+	right, err := evaluateWithSelection(alloc, expr.Right, batch, selection)
 	if err != nil {
 		return nil, err
 	}
@@ -120,43 +128,12 @@ func evaluateBinary(alloc *memory.Allocator, expr *Binary, batch *columnar.Recor
 	}
 }
 
-// applySelectionToColumn applies a selection bitmap to column data by marking
-// unselected rows as null. This delegates to compute package functions to avoid
-// code duplication.
-func applySelectionToColumn(alloc *memory.Allocator, col columnar.Datum, selection memory.Bitmap) (columnar.Datum, error) {
-	if selection.Len() == 0 {
-		return col, nil
-	}
-
-	// Scalars don't need selection applied
-	arr, ok := col.(columnar.Array)
-	if !ok {
-		return col, nil
-	}
-
-	// Apply selection using compute package utilities based on array type
-	switch a := arr.(type) {
-	case *columnar.Bool:
-		return compute.ApplySelectionToBoolArray(alloc, a, selection)
-	case *columnar.Number[int64]:
-		return compute.ApplySelectionToNumberArray(alloc, a, selection)
-	case *columnar.Number[uint64]:
-		return compute.ApplySelectionToNumberArray(alloc, a, selection)
-	case *columnar.UTF8:
-		return compute.ApplySelectionToUTF8Array(alloc, a, selection)
-	case *columnar.Null:
-		return col, nil
-	default:
-		return nil, fmt.Errorf("unsupported column type for selection: %T", a)
-	}
-}
-
 // evaluateSpecialBinary evaluates binary expressions for which one of the
 // arguments does not evaluate into an expression of its own.
 func evaluateSpecialBinary(alloc *memory.Allocator, expr *Binary, batch *columnar.RecordBatch, selection memory.Bitmap) (columnar.Datum, error) {
 	switch expr.Op {
 	case BinaryOpMatchRegex:
-		left, err := Evaluate(alloc, expr.Left, batch, selection)
+		left, err := evaluateWithSelection(alloc, expr.Left, batch, selection)
 		if err != nil {
 			return nil, err
 		}
@@ -168,7 +145,7 @@ func evaluateSpecialBinary(alloc *memory.Allocator, expr *Binary, batch *columna
 
 		return compute.RegexpMatch(alloc, left, right.Expression, selection)
 	case BinaryOpIn:
-		left, err := Evaluate(alloc, expr.Left, batch, selection)
+		left, err := evaluateWithSelection(alloc, expr.Left, batch, selection)
 		if err != nil {
 			return nil, err
 		}
@@ -178,7 +155,7 @@ func evaluateSpecialBinary(alloc *memory.Allocator, expr *Binary, batch *columna
 			return nil, fmt.Errorf("right-hand side of in operation must be a ValueSet, got %T", expr.Right)
 		}
 
-		return compute.IsMember(alloc, left, right.Values)
+		return compute.IsMember(alloc, left, right.Values, selection)
 	}
 
 	return nil, fmt.Errorf("unexpected binary operator %s", expr.Op)

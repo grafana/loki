@@ -12,7 +12,7 @@ import (
 const benchmarkSize = 10000
 
 var selections = map[string]func(*testing.B, *memory.Allocator) memory.Bitmap{
-	"selection_pct=100": func(b *testing.B, _ *memory.Allocator) memory.Bitmap { return memory.Bitmap{} },
+	"selection_pct=100": func(*testing.B, *memory.Allocator) memory.Bitmap { return memory.Bitmap{} },
 	"selection_pct=99": func(b *testing.B, alloc *memory.Allocator) memory.Bitmap {
 		return makeSparseSelection(b, alloc, benchmarkSize, 0.99)
 	},

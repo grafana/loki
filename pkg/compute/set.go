@@ -8,29 +8,32 @@ import (
 )
 
 // IsMember checks if each item in datum is a member of the values set.
-func IsMember(alloc *memory.Allocator, datum columnar.Datum, values *columnar.Set) (columnar.Datum, error) {
+// The selection parameter controls which rows are evaluated:
+//   - If selection.Len(), all rows are evaluated
+//   - Otherwise, only rows where selection bit is true are evaluated, non-selected rows result in null
+func IsMember(alloc *memory.Allocator, datum columnar.Datum, values *columnar.Set, selection memory.Bitmap) (columnar.Datum, error) {
 	if values.Kind() != datum.Kind() {
 		return nil, fmt.Errorf("values set and datum must be the same kind, got %s and %s", values.Kind(), datum.Kind())
 	}
 
 	switch datum.Kind() {
 	case columnar.KindUTF8:
-		return isMemberUTF8(alloc, datum, values)
+		return isMemberUTF8(alloc, datum, values, selection)
 	case columnar.KindInt64:
-		return isMemberNumber[int64](alloc, datum, values)
+		return isMemberNumber[int64](alloc, datum, values, selection)
 	case columnar.KindUint64:
-		return isMemberNumber[uint64](alloc, datum, values)
+		return isMemberNumber[uint64](alloc, datum, values, selection)
 	default:
 		return nil, fmt.Errorf("unsupported datum type %s", datum.Kind())
 	}
 }
 
-func isMemberUTF8(alloc *memory.Allocator, datum columnar.Datum, values *columnar.Set) (columnar.Datum, error) {
+func isMemberUTF8(alloc *memory.Allocator, datum columnar.Datum, values *columnar.Set, selection memory.Bitmap) (columnar.Datum, error) {
 	_, isArray := datum.(columnar.Array)
 
 	switch {
 	case isArray:
-		return isMemberUTF8A(alloc, datum.(*columnar.UTF8), values)
+		return isMemberUTF8A(alloc, datum.(*columnar.UTF8), values, selection)
 	case !isArray:
 		return isMemberUTF8S(alloc, datum.(*columnar.UTF8Scalar), values)
 	default:
@@ -38,19 +41,54 @@ func isMemberUTF8(alloc *memory.Allocator, datum columnar.Datum, values *columna
 	}
 }
 
-func isMemberUTF8A(alloc *memory.Allocator, datum *columnar.UTF8, values *columnar.Set) (columnar.Datum, error) {
+func isMemberUTF8A(alloc *memory.Allocator, datum *columnar.UTF8, values *columnar.Set, selection memory.Bitmap) (columnar.Datum, error) {
+	if selection.Len() > 0 && selection.Len() != datum.Len() {
+		return nil, fmt.Errorf("selection length mismatch: %d != %d", selection.Len(), datum.Len())
+	}
+
 	boolBuilder := columnar.NewBoolBuilder(alloc)
 	boolBuilder.Grow(datum.Len())
 
-	for i := range datum.Len() {
-		if datum.IsNull(i) {
-			boolBuilder.AppendNull()
+	// Fast path: all rows selected
+	allSelected := selection.Len() == 0
+	if allSelected {
+		for i := range datum.Len() {
+			if datum.IsNull(i) {
+				boolBuilder.AppendNull()
+				continue
+			}
+
+			found := values.Has(string(datum.Get(i)))
+			boolBuilder.AppendValue(found)
+		}
+
+		return boolBuilder.Build(), nil
+	}
+
+	// Partial selection: iterate only selected rows, backfill nulls for non-selected
+	prev := -1
+	for curr := range selection.IterValues(true) {
+		// Insert nulls for all elements (prev, curr) or (prev, curr] depending on datum.IsNull
+		numNulls := curr - (prev + 1)
+		currIsNull := datum.IsNull(curr)
+		if currIsNull {
+			numNulls++
+		}
+		if numNulls > 0 {
+			boolBuilder.AppendNulls(numNulls)
+		}
+		prev = curr
+		if currIsNull {
 			continue
 		}
 
-		found := values.Has(string(datum.Get(i)))
+		found := values.Has(string(datum.Get(curr)))
 		boolBuilder.AppendValue(found)
 	}
+
+	// Add trailing nulls for remaining non-selected rows
+	trailingNulls := datum.Len() - (prev + 1)
+	boolBuilder.AppendNulls(trailingNulls)
 
 	return boolBuilder.Build(), nil
 }
@@ -64,12 +102,12 @@ func isMemberUTF8S(_ *memory.Allocator, datum *columnar.UTF8Scalar, values *colu
 	return &columnar.BoolScalar{Value: found}, nil
 }
 
-func isMemberNumber[T columnar.Numeric](alloc *memory.Allocator, datum columnar.Datum, values *columnar.Set) (columnar.Datum, error) {
+func isMemberNumber[T columnar.Numeric](alloc *memory.Allocator, datum columnar.Datum, values *columnar.Set, selection memory.Bitmap) (columnar.Datum, error) {
 	_, isArray := datum.(columnar.Array)
 
 	switch {
 	case isArray:
-		return isMemberNumberA(alloc, datum.(*columnar.Number[T]), values)
+		return isMemberNumberA(alloc, datum.(*columnar.Number[T]), values, selection)
 	case !isArray:
 		return isMemberNumberS(alloc, datum.(*columnar.NumberScalar[T]), values)
 	default:
@@ -77,19 +115,54 @@ func isMemberNumber[T columnar.Numeric](alloc *memory.Allocator, datum columnar.
 	}
 }
 
-func isMemberNumberA[T columnar.Numeric](alloc *memory.Allocator, datum *columnar.Number[T], values *columnar.Set) (columnar.Datum, error) {
+func isMemberNumberA[T columnar.Numeric](alloc *memory.Allocator, datum *columnar.Number[T], values *columnar.Set, selection memory.Bitmap) (columnar.Datum, error) {
+	if selection.Len() > 0 && selection.Len() != datum.Len() {
+		return nil, fmt.Errorf("selection length mismatch: %d != %d", selection.Len(), datum.Len())
+	}
+
 	boolBuilder := columnar.NewBoolBuilder(alloc)
 	boolBuilder.Grow(datum.Len())
 
-	for i := range datum.Len() {
-		if datum.IsNull(i) {
-			boolBuilder.AppendNull()
+	// Fast path: all rows selected (empty selection bitmap)
+	allSelected := selection.Len() == 0
+	if allSelected {
+		for i := range datum.Len() {
+			if datum.IsNull(i) {
+				boolBuilder.AppendNull()
+				continue
+			}
+
+			found := values.Has(datum.Get(i))
+			boolBuilder.AppendValue(found)
+		}
+
+		return boolBuilder.Build(), nil
+	}
+
+	// Partial selection: iterate only selected rows, backfill nulls for non-selected
+	prev := -1
+	for curr := range selection.IterValues(true) {
+		// Insert nulls for all elements (prev, curr) or (prev, curr] depending on datum.IsNull
+		numNulls := curr - (prev + 1)
+		currIsNull := datum.IsNull(curr)
+		if currIsNull {
+			numNulls++
+		}
+		if numNulls > 0 {
+			boolBuilder.AppendNulls(numNulls)
+		}
+		prev = curr
+		if currIsNull {
 			continue
 		}
 
-		found := values.Has(datum.Get(i))
+		found := values.Has(datum.Get(curr))
 		boolBuilder.AppendValue(found)
 	}
+
+	// Add trailing nulls for remaining non-selected rows
+	trailingNulls := datum.Len() - (prev + 1)
+	boolBuilder.AppendNulls(trailingNulls)
 
 	return boolBuilder.Build(), nil
 }

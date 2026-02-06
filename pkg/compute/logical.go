@@ -25,7 +25,7 @@ func Not(alloc *memory.Allocator, input columnar.Datum, selection memory.Bitmap)
 		return notScalar(input), nil
 	case *columnar.Bool:
 		out := notArray(alloc, input)
-		return ApplySelectionToBoolArray(alloc, out, selection)
+		return applySelectionToBoolArray(alloc, out, selection)
 	default:
 		panic(fmt.Sprintf("unexpected input type %T", input))
 	}
@@ -99,16 +99,16 @@ func dispatchLogical(alloc *memory.Allocator, kernel logicalKernel, left, right 
 		return logicalSS(kernel, left.(*columnar.BoolScalar), right.(*columnar.BoolScalar)), nil
 	case leftScalar && !rightScalar:
 		out := logicalSA(alloc, kernel, left.(*columnar.BoolScalar), right.(*columnar.Bool))
-		return ApplySelectionToBoolArray(alloc, out, selection)
+		return applySelectionToBoolArray(alloc, out, selection)
 	case !leftScalar && rightScalar:
 		out := logicalAS(alloc, kernel, left.(*columnar.Bool), right.(*columnar.BoolScalar))
-		return ApplySelectionToBoolArray(alloc, out, selection)
+		return applySelectionToBoolArray(alloc, out, selection)
 	case !leftScalar && !rightScalar:
 		out, err := logicalAA(alloc, kernel, left.(*columnar.Bool), right.(*columnar.Bool))
 		if err != nil {
 			return nil, err
 		}
-		return ApplySelectionToBoolArray(alloc, out, selection)
+		return applySelectionToBoolArray(alloc, out, selection)
 	}
 
 	panic("unreachable")
