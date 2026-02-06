@@ -38,7 +38,7 @@ metadata:
 spec:
   ...
   tenants:
-    mode: static  # or openshift-logging, openshift-network, dynamic
+    mode: static  # or openshift-logging, openshift-network, dynamic, passthrough
     disableIngress: true  # Disable external access resource creation
 ```
 
@@ -61,7 +61,7 @@ metadata:
 spec:
   ...
   tenants:
-    mode: static  # or openshift-logging, openshift-network, dynamic
+    mode: static  # or openshift-logging, openshift-network, dynamic, passthrough
     disableIngress: false  # Explicitly enable external access (default)
 ```
 
@@ -74,6 +74,7 @@ When you change the external access configuration from enabled to disabled:
 
 ## Related Documentation
 
+- [Tenancy Modes](tenancy-modes.md) - Configure multi-tenancy (static, dynamic, openshift-logging, openshift-network, passthrough)
 - [API Reference](../operator/api.md) - Complete API documentation
 - [How to Connect Grafana](howto_connect_grafana.md) - Connect Grafana to LokiStack
 - [Forwarding Logs to LokiStack](forwarding_logs_to_gateway.md) - How to send logs to the gateway

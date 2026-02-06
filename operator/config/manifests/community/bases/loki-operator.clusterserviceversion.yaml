@@ -930,6 +930,7 @@ spec:
         - urn:alm:descriptor:com.tectonic.ui:select:dynamic
         - urn:alm:descriptor:com.tectonic.ui:select:openshift-logging
         - urn:alm:descriptor:com.tectonic.ui:select:openshift-network
+        - urn:alm:descriptor:com.tectonic.ui:select:passthrough
       - description: Openshift defines the configuration specific to Openshift modes.
         displayName: Openshift
         path: tenants.openshift
@@ -980,6 +981,39 @@ spec:
           See also: https://github.com/rhobs/observability-data-model/blob/main/cluster-logging.md#attributes
         displayName: Disable recommended OTLP attributes
         path: tenants.openshift.otlp.disableRecommendedAttributes
+      - description: Passthrough defines the configuration specific to Passthrough
+          mode.
+        displayName: Passthrough
+        path: tenants.passthrough
+      - description: |-
+          CA can be used to specify a custom list of trusted certificate authorities.
+          That will be used to validate the certificates of the clients that interact
+          with the gateway
+        displayName: Certificate Authority Bundle
+        path: tenants.passthrough.ca
+      - description: ConfigMapName contains the name of the ConfigMap containing the
+          referenced value.
+        displayName: ConfigMap Name
+        path: tenants.passthrough.ca.configMapName
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:text
+      - description: Name of the key used to get the value in either the referenced
+          ConfigMap or Secret.
+        displayName: Key Name
+        path: tenants.passthrough.ca.key
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:text
+      - description: SecretName contains the name of the Secret containing the referenced
+          value.
+        displayName: Secret Name
+        path: tenants.passthrough.ca.secretName
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:text
+      - description: |-
+          DefaultTenant defines the default tenant ID to use when X-Scope-OrgID header is not set.
+          If not set, requests without X-Scope-OrgID are rejected.
+        displayName: Default Tenant
+        path: tenants.passthrough.defaultTenant
       statusDescriptors:
       - description: Distributor is a map to the per pod status of the distributor
           deployment

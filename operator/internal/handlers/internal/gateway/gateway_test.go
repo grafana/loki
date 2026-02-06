@@ -388,3 +388,77 @@ func TestBuildOptions_MissingTenantsSpec_SetDegraded(t *testing.T) {
 	require.Error(t, err)
 	require.Equal(t, degradedErr, err)
 }
+
+func TestBuildOptions_PassthroughMode_MissingCA_SetDegraded(t *testing.T) {
+	sw := &k8sfakes.FakeStatusWriter{}
+	k := &k8sfakes.FakeClient{}
+	r := ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "my-stack",
+			Namespace: "some-ns",
+		},
+	}
+
+	degradedErr := &status.DegradedError{
+		Message: "Invalid passthrough configuration: missing CA configuration",
+		Reason:  lokiv1.ReasonInvalidPassthroughConfiguration,
+		Requeue: false,
+	}
+
+	fg := configv1.FeatureGates{
+		LokiStackGateway: true,
+		HTTPEncryption:   true,
+	}
+
+	stack := &lokiv1.LokiStack{
+		TypeMeta: metav1.TypeMeta{
+			Kind: "LokiStack",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-stack",
+			Namespace: "some-ns",
+			UID:       "b23f9a38-9672-499f-8c29-15ede74d3ece",
+		},
+		Spec: lokiv1.LokiStackSpec{
+			Size: lokiv1.SizeOneXExtraSmall,
+			Storage: lokiv1.ObjectStorageSpec{
+				Schemas: []lokiv1.ObjectStorageSchema{
+					{
+						Version:       lokiv1.ObjectStorageSchemaV11,
+						EffectiveDate: "2020-10-11",
+					},
+				},
+				Secret: lokiv1.ObjectStorageSecretSpec{
+					Name: defaultSecret.Name,
+					Type: lokiv1.ObjectStorageSecretS3,
+				},
+			},
+			Tenants: &lokiv1.TenantsSpec{
+				Mode: lokiv1.Passthrough,
+				Passthrough: &lokiv1.PassthroughTenantSpec{
+					CA: nil, // Missing CA
+				},
+			},
+		},
+	}
+
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
+		o, ok := object.(*lokiv1.LokiStack)
+		if r.Name == name.Name && r.Namespace == name.Namespace && ok {
+			k.SetClientObject(o, stack)
+			return nil
+		}
+		if defaultSecret.Name == name.Name {
+			k.SetClientObject(object, &defaultSecret)
+			return nil
+		}
+		return apierrors.NewNotFound(schema.GroupResource{}, "something is not found")
+	}
+
+	k.StatusStub = func() client.StatusWriter { return sw }
+
+	_, _, err := BuildOptions(context.TODO(), logger, k, stack, fg)
+
+	require.Error(t, err)
+	require.Equal(t, degradedErr, err)
+}

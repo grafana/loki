@@ -54,10 +54,7 @@ func CreateOrUpdateLokiStack(
 		img = manifests.DefaultContainerImage
 	}
 
-	gwImg := os.Getenv(manifests.EnvRelatedImageGateway)
-	if gwImg == "" {
-		gwImg = manifests.DefaultLokiStackGatewayImage
-	}
+	gwImg := getGatewayImage(&stack)
 
 	objStore, err := storage.BuildOptions(ctx, k, &stack, fg)
 	if err != nil {
@@ -253,4 +250,22 @@ func isNamespacedResource(obj client.Object) bool {
 	default:
 		return true
 	}
+}
+
+// getGatewayImage returns the appropriate gateway image based on the tenancy mode.
+func getGatewayImage(stack *lokiv1.LokiStack) string {
+	var img string
+	switch {
+	case stack.Spec.Tenants != nil && stack.Spec.Tenants.Mode == lokiv1.Passthrough:
+		img = os.Getenv(manifests.EnvRelatedImagePassthroughGateway)
+		if img == "" {
+			return manifests.DefaultPassthroughGatewayImage
+		}
+	default:
+		img = os.Getenv(manifests.EnvRelatedImageGateway)
+		if img == "" {
+			return manifests.DefaultLokiStackGatewayImage
+		}
+	}
+	return img
 }
