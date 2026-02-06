@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	s3_types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/grafana/dskit/flagext"
@@ -82,6 +83,8 @@ type Config struct {
 	SendContentMd5       bool                `yaml:"send_content_md5" category:"experimental"`
 	STSEndpoint          string              `yaml:"sts_endpoint"`
 	MaxRetries           int                 `yaml:"max_retries"`
+	HedgeRequestsAt      time.Duration       `yaml:"hedge_requests_at"`
+	HedgeRequestsUpTo    int                 `yaml:"hedge_requests_up_to"`
 
 	SSE         SSEConfig   `yaml:"sse"`
 	HTTP        http.Config `yaml:"http"`
@@ -111,6 +114,8 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.BoolVar(&cfg.DualstackEnabled, prefix+"s3.dualstack-enabled", true, "When enabled, direct all AWS S3 requests to the dual-stack IPv4/IPv6 endpoint for the configured region.")
 	f.StringVar(&cfg.STSEndpoint, prefix+"s3.sts-endpoint", "", "Accessing S3 resources using temporary, secure credentials provided by AWS Security Token Service.")
 	f.IntVar(&cfg.MaxRetries, prefix+"s3.max-retries", 10, "The maximum number of retries for S3 requests that are retryable. Default is 10, set this to 1 to disable retries.")
+	f.IntVar(&cfg.HedgeRequestsUpTo, prefix+"s3.hedge-requests-up-to", 2, "How many hedge requests to make.")
+	f.DurationVar(&cfg.HedgeRequestsAt, prefix+"s3.hedge-requests-at", 0, "Delay between two consequitive hedged requests. 0 means no hedging.")
 	cfg.SSE.RegisterFlagsWithPrefix(prefix+"s3.sse.", f)
 	cfg.HTTP.RegisterFlagsWithPrefix(prefix+"s3.", f)
 	cfg.TraceConfig.RegisterFlagsWithPrefix(prefix+"s3.trace.", f)

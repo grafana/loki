@@ -3,7 +3,9 @@ package s3
 import (
 	"net/http"
 
+	"github.com/cristalhq/hedgedhttp"
 	"github.com/go-kit/log"
+	"github.com/grafana/loki/v3/pkg/storage/bucket/instrumentation"
 	"github.com/prometheus/common/model"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/objstore/exthttp"
@@ -20,6 +22,26 @@ func NewBucketClient(cfg Config, name string, logger log.Logger, wrapRT func(htt
 	s3Cfg, err := newS3Config(cfg)
 	if err != nil {
 		return nil, err
+	}
+
+	if cfg.HedgeRequestsAt != 0 {
+		var transport http.RoundTripper
+
+		// Create default transport the same way that Thanos would create it
+		transport, err = exthttp.DefaultTransport(s3Cfg.HTTPConfig)
+		if err != nil {
+			return nil, err
+		}
+
+		// Wrap the transport into hedging transport
+		var stats *hedgedhttp.Stats
+		transport, stats, err = hedgedhttp.NewRoundTripperAndStats(cfg.HedgeRequestsAt, cfg.HedgeRequestsUpTo, transport)
+		if err != nil {
+			return nil, err
+		}
+		instrumentation.PublishHedgedMetrics(stats)
+
+		s3Cfg.HTTPConfig.Transport = transport
 	}
 
 	return s3.NewBucketWithConfig(logger, s3Cfg, name, wrapRT)

@@ -4,8 +4,11 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/cristalhq/hedgedhttp"
 	"github.com/go-kit/log"
+	"github.com/grafana/loki/v3/pkg/storage/bucket/instrumentation"
 	"github.com/thanos-io/objstore"
+	"github.com/thanos-io/objstore/exthttp"
 	"github.com/thanos-io/objstore/providers/gcs"
 )
 
@@ -17,7 +20,33 @@ func NewBucketClient(ctx context.Context, cfg Config, name string, logger log.Lo
 	bucketConfig.ServiceAccount = cfg.ServiceAccount.String()
 	bucketConfig.ChunkSizeBytes = cfg.ChunkBufferSize
 	bucketConfig.MaxRetries = cfg.MaxRetries
-	bucketConfig.HTTPConfig.Transport = cfg.Transport
+
+	if cfg.HedgeRequestsAt != 0 {
+		var (
+			err       error
+			transport http.RoundTripper
+		)
+
+		if cfg.Transport != nil {
+			transport = cfg.Transport
+		} else {
+			// Create default transport the same way that Thanos would create it
+			transport, err = exthttp.DefaultTransport(bucketConfig.HTTPConfig)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		// Wrap the transport into hedging transport
+		var stats *hedgedhttp.Stats
+		transport, stats, err = hedgedhttp.NewRoundTripperAndStats(cfg.HedgeRequestsAt, cfg.HedgeRequestsUpTo, transport)
+		if err != nil {
+			return nil, err
+		}
+		instrumentation.PublishHedgedMetrics(stats)
+
+		bucketConfig.HTTPConfig.Transport = transport
+	}
 
 	return gcs.NewBucketWithConfig(ctx, logger, bucketConfig, name, wrapRT)
 }
