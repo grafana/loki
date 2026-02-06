@@ -14,8 +14,6 @@ type metrics struct {
 	discardedBytes prometheus.Counter
 	records        prometheus.Counter
 	recordFailures prometheus.Counter
-	commits        prometheus.Counter
-	commitFailures prometheus.Counter
 
 	// Deprecated, will be removed in two weeklies.
 	latestDelay      prometheus.Gauge
@@ -49,14 +47,6 @@ func newMetrics(r prometheus.Registerer) *metrics {
 		recordFailures: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Name: "loki_dataobj_consumer_record_failures_total",
 			Help: "Total number of records that failed to be processed.",
-		}),
-		commits: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "loki_dataobj_consumer_commits_total",
-			Help: "Total number of commits",
-		}),
-		commitFailures: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "loki_dataobj_consumer_commit_failures_total",
-			Help: "Total number of commit failures",
 		}),
 		// TODO(grobinson): Remove after two minor releases.
 		latestDelay: promauto.With(r).NewGauge(prometheus.GaugeOpts{

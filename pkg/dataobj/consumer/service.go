@@ -164,13 +164,18 @@ func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, bucket objsto
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize data object builder: %w", err)
 	}
-	s.processor = newProcessor(
-		builder,
-		records,
+	flushManager := newFlushManager(
 		s.flusher,
 		newMetastoreEvents(partitionID, int32(mCfg.PartitionRatio), metastoreEvents),
 		committer,
 		partitionID,
+		logger,
+		wrapped,
+	)
+	s.processor = newProcessor(
+		builder,
+		records,
+		flushManager,
 		cfg.IdleFlushTimeout,
 		cfg.MaxBuilderAge,
 		logger,

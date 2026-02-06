@@ -27,7 +27,7 @@ func TestFlusher_Flush(t *testing.T) {
 			testUploader = &mockUploader{}
 			now          = time.Now()
 		)
-		// Init the builder and append some logs so it can be flushed.
+		// Create a builder and append some logs so it can be flushed.
 		realBuilder, err := logsobj.NewBuilder(testBuilderCfg, scratch.NewMemory())
 		require.NoError(t, err)
 		testBuilder = &mockBuilder{builder: realBuilder}
