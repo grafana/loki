@@ -17,6 +17,7 @@ Entries should include a reference to the pull request that introduced the chang
 ## 6.53.0
 
 - [CHANGE] Changed version of Grafana Loki to 3.6.5
+- [ENHANCEMENT] Allow lokiCanary to be run without user/pass/tenant automatically being injected [#20723](https://github.com/grafana/loki/pull/20723).
 
 ## 6.52.0
 

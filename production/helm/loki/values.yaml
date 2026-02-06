@@ -786,6 +786,10 @@ lokiCanary:
   push: true
   # -- If set overwrites the default value set by loki.host helper function. Use this if gateway not enabled.
   lokiurl: null
+  # -- If true, auto detect authentication information based on
+  # enterprise.enabled==true, use environment variables USER/PASS of container
+  # loki.auth_enabled==true, use monitoring.selfMonitoring.tenant.name/password
+  autoAuth: true
   # -- The name of the label to look for at loki when doing the checks.
   labelname: pod
   # -- Additional annotations for the `loki-canary` Daemonset
