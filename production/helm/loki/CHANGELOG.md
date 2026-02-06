@@ -13,6 +13,11 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+
+## 6.53.0
+
+- [CHANGE] Changed version of Grafana Loki to 3.6.5
+
 ## 6.52.0
 
 - [BREAKING] DEPRECATION NOTICE - The simple scalable mode (SSD) is deprecated and will be removed in a future version of the Loki Helm charts.  
@@ -95,9 +100,6 @@ Entries should include a reference to the pull request that introduced the chang
 - [FEATURE] Allow auto-resizing the volume by recreating the StatefulSet. [#19217](https://github.com/grafana/loki/pull/19217).
 - [BUGFIX] Add single-binary component to the podSelector. [#19229](https://github.com/grafana/loki/pull/19229).
 - [ENHANCEMENT] Added `trafficDistribution` configuration option to backend, compactor, distributor, gateway, index-gateway, ingester, querier, query-frontend, query-scheduler,read and write services to enable same-zone traffic routing. #19557
-## 6.44.0
-
-- [CHANGE] Changed version of Grafana Loki to 3.6.5
 
 ## 6.43.0
 
