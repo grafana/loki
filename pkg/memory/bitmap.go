@@ -233,7 +233,9 @@ func (bmap *Bitmap) Clone(alloc *Allocator) *Bitmap {
 func (bmap *Bitmap) Bytes() (data []byte, offset int) { return bmap.data, bmap.off }
 
 // Slice returns a slice of bmap from index i to j. Slice panics if j < i or if
-// the slice is outside the valid range of bmap.
+// the slice is outside the valid range of bmap. The returned slice has both a
+// length and capacity of j-i, shares memory with bmap, and uses the same
+// allocator for new allocations (when needed).
 func (bmap *Bitmap) Slice(i, j int) *Bitmap {
 	var (
 		startWord = (bmap.off + i) / 8
