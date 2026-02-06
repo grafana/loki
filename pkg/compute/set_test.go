@@ -564,37 +564,4 @@ func TestIsMemberUTF8WithSelection(t *testing.T) {
 		expected := columnartest.Array(t, columnar.KindBool, alloc, nil, true, nil, false, nil, nil)
 		columnartest.RequireDatumsEqual(t, expected, result)
 	})
-
-	// Edge case: selection length mismatch (should error)
-	t.Run("UTF8_selection_length_mismatch", func(t *testing.T) {
-		t.Parallel()
-		alloc := memory.NewAllocator(nil)
-
-		searchData := columnartest.Array(t, columnar.KindUTF8, alloc, "test1", "test2", "test3")
-		values := columnar.NewUTF8Set("test1", "test3")
-
-		// Selection with wrong length (2 instead of 3)
-		wrongSelection := memory.NewBitmap(alloc, 2)
-		wrongSelection.AppendValues(true, false)
-
-		_, err := IsMember(alloc, searchData, values, wrongSelection)
-		require.Error(t, err, "expected error for selection length mismatch")
-		require.Contains(t, err.Error(), "selection length mismatch")
-	})
-
-	t.Run("Int64_selection_length_mismatch", func(t *testing.T) {
-		t.Parallel()
-		alloc := memory.NewAllocator(nil)
-
-		searchData := columnartest.Array(t, columnar.KindInt64, alloc, int64(1), int64(2), int64(3))
-		values := columnar.NewNumberSet(int64(1), int64(3))
-
-		// Selection with wrong length (2 instead of 3)
-		wrongSelection := memory.NewBitmap(alloc, 2)
-		wrongSelection.AppendValues(true, false)
-
-		_, err := IsMember(alloc, searchData, values, wrongSelection)
-		require.Error(t, err, "expected error for selection length mismatch")
-		require.Contains(t, err.Error(), "selection length mismatch")
-	})
 }

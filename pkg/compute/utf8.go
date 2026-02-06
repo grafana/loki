@@ -36,57 +36,25 @@ func RegexpMatch(alloc *memory.Allocator, haystack columnar.Datum, regexp *regex
 }
 
 func regexpMatchAS(alloc *memory.Allocator, haystack *columnar.UTF8, regexp *regexp.Regexp, selection memory.Bitmap) (*columnar.Bool, error) {
-	results := columnar.NewBoolBuilder(alloc)
-	results.Grow(haystack.Len())
-
 	if regexp == nil {
-		results.AppendNulls(haystack.Len())
-		return results.Build(), nil
+		builder := columnar.NewBoolBuilder(alloc)
+		builder.AppendNulls(haystack.Len())
+		return builder.Build(), nil
 	}
 
-	allSelected := selection.Len() == 0
-	if allSelected {
-		for i := range haystack.Len() {
-			if haystack.IsNull(i) {
-				results.AppendNull()
-				continue
-			}
-
-			results.AppendValue(regexp.Match(haystack.Get(i)))
-		}
-
-		return results.Build(), nil
+	validity, err := computeValidityAA(alloc, haystack.Validity(), selection)
+	if err != nil {
+		return nil, fmt.Errorf("apply selection to validity: %w", err)
 	}
 
-	// Only a subset of the rows is selected, iterate over selected and append them (backfilling the results with nulls for
-	// non-selected)
-	prev := -1
-	for curr := range selection.IterValues(true) {
-		// insert nulls for all elements (prev, curr) or (prev, curr] depending on haystack.IsNull
-		numNulls := curr - (prev + 1)
-		currIsNull := haystack.IsNull(curr)
-		if currIsNull {
-			numNulls++
-		}
-		if numNulls > 0 {
-			results.AppendNulls(numNulls)
-		}
-		prev = curr
-		if currIsNull {
-			continue
-		}
+	values := memory.NewBitmap(alloc, haystack.Len())
+	values.Resize(haystack.Len())
 
-		results.AppendValue(regexp.Match(haystack.Get(curr)))
+	for i := range iterTrue(validity, haystack.Len()) {
+		values.Set(i, regexp.Match(haystack.Get(i)))
 	}
 
-	// Adding trailing nulls:
-	// - len=10, 0 iterated  => prev=-1 => need to append 10-(-1+1) = 10 nulls
-	// - len=10, 9 iterated  => prev=8  => need to append 10-(8+1)  = 1 nulls
-	// - len=10, 10 iterated => prev=9 => need to append 10-(9+1)  = 0 nulls
-	trailingNulls := haystack.Len() - (prev + 1)
-	results.AppendNulls(trailingNulls)
-
-	return results.Build(), nil
+	return columnar.NewBool(values, validity), nil
 }
 
 func regexpMatchSS(_ *memory.Allocator, haystack *columnar.UTF8Scalar, regexp *regexp.Regexp) (*columnar.BoolScalar, error) {
@@ -126,61 +94,28 @@ func SubstrInsensitive(alloc *memory.Allocator, haystack columnar.Datum, needle 
 }
 
 func substrInsensitiveAS(alloc *memory.Allocator, haystack *columnar.UTF8, needle *columnar.UTF8Scalar, selection memory.Bitmap) (*columnar.Bool, error) {
-	results := columnar.NewBoolBuilder(alloc)
-	results.Grow(haystack.Len())
-
 	if needle.IsNull() {
-		results.AppendNulls(haystack.Len())
-		return results.Build(), nil
+		builder := columnar.NewBoolBuilder(alloc)
+		builder.AppendNulls(haystack.Len())
+		return builder.Build(), nil
+	}
+
+	validity, err := computeValidityAA(alloc, haystack.Validity(), selection)
+	if err != nil {
+		return nil, fmt.Errorf("apply selection to validity: %w", err)
 	}
 
 	needleUpper := bytes.ToUpper(needle.Value)
 
-	allSelected := selection.Len() == 0
-	if allSelected {
-		for i := range haystack.Len() {
-			if haystack.IsNull(i) {
-				results.AppendNull()
-				continue
-			}
+	values := memory.NewBitmap(alloc, haystack.Len())
+	values.Resize(haystack.Len())
 
-			haystackValueUpper := bytes.ToUpper(haystack.Get(i))
-			results.AppendValue(bytes.Contains(haystackValueUpper, needleUpper))
-		}
-
-		return results.Build(), nil
+	for i := range iterTrue(validity, haystack.Len()) {
+		haystackValueUpper := bytes.ToUpper(haystack.Get(i))
+		values.Set(i, bytes.Contains(haystackValueUpper, needleUpper))
 	}
 
-	// Only a subset of the rows is selected, iterate over selected and append them (backfilling the results with nulls for
-	// non-selected)
-	prev := -1
-	for curr := range selection.IterValues(true) {
-		// insert nulls for all elements (prev, curr) or (prev, curr] depending on haystack.IsNull
-		numNulls := curr - (prev + 1)
-		currIsNull := haystack.IsNull(curr)
-		if currIsNull {
-			numNulls++
-		}
-		if numNulls > 0 {
-			results.AppendNulls(numNulls)
-		}
-		prev = curr
-		if currIsNull {
-			continue
-		}
-
-		haystackValueUpper := bytes.ToUpper(haystack.Get(curr))
-		results.AppendValue(bytes.Contains(haystackValueUpper, needleUpper))
-	}
-
-	// Adding trailing nulls:
-	// - len=10, 0 iterated  => prev=-1 => need to append 10-(-1+1) = 10 nulls
-	// - len=10, 9 iterated  => prev=8  => need to append 10-(8+1)  = 1 nulls
-	// - len=10, 10 iterated => prev=9 => need to append 10-(9+1)  = 0 nulls
-	trailingNulls := haystack.Len() - (prev + 1)
-	results.AppendNulls(trailingNulls)
-
-	return results.Build(), nil
+	return columnar.NewBool(values, validity), nil
 }
 
 func substrInsensitiveSS(_ *memory.Allocator, haystack *columnar.UTF8Scalar, needle *columnar.UTF8Scalar) (*columnar.BoolScalar, error) {
@@ -223,57 +158,25 @@ func Substr(alloc *memory.Allocator, haystack columnar.Datum, needle columnar.Da
 }
 
 func substrAS(alloc *memory.Allocator, haystack *columnar.UTF8, needle *columnar.UTF8Scalar, selection memory.Bitmap) (*columnar.Bool, error) {
-	results := columnar.NewBoolBuilder(alloc)
-	results.Grow(haystack.Len())
-
 	if needle.IsNull() {
-		results.AppendNulls(haystack.Len())
-		return results.Build(), nil
+		builder := columnar.NewBoolBuilder(alloc)
+		builder.AppendNulls(haystack.Len())
+		return builder.Build(), nil
 	}
 
-	allSelected := selection.Len() == 0
-	if allSelected {
-		for i := range haystack.Len() {
-			if haystack.IsNull(i) {
-				results.AppendNull()
-				continue
-			}
-
-			results.AppendValue(bytes.Contains(haystack.Get(i), needle.Value))
-		}
-
-		return results.Build(), nil
+	validity, err := computeValidityAA(alloc, haystack.Validity(), selection)
+	if err != nil {
+		return nil, fmt.Errorf("apply selection to validity: %w", err)
 	}
 
-	// Only a subset of the rows is selected, iterate over selected and append them (backfilling the results with nulls for
-	// non-selected)
-	prev := -1
-	for curr := range selection.IterValues(true) {
-		// insert nulls for all elements (prev, curr) or (prev, curr] depending on haystack.IsNull
-		numNulls := curr - (prev + 1)
-		currIsNull := haystack.IsNull(curr)
-		if currIsNull {
-			numNulls++
-		}
-		if numNulls > 0 {
-			results.AppendNulls(numNulls)
-		}
-		prev = curr
-		if currIsNull {
-			continue
-		}
+	values := memory.NewBitmap(alloc, haystack.Len())
+	values.Resize(haystack.Len())
 
-		results.AppendValue(bytes.Contains(haystack.Get(curr), needle.Value))
+	for i := range iterTrue(validity, haystack.Len()) {
+		values.Set(i, bytes.Contains(haystack.Get(i), needle.Value))
 	}
 
-	// Adding trailing nulls:
-	// - len=10, 0 iterated  => prev=-1 => need to append 10-(-1+1) = 10 nulls
-	// - len=10, 9 iterated  => prev=8  => need to append 10-(8+1)  = 1 nulls
-	// - len=10, 10 iterated => prev=9 => need to append 10-(9+1)  = 0 nulls
-	trailingNulls := haystack.Len() - (prev + 1)
-	results.AppendNulls(trailingNulls)
-
-	return results.Build(), nil
+	return columnar.NewBool(values, validity), nil
 }
 
 func substrSS(_ *memory.Allocator, haystack *columnar.UTF8Scalar, needle *columnar.UTF8Scalar) (*columnar.BoolScalar, error) {

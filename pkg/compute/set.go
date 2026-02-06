@@ -41,56 +41,21 @@ func isMemberUTF8(alloc *memory.Allocator, datum columnar.Datum, values *columna
 	}
 }
 
-func isMemberUTF8A(alloc *memory.Allocator, datum *columnar.UTF8, values *columnar.Set, selection memory.Bitmap) (columnar.Datum, error) {
-	if selection.Len() > 0 && selection.Len() != datum.Len() {
-		return nil, fmt.Errorf("selection length mismatch: %d != %d", selection.Len(), datum.Len())
+func isMemberUTF8A(alloc *memory.Allocator, haystack *columnar.UTF8, set *columnar.Set, selection memory.Bitmap) (columnar.Datum, error) {
+	validity, err := computeValidityAA(alloc, haystack.Validity(), selection)
+	if err != nil {
+		return nil, fmt.Errorf("apply selection to validity: %w", err)
 	}
 
-	boolBuilder := columnar.NewBoolBuilder(alloc)
-	boolBuilder.Grow(datum.Len())
+	values := memory.NewBitmap(alloc, haystack.Len())
+	values.Resize(haystack.Len())
 
-	// Fast path: all rows selected
-	allSelected := selection.Len() == 0
-	if allSelected {
-		for i := range datum.Len() {
-			if datum.IsNull(i) {
-				boolBuilder.AppendNull()
-				continue
-			}
-
-			found := values.Has(string(datum.Get(i)))
-			boolBuilder.AppendValue(found)
-		}
-
-		return boolBuilder.Build(), nil
+	for i := range iterTrue(validity, haystack.Len()) {
+		found := set.Has(string(haystack.Get(i)))
+		values.Set(i, found)
 	}
 
-	// Partial selection: iterate only selected rows, backfill nulls for non-selected
-	prev := -1
-	for curr := range selection.IterValues(true) {
-		// Insert nulls for all elements (prev, curr) or (prev, curr] depending on datum.IsNull
-		numNulls := curr - (prev + 1)
-		currIsNull := datum.IsNull(curr)
-		if currIsNull {
-			numNulls++
-		}
-		if numNulls > 0 {
-			boolBuilder.AppendNulls(numNulls)
-		}
-		prev = curr
-		if currIsNull {
-			continue
-		}
-
-		found := values.Has(string(datum.Get(curr)))
-		boolBuilder.AppendValue(found)
-	}
-
-	// Add trailing nulls for remaining non-selected rows
-	trailingNulls := datum.Len() - (prev + 1)
-	boolBuilder.AppendNulls(trailingNulls)
-
-	return boolBuilder.Build(), nil
+	return columnar.NewBool(values, validity), nil
 }
 
 func isMemberUTF8S(_ *memory.Allocator, datum *columnar.UTF8Scalar, values *columnar.Set) (columnar.Datum, error) {
@@ -115,56 +80,21 @@ func isMemberNumber[T columnar.Numeric](alloc *memory.Allocator, datum columnar.
 	}
 }
 
-func isMemberNumberA[T columnar.Numeric](alloc *memory.Allocator, datum *columnar.Number[T], values *columnar.Set, selection memory.Bitmap) (columnar.Datum, error) {
-	if selection.Len() > 0 && selection.Len() != datum.Len() {
-		return nil, fmt.Errorf("selection length mismatch: %d != %d", selection.Len(), datum.Len())
+func isMemberNumberA[T columnar.Numeric](alloc *memory.Allocator, haystack *columnar.Number[T], set *columnar.Set, selection memory.Bitmap) (columnar.Datum, error) {
+	validity, err := computeValidityAA(alloc, haystack.Validity(), selection)
+	if err != nil {
+		return nil, fmt.Errorf("apply selection to validity: %w", err)
 	}
 
-	boolBuilder := columnar.NewBoolBuilder(alloc)
-	boolBuilder.Grow(datum.Len())
+	values := memory.NewBitmap(alloc, haystack.Len())
+	values.Resize(haystack.Len())
 
-	// Fast path: all rows selected (empty selection bitmap)
-	allSelected := selection.Len() == 0
-	if allSelected {
-		for i := range datum.Len() {
-			if datum.IsNull(i) {
-				boolBuilder.AppendNull()
-				continue
-			}
-
-			found := values.Has(datum.Get(i))
-			boolBuilder.AppendValue(found)
-		}
-
-		return boolBuilder.Build(), nil
+	for i := range iterTrue(validity, haystack.Len()) {
+		found := set.Has(haystack.Get(i))
+		values.Set(i, found)
 	}
 
-	// Partial selection: iterate only selected rows, backfill nulls for non-selected
-	prev := -1
-	for curr := range selection.IterValues(true) {
-		// Insert nulls for all elements (prev, curr) or (prev, curr] depending on datum.IsNull
-		numNulls := curr - (prev + 1)
-		currIsNull := datum.IsNull(curr)
-		if currIsNull {
-			numNulls++
-		}
-		if numNulls > 0 {
-			boolBuilder.AppendNulls(numNulls)
-		}
-		prev = curr
-		if currIsNull {
-			continue
-		}
-
-		found := values.Has(datum.Get(curr))
-		boolBuilder.AppendValue(found)
-	}
-
-	// Add trailing nulls for remaining non-selected rows
-	trailingNulls := datum.Len() - (prev + 1)
-	boolBuilder.AppendNulls(trailingNulls)
-
-	return boolBuilder.Build(), nil
+	return columnar.NewBool(values, validity), nil
 }
 
 func isMemberNumberS[T columnar.Numeric](_ *memory.Allocator, datum *columnar.NumberScalar[T], values *columnar.Set) (columnar.Datum, error) {
