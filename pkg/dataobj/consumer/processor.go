@@ -9,7 +9,6 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/twmb/franz-go/pkg/kgo"
@@ -30,31 +29,18 @@ type builder interface {
 	CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataobj.Object, io.Closer, error)
 }
 
-// A committer allows mocking of certain [kgo.Client] methods in tests.
-type committer interface {
-	Commit(ctx context.Context, partition int32, offset int64) error
-}
-
-// A flusher allows mocking of flushes in tests.
-type flusher interface {
-	Flush(ctx context.Context, builder builder, reason string) (string, error)
-}
-
-// A producer allows mocking of certain [kgo.Client] methods in tests.
-type producer interface {
-	ProduceSync(ctx context.Context, records ...*kgo.Record) kgo.ProduceResults
+// A flushManager allows mocking of flushes in tests.
+type flushManager interface {
+	Flush(ctx context.Context, builder builder, reason string, offset int64, earliestRecordTime time.Time) error
 }
 
 // A processor receives records and builds data objects from them.
 type processor struct {
 	*services.BasicService
-	builder         builder
-	decoder         *kafka.Decoder
-	records         chan *kgo.Record
-	flusher         flusher
-	metastoreEvents *metastoreEvents
-	committer       committer
-	partition       int32
+	builder      builder
+	decoder      *kafka.Decoder
+	records      chan *kgo.Record
+	flushManager flushManager
 
 	// lastOffset contains the offset of the last record appended to the data object
 	// builder. It is used to commit the correct offset after a flush.
@@ -94,10 +80,7 @@ type processor struct {
 func newProcessor(
 	builder builder,
 	records chan *kgo.Record,
-	flusher flusher,
-	metastoreEvents *metastoreEvents,
-	committer committer,
-	partition int32,
+	flushManager flushManager,
 	idleFlushTimeout time.Duration,
 	maxBuilderAge time.Duration,
 	logger log.Logger,
@@ -111,10 +94,7 @@ func newProcessor(
 		builder:          builder,
 		decoder:          decoder,
 		records:          records,
-		flusher:          flusher,
-		committer:        committer,
-		metastoreEvents:  metastoreEvents,
-		partition:        partition,
+		flushManager:     flushManager,
 		idleFlushTimeout: idleFlushTimeout,
 		maxBuilderAge:    maxBuilderAge,
 		metrics:          newMetrics(reg),
@@ -255,40 +235,7 @@ func (p *processor) flush(ctx context.Context, reason string) error {
 		p.firstAppend = time.Time{}
 		p.lastAppend = time.Time{}
 	}()
-	objectPath, err := p.flusher.Flush(ctx, p.builder, reason)
-	if err != nil {
-		return fmt.Errorf("failed to flush data object: %w", err)
-	}
-	if err := p.metastoreEvents.Emit(ctx, objectPath, p.firstAppend); err != nil {
-		return fmt.Errorf("failed to produce metastore event: %w", err)
-	}
-	if err := p.commit(ctx, p.lastOffset); err != nil {
-		return fmt.Errorf("failed to commit data object: %w", err)
-	}
-	return nil
-}
-
-func (p *processor) commit(ctx context.Context, offset int64) error {
-	backoff := backoff.New(ctx, backoff.Config{
-		MinBackoff: 100 * time.Millisecond,
-		MaxBackoff: 10 * time.Second,
-		MaxRetries: 20,
-	})
-	var lastErr error
-	backoff.Reset()
-	for backoff.Ongoing() {
-		p.metrics.commits.Inc()
-		err := p.committer.Commit(ctx, p.partition, offset)
-		if err == nil {
-			level.Debug(p.logger).Log("msg", "committed offset", "partition", p.partition, "offset", offset)
-			return nil
-		}
-		level.Error(p.logger).Log("msg", "failed to commit records", "err", err)
-		p.metrics.commitFailures.Inc()
-		lastErr = err
-		backoff.Wait()
-	}
-	return lastErr
+	return p.flushManager.Flush(ctx, p.builder, reason, p.lastOffset, p.earliestRecordTime)
 }
 
 func (p *processor) observeRecord(rec *kgo.Record, now time.Time) {
