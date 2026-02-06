@@ -32,17 +32,17 @@ func BenchmarkEquals_Int64(b *testing.B) {
 			right := makeInt64Array(b, &alloc, benchmarkSize)
 			selection := selectionFunc(b, &alloc)
 
+			benchAlloc := memory.NewAllocator(nil)
 			for b.Loop() {
-				result, err := compute.Equals(&alloc, left, right, selection)
+				benchAlloc.Reclaim()
+				result, err := compute.Equals(benchAlloc, left, right, selection)
 				if err != nil {
 					b.Fatal(err)
 				}
 				_ = result
 			}
 
-			arr := left.(columnar.Array)
-			b.SetBytes(int64(arr.Size()))
-			b.ReportMetric(float64(b.N*arr.Len()), "values/s")
+			reportArrayBenchMetrics(b, left, right)
 		})
 	}
 }
@@ -55,17 +55,17 @@ func BenchmarkEquals_UTF8(b *testing.B) {
 			right := makeUTF8Array(b, &alloc, benchmarkSize)
 			selection := selectionFunc(b, &alloc)
 
+			benchAlloc := memory.NewAllocator(nil)
 			for b.Loop() {
-				result, err := compute.Equals(&alloc, left, right, selection)
+				benchAlloc.Reclaim()
+				result, err := compute.Equals(benchAlloc, left, right, selection)
 				if err != nil {
 					b.Fatal(err)
 				}
 				_ = result
 			}
 
-			arr := left.(columnar.Array)
-			b.SetBytes(int64(arr.Size()))
-			b.ReportMetric(float64(b.N*arr.Len()), "values/s")
+			reportArrayBenchMetrics(b, left, right)
 		})
 	}
 }

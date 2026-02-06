@@ -330,15 +330,14 @@ func BenchmarkNot_Array(b *testing.B) {
 
 	input := builder.Build()
 
-	tempAlloc := memory.NewAllocator(&alloc)
+	benchAlloc := memory.NewAllocator(&alloc)
 	for b.Loop() {
-		tempAlloc.Reclaim()
+		benchAlloc.Reclaim()
 
-		_, _ = compute.Not(tempAlloc, input, memory.Bitmap{})
+		_, _ = compute.Not(benchAlloc, input, memory.Bitmap{})
 	}
 
-	b.SetBytes(int64(input.Size()))
-	b.ReportMetric(float64(input.Len()*b.N)/b.Elapsed().Seconds(), "values/s")
+	reportArrayBenchMetrics(b, input)
 }
 
 func BenchmarkAnd_Array(b *testing.B) {
@@ -367,16 +366,14 @@ func BenchmarkAnd_Array(b *testing.B) {
 		right = rightBuilder.Build()
 	)
 
-	tempAlloc := memory.NewAllocator(&alloc)
+	benchAlloc := memory.NewAllocator(&alloc)
 	for b.Loop() {
-		tempAlloc.Reclaim()
+		benchAlloc.Reclaim()
 
-		_, _ = compute.And(tempAlloc, left, right, memory.Bitmap{})
+		_, _ = compute.And(benchAlloc, left, right, memory.Bitmap{})
 	}
 
-	totalValues := left.Len() + right.Len()
-	b.SetBytes(int64(left.Size() + right.Size()))
-	b.ReportMetric(float64(totalValues*b.N)/b.Elapsed().Seconds(), "values/s")
+	reportArrayBenchMetrics(b, left, right)
 }
 
 func BenchmarkOr_Array(b *testing.B) {
@@ -405,16 +402,14 @@ func BenchmarkOr_Array(b *testing.B) {
 		right = rightBuilder.Build()
 	)
 
-	tempAlloc := memory.NewAllocator(&alloc)
+	benchAlloc := memory.NewAllocator(&alloc)
 	for b.Loop() {
-		tempAlloc.Reclaim()
+		benchAlloc.Reclaim()
 
-		_, _ = compute.Or(tempAlloc, left, right, memory.Bitmap{})
+		_, _ = compute.Or(benchAlloc, left, right, memory.Bitmap{})
 	}
 
-	totalValues := left.Len() + right.Len()
-	b.SetBytes(int64(left.Size() + right.Size()))
-	b.ReportMetric(float64(totalValues*b.N)/b.Elapsed().Seconds(), "values/s")
+	reportArrayBenchMetrics(b, left, right)
 }
 
 // TestNot_Selection tests the Not operation with various selection patterns

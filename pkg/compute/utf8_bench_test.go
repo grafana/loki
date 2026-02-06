@@ -19,17 +19,17 @@ func BenchmarkRegexpMatch(b *testing.B) {
 			pattern := regexp.MustCompile(`ba[rz]`)
 			selection := selectionFunc(b, &alloc)
 
+			benchAlloc := memory.NewAllocator(nil)
 			for b.Loop() {
-				result, err := compute.RegexpMatch(&alloc, haystack, pattern, selection)
+				benchAlloc.Reclaim()
+				result, err := compute.RegexpMatch(benchAlloc, haystack, pattern, selection)
 				if err != nil {
 					b.Fatal(err)
 				}
 				_ = result
 			}
 
-			utf8 := haystack.(*columnar.UTF8)
-			b.SetBytes(int64(utf8.Size()))
-			b.ReportMetric(float64(b.N*utf8.Len()), "values/s")
+			reportArrayBenchMetrics(b, haystack)
 		})
 	}
 }
@@ -42,17 +42,17 @@ func BenchmarkSubstrInsensitive(b *testing.B) {
 			needle := &columnar.UTF8Scalar{Value: []byte("TEST")}
 			selection := selectionFunc(b, &alloc)
 
+			benchAlloc := memory.NewAllocator(nil)
 			for b.Loop() {
-				result, err := compute.SubstrInsensitive(&alloc, haystack, needle, selection)
+				benchAlloc.Reclaim()
+				result, err := compute.SubstrInsensitive(benchAlloc, haystack, needle, selection)
 				if err != nil {
 					b.Fatal(err)
 				}
 				_ = result
 			}
 
-			utf8 := haystack.(*columnar.UTF8)
-			b.SetBytes(int64(utf8.Size()))
-			b.ReportMetric(float64(b.N*utf8.Len()), "values/s")
+			reportArrayBenchMetrics(b, haystack)
 		})
 	}
 

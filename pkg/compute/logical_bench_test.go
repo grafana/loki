@@ -17,17 +17,17 @@ func BenchmarkAnd(b *testing.B) {
 			right := makeBoolArray(b, &alloc, benchmarkSize)
 			selection := selectionFunc(b, &alloc)
 
+			benchAlloc := memory.NewAllocator(nil)
 			for b.Loop() {
-				result, err := compute.And(&alloc, left, right, selection)
+				benchAlloc.Reclaim()
+				result, err := compute.And(benchAlloc, left, right, selection)
 				if err != nil {
 					b.Fatal(err)
 				}
 				_ = result
 			}
 
-			arr := left.(columnar.Array)
-			b.SetBytes(int64(arr.Size()))
-			b.ReportMetric(float64(b.N*arr.Len()), "values/s")
+			reportArrayBenchMetrics(b, left, right)
 		})
 	}
 }
@@ -40,17 +40,17 @@ func BenchmarkOr(b *testing.B) {
 			right := makeBoolArray(b, &alloc, benchmarkSize)
 			selection := selectionFunc(b, &alloc)
 
+			benchAlloc := memory.NewAllocator(nil)
 			for b.Loop() {
-				result, err := compute.Or(&alloc, left, right, selection)
+				benchAlloc.Reclaim()
+				result, err := compute.Or(benchAlloc, left, right, selection)
 				if err != nil {
 					b.Fatal(err)
 				}
 				_ = result
 			}
 
-			arr := left.(columnar.Array)
-			b.SetBytes(int64(arr.Size()))
-			b.ReportMetric(float64(b.N*arr.Len()), "values/s")
+			reportArrayBenchMetrics(b, left, right)
 		})
 	}
 }
@@ -62,17 +62,17 @@ func BenchmarkNot(b *testing.B) {
 			input := makeBoolArray(b, &alloc, benchmarkSize)
 			selection := selectionFunc(b, &alloc)
 
+			benchAlloc := memory.NewAllocator(nil)
 			for b.Loop() {
-				result, err := compute.Not(&alloc, input, selection)
+				benchAlloc.Reclaim()
+				result, err := compute.Not(benchAlloc, input, selection)
 				if err != nil {
 					b.Fatal(err)
 				}
 				_ = result
 			}
 
-			arr := input.(columnar.Array)
-			b.SetBytes(int64(arr.Size()))
-			b.ReportMetric(float64(b.N*arr.Len()), "values/s")
+			reportArrayBenchMetrics(b, input)
 		})
 	}
 }
