@@ -33,6 +33,12 @@ type HTTP2Listener struct {
 type incomingHTTP2Conn struct {
 	conn *http2Conn
 	w    http.ResponseWriter
+	// preAccepted is closed when the connection is being processed by .Accept() method
+	// it awaits 200 OK HTTP header to be written to it by a handler
+	preAccepted chan struct{}
+	// accepted is closed when 200 OK HTTP header was written to the connection, now
+	// this connection can be returned by .Accept() method to the caller.
+	accepted chan struct{}
 }
 
 var (
@@ -124,7 +130,12 @@ func (l *HTTP2Listener) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	conn := newHTTP2Conn(l.Addr(), remoteAddr, r.Body, w, rc, l.codec)
 	defer conn.Close()
 
-	incomingConn := &incomingHTTP2Conn{conn: conn, w: w}
+	incomingConn := &incomingHTTP2Conn{
+		conn:        conn,
+		w:           w,
+		preAccepted: make(chan struct{}),
+		accepted:    make(chan struct{}),
+	}
 
 	// Try to enqueue the connection without blocking indefinitely
 	select {
@@ -138,8 +149,26 @@ func (l *HTTP2Listener) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		http.Error(w, "listener closed", http.StatusServiceUnavailable)
 	case l.connCh <- incomingConn:
-		// read loop exits if a connection is closed or the context is canceled
-		conn.readLoop(r.Context())
+		select {
+		case <-incomingConn.preAccepted:
+			// .Accept() retrieved this connection from the pool but not processed yet
+			w.WriteHeader(http.StatusOK)
+			err := conn.responseController.Flush()
+			if err != nil {
+				level.Error(l.logger).Log("msg", "failed to flush response controller", "err", err.Error())
+				return
+			}
+			close(incomingConn.accepted)
+
+			// read loop exits if a connection is closed or the context is canceled
+			conn.readLoop(r.Context())
+
+		case <-r.Context().Done():
+			return
+
+		case <-incomingConn.conn.closed:
+			return
+		}
 	}
 }
 
@@ -151,11 +180,21 @@ func (l *HTTP2Listener) Accept(ctx context.Context) (Conn, error) {
 	case <-l.closed:
 		return nil, net.ErrClosed
 	case incomingConn := <-l.connCh:
-		incomingConn.w.WriteHeader(http.StatusOK)
-		err := incomingConn.conn.responseController.Flush()
-		if err != nil {
-			return nil, fmt.Errorf("flush response: %w", err)
+		// allow the handler to write OK to the connection
+		close(incomingConn.preAccepted)
+
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-l.closed:
+			return nil, net.ErrClosed
+		case <-incomingConn.conn.closed:
+			return nil, ErrConnClosed
+		case <-incomingConn.accepted:
+			// wait until the handler writes OK to the connection
+			break
 		}
+
 		return incomingConn.conn, nil
 	}
 }
