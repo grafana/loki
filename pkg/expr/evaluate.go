@@ -62,7 +62,7 @@ func evaluateUnary(alloc *memory.Allocator, expr *Unary, batch *columnar.RecordB
 func evaluateBinary(alloc *memory.Allocator, expr *Binary, batch *columnar.RecordBatch) (columnar.Datum, error) {
 	// Check for special operators that need different handling of their arguments.
 	switch expr.Op {
-	case BinaryOpMatchRegex:
+	case BinaryOpMatchRegex, BinaryOpIn:
 		return evaluateSpecialBinary(alloc, expr, batch)
 	}
 
@@ -120,6 +120,18 @@ func evaluateSpecialBinary(alloc *memory.Allocator, expr *Binary, batch *columna
 		}
 
 		return compute.RegexpMatch(alloc, left, right.Expression)
+	case BinaryOpIn:
+		left, err := Evaluate(alloc, expr.Left, batch)
+		if err != nil {
+			return nil, err
+		}
+
+		right, ok := expr.Right.(*ValueSet)
+		if !ok {
+			return nil, fmt.Errorf("right-hand side of in operation must be a ValueSet, got %T", expr.Right)
+		}
+
+		return compute.IsMember(alloc, left, right.Values)
 	}
 
 	return nil, fmt.Errorf("unexpected binary operator %s", expr.Op)
