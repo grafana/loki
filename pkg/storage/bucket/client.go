@@ -11,10 +11,11 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
 	objstoretracing "github.com/thanos-io/objstore/tracing/opentracing"
+
+	"github.com/grafana/loki/v3/pkg/util/constants"
 
 	"github.com/grafana/loki/v3/pkg/storage/bucket/azure"
 	"github.com/grafana/loki/v3/pkg/storage/bucket/bos"

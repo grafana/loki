@@ -6,10 +6,11 @@ import (
 
 	"github.com/cristalhq/hedgedhttp"
 	"github.com/go-kit/log"
-	"github.com/grafana/loki/v3/pkg/storage/bucket/instrumentation"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/objstore/exthttp"
 	"github.com/thanos-io/objstore/providers/gcs"
+
+	"github.com/grafana/loki/v3/pkg/storage/bucket/instrumentation"
 )
 
 // NewBucketClient creates a new GCS bucket client

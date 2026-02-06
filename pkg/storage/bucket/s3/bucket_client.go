@@ -5,11 +5,12 @@ import (
 
 	"github.com/cristalhq/hedgedhttp"
 	"github.com/go-kit/log"
-	"github.com/grafana/loki/v3/pkg/storage/bucket/instrumentation"
 	"github.com/prometheus/common/model"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/objstore/exthttp"
 	"github.com/thanos-io/objstore/providers/s3"
+
+	"github.com/grafana/loki/v3/pkg/storage/bucket/instrumentation"
 )
 
 const (
