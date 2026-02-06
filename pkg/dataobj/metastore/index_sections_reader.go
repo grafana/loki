@@ -39,8 +39,7 @@ type indexSectionsReader struct {
 	end      time.Time
 
 	// Bloom filter predicates (will be filtered to remove stream labels after init)
-	predicates         []*labels.Matcher
-	predicatesFiltered bool
+	predicates []*labels.Matcher
 
 	// Pointer scanning state
 	initialized        bool
@@ -91,7 +90,6 @@ func (r *indexSectionsReader) Read(ctx context.Context) (arrow.RecordBatch, erro
 		return nil, err
 	}
 
-	r.filterLabelPredicates()
 	if len(r.predicates) == 0 {
 		return r.readPointers(ctx)
 	}
@@ -117,12 +115,7 @@ func (r *indexSectionsReader) totalReadRows() uint64 {
 
 // filterLabelPredicates removes predicates that reference known stream labels.
 // This prevents false negatives on structured metadata columns with the same name.
-func (r *indexSectionsReader) filterLabelPredicates() {
-	if r.predicatesFiltered {
-		return
-	}
-	r.predicatesFiltered = true
-
+func (r *indexSectionsReader) filterBloomPredicates() {
 	allLabelNames := r.allLabelNames()
 	filtered := make([]*labels.Matcher, 0, len(r.predicates))
 	for _, predicate := range r.predicates {
@@ -179,6 +172,8 @@ func (r *indexSectionsReader) init(ctx context.Context) error {
 	if err := r.populateMatchingStreamsAndLabels(ctx); err != nil {
 		return fmt.Errorf("creating matching stream ids: %w", err)
 	}
+	// After populating matching streams from all the predicates, filter them down to the bloom supported predicates only
+	r.filterBloomPredicates()
 
 	if r.matchingStreamIDs == nil {
 		return io.EOF
@@ -200,8 +195,14 @@ func (r *indexSectionsReader) populateMatchingStreamsAndLabels(ctx context.Conte
 
 	sStart, sEnd := r.scalarTimestamps()
 
+	predicateKeys := map[string]struct{}{}
+	for _, predicate := range r.predicates {
+		predicateKeys[predicate.Name] = struct{}{}
+	}
+
 	requestedColumnsFn := func(column *streams.Column) bool {
-		return column.Type == streams.ColumnTypeLabel
+		_, presentInPredicates := predicateKeys[column.Name]
+		return column.Type == streams.ColumnTypeLabel && presentInPredicates
 	}
 
 	err := forEachStreamWithColumns(ctx, r.obj, r.matchers, sStart, sEnd, requestedColumnsFn, func(streamID int64, columnValues map[string]string) {
@@ -275,7 +276,7 @@ func (r *indexSectionsReader) readWithBloomFiltering(ctx context.Context) (arrow
 		// Find matched section keys for the predicate
 		sColumnName := scalar.NewStringScalar(predicate.Name)
 		matchedSectionKeys := make(map[SectionKey]struct{})
-		err := forEachMatchedPointerSectionKey(ctx, r.obj, sColumnName, predicate.Value, func(sk SectionKey) {
+		err := forEachMatchedPointerSectionKey(ctx, r.obj, r.labelNamesByStream, sColumnName, predicate.Value, func(sk SectionKey) {
 			matchedSectionKeys[sk] = struct{}{}
 		})
 		if err != nil {
@@ -508,7 +509,8 @@ func (r *indexSectionsReader) prepareForNextSectionOrSkip(ctx context.Context) (
 				Values: r.matchingStreamIDs,
 			},
 		},
-		Allocator: memory.DefaultAllocator,
+		Allocator:            memory.DefaultAllocator,
+		StreamIDToLabelNames: r.labelNamesByStream,
 	})
 
 	return false, nil
@@ -532,6 +534,7 @@ type bloomStatsProvider interface {
 func forEachMatchedPointerSectionKey(
 	ctx context.Context,
 	object *dataobj.Object,
+	labelNamesByStream map[int64][]string,
 	columnName scalar.Scalar,
 	matchColumnValue string,
 	f func(key SectionKey),
@@ -597,7 +600,8 @@ func forEachMatchedPointerSectionKey(
 
 		reader.Reset(
 			pointers.ReaderOptions{
-				Columns: pointerCols,
+				Columns:              pointerCols,
+				StreamIDToLabelNames: labelNamesByStream,
 				Predicates: []pointers.Predicate{
 					pointers.EqualPredicate{
 						Column: colPointerKind,
@@ -605,6 +609,7 @@ func forEachMatchedPointerSectionKey(
 					},
 					pointers.WhereBloomFilterMatches(colColumnName, colBloom, columnName, matchColumnValue),
 				},
+				Allocator: memory.DefaultAllocator,
 			},
 		)
 

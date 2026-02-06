@@ -109,7 +109,7 @@ func Test_mergeTables(t *testing.T) {
 
 			var actual []string
 
-			r := dataset.NewReader(dataset.ReaderOptions{
+			r := dataset.NewRowReader(dataset.ReaderOptions{
 				Dataset: mergedTable,
 				Columns: mergedColumns,
 			})
@@ -155,7 +155,7 @@ func Test_table_backfillMetadata(t *testing.T) {
 	columns, err := result.Collect(table.ListColumns(context.Background()))
 	require.NoError(t, err)
 
-	r := dataset.NewReader(dataset.ReaderOptions{
+	r := dataset.NewRowReader(dataset.ReaderOptions{
 		Dataset: table,
 		Columns: columns,
 	})

@@ -1,0 +1,11 @@
+Case-insensitive literal on label column should use case-insensitive equality.
+
+-- column --
+utf8.label.level
+
+-- regex --
+(?i)error
+
+-- expect --
+%1 = EQ_CASE_INSENSITIVE label.level "ERROR"
+RETURN %1

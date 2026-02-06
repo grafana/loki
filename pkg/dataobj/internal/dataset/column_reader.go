@@ -8,6 +8,7 @@ import (
 	"sort"
 
 	"github.com/grafana/loki/v3/pkg/columnar"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/rangeset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/sliceclear"
 	"github.com/grafana/loki/v3/pkg/memory"
 )
@@ -19,7 +20,7 @@ type columnReader struct {
 	pages     []Page
 	pageIndex int // Current index into pages.
 
-	ranges []rowRange // Ranges of each page.
+	ranges []rangeset.Range // Ranges of each page.
 
 	reader *pageReader
 
@@ -125,7 +126,7 @@ func (cr *columnReader) Read(ctx context.Context, alloc *memory.Allocator, count
 // beyond the boundaries of the column, nextPage returns nil, -1, io.EOF.
 func (cr *columnReader) nextPage() (Page, int, error) {
 	i := sort.Search(len(cr.ranges), func(i int) bool {
-		return cr.ranges[i].End >= uint64(cr.nextRow)
+		return cr.ranges[i].End > uint64(cr.nextRow)
 	})
 	if i < len(cr.pages) && cr.ranges[i].Contains(uint64(cr.nextRow)) {
 		return cr.pages[i], i, nil
@@ -143,14 +144,14 @@ func (cr *columnReader) init(ctx context.Context) error {
 			return err
 		}
 
-		endRow := startRow + uint64(page.PageDesc().RowCount) - 1
+		endRow := startRow + uint64(page.PageDesc().RowCount)
 
 		// TODO(rfratto): including page count in the column info metadata would
 		// allow us to set the capacity of cr.pages and cr.ranges more precisely.
 		cr.pages = append(cr.pages, page)
-		cr.ranges = append(cr.ranges, rowRange{startRow, endRow})
+		cr.ranges = append(cr.ranges, rangeset.Range{Start: startRow, End: endRow})
 
-		startRow = endRow + 1
+		startRow = endRow
 	}
 
 	cr.initialized = true

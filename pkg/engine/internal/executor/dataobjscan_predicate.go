@@ -10,6 +10,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/scalar"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
+	"github.com/grafana/loki/v3/pkg/engine/internal/executor/matchutil"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
@@ -86,18 +87,22 @@ func buildLogsUnaryPredicate(expr physical.UnaryExpression, columns []*logs.Colu
 }
 
 var comparisonBinaryOps = map[types.BinaryOp]struct{}{
-	types.BinaryOpEq:              {},
-	types.BinaryOpNeq:             {},
-	types.BinaryOpGt:              {},
-	types.BinaryOpGte:             {},
-	types.BinaryOpLt:              {},
-	types.BinaryOpLte:             {},
-	types.BinaryOpMatchSubstr:     {},
-	types.BinaryOpNotMatchSubstr:  {},
-	types.BinaryOpMatchRe:         {},
-	types.BinaryOpNotMatchRe:      {},
-	types.BinaryOpMatchPattern:    {},
-	types.BinaryOpNotMatchPattern: {},
+	types.BinaryOpEq:                            {},
+	types.BinaryOpNeq:                           {},
+	types.BinaryOpGt:                            {},
+	types.BinaryOpGte:                           {},
+	types.BinaryOpLt:                            {},
+	types.BinaryOpLte:                           {},
+	types.BinaryOpMatchSubstr:                   {},
+	types.BinaryOpNotMatchSubstr:                {},
+	types.BinaryOpMatchRe:                       {},
+	types.BinaryOpNotMatchRe:                    {},
+	types.BinaryOpMatchPattern:                  {},
+	types.BinaryOpNotMatchPattern:               {},
+	types.BinaryOpEqCaseInsensitive:             {},
+	types.BinaryOpNotEqCaseInsensitive:          {},
+	types.BinaryOpMatchSubstrCaseInsensitive:    {},
+	types.BinaryOpNotMatchSubstrCaseInsensitive: {},
 }
 
 func buildLogsBinaryPredicate(expr physical.BinaryExpression, columns []*logs.Column) (logs.Predicate, error) {
@@ -228,6 +233,38 @@ func buildLogsComparison(expr *physical.BinaryExpr, columns []*logs.Column) (log
 			return logs.TruePredicate{}, nil // Not match operations against a non-existent column will always pass.
 		}
 		return buildLogsMatch(col, expr.Op, s)
+
+	case types.BinaryOpEqCaseInsensitive:
+		if col == nil && s.IsValid() {
+			return logs.FalsePredicate{}, nil // Column(NULL) == non-null: always fails
+		} else if col == nil && !s.IsValid() {
+			return logs.TruePredicate{}, nil // Column(NULL) == NULL: always passes
+		}
+		return buildLogsCaseInsensitiveMatch(col, expr.Op, s)
+
+	case types.BinaryOpNotEqCaseInsensitive:
+		if col == nil && s.IsValid() {
+			return logs.TruePredicate{}, nil // Column(NULL) != non-null: always passes
+		} else if col == nil && !s.IsValid() {
+			return logs.FalsePredicate{}, nil // Column(NULL) != NULL: always fails
+		}
+		inner, err := buildLogsCaseInsensitiveMatch(col, types.BinaryOpEqCaseInsensitive, s)
+		if err != nil {
+			return nil, err
+		}
+		return logs.NotPredicate{Inner: inner}, nil
+
+	case types.BinaryOpMatchSubstrCaseInsensitive:
+		if col == nil {
+			return logs.FalsePredicate{}, nil // Match operations against a non-existent column will always fail.
+		}
+		return buildLogsCaseInsensitiveMatch(col, expr.Op, s)
+
+	case types.BinaryOpNotMatchSubstrCaseInsensitive:
+		if col == nil {
+			return logs.TruePredicate{}, nil // Not match operations against a non-existent column will always pass.
+		}
+		return buildLogsCaseInsensitiveMatch(col, expr.Op, s)
 	}
 
 	return nil, fmt.Errorf("unsupported binary operator %s in logs predicate", expr.Op)
@@ -370,4 +407,46 @@ func getBytes(value scalar.Scalar) []byte {
 	}
 
 	return nil
+}
+
+func buildLogsCaseInsensitiveMatch(col *logs.Column, op types.BinaryOp, value scalar.Scalar) (logs.Predicate, error) {
+	// All case-insensitive match operations require the value to be a string or binary.
+	var find []byte
+
+	switch value := value.(type) {
+	case *scalar.Binary:
+		find = value.Data()
+	case *scalar.String:
+		find = value.Data()
+	default:
+		return nil, fmt.Errorf("unsupported scalar type %T for op %s, expected binary or string", value, op)
+	}
+
+	switch op {
+	case types.BinaryOpEqCaseInsensitive:
+		return logs.FuncPredicate{
+			Column: col,
+			Keep: func(_ *logs.Column, value scalar.Scalar) bool {
+				return matchutil.EqualUpper(getBytes(value), find)
+			},
+		}, nil
+
+	case types.BinaryOpMatchSubstrCaseInsensitive:
+		return logs.FuncPredicate{
+			Column: col,
+			Keep: func(_ *logs.Column, value scalar.Scalar) bool {
+				return matchutil.ContainsUpper(getBytes(value), find)
+			},
+		}, nil
+
+	case types.BinaryOpNotMatchSubstrCaseInsensitive:
+		return logs.FuncPredicate{
+			Column: col,
+			Keep: func(_ *logs.Column, value scalar.Scalar) bool {
+				return !matchutil.ContainsUpper(getBytes(value), find)
+			},
+		}, nil
+	}
+
+	return nil, fmt.Errorf("unrecognized case-insensitive match operation %s", op)
 }

@@ -52,6 +52,8 @@ type Options struct {
 	DebugStreams bool
 }
 
+var _ fmt.Stringer = (*Workflow)(nil)
+
 // Workflow represents a physical plan that has been partitioned into
 // parallelizable tasks.
 type Workflow struct {
@@ -151,6 +153,12 @@ func (wf *Workflow) init(ctx context.Context) error {
 		return err
 	}
 	return wf.runner.Listen(ctx, wf.resultsPipeline, wf.resultsStream)
+}
+
+// String returns a string representation of the workflow. It is a convenience
+// method for calling [Sprint].
+func (wf *Workflow) String() string {
+	return Sprint(wf)
 }
 
 // Len returns the total number of tasks in the workflow.

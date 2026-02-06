@@ -15,7 +15,7 @@ import (
 // [columnar.RecordBatch] values from a reader that only supports reads through
 // a slice of [dataset.Row].
 type ReaderAdapter struct {
-	inner    *dataset.Reader
+	inner    *dataset.RowReader
 	colTypes []datasetmd.PhysicalType
 
 	buf []dataset.Row
@@ -23,7 +23,7 @@ type ReaderAdapter struct {
 
 // NewReaderAdapter creates a ReaderAdapter with the provided dataset reader options.
 func NewReaderAdapter(innerOpts dataset.ReaderOptions) *ReaderAdapter {
-	r := &ReaderAdapter{inner: dataset.NewReader(innerOpts)}
+	r := &ReaderAdapter{inner: dataset.NewRowReader(innerOpts)}
 	r.Reset(innerOpts)
 	return r
 }
@@ -107,5 +107,5 @@ func (r *ReaderAdapter) Read(ctx context.Context, alloc *memory.Allocator, batch
 
 	// We only return readErr after processing n so that we properly handle n>0
 	// while also getting an error such as io.EOF.
-	return columnar.NewRecordBatch(int64(n), arrs), readErr
+	return columnar.NewRecordBatch(nil, int64(n), arrs), readErr
 }

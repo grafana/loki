@@ -205,6 +205,12 @@ func (m *mockKafka) ProduceSync(_ context.Context, rs ...*kgo.Record) kgo.Produc
 	return kgo.ProduceResults{{Err: nil}}
 }
 
+type mockSorter struct{}
+
+func (m *mockSorter) Sort(_ context.Context, obj *dataobj.Object) (*dataobj.Object, io.Closer, error) {
+	return obj, io.NopCloser(nil), nil
+}
+
 type mockUploader struct {
 	uploaded []*dataobj.Object
 	mtx      sync.Mutex
