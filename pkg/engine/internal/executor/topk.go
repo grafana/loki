@@ -151,6 +151,11 @@ NextInput:
 				return nil, err
 			}
 
+			if rec.NumRows() == 0 {
+				// Nothing to process
+				continue
+			}
+
 			p.batch.Put(rec)
 
 			// Short circuiting is possible only when the heap is full and it is sorted by timestamp.

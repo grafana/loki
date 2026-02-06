@@ -7,6 +7,7 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/apache/arrow-go/v18/arrow/memory"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
@@ -84,6 +85,8 @@ func NewProjectPipeline(input Pipeline, proj *physical.Projection, evaluator *ex
 }
 
 func newKeepPipeline(colRefs []types.ColumnRef, keepFunc func([]types.ColumnRef, *semconv.Identifier) bool, input Pipeline, region *xcap.Region) (*GenericPipeline, error) {
+	identCache := semconv.NewIdentifierCache()
+
 	return newGenericPipelineWithRegion(func(ctx context.Context, inputs []Pipeline) (arrow.RecordBatch, error) {
 		if len(inputs) != 1 {
 			return nil, fmt.Errorf("expected 1 input, got %d", len(inputs))
@@ -94,11 +97,16 @@ func newKeepPipeline(colRefs []types.ColumnRef, keepFunc func([]types.ColumnRef,
 			return nil, err
 		}
 
+		if batch.NumRows() == 0 {
+			// Nothing to process, return an empty record with the same schema
+			return batch, nil
+		}
+
 		columns := make([]arrow.Array, 0, batch.NumCols())
 		fields := make([]arrow.Field, 0, batch.NumCols())
 
 		for i, field := range batch.Schema().Fields() {
-			ident, err := semconv.ParseFQN(field.Name)
+			ident, err := identCache.ParseFQN(field.Name)
 			if err != nil {
 				return nil, err
 			}
@@ -115,6 +123,8 @@ func newKeepPipeline(colRefs []types.ColumnRef, keepFunc func([]types.ColumnRef,
 }
 
 func newExpandPipeline(expr physical.Expression, evaluator *expressionEvaluator, input Pipeline, region *xcap.Region) (*GenericPipeline, error) {
+	identCache := semconv.NewIdentifierCache()
+
 	return newGenericPipelineWithRegion(func(ctx context.Context, inputs []Pipeline) (arrow.RecordBatch, error) {
 		if len(inputs) != 1 {
 			return nil, fmt.Errorf("expected 1 input, got %d", len(inputs))
@@ -125,13 +135,18 @@ func newExpandPipeline(expr physical.Expression, evaluator *expressionEvaluator,
 			return nil, err
 		}
 
+		if batch.NumRows() == 0 {
+			// Nothing to process, return an empty record with the same schema
+			return batch, nil
+		}
+
 		outputFields := make([]arrow.Field, 0)
 		outputCols := make([]arrow.Array, 0)
 		schema := batch.Schema()
 
 		// move all columns into the output except `value`
 		for i, field := range batch.Schema().Fields() {
-			ident, err := semconv.ParseFQN(schema.Field(i).Name)
+			ident, err := identCache.ParseFQN(schema.Field(i).Name)
 			if err != nil {
 				return nil, err
 			}
@@ -157,8 +172,16 @@ func newExpandPipeline(expr physical.Expression, evaluator *expressionEvaluator,
 				return nil, fmt.Errorf("unexpected type returned from evaluation, expected *arrow.StructType, got %T", arrCasted.DataType())
 			}
 			for i := range arrCasted.NumField() {
-				outputCols = append(outputCols, arrCasted.Field(i))
-				outputFields = append(outputFields, structSchema.Field(i))
+				newField := structSchema.Field(i)
+				if idx := slices.IndexFunc(outputFields, func(f arrow.Field) bool {
+					return f.Name == newField.Name
+				}); idx != -1 {
+					outputCols[idx] = mergeColumns(outputCols[idx], arrCasted.Field(i))
+					outputFields[idx] = newField
+				} else {
+					outputCols = append(outputCols, arrCasted.Field(i))
+					outputFields = append(outputFields, newField)
+				}
 			}
 		case *array.Float64:
 			outputFields = append(outputFields, semconv.FieldFromIdent(semconv.ColumnIdentValue, false))
@@ -171,4 +194,36 @@ func newExpandPipeline(expr physical.Expression, evaluator *expressionEvaluator,
 		outputSchema := arrow.NewSchema(outputFields, &metadata)
 		return array.NewRecordBatch(outputSchema, outputCols, batch.NumRows()), nil
 	}, region, input), nil
+}
+
+// mergeColumns merges two columns by preferring non-null and non-empty values from the new column (b).
+// If b has a null or empty value at index i, keep the value from a at that index.
+// If b has a non-null and non-empty value at index i, use the value from b (overwriting a).
+func mergeColumns(a, b arrow.Array) arrow.Array {
+	// Only handle string arrays for now (which is what parsers produce)
+	aStr, aOk := a.(*array.String)
+	bStr, bOk := b.(*array.String)
+
+	if !aOk || !bOk {
+		// If not both strings, just return b (overwrite behavior)
+		return b
+	}
+
+	builder := array.NewStringBuilder(memory.DefaultAllocator)
+	builder.Reserve(aStr.Len())
+
+	for i := range aStr.Len() {
+		if bStr.IsNull(i) || bStr.Value(i) == "" {
+			// New value is null or empty, keep old value
+			if aStr.IsNull(i) {
+				builder.AppendNull()
+			} else {
+				builder.Append(aStr.Value(i))
+			}
+		} else {
+			builder.Append(bStr.Value(i))
+		}
+	}
+
+	return builder.NewStringArray()
 }

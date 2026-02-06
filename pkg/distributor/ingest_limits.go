@@ -117,23 +117,24 @@ func newIngestLimits(client ingestLimitsFrontendClient, r prometheus.Registerer)
 }
 
 // EnforceLimits checks all streams against the per-tenant limits and returns
-// a slice containing the streams that are accepted (within the per-tenant
-// limits). Any streams that could not have their limits checked are also
-// accepted.
-func (l *ingestLimits) EnforceLimits(ctx context.Context, tenant string, streams []KeyedStream) ([]KeyedStream, error) {
+// two slices: one containing the streams that are accepted (within the per-tenant
+// limits) and one containing the streams that are rejected. Any streams that
+// could not have their limits checked are also accepted.
+func (l *ingestLimits) EnforceLimits(ctx context.Context, tenant string, streams []KeyedStream) ([]KeyedStream, []KeyedStream, error) {
 	results, err := l.ExceedsLimits(ctx, tenant, streams)
 	if err != nil {
-		return streams, err
+		return streams, []KeyedStream{}, err
 	}
 	// Fast path. No results means all streams were accepted and there were
 	// no failures, so we can return the input streams.
 	if len(results) == 0 {
-		return streams, nil
+		return streams, []KeyedStream{}, nil
 	}
 	// We can do this without allocation if needed, but doing so will modify
 	// the original backing array. See "Filtering without allocation" from
 	// https://go.dev/wiki/SliceTricks.
 	accepted := make([]KeyedStream, 0, len(streams))
+	rejected := make([]KeyedStream, 0, len(streams))
 	for _, s := range streams {
 		// Check each stream to see if it failed.
 		// TODO(grobinson): We have an O(N*M) loop here. Need to benchmark if
@@ -151,9 +152,11 @@ func (l *ingestLimits) EnforceLimits(ctx context.Context, tenant string, streams
 		}
 		if !found || reason == uint32(limits.ReasonFailed) {
 			accepted = append(accepted, s)
+		} else {
+			rejected = append(rejected, s)
 		}
 	}
-	return accepted, nil
+	return accepted, rejected, nil
 }
 
 // ExceedsLimits checks all streams against the per-tenant limits. It returns

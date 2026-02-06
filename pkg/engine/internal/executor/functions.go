@@ -11,6 +11,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/errors"
+	"github.com/grafana/loki/v3/pkg/engine/internal/executor/matchutil"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
@@ -111,6 +112,23 @@ func init() {
 		return !reg.Match([]byte(a)), nil
 	}})
 
+	// Functions for [types.BinaryOpEqCaseInsensitive]
+	binaryFunctions.register(types.BinaryOpEqCaseInsensitive, arrow.BinaryTypes.String, &genericBoolFunction[*array.String, string]{eval: func(a, b string) (bool, error) {
+		return matchutil.EqualUpper([]byte(a), []byte(b)), nil
+	}})
+	// Functions for [types.BinaryOpNotEqCaseInsensitive]
+	binaryFunctions.register(types.BinaryOpNotEqCaseInsensitive, arrow.BinaryTypes.String, &genericBoolFunction[*array.String, string]{eval: func(a, b string) (bool, error) {
+		return !matchutil.EqualUpper([]byte(a), []byte(b)), nil
+	}})
+	// Functions for [types.BinaryOpMatchSubstrCaseInsensitive]
+	binaryFunctions.register(types.BinaryOpMatchSubstrCaseInsensitive, arrow.BinaryTypes.String, &genericBoolFunction[*array.String, string]{eval: func(a, b string) (bool, error) {
+		return matchutil.ContainsUpper([]byte(a), []byte(b)), nil
+	}})
+	// Functions for [types.BinaryOpNotMatchSubstrCaseInsensitive]
+	binaryFunctions.register(types.BinaryOpNotMatchSubstrCaseInsensitive, arrow.BinaryTypes.String, &genericBoolFunction[*array.String, string]{eval: func(a, b string) (bool, error) {
+		return !matchutil.ContainsUpper([]byte(a), []byte(b)), nil
+	}})
+
 	// Functions for [types.UnaryOpNot]
 	unaryFunctions.register(types.UnaryOpNot, arrow.FixedWidthTypes.Boolean, UnaryFunc(func(input arrow.Array) (arrow.Array, error) {
 		arr, ok := input.(*array.Boolean)
@@ -138,6 +156,7 @@ func init() {
 	// Parse functions
 	variadicFunctions.register(types.VariadicOpParseLogfmt, parseFn(types.VariadicOpParseLogfmt))
 	variadicFunctions.register(types.VariadicOpParseJSON, parseFn(types.VariadicOpParseJSON))
+	variadicFunctions.register(types.VariadicOpParseRegexp, parseFn(types.VariadicOpParseRegexp))
 }
 
 type UnaryFunctionRegistry interface {
@@ -250,6 +269,8 @@ func (f *regexpFunction) Evaluate(lhs arrow.Array, rhs arrow.Array, _, rhsIsScal
 		return builder.NewArray(), nil
 	}
 
+	builder.Reserve(lhsArr.Len())
+
 	var (
 		re  *regexp.Regexp
 		err error
@@ -306,6 +327,7 @@ func (f *genericBoolFunction[E, T]) Evaluate(lhs arrow.Array, rhs arrow.Array, _
 	}
 
 	builder := array.NewBooleanBuilder(memory.DefaultAllocator)
+	builder.Reserve(lhsArr.Len())
 
 	for i := range lhsArr.Len() {
 		if lhsArr.IsNull(i) || rhsArr.IsNull(i) {
@@ -345,6 +367,7 @@ func (f *genericFloat64Function[E, T]) Evaluate(lhs arrow.Array, rhs arrow.Array
 	}
 
 	builder := array.NewFloat64Builder(memory.DefaultAllocator)
+	builder.Reserve(lhsArr.Len())
 
 	for i := range lhsArr.Len() {
 		if lhsArr.IsNull(i) || rhsArr.IsNull(i) {

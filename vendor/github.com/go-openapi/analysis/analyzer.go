@@ -1,21 +1,11 @@
-// Copyright 2015 go-swagger maintainers
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//    http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-FileCopyrightText: Copyright 2015-2025 go-swagger maintainers
+// SPDX-License-Identifier: Apache-2.0
 
 package analysis
 
 import (
 	"fmt"
+	"maps"
 	slashpath "path"
 	"strconv"
 	"strings"
@@ -111,33 +101,33 @@ func (p *patternAnalysis) addSchemaPattern(key, pattern string) {
 }
 
 type enumAnalysis struct {
-	parameters map[string][]interface{}
-	headers    map[string][]interface{}
-	items      map[string][]interface{}
-	schemas    map[string][]interface{}
-	allEnums   map[string][]interface{}
+	parameters map[string][]any
+	headers    map[string][]any
+	items      map[string][]any
+	schemas    map[string][]any
+	allEnums   map[string][]any
 }
 
-func (p *enumAnalysis) addEnum(key string, enum []interface{}) {
+func (p *enumAnalysis) addEnum(key string, enum []any) {
 	p.allEnums["#"+key] = enum
 }
 
-func (p *enumAnalysis) addParameterEnum(key string, enum []interface{}) {
+func (p *enumAnalysis) addParameterEnum(key string, enum []any) {
 	p.parameters["#"+key] = enum
 	p.addEnum(key, enum)
 }
 
-func (p *enumAnalysis) addHeaderEnum(key string, enum []interface{}) {
+func (p *enumAnalysis) addHeaderEnum(key string, enum []any) {
 	p.headers["#"+key] = enum
 	p.addEnum(key, enum)
 }
 
-func (p *enumAnalysis) addItemsEnum(key string, enum []interface{}) {
+func (p *enumAnalysis) addItemsEnum(key string, enum []any) {
 	p.items["#"+key] = enum
 	p.addEnum(key, enum)
 }
 
-func (p *enumAnalysis) addSchemaEnum(key string, enum []interface{}) {
+func (p *enumAnalysis) addSchemaEnum(key string, enum []any) {
 	p.schemas["#"+key] = enum
 	p.addEnum(key, enum)
 }
@@ -633,31 +623,31 @@ func (s *Spec) AllPatterns() map[string]string {
 
 // ParameterEnums returns all the enums found in parameters
 // the map is cloned to avoid accidental changes
-func (s *Spec) ParameterEnums() map[string][]interface{} {
+func (s *Spec) ParameterEnums() map[string][]any {
 	return cloneEnumMap(s.enums.parameters)
 }
 
 // HeaderEnums returns all the enums found in response headers
 // the map is cloned to avoid accidental changes
-func (s *Spec) HeaderEnums() map[string][]interface{} {
+func (s *Spec) HeaderEnums() map[string][]any {
 	return cloneEnumMap(s.enums.headers)
 }
 
 // ItemsEnums returns all the enums found in simple array items
 // the map is cloned to avoid accidental changes
-func (s *Spec) ItemsEnums() map[string][]interface{} {
+func (s *Spec) ItemsEnums() map[string][]any {
 	return cloneEnumMap(s.enums.items)
 }
 
 // SchemaEnums returns all the enums found in schemas
 // the map is cloned to avoid accidental changes
-func (s *Spec) SchemaEnums() map[string][]interface{} {
+func (s *Spec) SchemaEnums() map[string][]any {
 	return cloneEnumMap(s.enums.schemas)
 }
 
 // AllEnums returns all the enums found in the spec
 // the map is cloned to avoid accidental changes
-func (s *Spec) AllEnums() map[string][]interface{} {
+func (s *Spec) AllEnums() map[string][]any {
 	return cloneEnumMap(s.enums.allEnums)
 }
 
@@ -733,11 +723,11 @@ func (s *Spec) reset() {
 	s.patterns.items = make(map[string]string, allocLargeMap)
 	s.patterns.schemas = make(map[string]string, allocLargeMap)
 	s.patterns.allPatterns = make(map[string]string, allocLargeMap)
-	s.enums.parameters = make(map[string][]interface{}, allocLargeMap)
-	s.enums.headers = make(map[string][]interface{}, allocLargeMap)
-	s.enums.items = make(map[string][]interface{}, allocLargeMap)
-	s.enums.schemas = make(map[string][]interface{}, allocLargeMap)
-	s.enums.allEnums = make(map[string][]interface{}, allocLargeMap)
+	s.enums.parameters = make(map[string][]any, allocLargeMap)
+	s.enums.headers = make(map[string][]any, allocLargeMap)
+	s.enums.items = make(map[string][]any, allocLargeMap)
+	s.enums.schemas = make(map[string][]any, allocLargeMap)
+	s.enums.allEnums = make(map[string][]any, allocLargeMap)
 }
 
 func (s *Spec) reload() {
@@ -1051,18 +1041,14 @@ func (s *Spec) analyzeSchema(name string, schema *spec.Schema, prefix string) {
 
 func cloneStringMap(source map[string]string) map[string]string {
 	res := make(map[string]string, len(source))
-	for k, v := range source {
-		res[k] = v
-	}
+	maps.Copy(res, source)
 
 	return res
 }
 
-func cloneEnumMap(source map[string][]interface{}) map[string][]interface{} {
-	res := make(map[string][]interface{}, len(source))
-	for k, v := range source {
-		res[k] = v
-	}
+func cloneEnumMap(source map[string][]any) map[string][]any {
+	res := make(map[string][]any, len(source))
+	maps.Copy(res, source)
 
 	return res
 }

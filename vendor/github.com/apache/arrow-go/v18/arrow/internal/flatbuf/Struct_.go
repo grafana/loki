@@ -22,9 +22,9 @@ import (
 	flatbuffers "github.com/google/flatbuffers/go"
 )
 
-// / A Struct_ in the flatbuffer metadata is the same as an Arrow Struct
-// / (according to the physical memory layout). We used Struct_ here as
-// / Struct is a reserved word in Flatbuffers
+/// A Struct_ in the flatbuffer metadata is the same as an Arrow Struct
+/// (according to the physical memory layout). We used Struct_ here as
+/// Struct is a reserved word in Flatbuffers
 type Struct_ struct {
 	_tab flatbuffers.Table
 }
@@ -34,6 +34,21 @@ func GetRootAsStruct_(buf []byte, offset flatbuffers.UOffsetT) *Struct_ {
 	x := &Struct_{}
 	x.Init(buf, n+offset)
 	return x
+}
+
+func FinishStruct_Buffer(builder *flatbuffers.Builder, offset flatbuffers.UOffsetT) {
+	builder.Finish(offset)
+}
+
+func GetSizePrefixedRootAsStruct_(buf []byte, offset flatbuffers.UOffsetT) *Struct_ {
+	n := flatbuffers.GetUOffsetT(buf[offset+flatbuffers.SizeUint32:])
+	x := &Struct_{}
+	x.Init(buf, n+offset+flatbuffers.SizeUint32)
+	return x
+}
+
+func FinishSizePrefixedStruct_Buffer(builder *flatbuffers.Builder, offset flatbuffers.UOffsetT) {
+	builder.FinishSizePrefixed(offset)
 }
 
 func (rcv *Struct_) Init(buf []byte, i flatbuffers.UOffsetT) {

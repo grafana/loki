@@ -16,7 +16,7 @@ This guide shows how to deploy a minimally viable Loki in **microservice** mode 
 There are three primary ways to authenticate Loki with Azure:
 
 - Hard coding a connection string - this is the simplest method but is not recommended for production environments.
-- Manged identity
+- Managed identity
 - Federated token
 
 In this guide, we will use the federated token method to deploy Loki on Azure. This method is more secure than hard coding a connection string and is more suitable for production environments.

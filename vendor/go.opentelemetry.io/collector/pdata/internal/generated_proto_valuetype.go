@@ -65,7 +65,6 @@ func CopyValueType(dest, src *ValueType) *ValueType {
 		dest = NewValueType()
 	}
 	dest.TypeStrindex = src.TypeStrindex
-
 	dest.UnitStrindex = src.UnitStrindex
 
 	return dest
@@ -155,10 +154,10 @@ func (orig *ValueType) SizeProto() int {
 	var n int
 	var l int
 	_ = l
-	if orig.TypeStrindex != 0 {
+	if orig.TypeStrindex != int32(0) {
 		n += 1 + proto.Sov(uint64(orig.TypeStrindex))
 	}
-	if orig.UnitStrindex != 0 {
+	if orig.UnitStrindex != int32(0) {
 		n += 1 + proto.Sov(uint64(orig.UnitStrindex))
 	}
 	return n
@@ -168,12 +167,12 @@ func (orig *ValueType) MarshalProto(buf []byte) int {
 	pos := len(buf)
 	var l int
 	_ = l
-	if orig.TypeStrindex != 0 {
+	if orig.TypeStrindex != int32(0) {
 		pos = proto.EncodeVarint(buf, pos, uint64(orig.TypeStrindex))
 		pos--
 		buf[pos] = 0x8
 	}
-	if orig.UnitStrindex != 0 {
+	if orig.UnitStrindex != int32(0) {
 		pos = proto.EncodeVarint(buf, pos, uint64(orig.UnitStrindex))
 		pos--
 		buf[pos] = 0x10
@@ -205,7 +204,6 @@ func (orig *ValueType) UnmarshalProto(buf []byte) error {
 			if err != nil {
 				return err
 			}
-
 			orig.TypeStrindex = int32(num)
 
 		case 2:
@@ -217,7 +215,6 @@ func (orig *ValueType) UnmarshalProto(buf []byte) error {
 			if err != nil {
 				return err
 			}
-
 			orig.UnitStrindex = int32(num)
 		default:
 			pos, err = proto.ConsumeUnknown(buf, pos, wireType)

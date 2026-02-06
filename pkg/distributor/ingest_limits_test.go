@@ -56,14 +56,15 @@ func TestIngestLimits_EnforceLimits(t *testing.T) {
 	clock.Set(time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC))
 
 	tests := []struct {
-		name            string
-		tenant          string
-		streams         []KeyedStream
-		expectedRequest *proto.ExceedsLimitsRequest
-		response        *proto.ExceedsLimitsResponse
-		responseErr     error
-		expectedStreams []KeyedStream
-		expectedErr     string
+		name             string
+		tenant           string
+		streams          []KeyedStream
+		expectedRequest  *proto.ExceedsLimitsRequest
+		response         *proto.ExceedsLimitsResponse
+		responseErr      error
+		expectedAccepted []KeyedStream
+		expectedRejected []KeyedStream
+		expectedErr      string
 	}{{
 		// This test also asserts that streams are returned unmodified.
 		name:   "error should be returned if limits cannot be checked",
@@ -109,6 +110,36 @@ func TestIngestLimits_EnforceLimits(t *testing.T) {
 		},
 		responseErr: errors.New("failed to check limits"),
 		expectedErr: "failed to check limits",
+		expectedAccepted: []KeyedStream{{
+			HashKey:        1000,
+			HashKeyNoShard: 1,
+			Stream: logproto.Stream{
+				Labels: "foo",
+				Entries: []logproto.Entry{{
+					Timestamp: clock.Now(),
+					Line:      "bar",
+					StructuredMetadata: []logproto.LabelAdapter{{
+						Name:  "baz",
+						Value: "qux",
+					}},
+				}},
+			},
+		}, {
+			HashKey:        2000,
+			HashKeyNoShard: 2,
+			Stream: logproto.Stream{
+				Labels: "bar",
+				Entries: []logproto.Entry{{
+					Timestamp: clock.Now(),
+					Line:      "baz",
+					StructuredMetadata: []logproto.LabelAdapter{{
+						Name:  "qux",
+						Value: "corge",
+					}},
+				}},
+			},
+		}},
+		expectedRejected: []KeyedStream{},
 	}, {
 		name:   "exceeds limits",
 		tenant: "test",
@@ -128,7 +159,11 @@ func TestIngestLimits_EnforceLimits(t *testing.T) {
 				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		},
-		expectedStreams: []KeyedStream{},
+		expectedAccepted: []KeyedStream{},
+		expectedRejected: []KeyedStream{{
+			HashKey:        1000,
+			HashKeyNoShard: 1,
+		}},
 	}, {
 		name:   "one of two streams exceeds limits",
 		tenant: "test",
@@ -153,9 +188,13 @@ func TestIngestLimits_EnforceLimits(t *testing.T) {
 				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		},
-		expectedStreams: []KeyedStream{{
+		expectedAccepted: []KeyedStream{{
 			HashKey:        2000, // Should not be used.
 			HashKeyNoShard: 2,
+		}},
+		expectedRejected: []KeyedStream{{
+			HashKey:        1000,
+			HashKeyNoShard: 1,
 		}},
 	}, {
 		name:   "does not exceed limits",
@@ -178,13 +217,14 @@ func TestIngestLimits_EnforceLimits(t *testing.T) {
 		response: &proto.ExceedsLimitsResponse{
 			Results: []*proto.ExceedsLimitsResult{},
 		},
-		expectedStreams: []KeyedStream{{
+		expectedAccepted: []KeyedStream{{
 			HashKey:        1000, // Should not be used.
 			HashKeyNoShard: 1,
 		}, {
 			HashKey:        2000, // Should not be used.
 			HashKeyNoShard: 2,
 		}},
+		expectedRejected: []KeyedStream{},
 	}}
 
 	for _, test := range tests {
@@ -198,14 +238,16 @@ func TestIngestLimits_EnforceLimits(t *testing.T) {
 			l := newIngestLimits(&mockClient, prometheus.NewRegistry())
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			accepted, err := l.EnforceLimits(ctx, test.tenant, test.streams)
+			accepted, rejected, err := l.EnforceLimits(ctx, test.tenant, test.streams)
 			if test.expectedErr != "" {
 				require.EqualError(t, err, test.expectedErr)
-				// The streams should be returned unmodified.
-				require.Equal(t, test.streams, accepted)
+				// The streams should be returned unmodified in accepted when there's an error.
+				require.Equal(t, test.expectedAccepted, accepted)
+				require.Equal(t, test.expectedRejected, rejected)
 			} else {
 				require.Nil(t, err)
-				require.Equal(t, test.expectedStreams, accepted)
+				require.Equal(t, test.expectedAccepted, accepted)
+				require.Equal(t, test.expectedRejected, rejected)
 			}
 		})
 	}

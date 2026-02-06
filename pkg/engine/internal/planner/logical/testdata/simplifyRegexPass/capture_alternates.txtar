@@ -1,0 +1,23 @@
+Alternates of literals should be converted into basic matches combined with OR,
+regardless of using capture groups.
+
+The resulting expression is different from the one in alternates_literals.txtar
+due to how the nesting works; the regex is right-hand recursive (foo OR (bar OR
+(fizz OR buzz))), while alternates_literals.txtar describes a left-hand recursive
+regex (((foo OR bar) OR fizz) OR buzz).
+
+-- column --
+utf8.builtin.message
+
+-- regex --
+foo|(bar|(fizz|buzz))
+
+-- expect --
+%1 = MATCH_STR builtin.message "foo"
+%2 = MATCH_STR builtin.message "bar"
+%3 = MATCH_STR builtin.message "fizz"
+%4 = MATCH_STR builtin.message "buzz"
+%5 = OR %3 %4
+%6 = OR %2 %5
+%7 = OR %1 %6
+RETURN %7

@@ -17,14 +17,7 @@ func commandsTransaction(m *Miniredis) {
 
 // MULTI
 func (m *Miniredis) cmdMulti(c *server.Peer, cmd string, args []string) {
-	if len(args) != 0 {
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, exactly(0)) {
 		return
 	}
 
@@ -45,15 +38,7 @@ func (m *Miniredis) cmdMulti(c *server.Peer, cmd string, args []string) {
 
 // EXEC
 func (m *Miniredis) cmdExec(c *server.Peer, cmd string, args []string) {
-	if len(args) != 0 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, exactly(0)) {
 		return
 	}
 
@@ -99,15 +84,7 @@ func (m *Miniredis) cmdExec(c *server.Peer, cmd string, args []string) {
 
 // DISCARD
 func (m *Miniredis) cmdDiscard(c *server.Peer, cmd string, args []string) {
-	if len(args) != 0 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, exactly(0)) {
 		return
 	}
 
@@ -123,15 +100,7 @@ func (m *Miniredis) cmdDiscard(c *server.Peer, cmd string, args []string) {
 
 // WATCH
 func (m *Miniredis) cmdWatch(c *server.Peer, cmd string, args []string) {
-	if len(args) == 0 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, atLeast(1)) {
 		return
 	}
 
@@ -157,15 +126,7 @@ func (m *Miniredis) cmdWatch(c *server.Peer, cmd string, args []string) {
 
 // UNWATCH
 func (m *Miniredis) cmdUnwatch(c *server.Peer, cmd string, args []string) {
-	if len(args) != 0 {
-		setDirty(c)
-		c.WriteError(errWrongNumber(cmd))
-		return
-	}
-	if !m.handleAuth(c) {
-		return
-	}
-	if m.checkPubsub(c, cmd) {
+	if !m.isValidCMD(c, cmd, args, exactly(0)) {
 		return
 	}
 

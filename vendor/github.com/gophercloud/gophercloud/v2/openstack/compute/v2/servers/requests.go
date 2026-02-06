@@ -1,10 +1,12 @@
 package servers
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"maps"
 	"net"
 	"regexp"
@@ -1050,10 +1052,35 @@ func CreateImage(ctx context.Context, client *gophercloud.ServiceClient, id stri
 		r.Err = err
 		return
 	}
+
 	resp, err := client.Post(ctx, actionURL(client, id), b, nil, &gophercloud.RequestOpts{
-		OkCodes: []int{202},
+		OkCodes:          []int{202},
+		KeepResponseBody: true,
 	})
+
 	_, r.Header, r.Err = gophercloud.ParseResponse(resp, err)
+	if r.Err != nil {
+		return
+	}
+	defer resp.Body.Close()
+
+	if v := r.Header.Get("Content-Type"); v != "application/json" {
+		return
+	}
+
+	// The response body is expected to be a small JSON object containing only "image_id".
+	// Read it fully into memory so the response body can be closed immediately.
+	// If the caller doesn't read from the buffer, it can still be safely garbage collected.
+
+	var buf bytes.Buffer
+
+	_, r.Err = io.Copy(&buf, resp.Body)
+	if r.Err != nil {
+		return
+	}
+
+	r.Body = &buf
+
 	return
 }
 
