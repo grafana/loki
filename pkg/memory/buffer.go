@@ -12,11 +12,7 @@ import (
 //
 // Buffers must be created using [NewBuffer].
 type Buffer[T any] struct {
-	// To avoid double indirection (mem.data) for every operation, we cache the
-	// casted representation of mem.
-
 	alloc *Allocator
-	mem   *Region
 	data  []T
 }
 
@@ -57,7 +53,6 @@ func (buf *Buffer[T]) Grow(n int) {
 	copy(newData, buf.data)
 
 	buf.data = newData
-	buf.mem = newMem
 }
 
 // Resize changes the length of buf to n, allowing to call [Buffer.Set] on any
@@ -109,6 +104,17 @@ func (buf *Buffer[T]) Cap() int { return cap(buf.data) }
 // modified directly.
 func (buf *Buffer[T]) Data() []T { return buf.data }
 
+// Slice returns a slice of buf from index i to j. Slice panics if j < i or if
+// the slice is outside the valid range of buf. The returned slice has both a
+// length and capacity of j-i, shares memory with buf, and uses the same
+// allocator for new allocations (when needed).
+func (buf *Buffer[T]) Slice(i, j int) *Buffer[T] {
+	return &Buffer[T]{
+		alloc: buf.alloc,
+		data:  buf.data[i:j:j],
+	}
+}
+
 // Clear zeroes out all memory in buf.
 func (buf *Buffer[T]) Clear() {
 	clear(buf.data)
@@ -119,7 +125,7 @@ func (buf *Buffer[T]) Clear() {
 //
 // The returned memory is shared with buf, not a copy.
 func (buf *Buffer[T]) Serialize() []byte {
-	if buf.mem == nil {
+	if buf.data == nil {
 		return nil
 	}
 
