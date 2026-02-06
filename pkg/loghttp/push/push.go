@@ -79,6 +79,12 @@ const (
 	applicationJSON  = "application/json"
 	LabelServiceName = "service_name"
 	ServiceUnknown   = "unknown_service"
+
+	// maxStreamLabelsSize is the maximum allowed size of a single stream's labels string.
+	// Prometheus' label parser panics when encoding labels that exceed 16MB (2^24 bytes).
+	// We check the total labels string size per stream before parsing to prevent this panic.
+	// See: https://github.com/prometheus/prometheus/issues/17993
+	maxStreamLabelsSize = 1 << 24 // 16MB
 )
 
 var (
@@ -408,6 +414,10 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 
 	for i := range req.Streams {
 		s := req.Streams[i]
+
+		if len(s.Labels) > maxStreamLabelsSize {
+			return nil, nil, fmt.Errorf("%w: stream labels size %s exceeds limit of %s", ErrRequestBodyTooLarge, humanize.Bytes(uint64(len(s.Labels))), humanize.Bytes(maxStreamLabelsSize))
+		}
 
 		lbs, err := syntax.ParseLabels(s.Labels)
 		if err != nil {
