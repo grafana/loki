@@ -11,96 +11,64 @@ import (
 
 const benchmarkSize = 10000
 
-func BenchmarkEquals_Int64_FullSelection(b *testing.B) {
-	var alloc memory.Allocator
-	left := makeInt64Array(b, &alloc, benchmarkSize)
-	right := makeInt64Array(b, &alloc, benchmarkSize)
+var selections = map[string]func(*testing.B, *memory.Allocator) memory.Bitmap{
+	"selection_pct=100": func(b *testing.B, _ *memory.Allocator) memory.Bitmap { return memory.Bitmap{} },
+	"selection_pct=99": func(b *testing.B, alloc *memory.Allocator) memory.Bitmap {
+		return makeSparseSelection(b, alloc, benchmarkSize, 0.99)
+	},
+	"selection_pct=50": func(b *testing.B, alloc *memory.Allocator) memory.Bitmap {
+		return makeAlternatingSelection(b, alloc, benchmarkSize)
+	},
+	"selection_pct=05": func(b *testing.B, alloc *memory.Allocator) memory.Bitmap {
+		return makeSparseSelection(b, alloc, benchmarkSize, 0.05)
+	},
+}
 
-	for b.Loop() {
-		result, err := compute.Equals(&alloc, left, right, memory.Bitmap{})
-		if err != nil {
-			b.Fatal(err)
-		}
-		_ = result
+func BenchmarkEquals_Int64(b *testing.B) {
+	for selectionName, selectionFunc := range selections {
+		b.Run(selectionName, func(b *testing.B) {
+			var alloc memory.Allocator
+			left := makeInt64Array(b, &alloc, benchmarkSize)
+			right := makeInt64Array(b, &alloc, benchmarkSize)
+			selection := selectionFunc(b, &alloc)
+
+			for b.Loop() {
+				result, err := compute.Equals(&alloc, left, right, selection)
+				if err != nil {
+					b.Fatal(err)
+				}
+				_ = result
+			}
+
+			arr := left.(columnar.Array)
+			b.SetBytes(int64(arr.Size()))
+			b.ReportMetric(float64(b.N*arr.Len()), "values/s")
+		})
 	}
 }
 
-func BenchmarkEquals_Int64_50PercentSelection(b *testing.B) {
-	var alloc memory.Allocator
-	left := makeInt64Array(b, &alloc, benchmarkSize)
-	right := makeInt64Array(b, &alloc, benchmarkSize)
-	selection := makeAlternatingSelection(b, &alloc, benchmarkSize)
+func BenchmarkEquals_UTF8(b *testing.B) {
+	for selectionName, selectionFunc := range selections {
+		b.Run(selectionName, func(b *testing.B) {
+			var alloc memory.Allocator
+			left := makeUTF8Array(b, &alloc, benchmarkSize)
+			right := makeUTF8Array(b, &alloc, benchmarkSize)
+			selection := selectionFunc(b, &alloc)
 
-	for b.Loop() {
-		result, err := compute.Equals(&alloc, left, right, selection)
-		if err != nil {
-			b.Fatal(err)
-		}
-		_ = result
+			for b.Loop() {
+				result, err := compute.Equals(&alloc, left, right, selection)
+				if err != nil {
+					b.Fatal(err)
+				}
+				_ = result
+			}
+
+			arr := left.(columnar.Array)
+			b.SetBytes(int64(arr.Size()))
+			b.ReportMetric(float64(b.N*arr.Len()), "values/s")
+		})
 	}
 }
-
-func BenchmarkEquals_Int64_5PercentSelection(b *testing.B) {
-	var alloc memory.Allocator
-	left := makeInt64Array(b, &alloc, benchmarkSize)
-	right := makeInt64Array(b, &alloc, benchmarkSize)
-	selection := makeSparseSelection(b, &alloc, benchmarkSize, 0.05)
-
-	for b.Loop() {
-		result, err := compute.Equals(&alloc, left, right, selection)
-		if err != nil {
-			b.Fatal(err)
-		}
-		_ = result
-	}
-}
-
-func BenchmarkEquals_UTF8_FullSelection(b *testing.B) {
-	var alloc memory.Allocator
-	left := makeUTF8Array(b, &alloc, benchmarkSize)
-	right := makeUTF8Array(b, &alloc, benchmarkSize)
-
-	for b.Loop() {
-		result, err := compute.Equals(&alloc, left, right, memory.Bitmap{})
-		if err != nil {
-			b.Fatal(err)
-		}
-		_ = result
-	}
-}
-
-func BenchmarkEquals_UTF8_50PercentSelection(b *testing.B) {
-	var alloc memory.Allocator
-	left := makeUTF8Array(b, &alloc, benchmarkSize)
-	right := makeUTF8Array(b, &alloc, benchmarkSize)
-	selection := makeAlternatingSelection(b, &alloc, benchmarkSize)
-
-	for b.Loop() {
-		result, err := compute.Equals(&alloc, left, right, selection)
-		if err != nil {
-			b.Fatal(err)
-		}
-		_ = result
-	}
-}
-
-func BenchmarkEquals_UTF8_5PercentSelection(b *testing.B) {
-	var alloc memory.Allocator
-	left := makeUTF8Array(b, &alloc, benchmarkSize)
-	right := makeUTF8Array(b, &alloc, benchmarkSize)
-	selection := makeSparseSelection(b, &alloc, benchmarkSize, 0.05)
-
-	b.ResetTimer()
-	for b.Loop() {
-		result, err := compute.Equals(&alloc, left, right, selection)
-		if err != nil {
-			b.Fatal(err)
-		}
-		_ = result
-	}
-}
-
-// Helper functions to create test data
 
 func makeInt64Array(tb testing.TB, alloc *memory.Allocator, size int) columnar.Datum {
 	values := make([]interface{}, size)

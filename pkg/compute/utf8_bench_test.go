@@ -11,19 +11,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/memory"
 )
 
-var selections = map[string]func(*testing.B, *memory.Allocator) memory.Bitmap{
-	"selection_pct=100": func(b *testing.B, _ *memory.Allocator) memory.Bitmap { return memory.Bitmap{} },
-	"selection_pct=99": func(b *testing.B, alloc *memory.Allocator) memory.Bitmap {
-		return makeSparseSelection(b, alloc, benchmarkSize, 0.99)
-	},
-	"selection_pct=50": func(b *testing.B, alloc *memory.Allocator) memory.Bitmap {
-		return makeAlternatingSelection(b, alloc, benchmarkSize)
-	},
-	"selection_pct=05": func(b *testing.B, alloc *memory.Allocator) memory.Bitmap {
-		return makeSparseSelection(b, alloc, benchmarkSize, 0.05)
-	},
-}
-
 func BenchmarkRegexpMatch(b *testing.B) {
 	for selectionName, selectionFunc := range selections {
 		b.Run(selectionName, func(b *testing.B) {

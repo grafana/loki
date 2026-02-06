@@ -9,142 +9,73 @@ import (
 	"github.com/grafana/loki/v3/pkg/memory"
 )
 
-// Benchmark And operation with various selection patterns
+func BenchmarkAnd(b *testing.B) {
+	for selectionName, selectionFunc := range selections {
+		b.Run(selectionName, func(b *testing.B) {
+			var alloc memory.Allocator
+			left := makeBoolArray(b, &alloc, benchmarkSize)
+			right := makeBoolArray(b, &alloc, benchmarkSize)
+			selection := selectionFunc(b, &alloc)
 
-func BenchmarkAnd_FullSelection(b *testing.B) {
-	var alloc memory.Allocator
-	left := makeBoolArray(b, &alloc, benchmarkSize)
-	right := makeBoolArray(b, &alloc, benchmarkSize)
+			for b.Loop() {
+				result, err := compute.And(&alloc, left, right, selection)
+				if err != nil {
+					b.Fatal(err)
+				}
+				_ = result
+			}
 
-	for b.Loop() {
-		result, err := compute.And(&alloc, left, right, memory.Bitmap{})
-		if err != nil {
-			b.Fatal(err)
-		}
-		_ = result
+			arr := left.(columnar.Array)
+			b.SetBytes(int64(arr.Size()))
+			b.ReportMetric(float64(b.N*arr.Len()), "values/s")
+		})
 	}
 }
 
-func BenchmarkAnd_50PercentSelection(b *testing.B) {
-	var alloc memory.Allocator
-	left := makeBoolArray(b, &alloc, benchmarkSize)
-	right := makeBoolArray(b, &alloc, benchmarkSize)
-	selection := makeAlternatingSelection(b, &alloc, benchmarkSize)
+func BenchmarkOr(b *testing.B) {
+	for selectionName, selectionFunc := range selections {
+		b.Run(selectionName, func(b *testing.B) {
+			var alloc memory.Allocator
+			left := makeBoolArray(b, &alloc, benchmarkSize)
+			right := makeBoolArray(b, &alloc, benchmarkSize)
+			selection := selectionFunc(b, &alloc)
 
-	for b.Loop() {
-		result, err := compute.And(&alloc, left, right, selection)
-		if err != nil {
-			b.Fatal(err)
-		}
-		_ = result
+			for b.Loop() {
+				result, err := compute.Or(&alloc, left, right, selection)
+				if err != nil {
+					b.Fatal(err)
+				}
+				_ = result
+			}
+
+			arr := left.(columnar.Array)
+			b.SetBytes(int64(arr.Size()))
+			b.ReportMetric(float64(b.N*arr.Len()), "values/s")
+		})
 	}
 }
 
-func BenchmarkAnd_5PercentSelection(b *testing.B) {
-	var alloc memory.Allocator
-	left := makeBoolArray(b, &alloc, benchmarkSize)
-	right := makeBoolArray(b, &alloc, benchmarkSize)
-	selection := makeSparseSelection(b, &alloc, benchmarkSize, 0.05)
+func BenchmarkNot(b *testing.B) {
+	for selectionName, selectionFunc := range selections {
+		b.Run(selectionName, func(b *testing.B) {
+			var alloc memory.Allocator
+			input := makeBoolArray(b, &alloc, benchmarkSize)
+			selection := selectionFunc(b, &alloc)
 
-	for b.Loop() {
-		result, err := compute.And(&alloc, left, right, selection)
-		if err != nil {
-			b.Fatal(err)
-		}
-		_ = result
+			for b.Loop() {
+				result, err := compute.Not(&alloc, input, selection)
+				if err != nil {
+					b.Fatal(err)
+				}
+				_ = result
+			}
+
+			arr := input.(columnar.Array)
+			b.SetBytes(int64(arr.Size()))
+			b.ReportMetric(float64(b.N*arr.Len()), "values/s")
+		})
 	}
 }
-
-// Benchmark Or operation with various selection patterns
-
-func BenchmarkOr_FullSelection(b *testing.B) {
-	var alloc memory.Allocator
-	left := makeBoolArray(b, &alloc, benchmarkSize)
-	right := makeBoolArray(b, &alloc, benchmarkSize)
-
-	for b.Loop() {
-		result, err := compute.Or(&alloc, left, right, memory.Bitmap{})
-		if err != nil {
-			b.Fatal(err)
-		}
-		_ = result
-	}
-}
-
-func BenchmarkOr_50PercentSelection(b *testing.B) {
-	var alloc memory.Allocator
-	left := makeBoolArray(b, &alloc, benchmarkSize)
-	right := makeBoolArray(b, &alloc, benchmarkSize)
-	selection := makeAlternatingSelection(b, &alloc, benchmarkSize)
-
-	for b.Loop() {
-		result, err := compute.Or(&alloc, left, right, selection)
-		if err != nil {
-			b.Fatal(err)
-		}
-		_ = result
-	}
-}
-
-func BenchmarkOr_5PercentSelection(b *testing.B) {
-	var alloc memory.Allocator
-	left := makeBoolArray(b, &alloc, benchmarkSize)
-	right := makeBoolArray(b, &alloc, benchmarkSize)
-	selection := makeSparseSelection(b, &alloc, benchmarkSize, 0.05)
-
-	for b.Loop() {
-		result, err := compute.Or(&alloc, left, right, selection)
-		if err != nil {
-			b.Fatal(err)
-		}
-		_ = result
-	}
-}
-
-// Benchmark Not operation with various selection patterns
-
-func BenchmarkNot_FullSelection(b *testing.B) {
-	var alloc memory.Allocator
-	input := makeBoolArray(b, &alloc, benchmarkSize)
-
-	for b.Loop() {
-		result, err := compute.Not(&alloc, input, memory.Bitmap{})
-		if err != nil {
-			b.Fatal(err)
-		}
-		_ = result
-	}
-}
-
-func BenchmarkNot_50PercentSelection(b *testing.B) {
-	var alloc memory.Allocator
-	input := makeBoolArray(b, &alloc, benchmarkSize)
-	selection := makeAlternatingSelection(b, &alloc, benchmarkSize)
-
-	for b.Loop() {
-		result, err := compute.Not(&alloc, input, selection)
-		if err != nil {
-			b.Fatal(err)
-		}
-		_ = result
-	}
-}
-
-func BenchmarkNot_5PercentSelection(b *testing.B) {
-	var alloc memory.Allocator
-	input := makeBoolArray(b, &alloc, benchmarkSize)
-	selection := makeSparseSelection(b, &alloc, benchmarkSize, 0.05)
-
-	for b.Loop() {
-		result, err := compute.Not(&alloc, input, selection)
-		if err != nil {
-			b.Fatal(err)
-		}
-		_ = result
-	}
-}
-
-// Helper function to create bool arrays
 
 func makeBoolArray(tb testing.TB, alloc *memory.Allocator, size int) columnar.Datum {
 	values := make([]interface{}, size)
