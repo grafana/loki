@@ -147,6 +147,7 @@ func TestHTTP2WithPeers(t *testing.T) {
 	// Create server peer
 	serverPeer := &wire.Peer{
 		Logger:  log.NewNopLogger(),
+		Metrics: wire.NewMetrics(),
 		Conn:    serverConn,
 		Handler: serverHandler,
 		Buffer:  10,
@@ -155,6 +156,7 @@ func TestHTTP2WithPeers(t *testing.T) {
 	// Create client peer
 	clientPeer := &wire.Peer{
 		Logger:  log.NewNopLogger(),
+		Metrics: wire.NewMetrics(),
 		Conn:    clientConn,
 		Handler: clientHandler,
 		Buffer:  10,
@@ -269,6 +271,7 @@ func TestHTTP2MultipleClients(t *testing.T) {
 
 			peer := &wire.Peer{
 				Logger:  log.NewNopLogger(),
+				Metrics: wire.NewMetrics(),
 				Conn:    conn,
 				Handler: serverHandler,
 				Buffer:  10,
@@ -318,6 +321,7 @@ func TestHTTP2MultipleClients(t *testing.T) {
 
 			peer := &wire.Peer{
 				Logger:  log.NewNopLogger(),
+				Metrics: wire.NewMetrics(),
 				Conn:    conn,
 				Handler: handler,
 				Buffer:  10,
@@ -419,6 +423,7 @@ func TestHTTP2ErrorHandling(t *testing.T) {
 	// Create peers
 	serverPeer := &wire.Peer{
 		Logger:  log.NewNopLogger(),
+		Metrics: wire.NewMetrics(),
 		Conn:    serverConn,
 		Handler: errorHandler,
 		Buffer:  10,
@@ -426,6 +431,7 @@ func TestHTTP2ErrorHandling(t *testing.T) {
 
 	clientPeer := &wire.Peer{
 		Logger:  log.NewNopLogger(),
+		Metrics: wire.NewMetrics(),
 		Conn:    clientConn,
 		Handler: func(_ context.Context, _ *wire.Peer, _ wire.Message) error { return nil },
 		Buffer:  10,

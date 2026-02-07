@@ -25,7 +25,8 @@ type Bitmap struct {
 	// a surprisingly expensive operation in a hot loop due to bounds checking.
 
 	data []uint8 // Bitpacked data; always set to the full capacity to avoid re-slicing.
-	len  int     // Number of bits in the bitmap.
+	len  int     // Number of bits in the bitmap, accounting for offset.
+	off  int     // Offset into the first word.
 }
 
 // NewBitmap creates a Bitmap managed by the provided allocator. The returned
@@ -55,7 +56,7 @@ func (bmap *Bitmap) needGrow(n int) bool { return bmap.len+n > bmap.capValues() 
 
 // AppendUnsafe appends value to bmap without checking for capacity.
 func (bmap *Bitmap) AppendUnsafe(value bool) {
-	bitutil.SetBitTo(bmap.data, bmap.len, value)
+	bitutil.SetBitTo(bmap.data, bmap.off+bmap.len, value)
 	bmap.len++
 }
 
@@ -75,29 +76,29 @@ func (bmap *Bitmap) AppendBitmap(from Bitmap) {
 	if bmap.needGrow(from.Len()) {
 		bmap.Grow(from.Len())
 	}
-	bitutil.CopyBitmap(from.data, 0, from.len, bmap.data, bmap.len)
+	bitutil.CopyBitmap(from.data, from.off, from.len, bmap.data, bmap.off+bmap.len)
 	bmap.len += from.Len()
 }
 
 // AppendCountUnsafe appends value count times to bmap without checking for
 // capacity.
 func (bmap *Bitmap) AppendCountUnsafe(value bool, count int) {
-	bitutil.SetBitsTo(bmap.data, int64(bmap.len), int64(count), value)
+	bitutil.SetBitsTo(bmap.data, int64(bmap.off+bmap.len), int64(count), value)
 	bmap.len += count
 }
 
 // Set sets the bit at index i to the given value. Set panics if i is out of
 // range of the length.
-func (bmap *Bitmap) Set(i int, value bool) { bitutil.SetBitTo(bmap.data, i, value) }
+func (bmap *Bitmap) Set(i int, value bool) { bitutil.SetBitTo(bmap.data, bmap.off+i, value) }
 
 // SetRange sets all the bits in the range [from, to). SetRange panics if from >
 // to or if to > bmap.Len().
 func (bmap *Bitmap) SetRange(from, to int, value bool) {
-	bitutil.SetBitsTo(bmap.data, int64(from), int64(to-from), value)
+	bitutil.SetBitsTo(bmap.data, int64(bmap.off+from), int64(to-from), value)
 }
 
 // Get returns the value at index i. Get panics if i is out of range.
-func (bmap *Bitmap) Get(i int) bool { return bitutil.BitIsSet(bmap.data, i) }
+func (bmap *Bitmap) Get(i int) bool { return bitutil.BitIsSet(bmap.data, bmap.off+i) }
 
 // AppendValues adds a sequence of values to bmap.
 func (bmap *Bitmap) AppendValues(values ...bool) {
@@ -105,8 +106,9 @@ func (bmap *Bitmap) AppendValues(values ...bool) {
 		bmap.Grow(len(values))
 	}
 
+	off := bmap.off + bmap.len
 	for i, value := range values {
-		bitutil.SetBitTo(bmap.data, bmap.len+i, value)
+		bitutil.SetBitTo(bmap.data, off+i, value)
 	}
 	bmap.len += len(values)
 }
@@ -126,20 +128,28 @@ func (bmap *Bitmap) Grow(n int) {
 	}
 
 	newValuesCap := max(bmap.len+n, 2*valuesCap)
-	newData := bmap.getNewData(words(newValuesCap))
+	newData := allocBitmapData(bmap.alloc, words(newValuesCap))
+
+	if bmap.off != 0 {
+		// Normalize the bitmap so it's aligned again.
+		bitutil.CopyBitmap(bmap.data, bmap.off, bmap.len, newData, 0)
+		bmap.data = newData
+		bmap.off = 0
+		return
+	}
 
 	copy(newData, bmap.data)
 	bmap.data = newData
 }
 
-// getNewData gets a new data slice with the specified minimum size. The
-// returned data is padded to 64 bytes for compatibility with Arrow buffer
-// requirements.
-func (bmap *Bitmap) getNewData(minSize int) []uint8 {
+// allocBitmapData allocates a new data slice with the specified minimum size.
+// The returned data is padded to 64 bytes for compatibility with Arrow buffer
+// recommendations.
+func allocBitmapData(alloc *Allocator, minSize int) []uint8 {
 	size := memalign.Align(minSize)
 
-	if bmap.alloc != nil {
-		mem := bmap.alloc.Allocate(size)
+	if alloc != nil {
+		mem := alloc.Allocate(size)
 		return mem.Data()
 	}
 
@@ -154,7 +164,7 @@ func words(bits int) int {
 // capValues returns the capacity of bmap in terms of the number of values it
 // can hold (one byte is 8 values).
 func (bmap *Bitmap) capValues() int {
-	return 8 * cap(bmap.data)
+	return (8 * cap(bmap.data)) - bmap.off
 }
 
 // Resize changes the length of bmap to n, allowing to set any index of bmap up
@@ -181,7 +191,7 @@ func (bmap *Bitmap) Cap() int { return bmap.capValues() }
 
 // SetCount returns the number of bits set in the bitmap.
 func (bmap *Bitmap) SetCount() int {
-	return bitutil.CountSetBits(bmap.data, 0, bmap.len)
+	return bitutil.CountSetBits(bmap.data, bmap.off, bmap.len)
 }
 
 // ClearCount returns the number of bits unset in the bitmap.
@@ -189,23 +199,64 @@ func (bmap *Bitmap) ClearCount() int {
 	return bmap.Len() - bmap.SetCount()
 }
 
-// Clone returns a copy of bmap. If bmap is associated with an allocator, the
-// returned bitmap uses the same allocator.
-func (bmap *Bitmap) Clone() *Bitmap {
-	newData := bmap.getNewData(cap(bmap.data))
-	copy(newData, bmap.data)
+// Clone returns a copy of bmap using the provided allocator. The returned
+// bitmap will store the provided allocator for future allocations.
+//
+// If bmap is an unaligned slice, the cloned bitmap will be normalized to remove
+// offsets. See [Bitmap.Bytes] for more information on aligned slices.
+func (bmap *Bitmap) Clone(alloc *Allocator) *Bitmap {
+	newData := allocBitmapData(alloc, words(bmap.len))
+
+	if bmap.off != 0 {
+		// Normalize the bitmap so it's aligned again.
+		bitutil.CopyBitmap(bmap.data, bmap.off, bmap.len, newData, 0)
+	} else {
+		copy(newData, bmap.data)
+	}
 
 	return &Bitmap{
-		alloc: bmap.alloc,
+		alloc: alloc,
 
 		data: newData,
 		len:  bmap.len,
+		off:  0, // Cloned bitmaps are normalized.
 	}
 }
 
 // Bytes returns the raw representation of bmap, with bits stored in Least
 // Significant Bit (LSB) order.
-func (bmap *Bitmap) Bytes() []byte { return bmap.data }
+//
+// The offset return parameter denotes the offset of the first bit in data. This
+// can be set to non-zero if bmap is sliced partially into a word.
+//
+// The first offset bits in data are undefined.
+func (bmap *Bitmap) Bytes() (data []byte, offset int) { return bmap.data, bmap.off }
+
+// Slice returns a slice of bmap from index i to j. Slice panics if j < i or if
+// the slice is outside the valid range of bmap. The returned slice has both a
+// length and capacity of j-i, shares memory with bmap, and uses the same
+// allocator for new allocations (when needed).
+func (bmap *Bitmap) Slice(i, j int) *Bitmap {
+	var (
+		startWord = (bmap.off + i) / 8
+		endWord   = ((bmap.off + j) / 8) + 1
+
+		off    = (bmap.off + i) % 8
+		newLen = j - i
+	)
+
+	if newLen < 0 {
+		panic("negative length")
+	}
+
+	return &Bitmap{
+		alloc: bmap.alloc,
+
+		data: bmap.data[startWord:endWord:endWord],
+		len:  newLen,
+		off:  off,
+	}
+}
 
 // IterValues returns an iterator over bits, returning the index
 // of each bit matching value.
@@ -213,15 +264,22 @@ func (bmap *Bitmap) IterValues(value bool) iter.Seq[int] {
 	return func(yield func(int) bool) {
 		var start int
 
-		for _, word := range bmap.data {
+		offset := bmap.off
+
+		for i, word := range bmap.data {
 			rem := word
 			if !value {
 				rem = ^rem // Use a NOT to get unset bits.
 			}
 
+			if i == 0 && offset != 0 {
+				// Zero out the first bmap.off bits.
+				rem &= ^uint8(0) << offset
+			}
+
 			for rem != 0 {
 				firstSet := bits.TrailingZeros8(rem)
-				index := start + firstSet
+				index := start + firstSet - offset
 				if index >= bmap.len {
 					return
 				} else if !yield(index) {
