@@ -109,6 +109,7 @@ func (c *SinglePartitionConsumer) Run(ctx context.Context) error {
 		// The client can fetch from multiple brokers in a single poll. This means
 		// we must handle both records and errors at the same time, as some brokers
 		// might be polled successfully while others return errors.
+		var numRecords int
 		for record := range fetches.RecordsAll() {
 			// We must check for cancelation to avoid a deadlock. This can happen
 			// if the receiver stopped without draining the chan.
@@ -118,18 +119,19 @@ func (c *SinglePartitionConsumer) Run(ctx context.Context) error {
 				// when stopping the service.
 				return nil
 			case c.records <- record:
+				numRecords++
 			}
 		}
-		var numErrs int
 		fetches.EachError(func(_ string, _ int32, err error) {
 			level.Error(c.logger).Log("msg", "failed to poll fetches", "err", err)
 			c.fetchErrors.Inc()
-			numErrs++
 		})
-		if numErrs == 0 {
-			b.Reset()
-		} else {
+		if numRecords == 0 {
+			// If no records were fetched, backoff before the next poll.
 			b.Wait()
+		} else {
+			// If records were fetched, reset the backoff before the next poll.
+			b.Reset()
 		}
 	}
 	return nil
