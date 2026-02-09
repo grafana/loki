@@ -145,7 +145,7 @@ require (
 	github.com/prometheus/alertmanager v0.30.1
 	github.com/prometheus/common/sigv4 v0.1.0
 	github.com/prometheus/otlptranslator v1.0.0
-	github.com/prometheus/sigv4 v0.4.0
+	github.com/prometheus/sigv4 v0.4.1
 	github.com/richardartoul/molecule v1.0.0
 	github.com/schollz/progressbar/v3 v3.19.0
 	github.com/shirou/gopsutil/v4 v4.26.1
