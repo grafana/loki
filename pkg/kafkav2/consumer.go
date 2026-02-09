@@ -15,81 +15,18 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 )
 
-// A SinglePartitionConsumer consumes records from a single partition.
-type SinglePartitionConsumer struct {
+// An abstractConsumer is a basic consumer that is embedded in most other
+// consumers.
+type abstractConsumer struct {
 	*services.BasicService
-
-	client        *kgo.Client
-	topic         string
-	partition     int32
-	initialOffset int64
-	records       chan<- *kgo.Record
-
+	client      *kgo.Client
+	records     chan<- *kgo.Record
 	logger      log.Logger
 	fetchErrors prometheus.Counter
 	polls       prometheus.Counter
 }
 
-// NewSinglePartitionConsumer returns a new SinglePartitionConsumer. It
-// consumes records from the specified offset. It accepts the two special
-// offsets of -2 to consume from the start and -1 to consume from the end.
-func NewSinglePartitionConsumer(
-	client *kgo.Client,
-	topic string,
-	partition int32,
-	initialOffset int64,
-	records chan<- *kgo.Record,
-	logger log.Logger,
-	r prometheus.Registerer,
-) *SinglePartitionConsumer {
-	// Wrap the registerer with labels for the topic and partition so we don't
-	// need to add it to each metric.
-	r = prometheus.WrapRegistererWith(prometheus.Labels{
-		"topic":     topic,
-		"partition": strconv.Itoa(int(partition)),
-	}, r)
-	// Consume the topic and partition from the specified offset.
-	client.AddConsumePartitions(map[string]map[int32]kgo.Offset{
-		topic: {
-			partition: kgo.NewOffset().At(initialOffset),
-		},
-	})
-	c := SinglePartitionConsumer{
-		client:        client,
-		topic:         topic,
-		partition:     partition,
-		initialOffset: initialOffset,
-		records:       records,
-		logger:        log.With(logger, "topic", topic, "partition", partition),
-		fetchErrors: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Name: "single_partition_consumer_fetch_erros_total",
-			Help: "The number of fetch errors.",
-		}),
-		polls: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Name: "single_partition_consumer_polls_total",
-			Help: "Total number of polls.",
-		}),
-	}
-	c.BasicService = services.NewBasicService(c.starting, c.running, c.stopping)
-	return &c
-}
-
-// starting implements [services.StartingFn].
-func (c *SinglePartitionConsumer) starting(_ context.Context) error {
-	return nil
-}
-
-// running implements [services.RunningFn].
-func (c *SinglePartitionConsumer) running(ctx context.Context) error {
-	return c.Run(ctx)
-}
-
-// running implements [services.StoppingFn].
-func (c *SinglePartitionConsumer) stopping(_ error) error {
-	return nil
-}
-
-func (c *SinglePartitionConsumer) Run(ctx context.Context) error {
+func (c *abstractConsumer) run(ctx context.Context) error {
 	b := backoff.New(ctx, backoff.Config{
 		MinBackoff: time.Millisecond * 100,
 		MaxBackoff: time.Second * 10,
@@ -134,5 +71,125 @@ func (c *SinglePartitionConsumer) Run(ctx context.Context) error {
 			b.Reset()
 		}
 	}
+	return nil
+}
+
+// A GroupConsumer consumes records from many partitions. It should be used
+// with consumer groups, and is incompatible with direct consumers. The consumed
+// partitions are determined by the broker as part of the consumer group protocol.
+type GroupConsumer struct {
+	abstractConsumer
+}
+
+// NewGroupConsumer returns a new GroupConsumer.
+func NewGroupConsumer(
+	client *kgo.Client,
+	topic string,
+	records chan<- *kgo.Record,
+	logger log.Logger,
+	r prometheus.Registerer,
+) *GroupConsumer {
+	client.AddConsumeTopics(topic)
+	c := GroupConsumer{
+		abstractConsumer: abstractConsumer{
+			client:  client,
+			records: records,
+			logger:  logger,
+			fetchErrors: promauto.With(r).NewCounter(prometheus.CounterOpts{
+				Name: "single_partition_consumer_fetch_erros_total",
+				Help: "The number of fetch errors.",
+			}),
+			polls: promauto.With(r).NewCounter(prometheus.CounterOpts{
+				Name: "single_partition_consumer_polls_total",
+				Help: "Total number of polls.",
+			}),
+		},
+	}
+	c.BasicService = services.NewBasicService(c.starting, c.running, c.stopping)
+	return &c
+}
+
+// starting implements [services.StartingFn].
+func (c *GroupConsumer) starting(_ context.Context) error {
+	return nil
+}
+
+// running implements [services.RunningFn].
+func (c *GroupConsumer) running(ctx context.Context) error {
+	return c.run(ctx)
+}
+
+// running implements [services.StoppingFn].
+func (c *GroupConsumer) stopping(_ error) error {
+	return nil
+}
+
+// A SinglePartitionConsumer consumes records from a single partition. It should
+// be used with direct consumers, and is incompatible with consumer groups.
+type SinglePartitionConsumer struct {
+	abstractConsumer
+	topic         string
+	partition     int32
+	initialOffset int64
+}
+
+// NewSinglePartitionConsumer returns a new SinglePartitionConsumer. It
+// consumes records from the specified offset. It accepts the two special
+// offsets of -2 to consume from the start and -1 to consume from the end.
+func NewSinglePartitionConsumer(
+	client *kgo.Client,
+	topic string,
+	partition int32,
+	initialOffset int64,
+	records chan<- *kgo.Record,
+	logger log.Logger,
+	r prometheus.Registerer,
+) *SinglePartitionConsumer {
+	// Wrap the registerer with labels for the topic and partition so we don't
+	// need to add it to each metric.
+	r = prometheus.WrapRegistererWith(prometheus.Labels{
+		"topic":     topic,
+		"partition": strconv.Itoa(int(partition)),
+	}, r)
+	// Consume the topic and partition from the specified offset.
+	client.AddConsumePartitions(map[string]map[int32]kgo.Offset{
+		topic: {
+			partition: kgo.NewOffset().At(initialOffset),
+		},
+	})
+	c := SinglePartitionConsumer{
+		abstractConsumer: abstractConsumer{
+			client:  client,
+			records: records,
+			logger:  log.With(logger, "topic", topic, "partition", partition),
+			fetchErrors: promauto.With(r).NewCounter(prometheus.CounterOpts{
+				Name: "single_partition_consumer_fetch_erros_total",
+				Help: "The number of fetch errors.",
+			}),
+			polls: promauto.With(r).NewCounter(prometheus.CounterOpts{
+				Name: "single_partition_consumer_polls_total",
+				Help: "Total number of polls.",
+			}),
+		},
+		topic:         topic,
+		partition:     partition,
+		initialOffset: initialOffset,
+	}
+	c.BasicService = services.NewBasicService(c.starting, c.running, c.stopping)
+	return &c
+}
+
+// starting implements [services.StartingFn].
+func (c *SinglePartitionConsumer) starting(_ context.Context) error {
+	return nil
+}
+
+// running implements [services.RunningFn].
+func (c *SinglePartitionConsumer) running(ctx context.Context) error {
+	return c.run(ctx)
+}
+
+// running implements [services.StoppingFn].
+func (c *SinglePartitionConsumer) stopping(_ error) error {
 	return nil
 }
