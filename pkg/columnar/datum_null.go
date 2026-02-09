@@ -62,7 +62,7 @@ func (arr *Null) Size() int { return arr.validity.Len() / 8 }
 
 // Slice returns a slice of arr from i to j.
 func (arr *Null) Slice(i, j int) Array {
-	if i < 0 || j > arr.Len() {
+	if i < 0 || j < i || j > arr.Len() {
 		panic(errorSliceBounds{i, j, arr.Len()})
 	}
 	return NewNull(sliceValidity(arr.validity, i, j))

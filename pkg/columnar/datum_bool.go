@@ -101,7 +101,7 @@ func (arr *Bool) Size() int {
 
 // Slice returns a slice of arr from i to j.
 func (arr *Bool) Slice(i, j int) Array {
-	if i < 0 || j > arr.Len() {
+	if i < 0 || j < i || j > arr.Len() {
 		panic(errorSliceBounds{i, j, arr.Len()})
 	}
 	var (

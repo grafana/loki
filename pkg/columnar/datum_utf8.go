@@ -140,7 +140,7 @@ func (arr *UTF8) Kind() Kind { return KindUTF8 }
 // It is recommended to normalize the offsets and remove unused memory in the
 // data buffer before serializing UTF8 for network communication.
 func (arr *UTF8) Slice(i, j int) Array {
-	if i < 0 || j > arr.Len() {
+	if i < 0 || j < i || j > arr.Len() {
 		panic(errorSliceBounds{i, j, arr.Len()})
 	}
 

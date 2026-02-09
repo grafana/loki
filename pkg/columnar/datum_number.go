@@ -143,7 +143,7 @@ func (arr *Number[T]) Kind() Kind { return arr.kind }
 
 // Slice returns a slice of arr from i to j.
 func (arr *Number[T]) Slice(i, j int) Array {
-	if i < 0 || j > arr.Len() {
+	if i < 0 || j < i || j > arr.Len() {
 		panic(errorSliceBounds{i, j, arr.Len()})
 	}
 	var (

@@ -38,11 +38,12 @@ func (rb *RecordBatch) Column(i int64) Array {
 	return rb.arrs[i]
 }
 
-// Slice returns a slice of rb from index i to j. Slice panics if j < i or if
-// the slice is outside the valid range of rb. The returned slice has a length
-// of j-i and shares memory with rb.
+// Slice returns a slice of rb from index i to j. The returned slice has a
+// length of j-i and shares memory with rb.
+//
+// Slice panics if the following invariant is not met: 0 <= i <= j <= rb.NumRows()
 func (rb *RecordBatch) Slice(i, j int) *RecordBatch {
-	if i < 0 || j > int(rb.NumRows()) {
+	if i < 0 || j < i || j > int(rb.NumRows()) {
 		panic(errorSliceBounds{i, j, int(rb.NumRows())})
 	}
 

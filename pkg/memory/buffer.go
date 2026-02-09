@@ -104,11 +104,16 @@ func (buf *Buffer[T]) Cap() int { return cap(buf.data) }
 // modified directly.
 func (buf *Buffer[T]) Data() []T { return buf.data }
 
-// Slice returns a slice of buf from index i to j. Slice panics if j < i or if
-// the slice is outside the valid range of buf. The returned slice has both a
+// Slice returns a slice of buf from index i to j. The returned slice has both a
 // length and capacity of j-i, shares memory with buf, and uses the same
 // allocator for new allocations (when needed).
+//
+// Slice panics if the following invariant is not met: 0 <= i <= j <= buf.Len()
 func (buf *Buffer[T]) Slice(i, j int) *Buffer[T] {
+	if i < 0 || j < i || j > buf.Len() {
+		panic("invalid slice")
+	}
+
 	return &Buffer[T]{
 		alloc: buf.alloc,
 		data:  buf.data[i:j:j],
