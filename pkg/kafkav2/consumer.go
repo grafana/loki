@@ -122,8 +122,8 @@ func (c *SinglePartitionConsumer) Run(ctx context.Context) error {
 				numRecords++
 			}
 		}
-		fetches.EachError(func(_ string, _ int32, err error) {
-			level.Error(c.logger).Log("msg", "failed to poll fetches", "err", err)
+		fetches.EachError(func(topic string, partition int32, err error) {
+			level.Error(c.logger).Log("msg", "failed to poll fetches", "topic", topic, "partition", partition, "err", err)
 			c.fetchErrors.Inc()
 		})
 		if numRecords == 0 {
