@@ -142,7 +142,7 @@ require (
 	github.com/oklog/ulid/v2 v2.1.1
 	github.com/parquet-go/parquet-go v0.27.0
 	github.com/pressly/goose/v3 v3.26.0
-	github.com/prometheus/alertmanager v0.30.1
+	github.com/prometheus/alertmanager v0.31.0
 	github.com/prometheus/common/sigv4 v0.1.0
 	github.com/prometheus/otlptranslator v1.0.0
 	github.com/prometheus/sigv4 v0.4.0
@@ -235,7 +235,7 @@ require (
 	github.com/grafana/otel-profiling-go v0.5.1 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.3 // indirect
 	github.com/hashicorp/go-metrics v0.5.4 // indirect
-	github.com/hashicorp/go-msgpack/v2 v2.1.2 // indirect
+	github.com/hashicorp/go-msgpack/v2 v2.1.5 // indirect
 	github.com/hashicorp/go-version v1.8.0 // indirect
 	github.com/hashicorp/golang-lru v1.0.2 // indirect
 	github.com/jaegertracing/jaeger-idl v0.6.0 // indirect
@@ -393,12 +393,12 @@ require (
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
-	github.com/go-openapi/analysis v0.24.1 // indirect
-	github.com/go-openapi/errors v0.22.4 // indirect
-	github.com/go-openapi/jsonpointer v0.22.1 // indirect
-	github.com/go-openapi/jsonreference v0.21.3 // indirect
+	github.com/go-openapi/analysis v0.24.2 // indirect
+	github.com/go-openapi/errors v0.22.6 // indirect
+	github.com/go-openapi/jsonpointer v0.22.4 // indirect
+	github.com/go-openapi/jsonreference v0.21.4 // indirect
 	github.com/go-openapi/loads v0.23.2 // indirect
-	github.com/go-openapi/spec v0.22.1 // indirect
+	github.com/go-openapi/spec v0.22.3 // indirect
 	github.com/go-openapi/strfmt v0.25.0 // indirect
 	github.com/go-openapi/swag v0.25.4 // indirect
 	github.com/go-openapi/validate v0.25.1 // indirect
@@ -426,7 +426,7 @@ require (
 	github.com/hashicorp/go-rootcerts v1.0.2 // indirect
 	github.com/hashicorp/go-sockaddr v1.0.7 // indirect
 	github.com/hashicorp/go-uuid v1.0.3 // indirect
-	github.com/hashicorp/memberlist v0.5.3 // indirect
+	github.com/hashicorp/memberlist v0.5.4 // indirect
 	github.com/hashicorp/serf v0.10.2 // indirect
 	github.com/huandu/xstrings v1.5.0 // indirect
 	github.com/jcmturner/aescts/v2 v2.0.0 // indirect
