@@ -96,20 +96,15 @@ func (c *SinglePartitionConsumer) Run(ctx context.Context) error {
 		MaxRetries: 0, // Infinite retries.
 	})
 	for b.Ongoing() {
-		select {
-		case <-ctx.Done():
+		c.polls.Inc()
+		fetches := c.client.PollRecords(ctx, -1)
+		// If the client is closed, or the context was canceled, exit the service.
+		// We use Err0 instead of [kgo.IsClientClosed] so we can also check if the
+		// context was canceled.
+		if err := fetches.Err0(); errors.Is(err, kgo.ErrClientClosed) || errors.Is(err, context.Canceled) {
 			// We don't return ctx.Err() here as it manifests as a service failure
 			// when stopping the service.
 			return nil
-		default:
-		}
-		c.polls.Inc()
-		fetches := c.client.PollRecords(ctx, -1)
-		// If the client is closed, or the context was canceled, return the error
-		// as no fetches were polled. We use this instead of [kgo.IsClientClosed]
-		// so we can also check if the context was canceled.
-		if err := fetches.Err0(); errors.Is(err, kgo.ErrClientClosed) || errors.Is(err, context.Canceled) {
-			return err
 		}
 		// The client can fetch from multiple brokers in a single poll. This means
 		// we must handle both records and errors at the same time, as some brokers
@@ -119,7 +114,9 @@ func (c *SinglePartitionConsumer) Run(ctx context.Context) error {
 			// if the receiver stopped without draining the chan.
 			select {
 			case <-ctx.Done():
-				return ctx.Err()
+				// We don't return ctx.Err() here as it manifests as a service failure
+				// when stopping the service.
+				return nil
 			case c.records <- record:
 			}
 		}
