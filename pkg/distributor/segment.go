@@ -54,6 +54,7 @@ type SegmentationPartitionResolver struct {
 	total  prometheus.Counter
 	failed prometheus.Counter
 	random prometheus.Counter
+	shards *prometheus.GaugeVec
 }
 
 // NewSegmentationPartitionResolver returns a new SegmentationPartitionResolver.
@@ -74,6 +75,10 @@ func NewSegmentationPartitionResolver(perPartitionRateBytes uint64, ringReader r
 			Name: "loki_distributor_segmentation_partition_resolver_random_total",
 			Help: "Total number of segmentation keys that resolved to a random partition.",
 		}),
+		shards: promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
+			Name: "loki_distributor_segmentation_partition_resolver_shards",
+			Help: "Total number of segmentation keys that resolved to a shard factor.",
+		}, []string{"tenant", "segmentation_key"}),
 		logger: logger,
 	}
 }
@@ -100,7 +105,7 @@ func (r *SegmentationPartitionResolver) Resolve(ctx context.Context, tenant stri
 		r.failed.Inc()
 		return 0, fmt.Errorf("failed to get tenant subring: %w", err)
 	}
-	return r.getPartition(ctx, subring, key, rateBytes)
+	return r.getPartition(ctx, subring, tenant, key, rateBytes)
 }
 
 // getTenantRing returns a subring for the tenant based on their rate limit.
@@ -119,7 +124,7 @@ func (r *SegmentationPartitionResolver) getTenantSubring(_ context.Context, ring
 	return ring.ShuffleShard(tenant, int(partitions))
 }
 
-func (r *SegmentationPartitionResolver) getPartition(ctx context.Context, ring *ring.PartitionRing, key SegmentationKey, rateBytes uint64) (int32, error) {
+func (r *SegmentationPartitionResolver) getPartition(ctx context.Context, ring *ring.PartitionRing, tenant string, key SegmentationKey, rateBytes uint64) (int32, error) {
 	// If rate bytes is 0, then we were unable to determine the rate (bytes/sec)
 	// for the segmentation key. When this happens we select a random partition.
 	if rateBytes == 0 {
@@ -135,15 +140,16 @@ func (r *SegmentationPartitionResolver) getPartition(ctx context.Context, ring *
 	// Must not exceed the number of active partitions.
 	partitions = min(partitions, uint64(ring.ActivePartitionsCount()))
 	// Generate a sub-key based on the segmentation key and the number of partitions.
-	partition := r.rand.Intn(int(partitions))
+	n := r.rand.Intn(int(partitions))
+	r.shards.WithLabelValues(tenant, string(key)).Set(float64(partitions))
 	subkey := fnv.New32a()
 	subkey.Write([]byte(key))
-	subkey.Write([]byte(strconv.Itoa(partition)))
+	subkey.Write([]byte(strconv.Itoa(n)))
 	return ring.ActivePartitionForKey(subkey.Sum32())
 }
 
 // randomPartition returns a random partition from the ring.
-func (r *SegmentationPartitionResolver) randomPartition(ctx context.Context, ring *ring.PartitionRing) (int32, error) {
+func (r *SegmentationPartitionResolver) randomPartition(_ context.Context, ring *ring.PartitionRing) (int32, error) {
 	activePartitionIDs := ring.ActivePartitionIDs()
 	r.rand.Shuffle(len(activePartitionIDs), func(i, j int) {
 		activePartitionIDs[i], activePartitionIDs[j] = activePartitionIDs[j], activePartitionIDs[i]
