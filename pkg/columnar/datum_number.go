@@ -141,6 +141,18 @@ func (arr *Number[T]) Size() int {
 // Kind returns the kind of Array being represented.
 func (arr *Number[T]) Kind() Kind { return arr.kind }
 
+// Slice returns a slice of arr from i to j.
+func (arr *Number[T]) Slice(i, j int) Array {
+	if i < 0 || j < i || j > arr.Len() {
+		panic(errorSliceBounds{i, j, arr.Len()})
+	}
+	var (
+		validity = sliceValidity(arr.validity, i, j)
+		values   = arr.values[i:j:j]
+	)
+	return NewNumber[T](values, validity)
+}
+
 func (arr *Number[T]) isDatum() {}
 func (arr *Number[T]) isArray() {}
 
