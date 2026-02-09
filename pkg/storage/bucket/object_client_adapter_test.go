@@ -11,7 +11,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/storage/bucket/filesystem"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
 )
 
 func TestObjectClientAdapter_List(t *testing.T) {
@@ -101,7 +100,7 @@ func TestObjectClientAdapter_List(t *testing.T) {
 			Config: Config{
 				Filesystem: config,
 			},
-		}, "test", hedging.Config{}, false, log.NewNopLogger())
+		}, "test", false, log.NewNopLogger())
 		require.NoError(t, err)
 
 		storageObj, storageCommonPref, err := client.List(context.Background(), tt.prefix, tt.delimiter)

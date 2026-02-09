@@ -662,7 +662,7 @@ func (c *ClientMetrics) Unregister() {
 // NewObjectClient makes a new StorageClient with the prefix in the front.
 func NewObjectClient(name, component string, cfg Config, clientMetrics ClientMetrics) (client.ObjectClient, error) {
 	if cfg.UseThanosObjstore {
-		return bucket.NewObjectClient(context.Background(), name, cfg.ObjectStore, component, cfg.Hedging, false, util_log.Logger)
+		return bucket.NewObjectClient(context.Background(), name, cfg.ObjectStore, component, false, util_log.Logger)
 	}
 
 	actual, err := internalNewObjectClient(name, cfg, clientMetrics)
