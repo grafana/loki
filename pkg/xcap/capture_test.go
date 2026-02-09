@@ -14,7 +14,6 @@ func TestCapture_AddRegion(t *testing.T) {
 		name            string
 		setup           func() *Capture
 		expectedRegions []string
-		expectedParents map[string]string // child -> parent mapping
 	}{
 		{
 			name: "empty capture returns no regions",
@@ -24,7 +23,7 @@ func TestCapture_AddRegion(t *testing.T) {
 			},
 		},
 		{
-			name: "capture with single region", // validates capture to region link
+			name: "capture with single region",
 			setup: func() *Capture {
 				ctx, capture := NewCapture(context.Background(), nil)
 				_, _ = StartRegion(ctx, "region1")
@@ -33,7 +32,7 @@ func TestCapture_AddRegion(t *testing.T) {
 			expectedRegions: []string{"region1"},
 		},
 		{
-			name: "capture with multiple regions", // also validates parent-child region links
+			name: "capture with multiple regions",
 			setup: func() *Capture {
 				ctx, capture := NewCapture(context.Background(), nil)
 				ctx, _ = StartRegion(ctx, "region1")
@@ -42,29 +41,6 @@ func TestCapture_AddRegion(t *testing.T) {
 				return capture
 			},
 			expectedRegions: []string{"region1", "region2", "region3"},
-			expectedParents: map[string]string{
-				"region2": "region1", // child ->  parent
-				"region3": "region2",
-			},
-		},
-		{
-			name: "capture with complex links", // also validates parent-child region links
-			setup: func() *Capture {
-				ctx, capture := NewCapture(context.Background(), nil)
-				ctx1, _ := StartRegion(ctx, "region1")
-				ctx2, _ := StartRegion(ctx1, "region2")
-				ctx3, _ := StartRegion(ctx1, "region3")
-				_, _ = StartRegion(ctx2, "region4")
-				_, _ = StartRegion(ctx3, "region5")
-				return capture
-			},
-			expectedRegions: []string{"region1", "region2", "region3", "region4", "region5"},
-			expectedParents: map[string]string{
-				"region2": "region1", // child ->  parent
-				"region3": "region1",
-				"region4": "region2",
-				"region5": "region3",
-			},
 		},
 		{
 			name: "regions not added after End",
@@ -93,28 +69,6 @@ func TestCapture_AddRegion(t *testing.T) {
 			}
 
 			require.ElementsMatch(t, tt.expectedRegions, slices.Collect(maps.Keys(gotRegions)))
-
-			// Validate all regions have valid IDs
-			for name, region := range gotRegions {
-				require.True(t, region.id.IsValid(), "region %q should have valid ID", name)
-			}
-
-			// Validate parent-child relationships
-			for childName, parentName := range tt.expectedParents {
-				child, ok := gotRegions[childName]
-				require.True(t, ok, "child region %q should exist", childName)
-				parent, ok := gotRegions[parentName]
-				require.True(t, ok, "parent region %q should exist", parentName)
-
-				require.Equal(t, parent.id, child.parentID, "region %q should have parentID matching %q's ID", childName, parentName)
-			}
-
-			// Validate root regions (not in expectedParents) have zero parentID
-			for name, region := range gotRegions {
-				if _, hasParent := tt.expectedParents[name]; !hasParent {
-					require.True(t, region.parentID.IsZero(), "root region %q should have zero parentID", name)
-				}
-			}
 		})
 	}
 }

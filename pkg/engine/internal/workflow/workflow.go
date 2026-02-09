@@ -443,11 +443,6 @@ func (wf *Workflow) mergeCapture(capture *xcap.Capture) {
 		return
 	}
 
-	if wf.parentRegion != nil {
-		// Assign wf.parentRegion as the parent to all root regions of the task's capture.
-		capture.LinkParent(wf.parentRegion)
-	}
-
 	// Merge all regions from the task's capture into the workflow's capture.
 	for _, region := range capture.Regions() {
 		wf.capture.AddRegion(region)

@@ -22,7 +22,7 @@ func TestObservations(t *testing.T) {
 	region.End()
 
 	collector := newObservationCollector(capture)
-	obs := collector.fromRegions("Test", false)
+	obs := collector.fromRegions("Test")
 
 	t.Run("filter", func(t *testing.T) {
 		filtered := obs.filter(statA.Key(), statB.Key())
@@ -65,60 +65,6 @@ func TestObservations(t *testing.T) {
 	t.Run("chaining", func(t *testing.T) {
 		result := obs.filter(statC.Key()).prefix("logs_").normalizeKeys().toLogValues()
 		require.Equal(t, []any{"logs_stat_three", int64(30)}, result)
-	})
-}
-
-func TestRollups(t *testing.T) {
-	t.Run("includes child observations when rollup=true", func(t *testing.T) {
-		ctx, capture := NewCapture(context.Background(), nil)
-		stat := NewStatisticInt64("count", AggregationTypeSum)
-
-		ctx, parent := StartRegion(ctx, "Parent")
-		parent.Record(stat.Observe(10))
-
-		ctx, child := StartRegion(ctx, "Child")
-		child.Record(stat.Observe(20))
-
-		_, grandchild := StartRegion(ctx, "Grandchild")
-		grandchild.Record(stat.Observe(30))
-
-		grandchild.End()
-		child.End()
-		parent.End()
-
-		collector := newObservationCollector(capture)
-
-		withRollup := collector.fromRegions("Parent", true)
-		require.Equal(t, int64(60), withRollup.data[stat.Key()].Value) // 10 + 20 + 30
-
-		withoutRollup := collector.fromRegions("Parent", false)
-		require.Equal(t, int64(10), withoutRollup.data[stat.Key()].Value) // parent only
-	})
-
-	t.Run("excludes matching descendants", func(t *testing.T) {
-		ctx, capture := NewCapture(context.Background(), nil)
-		stat := NewStatisticInt64("count", AggregationTypeSum)
-
-		ctx, parent := StartRegion(ctx, "Parent")
-		parent.Record(stat.Observe(1))
-
-		_, included := StartRegion(ctx, "included")
-		included.Record(stat.Observe(10))
-		included.End()
-
-		ctx2, excluded := StartRegion(ctx, "excluded")
-		excluded.Record(stat.Observe(100))
-
-		_, excludedChild := StartRegion(ctx2, "excludedChild")
-		excludedChild.Record(stat.Observe(1000))
-		excludedChild.End()
-
-		excluded.End()
-		parent.End()
-
-		collector := newObservationCollector(capture)
-		stats := collector.fromRegions("Parent", true, "excluded")
-		require.Equal(t, int64(11), stats.data[stat.Key()].Value) // 1 + 10, excludes 100 + 1000
 	})
 }
 
@@ -198,26 +144,5 @@ func TestToStatsSummary(t *testing.T) {
 		require.Equal(t, int64(1000), result.Querier.Store.Dataobj.PrePredicateDecompressedBytes)
 		require.Equal(t, int64(0), result.Querier.Store.Dataobj.PostPredicateDecompressedBytes)
 		require.Equal(t, int64(0), result.Querier.Store.Dataobj.PostFilterRows)
-	})
-
-	t.Run("rolls up child region observations into DataObjScan", func(t *testing.T) {
-		ctx, capture := NewCapture(context.Background(), nil)
-
-		// Parent DataObjScan region
-		ctx, parent := StartRegion(ctx, "DataObjScan")
-		parent.Record(StatDatasetPrimaryRowBytes.Observe(500))
-
-		// Child region (should be rolled up into parent)
-		_, child := StartRegion(ctx, "child_operation")
-		child.Record(StatDatasetPrimaryRowBytes.Observe(300))
-		child.End()
-
-		parent.End()
-		capture.End()
-
-		result := capture.ToStatsSummary(time.Second, 0, 0)
-
-		// Child observations rolled up into DataObjScan: 500 + 300 = 800
-		require.Equal(t, int64(800), result.Querier.Store.Dataobj.PrePredicateDecompressedBytes)
 	})
 }
