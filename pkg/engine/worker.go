@@ -103,7 +103,6 @@ func NewWorker(params WorkerParams) (*Worker, error) {
 		remoteListener := wire.NewHTTP2Listener(
 			params.AdvertiseAddr,
 			wire.WithHTTP2ListenerLogger(params.Logger),
-			wire.WithHTTP2ListenerMaxPendingConns(10),
 		)
 		listener, handler = remoteListener, remoteListener
 		dialer = wire.NewHTTP2Dialer(params.Endpoint)
