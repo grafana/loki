@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"hash/fnv"
 	"math/rand"
+	"strconv"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/ring"
@@ -45,30 +47,32 @@ func GetSegmentationKey(stream KeyedStream) (SegmentationKey, error) {
 type SegmentationPartitionResolver struct {
 	perPartitionRateBytes uint64
 	ringReader            ring.PartitionRingReader
+	rand                  *rand.Rand // Needed for deterministic tests.
 	logger                log.Logger
 
 	// Metrics.
-	failed          prometheus.Counter
-	randomlySharded prometheus.Counter
-	total           prometheus.Counter
+	total  prometheus.Counter
+	failed prometheus.Counter
+	random prometheus.Counter
 }
 
 // NewSegmentationPartitionResolver returns a new SegmentationPartitionResolver.
-func NewSegmentationPartitionResolver(perPartitionRateBytes uint64, ringReader ring.PartitionRingReader, reg prometheus.Registerer, logger log.Logger) *SegmentationPartitionResolver {
+func NewSegmentationPartitionResolver(perPartitionRateBytes uint64, ringReader ring.PartitionRingReader, r prometheus.Registerer, logger log.Logger) *SegmentationPartitionResolver {
 	return &SegmentationPartitionResolver{
 		perPartitionRateBytes: perPartitionRateBytes,
 		ringReader:            ringReader,
-		failed: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Name: "loki_distributor_segmentation_partition_resolver_keys_failed_total",
+		rand:                  rand.New(rand.NewSource(time.Now().UnixNano())),
+		total: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "loki_distributor_segmentation_partition_resolver_total",
+			Help: "Total number of segmentation keys passed to the resolver.",
+		}),
+		failed: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "loki_distributor_segmentation_partition_resolver_failed_total",
 			Help: "Total number of segmentation keys that could not be resolved.",
 		}),
-		randomlySharded: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Name: "loki_distributor_segmentation_partition_resolver_keys_randomly_sharded_total",
-			Help: "Total number of segmentation keys that fell back to a randomly choosing an active partition due to absent rate.",
-		}),
-		total: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Name: "loki_distributor_segmentation_partition_resolver_keys_total",
-			Help: "Total number of segmentation keys passed to the resolver.",
+		random: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "loki_distributor_segmentation_partition_resolver_random_total",
+			Help: "Total number of segmentation keys that resolved to a random partition.",
 		}),
 		logger: logger,
 	}
@@ -96,26 +100,7 @@ func (r *SegmentationPartitionResolver) Resolve(ctx context.Context, tenant stri
 		r.failed.Inc()
 		return 0, fmt.Errorf("failed to get tenant subring: %w", err)
 	}
-	// If rate bytes is 0, then we were unable to determine the rate (bytes/sec)
-	// for the segmentation key. When this happens we fallback to randomly
-	// selecting an active partition and incrementing the fallback metric.
-	if rateBytes == 0 {
-		r.randomlySharded.Inc()
-		activePartitionIDs := subring.ActivePartitionIDs()
-		rand.Shuffle(len(activePartitionIDs), func(i, j int) {
-			activePartitionIDs[i], activePartitionIDs[j] = activePartitionIDs[j], activePartitionIDs[i]
-		})
-		return activePartitionIDs[0], nil
-	}
-	subring, err = r.getSegmentationKeySubring(ctx, subring, key, rateBytes)
-	if err != nil {
-		r.failed.Inc()
-		return 0, fmt.Errorf("failed to get segmentation key subring: %w", err)
-	}
-	// Get a random partition from the subring.
-	activePartitionIDs := subring.ActivePartitionIDs()
-	idx := rand.Intn(len(activePartitionIDs))
-	return activePartitionIDs[idx], nil
+	return r.getPartition(ctx, subring, key, rateBytes)
 }
 
 // getTenantRing returns a subring for the tenant based on their rate limit.
@@ -134,10 +119,12 @@ func (r *SegmentationPartitionResolver) getTenantSubring(_ context.Context, ring
 	return ring.ShuffleShard(tenant, int(partitions))
 }
 
-func (r *SegmentationPartitionResolver) getSegmentationKeySubring(_ context.Context, ring *ring.PartitionRing, key SegmentationKey, rateBytes uint64) (*ring.PartitionRing, error) {
+func (r *SegmentationPartitionResolver) getPartition(ctx context.Context, ring *ring.PartitionRing, key SegmentationKey, rateBytes uint64) (int32, error) {
+	// If rate bytes is 0, then we were unable to determine the rate (bytes/sec)
+	// for the segmentation key. When this happens we select a random partition.
 	if rateBytes == 0 {
-		// If the rate is 0, return the full ring.
-		return ring, nil
+		r.random.Inc()
+		return r.randomPartition(ctx, ring)
 	}
 	// Use the rate of the segmentation key to shuffle shard the active
 	// partitions. The number of partitions in the shuffle is calculated as
@@ -147,6 +134,19 @@ func (r *SegmentationPartitionResolver) getSegmentationKeySubring(_ context.Cont
 	partitions = max(partitions, 1)
 	// Must not exceed the number of active partitions.
 	partitions = min(partitions, uint64(ring.ActivePartitionsCount()))
-	// Shuffle shard.
-	return ring.ShuffleShard(string(key), int(partitions))
+	// Generate a sub-key based on the segmentation key and the number of partitions.
+	partition := r.rand.Intn(int(partitions))
+	subkey := fnv.New32a()
+	subkey.Write([]byte(key))
+	subkey.Write([]byte(strconv.Itoa(partition)))
+	return ring.ActivePartitionForKey(subkey.Sum32())
+}
+
+// randomPartition returns a random partition from the ring.
+func (r *SegmentationPartitionResolver) randomPartition(ctx context.Context, ring *ring.PartitionRing) (int32, error) {
+	activePartitionIDs := ring.ActivePartitionIDs()
+	r.rand.Shuffle(len(activePartitionIDs), func(i, j int) {
+		activePartitionIDs[i], activePartitionIDs[j] = activePartitionIDs[j], activePartitionIDs[i]
+	})
+	return activePartitionIDs[0], nil
 }

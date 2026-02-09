@@ -2,6 +2,7 @@ package distributor
 
 import (
 	"bytes"
+	"math/rand"
 	"testing"
 	"time"
 
@@ -93,47 +94,45 @@ func TestSegmentationPartitionResolver_Resolve(t *testing.T) {
 		partition, err := resolver.Resolve(t.Context(), "tenant", SegmentationKey("test"), 0, 0)
 		require.EqualError(t, err, "no active partitions")
 		require.Equal(t, int32(0), partition)
-		// Check the metrics to make sure it fell back to random shuffle and
-		// then failed.
 		require.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
-			# HELP loki_distributor_segmentation_partition_resolver_keys_randomly_sharded_total Total number of segmentation keys that fell back to a random active partition due to absent rate.
-			# TYPE loki_distributor_segmentation_partition_resolver_keys_randomly_sharded_total counter
-			loki_distributor_segmentation_partition_resolver_keys_randomly_sharded_total 1
-			# HELP loki_distributor_segmentation_partition_resolver_keys_failed_total Total number of segmentation keys that could not be resolved.
-			# TYPE loki_distributor_segmentation_partition_resolver_keys_failed_total counter
-			loki_distributor_segmentation_partition_resolver_keys_failed_total 1
-			# HELP loki_distributor_segmentation_partition_resolver_keys_total Total number of segmentation keys passed to the resolver.
-			# TYPE loki_distributor_segmentation_partition_resolver_keys_total counter
-			loki_distributor_segmentation_partition_resolver_keys_total 1
+			# HELP loki_distributor_segmentation_partition_resolver_random_total Total number of segmentation keys that resolved to a random partition.
+			# TYPE loki_distributor_segmentation_partition_resolver_random_total counter
+			loki_distributor_segmentation_partition_resolver_random_total 0
+			# HELP loki_distributor_segmentation_partition_resolver_failed_total Total number of segmentation keys that could not be resolved.
+			# TYPE loki_distributor_segmentation_partition_resolver_failed_total counter
+			loki_distributor_segmentation_partition_resolver_failed_total 1
+			# HELP loki_distributor_segmentation_partition_resolver_total Total number of segmentation keys passed to the resolver.
+			# TYPE loki_distributor_segmentation_partition_resolver_total counter
+			loki_distributor_segmentation_partition_resolver_total 1
 		`),
-			"loki_distributor_segmentation_partition_resolver_keys_allback_total",
-			"loki_distributor_segmentation_partition_resolver_keys_failed_total",
-			"loki_distributor_segmentation_partition_resolver_keys_total",
+			"loki_distributor_segmentation_partition_resolver_random_total",
+			"loki_distributor_segmentation_partition_resolver_failed_total",
+			"loki_distributor_segmentation_partition_resolver_total",
 		))
 	})
 
-	t.Run("uses random shuffle if rate unknown", func(t *testing.T) {
+	t.Run("chooses random partition if rate unknown", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
 		resolver := NewSegmentationPartitionResolver(1024, ringWithActivePartition, reg, log.NewNopLogger())
 		partition, err := resolver.Resolve(t.Context(), "tenant", SegmentationKey("test"), 0, 0)
 		require.NoError(t, err)
 		// Should return partition 1 since that is the only active partition.
 		require.Equal(t, int32(1), partition)
-		// Check the metrics to make sure it fell back to random shuffle.
+		// Check the metrics to make sure it chose a random partition.
 		require.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
-			# HELP loki_distributor_segmentation_partition_resolver_keys_randomly_sharded_total Total number of segmentation keys that fell back to a random active partition due to absent rate.
-			# TYPE loki_distributor_segmentation_partition_resolver_keys_randomly_sharded_total counter
-			loki_distributor_segmentation_partition_resolver_keys_randomly_sharded_total 1
-			# HELP loki_distributor_segmentation_partition_resolver_keys_failed_total Total number of segmentation keys that could not be resolved.
-			# TYPE loki_distributor_segmentation_partition_resolver_keys_failed_total counter
-			loki_distributor_segmentation_partition_resolver_keys_failed_total 0
-			# HELP loki_distributor_segmentation_partition_resolver_keys_total Total number of segmentation keys passed to the resolver.
-			# TYPE loki_distributor_segmentation_partition_resolver_keys_total counter
-			loki_distributor_segmentation_partition_resolver_keys_total 1
+			# HELP loki_distributor_segmentation_partition_resolver_random_total Total number of segmentation keys that resolved to a random partition.
+			# TYPE loki_distributor_segmentation_partition_resolver_random_total counter
+			loki_distributor_segmentation_partition_resolver_random_total 1
+			# HELP loki_distributor_segmentation_partition_resolver_failed_total Total number of segmentation keys that could not be resolved.
+			# TYPE loki_distributor_segmentation_partition_resolver_failed_total counter
+			loki_distributor_segmentation_partition_resolver_failed_total 0
+			# HELP loki_distributor_segmentation_partition_resolver_total Total number of segmentation keys passed to the resolver.
+			# TYPE loki_distributor_segmentation_partition_resolver_total counter
+			loki_distributor_segmentation_partition_resolver_total 1
 		`),
-			"loki_distributor_segmentation_partition_resolver_keys_allback_total",
-			"loki_distributor_segmentation_partition_resolver_keys_failed_total",
-			"loki_distributor_segmentation_partition_resolver_keys_total",
+			"loki_distributor_segmentation_partition_resolver_random_total",
+			"loki_distributor_segmentation_partition_resolver_failed_total",
+			"loki_distributor_segmentation_partition_resolver_total",
 		))
 	})
 
@@ -144,19 +143,19 @@ func TestSegmentationPartitionResolver_Resolve(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, int32(1), partition)
 		require.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
-			# HELP loki_distributor_segmentation_partition_resolver_keys_randomly_sharded_total Total number of segmentation keys that fell back to a random active partition due to absent rate.
-			# TYPE loki_distributor_segmentation_partition_resolver_keys_randomly_sharded_total counter
-			loki_distributor_segmentation_partition_resolver_keys_randomly_sharded_total 0
-			# HELP loki_distributor_segmentation_partition_resolver_keys_failed_total Total number of segmentation keys that could not be resolved.
-			# TYPE loki_distributor_segmentation_partition_resolver_keys_failed_total counter
-			loki_distributor_segmentation_partition_resolver_keys_failed_total 0
-			# HELP loki_distributor_segmentation_partition_resolver_keys_total Total number of segmentation keys passed to the resolver.
-			# TYPE loki_distributor_segmentation_partition_resolver_keys_total counter
-			loki_distributor_segmentation_partition_resolver_keys_total 1
+			# HELP loki_distributor_segmentation_partition_resolver_random_total Total number of segmentation keys that resolved to a random partition.
+			# TYPE loki_distributor_segmentation_partition_resolver_random_total counter
+			loki_distributor_segmentation_partition_resolver_random_total 0
+			# HELP loki_distributor_segmentation_partition_resolver_failed_total Total number of segmentation keys that could not be resolved.
+			# TYPE loki_distributor_segmentation_partition_resolver_failed_total counter
+			loki_distributor_segmentation_partition_resolver_failed_total 0
+			# HELP loki_distributor_segmentation_partition_resolver_total Total number of segmentation keys passed to the resolver.
+			# TYPE loki_distributor_segmentation_partition_resolver_total counter
+			loki_distributor_segmentation_partition_resolver_total 1
 		`),
-			"loki_distributor_segmentation_partition_resolver_keys_allback_total",
-			"loki_distributor_segmentation_partition_resolver_keys_failed_total",
-			"loki_distributor_segmentation_partition_resolver_keys_total",
+			"loki_distributor_segmentation_partition_resolver_random_total",
+			"loki_distributor_segmentation_partition_resolver_failed_total",
+			"loki_distributor_segmentation_partition_resolver_total",
 		))
 	})
 }
@@ -196,8 +195,7 @@ func TestSegmentationPartitionResolver_GetTenantSubring(t *testing.T) {
 	ringWithActivePartitions.ring = ring
 
 	t.Run("no rate returns full ring", func(t *testing.T) {
-		reg := prometheus.NewRegistry()
-		resolver := NewSegmentationPartitionResolver(1024, ringWithActivePartitions, reg, log.NewNopLogger())
+		resolver := NewSegmentationPartitionResolver(1024, ringWithActivePartitions, prometheus.NewRegistry(), log.NewNopLogger())
 		ring := ringWithActivePartitions.PartitionRing()
 		subring, err := resolver.getTenantSubring(t.Context(), ring, "tenant", 0)
 		require.NoError(t, err)
@@ -205,8 +203,7 @@ func TestSegmentationPartitionResolver_GetTenantSubring(t *testing.T) {
 	})
 
 	t.Run("rate equals partition rate returns subring with one partition", func(t *testing.T) {
-		reg := prometheus.NewRegistry()
-		resolver := NewSegmentationPartitionResolver(1024, ringWithActivePartitions, reg, log.NewNopLogger())
+		resolver := NewSegmentationPartitionResolver(1024, ringWithActivePartitions, prometheus.NewRegistry(), log.NewNopLogger())
 		ring := ringWithActivePartitions.PartitionRing()
 		subring, err := resolver.getTenantSubring(t.Context(), ring, "tenant", 1024)
 		require.NoError(t, err)
@@ -214,8 +211,7 @@ func TestSegmentationPartitionResolver_GetTenantSubring(t *testing.T) {
 	})
 
 	t.Run("rate exceeds partition rate returns subring with all partitions", func(t *testing.T) {
-		reg := prometheus.NewRegistry()
-		resolver := NewSegmentationPartitionResolver(1024, ringWithActivePartitions, reg, log.NewNopLogger())
+		resolver := NewSegmentationPartitionResolver(1024, ringWithActivePartitions, prometheus.NewRegistry(), log.NewNopLogger())
 		ring := ringWithActivePartitions.PartitionRing()
 		subring, err := resolver.getTenantSubring(t.Context(), ring, "tenant", 2048)
 		require.NoError(t, err)
@@ -223,7 +219,7 @@ func TestSegmentationPartitionResolver_GetTenantSubring(t *testing.T) {
 	})
 }
 
-func TestSegmentationPartitionResolver_GetSegmentationKeySubring(t *testing.T) {
+func TestSegmentationPartitionResolver_GetPartition(t *testing.T) {
 	// Set up a fake partition ring with two active partitions.
 	ringWithActivePartitions := mockPartitionRingReader{}
 	ring, err := ring.NewPartitionRing(ring.PartitionRingDesc{
@@ -257,30 +253,56 @@ func TestSegmentationPartitionResolver_GetSegmentationKeySubring(t *testing.T) {
 	require.NoError(t, err)
 	ringWithActivePartitions.ring = ring
 
-	t.Run("no rate returns full ring", func(t *testing.T) {
+	t.Run("no rate returns random partition", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
 		resolver := NewSegmentationPartitionResolver(1024, ringWithActivePartitions, reg, log.NewNopLogger())
+		// Use deterministic random because we will choose a "random" partition.
+		resolver.rand = rand.New(rand.NewSource(0))
 		ring := ringWithActivePartitions.PartitionRing()
-		subring, err := resolver.getSegmentationKeySubring(t.Context(), ring, SegmentationKey("test"), 0)
+		partition, err := resolver.getPartition(t.Context(), ring, SegmentationKey("test"), 0)
 		require.NoError(t, err)
-		require.Equal(t, ring, subring)
+		require.Equal(t, int32(1), partition)
+		// The random total should have been incremented.
+		require.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
+			# HELP loki_distributor_segmentation_partition_resolver_random_total Total number of segmentation keys that resolved to a random partition.
+			# TYPE loki_distributor_segmentation_partition_resolver_random_total counter
+			loki_distributor_segmentation_partition_resolver_random_total 1
+		`), "loki_distributor_segmentation_partition_resolver_random_total"))
 	})
 
-	t.Run("rate equals partition rate returns subring with one partition", func(t *testing.T) {
+	t.Run("rate equals partition rate", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
 		resolver := NewSegmentationPartitionResolver(1024, ringWithActivePartitions, reg, log.NewNopLogger())
+		// Use deterministic random because we will choose a "random" partition
+		// from the ring.
+		resolver.rand = rand.New(rand.NewSource(0))
 		ring := ringWithActivePartitions.PartitionRing()
-		subring, err := resolver.getSegmentationKeySubring(t.Context(), ring, SegmentationKey("test"), 1024)
+		partition, err := resolver.getPartition(t.Context(), ring, SegmentationKey("test"), 1024)
 		require.NoError(t, err)
-		require.Equal(t, 1, subring.ActivePartitionsCount())
+		require.Equal(t, int32(1), partition)
+		// The random total should be zero.
+		require.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
+			# HELP loki_distributor_segmentation_partition_resolver_random_total Total number of segmentation keys that resolved to a random partition.
+			# TYPE loki_distributor_segmentation_partition_resolver_random_total counter
+			loki_distributor_segmentation_partition_resolver_random_total 0
+		`), "loki_distributor_segmentation_partition_resolver_random_total"))
 	})
 
-	t.Run("rate exceeds partition rate returns subring with all partitions", func(t *testing.T) {
+	t.Run("rate exceeds partition rate", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
 		resolver := NewSegmentationPartitionResolver(1024, ringWithActivePartitions, reg, log.NewNopLogger())
+		// Use deterministic random because we will choose a "random" partition
+		// from the ring.
+		resolver.rand = rand.New(rand.NewSource(0))
 		ring := ringWithActivePartitions.PartitionRing()
-		subring, err := resolver.getSegmentationKeySubring(t.Context(), ring, SegmentationKey("test"), 2048)
+		partition, err := resolver.getPartition(t.Context(), ring, SegmentationKey("test"), 2048)
 		require.NoError(t, err)
-		require.Equal(t, 2, subring.ActivePartitionsCount())
+		require.Equal(t, int32(1), partition)
+		// The random total should be zero.
+		require.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
+			# HELP loki_distributor_segmentation_partition_resolver_random_total Total number of segmentation keys that resolved to a random partition.
+			# TYPE loki_distributor_segmentation_partition_resolver_random_total counter
+			loki_distributor_segmentation_partition_resolver_random_total 0
+		`), "loki_distributor_segmentation_partition_resolver_random_total"))
 	})
 }
