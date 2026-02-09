@@ -8,6 +8,7 @@ import (
 	"math"
 	"math/rand/v2"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -26,7 +27,19 @@ func FixedSizeReservoirProvider(k int) ReservoirProvider {
 // sample each one. If there are more than k, the Reservoir will then randomly
 // sample all additional measurement with a decreasing probability.
 func NewFixedSizeReservoir(k int) *FixedSizeReservoir {
-	return newFixedSizeReservoir(newStorage(k))
+	if k < 0 {
+		k = 0
+	}
+	// Use math.MaxInt32 instead of math.MaxUint32 to prevent overflowing int
+	// on 32-bit systems.
+	if k > math.MaxInt32 {
+		k = math.MaxInt32
+	}
+	return &FixedSizeReservoir{
+		storage: newStorage(k),
+		// Above we ensure k is positive, and less than MaxInt32.
+		nextTracker: newNextTracker(uint32(k)), // nolint: gosec
+	}
 }
 
 var _ Reservoir = &FixedSizeReservoir{}
@@ -38,40 +51,7 @@ var _ Reservoir = &FixedSizeReservoir{}
 type FixedSizeReservoir struct {
 	reservoir.ConcurrentSafe
 	*storage
-	mu sync.Mutex
-
-	// count is the number of measurement seen.
-	count int64
-	// next is the next count that will store a measurement at a random index
-	// once the reservoir has been filled.
-	next int64
-	// w is the largest random number in a distribution that is used to compute
-	// the next next.
-	w float64
-}
-
-func newFixedSizeReservoir(s *storage) *FixedSizeReservoir {
-	r := &FixedSizeReservoir{
-		storage: s,
-	}
-	r.reset()
-	return r
-}
-
-// randomFloat64 returns, as a float64, a uniform pseudo-random number in the
-// open interval (0.0,1.0).
-func (*FixedSizeReservoir) randomFloat64() float64 {
-	// TODO: Use an algorithm that avoids rejection sampling. For example:
-	//
-	//   const precision = 1 << 53 // 2^53
-	//   // Generate an integer in [1, 2^53 - 1]
-	//   v := rand.Uint64() % (precision - 1) + 1
-	//   return float64(v) / float64(precision)
-	f := rand.Float64()
-	for f == 0 {
-		f = rand.Float64()
-	}
-	return f
+	*nextTracker
 }
 
 // Offer accepts the parameters associated with a measurement. The
@@ -127,25 +107,65 @@ func (r *FixedSizeReservoir) Offer(ctx context.Context, t time.Time, n Value, a 
 	// https://github.com/MrAlias/reservoir-sampling for a performance
 	// comparison of reservoir sampling algorithms.
 
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if int(r.count) < cap(r.measurements) {
-		r.store(int(r.count), newMeasurement(ctx, t, n, a))
-	} else if r.count == r.next {
+	count, next := r.incrementCount()
+	if count < r.k {
+		r.store(ctx, int(count), t, n, a)
+	} else if count == next {
 		// Overwrite a random existing measurement with the one offered.
-		idx := int(rand.Int64N(int64(cap(r.measurements))))
-		r.store(idx, newMeasurement(ctx, t, n, a))
+		idx := rand.IntN(int(r.k))
+		r.store(ctx, idx, t, n, a)
+		r.wMu.Lock()
+		defer r.wMu.Unlock()
+		newCount, newNext := r.loadCountAndNext()
+		if newNext < next || newCount < count {
+			// This Observe() raced with Collect(), and r.reset() has been
+			// called since r.incrementCount(). Skip the call to advance in
+			// this case because our exemplar may have been collected in the
+			// previous interval.
+			return
+		}
 		r.advance()
 	}
-	r.count++
+}
+
+// Collect returns all the held exemplars.
+//
+// The Reservoir state is preserved after this call.
+func (r *FixedSizeReservoir) Collect(dest *[]Exemplar) {
+	r.storage.Collect(dest)
+	// Call reset here even though it will reset r.count and restart the random
+	// number series. This will persist any old exemplars as long as no new
+	// measurements are offered, but it will also prioritize those new
+	// measurements that are made over the older collection cycle ones.
+	r.reset()
+}
+
+func newNextTracker(k uint32) *nextTracker {
+	nt := &nextTracker{k: k}
+	nt.reset()
+	return nt
+}
+
+type nextTracker struct {
+	// countAndNext holds the current counts in the lower 32 bits and the next
+	// value in the upper 32 bits.
+	countAndNext atomic.Uint64
+	// w is the largest random number in a distribution that is used to compute
+	// the next next.
+	w float64
+	// wMu ensures w is kept consistent with next during advance and reset.
+	wMu sync.Mutex
+	// k is the number of measurements that can be stored in the reservoir.
+	k uint32
 }
 
 // reset resets r to the initial state.
-func (r *FixedSizeReservoir) reset() {
+func (r *nextTracker) reset() {
+	r.wMu.Lock()
+	defer r.wMu.Unlock()
 	// This resets the number of exemplars known.
-	r.count = 0
 	// Random index inserts should only happen after the storage is full.
-	r.next = int64(cap(r.measurements))
+	r.setCountAndNext(0, r.k)
 
 	// Initial random number in the series used to generate r.next.
 	//
@@ -156,14 +176,40 @@ func (r *FixedSizeReservoir) reset() {
 	// This maps the uniform random number in (0,1) to a geometric distribution
 	// over the same interval. The mean of the distribution is inversely
 	// proportional to the storage capacity.
-	r.w = math.Exp(math.Log(r.randomFloat64()) / float64(cap(r.measurements)))
+	r.w = math.Exp(math.Log(randomFloat64()) / float64(r.k))
 
 	r.advance()
 }
 
+// incrementCount increments the count. It returns the count before the
+// increment and the current next value.
+func (r *nextTracker) incrementCount() (uint32, uint32) {
+	n := r.countAndNext.Add(1)
+	// Both count and next are stored in the upper and lower 32 bits, and thus
+	// can't overflow.
+	return uint32(n&((1<<32)-1) - 1), uint32(n >> 32) // nolint: gosec
+}
+
+// incrementNext increments the next value.
+func (r *nextTracker) incrementNext(inc uint32) {
+	r.countAndNext.Add(uint64(inc) << 32)
+}
+
+// setCountAndNext sets the count and next values.
+func (r *nextTracker) setCountAndNext(count, next uint32) {
+	r.countAndNext.Store(uint64(next)<<32 + uint64(count))
+}
+
+func (r *nextTracker) loadCountAndNext() (uint32, uint32) {
+	n := r.countAndNext.Load()
+	// Both count and next are stored in the upper and lower 32 bits, and thus
+	// can't overflow.
+	return uint32(n&((1<<32)-1) - 1), uint32(n >> 32) // nolint: gosec
+}
+
 // advance updates the count at which the offered measurement will overwrite an
 // existing exemplar.
-func (r *FixedSizeReservoir) advance() {
+func (r *nextTracker) advance() {
 	// Calculate the next value in the random number series.
 	//
 	// The current value of r.w is based on the max of a distribution of random
@@ -176,7 +222,7 @@ func (r *FixedSizeReservoir) advance() {
 	// therefore the next r.w will be based on the same distribution (i.e.
 	// `max(u_1,u_2,...,u_k)`). Therefore, we can sample the next r.w by
 	// computing the next random number `u` and take r.w as `w * u^(1/k)`.
-	r.w *= math.Exp(math.Log(r.randomFloat64()) / float64(cap(r.measurements)))
+	r.w *= math.Exp(math.Log(randomFloat64()) / float64(r.k))
 	// Use the new random number in the series to calculate the count of the
 	// next measurement that will be stored.
 	//
@@ -187,19 +233,21 @@ func (r *FixedSizeReservoir) advance() {
 	//
 	// Important to note, the new r.next will always be at least 1 more than
 	// the last r.next.
-	r.next += int64(math.Log(r.randomFloat64())/math.Log(1-r.w)) + 1
+	r.incrementNext(uint32(math.Log(randomFloat64())/math.Log(1-r.w)) + 1)
 }
 
-// Collect returns all the held exemplars.
-//
-// The Reservoir state is preserved after this call.
-func (r *FixedSizeReservoir) Collect(dest *[]Exemplar) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.storage.Collect(dest)
-	// Call reset here even though it will reset r.count and restart the random
-	// number series. This will persist any old exemplars as long as no new
-	// measurements are offered, but it will also prioritize those new
-	// measurements that are made over the older collection cycle ones.
-	r.reset()
+// randomFloat64 returns, as a float64, a uniform pseudo-random number in the
+// open interval (0.0,1.0).
+func randomFloat64() float64 {
+	// TODO: Use an algorithm that avoids rejection sampling. For example:
+	//
+	//   const precision = 1 << 53 // 2^53
+	//   // Generate an integer in [1, 2^53 - 1]
+	//   v := rand.Uint64() % (precision - 1) + 1
+	//   return float64(v) / float64(precision)
+	f := rand.Float64()
+	for f == 0 {
+		f = rand.Float64()
+	}
+	return f
 }
