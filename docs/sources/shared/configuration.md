@@ -416,6 +416,13 @@ ruler_storage:
   # The CLI flags prefix for this block configuration is: ruler-storage
   [<thanos_object_store_config>]
 
+  hedging:
+    [at: <duration>]
+
+    [up_to: <int>]
+
+    [max_per_second: <int>]
+
   # Backend storage to use. Supported backends are: local, s3, gcs, azure,
   # swift, filesystem, alibabacloud, bos
   # CLI flag: -ruler-storage.backend
@@ -7776,6 +7783,20 @@ bos:
   # Baidu Cloud Engine (BCE) Secret Access Key.
   # CLI flag: -<prefix>.bos.secret-key
   [secret_key: <string> | default = ""]
+
+hedging:
+  # If set to a non-zero value a second request will be issued at the provided
+  # duration. Default is 0 (disabled)
+  # CLI flag: -<prefix>.hedge-requests-at
+  [at: <duration> | default = 0s]
+
+  # The maximum of hedge requests allowed.
+  # CLI flag: -<prefix>.hedge-requests-up-to
+  [up_to: <int> | default = 2]
+
+  # The maximum of hedge requests allowed per seconds.
+  # CLI flag: -<prefix>.hedge-max-per-second
+  [max_per_second: <int> | default = 5]
 
 # Prefix for all objects stored in the backend storage. For simplicity, it may
 # only contain digits, English alphabet letters and dashes.
