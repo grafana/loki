@@ -1,4 +1,4 @@
-module github.com/grafana/loki/cmd/index
+module github.com/grafana/loki/cmd/dataobj-inspect
 
 go 1.25.5
 
