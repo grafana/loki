@@ -972,15 +972,16 @@ func (s *Scheduler) Start(ctx context.Context, tasks ...*workflow.Task) error {
 	}
 
 	// Extract trace context from the query context and add it to each task's metadata.
-	var tc propagation.TraceContext
 	metadata := make(http.Header)
-	tc.Inject(ctx, propagation.HeaderCarrier(metadata))
 
 	// Copy all headers from context to task metadata.
 	// Headers are stored in context by PropagateAllHeadersMiddleware.
 	if headers := httpreq.ExtractAllHeaders(ctx); headers != nil {
 		maps.Copy(metadata, headers)
 	}
+
+	var tc propagation.TraceContext
+	tc.Inject(ctx, propagation.HeaderCarrier(metadata))
 
 	wfRegion := xcap.RegionFromContext(ctx)
 

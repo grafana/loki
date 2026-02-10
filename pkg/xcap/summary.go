@@ -152,6 +152,8 @@ func (o *observations) toLogValues() []any {
 //
 // Regions sharing a name have their observations merged together.
 type observationCollector struct {
+	capture       *Capture
+	childrenMap   map[identifier][]*Region
 	nameToRegions map[string][]*Region
 }
 
@@ -161,18 +163,25 @@ func newObservationCollector(capture *Capture) *observationCollector {
 		return nil
 	}
 
+	childrenMap := make(map[identifier][]*Region)
 	nameToRegions := make(map[string][]*Region)
-	for _, r := range capture.regions {
+	for _, r := range capture.Regions() {
+		childrenMap[r.parentID] = append(childrenMap[r.parentID], r)
 		nameToRegions[r.name] = append(nameToRegions[r.name], r)
 	}
 
 	return &observationCollector{
+		capture:       capture,
+		childrenMap:   childrenMap,
 		nameToRegions: nameToRegions,
 	}
 }
 
-// fromRegions collects observations from all regions with the given name.
-func (c *observationCollector) fromRegions(name string) *observations {
+// fromRegions collects observations from regions with the given name.
+// If rollUp is true, each region's stats include all its descendant stats
+// aggregated according to each stat's aggregation type.
+// excluded names are skipped when rolling up children.
+func (c *observationCollector) fromRegions(name string, rollUp bool, excluded ...string) *observations {
 	result := newObservations()
 
 	if c == nil {
@@ -184,8 +193,34 @@ func (c *observationCollector) fromRegions(name string) *observations {
 		return result
 	}
 
+	excludedSet := make(map[string]struct{}, len(excluded))
+	for _, n := range excluded {
+		excludedSet[n] = struct{}{}
+	}
+
 	for _, region := range regions {
-		result.merge(c.getRegionObservations(region))
+		var obs *observations
+		if rollUp {
+			obs = c.rollUpObservations(region, excludedSet)
+		} else {
+			obs = c.getRegionObservations(region)
+		}
+		result.merge(obs)
+	}
+
+	return result
+}
+
+// rollUpObservations computes observations for a region including all its descendants.
+// Stats are aggregated according to their aggregation type.
+func (c *observationCollector) rollUpObservations(region *Region, excludedSet map[string]struct{}) *observations {
+	result := c.getRegionObservations(region)
+
+	for _, child := range c.childrenMap[region.id] {
+		if _, excluded := excludedSet[child.name]; excluded {
+			continue
+		}
+		result.merge(c.rollUpObservations(child, excludedSet))
 	}
 
 	return result
@@ -219,10 +254,10 @@ func (c *Capture) ToStatsSummary(execTime, queueTime time.Duration, totalEntries
 		return result
 	}
 
-	// Collect observations from DataObjScan as the summary stats mainly relate to log lines.
+	// Collect observations from logs reader as the summary stats mainly relate to log lines.
 	// In practice, new engine would process more bytes while scanning metastore objects and stream sections.
 	collector := newObservationCollector(c)
-	observations := collector.fromRegions("DataObjScan").filter(
+	observations := collector.fromRegions("logs.Reader", false).filter(
 		StatPipelineRowsOut.Key(),
 		StatDatasetPrimaryRowsRead.Key(),
 		StatDatasetPrimaryRowBytes.Key(),
@@ -265,9 +300,9 @@ func summarizeObservations(capture *Capture) *observations {
 	collect := newObservationCollector(capture)
 	result := newObservations()
 
-	// collect observations from all DataObjScan regions.
+	// collect observations from all logs.Reader regions.
 	result.merge(
-		collect.fromRegions("DataObjScan").
+		collect.fromRegions("logs.Reader", false).
 			filter(
 				// object store calls
 				StatBucketGet.Key(), StatBucketGetRange.Key(), StatBucketAttributes.Key(),
@@ -286,7 +321,7 @@ func summarizeObservations(capture *Capture) *observations {
 
 	// range aggregation stats
 	result.merge(
-		collect.fromRegions("RangeAggregation").
+		collect.fromRegions("RangeAggregation", false).
 			filter(
 				StatPipelineReadDuration.Key(),
 				StatPipelineExecDuration.Key(),
@@ -297,7 +332,7 @@ func summarizeObservations(capture *Capture) *observations {
 
 	// vector aggregation stats
 	result.merge(
-		collect.fromRegions("VectorAggregation").
+		collect.fromRegions("VectorAggregation", false).
 			filter(
 				StatPipelineReadDuration.Key(),
 				StatPipelineExecDuration.Key(),
@@ -308,14 +343,20 @@ func summarizeObservations(capture *Capture) *observations {
 
 	// metastore index and resolved section stats
 	result.merge(
-		collect.fromRegions("ObjectMetastore.Sections").
-			filter(StatMetastoreIndexObjects.Key(), StatMetastoreSectionsResolved.Key()).
+		collect.fromRegions("engine.metastoreResolver", false).
+			filter(StatMetastoreSectionsResolved.Key()).
+			normalizeKeys(),
+	)
+
+	result.merge(
+		collect.fromRegions("metastore.GetIndexes", false).
+			filter(StatMetastoreIndexObjects.Key()).
 			normalizeKeys(),
 	)
 
 	// metastore streams and pointers scan stats
 	result.merge(
-		collect.fromRegions("PointersScan").
+		collect.fromRegions("metastore.indexSectionsReader", false).
 			filter(
 				StatMetastoreStreamsRead.Key(),
 				StatMetastoreStreamsReadTime.Key(),
@@ -325,20 +366,17 @@ func summarizeObservations(capture *Capture) *observations {
 			normalizeKeys(),
 	)
 
-	// metastore dataset reader and task stats
+	// metastore dataset reader and task stats (rollUp to include children)
 	result.merge(
-		collect.fromRegions("ObjectMetastore.Sections").
+		collect.fromRegions("engine.metastoreResolver", true).
 			filter(
 				StatBucketGet.Key(), StatBucketGetRange.Key(), StatBucketAttributes.Key(),
 				StatDatasetPrimaryPagesDownloaded.Key(), StatDatasetSecondaryPagesDownloaded.Key(),
 				StatDatasetPrimaryColumnBytes.Key(), StatDatasetSecondaryColumnBytes.Key(),
-				// physical planning task information
+				// physical planning task information (from wf.runner under metastore, if any)
 				StatTaskCount.Key(),
 				StatTaskAdmissionWaitDuration.Key(), StatTaskAssignmentTailDuration.Key(),
 				StatTaskMaxQueueDuration.Key(),
-				// task send/recv durations
-				TaskRecvDuration.Key(),
-				TaskSendDuration.Key(),
 			).
 			prefix("metastore_").
 			normalizeKeys(),
@@ -346,7 +384,7 @@ func summarizeObservations(capture *Capture) *observations {
 
 	// streamsView bucket and dataset reader stats
 	result.merge(
-		collect.fromRegions("streamsView.init").
+		collect.fromRegions("streams.Reader", false).
 			filter(
 				StatBucketGet.Key(), StatBucketGetRange.Key(), StatBucketAttributes.Key(),
 				StatDatasetPrimaryPagesDownloaded.Key(), StatDatasetSecondaryPagesDownloaded.Key(),
@@ -356,14 +394,13 @@ func summarizeObservations(capture *Capture) *observations {
 			normalizeKeys(),
 	)
 
-	// task scheduling and recv/send stats
+	// task scheduling (Engine.Execute and its wf.runner child)
 	result.merge(
-		collect.fromRegions("Engine.Execute").
+		collect.fromRegions("Engine.Execute", true).
 			filter(
 				StatTaskCount.Key(),
 				StatTaskAdmissionWaitDuration.Key(), StatTaskAssignmentTailDuration.Key(),
 				StatTaskMaxQueueDuration.Key(),
-				TaskRecvDuration.Key(), TaskSendDuration.Key(),
 			).
 			normalizeKeys(),
 	)

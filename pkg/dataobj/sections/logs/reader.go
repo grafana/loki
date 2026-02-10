@@ -409,12 +409,12 @@ func (r *Reader) Reset(opts ReaderOptions) {
 // Close closes the Reader and releases any resources it holds. Closed Readers
 // can be reused by calling [Reader.Reset].
 func (r *Reader) Close() error {
-	if r.inner != nil {
-		return r.inner.Close()
-	}
-
 	if r.span != nil {
 		r.span.End()
+	}
+
+	if r.inner != nil {
+		return r.inner.Close()
 	}
 
 	return nil

@@ -190,7 +190,7 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.RecordBatch, er
 	defer r.alloc.Reclaim()
 
 	// inject span into context for inner readers to record observations.
-	ctx = trace.ContextWithSpan(ctx, r.span)
+	ctx = xcap.ContextWithSpan(ctx, r.span)
 
 	rb, readErr := r.inner.Read(ctx, r.alloc, batchSize)
 	result, err := arrowconv.ToRecordBatch(rb, r.schema)
@@ -411,13 +411,14 @@ func (r *Reader) Reset(opts ReaderOptions) {
 // Close closes the Reader and releases any resources it holds. Closed Readers
 // can be reused by calling [Reader.Reset].
 func (r *Reader) Close() error {
+	if r.span != nil {
+		r.span.End()
+	}
+
 	if r.inner != nil {
 		return r.inner.Close()
 	}
 
-	if r.span != nil {
-		r.span.End()
-	}
 	return nil
 }
 

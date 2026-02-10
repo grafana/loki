@@ -15,6 +15,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
@@ -73,9 +74,12 @@ type Workflow struct {
 	statsMut sync.Mutex
 	stats    stats.Result
 
-	captureMut   sync.Mutex
+	captureMut sync.Mutex
+	// used to merge and link task regions
 	capture      *xcap.Capture
 	parentRegion *xcap.Region
+
+	span trace.Span
 
 	tasksMut   sync.RWMutex
 	taskStates map[*Task]TaskState
@@ -171,6 +175,10 @@ func (wf *Workflow) Len() int { return len(wf.manifest.Tasks) }
 
 // Close releases resources associated with the workflow.
 func (wf *Workflow) Close() {
+	if wf.span != nil {
+		wf.span.End()
+	}
+
 	if err := wf.runner.UnregisterManifest(context.Background(), wf.manifest); err != nil {
 		level.Warn(wf.logger).Log("msg", "failed to unregister workflow manifest", "err", err)
 	}
@@ -184,6 +192,9 @@ func (wf *Workflow) Close() {
 func (wf *Workflow) Run(ctx context.Context) (pipeline executor.Pipeline, err error) {
 	wf.capture = xcap.CaptureFromContext(ctx)
 	wf.parentRegion = xcap.RegionFromContext(ctx)
+
+	// wf.Run tracks the lifetime of the workflow execution.
+	ctx, wf.span = xcap.StartSpan(ctx, tracer, "wf.Run")
 
 	wrapped := &wrappedPipeline{
 		inner: wf.resultsPipeline,
@@ -217,7 +228,13 @@ func (wf *Workflow) dispatchTasks(ctx context.Context, tasks []*Task) error {
 		int64(wf.opts.MaxRunningOtherTasks),
 	)
 
-	ctx, region := xcap.StartRegion(ctx, "wf.runner")
+	// do not update context as we do not want task spans to be a child of
+	// the dispatch span. dispatch span ends once all tasks are dispatched,
+	// but tasks can still be running after it ends.
+	_, span := tracer.Start(ctx, "dispatchTasks")
+	defer span.End()
+
+	region := xcap.RegionFromContext(ctx)
 	region.Record(xcap.StatTaskCount.Observe(int64(len(tasks))))
 
 	groups := wf.admissionControl.groupByType(tasks)

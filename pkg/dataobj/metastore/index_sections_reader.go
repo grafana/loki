@@ -85,6 +85,8 @@ func (r *indexSectionsReader) Read(ctx context.Context) (arrow.RecordBatch, erro
 		return nil, err
 	}
 
+	// inject span into context to maintain correct relation with inner readers.
+	ctx = xcap.ContextWithSpan(ctx, r.span)
 	if len(r.predicates) == 0 {
 		return r.readPointers(ctx)
 	}

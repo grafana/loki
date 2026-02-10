@@ -633,7 +633,6 @@ func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (Se
 	m.metrics.streamFilterSections.Observe(float64(totalSections.Load()))
 	m.metrics.resolvedSectionsTotal.Observe(float64(len(sections)))
 	m.metrics.resolvedSectionsRatio.Observe(ratio)
-	span.Record(xcap.StatMetastoreSectionsResolved.Observe(int64(len(sections))))
 	duration := sectionsTimer.ObserveDuration()
 
 	level.Debug(utillog.WithContext(ctx, m.logger)).Log(
