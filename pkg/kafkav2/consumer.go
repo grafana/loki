@@ -96,11 +96,11 @@ func NewGroupConsumer(
 			records: records,
 			logger:  logger,
 			fetchErrors: promauto.With(r).NewCounter(prometheus.CounterOpts{
-				Name: "single_partition_consumer_fetch_erros_total",
+				Name: "group_consumer_fetch_errors_total",
 				Help: "The number of fetch errors.",
 			}),
 			polls: promauto.With(r).NewCounter(prometheus.CounterOpts{
-				Name: "single_partition_consumer_polls_total",
+				Name: "group_consumer_polls_total",
 				Help: "Total number of polls.",
 			}),
 		},
@@ -163,7 +163,7 @@ func NewSinglePartitionConsumer(
 			records: records,
 			logger:  log.With(logger, "topic", topic, "partition", partition),
 			fetchErrors: promauto.With(r).NewCounter(prometheus.CounterOpts{
-				Name: "single_partition_consumer_fetch_erros_total",
+				Name: "single_partition_consumer_fetch_errors_total",
 				Help: "The number of fetch errors.",
 			}),
 			polls: promauto.With(r).NewCounter(prometheus.CounterOpts{
