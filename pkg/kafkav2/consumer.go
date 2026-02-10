@@ -91,6 +91,9 @@ func NewGroupConsumer(
 	logger log.Logger,
 	r prometheus.Registerer,
 ) *GroupConsumer {
+	// Wrap the registerer with labels for the topic so we don't need to add it for
+	// each metric.
+	r = prometheus.WrapRegistererWith(prometheus.Labels{"topic": topic}, r)
 	client.AddConsumeTopics(topic)
 	c := GroupConsumer{
 		abstractConsumer: abstractConsumer{
