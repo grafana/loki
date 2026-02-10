@@ -144,8 +144,8 @@ func (r *SegmentationPartitionResolver) getPartition(ctx context.Context, ring *
 	n := r.rand.Intn(int(partitions))
 	r.shards.WithLabelValues(tenant, string(key)).Set(float64(partitions))
 	subkey := fnv.New32a()
-	subkey.Write([]byte(key))
 	subkey.Write([]byte(strconv.Itoa(n)))
+	subkey.Write([]byte(key))
 	partition, err := ring.ActivePartitionForKey(subkey.Sum32())
 	if err != nil {
 		return -1, err
