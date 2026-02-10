@@ -72,11 +72,8 @@ var (
 	)
 	bucketRequestsDuration = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Namespace: constants.Loki,
-			ConstLabels: map[string]string{
-				"after_hedging": "true",
-			},
-			Name:                            "loki_objstore_bucket_transport_requests_duration_seconds",
+			Namespace:                       constants.Loki,
+			Name:                            "loki_objstore_bucket_transport_hedged_requests_duration_seconds",
 			Help:                            "Time spent doing requests to the bucket backend after request hedging.",
 			Buckets:                         nil,
 			NativeHistogramBucketFactor:     1.1,
