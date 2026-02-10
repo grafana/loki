@@ -94,7 +94,7 @@ func NewGroupConsumer(
 		abstractConsumer: abstractConsumer{
 			client:  client,
 			records: records,
-			logger:  logger,
+			logger:  log.With(logger, "topic", topic),
 			fetchErrors: promauto.With(r).NewCounter(prometheus.CounterOpts{
 				Name: "group_consumer_fetch_errors_total",
 				Help: "The number of fetch errors.",
