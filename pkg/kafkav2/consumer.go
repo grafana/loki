@@ -96,43 +96,42 @@ func (c *SinglePartitionConsumer) Run(ctx context.Context) error {
 		MaxRetries: 0, // Infinite retries.
 	})
 	for b.Ongoing() {
-		select {
-		case <-ctx.Done():
+		c.polls.Inc()
+		fetches := c.client.PollRecords(ctx, -1)
+		// If the client is closed, or the context was canceled, exit the service.
+		// We use Err0 instead of [kgo.IsClientClosed] so we can also check if the
+		// context was canceled.
+		if err := fetches.Err0(); errors.Is(err, kgo.ErrClientClosed) || errors.Is(err, context.Canceled) {
 			// We don't return ctx.Err() here as it manifests as a service failure
 			// when stopping the service.
 			return nil
-		default:
-		}
-		c.polls.Inc()
-		fetches := c.client.PollRecords(ctx, -1)
-		// If the client is closed, or the context was canceled, return the error
-		// as no fetches were polled. We use this instead of [kgo.IsClientClosed]
-		// so we can also check if the context was canceled.
-		if err := fetches.Err0(); errors.Is(err, kgo.ErrClientClosed) || errors.Is(err, context.Canceled) {
-			return err
 		}
 		// The client can fetch from multiple brokers in a single poll. This means
 		// we must handle both records and errors at the same time, as some brokers
 		// might be polled successfully while others return errors.
+		var numRecords int
 		for record := range fetches.RecordsAll() {
 			// We must check for cancelation to avoid a deadlock. This can happen
 			// if the receiver stopped without draining the chan.
 			select {
 			case <-ctx.Done():
-				return ctx.Err()
+				// We don't return ctx.Err() here as it manifests as a service failure
+				// when stopping the service.
+				return nil
 			case c.records <- record:
+				numRecords++
 			}
 		}
-		var numErrs int
-		fetches.EachError(func(_ string, _ int32, err error) {
-			level.Error(c.logger).Log("msg", "failed to poll fetches", "err", err)
+		fetches.EachError(func(topic string, partition int32, err error) {
+			level.Error(c.logger).Log("msg", "failed to poll fetches", "topic", topic, "partition", partition, "err", err)
 			c.fetchErrors.Inc()
-			numErrs++
 		})
-		if numErrs == 0 {
-			b.Reset()
-		} else {
+		if numRecords == 0 {
+			// If no records were fetched, backoff before the next poll.
 			b.Wait()
+		} else {
+			// If records were fetched, reset the backoff before the next poll.
+			b.Reset()
 		}
 	}
 	return nil
