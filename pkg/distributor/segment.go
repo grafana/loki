@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/ring"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -150,16 +149,6 @@ func (r *SegmentationPartitionResolver) getPartition(ctx context.Context, ring *
 	if err != nil {
 		return -1, err
 	}
-	level.Debug(r.logger).Log(
-		"msg", "active partition for segmentation key",
-		"key", key,
-		"rate", rateBytes,
-		"shards", partitions,
-		"n", n,
-		"subkey", subkey.Sum32(),
-		"partition", partition,
-		"active_partition_count", ring.ActivePartitionsCount(),
-	)
 	return partition, nil
 }
 
