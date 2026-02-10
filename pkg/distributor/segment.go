@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/ring"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -145,7 +146,21 @@ func (r *SegmentationPartitionResolver) getPartition(ctx context.Context, ring *
 	subkey := fnv.New32a()
 	subkey.Write([]byte(key))
 	subkey.Write([]byte(strconv.Itoa(n)))
-	return ring.ActivePartitionForKey(subkey.Sum32())
+	partition, err := ring.ActivePartitionForKey(subkey.Sum32())
+	if err != nil {
+		return -1, err
+	}
+	level.Debug(r.logger).Log(
+		"msg", "active partition for segmentation key",
+		"key", key,
+		"rate", rateBytes,
+		"shards", partitions,
+		"n", n,
+		"subkey", subkey.Sum32(),
+		"partition", partition,
+		"active_partition_count", ring.ActivePartitionsCount(),
+	)
+	return partition, nil
 }
 
 // randomPartition returns a random partition from the ring.
