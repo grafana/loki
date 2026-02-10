@@ -193,6 +193,7 @@ func (m *manager) processQueryPair(req *http.Request, cellAResp, cellBResp *Resp
 		CorrelationID:      correlationID,
 		TenantID:           tenantID,
 		User:               ExtractUserFromQueryTags(req),
+		Issuer:             detectIssuer(req),
 		IsLogsDrilldown:    isLogsDrilldownRequest(req),
 		Query:              req.URL.Query().Get("query"),
 		QueryType:          queryType,
@@ -562,6 +563,14 @@ func ExtractUserFromQueryTags(req *http.Request) string {
 	}
 
 	return unknownUser
+}
+
+// detectIssuer determines the source of the query based on the User-Agent header
+func detectIssuer(req *http.Request) string {
+	if strings.HasPrefix(req.Header.Get("User-Agent"), "loki-canary") {
+		return "loki-canary"
+	}
+	return "unknown"
 }
 
 // isLogsDrilldownRequest checks if the request comes from Logs Drilldown by examining the X-Query-Tags header

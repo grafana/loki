@@ -741,7 +741,7 @@ func (x *BasicHandle) fn(rt reflect.Type, checkFastpath, checkCodecSelfer bool) 
 					xfnf2 := fastpathAV[idx].decfn
 					fn.fd = func(d *Decoder, xf *codecFnInfo, xrv reflect.Value) {
 						if xrv.Kind() == reflect.Ptr {
-							xfnf2(d, xf, xrv.Convert(reflect.PtrTo(xrt)))
+							xfnf2(d, xf, xrv.Convert(reflect.PointerTo(xrt)))
 						} else {
 							xfnf2(d, xf, xrv.Convert(xrt))
 						}
@@ -1917,7 +1917,7 @@ func rgetResolveSFI(rt reflect.Type, x []structFieldInfo, pv *typeInfoLoadArray)
 }
 
 func implIntf(rt, iTyp reflect.Type) (base bool, indir bool) {
-	return rt.Implements(iTyp), reflect.PtrTo(rt).Implements(iTyp)
+	return rt.Implements(iTyp), reflect.PointerTo(rt).Implements(iTyp)
 }
 
 // isEmptyStruct is only called from isEmptyValue, and checks if a struct is empty:

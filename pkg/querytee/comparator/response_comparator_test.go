@@ -10,12 +10,27 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// assertError checks that an error matches expectations, including checking for ErrComparisonMismatch when expected
+func assertError(t *testing.T, err error, expectedErr error, expectMismatch bool) {
+	t.Helper()
+	if expectedErr == nil {
+		require.NoError(t, err)
+		return
+	}
+	require.Error(t, err)
+	if expectMismatch {
+		require.ErrorIs(t, err, ErrComparisonMismatch)
+	}
+	require.ErrorContains(t, err, expectedErr.Error())
+}
+
 func TestCompareMatrix(t *testing.T) {
 	for _, tc := range []struct {
-		name     string
-		expected json.RawMessage
-		actual   json.RawMessage
-		err      error
+		name           string
+		expected       json.RawMessage
+		actual         json.RawMessage
+		err            error
+		expectMismatch bool
 	}{
 		{
 			name:     "no metrics",
@@ -27,8 +42,9 @@ func TestCompareMatrix(t *testing.T) {
 			expected: json.RawMessage(`[
 							{"metric":{"foo":"bar"},"values":[[1,"1"]]}
 						]`),
-			actual: json.RawMessage(`[]`),
-			err:    errors.New("expected 1 metrics but got 0"),
+			actual:         json.RawMessage(`[]`),
+			err:            errors.New("expected 1 metrics but got 0"),
+			expectMismatch: true,
 		},
 		{
 			name: "extra metric in actual response",
@@ -39,7 +55,8 @@ func TestCompareMatrix(t *testing.T) {
 							{"metric":{"foo":"bar"},"values":[[1,"1"]]},
 							{"metric":{"foo1":"bar1"},"values":[[1,"1"]]}
 						]`),
-			err: errors.New("expected 1 metrics but got 2"),
+			err:            errors.New("expected 1 metrics but got 2"),
+			expectMismatch: true,
 		},
 		{
 			name: "same number of metrics but with different labels",
@@ -49,7 +66,8 @@ func TestCompareMatrix(t *testing.T) {
 			actual: json.RawMessage(`[
 							{"metric":{"foo1":"bar1"},"values":[[1,"1"]]}
 						]`),
-			err: errors.New("expected metric {foo=\"bar\"} missing from actual response"),
+			err:            errors.New("expected metric {foo=\"bar\"} missing from actual response"),
+			expectMismatch: true,
 		},
 		{
 			name: "difference in number of samples",
@@ -59,7 +77,8 @@ func TestCompareMatrix(t *testing.T) {
 			actual: json.RawMessage(`[
 							{"metric":{"foo":"bar"},"values":[[1,"1"]]}
 						]`),
-			err: errors.New("expected 2 samples for metric {foo=\"bar\"} but got 1"),
+			err:            errors.New("expected 2 samples for metric {foo=\"bar\"} but got 1"),
+			expectMismatch: true,
 		},
 		{
 			name: "difference in sample timestamp",
@@ -70,7 +89,8 @@ func TestCompareMatrix(t *testing.T) {
 							{"metric":{"foo":"bar"},"values":[[1,"1"],[3,"2"]]}
 						]`),
 			// timestamps are parsed from seconds to ms which are then added to errors as is so adding 3 0s to expected error.
-			err: errors.New("float sample pair does not match for metric {foo=\"bar\"}: expected timestamp 2 but got 3"),
+			err:            errors.New("float sample pair does not match for metric {foo=\"bar\"}: expected timestamp 2 but got 3"),
+			expectMismatch: true,
 		},
 		{
 			name: "difference in sample value",
@@ -80,7 +100,8 @@ func TestCompareMatrix(t *testing.T) {
 			actual: json.RawMessage(`[
 							{"metric":{"foo":"bar"},"values":[[1,"1"],[2,"3"]]}
 						]`),
-			err: errors.New("float sample pair does not match for metric {foo=\"bar\"}: expected value 2 for timestamp 2 but got 3"),
+			err:            errors.New("float sample pair does not match for metric {foo=\"bar\"}: expected value 2 for timestamp 2 but got 3"),
+			expectMismatch: true,
 		},
 		{
 			name: "correct samples",
@@ -94,12 +115,7 @@ func TestCompareMatrix(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := compareMatrix(tc.expected, tc.actual, time.Now(), SampleComparisonOptions{})
-			if tc.err == nil {
-				require.NoError(t, err)
-				return
-			}
-			require.Error(t, err)
-			require.ErrorContains(t, err, tc.err.Error())
+			assertError(t, err, tc.err, tc.expectMismatch)
 		})
 	}
 }
@@ -113,6 +129,7 @@ func TestCompareMatrix_SamplesOutsideComparableWindow(t *testing.T) {
 		skipRecentSamples time.Duration
 		evaluationTime    time.Time
 		err               error
+		expectMismatch    bool
 	}{
 		{
 			name: "skip samples before window",
@@ -160,6 +177,7 @@ func TestCompareMatrix_SamplesOutsideComparableWindow(t *testing.T) {
 			skipRecentSamples: 10 * time.Second,
 			evaluationTime:    time.Unix(100, 0),
 			err:               errors.New("float sample pair does not match for metric {foo=\"bar\"}: expected value 3 for timestamp 90 but got 4"),
+			expectMismatch:    true,
 		},
 		{
 			name: "mismatch in sample value on the left boundary",
@@ -173,6 +191,7 @@ func TestCompareMatrix_SamplesOutsideComparableWindow(t *testing.T) {
 			skipRecentSamples: 10 * time.Second,
 			evaluationTime:    time.Unix(100, 0),
 			err:               errors.New("float sample pair does not match for metric {foo=\"bar\"}: expected value 1 for timestamp 10 but got 0"),
+			expectMismatch:    true,
 		},
 		{
 			name: "skip entire series",
@@ -193,23 +212,18 @@ func TestCompareMatrix_SamplesOutsideComparableWindow(t *testing.T) {
 				SkipSamplesBefore: tc.skipSamplesBefore,
 				SkipRecentSamples: tc.skipRecentSamples,
 			})
-
-			if tc.err == nil {
-				require.NoError(t, err)
-				return
-			}
-			require.Error(t, err)
-			require.ErrorContains(t, err, tc.err.Error())
+			assertError(t, err, tc.err, tc.expectMismatch)
 		})
 	}
 }
 
 func TestCompareVector(t *testing.T) {
 	for _, tc := range []struct {
-		name     string
-		expected json.RawMessage
-		actual   json.RawMessage
-		err      error
+		name           string
+		expected       json.RawMessage
+		actual         json.RawMessage
+		err            error
+		expectMismatch bool
 	}{
 		{
 			name:     "no metrics",
@@ -221,8 +235,9 @@ func TestCompareVector(t *testing.T) {
 			expected: json.RawMessage(`[
 							{"metric":{"foo":"bar"},"value":[1,"1"]}
 						]`),
-			actual: json.RawMessage(`[]`),
-			err:    errors.New("expected 1 metrics but got 0"),
+			actual:         json.RawMessage(`[]`),
+			err:            errors.New("expected 1 metrics but got 0"),
+			expectMismatch: true,
 		},
 		{
 			name: "extra metric in actual response",
@@ -233,7 +248,8 @@ func TestCompareVector(t *testing.T) {
 							{"metric":{"foo":"bar"},"value":[1,"1"]},
 							{"metric":{"foo1":"bar1"},"value":[1,"1"]}
 						]`),
-			err: errors.New("expected 1 metrics but got 2"),
+			err:            errors.New("expected 1 metrics but got 2"),
+			expectMismatch: true,
 		},
 		{
 			name: "same number of metrics but with different labels",
@@ -243,7 +259,8 @@ func TestCompareVector(t *testing.T) {
 			actual: json.RawMessage(`[
 							{"metric":{"foo1":"bar1"},"value":[1,"1"]}
 						]`),
-			err: errors.New("expected metric(s) [{foo=\"bar\"}] missing from actual response"),
+			err:            errors.New("expected metric(s) [{foo=\"bar\"}] missing from actual response"),
+			expectMismatch: true,
 		},
 		{
 			name: "difference in sample timestamp",
@@ -253,7 +270,8 @@ func TestCompareVector(t *testing.T) {
 			actual: json.RawMessage(`[
 							{"metric":{"foo":"bar"},"value":[2,"1"]}
 						]`),
-			err: errors.New("sample pair not matching for metric {foo=\"bar\"}: expected timestamp 1 but got 2"),
+			err:            errors.New("sample pair not matching for metric {foo=\"bar\"}: expected timestamp 1 but got 2"),
+			expectMismatch: true,
 		},
 		{
 			name: "difference in sample value",
@@ -263,7 +281,8 @@ func TestCompareVector(t *testing.T) {
 			actual: json.RawMessage(`[
 							{"metric":{"foo":"bar"},"value":[1,"2"]}
 						]`),
-			err: errors.New("sample pair not matching for metric {foo=\"bar\"}: expected value 1 for timestamp 1 but got 2"),
+			err:            errors.New("sample pair not matching for metric {foo=\"bar\"}: expected value 1 for timestamp 1 but got 2"),
+			expectMismatch: true,
 		},
 		{
 			name: "correct samples",
@@ -277,34 +296,32 @@ func TestCompareVector(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := compareVector(tc.expected, tc.actual, time.Now(), SampleComparisonOptions{})
-			if tc.err == nil {
-				require.NoError(t, err)
-				return
-			}
-			require.Error(t, err)
-			require.Equal(t, tc.err.Error(), err.Error())
+			assertError(t, err, tc.err, tc.expectMismatch)
 		})
 	}
 }
 
 func TestCompareScalar(t *testing.T) {
 	for _, tc := range []struct {
-		name     string
-		expected json.RawMessage
-		actual   json.RawMessage
-		err      error
+		name           string
+		expected       json.RawMessage
+		actual         json.RawMessage
+		err            error
+		expectMismatch bool
 	}{
 		{
-			name:     "difference in timestamp",
-			expected: json.RawMessage(`[1,"1"]`),
-			actual:   json.RawMessage(`[2,"1"]`),
-			err:      errors.New("expected timestamp 1 but got 2"),
+			name:           "difference in timestamp",
+			expected:       json.RawMessage(`[1,"1"]`),
+			actual:         json.RawMessage(`[2,"1"]`),
+			err:            errors.New("expected timestamp 1 but got 2"),
+			expectMismatch: true,
 		},
 		{
-			name:     "difference in value",
-			expected: json.RawMessage(`[1,"1"]`),
-			actual:   json.RawMessage(`[1,"2"]`),
-			err:      errors.New("expected value 1 for timestamp 1 but got 2"),
+			name:           "difference in value",
+			expected:       json.RawMessage(`[1,"1"]`),
+			actual:         json.RawMessage(`[1,"2"]`),
+			err:            errors.New("expected value 1 for timestamp 1 but got 2"),
+			expectMismatch: true,
 		},
 		{
 			name:     "correct values",
@@ -314,12 +331,7 @@ func TestCompareScalar(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := compareScalar(tc.expected, tc.actual, time.Now(), SampleComparisonOptions{})
-			if tc.err == nil {
-				require.NoError(t, err)
-				return
-			}
-			require.Error(t, err)
-			require.Equal(t, tc.err.Error(), err.Error())
+			assertError(t, err, tc.err, tc.expectMismatch)
 		})
 	}
 }
@@ -333,6 +345,7 @@ func TestCompareSamplesResponse(t *testing.T) {
 		actual            json.RawMessage
 		err               error
 		useRelativeError  bool
+		expectMismatch    bool
 		skipRecentSamples time.Duration
 	}{
 		{
@@ -344,7 +357,8 @@ func TestCompareSamplesResponse(t *testing.T) {
 			actual: json.RawMessage(`{
 							"status": "fail"
 						}`),
-			err: errors.New("expected status success but got fail"),
+			err:            errors.New("expected status success but got fail"),
+			expectMismatch: true,
 		},
 		{
 			name: "difference in resultType",
@@ -356,7 +370,8 @@ func TestCompareSamplesResponse(t *testing.T) {
 							"status": "success",
 							"data": {"resultType":"vector","result":[{"metric":{"foo":"bar"},"value":[1,"1"]}]}
 						}`),
-			err: errors.New("expected resultType scalar but got vector"),
+			err:            errors.New("expected resultType scalar but got vector"),
+			expectMismatch: true,
 		},
 		{
 			name: "unregistered resultType",
@@ -513,18 +528,18 @@ func TestCompareSamplesResponse(t *testing.T) {
 				require.NoError(t, err)
 				return
 			}
-			require.Error(t, err)
-			require.Equal(t, tc.err.Error(), err.Error())
+			assertError(t, err, tc.err, tc.expectMismatch)
 		})
 	}
 }
 
 func TestCompareStreams(t *testing.T) {
 	for _, tc := range []struct {
-		name     string
-		expected json.RawMessage
-		actual   json.RawMessage
-		err      error
+		name           string
+		expected       json.RawMessage
+		actual         json.RawMessage
+		err            error
+		expectMismatch bool
 	}{
 		{
 			name:     "no streams",
@@ -536,8 +551,9 @@ func TestCompareStreams(t *testing.T) {
 			expected: json.RawMessage(`[
 							{"stream":{"foo":"bar"},"values":[["1","1"]]}
 						]`),
-			actual: json.RawMessage(`[]`),
-			err:    errors.New("expected 1 streams but got 0"),
+			actual:         json.RawMessage(`[]`),
+			err:            errors.New("expected 1 streams but got 0"),
+			expectMismatch: true,
 		},
 		{
 			name: "extra stream in actual response",
@@ -548,7 +564,8 @@ func TestCompareStreams(t *testing.T) {
 							{"stream":{"foo":"bar"},"values":[["1","1"]]},
 							{"stream":{"foo1":"bar1"},"values":[["1","1"]]}
 						]`),
-			err: errors.New("expected 1 streams but got 2"),
+			err:            errors.New("expected 1 streams but got 2"),
+			expectMismatch: true,
 		},
 		{
 			name: "same number of streams but with different labels",
@@ -558,7 +575,8 @@ func TestCompareStreams(t *testing.T) {
 			actual: json.RawMessage(`[
 							{"stream":{"foo1":"bar1"},"values":[["1","1"]]}
 						]`),
-			err: errors.New("expected stream {foo=\"bar\"} missing from actual response"),
+			err:            errors.New("expected stream {foo=\"bar\"} missing from actual response"),
+			expectMismatch: true,
 		},
 		{
 			name: "difference in number of samples",
@@ -568,7 +586,8 @@ func TestCompareStreams(t *testing.T) {
 			actual: json.RawMessage(`[
 							{"stream":{"foo":"bar"},"values":[["1","1"]]}
 						]`),
-			err: errors.New("expected 2 values for stream {foo=\"bar\"} but got 1"),
+			err:            errors.New("expected 2 values for stream {foo=\"bar\"} but got 1"),
+			expectMismatch: true,
 		},
 		{
 			name: "difference in sample timestamp",
@@ -578,7 +597,8 @@ func TestCompareStreams(t *testing.T) {
 			actual: json.RawMessage(`[
 							{"stream":{"foo":"bar"},"values":[["1","1"],["3","2"]]}
 						]`),
-			err: errors.New("expected timestamp 2 but got 3 for stream {foo=\"bar\"}"),
+			err:            errors.New("expected timestamp 2 but got 3 for stream {foo=\"bar\"}"),
+			expectMismatch: true,
 		},
 		{
 			name: "difference in sample value",
@@ -588,7 +608,8 @@ func TestCompareStreams(t *testing.T) {
 			actual: json.RawMessage(`[
 							{"stream":{"foo":"bar"},"values":[["1","1"],["2","3"]]}
 						]`),
-			err: errors.New("expected line 2 for timestamp 2 but got 3 for stream {foo=\"bar\"}"),
+			err:            errors.New("expected line 2 for timestamp 2 but got 3 for stream {foo=\"bar\"}"),
+			expectMismatch: true,
 		},
 		{
 			name: "correct samples",
@@ -606,8 +627,7 @@ func TestCompareStreams(t *testing.T) {
 				require.NoError(t, err)
 				return
 			}
-			require.Error(t, err)
-			require.Equal(t, tc.err.Error(), err.Error())
+			assertError(t, err, tc.err, tc.expectMismatch)
 		})
 	}
 }
@@ -621,6 +641,7 @@ func TestCompareStreams_SamplesOutsideComparableWindow(t *testing.T) {
 		skipRecentSamples time.Duration
 		evaluationTime    time.Time
 		err               error
+		expectMismatch    bool
 	}{
 		// stream entry timestamp is in ns
 		{
@@ -669,6 +690,7 @@ func TestCompareStreams_SamplesOutsideComparableWindow(t *testing.T) {
 			skipSamplesBefore: time.Unix(0, 10),
 			evaluationTime:    time.Unix(0, 100),
 			err:               errors.New("expected line 4 for timestamp 90 but got 5 for stream {foo=\"bar\"}"),
+			expectMismatch:    true,
 		},
 		{
 			name: "mismatch in sample value on the left boundary",
@@ -682,6 +704,7 @@ func TestCompareStreams_SamplesOutsideComparableWindow(t *testing.T) {
 			skipSamplesBefore: time.Unix(0, 10),
 			evaluationTime:    time.Unix(0, 100),
 			err:               errors.New("expected line 2 for timestamp 10 but got 22 for stream {foo=\"bar\"}"),
+			expectMismatch:    true,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -697,8 +720,7 @@ func TestCompareStreams_SamplesOutsideComparableWindow(t *testing.T) {
 				}
 				return
 			}
-			require.Error(t, err)
-			require.Equal(t, tc.err.Error(), err.Error())
+			assertError(t, err, tc.err, tc.expectMismatch)
 		})
 	}
 }

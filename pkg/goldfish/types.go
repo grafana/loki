@@ -9,6 +9,7 @@ type QuerySample struct {
 	CorrelationID   string        `json:"correlationId"`
 	TenantID        string        `json:"tenantId"`
 	User            string        `json:"user"`
+	Issuer          string        `json:"issuer"`
 	IsLogsDrilldown bool          `json:"isLogsDrilldown"`
 	Query           string        `json:"query"`
 	QueryType       string        `json:"queryType"`
