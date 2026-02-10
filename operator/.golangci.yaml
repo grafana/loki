@@ -1,4 +1,5 @@
 ---
+version: "2"
 # golangci.com configuration
 # https://golangci-lint.run/usage/configuration/
 linters-settings:
