@@ -73,6 +73,29 @@ func TestCapture_AddRegion(t *testing.T) {
 	}
 }
 
+func TestCapture_ParentChildFromContext(t *testing.T) {
+	ctx, capture := NewCapture(context.Background(), nil)
+	ctx, parent := StartRegion(ctx, "parent")
+	ctx, child := StartRegion(ctx, "child")
+	_, grandchild := StartRegion(ctx, "grandchild")
+
+	require.True(t, parent.parentID.IsZero(), "root region should have zero parentID")
+	require.Equal(t, parent.id, child.parentID, "child should have parent as parent")
+	require.Equal(t, child.id, grandchild.parentID, "grandchild should have child as parent")
+
+	_ = capture
+}
+
+func TestCapture_LinkParent(t *testing.T) {
+	ctx, capture := NewCapture(context.Background(), nil)
+	_, root := StartRegion(ctx, "root")       // root has parentID zero
+	ctx, _ = StartRegion(ctx, "child")       // child has parent root
+	ctx, parent := StartRegion(ctx, "parent") // parent has parent child
+	capture.LinkParent(parent)
+
+	require.Equal(t, parent.id, root.parentID, "root should be linked to parent")
+}
+
 func TestCapture_GetAllStatistics(t *testing.T) {
 	tests := []struct {
 		name      string

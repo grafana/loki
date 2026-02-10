@@ -60,7 +60,15 @@ func fromProtoRegion(protoRegion *proto.Region, statIndexToStat map[uint32]Stati
 		}
 	}
 
+	var regionID identifier
+	copy(regionID[:], protoRegion.Id)
+
+	var parentID identifier
+	copy(parentID[:], protoRegion.ParentId)
+
 	region := &Region{
+		id:           regionID,
+		parentID:     parentID,
 		name:         protoRegion.Name,
 		observations: observations,
 		ended:        true, // Regions from proto are always ended

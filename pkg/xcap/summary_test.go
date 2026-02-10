@@ -22,7 +22,7 @@ func TestObservations(t *testing.T) {
 	region.End()
 
 	collector := newObservationCollector(capture)
-	obs := collector.fromRegions("Test")
+	obs := collector.fromRegions("Test", false)
 
 	t.Run("filter", func(t *testing.T) {
 		filtered := obs.filter(statA.Key(), statB.Key())

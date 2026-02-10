@@ -97,6 +97,13 @@ func regionsEqual(r1, r2 *Region) bool {
 		return false
 	}
 
+	if r1.id != r2.id {
+		return false
+	}
+	if r1.parentID != r2.parentID {
+		return false
+	}
+
 	if r1.ended != r2.ended {
 		return false
 	}

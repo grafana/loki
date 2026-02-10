@@ -79,6 +79,8 @@ func toProtoRegion(region *Region, statsIndex map[StatisticKey]uint32) (*proto.R
 	return &proto.Region{
 		Name:         region.name,
 		Observations: protoObservations,
+		Id:           region.id[:],
+		ParentId:     region.parentID[:],
 	}, nil
 }
 

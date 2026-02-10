@@ -23,19 +23,12 @@ import (
 func StartSpan(ctx context.Context, t trace.Tracer, name string, opts ...trace.SpanStartOption) (context.Context, *Span) {
 	ctx, inner := t.Start(ctx, name, opts...)
 
-	capture := CaptureFromContext(ctx)
-	if capture == nil {
+	if CaptureFromContext(ctx) == nil {
 		// No capture — wrap the span but with a nil region.
 		// Span.End() will just call inner.End() with nothing to flush.
 		return ctx, &Span{Span: inner}
 	}
 
-	r := &Region{
-		name:         name,
-		observations: make(map[StatisticKey]*AggregatedObservation),
-	}
-	capture.AddRegion(r)
-
-	ctx = ContextWithRegion(ctx, r)
+	ctx, r := StartRegion(ctx, name)
 	return ctx, &Span{Span: inner, region: r}
 }

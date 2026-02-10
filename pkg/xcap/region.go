@@ -17,6 +17,12 @@ type Region struct {
 	// name is the name of the region.
 	name string
 
+	// id is the unique identifier of the region.
+	id identifier
+
+	// parentID is the ID of the parent region. Set to zero value if root region.
+	parentID identifier
+
 	// mu protects the fields below.
 	mu sync.RWMutex
 
@@ -43,8 +49,12 @@ func StartRegion(ctx context.Context, name string) (context.Context, *Region) {
 	}
 
 	r := &Region{
+		id:           newID(),
 		name:         name,
 		observations: make(map[StatisticKey]*AggregatedObservation),
+	}
+	if pr := RegionFromContext(ctx); pr != nil {
+		r.parentID = pr.id
 	}
 
 	// Add region to capture.

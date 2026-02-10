@@ -123,6 +123,23 @@ func (c *Capture) Regions() []*Region {
 	return c.regions
 }
 
+// LinkParent assigns the provided region as the parent to all root regions
+// of the capture.
+func (c *Capture) LinkParent(parent *Region) {
+	c.mu.RLock()
+	regions := make([]*Region, len(c.regions))
+	copy(regions, c.regions)
+	c.mu.RUnlock()
+
+	for _, region := range regions {
+		region.mu.Lock()
+		if region.parentID.IsZero() {
+			region.parentID = parent.id
+		}
+		region.mu.Unlock()
+	}
+}
+
 // getAllStatistics returns the deduplicated set of statistics recorded
 // across all regions in the capture. Statistics that share the same
 // name, data type, and aggregation type are returned only once.
