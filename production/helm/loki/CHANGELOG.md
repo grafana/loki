@@ -13,6 +13,8 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+## 6.53.0
+
 ## 6.52.0
 
 - [BREAKING] DEPRECATION NOTICE - The simple scalable mode (SSD) is deprecated and will be removed in a future version of the Loki Helm charts.  
