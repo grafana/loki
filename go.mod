@@ -158,7 +158,7 @@ require (
 	github.com/twmb/franz-go/plugin/kotel v1.6.0
 	github.com/twmb/franz-go/plugin/kprom v1.2.1
 	go.opentelemetry.io/collector/pdata v1.51.0
-	go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace v0.64.0
+	go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace v0.65.0
 	go.opentelemetry.io/otel/sdk v1.40.0
 	go4.org/netipx v0.0.0-20230125063823-8449b0a6169f
 	golang.org/x/oauth2 v0.35.0

@@ -2214,7 +2214,7 @@ go.opentelemetry.io/contrib/exporters/autoexport
 ## explicit; go 1.24.0
 go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc
 go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc/internal
-# go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace v0.64.0
+# go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace v0.65.0
 ## explicit; go 1.24.0
 go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace
 go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace/internal/semconv
@@ -2245,7 +2245,6 @@ go.opentelemetry.io/otel/semconv/v1.18.0
 go.opentelemetry.io/otel/semconv/v1.21.0
 go.opentelemetry.io/otel/semconv/v1.26.0
 go.opentelemetry.io/otel/semconv/v1.37.0
-go.opentelemetry.io/otel/semconv/v1.37.0/httpconv
 go.opentelemetry.io/otel/semconv/v1.37.0/otelconv
 go.opentelemetry.io/otel/semconv/v1.39.0
 go.opentelemetry.io/otel/semconv/v1.39.0/httpconv
