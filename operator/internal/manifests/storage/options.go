@@ -27,7 +27,6 @@ type Options struct {
 
 // AzureStorageConfig for Azure storage config
 type AzureStorageConfig struct {
-	Env              string
 	Container        string
 	EndpointSuffix   string
 	Audience         string

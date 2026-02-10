@@ -27,8 +27,8 @@ common:
       {{- with .ObjectStorage.S3 }}
       s3:
         {{- if .STS }}
-        bucket_name: {{.Buckets}}
-        region: {{.Region}}
+        bucket_name: {{ .Buckets }}
+        region: {{ .Region }}
         endpoint: s3.{{.Region}}.amazonaws.com
         {{- else }}
         endpoint: {{ .Endpoint }}
@@ -627,3 +627,4 @@ tracing:
   enabled: false
 analytics:
   reporting_enabled: {{ .EnableRemoteReporting }}
+  
