@@ -4,6 +4,9 @@
 
 Helm chart for Grafana Loki and Grafana Enterprise Logs supporting monolithic, simple scalable, and microservices modes.
 
+## ⚠️ Helm Chart Migration
+Effective March 16, 2026, the Grafana Loki Helm chart will be forked to a new repository [grafana-community/helm-charts](https://github.com/grafana-community/helm-charts).  The chart in the Loki repository will continue to be maintained for GEL users only.  See [#20705](https://github.com/grafana/loki/issues/20705) for details.
+
 ## Source Code
 
 * <https://github.com/grafana/loki>
