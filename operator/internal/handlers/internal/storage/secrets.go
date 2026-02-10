@@ -59,8 +59,7 @@ var (
 	}
 	azureEnvironmentEndpointSuffix = map[string]string{
 		"AzureGlobal":       "blob.core.windows.net",
-		"AzureCloud":        "blob.core.windows.net",
-		"AzurePublic":       "blob.core.windows.net",
+		"AzurePublicCloud":  "blob.core.windows.net",
 		"AzureChinaCloud":   "blob.core.chinacloudapi.cn",
 		"AzureGermanCloud":  "blob.core.cloudapi.de",
 		"AzureUSGovernment": "blob.core.usgovcloudapi.net",
@@ -288,7 +287,6 @@ func extractAzureConfigSecret(s *corev1.Secret, credentialMode lokiv1.Credential
 	}
 
 	return &storage.AzureStorageConfig{
-		Env:              env,
 		Container:        string(container),
 		EndpointSuffix:   string(endpointSuffix),
 		Audience:         string(audience),
@@ -471,6 +469,7 @@ func extractS3ConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMod
 		if len(region) == 0 {
 			return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSRegion)
 		}
+
 		return cfg, nil
 	case lokiv1.CredentialModeStatic:
 		if err := validateS3Endpoint(string(endpoint), string(region)); err != nil {
@@ -500,6 +499,7 @@ func extractS3ConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMod
 		if len(region) == 0 {
 			return nil, fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSRegion)
 		}
+
 		return cfg, nil
 	default:
 		return nil, fmt.Errorf("%w: %s", errSecretUnknownCredentialMode, credentialMode)
