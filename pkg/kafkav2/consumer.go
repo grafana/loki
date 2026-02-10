@@ -76,12 +76,14 @@ func (c *abstractConsumer) run(ctx context.Context) error {
 
 // A GroupConsumer consumes records from many partitions. It should be used
 // with consumer groups, and is incompatible with direct consumers. The consumed
-// partitions are determined by the broker as part of the consumer group protocol.
+// partitions are determined by the broker.
 type GroupConsumer struct {
 	abstractConsumer
 }
 
-// NewGroupConsumer returns a new GroupConsumer.
+// NewGroupConsumer returns a new GroupConsumer. It expects a wrapped Prometheus
+// registerer with a prefix (for example, "loki_service_name_") to avoid metric
+// conflicts.
 func NewGroupConsumer(
 	client *kgo.Client,
 	topic string,
@@ -136,6 +138,8 @@ type SinglePartitionConsumer struct {
 // NewSinglePartitionConsumer returns a new SinglePartitionConsumer. It
 // consumes records from the specified offset. It accepts the two special
 // offsets of -2 to consume from the start and -1 to consume from the end.
+// It expects a wrapped Prometheus registerer with a prefix (for example,
+// "loki_service_name_") to avoid metric conflicts.
 func NewSinglePartitionConsumer(
 	client *kgo.Client,
 	topic string,
