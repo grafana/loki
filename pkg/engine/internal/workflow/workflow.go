@@ -14,6 +14,7 @@ import (
 	"github.com/oklog/ulid/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"go.opentelemetry.io/otel"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
@@ -22,10 +23,14 @@ import (
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
-var shortCircuitsTotal = promauto.NewCounter(prometheus.CounterOpts{
-	Name: "loki_engine_v2_task_short_circuits_total",
-	Help: "Total number of tasks preemptively canceled by short circuiting.",
-})
+var (
+	tracer = otel.Tracer("pkg/engine/internal/workflow")
+
+	shortCircuitsTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "loki_engine_v2_task_short_circuits_total",
+		Help: "Total number of tasks preemptively canceled by short circuiting.",
+	})
+)
 
 // Options configures a [Workflow].
 type Options struct {
@@ -68,9 +73,8 @@ type Workflow struct {
 	statsMut sync.Mutex
 	stats    stats.Result
 
-	captureMut   sync.Mutex
-	capture      *xcap.Capture
-	parentRegion *xcap.Region
+	captureMut sync.Mutex
+	capture    *xcap.Capture
 
 	tasksMut   sync.RWMutex
 	taskStates map[*Task]TaskState
@@ -178,7 +182,6 @@ func (wf *Workflow) Close() {
 // resources.
 func (wf *Workflow) Run(ctx context.Context) (pipeline executor.Pipeline, err error) {
 	wf.capture = xcap.CaptureFromContext(ctx)
-	wf.parentRegion = xcap.RegionFromContext(ctx)
 
 	wrapped := &wrappedPipeline{
 		inner: wf.resultsPipeline,
@@ -212,9 +215,6 @@ func (wf *Workflow) dispatchTasks(ctx context.Context, tasks []*Task) error {
 		int64(wf.opts.MaxRunningOtherTasks),
 	)
 
-	// Start runner region once per workflow for capturing runner-level observations.
-	// Not calling defer region.End() here, as we want to allow observations to be recorded
-	// until the workflow is Closed.
 	ctx, region := xcap.StartRegion(ctx, "wf.runner")
 	region.Record(xcap.StatTaskCount.Observe(int64(len(tasks))))
 

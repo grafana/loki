@@ -10,6 +10,8 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/apache/arrow-go/v18/arrow/scalar"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
 
 	columnarv2 "github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/arrowconv"
@@ -17,9 +19,12 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 	memoryv2 "github.com/grafana/loki/v3/pkg/memory"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 const InternalLabelsFieldName = "__streamLabelNames__"
+
+var tracer = otel.Tracer("pkg/dataobj/sections/pointers")
 
 // ReaderOptions customizes the behavior of a [Reader].
 type ReaderOptions struct {
@@ -133,6 +138,11 @@ type Reader struct {
 	inner *recordBatchLabelDecorator
 
 	alloc *memoryv2.Allocator
+
+	// span for recording observations, it is created once during init
+	// and is passed down via context so that inner readers can record
+	// observations to it.
+	span trace.Span
 }
 
 // NewReader creates a new Reader from the provided options. Options are not
@@ -171,13 +181,17 @@ func (r *Reader) Schema() *arrow.Schema { return r.schema }
 // [Reader.Schema]. These records must always be released after use.
 func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.RecordBatch, error) {
 	if !r.ready {
-		err := r.init()
+		err := r.init(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("initializing Reader: %w", err)
 		}
 	}
 
 	defer r.alloc.Reclaim()
+
+	// inject span into context for inner readers to record observations.
+	ctx = trace.ContextWithSpan(ctx, r.span)
+
 	rb, readErr := r.inner.Read(ctx, r.alloc, batchSize)
 	result, err := arrowconv.ToRecordBatch(rb, r.schema)
 	if err != nil {
@@ -189,12 +203,14 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.RecordBatch, er
 	return result, readErr
 }
 
-func (r *Reader) init() error {
+func (r *Reader) init(ctx context.Context) error {
 	if err := r.opts.Validate(); err != nil {
 		return fmt.Errorf("invalid options: %w", err)
 	} else if r.opts.Allocator == nil {
 		r.opts.Allocator = memory.DefaultAllocator
 	}
+
+	_, r.span = xcap.StartSpan(ctx, tracer, "pointers.Reader")
 
 	var innerSection *columnar.Section
 	innerColumns := make([]*columnar.Column, len(r.opts.Columns))
@@ -397,6 +413,10 @@ func (r *Reader) Reset(opts ReaderOptions) {
 func (r *Reader) Close() error {
 	if r.inner != nil {
 		return r.inner.Close()
+	}
+
+	if r.span != nil {
+		r.span.End()
 	}
 	return nil
 }

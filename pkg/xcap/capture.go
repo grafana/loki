@@ -27,22 +27,19 @@
 //
 // # With OTel tracing: spans, observations and log summaries
 //
-// Use [Tracer] when you want observations flushed as OTel span
-// attributes in addition to the log summary. [Tracer] wraps a standard
-// [trace.Tracer] and returns a [Span] whose End method writes the
-// aggregated observations as span attributes before ending the span.
-// The observations are also registered with the [Capture] for log
-// summaries.
+// Use [StartSpan] when you want observations flushed as OTel span
+// attributes in addition to the log summary. [StartSpan] takes a
+// standard [trace.Tracer] and returns a [Span] whose End method writes
+// the aggregated observations as span attributes before ending the
+// span. The observations are also registered with the [Capture] for
+// log summaries.
 //
 //	// Create a capture to collect observations.
 //	ctx, capture := xcap.NewCapture(ctx, nil)
 //	defer capture.End()
 //
-//	// Create a tracer wrapping a standard OTel tracer.
-//	tracer := xcap.NewTracer(otel.Tracer("engine"))
-//
 //	// Start a span — this also creates a linked region.
-//	ctx, span := tracer.Start(ctx, "DataObjScan",
+//	ctx, span := xcap.StartSpan(ctx, otel.Tracer("engine"), "DataObjScan",
 //	    trace.WithAttributes(attribute.Int("num_targets", 5)),
 //	)
 //	defer span.End()

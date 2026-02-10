@@ -559,8 +559,8 @@ func (s *Scheduler) finalizeAssignment(ctx context.Context, t *task, worker *wor
 		if t.wfRegion != nil {
 			t.wfRegion.Record(xcap.StatTaskMaxQueueDuration.Observe(queueDuration))
 
-			// Record time from workflow start until this task assignment.
-			assignmentTailDuration := t.assignTime.Sub(t.wfRegion.StartTime()).Seconds()
+			// Record time from task creation until this task assignment.
+			assignmentTailDuration := t.assignTime.Sub(t.createTime).Seconds()
 			t.wfRegion.Record(xcap.StatTaskAssignmentTailDuration.Observe(assignmentTailDuration))
 		}
 
@@ -755,9 +755,10 @@ NextTask:
 		}
 
 		manifestTasks[taskToAdd.ULID] = &task{
-			scope:   scope,
-			inner:   taskToAdd,
-			handler: manifest.TaskEventHandler,
+			createTime: time.Now(),
+			scope:      scope,
+			inner:      taskToAdd,
+			handler:    manifest.TaskEventHandler,
 		}
 	}
 

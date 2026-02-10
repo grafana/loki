@@ -9,6 +9,8 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/apache/arrow-go/v18/arrow/scalar"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
 
 	columnarv2 "github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/arrowconv"
@@ -16,7 +18,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 	memoryv2 "github.com/grafana/loki/v3/pkg/memory"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
+
+var tracer = otel.Tracer("pkg/dataobj/sections/logs")
 
 // ReaderOptions customizes the behavior of a [Reader].
 type ReaderOptions struct {
@@ -117,6 +122,11 @@ type Reader struct {
 	inner *columnar.ReaderAdapter
 
 	alloc *memoryv2.Allocator
+
+	// span for recording observations, it is created once during init
+	// and is passed down via context so that inner readers can record
+	// observations to it.
+	span trace.Span
 }
 
 // NewReader creates a new Reader from the provided options. Options are not
@@ -162,6 +172,9 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.RecordBatch, er
 	}
 
 	defer r.alloc.Reclaim()
+
+	// inject span into context for inner readers to record observations.
+	ctx = xcap.ContextWithSpan(ctx, r.span)
 	rb, readErr := r.inner.Read(ctx, r.alloc, batchSize)
 	if len(r.opts.Columns) < int(rb.NumCols()) {
 		// Ignore columns that are not in projection list.
@@ -181,12 +194,14 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.RecordBatch, er
 	return result, readErr
 }
 
-func (r *Reader) init(_ context.Context) error {
+func (r *Reader) init(ctx context.Context) error {
 	if err := r.opts.Validate(); err != nil {
 		return fmt.Errorf("invalid options: %w", err)
 	} else if r.opts.Allocator == nil {
 		r.opts.Allocator = memory.DefaultAllocator
 	}
+
+	_, r.span = xcap.StartSpan(ctx, tracer, "logs.Reader")
 
 	// Compose dataset using projected columns and any additional columns
 	// used for evaluating predicates.
@@ -397,6 +412,11 @@ func (r *Reader) Close() error {
 	if r.inner != nil {
 		return r.inner.Close()
 	}
+
+	if r.span != nil {
+		r.span.End()
+	}
+
 	return nil
 }
 

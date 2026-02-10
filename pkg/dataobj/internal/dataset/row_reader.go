@@ -77,7 +77,6 @@ func (r *RowReader) Read(ctx context.Context, s []Row) (int, error) {
 	}
 
 	r.region.Record(xcap.StatDatasetReadCalls.Observe(1))
-	ctx = xcap.ContextWithRegion(ctx, r.region)
 
 	// Our Read implementation works by:
 	//

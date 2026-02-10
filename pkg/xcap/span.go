@@ -33,3 +33,8 @@ func (s *Span) End(options ...trace.SpanEndOption) {
 func (s *Span) Region() *Region {
 	return s.region
 }
+
+// Record records the given observation into the linked Region.
+func (s *Span) Record(observation Observation) {
+	s.region.Record(observation)
+}

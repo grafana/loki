@@ -9,42 +9,38 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace/noop"
 )
 
-func TestTracer(t *testing.T) {
+func TestXcapSpan(t *testing.T) {
 	recorder := tracetest.NewSpanRecorder()
 	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
-	tracer := NewTracer(tp.Tracer("xcap-test"))
+	tracer := tp.Tracer("xcap-test")
 
 	ctx, capture := NewCapture(context.Background(), nil)
 	pagesScanned := NewStatisticInt64("pages.scanned", AggregationTypeSum)
 	rowsRead := NewStatisticInt64("rows.read", AggregationTypeSum)
 
-	ctx, span1 := tracer.Start(ctx, "DataObjScan",
+	ctx, span1 := StartSpan(ctx, tracer, "DataObjScan",
 		trace.WithAttributes(attribute.Int("num_targets", 5)),
 	)
 
-	// The returned span must be an *xcap.Span.
-	xcapSpan1, ok := span1.(*Span)
-	require.True(t, ok, "span should be *xcap.Span")
+	span1.Record(pagesScanned.Observe(3)) // record directly to span
 
 	// Region is retrievable from context.
 	region1 := RegionFromContext(ctx)
 	require.NotNil(t, region1)
-	require.Same(t, xcapSpan1.Region(), region1)
+	require.Same(t, span1.Region(), region1)
 
 	// Record observations into the region.
-	region1.Record(pagesScanned.Observe(3))
 	region1.Record(pagesScanned.Observe(7))
 	region1.Record(rowsRead.Observe(100))
 
-	ctx, span2 := tracer.Start(ctx, "RangeAggregation") // child of first span
-	xcapSpan2, ok := span2.(*Span)
-	require.True(t, ok, "span should be *xcap.Span")
+	ctx, span2 := StartSpan(ctx, tracer, "RangeAggregation") // child of first span
 
 	region2 := RegionFromContext(ctx)
 	require.NotNil(t, region2)
-	require.Same(t, xcapSpan2.Region(), region2)
+	require.Same(t, span2.Region(), region2)
 
 	region2.Record(rowsRead.Observe(50))
 
@@ -93,6 +89,47 @@ func TestTracer(t *testing.T) {
 	require.NotNil(t, rangeSpan)
 	rangeAttrs := attrMap(rangeSpan.Attributes())
 	require.Equal(t, int64(50), rangeAttrs["rows.read"].AsInt64(), "rows.read should be 50")
+}
+
+func TestContextWithSpan(t *testing.T) {
+	tp := noop.NewTracerProvider()
+
+	t.Run("inject span and region into context", func(t *testing.T) {
+		// create xcap span with a linked region.
+		ctx, _ := NewCapture(context.Background(), nil)
+		_, span := StartSpan(ctx, tp.Tracer("xcap-test"), "op")
+		defer span.End()
+
+		// Inject via ContextWithSpan into a fresh context (no prior region).
+		fresh := ContextWithSpan(context.Background(), span)
+
+		// Both the span and the region should be retrievable.
+		require.Equal(t, span, trace.SpanFromContext(fresh))
+		region := RegionFromContext(fresh)
+		require.Equal(t, span.Region(), region)
+	})
+
+	t.Run("inject span only for nil capture", func(t *testing.T) {
+		// StartSpan without a Capture produces an *xcap.Span with nil region.
+		_, span := StartSpan(context.Background(), tp.Tracer("xcap-test"), "no-capture")
+		defer span.End()
+
+		fresh := ContextWithSpan(context.Background(), span)
+
+		require.Equal(t, span, trace.SpanFromContext(fresh))
+		require.Nil(t, RegionFromContext(fresh), "no region should be injected when span has nil region")
+	})
+
+	t.Run("inject should work for plain otel span", func(t *testing.T) {
+		// Use a plain OTel span.
+		_, span := tp.Tracer("xcap-test").Start(context.Background(), "plain")
+		defer span.End()
+
+		fresh := ContextWithSpan(context.Background(), span)
+
+		require.Equal(t, span, trace.SpanFromContext(fresh))
+		require.Nil(t, RegionFromContext(fresh), "no region should be injected for otel span")
+	})
 }
 
 // attrMap builds a lookup from attribute key to value for easier assertion.
