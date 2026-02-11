@@ -22,6 +22,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/kafka/client"
+	"github.com/grafana/loki/v3/pkg/kafkav2"
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
@@ -89,8 +90,10 @@ type Builder struct {
 	mCfg metastore.Config
 
 	// Kafka client and topic/partition info
-	client kafkaClient
-	topic  string
+	client   kafkaClient
+	records  chan *kgo.Record
+	consumer *kafkav2.GroupConsumer
+	topic    string
 
 	// Indexer handles all index building
 	indexer indexer
@@ -154,6 +157,7 @@ func NewIndexBuilder(
 		metrics:            builderMetrics,
 		partitionStates:    make(map[int32]*partitionState),
 		activeCalculations: make(map[int32]context.CancelCauseFunc),
+		records:            make(chan *kgo.Record),
 	}
 
 	// Create self-contained indexer
@@ -178,7 +182,6 @@ func NewIndexBuilder(
 		kafkaCfg,
 		logger,
 		reg,
-		kgo.ConsumeTopics(kafkaCfg.Topic),
 		kgo.InstanceID(instanceID),
 		kgo.SessionTimeout(3*time.Minute),
 		kgo.ConsumerGroup(consumerGroup),
@@ -193,6 +196,14 @@ func NewIndexBuilder(
 		return nil, fmt.Errorf("failed to create kafka consumer client: %w", err)
 	}
 	s.client = eventConsumerClient
+
+	s.consumer = kafkav2.NewGroupConsumer(
+		eventConsumerClient,
+		kafkaCfg.Topic,
+		s.records,
+		logger,
+		prometheus.WrapRegistererWithPrefix("loki_index_builder_", reg),
+	)
 
 	s.Service = services.NewBasicService(s.starting, s.running, s.stopping)
 
@@ -240,11 +251,12 @@ func (p *Builder) handlePartitionsLost(ctx context.Context, client *kgo.Client, 
 }
 
 func (p *Builder) starting(ctx context.Context) error {
-	// Start indexer service first
-	if err := services.StartAndAwaitRunning(ctx, p.indexer); err != nil {
-		return fmt.Errorf("failed to start indexer service: %w", err)
+	if err := services.StartAndAwaitRunning(ctx, p.consumer); err != nil {
+		return fmt.Errorf("failed to start consumer: %w", err)
 	}
-
+	if err := services.StartAndAwaitRunning(ctx, p.indexer); err != nil {
+		return fmt.Errorf("failed to start indexer: %w", err)
+	}
 	// Start flush worker if configured
 	if p.cfg.FlushInterval > 0 {
 		p.flushTicker = time.NewTicker(p.cfg.FlushInterval)
@@ -267,42 +279,20 @@ func (p *Builder) starting(ctx context.Context) error {
 }
 
 func (p *Builder) running(ctx context.Context) error {
-	// Main Kafka processing loop
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-
-		fetches := p.client.PollRecords(ctx, -1)
-		if err := fetches.Err0(); err != nil {
-			if errors.Is(err, kgo.ErrClientClosed) || errors.Is(err, context.Canceled) {
-				return err
-			}
-			// Some other error occurred. We will check it in
-			// [processFetchTopicPartition] instead.
-		}
-		if fetches.Empty() {
-			continue
-		}
-		fetches.EachPartition(func(fetch kgo.FetchTopicPartition) {
-			if err := fetch.Err; err != nil {
-				level.Error(p.logger).Log("msg", "failed to fetch records for topic partition", "topic", fetch.Topic, "partition", fetch.Partition, "err", err.Error())
-				return
-			}
-			for _, record := range fetch.Records {
-				p.processRecord(ctx, record)
-			}
-		})
+	for rec := range p.records {
+		p.processRecord(ctx, rec)
 	}
+	return nil
 }
 
 func (p *Builder) stopping(failureCase error) error {
 	// Stop indexer service first - this handles calculation cleanup via context cancelation.
 	ctx := context.TODO()
+	if err := services.StopAndAwaitTerminated(ctx, p.consumer); err != nil {
+		return fmt.Errorf("failed to stop consumer: %w", err)
+	}
 	if err := services.StopAndAwaitTerminated(ctx, p.indexer); err != nil {
-		level.Error(p.logger).Log("msg", "failed to stop indexer", "err", err)
+		return fmt.Errorf("failed to stop indexer: %w", err)
 	}
 
 	// Stop other components
