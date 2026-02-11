@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/dskit/flagext"
 	ruler_config "github.com/grafana/loki/v3/pkg/ruler/config"
 	"github.com/grafana/loki/v3/pkg/util"
 )
@@ -210,7 +211,7 @@ func TestBuildNotifierConfig(t *testing.T) {
 					Notifier: ruler_config.NotifierConfig{
 						BasicAuth: util.BasicAuth{
 							Username: "jacob",
-							Password: "test",
+							Password: flagext.SecretWithValue("test"),
 						},
 					},
 				},
@@ -245,7 +246,7 @@ func TestBuildNotifierConfig(t *testing.T) {
 					Notifier: ruler_config.NotifierConfig{
 						HeaderAuth: util.HeaderAuth{
 							Type:        "Bearer",
-							Credentials: "jacob",
+							Credentials: flagext.SecretWithValue("jacob"),
 						},
 					},
 				},
