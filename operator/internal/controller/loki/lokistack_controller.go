@@ -45,7 +45,7 @@ var (
 			// changes also on status changes. We want to omit reconciliation
 			// for status updates for now.
 			return (e.ObjectOld.GetGeneration() != e.ObjectNew.GetGeneration()) ||
-				cmp.Diff(e.ObjectOld.GetAnnotations(), e.ObjectNew.GetAnnotations()) != ""
+				!cmp.Equal(e.ObjectOld.GetAnnotations(), e.ObjectNew.GetAnnotations())
 		},
 		CreateFunc:  func(e event.CreateEvent) bool { return true },
 		DeleteFunc:  func(e event.DeleteEvent) bool { return false },
@@ -274,10 +274,10 @@ func statusDifferent(e event.UpdateEvent) bool {
 	switch old := e.ObjectOld.(type) {
 	case *appsv1.Deployment:
 		newObject := e.ObjectNew.(*appsv1.Deployment)
-		return cmp.Diff(old.Status, newObject.Status) != ""
+		return !cmp.Equal(old.Status, newObject.Status)
 	case *appsv1.StatefulSet:
 		newObject := e.ObjectNew.(*appsv1.StatefulSet)
-		return cmp.Diff(old.Status, newObject.Status) != ""
+		return !cmp.Equal(old.Status, newObject.Status)
 	default:
 		return false
 	}
