@@ -185,8 +185,9 @@ func NewIndexBuilder(
 		kgo.Balancers(kgo.RoundRobinBalancer()),
 		kgo.RebalanceTimeout(5*time.Minute),
 		kgo.DisableAutoCommit(),
-		kgo.OnPartitionsRevoked(s.handlePartitionsRevoked),
 		kgo.OnPartitionsAssigned(s.handlePartitionsAssigned),
+		kgo.OnPartitionsRevoked(s.handlePartitionsRevoked),
+		kgo.OnPartitionsLost(s.handlePartitionsLost),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create kafka consumer client: %w", err)
@@ -229,6 +230,10 @@ func (p *Builder) handlePartitionsRevoked(_ context.Context, _ *kgo.Client, topi
 			}
 		}
 	}
+}
+
+func (p *Builder) handlePartitionsLost(ctx context.Context, client *kgo.Client, topics map[string][]int32) {
+	p.handlePartitionsRevoked(ctx, client, topics)
 }
 
 func (p *Builder) starting(ctx context.Context) error {

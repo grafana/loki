@@ -30,7 +30,7 @@ func TestReaderAdapter_ReadPreservesUTF8Nulls(t *testing.T) {
 	require.NoError(t, err)
 
 	dset := dataset.FromMemory([]*dataset.MemColumn{col})
-	reader := NewReaderAdapter(dataset.ReaderOptions{
+	reader := NewReaderAdapter(dataset.RowReaderOptions{
 		Dataset: dset,
 		Columns: []dataset.Column{col},
 	})

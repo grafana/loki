@@ -14,8 +14,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
-// ReaderOptions configures how a [RowReader] will read [Row]s.
-type ReaderOptions struct {
+// RowReaderOptions configures how a [RowReader] will read [Row]s.
+type RowReaderOptions struct {
 	Dataset Dataset // Dataset to read from.
 
 	// Columns to read from the Dataset. It is invalid to provide a Column that
@@ -40,7 +40,7 @@ type ReaderOptions struct {
 
 // A RowReader reads [Row]s from a [Dataset].
 type RowReader struct {
-	opts  ReaderOptions
+	opts  RowReaderOptions
 	ready bool // ready is true if the RowReader has been initialized.
 
 	origColumnLookup     map[Column]int // Find the index of a column in opts.Columns.
@@ -55,7 +55,7 @@ type RowReader struct {
 }
 
 // NewRowReader creates a new RowReader from the provided options.
-func NewRowReader(opts ReaderOptions) *RowReader {
+func NewRowReader(opts RowReaderOptions) *RowReader {
 	var r RowReader
 	r.Reset(opts)
 	return &r
@@ -407,7 +407,7 @@ func (r *RowReader) Close() error {
 
 // Reset discards any state and resets the RowReader with a new set of options.
 // This permits reusing a RowReader rather than allocating a new one.
-func (r *RowReader) Reset(opts ReaderOptions) {
+func (r *RowReader) Reset(opts RowReaderOptions) {
 	r.opts = opts
 
 	// There's not much work Reset can do without a context, since it needs to
@@ -487,7 +487,7 @@ func (r *RowReader) secondaryColumns() []Column {
 }
 
 // validatePredicate ensures that all columns used in a predicate have been
-// provided in [ReaderOptions].
+// provided in [RowReaderOptions].
 func (r *RowReader) validatePredicate() error {
 	process := func(c Column) error {
 		_, ok := r.origColumnLookup[c]

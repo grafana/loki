@@ -232,11 +232,16 @@ func (bmap *Bitmap) Clone(alloc *Allocator) *Bitmap {
 // The first offset bits in data are undefined.
 func (bmap *Bitmap) Bytes() (data []byte, offset int) { return bmap.data, bmap.off }
 
-// Slice returns a slice of bmap from index i to j. Slice panics if j < i or if
-// the slice is outside the valid range of bmap. The returned slice has both a
+// Slice returns a slice of bmap from index i to j. he returned slice has both a
 // length and capacity of j-i, shares memory with bmap, and uses the same
 // allocator for new allocations (when needed).
+//
+// Slice panics if the following invariant is not met: 0 <= i <= j <= bmap.Len()
 func (bmap *Bitmap) Slice(i, j int) *Bitmap {
+	if i < 0 || j < i || j > bmap.Len() {
+		panic("invalid slice")
+	}
+
 	var (
 		startWord = (bmap.off + i) / 8
 		endWord   = ((bmap.off + j) / 8) + 1
@@ -244,10 +249,6 @@ func (bmap *Bitmap) Slice(i, j int) *Bitmap {
 		off    = (bmap.off + i) % 8
 		newLen = j - i
 	)
-
-	if newLen < 0 {
-		panic("negative length")
-	}
 
 	return &Bitmap{
 		alloc: bmap.alloc,

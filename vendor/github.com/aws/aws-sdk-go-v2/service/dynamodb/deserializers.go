@@ -14387,6 +14387,15 @@ func awsAwsjson10_deserializeDocumentReplicaDescription(v **types.ReplicaDescrip
 				return err
 			}
 
+		case "GlobalTableSettingsReplicationMode":
+			if value != nil {
+				jtv, ok := value.(string)
+				if !ok {
+					return fmt.Errorf("expected GlobalTableSettingsReplicationMode to be of type string, got %T instead", value)
+				}
+				sv.GlobalTableSettingsReplicationMode = types.GlobalTableSettingsReplicationMode(jtv)
+			}
+
 		case "KMSMasterKeyId":
 			if value != nil {
 				jtv, ok := value.(string)
@@ -16043,6 +16052,15 @@ func awsAwsjson10_deserializeDocumentTableDescription(v **types.TableDescription
 		case "GlobalSecondaryIndexes":
 			if err := awsAwsjson10_deserializeDocumentGlobalSecondaryIndexDescriptionList(&sv.GlobalSecondaryIndexes, value); err != nil {
 				return err
+			}
+
+		case "GlobalTableSettingsReplicationMode":
+			if value != nil {
+				jtv, ok := value.(string)
+				if !ok {
+					return fmt.Errorf("expected GlobalTableSettingsReplicationMode to be of type string, got %T instead", value)
+				}
+				sv.GlobalTableSettingsReplicationMode = types.GlobalTableSettingsReplicationMode(jtv)
 			}
 
 		case "GlobalTableVersion":

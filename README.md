@@ -35,6 +35,9 @@ Loki differs from Prometheus by focusing on logs instead of metrics, and deliver
 * [Installing Alloy](https://grafana.com/docs/loki/latest/send-data/alloy/)
 * [Getting Started](https://grafana.com/docs/loki/latest/get-started/)
 
+### ⚠️ Helm Chart Migration
+Effective March 16, 2026, the Grafana Loki Helm chart will be forked to a new repository [grafana-community/helm-charts](https://github.com/grafana-community/helm-charts).  The chart in the Loki repository will continue to be maintained for GEL users only.  See [#20705](https://github.com/grafana/loki/issues/20705) for details.
+
 ## Upgrading
 
 * [Upgrading Loki](https://grafana.com/docs/loki/latest/upgrading/)

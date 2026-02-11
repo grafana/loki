@@ -172,6 +172,13 @@ type Config struct {
 	Throughput Throughput `yaml:"-"`
 
 	ClusterValidation clusterutil.ServerClusterValidationConfig `yaml:"cluster_validation" category:"experimental"`
+
+	// PublicEndpointFn will create a new trace instead of continuing an
+	// existing trace when the function returns true. A span link will be used
+	// to connect to any existing trace. It only works if using Open-Telemetry
+	// tracing.
+	PublicEndpointFn func(*http.Request) bool `yaml:"-"`
+	CreateNewTraces  bool                     `yaml:"create_new_traces"`
 }
 
 type Throughput struct {
@@ -241,6 +248,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.Throughput.LatencyCutoff, "server.throughput.latency-cutoff", 0, "Requests taking over the cutoff are be observed to measure throughput. Server-Timing header is used with specified unit as the indicator, for example 'Server-Timing: unit;val=8.2'. If set to 0, the throughput is not calculated.")
 	f.StringVar(&cfg.Throughput.Unit, "server.throughput.unit", "samples_processed", "Unit of the server throughput metric, for example 'processed_bytes' or 'samples_processed'. Observed values are gathered from the 'Server-Timing' header with the 'val' key. If set, it is appended to the request_server_throughput metric name.")
 	cfg.ClusterValidation.RegisterFlagsWithPrefix("server.cluster-validation.", f)
+	f.BoolVar(&cfg.CreateNewTraces, "server.create-new-traces", false, "Creates new traces for each call rather than continuing the existing trace. A span link is used to allow navigation to the parent trace. Only works when using Open-Telemetry tracing.")
 }
 
 func (cfg *Config) Validate() error {
@@ -589,11 +597,17 @@ func BuildHTTPMiddleware(cfg Config, router *mux.Router, metrics *Metrics, logge
 	defaultLogMiddleware := middleware.NewLogMiddleware(logger, cfg.LogRequestHeaders, cfg.LogRequestAtInfoLevel, logSourceIPs, strings.Split(cfg.LogRequestExcludeHeadersList, ","))
 	defaultLogMiddleware.DisableRequestSuccessLog = cfg.DisableRequestSuccessLog
 
+	publicEndpointFn := cfg.PublicEndpointFn
+	if publicEndpointFn == nil && cfg.CreateNewTraces {
+		publicEndpointFn = func(*http.Request) bool {
+			return true
+		}
+	}
 	defaultHTTPMiddleware := []middleware.Interface{
 		middleware.RouteInjector{
 			RouteMatcher: router,
 		},
-		middleware.NewTracer(sourceIPs, cfg.TraceRequestHeaders, strings.Split(cfg.TraceRequestExcludeHeadersList, ",")),
+		middleware.NewTracer(sourceIPs, cfg.TraceRequestHeaders, strings.Split(cfg.TraceRequestExcludeHeadersList, ","), publicEndpointFn),
 		defaultLogMiddleware,
 		middleware.Instrument{
 			Duration:          metrics.RequestDuration,
