@@ -14,22 +14,22 @@ import (
 
 func TestGroupConsumer(t *testing.T) {
 	const testTopic = "test-topic"
-	ctx := t.Context()
+	testCtx := t.Context()
 	cluster, err := kfake.NewCluster(kfake.NumBrokers(1), kfake.SeedTopics(2, testTopic))
 	require.NoError(t, err)
 	t.Cleanup(cluster.Close)
 
 	// Produce some records to be consumed.
 	client := mustKafkaClient(t, cluster.ListenAddrs()[0])
-	res1 := client.ProduceSync(ctx, &kgo.Record{Topic: testTopic, Partition: 0, Key: []byte("key1"), Value: []byte("value1")})
+	res1 := client.ProduceSync(testCtx, &kgo.Record{Topic: testTopic, Partition: 0, Key: []byte("key1"), Value: []byte("value1")})
 	require.NoError(t, res1.FirstErr())
-	res2 := client.ProduceSync(ctx, &kgo.Record{Topic: testTopic, Partition: 1, Key: []byte("key2"), Value: []byte("value2")})
+	res2 := client.ProduceSync(testCtx, &kgo.Record{Topic: testTopic, Partition: 1, Key: []byte("key2"), Value: []byte("value2")})
 	require.NoError(t, res2.FirstErr())
 
 	// Set up the consumer.
 	dst := make(chan *kgo.Record)
 	consumer := NewGroupConsumer(client, testTopic, dst, log.NewNopLogger(), prometheus.NewRegistry())
-	cancelCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	cancelCtx, cancel := context.WithTimeout(testCtx, 5*time.Second)
 	t.Cleanup(cancel)
 	go consumer.run(cancelCtx) //nolint:errcheck
 
@@ -51,28 +51,32 @@ func TestGroupConsumer(t *testing.T) {
 
 	// cancel the context, channel should be closed.
 	cancel()
-	_, closed := <-dst
-	require.True(t, closed)
+	select {
+	case <-testCtx.Done():
+		require.Fail(t, "test timed out before chan closed")
+	case _, closed := <-dst:
+		require.True(t, closed)
+	}
 }
 
 func TestSinglePartitionConsumer(t *testing.T) {
 	const testTopic = "test-topic"
-	ctx := t.Context()
+	testCtx := t.Context()
 	cluster, err := kfake.NewCluster(kfake.NumBrokers(1), kfake.SeedTopics(1, testTopic))
 	require.NoError(t, err)
 	t.Cleanup(cluster.Close)
 
 	// Produce some records to be consumed.
 	client := mustKafkaClient(t, cluster.ListenAddrs()[0])
-	res1 := client.ProduceSync(ctx, &kgo.Record{Topic: testTopic, Partition: 0, Key: []byte("key1"), Value: []byte("value1")})
+	res1 := client.ProduceSync(testCtx, &kgo.Record{Topic: testTopic, Partition: 0, Key: []byte("key1"), Value: []byte("value1")})
 	require.NoError(t, res1.FirstErr())
-	res2 := client.ProduceSync(ctx, &kgo.Record{Topic: testTopic, Partition: 0, Key: []byte("key2"), Value: []byte("value2")})
+	res2 := client.ProduceSync(testCtx, &kgo.Record{Topic: testTopic, Partition: 0, Key: []byte("key2"), Value: []byte("value2")})
 	require.NoError(t, res2.FirstErr())
 
 	// Set up the consumer.
 	dst := make(chan *kgo.Record)
 	consumer := NewSinglePartitionConsumer(client, testTopic, 0, -2, dst, log.NewNopLogger(), prometheus.NewRegistry())
-	cancelCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	cancelCtx, cancel := context.WithTimeout(testCtx, 5*time.Second)
 	t.Cleanup(cancel)
 	go consumer.run(cancelCtx) //nolint:errcheck
 
@@ -94,6 +98,10 @@ func TestSinglePartitionConsumer(t *testing.T) {
 
 	// cancel the context, channel should be closed.
 	cancel()
-	_, closed := <-dst
-	require.True(t, closed)
+	select {
+	case <-testCtx.Done():
+		require.Fail(t, "test timed out before chan closed")
+	case _, closed := <-dst:
+		require.True(t, closed)
+	}
 }
