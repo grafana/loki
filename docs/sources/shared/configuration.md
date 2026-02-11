@@ -1869,6 +1869,14 @@ ingest_limits_frontend:
   # CLI flag: -ingest-limits-frontend.assigned-partitions-cache-ttl
   [assigned_partitions_cache_ttl: <duration> | default = 1m]
 
+  # The TTL for the cache. 0 disables the cache.
+  # CLI flag: -ingest-limits-frontend.cache-ttl
+  [cache_ttl: <duration> | default = 1m]
+
+  # The jitter to add to the cache.
+  # CLI flag: -ingest-limits-frontend.cache-ttl-jitter
+  [cache_ttl_jitter: <duration> | default = 15s]
+
 ingest_limits_frontend_client:
   # Configures client gRPC connections to limits service.
   # The CLI flags prefix for this block configuration is:
