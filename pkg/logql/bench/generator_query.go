@@ -294,6 +294,9 @@ func (g *TestCaseGenerator) Generate() []TestCase {
 	addMetricQuery(fmt.Sprintf(`sum by (detected_level) (avg_over_time({service_name="loki"} | json | logfmt | duration != "" | drop __error__, __error_details__ | unwrap duration_seconds(duration) [%s]))`, rangeInterval), start, end, step)
 	addMetricQuery(fmt.Sprintf(`sum by (detected_level) (count_over_time({service_name=~"(?i)loki"} | detected_level="debug" or detected_level="info" or detected_level="warn"   |~ "(?i)(?i)duration" | json  | logfmt | drop __error__, __error_details__ | level=~"(?i)INFO" [%s]))`, rangeInterval), start, end, step)
 
+	// Bugfix test for observed mismatch: V2 added automatic error filter causing it to count only rows without parse errors, resulting in fewer results than V1
+	addMetricQuery(fmt.Sprintf(`sum by (level, detected_level) (count_over_time({service_name="loki"} | json | drop __error__ [%s]))`, rangeInterval), start, end, step)
+
 	// Dense period queries
 	for _, interval := range g.logGenCfg.DenseIntervals {
 		combo := labelCombos[g.logGenCfg.NewRand().Intn(len(labelCombos))]
