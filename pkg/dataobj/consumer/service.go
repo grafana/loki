@@ -189,8 +189,8 @@ func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, bucket objsto
 // starting implements the Service interface's starting method.
 func (s *Service) starting(ctx context.Context) error {
 	level.Info(s.logger).Log("msg", "starting")
-	if err := s.fetchResumeOffset(ctx); err != nil {
-		return fmt.Errorf("failed to fetch resume offset: %w", err)
+	if err := s.initResumeOffset(ctx); err != nil {
+		return fmt.Errorf("failed to initialize offset for consumer: %w", err)
 	}
 	if err := services.StartAndAwaitRunning(ctx, s.lifecycler); err != nil {
 		return fmt.Errorf("failed to start lifecycler: %w", err)
@@ -242,9 +242,9 @@ func (s *Service) TransferOut(_ context.Context) error {
 	return nil
 }
 
-// fetchResumeOffset fetches the resume offset for the consumer. It must be
-// called before starting the consumer.
-func (s *Service) fetchResumeOffset(ctx context.Context) error {
+// initResumeOffset fetches and sets the resume offset (often the last committed
+// offset) for the consumer. It must be called before starting the consumer.
+func (s *Service) initResumeOffset(ctx context.Context) error {
 	b := backoff.New(ctx, backoff.Config{
 		MinBackoff: 100 * time.Millisecond,
 		MaxBackoff: 10 * time.Second,
