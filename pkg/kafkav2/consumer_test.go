@@ -53,7 +53,7 @@ func TestGroupConsumer(t *testing.T) {
 	cancel()
 	select {
 	case <-testCtx.Done():
-		require.Fail(t, "test timed out before chan closed")
+		require.Fail(t, "test timed out before channel was closed")
 	case _, closed := <-dst:
 		require.True(t, closed)
 	}
@@ -100,7 +100,7 @@ func TestSinglePartitionConsumer(t *testing.T) {
 	cancel()
 	select {
 	case <-testCtx.Done():
-		require.Fail(t, "test timed out before chan closed")
+		require.Fail(t, "test timed out before channel was closed")
 	case _, closed := <-dst:
 		require.True(t, closed)
 	}
