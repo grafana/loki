@@ -65,7 +65,7 @@ var (
 	bucketRequestsTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Namespace: constants.Loki,
-			Name:      "loki_objstore_bucket_transport_requests_total",
+			Name:      "objstore_bucket_transport_requests_total",
 			Help:      "Total number of HTTP transport requests made to the bucket backend by status code and method.",
 		},
 		[]string{"status_code", "method"},
@@ -73,7 +73,7 @@ var (
 	bucketRequestsDuration = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Namespace:                       constants.Loki,
-			Name:                            "loki_objstore_bucket_transport_hedged_requests_duration_seconds",
+			Name:                            "objstore_bucket_transport_hedged_requests_duration_seconds",
 			Help:                            "Time spent doing requests to the bucket backend after request hedging.",
 			Buckets:                         nil,
 			NativeHistogramBucketFactor:     1.1,
