@@ -416,13 +416,6 @@ ruler_storage:
   # The CLI flags prefix for this block configuration is: ruler-storage
   [<thanos_object_store_config>]
 
-  hedging:
-    [at: <duration>]
-
-    [up_to: <int>]
-
-    [max_per_second: <int>]
-
   # Backend storage to use. Supported backends are: local, s3, gcs, azure,
   # swift, filesystem, alibabacloud, bos
   # CLI flag: -ruler-storage.backend
