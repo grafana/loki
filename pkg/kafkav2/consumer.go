@@ -27,6 +27,7 @@ type abstractConsumer struct {
 }
 
 func (c *abstractConsumer) run(ctx context.Context) error {
+	defer close(c.records)
 	b := backoff.New(ctx, backoff.Config{
 		MinBackoff: time.Millisecond * 100,
 		MaxBackoff: time.Second * 10,

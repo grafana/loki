@@ -30,7 +30,7 @@ func TestGroupConsumer(t *testing.T) {
 	dst := make(chan *kgo.Record)
 	consumer := NewGroupConsumer(client, testTopic, dst, log.NewNopLogger(), prometheus.NewRegistry())
 	cancelCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
+	t.Cleanup(cancel)
 	go consumer.run(cancelCtx) //nolint:errcheck
 
 	// Wait for the expected number of records to arrive.
@@ -48,6 +48,11 @@ func TestGroupConsumer(t *testing.T) {
 	require.Len(t, records, 2)
 	require.Equal(t, []byte("value1"), records[0].Value)
 	require.Equal(t, []byte("value2"), records[1].Value)
+
+	// cancel the context, channel should be closed.
+	cancel()
+	_, closed := <-dst
+	require.True(t, closed)
 }
 
 func TestSinglePartitionConsumer(t *testing.T) {
@@ -68,7 +73,7 @@ func TestSinglePartitionConsumer(t *testing.T) {
 	dst := make(chan *kgo.Record)
 	consumer := NewSinglePartitionConsumer(client, testTopic, 0, -2, dst, log.NewNopLogger(), prometheus.NewRegistry())
 	cancelCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
+	t.Cleanup(cancel)
 	go consumer.run(cancelCtx) //nolint:errcheck
 
 	// Wait for the expected number of records to arrive.
@@ -86,4 +91,9 @@ func TestSinglePartitionConsumer(t *testing.T) {
 	require.Len(t, records, 2)
 	require.Equal(t, []byte("value1"), records[0].Value)
 	require.Equal(t, []byte("value2"), records[1].Value)
+
+	// cancel the context, channel should be closed.
+	cancel()
+	_, closed := <-dst
+	require.True(t, closed)
 }
