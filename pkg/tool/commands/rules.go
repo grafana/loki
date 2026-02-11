@@ -91,9 +91,9 @@ type RuleCommand struct {
 // Register rule related commands and flags with the kingpin application
 func (r *RuleCommand) Register(app *kingpin.Application) {
 	rulesCmd := app.Command("rules", "View & edit rules stored in loki.").PreAction(r.setup)
-	rulesCmd.Flag("authToken", "Authentication token for bearer token or JWT auth, alternatively set LOKI_AUTH_TOKEN.").Default("").Envar("LOKI_AUTH_TOKEN").SetValue(&r.ClientConfig.AuthToken)
+	rulesCmd.Flag("authToken", "Authentication token for bearer token or JWT auth, alternatively set LOKI_AUTH_TOKEN.").Default("").Envar("LOKI_AUTH_TOKEN").StringVar(&r.ClientConfig.AuthToken)
 	rulesCmd.Flag("user", "API user to use when contacting loki, alternatively set LOKI_API_USER. If empty, LOKI_TENANT_ID will be used instead.").Default("").Envar("LOKI_API_USER").StringVar(&r.ClientConfig.User)
-	rulesCmd.Flag("key", "API key to use when contacting loki, alternatively set LOKI_API_KEY.").Default("").Envar("LOKI_API_KEY").SetValue(&r.ClientConfig.Key)
+	rulesCmd.Flag("key", "API key to use when contacting loki, alternatively set LOKI_API_KEY.").Default("").Envar("LOKI_API_KEY").StringVar(&r.ClientConfig.Key)
 
 	// Register rule commands
 	listCmd := rulesCmd.
