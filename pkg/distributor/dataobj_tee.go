@@ -41,7 +41,7 @@ func (c *DataObjTeeConfig) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&c.MaxBufferedBytes, "distributor.dataobj-tee.max-buffered-bytes", 100<<20, "Maximum number of bytes to buffer.")
 	f.IntVar(&c.PerPartitionRateBytes, "distributor.dataobj-tee.per-partition-rate-bytes", 1024*1024, "The per-tenant partition rate (bytes/sec).")
 	f.BoolVar(&c.DebugMetricsEnabled, "distributor.dataobj-tee.debug-metrics-enabled", false, "Enables optional debug metrics.")
-	f.DurationVar(&c.RateBatchWindow, "distributor.dataobj-tee.rate-batch-window", 30*time.Second, "Duration to accumulate rate updates before sending to limits frontend. Set to 0 to disable batching.")
+	f.DurationVar(&c.RateBatchWindow, "distributor.dataobj-tee.rate-batch-window", 0, "Duration to accumulate rate updates before sending to limits frontend. Set to 0 to disable batching.")
 }
 
 func (c *DataObjTeeConfig) Validate() error {
