@@ -1,5 +1,19 @@
 # Changelog
 
+## [3.5.10](https://github.com/grafana/loki/compare/v3.5.9...v3.5.10) (2026-02-11)
+
+
+### Features
+
+* Update to go 1.25.7 ([#20694](https://github.com/grafana/loki/issues/20694)) ([#20752](https://github.com/grafana/loki/issues/20752)) ([dd71399](https://github.com/grafana/loki/commit/dd713991cb9f55d96a5ef5da33522297fc52ddbf))
+
+
+### Bug Fixes
+
+* build UI deps ([#20762](https://github.com/grafana/loki/issues/20762)) ([6d1e9ea](https://github.com/grafana/loki/commit/6d1e9eab7720ef486973db1a20076e357c6c081f))
+* fluent bit build with go 1.25 ([#20765](https://github.com/grafana/loki/issues/20765)) ([bda4b6b](https://github.com/grafana/loki/commit/bda4b6bcfdaa3da472890d019884f94bc507962c))
+* undo golang version upgrade in some dockerfiles ([#20760](https://github.com/grafana/loki/issues/20760)) ([502f046](https://github.com/grafana/loki/commit/502f046fab0e83a9e70e588a9d1ac7c823e7d332))
+
 ## [3.5.9](https://github.com/grafana/loki/compare/v3.5.8...v3.5.9) (2025-12-10)
 
 
