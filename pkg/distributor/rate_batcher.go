@@ -214,24 +214,22 @@ func (b *rateBatcher) flush(ctx context.Context) {
 	}
 }
 
-// storeRates stores the rates returned from UpdateRates for future lookups.
+// storeRates replaces the rates for a tenant with the results from the latest flush.
+// This ensures we don't accumulate stale rates for streams that stopped sending.
 func (b *rateBatcher) storeRates(tenant string, results []*proto.UpdateRatesResult) {
-	if len(results) == 0 {
-		return
-	}
-
 	b.ratesMu.Lock()
 	defer b.ratesMu.Unlock()
 
-	tenantRates, ok := b.rates[tenant]
-	if !ok {
-		tenantRates = make(map[uint64]uint64)
-		b.rates[tenant] = tenantRates
+	if len(results) == 0 {
+		delete(b.rates, tenant)
+		return
 	}
 
+	tenantRates := make(map[uint64]uint64, len(results))
 	for _, result := range results {
 		tenantRates[result.StreamHash] = result.Rate
 	}
+	b.rates[tenant] = tenantRates
 }
 
 // GetRate returns the last known rate for a stream, or 0 if unknown.

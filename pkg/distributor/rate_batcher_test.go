@@ -359,3 +359,33 @@ func TestRateBatcher_RatesUpdatedOnSubsequentFlush(t *testing.T) {
 	batcher.flush(context.Background())
 	require.Equal(t, uint64(5000), batcher.GetRate("tenant1", 123))
 }
+
+func TestRateBatcher_RatesClearedForInactiveStreams(t *testing.T) {
+	client := &mockUpdateRatesClient{}
+	batcher := newRateBatcher(
+		RateBatcherConfig{
+			BatchWindow: time.Hour,
+		},
+		client,
+		log.NewNopLogger(),
+		prometheus.NewRegistry(),
+	)
+
+	// First flush with streams 123 and 456.
+	batcher.Add("tenant1", []SegmentedStream{
+		{SegmentationKeyHash: 123},
+		{SegmentationKeyHash: 456},
+	})
+	batcher.flush(context.Background())
+	require.Equal(t, uint64(1000), batcher.GetRate("tenant1", 123))
+	require.Equal(t, uint64(1000), batcher.GetRate("tenant1", 456))
+
+	// Second flush with only stream 123 (456 became inactive).
+	batcher.Add("tenant1", []SegmentedStream{{SegmentationKeyHash: 123}})
+	batcher.flush(context.Background())
+
+	// Stream 123 still has a rate.
+	require.Equal(t, uint64(1000), batcher.GetRate("tenant1", 123))
+	// Stream 456 was cleared (not in last batch).
+	require.Equal(t, uint64(0), batcher.GetRate("tenant1", 456))
+}
