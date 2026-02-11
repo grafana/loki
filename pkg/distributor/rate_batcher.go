@@ -8,6 +8,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/services"
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
@@ -194,7 +195,9 @@ func (b *rateBatcher) flush(ctx context.Context) {
 			Streams: metadata,
 		}
 
-		resp, err := b.client.UpdateRates(ctx, req)
+		// Inject tenant ID into context for the RPC.
+		tenantCtx := user.InjectOrgID(ctx, tenant)
+		resp, err := b.client.UpdateRates(tenantCtx, req)
 		if err != nil {
 			level.Error(b.logger).Log(
 				"msg", "failed to flush rate batch",
