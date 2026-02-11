@@ -646,7 +646,7 @@ func TestMultipleColumnCompatPreservesValues(t *testing.T) {
 	})
 
 	// Step 2: Run second ColumnCompat (simulating logfmt parser's ColumnCompat)
-	pipeline := newColumnCompatibilityPipeline(compat, inputAfterFirstCompat, nil)
+	pipeline := newColumnCompatibilityPipeline(compat, inputAfterFirstCompat)
 	defer pipeline.Close()
 
 	batch, err := pipeline.Read(t.Context())

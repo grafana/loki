@@ -88,9 +88,9 @@ func TestCapture_ParentChildFromContext(t *testing.T) {
 
 func TestCapture_LinkParent(t *testing.T) {
 	ctx, capture := NewCapture(context.Background(), nil)
-	_, root := StartRegion(ctx, "root")       // root has parentID zero
-	ctx, _ = StartRegion(ctx, "child")       // child has parent root
-	ctx, parent := StartRegion(ctx, "parent") // parent has parent child
+	_, root := StartRegion(ctx, "root")     // root has parentID zero
+	ctx, _ = StartRegion(ctx, "child")      // child has parent root
+	_, parent := StartRegion(ctx, "parent") // parent has parent child
 	capture.LinkParent(parent)
 
 	require.Equal(t, parent.id, root.parentID, "root should be linked to parent")

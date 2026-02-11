@@ -825,7 +825,7 @@ func TestNewProjectPipeline_DuplicateColumnPanic(t *testing.T) {
 			Expand:      true,
 		}
 
-		pipeline, err := NewProjectPipeline(input, proj, evaluator, nil)
+		pipeline, err := NewProjectPipeline(input, proj, evaluator)
 		require.NoError(t, err)
 
 		ctx := t.Context()
@@ -923,7 +923,7 @@ func TestNewProjectPipeline_DuplicateColumnPanic(t *testing.T) {
 			Expand:      true,
 		}
 
-		pipeline, err := NewProjectPipeline(input, proj, evaluator, nil)
+		pipeline, err := NewProjectPipeline(input, proj, evaluator)
 		require.NoError(t, err)
 
 		ctx := t.Context()

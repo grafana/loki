@@ -723,7 +723,7 @@ func parseShards(shards []string) (*ShardInfo, error) {
 // There is not need to explicitly signal the optimizer to not push these predicates down,
 // canApplyPredicate already correctly handles this by returning an error if there is a label column ref.
 func buildDeletePredicates(ctx context.Context, deletes []*deletion.Request, params logql.Params, rangeInterval time.Duration) ([]Value, error) {
-	ctx, span := tracer.Start(ctx, "logical.buildDeletePredicates")
+	_, span := tracer.Start(ctx, "logical.buildDeletePredicates")
 	defer span.End()
 
 	var predicates []Value
