@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 )
 
 // LimitsMap is a flag.Value implementation that looks like a generic map, holding float64s, ints, or strings as values.

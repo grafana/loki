@@ -17,6 +17,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
+	"github.com/grafana/dskit/flagext"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"gopkg.in/yaml.v2"
@@ -43,36 +44,36 @@ func IsRequestBodyTooLarge(err error) bool {
 
 // BasicAuth configures basic authentication for HTTP clients.
 type BasicAuth struct {
-	Username string `yaml:"basic_auth_username"`
-	Password string `yaml:"basic_auth_password"`
+	Username string         `yaml:"basic_auth_username"`
+	Password flagext.Secret `yaml:"basic_auth_password"`
 }
 
 func (b *BasicAuth) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&b.Username, prefix+"basic-auth-username", "", "HTTP Basic authentication username. It overrides the username set in the URL (if any).")
-	f.StringVar(&b.Password, prefix+"basic-auth-password", "", "HTTP Basic authentication password. It overrides the password set in the URL (if any).")
+	f.Var(&b.Password, prefix+"basic-auth-password", "HTTP Basic authentication password. It overrides the password set in the URL (if any).")
 }
 
 // IsEnabled returns false if basic authentication isn't enabled.
 func (b BasicAuth) IsEnabled() bool {
-	return b.Username != "" || b.Password != ""
+	return b.Username != "" || b.Password.String() != ""
 }
 
 // HeaderAuth condigures header based authorization for HTTP clients.
 type HeaderAuth struct {
-	Type            string `yaml:"type,omitempty"`
-	Credentials     string `yaml:"credentials,omitempty"`
-	CredentialsFile string `yaml:"credentials_file,omitempty"`
+	Type            string         `yaml:"type,omitempty"`
+	Credentials     flagext.Secret `yaml:"credentials,omitempty"`
+	CredentialsFile string         `yaml:"credentials_file,omitempty"`
 }
 
 func (h *HeaderAuth) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&h.Type, prefix+"type", "Bearer", "HTTP Header authorization type (default: Bearer).")
-	f.StringVar(&h.Credentials, prefix+"credentials", "", "HTTP Header authorization credentials.")
+	f.Var(&h.Credentials, prefix+"credentials", "HTTP Header authorization credentials.")
 	f.StringVar(&h.CredentialsFile, prefix+"credentials-file", "", "HTTP Header authorization credentials file.")
 }
 
 // IsEnabled returns false if header authorization isn't enabled.
 func (h HeaderAuth) IsEnabled() bool {
-	return h.Credentials != "" || h.CredentialsFile != ""
+	return h.Credentials.String() != "" || h.CredentialsFile != ""
 }
 
 // WriteJSONResponse writes some JSON as a HTTP response.
