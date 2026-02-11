@@ -54,8 +54,9 @@ func TestGroupConsumer(t *testing.T) {
 	select {
 	case <-testCtx.Done():
 		require.Fail(t, "test timed out before channel was closed")
-	case _, closed := <-dst:
-		require.True(t, closed)
+	case rec, ok := <-dst:
+		require.Nil(t, rec)
+		require.False(t, ok)
 	}
 }
 
@@ -86,8 +87,8 @@ func TestSinglePartitionConsumer(t *testing.T) {
 		select {
 		case <-cancelCtx.Done():
 			t.Fatal("context canceled before all records received")
-		case record := <-dst:
-			records = append(records, record)
+		case rec := <-dst:
+			records = append(records, rec)
 		}
 	}
 
@@ -101,7 +102,8 @@ func TestSinglePartitionConsumer(t *testing.T) {
 	select {
 	case <-testCtx.Done():
 		require.Fail(t, "test timed out before channel was closed")
-	case _, closed := <-dst:
-		require.True(t, closed)
+	case rec, ok := <-dst:
+		require.Nil(t, rec)
+		require.False(t, ok)
 	}
 }
