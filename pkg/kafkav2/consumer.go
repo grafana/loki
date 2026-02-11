@@ -159,12 +159,6 @@ func NewSinglePartitionConsumer(
 		"topic":     topic,
 		"partition": strconv.Itoa(int(partition)),
 	}, r)
-	// Consume the topic and partition from the specified offset.
-	client.AddConsumePartitions(map[string]map[int32]kgo.Offset{
-		topic: {
-			partition: kgo.NewOffset().At(initialOffset),
-		},
-	})
 	c := SinglePartitionConsumer{
 		abstractConsumer: abstractConsumer{
 			client:  client,
@@ -189,6 +183,10 @@ func NewSinglePartitionConsumer(
 
 // starting implements [services.StartingFn].
 func (c *SinglePartitionConsumer) starting(_ context.Context) error {
+	// Consume the topic and partition from the specified offset.
+	c.client.AddConsumePartitions(map[string]map[int32]kgo.Offset{
+		c.topic: {c.partition: kgo.NewOffset().At(c.initialOffset)},
+	})
 	return nil
 }
 
@@ -199,5 +197,20 @@ func (c *SinglePartitionConsumer) running(ctx context.Context) error {
 
 // running implements [services.StoppingFn].
 func (c *SinglePartitionConsumer) stopping(_ error) error {
+	return nil
+}
+
+// GetInitialOffset returns the initial offset for the consumer.
+func (c *SinglePartitionConsumer) GetInitialOffset() int64 {
+	return c.initialOffset
+}
+
+// SetInitialOffset sets the initial offset for the consumer. It cannot
+// be called after the service has started.
+func (c *SinglePartitionConsumer) SetInitialOffset(offset int64) error {
+	if c.BasicService.State() != services.New {
+		return errors.New("cannot set initial offset after service has started")
+	}
+	c.initialOffset = offset
 	return nil
 }

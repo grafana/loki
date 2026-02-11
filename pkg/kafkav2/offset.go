@@ -16,8 +16,8 @@ import (
 const (
 	// Special offsets in Kafka that refer to the start or end offset for
 	// a partition.
-	OffsetStart = -2
-	OffsetEnd   = -1
+	OffsetStart = int64(-2)
+	OffsetEnd   = int64(-1)
 )
 
 type Committer struct {
