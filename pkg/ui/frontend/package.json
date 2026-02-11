@@ -60,7 +60,7 @@
     "@types/react-dom": "^19.0.0",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
-    "@vitejs/plugin-react": "^4.2.1",
+    "@vitejs/plugin-react": "^5.1.0",
     "autoprefixer": "^10.4.20",
     "depcheck": "^1.4.7",
     "eslint": "^9.0.0",
