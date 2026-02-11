@@ -6,7 +6,7 @@ run:
   # default concurrency is a available CPU number
   concurrency: 16
   # define go version
-  go: "1.24"
+  go: "1.25"
   # list of build tags, all linters use it. Default is empty list.
   build-tags:
     - cgo
