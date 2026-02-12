@@ -26,6 +26,20 @@ import (
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
+// RecordSink sends record batches to a destination. Used by drainPipeline so callers can inject mocks in tests.
+type RecordSink interface {
+	Send(ctx context.Context, rec arrow.RecordBatch) error
+}
+
+// sinksForJob returns the job's sinks as a slice for use with drainPipeline.
+func sinksForJob(job *threadJob) []RecordSink {
+	sinks := make([]RecordSink, 0, len(job.Sinks))
+	for _, s := range job.Sinks {
+		sinks = append(sinks, s)
+	}
+	return sinks
+}
+
 type threadState int
 
 const (
@@ -236,7 +250,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	if t.Limits != nil {
 		recordBatchSize = t.Limits.RecordBatchSize(job.Task.TenantID)
 	}
-	_, err = t.drainPipeline(ctx, pipeline, job, recordBatchSize, logger)
+	_, err = t.drainPipeline(ctx, pipeline, sinksForJob(job), recordBatchSize, logger)
 	if err != nil {
 		level.Warn(logger).Log("msg", "task failed", "err", err)
 		_ = job.Scheduler.SendMessageAsync(ctx, wire.TaskStatusMessage{
@@ -289,7 +303,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	}
 }
 
-func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, job *threadJob, recordBatchSizeBytes int, logger log.Logger) (int, error) {
+func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, sinks []RecordSink, recordBatchSizeBytes int, logger log.Logger) (int, error) {
 	region := xcap.RegionFromContext(ctx)
 
 	if err := pipeline.Open(ctx); err != nil {
@@ -303,7 +317,7 @@ func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, 
 	// When recordBatchSize <= 0, "batch full" is always true so each record is sent alone (no batching).
 	flush := func(toSend arrow.RecordBatch) {
 		startSend := time.Now()
-		for _, sink := range job.Sinks {
+		for _, sink := range sinks {
 			// If a sink doesn't accept the result, we'll continue
 			// best-effort processing our task. It's possible that one of
 			// the receiving sinks got canceled, and other sinks may still

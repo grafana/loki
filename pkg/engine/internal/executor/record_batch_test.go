@@ -23,6 +23,11 @@ func TestRecordBatchSizeBytes(t *testing.T) {
 	}{
 		{name: "nil returns 0", rows: nil, wantSize: 0},
 		{
+			name:     "one row",
+			rows:     &arrowtest.Rows{map[string]any{"a": int64(1), "b": "x"}},
+			wantSize: 22,
+		},
+		{
 			name: "two rows",
 			rows: &arrowtest.Rows{
 				map[string]any{"a": int64(1), "b": "x"},
