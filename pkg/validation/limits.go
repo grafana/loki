@@ -287,10 +287,10 @@ type Limits struct {
 
 	// Per tenant limits for the v2 execution engine
 
-	MaxScanTaskParallelism        int  `yaml:"max_scan_task_parallelism" json:"max_scan_task_parallelism"`
-	DebugEngineTasks              bool `yaml:"debug_engine_tasks" json:"debug_engine_tasks"`
-	DebugEngineStreams            bool `yaml:"debug_engine_streams" json:"debug_engine_streams"`
-	MetastorePointersScansPerTask int  `yaml:"metastore_pointers_scans_per_task" json:"metastore_pointers_scans_per_task"`
+	MaxScanTaskParallelism        int              `yaml:"max_scan_task_parallelism" json:"max_scan_task_parallelism"`
+	DebugEngineTasks              bool             `yaml:"debug_engine_tasks" json:"debug_engine_tasks"`
+	DebugEngineStreams            bool             `yaml:"debug_engine_streams" json:"debug_engine_streams"`
+	MetastorePointersScansPerTask int              `yaml:"metastore_pointers_scans_per_task" json:"metastore_pointers_scans_per_task"`
 	RecordBatchSize               flagext.ByteSize `yaml:"record_batch_size" json:"record_batch_size"`
 }
 
