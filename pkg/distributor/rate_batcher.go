@@ -137,8 +137,7 @@ func (b *rateBatcher) Add(tenant string, streams []SegmentedStream) map[uint64]u
 
 	for _, stream := range streams {
 		hash := stream.SegmentationKeyHash
-		entriesSize, structuredMetadataSize := calculateStreamSizes(stream.Stream)
-		totalSize := entriesSize + structuredMetadataSize
+		totalSize := uint64(stream.Stream.Size())
 
 		// If we already have this stream in the pending batch, accumulate the size.
 		if existing, ok := tenantPending[hash]; ok {
