@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"strings"
 
 	"github.com/apache/arrow-go/v18/arrow"
@@ -521,9 +520,8 @@ func (d *recordBatchLabelDecorator) Reset(innerOpts dataset.RowReaderOptions, op
 
 func (d *recordBatchLabelDecorator) Read(ctx context.Context, alloc *memoryv2.Allocator, batchSize int) (*columnarv2.RecordBatch, error) {
 	rb, err := d.inner.Read(ctx, alloc, batchSize)
-	if err != nil && !errors.Is(err, io.EOF) {
-		return rb, err
-	}
+	// Any error, err, is returned to the caller to handle.
+	// The decorator must always decorate rb, so it must not short circuit.
 
 	if d.streamIDColumnIndex == -1 {
 		// We aren't reading any stream IDs this time
