@@ -98,8 +98,6 @@ func (b *rateBatcher) running(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			// Flush any remaining pending streams before shutting down.
-			b.flush(context.Background())
 			return nil
 		case <-ticker.C:
 			b.flush(ctx)
