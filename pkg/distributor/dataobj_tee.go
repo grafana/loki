@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/twmb/franz-go/pkg/kgo"
@@ -246,6 +247,11 @@ func (t *DataObjTee) observeDuplicate(partition int32, tenant, segmentationKey s
 	).Inc()
 }
 
-func (t *DataObjTee) RateBatcher() *rateBatcher {
+// RateBatcher returns the rate batcher service if batching is enabled, nil otherwise.
+// This is used to add the batcher to the distributor's subservices for lifecycle management.
+func (t *DataObjTee) RateBatcher() services.Service {
+	if t.rateBatcher == nil {
+		return nil
+	}
 	return t.rateBatcher
 }
