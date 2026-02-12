@@ -78,7 +78,7 @@ func (s *dataobjScan) init(ctx context.Context) error {
 	// [dataobjScan.initLogs] depends on the result of [dataobjScan.initStreams]
 	// (to know whether label columns are needed), so we must initialize streams
 	// first.
-	if err := s.initStreams(); err != nil {
+	if err := s.initStreams(ctx); err != nil {
 		return fmt.Errorf("initializing streams: %w", err)
 	} else if err := s.initLogs(ctx); err != nil {
 		return fmt.Errorf("initializing logs: %w", err)
@@ -89,7 +89,7 @@ func (s *dataobjScan) init(ctx context.Context) error {
 	return nil
 }
 
-func (s *dataobjScan) initStreams() error {
+func (s *dataobjScan) initStreams(ctx context.Context) error {
 	if s.opts.StreamsSection == nil {
 		return fmt.Errorf("no streams section provided")
 	}
@@ -106,6 +106,9 @@ func (s *dataobjScan) initStreams() error {
 		LabelColumns: columnsToRead,
 		BatchSize:    int(s.opts.BatchSize),
 	})
+	if err := s.streams.Open(ctx); err != nil {
+		return fmt.Errorf("opening streams view: %w", err)
+	}
 
 	s.streamsInjector = newStreamInjector(s.streams)
 	return nil
@@ -378,7 +381,7 @@ func (s *dataobjScan) read(ctx context.Context) (arrow.RecordBatch, error) {
 		return rec, nil
 	}
 
-	return s.streamsInjector.Inject(ctx, rec)
+	return s.streamsInjector.Inject(rec)
 }
 
 // Close closes s and releases all resources.

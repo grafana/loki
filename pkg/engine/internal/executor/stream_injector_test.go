@@ -30,9 +30,10 @@ func Test_streamInjector(t *testing.T) {
 
 	view := newStreamsView(sec, &streamsViewOptions{})
 	defer view.Close()
+	require.NoError(t, view.Open(t.Context()))
 
 	injector := newStreamInjector(view)
-	output, err := injector.Inject(t.Context(), record)
+	output, err := injector.Inject(record)
 	require.NoError(t, err)
 
 	expect := arrowtest.Rows{

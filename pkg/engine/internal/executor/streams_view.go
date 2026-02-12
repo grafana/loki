@@ -18,8 +18,6 @@ import (
 
 // streamsView provides a view of the streams in a section, allowing for
 // querying labels of a stream.
-//
-// streamsView lazily loads streams upon the first call.
 type streamsView struct {
 	sec           *streams.Section
 	streamIDs     []int64
@@ -89,12 +87,19 @@ func (v *streamsView) NumLabels() int {
 	return len(v.searchColumns) - 1
 }
 
+var errStreamsViewNotOpen = errors.New("streams view not opened")
+
+// Open initializes streamsView resources.
+func (v *streamsView) Open(ctx context.Context) error {
+	return v.init(ctx)
+}
+
 // Labels returns all of the non-null labels of a stream with the given
 // id. If [streamsViewOptions] included a subset of labels, only those labels
 // are returned.
-func (v *streamsView) Labels(ctx context.Context, id int64) ([]labels.Label, error) {
-	if err := v.init(ctx); err != nil {
-		return nil, err
+func (v *streamsView) Labels(id int64) ([]labels.Label, error) {
+	if !v.initialized {
+		return nil, errStreamsViewNotOpen
 	}
 
 	lbs, ok := v.streamLabels[id]

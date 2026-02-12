@@ -2,7 +2,6 @@ package executor
 
 import (
 	"cmp"
-	"context"
 	"fmt"
 	"slices"
 
@@ -39,7 +38,7 @@ func newStreamInjector(view *streamsView) *streamInjector {
 //
 // Inject fails if there is no stream ID column in the input record, or if the
 // stream ID doesn't exist in the view given to [newStreamInjector].
-func (si *streamInjector) Inject(ctx context.Context, in arrow.RecordBatch) (arrow.RecordBatch, error) {
+func (si *streamInjector) Inject(in arrow.RecordBatch) (arrow.RecordBatch, error) {
 	streamIDCol, streamIDIndex, err := columnForIdent(streamInjectorColumnIdent, in)
 	if err != nil {
 		return nil, err
@@ -82,7 +81,7 @@ func (si *streamInjector) Inject(ctx context.Context, in arrow.RecordBatch) (arr
 		// TODO(rfratto): this flips the processing of stream IDs into row-based
 		// processing. It may be more efficient to vectorize this by building each
 		// label column all at once.
-		lbs, err := si.view.Labels(ctx, findID)
+		lbs, err := si.view.Labels(findID)
 		if err != nil {
 			return nil, err
 		}
