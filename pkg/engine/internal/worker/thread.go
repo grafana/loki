@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"runtime/pprof"
 	"sync"
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/user"
@@ -16,6 +18,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/engine/internal/arrowagg"
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
@@ -333,27 +336,29 @@ func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, 
 		toSend.Release()
 	}
 
-	// flushBatch flushes the current batch (concatenate and send). It always clears batch and currentBatchSize.
+	// flushBatch flushes the current batch (aggregate with schema reconciliation and send). It always clears batch and currentBatchSize.
 	flushBatch := func() {
 		if len(batch) == 0 {
 			return
 		}
 
-		// Concatenate into a single record, release the batch records, and reset the batch state
-		concatenated, err := executor.ConcatenateRecordBatches(batch)
-		for _, r := range batch {
-			r.Release()
+		compactor := arrowagg.NewRecords(memory.DefaultAllocator)
+		for _, rec := range batch {
+			compactor.Append(rec)
 		}
+		batchToRelease := batch
 		batch = nil
 		currentBatchSize = 0
 
-		// Similarly to failed Send to sinks, we'll continue best-effort processing our task.
+		combined, err := compactor.Aggregate()
+		for _, r := range batchToRelease {
+			r.Release()
+		}
 		if err != nil {
-			level.Warn(logger).Log("msg", "failed to concatenate record batch", "err", err)
+			level.Warn(logger).Log("msg", "failed to aggregate record batch", "err", err)
 			return
 		}
-
-		flush(concatenated)
+		flush(combined)
 	}
 
 	for {
@@ -376,7 +381,7 @@ func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, 
 		}
 
 		// If we have a batch in progress and the new record would make it too large, flush the batch.
-		recSize := executor.RecordBatchSizeBytes(rec)
+		recSize := recordSizeBytes(rec)
 		if len(batch) > 0 && currentBatchSize+recSize > recordBatchSizeBytes {
 			flushBatch()
 		}
@@ -397,4 +402,21 @@ func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, 
 	flushBatch()
 
 	return totalRows, nil
+}
+
+// recordSizeBytes returns the approximate size in bytes of the record batch,
+// by summing the size of all column data (including nested buffers).
+// It is used to decide when to flush batched records in drainPipeline.
+func recordSizeBytes(rec arrow.RecordBatch) int {
+	if rec == nil {
+		return 0
+	}
+	var n uint64
+	for i := 0; i < int(rec.NumCols()); i++ {
+		n += rec.Column(i).Data().SizeInBytes()
+	}
+	if n > math.MaxInt {
+		return math.MaxInt
+	}
+	return int(n)
 }

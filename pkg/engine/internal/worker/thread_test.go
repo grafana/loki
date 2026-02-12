@@ -15,10 +15,12 @@ import (
 )
 
 // mockRecordSink records each Send call and total rows for testing.
+// RecordedFieldNames is the list of field names (in order) for each received record.
 type mockRecordSink struct {
-	mu        sync.Mutex
-	SendCount int
-	TotalRows int64
+	mu                 sync.Mutex
+	SendCount          int
+	TotalRows          int64
+	RecordedFieldNames [][]string
 }
 
 func (m *mockRecordSink) Send(_ context.Context, rec arrow.RecordBatch) error {
@@ -26,31 +28,46 @@ func (m *mockRecordSink) Send(_ context.Context, rec arrow.RecordBatch) error {
 	defer m.mu.Unlock()
 	m.SendCount++
 	m.TotalRows += rec.NumRows()
+	if rec != nil && rec.Schema() != nil {
+		n := rec.Schema().NumFields()
+		names := make([]string, n)
+		for i := 0; i < n; i++ {
+			names[i] = rec.Schema().Field(i).Name
+		}
+		m.RecordedFieldNames = append(m.RecordedFieldNames, names)
+	}
 	return nil
 }
 
+// recordInput pairs a schema with rows to build one record for pipeline tests.
+type recordInput struct {
+	Schema *arrow.Schema
+	Rows   arrowtest.Rows
+}
+
 func TestThread_drainPipeline(t *testing.T) {
-	schema := arrow.NewSchema([]arrow.Field{
+	schemaAB := arrow.NewSchema([]arrow.Field{
 		{Name: "a", Type: arrow.PrimitiveTypes.Int64, Nullable: true},
 		{Name: "b", Type: arrow.BinaryTypes.String, Nullable: true},
 	}, nil)
 
-	makeRecord := func(rows arrowtest.Rows) arrow.RecordBatch {
-		return rows.Record(memory.DefaultAllocator, schema)
-	}
-
 	tests := []struct {
 		name                 string
 		recordBatchSizeBytes int
-		numRecords           int
+		inputs               []recordInput
 		wantTotalRows        int
 		checkSends           func(t *testing.T, sendCount int, totalRows int64)
+		checkFieldNames      func(t *testing.T, fieldNames [][]string)
 	}{
 		{
 			name:                 "recordBatchSizeBytes=0 sink receives one send per record",
 			recordBatchSizeBytes: 0,
-			numRecords:           3,
-			wantTotalRows:        3,
+			inputs: []recordInput{
+				{schemaAB, arrowtest.Rows{map[string]any{"a": int64(1), "b": "x"}}},
+				{schemaAB, arrowtest.Rows{map[string]any{"a": int64(2), "b": "x"}}},
+				{schemaAB, arrowtest.Rows{map[string]any{"a": int64(3), "b": "x"}}},
+			},
+			wantTotalRows: 3,
 			checkSends: func(t *testing.T, sendCount int, totalRows int64) {
 				require.Equal(t, 3, sendCount, "sink should receive one send per record when batching is disabled")
 				require.Equal(t, int64(3), totalRows)
@@ -58,9 +75,15 @@ func TestThread_drainPipeline(t *testing.T) {
 		},
 		{
 			name:                 "recordBatchSizeBytes fits exactly two 1-row records per batch",
-			recordBatchSizeBytes: 44, // 2 * size of one 1-row record (22 bytes) with this schema
-			numRecords:           5,
-			wantTotalRows:        5,
+			recordBatchSizeBytes: 44, // 2 * size of one 1-row record (22 bytes) with schemaAB
+			inputs: []recordInput{
+				{schemaAB, arrowtest.Rows{map[string]any{"a": int64(1), "b": "x"}}},
+				{schemaAB, arrowtest.Rows{map[string]any{"a": int64(2), "b": "x"}}},
+				{schemaAB, arrowtest.Rows{map[string]any{"a": int64(3), "b": "x"}}},
+				{schemaAB, arrowtest.Rows{map[string]any{"a": int64(4), "b": "x"}}},
+				{schemaAB, arrowtest.Rows{map[string]any{"a": int64(5), "b": "x"}}},
+			},
+			wantTotalRows: 5,
 			checkSends: func(t *testing.T, sendCount int, totalRows int64) {
 				require.Equal(t, 3, sendCount, "5 records with 2 per batch => 2+2+1 sends")
 				require.Equal(t, int64(5), totalRows, "all rows must be received regardless of batching")
@@ -69,11 +92,44 @@ func TestThread_drainPipeline(t *testing.T) {
 		{
 			name:                 "record larger than recordBatchSizeBytes is written alone",
 			recordBatchSizeBytes: 10, // smaller than one 1-row record (22 bytes)
-			numRecords:           3,
-			wantTotalRows:        3,
+			inputs: []recordInput{
+				{schemaAB, arrowtest.Rows{map[string]any{"a": int64(1), "b": "x"}}},
+				{schemaAB, arrowtest.Rows{map[string]any{"a": int64(2), "b": "x"}}},
+				{schemaAB, arrowtest.Rows{map[string]any{"a": int64(3), "b": "x"}}},
+			},
+			wantTotalRows: 3,
 			checkSends: func(t *testing.T, sendCount int, totalRows int64) {
 				require.Equal(t, 3, sendCount, "each record exceeds batch limit so each is sent alone")
 				require.Equal(t, int64(3), totalRows)
+			},
+		},
+		{
+			name:                 "records with different schemas are batched with union schema",
+			recordBatchSizeBytes: 10000, // large enough to batch both records
+			inputs: []recordInput{
+				{
+					arrow.NewSchema([]arrow.Field{
+						{Name: "a", Type: arrow.PrimitiveTypes.Int64, Nullable: true},
+						{Name: "b", Type: arrow.BinaryTypes.String, Nullable: true},
+					}, nil),
+					arrowtest.Rows{map[string]any{"a": int64(1), "b": "x"}},
+				},
+				{
+					arrow.NewSchema([]arrow.Field{
+						{Name: "b", Type: arrow.BinaryTypes.String, Nullable: true},
+						{Name: "c", Type: arrow.PrimitiveTypes.Int64, Nullable: true},
+					}, nil),
+					arrowtest.Rows{map[string]any{"b": "y", "c": int64(2)}},
+				},
+			},
+			wantTotalRows: 2,
+			checkSends: func(t *testing.T, sendCount int, totalRows int64) {
+				require.Equal(t, 1, sendCount, "one batched send with schema reconciliation")
+				require.Equal(t, int64(2), totalRows)
+			},
+			checkFieldNames: func(t *testing.T, fieldNames [][]string) {
+				require.Len(t, fieldNames, 1, "one record received")
+				require.Equal(t, []string{"a", "b", "c"}, fieldNames[0], "union schema order first seen: a,b from first record then c from second")
 			},
 		},
 	}
@@ -81,9 +137,9 @@ func TestThread_drainPipeline(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := t.Context()
-			records := make([]arrow.RecordBatch, tt.numRecords)
-			for i := 0; i < tt.numRecords; i++ {
-				records[i] = makeRecord(arrowtest.Rows{map[string]any{"a": int64(i + 1), "b": "x"}})
+			records := make([]arrow.RecordBatch, len(tt.inputs))
+			for i, in := range tt.inputs {
+				records[i] = in.Rows.Record(memory.DefaultAllocator, in.Schema)
 			}
 			pipeline := executor.NewBufferedPipeline(records...)
 			defer pipeline.Close()
@@ -97,8 +153,13 @@ func TestThread_drainPipeline(t *testing.T) {
 			sink.mu.Lock()
 			sendCount := sink.SendCount
 			totalRowsReceived := sink.TotalRows
+			fieldNames := append([][]string(nil), sink.RecordedFieldNames...)
 			sink.mu.Unlock()
+
 			tt.checkSends(t, sendCount, totalRowsReceived)
+			if tt.checkFieldNames != nil {
+				tt.checkFieldNames(t, fieldNames)
+			}
 		})
 	}
 }
