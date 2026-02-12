@@ -475,6 +475,11 @@ func forEachStreamWithColumns(ctx context.Context, object *dataobj.Object, match
 			Allocator:  memory.DefaultAllocator,
 		}
 		reader.Reset(readerOpts)
+
+		if err := reader.Open(ctx); err != nil {
+			return fmt.Errorf("opening streams reader: %w", err)
+		}
+
 		requestedColumnValues := make(map[string]string, len(requestedColumns))
 		for {
 			rec, err := reader.Read(ctx, 8192)
@@ -528,6 +533,10 @@ func forEachStream(ctx context.Context, object *dataobj.Object, predicate stream
 				return err
 			}
 		}
+		if err := reader.Open(ctx); err != nil {
+			return fmt.Errorf("opening streams row reader: %w", err)
+		}
+
 		for {
 			num, err := reader.Read(ctx, buf)
 			if err != nil && !errors.Is(err, io.EOF) {

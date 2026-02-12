@@ -180,6 +180,9 @@ func (v *streamsView) init(ctx context.Context) (err error) {
 
 	r := streams.NewReader(readerOptions)
 	defer r.Close()
+	if err := r.Open(ctx); err != nil {
+		return fmt.Errorf("opening streams reader: %w", err)
+	}
 
 	var records []arrow.RecordBatch
 

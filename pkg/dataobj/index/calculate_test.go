@@ -210,6 +210,8 @@ func requireValidPointers(t *testing.T, obj *dataobj.Object) {
 		require.NoError(t, err)
 
 		reader := pointers.NewRowReader(sec)
+		require.NoError(t, reader.Open(context.Background()))
+
 		buf := make([]pointers.SectionPointer, 1024)
 		for {
 			n, err := reader.Read(context.Background(), buf)

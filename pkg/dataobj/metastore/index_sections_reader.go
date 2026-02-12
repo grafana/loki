@@ -512,6 +512,9 @@ func (r *indexSectionsReader) prepareForNextSectionOrSkip(ctx context.Context) (
 		Allocator:            memory.DefaultAllocator,
 		StreamIDToLabelNames: r.labelNamesByStream,
 	})
+	if err := r.pointersReader.Open(ctx); err != nil {
+		return false, fmt.Errorf("opening pointers reader: %w", err)
+	}
 
 	return false, nil
 }
@@ -612,6 +615,9 @@ func forEachMatchedPointerSectionKey(
 				Allocator: memory.DefaultAllocator,
 			},
 		)
+		if err := reader.Open(ctx); err != nil {
+			return fmt.Errorf("opening pointers reader: %w", err)
+		}
 
 		for {
 			rec, readErr := reader.Read(ctx, batchSize)
