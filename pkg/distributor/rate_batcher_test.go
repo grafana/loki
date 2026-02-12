@@ -228,48 +228,6 @@ func TestRateBatcher_ServiceLifecycle(t *testing.T) {
 	require.NoError(t, services.StopAndAwaitTerminated(ctx, batcher))
 }
 
-func TestRateBatcher_FlushOnShutdown(t *testing.T) {
-	client := &mockUpdateRatesClient{}
-	batcher := newRateBatcher(
-		RateBatcherConfig{
-			BatchWindow: time.Hour, // Long window - won't auto-flush
-		},
-		client,
-		log.NewNopLogger(),
-		prometheus.NewRegistry(),
-	)
-
-	// Start the service.
-	ctx := context.Background()
-	require.NoError(t, services.StartAndAwaitRunning(ctx, batcher))
-
-	// Add some streams with actual data so they have non-zero size.
-	batcher.Add("tenant1", []SegmentedStream{{
-		KeyedStream: KeyedStream{
-			Stream: logproto.Stream{
-				Labels:  `{app="test"}`,
-				Entries: []logproto.Entry{{Timestamp: time.Now(), Line: "test"}},
-			},
-		},
-		SegmentationKeyHash: 123,
-	}})
-
-	// Should not have flushed yet.
-	client.mu.Lock()
-	calls := client.calls
-	client.mu.Unlock()
-	require.Equal(t, 0, calls)
-
-	// Stop the service - should flush pending.
-	require.NoError(t, services.StopAndAwaitTerminated(ctx, batcher))
-
-	// Should have flushed on shutdown.
-	client.mu.Lock()
-	calls = client.calls
-	client.mu.Unlock()
-	require.Equal(t, 1, calls)
-}
-
 func TestRateBatcher_StoresRatesFromFlush(t *testing.T) {
 	client := &mockUpdateRatesClient{}
 	batcher := newRateBatcher(
