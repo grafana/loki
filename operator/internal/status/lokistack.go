@@ -108,7 +108,8 @@ func generateCondition(ctx context.Context, cs *lokiv1.LokiStackComponentStatus,
 		len(cs.QueryFrontend[lokiv1.PodFailed]) +
 		len(cs.Gateway[lokiv1.PodFailed]) +
 		len(cs.IndexGateway[lokiv1.PodFailed]) +
-		len(cs.Ruler[lokiv1.PodFailed])
+		len(cs.Ruler[lokiv1.PodFailed]) +
+		len(cs.PatternIngester[lokiv1.PodFailed])
 
 	if failed != 0 {
 		return conditionFailed, nil
@@ -122,7 +123,8 @@ func generateCondition(ctx context.Context, cs *lokiv1.LokiStackComponentStatus,
 		len(cs.QueryFrontend[lokiv1.PodPending]) +
 		len(cs.Gateway[lokiv1.PodPending]) +
 		len(cs.IndexGateway[lokiv1.PodPending]) +
-		len(cs.Ruler[lokiv1.PodPending])
+		len(cs.Ruler[lokiv1.PodPending]) +
+		len(cs.PatternIngester[lokiv1.PodPending])
 
 	if pending != 0 {
 		if stack.Spec.Replication != nil && len(stack.Spec.Replication.Zones) > 0 {
@@ -153,7 +155,8 @@ func generateCondition(ctx context.Context, cs *lokiv1.LokiStackComponentStatus,
 		len(cs.QueryFrontend[lokiv1.PodRunning]) +
 		len(cs.Gateway[lokiv1.PodRunning]) +
 		len(cs.IndexGateway[lokiv1.PodRunning]) +
-		len(cs.Ruler[lokiv1.PodRunning])
+		len(cs.Ruler[lokiv1.PodRunning]) +
+		len(cs.PatternIngester[lokiv1.PodRunning])
 
 	if running > 0 {
 		return conditionRunning, nil

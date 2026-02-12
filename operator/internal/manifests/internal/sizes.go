@@ -15,23 +15,25 @@ type ComponentResources struct {
 	Ruler        ResourceRequirements
 	WALStorage   ResourceRequirements
 	// these two don't need a PVCSize
-	Querier       corev1.ResourceRequirements
-	Distributor   corev1.ResourceRequirements
-	QueryFrontend corev1.ResourceRequirements
-	Gateway       corev1.ResourceRequirements
+	Querier         corev1.ResourceRequirements
+	Distributor     corev1.ResourceRequirements
+	QueryFrontend   corev1.ResourceRequirements
+	Gateway         corev1.ResourceRequirements
+	PatternIngester corev1.ResourceRequirements
 }
 
 func (c ComponentResources) DeepCopy() ComponentResources {
 	return ComponentResources{
-		IndexGateway:  *c.IndexGateway.DeepCopy(),
-		Ingester:      *c.Ingester.DeepCopy(),
-		Compactor:     *c.Compactor.DeepCopy(),
-		Ruler:         *c.Ruler.DeepCopy(),
-		WALStorage:    *c.WALStorage.DeepCopy(),
-		Querier:       *c.Querier.DeepCopy(),
-		Distributor:   *c.Distributor.DeepCopy(),
-		QueryFrontend: *c.QueryFrontend.DeepCopy(),
-		Gateway:       *c.Gateway.DeepCopy(),
+		IndexGateway:    *c.IndexGateway.DeepCopy(),
+		Ingester:        *c.Ingester.DeepCopy(),
+		Compactor:       *c.Compactor.DeepCopy(),
+		Ruler:           *c.Ruler.DeepCopy(),
+		WALStorage:      *c.WALStorage.DeepCopy(),
+		Querier:         *c.Querier.DeepCopy(),
+		Distributor:     *c.Distributor.DeepCopy(),
+		QueryFrontend:   *c.QueryFrontend.DeepCopy(),
+		Gateway:         *c.Gateway.DeepCopy(),
+		PatternIngester: *c.PatternIngester.DeepCopy(),
 	}
 }
 
@@ -125,6 +127,12 @@ var resourceRequirementsTable = map[lokiv1.LokiStackSizeType]ComponentResources{
 		WALStorage: ResourceRequirements{
 			PVCSize: resource.MustParse("150Gi"),
 		},
+		PatternIngester: corev1.ResourceRequirements{
+			Requests: map[corev1.ResourceName]resource.Quantity{
+				corev1.ResourceCPU:    resource.MustParse("50m"),
+				corev1.ResourceMemory: resource.MustParse("1.5Gi"),
+			},
+		},
 	},
 	lokiv1.SizeOneXExtraSmall: {
 		Querier: corev1.ResourceRequirements{
@@ -181,6 +189,12 @@ var resourceRequirementsTable = map[lokiv1.LokiStackSizeType]ComponentResources{
 		},
 		WALStorage: ResourceRequirements{
 			PVCSize: resource.MustParse("150Gi"),
+		},
+		PatternIngester: corev1.ResourceRequirements{
+			Requests: map[corev1.ResourceName]resource.Quantity{
+				corev1.ResourceCPU:    resource.MustParse("50m"),
+				corev1.ResourceMemory: resource.MustParse("3Gi"),
+			},
 		},
 	},
 	lokiv1.SizeOneXSmall: {
@@ -239,6 +253,12 @@ var resourceRequirementsTable = map[lokiv1.LokiStackSizeType]ComponentResources{
 		WALStorage: ResourceRequirements{
 			PVCSize: resource.MustParse("150Gi"),
 		},
+		PatternIngester: corev1.ResourceRequirements{
+			Requests: map[corev1.ResourceName]resource.Quantity{
+				corev1.ResourceCPU:    resource.MustParse("100m"),
+				corev1.ResourceMemory: resource.MustParse("4Gi"),
+			},
+		},
 	},
 	lokiv1.SizeOneXMedium: {
 		Querier: corev1.ResourceRequirements{
@@ -296,6 +316,12 @@ var resourceRequirementsTable = map[lokiv1.LokiStackSizeType]ComponentResources{
 		WALStorage: ResourceRequirements{
 			PVCSize: resource.MustParse("150Gi"),
 		},
+		PatternIngester: corev1.ResourceRequirements{
+			Requests: map[corev1.ResourceName]resource.Quantity{
+				corev1.ResourceCPU:    resource.MustParse("200"),
+				corev1.ResourceMemory: resource.MustParse("10Gi"),
+			},
+		},
 	},
 }
 
@@ -312,6 +338,7 @@ func ResourceRequirementsForSize(size lokiv1.LokiStackSizeType, useRequestsAsLim
 		resources.Distributor.Limits = resources.Distributor.Requests.DeepCopy()
 		resources.QueryFrontend.Limits = resources.QueryFrontend.Requests.DeepCopy()
 		resources.Gateway.Limits = resources.Gateway.Requests.DeepCopy()
+		resources.PatternIngester.Limits = resources.PatternIngester.Requests.DeepCopy()
 	}
 	return resources
 }
@@ -373,6 +400,9 @@ var StackSizeTable = map[lokiv1.LokiStackSizeType]lokiv1.LokiStackSpec{
 			Ruler: &lokiv1.LokiComponentSpec{
 				Replicas: 1,
 			},
+			PatternIngester: &lokiv1.LokiComponentSpec{
+				Replicas: 1,
+			},
 		},
 	},
 
@@ -431,6 +461,9 @@ var StackSizeTable = map[lokiv1.LokiStackSizeType]lokiv1.LokiStackSpec{
 			},
 			Ruler: &lokiv1.LokiComponentSpec{
 				Replicas: 2,
+			},
+			PatternIngester: &lokiv1.LokiComponentSpec{
+				Replicas: 1,
 			},
 		},
 	},
