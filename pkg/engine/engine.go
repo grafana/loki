@@ -61,7 +61,6 @@ type ExecutorConfig struct {
 	// Batch size of the v2 execution engine.
 	BatchSize int `yaml:"batch_size" category:"experimental"`
 
-	// MergePrefetchCount controls the number of inputs that are prefetched simultaneously by any Merge node.
 	MergePrefetchCount int `yaml:"merge_prefetch_count" category:"experimental"`
 
 	// RangeConfig determines how to optimize range reads in the V2 engine.

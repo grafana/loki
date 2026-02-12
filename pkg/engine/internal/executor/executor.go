@@ -40,7 +40,6 @@ type Config struct {
 	Bucket    objstore.Bucket
 	Metastore metastore.Metastore
 
-	// MergePrefetchCount controls the number of inputs that are prefetched simultaneously by any Merge node.
 	MergePrefetchCount int
 
 	// GetExternalInputs is an optional function called for each node in the
@@ -55,15 +54,15 @@ type Config struct {
 
 func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger) Pipeline {
 	c := &Context{
-		plan:                plan,
-		batchSize:           cfg.BatchSize,
-		mergePrefetchCount:  cfg.MergePrefetchCount,
-		bucket:            cfg.Bucket,
-		metastore:         cfg.Metastore,
-		logger:            logger,
-		evaluator:         newExpressionEvaluator(),
-		getExternalInputs: cfg.GetExternalInputs,
-		streamFilterer:    cfg.StreamFilterer,
+		plan:               plan,
+		batchSize:          cfg.BatchSize,
+		mergePrefetchCount: cfg.MergePrefetchCount,
+		bucket:             cfg.Bucket,
+		metastore:          cfg.Metastore,
+		logger:             logger,
+		evaluator:          newExpressionEvaluator(),
+		getExternalInputs:  cfg.GetExternalInputs,
+		streamFilterer:     cfg.StreamFilterer,
 	}
 	if plan == nil {
 		return errorPipeline(ctx, errors.New("plan is nil"))

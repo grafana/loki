@@ -47,70 +47,79 @@ func TestMerge(t *testing.T) {
 		inputRows[i] = rows
 	}
 
-	t.Run("context=full", func(t *testing.T) {
-		// Create fresh inputs using the pre-generated data
-		inputs := make([]Pipeline, n)
-		for i := range len(inputs) {
-			inputs[i] = NewArrowtestPipeline(schema, inputRows[i]...)
-		}
+	// Test different concurrency settings
+	//  0 ... no prefetching of next input / only current input is prefetched
+	//  1 ... next input is prefetched
+	//  3 ... number of prefetched inputs is equal to the number of inputs
+	//  5 ... number of prefetched inputs is greater than the number of inputs
+	// -1 ... unlimited/all inputs are prefetched
+	for _, maxPrefetch := range []int{0, 1, n, 5, -1} {
 
-		m, err := newMergePipeline(inputs, 0, nil)
-		require.NoError(t, err)
-		defer m.Close()
-
-		ctx := t.Context()
-		var actualRows []arrowtest.Rows
-
-		// Read all records from the merge pipeline
-		for {
-			rec, err := m.Read(ctx)
-			if errors.Is(err, EOF) {
-				t.Log("stop reading from pipeline:", err)
-				break
+		t.Run(fmt.Sprintf("context=full/maxPrefetch=%d", maxPrefetch), func(t *testing.T) {
+			// Create fresh inputs using the pre-generated data
+			inputs := make([]Pipeline, n)
+			for i := range len(inputs) {
+				inputs[i] = NewArrowtestPipeline(schema, inputRows[i]...)
 			}
-			require.NoError(t, err, "Unexpected error during read")
 
-			rows, err := arrowtest.RecordRows(rec)
+			m, err := newMergePipeline(inputs, maxPrefetch, nil)
 			require.NoError(t, err)
+			defer m.Close()
 
-			actualRows = append(actualRows, rows)
-		}
+			ctx := t.Context()
+			var actualRows []arrowtest.Rows
 
-		// Compare actual vs expected rows
-		// Order of processed inputs must stay the same
-		require.Equal(t, expectedRows, actualRows)
-	})
+			// Read all records from the merge pipeline
+			for {
+				rec, err := m.Read(ctx)
+				if errors.Is(err, EOF) {
+					t.Log("stop reading from pipeline:", err)
+					break
+				}
+				require.NoError(t, err, "Unexpected error during read")
 
-	t.Run("context=canceled", func(t *testing.T) {
-		// Create fresh inputs using the pre-generated data
-		inputs := make([]Pipeline, n)
-		for i := range len(inputs) {
-			inputs[i] = NewArrowtestPipeline(schema, inputRows[i]...)
-		}
+				rows, err := arrowtest.RecordRows(rec)
+				require.NoError(t, err)
 
-		m, err := newMergePipeline(inputs, 0, nil)
-		require.NoError(t, err)
-		defer m.Close()
-
-		ctx := t.Context()
-		ctx, cancel := context.WithCancel(ctx)
-		defer cancel()
-
-		var gotRows int64
-		for {
-			// Cancel the context once half of the expected/generated rows was consumed
-			if gotRows > int64(len(expectedRows)/2) {
-				cancel()
+				actualRows = append(actualRows, rows)
 			}
 
-			rec, err := m.Read(ctx)
-			if errors.Is(err, EOF) || errors.Is(err, context.Canceled) {
-				t.Log("stop reading from pipeline:", err)
-				break
-			}
-			require.NoError(t, err, "Unexpected error during read")
+			// Compare actual vs expected rows
+			// Order of processed inputs must stay the same
+			require.Equal(t, expectedRows, actualRows)
+		})
 
-			gotRows += rec.NumRows()
-		}
-	})
+		t.Run(fmt.Sprintf("context=canceled/maxPrefetch=%d", maxPrefetch), func(t *testing.T) {
+			// Create fresh inputs using the pre-generated data
+			inputs := make([]Pipeline, n)
+			for i := range len(inputs) {
+				inputs[i] = NewArrowtestPipeline(schema, inputRows[i]...)
+			}
+
+			m, err := newMergePipeline(inputs, maxPrefetch, nil)
+			require.NoError(t, err)
+			defer m.Close()
+
+			ctx := t.Context()
+			ctx, cancel := context.WithCancel(ctx)
+			defer cancel()
+
+			var gotRows int64
+			for {
+				// Cancel the context once half of the expected/generated rows was consumed
+				if gotRows > int64(len(expectedRows)/2) {
+					cancel()
+				}
+
+				rec, err := m.Read(ctx)
+				if errors.Is(err, EOF) || errors.Is(err, context.Canceled) {
+					t.Log("stop reading from pipeline:", err)
+					break
+				}
+				require.NoError(t, err, "Unexpected error during read")
+
+				gotRows += rec.NumRows()
+			}
+		})
+	}
 }

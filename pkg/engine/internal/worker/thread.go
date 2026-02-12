@@ -149,11 +149,10 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	)
 
 	cfg := executor.Config{
-		BatchSize:          t.BatchSize,
-		MergePrefetchCount: t.MergePrefetchCount,
-		Bucket:             bucket.NewXCapBucket(t.Bucket),
-		Metastore:          t.Metastore,
-		StreamFilterer:     t.StreamFilterer,
+		BatchSize:      t.BatchSize,
+		Bucket:         bucket.NewXCapBucket(t.Bucket),
+		Metastore:      t.Metastore,
+		StreamFilterer: t.StreamFilterer,
 
 		GetExternalInputs: func(_ context.Context, node physical.Node) []executor.Pipeline {
 			streams := job.Task.Sources[node]
