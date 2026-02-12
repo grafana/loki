@@ -3318,6 +3318,11 @@ dataobj_tee:
   # Enables optional debug metrics.
   # CLI flag: -distributor.dataobj-tee.debug-metrics-enabled
   [debug_metrics_enabled: <boolean> | default = false]
+
+  # Duration to accumulate rate updates before sending to limits frontend. Set
+  # to 0 to disable batching.
+  # CLI flag: -distributor.dataobj-tee.rate-batch-window
+  [rate_batch_window: <duration> | default = 0s]
 ```
 
 ### etcd
