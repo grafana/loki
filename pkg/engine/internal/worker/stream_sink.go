@@ -117,6 +117,13 @@ func (sink *streamSink) send(ctx context.Context, rec arrow.RecordBatch) error {
 		return fmt.Errorf("connecting to peer: %w", err)
 	}
 
+	// With in-process (Local) transport the same record pointer is passed to the
+	// receiver. The caller (drainPipeline) releases the record after Send returns.
+	// Retain so the receiver owns a ref and the record remains valid when read.
+	if rec != nil {
+		rec.Retain()
+	}
+
 	// TODO(rfratto): We should send a Blocked status update to the scheduler if
 	// SendMessage doesn't finish quickly enough.
 	//
