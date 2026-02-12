@@ -21,9 +21,20 @@ func TestIndexSectionsReader_NoSelectorReturnsEOF(t *testing.T) {
 	t.Parallel()
 
 	r := newIndexSectionsReader(nil, now, now, nil, nil, nil)
+	require.NoError(t, r.Open(context.Background()))
 
 	rec, err := r.Read(context.Background())
 	require.ErrorIs(t, err, io.EOF)
+	require.Nil(t, rec)
+}
+
+func TestIndexSectionsReader_ReadBeforeOpenReturnsError(t *testing.T) {
+	t.Parallel()
+
+	r := newIndexSectionsReader(nil, now, now, nil, nil, nil)
+
+	rec, err := r.Read(context.Background())
+	require.ErrorIs(t, err, errIndexSectionsReaderNotOpen)
 	require.Nil(t, rec)
 }
 
@@ -60,10 +71,8 @@ func TestIndexSectionsReader_MissingOrgIDReturnsError(t *testing.T) {
 
 	r := newIndexSectionsReader(obj, start, end, matchers, nil, nil)
 
-	// Context without org ID should fail during Read (which triggers init)
-	rec, err := r.Read(context.Background())
-	require.Error(t, err)
-	require.Nil(t, rec)
+	// Context without org ID should fail during Open.
+	require.Error(t, r.Open(context.Background()))
 }
 
 func TestIndexSectionsReader_FiltersByStreamMatcherAndTime(t *testing.T) {
@@ -110,6 +119,7 @@ func TestIndexSectionsReader_FiltersByStreamMatcherAndTime(t *testing.T) {
 
 	r := newIndexSectionsReader(obj, start, end, matchers, nil, nil)
 	t.Cleanup(r.Close)
+	require.NoError(t, r.Open(ctx))
 
 	rec, err := r.Read(ctx)
 	require.NoError(t, err)
@@ -162,6 +172,7 @@ func TestIndexSectionsReader_NoPredicatesPassthrough(t *testing.T) {
 	// No predicates - should pass through all matching records
 	r := newIndexSectionsReader(obj, start, end, matchers, nil, nil)
 	t.Cleanup(r.Close)
+	require.NoError(t, r.Open(ctx))
 
 	var total int64
 	for {
@@ -216,6 +227,7 @@ func TestIndexSectionsReader_IgnoresNonEqualPredicates(t *testing.T) {
 
 	r := newIndexSectionsReader(obj, start, end, matchers, predicates, nil)
 	t.Cleanup(r.Close)
+	require.NoError(t, r.Open(ctx))
 
 	rec, err := r.Read(ctx)
 	require.NoError(t, err)
@@ -267,6 +279,7 @@ func TestIndexSectionsReader_FiltersByBloomOnSectionKey(t *testing.T) {
 
 	r := newIndexSectionsReader(obj, start, end, matchers, predicates, nil)
 	t.Cleanup(r.Close)
+	require.NoError(t, r.Open(ctx))
 
 	rec, err := r.Read(ctx)
 	require.NoError(t, err)
@@ -330,6 +343,7 @@ func TestIndexSectionsReader_PredicateMissReturnsEOF(t *testing.T) {
 
 	r := newIndexSectionsReader(obj, start, end, matchers, predicates, nil)
 	t.Cleanup(r.Close)
+	require.NoError(t, r.Open(ctx))
 
 	rec, err := r.Read(ctx)
 	require.ErrorIs(t, err, io.EOF)
@@ -386,6 +400,7 @@ func TestIndexSectionsReader_LabelPredicatesFiltered(t *testing.T) {
 
 	r := newIndexSectionsReader(obj, start, end, matchers, predicates, nil)
 	t.Cleanup(r.Close)
+	require.NoError(t, r.Open(ctx))
 
 	// Should return results because the "app" predicate should be filtered out
 	// (it's a stream label, not structured metadata)

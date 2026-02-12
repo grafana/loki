@@ -721,6 +721,11 @@ func (m *ObjectMetastore) GetIndexes(ctx context.Context, req GetIndexesRequest)
 
 func (m *ObjectMetastore) CollectSections(ctx context.Context, req CollectSectionsRequest) (CollectSectionsResponse, error) {
 	objectSectionDescriptors := make(map[SectionKey]*DataobjSectionDescriptor)
+
+	if err := req.Reader.Open(ctx); err != nil {
+		return CollectSectionsResponse{}, fmt.Errorf("opening reader: %w", err)
+	}
+
 	for {
 		rec, err := req.Reader.Read(ctx)
 		if err != nil && !errors.Is(err, io.EOF) {

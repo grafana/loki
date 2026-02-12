@@ -43,6 +43,7 @@ type indexSectionsReader struct {
 
 	// Pointer scanning state
 	initialized        bool
+	hasData            bool // Whether initialization pulled data to read
 	matchingStreamIDs  []scalar.Scalar
 	pointersSections   []*dataobj.Section
 	pointersSectionIdx int
@@ -83,13 +84,29 @@ func newIndexSectionsReader(
 	}
 }
 
-func (r *indexSectionsReader) Read(ctx context.Context) (arrow.RecordBatch, error) {
-	ctx = xcap.ContextWithRegion(ctx, r.region)
+var errIndexSectionsReaderNotOpen = errors.New("index sections reader not opened")
 
-	if err := r.init(ctx); err != nil {
-		return nil, err
+func (r *indexSectionsReader) Open(ctx context.Context) error {
+	if r.initialized {
+		return nil
 	}
 
+	ctx = xcap.ContextWithRegion(ctx, r.region)
+	if err := r.init(ctx); err != nil {
+		return err
+	}
+	r.initialized = true
+	return nil
+}
+
+func (r *indexSectionsReader) Read(ctx context.Context) (arrow.RecordBatch, error) {
+	if !r.initialized {
+		return nil, errIndexSectionsReaderNotOpen
+	} else if !r.hasData {
+		return nil, io.EOF
+	}
+
+	ctx = xcap.ContextWithRegion(ctx, r.region)
 	if len(r.predicates) == 0 {
 		return r.readPointers(ctx)
 	}
@@ -144,12 +161,8 @@ func (r *indexSectionsReader) allLabelNames() []string {
 }
 
 func (r *indexSectionsReader) init(ctx context.Context) error {
-	if r.initialized {
-		return nil
-	}
-
 	if len(r.matchers) == 0 {
-		return io.EOF
+		return nil
 	}
 
 	targetTenant, err := user.ExtractOrgID(ctx)
@@ -165,7 +178,7 @@ func (r *indexSectionsReader) init(ctx context.Context) error {
 	}
 
 	if len(r.pointersSections) == 0 {
-		return io.EOF
+		return nil
 	}
 
 	// Find stream ids that satisfy the predicate and start/end, and populate labels
@@ -176,7 +189,7 @@ func (r *indexSectionsReader) init(ctx context.Context) error {
 	r.filterBloomPredicates()
 
 	if r.matchingStreamIDs == nil {
-		return io.EOF
+		return nil
 	}
 
 	r.pointersSectionIdx = -1
@@ -184,7 +197,7 @@ func (r *indexSectionsReader) init(ctx context.Context) error {
 		return err
 	}
 
-	r.initialized = true
+	r.hasData = true
 	return nil
 }
 
