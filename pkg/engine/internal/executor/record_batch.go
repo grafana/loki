@@ -34,6 +34,8 @@ func ConcatenateRecordBatches(records []arrow.RecordBatch) (arrow.RecordBatch, e
 		return nil, fmt.Errorf("need at least one record")
 	}
 	if len(records) == 1 {
+		// Return a retained reference so the caller can release both the input and the result (which are actually the same).
+		records[0].Retain()
 		return records[0], nil
 	}
 
