@@ -114,6 +114,16 @@ func (r *rangeAggregationPipeline) init() {
 	r.aggregator.SetMaxSeries(r.opts.maxQuerySeries)
 }
 
+// Open opens all input pipelines.
+func (r *rangeAggregationPipeline) Open(ctx context.Context) error {
+	for _, input := range r.inputs {
+		if err := input.Open(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // Read reads the next value into its state.
 // It returns an error if reading fails or when the pipeline is exhausted. In this case, the function returns EOF.
 // The implementation must retain the returned error in its state and return it with subsequent Value() calls.

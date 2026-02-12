@@ -238,11 +238,8 @@ func (p *Builder) handlePartitionsLost(ctx context.Context, client *kgo.Client, 
 
 func (p *Builder) starting(ctx context.Context) error {
 	// Start indexer service first
-	if err := p.indexer.StartAsync(ctx); err != nil {
+	if err := services.StartAndAwaitRunning(ctx, p.indexer); err != nil {
 		return fmt.Errorf("failed to start indexer service: %w", err)
-	}
-	if err := p.indexer.AwaitRunning(ctx); err != nil {
-		return fmt.Errorf("indexer service failed to start: %w", err)
 	}
 
 	// Start flush worker if configured
@@ -299,10 +296,10 @@ func (p *Builder) running(ctx context.Context) error {
 }
 
 func (p *Builder) stopping(failureCase error) error {
-	// Stop indexer service first - this handles calculation cleanup via context cancellation
-	p.indexer.StopAsync()
-	if err := p.indexer.AwaitTerminated(context.Background()); err != nil {
-		level.Error(p.logger).Log("msg", "failed to stop indexer service", "err", err)
+	// Stop indexer service first - this handles calculation cleanup via context cancelation.
+	ctx := context.TODO()
+	if err := services.StopAndAwaitTerminated(ctx, p.indexer); err != nil {
+		level.Error(p.logger).Log("msg", "failed to stop indexer", "err", err)
 	}
 
 	// Stop other components

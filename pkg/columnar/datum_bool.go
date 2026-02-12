@@ -99,6 +99,25 @@ func (arr *Bool) Size() int {
 	return validitySize + valuesSize
 }
 
+// Slice returns a slice of arr from i to j.
+func (arr *Bool) Slice(i, j int) Array {
+	if i < 0 || j < i || j > arr.Len() {
+		panic(errorSliceBounds{i, j, arr.Len()})
+	}
+	var (
+		validity = sliceValidity(arr.validity, i, j)
+		values   = arr.values.Slice(i, j)
+	)
+	return NewBool(*values, validity)
+}
+
+func sliceValidity(validity memory.Bitmap, i, j int) memory.Bitmap {
+	if validity.Len() == 0 {
+		return memory.Bitmap{}
+	}
+	return *validity.Slice(i, j)
+}
+
 func (arr *Bool) isDatum() {}
 func (arr *Bool) isArray() {}
 

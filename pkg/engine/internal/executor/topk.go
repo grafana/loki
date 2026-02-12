@@ -127,6 +127,16 @@ func guessLokiType(ref types.ColumnRef) (types.DataType, error) {
 	}
 }
 
+// Open opens all input pipelines.
+func (p *topkPipeline) Open(ctx context.Context) error {
+	for _, in := range p.inputs {
+		if err := in.Open(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // Read computes the topk as the next record. Read blocks until all input
 // pipelines have been fully read and the top K rows have been computed.
 func (p *topkPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {

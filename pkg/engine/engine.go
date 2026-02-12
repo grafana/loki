@@ -391,6 +391,10 @@ func (e *Engine) metastoreSectionsResolver(ctx context.Context, tenantID string)
 		reader := executor.TranslateEOF(pipeline)
 		defer reader.Close()
 
+		if err := reader.Open(ctx); err != nil {
+			return nil, fmt.Errorf("metastore: open pipeline: %w", err)
+		}
+
 		resp, err := e.metastore.CollectSections(ctx, metastore.CollectSectionsRequest{
 			// externalize EOFs returned by executor pipelines (executor.EOF -> io.EOF)
 			// because metastore is not aware about executor implementation details
@@ -466,6 +470,10 @@ func (e *Engine) collectResult(ctx context.Context, logger log.Logger, params lo
 		// This should never trigger since we already checked the expression
 		// type in the logical planner.
 		panic(fmt.Sprintf("invalid expression type %T", params.GetExpression()))
+	}
+
+	if err := pipeline.Open(ctx); err != nil {
+		return nil, time.Duration(0), err
 	}
 
 	for {

@@ -72,6 +72,14 @@ func (arr *UTF8) init() {
 // Len returns the total number of elements in the array.
 func (arr *UTF8) Len() int { return arr.length }
 
+// DataLen returns the total length of the data in the array.
+func (arr *UTF8) DataLen() int {
+	if arr.length == 0 {
+		return 0
+	}
+	return int(arr.offsets[arr.length] - arr.offsets[0])
+}
+
 // Nulls returns the number of null elements in the array. The number of
 // non-null elements can be calculated from Len() - Nulls().
 func (arr *UTF8) Nulls() int { return arr.nullCount }
@@ -96,7 +104,8 @@ func (arr *UTF8) IsNull(i int) bool {
 	return !arr.validity.Get(i)
 }
 
-// Data returns the underlying packed UTF8 bytes.
+// Data returns the underlying packed UTF8 bytes. If arr is a slice, Data may
+// include bytes beyond the offset ranges from the original array.
 func (arr *UTF8) Data() []byte { return arr.data }
 
 // Offsets returns the underlying offsets array.
@@ -121,6 +130,32 @@ func (arr *UTF8) Validity() memory.Bitmap { return arr.validity }
 
 // Kind returns the kind of Array being represented.
 func (arr *UTF8) Kind() Kind { return KindUTF8 }
+
+// Slice returns a slice of arr from i to j.
+//
+// A sliced UTF8 array creates a slice of the offsets and validity buffers, but
+// not the data buffer, permitting the offsets to continue to be valid without
+// needing to normalize them to start at 0.
+//
+// It is recommended to normalize the offsets and remove unused memory in the
+// data buffer before serializing UTF8 for network communication.
+func (arr *UTF8) Slice(i, j int) Array {
+	if i < 0 || j < i || j > arr.Len() {
+		panic(errorSliceBounds{i, j, arr.Len()})
+	}
+
+	// Unlike with all other Arrays, we only slice the arr.offsets buffer, which
+	// relative to the start of arr.data.
+	//
+	// Slicing both arr.offsets and arr.data would cause the offsets to be
+	// incorrect.
+	var (
+		validity = sliceValidity(arr.validity, i, j)
+		data     = arr.data
+		offsets  = arr.offsets[i : j+1]
+	)
+	return NewUTF8(data, offsets, validity)
+}
 
 func (arr *UTF8) isDatum() {}
 func (arr *UTF8) isArray() {}

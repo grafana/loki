@@ -141,7 +141,7 @@ func (r *RowReader) initReader() error {
 		}
 	}
 
-	readerOpts := dataset.ReaderOptions{
+	readerOpts := dataset.RowReaderOptions{
 		Dataset:    dset,
 		Columns:    columns,
 		Predicates: orderPredicates(predicates),

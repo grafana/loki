@@ -96,7 +96,7 @@ func readDataset(t *testing.T, obj *dataobj.Object) []dataset.Row {
 	dset, err := columnar.MakeDataset(sec, sec.Columns())
 	require.NoError(t, err)
 
-	reader := dataset.NewRowReader(dataset.ReaderOptions{
+	reader := dataset.NewRowReader(dataset.RowReaderOptions{
 		Dataset: dset,
 		Columns: dset.Columns(),
 	})

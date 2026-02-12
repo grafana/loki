@@ -268,6 +268,10 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, job *threadJob, logger log.Logger) (int, error) {
 	region := xcap.RegionFromContext(ctx)
 
+	if err := pipeline.Open(ctx); err != nil {
+		return 0, err
+	}
+
 	var totalRows int
 	for {
 		rec, err := pipeline.Read(ctx)

@@ -92,7 +92,7 @@ func iterSection(ctx context.Context, section *Section, cfg iterConfig) result.S
 			return err
 		}
 
-		r := dataset.NewRowReader(dataset.ReaderOptions{
+		r := dataset.NewRowReader(dataset.RowReaderOptions{
 			Dataset:  dset,
 			Columns:  columns,
 			Prefetch: true,

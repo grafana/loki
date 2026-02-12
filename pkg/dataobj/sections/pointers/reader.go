@@ -222,7 +222,7 @@ func (r *Reader) init() error {
 		return fmt.Errorf("mapping predicates: %w", err)
 	}
 
-	innerOptions := dataset.ReaderOptions{
+	innerOptions := dataset.RowReaderOptions{
 		Dataset:    dset,
 		Columns:    dset.Columns(),
 		Predicates: preds,
@@ -474,7 +474,7 @@ type recordBatchLabelDecorator struct {
 	streamIDColumnIndex  int
 }
 
-func newRecordBatchLabelDecorator(inner *columnar.ReaderAdapter, innerOpts dataset.ReaderOptions, opts ReaderOptions) *recordBatchLabelDecorator {
+func newRecordBatchLabelDecorator(inner *columnar.ReaderAdapter, innerOpts dataset.RowReaderOptions, opts ReaderOptions) *recordBatchLabelDecorator {
 	d := &recordBatchLabelDecorator{inner: inner}
 	d.Reset(innerOpts, opts)
 	return d
@@ -484,7 +484,7 @@ func (d *recordBatchLabelDecorator) Close() error {
 	return d.inner.Close()
 }
 
-func (d *recordBatchLabelDecorator) Reset(innerOpts dataset.ReaderOptions, opts ReaderOptions) {
+func (d *recordBatchLabelDecorator) Reset(innerOpts dataset.RowReaderOptions, opts ReaderOptions) {
 	d.inner.Reset(innerOpts)
 
 	d.streamIDColumnIndex = -1
