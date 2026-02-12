@@ -1,5 +1,5 @@
-// Package xcap captures aggregated statistical observations over the
-// lifetime of an operation.
+// Package xcap provides a utility to capture statistical information about the
+// lifetime of a query.
 //
 // xcap can be used in two ways, both starting with a [Capture]:
 //
@@ -123,8 +123,8 @@ func (c *Capture) Regions() []*Region {
 	return c.regions
 }
 
-// LinkParent assigns the provided region as the parent to all root regions
-// of the capture.
+// LinkParent assigns the provided region as the parent
+// to all root regions of the capture.
 func (c *Capture) LinkParent(parent *Region) {
 	c.mu.RLock()
 	regions := make([]*Region, len(c.regions))
@@ -140,9 +140,8 @@ func (c *Capture) LinkParent(parent *Region) {
 	}
 }
 
-// getAllStatistics returns the deduplicated set of statistics recorded
-// across all regions in the capture. Statistics that share the same
-// name, data type, and aggregation type are returned only once.
+// getAllStatistics returns statistics used across all regions
+// in this capture.
 func (c *Capture) getAllStatistics() map[StatisticKey]Statistic {
 	stats := make(map[StatisticKey]Statistic)
 	for _, region := range c.regions {

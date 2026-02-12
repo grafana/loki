@@ -53,6 +53,8 @@ func StartRegion(ctx context.Context, name string) (context.Context, *Region) {
 		name:         name,
 		observations: make(map[StatisticKey]*AggregatedObservation),
 	}
+
+	// extract parentID from context
 	if pr := RegionFromContext(ctx); pr != nil {
 		r.parentID = pr.id
 	}

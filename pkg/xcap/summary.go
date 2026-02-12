@@ -149,8 +149,6 @@ func (o *observations) toLogValues() []any {
 }
 
 // observationCollector provides methods to collect observations from a Capture.
-//
-// Regions sharing a name have their observations merged together.
 type observationCollector struct {
 	capture       *Capture
 	childrenMap   map[identifier][]*Region
@@ -163,9 +161,12 @@ func newObservationCollector(capture *Capture) *observationCollector {
 		return nil
 	}
 
+	// Build
+	// - parent -> children
+	// - name -> matching regions
 	childrenMap := make(map[identifier][]*Region)
 	nameToRegions := make(map[string][]*Region)
-	for _, r := range capture.Regions() {
+	for _, r := range capture.regions {
 		childrenMap[r.parentID] = append(childrenMap[r.parentID], r)
 		nameToRegions[r.name] = append(nameToRegions[r.name], r)
 	}
@@ -194,8 +195,8 @@ func (c *observationCollector) fromRegions(name string, rollUp bool, excluded ..
 	}
 
 	excludedSet := make(map[string]struct{}, len(excluded))
-	for _, n := range excluded {
-		excludedSet[n] = struct{}{}
+	for _, name := range excluded {
+		excludedSet[name] = struct{}{}
 	}
 
 	for _, region := range regions {
@@ -211,21 +212,6 @@ func (c *observationCollector) fromRegions(name string, rollUp bool, excluded ..
 	return result
 }
 
-// rollUpObservations computes observations for a region including all its descendants.
-// Stats are aggregated according to their aggregation type.
-func (c *observationCollector) rollUpObservations(region *Region, excludedSet map[string]struct{}) *observations {
-	result := c.getRegionObservations(region)
-
-	for _, child := range c.childrenMap[region.id] {
-		if _, excluded := excludedSet[child.name]; excluded {
-			continue
-		}
-		result.merge(c.rollUpObservations(child, excludedSet))
-	}
-
-	return result
-}
-
 // getRegionObservations returns a copy of a region's observations.
 func (c *observationCollector) getRegionObservations(region *Region) *observations {
 	result := newObservations()
@@ -236,6 +222,23 @@ func (c *observationCollector) getRegionObservations(region *Region) *observatio
 			Count:     obs.Count,
 		}
 	}
+	return result
+}
+
+// rollUpObservations computes observations for a region including all its descendants.
+// Stats are aggregated according to their aggregation type.
+func (c *observationCollector) rollUpObservations(region *Region, excludedSet map[string]struct{}) *observations {
+	result := c.getRegionObservations(region)
+
+	// Recursively aggregate from children.
+	for _, child := range c.childrenMap[region.id] {
+		// Skip children with excluded names.
+		if _, excluded := excludedSet[child.name]; excluded {
+			continue
+		}
+		result.merge(c.rollUpObservations(child, excludedSet))
+	}
+
 	return result
 }
 

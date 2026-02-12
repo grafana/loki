@@ -68,6 +68,60 @@ func TestObservations(t *testing.T) {
 	})
 }
 
+func TestRollups(t *testing.T) {
+	t.Run("includes child observations when rollup=true", func(t *testing.T) {
+		ctx, capture := NewCapture(context.Background(), nil)
+		stat := NewStatisticInt64("count", AggregationTypeSum)
+
+		ctx, parent := StartRegion(ctx, "Parent")
+		parent.Record(stat.Observe(10))
+
+		ctx, child := StartRegion(ctx, "Child")
+		child.Record(stat.Observe(20))
+
+		_, grandchild := StartRegion(ctx, "Grandchild")
+		grandchild.Record(stat.Observe(30))
+
+		grandchild.End()
+		child.End()
+		parent.End()
+
+		collector := newObservationCollector(capture)
+
+		withRollup := collector.fromRegions("Parent", true)
+		require.Equal(t, int64(60), withRollup.data[stat.Key()].Value) // 10 + 20 + 30
+
+		withoutRollup := collector.fromRegions("Parent", false)
+		require.Equal(t, int64(10), withoutRollup.data[stat.Key()].Value) // parent only
+	})
+
+	t.Run("excludes matching descendants", func(t *testing.T) {
+		ctx, capture := NewCapture(context.Background(), nil)
+		stat := NewStatisticInt64("count", AggregationTypeSum)
+
+		ctx, parent := StartRegion(ctx, "Parent")
+		parent.Record(stat.Observe(1))
+
+		_, included := StartRegion(ctx, "included")
+		included.Record(stat.Observe(10))
+		included.End()
+
+		ctx2, excluded := StartRegion(ctx, "excluded")
+		excluded.Record(stat.Observe(100))
+
+		_, excludedChild := StartRegion(ctx2, "excludedChild")
+		excludedChild.Record(stat.Observe(1000))
+		excludedChild.End()
+
+		excluded.End()
+		parent.End()
+
+		collector := newObservationCollector(capture)
+		stats := collector.fromRegions("Parent", true, "excluded")
+		require.Equal(t, int64(11), stats.data[stat.Key()].Value) // 1 + 10, excludes 100 + 1000
+	})
+}
+
 func TestToStatsSummary(t *testing.T) {
 	t.Run("nil capture returns empty summary with provided values", func(t *testing.T) {
 		execTime := 2 * time.Second
@@ -86,18 +140,18 @@ func TestToStatsSummary(t *testing.T) {
 		require.Equal(t, int64(0), result.Querier.Store.Dataobj.PostFilterRows)
 	})
 
-	t.Run("computes bytes and lines from DataObjScan regions", func(t *testing.T) {
+	t.Run("computes bytes and lines from logs.Reader regions", func(t *testing.T) {
 		ctx, capture := NewCapture(context.Background(), nil)
 
 		// Create DataObjScan regions with observations using registry stats
-		_, region1 := StartRegion(ctx, "DataObjScan")
+		_, region1 := StartRegion(ctx, "logs.Reader")
 		region1.Record(StatDatasetPrimaryRowBytes.Observe(1000))
 		region1.Record(StatDatasetSecondaryRowBytes.Observe(500))
 		region1.Record(StatDatasetPrimaryRowsRead.Observe(100))
 		region1.Record(StatPipelineRowsOut.Observe(80))
 		region1.End()
 
-		_, region2 := StartRegion(ctx, "DataObjScan")
+		_, region2 := StartRegion(ctx, "logs.Reader")
 		region2.Record(StatDatasetPrimaryRowBytes.Observe(2000))
 		region2.Record(StatDatasetSecondaryRowBytes.Observe(1000))
 		region2.Record(StatDatasetPrimaryRowsRead.Observe(200))
@@ -131,7 +185,7 @@ func TestToStatsSummary(t *testing.T) {
 		ctx, capture := NewCapture(context.Background(), nil)
 
 		// Only record some statistics
-		_, region := StartRegion(ctx, "DataObjScan")
+		_, region := StartRegion(ctx, "logs.Reader")
 		region.Record(StatDatasetPrimaryRowBytes.Observe(1000))
 		region.End()
 		capture.End()

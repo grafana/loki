@@ -17,25 +17,28 @@ func TestMarshalUnmarshal(t *testing.T) {
 	success := NewStatisticFlag("success")
 	requests := NewStatisticInt64("requests", AggregationTypeSum)
 
-	ctx, r1 := StartRegion(ctx, "r1")
-	r1.Record(bytesRead.Observe(100))
-	r1.Record(latency.Observe(10.5))
-	r1.Record(success.Observe(true))
-	r1.Record(requests.Observe(1))
-	r1.End()
+	// Parent region with attributes and observations
+	ctx, parentRegion := StartRegion(ctx, "parent")
+	parentRegion.Record(bytesRead.Observe(100))
+	parentRegion.Record(latency.Observe(10.5))
+	parentRegion.Record(success.Observe(true))
+	parentRegion.Record(requests.Observe(1))
 
-	ctx, r2 := StartRegion(ctx, "r2")
-	r2.Record(bytesRead.Observe(50))
-	r2.Record(latency.Observe(3.1))
-	r2.Record(requests.Observe(2))
-	r2.End()
+	// Child region with attributes and observations
+	ctx, childRegion := StartRegion(ctx, "child")
+	childRegion.Record(bytesRead.Observe(50))
+	childRegion.Record(latency.Observe(3.1))
+	childRegion.Record(requests.Observe(2))
+	childRegion.End()
 
-	_, r3 := StartRegion(ctx, "r3")
-	r3.Record(bytesRead.Observe(300))
-	r3.Record(success.Observe(false))
-	r3.Record(requests.Observe(1))
-	r3.End()
+	// Another sibling region
+	_, siblingRegion := StartRegion(ctx, "sibling")
+	siblingRegion.Record(bytesRead.Observe(300))
+	siblingRegion.Record(success.Observe(false))
+	siblingRegion.Record(requests.Observe(1))
+	siblingRegion.End()
 
+	parentRegion.End()
 	capture.End()
 
 	// Marshal to proto
