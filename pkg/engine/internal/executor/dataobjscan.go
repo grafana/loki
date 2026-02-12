@@ -59,11 +59,14 @@ func newDataobjScanPipeline(opts dataobjScanOptions, logger log.Logger, region *
 	}
 }
 
-func (s *dataobjScan) Read(ctx context.Context) (arrow.RecordBatch, error) {
-	if err := s.init(); err != nil {
-		return nil, err
-	}
+func (s *dataobjScan) Open(_ context.Context) error {
+	return s.init()
+}
 
+func (s *dataobjScan) Read(ctx context.Context) (arrow.RecordBatch, error) {
+	if !s.initialized {
+		return nil, errPipelineNotOpen
+	}
 	return s.read(xcap.ContextWithRegion(ctx, s.region))
 }
 
@@ -142,7 +145,7 @@ func projectedLabelColumns(sec *streams.Section, projections []physical.ColumnEx
 			panic("invalid projection type, expected *physical.ColumnExpr")
 		}
 
-		// We're loading the sterams section for joining stream labels into
+		// We're loading the streams section for joining stream labels into
 		// records, so we only need to consider label and ambiguous columns here.
 		if expr.Ref.Type != types.ColumnTypeLabel && expr.Ref.Type != types.ColumnTypeAmbiguous {
 			continue

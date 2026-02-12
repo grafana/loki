@@ -468,6 +468,10 @@ type wrappedPipeline struct {
 	onClose func()
 }
 
+func (p *wrappedPipeline) Open(ctx context.Context) error {
+	return p.inner.Open(ctx)
+}
+
 func (p *wrappedPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	return p.inner.Read(ctx)
 }

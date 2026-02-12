@@ -318,6 +318,23 @@ func walkRangeAggregation(e *syntax.RangeAggregationExpr, wc *walkContext) (Valu
 					Type:   types.ColumnTypeAmbiguous,
 				},
 			})
+
+		// Filter out rows with any errors because rows with errors have invalid numeric values.
+		builder = builder.Select(
+			&BinOp{
+				Left: &BinOp{
+					Left:  NewColumnRef(types.ColumnNameError, types.ColumnTypeGenerated),
+					Right: NewLiteral(""),
+					Op:    types.BinaryOpEq,
+				},
+				Right: &BinOp{
+					Left:  NewColumnRef(types.ColumnNameErrorDetails, types.ColumnTypeGenerated),
+					Right: NewLiteral(""),
+					Op:    types.BinaryOpEq,
+				},
+				Op: types.BinaryOpAnd,
+			},
+		)
 	}
 
 	var rangeAggType types.RangeAggregationType
@@ -343,23 +360,6 @@ func walkRangeAggregation(e *syntax.RangeAggregationExpr, wc *walkContext) (Valu
 	default:
 		return nil, errUnimplemented
 	}
-
-	// Filter out rows with any errors from parsing or unwrap stages.
-	builder = builder.Select(
-		&BinOp{
-			Left: &BinOp{
-				Left:  NewColumnRef(types.ColumnNameError, types.ColumnTypeGenerated),
-				Right: NewLiteral(""),
-				Op:    types.BinaryOpEq,
-			},
-			Right: &BinOp{
-				Left:  NewColumnRef(types.ColumnNameErrorDetails, types.ColumnTypeGenerated),
-				Right: NewLiteral(""),
-				Op:    types.BinaryOpEq,
-			},
-			Op: types.BinaryOpAnd,
-		},
-	)
 
 	builder = builder.RangeAggregation(
 		convertGrouping(e.Grouping), rangeAggType, wc.params.Start(), wc.params.End(), wc.params.Step(), rangeInterval,

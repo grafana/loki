@@ -88,6 +88,16 @@ func newVectorAggregationPipeline(inputs []Pipeline, evaluator *expressionEvalua
 	}, nil
 }
 
+// Open opens all input pipelines.
+func (v *vectorAggregationPipeline) Open(ctx context.Context) error {
+	for _, input := range v.inputs {
+		if err := input.Open(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // Read reads the next value into its state.
 func (v *vectorAggregationPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	if v.inputsExhausted {
