@@ -8,7 +8,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/multierror"
 	"github.com/prometheus/common/model"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 
 	"github.com/grafana/loki/v3/clients/pkg/promtail/client"
 	"github.com/grafana/loki/v3/clients/pkg/promtail/limit"

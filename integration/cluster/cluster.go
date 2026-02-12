@@ -21,7 +21,7 @@ import (
 	"github.com/grafana/dskit/multierror"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 
 	"github.com/grafana/loki/v3/integration/util"
 

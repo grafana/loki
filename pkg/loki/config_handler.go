@@ -7,7 +7,7 @@ import (
 	"reflect"
 
 	"github.com/grafana/dskit/tenant"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 
 	"github.com/grafana/loki/v3/pkg/util/build"
 	"github.com/grafana/loki/v3/pkg/validation"
