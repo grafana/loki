@@ -16,6 +16,10 @@ type translateEOFPipeline struct {
 	pipeline Pipeline
 }
 
+func (p translateEOFPipeline) Open(ctx context.Context) error {
+	return p.pipeline.Open(ctx)
+}
+
 func (p translateEOFPipeline) Close() {
 	p.pipeline.Close()
 }

@@ -14,6 +14,10 @@ type metastorePipeline struct {
 	region *xcap.Region
 }
 
+func (m *metastorePipeline) Open(_ context.Context) error {
+	return nil
+}
+
 func (m *metastorePipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	rec, err := m.reader.Read(xcap.ContextWithRegion(ctx, m.region))
 	// metastore reader returns io.EOF that we translate to executor.EOF
