@@ -7,10 +7,10 @@ import (
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
@@ -269,24 +269,25 @@ func (lp *lazyPipeline) Close() {
 // span attributes) after closing the inner pipeline.
 type observedPipeline struct {
 	inner Pipeline
-	node  physical.Node
+	name  string
+	attrs []attribute.KeyValue
 	span  *xcap.Span
 	ready bool
 }
 
 var _ Pipeline = (*observedPipeline)(nil)
 
-// newObservedPipeline wraps a pipeline to automatically collect common
+// NewObservedPipeline wraps a pipeline to automatically collect common
 // statistics. The xcap span and region are not created here; they are
 // deferred to the first [Read] call so the span inherits its parent
 // from the caller's context.
-func newObservedPipeline(node physical.Node, inner Pipeline) *observedPipeline {
-	return &observedPipeline{node: node, inner: inner}
+func NewObservedPipeline(name string, attrs []attribute.KeyValue, inner Pipeline) Pipeline {
+	return &observedPipeline{name: name, attrs: attrs, inner: inner}
 }
 
 func (p *observedPipeline) init(ctx context.Context) {
-	_, p.span = xcap.StartSpan(ctx, tracer, p.node.Type().String(),
-		trace.WithAttributes(nodeAttributes(p.node)...),
+	_, p.span = xcap.StartSpan(ctx, tracer, p.name,
+		trace.WithAttributes(p.attrs...),
 	)
 
 	p.ready = true

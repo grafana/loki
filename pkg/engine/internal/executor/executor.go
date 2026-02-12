@@ -111,27 +111,27 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 		// TODO(rfratto): find a way to remove the logic from executeDataObjScan
 		// which wraps the pipeline with a topk/limit without reintroducing
 		// planning cost for thousands of scan nodes.
-		return newObservedPipeline(n, newLazyPipeline(func(ctx context.Context, _ []Pipeline) Pipeline {
+		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), newLazyPipeline(func(ctx context.Context, _ []Pipeline) Pipeline {
 			return c.executeDataObjScan(ctx, n)
 		}, inputs))
 	case *physical.PointersScan:
-		return newObservedPipeline(n, c.executePointersScan(ctx, n))
+		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executePointersScan(ctx, n))
 	case *physical.TopK:
-		return newObservedPipeline(n, c.executeTopK(ctx, n, inputs))
+		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeTopK(ctx, n, inputs))
 	case *physical.Limit:
-		return newObservedPipeline(n, c.executeLimit(ctx, n, inputs))
+		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeLimit(ctx, n, inputs))
 	case *physical.Filter:
-		return newObservedPipeline(n, c.executeFilter(ctx, n, inputs))
+		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeFilter(ctx, n, inputs))
 	case *physical.Projection:
-		return newObservedPipeline(n, c.executeProjection(ctx, n, inputs))
+		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeProjection(ctx, n, inputs))
 	case *physical.RangeAggregation:
-		return newObservedPipeline(n, c.executeRangeAggregation(ctx, n, inputs))
+		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeRangeAggregation(ctx, n, inputs))
 	case *physical.VectorAggregation:
-		return newObservedPipeline(n, c.executeVectorAggregation(ctx, n, inputs))
+		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeVectorAggregation(ctx, n, inputs))
 	case *physical.ColumnCompat:
-		return newObservedPipeline(n, c.executeColumnCompat(ctx, n, inputs))
+		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeColumnCompat(ctx, n, inputs))
 	case *physical.Merge:
-		return newObservedPipeline(n, c.executeMerge(ctx, n, inputs))
+		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeMerge(ctx, n, inputs))
 	case *physical.Parallelize:
 		return c.executeParallelize(ctx, n, inputs)
 	case *physical.ScanSet:
@@ -459,12 +459,12 @@ func (c *Context) executeScanSet(ctx context.Context, set *physical.ScanSet) Pip
 			partition.Predicates = set.Predicates
 			partition.Projections = set.Projections
 
-			targets = append(targets, newObservedPipeline(partition, newLazyPipeline(func(ctx context.Context, _ []Pipeline) Pipeline {
+			targets = append(targets, NewObservedPipeline(partition.Type().String(), nodeAttributes(partition), newLazyPipeline(func(ctx context.Context, _ []Pipeline) Pipeline {
 				return c.executeDataObjScan(ctx, partition)
 			}, nil)))
 		case physical.ScanTypePointers:
 			partition := target.Pointers
-			targets = append(targets, newObservedPipeline(partition, c.executePointersScan(ctx, partition)))
+			targets = append(targets, NewObservedPipeline(partition.Type().String(), nodeAttributes(partition), c.executePointersScan(ctx, partition)))
 		default:
 			return errorPipeline(ctx, fmt.Errorf("unrecognized ScanSet target %s", target.Type))
 		}

@@ -169,7 +169,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 				return []executor.Pipeline{errorPipeline(errs)}
 			}
 
-			return []executor.Pipeline{input}
+			return []executor.Pipeline{executor.NewObservedPipeline("nodeSource", nil, input)}
 		},
 	}
 
