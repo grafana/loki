@@ -171,7 +171,7 @@ func (r *Reader) Schema() *arrow.Schema { return r.schema }
 // [Reader.Schema]. These records must always be released after use.
 func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.RecordBatch, error) {
 	if !r.ready {
-		err := r.init()
+		err := r.init(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("initializing Reader: %w", err)
 		}
@@ -189,7 +189,7 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.RecordBatch, er
 	return result, readErr
 }
 
-func (r *Reader) init() error {
+func (r *Reader) init(ctx context.Context) error {
 	if err := r.opts.Validate(); err != nil {
 		return fmt.Errorf("invalid options: %w", err)
 	} else if r.opts.Allocator == nil {
@@ -232,6 +232,9 @@ func (r *Reader) init() error {
 		r.inner = newRecordBatchLabelDecorator(columnar.NewReaderAdapter(innerOptions), innerOptions, r.opts)
 	} else {
 		r.inner.Reset(innerOptions, r.opts)
+	}
+	if err := r.inner.Open(ctx); err != nil {
+		return fmt.Errorf("opening reader: %w", err)
 	}
 
 	r.ready = true
@@ -482,6 +485,10 @@ func newRecordBatchLabelDecorator(inner *columnar.ReaderAdapter, innerOpts datas
 
 func (d *recordBatchLabelDecorator) Close() error {
 	return d.inner.Close()
+}
+
+func (d *recordBatchLabelDecorator) Open(ctx context.Context) error {
+	return d.inner.Open(ctx)
 }
 
 func (d *recordBatchLabelDecorator) Reset(innerOpts dataset.RowReaderOptions, opts ReaderOptions) {

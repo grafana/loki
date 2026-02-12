@@ -58,6 +58,10 @@ func IterSection(ctx context.Context, section *Section) result.Seq[SectionPointe
 		})
 		defer r.Close()
 
+		if err := r.Open(ctx); err != nil {
+			return err
+		}
+
 		sym := symbolizer.New(128, 1024)
 
 		var rows [1]dataset.Row

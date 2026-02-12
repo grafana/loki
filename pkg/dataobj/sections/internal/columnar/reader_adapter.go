@@ -39,6 +39,11 @@ func (r *ReaderAdapter) Reset(opts dataset.RowReaderOptions) {
 	}
 }
 
+// Open initializes the underlying dataset row reader.
+func (r *ReaderAdapter) Open(ctx context.Context) error {
+	return r.inner.Open(ctx)
+}
+
 // Close closes the underlying reader.
 func (r *ReaderAdapter) Close() error {
 	return r.inner.Close()

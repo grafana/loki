@@ -181,7 +181,7 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.RecordBatch, er
 	return result, readErr
 }
 
-func (r *Reader) init(_ context.Context) error {
+func (r *Reader) init(ctx context.Context) error {
 	if err := r.opts.Validate(); err != nil {
 		return fmt.Errorf("invalid options: %w", err)
 	} else if r.opts.Allocator == nil {
@@ -231,6 +231,9 @@ func (r *Reader) init(_ context.Context) error {
 		r.inner = columnar.NewReaderAdapter(innerOptions)
 	} else {
 		r.inner.Reset(innerOptions)
+	}
+	if err := r.inner.Open(ctx); err != nil {
+		return fmt.Errorf("opening reader: %w", err)
 	}
 
 	r.ready = true

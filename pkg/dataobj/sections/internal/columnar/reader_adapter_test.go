@@ -35,6 +35,7 @@ func TestReaderAdapter_ReadPreservesUTF8Nulls(t *testing.T) {
 		Columns: []dataset.Column{col},
 	})
 	t.Cleanup(func() { require.NoError(t, reader.Close()) })
+	require.NoError(t, reader.Open(context.Background()))
 
 	alloc := memory.NewAllocator(nil)
 	defer alloc.Reclaim()

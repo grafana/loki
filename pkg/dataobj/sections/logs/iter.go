@@ -58,6 +58,10 @@ func IterSection(ctx context.Context, section *Section) result.Seq[Record] {
 		})
 		defer r.Close()
 
+		if err := r.Open(ctx); err != nil {
+			return err
+		}
+
 		var rows [1]dataset.Row
 		var record Record
 		for {

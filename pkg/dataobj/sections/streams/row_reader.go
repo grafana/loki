@@ -63,7 +63,7 @@ func (r *RowReader) Read(ctx context.Context, s []Stream) (int, error) {
 	}
 
 	if !r.ready {
-		err := r.initReader()
+		err := r.initReader(ctx)
 		if err != nil {
 			return 0, err
 		}
@@ -87,7 +87,7 @@ func (r *RowReader) Read(ctx context.Context, s []Stream) (int, error) {
 	return n, nil
 }
 
-func (r *RowReader) initReader() error {
+func (r *RowReader) initReader(ctx context.Context) error {
 	dset, err := columnar.MakeDataset(r.sec.inner, r.sec.inner.Columns())
 	if err != nil {
 		return fmt.Errorf("creating section dataset: %w", err)
@@ -110,6 +110,9 @@ func (r *RowReader) initReader() error {
 		r.reader = dataset.NewRowReader(readerOpts)
 	} else {
 		r.reader.Reset(readerOpts)
+	}
+	if err := r.reader.Open(ctx); err != nil {
+		return fmt.Errorf("opening row reader: %w", err)
 	}
 
 	if r.symbols == nil {
