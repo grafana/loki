@@ -192,7 +192,7 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.RecordBatch, er
 	}
 
 	defer r.alloc.Reclaim()
-	rb, readErr := r.inner.Read(ctx, r.alloc, batchSize)
+	rb, readErr := r.inner.read(ctx, r.alloc, batchSize)
 	result, err := arrowconv.ToRecordBatch(rb, r.schema)
 	if err != nil {
 		return nil, fmt.Errorf("convert columnar.RecordBatch to arrow.RecordBatch: %w", err)
@@ -245,9 +245,9 @@ func (r *Reader) init(ctx context.Context) error {
 	if r.inner == nil {
 		r.inner = newRecordBatchLabelDecorator(columnar.NewReaderAdapter(innerOptions), innerOptions, r.opts)
 	} else {
-		r.inner.Reset(innerOptions, r.opts)
+		r.inner.reset(innerOptions, r.opts)
 	}
-	if err := r.inner.Open(ctx); err != nil {
+	if err := r.inner.open(ctx); err != nil {
 		return fmt.Errorf("opening reader: %w", err)
 	}
 
@@ -405,7 +405,7 @@ func (r *Reader) Reset(opts ReaderOptions) {
 	if r.inner != nil {
 		// Close our inner reader so it releases resources immediately. It'll be
 		// fully reset on the next call to [Reader.Open].
-		_ = r.inner.Close()
+		_ = r.inner.close()
 	}
 }
 
@@ -413,7 +413,7 @@ func (r *Reader) Reset(opts ReaderOptions) {
 // can be reused by calling [Reader.Reset].
 func (r *Reader) Close() error {
 	if r.inner != nil {
-		return r.inner.Close()
+		return r.inner.close()
 	}
 	return nil
 }
@@ -485,6 +485,8 @@ func makeColumnName(label string, name string, dty arrow.DataType) string {
 	}
 }
 
+// recordBatchLabelDecorator decorates an inner [columnar.ReaderAdapter] with an additional column, __streamLabelNames__, based on the existing stream ID column.
+// The data to be decorated is stored in the [ReaderOptions.StreamIDToLabelNames] map. The map is indexed by each row's stream ID.
 type recordBatchLabelDecorator struct {
 	inner                *columnar.ReaderAdapter
 	streamIDToLabelNames map[int64][]string
@@ -493,19 +495,20 @@ type recordBatchLabelDecorator struct {
 
 func newRecordBatchLabelDecorator(inner *columnar.ReaderAdapter, innerOpts dataset.RowReaderOptions, opts ReaderOptions) *recordBatchLabelDecorator {
 	d := &recordBatchLabelDecorator{inner: inner}
-	d.Reset(innerOpts, opts)
+	d.reset(innerOpts, opts)
 	return d
 }
 
-func (d *recordBatchLabelDecorator) Close() error {
+// Close closes the decorator and releases any resources it holds.
+func (d *recordBatchLabelDecorator) close() error {
 	return d.inner.Close()
 }
 
-func (d *recordBatchLabelDecorator) Open(ctx context.Context) error {
+func (d *recordBatchLabelDecorator) open(ctx context.Context) error {
 	return d.inner.Open(ctx)
 }
 
-func (d *recordBatchLabelDecorator) Reset(innerOpts dataset.RowReaderOptions, opts ReaderOptions) {
+func (d *recordBatchLabelDecorator) reset(innerOpts dataset.RowReaderOptions, opts ReaderOptions) {
 	d.inner.Reset(innerOpts)
 
 	d.streamIDColumnIndex = -1
@@ -518,7 +521,9 @@ func (d *recordBatchLabelDecorator) Reset(innerOpts dataset.RowReaderOptions, op
 	d.streamIDToLabelNames = opts.StreamIDToLabelNames
 }
 
-func (d *recordBatchLabelDecorator) Read(ctx context.Context, alloc *memoryv2.Allocator, batchSize int) (*columnarv2.RecordBatch, error) {
+// read consumes the next batch of rows from the inner reader and decorates it with the stream label names, if required, before returning it to the caller.
+// Since this function can change the schema of the underlying record batch, it must always apply the required decoration logic.
+func (d *recordBatchLabelDecorator) read(ctx context.Context, alloc *memoryv2.Allocator, batchSize int) (*columnarv2.RecordBatch, error) {
 	rb, err := d.inner.Read(ctx, alloc, batchSize)
 	// Any error, err, is returned to the caller to handle.
 	// The decorator must always decorate rb, so it must not short circuit.
