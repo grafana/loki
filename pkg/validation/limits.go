@@ -291,7 +291,7 @@ type Limits struct {
 	DebugEngineTasks              bool `yaml:"debug_engine_tasks" json:"debug_engine_tasks"`
 	DebugEngineStreams            bool `yaml:"debug_engine_streams" json:"debug_engine_streams"`
 	MetastorePointersScansPerTask int  `yaml:"metastore_pointers_scans_per_task" json:"metastore_pointers_scans_per_task"`
-	MergeBatchSize                int  `yaml:"merge_batch_size" json:"merge_batch_size"`
+	RecordBatchSize               flagext.ByteSize `yaml:"record_batch_size" json:"record_batch_size"`
 }
 
 type FieldDetectorConfig struct {
@@ -538,7 +538,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&l.DebugEngineTasks, "limits.debug-engine-tasks", false, "Experimental: Toggles verbose debug logging of tasks in the new query engine.")
 	f.BoolVar(&l.DebugEngineStreams, "limits.debug-engine-streams", false, "Experimental: Toggles verbose debug logging of data streams in the new query engine.")
 	f.IntVar(&l.MetastorePointersScansPerTask, "limits.metastore-pointers-scans-per-task", 0, "Experimental: Number of PointersScan targets to batch per task at the workflow level. 0 = one task per path.")
-	f.IntVar(&l.MergeBatchSize, "limits.merge-batch-size", 0, "Experimental: Number of RecordBatches to buffer in the Merge (e.g. for PointersScan ScanSets). 0 = no buffering.")
+	f.Var(&l.RecordBatchSize, "limits.record-batch-size", "Experimental: Maximum size of record batches sent to sinks when draining the pipeline (e.g. 1MB). 0 = no batching, send each record as-is.")
 }
 
 // SetGlobalOTLPConfig set GlobalOTLPConfig which is used while unmarshaling per-tenant otlp config to use the default list of resource attributes picked as index labels.
@@ -1395,8 +1395,8 @@ func (o *Overrides) MetastorePointersScansPerTask(userID string) int {
 	return o.getOverridesForUser(userID).MetastorePointersScansPerTask
 }
 
-func (o *Overrides) MergeBatchSize(userID string) int {
-	return o.getOverridesForUser(userID).MergeBatchSize
+func (o *Overrides) RecordBatchSize(userID string) int {
+	return o.getOverridesForUser(userID).RecordBatchSize.Val()
 }
 
 func (o *Overrides) getOverridesForUser(userID string) *Limits {

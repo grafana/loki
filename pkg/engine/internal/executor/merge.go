@@ -6,185 +6,113 @@ import (
 	"fmt"
 
 	"github.com/apache/arrow-go/v18/arrow"
-	"github.com/apache/arrow-go/v18/arrow/array"
-	"github.com/apache/arrow-go/v18/arrow/memory"
 
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
-// Merge is a pipeline that takes N inputs and sequentially consumes them.
-// When bufferBatchCount > 0 it fills one batch from the current input; when that input
-// returns EOF before the batch is full it advances to the next input and keeps filling
-// the same batch (batch across inputs). Empty records are skipped.
+// Merge is a pipeline that takes N inputs and sequentially consumes each one of them.
+// It completely exhausts an input before moving to the next one.
 type Merge struct {
-	inputs           []Pipeline
-	currInput        int // index of the currently processed input
-	region           *xcap.Region
-	bufferBatchCount int // when > 0, buffer up to this many records (from one or more inputs) then return
+	inputs      []Pipeline
+	maxPrefetch int
+	initialized bool
+	currInput   int // index of the currently processed input
+	region      *xcap.Region
 }
 
 var _ Pipeline = (*Merge)(nil)
 
 // newMergePipeline creates a new merge pipeline that merges N inputs into a single output.
-// It reads directly from inputs (no prefetch). When bufferBatchCount > 0, the Merge fills
-// one batch by reading one input at a time; if the batch becomes full it is emitted and
-// reading continues from the same input; if the current input returns EOF before the
-// batch is full, the Merge advances to the next input and keeps filling the same batch.
-// Empty records (NumRows() == 0) are skipped and never returned.
-func newMergePipeline(inputs []Pipeline, bufferBatchCount int, region *xcap.Region) (*Merge, error) {
+//
+// The argument maxPrefetch controls how many inputs are prefetched simultaneously while the current one is consumed.
+// Set maxPrefetch to 0 to disable prefetching of the next input.
+// Set maxPrefetch to 1 to prefetch only the next input, and so on.
+// Set maxPrefetch to -1 to pretetch all inputs at once.
+func newMergePipeline(inputs []Pipeline, maxPrefetch int, region *xcap.Region) (*Merge, error) {
 	if len(inputs) == 0 {
 		return nil, fmt.Errorf("merge pipeline: no inputs provided")
 	}
+
+	// Default to number of inputs if maxConcurrency is negative or exceeds the number of inputs.
+	if maxPrefetch < 0 || maxPrefetch >= len(inputs) {
+		maxPrefetch = len(inputs) - 1
+	}
+
+	// Wrap inputs into prefetching pipeline.
+	for i := range inputs {
+		// Only wrap input, but do not call init() on it, as it would start prefetching.
+		// Prefetching is started in the [Merge.init] function
+		inputs[i] = newPrefetchingPipeline(inputs[i])
+	}
+
 	return &Merge{
-		inputs:           inputs,
-		region:           region,
-		bufferBatchCount: bufferBatchCount,
+		inputs:      inputs,
+		maxPrefetch: maxPrefetch,
+		region:      region,
 	}, nil
+}
+
+func (m *Merge) init(ctx context.Context) {
+	if m.initialized {
+		return
+	}
+
+	// Initialize pre-fetching of inputs defined by maxPrefetch.
+	// The first/current input is always initialized.
+	for i := range m.inputs {
+		if i <= m.maxPrefetch {
+			m.startPrefetchingInputAtIndex(ctx, i)
+		}
+	}
+
+	m.initialized = true
+}
+
+// startPrefetchingInputAtIndex initializes the input at given index i,
+// if the index is not out of bounds and if the input is of type [prefetchWrapper].
+// Initializing the input will start its prefetching.
+func (m *Merge) startPrefetchingInputAtIndex(ctx context.Context, i int) {
+	if i >= len(m.inputs) {
+		return
+	}
+	inp, ok := m.inputs[i].(*prefetchWrapper)
+	if ok {
+		inp.init(ctx)
+	}
 }
 
 // Read reads the next batch from the pipeline.
 // It returns an error if reading fails or when the pipeline is exhausted.
 func (m *Merge) Read(ctx context.Context) (arrow.RecordBatch, error) {
+	m.init(ctx)
 	return m.read(ctx)
 }
 
 func (m *Merge) read(ctx context.Context) (arrow.RecordBatch, error) {
-	if m.bufferBatchCount <= 0 {
-		return m.readOneAtATime(ctx)
-	}
-	return m.readBufferedAcrossInputs(ctx)
-}
-
-// readOneAtATime returns one record at a time from the current input until EOF, then advances.
-// Empty records are skipped.
-func (m *Merge) readOneAtATime(ctx context.Context) (arrow.RecordBatch, error) {
-	for m.currInput < len(m.inputs) {
-		input := m.inputs[m.currInput]
-		rec, err := input.Read(ctx)
-		if err != nil {
-			if errors.Is(err, EOF) {
-				input.Close()
-				m.currInput++
-				continue
-			}
-			return nil, err
-		}
-		if rec.NumRows() == 0 {
-			rec.Release()
-			continue
-		}
-		if m.region != nil {
-			m.region.Record(xcap.TaskMergeRecordsConsumed.Observe(1))
-			m.region.Record(xcap.TaskMergeRowsConsumed.Observe(rec.NumRows()))
-			m.region.Record(xcap.TaskMergeBatchesProduced.Observe(1))
-		}
-		return rec, nil
-	}
-	return nil, EOF
-}
-
-// readBufferedAcrossInputs fills a buffer from the current input; when full returns that batch
-// (stays on same input). When current input returns EOF before buffer is full, advances to
-// next input and keeps filling. When all inputs exhausted, returns partial batch or EOF.
-// Empty records are skipped.
-func (m *Merge) readBufferedAcrossInputs(ctx context.Context) (arrow.RecordBatch, error) {
-	var records []arrow.RecordBatch
-	for m.currInput < len(m.inputs) {
-		input := m.inputs[m.currInput]
-		rec, err := input.Read(ctx)
-		if err != nil {
-			if errors.Is(err, EOF) {
-				input.Close()
-				m.currInput++
-				continue
-			}
-			for _, r := range records {
-				r.Release()
-			}
-			return nil, err
-		}
-		if rec.NumRows() == 0 {
-			rec.Release()
-			continue
-		}
-		if m.region != nil {
-			m.region.Record(xcap.TaskMergeRecordsConsumed.Observe(1))
-			m.region.Record(xcap.TaskMergeRowsConsumed.Observe(rec.NumRows()))
-		}
-		records = append(records, rec)
-		if len(records) >= m.bufferBatchCount {
-			if m.region != nil {
-				m.region.Record(xcap.TaskMergeBatchesProduced.Observe(1))
-			}
-
-			if len(records) == 1 {
-				return records[0], nil
-			}
-
-			batch, err := concatenateRecords(records)
-			for _, r := range records {
-				r.Release()
-			}
-			if err != nil {
-				return nil, err
-			}
-
-			return batch, nil
-		}
-	}
-
-	// All inputs exhausted
-	if len(records) == 0 {
+	// All inputs have been consumed and are exhausted
+	if m.currInput >= len(m.inputs) {
 		return nil, EOF
 	}
 
-	if m.region != nil {
-		m.region.Record(xcap.TaskMergeBatchesProduced.Observe(1))
-	}
-
-	if len(records) == 1 {
-		return records[0], nil
-	}
-
-	batch, err := concatenateRecords(records)
-	for _, r := range records {
-		r.Release()
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	return batch, nil
-}
-
-// concatenateRecords concatenates the given records into a single RecordBatch.
-// The schema of the first record is used. Caller must release the input records.
-func concatenateRecords(records []arrow.RecordBatch) (arrow.RecordBatch, error) {
-	if len(records) == 0 {
-		return nil, fmt.Errorf("need at least one record")
-	}
-	schema := records[0].Schema()
-	numCols := schema.NumFields()
-	concatenatedCols := make([]arrow.Array, numCols)
-	for col := 0; col < numCols; col++ {
-		colArrays := make([]arrow.Array, len(records))
-		for i, r := range records {
-			colArrays[i] = r.Column(col)
-		}
-		concat, err := array.Concatenate(colArrays, memory.DefaultAllocator)
+	for m.currInput < len(m.inputs) {
+		input := m.inputs[m.currInput]
+		rec, err := input.Read(ctx)
 		if err != nil {
-			for j := 0; j < col; j++ {
-				concatenatedCols[j].Release()
+			if errors.Is(err, EOF) {
+				input.Close()
+				// Proceed to the next input
+				m.currInput++
+				// Initialize the next input so it starts prefetching
+				m.startPrefetchingInputAtIndex(ctx, m.currInput+m.maxPrefetch)
+				continue
 			}
 			return nil, err
 		}
-		concatenatedCols[col] = concat
+		return rec, nil
 	}
-	var totalRows int64
-	for _, r := range records {
-		totalRows += r.NumRows()
-	}
-	return array.NewRecordBatch(schema, concatenatedCols, totalRows), nil
+
+	// Return EOF if none of the inputs returned a record.
+	return nil, EOF
 }
 
 // Close implements Pipeline.
@@ -192,6 +120,7 @@ func (m *Merge) Close() {
 	if m.region != nil {
 		m.region.End()
 	}
+	// exhausted inputs are already closed
 	for _, input := range m.inputs[m.currInput:] {
 		input.Close()
 	}

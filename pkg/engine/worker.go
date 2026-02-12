@@ -62,7 +62,7 @@ type WorkerParams struct {
 	// When set, streams are filtered before scanning.
 	StreamFilterer executor.RequestStreamFilterer
 
-	// Limits are used for per-tenant merge buffer batch counts. If nil, workers use 0 for both.
+	// Limits are used for per-tenant limits (e.g. RecordBatchSize). If nil, default limits apply.
 	Limits logql.Limits
 }
 
@@ -139,8 +139,9 @@ func NewWorker(params WorkerParams) (*Worker, error) {
 		SchedulerLookupAddress:  params.Config.SchedulerLookupAddress,
 		SchedulerLookupInterval: params.Config.SchedulerLookupInterval,
 
-		BatchSize:  int64(params.Executor.BatchSize),
-		NumThreads: params.Config.WorkerThreads,
+		BatchSize:         int64(params.Executor.BatchSize),
+		MergePrefetchCount: params.Executor.MergePrefetchCount,
+		NumThreads:         params.Config.WorkerThreads,
 
 		Endpoint: params.Endpoint,
 

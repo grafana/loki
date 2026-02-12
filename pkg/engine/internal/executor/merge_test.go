@@ -12,13 +12,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
 
-// testContext returns a context for merge tests that drain the merge until EOF.
-// We use Background() so draining is not interrupted by test context cancellation.
-func testContext(t *testing.T) context.Context {
-	t.Helper()
-	return context.Background()
-}
-
 func TestMerge(t *testing.T) {
 	schema := arrow.NewSchema([]arrow.Field{
 		{Name: "timestamp", Type: arrow.PrimitiveTypes.Int64, Nullable: true},
@@ -120,75 +113,4 @@ func TestMerge(t *testing.T) {
 			gotRows += rec.NumRows()
 		}
 	})
-}
-
-// TestMerge_Buffering verifies that with bufferBatchCount > 0 the merge returns
-// equally sized batches (except the last), regardless of the number of inputs.
-func TestMerge_Buffering(t *testing.T) {
-	schema := arrow.NewSchema([]arrow.Field{
-		{Name: "timestamp", Type: arrow.PrimitiveTypes.Int64, Nullable: true},
-		{Name: "message", Type: arrow.BinaryTypes.String, Nullable: true},
-	}, nil)
-
-	tests := []struct {
-		name               string
-		batchesPerInput    []int // each input has this many 1-row batches
-		bufferBatchCount   int
-		expectedBatchSizes []int64 // expected NumRows() per Read() until EOF
-	}{
-		{
-			name:               "single input buffer 3",
-			batchesPerInput:    []int{5},
-			bufferBatchCount:   3,
-			expectedBatchSizes: []int64{3, 2},
-		},
-		{
-			name:               "three inputs buffer 2",
-			batchesPerInput:    []int{5, 3, 4},
-			bufferBatchCount:   2,
-			expectedBatchSizes: []int64{2, 2, 2, 2, 2, 2},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			inputs := make([]Pipeline, len(tt.batchesPerInput))
-			for i, numBatches := range tt.batchesPerInput {
-				rows := make([]arrowtest.Rows, numBatches)
-				for j := range rows {
-					rows[j] = arrowtest.Rows{
-						map[string]any{"timestamp": int64(i*100 + j), "message": fmt.Sprintf("input%d-batch%d", i, j)},
-					}
-				}
-				inputs[i] = NewArrowtestPipeline(schema, rows...)
-			}
-
-			m, err := newMergePipeline(inputs, tt.bufferBatchCount, nil)
-			require.NoError(t, err)
-			defer m.Close()
-
-			ctx := testContext(t)
-			var actualBatchSizes []int64
-			for {
-				rec, err := m.Read(ctx)
-				if errors.Is(err, EOF) || errors.Is(err, context.Canceled) {
-					break
-				}
-				require.NoError(t, err)
-				require.NotNil(t, rec)
-				actualBatchSizes = append(actualBatchSizes, rec.NumRows())
-				rec.Release()
-			}
-
-			require.Equal(t, tt.expectedBatchSizes, actualBatchSizes, "batch sizes should match regardless of number of inputs")
-
-			// All but the last batch should have the same size (bufferBatchCount when each input batch has 1 row)
-			if tt.bufferBatchCount > 0 && len(actualBatchSizes) > 1 {
-				expectedFullSize := int64(tt.bufferBatchCount)
-				for i := 0; i < len(actualBatchSizes)-1; i++ {
-					require.Equal(t, expectedFullSize, actualBatchSizes[i], "batch %d should be full size", i)
-				}
-			}
-		})
-	}
 }

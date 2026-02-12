@@ -68,6 +68,9 @@ type Config struct {
 	// read call of a task pipeline.
 	BatchSize int64
 
+	// MergePrefetchCount controls the number of inputs prefetched by Merge nodes.
+	MergePrefetchCount int
+
 	// NumThreads is the number of worker threads to spawn. The number of
 	// threads corresponds to the number of tasks that can be executed
 	// concurrently.
@@ -134,7 +137,7 @@ type Worker struct {
 // the lifecycle of the returned worker.
 //
 // New returns an error if the provided config is invalid.
-// limits is used for per-tenant merge buffer batch counts; if nil, 0 is used.
+// limits is used for per-tenant limits (e.g. RecordBatchSize); if nil, default limits apply.
 func New(config Config, limits logql.Limits) (*Worker, error) {
 	if config.Logger == nil {
 		config.Logger = log.NewNopLogger()
@@ -194,12 +197,13 @@ func (w *Worker) run(ctx context.Context) error {
 	var threads []*thread
 	for i := range w.numThreads {
 		t := &thread{
-			BatchSize:      w.config.BatchSize,
-			Limits:         w.limits,
-			Logger:         log.With(w.logger, "thread", i),
-			Bucket:         w.config.Bucket,
-			Metastore:      w.config.Metastore,
-			StreamFilterer: w.config.StreamFilterer,
+			BatchSize:         w.config.BatchSize,
+			MergePrefetchCount: w.config.MergePrefetchCount,
+			Limits:            w.limits,
+			Logger:            log.With(w.logger, "thread", i),
+			Bucket:            w.config.Bucket,
+			Metastore:         w.config.Metastore,
+			StreamFilterer:    w.config.StreamFilterer,
 
 			Metrics:    w.metrics,
 			JobManager: w.jobManager,

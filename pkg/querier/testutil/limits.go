@@ -114,6 +114,6 @@ func (m *MockLimits) MetastorePointersScansPerTask(_ string) int {
 	return 0
 }
 
-func (m *MockLimits) MergeBatchSize(_ string) int {
+func (m *MockLimits) RecordBatchSize(_ string) int {
 	return 0
 }

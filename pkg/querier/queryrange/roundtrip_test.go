@@ -1553,7 +1553,7 @@ func (f fakeLimits) MetastorePointersScansPerTask(_ string) int {
 	return 0
 }
 
-func (f fakeLimits) MergeBatchSize(_ string) int {
+func (f fakeLimits) RecordBatchSize(_ string) int {
 	return 0
 }
 
