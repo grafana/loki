@@ -228,10 +228,13 @@ func (wf *Workflow) dispatchTasks(ctx context.Context, tasks []*Task) error {
 		int64(wf.opts.MaxRunningOtherTasks),
 	)
 
-	// do not update context as we do not want task spans to be a child of
-	// the dispatch span. dispatch span ends once all tasks are dispatched,
+	// this span captures the time spent waiting for all tasks to be admitted
+	// but not the time spent to assign them all to workers.
+	//
+	// context is not updated here to avoid making this a parent of
+	// task spans since admission span ends once all tasks are admitted,
 	// but tasks can still be running after it ends.
-	_, span := tracer.Start(ctx, "dispatchTasks")
+	_, span := tracer.Start(ctx, "wf.taskAdmission")
 	defer span.End()
 
 	region := xcap.RegionFromContext(ctx)

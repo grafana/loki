@@ -143,13 +143,18 @@ func (c *Capture) LinkParent(parent *Region) {
 // getAllStatistics returns statistics used across all regions
 // in this capture.
 func (c *Capture) getAllStatistics() map[StatisticKey]Statistic {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
 	stats := make(map[StatisticKey]Statistic)
 	for _, region := range c.regions {
+		region.mu.RLock()
 		for key, obs := range region.observations {
 			if _, exists := stats[key]; !exists {
 				stats[key] = obs.Statistic
 			}
 		}
+		region.mu.RUnlock()
 	}
 	return stats
 }
