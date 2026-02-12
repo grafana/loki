@@ -112,7 +112,7 @@ func TestRateBatcher_AccumulatesSize(t *testing.T) {
 			KeyedStream: KeyedStream{
 				Stream: logproto.Stream{
 					Labels:  `{app="test"}`,
-					Entries: []logproto.Entry{{Timestamp: time.Now(), Line: "hello"}}, // 5 bytes
+					Entries: []logproto.Entry{{Timestamp: time.Now(), Line: "hello"}},
 				},
 			},
 			SegmentationKeyHash: 123,
@@ -125,7 +125,7 @@ func TestRateBatcher_AccumulatesSize(t *testing.T) {
 			KeyedStream: KeyedStream{
 				Stream: logproto.Stream{
 					Labels:  `{app="test"}`,
-					Entries: []logproto.Entry{{Timestamp: time.Now(), Line: "world!"}}, // 6 bytes
+					Entries: []logproto.Entry{{Timestamp: time.Now(), Line: "world!"}},
 				},
 			},
 			SegmentationKeyHash: 123, // Same hash
@@ -140,8 +140,11 @@ func TestRateBatcher_AccumulatesSize(t *testing.T) {
 	// Should have one stream with accumulated size.
 	require.Equal(t, 1, client.calls)
 	require.Len(t, client.requests[0].Streams, 1)
-	// Size should be accumulated (5 + 6 = 11 bytes from the lines)
-	require.Equal(t, uint64(11), client.requests[0].Streams[0].TotalSize)
+
+	// Size should be accumulated: first Add size + second Add size.
+	// The batcher uses stream.Stream.Size() (protobuf size).
+	expectedTotal := uint64(stream1[0].Stream.Size()) + uint64(stream2[0].Stream.Size())
+	require.Equal(t, expectedTotal, client.requests[0].Streams[0].TotalSize)
 }
 
 func TestRateBatcher_MultipleTenants(t *testing.T) {
@@ -240,8 +243,16 @@ func TestRateBatcher_FlushOnShutdown(t *testing.T) {
 	ctx := context.Background()
 	require.NoError(t, services.StartAndAwaitRunning(ctx, batcher))
 
-	// Add some streams.
-	batcher.Add("tenant1", []SegmentedStream{{SegmentationKeyHash: 123}})
+	// Add some streams with actual data so they have non-zero size.
+	batcher.Add("tenant1", []SegmentedStream{{
+		KeyedStream: KeyedStream{
+			Stream: logproto.Stream{
+				Labels:  `{app="test"}`,
+				Entries: []logproto.Entry{{Timestamp: time.Now(), Line: "test"}},
+			},
+		},
+		SegmentationKeyHash: 123,
+	}})
 
 	// Should not have flushed yet.
 	client.mu.Lock()
