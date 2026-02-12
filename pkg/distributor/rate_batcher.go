@@ -21,6 +21,12 @@ type RateBatcherConfig struct {
 	BatchWindow time.Duration
 }
 
+// rateBatcherClient is the interface for sending rate updates.
+// This allows the batcher to use the ingestLimits wrapper which tracks metrics.
+type rateBatcherClient interface {
+	UpdateRatesRaw(ctx context.Context, req *proto.UpdateRatesRequest) ([]*proto.UpdateRatesResult, error)
+}
+
 // rateBatcher accumulates UpdateRates requests and dispatches them in batches.
 // This is a fire-and-forget mechanism - callers add streams to the batch and
 // don't wait for results. The batch is periodically flushed to the frontend.
@@ -29,7 +35,7 @@ type rateBatcher struct {
 	services.Service
 
 	cfg    RateBatcherConfig
-	client ingestLimitsFrontendClient
+	client rateBatcherClient
 	logger log.Logger
 
 	// pending accumulates streams to be sent in the next batch.
@@ -51,7 +57,7 @@ type rateBatcher struct {
 }
 
 // newRateBatcher creates a new rate batcher.
-func newRateBatcher(cfg RateBatcherConfig, client ingestLimitsFrontendClient, logger log.Logger, reg prometheus.Registerer) *rateBatcher {
+func newRateBatcher(cfg RateBatcherConfig, client rateBatcherClient, logger log.Logger, reg prometheus.Registerer) *rateBatcher {
 	b := &rateBatcher{
 		cfg:     cfg,
 		client:  client,
@@ -197,7 +203,7 @@ func (b *rateBatcher) flush(ctx context.Context) {
 
 		// Inject tenant ID into context for the RPC.
 		tenantCtx := user.InjectOrgID(ctx, tenant)
-		resp, err := b.client.UpdateRates(tenantCtx, req)
+		results, err := b.client.UpdateRatesRaw(tenantCtx, req)
 		if err != nil {
 			level.Error(b.logger).Log(
 				"msg", "failed to flush rate batch",
@@ -213,7 +219,7 @@ func (b *rateBatcher) flush(ctx context.Context) {
 		b.streamsFlushed.Add(float64(len(metadata)))
 
 		// Store the rates for future lookups.
-		b.storeRates(tenant, resp.Results)
+		b.storeRates(tenant, results)
 	}
 }
 

@@ -22,11 +22,7 @@ type mockUpdateRatesClient struct {
 	customRate uint64 // If non-zero, return this rate instead of 1000.
 }
 
-func (m *mockUpdateRatesClient) ExceedsLimits(_ context.Context, _ *proto.ExceedsLimitsRequest) (*proto.ExceedsLimitsResponse, error) {
-	return &proto.ExceedsLimitsResponse{}, nil
-}
-
-func (m *mockUpdateRatesClient) UpdateRates(_ context.Context, req *proto.UpdateRatesRequest) (*proto.UpdateRatesResponse, error) {
+func (m *mockUpdateRatesClient) UpdateRatesRaw(_ context.Context, req *proto.UpdateRatesRequest) ([]*proto.UpdateRatesResult, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.calls++
@@ -45,7 +41,7 @@ func (m *mockUpdateRatesClient) UpdateRates(_ context.Context, req *proto.Update
 			Rate:       rate,
 		}
 	}
-	return &proto.UpdateRatesResponse{Results: results}, nil
+	return results, nil
 }
 
 func TestRateBatcher_Add_AccumulatesStreams(t *testing.T) {

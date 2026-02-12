@@ -121,7 +121,7 @@ func NewDataObjTee(
 			RateBatcherConfig{
 				BatchWindow: cfg.RateBatchWindow,
 			},
-			limitsClient.client,
+			limitsClient,
 			logger,
 			r,
 		)
