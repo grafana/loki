@@ -176,9 +176,9 @@ func TestAddDeleteRequestHandler(t *testing.T) {
 	})
 }
 
-// buildCancelWithDetailsRequest builds a DELETE request for CancelDeleteRequestWithDetailsHandler.
+// buildEraseCompletedDeletionRequest builds a DELETE request for EraseCompletedDeletionRequestHandler.
 // The handler only accepts start=1767762000 and end=1769576400.
-func buildCancelWithDetailsRequest(orgID, query, start, end string) *http.Request {
+func buildEraseCompletedDeletionRequest(orgID, query, start, end string) *http.Request {
 	var req *http.Request
 	if orgID == "" {
 		req, _ = http.NewRequest(http.MethodDelete, "/loki/api/v1/cancelRequestWithoutID", nil)
@@ -194,7 +194,7 @@ func buildCancelWithDetailsRequest(orgID, query, start, end string) *http.Reques
 	return req
 }
 
-func TestCancelDeleteRequestWithDetailsHandler(t *testing.T) {
+func TestEraseCompletedDeletionRequestHandler(t *testing.T) {
 	const validStart = "1767762000"
 	const validEnd = "1769576400"
 	const validQuery = `{foo="bar"}`
@@ -212,9 +212,9 @@ func TestCancelDeleteRequestWithDetailsHandler(t *testing.T) {
 		store.getAllResult = []deletionproto.DeleteRequest{matchingReq}
 		h := NewDeleteRequestHandler(store, 0, 0, nil)
 
-		req := buildCancelWithDetailsRequest("org-id", validQuery, validStart, validEnd)
+		req := buildEraseCompletedDeletionRequest("org-id", validQuery, validStart, validEnd)
 		w := httptest.NewRecorder()
-		h.CancelDeleteRequestWithDetailsHandler(w, req)
+		h.EraseCompletedDeletionRequestHandler(w, req)
 
 		require.Equal(t, http.StatusNoContent, w.Code)
 		require.Equal(t, "org-id", store.getAllUser)
@@ -224,9 +224,9 @@ func TestCancelDeleteRequestWithDetailsHandler(t *testing.T) {
 
 	t.Run("retention not enabled when handler is nil", func(t *testing.T) {
 		var h *DeleteRequestHandler
-		req := buildCancelWithDetailsRequest("org-id", validQuery, validStart, validEnd)
+		req := buildEraseCompletedDeletionRequest("org-id", validQuery, validStart, validEnd)
 		w := httptest.NewRecorder()
-		h.CancelDeleteRequestWithDetailsHandler(w, req)
+		h.EraseCompletedDeletionRequestHandler(w, req)
 
 		require.Equal(t, http.StatusBadRequest, w.Code)
 		require.Equal(t, "Retention is not enabled\n", w.Body.String())
@@ -234,9 +234,9 @@ func TestCancelDeleteRequestWithDetailsHandler(t *testing.T) {
 
 	t.Run("no org id", func(t *testing.T) {
 		h := NewDeleteRequestHandler(&mockDeleteRequestsStore{}, 0, 0, nil)
-		req := buildCancelWithDetailsRequest("", validQuery, validStart, validEnd)
+		req := buildEraseCompletedDeletionRequest("", validQuery, validStart, validEnd)
 		w := httptest.NewRecorder()
-		h.CancelDeleteRequestWithDetailsHandler(w, req)
+		h.EraseCompletedDeletionRequestHandler(w, req)
 
 		require.Equal(t, http.StatusBadRequest, w.Code)
 		require.Equal(t, "no org id\n", w.Body.String())
@@ -244,9 +244,9 @@ func TestCancelDeleteRequestWithDetailsHandler(t *testing.T) {
 
 	t.Run("query not set", func(t *testing.T) {
 		h := NewDeleteRequestHandler(&mockDeleteRequestsStore{}, 0, 0, nil)
-		req := buildCancelWithDetailsRequest("org-id", "", validStart, validEnd)
+		req := buildEraseCompletedDeletionRequest("org-id", "", validStart, validEnd)
 		w := httptest.NewRecorder()
-		h.CancelDeleteRequestWithDetailsHandler(w, req)
+		h.EraseCompletedDeletionRequestHandler(w, req)
 
 		require.Equal(t, http.StatusBadRequest, w.Code)
 		require.Equal(t, "query not set\n", w.Body.String())
@@ -254,9 +254,9 @@ func TestCancelDeleteRequestWithDetailsHandler(t *testing.T) {
 
 	t.Run("start time not set", func(t *testing.T) {
 		h := NewDeleteRequestHandler(&mockDeleteRequestsStore{}, 0, 0, nil)
-		req := buildCancelWithDetailsRequest("org-id", validQuery, "", validEnd)
+		req := buildEraseCompletedDeletionRequest("org-id", validQuery, "", validEnd)
 		w := httptest.NewRecorder()
-		h.CancelDeleteRequestWithDetailsHandler(w, req)
+		h.EraseCompletedDeletionRequestHandler(w, req)
 
 		require.Equal(t, http.StatusBadRequest, w.Code)
 		require.Equal(t, "start time not set\n", w.Body.String())
@@ -264,9 +264,9 @@ func TestCancelDeleteRequestWithDetailsHandler(t *testing.T) {
 
 	t.Run("start time must be 1767762000", func(t *testing.T) {
 		h := NewDeleteRequestHandler(&mockDeleteRequestsStore{}, 0, 0, nil)
-		req := buildCancelWithDetailsRequest("org-id", validQuery, "1767762001", validEnd)
+		req := buildEraseCompletedDeletionRequest("org-id", validQuery, "1767762001", validEnd)
 		w := httptest.NewRecorder()
-		h.CancelDeleteRequestWithDetailsHandler(w, req)
+		h.EraseCompletedDeletionRequestHandler(w, req)
 
 		require.Equal(t, http.StatusBadRequest, w.Code)
 		require.Equal(t, "start time should be 1767762000\n", w.Body.String())
@@ -274,9 +274,9 @@ func TestCancelDeleteRequestWithDetailsHandler(t *testing.T) {
 
 	t.Run("end time not set", func(t *testing.T) {
 		h := NewDeleteRequestHandler(&mockDeleteRequestsStore{}, 0, 0, nil)
-		req := buildCancelWithDetailsRequest("org-id", validQuery, validStart, "")
+		req := buildEraseCompletedDeletionRequest("org-id", validQuery, validStart, "")
 		w := httptest.NewRecorder()
-		h.CancelDeleteRequestWithDetailsHandler(w, req)
+		h.EraseCompletedDeletionRequestHandler(w, req)
 
 		require.Equal(t, http.StatusBadRequest, w.Code)
 		require.Contains(t, w.Body.String(), "end")
@@ -284,9 +284,9 @@ func TestCancelDeleteRequestWithDetailsHandler(t *testing.T) {
 
 	t.Run("end time must be 1769576400", func(t *testing.T) {
 		h := NewDeleteRequestHandler(&mockDeleteRequestsStore{}, 0, 0, nil)
-		req := buildCancelWithDetailsRequest("org-id", validQuery, validStart, "1769576401")
+		req := buildEraseCompletedDeletionRequest("org-id", validQuery, validStart, "1769576401")
 		w := httptest.NewRecorder()
-		h.CancelDeleteRequestWithDetailsHandler(w, req)
+		h.EraseCompletedDeletionRequestHandler(w, req)
 
 		require.Equal(t, http.StatusBadRequest, w.Code)
 		require.Equal(t, "end time should be 1769576400\n", w.Body.String())
@@ -297,9 +297,9 @@ func TestCancelDeleteRequestWithDetailsHandler(t *testing.T) {
 		store.getAllErr = errors.New("store unavailable")
 		h := NewDeleteRequestHandler(store, 0, 0, nil)
 
-		req := buildCancelWithDetailsRequest("org-id", validQuery, validStart, validEnd)
+		req := buildEraseCompletedDeletionRequest("org-id", validQuery, validStart, validEnd)
 		w := httptest.NewRecorder()
-		h.CancelDeleteRequestWithDetailsHandler(w, req)
+		h.EraseCompletedDeletionRequestHandler(w, req)
 
 		require.Equal(t, http.StatusInternalServerError, w.Code)
 		require.Equal(t, "store unavailable\n", w.Body.String())
@@ -312,9 +312,9 @@ func TestCancelDeleteRequestWithDetailsHandler(t *testing.T) {
 		}
 		h := NewDeleteRequestHandler(store, 0, 0, nil)
 
-		req := buildCancelWithDetailsRequest("org-id", validQuery, validStart, validEnd)
+		req := buildEraseCompletedDeletionRequest("org-id", validQuery, validStart, validEnd)
 		w := httptest.NewRecorder()
-		h.CancelDeleteRequestWithDetailsHandler(w, req)
+		h.EraseCompletedDeletionRequestHandler(w, req)
 
 		require.Equal(t, http.StatusBadRequest, w.Code)
 		require.Contains(t, w.Body.String(), "No matching delete request found")
@@ -333,9 +333,9 @@ func TestCancelDeleteRequestWithDetailsHandler(t *testing.T) {
 		store.getAllResult = []deletionproto.DeleteRequest{matching, matching}
 		h := NewDeleteRequestHandler(store, 0, 0, nil)
 
-		req := buildCancelWithDetailsRequest("org-id", validQuery, validStart, validEnd)
+		req := buildEraseCompletedDeletionRequest("org-id", validQuery, validStart, validEnd)
 		w := httptest.NewRecorder()
-		h.CancelDeleteRequestWithDetailsHandler(w, req)
+		h.EraseCompletedDeletionRequestHandler(w, req)
 
 		require.Equal(t, http.StatusBadRequest, w.Code)
 		require.Contains(t, w.Body.String(), "Multiple matching delete requests found")
@@ -355,9 +355,9 @@ func TestCancelDeleteRequestWithDetailsHandler(t *testing.T) {
 		store.getAllResult = []deletionproto.DeleteRequest{matchingReq}
 		h := NewDeleteRequestHandler(store, 0, 0, nil)
 
-		req := buildCancelWithDetailsRequest("org-id", validQuery, validStart, validEnd)
+		req := buildEraseCompletedDeletionRequest("org-id", validQuery, validStart, validEnd)
 		w := httptest.NewRecorder()
-		h.CancelDeleteRequestWithDetailsHandler(w, req)
+		h.EraseCompletedDeletionRequestHandler(w, req)
 
 		require.Equal(t, http.StatusBadRequest, w.Code)
 		require.Contains(t, w.Body.String(), "is not in processed state")
@@ -379,9 +379,9 @@ func TestCancelDeleteRequestWithDetailsHandler(t *testing.T) {
 		store.removeErr = errors.New("remove failed")
 		h := NewDeleteRequestHandler(store, 0, 0, nil)
 
-		req := buildCancelWithDetailsRequest("org-id", validQuery, validStart, validEnd)
+		req := buildEraseCompletedDeletionRequest("org-id", validQuery, validStart, validEnd)
 		w := httptest.NewRecorder()
-		h.CancelDeleteRequestWithDetailsHandler(w, req)
+		h.EraseCompletedDeletionRequestHandler(w, req)
 
 		require.Equal(t, http.StatusInternalServerError, w.Code)
 		require.Equal(t, "remove failed\n", w.Body.String())
@@ -389,9 +389,9 @@ func TestCancelDeleteRequestWithDetailsHandler(t *testing.T) {
 
 	t.Run("invalid query format", func(t *testing.T) {
 		h := NewDeleteRequestHandler(&mockDeleteRequestsStore{}, 0, 0, nil)
-		req := buildCancelWithDetailsRequest("org-id", "not a logql query", validStart, validEnd)
+		req := buildEraseCompletedDeletionRequest("org-id", "not a logql query", validStart, validEnd)
 		w := httptest.NewRecorder()
-		h.CancelDeleteRequestWithDetailsHandler(w, req)
+		h.EraseCompletedDeletionRequestHandler(w, req)
 
 		require.Equal(t, http.StatusBadRequest, w.Code)
 		require.Contains(t, w.Body.String(), "query")

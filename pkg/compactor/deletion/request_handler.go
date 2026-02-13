@@ -257,9 +257,9 @@ func deleteRequestStatus(processed, total int) deletionproto.DeleteRequestStatus
 	return deletionproto.DeleteRequestStatus(fmt.Sprintf("%d%% Complete", int(percentCompleted*100)))
 }
 
-// CancelDeleteRequestWithDetailsHandler handles delete request cancellation using delete request details(query, start and end time).
-func (dm *DeleteRequestHandler) CancelDeleteRequestWithDetailsHandler(w http.ResponseWriter, r *http.Request) {
-	logger := log.With(util_log.Logger, "handler", "CancelDeleteRequestWithDetailsHandler")
+// EraseCompletedDeletionRequestHandler handles delete request cancellation using delete request details(query, start and end time).
+func (dm *DeleteRequestHandler) EraseCompletedDeletionRequestHandler(w http.ResponseWriter, r *http.Request) {
+	logger := log.With(util_log.Logger, "handler", "EraseCompletedDeletionRequestHandler")
 	if dm == nil {
 		http.Error(w, "Retention is not enabled", http.StatusBadRequest)
 		return
@@ -363,8 +363,13 @@ func (dm *DeleteRequestHandler) CancelDeleteRequestWithDetailsHandler(w http.Res
 		"msg", "found matching delete request for query and cancelling it.",
 		"requestID", matchingRequests[0].RequestID,
 		"query", query,
+		"orig_query", matchingRequests[0].Query,
 		"startTime", startTime.String(),
+		"orig_startTime", matchingRequests[0].StartTime.String(),
 		"endTime", endTime.String(),
+		"orig_endTime", matchingRequests[0].EndTime.String(),
+		"orig_status", matchingRequests[0].Status,
+		"orig_created_at", matchingRequests[0].CreatedAt.String(),
 	)
 
 	if err := dm.deleteRequestsStore.RemoveDeleteRequest(ctx, userID, matchingRequests[0].RequestID); err != nil {
