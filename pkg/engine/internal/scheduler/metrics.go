@@ -17,8 +17,9 @@ type metrics struct {
 	connsTotal    prometheus.Counter
 	backoffsTotal prometheus.Counter
 
-	taskQueueSeconds prometheus.Histogram
-	taskExecSeconds  prometheus.Histogram
+	taskQueueSeconds    prometheus.Histogram
+	taskExecSeconds     prometheus.Histogram
+	workerAssignSeconds prometheus.Histogram
 }
 
 func newMetrics() *metrics {
@@ -57,6 +58,14 @@ func newMetrics() *metrics {
 			Name: "loki_engine_scheduler_task_exec_seconds",
 			Help: "Number of seconds a task took to complete successfully",
 
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: time.Hour,
+		}),
+
+		workerAssignSeconds: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
+			Name:                            "loki_engine_scheduler_worker_assign_seconds",
+			Help:                            "Number of seconds it took to assign a task to a worker thread, including retries and backoffs",
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: time.Hour,

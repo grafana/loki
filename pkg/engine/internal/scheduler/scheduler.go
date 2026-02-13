@@ -385,10 +385,15 @@ func (s *Scheduler) runAssignLoop(ctx context.Context) error {
 func (s *Scheduler) assignTasks(ctx context.Context) {
 	level.Debug(s.logger).Log("msg", "performing task assignment")
 
-	assignOne := func(worker *workerConn, msg wire.TaskAssignMessage) bool {
+	assignOne := func(worker *workerConn, msg wire.TaskAssignMessage, t *task) bool {
 		// TODO(rfratto): allow assignment timeout to be configurable.
 		ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		defer cancel()
+
+		start := time.Now()
+		defer func() {
+			t.wfRegion.Record(xcap.StatWorkerAssignDuration.Observe(time.Since(start).Seconds()))
+		}()
 
 		level.Debug(s.logger).Log("msg", "assigning task", "id", msg.Task.ULID, "conn", worker.RemoteAddr())
 
@@ -418,7 +423,7 @@ func (s *Scheduler) assignTasks(ctx context.Context) {
 			return
 		}
 
-		if assigned := assignOne(worker, msg); !assigned {
+		if assigned := assignOne(worker, msg, t); !assigned {
 			continue
 		}
 

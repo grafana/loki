@@ -85,6 +85,8 @@ var (
 
 	// Time spent waiting for task admission (before being queued) in seconds.
 	StatTaskAdmissionWaitDuration = NewStatisticFloat64("task.admission.wait.duration", AggregationTypeSum)
+
+	StatWorkerAssignDuration = NewStatisticFloat64("worker.assign.duration", AggregationTypeSum)
 )
 
 var (
