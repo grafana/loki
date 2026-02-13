@@ -108,6 +108,7 @@ The `persist_tokens` option is enabled for a ring but no `path_prefix` is specif
    ```yaml
    common:
      path_prefix: /var/loki
+     persist_tokens: true
    
    ingester:
      lifecycler:
@@ -119,10 +120,9 @@ The `persist_tokens` option is enabled for a ring but no `path_prefix` is specif
 
 1. **Or disable persist_tokens** if you don't need token persistence:
 
-   ```yaml
-   ingester:
-     lifecycler:
-       enable_inet6: false
+```yaml
+   common:
+     persist_tokens: false
    ```
 
 **Properties:**
