@@ -108,6 +108,7 @@ The `persist_tokens` option is enabled for a ring but no `path_prefix` is specif
    ```yaml
    common:
      path_prefix: /var/loki
+     persist_tokens: true
    
    ingester:
      lifecycler:
@@ -119,10 +120,9 @@ The `persist_tokens` option is enabled for a ring but no `path_prefix` is specif
 
 1. **Or disable persist_tokens** if you don't need token persistence:
 
-   ```yaml
-   ingester:
-     lifecycler:
-       enable_inet6: false
+```yaml
+   common:
+     persist_tokens: false
    ```
 
 **Properties:**
@@ -740,6 +740,7 @@ A delete request was submitted for a tenant that does not have deletion enabled.
 - HTTP status: 403 Forbidden
 - Configurable per tenant: Yes
 
+
 ## Storage backend errors
 
 Storage backend errors occur when Loki cannot communicate with or properly configure object storage (Amazon S3, Google Cloud Services, Microsoft Azure, Swift, or filesystem).
@@ -754,7 +755,7 @@ unsupported storage backend
 
 **Cause:**
 
-The specified storage backend type is not recognized. This typically occurs when a typo exists in the storage type configuration. 
+The specified storage backend type is not recognized. This typically occurs when a typo exists in the storage type configuration.
 
 **Resolution:**
 
@@ -1024,15 +1025,9 @@ A named storage configuration referenced in the schema config doesn't exist in t
 - HTTP status: N/A (startup failure)
 - Configurable per tenant: No
 
-
-
-
-
-<!-- Additional content in next PRs.  Just leaving the headings here for context and so that I can keep things in order if PRs merge out of sequence. -->
-
 ## Cache errors
 
-
+<!-- Additional content in next PRs.  Just leaving the headings here for context and so that I can keep things in order if PRs merge out of sequence. -->
 
 ## Ring and cluster communication errors
 
