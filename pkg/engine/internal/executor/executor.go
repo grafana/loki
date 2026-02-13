@@ -129,7 +129,7 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 	case *physical.Projection:
 		return newObservedPipeline(c.executeProjection(ctx, n, inputs, nodeRegion))
 	case *physical.RangeAggregation:
-		return newObservedPipeline(c.executeRangeAggregation(ctx, n, inputs, nodeRegion))
+		return newObservedPipeline(c.executeRangeAggregation(ctx, n, inputs, nodeRegion, c.logger))
 	case *physical.VectorAggregation:
 		return newObservedPipeline(c.executeVectorAggregation(ctx, n, inputs, nodeRegion))
 	case *physical.ColumnCompat:
@@ -373,7 +373,7 @@ func (c *Context) executeProjection(ctx context.Context, proj *physical.Projecti
 	return p
 }
 
-func (c *Context) executeRangeAggregation(ctx context.Context, plan *physical.RangeAggregation, inputs []Pipeline, region *xcap.Region) Pipeline {
+func (c *Context) executeRangeAggregation(ctx context.Context, plan *physical.RangeAggregation, inputs []Pipeline, region *xcap.Region, logger log.Logger) Pipeline {
 	if len(inputs) == 0 {
 		return emptyPipelineWithRegion(region)
 	}
@@ -386,7 +386,7 @@ func (c *Context) executeRangeAggregation(ctx context.Context, plan *physical.Ra
 		step:           plan.Step,
 		operation:      plan.Operation,
 		maxQuerySeries: plan.MaxQuerySeries,
-	}, region)
+	}, region, logger)
 	if err != nil {
 		return errorPipelineWithRegion(ctx, err, region)
 	}

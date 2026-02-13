@@ -202,31 +202,38 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 		return logqlmodel.Result{}, ErrPlanningFailed
 	}
 
-	//wf, durWorkflowPlanning, err := e.buildWorkflow(ctx, tenantID, logger, physicalPlan)
-	//if err != nil {
-	//	e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
-	//	region.SetStatus(codes.Error, "failed to create execution plan")
-	//	return logqlmodel.Result{}, ErrPlanningFailed
-	//}
-	//defer wf.Close()
+	useScheduler := true
+	var pipeline executor.Pipeline
+	durWorkflowPlanning := time.Duration(0)
+	if useScheduler {
+		var wf *workflow.Workflow
+		wf, durWorkflowPlanning, err = e.buildWorkflow(ctx, tenantID, logger, physicalPlan)
+		if err != nil {
+			e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
+			region.SetStatus(codes.Error, "failed to create execution plan")
+			return logqlmodel.Result{}, ErrPlanningFailed
+		}
+		defer wf.Close()
 
-	cfg := executor.Config{
-		BatchSize:          int64(e.cfg.Executor.BatchSize),
-		MergePrefetchCount: e.cfg.Executor.MergePrefetchCount,
-		Metastore:          e.metastore,
-		StreamFilterer:     e.cfg.Executor.StreamFilterer,
-		Bucket:             e.bucket,
+		pipeline, err = wf.Run(ctx)
+		if err != nil {
+			level.Error(logger).Log("msg", "failed to execute query", "err", err)
+
+			e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
+			region.SetStatus(codes.Error, "failed to execute query")
+			return logqlmodel.Result{}, ErrSchedulingFailed
+		}
+	} else {
+		cfg := executor.Config{
+			BatchSize:          int64(e.cfg.Executor.BatchSize),
+			MergePrefetchCount: e.cfg.Executor.MergePrefetchCount,
+			Metastore:          e.metastore,
+			StreamFilterer:     e.cfg.Executor.StreamFilterer,
+			Bucket:             e.bucket,
+		}
+
+		pipeline = executor.Run(ctx, cfg, physicalPlan, logger)
 	}
-
-	pipeline := executor.Run(ctx, cfg, physicalPlan, logger)
-	//pipeline, err := wf.Run(ctx)
-	//if err != nil {
-	//	level.Error(logger).Log("msg", "failed to execute query", "err", err)
-	//
-	//	e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
-	//	region.SetStatus(codes.Error, "failed to execute query")
-	//	return logqlmodel.Result{}, ErrSchedulingFailed
-	//}
 	defer pipeline.Close()
 
 	builder, durExecution, err := e.collectResult(ctx, logger, params, pipeline)
@@ -244,7 +251,7 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 		"step", params.Step().String(),
 		"duration_logical_planning", durLogicalPlanning,
 		"duration_physical_planning", durPhysicalPlanning,
-		//"duration_workflow_planning", durWorkflowPlanning,
+		"duration_workflow_planning", durWorkflowPlanning,
 		"duration_execution", durExecution,
 		"duration_full", durFull,
 	}

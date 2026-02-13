@@ -8,9 +8,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/user"
+	"github.com/grafana/loki/v3/pkg/engine/internal/arrowagg"
 	"github.com/thanos-io/objstore"
 	"go.opentelemetry.io/otel/attribute"
 
@@ -272,6 +274,9 @@ func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, 
 		return 0, err
 	}
 
+	buf := arrowagg.NewRecords(memory.DefaultAllocator)
+	bufSize := int64(0)
+
 	var totalRows int
 	for {
 		rec, err := pipeline.Read(ctx)
@@ -288,9 +293,43 @@ func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, 
 			continue
 		}
 
+		buf.Append(rec)
+		bufSize += rec.NumRows()
+
+		if bufSize > 1000 {
+			startSend := time.Now()
+			agg, err := buf.Aggregate()
+			if err != nil {
+				panic(err)
+			}
+			for _, sink := range job.Sinks {
+				err = sink.Send(ctx, agg)
+				if err != nil {
+					// If a sink doesn't accept the result, we'll continue
+					// best-effort processing our task. It's possible that one of
+					// the receiving sinks got canceled, and other sinks may still
+					// need data.
+					level.Warn(logger).Log("msg", "failed to send result", "err", err)
+					continue
+				}
+			}
+			diff := time.Since(startSend)
+			level.Debug(logger).Log("msg", "sent result", "duration", diff, "num_rows", agg.NumRows())
+			region.Record(xcap.TaskSendDuration.Observe(diff.Seconds()))
+			region.Record(xcap.TaskSendTrips.Observe(1))
+			buf.Reset()
+			bufSize = 0
+		}
+	}
+
+	if bufSize > 0 {
 		startSend := time.Now()
+		agg, err := buf.Aggregate()
+		if err != nil {
+			panic(err)
+		}
 		for _, sink := range job.Sinks {
-			err := sink.Send(ctx, rec)
+			err = sink.Send(ctx, agg)
 			if err != nil {
 				// If a sink doesn't accept the result, we'll continue
 				// best-effort processing our task. It's possible that one of
@@ -300,8 +339,15 @@ func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, 
 				continue
 			}
 		}
-		region.Record(xcap.TaskSendDuration.Observe(time.Since(startSend).Seconds()))
+		diff := time.Since(startSend)
+		level.Debug(logger).Log("msg", "sent result", "duration", diff, "num_rows", agg.NumRows())
+		region.Record(xcap.TaskSendDuration.Observe(diff.Seconds()))
+		region.Record(xcap.TaskSendTrips.Observe(1))
+		buf.Reset()
+		bufSize = 0
 	}
+
+	region.Record(xcap.TaskSendRows.Observe(float64(totalRows)))
 
 	return totalRows, nil
 }

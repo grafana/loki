@@ -49,9 +49,10 @@ func (src *nodeSource) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
-	case <-src.closed:
-		return nil, executor.EOF
-	case rec := <-src.records:
+	case rec, ok := <-src.records:
+		if !ok {
+			return nil, executor.EOF
+		}
 		return rec, nil
 	}
 }
@@ -59,7 +60,7 @@ func (src *nodeSource) Read(ctx context.Context) (arrow.RecordBatch, error) {
 func (src *nodeSource) lazyInit() {
 	src.initOnce.Do(func() {
 		src.closed = make(chan struct{})
-		src.records = make(chan arrow.RecordBatch)
+		src.records = make(chan arrow.RecordBatch, 1000)
 	})
 }
 
@@ -97,5 +98,8 @@ func (src *nodeSource) Add(delta int64) {
 func (src *nodeSource) Close() {
 	src.lazyInit()
 
-	src.closeOnce.Do(func() { close(src.closed) })
+	src.closeOnce.Do(func() {
+		close(src.closed)
+		close(src.records)
+	})
 }

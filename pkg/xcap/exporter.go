@@ -233,7 +233,7 @@ func summarizeObservations(capture *Capture) *observations {
 				StatTaskCount.Key(),
 				StatTaskAdmissionWaitDuration.Key(), StatTaskAssignmentTailDuration.Key(),
 				StatTaskMaxQueueDuration.Key(),
-				TaskRecvDuration.Key(), TaskSendDuration.Key(),
+				TaskRecvDuration.Key(), TaskSendDuration.Key(), TaskSendRows.Key(), TaskSendTrips.Key(),
 			).
 			normalizeKeys(),
 	)

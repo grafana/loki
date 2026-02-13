@@ -96,4 +96,6 @@ var (
 var (
 	TaskRecvDuration = NewStatisticFloat64("task.recv.duration", AggregationTypeSum)
 	TaskSendDuration = NewStatisticFloat64("task.send.duration", AggregationTypeSum)
+	TaskSendRows     = NewStatisticFloat64("task.send.rows", AggregationTypeSum)
+	TaskSendTrips    = NewStatisticFloat64("task.send.trips", AggregationTypeSum)
 )

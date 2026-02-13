@@ -10,6 +10,8 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 
@@ -74,15 +76,17 @@ type rangeAggregationPipeline struct {
 	opts                rangeAggregationOptions
 	region              *xcap.Region
 	identCache          *semconv.IdentifierCache
+	logger              log.Logger
 }
 
-func newRangeAggregationPipeline(inputs []Pipeline, evaluator *expressionEvaluator, opts rangeAggregationOptions, region *xcap.Region) (*rangeAggregationPipeline, error) {
+func newRangeAggregationPipeline(inputs []Pipeline, evaluator *expressionEvaluator, opts rangeAggregationOptions, region *xcap.Region, logger log.Logger) (*rangeAggregationPipeline, error) {
 	r := &rangeAggregationPipeline{
 		inputs:     inputs,
 		evaluator:  evaluator,
 		opts:       opts,
 		region:     region,
 		identCache: semconv.NewIdentifierCache(),
+		logger:     logger,
 	}
 	r.init()
 	return r, nil
@@ -299,12 +303,16 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 
 	r.inputsExhausted = true
 
+	level.Debug(r.logger).Log("msg", "done accumulating")
+
+	result, err := r.aggregator.BuildRecord()
+
 	if r.region != nil {
 		computeTime := time.Since(startedAt) - inputReadTime
 		r.region.Record(xcap.StatPipelineExecDuration.Observe(computeTime.Seconds()))
 	}
 
-	return r.aggregator.BuildRecord()
+	return result, err
 }
 
 // Close closes the resources of the pipeline.

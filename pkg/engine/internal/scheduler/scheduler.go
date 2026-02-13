@@ -173,7 +173,7 @@ func (s *Scheduler) handleConn(ctx context.Context, conn wire.Conn) {
 	// Handle communication with the peer until the context is canceled or some
 	// error occurs.
 	err := peer.Serve(ctx)
-	if err != nil && ctx.Err() != nil && !errors.Is(err, wire.ErrConnClosed) {
+	if err != nil && !errors.Is(err, wire.ErrConnClosed) {
 		level.Warn(logger).Log("msg", "serve error", "err", err)
 	} else {
 		level.Debug(logger).Log("msg", "connection closed")
