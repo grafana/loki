@@ -333,7 +333,6 @@ func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, 
 		region.Record(xcap.TaskRecordsSent.Observe(1))
 		region.Record(xcap.TaskRowsSent.Observe(toSend.NumRows()))
 		region.Record(xcap.TaskSendDuration.Observe(time.Since(startSend).Seconds()))
-		toSend.Release()
 	}
 
 	// flushBatch flushes the current batch (aggregate with schema reconciliation and send). It always clears batch and currentBatchSize.
@@ -342,22 +341,20 @@ func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, 
 			return
 		}
 
+		batch = nil
+		currentBatchSize = 0
+
 		compactor := arrowagg.NewRecords(memory.DefaultAllocator)
 		for _, rec := range batch {
 			compactor.Append(rec)
 		}
-		batchToRelease := batch
-		batch = nil
-		currentBatchSize = 0
 
 		combined, err := compactor.Aggregate()
-		for _, r := range batchToRelease {
-			r.Release()
-		}
 		if err != nil {
 			level.Warn(logger).Log("msg", "failed to aggregate record batch", "err", err)
 			return
 		}
+
 		flush(combined)
 	}
 
@@ -366,9 +363,6 @@ func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, 
 		if err != nil && errors.Is(err, executor.EOF) {
 			break
 		} else if err != nil {
-			for _, r := range batch {
-				r.Release()
-			}
 			return totalRows, err
 		}
 
@@ -376,7 +370,6 @@ func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, 
 
 		// Don't bother writing empty records to our peers.
 		if rec.NumRows() == 0 {
-			rec.Release()
 			continue
 		}
 
