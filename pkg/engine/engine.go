@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/tenant"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/thanos-io/objstore"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -89,6 +90,7 @@ type Params struct {
 	Metastore    metastore.Metastore // Metastore to access the indexes
 	Limits       logql.Limits        // Limits to apply to engine queries.
 	DeleteGetter deletion.Getter     // DeleteGetter to fetch delete requests for query-time filtering.
+	Bucket       objstore.Bucket
 }
 
 // validate validates p and applies defaults.
@@ -122,6 +124,7 @@ type Engine struct {
 	deleteGetter deletion.Getter // DeleteGetter to fetch delete requests for query-time filtering.
 
 	metastore metastore.Metastore
+	bucket    objstore.Bucket
 }
 
 // New creates a new Engine.
@@ -140,6 +143,8 @@ func New(params Params) (*Engine, error) {
 		deleteGetter: params.DeleteGetter,
 
 		metastore: params.Metastore,
+
+		bucket: params.Bucket,
 	}
 
 	return e, nil
@@ -197,22 +202,31 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 		return logqlmodel.Result{}, ErrPlanningFailed
 	}
 
-	wf, durWorkflowPlanning, err := e.buildWorkflow(ctx, tenantID, logger, physicalPlan)
-	if err != nil {
-		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
-		region.SetStatus(codes.Error, "failed to create execution plan")
-		return logqlmodel.Result{}, ErrPlanningFailed
-	}
-	defer wf.Close()
+	//wf, durWorkflowPlanning, err := e.buildWorkflow(ctx, tenantID, logger, physicalPlan)
+	//if err != nil {
+	//	e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
+	//	region.SetStatus(codes.Error, "failed to create execution plan")
+	//	return logqlmodel.Result{}, ErrPlanningFailed
+	//}
+	//defer wf.Close()
 
-	pipeline, err := wf.Run(ctx)
-	if err != nil {
-		level.Error(logger).Log("msg", "failed to execute query", "err", err)
-
-		e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
-		region.SetStatus(codes.Error, "failed to execute query")
-		return logqlmodel.Result{}, ErrSchedulingFailed
+	cfg := executor.Config{
+		BatchSize:          int64(e.cfg.Executor.BatchSize),
+		MergePrefetchCount: e.cfg.Executor.MergePrefetchCount,
+		Metastore:          e.metastore,
+		StreamFilterer:     e.cfg.Executor.StreamFilterer,
+		Bucket:             e.bucket,
 	}
+
+	pipeline := executor.Run(ctx, cfg, physicalPlan, logger)
+	//pipeline, err := wf.Run(ctx)
+	//if err != nil {
+	//	level.Error(logger).Log("msg", "failed to execute query", "err", err)
+	//
+	//	e.metrics.subqueries.WithLabelValues(statusFailure).Inc()
+	//	region.SetStatus(codes.Error, "failed to execute query")
+	//	return logqlmodel.Result{}, ErrSchedulingFailed
+	//}
 	defer pipeline.Close()
 
 	builder, durExecution, err := e.collectResult(ctx, logger, params, pipeline)
@@ -230,7 +244,7 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 		"step", params.Step().String(),
 		"duration_logical_planning", durLogicalPlanning,
 		"duration_physical_planning", durPhysicalPlanning,
-		"duration_workflow_planning", durWorkflowPlanning,
+		//"duration_workflow_planning", durWorkflowPlanning,
 		"duration_execution", durExecution,
 		"duration_full", durFull,
 	}

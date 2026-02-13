@@ -32,7 +32,7 @@ import (
 
 var (
 	engineLogs      = flag.Bool("engine-logs", false, "include engine logs in verbose output")
-	remoteTransport = flag.Bool("remote-transport", false, "run engine with remote transport over loopback interface")
+	remoteTransport = flag.Bool("remote-transport", true, "run engine with remote transport over loopback interface")
 	storageLatency  = flag.Duration("storage-latency", 0*time.Millisecond, "simulated per-request object storage latency (e.g. 10ms)")
 )
 
@@ -174,6 +174,7 @@ func dataobjV2StoreWithOpts(dataDir string, tenantID string, cfg engine.Executor
 		Scheduler: sched,
 		Limits:    logql.NoLimits,
 		Metastore: ms,
+		Bucket:    bucketClient,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("creating engine: %w", err)

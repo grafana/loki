@@ -178,12 +178,12 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 				return nil, err
 			}
 
+			inputsExhausted = false
+
 			if record.NumRows() == 0 {
 				// Nothing to process
 				continue
 			}
-
-			inputsExhausted = false
 
 			// extract all the columns that are used for grouping
 			var arrays []*array.String

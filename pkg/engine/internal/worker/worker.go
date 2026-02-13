@@ -21,6 +21,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
 	"go.opentelemetry.io/otel/propagation"
+	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
@@ -82,6 +83,12 @@ type Config struct {
 	// When set, streams are filtered before scanning.
 	StreamFilterer executor.RequestStreamFilterer `yaml:"-"`
 }
+
+var (
+	subscribedCounter atomic.Int64
+	fullCounter       atomic.Int64
+	assignedCounter   atomic.Int64
+)
 
 // readyRequest is a message sent from a thread to notify the worker that it's
 // ready for a task.
@@ -375,9 +382,11 @@ func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, con
 
 		if err := w.jobManager.Send(ctx, job); err != nil {
 			job.Close() // Clean up resources associated with the job.
+			fullCounter.Inc()
 			return wire.Errorf(http.StatusTooManyRequests, "no threads available")
 		}
 
+		assignedCounter.Inc()
 		w.metrics.tasksAssignedTotal.Inc()
 		return nil
 	}
@@ -393,6 +402,7 @@ func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, con
 		Handler: func(ctx context.Context, peer *wire.Peer, msg wire.Message) error {
 			switch msg := msg.(type) {
 			case wire.WorkerSubscribeMessage:
+				subscribedCounter.Inc()
 				return handleWorkerSubscribe()
 
 			case wire.TaskAssignMessage:
