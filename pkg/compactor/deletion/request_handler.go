@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/tenant"
 	"github.com/prometheus/client_golang/prometheus"
@@ -254,6 +255,140 @@ func deleteRequestStatus(processed, total int) deletionproto.DeleteRequestStatus
 
 	percentCompleted := float64(processed) / float64(total)
 	return deletionproto.DeleteRequestStatus(fmt.Sprintf("%d%% Complete", int(percentCompleted*100)))
+}
+
+// CancelDeleteRequestWithDetailsHandler handles delete request cancellation using delete request details(query, start and end time).
+func (dm *DeleteRequestHandler) CancelDeleteRequestWithDetailsHandler(w http.ResponseWriter, r *http.Request) {
+	logger := log.With(util_log.Logger, "handler", "CancelDeleteRequestWithDetailsHandler")
+	if dm == nil {
+		http.Error(w, "Retention is not enabled", http.StatusBadRequest)
+		return
+	}
+	ctx := r.Context()
+	userID, err := tenant.TenantID(ctx)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	params := r.URL.Query()
+	query, _, err := query(params)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	startTime, err := startTime(params)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if startTime.Unix() != 1767762000 {
+		http.Error(w, "start time should be 1767762000", http.StatusBadRequest)
+		return
+	}
+
+	endTime, err := endTime(params, startTime)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if endTime.Unix() != 1769576400 {
+		http.Error(w, "end time should be 1769576400", http.StatusBadRequest)
+		return
+	}
+
+	allRequests, err := dm.deleteRequestsStore.GetAllDeleteRequestsForUser(ctx, userID, false, nil)
+	if err != nil {
+		level.Error(logger).Log("msg", "error getting delete requests from the store", "err", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	var matchingRequests []deletionproto.DeleteRequest
+	for _, req := range allRequests {
+		if req.Query != query {
+			continue
+		}
+
+		if req.StartTime != startTime {
+			continue
+		}
+
+		if req.EndTime != endTime {
+			continue
+		}
+
+		matchingRequests = append(matchingRequests, req)
+	}
+
+	if len(matchingRequests) == 0 {
+		level.Error(logger).Log(
+			"msg", "no matching delete request found",
+			"query", query,
+			"startTime", startTime.String(),
+			"endTime", endTime.String(),
+		)
+		http.Error(w, fmt.Sprintf("No matching delete request found for query %s, startTime %s, endTime %s", query, startTime.String(), endTime.String()), http.StatusBadRequest)
+		return
+	}
+
+	if len(matchingRequests) > 1 {
+		level.Error(logger).Log(
+			"msg", "multiple matching delete requests found",
+			"query", query,
+			"startTime", startTime.String(),
+			"endTime", endTime.String(),
+			"count", len(matchingRequests),
+		)
+		http.Error(w, fmt.Sprintf("Multiple matching delete requests found for query %s, startTime %s, endTime %s. Count: %d", query, startTime.String(), endTime.String(), len(matchingRequests)), http.StatusBadRequest)
+		return
+	}
+
+	if matchingRequests[0].Status != deletionproto.StatusProcessed {
+		level.Error(logger).Log(
+			"msg", "delete request is not in processed state. Cancellation of incomplete delete request is not allowed from this endpoint",
+			"requestID", matchingRequests[0].RequestID,
+			"query", query,
+			"startTime", startTime.String(),
+			"endTime", endTime.String(),
+		)
+		http.Error(w, fmt.Sprintf("Delete request %s is not in processed state. Cancellation of incomplete delete request is not allowed from this endpoint", matchingRequests[0].RequestID), http.StatusBadRequest)
+		return
+	}
+
+	level.Info(logger).Log(
+		"msg", "found matching delete request for query and cancelling it.",
+		"requestID", matchingRequests[0].RequestID,
+		"query", query,
+		"startTime", startTime.String(),
+		"endTime", endTime.String(),
+	)
+
+	if err := dm.deleteRequestsStore.RemoveDeleteRequest(ctx, userID, matchingRequests[0].RequestID); err != nil {
+		level.Error(logger).Log(
+			"msg", "error cancelling the delete request",
+			"requestID", matchingRequests[0].RequestID,
+			"query", query,
+			"startTime", startTime.String(),
+			"endTime", endTime.String(),
+			"err", err,
+		)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	level.Info(logger).Log(
+		"msg", "successfully cancelled delete request",
+		"requestID", matchingRequests[0].RequestID,
+		"query", query,
+		"startTime", startTime.String(),
+		"endTime", endTime.String(),
+	)
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // CancelDeleteRequestHandler handles delete request cancellation
