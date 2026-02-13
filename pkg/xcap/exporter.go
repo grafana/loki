@@ -209,7 +209,7 @@ func summarizeObservations(capture *Capture) *observations {
 				TaskRecvDuration.Key(),
 				TaskSendDuration.Key(),
 				TaskRecordsSent.Key(), TaskRowsSent.Key(),
-				TaskMergeRecordsConsumed.Key(), TaskMergeRowsConsumed.Key(), TaskMergeBatchesProduced.Key(),
+				TaskDrainRecordsReceived.Key(), TaskDrainBatchesProduced.Key(), TaskDrainRecordsSizeBytes.Key(),
 				TaskExternalSourcesCount.Key(), TaskExternalSinksCount.Key(),
 			).
 			prefix("metastore_").
@@ -238,7 +238,7 @@ func summarizeObservations(capture *Capture) *observations {
 				StatTaskMaxQueueDuration.Key(),
 				TaskRecvDuration.Key(), TaskSendDuration.Key(),
 				TaskRecordsSent.Key(), TaskRowsSent.Key(),
-				TaskMergeRecordsConsumed.Key(), TaskMergeRowsConsumed.Key(), TaskMergeBatchesProduced.Key(),
+				TaskDrainRecordsReceived.Key(), TaskDrainBatchesProduced.Key(), TaskDrainRecordsSizeBytes.Key(),
 				TaskExternalSourcesCount.Key(), TaskExternalSinksCount.Key(),
 			).
 			normalizeKeys(),
@@ -250,7 +250,7 @@ func summarizeObservations(capture *Capture) *observations {
 			filter(
 				TaskRecvDuration.Key(), TaskSendDuration.Key(),
 				TaskRecordsSent.Key(), TaskRowsSent.Key(),
-				TaskMergeRecordsConsumed.Key(), TaskMergeRowsConsumed.Key(), TaskMergeBatchesProduced.Key(),
+				TaskDrainRecordsReceived.Key(), TaskDrainBatchesProduced.Key(), TaskDrainRecordsSizeBytes.Key(),
 				TaskExternalSourcesCount.Key(), TaskExternalSinksCount.Key(),
 			).
 			normalizeKeys(),

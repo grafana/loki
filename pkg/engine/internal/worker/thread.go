@@ -341,19 +341,20 @@ func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, 
 			return
 		}
 
-		batch = nil
-		currentBatchSize = 0
-
 		compactor := arrowagg.NewRecords(memory.DefaultAllocator)
 		for _, rec := range batch {
 			compactor.Append(rec)
 		}
+
+		batch = nil
+		currentBatchSize = 0
 
 		combined, err := compactor.Aggregate()
 		if err != nil {
 			level.Warn(logger).Log("msg", "failed to aggregate record batch", "err", err)
 			return
 		}
+		region.Record(xcap.TaskDrainBatchesProduced.Observe(1))
 
 		flush(combined)
 	}
@@ -366,6 +367,7 @@ func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, 
 			return totalRows, err
 		}
 
+		region.Record(xcap.TaskDrainRecordsReceived.Observe(1))
 		totalRows += int(rec.NumRows())
 
 		// Don't bother writing empty records to our peers.
@@ -389,6 +391,7 @@ func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, 
 		// Otherwise, add the record to the batch.
 		batch = append(batch, rec)
 		currentBatchSize += recSize
+		region.Record(xcap.TaskDrainRecordsSizeBytes.Observe(int64(recSize)))
 	}
 
 	// Flush any remaining batch.
