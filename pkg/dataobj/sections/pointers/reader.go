@@ -528,7 +528,7 @@ func (d *recordBatchLabelDecorator) read(ctx context.Context, alloc *memoryv2.Al
 	// Any error, err, is returned to the caller to handle.
 	// The decorator must always decorate rb, so it must not short circuit.
 
-	if d.streamIDColumnIndex == -1 {
+	if d.streamIDColumnIndex == -1 || rb == nil {
 		// We aren't reading any stream IDs this time
 		return rb, err
 	}
