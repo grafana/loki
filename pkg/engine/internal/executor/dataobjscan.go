@@ -381,7 +381,7 @@ func (s *dataobjScan) read(ctx context.Context) (arrow.RecordBatch, error) {
 		return rec, nil
 	}
 
-	return s.streamsInjector.Inject(rec)
+	return s.streamsInjector.Inject(ctx, rec)
 }
 
 // Close closes s and releases all resources.

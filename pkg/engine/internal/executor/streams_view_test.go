@@ -30,7 +30,7 @@ func Test_streamsView(t *testing.T) {
 		var actual []labels.Labels
 
 		for id := 1; id <= 3; id++ {
-			lbs, err := view.Labels(int64(id))
+			lbs, err := view.Labels(t.Context(), int64(id))
 			require.NoError(t, err, "failed to get labels")
 			actual = append(actual, labels.New(lbs...))
 		}
@@ -47,7 +47,7 @@ func Test_streamsView(t *testing.T) {
 
 		var actual []labels.Labels
 
-		lbs, err := view.Labels(int64(2))
+		lbs, err := view.Labels(t.Context(), int64(2))
 		require.NoError(t, err, "failed to get labels")
 		actual = append(actual, labels.New(lbs...))
 
@@ -67,7 +67,7 @@ func Test_streamsView(t *testing.T) {
 		var actual []labels.Labels
 
 		for _, id := range []int{2, 3} {
-			lbs, err := view.Labels(int64(id))
+			lbs, err := view.Labels(t.Context(), int64(id))
 			require.NoError(t, err, "failed to get labels")
 			actual = append(actual, labels.New(lbs...))
 		}
@@ -99,7 +99,7 @@ func Test_streamsView(t *testing.T) {
 		var actual []labels.Labels
 
 		for id := 1; id <= 3; id++ {
-			lbs, err := view.Labels(int64(id))
+			lbs, err := view.Labels(t.Context(), int64(id))
 			require.NoError(t, err, "failed to get labels")
 			actual = append(actual, labels.New(lbs...))
 		}
@@ -133,7 +133,7 @@ func Test_streamsView(t *testing.T) {
 		var actual []labels.Labels
 
 		for id := 1; id <= 3; id++ {
-			lbs, err := view.Labels(int64(id))
+			lbs, err := view.Labels(t.Context(), int64(id))
 			require.NoError(t, err, "failed to get labels")
 			actual = append(actual, labels.New(lbs...))
 		}
@@ -143,7 +143,7 @@ func Test_streamsView(t *testing.T) {
 
 	t.Run("labels before open returns error", func(t *testing.T) {
 		view := newStreamsView(sec, &streamsViewOptions{BatchSize: 1})
-		lbs, err := view.Labels(1)
+		lbs, err := view.Labels(t.Context(), 1)
 		require.ErrorIs(t, err, errStreamsViewNotOpen)
 		require.Nil(t, lbs)
 	})

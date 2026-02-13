@@ -33,7 +33,7 @@ func Test_streamInjector(t *testing.T) {
 	require.NoError(t, view.Open(t.Context()))
 
 	injector := newStreamInjector(view)
-	output, err := injector.Inject(record)
+	output, err := injector.Inject(t.Context(), record)
 	require.NoError(t, err)
 
 	expect := arrowtest.Rows{

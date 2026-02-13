@@ -261,7 +261,7 @@ func (c *Context) filterStreamsByLabels(ctx context.Context, streamIDs []int64, 
 	}
 
 	for _, id := range streamIDs {
-		lbls, err := view.Labels(id)
+		lbls, err := view.Labels(ctx, id)
 		if err != nil {
 			level.Error(c.logger).Log("msg", "failed to get labels for stream, skipping", "stream_id", id, "err", err)
 			continue
