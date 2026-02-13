@@ -23,13 +23,13 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.uber.org/atomic"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/v3/pkg/lokifrontend/frontend/v2/frontendv2pb"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	querier_stats "github.com/grafana/loki/v3/pkg/querier/stats"
 	"github.com/grafana/loki/v3/pkg/scheduler/schedulerpb"
+	"github.com/grafana/loki/v3/pkg/util"
 	httpgrpcutil "github.com/grafana/loki/v3/pkg/util/httpgrpc"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
@@ -170,7 +170,7 @@ func (sp *schedulerProcessor) querierLoop(c schedulerpb.SchedulerForQuerier_Quer
 			sp.metrics.inflightRequests.Dec()
 			// Report back to scheduler that processing of the query has finished.
 			if err := c.Send(&schedulerpb.QuerierToScheduler{}); err != nil {
-				if status.Code(err) == codes.Canceled {
+				if util.IsConnCanceled(err) {
 					level.Debug(logger).Log("msg", "error notifying scheduler about finished query", "err", err, "addr", address)
 				} else {
 					level.Error(logger).Log("msg", "error notifying scheduler about finished query", "err", err, "addr", address)
@@ -253,7 +253,7 @@ func (sp *schedulerProcessor) reply(ctx context.Context, logger log.Logger, fron
 			// Response is empty and uninteresting.
 			_, err := c.(frontendv2pb.FrontendForQuerierClient).QueryResult(ctx, result)
 			if err != nil {
-				if status.Code(err) == codes.Canceled {
+				if util.IsConnCanceled(err) {
 					level.Debug(logger).Log("msg", "error notifying frontend about finished query", "err", err)
 				} else {
 					level.Error(logger).Log("msg", "error notifying frontend about finished query", "err", err)
