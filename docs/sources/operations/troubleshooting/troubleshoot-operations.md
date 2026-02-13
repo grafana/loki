@@ -740,7 +740,6 @@ A delete request was submitted for a tenant that does not have deletion enabled.
 - HTTP status: 403 Forbidden
 - Configurable per tenant: Yes
 
-
 ## Storage backend errors
 
 Storage backend errors occur when Loki cannot communicate with or properly configure object storage (Amazon S3, Google Cloud Services, Microsoft Azure, Swift, or filesystem).
@@ -755,7 +754,7 @@ unsupported storage backend
 
 **Cause:**
 
-The specified storage backend type is not recognized. This typically occurs when a typo exists in the storage type configuration.
+The specified storage backend type is not recognized. This typically occurs when a typo exists in the storage type configuration. 
 
 **Resolution:**
 
@@ -1027,10 +1026,208 @@ A named storage configuration referenced in the schema config doesn't exist in t
 
 ## Cache errors
 
-<!-- Additional content in next PRs.  Just leaving the headings here for context and so that I can keep things in order if PRs merge out of sequence. -->
+Cache errors occur when Loki cannot connect to or communicate with caching backends (Memcached, Redis).
+
+### Error: Redis client setup failed
+
+**Error message:**
+
+```text
+redis client setup failed: <details>
+```
+
+**Cause:**
+
+Loki cannot establish a connection to the Redis server. Common causes include:
+
+- Incorrect Redis endpoint
+- Network connectivity issues
+- Authentication failures
+- TLS configuration problems
+
+**Resolution:**
+
+1. **Verify Redis connectivity** from the Loki host:
+
+   ```bash
+   redis-cli -h <REDIS-HOST> -p <REDIS-PORT> ping
+   ```
+
+1. **Check the Redis endpoint configuration**:
+
+   ```yaml
+   chunk_store_config:
+     chunk_cache_config:
+       redis:
+         endpoint: redis:6379
+         timeout: 500ms
+   ```
+
+1. **Configure authentication** if required:
+
+   ```yaml
+   chunk_store_config:
+     chunk_cache_config:
+       redis:
+         endpoint: redis:6379
+         password: ${REDIS_PASSWORD}
+   ```
+
+**Properties:**
+
+- Enforced by: Cache client initialization
+- Retryable: Yes (with correct configuration)
+- HTTP status: N/A (startup failure or degraded operation)
+- Configurable per tenant: No
+
+### Error: Could not lookup Redis host
+
+**Error message:**
+
+```text
+could not lookup host: <hostname>
+```
+
+**Cause:**
+
+DNS resolution failed for the Redis hostname.
+
+**Resolution:**
+
+1. **Verify DNS resolution**:
+
+   ```bash
+   nslookup redis-host
+   ```
+
+1. **Use an IP address** if DNS is not available:
+
+   ```yaml
+   chunk_store_config:
+     chunk_cache_config:
+       redis:
+         endpoint: 10.0.0.100:6379
+   ```
+
+1. **Check your DNS configuration** and network settings.
+
+**Properties:**
+
+- Enforced by: DNS resolution
+- Retryable: Yes
+- HTTP status: N/A
+- Configurable per tenant: No
+
+### Error: Unexpected Redis PING response
+
+**Error message:**
+
+```text
+redis: Unexpected PING response "<response>"
+```
+
+**Cause:**
+
+The Redis server returned an unexpected response to a PING command. This could indicate:
+
+- The endpoint is not a Redis server
+- A proxy or load balancer is interfering
+- Redis is in an error state
+
+**Resolution:**
+
+1. **Verify the endpoint** is actually a Redis server.
+1. **Check Redis health**:
+
+   ```bash
+   redis-cli -h <HOST> -p <PORT> INFO
+   ```
+
+1. **Review proxy configurations** if using a load balancer in front of Redis.
+
+**Properties:**
+
+- Enforced by: Redis health check
+- Retryable: Yes
+- HTTP status: N/A
+- Configurable per tenant: No
+
+### Error: Multiple cache systems not supported
+
+**Error message:**
+
+```text
+use of multiple cache storage systems is not supported
+```
+
+**Cause:**
+
+Both Memcached and Redis cache backends are configured for the same cache type. Only one caching backend is supported per cache type.
+
+**Resolution:**
+
+1. **Choose one cache backend** per cache type:
+
+   ```yaml
+   chunk_store_config:
+     chunk_cache_config:
+       # Use either memcached OR redis, not both
+       redis:
+         endpoint: redis:6379
+       memcached: {}  # Remove this
+   ```
+
+**Properties:**
+
+- Enforced by: Configuration validation
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
+### Error: No cache configured
+
+**Error message:**
+
+```text
+no cache configured
+```
+
+**Cause:**
+
+A results cache is required for the query frontend but no cache configuration was provided.
+
+**Resolution:**
+
+1. **Configure a cache backend**:
+
+   ```yaml
+   query_range:
+     results_cache:
+       cache:
+         memcached:
+           expiration: 1h
+         memcached_client:
+           addresses: memcached:11211
+   ```
+
+1. **Or disable results caching** if not needed:
+
+   ```yaml
+   query_range:
+     cache_results: false
+   ```
+
+**Properties:**
+
+- Enforced by: Query frontend initialization
+- Retryable: No
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
 
 ## Ring and cluster communication errors
 
+<!-- Additional content in next PRs.  Just leaving the headings here for context and so that I can keep things in order if PRs merge out of sequence. -->
 
 
 ## Component readiness errors
