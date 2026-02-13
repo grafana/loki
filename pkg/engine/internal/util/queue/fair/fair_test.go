@@ -330,6 +330,112 @@ func TestQueue_Len(t *testing.T) {
 	})
 }
 
+func TestQueue_PushFront(t *testing.T) {
+	t.Run("fails on unregistered scope", func(t *testing.T) {
+		var q fair.Queue[string]
+
+		require.ErrorIs(t, q.PushFront(fair.Scope{"tenant-a", "key-a"}, "hello"), fair.ErrNotFound)
+	})
+
+	t.Run("inserts into empty scope", func(t *testing.T) {
+		var q fair.Queue[string]
+		require.NoError(t, q.RegisterScope(fair.Scope{"tenant-a", "key-a"}))
+
+		require.NoError(t, q.PushFront(fair.Scope{"tenant-a", "key-a"}, "hello"))
+		require.Equal(t, 1, q.Len())
+
+		v, s := q.Pop()
+		require.Equal(t, "hello", v)
+		require.Equal(t, fair.Scope{"tenant-a", "key-a"}, s)
+	})
+
+	t.Run("inserts ahead of existing items", func(t *testing.T) {
+		var q fair.Queue[string]
+		require.NoError(t, q.RegisterScope(fair.Scope{"tenant-a", "key-a"}))
+
+		require.NoError(t, q.Push(fair.Scope{"tenant-a", "key-a"}, "first"))
+		require.NoError(t, q.Push(fair.Scope{"tenant-a", "key-a"}, "second"))
+		require.NoError(t, q.PushFront(fair.Scope{"tenant-a", "key-a"}, "urgent"))
+
+		v, _ := q.Pop()
+		require.Equal(t, "urgent", v)
+
+		v, _ = q.Pop()
+		require.Equal(t, "first", v)
+
+		v, _ = q.Pop()
+		require.Equal(t, "second", v)
+	})
+
+	t.Run("simulates requeue after failed assignment", func(t *testing.T) {
+		// This simulates the scheduler flow:
+		// 1. Pop a task (agg-task)
+		// 2. AdjustScope(+1) to penalize
+		// 3. Assignment fails
+		// 4. AdjustScope(-1) to undo penalty
+		// 5. PushFront to requeue at the front
+		var q fair.Queue[string]
+		scope := fair.Scope{"tenant-a", "manifest-1"}
+		require.NoError(t, q.RegisterScope(scope))
+
+		require.NoError(t, q.Push(scope, "agg-task"))
+		require.NoError(t, q.Push(scope, "scan-task-1"))
+		require.NoError(t, q.Push(scope, "scan-task-2"))
+
+		// Pop agg-task and penalize scope.
+		v, s := q.Pop()
+		require.Equal(t, "agg-task", v)
+		require.NoError(t, q.AdjustScope(s, 1))
+
+		// Simulate assignment failure: undo penalty and requeue at front.
+		require.NoError(t, q.AdjustScope(s, -1))
+		require.NoError(t, q.PushFront(scope, "agg-task"))
+
+		// agg-task should come out first, ahead of the scan tasks.
+		v, _ = q.Pop()
+		require.Equal(t, "agg-task", v)
+
+		v, _ = q.Pop()
+		require.Equal(t, "scan-task-1", v)
+
+		v, _ = q.Pop()
+		require.Equal(t, "scan-task-2", v)
+	})
+
+	t.Run("does not affect sibling scopes", func(t *testing.T) {
+		var q fair.Queue[string]
+
+		scopeA := fair.Scope{"tenant-a", "key-a"}
+		scopeB := fair.Scope{"tenant-a", "key-b"}
+
+		require.NoError(t, q.RegisterScope(scopeA))
+		require.NoError(t, q.RegisterScope(scopeB))
+
+		require.NoError(t, q.Push(scopeA, "a-first"))
+		require.NoError(t, q.Push(scopeB, "b-first"))
+
+		// PushFront into scopeA should not change scopeB's ordering.
+		require.NoError(t, q.PushFront(scopeA, "a-urgent"))
+
+		// Both scopes start at the same rank; scopeA was registered first
+		// so it pops first. Within scopeA, a-urgent should come before a-first.
+		v, s := q.Pop()
+		require.Equal(t, "a-urgent", v)
+		require.Equal(t, scopeA, s)
+
+		// Adjust scopeA so scopeB gets a turn.
+		require.NoError(t, q.AdjustScope(s, 1))
+
+		v, s = q.Pop()
+		require.Equal(t, "b-first", v)
+		require.Equal(t, scopeB, s)
+
+		v, s = q.Pop()
+		require.Equal(t, "a-first", v)
+		require.Equal(t, scopeA, s)
+	})
+}
+
 func TestQueue_EdgeCases(t *testing.T) {
 	// Test an edge case where an empty scope retained its original rank when
 	// being revived, causing it to jump the line incorrectly.

@@ -224,3 +224,29 @@ func (n *node[T]) CreateValue(v T) *node[T] {
 	heap.Push(pq, newNode)
 	return newNode
 }
+
+// CreateValueFront pushes a value node to n with a rank lower than all
+// existing children, ensuring it will be popped first. If no children exist,
+// the rank is set to 0. Panics if n is not a scope node.
+func (n *node[T]) CreateValueFront(v T) *node[T] {
+	pq := n.pqueue()
+
+	// Use a rank one below the current minimum so the new node sorts first.
+	var initRank int64
+	if len(pq.children) > 0 {
+		initRank = pq.children[0].rank - 1
+	}
+
+	newNode := &node[T]{
+		parent: n,
+		queue:  n.queue,
+
+		rank: initRank,
+		id:   n.queue.getNextID(),
+
+		value: v,
+	}
+
+	heap.Push(pq, newNode)
+	return newNode
+}

@@ -107,11 +107,15 @@ func (p *Peer) recvMessages(ctx context.Context) error {
 				continue
 			}
 			req := val.(*request)
-
-			select {
-			case req.result <- nil:
-			default:
-				level.Warn(p.Logger).Log("msg", "ignoring duplicate acknowledgement")
+			if req.cb != nil {
+				p.sentRequests.Delete(frame.ID)
+				req.cb(nil)
+			} else {
+				select {
+				case req.result <- nil:
+				default:
+					level.Warn(p.Logger).Log("msg", "ignoring duplicate acknowledgement")
+				}
 			}
 
 		case NackFrame:
@@ -122,11 +126,15 @@ func (p *Peer) recvMessages(ctx context.Context) error {
 				continue
 			}
 			req := val.(*request)
-
-			select {
-			case req.result <- frame.Error:
-			default:
-				level.Warn(p.Logger).Log("msg", "ignoring duplicate acknowledgement")
+			if req.cb != nil {
+				p.sentRequests.Delete(frame.ID)
+				req.cb(frame.Error)
+			} else {
+				select {
+				case req.result <- frame.Error:
+				default:
+					level.Warn(p.Logger).Log("msg", "ignoring duplicate acknowledgement")
+				}
 			}
 
 		case DiscardFrame:
@@ -178,12 +186,16 @@ func (p *Peer) notifyError(frame Frame, err error) {
 			return
 		}
 		req := val.(*request)
-
-		select {
-		case <-p.done: // Connection closed
-		case req.result <- err:
-		default:
-			level.Warn(p.Logger).Log("msg", "ignoring duplicate acknowledgement")
+		if req.cb != nil {
+			p.sentRequests.Delete(frame.ID)
+			req.cb(err)
+		} else {
+			select {
+			case <-p.done: // Connection closed
+			case req.result <- err:
+			default:
+				level.Warn(p.Logger).Log("msg", "ignoring duplicate acknowledgement")
+			}
 		}
 
 	default:
@@ -223,6 +235,7 @@ func convertError(err error) *Error {
 
 type request struct {
 	result chan error
+	cb     func(error) // if set, invoked instead of sending to result
 }
 
 // SendMessage sends a message to the remote peer. SendMessage blocks until the
@@ -272,6 +285,24 @@ func (p *Peer) SendMessageAsync(ctx context.Context, message Message) error {
 	reqID := p.requestID.Inc()
 	p.Metrics.incMessageSent()
 	return p.enqueueFrame(ctx, MessageFrame{ID: reqID, Message: message})
+}
+
+// SendMessageNotify sends a message and invokes cb asynchronously when the
+// remote peer acknowledges or rejects it. cb receives nil on ACK, or the
+// error on NACK/send failure. cb is invoked from the Peer's receive goroutine.
+//
+// Unlike SendMessage, SendMessageNotify does not block for the response.
+func (p *Peer) SendMessageNotify(ctx context.Context, message Message, cb func(error)) error {
+	p.lazyInit()
+
+	reqID := p.requestID.Inc()
+	p.sentRequests.Store(reqID, &request{cb: cb})
+	p.Metrics.incMessageSent()
+	if err := p.enqueueFrame(ctx, MessageFrame{ID: reqID, Message: message}); err != nil {
+		p.sentRequests.Delete(reqID)
+		return err
+	}
+	return nil
 }
 
 // enqueueFrame enqueues a frame to be sent to the remote peer.

@@ -181,6 +181,30 @@ func (q *Queue[T]) Push(scope Scope, value T) error {
 	return nil
 }
 
+// PushFront enqueues the value at the specified scope with a rank lower than
+// all existing siblings, ensuring it will be the next value popped from that
+// scope. This is used to re-insert values that need to retain their original
+// priority (e.g., requeuing a failed task).
+//
+// PushFront returns [ErrNotFound] if the scope does not exist.
+func (q *Queue[T]) PushFront(scope Scope, value T) error {
+	q.init()
+
+	parent, err := q.findScope(scope)
+	if err != nil {
+		return err
+	}
+
+	_ = parent.CreateValueFront(value)
+
+	// Now that our scope has a value, we need to make sure that our scope is
+	// present in the pqueue heap of all its parent (recursively).
+	q.markAlive(parent)
+
+	q.len++
+	return nil
+}
+
 // markAlive marks the provided scopeNode as alive, allowing it to be traversed
 // from the root.
 //
