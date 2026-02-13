@@ -29,6 +29,16 @@ func TestRowReader(t *testing.T) {
 	require.Equal(t, indexPointerTestData, actual)
 }
 
+func TestRowReader_ReadBeforeOpen(t *testing.T) {
+	sec := buildIndexPointersDecoder(t, 100, 0)
+	r := indexpointers.NewRowReader(sec)
+
+	buf := make([]indexpointers.IndexPointer, 1)
+	n, err := r.Read(context.Background(), buf)
+	require.Zero(t, n)
+	require.ErrorContains(t, err, "row reader not opened")
+}
+
 func buildIndexPointersDecoder(t *testing.T, pageSize, pageRows int) *indexpointers.Section {
 	t.Helper()
 
@@ -54,6 +64,9 @@ func readAllIndexPointers(ctx context.Context, r *indexpointers.RowReader) ([]in
 		res []indexpointers.IndexPointer
 		buf = make([]indexpointers.IndexPointer, 128)
 	)
+	if err := r.Open(ctx); err != nil {
+		return nil, err
+	}
 
 	for {
 		n, err := r.Read(ctx, buf)

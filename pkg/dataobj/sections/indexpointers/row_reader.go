@@ -27,11 +27,31 @@ type RowReader struct {
 	symbols *symbolizer.Symbolizer
 }
 
+var errRowReaderNotOpen = errors.New("row reader not opened")
+
 // NewRowReader creates a new RowReader for the given section.
+//
+// Call [RowReader.Open] before calling [RowReader.Read].
 func NewRowReader(sec *Section) *RowReader {
 	var r RowReader
 	r.Reset(sec)
 	return &r
+}
+
+// Open initializes RowReader resources.
+//
+// Open must be called before [RowReader.Read]. Open is safe to call multiple
+// times. Open is a no-op when the reader has no section.
+func (r *RowReader) Open(ctx context.Context) error {
+	if r.sec == nil || r.ready {
+		return nil
+	}
+
+	if err := r.initReader(ctx); err != nil {
+		_ = r.Close()
+		return fmt.Errorf("initializing row reader: %w", err)
+	}
+	return nil
 }
 
 // SetPredicate sets the predicate to use for filtering indexpointers. [RowReader.Read]
@@ -60,10 +80,7 @@ func (r *RowReader) Read(ctx context.Context, s []IndexPointer) (int, error) {
 	}
 
 	if !r.ready {
-		err := r.initReader()
-		if err != nil {
-			return 0, err
-		}
+		return 0, errRowReaderNotOpen
 	}
 
 	r.buf = slicegrow.GrowToCap(r.buf, len(s))
@@ -84,7 +101,7 @@ func (r *RowReader) Read(ctx context.Context, s []IndexPointer) (int, error) {
 	return n, nil
 }
 
-func (r *RowReader) initReader() error {
+func (r *RowReader) initReader(ctx context.Context) error {
 	dset, err := columnar.MakeDataset(r.sec.inner, r.sec.inner.Columns())
 	if err != nil {
 		return fmt.Errorf("creating section dataset: %w", err)
@@ -107,6 +124,9 @@ func (r *RowReader) initReader() error {
 		r.reader = dataset.NewRowReader(readerOpts)
 	} else {
 		r.reader.Reset(readerOpts)
+	}
+	if err := r.reader.Open(ctx); err != nil {
+		return fmt.Errorf("opening row reader: %w", err)
 	}
 
 	if r.symbols == nil {

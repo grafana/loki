@@ -327,6 +327,10 @@ func New(
 				return nil, fmt.Errorf("failed to create data object tee: %w", err)
 			}
 			tee = WrapTee(tee, dataObjTee)
+
+			if rateBatcher := dataObjTee.RateBatcher(); rateBatcher != nil {
+				servs = append(servs, rateBatcher)
+			}
 		}
 	}
 

@@ -54,26 +54,45 @@ type RowReader struct {
 	region *xcap.Region // Region for recording statistics.
 }
 
+var errRowReaderNotOpen = errors.New("row reader not opened")
+
 // NewRowReader creates a new RowReader from the provided options.
+//
+// Call [RowReader.Open] before calling [RowReader.Read].
 func NewRowReader(opts RowReaderOptions) *RowReader {
 	var r RowReader
 	r.Reset(opts)
 	return &r
 }
 
+// Open initializes RowReader resources.
+//
+// Open must be called before [RowReader.Read]. Open is safe to call multiple
+// times.
+func (r *RowReader) Open(ctx context.Context) error {
+	if r.ready {
+		return nil
+	}
+
+	if err := r.init(ctx); err != nil {
+		_ = r.Close()
+		return fmt.Errorf("initializing reader: %w", err)
+	}
+	return nil
+}
+
 // Read reads up to the next len(s) rows from r and stores them into s. It
 // returns the number of rows read and any error encountered. At the end of the
 // Dataset, Read returns 0, [io.EOF].
+//
+// Read returns an error if [RowReader.Open] was not called first.
 func (r *RowReader) Read(ctx context.Context, s []Row) (int, error) {
 	if len(s) == 0 {
 		return 0, nil
 	}
 
 	if !r.ready {
-		err := r.init(ctx)
-		if err != nil {
-			return 0, fmt.Errorf("initializing reader: %w", err)
-		}
+		return 0, errRowReaderNotOpen
 	}
 
 	r.region.Record(xcap.StatDatasetReadCalls.Observe(1))
@@ -413,7 +432,7 @@ func (r *RowReader) Reset(opts RowReaderOptions) {
 	// There's not much work Reset can do without a context, since it needs to
 	// retrieve page info. We'll defer this work to an init function. This also
 	// unfortunately means that we might not reset page readers until the first
-	// call to Read.
+	// call to Open.
 	if r.origColumnLookup == nil {
 		r.origColumnLookup = make(map[Column]int, len(opts.Columns))
 	}
