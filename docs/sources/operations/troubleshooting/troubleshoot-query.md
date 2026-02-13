@@ -2,7 +2,7 @@
 title: Troubleshoot log queries (READ)
 menuTitle: Troubleshoot queries
 description: Describes how to troubleshoot and debug specific errors when querying logs from Grafana Loki.
-weight: 
+weight: 400
 ---
 
 # Troubleshoot log queries (READ)

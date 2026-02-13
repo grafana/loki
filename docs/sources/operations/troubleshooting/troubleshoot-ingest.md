@@ -2,7 +2,7 @@
 title: Troubleshoot log ingestion (WRITE)
 menuTitle: Troubleshoot ingestion
 description: Describes how to troubleshoot and debug specific errors when ingesting logs into Grafana Loki.
-weight: 
+weight: 200
 ---
 
 # Troubleshoot log ingestion (WRITE)
