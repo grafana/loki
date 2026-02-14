@@ -147,6 +147,10 @@ func iterTableOfContentsPaths(start, end time.Time) iter.Seq2[string, multitenan
 }
 
 func NewObjectMetastore(b objstore.Bucket, cfg Config, logger log.Logger, metrics *ObjectMetastoreMetrics) *ObjectMetastore {
+	if logger == nil {
+		logger = log.NewNopLogger()
+	}
+
 	if cfg.IndexStoragePrefix != "" {
 		b = objstore.NewPrefixedBucket(b, cfg.IndexStoragePrefix)
 	}
@@ -671,6 +675,7 @@ func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSect
 	}
 
 	reader := newIndexSectionsReader(
+		m.logger,
 		idxObj,
 		req.SectionsRequest.Start,
 		req.SectionsRequest.End,
