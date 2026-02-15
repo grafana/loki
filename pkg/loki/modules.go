@@ -1301,7 +1301,20 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 
 	roundTripper := queryrange.NewSerializeRoundTripper(t.QueryFrontEndMiddleware.Wrap(frontendTripper), queryrange.DefaultCodec, t.Cfg.Frontend.SupportParquetEncoding)
 
-	frontendHandler := transport.NewHandler(t.Cfg.Frontend.Handler, roundTripper, util_log.Logger, prometheus.DefaultRegisterer, t.Cfg.MetricsNamespace)
+	// Initialize rate limit adapter if configured
+	var rateLimitAdapter *transport.RateLimitAdapter
+	if t.Cfg.Frontend.RateLimit.Enable {
+		var err error
+		rateLimitAdapter, err = transport.NewRateLimitAdapter(t.Cfg.Frontend.RateLimit, util_log.Logger)
+		if err != nil {
+			level.Warn(util_log.Logger).Log("msg", "Failed to initialize rate limiter, continuing without rate limiting", "err", err)
+			rateLimitAdapter = nil
+		} else {
+			level.Info(util_log.Logger).Log("msg", "Rate limiting enabled for query frontend")
+		}
+	}
+
+	frontendHandler := transport.NewHandlerWithRateLimit(t.Cfg.Frontend.Handler, roundTripper, util_log.Logger, prometheus.DefaultRegisterer, t.Cfg.MetricsNamespace, rateLimitAdapter)
 	if t.Cfg.Frontend.CompressResponses {
 		frontendHandler = gziphandler.GzipHandler(frontendHandler)
 	}

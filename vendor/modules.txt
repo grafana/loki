@@ -292,6 +292,15 @@ github.com/Microsoft/go-winio/internal/fs
 github.com/Microsoft/go-winio/internal/socket
 github.com/Microsoft/go-winio/internal/stringbuffer
 github.com/Microsoft/go-winio/pkg/guid
+# github.com/NVIDIA/go-ratelimit v1.0.1
+## explicit; go 1.24
+github.com/NVIDIA/go-ratelimit/pkg/api
+github.com/NVIDIA/go-ratelimit/pkg/config
+github.com/NVIDIA/go-ratelimit/pkg/limiter
+github.com/NVIDIA/go-ratelimit/pkg/logger
+github.com/NVIDIA/go-ratelimit/pkg/middleware
+github.com/NVIDIA/go-ratelimit/pkg/ratelimit
+github.com/NVIDIA/go-ratelimit/pkg/utils
 # github.com/NYTimes/gziphandler v1.1.1
 ## explicit; go 1.11
 github.com/NYTimes/gziphandler
@@ -2076,6 +2085,12 @@ github.com/uber/jaeger-lib/metrics/prometheus
 # github.com/ugorji/go/codec v1.1.7
 ## explicit
 github.com/ugorji/go/codec
+# github.com/uptrace/opentelemetry-go-extra/otelutil v0.3.2
+## explicit; go 1.22
+github.com/uptrace/opentelemetry-go-extra/otelutil
+# github.com/uptrace/opentelemetry-go-extra/otelzap v0.3.2
+## explicit; go 1.22
+github.com/uptrace/opentelemetry-go-extra/otelzap
 # github.com/x448/float16 v0.8.4
 ## explicit; go 1.11
 github.com/x448/float16
@@ -2338,6 +2353,8 @@ go.opentelemetry.io/otel/exporters/stdout/stdouttrace/internal/x
 ## explicit; go 1.24.0
 go.opentelemetry.io/otel/log
 go.opentelemetry.io/otel/log/embedded
+go.opentelemetry.io/otel/log/global
+go.opentelemetry.io/otel/log/internal/global
 go.opentelemetry.io/otel/log/noop
 # go.opentelemetry.io/otel/metric v1.40.0
 ## explicit; go 1.24.0

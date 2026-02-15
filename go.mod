@@ -15,6 +15,7 @@ require (
 	github.com/Azure/go-autorest/autorest/azure/auth v0.5.13
 	github.com/IBM/sarama v1.46.3
 	github.com/Masterminds/sprig/v3 v3.3.0
+	github.com/NVIDIA/go-ratelimit v1.0.1
 	github.com/NYTimes/gziphandler v1.1.1
 	github.com/Workiva/go-datastructures v1.1.7
 	github.com/alecthomas/kingpin/v2 v2.4.0
@@ -157,6 +158,7 @@ require (
 	github.com/twmb/franz-go/pkg/kmsg v1.12.0
 	github.com/twmb/franz-go/plugin/kotel v1.6.0
 	github.com/twmb/franz-go/plugin/kprom v1.2.1
+	github.com/uptrace/opentelemetry-go-extra/otelzap v0.3.2
 	go.opentelemetry.io/collector/pdata v1.51.0
 	go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace v0.65.0
 	go.opentelemetry.io/otel/sdk v1.40.0
@@ -288,6 +290,7 @@ require (
 	github.com/tklauser/go-sysconf v0.3.16 // indirect
 	github.com/tklauser/numcpus v0.11.0 // indirect
 	github.com/twpayne/go-geom v1.6.1 // indirect
+	github.com/uptrace/opentelemetry-go-extra/otelutil v0.3.2 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/xhit/go-str2duration/v2 v2.1.0 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
@@ -483,7 +486,7 @@ require (
 	go.opentelemetry.io/otel/metric v1.40.0 // indirect
 	go.opentelemetry.io/otel/trace v1.40.0
 	go.uber.org/multierr v1.11.0 // indirect
-	go.uber.org/zap v1.27.1 // indirect
+	go.uber.org/zap v1.27.1
 	golang.org/x/mod v0.32.0 // indirect
 	golang.org/x/term v0.39.0 // indirect
 	golang.org/x/tools v0.41.0

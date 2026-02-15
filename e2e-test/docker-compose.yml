@@ -1,0 +1,34 @@
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 5
+
+  loki:
+    build:
+      context: ..
+      dockerfile: cmd/loki/Dockerfile
+    volumes:
+      - ./loki-config.yaml:/etc/loki/local-config.yaml:ro
+    ports:
+      - "3100"
+    depends_on:
+      redis:
+        condition: service_healthy
+    # Distroless image has no shell/wget/curl -- use test-runner to wait for ready instead
+    # Just give Loki time to start up
+    healthcheck:
+      disable: true
+
+  test-runner:
+    image: alpine:3.19
+    volumes:
+      - ./test.sh:/test.sh:ro
+    entrypoint: ["sh", "-c", "apk add --no-cache curl jq bash > /dev/null 2>&1 && bash /test.sh"]
+    depends_on:
+      - loki

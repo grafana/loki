@@ -1,0 +1,26 @@
+go-ratelimit
+Copyright 2025 NVIDIA Corporation
+
+This product includes software developed at
+NVIDIA Corporation (https://www.nvidia.com/).
+
+== Dependencies ==
+
+This software includes the following third-party components:
+
+1. go-redis/redis (https://github.com/redis/go-redis)
+   License: BSD 2-Clause "Simplified" License
+
+2. stretchr/testify (https://github.com/stretchr/testify)
+   License: MIT License
+
+3. gorilla/mux (https://github.com/gorilla/mux)
+   License: BSD 3-Clause License
+
+4. zap (https://github.com/uber-go/zap)
+   License: MIT License
+
+5. opentelemetry-go (https://github.com/open-telemetry/opentelemetry-go)
+   License: Apache License 2.0
+
+For complete license information for dependencies, see the respective project repositories.
