@@ -114,12 +114,7 @@ func (r *rangeAggregationPipeline) init() {
 
 // Open opens all input pipelines.
 func (r *rangeAggregationPipeline) Open(ctx context.Context) error {
-	for _, input := range r.inputs {
-		if err := input.Open(ctx); err != nil {
-			return err
-		}
-	}
-	return nil
+	return openInputsConcurrently(ctx, r.inputs)
 }
 
 // Read reads the next value into its state.

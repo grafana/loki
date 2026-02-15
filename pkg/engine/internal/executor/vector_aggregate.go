@@ -88,12 +88,7 @@ func newVectorAggregationPipeline(inputs []Pipeline, evaluator *expressionEvalua
 
 // Open opens all input pipelines.
 func (v *vectorAggregationPipeline) Open(ctx context.Context) error {
-	for _, input := range v.inputs {
-		if err := input.Open(ctx); err != nil {
-			return err
-		}
-	}
-	return nil
+	return openInputsConcurrently(ctx, v.inputs)
 }
 
 // Read reads the next value into its state.
