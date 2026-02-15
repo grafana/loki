@@ -13,6 +13,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+- [BUGFIX] Add support for `DISABLE_X509_STRICT_VERIFICATION` environment variable in sidecar containers. [#20818](https://github.com/grafana/loki/pull/20818).
 
 ## 6.53.0
 
