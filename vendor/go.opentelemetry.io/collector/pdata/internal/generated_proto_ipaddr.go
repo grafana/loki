@@ -15,8 +15,8 @@ import (
 )
 
 type IPAddr struct {
-	IP   []byte
 	Zone string
+	IP   []byte
 }
 
 var (
@@ -64,7 +64,6 @@ func CopyIPAddr(dest, src *IPAddr) *IPAddr {
 		dest = NewIPAddr()
 	}
 	dest.IP = src.IP
-
 	dest.Zone = src.Zone
 
 	return dest
@@ -155,10 +154,12 @@ func (orig *IPAddr) SizeProto() int {
 	var n int
 	var l int
 	_ = l
+
 	l = len(orig.IP)
 	if l > 0 {
 		n += 1 + proto.Sov(uint64(l)) + l
 	}
+
 	l = len(orig.Zone)
 	if l > 0 {
 		n += 1 + proto.Sov(uint64(l)) + l

@@ -15,7 +15,8 @@ services:
     depends_on:
       - minio
     healthcheck:
-      test: [ "CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3100/ready || exit 1" ]
+      test: [ "CMD", "/usr/bin/loki", "-health" ]
+      start_period: 30s
       interval: 10s
       timeout: 5s
       retries: 5
@@ -34,7 +35,8 @@ services:
     volumes:
       - ./loki-config.yaml:/etc/loki/config.yaml
     healthcheck:
-      test: [ "CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3100/ready || exit 1" ]
+      test: [ "CMD", "/usr/bin/loki", "-health" ]
+      start_period: 30s
       interval: 10s
       timeout: 5s
       retries: 5
@@ -128,6 +130,12 @@ services:
     command: "-config.file=/etc/loki/config.yaml -target=backend -legacy-read-mode=false"
     depends_on:
       - gateway
+    healthcheck:
+      test: [ "CMD", "/usr/bin/loki", "-health" ]
+      start_period: 30s
+      interval: 30s
+      timeout: 10s
+      retries: 5
     networks:
       - loki
     

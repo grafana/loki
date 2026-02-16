@@ -22,7 +22,7 @@ import (
 	flatbuffers "github.com/google/flatbuffers/go"
 )
 
-// / Unicode with UTF-8 encoding
+/// Unicode with UTF-8 encoding
 type Utf8 struct {
 	_tab flatbuffers.Table
 }
@@ -32,6 +32,21 @@ func GetRootAsUtf8(buf []byte, offset flatbuffers.UOffsetT) *Utf8 {
 	x := &Utf8{}
 	x.Init(buf, n+offset)
 	return x
+}
+
+func FinishUtf8Buffer(builder *flatbuffers.Builder, offset flatbuffers.UOffsetT) {
+	builder.Finish(offset)
+}
+
+func GetSizePrefixedRootAsUtf8(buf []byte, offset flatbuffers.UOffsetT) *Utf8 {
+	n := flatbuffers.GetUOffsetT(buf[offset+flatbuffers.SizeUint32:])
+	x := &Utf8{}
+	x.Init(buf, n+offset+flatbuffers.SizeUint32)
+	return x
+}
+
+func FinishSizePrefixedUtf8Buffer(builder *flatbuffers.Builder, offset flatbuffers.UOffsetT) {
+	builder.FinishSizePrefixed(offset)
 }
 
 func (rcv *Utf8) Init(buf []byte, i flatbuffers.UOffsetT) {

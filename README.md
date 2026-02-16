@@ -35,6 +35,9 @@ Loki differs from Prometheus by focusing on logs instead of metrics, and deliver
 * [Installing Alloy](https://grafana.com/docs/loki/latest/send-data/alloy/)
 * [Getting Started](https://grafana.com/docs/loki/latest/get-started/)
 
+### ⚠️ Helm Chart Migration
+Effective March 16, 2026, the Grafana Loki Helm chart will be forked to a new repository [grafana-community/helm-charts](https://github.com/grafana-community/helm-charts).  The chart in the Loki repository will continue to be maintained for GEL users only.  See [#20705](https://github.com/grafana/loki/issues/20705) for details.
+
 ## Upgrading
 
 * [Upgrading Loki](https://grafana.com/docs/loki/latest/upgrading/)
@@ -79,7 +82,7 @@ Your feedback is always welcome.
 - Goutham Veeramachaneni's blog post "[Loki: Prometheus-inspired, open source logging for cloud natives](https://grafana.com/blog/2018/12/12/loki-prometheus-inspired-open-source-logging-for-cloud-natives/)" on details of the Loki architecture.
 - David Kaltschmidt's blog post "[Closer look at Grafana's user interface for Loki](https://grafana.com/blog/2019/01/02/closer-look-at-grafanas-user-interface-for-loki/)" on the ideas that went into the logging user interface.
 
-[devopsdays19-talk]: https://grafana.com/blog/2019/05/06/how-loki-correlates-metrics-and-logs--and-saves-you-money/
+[devopsdays19-talk]: https://grafana.com/blog/2019/05/06/how-loki-correlates-metrics-and-logs-and-saves-you-money/
 [architecture-blog]: https://grafana.com/blog/2019/04/15/how-we-designed-loki-to-work-easily-both-as-microservices-and-as-monoliths/
 [fosdem19-talk]: https://fosdem.org/2019/schedule/event/loki_prometheus_for_logs/
 [fosdem19-slides]: https://speakerdeck.com/grafana/grafana-loki-like-prometheus-but-for-logs
@@ -118,6 +121,15 @@ $ make loki
 
 # Run executable
 $ ./cmd/loki/loki -config.file=./cmd/loki/loki-local-config.yaml
+```
+
+To run multiple Loki tenants locally, ensure that auth_enabled is set to true and provide a runtime config with any tenant specific overrides.
+```bash
+# Build binary
+$ make loki
+
+# Run executable
+./loki -config.file=./cmd/loki/loki-local-multi-tenant-config.yaml -runtime-config.file=./cmd/loki/loki-overrides.yaml
 ```
 
 To build Promtail on non-Linux platforms, use the following command:

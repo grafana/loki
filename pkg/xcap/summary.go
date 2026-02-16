@@ -266,13 +266,13 @@ func (c *Capture) ToStatsSummary(execTime, queueTime time.Duration, totalEntries
 	observations := collector.fromRegions(regionNameDataObjScan, true).filter(
 		StatPipelineRowsOut.Key(),
 		StatDatasetPrimaryRowsRead.Key(),
-		StatDatasetPrimaryColumnUncompressedBytes.Key(),
-		StatDatasetSecondaryColumnUncompressedBytes.Key(),
+		StatDatasetPrimaryRowBytes.Key(),
+		StatDatasetSecondaryRowBytes.Key(),
 	)
 
 	// TODO: track and report TotalStructuredMetadataBytesProcessed
-	result.Querier.Store.Dataobj.PrePredicateDecompressedBytes = readInt64(observations, StatDatasetPrimaryColumnUncompressedBytes.Key())
-	result.Querier.Store.Dataobj.PostPredicateDecompressedBytes = readInt64(observations, StatDatasetSecondaryColumnUncompressedBytes.Key())
+	result.Querier.Store.Dataobj.PrePredicateDecompressedBytes = readInt64(observations, StatDatasetPrimaryRowBytes.Key())
+	result.Querier.Store.Dataobj.PostPredicateDecompressedBytes = readInt64(observations, StatDatasetSecondaryRowBytes.Key())
 	result.Querier.Store.Dataobj.PrePredicateDecompressedRows = readInt64(observations, StatDatasetPrimaryRowsRead.Key())
 	// TotalPostFilterLines: rows output after filtering
 	// TODO: this will report the wrong value if the plan has a filter stage.

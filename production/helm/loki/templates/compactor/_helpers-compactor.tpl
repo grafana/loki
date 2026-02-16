@@ -25,7 +25,7 @@ app.kubernetes.io/component: compactor
 compactor image
 */}}
 {{- define "loki.compactorImage" -}}
-{{- $dict := dict "loki" .Values.loki.image "service" .Values.compactor.image "global" .Values.global.image "defaultVersion" .Chart.AppVersion -}}
+{{- $dict := dict "loki" .Values.loki.image "service" .Values.compactor.image "global" .Values.global "defaultVersion" .Chart.AppVersion -}}
 {{- include "loki.lokiImage" $dict -}}
 {{- end }}
 
@@ -45,6 +45,16 @@ compactor liveness probe
 {{- define "loki.compactor.livenessProbe" }}
 {{- with .Values.compactor.livenessProbe | default .Values.loki.livenessProbe }}
 livenessProbe:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end }}
+
+{{/*
+compactor startup probe
+*/}}
+{{- define "loki.compactor.startupProbe" }}
+{{- with .Values.compactor.startupProbe | default .Values.loki.startupProbe }}
+startupProbe:
   {{- toYaml . | nindent 2 }}
 {{- end }}
 {{- end }}

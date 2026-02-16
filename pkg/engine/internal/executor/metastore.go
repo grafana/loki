@@ -14,6 +14,10 @@ type metastorePipeline struct {
 	region *xcap.Region
 }
 
+func (m *metastorePipeline) Open(ctx context.Context) error {
+	return m.reader.Open(ctx)
+}
+
 func (m *metastorePipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	rec, err := m.reader.Read(xcap.ContextWithRegion(ctx, m.region))
 	// metastore reader returns io.EOF that we translate to executor.EOF
@@ -26,6 +30,7 @@ func (m *metastorePipeline) Region() *xcap.Region {
 
 func (m *metastorePipeline) Close() {
 	m.reader.Close()
+
 	// the order is important, reader.Close() collects stats for m.region so the region must be ended after
 	// the reader is closed
 	if m.region != nil {

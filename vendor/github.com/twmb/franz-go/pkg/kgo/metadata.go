@@ -926,8 +926,20 @@ func (cl *Client) mergeTopicPartitions(
 	for _, newTP := range newPartitions {
 		if isProduce && newTP.records.recBufsIdx == -1 {
 			newTP.records.sink.addRecBuf(newTP.records)
+			cl.cfg.logger.Log(LogLevelDebug, "metadata refresh new produce partition",
+				"topic", topic,
+				"partition", newTP.partition(),
+				"leader", newTP.leader,
+				"leader_epoch", newTP.leaderEpoch,
+			)
 		} else if !isProduce && newTP.cursor.cursorsIdx == -1 {
 			newTP.cursor.source.addCursor(newTP.cursor)
+			cl.cfg.logger.Log(LogLevelDebug, "metadata refresh new consume partition",
+				"topic", topic,
+				"partition", newTP.partition(),
+				"leader", newTP.leader,
+				"leader_epoch", newTP.leaderEpoch,
+			)
 		}
 	}
 }

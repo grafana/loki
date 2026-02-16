@@ -14,6 +14,8 @@ type ExVirtualMemory struct {
 	ActiveAnon   uint64 `json:"activeanon"`
 	InactiveAnon uint64 `json:"inactiveanon"`
 	Unevictable  uint64 `json:"unevictable"`
+	Percpu       uint64 `json:"percpu"`
+	KernelStack  uint64 `json:"kernelstack"`
 }
 
 func (v ExVirtualMemory) String() string {

@@ -65,9 +65,14 @@ type Writer struct {
 	// from being sent. If SendCRC32C is true and the Writer's CRC32C field is
 	// populated, that checksum will still be sent to GCS for validation.
 	//
+	// Automatic CRC32C checksum calculation introduces increased CPU overhead
+	// because of checksum computation in gRPC writes. Use this field to disable
+	// it if needed.
+	//
 	// Note: DisableAutoChecksum must be set before the first call to
 	// Writer.Write(). Automatic checksumming is not enabled for writes
-	// using the HTTP client or for unfinalized writes to appendable objects in gRPC.
+	// using the HTTP client or for full object checksums for unfinalized writes to
+	// appendable objects in gRPC.
 	DisableAutoChecksum bool
 
 	// ChunkSize controls the maximum number of bytes of the object that the

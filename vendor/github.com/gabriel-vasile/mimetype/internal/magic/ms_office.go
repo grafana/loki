@@ -192,7 +192,8 @@ func matchOleClsid(in []byte, clsid []byte) bool {
 	// Expected offset of CLSID for root storage object.
 	clsidOffset := sectorLength*(1+firstSecID) + 80
 
-	if len(in) <= clsidOffset+16 {
+	// #731 offset is outside in or wrapped around due to integer overflow.
+	if len(in) <= clsidOffset+16 || clsidOffset < 0 {
 		return false
 	}
 

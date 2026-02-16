@@ -32,7 +32,7 @@ func (w *metricsTracker) Write(b []byte) (int, error) {
 func (w *metricsTracker) wrappedResponseWriter() http.ResponseWriter {
 	var (
 		hj, i0 = w.ResponseWriter.(http.Hijacker)
-		cn, i1 = w.ResponseWriter.(http.CloseNotifier) //nolint:staticcheck // TODO: Replace deprecated CloseNotifier
+		cn, i1 = w.ResponseWriter.(http.CloseNotifier) // TODO: Replace deprecated CloseNotifier
 		pu, i2 = w.ResponseWriter.(http.Pusher)
 		fl, i3 = w.ResponseWriter.(http.Flusher)
 		rf, i4 = w.ResponseWriter.(io.ReaderFrom)

@@ -46,7 +46,7 @@ type Component interface {
 	// If there are any background operations running by the component they must be aborted before
 	// this function returns. Remember that if you started any long-running background operations from
 	// the Start() method, those operations must be also cancelled. If there are any buffers in the
-	// component, they should be cleared and the data sent immediately to the next component.
+	// component, they should be flushed with the data being sent immediately to the next component.
 	//
 	// The component's lifecycle is completed once the Shutdown() method returns. No other
 	// methods of the component are called after that. If necessary a new component with
