@@ -221,6 +221,9 @@ func (p *Builder) handlePartitionsRevoked(_ context.Context, _ *kgo.Client, topi
 
 	for _, partitions := range topics {
 		for _, partition := range partitions {
+			// Report 0 lag for revoked partition
+			p.metrics.setProcessingDelayToZero(partition)
+			
 			delete(p.partitionStates, partition)
 
 			// Cancel any active calculations

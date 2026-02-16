@@ -1,6 +1,7 @@
 package index
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -14,7 +15,7 @@ type builderMetrics struct {
 	commitsTotal prometheus.Counter
 
 	// Processing delay metrics
-	processingDelay prometheus.Gauge // Latest delta between record timestamp and current time
+	processingDelay *prometheus.GaugeVec // Latest delta between record timestamp and current time, per partition
 }
 
 func newBuilderMetrics() *builderMetrics {
@@ -27,10 +28,10 @@ func newBuilderMetrics() *builderMetrics {
 			Name: "loki_index_builder_commits_total",
 			Help: "Total number of commits",
 		}),
-		processingDelay: prometheus.NewGauge(prometheus.GaugeOpts{
+		processingDelay: prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "loki_index_builder_latest_processing_delay_seconds",
 			Help: "Latest time difference between record timestamp and processing time in seconds",
-		}),
+		}, []string{"partition"}),
 	}
 
 	return p
@@ -73,11 +74,15 @@ func (p *builderMetrics) incCommitsTotal() {
 	p.commitsTotal.Inc()
 }
 
-func (p *builderMetrics) setProcessingDelay(recordTimestamp time.Time) {
+func (p *builderMetrics) setProcessingDelay(partition int32, recordTimestamp time.Time) {
 	// Convert milliseconds to seconds and calculate delay
 	if !recordTimestamp.IsZero() { // Only observe if timestamp is valid
-		p.processingDelay.Set(time.Since(recordTimestamp).Seconds())
+		p.processingDelay.WithLabelValues(fmt.Sprintf("%d", partition)).Set(time.Since(recordTimestamp).Seconds())
 	}
+}
+
+func (p *builderMetrics) setProcessingDelayToZero(partition int32) {
+	p.processingDelay.WithLabelValues(fmt.Sprintf("%d", partition)).Set(0)
 }
 
 type indexerMetrics struct {
