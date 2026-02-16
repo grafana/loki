@@ -238,5 +238,12 @@ func summarizeObservations(capture *Capture) *observations {
 			normalizeKeys(),
 	)
 
+	// task recv/send stats at worker level
+	result.merge(
+		collect.fromRegions("thread.runJob", true).
+			filter(TaskRecvDuration.Key(), TaskSendDuration.Key()).
+			normalizeKeys(),
+	)
+
 	return result
 }
