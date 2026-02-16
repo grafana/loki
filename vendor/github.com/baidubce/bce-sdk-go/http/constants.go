@@ -49,6 +49,10 @@ const (
 	SERVER              = "Server"
 	TRANSFER_ENCODING   = "Transfer-Encoding"
 	USER_AGENT          = "User-Agent"
+	IF_MATCH            = "If-Match"
+	IF_NONE_MATCH       = "If-None-Match"
+	IF_MODIFIED_SINCE   = "If-Modified-Since"
+	IF_UNMODIFIED_SINCE = "If-Unmodified-Since"
 
 	// BCE Common HTTP Headers
 	BCE_PREFIX               = "x-bce-"

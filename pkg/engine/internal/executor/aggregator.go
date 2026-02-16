@@ -1,6 +1,7 @@
 package executor
 
 import (
+	"errors"
 	"maps"
 	"slices"
 	"strings"
@@ -13,6 +14,8 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 )
+
+var ErrSeriesLimitExceeded = errors.New("maximum number of series limit exceeded")
 
 type groupState struct {
 	value       float64       // aggregated value
@@ -36,17 +39,24 @@ const (
 
 // aggregator is used to aggregate sample values by a set of grouping keys for each point in time.
 type aggregator struct {
-	points    map[time.Time]map[uint64]*groupState // holds the groupState for each point in time series
-	digest    *xxhash.Digest                       // used to compute key for each group
-	operation aggregationOperation                 // aggregation type
-	labels    []arrow.Field                        // combined list of all label fields for all sample values
+	points            map[time.Time]map[uint64]*groupState // holds the groupState for each point in time series
+	digest            *xxhash.Digest                       // used to compute key for each group
+	operation         aggregationOperation                 // aggregation type
+	labels            []arrow.Field                        // combined list of all label fields for all sample values
+	clonedLabelValues map[string]string                    // cache of cloned strings to reduce allocations for repeated values
+
+	// Track unique series across all timestamps to enforce maxSeries limit
+	maxSeries    int                 // maximum number of unique series allowed (0 means no limit)
+	uniqueSeries map[uint64]struct{} // tracks unique series across all timestamps
 }
 
 // newAggregator creates a new aggregator with the specified grouping.
 func newAggregator(pointsSizeHint int, operation aggregationOperation) *aggregator {
 	a := aggregator{
-		digest:    xxhash.New(),
-		operation: operation,
+		digest:            xxhash.New(),
+		operation:         operation,
+		clonedLabelValues: make(map[string]string),
+		uniqueSeries:      make(map[uint64]struct{}),
 	}
 
 	if pointsSizeHint > 0 {
@@ -59,7 +69,7 @@ func newAggregator(pointsSizeHint int, operation aggregationOperation) *aggregat
 }
 
 // AddLabels merges a list of labels that all sample values will have combined. This can be done several times
-// over the lifetime of an aggregator to accomodate processing of multiple records with different schemas.
+// over the lifetime of an aggregator to accommodate processing of multiple records with different schemas.
 func (a *aggregator) AddLabels(labels []arrow.Field) {
 	for _, label := range labels {
 		if !slices.ContainsFunc(a.labels, func(l arrow.Field) bool {
@@ -70,9 +80,14 @@ func (a *aggregator) AddLabels(labels []arrow.Field) {
 	}
 }
 
+// SetMaxSeries sets the maximum number of unique series allowed.
+func (a *aggregator) SetMaxSeries(maxSeries int) {
+	a.maxSeries = maxSeries
+}
+
 // Add adds a new sample value to the aggregation for the given timestamp and grouping label values.
 // It expects labelValues to be in the same order as the groupBy columns.
-func (a *aggregator) Add(ts time.Time, value float64, labels []arrow.Field, labelValues []string) {
+func (a *aggregator) Add(ts time.Time, value float64, labels []arrow.Field, labelValues []string) error {
 	if len(labels) != len(labelValues) {
 		panic("len(labels) != len(labelValues)")
 	}
@@ -119,6 +134,18 @@ func (a *aggregator) Add(ts time.Time, value float64, labels []arrow.Field, labe
 
 		state.count++
 	} else {
+
+		if a.maxSeries > 0 {
+			// Check series limit before adding a new series
+			if _, exists := a.uniqueSeries[key]; !exists {
+				if len(a.uniqueSeries) >= a.maxSeries {
+					return ErrSeriesLimitExceeded
+				}
+
+				a.uniqueSeries[key] = struct{}{}
+			}
+		}
+
 		count := int64(1)
 
 		if len(labels) == 0 {
@@ -127,7 +154,7 @@ func (a *aggregator) Add(ts time.Time, value float64, labels []arrow.Field, labe
 				value: value,
 				count: count,
 			}
-			return
+			return nil
 		}
 
 		labelValuesCopy := make([]string, len(labelValues))
@@ -135,10 +162,14 @@ func (a *aggregator) Add(ts time.Time, value float64, labels []arrow.Field, labe
 			// copy the value as this is backed by the arrow array data buffer.
 			// We could retain the record to avoid this copy, but that would hold
 			// all other columns in memory for as long as the query is evaluated.
-			labelValuesCopy[i] = strings.Clone(v)
+			cloned, ok := a.clonedLabelValues[v]
+			if !ok {
+				cloned = strings.Clone(v)
+				a.clonedLabelValues[v] = cloned
+			}
+			labelValuesCopy[i] = cloned
 		}
 
-		// TODO: add limits on number of groups
 		point[key] = &groupState{
 			labels:      labels,
 			labelValues: labelValuesCopy,
@@ -146,6 +177,7 @@ func (a *aggregator) Add(ts time.Time, value float64, labels []arrow.Field, labe
 			count:       count,
 		}
 	}
+	return nil
 }
 
 func (a *aggregator) BuildRecord() (arrow.RecordBatch, error) {
@@ -154,20 +186,21 @@ func (a *aggregator) BuildRecord() (arrow.RecordBatch, error) {
 		semconv.FieldFromIdent(semconv.ColumnIdentTimestamp, false),
 		semconv.FieldFromIdent(semconv.ColumnIdentValue, false),
 	)
-	for _, label := range a.labels {
-		fields = append(fields, arrow.Field{
-			Name:     label.Name,
-			Type:     label.Type,
-			Nullable: true,
-			Metadata: label.Metadata,
-		})
-	}
-
+	fields = append(fields, a.labels...)
 	schema := arrow.NewSchema(fields, nil)
 	rb := array.NewRecordBuilder(memory.NewGoAllocator(), schema)
 
 	// emit aggregated results in sorted order of timestamp
-	for _, ts := range a.getSortedTimestamps() {
+	sortedTimestamps := a.getSortedTimestamps()
+
+	// preallocate all builders to the total amount of rows
+	total := 0
+	for _, ts := range sortedTimestamps {
+		total += len(a.points[ts])
+	}
+	rb.Reserve(total)
+
+	for _, ts := range sortedTimestamps {
 		tsValue, _ := arrow.TimestampFromTime(ts, arrow.Nanosecond)
 
 		for _, entry := range a.points[ts] {
@@ -213,6 +246,8 @@ func (a *aggregator) Reset() {
 	for _, point := range a.points {
 		clear(point)
 	}
+
+	clear(a.uniqueSeries)
 }
 
 // getSortedTimestamps returns all timestamps in sorted order

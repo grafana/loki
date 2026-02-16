@@ -10,7 +10,6 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/prometheus/model/labels"
 	"github.com/thanos-io/objstore"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -83,7 +82,7 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 		attribute.String("type", string(logql.GetRangeType(params))),
 		attribute.String("query", params.QueryString()),
 		attribute.Stringer("start", params.Start()),
-		attribute.Stringer("end", params.Start()),
+		attribute.Stringer("end", params.End()),
 		attribute.Stringer("step", params.Step()),
 		attribute.Stringer("length", params.End().Sub(params.Start())),
 		attribute.StringSlice("shards", params.Shards()),
@@ -116,7 +115,7 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 		defer span.End()
 
 		timer := prometheus.NewTimer(e.metrics.logicalPlanning)
-		logicalPlan, err := logical.BuildPlan(params)
+		logicalPlan, err := logical.BuildPlan(ctx, params)
 		if err != nil {
 			level.Warn(logger).Log("msg", "failed to create logical plan", "err", err)
 			e.metrics.subqueries.WithLabelValues(statusNotImplemented).Inc()
@@ -146,13 +145,12 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 
 		timer := prometheus.NewTimer(e.metrics.physicalPlanning)
 
-		catalog := physical.NewMetastoreCatalog(func(start time.Time, end time.Time, selectors []*labels.Matcher, predicates []*labels.Matcher) ([]*metastore.DataobjSectionDescriptor, error) {
-			resp, err := e.metastore.Sections(ctx, metastore.SectionsRequest{
-				Start:      start,
-				End:        end,
-				Matchers:   selectors,
-				Predicates: predicates,
-			})
+		catalog := physical.NewMetastoreCatalog(func(selectors physical.Expression, predicates []physical.Expression, start time.Time, end time.Time) ([]*metastore.DataobjSectionDescriptor, error) {
+			req, err := physical.CatalogRequestToMetastoreSectionsRequest(selectors, predicates, start, end)
+			if err != nil {
+				return nil, err
+			}
+			resp, err := e.metastore.Sections(ctx, req)
 			return resp.Sections, err
 		})
 		planner := physical.NewPlanner(physical.NewContext(params.Start(), params.End()), catalog)
@@ -202,6 +200,8 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 			BatchSize:          int64(e.cfg.BatchSize),
 			MergePrefetchCount: e.cfg.MergePrefetchCount,
 			Bucket:             e.bucket,
+			Metastore:          e.metastore,
+			StreamFilterer:     e.cfg.StreamFilterer,
 		}
 
 		pipeline := executor.Run(ctx, cfg, physicalPlan, logger)
@@ -259,11 +259,15 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 }
 
 func IsQuerySupported(params logql.Params) bool {
-	_, err := logical.BuildPlan(params)
+	_, err := logical.BuildPlan(context.Background(), params)
 	return err == nil
 }
 
 func collectResult(ctx context.Context, pipeline executor.Pipeline, builder ResultBuilder) error {
+	if err := pipeline.Open(ctx); err != nil {
+		return err
+	}
+
 	for {
 		rec, err := pipeline.Read(ctx)
 		if err != nil {

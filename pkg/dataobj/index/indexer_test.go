@@ -214,7 +214,8 @@ func TestSerialIndexer_ConcurrentBuilds(t *testing.T) {
 
 	// Set up test data
 	bucket := objstore.NewInMemBucket()
-	for i := 0; i < 5; i++ {
+	numTestObjects := 5
+	for i := 0; i < numTestObjects; i++ {
 		buildLogObject(t, fmt.Sprintf("app-%d", i), fmt.Sprintf("test-path-%d", i), bucket)
 	}
 
@@ -250,17 +251,20 @@ func TestSerialIndexer_ConcurrentBuilds(t *testing.T) {
 	}()
 
 	// Submit multiple concurrent build requests
-	numRequests := 5
+	numRequests := 200
 	results := make(chan error, numRequests)
+
+	cancelCtx, cancelBuild := context.WithCancel(ctx)
+	defer cancelBuild()
 
 	for i := 0; i < numRequests; i++ {
 		go func(idx int) {
 			event := metastore.ObjectWrittenEvent{
-				ObjectPath: fmt.Sprintf("test-path-%d", idx),
+				ObjectPath: fmt.Sprintf("test-path-%d", idx%numTestObjects),
 				WriteTime:  time.Now().Format(time.RFC3339),
 			}
 
-			record := &kgo.Record{Partition: int32(idx)}
+			record := &kgo.Record{Partition: int32(0)}
 			eventBytes, err := event.Marshal()
 			if err != nil {
 				results <- err
@@ -270,14 +274,19 @@ func TestSerialIndexer_ConcurrentBuilds(t *testing.T) {
 
 			bufferedEvt := bufferedEvent{event: event, record: record}
 
-			_, err = indexer.submitBuild(ctx, []bufferedEvent{bufferedEvt}, int32(idx), triggerTypeAppend)
+			buildCtx := ctx
+			if i == numRequests/2 {
+				buildCtx = cancelCtx
+			}
+			_, err = indexer.submitBuild(buildCtx, []bufferedEvent{bufferedEvt}, int32(0), triggerTypeAppend)
 			results <- err
 		}(i)
 	}
 
 	// Wait for all requests to complete
 	for i := 0; i < numRequests; i++ {
-		require.NoError(t, <-results)
+		err := <-results
+		require.NoError(t, err)
 	}
 
 	// Verify all events were processed (serialized)
@@ -405,9 +414,38 @@ func TestSerialIndexer_FlushOnBuilderFull(t *testing.T) {
 	require.Equal(t, 2, mockCalc.count)          // 2 calls (no retries)
 	require.Equal(t, 1, mockCalc.flushCallCount) // 1 flush after full only
 	require.Equal(t, 1, mockCalc.resetCallCount) // 1 reset after full
-	require.False(t, indexer.skipMode)
 
 	// Verify metrics - single request/build despite multiple flushes
 	require.Equal(t, float64(1), testutil.ToFloat64(indexerMetrics.totalRequests))
 	require.Equal(t, float64(1), testutil.ToFloat64(indexerMetrics.totalBuilds))
+}
+
+func TestDownloadObject_Success(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	bucket := objstore.NewInMemBucket()
+	testData := []byte("test data content for download")
+	objectPath := "test-object"
+
+	// Upload test object
+	require.NoError(t, bucket.Upload(ctx, objectPath, bytes.NewReader(testData)))
+
+	// Download with pre-allocation
+	result, err := downloadObject(ctx, bucket, objectPath)
+	require.NoError(t, err)
+	require.Equal(t, testData, result)
+}
+
+func TestDownloadObject_ObjectNotFound(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	bucket := objstore.NewInMemBucket()
+	objectPath := "non-existent-object"
+
+	// Try to download non-existent object
+	_, err := downloadObject(ctx, bucket, objectPath)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "failed to fetch object from storage")
 }

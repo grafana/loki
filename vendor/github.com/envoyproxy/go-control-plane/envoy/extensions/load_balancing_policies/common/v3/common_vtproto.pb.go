@@ -94,6 +94,11 @@ func (m *LocalityLbConfig_ZoneAwareLbConfig) MarshalToSizedBufferVTStrict(dAtA [
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.LocalityBasis != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.LocalityBasis))
+		i--
+		dAtA[i] = 0x30
+	}
 	if m.ForceLocalZone != nil {
 		size, err := m.ForceLocalZone.MarshalToSizedBufferVTStrict(dAtA[:i])
 		if err != nil {
@@ -492,6 +497,9 @@ func (m *LocalityLbConfig_ZoneAwareLbConfig) SizeVT() (n int) {
 	if m.ForceLocalZone != nil {
 		l = m.ForceLocalZone.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.LocalityBasis != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.LocalityBasis))
 	}
 	n += len(m.unknownFields)
 	return n

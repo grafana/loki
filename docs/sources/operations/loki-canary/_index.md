@@ -324,6 +324,8 @@ All options:
     	Duration between log entries (default 1s)
   -key-file string
     	Client PEM encoded X.509 key for optional use with TLS connection to Loki
+  -labels string
+        Comma-separated string of labels for the query e.g. 'service=loki,app=canary'. The parsing logic for this argument is simple, label values must not contain a comma or special characters and should not be quoted. Overwrites labelname and streamname
   -labelname string
     	The label name for this instance of loki-canary to use in the log selector (default "name")
   -labelvalue string
@@ -348,6 +350,8 @@ All options:
     	Frequency to check sent vs received logs, also the frequency which queries for missing logs will be dispatched to loki (default 1m0s)
   -push
     	Push the logs directly to given Loki address
+  -query-append string
+        LogQL filters to be appended to the Canary query e.g. '| json | line_format `{{.log}}`'  	
   -query-timeout duration
     	How long to wait for a query response from Loki (default 10s)
   -size int

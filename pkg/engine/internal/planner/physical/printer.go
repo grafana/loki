@@ -107,6 +107,8 @@ func toTreeNode(n Node) *tree.Node {
 		}
 	case *Parallelize:
 		// Nothing to add
+	case *Merge:
+		// Nothing to add
 	case *ScanSet:
 		treeNode.Properties = []tree.Property{
 			tree.NewProperty("num_targets", false, len(node.Targets)),
@@ -129,9 +131,19 @@ func toTreeNode(n Node) *tree.Node {
 				// Create a child node to extract the properties of the target.
 				childNode := toTreeNode(target.DataObject)
 				properties = append(properties, childNode.Properties...)
+			case ScanTypePointers:
+				childNode := toTreeNode(target.Pointers)
+				properties = append(properties, childNode.Properties...)
 			}
 
 			treeNode.AddComment("@target", "", properties)
+		}
+	case *PointersScan:
+		treeNode.Properties = []tree.Property{
+			tree.NewProperty("location", false, node.Location),
+			tree.NewProperty("num_predicates", false, len(node.Predicates)),
+			tree.NewProperty("start", false, node.Start.Format(time.RFC3339Nano)),
+			tree.NewProperty("end", false, node.End.Format(time.RFC3339Nano)),
 		}
 	}
 	return treeNode

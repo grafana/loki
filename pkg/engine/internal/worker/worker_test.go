@@ -18,7 +18,6 @@ import (
 	"github.com/grafana/dskit/user"
 	"github.com/oklog/ulid/v2"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
@@ -210,8 +209,9 @@ func TestWorkerGracefulShutdown(t *testing.T) {
 		defer workerConn.Close()
 
 		workerPeer := &wire.Peer{
-			Logger: logger,
-			Conn:   workerConn,
+			Logger:  logger,
+			Metrics: wire.NewMetrics(),
+			Conn:    workerConn,
 			Handler: func(_ context.Context, _ *wire.Peer, _ wire.Message) error {
 				return nil
 			},
@@ -230,8 +230,9 @@ func TestWorkerGracefulShutdown(t *testing.T) {
 		defer schedulerConn.Close()
 
 		schedulerPeer := &wire.Peer{
-			Logger: logger,
-			Conn:   schedulerConn,
+			Logger:  logger,
+			Metrics: wire.NewMetrics(),
+			Conn:    schedulerConn,
 			Handler: func(_ context.Context, _ *wire.Peer, _ wire.Message) error {
 				return nil
 			},
@@ -339,6 +340,7 @@ func newTestWorkerWithContext(t *testing.T, logger log.Logger, loc objtest.Locat
 		Logger:    logger,
 		Bucket:    loc.Bucket,
 		BatchSize: 2048,
+		Metastore: metastore.NewObjectMetastore(loc.Bucket, metastore.Config{}, logger, metastore.NewObjectMetastoreMetrics(prometheus.NewRegistry())),
 
 		Dialer:           net.dialer,
 		Listener:         net.workerListener,
@@ -362,7 +364,7 @@ func newTestWorkerWithContext(t *testing.T, logger log.Logger, loc objtest.Locat
 }
 
 func buildWorkflow(ctx context.Context, t *testing.T, logger log.Logger, loc objtest.Location, sched *scheduler.Scheduler, params logql.Params) *workflow.Workflow {
-	logicalPlan, err := logical.BuildPlan(params)
+	logicalPlan, err := logical.BuildPlan(ctx, params)
 	require.NoError(t, err, "expected to create logical plan")
 
 	ms := metastore.NewObjectMetastore(
@@ -371,13 +373,12 @@ func buildWorkflow(ctx context.Context, t *testing.T, logger log.Logger, loc obj
 		logger,
 		metastore.NewObjectMetastoreMetrics(prometheus.NewRegistry()),
 	)
-	catalog := physical.NewMetastoreCatalog(func(start time.Time, end time.Time, selectors []*labels.Matcher, predicates []*labels.Matcher) ([]*metastore.DataobjSectionDescriptor, error) {
-		resp, err := ms.Sections(ctx, metastore.SectionsRequest{
-			Start:      start,
-			End:        end,
-			Matchers:   selectors,
-			Predicates: predicates,
-		})
+	catalog := physical.NewMetastoreCatalog(func(selector physical.Expression, predicates []physical.Expression, start time.Time, end time.Time) ([]*metastore.DataobjSectionDescriptor, error) {
+		req, err := physical.CatalogRequestToMetastoreSectionsRequest(selector, predicates, start, end)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := ms.Sections(ctx, req)
 		return resp.Sections, err
 	})
 	planner := physical.NewPlanner(physical.NewContext(params.Start(), params.End()), catalog)
@@ -392,10 +393,12 @@ func buildWorkflow(ctx context.Context, t *testing.T, logger log.Logger, loc obj
 	}
 
 	opts := workflow.Options{
+		Tenant: objtest.Tenant,
+
 		MaxRunningScanTasks:  32,
 		MaxRunningOtherTasks: 0, // unlimited
 	}
-	wf, err := workflow.New(opts, logger, objtest.Tenant, sched, plan)
+	wf, err := workflow.New(opts, logger, sched, plan)
 	require.NoError(t, err)
 
 	if testing.Verbose() {

@@ -23,7 +23,7 @@ There are two types of alerts in Grafana:
 
 To learn more about Grafana managed alerts, you can refer to the [Alerts and IRM documentation](https://grafana.com/docs/grafana-cloud/alerting-and-irm/), or take a short Learning Journey.
 
-{{< docs/learning-journeys title="Create log alert rules with Grafana Alerting" url="https://grafana.com/docs/learning-journeys/logs-alert-creation/" >}}
+{{< docs/learning-journeys title="Create infrastructure alerts" url="https://grafana.com/docs/learning-journeys/infrastructure-alerting/" >}}
 
 ## Loki alerting and recording rules
 

@@ -82,6 +82,23 @@ func (c *Capture) Regions() []*Region {
 	return c.regions
 }
 
+// LinkParent assigns the provided region as the parent
+// to all root regions of the capture.
+func (c *Capture) LinkParent(parent *Region) {
+	c.mu.RLock()
+	regions := make([]*Region, len(c.regions))
+	copy(regions, c.regions)
+	c.mu.RUnlock()
+
+	for _, region := range regions {
+		region.mu.Lock()
+		if region.parentID.IsZero() {
+			region.parentID = parent.id
+		}
+		region.mu.Unlock()
+	}
+}
+
 // GetAllStatistics returns statistics used across all regions
 // in this capture.
 func (c *Capture) getAllStatistics() []Statistic {
@@ -106,61 +123,6 @@ func (c *Capture) getAllStatistics() []Statistic {
 	}
 
 	return result
-}
-
-// LinkRegions links root regions based on the provided link attribute and resolveParent function.
-//   - It extracts the value of the linkByAttribute (must be a string attribute)
-//   - Calls resolveParent() with that value to determine the parent's attribute value
-//   - It finds the region with the matching attribute value and sets it as the parent
-//
-// Use a linkByAttribute that is unique for each region.
-func (c *Capture) LinkRegions(linkByAttribute string, resolveParent func(string) (string, bool)) {
-	if linkByAttribute == "" {
-		return
-	}
-
-	// Call End() to finalise the capture. This is a no-op if already ended.
-	c.End()
-
-	getAttributeValue := func(r *Region) (string, bool) {
-		if attr := r.getAttribute(linkByAttribute); attr.Valid() && attr.Value.Type() == attribute.STRING {
-			return attr.Value.AsString(), true
-		}
-
-		return "", false
-	}
-
-	attrToRegion := make(map[string]*Region, len(c.regions))
-	for _, r := range c.regions {
-		// regions without the link attribute are not added to the map.
-		if val, ok := getAttributeValue(r); ok {
-			attrToRegion[val] = r
-		}
-	}
-
-	for _, r := range c.regions {
-		if !r.parentID.IsZero() {
-			// region already has a parent. No linking required.
-			continue
-		}
-
-		attrVal, ok := getAttributeValue(r)
-		if !ok {
-			continue
-		}
-
-		parentAttrVal, ok := resolveParent(attrVal)
-		if !ok {
-			continue
-		}
-
-		parentRegion, ok := attrToRegion[parentAttrVal]
-		if !ok {
-			continue
-		}
-
-		r.parentID = parentRegion.id
-	}
 }
 
 // MarshalBinary implements encoding.BinaryMarshaler for Capture.

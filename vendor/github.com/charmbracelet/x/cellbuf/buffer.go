@@ -1,3 +1,4 @@
+// Package cellbuf provides terminal cell buffer functionality.
 package cellbuf
 
 import (
@@ -24,7 +25,7 @@ func NewCell(r rune, comb ...rune) (c *Cell) {
 	}
 	c.Comb = comb
 	c.Width = runewidth.StringWidth(string(append([]rune{r}, comb...)))
-	return
+	return c
 }
 
 // NewCellString returns a new cell with the given string content. This is a
@@ -46,7 +47,7 @@ func NewCellString(s string) (c *Cell) {
 			c.Comb = append(c.Comb, r)
 		}
 	}
-	return
+	return c
 }
 
 // NewGraphemeCell returns a new cell. This is a convenience function that
@@ -71,7 +72,7 @@ func newGraphemeCell(s string, w int) (c *Cell) {
 			c.Comb = append(c.Comb, r)
 		}
 	}
-	return
+	return c
 }
 
 // Line represents a line in the terminal.
@@ -104,7 +105,7 @@ func (l Line) String() (s string) {
 		}
 	}
 	s = strings.TrimRight(s, " ")
-	return
+	return s
 }
 
 // At returns the cell at the given x position.
@@ -150,7 +151,7 @@ func (l Line) set(x int, c *Cell, clone bool) bool {
 		for j := 1; j < maxCellWidth && x-j >= 0; j++ {
 			wide := l.At(x - j)
 			if wide != nil && wide.Width > 1 && j < wide.Width {
-				for k := 0; k < wide.Width; k++ {
+				for k := range wide.Width {
 					l[x-j+k] = wide.Clone().Blank()
 				}
 				break
@@ -206,7 +207,7 @@ func (b *Buffer) String() (s string) {
 			s += "\r\n"
 		}
 	}
-	return
+	return s
 }
 
 // Line returns a pointer to the line at the given y position.
@@ -296,7 +297,7 @@ func (b *Buffer) FillRect(c *Cell, rect Rectangle) {
 	}
 	for y := rect.Min.Y; y < rect.Max.Y; y++ {
 		for x := rect.Min.X; x < rect.Max.X; x += cellWidth {
-			b.setCell(x, y, c, false) //nolint:errcheck
+			b.setCell(x, y, c, false)
 		}
 	}
 }

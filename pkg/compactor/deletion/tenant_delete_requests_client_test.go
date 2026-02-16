@@ -19,13 +19,13 @@ func TestTenantDeleteRequestsClient(t *testing.T) {
 	perTenantClient := NewPerTenantDeleteRequestsClient(fakeClient, defaultLimits)
 
 	t.Run("tenant enabled", func(t *testing.T) {
-		reqs, err := perTenantClient.GetAllDeleteRequestsForUser(context.Background(), "1")
+		reqs, err := perTenantClient.GetAllDeleteRequestsForUser(context.Background(), "1", true, nil)
 		require.Nil(t, err)
 		require.Equal(t, []deletionproto.DeleteRequest{{RequestID: "test-request"}}, reqs)
 	})
 
 	t.Run("tenant disabled", func(t *testing.T) {
-		reqs, err := perTenantClient.GetAllDeleteRequestsForUser(context.Background(), "2")
+		reqs, err := perTenantClient.GetAllDeleteRequestsForUser(context.Background(), "2", true, nil)
 		require.Nil(t, err)
 		require.Empty(t, reqs)
 	})
@@ -37,7 +37,7 @@ type fakeRequestsClient struct {
 	reqs []deletionproto.DeleteRequest
 }
 
-func (c *fakeRequestsClient) GetAllDeleteRequestsForUser(_ context.Context, _ string) ([]deletionproto.DeleteRequest, error) {
+func (c *fakeRequestsClient) GetAllDeleteRequestsForUser(_ context.Context, _ string, _ bool, _ *TimeRange) ([]deletionproto.DeleteRequest, error) {
 	return c.reqs, nil
 }
 

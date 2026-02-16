@@ -33,6 +33,7 @@ import (
 
 	btpb "cloud.google.com/go/bigtable/apiv2/bigtablepb"
 	btopt "cloud.google.com/go/bigtable/internal/option"
+	btransport "cloud.google.com/go/bigtable/internal/transport"
 	"cloud.google.com/go/internal/trace"
 	gax "github.com/googleapis/gax-go/v2"
 	"github.com/googleapis/gax-go/v2/apierror"
@@ -55,6 +56,11 @@ const (
 	queryExpiredViolationType        = "PREPARED_QUERY_EXPIRED"
 	preparedQueryExpireEarlyDuration = time.Second
 	methodNameReadRows               = "ReadRows"
+	// Cannot extract extract d.GRPCConnPoolSize as DialSettings is in internal grpc pacakage
+	defaultBigtableConnPoolSize = 10
+
+	// For routing cookie
+	cookiePrefix = "x-goog-cbt-cookie-"
 )
 
 var errNegativeRowLimit = errors.New("bigtable: row limit cannot be negative")
@@ -74,6 +80,8 @@ type Client struct {
 	retryOption             gax.CallOption
 	executeQueryRetryOption gax.CallOption
 	enableDirectAccess      bool
+	featureFlagsMD          metadata.MD // Pre-computed feature flags metadata to be sent with each request.
+
 }
 
 // ClientConfig has configurations for the client.
@@ -144,6 +152,9 @@ func NewClientWithConfig(ctx context.Context, project, instance string, config C
 	enableDirectAccess, _ := strconv.ParseBool(os.Getenv("CBT_ENABLE_DIRECTPATH"))
 	if enableDirectAccess {
 		o = append(o, internaloption.EnableDirectPath(true), internaloption.EnableDirectPathXds())
+		if disableBoundToken, _ := strconv.ParseBool(os.Getenv("CBT_DISABLE_DIRECTPATH_BOUND_TOKEN")); !disableBoundToken {
+			o = append(o, internaloption.AllowHardBoundTokens("ALTS"))
+		}
 	}
 
 	// Allow non-default service account in DirectPath.
@@ -152,11 +163,6 @@ func NewClientWithConfig(ctx context.Context, project, instance string, config C
 
 	// TODO(b/372244283): Remove after b/358175516 has been fixed
 	o = append(o, internaloption.EnableAsyncRefreshDryRun(metricsTracerFactory.newAsyncRefreshErrHandler()))
-
-	connPool, err := gtransport.DialPool(ctx, o...)
-	if err != nil {
-		return nil, err
-	}
 
 	disableRetryInfo := false
 
@@ -169,6 +175,26 @@ func NewClientWithConfig(ctx context.Context, project, instance string, config C
 		retryOption = clientOnlyRetryOption
 		executeQueryRetryOption = clientOnlyExecuteQueryRetryOption
 	}
+
+	// Create the feature flags metadata once
+	ffMD := createFeatureFlagsMD(metricsTracerFactory.enabled, disableRetryInfo, enableDirectAccess)
+
+	var connPool gtransport.ConnPool
+	var connPoolErr error
+	enableBigtableConnPool := btopt.EnableBigtableConnectionPool()
+	if enableBigtableConnPool {
+		connPool, connPoolErr = btransport.NewBigtableChannelPool(defaultBigtableConnPoolSize, btopt.BigtableLoadBalancingStrategy(), func() (*grpc.ClientConn, error) {
+			return gtransport.Dial(ctx, o...)
+		})
+	} else {
+		// use to regular ConnPool
+		connPool, connPoolErr = gtransport.DialPool(ctx, o...)
+	}
+
+	if connPoolErr != nil {
+		return nil, connPoolErr
+	}
+
 	return &Client{
 		connPool:                connPool,
 		client:                  btpb.NewBigtableClient(connPool),
@@ -180,6 +206,7 @@ func NewClientWithConfig(ctx context.Context, project, instance string, config C
 		retryOption:             retryOption,
 		executeQueryRetryOption: executeQueryRetryOption,
 		enableDirectAccess:      enableDirectAccess,
+		featureFlagsMD:          ffMD,
 	}, nil
 }
 
@@ -393,17 +420,18 @@ type Table struct {
 	materializedView string
 }
 
-// newFeatureFlags creates the feature flags `bigtable-features` header
-// to be sent on each request. This includes all features supported and
-// and enabled on the client
-func (c *Client) newFeatureFlags() metadata.MD {
+// createFeatureFlagsMD creates the metadata for the `bigtable-features` header.
+// This header is sent on each request and includes all features supported and
+// enabled on the client.
+func createFeatureFlagsMD(clientSideMetricsEnabled, disableRetryInfo, enableDirectAccess bool) metadata.MD {
 	ff := btpb.FeatureFlags{
+		RoutingCookie:            true,
 		ReverseScans:             true,
 		LastScannedRowResponses:  true,
-		ClientSideMetricsEnabled: c.metricsTracerFactory.enabled,
-		RetryInfo:                !c.disableRetryInfo,
-		TrafficDirectorEnabled:   c.enableDirectAccess,
-		DirectAccessRequested:    c.enableDirectAccess,
+		ClientSideMetricsEnabled: clientSideMetricsEnabled,
+		RetryInfo:                !disableRetryInfo,
+		TrafficDirectorEnabled:   enableDirectAccess,
+		DirectAccessRequested:    enableDirectAccess,
 	}
 
 	val := ""
@@ -423,7 +451,7 @@ func (c *Client) Open(table string) *Table {
 		md: metadata.Join(metadata.Pairs(
 			resourcePrefixHeader, c.fullTableName(table),
 			requestParamsHeader, c.reqParamsHeaderValTable(table),
-		), c.newFeatureFlags()),
+		), c.featureFlagsMD),
 	}
 }
 
@@ -435,7 +463,7 @@ func (c *Client) OpenTable(table string) TableAPI {
 		md: metadata.Join(metadata.Pairs(
 			resourcePrefixHeader, c.fullTableName(table),
 			requestParamsHeader, c.reqParamsHeaderValTable(table),
-		), c.newFeatureFlags()),
+		), c.featureFlagsMD),
 	}}
 }
 
@@ -447,7 +475,7 @@ func (c *Client) OpenAuthorizedView(table, authorizedView string) TableAPI {
 		md: metadata.Join(metadata.Pairs(
 			resourcePrefixHeader, c.fullAuthorizedViewName(table, authorizedView),
 			requestParamsHeader, c.reqParamsHeaderValTable(table),
-		), c.newFeatureFlags()),
+		), c.featureFlagsMD),
 		authorizedView: authorizedView,
 	}}
 }
@@ -459,7 +487,7 @@ func (c *Client) OpenMaterializedView(materializedView string) TableAPI {
 		md: metadata.Join(metadata.Pairs(
 			resourcePrefixHeader, c.fullMaterializedViewName(materializedView),
 			requestParamsHeader, c.reqParamsHeaderValTable(materializedView),
-		), c.newFeatureFlags()),
+		), c.featureFlagsMD),
 		materializedView: materializedView,
 	}}
 }
@@ -518,7 +546,7 @@ func (c *Client) PrepareStatement(ctx context.Context, query string, paramTypes 
 	md := metadata.Join(metadata.Pairs(
 		resourcePrefixHeader, c.fullInstanceName(),
 		requestParamsHeader, c.reqParamsHeaderValInstance(),
-	), c.newFeatureFlags())
+	), c.featureFlagsMD)
 
 	ctx = mergeOutgoingMetadata(ctx, md)
 	return c.prepareStatementWithMetadata(ctx, query, paramTypes, opts...)
@@ -534,7 +562,7 @@ func (c *Client) prepareStatementWithMetadata(ctx context.Context, query string,
 
 	preparedStatement, err = c.prepareStatement(ctx, mt, query, paramTypes, opts...)
 	statusCode, statusErr := convertToGrpcStatusErr(err)
-	mt.setCurrOpStatus(statusCode.String())
+	mt.setCurrOpStatus(statusCode)
 	return preparedStatement, statusErr
 }
 
@@ -702,7 +730,7 @@ func (bs *BoundStatement) Execute(ctx context.Context, f func(ResultRow) bool, o
 	md := metadata.Join(metadata.Pairs(
 		resourcePrefixHeader, bs.ps.c.fullInstanceName(),
 		requestParamsHeader, bs.ps.c.reqParamsHeaderValInstance(),
-	), bs.ps.c.newFeatureFlags())
+	), bs.ps.c.featureFlagsMD)
 	ctx = mergeOutgoingMetadata(ctx, md)
 
 	ctx = trace.StartSpan(ctx, "cloud.google.com/go/bigtable.ExecuteQuery")
@@ -713,7 +741,7 @@ func (bs *BoundStatement) Execute(ctx context.Context, f func(ResultRow) bool, o
 
 	err = bs.execute(ctx, f, mt)
 	statusCode, statusErr := convertToGrpcStatusErr(err)
-	mt.setCurrOpStatus(statusCode.String())
+	mt.setCurrOpStatus(statusCode)
 	return statusErr
 }
 
@@ -933,7 +961,7 @@ func (c *Client) PingAndWarm(ctx context.Context) (err error) {
 	md := metadata.Join(metadata.Pairs(
 		resourcePrefixHeader, c.fullInstanceName(),
 		requestParamsHeader, c.reqParamsHeaderValInstance(),
-	), c.newFeatureFlags())
+	), c.featureFlagsMD)
 
 	ctx = mergeOutgoingMetadata(ctx, md)
 	ctx = trace.StartSpan(ctx, "cloud.google.com/go/bigtable/PingAndWarm")
@@ -1005,7 +1033,7 @@ func (t *Table) ReadRows(ctx context.Context, arg RowSet, f func(Row) bool, opts
 
 	err = t.readRows(ctx, arg, f, mt, opts...)
 	statusCode, statusErr := convertToGrpcStatusErr(err)
-	mt.setCurrOpStatus(statusCode.String())
+	mt.setCurrOpStatus(statusCode)
 	return statusErr
 }
 
@@ -1685,7 +1713,7 @@ func (t *Table) Apply(ctx context.Context, row string, m *Mutation, opts ...Appl
 
 	err = t.apply(ctx, mt, row, m, opts...)
 	statusCode, statusErr := convertToGrpcStatusErr(err)
-	mt.setCurrOpStatus(statusCode.String())
+	mt.setCurrOpStatus(statusCode)
 	return statusErr
 }
 
@@ -1980,7 +2008,7 @@ func (t *Table) applyGroup(ctx context.Context, group []*entryErr, opts ...Apply
 	}, t.c.retryOption)
 
 	statusCode, statusErr := convertToGrpcStatusErr(err)
-	mt.setCurrOpStatus(statusCode.String())
+	mt.setCurrOpStatus(statusCode)
 	return statusErr
 }
 
@@ -2125,7 +2153,7 @@ func (t *Table) ApplyReadModifyWrite(ctx context.Context, row string, m *ReadMod
 
 	updatedRow, err := t.applyReadModifyWrite(ctx, mt, row, m)
 	statusCode, statusErr := convertToGrpcStatusErr(err)
-	mt.setCurrOpStatus(statusCode.String())
+	mt.setCurrOpStatus(statusCode)
 	return updatedRow, statusErr
 }
 
@@ -2206,7 +2234,7 @@ func (t *Table) SampleRowKeys(ctx context.Context) ([]string, error) {
 
 	rowKeys, err := t.sampleRowKeys(ctx, mt)
 	statusCode, statusErr := convertToGrpcStatusErr(err)
-	mt.setCurrOpStatus(statusCode.String())
+	mt.setCurrOpStatus(statusCode)
 	return rowKeys, statusErr
 }
 
@@ -2281,15 +2309,37 @@ func gaxInvokeWithRecorder(ctx context.Context, mt *builtinMetricsTracer, method
 	mt.setMethod(method)
 
 	callWrapper := func(ctx context.Context, callSettings gax.CallSettings) error {
+		op := &mt.currOp
+		// Inject cookie and attempt information
+		md := metadata.New(nil)
+		for k, v := range op.cookies {
+			md.Append(k, v)
+		}
+
+		existingMD, _ := metadata.FromOutgoingContext(ctx)
+		finalMD := metadata.Join(existingMD, md)
+		newCtx := metadata.NewOutgoingContext(ctx, finalMD)
+
 		mt.recordAttemptStart()
 
 		// f makes calls to CBT service
-		err := f(ctx, &attemptHeaderMD, &attempTrailerMD, callSettings)
+		err := f(newCtx, &attemptHeaderMD, &attempTrailerMD, callSettings)
 
 		// Record attempt specific metrics
 		mt.recordAttemptCompletion(attemptHeaderMD, attempTrailerMD, err)
+
+		extractCookies(attemptHeaderMD, op)
+		extractCookies(attempTrailerMD, op)
 		return err
 	}
 
 	return gax.Invoke(ctx, callWrapper, opts...)
+}
+
+func extractCookies(md metadata.MD, op *opTracer) {
+	for k, v := range md {
+		if strings.HasPrefix(k, cookiePrefix) {
+			op.cookies[k] = v[len(v)-1]
+		}
+	}
 }

@@ -1,0 +1,49 @@
+# Test workflow to verify Loki binaries compile successfully for multiple Linux architectures.
+# This ensures PRs don't break cross-platform builds.
+name: Test Build Loki Binaries
+
+on:
+  pull_request: {}
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: "1.25.7"
+
+jobs:
+  build:
+    name: Test Build ${{ matrix.binary.name }} (${{ matrix.goos }}/${{ matrix.goarch }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        goos: [linux]
+        goarch: [amd64, arm64, arm]
+        binary:
+          - name: loki
+            path: ./cmd/loki
+          - name: logcli
+            path: ./cmd/logcli
+          - name: querytee
+            path: ./cmd/querytee
+          - name: promtail
+            path: ./clients/cmd/promtail
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Build ${{ matrix.binary.name }}
+        env:
+          CGO_ENABLED: "0"
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          echo "Building ${{ matrix.binary.name }} for $GOOS/$GOARCH"
+          go build -v -o ${{ matrix.binary.name }}-${{ matrix.goos }}-${{ matrix.goarch }} ${{ matrix.binary.path }}
