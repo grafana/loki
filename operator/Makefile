@@ -253,7 +253,7 @@ undeploy: ## Undeploy controller from the K8s cluster specified in ~/.kube/confi
 
 OLM_IMG = $(REGISTRY_BASE)/loki-operator:$(OLM_VERSION)
 OLM_BUNDLE_IMG = $(REGISTRY_BASE)/loki-operator-bundle:$(OLM_VERSION)
-DEV_VERSION := 0.0.1$(shell date +%m%d%H%M)-$(shell git rev-parse --short HEAD)
+DEV_VERSION := 0.0.1-$(shell date +"%Y%m%d%H%M%S")-$(shell git rev-parse --short HEAD)
 OLM_VERSION ?= $(DEV_VERSION)
 
 # Build and push the bundle image to a container registry.
