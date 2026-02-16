@@ -315,9 +315,9 @@ func TestBuildLokiAllowGatewayIngress(t *testing.T) {
 
 func TestBuildLokiAllowBucketEgress(t *testing.T) {
 	tests := []struct {
-		name         string
-		opts         Options
-		expectedPort int32
+		name          string
+		opts          Options
+		expectedPorts []int32
 	}{
 		{
 			name: "AWS S3 endpoint without port (defaults to 443)",
@@ -331,7 +331,7 @@ func TestBuildLokiAllowBucketEgress(t *testing.T) {
 					},
 				},
 			},
-			expectedPort: 443,
+			expectedPorts: []int32{443},
 		},
 		{
 			name: "MinIO k8s service endpoint with custom port",
@@ -345,7 +345,7 @@ func TestBuildLokiAllowBucketEgress(t *testing.T) {
 					},
 				},
 			},
-			expectedPort: 9000,
+			expectedPorts: []int32{9000},
 		},
 		{
 			name: "MinIO simple hostname with port",
@@ -359,7 +359,7 @@ func TestBuildLokiAllowBucketEgress(t *testing.T) {
 					},
 				},
 			},
-			expectedPort: 8080,
+			expectedPorts: []int32{8080},
 		},
 		{
 			name: "Swift endpoint with default SSL port",
@@ -373,7 +373,7 @@ func TestBuildLokiAllowBucketEgress(t *testing.T) {
 					},
 				},
 			},
-			expectedPort: 443,
+			expectedPorts: []int32{443},
 		},
 		{
 			name: "Swift endpoint with OpenStack OpenShift default SSL port",
@@ -392,7 +392,7 @@ func TestBuildLokiAllowBucketEgress(t *testing.T) {
 					},
 				},
 			},
-			expectedPort: 13808,
+			expectedPorts: []int32{13808},
 		},
 		{
 			name: "AlibabaCloud endpoint with custom port",
@@ -406,7 +406,7 @@ func TestBuildLokiAllowBucketEgress(t *testing.T) {
 					},
 				},
 			},
-			expectedPort: 8080,
+			expectedPorts: []int32{8080},
 		},
 		{
 			name: "AlibabaCloud endpoint without port (defaults to 443)",
@@ -420,7 +420,27 @@ func TestBuildLokiAllowBucketEgress(t *testing.T) {
 					},
 				},
 			},
-			expectedPort: 443,
+			expectedPorts: []int32{443},
+		},
+		{
+			name: "HTTPS proxy endpoint with custom port",
+			opts: Options{
+				Name:      "test",
+				Namespace: "test-ns",
+				ObjectStorage: storage.Options{
+					SharedStore: lokiv1.ObjectStorageSecretS3,
+					S3: &storage.S3StorageConfig{
+						Endpoint: "https://s3.amazonaws.com",
+					},
+				},
+				Stack: lokiv1.LokiStackSpec{
+					Proxy: &lokiv1.ClusterProxy{
+						HTTPProxy:  "http://proxy.example.com:8080",
+						HTTPSProxy: "http://proxy.example.com:6443",
+					},
+				},
+			},
+			expectedPorts: []int32{443, 8080, 6443},
 		},
 	}
 
@@ -446,9 +466,10 @@ func TestBuildLokiAllowBucketEgress(t *testing.T) {
 			require.Empty(t, egressRule.To, "Egress should allow to any destination")
 
 			// Verify the port
-			require.Len(t, egressRule.Ports, 1, "Should have exactly one port")
-			actualPort := egressRule.Ports[0].Port.IntVal
-			require.Equal(t, tc.expectedPort, actualPort, "Port should match expected value")
+			require.Len(t, egressRule.Ports, len(tc.expectedPorts), "Ports array should have the expected length")
+			for i, port := range egressRule.Ports {
+				require.Equal(t, tc.expectedPorts[i], port.Port.IntVal, "Port should match expected value")
+			}
 		})
 	}
 }

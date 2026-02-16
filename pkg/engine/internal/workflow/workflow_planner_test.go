@@ -173,17 +173,23 @@ func Test_planWorkflow(t *testing.T) {
 			)
 			scanSet = physicalGraph.Add(&physical.ScanSet{
 				Targets: []*physical.ScanTarget{
-					{Type: physical.ScanTypeDataObject, DataObject: &physical.DataObjScan{
-						Location:     "a",
-						MaxTimeRange: physical.TimeRange{Start: time.Unix(10, 0).UTC(), End: time.Unix(50, 0).UTC()}},
+					{
+						Type: physical.ScanTypeDataObject, DataObject: &physical.DataObjScan{
+							Location:     "a",
+							MaxTimeRange: physical.TimeRange{Start: time.Unix(10, 0).UTC(), End: time.Unix(50, 0).UTC()},
+						},
 					},
-					{Type: physical.ScanTypeDataObject, DataObject: &physical.DataObjScan{
-						Location:     "b",
-						MaxTimeRange: physical.TimeRange{Start: time.Unix(20, 0).UTC(), End: time.Unix(60, 0).UTC()}},
+					{
+						Type: physical.ScanTypeDataObject, DataObject: &physical.DataObjScan{
+							Location:     "b",
+							MaxTimeRange: physical.TimeRange{Start: time.Unix(20, 0).UTC(), End: time.Unix(60, 0).UTC()},
+						},
 					},
-					{Type: physical.ScanTypeDataObject, DataObject: &physical.DataObjScan{
-						Location:     "c",
-						MaxTimeRange: physical.TimeRange{Start: time.Unix(0, 0).UTC(), End: time.Unix(50, 0).UTC()}},
+					{
+						Type: physical.ScanTypeDataObject, DataObject: &physical.DataObjScan{
+							Location:     "c",
+							MaxTimeRange: physical.TimeRange{Start: time.Unix(0, 0).UTC(), End: time.Unix(50, 0).UTC()},
+						},
 					},
 				},
 			})
@@ -245,6 +251,72 @@ func Test_planWorkflow(t *testing.T) {
 │ └── Projection all=true expand=(PARSE_LOGFMT(builtin.message))
 │     └── DataObjScan location=c streams=0 section_id=0 projections=()
 │             └── @max_time_range start=1970-01-01T00:00:00Z end=1970-01-01T00:00:50Z
+└
+`)
+
+		actualOutput := Sprint(&Workflow{graph: graph})
+		require.Equal(t, strings.TrimSpace(expectOuptut), strings.TrimSpace(actualOutput))
+	})
+
+	t.Run("Predicates on the ScanSet are combined with the predicate pushed down to the DataObjScan", func(t *testing.T) {
+		ulidGen := ulidGenerator{}
+
+		var physicalGraph dag.Graph[physical.Node]
+
+		parallelize := physicalGraph.Add(&physical.Parallelize{})
+		topk := physicalGraph.Add(&physical.TopK{
+			SortBy:    &physical.ColumnExpr{Ref: semconv.ColumnIdentTimestamp.ColumnRef()},
+			Ascending: false,
+			K:         100,
+		})
+		scanSet := physicalGraph.Add(&physical.ScanSet{
+			Predicates: []physical.Expression{
+				&physical.BinaryExpr{
+					Left:  &physical.ColumnExpr{Ref: semconv.ColumnIdentTimestamp.ColumnRef()},
+					Right: physical.NewLiteral(time.Unix(5, 0).UTC().UnixNano()),
+					Op:    types.BinaryOpGt,
+				},
+			},
+			Targets: []*physical.ScanTarget{
+				{
+					Type: physical.ScanTypeDataObject, DataObject: &physical.DataObjScan{
+						Location:     "a",
+						MaxTimeRange: physical.TimeRange{Start: time.Unix(10, 0).UTC(), End: time.Unix(50, 0).UTC()},
+						Predicates: []physical.Expression{
+							&physical.BinaryExpr{
+								Left:  &physical.ColumnExpr{Ref: semconv.ColumnIdentError.ColumnRef()},
+								Right: physical.NewLiteral(""),
+								Op:    types.BinaryOpNeq,
+							},
+						},
+					},
+				},
+			},
+		})
+		_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: topk, Child: parallelize})
+		_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: parallelize, Child: scanSet})
+
+		physicalPlan := physical.FromGraph(physicalGraph)
+
+		graph, err := planWorkflow("", physicalPlan)
+		require.NoError(t, err)
+		require.Equal(t, 2, graph.Len())
+		requireUniqueStreams(t, graph)
+		generateConsistentULIDs(&ulidGen, graph)
+
+		expectOuptut := strings.TrimSpace(`
+┌ Task 00000000000000000000000001
+│ @max_time_range start=1970-01-01T00:00:10Z end=1970-01-01T00:00:50Z
+│
+│ TopK sort_by=builtin.timestamp ascending=false nulls_first=false k=100
+│     └── @source stream=00000000000000000000000003
+└
+┌ Task 00000000000000000000000002
+│ @max_time_range start=1970-01-01T00:00:10Z end=1970-01-01T00:00:50Z
+│
+│ DataObjScan location=a streams=0 section_id=0 projections=() predicate[0]=GT(builtin.timestamp, 5000000000) predicate[1]=NEQ(generated.__error__, "")
+│     ├── @max_time_range start=1970-01-01T00:00:10Z end=1970-01-01T00:00:50Z
+│     └── @sink stream=00000000000000000000000003
 └
 `)
 

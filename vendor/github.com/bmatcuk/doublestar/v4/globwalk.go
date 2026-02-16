@@ -205,7 +205,7 @@ func (g *glob) doGlobAltsWalk(fsys fs.FS, d, pattern string, startIdx, openingId
 			nextIdx += patIdx
 		}
 
-		alt := buildAlt(d, pattern, startIdx, openingIdx, patIdx, nextIdx, afterIdx)
+		alt := buildAlt(escapeMeta(d), pattern, startIdx, openingIdx, patIdx, nextIdx, afterIdx)
 		err = g.doGlobWalk(fsys, alt, firstSegment, beforeMeta, func(p string, d fs.DirEntry) error {
 			// insertion sort, ignoring dups
 			insertIdx := matchesLen
@@ -287,8 +287,21 @@ func (g *glob) globDirWalk(fsys fs.FS, dir, pattern string, canMatchFiles, befor
 	}
 
 	var matched bool
+	checkForHidden := g.noHidden && couldUnintentionallyMatchHidden(pattern)
 	for _, info := range dirs {
 		name := info.Name()
+
+		// Skip hidden files when noHidden is set
+		if checkForHidden {
+			isHidden, err := isHiddenPath(name, info)
+			if e = g.forwardErrIfFailOnIOErrors(err); e != nil {
+				return
+			}
+			if isHidden {
+				continue
+			}
+		}
+
 		matched, e = matchWithSeparator(pattern, name, '/', false, g.caseInsensitive)
 		if e != nil {
 			return
@@ -335,6 +348,18 @@ func (g *glob) globDoubleStarWalk(fsys fs.FS, dir string, canMatchFiles bool, fn
 
 	for _, info := range dirs {
 		name := info.Name()
+
+		// Skip hidden files/directories when noHidden is set
+		if g.noHidden {
+			isHidden, err := isHiddenPath(name, info)
+			if e = g.forwardErrIfFailOnIOErrors(err); e != nil {
+				return
+			}
+			if isHidden {
+				continue
+			}
+		}
+
 		isDir, err := g.isDir(fsys, dir, name, info)
 		if err != nil {
 			return err

@@ -14,6 +14,7 @@ var (
 		types.RangeAggregationTypeMax:     AGGREGATE_RANGE_OP_MAX,
 		types.RangeAggregationTypeMin:     AGGREGATE_RANGE_OP_MIN,
 		types.RangeAggregationTypeBytes:   AGGREGATE_RANGE_OP_BYTES,
+		types.RangeAggregationTypeAvg:     AGGREGATE_RANGE_OP_AVG,
 	}
 
 	protoAggregateVectorLookup = map[types.VectorAggregationType]AggregateVectorOp{

@@ -28,6 +28,55 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// Basis for computing per-locality percentages in zone-aware routing.
+type LocalityLbConfig_ZoneAwareLbConfig_LocalityBasis int32
+
+const (
+	// Use the number of healthy hosts in each locality.
+	LocalityLbConfig_ZoneAwareLbConfig_HEALTHY_HOSTS_NUM LocalityLbConfig_ZoneAwareLbConfig_LocalityBasis = 0
+	// Use the weights of healthy hosts in each locality.
+	LocalityLbConfig_ZoneAwareLbConfig_HEALTHY_HOSTS_WEIGHT LocalityLbConfig_ZoneAwareLbConfig_LocalityBasis = 1
+)
+
+// Enum value maps for LocalityLbConfig_ZoneAwareLbConfig_LocalityBasis.
+var (
+	LocalityLbConfig_ZoneAwareLbConfig_LocalityBasis_name = map[int32]string{
+		0: "HEALTHY_HOSTS_NUM",
+		1: "HEALTHY_HOSTS_WEIGHT",
+	}
+	LocalityLbConfig_ZoneAwareLbConfig_LocalityBasis_value = map[string]int32{
+		"HEALTHY_HOSTS_NUM":    0,
+		"HEALTHY_HOSTS_WEIGHT": 1,
+	}
+)
+
+func (x LocalityLbConfig_ZoneAwareLbConfig_LocalityBasis) Enum() *LocalityLbConfig_ZoneAwareLbConfig_LocalityBasis {
+	p := new(LocalityLbConfig_ZoneAwareLbConfig_LocalityBasis)
+	*p = x
+	return p
+}
+
+func (x LocalityLbConfig_ZoneAwareLbConfig_LocalityBasis) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (LocalityLbConfig_ZoneAwareLbConfig_LocalityBasis) Descriptor() protoreflect.EnumDescriptor {
+	return file_envoy_extensions_load_balancing_policies_common_v3_common_proto_enumTypes[0].Descriptor()
+}
+
+func (LocalityLbConfig_ZoneAwareLbConfig_LocalityBasis) Type() protoreflect.EnumType {
+	return &file_envoy_extensions_load_balancing_policies_common_v3_common_proto_enumTypes[0]
+}
+
+func (x LocalityLbConfig_ZoneAwareLbConfig_LocalityBasis) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use LocalityLbConfig_ZoneAwareLbConfig_LocalityBasis.Descriptor instead.
+func (LocalityLbConfig_ZoneAwareLbConfig_LocalityBasis) EnumDescriptor() ([]byte, []int) {
+	return file_envoy_extensions_load_balancing_policies_common_v3_common_proto_rawDescGZIP(), []int{0, 0, 0}
+}
+
 type LocalityLbConfig struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -284,7 +333,7 @@ func (x *ConsistentHashingLbConfig) GetHashPolicy() []*v32.RouteAction_HashPolic
 
 // Configuration for :ref:`zone aware routing
 // <arch_overview_load_balancing_zone_aware_routing>`.
-// [#next-free-field: 6]
+// [#next-free-field: 7]
 type LocalityLbConfig_ZoneAwareLbConfig struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -311,6 +360,11 @@ type LocalityLbConfig_ZoneAwareLbConfig struct {
 	// Deprecated: Marked as deprecated in envoy/extensions/load_balancing_policies/common/v3/common.proto.
 	ForceLocalityDirectRouting bool                                               `protobuf:"varint,4,opt,name=force_locality_direct_routing,json=forceLocalityDirectRouting,proto3" json:"force_locality_direct_routing,omitempty"`
 	ForceLocalZone             *LocalityLbConfig_ZoneAwareLbConfig_ForceLocalZone `protobuf:"bytes,5,opt,name=force_local_zone,json=forceLocalZone,proto3" json:"force_local_zone,omitempty"`
+	// Determines how locality percentages are computed:
+	// - HEALTHY_HOSTS_NUM: proportional to the count of healthy hosts.
+	// - HEALTHY_HOSTS_WEIGHT: proportional to the weights of healthy hosts.
+	// Default value is HEALTHY_HOSTS_NUM if unset.
+	LocalityBasis LocalityLbConfig_ZoneAwareLbConfig_LocalityBasis `protobuf:"varint,6,opt,name=locality_basis,json=localityBasis,proto3,enum=envoy.extensions.load_balancing_policies.common.v3.LocalityLbConfig_ZoneAwareLbConfig_LocalityBasis" json:"locality_basis,omitempty"`
 }
 
 func (x *LocalityLbConfig_ZoneAwareLbConfig) Reset() {
@@ -379,6 +433,13 @@ func (x *LocalityLbConfig_ZoneAwareLbConfig) GetForceLocalZone() *LocalityLbConf
 		return x.ForceLocalZone
 	}
 	return nil
+}
+
+func (x *LocalityLbConfig_ZoneAwareLbConfig) GetLocalityBasis() LocalityLbConfig_ZoneAwareLbConfig_LocalityBasis {
+	if x != nil {
+		return x.LocalityBasis
+	}
+	return LocalityLbConfig_ZoneAwareLbConfig_HEALTHY_HOSTS_NUM
 }
 
 // Configuration for :ref:`locality weighted load balancing
@@ -507,8 +568,8 @@ var file_envoy_extensions_load_balancing_policies_common_v3_common_proto_rawDesc
 	0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x1a, 0x1d, 0x75, 0x64, 0x70, 0x61, 0x2f, 0x61, 0x6e, 0x6e,
 	0x6f, 0x74, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x2f, 0x73, 0x74, 0x61, 0x74, 0x75, 0x73, 0x2e,
 	0x70, 0x72, 0x6f, 0x74, 0x6f, 0x1a, 0x17, 0x76, 0x61, 0x6c, 0x69, 0x64, 0x61, 0x74, 0x65, 0x2f,
-	0x76, 0x61, 0x6c, 0x69, 0x64, 0x61, 0x74, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x22, 0xfc,
-	0x06, 0x0a, 0x10, 0x4c, 0x6f, 0x63, 0x61, 0x6c, 0x69, 0x74, 0x79, 0x4c, 0x62, 0x43, 0x6f, 0x6e,
+	0x76, 0x61, 0x6c, 0x69, 0x64, 0x61, 0x74, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x22, 0xcc,
+	0x08, 0x0a, 0x10, 0x4c, 0x6f, 0x63, 0x61, 0x6c, 0x69, 0x74, 0x79, 0x4c, 0x62, 0x43, 0x6f, 0x6e,
 	0x66, 0x69, 0x67, 0x12, 0x89, 0x01, 0x0a, 0x14, 0x7a, 0x6f, 0x6e, 0x65, 0x5f, 0x61, 0x77, 0x61,
 	0x72, 0x65, 0x5f, 0x6c, 0x62, 0x5f, 0x63, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x18, 0x01, 0x20, 0x01,
 	0x28, 0x0b, 0x32, 0x56, 0x2e, 0x65, 0x6e, 0x76, 0x6f, 0x79, 0x2e, 0x65, 0x78, 0x74, 0x65, 0x6e,
@@ -528,7 +589,7 @@ var file_envoy_extensions_load_balancing_policies_common_v3_common_proto_rawDesc
 	0x6c, 0x69, 0x74, 0x79, 0x57, 0x65, 0x69, 0x67, 0x68, 0x74, 0x65, 0x64, 0x4c, 0x62, 0x43, 0x6f,
 	0x6e, 0x66, 0x69, 0x67, 0x48, 0x00, 0x52, 0x18, 0x6c, 0x6f, 0x63, 0x61, 0x6c, 0x69, 0x74, 0x79,
 	0x57, 0x65, 0x69, 0x67, 0x68, 0x74, 0x65, 0x64, 0x4c, 0x62, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67,
-	0x1a, 0xfc, 0x03, 0x0a, 0x11, 0x5a, 0x6f, 0x6e, 0x65, 0x41, 0x77, 0x61, 0x72, 0x65, 0x4c, 0x62,
+	0x1a, 0xcc, 0x05, 0x0a, 0x11, 0x5a, 0x6f, 0x6e, 0x65, 0x41, 0x77, 0x61, 0x72, 0x65, 0x4c, 0x62,
 	0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x12, 0x3f, 0x0a, 0x0f, 0x72, 0x6f, 0x75, 0x74, 0x69, 0x6e,
 	0x67, 0x5f, 0x65, 0x6e, 0x61, 0x62, 0x6c, 0x65, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32,
 	0x16, 0x2e, 0x65, 0x6e, 0x76, 0x6f, 0x79, 0x2e, 0x74, 0x79, 0x70, 0x65, 0x2e, 0x76, 0x33, 0x2e,
@@ -555,11 +616,24 @@ var file_envoy_extensions_load_balancing_policies_common_v3_common_proto_rawDesc
 	0x66, 0x69, 0x67, 0x2e, 0x5a, 0x6f, 0x6e, 0x65, 0x41, 0x77, 0x61, 0x72, 0x65, 0x4c, 0x62, 0x43,
 	0x6f, 0x6e, 0x66, 0x69, 0x67, 0x2e, 0x46, 0x6f, 0x72, 0x63, 0x65, 0x4c, 0x6f, 0x63, 0x61, 0x6c,
 	0x5a, 0x6f, 0x6e, 0x65, 0x52, 0x0e, 0x66, 0x6f, 0x72, 0x63, 0x65, 0x4c, 0x6f, 0x63, 0x61, 0x6c,
-	0x5a, 0x6f, 0x6e, 0x65, 0x1a, 0x49, 0x0a, 0x0e, 0x46, 0x6f, 0x72, 0x63, 0x65, 0x4c, 0x6f, 0x63,
-	0x61, 0x6c, 0x5a, 0x6f, 0x6e, 0x65, 0x12, 0x37, 0x0a, 0x08, 0x6d, 0x69, 0x6e, 0x5f, 0x73, 0x69,
-	0x7a, 0x65, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x1c, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c,
-	0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e, 0x55, 0x49, 0x6e, 0x74, 0x33,
-	0x32, 0x56, 0x61, 0x6c, 0x75, 0x65, 0x52, 0x07, 0x6d, 0x69, 0x6e, 0x53, 0x69, 0x7a, 0x65, 0x1a,
+	0x5a, 0x6f, 0x6e, 0x65, 0x12, 0x8b, 0x01, 0x0a, 0x0e, 0x6c, 0x6f, 0x63, 0x61, 0x6c, 0x69, 0x74,
+	0x79, 0x5f, 0x62, 0x61, 0x73, 0x69, 0x73, 0x18, 0x06, 0x20, 0x01, 0x28, 0x0e, 0x32, 0x64, 0x2e,
+	0x65, 0x6e, 0x76, 0x6f, 0x79, 0x2e, 0x65, 0x78, 0x74, 0x65, 0x6e, 0x73, 0x69, 0x6f, 0x6e, 0x73,
+	0x2e, 0x6c, 0x6f, 0x61, 0x64, 0x5f, 0x62, 0x61, 0x6c, 0x61, 0x6e, 0x63, 0x69, 0x6e, 0x67, 0x5f,
+	0x70, 0x6f, 0x6c, 0x69, 0x63, 0x69, 0x65, 0x73, 0x2e, 0x63, 0x6f, 0x6d, 0x6d, 0x6f, 0x6e, 0x2e,
+	0x76, 0x33, 0x2e, 0x4c, 0x6f, 0x63, 0x61, 0x6c, 0x69, 0x74, 0x79, 0x4c, 0x62, 0x43, 0x6f, 0x6e,
+	0x66, 0x69, 0x67, 0x2e, 0x5a, 0x6f, 0x6e, 0x65, 0x41, 0x77, 0x61, 0x72, 0x65, 0x4c, 0x62, 0x43,
+	0x6f, 0x6e, 0x66, 0x69, 0x67, 0x2e, 0x4c, 0x6f, 0x63, 0x61, 0x6c, 0x69, 0x74, 0x79, 0x42, 0x61,
+	0x73, 0x69, 0x73, 0x52, 0x0d, 0x6c, 0x6f, 0x63, 0x61, 0x6c, 0x69, 0x74, 0x79, 0x42, 0x61, 0x73,
+	0x69, 0x73, 0x1a, 0x49, 0x0a, 0x0e, 0x46, 0x6f, 0x72, 0x63, 0x65, 0x4c, 0x6f, 0x63, 0x61, 0x6c,
+	0x5a, 0x6f, 0x6e, 0x65, 0x12, 0x37, 0x0a, 0x08, 0x6d, 0x69, 0x6e, 0x5f, 0x73, 0x69, 0x7a, 0x65,
+	0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x1c, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e,
+	0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e, 0x55, 0x49, 0x6e, 0x74, 0x33, 0x32, 0x56,
+	0x61, 0x6c, 0x75, 0x65, 0x52, 0x07, 0x6d, 0x69, 0x6e, 0x53, 0x69, 0x7a, 0x65, 0x22, 0x40, 0x0a,
+	0x0d, 0x4c, 0x6f, 0x63, 0x61, 0x6c, 0x69, 0x74, 0x79, 0x42, 0x61, 0x73, 0x69, 0x73, 0x12, 0x15,
+	0x0a, 0x11, 0x48, 0x45, 0x41, 0x4c, 0x54, 0x48, 0x59, 0x5f, 0x48, 0x4f, 0x53, 0x54, 0x53, 0x5f,
+	0x4e, 0x55, 0x4d, 0x10, 0x00, 0x12, 0x18, 0x0a, 0x14, 0x48, 0x45, 0x41, 0x4c, 0x54, 0x48, 0x59,
+	0x5f, 0x48, 0x4f, 0x53, 0x54, 0x53, 0x5f, 0x57, 0x45, 0x49, 0x47, 0x48, 0x54, 0x10, 0x01, 0x1a,
 	0x1a, 0x0a, 0x18, 0x4c, 0x6f, 0x63, 0x61, 0x6c, 0x69, 0x74, 0x79, 0x57, 0x65, 0x69, 0x67, 0x68,
 	0x74, 0x65, 0x64, 0x4c, 0x62, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x42, 0x20, 0x0a, 0x19, 0x6c,
 	0x6f, 0x63, 0x61, 0x6c, 0x69, 0x74, 0x79, 0x5f, 0x63, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x5f, 0x73,
@@ -621,38 +695,41 @@ func file_envoy_extensions_load_balancing_policies_common_v3_common_proto_rawDes
 	return file_envoy_extensions_load_balancing_policies_common_v3_common_proto_rawDescData
 }
 
+var file_envoy_extensions_load_balancing_policies_common_v3_common_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
 var file_envoy_extensions_load_balancing_policies_common_v3_common_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_envoy_extensions_load_balancing_policies_common_v3_common_proto_goTypes = []interface{}{
-	(*LocalityLbConfig)(nil),                                  // 0: envoy.extensions.load_balancing_policies.common.v3.LocalityLbConfig
-	(*SlowStartConfig)(nil),                                   // 1: envoy.extensions.load_balancing_policies.common.v3.SlowStartConfig
-	(*ConsistentHashingLbConfig)(nil),                         // 2: envoy.extensions.load_balancing_policies.common.v3.ConsistentHashingLbConfig
-	(*LocalityLbConfig_ZoneAwareLbConfig)(nil),                // 3: envoy.extensions.load_balancing_policies.common.v3.LocalityLbConfig.ZoneAwareLbConfig
-	(*LocalityLbConfig_LocalityWeightedLbConfig)(nil),         // 4: envoy.extensions.load_balancing_policies.common.v3.LocalityLbConfig.LocalityWeightedLbConfig
-	(*LocalityLbConfig_ZoneAwareLbConfig_ForceLocalZone)(nil), // 5: envoy.extensions.load_balancing_policies.common.v3.LocalityLbConfig.ZoneAwareLbConfig.ForceLocalZone
-	(*durationpb.Duration)(nil),                               // 6: google.protobuf.Duration
-	(*v3.RuntimeDouble)(nil),                                  // 7: envoy.config.core.v3.RuntimeDouble
-	(*v31.Percent)(nil),                                       // 8: envoy.type.v3.Percent
-	(*wrapperspb.UInt32Value)(nil),                            // 9: google.protobuf.UInt32Value
-	(*v32.RouteAction_HashPolicy)(nil),                        // 10: envoy.config.route.v3.RouteAction.HashPolicy
-	(*wrapperspb.UInt64Value)(nil),                            // 11: google.protobuf.UInt64Value
+	(LocalityLbConfig_ZoneAwareLbConfig_LocalityBasis)(0),     // 0: envoy.extensions.load_balancing_policies.common.v3.LocalityLbConfig.ZoneAwareLbConfig.LocalityBasis
+	(*LocalityLbConfig)(nil),                                  // 1: envoy.extensions.load_balancing_policies.common.v3.LocalityLbConfig
+	(*SlowStartConfig)(nil),                                   // 2: envoy.extensions.load_balancing_policies.common.v3.SlowStartConfig
+	(*ConsistentHashingLbConfig)(nil),                         // 3: envoy.extensions.load_balancing_policies.common.v3.ConsistentHashingLbConfig
+	(*LocalityLbConfig_ZoneAwareLbConfig)(nil),                // 4: envoy.extensions.load_balancing_policies.common.v3.LocalityLbConfig.ZoneAwareLbConfig
+	(*LocalityLbConfig_LocalityWeightedLbConfig)(nil),         // 5: envoy.extensions.load_balancing_policies.common.v3.LocalityLbConfig.LocalityWeightedLbConfig
+	(*LocalityLbConfig_ZoneAwareLbConfig_ForceLocalZone)(nil), // 6: envoy.extensions.load_balancing_policies.common.v3.LocalityLbConfig.ZoneAwareLbConfig.ForceLocalZone
+	(*durationpb.Duration)(nil),                               // 7: google.protobuf.Duration
+	(*v3.RuntimeDouble)(nil),                                  // 8: envoy.config.core.v3.RuntimeDouble
+	(*v31.Percent)(nil),                                       // 9: envoy.type.v3.Percent
+	(*wrapperspb.UInt32Value)(nil),                            // 10: google.protobuf.UInt32Value
+	(*v32.RouteAction_HashPolicy)(nil),                        // 11: envoy.config.route.v3.RouteAction.HashPolicy
+	(*wrapperspb.UInt64Value)(nil),                            // 12: google.protobuf.UInt64Value
 }
 var file_envoy_extensions_load_balancing_policies_common_v3_common_proto_depIdxs = []int32{
-	3,  // 0: envoy.extensions.load_balancing_policies.common.v3.LocalityLbConfig.zone_aware_lb_config:type_name -> envoy.extensions.load_balancing_policies.common.v3.LocalityLbConfig.ZoneAwareLbConfig
-	4,  // 1: envoy.extensions.load_balancing_policies.common.v3.LocalityLbConfig.locality_weighted_lb_config:type_name -> envoy.extensions.load_balancing_policies.common.v3.LocalityLbConfig.LocalityWeightedLbConfig
-	6,  // 2: envoy.extensions.load_balancing_policies.common.v3.SlowStartConfig.slow_start_window:type_name -> google.protobuf.Duration
-	7,  // 3: envoy.extensions.load_balancing_policies.common.v3.SlowStartConfig.aggression:type_name -> envoy.config.core.v3.RuntimeDouble
-	8,  // 4: envoy.extensions.load_balancing_policies.common.v3.SlowStartConfig.min_weight_percent:type_name -> envoy.type.v3.Percent
-	9,  // 5: envoy.extensions.load_balancing_policies.common.v3.ConsistentHashingLbConfig.hash_balance_factor:type_name -> google.protobuf.UInt32Value
-	10, // 6: envoy.extensions.load_balancing_policies.common.v3.ConsistentHashingLbConfig.hash_policy:type_name -> envoy.config.route.v3.RouteAction.HashPolicy
-	8,  // 7: envoy.extensions.load_balancing_policies.common.v3.LocalityLbConfig.ZoneAwareLbConfig.routing_enabled:type_name -> envoy.type.v3.Percent
-	11, // 8: envoy.extensions.load_balancing_policies.common.v3.LocalityLbConfig.ZoneAwareLbConfig.min_cluster_size:type_name -> google.protobuf.UInt64Value
-	5,  // 9: envoy.extensions.load_balancing_policies.common.v3.LocalityLbConfig.ZoneAwareLbConfig.force_local_zone:type_name -> envoy.extensions.load_balancing_policies.common.v3.LocalityLbConfig.ZoneAwareLbConfig.ForceLocalZone
-	9,  // 10: envoy.extensions.load_balancing_policies.common.v3.LocalityLbConfig.ZoneAwareLbConfig.ForceLocalZone.min_size:type_name -> google.protobuf.UInt32Value
-	11, // [11:11] is the sub-list for method output_type
-	11, // [11:11] is the sub-list for method input_type
-	11, // [11:11] is the sub-list for extension type_name
-	11, // [11:11] is the sub-list for extension extendee
-	0,  // [0:11] is the sub-list for field type_name
+	4,  // 0: envoy.extensions.load_balancing_policies.common.v3.LocalityLbConfig.zone_aware_lb_config:type_name -> envoy.extensions.load_balancing_policies.common.v3.LocalityLbConfig.ZoneAwareLbConfig
+	5,  // 1: envoy.extensions.load_balancing_policies.common.v3.LocalityLbConfig.locality_weighted_lb_config:type_name -> envoy.extensions.load_balancing_policies.common.v3.LocalityLbConfig.LocalityWeightedLbConfig
+	7,  // 2: envoy.extensions.load_balancing_policies.common.v3.SlowStartConfig.slow_start_window:type_name -> google.protobuf.Duration
+	8,  // 3: envoy.extensions.load_balancing_policies.common.v3.SlowStartConfig.aggression:type_name -> envoy.config.core.v3.RuntimeDouble
+	9,  // 4: envoy.extensions.load_balancing_policies.common.v3.SlowStartConfig.min_weight_percent:type_name -> envoy.type.v3.Percent
+	10, // 5: envoy.extensions.load_balancing_policies.common.v3.ConsistentHashingLbConfig.hash_balance_factor:type_name -> google.protobuf.UInt32Value
+	11, // 6: envoy.extensions.load_balancing_policies.common.v3.ConsistentHashingLbConfig.hash_policy:type_name -> envoy.config.route.v3.RouteAction.HashPolicy
+	9,  // 7: envoy.extensions.load_balancing_policies.common.v3.LocalityLbConfig.ZoneAwareLbConfig.routing_enabled:type_name -> envoy.type.v3.Percent
+	12, // 8: envoy.extensions.load_balancing_policies.common.v3.LocalityLbConfig.ZoneAwareLbConfig.min_cluster_size:type_name -> google.protobuf.UInt64Value
+	6,  // 9: envoy.extensions.load_balancing_policies.common.v3.LocalityLbConfig.ZoneAwareLbConfig.force_local_zone:type_name -> envoy.extensions.load_balancing_policies.common.v3.LocalityLbConfig.ZoneAwareLbConfig.ForceLocalZone
+	0,  // 10: envoy.extensions.load_balancing_policies.common.v3.LocalityLbConfig.ZoneAwareLbConfig.locality_basis:type_name -> envoy.extensions.load_balancing_policies.common.v3.LocalityLbConfig.ZoneAwareLbConfig.LocalityBasis
+	10, // 11: envoy.extensions.load_balancing_policies.common.v3.LocalityLbConfig.ZoneAwareLbConfig.ForceLocalZone.min_size:type_name -> google.protobuf.UInt32Value
+	12, // [12:12] is the sub-list for method output_type
+	12, // [12:12] is the sub-list for method input_type
+	12, // [12:12] is the sub-list for extension type_name
+	12, // [12:12] is the sub-list for extension extendee
+	0,  // [0:12] is the sub-list for field type_name
 }
 
 func init() { file_envoy_extensions_load_balancing_policies_common_v3_common_proto_init() }
@@ -743,13 +820,14 @@ func file_envoy_extensions_load_balancing_policies_common_v3_common_proto_init()
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_envoy_extensions_load_balancing_policies_common_v3_common_proto_rawDesc,
-			NumEnums:      0,
+			NumEnums:      1,
 			NumMessages:   6,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
 		GoTypes:           file_envoy_extensions_load_balancing_policies_common_v3_common_proto_goTypes,
 		DependencyIndexes: file_envoy_extensions_load_balancing_policies_common_v3_common_proto_depIdxs,
+		EnumInfos:         file_envoy_extensions_load_balancing_policies_common_v3_common_proto_enumTypes,
 		MessageInfos:      file_envoy_extensions_load_balancing_policies_common_v3_common_proto_msgTypes,
 	}.Build()
 	File_envoy_extensions_load_balancing_policies_common_v3_common_proto = out.File

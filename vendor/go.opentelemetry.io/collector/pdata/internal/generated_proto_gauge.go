@@ -43,11 +43,9 @@ func DeleteGauge(orig *Gauge, nullable bool) {
 		orig.Reset()
 		return
 	}
-
 	for i := range orig.DataPoints {
 		DeleteNumberDataPoint(orig.DataPoints[i], true)
 	}
-
 	orig.Reset()
 	if nullable {
 		protoPoolGauge.Put(orig)

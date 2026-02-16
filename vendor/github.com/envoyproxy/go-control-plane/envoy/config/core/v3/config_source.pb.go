@@ -751,8 +751,9 @@ type ExtensionConfigSource struct {
 	// waiting for the first discovery response. Requires the default configuration
 	// to be supplied.
 	ApplyDefaultConfigWithoutWarming bool `protobuf:"varint,3,opt,name=apply_default_config_without_warming,json=applyDefaultConfigWithoutWarming,proto3" json:"apply_default_config_without_warming,omitempty"`
-	// A set of permitted extension type URLs. Extension configuration updates are rejected
-	// if they do not match any type URL in the set.
+	// A set of permitted extension type URLs for the type encoded inside of the
+	// :ref:`TypedExtensionConfig <envoy_v3_api_msg_config.core.v3.TypedExtensionConfig>`. Extension
+	// configuration updates are rejected if they do not match any type URL in the set.
 	TypeUrls []string `protobuf:"bytes,4,rep,name=type_urls,json=typeUrls,proto3" json:"type_urls,omitempty"`
 }
 

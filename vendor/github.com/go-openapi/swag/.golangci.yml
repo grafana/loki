@@ -21,6 +21,7 @@ linters:
     - ireturn
     - lll
     - musttag
+    - modernize
     - nestif
     - nlreturn
     - nonamedreturns

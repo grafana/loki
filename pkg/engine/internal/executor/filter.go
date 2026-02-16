@@ -12,13 +12,18 @@ import (
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
-func NewFilterPipeline(filter *physical.Filter, input Pipeline, evaluator expressionEvaluator, region *xcap.Region) *GenericPipeline {
+func NewFilterPipeline(filter *physical.Filter, input Pipeline, evaluator *expressionEvaluator, region *xcap.Region) *GenericPipeline {
 	return newGenericPipelineWithRegion(func(ctx context.Context, inputs []Pipeline) (arrow.RecordBatch, error) {
 		// Pull the next item from the input pipeline
 		input := inputs[0]
 		batch, err := input.Read(ctx)
 		if err != nil {
 			return nil, err
+		}
+
+		if batch.NumRows() == 0 {
+			// Nothing to process, return an empty record with the same schema
+			return batch, nil
 		}
 
 		cols := make([]*array.Boolean, 0, len(filter.Predicates))
@@ -66,6 +71,7 @@ func filterBatch(batch arrow.RecordBatch, include func(int) bool) arrow.RecordBa
 		switch field.Type.ID() {
 		case arrow.BOOL:
 			builder := array.NewBooleanBuilder(memory.DefaultAllocator)
+			builder.Reserve(int(batch.NumRows()))
 			builders[i] = builder
 			additions[i] = func(offset int) {
 				src := batch.Column(i).(*array.Boolean)
@@ -73,6 +79,7 @@ func filterBatch(batch arrow.RecordBatch, include func(int) bool) arrow.RecordBa
 			}
 		case arrow.STRING:
 			builder := array.NewStringBuilder(memory.DefaultAllocator)
+			builder.Reserve(int(batch.NumRows()))
 			builders[i] = builder
 			additions[i] = func(offset int) {
 				src := batch.Column(i).(*array.String)
@@ -80,6 +87,7 @@ func filterBatch(batch arrow.RecordBatch, include func(int) bool) arrow.RecordBa
 			}
 		case arrow.UINT64:
 			builder := array.NewUint64Builder(memory.DefaultAllocator)
+			builder.Reserve(int(batch.NumRows()))
 			builders[i] = builder
 			additions[i] = func(offset int) {
 				src := batch.Column(i).(*array.Uint64)
@@ -87,6 +95,7 @@ func filterBatch(batch arrow.RecordBatch, include func(int) bool) arrow.RecordBa
 			}
 		case arrow.INT64:
 			builder := array.NewInt64Builder(memory.DefaultAllocator)
+			builder.Reserve(int(batch.NumRows()))
 			builders[i] = builder
 			additions[i] = func(offset int) {
 				src := batch.Column(i).(*array.Int64)
@@ -94,6 +103,7 @@ func filterBatch(batch arrow.RecordBatch, include func(int) bool) arrow.RecordBa
 			}
 		case arrow.FLOAT64:
 			builder := array.NewFloat64Builder(memory.DefaultAllocator)
+			builder.Reserve(int(batch.NumRows()))
 			builders[i] = builder
 			additions[i] = func(offset int) {
 				src := batch.Column(i).(*array.Float64)
@@ -101,6 +111,7 @@ func filterBatch(batch arrow.RecordBatch, include func(int) bool) arrow.RecordBa
 			}
 		case arrow.TIMESTAMP:
 			builder := array.NewTimestampBuilder(memory.DefaultAllocator, &arrow.TimestampType{Unit: arrow.Nanosecond, TimeZone: "UTC"})
+			builder.Reserve(int(batch.NumRows()))
 			builders[i] = builder
 			additions[i] = func(offset int) {
 				src := batch.Column(i).(*array.Timestamp)
@@ -128,11 +139,10 @@ func filterBatch(batch arrow.RecordBatch, include func(int) bool) arrow.RecordBa
 		ct++
 	}
 
-	schema := arrow.NewSchema(fields, nil)
 	arrays := make([]arrow.Array, len(fields))
 	for i, builder := range builders {
 		arrays[i] = builder.NewArray()
 	}
 
-	return array.NewRecordBatch(schema, arrays, ct)
+	return array.NewRecordBatch(batch.Schema(), arrays, ct)
 }

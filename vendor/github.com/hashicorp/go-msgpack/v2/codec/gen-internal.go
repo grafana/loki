@@ -8,7 +8,6 @@ import (
 	"errors"
 	"go/format"
 	"io"
-	"io/ioutil"
 	"strings"
 	"sync"
 	"text/template"
@@ -258,7 +257,7 @@ func genInternalGoFile(r io.Reader, w io.Writer) (err error) {
 
 	t := template.New("").Funcs(genInternalTmplFuncs)
 
-	tmplstr, err := ioutil.ReadAll(r)
+	tmplstr, err := io.ReadAll(r)
 	if err != nil {
 		return
 	}
@@ -275,10 +274,15 @@ func genInternalGoFile(r io.Reader, w io.Writer) (err error) {
 
 	bout, err := format.Source(out.Bytes())
 	if err != nil {
-		w.Write(out.Bytes()) // write out if error, so we can still see.
+		if _, err := w.Write(out.Bytes()); err != nil {
+			return err
+		}
+		// write out if error, so we can still see.
 		// w.Write(bout) // write out if error, as much as possible, so we can still see.
 		return
 	}
-	w.Write(bout)
+	if _, err := w.Write(bout); err != nil {
+		return err
+	}
 	return
 }
