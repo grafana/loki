@@ -14,9 +14,7 @@ common:
         container_name: {{ .Container }}
         account_name: ${AZURE_STORAGE_ACCOUNT_NAME}
         endpoint_suffix: {{ .EndpointSuffix }}
-        {{- if .WorkloadIdentity }}
-        use_federated_token: true
-        {{- else }}
+        {{- if not .WorkloadIdentity }}
         account_key: ${AZURE_STORAGE_ACCOUNT_KEY}
         {{- end }}
       {{- end }}
