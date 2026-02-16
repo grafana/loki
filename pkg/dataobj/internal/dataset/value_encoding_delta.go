@@ -1,12 +1,14 @@
 package dataset
 
 import (
-	"errors"
+	"encoding/binary"
 	"fmt"
 	"io"
 
+	"github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
+	"github.com/grafana/loki/v3/pkg/memory"
 )
 
 func init() {
@@ -14,8 +16,10 @@ func init() {
 	registerValueEncoding(
 		datasetmd.PHYSICAL_TYPE_INT64,
 		datasetmd.ENCODING_TYPE_DELTA,
-		func(w streamio.Writer) valueEncoder { return newDeltaEncoder(w) },
-		func(r streamio.Reader) valueDecoder { return newDeltaDecoder(r) },
+		registryEntry{
+			NewEncoder: func(w streamio.Writer) valueEncoder { return newDeltaEncoder(w) },
+			NewDecoder: func(data []byte) valueDecoder { return newDeltaDecoder(data) },
+		},
 	)
 }
 
@@ -71,16 +75,17 @@ func (enc *deltaEncoder) Reset(w streamio.Writer) {
 // deltaDecoder decodes delta-encoded numbers. Values are decoded as varint,
 // with each subsequent value being the delta from the previous value.
 type deltaDecoder struct {
-	r    streamio.Reader
+	buf  []byte
+	off  int
 	prev int64
 }
 
 var _ valueDecoder = (*deltaDecoder)(nil)
 
-// newDeltaDecoder creates a deltaDecoder that reads encoded numbers from r.
-func newDeltaDecoder(r streamio.Reader) *deltaDecoder {
+// newDeltaDecoder creates a deltaDecoder that reads encoded numbers from data.
+func newDeltaDecoder(data []byte) *deltaDecoder {
 	var dec deltaDecoder
-	dec.Reset(r)
+	dec.Reset(data)
 	return &dec
 }
 
@@ -94,45 +99,50 @@ func (dec *deltaDecoder) EncodingType() datasetmd.EncodingType {
 	return datasetmd.ENCODING_TYPE_DELTA
 }
 
-// Decode decodes up to len(s) values, storing the results into s. The
-// number of decoded values is returned, followed by an error (if any).
-// At the end of the stream, Decode returns 0, [io.EOF].
-func (dec *deltaDecoder) Decode(s []Value) (int, error) {
-	if len(s) == 0 {
-		return 0, nil
+// Decode decodes up to count values, storing the results into a new
+// [columnar.Int64] array obtained from the provided allocator. At the end of
+// the stream, Decode returns an [io.EOF].
+func (dec *deltaDecoder) Decode(alloc *memory.Allocator, count int) (columnar.Array, error) {
+	// Obtain a buffer from the allocator with enough capacity for an optimistic `count` values.
+	// Resize the buffer explicitly in order to use the Set API which avoids a reslice compared to Push.
+	// Resize must be used again before returning any data if the slice is not completely filled.
+	valuesBuf := memory.NewBuffer[int64](alloc, count)
+	valuesBuf.Resize(count)
+	values := valuesBuf.Data()
+
+	// Shadow local variables to avoid the pointer indirection of referencing dec.buf and dec.prev.
+	var (
+		buf  []byte
+		prev int64
+		off  int
+	)
+	buf = dec.buf
+	prev = dec.prev
+	off = dec.off
+	defer func() { dec.buf = buf; dec.prev = prev; dec.off = off }()
+
+	// Check the invariant so the compiler can eliminate the bounds check when assigning to values[i].
+	if len(values) != count {
+		panic(fmt.Sprintf("invariant broken: values buffer has %d values, expected %d", len(values), count))
 	}
 
-	var err error
-	var v Value
-
-	for i := range s {
-		v, err = dec.decode()
-		if errors.Is(err, io.EOF) {
-			if i == 0 {
-				return 0, io.EOF
-			}
-			return i, nil
-		} else if err != nil {
-			return i, err
+	for i := range count {
+		delta, n := binary.Varint(buf[off:])
+		if n <= 0 {
+			valuesBuf.Resize(i)
+			return columnar.NewNumber[int64](values[:i], memory.Bitmap{}), io.EOF
 		}
-		s[i] = v
-	}
-	return len(s), nil
-}
 
-// decode reads the next uint64 value from the stream.
-func (dec *deltaDecoder) decode() (Value, error) {
-	delta, err := streamio.ReadVarint(dec.r)
-	if err != nil {
-		return Int64Value(dec.prev), err
+		off += n
+		prev += delta
+		values[i] = prev
 	}
-
-	dec.prev += delta
-	return Int64Value(dec.prev), nil
+	return columnar.NewNumber[int64](values, memory.Bitmap{}), nil
 }
 
 // Reset resets the deltaDecoder to its initial state.
-func (dec *deltaDecoder) Reset(r streamio.Reader) {
+func (dec *deltaDecoder) Reset(data []byte) {
 	dec.prev = 0
-	dec.r = r
+	dec.off = 0
+	dec.buf = data
 }

@@ -194,3 +194,25 @@ func (d *picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 
 	return pr, err
 }
+
+// autoHostRewriteKey is the context key used to store the value of
+// route's autoHostRewrite in the RPC context.
+type autoHostRewriteKey struct{}
+
+// autoHostRewrite retrieves the autoHostRewrite value from the provided context.
+func autoHostRewrite(ctx context.Context) bool {
+	v, _ := ctx.Value(autoHostRewriteKey{}).(bool)
+	return v
+}
+
+// AutoHostRewriteForTesting returns the value of autoHostRewrite field;
+// to be used for testing only.
+func AutoHostRewriteForTesting(ctx context.Context) bool {
+	return autoHostRewrite(ctx)
+}
+
+// SetAutoHostRewrite adds the autoHostRewrite value to the context for
+// the xds_cluster_impl LB policy to pick.
+func SetAutoHostRewrite(ctx context.Context, autohostRewrite bool) context.Context {
+	return context.WithValue(ctx, autoHostRewriteKey{}, autohostRewrite)
+}

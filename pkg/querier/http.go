@@ -524,7 +524,7 @@ func (q *QuerierAPI) queryStoreForPatterns(ctx context.Context, req *logproto.Qu
 		return nil, err
 	}
 
-	// Patterns are persisted as logfmt'd strings, so we need to to run the query using the LogQL engine
+	// Patterns are persisted as logfmt'd strings, so we need to run the query using the LogQL engine
 	// in order to extract the metric values from them.
 	query := q.engineV1.Query(params)
 	res, err := query.Exec(ctx)

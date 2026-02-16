@@ -19,10 +19,11 @@ import (
 
 // streamSink allows for sending records remotely across a stream.
 type streamSink struct {
-	Logger    log.Logger
-	Scheduler *wire.Peer
-	Stream    *workflow.Stream
-	Dialer    func(ctx context.Context, addr net.Addr) (wire.Conn, error)
+	Logger      log.Logger
+	WireMetrics *wire.Metrics
+	Scheduler   *wire.Peer
+	Stream      *workflow.Stream
+	Dialer      func(ctx context.Context, addr net.Addr) (wire.Conn, error)
 
 	initOnce  sync.Once
 	ctx       context.Context    // Context used for peer connections.
@@ -156,6 +157,7 @@ func (sink *streamSink) getPeer(ctx context.Context) (*wire.Peer, error) {
 
 	peer := &wire.Peer{
 		Logger:  sink.Logger,
+		Metrics: sink.WireMetrics,
 		Conn:    conn,
 		Handler: nil, // This is a send-only connection.
 	}

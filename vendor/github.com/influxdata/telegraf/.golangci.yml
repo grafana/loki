@@ -2,12 +2,15 @@ version: "2"
 
 linters:
   # Default set of linters.
-  # The value can be: `standard`, `all`, `none`, or `fast`.
+  # The value can be:
+  # - `standard`: https://golangci-lint.run/docs/linters/#enabled-by-default
+  # - `all`: enables all linters by default.
+  # - `none`: disables all linters by default.
+  # - `fast`: enables only linters considered as "fast" (`golangci-lint help linters --json | jq '[ .[] | select(.fast==true) ] | map(.name)'`).
   # Default: standard
   default: none
 
   # Enable specific linter.
-  # https://golangci-lint.run/usage/linters/#enabled-by-default
   enable:
     - asasalint
     - asciicheck
@@ -45,6 +48,7 @@ linters:
     - unused
     - usetesting
 
+  # All available settings of specific linters.
   settings:
     depguard:
       # Rules to apply.
@@ -405,6 +409,7 @@ linters:
     staticcheck:
       # SAxxxx checks in https://staticcheck.dev/docs/configuration/options/#checks
       # Example (to disable some checks): [ "all", "-SA1000", "-SA1001"]
+      # Run `GL_DEBUG=staticcheck golangci-lint run --enable=staticcheck` to see all available checks and enabled by config checks.
       # Default: ["all", "-ST1000", "-ST1003", "-ST1016", "-ST1020", "-ST1021", "-ST1022"]
       checks:
         - all
@@ -516,6 +521,10 @@ linters:
       # revive:var-naming: Exclude mixed-caps packages in migrations, as these migrations are fixing the issues from before.
       - path: migrations/.*\.go$
         text: don't use MixedCaps in package name
+
+      # revive:var-naming: Exclude check for package names that conflict with standard library package names (e.g., "net", "json", "http", "os")
+      - path: (.*)\.go$
+        text: conflict with Go standard library package names
 
       # revive:exported
       - path: (.+)\.go$

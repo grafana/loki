@@ -671,6 +671,16 @@ func (a *appender) AppendHistogramCTZeroSample(_ storage.SeriesRef, _ labels.Lab
 	return 0, nil
 }
 
+func (a *appender) AppendHistogramSTZeroSample(_ storage.SeriesRef, _ labels.Labels, _ int64, _ int64, _ *histogram.Histogram, _ *histogram.FloatHistogram) (storage.SeriesRef, error) {
+	// TODO: support histogram start timestamps
+	return 0, nil
+}
+
+func (a *appender) AppendSTZeroSample(_ storage.SeriesRef, _ labels.Labels, _ int64, _ int64) (storage.SeriesRef, error) {
+	// TODO: support start timestamps
+	return 0, nil
+}
+
 func (a *appender) AppendCTZeroSample(_ storage.SeriesRef, _ labels.Labels, _ int64, _ int64) (storage.SeriesRef, error) {
 	// TODO: support created timestamp
 	return 0, nil

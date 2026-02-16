@@ -148,7 +148,9 @@ func (b *streamsResultBuilder) CollectRecord(rec arrow.RecordBatch) {
 				}
 
 				b.rowBuilders[rowIdx].parsedBuilder.Set(shortName, parsedVal)
-				b.rowBuilders[rowIdx].lbsBuilder.Set(shortName, parsedVal)
+				if !b.categorizeLabels {
+					b.rowBuilders[rowIdx].lbsBuilder.Set(shortName, parsedVal)
+				}
 				if b.rowBuilders[rowIdx].metadataBuilder.Get(shortName) != "" {
 					b.rowBuilders[rowIdx].metadataBuilder.Del(shortName)
 				}
@@ -444,7 +446,10 @@ func collectSamplesFromRow(builder *labels.Builder, rec arrow.RecordBatch, i int
 
 		// allow any string columns
 		if ident.DataType() == types.Loki.String {
-			builder.Set(shortName, col.(*array.String).Value(i))
+			val := col.(*array.String).Value(i)
+			if val != "" {
+				builder.Set(shortName, val)
+			}
 		}
 	}
 

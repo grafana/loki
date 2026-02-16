@@ -18,6 +18,8 @@ import (
 	"github.com/parquet-go/parquet-go/compress"
 	"github.com/parquet-go/parquet-go/deprecated"
 	"github.com/parquet-go/parquet-go/encoding"
+	"github.com/parquet-go/parquet-go/format"
+	"github.com/parquet-go/parquet-go/internal/memory"
 )
 
 // Schema represents a parquet schema created from a Go value.
@@ -370,7 +372,14 @@ func (s *Schema) Reconstruct(value any, row Row) error {
 		v = v.Elem()
 	}
 
-	b := valuesSliceBufferPool.Get().(*valuesSliceBuffer)
+	b := valuesSliceBufferPool.Get(
+		func() *valuesSliceBuffer {
+			return &valuesSliceBuffer{
+				values: make([][]Value, 0, 64),
+			}
+		},
+		func(v *valuesSliceBuffer) { v.values = v.values[:0] },
+	)
 
 	state := s.lazyLoadState()
 	funcs := s.lazyLoadFuncs()
@@ -405,19 +414,10 @@ func (v *valuesSliceBuffer) reserve(n int) [][]Value {
 }
 
 func (v *valuesSliceBuffer) release() {
-	v.values = v.values[:0]
 	valuesSliceBufferPool.Put(v)
 }
 
-var valuesSliceBufferPool = &sync.Pool{
-	New: func() any {
-		return &valuesSliceBuffer{
-			// use 64 as a cache friendly base estimate of max column numbers we will be
-			// reading.
-			values: make([][]Value, 0, 64),
-		}
-	},
-}
+var valuesSliceBufferPool memory.Pool[valuesSliceBuffer]
 
 // Lookup returns the leaf column at the given path.
 //
@@ -510,6 +510,15 @@ func appendStructFields(path []string, t reflect.Type, fields []reflect.StructFi
 			}
 			if name != "" {
 				f.Name = name
+			}
+		}
+
+		// If no explicit parquet name was set, check for protobuf tag name.
+		// This allows protobuf-generated structs to use their proto field names
+		// (typically snake_case) as parquet column names.
+		if f.Name == t.Field(i).Name { // Name wasn't changed by parquet tag
+			if protoName := protoFieldNameFromTag(f.Tag); protoName != "" {
+				f.Name = protoName
 			}
 		}
 
@@ -852,6 +861,47 @@ func parseUTCNormalization(arg string) (isUTCNormalized bool, err error) {
 	}
 }
 
+func parseGeometryArgs(args string) (crs string, err error) {
+	if !strings.HasPrefix(args, "(") || !strings.HasSuffix(args, ")") {
+		return "", fmt.Errorf("malformed geometry args: %s", args)
+	}
+	args = strings.TrimPrefix(args, "(")
+	args = strings.TrimSuffix(args, ")")
+	return args, nil
+}
+
+func parseGeographyArgs(args string) (crs string, alg format.EdgeInterpolationAlgorithm, err error) {
+	if !strings.HasPrefix(args, "(") || !strings.HasSuffix(args, ")") {
+		return "", 0, fmt.Errorf("malformed geography args: %s", args)
+	}
+	args = strings.TrimPrefix(args, "(")
+	args = strings.TrimSuffix(args, ")")
+
+	// geography has up to two arguments: the CRS and and the edge interpolation
+	// algorithm.
+	parts := strings.Split(args, ":")
+
+	switch len(parts) {
+	case 1:
+		crs = parts[0]
+		return crs, alg, nil
+	case 2:
+		crs = parts[0]
+		err = alg.FromString(parts[1])
+		if err != nil {
+			return "", 0, err
+		}
+		return crs, alg, nil
+	case 3:
+		// CRS very likely contains a colon, so we join all parts except the last one.
+		crs = strings.Join(parts[:2], ":")
+	default:
+		return "", 0, fmt.Errorf("malformed geography args: (%s)", args)
+	}
+
+	return crs, alg, nil
+}
+
 type goNode struct {
 	Node
 	gotype reflect.Type
@@ -1146,6 +1196,19 @@ func makeNodeOf(path []string, t reflect.Type, name string, tags parquetTags, ta
 					throwInvalidNode(t, "struct field has field id that is not a valid int", name, tags)
 				}
 				fieldID = id
+
+			case "geometry":
+				crs, err := parseGeometryArgs(args)
+				if err != nil {
+					throwInvalidTag(t, name, option+args)
+				}
+				setNode(Geometry(crs))
+			case "geography":
+				crs, alg, err := parseGeographyArgs(args)
+				if err != nil {
+					throwInvalidTag(t, name, option+args)
+				}
+				setNode(Geography(crs, alg))
 			}
 		})
 	}
@@ -1185,7 +1248,7 @@ func makeNodeOf(path []string, t reflect.Type, name string, tags parquetTags, ta
 	if node.Repeated() && !list {
 		repeated := node.GoType().Elem()
 		if repeated.Kind() == reflect.Slice {
-			// Special case: allow [][]uint as seen in a logical map of strings
+			// Special case: allow [][]uint8 as seen in a logical map of strings
 			if repeated.Elem().Kind() != reflect.Uint8 {
 				panic("unhandled nested slice on parquet schema without list tag")
 			}

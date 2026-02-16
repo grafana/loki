@@ -189,10 +189,12 @@ func (s *Sampler) updateSamplerViaUpdaters(strategy any) error {
 // -----------------------
 
 // probabilisticSamplerUpdater is used by Sampler to parse sampling configuration.
-type probabilisticSamplerUpdater struct{}
+type probabilisticSamplerUpdater struct {
+	attributesDisabled bool
+}
 
 // Update implements Update of samplerUpdater.
-func (*probabilisticSamplerUpdater) Update(sampler trace.Sampler, strategy any) (trace.Sampler, error) {
+func (u *probabilisticSamplerUpdater) Update(sampler trace.Sampler, strategy any) (trace.Sampler, error) {
 	type response interface {
 		GetProbabilisticSampling() *jaeger_api_v2.ProbabilisticSamplingStrategy
 	}
@@ -205,7 +207,7 @@ func (*probabilisticSamplerUpdater) Update(sampler trace.Sampler, strategy any) 
 				}
 				return sampler, nil
 			}
-			return newProbabilisticSampler(probabilistic.SamplingRate), nil
+			return newProbabilisticSampler(probabilistic.SamplingRate, u.attributesDisabled), nil
 		}
 	}
 	return nil, nil
@@ -214,10 +216,12 @@ func (*probabilisticSamplerUpdater) Update(sampler trace.Sampler, strategy any) 
 // -----------------------
 
 // rateLimitingSamplerUpdater is used by Sampler to parse sampling configuration.
-type rateLimitingSamplerUpdater struct{}
+type rateLimitingSamplerUpdater struct {
+	attributesDisabled bool
+}
 
 // Update implements Update of samplerUpdater.
-func (*rateLimitingSamplerUpdater) Update(sampler trace.Sampler, strategy any) (trace.Sampler, error) {
+func (u *rateLimitingSamplerUpdater) Update(sampler trace.Sampler, strategy any) (trace.Sampler, error) {
 	type response interface {
 		GetRateLimitingSampling() *jaeger_api_v2.RateLimitingSamplingStrategy
 	}
@@ -229,7 +233,7 @@ func (*rateLimitingSamplerUpdater) Update(sampler trace.Sampler, strategy any) (
 				rl.Update(rateLimit)
 				return rl, nil
 			}
-			return newRateLimitingSampler(rateLimit), nil
+			return newRateLimitingSampler(rateLimit, u.attributesDisabled), nil
 		}
 	}
 	return nil, nil
@@ -242,6 +246,7 @@ func (*rateLimitingSamplerUpdater) Update(sampler trace.Sampler, strategy any) (
 type perOperationSamplerUpdater struct {
 	MaxOperations            int
 	OperationNameLateBinding bool
+	attributesDisabled       bool
 }
 
 // Update implements Update of samplerUpdater.
@@ -260,7 +265,7 @@ func (u *perOperationSamplerUpdater) Update(sampler trace.Sampler, strategy any)
 				MaxOperations:            u.MaxOperations,
 				OperationNameLateBinding: u.OperationNameLateBinding,
 				Strategies:               operations,
-			}), nil
+			}, u.attributesDisabled), nil
 		}
 	}
 	return nil, nil

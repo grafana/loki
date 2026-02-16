@@ -162,6 +162,32 @@ func (c *clientImpl) decrRef() int32 {
 	return atomic.AddInt32(&c.refCount, -1)
 }
 
+func buildServerConfigs(bootstrapSC []*bootstrap.ServerConfig, grpcTransportConfigs map[string]grpctransport.Config, gServerCfgMap map[xdsclient.ServerConfig]*bootstrap.ServerConfig) ([]xdsclient.ServerConfig, error) {
+	var gServerCfg []xdsclient.ServerConfig
+	for _, sc := range bootstrapSC {
+		if err := populateGRPCTransportConfigsFromServerConfig(sc, grpcTransportConfigs); err != nil {
+			return nil, err
+		}
+		var serverFeatures xdsclient.ServerFeature
+		if sc.ServerFeaturesIgnoreResourceDeletion() {
+			serverFeatures = serverFeatures | xdsclient.ServerFeatureIgnoreResourceDeletion
+		}
+		if sc.ServerFeaturesTrustedXDSServer() {
+			serverFeatures = serverFeatures | xdsclient.ServerFeatureTrustedXDSServer
+		}
+		gsc := xdsclient.ServerConfig{
+			ServerIdentifier: clients.ServerIdentifier{
+				ServerURI:  sc.ServerURI(),
+				Extensions: grpctransport.ServerIdentifierExtension{ConfigName: sc.SelectedChannelCreds().Type},
+			},
+			ServerFeature: serverFeatures,
+		}
+		gServerCfg = append(gServerCfg, gsc)
+		gServerCfgMap[gsc] = sc
+	}
+	return gServerCfg, nil
+}
+
 // buildXDSClientConfig builds the xdsclient.Config from the bootstrap.Config.
 func buildXDSClientConfig(config *bootstrap.Config, metricsRecorder estats.MetricsRecorder, target string, watchExpiryTimeout time.Duration) (xdsclient.Config, error) {
 	grpcTransportConfigs := make(map[string]grpctransport.Config)
@@ -175,30 +201,16 @@ func buildXDSClientConfig(config *bootstrap.Config, metricsRecorder estats.Metri
 		if len(cfg.XDSServers) >= 1 {
 			serverCfg = cfg.XDSServers
 		}
-		var gServerCfg []xdsclient.ServerConfig
-		for _, sc := range serverCfg {
-			if err := populateGRPCTransportConfigsFromServerConfig(sc, grpcTransportConfigs); err != nil {
-				return xdsclient.Config{}, err
-			}
-			gsc := xdsclient.ServerConfig{
-				ServerIdentifier:       clients.ServerIdentifier{ServerURI: sc.ServerURI(), Extensions: grpctransport.ServerIdentifierExtension{ConfigName: sc.SelectedChannelCreds().Type}},
-				IgnoreResourceDeletion: sc.ServerFeaturesIgnoreResourceDeletion()}
-			gServerCfg = append(gServerCfg, gsc)
-			gServerCfgMap[gsc] = sc
-		}
-		gAuthorities[name] = xdsclient.Authority{XDSServers: gServerCfg}
-	}
-
-	gServerCfgs := make([]xdsclient.ServerConfig, 0, len(config.XDSServers()))
-	for _, sc := range config.XDSServers() {
-		if err := populateGRPCTransportConfigsFromServerConfig(sc, grpcTransportConfigs); err != nil {
+		gsc, err := buildServerConfigs(serverCfg, grpcTransportConfigs, gServerCfgMap)
+		if err != nil {
 			return xdsclient.Config{}, err
 		}
-		gsc := xdsclient.ServerConfig{
-			ServerIdentifier:       clients.ServerIdentifier{ServerURI: sc.ServerURI(), Extensions: grpctransport.ServerIdentifierExtension{ConfigName: sc.SelectedChannelCreds().Type}},
-			IgnoreResourceDeletion: sc.ServerFeaturesIgnoreResourceDeletion()}
-		gServerCfgs = append(gServerCfgs, gsc)
-		gServerCfgMap[gsc] = sc
+		gAuthorities[name] = xdsclient.Authority{XDSServers: gsc}
+	}
+
+	gServerCfgs, err := buildServerConfigs(config.XDSServers(), grpcTransportConfigs, gServerCfgMap)
+	if err != nil {
+		return xdsclient.Config{}, err
 	}
 
 	node := config.Node()

@@ -33,6 +33,7 @@ import (
 	"time"
 
 	"google.golang.org/grpc/balancer"
+	"google.golang.org/grpc/balancer/weightedroundrobin"
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/internal"
 	"google.golang.org/grpc/internal/balancer/gracefulswitch"
@@ -297,7 +298,7 @@ func (b *clusterImplBalancer) UpdateClientConnState(s balancer.ClientConnState) 
 
 	// Addresses and sub-balancer config are sent to sub-balancer.
 	err = b.child.UpdateClientConnState(balancer.ClientConnState{
-		ResolverState:  s.ResolverState,
+		ResolverState:  weightedroundrobin.SetBackendService(s.ResolverState, b.clusterName),
 		BalancerConfig: parsedCfg,
 	})
 
