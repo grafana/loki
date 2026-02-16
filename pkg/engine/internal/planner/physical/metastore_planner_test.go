@@ -38,8 +38,7 @@ func TestMetastorePlanner_Plan_UsesMergeRootAndPointersTargets(t *testing.T) {
 	start := time.Unix(10, 0)
 	end := start.Add(time.Hour)
 
-	const shardSize = 2
-	p := NewMetastorePlanner(ms, shardSize)
+	p := NewMetastorePlanner(ms)
 	plan, err := p.Plan(context.Background(), nil, nil, start, end)
 	require.NoError(t, err)
 
@@ -66,6 +65,4 @@ func TestMetastorePlanner_Plan_UsesMergeRootAndPointersTargets(t *testing.T) {
 		require.Equal(t, start, target.Pointers.Start)
 		require.Equal(t, end, target.Pointers.End)
 	}
-
-	require.Equal(t, shardSize, set.ShardBatchSize)
 }

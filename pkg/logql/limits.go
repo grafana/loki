@@ -27,7 +27,6 @@ type Limits interface {
 	MaxScanTaskParallelism(string) int
 	DebugEngineTasks(string) bool
 	DebugEngineStreams(string) bool
-	MetastorePointersScansPerTask(string) int
 	RecordBatchSize(string) int
 }
 
@@ -40,11 +39,10 @@ type fakeLimits struct {
 	multiVariantQueryEnable bool
 
 	// v2 engine limits
-	maxScanTaskParallelism        int
-	debugEngineTasks              bool
-	debugEngineStreams            bool
-	metastorePointersScansPerTask int
-	recordBatchSize               int
+	maxScanTaskParallelism int
+	debugEngineTasks       bool
+	debugEngineStreams     bool
+	recordBatchSize        int
 }
 
 func (f fakeLimits) MaxQuerySeries(_ context.Context, _ string) int {
@@ -81,10 +79,6 @@ func (f fakeLimits) DebugEngineTasks(_ string) bool {
 
 func (f fakeLimits) DebugEngineStreams(_ string) bool {
 	return f.debugEngineStreams
-}
-
-func (f fakeLimits) MetastorePointersScansPerTask(_ string) int {
-	return f.metastorePointersScansPerTask
 }
 
 func (f fakeLimits) RecordBatchSize(_ string) int {

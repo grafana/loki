@@ -110,10 +110,6 @@ func (m *MockLimits) DebugEngineTasks(_ string) bool {
 	return false
 }
 
-func (m *MockLimits) MetastorePointersScansPerTask(_ string) int {
-	return 0
-}
-
 func (m *MockLimits) RecordBatchSize(_ string) int {
 	return 0
 }

@@ -287,11 +287,10 @@ type Limits struct {
 
 	// Per tenant limits for the v2 execution engine
 
-	MaxScanTaskParallelism        int              `yaml:"max_scan_task_parallelism" json:"max_scan_task_parallelism"`
-	DebugEngineTasks              bool             `yaml:"debug_engine_tasks" json:"debug_engine_tasks"`
-	DebugEngineStreams            bool             `yaml:"debug_engine_streams" json:"debug_engine_streams"`
-	MetastorePointersScansPerTask int              `yaml:"metastore_pointers_scans_per_task" json:"metastore_pointers_scans_per_task"`
-	RecordBatchSize               flagext.ByteSize `yaml:"record_batch_size" json:"record_batch_size"`
+	MaxScanTaskParallelism int              `yaml:"max_scan_task_parallelism" json:"max_scan_task_parallelism"`
+	DebugEngineTasks       bool             `yaml:"debug_engine_tasks" json:"debug_engine_tasks"`
+	DebugEngineStreams     bool             `yaml:"debug_engine_streams" json:"debug_engine_streams"`
+	RecordBatchSize        flagext.ByteSize `yaml:"record_batch_size" json:"record_batch_size"`
 }
 
 type FieldDetectorConfig struct {
@@ -537,7 +536,6 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.MaxScanTaskParallelism, "limits.max-scan-task-parallelism", 0, "Experimental: Controls the amount of scan tasks that can be running in parallel in the new query engine. The default of 0 means unlimited parallelism and all tasks will be scheduled at once.")
 	f.BoolVar(&l.DebugEngineTasks, "limits.debug-engine-tasks", false, "Experimental: Toggles verbose debug logging of tasks in the new query engine.")
 	f.BoolVar(&l.DebugEngineStreams, "limits.debug-engine-streams", false, "Experimental: Toggles verbose debug logging of data streams in the new query engine.")
-	f.IntVar(&l.MetastorePointersScansPerTask, "limits.metastore-pointers-scans-per-task", 0, "Experimental: Number of PointersScan targets to batch per task at the workflow level. 0 = one task per path.")
 	f.Var(&l.RecordBatchSize, "limits.record-batch-size", "Experimental: Maximum size of record batches sent to sinks when draining the pipeline (e.g. 1MB). 0 = no batching, send each record as-is.")
 }
 
@@ -1389,10 +1387,6 @@ func (o *Overrides) DebugEngineTasks(userID string) bool {
 
 func (o *Overrides) DebugEngineStreams(userID string) bool {
 	return o.getOverridesForUser(userID).DebugEngineStreams
-}
-
-func (o *Overrides) MetastorePointersScansPerTask(userID string) int {
-	return o.getOverridesForUser(userID).MetastorePointersScansPerTask
 }
 
 func (o *Overrides) RecordBatchSize(userID string) int {

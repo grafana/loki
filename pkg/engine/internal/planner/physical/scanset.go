@@ -71,11 +71,6 @@ type ScanSet struct {
 	// returned. Predicates would almost always contain a time range filter to
 	// only read the logs for the requested time range.
 	Predicates []Expression
-
-	// ShardBatchSize, when > 0, causes Shards() to yield ScanSet nodes with up to
-	// ShardBatchSize targets each (workflow-level batching). Applies to all target types.
-	// 0 means one shard per target.
-	ShardBatchSize int
 }
 
 // ID returns the ULID that uniquely identifies the node in the plan.
@@ -89,9 +84,8 @@ func (s *ScanSet) Clone() Node {
 	}
 
 	return &ScanSet{
-		NodeID:         ulid.Make(),
-		Targets:        newTargets,
-		ShardBatchSize: s.ShardBatchSize,
+		NodeID:  ulid.Make(),
+		Targets: newTargets,
 	}
 }
 
@@ -104,40 +98,9 @@ func (s *ScanSet) Type() NodeType {
 // will be a clone. Projections and predicates on the ScanSet are cloned and
 // applied to each shard.
 //
-// When ShardBatchSize > 0, yields ScanSet nodes each with up to ShardBatchSize
-// targets (workflow-level batching). Otherwise yields one node per target
-// (DataObjScan or PointersScan).
-//
 // Shards panics if one of the targets is invalid.
 func (s *ScanSet) Shards() iter.Seq[Node] {
 	return func(yield func(Node) bool) {
-		// Batched sharding: when ShardBatchSize > 0, yield one ScanSet per chunk of targets.
-		if s.ShardBatchSize > 0 {
-			for i := 0; i < len(s.Targets); i += s.ShardBatchSize {
-				end := i + s.ShardBatchSize
-				if end > len(s.Targets) {
-					end = len(s.Targets)
-				}
-				chunk := s.Targets[i:end]
-				batchedTargets := make([]*ScanTarget, len(chunk))
-				for j, t := range chunk {
-					batchedTargets[j] = t.Clone()
-				}
-				shardSet := &ScanSet{
-					NodeID:         ulid.Make(),
-					Targets:        batchedTargets,
-					Projections:    s.Projections,
-					Predicates:     s.Predicates,
-					ShardBatchSize: 0, // injected ScanSet does not re-shard
-				}
-				if !yield(shardSet) {
-					return
-				}
-			}
-			return
-		}
-
-		// One shard per target (current behavior).
 		for _, target := range s.Targets {
 			switch target.Type {
 			case ScanTypeDataObject:

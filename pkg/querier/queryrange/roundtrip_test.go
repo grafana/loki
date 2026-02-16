@@ -1549,10 +1549,6 @@ func (f fakeLimits) DebugEngineStreams(_ string) bool {
 	return false
 }
 
-func (f fakeLimits) MetastorePointersScansPerTask(_ string) int {
-	return 0
-}
-
 func (f fakeLimits) RecordBatchSize(_ string) int {
 	return 0
 }
