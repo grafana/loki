@@ -222,12 +222,19 @@ func Benchmark_bitmapEncoder(b *testing.B) {
 func benchmarkBitmapEncoder(b *testing.B, width int) {
 	runBenchmark := func(b *testing.B, name string, width int, m func(i, width int) uint64) {
 		b.Run(name, func(b *testing.B) {
+			// Pre-compute values so we're not benchmarking generation or conversion to Value type.
+			const numValues = 32768 // Enough to defeat the CPU branch predictor
+			values := make([]Value, width)
+			for i := range values {
+				values[i] = Uint64Value(m(i, width))
+			}
+
 			var cw countingWriter
 			enc := newBitmapEncoder(&cw)
 
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				_ = enc.Encode(Uint64Value(m(i, width)))
+				_ = enc.Encode(values[i%numValues])
 			}
 			_ = enc.Flush()
 
