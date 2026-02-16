@@ -270,10 +270,6 @@ func (l *limiter) MetastorePointersScansPerTask(_ string) int {
 	return 0 // This setting for the v2 execution engine is unused in LogCLI
 }
 
-func (l *limiter) RecordBatchSize(_ string) int {
-	return 0 // This setting for the v2 execution engine is unused in LogCLI
-}
-
 type querier struct {
 	r      io.Reader
 	labels labels.Labels

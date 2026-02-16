@@ -152,7 +152,6 @@ func dataobjV2StoreWithOpts(dataDir string, tenantID string, cfg engine.Executor
 		},
 		Executor:  cfg,
 		Metastore: ms,
-		Limits:    nil,
 	})
 
 	if err != nil {

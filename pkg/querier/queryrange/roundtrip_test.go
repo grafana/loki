@@ -1553,10 +1553,6 @@ func (f fakeLimits) MetastorePointersScansPerTask(_ string) int {
 	return 0
 }
 
-func (f fakeLimits) RecordBatchSize(_ string) int {
-	return 0
-}
-
 type ingesterQueryOpts struct {
 	queryStoreOnly       bool
 	queryIngestersWithin time.Duration

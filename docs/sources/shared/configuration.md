@@ -4941,11 +4941,6 @@ otlp_config:
 # level. 0 = one task per path.
 # CLI flag: -limits.metastore-pointers-scans-per-task
 [metastore_pointers_scans_per_task: <int> | default = 0]
-
-# Experimental: Maximum size of record batches sent to sinks when draining the
-# pipeline (e.g. 1MB). 0 = no batching, send each record as-is.
-# CLI flag: -limits.record-batch-size
-[record_batch_size: <int> | default = 0B]
 ```
 
 ### local_storage_config

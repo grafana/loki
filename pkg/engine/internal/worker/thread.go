@@ -4,13 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"runtime/pprof"
 	"sync"
 	"time"
 
-	"github.com/apache/arrow-go/v18/arrow"
-	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/user"
@@ -18,30 +15,14 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
-	"github.com/grafana/loki/v3/pkg/engine/internal/arrowagg"
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
-	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/storage/bucket"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
-
-// RecordSink sends record batches to a destination. Used by drainPipeline so callers can inject mocks in tests.
-type RecordSink interface {
-	Send(ctx context.Context, rec arrow.RecordBatch) error
-}
-
-// sinksForJob returns the job's sinks as a slice for use with drainPipeline.
-func sinksForJob(job *threadJob) []RecordSink {
-	sinks := make([]RecordSink, 0, len(job.Sinks))
-	for _, s := range job.Sinks {
-		sinks = append(sinks, s)
-	}
-	return sinks
-}
 
 type threadState int
 
@@ -71,13 +52,11 @@ func (s threadState) String() string {
 
 // thread represents a worker thread that executes one task at a time.
 type thread struct {
-	BatchSize          int64
-	MergePrefetchCount int
-	Limits             logql.Limits
-	Bucket             objstore.Bucket
-	Metastore          metastore.Metastore
-	Logger             log.Logger
-	StreamFilterer     executor.RequestStreamFilterer
+	BatchSize      int64
+	Bucket         objstore.Bucket
+	Metastore      metastore.Metastore
+	Logger         log.Logger
+	StreamFilterer executor.RequestStreamFilterer
 
 	Metrics    *metrics
 	JobManager *jobManager
@@ -133,22 +112,10 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	ctx = pprof.WithLabels(ctx, pprof.Labels("node_type", root.Type().String()))
 	pprof.SetGoroutineLabels(ctx)
 
-	// Count external sources and sinks for observability.
-	// This is useful to know which tasks are scan tasks (no sources)
-	var countSources, countSinks int
-	for _, streams := range job.Task.Sources {
-		countSources += len(streams)
-	}
-	for _, streams := range job.Task.Sinks {
-		countSinks += len(streams)
-	}
-
 	startTime := time.Now()
 	level.Info(logger).Log(
 		"msg", "starting task",
 		"plan", physical.PrintAsTree(job.Task.Fragment),
-		"external_sources", countSources,
-		"external_sinks", countSinks,
 	)
 
 	cfg := executor.Config{
@@ -210,9 +177,6 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	))
 	defer region.End()
 
-	region.Record(xcap.TaskExternalSourcesCount.Observe(int64(countSources)))
-	region.Record(xcap.TaskExternalSinksCount.Observe(int64(countSinks)))
-
 	pipeline := executor.Run(ctx, cfg, job.Task.Fragment, logger)
 
 	// If the root pipeline can be interested in some specific contributing time range
@@ -248,11 +212,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 		level.Warn(logger).Log("msg", "failed to inform scheduler of task status", "err", err)
 	}
 
-	recordBatchSize := 0
-	if t.Limits != nil {
-		recordBatchSize = t.Limits.RecordBatchSize(job.Task.TenantID)
-	}
-	_, err = t.drainPipeline(ctx, pipeline, sinksForJob(job), recordBatchSize, logger)
+	_, err = t.drainPipeline(ctx, pipeline, job, logger)
 	if err != nil {
 		level.Warn(logger).Log("msg", "task failed", "err", err)
 		_ = job.Scheduler.SendMessageAsync(ctx, wire.TaskStatusMessage{
@@ -305,7 +265,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	}
 }
 
-func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, sinks []RecordSink, recordBatchSizeBytes int, logger log.Logger) (int, error) {
+func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, job *threadJob, logger log.Logger) (int, error) {
 	region := xcap.RegionFromContext(ctx)
 
 	if err := pipeline.Open(ctx); err != nil {
@@ -313,52 +273,6 @@ func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, 
 	}
 
 	var totalRows int
-	var batch []arrow.RecordBatch
-	var currentBatchSize int
-
-	// When recordBatchSize <= 0, "batch full" is always true so each record is sent alone (no batching).
-	flush := func(toSend arrow.RecordBatch) {
-		startSend := time.Now()
-		for _, sink := range sinks {
-			// If a sink doesn't accept the result, we'll continue
-			// best-effort processing our task. It's possible that one of
-			// the receiving sinks got canceled, and other sinks may still
-			// need data.
-			err := sink.Send(ctx, toSend)
-			if err != nil {
-				level.Warn(logger).Log("msg", "failed to send result", "err", err)
-				continue
-			}
-		}
-		region.Record(xcap.TaskRecordsSent.Observe(1))
-		region.Record(xcap.TaskRowsSent.Observe(toSend.NumRows()))
-		region.Record(xcap.TaskSendDuration.Observe(time.Since(startSend).Seconds()))
-	}
-
-	// flushBatch flushes the current batch (aggregate with schema reconciliation and send). It always clears batch and currentBatchSize.
-	flushBatch := func() {
-		if len(batch) == 0 {
-			return
-		}
-
-		compactor := arrowagg.NewRecords(memory.DefaultAllocator)
-		for _, rec := range batch {
-			compactor.Append(rec)
-		}
-
-		batch = nil
-		currentBatchSize = 0
-
-		combined, err := compactor.Aggregate()
-		if err != nil {
-			level.Warn(logger).Log("msg", "failed to aggregate record batch", "err", err)
-			return
-		}
-		region.Record(xcap.TaskDrainBatchesProduced.Observe(1))
-
-		flush(combined)
-	}
-
 	for {
 		rec, err := pipeline.Read(ctx)
 		if err != nil && errors.Is(err, executor.EOF) {
@@ -367,7 +281,6 @@ func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, 
 			return totalRows, err
 		}
 
-		region.Record(xcap.TaskDrainRecordsReceived.Observe(1))
 		totalRows += int(rec.NumRows())
 
 		// Don't bother writing empty records to our peers.
@@ -375,44 +288,20 @@ func (t *thread) drainPipeline(ctx context.Context, pipeline executor.Pipeline, 
 			continue
 		}
 
-		// If we have a batch in progress and the new record would make it too large, flush the batch.
-		recSize := recordSizeBytes(rec)
-		if len(batch) > 0 && currentBatchSize+recSize > recordBatchSizeBytes {
-			flushBatch()
+		startSend := time.Now()
+		for _, sink := range job.Sinks {
+			err := sink.Send(ctx, rec)
+			if err != nil {
+				// If a sink doesn't accept the result, we'll continue
+				// best-effort processing our task. It's possible that one of
+				// the receiving sinks got canceled, and other sinks may still
+				// need data.
+				level.Warn(logger).Log("msg", "failed to send result", "err", err)
+				continue
+			}
 		}
-
-		// If batching is disabled, or the new record is too large for a single batch,
-		// Flush this record alone.
-		if recordBatchSizeBytes <= 0 || recSize > recordBatchSizeBytes {
-			flush(rec)
-			continue
-		}
-
-		// Otherwise, add the record to the batch.
-		batch = append(batch, rec)
-		currentBatchSize += recSize
-		region.Record(xcap.TaskDrainRecordsSizeBytes.Observe(int64(recSize)))
+		region.Record(xcap.TaskSendDuration.Observe(time.Since(startSend).Seconds()))
 	}
-
-	// Flush any remaining batch.
-	flushBatch()
 
 	return totalRows, nil
-}
-
-// recordSizeBytes returns the approximate size in bytes of the record batch,
-// by summing the size of all column data (including nested buffers).
-// It is used to decide when to flush batched records in drainPipeline.
-func recordSizeBytes(rec arrow.RecordBatch) int {
-	if rec == nil {
-		return 0
-	}
-	var n uint64
-	for i := 0; i < int(rec.NumCols()); i++ {
-		n += rec.Column(i).Data().SizeInBytes()
-	}
-	if n > math.MaxInt {
-		return math.MaxInt
-	}
-	return int(n)
 }

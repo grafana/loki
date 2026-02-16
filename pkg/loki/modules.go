@@ -1551,7 +1551,6 @@ func (t *Loki) initV2QueryEngineWorker() (services.Service, error) {
 		Metastore: metastore.NewObjectMetastore(store, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics),
 
 		StreamFilterer: t.Cfg.QueryEngine.Executor.StreamFilterer,
-		Limits:         t.Overrides,
 	})
 	if err != nil {
 		return nil, err

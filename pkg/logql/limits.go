@@ -28,7 +28,6 @@ type Limits interface {
 	DebugEngineTasks(string) bool
 	DebugEngineStreams(string) bool
 	MetastorePointersScansPerTask(string) int
-	RecordBatchSize(string) int
 }
 
 type fakeLimits struct {
@@ -44,7 +43,6 @@ type fakeLimits struct {
 	debugEngineTasks              bool
 	debugEngineStreams            bool
 	metastorePointersScansPerTask int
-	recordBatchSize               int
 }
 
 func (f fakeLimits) MaxQuerySeries(_ context.Context, _ string) int {
@@ -85,8 +83,4 @@ func (f fakeLimits) DebugEngineStreams(_ string) bool {
 
 func (f fakeLimits) MetastorePointersScansPerTask(_ string) int {
 	return f.metastorePointersScansPerTask
-}
-
-func (f fakeLimits) RecordBatchSize(_ string) int {
-	return f.recordBatchSize
 }
