@@ -104,4 +104,40 @@ func TestCacheLimitsClient(t *testing.T) {
 			require.Equal(t, uint(0), knownStreams.BitSet().Count())
 		})
 	})
+
+	t.Run("known streams are skipped", func(t *testing.T) {
+		knownStreams := bloom.NewWithEstimates(10, 0.01)
+		onMiss := &mockLimitsClient{
+			t: t,
+			// Expect one stream 0x2 from the tenant "test" because the other stream,
+			// 0x1, is a known stream and should be skipped.
+			expectedExceedsLimitsRequest: &proto.ExceedsLimitsRequest{
+				Tenant:  "test",
+				Streams: []*proto.StreamMetadata{{StreamHash: 0x2}},
+			},
+			exceedsLimitsResponses: []*proto.ExceedsLimitsResponse{},
+		}
+		client := newCacheLimitsClient(time.Minute, 15*time.Second, knownStreams, onMiss)
+		// Create a stream and add it to the cache.
+		s1 := &proto.StreamMetadata{StreamHash: 0x1}
+		b := bytes.Buffer{}
+		encodeStreamToBuf(&b, "test", s1)
+		knownStreams.Add(b.Bytes())
+		// Create a second stream but do not add it to the cache.
+		s2 := &proto.StreamMetadata{StreamHash: 0x2}
+		// Neither s1 or s2 should be rejected.
+		resps, err := client.ExceedsLimits(t.Context(), &proto.ExceedsLimitsRequest{
+			Tenant:  "test",
+			Streams: []*proto.StreamMetadata{s1, s2},
+		})
+		require.NoError(t, err)
+		require.Len(t, resps, 0)
+		// The cache should now contain both streams.
+		b.Reset()
+		encodeStreamToBuf(&b, "test", s1)
+		require.True(t, knownStreams.Test(b.Bytes()))
+		b.Reset()
+		encodeStreamToBuf(&b, "test", s2)
+		require.True(t, knownStreams.Test(b.Bytes()))
+	})
 }

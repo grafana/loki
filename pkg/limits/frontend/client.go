@@ -49,11 +49,14 @@ func newCacheLimitsClient(
 // ExceedsLimits implements the [limitsClient] interface.
 func (c *cacheLimitsClient) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRequest) ([]*proto.ExceedsLimitsResponse, error) {
 	c.expireTTL()
-	// If the exact same request has been seen before, and all streams were
-	// accepted, we can assume it will continue to be accepted.
-	if c.hasKnownStreams(req) {
+	// Remove known streams from the request. This means we just check streams
+	// we haven't seen before, which reduces the number of requests we need
+	// to make to limits backends.
+	c.removeKnownStreams(req)
+	if len(req.Streams) == 0 {
 		return []*proto.ExceedsLimitsResponse{}, nil
 	}
+
 	// Need to check with the limits service.
 	resps, err := c.onMiss.ExceedsLimits(ctx, req)
 	if err != nil {
@@ -105,20 +108,22 @@ func (c *cacheLimitsClient) expireTTL() {
 	}
 }
 
-// hasKnownStreams returns true if all streams in req are known streams.
-func (c *cacheLimitsClient) hasKnownStreams(req *proto.ExceedsLimitsRequest) bool {
+// removeKnownStreams removes known streams from the request.
+func (c *cacheLimitsClient) removeKnownStreams(req *proto.ExceedsLimitsRequest) {
 	// b is re-used. The data built from it MUST NOT escape this function.
 	b := bytes.Buffer{}
+	// See https://go.dev/wiki/SliceTricks.
+	res := req.Streams[:0]
 	c.mtx.RLock()
 	defer c.mtx.RUnlock()
 	for _, s := range req.Streams {
 		b.Reset()
 		encodeStreamToBuf(&b, req.Tenant, s)
 		if !c.knownStreams.Test(b.Bytes()) {
-			return false
+			res = append(res, s)
 		}
 	}
-	return true
+	req.Streams = res
 }
 
 // randDuration returns a random duration between [0, d].
