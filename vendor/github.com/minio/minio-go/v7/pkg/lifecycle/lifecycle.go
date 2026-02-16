@@ -267,6 +267,10 @@ func (f Filter) MarshalJSON() ([]byte, error) {
 // MarshalXML - produces the xml representation of the Filter struct
 // only one of Prefix, And and Tag should be present in the output.
 func (f Filter) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
+	if f.IsNull() {
+		return nil
+	}
+
 	if err := e.EncodeToken(start); err != nil {
 		return err
 	}

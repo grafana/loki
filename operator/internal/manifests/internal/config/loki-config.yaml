@@ -173,7 +173,7 @@ ingester_client:
     tls_cipher_suites: {{ .TLS.CipherSuitesString }}
     tls_min_version: {{ .TLS.MinTLSVersion }}
 {{- end }}
-  remote_timeout: 1s
+  remote_timeout: 5s
 # NOTE: Keep the order of keys as in Loki docs
 # to enable easy diffs when vendoring newer
 # Loki releases.

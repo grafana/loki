@@ -78,7 +78,7 @@ Each adapter is an independent go module. Hence you'll pick its dependencies onl
 
 At this moment we provide:
 * `stdlib`: JSON adapter based on the standard library
-* `easyjson`: JSON adapter based on the `github.com/mailru/easyyjson`
+* `easyjson`: JSON adapter based on the `github.com/mailru/easyjson`
 
 The adapters provide the basic `Marshal` and `Unmarshal` capabilities, plus an implementation
 of the `MapSlice` pattern.

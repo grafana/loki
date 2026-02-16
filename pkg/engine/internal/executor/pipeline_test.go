@@ -107,6 +107,11 @@ type instrumentedPipeline struct {
 	callCount map[string]int
 }
 
+func (i *instrumentedPipeline) Open(ctx context.Context) error {
+	i.callCount["Open"]++
+	return i.inner.Open(ctx)
+}
+
 // Close implements Pipeline.
 func (i *instrumentedPipeline) Close() {
 	i.callCount["Close"]++
@@ -156,6 +161,7 @@ func Test_prefetchWrapper_Read(t *testing.T) {
 	require.Equal(t, 0, instrumentedPipeline.callCount["Read"])
 
 	ctx := t.Context()
+	require.NoError(t, prefetchingPipeline.Open(ctx))
 
 	// Read first batch
 	v, err := prefetchingPipeline.Read(ctx)
@@ -192,6 +198,7 @@ func Test_prefetchWrapper_Read(t *testing.T) {
 func Test_prefetchWrapper_Close(t *testing.T) {
 	t.Run("initialized prefetcher", func(t *testing.T) {
 		w := newPrefetchingPipeline(emptyPipeline())
+		require.NoError(t, w.Open(t.Context()))
 		_, err := w.Read(t.Context())
 		require.ErrorIs(t, EOF, err)
 		require.NotPanics(t, w.Close)

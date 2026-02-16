@@ -17,6 +17,8 @@ type MockLimits struct {
 	MaxConcurrentTailRequestsVal  int
 	MaxEntriesLimitPerQueryVal    int
 	MaxStreamsMatchersPerQueryVal int
+	RequiredLabelsVal             []string
+	RequiredNumberLabelsVal       int
 	EnableMultiVariantQueriesVal  bool
 	MetricAggregationEnabledVal   bool
 	PatternPersistenceEnabledVal  bool
@@ -58,6 +60,14 @@ func (m *MockLimits) MaxEntriesLimitPerQuery(_ context.Context, _ string) int {
 
 func (m *MockLimits) MaxStreamsMatchersPerQuery(_ context.Context, _ string) int {
 	return m.MaxStreamsMatchersPerQueryVal
+}
+
+func (m *MockLimits) RequiredLabels(_ context.Context, _ string) []string {
+	return m.RequiredLabelsVal
+}
+
+func (m *MockLimits) RequiredNumberLabels(_ context.Context, _ string) int {
+	return m.RequiredNumberLabelsVal
 }
 
 func (m *MockLimits) BlockedQueries(_ context.Context, _ string) []*validation.BlockedQuery {

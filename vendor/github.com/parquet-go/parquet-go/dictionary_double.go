@@ -6,6 +6,7 @@ import (
 	"github.com/parquet-go/parquet-go/deprecated"
 	"github.com/parquet-go/parquet-go/encoding"
 	"github.com/parquet-go/parquet-go/hashprobe"
+	"github.com/parquet-go/parquet-go/internal/memory"
 	"github.com/parquet-go/parquet-go/sparse"
 )
 
@@ -18,7 +19,7 @@ func newDoubleDictionary(typ Type, columnIndex int16, numValues int32, data enco
 	return &doubleDictionary{
 		doublePage: doublePage{
 			typ:         typ,
-			values:      data.Double()[:numValues],
+			values:      memory.SliceBufferFrom(data.Double()[:numValues]),
 			columnIndex: ^columnIndex,
 		},
 	}
@@ -26,26 +27,27 @@ func newDoubleDictionary(typ Type, columnIndex int16, numValues int32, data enco
 
 func (d *doubleDictionary) Type() Type { return newIndexedType(d.typ, d) }
 
-func (d *doubleDictionary) Len() int { return len(d.values) }
+func (d *doubleDictionary) Len() int { return d.values.Len() }
 
-func (d *doubleDictionary) Size() int64 { return int64(len(d.values) * 8) }
+func (d *doubleDictionary) Size() int64 { return int64(d.values.Len() * 8) }
 
 func (d *doubleDictionary) Index(i int32) Value { return d.makeValue(d.index(i)) }
 
-func (d *doubleDictionary) index(i int32) float64 { return d.values[i] }
+func (d *doubleDictionary) index(i int32) float64 { return d.values.Slice()[i] }
 
 func (d *doubleDictionary) Insert(indexes []int32, values []Value) {
 	d.insert(indexes, makeArrayValue(values, offsetOfU64))
 }
 
 func (d *doubleDictionary) init(indexes []int32) {
-	d.table = hashprobe.NewFloat64Table(len(d.values), hashprobeTableMaxLoad)
+	values := d.values.Slice()
+	d.table = hashprobe.NewFloat64Table(len(values), hashprobeTableMaxLoad)
 
-	n := min(len(d.values), len(indexes))
+	n := min(len(values), len(indexes))
 
-	for i := 0; i < len(d.values); i += n {
-		j := min(i+n, len(d.values))
-		d.table.Probe(d.values[i:j:j], indexes[:n:n])
+	for i := 0; i < len(values); i += n {
+		j := min(i+n, len(values))
+		d.table.Probe(values[i:j:j], indexes[:n:n])
 	}
 }
 
@@ -63,8 +65,8 @@ func (d *doubleDictionary) insert(indexes []int32, rows sparse.Array) {
 
 		if d.table.ProbeArray(values.Slice(i, j), indexes[i:j:j]) > 0 {
 			for k, index := range indexes[i:j] {
-				if index == int32(len(d.values)) {
-					d.values = append(d.values, values.Index(i+k))
+				if index == int32(d.values.Len()) {
+					d.values.Append(values.Index(i + k))
 				}
 			}
 		}
@@ -87,7 +89,7 @@ func (d *doubleDictionary) Bounds(indexes []int32) (min, max Value) {
 }
 
 func (d *doubleDictionary) Reset() {
-	d.values = d.values[:0]
+	d.values.Reset()
 	if d.table != nil {
 		d.table.Reset()
 	}
@@ -127,9 +129,9 @@ func (d *doubleDictionary) insertDouble(value float64) int32 {
 }
 
 func (d *doubleDictionary) insertByteArray(value []byte) int32 {
-	v, err := strconv.ParseFloat(string(value), 64)
+	v, err := strconv.ParseUint(string(value), 10, 32)
 	if err != nil {
 		panic(err)
 	}
-	return d.insertDouble(v)
+	return d.insertDouble(float64(v))
 }

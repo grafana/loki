@@ -173,3 +173,31 @@ func TestBuilder_AppendIndexPointer(t *testing.T) {
 		i++
 	}
 }
+
+func TestBuilder_ObserveLogLine(t *testing.T) {
+	builder, err := NewBuilder(testBuilderConfig, nil)
+	require.NoError(t, err)
+
+	err = builder.ObserveLogLine(testTenant, "test/path", 1, 1, 1, time.Unix(10, 0).UTC(), 100)
+	require.NoError(t, err)
+
+	require.Greater(t, builder.estimatedSize(), 0)
+}
+
+func BenchmarkIndexObjBuilder_ObserveLogLine(b *testing.B) {
+	builder, err := NewBuilder(testBuilderConfig, nil)
+	require.NoError(b, err)
+
+	maxTenants := 1000
+	tenants := make([]string, maxTenants)
+	for i := range tenants {
+		tenants[i] = fmt.Sprintf("test-tenant-%d", i)
+	}
+
+	for b.Loop() {
+		for _, tenant := range tenants {
+			err := builder.ObserveLogLine(tenant, "test/path", 1, 1, 1, time.Unix(10, 0).UTC(), 100)
+			require.NoError(b, err)
+		}
+	}
+}

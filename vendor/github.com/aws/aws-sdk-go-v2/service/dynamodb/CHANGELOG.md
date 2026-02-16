@@ -1,3 +1,23 @@
+# v1.55.0 (2026-02-03)
+
+* **Feature**: This change supports the creation of multi-account global tables. It adds two new arguments to CreateTable, GlobalTableSourceArn and GlobalTableSettingsReplicationMode. DescribeTable is also updated to include information about GlobalTableSettingsReplicationMode.
+
+# v1.54.0 (2026-01-22)
+
+* **Feature**: Adds additional waiters to Amazon DynamoDB.
+
+# v1.53.6 (2026-01-09)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.53.5 (2025-12-09)
+
+* No change notes available for this release.
+
+# v1.53.4 (2025-12-08)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
 # v1.53.3 (2025-12-02)
 
 * **Dependency Update**: Updated to the latest SDK module versions

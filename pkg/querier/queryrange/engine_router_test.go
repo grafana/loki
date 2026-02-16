@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/coder/quartz"
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -306,12 +305,11 @@ func Test_engineRouter_Do(t *testing.T) {
 		return buildReponse(r, "new"), nil
 	})
 
-	clock := quartz.NewMock(t)
-	now := clock.Now().Truncate(time.Second)
-
+	now := time.Now().Truncate(time.Second)
 	routerConfig := RouterConfig{
-		Start:    now.Add(-24 * time.Hour),
-		Lag:      time.Hour,
+		V2Range: func() (time.Time, time.Time) {
+			return now.Add(-24 * time.Hour), now.Add(-time.Hour)
+		},
 		Validate: func(_ logql.Params) bool { return true },
 		Handler:  v2EngineHandler,
 	}
@@ -323,9 +321,6 @@ func Test_engineRouter_Do(t *testing.T) {
 		false,
 		log.NewNopLogger(),
 	).Wrap(next)
-
-	routerImpl := router.(*engineRouter)
-	routerImpl.clock = clock
 
 	tests := []struct {
 		name string

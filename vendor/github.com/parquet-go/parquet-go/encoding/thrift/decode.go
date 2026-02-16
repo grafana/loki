@@ -428,9 +428,10 @@ func (dec *structDecoder) decode(r Reader, v reflect.Value, flags flags) error {
 
 	for i, required := range dec.required {
 		if mask := required & seen[i]; mask != required {
+			missing := required &^ seen[i]
 			i *= 64
-			for (mask & 1) != 0 {
-				mask >>= 1
+			for (missing & 1) == 0 {
+				missing >>= 1
 				i++
 			}
 			field := &dec.fields[i]

@@ -23,11 +23,17 @@ const (
 
 var SupportedDeleteRequestsStoreDBTypes = []DeleteRequestsStoreDBType{DeleteRequestsStoreDBTypeBoltDB, DeleteRequestsStoreDBTypeSQLite}
 
+// TimeRange represents an optional time range for filtering delete requests.
+// If provided, both Start and End must be set.
+type TimeRange struct {
+	Start, End model.Time
+}
+
 type DeleteRequestsStore interface {
 	AddDeleteRequest(ctx context.Context, userID, query string, startTime, endTime model.Time, shardByInterval time.Duration) (string, error)
 	addDeleteRequestWithID(ctx context.Context, requestID, userID, query string, startTime, endTime model.Time, shardByInterval time.Duration) error
 	GetAllRequests(ctx context.Context) ([]deletionproto.DeleteRequest, error)
-	GetAllDeleteRequestsForUser(ctx context.Context, userID string, forQuerytimeFiltering bool) ([]deletionproto.DeleteRequest, error)
+	GetAllDeleteRequestsForUser(ctx context.Context, userID string, forQuerytimeFiltering bool, timeRange *TimeRange) ([]deletionproto.DeleteRequest, error)
 	RemoveDeleteRequest(ctx context.Context, userID string, requestID string) error
 	GetDeleteRequest(ctx context.Context, userID, requestID string) (deletionproto.DeleteRequest, error)
 	GetCacheGenerationNumber(ctx context.Context, userID string) (string, error)
@@ -172,8 +178,8 @@ func (d deleteRequestsStoreTee) GetAllRequests(ctx context.Context) ([]deletionp
 	return d.primaryStore.GetAllRequests(ctx)
 }
 
-func (d deleteRequestsStoreTee) GetAllDeleteRequestsForUser(ctx context.Context, userID string, forQuerytimeFiltering bool) ([]deletionproto.DeleteRequest, error) {
-	return d.primaryStore.GetAllDeleteRequestsForUser(ctx, userID, forQuerytimeFiltering)
+func (d deleteRequestsStoreTee) GetAllDeleteRequestsForUser(ctx context.Context, userID string, forQuerytimeFiltering bool, timeRange *TimeRange) ([]deletionproto.DeleteRequest, error) {
+	return d.primaryStore.GetAllDeleteRequestsForUser(ctx, userID, forQuerytimeFiltering, timeRange)
 }
 
 func (d deleteRequestsStoreTee) RemoveDeleteRequest(ctx context.Context, userID string, requestID string) error {

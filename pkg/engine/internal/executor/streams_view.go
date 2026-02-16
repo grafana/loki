@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"iter"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
@@ -19,8 +18,6 @@ import (
 
 // streamsView provides a view of the streams in a section, allowing for
 // querying labels of a stream.
-//
-// streamsView lazily loads streams upon the first call.
 type streamsView struct {
 	sec           *streams.Section
 	streamIDs     []int64
@@ -29,8 +26,10 @@ type streamsView struct {
 	batchSize     int
 
 	initialized  bool
-	streams      arrow.Table
+	reader       *streams.Reader
+	streams      arrow.Table   // Nil if reading hasn't happened yet.
 	idRowMapping map[int64]int // Mapping of stream ID to absolute row index in the streams table.
+	streamLabels map[int64][]labels.Label
 }
 
 type streamsViewOptions struct {
@@ -80,6 +79,7 @@ func newStreamsView(sec *streams.Section, opts *streamsViewOptions) *streamsView
 		idColumn:      streamsIDColumn,
 		searchColumns: append([]*streams.Column{streamsIDColumn}, cols...),
 		batchSize:     opts.BatchSize,
+		streamLabels:  make(map[int64][]labels.Label),
 	}
 }
 
@@ -88,59 +88,10 @@ func (v *streamsView) NumLabels() int {
 	return len(v.searchColumns) - 1
 }
 
-// Labels iterates over all of the non-null labels of a stream with the given
-// id. If [streamsViewOptions] included a subset of labels, only those labels
-// are returned.
-func (v *streamsView) Labels(ctx context.Context, id int64) (iter.Seq[labels.Label], error) {
-	if err := v.init(ctx); err != nil {
-		return nil, err
-	}
+var errStreamsViewNotOpen = errors.New("streams view not opened")
 
-	rowColumnIndex, ok := v.idRowMapping[id]
-	if !ok {
-		return nil, fmt.Errorf("stream ID %d not found in section or not included in filter", id)
-	}
-
-	return func(yield func(labels.Label) bool) {
-		for colIndex := range int(v.streams.NumCols()) {
-			// Skip any column which isn't a label column.
-			//
-			// This is safe because [streams.Reader] guarantees that the order of
-			// columns in the Arrow schema matches the order of [streams.Column]s
-			// provided to the reader.
-			if v.searchColumns[colIndex].Type != streams.ColumnTypeLabel {
-				continue
-			}
-
-			// Find the array where our row is. While columnChunkedRow can return nil
-			// if the row isn't found, we know we're giving it a valid row index so
-			// we can bypass the check here.
-			arr, rowArrayIndex := columnChunkedRow(v.streams.Column(colIndex), rowColumnIndex)
-			if arr.IsNull(rowArrayIndex) {
-				continue
-			}
-
-			label := labels.Label{
-				Name: v.searchColumns[colIndex].Name,
-			}
-
-			switch colValues := arr.(type) {
-			case *array.String:
-				label.Value = colValues.Value(rowArrayIndex)
-			case *array.Binary:
-				label.Value = string(colValues.Value(rowArrayIndex))
-			default:
-				panic(fmt.Sprintf("unexpected column type %T for labels", colValues))
-			}
-
-			if !yield(label) {
-				return
-			}
-		}
-	}, nil
-}
-
-func (v *streamsView) init(ctx context.Context) (err error) {
+// Open initializes streamsView resources.
+func (v *streamsView) Open(ctx context.Context) error {
 	if v.initialized {
 		return nil
 	}
@@ -171,12 +122,86 @@ func (v *streamsView) init(ctx context.Context) (err error) {
 	}
 
 	r := streams.NewReader(readerOptions)
-	defer r.Close()
+	if err := r.Open(ctx); err != nil {
+		return fmt.Errorf("opening streams reader: %w", err)
+	}
+
+	v.reader = r
+	v.initialized = true
+	return nil
+}
+
+// Labels returns all of the non-null labels of a stream with the given
+// id. If [streamsViewOptions] included a subset of labels, only those labels
+// are returned.
+func (v *streamsView) Labels(ctx context.Context, id int64) ([]labels.Label, error) {
+	if !v.initialized {
+		return nil, errStreamsViewNotOpen
+	} else if err := v.lazyRead(ctx); err != nil {
+		return nil, err
+	}
+
+	lbs, ok := v.streamLabels[id]
+	if ok {
+		return lbs, nil
+	}
+
+	rowColumnIndex, ok := v.idRowMapping[id]
+	if !ok {
+		return nil, fmt.Errorf("stream ID %d not found in section or not included in filter", id)
+	}
+
+	lbs = make([]labels.Label, 0)
+
+	for colIndex := range int(v.streams.NumCols()) {
+		// Skip any column which isn't a label column.
+		//
+		// This is safe because [streams.Reader] guarantees that the order of
+		// columns in the Arrow schema matches the order of [streams.Column]s
+		// provided to the reader.
+		if v.searchColumns[colIndex].Type != streams.ColumnTypeLabel {
+			continue
+		}
+
+		// Find the array where our row is. While columnChunkedRow can return nil
+		// if the row isn't found, we know we're giving it a valid row index so
+		// we can bypass the check here.
+		arr, rowArrayIndex := columnChunkedRow(v.streams.Column(colIndex), rowColumnIndex)
+		if arr.IsNull(rowArrayIndex) {
+			continue
+		}
+
+		label := labels.Label{
+			Name: v.searchColumns[colIndex].Name,
+		}
+
+		switch colValues := arr.(type) {
+		case *array.String:
+			label.Value = colValues.Value(rowArrayIndex)
+		case *array.Binary:
+			label.Value = string(colValues.Value(rowArrayIndex))
+		default:
+			panic(fmt.Sprintf("unexpected column type %T for labels", colValues))
+		}
+
+		lbs = append(lbs, label)
+	}
+
+	v.streamLabels[id] = lbs
+
+	return lbs, nil
+}
+
+func (v *streamsView) lazyRead(ctx context.Context) (err error) {
+	if v.streams != nil {
+		return nil
+	}
+	defer v.reader.Close() // Reader won't be needed anymore after this exits.
 
 	var records []arrow.RecordBatch
 
 	for {
-		rec, err := r.Read(ctx, v.batchSize)
+		rec, err := v.reader.Read(ctx, v.batchSize)
 		if rec != nil && rec.NumRows() > 0 {
 			records = append(records, rec)
 		}
@@ -188,7 +213,7 @@ func (v *streamsView) init(ctx context.Context) (err error) {
 		}
 	}
 
-	table := array.NewTableFromRecords(r.Schema(), records)
+	table := array.NewTableFromRecords(v.reader.Schema(), records)
 
 	idMapping := make(map[int64]int, table.NumRows())
 	for colIndex := range int(table.NumCols()) {
@@ -217,7 +242,6 @@ func (v *streamsView) init(ctx context.Context) (err error) {
 	}
 
 	v.streams = table
-	v.initialized = true
 	v.idRowMapping = idMapping
 	return nil
 }
@@ -249,6 +273,11 @@ func columnChunkedRow(col *arrow.Column, absoluteRow int) (arr arrow.Array, rela
 func (v *streamsView) Close() {
 	if !v.initialized {
 		return
+	}
+
+	if v.reader != nil {
+		v.reader.Close()
+		v.reader = nil
 	}
 
 	v.initialized = false

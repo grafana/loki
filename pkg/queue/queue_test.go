@@ -505,6 +505,35 @@ func Test_Queue_DequeueMany(t *testing.T) {
 	}
 }
 
+func TestDequeueAfterEnqueueFails(t *testing.T) {
+	// Create a RequestQueue with maxOutstandingPerTenant=0
+	// This will cause all enqueue to fail
+	maxOutstandingPerTenant := 0
+	queue := NewRequestQueue(
+		maxOutstandingPerTenant,
+		0, // forgetDelay
+		noQueueLimits,
+		NewMetrics(nil, constants.Loki, "query_scheduler"),
+	)
+
+	consumerID := "test-querier"
+	queue.RegisterConsumerConnection(consumerID)
+	defer queue.UnregisterConsumerConnection(consumerID)
+
+	err := queue.Enqueue("tenant-1", nil, "test-request", nil)
+	require.Error(t, err, "expected enqueue to fail with maxOutstandingPerTenant=0")
+	require.Equal(t, ErrTooManyRequests, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+
+	// Should block until context deadline is reached.
+	req, _, err := queue.Dequeue(ctx, StartIndex, consumerID)
+
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.Nil(t, req)
+}
+
 func enqueueTasksAsync(tenantsCount int, tasksPerTenant int, senderDelay time.Duration, wg *errgroup.Group, queue *RequestQueue) {
 	for i := 0; i < tenantsCount; i++ {
 		tenant := fmt.Sprintf("tenant-%d", i)

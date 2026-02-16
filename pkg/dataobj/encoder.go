@@ -4,9 +4,8 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"math"
 	"slices"
-
-	"github.com/gogo/protobuf/proto"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
@@ -146,7 +145,7 @@ func (enc *encoder) getDictionaryKey(text string) uint32 {
 	return key
 }
 
-func (enc *encoder) Metadata() (proto.Message, error) {
+func (enc *encoder) Metadata() (*filemd.Metadata, error) {
 	enc.initDictionary()
 
 	offset := enc.startOffset
@@ -186,11 +185,41 @@ func (enc *encoder) Metadata() (proto.Message, error) {
 		offset += info.Metadata.Size
 	}
 
-	return &filemd.Metadata{
+	md := &filemd.Metadata{
 		Sections:   sections,
 		Dictionary: enc.dictionary,
 		Types:      enc.rawTypes,
-	}, nil
+
+		// We need to temporarily set ObjectSize to a non-zero value to ensure
+		// that the field is included when we compute the total object size.
+		ObjectSize: math.MinInt64,
+	}
+
+	md.ObjectSize = enc.encodeSize(md)
+	return md, nil
+}
+
+// encodeSize reports the final encoded size of the object.
+func (enc *encoder) encodeSize(computedMetadata *filemd.Metadata) int64 {
+	var size int64
+
+	size += int64(len(magic)) // header
+
+	// body
+	for _, sec := range enc.sections {
+		size += int64(sec.Data.Size)
+		size += int64(sec.Metadata.Size)
+	}
+
+	// metadata
+	size += int64(streamio.UvarintSize(fileFormatVersion))
+	size += int64(protocodec.Size(computedMetadata))
+
+	// tailer
+	size += int64(4) // file metadata size (32 bits)
+	size += int64(len(magic))
+
+	return size
 }
 
 // Bytes returns the total number of bytes appended to the data object.
@@ -258,8 +287,9 @@ func (enc *encoder) Flush() (*snapshot, error) {
 	)
 	if err != nil {
 		return nil, fmt.Errorf("creating snapshot: %w", err)
+	} else if snapshot.Size() != metadata.ObjectSize {
+		panic(fmt.Sprintf("snapshot size %d does not match computed metadata size %d", snapshot.Size(), metadata.ObjectSize))
 	}
-
 	return snapshot, nil
 }
 
